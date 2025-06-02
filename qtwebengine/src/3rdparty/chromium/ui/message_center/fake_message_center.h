@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "ui/message_center/message_center.h"
 #include "ui/message_center/message_center_observer.h"
 #include "ui/message_center/message_center_types.h"
@@ -78,7 +79,10 @@ class FakeMessageCenter : public MessageCenter {
   void ResetSinglePopup(const std::string& id) override;
   void DisplayedNotification(const std::string& id,
                              const DisplaySource source) override;
-  void SetQuietMode(bool in_quiet_mode) override;
+  void SetQuietMode(
+      bool in_quiet_mode,
+      QuietModeSourceType type = QuietModeSourceType::kUserAction) override;
+  QuietModeSourceType GetLastQuietModeChangeSourceType() const override;
   void SetSpokenFeedbackEnabled(bool enabled) override;
   void EnterQuietModeWithExpire(const base::TimeDelta& expires_in) override;
   void SetVisibility(Visibility visible) override;
@@ -105,7 +109,7 @@ class FakeMessageCenter : public MessageCenter {
   base::ObserverList<MessageCenterObserver> observers_;
   NotificationList notifications_;
   NotificationList::Notifications visible_notifications_;
-  std::vector<NotificationBlocker*> blockers_;
+  std::vector<raw_ptr<NotificationBlocker, VectorExperimental>> blockers_;
   bool has_message_center_view_ = true;
 };
 

@@ -28,7 +28,7 @@ struct CONTENT_EXPORT MediaStreamRequest {
   MediaStreamRequest(int render_process_id,
                      int render_frame_id,
                      int page_request_id,
-                     const GURL& security_origin,
+                     const url::Origin& url_origin,
                      bool user_gesture,
                      blink::MediaStreamRequestType request_type,
                      const std::string& requested_audio_device_id,
@@ -56,8 +56,12 @@ struct CONTENT_EXPORT MediaStreamRequest {
   // identifying this request. This is used for cancelling request.
   int page_request_id;
 
+  // TODO(crbug.com/1503955): Remove security_origin.
   // The WebKit security origin for the current request (e.g. "html5rocks.com").
   GURL security_origin;
+
+  // The Origin of the current request.
+  url::Origin url_origin;
 
   // Set to true if the call was made in the context of a user gesture.
   bool user_gesture;
@@ -97,9 +101,12 @@ struct CONTENT_EXPORT MediaStreamRequest {
   // tabs offered to the user.
   bool exclude_self_browser_surface = false;
 
+  // Flag to indicate whether monitor type surfaces (screens) should be offered
+  // to the user.
+  bool exclude_monitor_type_surfaces = false;
+
   // Flag to indicate a preference for which display surface type (screen,
-  // windows, or tabs) should be most prominently offered to the user. The
-  // browser may disregard this preference.
+  // windows, or tabs) should be most prominently offered to the user.
   blink::mojom::PreferredDisplaySurface preferred_display_surface =
       blink::mojom::PreferredDisplaySurface::NO_PREFERENCE;
 
@@ -155,7 +162,7 @@ class MediaStreamUI {
   //   but the cropped-to region ended up having zero pixels.
   // * Nullopt indicates that cropping stopped.
   virtual void OnRegionCaptureRectChanged(
-      const absl::optional<gfx::Rect>& region_capture_rect) {}
+      const std::optional<gfx::Rect>& region_capture_rect) {}
 
 #if !BUILDFLAG(IS_ANDROID)
   // Focuses the display surface represented by |media_id|.

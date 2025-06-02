@@ -18,9 +18,6 @@ namespace vma
                       static_cast<uint32_t>(VMA_VIRTUAL_BLOCK_CREATE_##x##_ALGORITHM_BIT), \
                   "VMA enum mismatch")
 VALIDATE_BLOCK_CREATE_FLAG_BITS(LINEAR);
-#if ANGLE_VMA_VERSION < 3000000
-VALIDATE_BLOCK_CREATE_FLAG_BITS(BUDDY);
-#endif  // ANGLE_VMA_VERSION < 3000000
 
 VkResult InitAllocator(VkPhysicalDevice physicalDevice,
                        VkDevice device,
@@ -48,21 +45,11 @@ VkResult InitAllocator(VkPhysicalDevice physicalDevice,
     funcs.vkDestroyImage                      = vkDestroyImage;
     funcs.vkCmdCopyBuffer                     = vkCmdCopyBuffer;
     {
-#if !defined(ANGLE_SHARED_LIBVULKAN)
-        // When the vulkan-loader is statically linked, we need to use the extension
-        // functions defined in ANGLE's rx namespace. When it's dynamically linked
-        // with volk, this will default to the function definitions with no namespace
-        using rx::vkBindBufferMemory2KHR;
-        using rx::vkBindImageMemory2KHR;
-        using rx::vkGetBufferMemoryRequirements2KHR;
-        using rx::vkGetImageMemoryRequirements2KHR;
-        using rx::vkGetPhysicalDeviceMemoryProperties2KHR;
-#endif  // !defined(ANGLE_SHARED_LIBVULKAN)
-        funcs.vkGetBufferMemoryRequirements2KHR       = vkGetBufferMemoryRequirements2KHR;
-        funcs.vkGetImageMemoryRequirements2KHR        = vkGetImageMemoryRequirements2KHR;
-        funcs.vkBindBufferMemory2KHR                  = vkBindBufferMemory2KHR;
-        funcs.vkBindImageMemory2KHR                   = vkBindImageMemory2KHR;
-        funcs.vkGetPhysicalDeviceMemoryProperties2KHR = vkGetPhysicalDeviceMemoryProperties2KHR;
+        funcs.vkGetBufferMemoryRequirements2KHR       = vkGetBufferMemoryRequirements2;
+        funcs.vkGetImageMemoryRequirements2KHR        = vkGetImageMemoryRequirements2;
+        funcs.vkBindBufferMemory2KHR                  = vkBindBufferMemory2;
+        funcs.vkBindImageMemory2KHR                   = vkBindImageMemory2;
+        funcs.vkGetPhysicalDeviceMemoryProperties2KHR = vkGetPhysicalDeviceMemoryProperties2;
     }
 
     VmaAllocatorCreateInfo allocatorInfo      = {};
@@ -83,23 +70,14 @@ void DestroyAllocator(VmaAllocator allocator)
 
 VkResult CreatePool(VmaAllocator allocator,
                     uint32_t memoryTypeIndex,
-#if ANGLE_VMA_VERSION < 3000000
-                    bool buddyAlgorithm,
-#endif  // ANGLE_VMA_VERSION < 3000000
                     VkDeviceSize blockSize,
                     VmaPool *pPool)
 {
     VmaPoolCreateInfo poolCreateInfo = {};
     poolCreateInfo.memoryTypeIndex   = memoryTypeIndex;
     poolCreateInfo.flags             = VMA_POOL_CREATE_IGNORE_BUFFER_IMAGE_GRANULARITY_BIT;
-#if ANGLE_VMA_VERSION < 3000000
-    if (buddyAlgorithm)
-    {
-        poolCreateInfo.flags |= VMA_POOL_CREATE_BUDDY_ALGORITHM_BIT;
-    }
-#endif
-    poolCreateInfo.blockSize     = blockSize;
-    poolCreateInfo.maxBlockCount = -1;  // unlimited
+    poolCreateInfo.blockSize         = blockSize;
+    poolCreateInfo.maxBlockCount     = -1;  // unlimited
     return vmaCreatePool(allocator, &poolCreateInfo, pPool);
 }
 
@@ -277,20 +255,12 @@ VkResult VirtualAllocate(VmaVirtualBlock virtualBlock,
     createInfo.size                           = size;
     createInfo.alignment                      = alignment;
     createInfo.flags                          = 0;
-#if ANGLE_VMA_VERSION < 3000000
-    return vmaVirtualAllocate(virtualBlock, &createInfo, pOffset);
-#else
     return vmaVirtualAllocate(virtualBlock, &createInfo, pAllocation, pOffset);
-#endif  // ANGLE_VMA_VERSION < 3000000
 }
 
 void VirtualFree(VmaVirtualBlock virtualBlock, VmaVirtualAllocation allocation, VkDeviceSize offset)
 {
-#if ANGLE_VMA_VERSION < 3000000
-    vmaVirtualFree(virtualBlock, offset);
-#else
     vmaVirtualFree(virtualBlock, allocation);
-#endif  // ANGLE_VMA_VERSION < 3000000
 }
 
 VkBool32 IsVirtualBlockEmpty(VmaVirtualBlock virtualBlock)
@@ -305,11 +275,7 @@ void GetVirtualAllocationInfo(VmaVirtualBlock virtualBlock,
                               void **pUserDataOut)
 {
     VmaVirtualAllocationInfo virtualAllocInfo = {};
-#if ANGLE_VMA_VERSION < 3000000
-    vmaGetVirtualAllocationInfo(virtualBlock, offset, &virtualAllocInfo);
-#else
     vmaGetVirtualAllocationInfo(virtualBlock, allocation, &virtualAllocInfo);
-#endif  // ANGLE_VMA_VERSION < 3000000
     *sizeOut      = virtualAllocInfo.size;
     *pUserDataOut = virtualAllocInfo.pUserData;
 }
@@ -324,21 +290,13 @@ void SetVirtualAllocationUserData(VmaVirtualBlock virtualBlock,
                                   VkDeviceSize offset,
                                   void *pUserData)
 {
-#if ANGLE_VMA_VERSION < 3000000
-    vmaSetVirtualAllocationUserData(virtualBlock, offset, pUserData);
-#else
     vmaSetVirtualAllocationUserData(virtualBlock, allocation, pUserData);
-#endif  // ANGLE_VMA_VERSION < 3000000
 }
 
 void CalculateVirtualBlockStats(VmaVirtualBlock virtualBlock, StatInfo *pStatInfo)
 {
-#if ANGLE_VMA_VERSION < 3000000
-    vmaCalculateVirtualBlockStats(virtualBlock, reinterpret_cast<VmaStatInfo *>(pStatInfo));
-#else
     vmaCalculateVirtualBlockStatistics(virtualBlock,
                                        reinterpret_cast<VmaDetailedStatistics *>(pStatInfo));
-#endif  // ANGLE_VMA_VERSION < 3000000
 }
 
 void BuildVirtualBlockStatsString(VmaVirtualBlock virtualBlock,

@@ -839,6 +839,16 @@
 */
 
 /*!
+    \externalpage https://www.gsmarena.com/google_pixel_8-12546.php
+    \title Pixel 8
+*/
+
+/*!
+    \externalpage https://www.gsmarena.com/google_pixel_tablet-11905.php
+    \title Pixel Tablet
+*/
+
+/*!
     \externalpage https://www.gsmarena.com/samsung_galaxy_s10-9536.php
     \title Samsung Galaxy S10
 */
@@ -904,6 +914,21 @@
 */
 
 /*!
+    \externalpage https://developer.apple.com/documentation/appkit/nsview
+    \title macOS: NSView
+*/
+
+/*!
+    \externalpage https://developer.apple.com/documentation/uikit/uiview
+    \title iOS: UIView
+*/
+
+/*!
+    \externalpage https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types
+    \title Windows: HWND
+*/
+
+/*!
     \externalpage https://www.qt.io/product/supported-platforms-languages/other-targets
     \title Other Targets
 */
@@ -911,6 +936,11 @@
 /*!
     \externalpage https://emscripten.org/docs/optimizing/Optimizing-Code.html
     \title Emscripten: Optimizing Code
+*/
+
+/*!
+    \externalpage https://account.qt.io/downloads
+    \title Qt Customer Portal
 */
 
 // These examples were moved to manual tests but still referenced in deployment
@@ -938,3 +968,42 @@
     \title Android: Context
 */
 
+/*!
+    \externalpage https://developer.android.com/reference/android/view/View
+    \title Android: View
+*/
+
+/*!
+    \externalpage https://doc.qt.io/qttoolsforandroid/
+    \title Qt Tools for Android Studio
+*/
+
+/*!
+    \externalpage https://doc.qt.io/qtgradleplugin/
+    \title Qt Gradle Plugin
+*/
+
+/*!
+    \externalpage https://code.qt.io/cgit/qt/qtbase.git/tree/src/android/jar/src/org/qtproject/qt/android/QtAbstractItemModel.java
+    \title QtAbstractItemModel Android Class
+*/
+
+/*!
+    \externalpage https://code.qt.io/cgit/qt/qtbase.git/tree/src/android/jar/src/org/qtproject/qt/android/QtAbstractListModel.java
+    \title QtAbstractListModel Android Class
+*/
+
+/*!
+    \externalpage https://code.qt.io/cgit/qt/qtbase.git/tree/src/android/jar/src/org/qtproject/qt/android/QtModelIndex.java
+    \title QtModelIndex Android Class
+*/
+
+/*!
+    \externalpage https://code.qt.io/cgit/qt/qtdeclarative.git/tree/src/quick/platform/android/jar/src/org/qtproject/qt/android/QtQmlStatusChangeListener.java
+    \title interface QtQmlStatusChangeListener
+*/
+
+/*!
+    \externalpage https://kotlinlang.org/api/latest/jvm/stdlib/kotlin.jvm/-synchronized/
+    \title Kotlin: Synchronized
+*/

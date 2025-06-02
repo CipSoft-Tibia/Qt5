@@ -56,10 +56,10 @@ QT_BEGIN_NAMESPACE
 QGstVideoBuffer::QGstVideoBuffer(QGstBufferHandle buffer, const GstVideoInfo &info,
                                  QGstreamerVideoSink *sink, const QVideoFrameFormat &frameFormat,
                                  QGstCaps::MemoryFormat format)
-    : QAbstractVideoBuffer((sink && sink->rhi() && format != QGstCaps::CpuMemory)
-                                   ? QVideoFrame::RhiTextureHandle
-                                   : QVideoFrame::NoHandle,
-                           sink ? sink->rhi() : nullptr),
+    : QHwVideoBuffer((sink && sink->rhi() && format != QGstCaps::CpuMemory)
+                             ? QVideoFrame::RhiTextureHandle
+                             : QVideoFrame::NoHandle,
+                     sink ? sink->rhi() : nullptr),
       memoryFormat(format),
       m_frameFormat(frameFormat),
       m_rhi(sink ? sink->rhi() : nullptr),
@@ -79,7 +79,7 @@ QGstVideoBuffer::QGstVideoBuffer(QGstBufferHandle buffer, const GstVideoInfo &in
 
 QGstVideoBuffer::~QGstVideoBuffer()
 {
-    unmap();
+    Q_ASSERT(m_mode == QVideoFrame::NotMapped);
 }
 
 QAbstractVideoBuffer::MapData QGstVideoBuffer::map(QVideoFrame::MapMode mode)
@@ -93,20 +93,20 @@ QAbstractVideoBuffer::MapData QGstVideoBuffer::map(QVideoFrame::MapMode mode)
 
     if (m_videoInfo.finfo->n_planes == 0) {         // Encoded
         if (gst_buffer_map(m_buffer.get(), &m_frame.map[0], flags)) {
-            mapData.nPlanes = 1;
+            mapData.planeCount = 1;
             mapData.bytesPerLine[0] = -1;
-            mapData.size[0] = m_frame.map[0].size;
+            mapData.dataSize[0] = m_frame.map[0].size;
             mapData.data[0] = static_cast<uchar *>(m_frame.map[0].data);
 
             m_mode = mode;
         }
     } else if (gst_video_frame_map(&m_frame, &m_videoInfo, m_buffer.get(), flags)) {
-        mapData.nPlanes = GST_VIDEO_FRAME_N_PLANES(&m_frame);
+        mapData.planeCount = GST_VIDEO_FRAME_N_PLANES(&m_frame);
 
         for (guint i = 0; i < GST_VIDEO_FRAME_N_PLANES(&m_frame); ++i) {
             mapData.bytesPerLine[i] = GST_VIDEO_FRAME_PLANE_STRIDE(&m_frame, i);
             mapData.data[i] = static_cast<uchar *>(GST_VIDEO_FRAME_PLANE_DATA(&m_frame, i));
-            mapData.size[i] = mapData.bytesPerLine[i]*GST_VIDEO_FRAME_COMP_HEIGHT(&m_frame, i);
+            mapData.dataSize[i] = mapData.bytesPerLine[i]*GST_VIDEO_FRAME_COMP_HEIGHT(&m_frame, i);
         }
 
         m_mode = mode;
@@ -228,14 +228,13 @@ public:
     {
         auto desc = QVideoTextureHelper::textureDescription(format);
         for (uint i = 0; i < textures.count; ++i) {
-            QSize planeSize(desc->widthForPlane(size.width(), int(i)),
-                            desc->heightForPlane(size.height(), int(i)));
-            m_textures[i].reset(rhi->newTexture(desc->textureFormat[i], planeSize, 1, {}));
+            QSize planeSize = desc->rhiPlaneSize(size, i, rhi);
+            m_textures[i].reset(rhi->newTexture(desc->rhiTextureFormat(i, m_rhi), planeSize, 1, {}));
             m_textures[i]->createFrom({textures.names[i], 0});
         }
     }
 
-    ~QGstQVideoFrameTextures()
+    ~QGstQVideoFrameTextures() override
     {
         m_rhi->makeThreadLocalNativeContextCurrent();
         auto ctx = QOpenGLContext::currentContext();
@@ -369,11 +368,8 @@ static GlTextures mapFromDmaBuffer(QRhi *rhi, const QGstBufferHandle &bufferHand
 #endif
 #endif
 
-std::unique_ptr<QVideoFrameTextures> QGstVideoBuffer::mapTextures(QRhi *rhi)
+QVideoFrameTexturesUPtr QGstVideoBuffer::mapTextures(QRhi &rhi, QVideoFrameTexturesUPtr& /*oldTextures*/)
 {
-    if (!rhi)
-        return {};
-
 #if QT_CONFIG(gstreamer_gl)
     GlTextures textures = {};
     if (memoryFormat == QGstCaps::GLTexture)
@@ -386,7 +382,7 @@ std::unique_ptr<QVideoFrameTextures> QGstVideoBuffer::mapTextures(QRhi *rhi)
 
 #  endif
     if (textures.count > 0)
-        return std::make_unique<QGstQVideoFrameTextures>(rhi, QSize{m_videoInfo.width, m_videoInfo.height},
+        return std::make_unique<QGstQVideoFrameTextures>(&rhi, QSize{m_videoInfo.width, m_videoInfo.height},
                                                          m_frameFormat.pixelFormat(), textures);
 #endif
     return {};

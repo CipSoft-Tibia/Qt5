@@ -20,13 +20,34 @@ static bool glibDisabled = []() {
 
 #include <chrono>
 
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
+
 using namespace std::chrono_literals;
 
-enum {
-    PreciseTimerInterval    =   10,
-    CoarseTimerInterval     =  200,
-    VeryCoarseTimerInterval = 1000
-};
+static constexpr auto PreciseTimerInterval = 10ms;
+static constexpr auto CoarseTimerInterval = 200ms;
+static constexpr auto VeryCoarseTimerInterval = 1s;
+
+static constexpr
+std::chrono::nanoseconds fudgeInterval(std::chrono::nanoseconds interval, Qt::TimerType timerType)
+{
+    // Make the intervals have have fractions of milliseconds so we can check
+    // that they have been rounded & stored properly (where applicable).
+    switch (timerType) {
+    case Qt::VeryCoarseTimer:
+        // rounds down (floor) to seconds
+        return interval + 1010us;
+    case Qt::CoarseTimer:
+        // rounds up (ceil) to milliseconds
+        return interval - 10us;
+    case Qt::PreciseTimer:
+        // not rounded using QAbstractEventDispatcherV2; rounded up (ceil) on V1
+        return interval - 10us;
+    }
+    Q_UNREACHABLE_RETURN(std::chrono::nanoseconds::min());
+}
 
 class tst_QEventDispatcher : public QObject
 {
@@ -91,7 +112,7 @@ bool tst_QEventDispatcher::event(QEvent *e)
 // drain the system event queue after the test starts to avoid destabilizing the test functions
 void tst_QEventDispatcher::initTestCase()
 {
-    QDeadlineTimer deadline(CoarseTimerInterval * 1ms);
+    QDeadlineTimer deadline(CoarseTimerInterval);
     while (!deadline.hasExpired() && eventDispatcher->processEvents(QEventLoop::AllEvents))
         ;
 }
@@ -120,35 +141,36 @@ public:
     TimerManager(TimerManager &&) = delete;
     TimerManager &operator=(TimerManager &&) = delete;
 
-    int preciseTimerId() const { return m_preciseTimerId; }
-    int coarseTimerId() const { return m_coarseTimerId; }
-    int veryCoarseTimerId() const { return m_veryCoarseTimerId; }
+    int preciseTimerId() const { return int(m_preciseTimerId); }
+    int coarseTimerId() const { return int(m_coarseTimerId); }
+    int veryCoarseTimerId() const { return int(m_veryCoarseTimerId); }
 
-    bool foundPrecise() const { return m_preciseTimerId > 0; }
-    bool foundCoarse() const { return m_coarseTimerId > 0; }
-    bool foundVeryCoarse() const { return m_veryCoarseTimerId > 0; }
+    bool foundPrecise() const { return preciseTimerId() > 0; }
+    bool foundCoarse() const { return coarseTimerId() > 0; }
+    bool foundVeryCoarse() const { return veryCoarseTimerId() > 0; }
 
-    QList<QAbstractEventDispatcher::TimerInfo> registeredTimers() const
+    QList<QAbstractEventDispatcher::TimerInfoV2> registeredTimers() const
     {
-        return m_eventDispatcher->registeredTimers(m_parent);
+        return m_eventDispatcher->timersForObject(m_parent);
     }
 
     void registerAll()
     {
         // start 3 timers, each with the different timer types and different intervals
-        m_preciseTimerId = m_eventDispatcher->registerTimer(
-                    PreciseTimerInterval, Qt::PreciseTimer, m_parent);
-        m_coarseTimerId = m_eventDispatcher->registerTimer(
-                    CoarseTimerInterval, Qt::CoarseTimer, m_parent);
-        m_veryCoarseTimerId = m_eventDispatcher->registerTimer(
-                    VeryCoarseTimerInterval, Qt::VeryCoarseTimer, m_parent);
-        QVERIFY(m_preciseTimerId > 0);
-        QVERIFY(m_coarseTimerId > 0);
-        QVERIFY(m_veryCoarseTimerId > 0);
+        auto registerTimer = [&](std::chrono::milliseconds interval, Qt::TimerType timerType) {
+            return m_eventDispatcher->registerTimer(fudgeInterval(interval, timerType), timerType,
+                                                    m_parent);
+        };
+        m_preciseTimerId = registerTimer(PreciseTimerInterval, Qt::PreciseTimer);
+        m_coarseTimerId = registerTimer(CoarseTimerInterval, Qt::CoarseTimer);
+        m_veryCoarseTimerId = registerTimer(VeryCoarseTimerInterval, Qt::VeryCoarseTimer);
+        QVERIFY(foundPrecise());
+        QVERIFY(foundCoarse());
+        QVERIFY(foundVeryCoarse());
         findTimers();
     }
 
-    void unregister(int timerId)
+    void unregister(Qt::TimerId timerId)
     {
         m_eventDispatcher->unregisterTimer(timerId);
         findTimers();
@@ -166,36 +188,43 @@ private:
         bool foundPrecise = false;
         bool foundCoarse = false;
         bool foundVeryCoarse = false;
-        const QList<QAbstractEventDispatcher::TimerInfo> timers = registeredTimers();
-        for (int i = 0; i < timers.size(); ++i) {
-            const QAbstractEventDispatcher::TimerInfo &timerInfo = timers.at(i);
+        const QList<QAbstractEventDispatcher::TimerInfoV2> timers = registeredTimers();
+        for (const QAbstractEventDispatcher::TimerInfoV2 &timerInfo : timers) {
             if (timerInfo.timerId == m_preciseTimerId) {
-                QCOMPARE(timerInfo.interval, int(PreciseTimerInterval));
+                // For precise timers, we expect the fudge factor to be present
+                QAbstractEventDispatcher::Duration interval =
+                        fudgeInterval(PreciseTimerInterval, Qt::PreciseTimer);
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+                if (!qobject_cast<QAbstractEventDispatcherV2 *>(m_eventDispatcher))
+                    interval = PreciseTimerInterval;
+#endif
+                QCOMPARE(timerInfo.interval, interval);
                 QCOMPARE(timerInfo.timerType, Qt::PreciseTimer);
                 foundPrecise = true;
             } else if (timerInfo.timerId == m_coarseTimerId) {
-                QCOMPARE(timerInfo.interval, int(CoarseTimerInterval));
+                // For other timers, the fudge factors ought to have been rounded away
+                QCOMPARE(timerInfo.interval, CoarseTimerInterval);
                 QCOMPARE(timerInfo.timerType, Qt::CoarseTimer);
                 foundCoarse = true;
             } else if (timerInfo.timerId == m_veryCoarseTimerId) {
-                QCOMPARE(timerInfo.interval, int(VeryCoarseTimerInterval));
+                QCOMPARE(timerInfo.interval, VeryCoarseTimerInterval);
                 QCOMPARE(timerInfo.timerType, Qt::VeryCoarseTimer);
                 foundVeryCoarse = true;
             }
         }
         if (!foundPrecise)
-            m_preciseTimerId = -1;
+            m_preciseTimerId = Qt::TimerId::Invalid;
         if (!foundCoarse)
-            m_coarseTimerId = -1;
+            m_coarseTimerId = Qt::TimerId::Invalid;
         if (!foundVeryCoarse)
-            m_veryCoarseTimerId = -1;
+            m_veryCoarseTimerId = Qt::TimerId::Invalid;
     }
 
     QAbstractEventDispatcher *m_eventDispatcher = nullptr;
 
-    int m_preciseTimerId = -1;
-    int m_coarseTimerId = -1;
-    int m_veryCoarseTimerId = -1;
+    Qt::TimerId m_preciseTimerId = Qt::TimerId::Invalid;
+    Qt::TimerId m_coarseTimerId = Qt::TimerId::Invalid;
+    Qt::TimerId m_veryCoarseTimerId = Qt::TimerId::Invalid;
 
     QObject *m_parent = nullptr;
 };
@@ -205,8 +234,6 @@ void tst_QEventDispatcher::registerTimer()
 {
     TimerManager timers(eventDispatcher, this);
     timers.registerAll();
-    if (QTest::currentTestFailed())
-        return;
 
     // check that all 3 are present in the eventDispatcher's registeredTimer() list
     QCOMPARE(timers.registeredTimers().size(), 3);
@@ -235,15 +262,13 @@ void tst_QEventDispatcher::registerTimer()
     if (doubleTimer)
         QSKIP("Double timer during a single timeout - aborting test as flaky on macOS");
     if (timerIdFromEvent != timers.preciseTimerId()
-        && elapsedTimer.elapsed() > PreciseTimerInterval * 3)
+        && elapsedTimer.durationElapsed() > PreciseTimerInterval * 3)
         QSKIP("Ignore flaky test behavior due to VM scheduling on macOS");
 #endif
 
     QCOMPARE(timerIdFromEvent, timers.preciseTimerId());
     // now unregister it and make sure it's gone
-    timers.unregister(timers.preciseTimerId());
-    if (QTest::currentTestFailed())
-        return;
+    timers.unregister(Qt::TimerId(timers.preciseTimerId()));
     QCOMPARE(timers.registeredTimers().size(), 2);
     QVERIFY(!timers.foundPrecise());
     QVERIFY(timers.foundCoarse());
@@ -259,15 +284,13 @@ void tst_QEventDispatcher::registerTimer()
     if (doubleTimer)
         QSKIP("Double timer during a single timeout - aborting test as flaky on macOS");
     if (timerIdFromEvent != timers.coarseTimerId()
-        && elapsedTimer.elapsed() > CoarseTimerInterval * 3)
+        && elapsedTimer.durationElapsed() > CoarseTimerInterval * 3)
         QSKIP("Ignore flaky test behavior due to VM scheduling on macOS");
 #endif
 
     QCOMPARE(timerIdFromEvent, timers.coarseTimerId());
     // now unregister it and make sure it's gone
-    timers.unregister(timers.coarseTimerId());
-    if (QTest::currentTestFailed())
-        return;
+    timers.unregister(Qt::TimerId(timers.coarseTimerId()));
     QCOMPARE(timers.registeredTimers().size(), 1);
     QVERIFY(!timers.foundPrecise());
     QVERIFY(!timers.foundCoarse());
@@ -275,8 +298,6 @@ void tst_QEventDispatcher::registerTimer()
 
     // not going to wait for the VeryCoarseTimer, would take too long, just unregister it
     timers.unregisterAll();
-    if (QTest::currentTestFailed())
-        return;
     QVERIFY(timers.registeredTimers().isEmpty());
 }
 

@@ -7,19 +7,17 @@
 #include <QtGraphs/QValue3DAxis>
 #include <QtGraphs/Q3DScene>
 #include <QtGraphs/QScatter3DSeries>
-#include <QtGraphs/Q3DTheme>
 #include <QtCore/qmath.h>
 #include <QtCore/QFile>
 #include <QtCore/QTextStream>
 #include <QtCore/QDebug>
 
-ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
+ScatterDataModifier::ScatterDataModifier(Q3DScatterWidgetItem *scatter)
     : m_graph(scatter)
-    , m_inputHandler(new CustomInputHandler(m_graph))
 {
-    m_graph->activeTheme()->setType(Q3DTheme::Theme::PrimaryColors);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::Medium);
-    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
+    m_graph->activeTheme()->setTheme(QGraphsTheme::Theme::QtGreen);
+    m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::Medium);
+    m_graph->setCameraPreset(QtGraphs3D::CameraPreset::Front);
 
     m_graph->setAxisX(new QValue3DAxis);
     m_graph->setAxisY(new QValue3DAxis);
@@ -65,17 +63,15 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
 
     // Give ownership of the handler to the graph and make it the active handler
     //! [0]
-    m_graph->setActiveInputHandler(m_inputHandler);
-
-    m_selectionTimer = new QTimer(this);
-    m_selectionTimer->setInterval(1000);
-    m_selectionTimer->setSingleShot(false);
-    QObject::connect(m_selectionTimer,
-                     &QTimer::timeout,
+    m_graph->unsetDefaultWheelHandler();
+    QObject::connect(m_graph, &Q3DGraphsWidgetItem::wheel, this, &ScatterDataModifier::onWheel);
+    QObject::connect(m_graph, &Q3DGraphsWidgetItem::mouseMove, this, &ScatterDataModifier::onMouseMove);
+    QObject::connect(m_graph, &Q3DGraphsWidgetItem::tapped, this, &ScatterDataModifier::onTapped);
+    QObject::connect(m_graph,
+                     &Q3DGraphsWidgetItem::queriedGraphPositionChanged,
                      this,
-                     &ScatterDataModifier::triggerSelection);
-    m_selectionTimer->start();
-    //! [1]
+                     &ScatterDataModifier::onPositionQueryChanged);
+    //! [0]
 }
 
 ScatterDataModifier::~ScatterDataModifier()
@@ -137,12 +133,45 @@ void ScatterDataModifier::toggleCameraAnimation()
     }
 }
 
-void ScatterDataModifier::triggerSelection()
+void ScatterDataModifier::onWheel(QWheelEvent *event)
 {
-    m_graph->scene()->setSelectionQueryPosition(m_inputHandler->inputPosition());
+    // Adjust zoom level based on what zoom range we're in.
+    int zoomLevel = m_graph->cameraZoomLevel();
+    if (zoomLevel > 100)
+        zoomLevel += event->angleDelta().y() / 12;
+    else if (zoomLevel > 50)
+        zoomLevel += event->angleDelta().y() / 60;
+    else
+        zoomLevel += event->angleDelta().y() / 120;
+    if (zoomLevel > 500)
+        zoomLevel = 500;
+    else if (zoomLevel < 10)
+        zoomLevel = 10;
+
+    m_graph->setCameraZoomLevel(zoomLevel);
 }
 
-void ScatterDataModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality sq)
+void ScatterDataModifier::onMouseMove(QPoint mousePos)
+{
+    m_mousePos = mousePos;
+    m_graph->doPicking(mousePos);
+}
+
+void ScatterDataModifier::onTapped(QEventPoint eventPoint, Qt::MouseButton button)
+{
+    Q_UNUSED(button);
+    QPoint point = eventPoint.position().toPoint();
+    qDebug() << "Queried at: " << point;
+    m_graph->scene()->setGraphPositionQuery(point);
+}
+
+void ScatterDataModifier::onPositionQueryChanged(const QVector3D &position)
+{
+    qDebug() << "Queried Position from signal:" << position;
+    qDebug() << "Queried Position from graph :" << m_graph->queriedGraphPosition();
+}
+
+void ScatterDataModifier::shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality sq)
 {
     int quality = int(sq);
     emit shadowQualityChanged(quality); // connected to a checkbox in main.cpp
@@ -150,6 +179,6 @@ void ScatterDataModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQ
 
 void ScatterDataModifier::changeShadowQuality(int quality)
 {
-    QAbstract3DGraph::ShadowQuality sq = QAbstract3DGraph::ShadowQuality(quality);
+    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
 }

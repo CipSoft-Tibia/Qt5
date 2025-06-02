@@ -72,7 +72,6 @@ qt_internal_add_module(Sensors
         Qt::Core
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
-    GENERATE_CPP_EXPORTS
 )
 
 if(ANDROID)

@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// TODO(v8:11421): Remove #if once baseline compiler is ported to other
-// architectures.
-#include "src/flags/flags.h"
-#if ENABLE_SPARKPLUG
-
 #include <algorithm>
 #include <type_traits>
 
@@ -69,7 +64,7 @@ Handle<ByteArray> BytecodeOffsetTableBuilder::ToBytecodeOffsetTable(
   if (bytes_.empty()) return isolate->factory()->empty_byte_array();
   Handle<ByteArray> table = isolate->factory()->NewByteArray(
       static_cast<int>(bytes_.size()), AllocationType::kOld);
-  MemCopy(table->GetDataStartAddress(), bytes_.data(), bytes_.size());
+  MemCopy(table->begin(), bytes_.data(), bytes_.size());
   return table;
 }
 
@@ -78,7 +73,7 @@ namespace detail {
 #ifdef DEBUG
 bool Clobbers(Register target, Register reg) { return target == reg; }
 bool Clobbers(Register target, Handle<Object> handle) { return false; }
-bool Clobbers(Register target, Smi smi) { return false; }
+bool Clobbers(Register target, Tagged<Smi> smi) { return false; }
 bool Clobbers(Register target, Tagged<TaggedIndex> index) { return false; }
 bool Clobbers(Register target, int32_t imm) { return false; }
 bool Clobbers(Register target, RootIndex index) { return false; }
@@ -92,7 +87,7 @@ bool MachineTypeMatches(MachineType type, MemOperand reg) { return true; }
 bool MachineTypeMatches(MachineType type, Handle<HeapObject> handle) {
   return type.IsTagged() && !type.IsTaggedSigned();
 }
-bool MachineTypeMatches(MachineType type, Smi handle) {
+bool MachineTypeMatches(MachineType type, Tagged<Smi> handle) {
   return type.IsTagged() && !type.IsTaggedPointer();
 }
 bool MachineTypeMatches(MachineType type, Tagged<TaggedIndex> handle) {
@@ -347,9 +342,9 @@ MaybeHandle<Code> BaselineCompiler::Build(LocalIsolate* local_isolate) {
 
   Factory::CodeBuilder code_builder(local_isolate, desc, CodeKind::BASELINE);
   code_builder.set_bytecode_offset_table(bytecode_offset_table);
-  if (shared_function_info_->HasInterpreterData()) {
-    code_builder.set_interpreter_data(
-        handle(shared_function_info_->interpreter_data(), local_isolate));
+  if (shared_function_info_->HasInterpreterData(local_isolate)) {
+    code_builder.set_interpreter_data(handle(
+        shared_function_info_->interpreter_data(local_isolate), local_isolate));
   } else {
     code_builder.set_interpreter_data(bytecode_);
   }
@@ -712,7 +707,7 @@ void BaselineCompiler::VisitLdaZero() {
 }
 
 void BaselineCompiler::VisitLdaSmi() {
-  Smi constant = Smi::FromInt(iterator().GetImmediateOperand(0));
+  Tagged<Smi> constant = Smi::FromInt(iterator().GetImmediateOperand(0));
   __ Move(kInterpreterAccumulatorRegister, constant);
 }
 
@@ -1321,7 +1316,7 @@ void BaselineCompiler::VisitCallRuntimeForPair() {
       BaselineAssembler::ScratchRegisterScope scratch_scope(&basm_);
       Register out_reg = scratch_scope.AcquireScratch();
       __ RegisterFrameAddress(out.first, out_reg);
-      DCHECK(in.register_count() == 1);
+      DCHECK_EQ(in.register_count(), 1);
       CallRuntime(Runtime::kLoadLookupSlotForCall_Baseline, in.first_register(),
                   out_reg);
       break;
@@ -1502,6 +1497,19 @@ void BaselineCompiler::VisitConstructWithSpread() {
       spread_register,             // kSpread
       RootIndex::kUndefinedValue,  // kReceiver
       args);
+}
+
+void BaselineCompiler::VisitConstructForwardAllArgs() {
+  using Descriptor = CallInterfaceDescriptorFor<
+      Builtin::kConstructForwardAllArgs_Baseline>::type;
+  Register new_target =
+      Descriptor::GetRegisterParameter(Descriptor::kNewTarget);
+  __ Move(new_target, kInterpreterAccumulatorRegister);
+
+  CallBuiltin<Builtin::kConstructForwardAllArgs_Baseline>(
+      RegisterOperand(0),  // kFunction
+      new_target,          // kNewTarget
+      Index(1));           // kSlot
 }
 
 void BaselineCompiler::VisitTestEqual() {
@@ -2404,5 +2412,3 @@ SaveAccumulatorScope::~SaveAccumulatorScope() {
 }  // namespace baseline
 }  // namespace internal
 }  // namespace v8
-
-#endif  // ENABLE_SPARKPLUG

@@ -10,7 +10,7 @@
         "Description": "The Big5 codecs (QBig5Codec, QBig5hkscsCodec)\nprovide conversion to and from the Big5 encodings.",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
-        "LicenseFile": "QBIG5CODEC_LICENSE.txt",
+        "LicenseFile": "LICENSE.QBIG5CODEC.txt",
         "Copyright": "Copyright (C) 2000  Ming-Che Chuang\nCopyright (C) 2001, 2002  James Su, Turbolinux Inc.\nCopyright (C) 2002  WU Yi, HancomLinux Inc.\nCopyright (C) 2001, 2002  Anthony Fok, ThizLinux Laboratory Ltd."
 },
     {
@@ -24,7 +24,7 @@
         "Description": "The EUC-JP text codec provides conversion to and from EUC-JP,\nthe main legacy encoding for Unix machines in Japan.",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
-        "LicenseFile": "QEUCJPCODEC_LICENSE.txt",
+        "LicenseFile": "LICENSE.QEUCJPCODEC.txt",
         "Copyright": "Copyright (C) 1999 Serika Kurusugawa."
     },
     {
@@ -38,7 +38,7 @@
         "Description": "The EUC-KR text codec provides conversion to and from EUC-KR, KR,\nthe main legacy encoding for Unix machines in Korea.",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
-        "LicenseFile": "QEUCKRCODEC_LICENSE.txt",
+        "LicenseFile": "LICENSE.QEUCKRCODEC.txt",
         "Copyright": "Copyright (C) 1999-2000 Mizi Research Inc."
     },
     {
@@ -52,7 +52,7 @@
         "Description": "The ISO 2022-JP (JIS) text codec provides conversion to and from ISO 2022-JP.",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
-        "LicenseFile": "QJISCODEC_LICENSE.txt",
+        "LicenseFile": "LICENSE.QJISCODEC.txt",
         "Copyright": "Copyright (C) 1999 Serika Kurusugawa."
     },
     {
@@ -66,7 +66,7 @@
         "Description": "The Shift-JIS text codec provides conversion to and from Shift-JIS.",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
-        "LicenseFile": "QSJISCODEC_LICENSE.txt",
+        "LicenseFile": "LICENSE.QSJISCODEC.txt",
         "Copyright": "Copyright (C) 1999 Serika Kurusugawa."
     },
     {
@@ -80,7 +80,7 @@
         "Description": "The TSCII text codec provides conversion to and from the Tamil TSCII\nencoding.",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
-        "LicenseFile": "QTSCIICODEC_LICENSE.txt",
+        "LicenseFile": "LICENSE.QTSCIICODEC.txt",
         "Copyright": "Copyright (C) 2000 Hans Petter Bieker."
     },
     {
@@ -94,7 +94,7 @@
         "Description": "The GBK codec provides conversion to and from the Chinese\nGB18030/GBK/GB2312 encoding.",
         "License": "BSD 2-clause \"Simplified\" License",
         "LicenseId": "BSD-2-Clause",
-        "LicenseFile": "QBKCODEC_LICENSE.txt",
+        "LicenseFile": "LICENSE.QBKCODEC.txt",
         "Copyright": "Copyright (C) 2000 TurboLinux, Inc.  Written by Justin Yu and Sean Chen.\nCopyright (C) 2001, 2002 Turbolinux, Inc.  Written by James Su.\nCopyright (C) 2001, 2002 ThizLinux Laboratory Ltd.  Written by Anthony Fok."
     }
 ]

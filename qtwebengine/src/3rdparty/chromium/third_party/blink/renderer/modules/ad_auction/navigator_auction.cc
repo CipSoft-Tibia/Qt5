@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/check.h"
+#include "base/containers/contains.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/time/time.h"
@@ -17,6 +18,8 @@
 #include "base/types/pass_key.h"
 #include "base/unguessable_token.h"
 #include "base/uuid.h"
+#include "components/aggregation_service/aggregation_coordinator_utils.h"
+#include "components/aggregation_service/features.h"
 #include "mojo/public/cpp/bindings/map_traits_wtf_hash_map.h"
 #include "third_party/abseil-cpp/absl/numeric/int128.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -27,6 +30,7 @@
 #include "third_party/blink/public/common/interest_group/ad_auction_constants.h"
 #include "third_party/blink/public/common/interest_group/ad_auction_currencies.h"
 #include "third_party/blink/public/common/interest_group/ad_display_size_utils.h"
+#include "third_party/blink/public/common/interest_group/interest_group.h"
 #include "third_party/blink/public/mojom/interest_group/interest_group_types.mojom-blink.h"
 #include "third_party/blink/public/mojom/parakeet/ad_request.mojom-blink.h"
 #include "third_party/blink/public/mojom/permissions_policy/permissions_policy.mojom-blink.h"
@@ -51,6 +55,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_auction_ad_interest_group_size.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_auction_additional_bid_signature.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_auction_report_buyers_config.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_protected_audience_private_aggregation_config.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_union_adproperties_adpropertiessequence.h"
 #include "third_party/blink/renderer/core/dom/abort_signal.h"
 #include "third_party/blink/renderer/core/dom/document.h"
@@ -67,9 +72,11 @@
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/modules/ad_auction/ads.h"
 #include "third_party/blink/renderer/modules/ad_auction/join_leave_queue.h"
+#include "third_party/blink/renderer/modules/ad_auction/protected_audience.h"
 #include "third_party/blink/renderer/modules/ad_auction/validate_blink_interest_group.h"
 #include "third_party/blink/renderer/modules/geolocation/geolocation_coordinates.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/heap/heap_traits.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_fetcher.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/wtf/text/base64.h"
@@ -94,10 +101,13 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
     explicit AuctionHandleFunction(AuctionHandle* auction_handle);
 
     void Trace(Visitor* visitor) const override;
+    ScriptValue Call(ScriptState* script_state, ScriptValue value) final;
 
     AuctionHandle* auction_handle() { return auction_handle_.Get(); }
 
    private:
+    virtual ScriptValue CallImpl(ScriptState* script_state,
+                                 ScriptValue value) = 0;
     Member<AuctionHandle> auction_handle_;
   };
 
@@ -110,7 +120,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
                  const String& seller_name,
                  const char* field_name);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
 
    private:
     const mojom::blink::AuctionAdConfigAuctionIdPtr auction_id_;
@@ -126,7 +136,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
         mojom::blink::AuctionAdConfigAuctionIdPtr auction_id,
         const String& seller_name);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
 
    private:
     const mojom::blink::AuctionAdConfigAuctionIdPtr auction_id_;
@@ -142,7 +152,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
                           mojom::blink::AuctionAdConfigBuyerTimeoutField field,
                           const String& seller_name);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
 
    private:
     const mojom::blink::AuctionAdConfigAuctionIdPtr auction_id_;
@@ -157,7 +167,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
         mojom::blink::AuctionAdConfigAuctionIdPtr auction_id,
         const String& seller_name);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
 
    private:
     const mojom::blink::AuctionAdConfigAuctionIdPtr auction_id_;
@@ -174,7 +184,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
         const absl::optional<Vector<scoped_refptr<const SecurityOrigin>>>&
             interest_group_buyers);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
 
    private:
     const mojom::blink::AuctionAdConfigAuctionIdPtr auction_id_;
@@ -192,7 +202,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
         mojom::blink::AuctionAdConfigAuctionIdPtr auction_id,
         const String& seller_name);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
 
    private:
     const mojom::blink::AuctionAdConfigAuctionIdPtr auction_id_;
@@ -205,7 +215,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
                            mojom::blink::AuctionAdConfigAuctionIdPtr auction_id,
                            const String& seller_name);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
 
    private:
     const mojom::blink::AuctionAdConfigAuctionIdPtr auction_id_;
@@ -218,7 +228,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
                            mojom::blink::AuctionAdConfigAuctionIdPtr auction_id,
                            const String& seller_name);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
 
    private:
     const mojom::blink::AuctionAdConfigAuctionIdPtr auction_id_;
@@ -229,14 +239,14 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
    public:
     ResolveToConfigResolved(AuctionHandle* auction_handle);
 
-    ScriptValue Call(ScriptState* script_state, ScriptValue value) override;
+    ScriptValue CallImpl(ScriptState* script_state, ScriptValue value) override;
   };
 
   class Rejected : public AuctionHandleFunction {
    public:
     explicit Rejected(AuctionHandle* auction_handle);
 
-    ScriptValue Call(ScriptState*, ScriptValue) override;
+    ScriptValue CallImpl(ScriptState*, ScriptValue) override;
   };
 
   AuctionHandle(ExecutionContext* context,
@@ -248,15 +258,21 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
 
   ~AuctionHandle() override = default;
 
-  void AttachPromiseHandler(ScriptState& script_state,
-                            ScriptPromise promise,
-                            ScriptFunction::Callable* success_helper) {
-    promise.Then(
-        MakeGarbageCollected<ScriptFunction>(&script_state, success_helper),
-        MakeGarbageCollected<ScriptFunction>(
-            &script_state,
-            MakeGarbageCollected<NavigatorAuction::AuctionHandle::Rejected>(
-                this)));
+  void QueueAttachPromiseHandler(ScriptPromise promise,
+                                 ScriptFunction::Callable* success_helper) {
+    queued_promises_.emplace_back(promise, success_helper);
+  }
+
+  void AttachQueuedPromises(ScriptState& script_state) {
+    for (auto& [promise, success_helper] : queued_promises_) {
+      promise.Then(
+          MakeGarbageCollected<ScriptFunction>(&script_state, success_helper),
+          MakeGarbageCollected<ScriptFunction>(
+              &script_state,
+              MakeGarbageCollected<NavigatorAuction::AuctionHandle::Rejected>(
+                  this)));
+    }
+    queued_promises_.clear();
   }
 
   void Abort() { abortable_ad_auction_->Abort(); }
@@ -267,16 +283,19 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
   void Trace(Visitor* visitor) const override {
     visitor->Trace(abortable_ad_auction_);
     visitor->Trace(auction_resolver_);
+    visitor->Trace(queued_promises_);
     AbortSignal::Algorithm::Trace(visitor);
   }
 
   void AuctionComplete(
       ScriptPromiseResolver*,
       std::unique_ptr<ScopedAbortState>,
-      bool manually_aborted,
+      base::TimeTicks start_time,
+      bool is_server_auction,
+      bool aborted_by_script,
       const absl::optional<FencedFrame::RedactedFencedFrameConfig>&);
 
-  void MaybeResolveAuction();
+  bool MaybeResolveAuction();
 
   void SetResolveToConfig(bool value) { resolve_to_config_ = value; }
 
@@ -285,6 +304,7 @@ class NavigatorAuction::AuctionHandle final : public AbortSignal::Algorithm {
   }
 
  private:
+  VectorOfPairs<ScriptPromise, ScriptFunction::Callable> queued_promises_;
   HeapMojoRemote<mojom::blink::AbortableAdAuction> abortable_ad_auction_;
 
   absl::optional<bool> resolve_to_config_;
@@ -299,9 +319,9 @@ namespace {
 // pending operations are dropped on destruction / navigation away.
 const int kMaxActiveCrossSiteJoins = 20;
 const int kMaxActiveCrossSiteLeaves = 20;
+const int kMaxActiveCrossSiteClears = 20;
 
 // Error string builders.
-
 String ErrorInvalidInterestGroup(const AuctionAdInterestGroup& group,
                                  const String& field_name,
                                  const String& field_value,
@@ -435,7 +455,7 @@ bool Jsonify(const ScriptState& script_state,
     return false;
   }
 
-  output = ToCoreString(v8_string);
+  output = ToCoreString(script_state.GetIsolate(), v8_string);
   // JSON.stringify can fail to produce a string value in one of two ways: it
   // can throw an exception (as with unserializable objects), or it can return
   // `undefined` (as with e.g. passing a function). If JSON.stringify returns
@@ -723,6 +743,43 @@ bool CopyTrustedBiddingSignalsKeysFromIdlToMojo(
   return true;
 }
 
+bool CopyTrustedBiddingSignalsSlotSizeModeFromIdlToMojo(
+    const AuctionAdInterestGroup& input,
+    mojom::blink::InterestGroup& output) {
+  if (!input.hasTrustedBiddingSignalsSlotSizeMode()) {
+    output.trusted_bidding_signals_slot_size_mode =
+        mojom::blink::InterestGroup::TrustedBiddingSignalsSlotSizeMode::kNone;
+  } else {
+    output.trusted_bidding_signals_slot_size_mode =
+        blink::InterestGroup::ParseTrustedBiddingSignalsSlotSizeMode(
+            input.trustedBiddingSignalsSlotSizeMode());
+  }
+  return true;
+}
+
+bool CopyMaxTrustedBiddingSignalsURLLengthFromIdlToMojo(
+    ExceptionState& exception_state,
+    const AuctionAdInterestGroup& input,
+    mojom::blink::InterestGroup& output) {
+  // `maxTrustedBiddingSignalsURLLength` will be set as 0 by default in mojom,
+  // if it is not present in IDL.
+  if (!input.hasMaxTrustedBiddingSignalsURLLength()) {
+    return true;
+  }
+
+  if (input.maxTrustedBiddingSignalsURLLength() < 0) {
+    exception_state.ThrowTypeError(String::Format(
+        "maxTrustedBiddingSignalsURLLength of interest group "
+        "'%s' is less than 0 which is '%d'.",
+        input.name().Characters8(), input.maxTrustedBiddingSignalsURLLength()));
+    return false;
+  }
+
+  output.max_trusted_bidding_signals_url_length =
+      input.maxTrustedBiddingSignalsURLLength();
+  return true;
+}
+
 bool CopyUserBiddingSignalsFromIdlToMojo(const ScriptState& script_state,
                                          ExceptionState& exception_state,
                                          const AuctionAdInterestGroup& input,
@@ -901,7 +958,8 @@ bool CopyAdditionalBidKeyFromIdlToMojo(
     return true;
   }
   WTF::Vector<char> decoded_key;
-  if (!WTF::Base64Decode(input.additionalBidKey(), decoded_key)) {
+  if (!WTF::Base64Decode(input.additionalBidKey(), decoded_key,
+                         WTF::Base64DecodePolicy::kForgiving)) {
     exception_state.ThrowTypeError(ErrorInvalidInterestGroup(
         input, "additionalBidKey", input.additionalBidKey(),
         "cannot be base64 decoded."));
@@ -918,6 +976,60 @@ bool CopyAdditionalBidKeyFromIdlToMojo(
   std::copy(decoded_key.begin(), decoded_key.end(),
             output.additional_bid_key->begin());
   return true;
+}
+
+bool GetAggregationCoordinatorFromConfig(
+    ExceptionState& exception_state,
+    const ProtectedAudiencePrivateAggregationConfig& config,
+    scoped_refptr<const SecurityOrigin>& aggregation_coordinator_origin_out) {
+  if (!config.hasAggregationCoordinatorOrigin()) {
+    return true;
+  }
+
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kPrivateAggregationApiMultipleCloudProviders) ||
+      !base::FeatureList::IsEnabled(
+          aggregation_service::kAggregationServiceMultipleCloudProviders)) {
+    // Ignore the specified aggregation coordinator unless the feature is
+    // enabled.
+    return true;
+  }
+
+  scoped_refptr<const SecurityOrigin> aggregation_coordinator_origin =
+      ParseOrigin(config.aggregationCoordinatorOrigin());
+  if (!aggregation_coordinator_origin) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kSyntaxError,
+        String::Format(
+            "aggregationCoordinatorOrigin '%s' must be a valid https origin.",
+            config.aggregationCoordinatorOrigin().Utf8().c_str()));
+    return false;
+  }
+  if (!aggregation_service::IsAggregationCoordinatorOriginAllowed(
+          aggregation_coordinator_origin->ToUrlOrigin())) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kDataError,
+        String::Format("aggregationCoordinatorOrigin '%s' is not a recognized "
+                       "coordinator origin.",
+                       config.aggregationCoordinatorOrigin().Utf8().c_str()));
+    return false;
+  }
+  aggregation_coordinator_origin_out =
+      std::move(aggregation_coordinator_origin);
+  return true;
+}
+
+bool CopyAggregationCoordinatorOriginFromIdlToMojo(
+    ExceptionState& exception_state,
+    const AuctionAdInterestGroup& input,
+    mojom::blink::InterestGroup& output) {
+  if (!input.hasPrivateAggregationConfig()) {
+    return true;
+  }
+
+  return GetAggregationCoordinatorFromConfig(
+      exception_state, *input.privateAggregationConfig(),
+      output.aggregation_coordinator_origin);
 }
 
 // createAdRequest copy functions.
@@ -1103,7 +1215,6 @@ bool CopySellerFromIdlToMojo(ExceptionState& exception_state,
 bool CopyServerResponseFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     ExceptionState& exception_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
@@ -1140,8 +1251,8 @@ bool CopyServerResponseFromIdlToMojo(
     return false;
   }
 
-  auction_handle->AttachPromiseHandler(
-      script_state, input.serverResponse(),
+  auction_handle->QueueAttachPromiseHandler(
+      input.serverResponse(),
       MakeGarbageCollected<
           NavigatorAuction::AuctionHandle::ServerResponseResolved>(
           auction_handle, auction_id->Clone(), input.seller()));
@@ -1212,6 +1323,28 @@ bool CopyTrustedScoringSignalsFromIdlToMojo(
   return true;
 }
 
+bool CopyMaxTrustedScoringSignalsURLLengthFromIdlToMojo(
+    ExceptionState& exception_state,
+    const AuctionAdConfig& input,
+    mojom::blink::AuctionAdConfig& output) {
+  if (!input.hasMaxTrustedScoringSignalsURLLength()) {
+    return true;
+  }
+
+  // TODO(xtlsheep): Add a test to join-leave-ad-interest-group.https.window.js
+  // for the negative length case
+  if (input.maxTrustedScoringSignalsURLLength() < 0) {
+    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
+        input, "maxTrustedScoringSignalsURLLength",
+        String::Number(input.maxTrustedScoringSignalsURLLength()),
+        "must not be negative."));
+  }
+
+  output.max_trusted_scoring_signals_url_length =
+      input.maxTrustedScoringSignalsURLLength();
+  return true;
+}
+
 bool CopyInterestGroupBuyersFromIdlToMojo(
     ExceptionState& exception_state,
     const AuctionAdConfig& input,
@@ -1242,13 +1375,12 @@ mojom::blink::AuctionAdConfigMaybePromiseJsonPtr
 ConvertJsonPromiseFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     const ScriptPromise& promise,
     mojom::blink::AuctionAdConfigField field,
     const char* field_name) {
-  auction_handle->AttachPromiseHandler(
-      script_state, promise,
+  auction_handle->QueueAttachPromiseHandler(
+      promise,
       MakeGarbageCollected<NavigatorAuction::AuctionHandle::JsonResolved>(
           auction_handle, auction_id->Clone(), field, input.seller(),
           field_name));
@@ -1260,7 +1392,6 @@ ConvertJsonPromiseFromIdlToMojo(
 void CopyAuctionSignalsFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
   DCHECK_EQ(auction_id == nullptr, auction_handle == nullptr);
@@ -1273,8 +1404,7 @@ void CopyAuctionSignalsFromIdlToMojo(
 
   output.auction_ad_config_non_shared_params->auction_signals =
       ConvertJsonPromiseFromIdlToMojo(
-          auction_handle, auction_id, script_state, input,
-          input.auctionSignals(),
+          auction_handle, auction_id, input, input.auctionSignals(),
           mojom::blink::AuctionAdConfigField::kAuctionSignals,
           "auctionSignals");
 }
@@ -1282,7 +1412,6 @@ void CopyAuctionSignalsFromIdlToMojo(
 void CopySellerSignalsFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
   if (!input.hasSellerSignals()) {
@@ -1293,8 +1422,7 @@ void CopySellerSignalsFromIdlToMojo(
 
   output.auction_ad_config_non_shared_params->seller_signals =
       ConvertJsonPromiseFromIdlToMojo(
-          auction_handle, auction_id, script_state, input,
-          input.sellerSignals(),
+          auction_handle, auction_id, input, input.sellerSignals(),
           mojom::blink::AuctionAdConfigField::kSellerSignals, "sellerSignals");
 }
 
@@ -1431,7 +1559,6 @@ String ConvertIDLStringFromV8ToMojo(const ScriptState& script_state,
 void CopyDirectFromSellerSignalsFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     const mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
   if (!input.hasDirectFromSellerSignals()) {
@@ -1440,8 +1567,8 @@ void CopyDirectFromSellerSignalsFromIdlToMojo(
     return;
   }
 
-  auction_handle->AttachPromiseHandler(
-      script_state, input.directFromSellerSignals(),
+  auction_handle->QueueAttachPromiseHandler(
+      input.directFromSellerSignals(),
       MakeGarbageCollected<
           NavigatorAuction::AuctionHandle::DirectFromSellerSignalsResolved>(
           auction_handle, auction_id->Clone(), input.seller(), output.seller,
@@ -1453,7 +1580,6 @@ void CopyDirectFromSellerSignalsFromIdlToMojo(
 void CopyDirectFromSellerSignalsHeaderAdSlotFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     const mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
   if (!input.hasDirectFromSellerSignalsHeaderAdSlot()) {
@@ -1461,8 +1587,8 @@ void CopyDirectFromSellerSignalsHeaderAdSlotFromIdlToMojo(
     return;
   }
 
-  auction_handle->AttachPromiseHandler(
-      script_state, input.directFromSellerSignalsHeaderAdSlot(),
+  auction_handle->QueueAttachPromiseHandler(
+      input.directFromSellerSignalsHeaderAdSlot(),
       MakeGarbageCollected<NavigatorAuction::AuctionHandle::
                                DirectFromSellerSignalsHeaderAdSlotResolved>(
           auction_handle, auction_id->Clone(), input.seller()));
@@ -1472,7 +1598,6 @@ void CopyDirectFromSellerSignalsHeaderAdSlotFromIdlToMojo(
 bool CopyAdditionalBidsFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     const mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     ExceptionState& exception_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
@@ -1498,13 +1623,26 @@ bool CopyAdditionalBidsFromIdlToMojo(
     return false;
   }
 
-  auction_handle->AttachPromiseHandler(
-      script_state, input.additionalBids(),
+  auction_handle->QueueAttachPromiseHandler(
+      input.additionalBids(),
       MakeGarbageCollected<
           NavigatorAuction::AuctionHandle::AdditionalBidsResolved>(
           auction_handle, auction_id->Clone(), input.seller()));
   output.expects_additional_bids = true;
   return true;
+}
+
+bool CopyAggregationCoordinatorOriginFromIdlToMojo(
+    ExceptionState& exception_state,
+    const AuctionAdConfig& input,
+    mojom::blink::AuctionAdConfig& output) {
+  if (!input.hasPrivateAggregationConfig()) {
+    return true;
+  }
+
+  return GetAggregationCoordinatorFromConfig(
+      exception_state, *input.privateAggregationConfig(),
+      output.aggregation_coordinator_origin);
 }
 
 // Returns nullopt + sets exception on failure, or returns a concrete value.
@@ -1549,7 +1687,6 @@ ConvertNonPromisePerBuyerSignalsFromV8ToMojo(const ScriptState& script_state,
 void CopyPerBuyerSignalsFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     const mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
   if (!input.hasPerBuyerSignals()) {
@@ -1559,8 +1696,8 @@ void CopyPerBuyerSignalsFromIdlToMojo(
     return;
   }
 
-  auction_handle->AttachPromiseHandler(
-      script_state, input.perBuyerSignals(),
+  auction_handle->QueueAttachPromiseHandler(
+      input.perBuyerSignals(),
       MakeGarbageCollected<
           NavigatorAuction::AuctionHandle::PerBuyerSignalsResolved>(
           auction_handle, auction_id->Clone(), input.seller()));
@@ -1624,7 +1761,6 @@ ConvertNonPromisePerBuyerTimeoutsFromV8ToMojo(
 void CopyPerBuyerTimeoutsFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     const mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
   if (!input.hasPerBuyerTimeouts()) {
@@ -1634,8 +1770,8 @@ void CopyPerBuyerTimeoutsFromIdlToMojo(
     return;
   }
 
-  auction_handle->AttachPromiseHandler(
-      script_state, input.perBuyerTimeouts(),
+  auction_handle->QueueAttachPromiseHandler(
+      input.perBuyerTimeouts(),
       MakeGarbageCollected<
           NavigatorAuction::AuctionHandle::BuyerTimeoutsResolved>(
           auction_handle, auction_id->Clone(),
@@ -1648,7 +1784,6 @@ void CopyPerBuyerTimeoutsFromIdlToMojo(
 void CopyPerBuyerCumulativeTimeoutsFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     const mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
   if (!input.hasPerBuyerCumulativeTimeouts()) {
@@ -1658,8 +1793,8 @@ void CopyPerBuyerCumulativeTimeoutsFromIdlToMojo(
     return;
   }
 
-  auction_handle->AttachPromiseHandler(
-      script_state, input.perBuyerCumulativeTimeouts(),
+  auction_handle->QueueAttachPromiseHandler(
+      input.perBuyerCumulativeTimeouts(),
       MakeGarbageCollected<
           NavigatorAuction::AuctionHandle::BuyerTimeoutsResolved>(
           auction_handle, auction_id->Clone(),
@@ -1718,7 +1853,6 @@ ConvertNonPromisePerBuyerCurrenciesFromV8ToMojo(const ScriptState& script_state,
 void CopyPerBuyerCurrenciesFromIdlToMojo(
     NavigatorAuction::AuctionHandle* auction_handle,
     const mojom::blink::AuctionAdConfigAuctionId* auction_id,
-    ScriptState& script_state,
     const AuctionAdConfig& input,
     mojom::blink::AuctionAdConfig& output) {
   if (!input.hasPerBuyerCurrencies()) {
@@ -1728,8 +1862,8 @@ void CopyPerBuyerCurrenciesFromIdlToMojo(
     return;
   }
 
-  auction_handle->AttachPromiseHandler(
-      script_state, input.perBuyerCurrencies(),
+  auction_handle->QueueAttachPromiseHandler(
+      input.perBuyerCurrencies(),
       MakeGarbageCollected<
           NavigatorAuction::AuctionHandle::BuyerCurrenciesResolved>(
           auction_handle, auction_id->Clone(), input.seller()));
@@ -1947,44 +2081,119 @@ bool CopyRequiredSellerSignalsFromIdlToMojo(
   return true;
 }
 
+mojom::blink::AdSizePtr ParseAdSize(const AuctionAdConfig& input,
+                                    const AuctionAdInterestGroupSize& size,
+                                    const char* field_name,
+                                    ExceptionState& exception_state) {
+  auto [width_val, width_units] =
+      blink::ParseAdSizeString(size.width().Ascii());
+  auto [height_val, height_units] =
+      blink::ParseAdSizeString(size.height().Ascii());
+  if (width_units == blink::AdSize::LengthUnit::kInvalid) {
+    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
+        input, String::Format("%s width", field_name), size.width(),
+        "must use units '', 'px', 'sw', or 'sh'."));
+    return mojom::blink::AdSizePtr();
+  }
+  if (height_units == blink::AdSize::LengthUnit::kInvalid) {
+    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
+        input, String::Format("%s height", field_name), size.height(),
+        "must use units '', 'px', 'sw', or 'sh'."));
+    return mojom::blink::AdSizePtr();
+  }
+  if (width_val <= 0 || !std::isfinite(width_val)) {
+    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
+        input, String::Format("%s width", field_name), size.width(),
+        "must be finite and positive."));
+    return mojom::blink::AdSizePtr();
+  }
+  if (height_val <= 0 || !std::isfinite(height_val)) {
+    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
+        input, String::Format("%s height", field_name), size.height(),
+        "must be finite and positive."));
+    return mojom::blink::AdSizePtr();
+  }
+  return mojom::blink::AdSize::New(width_val, width_units, height_val,
+                                   height_units);
+}
+
 bool CopyRequestedSizeFromIdlToMojo(const ExecutionContext& execution_context,
                                     ExceptionState& exception_state,
                                     const AuctionAdConfig& input,
                                     mojom::blink::AuctionAdConfig& output) {
+  // This must be called before CopyAllSlotsRequestedSizesFromIdlToMojo().
+  DCHECK(
+      !output.auction_ad_config_non_shared_params->all_slots_requested_sizes);
   if (!input.hasRequestedSize()) {
     return true;
   }
-  auto [width_val, width_units] =
-      blink::ParseAdSizeString(input.requestedSize()->width().Ascii());
-  auto [height_val, height_units] =
-      blink::ParseAdSizeString(input.requestedSize()->height().Ascii());
-  if (width_units == blink::AdSize::LengthUnit::kInvalid) {
-    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
-        input, "requestedSize width", input.requestedSize()->width(),
-        "must use units '', 'px', 'sw', or 'sh'."));
+
+  mojom::blink::AdSizePtr size = ParseAdSize(input, *input.requestedSize(),
+                                             "requestedSize", exception_state);
+  if (!size) {
     return false;
   }
-  if (height_units == blink::AdSize::LengthUnit::kInvalid) {
-    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
-        input, "requestedSize height", input.requestedSize()->height(),
-        "must use units '', 'px', 'sw', or 'sh'."));
+
+  output.auction_ad_config_non_shared_params->requested_size = std::move(size);
+  return true;
+}
+
+// This must be called after CopyRequestedSizeFromIdlToMojo(), since it verifies
+// that if both `all_slots_requested_sizes` and `requested_size` are set, then
+// the former contains the latter.
+bool CopyAllSlotsRequestedSizesFromIdlToMojo(
+    const ExecutionContext& execution_context,
+    ExceptionState& exception_state,
+    const AuctionAdConfig& input,
+    mojom::blink::AuctionAdConfig& output) {
+  if (!input.hasAllSlotsRequestedSizes()) {
+    return true;
+  }
+
+  if (input.allSlotsRequestedSizes().empty()) {
+    exception_state.ThrowTypeError(
+        String::Format("allSlotsRequestedSizes for AuctionAdConfig with seller "
+                       "'%s' may not be empty.",
+                       input.seller().Utf8().c_str()));
     return false;
   }
-  if (width_val <= 0 || !std::isfinite(width_val)) {
-    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
-        input, "requestedSize width", input.requestedSize()->width(),
-        "must be finite and positive."));
+
+  std::set<mojom::blink::AdSize> distinct_sizes;
+  output.auction_ad_config_non_shared_params->all_slots_requested_sizes
+      .emplace();
+  for (const auto& unparsed_size : input.allSlotsRequestedSizes()) {
+    mojom::blink::AdSizePtr size = ParseAdSize(
+        input, *unparsed_size, "allSlotsRequestedSizes", exception_state);
+    if (!size) {
+      return false;
+    }
+
+    if (!distinct_sizes.insert(*size).second) {
+      exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
+          input, "allSlotsRequestedSizes",
+          String::Format(R"({"width": "%s", "height": "%s"})",
+                         unparsed_size->width().Utf8().c_str(),
+                         unparsed_size->height().Utf8().c_str()),
+          "must be distinct from other sizes in the list."));
+      return false;
+    }
+
+    output.auction_ad_config_non_shared_params->all_slots_requested_sizes
+        ->emplace_back(std::move(size));
+  }
+
+  // If `requested_size` is set, `all_slots_requested_sizes` must include it.
+  if (output.auction_ad_config_non_shared_params->requested_size &&
+      !base::Contains(
+          distinct_sizes,
+          *output.auction_ad_config_non_shared_params->requested_size)) {
+    exception_state.ThrowTypeError(String::Format(
+        "allSlotsRequestedSizes for AuctionAdConfig with seller '%s' must "
+        "contain requestedSize as an element when requestedSize is set.",
+        input.seller().Utf8().c_str()));
     return false;
   }
-  if (height_val <= 0 || !std::isfinite(height_val)) {
-    exception_state.ThrowTypeError(ErrorInvalidAuctionConfig(
-        input, "requestedSize height", input.requestedSize()->height(),
-        "must be finite and positive."));
-    return false;
-  }
-  output.auction_ad_config_non_shared_params->requested_size =
-      mojom::blink::AdSize::New(width_val, width_units, height_val,
-                                height_units);
+
   return true;
 }
 
@@ -1992,13 +2201,17 @@ bool CopyAuctionNonceFromIdlToMojo(const ExecutionContext& execution_context,
                                    ExceptionState& exception_state,
                                    const AuctionAdConfig& input,
                                    mojom::blink::AuctionAdConfig& output) {
-  // We don't validate that the UUID parsed successfully here. If it failed,
-  // the returned Uuid is an empty string. When we look try to claim it from
-  // the AuctionNonceManager, we won't find an empty string, and will fail
-  // the auction or component auction then.
   if (input.hasAuctionNonce()) {
     output.auction_ad_config_non_shared_params->auction_nonce =
         base::Uuid::ParseLowercase(input.auctionNonce().Ascii());
+    if (!output.auction_ad_config_non_shared_params->auction_nonce
+             ->is_valid()) {
+      exception_state.ThrowTypeError(String::Format(
+          "auctionNonce for AuctionAdConfig with seller '%s' must "
+          "be a valid UUIDv4, but got, '%s'.",
+          input.seller().Utf8().c_str(), input.auctionNonce().Ascii().c_str()));
+      return false;
+    }
   }
   return true;
 }
@@ -2037,12 +2250,13 @@ mojom::blink::AuctionAdConfigPtr IdlAuctionConfigToMojo(
 
   if (!CopySellerFromIdlToMojo(exception_state, config, *mojo_config) ||
       !CopyServerResponseFromIdlToMojo(auction_handle, auction_id.get(),
-                                       script_state, exception_state, config,
-                                       *mojo_config) ||
+                                       exception_state, config, *mojo_config) ||
       !CopyDecisionLogicUrlFromIdlToMojo(context, exception_state, config,
                                          *mojo_config) ||
       !CopyTrustedScoringSignalsFromIdlToMojo(context, exception_state, config,
                                               *mojo_config) ||
+      !CopyMaxTrustedScoringSignalsURLLengthFromIdlToMojo(
+          exception_state, config, *mojo_config) ||
       !CopyInterestGroupBuyersFromIdlToMojo(exception_state, config,
                                             *mojo_config) ||
       !CopyPerBuyerExperimentIdsFromIdlToMojo(script_state, exception_state,
@@ -2059,11 +2273,14 @@ mojom::blink::AuctionAdConfigPtr IdlAuctionConfigToMojo(
                                               *mojo_config) ||
       !CopyRequestedSizeFromIdlToMojo(context, exception_state, config,
                                       *mojo_config) ||
+      !CopyAllSlotsRequestedSizesFromIdlToMojo(context, exception_state, config,
+                                               *mojo_config) ||
       !CopyAuctionNonceFromIdlToMojo(context, exception_state, config,
                                      *mojo_config) ||
       !CopyAdditionalBidsFromIdlToMojo(auction_handle, auction_id.get(),
-                                       script_state, exception_state, config,
-                                       *mojo_config)) {
+                                       exception_state, config, *mojo_config) ||
+      !CopyAggregationCoordinatorOriginFromIdlToMojo(exception_state, config,
+                                                     *mojo_config)) {
     return mojom::blink::AuctionAdConfigPtr();
   }
 
@@ -2077,30 +2294,22 @@ mojom::blink::AuctionAdConfigPtr IdlAuctionConfigToMojo(
     return mojom::blink::AuctionAdConfigPtr();
   }
 
-  CopyAuctionSignalsFromIdlToMojo(auction_handle, auction_id.get(),
-                                  script_state, config, *mojo_config);
-  CopySellerSignalsFromIdlToMojo(auction_handle, auction_id.get(), script_state,
-                                 config, *mojo_config);
+  CopyAuctionSignalsFromIdlToMojo(auction_handle, auction_id.get(), config,
+                                  *mojo_config);
+  CopySellerSignalsFromIdlToMojo(auction_handle, auction_id.get(), config,
+                                 *mojo_config);
   CopyDirectFromSellerSignalsFromIdlToMojo(auction_handle, auction_id.get(),
-                                           script_state, config, *mojo_config);
+                                           config, *mojo_config);
   CopyDirectFromSellerSignalsHeaderAdSlotFromIdlToMojo(
-      auction_handle, auction_id.get(), script_state, config, *mojo_config);
-  CopyPerBuyerSignalsFromIdlToMojo(auction_handle, auction_id.get(),
-                                   script_state, config, *mojo_config);
-  CopyPerBuyerTimeoutsFromIdlToMojo(auction_handle, auction_id.get(),
-                                    script_state, config, *mojo_config);
-  CopyPerBuyerCumulativeTimeoutsFromIdlToMojo(
-      auction_handle, auction_id.get(), script_state, config, *mojo_config);
-  CopyPerBuyerCurrenciesFromIdlToMojo(auction_handle, auction_id.get(),
-                                      script_state, config, *mojo_config);
-
-  if (mojo_config->server_response && !is_top_level) {
-    // TODO(1457241): Add support for multi-level auctions including server-side
-    // auctions.
-    exception_state.ThrowTypeError(
-        "Only top-level auctions may have 'serverResponse'.");
-    return mojom::blink::AuctionAdConfigPtr();
-  }
+      auction_handle, auction_id.get(), config, *mojo_config);
+  CopyPerBuyerSignalsFromIdlToMojo(auction_handle, auction_id.get(), config,
+                                   *mojo_config);
+  CopyPerBuyerTimeoutsFromIdlToMojo(auction_handle, auction_id.get(), config,
+                                    *mojo_config);
+  CopyPerBuyerCumulativeTimeoutsFromIdlToMojo(auction_handle, auction_id.get(),
+                                              config, *mojo_config);
+  CopyPerBuyerCurrenciesFromIdlToMojo(auction_handle, auction_id.get(), config,
+                                      *mojo_config);
 
   if (config.hasSellerTimeout()) {
     mojo_config->auction_ad_config_non_shared_params->seller_timeout =
@@ -2149,10 +2358,10 @@ mojom::blink::AuctionAdConfigPtr IdlAuctionConfigToMojo(
             "nested componentAuctions.");
         return mojom::blink::AuctionAdConfigPtr();
       }
-      // We need decision logic for component auctions even if they have a
-      // server response. We perform reporting client-side for component
-      // auctions.
-      if (!idl_component_auction->hasDecisionLogicURL()) {
+      // We need decision logic for component auctions unless they have a
+      // server response.
+      if (!idl_component_auction->hasDecisionLogicURL() &&
+          !idl_component_auction->hasServerResponse()) {
         exception_state.ThrowTypeError(ErrorMissingRequired(
             "ad auction config decisionLogicURL or serverResponse"));
         return mojom::blink::AuctionAdConfigPtr();
@@ -2457,6 +2666,20 @@ void NavigatorAuction::AuctionHandle::AuctionHandleFunction::Trace(
   Callable::Trace(visitor);
 }
 
+ScriptValue NavigatorAuction::AuctionHandle::AuctionHandleFunction::Call(
+    ScriptState* script_state,
+    ScriptValue value) {
+  // We can end up here when the global associated with our `NavigatorAuction`
+  // is detached, at which point the normal thing to do would be not to do any
+  // work inside that frame, which includes Promise stuff (and associated type
+  // conversions). On top of it, `auction_handle_` will be null/unbound at that
+  // point, and most of our implementations need it to do something useful.
+  if (!script_state->ContextIsValid()) {
+    return ScriptValue();
+  }
+  return CallImpl(script_state, value);
+}
+
 NavigatorAuction::AuctionHandle::JsonResolved::JsonResolved(
     AuctionHandle* auction_handle,
     mojom::blink::AuctionAdConfigAuctionIdPtr auction_id,
@@ -2469,11 +2692,11 @@ NavigatorAuction::AuctionHandle::JsonResolved::JsonResolved(
       seller_name_(seller_name),
       field_name_(field_name) {}
 
-ScriptValue NavigatorAuction::AuctionHandle::JsonResolved::Call(
+ScriptValue NavigatorAuction::AuctionHandle::JsonResolved::CallImpl(
     ScriptState* script_state,
     ScriptValue value) {
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "NavigatorAuction", "runAdAuction");
   String maybe_json;
   bool maybe_json_ok = false;
@@ -2511,11 +2734,11 @@ NavigatorAuction::AuctionHandle::PerBuyerSignalsResolved::
       auction_id_(std::move(auction_id)),
       seller_name_(seller_name) {}
 
-ScriptValue NavigatorAuction::AuctionHandle::PerBuyerSignalsResolved::Call(
+ScriptValue NavigatorAuction::AuctionHandle::PerBuyerSignalsResolved::CallImpl(
     ScriptState* script_state,
     ScriptValue value) {
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "NavigatorAuction", "runAdAuction");
   absl::optional<WTF::HashMap<scoped_refptr<const SecurityOrigin>, String>>
       per_buyer_signals;
@@ -2547,11 +2770,11 @@ NavigatorAuction::AuctionHandle::BuyerTimeoutsResolved::BuyerTimeoutsResolved(
       field_(field),
       seller_name_(seller_name) {}
 
-ScriptValue NavigatorAuction::AuctionHandle::BuyerTimeoutsResolved::Call(
+ScriptValue NavigatorAuction::AuctionHandle::BuyerTimeoutsResolved::CallImpl(
     ScriptState* script_state,
     ScriptValue value) {
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "NavigatorAuction", "runAdAuction");
   mojom::blink::AuctionAdConfigBuyerTimeoutsPtr buyer_timeouts;
   if (!value.IsEmpty()) {
@@ -2585,11 +2808,11 @@ NavigatorAuction::AuctionHandle::BuyerCurrenciesResolved::
       auction_id_(std::move(auction_id)),
       seller_name_(seller_name) {}
 
-ScriptValue NavigatorAuction::AuctionHandle::BuyerCurrenciesResolved::Call(
+ScriptValue NavigatorAuction::AuctionHandle::BuyerCurrenciesResolved::CallImpl(
     ScriptState* script_state,
     ScriptValue value) {
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "NavigatorAuction", "runAdAuction");
   mojom::blink::AuctionAdConfigBuyerCurrenciesPtr buyer_currencies;
   if (!value.IsEmpty()) {
@@ -2629,7 +2852,7 @@ NavigatorAuction::AuctionHandle::DirectFromSellerSignalsResolved::
       interest_group_buyers_(interest_group_buyers) {}
 
 ScriptValue
-NavigatorAuction::AuctionHandle::DirectFromSellerSignalsResolved::Call(
+NavigatorAuction::AuctionHandle::DirectFromSellerSignalsResolved::CallImpl(
     ScriptState* script_state,
     ScriptValue value) {
   ExecutionContext* context = ExecutionContext::From(script_state);
@@ -2638,7 +2861,7 @@ NavigatorAuction::AuctionHandle::DirectFromSellerSignalsResolved::Call(
   }
 
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "NavigatorAuction", "runAdAuction");
   mojom::blink::DirectFromSellerSignalsPtr direct_from_seller_signals;
   if (!value.IsEmpty()) {
@@ -2670,15 +2893,16 @@ NavigatorAuction::AuctionHandle::DirectFromSellerSignalsHeaderAdSlotResolved::
       seller_name_(seller_name) {}
 
 ScriptValue NavigatorAuction::AuctionHandle::
-    DirectFromSellerSignalsHeaderAdSlotResolved::Call(ScriptState* script_state,
-                                                      ScriptValue value) {
+    DirectFromSellerSignalsHeaderAdSlotResolved::CallImpl(
+        ScriptState* script_state,
+        ScriptValue value) {
   ExecutionContext* context = ExecutionContext::From(script_state);
   if (!context) {
     return ScriptValue();
   }
 
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "NavigatorAuction", "runAdAuction");
   String direct_from_seller_signals_header_ad_slot;
   if (!value.IsEmpty()) {
@@ -2710,11 +2934,11 @@ NavigatorAuction::AuctionHandle::ServerResponseResolved::ServerResponseResolved(
       auction_id_(std::move(auction_id)),
       seller_name_(seller_name) {}
 
-ScriptValue NavigatorAuction::AuctionHandle::ServerResponseResolved::Call(
+ScriptValue NavigatorAuction::AuctionHandle::ServerResponseResolved::CallImpl(
     ScriptState* script_state,
     ScriptValue value) {
   ExceptionState exception_state(script_state->GetIsolate(),
-                                 ExceptionState::kExecutionContext,
+                                 ExceptionContextType::kOperationInvoke,
                                  "NavigatorAuction", "runAdAuction");
   v8::Local<v8::Value> v8_value = value.V8Value();
   if (!v8_value->IsUint8Array()) {
@@ -2739,7 +2963,7 @@ NavigatorAuction::AuctionHandle::AdditionalBidsResolved::AdditionalBidsResolved(
       auction_id_(std::move(auction_id)),
       seller_name_(seller_name) {}
 
-ScriptValue NavigatorAuction::AuctionHandle::AdditionalBidsResolved::Call(
+ScriptValue NavigatorAuction::AuctionHandle::AdditionalBidsResolved::CallImpl(
     ScriptState* script_state,
     ScriptValue value) {
   ExecutionContext* context = ExecutionContext::From(script_state);
@@ -2755,7 +2979,8 @@ ScriptValue NavigatorAuction::AuctionHandle::AdditionalBidsResolved::Call(
 NavigatorAuction::AuctionHandle::ResolveToConfigResolved::
     ResolveToConfigResolved(AuctionHandle* auction_handle)
     : AuctionHandleFunction(auction_handle) {}
-ScriptValue NavigatorAuction::AuctionHandle::ResolveToConfigResolved::Call(
+
+ScriptValue NavigatorAuction::AuctionHandle::ResolveToConfigResolved::CallImpl(
     ScriptState* script_state,
     ScriptValue value) {
   v8::Local<v8::Value> v8_value = value.V8Value();
@@ -2780,8 +3005,8 @@ NavigatorAuction::AuctionHandle::Rejected::Rejected(
     AuctionHandle* auction_handle)
     : AuctionHandleFunction(auction_handle) {}
 
-ScriptValue NavigatorAuction::AuctionHandle::Rejected::Call(ScriptState*,
-                                                            ScriptValue) {
+ScriptValue NavigatorAuction::AuctionHandle::Rejected::CallImpl(ScriptState*,
+                                                                ScriptValue) {
   // Abort the auction if any input promise rejects
   auction_handle()->Abort();
   return ScriptValue();
@@ -2796,7 +3021,12 @@ NavigatorAuction::NavigatorAuction(Navigator& navigator)
           kMaxActiveCrossSiteLeaves,
           WTF::BindRepeating(&NavigatorAuction::StartLeave,
                              WrapWeakPersistent(this))),
-      ad_auction_service_(navigator.GetExecutionContext()) {
+      queued_cross_site_clears_(
+          kMaxActiveCrossSiteClears,
+          WTF::BindRepeating(&NavigatorAuction::StartClear,
+                             WrapWeakPersistent(this))),
+      ad_auction_service_(navigator.GetExecutionContext()),
+      protected_audience_(MakeGarbageCollected<ProtectedAudience>()) {
   navigator.GetExecutionContext()->GetBrowserInterfaceBroker().GetInterface(
       ad_auction_service_.BindNewPipeAndPassReceiver(
           navigator.GetExecutionContext()->GetTaskRunner(
@@ -2854,58 +3084,38 @@ ScriptPromise NavigatorAuction::joinAdInterestGroup(
   }
 
   if (!CopySellerCapabilitiesFromIdlToMojo(*context, exception_state, *group,
-                                           *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyExecutionModeFromIdlToMojo(*context, exception_state, *group,
-                                      *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyBiddingLogicUrlFromIdlToMojo(*context, exception_state, *group,
-                                        *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyWasmHelperUrlFromIdlToMojo(*context, exception_state, *group,
-                                      *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyUpdateUrlFromIdlToMojo(*context, exception_state, *group,
-                                  *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyTrustedBiddingSignalsUrlFromIdlToMojo(*context, exception_state,
-                                                 *group, *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyTrustedBiddingSignalsKeysFromIdlToMojo(*group, *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyUserBiddingSignalsFromIdlToMojo(*script_state, exception_state,
-                                           *group, *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyAdsFromIdlToMojo(*context, *script_state, exception_state, *group,
-                            *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyAdComponentsFromIdlToMojo(*context, *script_state, exception_state,
-                                     *group, *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyAdSizesFromIdlToMojo(*context, *script_state, exception_state,
-                                *group, *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopySizeGroupsFromIdlToMojo(*context, *script_state, exception_state,
-                                   *group, *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyAuctionServerRequestFlagsFromIdlToMojo(*context, exception_state,
-                                                  *group, *mojo_group)) {
-    return ScriptPromise();
-  }
-  if (!CopyAdditionalBidKeyFromIdlToMojo(*context, exception_state, *group,
-                                         *mojo_group)) {
+                                           *mojo_group) ||
+      !CopyExecutionModeFromIdlToMojo(*context, exception_state, *group,
+                                      *mojo_group) ||
+      !CopyBiddingLogicUrlFromIdlToMojo(*context, exception_state, *group,
+                                        *mojo_group) ||
+      !CopyWasmHelperUrlFromIdlToMojo(*context, exception_state, *group,
+                                      *mojo_group) ||
+      !CopyUpdateUrlFromIdlToMojo(*context, exception_state, *group,
+                                  *mojo_group) ||
+      !CopyTrustedBiddingSignalsUrlFromIdlToMojo(*context, exception_state,
+                                                 *group, *mojo_group) ||
+      !CopyTrustedBiddingSignalsKeysFromIdlToMojo(*group, *mojo_group) ||
+      !CopyTrustedBiddingSignalsSlotSizeModeFromIdlToMojo(*group,
+                                                          *mojo_group) ||
+      !CopyMaxTrustedBiddingSignalsURLLengthFromIdlToMojo(
+          exception_state, *group, *mojo_group) ||
+      !CopyUserBiddingSignalsFromIdlToMojo(*script_state, exception_state,
+                                           *group, *mojo_group) ||
+      !CopyAdsFromIdlToMojo(*context, *script_state, exception_state, *group,
+                            *mojo_group) ||
+      !CopyAdComponentsFromIdlToMojo(*context, *script_state, exception_state,
+                                     *group, *mojo_group) ||
+      !CopyAdSizesFromIdlToMojo(*context, *script_state, exception_state,
+                                *group, *mojo_group) ||
+      !CopySizeGroupsFromIdlToMojo(*context, *script_state, exception_state,
+                                   *group, *mojo_group) ||
+      !CopyAuctionServerRequestFlagsFromIdlToMojo(*context, exception_state,
+                                                  *group, *mojo_group) ||
+      !CopyAdditionalBidKeyFromIdlToMojo(*context, exception_state, *group,
+                                         *mojo_group) ||
+      !CopyAggregationCoordinatorOriginFromIdlToMojo(exception_state, *group,
+                                                     *mojo_group)) {
     return ScriptPromise();
   }
 
@@ -3021,11 +3231,6 @@ ScriptPromise NavigatorAuction::leaveAdInterestGroupForDocument(
         "May only leaveAdInterestGroup from an https origin.");
     return ScriptPromise();
   }
-  if (!window->GetFrame()->IsInFencedFrameTree()) {
-    exception_state.ThrowTypeError(
-        "owner and name are required outside of a fenced frame.");
-    return ScriptPromise();
-  }
   // The renderer does not have enough information to verify that this document
   // is the result of a FLEDGE auction. The browser will silently ignore
   // this request if this document is not the result of a FLEDGE auction.
@@ -3083,6 +3288,93 @@ ScriptPromise NavigatorAuction::leaveAdInterestGroup(
   // According to the spec, implicit leave bypasses permission policy.
   return From(ExecutionContext::From(script_state), navigator)
       .leaveAdInterestGroupForDocument(script_state, exception_state);
+}
+
+ScriptPromise NavigatorAuction::clearOriginJoinedAdInterestGroups(
+    ScriptState* script_state,
+    const String owner_string,
+    const Vector<String> interest_groups_to_keep,
+    ExceptionState& exception_state) {
+  scoped_refptr<const SecurityOrigin> owner = ParseOrigin(owner_string);
+  if (!owner) {
+    exception_state.ThrowTypeError("owner '" + owner_string +
+                                   "' must be a valid https origin.");
+    return ScriptPromise();
+  }
+
+  if (ExecutionContext::From(script_state)->GetSecurityOrigin()->Protocol() !=
+      url::kHttpsScheme) {
+    exception_state.ThrowSecurityError(
+        "May only clearOriginJoinedAdInterestGroups from an https origin.");
+    return ScriptPromise();
+  }
+
+  bool is_cross_origin = !ExecutionContext::From(script_state)
+                              ->GetSecurityOrigin()
+                              ->IsSameOriginWith(owner.get());
+
+  auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
+      script_state, exception_state.GetContext());
+  ScriptPromise promise = resolver->Promise();
+  mojom::blink::AdAuctionService::LeaveInterestGroupCallback callback =
+      resolver->WrapCallbackInScriptScope(
+          WTF::BindOnce(&NavigatorAuction::ClearComplete,
+                        WrapWeakPersistent(this), is_cross_origin));
+
+  PendingClear pending_clear{owner, interest_groups_to_keep,
+                             std::move(callback)};
+  if (is_cross_origin) {
+    queued_cross_site_clears_.Enqueue(std::move(pending_clear));
+  } else {
+    StartClear(std::move(pending_clear));
+  }
+
+  return promise;
+}
+
+/* static */
+ScriptPromise NavigatorAuction::clearOriginJoinedAdInterestGroups(
+    ScriptState* script_state,
+    Navigator& navigator,
+    const String owner,
+    ExceptionState& exception_state) {
+  return clearOriginJoinedAdInterestGroups(script_state, navigator, owner,
+                                           Vector<String>(), exception_state);
+}
+
+/* static */
+ScriptPromise NavigatorAuction::clearOriginJoinedAdInterestGroups(
+    ScriptState* script_state,
+    Navigator& navigator,
+    const String owner,
+    const Vector<String> interest_groups_to_keep,
+    ExceptionState& exception_state) {
+  if (!navigator.DomWindow()) {
+    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidAccessError,
+                                      "The document has no window associated.");
+    return ScriptPromise();
+  }
+  RecordCommonFledgeUseCounters(navigator.DomWindow()->document());
+  ExecutionContext* context = ExecutionContext::From(script_state);
+  if (!context->IsFeatureEnabled(
+          mojom::blink::PermissionsPolicyFeature::kJoinAdInterestGroup)) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kNotAllowedError,
+        "Feature join-ad-interest-group is not enabled by Permissions Policy");
+    return ScriptPromise();
+  }
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kAdInterestGroupAPIRestrictedPolicyByDefault) &&
+      FeatureWouldBeBlockedByRestrictedPermissionsPolicy(navigator)) {
+    AddWarningMessageToConsole(
+        *context,
+        WarningPermissionsPolicy("join-ad-interest-group",
+                                 "clearOriginJoinedAdInterestGroups"));
+  }
+
+  return From(context, navigator)
+      .clearOriginJoinedAdInterestGroups(
+          script_state, owner, interest_groups_to_keep, exception_state);
 }
 
 void NavigatorAuction::updateAdInterestGroups() {
@@ -3150,7 +3442,8 @@ ScriptPromise NavigatorAuction::createAuctionNonce(
 
 ScriptPromise NavigatorAuction::runAdAuction(ScriptState* script_state,
                                              AuctionAdConfig* mutable_config,
-                                             ExceptionState& exception_state) {
+                                             ExceptionState& exception_state,
+                                             base::TimeTicks start_time) {
   ExecutionContext* context = ExecutionContext::From(script_state);
 
   if (!HandleOldDictNamesRun(mutable_config, exception_state)) {
@@ -3186,8 +3479,8 @@ ScriptPromise NavigatorAuction::runAdAuction(ScriptState* script_state,
   }
 
   if (config->hasResolveToConfig()) {
-    auction_handle->AttachPromiseHandler(
-        *script_state, config->resolveToConfig(),
+    auction_handle->QueueAttachPromiseHandler(
+        config->resolveToConfig(),
         MakeGarbageCollected<
             NavigatorAuction::AuctionHandle::ResolveToConfigResolved>(
             auction_handle));
@@ -3195,11 +3488,14 @@ ScriptPromise NavigatorAuction::runAdAuction(ScriptState* script_state,
     auction_handle->SetResolveToConfig(false);
   }
 
+  auction_handle->AttachQueuedPromises(*script_state);
+  bool is_server_auction = config->hasServerResponse();
   ad_auction_service_->RunAdAuction(
       std::move(mojo_config), std::move(abort_receiver),
       WTF::BindOnce(&NavigatorAuction::AuctionHandle::AuctionComplete,
                     WrapPersistent(auction_handle), WrapPersistent(resolver),
-                    std::move(scoped_abort_state)));
+                    std::move(scoped_abort_state), std::move(start_time),
+                    std::move(is_server_auction)));
   return promise;
 }
 
@@ -3208,6 +3504,7 @@ ScriptPromise NavigatorAuction::runAdAuction(ScriptState* script_state,
                                              Navigator& navigator,
                                              AuctionAdConfig* config,
                                              ExceptionState& exception_state) {
+  base::TimeTicks start_time = base::TimeTicks::Now();
   if (!navigator.DomWindow()) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidAccessError,
                                       "The document has no window associated.");
@@ -3230,7 +3527,7 @@ ScriptPromise NavigatorAuction::runAdAuction(ScriptState* script_state,
   }
 
   return From(ExecutionContext::From(script_state), navigator)
-      .runAdAuction(script_state, config, exception_state);
+      .runAdAuction(script_state, config, exception_state, start_time);
 }
 
 /* static */
@@ -3255,10 +3552,11 @@ Vector<String> NavigatorAuction::adAuctionComponents(
     return out;
   }
 
-  // Clamp the number of ad components at blink::kMaxAdAuctionAdComponents.
-  if (num_ad_components >
-      static_cast<int16_t>(blink::kMaxAdAuctionAdComponents)) {
-    num_ad_components = blink::kMaxAdAuctionAdComponents;
+  // Clamp the number of ad components at blink::MaxAdAuctionAdComponents().
+  const uint16_t kMaxAdAuctionAdComponents =
+      static_cast<uint16_t>(blink::MaxAdAuctionAdComponents());
+  if (num_ad_components > kMaxAdAuctionAdComponents) {
+    num_ad_components = kMaxAdAuctionAdComponents;
   }
 
   DCHECK_EQ(kMaxAdAuctionAdComponents, ad_auction_components->size());
@@ -3477,14 +3775,13 @@ ScriptPromise NavigatorAuction::finalizeAd(ScriptState* script_state,
   // TODO(morlovich): These no longer work since promise-capable type handling
   // requires non-null auction_handle.
   CopyAuctionSignalsFromIdlToMojo(/*auction_handle=*/nullptr,
-                                  /*auction_id=*/nullptr, *script_state,
-                                  *config, *mojo_config);
+                                  /*auction_id=*/nullptr, *config,
+                                  *mojo_config);
   CopySellerSignalsFromIdlToMojo(/*auction_handle=*/nullptr,
-                                 /*auction_id=*/nullptr, *script_state, *config,
-                                 *mojo_config);
+                                 /*auction_id=*/nullptr, *config, *mojo_config);
   CopyPerBuyerSignalsFromIdlToMojo(/*auction_handle=*/nullptr,
-                                   /*auction_id=*/nullptr, *script_state,
-                                   *config, *mojo_config);
+                                   /*auction_id=*/nullptr, *config,
+                                   *mojo_config);
 
   if (!ValidateAdsObject(exception_state, ads)) {
     return ScriptPromise();
@@ -3574,6 +3871,29 @@ void NavigatorAuction::LeaveComplete(bool is_cross_origin,
   resolver->Resolve();
 }
 
+void NavigatorAuction::StartClear(PendingClear&& pending_clear) {
+  ad_auction_service_->ClearOriginJoinedInterestGroups(
+      pending_clear.owner, pending_clear.interest_groups_to_keep,
+      std::move(pending_clear.callback));
+}
+
+void NavigatorAuction::ClearComplete(bool is_cross_origin,
+                                     ScriptPromiseResolver* resolver,
+                                     bool failed_well_known_check) {
+  if (is_cross_origin) {
+    queued_cross_site_clears_.OnComplete();
+  }
+
+  if (failed_well_known_check) {
+    resolver->Reject(V8ThrowDOMException::CreateOrEmpty(
+        resolver->GetScriptState()->GetIsolate(),
+        DOMExceptionCode::kNotAllowedError,
+        "Permission to leave interest groups denied."));
+    return;
+  }
+  resolver->Resolve();
+}
+
 void NavigatorAuction::CreateAuctionNonceComplete(
     ScriptPromiseResolver* resolver,
     const base::Uuid& nonce) {
@@ -3583,7 +3903,9 @@ void NavigatorAuction::CreateAuctionNonceComplete(
 void NavigatorAuction::AuctionHandle::AuctionComplete(
     ScriptPromiseResolver* resolver,
     std::unique_ptr<ScopedAbortState> scoped_abort_state,
-    bool manually_aborted,
+    base::TimeTicks start_time,
+    bool is_server_auction,
+    bool aborted_by_script,
     const absl::optional<FencedFrame::RedactedFencedFrameConfig>&
         result_config) {
   if (!resolver->GetExecutionContext() ||
@@ -3594,13 +3916,14 @@ void NavigatorAuction::AuctionHandle::AuctionComplete(
       scoped_abort_state ? scoped_abort_state->Signal() : nullptr;
   ScriptState* script_state = resolver->GetScriptState();
   ScriptState::Scope script_state_scope(script_state);
-  if (manually_aborted) {
+  bool resolved_auction = false;
+  if (aborted_by_script) {
     if (abort_signal && abort_signal->aborted()) {
       resolver->Reject(abort_signal->reason(script_state));
     } else {
       // TODO(morlovich): It would probably be better to wire something more
       // precise.
-      resolver->Reject(
+      resolver->RejectWithTypeError(
           "Promise argument rejected or resolved to invalid value.");
     }
   } else if (result_config) {
@@ -3610,19 +3933,28 @@ void NavigatorAuction::AuctionHandle::AuctionComplete(
     auction_resolver_ = resolver;
     auction_config_ = result_config;
 
-    MaybeResolveAuction();
+    resolved_auction = MaybeResolveAuction();
   } else {
     resolver->Resolve(v8::Null(script_state->GetIsolate()));
+    resolved_auction = true;
+  }
+  if (resolved_auction) {
+    std::string uma_prefix = "Ads.InterestGroup.Auction.";
+    if (is_server_auction) {
+      uma_prefix = "Ads.InterestGroup.ServerAuction.";
+    }
+    base::UmaHistogramTimes(uma_prefix + "TimeToResolve",
+                            base::TimeTicks::Now() - start_time);
   }
 }
 
-void NavigatorAuction::AuctionHandle::MaybeResolveAuction() {
+bool NavigatorAuction::AuctionHandle::MaybeResolveAuction() {
   if (!resolve_to_config_.has_value() || !auction_resolver_ ||
       !auction_config_.has_value()) {
     // Once both the resolveToConfig promise is resolved and the auction is
     // completed, this function will be called again to actually
     // complete the auction.
-    return;
+    return false;
   }
 
   if (resolve_to_config_.value() == true) {
@@ -3631,6 +3963,7 @@ void NavigatorAuction::AuctionHandle::MaybeResolveAuction() {
   } else {
     auction_resolver_->Resolve(KURL(auction_config_->urn_uuid().value()));
   }
+  return true;
 }
 
 void NavigatorAuction::GetURLFromURNComplete(
@@ -3690,15 +4023,16 @@ bool NavigatorAuction::canLoadAdAuctionFencedFrame(ScriptState* script_state) {
   }
 
   // Ensure that if any CSP headers are set that will affect a fenced frame,
-  // they allow all https urls to load. Opaque-ads fenced frames do not support
-  // allowing/disallowing specific hosts, as that could reveal information to
-  // a fenced frame about its embedding page. See design doc for more info:
+  // they allow all https urls to load. Opaque-ads fenced frames do not
+  // support allowing/disallowing specific hosts, as that could reveal
+  // information to a fenced frame about its embedding page. See design doc
+  // for more info:
   // https://github.com/WICG/fenced-frame/blob/master/explainer/interaction_with_content_security_policy.md
   // This is being checked in the renderer because processing of <meta> tags
-  // (including CSP) happen in the renderer after navigation commit, so we can't
-  // piggy-back off of the ancestor_or_self_has_cspee bit being sent from the
-  // browser (which is sent at commit time) since it doesn't know about all the
-  // CSP headers yet.
+  // (including CSP) happen in the renderer after navigation commit, so we
+  // can't piggy-back off of the ancestor_or_self_has_cspee bit being sent
+  // from the browser (which is sent at commit time) since it doesn't know
+  // about all the CSP headers yet.
   for (const auto& policy : csp->GetParsedPolicies()) {
     CSPOperativeDirective directive = CSPDirectiveListOperativeDirective(
         *policy, network::mojom::CSPDirectiveName::FencedFrameSrc);
@@ -3742,10 +4076,19 @@ bool NavigatorAuction::deprecatedRunAdAuctionEnforcesKAnonymity(
       blink::features::kFledgeEnforceKAnonymity);
 }
 
+// static
+ProtectedAudience* NavigatorAuction::protectedAudience(
+    ScriptState* script_state,
+    Navigator& navigator) {
+  return From(ExecutionContext::From(script_state), navigator)
+      .protected_audience_;
+}
+
 ScriptPromise NavigatorAuction::getInterestGroupAdAuctionData(
     ScriptState* script_state,
     const AdAuctionDataConfig* config,
-    ExceptionState& exception_state) {
+    ExceptionState& exception_state,
+    base::TimeTicks start_time) {
   CHECK(config);
   if (!script_state->ContextIsValid()) {
     return ScriptPromise();
@@ -3759,22 +4102,43 @@ ScriptPromise NavigatorAuction::getInterestGroupAdAuctionData(
     return ScriptPromise();
   }
 
+  scoped_refptr<const SecurityOrigin> coordinator;
+  if (config->hasCoordinatorOrigin()) {
+    coordinator = ParseOrigin(config->coordinatorOrigin());
+    if (!coordinator) {
+      exception_state.ThrowTypeError(String::Format(
+          "coordinatorOrigin '%s' for AdAuctionDataConfig must be "
+          "a valid https origin.",
+          config->coordinatorOrigin().Utf8().c_str()));
+      return ScriptPromise();
+    }
+  }
+
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(
       script_state, exception_state.GetContext());
 
   ScriptPromise promise = resolver->Promise();
 
   ad_auction_service_->GetInterestGroupAdAuctionData(
-      seller, resolver->WrapCallbackInScriptScope(WTF::BindOnce(
-                  &NavigatorAuction::GetInterestGroupAdAuctionDataComplete,
-                  WrapPersistent(this))));
+      seller, coordinator,
+      resolver->WrapCallbackInScriptScope(WTF::BindOnce(
+          &NavigatorAuction::GetInterestGroupAdAuctionDataComplete,
+          WrapPersistent(this), std::move(start_time))));
   return promise;
 }
 
 void NavigatorAuction::GetInterestGroupAdAuctionDataComplete(
+    base::TimeTicks start_time,
     ScriptPromiseResolver* resolver,
     mojo_base::BigBuffer data,
-    const absl::optional<base::Uuid>& request_id) {
+    const absl::optional<base::Uuid>& request_id,
+    const WTF::String& error_message) {
+  if (!error_message.empty()) {
+    CHECK(!request_id);
+    resolver->RejectWithTypeError(error_message);
+    return;
+  }
+
   AdAuctionData* result = AdAuctionData::Create();
   auto not_shared =
       NotShared<DOMUint8Array>(DOMUint8Array::Create(data.data(), data.size()));
@@ -3785,6 +4149,9 @@ void NavigatorAuction::GetInterestGroupAdAuctionDataComplete(
   }
   result->setRequestId(WebString::FromLatin1(request_id_str));
   resolver->Resolve(result);
+  base::UmaHistogramTimes(
+      "Ads.InterestGroup.GetInterestGroupAdAuctionData.TimeToResolve",
+      base::TimeTicks::Now() - start_time);
 }
 
 /* static */
@@ -3793,6 +4160,7 @@ ScriptPromise NavigatorAuction::getInterestGroupAdAuctionData(
     Navigator& navigator,
     const AdAuctionDataConfig* config,
     ExceptionState& exception_state) {
+  base::TimeTicks start_time = base::TimeTicks::Now();
   if (!navigator.DomWindow()) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidAccessError,
                                       "The document has no window associated.");
@@ -3816,7 +4184,8 @@ ScriptPromise NavigatorAuction::getInterestGroupAdAuctionData(
   }
 
   return From(ExecutionContext::From(script_state), navigator)
-      .getInterestGroupAdAuctionData(script_state, config, exception_state);
+      .getInterestGroupAdAuctionData(script_state, config, exception_state,
+                                     std::move(start_time));
 }
 
 }  // namespace blink

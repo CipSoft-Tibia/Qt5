@@ -107,16 +107,13 @@ void PdfViewer::initPdfViewer()
     m_toolBar->addSeparator();
     m_toolBar->addWidget(m_zoomSelector);
 
-    auto *actionZoomIn = m_toolBar->addAction(tr("Zoom in"));
-    actionZoomIn->setToolTip(tr("Increase zoom level"));
-    actionZoomIn->setIcon(QIcon(":/demos/documentviewer/images/zoom-in.png"_L1));
-    m_toolBar->addAction(actionZoomIn);
+    QIcon icon = QIcon::fromTheme(QIcon::ThemeIcon::ZoomIn, QIcon(":/demos/documentviewer/images/zoom-in.png"_L1));
+    auto *actionZoomIn = m_toolBar->addAction(icon, tr("Zoom in"), QKeySequence::ZoomIn);
     connect(actionZoomIn, &QAction::triggered, this, &PdfViewer::onActionZoomInTriggered);
 
-    auto *actionZoomOut = m_toolBar->addAction(tr("Zoom out"));
+    icon = QIcon::fromTheme(QIcon::ThemeIcon::ZoomOut, QIcon(":/demos/documentviewer/images/zoom-outpng"_L1));
+    auto *actionZoomOut = m_toolBar->addAction(icon, tr("Zoom out"), QKeySequence::ZoomOut);
     actionZoomOut->setToolTip(tr("Decrease zoom level"));
-    actionZoomOut->setIcon(QIcon(":/demos/documentviewer/images/zoom-out.png"_L1));
-    m_toolBar->addAction(actionZoomOut);
     connect(actionZoomOut, &QAction::triggered, this, &PdfViewer::onActionZoomOutTriggered);
 
     connect(nav, &QPdfPageNavigator::backAvailableChanged, m_actionBack, &QAction::setEnabled);

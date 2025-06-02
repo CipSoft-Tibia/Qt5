@@ -47,7 +47,7 @@
 #include "libavdevice/avdevice.h"
 #include "libswscale/swscale.h"
 #include "libavutil/opt.h"
-#include "libavcodec/avfft.h"
+#include "libavutil/tx.h"
 #include "libswresample/swresample.h"
 
 #include "libavfilter/avfilter.h"
@@ -58,6 +58,7 @@
 #include <SDL_thread.h>
 
 #include "cmdutils.h"
+#include "ffplay_renderer.h"
 #include "opt_common.h"
 
 const char program_name[] = "ffplay";
@@ -262,9 +263,11 @@ typedef struct VideoState {
     int16_t sample_array[SAMPLE_ARRAY_SIZE];
     int sample_array_index;
     int last_i_start;
-    RDFTContext *rdft;
+    AVTXContext *rdft;
+    av_tx_fn rdft_fn;
     int rdft_bits;
-    FFTSample *rdft_data;
+    float *real_data;
+    AVComplexFloat *rdft_data;
     int xpos;
     double last_vis_time;
     SDL_Texture *vis_texture;
@@ -348,6 +351,9 @@ static char *afilters = NULL;
 static int autorotate = 1;
 static int find_stream_info = 1;
 static int filter_nbthreads = 0;
+static int enable_vulkan = 0;
+static char *vulkan_params = NULL;
+static const char *hwaccel = NULL;
 
 /* current context */
 static int is_full_screen;
@@ -359,6 +365,8 @@ static SDL_Window *window;
 static SDL_Renderer *renderer;
 static SDL_RendererInfo renderer_info = {0};
 static SDL_AudioDeviceID audio_dev;
+
+static VkRenderer *vk_renderer;
 
 static const struct TextureFormatEntry {
     enum AVPixelFormat format;
@@ -952,6 +960,11 @@ static void video_image_display(VideoState *is)
     SDL_Rect rect;
 
     vp = frame_queue_peek_last(&is->pictq);
+    if (vk_renderer) {
+        vk_renderer_display(vk_renderer, vp->frame);
+        return;
+    }
+
     if (is->subtitle_st) {
         if (frame_queue_nb_remaining(&is->subpq) > 0) {
             sp = frame_queue_peek(&is->subpq);
@@ -1120,6 +1133,7 @@ static void video_audio_display(VideoState *s)
             fill_rectangle(s->xleft, y, s->width, 1);
         }
     } else {
+        int err = 0;
         if (realloc_texture(&s->vis_texture, SDL_PIXELFORMAT_ARGB8888, s->width, s->height, SDL_BLENDMODE_NONE, 1) < 0)
             return;
 
@@ -1127,31 +1141,39 @@ static void video_audio_display(VideoState *s)
             s->xpos = 0;
         nb_display_channels= FFMIN(nb_display_channels, 2);
         if (rdft_bits != s->rdft_bits) {
-            av_rdft_end(s->rdft);
-            av_free(s->rdft_data);
-            s->rdft = av_rdft_init(rdft_bits, DFT_R2C);
+            const float rdft_scale = 1.0;
+            av_tx_uninit(&s->rdft);
+            av_freep(&s->real_data);
+            av_freep(&s->rdft_data);
             s->rdft_bits = rdft_bits;
-            s->rdft_data = av_malloc_array(nb_freq, 4 *sizeof(*s->rdft_data));
+            s->real_data = av_malloc_array(nb_freq, 4 *sizeof(*s->real_data));
+            s->rdft_data = av_malloc_array(nb_freq + 1, 2 *sizeof(*s->rdft_data));
+            err = av_tx_init(&s->rdft, &s->rdft_fn, AV_TX_FLOAT_RDFT,
+                             0, 1 << rdft_bits, &rdft_scale, 0);
         }
-        if (!s->rdft || !s->rdft_data){
+        if (err < 0 || !s->rdft_data) {
             av_log(NULL, AV_LOG_ERROR, "Failed to allocate buffers for RDFT, switching to waves display\n");
             s->show_mode = SHOW_MODE_WAVES;
         } else {
-            FFTSample *data[2];
+            float *data_in[2];
+            AVComplexFloat *data[2];
             SDL_Rect rect = {.x = s->xpos, .y = 0, .w = 1, .h = s->height};
             uint32_t *pixels;
             int pitch;
             for (ch = 0; ch < nb_display_channels; ch++) {
-                data[ch] = s->rdft_data + 2 * nb_freq * ch;
+                data_in[ch] = s->real_data + 2 * nb_freq * ch;
+                data[ch] = s->rdft_data + nb_freq * ch;
                 i = i_start + ch;
                 for (x = 0; x < 2 * nb_freq; x++) {
                     double w = (x-nb_freq) * (1.0 / nb_freq);
-                    data[ch][x] = s->sample_array[i] * (1.0 - w * w);
+                    data_in[ch][x] = s->sample_array[i] * (1.0 - w * w);
                     i += channels;
                     if (i >= SAMPLE_ARRAY_SIZE)
                         i -= SAMPLE_ARRAY_SIZE;
                 }
-                av_rdft_calc(s->rdft, data[ch]);
+                s->rdft_fn(s->rdft, data[ch], data_in[ch], sizeof(float));
+                data[ch][0].im = data[ch][nb_freq].re;
+                data[ch][nb_freq].re = 0;
             }
             /* Least efficient way to do this, we should of course
              * directly access it but it is more than fast enough. */
@@ -1160,8 +1182,8 @@ static void video_audio_display(VideoState *s)
                 pixels += pitch * s->height;
                 for (y = 0; y < s->height; y++) {
                     double w = 1 / sqrt(nb_freq);
-                    int a = sqrt(w * sqrt(data[0][2 * y + 0] * data[0][2 * y + 0] + data[0][2 * y + 1] * data[0][2 * y + 1]));
-                    int b = (nb_display_channels == 2 ) ? sqrt(w * hypot(data[1][2 * y + 0], data[1][2 * y + 1]))
+                    int a = sqrt(w * sqrt(data[0][y].re * data[0][y].re + data[0][y].im * data[0][y].im));
+                    int b = (nb_display_channels == 2 ) ? sqrt(w * hypot(data[1][y].re, data[1][y].im))
                                                         : a;
                     a = FFMIN(a, 255);
                     b = FFMIN(b, 255);
@@ -1197,7 +1219,8 @@ static void stream_component_close(VideoState *is, int stream_index)
         is->audio_buf = NULL;
 
         if (is->rdft) {
-            av_rdft_end(is->rdft);
+            av_tx_uninit(&is->rdft);
+            av_freep(&is->real_data);
             av_freep(&is->rdft_data);
             is->rdft = NULL;
             is->rdft_bits = 0;
@@ -1277,6 +1300,8 @@ static void do_exit(VideoState *is)
     }
     if (renderer)
         SDL_DestroyRenderer(renderer);
+    if (vk_renderer)
+        vk_renderer_destroy(vk_renderer);
     if (window)
         SDL_DestroyWindow(window);
     uninit_opts();
@@ -1904,8 +1929,13 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
         AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_DISPLAYMATRIX);
         if (sd)
             displaymatrix = (int32_t *)sd->data;
-        if (!displaymatrix)
-            displaymatrix = (int32_t *)av_stream_get_side_data(is->video_st, AV_PKT_DATA_DISPLAYMATRIX, NULL);
+        if (!displaymatrix) {
+            const AVPacketSideData *sd = av_packet_side_data_get(is->video_st->codecpar->coded_side_data,
+                                                                 is->video_st->codecpar->nb_coded_side_data,
+                                                                 AV_PKT_DATA_DISPLAYMATRIX);
+            if (sd)
+                displaymatrix = (int32_t *)sd->data;
+        }
         theta = get_rotation(displaymatrix);
 
         if (fabs(theta - 90) < 1.0) {
@@ -2529,6 +2559,37 @@ static int audio_open(void *opaque, AVChannelLayout *wanted_channel_layout, int 
     return spec.size;
 }
 
+static int create_hwaccel(AVBufferRef **device_ctx)
+{
+    enum AVHWDeviceType type;
+    int ret;
+    AVBufferRef *vk_dev;
+
+    *device_ctx = NULL;
+
+    if (!hwaccel)
+        return 0;
+
+    type = av_hwdevice_find_type_by_name(hwaccel);
+    if (type == AV_HWDEVICE_TYPE_NONE)
+        return AVERROR(ENOTSUP);
+
+    ret = vk_renderer_get_hw_dev(vk_renderer, &vk_dev);
+    if (ret < 0)
+        return ret;
+
+    ret = av_hwdevice_ctx_create_derived(device_ctx, type, vk_dev, 0);
+    if (!ret)
+        return 0;
+
+    if (ret != AVERROR(ENOSYS))
+        return ret;
+
+    av_log(NULL, AV_LOG_WARNING, "Derive %s from vulkan not supported.\n", hwaccel);
+    ret = av_hwdevice_ctx_create(device_ctx, type, NULL, NULL, 0);
+    return ret;
+}
+
 /* open a given stream. Return 0 if OK */
 static int stream_component_open(VideoState *is, int stream_index)
 {
@@ -2595,6 +2656,12 @@ static int stream_component_open(VideoState *is, int stream_index)
         av_dict_set_int(&opts, "lowres", stream_lowres, 0);
 
     av_dict_set(&opts, "flags", "+copy_opaque", AV_DICT_MULTIKEY);
+
+    if (avctx->codec_type == AVMEDIA_TYPE_VIDEO) {
+        ret = create_hwaccel(&avctx->hw_device_ctx);
+        if (ret < 0)
+            goto fail;
+    }
 
     if ((ret = avcodec_open2(avctx, codec, &opts)) < 0) {
         goto fail;
@@ -2776,8 +2843,6 @@ static int read_thread(void *arg)
 
     if (genpts)
         ic->flags |= AVFMT_FLAG_GENPTS;
-
-    av_format_inject_global_side_data(ic);
 
     if (find_stream_info) {
         AVDictionary **opts;
@@ -3432,6 +3497,8 @@ static void event_loop(VideoState *cur_stream)
                         SDL_DestroyTexture(cur_stream->vis_texture);
                         cur_stream->vis_texture = NULL;
                     }
+                    if (vk_renderer)
+                        vk_renderer_resize(vk_renderer, screen_width, screen_height);
                 case SDL_WINDOWEVENT_EXPOSED:
                     cur_stream->force_refresh = 1;
             }
@@ -3596,6 +3663,9 @@ static const OptionDef options[] = {
     { "find_stream_info", OPT_BOOL | OPT_INPUT | OPT_EXPERT, { &find_stream_info },
         "read and decode the streams to fill missing information with heuristics" },
     { "filter_threads", HAS_ARG | OPT_INT | OPT_EXPERT, { &filter_nbthreads }, "number of filter threads per graph" },
+    { "enable_vulkan", OPT_BOOL, { &enable_vulkan }, "enable vulkan renderer" },
+    { "vulkan_params", HAS_ARG | OPT_STRING | OPT_EXPERT, { &vulkan_params }, "vulkan configuration using a list of key=value pairs separated by ':'" },
+    { "hwaccel", HAS_ARG | OPT_STRING | OPT_EXPERT, { &hwaccel }, "use HW accelerated decoding" },
     { NULL, },
 };
 
@@ -3710,9 +3780,40 @@ int main(int argc, char **argv)
 #ifdef SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR
         SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 #endif
+        if (hwaccel && !enable_vulkan) {
+            av_log(NULL, AV_LOG_INFO, "Enable vulkan renderer to support hwaccel %s\n", hwaccel);
+            enable_vulkan = 1;
+        }
+        if (enable_vulkan) {
+            vk_renderer = vk_get_renderer();
+            if (vk_renderer) {
+#if SDL_VERSION_ATLEAST(2, 0, 6)
+                flags |= SDL_WINDOW_VULKAN;
+#endif
+            } else {
+                av_log(NULL, AV_LOG_WARNING, "Doesn't support vulkan renderer, fallback to SDL renderer\n");
+                enable_vulkan = 0;
+            }
+        }
         window = SDL_CreateWindow(program_name, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, default_width, default_height, flags);
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-        if (window) {
+        if (!window) {
+            av_log(NULL, AV_LOG_FATAL, "Failed to create window: %s", SDL_GetError());
+            do_exit(NULL);
+        }
+
+        if (vk_renderer) {
+            AVDictionary *dict = NULL;
+
+            if (vulkan_params)
+                av_dict_parse_string(&dict, vulkan_params, "=", ":", 0);
+            ret = vk_renderer_create(vk_renderer, window, dict);
+            av_dict_free(&dict);
+            if (ret < 0) {
+                av_log(NULL, AV_LOG_FATAL, "Failed to create vulkan renderer, %s\n", av_err2str(ret));
+                do_exit(NULL);
+            }
+        } else {
             renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
             if (!renderer) {
                 av_log(NULL, AV_LOG_WARNING, "Failed to initialize a hardware accelerated renderer: %s\n", SDL_GetError());
@@ -3722,10 +3823,10 @@ int main(int argc, char **argv)
                 if (!SDL_GetRendererInfo(renderer, &renderer_info))
                     av_log(NULL, AV_LOG_VERBOSE, "Initialized %s renderer.\n", renderer_info.name);
             }
-        }
-        if (!window || !renderer || !renderer_info.num_texture_formats) {
-            av_log(NULL, AV_LOG_FATAL, "Failed to create window or renderer: %s", SDL_GetError());
-            do_exit(NULL);
+            if (!renderer || !renderer_info.num_texture_formats) {
+                av_log(NULL, AV_LOG_FATAL, "Failed to create window or renderer: %s", SDL_GetError());
+                do_exit(NULL);
+            }
         }
     }
 

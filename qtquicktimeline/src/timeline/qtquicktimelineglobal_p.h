@@ -16,6 +16,6 @@
 //
 
 #include "qtquicktimelineglobal.h"
-#include <QtQuickTimeline/private/qtquicktimelineexports_p.h>
+#include <QtQuickTimeline/qtquicktimelineexports.h>
 
 #endif // QTQUICKTIMELINEGLOBAL_P_H

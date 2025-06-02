@@ -49,18 +49,14 @@ devtools_entrypoint("bundle") {
   visibility += devtools_ui_legacy_visibility
 }
 
-devtools_entrypoint("legacy") {
-  entrypoint = "quick_open-legacy.ts"
-
-  deps = [ ":bundle" ]
-
-  visibility = [ "../../../..:legacy_entrypoints" ]
-}
-
 devtools_entrypoint("meta") {
   entrypoint = "quick_open-meta.ts"
 
-  deps = [ ":bundle" ]
+  deps = [
+    ":bundle",
+    "../../../../core/i18n:bundle",
+    "../../../../ui/legacy:bundle",
+  ]
 
   visibility = [ "../../../../entrypoints/*" ]
 }

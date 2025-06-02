@@ -15,7 +15,7 @@ class QuicDecrypter;
 class QuicEncrypter;
 
 // Pure virtual class to get notified when particular handshake events occurred.
-class QUIC_EXPORT_PRIVATE HandshakerDelegateInterface {
+class QUICHE_EXPORT HandshakerDelegateInterface {
  public:
   virtual ~HandshakerDelegateInterface() {}
 
@@ -36,6 +36,10 @@ class QUIC_EXPORT_PRIVATE HandshakerDelegateInterface {
   // Called when both 1-RTT read and write keys are available. Only used in TLS
   // handshake.
   virtual void OnTlsHandshakeComplete() = 0;
+
+  // Called on the client side when handshake state change to
+  // HANDSHAKE_CONFIRMED. Only used in TLS handshake.
+  virtual void OnTlsHandshakeConfirmed() = 0;
 
   // Called to discard old decryption keys to stop processing packets of
   // encryption |level|.

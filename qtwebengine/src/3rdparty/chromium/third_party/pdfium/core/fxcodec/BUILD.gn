@@ -73,7 +73,7 @@ source_set("fxcodec") {
     "../../:pdfium_strict_config",
     "../../:pdfium_noshorten_config",
   ]
-  include_dirs = []
+  public_deps = [ "../../third_party:pdfium_base" ]
   deps = [
     "../../third_party:lcms2",
     "../../third_party:libopenjpeg2",
@@ -82,7 +82,6 @@ source_set("fxcodec") {
     "../fxge",
     "//third_party:jpeg",
   ]
-
   if (pdf_enable_xfa) {
     sources += [
       "jpeg/jpeg_progressive_decoder.cpp",
@@ -141,6 +140,7 @@ pdfium_unittest_source_set("unittests") {
   sources = [
     "basic/a85_unittest.cpp",
     "basic/rle_unittest.cpp",
+    "flate/flatemodule_unittest.cpp",
     "jbig2/JBig2_BitStream_unittest.cpp",
     "jbig2/JBig2_Image_unittest.cpp",
     "jpx/jpx_unittest.cpp",

@@ -15,15 +15,15 @@
 // We mean it.
 //
 
-#include "private/qplatformaudiodecoder_p.h"
-#include <qffmpeg_p.h>
+#include <QtMultimedia/private/qplatformaudiodecoder_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
 #include <qurl.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 class AudioDecoder;
-}
+} // namespace QFFmpeg
 
 class QFFmpegAudioDecoder : public QPlatformAudioDecoder
 {
@@ -31,7 +31,7 @@ class QFFmpegAudioDecoder : public QPlatformAudioDecoder
 
 public:
     QFFmpegAudioDecoder(QAudioDecoder *parent);
-    virtual ~QFFmpegAudioDecoder();
+    ~QFFmpegAudioDecoder() override;
 
     QUrl source() const override;
     void setSource(const QUrl &fileName) override;

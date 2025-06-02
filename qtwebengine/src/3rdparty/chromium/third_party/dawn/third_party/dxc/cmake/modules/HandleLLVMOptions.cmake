@@ -78,6 +78,11 @@ if( LLVM_ENABLE_ASSERTIONS )
         "${flags_var_to_scrub}" "${${flags_var_to_scrub}}")
     endforeach()
   endif()
+else()
+  # Disable assertions in Debug builds
+  if( uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG" )
+    add_definitions( -DNDEBUG )
+  endif()
 endif()
 
 string(TOUPPER "${LLVM_ABI_BREAKING_CHECKS}" uppercase_LLVM_ABI_BREAKING_CHECKS)
@@ -363,6 +368,23 @@ if( MSVC )
     if (LLVM_ENABLE_PEDANTIC)
       # No MSVC equivalent available
     endif (LLVM_ENABLE_PEDANTIC)
+
+    if (CLANG_CL)
+      append("-Wall -W -Wno-unused-parameter -Wwrite-strings -Wimplicit-fallthrough" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+      append("-Wcast-qual" CMAKE_CXX_FLAGS)
+
+      # Disable unknown pragma warnings because the output is just too long with them.
+      append("-Wno-unknown-pragmas" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+
+      add_flag_if_supported("-Wno-unused-but-set-variable" UNUSED_BUT_SET_VARIABLE)
+      append("-Wno-switch" CMAKE_CXX_FLAGS)
+
+      append("-Wmissing-field-initializers" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+
+      # enable warnings explicitly.
+      append("-Wnonportable-include-path -Wunused-function" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+      append("-Wtrigraphs -Wconstant-logical-operand -Wunused-variable" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+    endif (CLANG_CL)
   endif (LLVM_ENABLE_WARNINGS)
   if (LLVM_ENABLE_WERROR)
     append("/WX" msvc_warning_flags)
@@ -502,7 +524,7 @@ if(LLVM_USE_SANITIZER)
       endif()
     elseif (LLVM_USE_SANITIZER STREQUAL "Undefined")
       append_common_sanitizer_flags()
-      append("-fsanitize=undefined -fno-sanitize=vptr,function -fno-sanitize-recover=all"
+      append("-fsanitize=undefined -fno-sanitize=vptr,function,alignment -fno-sanitize-recover=all"
               CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
     elseif (LLVM_USE_SANITIZER STREQUAL "Thread")
       append_common_sanitizer_flags()
@@ -510,13 +532,17 @@ if(LLVM_USE_SANITIZER)
     elseif (LLVM_USE_SANITIZER STREQUAL "Address;Undefined" OR
             LLVM_USE_SANITIZER STREQUAL "Undefined;Address")
       append_common_sanitizer_flags()
-      append("-fsanitize=address,undefined -fno-sanitize=vptr,function -fno-sanitize-recover=all"
+      append("-fsanitize=address,undefined -fno-sanitize=vptr,function,alignment -fno-sanitize-recover=all"
               CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
     else()
       message(WARNING "Unsupported value of LLVM_USE_SANITIZER: ${LLVM_USE_SANITIZER}")
     endif()
   else()
-    message(WARNING "LLVM_USE_SANITIZER is not supported on this platform.")
+    if (LLVM_USE_SANITIZER STREQUAL "Address")
+      append("-fsanitize=address" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+    else()
+      message(WARNING "Unsupported value of LLVM_USE_SANITIZER: ${LLVM_USE_SANITIZER}")
+    endif()
   endif()
   if (LLVM_USE_SANITIZE_COVERAGE)
     append("-fsanitize-coverage=edge,indirect-calls,8bit-counters,trace-cmp" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)

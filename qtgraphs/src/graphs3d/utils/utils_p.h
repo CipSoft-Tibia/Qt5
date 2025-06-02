@@ -17,13 +17,15 @@
 #include <QtCore/qlocale.h>
 #include <QtGui/qimage.h>
 #include <QtGui/qquaternion.h>
+#include "common/theme/qquickgraphscolor_p.h"
 #include "qabstract3dseries.h"
-#include "qquickgraphscolor_p.h"
-#include <private/graphsglobal_p.h>
+#include <private/qgraphsglobal_p.h>
 
 QT_FORWARD_DECLARE_CLASS(QLinearGradient)
 
 QT_BEGIN_NAMESPACE
+
+class QQuickGradient;
 
 class Utils
 {
@@ -44,9 +46,12 @@ public:
     static QString defaultLabelFormat();
 
     static float wrapValue(float value, float min, float max);
-    static QQuaternion calculateRotation(const QVector3D &xyzRotations);
+    static QQuaternion calculateRotation(QVector3D xyzRotations);
     static void verifyGradientCompleteness(QLinearGradient &gradient);
     static void setSeriesGradient(QAbstract3DSeries *series, QJSValue gradient, GradientType type);
+    static void setSeriesGradient(QAbstract3DSeries *series,
+                                  QQuickGradient *gradient,
+                                  GradientType type);
     static void connectSeriesGradient(QAbstract3DSeries *series,
                                       QJSValue newGradient,
                                       GradientType type,

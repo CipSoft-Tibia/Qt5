@@ -1,6 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2023 David Edmundson <davidedmundson@kde.org>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "mockcompositor.h"
 #include <QtGui/QRasterWindow>
@@ -34,6 +34,7 @@ private slots:
     void nativeResources();
     void suspended();
     void initiallySuspended();
+    void modality();
 };
 
 void tst_xdgshell::init()
@@ -747,14 +748,14 @@ void tst_xdgshell::suspended()
     QVERIFY(!window.isExposed()); // not exposed until we're configured
     QCOMPOSITOR_TRY_VERIFY(xdgToplevel());
 
-    exec([=] { xdgToplevel()->sendCompleteConfigure(); });
+    exec([&] { xdgToplevel()->sendCompleteConfigure(); });
     QCOMPOSITOR_TRY_VERIFY(xdgToplevel()->m_xdgSurface->m_committedConfigureSerial);
     QTRY_VERIFY(window.isExposed());
 
-    exec([=] { xdgToplevel()->sendCompleteConfigure(QSize(), {XdgToplevel::state_suspended}); });
+    exec([&] { xdgToplevel()->sendCompleteConfigure(QSize(), {XdgToplevel::state_suspended}); });
     QTRY_VERIFY(!window.isExposed());
 
-    exec([=] { xdgToplevel()->sendCompleteConfigure(QSize(), {}); });
+    exec([&] { xdgToplevel()->sendCompleteConfigure(QSize(), {}); });
     QTRY_VERIFY(window.isExposed());
 }
 
@@ -765,8 +766,43 @@ void tst_xdgshell::initiallySuspended()
     window.show();
     QVERIFY(!window.isExposed());
     QCOMPOSITOR_TRY_VERIFY(xdgToplevel());
-    exec([=] { xdgToplevel()->sendCompleteConfigure(QSize(), {XdgToplevel::state_suspended}); });
+    exec([&] { xdgToplevel()->sendCompleteConfigure(QSize(), {XdgToplevel::state_suspended}); });
     QVERIFY(!window.isExposed());
+}
+
+void tst_xdgshell::modality()
+{
+    QRasterWindow parent;
+    parent.resize(400, 320);
+    parent.show();
+
+    QRasterWindow child;
+    child.resize(400, 320);
+    child.setTransientParent(&parent);
+    child.show();
+    QCOMPOSITOR_TRY_VERIFY(xdgToplevel(1));
+    QCOMPOSITOR_VERIFY(!xdgDialog());
+
+    child.hide();
+    child.setModality(Qt::WindowModal);
+    child.show();
+    QCOMPOSITOR_TRY_VERIFY(xdgDialog());
+    QCOMPOSITOR_VERIFY(xdgDialog()->modal);
+
+    child.hide();
+    QCOMPOSITOR_TRY_VERIFY(!xdgDialog());
+
+    child.setModality(Qt::ApplicationModal);
+    child.show();
+    QCOMPOSITOR_TRY_VERIFY(xdgDialog());
+    QCOMPOSITOR_VERIFY(xdgDialog()->modal);
+
+    child.hide();
+    QCOMPOSITOR_TRY_VERIFY(!xdgDialog());
+
+    child.show();
+    child.setModality(Qt::NonModal);
+    QCOMPOSITOR_TRY_VERIFY(!xdgDialog());
 }
 
 QCOMPOSITOR_TEST_MAIN(tst_xdgshell)

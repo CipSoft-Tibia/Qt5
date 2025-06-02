@@ -1,11 +1,11 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-import QtQuick
 import QtQuick3D
 
 Node {
     id: node
+    property bool receivesShadows: true
 
     // Resources
     PrincipledMaterial {
@@ -25,6 +25,7 @@ Node {
 
     // Nodes:
     Model {
+        receivesShadows: node.receivesShadows
         id: cube_001
         source: "meshes/cube_001.mesh"
         materials: [base_material, dots_material]

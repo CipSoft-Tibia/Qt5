@@ -1,6 +1,7 @@
 type: Group
 instructions:
   - !include "{{qt/qtbase}}/prepare_building_env.yaml"
+  - !include "{{qt/qtbase}}/prepare_source_sbom_check.yaml"
   - type: Group
     instructions:
       - !include "{{qt/qtbase}}/cmake_qtbase_build_instructions.yaml"
@@ -61,11 +62,11 @@ instructions:
         - condition: and
           conditions:
             - condition: property
-              property: host.compiler
-              equals_value: MSVC2019
+              property: target.os
+              equals_value: Windows
             - condition: property
               property: target.arch
-              equals_value: ARM64
+              not_equals_property: host.arch
             - condition: property
               property: features
               not_contains_value: "DebianPackaging"
@@ -78,3 +79,9 @@ instructions:
           condition: property
           property: features
           contains_value: "DebianPackaging"
+
+  # Signal that qtbase should always build the doc tools (if all other requirements are met).
+  - type: EnvironmentVariable
+    variableName: QT_CI_BUILD_DOC_TOOLS
+    variableValue: "1"
+  - !include "{{qt/qtbase}}/coin_build_doc_tools_checked.yaml"

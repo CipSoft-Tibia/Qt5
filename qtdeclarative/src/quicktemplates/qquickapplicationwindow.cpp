@@ -5,6 +5,7 @@
 #include "qquickcontentitem_p.h"
 #include "qquickpopup_p_p.h"
 #include "qquickcontrol_p_p.h"
+#include "qquicktemplatesutils_p.h"
 #include "qquicktextarea_p.h"
 #include "qquicktextfield_p.h"
 #include "qquicktoolbar_p.h"
@@ -28,7 +29,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype ApplicationWindow
     \inherits Window
-//!     \instantiates QQuickApplicationWindow
+//!     \nativetype QQuickApplicationWindow
     \inqmlmodule QtQuick.Controls
     \since 5.7
     \ingroup qtquickcontrols-containers
@@ -91,7 +92,7 @@ QT_BEGIN_NAMESPACE
 static const QQuickItemPrivate::ChangeTypes ItemChanges = QQuickItemPrivate::Visibility
         | QQuickItemPrivate::Geometry | QQuickItemPrivate::ImplicitWidth | QQuickItemPrivate::ImplicitHeight;
 
-class Q_QUICKTEMPLATES2_PRIVATE_EXPORT QQuickApplicationWindowPrivate
+class Q_QUICKTEMPLATES2_EXPORT QQuickApplicationWindowPrivate
     : public QQuickWindowQmlImplPrivate
     , public QQuickItemChangeListener
 {
@@ -268,7 +269,7 @@ static QQuickItem *findActiveFocusControl(QQuickWindow *window)
 {
     QQuickItem *item = window->activeFocusItem();
     while (item) {
-        if (qobject_cast<QQuickControl *>(item) || qobject_cast<QQuickTextField *>(item) || qobject_cast<QQuickTextArea *>(item))
+        if (QQuickTemplatesUtils::isInteractiveControlType(item))
             return item;
         item = item->parentItem();
     }

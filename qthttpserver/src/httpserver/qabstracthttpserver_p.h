@@ -21,12 +21,14 @@
 
 #include <QtCore/qcoreapplication.h>
 
+#include <vector>
+
 #if defined(QT_WEBSOCKETS_LIB)
 #include <QtWebSockets/qwebsocketserver.h>
 #endif // defined(QT_WEBSOCKETS_LIB)
 
 #if QT_CONFIG(ssl)
-#include <QtNetwork/qsslconfiguration.h>
+#include <QtNetwork/qhttp2configuration.h>
 #endif
 
 QT_BEGIN_NAMESPACE
@@ -48,14 +50,23 @@ public:
 #endif // defined(QT_WEBSOCKETS_LIB)
 
     void handleNewConnections();
+    bool verifyThreadAffinity(const QObject *contextObject) const;
 
 #if QT_CONFIG(localserver)
     void handleNewLocalConnections();
 #endif
 
+#if defined(QT_WEBSOCKETS_LIB)
+    mutable bool handlingWebSocketUpgrade = false;
+    struct WebSocketUpgradeVerifier
+    {
+        QPointer<const QObject> context;
+        QtPrivate::SlotObjUniquePtr slotObject;
+    };
+    std::vector<WebSocketUpgradeVerifier> webSocketUpgradeVerifiers;
+#endif // defined(QT_WEBSOCKETS_LIB)
 #if QT_CONFIG(ssl)
-    QSslConfiguration sslConfiguration;
-    bool sslEnabled = false;
+    QHttp2Configuration h2Configuration;
 #endif
 };
 

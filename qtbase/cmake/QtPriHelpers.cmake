@@ -57,10 +57,34 @@ function(qt_generate_qmake_libraries_pri_content module_name output_root_dir out
                 list(APPEND lib_incdir "${target_include_dir}")
                 list(APPEND lib_defines "$<TARGET_PROPERTY:${lib_target},INTERFACE_COMPILE_DEFINITIONS>")
             else()
-                if(lib_target MATCHES "/([^/]+).framework$")
+                # Strip any directory scope tokens.
+                __qt_internal_strip_target_directory_scope_token("${lib_target}" lib_target)
+
+                # Skip CMAKE_DIRECTORY_ID_SEP. If a target_link_libraries is applied to a target
+                # that was defined in a different scope, CMake appends and prepends a special
+                # directory id separator. Filter those out.
+                if(lib_target MATCHES "^::@")
+                    continue()
+
+                elseif(lib_target MATCHES "^\\$<TARGET_OBJECTS:")
+                    # Skip object files.
+                    continue()
+
+                elseif(lib_target MATCHES "/([^/]+).framework$")
+                    # Handle frameworks
                     list(APPEND lib_libs "-framework ${CMAKE_MATCH_1}")
+
+                elseif(lib_target MATCHES "^\\$<LINK_ONLY:(.*)>$")
+                    # Extract value of LINK_ONLY genex, because it can't be used in file(GENERATE)
+                    set(lib_target "${CMAKE_MATCH_1}")
+                    if(lib_target)
+                        list(PREPEND lib_targets ${lib_target})
+                    endif()
                 else()
-                    list(APPEND lib_libs "${lib_target}")
+                    # Regular library name, library path, or -lfoo-like flag. Check for emptiness.
+                    if(lib_target)
+                        list(APPEND lib_libs "${lib_target}")
+                    endif()
                 endif()
             endif()
         endwhile()
@@ -145,13 +169,10 @@ function(qt_get_direct_module_dependencies target out_var)
             continue()
         endif()
         get_target_property(lib_type ${lib} TYPE)
-        get_target_property(is_versionless_target ${lib} _qt_is_versionless_target)
-        if (lib_type STREQUAL "INTERFACE_LIBRARY" AND is_versionless_target)
-            # Found a version-less target like Qt::Core outside of qtbase.
-            # Skip this one and use what this target points to, e.g. Qt6::Core.
-            # Make sure to process Private interface libraries as-is.
-            get_target_property(ifacelibs ${lib} INTERFACE_LINK_LIBRARIES)
-            list(PREPEND libs ${ifacelibs})
+        get_target_property(aliased_target ${lib} ALIASED_TARGET)
+        if(TARGET "${aliased_target}")
+            # If versionless target is alias, use what the alias points to.
+            list(PREPEND libs "${aliased_target}")
             continue()
         endif()
         if(lib_type STREQUAL "OBJECT_LIBRARY")
@@ -845,7 +866,7 @@ function(qt_generate_global_device_pri_file)
         file(TO_CMAKE_PATH ${ANDROID_NDK} ANDROID_NDK)
         string(APPEND content "DEFAULT_ANDROID_NDK_ROOT = ${ANDROID_NDK}\n")
 
-        set(android_platform "android-23")
+        set(android_platform "android-28")
         if(ANDROID_PLATFORM)
             set(android_platform "${ANDROID_PLATFORM}")
         elseif(ANDROID_NATIVE_API_LEVEL)
@@ -866,8 +887,8 @@ function(qt_generate_global_device_pri_file)
         endif()
     endif()
 
-    if(QT_UIKIT_SDK)
-        string(APPEND content "QMAKE_MAC_SDK = ${QT_UIKIT_SDK}\n")
+    if(QT_APPLE_SDK)
+        string(APPEND content "QMAKE_MAC_SDK = ${QT_APPLE_SDK}\n")
     endif()
 
     set(gcc_machine_dump "")

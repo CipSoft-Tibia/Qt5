@@ -305,7 +305,7 @@ void ApplicationSettings::updateRecentProjectsModel(const QString &projectName, 
     int projectListIndex = -1;
     QList<MenusModel::MenusData> recentProjectsList;
     // Recent projects menu will contain max this amount of item
-    const int max_items = 6;
+    const int max_items = 10;
 
     if (!projectFile.isEmpty() && !m_recentProjectsModel->m_modelList.isEmpty()
             && m_recentProjectsModel->m_modelList.first().file == projectFile) {

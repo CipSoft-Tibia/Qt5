@@ -14,7 +14,7 @@
 // We mean it.
 //
 
-#include <private/qtmultimediaglobal_p.h>
+#include <QtMultimedia/private/qtmultimediaglobal_p.h>
 
 #include <qmutex.h>
 #include <qwaitcondition.h>
@@ -37,17 +37,21 @@ namespace QFFmpeg
 class ConsumerThread : public QThread
 {
 public:
+    struct Deleter
+    {
+        void operator()(ConsumerThread *thread) const { thread->stopAndDelete(); }
+    };
+
+protected:
     /*!
         Stops the thread and deletes this object
      */
     void stopAndDelete();
 
-protected:
-
     /*!
         Called on this thread when thread starts
      */
-    virtual void init() = 0;
+    virtual bool init() = 0;
 
     /*!
         Called on this thread before thread exits
@@ -89,7 +93,9 @@ private:
     bool m_exit = false;
 };
 
-}
+template <typename T>
+using ConsumerThreadUPtr = std::unique_ptr<T, ConsumerThread::Deleter>;
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

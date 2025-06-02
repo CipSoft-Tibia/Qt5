@@ -31,6 +31,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/eval.h"
+#include "libavutil/frame.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
@@ -117,7 +118,8 @@ static av_cold enum AVPixelFormat match_pixfmt(const VSFormat *vsf, int c_order[
         pixfmt = av_pix_fmt_desc_get_id(pd);
 
         if (pd->flags & (AV_PIX_FMT_FLAG_BAYER | AV_PIX_FMT_FLAG_ALPHA |
-                         AV_PIX_FMT_FLAG_HWACCEL | AV_PIX_FMT_FLAG_BITSTREAM))
+                         AV_PIX_FMT_FLAG_HWACCEL | AV_PIX_FMT_FLAG_BITSTREAM |
+                         AV_PIX_FMT_FLAG_XYZ))
             continue;
 
         if (pd->log2_chroma_w != vsf->subSamplingW ||
@@ -138,9 +140,6 @@ static av_cold enum AVPixelFormat match_pixfmt(const VSFormat *vsf, int c_order[
             continue;
 
         if (av_pix_fmt_count_planes(pixfmt) != vsf->numPlanes)
-            continue;
-
-        if (strncmp(pd->name, "xyz", 3) == 0)
             continue;
 
         if (!is_native_endian(pixfmt))

@@ -11,6 +11,7 @@
 
 #include <QtCore/qcontainerfwd.h>
 #include <QtCore/qtextstream.h>
+#include <QtCore/qttypetraits.h>
 #include <QtCore/qtypes.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qcontiguouscache.h>
@@ -20,6 +21,7 @@
 #include <chrono>
 #include <list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -43,13 +45,13 @@ class QT6_ONLY(Q_CORE_EXPORT) QDebug : public QIODeviceBase
     struct Stream {
         enum { VerbosityShift = 29, VerbosityMask = 0x7 };
 
-        Stream(QIODevice *device)
+        explicit Stream(QIODevice *device)
             : ts(device)
         {}
-        Stream(QString *string)
+        explicit Stream(QString *string)
             : ts(string, WriteOnly)
         {}
-        Stream(QtMsgType t)
+        explicit Stream(QtMsgType t)
             : ts(&buffer, WriteOnly),
               type(t),
               message_output(true)
@@ -222,13 +224,19 @@ public:
     QDebug &operator<<(T u128) { putUInt128(&u128); return maybeSpace(); }
 #endif // QT_SUPPORTS_INT128
 
+private:
     template <typename T>
-    static QString toString(T &&object)
+    static void streamTypeErased(QDebug &d, const void *obj)
     {
-        QString buffer;
-        QDebug stream(&buffer);
-        stream.nospace() << std::forward<T>(object);
-        return buffer;
+        d << *static_cast<const T*>(obj);
+    }
+    using StreamTypeErased = void(*)(QDebug&, const void*);
+    QT7_ONLY(Q_CORE_EXPORT) static QString toStringImpl(StreamTypeErased s, const void *obj);
+public:
+    template <typename T>
+    static QString toString(const T &object)
+    {
+        return toStringImpl(&streamTypeErased<T>, std::addressof(object));
     }
 };
 
@@ -244,7 +252,7 @@ public:
     ~QDebugStateSaver();
 private:
     Q_DISABLE_COPY(QDebugStateSaver)
-    QScopedPointer<QDebugStateSaverPrivate> d;
+    std::unique_ptr<QDebugStateSaverPrivate> d;
 };
 
 class QNoDebug
@@ -384,11 +392,10 @@ inline QDebugIfHasDebugStreamContainer<QMultiHash<Key, T>, Key, T> operator<<(QD
 template <class T>
 inline QDebugIfHasDebugStream<T> operator<<(QDebug debug, const std::optional<T> &opt)
 {
-    const QDebugStateSaver saver(debug);
     if (!opt)
-        debug.nospace() << std::nullopt;
-    else
-        debug.nospace() << "std::optional(" << *opt << ')';
+        return debug << std::nullopt;
+    const QDebugStateSaver saver(debug);
+    debug.nospace() << "std::optional(" << *opt << ')';
     return debug;
 }
 
@@ -480,11 +487,13 @@ inline QDebug operator<<(QDebug debug, const QTaggedPointer<T, Tag> &ptr)
     return debug;
 }
 
-Q_CORE_EXPORT void qt_QMetaEnum_flagDebugOperator(QDebug &debug, size_t sizeofT, int value);
+Q_CORE_EXPORT void qt_QMetaEnum_flagDebugOperator(QDebug &debug, size_t sizeofT, uint value);
 
 template <typename Int>
 void qt_QMetaEnum_flagDebugOperator(QDebug &debug, size_t sizeofT, Int value)
 {
+    static_assert(std::is_unsigned_v<Int>,
+            "Cast value to an unsigned type before calling this function");
     const QDebugStateSaver saver(debug);
     debug.resetFormat();
     debug.nospace() << "QFlags(" << Qt::hex << Qt::showbase;
@@ -533,9 +542,10 @@ inline typename std::enable_if<
     QDebug>::type
 qt_QMetaEnum_flagDebugOperator_helper(QDebug debug, const QFlags<T> &flags)
 {
+    using UInt = typename QIntegerForSizeof<T>::Unsigned;
     const QMetaObject *obj = qt_getEnumMetaObject(T());
     const char *name = qt_getEnumName(T());
-    return qt_QMetaEnum_flagDebugOperator(debug, flags.toInt(), obj, name);
+    return qt_QMetaEnum_flagDebugOperator(debug, UInt(flags.toInt()), obj, name);
 }
 
 template <class T>
@@ -548,7 +558,8 @@ template <class T>
 inline QDebug qt_QMetaEnum_flagDebugOperator_helper(QDebug debug, const QFlags<T> &flags)
 #endif
 {
-    qt_QMetaEnum_flagDebugOperator(debug, sizeof(T), typename QFlags<T>::Int(flags));
+    using UInt = typename QIntegerForSizeof<T>::Unsigned;
+    qt_QMetaEnum_flagDebugOperator(debug, sizeof(T), UInt(flags.toInt()));
     return debug;
 }
 

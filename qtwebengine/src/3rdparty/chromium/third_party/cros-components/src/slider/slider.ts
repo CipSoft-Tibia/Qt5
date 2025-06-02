@@ -7,7 +7,9 @@
 import '@material/web/slider/slider.js';
 
 import {MdSlider} from '@material/web/slider/slider.js';
-import {css, CSSResultGroup, html, LitElement, nothing} from 'lit';
+import {css, CSSResultGroup, html, LitElement, nothing, PropertyValues} from 'lit';
+
+
 
 // TODO(b/285172083) remove unsupported disabled state rendering/styling
 // tslint:disable:no-any needed for JS interface
@@ -24,7 +26,7 @@ const renderTrack = (MdSlider.prototype as any).renderTrack;
  * track that is currently active/inactive depending on value) minus the handle
  * gap (half of the handle width + width of transparent gap on one side).
  *
- * TODO(b/285172083): do not use md-slider's `--_private` custom properties
+ * TODO: b/285172083 - do not use md-slider's `--_private` custom properties
  */
 const DISABLED_STATE_OVERRIDES = css`
   md-slider[disabled] > [slot="track"] {
@@ -51,39 +53,46 @@ const DISABLED_STATE_OVERRIDES = css`
       width: calc((1 - var(--_end-fraction)) * 100% - var(--handle-gap));
   }
 `;
+
 /**
- * A cros compliant slider component.
- * See spec:
- * https://www.figma.com/file/1XsFoZH868xLcLPfPZRxLh/CrOS-Next---Component-Library-%26-Spec?node-id=2978%3A19626
+ * A ChromeOS compliant slider component.
  */
 export class Slider extends LitElement {
-  // TODO(b/279854770): check disabled styling.
+  /** @nocollapse */
   static override styles: CSSResultGroup = [
     css`
     :host {
       display: inline-block;
+      min-inline-size: 200px;
     }
     md-slider {
       display: block;
-      --active-disabled: var(--cros-ref-neutral10);
-      --inactive-disabled: var(--cros-ref-neutral10);
+      min-inline-size: inherit;
+      --active-disabled: var(--cros-sys-on_surface);
+      --inactive-disabled: var(--cros-sys-on_surface);
       --disabled-color: var(--inactive-disabled);
+      --md-focus-ring-duration: 0s;
       --md-slider-active-track-color: var(--cros-sys-primary);
       --md-slider-disabled-active-track-color: var(--disabled-color);
-      --md-slider-disabled-active-track-opacity: var(--cros-sys-opacity-disabled);
+      --md-slider-disabled-active-track-opacity: var(--cros-disabled-opacity);
       --md-slider-disabled-handle-color: var(--disabled-color);
       --md-slider-disabled-inactive-track-color: var(--disabled-color);
-      --md-slider-disabled-inactive-track-opacity: var(--cros-sys-opacity-disabled);
+      --md-slider-disabled-inactive-track-opacity: var(--cros-disabled-opacity);
       --md-slider-focus-handle-color: var(--cros-sys-primary);
       --md-slider-handle-color: var(--cros-sys-primary);
       --md-slider-handle-height: 12px;
       --md-slider-handle-width: 12px;
       --md-slider-hover-handle-color: var(--cros-sys-primary);
-      --md-slider-hover-state-layer-opacity: 0;
-      --md-slider-inactive-track-color: var(--cros-sys-primary_container);
+      --md-slider-hover-state-layer-color: var(--cros-sys-hover_on_subtle);
+      --md-slider-hover-state-layer-opacity: 1;
+      --md-slider-inactive-track-color: var(--cros-sys-highlight_shape);
       --md-slider-label-container-color: var(--cros-sys-primary);
       --md-slider-label-container-height: 18px;
-      --md-slider-label-label-text-type: var(--cros-label-1-font);
+      --md-slider-label-text-color: var(--cros-sys-on_primary);
+      --md-slider-label-text-font: var(--cros-label-1-font-family);
+      --md-slider-label-text-size: var(--cros-label-1-font-size);
+      --md-slider-label-text-line-height: var(--cros-label-1-line-height);
+      --md-slider-label-text-weight: var(--cros-label-1-font-weight);
       --md-slider-pressed-handle-color: var(--cros-sys-primary);
       --md-slider-pressed-state-layer-color: var(--cros-sys-ripple_primary);
       --md-slider-pressed-state-layer-opacity: 1;
@@ -92,8 +101,15 @@ export class Slider extends LitElement {
       --md-slider-with-tick-marks-disabled-container-color: var(--disabled-color);
       --md-slider-with-tick-marks-inactive-container-color: var(--cros-sys-primary);
     }
+
     md-slider::part(focus-ring) {
+      background: var(--cros-sys-ripple_primary);
+      height: 28px;
+      inset: unset;
+      width: 28px;
+      --md-focus-ring-active-width: 2px;
       --md-focus-ring-color: var(--cros-sys-primary);
+      --md-focus-ring-width: 2px;
     }
   `,
     DISABLED_STATE_OVERRIDES
@@ -101,11 +117,15 @@ export class Slider extends LitElement {
 
   /** @nocollapse */
   static override properties = {
-    value: {type: Number},
+    ariaLabel: {type: String, reflect: true, attribute: 'aria-label'},
+    value: {type: Number, reflect: true},
     disabled: {type: Boolean},
     withTickMarks: {type: Boolean},
     withLabel: {type: Boolean},
     valueLabel: {type: String, state: true},
+    min: {type: Number},
+    max: {type: Number},
+    step: {type: Number},
   };
 
   /** @export */
@@ -118,13 +138,24 @@ export class Slider extends LitElement {
   withLabel: boolean;
   /** @export */
   valueLabel?: string;
+  /** @export */
+  min: number;
+  /** @export */
+  max: number;
+  /** @export */
+  step: number;
+
 
   constructor() {
     super();
+    this.ariaLabel = '';
     this.value = 0;
     this.disabled = false;
     this.withTickMarks = false;
     this.withLabel = false;
+    this.min = 0;
+    this.max = 10;
+    this.step = 1;
   }
 
   override render() {
@@ -140,14 +171,41 @@ export class Slider extends LitElement {
       ` :
                                              nothing;
     return html`
-      <md-slider @input=${this.handleInput} .valueLabel=${
-        valueLabel} .disabled=${this.disabled} .value=${
-        this.value} max=10 .ticks=${this.withTickMarks} .labeled=${
-        this.withLabel}>${disabledTemplate}</md-slider>`;
+      <md-slider
+        @change=${this.handleChange}
+        @input=${this.handleInput}
+        ?disabled=${this.disabled}
+        aria-label=${this.ariaLabel || ''}
+        .labeled=${this.withLabel}
+        .min=${this.min}
+        .max=${this.max}
+        .step=${this.step}
+        .ticks=${this.withTickMarks}
+        .value=${this.value}
+        .valueLabel=${valueLabel}>
+        ${disabledTemplate}
+      </md-slider>`;
   }
 
-  handleInput(e: Event) {
-    this.valueLabel = String((e.target as MdSlider).value);
+  override updated(changedProperties: PropertyValues<this>) {
+    if (changedProperties.has('disabled')) {
+      // Work around for b/315384008.
+      this.renderRoot.querySelector('md-slider')?.requestUpdate();
+    }
+  }
+
+  private handleChange() {
+    // Md-slider's change event won't exit our shadow DOM, redispatch it to
+    // ensure clients can listen to it.
+    this.dispatchEvent(new Event('change', {bubbles: true}));
+  }
+
+  private handleInput(e: Event) {
+    const sliderValue = (e.target as MdSlider).value;
+    if (sliderValue !== undefined) {
+      this.value = sliderValue;
+    }
+    this.valueLabel = String(sliderValue);
   }
 }
 

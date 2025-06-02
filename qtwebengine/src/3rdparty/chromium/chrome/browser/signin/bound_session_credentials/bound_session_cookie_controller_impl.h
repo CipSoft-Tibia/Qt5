@@ -35,12 +35,25 @@ class BoundSessionCookieControllerImpl
     : public BoundSessionCookieController,
       public network::NetworkConnectionTracker::NetworkConnectionObserver {
  public:
+  // Event triggering a call to ResumeBlockedRequests().
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  enum class ResumeBlockedRequestsTrigger {
+    kObservedFreshCookies = 0,
+    kCookieRefreshFetchSuccess = 1,
+    kCookieRefreshFetchFailure = 2,
+    kNetworkConnectionOffline = 3,
+    kTimeout = 4,
+    kShutdownOrSessionTermination = 5,
+
+    kMaxValue = kShutdownOrSessionTermination
+  };
+
   BoundSessionCookieControllerImpl(
       unexportable_keys::UnexportableKeyService& key_service,
       content::StoragePartition* storage_partition,
       network::NetworkConnectionTracker* network_connection_tracker,
       const bound_session_credentials::BoundSessionParams& bound_session_params,
-      const base::flat_set<std::string>& cookie_names,
       Delegate* delegate);
 
   ~BoundSessionCookieControllerImpl() override;
@@ -53,7 +66,7 @@ class BoundSessionCookieControllerImpl
   // BoundSessionCookieController:
   void Initialize() override;
 
-  void OnRequestBlockedOnCookie(
+  void HandleRequestBlockedOnCookie(
       base::OnceClosure resume_blocked_request) override;
 
   // network::NetworkConnectionTracker::NetworkConnectionObserver:
@@ -82,8 +95,12 @@ class BoundSessionCookieControllerImpl
                                         base::Time expiration_time);
   void OnCookieRefreshFetched(BoundSessionRefreshCookieFetcher::Result result);
   void MaybeScheduleCookieRotation();
-  void ResumeBlockedRequests();
+  void ResumeBlockedRequests(ResumeBlockedRequestsTrigger trigger);
   void OnResumeBlockedRequestsTimeout();
+
+  // Added for manual testing, should be inlined after
+  // `artificial_cookie_rotation_delay_` is removed.
+  void StartCookieRefresh();
 
   void set_refresh_cookie_fetcher_factory_for_testing(
       RefreshCookieFetcherFactoryForTesting
@@ -113,9 +130,15 @@ class BoundSessionCookieControllerImpl
   base::OneShotTimer preemptive_cookie_refresh_timer_;
   // Used to release blocked requests after a timeout.
   base::OneShotTimer resume_blocked_requests_timer_;
+  size_t successive_timeout_ = 0;
 
   RefreshCookieFetcherFactoryForTesting
       refresh_cookie_fetcher_factory_for_testing_;
+
+  // Added for testing purposes.
+  std::unique_ptr<base::RetainingOneShotTimer> artifical_cookie_rotation_delay_;
+  std::optional<BoundSessionRefreshCookieFetcher::Result>
+      artificial_cookie_rotation_result_;
 
   base::WeakPtrFactory<BoundSessionCookieControllerImpl> weak_ptr_factory_{
       this};

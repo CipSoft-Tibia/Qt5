@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "cc/animation/animation.h"
 #include "cc/animation/animation_delegate.h"
@@ -27,7 +28,11 @@ class CompositorAnimationDelegate;
 // A compositor representation for Animation.
 class PLATFORM_EXPORT CompositorAnimation : public cc::AnimationDelegate {
  public:
-  static std::unique_ptr<CompositorAnimation> Create();
+  // If this CompositorAnimation is being created to replace an
+  // existing cc::Animation, the existing Animation's id should be
+  // passed in to ensure the same id is used.
+  static std::unique_ptr<CompositorAnimation> Create(
+      absl::optional<int> replaced_cc_animation_id = absl::nullopt);
   static std::unique_ptr<CompositorAnimation> CreateWorkletAnimation(
       cc::WorkletAnimationId,
       const String& name,
@@ -41,6 +46,7 @@ class PLATFORM_EXPORT CompositorAnimation : public cc::AnimationDelegate {
   ~CompositorAnimation() override;
 
   cc::Animation* CcAnimation() const;
+  int CcAnimationId() const;
 
   // An animation delegate is notified when animations are started and stopped.
   // The CompositorAnimation does not take ownership of the delegate, and
@@ -79,7 +85,7 @@ class PLATFORM_EXPORT CompositorAnimation : public cc::AnimationDelegate {
       absl::optional<base::TimeDelta> local_time) override;
 
   scoped_refptr<cc::Animation> animation_;
-  CompositorAnimationDelegate* delegate_;
+  raw_ptr<CompositorAnimationDelegate, ExperimentalRenderer> delegate_;
 };
 
 }  // namespace blink

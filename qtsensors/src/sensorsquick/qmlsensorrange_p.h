@@ -21,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlSensorRange : public QObject
+class Q_SENSORSQUICK_EXPORT QmlSensorRange : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(int minimum READ minimum)
@@ -45,7 +45,7 @@ private:
     int max;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlSensorOutputRange : public QObject
+class Q_SENSORSQUICK_EXPORT QmlSensorOutputRange : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(qreal minimum READ minimum)

@@ -70,12 +70,16 @@ private slots:
     void findCourier();
 #endif
 
+    void addApplicationFontFallback();
+
 private:
     QString m_ledFont;
     QString m_testFont;
     QString m_testFontCondensed;
     QString m_testFontItalic;
     QString m_testFontVariable;
+    QString m_limitedFont;
+    QString m_fallbackFont;
 };
 
 tst_QFontDatabase::tst_QFontDatabase()
@@ -89,11 +93,15 @@ void tst_QFontDatabase::initTestCase()
     m_testFontCondensed = QFINDTESTDATA("testfont_condensed.ttf");
     m_testFontItalic = QFINDTESTDATA("testfont_italic.ttf");
     m_testFontVariable = QFINDTESTDATA("testfont_variable.ttf");
+    m_limitedFont = QFINDTESTDATA("QtTestLimitedFont-Regular.ttf");
+    m_fallbackFont = QFINDTESTDATA("QtTestFallbackFont-Regular.ttf");
     QVERIFY(!m_ledFont.isEmpty());
     QVERIFY(!m_testFont.isEmpty());
     QVERIFY(!m_testFontCondensed.isEmpty());
     QVERIFY(!m_testFontItalic.isEmpty());
     QVERIFY(!m_testFontVariable.isEmpty());
+    QVERIFY(!m_limitedFont.isEmpty());
+    QVERIFY(!m_fallbackFont.isEmpty());
 }
 
 void tst_QFontDatabase::styles_data()
@@ -231,7 +239,7 @@ void tst_QFontDatabase::addAppFont()
     int id;
     if (useMemoryFont) {
         QFile fontfile(m_ledFont);
-        fontfile.open(QIODevice::ReadOnly);
+        QVERIFY(fontfile.open(QIODevice::ReadOnly));
         QByteArray fontdata = fontfile.readAll();
         QVERIFY(!fontdata.isEmpty());
         id = QFontDatabase::addApplicationFontFromData(fontdata);
@@ -389,8 +397,14 @@ void tst_QFontDatabase::condensedFontWidthNoFontMerging()
 
 void tst_QFontDatabase::condensedFontWidth()
 {
-    QFontDatabase::addApplicationFont(m_testFont);
-    QFontDatabase::addApplicationFont(m_testFontCondensed);
+    int testFontId = QFontDatabase::addApplicationFont(m_testFont);
+    int testFontCondensedId = QFontDatabase::addApplicationFont(m_testFontCondensed);
+    auto cleanup = qScopeGuard([&testFontId, &testFontCondensedId] {
+        if (testFontId >= 0)
+            QFontDatabase::removeApplicationFont(testFontId);
+        if (testFontCondensedId >= 0)
+            QFontDatabase::removeApplicationFont(testFontCondensedId);
+    });
 
     QVERIFY(QFontDatabase::hasFamily("QtBidiTestFont"));
     if (!QFontDatabase::hasFamily("QtBidiTestFontCondensed"))
@@ -408,10 +422,16 @@ void tst_QFontDatabase::condensedFontWidth()
 void tst_QFontDatabase::condensedFontMatching()
 {
     QFontDatabase::removeAllApplicationFonts();
-    QFontDatabase::addApplicationFont(m_testFontCondensed);
+    int testFontCondensedId = QFontDatabase::addApplicationFont(m_testFontCondensed);
     if (!QFontDatabase::hasFamily("QtBidiTestFont"))
         QSKIP("This platform doesn't support preferred font family names (QTBUG-53478)");
-    QFontDatabase::addApplicationFont(m_testFont);
+    int testFontId = QFontDatabase::addApplicationFont(m_testFont);
+    auto cleanup = qScopeGuard([&testFontId, &testFontCondensedId] {
+        if (testFontId >= 0)
+            QFontDatabase::removeApplicationFont(testFontId);
+        if (testFontCondensedId >= 0)
+            QFontDatabase::removeApplicationFont(testFontCondensedId);
+    });
 
     // Test we correctly get the condensed font using different font matching methods:
     QFont tfcByStretch("QtBidiTestFont");
@@ -423,8 +443,10 @@ void tst_QFontDatabase::condensedFontMatching()
     QFont f;
     f.setStyleStrategy(QFont::NoFontMerging);
     QFontPrivate *font_d = QFontPrivate::get(f);
-    if (font_d->engineForScript(QChar::Script_Common)->type() != QFontEngine::Freetype)
+    if (font_d->engineForScript(QChar::Script_Common)->type() != QFontEngine::Freetype
+        && font_d->engineForScript(QChar::Script_Common)->type() != QFontEngine::DirectWrite) {
         QEXPECT_FAIL("","No matching of sub-family by stretch on Windows", Continue);
+    }
 #endif
 
     QCOMPARE(QFontMetrics(tfcByStretch).horizontalAdvance(testString()),
@@ -551,6 +573,191 @@ void tst_QFontDatabase::variableFont()
     }
 
     QFontDatabase::removeApplicationFont(id);
+}
+
+void tst_QFontDatabase::addApplicationFontFallback()
+{
+    int ledId = -1;
+    int id = -1;
+    int limitedId = -1;
+    int fallbackId = -1;
+    auto cleanup = qScopeGuard([&id, &ledId, &limitedId, &fallbackId] {
+        if (id >= 0)
+            QFontDatabase::removeApplicationFont(id);
+        if (ledId >= 0)
+            QFontDatabase::removeApplicationFont(ledId);
+        if (limitedId >= 0)
+            QFontDatabase::removeApplicationFont(limitedId);
+        if (fallbackId >= 0)
+            QFontDatabase::removeApplicationFont(fallbackId);
+    });
+
+    const QChar hebrewChar(0x05D0); // Hebrew 'aleph'
+
+    ledId = QFontDatabase::addApplicationFont(m_ledFont);
+    if (ledId < 0)
+        QSKIP("Skip the test since app fonts are not supported on this system");
+
+    auto getHebrewFont = [&]() {
+        QTextLayout layout;
+        layout.setText(hebrewChar);
+        layout.setFont(QFont(u"LED Real"_s));
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+
+        QList<QGlyphRun> glyphRuns = layout.glyphRuns();
+        if (glyphRuns.isEmpty())
+            return QString{};
+
+        return glyphRuns.first().rawFont().familyName();
+    };
+
+    QString defaultHebrewFont = getHebrewFont();
+    if (defaultHebrewFont.isEmpty())
+        QSKIP("Skip the test since Hebrew is not supported on this system");
+
+    QVERIFY(QFontDatabase::applicationFallbackFontFamilies(QChar::Script_Hebrew).isEmpty());
+    QFontDatabase::addApplicationFallbackFontFamily(QChar::Script_Hebrew, u"QtBidiTestFont"_s);
+
+    QCOMPARE(QFontDatabase::applicationFallbackFontFamilies(QChar::Script_Hebrew).size(), 1);
+    QCOMPARE(QFontDatabase::applicationFallbackFontFamilies(QChar::Script_Hebrew).first(), u"QtBidiTestFont"_s);
+
+    {
+        QString hebrewFontNow = getHebrewFont();
+        QCOMPARE(hebrewFontNow, defaultHebrewFont);
+    }
+
+    id = QFontDatabase::addApplicationFont(m_testFont);
+    QVERIFY(id >= 0);
+
+    {
+        QString hebrewFontNow = getHebrewFont();
+        QCOMPARE(hebrewFontNow, u"QtBidiTestFont"_s);
+    }
+
+    QFontDatabase::removeApplicationFallbackFontFamily(QChar::Script_Hebrew, u"QtBidiTestFont"_s);
+
+    {
+        QString hebrewFontNow = getHebrewFont();
+        QCOMPARE(hebrewFontNow, defaultHebrewFont);
+    }
+
+    QFontDatabase::setApplicationFallbackFontFamilies(QChar::Script_Hebrew, QStringList(u"QtBidiTestFont"_s));
+
+    {
+        QString hebrewFontNow = getHebrewFont();
+        QCOMPARE(hebrewFontNow, u"QtBidiTestFont"_s);
+    }
+
+    QFontDatabase::setApplicationFallbackFontFamilies(QChar::Script_Hebrew, QStringList{});
+
+    {
+        QString hebrewFontNow = getHebrewFont();
+        QCOMPARE(hebrewFontNow, defaultHebrewFont);
+    }
+
+    limitedId = QFontDatabase::addApplicationFont(m_limitedFont);
+    QVERIFY(limitedId >= 0);
+
+    fallbackId = QFontDatabase::addApplicationFont(m_fallbackFont);
+    QVERIFY(fallbackId >= 0);
+
+    QFontDatabase::addApplicationFallbackFontFamily(QChar::Script_Common, u"QtTestFallbackFont"_s);
+
+    // The fallback for Common will be used also for Latin, because Latin and Common are
+    // considered the same script by the font matching engine.
+    {
+        QTextLayout layout;
+        layout.setText(u"A'B,"_s);
+        layout.setFont(QFont(u"QtTestLimitedFont"_s));
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+
+        QList<QGlyphRun> glyphRuns = layout.glyphRuns();
+        QVERIFY(glyphRuns.size() > 1);
+        for (int i = 0; i < glyphRuns.size(); ++i) {
+            QVERIFY(glyphRuns.at(i).rawFont().familyName() == u"QtTestFallbackFont"_s
+                    || glyphRuns.at(i).rawFont().familyName() == u"QtTestLimitedFont"_s);
+        }
+    }
+
+    // When the text only consists of common script characters, the fallback font will also be used.
+    {
+        QTextLayout layout;
+        layout.setText(u"',"_s);
+        layout.setFont(QFont(u"QtTestLimitedFont"_s));
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+
+        QList<QGlyphRun> glyphRuns = layout.glyphRuns();
+        QCOMPARE(glyphRuns.size(), 2);
+        for (int i = 0; i < glyphRuns.size(); ++i) {
+            QVERIFY(glyphRuns.at(i).rawFont().familyName() == u"QtTestFallbackFont"_s
+                    || glyphRuns.at(i).rawFont().familyName() == u"QtTestLimitedFont"_s);
+        }
+    }
+
+    QVERIFY(QFontDatabase::removeApplicationFallbackFontFamily(QChar::Script_Common, u"QtTestFallbackFont"_s));
+    QFontDatabase::addApplicationFallbackFontFamily(QChar::Script_Latin, u"QtTestFallbackFont"_s);
+
+    // Latin fallback works just the same as Common fallback
+    {
+        QTextLayout layout;
+        layout.setText(u"A'B,"_s);
+        layout.setFont(QFont(u"QtTestLimitedFont"_s));
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+
+        QList<QGlyphRun> glyphRuns = layout.glyphRuns();
+        QCOMPARE(glyphRuns.size(), 2);
+        for (int i = 0; i < glyphRuns.size(); ++i) {
+            QVERIFY(glyphRuns.at(i).rawFont().familyName() == u"QtTestFallbackFont"_s
+                    || glyphRuns.at(i).rawFont().familyName() == u"QtTestLimitedFont"_s);
+        }
+    }
+
+    // When the common character is placed next to a Cyrillic characters, it gets adapted to this,
+    // so the fallback font will not be selected, even if it supports the character in question
+    {
+        QTextLayout layout;
+        layout.setText(u"A'Б,"_s);
+        layout.setFont(QFont(u"QtTestLimitedFont"_s));
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+
+        QList<QGlyphRun> glyphRuns = layout.glyphRuns();
+        QCOMPARE(glyphRuns.size(), 2);
+        for (int i = 0; i < glyphRuns.size(); ++i) {
+            QVERIFY(glyphRuns.at(i).rawFont().familyName() != u"QtTestFallbackFont"_s);
+        }
+    }
+
+    QFontDatabase::addApplicationFallbackFontFamily(QChar::Script_Cyrillic, u"QtTestFallbackFont"_s);
+
+    // When we set the fallback font for Cyrillic as well, it gets selected
+    {
+        QTextLayout layout;
+        layout.setText(u"A'Б,"_s);
+        layout.setFont(QFont(u"QtTestLimitedFont"_s));
+        layout.beginLayout();
+        layout.createLine();
+        layout.endLayout();
+
+        QList<QGlyphRun> glyphRuns = layout.glyphRuns();
+        QCOMPARE(glyphRuns.size(), 2);
+        for (int i = 0; i < glyphRuns.size(); ++i) {
+            QVERIFY(glyphRuns.at(i).rawFont().familyName() == u"QtTestFallbackFont"_s
+                    || glyphRuns.at(i).rawFont().familyName() == u"QtTestLimitedFont"_s);
+        }
+    }
+
+    QVERIFY(QFontDatabase::removeApplicationFallbackFontFamily(QChar::Script_Cyrillic, u"QtTestFallbackFont"_s));
+    QVERIFY(QFontDatabase::removeApplicationFallbackFontFamily(QChar::Script_Latin, u"QtTestFallbackFont"_s));
 }
 
 QTEST_MAIN(tst_QFontDatabase)

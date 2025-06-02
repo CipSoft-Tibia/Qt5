@@ -58,6 +58,8 @@ installPackages+=(dbus-devel)
 installPackages+=(gstreamer1-plugins-bad-free)
 installPackages+=(gstreamer1-devel)
 installPackages+=(gstreamer1-plugins-base-devel)
+# pipewire for QtMultimedia
+installPackages+=(pipewire-devel)
 # for QtMultimedia, ffmpeg
 installPackages+=(yasm)
 installPackages+=(libva-devel)
@@ -144,6 +146,14 @@ installPackages+=(open-vm-tools)
 # cifs-utils, for mounting smb drive
 installPackages+=(keyutils)
 installPackages+=(cifs-utils)
+# used for reading vcpkg packages version, from vcpkg.json
+installPackages+=(jq)
+# zip, needed for vcpkg caching
+installPackages+=(zip)
+# OpenSSL requirement, built by vcpkg
+installPackages+=(perl-IPC-Cmd)
+# password management support for Qt Creator
+installPackages+=(libsecret-devel)
 
 sudo yum -y install "${installPackages[@]}"
 
@@ -159,9 +169,13 @@ sudo pip config --user set global.extra-index-url https://pypi.org/simple/
 sudo pip3 install virtualenv wheel
 # Just make sure we have virtualenv to run with python3.8 -m virtualenv
 sudo python3.11 -m pip install virtualenv wheel
+sudo python3.11 -m pip install -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
+# For now we don't set QT_SBOM_PYTHON_APPS_PATH here, and rely on the build system to find the
+# system python3.11.
 
 sudo /usr/bin/pip3 install wheel
 sudo /usr/bin/pip3 install dataclasses
+# No sbom_requirements.txt, because it requires Python 3.9 for poetry_core -> spdx_tools and we have 3.8
 
 OpenSSLVersion="$(openssl3 version |cut -b 9-14)"
 echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt

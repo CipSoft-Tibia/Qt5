@@ -16,6 +16,6 @@
 //
 
 #include "qtshadertoolsglobal.h"
-#include <QtShaderTools/private/qtshadertoolsexports_p.h>
+#include <QtShaderTools/qtshadertoolsexports.h>
 
 #endif

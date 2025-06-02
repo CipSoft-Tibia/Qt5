@@ -18,7 +18,6 @@ QT_WARNING_POP
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qfile.h>
-#include <QtCore/qfileinfo.h>
 
 
 QT_BEGIN_NAMESPACE
@@ -250,9 +249,9 @@ void QQmlJSLogger::log(const QString &message, QQmlJS::LoggerWarningId id,
 
     QString prefix;
 
-    if ((!overrideFileName.isEmpty() || !m_fileName.isEmpty()) && showFileName)
+    if ((!overrideFileName.isEmpty() || !m_filePath.isEmpty()) && showFileName)
         prefix =
-                (!overrideFileName.isEmpty() ? overrideFileName : m_fileName) + QStringLiteral(":");
+                (!overrideFileName.isEmpty() ? overrideFileName : m_filePath) + QStringLiteral(":");
 
     if (srcLocation.isValid())
         prefix += QStringLiteral("%1:%2:").arg(srcLocation.startLine).arg(srcLocation.startColumn);
@@ -290,7 +289,8 @@ void QQmlJSLogger::log(const QString &message, QQmlJS::LoggerWarningId id,
 }
 
 void QQmlJSLogger::processMessages(const QList<QQmlJS::DiagnosticMessage> &messages,
-                                   QQmlJS::LoggerWarningId id)
+                                   QQmlJS::LoggerWarningId id,
+                                   const QQmlJS::SourceLocation &sourceLocation)
 {
     if (messages.isEmpty() || isCategoryIgnored(id))
         return;
@@ -300,7 +300,7 @@ void QQmlJSLogger::processMessages(const QList<QQmlJS::DiagnosticMessage> &messa
     // TODO: we should instead respect message's category here (potentially, it
     // should hold a category instead of type)
     for (const QQmlJS::DiagnosticMessage &message : messages)
-        log(message.message, id, QQmlJS::SourceLocation(), false, false);
+        log(message.message, id, sourceLocation, false, false);
 
     m_output.write(QStringLiteral("---\n\n"));
 }
@@ -310,7 +310,7 @@ void QQmlJSLogger::printContext(const QString &overrideFileName,
 {
     QString code = m_code;
 
-    if (!overrideFileName.isEmpty() && overrideFileName != QFileInfo(m_fileName).absolutePath()) {
+    if (!overrideFileName.isEmpty() && overrideFileName != m_filePath) {
         QFile file(overrideFileName);
         const bool success = file.open(QFile::ReadOnly);
         Q_ASSERT(success);
@@ -341,7 +341,7 @@ void QQmlJSLogger::printContext(const QString &overrideFileName,
 
 void QQmlJSLogger::printFix(const QQmlJSFixSuggestion &fixItem)
 {
-    const QString currentFileAbsPath = QFileInfo(m_fileName).absolutePath();
+    const QString currentFileAbsPath = m_filePath;
     QString code = m_code;
     QString currentFile;
     m_output.writePrefixedMessage(fixItem.fixDescription(), QtInfoMsg);

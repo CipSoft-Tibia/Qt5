@@ -15,12 +15,19 @@ QT_BEGIN_NAMESPACE
  * \brief The QScatter3DSeries class represents a data series in a 3D scatter
  * graph.
  *
- * This class manages the series specific visual elements, as well as the series
+ * This class manages the series-specific visual elements, as well as the series
  * data (via a data proxy).
+ *
+ * Regarding the proxy-series relationship, it is crucial to highlight
+ * a couple of key points. In this context, data is stored in series and
+ * users can access the dataset through the series. This series is controlled
+ * or represented by a proxy object. Thus, the proxy can be used to manage various
+ * operations on the data and update the actual dataset. However, it is necessary
+ * to create a series associated with this proxy to edit the dataset.
  *
  * If no data proxy is set explicitly for the series, the series creates a
  * default proxy. Setting another proxy will destroy the existing proxy and all
- * data added to it.
+ * data added to the series.
  *
  * QScatter3DSeries supports the following format tags for QAbstract3DSeries::setItemLabelFormat():
  * \table
@@ -33,21 +40,21 @@ QT_BEGIN_NAMESPACE
  *   \row
  *     \li @xLabel    \li Item value formatted using the format of the x-axis.
  *                        For more information, see
- *                        \l{QValue3DAxis::setLabelFormat()}.
+ *                        \l{QValue3DAxis::labelFormat}.
  *   \row
  *     \li @yLabel    \li Item value formatted using the format of the y-axis.
  *                        For more information, see
- *                        \l{QValue3DAxis::setLabelFormat()}.
+ *                        \l{QValue3DAxis::labelFormat}.
  *   \row
  *     \li @zLabel    \li Item value formatted using the format of the z-axis.
  *                        For more information, see
- *                        \l{QValue3DAxis::setLabelFormat()}.
+ *                        \l{QValue3DAxis::labelFormat}.
  *   \row
  *     \li @seriesName \li Name of the series
  * \endtable
  *
  * For example:
- * \snippet doc_src_qtgraphs.cpp labelformat
+ * \snippet doc_src_qtgraphs.cpp labelformat-scatter
  *
  * \sa {Qt Graphs Data Handling with 3D}
  */
@@ -56,12 +63,36 @@ QT_BEGIN_NAMESPACE
  * \qmltype Scatter3DSeries
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QScatter3DSeries
+ * \nativetype QScatter3DSeries
  * \inherits Abstract3DSeries
  * \brief Represents a data series in a 3D scatter graph.
  *
  * This type manages the series specific visual elements, as well as the series
  * data (via a data proxy).
+ *
+ * Scatter3DSeries supports the following format tags for itemLabelFormat:
+ * \table
+ *   \row
+ *     \li @xTitle    \li Title from x-axis
+ *   \row
+ *     \li @yTitle    \li Title from y-axis
+ *   \row
+ *     \li @zTitle    \li Title from z-axis
+ *   \row
+ *     \li @xLabel    \li Item value formatted using the format of the x-axis.
+ *                        For more information, see
+ *                        \l{QValue3DAxis::labelFormat}{labelFormat}.
+ *   \row
+ *     \li @yLabel    \li Item value formatted using the format of the y-axis.
+ *                        For more information, see
+ *                        \l{QValue3DAxis::labelFormat}{labelFormat}.
+ *   \row
+ *     \li @zLabel    \li Item value formatted using the format of the z-axis.
+ *                        For more information, see
+ *                        \l{QValue3DAxis::labelFormat}{labelFormat}.
+ *   \row
+ *     \li @seriesName \li Name of the series
+ * \endtable
  *
  * For a more complete description, see QScatter3DSeries.
  *
@@ -77,22 +108,22 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty int Scatter3DSeries::selectedItem
+ * \qmlproperty qsizetype Scatter3DSeries::selectedItem
  *
  * The item that is selected at the index in the data array of the series.
  * Only one item can be selected at a time.
- * To clear selection from this series, invalidSelectionIndex is set as the
+ * To clear the selection from this series, the invalidSelectionIndex is set as the
  * index. If this series is added to a graph, the graph can adjust the selection
  * according to user interaction or if it becomes invalid. Selecting an item on
  * another added series will also clear the selection. Removing items from or
- * inserting items to the series before the selected item will adjust the
+ * inserting items into the series before the selected item will adjust the
  * selection so that the same item will stay selected.
  *
- * \sa AbstractGraph3D::clearSelection()
+ * \sa GraphsItem3D::clearSelection()
  */
 
 /*!
- * \qmlproperty float Scatter3DSeries::itemSize
+ * \qmlproperty real Scatter3DSeries::itemSize
  *
  * Sets the item size for the series. The size must be between \c 0.0 and
  * \c 1.0. Setting the size to \c 0.0 causes the item size to be automatically
@@ -101,12 +132,48 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty int Scatter3DSeries::invalidSelectionIndex
+ * \qmlproperty qsizetype Scatter3DSeries::invalidSelectionIndex
  * A constant property providing an invalid index for selection. This index is
  * set to the selectedItem property to clear the selection from this series.
  *
- * \sa AbstractGraph3D::clearSelection()
+ * \sa GraphsItem3D::clearSelection()
  */
+
+/*!
+ * \qmlproperty ScatterDataArray Scatter3DSeries::dataArray
+ *
+ * Holds the reference to the data array.
+ *
+ * dataArrayChanged signal is emitted when data array is set, unless \a newDataArray
+ * is identical to the previous one.
+ *
+ * \note Before doing anything regarding the data array, a series must be created for
+ * the relevant proxy.
+ */
+
+/*!
+    \qmlsignal Scatter3DSeries::dataProxyChanged(ScatterDataProxy proxy)
+
+    This signal is emitted when dataProxy changes to \a proxy.
+*/
+
+/*!
+    \qmlsignal Scatter3DSeries::selectedItemChanged(qsizetype index)
+
+    This signal is emitted when selectedItem changes to \a index.
+*/
+
+/*!
+    \qmlsignal Scatter3DSeries::itemSizeChanged(float size)
+
+    This signal is emitted when itemSize changes to \a size.
+*/
+
+/*!
+    \qmlsignal Scatter3DSeries::dataArrayChanged(ScatterDataArray array)
+
+    This signal is emitted when dataArray changes to \a array.
+*/
 
 /*!
  * Constructs a scatter 3D series with the parent \a parent.
@@ -146,9 +213,7 @@ QScatter3DSeries::~QScatter3DSeries() {}
  * \property QScatter3DSeries::dataProxy
  *
  * \brief The active data proxy.
- */
-
-/*!
+ *
  * Sets the active data proxy for the series to \a proxy. The series assumes
  * ownership of any proxy set to it and deletes any previously set proxy when
  * a new one is added. The \a proxy argument cannot be null or set to another
@@ -162,7 +227,7 @@ void QScatter3DSeries::setDataProxy(QScatterDataProxy *proxy)
 
 QScatterDataProxy *QScatter3DSeries::dataProxy() const
 {
-    const Q_D(QScatter3DSeries);
+    Q_D(const QScatter3DSeries);
     return static_cast<QScatterDataProxy *>(d->dataProxy());
 }
 
@@ -170,23 +235,21 @@ QScatterDataProxy *QScatter3DSeries::dataProxy() const
  * \property QScatter3DSeries::selectedItem
  *
  * \brief The item that is selected in the series.
- */
-
-/*!
+ *
  * Selects the item at the index \a index in the data array of the series.
  * Only one item can be selected at a time.
  *
- * To clear selection from this series, invalidSelectionIndex() is set as \a
+ * To clear the selection from this series, invalidSelectionIndex() is set as \a
  * index. If this series is added to a graph, the graph can adjust the selection
  * according to user interaction or if it becomes invalid. Selecting an item on
  * another added series will also clear the selection.
  *
- * Removing items from or inserting items to the series before the selected item
+ * Removing items from or inserting items into the series before the selected item
  * will adjust the selection so that the same item will stay selected.
  *
- * \sa QAbstract3DGraph::clearSelection()
+ * \sa Q3DGraphsWidgetItem::clearSelection()
  */
-void QScatter3DSeries::setSelectedItem(int index)
+void QScatter3DSeries::setSelectedItem(qsizetype index)
 {
     Q_D(QScatter3DSeries);
     // Don't do this in private to avoid loops, as that is used for callback from
@@ -197,9 +260,9 @@ void QScatter3DSeries::setSelectedItem(int index)
         d->setSelectedItem(index);
 }
 
-int QScatter3DSeries::selectedItem() const
+qsizetype QScatter3DSeries::selectedItem() const
 {
-    const Q_D(QScatter3DSeries);
+    Q_D(const QScatter3DSeries);
     return d->m_selectedItem;
 }
 
@@ -227,17 +290,62 @@ void QScatter3DSeries::setItemSize(float size)
 
 float QScatter3DSeries::itemSize() const
 {
-    const Q_D(QScatter3DSeries);
+    Q_D(const QScatter3DSeries);
     return d->m_itemSize;
+}
+
+/*!
+ * \property QScatter3DSeries::dataArray
+ *
+ * \brief Data array for the series.
+ *
+ * Holds the reference to the data array.
+ *
+ * dataArrayChanged signal is emitted when data array is set, unless \a newDataArray
+ * is identical to the previous one.
+ *
+ * \note Before doing anything regarding the data array, a series must be created for
+ * the relevant proxy.
+ *
+ * \sa clearArray()
+ */
+void QScatter3DSeries::setDataArray(const QScatterDataArray &newDataArray)
+{
+    Q_D(QScatter3DSeries);
+    if (d->m_dataArray.data() != newDataArray.data()) {
+        d->setDataArray(newDataArray);
+        emit dataArrayChanged(newDataArray);
+    }
+}
+
+/*!
+ * Clears the data array.
+ */
+void QScatter3DSeries::clearArray()
+{
+    Q_D(QScatter3DSeries);
+    d->clearArray();
+}
+
+const QScatterDataArray &QScatter3DSeries::dataArray() const &
+{
+    Q_D(const QScatter3DSeries);
+    return d->m_dataArray;
+}
+
+QScatterDataArray QScatter3DSeries::dataArray() &&
+{
+    Q_D(QScatter3DSeries);
+    return std::move(d->m_dataArray);
 }
 
 /*!
  * Returns an invalid index for selection. This index is set to the selectedItem
  * property to clear the selection from this series.
  *
- * \sa QAbstract3DGraph::clearSelection()
+ * \sa Q3DGraphsWidgetItem::clearSelection()
  */
-int QScatter3DSeries::invalidSelectionIndex()
+qsizetype QScatter3DSeries::invalidSelectionIndex()
 {
     return QQuickGraphsScatter::invalidSelectionIndex();
 }
@@ -253,7 +361,10 @@ QScatter3DSeriesPrivate::QScatter3DSeriesPrivate()
     m_mesh = QAbstract3DSeries::Mesh::Sphere;
 }
 
-QScatter3DSeriesPrivate::~QScatter3DSeriesPrivate() {}
+QScatter3DSeriesPrivate::~QScatter3DSeriesPrivate()
+{
+    clearArray();
+}
 
 void QScatter3DSeriesPrivate::setDataProxy(QAbstractDataProxy *proxy)
 {
@@ -317,7 +428,7 @@ void QScatter3DSeriesPrivate::createItemLabel()
     static const QString seriesNameTag(QStringLiteral("@seriesName"));
 
     if (m_selectedItem == QScatter3DSeries::invalidSelectionIndex()) {
-        m_itemLabel = QString();
+        m_itemLabel = hiddenLabelTag;
         return;
     }
 
@@ -350,7 +461,7 @@ void QScatter3DSeriesPrivate::createItemLabel()
     m_itemLabel.replace(seriesNameTag, m_name);
 }
 
-void QScatter3DSeriesPrivate::setSelectedItem(int index)
+void QScatter3DSeriesPrivate::setSelectedItem(qsizetype index)
 {
     Q_Q(QScatter3DSeries);
     if (index != m_selectedItem) {
@@ -365,6 +476,16 @@ void QScatter3DSeriesPrivate::setItemSize(float size)
     m_itemSize = size;
     if (m_graph)
         m_graph->markSeriesVisualsDirty();
+}
+
+void QScatter3DSeriesPrivate::setDataArray(const QScatterDataArray &newDataArray)
+{
+    m_dataArray = newDataArray;
+}
+
+void QScatter3DSeriesPrivate::clearArray()
+{
+    m_dataArray.clear();
 }
 
 QT_END_NAMESPACE

@@ -167,11 +167,11 @@ Install the necessary dependencies from the lock file using poetry:
 
 ```bash
 # Select the python version you want to use (3.8 to 3.10):
-poetry use 3.10
+poetry env use 3.10
 poetry install
 
 # For python 3.11 you have to skip pytype support:
-poetry use 3.11
+poetry env use 3.11
 poetry install --without=dev-pytype
 ```
 

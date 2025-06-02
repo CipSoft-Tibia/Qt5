@@ -6,9 +6,9 @@
 #ifdef QQ3D_SHADER_META
 /*{
     "uniforms": [
-        { "type": "sampler2D", "name": "qt_screenTexture" },
+        { "type": "sampler2D", "name": "qt_screenTexture", "multiview_dependent": true },
         { "type": "mat4", "name": "qt_modelMatrix" },
-        { "type": "mat4", "name": "qt_viewProjectionMatrix" }
+        { "type": "mat4", "name": "qt_viewProjectionMatrix", "multiview_dependent": true }
     ]
 }*/
 #endif // QQ3D_SHADER_META
@@ -51,9 +51,14 @@ vec2 qt_correctFrambufferUV(in vec2 uv)
 
 vec3 qt_getTransmissionSample(in vec2 fragCoord, in float roughness, in float ior)
 {
-    const float framebufferLod = log2(float(textureSize(qt_screenTexture, 0).x)) * qt_applyIorToRoughness(roughness, ior);
     const vec2 fbCoord = qt_correctFrambufferUV(fragCoord);
+#if QSHADER_VIEW_COUNT >= 2
+    const float framebufferLod = log2(float(textureSize(qt_screenTextureArray, 0).x)) * qt_applyIorToRoughness(roughness, ior);
+    vec3 transmittedLight = textureLod(qt_screenTextureArray, vec3(fbCoord, qt_viewIndex), framebufferLod).rgb;
+#else
+    const float framebufferLod = log2(float(textureSize(qt_screenTexture, 0).x)) * qt_applyIorToRoughness(roughness, ior);
     vec3 transmittedLight = textureLod(qt_screenTexture, fbCoord, framebufferLod).rgb;
+#endif
     return transmittedLight;
 }
 
@@ -64,7 +69,11 @@ vec3 qt_getIBLVolumeRefraction(in vec3 n, in vec3 v, in float perceptualRoughnes
     vec3 refractedRayExit = position + transmissionRay;
 
     // Project refracted vector on the framebuffer, while mapping to normalized device coordinates.
+#if QSHADER_VIEW_COUNT >= 2
+    vec4 ndcPos = qt_viewProjectionMatrix[qt_viewIndex] * vec4(refractedRayExit, 1.0);
+#else
     vec4 ndcPos = qt_viewProjectionMatrix * vec4(refractedRayExit, 1.0);
+#endif
     vec2 refractionCoords = ndcPos.xy / ndcPos.w;
     refractionCoords += 1.0;
     refractionCoords /= 2.0;

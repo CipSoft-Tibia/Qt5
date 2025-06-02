@@ -9,16 +9,14 @@
 
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/SkSLDefines.h"
 #include "src/base/SkSafeMath.h"
 #include "src/sksl/SkSLAnalysis.h"
 #include "src/sksl/SkSLCompiler.h"
 #include "src/sksl/SkSLContext.h"
+#include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLErrorReporter.h"
 #include "src/sksl/SkSLOperator.h"
 #include "src/sksl/SkSLProgramSettings.h"
-#include "src/sksl/SkSLString.h"
-#include "src/sksl/SkSLThreadContext.h"
 #include "src/sksl/ir/SkSLBinaryExpression.h"
 #include "src/sksl/ir/SkSLBlock.h"
 #include "src/sksl/ir/SkSLExpression.h"
@@ -27,6 +25,7 @@
 #include "src/sksl/ir/SkSLIRHelpers.h"
 #include "src/sksl/ir/SkSLNop.h"
 #include "src/sksl/ir/SkSLReturnStatement.h"
+#include "src/sksl/ir/SkSLSwizzle.h"
 #include "src/sksl/ir/SkSLSymbol.h"
 #include "src/sksl/ir/SkSLSymbolTable.h"  // IWYU pragma: keep
 #include "src/sksl/ir/SkSLType.h"
@@ -38,8 +37,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <forward_list>
-#include <string_view>
-#include <type_traits>
 
 namespace SkSL {
 
@@ -47,13 +44,12 @@ static void append_rtadjust_fixup_to_vertex_main(const Context& context,
                                                  const FunctionDeclaration& decl,
                                                  Block& body) {
     // If this program uses RTAdjust...
-    ThreadContext::RTAdjustData& rtAdjust = ThreadContext::RTAdjustState();
-    if (rtAdjust.fVar || rtAdjust.fInterfaceBlock) {
+    if (const SkSL::Symbol* rtAdjust = context.fSymbolTable->find(Compiler::RTADJUST_NAME)) {
         // ...append a line to the end of the function body which fixes up sk_Position.
         struct AppendRTAdjustFixupHelper : public IRHelpers {
-            AppendRTAdjustFixupHelper(const Context& ctx, ThreadContext::RTAdjustData& rt)
+            AppendRTAdjustFixupHelper(const Context& ctx, const SkSL::Symbol* rtAdjust)
                     : IRHelpers(ctx)
-                    , fRTAdjust(rt) {
+                    , fRTAdjust(rtAdjust) {
                 fSkPositionField = &fContext.fSymbolTable->find(Compiler::POSITION_NAME)
                                                          ->as<FieldSymbol>();
             }
@@ -63,9 +59,7 @@ static void append_rtadjust_fixup_to_vertex_main(const Context& context,
             }
 
             std::unique_ptr<Expression> Adjust() const {
-                return fRTAdjust.fInterfaceBlock
-                               ? Field(fRTAdjust.fInterfaceBlock, fRTAdjust.fFieldIndex)
-                               : Ref(fRTAdjust.fVar);
+                return fRTAdjust->instantiate(fContext, Position());
             }
 
             std::unique_ptr<Statement> makeFixupStmt() const {
@@ -83,7 +77,7 @@ static void append_rtadjust_fixup_to_vertex_main(const Context& context,
             }
 
             const FieldSymbol* fSkPositionField;
-            ThreadContext::RTAdjustData& fRTAdjust;
+            const SkSL::Symbol* fRTAdjust;
         };
 
         AppendRTAdjustFixupHelper helper(context, rtAdjust);
@@ -319,19 +313,24 @@ std::unique_ptr<FunctionDefinition> FunctionDefinition::Convert(const Context& c
     // We don't allow modules to define actual functions with intrinsic names. (Those should be
     // reserved for actual intrinsics.)
     if (function.isIntrinsic()) {
-        context.fErrors->error(function.fPosition,
-                               SkSL::String::printf("Intrinsic function '%.*s' should not have "
-                                                    "a definition",
-                                                    (int)function.name().size(),
-                                                    function.name().data()));
+        context.fErrors->error(function.fPosition, "Intrinsic function '" +
+                                                   std::string(function.name()) +
+                                                   "' should not have a definition");
+        return nullptr;
+    }
+
+    // A function body must always be a braced block. (The parser should enforce this already, but
+    // we rely on it, so it's best to be certain.)
+    if (!body || !body->is<Block>() || !body->as<Block>().isScope()) {
+        context.fErrors->error(function.fPosition, "function body '" + function.description() +
+                                                   "' must be a braced block");
         return nullptr;
     }
 
     // A function can't have more than one definition.
     if (function.definition()) {
-        context.fErrors->error(function.fPosition,
-                               SkSL::String::printf("function '%s' was already defined",
-                                                    function.description().c_str()));
+        context.fErrors->error(function.fPosition, "function '" + function.description() +
+                                                   "' was already defined");
         return nullptr;
     }
 
@@ -346,6 +345,18 @@ std::unique_ptr<FunctionDefinition> FunctionDefinition::Convert(const Context& c
         context.fErrors->error(body->fPosition, "function '" + std::string(function.name()) +
                                                 "' can exit without returning a value");
     }
+
+    return FunctionDefinition::Make(context, pos, function, std::move(body), builtin);
+}
+
+std::unique_ptr<FunctionDefinition> FunctionDefinition::Make(const Context&,
+                                                             Position pos,
+                                                             const FunctionDeclaration& function,
+                                                             std::unique_ptr<Statement> body,
+                                                             bool builtin) {
+    SkASSERT(!function.isIntrinsic());
+    SkASSERT(body && body->as<Block>().isScope());
+    SkASSERT(!function.definition());
 
     return std::make_unique<FunctionDefinition>(pos, &function, builtin, std::move(body));
 }

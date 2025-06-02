@@ -185,4 +185,14 @@ void QPhysXCharacterController::createMaterial(QPhysXWorld *physX)
             physX, static_cast<QCharacterController *>(frontendNode)->physicsMaterial());
 }
 
+bool QPhysXCharacterController::debugGeometryCapability()
+{
+    return true;
+}
+
+DebugDrawBodyType QPhysXCharacterController::getDebugDrawBodyType()
+{
+    return DebugDrawBodyType::Character;
+}
+
 QT_END_NAMESPACE

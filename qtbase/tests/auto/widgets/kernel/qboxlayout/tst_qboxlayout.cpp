@@ -1,10 +1,19 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtTest/qtest.h>
 
-#include <QTest>
-#include <QtGui>
-#include <QtWidgets>
+#include <QtWidgets/qboxlayout.h>
+#include <QtWidgets/qdial.h>
+#include <QtWidgets/qdialog.h>
+#include <QtWidgets/qgroupbox.h>
+#include <QtWidgets/qlabel.h>
+#include <QtWidgets/qlineedit.h>
+#include <QtWidgets/qproxystyle.h>
+#include <QtWidgets/qpushbutton.h>
+#include <QtWidgets/qstylefactory.h>
+#include <QtWidgets/qstyleoption.h>
+#include <QtWidgets/qwidget.h>
 
 #include <QtTest/private/qtesthelpers_p.h>
 
@@ -33,6 +42,7 @@ private slots:
     void taskQTBUG_40609_addingLayoutToItself();
     void replaceWidget();
     void indexOf();
+    void invalidIndex();
 };
 
 class CustomLayoutStyle : public QProxyStyle
@@ -192,7 +202,7 @@ void tst_QBoxLayout::setStyleShouldChangeSpacing()
     window.setWindowTitle(QTest::currentTestFunction());
     QHBoxLayout *hbox = new QHBoxLayout(&window);
     QPushButton *pb1 = new QPushButton(tr("The spacing between this"));
-    QPushButton *pb2 = new QPushButton(tr("and this button should depend on the style of the parent widget"));;
+    QPushButton *pb2 = new QPushButton(tr("and this button should depend on the style of the parent widget"));
     pb1->setAttribute(Qt::WA_LayoutUsesWidgetRect);
     pb2->setAttribute(Qt::WA_LayoutUsesWidgetRect);
     hbox->addWidget(pb1);
@@ -573,6 +583,15 @@ void tst_QBoxLayout::indexOf()
     QCOMPARE(outer->indexOf(outer), -1);
     QCOMPARE(outer->indexOf(inner), 0);
     QCOMPARE(inner->indexOf(inner->itemAt(0)), 0);
+}
+
+void tst_QBoxLayout::invalidIndex()
+{
+    QLabel lbl("aaa");
+    QVBoxLayout layout;
+    layout.insertWidget(1, &lbl);    // should not crash
+    QVERIFY(layout.itemAt(0));
+    QCOMPARE(layout.itemAt(0)->widget(), &lbl);
 }
 
 QTEST_MAIN(tst_QBoxLayout)

@@ -237,12 +237,13 @@ void TestWithScope::SetupToolchain(Toolchain* toolchain, bool use_toc) {
       "swiftc --module-name {{module_name}} {{module_dirs}} {{inputs}}",
       swift_tool.get());
   swift_tool->set_outputs(SubstitutionList::MakeForTest(
+      "{{target_gen_dir}}/{{target_output_name}}.h",
       "{{target_out_dir}}/{{module_name}}.swiftmodule"));
   swift_tool->set_partial_outputs(SubstitutionList::MakeForTest(
       "{{target_out_dir}}/{{source_name_part}}.o"));
   toolchain->SetTool(std::move(swift_tool));
 
-  // CDYLIB
+  // RUST CDYLIB
   std::unique_ptr<Tool> cdylib_tool = Tool::CreateTool(RustTool::kRsToolCDylib);
   SetCommandForTool(
       "{{rustenv}} rustc --crate-name {{crate_name}} {{source}} "
@@ -255,7 +256,7 @@ void TestWithScope::SetupToolchain(Toolchain* toolchain, bool use_toc) {
       "{{target_out_dir}}/{{target_output_name}}{{output_extension}}"));
   toolchain->SetTool(std::move(cdylib_tool));
 
-  // DYLIB
+  // RUST DYLIB
   std::unique_ptr<Tool> dylib_tool = Tool::CreateTool(RustTool::kRsToolDylib);
   SetCommandForTool(
       "{{rustenv}} rustc --crate-name {{crate_name}} {{source}} "
@@ -295,7 +296,7 @@ void TestWithScope::SetupToolchain(Toolchain* toolchain, bool use_toc) {
       "{{target_out_dir}}/{{target_output_name}}{{output_extension}}"));
   toolchain->SetTool(std::move(rlib_tool));
 
-  // STATICLIB
+  // RUST STATICLIB
   std::unique_ptr<Tool> staticlib_tool =
       Tool::CreateTool(RustTool::kRsToolStaticlib);
   SetCommandForTool(
@@ -307,6 +308,8 @@ void TestWithScope::SetupToolchain(Toolchain* toolchain, bool use_toc) {
   staticlib_tool->set_default_output_extension(".a");
   staticlib_tool->set_outputs(SubstitutionList::MakeForTest(
       "{{target_out_dir}}/{{target_output_name}}{{output_extension}}"));
+  static_cast<RustTool*>(staticlib_tool.get())
+      ->set_dynamic_link_switch("-Clink-arg=-Balternative-dynamic");
   toolchain->SetTool(std::move(staticlib_tool));
 
   toolchain->ToolchainSetupComplete();
@@ -317,8 +320,8 @@ void TestWithScope::SetCommandForTool(const std::string& cmd, Tool* tool) {
   Err err;
   SubstitutionPattern command;
   command.Parse(cmd, nullptr, &err);
-  CHECK(!err.has_error()) << "Couldn't parse \"" << cmd << "\", "
-                          << "got " << err.message();
+  CHECK(!err.has_error()) << "Couldn't parse \"" << cmd << "\", " << "got "
+                          << err.message();
   tool->set_command(command);
 }
 

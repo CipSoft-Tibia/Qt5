@@ -9,6 +9,8 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Controls.Material.impl as MaterialImpl
 
+import Qt.test
+
 TestCase {
     id: testCase
     width: 200
@@ -265,6 +267,10 @@ TestCase {
     function test_inheritance_popup(data) {
         let prop = data.tag
         let popupObject = createTemporaryObject(popupComponent, testCase)
+
+        if (popupObject.popup.popupType === Popup.Window)
+            skip("QTBUG-126713: Palette propagation is currently not supported for QQuickPopupWindows.")
+
         compare(popupObject.popup.Material.textSelectionColor.toString(), popupObject.Material.textSelectionColor.toString())
         compare(popupObject.label.color.toString(), popupObject.Material.textSelectionColor.toString())
         compare(popupObject.label2.color.toString(), popupObject.Material.textSelectionColor.toString())
@@ -521,6 +527,10 @@ TestCase {
         let container = createTemporaryObject(menuComponent, testCase)
         verify(container)
         verify(container.menu)
+
+        if (container.menu.popupType === Popup.Window)
+            skip("QTBUG-126713: Palette propagation is currently not supported for QQuickPopupWindows.")
+
         container.menu.open()
         verify(container.menu.visible)
         let child = container.menu.itemAt(0)
@@ -735,6 +745,7 @@ TestCase {
             property Page page: Page { }
             property Pane pane: Pane { }
             property Popup popup: Popup { }
+            property Popup popup_window: Popup { popupType: Popup.Window }
             property TabBar tabbar: TabBar { }
             property ToolBar toolbar: ToolBar { }
             property ToolTip tooltip: ToolTip { }
@@ -751,6 +762,7 @@ TestCase {
             { tag: "page", inherit: true },
             { tag: "pane", inherit: true },
             { tag: "popup", inherit: true },
+            { tag: "popup_window", inherit: true },
             { tag: "tabbar", inherit: true },
             { tag: "toolbar", inherit: false },
             { tag: "tooltip", inherit: false }
@@ -1070,6 +1082,11 @@ TestCase {
         verify(placeholderTextItem as MaterialImpl.FloatingPlaceholderText)
         // This is the default value returned by textFieldHorizontalPadding when using a non-dense variant.
         compare(placeholderTextItem.x, 16)
+
+        // When the text is cleared, the placeholder text should appear in the previous text position.
+        // If left padding is set, use its value; otherwise, use the default from textFieldHorizontalPadding.
+        control.text = ""
+        compare(placeholderTextItem.x, data.leftPadding != undefined ? data.leftPadding : 16)
     }
 
     Component {
@@ -1364,5 +1381,40 @@ TestCase {
 
         let headerItem = window.listView.headerItem
         compare(headerItem.Material.theme, Material.Dark)
+    }
+
+    Component {
+        id: systemThemeComponent
+
+        ApplicationWindow {
+            width: 200
+            height: 200
+            visible: true
+            Material.theme: Material.System
+        }
+    }
+
+    function test_systemTheme() {
+        let window = createTemporaryObject(systemThemeComponent, testCase)
+        verify(window)
+
+        const toggleTheme = (theme) => (theme === Material.Dark) ? Material.Light : Material.Dark
+
+        TestHelper.platformTheme = toggleTheme(TestHelper.platformTheme)
+        tryCompare(window.Material, "theme", TestHelper.platformTheme)
+
+        TestHelper.platformTheme = toggleTheme(TestHelper.platformTheme)
+        tryCompare(window.Material, "theme", TestHelper.platformTheme)
+    }
+
+    // QTBUG-85860
+    function test_busyIndicatorRunningChangedQuickly() {
+        let busyIndicator = createTemporaryObject(busyIndicatorComponent, testCase)
+        verify(busyIndicator)
+
+        busyIndicator.running = false
+        busyIndicator.running = true
+
+        tryCompare(busyIndicator.contentItem, "visible", true)
     }
 }

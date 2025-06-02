@@ -11,13 +11,14 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.nfc.NfcAdapter;
+import android.nfc.Tag;
 import android.content.IntentFilter.MalformedMimeTypeException;
 import android.os.Build;
 import android.os.Parcelable;
 import android.util.Log;
 import android.content.pm.PackageManager;
 
-public class QtNfc
+class QtNfc
 {
     static private final String TAG = "QtNfc";
     static private NfcAdapter m_adapter = null;
@@ -25,7 +26,7 @@ public class QtNfc
     static private Context m_context = null;
     static private Activity m_activity = null;
 
-    static public void setContext(Context context)
+    static void setContext(Context context)
     {
         m_context = context;
         if (context instanceof Activity) m_activity = (Activity) context;
@@ -52,13 +53,14 @@ public class QtNfc
             flags);
     }
 
-    static public boolean startDiscovery()
+    static boolean startDiscovery()
     {
         if (m_adapter == null || m_activity == null
                || !m_activity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC))
             return false;
 
         m_activity.runOnUiThread(new Runnable() {
+            @Override
             public void run() {
                 IntentFilter[] filters = new IntentFilter[3];
                 filters[0] = new IntentFilter();
@@ -90,13 +92,14 @@ public class QtNfc
         return true;
     }
 
-    static public boolean stopDiscovery()
+    static boolean stopDiscovery()
     {
         if (m_adapter == null || m_activity == null
                || !m_activity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_NFC))
             return false;
 
         m_activity.runOnUiThread(new Runnable() {
+            @Override
             public void run() {
                 try {
                     m_adapter.disableForegroundDispatch(m_activity);
@@ -109,7 +112,7 @@ public class QtNfc
         return true;
     }
 
-    static public boolean isEnabled()
+    static boolean isEnabled()
     {
         if (m_adapter == null) {
             return false;
@@ -118,12 +121,12 @@ public class QtNfc
         return m_adapter.isEnabled();
     }
 
-    static public boolean isSupported()
+    static boolean isSupported()
     {
         return (m_adapter != null);
     }
 
-    static public Intent getStartIntent()
+    static Intent getStartIntent()
     {
         Log.d(TAG, "getStartIntent");
         if (m_activity == null) return null;
@@ -138,8 +141,12 @@ public class QtNfc
         }
     }
 
-    static public Parcelable getTag(Intent intent)
+    @SuppressWarnings("deprecation")
+    static Parcelable getTag(Intent intent)
     {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            return intent.getParcelableExtra(NfcAdapter.EXTRA_TAG, Tag.class);
+
         return intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
     }
 }

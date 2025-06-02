@@ -27,17 +27,17 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_QMLCOMPILER_PRIVATE_EXPORT QQmlJSCodeGenerator : public QQmlJSCompilePass
+class Q_QMLCOMPILER_EXPORT QQmlJSCodeGenerator : public QQmlJSCompilePass
 {
 public:
     QQmlJSCodeGenerator(const QV4::Compiler::Context *compilerContext,
-                       const QV4::Compiler::JSUnitGenerator *unitGenerator,
-                       const QQmlJSTypeResolver *typeResolver,
-                       QQmlJSLogger *logger);
+                        const QV4::Compiler::JSUnitGenerator *unitGenerator,
+                        const QQmlJSTypeResolver *typeResolver, QQmlJSLogger *logger,
+                        BasicBlocks basicBlocks, InstructionAnnotations annotations);
     ~QQmlJSCodeGenerator() = default;
 
-    QQmlJSAotFunction run(const Function *function, const InstructionAnnotations *annotations,
-                          QQmlJS::DiagnosticMessage *error, bool basicBlocksValidationFailed);
+    QQmlJSAotFunction run(const Function *function, QQmlJS::DiagnosticMessage *error,
+                          bool basicBlocksValidationFailed);
 
 protected:
     struct CodegenState : public State
@@ -49,7 +49,7 @@ protected:
     // This is an RAII helper we can use to automatically convert the result of "inflexible"
     // operations to the desired type. For example GetLookup can only retrieve the type of
     // the property we're looking up. If we want to store a different type, we need to convert.
-    struct Q_QMLCOMPILER_PRIVATE_EXPORT AccumulatorConverter
+    struct Q_QMLCOMPILER_EXPORT AccumulatorConverter
     {
         Q_DISABLE_COPY_MOVE(AccumulatorConverter);
         AccumulatorConverter(QQmlJSCodeGenerator *generator);
@@ -242,11 +242,14 @@ protected:
                              const QQmlJSRegisterContent &to,
                              const QString &variable);
 
-    QString errorReturnValue();
+    void generateReturnError();
     void reject(const QString &thing);
 
     QString metaTypeFromType(const QQmlJSScope::ConstPtr &type) const;
     QString metaTypeFromName(const QQmlJSScope::ConstPtr &type) const;
+    QString compositeMetaType(const QString &elementName) const;
+    QString compositeListMetaType(const QString &elementName) const;
+
     QString contentPointer(const QQmlJSRegisterContent &content, const QString &var);
     QString contentType(const QQmlJSRegisterContent &content, const QString &var);
 
@@ -322,18 +325,6 @@ private:
 
     void generate_GetLookupHelper(int index);
 
-    QQmlJSScope::ConstPtr mathObject() const
-    {
-        using namespace Qt::StringLiterals;
-        return m_typeResolver->jsGlobalObject()->property(u"Math"_s).type();
-    }
-
-    QQmlJSScope::ConstPtr consoleObject() const
-    {
-        using namespace Qt::StringLiterals;
-        return m_typeResolver->jsGlobalObject()->property(u"console"_s).type();
-    }
-
     QString resolveValueTypeContentPointer(
             const QQmlJSScope::ConstPtr &required, const QQmlJSRegisterContent &actual,
             const QString &variable, const QString &errorMessage);
@@ -348,7 +339,6 @@ private:
     QHash<int, QString> m_labels;
 
     const QV4::Compiler::Context *m_context = nullptr;
-    const InstructionAnnotations *m_annotations = nullptr;
 
     bool m_skipUntilNextLabel = false;
 

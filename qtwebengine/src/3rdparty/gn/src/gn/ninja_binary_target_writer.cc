@@ -45,11 +45,15 @@ NinjaBinaryTargetWriter::~NinjaBinaryTargetWriter() = default;
 void NinjaBinaryTargetWriter::Run() {
   if (target_->source_types_used().RustSourceUsed()) {
     NinjaRustBinaryTargetWriter writer(target_, out_);
+    writer.SetResolvedTargetData(GetResolvedTargetData());
+    writer.SetNinjaOutputs(ninja_outputs_);
     writer.Run();
     return;
   }
 
   NinjaCBinaryTargetWriter writer(target_, out_);
+  writer.SetResolvedTargetData(GetResolvedTargetData());
+  writer.SetNinjaOutputs(ninja_outputs_);
   writer.Run();
 
   const std::vector<std::string> types = target_->rsp_types();
@@ -89,7 +93,7 @@ std::vector<OutputFile> NinjaBinaryTargetWriter::WriteInputsStampAndGetDep(
   // file for it.
   if (inputs.size() == 1) {
     return std::vector<OutputFile>{
-      OutputFile(settings_->build_settings(), *inputs[0])};
+        OutputFile(settings_->build_settings(), *inputs[0])};
   }
 
   std::vector<OutputFile> outs;
@@ -108,7 +112,8 @@ std::vector<OutputFile> NinjaBinaryTargetWriter::WriteInputsStampAndGetDep(
   stamp_file.value().append(".inputs.stamp");
 
   out_ << "build ";
-  path_output_.WriteFile(out_, stamp_file);
+  WriteOutput(stamp_file);
+
   out_ << ": " << GetNinjaRulePrefixForToolchain(settings_)
        << GeneralTool::kGeneralToolStamp;
 
@@ -122,43 +127,25 @@ std::vector<OutputFile> NinjaBinaryTargetWriter::WriteInputsStampAndGetDep(
   return {stamp_file};
 }
 
-void NinjaBinaryTargetWriter::WriteSourceSetStamp(
-    const std::vector<OutputFile>& object_files) {
-  // The stamp rule for source sets is generally not used, since targets that
-  // depend on this will reference the object files directly. However, writing
-  // this rule allows the user to type the name of the target and get a build
-  // which can be convenient for development.
-  ClassifiedDeps classified_deps = GetClassifiedDeps();
-
-  // The classifier should never put extra object files in a source sets: any
-  // source sets that we depend on should appear in our non-linkable deps
-  // instead.
-  DCHECK(classified_deps.extra_object_files.empty());
-
-  std::vector<OutputFile> order_only_deps;
-  for (auto* dep : classified_deps.non_linkable_deps)
-    order_only_deps.push_back(dep->dependency_output_file());
-
-  WriteStampForTarget(object_files, order_only_deps);
-}
-
 NinjaBinaryTargetWriter::ClassifiedDeps
 NinjaBinaryTargetWriter::GetClassifiedDeps() const {
   ClassifiedDeps classified_deps;
 
+  const auto& target_deps = resolved().GetTargetDeps(target_);
+
   // Normal public/private deps.
-  for (const auto& pair : target_->GetDeps(Target::DEPS_LINKED)) {
-    ClassifyDependency(pair.ptr, &classified_deps);
+  for (const Target* dep : target_deps.linked_deps()) {
+    ClassifyDependency(dep, &classified_deps);
   }
 
   // Inherited libraries.
-  for (auto* inherited_target : target_->inherited_libraries().GetOrdered()) {
-    ClassifyDependency(inherited_target, &classified_deps);
+  for (const auto& inherited : resolved().GetInheritedLibraries(target_)) {
+    ClassifyDependency(inherited.target(), &classified_deps);
   }
 
   // Data deps.
-  for (const auto& data_dep_pair : target_->data_deps())
-    classified_deps.non_linkable_deps.push_back(data_dep_pair.ptr);
+  for (const Target* data_dep : target_deps.data_deps())
+    classified_deps.non_linkable_deps.push_back(data_dep);
 
   return classified_deps;
 }
@@ -238,12 +225,8 @@ void NinjaBinaryTargetWriter::AddSourceSetFiles(
   // Swift files may generate one object file per module or one per source file
   // depending on how the compiler is invoked (whole module optimization).
   if (source_set->source_types_used().SwiftSourceUsed()) {
-    const Tool* tool = source_set->toolchain()->GetToolForSourceTypeAsC(
-        SourceFile::SOURCE_SWIFT);
-
     std::vector<OutputFile> outputs;
-    SubstitutionWriter::ApplyListToLinkerAsOutputFile(
-        source_set, tool, tool->outputs(), &outputs);
+    source_set->swift_values().GetOutputs(source_set, &outputs);
 
     for (const OutputFile& output : outputs) {
       SourceFile output_as_source =
@@ -296,9 +279,10 @@ void NinjaBinaryTargetWriter::WriteCompilerBuildLine(
     const std::vector<OutputFile>& order_only_deps,
     const char* tool_name,
     const std::vector<OutputFile>& outputs,
-    bool can_write_source_info) {
+    bool can_write_source_info,
+    bool restat_output_allowed) {
   out_ << "build";
-  path_output_.WriteFiles(out_, outputs);
+  WriteOutputs(outputs);
 
   out_ << ": " << rule_prefix_ << tool_name;
   path_output_.WriteFiles(out_, sources);
@@ -315,20 +299,20 @@ void NinjaBinaryTargetWriter::WriteCompilerBuildLine(
   out_ << std::endl;
 
   if (!sources.empty() && can_write_source_info) {
-    out_ << "  "
-         << "source_file_part = " << sources[0].GetName();
+    out_ << "  " << "source_file_part = " << sources[0].GetName();
     out_ << std::endl;
-    out_ << "  "
-         << "source_name_part = "
+    out_ << "  " << "source_name_part = "
          << FindFilenameNoExtension(&sources[0].value());
     out_ << std::endl;
   }
+
+  if (restat_output_allowed) {
+    out_ << "  restat = 1" << std::endl;
+  }
 }
 
-void NinjaBinaryTargetWriter::WriteCustomLinkerFlags(
-    std::ostream& out,
-    const Tool* tool) {
-
+void NinjaBinaryTargetWriter::WriteCustomLinkerFlags(std::ostream& out,
+                                                     const Tool* tool) {
   if (tool->AsC() || (tool->AsRust() && tool->AsRust()->MayLink())) {
     // First the ldflags from the target and its config.
     RecursiveTargetConfigStringsToStream(kRecursiveWriterKeepDuplicates,
@@ -337,12 +321,11 @@ void NinjaBinaryTargetWriter::WriteCustomLinkerFlags(
   }
 }
 
-void NinjaBinaryTargetWriter::WriteLibrarySearchPath(
-    std::ostream& out,
-    const Tool* tool) {
+void NinjaBinaryTargetWriter::WriteLibrarySearchPath(std::ostream& out,
+                                                     const Tool* tool) {
   // Write library search paths that have been recursively pushed
   // through the dependency tree.
-  const UniqueVector<SourceDir>& all_lib_dirs = target_->all_lib_dirs();
+  const auto& all_lib_dirs = resolved().GetLinkedLibraryDirs(target_);
   if (!all_lib_dirs.empty()) {
     // Since we're passing these on the command line to the linker and not
     // to Ninja, we need to do shell escaping.
@@ -356,7 +339,7 @@ void NinjaBinaryTargetWriter::WriteLibrarySearchPath(
     }
   }
 
-  const auto& all_framework_dirs = target_->all_framework_dirs();
+  const auto& all_framework_dirs = resolved().GetLinkedFrameworkDirs(target_);
   if (!all_framework_dirs.empty()) {
     // Since we're passing these on the command line to the linker and not
     // to Ninja, we need to do shell escaping.
@@ -390,12 +373,12 @@ void NinjaBinaryTargetWriter::WriteLibs(std::ostream& out, const Tool* tool) {
   // Libraries that have been recursively pushed through the dependency tree.
   // Since we're passing these on the command line to the linker and not
   // to Ninja, we need to do shell escaping.
-  PathOutput lib_path_output(
-      path_output_.current_dir(), settings_->build_settings()->root_path_utf8(),
-      ESCAPE_NINJA_COMMAND);
+  PathOutput lib_path_output(path_output_.current_dir(),
+                             settings_->build_settings()->root_path_utf8(),
+                             ESCAPE_NINJA_COMMAND);
   EscapeOptions lib_escape_opts;
   lib_escape_opts.mode = ESCAPE_NINJA_COMMAND;
-  const UniqueVector<LibFile>& all_libs = target_->all_libs();
+  const auto& all_libs = resolved().GetLinkedLibraries(target_);
   for (size_t i = 0; i < all_libs.size(); i++) {
     const LibFile& lib_file = all_libs[i];
     const std::string& lib_value = lib_file.value();
@@ -413,13 +396,13 @@ void NinjaBinaryTargetWriter::WriteFrameworks(std::ostream& out,
                                               const Tool* tool) {
   // Frameworks that have been recursively pushed through the dependency tree.
   FrameworksWriter writer(tool->framework_switch());
-  const auto& all_frameworks = target_->all_frameworks();
+  const auto& all_frameworks = resolved().GetLinkedFrameworks(target_);
   for (size_t i = 0; i < all_frameworks.size(); i++) {
     writer(all_frameworks[i], out);
   }
 
   FrameworksWriter weak_writer(tool->weak_framework_switch());
-  const auto& all_weak_frameworks = target_->all_weak_frameworks();
+  const auto& all_weak_frameworks = resolved().GetLinkedWeakFrameworks(target_);
   for (size_t i = 0; i < all_weak_frameworks.size(); i++) {
     weak_writer(all_weak_frameworks[i], out);
   }

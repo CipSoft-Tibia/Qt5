@@ -38,6 +38,7 @@ devtools_module("accessibility") {
     "../../generated:protocol",
     "../../ui/components/panel_feedback:bundle",
     "../../ui/legacy:bundle",
+    "../../ui/visual_logging:bundle",
   ]
 }
 
@@ -60,21 +61,14 @@ devtools_entrypoint("bundle") {
   visibility += devtools_panels_visibility
 }
 
-devtools_entrypoint("legacy") {
-  entrypoint = "accessibility-legacy.ts"
-
-  deps = [ ":bundle" ]
-
-  visibility = [
-    "../..:legacy_entrypoints",
-    "../../legacy_test_runner/*",
-  ]
-}
-
 devtools_entrypoint("meta") {
   entrypoint = "accessibility-meta.ts"
 
-  deps = [ ":bundle" ]
+  deps = [
+    ":bundle",
+    "../../core/i18n:bundle",
+    "../../ui/legacy:bundle",
+  ]
 
   visibility = [ "../../entrypoints/*" ]
 }

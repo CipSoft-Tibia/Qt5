@@ -55,28 +55,51 @@ void QQmlListReferencePrivate::release()
 \class QQmlListReference
 \since 5.0
 \inmodule QtQml
-\brief The QQmlListReference class allows the manipulation of QQmlListProperty properties.
+\brief The QQmlListReference class allows the manipulation of \l QQmlListProperty properties.
 
 QQmlListReference allows C++ programs to read from, and assign values to a QML list property in a
-simple and type-safe way.  A QQmlListReference can be created by passing an object and property
-name or through a QQmlProperty instance.  These two are equivalent:
+simple and type-safe way. The main advantage over using \l QQmlListProperty itself is its type
+erasure: QQmlListReference is not a template, but can be used for QQmlListProperties of any type.
+Furthermore it watches the owner object for deletion and does not allow the \l QQmlListProperty
+to be accessed anymore if its owner has been deleted.
+
+You can create a QQmlListReference from either an object and a property name or from a QVariant.
+These two are equivalent:
 
 \code
 QQmlListReference ref1(object, "children");
 
-QQmlProperty ref2(object, "children");
-QQmlListReference ref2 = qvariant_cast<QQmlListReference>(ref2.read());
+const QVariant var = object->property("children");
+QQmlListReference ref2(var);
 \endcode
 
-Not all QML list properties support all operations.  A set of methods, canAppend(), canAt(), canClear() and
-canCount() allow programs to query whether an operation is supported on a given property.
+Not all QQmlListReferences support all operations. Methods like canAppend(),
+canAt(), canClear(), and canCount() allow programs to query whether an
+operation is supported on a given property. The availability of the methods
+depends on the methods implemented by the underlying \l QQmlListProperty. When
+constructing a \l QQmlListProperty by manually passing the accessor
+functions you can restrict access to the list by passing nullptr to some of them.
+QQmlListReference will recognize those and report them as unavailable.
 
-QML list properties are type-safe.  Only QObject's that derive from the correct base class can be assigned to
-the list.  The listElementType() method can be used to query the QMetaObject of the QObject type supported.
-Attempting to add objects of the incorrect type to a list property will fail.
+\l{QQmlListReference}s are type-safe.  Only \l{QObject}s that derive of the
+correct base class can be added to the list. The listElementType() method can be
+used to query the \l QMetaObject of the \l QObject type that can be added.
+Attempting to add objects of an incorrect type to a list property will fail.
 
-Like with normal lists, when accessing a list element by index, it is the callers responsibility to ensure
-that it does not request an out of range element using the count() method before calling at().
+Like with other lists, when accessing a list element by index, it is the
+callers responsibility to ensure that it does not request an out of range
+element. Use the count() method before calling at() to this effect.
+*/
+
+/*!
+\fn bool QQmlListReference::operator==(const QQmlListReference &other) const
+
+Compares this QQmlListReference to \a other, and returns \c true if they are
+equal. The two are only considered equal if one was created from the other
+via copy assignment or copy construction.
+
+\note Independently created references to the same object are not considered
+to be equal.
 */
 
 /*!
@@ -336,7 +359,7 @@ bool QQmlListReference::append(QObject *object) const
 }
 
 /*!
-Returns the list element at \a index, or 0 if the operation failed.
+Returns the list element at \a index, or \nullptr if the operation failed.
 
 \sa canAt()
 */
@@ -362,7 +385,7 @@ bool QQmlListReference::clear() const
 }
 
 /*!
-Returns the number of objects in the list, or 0 if the operation failed.
+Returns the number of items in the list, or 0 if the operation failed.
 */
 qsizetype QQmlListReference::count() const
 {
@@ -374,7 +397,7 @@ qsizetype QQmlListReference::count() const
 /*!
 \fn qsizetype QQmlListReference::size() const
 \since 6.2
-Returns the number of objects in the list, or 0 if the operation failed.
+Returns the number of items in the list, or 0 if the operation failed.
 */
 
 /*!
@@ -447,7 +470,10 @@ Q_PROPERTY(QQmlListProperty<Fruit> fruit READ fruit)
 QML list properties are type-safe - in this case \c {Fruit} is a QObject type that
 \c {Apple}, \c {Orange} and \c {Banana} all derive from.
 
-\sa {Chapter 5: Using List Property Types}
+You can use \l{QQmlListReference} to manipulate a QQmlListProperty from C++ using
+a slightly more ergonomic API, at the cost of some overhead.
+
+\sa {Chapter 5: Using List Property Types}, QQmlListReference
 */
 
 /*!
@@ -507,8 +533,9 @@ QML list properties are type-safe - in this case \c {Fruit} is a QObject type th
 \deprecated
 
 Convenience constructor for making a QQmlListProperty value from an existing
-QList \a list.  The \a list reference must remain valid for as long as \a object
-exists.  \a object must be provided.
+QList \a list. The \a object owning the list and the \a list itself must be
+provided and kept alive as long as you are holding a QQmlListProperty referring
+to them.
 
 This constructor synthesizes the removeLast() and replace() methods
 introduced in Qt 5.15, using count(), at(), clear(), and append(). This is slow.
@@ -521,8 +548,14 @@ provide these methods.
 \since 5.15
 
 Convenience constructor for making a QQmlListProperty value from an existing
-QList \a list. The \a list reference must remain valid for as long as \a object
-exists. \a object must be provided.
+QList \a list. The \a object owning the list and the \a list itself must be
+provided and kept alive as long as you are holding a QQmlListProperty referring
+to them.
+
+This is the easiest and safest way to provide a QQmlListProperty backed by a QList
+and should be used in most cases. A typical invocation looks like this:
+
+\snippet tutorials/extending-qml/chapter5-listproperties/piechart.cpp 0
 */
 
 /*!
@@ -532,7 +565,7 @@ exists. \a object must be provided.
 Construct a readonly QQmlListProperty from a set of operation functions
 \a count and \a at. An opaque \a data handle may be passed which can be
 accessed from within the operation functions.  The list property
-remains valid while \a object exists.
+remains valid while the \a object owning the list property exists.
 */
 
 /*!
@@ -543,7 +576,7 @@ remains valid while \a object exists.
 Construct a QQmlListProperty from a set of operation functions \a append,
 \a count, \a at, and \a clear.  An opaque \a data handle may be passed which
 can be accessed from within the operation functions.  The list property
-remains valid while \a object exists.
+remains valid while the \a object owning the list property exists.
 
 Null pointers can be passed for any function. If any null pointers are passed in, the list
 will be neither designable nor alterable by the debugger. It is recommended to provide valid
@@ -564,7 +597,8 @@ you should explicitly provide these methods.
 Construct a QQmlListProperty from a set of operation functions \a append,
 \a count, \a at, \a clear, \a replace, and \removeLast. An opaque \a data handle
 may be passed which can be accessed from within the operation functions. The
-list property remains valid while \a object exists.
+list property remains valid while the \a object owning the list property
+exists.
 
 Null pointers can be passed for any function, causing the respective function to
 be synthesized using the others, if possible. QQmlListProperty can synthesize
@@ -638,14 +672,26 @@ Remove the last element from the list \a property.
 */
 
 /*!
-\fn bool QQmlListReference::operator==(const QQmlListReference &other) const
+\variable QQmlListProperty::object
+\brief This field holds the \e owner of the QQmlListProperty
 
-Compares this QQmlListReference to \a other, and returns \c true if they are
-equal. The two are only considered equal if one was created from the other
-via copy assignment or copy construction.
+When manually implementing the accessor methods, you may need to use this field
+for retrieving the content of the manipulated list.
+*/
 
-\note Independently created references to the same object are not considered
-to be equal.
+/*!
+\variable QQmlListProperty::data
+\brief This field can hold an arbitrary data pointer
+
+If you manually implement the accessor methods and need to store custom data,
+you can pass an arbitrary pointer to the QQmlListProperty constructor and
+retrieve it from the \e data field when accessing the same QQmlListProperty
+later.
+
+A \l{QQmlListProperty(QObject *object, QList<T *> *list)}{QQmlListProperty constructed from a QList pointer}
+uses this field to store the pointer to the list itself, as it cannot directly
+access the list contents from the owner.
+
 */
 
 QT_END_NAMESPACE

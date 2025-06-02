@@ -29,9 +29,9 @@ QT_FOR_EACH_STATIC_PRIMITIVE_TYPE(HANDLE_PRIMITIVE);
 }
 
 QQmlPropertyValidator::QQmlPropertyValidator(
-        QQmlEnginePrivate *enginePrivate, const QQmlImports *imports,
-        const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit)
-    : enginePrivate(enginePrivate)
+        QQmlTypeLoader *typeLoader, const QQmlImports *imports,
+        const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &compilationUnit)
+    : m_typeLoader(typeLoader)
     , compilationUnit(compilationUnit)
     , imports(imports)
     , qmlUnit(compilationUnit->unitData())
@@ -133,7 +133,7 @@ QVector<QQmlError> QQmlPropertyValidator::validateObject(
         defaultProperty = propertyCache->defaultProperty();
     }
 
-    QV4::BindingPropertyData collectedBindingPropertyData(obj->nBindings);
+    QV4::CompiledData::BindingPropertyData collectedBindingPropertyData(obj->nBindings);
 
     binding = obj->bindingTable();
     for (quint32 i = 0; i < obj->nBindings; ++i, ++binding) {
@@ -201,7 +201,8 @@ QVector<QQmlError> QQmlPropertyValidator::validateObject(
             QQmlType type;
             QQmlImportNamespace *typeNamespace = nullptr;
             imports->resolveType(
-                        stringAt(binding->propertyNameIndex), &type, nullptr, &typeNamespace);
+                    m_typeLoader, stringAt(binding->propertyNameIndex),
+                    &type, nullptr, &typeNamespace);
             if (typeNamespace)
                 return recordError(binding->location, tr("Invalid use of namespace"));
             return recordError(binding->location, tr("Invalid attached object assignment"));
@@ -316,7 +317,7 @@ QVector<QQmlError> QQmlPropertyValidator::validateObject(
                         }
                         if (QMetaObjectPrivate::get(mo)->flags & DynamicMetaObject) {
                             return recordError(binding->location,
-                                               QString::fromLatin1("Unsupported grouped property access: Property \"%1\" with type \"%2\" has a dynamic meta-object.")
+                                               tr("Unsupported grouped property access: Property \"%1\" with type \"%2\" has a dynamic meta-object.")
                                                .arg(name, QString::fromUtf8(type.name()))
                                                );
                         }
@@ -348,11 +349,9 @@ QVector<QQmlError> QQmlPropertyValidator::validateObject(
     if (customParser && !customBindings.isEmpty()) {
         customParser->clearErrors();
         customParser->validator = this;
-        customParser->engine = enginePrivate;
         customParser->imports = imports;
         customParser->verifyBindings(compilationUnit, customBindings);
         customParser->validator = nullptr;
-        customParser->engine = nullptr;
         customParser->imports = (QQmlImports*)nullptr;
         QVector<QQmlError> parserErrors = customParser->errors();
         if (!parserErrors.isEmpty())
@@ -452,12 +451,11 @@ QQmlError QQmlPropertyValidator::validateLiteralBinding(
         return warnOrError(tr("Invalid property assignment: int expected"));
     }
     break;
-    case QMetaType::Float: {
-        if (bindingType != QV4::CompiledData::Binding::Type_Number) {
-            return warnOrError(tr("Invalid property assignment: number expected"));
-        }
-    }
-    break;
+    case QMetaType::LongLong:
+    case QMetaType::ULongLong:
+    case QMetaType::Long:
+    case QMetaType::ULong:
+    case QMetaType::Float:
     case QMetaType::Double: {
         if (bindingType != QV4::CompiledData::Binding::Type_Number) {
             return warnOrError(tr("Invalid property assignment: number expected"));
@@ -761,7 +759,8 @@ QQmlError QQmlPropertyValidator::validateObjectBinding(const QQmlPropertyData *p
             // Therefore we need to check the ICs here
             for (const auto& icDatum: compilationUnit->inlineComponentData) {
                 if (icDatum.qmlType.typeId() == property->propType()) {
-                    propertyMetaObject = compilationUnit->propertyCaches.at(icDatum.objectIndex);
+                    propertyMetaObject
+                            = compilationUnit->propertyCaches.at(icDatum.objectIndex);
                     break;
                 }
             }

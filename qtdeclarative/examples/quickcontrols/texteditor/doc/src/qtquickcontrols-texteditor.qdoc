@@ -72,25 +72,17 @@
     \printuntil alignCenterAction
     \printto Action
 
-    We have a \l {Qt.labs.platform::}{MenuBar} containing the hierarchy of
-    \l {Qt.labs.platform::Menu}{Menus} and MenuItems. \c Platform.MenuItem does
-    not have an \c action property, so at minimum we need to set \c text and
-    implement \c onTriggered.
-
-    \note In Qt Quick Controls, each \l {QtQuick.Controls::}{MenuItem} could
-    simply bind the relevant \l {AbstractButton::}{action}. In a near-future
-    version of Qt, \c Qt.labs.platform will be obsolete, and
-    \l {QtQuick.Controls::}{MenuBar} will be suitable on every platform.
-    Unless you need a native menu bar (only on platforms that provide one)
-    in Qt 6.7 and older versions, you should avoid importing \c Qt.labs.platform.
-    \c QtQuick.Controls is more portable.
+    We have a \l MenuBar containing the hierarchy of \l {Menu}{Menus} and
+    MenuItems. Each \l MenuItem merely needs to bind the relevant
+    \l {AbstractButton::}{action}, which encapsulates the
+    UI representation and the implementation.
 
     \skipto MenuBar
     \printuntil copyAction
     \printuntil }
     \dots 8
 
-    The existing \l Action objects are reused in the \l ToolBar; but here we
+    The same \l Action objects are reused in the \l ToolBar; but here we
     override each Action's \l {AbstractButton::}{text} property to
     choose a textual icon from our icon font:
 
@@ -120,8 +112,12 @@
     \skipto TapHandler
     \printuntil }
 
-    The context \l {Qt.labs.platform::}{Menu} contains
-    \l {Qt.labs.platform::MenuItem}{MenuItems}.
+    The context \l Menu contains \l {MenuItem}{MenuItems} that reuse the same
+    \l Action objects as the main \l MenuBar and \l ToolBar are using.
+    As before, it's enough to bind \l {AbstractButton::}{action} to the
+    reusable Action that represents the operation to be performed. However,
+    we override each menu item's \l {MenuItem::}{text} to omit the
+    underlined mnemonics on the context menu.
 
     \skipto Menu
     \printuntil MenuItem

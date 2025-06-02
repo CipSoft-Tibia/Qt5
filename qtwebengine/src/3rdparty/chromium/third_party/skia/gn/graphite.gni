@@ -18,11 +18,13 @@ skia_graphite_public = [
   "$_include/ImageProvider.h",
   "$_include/Recorder.h",
   "$_include/Recording.h",
+  "$_include/Surface.h",
   "$_include/TextureInfo.h",
   "$_include/YUVABackendTextures.h",
 ]
 
 skia_graphite_sources = [
+  "$_include_private/ContextOptionsPriv.h",
   "$_src/AtlasProvider.cpp",
   "$_src/AtlasProvider.h",
   "$_src/AttachmentTypes.h",
@@ -56,7 +58,7 @@ skia_graphite_sources = [
   "$_src/ContextUtils.h",
   "$_src/CopyTask.cpp",
   "$_src/CopyTask.h",
-  "$_src/DescriptorTypes.h",
+  "$_src/DescriptorData.h",
   "$_src/Device.cpp",
   "$_src/Device.h",
   "$_src/DrawAtlas.cpp",
@@ -107,6 +109,8 @@ skia_graphite_sources = [
   "$_src/ProxyCache.h",
   "$_src/QueueManager.cpp",
   "$_src/QueueManager.h",
+  "$_src/RasterPathAtlas.cpp",
+  "$_src/RasterPathAtlas.h",
   "$_src/ReadSwizzle.h",
   "$_src/Recorder.cpp",
   "$_src/RecorderPriv.h",
@@ -165,8 +169,8 @@ skia_graphite_sources = [
   "$_src/compute/ComputeStep.h",
   "$_src/compute/DispatchGroup.cpp",
   "$_src/compute/DispatchGroup.h",
-  "$_src/geom/AtlasShape.h",
   "$_src/geom/BoundsManager.h",
+  "$_src/geom/CoverageMaskShape.h",
   "$_src/geom/EdgeAAQuad.h",
   "$_src/geom/Geometry.h",
   "$_src/geom/IntersectionTree.cpp",
@@ -179,17 +183,19 @@ skia_graphite_sources = [
   "$_src/geom/Transform_graphite.h",
   "$_src/render/AnalyticRRectRenderStep.cpp",
   "$_src/render/AnalyticRRectRenderStep.h",
-  "$_src/render/AtlasShapeRenderStep.cpp",
-  "$_src/render/AtlasShapeRenderStep.h",
   "$_src/render/BitmapTextRenderStep.cpp",
   "$_src/render/BitmapTextRenderStep.h",
   "$_src/render/CommonDepthStencilSettings.h",
   "$_src/render/CoverBoundsRenderStep.cpp",
   "$_src/render/CoverBoundsRenderStep.h",
+  "$_src/render/CoverageMaskRenderStep.cpp",
+  "$_src/render/CoverageMaskRenderStep.h",
   "$_src/render/DynamicInstancesPatchAllocator.h",
   "$_src/render/GraphiteVertexFiller.cpp",
   "$_src/render/MiddleOutFanRenderStep.cpp",
   "$_src/render/MiddleOutFanRenderStep.h",
+  "$_src/render/PerEdgeAAQuadRenderStep.cpp",
+  "$_src/render/PerEdgeAAQuadRenderStep.h",
   "$_src/render/SDFTextRenderStep.cpp",
   "$_src/render/SDFTextRenderStep.h",
   "$_src/render/TessellateCurvesRenderStep.cpp",
@@ -202,6 +208,11 @@ skia_graphite_sources = [
   "$_src/render/VerticesRenderStep.h",
   "$_src/text/TextAtlasManager.cpp",
   "$_src/text/TextAtlasManager.h",
+]
+
+skia_graphite_android_private = [
+  "$_src/surface/Surface_AndroidFactories.cpp",
+  "$_include/android/graphite/SurfaceAndroid.h",
 ]
 
 skia_graphite_dawn_public = [
@@ -239,6 +250,8 @@ skia_graphite_dawn_sources = [
   "$_src/dawn/DawnTexture.cpp",
   "$_src/dawn/DawnTexture.h",
   "$_src/dawn/DawnTypesPriv.cpp",
+  "$_src/dawn/DawnUtils.cpp",
+  "$_src/dawn/DawnUtilsPriv.h",
 ]
 
 skia_graphite_mtl_public = [
@@ -294,6 +307,8 @@ skia_graphite_vk_sources = [
   "$_src/vk/VulkanDescriptorPool.h",
   "$_src/vk/VulkanDescriptorSet.cpp",
   "$_src/vk/VulkanDescriptorSet.h",
+  "$_src/vk/VulkanFramebuffer.cpp",
+  "$_src/vk/VulkanFramebuffer.h",
   "$_src/vk/VulkanGraphicsPipeline.cpp",
   "$_src/vk/VulkanGraphicsPipeline.h",
   "$_src/vk/VulkanGraphiteTypes.cpp",
@@ -303,10 +318,14 @@ skia_graphite_vk_sources = [
   "$_src/vk/VulkanImageView.h",
   "$_src/vk/VulkanQueueManager.cpp",
   "$_src/vk/VulkanQueueManager.h",
+  "$_src/vk/VulkanRenderPass.cpp",
+  "$_src/vk/VulkanRenderPass.h",
   "$_src/vk/VulkanResourceProvider.cpp",
   "$_src/vk/VulkanResourceProvider.h",
   "$_src/vk/VulkanSampler.cpp",
   "$_src/vk/VulkanSampler.h",
+  "$_src/vk/VulkanSamplerYcbcrConversion.cpp",
+  "$_src/vk/VulkanSamplerYcbcrConversion.h",
   "$_src/vk/VulkanSharedContext.cpp",
   "$_src/vk/VulkanSharedContext.h",
   "$_src/vk/VulkanTexture.cpp",

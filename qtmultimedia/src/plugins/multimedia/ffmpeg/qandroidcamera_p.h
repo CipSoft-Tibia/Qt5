@@ -15,14 +15,15 @@
 // We mean it.
 //
 
-#include "qffmpeghwaccel_p.h"
-#include <private/qplatformcamera_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
+#include <QtMultimedia/private/qplatformcamera_p.h>
 #include <QObject>
 #include <QJniObject>
 
 QT_BEGIN_NAMESPACE
 
 class QVideoFrame;
+class QAndroidVideoFrameFactory;
 
 class QAndroidCamera : public QPlatformCamera
 {
@@ -35,15 +36,31 @@ public:
     bool isActive() const override { return m_state == State::Started; }
     bool isFlashModeSupported(QCamera::FlashMode mode) const override;
     bool isFlashReady() const override;
+    bool isFocusModeSupported(QCamera::FocusMode focusMode) const override;
     bool isTorchModeSupported(QCamera::TorchMode mode) const override;
     void setActive(bool active) override;
     void setCamera(const QCameraDevice &camera) override;
     bool setCameraFormat(const QCameraFormat &format) override;
     void setFlashMode(QCamera::FlashMode mode) override;
+    void setFocusDistance(float distance) override;
+
+    // FocusModeAuto maps to CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+    //
+    // The CustomFocusPoint functionality maps to CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+    // but with the CaptureRequest.CONTROL_AF_REGIONS setting.
+    //
+    // FocusModeManual maps to CaptureRequest.CONTROL_AF_MODE_OFF
+    // but also requires us to be able to set focusDistance using
+    // CaptureRequest.LENS_FOCUS_DISTANCE.
+    //
+    // Currently implemented focus-modes: Auto, Manual
+    void setFocusMode(QCamera::FocusMode mode) override;
     void setTorchMode(QCamera::TorchMode mode) override;
     void zoomTo(float factor, float rate) override;
 
     std::optional<int> ffmpegHWPixelFormat() const override;
+
+    QVideoFrameFormat frameFormat() const override;
 
     static bool registerNativeMethods();
 
@@ -68,22 +85,26 @@ private:
     bool isActivating() const { return m_state != State::Closed; }
 
     void setState(State newState);
-    QtVideo::Rotation rotation();
+    QtVideo::Rotation rotation() const;
     void updateCameraCharacteristics();
     void cleanCameraCharacteristics();
 
     State m_state = State::Closed;
     QCameraDevice m_cameraDevice;
-    long lastTimestamp = 0;
     QJniObject m_jniCamera;
 
     std::unique_ptr<QFFmpeg::HWAccel> m_hwAccel;
 
+    std::shared_ptr<QAndroidVideoFrameFactory> m_frameFactory;
     QVideoFrameFormat::PixelFormat m_androidFramePixelFormat;
     QList<QCamera::FlashMode> m_supportedFlashModes;
-    bool m_waitingForFirstFrame = false;
+    // List of supported focus-modes as reported by the Android camera device. Queried once when
+    // camera-device is initialized. Useful for avoiding multiple JNI calls.
+    QList<QCamera::FocusMode> m_supportedFocusModes;
     bool m_TorchModeSupported = false;
     bool m_wasActive = false;
+
+    bool m_waitingForFirstFrame = false;
 };
 
 QT_END_NAMESPACE

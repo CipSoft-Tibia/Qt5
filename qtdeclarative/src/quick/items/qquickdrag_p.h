@@ -119,9 +119,8 @@ private:
     friend class QQuickDragAttachedPrivate;
 };
 
-class QQmlV4Function;
 class QQuickDragAttached;
-class Q_QUICK_PRIVATE_EXPORT QQuickDrag : public QObject
+class Q_QUICK_EXPORT QQuickDrag : public QObject
 {
     Q_OBJECT
 
@@ -211,7 +210,7 @@ private:
 };
 
 class QQuickDragAttachedPrivate;
-class Q_QUICK_PRIVATE_EXPORT QQuickDragAttached : public QObject
+class Q_QUICK_EXPORT QQuickDragAttached : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickDragAttached)
@@ -221,6 +220,8 @@ class Q_QUICK_PRIVATE_EXPORT QQuickDragAttached : public QObject
     Q_PROPERTY(QObject *target READ target NOTIFY targetChanged FINAL)
     Q_PROPERTY(QPointF hotSpot READ hotSpot WRITE setHotSpot NOTIFY hotSpotChanged FINAL)
     Q_PROPERTY(QUrl imageSource READ imageSource WRITE setImageSource NOTIFY imageSourceChanged FINAL)
+    // imageSourceSize is new in Qt 6.8; revision omitted because of QTBUG-33179
+    Q_PROPERTY(QSize imageSourceSize READ imageSourceSize WRITE setImageSourceSize NOTIFY imageSourceSizeChanged FINAL)
     Q_PROPERTY(QStringList keys READ keys WRITE setKeys NOTIFY keysChanged FINAL)
     Q_PROPERTY(QVariantMap mimeData READ mimeData WRITE setMimeData NOTIFY mimeDataChanged FINAL)
     Q_PROPERTY(Qt::DropActions supportedActions READ supportedActions WRITE setSupportedActions NOTIFY supportedActionsChanged FINAL)
@@ -249,6 +250,9 @@ public:
     QUrl imageSource() const;
     void setImageSource(const QUrl &url);
 
+    QSize imageSourceSize() const;
+    void setImageSourceSize(const QSize &size);
+
     QStringList keys() const;
     void setKeys(const QStringList &keys);
 
@@ -269,8 +273,8 @@ public:
     bool event(QEvent *event) override;
 
 public Q_SLOTS:
-    void start(QQmlV4Function *);
-    void startDrag(QQmlV4Function *);
+    void start(QQmlV4FunctionPtr);
+    void startDrag(QQmlV4FunctionPtr);
     void cancel();
 
 Q_SIGNALS:
@@ -282,6 +286,7 @@ Q_SIGNALS:
     void targetChanged();
     void hotSpotChanged();
     void imageSourceChanged();
+    void imageSourceSizeChanged(); // new in Qt 6.8
     void keysChanged();
     void mimeDataChanged();
     void supportedActionsChanged();

@@ -16,8 +16,8 @@ DriverVer= ; TODO: set DriverVer in stampinf property pages
 %ManufacturerName%=Standard,NT$ARCH$
 
 [Standard.NT$ARCH$]
-%DeviceName%=MyDevice_Install, Root\ChromiumVirtualDisplayDriver ; TODO: edit hw-id, this hardware id is used by Visual Studio remote debugging
-%DeviceName%=MyDevice_Install, ChromiumVirtualDisplayDriver      ; TODO: edit hw-id, this hardware if is used by the IddSampleApp.exe is used by the IddSampleApp.exe
+%DeviceName%=MyDevice_Install, Root\ChromiumVirtualDisplayDriver
+%DeviceName%=MyDevice_Install, ChromiumVirtualDisplayDriver
 
 [SourceDisksFiles]
 ChromiumVirtualDisplayDriver.dll=1
@@ -66,10 +66,10 @@ ChromiumVirtualDisplayDriver.dll
 ; =================== Generic ==================================
 
 [Strings]
-ManufacturerName="<Your manufacturer name>" ; TODO: Replace with your manufacturer name
-DiskName = "ChromiumVirtualDisplayDriver Installation Disk" ; TODO: Replace with driver disk name
+ManufacturerName="Chromium"
+DiskName = "ChromiumVirtualDisplayDriver Installation Disk"
 WudfRdDisplayName="Windows Driver Foundation - User-mode Driver Framework Reflector"
-DeviceName="ChromiumVirtualDisplayDriver Device" ; TODO: Replace with correct device name
+DeviceName="ChromiumVirtualDisplayDriver Device"
 
 REG_MULTI_SZ  = 0x00010000
 REG_SZ        = 0x00000000

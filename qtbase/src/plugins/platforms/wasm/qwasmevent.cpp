@@ -62,6 +62,8 @@ Qt::Key webKeyToQtKey(const std::string &code, const std::string &key, bool isDe
             return Qt::Key_unknown;
         }
     } else if (auto mapping = QWasmKeyTranslator::mapWebKeyTextToQtKey(key.c_str())) {
+        if (modifiers.testFlag(Qt::ShiftModifier) && (*mapping == Qt::Key::Key_Tab))
+            *mapping = Qt::Key::Key_Backtab;
         return *mapping;
     }
 
@@ -260,7 +262,6 @@ std::optional<DragEvent> DragEvent::fromWeb(emscripten::val event, QWindow *targ
 {
     const auto eventType = ([&event]() -> std::optional<EventType> {
         const auto eventTypeString = event["type"].as<std::string>();
-
         if (eventTypeString == "dragend")
             return EventType::DragEnd;
         if (eventTypeString == "dragover")
@@ -269,6 +270,8 @@ std::optional<DragEvent> DragEvent::fromWeb(emscripten::val event, QWindow *targ
             return EventType::DragStart;
         if (eventTypeString == "drop")
             return EventType::Drop;
+        if (eventTypeString == "dragleave")
+            return EventType::DragLeave;
         return std::nullopt;
     })();
     if (!eventType)

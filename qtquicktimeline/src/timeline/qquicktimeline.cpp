@@ -113,7 +113,7 @@ void QQuickTimelinePrivate::clear_animations(QQmlListProperty<QQuickTimelineAnim
 /*!
     \qmltype Timeline
     \inherits QtObject
-    \instantiates QQuickTimeline
+    \nativetype QQuickTimeline
     \inqmlmodule QtQuick.Timeline
     \ingroup qtqmltypes
 

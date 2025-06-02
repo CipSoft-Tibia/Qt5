@@ -6,7 +6,7 @@ project(shapes LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup(REQUIRES 6.8)
 
 add_subdirectory("../../shared" "shared")
 
@@ -52,6 +52,9 @@ qt_add_qml_module(shapesexample
         "tapableTriangle.qml"
         "tiger.qml"
         "zoomtiger.qml"
+        "fillTransform.qml"
+        "rectangle.qml"
+        "fillItem.qml"
 )
 
 install(TARGETS shapesexample

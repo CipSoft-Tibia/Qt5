@@ -34,15 +34,22 @@ QQmlRefPointer<QQmlScriptData> QQmlScriptBlob::scriptData() const
 
 void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
 {
-    if (readCacheFile()) {
-        QQmlRefPointer<QV4::ExecutableCompilationUnit> unit
-                = QV4::ExecutableCompilationUnit::create();
-        QString error;
-        if (unit->loadFromDisk(url(), data.sourceTimeStamp(), &error)) {
-            initializeFromCompilationUnit(unit);
+    if (data.isCacheable()) {
+        if (auto unit = QQmlMetaType::obtainCompilationUnit(url())) {
+            initializeFromCompilationUnit(std::move(unit));
             return;
-        } else {
-            qCDebug(DBG_DISK_CACHE()) << "Error loading" << urlString() << "from disk cache:" << error;
+        }
+
+        if (readCacheFile()) {
+            auto unit = QQml::makeRefPointer<QV4::CompiledData::CompilationUnit>();
+            QString error;
+            if (unit->loadFromDisk(url(), data.sourceTimeStamp(), &error)) {
+                initializeFromCompilationUnit(std::move(unit));
+                return;
+            } else {
+                qCDebug(DBG_DISK_CACHE()) << "Error loading" << urlString()
+                                          << "from disk cache:" << error;
+            }
         }
     }
 
@@ -61,7 +68,7 @@ void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
         return;
     }
 
-    QV4::CompiledData::CompilationUnit unit;
+    QQmlRefPointer<QV4::CompiledData::CompilationUnit> unit;
 
     if (m_isModule) {
         QList<QQmlJS::DiagnosticMessage> diagnostics;
@@ -73,7 +80,7 @@ void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
             return;
         }
     } else {
-        QmlIR::Document irUnit(isDebugging());
+        QmlIR::Document irUnit(urlString(), finalUrlString(), isDebugging());
 
         irUnit.jsModule.sourceTimeStamp = data.sourceTimeStamp();
 
@@ -82,7 +89,7 @@ void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
 
         QList<QQmlError> errors;
         irUnit.javaScriptCompilationUnit = QV4::Script::precompile(
-                     &irUnit.jsModule, &irUnit.jsParserEngine, &irUnit.jsGenerator, urlString(), finalUrlString(),
+                     &irUnit.jsModule, &irUnit.jsParserEngine, &irUnit.jsGenerator, urlString(),
                      source, &errors, QV4::Compiler::ContextType::ScriptImportedByQML);
 
         source.clear();
@@ -96,28 +103,26 @@ void QQmlScriptBlob::dataReceived(const SourceCodeData &data)
         unit = std::move(irUnit.javaScriptCompilationUnit);
     }
 
-    auto executableUnit = QV4::ExecutableCompilationUnit::create(std::move(unit));
-
     if (writeCacheFile()) {
         QString errorString;
-        if (executableUnit->saveToDisk(url(), &errorString)) {
+        if (unit->saveToDisk(url(), &errorString)) {
             QString error;
-            if (!executableUnit->loadFromDisk(url(), data.sourceTimeStamp(), &error)) {
+            if (!unit->loadFromDisk(url(), data.sourceTimeStamp(), &error)) {
                 // ignore error, keep using the in-memory compilation unit.
             }
         } else {
             qCDebug(DBG_DISK_CACHE()) << "Error saving cached version of"
-                                      << executableUnit->fileName() << "to disk:" << errorString;
+                                      << unit->fileName() << "to disk:" << errorString;
         }
     }
 
-    initializeFromCompilationUnit(executableUnit);
+    initializeFromCompilationUnit(std::move(unit));
 }
 
-void QQmlScriptBlob::initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *unit)
+void QQmlScriptBlob::initializeFromCachedUnit(const QQmlPrivate::CachedQmlUnit *cachedUnit)
 {
-    initializeFromCompilationUnit(QV4::ExecutableCompilationUnit::create(
-            QV4::CompiledData::CompilationUnit(unit->qmlData, unit->aotCompiledFunctions, urlString(), finalUrlString())));
+    initializeFromCompilationUnit(QQml::makeRefPointer<QV4::CompiledData::CompilationUnit>(
+            cachedUnit->qmlData, cachedUnit->aotCompiledFunctions, urlString(), finalUrlString()));
 }
 
 void QQmlScriptBlob::done()
@@ -164,6 +169,11 @@ void QQmlScriptBlob::done()
         m_importCache->populateCache(m_scriptData->typeNameCache.data());
     }
     m_scripts.clear();
+
+    if (auto cu = m_scriptData->compilationUnit()) {
+        cu->qmlType = QQmlMetaType::findCompositeType(url(), cu, QQmlMetaType::JavaScript);
+        QQmlMetaType::registerInternalCompositeType(cu);
+    }
 }
 
 QString QQmlScriptBlob::stringAt(int index) const
@@ -182,9 +192,12 @@ void QQmlScriptBlob::scriptImported(const QQmlRefPointer<QQmlScriptBlob> &blob, 
     m_scripts << ref;
 }
 
-void QQmlScriptBlob::initializeFromCompilationUnit(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &unit)
+void QQmlScriptBlob::initializeFromCompilationUnit(
+        QQmlRefPointer<QV4::CompiledData::CompilationUnit> &&unit)
 {
     Q_ASSERT(!m_scriptData);
+    Q_ASSERT(unit);
+
     m_scriptData.adopt(new QQmlScriptData());
     m_scriptData->url = finalUrl();
     m_scriptData->urlString = finalUrlString();
@@ -192,12 +205,10 @@ void QQmlScriptBlob::initializeFromCompilationUnit(const QQmlRefPointer<QV4::Exe
 
     m_importCache->setBaseUrl(finalUrl(), finalUrlString());
 
-    QQmlRefPointer<QV4::ExecutableCompilationUnit> script = m_scriptData->m_precompiledScript;
-
     if (!m_isModule) {
         QList<QQmlError> errors;
-        for (quint32 i = 0, count = script->importCount(); i < count; ++i) {
-            const QV4::CompiledData::Import *import = script->importAt(i);
+        for (quint32 i = 0, count = unit->importCount(); i < count; ++i) {
+            const QV4::CompiledData::Import *import = unit->importAt(i);
             if (!addImport(import, {}, &errors)) {
                 Q_ASSERT(errors.size());
                 QQmlError error(errors.takeFirst());
@@ -211,39 +222,20 @@ void QQmlScriptBlob::initializeFromCompilationUnit(const QQmlRefPointer<QV4::Exe
         }
     }
 
-    auto *v4 = QQmlEnginePrivate::getV4Engine(typeLoader()->engine());
-
-    v4->injectCompiledModule(unit);
-
-    for (const QString &request: unit->moduleRequests()) {
-        const auto module = v4->moduleForUrl(QUrl(request), unit.data());
-        if (module.compiled || module.native)
+    const QStringList moduleRequests = unit->moduleRequests();
+    for (const QString &request: moduleRequests) {
+        const QUrl relativeRequest(request);
+        const QUrl absoluteRequest = unit->finalUrl().resolved(relativeRequest);
+        QQmlRefPointer<QQmlScriptBlob> absoluteBlob
+                = typeLoader()->getScript(absoluteRequest, relativeRequest);
+        if (absoluteBlob->m_scriptData && absoluteBlob->m_scriptData->m_precompiledScript)
             continue;
 
-        const QUrl absoluteRequest = unit->finalUrl().resolved(QUrl(request));
-        QQmlRefPointer<QQmlScriptBlob> blob = typeLoader()->getScript(absoluteRequest);
-        addDependency(blob.data());
-        scriptImported(blob, /* ### */QV4::CompiledData::Location(), /*qualifier*/QString(), /*namespace*/QString());
+        addDependency(absoluteBlob.data());
+        scriptImported(
+                absoluteBlob, /* ### */QV4::CompiledData::Location(), /*qualifier*/QString(),
+                /*namespace*/QString());
     }
-}
-
-/*!
-    \internal
-
-    This initializes a dummy script blob from a "native" ECMAScript module.
-    Native modules are just JavaScript values, possibly objects with members.
-
-    \sa QJSEngine::registerModule()
- */
-void QQmlScriptBlob::initializeFromNative(const QV4::Value &value)
-{
-    Q_ASSERT(!m_scriptData);
-    m_scriptData.adopt(new QQmlScriptData());
-    m_scriptData->url = finalUrl();
-    m_scriptData->urlString = finalUrlString();
-    m_scriptData->m_loaded = true;
-    m_scriptData->m_value.set(QQmlEnginePrivate::getV4Engine(typeLoader()->engine()), value);
-    m_importCache->setBaseUrl(finalUrl(), finalUrlString());
 }
 
 QT_END_NAMESPACE

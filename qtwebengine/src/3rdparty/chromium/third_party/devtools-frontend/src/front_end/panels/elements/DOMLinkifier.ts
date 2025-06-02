@@ -6,6 +6,8 @@ import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
+
 import domLinkifierStyles from './domLinkifier.css.js';
 
 const UIStrings = {
@@ -62,8 +64,13 @@ export const decorateNodeLabel = function(
   }
 
   if (isPseudo) {
+    const pseudoIdentifier = originalNode.pseudoIdentifier();
     const pseudoElement = parentElement.createChild('span', 'extra node-label-pseudo');
-    const pseudoText = '::' + originalNode.pseudoType();
+    let pseudoText = '::' + originalNode.pseudoType();
+    if (pseudoIdentifier) {
+      pseudoText += `(${pseudoIdentifier})`;
+    }
+
     UI.UIUtils.createTextChild(pseudoElement, pseudoText);
     title += pseudoText;
   }
@@ -84,6 +91,7 @@ export const linkifyNodeReference = function(
   const shadowRoot =
       UI.Utils.createShadowRootWithCoreStyles(root, {cssFile: [domLinkifierStyles], delegatesFocus: undefined});
   const link = (shadowRoot.createChild('div', 'node-link') as HTMLDivElement);
+  link.setAttribute('jslog', `${VisualLogging.link().track({click: true, keydown: 'Enter'}).context('node-link')}`);
 
   decorateNodeLabel(node, link, options.tooltip);
 
@@ -116,6 +124,7 @@ export const linkifyDeferredNodeReference = function(
   const shadowRoot =
       UI.Utils.createShadowRootWithCoreStyles(root, {cssFile: [domLinkifierStyles], delegatesFocus: undefined});
   const link = (shadowRoot.createChild('div', 'node-link') as HTMLDivElement);
+  link.setAttribute('jslog', `${VisualLogging.link().track({click: true, keydown: 'Enter'}).context('node-link')}`);
   link.createChild('slot');
   link.addEventListener('click', deferredNode.resolve.bind(deferredNode, onDeferredNodeResolved), false);
   link.addEventListener('mousedown', e => e.consume(), false);

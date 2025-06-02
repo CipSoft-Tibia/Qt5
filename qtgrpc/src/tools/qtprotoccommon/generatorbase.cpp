@@ -55,21 +55,6 @@ bool GeneratorBase::GenerateAll(const std::vector<const FileDescriptor *> &files
     return CodeGenerator::GenerateAll(files, parameter, generatorContext, error);
 }
 
-std::string GeneratorBase::generateBaseName(const FileDescriptor *file, const std::string &name)
-{
-    std::string outFileBasename;
-    if (Options::instance().isFolder()) {
-        outFileBasename = file->package();
-        if (!outFileBasename.empty()) {
-            outFileBasename = utils::replace(outFileBasename, ".", "/");
-            outFileBasename += '/';
-        }
-    }
-    outFileBasename += name;
-
-    return outFileBasename;
-}
-
 void GeneratorBase::printDisclaimer(Printer *printer)
 {
     printer->Print(CommonTemplates::DisclaimerTemplate());
@@ -111,4 +96,34 @@ void GeneratorBase::CloseFileNamespaces(
     if (hasQtNamespace || file->package() == "QtCore" || file->package() == "QtGui")
         printer->PrintRaw("QT_END_NAMESPACE\n");
     printer->Print("\n");
+}
+
+void GeneratorBase::printIncludes(google::protobuf::io::Printer *printer,
+                                  const std::set<std::string> &internal,
+                                  const utils::ExternalIncludesOrderedSet &external,
+                                  const std::set<std::string> &system)
+{
+    if (!internal.empty())
+        printer->Print("\n");
+    for (const auto &header : internal)
+        printer->Print({ {"include", header } }, CommonTemplates::InternalIncludeTemplate());
+
+    std::string_view includeFirstPart;
+    for (const auto &header : external) {
+        const auto firstPartPos = header.find_first_of('/');
+        if (firstPartPos == std::string::npos) {
+            includeFirstPart = {};
+            printer->Print("\n");
+        } else if (std::string_view currentIncludeFirstPart(header.data(), firstPartPos);
+                   currentIncludeFirstPart != includeFirstPart) {
+            includeFirstPart = currentIncludeFirstPart;
+            printer->Print("\n");
+        }
+        printer->Print({ {"include", header } }, CommonTemplates::ExternalIncludeTemplate());
+    }
+
+    if (!system.empty())
+        printer->Print("\n");
+    for (const auto &header : system)
+        printer->Print({ {"include", header } }, CommonTemplates::ExternalIncludeTemplate());
 }

@@ -42,60 +42,25 @@ void CookieControlsBridge::UpdateWebContents(
   content::BrowserContext* context = web_contents->GetBrowserContext();
   auto* permissions_client = permissions::PermissionsClient::Get();
 
-  old_observation_.Reset();
   observation_.Reset();
 
   controller_ = std::make_unique<CookieControlsController>(
       permissions_client->GetCookieSettings(context),
       original_context ? permissions_client->GetCookieSettings(original_context)
                        : nullptr,
-      permissions_client->GetSettingsMap(context));
+      permissions_client->GetSettingsMap(context),
+      permissions_client->GetTrackingProtectionSettings(context));
 
-  old_observation_.Observe(controller_.get());
   observation_.Observe(controller_.get());
   controller_->Update(web_contents);
 }
 
 void CookieControlsBridge::OnStatusChanged(
-    CookieControlsStatus new_status,
-    CookieControlsEnforcement new_enforcement,
-    int allowed_cookies,
-    int blocked_cookies) {
-  if (status_ != new_status || enforcement_ != new_enforcement) {
-    status_ = new_status;
-    enforcement_ = new_enforcement;
-    JNIEnv* env = base::android::AttachCurrentThread();
-    // Only call status callback if status has changed
-    Java_CookieControlsBridge_onCookieBlockingStatusChanged(
-        env, jobject_, static_cast<int>(status_),
-        static_cast<int>(enforcement_));
-  }
-
-  OnCookiesCountChanged(allowed_cookies, blocked_cookies);
-}
-
-void CookieControlsBridge::OnCookiesCountChanged(int allowed_cookies,
-                                                 int blocked_cookies) {
-  // The cookie counts change quite frequently, so avoid unnecessary
-  // UI updates if possible.
-  if (allowed_cookies_ == allowed_cookies &&
-      blocked_cookies_ == blocked_cookies) {
-    return;
-  }
-
-  allowed_cookies_ = allowed_cookies;
-  blocked_cookies_ = blocked_cookies;
-  JNIEnv* env = base::android::AttachCurrentThread();
-  Java_CookieControlsBridge_onCookiesCountChanged(
-      env, jobject_, allowed_cookies, blocked_cookies);
-}
-
-// This is a no-op for Android.
-void CookieControlsBridge::OnStatefulBounceCountChanged(int bounce_count) {}
-
-void CookieControlsBridge::OnStatusChanged(
     CookieControlsStatus status,
+    bool controls_visible,
+    bool protections_on,
     CookieControlsEnforcement enforcement,
+    CookieBlocking3pcdStatus blocking_status,
     base::Time expiration) {
   // Only invoke the callback when there is a change.
   if (status_ == status && enforcement_ == enforcement &&
@@ -108,7 +73,8 @@ void CookieControlsBridge::OnStatusChanged(
   JNIEnv* env = base::android::AttachCurrentThread();
   Java_CookieControlsBridge_onStatusChanged(
       env, jobject_, static_cast<int>(status_), static_cast<int>(enforcement_),
-      expiration.ToJavaTime());
+      static_cast<int>(blocking_status),
+      expiration.InMillisecondsSinceUnixEpoch());
 }
 
 void CookieControlsBridge::OnSitesCountChanged(

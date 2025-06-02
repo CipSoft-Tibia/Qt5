@@ -17,6 +17,7 @@ source_set("headless") {
   deps = [
     "//base",
     "//chrome/common:non_code_constants",
+    "//content/public/common",
     "//ui/gfx",
   ]
 
@@ -73,6 +74,8 @@ if (!is_android) {
 
     if (is_linux || is_win || is_mac) {
       sources += [
+        "headless_mode_browsertest_utils.cc",
+        "headless_mode_browsertest_utils.h",
         "headless_mode_command_browsertest.cc",
         "headless_mode_devtooled_browsertest.cc",
         "headless_mode_devtooled_browsertest.h",
@@ -115,6 +118,7 @@ if (!is_android) {
         "//components/headless/command_handler:switches",
         "//components/headless/select_file_dialog",
         "//components/headless/test",
+        "//components/infobars/content",
         "//content/public/browser",
         "//ui/display",
         "//ui/gfx",

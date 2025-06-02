@@ -19,9 +19,9 @@ void xnn_f32_igemm_minmax_ukernel_5x8__wasmrelaxedsimd_fma_loadsplat(
     size_t nc,
     size_t kc,
     size_t ks,
-    const float**restrict a,
-    const float*restrict w,
-    float*restrict c,
+    const float** restrict a,
+    const float* restrict w,
+    float* restrict c,
     size_t cm_stride,
     size_t cn_stride,
     size_t a_offset,
@@ -119,42 +119,42 @@ void xnn_f32_igemm_minmax_ukernel_5x8__wasmrelaxedsimd_fma_loadsplat(
         const v128_t va4 = wasm_v128_load32_splat(a4);
         a4 += 1;
 
-        vacc0x0123 = __builtin_wasm_fma_f32x4(vacc0x0123, va0, vb0123);
-        vacc0x4567 = __builtin_wasm_fma_f32x4(vacc0x4567, va0, vb4567);
-        vacc1x0123 = __builtin_wasm_fma_f32x4(vacc1x0123, va1, vb0123);
-        vacc1x4567 = __builtin_wasm_fma_f32x4(vacc1x4567, va1, vb4567);
-        vacc2x0123 = __builtin_wasm_fma_f32x4(vacc2x0123, va2, vb0123);
-        vacc2x4567 = __builtin_wasm_fma_f32x4(vacc2x4567, va2, vb4567);
-        vacc3x0123 = __builtin_wasm_fma_f32x4(vacc3x0123, va3, vb0123);
-        vacc3x4567 = __builtin_wasm_fma_f32x4(vacc3x4567, va3, vb4567);
-        vacc4x0123 = __builtin_wasm_fma_f32x4(vacc4x0123, va4, vb0123);
-        vacc4x4567 = __builtin_wasm_fma_f32x4(vacc4x4567, va4, vb4567);
+        vacc0x0123 = wasm_f32x4_relaxed_madd(va0, vb0123, vacc0x0123);
+        vacc0x4567 = wasm_f32x4_relaxed_madd(va0, vb4567, vacc0x4567);
+        vacc1x0123 = wasm_f32x4_relaxed_madd(va1, vb0123, vacc1x0123);
+        vacc1x4567 = wasm_f32x4_relaxed_madd(va1, vb4567, vacc1x4567);
+        vacc2x0123 = wasm_f32x4_relaxed_madd(va2, vb0123, vacc2x0123);
+        vacc2x4567 = wasm_f32x4_relaxed_madd(va2, vb4567, vacc2x4567);
+        vacc3x0123 = wasm_f32x4_relaxed_madd(va3, vb0123, vacc3x0123);
+        vacc3x4567 = wasm_f32x4_relaxed_madd(va3, vb4567, vacc3x4567);
+        vacc4x0123 = wasm_f32x4_relaxed_madd(va4, vb0123, vacc4x0123);
+        vacc4x4567 = wasm_f32x4_relaxed_madd(va4, vb4567, vacc4x4567);
         k -= sizeof(float);
       } while (k != 0);
       p -= 5 * sizeof(void*);
     } while (p != 0);
 
-    vacc0x0123 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc0x0123);
-    vacc1x0123 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc1x0123);
-    vacc2x0123 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc2x0123);
-    vacc3x0123 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc3x0123);
-    vacc4x0123 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc4x0123);
-    vacc0x4567 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc0x4567);
-    vacc1x4567 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc1x4567);
-    vacc2x4567 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc2x4567);
-    vacc3x4567 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc3x4567);
-    vacc4x4567 = __builtin_wasm_relaxed_max_f32x4(vmin, vacc4x4567);
+    vacc0x0123 = wasm_f32x4_relaxed_max(vmin, vacc0x0123);
+    vacc1x0123 = wasm_f32x4_relaxed_max(vmin, vacc1x0123);
+    vacc2x0123 = wasm_f32x4_relaxed_max(vmin, vacc2x0123);
+    vacc3x0123 = wasm_f32x4_relaxed_max(vmin, vacc3x0123);
+    vacc4x0123 = wasm_f32x4_relaxed_max(vmin, vacc4x0123);
+    vacc0x4567 = wasm_f32x4_relaxed_max(vmin, vacc0x4567);
+    vacc1x4567 = wasm_f32x4_relaxed_max(vmin, vacc1x4567);
+    vacc2x4567 = wasm_f32x4_relaxed_max(vmin, vacc2x4567);
+    vacc3x4567 = wasm_f32x4_relaxed_max(vmin, vacc3x4567);
+    vacc4x4567 = wasm_f32x4_relaxed_max(vmin, vacc4x4567);
 
-    vacc0x0123 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc0x0123);
-    vacc1x0123 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc1x0123);
-    vacc2x0123 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc2x0123);
-    vacc3x0123 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc3x0123);
-    vacc4x0123 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc4x0123);
-    vacc0x4567 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc0x4567);
-    vacc1x4567 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc1x4567);
-    vacc2x4567 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc2x4567);
-    vacc3x4567 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc3x4567);
-    vacc4x4567 = __builtin_wasm_relaxed_min_f32x4(vmax, vacc4x4567);
+    vacc0x0123 = wasm_f32x4_relaxed_min(vmax, vacc0x0123);
+    vacc1x0123 = wasm_f32x4_relaxed_min(vmax, vacc1x0123);
+    vacc2x0123 = wasm_f32x4_relaxed_min(vmax, vacc2x0123);
+    vacc3x0123 = wasm_f32x4_relaxed_min(vmax, vacc3x0123);
+    vacc4x0123 = wasm_f32x4_relaxed_min(vmax, vacc4x0123);
+    vacc0x4567 = wasm_f32x4_relaxed_min(vmax, vacc0x4567);
+    vacc1x4567 = wasm_f32x4_relaxed_min(vmax, vacc1x4567);
+    vacc2x4567 = wasm_f32x4_relaxed_min(vmax, vacc2x4567);
+    vacc3x4567 = wasm_f32x4_relaxed_min(vmax, vacc3x4567);
+    vacc4x4567 = wasm_f32x4_relaxed_min(vmax, vacc4x4567);
 
     if XNN_LIKELY(nc >= 8) {
       wasm_v128_store(c4, vacc4x0123);

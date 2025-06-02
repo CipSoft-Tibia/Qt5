@@ -7,4 +7,5 @@ qt_internal_add_test(tst_qginput
     LIBRARIES
         Qt::Gui
         Qt::Graphs
+        Qt::GraphsWidgets
 )

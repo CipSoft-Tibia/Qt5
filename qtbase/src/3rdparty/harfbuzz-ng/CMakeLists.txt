@@ -23,6 +23,7 @@ qt_internal_add_3rdparty_library(BundledHarfbuzz
         src/hb-cache.hh
         src/hb-common.h
         src/hb-debug.hh
+        src/hb-decycler.hh
         src/hb-deprecated.h
         src/hb-draw.cc src/hb-draw.h src/hb-draw.hh
         src/hb-face.cc src/hb-face.h src/hb-face.hh
@@ -61,7 +62,7 @@ qt_internal_add_3rdparty_library(BundledHarfbuzz
         src/hb-subset-instancer-solver.cc
         src/hb-subset-plan.cc
         src/hb-subset-plan-member-list.hh
-        src/hb-subset-repacker.cc src/hb-subset-repacker.h
+        src/hb-subset-serialize.cc src/hb-subset-serialize.h
         src/hb-unicode.cc src/hb-unicode.h src/hb-unicode.hh
         src/hb-utf.hh
         src/hb-version.h

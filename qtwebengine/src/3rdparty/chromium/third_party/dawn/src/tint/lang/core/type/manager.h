@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_CORE_TYPE_MANAGER_H_
 #define SRC_TINT_LANG_CORE_TYPE_MANAGER_H_
@@ -48,6 +61,29 @@ class Void;
 
 namespace tint::core::type {
 
+/// @param space the address space of the memory view
+/// @returns the default access control for a memory view with the given address space.
+static constexpr inline core::Access DefaultAccessFor(core::AddressSpace space) {
+    switch (space) {
+        case core::AddressSpace::kIn:
+        case core::AddressSpace::kPushConstant:
+        case core::AddressSpace::kUniform:
+        case core::AddressSpace::kHandle:
+            return core::Access::kRead;
+
+        case core::AddressSpace::kUndefined:
+        case core::AddressSpace::kOut:
+        case core::AddressSpace::kFunction:
+        case core::AddressSpace::kPixelLocal:
+        case core::AddressSpace::kPrivate:
+        case core::AddressSpace::kStorage:
+        case core::AddressSpace::kWorkgroup:
+            break;
+    }
+
+    return core::Access::kReadWrite;
+}
+
 /// The type manager holds all the pointers to the known types.
 class Manager final {
   public:
@@ -71,8 +107,8 @@ class Manager final {
     /// Wrap returns a new Manager created with the types of `inner`.
     /// The Manager returned by Wrap is intended to temporarily extend the types
     /// of an existing immutable Manager.
-    /// As the copied types are owned by `inner`, `inner` must not be destructed
-    /// or assigned while using the returned Manager.
+    /// @warning As the copied types are owned by `inner`, `inner` must not be destructed or
+    /// assigned while using the returned Manager.
     /// TODO(bclayton) - Evaluate whether there are safer alternatives to this
     /// function. See crbug.com/tint/460.
     /// @param inner the immutable Manager to extend
@@ -108,6 +144,8 @@ class Manager final {
             return Get<core::type::F16>(std::forward<ARGS>(args)...);
         } else if constexpr (std::is_same_v<T, bool>) {
             return Get<core::type::Bool>(std::forward<ARGS>(args)...);
+        } else if constexpr (std::is_same_v<T, void>) {
+            return Get<core::type::Void>(std::forward<ARGS>(args)...);
         } else if constexpr (core::fluent_types::IsVector<T>) {
             return vec<typename T::type, T::width>(std::forward<ARGS>(args)...);
         } else if constexpr (core::fluent_types::IsMatrix<T>) {
@@ -116,6 +154,8 @@ class Manager final {
             return ptr<T::address, typename T::type, T::access>(std::forward<ARGS>(args)...);
         } else if constexpr (core::fluent_types::IsArray<T>) {
             return array<typename T::type, T::length>(std::forward<ARGS>(args)...);
+        } else if constexpr (core::fluent_types::IsAtomic<T>) {
+            return atomic<typename T::type>(std::forward<ARGS>(args)...);
         } else if constexpr (tint::traits::IsTypeOrDerived<T, Type>) {
             return types_.Get<T>(std::forward<ARGS>(args)...);
         } else if constexpr (tint::traits::IsTypeOrDerived<T, UniqueNode>) {
@@ -392,13 +432,13 @@ class Manager final {
     /// @returns the pointer type
     const core::type::Pointer* ptr(core::AddressSpace address_space,
                                    const core::type::Type* subtype,
-                                   core::Access access = core::Access::kReadWrite);
+                                   core::Access access = core::Access::kUndefined);
 
     /// @tparam SPACE the address space
     /// @tparam T the storage type
     /// @tparam ACCESS the access mode
     /// @returns the pointer type with the templated address space, storage type and access.
-    template <core::AddressSpace SPACE, typename T, core::Access ACCESS = core::Access::kReadWrite>
+    template <core::AddressSpace SPACE, typename T, core::Access ACCESS = DefaultAccessFor(SPACE)>
     const core::type::Pointer* ptr() {
         return ptr(SPACE, Get<T>(), ACCESS);
     }
@@ -407,7 +447,7 @@ class Manager final {
     /// @tparam SPACE the address space
     /// @tparam ACCESS the access mode
     /// @returns the pointer type with the templated address space, storage type and access.
-    template <core::AddressSpace SPACE, core::Access ACCESS = core::Access::kReadWrite>
+    template <core::AddressSpace SPACE, core::Access ACCESS = DefaultAccessFor(SPACE)>
     const core::type::Pointer* ptr(const core::type::Type* subtype) {
         return ptr(SPACE, subtype, ACCESS);
     }
@@ -431,6 +471,12 @@ class Manager final {
         /// The optional struct member attributes.
         core::type::StructMemberAttributes attributes = {};
     };
+
+    /// Create a new structure declaration.
+    /// @param name the name of the structure
+    /// @param members the list of structure members
+    /// @returns the structure type
+    core::type::Struct* Struct(Symbol name, VectorRef<const StructMember*> members);
 
     /// Create a new structure declaration.
     /// @param name the name of the structure

@@ -6,6 +6,9 @@
 // Include first for the platform detection macros.
 #include <xnnpack/common.h>
 
+#if XNN_PLATFORM_WEB
+#include <emscripten/emscripten.h>
+#endif
 #if XNN_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -17,10 +20,16 @@
 #if !defined(_GNU_SOURCE)
 #define _GNU_SOURCE
 #endif
+
+#if XNN_ARCH_ARM && XNN_PLATFORM_JIT
+#include <sys/syscall.h>
+#endif
+
 #include <errno.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
+
 
 #include <stddef.h>
 #include <stdint.h>
@@ -106,7 +115,7 @@ static void* resize_buffer(
 {
   const size_t new_capacity = round_up_po2(new_size, get_page_size());
   #if XNN_PLATFORM_LINUX
-    void* new_pointer = mremap(old_pointer, old_size, new_capacity, MREMAP_MAYMOVE, NULL);
+    void* new_pointer = mremap(old_pointer, old_capacity, new_capacity, MREMAP_MAYMOVE, NULL);
     if (new_pointer == MAP_FAILED) {
       xnn_log_error("mremap failed with errno: %d", errno);
       return NULL;
@@ -233,41 +242,73 @@ static enum xnn_status set_memory_permission(void* start, size_t size, enum xnn_
   return xnn_status_success;
 }
 
+#if XNN_PLATFORM_WEB
+EM_JS(int, xnnLoadWasmModuleJS, (const uint8_t* code, int offset, int offset_end, int invalid_function_index), {
+    const tableOriginalSize = wasmTable.length;
+    const binary = new Uint8Array(HEAPU8.slice(code + offset, code + offset_end));
+    try {
+      var module = new WebAssembly.Module(binary);
+      var instance = new WebAssembly.Instance(module, {env : {memory: wasmMemory}});
+      for (var symName in instance.exports) {
+        var value = instance.exports[symName];
+        addFunction(value);
+      }
+      if (tableOriginalSize < wasmTable.length) {
+        return tableOriginalSize;
+      }
+      return invalid_function_index;
+    }
+    catch(error) {
+      console.log(error);
+      return invalid_function_index;
+    }
+});
+#endif // XNN_PLATFORM_WEB
+
 #if XNN_PLATFORM_JIT
 enum xnn_status xnn_finalize_code_memory(struct xnn_code_buffer* buffer) {
-  const enum xnn_status status = release_unused_memory(buffer->size, buffer->start, &buffer->capacity);
-  if (status != xnn_status_success) {
-    return status;
-  }
-
-  if (buffer->capacity == 0) {
+  #if XNN_PLATFORM_WEB
     return xnn_status_success;
-  }
-
-  // Flush icache, do it before changing permissions due to bugs on older ARM64 kernels.
-  #if (XNN_ARCH_ARM || XNN_ARCH_ARM64) && XNN_PLATFORM_JIT
-    #if XNN_PLATFORM_WINDOWS
-      FlushInstructionCache(GetCurrentProcess(), buffer->start, buffer->capacity);
-    #else
-      // iOS toolchain doesn't support this, use sys_icache_invalidate, when we support iOS.
-      __builtin___clear_cache(buffer->start, (void*) ((uint8_t*) buffer->start + buffer->capacity));
-    #endif  // XNN_PLATFORM_WINDOWS
-  #endif  // (XNN_ARCH_ARM || XNN_ARCH_ARM64) && !XNN_PLATFORM_IOS
-
-  // Set permissions to RX (no write).
-  #if XNN_PLATFORM_WINDOWS
-    DWORD old = 0;
-    if (!VirtualProtect(buffer->start, buffer->size, PAGE_EXECUTE_READ, &old)) {
-      xnn_log_error("failed to make code buffer read+execute, error code: %" PRIu32, (uint32_t) GetLastError());
-      return xnn_status_invalid_state;
-    }
   #else
-    if (mprotect(buffer->start, buffer->size, PROT_READ | PROT_EXEC) == -1) {
-      xnn_log_error("failed to make code buffer read+execute, error code: %d", errno);
-      return xnn_status_invalid_state;
+    const enum xnn_status status = release_unused_memory(buffer->size, buffer->start, &buffer->capacity);
+    if (status != xnn_status_success) {
+      return status;
     }
+
+    if (buffer->capacity == 0) {
+      return xnn_status_success;
+    }
+
+    // Flush icache, do it before changing permissions due to bugs on older ARM64 kernels.
+    #if (XNN_ARCH_ARM || XNN_ARCH_ARM64) && XNN_PLATFORM_JIT
+      #if XNN_PLATFORM_WINDOWS
+        FlushInstructionCache(GetCurrentProcess(), buffer->start, buffer->capacity);
+      #else
+        #if XNN_ARCH_ARM
+          // TODO(b/309410154): Re-enable once __ARM_NR_cacheflush is fixed
+          // why, but something broke with cl/576649879. See b/307871190.
+          syscall(__ARM_NR_cacheflush, buffer->start, (void*) ((uint8_t*) buffer->start + buffer->capacity), 0);
+        #else
+        // iOS toolchain doesn't support this, use sys_icache_invalidate, when we support iOS.
+        __builtin___clear_cache(buffer->start, (void*) ((uint8_t*) buffer->start + buffer->capacity));
+        #endif  // XNN_ARCH_ARM
+      #endif  // XNN_PLATFORM_WINDOWS
+    #endif  // (XNN_ARCH_ARM || XNN_ARCH_ARM64) && !XNN_PLATFORM_IOS
+
+    // Set permissions to RX (no write).
+    return set_memory_permission(buffer->start, buffer->size, xnn_memory_permission_read_execute);
+  #endif // XNN_PLATFORM_WEB
+}
+
+uintptr_t xnn_first_function_in_chunk_ptr(struct xnn_code_buffer* buffer, size_t offset, size_t offset_end) {
+  #if (XNN_ARCH_ARM || XNN_ARCH_ARM64)
+    return (uintptr_t) buffer->start + offset;
+  #elif XNN_PLATFORM_WEB
+    if (offset == offset_end) {
+      return XNN_INVALID_FUNCTION_INDEX;
+    }
+    return xnnLoadWasmModuleJS(buffer->start, offset, offset_end, XNN_INVALID_FUNCTION_INDEX);
   #endif
-  return set_memory_permission(buffer->start, buffer->size, xnn_memory_permission_read_execute);
 }
 #endif  // XNN_PLATFORM_JIT
 

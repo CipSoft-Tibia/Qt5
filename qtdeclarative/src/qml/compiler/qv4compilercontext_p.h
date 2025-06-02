@@ -101,8 +101,10 @@ struct ImportEntry
 };
 
 struct Module {
-    Module(bool debugMode)
-        : debugMode(debugMode)
+    Module(const QString &fileName, const QString &finalUrl, bool debugMode)
+        : fileName(fileName)
+        , finalUrl(finalUrl)
+        , debugMode(debugMode)
     {}
     ~Module() {
         qDeleteAll(contextMap);

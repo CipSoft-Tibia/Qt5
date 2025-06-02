@@ -13,20 +13,21 @@ import android.view.Display;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 
-public class QtLayout extends ViewGroup
-{
-    public QtLayout(Context context)
+class QtLayout extends ViewGroup {
+
+    QtLayout(Context context)
     {
         super(context);
     }
 
-    public QtLayout(Context context, AttributeSet attrs)
+    QtLayout(Context context, AttributeSet attrs)
     {
         super(context, attrs);
     }
 
-    public QtLayout(Context context, AttributeSet attrs, int defStyle)
+    QtLayout(Context context, AttributeSet attrs, int defStyle)
     {
         super(context, attrs, defStyle);
     }
@@ -126,16 +127,16 @@ public class QtLayout extends ViewGroup
     * See {android.R.styleable#AbsoluteLayout_Layout Absolute Layout Attributes}
     * for a list of all child view attributes that this class supports.
     */
-    public static class LayoutParams extends ViewGroup.LayoutParams
+    static class LayoutParams extends ViewGroup.LayoutParams
     {
         /**
         * The horizontal, or X, location of the child within the view group.
         */
-        public int x;
+        int x;
         /**
         * The vertical, or Y, location of the child within the view group.
         */
-        public int y;
+        int y;
 
         /**
         * Creates a new set of layout parameters with the specified width,
@@ -148,14 +149,14 @@ public class QtLayout extends ViewGroup
         * @param x the X location of the child
         * @param y the Y location of the child
         */
-        public LayoutParams(int width, int height, int x, int y)
+        LayoutParams(int width, int height, int x, int y)
         {
             super(width, height);
             this.x = x;
             this.y = y;
         }
 
-        public LayoutParams(int width, int height)
+        LayoutParams(int width, int height)
         {
             super(width, height);
         }
@@ -163,13 +164,13 @@ public class QtLayout extends ViewGroup
         /**
         * {@inheritDoc}
         */
-        public LayoutParams(ViewGroup.LayoutParams source)
+        LayoutParams(ViewGroup.LayoutParams source)
         {
             super(source);
         }
     }
 
-    public void moveChild(View view, int index)
+    void moveChild(View view, int index)
     {
         if (view == null)
             return;
@@ -189,7 +190,7 @@ public class QtLayout extends ViewGroup
     * Note: This function adds the child view if it's not in the
     *       layout already.
     */
-    public void setLayoutParams(final View childView,
+    void setLayoutParams(final View childView,
                                 final ViewGroup.LayoutParams params,
                                 final boolean forceRedraw)
     {
@@ -201,14 +202,19 @@ public class QtLayout extends ViewGroup
         if (!checkLayoutParams(params))
             return;
 
+        final ViewParent parent = childView.getParent();
+
         // View is already in the layout and can therefore be updated
-        final boolean canUpdate = (this == childView.getParent());
+        final boolean canUpdate = (this == parent);
 
         if (canUpdate) {
             childView.setLayoutParams(params);
             if (forceRedraw)
                 invalidate();
         } else {
+            // If the parent was already set it need to be removed first
+            if (parent != null && parent instanceof ViewGroup)
+                ((ViewGroup)parent).removeView(childView);
             addView(childView, params);
         }
     }

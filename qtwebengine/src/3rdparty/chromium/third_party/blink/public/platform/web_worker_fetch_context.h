@@ -16,11 +16,11 @@
 #include "third_party/blink/public/mojom/service_worker/controller_service_worker_mode.mojom-shared.h"
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
 #include "third_party/blink/public/platform/resource_load_info_notifier_wrapper.h"
-#include "third_party/blink/public/platform/web_code_cache_loader.h"
 #include "third_party/blink/public/platform/web_document_subresource_filter.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_string.h"
 #include "third_party/blink/public/platform/web_url.h"
+#include "third_party/blink/public/platform/web_vector.h"
 #include "third_party/blink/public/platform/websocket_handshake_throttle.h"
 
 namespace base {
@@ -33,19 +33,11 @@ class SiteForCookies;
 
 namespace blink {
 
-class CodeCacheHost;
+class AcceptLanguagesWatcher;
 class WebDocumentSubresourceFilter;
 class URLLoaderFactory;
 class WebURLRequest;
 class URLLoaderThrottle;
-
-// Helper class allowing DedicatedOrSharedWorkerFetchContextImpl to notify blink
-// upon an accept languages update. This class will be extended by
-// WorkerNavigator.
-class AcceptLanguagesWatcher {
- public:
-  virtual void NotifyUpdate() = 0;
-};
 
 // WebWorkerFetchContext is a per-worker object created on the main thread,
 // passed to a worker (dedicated, shared and service worker) and initialized on
@@ -85,18 +77,6 @@ class WebWorkerFetchContext : public base::RefCounted<WebWorkerFetchContext> {
       CrossVariantMojoRemote<network::mojom::URLLoaderFactoryInterfaceBase>
           url_loader_factory) = 0;
 
-  // Returns a WebCodeCacheLoader that fetches data from code caches. If
-  // a nullptr is returned then data would not be fetched from the code
-  // cache.
-  // TODO(mythria): Currently, code_cache_host can be a nullptr when fetching
-  // cached code from worklets. For these cases we use a per-process mojo
-  // interface. Update worklets to use context specific interface and check that
-  // code_cache_host is not a nullptr.
-  virtual std::unique_ptr<WebCodeCacheLoader> CreateCodeCacheLoader(
-      CodeCacheHost* code_cache_host) {
-    return nullptr;
-  }
-
   // Returns a URLLoaderFactory for loading scripts in this worker context.
   // Unlike GetURLLoaderFactory(), this may return nullptr.
   // The returned URLLoaderFactory is owned by |this|.
@@ -109,7 +89,7 @@ class WebWorkerFetchContext : public base::RefCounted<WebWorkerFetchContext> {
 
   // Creates URLLoaderThrottles for the `request`.
   virtual WebVector<std::unique_ptr<URLLoaderThrottle>> CreateThrottles(
-      const WebURLRequest& request) = 0;
+      const network::ResourceRequest& request) = 0;
 
   // Returns whether a controller service worker exists and if it has fetch
   // handler.

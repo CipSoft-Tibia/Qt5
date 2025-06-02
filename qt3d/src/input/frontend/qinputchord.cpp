@@ -21,8 +21,8 @@ namespace Qt3DInput {
 /*!
     \qmltype InputChord
     \inqmlmodule Qt3D.Input
-    \inherits QAbstractActionInput
-    \instantiates Qt3DInput::QInputChord
+    \inherits AbstractActionInput
+    \nativetype Qt3DInput::QInputChord
     \brief QML frontend for the Qt3DInput::QInputChord C++ class.
 
     Represents a set of QAbstractActionInput's that must be triggerd at once.
@@ -76,7 +76,7 @@ QInputChord::~QInputChord()
 }
 
 /*!
-    \property QInputChord::timeout
+    \property Qt3DInput::QInputChord::timeout
 
     The time in which all QAbstractActionInput's in the input chord must triggered within.
     The time is in milliseconds.

@@ -64,6 +64,16 @@ def strip_server(url):
     return urlunsplit(url_parts)
 
 
+def server_url(server_config, protocol, subdomain=False):
+    scheme = "https" if protocol == "h2" else protocol
+    host = server_config["browser_host"]
+    if subdomain:
+        # The only supported subdomain filename flag is "www".
+        host = "{subdomain}.{host}".format(subdomain="www", host=host)
+    return "{scheme}://{host}:{port}".format(scheme=scheme, host=host,
+        port=server_config["ports"][protocol][0])
+
+
 class TestharnessResultConverter:
     harness_codes = {0: "OK",
                      1: "ERROR",
@@ -79,8 +89,7 @@ class TestharnessResultConverter:
     def __call__(self, test, result, extra=None):
         """Convert a JSON result into a (TestResult, [SubtestResult]) tuple"""
         result_url, status, message, stack, subtest_results = result
-        assert result_url == test.url, ("Got results from %s, expected %s" %
-                                        (result_url, test.url))
+        assert result_url == test.url, (f"Got results from {result_url}, expected {test.url}")
         harness_result = test.result_cls(self.harness_codes[status], message, extra=extra, stack=stack)
         return (harness_result,
                 [test.subtest_result_cls(st_name, self.test_codes[st_status], st_message, st_stack)
@@ -304,7 +313,8 @@ class TestExecutor:
             result = self.do_test(test)
         except Exception as e:
             exception_string = traceback.format_exc()
-            self.logger.warning(exception_string)
+            message = f"Exception in TextExecutor.run:\n{exception_string}"
+            self.logger.warning(message)
             result = self.result_from_exception(test, e, exception_string)
 
         # log result of parent test
@@ -316,13 +326,7 @@ class TestExecutor:
         self.runner.send_message("test_ended", test, result)
 
     def server_url(self, protocol, subdomain=False):
-        scheme = "https" if protocol == "h2" else protocol
-        host = self.server_config["browser_host"]
-        if subdomain:
-            # The only supported subdomain filename flag is "www".
-            host = "{subdomain}.{host}".format(subdomain="www", host=host)
-        return "{scheme}://{host}:{port}".format(scheme=scheme, host=host,
-            port=self.server_config["ports"][protocol][0])
+        return server_url(self.server_config, protocol, subdomain)
 
     def test_url(self, test):
         return urljoin(self.server_url(test.environment["protocol"],
@@ -653,7 +657,8 @@ class WdspecExecutor(TestExecutor):
                           "timeout_multiplier": self.timeout_multiplier,
                           "browser": {
                               "binary": self.binary,
-                              "args": self.binary_args
+                              "args": self.binary_args,
+                              "env": self.browser.env,
                           },
                           "webdriver": {
                               "binary": self.webdriver_binary,
@@ -731,8 +736,8 @@ class CallbackHandler:
         self.logger.debug("Got async callback: %s" % result[1])
         try:
             callback = self.callbacks[command]
-        except KeyError:
-            raise ValueError("Unknown callback type %r" % result[1])
+        except KeyError as e:
+            raise ValueError("Unknown callback type %r" % result[1]) from e
         return callback(url, payload)
 
     def process_complete(self, url, payload):
@@ -745,11 +750,21 @@ class CallbackHandler:
         self.logger.debug(f"Got action: {action}")
         try:
             action_handler = self.actions[action]
-        except KeyError:
-            raise ValueError(f"Unknown action {action}")
+        except KeyError as e:
+            raise ValueError(f"Unknown action {action}") from e
         try:
             with ActionContext(self.logger, self.protocol, payload.get("context")):
-                result = action_handler(payload)
+                try:
+                    result = action_handler(payload)
+                except AttributeError as e:
+                    # If we fail to get an attribute from the protocol presumably that's a
+                    # ProtocolPart we don't implement
+                    # AttributeError got an obj property in Python 3.10, for older versions we
+                    # fall back to looking at the error message.
+                    if ((hasattr(e, "obj") and getattr(e, "obj") == self.protocol) or
+                        f"'{self.protocol.__class__.__name__}' object has no attribute" in str(e)):
+                        raise NotImplementedError from e
+                    raise
         except self.unimplemented_exc:
             self.logger.warning("Action %s not implemented" % action)
             self._send_message(cmd_id, "complete", "error", f"Action {action} not implemented")

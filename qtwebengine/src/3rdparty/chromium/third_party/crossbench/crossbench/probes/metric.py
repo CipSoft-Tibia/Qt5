@@ -12,6 +12,8 @@ import pathlib
 from typing import (TYPE_CHECKING, Any, Callable, Dict, Iterable, List,
                     Optional, Sequence, Set, Tuple, Union)
 from math import floor, log10
+
+from ordered_set import OrderedSet
 from . import helper
 
 if TYPE_CHECKING:
@@ -295,8 +297,7 @@ class MetricsMerger:
     """
     converted = self.to_json(value_fn)
     lookup: Dict[str, Any] = {}
-    # Use Dict as ordered-set
-    toplevel: Dict[str, None] = {}
+    toplevel: OrderedSet[str] = OrderedSet()
     items = converted.items()
     if sort:
       items = sorted(items)
@@ -311,7 +312,7 @@ class MetricsMerger:
         if path not in lookup:
           lookup[path] = None
       if len(segments) == 1:
-        toplevel[key] = None
+        toplevel.add(key)
       lookup[key] = value
     csv_data: List[Sequence[Any]] = []
     for header in headers:

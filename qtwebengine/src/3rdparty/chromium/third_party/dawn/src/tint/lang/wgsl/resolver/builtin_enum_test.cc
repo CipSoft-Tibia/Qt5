@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/access.h"
 #include "src/tint/lang/core/address_space.h"
@@ -33,11 +46,11 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // access
 ////////////////////////////////////////////////////////////////////////////////
-using ResolverAccessUsedWithTemplateArgs = ResolverTestWithParam<const char*>;
+using ResolverAccessUsedWithTemplateArgs = ResolverTestWithParam<std::string_view>;
 
 TEST_P(ResolverAccessUsedWithTemplateArgs, Test) {
-    // @group(0) @binding(0) var t : texture_storage_2d<rgba8unorm, ACCESS<T>>;
-    auto* tmpl = Ident(Source{{12, 34}}, GetParam(), "T");
+    // @group(0) @binding(0) var t : texture_storage_2d<rgba8unorm, ACCESS<i32>>;
+    auto* tmpl = Ident(Source{{12, 34}}, GetParam(), "i32");
     GlobalVar("v", ty("texture_storage_2d", "rgba8unorm", tmpl), Group(0_u), Binding(0_u));
 
     EXPECT_FALSE(r()->Resolve());
@@ -52,12 +65,11 @@ INSTANTIATE_TEST_SUITE_P(,
 ////////////////////////////////////////////////////////////////////////////////
 // address space
 ////////////////////////////////////////////////////////////////////////////////
-using ResolverAddressSpaceUsedWithTemplateArgs = ResolverTestWithParam<const char*>;
+using ResolverAddressSpaceUsedWithTemplateArgs = ResolverTestWithParam<std::string_view>;
 
 TEST_P(ResolverAddressSpaceUsedWithTemplateArgs, Test) {
     // fn f(p : ptr<ADDRESS_SPACE<T>, f32) {}
 
-    Enable(core::Extension::kChromiumExperimentalFullPtrParameters);
     auto* tmpl = Ident(Source{{12, 34}}, GetParam(), "T");
     Func("f", Vector{Param("p", ty("ptr", tmpl, ty.f32()))}, ty.void_(), tint::Empty);
     EXPECT_FALSE(r()->Resolve());
@@ -72,7 +84,7 @@ INSTANTIATE_TEST_SUITE_P(,
 ////////////////////////////////////////////////////////////////////////////////
 // builtin value
 ////////////////////////////////////////////////////////////////////////////////
-using ResolverBuiltinValueUsedWithTemplateArgs = ResolverTestWithParam<const char*>;
+using ResolverBuiltinValueUsedWithTemplateArgs = ResolverTestWithParam<std::string_view>;
 
 TEST_P(ResolverBuiltinValueUsedWithTemplateArgs, Test) {
     // fn f(@builtin(BUILTIN<T>) p : vec4<f32>) {}
@@ -91,7 +103,7 @@ INSTANTIATE_TEST_SUITE_P(,
 ////////////////////////////////////////////////////////////////////////////////
 // interpolation sampling
 ////////////////////////////////////////////////////////////////////////////////
-using ResolverInterpolationSamplingUsedWithTemplateArgs = ResolverTestWithParam<const char*>;
+using ResolverInterpolationSamplingUsedWithTemplateArgs = ResolverTestWithParam<std::string_view>;
 
 TEST_P(ResolverInterpolationSamplingUsedWithTemplateArgs, Test) {
     // @fragment
@@ -119,7 +131,7 @@ INSTANTIATE_TEST_SUITE_P(,
 ////////////////////////////////////////////////////////////////////////////////
 // interpolation type
 ////////////////////////////////////////////////////////////////////////////////
-using ResolverInterpolationTypeUsedWithTemplateArgs = ResolverTestWithParam<const char*>;
+using ResolverInterpolationTypeUsedWithTemplateArgs = ResolverTestWithParam<std::string_view>;
 
 TEST_P(ResolverInterpolationTypeUsedWithTemplateArgs, Test) {
     // @fragment
@@ -147,7 +159,7 @@ INSTANTIATE_TEST_SUITE_P(,
 ////////////////////////////////////////////////////////////////////////////////
 // texel format
 ////////////////////////////////////////////////////////////////////////////////
-using ResolverTexelFormatUsedWithTemplateArgs = ResolverTestWithParam<const char*>;
+using ResolverTexelFormatUsedWithTemplateArgs = ResolverTestWithParam<std::string_view>;
 
 TEST_P(ResolverTexelFormatUsedWithTemplateArgs, Test) {
     // @group(0) @binding(0) var t : texture_storage_2d<TEXEL_FORMAT<T>, write>

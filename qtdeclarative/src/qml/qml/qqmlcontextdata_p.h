@@ -30,7 +30,7 @@ class QQmlGuardedContextData;
 class QQmlJavaScriptExpression;
 class QQmlIncubatorPrivate;
 
-class Q_QML_PRIVATE_EXPORT QQmlContextData
+class Q_QML_EXPORT QQmlContextData
 {
 public:
     static QQmlRefPointer<QQmlContextData> createRefCounted(
@@ -274,8 +274,29 @@ public:
     bool isRootObjectInCreation() const { return m_isRootObjectInCreation; }
     void setRootObjectInCreation(bool rootInCreation) { m_isRootObjectInCreation = rootInCreation; }
 
-    QV4::PersistentValue importedScripts() const { return m_importedScripts; }
-    void setImportedScripts(const QV4::PersistentValue &scripts) { m_importedScripts = scripts; }
+    QV4::ReturnedValue importedScripts() const
+    {
+        if (m_hasWeakImportedScripts)
+            return m_weakImportedScripts.value();
+        else
+            return m_importedScripts.value();
+    }
+    void setImportedScripts(QV4::ExecutionEngine *engine, QV4::Value scripts) {
+        // setImportedScripts should not be called on an invalidated context
+        Q_ASSERT(!m_hasWeakImportedScripts);
+        m_importedScripts.set(engine, scripts);
+    }
+
+    /*
+       we can safely pass a ReturnedValue here, as setImportedScripts will directly store
+       scripts in a persistentValue, without any intermediate allocation that could trigger
+       a gc run
+    */
+    void setImportedScripts(QV4::ExecutionEngine *engine, QV4::ReturnedValue scripts) {
+        // setImportedScripts should not be called on an invalidated context
+        Q_ASSERT(!m_hasWeakImportedScripts);
+        m_importedScripts.set(engine, scripts);
+    }
 
     QQmlRefPointer<QQmlContextData> linkedContext() const { return m_linkedContext; }
     void setLinkedContext(const QQmlRefPointer<QQmlContextData> &context) { m_linkedContext = context; }
@@ -290,6 +311,10 @@ public:
 
     bool valueTypesAreAddressable() const {
         return m_typeCompilationUnit && m_typeCompilationUnit->valueTypesAreAddressable();
+    }
+
+    bool valueTypesAreAssertable() const {
+        return m_typeCompilationUnit && m_typeCompilationUnit->valueTypesAreAssertable();
     }
 
 private:
@@ -339,7 +364,7 @@ private:
           m_unresolvedNames(false), m_hasEmittedDestruction(false), m_isRootObjectInCreation(false),
           m_ownedByParent(ownership == OwnedByParent),
           m_ownedByPublicContext(ownership == OwnedByPublicContext), m_hasExtraObject(false),
-          m_dummy(0), m_publicContext(publicContext), m_incubator(nullptr)
+          m_hasWeakImportedScripts(false), m_dummy(0), m_publicContext(publicContext), m_incubator(nullptr)
     {
         Q_ASSERT(!m_ownedByParent || !m_ownedByPublicContext);
         if (!m_parent)
@@ -384,7 +409,8 @@ private:
     quint32 m_ownedByParent:1;
     quint32 m_ownedByPublicContext:1;
     quint32 m_hasExtraObject:1; // used in QQmlDelegateModelItem::dataForObject to find the corresponding QQmlDelegateModelItem of an object
-    Q_DECL_UNUSED_MEMBER quint32 m_dummy:23;
+    quint32 m_hasWeakImportedScripts:1;
+    Q_DECL_UNUSED_MEMBER quint32 m_dummy:22;
     QQmlContext *m_publicContext = nullptr;
 
     union {
@@ -407,7 +433,14 @@ private:
     QObject *m_contextObject = nullptr;
 
     // Any script blocks that exist on this context
-    QV4::PersistentValue m_importedScripts; // This is a JS Array
+    union {
+        /* an invalidated context transitions from a strong reference to the scripts
+           to a weak one, so that the context doesn't needlessly holds on to the scripts,
+           but closures can still access them if needed
+         */
+        QV4::PersistentValue m_importedScripts = {}; // This is a JS Array
+        QV4::WeakValue m_weakImportedScripts;
+    };
 
     QUrl m_baseUrl;
     QString m_baseUrlString;

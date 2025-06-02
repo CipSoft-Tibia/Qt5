@@ -28,7 +28,7 @@ public:
             return {};
 
         if (!m_resampler)
-            m_resampler = std::make_unique<QFFmpegResampler>(frame.codec(), m_format);
+            m_resampler = std::make_unique<QFFmpegResampler>(frame.codecContext(), m_format);
 
         emit newAudioBuffer(m_resampler->resample(frame.avFrame()));
 
@@ -79,8 +79,7 @@ private:
     QPointer<Renderer> m_audioRenderer;
     QAudioFormat m_format;
 };
-}
-
+} // namespace QFFmpeg
 
 QFFmpegAudioDecoder::QFFmpegAudioDecoder(QAudioDecoder *parent)
     : QPlatformAudioDecoder(parent)
@@ -162,7 +161,7 @@ void QFFmpegAudioDecoder::start()
     if (!checkNoError())
         return;
 
-    durationChanged(m_decoder->duration() / 1000);
+    durationChanged(QFFmpeg::toUserDuration(m_decoder->duration()).get());
     setIsDecoding(true);
 }
 

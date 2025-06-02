@@ -42,10 +42,10 @@
 
 #include "base/logging.h"
 #include "base/numerics/checked_math.h"
+#include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "third_party/blink/renderer/platform/graphics/bitmap_image_metrics.h"
 #include "third_party/blink/renderer/platform/image-decoders/exif_reader.h"
-#include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
 #include "third_party/skia/include/private/SkJpegMetadataDecoder.h"
 
@@ -128,72 +128,6 @@ bool SubsamplingSupportedByDecodeToYUV(cc::YUVSubsampling subsampling) {
          subsampling == cc::YUVSubsampling::k420;
 }
 
-// Extracts the JPEG color space of an image for UMA purposes given |info| which
-// is assumed to have gone through a jpeg_read_header(). When the color space is
-// YCbCr, we also extract the chroma subsampling. The caveat is that the
-// extracted color space is really libjpeg_turbo's guess. According to
-// libjpeg.txt, "[t]he JPEG color space, unfortunately, is something of a guess
-// since the JPEG standard proper does not provide a way to record it. In
-// practice most files adhere to the JFIF or Adobe conventions, and the decoder
-// will recognize these correctly."
-blink::BitmapImageMetrics::JpegColorSpace ExtractUMAJpegColorSpace(
-    const jpeg_decompress_struct& info) {
-  switch (info.jpeg_color_space) {
-    case JCS_GRAYSCALE:
-      return blink::BitmapImageMetrics::JpegColorSpace::kGrayscale;
-    case JCS_RGB:
-      return blink::BitmapImageMetrics::JpegColorSpace::kRGB;
-    case JCS_CMYK:
-      return blink::BitmapImageMetrics::JpegColorSpace::kCMYK;
-    case JCS_YCCK:
-      return blink::BitmapImageMetrics::JpegColorSpace::kYCCK;
-    case JCS_YCbCr:
-      switch (YuvSubsampling(info)) {
-        case cc::YUVSubsampling::k444:
-          return blink::BitmapImageMetrics::JpegColorSpace::kYCbCr444;
-        case cc::YUVSubsampling::k422:
-          return blink::BitmapImageMetrics::JpegColorSpace::kYCbCr422;
-        case cc::YUVSubsampling::k411:
-          return blink::BitmapImageMetrics::JpegColorSpace::kYCbCr411;
-        case cc::YUVSubsampling::k440:
-          return blink::BitmapImageMetrics::JpegColorSpace::kYCbCr440;
-        case cc::YUVSubsampling::k420:
-          return blink::BitmapImageMetrics::JpegColorSpace::kYCbCr420;
-        case cc::YUVSubsampling::k410:
-          return blink::BitmapImageMetrics::JpegColorSpace::kYCbCr410;
-        case cc::YUVSubsampling::kUnknown:
-          return blink::BitmapImageMetrics::JpegColorSpace::kYCbCrOther;
-      }
-    default:
-      return blink::BitmapImageMetrics::JpegColorSpace::kUnknown;
-  }
-}
-
-void UpdateJpegBppHistogram(gfx::Size size, size_t image_size_bytes) {
-  static constexpr char kType[] = "Jpeg";
-  blink::ImageDecoder::UpdateBppHistogram<kType>(size, image_size_bytes);
-}
-
-constexpr base::HistogramBase::Sample kImageAreaHistogramMin = 1;
-constexpr base::HistogramBase::Sample kImageAreaHistogramMax = 8192 * 8192;
-constexpr int32_t kImageAreaHistogramBucketCount = 100;
-
-void CountJpegArea(const gfx::Size& size) {
-  DEFINE_THREAD_SAFE_STATIC_LOCAL(
-      blink::CustomCountHistogram, image_area_histogram,
-      ("Blink.ImageDecoders.Jpeg.Area", kImageAreaHistogramMin,
-       kImageAreaHistogramMax, kImageAreaHistogramBucketCount));
-  // A base::HistogramBase::Sample may not fit |size.Area()|. Hence the use of
-  // saturated_cast.
-  image_area_histogram.Count(
-      base::saturated_cast<base::HistogramBase::Sample>(size.Area64()));
-}
-
-void CountJpegColorSpace(
-    blink::BitmapImageMetrics::JpegColorSpace color_space) {
-  UMA_HISTOGRAM_ENUMERATION("Blink.ImageDecoders.Jpeg.ColorSpace", color_space);
-}
-
 // Rounds |size| to the smallest multiple of |alignment| that is greater than or
 // equal to |size|.
 // Note that base::bits::Align is not used here because the alignment is not
@@ -227,7 +161,7 @@ struct decoder_error_mgr {
 struct decoder_source_mgr {
   DISALLOW_NEW();
   struct jpeg_source_mgr pub;  // "public" fields for IJG library
-  JPEGImageReader* reader;
+  raw_ptr<JPEGImageReader> reader;
 };
 
 enum jstate {
@@ -374,12 +308,12 @@ class JPEGImageReader final {
     return true;
   }
 
-  void SetData(SegmentReader* data) {
-    if (data_.get() == data) {
+  void SetData(scoped_refptr<SegmentReader> data) {
+    if (data_ == data) {
       return;
     }
 
-    data_ = data;
+    data_ = std::move(data);
 
     // If a restart is needed, the next call to fillBuffer will read from the
     // new SegmentReader.
@@ -748,11 +682,11 @@ class JPEGImageReader final {
 
       case kJpegDone:
         // Finish decompression.
-        CountJpegArea(decoder_->Size());
-        CountJpegColorSpace(ExtractUMAJpegColorSpace(info_));
         if (info_.jpeg_color_space != JCS_GRAYSCALE &&
             decoder_->IsAllDataReceived()) {
-          UpdateJpegBppHistogram(decoder_->Size(), data_->size());
+          static constexpr char kType[] = "Jpeg";
+          ImageDecoder::UpdateBppHistogram<kType>(decoder_->Size(),
+                                                  data_->size());
         }
         return jpeg_finish_decompress(&info_);
     }
@@ -817,7 +751,7 @@ class JPEGImageReader final {
   }
 
   scoped_refptr<SegmentReader> data_;
-  JPEGImageDecoder* decoder_;
+  raw_ptr<JPEGImageDecoder> decoder_;
 
   // Input reading: True if we need to back up to restart_position_.
   bool needs_restart_;
@@ -923,9 +857,9 @@ bool JPEGImageDecoder::SetSize(unsigned width, unsigned height) {
   return true;
 }
 
-void JPEGImageDecoder::OnSetData(SegmentReader* data) {
+void JPEGImageDecoder::OnSetData(scoped_refptr<SegmentReader> data) {
   if (reader_) {
-    reader_->SetData(data);
+    reader_->SetData(std::move(data));
 
     // Changing YUV decoding mode is not allowed after decompression starts.
     if (reader_->HasStartedDecompression()) {
@@ -1339,7 +1273,7 @@ void JPEGImageDecoder::Decode(DecodingMode decoding_mode) {
 
   if (!reader_) {
     reader_ = std::make_unique<JPEGImageReader>(this, offset_);
-    reader_->SetData(data_.get());
+    reader_->SetData(data_);
   }
 
   // If we couldn't decode the image but have received all the data, decoding

@@ -10,6 +10,7 @@
 #include "build/buildflag.h"
 #include "build/chromeos_buildflags.h"
 #include "components/signin/public/base/signin_pref_names.h"
+#include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/base/test_signin_client.h"
 #include "components/signin/public/identity_manager/account_capabilities_test_mutator.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
@@ -75,6 +76,7 @@ class SigninManagerTest : public testing::Test,
                            /*pref_service=*/&prefs_,
                            &client_),
         observer_(identity_test_env_.identity_manager()) {
+    scoped_feature_list_.InitAndDisableFeature(switches::kUnoDesktop);
     RecreateSigninManager();
   }
 
@@ -82,6 +84,7 @@ class SigninManagerTest : public testing::Test,
   SigninManagerTest& operator=(const SigninManagerTest&) = delete;
 
   void RecreateSigninManager() {
+    // `profile` is not tested here.
     signin_manager_ =
         std::make_unique<SigninManager>(prefs_, *identity_manager(), client_);
   }
@@ -191,6 +194,7 @@ class SigninManagerTest : public testing::Test,
   IdentityTestEnvironment identity_test_env_;
   std::unique_ptr<SigninManager> signin_manager_;
   FakeIdentityManagerObserver observer_;
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 TEST_P(
@@ -378,15 +382,22 @@ TEST_P(SigninManagerTest,
 
   // Set Gaia accounts in the cookie to empty.
   identity_test_env()->SetCookieAccounts({});
-  EXPECT_NE(is_signout_allowed(),
-            identity_manager()->HasPrimaryAccount(ConsentLevel::kSignin));
-  if (is_signout_allowed()) {
-    ExpectUnconsentedPrimaryAccountClearedEvent(account);
-  } else {
-    EXPECT_EQ(0U, observer().events().size());
-  }
+  EXPECT_TRUE(identity_manager()->HasPrimaryAccount(ConsentLevel::kSignin));
+  EXPECT_EQ(0U, observer().events().size());
 }
 
+TEST_F(SigninManagerTest, UnconsentedPrimaryAccountRemovedCookiesEmpty) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(kPreventSignoutIfAccountValid);
+  // Prerequisite: add an unconsented primary account, incl. proper cookies.
+  AccountInfo account = MakeAccountAvailableWithCookies(kTestEmail);
+  ExpectUnconsentedPrimaryAccountSetEvent(account);
+
+  // Set Gaia accounts in the cookie to empty.
+  identity_test_env()->SetCookieAccounts({});
+  EXPECT_FALSE(identity_manager()->HasPrimaryAccount(ConsentLevel::kSignin));
+  ExpectUnconsentedPrimaryAccountClearedEvent(account);
+}
 #endif  // !BUILDFLAG(IS_CHROMEOS_LACROS)
 
 TEST_P(SigninManagerTest, UnconsentedPrimaryAccountDuringLoad) {
@@ -673,9 +684,9 @@ class SigninManagerSupervisedUserTest : public SigninManagerTest {
 
 TEST_F(SigninManagerSupervisedUserTest, SignoutOnCookiesDeletedNotAllowed) {
   base::test::ScopedFeatureList scoped_feature_list;
-
-  scoped_feature_list.InitAndEnableFeature(
-      supervised_user::kClearingCookiesKeepsSupervisedUsersSignedIn);
+  scoped_feature_list.InitWithFeatures(
+      {supervised_user::kClearingCookiesKeepsSupervisedUsersSignedIn},
+      {kPreventSignoutIfAccountValid});
   AddSupervisedAccount(ConsentLevel::kSignin);
   ASSERT_TRUE(identity_manager()->HasPrimaryAccount(ConsentLevel::kSignin));
   ASSERT_EQ(1U, observer().events().size());
@@ -689,9 +700,9 @@ TEST_F(SigninManagerSupervisedUserTest, SignoutOnCookiesDeletedNotAllowed) {
 
 TEST_F(SigninManagerSupervisedUserTest, SignoutOnCookiesDeletedAllowed) {
   base::test::ScopedFeatureList scoped_feature_list;
-
-  scoped_feature_list.InitAndDisableFeature(
-      supervised_user::kClearingCookiesKeepsSupervisedUsersSignedIn);
+  scoped_feature_list.InitWithFeatures(
+      {}, {supervised_user::kClearingCookiesKeepsSupervisedUsersSignedIn,
+           kPreventSignoutIfAccountValid});
   AddSupervisedAccount(ConsentLevel::kSignin);
   ASSERT_TRUE(identity_manager()->HasPrimaryAccount(ConsentLevel::kSignin));
   ASSERT_EQ(1U, observer().events().size());

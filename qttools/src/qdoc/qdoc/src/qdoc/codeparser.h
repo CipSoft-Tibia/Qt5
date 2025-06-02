@@ -49,10 +49,12 @@ QT_BEGIN_NAMESPACE
 #define COMMAND_QMLVALUETYPE QLatin1String("qmlvaluetype")
 #define COMMAND_QMLCLASS QLatin1String("qmlclass")
 #define COMMAND_QMLDEFAULT QLatin1String("qmldefault")
+#define COMMAND_QMLENUMERATORSFROM QLatin1String("qmlenumeratorsfrom")
 #define COMMAND_QMLINHERITS QLatin1String("inherits")
-#define COMMAND_QMLINSTANTIATES QLatin1String("instantiates")
+#define COMMAND_QMLINSTANTIATES QLatin1String("instantiates") // TODO Qt 7.0.0 - Remove: Deprecated since 6.8.
 #define COMMAND_QMLMETHOD QLatin1String("qmlmethod")
 #define COMMAND_QMLMODULE QLatin1String("qmlmodule")
+#define COMMAND_QMLNATIVETYPE QLatin1String("nativetype")
 #define COMMAND_QMLPROPERTY QLatin1String("qmlproperty")
 #define COMMAND_QMLPROPERTYGROUP QLatin1String("qmlpropertygroup")
 #define COMMAND_QMLREADONLY QLatin1String("readonly")
@@ -60,6 +62,7 @@ QT_BEGIN_NAMESPACE
 #define COMMAND_QMLSIGNAL QLatin1String("qmlsignal")
 #define COMMAND_QMLTYPE QLatin1String("qmltype")
 #define COMMAND_QTCMAKEPACKAGE QLatin1String("qtcmakepackage")
+#define COMMAND_QTCMAKETARGETITEM QLatin1String("qtcmaketargetitem")
 #define COMMAND_QTVARIABLE QLatin1String("qtvariable")
 #define COMMAND_REENTRANT QLatin1String("reentrant")
 #define COMMAND_REIMP QLatin1String("reimp")
@@ -86,6 +89,16 @@ class QString;
 class QDocDatabase;
 class CppCodeParser;
 
+struct UntiedDocumentation {
+    Doc documentation;
+    QStringList context;
+};
+
+struct TiedDocumentation {
+    Doc documentation;
+    Node* node;
+};
+
 class CodeParser
 {
 public:
@@ -93,10 +106,10 @@ public:
         COMMAND_ABSTRACT, COMMAND_DEFAULT, COMMAND_DEPRECATED, COMMAND_INGROUP,
         COMMAND_INMODULE, COMMAND_INPUBLICGROUP, COMMAND_INQMLMODULE, COMMAND_INTERNAL,
         COMMAND_MODULESTATE, COMMAND_NOAUTOLIST, COMMAND_NONREENTRANT, COMMAND_OBSOLETE,
-        COMMAND_PRELIMINARY, COMMAND_QMLABSTRACT, COMMAND_QMLDEFAULT, COMMAND_QMLINHERITS,
-        COMMAND_QMLREADONLY, COMMAND_QMLREQUIRED, COMMAND_QTCMAKEPACKAGE, COMMAND_QTVARIABLE,
-        COMMAND_REENTRANT, COMMAND_SINCE, COMMAND_STARTPAGE, COMMAND_SUBTITLE, COMMAND_THREADSAFE,
-        COMMAND_TITLE, COMMAND_WRAPPER, COMMAND_ATTRIBUTION,
+        COMMAND_PRELIMINARY, COMMAND_QMLABSTRACT, COMMAND_QMLDEFAULT, COMMAND_QMLENUMERATORSFROM, COMMAND_QMLINHERITS,
+        COMMAND_QMLREADONLY, COMMAND_QMLREQUIRED, COMMAND_QTCMAKEPACKAGE, COMMAND_QTCMAKETARGETITEM,
+        COMMAND_QTVARIABLE, COMMAND_REENTRANT, COMMAND_SINCE, COMMAND_STARTPAGE, COMMAND_SUBTITLE,
+        COMMAND_THREADSAFE, COMMAND_TITLE, COMMAND_WRAPPER, COMMAND_ATTRIBUTION,
     };
 
 public:
@@ -108,10 +121,6 @@ public:
     virtual QString language() = 0;
     virtual QStringList sourceFileNameFilter() = 0;
     virtual void parseSourceFile(const Location &location, const QString &filePath, CppCodeParser& cpp_code_parser) = 0;
-    virtual Node *parseFnArg(const Location &, const QString &, const QString & = QString())
-    {
-        return nullptr;
-    }
 
     static void initialize();
     static void terminate();

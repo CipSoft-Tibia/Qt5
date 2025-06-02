@@ -1,8 +1,8 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef Q_PROTOBUF_MESSAGE_P_H
-#define Q_PROTOBUF_MESSAGE_P_H
+#ifndef QPROTOBUFMESSAGE_P_H
+#define QPROTOBUFMESSAGE_P_H
 
 //
 //  W A R N I N G
@@ -15,47 +15,43 @@
 // We mean it.
 //
 
-#include "qprotobufmessage.h"
+#include <QtProtobuf/qprotobufmessage.h>
+#include <QtProtobuf/qprotobufpropertyordering.h>
+#include <QtProtobuf/qtprotobufexports.h>
 
-#include <QtProtobuf/qtprotobufglobal.h>
-
-#include <QtCore/qtconfigmacros.h>
 #include <QtCore/qhash.h>
-#include <QtCore/private/qglobal_p.h>
+#include <QtCore/qshareddata.h>
 
 #include <optional>
 
 QT_BEGIN_NAMESPACE
 
+struct QMetaObject;
 class QMetaProperty;
 
-class QProtobufMessagePrivate
+class Q_PROTOBUF_EXPORT QProtobufMessagePrivate : public QSharedData
 {
 public:
     QProtobufMessagePrivate() = default;
-    QProtobufMessagePrivate(const QProtobufMessagePrivate &other)
-        : unknownEntries(other.unknownEntries),
-          metaObject(other.metaObject),
-          ref(1)
-    {
-    }
+    explicit QProtobufMessagePrivate(const QMetaObject *metaObject,
+                                     const QtProtobufPrivate::QProtobufPropertyOrdering *ordering);
+    QProtobufMessagePrivate(const QProtobufMessagePrivate &other) = default;
     QProtobufMessagePrivate(QProtobufMessagePrivate &&other) = delete;
     QProtobufMessagePrivate &operator=(const QProtobufMessagePrivate &other) = delete;
     QProtobufMessagePrivate &operator=(QProtobufMessagePrivate &&other) = delete;
-    ~QProtobufMessagePrivate() = default;
+    virtual ~QProtobufMessagePrivate();
 
     // QHash of form <field index, data>.
     QHash<qint32, QByteArrayList> unknownEntries;
     const QMetaObject *metaObject = nullptr;
+    const QtProtobufPrivate::QProtobufPropertyOrdering *ordering = nullptr;
 
-    QAtomicInt ref = {1};
-
-    int getPropertyIndex(QAnyStringView propertyName) const;
-    void storeUnknownEntry(QByteArrayView entry, int fieldNumber);
+    int propertyIndex(QAnyStringView propertyName) const;
+    static void storeUnknownEntry(QProtobufMessage *message, QByteArrayView entry, int fieldNumber);
 
     std::optional<QMetaProperty> metaProperty(QAnyStringView name) const;
     std::optional<QMetaProperty>
-    metaProperty(QtProtobufPrivate::QProtobufPropertyOrderingInfo ord) const;
+    metaProperty(QtProtobufPrivate::QProtobufFieldInfo ord) const;
 
     static QProtobufMessagePrivate *get(QProtobufMessage *message) { return message->d_func(); }
     static const QProtobufMessagePrivate *get(const QProtobufMessage *message)
@@ -66,4 +62,4 @@ public:
 
 QT_END_NAMESPACE
 
-#endif // Q_PROTOBUF_MESSAGE_P_H
+#endif // QPROTOBUFMESSAGE_P_H

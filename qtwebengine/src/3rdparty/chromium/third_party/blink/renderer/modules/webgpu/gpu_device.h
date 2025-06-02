@@ -64,7 +64,6 @@ class V8GPUErrorFilter;
 enum class GPUSingletonWarning {
   kNonPreferredFormat,
   kDepthKey,
-  kTimestampArray,
   kCount,  // Must be last
 };
 
@@ -92,7 +91,7 @@ class GPUDevice final : public EventTarget,
   // gpu_device.idl
   GPUAdapter* adapter() const;
   GPUSupportedFeatures* features() const;
-  GPUSupportedLimits* limits() const { return limits_; }
+  GPUSupportedLimits* limits() const { return limits_.Get(); }
   ScriptPromise lost(ScriptState* script_state);
 
   GPUQueue* queue();
@@ -188,14 +187,14 @@ class GPUDevice final : public EventTarget,
                                WGPUErrorType type,
                                const char* message);
 
-  void OnCreateRenderPipelineAsyncCallback(ScriptPromiseResolver* resolver,
-                                           absl::optional<String> label,
+  void OnCreateRenderPipelineAsyncCallback(absl::optional<String> label,
+                                           ScriptPromiseResolver* resolver,
                                            WGPUCreatePipelineAsyncStatus status,
                                            WGPURenderPipeline render_pipeline,
                                            const char* message);
   void OnCreateComputePipelineAsyncCallback(
-      ScriptPromiseResolver* resolver,
       absl::optional<String> label,
+      ScriptPromiseResolver* resolver,
       WGPUCreatePipelineAsyncStatus status,
       WGPUComputePipeline compute_pipeline,
       const char* message);

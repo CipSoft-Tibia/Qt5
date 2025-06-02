@@ -62,6 +62,7 @@ class HelpBubbleView : public views::BubbleDialogDelegateView {
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kHelpBubbleElementIdForTesting);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kDefaultButtonIdForTesting);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kFirstNonDefaultButtonIdForTesting);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kCloseButtonIdForTesting);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kBodyTextIdForTesting);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kTitleTextIdForTesting);
 
@@ -110,10 +111,11 @@ class HelpBubbleView : public views::BubbleDialogDelegateView {
   absl::optional<gfx::Rect> local_anchor_bounds_;
 
   raw_ptr<views::ImageView> icon_view_ = nullptr;
-  std::vector<views::Label*> labels_;
+  std::vector<raw_ptr<views::Label, VectorExperimental>> labels_;
 
   // If the bubble has buttons, it must be focusable.
-  std::vector<views::MdTextButton*> non_default_buttons_;
+  std::vector<raw_ptr<views::MdTextButton, VectorExperimental>>
+      non_default_buttons_;
   raw_ptr<views::MdTextButton> default_button_ = nullptr;
   raw_ptr<views::Button> close_button_ = nullptr;
 

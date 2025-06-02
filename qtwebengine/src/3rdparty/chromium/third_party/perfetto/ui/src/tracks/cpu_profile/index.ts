@@ -14,19 +14,28 @@
 
 
 import {searchSegment} from '../../base/binary_search';
+import {duration, Time, time} from '../../base/time';
 import {Actions} from '../../common/actions';
-import {hslForSlice} from '../../common/colorizer';
-import {LONG, NUM} from '../../common/query_result';
-import {duration, Time, time} from '../../common/time';
+import {colorForSample} from '../../common/colorizer';
 import {TrackData} from '../../common/track_data';
-import {
-  TrackController,
-} from '../../controller/track_controller';
+import {TimelineFetcher} from '../../common/track_helper';
 import {globals} from '../../frontend/globals';
-import {cachedHsluvToHex} from '../../frontend/hsluv_cache';
+import {PanelSize} from '../../frontend/panel';
 import {TimeScale} from '../../frontend/time_scale';
-import {NewTrackArgs, Track} from '../../frontend/track';
-import {Plugin, PluginContext, PluginInfo} from '../../public';
+import {
+  EngineProxy,
+  Plugin,
+  PluginContext,
+  PluginContextTrace,
+  PluginDescriptor,
+  Track,
+} from '../../public';
+import {
+  LONG,
+  NUM,
+  NUM_NULL,
+  STR_NULL,
+} from '../../trace_processor/query_result';
 
 const BAR_HEIGHT = 3;
 const MARGIN_TOP = 4.5;
@@ -34,18 +43,29 @@ const RECT_HEIGHT = 30.5;
 
 export const CPU_PROFILE_TRACK_KIND = 'CpuProfileTrack';
 
-export interface Data extends TrackData {
+interface Data extends TrackData {
   ids: Float64Array;
   tsStarts: BigInt64Array;
   callsiteId: Uint32Array;
 }
 
-export interface Config {
-  utid: number;
-}
+class CpuProfileTrack implements Track {
+  private centerY = this.getHeight() / 2 + BAR_HEIGHT;
+  private markerWidth = (this.getHeight() - MARGIN_TOP - BAR_HEIGHT) / 2;
+  private hoveredTs: time|undefined = undefined;
+  private fetcher = new TimelineFetcher<Data>(this.onBoundsChange.bind(this));
+  private engine: EngineProxy;
+  private utid: number;
 
-class CpuProfileTrackController extends TrackController<Config, Data> {
-  static readonly kind = CPU_PROFILE_TRACK_KIND;
+  constructor(engine: EngineProxy, utid: number) {
+    this.engine = engine;
+    this.utid = utid;
+  }
+
+  async onUpdate(): Promise<void> {
+    await this.fetcher.requestDataForCurrentTime();
+  }
+
   async onBoundsChange(start: time, end: time, resolution: duration):
       Promise<Data> {
     const query = `select
@@ -53,10 +73,10 @@ class CpuProfileTrackController extends TrackController<Config, Data> {
         ts,
         callsite_id as callsiteId
       from cpu_profile_stack_sample
-      where utid = ${this.config.utid}
+      where utid = ${this.utid}
       order by ts`;
 
-    const result = await this.query(query);
+    const result = await this.engine.query(query);
     const numRows = result.numRows();
     const data: Data = {
       start,
@@ -77,37 +97,20 @@ class CpuProfileTrackController extends TrackController<Config, Data> {
 
     return data;
   }
-}
 
-function colorForSample(callsiteId: number, isHovered: boolean): string {
-  const [hue, saturation, lightness] =
-      hslForSlice(String(callsiteId), isHovered);
-  return cachedHsluvToHex(hue, saturation, lightness);
-}
-
-class CpuProfileTrack extends Track<Config, Data> {
-  static readonly kind = CPU_PROFILE_TRACK_KIND;
-  static create(args: NewTrackArgs): CpuProfileTrack {
-    return new CpuProfileTrack(args);
-  }
-
-  private centerY = this.getHeight() / 2 + BAR_HEIGHT;
-  private markerWidth = (this.getHeight() - MARGIN_TOP - BAR_HEIGHT) / 2;
-  private hoveredTs: time|undefined = undefined;
-
-  constructor(args: NewTrackArgs) {
-    super(args);
+  async onDestroy(): Promise<void> {
+    this.fetcher.dispose();
   }
 
   getHeight() {
     return MARGIN_TOP + RECT_HEIGHT - 1;
   }
 
-  renderCanvas(ctx: CanvasRenderingContext2D): void {
+  render(ctx: CanvasRenderingContext2D, _size: PanelSize): void {
     const {
       visibleTimeScale: timeScale,
-    } = globals.frontendLocalState;
-    const data = this.data();
+    } = globals.timeline;
+    const data = this.fetcher.data;
 
     if (data === undefined) return;
 
@@ -177,11 +180,11 @@ class CpuProfileTrack extends Track<Config, Data> {
   }
 
   onMouseMove({x, y}: {x: number, y: number}) {
-    const data = this.data();
+    const data = this.fetcher.data;
     if (data === undefined) return;
     const {
       visibleTimeScale: timeScale,
-    } = globals.frontendLocalState;
+    } = globals.timeline;
     const time = timeScale.pxToHpTime(x);
     const [left, right] = searchSegment(data.tsStarts, time.toTime());
     const index = this.findTimestampIndex(left, timeScale, data, x, y, right);
@@ -194,11 +197,11 @@ class CpuProfileTrack extends Track<Config, Data> {
   }
 
   onMouseClick({x, y}: {x: number, y: number}) {
-    const data = this.data();
+    const data = this.fetcher.data;
     if (data === undefined) return false;
     const {
       visibleTimeScale: timeScale,
-    } = globals.frontendLocalState;
+    } = globals.timeline;
 
     const time = timeScale.pxToHpTime(x);
     const [left, right] = searchSegment(data.tsStarts, time.toTime());
@@ -210,7 +213,7 @@ class CpuProfileTrack extends Track<Config, Data> {
       const ts = Time.fromRaw(data.tsStarts[index]);
 
       globals.makeSelection(
-          Actions.selectCpuProfileSample({id, utid: this.config.utid, ts}));
+          Actions.selectCpuProfileSample({id, utid: this.utid, ts}));
       return true;
     }
     return false;
@@ -245,13 +248,45 @@ class CpuProfileTrack extends Track<Config, Data> {
 }
 
 class CpuProfile implements Plugin {
-  onActivate(ctx: PluginContext): void {
-    ctx.registerTrackController(CpuProfileTrackController);
-    ctx.registerTrack(CpuProfileTrack);
+  onActivate(_ctx: PluginContext): void {}
+
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    const result = await ctx.engine.query(`
+      select
+        utid,
+        tid,
+        upid,
+        thread.name as threadName
+      from
+        thread
+        join (select utid
+            from cpu_profile_stack_sample group by utid
+        ) using(utid)
+        left join process using(upid)
+      where utid != 0
+      group by utid`);
+
+    const it = result.iter({
+      utid: NUM,
+      upid: NUM_NULL,
+      tid: NUM_NULL,
+      threadName: STR_NULL,
+    });
+    for (; it.valid(); it.next()) {
+      const utid = it.utid;
+      const threadName = it.threadName;
+      ctx.registerTrack({
+        uri: `perfetto.CpuProfile#${utid}`,
+        displayName: `${threadName} (CPU Stack Samples)`,
+        kind: CPU_PROFILE_TRACK_KIND,
+        utid,
+        track: () => new CpuProfileTrack(ctx.engine, utid),
+      });
+    }
   }
 }
 
-export const plugin: PluginInfo = {
+export const plugin: PluginDescriptor = {
   pluginId: 'perfetto.CpuProfile',
   plugin: CpuProfile,
 };

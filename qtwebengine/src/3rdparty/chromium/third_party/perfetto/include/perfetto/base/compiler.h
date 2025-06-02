@@ -76,9 +76,12 @@
 
 #if defined(__GNUC__) || defined(__clang__)
 #define PERFETTO_POPCOUNT(x) __builtin_popcountll(x)
-#else
+#elif defined(__AVX__) || defined(__SSE4_2__) || defined(__POPCNT__)
 #include <intrin.h>
 #define PERFETTO_POPCOUNT(x) __popcnt64(x)
+#else
+#include <bit>
+#define PERFETTO_POPCOUNT(x) std::popcount(x)
 #endif
 
 #if defined(__clang__)
@@ -143,11 +146,7 @@ extern "C" void __asan_unpoison_memory_region(void const volatile*, size_t);
 #endif
 
 // Macro for telling -Wimplicit-fallthrough that a fallthrough is intentional.
-#if defined(__clang__)
-#define PERFETTO_FALLTHROUGH [[clang::fallthrough]]
-#else
-#define PERFETTO_FALLTHROUGH
-#endif
+#define PERFETTO_FALLTHROUGH [[fallthrough]]
 
 namespace perfetto {
 namespace base {

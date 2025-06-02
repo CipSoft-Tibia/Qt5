@@ -5,7 +5,7 @@
 
 import sys
 
-from crossbench.cli import CrossBenchCLI
+from crossbench.cli.cli import CrossBenchCLI
 
 if __name__ == "__main__":
   argv = sys.argv

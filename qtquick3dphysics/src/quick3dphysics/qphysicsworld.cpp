@@ -73,7 +73,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PhysicsWorld::typicalLength
+    \qmlproperty real PhysicsWorld::typicalLength
     This property defines the approximate size of objects in the simulation. This is used to
     estimate certain length-related tolerances. Objects much smaller or much larger than this
     size may not behave properly. The default value is \c 100.
@@ -82,7 +82,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PhysicsWorld::typicalSpeed
+    \qmlproperty real PhysicsWorld::typicalSpeed
     This property defines the typical magnitude of velocities of objects in simulation. This is used
     to estimate whether a contact should be treated as bouncing or resting based on its impact
     velocity, and a kinetic energy threshold below which the simulation may put objects to sleep.
@@ -94,7 +94,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PhysicsWorld::defaultDensity
+    \qmlproperty real PhysicsWorld::defaultDensity
     This property defines the default density of dynamic objects, measured in kilograms per cubic
     unit. This is equal to the weight of a cube with side \c 1.
 
@@ -114,7 +114,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PhysicsWorld::minimumTimestep
+    \qmlproperty real PhysicsWorld::minimumTimestep
     This property defines the minimum simulation timestep in milliseconds. The default value is
     \c 16.667 which corresponds to \c 60 frames per second.
 
@@ -122,7 +122,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PhysicsWorld::maximumTimestep
+    \qmlproperty real PhysicsWorld::maximumTimestep
     This property defines the maximum simulation timestep in milliseconds. The default value is
     \c 33.333 which corresponds to \c 30 frames per second.
 
@@ -593,7 +593,7 @@ void QPhysicsWorld::setupDebugMaterials(QQuick3DNode *sceneNode)
     // These colors match the indices of DebugDrawBodyType enum
     for (auto color : { QColorConstants::Svg::chartreuse, QColorConstants::Svg::cyan,
                         QColorConstants::Svg::lightsalmon, QColorConstants::Svg::red,
-                        QColorConstants::Svg::black }) {
+                        QColorConstants::Svg::blueviolet, QColorConstants::Svg::black }) {
         auto debugMaterial = new QQuick3DDefaultMaterial();
         debugMaterial->setLineWidth(lineWidth);
         debugMaterial->setParentItem(sceneNode);
@@ -637,15 +637,12 @@ void QPhysicsWorld::updateDebugDraw()
         const auto &collisionShapes = node->frontendNode->getCollisionShapesList();
         const int materialIdx = static_cast<int>(node->getDebugDrawBodyType());
         const int length = collisionShapes.length();
-        if (node->shapes.length() < length)
-            continue; // CharacterController has shapes, but not PhysX shapes
         for (int idx = 0; idx < length; idx++) {
             const auto collisionShape = collisionShapes[idx];
 
             if (!m_forceDebugDraw && !collisionShape->enableDebugDraw())
                 continue;
 
-            const auto physXShape = node->shapes[idx];
             DebugModelHolder &holder =
                 m_collisionShapeDebugModels[std::make_pair(collisionShape, node)];
             auto &model = holder.model;
@@ -654,8 +651,6 @@ void QPhysicsWorld::updateDebugDraw()
 
             m_hasIndividualDebugDraw =
                     m_hasIndividualDebugDraw || collisionShape->enableDebugDraw();
-
-            auto localPose = physXShape->getLocalPose();
 
             // Create/Update debug view infrastructure
             if (!model) {
@@ -667,6 +662,8 @@ void QPhysicsWorld::updateDebugDraw()
                 model->setCastsReflections(false);
             }
 
+            model->setVisible(true);
+
             { // update or set material
                 auto material = m_debugMaterials[materialIdx];
                 QQmlListReference materialsRef(model, "materials");
@@ -675,6 +672,37 @@ void QPhysicsWorld::updateDebugDraw()
                     materialsRef.append(material);
                 }
             }
+
+            // Special handling of CharacterController since it has collision shapes,
+            // but not PhysX shapes
+            if (qobject_cast<QCharacterController *>(node->frontendNode)) {
+                QCapsuleShape *capsuleShape = qobject_cast<QCapsuleShape *>(collisionShape);
+                if (!capsuleShape)
+                    continue;
+
+                const float radius = capsuleShape->diameter() * 0.5;
+                const float halfHeight = capsuleShape->height() * 0.5;
+
+                if (!qFuzzyCompare(radius, holder.radius())
+                    || !qFuzzyCompare(halfHeight, holder.halfHeight())) {
+                    auto geom = QDebugDrawHelper::generateCapsuleGeometry(radius, halfHeight);
+                    geom->setParent(model);
+                    model->setGeometry(geom);
+                    holder.setRadius(radius);
+                    holder.setHalfHeight(halfHeight);
+                }
+
+                model->setPosition(node->frontendNode->scenePosition());
+                model->setRotation(node->frontendNode->sceneRotation()
+                                   * QQuaternion::fromEulerAngles(0, 0, 90));
+                continue;
+            }
+
+            if (node->shapes.length() < length)
+                continue;
+
+            const auto physXShape = node->shapes[idx];
+            auto localPose = physXShape->getLocalPose();
 
             switch (physXShape->getGeometryType()) {
             case physx::PxGeometryType::eBOX: {
@@ -835,8 +863,6 @@ void QPhysicsWorld::updateDebugDraw()
                 // should not happen
                 Q_UNREACHABLE();
             }
-
-            model->setVisible(true);
 
             auto globalPose = node->getGlobalPose();
             auto finalPose = globalPose.transform(localPose);

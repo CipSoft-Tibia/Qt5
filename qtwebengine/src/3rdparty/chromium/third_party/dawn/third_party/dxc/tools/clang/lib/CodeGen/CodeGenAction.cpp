@@ -561,7 +561,7 @@ BackendConsumer::DxilDiagHandler(const llvm::DiagnosticInfoDxil &D) {
     auto *func = D.getFunction();
     if (DiagClient && func)
       DiagClient->setPrefix("Function: " + func->getName().str());
-    
+
     // Clang will de-duplicate this so that it only emits once.
     Diags.Report(
         Diags.getCustomDiagID(DiagnosticsEngine::Note,

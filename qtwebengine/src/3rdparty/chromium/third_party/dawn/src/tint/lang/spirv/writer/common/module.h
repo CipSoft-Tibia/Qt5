@@ -1,27 +1,41 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_SPIRV_WRITER_COMMON_MODULE_H_
 #define SRC_TINT_LANG_SPIRV_WRITER_COMMON_MODULE_H_
 
 #include <cstdint>
 #include <functional>
-#include <unordered_set>
+#include <string>
 #include <vector>
 
 #include "src/tint/lang/spirv/writer/common/function.h"
 #include "src/tint/lang/spirv/writer/common/instruction.h"
+#include "src/tint/utils/containers/hashset.h"
 
 namespace tint::spirv::writer {
 
@@ -31,8 +45,26 @@ class Module {
     /// Constructor
     Module();
 
+    /// Copy constructor
+    /// @param other the other Module to copy
+    Module(const Module& other);
+
+    /// Move constructor
+    /// @param other the other Module to move
+    Module(Module&& other);
+
     /// Destructor
     ~Module();
+
+    /// Copy-assignment operator
+    /// @param other the other Module to copy
+    /// @returns this Module
+    Module& operator=(const Module& other);
+
+    /// Move-assignment operator
+    /// @param other the other Module to move
+    /// @returns this Module
+    Module& operator=(Module&& other);
 
     /// @returns the number of uint32_t's needed to make up the results
     uint32_t TotalSize() const;
@@ -141,6 +173,9 @@ class Module {
     /// @returns the functions
     const std::vector<Function>& Functions() const { return functions_; }
 
+    /// @returns the SPIR-V code as a vector of uint32_t
+    std::vector<uint32_t>& Code() { return code_; }
+
   private:
     uint32_t next_id_ = 1;
     InstructionList capabilities_;
@@ -153,7 +188,9 @@ class Module {
     InstructionList types_;
     InstructionList annotations_;
     std::vector<Function> functions_;
-    std::unordered_set<uint32_t> capability_set_;
+    Hashset<uint32_t, 8> capability_set_;
+    Hashset<std::string, 8> extension_set_;
+    std::vector<uint32_t> code_;
 };
 
 }  // namespace tint::spirv::writer

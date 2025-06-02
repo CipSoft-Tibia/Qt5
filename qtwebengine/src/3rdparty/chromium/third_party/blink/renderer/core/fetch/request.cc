@@ -140,7 +140,8 @@ static bool AreAnyMembersPresent(const RequestInit* init) {
 static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
                                      ExceptionState& exception_state,
                                      v8::Local<v8::Value> body,
-                                     String& content_type) {
+                                     String& content_type,
+                                     uint64_t& body_byte_length) {
   DCHECK(!body->IsNull());
   BodyStreamBuffer* return_buffer = nullptr;
 
@@ -148,6 +149,7 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
   v8::Isolate* isolate = script_state->GetIsolate();
 
   if (Blob* blob = V8Blob::ToWrappable(isolate, body)) {
+    body_byte_length = blob->size();
     return_buffer = BodyStreamBuffer::Create(
         script_state,
         MakeGarbageCollected<BlobBytesConsumer>(execution_context,
@@ -168,6 +170,7 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
           "The provided ArrayBuffer exceeds the maximum supported size");
       return nullptr;
     }
+    body_byte_length = array_buffer->ByteLength();
     return_buffer = BodyStreamBuffer::Create(
         script_state, MakeGarbageCollected<FormDataBytesConsumer>(array_buffer),
         nullptr /* AbortSignal */, /*cached_metadata_handler=*/nullptr);
@@ -186,6 +189,7 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
           "The provided ArrayBufferView exceeds the maximum supported size");
       return nullptr;
     }
+    body_byte_length = array_buffer_view->byteLength();
     return_buffer = BodyStreamBuffer::Create(
         script_state,
         MakeGarbageCollected<FormDataBytesConsumer>(array_buffer_view),
@@ -196,6 +200,7 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
     // FormDataEncoder::generateUniqueBoundaryString.
     content_type = AtomicString("multipart/form-data; boundary=") +
                    form_data->Boundary().data();
+    body_byte_length = form_data->SizeInBytes();
     return_buffer = BodyStreamBuffer::Create(
         script_state,
         MakeGarbageCollected<FormDataBytesConsumer>(execution_context,
@@ -205,6 +210,7 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
                  V8URLSearchParams::ToWrappable(isolate, body)) {
     scoped_refptr<EncodedFormData> form_data =
         url_search_params->ToEncodedFormData();
+    body_byte_length = form_data->SizeInBytes();
     return_buffer = BodyStreamBuffer::Create(
         script_state,
         MakeGarbageCollected<FormDataBytesConsumer>(execution_context,
@@ -238,6 +244,7 @@ static BodyStreamBuffer* ExtractBody(ScriptState* script_state,
     if (exception_state.HadException())
       return nullptr;
 
+    body_byte_length = string.length();
     return_buffer = BodyStreamBuffer::Create(
         script_state, MakeGarbageCollected<FormDataBytesConsumer>(string),
         nullptr /* AbortSignal */, /*cached_metadata_handler=*/nullptr);
@@ -571,6 +578,12 @@ Request* Request::CreateRequestWithRequestOrString(
           " in secure contexts.");
       return nullptr;
     }
+    if (origin->IsOpaque()) {
+      exception_state.ThrowTypeError(
+          "sharedStorageWritable: sharedStorage operations are not available"
+          " for opaque origins.");
+      return nullptr;
+    }
     request->SetSharedStorageWritable(init->sharedStorageWritable());
     if (init->sharedStorageWritable()) {
       UseCounter::Count(
@@ -611,8 +624,8 @@ Request* Request::CreateRequestWithRequestOrString(
 
     network::mojom::blink::TrustTokenParams params;
     if (!ConvertTrustTokenToMojomAndCheckPermissions(
-            *init->privateToken(), execution_context, &exception_state,
-            &params)) {
+            *init->privateToken(), GetPSTFeatures(*execution_context),
+            &exception_state, &params)) {
       // Whenever parsing the trustToken argument fails, we expect a suitable
       // exception to be thrown.
       DCHECK(exception_state.HadException());
@@ -643,24 +656,15 @@ Request* Request::CreateRequestWithRequestOrString(
             exception_state));
   }
 
-  AbortSignal* request_signal = nullptr;
-  if (RuntimeEnabledFeatures::AbortSignalAnyEnabled()) {
-    // "Let  signals  be [|signal|] if  signal  is non-null; otherwise []."
-    HeapVector<Member<AbortSignal>> signals;
-    if (signal) {
-      signals.push_back(signal);
-    }
-    // "Set |r|'s signal to the result of creating a new  dependent abort signal
-    // from |signals|".
-    request_signal = MakeGarbageCollected<AbortSignal>(script_state, signals);
-  } else {
-    request_signal =
-        MakeGarbageCollected<AbortSignal>(ExecutionContext::From(script_state));
-    // "If |signal| is not null, then make |r|’s signal follow |signal|."
-    if (signal) {
-      request_signal->Follow(script_state, signal);
-    }
+  // "Let  signals  be [|signal|] if  signal  is non-null; otherwise []."
+  HeapVector<Member<AbortSignal>> signals;
+  if (signal) {
+    signals.push_back(signal);
   }
+  // "Set |r|'s signal to the result of creating a new dependent abort signal
+  // from |signals|".
+  auto* request_signal =
+      MakeGarbageCollected<AbortSignal>(script_state, signals);
 
   // "Let |r| be a new Request object associated with |request| and a new
   // Headers object whose guard is "request"."
@@ -709,6 +713,8 @@ Request* Request::CreateRequestWithRequestOrString(
   //   Request object, and null otherwise."
   BodyStreamBuffer* input_body =
       input_request ? input_request->BodyBuffer() : nullptr;
+  uint64_t input_body_byte_length =
+      input_request ? input_request->BodyBufferByteLength() : 0;
 
   // "If either |init|["body"] exists and is non-null or |inputBody| is
   // non-null, and |request|'s method is `GET` or `HEAD`, throw a TypeError.
@@ -725,6 +731,7 @@ Request* Request::CreateRequestWithRequestOrString(
 
   // "Let |body| be |inputBody|."
   BodyStreamBuffer* body = input_body;
+  uint64_t body_byte_length = input_body_byte_length;
 
   // "If |init|["body"] exists and is non-null, then:"
   if (!init_body.IsEmpty() && !init_body->IsNull()) {
@@ -743,7 +750,8 @@ Request* Request::CreateRequestWithRequestOrString(
     // "Otherwise, set |body| and |Content-Type| to the result of extracting
     //  init["body"]."
     String content_type;
-    body = ExtractBody(script_state, exception_state, init_body, content_type);
+    body = ExtractBody(script_state, exception_state, init_body, content_type,
+                       body_byte_length);
     // "If |Content-Type| is non-null and |this|'s header's header list
     //  does not contain `Content-Type`, then append
     //   `Content-Type`/|Content-Type| to |this|'s headers object.
@@ -795,7 +803,7 @@ Request* Request::CreateRequestWithRequestOrString(
 
   // "Set |this|'s request's body to |body|.
   if (body)
-    r->request_->SetBuffer(body);
+    r->request_->SetBuffer(body, body_byte_length);
 
   // "Set |r|'s MIME type to the result of extracting a MIME type from |r|'s
   // request's header list."
@@ -813,7 +821,7 @@ Request* Request::CreateRequestWithRequestOrString(
     input_request->request_->SetBuffer(dummy_stream);
     // "Let |reader| be the result of getting reader from |dummyStream|."
     // "Read all bytes from |dummyStream| with |reader|."
-    input_request->BodyBuffer()->CloseAndLockAndDisturb();
+    input_request->BodyBuffer()->CloseAndLockAndDisturb(exception_state);
   }
 
   // "Return |r|."
@@ -1053,23 +1061,19 @@ Request* Request::clone(ScriptState* script_state,
     return nullptr;
   Headers* headers = Headers::Create(request->HeaderList());
   headers->SetGuard(headers_->GetGuard());
-  AbortSignal* signal = nullptr;
-  if (RuntimeEnabledFeatures::AbortSignalAnyEnabled()) {
-    HeapVector<Member<AbortSignal>> signals;
-    CHECK(signal_);
-    signals.push_back(signal_);
-    signal = MakeGarbageCollected<AbortSignal>(script_state, signals);
-  } else {
-    signal =
-        MakeGarbageCollected<AbortSignal>(ExecutionContext::From(script_state));
-    signal->Follow(script_state, signal_);
-  }
+
+  HeapVector<Member<AbortSignal>> signals;
+  CHECK(signal_);
+  signals.push_back(signal_);
+  auto* signal = MakeGarbageCollected<AbortSignal>(script_state, signals);
+
   return MakeGarbageCollected<Request>(script_state, request, headers, signal);
 }
 
-FetchRequestData* Request::PassRequestData(ScriptState* script_state) {
+FetchRequestData* Request::PassRequestData(ScriptState* script_state,
+                                           ExceptionState& exception_state) {
   DCHECK(!IsBodyUsed());
-  FetchRequestData* data = request_->Pass(script_state);
+  FetchRequestData* data = request_->Pass(script_state, exception_state);
   // |data|'s buffer('s js wrapper) has no retainer, but it's OK because
   // the only caller is the fetch function and it uses the body buffer
   // immediately.

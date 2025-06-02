@@ -1,8 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QT_NO_HTTP
-
 #include <qoauth2authorizationcodeflow.h>
 #include <private/qoauth2authorizationcodeflow_p.h>
 
@@ -14,6 +12,8 @@
 #include <qjsondocument.h>
 #include <qauthenticator.h>
 #include <qoauthhttpserverreplyhandler.h>
+
+#include <QtCore/qcryptographichash.h>
 
 #include <functional>
 
@@ -36,6 +36,10 @@ using namespace Qt::StringLiterals;
     {Authorization Code Grant} flow, which is used both to obtain and
     to refresh access tokens. It is a redirection-based flow so the
     user will need access to a web browser.
+
+    As a redirection-based flow this class requires a proper
+    reply handler to be set. See \l {Qt OAuth2 Overview},
+    QOAuthHttpServerReplyHandler, and QOAuthUriSchemeReplyHandler.
 */
 
 /*!
@@ -51,7 +55,7 @@ using namespace Qt::StringLiterals;
 QOAuth2AuthorizationCodeFlowPrivate::QOAuth2AuthorizationCodeFlowPrivate(
         const QUrl &authorizationUrl, const QUrl &accessTokenUrl, const QString &clientIdentifier,
         QNetworkAccessManager *manager) :
-    QAbstractOAuth2Private(qMakePair(clientIdentifier, QString()), authorizationUrl, manager),
+    QAbstractOAuth2Private(std::make_pair(clientIdentifier, QString()), authorizationUrl, manager),
     accessTokenUrl(accessTokenUrl)
 {
     responseType = QStringLiteral("code");
@@ -123,7 +127,7 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_handleCallback(const QVariantMap &d
 
     QVariantMap copy(data);
     copy.remove(Key::code);
-    extraTokens = copy;
+    setExtraTokens(copy);
     q->requestAccessToken(code);
 }
 
@@ -162,11 +166,10 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFinished(const QV
     if (!scope.isEmpty())
         q->setScope(scope);
 
-    const QDateTime currentDateTime = QDateTime::currentDateTime();
-    if (expiresIn > 0 && currentDateTime.secsTo(expiresAt) != expiresIn) {
-        expiresAt = currentDateTime.addSecs(expiresIn);
-        Q_EMIT q->expirationAtChanged(expiresAt);
-    }
+    if (expiresIn > 0)
+        setExpiresAt(QDateTime::currentDateTimeUtc().addSecs(expiresIn));
+    else
+        setExpiresAt(QDateTime());
 
     QVariantMap copy(values);
     copy.remove(Key::accessToken);
@@ -174,7 +177,9 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFinished(const QV
     copy.remove(Key::refreshToken);
     copy.remove(Key::scope);
     copy.remove(Key::tokenType);
-    extraTokens.insert(copy);
+    QVariantMap newExtraTokens = extraTokens;
+    newExtraTokens.insert(copy);
+    setExtraTokens(newExtraTokens);
 
     setStatus(QAbstractOAuth::Status::Granted);
 }
@@ -206,6 +211,44 @@ void QOAuth2AuthorizationCodeFlowPrivate::_q_authenticate(QNetworkReply *reply,
             authenticator->setPassword(QString());
         }
     }
+}
+
+/*
+    Creates and returns a new PKCE 'code_challenge', and stores the
+    underlying 'code_verifier' that was used to compute it.
+
+    The PKCE flow involves two parts:
+    1. Authorization request: include the 'code_challenge' which
+       is computed from the 'code_verifier'.
+    2. Access token request: include the original 'code_verifier'.
+
+    With these two parts the authorization server is able to verify
+    that the token request came from same entity as the original
+    authorization request, mitigating the risk of authorization code
+    interception attacks.
+*/
+QByteArray QOAuth2AuthorizationCodeFlowPrivate::createPKCEChallenge()
+{
+    switch (pkceMethod) {
+    case QOAuth2AuthorizationCodeFlow::PkceMethod::None:
+        pkceCodeVerifier.clear();
+        return {};
+    case QOAuth2AuthorizationCodeFlow::PkceMethod::Plain:
+        // RFC 7636 4.2, plain
+        // code_challenge = code_verifier
+        pkceCodeVerifier = generateRandomBase64String(pkceVerifierLength);
+        return pkceCodeVerifier;
+    case QOAuth2AuthorizationCodeFlow::PkceMethod::S256:
+        // RFC 7636 4.2, S256
+        // code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))
+        pkceCodeVerifier = generateRandomBase64String(pkceVerifierLength);
+        // RFC 7636 3. Terminology:
+        // "with all trailing '=' characters omitted"
+        return QCryptographicHash::hash(pkceCodeVerifier, QCryptographicHash::Algorithm::Sha256)
+                        .toBase64(QByteArray::Base64Option::Base64UrlEncoding
+                                  | QByteArray::Base64Option::OmitTrailingEquals);
+    };
+    Q_UNREACHABLE_RETURN({});
 }
 
 /*!
@@ -303,6 +346,76 @@ void QOAuth2AuthorizationCodeFlow::setAccessTokenUrl(const QUrl &accessTokenUrl)
 }
 
 /*!
+    \enum QOAuth2AuthorizationCodeFlow::PkceMethod
+    \since 6.8
+
+    List of available \l {https://datatracker.ietf.org/doc/html/rfc7636}
+    {Proof Key for Code Exchange (PKCE) methods}.
+
+    PKCE is a security measure to mitigate the risk of \l
+    {https://datatracker.ietf.org/doc/html/rfc7636#section-1}{authorization
+    code interception attacks}. As such it is relevant for OAuth2
+    "Authorization Code" flow (grant) and in particular with
+    native applications.
+
+    PKCE inserts additional parameters into authorization
+    and access token requests. With the help of these parameters the
+    authorization server is able to verify that an access token request
+    originates from the same entity that issued the authorization
+    request.
+
+    \value None PKCE is not used.
+    \value Plain The Plain PKCE method is used. Use this only if it is not
+           possible to use S256. With Plain method the
+           \l {https://datatracker.ietf.org/doc/html/rfc7636#section-4.2}{code challenge}
+           equals to the
+           \l {https://datatracker.ietf.org/doc/html/rfc7636#section-4.1}{code verifier}.
+    \value S256 The S256 PKCE method is used. This is the default and the
+           recommended method for native applications. With the S256 method
+           the \e {code challenge} is a base64url-encoded value of the
+           SHA-256 of the \e {code verifier}.
+
+    \sa setPkceMethod(), pkceMethod()
+*/
+
+/*!
+    \since 6.8
+
+    Sets the current PKCE method to \a method.
+
+    Optionally, the \a length parameter can be used to set the length
+    of the \c code_verifier. The value must be between 43 and 128 bytes.
+    The 'code verifier' itself is random-generated by the library.
+
+    \sa pkceMethod(), QOAuth2AuthorizationCodeFlow::PkceMethod
+*/
+void QOAuth2AuthorizationCodeFlow::setPkceMethod(PkceMethod method, qsizetype length)
+{
+    Q_D(QOAuth2AuthorizationCodeFlow);
+    if (length < 43 || length > 128) {
+        // RFC 7636 Section 4.1, the code_verifer should be 43..128 bytes
+        qWarning("Invalid PKCE length provided, must be between 43..128. Ignoring.");
+        return;
+    }
+    static_assert(std::is_same_v<decltype(d->pkceVerifierLength), quint8>);
+    d->pkceVerifierLength = quint8(length);
+    d->pkceMethod = method;
+}
+
+/*!
+    \since 6.8
+
+    Returns the current PKCE method.
+
+    \sa setPkceMethod(), QOAuth2AuthorizationCodeFlow::PkceMethod
+*/
+QOAuth2AuthorizationCodeFlow::PkceMethod QOAuth2AuthorizationCodeFlow::pkceMethod() const noexcept
+{
+    Q_D(const QOAuth2AuthorizationCodeFlow);
+    return d->pkceMethod;
+}
+
+/*!
     Starts the authentication flow as described in
     \l {https://tools.ietf.org/html/rfc6749#section-4.1}{The OAuth
     2.0 Authorization Framework}
@@ -360,7 +473,6 @@ void QOAuth2AuthorizationCodeFlow::refreshAccessToken()
     QUrlQuery query;
     parameters.insert(Key::grantType, QStringLiteral("refresh_token"));
     parameters.insert(Key::refreshToken, d->refreshToken);
-    parameters.insert(Key::redirectUri, QUrl::toPercentEncoding(callback()));
     parameters.insert(Key::clientIdentifier, d->clientIdentifier);
     parameters.insert(Key::clientSharedSecret, d->clientIdentifierSharedKey);
     if (d->modifyParametersFunction)
@@ -378,15 +490,14 @@ void QOAuth2AuthorizationCodeFlow::refreshAccessToken()
     connect(reply, &QNetworkReply::finished, handler,
             [handler, reply]() { handler->networkReplyFinished(reply); });
     connect(reply, &QNetworkReply::finished, reply, &QNetworkReply::deleteLater);
-    QObjectPrivate::connect(d->replyHandler.data(), &QAbstractOAuthReplyHandler::tokensReceived, d,
+    QObjectPrivate::connect(handler, &QAbstractOAuthReplyHandler::tokensReceived, d,
                             &QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFinished,
                             Qt::UniqueConnection);
     QObjectPrivate::connect(d->networkAccessManager(),
                             &QNetworkAccessManager::authenticationRequired,
                             d, &QOAuth2AuthorizationCodeFlowPrivate::_q_authenticate,
                             Qt::UniqueConnection);
-    QObjectPrivate::connect(d->replyHandler.data(),
-                            &QAbstractOAuthReplyHandler::tokenRequestErrorOccurred,
+    QObjectPrivate::connect(handler, &QAbstractOAuthReplyHandler::tokenRequestErrorOccurred,
                             d, &QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFailed,
                             Qt::UniqueConnection);
 }
@@ -413,13 +524,18 @@ QUrl QOAuth2AuthorizationCodeFlow::buildAuthenticateUrl(const QMultiMap<QString,
     p.insert(Key::redirectUri, callback());
     p.insert(Key::scope, d->scope);
     p.insert(Key::state, toUrlFormEncoding(state));
+    if (d->pkceMethod != PkceMethod::None) {
+        p.insert(Key::codeChallenge, d->createPKCEChallenge());
+        p.insert(Key::codeChallengeMethod,
+                 d->pkceMethod == PkceMethod::Plain ? u"plain"_s : u"S256"_s);
+    }
     if (d->modifyParametersFunction)
         d->modifyParametersFunction(Stage::RequestingAuthorization, &p);
     url.setQuery(d->createQuery(p));
-    connect(d->replyHandler.data(), &QAbstractOAuthReplyHandler::callbackReceived, this,
+    connect(replyHandler(), &QAbstractOAuthReplyHandler::callbackReceived, this,
             &QOAuth2AuthorizationCodeFlow::authorizationCallbackReceived, Qt::UniqueConnection);
     setStatus(QAbstractOAuth::Status::NotAuthenticated);
-    qCDebug(d->loggingCategory, "Generated URL: %s", qPrintable(url.toString()));
+    qCDebug(d->loggingCategory, "Authorization URL generated");
     return url;
 }
 
@@ -441,9 +557,17 @@ void QOAuth2AuthorizationCodeFlow::requestAccessToken(const QString &code)
 #endif
     QUrlQuery query;
     parameters.insert(Key::grantType, QStringLiteral("authorization_code"));
-    parameters.insert(Key::code, QUrl::toPercentEncoding(code));
+
+    if (code.contains(QLatin1Char('%')))
+        parameters.insert(Key::code, code);
+    else
+        parameters.insert(Key::code, QUrl::toPercentEncoding(code));
+
     parameters.insert(Key::redirectUri, QUrl::toPercentEncoding(callback()));
     parameters.insert(Key::clientIdentifier, QUrl::toPercentEncoding(d->clientIdentifier));
+
+    if (d->pkceMethod != PkceMethod::None)
+        parameters.insert(Key::codeVerifier, d->pkceCodeVerifier);
     if (!d->clientIdentifierSharedKey.isEmpty())
         parameters.insert(Key::clientSharedSecret, d->clientIdentifierSharedKey);
     if (d->modifyParametersFunction)
@@ -452,21 +576,21 @@ void QOAuth2AuthorizationCodeFlow::requestAccessToken(const QString &code)
     request.setHeader(QNetworkRequest::ContentTypeHeader,
                       QStringLiteral("application/x-www-form-urlencoded"));
 
-    const QString data = query.toString(QUrl::FullyEncoded);
-    QNetworkReply *reply = d->networkAccessManager()->post(request, data.toUtf8());
+    const QByteArray data = query.toString(QUrl::FullyEncoded).toLatin1();
+    QNetworkReply *reply = d->networkAccessManager()->post(request, data);
     d->currentReply = reply;
     QAbstractOAuthReplyHandler *handler = replyHandler();
     QObject::connect(reply, &QNetworkReply::finished, handler,
                      [handler, reply] { handler->networkReplyFinished(reply); });
     connect(reply, &QNetworkReply::finished, reply, &QNetworkReply::deleteLater);
-    QObjectPrivate::connect(d->replyHandler.data(), &QAbstractOAuthReplyHandler::tokensReceived, d,
+    QObjectPrivate::connect(handler, &QAbstractOAuthReplyHandler::tokensReceived, d,
                             &QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFinished,
                             Qt::UniqueConnection);
     QObjectPrivate::connect(d->networkAccessManager(),
                             &QNetworkAccessManager::authenticationRequired,
                             d, &QOAuth2AuthorizationCodeFlowPrivate::_q_authenticate,
                             Qt::UniqueConnection);
-    QObjectPrivate::connect(d->replyHandler.data(),
+    QObjectPrivate::connect(handler,
                             &QAbstractOAuthReplyHandler::tokenRequestErrorOccurred,
                             d, &QOAuth2AuthorizationCodeFlowPrivate::_q_accessTokenRequestFailed,
                             Qt::UniqueConnection);
@@ -495,5 +619,3 @@ void QOAuth2AuthorizationCodeFlow::resourceOwnerAuthorization(const QUrl &url,
 QT_END_NAMESPACE
 
 #include "moc_qoauth2authorizationcodeflow.cpp"
-
-#endif // QT_NO_HTTP

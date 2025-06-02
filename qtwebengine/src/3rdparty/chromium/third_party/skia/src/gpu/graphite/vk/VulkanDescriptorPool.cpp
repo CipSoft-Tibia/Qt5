@@ -45,15 +45,10 @@ sk_sp<VulkanDescriptorPool> VulkanDescriptorPool::Make(const VulkanSharedContext
         poolSize.descriptorCount = requestedDescCounts[i].count * kMaxNumSets;
     }
 
-    VkDescriptorPoolInlineUniformBlockCreateInfoEXT inlineUniformInfo;
-    inlineUniformInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_INLINE_UNIFORM_BLOCK_CREATE_INFO_EXT;
-    inlineUniformInfo.pNext = nullptr;
-
     VkDescriptorPoolCreateInfo createInfo;
     memset(&createInfo, 0, sizeof(VkDescriptorPoolCreateInfo));
     createInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    createInfo.pNext = &inlineUniformInfo;
+    createInfo.pNext = nullptr;
     createInfo.flags = 0;
     createInfo.maxSets = kMaxNumSets;
     createInfo.poolSizeCount = requestedDescCounts.size();
@@ -68,6 +63,8 @@ sk_sp<VulkanDescriptorPool> VulkanDescriptorPool::Make(const VulkanSharedContext
                        /*const VkAllocationCallbacks*=*/nullptr,
                        &pool));
     if (result != VK_SUCCESS) {
+        VULKAN_CALL(context->interface(),
+                    DestroyDescriptorSetLayout(context->device(), layout, nullptr));
         return nullptr;
     }
     return sk_sp<VulkanDescriptorPool>(new VulkanDescriptorPool(context, pool, layout));

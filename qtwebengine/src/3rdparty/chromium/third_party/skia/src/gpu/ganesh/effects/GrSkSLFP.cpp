@@ -9,7 +9,6 @@
 
 #include "include/core/SkAlphaType.h"
 #include "include/core/SkColor.h"
-#include "include/core/SkColorSpace.h"
 #include "include/core/SkData.h"
 #include "include/core/SkString.h"
 #include "include/core/SkSurfaceProps.h"
@@ -73,7 +72,7 @@ public:
                 const SkSL::Variable* var = decl->var();
                 if (var->type().isOpaque()) {
                     // Nothing to do. The only opaque types we should see are children, and those
-                    // are handled specially, above.
+                    // are handled specially.
                     SkASSERT(var->type().isEffectChild());
                     return std::string(var->name());
                 }
@@ -162,14 +161,16 @@ public:
                 if (child && child->sampleUsage().isPassThrough()) {
                     coords.clear();
                 }
-                return std::string(fSelf->invokeChild(index, fInputColor, fArgs, coords).c_str());
+                return child ? std::string(fSelf->invokeChild(index, fInputColor, fArgs, coords)
+                                                   .c_str())
+                             : std::string("half4(0)");
             }
 
             std::string sampleColorFilter(int index, std::string color) override {
                 return std::string(fSelf->invokeChild(index,
-                                                 color.empty() ? fInputColor : color.c_str(),
-                                                 fArgs)
-                                      .c_str());
+                                                      color.empty() ? fInputColor : color.c_str(),
+                                                      fArgs)
+                                           .c_str());
             }
 
             std::string sampleBlender(int index, std::string src, std::string dst) override {
@@ -291,7 +292,7 @@ std::unique_ptr<GrSkSLFP> GrSkSLFP::MakeWithData(
         sk_sp<SkColorSpace> dstColorSpace,
         std::unique_ptr<GrFragmentProcessor> inputFP,
         std::unique_ptr<GrFragmentProcessor> destColorFP,
-        sk_sp<const SkData> uniforms,
+        const sk_sp<const SkData>& uniforms,
         SkSpan<std::unique_ptr<GrFragmentProcessor>> childFPs) {
     if (uniforms->size() != effect->uniformSize()) {
         return nullptr;
@@ -311,7 +312,7 @@ std::unique_ptr<GrSkSLFP> GrSkSLFP::MakeWithData(
         fp->setDestColorFP(std::move(destColorFP));
     }
     if (fp->fEffect->usesColorTransform() && dstColorSpace) {
-        fp->addColorTransformChildren(std::move(dstColorSpace));
+        fp->addColorTransformChildren(dstColorSpace.get());
     }
     return fp;
 }
@@ -381,7 +382,7 @@ void GrSkSLFP::setDestColorFP(std::unique_ptr<GrFragmentProcessor> destColorFP) 
     this->registerChild(std::move(destColorFP), SkSL::SampleUsage::PassThrough());
 }
 
-void GrSkSLFP::addColorTransformChildren(sk_sp<SkColorSpace> dstColorSpace) {
+void GrSkSLFP::addColorTransformChildren(SkColorSpace* dstColorSpace) {
     SkASSERTF(fToLinearSrgbChildIndex == -1 && fFromLinearSrgbChildIndex == -1,
               "addColorTransformChildren should not be called more than once");
 
@@ -389,14 +390,14 @@ void GrSkSLFP::addColorTransformChildren(sk_sp<SkColorSpace> dstColorSpace) {
     // invoked, but each one injects a collection of uniforms and helper functions. Doing it
     // this way leverages per-FP name mangling to avoid conflicts.
     auto workingToLinear = GrColorSpaceXformEffect::Make(nullptr,
-                                                         dstColorSpace.get(),
+                                                         dstColorSpace,
                                                          kUnpremul_SkAlphaType,
                                                          sk_srgb_linear_singleton(),
                                                          kUnpremul_SkAlphaType);
     auto linearToWorking = GrColorSpaceXformEffect::Make(nullptr,
                                                          sk_srgb_linear_singleton(),
                                                          kUnpremul_SkAlphaType,
-                                                         dstColorSpace.get(),
+                                                         dstColorSpace,
                                                          kUnpremul_SkAlphaType);
 
     fToLinearSrgbChildIndex = this->numChildProcessors();
@@ -478,7 +479,7 @@ SkPMColor4f GrSkSLFP::constantOutputForConstantInput(const SkPMColor4f& inputCol
                                      fUniformSize / sizeof(float)};
         SkSTArenaAlloc<2048> alloc;  // sufficient for a tiny SkSL program
         SkRasterPipeline pipeline(&alloc);
-        pipeline.append_constant_color(&alloc, color.vec());
+        pipeline.appendConstantColor(&alloc, color.vec());
         ConstantOutputForConstantInput_SkRPCallbacks callbacks;
         if (program->appendStages(&pipeline, &alloc, &callbacks, uniforms)) {
             SkPMColor4f outputColor;

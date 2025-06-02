@@ -17,6 +17,7 @@
 #include "components/webapps/browser/installable/installable_logging.h"
 #include "components/webapps/browser/installable/installable_params.h"
 #include "components/webapps/browser/pwa_install_path_tracker.h"
+#include "components/webapps/common/web_page_metadata.mojom.h"
 #include "content/public/browser/media_player_id.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -176,7 +177,7 @@ class AppBannerManager : public content::WebContentsObserver,
   bool MaybeConsumeInstallAnimation();
 
   // Requests an app banner.
-  virtual void RequestAppBanner(const GURL& validated_url);
+  virtual void RequestAppBanner();
 
   // Informs the page that it has been installed with appinstalled event and
   // performs logging related to the app installation. Appinstalled event is
@@ -220,6 +221,7 @@ class AppBannerManager : public content::WebContentsObserver,
 
   // Simple accessors:
   const blink::mojom::Manifest& manifest() const;
+  const mojom::WebPageMetadata& web_page_metadata() const;
   const SkBitmap& primary_icon() const { return primary_icon_; }
   bool has_maskable_primary_icon() const { return has_maskable_primary_icon_; }
   const GURL& validated_url() { return validated_url_; }
@@ -243,6 +245,9 @@ class AppBannerManager : public content::WebContentsObserver,
   // locally installed.
   virtual bool IsAppPartiallyInstalledForSiteUrl(
       const GURL& site_url) const = 0;
+
+  // Returns if the web contents this manager is on is inside of an app context.
+  virtual bool IsInAppBrowsingContext() const = 0;
 
   // The user has ignored the installation dialog and it went away due to
   // another interaction (e.g. the tab was changed, page navigated, etc).
@@ -296,6 +301,9 @@ class AppBannerManager : public content::WebContentsObserver,
 
   // Return a string identifying this app for metrics.
   virtual std::string GetAppIdentifier();
+
+  // Returns the app name from web page metadata.
+  std::u16string GetNameFromMetadata() const;
 
   // Return a string describing what type of banner is being created. Used when
   // alerting websites that a banner is about to be created.
@@ -392,8 +400,6 @@ class AppBannerManager : public content::WebContentsObserver,
   void DidFinishNavigation(content::NavigationHandle* handle) override;
   void DidFinishLoad(content::RenderFrameHost* render_frame_host,
                      const GURL& validated_url) override;
-  void DidActivatePortal(content::WebContents* predecessor_contents,
-                         base::TimeTicks activation_time) override;
   void DidUpdateWebManifestURL(content::RenderFrameHost* target_frame,
                                const GURL& manifest_url) override;
   void MediaStartedPlaying(const MediaPlayerInfo& media_info,
@@ -427,7 +433,6 @@ class AppBannerManager : public content::WebContentsObserver,
   // The URL of the manifest.
   GURL manifest_url_;
 
-  // The manifest id.
   GURL manifest_id_;
 
   // The URL of the primary icon.
@@ -479,11 +484,15 @@ class AppBannerManager : public content::WebContentsObserver,
   InstallableStatusCode TerminationCode() const;
 
   // Fetches the data required to display a banner for the current page.
-  raw_ptr<InstallableManager, AcrossTasksDanglingUntriaged> manager_;
+  raw_ptr<InstallableManager> manager_;
 
   // The manifest object. This is never null, it will instead be an empty
   // manifest so callers don't have to worry about null checks.
   blink::mojom::ManifestPtr manifest_;
+
+  // The web page metadata object. This is never null, it will instead be
+  // empty so callers don't have to worry about null checks.
+  mojom::WebPageMetadataPtr web_page_metadata_;
 
   // We do not want to trigger a banner when the manager is attached to
   // a WebContents that is playing video. Banners triggering on a site in the

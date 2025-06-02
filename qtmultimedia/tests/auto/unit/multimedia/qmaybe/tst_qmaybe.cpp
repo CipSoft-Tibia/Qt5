@@ -5,7 +5,7 @@
 #include <private/qmaybe_p.h>
 #include <QtCore/private/quniquehandle_p.h>
 #ifdef Q_OS_WINDOWS
-#include <private/qcomptr_p.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <private/qcomobject_p.h>
 #endif
 
@@ -20,8 +20,8 @@ namespace {
 struct DummyHandleTraits
 {
     using Type = int;
-    static Type invalidValue() { return -1; }
-    static bool close(Type /*handle*/) { return true; }
+    static Type invalidValue() noexcept { return -1; }
+    static bool close(Type /*handle*/) noexcept { return true; }
 };
 
 using DummyHandle = QUniqueHandle<DummyHandleTraits>;
@@ -41,6 +41,14 @@ class tst_QMaybe : public QObject
     Q_OBJECT
 
 private slots:
+
+    void error_returnsDefaultInitialized_whenQMaybeHasValue()
+    {
+        // TODO: Disallow calling error() on QMaybe that holds value
+        QMaybe<int, char*> m{ 42 };
+        QCOMPARE_EQ(nullptr, m.error());
+    }
+
     void operatorBool_returnsFalse_onlyWhenErrorSet()
     {
         {
@@ -52,6 +60,12 @@ private slots:
             const QMaybe<QString, int> success{ "It worked!"_L1 };
             QVERIFY(static_cast<bool>(success));
         }
+    }
+
+    void operatorBool_returnsFalse_WhenValueIsNullptr()
+    {
+        const QMaybe<int *, int> e{ nullptr };
+        QVERIFY(!e);
     }
 
     void value_returnsReferenceToValue_whenValueSet()

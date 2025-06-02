@@ -21,7 +21,7 @@ class QuicSpdyClientSession;
 
 // All this does right now is send an SPDY request, and aggregate the
 // SPDY response.
-class QUIC_EXPORT_PRIVATE QuicSpdyClientStream : public QuicSpdyStream {
+class QUICHE_EXPORT QuicSpdyClientStream : public QuicSpdyStream {
  public:
   QuicSpdyClientStream(QuicStreamId id, QuicSpdyClientSession* session,
                        StreamType type);
@@ -38,10 +38,6 @@ class QUIC_EXPORT_PRIVATE QuicSpdyClientStream : public QuicSpdyStream {
   // Override the base class to parse and store trailers.
   void OnTrailingHeadersComplete(bool fin, size_t frame_len,
                                  const QuicHeaderList& header_list) override;
-
-  // Override the base class to handle creation of the push stream.
-  void OnPromiseHeaderList(QuicStreamId promised_id, size_t frame_len,
-                           const QuicHeaderList& header_list) override;
 
   // QuicStream implementation called by the session when there's data for us.
   void OnBodyAvailable() override;
@@ -82,7 +78,7 @@ class QUIC_EXPORT_PRIVATE QuicSpdyClientStream : public QuicSpdyStream {
   using QuicSpdyStream::SetPriority;
 
  protected:
-  bool ValidatedReceivedHeaders(const QuicHeaderList& header_list) override;
+  bool ValidateReceivedHeaders(const QuicHeaderList& header_list) override;
 
   // Called by OnInitialHeadersComplete to set response_header_. Returns false
   // on error.

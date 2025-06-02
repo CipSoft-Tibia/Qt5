@@ -14,7 +14,7 @@
 #ifndef ABSTRACTITEMMODELHANDLER_P_H
 #define ABSTRACTITEMMODELHANDLER_P_H
 
-#include "graphsglobal_p.h"
+#include <QtGraphs/private/qgraphsglobal_p.h>
 #include <QtCore/QAbstractItemModel>
 #include <QtCore/QPointer>
 #include <QtCore/QTimer>

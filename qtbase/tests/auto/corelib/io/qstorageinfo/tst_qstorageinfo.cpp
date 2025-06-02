@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QTest>
+#include <QtTest/private/qcomparisontesthelper_p.h>
 #include <QSet>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <QTemporaryFile>
 #include "private/qemulationdetector_p.h"
+
+#include <cstdio>
 
 #include <stdarg.h>
 
@@ -29,6 +32,7 @@ class tst_QStorageInfo : public QObject
 private slots:
     void defaultValues();
     void dump();
+    void compareCompiles();
     void operatorEqual();
     void operatorNotEqual();
     void root();
@@ -67,7 +71,7 @@ static int qInfoPrinter(const char *format, ...)
 
     va_list ap;
     va_start(ap, format); // use variable arg list
-    int n = qvsnprintf(buf + bufuse, sizeof(buf) - bufuse, format, ap);
+    const int n = std::vsnprintf(buf + bufuse, sizeof(buf) - bufuse, format, ap);
     va_end(ap);
 
     bufuse += n;
@@ -87,31 +91,36 @@ void tst_QStorageInfo::dump()
     printVolumes(QStorageInfo::mountedVolumes(), qInfoPrinter);
 }
 
+void tst_QStorageInfo::compareCompiles()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QStorageInfo>();
+}
+
 void tst_QStorageInfo::operatorEqual()
 {
     {
         QStorageInfo storage1 = QStorageInfo::root();
         QStorageInfo storage2(QDir::rootPath());
-        QCOMPARE(storage1, storage2);
+        QT_TEST_EQUALITY_OPS(storage1, storage2, true);
     }
 
     {
         QStorageInfo storage1(QCoreApplication::applicationDirPath());
         QStorageInfo storage2(QCoreApplication::applicationFilePath());
-        QCOMPARE(storage1, storage2);
+        QT_TEST_EQUALITY_OPS(storage1, storage2, true);
     }
 
     {
         QStorageInfo storage1;
         QStorageInfo storage2;
-        QCOMPARE(storage1, storage2);
+        QT_TEST_EQUALITY_OPS(storage1, storage2, true);
     }
 
     // Test copy ctor
     {
         QStorageInfo storage1 = QStorageInfo::root();
         QStorageInfo storage2(storage1);
-        QCOMPARE(storage1, storage2);
+        QT_TEST_EQUALITY_OPS(storage1, storage2, true);
     }
 }
 
@@ -119,7 +128,7 @@ void tst_QStorageInfo::operatorNotEqual()
 {
     QStorageInfo storage1 = QStorageInfo::root();
     QStorageInfo storage2;
-    QCOMPARE_NE(storage1, storage2);
+    QT_TEST_EQUALITY_OPS(storage1, storage2, false);
 }
 
 void tst_QStorageInfo::root()

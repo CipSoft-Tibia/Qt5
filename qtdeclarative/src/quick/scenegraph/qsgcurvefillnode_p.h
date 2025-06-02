@@ -6,9 +6,11 @@
 
 #include <QtGui/qbrush.h>
 
-#include <QtQuick/private/qtquickexports_p.h>
+#include <QtQuick/qtquickexports.h>
 #include <QtQuick/private/qsggradientcache_p.h>
+#include <QtQuick/private/qsgtransform_p.h>
 #include <QtQuick/qsgnode.h>
+#include <QtQuick/qsgtextureprovider.h>
 
 #include "qsgcurveabstractnode_p.h"
 
@@ -25,17 +27,18 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_QUICK_PRIVATE_EXPORT QSGCurveFillNode : public QSGCurveAbstractNode
+class QSGTextureProvider;
+
+class Q_QUICK_EXPORT QSGCurveFillNode : public QObject, public QSGCurveAbstractNode
 {
+    Q_OBJECT
 public:
     QSGCurveFillNode();
 
     void setColor(QColor col) override
     {
-        if (m_color == col)
-            return;
         m_color = col;
-        updateMaterial();
+        markDirty(DirtyMaterial);
     }
 
     QColor color() const
@@ -43,53 +46,66 @@ public:
         return m_color;
     }
 
-    void setStrokeColor(QColor col)
+    void setFillTextureProvider(QSGTextureProvider *provider)
     {
-        const bool hadStroke = hasStroke();
-        m_strokeColor = col;
-        if (hadStroke != hasStroke())
-            updateMaterial();
+        if (provider == m_textureProvider)
+            return;
+
+        if (m_textureProvider != nullptr) {
+            disconnect(m_textureProvider, &QSGTextureProvider::textureChanged,
+                       this, &QSGCurveFillNode::handleTextureChanged);
+            disconnect(m_textureProvider, &QSGTextureProvider::destroyed,
+                       this, &QSGCurveFillNode::handleTextureProviderDestroyed);
+        }
+
+        m_textureProvider = provider;
+        markDirty(DirtyMaterial);
+
+        if (m_textureProvider != nullptr) {
+            connect(m_textureProvider, &QSGTextureProvider::textureChanged,
+                    this, &QSGCurveFillNode::handleTextureChanged);
+            connect(m_textureProvider, &QSGTextureProvider::destroyed,
+                    this, &QSGCurveFillNode::handleTextureProviderDestroyed);
+        }
     }
 
-    QColor strokeColor() const
-    {
-        return m_strokeColor;
-    }
 
-    void setStrokeWidth(float width)
+    QSGTextureProvider *fillTextureProvider() const
     {
-        const bool hadStroke = hasStroke();
-        m_strokeWidth = width;
-        if (hadStroke != hasStroke())
-            updateMaterial();
-    }
-
-    float strokeWidth() const
-    {
-        return m_strokeWidth;
+        return m_textureProvider;
     }
 
     void setFillGradient(const QSGGradientCache::GradientDesc &fillGradient)
     {
         m_fillGradient = fillGradient;
+        markDirty(DirtyMaterial);
     }
 
-    QSGGradientCache::GradientDesc fillGradient() const
+    const QSGGradientCache::GradientDesc *fillGradient() const
     {
-        return m_fillGradient;
+        return &m_fillGradient;
     }
 
     void setGradientType(QGradient::Type type)
     {
-        if (m_gradientType != type) {
-            m_gradientType = type;
-            updateMaterial();
-        }
+        m_gradientType = type;
+        markDirty(DirtyMaterial);
     }
 
     QGradient::Type gradientType() const
     {
         return m_gradientType;
+    }
+
+    void setFillTransform(const QSGTransform &transform)
+    {
+        m_fillTransform = transform;
+        markDirty(DirtyMaterial);
+    }
+
+    const QSGTransform *fillTransform() const
+    {
+        return &m_fillTransform;
     }
 
     float debug() const
@@ -100,12 +116,6 @@ public:
     void setDebug(float newDebug)
     {
         m_debug = newDebug;
-    }
-
-
-    bool hasStroke() const
-    {
-        return m_strokeWidth > 0.0f && m_strokeColor.alpha() > 0;
     }
 
     void appendTriangle(const std::array<QVector2D, 3> &v, // triangle vertices
@@ -203,6 +213,36 @@ public:
         m_uncookedVertexes.reserve(size);
     }
 
+    void preprocess() override
+    {
+        if (m_textureProvider != nullptr) {
+            if (QSGDynamicTexture *texture = qobject_cast<QSGDynamicTexture *>(m_textureProvider->texture()))
+                texture->updateTexture();
+        }
+    }
+
+    QVector2D boundsSize() const
+    {
+        return m_boundsSize;
+    }
+
+    void setBoundsSize(const QVector2D &boundsSize)
+    {
+        m_boundsSize = boundsSize;
+    }
+
+private Q_SLOTS:
+    void handleTextureChanged()
+    {
+        markDirty(DirtyMaterial);
+    }
+
+    void handleTextureProviderDestroyed()
+    {
+        m_textureProvider = nullptr;
+        markDirty(DirtyMaterial);
+    }
+
 private:
     struct CurveNodeVertex
     {
@@ -214,17 +254,18 @@ private:
     void updateMaterial();
     static const QSGGeometry::AttributeSet &attributes();
 
-    QColor m_color = Qt::white;
-    QColor m_strokeColor = Qt::transparent;
-    float m_strokeWidth = 0.0f;
-    float m_debug = 0.0f;
-    QSGGradientCache::GradientDesc m_fillGradient;
-    QGradient::Type m_gradientType = QGradient::NoGradient;
-
     QScopedPointer<QSGMaterial> m_material;
 
     QVector<CurveNodeVertex> m_uncookedVertexes;
     QVector<quint32> m_uncookedIndexes;
+
+    QSGGradientCache::GradientDesc m_fillGradient;
+    QSGTextureProvider *m_textureProvider = nullptr;
+    QVector2D m_boundsSize;
+    QSGTransform m_fillTransform;
+    QColor m_color = Qt::white;
+    QGradient::Type m_gradientType = QGradient::NoGradient;
+    float m_debug = 0.0f;
 };
 
 QT_END_NAMESPACE

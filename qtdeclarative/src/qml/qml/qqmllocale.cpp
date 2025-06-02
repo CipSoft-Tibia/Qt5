@@ -8,7 +8,6 @@
 #include <QtCore/qtimezone.h>
 
 #include <private/qlocale_p.h>
-#include <private/qlocale_data_p.h>
 
 #include <private/qv4dateobject_p.h>
 #include <private/qv4numberobject_p.h>
@@ -434,7 +433,7 @@ ReturnedValue QQmlNumberExtension::method_fromLocaleString(const QV4::FunctionOb
 //--------------
 // Locale object
 
-void QQmlLocaleValueType::formattedDataSize(QQmlV4Function *args) const
+void QQmlLocaleValueType::formattedDataSize(QQmlV4FunctionPtr args) const
 {
     QV4::Scope scope(args->v4engine());
     const auto doThrow = [&](const QString &message) {
@@ -520,7 +519,7 @@ QList<QQmlLocale::DayOfWeek> QQmlLocaleValueType::weekDays() const
     return result;
 }
 
-void QQmlLocaleValueType::toString(QQmlV4Function *args) const
+void QQmlLocaleValueType::toString(QQmlV4FunctionPtr args) const
 {
     Scope scope(args->v4engine());
     const auto doThrow = [&](const QString &message) {
@@ -591,7 +590,7 @@ void QQmlLocaleValueType::toString(QQmlV4Function *args) const
 
 /*!
     \qmltype Locale
-    //! \instantiates QQmlLocale
+    //! \nativetype QQmlLocale
     \inqmlmodule QtQml
     \brief Provides locale specific properties and formatted data.
 

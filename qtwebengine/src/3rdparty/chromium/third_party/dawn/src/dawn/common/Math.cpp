@@ -1,16 +1,29 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/common/Math.h"
 
@@ -28,12 +41,12 @@
 namespace dawn {
 
 uint32_t ScanForward(uint32_t bits) {
-    ASSERT(bits != 0);
+    DAWN_ASSERT(bits != 0);
 #if DAWN_COMPILER_IS(MSVC)
     // NOLINTNEXTLINE(runtime/int)
     unsigned long firstBitIndex = 0ul;
     unsigned char ret = _BitScanForward(&firstBitIndex, bits);
-    ASSERT(ret != 0);
+    DAWN_ASSERT(ret != 0);
     return firstBitIndex;
 #else
     return static_cast<uint32_t>(__builtin_ctz(bits));
@@ -41,12 +54,12 @@ uint32_t ScanForward(uint32_t bits) {
 }
 
 uint32_t Log2(uint32_t value) {
-    ASSERT(value != 0);
+    DAWN_ASSERT(value != 0);
 #if DAWN_COMPILER_IS(MSVC)
     // NOLINTNEXTLINE(runtime/int)
     unsigned long firstBitIndex = 0ul;
     unsigned char ret = _BitScanReverse(&firstBitIndex, value);
-    ASSERT(ret != 0);
+    DAWN_ASSERT(ret != 0);
     return firstBitIndex;
 #else
     return 31 - static_cast<uint32_t>(__builtin_clz(value));
@@ -54,13 +67,13 @@ uint32_t Log2(uint32_t value) {
 }
 
 uint32_t Log2(uint64_t value) {
-    ASSERT(value != 0);
+    DAWN_ASSERT(value != 0);
 #if DAWN_COMPILER_IS(MSVC)
 #if DAWN_PLATFORM_IS(64_BIT)
     // NOLINTNEXTLINE(runtime/int)
     unsigned long firstBitIndex = 0ul;
     unsigned char ret = _BitScanReverse64(&firstBitIndex, value);
-    ASSERT(ret != 0);
+    DAWN_ASSERT(ret != 0);
     return firstBitIndex;
 #else   // DAWN_PLATFORM_IS(64_BIT)
     // NOLINTNEXTLINE(runtime/int)
@@ -69,7 +82,7 @@ uint32_t Log2(uint64_t value) {
         return firstBitIndex + 32;
     }
     unsigned char ret = _BitScanReverse(&firstBitIndex, value & 0xFFFFFFFF);
-    ASSERT(ret != 0);
+    DAWN_ASSERT(ret != 0);
     return firstBitIndex;
 #endif  // DAWN_PLATFORM_IS(64_BIT)
 #else   // DAWN_COMPILER_IS(MSVC)
@@ -86,20 +99,20 @@ uint64_t NextPowerOfTwo(uint64_t n) {
 }
 
 bool IsPowerOfTwo(uint64_t n) {
-    ASSERT(n != 0);
+    DAWN_ASSERT(n != 0);
     return (n & (n - 1)) == 0;
 }
 
 bool IsPtrAligned(const void* ptr, size_t alignment) {
-    ASSERT(IsPowerOfTwo(alignment));
-    ASSERT(alignment != 0);
+    DAWN_ASSERT(IsPowerOfTwo(alignment));
+    DAWN_ASSERT(alignment != 0);
     return (reinterpret_cast<size_t>(ptr) & (alignment - 1)) == 0;
 }
 
 bool IsAligned(uint32_t value, size_t alignment) {
-    ASSERT(alignment <= UINT32_MAX);
-    ASSERT(IsPowerOfTwo(alignment));
-    ASSERT(alignment != 0);
+    DAWN_ASSERT(alignment <= UINT32_MAX);
+    DAWN_ASSERT(IsPowerOfTwo(alignment));
+    DAWN_ASSERT(alignment != 0);
     uint32_t alignment32 = static_cast<uint32_t>(alignment);
     return (value & (alignment32 - 1)) == 0;
 }
@@ -159,9 +172,9 @@ float SRGBToLinear(float srgb) {
 }
 
 uint64_t RoundUp(uint64_t n, uint64_t m) {
-    ASSERT(m > 0);
-    ASSERT(n > 0);
-    ASSERT(m <= std::numeric_limits<uint64_t>::max() - n);
+    DAWN_ASSERT(m > 0);
+    DAWN_ASSERT(n > 0);
+    DAWN_ASSERT(m <= std::numeric_limits<uint64_t>::max() - n);
     return ((n + m - 1) / m) * m;
 }
 

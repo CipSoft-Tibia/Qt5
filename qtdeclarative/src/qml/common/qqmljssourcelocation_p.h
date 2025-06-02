@@ -30,6 +30,96 @@ public:
           startLine(line), startColumn(column)
     { }
 
+private:
+    struct LocationInfo
+    {
+        quint32 offset;
+        quint32 startLine;
+        quint32 startColumn;
+    };
+
+    template <typename Predicate>
+    static LocationInfo findLocationIf(QStringView text, Predicate &&predicate,
+                                       const SourceLocation &startHint = SourceLocation{})
+    {
+        quint32 i = startHint.isValid() ? startHint.offset : 0;
+        quint32 endLine = startHint.isValid() ? startHint.startLine : 1;
+        quint32 endColumn = startHint.isValid() ? startHint.startColumn : 1;
+        const quint32 end = quint32(text.size());
+
+        for (; i < end; ++i) {
+            if (predicate(i, endLine, endColumn))
+                return LocationInfo{ i, endLine, endColumn };
+
+            const QChar currentChar = text.at(i);
+            const bool isLineFeed = currentChar == u'\n';
+            const bool isCarriageReturn = currentChar == u'\r';
+            // note: process the newline on the "\n" part of "\r\n", and treat "\r" as normal
+            // character
+            const bool isHalfANewline =
+                    isCarriageReturn && (i + 1 < end && text.at(i + 1) == u'\n');
+
+            if (isHalfANewline || (!isCarriageReturn && !isLineFeed)) {
+                ++endColumn;
+                continue;
+            }
+
+            // catch positions after the end of the line
+            if (predicate(i, endLine, std::numeric_limits<quint32>::max()))
+                return LocationInfo{ i, endLine, endColumn };
+
+            // catch positions after the end of the file and return the last character of the last
+            // line
+            if (i == end - 1) {
+                if (predicate(i, std::numeric_limits<quint32>::max(),
+                              std::numeric_limits<quint32>::max())) {
+                    return LocationInfo{ i, endLine, endColumn };
+                }
+            }
+
+            ++endLine;
+            endColumn = 1;
+        }
+
+        // not found, return last position
+        return LocationInfo{ i, endLine, endColumn };
+    }
+
+public:
+    static quint32 offsetFrom(QStringView text, quint32 line, quint32 column,
+                              const SourceLocation &startHint = SourceLocation{})
+    {
+        // sanity check that hint can actually be used
+        const SourceLocation hint =
+                (startHint.startLine < line
+                 || (startHint.startLine == line && startHint.startColumn <= column))
+                ? startHint
+                : SourceLocation{};
+
+        const auto result = findLocationIf(
+                text,
+                [line, column](quint32, quint32 currentLine, quint32 currentColumn) {
+                    return line <= currentLine && column <= currentColumn;
+                },
+                hint);
+        return result.offset;
+    }
+    static std::pair<quint32, quint32>
+    rowAndColumnFrom(QStringView text, quint32 offset,
+                     const SourceLocation &startHint = SourceLocation{})
+    {
+        // sanity check that hint can actually be used
+        const SourceLocation hint = startHint.offset <= offset ? startHint : SourceLocation{};
+
+        const auto result = findLocationIf(
+                text,
+                [offset](quint32 currentOffset, quint32, quint32) {
+                    return offset == currentOffset;
+                },
+                hint);
+        return std::make_pair(result.startLine, result.startColumn);
+    }
+
     bool isValid() const { return *this != SourceLocation(); }
 
     quint32 begin() const { return offset; }
@@ -43,26 +133,8 @@ public:
     // Returns a zero length location at the end of the current one.
     SourceLocation endZeroLengthLocation(QStringView text) const
     {
-        quint32 i = offset;
-        quint32 endLine = startLine;
-        quint32 endColumn = startColumn;
-        while (i < end()) {
-            QChar c = text.at(i);
-            switch (c.unicode()) {
-            case '\n':
-                if (i + 1 < end() && text.at(i + 1) == QLatin1Char('\r'))
-                    ++i;
-                Q_FALLTHROUGH();
-            case '\r':
-                ++endLine;
-                endColumn = 1;
-                break;
-            default:
-                ++endColumn;
-            }
-            ++i;
-        }
-        return SourceLocation(offset + length, 0, endLine, endColumn);
+        auto [row, column] = rowAndColumnFrom(text, offset + length, *this);
+        return SourceLocation{ offset + length, 0, row, column };
     }
 
 // attributes

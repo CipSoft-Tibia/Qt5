@@ -49,6 +49,9 @@ function(qt6_target_typelibs target)
     set(hex_six "${hex_two}${hex_two}${hex_two}")
 
     set(ident_ "[a-zA-Z0-9_]")
+
+    set(typelibFilePath "") # Only set if type library is a file and not a UUID
+
     foreach(lib IN LISTS arg_LIBRARIES)
         unset(libpath CACHE)
         if(lib MATCHES "^(${ident_}+):({${hex_four}-${hex_two}-${hex_two}-${hex_two}-${hex_six}})$")
@@ -71,6 +74,7 @@ C indentifier")
                 endif()
             endif()
 
+            set(typelibFilePath ${libpath})
             get_filename_component(out_basename "${libpath}" NAME_WE)
         endif()
 
@@ -88,6 +92,7 @@ C indentifier")
                 "${libpath}" -o "${out_filebasepath}"
                 ${extra_args}
             DEPENDS ${QT_CMAKE_EXPORT_NAMESPACE}::dumpcpp
+            MAIN_DEPENDENCY ${typelibFilePath}
             WORKING_DIRECTORY "${output_directory}"
             COMMENT "Generate type lib sources ${out_header} ${out_source}..."
         )

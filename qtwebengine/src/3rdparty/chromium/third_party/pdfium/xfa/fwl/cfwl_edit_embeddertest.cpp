@@ -6,7 +6,6 @@
 
 #include <memory>
 
-#include "core/fxcrt/widestring.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
 #include "public/fpdf_ext.h"
 #include "public/fpdf_formfill.h"
@@ -76,17 +75,19 @@ TEST_F(CFWLEditEmbedderTest, LeftClickMouseSelection) {
   FORM_OnLButtonDown(form_handle(), page(), FWL_EVENTFLAG_ShiftKey, 152, 58);
 
   // 12 == (2 * strlen(defgh)) + 2 (for \0\0)
-  EXPECT_EQ(12UL, FORM_GetSelectedText(form_handle(), page(), nullptr, 0));
+  ASSERT_EQ(12U, FORM_GetSelectedText(form_handle(), page(), nullptr, 0));
 
-  unsigned short buf[128];
-  unsigned long len = FORM_GetSelectedText(form_handle(), page(), &buf, 128);
-  EXPECT_STREQ(L"defgh", WideString::FromUTF16LE(buf, len).c_str());
+  uint16_t buf[6];
+  ASSERT_EQ(12U,
+            FORM_GetSelectedText(form_handle(), page(), &buf, sizeof(buf)));
+  EXPECT_EQ("defgh", GetPlatformString(buf));
 }
 
 TEST_F(CFWLEditEmbedderTest, DragMouseSelection) {
   // TODO(crbug.com/pdfium/11): Fix this test and enable for Skia variants.
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+  if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
     return;
+  }
 
   CreateAndInitializeFormPDF("xfa/email_recommended.pdf");
   FORM_OnLButtonDown(form_handle(), page(), 0, 115, 58);
@@ -98,11 +99,12 @@ TEST_F(CFWLEditEmbedderTest, DragMouseSelection) {
   FORM_OnMouseMove(form_handle(), page(), FWL_EVENTFLAG_ShiftKey, 152, 58);
 
   // 12 == (2 * strlen(defgh)) + 2 (for \0\0)
-  EXPECT_EQ(12UL, FORM_GetSelectedText(form_handle(), page(), nullptr, 0));
+  ASSERT_EQ(12U, FORM_GetSelectedText(form_handle(), page(), nullptr, 0));
 
-  unsigned short buf[128];
-  unsigned long len = FORM_GetSelectedText(form_handle(), page(), &buf, 128);
-  EXPECT_STREQ(L"defgh", WideString::FromUTF16LE(buf, len).c_str());
+  uint16_t buf[6];
+  ASSERT_EQ(12U,
+            FORM_GetSelectedText(form_handle(), page(), &buf, sizeof(buf)));
+  EXPECT_EQ("defgh", GetPlatformString(buf));
 
   // TODO(hnakashima): This is incorrect. Visually 'abcdefgh' are selected.
   const char kDraggedMD5[] = "f131526c8edd04e44de17b2647ec54c8";
@@ -115,8 +117,9 @@ TEST_F(CFWLEditEmbedderTest, DragMouseSelection) {
 
 TEST_F(CFWLEditEmbedderTest, SimpleFill) {
   // TODO(crbug.com/pdfium/11): Fix this test and enable for Skia variants.
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+  if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
     return;
+  }
 
   CreateAndInitializeFormPDF("xfa/email_recommended.pdf");
   const char kBlankMD5[] = "8dda78a3afaf9f7b5210eb81cacc4600";
@@ -139,8 +142,9 @@ TEST_F(CFWLEditEmbedderTest, SimpleFill) {
 
 TEST_F(CFWLEditEmbedderTest, FillWithNewLineWithoutMultiline) {
   // TODO(crbug.com/pdfium/11): Fix this test and enable for Skia variants.
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+  if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
     return;
+  }
 
   CreateAndInitializeFormPDF("xfa/email_recommended.pdf");
   FORM_OnLButtonDown(form_handle(), page(), 0, 115, 58);
@@ -210,8 +214,9 @@ TEST_F(CFWLEditEmbedderTest, DISABLED_FillWithNewLineWithMultiline) {
 
 TEST_F(CFWLEditEmbedderTest, DateTimePickerTest) {
   // TODO(crbug.com/pdfium/11): Fix this test and enable for Skia variants.
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+  if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
     return;
+  }
 
   CreateAndInitializeFormPDF("xfa/xfa_date_time_edit.pdf");
 
@@ -254,8 +259,9 @@ TEST_F(CFWLEditEmbedderTest, ImageEditTest) {
   CreateAndInitializeFormPDF("xfa/xfa_image_edit.pdf");
   FORM_OnLButtonDown(form_handle(), page(), 0, 115, 58);
   const char* filled_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "23658ed124114f05518372d41c80e41b";
+    }
     return "101cf6223fa2403fba4c413a8310ab02";
   }();
   ScopedFPDFBitmap page_bitmap = RenderLoadedPageWithFlags(page(), FPDF_ANNOT);
@@ -270,8 +276,9 @@ TEST_F(CFWLEditEmbedderTest, ComboBoxTest) {
   FORM_OnLButtonUp(form_handle(), page(), 0, 115, 58);
   {
     const char* filled_checksum = []() {
-      if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+      if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
         return "8c555487e09ee4acf3ace77db5929bdc";
+      }
       return "dad642ae8a5afce2591ffbcabbfc58dd";
     }();
     ScopedFPDFBitmap page_bitmap =

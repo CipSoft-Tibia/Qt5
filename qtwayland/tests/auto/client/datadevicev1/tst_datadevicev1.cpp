@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "mockcompositor.h"
 
@@ -65,13 +65,13 @@ void tst_datadevicev1::pasteAscii()
     exec([&] {
         auto *client = xdgSurface()->resource()->client();
         auto *offer = dataDevice()->sendDataOffer(client, {"text/plain"});
-        connect(offer, &DataOffer::receive, [](QString mimeType, int fd) {
+        connect(offer, &DataOffer::receive, offer, [](QString mimeType, int fd) {
             QFile file;
-            file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle);
+            QVERIFY(file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle));
             QCOMPARE(mimeType, "text/plain");
             file.write(QByteArray("normal ascii"));
             file.close();
-        });
+        }, Qt::DirectConnection);
         dataDevice()->sendSelection(offer);
 
         auto *surface = xdgSurface()->m_surface;
@@ -103,13 +103,13 @@ void tst_datadevicev1::pasteUtf8()
     exec([&] {
         auto *client = xdgSurface()->resource()->client();
         auto *offer = dataDevice()->sendDataOffer(client, {"text/plain", "text/plain;charset=utf-8"});
-        connect(offer, &DataOffer::receive, [](QString mimeType, int fd) {
+        connect(offer, &DataOffer::receive, offer, [](QString mimeType, int fd) {
             QFile file;
-            file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle);
+            QVERIFY(file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle));
             QCOMPARE(mimeType, "text/plain;charset=utf-8");
             file.write(QByteArray("face with tears of joy: 😂"));
             file.close();
-        });
+        }, Qt::DirectConnection);
         dataDevice()->sendSelection(offer);
 
         auto *surface = xdgSurface()->m_surface;
@@ -141,15 +141,15 @@ void tst_datadevicev1::pasteMozUrl()
     exec([&] {
         auto *client = xdgSurface()->resource()->client();
         auto *offer = dataDevice()->sendDataOffer(client, {"text/x-moz-url"});
-        connect(offer, &DataOffer::receive, [](QString mimeType, int fd) {
+        connect(offer, &DataOffer::receive, offer, [](QString mimeType, int fd) {
             QFile file;
-            file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle);
+            QVERIFY(file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle));
             QCOMPARE(mimeType, "text/x-moz-url");
             const QString content("https://www.qt.io/\nQt\nhttps://www.example.com/\nExample Website");
             // Need UTF-16.
             file.write(reinterpret_cast<const char *>(content.data()), content.size() * 2);
             file.close();
-        });
+        }, Qt::DirectConnection);
         dataDevice()->sendSelection(offer);
 
         auto *surface = xdgSurface()->m_surface;
@@ -184,14 +184,14 @@ void tst_datadevicev1::pasteSingleUtf8MozUrl()
     exec([&] {
         auto *client = xdgSurface()->resource()->client();
         auto *offer = dataDevice()->sendDataOffer(client, {"text/x-moz-url"});
-        connect(offer, &DataOffer::receive, [](QString mimeType, int fd) {
+        connect(offer, &DataOffer::receive, offer, [](QString mimeType, int fd) {
             QFile file;
-            file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle);
+            QVERIFY(file.open(fd, QIODevice::WriteOnly, QFile::FileHandleFlag::AutoCloseHandle));
             QCOMPARE(mimeType, "text/x-moz-url");
             const QString content("https://www.qt.io/");
             file.write(content.toUtf8());
             file.close();
-        });
+        }, Qt::DirectConnection);
         dataDevice()->sendSelection(offer);
 
         auto *surface = xdgSurface()->m_surface;

@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qttreepropertybrowser.h"
+#include "qttreepropertybrowser_p.h"
 
 #include <QtCore/QOperatingSystemVersion>
 #include <QtCore/QHash>
@@ -924,7 +924,7 @@ void QtTreePropertyBrowser::setItemVisible(QtBrowserItem *item, bool visible)
     \sa backgroundColor(), calculatedBackgroundColor()
 */
 
-void QtTreePropertyBrowser::setBackgroundColor(QtBrowserItem *item, const QColor &color)
+void QtTreePropertyBrowser::setBackgroundColor(QtBrowserItem *item, QColor color)
 {
     if (!d_ptr->m_indexToItem.contains(item))
         return;
@@ -1021,5 +1021,5 @@ void QtTreePropertyBrowser::editItem(QtBrowserItem *item)
 
 QT_END_NAMESPACE
 
-#include "moc_qttreepropertybrowser.cpp"
+#include "moc_qttreepropertybrowser_p.cpp"
 #include "qttreepropertybrowser.moc"

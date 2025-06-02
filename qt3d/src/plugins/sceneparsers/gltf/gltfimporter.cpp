@@ -368,20 +368,19 @@ bool GLTFImporter::setJSON(const QJsonDocument &json)
 void GLTFImporter::setSource(const QUrl &source)
 {
     const QString path = QUrlHelper::urlToLocalFileOrQrc(source);
-    QFileInfo finfo(path);
-    if (Q_UNLIKELY(!finfo.exists())) {
-        qCWarning(GLTFImporterLog, "missing file: %ls", qUtf16PrintableImpl(path));
+    QFile f(path);
+    if (Q_UNLIKELY(!f.open(QIODevice::ReadOnly))) {
+        qCWarning(GLTFImporterLog, "failed to open: %ls: %ls", qUtf16PrintableImpl(path),
+                  qUtf16PrintableImpl(f.errorString()));
         return;
     }
-    QFile f(path);
-    f.open(QIODevice::ReadOnly);
 
     if (Q_UNLIKELY(!setJSON(qLoadGLTF(f.readAll())))) {
         qCWarning(GLTFImporterLog, "not a JSON document");
         return;
     }
 
-    setBasePath(finfo.dir().absolutePath());
+    setBasePath(QFileInfo(path).dir().absolutePath());
 }
 
 /*!
@@ -2050,7 +2049,8 @@ QByteArray GLTFImporter::resolveLocalData(const QString &path) const
     } else {
         const QString absPath = d.absoluteFilePath(path);
         QFile f(absPath);
-        f.open(QIODevice::ReadOnly);
+        if (!f.open(QIODevice::ReadOnly))
+            return QByteArray();
         return f.readAll();
     }
 }

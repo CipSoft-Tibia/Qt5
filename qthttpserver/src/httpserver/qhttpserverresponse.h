@@ -5,15 +5,14 @@
 #define QHTTPSERVERRESPONSE_H
 
 #include <QtHttpServer/qhttpserverresponder.h>
-
-#include <memory>
+#include <QtNetwork/qhttpheaders.h>
 
 QT_BEGIN_NAMESPACE
 
 class QJsonObject;
 
 class QHttpServerResponsePrivate;
-class Q_HTTPSERVER_EXPORT QHttpServerResponse final
+class QHttpServerResponse final
 {
     Q_DECLARE_PRIVATE(QHttpServerResponse)
     Q_DISABLE_COPY(QHttpServerResponse)
@@ -22,74 +21,51 @@ class Q_HTTPSERVER_EXPORT QHttpServerResponse final
 public:
     using StatusCode = QHttpServerResponder::StatusCode;
 
-    QHttpServerResponse(QHttpServerResponse &&other) noexcept;
-    QHttpServerResponse& operator=(QHttpServerResponse &&other) noexcept;
+    QHttpServerResponse(QHttpServerResponse &&other) noexcept
+        : d_ptr(std::exchange(other.d_ptr, nullptr)) {}
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QHttpServerResponse)
+    void swap(QHttpServerResponse &other) noexcept { qt_ptr_swap(d_ptr, other.d_ptr); }
 
-    QHttpServerResponse(const StatusCode statusCode);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(StatusCode statusCode);
 
-    QHttpServerResponse(const char *data, const StatusCode status = StatusCode::Ok);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(const char *data,
+                                                       StatusCode status = StatusCode::Ok);
 
-    QHttpServerResponse(const QString &data, const StatusCode status = StatusCode::Ok);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(const QString &data,
+                                                       StatusCode status = StatusCode::Ok);
 
-    explicit QHttpServerResponse(const QByteArray &data, const StatusCode status = StatusCode::Ok);
-    explicit QHttpServerResponse(QByteArray &&data, const StatusCode status = StatusCode::Ok);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(const QByteArray &data,
+                                                       StatusCode status = StatusCode::Ok);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(QByteArray &&data,
+                                                       StatusCode status = StatusCode::Ok);
 
-    QHttpServerResponse(const QJsonObject &data, const StatusCode status = StatusCode::Ok);
-    QHttpServerResponse(const QJsonArray &data, const StatusCode status = StatusCode::Ok);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(const QJsonObject &data,
+                                                       StatusCode status = StatusCode::Ok);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(const QJsonArray &data,
+                                                       StatusCode status = StatusCode::Ok);
 
-    QHttpServerResponse(const QByteArray &mimeType,
-                        const QByteArray &data,
-                        const StatusCode status = StatusCode::Ok);
-    QHttpServerResponse(QByteArray &&mimeType,
-                        const QByteArray &data,
-                        const StatusCode status = StatusCode::Ok);
-    QHttpServerResponse(const QByteArray &mimeType,
-                        QByteArray &&data,
-                        const StatusCode status = StatusCode::Ok);
-    QHttpServerResponse(QByteArray &&mimeType,
-                        QByteArray &&data,
-                        const StatusCode status = StatusCode::Ok);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(const QByteArray &mimeType,
+                                                       const QByteArray &data,
+                                                       StatusCode status = StatusCode::Ok);
+    Q_HTTPSERVER_EXPORT Q_IMPLICIT QHttpServerResponse(const QByteArray &mimeType,
+                                                       QByteArray &&data,
+                                                       StatusCode status = StatusCode::Ok);
 
-    ~QHttpServerResponse();
-    static QHttpServerResponse fromFile(const QString &fileName);
+    Q_HTTPSERVER_EXPORT ~QHttpServerResponse();
+    Q_HTTPSERVER_EXPORT static QHttpServerResponse fromFile(const QString &fileName);
 
-    QByteArray data() const;
+    Q_HTTPSERVER_EXPORT QByteArray data() const;
 
-    QByteArray mimeType() const;
+    Q_HTTPSERVER_EXPORT QByteArray mimeType() const;
 
-    StatusCode statusCode() const;
+    Q_HTTPSERVER_EXPORT StatusCode statusCode() const;
 
-    void addHeader(QByteArray &&name, QByteArray &&value);
-    void addHeader(QByteArray &&name, const QByteArray &value);
-    void addHeader(const QByteArray &name, QByteArray &&value);
-    void addHeader(const QByteArray &name, const QByteArray &value);
-
-    void addHeaders(QHttpServerResponder::HeaderList headers);
-
-    template<typename Container>
-    void addHeaders(const Container &headerList)
-    {
-        for (const auto &header : headerList)
-            addHeader(header.first, header.second);
-    }
-
-    void clearHeader(const QByteArray &name);
-    void clearHeaders();
-
-    void setHeader(QByteArray &&name, QByteArray &&value);
-    void setHeader(QByteArray &&name, const QByteArray &value);
-    void setHeader(const QByteArray &name, QByteArray &&value);
-    void setHeader(const QByteArray &name, const QByteArray &value);
-
-    void setHeaders(QHttpServerResponder::HeaderList headers);
-
-    bool hasHeader(const QByteArray &name) const;
-    bool hasHeader(const QByteArray &name, const QByteArray &value) const;
-
-    QList<QByteArray> headers(const QByteArray &name) const;
+    Q_HTTPSERVER_EXPORT QHttpHeaders headers() const;
+    Q_HTTPSERVER_EXPORT void setHeaders(const QHttpHeaders &newHeaders);
+    Q_HTTPSERVER_EXPORT void setHeaders(QHttpHeaders &&newHeaders);
 
 private:
-    std::unique_ptr<QHttpServerResponsePrivate> d_ptr;
+    QHttpServerResponsePrivate *d_ptr;
 };
 
 QT_END_NAMESPACE

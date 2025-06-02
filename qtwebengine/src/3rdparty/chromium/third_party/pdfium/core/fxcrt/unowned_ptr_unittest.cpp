@@ -14,11 +14,7 @@
 #include "third_party/base/containers/contains.h"
 
 #if defined(PDF_USE_PARTITION_ALLOC)
-#if defined(PDF_USE_PARTITION_ALLOC_NEW_LOCATION)
-#include "base/allocator/partition_allocator/src/partition_alloc/shim/allocator_shim_default_dispatch_to_partition_alloc.h"
-#else
-#include "base/allocator/partition_allocator/shim/allocator_shim_default_dispatch_to_partition_alloc.h"
-#endif
+#include "partition_alloc/shim/allocator_shim_default_dispatch_to_partition_alloc.h"
 #endif
 
 namespace fxcrt {
@@ -269,8 +265,10 @@ TEST(UnownedPtr, TransparentCompare) {
 }
 
 #if defined(PDF_USE_PARTITION_ALLOC)
-#if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && \
-    BUILDFLAG(HAS_64_BIT_POINTERS) && BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT)
+#if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) &&   \
+    BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT) &&   \
+    !BUILDFLAG(ENABLE_DANGLING_RAW_PTR_CHECKS) && \
+    BUILDFLAG(HAS_64_BIT_POINTERS)
 
 TEST(UnownedPtr, DanglingGetsQuarantined) {
   partition_alloc::PartitionRoot* root =

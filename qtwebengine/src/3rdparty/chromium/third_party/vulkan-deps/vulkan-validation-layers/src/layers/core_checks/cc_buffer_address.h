@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2023 The Khronos Group Inc.
- * Copyright (c) 2015-2023 Valve Corporation
- * Copyright (c) 2015-2023 LunarG, Inc.
+/* Copyright (c) 2015-2024 The Khronos Group Inc.
+ * Copyright (c) 2015-2024 Valve Corporation
+ * Copyright (c) 2015-2024 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,7 +59,8 @@
    For an example of how to use BufferAddressValidation, see for instance how "VUID-VkDescriptorBufferBindingInfoEXT-usage-08122"
    and friends are validated.
  */
-template <size_t N>
+
+template <size_t N = 1>
 class BufferAddressValidation {
   public:
     // Return true if and only if VU is verified
@@ -83,26 +84,24 @@ class BufferAddressValidation {
     // using details provided by the other parameters.
     [[nodiscard]] bool LogInvalidBuffers(const CoreChecks& checker,
                                          vvl::span<const ValidationStateTracker::BUFFER_STATE_PTR> buffer_list,
-                                         std::string_view api_name, const std::string& device_address_name,
-                                         VkDeviceAddress device_address) const noexcept;
+                                         const Location& device_address_loc, VkDeviceAddress device_address) const noexcept;
 
     [[nodiscard]] bool LogErrorsIfNoValidBuffer(const CoreChecks& checker,
                                                 vvl::span<const ValidationStateTracker::BUFFER_STATE_PTR> buffer_list,
-                                                std::string_view api_name, const std::string& device_address_name,
-                                                VkDeviceAddress device_address) const noexcept {
+                                                const Location& device_address_loc, VkDeviceAddress device_address) const noexcept {
         bool skip = false;
         if (!HasValidBuffer(buffer_list)) {
-            skip |= LogInvalidBuffers(checker, buffer_list, api_name, device_address_name, device_address);
+            skip |= LogInvalidBuffers(checker, buffer_list, device_address_loc, device_address);
         }
         return skip;
     }
     [[nodiscard]] bool LogErrorsIfInvalidBufferFound(const CoreChecks& checker,
-                                                vvl::span<const ValidationStateTracker::BUFFER_STATE_PTR> buffer_list,
-                                                std::string_view api_name, const std::string& device_address_name,
-                                                VkDeviceAddress device_address) const noexcept {
+                                                     vvl::span<const ValidationStateTracker::BUFFER_STATE_PTR> buffer_list,
+                                                     const Location& device_address_loc,
+                                                     VkDeviceAddress device_address) const noexcept {
         bool skip = false;
         if (HasInvalidBuffer(buffer_list)) {
-            skip |= LogInvalidBuffers(checker, buffer_list, api_name, device_address_name, device_address);
+            skip |= LogInvalidBuffers(checker, buffer_list, device_address_loc, device_address);
         }
         return skip;
     }
@@ -115,6 +114,27 @@ class BufferAddressValidation {
             }
         }
         return false;
+    }
+
+    static bool ValidateMemoryBoundToBuffer(const CoreChecks& validator,
+                                            const ValidationStateTracker::BUFFER_STATE_PTR& buffer_state,
+                                            std::string* out_error_msg) {
+        if (!buffer_state->sparse && !buffer_state->IsMemoryBound()) {
+            if (out_error_msg) {
+                if (const auto mem_state = buffer_state->MemState(); mem_state && mem_state->Destroyed()) {
+                    *out_error_msg +=
+                        "buffer is bound to memory (" + validator.FormatHandle(mem_state->Handle()) + ") but it has been freed";
+                } else {
+                    *out_error_msg += "buffer has not been bound to memory";
+                }
+            }
+            return false;
+        }
+        return true;
+    }
+
+    static std::string ValidateMemoryBoundToBufferErrorMsgHeader() {
+        return "The following buffers are not bound to memory or it has been freed:\n";
     }
 
   public:
@@ -167,24 +187,22 @@ bool BufferAddressValidation<N>::HasInvalidBuffer(
 template <size_t N>
 bool BufferAddressValidation<N>::LogInvalidBuffers(const CoreChecks& checker,
                                                    vvl::span<const ValidationStateTracker::BUFFER_STATE_PTR> buffer_list,
-                                                   std::string_view api_name, const std::string& device_address_name,
+                                                   const Location& device_address_loc,
                                                    VkDeviceAddress device_address) const noexcept {
     std::array<Error, N> errors;
 
     // Build error message beginning. Then, only per buffer error needs to be appended.
-    std::string error_msg_beginning(api_name);
+    std::string error_msg_beginning;
     {
         const std::string address_string = [&]() {
             std::stringstream address_ss;
             address_ss << "0x" << std::hex << device_address;
             return address_ss.str();
         }();
-        error_msg_beginning += ": No buffer associated to ";
-        error_msg_beginning += device_address_name;
-        error_msg_beginning += " (";
+        error_msg_beginning += "(";
         error_msg_beginning += address_string;
         error_msg_beginning +=
-            ") was found such that valid usage passes. "
+            ") has no buffer associated to it such that valid usage passes. "
             "At least one buffer associated to this device address must be valid. ";
     }
 
@@ -216,7 +234,7 @@ bool BufferAddressValidation<N>::LogInvalidBuffers(const CoreChecks& checker,
                     error_msg += error_msg_header_suffix_func();
                 }
                 const auto invalid_buffer_index = error_objlist.size() - 1;
-                error_msg += "Object " + std::to_string(invalid_buffer_index) + ": " + buffer_error + '\n';
+                error_msg += "\nObject " + std::to_string(invalid_buffer_index) + ": " + buffer_error;
             }
         }
     }
@@ -227,7 +245,8 @@ bool BufferAddressValidation<N>::LogInvalidBuffers(const CoreChecks& checker,
         const auto& vuidAndValidation = vuidsAndValidationFunctions[i];
         const auto& error = errors[i];
         if (!error.Empty()) {
-            skip |= checker.LogError(error.objlist, vuidAndValidation.vuid.data(), "%s", error.error_msg.c_str());
+            skip |=
+                checker.LogError(vuidAndValidation.vuid.data(), error.objlist, device_address_loc, "%s", error.error_msg.c_str());
         }
     }
 

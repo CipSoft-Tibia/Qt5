@@ -9,8 +9,13 @@
 
 #### Libraries
 
-qt_find_package(Cups PROVIDED_TARGETS Cups::Cups MODULE_NAME printsupport QMAKE_LIB cups)
-
+if(NOT APPLE AND BUILD_SHARED_LIBS)
+    set(mark_cups_optional MARK_OPTIONAL)
+else()
+    set(mark_cups_optional "")
+endif()
+qt_find_package(Cups PROVIDED_TARGETS Cups::Cups
+    MODULE_NAME printsupport QMAKE_LIB cups ${mark_cups_optional})
 
 #### Tests
 
@@ -40,7 +45,7 @@ qt_feature("printer" PUBLIC
     SECTION "Painting"
     LABEL "QPrinter"
     PURPOSE "Provides a printer backend of QPainter."
-    CONDITION NOT UIKIT AND QT_FEATURE_picture AND QT_FEATURE_temporaryfile AND QT_FEATURE_pdf
+    CONDITION QT_FEATURE_picture AND QT_FEATURE_temporaryfile AND QT_FEATURE_pdf
 )
 qt_feature_definition("printer" "QT_NO_PRINTER" NEGATE VALUE "1")
 qt_feature("printpreviewwidget" PUBLIC

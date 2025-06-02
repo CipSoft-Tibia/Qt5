@@ -4,7 +4,6 @@
 #include "volumetric.h"
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/qcustom3dlabel.h>
-#include <QtGraphs/q3dinputhandler.h>
 #include <QtCore/qmath.h>
 
 const int lowDetailSize(256);
@@ -28,22 +27,22 @@ const int waterColorsMin(underWaterGroundColorsMax + 1);
 const int waterColorsMax(waterColorsMin + layerColorThickness);
 const int terrainTransparency(12);
 
-VolumetricModifier::VolumetricModifier(Q3DScatter *scatter)
+VolumetricModifier::VolumetricModifier(Q3DScatterWidgetItem *scatter)
     : m_graph(scatter),
       m_sliceIndexX(lowDetailSize / 2),
       m_sliceIndexY(lowDetailSize / 4),
       m_sliceIndexZ(lowDetailSize / 2)
 {
-    m_graph->activeTheme()->setType(Q3DTheme::Theme::PrimaryColors);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::None);
-    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::IsometricLeft);
+    m_graph->activeTheme()->setTheme(QGraphsTheme::Theme::QtGreenNeon);
+    m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::None);
+    m_graph->setCameraPreset(QtGraphs3D::CameraPreset::IsometricLeft);
     //! [0]
     m_graph->setOrthoProjection(true);
     //! [0]
-    m_graph->activeTheme()->setBackgroundEnabled(false);
+    m_graph->activeTheme()->setPlotAreaBackgroundVisible(false);
 
     // Only allow zooming at the center and limit the zoom to 200% to avoid clipping issues
-    static_cast<Q3DInputHandler *>(m_graph->activeInputHandler())->setZoomAtTargetEnabled(false);
+    m_graph->setZoomAtTargetEnabled(false);
     m_graph->setMaxCameraZoomLevel(200.0f);
 
     toggleAreaAll(true);
@@ -154,7 +153,7 @@ VolumetricModifier::VolumetricModifier(Q3DScatter *scatter)
 
     m_timer.start(0);
 
-    QObject::connect(m_graph, &QAbstract3DGraph::currentFpsChanged, this,
+    QObject::connect(m_graph, &Q3DGraphsWidgetItem::currentFpsChanged, this,
                      &VolumetricModifier::handleFpsChange);
     QObject::connect(&m_timer, &QTimer::timeout, this,
                      &VolumetricModifier::handleTimeout);

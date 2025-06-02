@@ -116,6 +116,12 @@ private slots:
     void deleteWhenTriggered();
 
     void nestedTearOffDetached();
+    void closeMenuOnClickIfMouseHasntMoved();
+#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN)
+    void dontSelectDisabledActionByShortcut();
+#endif
+
+    void invisibleActions();
 
 protected slots:
     void onActivated(QAction*);
@@ -531,7 +537,6 @@ void tst_QMenu::overrideMenuAction()
     m->addAction(aQuit);
 
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     w.setFocus();
     QVERIFY(QTest::qWaitForWindowActive(&w));
     QVERIFY(w.hasFocus());
@@ -1613,9 +1618,8 @@ void tst_QMenu::transientParent()
     QWindow *topLevel = window.windowHandle();
     QVERIFY(topLevel);
 
-    QApplicationPrivate::setActiveWindow(&window);
     window.setFocus();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QVERIFY(QTest::qWaitForWindowFocused(&window));
     QVERIFY(window.hasFocus());
 
     QTest::keyPress(&window, Qt::Key_F, Qt::AltModifier);
@@ -2114,6 +2118,89 @@ void tst_QMenu::nestedTearOffDetached()
     QTRY_VERIFY(subSubMenu->isVisible());
     QTest::mouseClick(subSubMenu, Qt::LeftButton, {}, QPoint(subSubMenu->width() / 2, tearOffOffset));
 }
+
+/*!
+    Test that a menu will close if you do a mouse click on top of
+    it without having moved the mouse.
+    (QTBUG-128359).
+*/
+void tst_QMenu::closeMenuOnClickIfMouseHasntMoved()
+{
+    QWidget w;
+    w.resize(100, 100);
+    w.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&w));
+
+    QMenu contextMenu;
+    for (int i = 0; i < 5; ++i) {
+        QAction *action = contextMenu.addAction(QStringLiteral("action"));
+        connect(action, &QAction::triggered, []{ QFAIL("No menu item should trigger"); });
+    }
+
+    const QPoint pos = w.rect().center();
+    const QPoint globalPos = w.mapToGlobal(pos);
+    // Move the mouse inside the window
+    QTest::mouseMove(&w, pos);
+    // Move the menu a bit up, so that a menu item falls underneath the
+    // mouse (similar to the code attached to the bug report: QTBUG-128359).
+    contextMenu.popup(globalPos - QPoint(0, 20));
+    QVERIFY(QTest::qWaitForWindowExposed(&contextMenu));
+    // Do a mouse click without having moved the cursor. This
+    // should close the menu, even if it's underneath the mouse.
+    QTest::mouseClick(&contextMenu, Qt::RightButton, {}, contextMenu.mapFromGlobal(pos));
+}
+
+void tst_QMenu::invisibleActions()
+{
+    QWidget window;
+    window.resize(100, 100);
+    window.show();
+
+    const QPoint globalPos = window.mapToGlobal(window.rect().center());
+
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QMenu contextMenu;
+    QList<QAction *> actions;
+    for (int i = 0; i < 5; ++i)
+        actions << contextMenu.addAction("action");
+    QVERIFY(contextMenu.sizeHint().isValid());
+
+    contextMenu.popup(globalPos);
+    QVERIFY(contextMenu.isVisible());
+
+    contextMenu.close();
+
+    for (const auto &action : actions)
+        action->setVisible(false);
+
+    contextMenu.popup(globalPos);
+    QVERIFY(!contextMenu.isVisible());
+    QVERIFY(!contextMenu.exec());
+}
+
+#if QT_CONFIG(shortcut) && !defined(Q_OS_DARWIN)
+void tst_QMenu::dontSelectDisabledActionByShortcut()
+{
+    if (!QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::WindowActivation))
+        QSKIP("Window activation is not supported");
+
+    QMainWindow w;
+    auto mb = w.menuBar();
+    auto m = mb->addMenu("me&nu");
+    auto zero = m->addAction("placeholder");
+    auto first = m->addAction("disabled &o");
+    auto second = m->addAction(QStringLiteral("enabled &o"));
+
+    QSignalSpy spy(second, &QAction::triggered);
+    first->setDisabled(true);
+    w.show();
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+    QTest::keyClick(&w, Qt::Key_N, Qt::AltModifier);
+    QTest::keyClick(m, Qt::Key_O, Qt::NoModifier);
+    QCOMPARE(spy.count(), 1);
+}
+#endif
 
 QTEST_MAIN(tst_QMenu)
 #include "tst_qmenu.moc"

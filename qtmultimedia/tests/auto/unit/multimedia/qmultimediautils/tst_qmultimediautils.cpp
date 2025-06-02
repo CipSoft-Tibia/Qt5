@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <private/qmultimediautils_p.h>
 #include <qvideoframeformat.h>
+#include <qvideoframe.h>
 
 class tst_QMultimediaUtils : public QObject
 {
@@ -29,6 +30,18 @@ private slots:
     void qGetRequiredSwapChainFormat_returnsHdr_whenMaxLuminanceIsBelowHdrThreshold();
 
     void qShouldUpdateSwapChainFormat_returnsFalse_whenSwapChainIsNullPointer();
+
+    void qNormalizedFrameTransformation_normilizesInputTransformation_data();
+    void qNormalizedFrameTransformation_normilizesInputTransformation();
+
+    void qVideoRotationFromDegrees_basicValues_data();
+    void qVideoRotationFromDegrees_basicValues();
+
+    void qVideoTransformationFromMatrix_returnsNormalizedTransformation_whenInputIsValid_data();
+    void qVideoTransformationFromMatrix_returnsNormalizedTransformation_whenInputIsValid();
+
+    void qVideoTransformationFromMatrix_returnsNormalizedTransformation_whenInputIsInvalid_data();
+    void qVideoTransformationFromMatrix_returnsNormalizedTransformation_whenInputIsInvalid();
 };
 
 void tst_QMultimediaUtils::fraction_of_0()
@@ -184,5 +197,228 @@ void tst_QMultimediaUtils::qShouldUpdateSwapChainFormat_returnsFalse_whenSwapCha
     QCOMPARE(shouldUpdate, false);
 }
 
+void tst_QMultimediaUtils::qNormalizedFrameTransformation_normilizesInputTransformation_data()
+{
+    QTest::addColumn<QtVideo::Rotation>("surfaceRotation");
+    QTest::addColumn<bool>("surfaceMirrored");
+    QTest::addColumn<QVideoFrameFormat::Direction>("scanLineDirection");
+
+    QTest::addColumn<QtVideo::Rotation>("frameRotation");
+    QTest::addColumn<bool>("frameMirrored");
+    QTest::addColumn<int>("additionalFrameRotation");
+
+    const auto rotations = { QtVideo::Rotation::None, QtVideo::Rotation::Clockwise90,
+                             QtVideo::Rotation::Clockwise180, QtVideo::Rotation::Clockwise270 };
+    const auto scanLineDirections = { QVideoFrameFormat::TopToBottom,
+                                      QVideoFrameFormat::BottomToTop };
+
+    auto newRow = [](QtVideo::Rotation surfaceRotation, bool surfaceMirrored,
+                     QVideoFrameFormat::Direction scanLineDirection,
+                     QtVideo::Rotation frameRotation, bool frameMirrored, int additionalRotation) {
+        QString tag;
+        QDebug stream(&tag);
+        stream << "Surface transform:" << surfaceRotation;
+        if (surfaceMirrored)
+            stream << "mirrored";
+        if (scanLineDirection == QVideoFrameFormat::BottomToTop)
+            stream << "opposite_scanline";
+
+        stream << "Frame transform:" << frameRotation;
+        if (frameMirrored)
+            stream << "mirrored";
+        if (additionalRotation)
+            stream << "additionalRotation:" << additionalRotation;
+
+        QTest::newRow(tag.toLatin1().data())
+                << surfaceRotation << surfaceMirrored << scanLineDirection << frameRotation
+                << frameMirrored << additionalRotation;
+    };
+
+    for (QtVideo::Rotation surfaceRotation : rotations)
+        for (bool surfaceMirrored : { false, true })
+            for (QVideoFrameFormat::Direction scanLineDirection : scanLineDirections)
+                for (QtVideo::Rotation frameRotation : rotations)
+                    for (bool frameMirrored : { false, true })
+                        newRow(surfaceRotation, surfaceMirrored, scanLineDirection, frameRotation,
+                               frameMirrored, 0);
+
+    for (int additionalRotation : { -3690, -3600, -90, 90, 1800, 1980 })
+        newRow(QtVideo::Rotation::Clockwise90, true, QVideoFrameFormat::TopToBottom,
+               QtVideo::Rotation::None, false, additionalRotation);
+}
+
+static void rotate(QTransform &transform, qreal clockwiseDegrees)
+{
+    // QTransform::rotate rotates clockwise as long as the Y-axis points downwards
+    if (clockwiseDegrees != 0)
+        transform.rotate(clockwiseDegrees);
+}
+
+static void rotate(QTransform &transform, QtVideo::Rotation rotation)
+{
+    rotate(transform, qToUnderlying(rotation));
+}
+
+static void xMirror(QTransform &transform, bool mirror)
+{
+    if (mirror)
+        transform.scale(-1., 1.);
+}
+
+static void yMirror(QTransform &transform, bool mirror)
+{
+    if (mirror)
+        transform.scale(1., -1.);
+}
+
+static QTransform makeTransformMatrix(QtVideo::Rotation surfaceRotation, bool surfaceMirrored,
+                                      QVideoFrameFormat::Direction scanLineDirection,
+                                      QtVideo::Rotation frameRotation, bool frameMirrored,
+                                      int additionalRotation)
+{
+    QTransform result;
+
+    yMirror(result, scanLineDirection == QVideoFrameFormat::BottomToTop);
+    rotate(result, surfaceRotation);
+    xMirror(result, surfaceMirrored);
+    rotate(result, frameRotation);
+    xMirror(result, frameMirrored);
+    rotate(result, additionalRotation);
+
+    return result;
+}
+
+void tst_QMultimediaUtils::qNormalizedFrameTransformation_normilizesInputTransformation()
+{
+    // Arrange
+    QFETCH(const QtVideo::Rotation, surfaceRotation);
+    QFETCH(const bool, surfaceMirrored);
+    QFETCH(const QVideoFrameFormat::Direction, scanLineDirection);
+
+    QFETCH(const QtVideo::Rotation, frameRotation);
+    QFETCH(const bool, frameMirrored);
+    QFETCH(const int, additionalFrameRotation);
+
+    QVideoFrameFormat format(QSize(4, 4), QVideoFrameFormat::Format_ARGB8888);
+    format.setRotation(surfaceRotation);
+    format.setMirrored(surfaceMirrored);
+    format.setScanLineDirection(scanLineDirection);
+
+    QVideoFrame frame(format);
+
+    frame.setRotation(frameRotation);
+    frame.setMirrored(frameMirrored);
+
+    // Act
+    const VideoTransformation actual =
+            qNormalizedFrameTransformation(frame, additionalFrameRotation);
+
+    const QTransform expectedTransform =
+            makeTransformMatrix(surfaceRotation, surfaceMirrored, scanLineDirection, frameRotation,
+                                frameMirrored, additionalFrameRotation);
+
+    const VideoTransformationOpt expected = qVideoTransformationFromMatrix(expectedTransform);
+
+    QTEST_ASSERT(expected);
+
+    // Assert
+    QCOMPARE(actual, *expected);
+}
+
+void tst_QMultimediaUtils::qVideoRotationFromDegrees_basicValues_data()
+{
+    QTest::addColumn<int>("inputDegrees");
+    QTest::addColumn<QtVideo::Rotation>("expectedOutput");
+
+    QTest::newRow("0") << 0 << QtVideo::Rotation::None;
+    QTest::newRow("90") << 90 << QtVideo::Rotation::Clockwise90;
+    QTest::newRow("180") << 180 << QtVideo::Rotation::Clockwise180;
+    QTest::newRow("270") << 270 << QtVideo::Rotation::Clockwise270;
+    QTest::newRow("360") << 360 << QtVideo::Rotation::None;
+    QTest::newRow("450") << 450 << QtVideo::Rotation::Clockwise90;
+    QTest::newRow("630") << 630 << QtVideo::Rotation::Clockwise270;
+    QTest::newRow("-90") << -90 << QtVideo::Rotation::Clockwise270;
+    QTest::newRow("-270") << -270 << QtVideo::Rotation::Clockwise90;
+    QTest::newRow("-450") << -450 << QtVideo::Rotation::Clockwise270;
+    QTest::newRow("1") << 1 << QtVideo::Rotation::None;
+}
+
+void tst_QMultimediaUtils::qVideoRotationFromDegrees_basicValues()
+{
+    QFETCH(int, inputDegrees);
+    QFETCH(QtVideo::Rotation, expectedOutput);
+
+    auto actual = qVideoRotationFromDegrees(inputDegrees);
+
+    QCOMPARE(actual, expectedOutput);
+}
+
+void tst_QMultimediaUtils::
+        qVideoTransformationFromMatrix_returnsNormalizedTransformation_whenInputIsValid_data()
+{
+    QTest::addColumn<QTransform>("matrix");
+    QTest::addColumn<VideoTransformation>("expected");
+
+    const auto clockwiseDegreesList = { -44.7, 0., 44., 45.01, 90., 180., 270., 359. };
+    const auto scales = { -20., -1., -0.1, 0.1, 1., 20. };
+
+    for (double xScale : scales)
+        for (double yScale : { 1., 100. })
+            for (double clockwiseDegrees : clockwiseDegreesList) {
+                const VideoTransformation transform{
+                    QtVideo::Rotation(qRound(clockwiseDegrees / 90.) % 4 * 90), xScale < 0
+                };
+
+                const QString tag = QStringLiteral("clockwiseDegrees: %1; yScale: %2; yScale: %3")
+                                            .arg(QString::number(clockwiseDegrees),
+                                                 QString::number(xScale), QString::number(yScale));
+                QTransform matrix;
+                rotate(matrix, clockwiseDegrees);
+                matrix.scale(xScale, yScale);
+
+                QTest::newRow(tag.toLocal8Bit().constData()) << matrix << transform;
+            }
+}
+
+void tst_QMultimediaUtils::
+        qVideoTransformationFromMatrix_returnsNormalizedTransformation_whenInputIsValid()
+{
+    QFETCH(const QTransform, matrix);
+    QFETCH(const VideoTransformation, expected);
+
+    const VideoTransformationOpt actual = qVideoTransformationFromMatrix(matrix);
+
+    QVERIFY(actual);
+    QCOMPARE(*actual, expected);
+}
+
+void tst_QMultimediaUtils::
+        qVideoTransformationFromMatrix_returnsNormalizedTransformation_whenInputIsInvalid_data()
+{
+    QTest::addColumn<QTransform>("matrix");
+
+    QTest::newRow("zeros") << QTransform(0., 0., 0., 0., 0., 0.);
+    QTest::newRow("xScale is zero") << QTransform(0., 1., 0., 1., 0., 0.);
+    QTest::newRow("yScale is zero") << QTransform(1., 0., 1., 0., 0., 0.);
+    QTest::newRow("sheared: m22 is zero") << QTransform(1., 1., 1., 0., 0., 0.);
+    QTest::newRow("sheared: m11 is zero") << QTransform(0., 1., 1., 1., 0., 0.);
+    QTest::newRow("sheared: m12 is zero") << QTransform(1., 0., 1., 1., 0., 0.);
+    QTest::newRow("sheared: m21 is zero") << QTransform(1., 1., 0., 1., 0., 0.);
+    QTest::newRow("sheared: ambiguous mirror") << QTransform(1., 1., 1., 1., 0., 0.);
+}
+
+void tst_QMultimediaUtils::
+        qVideoTransformationFromMatrix_returnsNormalizedTransformation_whenInputIsInvalid()
+{
+    QFETCH(const QTransform, matrix);
+
+    const VideoTransformationOpt actual = qVideoTransformationFromMatrix(matrix);
+
+    QVERIFY(!actual);
+}
+
 QTEST_MAIN(tst_QMultimediaUtils)
+
+Q_DECLARE_METATYPE(QTransform)
+
 #include "tst_qmultimediautils.moc"

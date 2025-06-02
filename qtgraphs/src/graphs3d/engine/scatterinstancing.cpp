@@ -52,6 +52,11 @@ void ScatterInstancing::setRangeGradient(bool newRangeGradient)
     m_rangeGradient = newRangeGradient;
 }
 
+void ScatterInstancing::setTransparency(bool transparency)
+{
+    setDepthSortingEnabled(transparency);
+}
+
 const QList<float> &ScatterInstancing::customData() const
 {
     return m_customData;
@@ -80,10 +85,20 @@ void ScatterInstancing::setDataArray(const QList<DataItemHolder> &newDataArray)
     markDataDirty();
 }
 
-void ScatterInstancing::hideDataItem(int index)
+void ScatterInstancing::hideDataItem(qsizetype index)
 {
+    unhidePreviousDataItem();
     Q_ASSERT(index < m_dataArray.size());
     m_dataArray[index].hide = true;
+    m_previousHideIndex = index;
+}
+
+void ScatterInstancing::unhidePreviousDataItem()
+{
+    if (m_previousHideIndex >= 0) {
+        m_dataArray[m_previousHideIndex].hide = false;
+        markDataDirty();
+    }
 }
 
 void ScatterInstancing::resetVisibilty()

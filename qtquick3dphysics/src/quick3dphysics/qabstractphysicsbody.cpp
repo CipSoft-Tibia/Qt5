@@ -28,6 +28,8 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmlproperty bool PhysicsBody::simulationEnabled
     This property defines if the body will partake in the physical simulation.
+
+    Default value: \c{true}
 */
 
 QAbstractPhysicsBody::QAbstractPhysicsBody()

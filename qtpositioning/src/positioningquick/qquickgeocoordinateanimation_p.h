@@ -23,7 +23,7 @@ QT_BEGIN_NAMESPACE
 
 class QQuickGeoCoordinateAnimationPrivate;
 
-class Q_POSITIONINGQUICK_PRIVATE_EXPORT QQuickGeoCoordinateAnimation : public QQuickPropertyAnimation
+class Q_POSITIONINGQUICK_EXPORT QQuickGeoCoordinateAnimation : public QQuickPropertyAnimation
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(CoordinateAnimation)
@@ -59,7 +59,7 @@ Q_SIGNALS:
     void directionChanged();
 };
 
-QVariant Q_POSITIONINGQUICK_PRIVATE_EXPORT q_coordinateInterpolator(const QGeoCoordinate &from, const QGeoCoordinate &to, qreal progress);
+QVariant Q_POSITIONINGQUICK_EXPORT q_coordinateInterpolator(const QGeoCoordinate &from, const QGeoCoordinate &to, qreal progress);
 
 QT_END_NAMESPACE
 

@@ -15,7 +15,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype TimelineAnimation
     \inherits NumberAnimation
-    \instantiates QQuickTimelineAnimation
+    \nativetype QQuickTimelineAnimation
     \inqmlmodule QtQuick.Timeline
     \ingroup qtqmltypes
 

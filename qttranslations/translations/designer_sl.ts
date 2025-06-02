@@ -654,8 +654,8 @@
 <context>
     <name>Designer</name>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file contains top level spacers.&lt;br&gt;They have &lt;b&gt;NOT&lt;/b&gt; been saved into the form.</source>
@@ -690,8 +690,8 @@
         <translation>Pretvorjene datoteke ni bilo moč prebrati.</translation>
     </message>
     <message>
-        <source>This file was created using Designer from Qt-%1 and will be converted to a new form by Qt Designer.</source>
-        <translation>Ta datoteka je bila ustvarjena s Qt Designerjem iz Qt %1 in bo pretvorjena v novo obliko.</translation>
+        <source>This file was created using Designer from Qt-%1 and will be converted to a new form by Qt Widgets Designer.</source>
+        <translation>Ta datoteka je bila ustvarjena s Qt Widgets Designerjem iz Qt %1 in bo pretvorjena v novo obliko.</translation>
     </message>
     <message>
         <source>The old form has not been touched, but you will have to save the form under a new name.</source>
@@ -1073,8 +1073,8 @@ Parsing grid layout minimum size values
         <translation>Obrazec</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1354,8 +1354,8 @@ Skript: %3</translation>
         <translation>%1 - opozorilo</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This application cannot be used for the Console edition of Qt</source>
@@ -1401,24 +1401,24 @@ Skript: %3</translation>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>P&amp;riročnik za Qt Designer</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>P&amp;riročnik za Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
         <translation>Pomoč za trenutni gradnik</translation>
     </message>
     <message>
-        <source>What&apos;s New in Qt Designer?</source>
-        <translation>Kaj je novega v Qt Designerju?</translation>
+        <source>What&apos;s New in Qt Widgets Designer?</source>
+        <translation>Kaj je novega v Qt Widgets Designerju?</translation>
     </message>
     <message>
         <source>About Plugins</source>
         <translation>O vstavkih</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>O Qt Designer</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>O Qt Widgets Designer</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -3283,12 +3283,12 @@ Ali želite nadomestiti predlogo?</translation>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Različica %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer je snovalnik grafičnih uporabniških vmesnikov za Qt programe.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer je snovalnik grafičnih uporabniških vmesnikov za Qt programe.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) 2012 Nokia Corporation and/or its subsidiary(-ies).</source>
@@ -4835,12 +4835,12 @@ Please select another name.</source>
         <translation>Neuspeli vstavki</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer ni našel nobenega vstavka</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer ni našel nobenega vstavka</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer je našel naslednje vstavke</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer je našel naslednje vstavke</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

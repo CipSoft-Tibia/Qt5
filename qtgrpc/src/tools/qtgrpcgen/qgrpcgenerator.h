@@ -42,10 +42,6 @@ private:
             const ::google::protobuf::FileDescriptor *file,
             ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
 
-    [[maybe_unused]] bool GenerateServerServices(
-            const ::google::protobuf::FileDescriptor *file,
-            ::google::protobuf::compiler::GeneratorContext *generatorContext) const;
-
     static std::set<std::string> GetInternalIncludes(
             const ::google::protobuf::FileDescriptor *file);
 

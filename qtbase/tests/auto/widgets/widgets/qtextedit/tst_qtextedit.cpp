@@ -2545,7 +2545,6 @@ void tst_QTextEdit::inputMethodEvent()
 
     // test that input method gets chance to commit preedit when removing focus
     ed->setText("");
-    QApplicationPrivate::setActiveWindow(ed);
     QTRY_VERIFY(QApplication::focusWindow());
     QCOMPARE(qApp->focusObject(), ed);
 
@@ -2810,6 +2809,8 @@ namespace {
                 return 72;
             case QPaintDevice::PdmDevicePixelRatio:
             case QPaintDevice::PdmDevicePixelRatioScaled:
+            case QPaintDevice::PdmDevicePixelRatioF_EncodedA:
+            case QPaintDevice::PdmDevicePixelRatioF_EncodedB:
                 ; // fall through
             }
             return 0;

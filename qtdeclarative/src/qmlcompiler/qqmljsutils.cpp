@@ -5,6 +5,10 @@
 #include "qqmljstyperesolver_p.h"
 #include "qqmljsscopesbyid_p.h"
 
+#include <QtCore/qvarlengtharray.h>
+#include <QtCore/qdir.h>
+#include <QtCore/qdiriterator.h>
+
 #include <algorithm>
 
 QT_BEGIN_NAMESPACE
@@ -29,8 +33,7 @@ resolveAlias(ScopeForId scopeForId, const QQmlJSMetaProperty &property,
 
     // TODO: one could optimize the generated alias code for aliases pointing to aliases
     //  e.g., if idA.myAlias -> idB.myAlias2 -> idC.myProp, then one could directly generate
-    //  idA.myProp as pointing to idC.myProp.
-    //  This gets complicated when idB.myAlias is in a different Component than where the
+    //  idA.myProp as pointing to idC.myProp. //  This gets complicated when idB.myAlias is in a different Component than where the
     //  idA.myAlias is defined: scopeForId currently only contains the ids of the current
     //  component and alias resolution on the ids of a different component fails then.
     if (QQmlJSMetaProperty nextProperty = property; nextProperty.isAlias()) {
@@ -249,6 +252,113 @@ bool canCompareWithQUrl(
     Q_ASSERT(typeResolver);
     return typeResolver->equals(lhsType, typeResolver->urlType())
             && typeResolver->equals(rhsType, typeResolver->urlType());
+}
+
+QStringList QQmlJSUtils::resourceFilesFromBuildFolders(const QStringList &buildFolders)
+{
+    QStringList result;
+    for (const QString &path : buildFolders) {
+        QDirIterator it(path, QStringList{ u"*.qrc"_s }, QDir::Files | QDir::Hidden,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            result.append(it.next());
+        }
+    }
+    return result;
+}
+
+enum FilterType {
+    LocalFileFilter,
+    ResourceFileFilter
+};
+
+/*!
+\internal
+Obtain a QML module qrc entry from its qmldir entry.
+
+Contains a heuristic for QML modules without nested-qml-module-with-prefer-feature
+that tries to find a parent directory that contains a qmldir entry in the qrc.
+*/
+static QQmlJSResourceFileMapper::Entry
+qmlModuleEntryFromBuildPath(const QQmlJSResourceFileMapper *mapper,
+                            const QString &pathInBuildFolder, FilterType type)
+{
+    const QString cleanPath = QDir::cleanPath(pathInBuildFolder);
+    QStringView directoryPath = cleanPath;
+
+    while (!directoryPath.isEmpty()) {
+        const qsizetype lastSlashIndex = directoryPath.lastIndexOf(u'/');
+        if (lastSlashIndex == -1)
+            return {};
+
+        directoryPath.truncate(lastSlashIndex);
+        const QString qmldirPath = u"%1/qmldir"_s.arg(directoryPath);
+        const QQmlJSResourceFileMapper::Filter qmldirFilter = type == LocalFileFilter
+                ? QQmlJSResourceFileMapper::localFileFilter(qmldirPath)
+                : QQmlJSResourceFileMapper::resourceFileFilter(qmldirPath);
+
+        QQmlJSResourceFileMapper::Entry result = mapper->entry(qmldirFilter);
+        if (result.isValid()) {
+            result.resourcePath.chop(std::char_traits<char>::length("/qmldir"));
+            result.filePath.chop(std::char_traits<char>::length("/qmldir"));
+            return result;
+        }
+    }
+    return {};
+}
+
+/*!
+\internal
+Obtains the source folder path from a build folder QML file path via the passed \c mapper.
+
+This works on proper QML modules when using the nested-qml-module-with-prefer-feature
+from 6.8 and uses a heuristic when the qmldir with the prefer entry is missing.
+*/
+QString QQmlJSUtils::qmlSourcePathFromBuildPath(const QQmlJSResourceFileMapper *mapper,
+                                                const QString &pathInBuildFolder)
+{
+    if (!mapper)
+        return pathInBuildFolder;
+
+    const auto qmlModuleEntry =
+            qmlModuleEntryFromBuildPath(mapper, pathInBuildFolder, LocalFileFilter);
+    if (!qmlModuleEntry.isValid())
+        return pathInBuildFolder;
+    const QString qrcPath = qmlModuleEntry.resourcePath
+            + QStringView(pathInBuildFolder).sliced(qmlModuleEntry.filePath.size());
+
+    const auto entry = mapper->entry(QQmlJSResourceFileMapper::resourceFileFilter(qrcPath));
+    return entry.isValid()? entry.filePath : pathInBuildFolder;
+}
+
+/*!
+\internal
+Obtains the source folder path from a build folder QML file path via the passed \c mapper, see also
+\l QQmlJSUtils::qmlSourcePathFromBuildPath.
+*/
+QString QQmlJSUtils::qmlBuildPathFromSourcePath(const QQmlJSResourceFileMapper *mapper,
+                                                const QString &pathInSourceFolder)
+{
+    if (!mapper)
+        return pathInSourceFolder;
+
+    const QString qrcPath =
+            mapper->entry(QQmlJSResourceFileMapper::localFileFilter(pathInSourceFolder))
+                    .resourcePath;
+
+    if (qrcPath.isEmpty())
+        return pathInSourceFolder;
+
+    const auto moduleBuildEntry =
+            qmlModuleEntryFromBuildPath(mapper, qrcPath, ResourceFileFilter);
+
+    if (!moduleBuildEntry.isValid())
+        return pathInSourceFolder;
+
+    const auto qrcFolderPath = qrcPath.first(qrcPath.lastIndexOf(u'/')); // drop the filename
+
+    return moduleBuildEntry.filePath + qrcFolderPath.sliced(moduleBuildEntry.resourcePath.size())
+            + pathInSourceFolder.sliced(pathInSourceFolder.lastIndexOf(u'/'));
 }
 
 QT_END_NAMESPACE

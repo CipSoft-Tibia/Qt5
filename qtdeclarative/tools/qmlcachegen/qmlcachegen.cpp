@@ -95,8 +95,16 @@ int main(int argc, char **argv)
     parser.addOption(onlyBytecode);
     QCommandLineOption verboseOption("verbose"_L1, QCoreApplication::translate("main", "Output compile warnings"));
     parser.addOption(verboseOption);
+    QCommandLineOption warningsAreErrorsOption("warnings-are-errors"_L1, QCoreApplication::translate("main", "Treat warnings as errors"));
+    parser.addOption(warningsAreErrorsOption);
+
     QCommandLineOption validateBasicBlocksOption("validate-basic-blocks"_L1, QCoreApplication::translate("main", "Performs checks on the basic blocks of a function compiled ahead of time to validate its structure and coherence"));
     parser.addOption(validateBasicBlocksOption);
+
+    QCommandLineOption dumpAotStatsOption("dump-aot-stats"_L1, QCoreApplication::translate("main", "Dumps statistics about ahead-of-time compilation of bindings and functions"));
+    parser.addOption(dumpAotStatsOption);
+    QCommandLineOption moduleIdOption("module-id"_L1, QCoreApplication::translate("main", "Identifies the module of the qml file being compiled for aot stats"), QCoreApplication::translate("main", "id"));
+    parser.addOption(moduleIdOption);
 
     QCommandLineOption outputFileOption("o"_L1, QCoreApplication::translate("main", "Output file name"), QCoreApplication::translate("main", "file name"));
     parser.addOption(outputFileOption);
@@ -131,6 +139,11 @@ int main(int argc, char **argv)
 
     if (target == GenerateLoader && parser.isSet(resourceNameOption))
         target = GenerateLoaderStandAlone;
+
+    if (parser.isSet(dumpAotStatsOption) && !parser.isSet(moduleIdOption)) {
+        fprintf(stderr, "--dump-aot-stats set without setting --module-id");
+        return EXIT_FAILURE;
+    }
 
     const QStringList sources = parser.positionalArguments();
     if (sources.isEmpty()){
@@ -228,12 +241,17 @@ int main(int argc, char **argv)
                 error.augment("Error compiling qml file: "_L1).print();
                 return EXIT_FAILURE;
             }
+
+            if (parser.isSet(onlyBytecode)) {
+                QQmlJS::AotStats emptyStats;
+                emptyStats.saveToDisk(outputFileName + u".aotstats"_s);
+            }
         } else {
             QStringList importPaths;
 
             if (parser.isSet(resourceOption)) {
-                importPaths.append("qt-project.org/imports"_L1);
-                importPaths.append("qt/qml"_L1);
+                importPaths.append(":/qt-project.org/imports"_L1);
+                importPaths.append(":/qt/qml"_L1);
             };
 
             if (parser.isSet(importPathOption))
@@ -245,18 +263,25 @@ int main(int argc, char **argv)
             QQmlJSImporter importer(
                         importPaths, parser.isSet(resourceOption) ? &fileMapper : nullptr);
             QQmlJSLogger logger;
+            logger.setFilePath(inputFile);
 
             // Always trigger the qFatal() on "pragma Strict" violations.
             logger.setCategoryLevel(qmlCompiler, QtWarningMsg);
             logger.setCategoryIgnored(qmlCompiler, false);
             logger.setCategoryFatal(qmlCompiler, true);
 
-            if (!parser.isSet(verboseOption))
+            if (!parser.isSet(verboseOption) && !parser.isSet(warningsAreErrorsOption))
                 logger.setSilent(true);
 
             QQmlJSAotCompiler cppCodeGen(
                     &importer, u':' + inputResourcePath,
                     QQmlJSUtils::cleanPaths(parser.values(importsOption)), &logger);
+
+            if (parser.isSet(dumpAotStatsOption)) {
+                QQmlJS::QQmlJSAotCompilerStats::setRecordAotStats(true);
+                QQmlJS::QQmlJSAotCompilerStats::setModuleId(parser.value(moduleIdOption));
+                QQmlJS::QQmlJSAotCompilerStats::registerFile(inputFile);
+            }
 
             if (parser.isSet(validateBasicBlocksOption))
                 cppCodeGen.m_flags.setFlag(QQmlJSAotCompiler::ValidateBasicBlocks);
@@ -273,7 +298,12 @@ int main(int argc, char **argv)
                 logger.log("Type warnings occurred while compiling file:"_L1,
                            qmlImport, QQmlJS::SourceLocation());
                 logger.processMessages(warnings, qmlImport);
+                if (parser.isSet(warningsAreErrorsOption))
+                    return EXIT_FAILURE;
             }
+
+            if (parser.isSet(dumpAotStatsOption))
+                QQmlJS::QQmlJSAotCompilerStats::instance()->saveToDisk(outputFileName + u".aotstats"_s);
         }
     } else if (inputFile.endsWith(".js"_L1) || inputFile.endsWith(".mjs"_L1)) {
         QQmlJSCompileError error;
@@ -283,6 +313,8 @@ int main(int argc, char **argv)
         }
     } else {
         fprintf(stderr, "Ignoring %s input file as it is not QML source code - maybe remove from QML_FILES?\n", qPrintable(inputFile));
+        if (parser.isSet(warningsAreErrorsOption))
+            return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;

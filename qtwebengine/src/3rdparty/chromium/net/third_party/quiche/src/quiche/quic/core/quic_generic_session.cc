@@ -50,7 +50,7 @@ ParsedQuicVersionVector GetQuicVersionsForGenericSession() {
 
 // QuicGenericStream is a stream that provides a general-purpose implementation
 // of a webtransport::Stream interface.
-class QUIC_EXPORT_PRIVATE QuicGenericStream : public QuicStream {
+class QUICHE_EXPORT QuicGenericStream : public QuicStream {
  public:
   QuicGenericStream(QuicStreamId id, QuicSession* session)
       : QuicStream(id, session, /*is_static=*/false,
@@ -191,6 +191,14 @@ webtransport::DatagramStatus QuicGenericSessionBase::SendOrQueueDatagram(
   return MessageStatusToWebTransportStatus(
       datagram_queue()->SendOrQueueDatagram(
           quiche::QuicheMemSlice(std::move(buffer))));
+}
+
+void QuicGenericSessionBase::OnConnectionClosed(
+    const QuicConnectionCloseFrame& frame, ConnectionCloseSource source) {
+  QuicSession::OnConnectionClosed(frame, source);
+  visitor_->OnSessionClosed(static_cast<webtransport::SessionErrorCode>(
+                                frame.transport_close_frame_type),
+                            frame.error_details);
 }
 
 QuicGenericClientSession::QuicGenericClientSession(

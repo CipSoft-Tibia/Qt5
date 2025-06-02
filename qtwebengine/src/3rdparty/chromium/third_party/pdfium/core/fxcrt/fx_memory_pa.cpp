@@ -6,12 +6,8 @@
 
 #include "core/fxcrt/fx_memory.h"
 
-#if defined(PDF_USE_PARTITION_ALLOC_NEW_LOCATION)
-#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc.h"
-#else
-#include "base/allocator/partition_allocator/partition_alloc.h"
-#endif
 #include "core/fxcrt/fx_safe_types.h"
+#include "partition_alloc/partition_alloc.h"
 #include "third_party/base/no_destructor.h"
 
 #if !defined(PDF_USE_PARTITION_ALLOC)
@@ -52,9 +48,10 @@ void* Alloc(size_t num_members, size_t member_size) {
   if (!total.IsValid())
     return nullptr;
 
-  return GetGeneralPartitionAllocator().root()->AllocWithFlags(
-      partition_alloc::AllocFlags::kReturnNull, total.ValueOrDie(),
-      "GeneralPartition");
+  return GetGeneralPartitionAllocator()
+      .root()
+      ->AllocInline<partition_alloc::AllocFlags::kReturnNull>(
+          total.ValueOrDie(), "GeneralPartition");
 }
 
 void* Calloc(size_t num_members, size_t member_size) {
@@ -63,10 +60,11 @@ void* Calloc(size_t num_members, size_t member_size) {
   if (!total.IsValid())
     return nullptr;
 
-  return GetGeneralPartitionAllocator().root()->AllocWithFlags(
-      partition_alloc::AllocFlags::kReturnNull |
-          partition_alloc::AllocFlags::kZeroFill,
-      total.ValueOrDie(), "GeneralPartition");
+  return GetGeneralPartitionAllocator()
+      .root()
+      ->AllocInline<partition_alloc::AllocFlags::kReturnNull |
+                    partition_alloc::AllocFlags::kZeroFill>(total.ValueOrDie(),
+                                                            "GeneralPartition");
 }
 
 void* Realloc(void* ptr, size_t num_members, size_t member_size) {
@@ -75,9 +73,10 @@ void* Realloc(void* ptr, size_t num_members, size_t member_size) {
   if (!size.IsValid())
     return nullptr;
 
-  return GetGeneralPartitionAllocator().root()->ReallocWithFlags(
-      partition_alloc::AllocFlags::kReturnNull, ptr, size.ValueOrDie(),
-      "GeneralPartition");
+  return GetGeneralPartitionAllocator()
+      .root()
+      ->Realloc<partition_alloc::AllocFlags::kReturnNull>(
+          ptr, size.ValueOrDie(), "GeneralPartition");
 }
 
 void Dealloc(void* ptr) {
@@ -100,9 +99,10 @@ void* StringAlloc(size_t num_members, size_t member_size) {
   if (!total.IsValid())
     return nullptr;
 
-  return GetStringPartitionAllocator().root()->AllocWithFlags(
-      partition_alloc::AllocFlags::kReturnNull, total.ValueOrDie(),
-      "StringPartition");
+  return GetStringPartitionAllocator()
+      .root()
+      ->AllocInline<partition_alloc::AllocFlags::kReturnNull>(
+          total.ValueOrDie(), "StringPartition");
 }
 
 void StringDealloc(void* ptr) {
@@ -138,8 +138,10 @@ void FX_InitializeMemoryAllocators() {
 
 #ifndef V8_ENABLE_SANDBOX
 void* FX_ArrayBufferAllocate(size_t length) {
-  return GetArrayBufferPartitionAllocator().root()->AllocWithFlags(
-      partition_alloc::AllocFlags::kZeroFill, length, "FXArrayBuffer");
+  return GetArrayBufferPartitionAllocator()
+      .root()
+      ->AllocInline<partition_alloc::AllocFlags::kZeroFill>(length,
+                                                            "FXArrayBuffer");
 }
 
 void* FX_ArrayBufferAllocateUninitialized(size_t length) {

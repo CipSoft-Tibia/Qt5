@@ -228,8 +228,8 @@ ExternalSource GetExternalSourceFromExternalImage(
   // into a single blit.
   SourceImageStatus source_image_status = kInvalidSourceImageStatus;
   auto image_for_canvas = canvas_image_source->GetSourceImageForCanvas(
-      CanvasResourceProvider::FlushReason::kWebGPUExternalImage,
-      &source_image_status, image_size, kDontChangeAlpha);
+      FlushReason::kWebGPUExternalImage, &source_image_status, image_size,
+      kDontChangeAlpha);
   if (source_image_status != kNormalSourceImageStatus) {
     // Canvas back resource is broken, zero size, incomplete or invalid.
     // but developer can do nothing. Return nullptr and issue an noop.
@@ -355,10 +355,20 @@ void GPUQueue::OnWorkDoneCallback(ScriptPromiseResolver* resolver,
       resolver->Resolve();
       break;
     case WGPUQueueWorkDoneStatus_Error:
+      resolver->RejectWithDOMException(
+          DOMExceptionCode::kOperationError,
+          "Unexpected failure in onSubmittedWorkDone");
+      break;
     case WGPUQueueWorkDoneStatus_Unknown:
+      resolver->RejectWithDOMException(
+          DOMExceptionCode::kOperationError,
+          "Unknown failure in onSubmittedWorkDone");
+      break;
     case WGPUQueueWorkDoneStatus_DeviceLost:
-      resolver->Reject(MakeGarbageCollected<DOMException>(
-          DOMExceptionCode::kOperationError));
+      resolver->RejectWithDOMException(
+          DOMExceptionCode::kOperationError,
+          "Device lost during onSubmittedWorkDone (do not use this error for "
+          "recovery - it is NOT guaranteed to happen on device loss)");
       break;
     default:
       NOTREACHED();
@@ -369,12 +379,11 @@ ScriptPromise GPUQueue::onSubmittedWorkDone(ScriptState* script_state) {
   auto* resolver = MakeGarbageCollected<ScriptPromiseResolver>(script_state);
   ScriptPromise promise = resolver->Promise();
 
-  auto* callback =
-      BindWGPUOnceCallback(&GPUQueue::OnWorkDoneCallback, WrapPersistent(this),
-                           WrapPersistent(resolver));
+  auto* callback = MakeWGPUOnceCallback(resolver->WrapCallbackInScriptScope(
+      WTF::BindOnce(&GPUQueue::OnWorkDoneCallback, WrapPersistent(this))));
 
-  GetProcs().queueOnSubmittedWorkDone(
-      GetHandle(), 0u, callback->UnboundCallback(), callback->AsUserdata());
+  GetProcs().queueOnSubmittedWorkDone(GetHandle(), callback->UnboundCallback(),
+                                      callback->AsUserdata());
   // WebGPU guarantees that promises are resolved in finite time so we
   // need to ensure commands are flushed.
   EnsureFlush(ToEventLoop(script_state));
@@ -748,6 +757,13 @@ bool GPUQueue::CopyFromCanvasSourceImage(
 // backend is failing for unknown reasons.
 #if BUILDFLAG(IS_LINUX)
   bool forceReadback = true;
+#elif BUILDFLAG(IS_ANDROID)
+  // TODO(crbug.com/dawn/1969): Some Android devices don't fail to copy from
+  // ImageBitmaps that were created from a non-texture-backed source, like
+  // ImageData. Forcing those textures down the readback path is an easy way to
+  // ensure the copies succeed. May be able to remove this check with some
+  // better synchronization in the future.
+  bool forceReadback = !image->IsTextureBacked();
 #elif BUILDFLAG(IS_WIN)
   bool forceReadback =
       device()->adapter()->backendType() == WGPUBackendType_OpenGLES;
@@ -765,7 +781,7 @@ bool GPUQueue::CopyFromCanvasSourceImage(
   // due to alpha type has been dropped. Disable that
   // upload path if the image is not texture backed, OOP-R is disabled and image
   // alpha type is unpremultiplied.
-  if (!base::FeatureList::IsEnabled(features::kCanvasOopRasterization) &&
+  if (!features::IsCanvasOopRasterizationEnabled() &&
       !image->IsTextureBacked() && !image->IsPremultiplied()) {
     use_webgpu_mailbox_texture = false;
   }

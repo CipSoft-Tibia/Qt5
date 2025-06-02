@@ -24,6 +24,7 @@
  * Google Author(s): Behdad Esfahbod
  */
 
+#undef HB_DEBUG_WASM
 #define HB_DEBUG_WASM 1
 
 #include "hb-shaper-impl.hh"
@@ -47,7 +48,7 @@
  *
  *   - Build your font's wasm code importing the shared modules with the desired
  *     name. This can be done eg.: __attribute__((import_module("graphite2")))
- *     before each symbol in the the shared-module's headers.
+ *     before each symbol in the shared-module's headers.
  *
  *   - Try shaping your font and hope for the best...
  *
@@ -136,7 +137,7 @@ _hb_wasm_init ()
     return true;
 
   RuntimeInitArgs init_args;
-  memset (&init_args, 0, sizeof (RuntimeInitArgs));
+  hb_memset (&init_args, 0, sizeof (RuntimeInitArgs));
 
   init_args.mem_alloc_type = Alloc_With_Allocator;
   init_args.mem_alloc_option.allocator.malloc_func = (void *) hb_malloc;

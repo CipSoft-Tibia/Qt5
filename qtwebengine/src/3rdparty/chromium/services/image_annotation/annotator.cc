@@ -383,7 +383,7 @@ std::map<std::string, mojom::AnnotateImageResultPtr> UnpackJsonResponse(
         }
       }
 
-      ReportEngineKnown(ocr_engine || desc_engine);
+      ReportEngineKnown(ocr_engine || desc_engine || icon_engine);
     }
 
     // Remove any description OCR data (which is lower quality) if we have
@@ -584,11 +584,9 @@ std::string Annotator::FormatJsonRequest(
   base::Value::List image_request_list;
   for (std::deque<ServerRequestInfo>::iterator it = begin; it != end; ++it) {
     // Re-encode image bytes into base64, which can be represented in JSON.
-    std::string base64_data;
-    base::Base64Encode(
+    std::string base64_data = base::Base64Encode(
         base::StringPiece(reinterpret_cast<const char*>(it->image_bytes.data()),
-                          it->image_bytes.size()),
-        &base64_data);
+                          it->image_bytes.size()));
 
     // TODO(crbug.com/916420): accept and propagate page language info to
     //                         improve OCR accuracy.

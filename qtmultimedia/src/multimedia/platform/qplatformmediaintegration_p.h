@@ -25,35 +25,37 @@
 
 QT_BEGIN_NAMESPACE
 
-class QMediaPlayer;
 class QAudioDecoder;
-class QCamera;
-class QScreenCapture;
-class QWindowCapture;
-class QMediaRecorder;
-class QImageCapture;
-class QMediaDevices;
-class QPlatformMediaDevices;
-class QPlatformMediaCaptureSession;
-class QPlatformMediaPlayer;
-class QPlatformAudioDecoder;
-class QPlatformAudioResampler;
-class QPlatformCamera;
-class QPlatformSurfaceCapture;
-class QPlatformMediaRecorder;
-class QPlatformImageCapture;
-class QPlatformMediaFormatInfo;
-class QObject;
-class QPlatformVideoSink;
-class QVideoSink;
+class QAudioFormat;
 class QAudioInput;
 class QAudioOutput;
+class QCamera;
+class QCameraDevice;
+class QCapturableWindow;
+class QImageCapture;
+class QMediaDevices;
+class QMediaPlayer;
+class QMediaRecorder;
+class QObject;
+class QPlatformAudioDecoder;
+class QPlatformAudioDevices;
 class QPlatformAudioInput;
 class QPlatformAudioOutput;
-class QPlatformVideoDevices;
-class QCapturableWindow;
+class QPlatformAudioResampler;
+class QPlatformCamera;
 class QPlatformCapturableWindows;
+class QPlatformImageCapture;
+class QPlatformMediaCaptureSession;
+class QPlatformMediaFormatInfo;
+class QPlatformMediaPlayer;
+class QPlatformMediaRecorder;
+class QPlatformSurfaceCapture;
+class QPlatformVideoDevices;
+class QPlatformVideoSink;
+class QScreenCapture;
 class QVideoFrame;
+class QVideoSink;
+class QWindowCapture;
 
 class Q_MULTIMEDIA_EXPORT QAbstractPlatformSpecificInterface
 {
@@ -69,10 +71,9 @@ public:
     static QPlatformMediaIntegration *instance();
 
     explicit QPlatformMediaIntegration(QLatin1String);
-    virtual ~QPlatformMediaIntegration();
+    ~QPlatformMediaIntegration() override;
     const QPlatformMediaFormatInfo *formatInfo();
 
-    virtual QList<QCameraDevice> videoInputs();
     virtual QMaybe<QPlatformCamera *> createCamera(QCamera *) { return notAvailable; }
     virtual QPlatformSurfaceCapture *createScreenCapture(QScreenCapture *) { return nullptr; }
     virtual QPlatformSurfaceCapture *createWindowCapture(QWindowCapture *) { return nullptr; }
@@ -98,7 +99,7 @@ public:
 
     QPlatformCapturableWindows *capturableWindows();
 
-    QPlatformMediaDevices *mediaDevices();
+    QPlatformAudioDevices *audioDevices();
 
     static QStringList availableBackends();
     QLatin1String name(); // for unit tests
@@ -108,6 +109,8 @@ public:
 
     virtual QAbstractPlatformSpecificInterface *platformSpecificInterface() { return nullptr; }
 
+    static QLatin1String audioBackendName();
+
 protected:
     virtual QPlatformMediaFormatInfo *createFormatInfo();
 
@@ -115,7 +118,11 @@ protected:
 
     virtual QPlatformCapturableWindows *createCapturableWindows() { return nullptr; }
 
-    virtual std::unique_ptr<QPlatformMediaDevices> createMediaDevices();
+    virtual std::unique_ptr<QPlatformAudioDevices> createAudioDevices();
+
+private:
+    friend class QMockIntegration;
+    void resetInstance(); // tests only
 
 private:
     std::unique_ptr<QPlatformVideoDevices> m_videoDevices;
@@ -127,8 +134,8 @@ private:
     mutable std::unique_ptr<QPlatformMediaFormatInfo> m_formatInfo;
     mutable std::once_flag m_formatInfoOnceFlg;
 
-    std::unique_ptr<QPlatformMediaDevices> m_mediaDevices;
-    std::once_flag m_mediaDevicesOnceFlag;
+    std::unique_ptr<QPlatformAudioDevices> m_audioDevices;
+    std::once_flag m_audioDevicesOnceFlag;
 
     const QLatin1String m_backendName;
 };

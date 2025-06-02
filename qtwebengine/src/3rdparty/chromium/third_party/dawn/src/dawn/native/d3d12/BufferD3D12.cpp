@@ -1,30 +1,47 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d12/BufferD3D12.h"
 
 #include <algorithm>
+#include <utility>
 
 #include "dawn/common/Assert.h"
 #include "dawn/common/Constants.h"
 #include "dawn/common/Math.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/CommandBuffer.h"
 #include "dawn/native/DynamicUploader.h"
+#include "dawn/native/Queue.h"
 #include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d12/CommandRecordingContext.h"
 #include "dawn/native/d3d12/DeviceD3D12.h"
 #include "dawn/native/d3d12/HeapD3D12.h"
+#include "dawn/native/d3d12/QueueD3D12.h"
 #include "dawn/native/d3d12/ResidencyManagerD3D12.h"
 #include "dawn/native/d3d12/UtilsD3D12.h"
 #include "dawn/platform/DawnPlatform.h"
@@ -100,13 +117,19 @@ size_t D3D12BufferSizeAlignment(wgpu::BufferUsage usage) {
 }  // namespace
 
 // static
-ResultOrError<Ref<Buffer>> Buffer::Create(Device* device, const BufferDescriptor* descriptor) {
+ResultOrError<Ref<Buffer>> Buffer::Create(Device* device,
+                                          const UnpackedPtr<BufferDescriptor>& descriptor) {
     Ref<Buffer> buffer = AcquireRef(new Buffer(device, descriptor));
-    DAWN_TRY(buffer->Initialize(descriptor->mappedAtCreation));
+
+    if (auto* hostMappedDesc = descriptor.Get<BufferHostMappedPointer>()) {
+        DAWN_TRY(buffer->InitializeHostMapped(hostMappedDesc));
+    } else {
+        DAWN_TRY(buffer->Initialize(descriptor->mappedAtCreation));
+    }
     return buffer;
 }
 
-Buffer::Buffer(Device* device, const BufferDescriptor* descriptor)
+Buffer::Buffer(Device* device, const UnpackedPtr<BufferDescriptor>& descriptor)
     : BufferBase(device, descriptor) {}
 
 MaybeError Buffer::Initialize(bool mappedAtCreation) {
@@ -170,7 +193,7 @@ MaybeError Buffer::Initialize(bool mappedAtCreation) {
         !mappedAtCreation) {
         CommandRecordingContext* commandRecordingContext;
         DAWN_TRY_ASSIGN(commandRecordingContext,
-                        ToBackend(GetDevice())->GetPendingCommandContext());
+                        ToBackend(GetDevice()->GetQueue())->GetPendingCommandContext());
 
         DAWN_TRY(ClearBuffer(commandRecordingContext, uint8_t(1u)));
     }
@@ -181,7 +204,7 @@ MaybeError Buffer::Initialize(bool mappedAtCreation) {
         if (paddingBytes > 0) {
             CommandRecordingContext* commandRecordingContext;
             DAWN_TRY_ASSIGN(commandRecordingContext,
-                            ToBackend(GetDevice())->GetPendingCommandContext());
+                            ToBackend(GetDevice()->GetQueue())->GetPendingCommandContext());
 
             uint32_t clearSize = paddingBytes;
             uint64_t clearOffset = GetSize();
@@ -189,6 +212,75 @@ MaybeError Buffer::Initialize(bool mappedAtCreation) {
         }
     }
 
+    return {};
+}
+
+MaybeError Buffer::InitializeHostMapped(const BufferHostMappedPointer* hostMappedDesc) {
+    Device* device = ToBackend(GetDevice());
+
+    ComPtr<ID3D12Device3> d3d12Device3;
+    DAWN_TRY(CheckHRESULT(device->GetD3D12Device()->QueryInterface(IID_PPV_ARGS(&d3d12Device3)),
+                          "QueryInterface ID3D12Device3"));
+
+    ComPtr<ID3D12Heap> d3d12Heap;
+    DAWN_TRY(CheckOutOfMemoryHRESULT(d3d12Device3->OpenExistingHeapFromAddress(
+                                         hostMappedDesc->pointer, IID_PPV_ARGS(&d3d12Heap)),
+                                     "ID3D12Device3::OpenExistingHeapFromAddress"));
+
+    uint64_t heapSize = d3d12Heap->GetDesc().SizeInBytes;
+
+    D3D12_RESOURCE_DESC resourceDescriptor;
+    resourceDescriptor.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    resourceDescriptor.Alignment = 0;
+    resourceDescriptor.Width = GetSize();
+    resourceDescriptor.Height = 1;
+    resourceDescriptor.DepthOrArraySize = 1;
+    resourceDescriptor.MipLevels = 1;
+    resourceDescriptor.Format = DXGI_FORMAT_UNKNOWN;
+    resourceDescriptor.SampleDesc.Count = 1;
+    resourceDescriptor.SampleDesc.Quality = 0;
+    resourceDescriptor.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    resourceDescriptor.Flags =
+        D3D12ResourceFlags(GetUsage()) | D3D12_RESOURCE_FLAG_ALLOW_CROSS_ADAPTER;
+
+    D3D12_RESOURCE_ALLOCATION_INFO resourceInfo =
+        device->GetD3D12Device()->GetResourceAllocationInfo(0, 1, &resourceDescriptor);
+    DAWN_INVALID_IF(resourceInfo.SizeInBytes > heapSize,
+                    "Resource required %u bytes, but heap is %u bytes.", resourceInfo.SizeInBytes,
+                    heapSize);
+    DAWN_INVALID_IF(!IsPtrAligned(hostMappedDesc->pointer, resourceInfo.Alignment),
+                    "Host-mapped pointer (%p) did not satisfy required alignment (%u).",
+                    hostMappedDesc->pointer, resourceInfo.Alignment);
+
+    mAllocatedSize = resourceInfo.SizeInBytes;
+    mLastState = D3D12_RESOURCE_STATE_COMMON;
+
+    auto heap = std::make_unique<Heap>(
+        std::move(d3d12Heap),
+        device->GetDeviceInfo().isUMA ? MemorySegment::Local : MemorySegment::NonLocal, GetSize());
+
+    // Consider the imported heap as already resident. Lock it because it is externally allocated.
+    device->GetResidencyManager()->TrackResidentAllocation(heap.get());
+    DAWN_TRY(device->GetResidencyManager()->LockAllocation(heap.get()));
+
+    ComPtr<ID3D12Resource> placedResource;
+    DAWN_TRY(CheckOutOfMemoryHRESULT(
+        device->GetD3D12Device()->CreatePlacedResource(heap->GetD3D12Heap(), 0, &resourceDescriptor,
+                                                       D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                                       IID_PPV_ARGS(&placedResource)),
+        "ID3D12Device::CreatePlacedResource"));
+
+    mResourceAllocation = {AllocationInfo{0, AllocationMethod::kExternal}, 0,
+                           std::move(placedResource),
+                           /* heap is external, and not tracked for residency */ nullptr};
+    mHostMappedHeap = std::move(heap);
+    mHostMappedDisposeCallback = hostMappedDesc->disposeCallback;
+    mHostMappedDisposeUserdata = hostMappedDesc->userdata;
+
+    SetLabelImpl();
+
+    // Assume the data is initialized since an external pointer was provided.
+    SetIsDataInitialized();
     return {};
 }
 
@@ -205,17 +297,20 @@ bool Buffer::TrackUsageAndGetResourceBarrier(CommandRecordingContext* commandCon
                                              D3D12_RESOURCE_BARRIER* barrier,
                                              wgpu::BufferUsage newUsage) {
     // Track the underlying heap to ensure residency.
+    // There may be no heap if the allocation is an external one.
     Heap* heap = ToBackend(mResourceAllocation.GetResourceHeap());
-    commandContext->TrackHeapUsage(heap, GetDevice()->GetPendingCommandSerial());
+    if (heap) {
+        commandContext->TrackHeapUsage(heap, GetDevice()->GetQueue()->GetPendingCommandSerial());
+    }
 
     MarkUsedInPendingCommands();
 
     // Resources in upload and readback heaps must be kept in the COPY_SOURCE/DEST state
     if (mFixedResourceState) {
-        ASSERT((mLastState == D3D12_RESOURCE_STATE_COPY_DEST &&
-                newUsage == wgpu::BufferUsage::CopyDst) ||
-               (mLastState == D3D12_RESOURCE_STATE_GENERIC_READ &&
-                newUsage == wgpu::BufferUsage::CopySrc));
+        DAWN_ASSERT((mLastState == D3D12_RESOURCE_STATE_COPY_DEST &&
+                     newUsage == wgpu::BufferUsage::CopyDst) ||
+                    (mLastState == D3D12_RESOURCE_STATE_GENERIC_READ &&
+                     newUsage == wgpu::BufferUsage::CopySrc));
         return false;
     }
 
@@ -256,7 +351,8 @@ bool Buffer::TrackUsageAndGetResourceBarrier(CommandRecordingContext* commandCon
     // occur. When that buffer is used again, the previously recorded serial must be compared to
     // the last completed serial to determine if the buffer has implicity decayed to the common
     // state.
-    const ExecutionSerial pendingCommandSerial = ToBackend(GetDevice())->GetPendingCommandSerial();
+    const ExecutionSerial pendingCommandSerial =
+        ToBackend(GetDevice())->GetQueue()->GetPendingCommandSerial();
     if (pendingCommandSerial > mLastUsedSerial) {
         lastState = D3D12_RESOURCE_STATE_COMMON;
         mLastUsedSerial = pendingCommandSerial;
@@ -337,7 +433,7 @@ MaybeError Buffer::MapAtCreationImpl() {
     // We will use a staging buffer for MapRead buffers instead so we just clear the staging
     // buffer and initialize the original buffer by copying the staging buffer to the original
     // buffer one the first time Unmap() is called.
-    ASSERT((GetUsage() & wgpu::BufferUsage::MapWrite) != 0);
+    DAWN_ASSERT((GetUsage() & wgpu::BufferUsage::MapWrite) != 0);
 
     // The buffers with mappedAtCreation == true will be initialized in
     // BufferBase::MapAtCreation().
@@ -352,7 +448,8 @@ MaybeError Buffer::MapAsyncImpl(wgpu::MapMode mode, size_t offset, size_t size) 
     // Skip the unnecessary GetPendingCommandContext() call saves an extra fence.
     if (NeedsInitialization()) {
         CommandRecordingContext* commandContext;
-        DAWN_TRY_ASSIGN(commandContext, ToBackend(GetDevice())->GetPendingCommandContext());
+        DAWN_TRY_ASSIGN(commandContext,
+                        ToBackend(GetDevice()->GetQueue())->GetPendingCommandContext());
         DAWN_TRY(EnsureDataInitialized(commandContext));
     }
 
@@ -377,6 +474,13 @@ void* Buffer::GetMappedPointer() {
 }
 
 void Buffer::DestroyImpl() {
+    // TODO(crbug.com/dawn/831): DestroyImpl is called from two places.
+    // - It may be called if the buffer is explicitly destroyed with APIDestroy.
+    //   This case is NOT thread-safe and needs proper synchronization with other
+    //   simultaneous uses of the buffer.
+    // - It may be called when the last ref to the buffer is dropped and the buffer
+    //   is implicitly destroyed. This case is thread-safe because there are no
+    //   other threads using the buffer since there are no other live refs.
     if (mMappedData != nullptr) {
         // If the buffer is currently mapped, unmap without flushing the writes to the GPU
         // since the buffer cannot be used anymore. UnmapImpl checks mWrittenRange to know
@@ -386,6 +490,40 @@ void Buffer::DestroyImpl() {
     BufferBase::DestroyImpl();
 
     ToBackend(GetDevice())->DeallocateMemory(mResourceAllocation);
+
+    if (mHostMappedDisposeCallback) {
+        struct DisposeTask : TrackTaskCallback {
+            DisposeTask(std::unique_ptr<Heap> heap, wgpu::Callback callback, void* userdata)
+                : TrackTaskCallback(nullptr),
+                  heap(std::move(heap)),
+                  callback(callback),
+                  userdata(userdata) {}
+            ~DisposeTask() override = default;
+
+            void FinishImpl() override {
+                heap = nullptr;
+                callback(userdata);
+            }
+            void HandleDeviceLossImpl() override {
+                heap = nullptr;
+                callback(userdata);
+            }
+            void HandleShutDownImpl() override {
+                heap = nullptr;
+                callback(userdata);
+            }
+
+            std::unique_ptr<Heap> heap;
+            wgpu::Callback callback;
+            void* userdata;
+        };
+        std::unique_ptr<DisposeTask> request = std::make_unique<DisposeTask>(
+            std::move(mHostMappedHeap), mHostMappedDisposeCallback, mHostMappedDisposeUserdata);
+        mHostMappedDisposeCallback = nullptr;
+        mHostMappedHeap = nullptr;
+
+        GetDevice()->GetQueue()->TrackPendingTask(std::move(request));
+    }
 }
 
 bool Buffer::CheckIsResidentForTesting() const {
@@ -444,7 +582,7 @@ void Buffer::SetLabelImpl() {
 }
 
 MaybeError Buffer::InitializeToZero(CommandRecordingContext* commandContext) {
-    ASSERT(NeedsInitialization());
+    DAWN_ASSERT(NeedsInitialization());
 
     // TODO(crbug.com/dawn/484): skip initializing the buffer when it is created on a heap
     // that has already been zero initialized.
@@ -476,8 +614,9 @@ MaybeError Buffer::ClearBuffer(CommandRecordingContext* commandContext,
         // includes STORAGE.
         DynamicUploader* uploader = device->GetDynamicUploader();
         UploadHandle uploadHandle;
-        DAWN_TRY_ASSIGN(uploadHandle, uploader->Allocate(size, device->GetPendingCommandSerial(),
-                                                         kCopyBufferToBufferOffsetAlignment));
+        DAWN_TRY_ASSIGN(uploadHandle,
+                        uploader->Allocate(size, device->GetQueue()->GetPendingCommandSerial(),
+                                           kCopyBufferToBufferOffsetAlignment));
 
         memset(uploadHandle.mappedBuffer, clearValue, size);
 

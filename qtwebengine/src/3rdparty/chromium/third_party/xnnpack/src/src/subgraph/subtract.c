@@ -23,7 +23,8 @@ static enum xnn_status create_subtract_operator(
   const struct xnn_value* values,
   size_t num_values,
   struct xnn_operator_data* opdata,
-  const struct xnn_caches* caches)
+  struct xnn_code_cache* code_cache,
+  struct xnn_weights_cache* weights_cache)
 {
   assert(node->num_inputs == 2);
   const uint32_t input1_id = node->inputs[0];
@@ -89,103 +90,131 @@ static enum xnn_status create_subtract_operator(
     default:
       XNN_UNREACHABLE;
   }
-  if (status == xnn_status_success) {
-    opdata->shape1.num_dims = values[input1_id].shape.num_dims;
-    opdata->shape2.num_dims = values[input2_id].shape.num_dims;
-    if (values[output_id].layout == xnn_layout_type_nchw) {
-      assert(values[input1_id].layout == xnn_layout_type_nchw);
-      assert(values[input2_id].layout == xnn_layout_type_nchw);
-      opdata->shape1.dim[0] = values[input1_id].shape.dim[0];
-      opdata->shape1.dim[1] = values[input1_id].shape.dim[values[input1_id].shape.num_dims - 1];
-      if (values[input1_id].shape.num_dims > 2) {
-        memcpy(&opdata->shape1.dim[2], &values[input1_id].shape.dim[1], (values[input1_id].shape.num_dims - 2) * sizeof(size_t));
-      }
-      opdata->shape2.dim[0] = values[input2_id].shape.dim[0];
-      opdata->shape2.dim[1] = values[input2_id].shape.dim[values[input2_id].shape.num_dims - 1];
-      if (values[input1_id].shape.num_dims > 2) {
-        memcpy(&opdata->shape2.dim[2], &values[input2_id].shape.dim[1], (values[input2_id].shape.num_dims - 2) * sizeof(size_t));
-      }
-    } else {
-      assert(values[output_id].layout == xnn_layout_type_nhwc);
-      assert(values[input1_id].layout == xnn_layout_type_nhwc);
-      assert(values[input2_id].layout == xnn_layout_type_nhwc);
-      memcpy(opdata->shape1.dim, values[input1_id].shape.dim, values[input1_id].shape.num_dims * sizeof(size_t));
-      memcpy(opdata->shape2.dim, values[input2_id].shape.dim, values[input2_id].shape.num_dims * sizeof(size_t));
-    }
-    opdata->inputs[0] = input1_id;
-    opdata->inputs[1] = input2_id;
-    opdata->outputs[0] = output_id;
-  }
   return status;
+}
+
+static enum xnn_status reshape_subtract_operator(
+  struct xnn_operator_data* opdata,
+  struct xnn_value* values,
+  size_t num_values,
+  pthreadpool_t threadpool)
+{
+  const uint32_t input1_id = opdata->inputs[0];
+  assert(input1_id < num_values);
+  const uint32_t input2_id = opdata->inputs[1];
+  assert(input2_id < num_values);
+  const uint32_t output_id = opdata->outputs[0];
+  assert(output_id < num_values);
+
+  opdata->shape1.num_dims = values[input1_id].shape.num_dims;
+  opdata->shape2.num_dims = values[input2_id].shape.num_dims;
+  if (values[output_id].layout == xnn_layout_type_nchw) {
+    assert(values[input1_id].layout == xnn_layout_type_nchw);
+    assert(values[input2_id].layout == xnn_layout_type_nchw);
+    opdata->shape1.dim[0] = values[input1_id].shape.dim[0];
+    opdata->shape1.dim[1] = values[input1_id].shape.dim[values[input1_id].shape.num_dims - 1];
+    if (values[input1_id].shape.num_dims > 2) {
+      memcpy(&opdata->shape1.dim[2], &values[input1_id].shape.dim[1], (values[input1_id].shape.num_dims - 2) * sizeof(size_t));
+    }
+    opdata->shape2.dim[0] = values[input2_id].shape.dim[0];
+    opdata->shape2.dim[1] = values[input2_id].shape.dim[values[input2_id].shape.num_dims - 1];
+    if (values[input1_id].shape.num_dims > 2) {
+      memcpy(&opdata->shape2.dim[2], &values[input2_id].shape.dim[1], (values[input2_id].shape.num_dims - 2) * sizeof(size_t));
+    }
+  } else {
+    assert(values[output_id].layout == xnn_layout_type_nhwc);
+    assert(values[input1_id].layout == xnn_layout_type_nhwc);
+    assert(values[input2_id].layout == xnn_layout_type_nhwc);
+    memcpy(opdata->shape1.dim, values[input1_id].shape.dim, values[input1_id].shape.num_dims * sizeof(size_t));
+    memcpy(opdata->shape2.dim, values[input2_id].shape.dim, values[input2_id].shape.num_dims * sizeof(size_t));
+  }
+  opdata->outputs[0] = output_id;
+
+  switch (opdata->operator_objects[0]->type) {
+    case xnn_operator_type_subtract_nd_f16:
+      return xnn_reshape_subtract_nd_f16(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->shape2.num_dims,
+        opdata->shape2.dim,
+        threadpool);
+    case xnn_operator_type_subtract_nd_f32:
+      return xnn_reshape_subtract_nd_f32(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->shape2.num_dims,
+        opdata->shape2.dim,
+        threadpool);
+    case xnn_operator_type_subtract_nd_qs8:
+      return xnn_reshape_subtract_nd_qs8(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->shape2.num_dims,
+        opdata->shape2.dim,
+        threadpool);
+    case xnn_operator_type_subtract_nd_qu8:
+      return xnn_reshape_subtract_nd_qu8(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->shape2.num_dims,
+        opdata->shape2.dim,
+        threadpool);
+    default:
+      XNN_UNREACHABLE;
+  }
 }
 
 static enum xnn_status setup_subtract_operator(
   const struct xnn_operator_data* opdata,
-  const struct xnn_blob* blobs,
-  size_t num_blobs,
+  const struct xnn_value* values,
+  size_t num_values,
   pthreadpool_t threadpool)
 {
   const uint32_t input1_id = opdata->inputs[0];
   assert(input1_id != XNN_INVALID_VALUE_ID);
-  assert(input1_id < num_blobs);
+  assert(input1_id < num_values);
 
   const uint32_t input2_id = opdata->inputs[1];
   assert(input2_id != XNN_INVALID_VALUE_ID);
-  assert(input2_id < num_blobs);
+  assert(input2_id < num_values);
 
   const uint32_t output_id = opdata->outputs[0];
   assert(output_id != XNN_INVALID_VALUE_ID);
-  assert(output_id < num_blobs);
+  assert(output_id < num_values);
 
-  const struct xnn_blob* input1_blob = blobs + input1_id;
-  const void* input1_data = input1_blob->data;
+  const struct xnn_value* input1_value = values + input1_id;
+  const void* input1_data = input1_value->data;
   assert(input1_data != NULL);
 
-  const struct xnn_blob* input2_blob = blobs + input2_id;
-  const void* input2_data = input2_blob->data;
+  const struct xnn_value* input2_value = values + input2_id;
+  const void* input2_data = input2_value->data;
   assert(input2_data != NULL);
 
-  const struct xnn_blob* output_blob = blobs + output_id;
-  void* output_data = output_blob->data;
+  const struct xnn_value* output_value = values + output_id;
+  void* output_data = output_value->data;
   assert(output_data != NULL);
 
   switch (opdata->operator_objects[0]->type) {
     case xnn_operator_type_subtract_nd_f16:
       return xnn_setup_subtract_nd_f16(
         opdata->operator_objects[0],
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->shape2.num_dims,
-        opdata->shape2.dim,
-        input1_data, input2_data, output_data,
-        threadpool);
+        input1_data, input2_data, output_data);
     case xnn_operator_type_subtract_nd_f32:
       return xnn_setup_subtract_nd_f32(
         opdata->operator_objects[0],
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->shape2.num_dims,
-        opdata->shape2.dim,
-        input1_data, input2_data, output_data,
-        threadpool);
+        input1_data, input2_data, output_data);
     case xnn_operator_type_subtract_nd_qs8:
       return xnn_setup_subtract_nd_qs8(
         opdata->operator_objects[0],
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->shape2.num_dims,
-        opdata->shape2.dim,
-        input1_data, input2_data, output_data,
-        threadpool);
+        input1_data, input2_data, output_data);
     case xnn_operator_type_subtract_nd_qu8:
       return xnn_setup_subtract_nd_qu8(
         opdata->operator_objects[0],
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->shape2.num_dims,
-        opdata->shape2.dim,
-        input1_data, input2_data, output_data,
-        threadpool);
+        input1_data, input2_data, output_data);
     default:
       XNN_UNREACHABLE;
   }
@@ -311,6 +340,7 @@ enum xnn_status xnn_define_subtract(
   node->flags = flags;
 
   node->create = create_subtract_operator;
+  node->reshape = reshape_subtract_operator;
   node->setup = setup_subtract_operator;
 
   return xnn_status_success;

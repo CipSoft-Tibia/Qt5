@@ -28,8 +28,8 @@ QActionInputPrivate::QActionInputPrivate()
 /*!
     \qmltype ActionInput
     \inqmlmodule Qt3D.Input
-    \inherits QAbstractActionInput
-    \instantiates Qt3DInput::QActionInput
+    \inherits AbstractActionInput
+    \nativetype Qt3DInput::QActionInput
     \brief QML frontend for the Qt3DInput::QActionInput C++ class.
 
     Links a physical device and selected buttons on it which can trigger this action.

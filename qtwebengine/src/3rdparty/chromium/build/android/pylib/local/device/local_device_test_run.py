@@ -74,7 +74,7 @@ class LocalDeviceTestRun(test_run.TestRun):
       consecutive_device_errors = 0
       for test in tests:
         if not test:
-          logging.warning('No tests in shared. Continuing.')
+          logging.warning('No tests in shard. Continuing.')
           tests.test_completed()
           continue
         if exit_now.isSet():
@@ -100,10 +100,22 @@ class LocalDeviceTestRun(test_run.TestRun):
           consecutive_device_errors = 0
 
           if isinstance(test, list):
+            result_log = ''
+            if len(test) > 1:
+              result_log = ('The test command timed out when running multiple '
+                            'tests including this test. It does not '
+                            'necessarily mean this specific test timed out.')
+              # Ensure instrumentation tests not batched at env level retries.
+              for t in test:
+                # |dict| type infers it's an instrumentation test.
+                if isinstance(t, dict) and t['annotations']:
+                  t['annotations'].pop('Batch', None)
+
             results.AddResults(
                 base_test_result.BaseTestResult(
                     self._GetUniqueTestName(t),
-                    base_test_result.ResultType.TIMEOUT) for t in test)
+                    base_test_result.ResultType.TIMEOUT,
+                    log=result_log) for t in test)
           else:
             results.AddResult(
                 base_test_result.BaseTestResult(

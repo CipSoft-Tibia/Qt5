@@ -17,25 +17,25 @@ import android.widget.TextView;
 import java.util.HashMap;
 
 @SuppressLint("ViewConstructor")
-public class EditContextView extends LinearLayout implements View.OnClickListener
+class EditContextView extends LinearLayout implements View.OnClickListener
 {
-    public static final int CUT_BUTTON   = 1;
-    public static final int COPY_BUTTON  = 1 << 1;
-    public static final int PASTE_BUTTON = 1 << 2;
-    public static final int SELECT_ALL_BUTTON = 1 << 3;
+    static final int CUT_BUTTON   = 1;
+    static final int COPY_BUTTON  = 1 << 1;
+    static final int PASTE_BUTTON = 1 << 2;
+    static final int SELECT_ALL_BUTTON = 1 << 3;
 
     HashMap<Integer, ContextButton> m_buttons = new HashMap<>(4);
     OnClickListener m_onClickListener;
 
-    public interface OnClickListener
+    interface OnClickListener
     {
         void contextButtonClicked(int buttonId);
     }
 
     private class ContextButton extends TextView
     {
-        public int m_buttonId;
-        public ContextButton(Context context, int stringId) {
+        int m_buttonId;
+        ContextButton(Context context, int stringId) {
             super(context);
             m_buttonId = stringId;
             setText(stringId);
@@ -70,7 +70,7 @@ public class EditContextView extends LinearLayout implements View.OnClickListene
         addView(button);
     }
 
-    public void updateButtons(int buttonsLayout)
+    void updateButtons(int buttonsLayout)
     {
         ContextButton button = m_buttons.get(android.R.string.cut);
         if (button != null)
@@ -89,7 +89,7 @@ public class EditContextView extends LinearLayout implements View.OnClickListene
             button.setVisibility((buttonsLayout & SELECT_ALL_BUTTON) != 0 ? View.VISIBLE : View.GONE);
     }
 
-    public Point getCalculatedSize()
+    Point getCalculatedSize()
     {
         Point size = new Point(0, 0);
         for (ContextButton b : m_buttons.values()) {
@@ -106,7 +106,7 @@ public class EditContextView extends LinearLayout implements View.OnClickListene
         return size;
     }
 
-    public EditContextView(Context context, OnClickListener onClickListener) {
+    EditContextView(Context context, OnClickListener onClickListener) {
         super(context);
         m_onClickListener = onClickListener;
         setLayoutParams(new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));

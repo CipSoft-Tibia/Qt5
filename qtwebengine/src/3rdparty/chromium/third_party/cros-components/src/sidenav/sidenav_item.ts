@@ -5,12 +5,11 @@
  */
 
 import '@material/web/ripple/ripple.js';
+import '@material/web/focus/md-focus-ring.js';
 
-import {MdRipple} from '@material/web/ripple/ripple.js';
-import {css, CSSResultGroup, html, LitElement, PropertyValues} from 'lit';
+import {css, CSSResultGroup, html, LitElement, nothing, PropertyValues} from 'lit';
 import {classMap} from 'lit/directives/class-map';
-import {ifDefined} from 'lit/directives/if-defined';
-import {styleMap} from 'lit/directives/style-map';
+import {StyleInfo, styleMap} from 'lit/directives/style-map';
 
 import {castExists} from '../helpers/helpers';
 
@@ -21,11 +20,13 @@ export type SidenavItemExpandedEvent = CustomEvent<{
   /** The tree item which has been expanded. */
   item: SidenavItem,
 }>;
+
 /** Type of the tree item collapsed custom event. */
 export type SidenavItemCollapsedEvent = CustomEvent<{
   /** The tree item which has been collapsed. */
   item: SidenavItem,
 }>;
+
 /** Type of the tree item collapsed custom event. */
 export type SidenavItemRenamedEvent = CustomEvent<{
   /** The tree item which has been renamed. */
@@ -35,12 +36,19 @@ export type SidenavItemRenamedEvent = CustomEvent<{
   /** The label after rename. */
   newLabel: string,
 }>;
+
 /** Type of the tree item enabled changed custom event. */
 export type SidenavItemEnabledChangedEvent = CustomEvent<{
   /** The tree item which has been (un)enabled. */
   item: SidenavItem,
   /** The new enabled value. */
   enabled: boolean,
+}>;
+
+/** Type of the tree item triggered custom event. */
+export type SidenavItemTriggeredEvent = CustomEvent<{
+  /** The tree item which has been triggered. */
+  item: SidenavItem,
 }>;
 
 /** The number of pixels to indent per level. */
@@ -89,7 +97,13 @@ const LABEL_TRAILING_MARGIN = css`12px`;
 const ITEM_GAP = css`8px`;
 
 /** Selects a host that is in a layered Sidenav. */
-const LAYERED_SELECTOR = css`:host(:is([inLayered], [may-have-children]))`;
+const LAYERED_SELECTOR = css`:host(:is([inLayered], [mayHaveChildren]))`;
+
+// The #tree-item blocks clicks from reaching the host, to prevent clicks on
+// empty space between children from triggering the item.
+function stopPropagation(e: Event) {
+  e.stopPropagation();
+}
 
 /** An item for a ChromeOS compliant sidenav element. */
 export class SidenavItem extends LitElement {
@@ -97,6 +111,7 @@ export class SidenavItem extends LitElement {
   static override styles: CSSResultGroup = css`
     :host {
       display: block;
+      margin-top: ${ITEM_GAP};
     }
 
     li {
@@ -104,56 +119,60 @@ export class SidenavItem extends LitElement {
       font: var(--cros-button-2-font);
     }
 
-    li:focus-visible {
-      outline: none;
-    }
-
     :host([separator])::before {
       border-bottom: 1px solid var(--cros-separator-color);
       content: '';
       display: block;
-      margin: ${ITEM_GAP} 0;
       width: 100%;
     }
 
-    .tree-row,
-    .md-ripple {
+    #tree-row {
       align-items: center;
+      background: none;
+      border: none;
       border-inline-start-width: 0 !important;
       border-radius: 20px;
       box-sizing: border-box;
       color: var(--cros-sys-on_surface);
       cursor: pointer;
       display: flex;
+      font: var(--cros-button-2-font);
       height: 40px;
-      margin-top: ${ITEM_GAP};
+      padding-inline-end: ${LABEL_TRAILING_MARGIN};
       position: relative;
+      text-align: start;
       user-select: none;
       white-space: nowrap;
+      width: 100%;
     }
 
-    li:focus-visible .tree-row {
-      outline: 2px solid var(--cros-sys-focus_ring);
-      outline-offset: 2px;
-      z-index: 2;
+    #tree-row:focus-visible {
+      outline: none;
     }
 
-    :host([disabled]) .tree-row {
-      pointer-events: none;
-      color: var(--cros-sys-disabled);
+    md-focus-ring {
+      animation-duration: 0s;
+      --md-focus-ring-color: var(--cros-sys-focus_ring);
+      --md-focus-ring-shape: 20px;
+      --md-focus-ring-width: 2px;
     }
 
-    :host([enabled]) .tree-row {
+    :host([enabled]) #tree-row {
       background-color: var(--cros-sys-primary);
       color: var(--cros-sys-on_primary);
     }
 
-    :host([error]) .tree-row {
+    :host([disabled]) #tree-row {
+      color: var(--cros-sys-disabled);
+      pointer-events: none;
+    }
+
+    :host([error]) #tree-row {
       background-color: var(--cros-sys-error_container);
       color: var(--cros-sys-on_error_container);
     }
 
-    :host-context(.pointer-active) .tree-row:not(:active) {
+    :host-context(.pointer-active) #tree-row:not(:active) {
       cursor: default;
     }
 
@@ -175,7 +194,8 @@ export class SidenavItem extends LitElement {
       display: unset;
     }
 
-    li[aria-expanded] .expand-icon {
+
+    [aria-expanded] .expand-icon {
       visibility: visible;
     }
 
@@ -217,7 +237,6 @@ export class SidenavItem extends LitElement {
     .tree-label {
       display: block;
       flex: auto;
-      margin-inline-end: ${LABEL_TRAILING_MARGIN};
       margin-inline-start: ${LABEL_ONLY_MARGIN};
       overflow: hidden;
       text-overflow: ellipsis;
@@ -238,7 +257,7 @@ export class SidenavItem extends LitElement {
     }
 
     ${LAYERED_SELECTOR} .has-icon .tree-label,
-    li[aria-expanded] .tree-label,
+    :host([expanded]) .tree-label,
     .has-icon + .tree-label, {
       margin-inline-start: ${ICON_LABEL_GAP};
     }
@@ -249,7 +268,6 @@ export class SidenavItem extends LitElement {
       border-radius: 4px;
       color: var(--cros-sys-on_surface);
       height: 20px;
-      margin-inline-end: ${LABEL_TRAILING_MARGIN};
       margin-inline-start: ${LABEL_ONLY_MARGIN};
       outline: 2px solid var(--cros-sys-focus_ring);
       overflow: hidden;
@@ -269,7 +287,7 @@ export class SidenavItem extends LitElement {
     }
 
     /* We need to ensure that even empty labels take up space */
-    .tree-label:empty::after {
+    #tree-label:empty::after {
       content: ' ';
       white-space: pre;
     }
@@ -277,7 +295,7 @@ export class SidenavItem extends LitElement {
     ul.tree-children {
       height: 0px;
       list-style: none;
-      margin: 0 0 ${ITEM_GAP} 0;
+      margin: 0;
       outline: none;
       overflow: hidden;
       padding: 0;
@@ -323,26 +341,32 @@ export class SidenavItem extends LitElement {
     expanded: {type: Boolean, reflect: true},
     renaming: {type: Boolean, reflect: true},
     error: {type: Boolean, reflect: true},
-    mayHaveChildren:
-        {type: Boolean, reflect: true, attribute: 'may-have-children'},
+    mayHaveChildren: {type: Boolean, reflect: true},
     label: {type: String, reflect: true},
     tabIndex: {attribute: false},
     layer: {type: Number, reflect: true},
     inLayered: {type: Boolean, reflect: true},
+    ignoreLayer: {type: Boolean},
     hasIcon: {type: Boolean, reflect: true},
+    // Aria properties are forwarded to the `li` element and should not be
+    // reflected on `cros-sidenav-item`.
+    ariaSetSize: {type: String},
+    ariaPosInSet: {type: String},
   };
 
   /** @nocollapse */
   static get events() {
     return {
       /** Triggers when a sidenav item has been expanded. */
-      SIDENAV_ITEM_EXPANDED: 'sidenav_item_expanded',
+      SIDENAV_ITEM_EXPANDED: 'cros-sidenav-item-expanded',
       /** Triggers when a sidenav item has been collapsed. */
-      SIDENAV_ITEM_COLLAPSED: 'sidenav_item_collapsed',
+      SIDENAV_ITEM_COLLAPSED: 'cros-sidenav-item-collapsed',
       /** Triggers when a sidenav item's label has been renamed. */
-      SIDENAV_ITEM_RENAMED: 'sidenav_item_renamed',
+      SIDENAV_ITEM_RENAMED: 'cros-sidenav-item-renamed',
       /** Triggers when a sidenav item's changed status changed. */
-      SIDENAV_ITEM_ENABLED_CHANGED: 'sidenav_item_enabled_changed',
+      SIDENAV_ITEM_ENABLED_CHANGED: 'cros-sidenav-item-enabled-changed',
+      /** Triggers when a sidenav item is clicked or equivalent. */
+      SIDENAV_ITEM_TRIGGERED: 'cros-sidenav-item-triggered',
     } as const;
   }
 
@@ -396,7 +420,7 @@ export class SidenavItem extends LitElement {
   /**
    * If the user navigates to this item, tabs away from the sidenav and then
    * tabs back into the sidenav, the item that receives focus should be the one
-   * they had navigated to. `tabIndex` is forwarded to the ` < li > ` element.
+   * they had navigated to. `tabIndex` is forwarded to the `<li>` element.
    * @export
    */
   override tabIndex: number;
@@ -407,6 +431,12 @@ export class SidenavItem extends LitElement {
    * @export
    */
   layer: number;
+
+  /**
+   * Always render as if layer is 0.
+   * @export
+   */
+  ignoreLayer: boolean;
 
   /**
    * Whether an icon has been slotted. CSS cannot distinguish slots that have
@@ -422,8 +452,9 @@ export class SidenavItem extends LitElement {
    */
   inLayered: boolean;
 
-  private get treeItemElement(): HTMLLIElement {
-    return castExists(this.renderRoot.querySelector('li'));
+  private get treeRowElement(): HTMLDivElement {
+    return castExists(
+        this.shadowRoot!.getElementById('tree-row') as HTMLDivElement);
   }
 
   private get renameInputElement(): HTMLInputElement {
@@ -441,14 +472,6 @@ export class SidenavItem extends LitElement {
         this.renderRoot.querySelector('slot[name="icon"]') as HTMLSlotElement);
   }
 
-  protected get ripple(): Promise<MdRipple|null> {
-    // We can't use async / await here as js does not support async getters
-    // and setters.
-    return this.updateComplete.then(() => {
-      return this.renderRoot.querySelector('md-ripple');
-    });
-  }
-
   constructor() {
     super();
     this.separator = false;
@@ -461,6 +484,7 @@ export class SidenavItem extends LitElement {
     this.label = '';
     this.tabIndex = -1;
     this.layer = 0;
+    this.ignoreLayer = false;
     this.hasIcon = false;
     this.inLayered = false;
   }
@@ -501,10 +525,7 @@ export class SidenavItem extends LitElement {
     }
   }
 
-  /**
-   * The child tree items.
-   * TODO(b/262453851): Should be private, and accessible to tests.
-   */
+  /** The tree items that are direct children of this. */
   items: SidenavItem[] = [];
 
   /** Indicate if we should commit the rename on input blur or not. */
@@ -512,43 +533,67 @@ export class SidenavItem extends LitElement {
 
   override render() {
     const showExpandIcon = this.hasChildren();
-    const treeRowStyles = {
+    const effectiveLayer = this.ignoreLayer ? 0 : this.layer;
+    const treeRowStyles: StyleInfo = {
       /** @export */
-      paddingInlineStart:
-          `max(0px, calc(${TREE_ITEM_INDENT_PX} * ${this.layer}px))`,
+      'paddingInlineStart':
+          `max(0px, calc(${TREE_ITEM_INDENT_PX} * ${effectiveLayer}px))`,
     };
 
-    const treeRowClasses = {'tree-row': true, 'has-icon': this.hasIcon};
+    const treeRowClasses = {'has-icon': this.hasIcon};
 
     return html`
       <li
-          class="tree-item"
-          role="treeitem"
-          tabindex=${this.tabIndex}
-          aria-labelledby="tree-label"
-          aria-selected=${this.enabled}
-          aria-expanded=${ifDefined(showExpandIcon ? this.expanded : undefined)}
-          aria-disabled=${this.disabled}>
+          id="tree-item"
+          role="none"
+          @click=${stopPropagation}>
+        <!-- TODO: b/302435119 - Use cros-tooltip instead of title. -->
         <div
+            id="tree-row"
+            role="treeitem"
+            aria-current=${this.enabled ? 'page' : nothing}
+            aria-setsize=${this.ariaSetSize ?? nothing}
+            aria-posinset=${this.ariaPosInSet ?? nothing}
+            aria-level=${this.layer + 1}
+            aria-labelledby="tree-label"
+            aria-expanded=${showExpandIcon ? this.expanded : nothing}
+            aria-disabled=${this.disabled}
+            tabindex=${this.tabIndex}
+            title="${this.label}"
+            @click=${this.onRowClicked}
+            @keydown=${this.onKeyDown}
             class=${classMap(treeRowClasses)}
             style=${styleMap(treeRowStyles)}>
-          <md-ripple></md-ripple>
-          <!-- TODO(b/262453851): Implement icon from spec -->
+          <md-ripple
+              for="tree-row"
+              ?disabled=${this.disabled}>
+          </md-ripple>
+          <md-focus-ring
+              for="tree-row"
+              ?disabled=${this.disabled}>
+          </md-focus-ring>
+          <!-- TODO: b/231672472 - Implement icon from spec -->
           <span
               class="expand-icon"
+              aria-hidden="true"
               @click=${this.onExpandIconClicked}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+            <svg xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 20 20">
               <polyline points="6 8 10 12 14 8 6 8"/>
             </svg>
           </span>
           <slot
               name="icon"
               class=${this.hasIcon ? 'has-icon' : ''}
+              aria-hidden="true"
               @slotchange=${this.onIconSlotChanged}>
           </slot>
           ${this.renderTreeLabel()}
         </div>
         <ul
+            aria-hidden=${!this.expanded}
             class="tree-children"
             role="group">
           <slot @slotchange=${this.onSlotChanged}></slot>
@@ -558,6 +603,8 @@ export class SidenavItem extends LitElement {
   }
 
   override firstUpdated() {
+    // This is needed in addition to a listener on #tree-row, so that we can
+    // react to clicks on a slotted icon.
     this.addEventListener('click', this.onRowClicked);
   }
 
@@ -571,6 +618,11 @@ export class SidenavItem extends LitElement {
     }
     if (changedProperties.has('renaming')) {
       this.onRenamingChanged();
+    }
+    if (changedProperties.has('layer')) {
+      for (const item of this.items) {
+        item.layer = this.layer + 1;
+      }
     }
   }
 
@@ -610,7 +662,7 @@ export class SidenavItem extends LitElement {
     });
   }
 
-  // TODO(b/262453851): There's probably a nicer way to implement this.
+  // TODO: b/302632527 - Refactor this to avoid storing a copy of children.
   private onSlotChanged() {
     // Whether the old set of children contained the enabled item.
     const oldItemsContainEnabledItem =
@@ -637,9 +689,11 @@ export class SidenavItem extends LitElement {
       updateScheduled = true;
     }
 
-    for (const item of this.items) {
+    this.items.forEach((item: SidenavItem, i: number) => {
       item.layer = this.layer + 1;
-    }
+      item.ariaSetSize = `${this.items.length}`;
+      item.ariaPosInSet = `${i + 1}`;
+    });
 
     // Explicitly trigger an update because render() relies on hasChildren().
     if (!updateScheduled) {
@@ -688,6 +742,32 @@ export class SidenavItem extends LitElement {
     e.stopPropagation();
     if (this.disabled) return;
     this.enabled = true;
+
+    this.dispatchEvent(
+        new CustomEvent(SidenavItem.events.SIDENAV_ITEM_TRIGGERED, {
+          bubbles: false,
+          detail: {item: this},
+        }));
+  }
+
+  private onKeyDown(e: KeyboardEvent) {
+    if (this.renaming) return;
+
+    switch (e.key) {
+      case 'Enter':
+      case ' ':
+        if (this.disabled) break;
+        this.enabled = true;
+
+        this.dispatchEvent(
+            new CustomEvent(SidenavItem.events.SIDENAV_ITEM_TRIGGERED, {
+              bubbles: false,
+              detail: {item: this},
+            }));
+        break;
+      default:
+        break;
+    }
   }
 
   private onRenamingChanged() {
@@ -710,16 +790,16 @@ export class SidenavItem extends LitElement {
     switch (e.key) {
       case 'Escape':
         // By default blur() will trigger the rename, but when ESC is pressed
-        // we don't want the blur() (triggered by treeItemElement.focus() below)
+        // we don't want the blur() (triggered by treeRowElement.focus() below)
         // to commit the rename.
         this.shouldRenameOnBlur = false;
-        this.treeItemElement.focus();
+        this.treeRowElement.focus();
         e.preventDefault();
         break;
       case 'Enter':
-        // treeItemElement.focus() will trigger blur() for the rename input
+        // treeRowElement.focus() will trigger blur() for the rename input
         // which will commit the rename.
-        this.treeItemElement.focus();
+        this.treeRowElement.focus();
         e.preventDefault();
         break;
       default:
@@ -763,6 +843,7 @@ declare global {
     [SidenavItem.events.SIDENAV_ITEM_RENAMED]: SidenavItemRenamedEvent;
     [SidenavItem.events.SIDENAV_ITEM_ENABLED_CHANGED]:
         SidenavItemEnabledChangedEvent;
+    [SidenavItem.events.SIDENAV_ITEM_TRIGGERED]: SidenavItemTriggeredEvent;
   }
 
   interface HTMLElementTagNameMap {

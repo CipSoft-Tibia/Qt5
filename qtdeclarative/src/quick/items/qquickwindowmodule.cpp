@@ -34,7 +34,11 @@ QQuickWindowQmlImpl::QQuickWindowQmlImpl(QWindow *parent)
 QQuickWindowQmlImpl::QQuickWindowQmlImpl(QQuickWindowQmlImplPrivate &dd, QWindow *parent)
     : QQuickWindow(dd, parent)
 {
-    connect(this, &QWindow::visibleChanged, this, &QQuickWindowQmlImpl::visibleChanged);
+    connect(this, &QWindow::visibleChanged, this, [&] {
+        Q_D(QQuickWindowQmlImpl);
+        d->visible = QWindow::isVisible();
+        emit QQuickWindowQmlImpl::visibleChanged(d->visible);
+    });
     connect(this, &QWindow::visibilityChanged, this, [&]{
         Q_D(QQuickWindowQmlImpl);
         // Update the window's actual visibility and turn off visibilityExplicitlySet,
@@ -80,7 +84,7 @@ void QQuickWindowQmlImpl::classBegin()
         // The content item has CppOwnership policy (set in QQuickWindow). Ensure the presence of a JS
         // wrapper so that the garbage collector can see the policy.
         QV4::ExecutionEngine *v4 = e->handle();
-        QV4::QObjectWrapper::wrap(v4, d->contentItem);
+        QV4::QObjectWrapper::ensureWrapper(v4, d->contentItem);
     }
 }
 
@@ -286,7 +290,7 @@ bool QQuickWindowQmlImpl::transientParentVisible()
 /*!
     \qmlproperty var QtQuick::Window::parent
     \since 6.7
-    \preliminary
+    \internal
 
     This property holds the visual parent of the window.
 
@@ -492,7 +496,7 @@ int QQuickWindowQmlImpl::y() const
 
 /*!
     \qmlproperty real QtQuick::Window::z
-    \preliminary
+    \internal
 
     Sets the stacking order of sibling windows.
 

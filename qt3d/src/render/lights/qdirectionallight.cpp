@@ -46,8 +46,8 @@ QDirectionalLightPrivate::QDirectionalLightPrivate()
 
 /*!
     \qmltype DirectionalLight
-    \instantiates Qt3DRender::QDirectionalLight
-    \inherits AbstractLight
+    \nativetype Qt3DRender::QDirectionalLight
+    \inherits Light
     \inqmlmodule Qt3D.Render
     \since 5.7
     \brief Encapsulate a Directional Light object in a Qt 3D scene.

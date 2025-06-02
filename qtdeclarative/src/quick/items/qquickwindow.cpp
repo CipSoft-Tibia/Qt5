@@ -454,27 +454,37 @@ void forceUpdate(QQuickItem *item)
         forceUpdate(items.at(i));
 }
 
-void QQuickWindowRenderTarget::reset(QRhi *rhi)
+void QQuickWindowRenderTarget::reset(QRhi *rhi, ResetFlags flags)
 {
-    if (owns) {
-        if (rhi) {
-            delete renderTarget;
-            delete rpDesc;
-            delete texture;
-            delete renderBuffer;
-            delete depthStencil;
-        }
+    if (rhi) {
+        if (rt.owns)
+            delete rt.renderTarget;
 
-        delete paintDevice;
+        delete res.texture;
+        delete res.renderBuffer;
+        delete res.rpDesc;
     }
 
-    renderTarget = nullptr;
-    rpDesc = nullptr;
-    texture = nullptr;
-    renderBuffer = nullptr;
-    depthStencil = nullptr;
-    paintDevice = nullptr;
-    owns = false;
+    rt = {};
+    res = {};
+
+    if (!flags.testFlag(ResetFlag::KeepImplicitBuffers))
+        implicitBuffers.reset(rhi);
+
+    if (sw.owns)
+        delete sw.paintDevice;
+
+    sw = {};
+}
+
+void QQuickWindowRenderTarget::ImplicitBuffers::reset(QRhi *rhi)
+{
+    if (rhi) {
+        delete depthStencil;
+        delete depthStencilTexture;
+        delete multisampleTexture;
+    }
+    *this = {};
 }
 
 void QQuickWindowPrivate::invalidateFontData(QQuickItem *item)
@@ -491,19 +501,18 @@ void QQuickWindowPrivate::invalidateFontData(QQuickItem *item)
 void QQuickWindowPrivate::ensureCustomRenderTarget()
 {
     // resolve() can be expensive when importing an existing native texture, so
-    // it is important to only do it when the QQuickRenderTarget* was really changed
+    // it is important to only do it when the QQuickRenderTarget was really changed.
     if (!redirect.renderTargetDirty)
         return;
 
     redirect.renderTargetDirty = false;
 
-    redirect.rt.reset(rhi);
+    redirect.rt.reset(rhi, QQuickWindowRenderTarget::ResetFlag::KeepImplicitBuffers);
 
-    // a default constructed QQuickRenderTarget means no redirection
-    if (customRenderTarget.isNull())
-        return;
-
-    QQuickRenderTargetPrivate::get(&customRenderTarget)->resolve(rhi, &redirect.rt);
+    if (!QQuickRenderTargetPrivate::get(&customRenderTarget)->resolve(rhi, &redirect.rt)) {
+        qWarning("Failed to set up render target redirection for QQuickWindow");
+        redirect.rt.reset(rhi);
+    }
 }
 
 void QQuickWindowPrivate::setCustomCommandBuffer(QRhiCommandBuffer *cb)
@@ -558,13 +567,7 @@ void QQuickWindowPrivate::syncSceneGraph()
 
     animationController->afterNodeSync();
 
-    // Copy the current state of clearing from window into renderer.
     renderer->setClearColor(clearColor);
-    // Cannot skip clearing the color buffer in Qt 6 anymore.
-    const QSGAbstractRenderer::ClearMode mode = QSGAbstractRenderer::ClearColorBuffer
-                                                | QSGAbstractRenderer::ClearStencilBuffer
-                                                | QSGAbstractRenderer::ClearDepthBuffer;
-    renderer->setClearMode(mode);
 
     renderer->setVisualizationMode(visualizationMode);
 
@@ -589,6 +592,30 @@ void QQuickWindowPrivate::emitAfterRenderPassRecording(void *ud)
     emit w->afterRenderPassRecording();
 }
 
+int QQuickWindowPrivate::multiViewCount()
+{
+    if (rhi) {
+        ensureCustomRenderTarget();
+        if (redirect.rt.rt.renderTarget)
+            return redirect.rt.rt.multiViewCount;
+    }
+
+    // Note that on QRhi level 0 and 1 are often used interchangeably, as both mean
+    // no-multiview. Here in Qt Quick let's always use 1 as the default
+    // (no-multiview), so that higher layers (effects, materials) do not need to
+    // handle both 0 and 1, only 1.
+    return 1;
+}
+
+QRhiRenderTarget *QQuickWindowPrivate::activeCustomRhiRenderTarget()
+{
+    if (rhi) {
+        ensureCustomRenderTarget();
+        return redirect.rt.rt.renderTarget;
+    }
+    return nullptr;
+}
+
 void QQuickWindowPrivate::renderSceneGraph()
 {
     Q_Q(QQuickWindow);
@@ -602,8 +629,8 @@ void QQuickWindowPrivate::renderSceneGraph()
         QRhiRenderTarget *rt;
         QRhiRenderPassDescriptor *rp;
         QRhiCommandBuffer *cb;
-        if (redirect.rt.renderTarget) {
-            rt = redirect.rt.renderTarget;
+        if (redirect.rt.rt.renderTarget) {
+            rt = redirect.rt.rt.renderTarget;
             rp = rt->renderPassDescriptor();
             if (!rp) {
                 qWarning("Custom render target is set but no renderpass descriptor has been provided.");
@@ -624,8 +651,9 @@ void QQuickWindowPrivate::renderSceneGraph()
             cb = swapchain->currentFrameCommandBuffer();
         }
         sgRenderTarget = QSGRenderTarget(rt, rp, cb);
+        sgRenderTarget.multiViewCount = multiViewCount();
     } else {
-        sgRenderTarget = QSGRenderTarget(redirect.rt.paintDevice);
+        sgRenderTarget = QSGRenderTarget(redirect.rt.sw.paintDevice);
     }
 
     context->beginNextFrame(renderer,
@@ -640,10 +668,10 @@ void QQuickWindowPrivate::renderSceneGraph()
 
     const qreal devicePixelRatio = q->effectiveDevicePixelRatio();
     QSize pixelSize;
-    if (redirect.rt.renderTarget)
-        pixelSize = redirect.rt.renderTarget->pixelSize();
-    else if (redirect.rt.paintDevice)
-        pixelSize = QSize(redirect.rt.paintDevice->width(), redirect.rt.paintDevice->height());
+    if (redirect.rt.rt.renderTarget)
+        pixelSize = redirect.rt.rt.renderTarget->pixelSize();
+    else if (redirect.rt.sw.paintDevice)
+        pixelSize = QSize(redirect.rt.sw.paintDevice->width(), redirect.rt.sw.paintDevice->height());
     else if (rhi)
         pixelSize = swapchain->currentPixelSize();
     else // software or other backend
@@ -822,13 +850,17 @@ void QQuickWindow::handleApplicationStateChanged(Qt::ApplicationState state)
 
 QQmlListProperty<QObject> QQuickWindowPrivate::data()
 {
-    return QQmlListProperty<QObject>(q_func(), nullptr,
-                                     QQuickWindowPrivate::data_append,
-                                     QQuickWindowPrivate::data_count,
-                                     QQuickWindowPrivate::data_at,
-                                     QQuickWindowPrivate::data_clear,
-                                     QQuickWindowPrivate::data_replace,
-                                     QQuickWindowPrivate::data_removeLast);
+    QQmlListProperty<QObject> ret;
+
+    ret.object = q_func();
+    ret.append = QQuickWindowPrivate::data_append;
+    ret.count = QQuickWindowPrivate::data_count;
+    ret.at = QQuickWindowPrivate::data_at;
+    ret.clear = QQuickWindowPrivate::data_clear;
+    // replace is not supported by QQuickItem. Don't synthesize it.
+    ret.removeLast = QQuickWindowPrivate::data_removeLast;
+
+    return ret;
 }
 
 void QQuickWindowPrivate::dirtyItem(QQuickItem *item)
@@ -877,7 +909,7 @@ void QQuickWindowPrivate::cleanup(QSGNode *n)
 
 /*!
     \qmltype Window
-    \instantiates QQuickWindow
+    \nativetype QQuickWindow
     \inqmlmodule QtQuick
     \ingroup qtquick-visual
     \brief Creates a new top-level window.
@@ -1375,41 +1407,6 @@ QObject *QQuickWindow::focusObject() const
     return const_cast<QQuickWindow*>(this);
 }
 
-/*!
-    \internal
-
-    Clears all exclusive and passive grabs for the points in \a pointerEvent.
-
-    We never allow any kind of grab to persist after release, unless we're waiting
-    for a synth event from QtGui (as with most tablet events), so for points that
-    are fully released, the grab is cleared.
-
-    Called when QQuickWindow::event dispatches events, or when the QQuickOverlay
-    has filtered an event so that it bypasses normal delivery.
-*/
-void QQuickWindowPrivate::clearGrabbers(QPointerEvent *pointerEvent)
-{
-    if (pointerEvent->isEndEvent()
-        && !(QQuickDeliveryAgentPrivate::isTabletEvent(pointerEvent)
-             && (qApp->testAttribute(Qt::AA_SynthesizeMouseForUnhandledTabletEvents)
-                 || QWindowSystemInterfacePrivate::TabletEvent::platformSynthesizesMouse))) {
-        if (pointerEvent->isSinglePointEvent()) {
-            if (static_cast<QSinglePointEvent *>(pointerEvent)->buttons() == Qt::NoButton) {
-                auto &firstPt = pointerEvent->point(0);
-                pointerEvent->setExclusiveGrabber(firstPt, nullptr);
-                pointerEvent->clearPassiveGrabbers(firstPt);
-            }
-        } else {
-            for (auto &point : pointerEvent->points()) {
-                if (point.state() == QEventPoint::State::Released) {
-                    pointerEvent->setExclusiveGrabber(point, nullptr);
-                    pointerEvent->clearPassiveGrabbers(point);
-                }
-            }
-        }
-    }
-}
-
 /*! \reimp */
 bool QQuickWindow::event(QEvent *event)
 {
@@ -1534,8 +1531,10 @@ bool QQuickWindow::event(QEvent *event)
                     }
                 }
 
-                if (ret)
+                if (ret) {
+                    d->deliveryAgentPrivate()->clearGrabbers(pe);
                     return true;
+                }
             } else if (!synthMouse) {
                 // clear passive grabbers unless it's a system synth-mouse event
                 // QTBUG-104890: Windows sends synth mouse events (which should be ignored) after touch events
@@ -1552,7 +1551,7 @@ bool QQuickWindow::event(QEvent *event)
         // or fix QTBUG-90851 so that the event always has points?
         bool ret = (da && da->event(event));
 
-        d->clearGrabbers(pe);
+        d->deliveryAgentPrivate()->clearGrabbers(pe);
 
         if (ret)
             return true;
@@ -1830,6 +1829,41 @@ void QQuickWindowPrivate::clearFocusObject()
         da->clearFocusObject();
 }
 
+void QQuickWindowPrivate::setFocusToTarget(FocusTarget target, Qt::FocusReason reason)
+{
+    if (!contentItem)
+        return;
+
+    QQuickItem *newFocusItem = nullptr;
+    switch (target) {
+    case FocusTarget::First:
+    case FocusTarget::Last: {
+        const bool forward = (target == FocusTarget::First);
+        newFocusItem = QQuickItemPrivate::nextPrevItemInTabFocusChain(contentItem, forward);
+        if (newFocusItem) {
+            const auto *itemPriv = QQuickItemPrivate::get(newFocusItem);
+            if (itemPriv->subFocusItem && itemPriv->flags & QQuickItem::ItemIsFocusScope)
+                clearFocusInScope(newFocusItem, itemPriv->subFocusItem, reason);
+        }
+        break;
+    }
+    case FocusTarget::Next:
+    case FocusTarget::Prev: {
+        const auto da = deliveryAgentPrivate();
+        Q_ASSERT(da);
+        QQuickItem *focusItem = da->focusTargetItem() ? da->focusTargetItem() : contentItem;
+        bool forward = (target == FocusTarget::Next);
+        newFocusItem = QQuickItemPrivate::nextPrevItemInTabFocusChain(focusItem, forward);
+        break;
+    }
+    default:
+        break;
+    }
+
+    if (newFocusItem)
+        newFocusItem->forceActiveFocus(reason);
+}
+
 /*!
     \qmlproperty list<QtObject> Window::data
     \qmldefault
@@ -1884,13 +1918,6 @@ void QQuickWindowPrivate::data_clear(QQmlListProperty<QObject> *property)
     QQuickWindow *win = static_cast<QQuickWindow*>(property->object);
     QQmlListProperty<QObject> itemProperty = QQuickItemPrivate::get(win->contentItem())->data();
     itemProperty.clear(&itemProperty);
-}
-
-void QQuickWindowPrivate::data_replace(QQmlListProperty<QObject> *property, qsizetype i, QObject *o)
-{
-    QQuickWindow *win = static_cast<QQuickWindow*>(property->object);
-    QQmlListProperty<QObject> itemProperty = QQuickItemPrivate::get(win->contentItem())->data();
-    itemProperty.replace(&itemProperty, i, o);
 }
 
 void QQuickWindowPrivate::data_removeLast(QQmlListProperty<QObject> *property)
@@ -2437,7 +2464,7 @@ bool QQuickWindow::isSceneGraphInitialized() const
 */
 /*!
     \qmltype CloseEvent
-    \instantiates QQuickCloseEvent
+    \nativetype QQuickCloseEvent
     \inqmlmodule QtQuick
     \ingroup qtquick-visual
     \brief Notification that a \l Window is about to be closed.
@@ -3690,10 +3717,7 @@ void QQuickWindow::endExternalCommands()
     the \l Window::flags property with a suitable \l Qt::WindowType (such as
     \c Qt::Dialog).
 
-    If a \l{QtQuick::Window::parent}{visual parent} is set on the Window
-    the visual parent will take precedence over the transientParent.
-
-    \sa QtQuick::Window::parent
+    \sa {QQuickWindow::}{parent()}
 */
 
 /*!
@@ -4319,8 +4343,8 @@ void QQuickWindow::setGraphicsConfiguration(const QQuickGraphicsConfiguration &c
 }
 
 /*!
-    \return the QQuickGraphicsDevice passed to setGraphicsDevice(), or a
-    default constructed one otherwise
+    \return the QQuickGraphicsConfiguration passed to
+    setGraphicsConfiguration(), or a default constructed one otherwise.
 
     \since 6.0
 

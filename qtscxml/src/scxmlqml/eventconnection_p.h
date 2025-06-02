@@ -28,7 +28,7 @@
 QT_BEGIN_NAMESPACE
 
 // QScxmlEvent is used as signal parameter, and defined in the cpp lib
-struct Q_SCXMLQML_PRIVATE_EXPORT QScxmlEventForeign
+struct Q_SCXMLQML_EXPORT QScxmlEventForeign
 {
     Q_GADGET
     QML_ANONYMOUS
@@ -36,7 +36,7 @@ struct Q_SCXMLQML_PRIVATE_EXPORT QScxmlEventForeign
     QML_ADDED_IN_VERSION(5,8)
 };
 
-class Q_SCXMLQML_PRIVATE_EXPORT QScxmlEventConnection : public QObject, public QQmlParserStatus
+class Q_SCXMLQML_EXPORT QScxmlEventConnection : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     Q_PROPERTY(QStringList events READ events WRITE setEvents NOTIFY eventsChanged

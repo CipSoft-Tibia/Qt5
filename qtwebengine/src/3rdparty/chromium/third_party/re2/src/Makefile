@@ -17,16 +17,17 @@ ABSL_DEPS=\
 	absl_strings\
 	absl_synchronization\
 
-CCABSL=$(shell pkg-config $(ABSL_DEPS) --cflags)
+PKG_CONFIG?=pkg-config
+CCABSL=$(shell $(PKG_CONFIG) $(ABSL_DEPS) --cflags)
 # GCC barfs on `-Wl` whereas Clang doesn't mind, but it's unclear what
 # causes it to manifest on Ubuntu 22.04 LTS, so filter it out for now.
 # Similar is needed for `static-testinstall` and `shared-testinstall`.
-LDABSL=$(shell pkg-config $(ABSL_DEPS) --libs | sed -e 's/-Wl / /g')
+LDABSL=$(shell $(PKG_CONFIG) $(ABSL_DEPS) --libs | sed -e 's/-Wl / /g')
 
 # To build against ICU for full Unicode properties support,
 # uncomment the next two lines:
-# CCICU=$(shell pkg-config icu-uc --cflags) -DRE2_USE_ICU
-# LDICU=$(shell pkg-config icu-uc --libs)
+# CCICU=$(shell $(PKG_CONFIG) icu-uc --cflags) -DRE2_USE_ICU
+# LDICU=$(shell $(PKG_CONFIG) icu-uc --libs)
 
 # To build against PCRE for testing and benchmarking,
 # uncomment the next two lines:
@@ -249,14 +250,9 @@ obj/test/regexp_benchmark: obj/libre2.a obj/re2/testing/regexp_benchmark.o $(TES
 	@mkdir -p obj/test
 	$(CXX) -o $@ obj/re2/testing/regexp_benchmark.o $(TESTOFILES) -lgtest -lbenchmark -lbenchmark_main obj/libre2.a $(RE2_LDFLAGS) $(LDFLAGS)
 
-# re2_fuzzer is a target for fuzzers like libFuzzer and AFL. This fake fuzzing
-# is simply a way to check that the target builds and then to run it against a
-# fixed set of inputs. To perform real fuzzing, refer to the documentation for
-# libFuzzer (llvm.org/docs/LibFuzzer.html) and AFL (lcamtuf.coredump.cx/afl/).
-obj/test/re2_fuzzer: CXXFLAGS:=-I./re2/fuzzing/compiler-rt/include $(CXXFLAGS)
-obj/test/re2_fuzzer: obj/libre2.a obj/re2/fuzzing/re2_fuzzer.o obj/util/fuzz.o
+obj/test/re2_fuzzer: obj/libre2.a obj/re2/fuzzing/re2_fuzzer.o
 	@mkdir -p obj/test
-	$(CXX) -o $@ obj/re2/fuzzing/re2_fuzzer.o obj/util/fuzz.o obj/libre2.a $(RE2_LDFLAGS) $(LDFLAGS)
+	$(CXX) -o $@ obj/re2/fuzzing/re2_fuzzer.o obj/libre2.a $(RE2_LDFLAGS) $(LDFLAGS)
 
 ifdef REBUILD_TABLES
 .PRECIOUS: re2/perl_groups.cc
@@ -359,8 +355,8 @@ else
 	@cp testinstall.cc obj/static-testinstall.cc
 	(cd obj && export PKG_CONFIG_PATH=$(DESTDIR)$(libdir)/pkgconfig; \
 	  $(CXX) static-testinstall.cc -o static-testinstall $(CXXFLAGS) $(LDFLAGS) \
-	  $$(pkg-config re2 --cflags) \
-	  $$(pkg-config re2 --libs | sed -e 's/-Wl / /g' | sed -e 's/-lre2/-l:libre2.a/'))
+	  $$($(PKG_CONFIG) re2 --cflags) \
+	  $$($(PKG_CONFIG) re2 --libs | sed -e 's/-Wl / /g' | sed -e 's/-lre2/-l:libre2.a/'))
 	obj/static-testinstall
 endif
 
@@ -370,8 +366,8 @@ shared-testinstall:
 	@cp testinstall.cc obj/shared-testinstall.cc
 	(cd obj && export PKG_CONFIG_PATH=$(DESTDIR)$(libdir)/pkgconfig; \
 	  $(CXX) shared-testinstall.cc -o shared-testinstall $(CXXFLAGS) $(LDFLAGS) \
-	  $$(pkg-config re2 --cflags) \
-	  $$(pkg-config re2 --libs | sed -e 's/-Wl / /g'))
+	  $$($(PKG_CONFIG) re2 --cflags) \
+	  $$($(PKG_CONFIG) re2 --libs | sed -e 's/-Wl / /g'))
 ifeq ($(shell uname),Darwin)
 	DYLD_LIBRARY_PATH="$(DESTDIR)$(libdir):$(DYLD_LIBRARY_PATH)" obj/shared-testinstall
 else

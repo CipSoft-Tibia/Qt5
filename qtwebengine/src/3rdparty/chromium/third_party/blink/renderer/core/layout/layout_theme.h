@@ -27,11 +27,13 @@
 #include "third_party/blink/public/mojom/frame/color_scheme.mojom-blink-forward.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css_value_keywords.h"
+#include "third_party/blink/renderer/core/html/forms/input_type.h"
 #include "third_party/blink/renderer/platform/graphics/color.h"
 #include "third_party/blink/renderer/platform/theme_types.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "third_party/blink/renderer/platform/wtf/forward.h"
 #include "third_party/blink/renderer/platform/wtf/ref_counted.h"
+#include "ui/color/color_provider.h"
 #include "ui/gfx/geometry/size.h"
 
 namespace blink {
@@ -85,7 +87,7 @@ class CORE_EXPORT LayoutTheme : public RefCounted<LayoutTheme> {
 
   // A method asking if the platform is able to show a calendar picker for a
   // given input type.
-  virtual bool SupportsCalendarPicker(const AtomicString&) const;
+  virtual bool SupportsCalendarPicker(InputType::Type) const;
 
   // Text selection colors.
   Color ActiveSelectionBackgroundColor(
@@ -119,9 +121,11 @@ class CORE_EXPORT LayoutTheme : public RefCounted<LayoutTheme> {
   // Highlight and text colors for TextMatches.
   Color PlatformTextSearchHighlightColor(
       bool active_match,
-      mojom::blink::ColorScheme color_scheme) const;
+      mojom::blink::ColorScheme color_scheme,
+      const ui::ColorProvider* color_provider) const;
   Color PlatformTextSearchColor(bool active_match,
-                                mojom::blink::ColorScheme color_scheme) const;
+                                mojom::blink::ColorScheme color_scheme,
+                                const ui::ColorProvider* color_provider) const;
 
   virtual Color FocusRingColor(mojom::blink::ColorScheme color_scheme) const;
   virtual Color PlatformFocusRingColor() const { return Color(0, 0, 0); }
@@ -144,7 +148,8 @@ class CORE_EXPORT LayoutTheme : public RefCounted<LayoutTheme> {
   // System fonts and colors for CSS.
   void SystemFont(CSSValueID system_font_id, FontDescription&, const Document*);
   virtual Color SystemColor(CSSValueID,
-                            mojom::blink::ColorScheme color_scheme) const;
+                            mojom::blink::ColorScheme color_scheme,
+                            const ui::ColorProvider* color_provider) const;
 
   virtual void AdjustSliderThumbSize(ComputedStyleBuilder&) const;
 
@@ -182,15 +187,13 @@ class CORE_EXPORT LayoutTheme : public RefCounted<LayoutTheme> {
   virtual void AdjustControlPartStyle(ComputedStyleBuilder&);
 
   virtual bool IsAccentColorCustomized(
-      mojom::blink::ColorScheme color_scheme) const {
-    return false;
-  }
+      mojom::blink::ColorScheme color_scheme) const;
+
   // GetSystemAccentColor returns transparent unless there is a special value
   // from the OS color scheme.
   virtual Color GetSystemAccentColor(
-      mojom::blink::ColorScheme color_scheme) const {
-    return Color();
-  }
+      mojom::blink::ColorScheme color_scheme) const;
+
   // GetAccentColorOrDefault will return GetAccentColor if there is a value from
   // the OS, otherwise it will return the default accent color.
   Color GetAccentColorOrDefault(mojom::blink::ColorScheme color_scheme) const;

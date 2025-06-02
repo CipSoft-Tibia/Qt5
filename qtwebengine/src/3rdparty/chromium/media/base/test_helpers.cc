@@ -21,6 +21,7 @@
 #include "media/base/decoder_buffer.h"
 #include "media/base/media_util.h"
 #include "media/base/mock_filters.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/geometry/rect.h"
 
 using ::testing::_;
@@ -222,8 +223,26 @@ VideoDecoderConfig TestVideoConfig::NormalEncrypted(VideoCodec codec,
 
 // static
 VideoDecoderConfig TestVideoConfig::NormalRotated(VideoRotation rotation) {
-  return GetTestConfig(VideoCodec::kVP8, MinProfile(VideoCodec::kVP8),
+  return GetTestConfig(VideoCodec::kAV1, MinProfile(VideoCodec::kAV1),
                        VideoColorSpace::JPEG(), rotation, kNormalSize, false);
+}
+
+VideoDecoderConfig TestVideoConfig::NormalHdr(VideoCodec codec) {
+  auto config = Normal(codec);
+  config.set_color_space_info(
+      VideoColorSpace::FromGfxColorSpace(gfx::ColorSpace::CreateHDR10()));
+  config.set_hdr_metadata(
+      gfx::HDRMetadata::PopulateUnspecifiedWithDefaults(absl::nullopt));
+  return config;
+}
+
+VideoDecoderConfig TestVideoConfig::NormalHdrEncrypted(VideoCodec codec) {
+  auto config = NormalEncrypted(codec);
+  config.set_color_space_info(
+      VideoColorSpace::FromGfxColorSpace(gfx::ColorSpace::CreateHDR10()));
+  config.set_hdr_metadata(
+      gfx::HDRMetadata::PopulateUnspecifiedWithDefaults(absl::nullopt));
+  return config;
 }
 
 // static
@@ -477,7 +496,6 @@ scoped_refptr<DecoderBuffer> CreateFakeVideoBufferForTest(
 
 scoped_refptr<DecoderBuffer> CreateMismatchedBufferForTest() {
   std::vector<uint8_t> data = {42, 22, 26, 13, 7, 16, 8, 2};
-  std::vector<uint8_t> kFakeData = {36, 23, 36};
   scoped_refptr<media::DecoderBuffer> mismatched_encrypted_buffer =
       media::DecoderBuffer::CopyFrom(data.data(), data.size());
   mismatched_encrypted_buffer->set_timestamp(base::Seconds(42));
@@ -487,6 +505,27 @@ scoped_refptr<DecoderBuffer> CreateMismatchedBufferForTest() {
                                              {{1, 1}, {2, 2}, {3, 3}}));
 
   return mismatched_encrypted_buffer;
+}
+
+scoped_refptr<DecoderBuffer> CreateFakeEncryptedBuffer() {
+  const int buffer_size = 16;  // Need a non-empty buffer;
+  scoped_refptr<DecoderBuffer> buffer(
+      base::MakeRefCounted<DecoderBuffer>(buffer_size));
+
+  const uint8_t kFakeKeyId[] = {0x4b, 0x65, 0x79, 0x20, 0x49, 0x44};
+  const uint8_t kFakeIv[DecryptConfig::kDecryptionKeySize] = {0};
+  buffer->set_decrypt_config(DecryptConfig::CreateCencConfig(
+      std::string(reinterpret_cast<const char*>(kFakeKeyId),
+                  std::size(kFakeKeyId)),
+      std::string(reinterpret_cast<const char*>(kFakeIv), std::size(kFakeIv)),
+      std::vector<SubsampleEntry>()));
+  return buffer;
+}
+
+scoped_refptr<DecoderBuffer> CreateClearBuffer() {
+  const int buffer_size = 16;  // Need a non-empty buffer;
+  auto buffer = base::MakeRefCounted<DecoderBuffer>(buffer_size);
+  return buffer;
 }
 
 bool VerifyFakeVideoBufferForTest(const DecoderBuffer& buffer,

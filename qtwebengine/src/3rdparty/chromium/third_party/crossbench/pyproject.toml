@@ -23,6 +23,8 @@ psutil = "^5.9.1"
 selenium = "^4.1.0"
 tabulate = "^0.8.10"
 websockets = "^11.0.3"
+colorama = "^0.4.6"
+ordered-set = "^4.1.0"
 
 [tool.poetry.scripts]
 crossbench = 'scripts:crossbench'
@@ -33,8 +35,10 @@ debugpy = "^1.6.3"
 isort = "^5.10.1"
 pyfakefs = "^5.2.2"
 pylint = "^2.7"
+pytest = "^7.4.2"
 pytest-cov = "^4.0.0"
 pytest-xdist = "^3.3.1"
+pytest-subtests = "^0.11.0"
 mypy = "^1.2"
 
 [tool.poetry.group.dev-pytype.dependencies]
@@ -46,4 +50,6 @@ requires = ["poetry_core>=1.1.5"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
-addopts="--ignore=tests/cbb -n auto"
+addopts = "--ignore=tests/cbb -n auto --dist=loadgroup"
+log_cli = 1
+log_cli_level = "DEBUG"

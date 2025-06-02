@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# Copyright (c) 2021-2023 The Khronos Group Inc.
-# Copyright (c) 2021-2023 Valve Corporation
-# Copyright (c) 2021-2023 LunarG, Inc.
+# Copyright (c) 2021-2024 The Khronos Group Inc.
+# Copyright (c) 2021-2024 Valve Corporation
+# Copyright (c) 2021-2024 LunarG, Inc.
 # Copyright (c) 2021-2023 Google Inc.
 # Copyright (c) 2023-2023 RasterGrid Kft.
 #
@@ -26,9 +26,15 @@ import sys
 import tempfile
 import difflib
 import json
+import common_ci
 from xml.etree import ElementTree
+from generate_spec_error_message import GenerateSpecErrorMessage
 
-def RunGenerators(api: str, registry: str, grammar: str, directory: str, targetFilter: str):
+def RunGenerators(api: str, registry: str, grammar: str, directory: str, styleFile: str, targetFilter: str):
+
+    has_clang_format = shutil.which('clang-format') is not None
+    if not has_clang_format:
+        print("WARNING: Unable to find clang-format!")
 
     # These live in the Vulkan-Docs repo, but are pulled in via the
     # Vulkan-Headers/registry folder
@@ -54,20 +60,21 @@ def RunGenerators(api: str, registry: str, grammar: str, directory: str, targetF
     from generators.spirv_validation_generator import SpirvValidationHelperOutputGenerator
     from generators.spirv_grammar_generator import SpirvGrammarHelperOutputGenerator
     from generators.command_validation_generator import CommandValidationOutputGenerator
-    from generators.format_utils_generator import FormatUtilsOutputGenerator
     from generators.dynamic_state_generator import DynamicStateOutputGenerator
     from generators.sync_validation_generator import SyncValidationOutputGenerator
-    from generators.typemap_helper_generator import TypemapHelperOutputGenerator
     from generators.object_types_generator import ObjectTypesOutputGenerator
     from generators.safe_struct_generator import SafeStructOutputGenerator
     from generators.enum_flag_bits_generator import EnumFlagBitsOutputGenerator
     from generators.valid_enum_values_generator import ValidEnumValuesOutputGenerator
     from generators.spirv_tool_commit_id_generator import SpirvToolCommitIdOutputGenerator
     from generators.error_location_helper_generator import ErrorLocationHelperOutputGenerator
+    from generators.pnext_chain_extraction_generator import PnextChainExtractionGenerator
+    from generators.state_tracker_helper_generator import StateTrackerHelperOutputGenerator
+    from generators.feature_requirements import FeatureRequirementsGenerator
 
     # These set fields that are needed by both OutputGenerator and BaseGenerator,
     # but are uniform and don't need to be set at a per-generated file level
-    from generators.base_generator import (SetOutputDirectory, SetTargetApiName, SetMergedApiNames)
+    from generators.base_generator import SetOutputDirectory, SetTargetApiName, SetMergedApiNames
     SetOutputDirectory(directory)
     SetTargetApiName(api)
 
@@ -140,6 +147,10 @@ def RunGenerators(api: str, registry: str, grammar: str, directory: str, targetF
             'generator' : DispatchTableHelperOutputGenerator,
             'genCombined': True,
         },
+        'vk_dispatch_table_helper.cpp' : {
+            'generator' : DispatchTableHelperOutputGenerator,
+            'genCombined': True,
+        },
         'vk_function_pointers.h' : {
             'generator' : FunctionPointersOutputGenerator,
             'genCombined': True,
@@ -188,10 +199,7 @@ def RunGenerators(api: str, registry: str, grammar: str, directory: str, targetF
             'generator' : ApiVersionOutputGenerator,
             'genCombined': True,
         },
-        'vk_typemap_helper.h' : {
-            'generator' : TypemapHelperOutputGenerator,
-            'genCombined': True,
-        },
+
         'chassis.h' : {
             'generator' : LayerChassisOutputGenerator,
             'genCombined': True,
@@ -259,12 +267,28 @@ def RunGenerators(api: str, registry: str, grammar: str, directory: str, targetF
             'generator' : DynamicStateOutputGenerator,
             'genCombined': False,
         },
-        'vk_format_utils.h' : {
-            'generator' : FormatUtilsOutputGenerator,
+        'pnext_chain_extraction.h' : {
+            'generator' : PnextChainExtractionGenerator,
             'genCombined': True,
         },
-        'vk_format_utils.cpp' : {
-            'generator' : FormatUtilsOutputGenerator,
+        'pnext_chain_extraction.cpp' : {
+            'generator' : PnextChainExtractionGenerator,
+            'genCombined': True,
+        },
+        'state_tracker_helper.h' : {
+            'generator' : StateTrackerHelperOutputGenerator,
+            'genCombined': True,
+        },
+        'state_tracker_helper.cpp' : {
+            'generator' : StateTrackerHelperOutputGenerator,
+            'genCombined': True,
+        },
+        'feature_requirements_helper.h' : {
+            'generator' : FeatureRequirementsGenerator,
+            'genCombined': True,
+        },
+        'feature_requirements_helper.cpp' : {
+            'generator' : FeatureRequirementsGenerator,
             'genCombined': True,
         },
     }
@@ -314,13 +338,26 @@ def RunGenerators(api: str, registry: str, grammar: str, directory: str, targetF
         # Finally, use the output generator to create the requested target
         reg.apiGen()
 
+        # Run clang-format on the file
+        if has_clang_format:
+            common_ci.RunShellCmd(f'clang-format -i --style=file:{styleFile} {os.path.join(directory, target)}')
+
 # helper to define paths relative to the repo root
 def repo_relative(path):
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', path))
 
 def main(argv):
     # files to exclude from --verify check
-    verify_exclude = ['.clang-format']
+    # The shaders requires glslangvalidator, so they are updated manually with generate_spirv when needed
+    verify_exclude = [
+        '.clang-format',
+        'gpu_as_inspection_comp.h',
+        'gpu_pre_dispatch_comp.h',
+        'gpu_pre_draw_vert.h',
+        'gpu_pre_trace_rays_rgen.h',
+        'inst_functions_comp.h',
+        'gpu_inst_shader_hash.h'
+    ]
 
     parser = argparse.ArgumentParser(description='Generate source code for this repository')
     parser.add_argument('--api',
@@ -338,6 +375,16 @@ def main(argv):
     args = parser.parse_args(argv)
 
     repo_dir = repo_relative(f'layers/{args.api}/generated')
+
+    # Need pass style file incase running with --verify and it can't find the file automatically in the temp directory
+    styleFile = os.path.join(repo_dir, '.clang-format')
+    if common_ci.IsGHA() and args.verify:
+        # Have found that sometimes (~5%) the 20.04 Ubuntu machines have clang-format v11 but we need v14 to
+        # use a dedicated styleFile location. For these case there we can survive just skipping the verify check
+        stdout = subprocess.check_output(['clang-format', '--version']).decode("utf-8")
+        version = stdout[stdout.index('version') + 8:][:2]
+        if int(version) < 14:
+            return 0 # Success
 
     # Update the api_version in the respective json files
     if args.generated_version:
@@ -364,22 +411,17 @@ def main(argv):
         gen_dir = repo_dir
 
     if args.output_directory is not None:
-      gen_dir = args.output_directory;
+      gen_dir = args.output_directory
 
     registry = os.path.abspath(os.path.join(args.registry,  'vk.xml'))
     grammar = os.path.abspath(os.path.join(args.grammar, 'spirv.core.grammar.json'))
-    RunGenerators(args.api, registry, grammar, gen_dir, args.target)
+    RunGenerators(args.api, registry, grammar, gen_dir, styleFile, args.target)
 
-    # Generate vk_validation_error_messages.h
-    try:
-        cmd = [repo_relative("scripts/vk_validation_stats.py"),
-               os.path.abspath(os.path.join(args.registry, "validusage.json")),
-              '-export_header']
-        print(' '.join(cmd))
-        subprocess.check_call([sys.executable] + cmd, cwd=gen_dir)
-    except Exception as e:
-        print('ERROR:', str(e))
-        return 1
+    # Generate vk_validation_error_messages.h (ignore if targeting a single generator)
+    if (not args.target):
+        valid_usage_file = os.path.abspath(os.path.join(args.registry, "validusage.json"))
+        error_message_file = os.path.join(gen_dir, 'vk_validation_error_messages.h')
+        GenerateSpecErrorMessage(args.api, valid_usage_file, error_message_file)
 
     # optional post-generation steps
     if args.verify:
@@ -389,11 +431,7 @@ def main(argv):
         for filename in sorted((temp_files | repo_files) - set(verify_exclude)):
             temp_filename = os.path.join(temp_dir, filename)
             repo_filename = os.path.join(repo_dir, filename)
-            if filename.startswith('gpu_'):
-                # The shaders requires glslangvalidator,
-                # so updated manually with generate_spirv when needed
-                continue
-            elif filename not in repo_files:
+            if filename not in repo_files:
                 print('ERROR: Missing repo file', filename)
                 return 2
             elif filename not in temp_files:

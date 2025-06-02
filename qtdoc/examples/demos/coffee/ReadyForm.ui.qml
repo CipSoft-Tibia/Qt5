@@ -3,7 +3,6 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
-import QtQuick.Controls
 
 Item {
     // Height, width and any other size related properties containing odd looking float or other dividers
@@ -76,7 +75,7 @@ Item {
                 color: Colors.currentTheme.cardColor
                 Text {
                     id: caption
-                    text: "Your Coffee is Ready!"
+                    text: "Your coffee is ready."
                     color: Colors.currentTheme.textColor
                     font.pixelSize: 18
                     font.weight: 600

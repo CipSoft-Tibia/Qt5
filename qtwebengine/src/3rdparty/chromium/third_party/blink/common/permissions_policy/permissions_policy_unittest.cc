@@ -61,6 +61,10 @@ class PermissionsPolicyTest : public testing::Test {
              {mojom::PermissionsPolicyFeature::kAttributionReporting,
               PermissionsPolicyFeatureDefault::EnableForSelf},
              {mojom::PermissionsPolicyFeature::kSharedStorage,
+              PermissionsPolicyFeatureDefault::EnableForSelf},
+             {mojom::PermissionsPolicyFeature::kSharedStorageSelectUrl,
+              PermissionsPolicyFeatureDefault::EnableForSelf},
+             {mojom::PermissionsPolicyFeature::kPrivateAggregation,
               PermissionsPolicyFeatureDefault::EnableForSelf}}) {}
 
   ~PermissionsPolicyTest() override = default;
@@ -87,11 +91,20 @@ class PermissionsPolicyTest : public testing::Test {
     return PermissionsPolicy::CreateFromParentPolicy(parent, frame_policy,
                                                      origin, feature_list_);
   }
-  std::unique_ptr<PermissionsPolicy> CreateForFencedFrame(
+
+  std::unique_ptr<PermissionsPolicy> CreateFlexibleForFencedFrame(
+      const PermissionsPolicy* parent,
+      const url::Origin& origin) {
+    ParsedPermissionsPolicy empty_container_policy;
+    return PermissionsPolicy::CreateFlexibleForFencedFrame(
+        parent, empty_container_policy, origin, feature_list_);
+  }
+
+  std::unique_ptr<PermissionsPolicy> CreateFixedForFencedFrame(
       const url::Origin& origin,
       base::span<const blink::mojom::PermissionsPolicyFeature>
           effective_enabled_permissions) {
-    return PermissionsPolicy::CreateForFencedFrame(
+    return PermissionsPolicy::CreateFixedForFencedFrame(
         origin, feature_list_, effective_enabled_permissions);
   }
 
@@ -1905,11 +1918,11 @@ TEST_F(PermissionsPolicyTest,
   request_with_topics_opt_in.browsing_topics = true;
 
   network::ResourceRequest request_with_shared_storage_opt_in;
-  request_with_shared_storage_opt_in.shared_storage_writable = true;
+  request_with_shared_storage_opt_in.shared_storage_writable_eligible = true;
 
   network::ResourceRequest request_with_both_opt_in;
   request_with_both_opt_in.browsing_topics = true;
-  request_with_both_opt_in.shared_storage_writable = true;
+  request_with_both_opt_in.shared_storage_writable_eligible = true;
 
   {
     // +--------------------------------------------------------+
@@ -2818,15 +2831,25 @@ TEST_F(PermissionsPolicyTest, ProposedTestNestedPolicyPropagates) {
   EXPECT_FALSE(policy3->IsFeatureEnabled(kDefaultSelfFeature));
 }
 
-TEST_F(PermissionsPolicyTest, CreateForDefaultFencedFrame) {
+TEST_F(PermissionsPolicyTest, CreateFlexibleForFencedFrame) {
+  std::unique_ptr<PermissionsPolicy> policy1 =
+      CreateFromParentPolicy(nullptr, origin_a_);
+  policy1->SetHeaderPolicy({{{kDefaultOnFeature, /*allowed_origins=*/{},
+                              /*self_if_matches=*/absl::nullopt,
+                              /*matches_all_origins=*/true,
+                              /*matches_opaque_src=*/false}}});
   std::unique_ptr<PermissionsPolicy> policy =
-      CreateForFencedFrame(origin_a_, {});
+      CreateFlexibleForFencedFrame(policy1.get(), origin_a_);
   EXPECT_FALSE(policy->IsFeatureEnabled(kDefaultOnFeature));
   EXPECT_FALSE(policy->IsFeatureEnabled(kDefaultSelfFeature));
   EXPECT_FALSE(policy->IsFeatureEnabled(
       mojom::PermissionsPolicyFeature::kAttributionReporting));
-  EXPECT_FALSE(policy->IsFeatureEnabled(
+  EXPECT_TRUE(policy->IsFeatureEnabled(
       mojom::PermissionsPolicyFeature::kSharedStorage));
+  EXPECT_TRUE(policy->IsFeatureEnabled(
+      mojom::PermissionsPolicyFeature::kSharedStorageSelectUrl));
+  EXPECT_TRUE(policy->IsFeatureEnabled(
+      mojom::PermissionsPolicyFeature::kPrivateAggregation));
 }
 
 TEST_F(PermissionsPolicyTest, CreateForFledgeFencedFrame) {
@@ -2838,7 +2861,7 @@ TEST_F(PermissionsPolicyTest, CreateForFledgeFencedFrame) {
       std::end(blink::kFencedFrameFledgeDefaultRequiredFeatures));
 
   std::unique_ptr<PermissionsPolicy> policy =
-      CreateForFencedFrame(origin_a_, effective_enabled_permissions);
+      CreateFixedForFencedFrame(origin_a_, effective_enabled_permissions);
   EXPECT_FALSE(policy->IsFeatureEnabled(kDefaultOnFeature));
   EXPECT_FALSE(policy->IsFeatureEnabled(kDefaultSelfFeature));
   EXPECT_TRUE(policy->IsFeatureEnabled(
@@ -2856,7 +2879,7 @@ TEST_F(PermissionsPolicyTest, CreateForSharedStorageFencedFrame) {
       std::end(blink::kFencedFrameSharedStorageDefaultRequiredFeatures));
 
   std::unique_ptr<PermissionsPolicy> policy =
-      CreateForFencedFrame(origin_a_, effective_enabled_permissions);
+      CreateFixedForFencedFrame(origin_a_, effective_enabled_permissions);
   EXPECT_FALSE(policy->IsFeatureEnabled(kDefaultOnFeature));
   EXPECT_FALSE(policy->IsFeatureEnabled(kDefaultSelfFeature));
   EXPECT_TRUE(policy->IsFeatureEnabled(
@@ -3198,6 +3221,8 @@ TEST_F(PermissionsPolicyTest, GetPermissionsPolicyFeatureListForUnload) {
           /*disabled_features=*/{});
       const PermissionsPolicyFeatureDefault unload_default =
           GetDefaultForUnload(origin);
+      ASSERT_EQ(GetDefaultForUnload(origin.DeriveNewOpaqueOrigin()),
+                unload_default);
       if (unload_default == PermissionsPolicyFeatureDefault::EnableForNone) {
         count++;
       } else {
@@ -3224,7 +3249,7 @@ TEST_F(PermissionsPolicyTest, UnloadDeprecationAllowedHosts) {
   // Now set the parameter and try again.
   base::test::ScopedFeatureList feature_list;
   feature_list.InitWithFeaturesAndParameters(
-      {{blink::features::kDeprecateUnload,
+      {{blink::features::kDeprecateUnloadByAllowList,
         {{features::kDeprecateUnloadAllowlist.name, "testing1,testing2"}}}},
       /*disabled_features=*/{});
 
@@ -3240,7 +3265,7 @@ TEST_F(PermissionsPolicyTest, UnloadDeprecationAllowedHostsEmpty) {
   // Now set the parameter and try again.
   base::test::ScopedFeatureList feature_list;
   feature_list.InitWithFeaturesAndParameters(
-      {{blink::features::kDeprecateUnload,
+      {{blink::features::kDeprecateUnloadByAllowList,
         {{features::kDeprecateUnloadAllowlist.name,
           "testing1,, testing2,testing1"}}}},
       /*disabled_features=*/{});
@@ -3249,9 +3274,9 @@ TEST_F(PermissionsPolicyTest, UnloadDeprecationAllowedHostsEmpty) {
             UnloadDeprecationAllowedHosts());
 }
 
-// Test that the UnloadDeprecationAllowedForOrigin works correctly with an empty
-// and a non-empty allowlist.
-TEST_F(PermissionsPolicyTest, UnloadDeprecationAllowedForOrigin) {
+// Test that the UnloadDeprecationAllowedForHost works correctly with
+// an empty and a non-empty allowlist.
+TEST_F(PermissionsPolicyTest, UnloadDeprecationAllowedForHostHostLists) {
   const url::Origin http_origin1 =
       url::Origin::Create(GURL("http://testing1/"));
   const url::Origin https_origin1 =
@@ -3268,12 +3293,12 @@ TEST_F(PermissionsPolicyTest, UnloadDeprecationAllowedForOrigin) {
   {
     const auto hosts = UnloadDeprecationAllowedHosts();
     // With no allowlist, every origin is allowed.
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(http_origin1, hosts));
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(https_origin1, hosts));
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(http_origin2, hosts));
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(https_origin2, hosts));
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(http_origin3, hosts));
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(https_origin3, hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(http_origin1.host(), hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(https_origin1.host(), hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(http_origin2.host(), hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(https_origin2.host(), hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(http_origin3.host(), hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(https_origin3.host(), hosts));
   }
 
   // Now set an allowlist and check that only the allowed domains see
@@ -3281,17 +3306,69 @@ TEST_F(PermissionsPolicyTest, UnloadDeprecationAllowedForOrigin) {
   {
     base::test::ScopedFeatureList feature_list;
     feature_list.InitWithFeaturesAndParameters(
-        {{blink::features::kDeprecateUnload,
+        {{blink::features::kDeprecateUnloadByAllowList,
           {{features::kDeprecateUnloadAllowlist.name, "testing1,testing2"}}}},
         /*disabled_features=*/{});
 
     const auto hosts = UnloadDeprecationAllowedHosts();
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(http_origin1, hosts));
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(https_origin1, hosts));
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(http_origin2, hosts));
-    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(https_origin2, hosts));
-    EXPECT_FALSE(UnloadDeprecationAllowedForOrigin(http_origin3, hosts));
-    EXPECT_FALSE(UnloadDeprecationAllowedForOrigin(https_origin3, hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(http_origin1.host(), hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(https_origin1.host(), hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(http_origin2.host(), hosts));
+    EXPECT_TRUE(UnloadDeprecationAllowedForHost(https_origin2.host(), hosts));
+    EXPECT_FALSE(UnloadDeprecationAllowedForHost(http_origin3.host(), hosts));
+    EXPECT_FALSE(UnloadDeprecationAllowedForHost(https_origin3.host(), hosts));
+  }
+}
+
+TEST_F(PermissionsPolicyTest, UnloadDeprecationAllowedForOrigin_NonHttp) {
+  const url::Origin chrome_origin =
+      url::Origin::Create(GURL("chrome://settings"));
+  EXPECT_FALSE(UnloadDeprecationAllowedForOrigin(chrome_origin));
+  EXPECT_FALSE(
+      UnloadDeprecationAllowedForOrigin(chrome_origin.DeriveNewOpaqueOrigin()));
+}
+
+TEST_F(PermissionsPolicyTest,
+       UnloadDeprecationAllowedForOrigin_GradualRollout) {
+  const url::Origin testing_origin =
+      url::Origin::Create(GURL("http://testing"));
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeaturesAndParameters(
+        {{blink::features::kDeprecateUnload,
+          {{features::kDeprecateUnloadPercent.name, "0"},
+           {features::kDeprecateUnloadBucket.name, "0"}}}},
+        /*disabled_features=*/{});
+    EXPECT_FALSE(UnloadDeprecationAllowedForOrigin(testing_origin));
+    EXPECT_FALSE(UnloadDeprecationAllowedForOrigin(
+        testing_origin.DeriveNewOpaqueOrigin()));
+  }
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeaturesAndParameters(
+        {{blink::features::kDeprecateUnload,
+          {{features::kDeprecateUnloadPercent.name, "100"},
+           {features::kDeprecateUnloadBucket.name, "0"}}}},
+        /*disabled_features=*/{});
+    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(testing_origin));
+    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(
+        testing_origin.DeriveNewOpaqueOrigin()));
+  }
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeaturesAndParameters(
+        {{blink::features::kDeprecateUnload,
+          {{features::kDeprecateUnloadPercent.name, "100"},
+           {features::kDeprecateUnloadBucket.name, "0"}}},
+         {blink::features::kDeprecateUnloadByAllowList,
+          {{features::kDeprecateUnloadAllowlist.name, "testing"}}}},
+        /*disabled_features=*/{});
+    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(testing_origin));
+    EXPECT_TRUE(UnloadDeprecationAllowedForOrigin(
+        testing_origin.DeriveNewOpaqueOrigin()));
+    const url::Origin disallowed_testing_origin =
+        url::Origin::Create(GURL("http://disallowed-testing"));
+    EXPECT_FALSE(UnloadDeprecationAllowedForOrigin(disallowed_testing_origin));
   }
 }
 }  // namespace blink

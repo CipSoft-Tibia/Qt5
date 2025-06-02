@@ -56,6 +56,7 @@
 #include "net/base/features.h"
 #include "net/base/schemeful_site.h"
 #include "net/disk_cache/disk_cache.h"
+#include "net/http/http_connection_info.h"
 #include "services/network/public/mojom/fetch_api.mojom.h"
 #include "storage/browser/blob/blob_storage_context.h"
 #include "storage/browser/quota/quota_client_type.h"
@@ -673,18 +674,17 @@ class CacheStorageManagerTest : public testing::Test {
     auto response = blink::mojom::FetchAPIResponse::New(
         std::vector<GURL>({request->url}), status_code, "OK", response_type,
         padding, network::mojom::FetchResponseSource::kUnspecified,
-        response_headers, /*mime_type=*/absl::nullopt,
+        response_headers, /*mime_type=*/std::nullopt,
         net::HttpRequestHeaders::kGetMethod, std::move(blob),
         blink::mojom::ServiceWorkerResponseError::kUnknown, base::Time(),
         /*cache_storage_cache_name=*/std::string(),
         /*cors_exposed_header_names=*/std::vector<std::string>(),
         /*side_data_blob=*/nullptr,
         /*side_data_blob_for_cache_put=*/nullptr,
-        network::mojom::ParsedHeaders::New(),
-        net::HttpResponseInfo::CONNECTION_INFO_UNKNOWN,
+        network::mojom::ParsedHeaders::New(), net::HttpConnectionInfo::kUNKNOWN,
         /*alpn_negotiated_protocol=*/"unknown",
         /*was_fetched_via_spdy=*/false, /*has_range_requested=*/false,
-        /*auth_challenge_info=*/absl::nullopt,
+        /*auth_challenge_info=*/std::nullopt,
         /*request_include_credentials=*/true);
 
     blink::mojom::BatchOperationPtr operation =
@@ -1121,7 +1121,7 @@ TEST_P(CacheStorageManagerTestP, DeleteCacheReducesKeySize) {
   // The quota manager gets updated after the put operation runs its callback so
   // run the event loop.
   base::RunLoop().RunUntilIdle();
-  int64_t put_delta = quota_manager_proxy_->last_notified_bucket_delta();
+  int64_t put_delta = *quota_manager_proxy_->last_notified_bucket_delta();
   EXPECT_LT(0, put_delta);
   EXPECT_TRUE(Delete(bucket_locator1_, "foo"));
 
@@ -1129,7 +1129,7 @@ TEST_P(CacheStorageManagerTestP, DeleteCacheReducesKeySize) {
   callback_cache_handle_ = CacheStorageCacheHandle();
   base::RunLoop().RunUntilIdle();
 
-  EXPECT_EQ(-1 * quota_manager_proxy_->last_notified_bucket_delta(), put_delta);
+  EXPECT_EQ(*quota_manager_proxy_->last_notified_bucket_delta(), -put_delta);
 }
 
 TEST_P(CacheStorageManagerTestP, EmptyKeys) {
@@ -1685,16 +1685,14 @@ TEST_F(CacheStorageManagerTest, CacheSizePaddedAfterReopen) {
   const GURL kFooURL = storage_key1_.origin().GetURL().Resolve("foo");
   const std::string kCacheName = "foo";
 
-  int64_t put_delta = quota_manager_proxy_->last_notified_bucket_delta();
-  EXPECT_EQ(0, put_delta);
+  EXPECT_FALSE(quota_manager_proxy_->last_notified_bucket_delta().has_value());
   EXPECT_EQ(0, quota_manager_proxy_->notify_bucket_modified_count());
 
   EXPECT_TRUE(Open(bucket_locator1_, kCacheName));
   CacheStorageCacheHandle original_handle = std::move(callback_cache_handle_);
 
   base::RunLoop().RunUntilIdle();
-  put_delta += quota_manager_proxy_->last_notified_bucket_delta();
-  EXPECT_EQ(0, put_delta);
+  EXPECT_FALSE(quota_manager_proxy_->last_notified_bucket_delta().has_value());
   EXPECT_EQ(0, quota_manager_proxy_->notify_bucket_modified_count());
 
   EXPECT_TRUE(
@@ -1709,7 +1707,8 @@ TEST_F(CacheStorageManagerTest, CacheSizePaddedAfterReopen) {
   EXPECT_EQ(cache_size_before_close, GetQuotaKeyUsage(storage_key1_));
 
   base::RunLoop().RunUntilIdle();
-  put_delta = quota_manager_proxy_->last_notified_bucket_delta();
+  const int64_t put_delta =
+      quota_manager_proxy_->last_notified_bucket_delta().value_or(0);
   EXPECT_GT(put_delta, 0);
   EXPECT_EQ(1, quota_manager_proxy_->notify_bucket_modified_count());
 
@@ -1725,8 +1724,7 @@ TEST_F(CacheStorageManagerTest, CacheSizePaddedAfterReopen) {
   EXPECT_TRUE(Open(bucket_locator1_, kCacheName));
 
   base::RunLoop().RunUntilIdle();
-  put_delta = quota_manager_proxy_->last_notified_bucket_delta();
-  EXPECT_EQ(0, put_delta);
+  EXPECT_FALSE(quota_manager_proxy_->last_notified_bucket_delta().has_value());
   EXPECT_EQ(0, quota_manager_proxy_->notify_bucket_modified_count());
 
   EXPECT_EQ(cache_size_before_close, Size(bucket_locator1_));
@@ -3288,7 +3286,7 @@ class CacheStorageIndexMigrationTest : public CacheStorageManagerTest {
     // Determine the location of the old, frozen copy of the cache_storage
     // files in the test data.
     base::FilePath root_path;
-    base::PathService::Get(base::DIR_SOURCE_ROOT, &root_path);
+    base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &root_path);
     base::FilePath test_data_path =
         root_path.AppendASCII(test_index_path).Append(storage_dir.BaseName());
 
@@ -3386,7 +3384,7 @@ TEST_F(CacheStorageIndexMigrationTest, BucketMigration) {
                EXPECT_TRUE(upgraded_index.has_bucket_id());
                EXPECT_TRUE(upgraded_index.has_bucket_is_default());
 
-               absl::optional<blink::StorageKey> result =
+               std::optional<blink::StorageKey> result =
                    blink::StorageKey::Deserialize(upgraded_index.storage_key());
                ASSERT_TRUE(result.has_value());
                EXPECT_EQ(this->storage_key1_, result.value());
@@ -3414,7 +3412,7 @@ TEST_F(CacheStorageIndexMigrationTest, InvalidBucketId) {
             EXPECT_EQ(original_index.bucket_id(), 999);
             EXPECT_GT(original_index.bucket_id(), upgraded_index.bucket_id());
 
-            absl::optional<blink::StorageKey> result =
+            std::optional<blink::StorageKey> result =
                 blink::StorageKey::Deserialize(upgraded_index.storage_key());
             ASSERT_TRUE(result.has_value());
             EXPECT_EQ(this->storage_key1_, result.value());

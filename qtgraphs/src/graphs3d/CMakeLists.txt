@@ -25,39 +25,26 @@ else()
             data/qcustom3dlabel.cpp data/qcustom3dlabel.h data/qcustom3dlabel_p.h
             data/qcustom3dvolume.cpp data/qcustom3dvolume.h data/qcustom3dvolume_p.h
 
-            engine/qabstract3dgraph.cpp engine/qabstract3dgraph.h
             engine/q3dscene.cpp engine/q3dscene.h engine/q3dscene_p.h
 
-            global/graphsglobal_p.h
-            global/qgraphsglobal.h
-
-            input/q3dinputhandler.cpp input/q3dinputhandler.h input/q3dinputhandler_p.h
-            input/qabstract3dinputhandler.cpp input/qabstract3dinputhandler.h input/qabstract3dinputhandler_p.h
-            input/qtouch3dinputhandler.cpp input/qtouch3dinputhandler.h input/qtouch3dinputhandler_p.h
-
-            theme/q3dtheme.cpp theme/q3dtheme.h theme/q3dtheme_p.h
-            theme/thememanager.cpp theme/thememanager_p.h
+            input/qgraphsinputhandler.cpp  input/qgraphsinputhandler_p.h
 
             utils/qutils.h
             utils/utils.cpp utils/utils_p.h
+            utils/qgraphs3dnamespace.cpp utils/qgraphs3dnamespace.h
 
             qml/foreigntypes_p.h
-            qml/qquickgraphscolor.cpp qml/qquickgraphscolor_p.h
             qml/qquickgraphsitem.cpp qml/qquickgraphsitem_p.h
             qml/qquickgraphstexturedata.cpp qml/qquickgraphstexturedata_p.h
-        NO_UNITY_BUILD_SOURCES
-            # Symbol collision with, `qtouch3dinputhandler.cpp`
-            # TODO: Resolve `rotationSpeed` symbol redefinition
-            input/q3dinputhandler.cpp
+            qml/gradientholder_p.h
         INCLUDE_DIRECTORIES
             axis
             data
             engine
-            global
             input
-            theme
             utils
             qml
+            ../common/utils/
     )
 
     qt_internal_extend_target(Graphs CONDITION QT_FEATURE_graphs_3d_bars3d
@@ -69,7 +56,6 @@ else()
             data/qitemmodelbardataproxy.cpp data/qitemmodelbardataproxy.h data/qitemmodelbardataproxy_p.h
 
             engine/barinstancing.cpp engine/barinstancing_p.h
-            engine/q3dbars.cpp engine/q3dbars.h
 
             qml/foreigntypesbars_p.h
             qml/qquickgraphsbars.cpp qml/qquickgraphsbars_p.h
@@ -89,7 +75,6 @@ else()
             data/scatteritemmodelhandler.cpp data/scatteritemmodelhandler_p.h
 
             engine/scatterinstancing.cpp engine/scatterinstancing_p.h
-            engine/q3dscatter.cpp engine/q3dscatter.h
 
             qml/foreigntypesscatter_p.h
             qml/qquickgraphsscatter.cpp qml/qquickgraphsscatter_p.h
@@ -109,9 +94,6 @@ else()
             data/qsurfacedataproxy.cpp data/qsurfacedataproxy.h data/qsurfacedataproxy_p.h
             data/surfaceitemmodelhandler.cpp data/surfaceitemmodelhandler_p.h
 
-            engine/q3dsurface.cpp engine/q3dsurface.h
-            engine/surfaceselectioninstancing.cpp engine/surfaceselectioninstancing_p.h
-
             qml/foreigntypessurface_p.h
             qml/qquickgraphssurface.cpp qml/qquickgraphssurface_p.h
             qml/qquickgraphssurfaceseries.cpp qml/qquickgraphssurfaceseries_p.h
@@ -129,7 +111,8 @@ else()
         PRIVATE_MODULE_INTERFACE
             Qt::GuiPrivate
     )
-
     add_subdirectory(qml/designer)
 endif()
-
+if(TARGET Qt::Widgets)
+    add_subdirectory(widget)
+endif()

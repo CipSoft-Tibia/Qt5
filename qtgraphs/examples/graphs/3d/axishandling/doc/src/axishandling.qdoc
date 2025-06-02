@@ -3,11 +3,13 @@
 
 /*!
     \example 3d/axishandling
-    \meta tags {Graphs, Scatter3D, Custom Input Handler, Dynamic Data, Custom Axis Formatter, Scatter Graph}
+    \meta tags {Graphs, Scatter3D, Custom Input Handler, Dynamic Data, Custom Axis Formatter,
+    Scatter Graph}
     \examplecategory {Data Visualization}
     \title Axis Handling
     \ingroup qtgraphs_qmlexamples_3D
-    \brief Implementing axis dragging with a custom input handler in QML, and creating a custom axis formatter.
+    \brief Implementing axis dragging with a custom input handler in QML, and creating a custom
+    axis formatter.
 
     \e {Axis Handling} demonstrates two different custom features with axes. The features have their
     own tabs in the application.
@@ -27,8 +29,8 @@
 
     \section2 Overriding Default Input Handling
 
-    To deactivate the default input handling mechanism, set the active input handler of Scatter3D
-    graph to \c{null}:
+    To deactivate the default input handling mechanism, unset the default input handler of
+    Scatter3D:
 
     \snippet 3d/axishandling/qml/axishandling/AxisDragging.qml 0
     \dots
@@ -118,7 +120,7 @@
     \dots 0
 
     Since float values of a QScatter3DSeries cannot be directly cast into QDateTime values due to
-    difference in data width, some sort of mapping between the two is needed. To do the mapping,
+    a difference in data width, some sort of mapping between the two is needed. To do the mapping,
     specify an origin date for the formatter and interpret the float values from the
     QScatter3DSeries as date offsets to that origin value. The origin date is given as
     a property:
@@ -134,17 +136,17 @@
 
     \snippet 3d/axishandling/customformatter.h 0
 
-    The first two are simple, just create a new instance of \c CustomFormatter and copy the
-    necessary data over to it. Use these two methods to create and update a cache of formatter for
-    rendering purposes. Remember to call the superclass implementation of \c populateCopy():
+    The first two methods are simple, just create a new instance of \c CustomFormatter and copy
+    the necessary data over to it. Use these two methods to create and update a cache of formatters
+    for rendering purposes. Remember to call the superclass implementation of \c populateCopy():
 
     \snippet 3d/axishandling/customformatter.cpp 1
 
     \c CustomFormatter does the bulk of its work in the \c recalculate() method, where
-    our formatter calculates the grid, subgrid, and label positions, as well as formats the label
+    the formatter calculates the grid, subgrid, and label positions, as well as formats the label
     strings.
     In the custom formatter, ignore the segment count of the axis and draw a grid line always at
-    midnight. Subsegment count and label positioning is handled normally:
+    midnight. Subsegment count and label positioning are handled normally:
 
     \snippet 3d/axishandling/customformatter.cpp 2
 
@@ -155,7 +157,7 @@
     \snippet 3d/axishandling/customformatter.h 3
 
     This selection format property is used in the reimplemented \c stringToValue method, where
-    the submitted format is ignored and the custom selection format substituted for it:
+    the submitted format is ignored, and the custom selection format substituted for it:
 
     \snippet 3d/axishandling/customformatter.cpp 3
 
@@ -168,12 +170,12 @@
 
     \snippet 3d/axishandling/qml/axishandling/AxisFormatting.qml 3
 
-    The Z-axis is just a regular ValueAxis3D:
+    The Z-axis is just a regular Value3DAxis:
 
     \snippet 3d/axishandling/qml/axishandling/AxisFormatting.qml 0
 
-    For the Y-axis, define a logarithmic axis. To make ValueAxis3D show a logarithmic scale,
-    specify LogValueAxis3DFormatter for \c formatter property of the axis:
+    For the Y-axis, define a logarithmic axis. To make Value3DAxis show a logarithmic scale,
+    specify LogValue3DAxisFormatter for the \c formatter property of the axis:
 
     \snippet 3d/axishandling/qml/axishandling/AxisFormatting.qml 2
 
@@ -181,8 +183,8 @@
 
     \snippet 3d/axishandling/qml/axishandling/AxisFormatting.qml 1
 
-    The rest of the application consists of fairly self-explanatory logic for modifying the axes and
-    showing the graph.
+    The rest of the application consists of fairly self-explanatory logic for modifying the axes
+    and showing the graph.
 
     \section1 Example Contents
 */

@@ -48,6 +48,9 @@ private slots:
 #endif
     void task223279_inconsistentAddFile();
 
+    void themeFromPlugin_data();
+    void themeFromPlugin();
+
 private:
     bool haveImageFormat(QByteArray const&);
 
@@ -192,7 +195,7 @@ void tst_QIcon::isNull() {
     // test string constructor with empty string
     QIcon iconEmptyString = QIcon(QString());
     QVERIFY(iconEmptyString.isNull());
-    QVERIFY(!iconEmptyString.actualSize(QSize(32, 32)).isValid());;
+    QVERIFY(!iconEmptyString.actualSize(QSize(32, 32)).isValid());
 
     // test string constructor with non-existing file
     QIcon iconNoFile = QIcon("imagedoesnotexist");
@@ -872,6 +875,32 @@ void tst_QIcon::task223279_inconsistentAddFile()
     QCOMPARE(pm1.size(), pm2.size());
 }
 
+Q_IMPORT_PLUGIN(TestIconPlugin)
+
+void tst_QIcon::themeFromPlugin_data()
+{
+    QTest::addColumn<QString>("themeName");
+
+    QTest::addRow("plugintheme") << "plugintheme";
+    QTest::addRow("specialtheme") << "specialTheme"; // deliberately not matching case
+}
+
+void tst_QIcon::themeFromPlugin()
+{
+    QFETCH(const QString, themeName);
+    auto restoreTheme = qScopeGuard([oldTheme = QIcon::themeName()]{
+        QIcon::setThemeName(oldTheme);
+    });
+
+    QIcon icon = QIcon::fromTheme("icon1");
+    QVERIFY(icon.isNull());
+
+    QIcon::setThemeName(themeName);
+
+    icon = QIcon::fromTheme("icon1");
+    QVERIFY(!icon.isNull());
+    QCOMPARE(icon.name(), themeName + "/icon1");
+}
 
 QTEST_MAIN(tst_QIcon)
 #include "tst_qicon.moc"

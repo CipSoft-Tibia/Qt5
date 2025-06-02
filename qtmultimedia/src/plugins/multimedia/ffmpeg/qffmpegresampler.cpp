@@ -1,11 +1,12 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qffmpegresampler_p.h"
-#include "playbackengine/qffmpegcodec_p.h"
+#include "playbackengine/qffmpegcodeccontext_p.h"
 #include "qffmpegmediaformatinfo_p.h"
 #include <qloggingcategory.h>
 
 static Q_LOGGING_CATEGORY(qLcResampler, "qt.multimedia.ffmpeg.resampler")
+static Q_LOGGING_CATEGORY(qLcResamplerTrace, "qt.multimedia.ffmpeg.resampler.trace")
 
 QT_BEGIN_NAMESPACE
 
@@ -17,24 +18,35 @@ QFFmpegResampler::QFFmpegResampler(const QAudioFormat &inputFormat, const QAudio
     Q_ASSERT(inputFormat.isValid());
     Q_ASSERT(outputFormat.isValid());
 
-    m_resampler =
-            createResampleContext(AVAudioFormat(m_inputFormat), AVAudioFormat(m_outputFormat));
+    const auto inputAvFormat = AVAudioFormat(m_inputFormat);
+    const auto outputAvFormat = AVAudioFormat(m_outputFormat);
+
+    m_resampler = createResampleContext(inputAvFormat, outputAvFormat);
+
+    qCDebug(qLcResampler) << "Created QFFmpegResampler with offset" << m_startTime
+                          << "us. Converting from" << inputAvFormat << "to" << outputAvFormat;
 }
 
-QFFmpegResampler::QFFmpegResampler(const Codec* codec, const QAudioFormat &outputFormat)
-    : m_outputFormat(outputFormat)
+QFFmpegResampler::QFFmpegResampler(const CodecContext *codecContext,
+                                   const QAudioFormat &outputFormat,
+                                   qint64 startTime)
+    : m_outputFormat(outputFormat), m_startTime(startTime)
 {
-    Q_ASSERT(codec);
+    Q_ASSERT(codecContext);
 
-    qCDebug(qLcResampler) << "createResampler";
-    const AVStream *audioStream = codec->stream();
+    const AVStream *audioStream = codecContext->stream();
 
     if (!m_outputFormat.isValid())
         // want the native format
-        m_outputFormat = QFFmpegMediaFormatInfo::audioFormatFromCodecParameters(audioStream->codecpar);
+        m_outputFormat = QFFmpegMediaFormatInfo::audioFormatFromCodecParameters(*audioStream->codecpar);
 
-    m_resampler = createResampleContext(AVAudioFormat(audioStream->codecpar),
-                                        AVAudioFormat(m_outputFormat));
+    const auto inputAvFormat = AVAudioFormat(audioStream->codecpar);
+    const auto outputAvFormat = AVAudioFormat(m_outputFormat);
+
+    m_resampler = createResampleContext(inputAvFormat, outputAvFormat);
+
+    qCDebug(qLcResampler).nospace() << "Created QFFmpegResampler. Offset: " << m_startTime
+                                    << "us. From: " << inputAvFormat << " to: " << outputAvFormat;
 }
 
 QFFmpegResampler::~QFFmpegResampler() = default;
@@ -64,11 +76,13 @@ QAudioBuffer QFFmpegResampler::resample(const uint8_t **inputData, int inputSamp
 
     samples.resize(m_outputFormat.bytesForFrames(outSamples));
 
-    qint64 startTime = m_outputFormat.durationForFrames(m_samplesProcessed);
+    const qint64 startTime = m_outputFormat.durationForFrames(m_samplesProcessed) + m_startTime;
     m_samplesProcessed += outSamples;
 
-    qCDebug(qLcResampler) << "    new frame" << startTime << "in_samples" << inputSamplesCount
-                          << outSamples << maxOutSamples;
+    qCDebug(qLcResamplerTrace).nospace()
+            << "Created output buffer. Time stamp: " << startTime
+            << "us. Samples in: " << inputSamplesCount
+            << ", Samples out: " << outSamples << ", Max samples: " << maxOutSamples;
     return QAudioBuffer(samples, m_outputFormat, startTime);
 }
 

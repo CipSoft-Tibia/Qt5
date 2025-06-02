@@ -6,7 +6,7 @@ file(GLOB_RECURSE test_data_glob
     *)
 list(APPEND test_data ${test_data_glob})
 
-qt_internal_add_test(tst_qmltest
+qt_internal_add_test(tst_qgqmltest
     QMLTEST
     SOURCES
         tst_qmltest.cpp
@@ -16,11 +16,11 @@ qt_internal_add_test(tst_qmltest
 )
 
 set(qmltest_resource_files
-    "customitem.obj"
+    "customitem.mesh"
     "customtexture.jpg"
 )
 
-qt_internal_add_resource(tst_qmltest "qmltest"
+qt_internal_add_resource(tst_qgqmltest "qmltest"
     PREFIX
         "/"
     FILES

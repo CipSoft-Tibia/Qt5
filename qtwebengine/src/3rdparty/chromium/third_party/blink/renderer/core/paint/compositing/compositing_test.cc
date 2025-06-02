@@ -35,6 +35,7 @@
 #include "third_party/blink/renderer/platform/graphics/compositing/paint_artifact_compositor.h"
 #include "third_party/blink/renderer/platform/testing/find_cc_layer.h"
 #include "third_party/blink/renderer/platform/testing/paint_test_configurations.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/wtf/text/base64.h"
 
@@ -125,6 +126,8 @@ class CompositingTest : public PaintTestConfigurations,
 
  private:
   std::unique_ptr<frame_test_helpers::WebViewHelper> web_view_helper_;
+
+  test::TaskEnvironment task_environment_;
 };
 
 INSTANTIATE_TEST_SUITE_P(All,
@@ -483,7 +486,7 @@ TEST_P(CompositingTest, BackgroundColorInScrollingContentsLayer) {
   // The root layer and root scrolling contents layer get background_color by
   // blending the CSS background-color of the <html> element with
   // LocalFrameView::BaseBackgroundColor(), which is white by default.
-  auto* layer = CcLayersByName(RootCcLayer(), "LayoutNGView #document")[0];
+  auto* layer = CcLayersByName(RootCcLayer(), "LayoutView #document")[0];
   SkColor4f expected_color = SkColor4f::FromColor(SkColorSetRGB(10, 20, 30));
   EXPECT_EQ(layer->background_color(), SkColors::kTransparent);
   auto* scrollable_area = GetLocalFrameView()->LayoutViewport();
@@ -545,7 +548,7 @@ TEST_P(CompositingTest, BackgroundColorInGraphicsLayer) {
   // background is painted into the root graphics layer, the root scrolling
   // contents layer should not checkerboard, so its background color should be
   // transparent.
-  auto* layer = CcLayersByName(RootCcLayer(), "LayoutNGView #document")[0];
+  auto* layer = CcLayersByName(RootCcLayer(), "LayoutView #document")[0];
   EXPECT_EQ(layer->background_color(), SkColors::kWhite);
   auto* scrollable_area = GetLocalFrameView()->LayoutViewport();
   layer = ScrollingContentsCcLayerByScrollElementId(
@@ -726,11 +729,7 @@ TEST_P(CompositingTest, HitTestOpaquenessOfSolidColorLayer) {
   )HTML");
 
   auto* layer = CcLayersByDOMElementId(RootCcLayer(), "target")[0];
-  if (RuntimeEnabledFeatures::SolidColorLayersEnabled()) {
-    EXPECT_TRUE(layer->IsSolidColorLayerForTesting());
-  } else {
-    EXPECT_FALSE(layer->IsSolidColorLayerForTesting());
-  }
+  EXPECT_TRUE(layer->IsSolidColorLayerForTesting());
   if (RuntimeEnabledFeatures::HitTestOpaquenessEnabled()) {
     EXPECT_EQ(cc::HitTestOpaqueness::kOpaque, layer->hit_test_opaqueness());
   } else {
@@ -836,7 +835,7 @@ class CompositingSimTest : public PaintTestConfigurations, public SimTest {
   }
 
   const cc::Layer* CcLayerByOwnerNodeId(Node* node) {
-    DOMNodeId id = DOMNodeIds::IdForNode(node);
+    DOMNodeId id = node->GetDomNodeId();
     for (auto& layer : RootCcLayer()->children()) {
       if (layer->debug_info() && layer->debug_info()->owner_node_id == id)
         return layer.get();
@@ -2340,7 +2339,7 @@ TEST_P(CompositingSimTest, FrameAttribution) {
 
   EXPECT_EQ(visible_frame_element_id,
             CompositorElementIdFromUniqueObjectId(
-                DOMNodeIds::IdForNode(&GetDocument()),
+                GetDocument().GetDomNodeId(),
                 CompositorElementIdNamespace::kDOMNodeId));
 
   // Test that a layerized subframe's frame element ID is that of its
@@ -2355,7 +2354,7 @@ TEST_P(CompositingSimTest, FrameAttribution) {
 
   EXPECT_EQ(iframe_transform_node->visible_frame_element_id,
             CompositorElementIdFromUniqueObjectId(
-                DOMNodeIds::IdForNode(iframe_doc),
+                iframe_doc->GetDomNodeId(),
                 CompositorElementIdNamespace::kDOMNodeId));
 }
 
@@ -2968,18 +2967,6 @@ TEST_P(CompositingSimTest, DecompositeScrollerInHiddenIframe) {
   middle_frame.View()->BeginLifecycleUpdates();
   bottom_frame.View()->BeginLifecycleUpdates();
   Compositor().BeginFrame();
-  LayoutBox* scroller =
-      To<LayoutBox>(bottom_frame.GetDocument()
-                        ->getElementById(AtomicString("scroller"))
-                        ->GetLayoutObject());
-  if (RuntimeEnabledFeatures::CompositeScrollAfterPaintEnabled()) {
-    // In CompositeScrollAfterPaint, NeedsComositedScrolling returns true
-    // only if the scroller is forced to be composited.
-    EXPECT_FALSE(scroller->GetScrollableArea()->NeedsCompositedScrolling());
-  } else {
-    ASSERT_TRUE(scroller->GetScrollableArea()->NeedsCompositedScrolling());
-  }
-
   EXPECT_TRUE(CcLayerByDOMElementId("scroller"));
 
   // Hide the iframes. Scroller should be decomposited.
@@ -3056,17 +3043,8 @@ TEST_P(CompositingSimTest, SolidColorLayersWithSnapping) {
 
   auto* snap_down = CcLayerByDOMElementId("snapDown");
   auto* snap_up = CcLayerByDOMElementId("snapUp");
-  if (RuntimeEnabledFeatures::SolidColorLayersEnabled()) {
-    EXPECT_TRUE(snap_down->IsSolidColorLayerForTesting());
-    EXPECT_TRUE(snap_up->IsSolidColorLayerForTesting());
-  } else {
-    EXPECT_TRUE(static_cast<const cc::PictureLayer*>(snap_down)
-                    ->GetRecordingSourceForTesting()
-                    ->is_solid_color());
-    EXPECT_TRUE(static_cast<const cc::PictureLayer*>(snap_up)
-                    ->GetRecordingSourceForTesting()
-                    ->is_solid_color());
-  }
+  EXPECT_TRUE(snap_down->IsSolidColorLayerForTesting());
+  EXPECT_TRUE(snap_up->IsSolidColorLayerForTesting());
 }
 
 TEST_P(CompositingSimTest, SolidColorLayerWithSubpixelTransform) {
@@ -3096,13 +3074,7 @@ TEST_P(CompositingSimTest, SolidColorLayerWithSubpixelTransform) {
   Compositor().BeginFrame();
 
   auto* target = CcLayerByDOMElementId("target");
-  if (RuntimeEnabledFeatures::SolidColorLayersEnabled()) {
-    EXPECT_TRUE(target->IsSolidColorLayerForTesting());
-  } else {
-    EXPECT_TRUE(static_cast<const cc::PictureLayer*>(target)
-                    ->GetRecordingSourceForTesting()
-                    ->is_solid_color());
-  }
+  EXPECT_TRUE(target->IsSolidColorLayerForTesting());
   EXPECT_NEAR(0.4, target->offset_to_transform_parent().x(), 0.001);
   EXPECT_NEAR(0.6, target->offset_to_transform_parent().y(), 0.001);
 }

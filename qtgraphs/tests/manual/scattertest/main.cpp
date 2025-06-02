@@ -28,19 +28,20 @@ int main(int argc, char **argv)
     QVBoxLayout *vLayout = new QVBoxLayout();
     QVBoxLayout *vLayout2 = new QVBoxLayout();
     QVBoxLayout *vLayout3 = new QVBoxLayout();
+    auto quickWidget = new QQuickWidget;
+    Q3DScatterWidgetItem *graph = new Q3DScatterWidgetItem();
+    graph->setWidget(quickWidget);
+    QSize screenSize = graph->widget()->screen()->size();
 
-    Q3DScatter *graph = new Q3DScatter();
-    QSize screenSize = graph->screen()->size();
-
-    graph->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 2));
-    graph->setMaximumSize(screenSize);
-    graph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    graph->setFocusPolicy(Qt::StrongFocus);
-    graph->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    graph->widget()->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 2));
+    graph->widget()->setMaximumSize(screenSize);
+    graph->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    graph->widget()->setFocusPolicy(Qt::StrongFocus);
+    graph->widget()->setResizeMode(QQuickWidget::SizeRootObjectToView);
 
     widget->setWindowTitle(QStringLiteral("values of some things in something"));
 
-    hLayout->addWidget(graph, 1);
+    hLayout->addWidget(graph->widget(), 1);
     hLayout->addLayout(vLayout);
     hLayout->addLayout(vLayout2);
     hLayout->addLayout(vLayout3);
@@ -257,6 +258,13 @@ int main(int argc, char **argv)
     axisLabelRotationSlider->setValue(0);
     axisLabelRotationSlider->setMaximum(90);
 
+    QSlider *axisTitleOffsetSlider = new QSlider(Qt::Horizontal, widget);
+    axisTitleOffsetSlider->setTickInterval(10);
+    axisTitleOffsetSlider->setTickPosition(QSlider::TicksBelow);
+    axisTitleOffsetSlider->setMinimum(-100);
+    axisTitleOffsetSlider->setValue(0);
+    axisTitleOffsetSlider->setMaximum(100);
+
     QSlider *radialLabelSlider = new QSlider(Qt::Horizontal, widget);
     radialLabelSlider->setTickInterval(10);
     radialLabelSlider->setTickPosition(QSlider::TicksBelow);
@@ -369,6 +377,8 @@ int main(int argc, char **argv)
     vLayout3->addWidget(axisTitlesFixedCB);
     vLayout3->addWidget(new QLabel(QStringLiteral("Axis label rotation")));
     vLayout3->addWidget(axisLabelRotationSlider);
+    vLayout3->addWidget(new QLabel(QStringLiteral("Axis title offset")));
+    vLayout3->addWidget(axisTitleOffsetSlider);
     vLayout3->addWidget(new QLabel(QStringLiteral("Radial label offset")));
     vLayout3->addWidget(radialLabelSlider, 0, Qt::AlignTop);
     vLayout3->addWidget(new QLabel(QStringLiteral("Camera target")), 0, Qt::AlignTop);
@@ -459,12 +469,16 @@ int main(int argc, char **argv)
     QObject::connect(fontList, &QFontComboBox::currentFontChanged, modifier,
                      &ScatterDataModifier::changeFont);
 
-    QObject::connect(fpsCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(fpsCheckBox, &QCheckBox::checkStateChanged, modifier,
                      &ScatterDataModifier::setFpsMeasurement);
-    QObject::connect(backgroundCheckBox, &QCheckBox::stateChanged, modifier,
-                     &ScatterDataModifier::setBackgroundEnabled);
-    QObject::connect(gridCheckBox, &QCheckBox::stateChanged, modifier,
-                     &ScatterDataModifier::setGridEnabled);
+    QObject::connect(backgroundCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &ScatterDataModifier::setBackgroundVisible);
+    QObject::connect(gridCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &ScatterDataModifier::setGridVisible);
 
     QObject::connect(minSliderX, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::setMinX);
@@ -479,20 +493,26 @@ int main(int argc, char **argv)
     QObject::connect(maxSliderZ, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::setMaxZ);
     QObject::connect(optimizationLegacyCB,
-                     &QCheckBox::stateChanged,
+                     &QCheckBox::checkStateChanged,
                      modifier,
                      &ScatterDataModifier::toggleLegacy);
-    QObject::connect(orthoCB, &QCheckBox::stateChanged, modifier,
+    QObject::connect(orthoCB, &QCheckBox::checkStateChanged, modifier,
                      &ScatterDataModifier::toggleOrtho);
-    QObject::connect(polarCB, &QCheckBox::stateChanged, modifier,
+    QObject::connect(polarCB, &QCheckBox::checkStateChanged, modifier,
                      &ScatterDataModifier::togglePolar);
-    QObject::connect(axisTitlesVisibleCB, &QCheckBox::stateChanged, modifier,
+    QObject::connect(axisTitlesVisibleCB, &QCheckBox::checkStateChanged, modifier,
                      &ScatterDataModifier::toggleAxisTitleVisibility);
-    QObject::connect(axisTitlesFixedCB, &QCheckBox::stateChanged, modifier,
+    QObject::connect(axisTitlesFixedCB, &QCheckBox::checkStateChanged, modifier,
                      &ScatterDataModifier::toggleAxisTitleFixed);
     QObject::connect(axisLabelRotationSlider, &QSlider::valueChanged, modifier,
                      &ScatterDataModifier::changeLabelRotation);
-    QObject::connect(aspectRatioSlider, &QSlider::valueChanged, modifier,
+    QObject::connect(axisTitleOffsetSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &ScatterDataModifier::changeTitleOffset);
+    QObject::connect(aspectRatioSlider,
+                     &QSlider::valueChanged,
+                     modifier,
                      &ScatterDataModifier::setAspectRatio);
     QObject::connect(horizontalAspectRatioSlider,
                      &QSlider::valueChanged,
@@ -535,12 +555,14 @@ int main(int argc, char **argv)
 
     modifier->setFpsLabel(fpsLabel);
 
-    graph->setGeometry(QRect(0, 0, 800, 800));
+    graph->widget()->setGeometry(QRect(0, 0, 800, 800));
 
     modifier->start();
     //modifier->renderToImage(); // Initial hidden render
 
     widget->show();
-
-    return app.exec();
+    int retVal = app.exec();
+    delete modifier;
+    delete quickWidget;
+    return retVal;
 }

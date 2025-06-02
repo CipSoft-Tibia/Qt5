@@ -13,6 +13,7 @@ Item {
     height: 720
 
     property real fontSize: 12
+    property real windowRatio: 4
 
     Item {
         id: surfaceView
@@ -47,14 +48,14 @@ Item {
             id: surfaceLayers
             width: surfaceView.width
             height: surfaceView.height
-            theme: Theme3D {
-                type: Theme3D.Theme.Ebony
-                font.pointSize: 35
-                colorStyle: Theme3D.ColorStyle.RangeGradient
+            theme: GraphsTheme {
+                theme: GraphsTheme.Theme.QtGreen
+                labelFont.pointSize: 35
+                colorStyle: GraphsTheme.ColorStyle.RangeGradient
             }
-            shadowQuality: AbstractGraph3D.ShadowQuality.None
-            selectionMode: AbstractGraph3D.SelectionRow | AbstractGraph3D.SelectionSlice
-            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
+            shadowQuality: Graphs3D.ShadowQuality.None
+            selectionMode: Graphs3D.SelectionFlag.Row | Graphs3D.SelectionFlag.Slice
+            cameraPreset: Graphs3D.CameraPreset.IsometricLeft
             axisY.min: 20
             axisY.max: 200
             axisX.segmentCount: 5
@@ -67,6 +68,18 @@ Item {
             axisY.subSegmentCount: 2
             axisY.labelFormat: "%i"
 
+            scene.primarySubViewport: Qt.rect(primaryViewRect.x * windowRatio,
+                                                  primaryViewRect.y * windowRatio,
+                                                  primaryViewRect.width * windowRatio,
+                                                  primaryViewRect.height * windowRatio)
+
+            scene.secondarySubViewport: Qt.rect(secondaryViewRect.x * windowRatio,
+                                                secondaryViewRect.y * windowRatio,
+                                                secondaryViewRect.width * windowRatio,
+                                                secondaryViewRect.height * windowRatio)
+
+            scene.secondarySubviewOnTop: secondaryOnTop.checked
+
             //! [1]
             //! [2]
             Surface3DSeries {
@@ -76,7 +89,7 @@ Item {
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/heightmaps/layer_1.png"
                 }
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
                 drawMode: Surface3DSeries.DrawSurface
                 //! [4]
                 visible: layerOneToggle.checked // bind to checkbox state
@@ -89,7 +102,7 @@ Item {
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/heightmaps/layer_2.png"
                 }
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
                 drawMode: Surface3DSeries.DrawSurface
                 visible: layerTwoToggle.checked // bind to checkbox state
             }
@@ -100,7 +113,7 @@ Item {
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/heightmaps/layer_3.png"
                 }
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
                 drawMode: Surface3DSeries.DrawSurface
                 visible: layerThreeToggle.checked // bind to checkbox state
             }
@@ -117,7 +130,13 @@ Item {
         //! [3]
         GroupBox {
             Layout.fillWidth: true
+            background: Rectangle {
+                anchors.fill: parent
+                color: "white"
+            }
+
             Column {
+                padding: 10
                 spacing: 10
 
                 Label {
@@ -150,9 +169,14 @@ Item {
         //! [5]
         GroupBox {
             Layout.fillWidth: true
-            Column {
-                spacing: 10
+            background: Rectangle {
+                anchors.fill: parent
+                color: "white"
+            }
 
+            Column {
+                padding: 10
+                spacing: 10
                 Label {
                     font.pointSize: fontSize
                     font.bold: true
@@ -203,14 +227,14 @@ Item {
             Layout.fillWidth: true
             Layout.minimumHeight: 40
             onClicked: {
-                if (surfaceLayers.selectionMode & AbstractGraph3D.SelectionMultiSeries) {
-                    surfaceLayers.selectionMode = AbstractGraph3D.SelectionRow
-                            | AbstractGraph3D.SelectionSlice
+                if (surfaceLayers.selectionMode & Graphs3D.SelectionFlag.MultiSeries) {
+                    surfaceLayers.selectionMode = Graphs3D.SelectionFlag.Row
+                            | Graphs3D.SelectionFlag.Slice
                     text = "Slice All Layers"
                 } else {
-                    surfaceLayers.selectionMode = AbstractGraph3D.SelectionRow
-                            | AbstractGraph3D.SelectionSlice
-                            | AbstractGraph3D.SelectionMultiSeries
+                    surfaceLayers.selectionMode = Graphs3D.SelectionFlag.Row
+                            | Graphs3D.SelectionFlag.Slice
+                            | Graphs3D.SelectionFlag.MultiSeries
                     text = "Slice One Layer"
                 }
             }
@@ -223,11 +247,11 @@ Item {
             Layout.minimumHeight: 40
             text: "Show Shadows"
             onClicked: {
-                if (surfaceLayers.shadowQuality === AbstractGraph3D.ShadowQuality.None) {
-                    surfaceLayers.shadowQuality = AbstractGraph3D.ShadowQuality.Low
+                if (surfaceLayers.shadowQuality === Graphs3D.ShadowQuality.None) {
+                    surfaceLayers.shadowQuality = Graphs3D.ShadowQuality.Low
                     text = "Hide Shadows"
                 } else {
-                    surfaceLayers.shadowQuality = AbstractGraph3D.ShadowQuality.None
+                    surfaceLayers.shadowQuality = Graphs3D.ShadowQuality.None
                     text = "Show Shadows"
                 }
             }
@@ -241,20 +265,20 @@ Item {
             onClicked: {
                 var modeText = "Indirect "
                 var aaText
-                if (surfaceLayers.renderingMode === AbstractGraph3D.RenderingMode.Indirect &&
+                if (surfaceLayers.renderingMode === Graphs3D.RenderingMode.Indirect &&
                         surfaceLayers.msaaSamples === 0) {
-                    surfaceLayers.renderingMode = AbstractGraph3D.RenderingMode.DirectToBackground
+                    surfaceLayers.renderingMode = Graphs3D.RenderingMode.DirectToBackground
                     modeText = "BackGround "
-                } else if (surfaceLayers.renderingMode === AbstractGraph3D.RenderingMode.Indirect &&
+                } else if (surfaceLayers.renderingMode === Graphs3D.RenderingMode.Indirect &&
                            surfaceLayers.msaaSamples === 4) {
-                    surfaceLayers.renderingMode = AbstractGraph3D.RenderingMode.Indirect
+                    surfaceLayers.renderingMode = Graphs3D.RenderingMode.Indirect
                     surfaceLayers.msaaSamples = 0
-                } else if (surfaceLayers.renderingMode === AbstractGraph3D.RenderingMode.Indirect &&
+                } else if (surfaceLayers.renderingMode === Graphs3D.RenderingMode.Indirect &&
                            surfaceLayers.msaaSamples === 8) {
-                    surfaceLayers.renderingMode = AbstractGraph3D.RenderingMode.Indirect
+                    surfaceLayers.renderingMode = Graphs3D.RenderingMode.Indirect
                     surfaceLayers.msaaSamples = 4
                 } else {
-                    surfaceLayers.renderingMode = AbstractGraph3D.RenderingMode.Indirect
+                    surfaceLayers.renderingMode = Graphs3D.RenderingMode.Indirect
                     surfaceLayers.msaaSamples = 8
                 }
 
@@ -279,4 +303,134 @@ Item {
             text: "Indirect, " + surfaceLayers.msaaSamples + "xMSAA"
         }
     }
+
+    Rectangle {
+        anchors.fill: subviewProps
+        anchors.margins: -10
+        anchors.rightMargin: -3
+    }
+
+    ColumnLayout {
+        id: subviewProps
+        anchors.bottom: sliceView.visible? sliceView.top : parent.bottom
+        anchors.left: parent.left
+        anchors.margins: 10
+
+        RowLayout {
+            CheckBox {
+                id: customSubview
+            }
+            Label {
+                color: "black"
+                text: "Customize subviews"
+                font.bold: true
+            }
+        }
+
+        RowLayout {
+            visible: customSubview.checked
+            CheckBox {
+                id: subviewOutline
+            }
+            Label {
+                color: "black"
+                text: "Show viewport outline"
+            }
+        }
+
+        RowLayout {
+            visible: customSubview.checked
+            CheckBox {
+                id: secondaryOnTop
+                checked: true
+            }
+            Label {
+                color: "black"
+                text: "Secondary view on top"
+            }
+        }
+
+        RowLayout {
+            visible: customSubview.checked
+            Rectangle {
+                color: "steelblue"
+                radius: 3
+                height: 10
+                width: 10
+            }
+
+            Label {
+                text: "Primary subview"
+                color: "black"
+            }
+        }
+        RowLayout {
+            visible: customSubview.checked
+            Rectangle {
+                color: "aquamarine"
+                radius: 3
+                height: 10
+                width: 10
+            }
+
+            Label {
+                text: "Secondary subview"
+                color: "black"
+            }
+        }
+    }
+
+
+    Rectangle {
+        id: sliceView
+        visible: customSubview.checked
+        border.color: "lightgrey"
+        color: "transparent"
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        width: surfaceView.width / windowRatio
+        height: surfaceView.height / windowRatio
+
+
+        ResizableRect {
+            id: primaryViewRect
+            rectangleColor: "steelblue"
+            width: parent.width / 5
+            height: parent.height / 5
+        }
+
+        ResizableRect {
+            id: secondaryViewRect
+            rectangleColor: "aquamarine"
+            width: parent.width
+            height: parent.height
+        }
+    }
+
+    Item {
+        id: vizBoundary
+        anchors.fill: surfaceView
+        Rectangle {
+            id: primaryViz
+            color: "transparent"
+            border.color: "steelblue"
+            visible: surfaceLayers.scene.slicingActive && subviewOutline.checked
+            x: surfaceLayers.scene.primarySubViewport.x
+            y: surfaceLayers.scene.primarySubViewport.y
+            width: surfaceLayers.scene.primarySubViewport.width
+            height: surfaceLayers.scene.primarySubViewport.height
+        }
+
+        Rectangle {
+            id: secondaryViz
+            color: "transparent"
+            border.color: "aquamarine"
+            visible: surfaceLayers.scene.slicingActive && subviewOutline.checked
+            x: surfaceLayers.scene.secondarySubViewport.x
+            y: surfaceLayers.scene.secondarySubViewport.y
+            width: surfaceLayers.scene.secondarySubViewport.width
+            height: surfaceLayers.scene.secondarySubViewport.height
+        }
+    }
+
 }

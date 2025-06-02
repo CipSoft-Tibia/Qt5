@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/ir/transform/binary_polyfill.h"
 #include "src/tint/lang/core/ir/binary.h"
@@ -28,11 +41,11 @@ using namespace tint::core::number_suffixes;  // NOLINT
 class IR_BinaryPolyfillTest : public TransformTest {
   protected:
     /// Helper to build a function that executes a binary instruction.
-    /// @param kind the binary operation
+    /// @param op the binary operation
     /// @param result_ty the result type of the builtin call
     /// @param lhs_ty the type of the LHS
     /// @param rhs_ty the type of the RHS
-    void Build(enum ir::Binary::Kind kind,
+    void Build(BinaryOp op,
                const core::type::Type* result_ty,
                const core::type::Type* lhs_ty,
                const core::type::Type* rhs_ty) {
@@ -42,7 +55,7 @@ class IR_BinaryPolyfillTest : public TransformTest {
         auto* func = b.Function("foo", result_ty);
         func->SetParams(args);
         b.Append(func->Block(), [&] {
-            auto* result = b.Binary(kind, result_ty, args[0], args[1]);
+            auto* result = b.Binary(op, result_ty, args[0], args[1]);
             b.Return(func, result);
             mod.SetName(result, "result");
         });
@@ -50,11 +63,11 @@ class IR_BinaryPolyfillTest : public TransformTest {
 };
 
 TEST_F(IR_BinaryPolyfillTest, ShiftLeft_NoPolyfill) {
-    Build(Binary::Kind::kShiftLeft, ty.i32(), ty.i32(), ty.i32());
+    Build(BinaryOp::kShiftLeft, ty.i32(), ty.i32(), ty.u32());
     auto* src = R"(
-%foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
+%foo = func(%lhs:i32, %rhs:u32):i32 -> %b1 {
   %b1 = block {
-    %result:i32 = shiftl %lhs, %rhs
+    %result:i32 = shl %lhs, %rhs
     ret %result
   }
 }
@@ -70,11 +83,11 @@ TEST_F(IR_BinaryPolyfillTest, ShiftLeft_NoPolyfill) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftRight_NoPolyfill) {
-    Build(Binary::Kind::kShiftRight, ty.i32(), ty.i32(), ty.i32());
+    Build(BinaryOp::kShiftRight, ty.i32(), ty.i32(), ty.u32());
     auto* src = R"(
-%foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
+%foo = func(%lhs:i32, %rhs:u32):i32 -> %b1 {
   %b1 = block {
-    %result:i32 = shiftr %lhs, %rhs
+    %result:i32 = shr %lhs, %rhs
     ret %result
   }
 }
@@ -90,20 +103,20 @@ TEST_F(IR_BinaryPolyfillTest, ShiftRight_NoPolyfill) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftLeft_I32) {
-    Build(Binary::Kind::kShiftLeft, ty.i32(), ty.i32(), ty.i32());
+    Build(BinaryOp::kShiftLeft, ty.i32(), ty.i32(), ty.u32());
     auto* src = R"(
-%foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
+%foo = func(%lhs:i32, %rhs:u32):i32 -> %b1 {
   %b1 = block {
-    %result:i32 = shiftl %lhs, %rhs
+    %result:i32 = shl %lhs, %rhs
     ret %result
   }
 }
 )";
     auto* expect = R"(
-%foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
+%foo = func(%lhs:i32, %rhs:u32):i32 -> %b1 {
   %b1 = block {
-    %4:i32 = and %rhs, 31u
-    %result:i32 = shiftl %lhs, %4
+    %4:u32 = and %rhs, 31u
+    %result:i32 = shl %lhs, %4
     ret %result
   }
 }
@@ -118,11 +131,11 @@ TEST_F(IR_BinaryPolyfillTest, ShiftLeft_I32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftLeft_U32) {
-    Build(Binary::Kind::kShiftLeft, ty.u32(), ty.u32(), ty.u32());
+    Build(BinaryOp::kShiftLeft, ty.u32(), ty.u32(), ty.u32());
     auto* src = R"(
 %foo = func(%lhs:u32, %rhs:u32):u32 -> %b1 {
   %b1 = block {
-    %result:u32 = shiftl %lhs, %rhs
+    %result:u32 = shl %lhs, %rhs
     ret %result
   }
 }
@@ -131,7 +144,7 @@ TEST_F(IR_BinaryPolyfillTest, ShiftLeft_U32) {
 %foo = func(%lhs:u32, %rhs:u32):u32 -> %b1 {
   %b1 = block {
     %4:u32 = and %rhs, 31u
-    %result:u32 = shiftl %lhs, %4
+    %result:u32 = shl %lhs, %4
     ret %result
   }
 }
@@ -146,20 +159,20 @@ TEST_F(IR_BinaryPolyfillTest, ShiftLeft_U32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftLeft_Vec2I32) {
-    Build(Binary::Kind::kShiftLeft, ty.vec2<i32>(), ty.vec2<i32>(), ty.vec2<i32>());
+    Build(BinaryOp::kShiftLeft, ty.vec2<i32>(), ty.vec2<i32>(), ty.vec2<u32>());
     auto* src = R"(
-%foo = func(%lhs:vec2<i32>, %rhs:vec2<i32>):vec2<i32> -> %b1 {
+%foo = func(%lhs:vec2<i32>, %rhs:vec2<u32>):vec2<i32> -> %b1 {
   %b1 = block {
-    %result:vec2<i32> = shiftl %lhs, %rhs
+    %result:vec2<i32> = shl %lhs, %rhs
     ret %result
   }
 }
 )";
     auto* expect = R"(
-%foo = func(%lhs:vec2<i32>, %rhs:vec2<i32>):vec2<i32> -> %b1 {
+%foo = func(%lhs:vec2<i32>, %rhs:vec2<u32>):vec2<i32> -> %b1 {
   %b1 = block {
-    %4:vec2<i32> = and %rhs, vec2<u32>(31u)
-    %result:vec2<i32> = shiftl %lhs, %4
+    %4:vec2<u32> = and %rhs, vec2<u32>(31u)
+    %result:vec2<i32> = shl %lhs, %4
     ret %result
   }
 }
@@ -174,11 +187,11 @@ TEST_F(IR_BinaryPolyfillTest, ShiftLeft_Vec2I32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftLeft_Vec3U32) {
-    Build(Binary::Kind::kShiftLeft, ty.vec3<u32>(), ty.vec3<u32>(), ty.vec3<u32>());
+    Build(BinaryOp::kShiftLeft, ty.vec3<u32>(), ty.vec3<u32>(), ty.vec3<u32>());
     auto* src = R"(
 %foo = func(%lhs:vec3<u32>, %rhs:vec3<u32>):vec3<u32> -> %b1 {
   %b1 = block {
-    %result:vec3<u32> = shiftl %lhs, %rhs
+    %result:vec3<u32> = shl %lhs, %rhs
     ret %result
   }
 }
@@ -187,7 +200,7 @@ TEST_F(IR_BinaryPolyfillTest, ShiftLeft_Vec3U32) {
 %foo = func(%lhs:vec3<u32>, %rhs:vec3<u32>):vec3<u32> -> %b1 {
   %b1 = block {
     %4:vec3<u32> = and %rhs, vec3<u32>(31u)
-    %result:vec3<u32> = shiftl %lhs, %4
+    %result:vec3<u32> = shl %lhs, %4
     ret %result
   }
 }
@@ -202,20 +215,20 @@ TEST_F(IR_BinaryPolyfillTest, ShiftLeft_Vec3U32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftRight_I32) {
-    Build(Binary::Kind::kShiftRight, ty.i32(), ty.i32(), ty.i32());
+    Build(BinaryOp::kShiftRight, ty.i32(), ty.i32(), ty.u32());
     auto* src = R"(
-%foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
+%foo = func(%lhs:i32, %rhs:u32):i32 -> %b1 {
   %b1 = block {
-    %result:i32 = shiftr %lhs, %rhs
+    %result:i32 = shr %lhs, %rhs
     ret %result
   }
 }
 )";
     auto* expect = R"(
-%foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
+%foo = func(%lhs:i32, %rhs:u32):i32 -> %b1 {
   %b1 = block {
-    %4:i32 = and %rhs, 31u
-    %result:i32 = shiftr %lhs, %4
+    %4:u32 = and %rhs, 31u
+    %result:i32 = shr %lhs, %4
     ret %result
   }
 }
@@ -230,11 +243,11 @@ TEST_F(IR_BinaryPolyfillTest, ShiftRight_I32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftRight_U32) {
-    Build(Binary::Kind::kShiftRight, ty.u32(), ty.u32(), ty.u32());
+    Build(BinaryOp::kShiftRight, ty.u32(), ty.u32(), ty.u32());
     auto* src = R"(
 %foo = func(%lhs:u32, %rhs:u32):u32 -> %b1 {
   %b1 = block {
-    %result:u32 = shiftr %lhs, %rhs
+    %result:u32 = shr %lhs, %rhs
     ret %result
   }
 }
@@ -243,7 +256,7 @@ TEST_F(IR_BinaryPolyfillTest, ShiftRight_U32) {
 %foo = func(%lhs:u32, %rhs:u32):u32 -> %b1 {
   %b1 = block {
     %4:u32 = and %rhs, 31u
-    %result:u32 = shiftr %lhs, %4
+    %result:u32 = shr %lhs, %4
     ret %result
   }
 }
@@ -258,20 +271,20 @@ TEST_F(IR_BinaryPolyfillTest, ShiftRight_U32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftRight_Vec2I32) {
-    Build(Binary::Kind::kShiftRight, ty.vec2<i32>(), ty.vec2<i32>(), ty.vec2<i32>());
+    Build(BinaryOp::kShiftRight, ty.vec2<i32>(), ty.vec2<i32>(), ty.vec2<u32>());
     auto* src = R"(
-%foo = func(%lhs:vec2<i32>, %rhs:vec2<i32>):vec2<i32> -> %b1 {
+%foo = func(%lhs:vec2<i32>, %rhs:vec2<u32>):vec2<i32> -> %b1 {
   %b1 = block {
-    %result:vec2<i32> = shiftr %lhs, %rhs
+    %result:vec2<i32> = shr %lhs, %rhs
     ret %result
   }
 }
 )";
     auto* expect = R"(
-%foo = func(%lhs:vec2<i32>, %rhs:vec2<i32>):vec2<i32> -> %b1 {
+%foo = func(%lhs:vec2<i32>, %rhs:vec2<u32>):vec2<i32> -> %b1 {
   %b1 = block {
-    %4:vec2<i32> = and %rhs, vec2<u32>(31u)
-    %result:vec2<i32> = shiftr %lhs, %4
+    %4:vec2<u32> = and %rhs, vec2<u32>(31u)
+    %result:vec2<i32> = shr %lhs, %4
     ret %result
   }
 }
@@ -286,11 +299,11 @@ TEST_F(IR_BinaryPolyfillTest, ShiftRight_Vec2I32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, ShiftRight_Vec3U32) {
-    Build(Binary::Kind::kShiftRight, ty.vec3<u32>(), ty.vec3<u32>(), ty.vec3<u32>());
+    Build(BinaryOp::kShiftRight, ty.vec3<u32>(), ty.vec3<u32>(), ty.vec3<u32>());
     auto* src = R"(
 %foo = func(%lhs:vec3<u32>, %rhs:vec3<u32>):vec3<u32> -> %b1 {
   %b1 = block {
-    %result:vec3<u32> = shiftr %lhs, %rhs
+    %result:vec3<u32> = shr %lhs, %rhs
     ret %result
   }
 }
@@ -299,7 +312,7 @@ TEST_F(IR_BinaryPolyfillTest, ShiftRight_Vec3U32) {
 %foo = func(%lhs:vec3<u32>, %rhs:vec3<u32>):vec3<u32> -> %b1 {
   %b1 = block {
     %4:vec3<u32> = and %rhs, vec3<u32>(31u)
-    %result:vec3<u32> = shiftr %lhs, %4
+    %result:vec3<u32> = shr %lhs, %4
     ret %result
   }
 }
@@ -314,7 +327,7 @@ TEST_F(IR_BinaryPolyfillTest, ShiftRight_Vec3U32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Divide_NoPolyfill) {
-    Build(Binary::Kind::kDivide, ty.i32(), ty.i32(), ty.i32());
+    Build(BinaryOp::kDivide, ty.i32(), ty.i32(), ty.i32());
     auto* src = R"(
 %foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
   %b1 = block {
@@ -334,7 +347,7 @@ TEST_F(IR_BinaryPolyfillTest, Divide_NoPolyfill) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Modulo_NoPolyfill) {
-    Build(Binary::Kind::kModulo, ty.i32(), ty.i32(), ty.i32());
+    Build(BinaryOp::kModulo, ty.i32(), ty.i32(), ty.i32());
     auto* src = R"(
 %foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
   %b1 = block {
@@ -354,7 +367,7 @@ TEST_F(IR_BinaryPolyfillTest, Modulo_NoPolyfill) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Divide_I32) {
-    Build(Binary::Kind::kDivide, ty.i32(), ty.i32(), ty.i32());
+    Build(BinaryOp::kDivide, ty.i32(), ty.i32(), ty.i32());
     auto* src = R"(
 %foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
   %b1 = block {
@@ -393,7 +406,7 @@ TEST_F(IR_BinaryPolyfillTest, Divide_I32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Divide_U32) {
-    Build(Binary::Kind::kDivide, ty.u32(), ty.u32(), ty.u32());
+    Build(BinaryOp::kDivide, ty.u32(), ty.u32(), ty.u32());
     auto* src = R"(
 %foo = func(%lhs:u32, %rhs:u32):u32 -> %b1 {
   %b1 = block {
@@ -428,7 +441,7 @@ TEST_F(IR_BinaryPolyfillTest, Divide_U32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Divide_Vec2I32) {
-    Build(Binary::Kind::kDivide, ty.vec2<i32>(), ty.vec2<i32>(), ty.vec2<i32>());
+    Build(BinaryOp::kDivide, ty.vec2<i32>(), ty.vec2<i32>(), ty.vec2<i32>());
     auto* src = R"(
 %foo = func(%lhs:vec2<i32>, %rhs:vec2<i32>):vec2<i32> -> %b1 {
   %b1 = block {
@@ -467,7 +480,7 @@ TEST_F(IR_BinaryPolyfillTest, Divide_Vec2I32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Divide_Vec3U32) {
-    Build(Binary::Kind::kDivide, ty.vec3<u32>(), ty.vec3<u32>(), ty.vec3<u32>());
+    Build(BinaryOp::kDivide, ty.vec3<u32>(), ty.vec3<u32>(), ty.vec3<u32>());
     auto* src = R"(
 %foo = func(%lhs:vec3<u32>, %rhs:vec3<u32>):vec3<u32> -> %b1 {
   %b1 = block {
@@ -502,7 +515,7 @@ TEST_F(IR_BinaryPolyfillTest, Divide_Vec3U32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Modulo_I32) {
-    Build(Binary::Kind::kModulo, ty.i32(), ty.i32(), ty.i32());
+    Build(BinaryOp::kModulo, ty.i32(), ty.i32(), ty.i32());
     auto* src = R"(
 %foo = func(%lhs:i32, %rhs:i32):i32 -> %b1 {
   %b1 = block {
@@ -543,7 +556,7 @@ TEST_F(IR_BinaryPolyfillTest, Modulo_I32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Modulo_U32) {
-    Build(Binary::Kind::kModulo, ty.u32(), ty.u32(), ty.u32());
+    Build(BinaryOp::kModulo, ty.u32(), ty.u32(), ty.u32());
     auto* src = R"(
 %foo = func(%lhs:u32, %rhs:u32):u32 -> %b1 {
   %b1 = block {
@@ -580,7 +593,7 @@ TEST_F(IR_BinaryPolyfillTest, Modulo_U32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Modulo_Vec2I32) {
-    Build(Binary::Kind::kModulo, ty.vec2<i32>(), ty.vec2<i32>(), ty.vec2<i32>());
+    Build(BinaryOp::kModulo, ty.vec2<i32>(), ty.vec2<i32>(), ty.vec2<i32>());
     auto* src = R"(
 %foo = func(%lhs:vec2<i32>, %rhs:vec2<i32>):vec2<i32> -> %b1 {
   %b1 = block {
@@ -621,7 +634,7 @@ TEST_F(IR_BinaryPolyfillTest, Modulo_Vec2I32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Modulo_Vec3U32) {
-    Build(Binary::Kind::kModulo, ty.vec3<u32>(), ty.vec3<u32>(), ty.vec3<u32>());
+    Build(BinaryOp::kModulo, ty.vec3<u32>(), ty.vec3<u32>(), ty.vec3<u32>());
     auto* src = R"(
 %foo = func(%lhs:vec3<u32>, %rhs:vec3<u32>):vec3<u32> -> %b1 {
   %b1 = block {
@@ -658,9 +671,9 @@ TEST_F(IR_BinaryPolyfillTest, Modulo_Vec3U32) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Divide_Scalar_Vector) {
-    Build(Binary::Kind::kDivide, ty.vec4<i32>(), ty.i32(), ty.vec2<i32>());
+    Build(BinaryOp::kDivide, ty.vec4<i32>(), ty.i32(), ty.vec4<i32>());
     auto* src = R"(
-%foo = func(%lhs:i32, %rhs:vec2<i32>):vec4<i32> -> %b1 {
+%foo = func(%lhs:i32, %rhs:vec4<i32>):vec4<i32> -> %b1 {
   %b1 = block {
     %result:vec4<i32> = div %lhs, %rhs
     ret %result
@@ -668,7 +681,7 @@ TEST_F(IR_BinaryPolyfillTest, Divide_Scalar_Vector) {
 }
 )";
     auto* expect = R"(
-%foo = func(%lhs:i32, %rhs:vec2<i32>):vec4<i32> -> %b1 {
+%foo = func(%lhs:i32, %rhs:vec4<i32>):vec4<i32> -> %b1 {
   %b1 = block {
     %4:vec4<i32> = construct %lhs
     %result:vec4<i32> = call %tint_div_v4i32, %4, %rhs
@@ -698,9 +711,9 @@ TEST_F(IR_BinaryPolyfillTest, Divide_Scalar_Vector) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Divide_Vector_Scalar) {
-    Build(Binary::Kind::kDivide, ty.vec4<i32>(), ty.vec2<i32>(), ty.i32());
+    Build(BinaryOp::kDivide, ty.vec4<i32>(), ty.vec4<i32>(), ty.i32());
     auto* src = R"(
-%foo = func(%lhs:vec2<i32>, %rhs:i32):vec4<i32> -> %b1 {
+%foo = func(%lhs:vec4<i32>, %rhs:i32):vec4<i32> -> %b1 {
   %b1 = block {
     %result:vec4<i32> = div %lhs, %rhs
     ret %result
@@ -708,7 +721,7 @@ TEST_F(IR_BinaryPolyfillTest, Divide_Vector_Scalar) {
 }
 )";
     auto* expect = R"(
-%foo = func(%lhs:vec2<i32>, %rhs:i32):vec4<i32> -> %b1 {
+%foo = func(%lhs:vec4<i32>, %rhs:i32):vec4<i32> -> %b1 {
   %b1 = block {
     %4:vec4<i32> = construct %rhs
     %result:vec4<i32> = call %tint_div_v4i32, %lhs, %4
@@ -738,9 +751,9 @@ TEST_F(IR_BinaryPolyfillTest, Divide_Vector_Scalar) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Modulo_Scalar_Vector) {
-    Build(Binary::Kind::kModulo, ty.vec4<i32>(), ty.i32(), ty.vec2<i32>());
+    Build(BinaryOp::kModulo, ty.vec4<i32>(), ty.i32(), ty.vec4<i32>());
     auto* src = R"(
-%foo = func(%lhs:i32, %rhs:vec2<i32>):vec4<i32> -> %b1 {
+%foo = func(%lhs:i32, %rhs:vec4<i32>):vec4<i32> -> %b1 {
   %b1 = block {
     %result:vec4<i32> = mod %lhs, %rhs
     ret %result
@@ -748,7 +761,7 @@ TEST_F(IR_BinaryPolyfillTest, Modulo_Scalar_Vector) {
 }
 )";
     auto* expect = R"(
-%foo = func(%lhs:i32, %rhs:vec2<i32>):vec4<i32> -> %b1 {
+%foo = func(%lhs:i32, %rhs:vec4<i32>):vec4<i32> -> %b1 {
   %b1 = block {
     %4:vec4<i32> = construct %lhs
     %result:vec4<i32> = call %tint_mod_v4i32, %4, %rhs
@@ -780,9 +793,9 @@ TEST_F(IR_BinaryPolyfillTest, Modulo_Scalar_Vector) {
 }
 
 TEST_F(IR_BinaryPolyfillTest, Modulo_Vector_Scalar) {
-    Build(Binary::Kind::kModulo, ty.vec4<i32>(), ty.vec2<i32>(), ty.i32());
+    Build(BinaryOp::kModulo, ty.vec4<i32>(), ty.vec4<i32>(), ty.i32());
     auto* src = R"(
-%foo = func(%lhs:vec2<i32>, %rhs:i32):vec4<i32> -> %b1 {
+%foo = func(%lhs:vec4<i32>, %rhs:i32):vec4<i32> -> %b1 {
   %b1 = block {
     %result:vec4<i32> = mod %lhs, %rhs
     ret %result
@@ -790,7 +803,7 @@ TEST_F(IR_BinaryPolyfillTest, Modulo_Vector_Scalar) {
 }
 )";
     auto* expect = R"(
-%foo = func(%lhs:vec2<i32>, %rhs:i32):vec4<i32> -> %b1 {
+%foo = func(%lhs:vec4<i32>, %rhs:i32):vec4<i32> -> %b1 {
   %b1 = block {
     %4:vec4<i32> = construct %rhs
     %result:vec4<i32> = call %tint_mod_v4i32, %lhs, %4
@@ -829,10 +842,10 @@ TEST_F(IR_BinaryPolyfillTest, DivMod_MultipleUses) {
         auto* func = b.Function("foo_i32", ty.void_());
         func->SetParams(args);
         b.Append(func->Block(), [&] {
-            b.Binary(Binary::Kind::kDivide, ty.i32(), args[0], args[1]);
-            b.Binary(Binary::Kind::kDivide, ty.i32(), args[0], args[1]);
-            b.Binary(Binary::Kind::kModulo, ty.i32(), args[0], args[1]);
-            b.Binary(Binary::Kind::kModulo, ty.i32(), args[0], args[1]);
+            b.Binary(BinaryOp::kDivide, ty.i32(), args[0], args[1]);
+            b.Binary(BinaryOp::kDivide, ty.i32(), args[0], args[1]);
+            b.Binary(BinaryOp::kModulo, ty.i32(), args[0], args[1]);
+            b.Binary(BinaryOp::kModulo, ty.i32(), args[0], args[1]);
             b.Return(func);
         });
     }
@@ -843,10 +856,10 @@ TEST_F(IR_BinaryPolyfillTest, DivMod_MultipleUses) {
         auto* func = b.Function("foo_u32", ty.void_());
         func->SetParams(args);
         b.Append(func->Block(), [&] {
-            b.Binary(Binary::Kind::kDivide, ty.u32(), args[0], args[1]);
-            b.Binary(Binary::Kind::kDivide, ty.u32(), args[0], args[1]);
-            b.Binary(Binary::Kind::kModulo, ty.u32(), args[0], args[1]);
-            b.Binary(Binary::Kind::kModulo, ty.u32(), args[0], args[1]);
+            b.Binary(BinaryOp::kDivide, ty.u32(), args[0], args[1]);
+            b.Binary(BinaryOp::kDivide, ty.u32(), args[0], args[1]);
+            b.Binary(BinaryOp::kModulo, ty.u32(), args[0], args[1]);
+            b.Binary(BinaryOp::kModulo, ty.u32(), args[0], args[1]);
             b.Return(func);
         });
     }
@@ -857,10 +870,10 @@ TEST_F(IR_BinaryPolyfillTest, DivMod_MultipleUses) {
         auto* func = b.Function("foo_vec4i", ty.void_());
         func->SetParams(args);
         b.Append(func->Block(), [&] {
-            b.Binary(Binary::Kind::kDivide, ty.vec4<i32>(), args[0], args[1]);
-            b.Binary(Binary::Kind::kDivide, ty.vec4<i32>(), args[0], args[1]);
-            b.Binary(Binary::Kind::kModulo, ty.vec4<i32>(), args[0], args[1]);
-            b.Binary(Binary::Kind::kModulo, ty.vec4<i32>(), args[0], args[1]);
+            b.Binary(BinaryOp::kDivide, ty.vec4<i32>(), args[0], args[1]);
+            b.Binary(BinaryOp::kDivide, ty.vec4<i32>(), args[0], args[1]);
+            b.Binary(BinaryOp::kModulo, ty.vec4<i32>(), args[0], args[1]);
+            b.Binary(BinaryOp::kModulo, ty.vec4<i32>(), args[0], args[1]);
             b.Return(func);
         });
     }
@@ -871,10 +884,10 @@ TEST_F(IR_BinaryPolyfillTest, DivMod_MultipleUses) {
         auto* func = b.Function("foo_vec4u", ty.void_());
         func->SetParams(args);
         b.Append(func->Block(), [&] {
-            b.Binary(Binary::Kind::kDivide, ty.vec4<u32>(), args[0], args[1]);
-            b.Binary(Binary::Kind::kDivide, ty.vec4<u32>(), args[0], args[1]);
-            b.Binary(Binary::Kind::kModulo, ty.vec4<u32>(), args[0], args[1]);
-            b.Binary(Binary::Kind::kModulo, ty.vec4<u32>(), args[0], args[1]);
+            b.Binary(BinaryOp::kDivide, ty.vec4<u32>(), args[0], args[1]);
+            b.Binary(BinaryOp::kDivide, ty.vec4<u32>(), args[0], args[1]);
+            b.Binary(BinaryOp::kModulo, ty.vec4<u32>(), args[0], args[1]);
+            b.Binary(BinaryOp::kModulo, ty.vec4<u32>(), args[0], args[1]);
             b.Return(func);
         });
     }

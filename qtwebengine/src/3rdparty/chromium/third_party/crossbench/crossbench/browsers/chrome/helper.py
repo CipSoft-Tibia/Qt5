@@ -5,7 +5,7 @@
 from __future__ import annotations
 import pathlib
 
-from crossbench import helper
+from crossbench import plt
 
 
 class ChromePathMixin:
@@ -16,7 +16,7 @@ class ChromePathMixin:
 
   @classmethod
   def stable_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Chrome Stable",
         macos=["Google Chrome.app"],
         linux=["google-chrome", "chrome"],
@@ -24,7 +24,7 @@ class ChromePathMixin:
 
   @classmethod
   def beta_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Chrome Beta",
         macos=["Google Chrome Beta.app"],
         linux=["google-chrome-beta"],
@@ -32,7 +32,7 @@ class ChromePathMixin:
 
   @classmethod
   def dev_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Chrome Dev",
         macos=["Google Chrome Dev.app"],
         linux=["google-chrome-unstable"],
@@ -40,7 +40,7 @@ class ChromePathMixin:
 
   @classmethod
   def canary_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Chrome Canary",
         macos=["Google Chrome Canary.app"],
         win=["Google/Chrome SxS/Application/chrome.exe"])

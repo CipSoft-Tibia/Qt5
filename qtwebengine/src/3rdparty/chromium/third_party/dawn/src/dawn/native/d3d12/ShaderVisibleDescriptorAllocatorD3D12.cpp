@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d12/ShaderVisibleDescriptorAllocatorD3D12.h"
 
@@ -48,7 +61,7 @@ uint32_t GetD3D12ShaderVisibleHeapMinSize(D3D12_DESCRIPTOR_HEAP_TYPE heapType, b
         case D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER:
             return 256;
         default:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -63,7 +76,7 @@ uint32_t GetD3D12ShaderVisibleHeapMaxSize(D3D12_DESCRIPTOR_HEAP_TYPE heapType, b
         case D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER:
             return D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE;
         default:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -73,7 +86,7 @@ D3D12_DESCRIPTOR_HEAP_FLAGS GetD3D12HeapFlags(D3D12_DESCRIPTOR_HEAP_TYPE heapTyp
         case D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER:
             return D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         default:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -95,8 +108,8 @@ ShaderVisibleDescriptorAllocator::ShaderVisibleDescriptorAllocator(
       mDescriptorCount(GetD3D12ShaderVisibleHeapMinSize(
           heapType,
           mDevice->IsToggleEnabled(Toggle::UseD3D12SmallShaderVisibleHeapForTesting))) {
-    ASSERT(heapType == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV ||
-           heapType == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    DAWN_ASSERT(heapType == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV ||
+                heapType == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 }
 
 bool ShaderVisibleDescriptorAllocator::AllocateGPUDescriptors(
@@ -104,7 +117,7 @@ bool ShaderVisibleDescriptorAllocator::AllocateGPUDescriptors(
     ExecutionSerial pendingSerial,
     D3D12_CPU_DESCRIPTOR_HANDLE* baseCPUDescriptor,
     GPUDescriptorHeapAllocation* allocation) {
-    ASSERT(mHeap != nullptr);
+    DAWN_ASSERT(mHeap != nullptr);
     const uint64_t startOffset = mAllocator.Allocate(descriptorCount, pendingSerial);
     if (startOffset == RingBufferAllocator::kInvalidOffset) {
         return false;
@@ -117,7 +130,7 @@ bool ShaderVisibleDescriptorAllocator::AllocateGPUDescriptors(
     // Check for 32-bit overflow since CPU heap start handle uses size_t.
     const size_t cpuHeapStartPtr = descriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
 
-    ASSERT(heapOffset <= std::numeric_limits<size_t>::max() - cpuHeapStartPtr);
+    DAWN_ASSERT(heapOffset <= std::numeric_limits<size_t>::max() - cpuHeapStartPtr);
 
     *baseCPUDescriptor = {cpuHeapStartPtr + static_cast<size_t>(heapOffset)};
 
@@ -189,7 +202,7 @@ MaybeError ShaderVisibleDescriptorAllocator::AllocateAndSwitchShaderVisibleHeap(
             // longer used by GPU. This maintains a heap buffer to avoid frequently re-creating
             // heaps for heavy users.
             // TODO(dawn:256): Consider periodically triming to avoid OOM.
-            mPool.push_back({mDevice->GetPendingCommandSerial(), std::move(mHeap)});
+            mPool.push_back({mDevice->GetQueue()->GetPendingCommandSerial(), std::move(mHeap)});
             if (mPool.front().heapSerial <= mDevice->GetQueue()->GetCompletedCommandSerial()) {
                 descriptorHeap = std::move(mPool.front().heap);
                 mPool.pop_front();
@@ -232,7 +245,7 @@ bool ShaderVisibleDescriptorAllocator::IsShaderVisibleHeapLockedResidentForTesti
 }
 
 bool ShaderVisibleDescriptorAllocator::IsLastShaderVisibleHeapInLRUForTesting() const {
-    ASSERT(!mPool.empty());
+    DAWN_ASSERT(!mPool.empty());
     return mPool.back().heap->IsInResidencyLRUCache();
 }
 

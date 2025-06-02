@@ -10,6 +10,8 @@
 
 #include "base/functional/callback.h"
 #include "extensions/common/manifest.h"
+#include "extensions/common/mojom/host_id.mojom.h"
+#include "extensions/common/mojom/renderer.mojom.h"
 #include "url/gurl.h"
 
 namespace base {
@@ -19,6 +21,10 @@ class FilePath;
 namespace gfx {
 class ImageSkia;
 }  // namespace gfx
+
+namespace guest_view {
+class GuestViewBase;
+}  // namespace guest_view
 
 namespace content {
 class BrowserContext;
@@ -38,6 +44,14 @@ namespace util {
 // TODO(crbug.com/1417028): Move functions from
 // chrome/browser/extensions/extension_util.h/cc that are only dependent on
 // extensions/ here.
+
+// Returns a HostID type based on the given GuestViewBase.
+mojom::HostID::HostType HostIdTypeFromGuestView(
+    const guest_view::GuestViewBase& guest);
+
+// Returns a HostID instance based on the given GuestViewBase.
+mojom::HostID GenerateHostIdFromGuestView(
+    const guest_view::GuestViewBase& guest);
 
 // Returns true if the extension can be enabled in incognito mode.
 bool CanBeIncognitoEnabled(const Extension* extension);
@@ -73,6 +87,19 @@ content::StoragePartition* GetStoragePartitionForExtensionId(
 
 // Returns the ServiceWorkerContext associated with the given `extension_id`.
 content::ServiceWorkerContext* GetServiceWorkerContextForExtensionId(
+    const ExtensionId& extension_id,
+    content::BrowserContext* browser_context);
+
+// Sets the `extension` user script world configuration for `browser_context`
+// in the state store and notifies the renderer.
+void SetUserScriptWorldInfo(const Extension& extension,
+                            content::BrowserContext* browser_context,
+                            std::optional<std::string> csp,
+                            bool messaging);
+
+// Returns the `extension_id` user script world configuration for
+// `browser_context`.
+mojom::UserScriptWorldInfoPtr GetUserScriptWorldInfo(
     const ExtensionId& extension_id,
     content::BrowserContext* browser_context);
 

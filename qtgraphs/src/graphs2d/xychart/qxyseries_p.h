@@ -15,6 +15,7 @@
 
 #include <QtGraphs/qxyseries.h>
 #include <private/qabstractseries_p.h>
+#include <private/qgraphtransition_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -22,35 +23,31 @@ class QAbstractAxis;
 
 class QXYSeriesPrivate : public QAbstractSeriesPrivate
 {
-    Q_OBJECT
-
 public:
-    QXYSeriesPrivate(QXYSeries *q);
+    static QXYSeriesPrivate *get(QXYSeries *item) { return item->d_func(); }
+    static const QXYSeriesPrivate *get(const QXYSeries *item) { return item->d_func(); }
 
-    void initializeAxes() override;
+    QXYSeriesPrivate();
 
-    void setPointSelected(int index, bool selected, bool &callSignal);
-    bool isPointSelected(int index);
+    void setPointSelected(qsizetype index, bool selected, bool &callSignal);
+    bool isPointSelected(qsizetype index) const;
 
-    bool isMarkerSizeDefault();
-    void setMarkerSize(qreal markerSize);
-
-Q_SIGNALS:
-    void seriesUpdated();
+    void append(const QList<QPointF> &points);
 
 protected:
     QList<QPointF> m_points;
-    QSet<int> m_selectedPoints;
-    QColor m_color = QColorConstants::White;
-    QColor m_selectedColor;
-    qreal m_markerSize;
-    bool m_markerSizeDefault = true;
-    QAbstractAxis *m_axisX = nullptr;
-    QAbstractAxis *m_axisY = nullptr;
-    QQmlComponent *m_marker = nullptr;
+    QSet<qsizetype> m_selectedPoints;
+    QColor m_color = QColor(Qt::transparent);
+    QColor m_selectedColor = QColor(Qt::transparent);
+    QQmlComponent *m_pointDelegate = nullptr;
+    QGraphTransition *m_graphTransition = nullptr;
+    bool m_draggable = false;
 
 private:
     Q_DECLARE_PUBLIC(QXYSeries)
+
+    friend class QGraphPointAnimation;
+    friend class QGraphTransition;
 };
 
 QT_END_NAMESPACE

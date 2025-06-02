@@ -19,6 +19,7 @@ qt_internal_add_module(TextToSpeech
         Qt::Multimedia
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
+    NO_GENERATE_CPP_EXPORTS
 )
 
 

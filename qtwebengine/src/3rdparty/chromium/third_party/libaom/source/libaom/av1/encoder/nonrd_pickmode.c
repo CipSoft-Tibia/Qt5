@@ -179,8 +179,6 @@ static bool use_aggressive_subpel_search_method(MACROBLOCK *x,
  * \param[in]    x                        Pointer to structure holding all the
  *                                        data for the current macroblock
  * \param[in]    bsize                    Current block size
- * \param[in]    mi_row                   Row index in 4x4 units
- * \param[in]    mi_col                   Column index in 4x4 units
  * \param[in]    tmp_mv                   Pointer to best found New MV
  * \param[in]    rate_mv                  Pointer to Rate of the best new MV
  * \param[in]    best_rd_sofar            RD Cost of the best mode found so far
@@ -192,15 +190,13 @@ static bool use_aggressive_subpel_search_method(MACROBLOCK *x,
  * Rate estimation for this vector is placed to \c rate_mv
  */
 static int combined_motion_search(AV1_COMP *cpi, MACROBLOCK *x,
-                                  BLOCK_SIZE bsize, int mi_row, int mi_col,
-                                  int_mv *tmp_mv, int *rate_mv,
-                                  int64_t best_rd_sofar, int use_base_mv) {
+                                  BLOCK_SIZE bsize, int_mv *tmp_mv,
+                                  int *rate_mv, int64_t best_rd_sofar,
+                                  int use_base_mv) {
   MACROBLOCKD *xd = &x->e_mbd;
   const AV1_COMMON *cm = &cpi->common;
-  const int num_planes = av1_num_planes(cm);
   const SPEED_FEATURES *sf = &cpi->sf;
   MB_MODE_INFO *mi = xd->mi[0];
-  struct buf_2d backup_yv12[MAX_MB_PLANE] = { { 0, 0, 0, 0, 0 } };
   int step_param = (sf->rt_sf.fullpel_search_step_param)
                        ? sf->rt_sf.fullpel_search_step_param
                        : cpi->mv_search_params.mv_step_param;
@@ -212,19 +208,6 @@ static int combined_motion_search(AV1_COMP *cpi, MACROBLOCK *x,
   int rv = 0;
   int cost_list[5];
   int search_subpel = 1;
-  const YV12_BUFFER_CONFIG *scaled_ref_frame =
-      av1_get_scaled_ref_frame(cpi, ref);
-
-  if (scaled_ref_frame) {
-    int plane;
-    // Swap out the reference frame for a version that's been scaled to
-    // match the resolution of the current frame, allowing the existing
-    // motion search code to be used without additional modifications.
-    for (plane = 0; plane < MAX_MB_PLANE; plane++)
-      backup_yv12[plane] = xd->plane[plane].pre[0];
-    av1_setup_pre_planes(xd, 0, scaled_ref_frame, mi_row, mi_col, NULL,
-                         num_planes);
-  }
 
   start_mv = get_fullmv_from_mv(&ref_mv);
 
@@ -284,11 +267,6 @@ static int combined_motion_search(AV1_COMP *cpi, MACROBLOCK *x,
     *rate_mv =
         av1_mv_bit_cost(&tmp_mv->as_mv, &ref_mv, x->mv_costs->nmv_joint_cost,
                         x->mv_costs->mv_cost_stack, MV_COST_WEIGHT);
-  }
-
-  if (scaled_ref_frame) {
-    for (int plane = 0; plane < MAX_MB_PLANE; plane++)
-      xd->plane[plane].pre[0] = backup_yv12[plane];
   }
   // The final MV can not be equal to the reference MV as this will trigger an
   // assert later. This can happen if both NEAREST and NEAR modes were skipped.
@@ -384,9 +362,8 @@ static int search_new_mv(AV1_COMP *cpi, MACROBLOCK *x,
     *rate_mv = av1_mv_bit_cost(&this_ref_frm_newmv->as_mv, &ref_mv,
                                x->mv_costs->nmv_joint_cost,
                                x->mv_costs->mv_cost_stack, MV_COST_WEIGHT);
-  } else if (!combined_motion_search(cpi, x, bsize, mi_row, mi_col,
-                                     &frame_mv[NEWMV][ref_frame], rate_mv,
-                                     best_rdc->rdcost, 0)) {
+  } else if (!combined_motion_search(cpi, x, bsize, &frame_mv[NEWMV][ref_frame],
+                                     rate_mv, best_rdc->rdcost, 0)) {
     return -1;
   }
 
@@ -600,7 +577,7 @@ static INLINE void set_early_term_based_on_uv_plane(
   struct macroblock_plane *const p = &x->plane[AOM_PLANE_Y];
   const uint32_t dc_quant = p->dequant_QTX[0];
   const uint32_t ac_quant = p->dequant_QTX[1];
-  const int64_t dc_thr = dc_quant * dc_quant >> 6;
+  int64_t dc_thr = dc_quant * dc_quant >> 6;
   int64_t ac_thr = ac_quant * ac_quant >> 6;
   const int bw = b_width_log2_lookup[bsize];
   const int bh = b_height_log2_lookup[bsize];
@@ -619,6 +596,11 @@ static INLINE void set_early_term_based_on_uv_plane(
   ac_thr *= ac_thr_factor(cpi->oxcf.speed, cm->width, cm->height, norm_sum);
 
 #endif
+
+  if (cpi->sf.rt_sf.increase_source_sad_thresh) {
+    dc_thr = dc_thr << 1;
+    ac_thr = ac_thr << 2;
+  }
 
   for (int k = 0; k < num_blk; k++) {
     // Check if all ac coefficients can be quantized to zero.
@@ -649,10 +631,12 @@ static INLINE void set_early_term_based_on_uv_plane(
         const BLOCK_SIZE uv_bsize = get_plane_block_size(
             bsize, puvd->subsampling_x, puvd->subsampling_y);
         // Adjust these thresholds for UV.
+        const int shift_ac = cpi->sf.rt_sf.increase_source_sad_thresh ? 5 : 3;
+        const int shift_dc = cpi->sf.rt_sf.increase_source_sad_thresh ? 4 : 3;
         const int64_t uv_dc_thr =
-            (puv->dequant_QTX[0] * puv->dequant_QTX[0]) >> 3;
+            (puv->dequant_QTX[0] * puv->dequant_QTX[0]) >> shift_dc;
         const int64_t uv_ac_thr =
-            (puv->dequant_QTX[1] * puv->dequant_QTX[1]) >> 3;
+            (puv->dequant_QTX[1] * puv->dequant_QTX[1]) >> shift_ac;
         av1_enc_build_inter_predictor(cm, xd, mi_row, mi_col, NULL, bsize,
                                       plane, plane);
         var_uv[j] = cpi->ppi->fn_ptr[uv_bsize].vf(puv->src.buf, puv->src.stride,
@@ -1695,7 +1679,7 @@ static AOM_INLINE int is_same_gf_and_last_scale(AV1_COMMON *cm) {
 
 static AOM_INLINE void get_ref_frame_use_mask(AV1_COMP *cpi, MACROBLOCK *x,
                                               MB_MODE_INFO *mi, int mi_row,
-                                              int mi_col, int bsize,
+                                              int mi_col, BLOCK_SIZE bsize,
                                               int gf_temporal_ref,
                                               int use_ref_frame[],
                                               int *force_skip_low_temp_var) {
@@ -1785,7 +1769,7 @@ static AOM_INLINE void get_ref_frame_use_mask(AV1_COMP *cpi, MACROBLOCK *x,
       x->nonrd_prune_ref_frame_search > 2 &&
       x->color_sensitivity_sb_g[COLOR_SENS_IDX(AOM_PLANE_U)] == 0 &&
       x->color_sensitivity_sb_g[COLOR_SENS_IDX(AOM_PLANE_V)] == 0) {
-    int thr = (cm->width * cm->height >= 640 * 360) ? 100 : 150;
+    int thr = (cm->width * cm->height > RESOLUTION_288P) ? 100 : 150;
     int pred = x->pred_mv_sad[LAST_FRAME] >>
                (b_width_log2_lookup[bsize] + b_height_log2_lookup[bsize]);
     if (pred > thr) use_golden_ref_frame = 1;
@@ -1956,11 +1940,16 @@ static void set_color_sensitivity(AV1_COMP *cpi, MACROBLOCK *x,
     return;
   }
   int shift = 3;
+  unsigned int source_var_thr = 50;
+  int uv_sad_thr = 100;
   if (source_sad_nonrd >= kMedSad && x->source_variance > 0 && high_res)
     shift = 4;
-  if (cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN &&
-      cpi->rc.high_source_sad) {
-    shift = 6;
+  if (cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN) {
+    if (cpi->rc.high_source_sad) shift = 6;
+    if (source_sad_nonrd > kMedSad) {
+      source_var_thr = 1200;
+      uv_sad_thr = 10;
+    }
   }
   NOISE_LEVEL noise_level = kLow;
   int norm_sad =
@@ -1998,7 +1987,7 @@ static void set_color_sensitivity(AV1_COMP *cpi, MACROBLOCK *x,
           uv_sad >> (b_width_log2_lookup[bs] + b_height_log2_lookup[bs]);
       x->color_sensitivity[COLOR_SENS_IDX(plane)] =
           uv_sad > (y_sad >> shift) && norm_uv_sad > 40;
-      if (source_variance < 50 && norm_uv_sad > 100)
+      if (source_variance < source_var_thr && norm_uv_sad > uv_sad_thr)
         x->color_sensitivity[COLOR_SENS_IDX(plane)] = 1;
     }
   }
@@ -2304,11 +2293,12 @@ static AOM_FORCE_INLINE void set_params_nonrd_pick_inter_mode(
 #endif
 
   // Populate predicated motion vectors for LAST_FRAME
-  if (cpi->ref_frame_flags & AOM_LAST_FLAG)
+  if (cpi->ref_frame_flags & AOM_LAST_FLAG) {
     find_predictors(cpi, x, LAST_FRAME, search_state->frame_mv,
                     search_state->yv12_mb, bsize, *force_skip_low_temp_var,
-                    x->force_zeromv_skip_for_blk);
-
+                    x->force_zeromv_skip_for_blk,
+                    &search_state->use_scaled_ref_frame[LAST_FRAME]);
+  }
   // Update mask to use all reference frame
   get_ref_frame_use_mask(cpi, x, mi, mi_row, mi_col, bsize, gf_temporal_ref,
                          search_state->use_ref_frame_mask,
@@ -2326,7 +2316,8 @@ static AOM_FORCE_INLINE void set_params_nonrd_pick_inter_mode(
     if (search_state->use_ref_frame_mask[ref_frame_iter]) {
       find_predictors(cpi, x, ref_frame_iter, search_state->frame_mv,
                       search_state->yv12_mb, bsize, *force_skip_low_temp_var,
-                      skip_pred_mv);
+                      skip_pred_mv,
+                      &search_state->use_scaled_ref_frame[ref_frame_iter]);
     }
   }
 }
@@ -2450,13 +2441,12 @@ static AOM_FORCE_INLINE bool skip_inter_mode_nonrd(
       get_segdata(seg, segment_id, SEG_LVL_REF_FRAME) != (int)(*ref_frame))
     return true;
 
-  // For screen content: for base spatial layer only for now.
-  if (cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN &&
-      cpi->svc.spatial_layer_id == 0) {
+  // For screen content: skip mode testing based on source_sad.
+  if (cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN) {
     // If source_sad is computed: skip non-zero motion
     // check for stationary (super)blocks. Otherwise if superblock
-    // has motion skip the modes with zero motion for flat blocks,
-    // and color is not set.
+    // has motion skip the modes with zero motion on last reference
+    // for flat blocks, and color is not set.
     // For the latter condition: the same condition should apply
     // to newmv if (0, 0), so this latter condition is repeated
     // below after search_new_mv.
@@ -2464,7 +2454,7 @@ static AOM_FORCE_INLINE bool skip_inter_mode_nonrd(
       if ((search_state->frame_mv[*this_mode][*ref_frame].as_int != 0 &&
            x->content_state_sb.source_sad_nonrd == kZeroSad) ||
           (search_state->frame_mv[*this_mode][*ref_frame].as_int == 0 &&
-           x->block_is_zero_sad == 0 &&
+           x->block_is_zero_sad == 0 && *ref_frame == LAST_FRAME &&
            ((x->color_sensitivity_sb[COLOR_SENS_IDX(AOM_PLANE_U)] == 0 &&
              x->color_sensitivity_sb[COLOR_SENS_IDX(AOM_PLANE_V)] == 0) ||
             cpi->rc.high_source_sad) &&
@@ -2609,10 +2599,11 @@ static AOM_FORCE_INLINE bool handle_inter_mode_nonrd(
   if (skip_this_mv && is_single_pred) return true;
 
   // For screen: for spatially flat blocks with non-zero motion,
-  // skip newmv if the motion vector is (0, 0), and color is not set.
+  // skip newmv if the motion vector is (0, 0)-LAST, and color is not set.
   if (this_mode == NEWMV && cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN &&
       cpi->svc.spatial_layer_id == 0 && rt_sf->source_metrics_sb_nonrd) {
-    if (this_mv->as_int == 0 && x->block_is_zero_sad == 0 &&
+    if (this_mv->as_int == 0 && ref_frame == LAST_FRAME &&
+        x->block_is_zero_sad == 0 &&
         ((x->color_sensitivity_sb[COLOR_SENS_IDX(AOM_PLANE_U)] == 0 &&
           x->color_sensitivity_sb[COLOR_SENS_IDX(AOM_PLANE_V)] == 0) ||
          cpi->rc.high_source_sad) &&
@@ -3120,6 +3111,7 @@ void av1_nonrd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
       rt_sf->reuse_inter_pred_nonrd && cm->seq_params->bit_depth == AOM_BITS_8;
   InterModeSearchStateNonrd search_state;
   av1_zero(search_state.use_ref_frame_mask);
+  av1_zero(search_state.use_scaled_ref_frame);
   BEST_PICKMODE *const best_pickmode = &search_state.best_pickmode;
   (void)tile_data;
 
@@ -3149,7 +3141,9 @@ void av1_nonrd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
   const int resize_pending = is_frame_resize_pending(cpi);
 #endif
   const ModeCosts *mode_costs = &x->mode_costs;
-
+  struct scale_factors sf_no_scale;
+  av1_setup_scale_factors_for_frame(&sf_no_scale, cm->width, cm->height,
+                                    cm->width, cm->height);
   if (reuse_inter_pred) {
     for (int buf_idx = 0; buf_idx < 3; buf_idx++) {
       tmp_buffer[buf_idx].data = &pred_buf[pixels_in_block * buf_idx];
@@ -3168,7 +3162,9 @@ void av1_nonrd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
   // to source, so use subpel motion vector to compensate. The nonzero motion
   // is half pixel shifted to left and top, so (-4, -4). This has more effect
   // on higher resolutions, so condition it on that for now.
+  // Exclude quality layers, which have the same resolution and hence no shift.
   if (cpi->ppi->use_svc && svc->spatial_layer_id > 0 &&
+      !svc->has_lower_quality_layer &&
       svc->downsample_filter_phase[svc->spatial_layer_id - 1] == 8 &&
       cm->width * cm->height > 640 * 480) {
     svc_mv.as_mv.row = -4;
@@ -3249,7 +3245,9 @@ void av1_nonrd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
   if (cpi->oxcf.tune_cfg.content == AOM_CONTENT_SCREEN &&
       !x->force_zeromv_skip_for_blk &&
       x->content_state_sb.source_sad_nonrd != kZeroSad &&
-      x->source_variance == 0 && bsize < cm->seq_params->sb_size) {
+      x->source_variance == 0 && bsize < cm->seq_params->sb_size &&
+      search_state.yv12_mb[LAST_FRAME][0].width == cm->width &&
+      search_state.yv12_mb[LAST_FRAME][0].height == cm->height) {
     set_block_source_sad(cpi, x, bsize, &search_state.yv12_mb[LAST_FRAME][0]);
   }
 
@@ -3326,6 +3324,16 @@ void av1_nonrd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
     mi->ref_frame[0] = ref_frame;
     mi->ref_frame[1] = ref_frame2;
     set_ref_ptrs(cm, xd, ref_frame, ref_frame2);
+
+    // Check if the scaled reference frame should be used. This is set in the
+    // find_predictors() for each usable reference. If so, set the
+    // block_ref_scale_factors[] to no reference scaling.
+    if (search_state.use_scaled_ref_frame[ref_frame]) {
+      xd->block_ref_scale_factors[0] = &sf_no_scale;
+    }
+    if (!is_single_pred && search_state.use_scaled_ref_frame[ref_frame2]) {
+      xd->block_ref_scale_factors[1] = &sf_no_scale;
+    }
 
     // Perform inter mode evaluation for non-rd
     if (!handle_inter_mode_nonrd(
@@ -3448,6 +3456,14 @@ void av1_nonrd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
 
   if (!is_inter_block(mi)) {
     mi->interp_filters = av1_broadcast_interp_filter(SWITCHABLE_FILTERS);
+  } else {
+    // If inter mode is selected and ref_frame was one that uses the
+    // scaled reference frame, then we can't use reuse_inter_pred.
+    if (search_state.use_scaled_ref_frame[best_pickmode->best_ref_frame] ||
+        (has_second_ref(mi) &&
+         search_state
+             .use_scaled_ref_frame[best_pickmode->best_second_ref_frame]))
+      x->reuse_inter_pred = 0;
   }
 
   // Restore the predicted samples of best mode to final buffer
@@ -3513,4 +3529,9 @@ void av1_nonrd_pick_inter_mode_sb(AV1_COMP *cpi, TileDataEnc *tile_data,
 #endif  // COLLECT_NONRD_PICK_MODE_STAT
 
   *rd_cost = search_state.best_rdc;
+
+  // Reset the xd->block_ref_scale_factors[i], as they may have
+  // been set to pointer &sf_no_scale, which becomes invalid afer
+  // this function.
+  set_ref_ptrs(cm, xd, mi->ref_frame[0], mi->ref_frame[1]);
 }

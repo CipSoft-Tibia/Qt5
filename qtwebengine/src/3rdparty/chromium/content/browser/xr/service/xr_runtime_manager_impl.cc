@@ -20,6 +20,8 @@
 #include "base/trace_event/typed_macros.h"
 #include "build/build_config.h"
 #include "content/browser/xr/service/xr_frame_sink_client_impl.h"
+#include "content/browser/xr/webxr_internals/mojom/webxr_internals.mojom.h"
+#include "content/browser/xr/webxr_internals/webxr_internals_handler_impl.h"
 #include "content/browser/xr/xr_utils.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
@@ -174,7 +176,7 @@ void XRRuntimeManagerImpl::AddService(VRServiceImpl* service) {
   // Loop through any currently active runtimes and send Connected messages to
   // the service. Future runtimes that come online will send a Connected message
   // when they are created.
-  InitializeProviders();
+  InitializeProviders(service);
 
   if (AreAllProvidersInitialized())
     service->InitializationComplete();
@@ -243,12 +245,6 @@ BrowserXRRuntimeImpl* XRRuntimeManagerImpl::GetImmersiveVrRuntime() {
   auto* cardboard = GetRuntime(device::mojom::XRDeviceId::CARDBOARD_DEVICE_ID);
   if (cardboard) {
     return cardboard;
-  }
-#endif
-#if BUILDFLAG(ENABLE_GVR_SERVICES)
-  auto* gvr = GetRuntime(device::mojom::XRDeviceId::GVR_DEVICE_ID);
-  if (gvr) {
-    return gvr;
   }
 #endif
 #endif
@@ -345,7 +341,7 @@ void XRRuntimeManagerImpl::MakeXrCompatible() {
 
   if (!IsInitializedOnCompatibleAdapter(runtime)) {
 #if BUILDFLAG(IS_WIN)
-    absl::optional<CHROME_LUID> luid = runtime->GetLuid();
+    std::optional<CHROME_LUID> luid = runtime->GetLuid();
     // IsInitializedOnCompatibleAdapter should have returned true if the
     // runtime doesn't specify a LUID.
     DCHECK(luid && (luid->HighPart != 0 || luid->LowPart != 0));
@@ -391,7 +387,7 @@ void XRRuntimeManagerImpl::MakeXrCompatible() {
 bool XRRuntimeManagerImpl::IsInitializedOnCompatibleAdapter(
     BrowserXRRuntimeImpl* runtime) {
 #if BUILDFLAG(IS_WIN)
-  absl::optional<CHROME_LUID> luid = runtime->GetLuid();
+  std::optional<CHROME_LUID> luid = runtime->GetLuid();
   if (luid && (luid->HighPart != 0 || luid->LowPart != 0)) {
     CHROME_LUID active_luid =
         content::GpuDataManager::GetInstance()->GetGPUInfo().active_gpu().luid;
@@ -482,7 +478,12 @@ size_t XRRuntimeManagerImpl::NumberOfConnectedServices() {
   return services_.size();
 }
 
-void XRRuntimeManagerImpl::InitializeProviders() {
+// The initializing service is available so that providers that need access to
+// some aspect of the service, such as the WebContents, to perform
+// initialization can do so, but the providers should be initialized in such a
+// way that they are not explicitly tied to this service.
+void XRRuntimeManagerImpl::InitializeProviders(
+    VRServiceImpl* initializing_service) {
   if (providers_initialized_)
     return;
 
@@ -495,8 +496,9 @@ void XRRuntimeManagerImpl::InitializeProviders() {
 
     // It is acceptable for the providers to potentially take/keep a reference
     // to ourselves here, since we own the providers and can guarantee that they
-    // will not outlive us.
-    provider->Initialize(this);
+    // will not outlive us. Providers should not take a long-term reference to
+    // the WebContents.
+    provider->Initialize(this, initializing_service->GetWebContents());
   }
 
   providers_initialized_ = true;
@@ -525,6 +527,14 @@ void XRRuntimeManagerImpl::AddRuntime(
 
   TRACE_EVENT_INSTANT1("xr", "AddRuntime", TRACE_EVENT_SCOPE_THREAD, "id", id);
 
+  webxr::mojom::RuntimeInfoPtr runtime_added_record =
+      webxr::mojom::RuntimeInfo::New();
+  runtime_added_record->device_id = id;
+  runtime_added_record->supported_features = device_data->supported_features;
+  runtime_added_record->is_ar_blend_mode_supported =
+      device_data->is_ar_blend_mode_supported;
+  GetLoggerManager().RecordRuntimeAdded(std::move(runtime_added_record));
+
   runtimes_[id] = std::make_unique<BrowserXRRuntimeImpl>(
       id, std::move(device_data), std::move(runtime));
 
@@ -548,6 +558,8 @@ void XRRuntimeManagerImpl::RemoveRuntime(device::mojom::XRDeviceId id) {
   auto it = runtimes_.find(id);
   DCHECK(it != runtimes_.end());
 
+  GetLoggerManager().RecordRuntimeRemoved(id);
+
   // Give the runtime a chance to clean itself up before notifying services
   // that it was removed.
   it->second->BeforeRuntimeRemoved();
@@ -566,11 +578,20 @@ XRRuntimeManagerImpl::GetXrFrameSinkClientFactory() {
   return base::BindRepeating(&FrameSinkClientFactory);
 }
 
-void XRRuntimeManagerImpl::ForEachRuntime(
-    base::RepeatingCallback<void(BrowserXRRuntime*)> fn) {
+std::vector<webxr::mojom::RuntimeInfoPtr>
+XRRuntimeManagerImpl::GetActiveRuntimes() {
+  std::vector<webxr::mojom::RuntimeInfoPtr> active_runtimes;
   for (auto& runtime : runtimes_) {
-    fn.Run(runtime.second.get());
+    webxr::mojom::RuntimeInfoPtr runtime_info =
+        webxr::mojom::RuntimeInfo::New();
+    runtime_info->device_id = runtime.first;
+    runtime_info->supported_features = runtime.second->GetSupportedFeatures();
+    runtime_info->is_ar_blend_mode_supported =
+        runtime.second->SupportsArBlendMode();
+
+    active_runtimes.push_back(std::move(runtime_info));
   }
+  return active_runtimes;
 }
 
 }  // namespace content

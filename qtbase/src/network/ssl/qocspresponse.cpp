@@ -126,8 +126,7 @@ QOcspResponse &QOcspResponse::operator=(QOcspResponse &&) noexcept = default;
 /*!
     \fn void QOcspResponse::swap(QOcspResponse &other)
     \since 5.13
-
-    Swaps this response with \a other.
+    \memberswap{response}
 */
 
 /*!
@@ -201,10 +200,9 @@ bool QOcspResponse::isEqual(const QOcspResponse &other) const
 }
 
 /*!
-    Returns the hash value for the \a response, using \a seed to seed the calculation.
-
+    \fn size_t qHash(const QOcspResponse &key, size_t seed)
     \since 5.13
-    \relates QHash
+    \qhashold{QHash}
 */
 size_t qHash(const QOcspResponse &response, size_t seed) noexcept
 {

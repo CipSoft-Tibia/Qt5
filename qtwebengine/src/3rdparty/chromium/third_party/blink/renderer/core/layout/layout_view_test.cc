@@ -252,7 +252,7 @@ TEST_P(LayoutViewHitTestTest, BlockInInlineWithListItem) {
   // |LayoutObject::CreatePositionWithAffinity()| for anonymous block
   // containing list marker.
   // LayoutNGBlockFlow (anonymous)
-  //    LayoutNGInsideListMarker {::marker}
+  //    LayoutInsideListMarker {::marker}
   //      LayoutText (anonymous)
   //      LayoutInline {SPAN}
   EXPECT_EQ(PositionWithAffinity(Position(span, 0)), HitTest(0, 5));
@@ -348,7 +348,7 @@ TEST_P(LayoutViewHitTestTest, FloatLeftLeft) {
       "#target { width: 70px; }"
       ".float { float: left; margin-right: 10px; }");
   SetBodyInnerHTML("<div id=target><div class=float>ab</div>xy</div>");
-  // NGFragmentItem
+  // FragmentItem
   //   [0] kLine (30,0)x(20,10)
   //   [1] kBox/Floating (0,0)x(20,10)
   //   [2] kText "xy" (30,0)x(20,10)
@@ -383,7 +383,7 @@ TEST_P(LayoutViewHitTestTest, FloatLeftMiddle) {
       "#target { width: 70px; }"
       ".float { float: left; margin-right: 10px; }");
   SetBodyInnerHTML("<div id=target>x<div class=float>ab</div>y</div>");
-  // NGFragmentItem
+  // FragmentItem
   //   [0] kLine (30,0)x(20,10)
   //   [1] kText "x" (30,0)x(10,10)
   //   [1] kBox/Floating (0,0)x(20,10)
@@ -418,7 +418,7 @@ TEST_P(LayoutViewHitTestTest, FloatLeftRight) {
       "#target { width: 70px; }"
       ".float { float: left; margin-right: 10px; }");
   SetBodyInnerHTML("<div id=target>xy<div class=float>ab</div></div>");
-  // NGFragmentItem
+  // FragmentItem
   //   [0] kLine (30,0)x(20,10)
   //   [1] kText "xy" (30,0)x(20,10)
   //   [2] kBox/Floating (0,0)x(20,10)
@@ -453,7 +453,7 @@ TEST_P(LayoutViewHitTestTest, FloatRightLeft) {
       "#target { width: 50px; }"
       ".float { float: right; }");
   SetBodyInnerHTML("<div id=target>xy<div class=float>ab</div></div>");
-  // NGFragmentItem
+  // FragmentItem
   //   [0] kLine (0,0)x(20,10)
   //   [1] kBox/Floating (30,0)x(20,10)
   auto& target = *GetElementById("target");
@@ -499,7 +499,7 @@ TEST_P(LayoutViewHitTestTest, FloatRightMiddle) {
       "#target { width: 50px; }"
       ".float { float: right; }");
   SetBodyInnerHTML("<div id=target>x<div class=float>ab</div>y</div>");
-  // NGFragmentItem
+  // FragmentItem
   //   [0] kLine (0,0)x(20,10)
   //   [1] kText "x" (0,0)x(10,10)
   //   [2] kBox/Floating (30,0)x(20,10)
@@ -571,10 +571,10 @@ TEST_P(LayoutViewHitTestTest, PositionAbsolute) {
       "#target { width: 70px; }"
       ".abspos { position: absolute; left: 40px; top: 0px; }");
   SetBodyInnerHTML("<div id=target><div class=abspos>ab</div>xy</div>");
-  // NGFragmentItem
+  // FragmentItem
   //   [0] kLine (0,0)x(20,10)
   //   [2] kText "xy" (30,0)x(20,10)
-  // Note: position:absolute isn't in NGFragmentItems of #target.
+  // Note: position:absolute isn't in FragmentItems of #target.
   auto& target = *GetElementById("target");
   auto& ab = *To<Text>(target.firstChild()->firstChild());
   auto& xy = *To<Text>(target.lastChild());
@@ -1339,7 +1339,7 @@ TEST_P(LayoutViewHitTestTest, TextCombineOneTextNode) {
   //        LayoutText {#text} at (5,0) size 100x100
   //          text run at (5,0) width 100: "a"
   //        LayoutInline {C} at (5,100) size 100x100
-  //          LayoutNGTextCombine (anonymous) at (5,100) size 100x100
+  //          LayoutTextCombine (anonymous) at (5,100) size 100x100
   //            LayoutText {#text} at (-5,0) size 110x100
   //              text run at (0,0) width 500: "01234"
   //        LayoutText {#text} at (5,200) size 100x100
@@ -1385,7 +1385,7 @@ TEST_P(LayoutViewHitTestTest, TextCombineTwoTextNodes) {
   //         LayoutText {#text} at (5,0) size 100x100
   //           text run at (5,0) width 100: "a"
   //         LayoutInline {C} at (5,100) size 100x100
-  //           LayoutNGTextCombine (anonymous) at (5,100) size 100x100
+  //           LayoutTextCombine (anonymous) at (5,100) size 100x100
   //             LayoutText {#text} at (-5,0) size 66x100
   //               text run at (0,0) width 300: "012"
   //             LayoutWordBreak {WBR} at (61,0) size 0x100

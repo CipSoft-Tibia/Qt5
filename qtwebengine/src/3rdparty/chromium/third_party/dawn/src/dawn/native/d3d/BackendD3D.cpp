@@ -1,16 +1,29 @@
-// Copyright 2023 The Dawn Authors
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d/BackendD3D.h"
 
@@ -44,7 +57,7 @@ ResultOrError<ComPtr<IDXGIFactory4>> CreateFactory(const PlatformFunctions* func
         return DAWN_INTERNAL_ERROR("Failed to create a DXGI factory");
     }
 
-    ASSERT(factory != nullptr);
+    DAWN_ASSERT(factory != nullptr);
     return std::move(factory);
 }
 
@@ -118,7 +131,7 @@ MaybeError Backend::EnsureDxcLibrary() {
         DAWN_TRY(CheckHRESULT(
             mFunctions->dxcCreateInstance(CLSID_DxcLibrary, IID_PPV_ARGS(&mDxcLibrary)),
             "DXC create library"));
-        ASSERT(mDxcLibrary != nullptr);
+        DAWN_ASSERT(mDxcLibrary != nullptr);
     }
     return {};
 }
@@ -128,7 +141,7 @@ MaybeError Backend::EnsureDxcCompiler() {
         DAWN_TRY(CheckHRESULT(
             mFunctions->dxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&mDxcCompiler)),
             "DXC create compiler"));
-        ASSERT(mDxcCompiler != nullptr);
+        DAWN_ASSERT(mDxcCompiler != nullptr);
     }
     return {};
 }
@@ -138,28 +151,28 @@ MaybeError Backend::EnsureDxcValidator() {
         DAWN_TRY(CheckHRESULT(
             mFunctions->dxcCreateInstance(CLSID_DxcValidator, IID_PPV_ARGS(&mDxcValidator)),
             "DXC create validator"));
-        ASSERT(mDxcValidator != nullptr);
+        DAWN_ASSERT(mDxcValidator != nullptr);
     }
     return {};
 }
 
 ComPtr<IDxcLibrary> Backend::GetDxcLibrary() const {
-    ASSERT(mDxcLibrary != nullptr);
+    DAWN_ASSERT(mDxcLibrary != nullptr);
     return mDxcLibrary;
 }
 
-ComPtr<IDxcCompiler> Backend::GetDxcCompiler() const {
-    ASSERT(mDxcCompiler != nullptr);
+ComPtr<IDxcCompiler3> Backend::GetDxcCompiler() const {
+    DAWN_ASSERT(mDxcCompiler != nullptr);
     return mDxcCompiler;
 }
 
 ComPtr<IDxcValidator> Backend::GetDxcValidator() const {
-    ASSERT(mDxcValidator != nullptr);
+    DAWN_ASSERT(mDxcValidator != nullptr);
     return mDxcValidator;
 }
 
 void Backend::AcquireDxcVersionInformation() {
-    ASSERT(std::holds_alternative<DxcUnavailable>(mDxcVersionInfo));
+    DAWN_ASSERT(std::holds_alternative<DxcUnavailable>(mDxcVersionInfo));
 
     auto tryAcquireDxcVersionInfo = [this]() -> ResultOrError<DxcVersionInfo> {
         DAWN_TRY(EnsureDxcValidator());
@@ -168,7 +181,7 @@ void Backend::AcquireDxcVersionInformation() {
         ComPtr<IDxcVersionInfo> compilerVersionInfo;
 
         DAWN_TRY(CheckHRESULT(mDxcCompiler.As(&compilerVersionInfo),
-                              "D3D12 QueryInterface IDxcCompiler to IDxcVersionInfo"));
+                              "D3D12 QueryInterface IDxcCompiler3 to IDxcVersionInfo"));
         uint32_t compilerMajor, compilerMinor;
         DAWN_TRY(CheckHRESULT(compilerVersionInfo->GetVersion(&compilerMajor, &compilerMinor),
                               "IDxcVersionInfo::GetVersion"));
@@ -204,7 +217,7 @@ void Backend::AcquireDxcVersionInformation() {
 // Return both DXC compiler and DXC validator version, assert that DXC version information is
 // acquired succesfully.
 DxcVersionInfo Backend::GetDxcVersion() const {
-    ASSERT(std::holds_alternative<DxcVersionInfo>(mDxcVersionInfo));
+    DAWN_ASSERT(std::holds_alternative<DxcVersionInfo>(mDxcVersionInfo));
     return DxcVersionInfo(std::get<DxcVersionInfo>(mDxcVersionInfo));
 }
 
@@ -276,7 +289,7 @@ ResultOrError<Ref<PhysicalDeviceBase>> Backend::GetOrCreatePhysicalDeviceFromIDX
 }
 
 std::vector<Ref<PhysicalDeviceBase>> Backend::DiscoverPhysicalDevices(
-    const RequestAdapterOptions* options) {
+    const UnpackedPtr<RequestAdapterOptions>& options) {
     if (options->forceFallbackAdapter) {
         return {};
     }
@@ -284,11 +297,8 @@ std::vector<Ref<PhysicalDeviceBase>> Backend::DiscoverPhysicalDevices(
     FeatureLevel featureLevel =
         options->compatibilityMode ? FeatureLevel::Compatibility : FeatureLevel::Core;
 
-    const RequestAdapterOptionsLUID* luidOptions = nullptr;
-    FindInChain(options->nextInChain, &luidOptions);
-
     // Get or create just the physical device matching the dxgi adapter.
-    if (luidOptions != nullptr) {
+    if (auto* luidOptions = options.Get<RequestAdapterOptionsLUID>()) {
         Ref<PhysicalDeviceBase> physicalDevice;
         if (GetInstance()->ConsumedErrorAndWarnOnce(
                 GetOrCreatePhysicalDeviceFromLUID(luidOptions->adapterLUID), &physicalDevice) ||

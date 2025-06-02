@@ -1,16 +1,29 @@
-// Copyright 2023 The Dawn Authors
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d11/SharedTextureMemoryD3D11.h"
 
@@ -22,7 +35,6 @@
 #include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d/UtilsD3D.h"
 #include "dawn/native/d3d11/DeviceD3D11.h"
-#include "dawn/native/d3d11/SharedFenceD3D11.h"
 #include "dawn/native/d3d11/TextureD3D11.h"
 
 namespace dawn::native::d3d11 {
@@ -52,29 +64,22 @@ ResultOrError<SharedTextureMemoryProperties> PropertiesFromD3D11Texture(
 
     DAWN_TRY_ASSIGN(properties.format, d3d::FromUncompressedColorDXGITextureFormat(desc.Format));
 
-    const Format* internalFormat = nullptr;
-    DAWN_TRY_ASSIGN(internalFormat, device->GetInternalFormat(properties.format));
-
+    // The usages that the underlying D3D11 texture supports are partially
+    // dependent on its creation flags. Note that the SharedTextureMemory
+    // frontend takes care of stripping out any usages that are not supported
+    // for `format`.
     wgpu::TextureUsage textureBindingUsage = (desc.BindFlags & D3D11_BIND_SHADER_RESOURCE)
                                                  ? wgpu::TextureUsage::TextureBinding
                                                  : wgpu::TextureUsage::None;
+    wgpu::TextureUsage storageBindingUsage = (desc.BindFlags & D3D11_BIND_UNORDERED_ACCESS)
+                                                 ? wgpu::TextureUsage::StorageBinding
+                                                 : wgpu::TextureUsage::None;
+    wgpu::TextureUsage renderAttachmentUsage = (desc.BindFlags & D3D11_BIND_RENDER_TARGET)
+                                                   ? wgpu::TextureUsage::RenderAttachment
+                                                   : wgpu::TextureUsage::None;
 
-    wgpu::TextureUsage storageBindingUsage =
-        internalFormat->supportsStorageUsage && (desc.BindFlags & D3D11_BIND_UNORDERED_ACCESS)
-            ? wgpu::TextureUsage::StorageBinding
-            : wgpu::TextureUsage::None;
-
-    wgpu::TextureUsage renderAttachmentUsage =
-        internalFormat->isRenderable && (desc.BindFlags & D3D11_BIND_RENDER_TARGET)
-            ? wgpu::TextureUsage::RenderAttachment
-            : wgpu::TextureUsage::None;
-
-    if (internalFormat->IsMultiPlanar()) {
-        properties.usage = wgpu::TextureUsage::CopySrc | textureBindingUsage;
-    } else {
-        properties.usage = wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst |
-                           textureBindingUsage | storageBindingUsage | renderAttachmentUsage;
-    }
+    properties.usage = wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst |
+                       textureBindingUsage | storageBindingUsage | renderAttachmentUsage;
     return properties;
 }
 
@@ -104,7 +109,10 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
     SharedTextureMemoryProperties properties;
     DAWN_TRY_ASSIGN(properties, PropertiesFromD3D11Texture(device, d3d11Texture.Get()));
 
-    return AcquireRef(new SharedTextureMemory(device, label, properties, std::move(d3d11Resource)));
+    auto result =
+        AcquireRef(new SharedTextureMemory(device, label, properties, std::move(d3d11Resource)));
+    result->Initialize();
+    return result;
 }
 
 // static
@@ -127,7 +135,10 @@ ResultOrError<Ref<SharedTextureMemory>> SharedTextureMemory::Create(
     SharedTextureMemoryProperties properties;
     DAWN_TRY_ASSIGN(properties, PropertiesFromD3D11Texture(device, descriptor->texture.Get()));
 
-    return AcquireRef(new SharedTextureMemory(device, label, properties, std::move(d3d11Resource)));
+    auto result =
+        AcquireRef(new SharedTextureMemory(device, label, properties, std::move(d3d11Resource)));
+    result->Initialize();
+    return result;
 }
 
 SharedTextureMemory::SharedTextureMemory(Device* device,
@@ -146,13 +157,8 @@ ID3D11Resource* SharedTextureMemory::GetD3DResource() const {
 }
 
 ResultOrError<Ref<TextureBase>> SharedTextureMemory::CreateTextureImpl(
-    const TextureDescriptor* descriptor) {
+    const UnpackedPtr<TextureDescriptor>& descriptor) {
     return Texture::CreateFromSharedTextureMemory(this, descriptor);
-}
-
-ResultOrError<Ref<SharedFenceBase>> SharedTextureMemory::CreateFenceImpl(
-    const SharedFenceDXGISharedHandleDescriptor* desc) {
-    return SharedFence::Create(ToBackend(GetDevice()), "Internal shared DXGI fence", desc);
 }
 
 }  // namespace dawn::native::d3d11

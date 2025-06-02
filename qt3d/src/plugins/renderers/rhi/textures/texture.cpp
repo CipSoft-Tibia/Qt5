@@ -626,6 +626,9 @@ QRhiTexture *RHITexture::buildRhiTexture(SubmissionContext *ctx)
     }
     }
 
+    if(actualTarget == QAbstractTexture::Target3D)
+        rhiFlags |= QRhiTexture::ThreeDimensional;
+
     QRhiTexture *rhiTexture = nullptr;
     switch (m_properties.target) {
     case QAbstractTexture::Target1DArray:
@@ -725,7 +728,7 @@ void RHITexture::uploadRhiTextureData(SubmissionContext *ctx)
         });
     }
 
-    if (uploadEntries.size() > 0) {
+    if (!uploadEntries.empty()) {
         QRhiTextureUploadDescription uploadDescription;
         uploadDescription.setEntries(uploadEntries.begin(), uploadEntries.end());
         ctx->m_currentUpdates->uploadTexture(m_rhi, uploadDescription);

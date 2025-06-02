@@ -22,13 +22,6 @@ using namespace Qt::StringLiterals;
 // Create default time zone using appropriate backend
 static QTimeZonePrivate *newBackendTimeZone()
 {
-#ifdef QT_NO_SYSTEMLOCALE
-#if QT_CONFIG(icu)
-    return new QIcuTimeZonePrivate();
-#else
-    return new QUtcTimeZonePrivate();
-#endif
-#else
 #if defined(Q_OS_DARWIN)
     return new QMacTimeZonePrivate();
 #elif defined(Q_OS_ANDROID)
@@ -41,21 +34,13 @@ static QTimeZonePrivate *newBackendTimeZone()
     return new QWinTimeZonePrivate();
 #else
     return new QUtcTimeZonePrivate();
-#endif // System Locales
-#endif // QT_NO_SYSTEMLOCALE
+#endif // Backend selection
 }
 
 // Create named time zone using appropriate backend
 static QTimeZonePrivate *newBackendTimeZone(const QByteArray &ianaId)
 {
     Q_ASSERT(!ianaId.isEmpty());
-#ifdef QT_NO_SYSTEMLOCALE
-#if QT_CONFIG(icu)
-    return new QIcuTimeZonePrivate(ianaId);
-#else
-    return new QUtcTimeZonePrivate(ianaId);
-#endif
-#else
 #if defined(Q_OS_DARWIN)
     return new QMacTimeZonePrivate(ianaId);
 #elif defined(Q_OS_ANDROID)
@@ -68,8 +53,7 @@ static QTimeZonePrivate *newBackendTimeZone(const QByteArray &ianaId)
     return new QWinTimeZonePrivate(ianaId);
 #else
     return new QUtcTimeZonePrivate(ianaId);
-#endif // System Locales
-#endif // QT_NO_SYSTEMLOCALE
+#endif // Backend selection
 }
 
 class QTimeZoneSingleton
@@ -77,11 +61,13 @@ class QTimeZoneSingleton
 public:
     QTimeZoneSingleton() : backend(newBackendTimeZone()) {}
 
-    // The global_tz is the tz to use in static methods such as availableTimeZoneIds() and
-    // isTimeZoneIdAvailable() and to create named IANA time zones.  This is usually the host
-    // system, but may be different if the host resources are insufficient or if
-    // QT_NO_SYSTEMLOCALE is set.  A simple UTC backend is used if no alternative is available.
+    // The global_tz is the tz to use in static methods such as
+    // availableTimeZoneIds() and isTimeZoneIdAvailable() and to create named
+    // IANA time zones. This is usually the host system, but may be different if
+    // the host resources are insufficient. A simple UTC backend is used if no
+    // alternative is available.
     QExplicitlySharedDataPointer<QTimeZonePrivate> backend;
+    // TODO QTBUG-56899: refresh should update this backend.
 };
 
 Q_GLOBAL_STATIC(QTimeZoneSingleton, global_tz);
@@ -317,11 +303,14 @@ Q_GLOBAL_STATIC(QTimeZoneSingleton, global_tz);
     The type of time zone name.
 
     \value DefaultName
-           The default form of the time zone name, e.g. LongName, ShortName or OffsetName
+           The default form of the time zone name, one of LongName, ShortName or
+           OffsetName
     \value LongName
            The long form of the time zone name, e.g. "Central European Time"
     \value ShortName
-           The short form of the time zone name, usually an abbreviation, e.g. "CET"
+           The short form of the time zone name, usually an abbreviation,
+           e.g. "CET", in locales that have one for the zone, otherwise a
+           compact GMT-offset form, e.g. "GMT+1"
     \value OffsetName
            The standard ISO offset form of the time zone name, e.g. "UTC+01:00"
 
@@ -334,10 +323,10 @@ Q_GLOBAL_STATIC(QTimeZoneSingleton, global_tz);
 
     The time zone offset data for a given moment in time.
 
-    This provides the time zone offsets and abbreviation to use at that moment
-    in time. When a function returns this type, it may use an invalid datetime
-    to indicate that the query it is answering has no valid answer, so check
-    \c{atUtc.isValid()} before using the results.
+    This provides the time zone offsets and abbreviation to use at a given
+    moment in time. When a function returns this type, it may use an invalid
+    datetime to indicate that the query it is answering has no valid answer, so
+    check \c{atUtc.isValid()} before using the results.
 
     \list
     \li OffsetData::atUtc  The datetime of the offset data in UTC time.
@@ -470,10 +459,17 @@ QTimeZone::QTimeZone(const QByteArray &ianaId)
     d = new QUtcTimeZonePrivate(ianaId);
     // If not recognized, try creating it with the system backend.
     if (!d->isValid()) {
-        if (ianaId.isEmpty())
+        if (ianaId.isEmpty()) {
             d = newBackendTimeZone();
-        else // Constructor MUST produce invalid for unsupported ID.
+        } else { // Constructor MUST produce invalid for unsupported ID.
             d = newBackendTimeZone(ianaId);
+            if (!d->isValid()) {
+                // We may have a legacy alias for a supported IANA ID:
+                const QByteArray name = QTimeZonePrivate::aliasToIana(ianaId);
+                if (!name.isEmpty() && name != ianaId)
+                    d = newBackendTimeZone(name);
+            }
+        }
     }
     // Can also handle UTC with arbitrary (valid) offset, but only do so as
     // fall-back, since either of the above may handle it more informatively.
@@ -497,7 +493,7 @@ QTimeZone::QTimeZone(const QByteArray &ianaId)
 
     This constructor is only available when feature \c timezone is enabled. The
     returned instance is equivalent to the lightweight time representation
-    \c{QTimeZone::fromSecondsAfterUtc(offsetSeconds)}, albeit implemented as a
+    \c{QTimeZone::fromSecondsAheadOfUtc(offsetSeconds)}, albeit implemented as a
     time zone.
 
     \sa MinUtcOffsetSecs, MaxUtcOffsetSecs, id()
@@ -519,9 +515,10 @@ QTimeZone::QTimeZone(int offsetSeconds)
     by territory().  The \a comment is an optional note that may be displayed in
     a GUI to assist users in selecting a time zone.
 
-    The \a zoneId \e{must not} be one of the available system IDs returned by
-    availableTimeZoneIds(). The \a offsetSeconds from UTC must be in the range
-    -16 hours to +16 hours.
+    The \a offsetSeconds from UTC must be in the range -16 hours to +16 hours.
+    The \a zoneId \e{must not} be an ID for which isTimeZoneIdAvailable() is
+    true, unless it is a UTC-offset name that doesn't appear in
+    availableTimeZoneIds().
 
     If the custom time zone does not have a specific territory then set it to the
     default value of QLocale::AnyTerritory.
@@ -712,9 +709,7 @@ QTimeZone::~QTimeZone()
 
 /*!
     \fn QTimeZone::swap(QTimeZone &other) noexcept
-
-    Swaps this time zone instance with \a other. This function is very
-    fast and never fails.
+    \memberswap{time zone instance}
 */
 
 /*!
@@ -838,6 +833,34 @@ QByteArray QTimeZone::id() const
 }
 
 /*!
+    \since 6.8
+    Returns \c true if \a alias is an alternative name for this timezone.
+
+    The IANA (formerly Olson) database has renamed some zones during its
+    history. There are also some zones that only differed prior to 1970 but are
+    now treated as synonymous. Some backends may have data reaching to before
+    1970 and produce distinct zones in the latter case. Others may produce zones
+    indistinguishable except by id(). This method determines whether an ID
+    refers (at least since 1970) to the same zone that this timezone object
+    describes.
+
+    This method is only available when feature \c timezone is enabled.
+*/
+bool QTimeZone::hasAlternativeName(QByteArrayView alias) const
+{
+    if (alias == id())
+        return true;
+    QByteArray mine = QTimeZonePrivate::aliasToIana(id());
+    // Empty if id() aliases to itself, which we've already checked:
+    if (!mine.isEmpty() && alias == mine)
+        return true;
+    QByteArray its = QTimeZonePrivate::aliasToIana(alias);
+    // Empty if alias aliases to itself, which we've already compared to id()
+    // and, where relevant, mine.
+    return !its.isEmpty() && its == (mine.isEmpty() ? id() : mine);
+}
+
+/*!
     \since 6.2
 
     Returns the territory for the time zone.
@@ -899,17 +922,24 @@ QString QTimeZone::comment() const
 }
 
 /*!
-    Returns the localized time zone display name at the given \a atDateTime
-    for the given \a nameType in the given \a locale.  The \a nameType and
-    \a locale requested may not be supported on all platforms, in which case
-    the best available option will be returned.
+    Returns the localized time zone display name.
 
-    If the \a locale is not provided then the application default locale will
-    be used.
+    The name returned is the one for the given \a locale, applicable at the
+    given \a atDateTime, and of the form indicated by \a nameType. The display
+    name may change depending on DST or historical events.
+//! [display-name-caveats]
+    If no suitably localized name of the given type is available, another name
+    type may be used, or an empty string may be returned.
 
-    The display name may change depending on DST or historical events.
+    If the \a locale is not provided, then the application default locale will
+    be used. For custom timezones created by client code, the data supplied to
+    the constructor are used, as no localization data will be available for it.
+    If this timezone is invalid, an empty string is returned. This may also
+    arise for the representation of local time if determining the system time
+    zone fails.
 
     This method is only available when feature \c timezone is enabled.
+//! [display-name-caveats]
 
     \sa abbreviation()
 */
@@ -923,7 +953,7 @@ QString QTimeZone::displayName(const QDateTime &atDateTime, NameType nameType,
             return systemTimeZone().displayName(atDateTime, nameType, locale);
         case Qt::UTC:
         case Qt::OffsetFromUTC:
-            return QUtcTimeZonePrivate(d.s.offset).QTimeZonePrivate::displayName(
+            return QUtcTimeZonePrivate(d.s.offset).displayName(
                 atDateTime.toMSecsSinceEpoch(), nameType, locale);
         case Qt::TimeZone:
             Q_UNREACHABLE();
@@ -937,18 +967,13 @@ QString QTimeZone::displayName(const QDateTime &atDateTime, NameType nameType,
 }
 
 /*!
-    Returns the localized time zone display name for the given \a timeType
-    and \a nameType in the given \a locale. The \a nameType and \a locale
-    requested may not be supported on all platforms, in which case the best
-    available option will be returned.
+    Returns the localized time zone display name.
 
-    If the \a locale is not provided then the application default locale will
-    be used.
-
-    Where the time zone display names have changed over time then the most
-    recent names will be used.
-
-    This method is only available when feature \c timezone is enabled.
+    The name returned is the one for the given \a locale, applicable when the
+    given \a timeType is in effect and of the form indicated by \a nameType.
+    Where the time zone display names have changed over time, the current names
+    will be used.
+    \include qtimezone.cpp display-name-caveats
 
     \sa abbreviation()
 */
@@ -975,11 +1000,14 @@ QString QTimeZone::displayName(TimeType timeType, NameType nameType,
 }
 
 /*!
-    Returns the time zone abbreviation at the given \a atDateTime.  The
-    abbreviation may change depending on DST or even historical events.
+    Returns the time zone abbreviation at the given \a atDateTime.
 
-    Note that the abbreviation is not guaranteed to be unique to this time zone
-    and should not be used in place of the ID or display name.
+    The abbreviation may change depending on DST or even historical events.
+
+    \note The abbreviation is not guaranteed to be unique to this time zone and
+    should not be used in place of the ID or display name. The abbreviation may
+    be localized, depending on the underlying operating system. To get consistent
+    localization, use \c {displayName(atDateTime, QTimeZone::ShortName, locale)}.
 
     This method is only available when feature \c timezone is enabled.
 
@@ -1171,9 +1199,10 @@ bool QTimeZone::isDaylightTime(const QDateTime &atDateTime) const
     Returns the effective offset details at the given \a forDateTime.
 
     This is the equivalent of calling abbreviation() and all three offset
-    functions individually but is more efficient. If this data is not available
-    for the given datetime, an invalid OffsetData will be returned with an
-    invalid QDateTime as its \c atUtc.
+    functions individually but may be more efficient and may get a different
+    localization for the abbreviation. If this data is not available for the
+    given datetime, an invalid OffsetData will be returned with an invalid
+    QDateTime as its \c atUtc.
 
     This method is only available when feature \c timezone is enabled.
 
@@ -1371,7 +1400,7 @@ QByteArray QTimeZone::systemTimeZoneId()
     if (!sys.isEmpty())
         return sys;
     // The system zone, despite the empty ID, may know its real ID anyway:
-    return systemTimeZone().id();
+    return global_tz->backend->id();
 }
 
 /*!
@@ -1394,9 +1423,9 @@ QByteArray QTimeZone::systemTimeZoneId()
 */
 QTimeZone QTimeZone::systemTimeZone()
 {
-    // Use ID even if empty, as default constructor is invalid but empty-ID
-    // constructor goes to backend's default constructor, which may succeed.
-    const auto sys = QTimeZone(global_tz->backend->systemTimeZoneId());
+    // Short-cut constructor's handling of empty ID:
+    const QByteArray sysId = global_tz->backend->systemTimeZoneId();
+    const auto sys = sysId.isEmpty() ? QTimeZone(global_tz->backend) : QTimeZone(sysId);
     if (!sys.isValid()) {
         static bool neverWarned = true;
         if (neverWarned) {
@@ -1422,7 +1451,7 @@ QTimeZone QTimeZone::systemTimeZone()
 */
 QTimeZone QTimeZone::utc()
 {
-    return QTimeZone(QTimeZonePrivate::utcQByteArray());
+    return QTimeZone(0);
 }
 
 /*!
@@ -1441,7 +1470,7 @@ bool QTimeZone::isTimeZoneIdAvailable(const QByteArray &ianaId)
 #if defined(Q_OS_UNIX) && !(defined(Q_OS_ANDROID) || defined(Q_OS_DARWIN))
     // Keep #if-ery consistent with selection of QTzTimeZonePrivate in
     // newBackendTimeZone(). Skip the pre-check, as the TZ backend accepts POSIX
-    // zone IDs, which need not be valid IANA IDs.
+    // zone IDs, which need not be valid IANA IDs. See also QTBUG-112006.
 #else
     // isValidId is not strictly required, but faster to weed out invalid
     // IDs as availableTimeZoneIds() may be slow
@@ -1484,10 +1513,11 @@ QList<QByteArray> QTimeZone::availableTimeZoneIds()
 /*!
     Returns a list of all available IANA time zone IDs for a given \a territory.
 
-    As a special case, a \a territory of \l {QLocale::}{AnyTerritory} selects
-    those time zones that have no known territorial association, such as UTC. If
-    you require a list of all time zone IDs for all territories then use the
-    standard availableTimeZoneIds() method.
+    As a special case, a \a territory of \l {QLocale::} {AnyTerritory} selects
+    those time zones that have a non-territorial association, such as UTC, while
+    \l {QLocale::}{World} selects those time-zones for which there is a global
+    default IANA ID. If you require a list of all time zone IDs for all
+    territories then use the standard availableTimeZoneIds() method.
 
     This method is only available when feature \c timezone is enabled.
 
@@ -1556,8 +1586,14 @@ QByteArray QTimeZone::windowsIdToDefaultIanaId(const QByteArray &windowsId)
     Because a Windows ID can cover several IANA IDs within a given territory,
     the most frequently used IANA ID in that territory is returned.
 
-    As a special case, \l{QLocale::}{AnyTerritory} returns the default of those
-    IANA IDs that have no known territorial association.
+    As a special case, \l {QLocale::} {AnyTerritory} returns the default of
+    those IANA IDs that have a non-territorial association, while \l {QLocale::}
+    {World} returns the default for the given \a windowsId in territories that
+    have no specific association with it.
+
+    If the return is empty, there is no IANA ID specific to the given \a
+    territory for this \a windowsId. It is reasonable, in this case, to fall
+    back to \c{windowsIdToDefaultIanaId(windowsId)}.
 
     This method is only available when feature \c timezone is enabled.
 
@@ -1588,8 +1624,10 @@ QList<QByteArray> QTimeZone::windowsIdToIanaIds(const QByteArray &windowsId)
 /*!
     Returns all the IANA IDs for a given \a windowsId and \a territory.
 
-    As a special case, \l{QLocale::}{AnyTerritory} selects those IANA IDs that
-    have no known territorial association.
+    As a special case, \l{QLocale::} {AnyTerritory} selects those IANA IDs that
+    have a non-territorial association, while \l {QLocale::} {World} selects the
+    default for the given \a windowsId in territories that have no specific
+    association with it.
 
     The returned list is in order of frequency of usage, i.e. larger zones
     within a territory are listed first.

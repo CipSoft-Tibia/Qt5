@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 package update
 
@@ -18,7 +31,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 
@@ -34,11 +47,23 @@ func init() {
 	common.Register(&cmd{})
 }
 
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return strings.Join((*i), " ")
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
 type cmd struct {
 	flags struct {
 		results      common.ResultSource
-		expectations string
+		expectations arrayFlags
 		auth         authcli.Flags
+		verbose      bool
 	}
 }
 
@@ -51,15 +76,15 @@ func (cmd) Desc() string {
 }
 
 func (c *cmd) RegisterFlags(ctx context.Context, cfg common.Config) ([]string, error) {
-	defaultExpectations := common.DefaultExpectationsPath()
 	c.flags.results.RegisterFlags(cfg)
 	c.flags.auth.Register(flag.CommandLine, auth.DefaultAuthOptions())
-	flag.StringVar(&c.flags.expectations, "expectations", defaultExpectations, "path to CTS expectations file to update")
+	flag.BoolVar(&c.flags.verbose, "verbose", false, "emit additional logging")
+	flag.Var(&c.flags.expectations, "expectations", "path to CTS expectations file(s) to update")
 	return nil, nil
 }
 
 func loadTestList(path string) ([]query.Query, error) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load test list: %w", err)
 	}
@@ -72,6 +97,10 @@ func loadTestList(path string) ([]query.Query, error) {
 }
 
 func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
+	if len(c.flags.expectations) == 0 {
+		c.flags.expectations = common.DefaultExpectationsPaths()
+	}
+
 	// Validate command line arguments
 	auth, err := c.flags.auth.Options()
 	if err != nil {
@@ -79,39 +108,58 @@ func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
 	}
 
 	// Fetch the results
-	results, err := c.flags.results.GetResults(ctx, cfg, auth)
+	log.Println("fetching results...")
+	resultsByExecutionMode, err := c.flags.results.GetResults(ctx, cfg, auth)
 	if err != nil {
 		return err
 	}
 
 	// Merge to remove duplicates
-	results = result.Merge(results)
-
-	// Load the expectations file
-	ex, err := expectations.Load(c.flags.expectations)
-	if err != nil {
-		return err
+	log.Println("removing duplicate results...")
+	for name := range resultsByExecutionMode {
+		resultsByExecutionMode[name] = result.Merge(resultsByExecutionMode[name])
 	}
 
+	log.Println("loading test list...")
 	testlist, err := loadTestList(common.DefaultTestListPath())
 	if err != nil {
 		return err
 	}
 
-	if diag := ex.Validate(); diag.NumErrors() > 0 {
-		diag.Print(os.Stdout, c.flags.expectations)
-		return fmt.Errorf("validation failed")
+	for _, expectationsFilename := range c.flags.expectations {
+		// Load the expectations file
+		log.Printf("loading expectations %s...\n", expectationsFilename)
+		ex, err := expectations.Load(expectationsFilename)
+		if err != nil {
+			return err
+		}
+
+		log.Printf("validating %s...\n", expectationsFilename)
+		if diag := ex.Validate(); diag.NumErrors() > 0 {
+			diag.Print(os.Stdout, expectationsFilename)
+			return fmt.Errorf("validation failed")
+		}
+
+		// Update the expectations file with the results
+		log.Printf("updating expectations %s...\n", expectationsFilename)
+		// Not clear what to do here
+		name := result.ExecutionMode("core")
+		if strings.Contains(expectationsFilename, "compat") {
+			name = "compat"
+		}
+		diag, err := ex.Update(resultsByExecutionMode[name], testlist, c.flags.verbose)
+		if err != nil {
+			return err
+		}
+
+		// Print any diagnostics
+		diag.Print(os.Stdout, expectationsFilename)
+
+		// Save the updated expectations file
+		err = ex.Save(expectationsFilename)
+		if err != nil {
+			break
+		}
 	}
-
-	// Update the expectations file with the results
-	diag, err := ex.Update(results, testlist)
-	if err != nil {
-		return err
-	}
-
-	// Print any diagnostics
-	diag.Print(os.Stdout, c.flags.expectations)
-
-	// Save the updated expectations file
-	return ex.Save(c.flags.expectations)
+	return err
 }

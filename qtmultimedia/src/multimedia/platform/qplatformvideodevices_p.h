@@ -16,29 +16,39 @@
 
 #include <private/qtmultimediaglobal_p.h>
 #include <qmediarecorder.h>
+#include <qcameradevice.h>
 #include <qobject.h>
+
+#include <private/qcachedvalue_p.h>
 
 QT_BEGIN_NAMESPACE
 
+class QCameraDevice;
 class QPlatformMediaIntegration;
 
 class Q_MULTIMEDIA_EXPORT QPlatformVideoDevices : public QObject
 {
     Q_OBJECT
+
+    QT_DEFINE_TAG_STRUCT(PrivateTag);
 public:
-    QPlatformVideoDevices(QPlatformMediaIntegration *integration)
-        : m_integration(integration)
-    {}
+    QPlatformVideoDevices(QPlatformMediaIntegration *integration);
 
     ~QPlatformVideoDevices() override;
 
-    virtual QList<QCameraDevice> videoDevices() const = 0;
+    QList<QCameraDevice> videoInputs() const;
+
+protected:
+    virtual QList<QCameraDevice> findVideoInputs() const = 0;
+
+    void onVideoInputsChanged();
 
 Q_SIGNALS:
-    void videoInputsChanged();
+    void videoInputsChanged(PrivateTag);
 
 protected:
     QPlatformMediaIntegration *m_integration = nullptr;
+    mutable QCachedValue<QList<QCameraDevice>> m_videoInputs;
 };
 
 QT_END_NAMESPACE

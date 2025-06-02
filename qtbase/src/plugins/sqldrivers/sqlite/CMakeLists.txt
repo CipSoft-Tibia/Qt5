@@ -39,6 +39,11 @@ if(QT_FEATURE_system_sqlite)
     qt_internal_force_macos_intel_arch(QSQLiteDriverPlugin)
 endif()
 
+qt_internal_extend_target(QSQLiteDriverPlugin CONDITION NOT QT_FEATURE_system_sqlite AND VXWORKS
+    DEFINES
+       SQLITE_OS_UNIX=1
+)
+
 qt_internal_extend_target(QSQLiteDriverPlugin CONDITION NOT QT_FEATURE_system_sqlite
     SOURCES
         ../../../3rdparty/sqlite/sqlite3.c
@@ -55,6 +60,8 @@ qt_internal_extend_target(QSQLiteDriverPlugin CONDITION NOT QT_FEATURE_system_sq
         SQLITE_OMIT_COMPLETE
     INCLUDE_DIRECTORIES
         ../../../3rdparty/sqlite
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../3rdparty/sqlite
 )
 
 qt_internal_extend_target(QSQLiteDriverPlugin CONDITION CMAKE_BUILD_TYPE STREQUAL Release AND NOT QT_FEATURE_system_sqlite
@@ -65,6 +72,16 @@ qt_internal_extend_target(QSQLiteDriverPlugin CONDITION CMAKE_BUILD_TYPE STREQUA
 qt_internal_extend_target(QSQLiteDriverPlugin CONDITION NOT QT_FEATURE_largefile AND NOT QT_FEATURE_system_sqlite
     DEFINES
         SQLITE_DISABLE_LFS
+)
+
+qt_internal_extend_target(QSQLiteDriverPlugin CONDITION QT_FEATURE_localtime_r
+    DEFINES
+        HAVE_LOCALTIME_R=1
+)
+
+qt_internal_extend_target(QSQLiteDriverPlugin CONDITION QT_FEATURE_localtime_s
+    DEFINES
+        HAVE_LOCALTIME_S=1
 )
 
 qt_internal_extend_target(QSQLiteDriverPlugin CONDITION QT_FEATURE_posix_fallocate AND NOT QT_FEATURE_system_sqlite

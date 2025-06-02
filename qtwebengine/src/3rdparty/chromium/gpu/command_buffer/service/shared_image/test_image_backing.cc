@@ -8,6 +8,7 @@
 #include "gpu/command_buffer/service/shared_context_state.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
 #include "skia/ext/legacy_display_globals.h"
+#include "third_party/skia/include/core/SkSurface.h"
 #include "third_party/skia/include/gpu/GrBackendSurface.h"
 #include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
 #include "third_party/skia/include/gpu/gl/GrGLTypes.h"
@@ -120,8 +121,8 @@ class TestSkiaImageRepresentation : public SkiaGaneshImageRepresentation {
 
  private:
   GrBackendTexture backend_tex() {
-    auto format_desc = ToGLFormatDesc(format(), /*plane_index=*/0,
-                                      /*use_angle_rgbx_format=*/false);
+    auto format_desc =
+        GLFormatCaps().ToGLFormatDesc(format(), /*plane_index=*/0);
     return GrBackendTextures::MakeGL(
         size().width(), size().height(), skgpu::Mipmapped::kNo,
         GrGLTextureInfo{
@@ -147,6 +148,36 @@ class TestDawnImageRepresentation : public DawnImageRepresentation {
   }
 
   void EndAccess() override {}
+};
+
+class TestMetalSkiaGraphiteImageRepresentation
+    : public SkiaGraphiteImageRepresentation {
+ public:
+  TestMetalSkiaGraphiteImageRepresentation(SharedImageManager* manager,
+                                           SharedImageBacking* backing,
+                                           MemoryTypeTracker* tracker)
+      : SkiaGraphiteImageRepresentation(manager, backing, tracker) {}
+
+  std::vector<skgpu::graphite::BackendTexture> BeginReadAccess() override {
+    return {};
+  }
+  void EndReadAccess() override {}
+
+  std::vector<sk_sp<SkSurface>> BeginWriteAccess(
+      const SkSurfaceProps& surface_props,
+      const gfx::Rect& update_rect) override {
+    std::vector<sk_sp<SkSurface>> surfaces;
+    for (int plane = 0; plane < format().NumberOfPlanes(); plane++) {
+      auto plane_size = format().GetPlaneSize(plane, size());
+      surfaces.push_back(
+          SkSurfaces::Null(plane_size.width(), plane_size.height()));
+    }
+    return surfaces;
+  }
+  std::vector<skgpu::graphite::BackendTexture> BeginWriteAccess() override {
+    return {};
+  }
+  void EndWriteAccess() override {}
 };
 
 }  // namespace
@@ -197,8 +228,8 @@ TestImageBacking::TestImageBacking(const Mailbox& mailbox,
   texture_->set_mag_filter(GL_LINEAR);
   texture_->set_wrap_t(GL_CLAMP_TO_EDGE);
   texture_->set_wrap_s(GL_CLAMP_TO_EDGE);
-  GLFormatDesc format_desc = ToGLFormatDesc(format, /*plane_index=*/0,
-                                            /*use_angle_rgbx_format=*/false);
+  GLFormatDesc format_desc =
+      GLFormatCaps().ToGLFormatDesc(format, /*plane_index=*/0);
   texture_->SetLevelInfo(GL_TEXTURE_2D, 0, format_desc.image_internal_format,
                          size.width(), size.height(), 1, 0,
                          format_desc.data_format, format_desc.data_type,
@@ -312,8 +343,22 @@ std::unique_ptr<DawnImageRepresentation> TestImageBacking::ProduceDawn(
     MemoryTypeTracker* tracker,
     const wgpu::Device& device,
     wgpu::BackendType backend_type,
-    std::vector<wgpu::TextureFormat> view_formats) {
+    std::vector<wgpu::TextureFormat> view_formats,
+    scoped_refptr<SharedContextState> context_state) {
   return std::make_unique<TestDawnImageRepresentation>(manager, this, tracker);
+}
+
+std::unique_ptr<SkiaGraphiteImageRepresentation>
+TestImageBacking::ProduceSkiaGraphite(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    scoped_refptr<SharedContextState> context_state) {
+#if BUILDFLAG(SKIA_USE_METAL)
+  return std::make_unique<TestMetalSkiaGraphiteImageRepresentation>(
+      manager, this, tracker);
+#else
+  return nullptr;
+#endif  // BUILDFLAG(SKIA_USE_METAL)
 }
 
 std::unique_ptr<OverlayImageRepresentation> TestImageBacking::ProduceOverlay(

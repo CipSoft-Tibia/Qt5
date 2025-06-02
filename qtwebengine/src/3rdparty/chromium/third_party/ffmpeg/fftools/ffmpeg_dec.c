@@ -30,6 +30,7 @@
 #include "libavfilter/buffersrc.h"
 
 #include "ffmpeg.h"
+#include "ffmpeg_utils.h"
 #include "thread_queue.h"
 
 struct Decoder {
@@ -325,8 +326,12 @@ static int video_frame_process(InputStream *ist, AVFrame *frame)
             ist->dec_ctx->pix_fmt);
     }
 
-    if(ist->top_field_first>=0)
+#if FFMPEG_OPT_TOP
+    if(ist->top_field_first>=0) {
+        av_log(ist, AV_LOG_WARNING, "-top is deprecated, use the setfield filter instead\n");
         frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
+    }
+#endif
 
     if (frame->format == d->hwaccel_pix_fmt) {
         int err = hwaccel_retrieve_data(ist->dec_ctx, frame);
@@ -536,8 +541,9 @@ static int send_filter_eof(InputStream *ist)
     return 0;
 }
 
-static int packet_decode(InputStream *ist, const AVPacket *pkt, AVFrame *frame)
+static int packet_decode(InputStream *ist, AVPacket *pkt, AVFrame *frame)
 {
+    const InputFile *ifile = input_files[ist->file_index];
     Decoder *d = ist->decoder;
     AVCodecContext *dec = ist->dec_ctx;
     const char *type_desc = av_get_media_type_string(dec->codec_type);
@@ -551,6 +557,11 @@ static int packet_decode(InputStream *ist, const AVPacket *pkt, AVFrame *frame)
     // skip the packet.
     if (pkt && pkt->size == 0)
         return 0;
+
+    if (pkt && ifile->format_nots) {
+        pkt->pts = AV_NOPTS_VALUE;
+        pkt->dts = AV_NOPTS_VALUE;
+    }
 
     ret = avcodec_send_packet(dec, pkt);
     if (ret < 0 && !(ret == AVERROR_EOF && !pkt)) {
@@ -621,7 +632,6 @@ static int packet_decode(InputStream *ist, const AVPacket *pkt, AVFrame *frame)
 
         if (dec->codec_type == AVMEDIA_TYPE_AUDIO) {
             ist->samples_decoded += frame->nb_samples;
-            ist->nb_samples       = frame->nb_samples;
 
             audio_ts_process(ist, ist->decoder, frame);
         } else {
@@ -713,14 +723,9 @@ static void *decoder_thread(void *arg)
 
             /* report last frame duration to the demuxer thread */
             if (ist->dec->type == AVMEDIA_TYPE_AUDIO) {
-                LastFrameDuration dur;
-
-                dur.stream_idx = ist->index;
-                dur.duration   = av_rescale_q(ist->nb_samples,
-                                              (AVRational){ 1, ist->dec_ctx->sample_rate},
-                                              ist->st->time_base);
-
-                av_thread_message_queue_send(ifile->audio_duration_queue, &dur, 0);
+                Timestamp ts = { .ts = d->last_frame_pts + d->last_frame_duration_est,
+                                 .tb = d->last_frame_tb };
+                av_thread_message_queue_send(ifile->audio_ts_queue, &ts, 0);
             }
 
             avcodec_flush_buffers(ist->dec_ctx);
@@ -749,8 +754,8 @@ finish:
 
     // make sure the demuxer does not get stuck waiting for audio durations
     // that will never arrive
-    if (ifile->audio_duration_queue && ist->dec->type == AVMEDIA_TYPE_AUDIO)
-        av_thread_message_queue_set_err_recv(ifile->audio_duration_queue, AVERROR_EOF);
+    if (ifile->audio_ts_queue && ist->dec->type == AVMEDIA_TYPE_AUDIO)
+        av_thread_message_queue_set_err_recv(ifile->audio_ts_queue, AVERROR_EOF);
 
     dec_thread_uninit(&dt);
 

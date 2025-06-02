@@ -219,8 +219,13 @@
     --cr-button-height: 32px;
   }
 
+  @media (forced-colors: none) {
+    :host([show-background-image_]) #customizeIcon {
+      background-color: white;
+    }
+  }
+
   :host([show-background-image_]) #customizeIcon {
-    background-color: white;
     margin: 0;
   }
 
@@ -399,7 +404,7 @@
   </ntp-logo>
   <div id="realboxContainer">
     <ntp-realbox id="realbox" is-dark="[[theme_.isDark]]"
-        single-colored-icons="[[theme_.themeRealboxIcons]]"
+        color-source-is-baseline="[[colorSourceIsBaseline]]"
         on-open-lens-search="onOpenLensSearch_"
         on-open-voice-search="onOpenVoiceSearch_" shown$="[[realboxShown_]]">
     </ntp-realbox>

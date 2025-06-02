@@ -200,7 +200,7 @@ ByteString GetBitmapInfo(const RetainPtr<const CFX_DIBBase>& source) {
   return result;
 }
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
 // TODO(caryclark)  This antigrain function is duplicated here to permit
 // removing the last remaining dependency. Eventually, this will be elminiated
 // altogether and replace by Skia code.
@@ -306,7 +306,7 @@ unsigned clip_liang_barsky(float x1,
   }
   return np;
 }
-#endif  //  defined(_SKIA_SUPPORT_)
+#endif  //  defined(PDF_USE_SKIA)
 
 unsigned LineClip(float w,
                   float h,
@@ -316,8 +316,8 @@ unsigned LineClip(float w,
                   float y2,
                   float* x,
                   float* y) {
-#if defined(_SKIA_SUPPORT_)
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+#if defined(PDF_USE_SKIA)
+  if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
     // TODO(caryclark) temporary replacement of antigrain in line function to
     // permit removing antigrain altogether
     rect_base rect = {0.0f, 0.0f, w, h};
@@ -374,8 +374,7 @@ int CGdiDeviceDriver::GetDeviceCaps(int caps_id) const {
     case FXDC_RENDER_CAPS:
       return m_RenderCaps;
     default:
-      NOTREACHED();
-      return 0;
+      NOTREACHED_NORETURN();
   }
 }
 
@@ -389,35 +388,32 @@ void CGdiDeviceDriver::RestoreState(bool bKeepSaved) {
     SaveDC(m_hDC);
 }
 
-bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<CFX_DIBBase>& source,
+bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<const CFX_DIBBase>& source,
                                      const FX_RECT& src_rect,
                                      int left,
                                      int top) {
   if (m_DeviceType == DeviceType::kPrinter) {
-    RetainPtr<CFX_DIBBase> flipped_source = source->FlipImage(false, true);
+    RetainPtr<const CFX_DIBitmap> flipped_source =
+        source->FlipImage(/*bXFlip=*/false, /*bYFlip=*/true);
     if (!flipped_source) {
       return false;
     }
 
-    RetainPtr<const CFX_DIBBase> realized_source =
-        flipped_source->RealizeIfNeeded();
-    if (!realized_source) {
-      return false;
-    }
-    ByteString info = GetBitmapInfo(realized_source);
+    CHECK(!flipped_source->GetBuffer().empty());
+    ByteString info = GetBitmapInfo(flipped_source);
     ((BITMAPINFOHEADER*)info.c_str())->biHeight *= -1;
     FX_RECT dst_rect(0, 0, src_rect.Width(), src_rect.Height());
-    dst_rect.Intersect(0, 0, realized_source->GetWidth(),
-                       realized_source->GetHeight());
+    dst_rect.Intersect(0, 0, flipped_source->GetWidth(),
+                       flipped_source->GetHeight());
     int dst_width = dst_rect.Width();
     int dst_height = dst_rect.Height();
     ::StretchDIBits(m_hDC, left, top, dst_width, dst_height, 0, 0, dst_width,
-                    dst_height, realized_source->GetBuffer().data(),
+                    dst_height, flipped_source->GetBuffer().data(),
                     (BITMAPINFO*)info.c_str(), DIB_RGB_COLORS, SRCCOPY);
     return true;
   }
 
-  RetainPtr<const CFX_DIBBase> realized_source = source->RealizeIfNeeded();
+  RetainPtr<const CFX_DIBitmap> realized_source = source->RealizeIfNeeded();
   if (!realized_source) {
     return false;
   }
@@ -430,7 +426,7 @@ bool CGdiDeviceDriver::GDI_SetDIBits(const RetainPtr<CFX_DIBBase>& source,
   return true;
 }
 
-bool CGdiDeviceDriver::GDI_StretchDIBits(const RetainPtr<CFX_DIBBase>& source,
+bool CGdiDeviceDriver::GDI_StretchDIBits(RetainPtr<const CFX_DIBBase> source,
                                          int dest_left,
                                          int dest_top,
                                          int dest_width,
@@ -448,16 +444,12 @@ bool CGdiDeviceDriver::GDI_StretchDIBits(const RetainPtr<CFX_DIBBase>& source,
     SetStretchBltMode(m_hDC, COLORONCOLOR);
   }
 
-  RetainPtr<const CFX_DIBBase> realized_source;
+  RetainPtr<const CFX_DIBitmap> realized_source;
   if (m_DeviceType == DeviceType::kPrinter &&
       ((int64_t)source->GetWidth() * source->GetHeight() >
        (int64_t)abs(dest_width) * abs(dest_height))) {
-    RetainPtr<CFX_DIBBase> stretch_source = source->StretchTo(
-        dest_width, dest_height, FXDIB_ResampleOptions(), nullptr);
-    if (!stretch_source) {
-      return false;
-    }
-    realized_source = stretch_source->RealizeIfNeeded();
+    realized_source = source->StretchTo(dest_width, dest_height,
+                                        FXDIB_ResampleOptions(), nullptr);
   } else {
     realized_source = source->RealizeIfNeeded();
   }
@@ -465,6 +457,7 @@ bool CGdiDeviceDriver::GDI_StretchDIBits(const RetainPtr<CFX_DIBBase>& source,
     return false;
   }
 
+  CHECK(!realized_source->GetBuffer().empty());
   ByteString info = GetBitmapInfo(realized_source);
   ::StretchDIBits(m_hDC, dest_left, dest_top, dest_width, dest_height, 0, 0,
                   realized_source->GetWidth(), realized_source->GetHeight(),
@@ -473,7 +466,7 @@ bool CGdiDeviceDriver::GDI_StretchDIBits(const RetainPtr<CFX_DIBBase>& source,
   return true;
 }
 
-bool CGdiDeviceDriver::GDI_StretchBitMask(const RetainPtr<CFX_DIBBase>& source,
+bool CGdiDeviceDriver::GDI_StretchBitMask(RetainPtr<const CFX_DIBBase> source,
                                           int dest_left,
                                           int dest_top,
                                           int dest_width,
@@ -483,7 +476,7 @@ bool CGdiDeviceDriver::GDI_StretchBitMask(const RetainPtr<CFX_DIBBase>& source,
     return false;
   }
 
-  RetainPtr<const CFX_DIBBase> realized_source = source->RealizeIfNeeded();
+  RetainPtr<const CFX_DIBitmap> realized_source = source->RealizeIfNeeded();
   if (!realized_source) {
     return false;
   }
@@ -545,15 +538,14 @@ bool CGdiDeviceDriver::GetClipBox(FX_RECT* pRect) {
 bool CGdiDeviceDriver::MultiplyAlpha(float alpha) {
   // Not implemented. All callers are using `CFX_DIBitmap`-backed raster devices
   // anyway.
-  NOTREACHED();
-  return false;
+  NOTREACHED_NORETURN();
 }
 
-bool CGdiDeviceDriver::MultiplyAlpha(const RetainPtr<CFX_DIBBase>& mask) {
+bool CGdiDeviceDriver::MultiplyAlphaMask(
+    const RetainPtr<const CFX_DIBBase>& mask) {
   // Not implemented. All callers are using `CFX_DIBitmap`-backed raster devices
   // anyway.
-  NOTREACHED();
-  return false;
+  NOTREACHED_NORETURN();
 }
 
 void CGdiDeviceDriver::DrawLine(float x1, float y1, float x2, float y2) {

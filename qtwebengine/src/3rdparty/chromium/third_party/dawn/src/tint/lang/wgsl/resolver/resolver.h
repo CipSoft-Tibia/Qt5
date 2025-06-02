@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_RESOLVER_RESOLVER_H_
 #define SRC_TINT_LANG_WGSL_RESOLVER_RESOLVER_H_
@@ -27,6 +40,8 @@
 #include "src/tint/lang/core/constant/eval.h"
 #include "src/tint/lang/core/constant/value.h"
 #include "src/tint/lang/core/intrinsic/table.h"
+#include "src/tint/lang/wgsl/common/allowed_features.h"
+#include "src/tint/lang/wgsl/intrinsic/dialect.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/dependency_graph.h"
 #include "src/tint/lang/wgsl/resolver/sem_helper.h"
@@ -59,7 +74,7 @@ class WhileStatement;
 namespace tint::sem {
 class Array;
 class BlockStatement;
-class Builtin;
+class BuiltinFn;
 class CaseStatement;
 class ForLoopStatement;
 class IfStatement;
@@ -82,7 +97,8 @@ class Resolver {
   public:
     /// Constructor
     /// @param builder the program builder
-    explicit Resolver(ProgramBuilder* builder);
+    /// @param allowed_features the extensions and features that are allowed to be used
+    explicit Resolver(ProgramBuilder* builder, const wgsl::AllowedFeatures& allowed_features);
 
     /// Destructor
     ~Resolver();
@@ -144,6 +160,83 @@ class Resolver {
     /// @returns the resolved type from an expression, or nullptr on error
     core::type::Type* Type(const ast::Expression* ast);
 
+    /// @returns a new abstract-float
+    core::type::AbstractFloat* AF();
+
+    /// @returns a new f32
+    core::type::F32* F32();
+
+    /// @returns a new i32
+    core::type::I32* I32();
+
+    /// @returns a new u32
+    core::type::U32* U32();
+
+    /// @returns a new f16, if the f16 extension is enabled, otherwise nullptr
+    core::type::F16* F16(const ast::Identifier* ident);
+
+    /// @returns a vector with the element type @p el of width @p n resolved from the identifier @p
+    /// ident.
+    core::type::Vector* Vec(const ast::Identifier* ident, core::type::Type* el, uint32_t n);
+
+    /// @returns a vector of width @p n resolved from the templated identifier @p ident, or an
+    /// IncompleteType if the identifier is not templated.
+    core::type::Type* VecT(const ast::Identifier* ident, core::BuiltinType builtin, uint32_t n);
+
+    /// @returns a matrix with the element type @p el of dimensions @p num_columns x @p num_rows
+    /// resolved from the identifier @p ident.
+    core::type::Matrix* Mat(const ast::Identifier* ident,
+                            core::type::Type* el,
+                            uint32_t num_columns,
+                            uint32_t num_rows);
+
+    /// @returns a matrix of dimensions @p num_columns x @p num_rows resolved from the templated
+    /// identifier @p ident, or an IncompleteType if the identifier is not templated.
+    core::type::Type* MatT(const ast::Identifier* ident,
+                           core::BuiltinType builtin,
+                           uint32_t num_columns,
+                           uint32_t num_rows);
+
+    /// @returns an array resolved from the templated identifier @p ident, or an IncompleteType if
+    /// the identifier is not templated.
+    core::type::Type* Array(const ast::Identifier* ident);
+
+    /// @returns an atomic resolved from the templated identifier @p ident.
+    core::type::Atomic* Atomic(const ast::Identifier* ident);
+
+    /// @returns a pointer resolved from the templated identifier @p ident.
+    core::type::Pointer* Ptr(const ast::Identifier* ident);
+
+    /// @returns a sampled texture resolved from the templated identifier @p ident with the
+    /// dimensions @p dim.
+    core::type::SampledTexture* SampledTexture(const ast::Identifier* ident,
+                                               core::type::TextureDimension dim);
+
+    /// @returns a multisampled texture resolved from the templated identifier @p ident with the
+    /// dimensions @p dim.
+    core::type::MultisampledTexture* MultisampledTexture(const ast::Identifier* ident,
+                                                         core::type::TextureDimension dim);
+
+    /// @returns a storage texture resolved from the templated identifier @p ident with the
+    /// dimensions @p dim.
+    core::type::StorageTexture* StorageTexture(const ast::Identifier* ident,
+                                               core::type::TextureDimension dim);
+
+    /// @returns a packed vec3 resolved from the templated identifier @p ident.
+    core::type::Vector* PackedVec3T(const ast::Identifier* ident);
+
+    /// @returns @p ident cast to an ast::TemplatedIdentifier, if the identifier is templated and
+    /// the number of templated arguments are between @p min_args and @p max_args.
+    const ast::TemplatedIdentifier* TemplatedIdentifier(const ast::Identifier* ident,
+                                                        size_t min_args,
+                                                        size_t max_args = /* use min */ 0);
+
+    /// @returns true if the number of templated arguments are between @p min_args and  @p max_args
+    /// otherwise raises an error and returns false.
+    bool CheckTemplatedIdentifierArgs(const ast::TemplatedIdentifier* ident,
+                                      size_t min_args,
+                                      size_t max_args = /* use min */ 0);
+
     /// @returns the call of Expression() cast to a
     /// sem::BuiltinEnumExpression<core::AddressSpace>. If the sem::Expression is not a
     /// sem::BuiltinEnumExpression<core::AddressSpace>, then an error diagnostic is raised and
@@ -204,15 +297,14 @@ class Resolver {
     sem::ValueExpression* Bitcast(const ast::BitcastExpression*);
     sem::Call* Call(const ast::CallExpression*);
     sem::Function* Function(const ast::Function*);
-    template <size_t N>
     sem::Call* FunctionCall(const ast::CallExpression*,
                             sem::Function* target,
-                            Vector<const sem::ValueExpression*, N>& args,
+                            VectorRef<const sem::ValueExpression*> args,
                             sem::Behaviors arg_behaviors);
     sem::Expression* Identifier(const ast::IdentifierExpression*);
     template <size_t N>
     sem::Call* BuiltinCall(const ast::CallExpression*,
-                           core::Function,
+                           wgsl::BuiltinFn,
                            Vector<const sem::ValueExpression*, N>& args);
     sem::ValueExpression* Literal(const ast::LiteralExpression*);
     sem::ValueExpression* MemberAccessor(const ast::MemberAccessorExpression*);
@@ -312,7 +404,7 @@ class Resolver {
     // / builtin, and records these on the current function by calling AddTextureSamplerPair().
     void CollectTextureSamplerPairs(sem::Function* func,
                                     VectorRef<const sem::ValueExpression*> args) const;
-    void CollectTextureSamplerPairs(const sem::Builtin* builtin,
+    void CollectTextureSamplerPairs(const sem::BuiltinFn* builtin,
                                     VectorRef<const sem::ValueExpression*> args) const;
 
     /// Resolves the WorkgroupSize for the given function, assigning it to
@@ -326,6 +418,10 @@ class Resolver {
     /// Resolves the `@location` attribute @p attr
     /// @returns the location value on success.
     tint::Result<uint32_t> LocationAttribute(const ast::LocationAttribute* attr);
+
+    /// Resolves the `@color` attribute @p attr
+    /// @returns the color value on success.
+    tint::Result<uint32_t> ColorAttribute(const ast::ColorAttribute* attr);
 
     /// Resolves the `@index` attribute @p attr
     /// @returns the index value on success.
@@ -376,8 +472,12 @@ class Resolver {
     bool DiagnosticControl(const ast::DiagnosticControl& control);
 
     /// @param enable the enable declaration
-    /// @returns the resolved extension
+    /// @returns true on success, false on failure
     bool Enable(const ast::Enable* enable);
+
+    /// @param req the requires declaration
+    /// @returns true on success, false on failure
+    bool Requires(const ast::Requires* req);
 
     /// @param named_type the named type to resolve
     /// @returns the resolved semantic type
@@ -407,12 +507,12 @@ class Resolver {
     /// @param el_ty the Array element type
     /// @param el_count the number of elements in the array.
     /// @param explicit_stride the explicit byte stride of the array. Zero means implicit stride.
-    core::type::Array* Array(const Source& array_source,
-                             const Source& el_source,
-                             const Source& count_source,
-                             const core::type::Type* el_ty,
-                             const core::type::ArrayCount* el_count,
-                             uint32_t explicit_stride);
+    sem::Array* Array(const Source& array_source,
+                      const Source& el_source,
+                      const Source& count_source,
+                      const core::type::Type* el_ty,
+                      const core::type::ArrayCount* el_count,
+                      uint32_t explicit_stride);
 
     /// Builds and returns the semantic information for the alias `alias`.
     /// This method does not mark the ast::Alias node, nor attach the generated
@@ -440,8 +540,7 @@ class Resolver {
     /// @note this method does not resolve the attributes as these are context-dependent (global,
     /// local)
     /// @param var the variable
-    /// @param is_global true if this is module scope, otherwise function scope
-    sem::Variable* Let(const ast::Let* var, bool is_global);
+    sem::Variable* Let(const ast::Let* var);
 
     /// @returns the semantic info for the module-scope `ast::Override` `v`. If an error is raised,
     /// nullptr is returned.
@@ -530,15 +629,6 @@ class Resolver {
     /// @returns true if @p ident is not a ast::TemplatedIdentifier.
     bool CheckNotTemplated(const char* use, const ast::Identifier* ident);
 
-    /// Raises an error diagnostic that the resolved identifier @p resolved was not of the expected
-    /// kind.
-    /// @param source the source of the error diagnostic
-    /// @param resolved the resolved identifier
-    /// @param wanted the expected kind
-    void ErrorMismatchedResolvedIdentifier(const Source& source,
-                                           const ResolvedIdentifier& resolved,
-                                           std::string_view wanted);
-
     /// Raises an error that the attribute is not valid for the given use.
     /// @param attr the invalue attribute
     /// @param use the thing that the attribute was applied to
@@ -559,7 +649,7 @@ class Resolver {
     /// @returns the core::type::Type for the builtin type @p builtin_ty with the identifier @p
     /// ident
     /// @note: Will raise an ICE if @p symbol is not a builtin type.
-    core::type::Type* BuiltinType(core::Builtin builtin_ty, const ast::Identifier* ident);
+    core::type::Type* BuiltinType(core::BuiltinType builtin_ty, const ast::Identifier* ident);
 
     /// @returns the nesting depth of @ty as defined in
     /// https://gpuweb.github.io/gpuweb/wgsl/#composite-types
@@ -567,8 +657,8 @@ class Resolver {
 
     // ArrayConstructorSig represents a unique array constructor signature.
     // It is a tuple of the array type, number of arguments provided and earliest evaluation stage.
-    using ArrayConstructorSig = tint::UnorderedKeyWrapper<
-        std::tuple<const core::type::Array*, size_t, core::EvaluationStage>>;
+    using ArrayConstructorSig =
+        tint::UnorderedKeyWrapper<std::tuple<const sem::Array*, size_t, core::EvaluationStage>>;
 
     // StructConstructorSig represents a unique structure constructor signature.
     // It is a tuple of the structure type, number of arguments provided and earliest evaluation
@@ -598,25 +688,15 @@ class Resolver {
         std::unordered_set<const sem::Variable*> parameter_reads;
     };
 
-    /// A hint for the usage of an identifier expression.
-    /// Used to provide more informative error diagnostics on resolution failure.
-    struct IdentifierResolveHint {
-        /// The expression this hint applies to
-        const ast::Expression* expression = nullptr;
-        /// The usage of the identifier.
-        const char* usage = "identifier";
-        /// Suggested strings if the identifier failed to resolve
-        tint::Slice<char const* const> suggestions = tint::Empty;
-    };
-
-    ProgramBuilder* const builder_;
+    ProgramBuilder& b;
     diag::List& diagnostics_;
     core::constant::Eval const_eval_;
-    std::unique_ptr<core::intrinsic::Table> const intrinsic_table_;
+    core::intrinsic::Table<wgsl::intrinsic::Dialect> intrinsic_table_;
     DependencyGraph dependencies_;
     SemHelper sem_;
     Validator validator_;
-    core::Extensions enabled_extensions_;
+    wgsl::AllowedFeatures allowed_features_;
+    wgsl::Extensions enabled_extensions_;
     Vector<sem::Function*, 8> entry_points_;
     Hashmap<const core::type::Type*, const Source*, 8> atomic_composite_info_;
     tint::Bitset<0> marked_;
@@ -628,17 +708,15 @@ class Resolver {
     sem::Function* current_function_ = nullptr;
     sem::Statement* current_statement_ = nullptr;
     sem::CompoundStatement* current_compound_statement_ = nullptr;
+    Vector<std::function<void(const sem::GlobalVariable*)>, 4> on_transitively_reference_global_;
     uint32_t current_scoping_depth_ = 0;
-    UniqueVector<const sem::GlobalVariable*, 4>* resolved_overrides_ = nullptr;
     Hashset<TypeAndAddressSpace, 8> valid_type_storage_layouts_;
     Hashmap<const ast::Expression*, const ast::BinaryExpression*, 8> logical_binary_lhs_to_parent_;
     Hashset<const ast::Expression*, 8> skip_const_eval_;
-    IdentifierResolveHint identifier_resolve_hint_;
     Hashmap<const core::type::Type*, size_t, 8> nest_depth_;
-    Hashmap<std::pair<core::intrinsic::Table::Overload, core::Function>, sem::Builtin*, 64>
-        builtins_;
-    Hashmap<core::intrinsic::Table::Overload, sem::ValueConstructor*, 16> constructors_;
-    Hashmap<core::intrinsic::Table::Overload, sem::ValueConversion*, 16> converters_;
+    Hashmap<std::pair<core::intrinsic::Overload, wgsl::BuiltinFn>, sem::BuiltinFn*, 64> builtins_;
+    Hashmap<core::intrinsic::Overload, sem::ValueConstructor*, 16> constructors_;
+    Hashmap<core::intrinsic::Overload, sem::ValueConversion*, 16> converters_;
 };
 
 }  // namespace tint::resolver

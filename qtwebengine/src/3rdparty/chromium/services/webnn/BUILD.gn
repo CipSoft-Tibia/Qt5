@@ -4,16 +4,17 @@
 
 import("//mojo/public/tools/fuzzers/mojolpm.gni")
 
-source_set("webnn") {
+component("webnn_service") {
   sources = [
+    "error.h",
     "webnn_context_impl.cc",
     "webnn_context_impl.h",
     "webnn_context_provider_impl.cc",
     "webnn_context_provider_impl.h",
     "webnn_graph_impl.cc",
     "webnn_graph_impl.h",
-    "webnn_service.cc",
-    "webnn_service.h",
+    "webnn_utils.cc",
+    "webnn_utils.h",
   ]
 
   if (is_win) {
@@ -53,6 +54,8 @@ source_set("webnn") {
       "//ui/gl/init",
     ]
   }
+
+  defines = [ "IS_WEBNN_SERVICE_IMPL" ]
 }
 
 source_set("tests") {
@@ -81,7 +84,7 @@ source_set("tests") {
   }
 
   deps = [
-    ":webnn",
+    ":webnn_service",
     "//base",
     "//base/test:test_support",
     "//components/ml/webnn",
@@ -93,6 +96,7 @@ source_set("tests") {
 
   if (is_win) {
     deps += [
+      "//third_party/fp16",
       "//ui/gl",
       "//ui/gl/init",
     ]
@@ -107,7 +111,7 @@ mojolpm_fuzzer_test("webnn_graph_mojolpm_fuzzer") {
   proto_deps = [ "//services/webnn/public/mojom:mojom_mojolpm" ]
 
   deps = [
-    ":webnn",
+    ":webnn_service",
     "//base",
     "//base/test:test_support",
     "//content/test/fuzzer:mojolpm_fuzzer_support",

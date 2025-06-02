@@ -98,6 +98,15 @@ Item {
                 yPosRole: "pop_density"
             }
         }
+
+        //! [4]
+        onTapped: {
+            // Disable the default input handler
+            unsetDefaultTapHandler()
+            // Implement own custom event handler
+            console.log("Custom tap event handler")
+        }
+        //! [4]
     }
     ListModel {
         id: dataModel
@@ -159,23 +168,25 @@ import QtGraphs
 
 GraphsView {
     anchors.fill: parent
-    theme: GraphTheme {
-        colorTheme: GraphTheme.ColorThemeDark
-        gridMajorBarsColor: "#ccccff"
-        gridMinorBarsColor: "#eeeeff"
-        axisYMajorColor: "#ccccff"
-        axisYMinorColor: "#eeeeff"
+    theme: GraphsTheme {
+        colorScheme: GraphsTheme.ColorScheme.Dark
+        seriesColors: ["#E0D080", "#B0A060"]
+        borderColors: ["#807040", "#706030"]
+        grid.mainColor: "#ccccff"
+        grid.subColor: "#eeeeff"
+        axisY.mainColor: "#ccccff"
+        axisY.subColor: "#eeeeff"
+    }
+    axisX: BarCategoryAxis {
+        categories: ["2023", "2024", "2025"]
+        lineVisible: false
+    }
+    axisY: ValueAxis {
+        min: 0
+        max: 10
+        subTickCount: 4
     }
     BarSeries {
-        axisX: BarCategoryAxis {
-            categories: ["2023", "2024", "2025"]
-            lineVisible: false
-        }
-        axisY: ValueAxis {
-            min: 0
-            max: 10
-            minorTickCount: 4
-        }
         BarSet {
             values: [7, 6, 9]
         }
@@ -185,3 +196,46 @@ GraphsView {
     }
 }
 //! [10]
+
+//! [11]
+import QtGraphs
+
+GraphsView {
+    LineSeries {
+        GraphTransition {
+            GraphPointAnimation {}
+        }
+    }
+
+    SplineSeries {
+        GraphTransition {
+            SplineControlAnimation {}
+        }
+    }
+}
+//! [11]
+
+//! [12]
+import QtGraphs
+
+GraphsView {
+    LineSeries {
+        GraphTransition {
+            GraphPointAnimation { duration: 1000; easingCurve.type: Easing.OutCubic  }
+        }
+    }
+}
+//! [12]
+
+//! [13]
+import QtGraphs
+
+GraphsView {
+    SplineSeries {
+        GraphTransition {
+            GraphPointAnimation { duration: 1000; easingCurve.type: Easing.OutCubic  }
+            SplineControlAnimation { duration: 1000; easingCurve.type: Easing.OutCubic }
+        }
+    }
+}
+//! [13]

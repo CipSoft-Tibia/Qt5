@@ -14,7 +14,7 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-// #include "components/sessions/core/session_id.h"
+#include "components/sessions/core/session_id.h"
 #include "components/web_modal/web_contents_modal_dialog_manager_delegate.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -22,6 +22,7 @@
 #include "extensions/browser/extension_function_dispatcher.h"
 #include "extensions/browser/extension_registry_observer.h"
 #include "extensions/common/extension_id.h"
+#include "extensions/common/mojom/frame.mojom-forward.h"
 #include "ui/base/ui_base_types.h"  // WindowShowState
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/image/image.h"
@@ -45,8 +46,6 @@ class AppDelegate;
 class AppWebContentsHelper;
 class Extension;
 class PlatformAppBrowserTest;
-
-struct DraggableRegion;
 
 // Manages the web contents for app windows. The implementation for this
 // class should create and maintain the WebContents for the window, and handle
@@ -217,7 +216,7 @@ class AppWindow : public content::WebContentsDelegate,
   // Convert draggable regions in raw format to SkRegion format. Caller is
   // responsible for deleting the returned SkRegion instance.
   static SkRegion* RawDraggableRegionsToSkRegion(
-      const std::vector<DraggableRegion>& regions);
+      const std::vector<mojom::DraggableRegionPtr>& regions);
 
   // The constructor and Init methods are public for constructing a AppWindow
   // with a non-standard render interface (e.g.
@@ -237,7 +236,7 @@ class AppWindow : public content::WebContentsDelegate,
             const CreateParams& params);
 
   const std::string& window_key() const { return window_key_; }
-  // SessionID session_id() const { return session_id_; }
+  SessionID session_id() const { return session_id_; }
   const ExtensionId& extension_id() const { return extension_id_; }
   content::WebContents* web_contents() const;
   WindowType window_type() const { return window_type_; }
@@ -290,7 +289,11 @@ class AppWindow : public content::WebContentsDelegate,
   void UpdateShape(std::unique_ptr<ShapeRects> rects);
 
   // Called from the render interface to modify the draggable regions.
-  void UpdateDraggableRegions(const std::vector<DraggableRegion>& regions);
+  void UpdateDraggableRegions(
+      const std::vector<mojom::DraggableRegionPtr>& regions);
+
+  // Notify hat an app window is ready and can resume resource requests.
+  void AppWindowReady();
 
   // Updates the app image to |image|. Called internally from the image loader
   // callback.
@@ -391,6 +394,10 @@ class AppWindow : public content::WebContentsDelegate,
     native_app_window_ = std::move(native_app_window);
   }
 
+  void SetOnUpdateDraggableRegionsForTesting(base::OnceClosure callback) {
+    on_update_draggable_regions_callback_for_testing_ = std::move(callback);
+  }
+
   bool DidFinishFirstNavigation() { return did_finish_first_navigation_; }
 
  protected:
@@ -423,7 +430,7 @@ class AppWindow : public content::WebContentsDelegate,
       const content::MediaStreamRequest& request,
       content::MediaResponseCallback callback) override;
   bool CheckMediaAccessPermission(content::RenderFrameHost* render_frame_host,
-                                  const GURL& security_origin,
+                                  const url::Origin& security_origin,
                                   blink::mojom::MediaStreamType type) override;
   content::WebContents* OpenURLFromTab(
       content::WebContents* source,
@@ -453,8 +460,6 @@ class AppWindow : public content::WebContentsDelegate,
   bool ShouldShowStaleContentOnEviction(content::WebContents* source) override;
 
   // content::WebContentsObserver implementation.
-  bool OnMessageReceived(const IPC::Message& message,
-                         content::RenderFrameHost* render_frame_host) override;
   void RenderFrameCreated(content::RenderFrameHost* frame_host) override;
 
   // ExtensionFunctionDispatcher::Delegate implementation.
@@ -470,9 +475,6 @@ class AppWindow : public content::WebContentsDelegate,
   void SetWebContentsBlocked(content::WebContents* web_contents,
                              bool blocked) override;
   bool IsWebContentsVisible(content::WebContents* web_contents) override;
-
-  // IPC handler for ExtensionHostMsg_AppWindowReady.
-  void OnAppWindowReady();
 
   void ToggleFullscreenModeForTab(content::WebContents* source,
                                   bool enter_fullscreen);
@@ -532,7 +534,7 @@ class AppWindow : public content::WebContentsDelegate,
   // window.
   std::string window_key_;
 
-//   const SessionID session_id_;
+  const SessionID session_id_;
   WindowType window_type_ = WINDOW_TYPE_DEFAULT;
 
   // Custom icon shown in the task bar or in Chrome OS shelf.
@@ -594,6 +596,9 @@ class AppWindow : public content::WebContentsDelegate,
   // Whether the first navigation was completed in both browser and renderer
   // processes.
   bool did_finish_first_navigation_ = false;
+
+  // Allows tests to wait for draggable regions to be sent from the renderer.
+  base::OnceClosure on_update_draggable_regions_callback_for_testing_;
 
   base::WeakPtrFactory<AppWindow> image_loader_ptr_factory_{this};
 };

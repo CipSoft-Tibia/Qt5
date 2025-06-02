@@ -22,7 +22,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_POSITIONINGQUICK_PRIVATE_EXPORT QDeclarativeGeoAddress : public QObject
+class Q_POSITIONINGQUICK_EXPORT QDeclarativeGeoAddress : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(Address)

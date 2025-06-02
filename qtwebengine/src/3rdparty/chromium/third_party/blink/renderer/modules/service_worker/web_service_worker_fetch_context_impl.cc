@@ -8,12 +8,15 @@
 #include "base/synchronization/waitable_event.h"
 #include "base/task/single_thread_task_runner.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "net/cookies/site_for_cookies.h"
 #include "services/network/public/cpp/wrapper_shared_url_loader_factory.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "third_party/blink/public/common/loader/loader_constants.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/platform/url_loader_throttle_provider.h"
 #include "third_party/blink/public/platform/web_url_request_extra_data.h"
 #include "third_party/blink/public/platform/websocket_handshake_throttle_provider.h"
+#include "third_party/blink/renderer/platform/accept_languages_watcher.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader_factory.h"
 #include "third_party/blink/renderer/platform/loader/internet_disconnected_url_loader.h"
 
@@ -38,7 +41,8 @@ WebServiceWorkerFetchContext::Create(
     CrossVariantMojoReceiver<
         mojom::blink::SubresourceLoaderUpdaterInterfaceBase>
         pending_subresource_loader_updater,
-    const WebVector<WebString>& web_cors_exempt_header_list) {
+    const WebVector<WebString>& web_cors_exempt_header_list,
+    const bool is_third_party_context) {
   Vector<String> cors_exempt_header_list(
       base::checked_cast<wtf_size_t>(web_cors_exempt_header_list.size()));
   base::ranges::transform(web_cors_exempt_header_list,
@@ -53,7 +57,7 @@ WebServiceWorkerFetchContext::Create(
       std::move(websocket_handshake_throttle_provider),
       std::move(preference_watcher_receiver),
       std::move(pending_subresource_loader_updater),
-      std::move(cors_exempt_header_list));
+      std::move(cors_exempt_header_list), is_third_party_context);
 }
 
 WebServiceWorkerFetchContextImpl::WebServiceWorkerFetchContextImpl(
@@ -71,7 +75,8 @@ WebServiceWorkerFetchContextImpl::WebServiceWorkerFetchContextImpl(
         preference_watcher_receiver,
     mojo::PendingReceiver<mojom::blink::SubresourceLoaderUpdater>
         pending_subresource_loader_updater,
-    Vector<String> cors_exempt_header_list)
+    Vector<String> cors_exempt_header_list,
+    const bool is_third_party_context)
     : renderer_preferences_(renderer_preferences),
       worker_script_url_(worker_script_url),
       pending_url_loader_factory_(std::move(pending_url_loader_factory)),
@@ -84,7 +89,8 @@ WebServiceWorkerFetchContextImpl::WebServiceWorkerFetchContextImpl(
           std::move(preference_watcher_receiver)),
       pending_subresource_loader_updater_(
           std::move(pending_subresource_loader_updater)),
-      cors_exempt_header_list_(std::move(cors_exempt_header_list)) {}
+      cors_exempt_header_list_(std::move(cors_exempt_header_list)),
+      is_third_party_context_(is_third_party_context) {}
 
 WebServiceWorkerFetchContextImpl::~WebServiceWorkerFetchContextImpl() = default;
 
@@ -156,12 +162,12 @@ void WebServiceWorkerFetchContextImpl::WillSendRequest(WebURLRequest& request) {
 
 WebVector<std::unique_ptr<URLLoaderThrottle>>
 WebServiceWorkerFetchContextImpl::CreateThrottles(
-    const WebURLRequest& request) {
+    const network::ResourceRequest& request) {
   const bool needs_to_skip_throttling =
-      static_cast<KURL>(request.Url()) == script_url_to_skip_throttling_ &&
-      (request.GetRequestContext() ==
-           mojom::blink::RequestContextType::SERVICE_WORKER ||
-       request.GetRequestContext() == mojom::blink::RequestContextType::SCRIPT);
+      KURL(request.url) == script_url_to_skip_throttling_ &&
+      (request.destination ==
+           network::mojom::RequestDestination::kServiceWorker ||
+       request.destination == network::mojom::RequestDestination::kScript);
   if (needs_to_skip_throttling) {
     // Throttling is needed when the skipped script is loaded again because it's
     // served from ServiceWorkerInstalledScriptLoader after the second time,
@@ -173,7 +179,7 @@ WebServiceWorkerFetchContextImpl::CreateThrottles(
     // worker scripts.
     script_url_to_skip_throttling_ = KURL();
   } else if (throttle_provider_) {
-    return throttle_provider_->CreateThrottles(MSG_ROUTING_NONE, request);
+    return throttle_provider_->CreateThrottles(std::nullopt, request);
   }
   return {};
 }
@@ -184,10 +190,9 @@ WebServiceWorkerFetchContextImpl::GetControllerServiceWorkerMode() const {
 }
 
 net::SiteForCookies WebServiceWorkerFetchContextImpl::SiteForCookies() const {
-  // According to the spec, we can use the |worker_script_url_| for
-  // SiteForCookies, because "site for cookies" for the service worker is
-  // the service worker's origin's host's registrable domain.
-  // https://tools.ietf.org/html/draft-ietf-httpbis-cookie-same-site-07#section-2.1.2
+  if (is_third_party_context_) {
+    return net::SiteForCookies();
+  }
   return net::SiteForCookies::FromUrl(GURL(worker_script_url_));
 }
 
@@ -202,7 +207,7 @@ WebServiceWorkerFetchContextImpl::CreateWebSocketHandshakeThrottle(
   if (!websocket_handshake_throttle_provider_)
     return nullptr;
   return websocket_handshake_throttle_provider_->CreateThrottle(
-      MSG_ROUTING_NONE, std::move(task_runner));
+      std::nullopt, std::move(task_runner));
 }
 
 void WebServiceWorkerFetchContextImpl::UpdateSubresourceLoaderFactories(
@@ -216,9 +221,12 @@ void WebServiceWorkerFetchContextImpl::UpdateSubresourceLoaderFactories(
 
 void WebServiceWorkerFetchContextImpl::NotifyUpdate(
     const RendererPreferences& new_prefs) {
-  DCHECK(accept_languages_watcher_);
-  if (renderer_preferences_.accept_languages != new_prefs.accept_languages)
-    accept_languages_watcher_->NotifyUpdate();
+  // Reserving `watcher` on the stack ensures it is not GC'd within this scope.
+  auto* watcher = accept_languages_watcher_.Get();
+  if (watcher &&
+      renderer_preferences_.accept_languages != new_prefs.accept_languages) {
+    watcher->NotifyUpdate();
+  }
   renderer_preferences_ = new_prefs;
 }
 

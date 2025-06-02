@@ -39,7 +39,21 @@ test_decompile_cvar ()
   axis_idx_tag_map.set (0, axis_tag);
 
   OT::TupleVariationData::tuple_variations_t tuple_variations;
-  bool result = cvar_table->decompile_tuple_variations (axis_count, point_count, false, &axis_idx_tag_map, tuple_variations);
+  hb_vector_t<unsigned> shared_indices;
+  OT::TupleVariationData::tuple_iterator_t iterator;
+
+  const OT::TupleVariationData* tuple_var_data = reinterpret_cast<const OT::TupleVariationData*> (cvar_data + 4);
+
+  unsigned len = sizeof (cvar_data);
+  hb_bytes_t var_data_bytes{cvar_data+4, len - 4};
+  bool result = OT::TupleVariationData::get_tuple_iterator (var_data_bytes, axis_count, cvar_table,
+                                                            shared_indices, &iterator);
+  assert (result);
+
+  result = tuple_var_data->decompile_tuple_variations (point_count, false, iterator, &axis_idx_tag_map,
+                                                       shared_indices, hb_array<const OT::F2DOT14> (),
+                                                       tuple_variations);
+
   assert (result);
   assert (tuple_variations.tuple_vars.length == 2);
   for (unsigned i = 0; i < 2; i++)
@@ -80,8 +94,10 @@ test_decompile_cvar ()
   hb_hashmap_t<hb_tag_t, Triple> normalized_axes_location;
   normalized_axes_location.set (axis_tag, Triple (-0.512817f, 0.f, 0.700012f));
 
-  tuple_variations.change_tuple_variations_axis_limits (&normalized_axes_location);
-  tuple_variations.merge_tuple_variations ();
+  hb_hashmap_t<hb_tag_t, TripleDistances> axes_triple_distances;
+  axes_triple_distances.set (axis_tag, TripleDistances (1.f, 1.f));
+
+  tuple_variations.instantiate (normalized_axes_location, axes_triple_distances);
 
   assert (tuple_variations.tuple_vars[0].indices.length == 65);
   assert (tuple_variations.tuple_vars[1].indices.length == 65);
@@ -110,6 +126,29 @@ test_decompile_cvar ()
     }
   }
 
+  hb_map_t axes_index_map;
+  axes_index_map.set (0, 0);
+  bool res = tuple_variations.compile_bytes (axes_index_map, axis_idx_tag_map, false);
+  assert (res);
+  assert (tuple_variations.tuple_vars[0].compiled_tuple_header.length == 6);
+  const char tuple_var_header_1[] = "\x0\x51\xa0\x0\xc0\x0";
+  for (unsigned i = 0; i < 6; i++)
+    assert(tuple_variations.tuple_vars[0].compiled_tuple_header.arrayZ[i] == tuple_var_header_1[i]);
+
+  assert (tuple_variations.tuple_vars[1].compiled_tuple_header.length == 6);
+  const char tuple_var_header_2[] = "\x0\x54\xa0\x0\x40\x0";
+  for (unsigned i = 0; i < 6; i++)
+    assert(tuple_variations.tuple_vars[1].compiled_tuple_header.arrayZ[i] == tuple_var_header_2[i]);
+
+  assert (tuple_variations.tuple_vars[0].compiled_deltas.length == 37);
+  assert (tuple_variations.tuple_vars[1].compiled_deltas.length == 40);
+  const char compiled_deltas_1[] = "\x0d\xff\x00\xfe\x01\x00\xff\x00\xfe\x01\x00\xed\xed\xf3\xf3\x82\x00\xfe\x84\x06\xfe\x00\x01\xf1\xf1\xf6\xf6\x82\x04\x01\xf1\xf1\xf6\xf6\x82\x00\x01";
+  for (unsigned i = 0; i < 37; i++)
+    assert (tuple_variations.tuple_vars[0].compiled_deltas.arrayZ[i] == compiled_deltas_1[i]);
+
+  const char compiled_deltas_2[] = "\x0d\x01\x00\x04\xfe\x00\x01\x00\x04\xfe\x00\x44\x44\x30\x30\x82\x00\x04\x81\x09\x01\xff\x01\x05\xff\xfc\x33\x33\x25\x25\x82\x04\xff\x33\x33\x25\x25\x82\x00\xff";
+  for (unsigned i = 0; i < 40; i++)
+    assert (tuple_variations.tuple_vars[1].compiled_deltas.arrayZ[i] == compiled_deltas_2[i]);
 }
 
 int

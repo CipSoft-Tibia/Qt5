@@ -14,11 +14,11 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/json/json_reader.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/path_service.h"
 #include "base/run_loop.h"
-#include "base/rust_buildflags.h"
 #include "base/strings/pattern.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -151,7 +151,7 @@ class MockSandboxedUnpackerClient : public SandboxedUnpackerClient {
   }
 
   scoped_refptr<base::SequencedTaskRunner> callback_runner_;
-  absl::optional<CrxInstallError> error_;
+  std::optional<CrxInstallError> error_;
   base::OnceClosure quit_closure_;
   base::FilePath temp_dir_;
   raw_ptr<bool> deleted_tracker_ = nullptr;
@@ -235,8 +235,7 @@ class SandboxedUnpackerTest : public ExtensionsTest {
     ASSERT_TRUE(zip::Unzip(crx_path, temp_dir.GetPath()));
 
     std::string fake_id = crx_file::id_util::GenerateId(crx_name);
-    std::string fake_public_key;
-    base::Base64Encode(std::string(2048, 'k'), &fake_public_key);
+    std::string fake_public_key = base::Base64Encode(std::string(2048, 'k'));
 
     base::RunLoop run_loop;
     client_->SetQuitClosure(run_loop.QuitClosure());
@@ -303,7 +302,7 @@ class SandboxedUnpackerTest : public ExtensionsTest {
     sandboxed_unpacker_->extension_root_ = path;
   }
 
-  absl::optional<base::Value::Dict> RewriteManifestFile(
+  std::optional<base::Value::Dict> RewriteManifestFile(
       const base::Value::Dict& manifest) {
     return sandboxed_unpacker_->RewriteManifestFile(manifest);
   }
@@ -487,7 +486,7 @@ TEST_F(SandboxedUnpackerTest, TestRewriteManifestInjections) {
   base::WriteFile(extensions_dir_.GetPath().Append(
                       FILE_PATH_LITERAL("manifest.fingerprint")),
                   fingerprint);
-  absl::optional<base::Value::Dict> manifest(
+  std::optional<base::Value::Dict> manifest(
       RewriteManifestFile(base::Value::Dict().Set(kVersionStr, kTestVersion)));
   auto* key = manifest->FindString("key");
   auto* version = manifest->FindString(kVersionStr);
@@ -506,16 +505,17 @@ TEST_F(SandboxedUnpackerTest, InvalidMessagesFile) {
   // Check that there is no _locales folder.
   base::FilePath install_path = GetInstallPath().Append(kLocaleFolder);
   EXPECT_FALSE(base::PathExists(install_path));
-#if BUILDFLAG(BUILD_RUST_JSON_READER)
-  EXPECT_TRUE(base::MatchPattern(
-      GetInstallErrorMessage(),
-      u"*_locales?en_US?messages.json': EOF while parsing a string at line 4*"))
-#else   // BUILDFLAG(BUILD_RUST_JSON_READER)
-  EXPECT_TRUE(base::MatchPattern(
-      GetInstallErrorMessage(),
-      u"*_locales?en_US?messages.json': Line: 4, column: 1,*"))
-#endif  // BUILDFLAG(BUILD_RUST_JSON_READER)
-      << GetInstallErrorMessage();
+  if (base::JSONReader::UsingRust()) {
+    EXPECT_TRUE(base::MatchPattern(GetInstallErrorMessage(),
+                                   u"*_locales?en_US?messages.json': EOF while "
+                                   u"parsing a string at line 4*"))
+        << GetInstallErrorMessage();
+  } else {
+    EXPECT_TRUE(base::MatchPattern(
+        GetInstallErrorMessage(),
+        u"*_locales?en_US?messages.json': Line: 4, column: 1,*"))
+        << GetInstallErrorMessage();
+  }
   ASSERT_EQ(CrxInstallErrorType::SANDBOXED_UNPACKER_FAILURE,
             GetInstallErrorType());
   EXPECT_EQ(static_cast<int>(
@@ -562,7 +562,7 @@ TEST_F(SandboxedUnpackerTest, UnzipperServiceFails) {
 }
 
 TEST_F(SandboxedUnpackerTest, JsonParserFails) {
-  in_process_data_decoder().service().SimulateJsonParserCrashForTesting(true);
+  in_process_data_decoder().SimulateJsonParserCrash(true);
   InitSandboxedUnpacker();
 
   SetupUnpacker("good_package.crx", "");
@@ -573,7 +573,7 @@ TEST_F(SandboxedUnpackerTest, JsonParserFails) {
 }
 
 TEST_F(SandboxedUnpackerTest, ImageDecoderFails) {
-  in_process_data_decoder().service().SimulateImageDecoderCrashForTesting(true);
+  in_process_data_decoder().SimulateImageDecoderCrash(true);
   InitSandboxedUnpacker();
   SetupUnpacker("good_package.crx", "");
   EXPECT_FALSE(InstallSucceeded());

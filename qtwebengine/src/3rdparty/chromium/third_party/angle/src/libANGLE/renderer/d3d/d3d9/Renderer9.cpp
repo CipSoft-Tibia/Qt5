@@ -1832,7 +1832,7 @@ angle::Result Renderer9::applyShaders(const gl::Context *context, gl::PrimitiveM
     // per-program, checking the program serial guarantees we upload fresh
     // uniform data even if our shader pointers are the same.
     // https://code.google.com/p/angleproject/issues/detail?id=661
-    unsigned int programSerial = GetImplAs<ProgramD3D>(state.getProgram())->getSerial();
+    unsigned int programSerial = executableD3D->getSerial();
     if (programSerial != mAppliedProgramSerial)
     {
         executableD3D->dirtyAllUniforms();
@@ -3111,7 +3111,14 @@ void Renderer9::initializeFeatures(angle::FeaturesD3D *features) const
     }
 }
 
-void Renderer9::initializeFrontendFeatures(angle::FrontendFeatures *features) const {}
+void Renderer9::initializeFrontendFeatures(angle::FrontendFeatures *features) const
+{
+    ApplyFeatureOverrides(features, mDisplay->getState());
+    if (!mDisplay->getState().featuresAllDisabled)
+    {
+        d3d9::InitializeFrontendFeatures(features, mAdapterIdentifier.VendorId);
+    }
+}
 
 DeviceImpl *Renderer9::createEGLDevice()
 {

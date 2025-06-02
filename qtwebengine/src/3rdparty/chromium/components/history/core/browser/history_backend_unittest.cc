@@ -45,7 +45,6 @@
 #include "components/history/core/browser/keyword_search_term.h"
 #include "components/history/core/browser/keyword_search_term_util.h"
 #include "components/history/core/browser/page_usage_data.h"
-#include "components/history/core/browser/sync/typed_url_sync_bridge.h"
 #include "components/history/core/test/database_test_utils.h"
 #include "components/history/core/test/history_client_fake_bookmarks.h"
 #include "components/history/core/test/test_history_database.h"
@@ -56,6 +55,7 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/sqlite/sqlite3.h"
 #include "ui/gfx/codec/png_codec.h"
+#include "ui/gfx/image/image_unittest_util.h"
 #include "url/gurl.h"
 
 // This file only tests functionality where it is most convenient to call the
@@ -313,6 +313,21 @@ class HistoryBackendTestBase : public testing::Test {
     mem_backend_->OnKeywordSearchTermDeleted(nullptr, url_id);
   }
 
+  void AddVisits(const GURL& url,
+                 const std::vector<VisitInfo>& visits,
+                 VisitSource visit_source) {
+    for (const auto& visit : visits) {
+      backend_->AddPageVisit(
+          url, visit.first, /*referring_visit=*/0,
+          /*external_referrer_url=*/GURL(), visit.second,
+          /*hidden=*/!ui::PageTransitionIsMainFrame(visit.second), visit_source,
+          HistoryBackend::IsTypedIncrement(visit.second),
+          /*opener_visit=*/0,
+          /*consider_for_ntp_most_visited=*/true,
+          /*local_navigation_id=*/absl::nullopt);
+    }
+  }
+
   base::test::TaskEnvironment task_environment_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
   HistoryClientFakeBookmarks history_client_;
@@ -559,14 +574,6 @@ class HistoryBackendTest : public HistoryBackendTestBase {
       return false;
     *favicon_bitmap = favicon_bitmaps[0];
     return true;
-  }
-
-  // Creates an `edge_size`x`edge_size` bitmap of `color`.
-  SkBitmap CreateBitmap(SkColor color, int edge_size) {
-    SkBitmap bitmap;
-    bitmap.allocN32Pixels(edge_size, edge_size);
-    bitmap.eraseColor(color);
-    return bitmap;
   }
 
   // Returns true if `bitmap_data` is equal to `expected_data`.
@@ -1024,7 +1031,7 @@ TEST_F(HistoryBackendTest, URLsNoLongerBookmarked) {
   history_client_.AddBookmark(row2.url());
 
   // Delete url 2.
-  backend_->expirer_.DeleteURL(row2.url(), base::Time::Max());
+  backend_->expire_backend()->DeleteURL(row2.url(), base::Time::Max());
   EXPECT_FALSE(backend_->db_->GetRowForURL(row2.url(), nullptr));
   VisitVector visits;
   backend_->db_->GetVisitsForURL(row2_id, &visits);
@@ -1303,71 +1310,6 @@ TEST_F(HistoryBackendTest, AddPagesWithDetails) {
       base::ranges::find_if(changed_urls, URLRow::URLRowHasURL(row3.url()));
   ASSERT_NE(changed_urls.end(), it_row3);
   EXPECT_EQ(stored_row3.id(), it_row3->id());
-}
-
-TEST_F(HistoryBackendTest, UpdateURLs) {
-  ASSERT_TRUE(backend_.get());
-
-  // Add three pages directly to the database.
-  URLRow row1(GURL("https://news.google.com/"));
-  row1.set_visit_count(1);
-  row1.set_last_visit(base::Time::Now());
-  URLRow row2(GURL("https://maps.google.com/"));
-  row2.set_visit_count(2);
-  row2.set_last_visit(base::Time::Now());
-  URLRow row3(GURL("https://www.google.com/"));
-  row3.set_visit_count(3);
-  row3.set_last_visit(base::Time::Now());
-
-  backend_->db_->AddURL(row1);
-  backend_->db_->AddURL(row2);
-  backend_->db_->AddURL(row3);
-
-  // Now create changed versions of all URLRows by incrementing their visit
-  // counts, and in the meantime, also delete the second row from the database.
-  URLRow altered_row1, altered_row2, altered_row3;
-  backend_->db_->GetRowForURL(row1.url(), &altered_row1);
-  altered_row1.set_visit_count(42);
-  backend_->db_->GetRowForURL(row2.url(), &altered_row2);
-  altered_row2.set_visit_count(43);
-  backend_->db_->GetRowForURL(row3.url(), &altered_row3);
-  altered_row3.set_visit_count(44);
-
-  backend_->db_->DeleteURLRow(altered_row2.id());
-
-  // Now try to update all three rows at once. The change to the second URLRow
-  // should be ignored, as it is no longer present in the DB.
-  URLRows rows;
-  rows.push_back(altered_row1);
-  rows.push_back(altered_row2);
-  rows.push_back(altered_row3);
-  EXPECT_EQ(2u, backend_->UpdateURLs(rows));
-
-  URLRow stored_row1, stored_row3;
-  EXPECT_NE(0, backend_->db_->GetRowForURL(row1.url(), &stored_row1));
-  EXPECT_NE(0, backend_->db_->GetRowForURL(row3.url(), &stored_row3));
-  EXPECT_EQ(altered_row1.visit_count(), stored_row1.visit_count());
-  EXPECT_EQ(altered_row3.visit_count(), stored_row3.visit_count());
-
-  // Ensure that a notification was fired, and further verify that the IDs in
-  // the notification are set to those that are in effect in the main database.
-  // The InMemoryHistoryBackend relies on this for caching.
-  ASSERT_EQ(1, num_urls_modified_notifications());
-
-  const URLRows& changed_urls = urls_modified_notifications()[0];
-  EXPECT_EQ(2u, changed_urls.size());
-
-  auto it_row1 =
-      base::ranges::find_if(changed_urls, URLRow::URLRowHasURL(row1.url()));
-  ASSERT_NE(changed_urls.end(), it_row1);
-  EXPECT_EQ(altered_row1.id(), it_row1->id());
-  EXPECT_EQ(altered_row1.visit_count(), it_row1->visit_count());
-
-  auto it_row3 =
-      base::ranges::find_if(changed_urls, URLRow::URLRowHasURL(row3.url()));
-  ASSERT_NE(changed_urls.end(), it_row3);
-  EXPECT_EQ(altered_row3.id(), it_row3->id());
-  EXPECT_EQ(altered_row3.visit_count(), it_row3->visit_count());
 }
 
 // This verifies that a notification is fired. In-depth testing of logic should
@@ -2345,49 +2287,6 @@ TEST_F(HistoryBackendTest, MixedContentAnnotationsRequestTypes) {
                               /*id=*/"entity2", /*weight=*/1)));
 }
 
-TEST_F(HistoryBackendTest, AddVisitsSource) {
-  ASSERT_TRUE(backend_.get());
-
-  GURL url1("http://www.cnn.com");
-  std::vector<VisitInfo> visits1, visits2;
-  visits1.emplace_back(base::Time::Now() - base::Days(5),
-                       ui::PAGE_TRANSITION_LINK);
-  visits1.emplace_back(base::Time::Now() - base::Days(1),
-                       ui::PAGE_TRANSITION_LINK);
-  visits1.emplace_back(base::Time::Now(), ui::PAGE_TRANSITION_LINK);
-
-  GURL url2("http://www.example.com");
-  visits2.emplace_back(base::Time::Now() - base::Days(10),
-                       ui::PAGE_TRANSITION_LINK);
-  visits2.emplace_back(base::Time::Now(), ui::PAGE_TRANSITION_LINK);
-
-  // Clear all history.
-  backend_->DeleteAllHistory();
-
-  // Add the visits.
-  backend_->AddVisits(url1, visits1, SOURCE_IE_IMPORTED);
-  backend_->AddVisits(url2, visits2, SOURCE_SYNCED);
-
-  // Verify the visits were added with their sources.
-  VisitVector visits;
-  URLRow row;
-  URLID id = backend_->db()->GetRowForURL(url1, &row);
-  ASSERT_TRUE(backend_->db()->GetVisitsForURL(id, &visits));
-  ASSERT_EQ(3U, visits.size());
-  VisitSourceMap visit_sources;
-  ASSERT_TRUE(backend_->GetVisitsSource(visits, &visit_sources));
-  ASSERT_EQ(3U, visit_sources.size());
-  for (int i = 0; i < 3; i++)
-    EXPECT_EQ(SOURCE_IE_IMPORTED, visit_sources[visits[i].visit_id]);
-  id = backend_->db()->GetRowForURL(url2, &row);
-  ASSERT_TRUE(backend_->db()->GetVisitsForURL(id, &visits));
-  ASSERT_EQ(2U, visits.size());
-  ASSERT_TRUE(backend_->GetVisitsSource(visits, &visit_sources));
-  ASSERT_EQ(2U, visit_sources.size());
-  for (int i = 0; i < 2; i++)
-    EXPECT_EQ(SOURCE_SYNCED, visit_sources[visits[i].visit_id]);
-}
-
 TEST_F(HistoryBackendTest, GetMostRecentVisits) {
   ASSERT_TRUE(backend_.get());
 
@@ -2403,7 +2302,7 @@ TEST_F(HistoryBackendTest, GetMostRecentVisits) {
   backend_->DeleteAllHistory();
 
   // Add the visits.
-  backend_->AddVisits(url1, visits1, SOURCE_IE_IMPORTED);
+  AddVisits(url1, visits1, SOURCE_IE_IMPORTED);
 
   // Verify the visits were added with their sources.
   VisitVector visits;
@@ -2433,7 +2332,7 @@ TEST_F(HistoryBackendTest, RemoveVisitsTransitions) {
   visits_to_add.push_back(link_visit);
 
   // Add the visits.
-  backend_->AddVisits(url1, visits_to_add, SOURCE_SYNCED);
+  AddVisits(url1, visits_to_add, SOURCE_SYNCED);
 
   // Verify that the various counts are what we expect.
   VisitVector visits;
@@ -2493,8 +2392,8 @@ TEST_F(HistoryBackendTest, RemoveVisitsSource) {
   backend_->DeleteAllHistory();
 
   // Add the visits.
-  backend_->AddVisits(url1, visits1, SOURCE_IE_IMPORTED);
-  backend_->AddVisits(url2, visits2, SOURCE_SYNCED);
+  AddVisits(url1, visits1, SOURCE_IE_IMPORTED);
+  AddVisits(url2, visits2, SOURCE_SYNCED);
 
   // Verify the visits of url1 were added.
   VisitVector visits;
@@ -2615,8 +2514,8 @@ TEST_F(HistoryBackendTest, FaviconChangedNotificationNewFavicon) {
 
   // SetFavicons()
   {
-    std::vector<SkBitmap> bitmaps;
-    bitmaps.push_back(CreateBitmap(SK_ColorBLUE, kSmallEdgeSize));
+    std::vector<SkBitmap> bitmaps = {
+        gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorBLUE)};
     backend_->SetFavicons({page_url1}, IconType::kFavicon, icon_url1, bitmaps);
     ASSERT_EQ(1u, favicon_changed_notifications_page_urls().size());
     EXPECT_EQ(page_url1, favicon_changed_notifications_page_urls()[0]);
@@ -2648,16 +2547,16 @@ TEST_F(HistoryBackendTest, FaviconChangedNotificationBitmapDataChanged) {
 
   // Setup
   {
-    std::vector<SkBitmap> bitmaps;
-    bitmaps.push_back(CreateBitmap(SK_ColorBLUE, kSmallEdgeSize));
+    std::vector<SkBitmap> bitmaps = {
+        gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorBLUE)};
     backend_->SetFavicons({page_url}, IconType::kFavicon, icon_url, bitmaps);
     ClearBroadcastedNotifications();
   }
 
   // SetFavicons()
   {
-    std::vector<SkBitmap> bitmaps;
-    bitmaps.push_back(CreateBitmap(SK_ColorWHITE, kSmallEdgeSize));
+    std::vector<SkBitmap> bitmaps = {
+        gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorWHITE)};
     backend_->SetFavicons({page_url}, IconType::kFavicon, icon_url, bitmaps);
     EXPECT_EQ(0u, favicon_changed_notifications_page_urls().size());
     ASSERT_EQ(1u, favicon_changed_notifications_icon_urls().size());
@@ -2690,9 +2589,8 @@ TEST_F(HistoryBackendTest, FaviconChangedNotificationIconMappingChanged) {
   GURL icon_url1("http://www.google.com/favicon1.ico");
   GURL icon_url2("http://www.google.com/favicon2.ico");
 
-  SkBitmap bitmap(CreateBitmap(SK_ColorBLUE, kSmallEdgeSize));
-  std::vector<SkBitmap> bitmaps;
-  bitmaps.push_back(bitmap);
+  SkBitmap bitmap = gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorBLUE);
+  std::vector<SkBitmap> bitmaps = {bitmap};
   std::vector<unsigned char> png_bytes;
   ASSERT_TRUE(gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, false, &png_bytes));
 
@@ -2747,14 +2645,13 @@ TEST_F(HistoryBackendTest,
   GURL page_url4("http://www.google.com/d");
   GURL icon_url("http://www.google.com/favicon.ico");
 
-  SkBitmap bitmap(CreateBitmap(SK_ColorBLUE, kSmallEdgeSize));
+  SkBitmap bitmap = gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorBLUE);
   std::vector<unsigned char> png_bytes;
   ASSERT_TRUE(gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, false, &png_bytes));
 
   // Setup
   {
-    std::vector<SkBitmap> bitmaps;
-    bitmaps.push_back(bitmap);
+    std::vector<SkBitmap> bitmaps = {bitmap};
     backend_->SetFavicons({page_url4}, IconType::kFavicon, icon_url, bitmaps);
     ClearBroadcastedNotifications();
   }
@@ -2797,8 +2694,8 @@ TEST_F(HistoryBackendTest,
 
   // Setup
   {
-    std::vector<SkBitmap> bitmaps;
-    bitmaps.push_back(CreateBitmap(SK_ColorBLUE, kSmallEdgeSize));
+    std::vector<SkBitmap> bitmaps = {
+        gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorBLUE)};
     backend_->SetFavicons({page_url1}, IconType::kFavicon, icon_url1, bitmaps);
     backend_->SetFavicons({page_url2}, IconType::kFavicon, icon_url2, bitmaps);
 
@@ -2813,8 +2710,8 @@ TEST_F(HistoryBackendTest,
 
   // SetFavicons()
   {
-    std::vector<SkBitmap> bitmaps;
-    bitmaps.push_back(CreateBitmap(SK_ColorWHITE, kSmallEdgeSize));
+    std::vector<SkBitmap> bitmaps = {
+        gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorWHITE)};
     backend_->SetFavicons({page_url1}, IconType::kFavicon, icon_url2, bitmaps);
     ASSERT_EQ(1u, favicon_changed_notifications_page_urls().size());
     EXPECT_EQ(page_url1, favicon_changed_notifications_page_urls()[0]);
@@ -2882,9 +2779,8 @@ TEST_F(HistoryBackendTest, NoFaviconChangedNotifications) {
   GURL page_url("http://www.google.com");
   GURL icon_url("http://www.google.com/favicon.ico");
 
-  SkBitmap bitmap(CreateBitmap(SK_ColorBLUE, kSmallEdgeSize));
-  std::vector<SkBitmap> bitmaps;
-  bitmaps.push_back(bitmap);
+  SkBitmap bitmap = gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorBLUE);
+  std::vector<SkBitmap> bitmaps = {bitmap};
   std::vector<unsigned char> png_bytes;
   ASSERT_TRUE(gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, false, &png_bytes));
 
@@ -2925,8 +2821,9 @@ TEST_F(HistoryBackendTest, CloneFaviconMappingsForPages) {
   {
     // A mapping exists for `landing_page_url1`.
     std::vector<favicon_base::FaviconRawBitmapData> favicon_bitmap_data;
-    backend_->SetFavicons({landing_page_url1}, IconType::kFavicon, icon_url,
-                          {CreateBitmap(SK_ColorBLUE, kSmallEdgeSize)});
+    backend_->SetFavicons(
+        {landing_page_url1}, IconType::kFavicon, icon_url,
+        {gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorBLUE)});
 
     // Init recent_redirects_.
     backend_->recent_redirects_.Put(
@@ -2955,6 +2852,7 @@ TEST_F(HistoryBackendTest, CloneFaviconMappingsForPages) {
 // Check that UpdateFaviconMappingsAndFetch() call back to the UI when there is
 // no valid favicon database.
 TEST_F(HistoryBackendTest, UpdateFaviconMappingsAndFetchNoDB) {
+  backend_->expirer_.SetDatabases(/*main_db=*/nullptr, /*favicon_db=*/nullptr);
   // Make the favicon database invalid.
   backend_->favicon_backend_.reset();
 
@@ -3042,8 +2940,8 @@ TEST_F(HistoryBackendTest, UpdateVisitDuration) {
   backend_->DeleteAllHistory();
 
   // Add the visits.
-  backend_->AddVisits(url1, visit_info1, SOURCE_BROWSED);
-  backend_->AddVisits(url2, visit_info2, SOURCE_BROWSED);
+  AddVisits(url1, visit_info1, SOURCE_BROWSED);
+  AddVisits(url2, visit_info2, SOURCE_BROWSED);
 
   // Verify the entries for both visits were added in visit_details.
   VisitVector visits1, visits2;
@@ -3082,7 +2980,7 @@ TEST_F(HistoryBackendTest, MarkVisitAsKnownToSync) {
   visit_info1.emplace_back(start_ts, ui::PAGE_TRANSITION_LINK);
 
   // Add the visit and verify it doesn't start as being known to sync.
-  backend_->AddVisits(url1, visit_info1, SOURCE_BROWSED);
+  AddVisits(url1, visit_info1, SOURCE_BROWSED);
   VisitVector visits1;
   URLRow row;
   URLID url_id1 = backend_->db()->GetRowForURL(url1, &row);
@@ -3367,7 +3265,6 @@ TEST_F(HistoryBackendTest, DeleteFTSIndexDatabases) {
 TEST_F(HistoryBackendTest, DatabaseError) {
   base::HistogramTester histogram_tester;
 
-  backend_->SetTypedURLSyncBridgeForTest(nullptr);
   backend_->DatabaseErrorCallback(SQLITE_CANTOPEN, nullptr);
   // Run loop to let any posted callbacks run before TearDown().
   base::RunLoop().RunUntilIdle();
@@ -3814,15 +3711,35 @@ TEST_F(HistoryBackendTest, QueryMostVisitedURLs) {
                   MostVisitedURL(GURL("http://example5.com"), kSomeTitle)));
 }
 
-// https://crbug.com/1488458#c16
-#if BUILDFLAG(IS_ANDROID)
-#define MAYBE_QueryMostRepeatedQueriesForKeyword \
-  DISABLED_QueryMostRepeatedQueriesForKeyword
-#else
-#define MAYBE_QueryMostRepeatedQueriesForKeyword \
-  QueryMostRepeatedQueriesForKeyword
-#endif  // BUILDFLAG(IS_ANDROID)
-TEST_F(HistoryBackendTest, MAYBE_QueryMostRepeatedQueriesForKeyword) {
+TEST_F(HistoryBackendTest, ExpireSegmentData) {
+  ASSERT_TRUE(backend_.get());
+
+  {
+    HistoryAddPageArgs args;
+    args.url = GURL("http://example.com");
+    args.time = base::Time::Now() - base::Days(365);
+    args.transition = ui::PAGE_TRANSITION_TYPED;
+    args.consider_for_ntp_most_visited = true;
+    backend_->AddPage(args);
+  }
+  {
+    HistoryAddPageArgs args;
+    args.url = GURL("http://example2.com");
+    args.time = base::Time::Now() - base::Days(50);
+    args.transition = ui::PAGE_TRANSITION_TYPED;
+    args.consider_for_ntp_most_visited = true;
+    backend_->AddPage(args);
+  }
+
+  EXPECT_EQ(2u, backend_->QueryMostVisitedURLs(100).size());
+  backend_->expire_backend()->ExpireOldSegmentData(base::Time::Now() -
+                                                   base::Days(100));
+  EXPECT_THAT(backend_->QueryMostVisitedURLs(100),
+              ElementsAre(MostVisitedURL(GURL("http://example2.com"),
+                                         std::u16string())));
+}
+
+TEST_F(HistoryBackendTest, QueryMostRepeatedQueriesForKeyword) {
   ASSERT_TRUE(backend_.get());
 
   // Choose the local midnight of today last week as the baseline for the last
@@ -3996,7 +3913,8 @@ TEST_F(HistoryBackendTest, AddPageWithContextAnnotations) {
       /*did_replace_entry=*/false, /*consider_for_ntp_most_visited=*/true,
       /*title=*/absl::nullopt, /*top_level_url*/ absl::nullopt,
       /*opener=*/absl::nullopt,
-      /*bookmark_id=*/absl::nullopt, context_annotations);
+      /*bookmark_id=*/absl::nullopt, /*app_id=*/absl::nullopt,
+      context_annotations);
   backend_->AddPage(request);
 
   // Read the visit back from the DB and make sure the annotations are there.
@@ -4593,8 +4511,10 @@ TEST_F(HistoryBackendTest, UpdateClusterVisit_NoClusterAssigned) {
 
 TEST_F(HistoryBackendTest, GetRedirectChainStart) {
   auto last_visit_time = base::Time::Now();
-  const auto add_visit = [&](std::string url, VisitID referring_visit,
+  const auto add_visit = [&](std::string url_string, VisitID referring_visit,
                              VisitID opener_visit, bool is_redirect) {
+    GURL url(url_string);
+    EXPECT_TRUE(url.is_valid()) << url_string;
     // Each visit should have a unique `visit_time` to avoid deduping visits so
     // the same URL. The exact times don't matter, but we use increasing values
     // to make the test cases easy to reason about.
@@ -4606,16 +4526,16 @@ TEST_F(HistoryBackendTest, GetRedirectChainStart) {
         ui::PAGE_TRANSITION_TYPED | ui::PAGE_TRANSITION_CHAIN_END |
         (is_redirect ? ui::PageTransition::PAGE_TRANSITION_IS_REDIRECT_MASK
                      : ui::PageTransition::PAGE_TRANSITION_CHAIN_START));
-    auto ids = backend_->AddPageVisit(
-        GURL(url), last_visit_time, referring_visit,
-        /*external_referrer_url=*/GURL(), transition, false, SOURCE_BROWSED,
-        false, opener_visit, true);
+    auto ids = backend_->AddPageVisit(url, last_visit_time, referring_visit,
+                                      /*external_referrer_url=*/GURL(),
+                                      transition, false, SOURCE_BROWSED, false,
+                                      opener_visit, true);
     backend_->AddContextAnnotationsForVisit(ids.second,
                                             VisitContextAnnotations());
   };
 
-  // Navigate to 'google.com'.
-  add_visit("google.com", 0, 0, false);
+  // Navigate to 'http://google.com'.
+  add_visit("http://google.com", 0, 0, false);
   // It redirects to 'https://www.google.com'.
   add_visit("https://www.google.com", 1, 0, true);
   // Perform a search.
@@ -4851,8 +4771,7 @@ TEST_F(HistoryBackendTest, AddSyncedVisitWritesIsKnownToSync) {
 class HistoryBackendWithSyncSegmentsDataTest : public HistoryBackendTest {
  public:
   HistoryBackendWithSyncSegmentsDataTest() {
-    override_features_.InitWithFeatures(
-        {syncer::kSyncEnableHistoryDataType, history::kSyncSegmentsData}, {});
+    override_features_.InitAndEnableFeature(history::kSyncSegmentsData);
   }
 
  private:
@@ -5501,9 +5420,8 @@ class HistoryBackendTestForVisitedLinks
     // Set-up the parameterized testing to depend on the flag value.
     is_database_enabled_ =
         (GetParam() == TestMode::kPopulateVisitedLinkDatabaseEnabled);
-    if (is_database_enabled_) {
-      scoped_feature_list_.InitAndEnableFeature(kPopulateVisitedLinkDatabase);
-    }
+    scoped_feature_list_.InitWithFeatureState(kPopulateVisitedLinkDatabase,
+                                              is_database_enabled_);
     // Init the transition types for AddPageVisit.
     link_transition_ = ui::PageTransitionFromInt(
         ui::PAGE_TRANSITION_LINK | ui::PAGE_TRANSITION_CHAIN_START |

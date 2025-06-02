@@ -46,6 +46,7 @@ public:
     int depthBias = 0;
     int samples = 1;
     int colorAttachmentCount = 1;
+    int viewCount = 1;
     float slopeScaledDepthBias = 0.0f;
     float lineWidth = 1.0f;
     Flags flags;
@@ -107,11 +108,13 @@ public:
     QRhiCommandBuffer *commandBuffer() const;
     QRhiRenderTarget *renderTarget() const;
     int mainPassSampleCount() const;
+    int mainPassViewCount() const;
 
     QRhiSampler *sampler(const QSSGRhiSamplerDescription &samplerDescription);
     void checkAndAdjustForNPoT(QRhiTexture *texture, QSSGRhiSamplerDescription *samplerDescription);
     QRhiTexture *dummyTexture(QRhiTexture::Flags flags, QRhiResourceUpdateBatch *rub,
-                              const QSize &size = QSize(64, 64), const QColor &fillColor = Qt::black);
+                              const QSize &size = QSize(64, 64), const QColor &fillColor = Qt::black,
+                              int arraySize = 0);
 
     QRhiCommandBuffer::BeginPassFlags commonPassFlags() const;
 

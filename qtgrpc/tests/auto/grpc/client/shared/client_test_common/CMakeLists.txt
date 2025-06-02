@@ -14,6 +14,12 @@ if(TARGET grpc_testserver)
     )
 endif()
 
+if(qt_internal_grpc_use_golang_test_server)
+    target_compile_definitions(tst_grpc_client_test_common PRIVATE
+            TEST_GRPC_SERVER_SUPPORTS_JSON
+    )
+endif()
+
 target_include_directories(tst_grpc_client_test_common
     INTERFACE
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>"

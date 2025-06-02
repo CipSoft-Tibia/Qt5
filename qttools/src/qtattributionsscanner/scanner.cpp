@@ -44,7 +44,13 @@ static bool validatePackage(Package &p, const QString &filePath, Checks checks, 
         if (logLevel != SilentLog)
             missingPropertyWarning(filePath, u"Id"_s);
         validPackage = false;
+    } else if (!p.id.isLower() || p.id.contains(' '_L1)) {
+        if (logLevel != SilentLog)
+            std::cerr << qPrintable(tr("File %1: Value of 'Id' must be in lowercase and without spaces.")
+                                        .arg(QDir::toNativeSeparators(filePath))) << std::endl;
+        validPackage = false;
     }
+
     if (p.license.isEmpty()) {
         if (logLevel != SilentLog)
             missingPropertyWarning(filePath, u"License"_s);
@@ -190,21 +196,27 @@ static bool autoDetectLicenseFiles(Package &p)
 {
     const QString licensesDirPath = locateLicensesDir(p.path);
     const QStringList licenseIds = extractLicenseIdsFromSPDXExpression(p.licenseId);
-    if (!licenseIds.isEmpty() && licensesDirPath.isEmpty()) {
-        std::cerr << qPrintable(tr("LICENSES directory could not be located.")) << std::endl;
-        return false;
-    }
 
     bool success = true;
     QDir licensesDir(licensesDirPath);
+    QDir licensesDirLocal = p.path;
     for (const QString &id : licenseIds) {
         QString fileName = id + u".txt";
-        if (licensesDir.exists(fileName)) {
+        QString fileNameLocal = u"LICENSE." + id + u".txt";
+
+        if (licensesDirLocal.exists(fileNameLocal)) {
+            p.licenseFiles.append(licensesDirLocal.filePath(fileNameLocal));
+        } else if (licensesDir.exists(fileName)) {
             p.licenseFiles.append(licensesDir.filePath(fileName));
         } else {
-            std::cerr << qPrintable(tr("Expected license file not found: %1").arg(
-                                        QDir::toNativeSeparators(licensesDir.filePath(fileName))))
+            std::cerr << "tr(Missing expected license file:)" << std::endl;
+            std::cerr << qPrintable(QDir::toNativeSeparators(licensesDirLocal.filePath(fileNameLocal)))
                       << std::endl;
+            if (!licensesDirPath.isEmpty()) {
+                std::cerr << qPrintable(tr("or\n %1").arg(
+                                            QDir::toNativeSeparators(licensesDir.filePath(fileName))))
+                          << std::endl;
+            }
             success = false;
         }
     }
@@ -275,7 +287,8 @@ static std::optional<Package> readPackage(const QJsonObject &object, const QStri
             } else {
                 if (logLevel != SilentLog) {
                     std::cerr << qPrintable(tr("File %1: Expected JSON array of strings as value "
-                                               "of Files."));
+                                               "of Files.").arg(QDir::toNativeSeparators(filePath)))
+                              << std::endl;
                     validPackage = false;
                     continue;
                 }

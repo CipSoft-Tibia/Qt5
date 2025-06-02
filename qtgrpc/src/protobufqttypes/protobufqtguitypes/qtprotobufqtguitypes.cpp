@@ -2,8 +2,9 @@
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtprotobufqtguitypes.h"
-#include "private/QtGui.qpb.h"
+#include <QtProtobufQtGuiTypes/qtprotobufqtguitypes.h>
+
+#include <QtProtobufQtGuiTypes/private/QtGui.qpb.h>
 
 #include <QtProtobufQtCoreTypes/private/qtprotobufqttypescommon_p.h>
 
@@ -16,6 +17,7 @@
 #include <QtGui/qquaternion.h>
 #include <QtGui/qimage.h>
 #include <QtGui/qimagereader.h>
+
 #include <QtCore/qbuffer.h>
 
 QT_BEGIN_NAMESPACE
@@ -221,7 +223,7 @@ namespace QtProtobuf {
 /*!
     Registers serializers for the Qt::ProtobufQtGuiTypes library.
 */
-void qRegisterProtobufQtGuiTypes() {
+void registerProtobufQtGuiTypes() {
     QtProtobufPrivate::registerQtTypeHandler<QRgba64, QtProtobufPrivate::QtGui::QRgba64>();
     QtProtobufPrivate::registerQtTypeHandler<QColor, QtProtobufPrivate::QtGui::QColor>();
     QtProtobufPrivate::registerQtTypeHandler<QMatrix4x4, QtProtobufPrivate::QtGui::QMatrix4x4>();

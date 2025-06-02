@@ -36,7 +36,8 @@ RTCEncodedAudioUnderlyingSource::RTCEncodedAudioUnderlyingSource(
   task_runner_ = context->GetTaskRunner(TaskType::kInternalMediaRealTime);
 }
 
-ScriptPromise RTCEncodedAudioUnderlyingSource::pull(ScriptState* script_state) {
+ScriptPromise RTCEncodedAudioUnderlyingSource::Pull(ScriptState* script_state,
+                                                    ExceptionState&) {
   DCHECK(task_runner_->BelongsToCurrentThread());
   // WebRTC is a push source without backpressure support, so nothing to do
   // here.
@@ -44,7 +45,8 @@ ScriptPromise RTCEncodedAudioUnderlyingSource::pull(ScriptState* script_state) {
 }
 
 ScriptPromise RTCEncodedAudioUnderlyingSource::Cancel(ScriptState* script_state,
-                                                      ScriptValue reason) {
+                                                      ScriptValue reason,
+                                                      ExceptionState&) {
   DCHECK(task_runner_->BelongsToCurrentThread());
   if (disconnect_callback_)
     std::move(disconnect_callback_).Run();

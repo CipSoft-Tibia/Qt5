@@ -1,20 +1,34 @@
-// Copyright 2019 The Dawn Authors
+// Copyright 2019 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/Format.h"
 
 #include <bitset>
+#include <utility>
 
 #include "dawn/common/TypedInteger.h"
 #include "dawn/native/Device.h"
@@ -30,13 +44,14 @@ enum class Cap : uint16_t {
     Resolve = 0x4,
     StorageW = 0x8,
     StorageRW = 0x10,  // Implies StorageW
-};
-
-template <>
-struct IsDawnBitmask<Cap> {
-    static constexpr bool enable = true;
+    PLS = 0x20,
 };
 }  // namespace dawn
+
+template <>
+struct wgpu::IsWGPUBitmask<dawn::Cap> {
+    static constexpr bool enable = true;
+};
 
 namespace dawn::native {
 
@@ -114,7 +129,7 @@ bool Format::IsSnorm() const {
 }
 
 bool Format::IsMultiPlanar() const {
-    return aspects & (Aspect::Plane0 | Aspect::Plane1);
+    return aspects & (Aspect::Plane0 | Aspect::Plane1 | Aspect::Plane2);
 }
 
 bool Format::CopyCompatibleWith(const Format& otherFormat) const {
@@ -132,45 +147,11 @@ const AspectInfo& Format::GetAspectInfo(wgpu::TextureAspect aspect) const {
 }
 
 const AspectInfo& Format::GetAspectInfo(Aspect aspect) const {
-    ASSERT(HasOneBit(aspect));
-    ASSERT(aspects & aspect);
+    DAWN_ASSERT(HasOneBit(aspect));
+    DAWN_ASSERT(aspects & aspect);
     const size_t aspectIndex = GetAspectIndex(aspect);
-    ASSERT(aspectIndex < GetAspectCount(aspects));
+    DAWN_ASSERT(aspectIndex < GetAspectCount(aspects));
     return aspectInfo[aspectIndex];
-}
-
-Extent3D Format::GetAspectSize(Aspect aspect, const Extent3D& textureSize) const {
-    switch (aspect) {
-        case Aspect::Color:
-        case Aspect::Depth:
-        case Aspect::Stencil:
-        case Aspect::CombinedDepthStencil:
-            return textureSize;
-        case Aspect::Plane0:
-            ASSERT(IsMultiPlanar());
-            return textureSize;
-        case Aspect::Plane1: {
-            ASSERT(IsMultiPlanar());
-            auto planeSize = textureSize;
-            switch (format) {
-                case wgpu::TextureFormat::R8BG8Biplanar420Unorm:
-                    if (planeSize.width > 1) {
-                        planeSize.width >>= 1;
-                    }
-                    if (planeSize.height > 1) {
-                        planeSize.height >>= 1;
-                    }
-                    break;
-                default:
-                    UNREACHABLE();
-            }
-            return planeSize;
-        }
-        case Aspect::None:
-            break;
-    }
-
-    UNREACHABLE();
 }
 
 FormatIndex Format::GetIndex() const {
@@ -207,17 +188,17 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
 
     auto AddFormat = [&table, &formatsSet](Format format) {
         FormatIndex index = ComputeFormatIndex(format.format);
-        ASSERT(index < table.size());
+        DAWN_ASSERT(index < table.size());
 
         // This checks that each format is set at most once, the first part of checking that all
         // formats are set exactly once.
-        ASSERT(!formatsSet[index]);
+        DAWN_ASSERT(!formatsSet[index]);
 
         // Vulkan describes bytesPerRow in units of texels. If there's any format for which this
-        // ASSERT isn't true, then additional validation on bytesPerRow must be added.
+        // DAWN_ASSERT isn't true, then additional validation on bytesPerRow must be added.
         const bool hasMultipleAspects = !HasOneBit(format.aspects);
-        ASSERT(hasMultipleAspects ||
-               (kTextureBytesPerRowAlignment % format.aspectInfo[0].block.byteSize) == 0);
+        DAWN_ASSERT(hasMultipleAspects ||
+                    (kTextureBytesPerRowAlignment % format.aspectInfo[0].block.byteSize) == 0);
 
         table[index] = format;
         formatsSet.set(index);
@@ -250,17 +231,18 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
 
             bool supportsMultisample = capabilities & Cap::Multisample;
             if (supportsMultisample) {
-                ASSERT(renderable);
+                DAWN_ASSERT(renderable);
             }
             internalFormat.supportsMultisample = supportsMultisample;
             internalFormat.supportsResolveTarget = capabilities & Cap::Resolve;
+            internalFormat.supportsStorageAttachment = capabilities & Cap::PLS;
             internalFormat.aspects = Aspect::Color;
             internalFormat.componentCount = static_cast<uint32_t>(componentCount);
             if (renderable) {
                 // If the color format is renderable, it must have a pixel byte size and component
                 // alignment specified.
-                ASSERT(renderTargetPixelByteCost != RenderTargetPixelByteCost(0) &&
-                       renderTargetComponentAlignment != RenderTargetComponentAlignment(0));
+                DAWN_ASSERT(renderTargetPixelByteCost != RenderTargetPixelByteCost(0) &&
+                            renderTargetComponentAlignment != RenderTargetComponentAlignment(0));
                 internalFormat.renderTargetPixelByteCost =
                     static_cast<uint32_t>(renderTargetPixelByteCost);
                 internalFormat.renderTargetComponentAlignment =
@@ -291,10 +273,10 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
                         firstAspect->baseType = TextureComponentType::Uint;
                         break;
                     default:
-                        UNREACHABLE();
+                        DAWN_UNREACHABLE();
                 }
             } else {
-                ASSERT(sampleTypes & SampleTypeBit::Float);
+                DAWN_ASSERT(sampleTypes & SampleTypeBit::Float);
                 firstAspect->baseType = TextureComponentType::Float;
             }
             firstAspect->supportedSampleTypes = sampleTypes;
@@ -358,7 +340,7 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
         //    stencil8 aspect of depth-stencil8 formats.
         //  - aspectInfo[1] is the actual info used in the rest of Dawn since
         //    GetAspectIndex(Aspect::Stencil) is 1.
-        ASSERT(GetAspectIndex(Aspect::Stencil) == 1);
+        DAWN_ASSERT(GetAspectIndex(Aspect::Stencil) == 1);
 
         internalFormat.aspectInfo[0].block.byteSize = 1;
         internalFormat.aspectInfo[0].block.width = 1;
@@ -405,10 +387,10 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
         };
 
     auto AddMultiAspectFormat =
-        [&AddFormat, &table](wgpu::TextureFormat format, Aspect aspects,
+        [&AddFormat, &table](wgpu::TextureFormat format, Aspect aspects, Cap capabilites,
+                             UnsupportedReason unsupportedReason, ComponentCount componentCount,
                              wgpu::TextureFormat firstFormat, wgpu::TextureFormat secondFormat,
-                             Cap capabilites, UnsupportedReason unsupportedReason,
-                             ComponentCount componentCount) {
+                             wgpu::TextureFormat thirdFormat = wgpu::TextureFormat::Undefined) {
             Format internalFormat;
             internalFormat.format = format;
             internalFormat.baseFormat = format;
@@ -427,11 +409,17 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
             const FormatIndex firstFormatIndex = ComputeFormatIndex(firstFormat);
             const FormatIndex secondFormatIndex = ComputeFormatIndex(secondFormat);
 
-            ASSERT(table[firstFormatIndex].aspectInfo[0].format != wgpu::TextureFormat::Undefined);
-            ASSERT(table[secondFormatIndex].aspectInfo[0].format != wgpu::TextureFormat::Undefined);
+            DAWN_ASSERT(table[firstFormatIndex].aspectInfo[0].format !=
+                        wgpu::TextureFormat::Undefined);
+            DAWN_ASSERT(table[secondFormatIndex].aspectInfo[0].format !=
+                        wgpu::TextureFormat::Undefined);
 
             internalFormat.aspectInfo[0] = table[firstFormatIndex].aspectInfo[0];
             internalFormat.aspectInfo[1] = table[secondFormatIndex].aspectInfo[0];
+            if (thirdFormat != wgpu::TextureFormat::Undefined) {
+                const FormatIndex thirdFormatIndex = ComputeFormatIndex(thirdFormat);
+                internalFormat.aspectInfo[2] = table[thirdFormatIndex].aspectInfo[0];
+            }
 
             AddFormat(internalFormat);
         };
@@ -454,11 +442,12 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
 
     // 4 bytes color formats
     SampleTypeBit sampleTypeFor32BitFloatFormats = device->HasFeature(Feature::Float32Filterable) ? kAnyFloat : SampleTypeBit::UnfilterableFloat;
-    auto supportsReadWriteStorageUsage = device->HasFeature(Feature::ChromiumExperimentalReadWriteStorageTexture) ? Cap::StorageRW : Cap::None;
+    auto supportsReadWriteStorageUsage = device->IsToggleEnabled(Toggle::AllowUnsafeAPIs) ? Cap::StorageRW : Cap::None;
+    auto supportsPLS = device->HasFeature(Feature::PixelLocalStorageCoherent) || device->HasFeature(Feature::PixelLocalStorageNonCoherent) ? Cap::PLS : Cap::None;
 
-    AddColorFormat(wgpu::TextureFormat::R32Uint, Cap::Renderable | Cap::StorageW | supportsReadWriteStorageUsage, ByteSize(4), SampleTypeBit::Uint, ComponentCount(1), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(4));
-    AddColorFormat(wgpu::TextureFormat::R32Sint, Cap::Renderable | Cap::StorageW | supportsReadWriteStorageUsage, ByteSize(4), SampleTypeBit::Sint, ComponentCount(1), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(4));
-    AddColorFormat(wgpu::TextureFormat::R32Float, Cap::Renderable | Cap::Multisample | Cap::StorageW | supportsReadWriteStorageUsage, ByteSize(4), sampleTypeFor32BitFloatFormats, ComponentCount(1), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(4));
+    AddColorFormat(wgpu::TextureFormat::R32Uint, Cap::Renderable | Cap::StorageW | supportsReadWriteStorageUsage | supportsPLS, ByteSize(4), SampleTypeBit::Uint, ComponentCount(1), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(4));
+    AddColorFormat(wgpu::TextureFormat::R32Sint, Cap::Renderable | Cap::StorageW | supportsReadWriteStorageUsage | supportsPLS, ByteSize(4), SampleTypeBit::Sint, ComponentCount(1), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(4));
+    AddColorFormat(wgpu::TextureFormat::R32Float, Cap::Renderable | Cap::Multisample | Cap::StorageW | supportsReadWriteStorageUsage | supportsPLS, ByteSize(4), sampleTypeFor32BitFloatFormats, ComponentCount(1), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(4));
     AddColorFormat(wgpu::TextureFormat::RG16Uint, Cap::Renderable | Cap::Multisample, ByteSize(4), SampleTypeBit::Uint, ComponentCount(2), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(2));
     AddColorFormat(wgpu::TextureFormat::RG16Sint, Cap::Renderable | Cap::Multisample, ByteSize(4), SampleTypeBit::Sint, ComponentCount(2), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(2));
     AddColorFormat(wgpu::TextureFormat::RG16Float, Cap::Renderable | Cap::Multisample | Cap::Resolve, ByteSize(4), kAnyFloat, ComponentCount(2), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(2));
@@ -471,6 +460,7 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
     auto BGRA8UnormSupportsStorageUsage = device->HasFeature(Feature::BGRA8UnormStorage) ? Cap::StorageW : Cap::None;
     AddColorFormat(wgpu::TextureFormat::BGRA8Unorm, Cap::Renderable | BGRA8UnormSupportsStorageUsage | Cap::Multisample | Cap::Resolve, ByteSize(4), kAnyFloat, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(1));
     AddConditionalColorFormat(wgpu::TextureFormat::BGRA8UnormSrgb, device->IsCompatibilityMode() ? UnsupportedReason(CompatibilityMode{}) : Format::supported, Cap::Renderable |  Cap::Multisample | Cap::Resolve, ByteSize(4), kAnyFloat, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(1), wgpu::TextureFormat::BGRA8Unorm);
+    AddColorFormat(wgpu::TextureFormat::RGB10A2Uint, Cap::Renderable |  Cap::Multisample, ByteSize(4), SampleTypeBit::Uint, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(4));
     AddColorFormat(wgpu::TextureFormat::RGB10A2Unorm, Cap::Renderable |  Cap::Multisample | Cap::Resolve, ByteSize(4), kAnyFloat, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(4));
 
     auto isRG11B10UfloatCapabilities = device->HasFeature(Feature::RG11B10UfloatRenderable) ? Cap::Renderable | Cap::Multisample | Cap::Resolve : Cap::None;
@@ -478,9 +468,11 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
     AddColorFormat(wgpu::TextureFormat::RGB9E5Ufloat, Cap::None, ByteSize(4), kAnyFloat, ComponentCount(3));
 
     // 8 bytes color formats
-    AddColorFormat(wgpu::TextureFormat::RG32Uint, Cap::Renderable | Cap::StorageW, ByteSize(8), SampleTypeBit::Uint, ComponentCount(2), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(4));
-    AddColorFormat(wgpu::TextureFormat::RG32Sint, Cap::Renderable | Cap::StorageW, ByteSize(8), SampleTypeBit::Sint, ComponentCount(2), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(4));
-    AddColorFormat(wgpu::TextureFormat::RG32Float, Cap::Renderable | Cap::StorageW, ByteSize(8), sampleTypeFor32BitFloatFormats, ComponentCount(2), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(4));
+    auto rg32StorageCaps = device->IsCompatibilityMode() ? Cap::None : Cap::StorageW;
+
+    AddColorFormat(wgpu::TextureFormat::RG32Uint, Cap::Renderable | rg32StorageCaps, ByteSize(8), SampleTypeBit::Uint, ComponentCount(2), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(4));
+    AddColorFormat(wgpu::TextureFormat::RG32Sint, Cap::Renderable | rg32StorageCaps, ByteSize(8), SampleTypeBit::Sint, ComponentCount(2), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(4));
+    AddColorFormat(wgpu::TextureFormat::RG32Float, Cap::Renderable | rg32StorageCaps, ByteSize(8), sampleTypeFor32BitFloatFormats, ComponentCount(2), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(4));
     AddColorFormat(wgpu::TextureFormat::RGBA16Uint, Cap::Renderable | Cap::StorageW | Cap::Multisample, ByteSize(8), SampleTypeBit::Uint, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(2));
     AddColorFormat(wgpu::TextureFormat::RGBA16Sint, Cap::Renderable | Cap::StorageW | Cap::Multisample, ByteSize(8), SampleTypeBit::Sint, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(2));
     AddColorFormat(wgpu::TextureFormat::RGBA16Float, Cap::Renderable | Cap::StorageW | Cap::Multisample | Cap::Resolve, ByteSize(8), kAnyFloat, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(2));
@@ -491,13 +483,13 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
     AddColorFormat(wgpu::TextureFormat::RGBA32Float, Cap::Renderable | Cap::StorageW, ByteSize(16), sampleTypeFor32BitFloatFormats, ComponentCount(4), RenderTargetPixelByteCost(16), RenderTargetComponentAlignment(4));
 
     // Norm16 color formats
-    auto norm16Capabilities = device->HasFeature(Feature::Norm16TextureFormats) ? Cap::Renderable | Cap::Multisample | Cap::Resolve : Cap::None;
-    AddColorFormat(wgpu::TextureFormat::R16Unorm, norm16Capabilities, ByteSize(2), kAnyFloat, ComponentCount(1), RenderTargetPixelByteCost(2), RenderTargetComponentAlignment(2));
-    AddColorFormat(wgpu::TextureFormat::RG16Unorm, norm16Capabilities, ByteSize(4), kAnyFloat, ComponentCount(2), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(2));
-    AddColorFormat(wgpu::TextureFormat::RGBA16Unorm, norm16Capabilities, ByteSize(8), kAnyFloat, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(2));
-    AddColorFormat(wgpu::TextureFormat::R16Snorm, norm16Capabilities, ByteSize(2), kAnyFloat, ComponentCount(1), RenderTargetPixelByteCost(2), RenderTargetComponentAlignment(2));
-    AddColorFormat(wgpu::TextureFormat::RG16Snorm, norm16Capabilities, ByteSize(4), kAnyFloat, ComponentCount(2), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(2));
-    AddColorFormat(wgpu::TextureFormat::RGBA16Snorm, norm16Capabilities, ByteSize(8), kAnyFloat, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(2));
+    auto norm16Supported = device->HasFeature(Feature::Norm16TextureFormats) ? Format::supported : RequiresFeature{wgpu::FeatureName::Norm16TextureFormats};
+    AddConditionalColorFormat(wgpu::TextureFormat::R16Unorm, norm16Supported, Cap::Renderable | Cap::Multisample | Cap::Resolve, ByteSize(2), kAnyFloat, ComponentCount(1), RenderTargetPixelByteCost(2), RenderTargetComponentAlignment(2));
+    AddConditionalColorFormat(wgpu::TextureFormat::RG16Unorm, norm16Supported, Cap::Renderable | Cap::Multisample | Cap::Resolve, ByteSize(4), kAnyFloat, ComponentCount(2), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(2));
+    AddConditionalColorFormat(wgpu::TextureFormat::RGBA16Unorm, norm16Supported, Cap::Renderable | Cap::Multisample | Cap::Resolve, ByteSize(8), kAnyFloat, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(2));
+    AddConditionalColorFormat(wgpu::TextureFormat::R16Snorm, norm16Supported, Cap::Renderable | Cap::Multisample | Cap::Resolve, ByteSize(2), kAnyFloat, ComponentCount(1), RenderTargetPixelByteCost(2), RenderTargetComponentAlignment(2));
+    AddConditionalColorFormat(wgpu::TextureFormat::RG16Snorm, norm16Supported, Cap::Renderable | Cap::Multisample | Cap::Resolve, ByteSize(4), kAnyFloat, ComponentCount(2), RenderTargetPixelByteCost(4), RenderTargetComponentAlignment(2));
+    AddConditionalColorFormat(wgpu::TextureFormat::RGBA16Snorm, norm16Supported, Cap::Renderable | Cap::Multisample | Cap::Resolve, ByteSize(8), kAnyFloat, ComponentCount(4), RenderTargetPixelByteCost(8), RenderTargetComponentAlignment(2));
 
     // Depth-stencil formats
     AddStencilFormat(wgpu::TextureFormat::Stencil8, Format::supported);
@@ -507,11 +499,11 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
     // using 0 here to mean "unsized" and adding a backend-specific query for the block size.
     AddDepthFormat(wgpu::TextureFormat::Depth24Plus, 4, Format::supported);
     AddMultiAspectFormat(wgpu::TextureFormat::Depth24PlusStencil8,
-                          Aspect::Depth | Aspect::Stencil, wgpu::TextureFormat::Depth24Plus, wgpu::TextureFormat::Stencil8, Cap::Renderable | Cap::Multisample, Format::supported, ComponentCount(2));
+                          Aspect::Depth | Aspect::Stencil, Cap::Renderable | Cap::Multisample, Format::supported, ComponentCount(2), wgpu::TextureFormat::Depth24Plus, wgpu::TextureFormat::Stencil8);
     AddDepthFormat(wgpu::TextureFormat::Depth32Float, 4, Format::supported);
     UnsupportedReason d32s8UnsupportedReason = device->HasFeature(Feature::Depth32FloatStencil8) ? Format::supported : RequiresFeature{wgpu::FeatureName::Depth32FloatStencil8};
     AddMultiAspectFormat(wgpu::TextureFormat::Depth32FloatStencil8,
-                          Aspect::Depth | Aspect::Stencil, wgpu::TextureFormat::Depth32Float, wgpu::TextureFormat::Stencil8, Cap::Renderable | Cap::Multisample, d32s8UnsupportedReason, ComponentCount(2));
+                          Aspect::Depth | Aspect::Stencil, Cap::Renderable | Cap::Multisample, d32s8UnsupportedReason, ComponentCount(2), wgpu::TextureFormat::Depth32Float, wgpu::TextureFormat::Stencil8);
 
     // BC compressed formats
     UnsupportedReason bcFormatUnsupportedReason = device->HasFeature(Feature::TextureCompressionBC) ? Format::supported : RequiresFeature{wgpu::FeatureName::TextureCompressionBC};
@@ -576,19 +568,31 @@ FormatTable BuildFormatTable(const DeviceBase* device) {
 
     // multi-planar formats
     const UnsupportedReason multiPlanarFormatUnsupportedReason = device->HasFeature(Feature::DawnMultiPlanarFormats) ?  Format::supported : RequiresFeature{wgpu::FeatureName::DawnMultiPlanarFormats};
+    auto multiPlanarCapabilities = device->HasFeature(Feature::MultiPlanarRenderTargets) ? Cap::Renderable : Cap::None;
     AddMultiAspectFormat(wgpu::TextureFormat::R8BG8Biplanar420Unorm, Aspect::Plane0 | Aspect::Plane1,
-        wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::RG8Unorm, Cap::None, multiPlanarFormatUnsupportedReason, ComponentCount(3));
+        multiPlanarCapabilities, multiPlanarFormatUnsupportedReason, ComponentCount(3), wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::RG8Unorm);
     const UnsupportedReason multiPlanarFormatP010UnsupportedReason = device->HasFeature(Feature::MultiPlanarFormatP010) ?  Format::supported : RequiresFeature{wgpu::FeatureName::MultiPlanarFormatP010};
     AddMultiAspectFormat(wgpu::TextureFormat::R10X6BG10X6Biplanar420Unorm, Aspect::Plane0 | Aspect::Plane1,
-        wgpu::TextureFormat::R16Unorm, wgpu::TextureFormat::RG16Unorm, Cap::None, multiPlanarFormatP010UnsupportedReason, ComponentCount(3));
-
+        multiPlanarCapabilities, multiPlanarFormatP010UnsupportedReason, ComponentCount(3), wgpu::TextureFormat::R16Unorm, wgpu::TextureFormat::RG16Unorm);
+    const UnsupportedReason multiPlanarFormatNv12aUnsupportedReason = device->HasFeature(Feature::MultiPlanarFormatNv12a) ?  Format::supported : RequiresFeature{wgpu::FeatureName::MultiPlanarFormatNv12a};
+    AddMultiAspectFormat(wgpu::TextureFormat::R8BG8A8Triplanar420Unorm, Aspect::Plane0 | Aspect::Plane1 | Aspect::Plane2,
+        multiPlanarCapabilities, multiPlanarFormatNv12aUnsupportedReason, ComponentCount(4), wgpu::TextureFormat::R8Unorm, wgpu::TextureFormat::RG8Unorm, wgpu::TextureFormat::R8Unorm);
     // clang-format on
 
     // This checks that each format is set at least once, the second part of checking that all
     // formats are checked exactly once. If this assertion is failing and texture formats have
     // been added or removed recently, check that kKnownFormatCount has been updated.
-    ASSERT(formatsSet.all());
+    DAWN_ASSERT(formatsSet.all());
 
+    for (const Format& f : table) {
+        if (f.format != f.baseFormat) {
+            auto& baseViewFormat = table[ComputeFormatIndex(f.baseFormat)].baseViewFormat;
+            // Currently, Dawn only supports sRGB reinterpretation, so there should only be one
+            // view format.
+            DAWN_ASSERT(baseViewFormat == wgpu::TextureFormat::Undefined);
+            baseViewFormat = f.format;
+        }
+    }
     return table;
 }
 
@@ -609,7 +613,7 @@ absl::FormatConvertResult<absl::FormatConversionCharSet::kString> AbslFormatConv
     absl::FormatSink* s) {
     std::visit(
         overloaded{
-            [](const std::monostate&) { UNREACHABLE(); },
+            [](const std::monostate&) { DAWN_UNREACHABLE(); },
             [s](const RequiresFeature& requiresFeature) {
                 s->Append(absl::StrFormat("requires feature %s", requiresFeature.feature));
             },

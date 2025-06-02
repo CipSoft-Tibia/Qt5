@@ -74,6 +74,7 @@ void QCache3QDefaultEvictionPolicy<Key,T>::aboutToBeRemoved(const Key &key, QSha
 template <class Key, class T, class EvPolicy = QCache3QDefaultEvictionPolicy<Key,T> >
 class QCache3Q : public EvPolicy
 {
+    Q_DISABLE_COPY_MOVE(QCache3Q)
 private:
     class Queue;
     class Node
@@ -142,11 +143,6 @@ private:
     void rebalance();
     void unlink(Node *n);
     void link_front(Node *n, Queue *q);
-
-private:
-    // make these private so they can't be used
-    inline QCache3Q(const QCache3Q<Key,T,EvPolicy> &) {}
-    inline QCache3Q<Key,T,EvPolicy> &operator=(const QCache3Q<Key,T,EvPolicy> &) {}
 };
 
 template <class Key, class T, class EvPolicy>
@@ -377,14 +373,15 @@ void QCache3Q<Key,T,EvPolicy>::rebalance()
 template <class Key, class T, class EvPolicy>
 void QCache3Q<Key,T,EvPolicy>::remove(const Key &key, bool force)
 {
-    if (!lookup_.contains(key)) {
+    const auto it = std::as_const(lookup_).find(key);
+    if (it == lookup_.cend())
         return;
-    }
-    Node *n = lookup_[key];
+
+    Node *n = *it;
     unlink(n);
     if (n->q != q1_evicted_ && !force)
         EvPolicy::aboutToBeRemoved(n->k, n->v);
-    lookup_.remove(key);
+    lookup_.erase(it);
     delete n;
 }
 

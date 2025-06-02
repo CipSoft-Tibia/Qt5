@@ -33,6 +33,7 @@
   BENCHMARK_CAPTURE(gemm_fn, srcnn915, "SRCNN (9-1-5)")->Apply(SRCNN915GemmArguments)->UseRealTime(); \
   BENCHMARK_CAPTURE(gemm_fn, srcnn935, "SRCNN (9-3-5)")->Apply(SRCNN935GemmArguments)->UseRealTime();
 
+
 // Removed due to OOM SEGFAULT on 32 bit ARM.
 //  BENCHMARK_CAPTURE(gemm_fn, srcnn955, "SRCNN (9-5-5)")->Apply(SRCNN955GemmArguments)->UseRealTime();
 

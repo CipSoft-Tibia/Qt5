@@ -36,12 +36,10 @@ class V8_EXPORT_PRIVATE AccessorAssembler : public CodeStubAssembler {
   void GenerateLoadSuperICBaseline();
   void GenerateKeyedLoadIC();
   void GenerateKeyedLoadIC_Megamorphic();
-  void GenerateKeyedLoadIC_MegamorphicStringKey();
   void GenerateKeyedLoadIC_PolymorphicName();
   void GenerateKeyedLoadICTrampoline();
   void GenerateKeyedLoadICBaseline();
   void GenerateKeyedLoadICTrampoline_Megamorphic();
-  void GenerateKeyedLoadICTrampoline_MegamorphicStringKey();
   void GenerateStoreIC();
   void GenerateStoreICTrampoline();
   void GenerateStoreICBaseline();
@@ -70,6 +68,7 @@ class V8_EXPORT_PRIVATE AccessorAssembler : public CodeStubAssembler {
 
   void GenerateKeyedStoreIC();
   void GenerateKeyedStoreICTrampoline();
+  void GenerateKeyedStoreICTrampoline_Megamorphic();
   void GenerateKeyedStoreICBaseline();
 
   void GenerateDefineKeyedOwnIC();
@@ -344,7 +343,6 @@ class V8_EXPORT_PRIVATE AccessorAssembler : public CodeStubAssembler {
 
   void KeyedLoadIC(const LoadICParameters* p, LoadAccessMode access_mode);
   void KeyedLoadICGeneric(const LoadICParameters* p);
-  void KeyedLoadICGeneric_StringKey(const LoadICParameters* p);
   void KeyedLoadICPolymorphicName(const LoadICParameters* p,
                                   LoadAccessMode access_mode);
 
@@ -479,8 +477,8 @@ class V8_EXPORT_PRIVATE AccessorAssembler : public CodeStubAssembler {
   // StoreIC implementation.
 
   void HandleStoreICProtoHandler(const StoreICParameters* p,
-                                 TNode<StoreHandler> handler, Label* miss,
-                                 ICMode ic_mode,
+                                 TNode<StoreHandler> handler, Label* slow,
+                                 Label* miss, ICMode ic_mode,
                                  ElementSupport support_elements);
   void HandleStoreICSmiHandlerCase(TNode<Word32T> handler_word,
                                    TNode<JSObject> holder, TNode<Object> value,
@@ -617,12 +615,12 @@ class ExitPoint {
   }
 
   template <class... TArgs>
-  void ReturnCallStub(Callable const& callable, TNode<Context> context,
-                      TArgs... args) {
+  void ReturnCallBuiltin(Builtin builtin, TNode<Context> context,
+                         TArgs... args) {
     if (IsDirect()) {
-      asm_->TailCallStub(callable, context, args...);
+      asm_->TailCallBuiltin(builtin, context, args...);
     } else {
-      indirect_return_handler_(asm_->CallStub(callable, context, args...));
+      indirect_return_handler_(asm_->CallBuiltin(builtin, context, args...));
     }
   }
 

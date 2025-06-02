@@ -15,7 +15,7 @@
 #include "src/gpu/graphite/compute/DispatchGroup.h"
 #include "src/gpu/graphite/dawn/DawnGraphicsPipeline.h"
 
-#include "webgpu/webgpu_cpp.h"
+#include "webgpu/webgpu_cpp.h"  // NO_G3_REWRITE
 
 namespace skgpu::graphite {
 class ComputePipeline;
@@ -59,7 +59,8 @@ private:
             const RenderPassDesc& frontendRenderPassDesc,
             const wgpu::RenderPassDescriptor& wgpuRenderPassDesc,
             const DawnTexture* msaaTexture);
-    bool doBlitWithDraw(const RenderPassDesc& frontendRenderPassDesc,
+    bool doBlitWithDraw(const wgpu::RenderPassEncoder& renderEncoder,
+                        const RenderPassDesc& frontendRenderPassDesc,
                         const wgpu::TextureView& sourceTextureView,
                         int width,
                         int height);
@@ -70,7 +71,7 @@ private:
     void bindGraphicsPipeline(const GraphicsPipeline*);
     void setBlendConstants(float* blendConstants);
 
-    void bindUniformBuffer(const BindBufferInfo& info, UniformSlot);
+    void bindUniformBuffer(const BindUniformBufferInfo& info, UniformSlot);
     void bindDrawBuffers(const BindBufferInfo& vertices,
                          const BindBufferInfo& instances,
                          const BindBufferInfo& indices,
@@ -139,6 +140,7 @@ private:
 
     std::array<const DawnBuffer*, DawnGraphicsPipeline::kNumUniformBuffers> fBoundUniformBuffers;
     std::array<uint32_t, DawnGraphicsPipeline::kNumUniformBuffers> fBoundUniformBufferOffsets;
+    std::array<uint32_t, DawnGraphicsPipeline::kNumUniformBuffers> fBoundUniformBufferSizes;
 
     wgpu::CommandEncoder fCommandEncoder;
     wgpu::RenderPassEncoder fActiveRenderPassEncoder;
@@ -147,7 +149,8 @@ private:
     wgpu::Buffer fCurrentIndirectBuffer;
     size_t fCurrentIndirectBufferOffset = 0;
 
-    wgpu::Buffer fIntrinsicConstantBuffer;
+    sk_sp<DawnBuffer> fIntrinsicConstantBuffer;
+    int fIntrinsicConstantBufferSlotsUsed = 0;
 
     const DawnGraphicsPipeline* fActiveGraphicsPipeline = nullptr;
     const DawnComputePipeline* fActiveComputePipeline = nullptr;

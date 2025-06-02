@@ -1,0 +1,68 @@
+// Copyright (C) 2023 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+/*!
+    \module QtProtobufWellKnownTypes
+    \title Qt Protobuf Well-Known Types C++ Classes
+    \ingroup frameworks-technologies
+    \qtcmakepackage ProtobufWellKnownTypes
+    \qtvariable protobufwellknowntypes
+    \since 6.6
+
+    \brief The Qt Protobuf Well-Known Types module provides support for some of
+    the types available from the
+    \l{https://protobuf.dev/reference/protobuf/google.protobuf/}{Well-Known Types}
+    package.
+
+    QtProtobufWellKnownTypes contains the following
+    \l{https://developers.google.com/protocol-buffers/docs/reference/google.protobuf}{Protobuf Well-Known types}:
+    Supported types:
+    \list
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#any} {Any} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#api} {Api} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#bool-value} {BoolValue} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#bytes-value} {BytesValue} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#double-value} {DoubleValue} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#duration} {Duration} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#empty} {Empty} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#enum} {Enum} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#enum-value} {EnumValue} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#field} {Field} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#field-cardinality} {Field.Cardinality} (enum)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#field-kind} {Field.Kind} (enum)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#field-mask} {FieldMask} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#float-value} {FloatValue} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#int32-value} {Int32Value} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#int64-value} {Int64Value} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#list-value} {ListValue} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#method} {Method} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#mixin} {Mixin} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#null-value} {NullValue} (enum)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#option} {Option} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#source-context} {SourceContext} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#string-value} {StringValue} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#struct} {Struct} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#syntax} {Syntax} (enum)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#timestamp} {Timestamp} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#type} {Type} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#uint32-value} {UInt32Value} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#uint64-value} {UInt64Value} (message)
+        \li \l{https://protobuf.dev/reference/protobuf/google.protobuf/#value} {Value} (message)
+    \endlist
+
+    To use well-known type in your project you may include the corresponding
+    google .proto file in your interface:
+    \badcode
+        syntax = "proto3";
+        package somepackage;
+        import "google/protobuf/any.proto";
+        message Message {
+            google.protobuf.Any payload = 1;
+        }
+    \endcode
+
+    To use the types listed you must link with the QtProtobuf WellKnownTypes
+    library by adding the following line to your \e{CMakeLists.txt} file:
+    \badcode
+        target_link_libraries(YourTargetName PRIVATE Qt::ProtobufWellKnownTypes)
+    \endcode
+*/

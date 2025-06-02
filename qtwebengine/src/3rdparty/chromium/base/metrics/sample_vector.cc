@@ -7,9 +7,11 @@
 #include <ostream>
 
 #include "base/check_op.h"
+#include "base/compiler_specific.h"
 #include "base/debug/crash_logging.h"
 #include "base/lazy_instance.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/raw_span.h"
 #include "base/metrics/persistent_memory_allocator.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
@@ -34,20 +36,16 @@ namespace {
 template <typename T>
 class IteratorTemplateSV : public SampleCountIterator {
  public:
-  IteratorTemplateSV(T* counts,
-                   size_t counts_size,
-                   const BucketRanges* bucket_ranges)
-      : counts_(counts),
-        counts_size_(counts_size),
-        bucket_ranges_(bucket_ranges) {
-    DCHECK_GE(bucket_ranges_->bucket_count(), counts_size_);
+  IteratorTemplateSV(base::span<T> counts, const BucketRanges* bucket_ranges)
+      : counts_(counts), bucket_ranges_(bucket_ranges) {
+    DCHECK_GE(bucket_ranges_->bucket_count(), counts_.size());
     SkipEmptyBuckets();
   }
 
   ~IteratorTemplateSV() override;
 
   // SampleCountIterator:
-  bool Done() const override { return index_ >= counts_size_; }
+  bool Done() const override { return index_ >= counts_.size(); }
   void Next() override {
     DCHECK(!Done());
     index_++;
@@ -72,7 +70,7 @@ class IteratorTemplateSV : public SampleCountIterator {
       return;
     }
 
-    while (index_ < counts_size_) {
+    while (index_ < counts_.size()) {
       if (subtle::NoBarrier_Load(&counts_[index_]) != 0) {
         return;
       }
@@ -80,14 +78,12 @@ class IteratorTemplateSV : public SampleCountIterator {
     }
   }
 
-  raw_ptr<T> counts_;
-  size_t counts_size_;
+  raw_span<T> counts_;
   raw_ptr<const BucketRanges> bucket_ranges_;
-
   size_t index_ = 0;
 };
 
-typedef IteratorTemplateSV<const HistogramBase::AtomicCount> SampleVectorIteratorSV;
+using SampleVectorIteratorSV = IteratorTemplateSV<const HistogramBase::AtomicCount>;
 
 template <>
 SampleVectorIteratorSV::~IteratorTemplateSV() = default;
@@ -103,8 +99,8 @@ void SampleVectorIteratorSV::Get(HistogramBase::Sample* min,
   *count = subtle::NoBarrier_Load(&counts_[index_]);
 }
 
-typedef IteratorTemplateSV<HistogramBase::AtomicCount>
-    ExtractingSampleVectorIterator;
+using ExtractingSampleVectorIterator =
+    IteratorTemplateSV<HistogramBase::AtomicCount>;
 
 template <>
 ExtractingSampleVectorIterator::~IteratorTemplateSV() {
@@ -165,14 +161,17 @@ void SampleVectorBase::Accumulate(Sample value, Count count) {
   }
 
   // Handle the multi-sample case.
-  Count new_value =
+  Count new_bucket_count =
       subtle::NoBarrier_AtomicIncrement(&counts()[bucket_index], count);
   IncreaseSumAndCount(strict_cast<int64_t>(count) * value, count);
 
   // TODO(bcwhite) Remove after crbug.com/682680.
-  Count old_value = new_value - count;
-  if ((new_value >= 0) != (old_value >= 0) && count > 0)
+  Count old_bucket_count = new_bucket_count - count;
+  bool record_negative_sample =
+      (new_bucket_count >= 0) != (old_bucket_count >= 0) && count > 0;
+  if (UNLIKELY(record_negative_sample)) {
     RecordNegativeSample(SAMPLES_ACCUMULATE_OVERFLOW, count);
+  }
 }
 
 Count SampleVectorBase::GetCount(Sample value) const {
@@ -228,12 +227,13 @@ std::unique_ptr<SampleCountIterator> SampleVectorBase::Iterator() const {
 
   // Handle the multi-sample case.
   if (counts() || MountExistingCountsStorage()) {
-    return std::make_unique<SampleVectorIteratorSV>(counts(), counts_size(),
-                                                  bucket_ranges_);
+    return std::make_unique<SampleVectorIteratorSV>(
+        base::make_span(counts(), counts_size()), bucket_ranges_);
   }
 
   // And the no-value case.
-  return std::make_unique<SampleVectorIteratorSV>(nullptr, 0, bucket_ranges_);
+  return std::make_unique<SampleVectorIteratorSV>(
+      base::span<const HistogramBase::AtomicCount>(), bucket_ranges_);
 }
 
 std::unique_ptr<SampleCountIterator> SampleVectorBase::ExtractingIterator() {
@@ -258,12 +258,12 @@ std::unique_ptr<SampleCountIterator> SampleVectorBase::ExtractingIterator() {
   // Handle the multi-sample case.
   if (counts() || MountExistingCountsStorage()) {
     return std::make_unique<ExtractingSampleVectorIterator>(
-        counts(), counts_size(), bucket_ranges_);
+        base::make_span(counts(), counts_size()), bucket_ranges_);
   }
 
   // And the no-value case.
-  return std::make_unique<ExtractingSampleVectorIterator>(nullptr, 0,
-                                                          bucket_ranges_);
+  return std::make_unique<ExtractingSampleVectorIterator>(
+      base::span<HistogramBase::AtomicCount>(), bucket_ranges_);
 }
 
 bool SampleVectorBase::AddSubtractImpl(SampleCountIterator* iter,
@@ -462,6 +462,18 @@ SampleVector::SampleVector(uint64_t id, const BucketRanges* bucket_ranges)
 
 SampleVector::~SampleVector() = default;
 
+bool SampleVector::IsDefinitelyEmpty() const {
+  // If we are still using SingleSample, and it has a count of 0, then |this|
+  // has no samples. If we are not using SingleSample, always return false, even
+  // though it is possible that |this| has no samples (e.g. we are using a
+  // counts array and all the bucket counts are 0). If we are wrong, this will
+  // just make the caller perform some extra work thinking that |this| is
+  // non-empty.
+  AtomicSingleSample sample = single_sample();
+  return HistogramSamples::IsDefinitelyEmpty() && !sample.IsDisabled() &&
+         sample.Load().count == 0;
+}
+
 bool SampleVector::MountExistingCountsStorage() const {
   // There is never any existing storage other than what is already in use.
   return counts() != nullptr;
@@ -591,6 +603,15 @@ PersistentSampleVector::PersistentSampleVector(
 }
 
 PersistentSampleVector::~PersistentSampleVector() = default;
+
+bool PersistentSampleVector::IsDefinitelyEmpty() const {
+  // Not implemented.
+  NOTREACHED();
+
+  // Always return false. If we are wrong, this will just make the caller
+  // perform some extra work thinking that |this| is non-empty.
+  return false;
+}
 
 bool PersistentSampleVector::MountExistingCountsStorage() const {
   // There is no early exit if counts is not yet mounted because, given that

@@ -40,7 +40,8 @@ enum class DebugDrawBodyType {
     DynamicAwake = 1,
     DynamicSleeping = 2,
     Trigger = 3,
-    Unknown = 4
+    Character = 4,
+    Unknown = 5
 };
 
 /*

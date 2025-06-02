@@ -23,9 +23,8 @@
 QT_BEGIN_NAMESPACE
 
 class QGstreamerMessage;
-class QGstreamerSyncMessageFilter;
 class QGstreamerBusMessageFilter;
-class QGstPipelinePrivate;
+struct QGstPipelinePrivate;
 
 class QGstPipeline : public QGstBin
 {
@@ -43,8 +42,6 @@ public:
     static QGstPipeline createFromFactory(const char *factory, const char *name);
     static QGstPipeline create(const char *name);
 
-    void installMessageFilter(QGstreamerSyncMessageFilter *filter);
-    void removeMessageFilter(QGstreamerSyncMessageFilter *filter);
     void installMessageFilter(QGstreamerBusMessageFilter *filter);
     void removeMessageFilter(QGstreamerBusMessageFilter *filter);
 
@@ -56,30 +53,13 @@ public:
                                    std::chrono::nanoseconds timeout = {});
     bool processNextPendingMessage(std::chrono::nanoseconds timeout);
 
-    template <typename Functor>
-    void modifyPipelineWhileNotRunning(Functor &&fn)
-    {
-        beginConfig();
-        fn();
-        endConfig();
-    }
-
-    template <typename Functor>
-    static void modifyPipelineWhileNotRunning(QGstPipeline &&pipeline, Functor &&fn)
-    {
-        if (pipeline)
-            pipeline.modifyPipelineWhileNotRunning(fn);
-        else
-            fn();
-    }
-
     void flush();
 
     void setPlaybackRate(double rate, bool forceFlushingSeek = false);
     double playbackRate() const;
     void applyPlaybackRate(bool forceFlushingSeek = false);
 
-    void setPosition(std::chrono::nanoseconds pos);
+    void setPosition(std::chrono::nanoseconds pos, bool flush = true);
     std::chrono::nanoseconds position() const;
     std::chrono::milliseconds positionInMs() const;
 
@@ -92,17 +72,16 @@ public:
     std::optional<std::pair<std::chrono::nanoseconds, std::chrono::nanoseconds>>
     queryPositionAndDuration(std::chrono::nanoseconds timeout = defaultQueryTimeout) const;
 
+    void seekToEndWithEOS();
+
 private:
     // installs QGstPipelinePrivate as "pipeline-private" gobject property
     static QGstPipeline adopt(GstPipeline *);
 
-    void seek(std::chrono::nanoseconds pos, double rate);
-    void seek(std::chrono::nanoseconds pos);
+    void seek(std::chrono::nanoseconds pos, double rate, bool flush);
+    void seek(std::chrono::nanoseconds pos, bool flush);
 
     QGstPipelinePrivate *getPrivate() const;
-
-    void beginConfig();
-    void endConfig();
 };
 
 QT_END_NAMESPACE

@@ -9,6 +9,7 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkImage.h"
 #include "include/effects/SkImageFilters.h"
+#include "tools/DecodeUtils.h"
 #include "tools/Resources.h"
 
 #if defined(SK_GANESH)
@@ -72,7 +73,7 @@ protected:
     }
 
     void onDelayedSetup() override {
-        fImage = GetResourceAsImage("images/mandrill_512.png");
+        fImage = ToolUtils::GetResourceAsImage("images/mandrill_512.png");
     }
 
     void onDraw(int loops, SkCanvas* canvas) override {
@@ -88,7 +89,7 @@ protected:
         }
         sk_sp<SkImageFilter> mergeFilter = SkImageFilters::Merge(inputs, kNumInputs);
 
-        // But measure makeWithFilter() per loop since that's the focus of this benchmark
+        // But measure MakeWithFilter() per loop since that's the focus of this benchmark
         for (int j = 0; j < loops; j++) {
             sk_sp<SkImage> image;
 

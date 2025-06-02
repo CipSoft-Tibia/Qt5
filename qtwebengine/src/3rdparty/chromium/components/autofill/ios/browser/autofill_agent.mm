@@ -34,8 +34,8 @@
 #import "components/autofill/core/browser/ui/suggestion.h"
 #import "components/autofill/core/common/autofill_constants.h"
 #import "components/autofill/core/common/autofill_features.h"
+#import "components/autofill/core/common/autofill_payments_features.h"
 #import "components/autofill/core/common/autofill_prefs.h"
-#import "components/autofill/core/common/autofill_tick_clock.h"
 #import "components/autofill/core/common/autofill_util.h"
 #import "components/autofill/core/common/field_data_manager.h"
 #import "components/autofill/core/common/form_data.h"
@@ -49,6 +49,7 @@
 #import "components/autofill/ios/form_util/form_activity_observer_bridge.h"
 #import "components/autofill/ios/form_util/form_activity_params.h"
 #import "components/autofill/ios/form_util/form_handlers_java_script_feature.h"
+#import "components/autofill/ios/form_util/form_util_java_script_feature.h"
 #import "components/autofill/ios/form_util/unique_id_data_tab_helper.h"
 #import "components/prefs/ios/pref_observer_bridge.h"
 #import "components/prefs/pref_change_registrar.h"
@@ -72,6 +73,7 @@ using autofill::FieldRendererId;
 using autofill::FormGlobalId;
 using autofill::FormHandlersJavaScriptFeature;
 using autofill::FormRendererId;
+using autofill::FormUtilJavaScriptFeature;
 using autofill::FieldPropertiesFlags::kAutofilledOnUserTrigger;
 using base::NumberToString;
 using base::SysNSStringToUTF16;
@@ -241,15 +243,34 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
 }
 
 // Notifies the autofill manager when forms are detected on a page.
-- (void)notifyBrowserAutofillManager:
-            (autofill::BrowserAutofillManager*)autofillManager
-                         ofFormsSeen:(const FormDataVector&)updated_forms {
-  DCHECK(autofillManager);
-  DCHECK(!updated_forms.empty());
+- (void)notifyFormsSeen:(const FormDataVector&)updatedForms
+                inFrame:(web::WebFrame*)frame {
+  auto* driver =
+      autofill::AutofillDriverIOS::FromWebStateAndWebFrame(_webState, frame);
+  if (!driver) {
+    return;
+  }
+
+  DCHECK(!updatedForms.empty());
+
+  if (base::FeatureList::IsEnabled(
+          autofill::features::kAutofillAcrossIframesIos)) {
+    for (const autofill::FormData& form : updatedForms) {
+      for (const autofill::FrameTokenWithPredecessor& childFrame :
+           form.child_frames) {
+        // This absl::get is safe because on iOS, FormData::child_frames is
+        // only ever populated with RemoteFrameTokens. absl::get will fail a
+        // CHECK if this assumption is ever wrong.
+        auto token = absl::get<autofill::RemoteFrameToken>(childFrame.token);
+        driver->NotifyOfChildFrame(token);
+      }
+    }
+  }
+
   // TODO(crbug.com/1215337): Notify |autofillManager| about deleted fields.
-  std::vector<FormGlobalId> removed_forms;
-  autofillManager->OnFormsSeen(/*updated_forms=*/updated_forms,
-                               /*removed_forms=*/removed_forms);
+  std::vector<FormGlobalId> removedForms;
+  driver->GetAutofillManager().OnFormsSeen(/*updated_forms=*/updatedForms,
+                                           /*removed_forms=*/removedForms);
 }
 
 // Notifies the autofill manager when forms are submitted.
@@ -462,7 +483,12 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
   }
 
   if (suggestion.popupItemId == autofill::PopupItemId::kAddressEntry ||
-      suggestion.popupItemId == autofill::PopupItemId::kCreditCardEntry) {
+      suggestion.popupItemId == autofill::PopupItemId::kCreditCardEntry ||
+      suggestion.popupItemId == autofill::PopupItemId::kCreateNewPlusAddress ||
+      (base::FeatureList::IsEnabled(
+           autofill::features::kAutofillEnableVirtualCards) &&
+       suggestion.popupItemId ==
+           autofill::PopupItemId::kVirtualCreditCardEntry)) {
     _pendingAutocompleteFieldID = uniqueFieldID;
     if (_popupDelegate) {
       // TODO(966411): Replace 0 with the index of the selected suggestion.
@@ -473,14 +499,12 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
       if (!suggestion.backendIdentifier.length) {
         autofill_suggestion.payload = autofill::Suggestion::BackendId();
       } else {
-        autofill_suggestion.payload = autofill::Suggestion::BackendId(
-            SysNSStringToUTF8(suggestion.backendIdentifier));
+        autofill_suggestion.payload =
+            autofill::Suggestion::BackendId(autofill::Suggestion::Guid(
+                SysNSStringToUTF8(suggestion.backendIdentifier)));
       }
 
-      // On iOS, only a single trigger source exists. See crbug.com/1448447.
-      _popupDelegate->DidAcceptSuggestion(
-          autofill_suggestion, 0,
-          autofill::AutofillSuggestionTriggerSource::kiOS);
+      _popupDelegate->DidAcceptSuggestion(autofill_suggestion, {0, 0});
     }
     return;
   }
@@ -500,7 +524,9 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
     return;
   }
 
-  if (suggestion.popupItemId == autofill::PopupItemId::kAutocompleteEntry) {
+  if (suggestion.popupItemId == autofill::PopupItemId::kAutocompleteEntry ||
+      suggestion.popupItemId ==
+          autofill::PopupItemId::kFillExistingPlusAddress) {
     // FormSuggestion is a simple, single value that can be filled out now.
     [self fillField:SysNSStringToUTF8(fieldIdentifier)
         uniqueFieldID:uniqueFieldID
@@ -581,11 +607,45 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
   autofill::BrowserAutofillManager* autofillManager =
       [self autofillManagerFromWebState:_webState webFrame:frame];
   if (autofillManager)
-    autofillManager->OnDidFillAutofillFormData(
-        form, autofill::AutofillTickClock::NowTicks());
+    autofillManager->OnDidFillAutofillFormData(form, base::TimeTicks::Now());
 }
 
-- (void)handleParsedForms:(const std::vector<autofill::FormStructure*>&)forms
+// Similar to `fillField`, but does not rely on `FillActiveFormField`, opting
+// instead to find and fill a specific field in `frame` with `value`. In other
+// words, `field` need not be `document.activeElement`.
+- (void)fillSpecificFormField:(const autofill::FieldRendererId&)field
+                    withValue:(const std::u16string)value
+                      inFrame:(web::WebFrame*)frame {
+  base::Value::Dict data;
+  data.Set("unique_renderer_id", static_cast<int>(field.value()));
+  data.Set("value", value);
+
+  __weak AutofillAgent* weakSelf = self;
+  SuggestionHandledCompletion suggestionHandledCompletionCopy =
+      [_suggestionHandledCompletion copy];
+  _suggestionHandledCompletion = nil;
+
+  AutofillJavaScriptFeature::GetInstance()->FillSpecificFormField(
+      frame, std::move(data), base::BindOnce(^(BOOL success) {
+        AutofillAgent* strongSelf = weakSelf;
+        if (!strongSelf) {
+          return;
+        }
+        if (success) {
+          [strongSelf updateFieldManagerForSpecificField:field withValue:value];
+        }
+        // Especially in test code, it is possible that the fill was not
+        // initiated by selecting a suggestion. In this case the callback is
+        // nil.
+        if (suggestionHandledCompletionCopy) {
+          suggestionHandledCompletionCopy();
+        }
+      }));
+}
+
+- (void)handleParsedForms:
+            (const std::vector<
+                raw_ptr<autofill::FormStructure, VectorExperimental>>&)forms
                   inFrame:(web::WebFrame*)frame {
 }
 
@@ -612,6 +672,27 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
       frame, std::move(predictionData));
 }
 
+- (void)scanFormsInWebState:(web::WebState*)webState
+                    inFrame:(web::WebFrame*)webFrame {
+  __weak AutofillAgent* weakSelf = self;
+  id completionHandler = ^(BOOL success, const FormDataVector& forms) {
+    if (!success || forms.empty()) {
+      return;
+    }
+    [weakSelf notifyFormsSeen:forms inFrame:webFrame];
+  };
+  // The document has now been fully loaded. Scan for forms to be extracted.
+  size_t min_required_fields =
+      MIN(autofill::kMinRequiredFieldsForUpload,
+          MIN(autofill::kMinRequiredFieldsForHeuristics,
+              autofill::kMinRequiredFieldsForQuery));
+  [self fetchFormsFiltered:NO
+                        withName:std::u16string()
+      minimumRequiredFieldsCount:min_required_fields
+                         inFrame:webFrame
+               completionHandler:completionHandler];
+}
+
 #pragma mark - AutofillClientIOSBridge
 
 - (void)showAutofillPopup:
@@ -631,14 +712,20 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
     // interested in is autofill::PopupItemId::kClearForm, used to show the
     // "clear form" button.
     NSString* value = nil;
+    NSString* minorValue = nil;
     NSString* displayDescription = nil;
     UIImage* icon = nil;
+
     if (popup_suggestion.popup_item_id ==
             autofill::PopupItemId::kAutocompleteEntry ||
         popup_suggestion.popup_item_id ==
             autofill::PopupItemId::kAddressEntry ||
         popup_suggestion.popup_item_id ==
-            autofill::PopupItemId::kCreditCardEntry) {
+            autofill::PopupItemId::kCreditCardEntry ||
+        (base::FeatureList::IsEnabled(
+             autofill::features::kAutofillEnableVirtualCards) &&
+         popup_suggestion.popup_item_id ==
+             autofill::PopupItemId::kVirtualCreditCardEntry)) {
       // Filter out any key/value suggestions if the user hasn't typed yet.
       if (popup_suggestion.popup_item_id ==
               autofill::PopupItemId::kAutocompleteEntry &&
@@ -649,6 +736,16 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
       // displayDescription will contain a summary of the data to be filled in
       // the other elements.
       value = SysUTF16ToNSString(popup_suggestion.main_text.value);
+
+      if (base::FeatureList::IsEnabled(
+              autofill::features::kAutofillEnableVirtualCards) &&
+          (!popup_suggestion.minor_text.value.empty())) {
+        // For Virtual Cards, the main_text is just "Virtual card" so we need to
+        // include the minor_text (which is the card name + last 4 digits ||
+        // card holder's name) as the minorValue.
+        minorValue = SysUTF16ToNSString(popup_suggestion.minor_text.value);
+      }
+
       if (!popup_suggestion.labels.empty()) {
         DCHECK_EQ(popup_suggestion.labels.size(), 1U);
         DCHECK_EQ(popup_suggestion.labels[0].size(), 1U);
@@ -659,31 +756,7 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
       // Only show icon for credit card suggestions.
       if (delegate &&
           delegate->GetPopupType() == autofill::PopupType::kCreditCards) {
-        // If available, the custom icon for the card is preferred over the
-        // generic network icon. The network icon may also be missing, in
-        // which case we do not set an icon at all.
-        if (!popup_suggestion.custom_icon.IsEmpty()) {
-          icon = popup_suggestion.custom_icon.ToUIImage();
-
-          // On iOS, the keyboard accessory wants smaller icons than the default
-          // 40x24 size, so we resize them to 32x20, if the provided icon is
-          // larger than that.
-          constexpr CGFloat kSuggestionIconWidth = 32;
-          if (icon && (icon.size.width > kSuggestionIconWidth)) {
-            // For a simple image resize, we can keep the same underlying image
-            // and only adjust the ratio.
-            CGFloat ratio = icon.size.width / kSuggestionIconWidth;
-            icon = [UIImage imageWithCGImage:[icon CGImage]
-                                       scale:icon.scale * ratio
-                                 orientation:icon.imageOrientation];
-          }
-        } else if (!popup_suggestion.icon.empty()) {
-          const int resourceID =
-              autofill::CreditCard::IconResourceId(popup_suggestion.icon);
-          icon = ui::ResourceBundle::GetSharedInstance()
-                     .GetNativeImageNamed(resourceID)
-                     .ToUIImage();
-        }
+        icon = [self createIcon:popup_suggestion];
       }
     } else if (popup_suggestion.popup_item_id ==
                autofill::PopupItemId::kClearForm) {
@@ -692,6 +765,12 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
     } else if (popup_suggestion.popup_item_id ==
                autofill::PopupItemId::kShowAccountCards) {
       // Show opt-in for showing cards from account.
+      value = SysUTF16ToNSString(popup_suggestion.main_text.value);
+    } else if (popup_suggestion.popup_item_id ==
+                   autofill::PopupItemId::kFillExistingPlusAddress ||
+               popup_suggestion.popup_item_id ==
+                   autofill::PopupItemId::kCreateNewPlusAddress) {
+      // Show any plus_address suggestions.
       value = SysUTF16ToNSString(popup_suggestion.main_text.value);
     }
 
@@ -705,14 +784,15 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
 
     FormSuggestion* suggestion = [FormSuggestion
                suggestionWithValue:value
+                        minorValue:minorValue
                 displayDescription:displayDescription
                               icon:icon
                        popupItemId:popup_suggestion.popup_item_id
-                 backendIdentifier:
-                     SysUTF8ToNSString(
-                         popup_suggestion
-                             .GetPayload<autofill::Suggestion::BackendId>()
-                             .value())
+                 backendIdentifier:SysUTF8ToNSString(
+                                       popup_suggestion
+                                           .GetBackendId<
+                                               autofill::Suggestion::Guid>()
+                                           .value())
                     requiresReauth:NO
         acceptanceA11yAnnouncement:acceptanceA11yAnnouncement];
 
@@ -842,7 +922,10 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
   if (driver->is_processed())
     return;
   driver->set_processed(true);
-  AutofillJavaScriptFeature::GetInstance()->AddJSDelayInFrame(frame);
+
+  FormUtilJavaScriptFeature::GetInstance()->SetAutofillAcrossIframes(
+      frame, base::FeatureList::IsEnabled(
+                 autofill::features::kAutofillAcrossIframesIos));
 
   if (frame->IsMainFrame()) {
     _popupDelegate.reset();
@@ -866,31 +949,6 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
       /*track_user_edited_fields=*/true);
 
   [self scanFormsInWebState:webState inFrame:frame];
-}
-
-- (void)scanFormsInWebState:(web::WebState*)webState
-                    inFrame:(web::WebFrame*)webFrame {
-  __weak AutofillAgent* weakSelf = self;
-  id completionHandler = ^(BOOL success, const FormDataVector& forms) {
-    AutofillAgent* strongSelf = weakSelf;
-    if (!strongSelf || !success)
-      return;
-    autofill::BrowserAutofillManager* autofillManager =
-        [strongSelf autofillManagerFromWebState:webState webFrame:webFrame];
-    if (!autofillManager || forms.empty())
-      return;
-    [strongSelf notifyBrowserAutofillManager:autofillManager ofFormsSeen:forms];
-  };
-  // The document has now been fully loaded. Scan for forms to be extracted.
-  size_t min_required_fields =
-      MIN(autofill::kMinRequiredFieldsForUpload,
-          MIN(autofill::kMinRequiredFieldsForHeuristics,
-              autofill::kMinRequiredFieldsForQuery));
-  [self fetchFormsFiltered:NO
-                        withName:std::u16string()
-      minimumRequiredFieldsCount:min_required_fields
-                         inFrame:webFrame
-               completionHandler:completionHandler];
 }
 
 #pragma mark -
@@ -1001,7 +1059,7 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
 // if the current URL has a web scheme and the page content is HTML.
 - (BOOL)isAutofillEnabled {
   if (!autofill::prefs::IsAutofillProfileEnabled(_prefService) &&
-      !autofill::prefs::IsAutofillCreditCardEnabled(_prefService)) {
+      !autofill::prefs::IsAutofillPaymentMethodsEnabled(_prefService)) {
     return NO;
   }
 
@@ -1039,8 +1097,8 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
         if (!strongSelf)
           return;
         if (success) {
-          strongSelf->_fieldDataManager->UpdateFieldDataMap(
-              uniqueFieldID, value, kAutofilledOnUserTrigger);
+          [strongSelf updateFieldManagerForSpecificField:uniqueFieldID
+                                               withValue:value];
         }
         suggestionHandledCompletionCopy();
       }));
@@ -1062,6 +1120,12 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
   ukm::builders::Autofill_FormFillSuccessIOS(source_id)
       .SetFormFillSuccess(!fillingResults.empty())
       .Record(ukm::UkmRecorder::Get());
+}
+
+- (void)updateFieldManagerForSpecificField:(FieldRendererId)uniqueFieldID
+                                 withValue:(const std::u16string&)value {
+  _fieldDataManager->UpdateFieldDataMap(uniqueFieldID, value,
+                                        kAutofilledOnUserTrigger);
 }
 
 // Sends the the |data| to |frame| to actually fill the data.
@@ -1114,8 +1178,39 @@ constexpr base::TimeDelta kA11yAnnouncementQueueDelay = base::Seconds(1);
 
   autofill::FormFieldData field;
   GetFormField(&field, forms[0], fieldIdentifier);
-  autofillManager->OnTextFieldDidChange(
-      forms[0], field, gfx::RectF(), autofill::AutofillTickClock::NowTicks());
+  autofillManager->OnTextFieldDidChange(forms[0], field, gfx::RectF(),
+                                        base::TimeTicks::Now());
+}
+
+// Helper method to create icons for payment cards.
+- (UIImage*)createIcon:(autofill::Suggestion)popup_suggestion {
+  // If available, the custom icon for the card is preferred over the
+  // generic network icon. The network icon may also be missing, in
+  // which case we do not set an icon at all.
+  if (!popup_suggestion.custom_icon.IsEmpty()) {
+    UIImage* icon = popup_suggestion.custom_icon.ToUIImage();
+
+    // On iOS, the keyboard accessory wants smaller icons than the default
+    // 40x24 size, so we resize them to 32x20, if the provided icon is
+    // larger than that.
+    constexpr CGFloat kSuggestionIconWidth = 32;
+    if (icon && (icon.size.width > kSuggestionIconWidth)) {
+      // For a simple image resize, we can keep the same underlying image
+      // and only adjust the ratio.
+      CGFloat ratio = icon.size.width / kSuggestionIconWidth;
+      return [UIImage imageWithCGImage:[icon CGImage]
+                                 scale:icon.scale * ratio
+                           orientation:icon.imageOrientation];
+    }
+    return icon;
+  } else if (popup_suggestion.icon != autofill::Suggestion::Icon::kNoIcon) {
+    const int resourceID =
+        autofill::CreditCard::IconResourceId(popup_suggestion.icon);
+    return ui::ResourceBundle::GetSharedInstance()
+        .GetNativeImageNamed(resourceID)
+        .ToUIImage();
+  }
+  return nil;
 }
 
 @end

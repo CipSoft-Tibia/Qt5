@@ -72,12 +72,18 @@ QAndroidPlatformScreen* createScreenForDisplayId(int displayId)
     return new QAndroidPlatformScreen(display);
 }
 
+static bool isValidAndroidContextForRendering()
+{
+    return QtAndroid::isQtApplication() ? QtAndroidPrivate::activity().isValid()
+                                        : QtAndroidPrivate::context().isValid();
+}
+
 } // anonymous namespace
 
 void *QAndroidPlatformNativeInterface::nativeResourceForIntegration(const QByteArray &resource)
 {
     if (resource=="JavaVM")
-        return QtAndroid::javaVM();
+        return QtAndroidPrivate::javaVM();
     if (resource == "QtActivity") {
         extern Q_CORE_EXPORT jobject qt_androidActivity();
         return qt_androidActivity();
@@ -211,7 +217,6 @@ QAndroidPlatformIntegration::QAndroidPlatformIntegration(const QStringList &para
     m_mainThread = QThread::currentThread();
 
     m_androidFDB = new QAndroidPlatformFontDatabase();
-    m_androidPlatformServices = new QAndroidPlatformServices();
 
 #ifndef QT_NO_CLIPBOARD
     m_androidPlatformClipboard = new QAndroidPlatformClipboard();
@@ -304,11 +309,11 @@ static bool needsBasicRenderloopWorkaround()
 
 void QAndroidPlatformIntegration::initialize()
 {
-    const QString icStr = QPlatformInputContextFactory::requested();
-    if (icStr.isNull())
+    const auto icStrs = QPlatformInputContextFactory::requested();
+    if (icStrs.isEmpty())
         m_inputContext.reset(new QAndroidInputContext);
     else
-        m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
+        m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
 }
 
 bool QAndroidPlatformIntegration::hasCapability(Capability cap) const
@@ -317,9 +322,12 @@ bool QAndroidPlatformIntegration::hasCapability(Capability cap) const
         case ApplicationState: return true;
         case ThreadedPixmaps: return true;
         case NativeWidgets: return QtAndroidPrivate::activity().isValid();
-        case OpenGL: return QtAndroidPrivate::activity().isValid();
-        case ForeignWindows: return QtAndroidPrivate::activity().isValid();
-        case ThreadedOpenGL: return !needsBasicRenderloopWorkaround() && QtAndroidPrivate::activity().isValid();
+        case OpenGL:
+            return isValidAndroidContextForRendering();
+        case ForeignWindows:
+            return isValidAndroidContextForRendering();
+        case ThreadedOpenGL:
+            return !needsBasicRenderloopWorkaround() && isValidAndroidContextForRendering();
         case RasterGLSurface: return QtAndroidPrivate::activity().isValid();
         case TopStackedNativeChildWindows: return false;
         case MaximizeUsingFullscreenGeometry: return true;
@@ -341,7 +349,7 @@ QPlatformBackingStore *QAndroidPlatformIntegration::createPlatformBackingStore(Q
 
 QPlatformOpenGLContext *QAndroidPlatformIntegration::createPlatformOpenGLContext(QOpenGLContext *context) const
 {
-    if (!QtAndroidPrivate::activity().isValid())
+    if (!isValidAndroidContextForRendering())
         return nullptr;
     QSurfaceFormat format(context->format());
     format.setAlphaBufferSize(8);
@@ -384,7 +392,7 @@ QOffscreenSurface *QAndroidPlatformIntegration::createOffscreenSurface(ANativeWi
 
 QPlatformWindow *QAndroidPlatformIntegration::createPlatformWindow(QWindow *window) const
 {
-    if (!QtAndroidPrivate::activity().isValid())
+    if (!isValidAndroidContextForRendering())
         return nullptr;
 
 #if QT_CONFIG(vulkan)
@@ -445,7 +453,10 @@ QPlatformNativeInterface *QAndroidPlatformIntegration::nativeInterface() const
 
 QPlatformServices *QAndroidPlatformIntegration::services() const
 {
-    return m_androidPlatformServices;
+    if (m_androidPlatformServices.isNull())
+        m_androidPlatformServices.reset(new QAndroidPlatformServices);
+
+    return m_androidPlatformServices.data();
 }
 
 QVariant QAndroidPlatformIntegration::styleHint(StyleHint hint) const
@@ -537,7 +548,7 @@ void QAndroidPlatformIntegration::setScreenSize(int width, int height)
 
 Qt::ColorScheme QAndroidPlatformIntegration::m_colorScheme = Qt::ColorScheme::Light;
 
-void QAndroidPlatformIntegration::setColorScheme(Qt::ColorScheme colorScheme)
+void QAndroidPlatformIntegration::updateColorScheme(Qt::ColorScheme colorScheme)
 {
     if (m_colorScheme == colorScheme)
         return;

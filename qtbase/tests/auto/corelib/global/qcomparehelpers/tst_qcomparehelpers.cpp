@@ -4,6 +4,8 @@
 #include "tst_qcomparehelpers.h"
 #include "wrappertypes.h"
 
+#include <QtCore/qscopeguard.h>
+
 #if defined(__STDCPP_FLOAT16_T__) && __has_include(<stdfloat>)
 #include <stdfloat>
 #endif
@@ -109,32 +111,12 @@ void tst_QCompareHelpers::compareStringData()
 void tst_QCompareHelpers::comparisonCompiles()
 {
     QTestPrivate::testAllComparisonOperatorsCompile<IntWrapper>();
-    if (QTest::currentTestFailed())
-        return;
-
     QTestPrivate::testAllComparisonOperatorsCompile<IntWrapper, int>();
-    if (QTest::currentTestFailed())
-        return;
-
     QTestPrivate::testAllComparisonOperatorsCompile<DoubleWrapper>();
-    if (QTest::currentTestFailed())
-        return;
-
     QTestPrivate::testAllComparisonOperatorsCompile<DoubleWrapper, double>();
-    if (QTest::currentTestFailed())
-        return;
-
     QTestPrivate::testAllComparisonOperatorsCompile<DoubleWrapper, IntWrapper>();
-    if (QTest::currentTestFailed())
-        return;
-
     QTestPrivate::testAllComparisonOperatorsCompile<StringWrapper<QString>>();
-    if (QTest::currentTestFailed())
-        return;
-
     QTestPrivate::testAllComparisonOperatorsCompile<StringWrapper<QString>, QAnyStringView>();
-    if (QTest::currentTestFailed())
-        return;
 }
 
 void tst_QCompareHelpers::compare_IntWrapper_data()
@@ -498,11 +480,14 @@ enum class TestEnum : quint8 {
 void tst_QCompareHelpers::builtinOrder()
 {
 #define TEST_BUILTIN(Left, Right) \
-    testOrderForTypes<Left, Right>(); \
-    if (QTest::currentTestFailed()) { \
-        qDebug("Failed Qt::compareThreeWay() test for builtin types " #Left " and " #Right); \
-        return; \
-    }
+    do { \
+        auto printOnFailure = qScopeGuard([] { \
+                qDebug("Failed Qt::compareThreeWay() test for builtin types %s and %s", \
+                       #Left, #Right); \
+            }); \
+        testOrderForTypes<Left, Right>(); \
+        printOnFailure.dismiss(); \
+    } while (false);
 
     // some combinations
     TEST_BUILTIN(char, char)
@@ -581,20 +566,46 @@ void tst_QCompareHelpers::builtinOrder()
                 Qt::strong_ordering::equivalent);
 
     std::array<int, 2> arr{1, 0};
+#if QT_DEPRECATED_SINCE(6, 8)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
     QCOMPARE_EQ(Qt::compareThreeWay(&arr[0], &arr[1]), Qt::strong_ordering::less);
     QCOMPARE_EQ(Qt::compareThreeWay(arr.data(), &arr[0]), Qt::strong_ordering::equivalent);
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 8)
 
     class Base {};
     class Derived : public Base {};
 
     auto b = std::make_unique<Base>();
     auto d = std::make_unique<Derived>();
+#if QT_DEPRECATED_SINCE(6, 8)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
     QCOMPARE_NE(Qt::compareThreeWay(b.get(), d.get()), Qt::strong_ordering::equivalent);
     QCOMPARE_EQ(Qt::compareThreeWay(b.get(), nullptr), Qt::strong_ordering::greater);
     QCOMPARE_EQ(Qt::compareThreeWay(nullptr, d.get()), Qt::strong_ordering::less);
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 8)
+
+    // Check Qt::totally_ordered_wrapper
+    auto a0 = Qt::totally_ordered_wrapper(&arr[0]);
+    auto a1 = Qt::totally_ordered_wrapper(&arr[1]);
+    QCOMPARE_EQ(Qt::compareThreeWay(a0, a1), Qt::strong_ordering::less);
+    QCOMPARE_EQ(Qt::compareThreeWay(arr.data(), a0), Qt::strong_ordering::equivalent);
+
+    auto bWrapper = Qt::totally_ordered_wrapper(b.get());
+    auto dWrapper = Qt::totally_ordered_wrapper(d.get());
+    QCOMPARE_NE(Qt::compareThreeWay(bWrapper, dWrapper), Qt::strong_ordering::equivalent);
+    QCOMPARE_NE(Qt::compareThreeWay(bWrapper, d.get()), Qt::strong_ordering::equivalent);
+    QCOMPARE_NE(Qt::compareThreeWay(b.get(), dWrapper), Qt::strong_ordering::equivalent);
+    QCOMPARE_EQ(Qt::compareThreeWay(bWrapper, nullptr), Qt::strong_ordering::greater);
+    QCOMPARE_EQ(Qt::compareThreeWay(nullptr, dWrapper), Qt::strong_ordering::less);
+    dWrapper.reset(nullptr);
+    QCOMPARE_EQ(Qt::compareThreeWay(nullptr, dWrapper), Qt::strong_ordering::equivalent);
 
 #undef TEST_BUILTIN
 }
 
 QTEST_MAIN(tst_QCompareHelpers)
-#include "tst_qcomparehelpers.moc"
+#include "moc_tst_qcomparehelpers.cpp"

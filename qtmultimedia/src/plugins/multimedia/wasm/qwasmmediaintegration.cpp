@@ -9,7 +9,7 @@
 
 #include <private/qplatformmediaformatinfo_p.h>
 #include <private/qplatformmediaplugin_p.h>
-#include <private/qplatformmediadevices_p.h>
+#include <private/qplatformaudiodevices_p.h>
 #include <private/qplatformvideodevices_p.h>
 
 #include "mediaplayer/qwasmmediaplayer_p.h"
@@ -97,11 +97,6 @@ QMaybe<QPlatformImageCapture *>
 QWasmMediaIntegration::createImageCapture(QImageCapture *imageCapture)
 {
     return new QWasmImageCapture(imageCapture);
-}
-
-QList<QCameraDevice> QWasmMediaIntegration::videoInputs()
-{
-    return videoDevices()->videoDevices();
 }
 
 QT_END_NAMESPACE

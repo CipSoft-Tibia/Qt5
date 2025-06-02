@@ -156,7 +156,7 @@ video, canvas, img {
   overflow-clip-margin: content-box;
 }
 
-iframe, embed, object, fencedframe, portal {
+iframe, embed, object, fencedframe {
    overflow: clip !important;
    overflow-clip-margin: content-box !important;
 }
@@ -437,7 +437,7 @@ textarea {
   border: 1px solid -internal-light-dark(#767676, #858585);
   column-count: initial !important;
   -webkit-rtl-ordering: logical;
-  resize: auto;
+  resize: -internal-textarea-auto;
   cursor: text;
   padding: 2px;
   white-space: pre-wrap;
@@ -522,6 +522,10 @@ input[type="url" i] {
   padding-inline: 2px;
 }
 
+input[type="tel" i] {
+  direction: ltr;
+}
+
 input::-webkit-inner-spin-button {
     appearance: auto;
     display: inline-block;
@@ -592,6 +596,12 @@ input[type="password" i]::-internal-input-suggested.reveal-password {
     -webkit-text-security: none;
 }
 
+input[type="password" i]::-internal-input-suggested.fade-out-password {
+    width: fit-content;
+    -webkit-mask: linear-gradient(to right, #000 50%, #0000);
+    mask: linear-gradient(to right, #000 50%, #0000);
+}
+
 input[type="password" i]::-internal-reveal {
   width: 1.3em;
   height: 1.3em;
@@ -613,6 +623,12 @@ input[type="password" i]::-internal-reveal:hover,
 input[type="password" i]::-internal-reveal:focus {
   border-radius: 1px;
   cursor: pointer;
+}
+
+input[type="password" i]::-internal-strong {
+  color: -internal-light-dark(#0B57D0, #A8C7FA);
+  font-family: roboto;
+  -webkit-text-security: none;
 }
 
 input[type="hidden" i], input[type="image" i], input[type="file" i] {
@@ -913,6 +929,14 @@ input[readonly]::-webkit-calendar-picker-indicator {
     visibility: hidden;
 }
 
+/* Form controls that measure the inline size without doing actual layout
+   need to disable `text-autospace`, if their content can be affected by
+   the property. crbug.com/1484863 */
+input[type="date" i], input[type="datetime-local" i], input[type="month" i],
+input[type="week" i], select {
+    text-autospace: no-autospace !important;
+}
+
 select {
     appearance: auto;
     box-sizing: border-box;
@@ -1185,11 +1209,6 @@ nobr {
 
 :-internal-selector-fragment-anchor {
     outline: Highlight 3px solid;
-}
-
-:-internal-spatial-navigation-interest {
-    outline: auto 1px -webkit-focus-ring-color !important;
-    box-shadow: none !important
 }
 
 :focus-visible {

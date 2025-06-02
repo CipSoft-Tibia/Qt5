@@ -24,7 +24,7 @@ QT_BEGIN_NAMESPACE
 
 class QSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlSensorGlobal : public QObject
+class Q_SENSORSQUICK_EXPORT QmlSensorGlobal : public QObject
 {
     Q_OBJECT
 public:

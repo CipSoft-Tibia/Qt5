@@ -18,6 +18,18 @@ namespace network {
 // 3rd party context.
 class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkServiceResourceBlockList {
  public:
+  // The result of checking a URL against the blocklist, used for metrics
+  // analysis.
+  //
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  enum class AntiFingerprintingBlockListResult {
+    kThirdPartyAllowed = 0,
+    kThirdPartyBlocked = 1,
+    kFirstPartyAllowed = 2,
+    kMaxValue = kFirstPartyAllowed
+  };
+
   NetworkServiceResourceBlockList();
   ~NetworkServiceResourceBlockList();
 
@@ -28,10 +40,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkServiceResourceBlockList {
   // See base/trace_event/memory_usage_estimator.h for more info.
   size_t EstimateMemoryUsage() const;
 
-  // Returns true if the block list is eligible to be used but does not
-  // indicate that allow list is currently populated.
-  bool IsEnabled();
-
   // Returns true if there are entries in the block list and it is possible to
   // match on them. If false, `Matches` will always return false.
   bool IsPopulated();
@@ -40,7 +48,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkServiceResourceBlockList {
   // the IsolationInfo is not a first party domain (first parties have bypass
   // rules).
   bool Matches(const GURL& request_url,
-               absl::optional<net::IsolationInfo> isolation_info);
+               const absl::optional<net::IsolationInfo>& isolation_info);
 
   // Use the Masked Domain List to generate the block list and the 1P bypass
   // rules.

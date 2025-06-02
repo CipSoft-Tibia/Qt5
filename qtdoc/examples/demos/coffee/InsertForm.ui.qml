@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
 import QtQuick.Effects
 
 Item {
@@ -113,7 +112,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 color: Colors.currentTheme.cardColor
                 Text {
-                    text: "Please Insert your Cup!"
+                    text: "Please insert your cup."
                     color: Colors.currentTheme.textColor
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.verticalCenter: parent.verticalCenter

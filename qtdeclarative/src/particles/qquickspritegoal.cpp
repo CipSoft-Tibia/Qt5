@@ -11,10 +11,10 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype SpriteGoal
-    \instantiates QQuickSpriteGoalAffector
+    \nativetype QQuickSpriteGoalAffector
     \inqmlmodule QtQuick.Particles
     \ingroup qtquick-images-sprites
-    \inherits Affector
+    \inherits ParticleAffector
     \brief For changing the state of a sprite particle.
 
 */

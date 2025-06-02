@@ -9,6 +9,7 @@ import json
 import logging
 import pathlib
 import plistlib
+import re
 import traceback as tb
 from subprocess import SubprocessError
 from typing import Any, Dict, Optional, Tuple
@@ -24,6 +25,9 @@ class MacOSPlatform(PosixPlatform):
       pathlib.Path("/Applications"),
       pathlib.Path.home() / "Applications",
   )
+
+  LSAPPINFO_IN_FRONT_LINE_RE = r".*\(in front\)\s*"
+  LSAPPINFO_PID_LINE_RE = r"\s*pid = ([0-9]+).*"
 
   @property
   def is_macos(self) -> bool:
@@ -163,9 +167,30 @@ class MacOSPlatform(PosixPlatform):
       return None
     foreground_info = self.sh_stdout("lsappinfo", "info", "-only", "pid",
                                      foreground_process_info).strip()
-    _, pid = foreground_info.split("=")
+    foreground_info_split = foreground_info.split("=")
+
+    pid = None
+
+    if len(foreground_info_split) == 2:
+      pid = foreground_info_split[1]
+    else:
+      # On macOS 14.0 Beta, "lsappinfo info" returns an empty result. Fall back
+      # to parsing the output of "lsappinfo list" to obtain the front app's
+      # info.
+      app_list = self.sh_stdout("lsappinfo", "list")
+      found_front_app = False
+      for app_list_line in app_list.splitlines():
+        if re.match(self.LSAPPINFO_IN_FRONT_LINE_RE, app_list_line):
+          found_front_app = True
+        elif found_front_app:
+          match = re.match(self.LSAPPINFO_PID_LINE_RE, app_list_line)
+          if match:
+            pid = match.group(1)
+            break
+
     if pid and pid.isdigit():
       return psutil.Process(int(pid)).as_dict()
+
     return None
 
   def get_relative_cpu_speed(self) -> float:

@@ -14,8 +14,7 @@
 
 #include <xnnpack/cache.h>
 #include <xnnpack/common.h>
-
-#include "models/models.h"
+#include <xnnpack/models.h>
 
 namespace models {
 
@@ -368,9 +367,9 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
   std::generate(w169.begin(), w169.end(), std::ref(i8rng));
   std::generate(w170.begin(), w170.end(), std::ref(i32rng));
 
-  ExecutionPlan operators;
+  Operators operators;
   xnn_status status;
-  xnn_caches caches = {};
+  size_t max_workspace_size = 0;
 
   xnn_operator_t op0 = nullptr;
   status = xnn_create_convolution2d_nhwc_qs8(
@@ -388,7 +387,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w65.data(), w66.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op0);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #0" << std::endl;
@@ -412,7 +412,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w67.data(), w68.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op1);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #1" << std::endl;
@@ -436,7 +437,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w69.data(), w70.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op2);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #2" << std::endl;
@@ -460,7 +462,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w71.data(), w72.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op3);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #3" << std::endl;
@@ -484,7 +487,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w73.data(), w74.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op4);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #4" << std::endl;
@@ -508,7 +512,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w75.data(), w76.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op5);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #5" << std::endl;
@@ -532,7 +537,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w77.data(), w78.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op6);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #6" << std::endl;
@@ -556,7 +562,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w79.data(), w80.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op7);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #7" << std::endl;
@@ -580,7 +587,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w81.data(), w82.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op8);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #8" << std::endl;
@@ -617,7 +625,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w83.data(), w84.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op10);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #10" << std::endl;
@@ -641,7 +650,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w85.data(), w86.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op11);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #11" << std::endl;
@@ -665,7 +675,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w87.data(), w88.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op12);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #12" << std::endl;
@@ -689,7 +700,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w89.data(), w90.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op13);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #13" << std::endl;
@@ -713,7 +725,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w91.data(), w92.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op14);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #14" << std::endl;
@@ -737,7 +750,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w93.data(), w94.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op15);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #15" << std::endl;
@@ -774,7 +788,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w95.data(), w96.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op17);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #17" << std::endl;
@@ -798,7 +813,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w97.data(), w98.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op18);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #18" << std::endl;
@@ -822,7 +838,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w99.data(), w100.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op19);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #19" << std::endl;
@@ -859,7 +876,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w101.data(), w102.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op21);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #21" << std::endl;
@@ -883,7 +901,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w103.data(), w104.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op22);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #22" << std::endl;
@@ -907,7 +926,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w105.data(), w106.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op23);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #23" << std::endl;
@@ -931,7 +951,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w107.data(), w108.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op24);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #24" << std::endl;
@@ -955,7 +976,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w109.data(), w110.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op25);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #25" << std::endl;
@@ -979,7 +1001,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w111.data(), w112.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op26);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #26" << std::endl;
@@ -1016,7 +1039,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w113.data(), w114.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op28);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #28" << std::endl;
@@ -1040,7 +1064,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w115.data(), w116.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op29);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #29" << std::endl;
@@ -1064,7 +1089,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w117.data(), w118.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op30);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #30" << std::endl;
@@ -1101,7 +1127,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w119.data(), w120.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op32);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #32" << std::endl;
@@ -1125,7 +1152,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w121.data(), w122.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op33);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #33" << std::endl;
@@ -1149,7 +1177,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w123.data(), w124.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op34);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #34" << std::endl;
@@ -1186,7 +1215,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w125.data(), w126.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op36);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #36" << std::endl;
@@ -1210,7 +1240,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w127.data(), w128.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op37);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #37" << std::endl;
@@ -1234,7 +1265,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w129.data(), w130.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op38);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #38" << std::endl;
@@ -1258,7 +1290,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w131.data(), w132.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op39);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #39" << std::endl;
@@ -1282,7 +1315,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w133.data(), w134.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op40);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #40" << std::endl;
@@ -1306,7 +1340,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w135.data(), w136.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op41);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #41" << std::endl;
@@ -1343,7 +1378,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w137.data(), w138.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op43);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #43" << std::endl;
@@ -1367,7 +1403,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w139.data(), w140.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op44);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #44" << std::endl;
@@ -1391,7 +1428,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w141.data(), w142.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op45);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #45" << std::endl;
@@ -1428,7 +1466,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w143.data(), w144.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op47);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #47" << std::endl;
@@ -1452,7 +1491,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w145.data(), w146.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op48);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #48" << std::endl;
@@ -1476,7 +1516,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w147.data(), w148.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op49);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #49" << std::endl;
@@ -1500,7 +1541,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w149.data(), w150.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op50);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #50" << std::endl;
@@ -1524,7 +1566,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w151.data(), w152.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op51);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #51" << std::endl;
@@ -1548,7 +1591,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w153.data(), w154.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op52);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #52" << std::endl;
@@ -1585,7 +1629,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w155.data(), w156.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op54);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #54" << std::endl;
@@ -1609,7 +1654,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w157.data(), w158.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op55);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #55" << std::endl;
@@ -1633,7 +1679,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w159.data(), w160.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op56);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #56" << std::endl;
@@ -1670,7 +1717,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w161.data(), w162.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op58);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #58" << std::endl;
@@ -1694,7 +1742,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w163.data(), w164.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op59);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #59" << std::endl;
@@ -1718,7 +1767,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w165.data(), w166.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op60);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #60" << std::endl;
@@ -1742,7 +1792,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w167.data(), w168.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op61);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #61" << std::endl;
@@ -1779,7 +1830,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
     w169.data(), w170.data(),
     -1 /* output zero point */, 0.5f /* output scale */, -126 /* output min */, 126 /* output max */,
     0 /* flags */,
-    &caches,
+    nullptr,
+    nullptr,
     &op63);
   if (status != xnn_status_success) {
     std::cerr << "failed to create operation #63" << std::endl;
@@ -1787,11 +1839,896 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
   }
   operators.emplace_back(op63, xnn_delete_operator);
 
+  size_t op0_workspace_size = 0;
+  size_t op0_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op0,
+    /*batch_size=*/1, /*input_height=*/224, /*input_width=*/224,
+    &op0_workspace_size, &op0_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op0_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #0" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op1_workspace_size = 0;
+  size_t op1_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op1,
+    /*batch_size=*/1, /*input_height=*/112, /*input_width=*/112,
+    &op1_workspace_size, &op1_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op1_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #1" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op2_workspace_size = 0;
+  size_t op2_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op2,
+    /*batch_size=*/1, /*input_height=*/112, /*input_width=*/112,
+    &op2_workspace_size, &op2_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op2_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #2" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op3_workspace_size = 0;
+  size_t op3_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op3,
+    /*batch_size=*/1, /*input_height=*/112, /*input_width=*/112,
+    &op3_workspace_size, &op3_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op3_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #3" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op4_workspace_size = 0;
+  size_t op4_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op4,
+    /*batch_size=*/1, /*input_height=*/112, /*input_width=*/112,
+    &op4_workspace_size, &op4_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op4_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #4" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op5_workspace_size = 0;
+  size_t op5_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op5,
+    /*batch_size=*/1, /*input_height=*/56, /*input_width=*/56,
+    &op5_workspace_size, &op5_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op5_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #5" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op6_workspace_size = 0;
+  size_t op6_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op6,
+    /*batch_size=*/1, /*input_height=*/56, /*input_width=*/56,
+    &op6_workspace_size, &op6_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op6_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #6" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op7_workspace_size = 0;
+  size_t op7_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op7,
+    /*batch_size=*/1, /*input_height=*/56, /*input_width=*/56,
+    &op7_workspace_size, &op7_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op7_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #7" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op8_workspace_size = 0;
+  size_t op8_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op8,
+    /*batch_size=*/1, /*input_height=*/56, /*input_width=*/56,
+    &op8_workspace_size, &op8_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op8_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #8" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 56, 56, 24 };
+    const size_t b_shape[] = { 1, 56, 56, 24 };
+    status = xnn_reshape_add_nd_qs8(
+      op9,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #9" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op10_workspace_size = 0;
+  size_t op10_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op10,
+    /*batch_size=*/1, /*input_height=*/56, /*input_width=*/56,
+    &op10_workspace_size, &op10_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op10_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #10" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op11_workspace_size = 0;
+  size_t op11_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op11,
+    /*batch_size=*/1, /*input_height=*/56, /*input_width=*/56,
+    &op11_workspace_size, &op11_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op11_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #11" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op12_workspace_size = 0;
+  size_t op12_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op12,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op12_workspace_size, &op12_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op12_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #12" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op13_workspace_size = 0;
+  size_t op13_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op13,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op13_workspace_size, &op13_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op13_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #13" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op14_workspace_size = 0;
+  size_t op14_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op14,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op14_workspace_size, &op14_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op14_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #14" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op15_workspace_size = 0;
+  size_t op15_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op15,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op15_workspace_size, &op15_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op15_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #15" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 28, 28, 32 };
+    const size_t b_shape[] = { 1, 28, 28, 32 };
+    status = xnn_reshape_add_nd_qs8(
+      op16,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #16" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op17_workspace_size = 0;
+  size_t op17_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op17,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op17_workspace_size, &op17_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op17_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #17" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op18_workspace_size = 0;
+  size_t op18_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op18,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op18_workspace_size, &op18_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op18_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #18" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op19_workspace_size = 0;
+  size_t op19_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op19,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op19_workspace_size, &op19_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op19_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #19" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 28, 28, 32 };
+    const size_t b_shape[] = { 1, 28, 28, 32 };
+    status = xnn_reshape_add_nd_qs8(
+      op20,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #20" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op21_workspace_size = 0;
+  size_t op21_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op21,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op21_workspace_size, &op21_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op21_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #21" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op22_workspace_size = 0;
+  size_t op22_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op22,
+    /*batch_size=*/1, /*input_height=*/28, /*input_width=*/28,
+    &op22_workspace_size, &op22_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op22_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #22" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op23_workspace_size = 0;
+  size_t op23_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op23,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op23_workspace_size, &op23_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op23_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #23" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op24_workspace_size = 0;
+  size_t op24_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op24,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op24_workspace_size, &op24_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op24_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #24" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op25_workspace_size = 0;
+  size_t op25_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op25,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op25_workspace_size, &op25_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op25_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #25" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op26_workspace_size = 0;
+  size_t op26_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op26,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op26_workspace_size, &op26_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op26_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #26" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 14, 14, 64 };
+    const size_t b_shape[] = { 1, 14, 14, 64 };
+    status = xnn_reshape_add_nd_qs8(
+      op27,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #27" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op28_workspace_size = 0;
+  size_t op28_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op28,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op28_workspace_size, &op28_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op28_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #28" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op29_workspace_size = 0;
+  size_t op29_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op29,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op29_workspace_size, &op29_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op29_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #29" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op30_workspace_size = 0;
+  size_t op30_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op30,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op30_workspace_size, &op30_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op30_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #30" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 14, 14, 64 };
+    const size_t b_shape[] = { 1, 14, 14, 64 };
+    status = xnn_reshape_add_nd_qs8(
+      op31,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #31" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op32_workspace_size = 0;
+  size_t op32_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op32,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op32_workspace_size, &op32_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op32_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #32" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op33_workspace_size = 0;
+  size_t op33_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op33,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op33_workspace_size, &op33_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op33_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #33" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op34_workspace_size = 0;
+  size_t op34_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op34,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op34_workspace_size, &op34_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op34_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #34" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 14, 14, 64 };
+    const size_t b_shape[] = { 1, 14, 14, 64 };
+    status = xnn_reshape_add_nd_qs8(
+      op35,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #35" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op36_workspace_size = 0;
+  size_t op36_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op36,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op36_workspace_size, &op36_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op36_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #36" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op37_workspace_size = 0;
+  size_t op37_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op37,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op37_workspace_size, &op37_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op37_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #37" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op38_workspace_size = 0;
+  size_t op38_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op38,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op38_workspace_size, &op38_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op38_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #38" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op39_workspace_size = 0;
+  size_t op39_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op39,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op39_workspace_size, &op39_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op39_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #39" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op40_workspace_size = 0;
+  size_t op40_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op40,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op40_workspace_size, &op40_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op40_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #40" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op41_workspace_size = 0;
+  size_t op41_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op41,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op41_workspace_size, &op41_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op41_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #41" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 14, 14, 96 };
+    const size_t b_shape[] = { 1, 14, 14, 96 };
+    status = xnn_reshape_add_nd_qs8(
+      op42,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #42" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op43_workspace_size = 0;
+  size_t op43_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op43,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op43_workspace_size, &op43_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op43_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #43" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op44_workspace_size = 0;
+  size_t op44_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op44,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op44_workspace_size, &op44_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op44_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #44" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op45_workspace_size = 0;
+  size_t op45_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op45,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op45_workspace_size, &op45_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op45_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #45" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 14, 14, 96 };
+    const size_t b_shape[] = { 1, 14, 14, 96 };
+    status = xnn_reshape_add_nd_qs8(
+      op46,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #46" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op47_workspace_size = 0;
+  size_t op47_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op47,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op47_workspace_size, &op47_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op47_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #47" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op48_workspace_size = 0;
+  size_t op48_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op48,
+    /*batch_size=*/1, /*input_height=*/14, /*input_width=*/14,
+    &op48_workspace_size, &op48_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op48_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #48" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op49_workspace_size = 0;
+  size_t op49_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op49,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op49_workspace_size, &op49_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op49_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #49" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op50_workspace_size = 0;
+  size_t op50_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op50,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op50_workspace_size, &op50_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op50_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #50" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op51_workspace_size = 0;
+  size_t op51_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op51,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op51_workspace_size, &op51_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op51_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #51" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op52_workspace_size = 0;
+  size_t op52_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op52,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op52_workspace_size, &op52_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op52_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #52" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 7, 7, 160 };
+    const size_t b_shape[] = { 1, 7, 7, 160 };
+    status = xnn_reshape_add_nd_qs8(
+      op53,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #53" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op54_workspace_size = 0;
+  size_t op54_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op54,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op54_workspace_size, &op54_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op54_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #54" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op55_workspace_size = 0;
+  size_t op55_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op55,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op55_workspace_size, &op55_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op55_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #55" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op56_workspace_size = 0;
+  size_t op56_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op56,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op56_workspace_size, &op56_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op56_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #56" << std::endl;
+    return ExecutionPlan();
+  }
+
+  {
+    const size_t a_shape[] = { 1, 7, 7, 160 };
+    const size_t b_shape[] = { 1, 7, 7, 160 };
+    status = xnn_reshape_add_nd_qs8(
+      op57,
+      4, a_shape, 4, b_shape,
+      /*threadpool=*/threadpool);
+  }
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #57" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op58_workspace_size = 0;
+  size_t op58_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op58,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op58_workspace_size, &op58_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op58_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #58" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op59_workspace_size = 0;
+  size_t op59_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op59,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op59_workspace_size, &op59_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op59_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #59" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op60_workspace_size = 0;
+  size_t op60_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op60,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op60_workspace_size, &op60_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op60_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #60" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op61_workspace_size = 0;
+  size_t op61_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op61,
+    /*batch_size=*/1, /*input_height=*/7, /*input_width=*/7,
+    &op61_workspace_size, &op61_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op61_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #61" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op62_workspace_size = 0;
+  size_t op62_workspace_alignment = 0;
+  status = xnn_reshape_global_average_pooling_nwc_qs8(
+    op62,
+    /*batch_size=*/1, 49 /* width */,
+    &op62_workspace_size, &op62_workspace_alignment,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op62_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #62" << std::endl;
+    return ExecutionPlan();
+  }
+
+  size_t op63_workspace_size = 0;
+  size_t op63_workspace_alignment = 0;
+  status = xnn_reshape_convolution2d_nhwc_qs8(
+    op63,
+    /*batch_size=*/1, /*input_height=*/1, /*input_width=*/1,
+    &op63_workspace_size, &op63_workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/threadpool);
+  max_workspace_size = std::max(max_workspace_size, op63_workspace_size);
+  if (status != xnn_status_success) {
+    std::cerr << "failed to reshape operation #63" << std::endl;
+    return ExecutionPlan();
+  }
+
+  Workspace workspace(max_workspace_size);
+
   status = xnn_setup_convolution2d_nhwc_qs8(
     op0,
-    1 /* batch size */, 224 /* input height */, 224 /* input width */,
-    v0.data() /* input */, v1.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v0.data(), /*output=*/v1.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #0" << std::endl;
     return ExecutionPlan();
@@ -1799,9 +2736,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op1,
-    1 /* batch size */, 112 /* input height */, 112 /* input width */,
-    v1.data() /* input */, v2.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v1.data(), /*output=*/v2.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #1" << std::endl;
     return ExecutionPlan();
@@ -1809,9 +2744,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op2,
-    1 /* batch size */, 112 /* input height */, 112 /* input width */,
-    v2.data() /* input */, v3.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v2.data(), /*output=*/v3.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #2" << std::endl;
     return ExecutionPlan();
@@ -1819,9 +2752,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op3,
-    1 /* batch size */, 112 /* input height */, 112 /* input width */,
-    v3.data() /* input */, v4.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v3.data(), /*output=*/v4.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #3" << std::endl;
     return ExecutionPlan();
@@ -1829,9 +2760,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op4,
-    1 /* batch size */, 112 /* input height */, 112 /* input width */,
-    v4.data() /* input */, v5.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v4.data(), /*output=*/v5.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #4" << std::endl;
     return ExecutionPlan();
@@ -1839,9 +2768,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op5,
-    1 /* batch size */, 56 /* input height */, 56 /* input width */,
-    v5.data() /* input */, v6.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v5.data(), /*output=*/v6.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #5" << std::endl;
     return ExecutionPlan();
@@ -1849,9 +2776,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op6,
-    1 /* batch size */, 56 /* input height */, 56 /* input width */,
-    v6.data() /* input */, v7.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v6.data(), /*output=*/v7.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #6" << std::endl;
     return ExecutionPlan();
@@ -1859,9 +2784,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op7,
-    1 /* batch size */, 56 /* input height */, 56 /* input width */,
-    v7.data() /* input */, v8.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v7.data(), /*output=*/v8.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #7" << std::endl;
     return ExecutionPlan();
@@ -1869,23 +2792,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op8,
-    1 /* batch size */, 56 /* input height */, 56 /* input width */,
-    v8.data() /* input */, v9.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v8.data(), /*output=*/v9.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #8" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 56, 56, 24 };
-    const size_t b_shape[] = { 1, 56, 56, 24 };
-    status = xnn_setup_add_nd_qs8(
-      op9,
-      4, a_shape, 4, b_shape,
-      v9.data() /* a */, v6.data() /* b */, v10.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op9,
+    v9.data() /* a */, v6.data() /* b */, /*output=*/v10.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #9" << std::endl;
     return ExecutionPlan();
@@ -1893,9 +2808,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op10,
-    1 /* batch size */, 56 /* input height */, 56 /* input width */,
-    v10.data() /* input */, v11.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v10.data(), /*output=*/v11.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #10" << std::endl;
     return ExecutionPlan();
@@ -1903,9 +2816,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op11,
-    1 /* batch size */, 56 /* input height */, 56 /* input width */,
-    v11.data() /* input */, v12.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v11.data(), /*output=*/v12.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #11" << std::endl;
     return ExecutionPlan();
@@ -1913,9 +2824,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op12,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v12.data() /* input */, v13.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v12.data(), /*output=*/v13.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #12" << std::endl;
     return ExecutionPlan();
@@ -1923,9 +2832,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op13,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v13.data() /* input */, v14.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v13.data(), /*output=*/v14.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #13" << std::endl;
     return ExecutionPlan();
@@ -1933,9 +2840,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op14,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v14.data() /* input */, v15.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v14.data(), /*output=*/v15.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #14" << std::endl;
     return ExecutionPlan();
@@ -1943,23 +2848,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op15,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v15.data() /* input */, v16.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v15.data(), /*output=*/v16.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #15" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 28, 28, 32 };
-    const size_t b_shape[] = { 1, 28, 28, 32 };
-    status = xnn_setup_add_nd_qs8(
-      op16,
-      4, a_shape, 4, b_shape,
-      v16.data() /* a */, v13.data() /* b */, v17.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op16,
+    v16.data() /* a */, v13.data() /* b */, /*output=*/v17.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #16" << std::endl;
     return ExecutionPlan();
@@ -1967,9 +2864,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op17,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v17.data() /* input */, v18.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v17.data(), /*output=*/v18.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #17" << std::endl;
     return ExecutionPlan();
@@ -1977,9 +2872,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op18,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v18.data() /* input */, v19.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v18.data(), /*output=*/v19.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #18" << std::endl;
     return ExecutionPlan();
@@ -1987,23 +2880,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op19,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v19.data() /* input */, v20.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v19.data(), /*output=*/v20.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #19" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 28, 28, 32 };
-    const size_t b_shape[] = { 1, 28, 28, 32 };
-    status = xnn_setup_add_nd_qs8(
-      op20,
-      4, a_shape, 4, b_shape,
-      v20.data() /* a */, v17.data() /* b */, v21.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op20,
+    v20.data() /* a */, v17.data() /* b */, /*output=*/v21.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #20" << std::endl;
     return ExecutionPlan();
@@ -2011,9 +2896,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op21,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v21.data() /* input */, v22.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v21.data(), /*output=*/v22.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #21" << std::endl;
     return ExecutionPlan();
@@ -2021,9 +2904,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op22,
-    1 /* batch size */, 28 /* input height */, 28 /* input width */,
-    v22.data() /* input */, v23.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v22.data(), /*output=*/v23.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #22" << std::endl;
     return ExecutionPlan();
@@ -2031,9 +2912,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op23,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v23.data() /* input */, v24.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v23.data(), /*output=*/v24.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #23" << std::endl;
     return ExecutionPlan();
@@ -2041,9 +2920,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op24,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v24.data() /* input */, v25.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v24.data(), /*output=*/v25.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #24" << std::endl;
     return ExecutionPlan();
@@ -2051,9 +2928,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op25,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v25.data() /* input */, v26.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v25.data(), /*output=*/v26.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #25" << std::endl;
     return ExecutionPlan();
@@ -2061,23 +2936,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op26,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v26.data() /* input */, v27.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v26.data(), /*output=*/v27.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #26" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 14, 14, 64 };
-    const size_t b_shape[] = { 1, 14, 14, 64 };
-    status = xnn_setup_add_nd_qs8(
-      op27,
-      4, a_shape, 4, b_shape,
-      v27.data() /* a */, v24.data() /* b */, v28.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op27,
+    v27.data() /* a */, v24.data() /* b */, /*output=*/v28.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #27" << std::endl;
     return ExecutionPlan();
@@ -2085,9 +2952,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op28,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v28.data() /* input */, v29.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v28.data(), /*output=*/v29.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #28" << std::endl;
     return ExecutionPlan();
@@ -2095,9 +2960,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op29,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v29.data() /* input */, v30.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v29.data(), /*output=*/v30.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #29" << std::endl;
     return ExecutionPlan();
@@ -2105,23 +2968,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op30,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v30.data() /* input */, v31.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v30.data(), /*output=*/v31.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #30" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 14, 14, 64 };
-    const size_t b_shape[] = { 1, 14, 14, 64 };
-    status = xnn_setup_add_nd_qs8(
-      op31,
-      4, a_shape, 4, b_shape,
-      v31.data() /* a */, v28.data() /* b */, v32.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op31,
+    v31.data() /* a */, v28.data() /* b */, /*output=*/v32.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #31" << std::endl;
     return ExecutionPlan();
@@ -2129,9 +2984,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op32,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v32.data() /* input */, v33.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v32.data(), /*output=*/v33.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #32" << std::endl;
     return ExecutionPlan();
@@ -2139,9 +2992,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op33,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v33.data() /* input */, v34.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v33.data(), /*output=*/v34.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #33" << std::endl;
     return ExecutionPlan();
@@ -2149,23 +3000,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op34,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v34.data() /* input */, v35.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v34.data(), /*output=*/v35.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #34" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 14, 14, 64 };
-    const size_t b_shape[] = { 1, 14, 14, 64 };
-    status = xnn_setup_add_nd_qs8(
-      op35,
-      4, a_shape, 4, b_shape,
-      v35.data() /* a */, v32.data() /* b */, v36.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op35,
+    v35.data() /* a */, v32.data() /* b */, /*output=*/v36.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #35" << std::endl;
     return ExecutionPlan();
@@ -2173,9 +3016,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op36,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v36.data() /* input */, v37.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v36.data(), /*output=*/v37.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #36" << std::endl;
     return ExecutionPlan();
@@ -2183,9 +3024,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op37,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v37.data() /* input */, v38.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v37.data(), /*output=*/v38.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #37" << std::endl;
     return ExecutionPlan();
@@ -2193,9 +3032,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op38,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v38.data() /* input */, v39.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v38.data(), /*output=*/v39.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #38" << std::endl;
     return ExecutionPlan();
@@ -2203,9 +3040,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op39,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v39.data() /* input */, v40.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v39.data(), /*output=*/v40.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #39" << std::endl;
     return ExecutionPlan();
@@ -2213,9 +3048,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op40,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v40.data() /* input */, v41.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v40.data(), /*output=*/v41.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #40" << std::endl;
     return ExecutionPlan();
@@ -2223,23 +3056,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op41,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v41.data() /* input */, v42.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v41.data(), /*output=*/v42.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #41" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 14, 14, 96 };
-    const size_t b_shape[] = { 1, 14, 14, 96 };
-    status = xnn_setup_add_nd_qs8(
-      op42,
-      4, a_shape, 4, b_shape,
-      v42.data() /* a */, v39.data() /* b */, v43.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op42,
+    v42.data() /* a */, v39.data() /* b */, /*output=*/v43.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #42" << std::endl;
     return ExecutionPlan();
@@ -2247,9 +3072,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op43,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v43.data() /* input */, v44.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v43.data(), /*output=*/v44.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #43" << std::endl;
     return ExecutionPlan();
@@ -2257,9 +3080,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op44,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v44.data() /* input */, v45.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v44.data(), /*output=*/v45.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #44" << std::endl;
     return ExecutionPlan();
@@ -2267,23 +3088,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op45,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v45.data() /* input */, v46.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v45.data(), /*output=*/v46.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #45" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 14, 14, 96 };
-    const size_t b_shape[] = { 1, 14, 14, 96 };
-    status = xnn_setup_add_nd_qs8(
-      op46,
-      4, a_shape, 4, b_shape,
-      v46.data() /* a */, v43.data() /* b */, v47.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op46,
+    v46.data() /* a */, v43.data() /* b */, /*output=*/v47.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #46" << std::endl;
     return ExecutionPlan();
@@ -2291,9 +3104,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op47,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v47.data() /* input */, v48.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v47.data(), /*output=*/v48.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #47" << std::endl;
     return ExecutionPlan();
@@ -2301,9 +3112,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op48,
-    1 /* batch size */, 14 /* input height */, 14 /* input width */,
-    v48.data() /* input */, v49.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v48.data(), /*output=*/v49.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #48" << std::endl;
     return ExecutionPlan();
@@ -2311,9 +3120,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op49,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v49.data() /* input */, v50.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v49.data(), /*output=*/v50.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #49" << std::endl;
     return ExecutionPlan();
@@ -2321,9 +3128,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op50,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v50.data() /* input */, v51.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v50.data(), /*output=*/v51.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #50" << std::endl;
     return ExecutionPlan();
@@ -2331,9 +3136,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op51,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v51.data() /* input */, v52.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v51.data(), /*output=*/v52.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #51" << std::endl;
     return ExecutionPlan();
@@ -2341,23 +3144,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op52,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v52.data() /* input */, v53.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v52.data(), /*output=*/v53.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #52" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 7, 7, 160 };
-    const size_t b_shape[] = { 1, 7, 7, 160 };
-    status = xnn_setup_add_nd_qs8(
-      op53,
-      4, a_shape, 4, b_shape,
-      v53.data() /* a */, v50.data() /* b */, v54.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op53,
+    v53.data() /* a */, v50.data() /* b */, /*output=*/v54.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #53" << std::endl;
     return ExecutionPlan();
@@ -2365,9 +3160,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op54,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v54.data() /* input */, v55.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v54.data(), /*output=*/v55.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #54" << std::endl;
     return ExecutionPlan();
@@ -2375,9 +3168,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op55,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v55.data() /* input */, v56.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v55.data(), /*output=*/v56.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #55" << std::endl;
     return ExecutionPlan();
@@ -2385,23 +3176,15 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op56,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v56.data() /* input */, v57.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v56.data(), /*output=*/v57.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #56" << std::endl;
     return ExecutionPlan();
   }
 
-  {
-    const size_t a_shape[] = { 1, 7, 7, 160 };
-    const size_t b_shape[] = { 1, 7, 7, 160 };
-    status = xnn_setup_add_nd_qs8(
-      op57,
-      4, a_shape, 4, b_shape,
-      v57.data() /* a */, v54.data() /* b */, v58.data() /* output */,
-      threadpool /* threadpool */);
-  }
+  status = xnn_setup_add_nd_qs8(
+    op57,
+    v57.data() /* a */, v54.data() /* b */, /*output=*/v58.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #57" << std::endl;
     return ExecutionPlan();
@@ -2409,9 +3192,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op58,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v58.data() /* input */, v59.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v58.data(), /*output=*/v59.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #58" << std::endl;
     return ExecutionPlan();
@@ -2419,9 +3200,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op59,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v59.data() /* input */, v60.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v59.data(), /*output=*/v60.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #59" << std::endl;
     return ExecutionPlan();
@@ -2429,9 +3208,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op60,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v60.data() /* input */, v61.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v60.data(), /*output=*/v61.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #60" << std::endl;
     return ExecutionPlan();
@@ -2439,9 +3216,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op61,
-    1 /* batch size */, 7 /* input height */, 7 /* input width */,
-    v61.data() /* input */, v62.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v61.data(), /*output=*/v62.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #61" << std::endl;
     return ExecutionPlan();
@@ -2449,9 +3224,8 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_global_average_pooling_nwc_qs8(
     op62,
-    1 /* batch size */, 49 /* width */,
-    v62.data() /* input */, v63.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(),
+    /*input=*/v62.data(), /*output=*/v63.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #62" << std::endl;
     return ExecutionPlan();
@@ -2459,9 +3233,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   status = xnn_setup_convolution2d_nhwc_qs8(
     op63,
-    1 /* batch size */, 1 /* input height */, 1 /* input width */,
-    v63.data() /* input */, v64.data() /* output */,
-    threadpool /* threadpool */);
+    workspace.data(), /*input=*/v63.data(), /*output=*/v64.data());
   if (status != xnn_status_success) {
     std::cerr << "failed to setup operation #63" << std::endl;
     return ExecutionPlan();
@@ -2469,7 +3241,7 @@ ExecutionPlan QS8MobileNetV2(pthreadpool_t threadpool) {
 
   XNN_PRAGMA_CLANG("clang diagnostic push")
   XNN_PRAGMA_CLANG("clang diagnostic ignored \"-Wpessimizing-move\"")
-  return operators;
+  return ExecutionPlan{operators, workspace};
   XNN_PRAGMA_CLANG("clang diagnostic pop")
 }
 

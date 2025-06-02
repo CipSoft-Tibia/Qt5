@@ -6,7 +6,7 @@
 #include <private/qcameradevice_p.h>
 #include <private/qwindowsmfdefs_p.h>
 #include <private/qwindowsmultimediautils_p.h>
-#include <private/qcomptr_p.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <private/qcomtaskresource_p.h>
 
 #include <dbt.h>
@@ -25,7 +25,7 @@ LRESULT QT_WIN_CALLBACK deviceNotificationWndProc(HWND hWnd, UINT message, WPARA
             auto wmd = reinterpret_cast<QWindowsVideoDevices *>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
             if (wmd) {
                 if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE) {
-                    emit wmd->videoInputsChanged();
+                    wmd->onVideoInputsChanged();
                 }
             }
         }
@@ -60,8 +60,6 @@ static HWND createMessageOnlyWindow()
 QWindowsVideoDevices::QWindowsVideoDevices(QPlatformMediaIntegration *integration)
     : QPlatformVideoDevices(integration)
 {
-    CoInitialize(nullptr);
-
     m_videoDeviceMsgWindow = createMessageOnlyWindow();
     if (m_videoDeviceMsgWindow) {
         SetWindowLongPtr(m_videoDeviceMsgWindow, GWLP_USERDATA, (LONG_PTR)this);
@@ -96,8 +94,6 @@ QWindowsVideoDevices::~QWindowsVideoDevices()
         DestroyWindow(m_videoDeviceMsgWindow);
         UnregisterClass(windowClassName, GetModuleHandle(nullptr));
     }
-
-    CoUninitialize();
 }
 
 static std::optional<QCameraFormat> createCameraFormat(IMFMediaType *mediaFormat)
@@ -202,7 +198,7 @@ static QList<QCameraDevice> readCameraDevices(IMFAttributes *attr)
     return cameras;
 }
 
-QList<QCameraDevice> QWindowsVideoDevices::videoDevices() const
+QList<QCameraDevice> QWindowsVideoDevices::findVideoInputs() const
 {
     QList<QCameraDevice> cameras;
 

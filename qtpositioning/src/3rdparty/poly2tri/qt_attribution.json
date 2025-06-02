@@ -6,7 +6,7 @@
 
     "Description": "Poly2Tri is a sweepline constrained Delaunay Polygon Triangulation Library.",
     "Homepage": "https://github.com/greenm01/poly2tri",
-    "Version": "commit 0be213d95f82471b95d96d0248a0490d0a934f9f",
+    "Version": "commit a922022da4c0d3a55b1d6b6d634219caea653053",
     "LicenseId": "BSD-3-Clause",
     "License": "BSD 3-clause \"New\" or \"Revised\" License",
     "LicenseFile": "LICENSE",

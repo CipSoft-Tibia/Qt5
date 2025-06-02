@@ -21,8 +21,8 @@ void xnn_f32_gemm_minmax_ukernel_4x2__neon_lane_ld64(
     size_t kc,
     const float* restrict a,
     size_t a_stride,
-    const float*restrict w,
-    float*restrict c,
+    const float* restrict w,
+    float* restrict c,
     size_t cm_stride,
     size_t cn_stride,
     const union xnn_f32_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])
@@ -70,14 +70,13 @@ void xnn_f32_gemm_minmax_ukernel_4x2__neon_lane_ld64(
       const float32x2_t va2 = vld1_f32(a2); a2 += 2;
       const float32x2_t va3 = vld1_f32(a3); a3 += 2;
 
-      const float32x2_t vb01c0 = vld1_f32(w); w += 2;
-
+      const float32x4_t vb01c01 = vld1q_f32(w); w += 4;
+      const float32x2_t vb01c0 = vget_low_f32(vb01c01);
+      const float32x2_t vb01c1 = vget_high_f32(vb01c01);
       vacc0x01 = vmla_lane_f32(vacc0x01, vb01c0, va0, 0);
       vacc1x01 = vmla_lane_f32(vacc1x01, vb01c0, va1, 0);
       vacc2x01 = vmla_lane_f32(vacc2x01, vb01c0, va2, 0);
       vacc3x01 = vmla_lane_f32(vacc3x01, vb01c0, va3, 0);
-      const float32x2_t vb01c1 = vld1_f32(w); w += 2;
-
       vacc0x01 = vmla_lane_f32(vacc0x01, vb01c1, va0, 1);
       vacc1x01 = vmla_lane_f32(vacc1x01, vb01c1, va1, 1);
       vacc2x01 = vmla_lane_f32(vacc2x01, vb01c1, va2, 1);
@@ -102,7 +101,6 @@ void xnn_f32_gemm_minmax_ukernel_4x2__neon_lane_ld64(
     vacc1x01 = vmin_f32(vacc1x01, vmax);
     vacc2x01 = vmin_f32(vacc2x01, vmax);
     vacc3x01 = vmin_f32(vacc3x01, vmax);
-
     const float32x2_t vmin = vld1_dup_f32(&params->scalar.min);
     vacc0x01 = vmax_f32(vacc0x01, vmin);
     vacc1x01 = vmax_f32(vacc1x01, vmin);

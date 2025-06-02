@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 package export
 
@@ -112,12 +125,12 @@ func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
 	// Fetch the table column names
 	columns, err := fetchRow[string](s, spreadsheet, dataSheet, 0)
 
-	// Grab the results
-	results, err := c.flags.results.GetResults(ctx, cfg, auth)
+	// Grab the resultsByExecutionMode
+	resultsByExecutionMode, err := c.flags.results.GetResults(ctx, cfg, auth)
 	if err != nil {
 		return err
 	}
-	if len(results) == 0 {
+	if len(resultsByExecutionMode) == 0 {
 		return fmt.Errorf("no results found")
 	}
 	ps := c.flags.results.Patchset
@@ -144,46 +157,48 @@ func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
 
 	// Generate a new set of counts of test by status
 	log.Printf("exporting results from cl %v ps %v...", ps.Change, ps.Patchset)
-	counts := map[result.Status]int{}
-	for _, r := range results {
-		counts[r.Status] = counts[r.Status] + 1
-	}
-
-	// Generate new cell data based on the table column names
-	data := []any{}
-	for _, column := range columns {
-		switch strings.ToLower(column) {
-		case "date":
-			data = append(data, time.Now().UTC().Format("2006-01-02"))
-		case "change":
-			data = append(data, ps.Change)
-		case "unimplemented":
-			data = append(data, numUnimplemented)
-		default:
-			count, ok := counts[result.Status(column)]
-			if !ok {
-				log.Println("no results with status", column)
-			}
-			data = append(data, count)
+	for _, results := range resultsByExecutionMode {
+		counts := map[result.Status]int{}
+		for _, r := range results {
+			counts[r.Status] = counts[r.Status] + 1
 		}
-	}
 
-	// Insert a blank row under the column header row
-	if err := insertBlankRows(s, spreadsheet, dataSheet, 1, 1); err != nil {
-		return err
-	}
+		// Generate new cell data based on the table column names
+		data := []any{}
+		for _, column := range columns {
+			switch strings.ToLower(column) {
+			case "date":
+				data = append(data, time.Now().UTC().Format("2006-01-02"))
+			case "change":
+				data = append(data, ps.Change)
+			case "unimplemented":
+				data = append(data, numUnimplemented)
+			default:
+				count, ok := counts[result.Status(column)]
+				if !ok {
+					log.Println("no results with status", column)
+				}
+				data = append(data, count)
+			}
+		}
 
-	// Add a new row to the spreadsheet
-	_, err = s.Spreadsheets.Values.BatchUpdate(spreadsheet.SpreadsheetId,
-		&sheets.BatchUpdateValuesRequest{
-			ValueInputOption: "RAW",
-			Data: []*sheets.ValueRange{{
-				Range:  rowRange(1, dataSheet),
-				Values: [][]any{data},
-			}},
-		}).Do()
-	if err != nil {
-		return fmt.Errorf("failed to update spreadsheet: %v", err)
+		// Insert a blank row under the column header row
+		if err := insertBlankRows(s, spreadsheet, dataSheet, 1, 1); err != nil {
+			return err
+		}
+
+		// Add a new row to the spreadsheet
+		_, err = s.Spreadsheets.Values.BatchUpdate(spreadsheet.SpreadsheetId,
+			&sheets.BatchUpdateValuesRequest{
+				ValueInputOption: "RAW",
+				Data: []*sheets.ValueRange{{
+					Range:  rowRange(1, dataSheet),
+					Values: [][]any{data},
+				}},
+			}).Do()
+		if err != nil {
+			return fmt.Errorf("failed to update spreadsheet: %v", err)
+		}
 	}
 
 	return nil

@@ -16,45 +16,48 @@
 #include <filesystem>
 
 namespace vl {
-    class LayerSettings {
-      public:
-        LayerSettings(const char *pLayerName, const VkLayerSettingsCreateInfoEXT *pCreateInfo,
-                      const VkAllocationCallbacks *pAllocator, VlLayerSettingLogCallback pCallback);
-        ~LayerSettings();
+class LayerSettings {
+  public:
+    LayerSettings(const char *pLayerName, const VkLayerSettingsCreateInfoEXT *pFirstCreateInfo,
+                  const VkAllocationCallbacks *pAllocator, VkuLayerSettingLogCallback pCallback);
+    ~LayerSettings();
 
-	    bool HasEnvSetting(const char *pSettingName);
+    void SetPrefix(const char *pPrefix) { this->prefix = pPrefix; }
 
-        bool HasFileSetting(const char *pSettingName);
+    bool HasEnvSetting(const char *pSettingName);
 
-        bool HasAPISetting(const char *pSettingName);
+    bool HasFileSetting(const char *pSettingName);
 
-        std::string GetEnvSetting(const char *pSettingName);
+    bool HasAPISetting(const char *pSettingName);
 
-        std::string GetFileSetting(const char *pSettingName);
+    std::string GetEnvSetting(const char *pSettingName);
 
-        void SetFileSetting(const char *pSettingName, const std::string& pValues);
+    std::string GetFileSetting(const char *pSettingName);
 
-        const VkLayerSettingEXT *GetAPISetting(const char *pSettingName);
+    void SetFileSetting(const char *pSettingName, const std::string &pValues);
 
-        void Log(const char *pSettingName, const char *pMessage);
+    const VkLayerSettingEXT *GetAPISetting(const char *pSettingName);
 
-        std::vector<std::string> &GetSettingCache(const std::string &pSettingName);
+    void Log(const char *pSettingName, const char *pMessage);
 
-      private:
-        const VkLayerSettingEXT *FindLayerSettingValue(const char *pSettingName);
+    std::vector<std::string> &GetSettingCache(const std::string &pSettingName);
 
-        std::map<std::string, std::string> setting_file_values;
-        std::map<std::string, std::vector<std::string>> string_setting_cache;
+  private:
+    const VkLayerSettingEXT *FindLayerSettingValue(const char *pSettingName);
 
-        std::string last_log_setting;
-        std::string last_log_message;
+    std::map<std::string, std::string> setting_file_values;
+    std::map<std::string, std::vector<std::string>> string_setting_cache;
 
-        std::filesystem::path FindSettingsFile();
-        void ParseSettingsFile(const std::filesystem::path &filename);
+    std::string last_log_setting;
+    std::string last_log_message;
 
-        std::string layer_name;
-        const VkLayerSettingsCreateInfoEXT *create_info{nullptr};
-        VlLayerSettingLogCallback pCallback{nullptr};
-    };
-}// namespace vl
+    std::filesystem::path FindSettingsFile();
+    void ParseSettingsFile(const std::filesystem::path &filename);
 
+    std::string prefix;
+    std::string layer_name;
+
+    const VkLayerSettingsCreateInfoEXT *first_create_info{nullptr};
+    VkuLayerSettingLogCallback pCallback{nullptr};
+};
+}  // namespace vl

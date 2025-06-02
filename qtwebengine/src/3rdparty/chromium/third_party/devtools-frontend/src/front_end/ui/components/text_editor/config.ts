@@ -4,6 +4,7 @@
 
 import * as Common from '../../../core/common/common.js';
 import * as i18n from '../../../core/i18n/i18n.js';
+import * as TextUtils from '../../../models/text_utils/text_utils.js';
 import * as WindowBoundsService from '../../../services/window_bounds/window_bounds.js';
 import * as CM from '../../../third_party/codemirror.next/codemirror.next.js';
 import * as UI from '../../legacy/legacy.js';
@@ -170,6 +171,7 @@ export const autocompletion = new DynamicSetting<boolean>(
             return state.field(conservativeCompletion, false) ? 'cm-conservativeCompletion' : '';
           },
           defaultKeymap: false,
+          updateSyncTime: 100,
         }),
          CM.Prec.highest(CM.keymap.of([
            {key: 'End', run: acceptCompletionIfAtEndOfLine},
@@ -205,30 +207,11 @@ export const codeFolding = DynamicSetting.bool('textEditorCodeFolding', [
   CM.keymap.of(CM.foldKeymap),
 ]);
 
-export function guessIndent(doc: CM.Text): string {
-  const values: {[indent: string]: number} = Object.create(null);
-  let scanned = 0;
-  for (let cur = doc.iterLines(1, Math.min(doc.lines + 1, LINES_TO_SCAN_FOR_INDENTATION_GUESSING)); !cur.next().done;) {
-    let space = (/^\s*/.exec(cur.value) as string[])[0];
-    if (space.length === cur.value.length || !space.length || cur.value[space.length] === '*') {
-      continue;
-    }
-    if (space[0] === '\t') {
-      space = '\t';
-    } else if (/[^ ]/.test(space)) {
-      continue;
-    }
-    scanned++;
-    values[space] = (values[space] || 0) + 1;
-  }
-  const minOccurrence = scanned * 0.05;
-  const shortest = Object.entries(values).reduce((shortest, [string, count]): string|null => {
-    return count < minOccurrence || shortest && shortest.length < string.length ? shortest : string;
-  }, null as string | null);
-  return shortest ?? Common.Settings.Settings.instance().moduleSetting('textEditorIndent').get();
-}
-
-const deriveIndentUnit = CM.Prec.highest(CM.indentUnit.compute([], (state: CM.EditorState) => guessIndent(state.doc)));
+const deriveIndentUnit = CM.Prec.highest(CM.indentUnit.compute([], (state: CM.EditorState) => {
+  const lines = state.doc.iterLines(1, Math.min(state.doc.lines + 1, LINES_TO_SCAN_FOR_INDENTATION_GUESSING));
+  const indentUnit = TextUtils.TextUtils.detectIndentation(lines);
+  return indentUnit ?? Common.Settings.Settings.instance().moduleSetting('textEditorIndent').get();
+}));
 
 export const autoDetectIndent = DynamicSetting.bool('textEditorAutoDetectIndent', deriveIndentUnit);
 
@@ -363,6 +346,7 @@ export function baseConfiguration(text: string|CM.Text): CM.Extension {
       parent: getTooltipHost() as unknown as HTMLElement,
       tooltipSpace: getTooltipSpace,
     }),
+    CM.bidiIsolates(),
   ];
 }
 
@@ -395,7 +379,7 @@ function getTooltipHost(): ShadowRoot {
                                  }),
                                ],
                              })
-                             .facet(CM.EditorView.styleModule);
+                             .facet<readonly CM.StyleModule[]>(CM.EditorView.styleModule);
     const host = document.body.appendChild(document.createElement('div'));
     host.className = 'editor-tooltip-host';
     tooltipHost = host.attachShadow({mode: 'open'});

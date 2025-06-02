@@ -13,7 +13,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Screen
-    \instantiates QQuickScreenAttached
+    \nativetype QQuickScreenAttached
     \inqmlmodule QtQuick
     \ingroup qtquick-visual-utility
     \brief The Screen attached object provides information about the Screen an Item or Window is displayed on.
@@ -197,8 +197,8 @@ QT_BEGIN_NAMESPACE
 
 QQuickScreenInfo::QQuickScreenInfo(QObject *parent, QScreen *wrappedScreen)
     : QObject(parent)
-    , m_screen(wrappedScreen)
 {
+    setWrappedScreen(wrappedScreen);
 }
 
 QString QQuickScreenInfo::name() const

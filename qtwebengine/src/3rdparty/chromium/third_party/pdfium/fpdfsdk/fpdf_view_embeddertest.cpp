@@ -4,6 +4,7 @@
 
 #include <math.h>
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <string>
@@ -25,9 +26,8 @@
 #include "testing/utils/file_util.h"
 #include "testing/utils/hash.h"
 #include "testing/utils/path_service.h"
-#include "third_party/base/check.h"
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
 #include "third_party/skia/include/core/SkCanvas.h"           // nogncheck
 #include "third_party/skia/include/core/SkColor.h"            // nogncheck
 #include "third_party/skia/include/core/SkColorType.h"        // nogncheck
@@ -38,7 +38,7 @@
 #include "third_party/skia/include/core/SkRefCnt.h"           // nogncheck
 #include "third_party/skia/include/core/SkSize.h"             // nogncheck
 #include "third_party/skia/include/core/SkSurface.h"          // nogncheck
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
 
 using pdfium::ManyRectanglesChecksum;
 
@@ -109,7 +109,7 @@ class MockDownloadHints final : public FX_DOWNLOADHINTS {
   ~MockDownloadHints() = default;
 };
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
 ScopedFPDFBitmap SkImageToPdfiumBitmap(const SkImage& image) {
   ScopedFPDFBitmap bitmap(
       FPDFBitmap_Create(image.width(), image.height(), /*alpha=*/1));
@@ -149,7 +149,7 @@ ScopedFPDFBitmap SkPictureToPdfiumBitmap(sk_sp<SkPicture> picture,
 
   return SkImageToPdfiumBitmap(*image);
 }
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
 
 }  // namespace
 
@@ -227,7 +227,7 @@ class FPDFViewEmbedderTest : public EmbedderTest {
         page, format, /*bitmap_stride=*/0, expected_checksum);
   }
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
   void TestRenderPageSkp(FPDF_PAGE page, const char* expected_checksum) {
     int width = static_cast<int>(FPDF_GetPageWidth(page));
     int height = static_cast<int>(FPDF_GetPageHeight(page));
@@ -248,7 +248,7 @@ class FPDFViewEmbedderTest : public EmbedderTest {
         std::move(picture), SkISize::Make(width, height));
     CompareBitmap(bitmap.get(), width, height, expected_checksum);
   }
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
 
  private:
   void TestRenderPageBitmapWithExternalMemoryImpl(
@@ -484,7 +484,9 @@ TEST_F(FPDFViewEmbedderTest, Document) {
   EXPECT_TRUE(FPDF_GetFileVersion(document(), &version));
   EXPECT_EQ(14, version);
 
+  // 0xFFFFFFFF because no security handler present
   EXPECT_EQ(0xFFFFFFFF, FPDF_GetDocPermissions(document()));
+  EXPECT_EQ(0xFFFFFFFF, FPDF_GetDocUserPermissions(document()));
   EXPECT_EQ(-1, FPDF_GetSecurityHandlerRevision(document()));
   CloseDocument();
 
@@ -497,21 +499,21 @@ TEST_F(FPDFViewEmbedderTest, Document) {
   EXPECT_TRUE(FPDF_GetFileVersion(document(), &version));
   EXPECT_EQ(14, version);
 
+  // 0xFFFFFFFF because no security handler present
   EXPECT_EQ(0xFFFFFFFF, FPDF_GetDocPermissions(document()));
+  EXPECT_EQ(0xFFFFFFFF, FPDF_GetDocUserPermissions(document()));
   EXPECT_EQ(-1, FPDF_GetSecurityHandlerRevision(document()));
   // CloseDocument() called by TearDown().
 }
 
 TEST_F(FPDFViewEmbedderTest, LoadDocument64) {
-  std::string file_path;
-  ASSERT_TRUE(PathService::GetTestFilePath("about_blank.pdf", &file_path));
+  std::string file_path = PathService::GetTestFilePath("about_blank.pdf");
+  ASSERT_FALSE(file_path.empty());
 
-  size_t file_length = 0;
-  std::unique_ptr<char, pdfium::FreeDeleter> file_contents =
-      GetFileContents(file_path.c_str(), &file_length);
-  DCHECK(file_contents);
-  ScopedFPDFDocument doc(
-      FPDF_LoadMemDocument64(file_contents.get(), file_length, nullptr));
+  std::vector<uint8_t> file_contents = GetFileContents(file_path.c_str());
+  ASSERT_FALSE(file_contents.empty());
+  ScopedFPDFDocument doc(FPDF_LoadMemDocument64(file_contents.data(),
+                                                file_contents.size(), nullptr));
   ASSERT_TRUE(doc);
 
   int version;
@@ -606,18 +608,17 @@ TEST_F(FPDFViewEmbedderTest, LoadCustomDocumentWithShortLivedFileAccess) {
   ScopedFPDFDocument doc;
   {
     // Read a PDF, and copy it into |file_contents_string|.
-    std::string pdf_path;
-    size_t pdf_length;
-    ASSERT_TRUE(PathService::GetTestFilePath("rectangles.pdf", &pdf_path));
-    auto file_contents = GetFileContents(pdf_path.c_str(), &pdf_length);
-    ASSERT_TRUE(file_contents);
-    for (size_t i = 0; i < pdf_length; ++i)
-      file_contents_string.push_back(file_contents.get()[i]);
+    std::string pdf_path = PathService::GetTestFilePath("rectangles.pdf");
+    ASSERT_FALSE(pdf_path.empty());
+    std::vector<uint8_t> file_contents = GetFileContents(pdf_path.c_str());
+    ASSERT_FALSE(file_contents.empty());
+    std::copy(file_contents.begin(), file_contents.end(),
+              std::back_inserter(file_contents_string));
 
     // Define a FPDF_FILEACCESS object that will go out of scope, while the
     // loaded document in |doc| remains valid.
     FPDF_FILEACCESS file_access = {};
-    file_access.m_FileLen = pdf_length;
+    file_access.m_FileLen = file_contents_string.size();
     file_access.m_GetBlock = GetBlockFromString;
     file_access.m_Param = &file_contents_string;
     doc.reset(FPDF_LoadCustomDocument(&file_access, nullptr));
@@ -988,58 +989,69 @@ TEST_F(FPDFViewEmbedderTest, Hang_1055) {
 
 TEST_F(FPDFViewEmbedderTest, FPDF_RenderPageBitmapWithMatrix) {
   const char* clipped_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "d2929fae285593cd1c1d446750d47d60";
+    }
     return "a84cab93c102b9b9290fba3047ba702c";
   }();
   const char* top_left_quarter_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "31d24d8c6a2bac380b2f5c393e77ecc9";
+    }
     return "f11a11137c8834389e31cf555a4a6979";
   }();
   const char* hori_stretched_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "6d3776d7bb21cbb7195126b8e95dfba2";
+    }
     return "48ef9205941ed19691ccfa00d717187e";
   }();
   const char* rotated_90_clockwise_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "b4baa001d201baed576cd6d5d0d5a160";
+    }
     return "d8da2c7bf77521550d0f2752b9cf3482";
   }();
   const char* rotated_180_clockwise_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "51819227d0863222aed366d5d7c5d9c8";
+    }
     return "0113386bb0bd45125bacc6dee78bfe78";
   }();
   const char* rotated_270_clockwise_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "f2b046e46c2751cebc777a9725ae2f3e";
+    }
     return "a287e0f74ce203699cda89f9cc97a240";
   }();
   const char* mirror_hori_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "c7fbec322b4fc6bcf46ec1eb89661c41";
+    }
     return "6e8d7a6fde39d8e720fb9e620102918c";
   }();
   const char* mirror_vert_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "a8b00bc40677a73c15a08b9769d1b576";
+    }
     return "8f3a555ef9c0d5031831ae3715273707";
   }();
   const char* larger_top_left_quarter_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "35deb5ed4b73675ce33f68328a33c687";
+    }
     return "172a2f4adafbadbe98017b1c025b9e27";
   }();
   const char* larger_rotated_diagonal_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "85c41bb892c1a09882f432aa2f4a5ef6";
+    }
     return "3d62417468bdaff0eb14391a0c30a3b1";
   }();
   const char* tile_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "387be3a84774f39aaa955314d2fe7106";
+    }
     return "0a190003c97220bf8877684c8d7e89cf";
   }();
   const char kLargerChecksum[] = "c806145641c3e6fc4e022c7065343749";
@@ -1386,16 +1398,17 @@ TEST_F(FPDFViewEmbedderTest, UnSupportedOperations_LoadCustomDocument) {
 }
 
 TEST_F(FPDFViewEmbedderTest, UnSupportedOperations_LoadDocument) {
-  std::string file_path;
-  ASSERT_TRUE(
-      PathService::GetTestFilePath("unsupported_feature.pdf", &file_path));
+  std::string file_path =
+      PathService::GetTestFilePath("unsupported_feature.pdf");
+  ASSERT_FALSE(file_path.empty());
 
   RecordUnsupportedErrorDelegate delegate;
   SetDelegate(&delegate);
-  FPDF_DOCUMENT doc = FPDF_LoadDocument(file_path.c_str(), "");
-  EXPECT_TRUE(doc != nullptr);
-  EXPECT_EQ(FPDF_UNSP_DOC_PORTABLECOLLECTION, delegate.type_);
-  FPDF_CloseDocument(doc);
+  {
+    ScopedFPDFDocument doc(FPDF_LoadDocument(file_path.c_str(), ""));
+    EXPECT_TRUE(doc);
+    EXPECT_EQ(FPDF_UNSP_DOC_PORTABLECOLLECTION, delegate.type_);
+  }
   SetDelegate(nullptr);
 }
 
@@ -1416,20 +1429,18 @@ TEST_F(FPDFViewEmbedderTest, LoadDocumentWithEmptyXRefConsistently) {
   ASSERT_TRUE(OpenDocument("empty_xref.pdf"));
   EXPECT_TRUE(FPDF_DocumentHasValidCrossReferenceTable(document()));
 
-  std::string file_path;
-  ASSERT_TRUE(PathService::GetTestFilePath("empty_xref.pdf", &file_path));
+  std::string file_path = PathService::GetTestFilePath("empty_xref.pdf");
+  ASSERT_FALSE(file_path.empty());
   {
     ScopedFPDFDocument doc(FPDF_LoadDocument(file_path.c_str(), ""));
     ASSERT_TRUE(doc);
     EXPECT_TRUE(FPDF_DocumentHasValidCrossReferenceTable(doc.get()));
   }
   {
-    size_t file_length = 0;
-    std::unique_ptr<char, pdfium::FreeDeleter> file_contents =
-        GetFileContents(file_path.c_str(), &file_length);
-    DCHECK(file_contents);
+    std::vector<uint8_t> file_contents = GetFileContents(file_path.c_str());
+    ASSERT_FALSE(file_contents.empty());
     ScopedFPDFDocument doc(
-        FPDF_LoadMemDocument(file_contents.get(), file_length, ""));
+        FPDF_LoadMemDocument(file_contents.data(), file_contents.size(), ""));
     ASSERT_TRUE(doc);
     EXPECT_TRUE(FPDF_DocumentHasValidCrossReferenceTable(doc.get()));
   }
@@ -1450,8 +1461,14 @@ TEST_F(FPDFViewEmbedderTest, RenderBug664284WithNoNativeText) {
   // macOS rendering result doesn't.
 
   const char* original_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+#if BUILDFLAG(IS_WIN)
+      return "1c5d8217aca4f6fa86a8ed192f34b210";
+#elif BUILDFLAG(IS_APPLE)
+      return "b7ac2ca2b934f4e213ab4ba36c5f8ffd";
+#else
       return "29cb8045c21cfa2c920fdf43de70efd8";
+#endif
     }
 #if BUILDFLAG(IS_APPLE)
     return "0e339d606aafb63077f49e238dc27cb0";
@@ -1474,7 +1491,7 @@ TEST_F(FPDFViewEmbedderTest, RenderBug664284WithNoNativeText) {
 
 TEST_F(FPDFViewEmbedderTest, RenderAnnotationWithPrintingFlag) {
   const char* annotation_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "eaece6b8041c0cb9b33398e5b6d5ddda";
     }
     return "c108ba6e0a9743652f12e4bc223f9b32";
@@ -1538,13 +1555,15 @@ TEST_F(FPDFViewEmbedderTest, RenderJpxLzwImageWithFlags) {
 
 TEST_F(FPDFViewEmbedderTest, RenderManyRectanglesWithFlags) {
   const char* grayscale_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "b596ac8bbe64e7bff31888ab05e4dcf4";
+    }
     return "7b553f1052069a9c61237a05db0955d6";
   }();
   const char* no_smoothpath_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "4d71ed53d9f6e6a761876ebb4ff23e19";
+    }
     return "ff6e5c509d1f6984bcdfd18b26a4203a";
   }();
 
@@ -1579,8 +1598,9 @@ TEST_F(FPDFViewEmbedderTest, RenderManyRectanglesWithAndWithoutExternalMemory) {
   ASSERT_TRUE(page);
 
   const char* bgr_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "4d52e5cc1d4a8067bf918b85b232fff0";
+    }
     return "ab6312e04c0d3f4e46fb302a45173d05";
   }();
   static constexpr int kBgrStride = 600;  // Width of 200 * 24 bits per pixel.
@@ -1592,8 +1612,9 @@ TEST_F(FPDFViewEmbedderTest, RenderManyRectanglesWithAndWithoutExternalMemory) {
                                                     bgr_checksum);
 
   const char* gray_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "3dfe1fc3889123d68e1748fefac65e72";
+    }
     return "b561c11edc44dc3972125a9b8744fa2f";
   }();
 
@@ -1647,8 +1668,15 @@ TEST_F(FPDFViewEmbedderTest, RenderHelloWorldWithFlags) {
                                 HelloWorldChecksum());
 
   const char* lcd_text_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+#if BUILDFLAG(IS_WIN)
+      return "496d1f907349b153c5ecdc87c8073c7b";
+#elif BUILDFLAG(IS_APPLE)
+      return "b110924c4af6e87232249ea2a564f0e4";
+#else
       return "d1decde2de1c07b5274cc8cb44f92427";
+#endif
+    }
 #if BUILDFLAG(IS_APPLE)
     return "6eef7237f7591f07616e238422086737";
 #else
@@ -1656,13 +1684,19 @@ TEST_F(FPDFViewEmbedderTest, RenderHelloWorldWithFlags) {
 #endif  // BUILDFLAG(IS_APPLE)
   }();
   const char* no_smoothtext_checksum = []() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+#if BUILDFLAG(IS_WIN)
+      return "04dcf7d221437081034ca1152c717a8a";
+#elif BUILDFLAG(IS_APPLE)
+      return "8c99ca392ecff724da0d04b17453a45a";
+#else
       return "cd5bbe9407c3fcc85d365172a9a55abd";
+#endif
     }
 #if BUILDFLAG(IS_APPLE)
     return "6eef7237f7591f07616e238422086737";
 #else
-    return "37d0b34e1762fdda4c05ce7ea357b828";
+    return "6dec98c848028fa4be3ad38d6782e304";
 #endif
   }();
 
@@ -2019,9 +2053,9 @@ TEST_F(FPDFViewEmbedderTest, RenderXfaPage) {
   UnloadPage(page);
 }
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
 TEST_F(FPDFViewEmbedderTest, RenderPageToSkp) {
-  if (!CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+  if (!CFX_DefaultRenderDevice::UseSkiaRenderer()) {
     GTEST_SKIP() << "FPDF_RenderPageSkp() only makes sense with Skia";
   }
 
@@ -2036,7 +2070,7 @@ TEST_F(FPDFViewEmbedderTest, RenderPageToSkp) {
 }
 
 TEST_F(FPDFViewEmbedderTest, RenderXfaPageToSkp) {
-  if (!CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+  if (!CFX_DefaultRenderDevice::UseSkiaRenderer()) {
     GTEST_SKIP() << "FPDF_RenderPageSkp() only makes sense with Skia";
   }
 
@@ -2050,7 +2084,55 @@ TEST_F(FPDFViewEmbedderTest, RenderXfaPageToSkp) {
 
   UnloadPage(page);
 }
-#endif  // defined(_SKIA_SUPPORT_)
+
+TEST_F(FPDFViewEmbedderTest, Bug2087) {
+  FPDF_DestroyLibrary();
+
+  std::string agg_checksum;
+  {
+    FPDF_LIBRARY_CONFIG config = {
+        .version = 4,
+        .m_pUserFontPaths = nullptr,
+        .m_pIsolate = nullptr,
+        .m_v8EmbedderSlot = 0,
+        .m_pPlatform = nullptr,
+        .m_RendererType = FPDF_RENDERERTYPE_AGG,
+    };
+    FPDF_InitLibraryWithConfig(&config);
+
+    ASSERT_TRUE(OpenDocument("rectangles.pdf"));
+    FPDF_PAGE page = LoadPage(0);
+    ScopedFPDFBitmap bitmap = RenderPage(page);
+    agg_checksum = HashBitmap(bitmap.get());
+    UnloadPage(page);
+    CloseDocument();
+    FPDF_DestroyLibrary();
+  }
+
+  std::string skia_checksum;
+  {
+    FPDF_LIBRARY_CONFIG config = {
+        .version = 2,
+        .m_pUserFontPaths = nullptr,
+        .m_pIsolate = nullptr,
+        .m_v8EmbedderSlot = 0,
+    };
+    FPDF_InitLibraryWithConfig(&config);
+
+    ASSERT_TRUE(OpenDocument("rectangles.pdf"));
+    FPDF_PAGE page = LoadPage(0);
+    ScopedFPDFBitmap bitmap = RenderPage(page);
+    skia_checksum = HashBitmap(bitmap.get());
+    UnloadPage(page);
+    CloseDocument();
+  }
+
+  EXPECT_NE(agg_checksum, skia_checksum);
+
+  EmbedderTestEnvironment::GetInstance()->TearDown();
+  EmbedderTestEnvironment::GetInstance()->SetUp();
+}
+#endif  // defined(PDF_USE_SKIA)
 
 TEST_F(FPDFViewEmbedderTest, NoSmoothTextItalicOverlappingGlyphs) {
   ASSERT_TRUE(OpenDocument("bug_1919.pdf"));
@@ -2058,14 +2140,48 @@ TEST_F(FPDFViewEmbedderTest, NoSmoothTextItalicOverlappingGlyphs) {
   ASSERT_TRUE(page);
 
   const char* checksum = []() {
-#if !BUILDFLAG(IS_APPLE)
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+#if BUILDFLAG(IS_WIN)
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+      return "d97d0a9da6a5955f68a58a3f25466bd7";
+    }
+#elif !BUILDFLAG(IS_APPLE)
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "ceeb93d2bcdb586d62c95b33cadcd873";
     }
 #endif
-    return "4ef1f65ab1ac76acb97a3540dcb10b4e";
+    return "5f99e2fa2bad09393d6428e105a83c96";
   }();
 
   TestRenderPageBitmapWithFlags(page, FPDF_RENDER_NO_SMOOTHTEXT, checksum);
   UnloadPage(page);
+}
+
+TEST_F(FPDFViewEmbedderTest, RenderTransparencyOnWhiteBackground) {
+  ASSERT_TRUE(OpenDocument("bug_1302355.pdf"));
+  FPDF_PAGE page = LoadPage(0);
+  ASSERT_TRUE(page);
+
+  constexpr int kWidth = 200;
+  constexpr int kHeight = 200;
+  EXPECT_EQ(kWidth, static_cast<int>(FPDF_GetPageWidthF(page)));
+  EXPECT_EQ(kHeight, static_cast<int>(FPDF_GetPageHeightF(page)));
+  EXPECT_TRUE(FPDFPage_HasTransparency(page));
+  ScopedFPDFBitmap bitmap(FPDFBitmap_Create(kWidth, kHeight, /*alpha=*/true));
+  FPDFBitmap_FillRect(bitmap.get(), 0, 0, kWidth, kHeight, 0xFFFFFFFF);
+  FPDF_RenderPageBitmap(bitmap.get(), page, /*start_x=*/0, /*start_y=*/0,
+                        kWidth, kHeight, /*rotate=*/0, /*flags=*/0);
+  // TODO(crbug.com/1302355): This page should not render blank.
+  EXPECT_EQ("eee4600ac08b458ac7ac2320e225674c", HashBitmap(bitmap.get()));
+
+  UnloadPage(page);
+}
+
+TEST_F(FPDFViewEmbedderTest, Bug2112) {
+  constexpr int kWidth = 595;
+  constexpr int kHeight = 842;
+  constexpr int kStride = kWidth * 3;
+  std::vector<uint8_t> vec(kStride * kHeight);
+  ScopedFPDFBitmap bitmap(FPDFBitmap_CreateEx(kWidth, kHeight, FPDFBitmap_BGR,
+                                              vec.data(), kStride));
+  EXPECT_EQ(FPDFBitmap_BGR, FPDFBitmap_GetFormat(bitmap.get()));
 }

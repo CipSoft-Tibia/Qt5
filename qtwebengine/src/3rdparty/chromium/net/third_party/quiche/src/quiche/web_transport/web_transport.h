@@ -9,6 +9,7 @@
 #define QUICHE_WEB_TRANSPORT_WEB_TRANSPORT_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -23,6 +24,8 @@
 
 namespace webtransport {
 
+enum class Perspective { kClient, kServer };
+
 // A numeric ID uniquely identifying a WebTransport stream. Note that by design,
 // those IDs are not available in the Web API, and the IDs do not necessarily
 // match between client and server perspective, since there may be a proxy
@@ -33,6 +36,25 @@ using StreamId = uint32_t;
 using StreamErrorCode = uint32_t;
 // Application-specific error code used for closing a WebTransport session.
 using SessionErrorCode = uint32_t;
+
+// WebTransport priority as defined in
+// https://w3c.github.io/webtransport/#webtransportsendstream-write
+// The rules are as follows:
+// - Streams with the same priority are handled in FIFO order.
+// - Streams with the same group_id but different send_order are handled
+//   strictly in order.
+// - Different group_ids are handled in the FIFO order.
+using SendGroupId = uint32_t;
+using SendOrder = int64_t;
+struct QUICHE_EXPORT StreamPriority {
+  SendGroupId send_group_id = 0;
+  SendOrder send_order = 0;
+
+  bool operator==(const StreamPriority& other) const {
+    return send_group_id == other.send_group_id &&
+           send_order == other.send_order;
+  }
+};
 
 // An outcome of a datagram send call.
 enum class DatagramStatusCode {
@@ -63,16 +85,39 @@ enum class StreamType {
   kBidirectional,
 };
 
+// Based on
+// https://w3c.github.io/webtransport/#dictdef-webtransportdatagramstats.
+struct QUICHE_EXPORT DatagramStats {
+  uint64_t expired_outgoing;
+  uint64_t lost_outgoing;
+
+  // droppedIncoming is not present, since in the C++ API, we immediately
+  // deliver datagrams via callback, meaning there is no queue where things
+  // would be dropped.
+};
+
+// Based on https://w3c.github.io/webtransport/#web-transport-stats
+// Note that this is currently not a complete implementation of that API, as
+// some of those still need to be clarified in
+// https://github.com/w3c/webtransport/issues/537
+struct QUICHE_EXPORT SessionStats {
+  absl::Duration min_rtt;
+  absl::Duration smoothed_rtt;
+  absl::Duration rtt_variation;
+
+  uint64_t estimated_send_rate_bps;  // In bits per second.
+
+  DatagramStats datagram_stats;
+};
+
 // The stream visitor is an application-provided object that gets notified about
 // events related to a WebTransport stream.  The visitor object is owned by the
 // stream itself, meaning that if the stream is ever fully closed, the visitor
 // will be garbage-collected.
-class QUICHE_EXPORT StreamVisitor : public quiche::WriteStreamVisitor {
+class QUICHE_EXPORT StreamVisitor : public quiche::ReadStreamVisitor,
+                                    public quiche::WriteStreamVisitor {
  public:
   virtual ~StreamVisitor() {}
-
-  // Called whenever the stream has readable data available.
-  virtual void OnCanRead() = 0;
 
   // Called when RESET_STREAM is received for the stream.
   virtual void OnResetStreamReceived(StreamErrorCode error) = 0;
@@ -86,26 +131,11 @@ class QUICHE_EXPORT StreamVisitor : public quiche::WriteStreamVisitor {
 
 // A stream (either bidirectional or unidirectional) that is contained within a
 // WebTransport session.
-class QUICHE_EXPORT Stream : public quiche::WriteStream {
+class QUICHE_EXPORT Stream : public quiche::ReadStream,
+                             public quiche::WriteStream,
+                             public quiche::TerminableStream {
  public:
-  struct QUICHE_EXPORT ReadResult {
-    // Number of bytes actually read.
-    size_t bytes_read;
-    // Whether the FIN has been received; if true, no further data will arrive
-    // on the stream, and the stream object can be soon potentially garbage
-    // collected.
-    bool fin;
-  };
-
   virtual ~Stream() {}
-
-  // Reads at most |buffer.size()| bytes into |buffer|.
-  [[nodiscard]] virtual ReadResult Read(absl::Span<char> buffer) = 0;
-  // Reads all available data and appends it to the end of |output|.
-  [[nodiscard]] virtual ReadResult Read(std::string* output) = 0;
-
-  // Indicates the number of bytes that can be read from the stream.
-  virtual size_t ReadableBytes() const = 0;
 
   // An ID that is unique within the session.  Those are not exposed to the user
   // via the web API, but can be used internally for bookkeeping and
@@ -214,6 +244,10 @@ class QUICHE_EXPORT Session {
   // Sets the largest duration that a datagram can spend in the queue before
   // being silently dropped.
   virtual void SetDatagramMaxTimeInQueue(absl::Duration max_time_in_queue) = 0;
+
+  // Returns stats that generally follow the semantics of W3C WebTransport API.
+  virtual DatagramStats GetDatagramStats() = 0;
+  virtual SessionStats GetSessionStats() = 0;
 
   // Sends a DRAIN_WEBTRANSPORT_SESSION capsule or an equivalent signal to the
   // peer indicating that the session is draining.

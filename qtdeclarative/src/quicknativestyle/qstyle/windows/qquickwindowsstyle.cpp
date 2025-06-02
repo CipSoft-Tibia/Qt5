@@ -756,7 +756,7 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             points[4] = { points[3].x(),                points[3].y() - 2 * scalev };
             points[5] = { points[4].x() - 4 * scaleh,   points[4].y() + 4 * scalev };
             p->setPen(QPen(opt->palette.text().color(), 0));
-            p->setBrush(opt->palette.text().color());
+            p->setBrush(opt->palette.text());
             p->drawPolygon(points, 6);
         }
         if (doRestore)
@@ -815,26 +815,26 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
 
             p->setClipRegion(QRegion(topLeftPol));
             p->setPen(opt->palette.dark().color());
-            p->setBrush(opt->palette.dark().color());
+            p->setBrush(opt->palette.dark());
             p->drawPath(path1);
             p->setPen(opt->palette.shadow().color());
-            p->setBrush(opt->palette.shadow().color());
+            p->setBrush(opt->palette.shadow());
             p->drawPath(path2);
 
             p->setClipRegion(QRegion(bottomRightPol));
             p->setPen(opt->palette.light().color());
-            p->setBrush(opt->palette.light().color());
+            p->setBrush(opt->palette.light());
             p->drawPath(path1);
             p->setPen(opt->palette.midlight().color());
-            p->setBrush(opt->palette.midlight().color());
+            p->setBrush(opt->palette.midlight());
             p->drawPath(path2);
 
-            QColor fillColor = ((opt->state & State_Sunken) || !(opt->state & State_Enabled)) ?
-                                opt->palette.button().color() : opt->palette.base().color();
+            const QBrush fill = ((opt->state & State_Sunken) || !(opt->state & State_Enabled))
+                              ? opt->palette.button() : opt->palette.base();
 
             p->setClipping(false);
-            p->setPen(fillColor);
-            p->setBrush(fillColor);
+            p->setPen(fill.color());
+            p->setBrush(fill);
             p->drawPath(path3);
 
             if (opt->state & State_On) {
@@ -852,14 +852,14 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             if (frame->lineWidth == 2 || pe == PE_Frame) {
                 QPalette popupPal = frame->palette;
                 if (pe == PE_FrameMenu) {
-                    popupPal.setColor(QPalette::Light, frame->palette.window().color());
-                    popupPal.setColor(QPalette::Midlight, frame->palette.light().color());
+                    popupPal.setBrush(QPalette::Light, frame->palette.window());
+                    popupPal.setBrush(QPalette::Midlight, frame->palette.light());
                 }
                 if (pe == PE_Frame && (frame->state & State_Raised))
                     qDrawWinButton(p, frame->rect, popupPal, frame->state & State_Sunken);
                 else if (pe == PE_Frame && (frame->state & State_Sunken))
                 {
-                    popupPal.setColor(QPalette::Midlight, frame->palette.window().color());
+                    popupPal.setBrush(QPalette::Midlight, frame->palette.window());
                     qDrawWinPanel(p, frame->rect, popupPal, frame->state & State_Sunken);
                 }
                 else
@@ -869,8 +869,8 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
             }
         } else {
             QPalette popupPal = opt->palette;
-            popupPal.setColor(QPalette::Light, opt->palette.window().color());
-            popupPal.setColor(QPalette::Midlight, opt->palette.light().color());
+            popupPal.setBrush(QPalette::Light, opt->palette.window());
+            popupPal.setBrush(QPalette::Midlight, opt->palette.light());
             qDrawWinPanel(p, opt->rect, popupPal, opt->state & State_Sunken);
         }
         break;
@@ -897,8 +897,8 @@ void QWindowsStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, 
         break; }
     case PE_FrameWindow: {
          QPalette popupPal = opt->palette;
-         popupPal.setColor(QPalette::Light, opt->palette.window().color());
-         popupPal.setColor(QPalette::Midlight, opt->palette.light().color());
+         popupPal.setBrush(QPalette::Light, opt->palette.window());
+         popupPal.setBrush(QPalette::Midlight, opt->palette.light());
          qDrawWinPanel(p, opt->rect, popupPal, opt->state & State_Sunken);
         break; }
 #if 0 && QT_CONFIG(dockwidget)
@@ -1384,7 +1384,7 @@ void QWindowsStyle::drawControl(ControlElement ce, const QStyleOption *opt, QPai
             if (!(buttonOpt.state & State_Sunken))
                 buttonOpt.state |= State_Raised;
             QPalette pal(opt->palette);
-            pal.setColor(QPalette::Button, opt->palette.light().color());
+            pal.setBrush(QPalette::Button, opt->palette.light());
             pal.setColor(QPalette::Light, opt->palette.button().color());
             qDrawWinButton(p, opt->rect, pal, opt->state & (State_Sunken | State_On),
                            &opt->palette.brush(QPalette::Button));

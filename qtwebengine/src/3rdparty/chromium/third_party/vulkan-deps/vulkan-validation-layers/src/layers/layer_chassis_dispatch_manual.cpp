@@ -114,10 +114,10 @@ void DispatchExportMetalObjectsEXT(
 // The VK_EXT_pipeline_creation_feedback extension returns data from the driver -- we've created a copy of the pnext chain, so
 // copy the returned data to the caller before freeing the copy's data.
 void CopyCreatePipelineFeedbackData(const void *src_chain, const void *dst_chain) {
-    auto src_feedback_struct = LvlFindInChain<VkPipelineCreationFeedbackCreateInfoEXT>(src_chain);
+    auto src_feedback_struct = vku::FindStructInPNextChain<VkPipelineCreationFeedbackCreateInfoEXT>(src_chain);
     if (!src_feedback_struct) return;
     auto dst_feedback_struct = const_cast<VkPipelineCreationFeedbackCreateInfoEXT *>(
-        LvlFindInChain<VkPipelineCreationFeedbackCreateInfoEXT>(dst_chain));
+        vku::FindStructInPNextChain<VkPipelineCreationFeedbackCreateInfoEXT>(dst_chain));
     *dst_feedback_struct->pPipelineCreationFeedback = *src_feedback_struct->pPipelineCreationFeedback;
     for (uint32_t i = 0; i < src_feedback_struct->pipelineStageCreationFeedbackCount; i++) {
         dst_feedback_struct->pPipelineStageCreationFeedbacks[i] = src_feedback_struct->pPipelineStageCreationFeedbacks[i];
@@ -148,7 +148,7 @@ VkResult DispatchCreateGraphicsPipelines(VkDevice device, VkPipelineCache pipeli
                 }
             }
 
-            auto dynamic_rendering = LvlFindInChain<VkPipelineRenderingCreateInfo>(pCreateInfos[idx0].pNext);
+            auto dynamic_rendering = vku::FindStructInPNextChain<VkPipelineRenderingCreateInfo>(pCreateInfos[idx0].pNext);
             if (dynamic_rendering) {
                 uses_color_attachment        = (dynamic_rendering->colorAttachmentCount > 0);
                 uses_depthstencil_attachment = (dynamic_rendering->depthAttachmentFormat != VK_FORMAT_UNDEFINED ||
@@ -158,10 +158,9 @@ VkResult DispatchCreateGraphicsPipelines(VkDevice device, VkPipelineCache pipeli
             auto& graphics_info = pCreateInfos[idx0];
             auto state_info = dynamic_cast<ValidationStateTracker*>(layer_data);
             PNextCopyState pnext_copy_state = {
-                [state_info, &graphics_info](VkBaseOutStructure* safe_struct, const VkBaseOutStructure *in_struct) -> bool {
-                    return PIPELINE_STATE::PnextRenderingInfoCustomCopy(state_info, graphics_info, safe_struct, in_struct);
-                }
-            };
+                [state_info, &graphics_info](VkBaseOutStructure *safe_struct, const VkBaseOutStructure *in_struct) -> bool {
+                    return vvl::Pipeline::PnextRenderingInfoCustomCopy(state_info, graphics_info, safe_struct, in_struct);
+                }};
             local_pCreateInfos[idx0].initialize(&pCreateInfos[idx0], uses_color_attachment, uses_depthstencil_attachment, &pnext_copy_state);
 
             if (pCreateInfos[idx0].basePipelineHandle) {
@@ -181,11 +180,30 @@ VkResult DispatchCreateGraphicsPipelines(VkDevice device, VkPipelineCache pipeli
                 local_pCreateInfos[idx0].renderPass = layer_data->Unwrap(pCreateInfos[idx0].renderPass);
             }
 
-            auto* link_info = LvlFindInChain<VkPipelineLibraryCreateInfoKHR>(local_pCreateInfos[idx0].pNext);
+            auto* link_info = vku::FindStructInPNextChain<VkPipelineLibraryCreateInfoKHR>(local_pCreateInfos[idx0].pNext);
             if (link_info) {
                 auto* unwrapped_libs = const_cast<VkPipeline*>(link_info->pLibraries);
                 for (uint32_t idx1 = 0; idx1 < link_info->libraryCount; ++idx1) {
                     unwrapped_libs[idx1] = layer_data->Unwrap(link_info->pLibraries[idx1]);
+                }
+            }
+
+            auto device_generated_commands =
+                vku::FindStructInPNextChain<VkGraphicsPipelineShaderGroupsCreateInfoNV>(local_pCreateInfos[idx0].pNext);
+            if (device_generated_commands) {
+                for (uint32_t idx1 = 0; idx1 < device_generated_commands->groupCount; ++idx1) {
+                    for (uint32_t idx2 = 0; idx2 < device_generated_commands->pGroups[idx1].stageCount; ++idx2) {
+                        auto unwrapped_stage =
+                            const_cast<VkPipelineShaderStageCreateInfo *>(&device_generated_commands->pGroups[idx1].pStages[idx2]);
+                        if (device_generated_commands->pGroups[idx1].pStages[idx2].module) {
+                            unwrapped_stage->module =
+                                layer_data->Unwrap(device_generated_commands->pGroups[idx1].pStages[idx2].module);
+                        }
+                    }
+                }
+                auto unwrapped_pipelines = const_cast<VkPipeline *>(device_generated_commands->pPipelines);
+                for (uint32_t idx1 = 0; idx1 < device_generated_commands->pipelineCount; ++idx1) {
+                    unwrapped_pipelines[idx1] = layer_data->Unwrap(device_generated_commands->pPipelines[idx1]);
                 }
             }
         }
@@ -229,6 +247,39 @@ static void UpdateCreateRenderPassState(ValidationObject *layer_data, const T *p
 
         if (uses_color) renderpass_state.subpasses_using_color_attachment.insert(subpass);
         if (uses_depthstencil) renderpass_state.subpasses_using_depthstencil_attachment.insert(subpass);
+    }
+}
+
+template <>
+void UpdateCreateRenderPassState(ValidationObject *layer_data, const VkRenderPassCreateInfo2 *pCreateInfo, VkRenderPass renderPass) {
+    auto &renderpass_state = layer_data->renderpasses_states[renderPass];
+
+    for (uint32_t subpassIndex = 0; subpassIndex < pCreateInfo->subpassCount; ++subpassIndex) {
+        bool uses_color = false;
+        const VkSubpassDescription2& subpass = pCreateInfo->pSubpasses[subpassIndex];
+        for (uint32_t i = 0; i < subpass.colorAttachmentCount && !uses_color; ++i)
+            if (subpass.pColorAttachments[i].attachment != VK_ATTACHMENT_UNUSED) uses_color = true;
+
+#if defined(VK_USE_PLATFORM_ANDROID_KHR)
+        // VK_ANDROID_external_format_resolve allows for the only color attachment to be VK_ATTACHMENT_UNUSED
+        // but in this case, it will use the resolve attachment as color attachment. Which means that we do
+        // actually use color attachments
+        if (subpass.pResolveAttachments != nullptr) {
+            for (uint32_t i = 0; i < subpass.colorAttachmentCount && !uses_color; ++i) {
+                uint32_t resolveAttachmentIndex = subpass.pResolveAttachments[i].attachment;
+                const void* resolveAtatchmentPNextChain = pCreateInfo->pAttachments[resolveAttachmentIndex].pNext;
+                if (vku::FindStructInPNextChain<VkExternalFormatANDROID>(resolveAtatchmentPNextChain)) uses_color = true;
+            }
+        }
+#endif
+
+        bool uses_depthstencil = false;
+        if (subpass.pDepthStencilAttachment)
+            if (subpass.pDepthStencilAttachment->attachment != VK_ATTACHMENT_UNUSED)
+                uses_depthstencil = true;
+
+        if (uses_color) renderpass_state.subpasses_using_color_attachment.insert(subpassIndex);
+        if (uses_depthstencil) renderpass_state.subpasses_using_depthstencil_attachment.insert(subpassIndex);
     }
 }
 
@@ -821,6 +872,28 @@ void DispatchCmdPushDescriptorSetWithTemplateKHR(VkCommandBuffer commandBuffer,
     free(unwrapped_buffer);
 }
 
+void DispatchCmdPushDescriptorSetWithTemplate2KHR(
+    VkCommandBuffer commandBuffer, const VkPushDescriptorSetWithTemplateInfoKHR *pPushDescriptorSetWithTemplateInfo) {
+    auto layer_data = GetLayerDataPtr(get_dispatch_key(commandBuffer), layer_data_map);
+    if (!wrap_handles)
+        return layer_data->device_dispatch_table.CmdPushDescriptorSetWithTemplate2KHR(commandBuffer,
+                                                                                      pPushDescriptorSetWithTemplateInfo);
+    uint64_t template_handle = CastToUint64(pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate);
+    void *unwrapped_buffer = nullptr;
+    {
+        ReadLockGuard lock(dispatch_lock);
+        const_cast<VkPushDescriptorSetWithTemplateInfoKHR *>(pPushDescriptorSetWithTemplateInfo)->descriptorUpdateTemplate =
+            layer_data->Unwrap(pPushDescriptorSetWithTemplateInfo->descriptorUpdateTemplate);
+        const_cast<VkPushDescriptorSetWithTemplateInfoKHR *>(pPushDescriptorSetWithTemplateInfo)->layout =
+            layer_data->Unwrap(pPushDescriptorSetWithTemplateInfo->layout);
+        unwrapped_buffer =
+            BuildUnwrappedUpdateTemplateBuffer(layer_data, template_handle, pPushDescriptorSetWithTemplateInfo->pData);
+        const_cast<VkPushDescriptorSetWithTemplateInfoKHR *>(pPushDescriptorSetWithTemplateInfo)->pData = unwrapped_buffer;
+    }
+    layer_data->device_dispatch_table.CmdPushDescriptorSetWithTemplate2KHR(commandBuffer, pPushDescriptorSetWithTemplateInfo);
+    free(unwrapped_buffer);
+}
+
 VkResult DispatchGetPhysicalDeviceDisplayPropertiesKHR(VkPhysicalDevice physicalDevice, uint32_t *pPropertyCount,
                                                        VkDisplayPropertiesKHR *pProperties) {
     auto layer_data = GetLayerDataPtr(get_dispatch_key(physicalDevice), layer_data_map);
@@ -1018,6 +1091,20 @@ VkResult DispatchGetPhysicalDeviceToolPropertiesEXT(
         *pToolCount = 0;
     } else {
         result = layer_data->instance_dispatch_table.GetPhysicalDeviceToolPropertiesEXT(physicalDevice, pToolCount, pToolProperties);
+    }
+
+    return result;
+}
+
+VkResult DispatchGetPhysicalDeviceToolProperties(VkPhysicalDevice physicalDevice, uint32_t *pToolCount,
+                                                 VkPhysicalDeviceToolProperties *pToolProperties) {
+    VkResult result = VK_SUCCESS;
+    auto layer_data = GetLayerDataPtr(get_dispatch_key(physicalDevice), layer_data_map);
+    if (layer_data->instance_dispatch_table.GetPhysicalDeviceToolProperties == nullptr) {
+        // This layer is the terminator. Set pToolCount to zero.
+        *pToolCount = 0;
+    } else {
+        result = layer_data->instance_dispatch_table.GetPhysicalDeviceToolProperties(physicalDevice, pToolCount, pToolProperties);
     }
 
     return result;

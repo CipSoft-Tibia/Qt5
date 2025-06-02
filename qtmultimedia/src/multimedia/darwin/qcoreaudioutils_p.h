@@ -1,8 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef IOSAUDIOUTILS_H
-#define IOSAUDIOUTILS_H
+#ifndef QCOREAUDIOUTILS_P_H
+#define QCOREAUDIOUTILS_P_H
 
 //
 //  W A R N I N G
@@ -15,58 +15,78 @@
 // We mean it.
 //
 
-#include <CoreAudio/CoreAudioTypes.h>
-
-#include <QtMultimedia/QAudioFormat>
+#include <AudioUnit/AudioUnit.h>
 #include <QtCore/qglobal.h>
+#include <QtCore/qpromise.h>
+#include <QtCore/qfuture.h>
+#include <QtCore/qspan.h>
+#include <QtCore/private/quniquehandle_p.h>
+#include <QtMultimedia/qaudioformat.h>
+
+#include <CoreAudioTypes/CoreAudioTypes.h>
+#ifdef Q_OS_MACOS
+#  include <CoreAudio/AudioHardwareBase.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
-class CoreAudioUtils
+namespace QCoreAudioUtils
 {
-public:
-    static quint64 currentTime();
-    static double frequency();
-    static Q_MULTIMEDIA_EXPORT QAudioFormat toQAudioFormat(const AudioStreamBasicDescription& streamFormat);
-    static AudioStreamBasicDescription toAudioStreamBasicDescription(QAudioFormat const& audioFormat);
 
-    // ownership is transferred to caller, free with ::free()
-    static Q_MULTIMEDIA_EXPORT std::unique_ptr<AudioChannelLayout> toAudioChannelLayout(const QAudioFormat &format, UInt32 *size);
-    static QAudioFormat::ChannelConfig fromAudioChannelLayout(const AudioChannelLayout *layout);
-
-private:
-    static void initialize();
-    static double sFrequency;
-    static bool sIsInitialized;
+struct QFreeDeleter
+{
+    template <typename T>
+    void operator()(T*t)
+    {
+        ::free(t);
+    }
 };
 
-class CoreAudioRingBuffer
+
+Q_MULTIMEDIA_EXPORT QAudioFormat toQAudioFormat(const AudioStreamBasicDescription& streamFormat);
+AudioStreamBasicDescription toAudioStreamBasicDescription(QAudioFormat const& audioFormat);
+
+Q_MULTIMEDIA_EXPORT std::unique_ptr<AudioChannelLayout, QFreeDeleter>
+toAudioChannelLayout(const QAudioFormat &format, UInt32 *size);
+QAudioFormat::ChannelConfig fromAudioChannelLayout(const AudioChannelLayout *layout);
+
+#ifdef Q_OS_MACOS
+class DeviceDisconnectMonitor
 {
 public:
-    typedef QPair<char*, int> Region;
+    bool addDisconnectListener(AudioObjectID);
+    void removeDisconnectListener();
 
-    CoreAudioRingBuffer(int bufferSize);
-    ~CoreAudioRingBuffer();
-
-    Region acquireReadRegion(int size);
-    void releaseReadRegion(Region const& region);
-    Region acquireWriteRegion(int size);
-    void releaseWriteRegion(Region const& region);
-
-    int used() const;
-    int free() const;
-    int size() const;
-
-    void reset();
+    template <typename Functor>
+    auto then(QObject *context, Functor &&f)
+    {
+        return m_disconnectedFuture.then(context, std::forward<Functor>(f));
+    }
 
 private:
-    int     m_bufferSize;
-    int     m_readPos;
-    int     m_writePos;
-    char*   m_buffer;
-    QAtomicInt  m_bufferUsed;
+    static OSStatus disconnectCallback(AudioObjectID, UInt32 numberOfAddresses,
+                                       const AudioObjectPropertyAddress *inAddresses, void *self);
+    OSStatus streamDisconnectListener(AudioObjectID,
+                                      QSpan<const AudioObjectPropertyAddress> properties);
+
+    QPromise<void> m_disconnectedPromise;
+    QFuture<void> m_disconnectedFuture;
+
+    AudioObjectID m_currentId;
 };
+#endif
+
+struct AudioUnitHandleTraits
+{
+    using Type = AudioUnit;
+    static Type invalidValue() { return nullptr; }
+    static bool close(Type handle) { return AudioComponentInstanceDispose(handle) == noErr; }
+};
+
+using AudioUnitHandle = QUniqueHandle<AudioUnitHandleTraits>;
+
+} // namespace QCoreAudioUtils
 
 QT_END_NAMESPACE
 
-#endif // IOSAUDIOUTILS_H
+#endif // QCOREAUDIOUTILS_P_H

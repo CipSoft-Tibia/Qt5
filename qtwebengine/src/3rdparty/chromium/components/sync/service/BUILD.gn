@@ -45,6 +45,8 @@ jumbo_static_library("service") {
     "sync_auth_manager.h",
     "sync_client.cc",
     "sync_client.h",
+    "sync_feature_status_for_migrations_recorder.cc",
+    "sync_feature_status_for_migrations_recorder.h",
     "sync_internals_util.cc",
     "sync_internals_util.h",
     "sync_policy_handler.cc",
@@ -66,7 +68,6 @@ jumbo_static_library("service") {
     "sync_stopped_reporter.cc",
     "sync_stopped_reporter.h",
     "sync_token_status.h",
-    "sync_type_preference_provider.h",
     "sync_user_settings.h",
     "sync_user_settings_impl.cc",
     "sync_user_settings_impl.h",
@@ -109,6 +110,8 @@ jumbo_static_library("service") {
 
   if (is_android) {
     sources += [
+      "../android/explicit_passphrase_platform_client.cc",
+      "../android/explicit_passphrase_platform_client.h",
       "../android/sync_service_android_bridge.cc",
       "../android/sync_service_android_bridge.h",
     ]

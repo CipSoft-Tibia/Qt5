@@ -58,7 +58,7 @@
 #include "include/encode/SkJpegEncoder.h"
 #include "include/encode/SkPngEncoder.h"
 #include "include/encode/SkWebpEncoder.h"
-#include "include/private/SkShadowFlags.h"
+#include "include/private/base/SkOnce.h"
 #include "include/utils/SkParsePath.h"
 #include "include/utils/SkShadowUtils.h"
 #include "src/core/SkPathPriv.h"
@@ -88,6 +88,7 @@
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/GrTypes.h"
 #include "include/gpu/ganesh/gl/GrGLBackendSurface.h"
+#include "include/gpu/ganesh/gl/GrGLDirectContext.h"
 #include "include/gpu/gl/GrGLInterface.h"
 #include "include/gpu/gl/GrGLTypes.h"
 #include "src/gpu/RefCntedCallback.h"
@@ -95,7 +96,7 @@
 #include "src/gpu/ganesh/GrRecordingContextPriv.h"
 #include "src/gpu/ganesh/gl/GrGLDefines.h"
 
-#include <webgl/webgl1.h>
+#include <GLES2/gl2.h>
 #endif // CK_ENABLE_WEBGL
 
 #ifdef CK_ENABLE_WEBGPU
@@ -109,6 +110,7 @@
 #include "include/core/SkFontMetrics.h"
 #include "include/core/SkFontMgr.h"
 #include "include/core/SkFontTypes.h"
+#include "src/ports/SkTypeface_FreeType.h"
 #ifdef CK_INCLUDE_PARAGRAPH
 #include "modules/skparagraph/include/Paragraph.h"
 #endif // CK_INCLUDE_PARAGRAPH
@@ -126,7 +128,13 @@
 #include "include/ports/SkFontMgr_data.h"
 #endif
 
-#if GR_TEST_UTILS
+#if defined(CK_EMBED_FONT)
+struct SkEmbeddedResource { const uint8_t* data; size_t size; };
+struct SkEmbeddedResourceHeader { const SkEmbeddedResource* entries; int count; };
+extern "C" const SkEmbeddedResourceHeader SK_EMBEDDED_FONTS;
+#endif
+
+#if defined(GR_TEST_UTILS)
 #error "This define should not be set, as it brings in test-only things and bloats codesize."
 #endif
 
@@ -198,17 +206,17 @@ sk_sp<GrDirectContext> MakeGrContext()
     // setup interface.
     auto interface = GrGLMakeNativeInterface();
     // setup context
-    return GrDirectContext::MakeGL(interface);
+    return GrDirectContexts::MakeGL(interface);
 }
 
 sk_sp<SkSurface> MakeOnScreenGLSurface(sk_sp<GrDirectContext> dContext, int width, int height,
                                        sk_sp<SkColorSpace> colorSpace, int sampleCnt, int stencil) {
     // WebGL should already be clearing the color and stencil buffers, but do it again here to
     // ensure Skia receives them in the expected state.
-    emscripten_glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    emscripten_glClearColor(0, 0, 0, 0);
-    emscripten_glClearStencil(0);
-    emscripten_glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClearColor(0, 0, 0, 0);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     dContext->resetContext(kRenderTarget_GrGLBackendState | kMisc_GrGLBackendState);
 
     // The on-screen canvas is FBO 0. Wrap it in a Skia render target so Skia can render to it.
@@ -234,10 +242,10 @@ sk_sp<SkSurface> MakeOnScreenGLSurface(sk_sp<GrDirectContext> dContext, int widt
 sk_sp<SkSurface> MakeOnScreenGLSurface(sk_sp<GrDirectContext> dContext, int width, int height,
                                        sk_sp<SkColorSpace> colorSpace) {
     GrGLint sampleCnt;
-    emscripten_glGetIntegerv(GL_SAMPLES, &sampleCnt);
+    glGetIntegerv(GL_SAMPLES, &sampleCnt);
 
     GrGLint stencil;
-    emscripten_glGetIntegerv(GL_STENCIL_BITS, &stencil);
+    glGetIntegerv(GL_STENCIL_BITS, &stencil);
 
     return MakeOnScreenGLSurface(dContext, width, height, colorSpace, sampleCnt, stencil);
 }
@@ -900,29 +908,27 @@ public:
         fCallback.call<void>("freeSrc");
     }
 
-  std::unique_ptr<GrExternalTexture> generateExternalTexture(GrRecordingContext *ctx,
-                                                             GrMipMapped mipmapped) override {
-    GrGLTextureInfo glInfo;
+    std::unique_ptr<GrExternalTexture> generateExternalTexture(
+            GrRecordingContext* ctx, skgpu::Mipmapped mipmapped) override {
+        GrGLTextureInfo glInfo;
 
-    // This callback is defined in webgl.js
-    glInfo.fID     = fCallback.call<uint32_t>("makeTexture");
+        // This callback is defined in webgl.js
+        glInfo.fID = fCallback.call<uint32_t>("makeTexture");
 
-    // The format and target should match how we make the texture on the JS side
-    // See the implementation of the makeTexture function.
-    glInfo.fFormat = GR_GL_RGBA8;
-    glInfo.fTarget = GR_GL_TEXTURE_2D;
+        // The format and target should match how we make the texture on the JS side
+        // See the implementation of the makeTexture function.
+        glInfo.fFormat = GR_GL_RGBA8;
+        glInfo.fTarget = GR_GL_TEXTURE_2D;
 
-    auto backendTexture = GrBackendTextures::MakeGL(fInfo.width(),
-                                                    fInfo.height(),
-                                                    mipmapped,
-                                                    glInfo);
+        auto backendTexture =
+                GrBackendTextures::MakeGL(fInfo.width(), fInfo.height(), mipmapped, glInfo);
 
-    // In order to bind the image source to the texture, makeTexture has changed which
-    // texture is "in focus" for the WebGL context.
-    GrAsDirectContext(ctx)->resetContext(kTextureBinding_GrGLBackendState);
-    return std::make_unique<ExternalWebGLTexture>(
-        backendTexture, glInfo.fID, emscripten_webgl_get_current_context());
-  }
+        // In order to bind the image source to the texture, makeTexture has changed which
+        // texture is "in focus" for the WebGL context.
+        GrAsDirectContext(ctx)->resetContext(kTextureBinding_GrGLBackendState);
+        return std::make_unique<ExternalWebGLTexture>(
+                backendTexture, glInfo.fID, emscripten_webgl_get_current_context());
+    }
 
 private:
     JSObject fCallback;
@@ -2334,12 +2340,29 @@ EMSCRIPTEN_BINDINGS(Skia) {
 
     class_<SkTypeface>("Typeface")
         .smart_ptr<sk_sp<SkTypeface>>("sk_sp<Typeface>")
-        .class_function("_MakeFreeTypeFaceFromData", optional_override([](WASMPointerU8 fPtr,
-                                                int flen)->sk_sp<SkTypeface> {
+        .class_function("GetDefault", optional_override([]()->sk_sp<SkTypeface> {
+#if defined(CK_EMBED_FONT)
+            if (SK_EMBEDDED_FONTS.count == 0) {
+                return nullptr;
+            }
+            static sk_sp<SkTypeface> default_face;
+            static SkOnce once;
+            once([] {
+                const SkEmbeddedResource& fontEntry = SK_EMBEDDED_FONTS.entries[0];
+                auto stream = std::make_unique<SkMemoryStream>(fontEntry.data, fontEntry.size, false);
+                default_face = SkTypeface_FreeType::MakeFromStream(std::move(stream), SkFontArguments());
+            });
+            return default_face;
+#else
+            return nullptr;
+#endif
+        }), allow_raw_pointers())
+        .class_function("_MakeTypefaceFromData", optional_override([](
+                    WASMPointerU8 fPtr, int flen)->sk_sp<SkTypeface> {
             uint8_t* font = reinterpret_cast<uint8_t*>(fPtr);
-            sk_sp<SkData> fontData = SkData::MakeFromMalloc(font, flen);
-
-            return SkFontMgr::RefDefault()->makeFromData(fontData);
+            std::unique_ptr<SkMemoryStream> stream(new SkMemoryStream());
+            stream->setMemoryOwned(font, flen);
+            return SkTypeface_FreeType::MakeFromStream(std::move(stream), SkFontArguments());
         }), allow_raw_pointers())
         .function("_getGlyphIDs", optional_override([](SkTypeface& self, WASMPointerU8 sptr,
                                                    size_t strLen, size_t expectedCodePoints,

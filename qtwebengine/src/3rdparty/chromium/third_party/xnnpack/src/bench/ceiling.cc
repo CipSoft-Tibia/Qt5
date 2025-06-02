@@ -8,10 +8,11 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <vector>
 
-#include <fp16.h>
+#include <fp16/fp16.h>
 
 #include <xnnpack.h>
 
@@ -48,24 +49,27 @@ static void xnnpack_ceiling_f16(benchmark::State& state) {
 
   xnn_operator_t ceiling_op = nullptr;
   status = xnn_create_ceiling_nc_f16(
-    1 /* channels */, 1 /* input stride */, 1 /* output stride */,
     0 /* flags */, &ceiling_op);
   if (status != xnn_status_success || ceiling_op == nullptr) {
     state.SkipWithError("failed to create Ceiling operator");
     return;
   }
 
-  status = xnn_setup_ceiling_nc_f16(
-    ceiling_op, batch_size,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+  status = xnn_reshape_ceiling_nc_f16(ceiling_op, batch_size,
+    /*channels=*/1, /*input_stride=*/1, /*output_stride=*/1, /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape Ceiling operator");
+    return;
+  }
+
+  status = xnn_setup_ceiling_nc_f16(ceiling_op, input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup Ceiling operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(ceiling_op, nullptr /* thread pool */);
+    status = xnn_run_operator(ceiling_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run Ceiling operator");
       return;
@@ -111,24 +115,27 @@ static void xnnpack_ceiling_f32(benchmark::State& state) {
 
   xnn_operator_t ceiling_op = nullptr;
   status = xnn_create_ceiling_nc_f32(
-    1 /* channels */, 1 /* input stride */, 1 /* output stride */,
     0 /* flags */, &ceiling_op);
   if (status != xnn_status_success || ceiling_op == nullptr) {
     state.SkipWithError("failed to create Ceiling operator");
     return;
   }
 
-  status = xnn_setup_ceiling_nc_f32(
-    ceiling_op, batch_size,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+  status = xnn_reshape_ceiling_nc_f32(ceiling_op, batch_size,
+    /*channels=*/1, /*input_stride=*/1, /*output_stride=*/1, /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape Ceiling operator");
+    return;
+  }
+
+  status = xnn_setup_ceiling_nc_f32(ceiling_op, input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup Ceiling operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(ceiling_op, nullptr /* thread pool */);
+    status = xnn_run_operator(ceiling_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run Ceiling operator");
       return;

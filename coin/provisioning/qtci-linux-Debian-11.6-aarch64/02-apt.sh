@@ -87,6 +87,8 @@ installPackages+=(gstreamer1.0-plugins-ugly)
 installPackages+=(libgstreamer-gl1.0-0)
 installPackages+=(gir1.2-gst-plugins-base-1.0)
 installPackages+=(gir1.2-gst-plugins-bad-1.0)
+installPackages+=(libpipewire-0.3-dev)
+installPackages+=(libspa-0.2-dev)
 
 ## Support for cross-building to x86 (needed by WebEngine boot2qt builds)
 #installPackages+=(g++-multilib)
@@ -111,7 +113,7 @@ installPackages+=(libcurl4-openssl-dev)
 installPackages+=(libicu-dev)
 installPackages+=(zlib1g-dev)
 installPackages+=(zlib1g)
-installPackages+=(openjdk-11-jdk)
+installPackages+=(openjdk-17-jdk)
 installPackages+=(libgtk-3-dev)
 installPackages+=(ninja-build)
 installPackages+=(libssl-dev)
@@ -244,7 +246,8 @@ installPackages+=(pkg-kde-tools)
 installPackages+=(unixodbc-dev)
 installPackages+=(zlib1g-dev)
 installPackages+=(libusb-1.0-0-dev)
-
+# password management support for Qt Creator
+installPackages+=(libsecret-1-dev)
 
 echo "Running update for apt"
 waitLoop
@@ -256,6 +259,12 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y install cmake apt-cacher-ng -t
 
 # Disable keyring password prompt
 keyring --disable
+
+pip install --user -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
+
+source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
+
+SetEnvVar "SBOM_PYTHON_APPS_PATH" "/home/qt/.local/bin"
 
 # SetEnvVar "PATH" "/usr/lib/nodejs-mozilla/bin:\$PATH"
 

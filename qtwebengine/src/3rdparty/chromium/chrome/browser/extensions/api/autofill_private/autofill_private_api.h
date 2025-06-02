@@ -198,6 +198,24 @@ class AutofillPrivateLogServerCardLinkClickedFunction
   ResponseAction Run() override;
 };
 
+class AutofillPrivateLogServerIbanLinkClickedFunction
+    : public ExtensionFunction {
+ public:
+  AutofillPrivateLogServerIbanLinkClickedFunction() = default;
+  AutofillPrivateLogServerIbanLinkClickedFunction(
+      const AutofillPrivateLogServerIbanLinkClickedFunction&) = delete;
+  AutofillPrivateLogServerIbanLinkClickedFunction& operator=(
+      const AutofillPrivateLogServerIbanLinkClickedFunction&) = delete;
+  DECLARE_EXTENSION_FUNCTION("autofillPrivate.logServerIbanLinkClicked",
+                             AUTOFILLPRIVATE_SERVERIBANLINKCLICKED)
+
+ protected:
+  ~AutofillPrivateLogServerIbanLinkClickedFunction() override = default;
+
+  // ExtensionFunction overrides.
+  ResponseAction Run() override;
+};
+
 class AutofillPrivateSetCreditCardFIDOAuthEnabledStateFunction
     : public ExtensionFunction {
  public:
@@ -328,25 +346,26 @@ class AutofillPrivateAuthenticateUserAndFlipMandatoryAuthToggleFunction
   void UpdateMandatoryAuthTogglePref(bool reauth_succeeded);
 };
 
-class AutofillPrivateAuthenticateUserToEditLocalCardFunction
-    : public ExtensionFunction {
+// Performs a local reauth before releasing data if reauth is enabled.
+class AutofillPrivateGetLocalCardFunction : public ExtensionFunction {
  public:
-  AutofillPrivateAuthenticateUserToEditLocalCardFunction() = default;
-  AutofillPrivateAuthenticateUserToEditLocalCardFunction(
-      const AutofillPrivateAuthenticateUserToEditLocalCardFunction&) = delete;
-  AutofillPrivateAuthenticateUserToEditLocalCardFunction& operator=(
-      const AutofillPrivateAuthenticateUserToEditLocalCardFunction&) = delete;
-  DECLARE_EXTENSION_FUNCTION("autofillPrivate.authenticateUserToEditLocalCard",
-                             AUTOFILLPRIVATE_AUTHENTICATEUSERTOEDITLOCALCARD)
+  AutofillPrivateGetLocalCardFunction() = default;
+  AutofillPrivateGetLocalCardFunction(
+      const AutofillPrivateGetLocalCardFunction&) = delete;
+  AutofillPrivateGetLocalCardFunction& operator=(
+      const AutofillPrivateGetLocalCardFunction&) = delete;
+  DECLARE_EXTENSION_FUNCTION("autofillPrivate.getLocalCard",
+                             AUTOFILLPRIVATE_GETLOCALCARD)
 
  protected:
-  ~AutofillPrivateAuthenticateUserToEditLocalCardFunction() override = default;
+  ~AutofillPrivateGetLocalCardFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;
 
  private:
-  void CanShowEditDialogForLocalCard(bool can_show);
+  void OnReauthFinished(bool can_retrieve);
+  void ReturnCreditCard();
 };
 
 class AutofillPrivateCheckIfDeviceAuthAvailableFunction
@@ -362,6 +381,23 @@ class AutofillPrivateCheckIfDeviceAuthAvailableFunction
 
  protected:
   ~AutofillPrivateCheckIfDeviceAuthAvailableFunction() override = default;
+
+  // ExtensionFunction overrides.
+  ResponseAction Run() override;
+};
+
+class AutofillPrivateBulkDeleteAllCvcsFunction : public ExtensionFunction {
+ public:
+  AutofillPrivateBulkDeleteAllCvcsFunction() = default;
+  AutofillPrivateBulkDeleteAllCvcsFunction(
+      const AutofillPrivateBulkDeleteAllCvcsFunction&) = delete;
+  AutofillPrivateBulkDeleteAllCvcsFunction& operator=(
+      const AutofillPrivateBulkDeleteAllCvcsFunction&) = delete;
+  DECLARE_EXTENSION_FUNCTION("autofillPrivate.bulkDeleteAllCvcs",
+                             AUTOFILLPRIVATE_BULKDELETEALLCVCS)
+
+ protected:
+  ~AutofillPrivateBulkDeleteAllCvcsFunction() override = default;
 
   // ExtensionFunction overrides.
   ResponseAction Run() override;

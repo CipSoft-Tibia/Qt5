@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/multiplanar_external_texture.h"
 
@@ -35,8 +48,8 @@ namespace {
 using namespace tint::core::fluent_types;     // NOLINT
 using namespace tint::core::number_suffixes;  // NOLINT
 
-bool ShouldRun(const Program* program) {
-    auto ext = program->Types().Find<core::type::ExternalTexture>();
+bool ShouldRun(const Program& program) {
+    auto ext = program.Types().Find<core::type::ExternalTexture>();
     return ext != nullptr;
 }
 
@@ -118,7 +131,7 @@ struct MultiplanarExternalTexture::State {
             // The binding points for the newly introduced bindings must have been provided to this
             // transform. We fetch the new binding points by providing the original texture_external
             // binding points into the passed map.
-            BindingPoint bp = *sem_var->BindingPoint();
+            BindingPoint bp = *sem_var->Attributes().binding_point;
 
             BindingsMap::const_iterator it = new_binding_points->bindings_map.find(bp);
             if (it == new_binding_points->bindings_map.end()) {
@@ -138,12 +151,27 @@ struct MultiplanarExternalTexture::State {
             auto& syms = new_binding_symbols[sem_var];
             syms.plane_0 = ctx.Clone(global->name->symbol);
             syms.plane_1 = b.Symbols().New("ext_tex_plane_1");
-            b.GlobalVar(syms.plane_1,
-                        b.ty.sampled_texture(core::type::TextureDimension::k2d, b.ty.f32()),
-                        b.Group(AInt(bps.plane_1.group)), b.Binding(AInt(bps.plane_1.binding)));
+            if (new_binding_points->allow_collisions) {
+                b.GlobalVar(syms.plane_1,
+                            b.ty.sampled_texture(core::type::TextureDimension::k2d, b.ty.f32()),
+                            b.Disable(DisabledValidation::kBindingPointCollision),
+                            b.Group(AInt(bps.plane_1.group)), b.Binding(AInt(bps.plane_1.binding)));
+            } else {
+                b.GlobalVar(syms.plane_1,
+                            b.ty.sampled_texture(core::type::TextureDimension::k2d, b.ty.f32()),
+                            b.Group(AInt(bps.plane_1.group)), b.Binding(AInt(bps.plane_1.binding)));
+            }
             syms.params = b.Symbols().New("ext_tex_params");
-            b.GlobalVar(syms.params, b.ty("ExternalTextureParams"), core::AddressSpace::kUniform,
-                        b.Group(AInt(bps.params.group)), b.Binding(AInt(bps.params.binding)));
+            if (new_binding_points->allow_collisions) {
+                b.GlobalVar(syms.params, b.ty("ExternalTextureParams"),
+                            core::AddressSpace::kUniform,
+                            b.Disable(DisabledValidation::kBindingPointCollision),
+                            b.Group(AInt(bps.params.group)), b.Binding(AInt(bps.params.binding)));
+            } else {
+                b.GlobalVar(syms.params, b.ty("ExternalTextureParams"),
+                            core::AddressSpace::kUniform, b.Group(AInt(bps.params.group)),
+                            b.Binding(AInt(bps.params.binding)));
+            }
 
             // Replace the original texture_external binding with a texture_2d<f32> binding.
             auto cloned_attributes = ctx.Clone(global->attributes);
@@ -190,11 +218,11 @@ struct MultiplanarExternalTexture::State {
         // functions.
         ctx.ReplaceAll([&](const CallExpression* expr) -> const CallExpression* {
             auto* call = sem.Get(expr)->UnwrapMaterialize()->As<sem::Call>();
-            auto* builtin = call->Target()->As<sem::Builtin>();
+            auto* builtin = call->Target()->As<sem::BuiltinFn>();
 
             if (builtin && !builtin->Parameters().IsEmpty() &&
                 builtin->Parameters()[0]->Type()->Is<core::type::ExternalTexture>() &&
-                builtin->Type() != core::Function::kTextureDimensions) {
+                builtin->Fn() != wgsl::BuiltinFn::kTextureDimensions) {
                 if (auto* var_user =
                         sem.GetVal(expr->args[0])->UnwrapLoad()->As<sem::VariableUser>()) {
                     auto it = new_binding_symbols.find(var_user->Variable());
@@ -207,10 +235,10 @@ struct MultiplanarExternalTexture::State {
                     }
                     auto& syms = it->second;
 
-                    switch (builtin->Type()) {
-                        case core::Function::kTextureLoad:
+                    switch (builtin->Fn()) {
+                        case wgsl::BuiltinFn::kTextureLoad:
                             return createTextureLoad(call, syms);
-                        case core::Function::kTextureSampleBaseClampToEdge:
+                        case wgsl::BuiltinFn::kTextureSampleBaseClampToEdge:
                             return createTextureSampleBaseClampToEdge(expr, syms);
                         default:
                             break;
@@ -309,13 +337,13 @@ struct MultiplanarExternalTexture::State {
     /// builtin function.
     /// @param call_type determines which function body to generate
     /// @returns a statement list that makes of the body of the chosen function
-    auto buildTextureBuiltinBody(core::Function call_type) {
+    auto buildTextureBuiltinBody(wgsl::BuiltinFn call_type) {
         tint::Vector<const Statement*, 16> stmts;
         const CallExpression* single_plane_call = nullptr;
         const CallExpression* plane_0_call = nullptr;
         const CallExpression* plane_1_call = nullptr;
         switch (call_type) {
-            case core::Function::kTextureSampleBaseClampToEdge:
+            case wgsl::BuiltinFn::kTextureSampleBaseClampToEdge:
                 stmts.Push(b.Decl(b.Let(
                     "modifiedCoords", b.Mul(b.MemberAccessor("params", "coordTransformationMatrix"),
                                             b.Call<vec3<f32>>("coord", 1_a)))));
@@ -345,7 +373,7 @@ struct MultiplanarExternalTexture::State {
                 // textureSampleLevel(plane1, smp, plane1_clamped, 0.0);
                 plane_1_call = b.Call("textureSampleLevel", "plane1", "smp", "plane1_clamped", 0_a);
                 break;
-            case core::Function::kTextureLoad:
+            case wgsl::BuiltinFn::kTextureLoad:
                 // textureLoad(plane0, coord, 0);
                 single_plane_call = b.Call("textureLoad", "plane0", "coord", 0_a);
                 // textureLoad(plane0, coord, 0);
@@ -439,7 +467,7 @@ struct MultiplanarExternalTexture::State {
                        b.Param("params", b.ty(params_struct_sym)),
                    },
                    b.ty.vec4(b.ty.f32()),
-                   buildTextureBuiltinBody(core::Function::kTextureSampleBaseClampToEdge));
+                   buildTextureBuiltinBody(wgsl::BuiltinFn::kTextureSampleBaseClampToEdge));
         }
 
         return b.Call(texture_sample_external_sym, tint::Vector{
@@ -486,7 +514,7 @@ struct MultiplanarExternalTexture::State {
                        b.Param("params", b.ty(params_struct_sym)),
                    },
                    b.ty.vec4(b.ty.f32()),  //
-                   buildTextureBuiltinBody(core::Function::kTextureLoad));
+                   buildTextureBuiltinBody(wgsl::BuiltinFn::kTextureLoad));
 
             return name;
         });
@@ -498,8 +526,9 @@ struct MultiplanarExternalTexture::State {
     }
 };
 
-MultiplanarExternalTexture::NewBindingPoints::NewBindingPoints(BindingsMap inputBindingsMap)
-    : bindings_map(std::move(inputBindingsMap)) {}
+MultiplanarExternalTexture::NewBindingPoints::NewBindingPoints(BindingsMap inputBindingsMap,
+                                                               bool may_collide)
+    : bindings_map(std::move(inputBindingsMap)), allow_collisions(may_collide) {}
 
 MultiplanarExternalTexture::NewBindingPoints::~NewBindingPoints() = default;
 
@@ -511,7 +540,7 @@ MultiplanarExternalTexture::~MultiplanarExternalTexture() = default;
 // buffer binding representing a struct of parameters. Calls to texture builtins that contain a
 // texture_external parameter will be transformed into a newly generated version of the function,
 // which can perform the desired operation on a single RGBA plane or on separate Y and UV planes.
-Transform::ApplyResult MultiplanarExternalTexture::Apply(const Program* src,
+Transform::ApplyResult MultiplanarExternalTexture::Apply(const Program& src,
                                                          const DataMap& inputs,
                                                          DataMap&) const {
     auto* new_binding_points = inputs.Get<NewBindingPoints>();
@@ -521,7 +550,7 @@ Transform::ApplyResult MultiplanarExternalTexture::Apply(const Program* src,
     }
 
     ProgramBuilder b;
-    program::CloneContext ctx{&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx{&b, &src, /* auto_clone_symbols */ true};
     if (!new_binding_points) {
         b.Diagnostics().add_error(diag::System::Transform, "missing new binding point data for " +
                                                                std::string(TypeInfo().name));

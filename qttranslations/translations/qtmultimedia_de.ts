@@ -319,6 +319,10 @@
         <source>No video or audio input</source>
         <translation>Kein Video- oder Audiosignal</translation>
     </message>
+    <message>
+        <source>Cannot open the output location for writing</source>
+        <translation>Das Ausgabeziel kann nicht zum Schreiben geöffnet werden</translation>
+    </message>
 </context>
 <context>
     <name>QMediaMetaData</name>
@@ -433,6 +437,10 @@
     <message>
         <source>Lead performer</source>
         <translation>Hauptinterpret</translation>
+    </message>
+    <message>
+        <source>Has HDR content</source>
+        <translation>Hat HDR-Inhalt</translation>
     </message>
 </context>
 <context>

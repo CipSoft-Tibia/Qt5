@@ -23,10 +23,7 @@ jumbo_component("snapshot") {
   }
 
   if (is_win) {
-    sources += [
-      "snapshot_win.cc",
-      "snapshot_win.h",
-    ]
+    sources += [ "snapshot_win.cc" ]
   }
 
   if (is_ios) {

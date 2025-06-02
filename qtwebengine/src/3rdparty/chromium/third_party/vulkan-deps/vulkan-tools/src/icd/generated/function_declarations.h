@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2015-2018, 2023 The Khronos Group Inc.
+** Copyright (c) 2015-2024 The Khronos Group Inc.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <cstring>
 #include <string>
 #include <unordered_map>
 #include <vulkan/vulkan.h>
@@ -42,7 +43,7 @@ static const std::unordered_map<std::string, uint32_t> instance_extension_map = 
     {"VK_GGP_stream_descriptor_surface", 1},
     {"VK_NV_external_memory_capabilities", 1},
     {"VK_KHR_get_physical_device_properties2", 2},
-    {"VK_EXT_validation_flags", 2},
+    {"VK_EXT_validation_flags", 3},
     {"VK_NN_vi_surface", 1},
     {"VK_KHR_device_group_creation", 1},
     {"VK_KHR_external_memory_capabilities", 1},
@@ -60,7 +61,7 @@ static const std::unordered_map<std::string, uint32_t> instance_extension_map = 
     {"VK_FUCHSIA_imagepipe_surface", 1},
     {"VK_EXT_metal_surface", 1},
     {"VK_KHR_surface_protected_capabilities", 1},
-    {"VK_EXT_validation_features", 5},
+    {"VK_EXT_validation_features", 6},
     {"VK_EXT_headless_surface", 1},
     {"VK_EXT_surface_maintenance1", 1},
     {"VK_EXT_acquire_drm_display", 1},
@@ -69,6 +70,7 @@ static const std::unordered_map<std::string, uint32_t> instance_extension_map = 
     {"VK_KHR_portability_enumeration", 1},
     {"VK_GOOGLE_surfaceless_query", 2},
     {"VK_LUNARG_direct_driver_loading", 1},
+    {"VK_EXT_layer_settings", 2},
 };
 // Map of device extension name to version
 static const std::unordered_map<std::string, uint32_t> device_extension_map = {
@@ -83,7 +85,7 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_AMD_shader_explicit_vertex_parameter", 1},
     {"VK_EXT_debug_marker", 4},
     {"VK_KHR_video_queue", 8},
-    {"VK_KHR_video_decode_queue", 7},
+    {"VK_KHR_video_decode_queue", 8},
     {"VK_AMD_gcn_shader", 1},
     {"VK_NV_dedicated_allocation", 1},
     {"VK_EXT_transform_feedback", 1},
@@ -93,9 +95,9 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_AMD_negative_viewport_height", 1},
     {"VK_AMD_gpu_shader_half_float", 2},
     {"VK_AMD_shader_ballot", 1},
-    {"VK_EXT_video_encode_h264", 11},
-    {"VK_EXT_video_encode_h265", 11},
-    {"VK_KHR_video_decode_h264", 8},
+    {"VK_KHR_video_encode_h264", 14},
+    {"VK_KHR_video_encode_h265", 14},
+    {"VK_KHR_video_decode_h264", 9},
     {"VK_AMD_texture_gather_bias_lod", 1},
     {"VK_AMD_shader_info", 1},
     {"VK_KHR_dynamic_rendering", 1},
@@ -141,6 +143,7 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_EXT_hdr_metadata", 2},
     {"VK_KHR_imageless_framebuffer", 1},
     {"VK_KHR_create_renderpass2", 1},
+    {"VK_IMG_relaxed_line_rasterization", 1},
     {"VK_KHR_shared_presentable_image", 1},
     {"VK_KHR_external_fence", 1},
     {"VK_KHR_external_fence_win32", 1},
@@ -195,7 +198,7 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_AMD_pipeline_compiler_control", 1},
     {"VK_EXT_calibrated_timestamps", 2},
     {"VK_AMD_shader_core_properties", 2},
-    {"VK_KHR_video_decode_h265", 7},
+    {"VK_KHR_video_decode_h265", 8},
     {"VK_KHR_global_priority", 1},
     {"VK_AMD_memory_overallocation_behavior", 1},
     {"VK_EXT_vertex_attribute_divisor", 3},
@@ -261,7 +264,7 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_NV_inherited_viewport_scissor", 1},
     {"VK_KHR_shader_integer_dot_product", 1},
     {"VK_EXT_texel_buffer_alignment", 1},
-    {"VK_QCOM_render_pass_transform", 3},
+    {"VK_QCOM_render_pass_transform", 4},
     {"VK_EXT_depth_bias_control", 1},
     {"VK_EXT_device_memory_report", 2},
     {"VK_EXT_robustness2", 1},
@@ -273,9 +276,10 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_KHR_present_id", 1},
     {"VK_EXT_private_data", 1},
     {"VK_EXT_pipeline_creation_cache_control", 3},
-    {"VK_KHR_video_encode_queue", 9},
+    {"VK_KHR_video_encode_queue", 12},
     {"VK_NV_device_diagnostics_config", 2},
     {"VK_QCOM_render_pass_store_ops", 2},
+    {"VK_NV_cuda_kernel_launch", 2},
     {"VK_NV_low_latency", 1},
     {"VK_EXT_metal_objects", 1},
     {"VK_KHR_synchronization2", 1},
@@ -290,7 +294,7 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_EXT_mesh_shader", 1},
     {"VK_EXT_ycbcr_2plane_444_formats", 1},
     {"VK_EXT_fragment_density_map2", 1},
-    {"VK_QCOM_rotated_copy_commands", 1},
+    {"VK_QCOM_rotated_copy_commands", 2},
     {"VK_EXT_image_robustness", 1},
     {"VK_KHR_workgroup_memory_explicit_layout", 1},
     {"VK_KHR_copy_commands2", 1},
@@ -315,6 +319,7 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_HUAWEI_invocation_mask", 1},
     {"VK_NV_external_memory_rdma", 1},
     {"VK_EXT_pipeline_properties", 1},
+    {"VK_EXT_frame_boundary", 1},
     {"VK_EXT_multisampled_render_to_single_sampled", 1},
     {"VK_EXT_extended_dynamic_state2", 1},
     {"VK_EXT_color_write_enable", 1},
@@ -328,15 +333,17 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_EXT_opacity_micromap", 2},
     {"VK_NV_displacement_micromap", 2},
     {"VK_EXT_load_store_op_none", 1},
-    {"VK_HUAWEI_cluster_culling_shader", 2},
+    {"VK_HUAWEI_cluster_culling_shader", 3},
     {"VK_EXT_border_color_swizzle", 1},
     {"VK_EXT_pageable_device_local_memory", 1},
     {"VK_KHR_maintenance4", 2},
     {"VK_ARM_shader_core_properties", 1},
+    {"VK_ARM_scheduling_controls", 1},
     {"VK_EXT_image_sliced_view_of_3d", 1},
     {"VK_VALVE_descriptor_set_host_mapping", 1},
     {"VK_EXT_depth_clamp_zero_one", 1},
     {"VK_EXT_non_seamless_cube_map", 1},
+    {"VK_ARM_render_pass_striped", 1},
     {"VK_QCOM_fragment_density_map_offset", 1},
     {"VK_NV_copy_memory_indirect", 1},
     {"VK_NV_memory_decompression", 1},
@@ -344,6 +351,7 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_NV_linear_color_attachment", 1},
     {"VK_EXT_image_compression_control_swapchain", 1},
     {"VK_QCOM_image_processing", 1},
+    {"VK_EXT_nested_command_buffer", 1},
     {"VK_EXT_external_memory_acquire_unmodified", 1},
     {"VK_EXT_extended_dynamic_state3", 2},
     {"VK_EXT_subpass_merge_feedback", 2},
@@ -352,6 +360,7 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_NV_optical_flow", 1},
     {"VK_EXT_legacy_dithering", 1},
     {"VK_EXT_pipeline_protected_access", 1},
+    {"VK_ANDROID_external_format_resolve", 1},
     {"VK_KHR_maintenance5", 1},
     {"VK_KHR_ray_tracing_position_fetch", 1},
     {"VK_EXT_shader_object", 1},
@@ -359,18 +368,27 @@ static const std::unordered_map<std::string, uint32_t> device_extension_map = {
     {"VK_SEC_amigo_profiling", 1},
     {"VK_QCOM_multiview_per_view_viewports", 1},
     {"VK_NV_ray_tracing_invocation_reorder", 1},
+    {"VK_NV_extended_sparse_address_space", 1},
     {"VK_EXT_mutable_descriptor_type", 1},
     {"VK_ARM_shader_core_builtins", 2},
     {"VK_EXT_pipeline_library_group_handles", 1},
     {"VK_EXT_dynamic_rendering_unused_attachments", 1},
+    {"VK_NV_low_latency2", 2},
     {"VK_KHR_cooperative_matrix", 2},
     {"VK_QCOM_multiview_per_view_render_areas", 1},
+    {"VK_KHR_video_maintenance1", 1},
+    {"VK_NV_per_stage_descriptor_set", 1},
     {"VK_QCOM_image_processing2", 1},
     {"VK_QCOM_filter_cubic_weights", 1},
     {"VK_QCOM_ycbcr_degamma", 1},
     {"VK_QCOM_filter_cubic_clamp", 1},
     {"VK_EXT_attachment_feedback_loop_dynamic_state", 1},
+    {"VK_KHR_vertex_attribute_divisor", 1},
     {"VK_QNX_external_memory_screen_buffer", 1},
+    {"VK_MSFT_layered_driver", 1},
+    {"VK_KHR_calibrated_timestamps", 1},
+    {"VK_KHR_maintenance6", 1},
+    {"VK_NV_descriptor_pool_overallocation", 1},
 };
 
 
@@ -1835,6 +1853,8 @@ static VKAPI_ATTR void VKAPI_CALL CmdDecodeVideoKHR(
 
 
 
+
+
 static VKAPI_ATTR void VKAPI_CALL CmdBeginRenderingKHR(
     VkCommandBuffer                             commandBuffer,
     const VkRenderingInfo*                      pRenderingInfo);
@@ -2315,7 +2335,6 @@ static VKAPI_ATTR VkResult VKAPI_CALL UnmapMemory2KHR(
 
 
 
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 
 static VKAPI_ATTR VkResult VKAPI_CALL GetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR(
     VkPhysicalDevice                            physicalDevice,
@@ -2332,7 +2351,6 @@ static VKAPI_ATTR VkResult VKAPI_CALL GetEncodedVideoSessionParametersKHR(
 static VKAPI_ATTR void VKAPI_CALL CmdEncodeVideoKHR(
     VkCommandBuffer                             commandBuffer,
     const VkVideoEncodeInfoKHR*                 pEncodeInfo);
-#endif /* VK_ENABLE_BETA_EXTENSIONS */
 
 
 static VKAPI_ATTR void VKAPI_CALL CmdSetEvent2KHR(
@@ -2462,6 +2480,46 @@ static VKAPI_ATTR VkResult VKAPI_CALL GetPhysicalDeviceCooperativeMatrixProperti
     VkPhysicalDevice                            physicalDevice,
     uint32_t*                                   pPropertyCount,
     VkCooperativeMatrixPropertiesKHR*           pProperties);
+
+
+
+
+static VKAPI_ATTR VkResult VKAPI_CALL GetPhysicalDeviceCalibrateableTimeDomainsKHR(
+    VkPhysicalDevice                            physicalDevice,
+    uint32_t*                                   pTimeDomainCount,
+    VkTimeDomainKHR*                            pTimeDomains);
+
+static VKAPI_ATTR VkResult VKAPI_CALL GetCalibratedTimestampsKHR(
+    VkDevice                                    device,
+    uint32_t                                    timestampCount,
+    const VkCalibratedTimestampInfoKHR*         pTimestampInfos,
+    uint64_t*                                   pTimestamps,
+    uint64_t*                                   pMaxDeviation);
+
+
+static VKAPI_ATTR void VKAPI_CALL CmdBindDescriptorSets2KHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkBindDescriptorSetsInfoKHR*          pBindDescriptorSetsInfo);
+
+static VKAPI_ATTR void VKAPI_CALL CmdPushConstants2KHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkPushConstantsInfoKHR*               pPushConstantsInfo);
+
+static VKAPI_ATTR void VKAPI_CALL CmdPushDescriptorSet2KHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkPushDescriptorSetInfoKHR*           pPushDescriptorSetInfo);
+
+static VKAPI_ATTR void VKAPI_CALL CmdPushDescriptorSetWithTemplate2KHR(
+    VkCommandBuffer                             commandBuffer,
+    const VkPushDescriptorSetWithTemplateInfoKHR* pPushDescriptorSetWithTemplateInfo);
+
+static VKAPI_ATTR void VKAPI_CALL CmdSetDescriptorBufferOffsets2EXT(
+    VkCommandBuffer                             commandBuffer,
+    const VkSetDescriptorBufferOffsetsInfoEXT*  pSetDescriptorBufferOffsetsInfo);
+
+static VKAPI_ATTR void VKAPI_CALL CmdBindDescriptorBufferEmbeddedSamplers2EXT(
+    VkCommandBuffer                             commandBuffer,
+    const VkBindDescriptorBufferEmbeddedSamplersInfoEXT* pBindDescriptorBufferEmbeddedSamplersInfo);
 
 
 static VKAPI_ATTR VkResult VKAPI_CALL CreateDebugReportCallbackEXT(
@@ -2616,12 +2674,6 @@ static VKAPI_ATTR void VKAPI_CALL CmdDrawIndexedIndirectCountAMD(
 
 
 
-
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-#endif /* VK_ENABLE_BETA_EXTENSIONS */
-
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-#endif /* VK_ENABLE_BETA_EXTENSIONS */
 
 
 
@@ -2790,6 +2842,7 @@ static VKAPI_ATTR void VKAPI_CALL SetHdrMetadataEXT(
     uint32_t                                    swapchainCount,
     const VkSwapchainKHR*                       pSwapchains,
     const VkHdrMetadataEXT*                     pMetadata);
+
 
 #ifdef VK_USE_PLATFORM_IOS_MVK
 
@@ -3108,12 +3161,12 @@ static VKAPI_ATTR void VKAPI_CALL CmdWriteBufferMarkerAMD(
 static VKAPI_ATTR VkResult VKAPI_CALL GetPhysicalDeviceCalibrateableTimeDomainsEXT(
     VkPhysicalDevice                            physicalDevice,
     uint32_t*                                   pTimeDomainCount,
-    VkTimeDomainEXT*                            pTimeDomains);
+    VkTimeDomainKHR*                            pTimeDomains);
 
 static VKAPI_ATTR VkResult VKAPI_CALL GetCalibratedTimestampsEXT(
     VkDevice                                    device,
     uint32_t                                    timestampCount,
-    const VkCalibratedTimestampInfoEXT*         pTimestampInfos,
+    const VkCalibratedTimestampInfoKHR*         pTimestampInfos,
     uint64_t*                                   pTimestamps,
     uint64_t*                                   pMaxDeviation);
 
@@ -3499,6 +3552,39 @@ static VKAPI_ATTR void VKAPI_CALL GetPrivateDataEXT(
 
 
 
+static VKAPI_ATTR VkResult VKAPI_CALL CreateCudaModuleNV(
+    VkDevice                                    device,
+    const VkCudaModuleCreateInfoNV*             pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkCudaModuleNV*                             pModule);
+
+static VKAPI_ATTR VkResult VKAPI_CALL GetCudaModuleCacheNV(
+    VkDevice                                    device,
+    VkCudaModuleNV                              module,
+    size_t*                                     pCacheSize,
+    void*                                       pCacheData);
+
+static VKAPI_ATTR VkResult VKAPI_CALL CreateCudaFunctionNV(
+    VkDevice                                    device,
+    const VkCudaFunctionCreateInfoNV*           pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkCudaFunctionNV*                           pFunction);
+
+static VKAPI_ATTR void VKAPI_CALL DestroyCudaModuleNV(
+    VkDevice                                    device,
+    VkCudaModuleNV                              module,
+    const VkAllocationCallbacks*                pAllocator);
+
+static VKAPI_ATTR void VKAPI_CALL DestroyCudaFunctionNV(
+    VkDevice                                    device,
+    VkCudaFunctionNV                            function,
+    const VkAllocationCallbacks*                pAllocator);
+
+static VKAPI_ATTR void VKAPI_CALL CmdCudaLaunchKernelNV(
+    VkCommandBuffer                             commandBuffer,
+    const VkCudaLaunchInfoNV*                   pLaunchInfo);
+
+
 #ifdef VK_USE_PLATFORM_METAL_EXT
 
 static VKAPI_ATTR void VKAPI_CALL ExportMetalObjectsEXT(
@@ -3716,6 +3802,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL GetPipelinePropertiesEXT(
 
 
 
+
 static VKAPI_ATTR void VKAPI_CALL CmdSetPatchControlPointsEXT(
     VkCommandBuffer                             commandBuffer,
     uint32_t                                    patchControlPoints);
@@ -3883,6 +3970,7 @@ static VKAPI_ATTR void VKAPI_CALL SetDeviceMemoryPriorityEXT(
 
 
 
+
 static VKAPI_ATTR void VKAPI_CALL GetDescriptorSetLayoutHostMappingInfoVALVE(
     VkDevice                                    device,
     const VkDescriptorSetBindingReferenceVALVE* pBindingReference,
@@ -3892,6 +3980,7 @@ static VKAPI_ATTR void VKAPI_CALL GetDescriptorSetHostMappingVALVE(
     VkDevice                                    device,
     VkDescriptorSet                             descriptorSet,
     void**                                      ppData);
+
 
 
 
@@ -3938,6 +4027,7 @@ static VKAPI_ATTR void VKAPI_CALL CmdUpdatePipelineIndirectBufferNV(
 static VKAPI_ATTR VkDeviceAddress VKAPI_CALL GetPipelineIndirectDeviceAddressNV(
     VkDevice                                    device,
     const VkPipelineIndirectDeviceAddressInfoNV* pInfo);
+
 
 
 
@@ -4127,6 +4217,9 @@ static VKAPI_ATTR void VKAPI_CALL CmdOpticalFlowExecuteNV(
 
 
 
+#ifdef VK_USE_PLATFORM_ANDROID_KHR
+#endif /* VK_USE_PLATFORM_ANDROID_KHR */
+
 
 static VKAPI_ATTR VkResult VKAPI_CALL CreateShadersEXT(
     VkDevice                                    device,
@@ -4174,6 +4267,34 @@ static VKAPI_ATTR VkResult VKAPI_CALL GetDynamicRenderingTilePropertiesQCOM(
 
 
 
+static VKAPI_ATTR VkResult VKAPI_CALL SetLatencySleepModeNV(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    const VkLatencySleepModeInfoNV*             pSleepModeInfo);
+
+static VKAPI_ATTR VkResult VKAPI_CALL LatencySleepNV(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    const VkLatencySleepInfoNV*                 pSleepInfo);
+
+static VKAPI_ATTR void VKAPI_CALL SetLatencyMarkerNV(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    const VkSetLatencyMarkerInfoNV*             pLatencyMarkerInfo);
+
+static VKAPI_ATTR void VKAPI_CALL GetLatencyTimingsNV(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    VkGetLatencyMarkerInfoNV*                   pLatencyMarkerInfo);
+
+static VKAPI_ATTR void VKAPI_CALL QueueNotifyOutOfBandNV(
+    VkQueue                                     queue,
+    const VkOutOfBandQueueTypeInfoNV*           pQueueTypeInfo);
+
+
+
+
+
 
 
 
@@ -4188,6 +4309,8 @@ static VKAPI_ATTR VkResult VKAPI_CALL GetScreenBufferPropertiesQNX(
     const struct _screen_buffer*                buffer,
     VkScreenBufferPropertiesQNX*                pProperties);
 #endif /* VK_USE_PLATFORM_SCREEN_QNX */
+
+
 
 
 static VKAPI_ATTR VkResult VKAPI_CALL CreateAccelerationStructureKHR(
@@ -4721,15 +4844,9 @@ static const std::unordered_map<std::string, void*> name_to_funcptr_map = {
     {"vkGetPipelineExecutableInternalRepresentationsKHR", (void*)GetPipelineExecutableInternalRepresentationsKHR},
     {"vkMapMemory2KHR", (void*)MapMemory2KHR},
     {"vkUnmapMemory2KHR", (void*)UnmapMemory2KHR},
-#ifdef VK_ENABLE_BETA_EXTENSIONS
     {"vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR", (void*)GetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR},
-#endif
-#ifdef VK_ENABLE_BETA_EXTENSIONS
     {"vkGetEncodedVideoSessionParametersKHR", (void*)GetEncodedVideoSessionParametersKHR},
-#endif
-#ifdef VK_ENABLE_BETA_EXTENSIONS
     {"vkCmdEncodeVideoKHR", (void*)CmdEncodeVideoKHR},
-#endif
     {"vkCmdSetEvent2KHR", (void*)CmdSetEvent2KHR},
     {"vkCmdResetEvent2KHR", (void*)CmdResetEvent2KHR},
     {"vkCmdWaitEvents2KHR", (void*)CmdWaitEvents2KHR},
@@ -4753,6 +4870,14 @@ static const std::unordered_map<std::string, void*> name_to_funcptr_map = {
     {"vkGetDeviceImageSubresourceLayoutKHR", (void*)GetDeviceImageSubresourceLayoutKHR},
     {"vkGetImageSubresourceLayout2KHR", (void*)GetImageSubresourceLayout2KHR},
     {"vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR", (void*)GetPhysicalDeviceCooperativeMatrixPropertiesKHR},
+    {"vkGetPhysicalDeviceCalibrateableTimeDomainsKHR", (void*)GetPhysicalDeviceCalibrateableTimeDomainsKHR},
+    {"vkGetCalibratedTimestampsKHR", (void*)GetCalibratedTimestampsKHR},
+    {"vkCmdBindDescriptorSets2KHR", (void*)CmdBindDescriptorSets2KHR},
+    {"vkCmdPushConstants2KHR", (void*)CmdPushConstants2KHR},
+    {"vkCmdPushDescriptorSet2KHR", (void*)CmdPushDescriptorSet2KHR},
+    {"vkCmdPushDescriptorSetWithTemplate2KHR", (void*)CmdPushDescriptorSetWithTemplate2KHR},
+    {"vkCmdSetDescriptorBufferOffsets2EXT", (void*)CmdSetDescriptorBufferOffsets2EXT},
+    {"vkCmdBindDescriptorBufferEmbeddedSamplers2EXT", (void*)CmdBindDescriptorBufferEmbeddedSamplers2EXT},
     {"vkCreateDebugReportCallbackEXT", (void*)CreateDebugReportCallbackEXT},
     {"vkDestroyDebugReportCallbackEXT", (void*)DestroyDebugReportCallbackEXT},
     {"vkDebugReportMessageEXT", (void*)DebugReportMessageEXT},
@@ -4952,6 +5077,12 @@ static const std::unordered_map<std::string, void*> name_to_funcptr_map = {
     {"vkDestroyPrivateDataSlotEXT", (void*)DestroyPrivateDataSlotEXT},
     {"vkSetPrivateDataEXT", (void*)SetPrivateDataEXT},
     {"vkGetPrivateDataEXT", (void*)GetPrivateDataEXT},
+    {"vkCreateCudaModuleNV", (void*)CreateCudaModuleNV},
+    {"vkGetCudaModuleCacheNV", (void*)GetCudaModuleCacheNV},
+    {"vkCreateCudaFunctionNV", (void*)CreateCudaFunctionNV},
+    {"vkDestroyCudaModuleNV", (void*)DestroyCudaModuleNV},
+    {"vkDestroyCudaFunctionNV", (void*)DestroyCudaFunctionNV},
+    {"vkCmdCudaLaunchKernelNV", (void*)CmdCudaLaunchKernelNV},
 #ifdef VK_USE_PLATFORM_METAL_EXT
     {"vkExportMetalObjectsEXT", (void*)ExportMetalObjectsEXT},
 #endif
@@ -5097,6 +5228,11 @@ static const std::unordered_map<std::string, void*> name_to_funcptr_map = {
     {"vkCmdBindShadersEXT", (void*)CmdBindShadersEXT},
     {"vkGetFramebufferTilePropertiesQCOM", (void*)GetFramebufferTilePropertiesQCOM},
     {"vkGetDynamicRenderingTilePropertiesQCOM", (void*)GetDynamicRenderingTilePropertiesQCOM},
+    {"vkSetLatencySleepModeNV", (void*)SetLatencySleepModeNV},
+    {"vkLatencySleepNV", (void*)LatencySleepNV},
+    {"vkSetLatencyMarkerNV", (void*)SetLatencyMarkerNV},
+    {"vkGetLatencyTimingsNV", (void*)GetLatencyTimingsNV},
+    {"vkQueueNotifyOutOfBandNV", (void*)QueueNotifyOutOfBandNV},
     {"vkCmdSetAttachmentFeedbackLoopEnableEXT", (void*)CmdSetAttachmentFeedbackLoopEnableEXT},
 #ifdef VK_USE_PLATFORM_SCREEN_QNX
     {"vkGetScreenBufferPropertiesQNX", (void*)GetScreenBufferPropertiesQNX},

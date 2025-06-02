@@ -4,8 +4,10 @@
 /*!
 \page qtqml-tooling-qml.html
 \title qml
-\brief Overview of the qml command line utility.
+\brief A tool that loads QML documents and creates a window to show the scene
+    if your QML document includes a visual item.
 \ingroup qtqml-tooling
+\ingroup qtqml-tooling-design
 
 \section1 The qml utility
 \c The qml utility tool loads QML documents and creates a window to show the scene

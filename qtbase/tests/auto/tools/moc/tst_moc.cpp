@@ -5,6 +5,7 @@
 #include <QTest>
 #include <QSignalSpy>
 #include <stdio.h>
+#include <optional>
 #include <qobject.h>
 #include <qmetaobject.h>
 #include <qjsondocument.h>
@@ -103,8 +104,6 @@ enum FooItems
 
 Q_ENUM_NS(FooItems)
 }
-
-Q_DECLARE_METATYPE(const QMetaObject*);
 
 #define TESTEXPORTMACRO Q_DECL_EXPORT
 
@@ -547,6 +546,18 @@ class TestClass : public MyNamespace::TestSuperClass, public DONT_CONFUSE_MOC(My
 public:
     inline TestClass() {}
 
+    // These two here test that Q_DECLARE_FLAGS is permitted in a class or
+    // struct nested inside of a Q_OBJECT and defined within the body of the
+    // class. A Q_OBJECT is not allowed here (see privateClass()).
+    struct NestedStruct {
+        enum E {};
+        Q_DECLARE_FLAGS(Flags, E)
+    };
+    class NestedClass {
+        enum E {};
+        Q_DECLARE_FLAGS(Flags, E)
+    };
+
 private slots:
     inline void dummy1() MACRO_WITH_POSSIBLE_COMPILER_SPECIFIC_ATTRIBUTES {}
     inline void dummy2() MACRO_WITH_POSSIBLE_COMPILER_SPECIFIC_ATTRIBUTES const {}
@@ -660,6 +671,7 @@ public:
     { return *this; }
     Q_INVOKABLE const QObject& myInvokableReturningConstRef() const
     { return *this; }
+    Q_INVOKABLE static int inline constexpr invokableWithConstexpr() { return 42; }
 
 
     // that one however should be fine
@@ -776,6 +788,9 @@ private slots:
     void uLongLong();
     void inputFileNameWithDotsButNoExtension();
     void userProperties();
+#if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
+    void integerAccessFlagsProperties();
+#endif
     void supportConstSignals();
     void task87883();
     void multilineComments();
@@ -877,7 +892,14 @@ signals:
     void sigWithUnsignedArg(unsigned foo);
     void sigWithSignedArg(signed foo);
     void sigWithConstSignedArg(const signed foo);
+#ifndef Q_MOC_RUN // QTBUG-126395
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_GCC("-Wvolatile")
+#endif
     void sigWithVolatileConstSignedArg(volatile const signed foo);
+#ifndef Q_MOC_RUN // QTBUG-126395
+    QT_WARNING_POP
+#endif
     void sigWithCustomType(const MyStruct);
     void constSignal1() const;
     void constSignal2(int arg) const;
@@ -886,8 +908,8 @@ signals:
     void sigWithDefaultArg(int i = 12);
 
 private:
-    bool user1() { return true; };
-    bool user2() { return false; };
+    bool user1() { return true; }
+    bool user2() { return false; }
     template <class T> void revisions_T();
     QString member2() const { return sMember; }
     void setMember3( const QString &sVal ) { sMember = sVal; }
@@ -1068,6 +1090,25 @@ void tst_Moc::userProperties()
     QVERIFY(property.isValid());
     QVERIFY(!property.isUser());
 }
+
+#if QT_VERSION <= QT_VERSION_CHECK(7, 0, 0)
+#include "flags-property-integer-access.h"
+
+void tst_Moc::integerAccessFlagsProperties()
+{
+    ClassWithFlagsAccessAsInteger o;
+
+    const QMetaObject *mobj = &ClassWithFlagsAccessAsInteger::staticMetaObject;
+    QMetaProperty property = mobj->property(mobj->indexOfProperty("flagsValue"));
+    QVERIFY(property.isValid());
+    QCOMPARE(property.metaType(), QMetaType::fromType<ClassWithFlagsAccessAsInteger::Flags>());
+
+    QVariant v = property.read(&o);
+    QCOMPARE(v, 0);
+    property.write(&o, QVariant::fromValue(ClassWithFlagsAccessAsInteger::F2));
+    QCOMPARE(o.flagsValue(), ClassWithFlagsAccessAsInteger::F2);
+}
+#endif
 
 void tst_Moc::supportConstSignals()
 {
@@ -1265,8 +1306,6 @@ void tst_Moc::structQObject()
 }
 
 #include "namespaced-flags.h"
-
-Q_DECLARE_METATYPE(QList<Foo::Bar::Flags>);
 
 void tst_Moc::namespacedFlags()
 {
@@ -1982,11 +2021,11 @@ struct const_ {};
 class QTBUG9354_constInName: public QObject
 { Q_OBJECT
 public slots:
-    void slotChooseScientificConst0(science_constant const &) {};
-    void foo(science_const const &) {};
-    void foo(constconst const &) {};
-    void foo(constconst *) {};
-    void foo(const_ *) {};
+    void slotChooseScientificConst0(science_constant const &) {}
+    void foo(science_const const &) {}
+    void foo(constconst const &) {}
+    void foo(constconst *) {}
+    void foo(const_ *) {}
 };
 
 
@@ -2103,7 +2142,7 @@ public:
     Q_INVOKABLE Q_REVISION(6, 0) void method60() {}
 
     enum TestEnum { One, Two };
-    Q_ENUM(TestEnum);
+    Q_ENUM(TestEnum)
 
 
 public slots:
@@ -2147,7 +2186,7 @@ public:
     Q_INVOKABLE Q_REVISION(6, 0) void method60() {}
 
     enum TestEnum { One, Two };
-    Q_ENUM(TestEnum);
+    Q_ENUM(TestEnum)
 
 public slots:
     void slot1() {}
@@ -2464,6 +2503,29 @@ void tst_Moc::warnings_data()
         << QString()
         << QString("standard input:2:1: error: Plugin Metadata file \".\" could not be opened: file to open is a directory");
 #endif
+
+    static const char *tags[] = { "class", "struct" };
+    static const char *metaKeywords[] = { "Q_OBJECT", "Q_GADGET" };
+    for (size_t i = 0; i < std::size(tags) * 2 * std::size(metaKeywords) * 2; ++i) {
+        const char *tag1 = tags[i & 1];
+        const char *tag2 = tags[(i >> 1) & 1];
+        const char *meta1 = metaKeywords[(i >> 2) & 1];
+        const char *meta2 = metaKeywords[(i >> 3) & 1];
+        QByteArray input = tag1;
+        input += " X : public Base {\n    ";
+        input += meta1;
+        input += "\n    ";
+        input += tag2;
+        input += " Nested : public Base {\n        ";
+        input += meta2;
+        input += "    };\n};\n";
+        QTest::addRow("nested-%s-%s-%s-%s", tag1, meta1, tag2, meta2)
+                << input
+                << QStringList()
+                << 1
+                << QString()
+                << "standard input:4:1: error: Meta object features not supported for nested classes";
+    }
 }
 
 void tst_Moc::warnings()
@@ -3306,7 +3368,6 @@ public:
 Q_DECLARE_METATYPE(CustomQObject::Number)
 
 typedef CustomQObject* CustomQObjectStar;
-Q_DECLARE_METATYPE(CustomQObjectStar);
 
 namespace SomeNamespace {
 
@@ -3347,7 +3408,6 @@ public:
 Q_DECLARE_METATYPE(CustomQObject2::Number)
 
 typedef CustomQObject2* CustomQObject2Star;
-Q_DECLARE_METATYPE(CustomQObject2Star);
 
 namespace SomeNamespace2 {
 
@@ -3825,7 +3885,7 @@ namespace QTBUG32933_relatedObjectsDontIncludeItself {
             Q_PROPERTY(Obj::MyEnum p2 MEMBER member)
             Q_PROPERTY(NS::Obj::MyEnum p3 MEMBER member)
             Q_PROPERTY(QTBUG32933_relatedObjectsDontIncludeItself::NS::Obj::MyEnum p4 MEMBER member)
-            Q_ENUMS(MyEnum);
+            Q_ENUMS(MyEnum)
         public:
             enum MyEnum { Something, SomethingElse };
             MyEnum member;
@@ -4122,16 +4182,19 @@ void tst_Moc::optionsFileError()
 }
 
 static void checkEnum(const QMetaEnum &enumerator, const QByteArray &name,
-                      const QList<QPair<QByteArray, int>> &keys,
-                      const QMetaType underlyingType = QMetaType::fromType<int>())
+                      const QList<QPair<QByteArray, quint64>> &keys,
+                      const QMetaType enumType)
 {
-    QCOMPARE(name, QByteArray{enumerator.name()});
-    QCOMPARE(keys.size(), enumerator.keyCount());
-    QCOMPARE(underlyingType, enumerator.metaType().underlyingType());
+    QCOMPARE(enumerator.name(), QByteArrayView{name});
+    QCOMPARE(enumerator.keyCount(), keys.size());
+    QCOMPARE(enumerator.metaType(), enumType);
     for (int i = 0; i < enumerator.keyCount(); ++i) {
-        QCOMPARE(keys[i].first, QByteArray{enumerator.key(i)});
-        QCOMPARE(keys[i].second, enumerator.value(i));
+        QCOMPARE(QByteArray{enumerator.key(i)}, keys[i].first);
+        QCOMPARE(enumerator.value(i), keys[i].second);
     }
+    // out of range
+    QVERIFY(!enumerator.key(keys.size()));
+    QCOMPARE(enumerator.value(keys.size()), -1);
 }
 
 class EnumFromNamespaceClass : public QObject
@@ -4146,7 +4209,8 @@ void tst_Moc::testNestedQNamespace()
 {
     QCOMPARE(TestSameEnumNamespace::staticMetaObject.enumeratorCount(), 1);
     checkEnum(TestSameEnumNamespace::staticMetaObject.enumerator(0), "TestSameEnumNamespace",
-                {{"Key1", 1}, {"Key2", 2}});
+              {{"Key1", 1}, {"Key2", 2}},
+              QMetaType::fromType<TestSameEnumNamespace::TestSameEnumNamespace>());
     QMetaEnum meta1 = QMetaEnum::fromType<TestSameEnumNamespace::TestSameEnumNamespace>();
     QVERIFY(meta1.isValid());
     QCOMPARE(meta1.name(), "TestSameEnumNamespace");
@@ -4156,7 +4220,8 @@ void tst_Moc::testNestedQNamespace()
     // QTBUG-112996
     QCOMPARE(TestNestedSameEnumNamespace::a::staticMetaObject.enumeratorCount(), 1);
     checkEnum(TestNestedSameEnumNamespace::a::staticMetaObject.enumerator(0), "a",
-              {{"Key11", 11}, {"Key12", 12}});
+              {{"Key11", 11}, {"Key12", 12}},
+              QMetaType::fromType<TestNestedSameEnumNamespace::a::a>());
     QMetaEnum meta2 = QMetaEnum::fromType<TestNestedSameEnumNamespace::a::a>();
     QVERIFY(meta2.isValid());
     QCOMPARE(meta2.name(), "a");
@@ -4168,31 +4233,42 @@ void tst_Moc::testQNamespace()
 {
     QCOMPARE(TestQNamespace::staticMetaObject.enumeratorCount(), 5);
     checkEnum(TestQNamespace::staticMetaObject.enumerator(0), "TestEnum1",
-                {{"Key1", 11}, {"Key2", 12}});
+              {{"Key1", 11}, {"Key2", 12}},
+              QMetaType::fromType<TestQNamespace::TestEnum1>());
     checkEnum(TestQNamespace::staticMetaObject.enumerator(1), "TestEnum2",
-                {{"Key1", 17}, {"Key2", 18}});
+              {{"Key1", 17}, {"Key2", 18}},
+              QMetaType::fromType<TestQNamespace::TestEnum2>());
     checkEnum(TestQNamespace::staticMetaObject.enumerator(2), "TestEnum3",
-                {{"Key1", 23}, {"Key2", 24}}, QMetaType::fromType<qint8>());
+              {{"Key1", 23}, {"Key2", 24}},
+              QMetaType::fromType<TestQNamespace::TestEnum3>());
     checkEnum(TestQNamespace::staticMetaObject.enumerator(3), "TestFlag1",
-                {{"None", 0}, {"Flag1", 1}, {"Flag2", 2}, {"Any", 1 | 2}});
+              {{"None", 0}, {"Flag1", 1}, {"Flag2", 2}, {"Any", 1 | 2}},
+              QMetaType::fromType<TestQNamespace::TestFlag1>());
     checkEnum(TestQNamespace::staticMetaObject.enumerator(4), "TestFlag2",
-                {{"None", 0}, {"Flag1", 4}, {"Flag2", 8}, {"Any", 4 | 8}});
+              {{"None", 0}, {"Flag1", 4}, {"Flag2", 8}, {"Any", 4 | 8}},
+              QMetaType::fromType<TestQNamespace::TestFlag2>());
 
     QCOMPARE(TestQNamespace::TestGadget::staticMetaObject.enumeratorCount(), 3);
     checkEnum(TestQNamespace::TestGadget::staticMetaObject.enumerator(0), "TestGEnum1",
-                {{"Key1", 13}, {"Key2", 14}});
+              {{"Key1", 13}, {"Key2", 14}},
+              QMetaType::fromType<TestQNamespace::TestGadget::TestGEnum1>());
     checkEnum(TestQNamespace::TestGadget::staticMetaObject.enumerator(1), "TestGEnum2",
-                {{"Key1", 23}, {"Key2", 24}});
+              {{"Key1", 23}, {"Key2", 24}},
+              QMetaType::fromType<TestQNamespace::TestGadget::TestGEnum2>());
     checkEnum(TestQNamespace::TestGadget::staticMetaObject.enumerator(2), "TestGEnum3",
-                {{"Key1", 33}, {"Key2", 34}}, QMetaType::fromType<qint16>());
+              {{"Key1", 33}, {"Key2", 34}},
+              QMetaType::fromType<TestQNamespace::TestGadget::TestGEnum3>());
 
     QCOMPARE(TestQNamespace::TestGadgetExport::staticMetaObject.enumeratorCount(), 3);
     checkEnum(TestQNamespace::TestGadgetExport::staticMetaObject.enumerator(0), "TestGeEnum1",
-                {{"Key1", 20}, {"Key2", 21}});
+              {{"Key1", 20}, {"Key2", 21}},
+              QMetaType::fromType<TestQNamespace::TestGadgetExport::TestGeEnum1>());
     checkEnum(TestQNamespace::TestGadgetExport::staticMetaObject.enumerator(1), "TestGeEnum2",
-                {{"Key1", 23}, {"Key2", 24}});
+              {{"Key1", 23}, {"Key2", 24}},
+              QMetaType::fromType<TestQNamespace::TestGadgetExport::TestGeEnum2>());
     checkEnum(TestQNamespace::TestGadgetExport::staticMetaObject.enumerator(2), "TestGeEnum3",
-                {{"Key1", 26}, {"Key2", 27}}, QMetaType::fromType<quint16>());
+              {{"Key1", 26}, {"Key2", 27}},
+              QMetaType::fromType<TestQNamespace::TestGadgetExport::TestGeEnum3>());
 
     QMetaEnum meta = QMetaEnum::fromType<TestQNamespace::TestEnum1>();
     QVERIFY(meta.isValid());
@@ -4202,7 +4278,7 @@ void tst_Moc::testQNamespace()
 
     QCOMPARE(TestExportNamespace::staticMetaObject.enumeratorCount(), 1);
     checkEnum(TestExportNamespace::staticMetaObject.enumerator(0), "MyEnum",
-        {{"Key1", 0}, {"Key2", 1}});
+        {{"Key1", 0}, {"Key2", 1}}, QMetaType::fromType<TestExportNamespace::MyEnum>());
 
     QCOMPARE(FooNamespace::staticMetaObject.enumeratorCount(), 1);
     QCOMPARE(FooNamespace::FooNestedNamespace::staticMetaObject.enumeratorCount(), 2);
@@ -4255,13 +4331,16 @@ QT_WARNING_POP
     QCOMPARE(TestQNamespaceDeprecated::staticMetaObject.enumeratorCount(), 2);
     checkEnum(TestQNamespaceDeprecated::staticMetaObject.enumerator(0), "TestEnum1",
                 {{"Key1", 11}, {"Key2", 12}, {"Key3", 13}, {"Key4", 14}, {"Key5", 15}, {"Key6", 16},
-                 {"Key7", 17}});
+                 {"Key7", 17}},
+              QMetaType::fromType<TestQNamespaceDeprecated::TestEnum1>());
     checkEnum(TestQNamespaceDeprecated::staticMetaObject.enumerator(1), "TestFlag1",
-                {{"None", 0}, {"Flag1", 1}, {"Flag2", 2}, {"Flag3", 3}, {"Any", 1 | 2 | 3}});
+              {{"None", 0}, {"Flag1", 1}, {"Flag2", 2}, {"Flag3", 3}, {"Any", 1 | 2 | 3}},
+              QMetaType::fromType<TestQNamespaceDeprecated::TestFlag1>());
 
     QCOMPARE(TestQNamespaceDeprecated::TestGadget::staticMetaObject.enumeratorCount(), 1);
     checkEnum(TestQNamespaceDeprecated::TestGadget::staticMetaObject.enumerator(0), "TestGEnum1",
-                {{"Key1", 13}, {"Key2", 14}, {"Key3", 15}});
+              {{"Key1", 13}, {"Key2", 14}, {"Key3", 15}},
+              QMetaType::fromType<TestQNamespaceDeprecated::TestGadget::TestGEnum1>());
 
     QMetaEnum meta = QMetaEnum::fromType<TestQNamespaceDeprecated::TestEnum1>();
     QVERIFY(meta.isValid());
@@ -4272,9 +4351,12 @@ QT_WARNING_POP
 
 void tst_Moc::mocJsonOutput()
 {
-    const auto readFile = [](const QString &fileName) {
+    const auto readFile = [](const QString &fileName) -> std::optional<QJsonDocument> {
         QFile f(fileName);
-        f.open(QIODevice::ReadOnly);
+        if (!f.open(QIODevice::ReadOnly)) {
+            qWarning() << "Could not open file" << fileName << f.errorString();
+            return std::nullopt;
+        }
         return QJsonDocument::fromJson(f.readAll());
     };
 
@@ -4290,8 +4372,10 @@ void tst_Moc::mocJsonOutput()
     QVERIFY2(QFile::exists(actualFile), qPrintable(actualFile));
     QVERIFY2(QFile::exists(expectedFile), qPrintable(expectedFile));
 
-    QJsonDocument actualOutput = readFile(actualFile);
-    QJsonDocument expectedOutput = readFile(expectedFile);
+    std::optional<QJsonDocument> actualOutput = readFile(actualFile);
+    QVERIFY(actualOutput);
+    std::optional<QJsonDocument> expectedOutput = readFile(expectedFile);
+    QVERIFY(expectedOutput);
 
     const auto showPotentialDiff = [](const QJsonDocument &actual, const QJsonDocument &expected) -> QByteArray {
 #if defined(Q_OS_UNIX)
@@ -4326,7 +4410,7 @@ void tst_Moc::mocJsonOutput()
 #endif
     };
 
-    QVERIFY2(actualOutput == expectedOutput, showPotentialDiff(actualOutput, expectedOutput).constData());
+    QVERIFY2(*actualOutput == *expectedOutput, showPotentialDiff(*actualOutput, *expectedOutput).constData());
 }
 
 void TestFwdProperties::setProp1(const FwdClass1 &v)
@@ -4342,8 +4426,6 @@ void TestFwdProperties::setProp3(const FwdClass3 &v)
     prop3.reset(new FwdClass3(v));
 }
 TestFwdProperties::~TestFwdProperties() {}
-
-Q_DECLARE_METATYPE(FwdClass1);
 
 void tst_Moc::mocInclude()
 {
@@ -4388,7 +4470,8 @@ signals:
 
 public:
     QBindable<int> bindablePublicProperty() { return QBindable<int>(&publicProperty); }
-    Q_OBJECT_BINDABLE_PROPERTY(ClassWithQPropertyMembers, int, publicProperty, &ClassWithQPropertyMembers::publicPropertyChanged);
+    Q_OBJECT_BINDABLE_PROPERTY(ClassWithQPropertyMembers, int, publicProperty,
+                               &ClassWithQPropertyMembers::publicPropertyChanged)
     QProperty<int> notExposed;
 
 
@@ -4515,7 +4598,7 @@ public:
         ClassWithPrivateQPropertyShim *q = nullptr;
 
         void onTestPropertyChanged() { q->testPropertyChanged(); }
-        Q_OBJECT_BINDABLE_PROPERTY(Private, int, testProperty, &Private::onTestPropertyChanged);
+        Q_OBJECT_BINDABLE_PROPERTY(Private, int, testProperty, &Private::onTestPropertyChanged)
         QProperty<int> testProperty2;
     };
     Private priv{this};
@@ -4704,4 +4787,8 @@ QTEST_MAIN(tst_Moc)
 #undef slots
 #undef emit
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Wvolatile") // should moc itself add this in generated code?
 #include "tst_moc.moc"
+QT_WARNING_POP
+#include "moc_single_function_keyword.cpp" // prevents "undefined inline functions" warnings

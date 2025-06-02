@@ -14,8 +14,6 @@
 #include <QtCore/qstringlist.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qabstracteventdispatcher.h>
-#include <QtCore/qsysinfo.h>
-#include <QtCore/qoperatingsystemversion.h>
 #include <QtCore/qdir.h>
 #include <QtCore/qregularexpression.h>
 #include <QtCore/qpointer.h>
@@ -166,7 +164,10 @@ typedef QSharedPointer<QFileDialogOptions> SharedPointerFileDialogOptions;
 
     [self updateProperties];
 
-    auto completionHandler = ^(NSInteger result) { m_helper->panelClosed(result); };
+    auto completionHandler = ^(NSInteger result) {
+        if (m_helper)
+            m_helper->panelClosed(result);
+    };
 
     if (windowModality == Qt::WindowModal && parent) {
         NSView *view = reinterpret_cast<NSView*>(parent->winId());

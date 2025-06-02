@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/reader/parser/lexer.h"
 
@@ -18,11 +31,10 @@
 #include <charconv>
 #include <cmath>
 #include <cstring>
-#include <functional>
 #include <limits>
 #include <optional>
+#include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 
 #include "src/tint/lang/core/fluent_types.h"
@@ -119,7 +131,7 @@ std::vector<Token> Lexer::Lex() {
     return tokens;
 }
 
-const std::string_view Lexer::line() const {
+std::string_view Lexer::line() const {
     if (file_->content.lines.size() == 0) {
         static const char* empty_string = "";
         return empty_string;
@@ -417,9 +429,10 @@ std::optional<Token> Lexer::try_float() {
         end_ptr = &at(length() - 1) + 1;
     }
 
-    auto ret = tint::ParseDouble(std::string_view(&at(start), end - start));
-    double value = ret ? ret.Get() : 0.0;
-    bool overflow = !ret && ret.Failure() == tint::ParseNumberError::kResultOutOfRange;
+    auto ret = tint::strconv::ParseDouble(std::string_view(&at(start), end - start));
+    double value = ret == Success ? ret.Get() : 0.0;
+    bool overflow =
+        ret != Success && ret.Failure() == tint::strconv::ParseNumberError::kResultOutOfRange;
 
     // If the value didn't fit in a double, check for underflow as that is 0.0 in WGSL and not an
     // error.
@@ -454,7 +467,7 @@ std::optional<Token> Lexer::try_float() {
 
     if (has_f_suffix) {
         auto f = core::CheckedConvert<f32>(AFloat(value));
-        if (!overflow && f) {
+        if (!overflow && f == Success) {
             advance(1);
             end_source(source);
             return Token{Token::Type::kFloatLiteral_F, source, static_cast<double>(f.Get())};
@@ -464,7 +477,7 @@ std::optional<Token> Lexer::try_float() {
 
     if (has_h_suffix) {
         auto f = core::CheckedConvert<f16>(AFloat(value));
-        if (!overflow && f) {
+        if (!overflow && f == Success) {
             advance(1);
             end_source(source);
             return Token{Token::Type::kFloatLiteral_H, source, static_cast<double>(f.Get())};
@@ -897,7 +910,7 @@ Token Lexer::build_token_from_int_if_possible(Source source,
     advance(static_cast<size_t>(res.ptr - start_ptr) + prefix_count);
 
     if (matches(pos(), 'u')) {
-        if (!overflow && core::CheckedConvert<u32>(AInt(value))) {
+        if (!overflow && core::CheckedConvert<u32>(AInt(value)) == Success) {
             advance(1);
             end_source(source);
             return {Token::Type::kIntLiteral_U, source, value};
@@ -906,7 +919,7 @@ Token Lexer::build_token_from_int_if_possible(Source source,
     }
 
     if (matches(pos(), 'i')) {
-        if (!overflow && core::CheckedConvert<i32>(AInt(value))) {
+        if (!overflow && core::CheckedConvert<i32>(AInt(value)) == Success) {
             advance(1);
             end_source(source);
             return {Token::Type::kIntLiteral_I, source, value};

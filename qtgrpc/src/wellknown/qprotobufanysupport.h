@@ -4,12 +4,14 @@
 #ifndef Q_PROTOBUF_ANYSUPPORT_H
 #define Q_PROTOBUF_ANYSUPPORT_H
 
-#include <QtProtobufWellKnownTypes/qtprotobufwellknowntypesglobal.h>
+#include <QtProtobufWellKnownTypes/qtprotobufwellknowntypesexports.h>
 
 #include <QtProtobuf/qprotobufmessage.h>
 #include <QtProtobuf/qtprotobuftypes.h>
 
 #include <QtCore/qanystringview.h>
+#include <QtCore/qbytearray.h>
+#include <QtCore/qstring.h>
 
 #include <utility>
 #include <optional>
@@ -21,88 +23,94 @@ class QAbstractProtobufSerializer;
 
 namespace QtProtobuf {
 class AnyPrivate;
-class Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any : public QProtobufMessage
+class Any final : public QProtobufMessage
 {
-    Q_GADGET
+    Q_GADGET_EXPORT(Q_PROTOBUFWELLKNOWNTYPES_EXPORT)
     Q_PROPERTY(QString typeUrl READ typeUrl WRITE setTypeUrl SCRIPTABLE true)
     Q_PROPERTY(QByteArray value READ value WRITE setValue SCRIPTABLE true)
 public:
     static void registerTypes();
 
-    Any();
-    ~Any();
-    Any(const Any &other);
-    Any &operator=(const Any &other);
-    Any(Any &&other) noexcept
-        : QProtobufMessage(std::move(other)), d_ptr(std::exchange(other.d_ptr, {}))
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any();
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT ~Any();
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any(const Any &other);
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any &operator=(const Any &other);
+    Any(Any &&other) noexcept = default;
+    Any &operator =(Any &&other) noexcept = default;
+    void swap(Any &other) noexcept
     {
-    }
-    Any &operator=(Any &&other) noexcept
-    {
-        qt_ptr_swap(d_ptr, other.d_ptr);
-        QProtobufMessage::operator=(std::move(other));
-        return *this;
+        QProtobufMessage::swap(other);
     }
 
-    QString typeUrl() const;
-    QByteArray value() const;
-    void setTypeUrl(const QString &typeUrl);
-    void setValue(const QByteArray &value);
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT QString typeUrl() const;
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT QByteArray value() const;
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT void setTypeUrl(const QString &typeUrl);
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT void setValue(const QByteArray &value);
 
     template <typename T>
-    std::optional<T> as(QAbstractProtobufSerializer *serializer) const
+    std::optional<T> unpack(QAbstractProtobufSerializer *serializer) const
     {
-        if constexpr (std::is_same_v<T, Any>) {
-            return asAnyImpl(serializer);
-        } else {
-            static_assert(QtProtobufPrivate::HasProtobufPropertyOrdering<T>,
-                          "T must have the Q_PROTOBUF_OBJECT macro");
-            T obj;
-            if (asImpl(serializer, &obj, T::propertyOrdering))
-                return { std::move(obj) };
-        }
-        return std::nullopt;
+        static_assert(QtProtobuf::has_q_protobuf_object_macro_v<T>,
+                      "T must have the Q_PROTOBUF_OBJECT macro");
+
+        std::optional<T> opt(std::in_place);
+        if (!unpackImpl(serializer, &opt.value()))
+             opt.reset();
+        return opt;
     }
 
     template <typename T>
     static Any fromMessage(QAbstractProtobufSerializer *serializer, const T &message,
-                           QAnyStringView typeUrlPrefix = defaultUrlPrefix())
+                           QAnyStringView typeUrlPrefix)
     {
         if constexpr (std::is_same_v<T, Any>)
             return fromAnyMessageImpl(serializer, &message, typeUrlPrefix);
 
-        static_assert(QtProtobufPrivate::HasProtobufPropertyOrdering<T>,
+        static_assert(QtProtobuf::has_q_protobuf_object_macro_v<T>,
                       "T must have the Q_PROTOBUF_OBJECT macro");
-        return fromMessageImpl(serializer, &message, T::propertyOrdering, typeUrlPrefix);
+        return fromMessageImpl(serializer, &message, typeUrlPrefix);
+    }
+
+    template <typename T>
+    static Any fromMessage(QAbstractProtobufSerializer *serializer, const T &message)
+    {
+        if constexpr (std::is_same_v<T, Any>)
+            return fromAnyMessageImpl(serializer, &message);
+
+        static_assert(QtProtobuf::has_q_protobuf_object_macro_v<T>,
+                      "T must have the Q_PROTOBUF_OBJECT macro");
+        return fromMessageImpl(serializer, &message);
     }
 
 private:
-    AnyPrivate *d_ptr;
     Q_DECLARE_PRIVATE(Any)
 
-    bool asImpl(QAbstractProtobufSerializer *serializer, QProtobufMessage *message,
-                QtProtobufPrivate::QProtobufPropertyOrdering ordering) const;
-    std::optional<Any> asAnyImpl(QAbstractProtobufSerializer *serializer) const;
-    static Any fromMessageImpl(QAbstractProtobufSerializer *serializer,
-                               const QProtobufMessage *message,
-                               QtProtobufPrivate::QProtobufPropertyOrdering ordering,
-                               QAnyStringView typeUrlPrefix);
-    static Any fromAnyMessageImpl(QAbstractProtobufSerializer *serializer,
-                                  const Any *message, QAnyStringView typeUrlPrefix);
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT bool unpackImpl(QAbstractProtobufSerializer *serializer,
+                                                    QProtobufMessage *message) const;
+    static Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any
+    fromMessageImpl(QAbstractProtobufSerializer *serializer, const QProtobufMessage *message,
+                    QAnyStringView typeUrlPrefix);
+    static Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any
+    fromAnyMessageImpl(QAbstractProtobufSerializer *serializer, const Any *message,
+                       QAnyStringView typeUrlPrefix);
 
-    static QAnyStringView defaultUrlPrefix();
+    static Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any
+    fromMessageImpl(QAbstractProtobufSerializer *serializer, const QProtobufMessage *message);
+    static Q_PROTOBUFWELLKNOWNTYPES_EXPORT Any
+    fromAnyMessageImpl(QAbstractProtobufSerializer *serializer, const Any *message);
 
-    [[nodiscard]]
-    bool equals(const Any &other) const noexcept;
-    friend bool operator==(const Any &lhs, const Any &rhs) noexcept
-    {
-        return lhs.equals(rhs);
-    }
-    friend bool operator!=(const Any &lhs, const Any &rhs) noexcept
-    {
-        return !lhs.equals(rhs);
-    }
+    Q_PROTOBUFWELLKNOWNTYPES_EXPORT
+    friend bool comparesEqual(const Any &lhs, const Any &rhs) noexcept;
+
+    Q_DECLARE_EQUALITY_COMPARABLE(Any)
 };
+
+template <>
+Q_PROTOBUFWELLKNOWNTYPES_EXPORT std::optional<Any>
+Any::unpack<Any>(QAbstractProtobufSerializer *serializer) const;
+
+Q_DECLARE_SHARED_NS(QtProtobuf, Any)
+
 } // namespace QtProtobuf
 
 QT_END_NAMESPACE

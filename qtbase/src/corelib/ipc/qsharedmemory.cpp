@@ -12,6 +12,7 @@
 #ifdef Q_OS_WIN
 #  include <qt_windows.h>
 #endif
+#include <errno.h>
 
 #ifndef MAX_PATH
 #  define MAX_PATH PATH_MAX

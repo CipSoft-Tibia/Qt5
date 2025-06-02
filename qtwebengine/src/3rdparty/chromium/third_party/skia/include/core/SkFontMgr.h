@@ -8,18 +8,17 @@
 #ifndef SkFontMgr_DEFINED
 #define SkFontMgr_DEFINED
 
-#include "include/core/SkFontArguments.h"
-#include "include/core/SkFontStyle.h"
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkTypes.h"
 
 #include <memory>
 
 class SkData;
-class SkFontData;
+class SkFontStyle;
 class SkStreamAsset;
 class SkString;
 class SkTypeface;
+struct SkFontArguments;
 
 class SK_API SkFontStyleSet : public SkRefCnt {
 public:
@@ -113,9 +112,6 @@ public:
 
     sk_sp<SkTypeface> legacyMakeTypeface(const char familyName[], SkFontStyle style) const;
 
-    /** Return the default fontmgr. */
-    static sk_sp<SkFontMgr> RefDefault();
-
     /* Returns an empty font manager without any typeface dependencies */
     static sk_sp<SkFontMgr> RefEmpty();
 
@@ -142,10 +138,6 @@ protected:
     virtual sk_sp<SkTypeface> onMakeFromFile(const char path[], int ttcIndex) const = 0;
 
     virtual sk_sp<SkTypeface> onLegacyMakeTypeface(const char familyName[], SkFontStyle) const = 0;
-
-private:
-    /** Implemented by porting layer to return the default factory. */
-    static sk_sp<SkFontMgr> Factory();
 };
 
 #endif

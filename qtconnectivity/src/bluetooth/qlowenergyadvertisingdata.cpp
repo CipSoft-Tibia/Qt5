@@ -38,13 +38,27 @@ public:
     The data set via this class will be used when advertising is started by calling
     \l QLowEnergyController::startAdvertising(). Objects of this class can represent an
     Advertising Data packet or a Scan Response packet.
-    \note The actual data packets sent over the advertising channel cannot contain more than 31
-          bytes. If the variable-length data set via this class exceeds that limit, it will
-          be left out of the packet or truncated, depending on the type.
-          On Android, advertising will fail if advertising data is larger than 31 bytes.
-          On Bluez DBus backend the advertising length limit and the behavior when it is exceeded
-          is up to BlueZ; it may for example support extended advertising. For the most
-          predictable behavior keep the advertising data short.
+
+    \section2 Advertising Data Limitations
+
+    The maximum length of the advertisement data depends on the bluetooth
+    device and the platform bluetooth stack. For maximum compatibility, it is
+    recommended to limit the advertising data size to the legacy advertising
+    limit of 31 bytes.
+
+    If the variable-length data set via this class exceeds the supported limit,
+    the behavior will depend on the underlying Bluetooth stack implementation.
+    The most typical possibilities are:
+
+    \list
+        \li the extra data can be truncated or entirely left out;
+        \li the advertising fails to start.
+    \endlist
+
+    For example, on Android, advertising will fail if the advertising data is
+    larger than 31 bytes. On BlueZ DBus backend, the advertising length limit
+    and the behavior when it is exceeded is up to BlueZ; it may, for example
+    support extended advertising, or may fail to start the advertising.
 
     \sa QLowEnergyAdvertisingParameters
     \sa QLowEnergyController::startAdvertising()
@@ -123,6 +137,9 @@ QString QLowEnergyAdvertisingData::localName() const
 /*!
    Sets the manufacturer id and data. The \a id parameter is a company identifier as assigned
    by the Bluetooth SIG. The \a data parameter is an arbitrary value.
+
+    \note \macos and iOS do not support advertising of manufacturer id or data,
+    so the provided parameters will be ignored on these platforms.
  */
 void QLowEnergyAdvertisingData::setManufacturerData(quint16 id, const QByteArray &data)
 {
@@ -212,8 +229,9 @@ QList<QBluetoothUuid> QLowEnergyAdvertisingData::services() const
   \note If \a data is longer than 31 bytes, it will be truncated. It is the caller's responsibility
         to ensure that \a data is well-formed.
 
-  Providing the raw advertising data is not supported on BlueZ DBus backend as BlueZ does not
-  support it. This may change in a future release.
+  Setting raw advertising data is only supported on the \l {Linux Specific}
+  {Linux Bluetooth Kernel API} backend. Other backends do not allow to specify
+  the raw advertising data as a global field.
  */
 void QLowEnergyAdvertisingData::setRawData(const QByteArray &data)
 {

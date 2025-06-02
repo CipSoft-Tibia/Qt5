@@ -31,6 +31,7 @@
 #include <QtWidgets/private/qapplication_p.h>
 
 using namespace QTestPrivate;
+using namespace Qt::StringLiterals;
 
 // Compare a window position that may go through scaling in the platform plugin with fuzz.
 static inline bool qFuzzyCompareWindowPosition(const QPoint &p1, const QPoint p2, int fuzz)
@@ -691,7 +692,6 @@ void tst_QWidget_window::tst_dnd()
 
     dndTestWidget.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dndTestWidget));
-    QApplicationPrivate::setActiveWindow(&dndTestWidget);
     QVERIFY(QTest::qWaitForWindowActive(&dndTestWidget));
 
     QMimeData mimeData;
@@ -806,6 +806,8 @@ void tst_QWidget_window::tst_dnd_events()
     // catch regressions at cross platform code: QGuiApplication::processDrag/Leave().
     if (platformName != "xcb")
         return;
+    if (qgetenv("XDG_CURRENT_DESKTOP").toLower().contains("ubuntu") && QSysInfo::productVersion() == "24.04"_L1)
+        QSKIP("This hangs on Ubuntu 24.04 X11, see also QTBUG-129567.");
 
     const QString expectedDndEvents = "DragEnter DragMove DropEvent DragEnter DragMove "
                                       "DropEvent DragEnter DragMove DropEvent ";
@@ -1363,10 +1365,10 @@ void tst_QWidget_window::setWindowState_data()
     QString platformName = QGuiApplication::platformName().toLower();
 
     QTest::addColumn<Qt::WindowStates>("state");
-    QTest::newRow("0") << Qt::WindowStates();
-    QTest::newRow("Qt::WindowMaximized") << Qt::WindowStates(Qt::WindowMaximized);
-    QTest::newRow("Qt::WindowMinimized") << Qt::WindowStates(Qt::WindowMinimized);
-    QTest::newRow("Qt::WindowFullScreen") << Qt::WindowStates(Qt::WindowFullScreen);
+    QTest::newRow("nostate") << Qt::WindowStates();
+    QTest::newRow("maximized") << Qt::WindowStates(Qt::WindowMaximized);
+    QTest::newRow("minimized") << Qt::WindowStates(Qt::WindowMinimized);
+    QTest::newRow("fullscreen") << Qt::WindowStates(Qt::WindowFullScreen);
 
     if (platformName != "xcb" && platformName != "windows" && !platformName.startsWith("wayland")
         && platformName != "offscreen")
@@ -1635,8 +1637,7 @@ void tst_QWidget_window::mouseMoveWithPopup()
 
     // but the release event will still be delivered to the first popup - dialogs might not get it
     QCOMPARE(mouseAction(Qt::LeftButton), QEvent::MouseButtonRelease);
-    if (topLevel.popup->mouseReleaseCount != 1
-        && !QGuiApplication::platformName().startsWith(QLatin1String("windows"), Qt::CaseInsensitive))
+    if (topLevel.popup->mouseReleaseCount != 1)
         QEXPECT_FAIL("Dialog", "Platform specific behavior", Continue);
     QCOMPARE(topLevel.popup->mouseReleaseCount, 1);
 }

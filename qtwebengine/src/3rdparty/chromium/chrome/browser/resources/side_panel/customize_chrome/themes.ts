@@ -15,10 +15,11 @@ import './check_mark_wrapper.js';
 import {SpHeading} from 'chrome://customize-chrome-side-panel.top-chrome/shared/sp_heading.js';
 import {HelpBubbleMixin, HelpBubbleMixinInterface} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin.js';
 import {CrToggleElement} from 'chrome://resources/cr_elements/cr_toggle/cr_toggle.js';
-import {assert} from 'chrome://resources/js/assert_ts.js';
+import {assert} from 'chrome://resources/js/assert.js';
 import {FocusOutlineManager} from 'chrome://resources/js/focus_outline_manager.js';
 import {DomRepeatEvent, PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
+import {CustomizeChromeAction, recordCustomizeChromeAction} from './common.js';
 import {BackgroundCollection, CollectionImage, CustomizeChromePageCallbackRouter, CustomizeChromePageHandlerInterface, Theme} from './customize_chrome.mojom-webui.js';
 import {CustomizeChromeApiProxy} from './customize_chrome_api_proxy.js';
 import {getTemplate} from './themes.html.js';
@@ -68,7 +69,7 @@ export class ThemesElement extends ThemesElementBase {
     };
   }
 
-  public selectedCollection: BackgroundCollection|null;
+  selectedCollection: BackgroundCollection|null;
 
   private header_: string;
   private isRefreshToggleChecked_: boolean;
@@ -151,6 +152,8 @@ export class ThemesElement extends ThemesElementBase {
   }
 
   private onSelectTheme_(e: DomRepeatEvent<CollectionImage>) {
+    recordCustomizeChromeAction(
+        CustomizeChromeAction.FIRST_PARTY_COLLECTION_THEME_SELECTED);
     const {
       attribution1,
       attribution2,

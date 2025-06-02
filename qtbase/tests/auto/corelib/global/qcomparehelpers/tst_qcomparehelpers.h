@@ -9,6 +9,10 @@
 #include <QtTest/qtest.h>
 #include <QtTest/private/qcomparisontesthelper_p.h>
 
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
+
 class tst_QCompareHelpers : public QObject
 {
     Q_OBJECT
@@ -55,8 +59,11 @@ private Q_SLOTS:
 
     void builtinOrder();
 
-    // Add new test cases to another cpp file, because minGW already complains
-    // about a too large tst_qcomparehelpers.cpp.obj object file
+    // Add new test cases to tst_qcomparehelpers1.cpp, because minGW already
+    // complains about a too large tst_qcomparehelpers.cpp.obj object file
+    void compareWithAttributes();
+
+    void totallyOrderedWrapperBasics();
 };
 
 #endif // TST_QCOMPAREHELPERS_H

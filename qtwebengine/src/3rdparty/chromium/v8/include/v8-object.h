@@ -172,9 +172,6 @@ using AccessorNameSetterCallback =
  */
 enum AccessControl {
   DEFAULT = 0,
-  ALL_CAN_READ = 1,
-  ALL_CAN_WRITE = 1 << 1,
-  PROHIBITS_OVERWRITING V8_ENUM_DEPRECATE_SOON("unused") = 1 << 2
 };
 
 /**
@@ -342,22 +339,20 @@ class V8_EXPORT Object : public Value {
   V8_WARN_UNUSED_RESULT Maybe<bool> Delete(Local<Context> context,
                                            uint32_t index);
 
-  /**
-   * Note: SideEffectType affects the getter only, not the setter.
-   */
+  V8_DEPRECATE_SOON("Use SetNativeDataProperty instead")
   V8_WARN_UNUSED_RESULT Maybe<bool> SetAccessor(
       Local<Context> context, Local<Name> name,
       AccessorNameGetterCallback getter,
       AccessorNameSetterCallback setter = nullptr,
       MaybeLocal<Value> data = MaybeLocal<Value>(),
-      AccessControl settings = DEFAULT, PropertyAttribute attribute = None,
+      AccessControl deprecated_settings = DEFAULT,
+      PropertyAttribute attribute = None,
       SideEffectType getter_side_effect_type = SideEffectType::kHasSideEffect,
       SideEffectType setter_side_effect_type = SideEffectType::kHasSideEffect);
 
   void SetAccessorProperty(Local<Name> name, Local<Function> getter,
                            Local<Function> setter = Local<Function>(),
-                           PropertyAttribute attributes = None,
-                           AccessControl settings = DEFAULT);
+                           PropertyAttribute attributes = None);
 
   /**
    * Sets a native data property like Template::SetNativeDataProperty, but
@@ -483,11 +478,20 @@ class V8_EXPORT Object : public Value {
     return object.template value<Object>()->InternalFieldCount();
   }
 
-  /** Gets the value from an internal field. */
-  V8_INLINE Local<Value> GetInternalField(int index);
+  /**
+   * Gets the data from an internal field.
+   * To cast the return value into v8::Value subtypes, it needs to be
+   * casted to a v8::Value first. For example, to cast it into v8::External:
+   *
+   * object->GetInternalField(index).As<v8::Value>().As<v8::External>();
+   *
+   * The embedder should make sure that the internal field being retrieved
+   * using this method has already been set with SetInternalField() before.
+   **/
+  V8_INLINE Local<Data> GetInternalField(int index);
 
-  /** Sets the value in an internal field. */
-  void SetInternalField(int index, Local<Value> value);
+  /** Sets the data in an internal field. */
+  void SetInternalField(int index, Local<Data> data);
 
   /**
    * Gets a 2-byte-aligned native pointer from an internal field. This field
@@ -495,6 +499,8 @@ class V8_EXPORT Object : public Value {
    * leads to undefined behavior.
    */
   V8_INLINE void* GetAlignedPointerFromInternalField(int index);
+  V8_INLINE void* GetAlignedPointerFromInternalField(v8::Isolate* isolate,
+                                                     int index);
 
   /** Same as above, but works for PersistentBase. */
   V8_INLINE static void* GetAlignedPointerFromInternalField(
@@ -725,13 +731,14 @@ class V8_EXPORT Object : public Value {
  private:
   Object();
   static void CheckCast(Value* obj);
-  Local<Value> SlowGetInternalField(int index);
+  Local<Data> SlowGetInternalField(int index);
   void* SlowGetAlignedPointerFromInternalField(int index);
+  void* SlowGetAlignedPointerFromInternalField(v8::Isolate* isolate, int index);
 };
 
 // --- Implementation ---
 
-Local<Value> Object::GetInternalField(int index) {
+Local<Data> Object::GetInternalField(int index) {
 #ifndef V8_ENABLE_CHECKS
   using A = internal::Address;
   using I = internal::Internals;
@@ -750,10 +757,31 @@ Local<Value> Object::GetInternalField(int index) {
 
     auto isolate = reinterpret_cast<v8::Isolate*>(
         internal::IsolateFromNeverReadOnlySpaceObject(obj));
-    return Local<Value>::New(isolate, value);
+    return Local<Data>::New(isolate, value);
   }
 #endif
   return SlowGetInternalField(index);
+}
+
+void* Object::GetAlignedPointerFromInternalField(v8::Isolate* isolate,
+                                                 int index) {
+#if !defined(V8_ENABLE_CHECKS)
+  using A = internal::Address;
+  using I = internal::Internals;
+  A obj = internal::ValueHelper::ValueAsAddress(this);
+  // Fast path: If the object is a plain JSObject, which is the common case, we
+  // know where to find the internal fields and can return the value directly.
+  auto instance_type = I::GetInstanceType(obj);
+  if (V8_LIKELY(I::CanHaveInternalField(instance_type))) {
+    int offset = I::kJSObjectHeaderSize + (I::kEmbedderDataSlotSize * index) +
+                 I::kEmbedderDataSlotExternalPointerOffset;
+    A value =
+        I::ReadExternalPointerField<internal::kEmbedderDataSlotPayloadTag>(
+            isolate, obj, offset);
+    return reinterpret_cast<void*>(value);
+  }
+#endif
+  return SlowGetAlignedPointerFromInternalField(isolate, index);
 }
 
 void* Object::GetAlignedPointerFromInternalField(int index) {
@@ -764,7 +792,7 @@ void* Object::GetAlignedPointerFromInternalField(int index) {
   // Fast path: If the object is a plain JSObject, which is the common case, we
   // know where to find the internal fields and can return the value directly.
   auto instance_type = I::GetInstanceType(obj);
-  if (I::CanHaveInternalField(instance_type)) {
+  if (V8_LIKELY(I::CanHaveInternalField(instance_type))) {
     int offset = I::kJSObjectHeaderSize + (I::kEmbedderDataSlotSize * index) +
                  I::kEmbedderDataSlotExternalPointerOffset;
     Isolate* isolate = I::GetIsolateForSandbox(obj);

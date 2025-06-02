@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_CORE_IR_OPERAND_INSTRUCTION_H_
 #define SRC_TINT_LANG_CORE_IR_OPERAND_INSTRUCTION_H_
@@ -52,9 +65,9 @@ class OperandInstruction : public Castable<OperandInstruction<N, R>, Instruction
         }
     }
 
-    /// Sets the operands to @p operands
-    /// @param operands the new operands for the instruction
-    void SetOperands(VectorRef<ir::Value*> operands) {
+    /// Replaces the operands of the instruction
+    /// @param operands the new operands of the instruction
+    void SetOperands(VectorRef<ir::Value*> operands) override {
         ClearOperands();
         operands_ = std::move(operands);
         for (size_t i = 0; i < operands_.Length(); i++) {
@@ -75,27 +88,62 @@ class OperandInstruction : public Castable<OperandInstruction<N, R>, Instruction
         operands_.Clear();
     }
 
+    /// Replaces the results of the instruction
+    /// @param results the new results of the instruction
+    void SetResults(VectorRef<ir::InstructionResult*> results) override {
+        ClearResults();
+        results_ = std::move(results);
+        for (auto* result : results_) {
+            if (result) {
+                result->SetInstruction(this);
+            }
+        }
+    }
+
+    /// Sets the results of the instruction
+    /// @param values the new result values
+    template <typename... ARGS,
+              typename = std::enable_if_t<!tint::IsVectorLike<
+                  tint::traits::Decay<tint::traits::NthTypeOf<0, ARGS..., void>>>>>
+    void SetResults(ARGS&&... values) {
+        SetResults(Vector{std::forward<ARGS>(values)...});
+    }
+
+    /// Removes all results from the instruction.
+    void ClearResults() {
+        for (auto* result : results_) {
+            if (result && result->Instruction() == this) {
+                result->SetInstruction(nullptr);
+            }
+        }
+        results_.Clear();
+    }
+
     /// @returns the operands of the instruction
     VectorRef<ir::Value*> Operands() override { return operands_; }
 
-    /// @returns true if the instruction has result values
-    bool HasResults() override { return !results_.IsEmpty(); }
-    /// @returns true if the instruction has multiple values
-    bool HasMultiResults() override { return results_.Length() > 1; }
-
-    /// @returns the first result. Returns `nullptr` if there are no results, or if ther are
-    /// multi-results
-    InstructionResult* Result() override {
-        if (!HasResults() || HasMultiResults()) {
-            return nullptr;
-        }
-        return results_[0];
-    }
-
-    using Instruction::Result;
+    /// @returns the operands of the instruction
+    VectorRef<const ir::Value*> Operands() const override { return operands_; }
 
     /// @returns the result values for this instruction
     VectorRef<InstructionResult*> Results() override { return results_; }
+
+    /// @returns the result values for this instruction
+    VectorRef<const InstructionResult*> Results() const override { return results_; }
+
+    /// @param idx the index of the result
+    /// @returns the result with index @p idx, or `nullptr` if there are no results or the index is
+    /// out of bounds.
+    InstructionResult* Result(size_t idx) {
+        return idx < results_.Length() ? results_[idx] : nullptr;
+    }
+
+    /// @param idx the index of the result
+    /// @returns the result with index @p idx, or `nullptr` if there are no results or the index is
+    /// out of bounds.
+    const InstructionResult* Result(size_t idx) const {
+        return idx < results_.Length() ? results_[idx] : nullptr;
+    }
 
   protected:
     /// Append a new operand to the operand list for this instruction.
@@ -125,7 +173,7 @@ class OperandInstruction : public Castable<OperandInstruction<N, R>, Instruction
     /// @param value the value to append
     void AddResult(InstructionResult* value) {
         if (value) {
-            value->SetSource(this);
+            value->SetInstruction(this);
         }
         results_.Push(value);
     }
@@ -134,6 +182,9 @@ class OperandInstruction : public Castable<OperandInstruction<N, R>, Instruction
     Vector<ir::Value*, N> operands_;
     /// The results of this instruction.
     Vector<ir::InstructionResult*, R> results_;
+
+    /// The default number of operands
+    static constexpr size_t kDefaultNumOperands = N;
 };
 
 }  // namespace tint::core::ir

@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Package result holds types that describe CTS test results.
 package result
@@ -97,7 +110,12 @@ func (r Result) Compare(o Result) int {
 //	<query> <tags> <status>
 //
 // <tags> may be omitted if there were no tags.
-func Parse(in string) (Result, error) {
+//
+// Tests are separated into sections where the section name
+// appears at the end of the list as just a line with
+//
+//	<section-name>
+func Parse(in string) (ExecutionMode, Result, error) {
 	line := in
 	token := func() string {
 		for i, c := range line {
@@ -123,8 +141,12 @@ func Parse(in string) (Result, error) {
 	c := token()
 	d := token()
 	e := token()
+
+	if a != "" && b == "" && token() == "" {
+		return ExecutionMode(a), Result{}, nil
+	}
 	if a == "" || b == "" || c == "" || d == "" || token() != "" {
-		return Result{}, fmt.Errorf("unable to parse result '%v'", in)
+		return "", Result{}, fmt.Errorf("unable to parse result '%v'", in)
 	}
 
 	query := query.Parse(a)
@@ -133,30 +155,36 @@ func Parse(in string) (Result, error) {
 		status := Status(b)
 		duration, err := time.ParseDuration(c)
 		if err != nil {
-			return Result{}, fmt.Errorf("unable to parse result '%v': %w", in, err)
+			return "", Result{}, fmt.Errorf("unable to parse result '%v': %w", in, err)
 		}
 		mayExonerate, err := strconv.ParseBool(d)
 		if err != nil {
-			return Result{}, fmt.Errorf("unable to parse result '%v': %w", in, err)
+			return "", Result{}, fmt.Errorf("unable to parse result '%v': %w", in, err)
 		}
-		return Result{query, nil, status, duration, mayExonerate}, nil
+		return "", Result{query, nil, status, duration, mayExonerate}, nil
 	} else {
 		tags := StringToTags(b)
 		status := Status(c)
 		duration, err := time.ParseDuration(d)
 		if err != nil {
-			return Result{}, fmt.Errorf("unable to parse result '%v': %w", in, err)
+			return "", Result{}, fmt.Errorf("unable to parse result '%v': %w", in, err)
 		}
 		mayExonerate, err := strconv.ParseBool(e)
 		if err != nil {
-			return Result{}, fmt.Errorf("unable to parse result '%v': %w", in, err)
+			return "", Result{}, fmt.Errorf("unable to parse result '%v': %w", in, err)
 		}
-		return Result{query, tags, status, duration, mayExonerate}, nil
+		return "", Result{query, tags, status, duration, mayExonerate}, nil
 	}
 }
 
 // List is a list of results
 type List []Result
+
+// The mode the tests were run in, "core" or" "compat"
+type ExecutionMode string
+
+// Lists of test results by execution mode.
+type ResultsByExecutionMode map[ExecutionMode]List
 
 // Variant is a collection of tags that uniquely identify a test
 // configuration (e.g the combination of OS, GPU, validation-modes, etc).
@@ -346,7 +374,7 @@ func (l List) StatusTree() (StatusTree, error) {
 }
 
 // Load loads the result list from the file with the given path
-func Load(path string) (List, error) {
+func Load(path string) (ResultsByExecutionMode, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -361,7 +389,7 @@ func Load(path string) (List, error) {
 }
 
 // Save saves the result list to the file with the given path
-func Save(path string, results List) error {
+func Save(path string, results ResultsByExecutionMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return err
@@ -375,23 +403,34 @@ func Save(path string, results List) error {
 }
 
 // Read reads a result list from the given reader
-func Read(r io.Reader) (List, error) {
+func Read(r io.Reader) (ResultsByExecutionMode, error) {
 	scanner := bufio.NewScanner(r)
+	results := ResultsByExecutionMode{}
 	l := List{}
 	for scanner.Scan() {
-		r, err := Parse(scanner.Text())
+		section, r, err := Parse(scanner.Text())
 		if err != nil {
 			return nil, err
 		}
-		l = append(l, r)
+		if section != "" {
+			results[section] = l
+			l = List{}
+		} else {
+			l = append(l, r)
+		}
 	}
-	return l, nil
+	return results, nil
 }
 
 // Write writes a result list to the given writer
-func Write(w io.Writer, l List) error {
-	for _, r := range l {
-		if _, err := fmt.Fprintln(w, r); err != nil {
+func Write(w io.Writer, r ResultsByExecutionMode) error {
+	for name, l := range r {
+		for _, r := range l {
+			if _, err := fmt.Fprintln(w, r); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(w, name); err != nil {
 			return err
 		}
 	}

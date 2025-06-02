@@ -9,15 +9,19 @@
 #include "base/functional/callback_helpers.h"
 #include "base/json/json_reader.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/test/scoped_feature_list.h"
 #include "components/autofill/core/browser/autofill_test_utils.h"
 #include "components/autofill/core/browser/payments/card_unmask_challenge_option.h"
+#include "components/autofill/core/common/autofill_payments_features.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "url/origin.h"
 
 namespace autofill::payments {
 
 // TODO(crbug/1372613): Extend tests in this file to all of the possible card
 // unmasking test cases. The cases that are not in this file are currently
-// tested in Payments Client tests, but they should be tested here as well.
+// tested in PaymentsNetworkInterface tests, but they should be tested here as
+// well.
 class UnmaskCardRequestTest : public testing::Test {
  public:
   UnmaskCardRequestTest() { SetUpUnmaskCardRequest(); }
@@ -36,20 +40,36 @@ class UnmaskCardRequestTest : public testing::Test {
            std::string::npos;
   }
 
+  // Returns true if `field_name_or_value` is included in the `request_`'s
+  // request content exactly `n` times, false otherwise.
+  bool IsIncludedInRequestContentNTimes(const std::string& field_name_or_value,
+                                        size_t n) {
+    std::string content = GetRequest()->GetRequestContent();
+    size_t count = 0;
+    std::size_t found = content.find(field_name_or_value);
+    while (found != std::string::npos) {
+      count++;
+      found = content.find(field_name_or_value, found + 1);
+    }
+    return count == n;
+  }
+
   // Returns the response details that was created for the current test
   // instance.
-  const PaymentsClient::UnmaskResponseDetails& GetParsedResponse() const {
+  const PaymentsNetworkInterface::UnmaskResponseDetails& GetParsedResponse()
+      const {
     return request_->GetResponseDetailsForTesting();
   }
 
  protected:
+  base::test::ScopedFeatureList feature_list_;
   // The `request_` that is created for each specific test instance. Set in the
   // initial test set up.
   std::unique_ptr<UnmaskCardRequest> request_;
 
- private:
-  void SetUpUnmaskCardRequest() {
-    PaymentsClient::UnmaskRequestDetails request_details;
+  PaymentsNetworkInterface::UnmaskRequestDetails
+  GetDefaultUnmaskRequestDetails() {
+    PaymentsNetworkInterface::UnmaskRequestDetails request_details;
     request_details.billing_customer_number = 111222333444;
     request_details.card = test::GetMaskedServerCard();
     request_details.card.set_server_id("test server id");
@@ -59,10 +79,17 @@ class UnmaskCardRequestTest : public testing::Test {
         base::UTF8ToUTF16(test::NextYear());
     request_details.user_response.cvc = u"123";
     request_details.risk_data = "some risk data";
+    request_details.merchant_domain_for_footprints =
+        url::Origin::Create(GURL("https://example.com/"));
     request_details.client_behavior_signals = {
         ClientBehaviorConstants::kShowingCardArtImageAndCardProductName};
+    return request_details;
+  }
+
+ private:
+  void SetUpUnmaskCardRequest() {
     request_ = std::make_unique<UnmaskCardRequest>(
-        request_details, /*full_sync_enabled=*/true,
+        GetDefaultUnmaskRequestDetails(), /*full_sync_enabled=*/true,
         /*callback=*/base::DoNothing());
   }
 };
@@ -70,6 +97,8 @@ class UnmaskCardRequestTest : public testing::Test {
 // Test to ensure that the request content is correctly populated for a regular
 // unmask request.
 TEST_F(UnmaskCardRequestTest, GetRequestContent) {
+  feature_list_.InitAndEnableFeature(
+      features::kAutofillEnableMerchantDomainInUnmaskCardRequest);
   EXPECT_EQ(GetRequest()->GetRequestUrlPath(),
             "payments/apis-secure/creditcardservice/"
             "getrealpan?s7e_suffix=chromewallet");
@@ -86,10 +115,72 @@ TEST_F(UnmaskCardRequestTest, GetRequestContent) {
   EXPECT_TRUE(IsIncludedInRequestContent("encrypted_cvc"));
   EXPECT_TRUE(IsIncludedInRequestContent("&s7e_13_cvc=123"));
   EXPECT_TRUE(IsIncludedInRequestContent("client_behavior_signals"));
+  EXPECT_TRUE(IsIncludedInRequestContent("merchant_domain"));
   EXPECT_TRUE(IsIncludedInRequestContent(
       "%5B2%5D"));  // '[2]' here stands for the
                     // kShowingCardArtImageAndCardProductName in the
                     // client_behavior_signals.
+}
+
+TEST_F(UnmaskCardRequestTest, DoesNotIncludeMerchantDomainWhenFlagDisabled) {
+  feature_list_.InitAndDisableFeature(
+      features::kAutofillEnableMerchantDomainInUnmaskCardRequest);
+  EXPECT_FALSE(IsIncludedInRequestContent("merchant_domain"));
+}
+
+TEST_F(UnmaskCardRequestTest, DoesNotIncludeMerchantDomainWhenMissingField) {
+  feature_list_.InitAndEnableFeature(
+      features::kAutofillEnableMerchantDomainInUnmaskCardRequest);
+  PaymentsNetworkInterface::UnmaskRequestDetails request_details =
+      GetDefaultUnmaskRequestDetails();
+  request_details.merchant_domain_for_footprints = std::nullopt;
+  request_ = std::make_unique<UnmaskCardRequest>(
+      request_details, /*full_sync_enabled=*/true,
+      /*callback=*/base::DoNothing());
+  EXPECT_FALSE(IsIncludedInRequestContent("merchant_domain"));
+}
+
+// Test to ensure response is correctly parsed when the FIDO challenge is
+// returned with context token.
+TEST_F(UnmaskCardRequestTest, FidoChallengeReturned_ParseResponse) {
+  std::optional<base::Value> response = base::JSONReader::Read(
+      "{\"fido_request_options\":{\"challenge\":\"fake_fido_challenge\"},"
+      "\"context_token\":\"fake_context_token\"}");
+  ASSERT_TRUE(response.has_value());
+  GetRequest()->ParseResponse(response->GetDict());
+
+  const PaymentsNetworkInterface::UnmaskResponseDetails& response_details =
+      GetParsedResponse();
+  EXPECT_EQ("fake_context_token", response_details.context_token);
+  // Verify the FIDO request challenge is correctly parsed.
+  EXPECT_EQ("fake_fido_challenge",
+            *response_details.fido_request_options->FindString("challenge"));
+
+  // Verify that the response is considered complete.
+  EXPECT_TRUE(GetRequest()->IsResponseComplete());
+}
+
+// Test to ensure the response is complete when context token is returned but
+// PAN is not.
+TEST_F(UnmaskCardRequestTest, ContextTokenReturned) {
+  std::optional<base::Value> response =
+      base::JSONReader::Read("{\"context_token\":\"fake_context_token\"}");
+  ASSERT_TRUE(response.has_value());
+  GetRequest()->ParseResponse(response->GetDict());
+
+  // Verify that the response is considered complete.
+  EXPECT_TRUE(GetRequest()->IsResponseComplete());
+}
+
+// Test that the response is not complete when both context token and real PAN
+// are not returned.
+TEST_F(UnmaskCardRequestTest, ContextTokenAndPanNotReturned) {
+  std::optional<base::Value> response = base::JSONReader::Read("{}");
+  ASSERT_TRUE(response.has_value());
+  GetRequest()->ParseResponse(response->GetDict());
+
+  // Verify that the response is considered incomplete.
+  EXPECT_FALSE(GetRequest()->IsResponseComplete());
 }
 
 // Params of the VirtualCardUnmaskCardRequestTest:
@@ -126,7 +217,7 @@ class VirtualCardUnmaskCardRequestTest
   // Sets up `request_` specifically for the Virtual Card CVC Unmask Card
   // Request test case.
   void SetUpVirtualCardCvcUnmaskCardRequestTest() {
-    PaymentsClient::UnmaskRequestDetails request_details;
+    PaymentsNetworkInterface::UnmaskRequestDetails request_details;
     request_details.billing_customer_number = 111222333444;
     request_details.card = test::GetVirtualCard();
     request_details.card.set_server_id("test server id");
@@ -138,6 +229,8 @@ class VirtualCardUnmaskCardRequestTest
     request_details.risk_data = "some risk data";
     request_details.last_committed_primary_main_frame_origin =
         GURL("https://example.com/");
+    request_details.merchant_domain_for_footprints =
+        url::Origin::Create(GURL("https://example.com/"));
     request_details.selected_challenge_option =
         test::GetCardUnmaskChallengeOptions(
             {CardUnmaskChallengeOptionType::kCvc})[0];
@@ -149,6 +242,8 @@ class VirtualCardUnmaskCardRequestTest
 };
 
 TEST_P(VirtualCardUnmaskCardRequestTest, GetRequestContent) {
+  feature_list_.InitAndEnableFeature(
+      features::kAutofillEnableMerchantDomainInUnmaskCardRequest);
   if (IsCvcChallengeOption()) {
     EXPECT_EQ(GetRequest()->GetRequestUrlPath(),
               "payments/apis-secure/creditcardservice/"
@@ -164,15 +259,22 @@ TEST_P(VirtualCardUnmaskCardRequestTest, GetRequestContent) {
     EXPECT_TRUE(IsIncludedInRequestContent("expiration_month"));
     EXPECT_TRUE(IsIncludedInRequestContent("expiration_year"));
     EXPECT_TRUE(IsIncludedInRequestContent("opt_in_fido_auth"));
-    EXPECT_TRUE(IsIncludedInRequestContent("merchant_domain"));
     EXPECT_TRUE(IsIncludedInRequestContent("encrypted_cvc"));
     EXPECT_TRUE(IsIncludedInRequestContent("&s7e_13_cvc=123"));
     EXPECT_TRUE(IsIncludedInRequestContent("cvc_challenge_option"));
     EXPECT_TRUE(IsIncludedInRequestContent("challenge_id"));
     EXPECT_TRUE(IsIncludedInRequestContent("cvc_length"));
     EXPECT_TRUE(IsIncludedInRequestContent("cvc_position"));
+    EXPECT_TRUE(IsIncludedInRequestContentNTimes("merchant_domain", 2));
     EXPECT_FALSE(IsIncludedInRequestContent("client_behavior_signals"));
   }
+}
+
+TEST_P(VirtualCardUnmaskCardRequestTest,
+       IncludesOneMerchantDomainWhenFlagDisabled) {
+  feature_list_.InitAndDisableFeature(
+      features::kAutofillEnableMerchantDomainInUnmaskCardRequest);
+  EXPECT_TRUE(IsIncludedInRequestContentNTimes("merchant_domain", 1));
 }
 
 TEST_P(VirtualCardUnmaskCardRequestTest,
@@ -181,7 +283,7 @@ TEST_P(VirtualCardUnmaskCardRequestTest,
   feature_list_email_otp.InitWithFeatureState(
       features::kAutofillEnableEmailOtpForVcnYellowPath,
       /*enabled=*/IsAutofillEnableEmailOtpForVcnYellowPathTurnedOn());
-  absl::optional<base::Value> response = base::JSONReader::Read(
+  std::optional<base::Value> response = base::JSONReader::Read(
       "{\"fido_request_options\": {\"challenge\": \"fake_fido_challenge\"}, "
       "\"context_token\": \"fake_context_token\", \"idv_challenge_options\": "
       "[{\"sms_otp_challenge_option\": {\"challenge_id\": "
@@ -200,7 +302,7 @@ TEST_P(VirtualCardUnmaskCardRequestTest,
   ASSERT_TRUE(response.has_value());
   GetRequest()->ParseResponse(response->GetDict());
 
-  const PaymentsClient::UnmaskResponseDetails& response_details =
+  const PaymentsNetworkInterface::UnmaskResponseDetails& response_details =
       GetParsedResponse();
   EXPECT_EQ("fake_context_token", response_details.context_token);
   // Verify the FIDO request challenge is correctly parsed.
@@ -274,7 +376,7 @@ TEST_P(VirtualCardUnmaskCardRequestTest, IsRetryableFailure) {
 
     // Test that `IsRetryableFailure()` returns true if a flow status is
     // present.
-    absl::optional<base::Value> response = base::JSONReader::Read(
+    std::optional<base::Value> response = base::JSONReader::Read(
         "{\"flow_status\": \"FLOW_STATUS_INCORRECT_ACCOUNT_SECURITY_CODE\"}");
     ASSERT_TRUE(response);
     GetRequest()->ParseResponse(response->GetDict());

@@ -559,7 +559,7 @@ angle::Result ContextMtl::drawTriFanElements(const gl::Context *context,
         bool isNoOp = false;
         ANGLE_TRY(setupDraw(context, gl::PrimitiveMode::TriangleFan, 0, count, instances, type,
                             indices, false, &isNoOp));
-        if (!isNoOp)
+        if (!isNoOp && genIndicesCount > 0)
         {
             if (baseVertex == 0 && baseInstance == 0)
             {
@@ -638,7 +638,7 @@ angle::Result ContextMtl::drawLineLoopElements(const gl::Context *context,
         bool isNoOp = false;
         ANGLE_TRY(setupDraw(context, gl::PrimitiveMode::LineLoop, 0, count, instances, type,
                             indices, false, &isNoOp));
-        if (!isNoOp)
+        if (!isNoOp && genIndicesCount > 0)
         {
             if (baseVertex == 0 && baseInstance == 0)
             {
@@ -686,13 +686,13 @@ angle::Result ContextMtl::drawArraysProvokingVertexImpl(const gl::Context *conte
     ANGLE_TRY(mProvokingVertexHelper.generateIndexBuffer(
         mtl::GetImpl(context), first, count, mode, convertedType, outIndexCount, outIndexOffset,
         outIndexMode, drawIdxBuffer));
-    GLsizei outIndexCounti32     = static_cast<GLsizei>(outIndexCount);
-    const uint8_t *mappedIndices = drawIdxBuffer->mapReadOnly(this);
-    if (!mappedIndices)
-    {
-        return angle::Result::Stop;
-    }
+    GLsizei outIndexCounti32 = static_cast<GLsizei>(outIndexCount);
 
+    // Note: we don't need to pass the generated index buffer to ContextMtl::setupDraw.
+    // Because setupDraw only needs to operate on the original vertex buffers & PrimitiveMode.
+    // setupDraw might convert vertex attributes if the offset & alignment are not natively
+    // supported by Metal. However, the converted attributes have the same order as the original
+    // vertices. Hence the conversion doesn't need to know about the newly generated index buffer.
 #define DRAW_PROVOKING_VERTEX_ARRAY(xfbPass)                                                       \
     if (xfbPass)                                                                                   \
     {                                                                                              \
@@ -724,8 +724,8 @@ angle::Result ContextMtl::drawArraysProvokingVertexImpl(const gl::Context *conte
     else                                                                                           \
     {                                                                                              \
         bool isNoOp = false;                                                                       \
-        ANGLE_TRY(setupDraw(context, outIndexMode, 0, outIndexCounti32, instances, convertedType,  \
-                            mappedIndices + outIndexOffset, xfbPass, &isNoOp));                    \
+        ANGLE_TRY(setupDraw(context, mode, first, count, instances,                                \
+                            gl::DrawElementsType::InvalidEnum, nullptr, xfbPass, &isNoOp));        \
                                                                                                    \
         if (!isNoOp)                                                                               \
         {                                                                                          \
@@ -754,7 +754,6 @@ angle::Result ContextMtl::drawArraysProvokingVertexImpl(const gl::Context *conte
     }
 
     ANGLE_MTL_XFB_DRAW(DRAW_PROVOKING_VERTEX_ARRAY)
-    drawIdxBuffer->unmapNoFlush(this);
     return angle::Result::Continue;
 }
 
@@ -1128,8 +1127,10 @@ angle::Result ContextMtl::syncState(const gl::Context *context,
     gl::state::DirtyBits mergedDirtyBits = gl::state::DirtyBits(dirtyBits) & ~resetBlendBitsMask;
     mergedDirtyBits.set(gl::state::DIRTY_BIT_BLEND_ENABLED, (dirtyBits & checkBlendBitsMask).any());
 
-    for (size_t dirtyBit : mergedDirtyBits)
+    for (auto iter = mergedDirtyBits.begin(), endIter = mergedDirtyBits.end(); iter != endIter;
+         ++iter)
     {
+        size_t dirtyBit = *iter;
         switch (dirtyBit)
         {
             case gl::state::DIRTY_BIT_SCISSOR_TEST_ENABLED:
@@ -1294,12 +1295,19 @@ angle::Result ContextMtl::syncState(const gl::Context *context,
             case gl::state::DIRTY_BIT_DISPATCH_INDIRECT_BUFFER_BINDING:
                 break;
             case gl::state::DIRTY_BIT_PROGRAM_BINDING:
-                mProgram    = mtl::GetImpl(glState.getProgram());
-                mExecutable = mProgram->getExecutable();
+                static_assert(
+                    gl::state::DIRTY_BIT_PROGRAM_EXECUTABLE > gl::state::DIRTY_BIT_PROGRAM_BINDING,
+                    "Dirty bit order");
+                iter.setLaterBit(gl::state::DIRTY_BIT_PROGRAM_EXECUTABLE);
                 break;
             case gl::state::DIRTY_BIT_PROGRAM_EXECUTABLE:
+            {
+                const gl::ProgramExecutable *executable = mState.getProgramExecutable();
+                ASSERT(executable);
+                mExecutable = mtl::GetImpl(executable);
                 updateProgramExecutable(context);
                 break;
+            }
             case gl::state::DIRTY_BIT_TEXTURE_BINDINGS:
                 invalidateCurrentTextures();
                 break;
@@ -2341,13 +2349,15 @@ void ContextMtl::onTransformFeedbackInactive(const gl::Context *context, Transfo
     endEncoding(true);
 }
 
-void ContextMtl::queueEventSignal(const mtl::SharedEventRef &event, uint64_t value)
+#if ANGLE_MTL_EVENT_AVAILABLE
+uint64_t ContextMtl::queueEventSignal(id<MTLEvent> event, uint64_t value)
 {
     ensureCommandBufferReady();
     mCmdBuffer.queueEventSignal(event, value);
+    return mCmdBuffer.getQueueSerial();
 }
 
-void ContextMtl::serverWaitEvent(const mtl::SharedEventRef &event, uint64_t value)
+void ContextMtl::serverWaitEvent(id<MTLEvent> event, uint64_t value)
 {
     ensureCommandBufferReady();
 
@@ -2356,6 +2366,7 @@ void ContextMtl::serverWaitEvent(const mtl::SharedEventRef &event, uint64_t valu
 
     mCmdBuffer.serverWaitEvent(event, value);
 }
+#endif
 
 void ContextMtl::updateProgramExecutable(const gl::Context *context)
 {
@@ -2628,8 +2639,9 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
     }
     else
     {
-        ANGLE_TRY(mProgram->setupDraw(context, &mRenderEncoder, mRenderPipelineDesc,
-                                      isPipelineDescChanged, textureChanged, uniformBuffersDirty));
+        ANGLE_TRY(mExecutable->setupDraw(context, &mRenderEncoder, mRenderPipelineDesc,
+                                         isPipelineDescChanged, textureChanged,
+                                         uniformBuffersDirty));
     }
 
     return angle::Result::Continue;
@@ -2689,8 +2701,8 @@ angle::Result ContextMtl::handleDirtyRenderPass(const gl::Context *context)
 
 angle::Result ContextMtl::handleDirtyActiveTextures(const gl::Context *context)
 {
-    const gl::State &glState   = mState;
-    const gl::Program *program = glState.getProgram();
+    const gl::State &glState                = mState;
+    const gl::ProgramExecutable *executable = glState.getProgramExecutable();
 
     constexpr auto ensureTextureCreated = [](const gl::Context *context,
                                              gl::Texture *texture) -> angle::Result {
@@ -2709,14 +2721,14 @@ angle::Result ContextMtl::handleDirtyActiveTextures(const gl::Context *context)
     };
 
     const gl::ActiveTexturesCache &textures     = glState.getActiveTexturesCache();
-    const gl::ActiveTextureMask &activeTextures = program->getExecutable().getActiveSamplersMask();
+    const gl::ActiveTextureMask &activeTextures = executable->getActiveSamplersMask();
 
     for (size_t textureUnit : activeTextures)
     {
         ANGLE_TRY(ensureTextureCreated(context, textures[textureUnit]));
     }
 
-    for (size_t imageUnit : program->getExecutable().getActiveImagesMask())
+    for (size_t imageUnit : executable->getActiveImagesMask())
     {
         ANGLE_TRY(ensureTextureCreated(context, glState.getImageUnit(imageUnit).texture.get()));
     }

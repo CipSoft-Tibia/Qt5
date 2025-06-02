@@ -34,14 +34,21 @@ These attributes are discussed in detail below.
 \section2 The \e id Attribute
 \keyword QML.id
 
-Every QML object type has exactly one \e id attribute. This attribute is
+A QML element can have at most one \e id attribute. This attribute is
 provided by the language itself, and cannot be redefined or overridden by any
 QML object type.
 
 A value may be assigned to the \e id attribute of an object instance to allow
 that object to be identified and referred to by other objects.  This \c id must
 begin with a lower-case letter or an underscore, and cannot contain characters
-other than letters, numbers and underscores.
+other than letters, numbers and underscores. It can also not be a JavaScript
+keyword. See the \l{ECMA-262}{ECMAScript Language Specification} for a list of
+such keywords.
+
+If you use a name not suitable as JavaScript identifier in QML, such as
+\e{as}, you won't be able to refer to the identified object in JavaScript,
+making the \e id mostly useless. You can still use \l QQmlContext from C++ to
+interact with such \e{id}s, though.
 
 Below is a \l TextInput object and a \l Text object. The \l TextInput object's
 \c id value is set to "myTextInput". The \l Text object sets its \c text
@@ -62,10 +69,18 @@ Column {
 \endqml
 
 An object can be referred to by its \c id from anywhere within the
-\e {component scope} in which it is declared. Therefore, an \c id value must
-always be unique within its component scope. See
+\e {QML context} in which it is created. Therefore, an \c id value must
+always be unique within its context. See
 \l{qtqml-documents-scope.html}{Scope and Naming Resolution} for more
 information.
+
+The context is also exposed to C++ via the \l QQmlContext hierarchy. You
+can, for example, retrieve the context of a specific object via the
+\l qmlContext function and ask for other objects in the same context:
+
+\code
+QObject *textInput = qmlContext(theColumn)->objectForName("myTextInput");
+\endcode
 
 Once an object instance is created, the value of its \e id attribute cannot
 be changed.  While it may look like an ordinary property, the \c id attribute
@@ -127,8 +142,8 @@ Rectangle {
 
 \section4 Valid Types in Custom Property Definitions
 
-Any of the \l {QML Value Types} aside from the \l enumeration type can be used
-as custom property types. For example, these are all valid property declarations:
+Any of the \l {QML Value Types} can be used as custom property types. For
+example, these are all valid property declarations:
 
 \qml
 Item {
@@ -868,7 +883,7 @@ provided by the client:
 SquareButton {
     onDeactivated: console.log("Deactivated!")
     onActivated: (xPosition, yPosition) => {
-        console.log(`Activated at {xPosition}, ${yPosition}`)
+        console.log(`Activated at ${xPosition}, ${yPosition}`)
     }
 }
 \endqml
@@ -1138,7 +1153,8 @@ Text {
 }
 \endqml
 
-More information on enumeration usage in QML can be found in the \l {QML Value Types} \l enumeration documentation.
+More information on enumeration usage in QML can be found in the documentation on
+\l {QML Enumerations}.
 
 The ability to declare enumerations in QML was introduced in Qt 5.10.
 

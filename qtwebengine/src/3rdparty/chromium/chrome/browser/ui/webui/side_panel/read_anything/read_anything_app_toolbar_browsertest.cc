@@ -9,6 +9,7 @@
 #include "base/files/file_util.h"
 #include "base/path_service.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/in_process_browser_test.h"
@@ -47,19 +48,25 @@ class ReadAnythingAppToolbarTest : public InProcessBrowserTest {
       base::ReadFileToString(path, &script);
       script = "'use strict';" + script;
     }
-
-    // Run the test.
+    // Run the test. Navigating to the URL will trigger the read anything
+    // navigation throttle and open the side panel instead of loading read
+    // anything in the main content area.
     EXPECT_TRUE(ui_test_utils::NavigateToURL(
         browser(), GURL(chrome::kChromeUIUntrustedReadAnythingSidePanelURL)));
-    content::RenderFrameHost* webui = browser()
-                                          ->tab_strip_model()
-                                          ->GetActiveWebContents()
-                                          ->GetPrimaryMainFrame();
-    if (!webui) {
+    // Get the side panel entry registry.
+    auto* side_panel_ui = SidePanelUI::GetSidePanelUIForBrowser(browser());
+    auto* side_panel_web_contents =
+        side_panel_ui->GetWebContentsForTest(SidePanelEntryId::kReadAnything);
+
+    if (!side_panel_web_contents) {
       return testing::AssertionFailure() << "Failed to navigate to WebUI";
     }
-
-    bool result = content::EvalJs(webui, script).ExtractBool();
+    // Wait for the view to load before trying to run the test. This ensures
+    // that chrome.readingMode is set.
+    content::WaitForLoadStop(side_panel_web_contents);
+    // Eval the JS test.
+    bool result =
+        content::EvalJs(side_panel_web_contents, script).ExtractBool();
     return result ? testing::AssertionSuccess()
                   : (testing::AssertionFailure() << "Check console output");
   }
@@ -68,9 +75,50 @@ class ReadAnythingAppToolbarTest : public InProcessBrowserTest {
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest, SupportedFonts_Correct) {
+  ASSERT_TRUE(RunTest("supported_fonts.js"));
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest,
+                       FontSizeCallback_ChangesFontSize) {
+  ASSERT_TRUE(RunTest("font_size_callback_changes_font_size.js"));
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest,
+                       FontNameCallback_ChangesFont) {
+  ASSERT_TRUE(RunTest("font_name_callback_changes_font.js"));
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest, ColorCallback_ChangesColor) {
+  ASSERT_TRUE(RunTest("color_callback_changes_color.js"));
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest,
+                       ColorCallback_ChangesColorWhenColorsUndefined) {
+  ASSERT_TRUE(RunTest("color_callback_changes_color_when_colors_undefined.js"));
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest,
+                       LineSpacingCallback_ChangesLineSpacing) {
+  ASSERT_TRUE(RunTest("line_spacing_callback_changes_line_spacing.js"));
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest,
+                       LetterSpacingCallback_ChangesLetterSpacing) {
+  ASSERT_TRUE(RunTest("letter_spacing_callback_changes_letter_spacing.js"));
+}
+
 IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest,
                        ReadAnythingToolbar_Visible) {
   ASSERT_TRUE(RunTest("toolbar_visible_with_flag.js"));
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest, FontSelectionShows) {
+  ASSERT_TRUE(RunTest("font_select_without_read_aloud.js"));
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingAppToolbarTest, FontSizeButtonsOnToolbar) {
+  ASSERT_TRUE(RunTest("font_size_buttons_without_read_aloud.js"));
 }
 
 // TODO(crbug.com/1474951): Remove this test once Read Aloud flag is removed.

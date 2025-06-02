@@ -36,7 +36,7 @@ import type * as Protocol from '../../generated/protocol.js';
 export const DevToolsStubErrorCode = -32015;
 // TODO(dgozman): we are not reporting generic errors in tests, but we should
 // instead report them and just have some expected errors in test expectations.
-const GenericError = -32000;
+const GenericErrorCode = -32000;
 const ConnectionClosedErrorCode = -32001;
 
 type MessageParams = {
@@ -612,6 +612,10 @@ export class TargetBase {
     return this.getAgent('Audits');
   }
 
+  autofillAgent(): ProtocolProxyApi.AutofillApi {
+    return this.getAgent('Autofill');
+  }
+
   browserAgent(): ProtocolProxyApi.BrowserApi {
     return this.getAgent('Browser');
   }
@@ -794,6 +798,10 @@ export class TargetBase {
 
   registerAccessibilityDispatcher(dispatcher: ProtocolProxyApi.AccessibilityDispatcher): void {
     this.registerDispatcher('Accessibility', dispatcher);
+  }
+
+  registerAutofillDispatcher(dispatcher: ProtocolProxyApi.AutofillDispatcher): void {
+    this.registerDispatcher('Autofill', dispatcher);
   }
 
   registerAnimationDispatcher(dispatcher: ProtocolProxyApi.AnimationDispatcher): void {
@@ -1017,7 +1025,7 @@ class _AgentPrototype {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const callback: Callback = (error: MessageError|null, result: any|null): void => {
         if (error) {
-          if (!test.suppressRequestErrors && error.code !== DevToolsStubErrorCode && error.code !== GenericError &&
+          if (!test.suppressRequestErrors && error.code !== DevToolsStubErrorCode && error.code !== GenericErrorCode &&
               error.code !== ConnectionClosedErrorCode) {
             console.error('Request ' + method + ' failed. ' + JSON.stringify(error));
           }
@@ -1043,7 +1051,7 @@ class _AgentPrototype {
     return new Promise(fulfill => {
       const callback: Callback = (error: MessageError|undefined|null, result: Object|null): void => {
         if (error && !test.suppressRequestErrors && error.code !== DevToolsStubErrorCode &&
-            error.code !== GenericError && error.code !== ConnectionClosedErrorCode) {
+            error.code !== GenericErrorCode && error.code !== ConnectionClosedErrorCode) {
           console.error('Request ' + method + ' failed. ' + JSON.stringify(error));
         }
 

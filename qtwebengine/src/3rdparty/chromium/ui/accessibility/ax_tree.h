@@ -208,8 +208,6 @@ class AX_EXPORT AXTree {
   // for testing and debugging.
   const std::string& error() const { return error_; }
 
-  void DisallowFailFastForFuzzing() { disallow_fail_fast_ = true; }
-
   int size() { return static_cast<int>(id_map_.size()); }
 
   // Return a negative number that's suitable to use for a node ID for
@@ -393,10 +391,11 @@ class AX_EXPORT AXTree {
   // if they exist, and creating otherwise. Reparenting is disallowed, so
   // if the id already exists as the child of another node, that's an
   // error. Returns true on success, false on fatal error.
-  bool CreateNewChildVector(AXNode* node,
-                            const std::vector<AXNodeID>& new_child_ids,
-                            std::vector<AXNode*>* new_children,
-                            AXTreeUpdateState* update_state);
+  bool CreateNewChildVector(
+      AXNode* node,
+      const std::vector<AXNodeID>& new_child_ids,
+      std::vector<raw_ptr<AXNode, VectorExperimental>>* new_children,
+      AXTreeUpdateState* update_state);
 
   // Returns the lowest unignored ancestor of the node with the given ID. If the
   // node is not ignored, it returns the node.
@@ -415,7 +414,6 @@ class AX_EXPORT AXTree {
   raw_ptr<AXNode> root_ = nullptr;
   std::unordered_map<AXNodeID, std::unique_ptr<AXNode>> id_map_;
   std::string error_;
-  bool disallow_fail_fast_ = false;
   AXTreeData data_;
 
   // Map from an int attribute (if IsNodeIdIntAttribute is true) to

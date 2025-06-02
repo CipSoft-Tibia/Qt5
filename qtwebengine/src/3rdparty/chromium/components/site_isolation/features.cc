@@ -15,16 +15,18 @@ namespace features {
 // SiteIsolationPolicy::IsIsolationForPasswordSitesEnabled() rather than
 // checking the feature directly, since that decision is influenced by other
 // factors as well.
-CONSTINIT const base::Feature kSiteIsolationForPasswordSites(
-             "site-isolation-for-password-sites",
-// Enabled by default on Android; see https://crbug.com/849815.  Note that this
-// should not affect Android Webview, which does not include this code.
 #if BUILDFLAG(IS_ANDROID)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(
+    kSiteIsolationForPasswordSites,
+    "site-isolation-for-password-sites",
+    // Enabled by default on Android; see https://crbug.com/849815.  Note that
+    // this should not affect Android Webview, which does not include this code.
+    base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kSiteIsolationForPasswordSites,
+             "site-isolation-for-password-sites",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
 
 // Controls a mode for dynamically process-isolating sites where the user has
 // logged in via OAuth.  These sites are determined by runtime heuristics.
@@ -37,15 +39,17 @@ CONSTINIT const base::Feature kSiteIsolationForPasswordSites(
 //
 // This feature does not affect Android Webview, which does not include this
 // code.
-CONSTINIT const base::Feature kSiteIsolationForOAuthSites(
-             "SiteIsolationForOAuthSites",
-// Enabled by default on Android only; see https://crbug.com/1206770.
 #if BUILDFLAG(IS_ANDROID)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(
+    kSiteIsolationForOAuthSites,
+    "SiteIsolationForOAuthSites",
+    // Enabled by default on Android only; see https://crbug.com/1206770.
+    base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kSiteIsolationForOAuthSites,
+             "SiteIsolationForOAuthSites",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
 
 // kSiteIsolationMemoryThresholds is checked before individual site isolation
 // mode base::Features (such as kSitePerProcess or

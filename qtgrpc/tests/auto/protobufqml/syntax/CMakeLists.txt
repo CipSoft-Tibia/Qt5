@@ -7,6 +7,9 @@ if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
     find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
 endif()
 
+qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
+
 qt_internal_add_test(tst_protobuf_syntax_qml
     QMLTEST
     SOURCES
@@ -22,13 +25,15 @@ qt_add_protobuf(tst_protobuf_syntax_qml_gen
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/qt_protobuf_generated"
 )
 
-qt_policy(SET QTP0001 NEW)
-
 qt_add_qml_module(tst_protobuf_syntax_qml
     URI QmlTestUri
     VERSION 1.0
     QML_FILES
         qml/tst_syntax.qml
+)
+
+set_target_properties(tst_protobuf_syntax_qml_gen PROPERTIES
+    QT_USE_PROTOBUF_LIST_ALIASES FALSE
 )
 
 qt_autogen_tools_initial_setup(tst_protobuf_syntax_qml)

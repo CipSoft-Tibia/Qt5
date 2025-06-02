@@ -21,6 +21,7 @@
 #include <QtCore/private/qcore_mac_p.h>
 
 #include <QtGui/qpainterpath.h>
+#include <QtGui/qstylehints.h>
 #include <QtGui/private/qcoregraphics_p.h>
 #include <QtGui/qpa/qplatformfontdatabase.h>
 #include <QtGui/qpa/qplatformtheme.h>
@@ -160,7 +161,10 @@ const int pushButtonBevelRectOffsets[3] = {
 
 QVector<QPointer<QObject> > QMacStylePrivate::scrollBars;
 
-bool isDarkMode() { return QGuiApplicationPrivate::platformTheme()->colorScheme() == Qt::ColorScheme::Dark; }
+static inline bool isDarkMode()
+{
+    return QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+}
 
 #if QT_CONFIG(tabwidget)
 /*
@@ -2005,17 +2009,6 @@ QMacStyle::QMacStyle()
             for (const auto &o : QMacStylePrivate::scrollBars)
                 QCoreApplication::sendEvent(o, &event);
     });
-
-    Q_D(QMacStyle);
-    // FIXME: Tie this logic into theme change, or even polish/unpolish
-    if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSMojave) {
-        d->appearanceObserver = QMacKeyValueObserver(NSApp, @"effectiveAppearance", [this] {
-            Q_D(QMacStyle);
-            for (NSView *b : d->cocoaControls)
-                [b release];
-            d->cocoaControls.clear();
-        });
-    }
 }
 
 QMacStyle::~QMacStyle()
@@ -2024,6 +2017,10 @@ QMacStyle::~QMacStyle()
 
 void QMacStyle::polish(QPalette &)
 {
+    Q_D(QMacStyle);
+    for (NSView *b : d->cocoaControls)
+        [b release];
+    d->cocoaControls.clear();
 }
 
 void QMacStyle::polish(QApplication *)
@@ -2156,25 +2153,6 @@ int QMacStyle::pixelMetric(PixelMetric metric, const QStyleOption *opt, const QW
     case PM_FocusFrameHMargin:
         ret = qt_mac_aqua_get_metric(FocusRectOutset);
         break;
-    case PM_DialogButtonsSeparator:
-        ret = -5;
-        break;
-    case PM_DialogButtonsButtonHeight: {
-        QSize sz;
-        ret = d->aquaSizeConstrain(opt, 0, QStyle::CT_PushButton, QSize(-1, -1), &sz);
-        if (sz == QSize(-1, -1))
-            ret = 32;
-        else
-            ret = sz.height();
-        break; }
-    case PM_DialogButtonsButtonWidth: {
-        QSize sz;
-        ret = d->aquaSizeConstrain(opt, 0, QStyle::CT_PushButton, QSize(-1, -1), &sz);
-        if (sz == QSize(-1, -1))
-            ret = 70;
-        else
-            ret = sz.width();
-        break; }
 
     case PM_MenuBarHMargin:
         ret = 8;
@@ -5499,7 +5477,7 @@ void QMacStyle::drawComplexControl(ComplexControl cc, const QStyleOptionComplex 
             const auto cw = QMacStylePrivate::CocoaControl(ct, cs);
             auto *cc = static_cast<NSControl *>(d->cocoaControl(cw));
             cc.enabled = isEnabled;
-            QRectF frameRect = cw.adjustedControlFrame(combo->rect);;
+            QRectF frameRect = cw.adjustedControlFrame(combo->rect);
             if (cw.type == QMacStylePrivate::Button_PopupButton) {
                 // Non-editable QComboBox
                 auto *pb = static_cast<NSPopUpButton *>(cc);
@@ -5919,7 +5897,7 @@ QRect QMacStyle::subControlRect(ComplexControl cc, const QStyleOptionComplex *op
                 qreal controlsSpacing = lastButtonRect.right() + titleBarButtonSpacing;
                 if (!titlebar->icon.isNull()) {
                     const auto iconSize = proxy()->pixelMetric(PM_SmallIconSize);
-                    const auto actualIconSize = titlebar->icon.actualSize(QSize(iconSize, iconSize)).width();;
+                    const auto actualIconSize = titlebar->icon.actualSize(QSize(iconSize, iconSize)).width();
                     controlsSpacing += actualIconSize + titleBarIconTitleSpacing;
                 }
 

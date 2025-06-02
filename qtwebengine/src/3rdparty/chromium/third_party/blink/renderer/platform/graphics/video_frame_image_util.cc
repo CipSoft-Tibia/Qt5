@@ -238,7 +238,7 @@ scoped_refptr<StaticBitmapImage> CreateImageFromVideoFrame(
   }
 
   return resource_provider->Snapshot(
-      CanvasResourceProvider::FlushReason::kNon2DCanvas,
+      FlushReason::kNon2DCanvas,
       prefer_tagged_orientation
           ? VideoTransformationToImageOrientation(transform)
           : ImageOrientationEnum::kDefault);
@@ -262,7 +262,7 @@ bool DrawVideoFrameIntoResourceProvider(
       return false;  // Unable to get/create a shared main thread context.
     }
     if (!raster_context_provider->GrContext() &&
-        !raster_context_provider->ContextCapabilities().supports_oop_raster) {
+        !raster_context_provider->ContextCapabilities().gpu_rasterization) {
       DLOG(ERROR) << "Unable to process a texture backed VideoFrame w/o a "
                      "GrContext or OOP raster support.";
       return false;  // The context has been lost.

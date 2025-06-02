@@ -23,19 +23,20 @@ class AxisTicker : public QQuickShaderEffect
     Q_PROPERTY(QVector3D iResolution READ iResolution NOTIFY iResolutionChanged FINAL)
     Q_PROPERTY(qreal smoothing READ smoothing WRITE setSmoothing NOTIFY smoothingChanged FINAL)
     Q_PROPERTY(int origo READ origo WRITE setOrigo NOTIFY origoChanged FINAL)
-    Q_PROPERTY(bool minorBarsVisible READ minorBarsVisible WRITE setMinorBarsVisible NOTIFY minorBarsVisibleChanged FINAL)
+    Q_PROPERTY(bool subTicksVisible READ subTicksVisible WRITE setSubTicksVisible NOTIFY subTicksVisibleChanged FINAL)
     Q_PROPERTY(qreal spacing READ spacing WRITE setSpacing NOTIFY spacingChanged FINAL)
-    Q_PROPERTY(qreal barsMovement READ barsMovement WRITE setBarsMovement NOTIFY barsMovementChanged FINAL)
-    Q_PROPERTY(QColor minorColor READ minorColor WRITE setMinorColor NOTIFY minorColorChanged FINAL)
-    Q_PROPERTY(QColor majorColor READ majorColor WRITE setMajorColor NOTIFY majorColorChanged FINAL)
-    Q_PROPERTY(qreal minorBarWidth READ minorBarWidth WRITE setMinorBarWidth NOTIFY minorBarWidthChanged FINAL)
-    Q_PROPERTY(qreal majorBarWidth READ majorBarWidth WRITE setMajorBarWidth NOTIFY majorBarWidthChanged FINAL)
-    Q_PROPERTY(qreal minorTickScale READ minorTickScale WRITE setMinorTickScale NOTIFY minorTickScaleChanged FINAL)
-    Q_PROPERTY(qreal minorBarsLength READ minorBarsLength WRITE setMinorBarsLength NOTIFY minorBarsLengthChanged FINAL)
+    Q_PROPERTY(qreal displacement READ displacement WRITE setDisplacement NOTIFY displacementChanged FINAL)
+    Q_PROPERTY(QColor subTickColor READ subTickColor WRITE setSubTickColor NOTIFY subTickColorChanged FINAL)
+    Q_PROPERTY(QColor tickColor READ tickColor WRITE setTickColor NOTIFY tickColorChanged FINAL)
+    Q_PROPERTY(qreal subTickLineWidth READ subTickLineWidth WRITE setSubTickLineWidth NOTIFY subTickLineWidthChanged FINAL)
+    Q_PROPERTY(qreal tickLineWidth READ tickLineWidth WRITE setTickLineWidth NOTIFY tickLineWidthChanged FINAL)
+    Q_PROPERTY(qreal subTickScale READ subTickScale WRITE setSubTickScale NOTIFY subTickScaleChanged FINAL)
+    Q_PROPERTY(qreal subTickLength READ subTickLength WRITE setSubTickLength NOTIFY subTickLengthChanged FINAL)
     Q_PROPERTY(bool isHorizontal READ isHorizontal WRITE setIsHorizontal NOTIFY isHorizontalChanged FINAL)
-    QML_ELEMENT
+    Q_PROPERTY(bool flipped READ isFlipped WRITE setFlipped NOTIFY flippedChanged FINAL)
 public:
     AxisTicker(QQuickItem *parent = nullptr);
+    ~AxisTicker() override;
 
     void setupShaders();
 
@@ -47,35 +48,38 @@ public:
     int origo() const;
     void setOrigo(int newOrigo);
 
-    bool minorBarsVisible() const;
-    void setMinorBarsVisible(bool newMinorBarsVisible);
+    bool subTicksVisible() const;
+    void setSubTicksVisible(bool newSubTicksVisible);
 
     qreal spacing() const;
     void setSpacing(qreal newSpacing);
 
-    qreal barsMovement() const;
-    void setBarsMovement(qreal newBarsMovement);
+    qreal displacement() const;
+    void setDisplacement(qreal newDisplacement);
 
-    QColor minorColor() const;
-    void setMinorColor(const QColor &newMinorColor);
+    QColor subTickColor() const;
+    void setSubTickColor(QColor newSubTickColor);
 
-    QColor majorColor() const;
-    void setMajorColor(const QColor &newMajorColor);
+    QColor tickColor() const;
+    void setTickColor(QColor newTickColor);
 
-    qreal minorBarWidth() const;
-    void setMinorBarWidth(qreal newMinorBarWidth);
+    qreal subTickLineWidth() const;
+    void setSubTickLineWidth(qreal newSubTickLineWidth);
 
-    qreal majorBarWidth() const;
-    void setMajorBarWidth(qreal newMajorBarWidth);
+    qreal tickLineWidth() const;
+    void setTickLineWidth(qreal newTickLineWidth);
 
-    qreal minorTickScale() const;
-    void setMinorTickScale(qreal newMinorTickScale);
+    qreal subTickScale() const;
+    void setSubTickScale(qreal newSubTickScale);
 
-    qreal minorBarsLength() const;
-    void setMinorBarsLength(qreal newMinorBarsLength);
+    qreal subTickLength() const;
+    void setSubTickLength(qreal newSubTickLength);
 
     bool isHorizontal() const;
     void setIsHorizontal(bool newIsHorizontal);
+
+    bool isFlipped() const;
+    void setFlipped(bool newFlipped);
 
 protected:
     void componentComplete() override;
@@ -85,32 +89,34 @@ Q_SIGNALS:
     void iResolutionChanged();
     void smoothingChanged();
     void origoChanged();
-    void minorBarsVisibleChanged();
+    void subTicksVisibleChanged();
     void spacingChanged();
-    void barsMovementChanged();
-    void minorColorChanged();
-    void majorColorChanged();
-    void minorBarWidthChanged();
-    void majorBarWidthChanged();
-    void minorTickScaleChanged();
-    void minorBarsLengthChanged();
+    void displacementChanged();
+    void subTickColorChanged();
+    void tickColorChanged();
+    void subTickLineWidthChanged();
+    void tickLineWidthChanged();
+    void subTickScaleChanged();
+    void subTickLengthChanged();
     void isHorizontalChanged();
+    void flippedChanged();
 
 private:
     friend class AxisRenderer;
     QVector3D m_iResolution;
     qreal m_smoothing = 1.0;
     int m_origo = 0;
-    bool m_minorBarsVisible = true;
+    bool m_subTicksVisible = true;
     qreal m_spacing = 100;
-    qreal m_barsMovement = 0;
-    QColor m_minorColor = QColor(150, 150, 150);
-    QColor m_majorColor = QColor(255, 255, 255);
-    qreal m_minorBarWidth = 1.0;
-    qreal m_majorBarWidth = 2.0;
-    qreal m_minorTickScale = 0.1;
-    qreal m_minorBarsLength = 0.1;
+    qreal m_displacement = 0;
+    QColor m_subTickColor = QColor(150, 150, 150);
+    QColor m_tickColor = QColor(255, 255, 255);
+    qreal m_subTickLineWidth = 1.0;
+    qreal m_tickLineWidth = 2.0;
+    qreal m_subTickScale = 0.1;
+    qreal m_subTickLength = 0.1;
     bool m_isHorizontal = false;
+    bool m_flipped = false;
 };
 
 QT_END_NAMESPACE

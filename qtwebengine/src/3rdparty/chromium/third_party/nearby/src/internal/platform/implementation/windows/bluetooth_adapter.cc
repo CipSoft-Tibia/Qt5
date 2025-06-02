@@ -1,4 +1,4 @@
-// Copyright 2020 Google LLC
+// Copyright 2020-2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,9 @@
 #include <stdio.h>
 #include <usbiodef.h>
 
+#include <cstring>
 #include <exception>
+#include <optional>
 #include <string>
 
 #include "absl/strings/str_format.h"
@@ -216,6 +218,75 @@ bool BluetoothAdapter::IsExtendedAdvertisingSupported() const {
   }
 }
 
+// Returns true if the Bluetooth hardware supports BLE Central Role
+bool BluetoothAdapter::IsCentralRoleSupported() const {
+  if (windows_bluetooth_adapter_ == nullptr) {
+    NEARBY_LOGS(ERROR) << __func__ << ": No Bluetooth adapter on this device.";
+    return false;
+  }
+  try {
+    // Indicates whether the adapter supports the BLE Central Role
+    // https://learn.microsoft.com/en-us/uwp/api/windows.devices.bluetooth.bluetoothadapter.iscentralrolesupported?view=winrt-22621
+    return windows_bluetooth_adapter_.IsCentralRoleSupported();
+  } catch (std::exception exception) {
+    NEARBY_LOGS(ERROR) << __func__ << ": exception:" << exception.what();
+    return false;
+  } catch (const winrt::hresult_error &ex) {
+    NEARBY_LOGS(ERROR) << __func__ << ": exception:" << ex.code() << ": "
+                       << winrt::to_string(ex.message());
+    return false;
+  } catch (...) {
+    NEARBY_LOGS(ERROR) << __func__ << ": unknown error.";
+    return false;
+  }
+}
+
+// Returns true if the Bluetooth hardware supports BLE Peripheral Role
+bool BluetoothAdapter::IsPeripheralRoleSupported() const {
+  if (windows_bluetooth_adapter_ == nullptr) {
+    NEARBY_LOGS(ERROR) << __func__ << ": No Bluetooth adapter on this device.";
+    return false;
+  }
+  try {
+    // Indicates whether the adapter supports the BLE Peripheral Role
+    // https://learn.microsoft.com/en-us/uwp/api/windows.devices.bluetooth.bluetoothadapter.isperipheralrolesupported?view=winrt-22621
+    return windows_bluetooth_adapter_.IsPeripheralRoleSupported();
+  } catch (std::exception exception) {
+    NEARBY_LOGS(ERROR) << __func__ << ": exception:" << exception.what();
+    return false;
+  } catch (const winrt::hresult_error &ex) {
+    NEARBY_LOGS(ERROR) << __func__ << ": exception:" << ex.code() << ": "
+                       << winrt::to_string(ex.message());
+    return false;
+  } catch (...) {
+    NEARBY_LOGS(ERROR) << __func__ << ": unknown error.";
+    return false;
+  }
+}
+
+// Returns true if the Bluetooth hardware supports BLE
+bool BluetoothAdapter::IsLowEnergySupported() const {
+  if (windows_bluetooth_adapter_ == nullptr) {
+    NEARBY_LOGS(ERROR) << __func__ << ": No Bluetooth adapter on this device.";
+    return false;
+  }
+  try {
+    // Indicates whether the adapter supports BLE
+    // https://learn.microsoft.com/en-us/uwp/api/windows.devices.bluetooth.bluetoothadapter.islowenergysupported?view=winrt-22621
+    return windows_bluetooth_adapter_.IsLowEnergySupported();
+  } catch (std::exception exception) {
+    NEARBY_LOGS(ERROR) << __func__ << ": exception:" << exception.what();
+    return false;
+  } catch (const winrt::hresult_error &ex) {
+    NEARBY_LOGS(ERROR) << __func__ << ": exception:" << ex.code() << ": "
+                       << winrt::to_string(ex.message());
+    return false;
+  } catch (...) {
+    NEARBY_LOGS(ERROR) << __func__ << ": unknown error.";
+    return false;
+  }
+}
+
 // https://developer.android.com/reference/android/bluetooth/BluetoothAdapter.html#getScanMode()
 //
 // Returns ScanMode::kUnknown on error.
@@ -342,14 +413,15 @@ std::string BluetoothAdapter::GetName() const {
     return *device_name_;
   }
 
-  char *_instance_id = GetGenericBluetoothAdapterInstanceID();
-  if (_instance_id == nullptr) {
+  std::optional<std::string> adapter_instance_id =
+      GetGenericBluetoothAdapterInstanceID();
+  if (!adapter_instance_id.has_value()) {
     NEARBY_LOGS(ERROR)
         << __func__ << ": Failed to get Generic Bluetooth Adapter InstanceID";
     return std::string();
   }
 
-  std::string instance_id(_instance_id);
+  std::string instance_id = *adapter_instance_id;
 
   // Change radio module local name in registry
   HKEY hKey;
@@ -435,13 +507,16 @@ bool BluetoothAdapter::SetName(absl::string_view name, bool persist) {
     return true;
   }
 
-  std::string instance_id(GetGenericBluetoothAdapterInstanceID());
+  std::optional<std::string> adapter_instance_id =
+      GetGenericBluetoothAdapterInstanceID();
 
-  if (instance_id.empty()) {
+  if (!adapter_instance_id.has_value()) {
     NEARBY_LOGS(ERROR)
         << __func__ << ": Failed to get Generic Bluetooth Adapter InstanceID";
     return false;
   }
+
+  std::string instance_id = *adapter_instance_id;
   // defined in usbiodef.h
   const GUID guid = GUID_DEVINTERFACE_USB_DEVICE;
 
@@ -697,7 +772,8 @@ void BluetoothAdapter::find_and_replace(char *source, const char *strFind,
   memcpy(source, s.c_str(), s.size());
 }
 
-char *BluetoothAdapter::GetGenericBluetoothAdapterInstanceID(void) const {
+std::optional<std::string>
+BluetoothAdapter::GetGenericBluetoothAdapterInstanceID() const {
   unsigned i;
   CONFIGRET r;
   HDEVINFO hDevInfo;
@@ -715,7 +791,7 @@ char *BluetoothAdapter::GetGenericBluetoothAdapterInstanceID(void) const {
   if (hDevInfo == INVALID_HANDLE_VALUE) {
     NEARBY_LOGS(ERROR) << __func__
                        << ": Could not find BluetoothDevice on this machine";
-    return NULL;
+    return std::nullopt;
   }
 
   // Get first Generic Bluetooth Adapter InstanceID
@@ -741,14 +817,15 @@ char *BluetoothAdapter::GetGenericBluetoothAdapterInstanceID(void) const {
     // computer's USB ports.
     // https://docs.microsoft.com/en-us/windows-hardware/drivers/bluetooth/bluetooth-host-radio-support
     if (strncmp("USB", deviceInstanceID, 3) == 0) {
-      return deviceInstanceID;
+      SetupDiDestroyDeviceInfoList(hDevInfo);
+      return std::string(deviceInstanceID);
     }
   }
 
   NEARBY_LOGS(ERROR) << __func__
                      << ": Failed to get the generic bluetooth adapter id";
-
-  return NULL;
+  SetupDiDestroyDeviceInfoList(hDevInfo);
+  return std::nullopt;
 }
 
 // Returns BT MAC address assigned to this adapter.

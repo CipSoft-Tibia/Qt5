@@ -104,6 +104,10 @@
     specified where the function or method is declared in a header file)
     appearing after a \l {a-command}{\\a} command.
 
+    This requirement is not imposed for function overload documentation,
+    provided that the overload is marked with the \qdoccmd overload command
+    and a fully-documented function with the same name exists.
+
     \section1 No such parameter
 
     QDoc issues this warning when the parameter name given after an
@@ -119,25 +123,26 @@
     that contains character escape sequences, you should enclose the
     code in \\c{...} to prevent this warning against the escape sequences.
 
-    \section1 Clang couldn't find function when parsing \\fn <signature>
+    \section1 Failed to find function when parsing \\fn <signature>
 
-    When Clang parses a function statement after \l {fn-command}{\\fn}, it checks
-    this against the declaration in the header file.  If Clang
+    When Clang parses a function signature following an \qdoccmd fn command,
+    it checks this against the declaration in the header file. If Clang
     discovers discrepancies, it issues this warning message.
 
-    \section1 C++ class <ClassName> not found: \\instantiates <ClassName>
+    The signature must be fully qualified. Typical issues include missing or
+    incorrect template arguments, return type, or qualifiers such as
+    \e const.
 
-    If you describe a QML type, you may specify the class it instantiates.
-    Refer to the \l{instantiates-command}{\\instantiates} command in the
-    \l {QDoc manual}.
+    \note The \c{\fn} signature for a \e {hidden friend} should be
+          fully qualified with the scope of the class that declares
+          the function.
 
-    QDoc issues this warning if it failed to locate the documentation for the
-     C++ class <ClassName>. Either the class is undocumented, it is marked
-    \l {internal-command}{\\internal}, or it originates from another
-    documentation module and QDoc did not locate an index file for the
-    corresponding dependency.
+    \section1 QML type <TypeName> documented with <ClassName> as its native type. Replacing <ClassName> with <OtherClass>
+    If the \qdoccmd nativetype command is used with the same argument in
+    multiple QML type documentation comments that belong to the same
+    documentation project, QDoc issues this warning. To resolve this, ensure
+    that you use the \c {\nativetype} command only once for each C++ class.
 
-    See also \l {depends-variable}{depends}.
 
     \section1 Cannot tie this documentation to anything
 
@@ -180,23 +185,6 @@
 
     See also \l {depends-variable}{depends} and {indexes-variable}{indexes}.
 
-    \section1 Clang couldn't find function when parsing \\fn <signature>
-
-    When parsing a \l {fn-command}{\\fn} statement, Clang compares this with the
-    function declaration in the header file. If the signature differs
-    Clang issues this warning.
-
-    \note
-    \list
-        \li A member of a class or namespace needs to include the class or namespace
-            prefix on the member name.
-        \li A \\fn with no return type matches, regardless of the actual return
-            type, but if it specifies an incorrect return type, it doesn't.
-        \li Differences in \\fn's parameter names don't preclude matching, although
-            the \l {a-command}{\\a} commands in the comment must use the names in the declaration.
-
-    \endlist
-
     \section1 Has no \\inmodule command
 
     QDoc issues this warning if the QDoc comments do not relate
@@ -230,7 +218,7 @@
         \li <name> having moved to another namespace or class
     \endlist
 
-    \section1 Unrecognizable QML module/component qualifier for <identifier>
+    \section1 Unrecognizable QML module/type qualifier for <identifier>
 
     A parameter passed to \l {qmlproperty-command}{\\qmlproperty} or
     \l {qmlmethod-command}{\\qmlmethod} contains a combination of
@@ -238,7 +226,7 @@
 
     Example:
     \badcode
-    Unrecognizable QML module/component qualifier for real QtQuick::DragHandler::DragAxis::minimum
+    Unrecognizable QML module/type qualifier for real QtQuick::DragHandler::DragAxis::minimum
     \endcode
 
     DragHandler doesn't have a property called DragAxis.
@@ -321,10 +309,10 @@
         \inherits Foo
     \endcode
 
-    \section1 \\instantiates is only allowed in \\qmltype
+    \section1 \\nativetype is only allowed in \\qmltype
 
-    The \l{instantiates-command}{\\instantiates} command can only be used in a QDoc comment
-    that documents a QML type.
+    The \l{nativetype-command}{\\nativetype} command can only be used in a QDoc
+    comment that documents a QML type.
 
     \section1 All properties in a group must belong to the same type: <name>
 
@@ -529,26 +517,16 @@
     did not include one for \l {enum-command}{<enum>}, which is named in the
     declaration of <enum list> in the header file.
 
-    \section1 Failed to find index: <filename>
+    \section1 Failed to find qhp.<project>.subprojects.<subproject>.indexTitle
 
-    Example:
+    QDoc failed to find a title for a page designated as the index page
+    for <subproject> in the Qt help project configuration.
 
-    \badcode
-    Failed to find index: path/to/QtCrator/appmanplugin/manual.index
-    \endcode
+    Subproject index titles must be local to the current documentation project.
+    Using a page title from another project, loaded as a dependency, also
+    results in this warning.
 
-    In this case, it clearly means the indexes variable contains a
-    typo in the path of the index file.
-
-    Incorrect:
-      \badcode
-      indexes += path/to/QtCrator/appmanplugin/manual.index
-      \endcode
-
-    Correct:
-      \badcode
-      indexes += path/to/QtCreator/appmanplugin/manual.index
-      \endcode
+    For more information, see \l {Creating Help Project Files}.
 
     \section1 \\generatelist <group> is empty
 
@@ -623,14 +601,14 @@
     Incorrect:
       \badcode
       \qmltype ItemSelectionModel
-      \instantiates QItemSelectionModel
+      \nativetype QItemSelectionModel
       \since 5.5
       \ingroup qtquick-models
       \endcode
     Correct:
       \badcode
       \qmltype ItemSelectionModel
-      \instantiates QItemSelectionModel
+      \nativetype QItemSelectionModel
       \inqmlmodule QtQml.Models
       \since 5.5
       \ingroup qtquick-models
@@ -841,4 +819,13 @@
     unconditionally warn about all such events. This may be useful when tracking
     down the offending definitions.
 
+    \section1 Invalid QML property type
+
+    The type used to declare a QML property was not a valid
+    \l{QML Value Types}{QML value type} or \l{QML Object Types}{QML object type},
+    or it was a C++ or Qt type.
+
+    This warning typically occurs when developers refer to the underlying Qt
+    type used to implement a QML type, such as QStringList instead of
+    \c{list<string>}.
 */

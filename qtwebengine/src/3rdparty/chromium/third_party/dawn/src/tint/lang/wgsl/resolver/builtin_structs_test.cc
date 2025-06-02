@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/resolver.h"
 #include "src/tint/lang/wgsl/resolver/resolver_helper_test.h"
@@ -25,10 +38,10 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // access
 ////////////////////////////////////////////////////////////////////////////////
-using ResolverBuiltinStructs = ResolverTestWithParam<core::Builtin>;
+using ResolverBuiltinStructs = ResolverTestWithParam<core::BuiltinType>;
 
 TEST_P(ResolverBuiltinStructs, Resolve) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     // var<private> p : NAME;
     auto* var = GlobalVar("p", ty(GetParam()), core::AddressSpace::kPrivate);
@@ -42,32 +55,32 @@ TEST_P(ResolverBuiltinStructs, Resolve) {
 
 INSTANTIATE_TEST_SUITE_P(,
                          ResolverBuiltinStructs,
-                         testing::Values(core::Builtin::kAtomicCompareExchangeResultI32,
-                                         core::Builtin::kAtomicCompareExchangeResultU32,
-                                         core::Builtin::kFrexpResultAbstract,
-                                         core::Builtin::kFrexpResultF16,
-                                         core::Builtin::kFrexpResultF32,
-                                         core::Builtin::kFrexpResultVec2Abstract,
-                                         core::Builtin::kFrexpResultVec2F16,
-                                         core::Builtin::kFrexpResultVec2F32,
-                                         core::Builtin::kFrexpResultVec3Abstract,
-                                         core::Builtin::kFrexpResultVec3F16,
-                                         core::Builtin::kFrexpResultVec3F32,
-                                         core::Builtin::kFrexpResultVec4Abstract,
-                                         core::Builtin::kFrexpResultVec4F16,
-                                         core::Builtin::kFrexpResultVec4F32,
-                                         core::Builtin::kModfResultAbstract,
-                                         core::Builtin::kModfResultF16,
-                                         core::Builtin::kModfResultF32,
-                                         core::Builtin::kModfResultVec2Abstract,
-                                         core::Builtin::kModfResultVec2F16,
-                                         core::Builtin::kModfResultVec2F32,
-                                         core::Builtin::kModfResultVec3Abstract,
-                                         core::Builtin::kModfResultVec3F16,
-                                         core::Builtin::kModfResultVec3F32,
-                                         core::Builtin::kModfResultVec4Abstract,
-                                         core::Builtin::kModfResultVec4F16,
-                                         core::Builtin::kModfResultVec4F32));
+                         testing::Values(core::BuiltinType::kAtomicCompareExchangeResultI32,
+                                         core::BuiltinType::kAtomicCompareExchangeResultU32,
+                                         core::BuiltinType::kFrexpResultAbstract,
+                                         core::BuiltinType::kFrexpResultF16,
+                                         core::BuiltinType::kFrexpResultF32,
+                                         core::BuiltinType::kFrexpResultVec2Abstract,
+                                         core::BuiltinType::kFrexpResultVec2F16,
+                                         core::BuiltinType::kFrexpResultVec2F32,
+                                         core::BuiltinType::kFrexpResultVec3Abstract,
+                                         core::BuiltinType::kFrexpResultVec3F16,
+                                         core::BuiltinType::kFrexpResultVec3F32,
+                                         core::BuiltinType::kFrexpResultVec4Abstract,
+                                         core::BuiltinType::kFrexpResultVec4F16,
+                                         core::BuiltinType::kFrexpResultVec4F32,
+                                         core::BuiltinType::kModfResultAbstract,
+                                         core::BuiltinType::kModfResultF16,
+                                         core::BuiltinType::kModfResultF32,
+                                         core::BuiltinType::kModfResultVec2Abstract,
+                                         core::BuiltinType::kModfResultVec2F16,
+                                         core::BuiltinType::kModfResultVec2F32,
+                                         core::BuiltinType::kModfResultVec3Abstract,
+                                         core::BuiltinType::kModfResultVec3F16,
+                                         core::BuiltinType::kModfResultVec3F32,
+                                         core::BuiltinType::kModfResultVec4Abstract,
+                                         core::BuiltinType::kModfResultVec4F16,
+                                         core::BuiltinType::kModfResultVec4F32));
 
 }  // namespace
 }  // namespace tint::resolver

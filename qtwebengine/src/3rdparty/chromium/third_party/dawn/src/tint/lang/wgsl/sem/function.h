@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0(the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_SEM_FUNCTION_H_
 #define SRC_TINT_LANG_WGSL_SEM_FUNCTION_H_
@@ -35,7 +48,7 @@ class LocationAttribute;
 class ReturnStatement;
 }  // namespace tint::ast
 namespace tint::sem {
-class Builtin;
+class BuiltinFn;
 class Variable;
 }  // namespace tint::sem
 
@@ -86,11 +99,11 @@ class Function final : public Castable<Function, CallTarget> {
     }
 
     /// Records that this function directly references the given global variable.
-    /// Note: Implicitly adds this global to the transtively-called globals.
+    /// Note: Implicitly adds this global to the transitively-called globals.
     /// @param global the module-scope variable
     void AddDirectlyReferencedGlobal(const sem::GlobalVariable* global) {
         directly_referenced_globals_.Add(global);
-        transitively_referenced_globals_.Add(global);
+        AddTransitivelyReferencedGlobal(global);
     }
 
     /// @returns all transitively referenced global variables
@@ -101,9 +114,7 @@ class Function final : public Castable<Function, CallTarget> {
     /// Records that this function transitively references the given global
     /// variable.
     /// @param global the module-scoped variable
-    void AddTransitivelyReferencedGlobal(const sem::GlobalVariable* global) {
-        transitively_referenced_globals_.Add(global);
-    }
+    void AddTransitivelyReferencedGlobal(const sem::GlobalVariable* global);
 
     /// @returns the list of functions that this function transitively calls.
     const UniqueVector<const Function*, 8>& TransitivelyCalledFunctions() const {
@@ -117,13 +128,13 @@ class Function final : public Castable<Function, CallTarget> {
     }
 
     /// @returns the list of builtins that this function directly calls.
-    const UniqueVector<const Builtin*, 4>& DirectlyCalledBuiltins() const {
+    const UniqueVector<const BuiltinFn*, 4>& DirectlyCalledBuiltins() const {
         return directly_called_builtins_;
     }
 
     /// Records that this function transitively calls `builtin`.
     /// @param builtin the builtin this function directly calls
-    void AddDirectlyCalledBuiltin(const Builtin* builtin) {
+    void AddDirectlyCalledBuiltin(const BuiltinFn* builtin) {
         directly_called_builtins_.Add(builtin);
     }
 
@@ -131,9 +142,10 @@ class Function final : public Castable<Function, CallTarget> {
     /// that this function uses (directly or indirectly). These can only
     /// be parameters to this function or global variables. Uniqueness is
     /// ensured by texture_sampler_pairs_ being a UniqueVector.
-    /// @param texture the texture (must be non-null)
+    /// @param texture the texture (null indicates a sampler-only reference)
     /// @param sampler the sampler (null indicates a texture-only reference)
     void AddTextureSamplerPair(const sem::Variable* texture, const sem::Variable* sampler) {
+        TINT_ASSERT(texture || sampler);
         texture_sampler_pairs_.Add(VariablePair(texture, sampler));
     }
 
@@ -266,12 +278,12 @@ class Function final : public Castable<Function, CallTarget> {
     /// Modifies the severity of a specific diagnostic rule for this function.
     /// @param rule the diagnostic rule
     /// @param severity the new diagnostic severity
-    void SetDiagnosticSeverity(core::DiagnosticRule rule, core::DiagnosticSeverity severity) {
+    void SetDiagnosticSeverity(wgsl::DiagnosticRule rule, wgsl::DiagnosticSeverity severity) {
         diagnostic_severities_[rule] = severity;
     }
 
     /// @returns the diagnostic severity modifications applied to this function
-    const core::DiagnosticRuleSeverities& DiagnosticSeverities() const {
+    const wgsl::DiagnosticRuleSeverities& DiagnosticSeverities() const {
         return diagnostic_severities_;
     }
 
@@ -288,14 +300,14 @@ class Function final : public Castable<Function, CallTarget> {
     UniqueVector<const GlobalVariable*, 4> directly_referenced_globals_;
     UniqueVector<const GlobalVariable*, 8> transitively_referenced_globals_;
     UniqueVector<const Function*, 8> transitively_called_functions_;
-    UniqueVector<const Builtin*, 4> directly_called_builtins_;
+    UniqueVector<const BuiltinFn*, 4> directly_called_builtins_;
     UniqueVector<VariablePair, 8> texture_sampler_pairs_;
     std::vector<const Call*> direct_calls_;
     std::vector<const Call*> callsites_;
     std::vector<const Function*> ancestor_entry_points_;
     const Statement* discard_stmt_ = nullptr;
     sem::Behaviors behaviors_{sem::Behavior::kNext};
-    core::DiagnosticRuleSeverities diagnostic_severities_;
+    wgsl::DiagnosticRuleSeverities diagnostic_severities_;
 
     std::optional<uint32_t> return_location_;
     std::optional<uint32_t> return_index_;

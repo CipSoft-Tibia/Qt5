@@ -137,6 +137,10 @@ void QIconLoader::invalidateKey()
     // recreating the actual engine the next time the icon is used.
     // We don't need to clear the QIcon cache itself.
     m_themeKey++;
+
+    // invalidating the factory results in us looking once for
+    // a plugin that provides icon for the new themeName()
+    m_factory = std::nullopt;
 }
 
 QString QIconLoader::themeName() const
@@ -650,7 +654,18 @@ QIconEngine *QIconLoader::iconEngine(const QString &iconName) const
     qCDebug(lcIconLoader) << "Resolving icon engine for icon" << iconName;
 
     std::unique_ptr<QIconEngine> iconEngine;
-    if (hasUserTheme())
+
+    if (!m_factory) {
+        qCDebug(lcIconLoader) << "Finding a plugin for theme" << themeName();
+        // try to find a plugin that supports the current theme
+        const int factoryIndex = qt_iconEngineFactoryLoader()->indexOf(themeName());
+        if (factoryIndex >= 0)
+            m_factory = qobject_cast<QIconEnginePlugin *>(qt_iconEngineFactoryLoader()->instance(factoryIndex));
+    }
+    if (m_factory && *m_factory)
+        iconEngine.reset(m_factory.value()->create(iconName));
+
+    if (hasUserTheme() && (!iconEngine || iconEngine->isNull()))
         iconEngine.reset(new QIconLoaderEngine(iconName));
     if (!iconEngine || iconEngine->isNull()) {
         qCDebug(lcIconLoader) << "Icon is not available from theme or fallback theme.";
@@ -885,7 +900,7 @@ QSize QIconLoaderEngine::actualSize(const QSize &size, QIcon::Mode mode,
     return QSize(0, 0);
 }
 
-QPixmap PixmapEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
+QPixmap PixmapEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
 {
     Q_UNUSED(state);
 
@@ -894,18 +909,17 @@ QPixmap PixmapEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State st
     if (basePixmap.isNull())
         basePixmap.load(filename);
 
-    QSize actualSize = basePixmap.size();
     // If the size of the best match we have (basePixmap) is larger than the
     // requested size, we downscale it to match.
-    if (!actualSize.isNull() && (actualSize.width() > size.width() || actualSize.height() > size.height()))
-        actualSize.scale(size, Qt::KeepAspectRatio);
-
+    const auto actualSize = QPixmapIconEngine::adjustSize(size * scale, basePixmap.size());
+    const auto calculatedDpr = QIconPrivate::pixmapDevicePixelRatio(scale, size, actualSize);
     QString key = "$qt_theme_"_L1
-                  % HexString<qint64>(basePixmap.cacheKey())
-                  % HexString<int>(mode)
-                  % HexString<qint64>(QGuiApplication::palette().cacheKey())
-                  % HexString<int>(actualSize.width())
-                  % HexString<int>(actualSize.height());
+                  % HexString<quint64>(basePixmap.cacheKey())
+                  % HexString<quint8>(mode)
+                  % HexString<quint64>(QGuiApplication::palette().cacheKey())
+                  % HexString<uint>(actualSize.width())
+                  % HexString<uint>(actualSize.height())
+                  % HexString<quint16>(qRound(calculatedDpr * 1000));
 
     QPixmap cachedPixmap;
     if (QPixmapCache::find(key, &cachedPixmap)) {
@@ -917,32 +931,24 @@ QPixmap PixmapEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State st
             cachedPixmap = basePixmap;
         if (QGuiApplication *guiApp = qobject_cast<QGuiApplication *>(qApp))
             cachedPixmap = static_cast<QGuiApplicationPrivate*>(QObjectPrivate::get(guiApp))->applyQIconStyleHelper(mode, cachedPixmap);
+        cachedPixmap.setDevicePixelRatio(calculatedDpr);
         QPixmapCache::insert(key, cachedPixmap);
     }
     return cachedPixmap;
 }
 
-QPixmap ScalableEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state)
+QPixmap ScalableEntry::pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
 {
     if (svgIcon.isNull())
         svgIcon = QIcon(filename);
 
-    // Bypass QIcon API, as that will scale by device pixel ratio of the
-    // highest DPR screen since we're not passing on any QWindow.
-    if (QIconEngine *engine = svgIcon.data_ptr() ? svgIcon.data_ptr()->engine : nullptr)
-        return engine->pixmap(size, mode, state);
-
-    return QPixmap();
+    return svgIcon.pixmap(size, scale, mode, state);
 }
 
 QPixmap QIconLoaderEngine::pixmap(const QSize &size, QIcon::Mode mode,
                                  QIcon::State state)
 {
-    QIconLoaderEngineEntry *entry = entryForSize(m_info, size);
-    if (entry)
-        return entry->pixmap(size, mode, state);
-
-    return QPixmap();
+    return scaledPixmap(size, mode, state, 1.0);
 }
 
 QString QIconLoaderEngine::key() const
@@ -963,8 +969,8 @@ bool QIconLoaderEngine::isNull()
 QPixmap QIconLoaderEngine::scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale)
 {
     const int integerScale = qCeil(scale);
-    QIconLoaderEngineEntry *entry = entryForSize(m_info, size / integerScale, integerScale);
-    return entry ? entry->pixmap(size, mode, state) : QPixmap();
+    QIconLoaderEngineEntry *entry = entryForSize(m_info, size, integerScale);
+    return entry ? entry->pixmap(size, mode, state, scale) : QPixmap();
 }
 
 QList<QSize> QIconLoaderEngine::availableSizes(QIcon::Mode mode, QIcon::State state)

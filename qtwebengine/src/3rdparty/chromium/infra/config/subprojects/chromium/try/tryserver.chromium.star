@@ -7,6 +7,7 @@ load("//lib/branches.star", "branches")
 load("//lib/builders.star", "cpu", "os", "reclient")
 load("//lib/try.star", "try_")
 load("//lib/consoles.star", "consoles")
+load("//lib/gn_args.star", "gn_args")
 
 try_.defaults.set(
     executable = try_.DEFAULT_EXECUTABLE,
@@ -36,16 +37,15 @@ try_.builder(
     mirrors = [
         "ci/android-official",
     ],
-    ssd = True,
-)
-
-try_.builder(
-    name = "fuchsia-official",
-    branch_selector = branches.selector.FUCHSIA_BRANCHES,
-    mirrors = [
-        "ci/fuchsia-official",
-    ],
-    ssd = True,
+    gn_args = gn_args.config(
+        configs = [
+            "ci/android-official",
+            # TODO(crbug.com/1517934): Restore DCHECKs when the build is fixed.
+            #"dcheck_always_on",
+        ],
+    ),
+    builderless = False,
+    contact_team_email = "clank-engprod@google.com",
 )
 
 try_.builder(
@@ -54,6 +54,9 @@ try_.builder(
     mirrors = [
         "ci/linux-official",
     ],
+    gn_args = gn_args.config(
+        configs = ["ci/linux-official", "try_builder"],
+    ),
     ssd = True,
 )
 
@@ -63,6 +66,13 @@ try_.builder(
     mirrors = [
         "ci/mac-official",
     ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/mac-official",
+            "minimal_symbols",
+            "dcheck_always_on",
+        ],
+    ),
     builderless = False,
     cores = None,
     os = os.MAC_ANY,
@@ -78,6 +88,12 @@ try_.builder(
     mirrors = [
         "ci/win-official",
     ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-official",
+            "dcheck_always_on",
+        ],
+    ),
     os = os.WINDOWS_DEFAULT,
     execution_timeout = 6 * time.hour,
 )
@@ -88,6 +104,13 @@ try_.builder(
     mirrors = [
         "ci/win32-official",
     ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win32-official",
+            "minimal_symbols",
+            "dcheck_always_on",
+        ],
+    ),
     os = os.WINDOWS_DEFAULT,
     execution_timeout = 6 * time.hour,
 )

@@ -47,6 +47,10 @@ extern const base::FeatureParam<std::string> kForYouFreStudyGroup;
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 #endif  // !BUILDFLAG(IS_CHROMEOS_ASH) && !BUILDFLAG(IS_ANDROID)
 
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+BASE_DECLARE_FEATURE(kStableDeviceId);
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+
 BASE_DECLARE_FEATURE(kProcessGaiaRemoveLocalAccountHeader);
 
 BASE_DECLARE_FEATURE(kShowEnterpriseDialogForAllManagedAccountsSignin);
@@ -60,13 +64,8 @@ BASE_DECLARE_FEATURE(kVerifyRequestInitiatorForMirrorHeaders);
 BASE_DECLARE_FEATURE(kProfilesReordering);
 
 BASE_DECLARE_FEATURE(kForceSigninFlowInProfilePicker);
-
-// Used in Profile Picker signin in flow. Do not show outbound links that will
-// lead to opening a browser by displaying the embedded version of the page.
-BASE_DECLARE_FEATURE(kGaiaSigninUrlEmbedded);
-
-#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
-BASE_DECLARE_FEATURE(kEnableBoundSessionCredentialsOnDiceProfiles);
-#endif
+// Default value is false, and the URL used would be /AccountChooser.
+extern const base::FeatureParam<bool>
+    kForceSigninReauthInProfilePickerUseAddSession;
 
 #endif  // CHROME_BROWSER_SIGNIN_SIGNIN_FEATURES_H_

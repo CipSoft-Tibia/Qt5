@@ -41,7 +41,7 @@ using namespace Qt::StringLiterals;
 
 /*!
     \qmltype TextEdit
-    \instantiates QQuickTextEdit
+    \nativetype QQuickTextEdit
     \inqmlmodule QtQuick
     \ingroup qtquick-visual
     \ingroup qtquick-input
@@ -373,6 +373,20 @@ QString QQuickTextEdit::text() const
     \since 6.6
 
     \include qquicktext.cpp qml-font-features
+*/
+
+/*!
+    \qmlproperty bool QtQuick::TextEdit::font.contextFontMerging
+    \since 6.8
+
+    \include qquicktext.cpp qml-font-context-font-merging
+*/
+
+/*!
+    \qmlproperty bool QtQuick::TextEdit::font.preferTypoLineMetrics
+    \since 6.8
+
+    \include qquicktext.cpp qml-font-prefer-typo-line-metrics
 */
 
 /*!
@@ -2436,8 +2450,8 @@ QTextDocument *QQuickTextEdit::document() const
 void QQuickTextEdit::setDocument(QTextDocument *doc)
 {
     Q_D(QQuickTextEdit);
-    if (d->ownsDocument)
-        delete d->document;
+    // do not delete the owned document till after control has been updated
+    std::unique_ptr<QTextDocument> cleanup(d->ownsDocument ? d->document : nullptr);
     d->document = doc;
     d->ownsDocument = false;
     d->control->setDocument(doc);
@@ -2857,6 +2871,7 @@ void QQuickTextEditPrivate::init()
     QObject::connect(control, &QQuickTextControl::linkHovered, q, &QQuickTextEdit::q_linkHovered);
     QObject::connect(control, &QQuickTextControl::markerHovered, q, &QQuickTextEdit::q_markerHovered);
 
+    document->setPageSize(QSizeF(0, 0));
     document->setDefaultFont(font);
     document->setDocumentMargin(textMargin);
     document->setUndoRedoEnabled(false); // flush undo buffer.
@@ -2867,7 +2882,7 @@ void QQuickTextEditPrivate::init()
 #if QT_CONFIG(cursor)
     updateMouseCursorShape();
 #endif
-    setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Preferred);
+    setSizePolicy(QLayoutPolicy::Expanding, QLayoutPolicy::Expanding);
 }
 
 void QQuickTextEditPrivate::resetInputMethod()
@@ -3096,7 +3111,16 @@ void QQuickTextEdit::updateSize()
 
     d->xoff = leftPadding() + qMax(qreal(0), QQuickTextUtil::alignedX(d->document->size().width(), width() - leftPadding() - rightPadding(), effectiveHAlign()));
     d->yoff = topPadding() + QQuickTextUtil::alignedY(d->document->size().height(), height() - topPadding() - bottomPadding(), d->vAlign);
-    setBaselineOffset(fm.ascent() + d->yoff + d->textMargin);
+
+    qreal baseline = fm.ascent();
+    QTextBlock firstBlock = d->document->firstBlock();
+    if (firstBlock.isValid() && firstBlock.layout() != nullptr && firstBlock.lineCount() > 0) {
+        QTextLine firstLine = firstBlock.layout()->lineAt(0);
+        if (firstLine.isValid())
+            baseline = firstLine.ascent();
+    }
+
+    setBaselineOffset(baseline + d->yoff + d->textMargin);
 
     QSizeF size(newWidth, newHeight);
     if (d->contentSize != size) {

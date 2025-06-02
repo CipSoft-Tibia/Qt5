@@ -46,16 +46,11 @@
 #include "net/url_request/url_request_job_factory.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
-namespace base::android {
-class ApplicationStatusListener;
-}  // namespace base::android
-
 namespace net {
 
 class CertVerifier;
 class ClientSocketFactory;
 class CookieStore;
-class CTPolicyEnforcer;
 class HttpAuthHandlerFactory;
 class HttpTransactionFactory;
 class HttpUserAgentSettings;
@@ -130,8 +125,7 @@ class NET_EXPORT URLRequestContextBuilder {
 #if BUILDFLAG(IS_ANDROID)
     // If this is set, will override the default ApplicationStatusListener. This
     // is useful if the cache will not be in the main process.
-    raw_ptr<base::android::ApplicationStatusListener> app_status_listener =
-        nullptr;
+    disk_cache::ApplicationStatusListenerGetter app_status_listener_getter;
 #endif
   };
 
@@ -286,8 +280,6 @@ class NET_EXPORT URLRequestContextBuilder {
     throttling_enabled_ = throttling_enabled;
   }
 
-  void set_ct_policy_enforcer(
-      std::unique_ptr<CTPolicyEnforcer> ct_policy_enforcer);
   void set_sct_auditing_delegate(
       std::unique_ptr<SCTAuditingDelegate> sct_auditing_delegate);
   void set_quic_context(std::unique_ptr<QuicContext> quic_context);
@@ -439,8 +431,7 @@ class NET_EXPORT URLRequestContextBuilder {
   raw_ptr<NetLog> net_log_ = nullptr;
   std::unique_ptr<HostResolver> host_resolver_;
   std::string host_mapping_rules_;
-  raw_ptr<HostResolverManager, DanglingUntriaged> host_resolver_manager_ =
-      nullptr;
+  raw_ptr<HostResolverManager> host_resolver_manager_ = nullptr;
   raw_ptr<HostResolver::Factory> host_resolver_factory_ = nullptr;
   std::unique_ptr<ProxyConfigService> proxy_config_service_;
   bool pac_quick_check_enabled_ = true;
@@ -451,7 +442,6 @@ class NET_EXPORT URLRequestContextBuilder {
   std::unique_ptr<CookieStore> cookie_store_;
   std::unique_ptr<HttpAuthHandlerFactory> http_auth_handler_factory_;
   std::unique_ptr<CertVerifier> cert_verifier_;
-  std::unique_ptr<CTPolicyEnforcer> ct_policy_enforcer_;
   std::unique_ptr<SCTAuditingDelegate> sct_auditing_delegate_;
   std::unique_ptr<QuicContext> quic_context_;
   std::unique_ptr<ClientSocketFactory> client_socket_factory_ = nullptr;

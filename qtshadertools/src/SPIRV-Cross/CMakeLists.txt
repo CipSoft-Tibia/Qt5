@@ -27,6 +27,8 @@ qt_internal_add_3rdparty_library(BundledSpirv_Cross
         SPIRV_CROSS_C_API_GLSL=1
         SPIRV_CROSS_C_API_HLSL=1
         SPIRV_CROSS_C_API_MSL=1
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../3rdparty/SPIRV-Cross
 )
 qt_disable_warnings(BundledSpirv_Cross)
 qt_set_symbol_visibility_hidden(BundledSpirv_Cross)

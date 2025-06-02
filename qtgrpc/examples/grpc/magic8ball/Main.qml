@@ -1,239 +1,119 @@
-// Copyright (C) 2023 The Qt Company Ltd.
+// Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
 import QtGrpc
 import QtQuick.Controls
-import QtQuick.Controls.Material
-import QtQuick.Shapes
+import QtQuick.Layouts
 
 import qtgrpc.examples
 import qtgrpc.examples.magic8ball
 
 ApplicationWindow {
     id: root
-    width: 665
-    height: width
 
-    minimumWidth: width
-    minimumHeight: height
+    property answerRequest answerReq
+    property string errorText: ""
+    property int errorCode: 0
+
+//! [requestAnswerFunction]
+    function requestAnswer(question: string): void {
+//! [requestAnswerFunction]
+        root.errorText = "";
+        magicBall.startWaiting();
+
+//! [requestAnswerFunctionBody]
+        root.answerReq.question = question;
+        grpcClient.answerMethod(root.answerReq, finishCallback, errorCallback, grpcCallOptions);
+    }
+//! [requestAnswerFunctionBody]
+
+    function finishCallback(response: answerResponse): void {
+        magicBall.addAnswer(response.message);
+    }
+
+    function errorCallback(error): void {
+        // error is received as a JavaScript object, but it is a QGrpcStatus instance
+        magicBall.cancelAnimation();
+        console.log(
+            `Error callback executed. Error message: "${error.message}" Code: ${error.code}`
+        );
+        root.errorText = error.message;
+        root.errorCode = error.code;
+    }
+
+    minimumWidth: rootLayout.implicitWidth + rootLayout.anchors.margins * 2
+    minimumHeight: rootLayout.implicitHeight + rootLayout.anchors.margins * 2
 
     visible: true
     title: qsTr("Magic-8-ball Qt GRPC Example")
-    Material.theme: Material.Light
+    font.pointSize: 18
 
-    property string textAnswer: ""
-    property string textError: ""
-
-    property answerRequest _answerReq
-    property answerResponse _answerResp
-
-    property var setResponse: function(value) { root._answerResp = value }
-    property var errorCallback: function() { console.log("Error can be handled also here") }
-
-    MagicText {
-        anchors.top: parent.top
-        anchors.topMargin: 20
-        anchors.horizontalCenter: parent.horizontalCenter
-
-        width: parent.width * 0.9
-        height: parent.height/3
-
-        color: "black"
-
-        text: qsTr("For fortune-telling and seeking advice ask the ball"
-                   + " a yes-no question and press the button.")
+//! [channelOptions]
+    GrpcHttp2Channel {
+        id: grpcChannel
+        hostUri: "http://localhost:50051"
+        // Optionally, you can specify custom channel options here
+        // options: GrpcChannelOptions {}
     }
+//! [channelOptions]
 
-    Rectangle {
-        id: magic8ball
-
-        anchors.centerIn: parent
-
-        width: 433
-        height: width
-
-        color: "#000000"
-        radius: 300
-        gradient: Gradient {
-            orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: "#4b4b4b" }
-            GradientStop { position: 0.33; color: "#212121" }
-            GradientStop { position: 1.0; color: "#000000" }
-        }
-    }
-
-    Rectangle {
-
-        width: 244
-        height: width
-
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.horizontalCenterOffset: 6
-        radius: 300
-
-        color: "#bababa"
-    }
-
-    Rectangle {
-        id: magic8ballCenter
-
-        anchors.centerIn: parent
-
-        width: 244
-        height: width
-
-        color: "black"
-        border.width: 1.5
-        border.color: "#bababa"
-        radius: 300
-
-        Shape {
-            anchors.centerIn: parent
-            width: 200
-            height: 200
-            ShapePath {
-                strokeWidth: 4
-                strokeColor: "#213f94"
-                capStyle: ShapePath.RoundCap
-
-                fillGradient: RadialGradient {
-                    centerX: 100
-                    centerY: 100
-                    focalX: centerX
-                    focalY: centerY
-                    centerRadius: 50
-                    focalRadius: 0
-
-                    GradientStop { position: 0; color: "#1C2F60" }
-                    GradientStop { position: 0.5; color: "#000547" }
-                    GradientStop { position: 1; color: "#000324" }
-                }
-
-                startX: 10
-                startY: 40
-
-                PathLine { x: 100.5; y: 190 }
-                PathLine { x: 188; y: 40 }
-                PathLine { x: 10; y: 40 }
-            }
-        }
-    }
-
-    WaitingAnimation {
-        id: waitingAnimation
-        anchors.centerIn: parent
-
-        visible: false
-    }
-
-    AnimatedAnswer {
-        id: answer
-
-        anchors.centerIn: parent
-        visible: false
-    }
-
-    Connections {
-        target: grpcClient
-        function onErrorOccurred() {
-            root.textError = "No connection\nto\nserver"
-        }
-    }
-
-    Rectangle {
-        id: button
-
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 30
-        anchors.horizontalCenter: parent.horizontalCenter
-
-        width: 200
-        height: 50
-        radius: 10
-
-        color: handler.pressed ? "#a5a5a5" : "#bebebe"
-
-        MagicText {
-            id: btnText
-            anchors.centerIn: parent
-
-            text: qsTr("Ask question")
-            color: "black"
-        }
-
-        TapHandler {
-            id: handler
-
-            onTapped: animationTimeout.start()
-        }
-    }
-
-    Connections {
-        target: answer.closingAnimation
-        function onStopped()  {
-            answer.animationText = ""
-            answer.visible = false
-            waitingAnimation.visible = true
-            waitingAnimation.runAnimation = true
-        }
-    }
-
-    Connections {
-        target: waitingAnimation
-        function onRunAnimationChanged()  {
-            if (!waitingAnimation.runAnimation) {
-                answer.visible = true
-                answer.openingAnimation.start()
-            }
-        }
-    }
-
-    Timer {
-        id: animationTimeout
-
-        interval: 5000
-        repeat: false
-        running: false
-        onTriggered: root.textAnswer = _answerResp.message
-
-        onRunningChanged: {
-            if (running) {
-                root.textError = ""
-                answer.closingAnimation.start()
-                root.sendRequest()
-            } else {
-                waitingAnimation.runAnimation = false
-                waitingAnimation.visible = false
-                answer.animationText = root.textError === "" ? root.textAnswer : root.textError
-            }
-        }
-    }
-
-    function sendRequest()
-    {
-        grpcClient.answerMethod(_answerReq, setResponse, errorCallback)
-    }
-
-    footer: MagicText {
-        text: root.textError === "" ? "" : "Please, start server: ../magic8ball/SimpleGrpcServer"
-    }
-
+//! [exampleServiceClient]
     ExampleServiceClient {
         id: grpcClient
         channel: grpcChannel.channel
     }
+//! [exampleServiceClient]
 
-    GrpcHttp2Channel {
-        id: grpcChannel
-        options: GrpcChannelOptions {
-            id: channelOptions
-            host: "http://localhost:50051"
-        }
+//! [callOptions]
+    GrpcCallOptions {
+        id: grpcCallOptions
+        deadlineTimeout: 6000
     }
+//! [callOptions]
 
-    Component.onCompleted: {
-        _answerReq.message = "sleep"
+    ColumnLayout {
+        id: rootLayout
+        anchors.margins: 10
+        anchors.fill: parent
+        spacing: 12
+
+        MagicText {
+            color: "black"
+            text: qsTr("Ask the ball a yes-no question and press the button.")
+        }
+
+        MagicBall {
+            id: magicBall
+            Layout.alignment: Qt.AlignCenter
+        }
+
+        TextField {
+            id: questionInput
+            Layout.alignment: Qt.AlignCenter
+            Layout.minimumWidth: 300
+            leftPadding: 10
+            rightPadding: 10
+            placeholderText: qsTr("Type here a question...")
+        }
+
+        Button {
+            onClicked: root.requestAnswer(questionInput.text)
+            enabled: magicBall.canRequestAnswer
+            Layout.alignment: Qt.AlignCenter
+            leftPadding: 16
+            rightPadding: 16
+            text: qsTr("Ask")
+        }
+
+        MagicText {
+            visible: root.errorText
+            text:
+                qsTr("Error: %1\n%2")
+                .arg(root.errorText)
+                .arg(root.errorCode == QtGrpc.StatusCode.Unavailable
+                    ? qsTr("Please, restart the server")
+                    : "")
+        }
     }
 }

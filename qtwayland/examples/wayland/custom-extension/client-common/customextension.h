@@ -6,7 +6,7 @@
 
 #include <QtWaylandClient/QWaylandClientExtension>
 #include <QtGui/QWindow>
-#include <QtQml/QQmlEngine>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 #include "qwayland-custom.h"
 

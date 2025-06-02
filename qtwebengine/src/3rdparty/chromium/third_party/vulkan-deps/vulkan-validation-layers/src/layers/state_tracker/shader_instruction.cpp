@@ -17,6 +17,8 @@
 #include "state_tracker/shader_module.h"
 #include "generated/spirv_grammar_helper.h"
 
+namespace spirv {
+
 Instruction::Instruction(std::vector<uint32_t>::const_iterator it) {
     words_.emplace_back(*it++);
     words_.reserve(Length());
@@ -33,39 +35,65 @@ Instruction::Instruction(std::vector<uint32_t>::const_iterator it) {
     } else if (has_result) {
         result_id_index_ = 1;
     }
+
+#ifndef NDEBUG
+    d_opcode_ = std::string(string_SpvOpcode(Opcode()));
+    d_length_ = Length();
+    d_result_id_ = ResultId();
+    d_type_id_ = TypeId();
+    for (uint32_t i = 0; i < d_length_ && i < 12; i++) {
+        d_words_[i] = words_[i];
+    }
+#endif
 }
 
 std::string Instruction::Describe() const {
     std::ostringstream ss;
     const uint32_t opcode = Opcode();
+    const uint32_t length = Length();
+    const bool has_result = ResultId() != 0;
+    const bool has_type = TypeId() != 0;
     uint32_t operand_offset = 1;  // where to start printing operands
     // common disassembled for SPIR-V is
     // %result = Opcode %result_type %operands
-    if (OpcodeHasResult(opcode)) {
+    if (has_result) {
         operand_offset++;
-        ss << "%" << (OpcodeHasType(opcode) ? Word(2) : Word(1)) << " = ";
+        ss << "%" << (has_type ? Word(2) : Word(1)) << " = ";
     }
 
     ss << string_SpvOpcode(opcode);
 
-    if (OpcodeHasType(opcode)) {
+    if (has_type) {
         operand_offset++;
         ss << " %" << Word(1);
     }
 
-    // TODO - For now don't list the '%' for any operands since they are only for reference IDs. Without generating a table of each
-    // instructions operand types and covering the many edge cases (such as optional, paired, or variable operands) this is the
-    // simplest way to print the instruction and give the developer something to look into when an error occurs.
-    //
-    // For now this safely should be able to assume it will never come across a LiteralString such as in OpExtInstImport or
-    // OpEntryPoint
-    for (uint32_t i = operand_offset; i < Length(); i++) {
-        ss << " " << Word(i);
+    // Exception for some opcode
+    if (opcode == spv::OpEntryPoint) {
+        ss << " " << string_SpvExecutionModel(Word(1)) << " %" << Word(2) << " [Unknown]";
+    } else {
+        const OperandInfo& info = GetOperandInfo(opcode);
+        const uint32_t operands = static_cast<uint32_t>(info.types.size());
+        const uint32_t remaining_words = length - operand_offset;
+        for (uint32_t i = 0; i < remaining_words; i++) {
+            OperandKind kind = (i < operands) ? info.types[i] : info.types.back();
+            if (kind == OperandKind::LiteralString) {
+                ss << " [string]";
+                break;
+            }
+            ss << ((kind == OperandKind::Id) ? " %" : " ") << Word(operand_offset + i);
+        }
     }
+
     return ss.str();
 }
 
-// While simple, function name provides a more human readable description why Word(3) is used
+// While simple, function name provides a more human readable description why Word(3) is used.
+//
+// The current various uses for constant values (OpAccessChain, OpTypeArray, LocalSize, etc) all have spec langauge making sure they
+// are scalar ints. It is also not valid for any of these use cases to have a negative value. While it is valid SPIR-V to use 64-bit
+// int, found writting test there is no way to create something valid that also calls this function. So until a use-case is found,
+// we can safely assume returning a uint32_t is ok.
 uint32_t Instruction::GetConstantValue() const {
     // This should be a OpConstant (not a OpSpecConstant), if this asserts then 2 things are happening
     // 1. This function is being used where we don't actually know it is a constant and is a bug in the validation layers
@@ -99,25 +127,6 @@ uint32_t Instruction::GetBitWidth() const {
     return bit_width;
 }
 
-AtomicInstructionInfo Instruction::GetAtomicInfo(const SPIRV_MODULE_STATE& module_state) const {
-    AtomicInstructionInfo info;
-
-    // All atomics have a pointer referenced
-    const uint32_t pointer_index = Opcode() == spv::OpAtomicStore ? 1 : 3;
-    const Instruction* access = module_state.FindDef(Word(pointer_index));
-
-    // spirv-val will catch if not OpTypePointer
-    const Instruction* pointer = module_state.FindDef(access->Word(1));
-    info.storage_class = pointer->Word(2);
-
-    const Instruction* data_type = module_state.FindDef(pointer->Word(3));
-    info.type = data_type->Opcode();
-
-    info.bit_width = data_type->GetBitWidth();
-
-    return info;
-}
-
 spv::BuiltIn Instruction::GetBuiltIn() const {
     if (Opcode() == spv::OpDecorate) {
         return static_cast<spv::BuiltIn>(Word(3));
@@ -139,3 +148,24 @@ bool Instruction::IsImageMultisampled() const {
     // spirv-val makes sure that the MS operand is only non-zero when possible to be Multisampled
     return (Opcode() == spv::OpTypeImage) && (Word(6) != 0);
 }
+
+spv::StorageClass Instruction::StorageClass() const {
+    spv::StorageClass storage_class = spv::StorageClassMax;
+    switch (Opcode()) {
+        case spv::OpTypePointer:
+            storage_class = static_cast<spv::StorageClass>(Word(2));
+            break;
+        case spv::OpTypeForwardPointer:
+            storage_class = static_cast<spv::StorageClass>(Word(2));
+            break;
+        case spv::OpVariable:
+            storage_class = static_cast<spv::StorageClass>(Word(3));
+            break;
+
+        default:
+            break;
+    }
+    return storage_class;
+}
+
+}  // namespace spirv

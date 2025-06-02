@@ -132,8 +132,6 @@ Qt3DRRD::ImGuiRenderer::ImGuiRenderer(Qt3DRR::OpenGL::Renderer *renderer)
     ImGui::CreateContext();
 
     ImGuiIO &io = ImGui::GetIO();
-    for (ImGuiKey key : keyMap.values())
-        io.KeyMap[key] = key;
 
 #ifndef QT_NO_CLIPBOARD
     io.SetClipboardTextFn = [](void *user_data, const char *text) {
@@ -652,7 +650,7 @@ void Qt3DRRD::ImGuiRenderer::onKeyPressRelease(QKeyEvent *event)
 {
     ImGuiIO& io = ImGui::GetIO();
     if (keyMap.contains(event->key()))
-        io.KeysDown[keyMap[event->key()]] = event->type() == QEvent::KeyPress;
+        io.AddKeyEvent(keyMap[event->key()], event->type() == QEvent::KeyPress);
 
     if (event->type() == QEvent::KeyPress) {
         QString text = event->text();

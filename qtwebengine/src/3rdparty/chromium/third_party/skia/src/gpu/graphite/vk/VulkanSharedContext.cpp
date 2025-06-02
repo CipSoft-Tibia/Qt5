@@ -10,6 +10,8 @@
 #include "include/gpu/graphite/ContextOptions.h"
 #include "include/gpu/vk/VulkanBackendContext.h"
 #include "src/gpu/graphite/Log.h"
+#include "src/gpu/graphite/ResourceTypes.h"
+#include "src/gpu/graphite/vk/VulkanBuffer.h"
 #include "src/gpu/graphite/vk/VulkanCaps.h"
 #include "src/gpu/graphite/vk/VulkanResourceProvider.h"
 #include "src/gpu/vk/VulkanAMDMemoryAllocator.h"
@@ -79,11 +81,25 @@ sk_sp<SharedContext> VulkanSharedContext::Make(const VulkanBackendContext& conte
         return nullptr;
     }
 
-    std::unique_ptr<const VulkanCaps> caps(new VulkanCaps(interface.get(),
+    VkPhysicalDeviceFeatures2 features;
+    const VkPhysicalDeviceFeatures2* featuresPtr;
+    // If fDeviceFeatures2 is not null, then we ignore fDeviceFeatures. If both are null, we assume
+    // no features are enabled.
+    if (!context.fDeviceFeatures2 && context.fDeviceFeatures) {
+        features.pNext = nullptr;
+        features.features = *context.fDeviceFeatures;
+        featuresPtr = &features;
+    } else {
+        featuresPtr = context.fDeviceFeatures2;
+    }
+
+    std::unique_ptr<const VulkanCaps> caps(new VulkanCaps(options,
+                                                          interface.get(),
                                                           context.fPhysicalDevice,
                                                           physDevVersion,
+                                                          featuresPtr,
                                                           context.fVkExtensions,
-                                                          options));
+                                                          context.fProtectedContext));
 
     sk_sp<skgpu::VulkanMemoryAllocator> memoryAllocator = context.fMemoryAllocator;
     if (!memoryAllocator) {
@@ -130,10 +146,28 @@ std::unique_ptr<ResourceProvider> VulkanSharedContext::makeResourceProvider(
         SingleOwner* singleOwner,
         uint32_t recorderID,
         size_t resourceBudget) {
-    return std::unique_ptr<ResourceProvider>(new VulkanResourceProvider(this,
-                                                                        singleOwner,
-                                                                        recorderID,
-                                                                        resourceBudget));
+    // Establish a uniform buffer that can be updated across multiple render passes and cmd buffers
+    size_t alignedIntrinsicConstantSize =
+            std::max(VulkanResourceProvider::kIntrinsicConstantSize,
+                     this->vulkanCaps().requiredUniformBufferAlignment());
+    auto intrinsicConstantBuffer = VulkanBuffer::Make(this,
+                                                      alignedIntrinsicConstantSize,
+                                                      BufferType::kUniform,
+                                                      AccessPattern::kGpuOnly);
+    if (!intrinsicConstantBuffer) {
+        SKGPU_LOG_E("Failed to create a uniform buffer necessary for VulkanResourceProvider"
+                    "creation.");
+        return nullptr;
+    }
+    SkASSERT(static_cast<VulkanBuffer*>(intrinsicConstantBuffer.get())->bufferUsageFlags()
+             & VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+
+    return std::unique_ptr<ResourceProvider>(
+            new VulkanResourceProvider(this,
+                                       singleOwner,
+                                       recorderID,
+                                       resourceBudget,
+                                       std::move(intrinsicConstantBuffer)));
 }
 
 bool VulkanSharedContext::checkVkResult(VkResult result) const {

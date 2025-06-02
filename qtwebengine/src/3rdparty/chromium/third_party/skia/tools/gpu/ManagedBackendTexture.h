@@ -16,17 +16,22 @@
 #endif
 #ifdef SK_GRAPHITE
 #include "include/gpu/graphite/BackendTexture.h"
+#include "include/gpu/graphite/Context.h"
+#include "src/gpu/graphite/RecorderPriv.h"
 #endif
 
 namespace skgpu {
 class RefCntedCallback;
 }
 namespace skgpu::graphite {
-class Context;
 class Recorder;
 }
 class SkBitmap;
 struct SkImageInfo;
+
+#ifdef SK_GRAPHITE
+using Recorder = skgpu::graphite::Recorder;
+#endif
 
 namespace sk_gpu_test {
 
@@ -146,7 +151,13 @@ inline sk_sp<ManagedBackendTexture> ManagedBackendTexture::MakeWithoutData(
  */
 class ManagedGraphiteTexture : public SkNVRefCnt<ManagedGraphiteTexture> {
 public:
-    static sk_sp<ManagedGraphiteTexture> MakeFromPixmap(skgpu::graphite::Recorder*,
+    static sk_sp<ManagedGraphiteTexture> MakeUnInit(Recorder*,
+                                                    const SkImageInfo&,
+                                                    skgpu::Mipmapped,
+                                                    skgpu::Renderable,
+                                                    skgpu::Protected = skgpu::Protected::kNo);
+
+    static sk_sp<ManagedGraphiteTexture> MakeFromPixmap(Recorder*,
                                                         const SkPixmap&,
                                                         skgpu::Mipmapped,
                                                         skgpu::Renderable,
@@ -154,6 +165,7 @@ public:
 
     /** finished and image/surface release procs */
     static void FinishedProc(void* context, skgpu::CallbackResult);
+    static void ReleaseProc(void* context);
     static void ImageReleaseProc(void* context);
 
     ~ManagedGraphiteTexture();
@@ -184,6 +196,7 @@ private:
     skgpu::graphite::Context* fContext;
     skgpu::graphite::BackendTexture fTexture;
 };
+
 #endif  // SK_GRAPHITE
 
 }  // namespace sk_gpu_test

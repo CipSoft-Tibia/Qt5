@@ -28,7 +28,7 @@ class QQuickKeyframeGroupPrivate;
 class QQuickKeyframePrivate;
 class QQuickNumberKeyframePrivate;
 
-class Q_QUICKTIMELINE_PRIVATE_EXPORT QQuickKeyframe : public QObject
+class Q_QUICKTIMELINE_EXPORT QQuickKeyframe : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickKeyframe)
@@ -64,7 +64,7 @@ Q_SIGNALS:
     void valueChanged();
 };
 
-class Q_QUICKTIMELINE_PRIVATE_EXPORT QQuickKeyframeGroup : public QObject, public QQmlParserStatus
+class Q_QUICKTIMELINE_EXPORT QQuickKeyframeGroup : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickKeyframeGroup)

@@ -7,13 +7,11 @@
 import '@material/web/button/filled-button.js';
 import '@material/web/button/text-button.js';
 
-import {css, CSSResultGroup, html, LitElement} from 'lit';
+import {css, CSSResultGroup, html, LitElement, PropertyValues} from 'lit';
 import {styleMap} from 'lit/directives/style-map';
 
 /**
  * A ChromeOS compliant vertical-button.
- * See spec
- * https://www.figma.com/file/1XsFoZH868xLcLPfPZRxLh/CrOS-Next---Component-Library-%26-Spec?type=design&node-id=9644-165677&mode=design&t=0xBcgechLxIMCLG0-0
  */
 export class VerticalButton extends LitElement {
   static BORDER_RADIUS = 20;
@@ -33,8 +31,9 @@ export class VerticalButton extends LitElement {
     }
     md-filled-button {
       width: 100%;
-      min-height: ${VerticalButton.MIN_HEIGHT}px;
       min-width: ${VerticalButton.WIDTH}px;
+      padding-top: ${VerticalButton.PADDING_TOP}px;
+      padding-bottom: ${VerticalButton.PADDING_BOTTOM}px;
       --md-filled-button-leading-space: ${VerticalButton.HORIZONTAL_PADDING}px;
       --md-filled-button-trailing-space: ${VerticalButton.HORIZONTAL_PADDING}px;
       --md-filled-button-with-leading-icon-leading-space: 0px;
@@ -56,7 +55,11 @@ export class VerticalButton extends LitElement {
       --md-filled-button-hover-state-layer-opacity: 100%;
       --md-filled-button-pressed-state-layer-color: var(--cros-sys-ripple_primary);
       --md-filled-button-pressed-state-layer-opacity: 100%;
-      --md-filled-button-label-text-type: var(--cros-button-2-font);
+      --md-filled-button-label-text-font: var(--cros-button-2-font-family);
+      --md-filled-button-label-text-size: var(--cros-button-2-font-size);
+      --md-filled-button-label-text-line-height: var(--cros-button-2-line-height);
+      --md-filled-button-label-text-weight: var(--cros-button-2-font-weight);
+      --md-focus-ring-duration: 0s;
       --md-sys-color-on-primary: var(--cros-sys-on_primary_container);
       --md-sys-color-primary: var(--cros-sys-secondary_container);
       --md-sys-color-secondary: var(--cros-sys-focus_ring);
@@ -76,8 +79,6 @@ export class VerticalButton extends LitElement {
       --md-filled-button-disabled-container-color: var(--cros-sys-disabled_container);
     }
     :host div {
-      padding-top: ${VerticalButton.PADDING_TOP}px;
-      padding-bottom: ${VerticalButton.PADDING_BOTTOM}px;
       display: flex;
       align-items: center;
       flex-direction: column;
@@ -153,6 +154,13 @@ export class VerticalButton extends LitElement {
           </div>
         </md-filled-button>
         `;
+  }
+
+  override updated(changedProperties: PropertyValues<this>) {
+    if (changedProperties.has('disabled')) {
+      // Work around for b/315384008.
+      this.renderRoot.querySelector('md-filled-button')?.requestUpdate();
+    }
   }
 }
 

@@ -7,6 +7,7 @@ qt_internal_add_test(${PROJECT_NAME}
     GUI
     QMLTEST
     SOURCES
+        ../shared/util.h
         tst_callback.cpp
     LIBRARIES
         Qt::Core

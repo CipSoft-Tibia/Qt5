@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -33,12 +34,13 @@
 #include "./fuzztest/internal/meta.h"
 #include "./fuzztest/internal/type_support.h"
 
-namespace fuzztest::internal {
+namespace fuzztest {
+namespace internal {
 
 struct BasicTestInfo {
-  const char* suite_name = nullptr;
-  const char* test_name = nullptr;
-  const char* file = nullptr;
+  std::string suite_name;
+  std::string test_name;
+  std::string file;
   int line = 0;
   bool uses_fixture = false;
 };
@@ -127,7 +129,7 @@ class Registration : private Base {
 
  public:
   explicit Registration(BasicTestInfo info, TargetFunction target_function)
-      : test_info_(info), target_function_(target_function) {}
+      : test_info_(std::move(info)), target_function_(target_function) {}
 
   // Registers domains for a property function as a `TupleOf` individual
   // domains. This is useful when the domains are specified indirectly, e.g.,
@@ -155,7 +157,7 @@ class Registration : private Base {
         "the number of function parameters.");
     using NewBase = RegistrationWithDomainsBase<value_type_t<NewDomains>...>;
     return Registration<Fixture, TargetFunction, NewBase, SeedProvider>(
-        test_info_, target_function_, NewBase{std::move(domain)});
+        std::move(test_info_), target_function_, NewBase{std::move(domain)});
   }
 
   // Registers a domain for each parameter of the property function. This is the
@@ -194,7 +196,7 @@ class Registration : private Base {
     if constexpr (!Registration::kHasSeeds) {
       return Registration<Fixture, TargetFunction,
                           RegistrationWithSeedsBase<Base>, SeedProvider>(
-                 test_info_, target_function_,
+                 std::move(test_info_), target_function_,
                  RegistrationWithSeedsBase<Base>(std::move(*this)))
           .WithSeeds(seeds);
     } else {
@@ -211,7 +213,7 @@ class Registration : private Base {
         if (!status.ok()) {
           ReportBadSeed(seed, status);
           continue;
-        };
+        }
         this->seeds_.push_back(*std::move(corpus_value));
       }
       return std::move(*this);
@@ -231,7 +233,7 @@ class Registration : private Base {
         Fixture, TargetFunction,
         RegistrationWithSeedProviderBase<Base, decltype(seed_provider)>,
         decltype(seed_provider)>(
-        test_info_, target_function_,
+        std::move(test_info_), target_function_,
         RegistrationWithSeedProviderBase<Base, decltype(seed_provider)>(
             std::move(*this), std::move(seed_provider)));
   }
@@ -259,7 +261,7 @@ class Registration : private Base {
         absl::AnyInvocable<std::vector<SeedT>(BaseFixture*) const>;
     using NewBase = RegistrationWithSeedProviderBase<Base, NewSeedProvider>;
     return Registration<Fixture, TargetFunction, NewBase, NewSeedProvider>(
-        test_info_, target_function_,
+        std::move(test_info_), target_function_,
         NewBase(std::move(*this), std::mem_fn(seed_provider)));
   }
 
@@ -287,13 +289,59 @@ class Registration : private Base {
   explicit Registration(BasicTestInfo info, TargetFunction target_function,
                         Base base)
       : Base(std::move(base)),
-        test_info_(info),
+        test_info_(std::move(info)),
         target_function_(target_function) {}
 
   BasicTestInfo test_info_;
   TargetFunction target_function_;
 };
 
-}  // namespace fuzztest::internal
+}  // namespace internal
+
+// Returns a registration for a fuzz test based on `Fixture` and
+// `target_function`. `target_function` must be a pointer to a member function
+// of `Fixture` or its base class.
+//
+// This is an advanced API; in almost all cases you should prefer registring
+// your fixture-based fuzz tests with the FUZZ_TEST_F macro. Unlike the macro,
+// this function allows customizing `suite_name`, `test_name`, `file`, and
+// `line`. For example, it is suitable when you want to register fuzz tests with
+// dynamically generated test names.
+//
+// Note: If `Fixture` is a GoogleTest fixture, make sure that all fuzz tests
+// registered with `suite_name` also use `Fixture`. Otherwise, you may encounter
+// undefined behavior when it comes to test suite setup and teardown.
+template <typename Fixture, typename TargetFunction>
+auto GetRegistrationWithFixture(std::string suite_name, std::string test_name,
+                                std::string file, int line,
+                                TargetFunction target_function) {
+  return ::fuzztest::internal::Registration<Fixture, TargetFunction>(
+      ::fuzztest::internal::BasicTestInfo{std::move(suite_name),
+                                          std::move(test_name), std::move(file),
+                                          line, true},
+      target_function);
+}
+
+// Returns a registration for a fuzz test based on `target_function`, which
+// should be a function pointer.
+//
+// This is an advanced API; in almost all cases you should prefer registring
+// your fuzz tests with the FUZZ_TEST macro. Unlike the macro, this function
+// allows customizing `suite_name`, `test_name`, `file`, and `line`. For
+// example, it is suitable when you want to register fuzz tests with dynamically
+// generated test names.
+template <typename TargetFunction>
+auto GetRegistration(std::string suite_name, std::string test_name,
+                     std::string file, int line,
+                     TargetFunction target_function) {
+  return ::fuzztest::internal::Registration<::fuzztest::internal::NoFixture,
+                                            TargetFunction>(
+      ::fuzztest::internal::BasicTestInfo{std::move(suite_name),
+                                          std::move(test_name), std::move(file),
+                                          line, false},
+      target_function);
+}
+
+}  // namespace fuzztest
 
 #endif  // FUZZTEST_FUZZTEST_INTERNAL_REGISTRATION_H_

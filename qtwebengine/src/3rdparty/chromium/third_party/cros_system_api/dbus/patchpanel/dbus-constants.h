@@ -19,6 +19,7 @@ const char kArcVmStartupMethod[] = "ArcVmStartup";
 const char kConnectNamespaceMethod[] = "ConnectNamespace";
 const char kCreateLocalOnlyNetworkMethod[] = "CreateLocalOnlyNetwork";
 const char kCreateTetheredNetworkMethod[] = "CreateTetheredNetwork";
+const char kConfigureNetworkMethod[] = "ConfigureNetwork";
 const char kGetDevicesMethod[] = "GetDevices";
 const char kGetDownstreamNetworkInfoMethod[] = "GetDownstreamNetworkInfo";
 const char kGetTrafficCountersMethod[] = "GetTrafficCounters";
@@ -29,7 +30,11 @@ const char kNotifyAndroidInteractiveStateMethod[] =
     "NotifyAndroidInteractiveState";
 const char kNotifyAndroidWifiMulticastLockChangeMethod[] =
     "NotifyAndroidWifiMulticastLockChange";
+const char kNotifySocketConnectionEventMethod[] = "NotifySocketConnectionEvent";
+const char kNotifyVPNSocketConnectionEventMethod[] =
+    "NotifyVPNSocketConnectionEvent";
 const char kSetDnsRedirectionRuleMethod[] = "SetDnsRedirectionRule";
+const char kSetFeatureFlagMethod[] = "SetFeatureFlag";
 const char kSetVpnIntentMethod[] = "SetVpnIntent";
 const char kSetVpnLockdown[] = "SetVpnLockdown";
 const char kTerminaVmShutdownMethod[] = "TerminaVmShutdown";

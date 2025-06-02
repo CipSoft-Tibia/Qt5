@@ -472,4 +472,10 @@ QByteArray byteArray = "test";
 emscripten::val uint8array = byteArray.toEcmaUint8Array();
 //! [56]
 
+//! [57]
+QByteArray x = "Five pineapples"_ba;
+x.slice(5);     // x == "pineapples"
+x.slice(4, 3);  // x == "app"
+//! [57]
+
 }

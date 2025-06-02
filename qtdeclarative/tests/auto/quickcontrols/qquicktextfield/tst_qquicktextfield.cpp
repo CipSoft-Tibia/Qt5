@@ -14,6 +14,7 @@
 #include <QtQuickTestUtils/private/viewtestutils_p.h>
 #include <QtQuickTemplates2/private/qquicktextfield_p.h>
 #include <QtQuickControlsTestUtils/private/qtest_quickcontrols_p.h>
+#include <QStyleHints>
 
 class tst_QQuickTextField : public QQmlDataTest
 {
@@ -26,6 +27,7 @@ private slots:
     void initTestCase() override;
     void touchscreenDoesNotSelect_data();
     void touchscreenDoesNotSelect();
+    void releaseAfterPressAndHold();
 
 private:
     QScopedPointer<QPointingDevice> touchDevice = QScopedPointer<QPointingDevice>(QTest::createTouchDevice());
@@ -94,6 +96,27 @@ void tst_QQuickTextField::touchscreenDoesNotSelect()
         // if the env var is set, fall back to old behavior: touch swipe _does_ select text if selectByMouse is true
         QCOMPARE(textField->selectedText().isEmpty(), !selectByTouch);
     }
+}
+
+void tst_QQuickTextField::releaseAfterPressAndHold()
+{
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("mouseselection_default.qml")));
+
+    QQuickTextField *textField = qobject_cast<QQuickTextField *>(window.rootObject());
+    QVERIFY(textField != nullptr);
+
+    QSignalSpy releasedSpy(textField, &QQuickTextField::released);
+    QSignalSpy pressAndHoldSpy(textField, &QQuickTextField::pressAndHold);
+
+    const QPoint clickPosition(textField->width() / 2, textField->height() / 2);
+
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, clickPosition);
+    QTest::qWait(QGuiApplication::styleHints()->mousePressAndHoldInterval() + 100);
+    QCOMPARE(pressAndHoldSpy.count(), 1);
+
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, clickPosition);
+    QCOMPARE(releasedSpy.count(), 1);
 }
 
 QTEST_QUICKCONTROLS_MAIN(tst_QQuickTextField)

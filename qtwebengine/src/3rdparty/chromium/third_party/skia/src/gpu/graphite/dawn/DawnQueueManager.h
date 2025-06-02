@@ -10,7 +10,7 @@
 
 #include "src/gpu/graphite/QueueManager.h"
 
-#include "webgpu/webgpu_cpp.h"
+#include "webgpu/webgpu_cpp.h"  // NO_G3_REWRITE
 
 namespace skgpu::graphite {
 
@@ -23,6 +23,8 @@ public:
     ~DawnQueueManager() override {}
 
     const wgpu::Queue& dawnQueue() const { return fQueue; }
+
+    void tick() const override;
 
 private:
     const DawnSharedContext* dawnSharedContext() const;

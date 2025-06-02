@@ -6,36 +6,161 @@ import QtQuick
 Item {
     id: root
 
-    signal closed()
+    property string currentAnswerText: ""
+    property string nextAnswerText: ""
+    property bool canRequestAnswer: true
 
-    property alias closingAnimation: closeAnimator
-    property alias openingAnimation: openAnimator
-    property alias animationText: result.text
+    state: "DISABLED"
+    states: [
+        State {
+            name: "DISABLED"
+            PropertyChanges {
+                root.canRequestAnswer: true
+                answerText.visible: false
+                waitingPlaceholder.visible: false
+            }
+        },
+        State {
+            name: "WAITING"
+            PropertyChanges {
+                root.canRequestAnswer: false
+                answerText.visible: false
+                waitingPlaceholder.visible: true
+            }
+        },
+        State {
+            name: "SHOWING"
+            PropertyChanges {
+                root.canRequestAnswer: false
+                answerText.visible: true
+                waitingPlaceholder.visible: false
+            }
+        },
+        State {
+            name: "PAUSED"
+            PropertyChanges {
+                root.canRequestAnswer: true
+                answerText.visible: true
+                waitingPlaceholder.visible: false
+            }
+        },
+        State {
+            name: "HIDING"
+            PropertyChanges {
+                root.canRequestAnswer: false
+                answerText.visible: true
+                waitingPlaceholder.visible: false
+            }
+        }
+    ]
+
+    transitions: [
+        Transition {
+            from: "DISABLED,HIDING"
+            to: "WAITING"
+            SequentialAnimation {
+                id: waitingAnimation
+                loops: Animation.Infinite
+
+                ScaleAnimation {
+                    target: root
+                    mode: "ZoomIn"
+                }
+
+                ScaleAnimation {
+                    target: root
+                    mode: "ZoomOut"
+                }
+            }
+
+            onRunningChanged: {
+                if (!running) {
+                    root.currentAnswerText = root.nextAnswerText;
+                    root.nextAnswerText = "";
+                    if (!root.currentAnswerText) {
+                        root.state = "DISABLED";
+                    }
+                }
+            }
+        },
+        Transition {
+            from: "WAITING,HIDING"
+            to: "SHOWING"
+
+            ScaleAnimation {
+                target: root
+                mode: "ZoomIn"
+            }
+
+            onRunningChanged: {
+                if (!running) {
+                    root.state = "PAUSED";
+                }
+            }
+        },
+        Transition {
+            from: "PAUSED"
+            to: "HIDING"
+
+            ScaleAnimation {
+                target: root
+                mode: "ZoomOut"
+            }
+
+            onRunningChanged: {
+                if (!running) {
+                    if (root.nextAnswerText) {
+                        root.currentAnswerText = root.nextAnswerText;
+                        root.nextAnswerText = "";
+                        root.state = "SHOWING";
+                    } else {
+                        root.state = "WAITING";
+                    }
+                }
+            }
+        }
+    ]
+
+    function addAnswer(answer: string): void {
+        root.nextAnswerText = answer;
+        if (root.state == "WAITING") {
+            root.state = "SHOWING";
+        }
+    }
+
+    function startWaiting(): void {
+        if (root.state == "PAUSED") {
+            root.state = "HIDING";
+            return;
+        }
+        root.state = "WAITING";
+    }
+
+    function cancelAnimation(): void {
+        root.state = "DISABLED";
+    }
 
     MagicText {
-        id: result
+        id: answerText
         anchors.centerIn: parent
-
-        font.pointSize: text.length > 12 ? 14 : 16
+        font.pointSize: 20
         color: "#2E53B6"
+        text: root.currentAnswerText
+    }
 
-        ScaleAnimator on scale {
-            id: openAnimator
-            target: result
-            from: 0
-            to: 1
-            duration: 2000
-            running: false
-        }
+    Row {
+        id: waitingPlaceholder
+        anchors.centerIn: parent
+        spacing: 12
 
-        ScaleAnimator on scale {
-            id: closeAnimator
-            target: result
-            from: 1
-            to: 0
-            duration: 2000
-            running: false
-            onStopped: root.closed()
+        Repeater {
+            model: 3
+            Rectangle {
+                width: 11
+                height: width
+                color: "#264BAF"
+                radius: 100
+            }
         }
     }
 }

@@ -5,7 +5,7 @@
 
 #if defined(Q_OS_MACOS)
 # include <AppKit/AppKit.h>
-#elif defined (Q_OS_IOS)
+#elif defined(QT_PLATFORM_UIKIT)
 # include <UIKit/UIKit.h>
 #endif
 
@@ -280,7 +280,7 @@ auto *loadImage(const QString &iconName)
     NSString *systemIconName = it != std::end(iconMap) ? it->second : iconName.toNSString();
 #if defined(Q_OS_MACOS)
     return [NSImage imageWithSystemSymbolName:systemIconName accessibilityDescription:nil];
-#elif defined(Q_OS_IOS)
+#elif defined(QT_PLATFORM_UIKIT)
     return [UIImage systemImageNamed:systemIconName];
 #endif
 }
@@ -362,35 +362,37 @@ auto *configuredImage(const NSImage *image, const QColor &color)
     auto *config = [NSImageSymbolConfiguration configurationWithPointSize:48
                                                weight:NSFontWeightRegular
                                                scale:NSImageSymbolScaleLarge];
-    if (@available(macOS 12, *)) {
-        auto *primaryColor = [NSColor colorWithSRGBRed:color.redF()
-                                                 green:color.greenF()
-                                                  blue:color.blueF()
-                                                 alpha:color.alphaF()];
 
-        auto *colorConfig = [NSImageSymbolConfiguration configurationWithHierarchicalColor:primaryColor];
-        config = [config configurationByApplyingConfiguration:colorConfig];
-    }
+    NSImage *configuredImage = [image imageWithSymbolConfiguration:config];
 
-    return [image imageWithSymbolConfiguration:config];
+    auto *primaryColor = [NSColor colorWithSRGBRed:color.redF()
+                                             green:color.greenF()
+                                              blue:color.blueF()
+                                             alpha:color.alphaF()];
+
+    NSImage *tintedImage = [NSImage imageWithSize:configuredImage.size flipped:NO
+        drawingHandler:^BOOL(NSRect) {
+            [primaryColor set];
+            NSRect imageRect = {NSZeroPoint, configuredImage.size};
+            [configuredImage drawInRect:imageRect];
+            NSRectFillUsingOperation(imageRect, NSCompositingOperationSourceIn);
+            return YES;
+        }];
+    return tintedImage;
 }
-#elif defined(Q_OS_IOS)
+#elif defined(QT_PLATFORM_UIKIT)
 auto *configuredImage(const UIImage *image, const QColor &color)
 {
     auto *config = [UIImageSymbolConfiguration configurationWithPointSize:48
                                                weight:UIImageSymbolWeightRegular
                                                scale:UIImageSymbolScaleLarge];
 
-    if (@available(iOS 15, *)) {
-        auto *primaryColor = [UIColor colorWithRed:color.redF()
-                                             green:color.greenF()
-                                              blue:color.blueF()
-                                             alpha:color.alphaF()];
+    auto *primaryColor = [UIColor colorWithRed:color.redF()
+                                     green:color.greenF()
+                                      blue:color.blueF()
+                                     alpha:color.alphaF()];
 
-        auto *colorConfig = [UIImageSymbolConfiguration configurationWithHierarchicalColor:primaryColor];
-        config = [config configurationByApplyingConfiguration:colorConfig];
-    }
-    return [image imageByApplyingSymbolConfiguration:config];
+    return [[image imageByApplyingSymbolConfiguration:config] imageWithTintColor:primaryColor];
 }
 #endif
 }
@@ -455,7 +457,7 @@ void QAppleIconEngine::paint(QPainter *painter, const QRect &rect, QIcon::Mode m
 
     [image drawInRect:iconRect fromRect:sourceRect operation:NSCompositingOperationSourceOver fraction:1.0 respectFlipped:YES hints:nil];
     [NSGraphicsContext restoreGraphicsState];
-#elif defined(Q_OS_IOS)
+#elif defined(QT_PLATFORM_UIKIT)
     UIGraphicsPushContext(ctx);
     const CGRect cgrect = CGRectMake(rect.x(), rect.y(), rect.width(), rect.height());
     [image drawInRect:cgrect];

@@ -63,27 +63,33 @@ enum ConnectionType {
   CONNECTION_TYPE_STATS = 2;
 }
 
-// The priority order of different resize reasons. The lower the number, the
-// higher the priority.
+// Lists the different resize priorities. Order in this list does not matter and
+// any new priorities should be added to the end of this list regardless of
+// where they fall in the actual priority order. Priority order is handled
+// internally by concierge. Update concierge/mm/resize_priority.h when adding a
+// new priority.
 enum ResizePriority {
-  option allow_alias = true;
-
   RESIZE_PRIORITY_UNSPECIFIED = 0;
-  RESIZE_PRIORITY_HIGHEST = 1;
-  RESIZE_PRIORITY_BALLOON_STALL = 1;
-  RESIZE_PRIORITY_NO_KILL_CANDIDATES = 2;
-  RESIZE_PRIORITY_FOCUSED_TAB = 3;
-  RESIZE_PRIORITY_FOCUSED_APP = 4;
-  RESIZE_PRIORITY_PERCEPTIBLE_TAB = 5;
-  RESIZE_PRIORITY_PERCEPTIBLE_APP = 6;
 
-  // Intentionally the same priority.
-  RESIZE_PRIORITY_CACHED_TAB = 7;
-  RESIZE_PRIORITY_CACHED_APP = 7;
+  // Deprecated = 1;
 
-  RESIZE_PRIORITY_MGLRU_RECLAIM = 8;
-  RESIZE_PRIORITY_LOWEST = 8;
-  RESIZE_PRIORITY_N_PRIORITIES = 9;
+  // Deprecated = 2;
+
+  // Deprecated = 3;
+
+  RESIZE_PRIORITY_FOCUSED_TAB = 4;
+
+  RESIZE_PRIORITY_FOCUSED_APP = 5;
+
+  RESIZE_PRIORITY_PERCEPTIBLE_TAB = 6;
+
+  RESIZE_PRIORITY_PERCEPTIBLE_APP = 7;
+
+  RESIZE_PRIORITY_CACHED_TAB = 8;
+
+  RESIZE_PRIORITY_CACHED_APP = 9;
+
+  // Deprecated = 10;
 }
 
 enum PacketType {

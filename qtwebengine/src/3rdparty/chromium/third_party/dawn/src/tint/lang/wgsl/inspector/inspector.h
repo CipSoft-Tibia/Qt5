@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_INSPECTOR_INSPECTOR_H_
 #define SRC_TINT_LANG_WGSL_INSPECTOR_INSPECTOR_H_
@@ -43,7 +56,7 @@ class Inspector {
   public:
     /// Constructor
     /// @param program Shader program to extract information from.
-    explicit Inspector(const Program* program);
+    explicit Inspector(const Program& program);
 
     /// Destructor
     ~Inspector();
@@ -65,11 +78,6 @@ class Inspector {
 
     /// @returns map of module-constant name to pipeline constant ID
     std::map<std::string, OverrideId> GetNamedOverrideIds();
-
-    /// @param entry_point name of the entry point to get information about.
-    /// @returns the total size of shared storage required by an entry point,
-    ///          including all uniform storage buffers.
-    uint32_t GetStorageSize(const std::string& entry_point);
 
     /// @param entry_point name of the entry point to get information about.
     /// @returns vector of all of the resource bindings.
@@ -136,11 +144,6 @@ class Inspector {
     std::vector<SamplerTexturePair> GetSamplerTextureUses(const std::string& entry_point,
                                                           const BindingPoint& placeholder);
 
-    /// @param entry_point name of the entry point to get information about.
-    /// @returns the total size in bytes of all Workgroup storage-class storage
-    /// referenced transitively by the entry point.
-    uint32_t GetWorkgroupStorageSize(const std::string& entry_point);
-
     /// @returns vector of all valid extension names used by the program. There
     /// will be no duplicated names in the returned vector even if an extension
     /// is enabled multiple times.
@@ -154,7 +157,7 @@ class Inspector {
     std::vector<std::pair<std::string, Source>> GetEnableDirectives();
 
   private:
-    const Program* program_;
+    const Program& program_;
     diag::List diagnostics_;
     std::unique_ptr<std::unordered_map<std::string, UniqueVector<SamplerTexturePair, 4>>>
         sampler_targets_;
@@ -167,15 +170,19 @@ class Inspector {
     /// Recursively add entry point IO variables.
     /// If `type` is a struct, recurse into members, appending the member name.
     /// Otherwise, add the variable unless it is a builtin.
-    /// @param name the name of the variable being added
+    /// @param name the name of the variable being added, including struct nested accessings.
+    /// @param variable_name the name of the variable being added
     /// @param type the type of the variable
     /// @param attributes the variable attributes
-    /// @param location the location value if provided
+    /// @param location the location attribute value if provided
+    /// @param color the color attribute value if provided
     /// @param variables the list to add the variables to
     void AddEntryPointInOutVariables(std::string name,
+                                     std::string variable_name,
                                      const core::type::Type* type,
                                      VectorRef<const ast::Attribute*> attributes,
                                      std::optional<uint32_t> location,
+                                     std::optional<uint32_t> color,
                                      std::vector<StageVariable>& variables) const;
 
     /// Recursively determine if the type contains builtin.
@@ -227,6 +234,14 @@ class Inspector {
     std::tuple<InterpolationType, InterpolationSampling> CalculateInterpolationData(
         const core::type::Type* type,
         VectorRef<const ast::Attribute*> attributes) const;
+
+    /// @param func the root function of the callgraph to consider for the computation.
+    /// @returns the total size in bytes of all Workgroup storage-class storage accessed via func.
+    uint32_t ComputeWorkgroupStorageSize(const ast::Function* func) const;
+
+    /// @param func the root function of the callgraph to consider for the computation
+    /// @returns the list of member types for the `pixel_local` variable accessed via func, if any.
+    std::vector<PixelLocalMemberType> ComputePixelLocalMemberTypes(const ast::Function* func) const;
 
     /// For a N-uple of expressions, resolve to the appropriate global resources
     /// and call 'cb'.

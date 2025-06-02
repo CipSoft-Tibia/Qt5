@@ -19,6 +19,9 @@ using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
 
+QTimerPrivate::~QTimerPrivate()
+    = default;
+
 /*!
     \class QTimer
     \inmodule QtCore
@@ -96,15 +99,15 @@ QT_BEGIN_NAMESPACE
 
     \section1 Alternatives to QTimer
 
-    An alternative to using QTimer is to call QObject::startTimer()
-    for your object and reimplement the QObject::timerEvent() event
-    handler in your class (which must inherit QObject). The
-    disadvantage is that timerEvent() does not support such
-    high-level features as single-shot timers or signals.
+    Qt 6.8 introduced QChronoTimer. The main difference between the two
+    classes, is that QChronoTimer supports a larger interval range and a
+    higher precision (\c std::chrono::nanoseconds). For QTimer the maximum
+    supported interval is ±24 days, whereas for QChronoTimer it is ±292
+    years (less chances of interger overflow with intervals longer than
+    \c std::numeric_limits<int>::max()). If you only need millisecond
+    resolution and ±24 days range, you can continue to use QTimer.
 
-    Another alternative is QBasicTimer. It is typically less
-    cumbersome than using QObject::startTimer()
-    directly. See \l{Timers} for an overview of all three approaches.
+    \include timers-common.qdocinc q-chrono-timer-alternatives
 
     Some operating systems limit the number of timers that may be
     used; Qt tries to work around these limitations.
@@ -118,8 +121,9 @@ QT_BEGIN_NAMESPACE
 */
 
 QTimer::QTimer(QObject *parent)
-    : QObject(*new QTimerPrivate, parent)
+    : QObject(*new QTimerPrivate(this), parent)
 {
+    Q_ASSERT(d_func()->isQTimer);
 }
 
 
@@ -129,7 +133,7 @@ QTimer::QTimer(QObject *parent)
 
 QTimer::~QTimer()
 {
-    if (d_func()->id != QTimerPrivate::INV_TIMER) // stop running timer
+    if (d_func()->isActive()) // stop running timer
         stop();
 }
 
@@ -153,8 +157,7 @@ QTimer::~QTimer()
 /*!
     \fn bool QTimer::isActive() const
 
-    Returns \c true if the timer is running (pending); otherwise returns
-    false.
+    Returns \c true if the timer is running; otherwise returns \c false.
 */
 bool QTimer::isActive() const
 {
@@ -174,27 +177,44 @@ QBindable<bool> QTimer::bindableActive()
 */
 int QTimer::timerId() const
 {
-    return d_func()->id;
+    auto v = qToUnderlying(id());
+    return v == 0 ? -1 : v;
 }
 
+/*!
+    \since 6.8
+    Returns a Qt::TimerId representing the timer ID if the timer is running;
+    otherwise returns \c Qt::TimerId::Invalid.
+
+    \sa Qt::TimerId
+*/
+Qt::TimerId QTimer::id() const
+{
+    return d_func()->id;
+}
 
 /*! \overload start()
 
     Starts or restarts the timer with the timeout specified in \l interval.
 
+//! [stop-restart-timer]
     If the timer is already running, it will be
-    \l{QTimer::stop()}{stopped} and restarted.
+    \l{QTimer::stop()}{stopped} and restarted. This will also change its id().
+//! [stop-restart-timer]
 
+//! [singleshot-activation]
     If \l singleShot is true, the timer will be activated only once.
+//! [singleshot-activation]
 */
 void QTimer::start()
 {
     Q_D(QTimer);
-    if (d->id != QTimerPrivate::INV_TIMER) // stop running timer
+    if (d->isActive()) // stop running timer
         stop();
-    const int id = QObject::startTimer(std::chrono::milliseconds{d->inter}, d->type);
-    if (id > 0) {
-        d->id = id;
+
+    Qt::TimerId newId{ QObject::startTimer(d->inter * 1ms, d->type) }; // overflow impossible
+    if (newId > Qt::TimerId::Invalid) {
+        d->id = newId;
         d->isActiveData.notify();
     }
 }
@@ -203,11 +223,10 @@ void QTimer::start()
     Starts or restarts the timer with a timeout interval of \a msec
     milliseconds.
 
-    If the timer is already running, it will be
-    \l{QTimer::stop()}{stopped} and restarted.
+    \include qtimer.cpp stop-restart-timer
 
-    If \l singleShot is true, the timer will be activated only once. This is
-    equivalent to:
+    \include qtimer.cpp singleshot-activation
+    This is equivalent to:
 
     \code
         timer.setInterval(msec);
@@ -219,7 +238,15 @@ void QTimer::start()
 */
 void QTimer::start(int msec)
 {
+    start(msec * 1ms);
+}
+
+void QTimer::start(std::chrono::milliseconds interval)
+{
     Q_D(QTimer);
+    // This could be narrowing as the interval is stored in an `int` QProperty,
+    // and the type can't be changed in Qt6.
+    const int msec = interval.count();
     const bool intervalChanged = msec != d->inter;
     d->inter.setValue(msec);
     start();
@@ -238,9 +265,9 @@ void QTimer::start(int msec)
 void QTimer::stop()
 {
     Q_D(QTimer);
-    if (d->id != QTimerPrivate::INV_TIMER) {
+    if (d->isActive()) {
         QObject::killTimer(d->id);
-        d->id = QTimerPrivate::INV_TIMER;
+        d->id = Qt::TimerId::Invalid;
         d->isActiveData.notify();
     }
 }
@@ -252,11 +279,29 @@ void QTimer::stop()
 void QTimer::timerEvent(QTimerEvent *e)
 {
     Q_D(QTimer);
-    if (e->timerId() == d->id) {
+    if (Qt::TimerId{e->timerId()} == d->id) {
         if (d->single)
             stop();
         emit timeout(QPrivateSignal());
     }
+}
+
+QAbstractEventDispatcher::Duration // statically asserts that Duration is nanoseconds
+QTimer::from_msecs(std::chrono::milliseconds ms)
+{
+    using Duration = QAbstractEventDispatcher::Duration;
+
+    using namespace std::chrono;
+    using ratio = std::ratio_divide<std::milli, Duration::period>;
+    static_assert(ratio::den == 1);
+
+    Duration::rep r;
+    if (qMulOverflow<ratio::num>(ms.count(), &r)) {
+        qWarning("QTimer::singleShot(std::chrono::milliseconds, ...): "
+                 "interval argument overflowed when converted to nanoseconds.");
+        return Duration::max();
+    }
+    return Duration{r};
 }
 
 /*!
@@ -268,14 +313,13 @@ void QTimer::timerEvent(QTimerEvent *e)
     \a timerType is the timer type
     \a receiver is the receiver object, can be null. In such a case, it will be the same
                 as the final sender class.
-    \a slot a pointer only used when using Qt::UniqueConnection
     \a slotObj the slot object
- */
-void QTimer::singleShotImpl(int msec, Qt::TimerType timerType,
+*/
+void QTimer::singleShotImpl(std::chrono::nanoseconds ns, Qt::TimerType timerType,
                             const QObject *receiver,
                             QtPrivate::QSlotObjectBase *slotObj)
 {
-    if (msec == 0) {
+    if (ns == 0ns) {
         bool deleteReceiver = false;
         // Optimize: set a receiver context when none is given, such that we can use
         // QMetaObject::invokeMethod which is more efficient than going through a timer.
@@ -304,11 +348,13 @@ void QTimer::singleShotImpl(int msec, Qt::TimerType timerType,
         return;
     }
 
-    new QSingleShotTimer(msec * 1ms, timerType, receiver, slotObj);
+    (void) new QSingleShotTimer(ns, timerType, receiver, slotObj);
 }
 
 /*!
+    \fn void QTimer::singleShot(int msec, const QObject *receiver, const char *member)
     \reentrant
+    \deprecated [6.8] Use the chrono overloads.
     This static function calls a slot after a given time interval.
 
     It is very convenient to use this function because you do not need
@@ -327,13 +373,11 @@ void QTimer::singleShotImpl(int msec, Qt::TimerType timerType,
     \sa start()
 */
 
-void QTimer::singleShot(int msec, const QObject *receiver, const char *member)
-{
-    singleShot(msec, defaultTypeFor(msec), receiver, member);
-}
-
-/*! \overload
+/*!
+    \fn void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiver, const char *member)
+    \overload
     \reentrant
+    \deprecated [6.8] Use the chrono overloads.
     This static function calls a slot after a given time interval.
 
     It is very convenient to use this function because you do not need
@@ -346,14 +390,16 @@ void QTimer::singleShot(int msec, const QObject *receiver, const char *member)
 
     \sa start()
 */
-void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiver, const char *member)
+
+void QTimer::singleShot(std::chrono::nanoseconds ns, Qt::TimerType timerType,
+                        const QObject *receiver, const char *member)
 {
-    if (Q_UNLIKELY(msec < 0)) {
+    if (ns < 0ns) {
         qWarning("QTimer::singleShot: Timers cannot have negative timeouts");
         return;
     }
     if (receiver && member) {
-        if (msec == 0) {
+        if (ns == 0ns) {
             // special code shortpath for 0-timers
             const char* bracketPosition = strchr(member, '(');
             if (!bracketPosition || !(member[0] >= '0' && member[0] <= '2')) {
@@ -366,18 +412,18 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
                                       Qt::QueuedConnection);
             return;
         }
-        (void) new QSingleShotTimer(msec * 1ms, timerType, receiver, member);
+        (void) new QSingleShotTimer(ns, timerType, receiver, member);
     }
 }
 
-/*! \fn template<typename Duration, typename Functor> void QTimer::singleShot(Duration msec, const QObject *context, Functor &&functor)
-    \fn template<typename Duration, typename Functor> void QTimer::singleShot(Duration msec, Qt::TimerType timerType, const QObject *context, Functor &&functor)
-    \fn template<typename Duration, typename Functor> void QTimer::singleShot(Duration msec, Functor &&functor)
-    \fn template<typename Duration, typename Functor> void QTimer::singleShot(Duration msec, Qt::TimerType timerType, Functor &&functor)
+/*! \fn template<typename Duration, typename Functor> void QTimer::singleShot(Duration interval, const QObject *context, Functor &&functor)
+    \fn template<typename Duration, typename Functor> void QTimer::singleShot(Duration interval, Qt::TimerType timerType, const QObject *context, Functor &&functor)
+    \fn template<typename Duration, typename Functor> void QTimer::singleShot(Duration interval, Functor &&functor)
+    \fn template<typename Duration, typename Functor> void QTimer::singleShot(Duration interval, Qt::TimerType timerType, Functor &&functor)
     \since 5.4
 
     \reentrant
-    This static function calls \a functor after \a msec milliseconds.
+    This static function calls \a functor after \a interval.
 
     It is very convenient to use this function because you do not need
     to bother with a \l{QObject::timerEvent()}{timerEvent} or
@@ -391,13 +437,18 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
     If \a functor is a member
     function of \a context, then the function will be called on the object.
 
-    The \a msec parameter can be an \c int or a \c std::chrono::milliseconds value.
+    The \a interval parameter can be an \c int (interpreted as a millisecond
+    count) or a \c std::chrono type that implicitly converts to nanoseconds.
+
+    \note In Qt versions prior to 6.8, the chrono overloads took chrono::milliseconds,
+    not chrono::nanoseconds. The compiler will automatically convert for you,
+    but the conversion may overflow for extremely large milliseconds counts.
 
     \sa start()
 */
 
 /*!
-    \fn void QTimer::singleShot(std::chrono::milliseconds msec, const QObject *receiver, const char *member)
+    \fn void QTimer::singleShot(std::chrono::nanoseconds nsec, const QObject *receiver, const char *member)
     \since 5.8
     \overload
     \reentrant
@@ -409,13 +460,19 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
     create a local QTimer object.
 
     The \a receiver is the receiving object and the \a member is the slot. The
-    time interval is given in the duration object \a msec.
+    time interval is given in the duration object \a nsec.
+
+//! [qtimer-ns-overflow]
+    \note In Qt versions prior to 6.8, this function took chrono::milliseconds,
+    not chrono::nanoseconds. The compiler will automatically convert for you,
+    but the conversion may overflow for extremely large milliseconds counts.
+//! [qtimer-ns-overflow]
 
     \sa start()
 */
 
 /*!
-    \fn void QTimer::singleShot(std::chrono::milliseconds msec, Qt::TimerType timerType, const QObject *receiver, const char *member)
+    \fn void QTimer::singleShot(std::chrono::nanoseconds nsec, Qt::TimerType timerType, const QObject *receiver, const char *member)
     \since 5.8
     \overload
     \reentrant
@@ -427,8 +484,10 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
     create a local QTimer object.
 
     The \a receiver is the receiving object and the \a member is the slot. The
-    time interval is given in the duration object \a msec. The \a timerType affects the
+    time interval is given in the duration object \a nsec. The \a timerType affects the
     accuracy of the timer.
+
+    \include qtimer.cpp qtimer-ns-overflow
 
     \sa start()
 */
@@ -474,11 +533,10 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
 
     Starts or restarts the timer with a timeout of duration \a msec milliseconds.
 
-    If the timer is already running, it will be
-    \l{QTimer::stop()}{stopped} and restarted.
+    \include qtimer.cpp stop-restart-timer
 
-    If \l singleShot is true, the timer will be activated only once. This is
-    equivalent to:
+    \include qtimer.cpp singleshot-activation
+    This is equivalent to:
 
     \code
         timer.setInterval(msec);
@@ -502,7 +560,7 @@ void QTimer::singleShot(int msec, Qt::TimerType timerType, const QObject *receiv
     Returns the time remaining in this timer object as a \c
     std::chrono::milliseconds object. If this timer is due or overdue, the
     returned value is \c std::chrono::milliseconds::zero(). If the remaining
-    time could not be found or the timer is not active, this function returns a
+    time could not be found or the timer is not running, this function returns a
     negative duration.
 
     \sa remainingTime()
@@ -542,26 +600,36 @@ QBindable<bool> QTimer::bindableSingleShot()
     interval of 0 will time out as soon as all the events in the window
     system's event queue have been processed.
 
-    Setting the interval of an active timer changes its timerId().
+    Setting the interval of a running timer will change the interval,
+    stop() and then start() the timer, and acquire a new id().
+    If the timer is not running, only the interval is changed.
 
     \sa singleShot
 */
 void QTimer::setInterval(int msec)
 {
+    setInterval(std::chrono::milliseconds{msec});
+}
+
+void QTimer::setInterval(std::chrono::milliseconds interval)
+{
     Q_D(QTimer);
+    // This could be narrowing as the interval is stored in an `int` QProperty,
+    // and the type can't be changed in Qt6.
+    const int msec = interval.count();
     d->inter.removeBindingUnlessInWrapper();
     const bool intervalChanged = msec != d->inter.valueBypassingBindings();
     d->inter.setValueBypassingBindings(msec);
-    if (d->id != QTimerPrivate::INV_TIMER) { // create new timer
+    if (d->isActive()) { // create new timer
         QObject::killTimer(d->id);                        // restart timer
-        const int id = QObject::startTimer(std::chrono::milliseconds{msec}, d->type);
-        if (id > 0) {
+        Qt::TimerId newId{ QObject::startTimer(msec * 1ms, d->type) };  // overflow impossible
+        if (newId > Qt::TimerId::Invalid) {
             // Restarted successfully. No need to update the active state.
-            d->id = id;
+            d->id = newId;
         } else {
             // Failed to start the timer.
             // Need to notify about active state change.
-            d->id = QTimerPrivate::INV_TIMER;
+            d->id = Qt::TimerId::Invalid;
             d->isActiveData.notify();
         }
     }
@@ -593,8 +661,10 @@ QBindable<int> QTimer::bindableInterval()
 int QTimer::remainingTime() const
 {
     Q_D(const QTimer);
-    if (d->id != QTimerPrivate::INV_TIMER) {
-        return QAbstractEventDispatcher::instance()->remainingTime(d->id);
+    if (d->isActive()) {
+        using namespace std::chrono;
+        auto remaining = QAbstractEventDispatcher::instance()->remainingTime(d->id);
+        return ceil<milliseconds>(remaining).count();
     }
 
     return -1;

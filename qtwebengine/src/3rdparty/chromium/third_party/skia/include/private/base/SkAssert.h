@@ -28,6 +28,22 @@
     #define SK_UNLIKELY
 #endif
 
+// c++23 will give us [[assume]] -- until then we're stuck with various other options:
+#if defined(__clang__)
+    #define SK_ASSUME(cond) __builtin_assume(cond)
+#elif defined(__GNUC__)
+    #if __GNUC__ >= 13
+        #define SK_ASSUME(cond) __attribute__((assume(cond)))
+    #else
+        // NOTE: This implementation could actually evaluate `cond`, which is not desirable.
+        #define SK_ASSUME(cond) ((cond) ? (void)0 : __builtin_unreachable())
+    #endif
+#elif defined(_MSC_VER)
+    #define SK_ASSUME(cond) __assume(cond)
+#else
+    #define SK_ASSUME(cond) ((void)0)
+#endif
+
 /** Called internally if we hit an unrecoverable error.
     The platform implementation must not return, but should either throw
     an exception or otherwise exit.
@@ -75,24 +91,31 @@
     static_cast<void>( __builtin_expect(static_cast<bool>(cond), 1) \
         ? static_cast<void>(0) \
         : []{ SK_ABORT("check(%s)", #cond); }() )
+
+#define SkASSERTF_RELEASE(cond, fmt, ...)                                  \
+    static_cast<void>( __builtin_expect(static_cast<bool>(cond), 1)        \
+        ? static_cast<void>(0)                                             \
+        : [&]{ SK_ABORT("assertf(%s): " fmt, #cond, ##__VA_ARGS__); }() )
 #else
 #define SkASSERT_RELEASE(cond) \
     static_cast<void>( (cond) ? static_cast<void>(0) : []{ SK_ABORT("check(%s)", #cond); }() )
+
+#define SkASSERTF_RELEASE(cond, fmt, ...)                                   \
+    static_cast<void>( (cond)                                               \
+        ? static_cast<void>(0)                                              \
+        : [&]{ SK_ABORT("assertf(%s): " fmt, #cond, ##__VA_ARGS__); }() )
 #endif
 
 #if defined(SK_DEBUG)
-    #define SkASSERT(cond) SkASSERT_RELEASE(cond)
-#if defined(_MSC_VER) && !defined(__clang__)
+    #define SkASSERT(cond)            SkASSERT_RELEASE(cond)
+#if defined(_MSC_VER) && !defined(__clang__) //TODO: check if still needed
     #define SkASSERTF(cond, fmt, ...) SkASSERT_RELEASE(cond)
 #else
-    #define SkASSERTF(cond, fmt, ...) static_cast<void>( (cond) ? (void)0 : [&]{ \
-                                          SkDebugf(fmt"\n", ##__VA_ARGS__);      \
-                                          SK_ABORT("assert(%s)", #cond);         \
-                                      }() )
+    #define SkASSERTF(cond, fmt, ...) SkASSERTF_RELEASE(cond, fmt, ##__VA_ARGS__)
 #endif
-    #define SkDEBUGFAIL(message)        SK_ABORT("%s", message)
-    #define SkDEBUGFAILF(fmt, ...)      SK_ABORT(fmt, ##__VA_ARGS__)
-    #define SkAssertResult(cond)        SkASSERT(cond)
+    #define SkDEBUGFAIL(message)      SK_ABORT("%s", message)
+    #define SkDEBUGFAILF(fmt, ...)    SK_ABORT(fmt, ##__VA_ARGS__)
+    #define SkAssertResult(cond)      SkASSERT(cond)
 #else
     #define SkASSERT(cond)            static_cast<void>(0)
     #define SkASSERTF(cond, fmt, ...) static_cast<void>(0)

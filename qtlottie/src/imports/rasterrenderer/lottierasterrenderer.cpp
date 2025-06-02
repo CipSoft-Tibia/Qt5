@@ -70,7 +70,7 @@ void LottieRasterRenderer::render(const BMLayer &layer)
         else {
             // Clipping is not applied to paths that have
             // not setting clipping parameters
-            m_painter->setClipPath(QPainterPath());
+            m_painter->setClipping(false);
         }
         m_buildingClipRegion = false;
         m_clipPath = QPainterPath();
@@ -302,7 +302,7 @@ void LottieRasterRenderer::render(const BMTrimPath &trimPath)
                                            << trimPath.name() << "of"
                                            << trimPath.parent()->name();
         applyRepeaterTransform(i);
-        if (!trimPath.simultaneous() && !qFuzzyCompare(0.0, m_unitedPath.length())) {
+        if (!trimPath.simultaneous() && !qFuzzyCompare(qreal(0.0), m_unitedPath.length())) {
             qCDebug(lcLottieQtBodymovinRender) << "Render trim path in the GUI thread";
             QPainterPath tr = trimPath.trim(m_unitedPath);
             // Do not use the applied transform, as the transform

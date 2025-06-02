@@ -69,6 +69,11 @@ static void resizeAllScreens(emscripten::val event)
     QWasmIntegration::get()->resizeAllScreens();
 }
 
+static void loadLocalFontFamilies(emscripten::val event)
+{
+    QWasmIntegration::get()->loadLocalFontFamilies(event);
+}
+
 EMSCRIPTEN_BINDINGS(qtQWasmIntegraton)
 {
     function("qtSetContainerElements", &setContainerElements);
@@ -77,6 +82,7 @@ EMSCRIPTEN_BINDINGS(qtQWasmIntegraton)
     function("qtResizeContainerElement", &resizeContainerElement);
     function("qtUpdateDpi", &qtUpdateDpi);
     function("qtResizeAllScreens", &resizeAllScreens);
+    function("qtLoadLocalFontFamilies", &loadLocalFontFamilies);
 }
 
 QWasmIntegration *QWasmIntegration::s_instance;
@@ -196,6 +202,16 @@ QPlatformBackingStore *QWasmIntegration::createPlatformBackingStore(QWindow *win
 void QWasmIntegration::removeBackingStore(QWindow* window)
 {
     m_backingStores.remove(window);
+}
+
+void QWasmIntegration::releaseRequesetUpdateHold()
+{
+    if (QWasmCompositor::releaseRequestUpdateHold())
+    {
+        for (const auto &elementAndScreen : m_screens) {
+            elementAndScreen.wasmScreen->compositor()->requestUpdate();
+        }
+    }
 }
 
 #ifndef QT_NO_OPENGL
@@ -395,6 +411,11 @@ void QWasmIntegration::resizeAllScreens()
 {
     for (const auto &elementAndScreen : m_screens)
         elementAndScreen.wasmScreen->updateQScreenAndCanvasRenderSize();
+}
+
+void QWasmIntegration::loadLocalFontFamilies(emscripten::val families)
+{
+    m_fontDb->populateLocalFontFamilies(families);
 }
 
 quint64 QWasmIntegration::getTimestamp()

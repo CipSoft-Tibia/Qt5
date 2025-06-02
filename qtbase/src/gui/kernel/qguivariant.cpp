@@ -57,7 +57,7 @@ QT_BEGIN_NAMESPACE
 namespace {
 
 // NOLINTNEXTLINE(cppcoreguidelines-virtual-class-destructor): this is not a base class
-static constexpr struct : QMetaTypeModuleHelper
+struct QVariantGuiHelper : QMetaTypeModuleHelper
 {
 #define QT_IMPL_METATYPEINTERFACE_GUI_TYPES(MetaTypeName, MetaTypeId, RealName) \
     QT_METATYPE_INTERFACE_INIT(RealName),
@@ -78,7 +78,9 @@ static constexpr struct : QMetaTypeModuleHelper
         // either two nullptrs from canConvert, or two valid pointers
         Q_ASSERT(onlyCheck || (bool(from) && bool(to)));
 
+#if QT_CONFIG(shortcut)
         using Int = int;
+#endif
         switch (makePair(toTypeId, fromTypeId)) {
         QMETATYPE_CONVERTER(QByteArray, QColor,
             result = source.name(source.alpha() != 255 ?
@@ -133,7 +135,9 @@ static constexpr struct : QMetaTypeModuleHelper
         }
         return false;
     }
-} qVariantGuiHelper;
+};
+
+static constexpr QVariantGuiHelper qVariantGuiHelper;
 
 } // namespace used to hide QVariant handler
 

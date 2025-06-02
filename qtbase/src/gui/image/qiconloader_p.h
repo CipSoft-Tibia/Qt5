@@ -30,6 +30,7 @@
 
 #include <vector>
 #include <memory>
+#include <optional>
 
 QT_BEGIN_NAMESPACE
 
@@ -65,20 +66,21 @@ public:
     virtual ~QIconLoaderEngineEntry() {}
     virtual QPixmap pixmap(const QSize &size,
                            QIcon::Mode mode,
-                           QIcon::State state) = 0;
+                           QIcon::State state,
+                           qreal scale) = 0;
     QString filename;
     QIconDirInfo dir;
 };
 
 struct ScalableEntry : public QIconLoaderEngineEntry
 {
-    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override;
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override;
     QIcon svgIcon;
 };
 
 struct PixmapEntry : public QIconLoaderEngineEntry
 {
-    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override;
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override;
     QPixmap basePixmap;
 };
 
@@ -161,6 +163,8 @@ public:
     QList<QSharedPointer<QIconCacheGtkReader>> m_gtkCaches;
 };
 
+class QIconEnginePlugin;
+
 class Q_GUI_EXPORT QIconLoader
 {
 public:
@@ -195,6 +199,7 @@ private:
     QThemeIconInfo lookupFallbackIcon(const QString &iconName) const;
 
     uint m_themeKey;
+    mutable std::optional<QIconEnginePlugin *> m_factory;
     bool m_supportsSvg;
     bool m_initialized;
 

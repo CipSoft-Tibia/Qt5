@@ -127,9 +127,6 @@ public:
 
     bool initialize(QIODevice::OpenMode mode);
 
-    static QString portNameToSystemLocation(const QString &port);
-    static QString portNameFromSystemLocation(const QString &location);
-
     static QList<qint32> standardBaudRates();
 
     qint64 readBufferMaxSize = 0;
@@ -171,6 +168,8 @@ public:
         &QSerialPortPrivate::setBindableBreakEnabled, false)
 
     bool startAsyncRead();
+
+    bool emittedReadyRead = false;
 
 #if defined(Q_OS_WIN32)
 
@@ -246,7 +245,6 @@ public:
     bool readPortNotifierState = false;
     bool readPortNotifierStateSet = false;
 
-    bool emittedReadyRead = false;
     bool emittedBytesWritten = false;
 
     qint64 pendingBytesWritten = 0;

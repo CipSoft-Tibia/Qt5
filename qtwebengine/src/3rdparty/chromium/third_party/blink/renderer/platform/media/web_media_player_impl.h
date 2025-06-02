@@ -13,6 +13,7 @@
 
 #include "base/cancelable_callback.h"
 #include "base/compiler_specific.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
@@ -35,7 +36,6 @@
 #include "media/base/renderer_factory_selector.h"
 #include "media/base/routing_token_callback.h"
 #include "media/base/simple_watch_timer.h"
-#include "media/base/text_track.h"
 #include "media/filters/demuxer_manager.h"
 #include "media/mojo/mojom/media_metrics_provider.mojom.h"
 #include "media/mojo/mojom/playback_events_recorder.mojom.h"
@@ -46,12 +46,12 @@
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/media/video_frame_compositor.h"
 #include "third_party/blink/public/platform/media/web_media_player_builder.h"
-#include "third_party/blink/public/platform/media/webmediaplayer_delegate.h"
+#include "third_party/blink/public/platform/media/web_media_player_delegate.h"
 #include "third_party/blink/public/platform/web_audio_source_provider.h"
 #include "third_party/blink/public/platform/web_content_decryption_module_result.h"
 #include "third_party/blink/public/platform/web_media_player.h"
 #include "third_party/blink/public/platform/web_surface_layer_bridge.h"
-#include "third_party/blink/public/web/modules/media/webmediaplayer_util.h"
+#include "third_party/blink/public/web/modules/media/web_media_player_util.h"
 #include "third_party/blink/renderer/platform/allow_discouraged_type.h"
 #include "third_party/blink/renderer/platform/media/learning_experiment_helper.h"
 #include "third_party/blink/renderer/platform/media/multi_buffer_data_source.h"
@@ -340,7 +340,8 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
 
   // Allow background video tracks with ~5 second keyframes (rounding down) to
   // be disabled to save resources.
-  enum { kMaxKeyframeDistanceToDisableBackgroundVideoMs = 5500 };
+  constexpr static base::TimeDelta
+      kMaxKeyframeDistanceToDisableBackgroundVideo = base::Milliseconds(5500);
 
  private:
   friend class WebMediaPlayerImplTest;
@@ -385,6 +386,7 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   // call will do nothing.
   void MaybeSendOverlayInfoToDecoder();
 
+  void OnPipelineStarted(media::PipelineStatus status);
   void OnPipelineSuspended();
   void OnBeforePipelineResume();
   void OnPipelineResumed();
@@ -399,8 +401,6 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
       media::BufferingState state,
       media::BufferingStateChangeReason reason) override;
   void OnDurationChange() override;
-  void OnAddTextTrack(const media::TextTrackConfig& config,
-                      media::AddTextTrackDoneCB done_cb) override;
   void OnWaiting(media::WaitingReason reason) override;
   void OnAudioConfigChange(const media::AudioDecoderConfig& config) override;
   void OnVideoConfigChange(const media::VideoDecoderConfig& config) override;
@@ -437,6 +437,8 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
 #endif  // BUILDFLAG(ENABLE_FFMPEG)
 
 #if BUILDFLAG(ENABLE_HLS_DEMUXER)
+  void GetUrlData(const GURL& gurl,
+                  base::OnceCallback<void(scoped_refptr<UrlData>)> cb);
   base::SequenceBound<media::HlsDataSourceProvider> GetHlsDataSourceProvider()
       override;
 #endif  // BUILDFLAG(ENABLE_HLS_DEMUXER)
@@ -723,7 +725,7 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   // Notifies the `client_` and the `delegate_` about metadata change.
   void DidMediaMetadataChange();
 
-  WebLocalFrame* const frame_;
+  const raw_ptr<WebLocalFrame, ExperimentalRenderer> frame_;
 
   WebMediaPlayer::NetworkState network_state_ =
       WebMediaPlayer::kNetworkStateEmpty;
@@ -809,11 +811,16 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
 
   bool overlay_enabled_ = false;
 
+  // Cors and Caching flags set during `Load` and used while creating demuxers.
+  CorsMode cors_mode_ = kCorsModeUnspecified;
+  bool is_cache_disabled_ = false;
+
   // Whether the current decoder requires a restart on overlay transitions.
   bool decoder_requires_restart_for_overlay_ = false;
 
-  WebMediaPlayerClient* const client_;
-  WebMediaPlayerEncryptedMediaClient* const encrypted_client_;
+  const raw_ptr<WebMediaPlayerClient, ExperimentalRenderer> client_;
+  const raw_ptr<WebMediaPlayerEncryptedMediaClient, ExperimentalRenderer>
+      encrypted_client_;
 
   // WebMediaPlayer notifies the |delegate_| of playback state changes using
   // |delegate_id_|; an id provided after registering with the delegate.  The
@@ -826,7 +833,7 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   // before the frame is destroyed). RenderFrameImpl owns |delegate_| and is
   // guaranteed to outlive |this|; thus it is safe to store |delegate_| as a raw
   // pointer.
-  WebMediaPlayerDelegate* delegate_;
+  raw_ptr<WebMediaPlayerDelegate, ExperimentalRenderer> delegate_;
   int delegate_id_ = 0;
 
   // The playback state last reported to |delegate_|, to avoid setting duplicate
@@ -851,10 +858,10 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   // Manages the lifetime of the DataSource, and soon the Demuxer.
   std::unique_ptr<media::DemuxerManager> demuxer_manager_;
 
-  const base::TickClock* tick_clock_ = nullptr;
+  raw_ptr<const base::TickClock, ExperimentalRenderer> tick_clock_ = nullptr;
 
   std::unique_ptr<BufferedDataSourceHostImpl> buffered_data_source_host_;
-  UrlIndex* const url_index_;
+  const raw_ptr<UrlIndex, ExperimentalRenderer> url_index_;
   scoped_refptr<viz::RasterContextProvider> raster_context_provider_;
 
   // Video rendering members.
@@ -887,6 +894,10 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   // Captured once the cdm is provided to SetCdmInternal(). Used in creation of
   // |video_decode_stats_reporter_|.
   absl::optional<media::CdmConfig> cdm_config_;
+
+  // Whether the EME playback has been blocked waiting for the CDM to be set
+  // or waiting for decryption key.
+  bool has_waiting_for_key_ = false;
 
   // Tracks if we are currently flinging a video (e.g. in a RemotePlayback
   // session). Used to prevent videos from being paused when hidden.
@@ -927,12 +938,6 @@ class PLATFORM_EXPORT WebMediaPlayerImpl
   // started; prevents us from spuriously logging errors that are transient or
   // unimportant.
   bool suppress_destruction_errors_ = false;
-
-  // TODO(dalecurtis): The following comment is inaccurate as this value is also
-  // used for, for example, data URLs.
-  // Used for HLS playback and in certain fallback paths (e.g. on older devices
-  // that can't support the unified media pipeline).
-  GURL loaded_url_ ALLOW_DISCOURAGED_TYPE("Avoids conversion in media code");
 
   // NOTE: |using_media_player_renderer_| is set based on the usage of a
   // MediaResource::Type::URL in StartPipeline(). This works because

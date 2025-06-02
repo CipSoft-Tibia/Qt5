@@ -12,4 +12,6 @@ qt_internal_add_test(tst_qabstracthttpserver
         tst_qabstracthttpserver.cpp
     LIBRARIES
         Qt::HttpServer
+        Qt::NetworkPrivate
+        Qt::TestPrivate
 )

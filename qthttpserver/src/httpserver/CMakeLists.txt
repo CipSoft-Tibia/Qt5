@@ -11,6 +11,7 @@ qt_internal_add_module(HttpServer
     SOURCES
         qabstracthttpserver.cpp qabstracthttpserver.h qabstracthttpserver_p.h
         qhttpserver.cpp qhttpserver.h qhttpserver_p.h
+        qhttpserverhttp1protocolhandler.cpp qhttpserverhttp1protocolhandler_p.h
         qhttpserverliterals.cpp qhttpserverliterals_p.h
         qhttpserverrequest.cpp qhttpserverrequest.h qhttpserverrequest_p.h
         qhttpserverresponder.cpp qhttpserverresponder.h qhttpserverresponder_p.h
@@ -19,8 +20,8 @@ qt_internal_add_module(HttpServer
         qhttpserverrouterrule.cpp qhttpserverrouterrule.h qhttpserverrouterrule_p.h
         qhttpserverrouterviewtraits.h
         qhttpserverstream.cpp qhttpserverstream_p.h
-        qhttpserverviewtraits.h
         qhttpserverviewtraits_impl.h
+        qhttpserverwebsocketupgraderesponse.cpp qhttpserverwebsocketupgraderesponse.h
         qthttpserverglobal.h
     LIBRARIES
         Qt::CorePrivate
@@ -31,11 +32,15 @@ qt_internal_add_module(HttpServer
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
         Qt::NetworkPrivate
-    GENERATE_CPP_EXPORTS
 )
 
 ## Scopes:
 #####################################################################
+
+qt_internal_extend_target(HttpServer CONDITION QT_FEATURE_http AND QT_FEATURE_ssl
+    SOURCES
+        qhttpserverhttp2protocolhandler.cpp qhttpserverhttp2protocolhandler_p.h
+)
 
 qt_internal_extend_target(HttpServer CONDITION TARGET Qt::WebSockets
     LIBRARIES

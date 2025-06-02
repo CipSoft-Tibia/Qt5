@@ -11,7 +11,6 @@
 #include <private/qqmlglobal_p.h>
 #include <private/qsgadaptationlayer_p.h>
 #include "qsginternaltextnode_p.h"
-#include "qquickimage_p_p.h"
 #include "qquicktextutil_p.h"
 
 #include <QtQuick/private/qsgtexture_p.h>
@@ -49,7 +48,7 @@ const QChar QQuickTextPrivate::elideChar = QChar(0x2026);
 const int QQuickTextPrivate::largeTextSizeThreshold = QQUICKTEXT_LARGETEXT_THRESHOLD;
 
 QQuickTextPrivate::QQuickTextPrivate()
-    : fontInfo(font), elideLayout(nullptr), textLine(nullptr), lineWidth(0)
+    : fontInfo(font), lineWidth(0)
     , color(0xFF000000), linkColor(0xFF0000FF), styleColor(0xFF000000)
     , lineCount(1), multilengthEos(-1)
     , elideMode(QQuickText::ElideNone), hAlign(QQuickText::AlignLeft), vAlign(QQuickText::AlignTop)
@@ -101,9 +100,6 @@ void QQuickTextPrivate::init()
 
 QQuickTextPrivate::~QQuickTextPrivate()
 {
-    delete elideLayout;
-    delete textLine; textLine = nullptr;
-
     if (extra.isAllocated()) {
         qDeleteAll(extra->imgTags);
         extra->imgTags.clear();
@@ -512,7 +508,7 @@ void QQuickTextPrivate::updateSize()
         option.setUseDesignMetrics(renderType != QQuickText::NativeRendering);
         extra->doc->setDefaultTextOption(option);
         qreal naturalWidth = 0;
-        if (requireImplicitSize && q->widthValid()) {
+        if (requireImplicitSize) {
             extra->doc->setTextWidth(-1);
             naturalWidth = extra->doc->idealWidth();
             const bool wasInLayout = internalWidthUpdate;
@@ -533,8 +529,13 @@ void QQuickTextPrivate::updateSize()
         layedOutTextRect = QRectF(QPointF(0,0), dsize);
         size = QSizeF(extra->doc->idealWidth(),dsize.height());
 
-        QFontMetricsF fm(font);
-        updateBaseline(fm.ascent(), q->height() - size.height() - vPadding);
+
+        qreal baseline = QFontMetricsF(font).ascent();
+        QTextBlock firstBlock = extra->doc->firstBlock();
+        if (firstBlock.isValid() && firstBlock.layout() != nullptr && firstBlock.lineCount() > 0)
+            baseline = firstBlock.layout()->lineAt(0).ascent();
+
+        updateBaseline(baseline, q->height() - size.height() - vPadding);
 
         //### need to confirm cost of always setting these for richText
         internalWidthUpdate = true;
@@ -571,7 +572,7 @@ void QQuickTextPrivate::updateSize()
                 QTextLine firstLine = firstBlock.layout()->lineAt(0);
                 QTextLine lastLine = lastBlock.layout()->lineAt(lastBlock.layout()->lineCount() - 1);
                 advance = QSizeF(lastLine.horizontalAdvance(),
-                                 (lastLine.y() + lastBlock.layout()->position().y()) - (firstLine.y() + firstBlock.layout()->position().y()));
+                                 (lastLine.y() + lastBlock.layout()->position().y() + lastLine.ascent()) - (firstLine.y() + firstBlock.layout()->position().y() + firstLine.ascent()));
             } else {
                 advance = QSizeF();
             }
@@ -694,7 +695,7 @@ void QQuickTextPrivate::setupCustomLineGeometry(QTextLine &line, qreal &height, 
     Q_Q(QQuickText);
 
     if (!textLine)
-        textLine = new QQuickTextLine;
+        textLine.reset(new QQuickTextLine);
     textLine->setFullLayoutTextLength(fullLayoutTextLength);
     textLine->setLine(&line);
     textLine->setY(height);
@@ -710,7 +711,7 @@ void QQuickTextPrivate::setupCustomLineGeometry(QTextLine &line, qreal &height, 
     if (lineHeight() != 1.0)
         textLine->setHeight((lineHeightMode() == QQuickText::FixedHeight) ? lineHeight() : line.height() * lineHeight());
 
-    emit q->lineLaidOut(textLine);
+    emit q->lineLaidOut(textLine.get());
 
     height += textLine->height();
 }
@@ -1206,7 +1207,7 @@ QRectF QQuickTextPrivate::setupTextLayout(qreal *const baseline)
 
     if (elide) {
         if (!elideLayout) {
-            elideLayout = new QTextLayout;
+            elideLayout.reset(new QTextLayout);
             elideLayout->setCacheEnabled(true);
         }
         QTextEngine *engine = layout.engine();
@@ -1256,8 +1257,7 @@ QRectF QQuickTextPrivate::setupTextLayout(qreal *const baseline)
         if (visibleCount == 1)
             layout.clearLayout();
     } else {
-        delete elideLayout;
-        elideLayout = nullptr;
+        elideLayout.reset();
     }
 
     QTextLine firstLine = visibleCount == 1 && elideLayout
@@ -1306,7 +1306,7 @@ void QQuickTextPrivate::setLineGeometry(QTextLine &line, qreal lineWidth, qreal 
                 if (!image->pix) {
                     const QQmlContext *context = qmlContext(q);
                     const QUrl url = context->resolvedUrl(q->baseUrl()).resolved(image->url);
-                    image->pix = new QQuickPixmap(context->engine(), url, QRect(), image->size * devicePixelRatio());
+                    image->pix.reset(new QQuickPixmap(context->engine(), url, QRect(), image->size * devicePixelRatio()));
 
                     if (image->pix->isLoading()) {
                         image->pix->connectFinished(q, SLOT(imageDownloadFinished()));
@@ -1401,7 +1401,7 @@ qreal QQuickTextPrivate::devicePixelRatio() const
 
 /*!
     \qmltype Text
-    \instantiates QQuickText
+    \nativetype QQuickText
     \inqmlmodule QtQuick
     \ingroup qtquick-visual
     \inherits Item
@@ -1793,9 +1793,7 @@ QQuickText::~QQuickText()
 
     By default, no variable axes are set.
 
-    \note In order to use variable axes on Windows, the application has to run with either the
-    FreeType or DirectWrite font databases. See the documentation for
-    QGuiApplication::QGuiApplication() for more information on how to select these technologies.
+    \note On Windows, variable axes are not supported if the optional GDI font backend is in use.
 
     \sa QFont::setVariableAxis()
 //! [qml-font-variable-axes]
@@ -1869,6 +1867,53 @@ QQuickText::~QQuickText()
     \sa QFont::setFeature()
 //! [qml-font-features]
 */
+
+/*!
+    \qmlproperty bool QtQuick::Text::font.contextFontMerging
+    \since 6.8
+
+//! [qml-font-context-font-merging]
+    If the selected font does not contain a certain character, Qt automatically chooses a
+    similar-looking fallback font that contains the character. By default this is done on a
+    character-by-character basis.
+
+    This means that in certain uncommon cases, many different fonts may be used to represent one
+    string of text even if it's in the same script. Setting \c contextFontMerging to true will try
+    finding the fallback font that matches the largest subset of the input string instead. This
+    will be more expensive for strings where missing glyphs occur, but may give more consistent
+    results. By default, \c contextFontMerging is \c{false}.
+
+    \sa QFont::StyleStrategy
+//! [qml-font-context-font-merging]
+*/
+
+/*!
+    \qmlproperty bool QtQuick::Text::font.preferTypoLineMetrics
+    \since 6.8
+
+//! [qml-font-prefer-typo-line-metrics] For compatibility reasons, OpenType fonts contain two
+    competing sets of the vertical line metrics that provide the \l{QFontMetricsF::ascent()}{ascent},
+    \l{QFontMetricsF::descent()}{descent} and \l{QFontMetricsF::leading()}{leading} of the font. These
+    are often referred to as the
+    \l{https://learn.microsoft.com/en-us/typography/opentype/spec/os2#uswinascent}{win} (Windows)
+    metrics and the \l{https://learn.microsoft.com/en-us/typography/opentype/spec/os2#sta}{typo}
+    (typographical) metrics. While the specification recommends using the \c typo metrics for line
+    spacing, many applications prefer the \c win metrics unless the \c{USE_TYPO_METRICS} flag is set in
+    the \l{https://learn.microsoft.com/en-us/typography/opentype/spec/os2#fsselection}{fsSelection}
+    field of the font. For backwards-compatibility reasons, this is also the case for Qt applications.
+    This is not an issue for fonts that set the \c{USE_TYPO_METRICS} flag to indicate that the \c{typo}
+    metrics are valid, nor for fonts where the \c{win} metrics and \c{typo} metrics match up. However,
+    for certain fonts the \c{win} metrics may be larger than the preferable line spacing and the
+    \c{USE_TYPO_METRICS} flag may be unset by mistake. For such fonts, setting
+    \c{font.preferTypoLineMetrics} may give superior results.
+
+    By default, \c preferTypoLineMetrics is \c{false}.
+
+    \sa QFont::StyleStrategy
+//! [qml-font-prefer-typo-line-metrics]
+*/
+
+
 QFont QQuickText::font() const
 {
     Q_D(const QQuickText);
@@ -1939,9 +1984,7 @@ void QQuickText::itemChange(ItemChange change, const ItemChangeData &value)
                 // check if we have scalable inline images with explicit size set, which should be reloaded
                 for (QQuickStyledTextImgTag *image : std::as_const(d->extra->visibleImgTags)) {
                     if (image->size.isValid() && QQuickPixmap::isScalableImageFormat(image->url)) {
-                        delete image->pix;
-                        image->pix = nullptr;
-
+                        image->pix.reset();
                         needUpdateLayout = true;
                     }
                 }
@@ -2790,13 +2833,12 @@ QSGNode *QQuickText::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *data
             node->addTextLayout(QPointF(dx, dy), &d->layout, -1, -1,0, unelidedLineCount);
 
         if (d->elideLayout)
-            node->addTextLayout(QPointF(dx, dy), d->elideLayout);
+            node->addTextLayout(QPointF(dx, dy), d->elideLayout.get());
 
         if (d->extra.isAllocated()) {
             for (QQuickStyledTextImgTag *img : std::as_const(d->extra->visibleImgTags)) {
-                QQuickPixmap *pix = img->pix;
-                if (pix && pix->isReady())
-                    node->addImage(QRectF(img->pos.x() + dx, img->pos.y() + dy, img->size.width(), img->size.height()), pix->image());
+                if (img->pix && img->pix->isReady())
+                    node->addImage(QRectF(img->pos.x() + dx, img->pos.y() + dy, img->size.width(), img->size.height()), img->pix->image());
             }
         }
     }
@@ -3085,7 +3127,7 @@ QString QQuickTextPrivate::anchorAt(const QPointF &mousePos) const
     if (styledText) {
         QString link = anchorAt(&layout, translatedMousePos);
         if (link.isEmpty() && elideLayout)
-            link = anchorAt(elideLayout, translatedMousePos);
+            link = anchorAt(elideLayout.get(), translatedMousePos);
         return link;
     } else if (richText && extra.isAllocated() && extra->doc) {
         translatedMousePos.rx() -= QQuickTextUtil::alignedX(layedOutTextRect.width(), availableWidth(), q->effectiveHAlign());

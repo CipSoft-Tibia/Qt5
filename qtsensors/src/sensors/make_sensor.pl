@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 # Copyright (C) 2021 The Qt Company Ltd.
-# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 # About this script
 #
@@ -82,7 +82,7 @@ QT_BEGIN_NAMESPACE
 
 class '.$sensor.';
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT '.$qmlsensor.' : public QmlSensor
+class Q_SENSORSQUICK_EXPORT '.$qmlsensor.' : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT('.$no_q_sensor.')
@@ -99,7 +99,7 @@ private:
     '.$sensor.' *m_sensor;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT '.$qmlreading.' : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT '.$qmlreading.' : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal myprop READ myprop NOTIFY mypropChanged BINDABLE bindableMyprop)
@@ -202,7 +202,7 @@ QSensor *'.$qmlsensor.'::sensor() const
 }
 
 /*!
-    \qmlproperty qreal '.$no_q_reading.'::myprop
+    \qmlproperty real '.$no_q_reading.'::myprop
     This property holds the fubble of the device.
 
     Please see '.$reading.'::myprop for information about this property.

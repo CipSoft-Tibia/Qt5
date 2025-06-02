@@ -23,7 +23,7 @@
 #include <QtStateMachine/qabstractstate.h>
 #include <QtStateMachine/qsignaltransition.h>
 
-struct Q_STATEMACHINEQML_PRIVATE_EXPORT QHistoryStateForeign
+struct Q_STATEMACHINEQML_EXPORT QHistoryStateForeign
 {
     Q_GADGET
     QML_FOREIGN(QHistoryState)
@@ -31,7 +31,7 @@ struct Q_STATEMACHINEQML_PRIVATE_EXPORT QHistoryStateForeign
     QML_ADDED_IN_VERSION(1, 0)
 };
 
-struct Q_STATEMACHINEQML_PRIVATE_EXPORT QStateForeign
+struct Q_STATEMACHINEQML_EXPORT QStateForeign
 {
     Q_GADGET
     QML_FOREIGN(QState)
@@ -40,7 +40,7 @@ struct Q_STATEMACHINEQML_PRIVATE_EXPORT QStateForeign
     QML_UNCREATABLE("Don't use this, use State instead.")
 };
 
-struct Q_STATEMACHINEQML_PRIVATE_EXPORT QAbstractStateForeign
+struct Q_STATEMACHINEQML_EXPORT QAbstractStateForeign
 {
     Q_GADGET
     QML_FOREIGN(QAbstractState)
@@ -49,7 +49,7 @@ struct Q_STATEMACHINEQML_PRIVATE_EXPORT QAbstractStateForeign
     QML_UNCREATABLE("Don't use this, use State instead.")
 };
 
-struct Q_STATEMACHINEQML_PRIVATE_EXPORT QSignalTransitionForeign
+struct Q_STATEMACHINEQML_EXPORT QSignalTransitionForeign
 {
     Q_GADGET
     QML_FOREIGN(QSignalTransition)

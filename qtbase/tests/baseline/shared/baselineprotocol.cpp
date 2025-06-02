@@ -261,18 +261,21 @@ bool BaselineProtocol::disconnect()
 }
 
 
-bool BaselineProtocol::connect(const QString &testCase, bool *dryrun, const PlatformInfo& clientInfo)
+bool BaselineProtocol::connect(const QString &testCase, bool *dryrun, const PlatformInfo &clientInfo, const QString &server)
 {
     errMsg.clear();
-    QByteArray serverName(qgetenv("QT_LANCELOT_SERVER"));
-    if (serverName.isNull())
-        serverName = "lancelot.test.qt-project.org";
+    QString serverName = server;
+    if (serverName.isEmpty()) {
+        serverName = qEnvironmentVariable("QT_LANCELOT_SERVER");
+        if (serverName.isEmpty())
+            serverName = QStringLiteral("lancelot.test.qt-project.org");
+    }
 
     socket.connectToHost(serverName, ServerPort);
     if (!socket.waitForConnected(Timeout)) {
         QThread::sleep(std::chrono::seconds{3});  // Wait a bit and try again, the server might just be restarting
         if (!socket.waitForConnected(Timeout)) {
-            errMsg += QLS("TCP connectToHost failed. Host:") + QLS(serverName) + QLS(" port:") + QString::number(ServerPort);
+            errMsg += QLS("TCP connectToHost failed. Host:") + serverName + QLS(" port:") + QString::number(ServerPort);
             return false;
         }
     }
@@ -381,6 +384,11 @@ bool BaselineProtocol::submitMismatch(const ImageItem &item, QByteArray *serverM
     return false;
 }
 
+bool BaselineProtocol::finalizeTesting(QByteArray *serverMsg)
+{
+    Command cmd;
+    return sendBlock(Command::FinalizeTesting, {}) && receiveBlock(&cmd, serverMsg) && cmd == Ack;
+}
 
 bool BaselineProtocol::sendItem(Command cmd, const ImageItem &item)
 {

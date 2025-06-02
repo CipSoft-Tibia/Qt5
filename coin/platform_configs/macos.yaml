@@ -9,20 +9,20 @@ Configurations:
 
     -
         Id: 'macos-universal-on-x86_64'
-        Template: 'qtci-macos-13-x86_64-103'
+        Template: 'qtci-macos-14-x86_64-105'
         Compiler: 'Clang'
         Target arch: 'x86_64-arm64'
-        Features: ['Packaging', 'Sccache', 'DoNotRunTests', 'WarningsAreErrors', 'UseConfigure']
+        Features: ['Packaging', 'Sccache', 'DoNotRunTests', 'WarningsAreErrors', 'UseConfigure', 'GenerateSBOM', 'VerifySBOM']
         Configure arguments: '-nomake examples -release -force-debug-info -separate-debug-info -headersclean -framework'
         Environment variables: [
-            'CMAKE_ARGS=-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DODBC_ROOT=/usr/local/opt/libiodbc -DPostgreSQL_ROOT={{.Env.POSTGRESQLBINPATH}}/.. -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_DIR}}',
-            'NON_QTBASE_CMAKE_ARGS=-DFEATURE_gds=OFF -DFFMPEG_DIR={{.Env.FFMPEG_DIR}} -DQT_DEPLOY_FFMPEG=TRUE -DFEATURE_native_grpc=OFF',
+            'CMAKE_ARGS=-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DPostgreSQL_ROOT={{.Env.POSTGRESQLBINPATH}}/.. -DOPENSSL_ROOT_DIR={{.Env.OPENSSL_DIR}}',
+            'NON_QTBASE_CMAKE_ARGS=-DFEATURE_gds=OFF -DFFMPEG_DIR={{.Env.FFMPEG_DIR}} -DQT_DEPLOY_FFMPEG=TRUE -DINPUT_headersclean=ON -DQT_FEATURE_open62541_security=OFF',
             'Protobuf_ROOT=/usr/local/lib/cmake/protobuf'
         ]
 
     -
         Id: 'macos-universal-on-arm64'
-        Template: 'qtci-macos-13-arm64'
+        Template: 'qtci-macos-14-arm-106'
         Compiler: 'Clang'
         Target arch: 'x86_64-arm64'
         Features: ['DoNotRunTests', 'WarningsAreErrors', 'UseConfigure']
@@ -30,7 +30,7 @@ Configurations:
         Environment variables: [
             'CMAKE_ARGS=-DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"',
             'Protobuf_ROOT=/usr/local/lib/cmake/protobuf',
-            'NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR}} -DQT_DEPLOY_FFMPEG=TRUE',
+            'NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR}} -DQT_DEPLOY_FFMPEG=TRUE -DINPUT_headersclean=ON',
         ]
 
     # Test on all supported macOS versions (deployment targets)
@@ -38,14 +38,8 @@ Configurations:
     # On x86_64
 
     -
-        Id: 'macos-11-x86_64-tests'
-        Template: 'qtci-macos-11-x86_64-106'
-        Compiler: 'Clang'
-        Features: ['Sccache', 'TestOnly', 'Packaging']
-        Platform dependency: 'macos-universal-on-x86_64'
-    -
         Id: 'macos-12-x86_64-tests'
-        Template: 'qtci-macos-12-x86_64-106'
+        Template: 'qtci-macos-12-x86_64-107'
         Compiler: 'Clang'
         Features: ['Sccache', 'TestOnly', 'Packaging']
         Platform dependency: 'macos-universal-on-x86_64'
@@ -66,13 +60,13 @@ Configurations:
 
     -
         Id: 'macos-12-arm64-tests'
-        Template: 'qtci-macos-12-arm64'
+        Template: 'qtci-macos-12-arm-102'
         Compiler: 'Clang'
         Features: ['TestOnly', 'Packaging']
         Platform dependency: 'macos-universal-on-x86_64'
     -
         Id: 'macos-13-arm64-tests'
-        Template: 'qtci-macos-13-arm64'
+        Template: 'qtci-macos-13-arm-107'
         Compiler: 'Clang'
         Features: ['TestOnly', 'Packaging']
         Platform dependency: 'macos-universal-on-x86_64'
@@ -87,13 +81,13 @@ Configurations:
 
     -
         Id: 'macos-12-arm-on-arm64-tests'
-        Template: 'qtci-macos-12-arm64'
+        Template: 'qtci-macos-12-arm-102'
         Compiler: 'Clang'
         Features: ['TestOnly']
         Platform dependency: 'macos-universal-on-arm64'
     -
         Id: 'macos-12-arm-on-x86_64-tests'
-        Template: 'qtci-macos-12-x86_64-106'
+        Template: 'qtci-macos-12-x86_64-107'
         Compiler: 'Clang'
         Features: ['Sccache', 'TestOnly']
         Platform dependency: 'macos-universal-on-arm64'
@@ -117,22 +111,22 @@ Configurations:
     # Build on recent macOS version with latest Xcode
 
     -
-        Id: 'macos-13-x86_64-developer-build'
-        Template: 'qtci-macos-13-x86_64-103'
+        Id: 'macos-14-x86_64-developer-build'
+        Template: 'qtci-macos-14-x86_64-105'
         Compiler: 'Clang'
         Features: ['Sccache', 'DoNotRunTests', 'WarningsAreErrors', 'UseConfigure']
-        Configure arguments: '-developer-build -release -force-debug-info -no-pch -no-framework -qtnamespace TestNamespace -make examples'
+        Configure arguments: '-developer-build -release -force-asserts -force-debug-info -no-pch -no-framework -qtnamespace TestNamespace -make examples'
         Environment variables: [
             'CMAKE_ARGS=-DOPENSSL_ROOT_DIR={{.Env.OPENSSL_DIR}}',
             'NON_QTBASE_CMAKE_ARGS=-DFFMPEG_DIR={{.Env.FFMPEG_DIR}} -DQT_DEPLOY_FFMPEG=TRUE',
             'Protobuf_ROOT=/usr/local/lib/cmake/protobuf',
         ]
     -
-        Id: 'macos-13-arm64-developer-build'
-        Template: 'qtci-macos-13-arm64'
+        Id: 'macos-14-arm64-developer-build'
+        Template: 'qtci-macos-14-arm-106'
         Compiler: 'Clang'
         Features: ['DoNotRunTests', 'WarningsAreErrors', 'UseConfigure']
-        Configure arguments: '-developer-build -nomake examples -release -force-debug-info -separate-debug-info -framework'
+        Configure arguments: '-developer-build -nomake examples -debug -framework'
         Environment variables: [
             'CMAKE_ARGS=-DOPENSSL_ROOT_DIR={{.Env.OPENSSL_DIR}}',
             'Protobuf_ROOT=/usr/local/lib/cmake/protobuf',
@@ -140,28 +134,21 @@ Configurations:
         ]
 
     # Test on all supported macOS versions (deployment targets)
-
-    -
-        Id: 'macos-11-arm64-developer-build-tests'
-        Template: 'qtci-macos-11.0-arm64'
-        Compiler: 'Clang'
-        Features: ['TestOnly']
-        Platform dependency: 'macos-13-arm64-developer-build'
     -
         Id: 'macos-12-arm64-developer-build-tests'
-        Template: 'qtci-macos-12-arm64'
+        Template: 'qtci-macos-12-arm-102'
         Compiler: 'Clang'
         Features: ['TestOnly']
-        Platform dependency: 'macos-13-arm64-developer-build'
+        Platform dependency: 'macos-14-arm64-developer-build'
     -
         Id: 'macos-13-arm64-developer-build-tests'
-        Template: 'qtci-macos-13-arm64'
+        Template: 'qtci-macos-13-arm-107'
         Compiler: 'Clang'
         Features: ['TestOnly']
-        Platform dependency: 'macos-13-arm64-developer-build'
+        Platform dependency: 'macos-14-arm64-developer-build'
     -
         Id: 'macos-14-arm64-developer-build-tests'
         Template: 'qtci-macos-14-arm-106'
         Compiler: 'Clang'
         Features: ['TestOnly']
-        Platform dependency: 'macos-13-arm64-developer-build'
+        Platform dependency: 'macos-14-arm64-developer-build'

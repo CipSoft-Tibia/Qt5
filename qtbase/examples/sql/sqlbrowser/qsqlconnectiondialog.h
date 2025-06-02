@@ -6,6 +6,8 @@
 
 #include <QDialog>
 
+#include <memory>
+
 QT_BEGIN_NAMESPACE
 namespace Ui
 {
@@ -17,8 +19,8 @@ class QSqlConnectionDialog : public QDialog
 {
     Q_OBJECT
 public:
-    QSqlConnectionDialog(QWidget *parent = nullptr);
-    ~QSqlConnectionDialog();
+    explicit QSqlConnectionDialog(QWidget *parent = nullptr);
+    ~QSqlConnectionDialog() override;
 
     QString driverName() const;
     QString databaseName() const;
@@ -28,12 +30,10 @@ public:
     int port() const;
     bool useInMemoryDatabase() const;
 
-private slots:
-    void onOkButton();
-    void onDbCheckBox();
+    void accept() override;
 
 private:
-    Ui::QSqlConnectionDialogUi *m_ui;
+    const std::unique_ptr<Ui::QSqlConnectionDialogUi> m_ui;
 };
 
 #endif

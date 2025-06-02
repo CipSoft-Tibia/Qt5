@@ -45,7 +45,7 @@ QT_BEGIN_NAMESPACE
     against terrain, the character can move slower than the speed defined by \c movement. Conversely, if the
     character is in free fall, it may move much faster.
 
-    The default value is \c{(0, 0, 0)}.
+    Default value: \c{(0, 0, 0)}
 */
 
 /*!
@@ -54,8 +54,9 @@ QT_BEGIN_NAMESPACE
     This property defines the gravitational acceleration that applies to the character.
     For a character that walks on the ground, it should typically be set to
     \l{PhysicsWorld::gravity}{PhysicsWorld.gravity}. A floating character that has movement
-    controls in three dimensions will normally have gravity \c{(0, 0, 0)}. The default value is
-    \c{(0, 0, 0)}.
+    controls in three dimensions will normally have gravity \c{(0, 0, 0)}.
+
+    Default value: \c{(0, 0, 0)}.
 */
 
 /*!
@@ -64,8 +65,9 @@ QT_BEGIN_NAMESPACE
     This property defines whether the \l movement property has effect when the character is in free
     fall. This is only relevant if \l gravity in not null. A value of \c true means that the
     character will change direction in mid-air when \c movement changes. A value of \c false means that
-    the character will continue on its current trajectory until it hits another object. The default
-    value is \c true.
+    the character will continue on its current trajectory until it hits another object.
+
+    Default value: \c true
 */
 
 /*!
@@ -98,7 +100,7 @@ QT_BEGIN_NAMESPACE
     This property enables/disables the \l {CharacterController::shapeHit} callback for this
     character controller.
 
-    Default value: false
+    Default value: \c{false}
 */
 
 /*!

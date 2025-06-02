@@ -13,17 +13,16 @@
 #ifndef QVALUEAXIS_P_H
 #define QVALUEAXIS_P_H
 
-#include <QtGraphs/qvalueaxis.h>
+#include <QtGraphs/QValueAxis>
 #include <private/qabstractaxis_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QValueAxisPrivate : public QAbstractAxisPrivate
 {
-    Q_OBJECT
 public:
-    QValueAxisPrivate(QValueAxis *q);
-    ~QValueAxisPrivate();
+    QValueAxisPrivate();
+    ~QValueAxisPrivate() override;
 
 public:
     qreal min() override { return m_min; }
@@ -38,7 +37,7 @@ protected:
 private:
     qreal m_min;
     qreal m_max;
-    int m_minorTickCount;
+    qsizetype m_subTickCount;
     QString m_format;
     int m_decimals;
     qreal m_tickAnchor;

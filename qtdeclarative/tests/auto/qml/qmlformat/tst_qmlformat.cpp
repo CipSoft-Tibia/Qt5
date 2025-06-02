@@ -16,6 +16,25 @@
 
 using namespace QQmlJS::Dom;
 
+// TODO refactor extension helpers
+const QString QML_EXT = ".qml";
+const QString JS_EXT = ".js";
+const QString MJS_EXT = ".mjs";
+
+static QStringView fileExt(QStringView filename)
+{
+    if (filename.endsWith(QML_EXT)) {
+        return QML_EXT;
+    }
+    if (filename.endsWith(JS_EXT)) {
+        return JS_EXT;
+    }
+    if (filename.endsWith(MJS_EXT)) {
+        return MJS_EXT;
+    }
+    Q_UNREACHABLE();
+};
+
 class TestQmlformat: public QQmlDataTest
 {
     Q_OBJECT
@@ -27,6 +46,7 @@ public:
 private Q_SLOTS:
     void initTestCase() override;
 
+    //actually testFormat tests CLI of qmlformat
     void testFormat();
     void testFormat_data();
 
@@ -45,10 +65,14 @@ private Q_SLOTS:
 
     void plainJS_data();
     void plainJS();
+
+    void ecmascriptModule();
+
 private:
     QString readTestFile(const QString &path);
+    //TODO(QTBUG-117849) refactor this helper function
     QString runQmlformat(const QString &fileToFormat, QStringList args, bool shouldSucceed = true,
-                         RunOption rOption = RunOption::OnCopy);
+                         RunOption rOption = RunOption::OnCopy, QStringView ext = QML_EXT);
     QString formatInMemory(const QString &fileToFormat, bool *didSucceed = nullptr,
                            LineWriterOptions options = LineWriterOptions(),
                            WriteOutChecks extraChecks = WriteOutCheck::ReparseCompare,
@@ -372,6 +396,54 @@ void TestQmlformat::testFormat_data()
     QTest::newRow("typeAnnotatedSignal")
             << "signal.qml"
             << "signal.formatted.qml" << QStringList{} << RunOption::OnCopy;
+    //plainJS
+    QTest::newRow("nestedLambdaWithIfElse")
+            << "lambdaWithIfElseInsideLambda.js"
+            << "lambdaWithIfElseInsideLambda.formatted.js" << QStringList{} << RunOption::OnCopy;
+
+    QTest::newRow("indentEquals2")
+            << "threeFunctionsOneLine.js"
+            << "threeFunctions.formattedW2.js" << QStringList{"-w=2"} << RunOption::OnCopy;
+
+    QTest::newRow("tabIndents")
+            << "threeFunctionsOneLine.js"
+            << "threeFunctions.formattedTabs.js" << QStringList{"-t"} << RunOption::OnCopy;
+
+    QTest::newRow("normalizedFunctionSpacing")
+            << "threeFunctionsOneLine.js"
+            << "threeFunctions.formattedFuncSpacing.js"
+            << QStringList{ "-n", "--functions-spacing" } << RunOption::OnCopy;
+
+    QTest::newRow("esm_tabIndents")
+            << "mini_esm.mjs"
+            << "mini_esm.formattedTabs.mjs" << QStringList{ "-t" } << RunOption::OnCopy;
+    QTest::newRow("noSuperfluousSpaceInsertions")
+            << "noSuperfluousSpaceInsertions.qml"
+            << "noSuperfluousSpaceInsertions.formatted.qml" << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("noSuperfluousSpaceInsertions.fail_id")
+            << "noSuperfluousSpaceInsertions.fail_id.qml"
+            << "noSuperfluousSpaceInsertions.fail_id.formatted.qml"
+            << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("noSuperfluousSpaceInsertions.fail_QtObject")
+            << "noSuperfluousSpaceInsertions.fail_QtObject.qml"
+            << "noSuperfluousSpaceInsertions.fail_QtObject.formatted.qml"
+            << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("noSuperfluousSpaceInsertions.fail_signal")
+            << "noSuperfluousSpaceInsertions.fail_signal.qml"
+            << "noSuperfluousSpaceInsertions.fail_signal.formatted.qml"
+            << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("noSuperfluousSpaceInsertions.fail_enum")
+            << "noSuperfluousSpaceInsertions.fail_enum.qml"
+            << "noSuperfluousSpaceInsertions.fail_enum.formatted.qml"
+            << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("noSuperfluousSpaceInsertions.fail_parameters")
+            << "noSuperfluousSpaceInsertions.fail_parameters.qml"
+            << "noSuperfluousSpaceInsertions.fail_parameters.formatted.qml"
+            << QStringList{} << RunOption::OnCopy;
+    QTest::newRow("fromAsIdentifier")
+            << "fromAsIdentifier.qml"
+            << "fromAsIdentifier.formatted.qml"
+            << QStringList{} << RunOption::OnCopy;
 }
 
 void TestQmlformat::testFormat()
@@ -381,7 +453,21 @@ void TestQmlformat::testFormat()
     QFETCH(QStringList, args);
     QFETCH(RunOption, runOption);
 
-    QCOMPARE(runQmlformat(testFile(file), args, true, runOption), readTestFile(fileFormatted));
+    auto formatted = runQmlformat(testFile(file), args, true, runOption, fileExt(file));
+    QEXPECT_FAIL("normalizedFunctionSpacing",
+                 "Normalize && function spacing are not yet supported for JS", Abort);
+    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_id",
+                 "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
+    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_QtObject",
+                 "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
+    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_signal",
+                 "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
+    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_enum",
+                 "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
+    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_parameters",
+                 "Not all cases have been covered yet (QTBUG-133315, QTBUG-123386)", Abort);
+    auto exp = readTestFile(fileFormatted);
+    QCOMPARE(formatted, exp);
 }
 
 void TestQmlformat::plainJS_data()
@@ -413,6 +499,13 @@ void TestQmlformat::plainJS_data()
                                       << "directives.formatted.js";
     QTest::newRow("legacyDirectivesWithComments") << "directivesWithComments.js"
                                                   << "directivesWithComments.formatted.js";
+    QTest::newRow("preserveOptionalTokens") << "preserveOptionalTokens.js"
+                                            << "preserveOptionalTokens.formatted.js";
+    QTest::newRow("noSuperfluousSpaceInsertions.fail_pragma")
+            << "noSuperfluousSpaceInsertions.fail_pragma.js"
+            << "noSuperfluousSpaceInsertions.fail_pragma.formatted.js";
+    QTest::newRow("fromAsIdentifier") << "fromAsIdentifier.js"
+                                      << "fromAsIdentifier.formatted.js";
 }
 
 void TestQmlformat::plainJS()
@@ -433,8 +526,28 @@ void TestQmlformat::plainJS()
     QEXPECT_FAIL("classConstructor", "see QTBUG-119404", Abort);
     // TODO(QTBUG-119770)
     QEXPECT_FAIL("legacyDirectivesWithComments", "see QTBUG-119770", Abort);
+    QEXPECT_FAIL("noSuperfluousSpaceInsertions.fail_pragma",
+                 "Not all cases have been covered yet (QTBUG-133315)", Abort);
     auto exp = readTestFile(fileFormatted);
-    QCOMPARE(output, readTestFile(fileFormatted));
+    QCOMPARE(output, exp);
+}
+
+void TestQmlformat::ecmascriptModule()
+{
+    QString file("esm.mjs");
+    QString formattedFile("esm.formatted.mjs");
+
+    bool wasSuccessful;
+    LineWriterOptions opts;
+#ifdef Q_OS_WIN
+    opts.lineEndings = QQmlJS::Dom::LineWriterOptions::LineEndings::Windows;
+#endif
+    QString output = formatInMemory(testFile(file), &wasSuccessful, opts, WriteOutCheck::None);
+
+    QVERIFY(wasSuccessful && !output.isEmpty());
+
+    auto exp = readTestFile(formattedFile);
+    QCOMPARE(output, readTestFile(formattedFile));
 }
 
 #if !defined(QTEST_CROSS_COMPILED) // sources not available when cross compiled
@@ -447,9 +560,23 @@ void TestQmlformat::testExample_data()
     QString examples = QLatin1String(SRCDIR) + "/../../../../examples/";
     QString tests = QLatin1String(SRCDIR) + "/../../../../tests/";
 
+    QStringList exampleFiles;
+    QStringList testFiles;
     QStringList files;
-    files << findFiles(QDir(examples));
-    files << findFiles(QDir(tests));
+    exampleFiles << findFiles(QDir(examples));
+    testFiles << findFiles(QDir(tests));
+
+    // Actually this test is an e2e test and not the unit test.
+    // At the moment of writing, CI lacks providing instruments for the automated tests
+    // which might be time-consuming, as for example this one.
+    // Therefore as part of QTBUG-122990 this test was copied to the /manual/e2e/qml/qmlformat
+    // however very small fraction of the test data is still preserved here for the sake of
+    // testing automatically at least a small part of the examples
+    const int nBatch = 10;
+    files << exampleFiles.mid(0, nBatch) << exampleFiles.mid(exampleFiles.size() / 2, nBatch)
+          << exampleFiles.mid(exampleFiles.size() - nBatch, nBatch);
+    files << testFiles.mid(0, nBatch) << testFiles.mid(exampleFiles.size() / 2, nBatch)
+          << testFiles.mid(exampleFiles.size() - nBatch, nBatch);
 
     for (const QString &file : files)
         QTest::newRow(qPrintable(file)) << file;
@@ -543,8 +670,7 @@ void TestQmlformat::testFilesOption_data()
     QTest::addColumn<QString>("containerFile");
     QTest::addColumn<QStringList>("individualFiles");
 
-    QTest::newRow("initial") << "fileListToFormat"
-            << QStringList{"valid1.qml", "invalidEntry:cannot be parsed", "valid2.qml"};
+    QTest::newRow("initial") << "fileListToFormat" << QStringList{ "valid1.qml", "valid2.qml" };
 }
 
 void TestQmlformat::testFilesOption()
@@ -606,11 +732,11 @@ void TestQmlformat::testFilesOption()
 }
 
 QString TestQmlformat::runQmlformat(const QString &fileToFormat, QStringList args,
-                                    bool shouldSucceed, RunOption rOptions)
+                                    bool shouldSucceed, RunOption rOptions, QStringView ext)
 {
     // Copy test file to temporary location
     QTemporaryDir tempDir;
-    const QString tempFile = tempDir.path() + QDir::separator() + "to_format.qml";
+    const QString tempFile = (tempDir.path() + QDir::separator() + "to_format") % ext;
 
     if (rOptions == RunOption::OnCopy) {
         QFile::copy(fileToFormat, tempFile);
@@ -634,7 +760,8 @@ QString TestQmlformat::runQmlformat(const QString &fileToFormat, QStringList arg
 
     QFile temp(tempFile);
 
-    temp.open(QIODevice::ReadOnly);
+    if (!temp.open(QIODevice::ReadOnly))
+        qFatal("Could not open %s", qPrintable(tempFile));
     QString formatted = QString::fromUtf8(temp.readAll());
 
     return formatted;
@@ -644,19 +771,17 @@ QString TestQmlformat::formatInMemory(const QString &fileToFormat, bool *didSucc
                                       LineWriterOptions options, WriteOutChecks extraChecks,
                                       WriteOutChecks largeChecks)
 {
-    DomItem env = DomEnvironment::create(
+    auto env = DomEnvironment::create(
             QStringList(), // as we load no dependencies we do not need any paths
             QQmlJS::Dom::DomEnvironment::Option::SingleThreaded
                     | QQmlJS::Dom::DomEnvironment::Option::NoDependencies);
     DomItem tFile;
-    env.loadFile(
-            FileToLoad::fromFileSystem(env.ownerAs<DomEnvironment>(), fileToFormat),
-            [&tFile](Path, const DomItem &, const DomItem &newIt) { tFile = newIt; },
-            LoadOption::DefaultLoad);
-    env.loadPendingDependencies();
+    env->loadFile(FileToLoad::fromFileSystem(env, fileToFormat),
+                  [&tFile](Path, const DomItem &, const DomItem &newIt) { tFile = newIt; });
+    env->loadPendingDependencies();
     MutableDomItem myFile = tFile.field(Fields::currentItem);
 
-    DomItem writtenOut;
+    bool writtenOut;
     QString resultStr;
     if (myFile.field(Fields::isValid).value().toBool()) {
         WriteOutChecks checks = extraChecks;
@@ -674,7 +799,7 @@ QString TestQmlformat::formatInMemory(const QString &fileToFormat, bool *didSucc
         res.flush();
     }
     if (didSucceed)
-        *didSucceed = bool(writtenOut);
+        *didSucceed = writtenOut;
     return resultStr;
 }
 

@@ -23,7 +23,7 @@ class GL_EXPORT GLContextGLX : public GLContextReal {
   GLContextGLX& operator=(const GLContextGLX&) = delete;
 
   // Implement GLContext.
-  bool Initialize(GLSurface* compatible_surface,
+  bool InitializeImpl(GLSurface* compatible_surface,
                   const GLContextAttribs& attribs) override;
   bool MakeCurrentImpl(GLSurface* surface) override;
   void ReleaseCurrent(GLSurface* surface) override;

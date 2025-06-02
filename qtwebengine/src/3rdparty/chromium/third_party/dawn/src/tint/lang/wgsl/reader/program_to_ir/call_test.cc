@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
 #include "src/tint/lang/core/constant/scalar.h"
@@ -33,7 +46,7 @@ TEST_F(ProgramToIRCallTest, EmitExpression_Bitcast) {
     WrapInFunction(expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%my_func = func():f32 -> %b1 {
   %b1 = block {
@@ -43,7 +56,8 @@ TEST_F(ProgramToIRCallTest, EmitExpression_Bitcast) {
 %test_function = @compute @workgroup_size(1, 1, 1) func():void -> %b2 {
   %b2 = block {
     %3:f32 = call %my_func
-    %tint_symbol:f32 = bitcast %3
+    %4:f32 = bitcast %3
+    %tint_symbol:f32 = let %4
     ret
   }
 }
@@ -58,7 +72,7 @@ TEST_F(ProgramToIRCallTest, EmitStatement_Discard) {
          });
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%test_function = @fragment func():void -> %b1 {
   %b1 = block {
@@ -75,7 +89,7 @@ TEST_F(ProgramToIRCallTest, EmitStatement_UserFunction) {
     auto* stmt = CallStmt(Call("my_func", Mul(2_a, 3_a)));
     WrapInFunction(stmt);
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%my_func = func(%p:f32):void -> %b1 {
   %b1 = block {
@@ -97,7 +111,7 @@ TEST_F(ProgramToIRCallTest, EmitExpression_Convert) {
     WrapInFunction(expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%b1 = block {  # root
   %i:ptr<private, i32, read_write> = var, 1i
@@ -106,7 +120,8 @@ TEST_F(ProgramToIRCallTest, EmitExpression_Convert) {
 %test_function = @compute @workgroup_size(1, 1, 1) func():void -> %b2 {
   %b2 = block {
     %3:i32 = load %i
-    %tint_symbol:f32 = convert %3
+    %4:f32 = convert %3
+    %tint_symbol:f32 = let %4
     ret
   }
 }
@@ -118,7 +133,7 @@ TEST_F(ProgramToIRCallTest, EmitExpression_ConstructEmpty) {
     GlobalVar("i", core::AddressSpace::kPrivate, expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%b1 = block {  # root
   %i:ptr<private, vec3<f32>, read_write> = var, vec3<f32>(0.0f)
@@ -133,7 +148,7 @@ TEST_F(ProgramToIRCallTest, EmitExpression_Construct) {
     WrapInFunction(expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%b1 = block {  # root
   %i:ptr<private, f32, read_write> = var, 1.0f
@@ -142,7 +157,8 @@ TEST_F(ProgramToIRCallTest, EmitExpression_Construct) {
 %test_function = @compute @workgroup_size(1, 1, 1) func():void -> %b2 {
   %b2 = block {
     %3:f32 = load %i
-    %tint_symbol:vec3<f32> = construct 2.0f, 3.0f, %3
+    %4:vec3<f32> = construct 2.0f, 3.0f, %3
+    %tint_symbol:vec3<f32> = let %4
     ret
   }
 }

@@ -50,11 +50,11 @@ class Lexer:
       'DEFAULT',
       'ARRAY',
       'MAP',
-      'ASSOCIATED',
       'PENDING_REMOTE',
       'PENDING_RECEIVER',
       'PENDING_ASSOCIATED_REMOTE',
       'PENDING_ASSOCIATED_RECEIVER',
+      'FEATURE',
   )
 
   keyword_map = {}

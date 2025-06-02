@@ -610,7 +610,6 @@ void tst_QTableView::keyboardNavigation()
     view.setCurrentIndex(index);
 
     view.show();
-    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
 
     int row = rowCount - 1;
@@ -3829,7 +3828,6 @@ void tst_QTableView::tabFocus()
     QLineEdit *edit = new QLineEdit(&window);
 
     window.show();
-    QApplicationPrivate::setActiveWindow(&window);
     window.setFocus();
     window.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&window));
@@ -4952,7 +4950,6 @@ void tst_QTableView::resetDefaultSectionSize()
     view.verticalHeader()->resetDefaultSectionSize();
     view.show();
     QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QEXPECT_FAIL("", "Reverted fix for QTBUG-116013 due to QTBUG-122109", Continue);
     QCOMPARE(view.verticalHeader()->logicalIndexAt(9, 45), 1);
 }
 

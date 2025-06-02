@@ -210,16 +210,18 @@ void InstantiatePersistentHistogramsImpl(const base::FilePath& metrics_dir,
 
 }  // namespace
 
-CONSTINIT const base::Feature kPersistentHistogramsFeature(
-    "PersistentHistograms",
 #if BUILDFLAG(IS_FUCHSIA)
+BASE_FEATURE(
+    kPersistentHistogramsFeature,
+    "PersistentHistograms",
     // TODO(crbug.com/1295119): Enable once writable mmap() is supported. Also
     // move the initialization earlier to chrome/app/chrome_main_delegate.cc.
-    base::FEATURE_DISABLED_BY_DEFAULT
+    base::FEATURE_DISABLED_BY_DEFAULT);
 #else
-    base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kPersistentHistogramsFeature,
+             "PersistentHistograms",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_FUCHSIA)
-);
 
 const char kPersistentHistogramStorageMappedFile[] = "MappedFile";
 const char kPersistentHistogramStorageLocalMemory[] = "LocalMemory";

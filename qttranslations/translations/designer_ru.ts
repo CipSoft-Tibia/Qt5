@@ -633,8 +633,8 @@
 <context>
     <name>Designer</name>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file cannot be read because the extra info extension failed to load.</source>
@@ -1094,8 +1094,8 @@
         <translation>Форма</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1409,8 +1409,8 @@ This indicates an inconsistency in the ui-file.</source>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>&amp;Справка по Qt Designer</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>&amp;Справка по Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1421,8 +1421,8 @@ This indicates an inconsistency in the ui-file.</source>
         <translation>О модулях</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>О Qt Designer</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>О Qt Widgets Designer</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1471,8 +1471,8 @@ Do you want to update the file location or generate a new form?</source>
         <translation>&amp;Новая форма</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -3256,12 +3256,12 @@ Do you want overwrite the template?</source>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Версия %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer - дизайнер графического интерфейса пользователя для Qt-приложений.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer - дизайнер графического интерфейса пользователя для Qt-приложений.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
@@ -4760,12 +4760,12 @@ Please select another name.</source>
         <translation>Незагруженные модули</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer не может найти ни одного модуля</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer не может найти ни одного модуля</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer нашёл следующие модули</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer нашёл следующие модули</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

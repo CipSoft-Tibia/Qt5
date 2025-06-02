@@ -17,22 +17,33 @@ public:
     static const char *GrpcClientFileSuffix();
     static const char *GrpcServiceFileSuffix();
 
+    static const char *ClientConstructorDeclarationTemplate();
     static const char *ClientConstructorDefinitionTemplate();
+    static const char *ClientDestructorDeclarationTemplate();
+    static const char *ClientDestructorDefinitionTemplate();
     static const char *ClientQmlConstructorDefinitionTemplate();
 
     static const char *ClientMethodDeclarationAsyncTemplate();
-    static const char *ClientMethodDeclarationAsync2Template();
     static const char *ClientMethodDeclarationQmlTemplate();
 
     static const char *ServerMethodDeclarationTemplate();
 
     static const char *ClientMethodDefinitionAsyncTemplate();
-    static const char *ClientMethodDefinitionAsync2Template();
     static const char *ClientMethodDefinitionQmlTemplate();
 
     static const char *ClientMethodStreamDeclarationTemplate();
-
     static const char *ClientMethodStreamDefinitionTemplate();
+
+    static const char *StreamSenderDeclarationQmlTemplate();
+
+    static const char *ClientMethodServerStreamDeclarationQmlTemplate();
+    static const char *ClientMethodServerStreamDefinitionQmlTemplate();
+
+    static const char *ClientMethodClientStreamDeclarationQmlTemplate();
+    static const char *ClientMethodClientStreamDefinitionQmlTemplate();
+
+    static const char *ClientMethodBidiStreamDeclarationQmlTemplate();
+    static const char *ClientMethodBidiStreamDefinitionQmlTemplate();
 };
 
 } // namespace QtGrpc

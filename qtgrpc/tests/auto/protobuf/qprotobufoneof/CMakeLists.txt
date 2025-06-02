@@ -14,3 +14,4 @@ qt_internal_add_test(tst_qprotobufoneof
         Qt::Protobuf
 )
 
+set_property(TARGET tst_qprotobufoneof APPEND PROPERTY AUTOMOC_MACRO_NAMES "Q_PROTOBUF_OBJECT")

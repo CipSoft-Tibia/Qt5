@@ -67,12 +67,50 @@ macro(qt_collect_third_party_deps target)
                     set(package_optional_components "")
                 endif()
 
+                get_target_property(package_components_id ${dep} _qt_package_components_id)
+                if(package_components_id)
+                    list(APPEND third_party_deps_package_components_ids ${package_components_id})
+                endif()
+
                 list(APPEND third_party_deps
                     "${package_name}\;${package_is_optional}\;${package_version}\;${package_components}\;${package_optional_components}")
             endif()
         endif()
     endforeach()
 endmacro()
+
+# Collect provided targets for the given list of package component ids.
+#
+# ${target} is merely used as a key infix to avoid name clashes in the Dependencies.cmake files.
+# package_component_ids is a list of '${package_name}-${components}-${optional_components}' keys
+# that are sanitized not to contain spaces or semicolons.
+#
+# The output is a list of variable assignments to add to the dependencies file.
+# Each variable assignment is the list of provided targets for a given package component id.
+#
+# We use these extra assignments instead of adding the info to the existing 'third_party_deps' list
+# to make the information more readable. That list already has 5 items per package, making it
+# quite hard to read.
+function(qt_internal_collect_third_party_dep_packages_info
+        target
+        package_components_ids
+        out_packages_info)
+
+    # There might be multiple calls to find the same package, so remove the duplicates.
+    list(REMOVE_DUPLICATES package_components_ids)
+
+    set(packages_info "")
+
+    foreach(package_key IN LISTS package_components_ids)
+        get_cmake_property(provided_targets _qt_find_package_${package_key}_provided_targets)
+        if(provided_targets)
+            set(key "__qt_${target}_third_party_package_${package_key}_provided_targets")
+            string(APPEND packages_info "set(${key} \"${provided_targets}\")\n")
+        endif()
+    endforeach()
+
+    set(${out_packages_info} "${packages_info}" PARENT_SCOPE)
+endfunction()
 
 # Filter the dependency targets to collect unique set of the dependencies.
 # non-Private and Private targets are treated as the single object in this context
@@ -149,6 +187,7 @@ function(qt_internal_create_module_depends_file target)
     # ModuleDependencies.cmake.
     set(third_party_deps "")
     set(third_party_deps_seen "")
+    set(third_party_deps_package_components_ids "")
 
     # Used for collecting Qt tool dependencies that should be find_package()'d in
     # ModuleToolsDependencies.cmake.
@@ -216,6 +255,14 @@ function(qt_internal_create_module_depends_file target)
     endforeach()
 
     qt_collect_third_party_deps(${target})
+    qt_internal_collect_third_party_dep_packages_info(${target}
+        "${third_party_deps_package_components_ids}"
+        packages_info)
+
+    set(third_party_deps_extra_info "")
+    if(packages_info)
+        string(APPEND third_party_deps_extra_info "${packages_info}")
+    endif()
 
     # Add dependency to the main ModuleTool package to ModuleDependencies file.
     if(${target} IN_LIST QT_KNOWN_MODULES_WITH_TOOLS)
@@ -353,10 +400,22 @@ function(qt_internal_create_qt6_dependencies_file)
     unset(depends)
     unset(optional_public_depends)
 
+    set(third_party_deps "")
+    set(third_party_deps_seen "")
+    set(third_party_deps_package_components_ids "")
+
     # We need to collect third party deps that are set on the public Platform target,
     # like Threads::Threads.
     # This mimics find_package part of the CONFIG += thread assignment in mkspecs/features/qt.prf.
     qt_collect_third_party_deps(${actual_target})
+    qt_internal_collect_third_party_dep_packages_info("${INSTALL_CMAKE_NAMESPACE}"
+        "${third_party_deps_package_components_ids}"
+        packages_info)
+
+    set(third_party_deps_extra_info "")
+    if(packages_info)
+        string(APPEND third_party_deps_extra_info "${packages_info}")
+    endif()
 
     # For Threads we also need to write an extra variable assignment.
     set(third_party_extra "")
@@ -435,67 +494,8 @@ function(qt_internal_create_plugins_auto_inclusion_files)
 
         if(QT_MODULE STREQUAL "Qml")
             set(QT_MODULE_PLUGIN_INCLUDES "${QT_MODULE_PLUGIN_INCLUDES}
-# Qml plugin targets might have dependencies on other qml plugin targets, but the Targets.cmake
-# files are included in the order that file(GLOB) returns, which means certain targets that are
-# referenced might not have been created yet, and \${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE
-# might be set to a message saying those targets don't exist.
-#
-# Postpone checking of which targets don't exist until all Qml PluginConfig.cmake files have been
-# included, by including all the files one more time and checking for errors at each step.
-#
-# TODO: Find a better way to deal with this, perhaps by using find_package() instead of include
-# for the Qml PluginConfig.cmake files.
-
-# Distributions should probably change this default.
-if(NOT DEFINED QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
-    set(QT_SKIP_AUTO_QML_PLUGIN_INCLUSION OFF)
-endif()
-
-set(__qt_qml_plugins_config_file_list \"\")
-set(__qt_qml_plugins_glob_prefixes \"\${CMAKE_CURRENT_LIST_DIR}\")
-
-# Allow passing additional prefixes where we will glob for PluginConfig.cmake files.
-if(QT_ADDITIONAL_QML_PLUGIN_GLOB_PREFIXES)
-    foreach(__qt_qml_plugin_glob_prefix IN LISTS QT_ADDITIONAL_QML_PLUGIN_GLOB_PREFIXES)
-        if(__qt_qml_plugin_glob_prefix)
-            list(APPEND __qt_qml_plugins_glob_prefixes \"\${__qt_qml_plugin_glob_prefix}\")
-        endif()
-    endforeach()
-endif()
-
-list(REMOVE_DUPLICATES __qt_qml_plugins_glob_prefixes)
-
-foreach(__qt_qml_plugin_glob_prefix IN LISTS __qt_qml_plugins_glob_prefixes)
-    file(GLOB __qt_qml_plugins_glob_config_file_list
-        \"\${__qt_qml_plugin_glob_prefix}/QmlPlugins/${INSTALL_CMAKE_NAMESPACE}*Config.cmake\")
-    if(__qt_qml_plugins_glob_config_file_list)
-        list(APPEND __qt_qml_plugins_config_file_list \${__qt_qml_plugins_glob_config_file_list})
-    endif()
-endforeach()
-
-if (__qt_qml_plugins_config_file_list AND NOT QT_SKIP_AUTO_QML_PLUGIN_INCLUSION)
-    # First round of inclusions ensure all qml plugin targets are brought into scope.
-    foreach(__qt_qml_plugin_config_file \${__qt_qml_plugins_config_file_list})
-        include(\${__qt_qml_plugin_config_file})
-
-        # Temporarily unset any failure markers and mark the Qml package as found.
-        unset(\${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE)
-        set(\${CMAKE_FIND_PACKAGE_NAME}_FOUND TRUE)
-    endforeach()
-
-    # For the second round of inclusions, check and bail out early if there are errors.
-    foreach(__qt_qml_plugin_config_file \${__qt_qml_plugins_config_file_list})
-        include(\${__qt_qml_plugin_config_file})
-
-        if(\${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE)
-            string(APPEND \${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE
-                \"\nThe message was set in \${__qt_qml_plugin_config_file} \")
-            set(\${CMAKE_FIND_PACKAGE_NAME}_FOUND FALSE)
-            return()
-        endif()
-    endforeach()
-
-endif()")
+__qt_internal_include_qml_plugin_packages()
+")
         endif()
 
         get_target_property(module_plugin_types "${QT_MODULE}" MODULE_PLUGIN_TYPES)
@@ -524,7 +524,12 @@ function(qt_generate_install_prefixes out_var)
     set(vars INSTALL_BINDIR INSTALL_INCLUDEDIR INSTALL_LIBDIR INSTALL_MKSPECSDIR INSTALL_ARCHDATADIR
         INSTALL_PLUGINSDIR INSTALL_LIBEXECDIR INSTALL_QMLDIR INSTALL_DATADIR INSTALL_DOCDIR
         INSTALL_TRANSLATIONSDIR INSTALL_SYSCONFDIR INSTALL_EXAMPLESDIR INSTALL_TESTSDIR
-        INSTALL_DESCRIPTIONSDIR)
+        INSTALL_DESCRIPTIONSDIR INSTALL_SBOMDIR)
+    # INSTALL_PUBLICBINDIR is processed only if it is not empty
+    # See usage in qt_internal_generate_user_facing_tools_info
+    if(NOT "${INSTALL_PUBLICBINDIR}" STREQUAL "")
+        list(APPEND vars INSTALL_PUBLICBINDIR)
+    endif()
 
     foreach(var ${vars})
         get_property(docstring CACHE "${var}" PROPERTY HELPSTRING)
@@ -630,9 +635,9 @@ set(__qt_internal_initial_qt_cmake_build_type \"${CMAKE_BUILD_TYPE}\")
                 "set(QT_IS_MACOS_UNIVERSAL \"${QT_IS_MACOS_UNIVERSAL}\" CACHE BOOL \"\")\n")
         endif()
 
-        if(DEFINED QT_UIKIT_SDK)
+        if(DEFINED QT_APPLE_SDK)
             string(APPEND QT_EXTRA_BUILD_INTERNALS_VARS
-                "set(QT_UIKIT_SDK \"${QT_UIKIT_SDK}\" CACHE BOOL \"\")\n")
+                "set(QT_APPLE_SDK \"${QT_APPLE_SDK}\" CACHE BOOL \"\")\n")
         endif()
 
         if(QT_FORCE_FIND_TOOLS)
@@ -653,11 +658,17 @@ set(__qt_internal_initial_qt_cmake_build_type \"${CMAKE_BUILD_TYPE}\")
         endif()
 
         # Save the default qpa platform.
-        # Used by qtwayland/src/plugins/platforms/qwayland-generic/CMakeLists.txt. Otherwise
-        # the DEFAULT_IF condition is evaluated incorrectly.
         if(DEFINED QT_QPA_DEFAULT_PLATFORM)
             string(APPEND QT_EXTRA_BUILD_INTERNALS_VARS
                 "set(QT_QPA_DEFAULT_PLATFORM \"${QT_QPA_DEFAULT_PLATFORM}\" CACHE STRING \"\")\n")
+        endif()
+
+        # Save the list of default qpa platforms.
+        # Used by qtwayland/src/plugins/platforms/qwayland-generic/CMakeLists.txt. Otherwise
+        # the DEFAULT_IF condition is evaluated incorrectly.
+        if(DEFINED QT_QPA_PLATFORMS)
+            string(APPEND QT_EXTRA_BUILD_INTERNALS_VARS
+                "set(QT_QPA_PLATFORMS \"${QT_QPA_PLATFORMS}\" CACHE STRING \"\")\n")
         endif()
 
         # Save minimum and policy-related CMake versions to ensure the same minimum is
@@ -856,6 +867,7 @@ function(qt_internal_generate_user_facing_tools_info)
     if("${INSTALL_PUBLICBINDIR}" STREQUAL "")
         return()
     endif()
+    qt_path_join(tool_link_base_dir "${CMAKE_INSTALL_PREFIX}" "${INSTALL_PUBLICBINDIR}")
     get_property(user_facing_tool_targets GLOBAL PROPERTY QT_USER_FACING_TOOL_TARGETS)
     set(lines "")
     foreach(target ${user_facing_tool_targets})
@@ -872,6 +884,7 @@ function(qt_internal_generate_user_facing_tools_info)
         endif()
         qt_path_join(tool_target_path "${CMAKE_INSTALL_PREFIX}" "${INSTALL_BINDIR}" "${filename}")
         qt_path_join(tool_link_path "${INSTALL_PUBLICBINDIR}" "${linkname}${PROJECT_VERSION_MAJOR}")
+        _qt_internal_relative_path(tool_target_path BASE_DIRECTORY ${tool_link_base_dir})
         list(APPEND lines "${tool_target_path} ${tool_link_path}")
     endforeach()
     string(REPLACE ";" "\n" content "${lines}")

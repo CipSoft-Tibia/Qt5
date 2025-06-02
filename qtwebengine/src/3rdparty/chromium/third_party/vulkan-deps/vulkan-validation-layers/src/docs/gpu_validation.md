@@ -104,13 +104,19 @@ array elements, those elements are not required to have been written.
 The instrumentation code needs to know which elements of a descriptor array have been written, so that it can tell if one is used
 that has not been written.
 
-Note that currently, VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT validation is not working and all accesses are reported as valid.
+Note that currently, `VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT` validation is not working and all accesses are reported as valid.
 
 ### Buffer device address checking
 The vkGetBufferDeviceAddressEXT routine can be used to get a GPU address that a shader can use to directly address a particular buffer.
 GPU-Assisted Validation code keeps track of all such addresses, along with the size of the associated buffer, and creates an input buffer listing all such address/size pairs
 Shader code is instrumented to validate buffer_reference addresses and report any reads or writes that do no fall within the listed address/size regions.
+
 Note: The mapping between a `VkBuffer` and a GPU address is not necessarily one to one. For instance, if multiple `VkBuffer` are bound to the same memory region, they can have the same GPU address.
+
+### Selective Shader Instrumentation
+With the khronos_validation.select_instrumented_shaders feature, an application can control which shaders are instrumented and thus, will return GPU-AV errors.
+After enabling the feature, the application will need to include a `VkValidationFeaturesEXT` structure with `VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT` in the pEnabledFeatures list 
+in the pNext chain of the VkShaderModuleCreateInfo used to create the shader. Otherwise, the shader will not be instrumented.
 
 ## GPU-Assisted Validation Limitations
 
@@ -119,7 +125,7 @@ There are several limitations that may impede the operation of GPU-Assisted Vali
 ### Vulkan 1.1
 
 Vulkan 1.1 or later is required because the GPU instrumentation code uses SPIR-V 1.3 features.
-Vulkan 1,1 is required to ensure that SPIR-V 1.3 is available.
+Vulkan 1.1 is required to ensure that SPIR-V 1.3 is available.
 
 ### Buffer Device Address
 
@@ -237,7 +243,7 @@ In general, the implementation does:
     However, it is not possible to identify the command buffer that causes the error if multiple command buffers
     are submitted at once.
 * For each draw, dispatch, and trace rays call, allocate a descriptor set and update it to point to the block of device memory just allocated.
-    If descriptor indexing is enabled, also update the descriptor set to point to the allocated input buffer.
+    If descriptor indexing (DI) is enabled, also update the descriptor set to point to the allocated input buffer.
     Fill the DI input buffer with the size and write state information for each descriptor array.
     There is a descriptor set manager to handle this efficiently.
     If the buffer device address extension is enabled, allocate an input buffer to hold the address / size pairs for all addresses retrieved from vkGetBufferDeviceAddressEXT.
@@ -251,10 +257,11 @@ In general, the implementation does:
     For devices that have a very high or no limit on this bound, pick an index that isn't too high, but above most other device
     maxima such as 32.
 * When creating a ShaderModule, pass the SPIR-V bytecode to the SPIR-V optimizer to perform the instrumentation pass.
-    Pass the desired descriptor set binding index to the optimizer via a parameter so that the instrumented
+    Update the desired descriptor set binding index to the optimizer via SwitchDescriptorSet pass so that the the instrumented
     code knows which descriptor to use for writing error report data to the memory block.
     If descriptor indexing is enabled, turn on OOB and write state checking in the instrumentation pass.
     If the buffer_device_address extension is enabled, apply a pass to add instrumentation checking for out of bounds buffer references.
+    Link the instrumentation helper functions in layers/gpu_shaders/inst_functions.comp to the instrumented bytecode.
     Use the instrumented bytecode to create the ShaderModule.
 * For all pipeline layouts, add our descriptor set to the layout, at the binding index determined earlier.
     Fill any gaps with empty descriptor sets.
@@ -278,9 +285,9 @@ More detail is found in the discussion of the individual hooked functions below.
 
 ### Initialization
 
-When the validation layer loads, it examines the user options from both the layer settings file and the
-`VK_EXT_validation_features` extension.
-Note that it also processes the subsumed `VK_EXT_validation_flags` extension for simple backwards compatibility.
+When the validation layer loads, it examines the user settings from the layer settings file, the environment variables and the
+`VK_EXT_layer_settings` extension as described by [Layers Overview and Configuration](https://vulkan.lunarg.com/doc/sdk/latest/windows/layer_configuration.html) document.
+Note that it also processes the subsumed `VK_EXT_validation_features` and `VK_EXT_validation_flags` extensions for simple backwards compatibility.
 From these options, the layer sets instance-scope flags in the validation layer tracking data to indicate if
 GPU-Assisted Validation has been requested, along with any other associated options.
 
@@ -319,8 +326,7 @@ This doesn't present any particular problem, but it does raise some issues:
 
   This should only need to be done after making any major changes to the implementation.
 
-  Another approach involves capturing an application trace with `vktrace` and then playing
-  it back with `vkreplay`.
+  Another approach involves capturing and replaying an application trace with `GFXReconstruct`
 
 * The additional API calls are not state-tracked
 
@@ -368,7 +374,7 @@ The design of each hooked function follows:
 
 #### GpuPreCallRecordCreateDevice
 
-* Modify the `VkPhysicalDeviceFeatures` to turn on two additional physical device features:
+* Modify the `VkPhysicalDeviceFeatures` to turn on these additional physical device features:
   * `fragmentStoresAndAtomics`
   * `vertexPipelineStoresAndAtomics`
   * `bufferDeviceAddress`
@@ -397,29 +403,29 @@ The design of each hooked function follows:
   * Get a descriptor set from the descriptor set manager
   * Get an output buffer and associated memory from VMA
   * If descriptor indexing is enabled, get an input buffer and fill with descriptor array information
-  * If buffer device address is enabled, get an input buffer and fill with address / size pairs for addresses retrieved from vkGetBufferDeviceAddressEXT
+  * If buffer device address is enabled, get an input buffer and fill with address / size pairs for addresses retrieved from `vkGetBufferDeviceAddressEXT`
   * Update (write) the descriptor set with the memory info
   * Check to see if the layout for the pipeline just bound is using our selected bind index
   * If no conflict, add an additional command to the command buffer to bind our descriptor set at our selected index
-* Record the above objects in the per-CB state;
-Note that the Draw and Dispatch calls include vkCmdDraw, vkCmdDrawIndexed, vkCmdDrawIndirect, vkCmdDrawIndexedIndirect, vkCmdDispatch, vkCmdDispatchIndirect, and vkCmdTraceRaysNV.
+* Record the above objects in the per command buffer state;
+Note that the Draw and Dispatch calls include `vkCmdDraw`, `vkCmdDrawIndexed`, `vkCmdDrawIndirect`, `vkCmdDrawIndexedIndirect`, `vkCmdDispatch`, `vkCmdDispatchIndirect`, and `vkCmdTraceRaysNV`.
 
 #### GpuPreCallRecordFreeCommandBuffers
 
 * For each command buffer:
   * Destroy the VMA buffer(s), releasing the memory
   * Give the descriptor sets back to the descriptor set manager
-  * Clean up CB state
+  * Clean up command buffer state
 
 #### GpuOverrideDispatchCreateShaderModule
 
-This function is called from PreCallRecordCreateShaderModule.
+This function is called from `PreCallRecordCreateShaderModule`.
 This routine sets up to call the SPIR-V optimizer to run the "BindlessCheckPass", replacing the original SPIR-V with the instrumented SPIR-V
-which is then used in the call down the chain to CreateShaderModule.
+which is then used in the call down the chain to `CreateShaderModule`.
 
 This function generates a "unique shader ID" that is passed to the SPIR-V optimizer,
 which the instrumented code puts in the debug error record to identify the shader.
-This ID is returned by this function so it can be recorded in the shader module at PostCallRecord time.
+This ID is returned by this function so it can be recorded in the shader module at `PostCallRecord` time.
 It would have been convenient to use the shader module handle returned from the driver to use as this shader ID.
 But the shader needs to be instrumented before creating the shader module and therefore the handle is not available to use
 as this ID to pass to the optimizer.
@@ -442,7 +448,7 @@ This ensures that the original SPIR-V bytecode is available if we need it to rep
 
 #### GpuOverrideDispatchCreatePipelineLayout
 
-This is function is called through PreCallRecordCreatePipelineLayout.
+This is function is called through `PreCallRecordCreatePipelineLayout`.
 
 * Check for a descriptor set binding index conflict.
   * If there is one, issue an error message and leave the pipeline layout unmodified
@@ -462,13 +468,13 @@ This is function is called through PreCallRecordCreatePipelineLayout.
 #### GpuPostCallQueueSubmit
 
 * Submit a command buffer containing a memory barrier to make GPU writes available to the host domain.
-* Call QueueWaitIdle.
+* Call `QueueWaitIdle`.
 * For each primary and secondary command buffer in the submission:
   * Call a helper function to process the instrumentation debug buffers (described later)
 
 #### GpuPreCallValidateCmdWaitEvents
 
-* Report an error about a possible deadlock if CmdWaitEvents is recorded with VK_PIPELINE_STAGE_HOST_BIT set.
+* Report an error about a possible deadlock if `CmdWaitEvents` is recorded with VK_PIPELINE_STAGE_HOST_BIT set.
 
 #### GpuPreCallRecordCreateGraphicsPipelines
 
@@ -481,7 +487,7 @@ This is function is called through PreCallRecordCreatePipelineLayout.
 #### GpuPostCallRecordCreateGraphicsPipelines
 
 * For every shader in the pipeline:
-  * Destroy the shader module created in GpuPreCallRecordCreateGraphicsPipelines, if any
+  * Destroy the shader module created in `GpuPreCallRecordCreateGraphicsPipelines`, if any
     * These are found in the CreateInfo used to create the pipeline and not in the shader_module
   * Create a shader tracking record that saves:
     * shader module handle
@@ -558,9 +564,9 @@ Instrumentation is applied to the following SPIR-V operations:
     OpImageSparseRead
     OpImageWrite
 
-Also, OpLoad and OpStore with an AccessChain into a base of OpVariable with
-either Uniform or StorageBuffer storage class and a type which is either a
-struct decorated with Block, or a runtime or statically-sized array of such
+Also, `OpLoad` and `OpStore` with an AccessChain into a base of OpVariable with
+either `Uniform` or `StorageBuffer` storage class and a type which is either a
+struct decorated with `Block`, or a runtime or statically-sized array of such
 a struct.
 
 

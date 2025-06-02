@@ -4,6 +4,7 @@
 #include "qwaylandwindow_p.h"
 
 #include "qwaylandbuffer_p.h"
+#include "qwaylandcursor_p.h"
 #include "qwaylanddisplay_p.h"
 #include "qwaylandsurface_p.h"
 #include "qwaylandinputdevice_p.h"
@@ -12,7 +13,7 @@
 #include "qwaylandshellsurface_p.h"
 #include "qwaylandsubsurface_p.h"
 #include "qwaylandabstractdecoration_p.h"
-#include "qwaylandwindowmanagerintegration_p.h"
+#include "qwaylandplatformservices_p.h"
 #include "qwaylandnativeinterface_p.h"
 #include "qwaylanddecorationfactory_p.h"
 #include "qwaylandshmbackingstore_p.h"
@@ -26,6 +27,7 @@
 
 #include <QGuiApplication>
 #include <qpa/qwindowsysteminterface.h>
+#include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/private/qwindow_p.h>
 
 #include <QtCore/QDebug>
@@ -35,6 +37,8 @@
 #include <QtWaylandClient/private/qwayland-fractional-scale-v1.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace QtWaylandClient {
 
@@ -88,8 +92,10 @@ QWaylandWindow::~QWaylandWindow()
 
 void QWaylandWindow::ensureSize()
 {
-    if (mBackingStore)
-        mBackingStore->ensureSize();
+    if (mBackingStore) {
+        setBackingStore(mBackingStore);
+        mBackingStore->recreateBackBufferIfNeeded();
+    }
 }
 
 void QWaylandWindow::initWindow()
@@ -177,6 +183,8 @@ void QWaylandWindow::initWindow()
             // the user may have already set some window properties, so make sure to send them out
             for (auto it = m_properties.cbegin(); it != m_properties.cend(); ++it)
                 mShellSurface->sendProperty(it.key(), it.value());
+
+            emit surfaceRoleCreated();
         } else {
             qWarning("Could not create a shell surface object.");
         }
@@ -281,19 +289,22 @@ void QWaylandWindow::reset()
         mTopPopup = mTransientParent && (mTransientParent->window()->type() == Qt::Popup) ? mTransientParent : nullptr;
 
     if (mSurface) {
+        {
+            QWriteLocker lock(&mSurfaceLock);
+            invalidateSurface();
+            if (mTransientParent)
+                mTransientParent->removeChildPopup(this);
+            delete mShellSurface;
+            mShellSurface = nullptr;
+            emit surfaceRoleDestroyed();
+            delete mSubSurfaceWindow;
+            mSubSurfaceWindow = nullptr;
+            mTransientParent = nullptr;
+            mSurface.reset();
+            mViewport.reset();
+            mFractionalScale.reset();
+        }
         emit wlSurfaceDestroyed();
-        QWriteLocker lock(&mSurfaceLock);
-        invalidateSurface();
-        if (mTransientParent)
-            mTransientParent->removeChildPopup(this);
-        delete mShellSurface;
-        mShellSurface = nullptr;
-        delete mSubSurfaceWindow;
-        mSubSurfaceWindow = nullptr;
-        mTransientParent = nullptr;
-        mSurface.reset();
-        mViewport.reset();
-        mFractionalScale.reset();
     }
 
     {
@@ -322,12 +333,6 @@ void QWaylandWindow::reset()
 
     mInputRegion = QRegion();
     mTransparentInputRegion = false;
-
-    if (mQueuedBuffer) {
-        mQueuedBuffer->setBusy(false);
-    }
-    mQueuedBuffer = nullptr;
-    mQueuedBufferDamage = QRegion();
 
     mDisplay->handleWindowDestroyed(this);
 }
@@ -452,7 +457,7 @@ void QWaylandWindow::setGeometry(const QRect &r)
 
     if (mShellSurface) {
         mShellSurface->setWindowGeometry(windowContentGeometry());
-        if (!qt_window_private(window())->positionAutomatic)
+        if (!qt_window_private(window())->positionAutomatic && !mInResizeFromApplyConfigure)
             mShellSurface->setWindowPosition(windowGeometry().topLeft());
     }
 
@@ -564,6 +569,9 @@ void QWaylandWindow::setVisible(bool visible)
         // Don't flush the events here, or else the newly visible window may start drawing, but since
         // there was no frame before it will be stuck at the waitForFrameSync() in
         // QWaylandShmBackingStore::beginPaint().
+
+        if (mShellSurface)
+            mShellSurface->requestActivateOnShow();
     } else {
         sendExposeEvent(QRect());
         reset();
@@ -750,12 +758,7 @@ void QWaylandWindow::safeCommit(QWaylandBuffer *buffer, const QRegion &damage)
     if (isExposed()) {
         commit(buffer, damage);
     } else {
-        if (mQueuedBuffer) {
-            mQueuedBuffer->setBusy(false);
-        }
-        mQueuedBuffer = buffer;
-        mQueuedBuffer->setBusy(true);
-        mQueuedBufferDamage = damage;
+        buffer->setBusy(false);
     }
 }
 
@@ -763,7 +766,8 @@ void QWaylandWindow::commit(QWaylandBuffer *buffer, const QRegion &damage)
 {
     Q_ASSERT(isExposed());
     if (buffer->committed()) {
-        qCDebug(lcWaylandBackingstore) << "Buffer already committed, ignoring.";
+        mSurface->commit();
+        qCDebug(lcWaylandBackingstore) << "Buffer already committed, not attaching.";
         return;
     }
 
@@ -924,7 +928,7 @@ QPointF QWaylandWindow::mapFromWlSurface(const QPointF &surfacePosition) const
     return QPointF(surfacePosition.x() - margins.left(), surfacePosition.y() - margins.top());
 }
 
-wl_surface *QWaylandWindow::wlSurface()
+wl_surface *QWaylandWindow::wlSurface() const
 {
     QReadLocker locker(&mSurfaceLock);
     return mSurface ? mSurface->object() : nullptr;
@@ -1034,6 +1038,9 @@ bool QWaylandWindow::createDecoration()
 {
     Q_ASSERT_X(QThread::currentThreadId() == QThreadData::get2(thread())->threadId.loadRelaxed(),
                "QWaylandWindow::createDecoration", "not called from main thread");
+    // TODO: client side decorations do not work with Vulkan backend.
+    if (window()->surfaceType() == QSurface::VulkanSurface)
+        return false;
     if (!mDisplay->supportsWindowDecoration())
         return false;
 
@@ -1081,6 +1088,22 @@ bool QWaylandWindow::createDecoration()
                 if (!decorations.contains(targetKey)) {
                     qWarning() << "Requested decoration " << targetKey << " not found, falling back to default";
                     targetKey = QString(); // fallthrough
+                }
+            }
+
+            if (targetKey.isEmpty()) {
+                auto unixServices = dynamic_cast<QGenericUnixServices *>(
+                    QGuiApplicationPrivate::platformIntegration()->services());
+                const QList<QByteArray> desktopNames = unixServices->desktopEnvironment().split(':');
+                if (desktopNames.contains("GNOME")) {
+                    if (decorations.contains("adwaita"_L1))
+                        targetKey = "adwaita"_L1;
+                    else if (decorations.contains("gnome"_L1))
+                        targetKey = "gnome"_L1;
+                } else {
+                    // Do not use Adwaita/GNOME decorations on other DEs
+                    decorations.removeAll("adwaita"_L1);
+                    decorations.removeAll("gnome"_L1);
                 }
             }
 
@@ -1167,6 +1190,9 @@ QWaylandWindow *QWaylandWindow::guessTransientParent() const
 
 void QWaylandWindow::handleMouse(QWaylandInputDevice *inputDevice, const QWaylandPointerEvent &e)
 {
+    // There's currently no way to get info about the actual hardware device in use.
+    // At least we get the correct seat.
+    const QPointingDevice *device = QPointingDevice::primaryPointingDevice(inputDevice->seatname());
     if (e.type == QEvent::Leave) {
         if (mWindowDecorationEnabled) {
             if (mMouseEventsInContentArea)
@@ -1186,14 +1212,17 @@ void QWaylandWindow::handleMouse(QWaylandInputDevice *inputDevice, const QWaylan
         switch (e.type) {
             case QEvent::Enter:
                 QWindowSystemInterface::handleEnterEvent(window(), e.local, e.global);
+#if QT_CONFIG(cursor)
+                mDisplay->waylandCursor()->setPosFromEnterEvent(e.global.toPoint());
+#endif
                 break;
             case QEvent::MouseButtonPress:
             case QEvent::MouseButtonRelease:
             case QEvent::MouseMove:
-                QWindowSystemInterface::handleMouseEvent(window(), e.timestamp, e.local, e.global, e.buttons, e.button, e.type, e.modifiers);
+                QWindowSystemInterface::handleMouseEvent(window(), e.timestamp, device, e.local, e.global, e.buttons, e.button, e.type, e.modifiers);
                 break;
             case QEvent::Wheel:
-                QWindowSystemInterface::handleWheelEvent(window(), e.timestamp, e.local, e.global,
+                QWindowSystemInterface::handleWheelEvent(window(), e.timestamp, device, e.local, e.global,
                                                          e.pixelDelta, e.angleDelta, e.modifiers,
                                                          e.phase, e.source, e.inverted);
                 break;
@@ -1345,8 +1374,21 @@ bool QWaylandWindow::touchDragDecoration(QWaylandInputDevice *inputDevice, const
     return mWindowDecoration->handleTouch(inputDevice, local, global, state, mods);
 }
 
+bool QWaylandWindow::handleTabletEventDecoration(QWaylandInputDevice *inputDevice,
+                                                 const QPointF &local, const QPointF &global,
+                                                 Qt::MouseButtons buttons,
+                                                 Qt::KeyboardModifiers modifiers)
+{
+    if (!mWindowDecorationEnabled)
+        return false;
+    return mWindowDecoration->handleMouse(inputDevice, local, global, buttons, modifiers);
+}
+
 void QWaylandWindow::handleMouseEventWithDecoration(QWaylandInputDevice *inputDevice, const QWaylandPointerEvent &e)
 {
+    // There's currently no way to get info about the actual hardware device in use.
+    // At least we get the correct seat.
+    const QPointingDevice *device = QPointingDevice::primaryPointingDevice(inputDevice->seatname());
     if (mMousePressedInContentArea == Qt::NoButton &&
         mWindowDecoration->handleMouse(inputDevice, e.local, e.global, e.buttons, e.modifiers)) {
         if (mMouseEventsInContentArea) {
@@ -1356,7 +1398,7 @@ void QWaylandWindow::handleMouseEventWithDecoration(QWaylandInputDevice *inputDe
         return;
     }
 
-    QMargins marg = frameMargins();
+    QMargins marg = clientSideMargins();
     QRect windowRect(0 + marg.left(),
                      0 + marg.top(),
                      geometry().size().width(),
@@ -1376,14 +1418,17 @@ void QWaylandWindow::handleMouseEventWithDecoration(QWaylandInputDevice *inputDe
         switch (e.type) {
             case QEvent::Enter:
                 QWindowSystemInterface::handleEnterEvent(window(), localTranslated, globalTranslated);
+#if QT_CONFIG(cursor)
+                mDisplay->waylandCursor()->setPosFromEnterEvent(e.global.toPoint());
+#endif
                 break;
             case QEvent::MouseButtonPress:
             case QEvent::MouseButtonRelease:
             case QEvent::MouseMove:
-                QWindowSystemInterface::handleMouseEvent(window(), e.timestamp, localTranslated, globalTranslated, e.buttons, e.button, e.type, e.modifiers);
+                QWindowSystemInterface::handleMouseEvent(window(), e.timestamp, device, localTranslated, globalTranslated, e.buttons, e.button, e.type, e.modifiers);
                 break;
             case QEvent::Wheel: {
-                QWindowSystemInterface::handleWheelEvent(window(), e.timestamp,
+                QWindowSystemInterface::handleWheelEvent(window(), e.timestamp, device,
                                                          localTranslated, globalTranslated,
                                                          e.pixelDelta, e.angleDelta, e.modifiers,
                                                          e.phase, e.source, e.inverted);
@@ -1427,8 +1472,8 @@ void QWaylandWindow::handleScreensChanged()
 void QWaylandWindow::updateScale()
 {
     if (mFractionalScale) {
-        auto preferredScale = mFractionalScale->preferredScale().value_or(1.0);
-        preferredScale = std::max(1.0, preferredScale);
+        qreal preferredScale = mFractionalScale->preferredScale().value_or(1.0);
+        preferredScale = std::max<qreal>(1.0, preferredScale);
         Q_ASSERT(mViewport);
         setScale(preferredScale);
         return;
@@ -1752,12 +1797,20 @@ void QWaylandWindow::setOpaqueArea(const QRegion &opaqueArea)
 
 void QWaylandWindow::requestXdgActivationToken(uint serial)
 {
+    if (!mShellSurface) {
+        qCWarning(lcQpaWayland) << "requestXdgActivationToken is called with no surface role created, emitting synthetic signal";
+        Q_EMIT xdgActivationTokenCreated({});
+        return;
+    }
     mShellSurface->requestXdgActivationToken(serial);
 }
 
 void QWaylandWindow::setXdgActivationToken(const QString &token)
 {
-    mShellSurface->setXdgActivationToken(token);
+    if (mShellSurface)
+        mShellSurface->setXdgActivationToken(token);
+    else
+        qCWarning(lcQpaWayland) << "setXdgActivationToken is called with no surface role created, token" << token << "discarded";
 }
 
 void QWaylandWindow::addChildPopup(QWaylandWindow *child)

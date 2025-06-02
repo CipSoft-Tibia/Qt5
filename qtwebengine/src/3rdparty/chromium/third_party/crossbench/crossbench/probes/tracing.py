@@ -5,29 +5,34 @@
 from __future__ import annotations
 
 import argparse
+import enum
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Dict, Optional, Sequence, Set
+from typing import TYPE_CHECKING, Dict, Optional, Sequence, Set, Tuple
 
-from crossbench import cli_helper, compat, helper
+from crossbench import cli_helper, compat
 from crossbench.browsers.chromium.chromium import Chromium
 from crossbench.probes import helper as probe_helper
-from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeScope,
+from crossbench.probes.chromium_probe import ChromiumProbe
+from crossbench.probes.probe import (ProbeConfigParser, ProbeContext,
                                      ResultLocation)
 from crossbench.probes.results import ProbeResult
 
 if TYPE_CHECKING:
-  from crossbench.browsers.browser import Browser
-  from crossbench.flags import ChromeFlags
   from crossbench import plt
+  from crossbench.browsers.browser import Browser
+  from crossbench.env import HostEnvironment
+  from crossbench.flags import ChromeFlags
   from crossbench.runner.run import Run
 
-MINIMAL_CONFIG = {
+# TODO: go over these again and clean the categories.
+MINIMAL_CONFIG = frozenset((
+    "blink.user_timing",
     "toplevel",
     "v8",
     "v8.execute",
-}
-DEVTOOLS_TRACE_CONFIG = {
+))
+DEVTOOLS_TRACE_CONFIG = frozenset((
     "blink.console",
     "blink.user_timing",
     "devtools.timeline",
@@ -44,10 +49,10 @@ DEVTOOLS_TRACE_CONFIG = {
     "latencyInfo",
     "toplevel",
     "v8.execute",
-}
-# TODO: go over these again and clean the categories.
-V8_TRACE_CONFIG = {
+))
+V8_TRACE_CONFIG = frozenset((
     "blink",
+    "blink.user_timing",
     "browser",
     "cc",
     "disabled-by-default-ipc.flow",
@@ -56,7 +61,6 @@ V8_TRACE_CONFIG = {
     "disabled-by-default-v8.cpu_profiler",
     "disabled-by-default-v8.cpu_profiler.hires",
     "disabled-by-default-v8.gc",
-    "disabled-by-default-v8.gc_stats",
     "disabled-by-default-v8.inspector",
     "disabled-by-default-v8.runtime",
     "disabled-by-default-v8.runtime_stats",
@@ -81,21 +85,34 @@ V8_TRACE_CONFIG = {
     "v8",
     "v8.execute",
     "wayland",
-}
+))
+V8_GC_STATS_TRACE_CONFIG = V8_TRACE_CONFIG | frozenset(
+    ("disabled-by-default-v8.gc_stats",))
 
-TRACE_PRESETS: Dict[str, Set[str]] = {
+TRACE_PRESETS: Dict[str, frozenset[str]] = {
     "minimal": MINIMAL_CONFIG,
     "devtools": DEVTOOLS_TRACE_CONFIG,
     "v8": V8_TRACE_CONFIG,
+    "v8-gc-stats": V8_GC_STATS_TRACE_CONFIG,
 }
 
-class RecordMode(compat.StrEnum):
-  CONTINUOUSLY = "record-continuously"
-  UNTIL_FULL = "record-until-full"
-  AS_MUCH_AS_POSSIBLE = "record-as-much-as-possible"
+
+@enum.unique
+class RecordMode(compat.StrEnumWithHelp):
+  CONTINUOUSLY = ("record-continuously",
+                  "Record until the trace buffer is full.")
+  UNTIL_FULL = ("record-until-full", "Record until the user ends the trace. "
+                "The trace buffer is a fixed size and we use it as "
+                "a ring buffer during recording.")
+  AS_MUCH_AS_POSSIBLE = ("record-as-much-as-possible",
+                         "Record until the trace buffer is full, "
+                         "but with a huge buffer size.")
+  TRACE_TO_CONSOLE = ("trace-to-console",
+                      "Echo to console. Events are discarded.")
 
 
-class RecordFormat(helper.StrEnumWithHelp):
+@enum.unique
+class RecordFormat(compat.StrEnumWithHelp):
   JSON = ("json", "Old about://tracing compatible file format.")
   PROTO = ("proto", "New https://ui.perfetto.dev/ compatible format")
 
@@ -131,7 +148,7 @@ def parse_trace_config_file_path(value: str) -> pathlib.Path:
 ANDROID_TRACE_CONFIG_PATH = pathlib.Path("/data/local/chrome-trace-config.json")
 
 
-class TracingProbe(Probe):
+class TracingProbe(ChromiumProbe):
   """
   Chromium-only Probe to collect tracing / perfetto data that can be used by
   chrome://tracing or https://ui.perfetto.dev/.
@@ -152,7 +169,8 @@ class TracingProbe(Probe):
         type=str,
         default="minimal",
         choices=TRACE_PRESETS.keys(),
-        help="Use predefined trace categories")
+        help=("Use predefined trace categories, "
+              f"see source {__file__} for more details."))
     parser.add_argument(
         "categories",
         is_list=True,
@@ -201,8 +219,9 @@ class TracingProbe(Probe):
                record_format: RecordFormat = RecordFormat.PROTO,
                traceconv: Optional[pathlib.Path] = None) -> None:
     super().__init__()
-    self._trace_config = trace_config
+    self._trace_config: Optional[pathlib.Path] = trace_config
     self._categories: Set[str] = set(categories or MINIMAL_CONFIG)
+    self._preset: Optional[str] = preset
     if preset:
       self._categories.update(TRACE_PRESETS[preset])
     if self._trace_config:
@@ -215,7 +234,16 @@ class TracingProbe(Probe):
     self._startup_duration: int = startup_duration
     self._record_mode: RecordMode = record_mode
     self._record_format: RecordFormat = record_format
-    self._traceconv = traceconv
+    self._traceconv: Optional[pathlib.Path] = traceconv
+
+  @property
+  def key(self) -> Tuple[Tuple, ...]:
+    return super().key + (("preset", self._preset),
+                          ("categories", tuple(self._categories)),
+                          ("startup_duration", self._startup_duration),
+                          ("record_mode", str(self._record_mode)),
+                          ("record_format", str(self._record_format)),
+                          ("traceconv", str(self._traceconv)))
 
   @property
   def result_path_name(self) -> str:
@@ -228,9 +256,6 @@ class TracingProbe(Probe):
   @property
   def record_format(self) -> RecordFormat:
     return self._record_format
-
-  def is_compatible(self, browser: Browser) -> bool:
-    return isinstance(browser, Chromium)
 
   def attach(self, browser: Browser) -> None:
     assert isinstance(browser, Chromium)
@@ -251,16 +276,16 @@ class TracingProbe(Probe):
       flags["--enable-tracing"] = ",".join(self._categories)
     super().attach(browser)
 
-  def get_scope(self, run: Run) -> TracingProbeScope:
-    return TracingProbeScope(self, run)
+  def get_context(self, run: Run) -> TracingProbeContext:
+    return TracingProbeContext(self, run)
 
 
-class TracingProbeScope(ProbeScope[TracingProbe]):
+class TracingProbeContext(ProbeContext[TracingProbe]):
   _traceconv: Optional[pathlib.Path]
   _record_format: RecordFormat
 
-  def setup(self, run: Run) -> None:
-    run.extra_flags["--trace-startup-file"] = str(self.result_path)
+  def setup(self) -> None:
+    self.session.extra_flags["--trace-startup-file"] = str(self.result_path)
     self._record_format = self.probe.record_format
     if self._record_format == RecordFormat.PROTO:
       self._traceconv = self.probe.traceconv or TraceconvFinder(
@@ -268,13 +293,13 @@ class TracingProbeScope(ProbeScope[TracingProbe]):
     else:
       self._traceconv = None
 
-  def start(self, run: Run) -> None:
-    del run
+  def start(self) -> None:
+    pass
 
-  def stop(self, run: Run) -> None:
-    del run
+  def stop(self) -> None:
+    pass
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     if self._record_format == RecordFormat.JSON:
       return self.browser_result(json=(self.result_path,))
     if not self._traceconv:
@@ -291,13 +316,12 @@ class TracingProbeScope(ProbeScope[TracingProbe]):
         json=(json_trace_file,), file=(self.result_path,))
 
 
-class TraceconvFinder(probe_helper.V8CheckoutFinder):
+class TraceconvFinder:
 
   def __init__(self, platform: plt.Platform) -> None:
-    super().__init__(platform)
     self.traceconv: Optional[pathlib.Path] = None
-    if self.v8_checkout:
+    if chrome_checkout := probe_helper.ChromiumCheckoutFinder(platform).path:
       candidate = (
-          self.v8_checkout / "third_party" / "perfetto" / "tools" / "traceconv")
+          chrome_checkout / "third_party" / "perfetto" / "tools" / "traceconv")
       if candidate.is_file():
         self.traceconv = candidate

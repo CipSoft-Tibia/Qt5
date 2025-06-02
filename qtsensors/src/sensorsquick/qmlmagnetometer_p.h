@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 
 class QMagnetometer;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlMagnetometer : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlMagnetometer : public QmlSensor
 {
     Q_OBJECT
     Q_PROPERTY(bool returnGeoValues READ returnGeoValues WRITE setReturnGeoValues NOTIFY returnGeoValuesChanged)
@@ -44,7 +44,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlMagnetometerReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlMagnetometerReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal x READ x NOTIFY xChanged BINDABLE bindableX)

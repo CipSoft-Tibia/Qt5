@@ -53,8 +53,8 @@ public:
     QFixed emSquareSize() const override;
 
     glyph_t glyphIndex(uint ucs4) const override;
-    bool stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs,
-                      ShaperFlags flags) const override;
+    int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs,
+                     ShaperFlags flags) const override;
     void recalcAdvances(QGlyphLayout *glyphs, ShaperFlags) const override;
 
     void addGlyphsToPath(glyph_t *glyphs, QFixedPoint *positions, int nglyphs,
@@ -133,6 +133,7 @@ private:
     QFixed m_maxAdvanceWidth;
     FaceId m_faceId;
     QString m_uniqueFamilyName;
+    DWRITE_PIXEL_GEOMETRY m_pixelGeometry = DWRITE_PIXEL_GEOMETRY_RGB;
 };
 
 QT_END_NAMESPACE

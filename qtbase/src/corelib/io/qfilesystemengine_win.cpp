@@ -37,6 +37,8 @@
 #define SECURITY_WIN32
 #include <security.h>
 
+#include <cstdio>
+
 #include <QtCore/private/qfunctions_win_p.h>
 
 #ifndef SPI_GETPLATFORMTYPE
@@ -1010,10 +1012,10 @@ static inline QByteArray fileId(HANDLE handle)
     BY_HANDLE_FILE_INFORMATION info;
     if (GetFileInformationByHandle(handle, &info)) {
         char buffer[sizeof "01234567:0123456701234567"];
-        qsnprintf(buffer, sizeof(buffer), "%lx:%08lx%08lx",
-                  info.dwVolumeSerialNumber,
-                  info.nFileIndexHigh,
-                  info.nFileIndexLow);
+        std::snprintf(buffer, sizeof(buffer), "%lx:%08lx%08lx",
+                      info.dwVolumeSerialNumber,
+                      info.nFileIndexHigh,
+                      info.nFileIndexLow);
         return buffer;
     }
     return QByteArray();
@@ -1388,7 +1390,7 @@ bool QFileSystemEngine::fillMetaData(const QFileSystemEntry &entry, QFileSystemM
     // Check for ".lnk": Directories named ".lnk" should be skipped, corrupted
     // link files should still be detected as links.
     const QString origFilePath = entry.filePath();
-    if (origFilePath.endsWith(".lnk"_L1) && !isDirPath(origFilePath, nullptr)) {
+    if (bool exists; origFilePath.endsWith(".lnk"_L1) && !isDirPath(origFilePath, &exists) && exists) {
         data.entryFlags |= QFileSystemMetaData::WinLnkType;
         fname = QFileSystemEntry(readLink(entry));
     } else {
@@ -1851,6 +1853,12 @@ bool QFileSystemEngine::setPermissions(const QFileSystemEntry &entry,
     if (!ret)
         error = QSystemError(errno, QSystemError::StandardLibraryError);
     return ret;
+}
+
+bool QFileSystemEngine::isCaseSensitive(const QFileSystemEntry &, QFileSystemMetaData &)
+{
+    // FIXME: This may not be accurate for all file systems (QTBUG-28246)
+    return false;
 }
 
 static inline QDateTime fileTimeToQDateTime(const FILETIME *time)

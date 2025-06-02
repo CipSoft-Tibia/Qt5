@@ -11,22 +11,23 @@
 
 using namespace Qt::StringLiterals;
 
-ScatterGraph::ScatterGraph()
+ScatterGraph::ScatterGraph(QWidget *parent)
 {
-    m_scatterGraph = new Q3DScatter();
+    m_scatterWidget = new QWidget(parent);
     initialize();
 }
 
 void ScatterGraph::initialize()
 {
-    m_scatterWidget = new QWidget;
+    m_scatterGraphWidget = new ScatterGraphWidget();
+    m_scatterGraphWidget->initialize();
     auto *hLayout = new QHBoxLayout(m_scatterWidget);
-    QSize screenSize = m_scatterGraph->screen()->size();
-    m_scatterGraph->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 1.75));
-    m_scatterGraph->setMaximumSize(screenSize);
-    m_scatterGraph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_scatterGraph->setFocusPolicy(Qt::StrongFocus);
-    hLayout->addWidget(m_scatterGraph, 1);
+    QSize screenSize = m_scatterGraphWidget->screen()->size();
+    m_scatterGraphWidget->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 1.75));
+    m_scatterGraphWidget->setMaximumSize(screenSize);
+    m_scatterGraphWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_scatterGraphWidget->setFocusPolicy(Qt::StrongFocus);
+    hLayout->addWidget(m_scatterGraphWidget, 1);
 
     auto *vLayout = new QVBoxLayout();
     hLayout->addLayout(vLayout);
@@ -59,7 +60,7 @@ void ScatterGraph::initialize()
     rangeMaxSlider->setValue(10);
 
     auto *backgroundCheckBox = new QCheckBox(m_scatterWidget);
-    backgroundCheckBox->setText(u"Show background"_s);
+    backgroundCheckBox->setText(u"Show graph background"_s);
     backgroundCheckBox->setChecked(true);
 
     auto *gridCheckBox = new QCheckBox(m_scatterWidget);
@@ -85,13 +86,15 @@ void ScatterGraph::initialize()
     itemStyleList->setCurrentIndex(0);
 
     auto *themeList = new QComboBox(m_scatterWidget);
-    themeList->addItem(u"Qt"_s);
-    themeList->addItem(u"Primary Colors"_s);
-    themeList->addItem(u"Stone Moss"_s);
-    themeList->addItem(u"Army Blue"_s);
-    themeList->addItem(u"Retro"_s);
-    themeList->addItem(u"Ebony"_s);
-    themeList->addItem(u"Isabelle"_s);
+    themeList->addItem(u"QtGreen"_s);
+    themeList->addItem(u"QtGreenNeon"_s);
+    themeList->addItem(u"MixSeries"_s);
+    themeList->addItem(u"OrangeSeries"_s);
+    themeList->addItem(u"YellowSeries"_s);
+    themeList->addItem(u"BlueSeries"_s);
+    themeList->addItem(u"PurpleSeries"_s);
+    themeList->addItem(u"GreySeries"_s);
+    themeList->addItem(u"UserDefined"_s);
     themeList->setCurrentIndex(2);
 
     auto *shadowQuality = new QComboBox(m_scatterWidget);
@@ -121,9 +124,10 @@ void ScatterGraph::initialize()
     vLayout->addWidget(shadowQuality, 1, Qt::AlignTop);
 
     // Raise the graph to the top of the widget stack, to hide UI if resized smaller
-    m_scatterGraph->raise();
+    m_scatterGraphWidget->raise();
 
-    m_modifier = new ScatterDataModifier(m_scatterGraph, this);
+    m_modifier = new ScatterDataModifier(m_scatterGraphWidget->scatterGraph(), this);
+    m_modifier->changeTheme(themeList->currentIndex());
 
     QObject::connect(cameraButton,
                      &QCommandLinkButton::clicked,
@@ -148,24 +152,24 @@ void ScatterGraph::initialize()
                      &ScatterDataModifier::adjustMaximumRange);
 
     QObject::connect(backgroundCheckBox,
-                     &QCheckBox::stateChanged,
+                     &QCheckBox::checkStateChanged,
                      m_modifier,
-                     &ScatterDataModifier::setBackgroundEnabled);
+                     &ScatterDataModifier::setBackgroundVisible);
     QObject::connect(gridCheckBox,
-                     &QCheckBox::stateChanged,
+                     &QCheckBox::checkStateChanged,
                      m_modifier,
-                     &ScatterDataModifier::setGridEnabled);
+                     &ScatterDataModifier::setGridVisible);
     QObject::connect(smoothCheckBox,
-                     &QCheckBox::stateChanged,
+                     &QCheckBox::checkStateChanged,
                      m_modifier,
                      &ScatterDataModifier::setSmoothDots);
 
     QObject::connect(m_modifier,
-                     &ScatterDataModifier::backgroundEnabledChanged,
+                     &ScatterDataModifier::backgroundVisibleChanged,
                      backgroundCheckBox,
                      &QCheckBox::setChecked);
     QObject::connect(m_modifier,
-                     &ScatterDataModifier::gridEnabledChanged,
+                     &ScatterDataModifier::gridVisibleChanged,
                      gridCheckBox,
                      &QCheckBox::setChecked);
     QObject::connect(itemStyleList,
@@ -187,8 +191,8 @@ void ScatterGraph::initialize()
                      &ScatterDataModifier::shadowQualityChanged,
                      shadowQuality,
                      &QComboBox::setCurrentIndex);
-    QObject::connect(m_scatterGraph,
-                     &Q3DScatter::shadowQualityChanged,
+    QObject::connect(m_scatterGraphWidget->scatterGraph(),
+                     &Q3DScatterWidgetItem::shadowQualityChanged,
                      m_modifier,
                      &ScatterDataModifier::shadowQualityUpdatedByVisual);
 }

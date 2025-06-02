@@ -35,6 +35,8 @@ private slots:
     void jsvalueAssignments();
     void extensionTypeBindings();
     void visibleAliasMethods(); // QTBUG-103956
+    void customInitialization(); // QTBUG-120700
+    void requiredPropertiesInitialization();
     void nonStandardIncludesInsideModule(); // QTBUG-104094
     void specialProperties();
     void regexpBindings();
@@ -103,4 +105,9 @@ private slots:
 #endif
     void urlToString();
     void signalConnections();
+
+    void hpp();
+
+    void attachedComponentProperty();
+    void attachedNamespacedProperty();
 };

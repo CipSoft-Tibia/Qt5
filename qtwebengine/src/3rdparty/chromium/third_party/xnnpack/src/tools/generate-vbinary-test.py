@@ -20,8 +20,8 @@ import xnncommon
 parser = argparse.ArgumentParser(
   description='Vector binary operation microkernel test generator')
 parser.add_argument("-t", "--tester", metavar="TESTER", required=True,
-                    choices=["VAddMicrokernelTester", "VAddCMicrokernelTester",
-                    "VMulMicrokernelTester", "VMulCMicrokernelTester",
+                    choices=[
+                    "VCMulMicrokernelTester",
                     "VBinaryMicrokernelTester", "VBinaryCMicrokernelTester"],
                     help="Tester class to be used in the generated test")
 parser.add_argument("-s", "--spec", metavar="FILE", required=True,
@@ -32,11 +32,12 @@ parser.set_defaults(defines=list())
 
 
 def split_ukernel_name(name):
-  match = re.fullmatch(r"xnn_(qu8|qs8|f16|f32)_v(add|div|max|min|mul|sqrdiff|sub|addc|divc|rdivc|maxc|minc|mulc|sqrdiffc|subc|rsubc)(_(minmax|relu)(_(fp32|rndnu))?)?_ukernel__(.+)_x(\d+)", name)
+  match = re.fullmatch(r"xnn_(qu8|qs8|f16|f32)_v(add|cmul|div|max|min|mul|sqrdiff|sub|addc|divc|rdivc|maxc|minc|mulc|sqrdiffc|subc|rsubc)(_(minmax|relu)(_(fp32|rndnu))?)?_ukernel__(.+)_u(\d+)v?", name)
   if match is None:
     raise ValueError("Unexpected microkernel name: " + name)
   op_type = {
     "add": "Add",
+    "cmul": "CMul",
     "div": "Div",
     "max": "Max",
     "min": "Min",
@@ -111,7 +112,7 @@ TEST(${TEST_NAME}, batch_gt_${BATCH_TILE}) {
   }
 }
 
-$if TESTER in ["VAddCMicrokernelTester", "VMulCMicrokernelTester", "VBinaryCMicrokernelTester"]:
+$if TESTER in ["VMulCMicrokernelTester", "VBinaryCMicrokernelTester"]:
   TEST(${TEST_NAME}, inplace) {
     $if ISA_CHECK:
       ${ISA_CHECK};
@@ -283,7 +284,7 @@ def generate_test_cases(ukernel, op_type, init_fn, activation_type,
   _, test_name = ukernel.split("_", 1)
   _, datatype, _ = ukernel.split("_", 2)
   test_args = [ukernel]
-  if tester in ["VBinaryMicrokernelTester", "VBinaryCMicrokernelTester"]:
+  if tester in ["VBinaryMicrokernelTester", "VBinaryCMicrokernelTester"] and not datatype in ['qs8', 'qu8']:
     test_args.append("%s::OpType::%s" % (tester, op_type))
   if init_fn:
     test_args.append(init_fn)
@@ -311,19 +312,9 @@ def main(args):
       raise ValueError("expected a list of micro-kernels in the spec")
 
     spec_name = os.path.splitext(os.path.split(options.spec)[1])[0]
-    microkernel_header = {
-      "VAddMicrokernelTester": "xnnpack/vadd.h",
-      "VAddCMicrokernelTester": "xnnpack/vadd.h",
-      "VMulMicrokernelTester": "xnnpack/vmul.h",
-      "VMulCMicrokernelTester": "xnnpack/vmul.h",
-      "VBinaryMicrokernelTester": "xnnpack/vbinary.h",
-      "VBinaryCMicrokernelTester": "xnnpack/vbinary.h",
-    }[options.tester]
+    microkernel_header = "xnnpack/vbinary.h"
     tester_header = {
-      "VAddMicrokernelTester": "vadd-microkernel-tester.h",
-      "VAddCMicrokernelTester": "vaddc-microkernel-tester.h",
-      "VMulMicrokernelTester": "vmul-microkernel-tester.h",
-      "VMulCMicrokernelTester": "vmulc-microkernel-tester.h",
+      "VCMulMicrokernelTester": "vcmul-microkernel-tester.h",
       "VBinaryMicrokernelTester": "vbinary-microkernel-tester.h",
       "VBinaryCMicrokernelTester": "vbinaryc-microkernel-tester.h",
     }[options.tester]
@@ -360,14 +351,7 @@ def main(args):
                                       batch_tile, isa)
       tests += "\n\n" + xnncommon.postprocess_test_case(test_case, arch, isa)
 
-    txt_changed = True
-    if os.path.exists(options.output):
-      with codecs.open(options.output, "r", encoding="utf-8") as output_file:
-        txt_changed = output_file.read() != tests
-
-    if txt_changed:
-      with codecs.open(options.output, "w", encoding="utf-8") as output_file:
-        output_file.write(tests)
+    xnncommon.overwrite_if_changed(options.output, tests)
 
 
 if __name__ == "__main__":

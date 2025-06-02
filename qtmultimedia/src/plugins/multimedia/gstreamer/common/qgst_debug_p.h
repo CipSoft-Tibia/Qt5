@@ -17,6 +17,7 @@
 
 #include "qgst_p.h"
 #include <qdebug.h>
+#include <gst/play/gstplay.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -24,6 +25,7 @@ class QGstreamerMessage;
 
 QDebug operator<<(QDebug, const QGstCaps &);
 QDebug operator<<(QDebug, const QGstStructureView &);
+QDebug operator<<(QDebug, const QUniqueGstStructureHandle &);
 QDebug operator<<(QDebug, const QGstElement &);
 QDebug operator<<(QDebug, const QGstPad &);
 QDebug operator<<(QDebug, const QGString &);
@@ -67,8 +69,18 @@ struct QCompactGstMessageAdaptor
     explicit QCompactGstMessageAdaptor(GstMessage *m);
     GstMessage *msg;
 };
-
 QDebug operator<<(QDebug, const QCompactGstMessageAdaptor &);
+
+QDebug operator<<(QDebug dbg, GstPlayState type);
+QDebug operator<<(QDebug dbg, GstPlayMessage type);
+
+struct QGstPlayMessageAdaptor
+{
+    explicit QGstPlayMessageAdaptor(const QGstreamerMessage &m);
+    explicit QGstPlayMessageAdaptor(GstMessage *m);
+    GstMessage *msg;
+};
+QDebug operator<<(QDebug, const QGstPlayMessageAdaptor &);
 
 QT_END_NAMESPACE
 

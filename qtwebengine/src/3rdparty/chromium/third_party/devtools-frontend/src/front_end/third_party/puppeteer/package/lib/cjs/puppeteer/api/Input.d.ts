@@ -1,21 +1,11 @@
 /**
- * Copyright 2017 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the 'License');
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an 'AS IS' BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2017 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
-import { Protocol } from 'devtools-protocol';
-import { KeyInput } from '../common/USKeyboardLayout.js';
-import { Point } from './ElementHandle.js';
+import type { Protocol } from 'devtools-protocol';
+import type { KeyInput } from '../common/USKeyboardLayout.js';
+import type { Point } from './ElementHandle.js';
 /**
  * @public
  */
@@ -80,7 +70,7 @@ export type KeyPressOptions = KeyDownOptions & KeyboardTypeOptions;
  *
  * @public
  */
-export declare class Keyboard {
+export declare abstract class Keyboard {
     /**
      * @internal
      */
@@ -112,7 +102,7 @@ export declare class Keyboard {
      * is the commands of keyboard shortcuts,
      * see {@link https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/editing/commands/editor_command_names.h | Chromium Source Code} for valid command names.
      */
-    down(key: KeyInput, options?: Readonly<KeyDownOptions>): Promise<void>;
+    abstract down(key: KeyInput, options?: Readonly<KeyDownOptions>): Promise<void>;
     /**
      * Dispatches a `keyup` event.
      *
@@ -120,7 +110,7 @@ export declare class Keyboard {
      * See {@link KeyInput | KeyInput}
      * for a list of all key names.
      */
-    up(key: KeyInput): Promise<void>;
+    abstract up(key: KeyInput): Promise<void>;
     /**
      * Dispatches a `keypress` and `input` event.
      * This does not send a `keydown` or `keyup` event.
@@ -137,7 +127,7 @@ export declare class Keyboard {
      *
      * @param char - Character to send into the page.
      */
-    sendCharacter(char: string): Promise<void>;
+    abstract sendCharacter(char: string): Promise<void>;
     /**
      * Sends a `keydown`, `keypress`/`input`,
      * and `keyup` event for each character in the text.
@@ -161,7 +151,7 @@ export declare class Keyboard {
      * if specified, is the time to wait between `keydown` and `keyup` in milliseconds.
      * Defaults to 0.
      */
-    type(text: string, options?: Readonly<KeyboardTypeOptions>): Promise<void>;
+    abstract type(text: string, options?: Readonly<KeyboardTypeOptions>): Promise<void>;
     /**
      * Shortcut for {@link Keyboard.down}
      * and {@link Keyboard.up}.
@@ -184,7 +174,7 @@ export declare class Keyboard {
      * is the commands of keyboard shortcuts,
      * see {@link https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/editing/commands/editor_command_names.h | Chromium Source Code} for valid command names.
      */
-    press(key: KeyInput, options?: Readonly<KeyPressOptions>): Promise<void>;
+    abstract press(key: KeyInput, options?: Readonly<KeyPressOptions>): Promise<void>;
 }
 /**
  * @public
@@ -197,11 +187,10 @@ export interface MouseOptions {
      */
     button?: MouseButton;
     /**
-     * @deprecated Use {@link MouseClickOptions.count}.
-     *
      * Determines the click count for the mouse event. This does not perform
      * multiple clicks.
      *
+     * @deprecated Use {@link MouseClickOptions.count}.
      * @defaultValue `1`
      */
     clickCount?: number;
@@ -327,7 +316,7 @@ export type MouseButton = (typeof MouseButton)[keyof typeof MouseButton];
  *
  * @public
  */
-export declare class Mouse {
+export declare abstract class Mouse {
     /**
      * @internal
      */
@@ -336,7 +325,7 @@ export declare class Mouse {
      * Resets the mouse to the default state: No buttons pressed; position at
      * (0,0).
      */
-    reset(): Promise<void>;
+    abstract reset(): Promise<void>;
     /**
      * Moves the mouse to the given coordinate.
      *
@@ -344,19 +333,19 @@ export declare class Mouse {
      * @param y - Vertical position of the mouse.
      * @param options - Options to configure behavior.
      */
-    move(x: number, y: number, options?: Readonly<MouseMoveOptions>): Promise<void>;
+    abstract move(x: number, y: number, options?: Readonly<MouseMoveOptions>): Promise<void>;
     /**
      * Presses the mouse.
      *
      * @param options - Options to configure behavior.
      */
-    down(options?: Readonly<MouseOptions>): Promise<void>;
+    abstract down(options?: Readonly<MouseOptions>): Promise<void>;
     /**
      * Releases the mouse.
      *
      * @param options - Options to configure behavior.
      */
-    up(options?: Readonly<MouseOptions>): Promise<void>;
+    abstract up(options?: Readonly<MouseOptions>): Promise<void>;
     /**
      * Shortcut for `mouse.move`, `mouse.down` and `mouse.up`.
      *
@@ -364,7 +353,7 @@ export declare class Mouse {
      * @param y - Vertical position of the mouse.
      * @param options - Options to configure behavior.
      */
-    click(x: number, y: number, options?: Readonly<MouseClickOptions>): Promise<void>;
+    abstract click(x: number, y: number, options?: Readonly<MouseClickOptions>): Promise<void>;
     /**
      * Dispatches a `mousewheel` event.
      * @param options - Optional: `MouseWheelOptions`.
@@ -387,31 +376,31 @@ export declare class Mouse {
      * await page.mouse.wheel({deltaY: -100});
      * ```
      */
-    wheel(options?: Readonly<MouseWheelOptions>): Promise<void>;
+    abstract wheel(options?: Readonly<MouseWheelOptions>): Promise<void>;
     /**
      * Dispatches a `drag` event.
      * @param start - starting point for drag
      * @param target - point to drag to
      */
-    drag(start: Point, target: Point): Promise<Protocol.Input.DragData>;
+    abstract drag(start: Point, target: Point): Promise<Protocol.Input.DragData>;
     /**
      * Dispatches a `dragenter` event.
      * @param target - point for emitting `dragenter` event
      * @param data - drag data containing items and operations mask
      */
-    dragEnter(target: Point, data: Protocol.Input.DragData): Promise<void>;
+    abstract dragEnter(target: Point, data: Protocol.Input.DragData): Promise<void>;
     /**
      * Dispatches a `dragover` event.
      * @param target - point for emitting `dragover` event
      * @param data - drag data containing items and operations mask
      */
-    dragOver(target: Point, data: Protocol.Input.DragData): Promise<void>;
+    abstract dragOver(target: Point, data: Protocol.Input.DragData): Promise<void>;
     /**
      * Performs a dragenter, dragover, and drop in sequence.
      * @param target - point to drop on
      * @param data - drag data containing items and operations mask
      */
-    drop(target: Point, data: Protocol.Input.DragData): Promise<void>;
+    abstract drop(target: Point, data: Protocol.Input.DragData): Promise<void>;
     /**
      * Performs a drag, dragenter, dragover, and drop in sequence.
      * @param start - point to drag from
@@ -420,7 +409,7 @@ export declare class Mouse {
      * if specified, is the time to wait between `dragover` and `drop` in milliseconds.
      * Defaults to 0.
      */
-    dragAndDrop(start: Point, target: Point, options?: {
+    abstract dragAndDrop(start: Point, target: Point, options?: {
         delay?: number;
     }): Promise<void>;
 }
@@ -428,7 +417,7 @@ export declare class Mouse {
  * The Touchscreen class exposes touchscreen events.
  * @public
  */
-export declare class Touchscreen {
+export declare abstract class Touchscreen {
     /**
      * @internal
      */
@@ -444,16 +433,23 @@ export declare class Touchscreen {
      * @param x - Horizontal position of the tap.
      * @param y - Vertical position of the tap.
      */
-    touchStart(x: number, y: number): Promise<void>;
+    abstract touchStart(x: number, y: number): Promise<void>;
     /**
      * Dispatches a `touchMove` event.
      * @param x - Horizontal position of the move.
      * @param y - Vertical position of the move.
+     *
+     * @remarks
+     *
+     * Not every `touchMove` call results in a `touchmove` event being emitted,
+     * depending on the browser's optimizations. For example, Chrome
+     * {@link https://developer.chrome.com/blog/a-more-compatible-smoother-touch/#chromes-new-model-the-throttled-async-touchmove-model | throttles}
+     * touch move events.
      */
-    touchMove(x: number, y: number): Promise<void>;
+    abstract touchMove(x: number, y: number): Promise<void>;
     /**
      * Dispatches a `touchend` event.
      */
-    touchEnd(): Promise<void>;
+    abstract touchEnd(): Promise<void>;
 }
 //# sourceMappingURL=Input.d.ts.map

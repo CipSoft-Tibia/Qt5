@@ -29,7 +29,7 @@ namespace Qt3DRender {
     \inqmlmodule Qt3D.Render
     \ingroup renderstates
     \inherits RenderState
-    \instantiates Qt3DRender::QPolygonOffset
+    \nativetype Qt3DRender::QPolygonOffset
 
     A PolygonOffset type adds an offset to the fragment depth value prior to
     depth test and depth write. The offset can be used to avoid z-fighting when
@@ -48,13 +48,13 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property QPolygonOffset::scaleFactor
+    \property Qt3DRender::QPolygonOffset::scaleFactor
     Holds the scale factor used to create a variable depth offset for
     each polygon. Default value is 0.
 */
 
 /*!
-    \property QPolygonOffset::depthSteps
+    \property Qt3DRender::QPolygonOffset::depthSteps
     Holds the units that create constant depth offsets. Default value is 0.
 */
 

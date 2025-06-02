@@ -128,14 +128,14 @@ public:
     template<SceneGraphFrameType type>
     qint64 *timings()
     {
-        if (type < NumRenderThreadFrameTypes)
+        if constexpr (type < NumRenderThreadFrameTypes)
             return renderThreadTimings.localData().values[type];
         else
             return guiThreadTimings.values[type - NumRenderThreadFrameTypes];
     }
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickProfiler : public QObject, public QQmlProfilerDefinitions {
+class Q_QUICK_EXPORT QQuickProfiler : public QObject, public QQmlProfilerDefinitions {
     Q_OBJECT
 public:
 

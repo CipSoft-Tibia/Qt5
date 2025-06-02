@@ -280,6 +280,12 @@ QT_DEFINE_QSDP_SPECIALIZATION_DTOR(QGeoCoordinatePrivate)
 */
 
 /*!
+    \fn void QGeoCoordinate::swap(QGeoCoordinate &other)
+    \since 6.2
+    \memberswap{coordinate}
+*/
+
+/*!
     Returns \c true if the \l longitude and \l latitude are valid.
 */
 bool QGeoCoordinate::isValid() const

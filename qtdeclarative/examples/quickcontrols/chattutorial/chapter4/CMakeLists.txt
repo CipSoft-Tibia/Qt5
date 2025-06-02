@@ -4,9 +4,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(chapter4 LANGUAGES CXX)
 
-set(CMAKE_AUTOMOC ON)
-
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Sql)
+
+qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(chattutorial-chapter4 WIN32 MACOSX_BUNDLE
     main.cpp
@@ -24,11 +24,11 @@ target_link_libraries(chattutorial-chapter4 PRIVATE
 
 qt_policy(SET QTP0001 NEW)
 qt_add_qml_module(chattutorial-chapter4
-    URI chapter4
+    URI chattutorial
     QML_FILES
         "ContactPage.qml"
         "ConversationPage.qml"
-        "main.qml"
+        "Main.qml"
     RESOURCES
         "images/Albert_Einstein.png"
         "images/Albert_Einstein@2x.png"

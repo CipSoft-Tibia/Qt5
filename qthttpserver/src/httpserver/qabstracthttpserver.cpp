@@ -7,8 +7,8 @@
 #include <QtHttpServer/qhttpserverresponder.h>
 
 #include <private/qabstracthttpserver_p.h>
+#include <private/qhttpserverhttp1protocolhandler_p.h>
 #include <private/qhttpserverrequest_p.h>
-#include <private/qhttpserverstream_p.h>
 
 #include <QtCore/qloggingcategory.h>
 #include <QtNetwork/qtcpserver.h>
@@ -18,6 +18,10 @@
 
 #if QT_CONFIG(ssl)
 #include <QtNetwork/qsslserver.h>
+#endif
+
+#if QT_CONFIG(http) && QT_CONFIG(ssl)
+#include <private/qhttpserverhttp2protocolhandler_p.h>
 #endif
 
 #include <algorithm>
@@ -39,11 +43,39 @@ QAbstractHttpServerPrivate::QAbstractHttpServerPrivate()
 void QAbstractHttpServerPrivate::handleNewConnections()
 {
     Q_Q(QAbstractHttpServer);
+
+#if QT_CONFIG(ssl) && QT_CONFIG(http)
+    if (auto *sslServer = qobject_cast<QSslServer *>(q->sender())) {
+        while (auto socket = qobject_cast<QSslSocket *>(sslServer->nextPendingConnection())) {
+            if (socket->sslConfiguration().nextNegotiatedProtocol()
+                            == QSslConfiguration::ALPNProtocolHTTP2) {
+                new QHttpServerHttp2ProtocolHandler(q, socket);
+            } else {
+                new QHttpServerHttp1ProtocolHandler(q, socket);
+            }
+        }
+        return;
+    }
+#endif
+
     auto tcpServer = qobject_cast<QTcpServer *>(q->sender());
     Q_ASSERT(tcpServer);
 
     while (auto socket = tcpServer->nextPendingConnection())
-        new QHttpServerStream(q, socket);
+        new QHttpServerHttp1ProtocolHandler(q, socket);
+}
+
+/*!
+    \internal
+*/
+bool QAbstractHttpServerPrivate::verifyThreadAffinity(const QObject *contextObject) const {
+    Q_Q(const QAbstractHttpServer);
+    if (contextObject && (contextObject->thread() != q->thread())) {
+        qCWarning(lcHttpServer, "QAbstractHttpServer: "
+                                "the context object must reside in the same thread");
+        return false;
+    }
+    return true;
 }
 
 
@@ -58,7 +90,7 @@ void QAbstractHttpServerPrivate::handleNewLocalConnections()
     Q_ASSERT(localServer);
 
     while (auto socket = localServer->nextPendingConnection())
-        new QHttpServerStream(q, socket);
+        new QHttpServerHttp1ProtocolHandler(q, socket);
 }
 #endif
 
@@ -68,9 +100,12 @@ void QAbstractHttpServerPrivate::handleNewLocalConnections()
     \inmodule QtHttpServer
     \brief API to subclass to implement an HTTP server.
 
-    Subclass this class and override \c handleRequest() to create an HTTP
-    server. Use \c listen() or \c bind() to start listening to incoming
-    connections.
+    Subclass this class and override handleRequest() and missingHandler() to
+    create an HTTP server. Use bind() to start listening to all the incoming
+    connections to a server.
+
+    This is a low level API, see \l QHttpServer for a highler level API to
+    implement an HTTP server.
 */
 
 /*!
@@ -81,7 +116,7 @@ QAbstractHttpServer::QAbstractHttpServer(QObject *parent)
 {}
 
 /*!
-    \internal
+    Destroys an instance of QAbstractHttpServer.
 */
 QAbstractHttpServer::~QAbstractHttpServer()
     = default;
@@ -100,39 +135,6 @@ QAbstractHttpServer::QAbstractHttpServer(QAbstractHttpServerPrivate &dd, QObject
 }
 
 /*!
-    Tries to bind a \c QTcpServer to \a address and \a port.
-
-    Returns the server port upon success, 0 otherwise.
-*/
-quint16 QAbstractHttpServer::listen(const QHostAddress &address, quint16 port)
-{
-#if QT_CONFIG(ssl)
-    Q_D(QAbstractHttpServer);
-    QTcpServer *tcpServer;
-    if (d->sslEnabled) {
-        auto sslServer = new QSslServer(this);
-        sslServer->setSslConfiguration(d->sslConfiguration);
-        tcpServer = sslServer;
-    } else {
-        tcpServer = new QTcpServer(this);
-    }
-#else
-    auto tcpServer = new QTcpServer(this);
-#endif
-    const auto listening = tcpServer->listen(address, port);
-    if (listening) {
-        bind(tcpServer);
-        return tcpServer->serverPort();
-    } else {
-        qCCritical(lcHttpServer, "listen failed: %ls",
-                   qUtf16Printable(tcpServer->errorString()));
-    }
-
-    delete tcpServer;
-    return 0;
-}
-
-/*!
     Returns the list of ports this instance of QAbstractHttpServer
     is listening to.
 
@@ -141,7 +143,7 @@ quint16 QAbstractHttpServer::listen(const QHostAddress &address, quint16 port)
 
     \sa servers()
 */
-QList<quint16> QAbstractHttpServer::serverPorts()
+QList<quint16> QAbstractHttpServer::serverPorts() const
 {
     QList<quint16> ports;
     auto children = findChildren<QTcpServer *>();
@@ -162,52 +164,76 @@ QList<quint16> QAbstractHttpServer::serverPorts()
     handled and forwarded by the HTTP server.
 
     It is the user's responsibility to call QTcpServer::listen() on
-    the \a server.
+    the \a server before calling this function. If \a server is not
+    listening, nothing will happen and \c false will be returned.
 
-    If the \a server is null, then a new, default-constructed TCP
-    server will be constructed, which will be listening on a random
-    port and all interfaces.
+    If successful the \a server will be parented to this HTTP server
+    and \c true is returned.
 
-    The \a server will be parented to this HTTP server.
+    To allow usage of HTTP 2, bind to a QSslServer where
+    QSslConfiguration::setAllowedNextProtocols() has been called with
+    the arguments \c {{ QSslConfiguration::ALPNProtocolHTTP2 }}.
 
-    \sa QTcpServer, QTcpServer::listen()
+    \sa QTcpServer, QTcpServer::listen(), QSslConfiguration::setAllowedNextProtocols()
 */
-void QAbstractHttpServer::bind(QTcpServer *server)
+bool QAbstractHttpServer::bind(QTcpServer *server)
 {
     Q_D(QAbstractHttpServer);
-    if (!server) {
-        server = new QTcpServer(this);
-        if (!server->listen()) {
-            qCCritical(lcHttpServer, "QTcpServer listen failed (%ls)",
-                       qUtf16Printable(server->errorString()));
-        }
-    } else {
-        if (!server->isListening())
-            qCWarning(lcHttpServer) << "The TCP server" << server << "is not listening.";
-        server->setParent(this);
+    if (!server)
+        return false;
+
+    if (!server->isListening()) {
+        qCWarning(lcHttpServer) << "The TCP server" << server << "is not listening.";
+        return false;
     }
+    server->setParent(this);
     QObjectPrivate::connect(server, &QTcpServer::pendingConnectionAvailable, d,
                             &QAbstractHttpServerPrivate::handleNewConnections,
                             Qt::UniqueConnection);
+    return true;
 }
 
 #if QT_CONFIG(localserver)
-void QAbstractHttpServer::bind(QLocalServer *server)
+/*!
+    Bind the HTTP server to given QLocalServer \a server over which
+    the transmission happens. It is possible to call this function
+    multiple times with different instances of \a server to
+    handle multiple connections.
+
+    After calling this function, every _new_ connection will be
+    handled and forwarded by the HTTP server.
+
+    It is the user's responsibility to call QLocalServer::listen() on
+    the \a server before calling this function. If \a server is not
+    listening, nothing will happen and \c false will be returned.
+
+    If the \a server is nullptr false is returned.
+
+    If successful the \a server will be parented to this HTTP server
+    and \c true is returned.
+
+    \sa QLocalServer, QLocalServer::listen()
+*/
+bool QAbstractHttpServer::bind(QLocalServer *server)
 {
     Q_D(QAbstractHttpServer);
+    if (!server)
+        return false;
 
-    if (!server->isListening())
+    if (!server->isListening()) {
         qCWarning(lcHttpServer) << "The local server" << server << "is not listening.";
+        return false;
+    }
     server->setParent(this);
-
     QObjectPrivate::connect(server, &QLocalServer::newConnection,
                             d, &QAbstractHttpServerPrivate::handleNewLocalConnections,
                             Qt::UniqueConnection);
+    return true;
 }
 #endif
 
 /*!
-    Returns list of child TCP servers of this HTTP server.
+    Returns the TCP servers of this HTTP server.
 
     \sa serverPorts()
  */
@@ -218,7 +244,7 @@ QList<QTcpServer *> QAbstractHttpServer::servers() const
 
 #if QT_CONFIG(localserver)
 /*!
-    Returns list of child TCP servers of this HTTP server.
+    Returns the local servers of this HTTP server.
 
     \sa serverPorts()
  */
@@ -234,14 +260,16 @@ QList<QLocalServer *> QAbstractHttpServer::localServers() const
     This signal is emitted every time a new WebSocket connection is
     available.
 
-    \sa hasPendingWebSocketConnections(), nextPendingWebSocketConnection()
+    \sa hasPendingWebSocketConnections(), nextPendingWebSocketConnection(),
+    addWebSocketUpgradeVerifier()
 */
 
 /*!
     Returns \c true if the server has pending WebSocket connections;
     otherwise returns \c false.
 
-    \sa newWebSocketConnection(), nextPendingWebSocketConnection()
+    \sa newWebSocketConnection(), nextPendingWebSocketConnection(),
+    addWebSocketUpgradeVerifier()
 */
 bool QAbstractHttpServer::hasPendingWebSocketConnections() const
 {
@@ -257,64 +285,139 @@ bool QAbstractHttpServer::hasPendingWebSocketConnections() const
     \note The returned QWebSocket object cannot be used from another
     thread.
 
-    \sa newWebSocketConnection(), hasPendingWebSocketConnections()
+    \sa newWebSocketConnection(), hasPendingWebSocketConnections(),
+    addWebSocketUpgradeVerifier()
 */
 std::unique_ptr<QWebSocket> QAbstractHttpServer::nextPendingWebSocketConnection()
 {
     Q_D(QAbstractHttpServer);
     return std::unique_ptr<QWebSocket>(d->websocketServer.nextPendingConnection());
 }
+
+/*!
+    \internal
+*/
+QHttpServerWebSocketUpgradeResponse
+QAbstractHttpServer::verifyWebSocketUpgrade(const QHttpServerRequest &request) const
+{
+    Q_D(const QAbstractHttpServer);
+    QScopedValueRollback guard(d->handlingWebSocketUpgrade, true);
+    for (auto &verifier : d->webSocketUpgradeVerifiers) {
+        if (verifier.context && verifier.slotObject && d->verifyThreadAffinity(verifier.context)) {
+            auto response = QHttpServerWebSocketUpgradeResponse::passToNext();
+            void *args[] = { &response, const_cast<QHttpServerRequest *>(&request) };
+            verifier.slotObject->call(const_cast<QObject *>(verifier.context.data()), args);
+            if (response.type() != QHttpServerWebSocketUpgradeResponse::ResponseType::PassToNext)
+                return response;
+        }
+    }
+    return QHttpServerWebSocketUpgradeResponse::passToNext();
+}
+
+/*!
+    \fn template <typename Handler, QAbstractHttpServer::if_compatible_callable<Handler> = true> void QAbstractHttpServer::addWebSocketUpgradeVerifier(const typename QtPrivate::ContextTypeForFunctor<Handler>::ContextType *context, Handler &&func)
+
+    Adds a callback function \a func that verifies incoming WebSocket
+    upgrades using the context object \a context. Upgrade attempts
+    succeed if at least one of the registered callback functions returns
+    \c Accept and a handler returning \c Deny has not been executed before
+    it. If no handlers are registered or all return \c PassToNext,
+    missingHandler() is called. The callback functions are executed in the
+    order they are registered. The callbacks cannot call
+    addWebSocketUpgradeVerifier().
+
+    \note The WebSocket upgrades fail if no callbacks has been registered.
+    \note This overload participates in overload resolution only if the
+    callback function takes a \c const QHttpServerRequest & as an argument
+    and returns a QHttpServerWebSocketUpgradeResponse.
+
+    \code
+    server.addWebSocketUpgradeVerifier(
+            &server, [](const QHttpServerRequest &request) {
+                if (request.url().path() == "/allowed"_L1)
+                    return QHttpServerWebSocketUpgradeResponse::accept();
+                else
+                    return QHttpServerWebSocketUpgradeResponse::passToNext();
+            });
+    \endcode
+
+    \since 6.8
+    \sa QHttpServerRequest, QHttpServerWebSocketUpgradeResponse, hasPendingWebSocketConnections(),
+    nextPendingWebSocketConnection(), newWebSocketConnection(), missingHandler()
+*/
+
+/*!
+    \internal
+*/
+void QAbstractHttpServer::addWebSocketUpgradeVerifierImpl(const QObject *context,
+                                                          QtPrivate::QSlotObjectBase *slotObjRaw)
+{
+    QtPrivate::SlotObjUniquePtr slotObj{slotObjRaw}; // adopts
+    Q_ASSERT(slotObj);
+    Q_D(QAbstractHttpServer);
+    if (d->handlingWebSocketUpgrade) {
+        qWarning("Registering WebSocket upgrade verifiers while handling them is not allowed");
+        return;
+    }
+    d->webSocketUpgradeVerifiers.push_back({context, std::move(slotObj)});
+}
+
 #endif
 
 /*!
     \fn QAbstractHttpServer::handleRequest(const QHttpServerRequest &request,
                                            QHttpServerResponder &responder)
-    Overload this function to handle each incoming \a request, by examining
+    Override this function to handle each incoming \a request, by examining
     the \a request and sending the appropriate response back to \a responder.
     Return \c true if the \a request was handled successfully. If this method
-    returns \c false, \c missingHandler() will be called afterwards.
+    returns \c false, missingHandler() will be called afterwards.
 
     This function must move out of \a responder before returning \c true.
 */
 
 /*!
     \fn QAbstractHttpServer::missingHandler(const QHttpServerRequest &request,
-                                            QHttpServerResponder &&responder)
+                                            QHttpServerResponder &responder)
 
-    This function is called whenever \c handleRequest() returns \c false.
-    The \a request and \a responder parameters are the same as
-    \c handleRequest() was called with.
+    Override this function to handle each incoming \a request that was not
+    handled by \l handleRequest(). This function is called whenever \l
+    handleRequest() returns \c false, or if there is a WebSocket upgrade
+    attempt and either there are no connections to newWebSocketConnection() or
+    there are no matching WebSocket verifiers. The \a request and \a responder
+    parameters are the same as handleRequest() was called with.
+
+    \sa handleRequest(), addWebSocketUpgradeVerifier()
 */
 
 #if QT_CONFIG(ssl)
 /*!
-    Turns the server into an HTTPS server.
+    \since 6.8
 
-    The next listen() call will use the given \a certificate, \a privateKey,
-    and \a protocol.
+    Returns server's HTTP/2 configuration parameters.
+
+    \sa setHttp2Configuration()
 */
-void QAbstractHttpServer::sslSetup(const QSslCertificate &certificate,
-                                   const QSslKey &privateKey,
-                                   QSsl::SslProtocol protocol)
+QHttp2Configuration QAbstractHttpServer::http2Configuration() const
 {
-    QSslConfiguration conf;
-    conf.setLocalCertificate(certificate);
-    conf.setPrivateKey(privateKey);
-    conf.setProtocol(protocol);
-    sslSetup(conf);
+    Q_D(const QAbstractHttpServer);
+    return d->h2Configuration;
 }
 
 /*!
-    Turns the server into an HTTPS server.
+    \since 6.8
 
-    The next listen() call will use the given \a sslConfiguration.
+    Sets server's HTTP/2 configuration parameters.
+
+    The next HTTP/2 connection will use the given \a configuration.
+
+    \sa http2Configuration()
 */
-void QAbstractHttpServer::sslSetup(const QSslConfiguration &sslConfiguration)
+void QAbstractHttpServer::setHttp2Configuration(const QHttp2Configuration &configuration)
 {
     Q_D(QAbstractHttpServer);
-    d->sslConfiguration = sslConfiguration;
-    d->sslEnabled = true;
+    d->h2Configuration = configuration;
 }
+
 #endif
 
 QT_END_NAMESPACE

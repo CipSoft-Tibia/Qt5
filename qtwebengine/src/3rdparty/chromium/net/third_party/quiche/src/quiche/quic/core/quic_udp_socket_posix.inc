@@ -39,7 +39,7 @@ constexpr uint8_t kEcnMask = 0x03;
 
 constexpr int kIpv6RecvPacketInfo = IPV6_RECVPKTINFO;
 
-#if defined(__linux__) && (!defined(__ANDROID_API__) || __ANDROID_API__ >= 21)
+#if defined(__linux__) && !defined(__ANDROID_API__)
 #define QUIC_UDP_SOCKET_SUPPORT_LINUX_TIMESTAMPING 1
 // This is the structure that SO_TIMESTAMPING fills into the cmsg header.
 // It is well-defined, but does not have a definition in a public header.
@@ -132,8 +132,13 @@ void PopulatePacketInfoFromControlMessage(
     return;
   }
 
+#if defined(__APPLE__)
+  if ((cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_RECVTOS) ||
+      (cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_TCLASS)) {
+#else
   if ((cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TOS) ||
       (cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_TCLASS)) {
+#endif
     if (packet_info_interested.IsSet(QuicUdpPacketInfoBit::ECN)) {
       packet_info->SetEcnCodepoint(QuicEcnCodepoint(
           *(reinterpret_cast<uint8_t*>(CMSG_DATA(cmsg))) & kEcnMask));
@@ -200,20 +205,6 @@ bool QuicUdpSocketApi::SetupSocket(QuicUdpSocketFd fd, int address_family,
     return false;
   }
 
-  unsigned int set = 1;
-  if (address_family == AF_INET &&
-      setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &set, sizeof(set)) != 0) {
-    QUIC_LOG_FIRST_N(ERROR, 100) << "Failed to request to receive ECN on "
-                                 << "socket";
-    return false;
-  }
-  if (address_family == AF_INET6 &&
-      setsockopt(fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &set, sizeof(set)) != 0) {
-    QUIC_LOG_FIRST_N(ERROR, 100) << "Failed to request to receive ECN on "
-                                 << "socket";
-    return false;
-  }
-
   if (!(address_family == AF_INET6 && ipv6_only)) {
     if (!EnableReceiveSelfIpAddressForV4(fd)) {
       QUIC_LOG_FIRST_N(ERROR, 100)
@@ -221,8 +212,25 @@ bool QuicUdpSocketApi::SetupSocket(QuicUdpSocketFd fd, int address_family,
       return false;
     }
   }
-
+  unsigned int set = 1;
+  if (address_family == AF_INET &&
+      setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &set, sizeof(set)) != 0) {
+    QUIC_LOG_FIRST_N(ERROR, 100) << "Failed to request to receive ECN on "
+                                 << "IPv4 socket";
+    return false;
+  }
   if (address_family == AF_INET6) {
+    if (setsockopt(fd, IPPROTO_IPV6, IPV6_RECVTCLASS, &set, sizeof(set)) != 0) {
+      QUIC_LOG_FIRST_N(ERROR, 100) << "Failed to request to receive ECN on "
+                                   << "IPv6 socket";
+      return false;
+    }
+    if (!ipv6_only &&
+        setsockopt(fd, IPPROTO_IP, IP_RECVTOS, &set, sizeof(set)) != 0) {
+      QUIC_LOG_FIRST_N(ERROR, 100) << "Could not receive IPv4 ECN on "
+                                   << "dual-stack socket";
+      return false;
+    }
     if (!EnableReceiveSelfIpAddressForV6(fd)) {
       QUIC_LOG_FIRST_N(ERROR, 100)
           << "Failed to enable receiving of self v6 ip";
@@ -515,8 +523,8 @@ WriteResult QuicUdpSocketApi::WritePacket(
     int cmsg_type;
     unsigned char value_buf[20];
     socklen_t value_len = sizeof(value_buf);
-    if (GetQuicRestartFlag(quic_platform_tos_sockopt)) {
-      QUIC_RESTART_FLAG_COUNT(quic_platform_tos_sockopt);
+    if (GetQuicRestartFlag(quic_support_ect1)) {
+      QUIC_RESTART_FLAG_COUNT_N(quic_support_ect1, 9, 9);
       if (GetEcnCmsgArgsPreserveDscp(
               fd, packet_info.peer_address().host().address_family(),
               packet_info.ecn_codepoint(), cmsg_type, value_buf,

@@ -16,7 +16,6 @@
 //
 
 #include <QtCore/qglobal.h>
-#include <QtCore/qloggingcategory.h>
 #include <QtCore/qpointer.h>
 
 #include <QtQml/qqmllist.h>

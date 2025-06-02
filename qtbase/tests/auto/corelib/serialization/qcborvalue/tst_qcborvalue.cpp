@@ -3,15 +3,20 @@
 
 #include <QtCore/qcborvalue.h>
 #include <QTest>
+#include <QtTest/private/qcomparisontesthelper_p.h>
 
 #include <QBuffer>
 #include <QCborStreamReader>
+#if QT_CONFIG(cborstreamwriter)
 #include <QCborStreamWriter>
+#endif
 #include <QDateTime>
 #include <QtEndian>
 #include <QTimeZone>
 
-#include <QtCore/private/qbytearray_p.h>
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
 
 Q_DECLARE_METATYPE(QCborKnownTags)
 Q_DECLARE_METATYPE(QCborValue)
@@ -30,6 +35,7 @@ private slots:
     void tagged();
     void extendedTypes_data();
     void extendedTypes();
+    void compareCompiles();
     void copyCompare_data() { basics_data(); }
     void copyCompare();
 
@@ -68,6 +74,7 @@ private slots:
     void mapMutateWithCopies();
     void mapStringValues();
     void mapStringKeys();
+    void mapStringKeysNonAscii();
     void mapValueRef_data() { basics_data(); }
     void mapValueRef();
     void mapInsertRemove_data() { basics_data(); }
@@ -80,12 +87,17 @@ private slots:
     void mapComplexKeys();
     void mapNested();
 
+    void sorting_data();
     void sorting();
+    void comparisonMap_data();
+    void comparisonMap();
 
     void toCbor_data();
+#if QT_CONFIG(cborstreamwriter)
     void toCbor();
     void toCborStreamWriter_data() { toCbor_data(); }
     void toCborStreamWriter();
+#endif
     void fromCbor_data();
     void fromCbor();
     void fromCborStreamReaderByteArray_data() { fromCbor_data(); }
@@ -448,6 +460,35 @@ void tst_QCborValue::extendedTypes_data()
                                   << QCborValue(uuid.toRfc4122() + "\1\2\3\4") << QCborValue(uuid.toRfc4122());
 }
 
+void tst_QCborValue::compareCompiles()
+{
+    // homogeneous types
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborValue>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborValueRef>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborValueConstRef>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborArray>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborArray::Iterator>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborArray::ConstIterator>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborMap>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborMap::Iterator>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborMap::ConstIterator>();
+
+    // QCborValue, Ref and ConstRef
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborValueRef, QCborValueConstRef>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborValueConstRef, QCborValue>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborValueRef, QCborValue>();
+
+    // QCbor{Array,Map} <=> QCborValue{,Ref,ConstRef}
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborArray, QCborValue>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborArray, QCborValueRef>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborArray, QCborValueConstRef>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborMap, QCborValue>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborMap, QCborValueRef>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborMap, QCborValueConstRef>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QCborArray::Iterator,
+                                                    QCborArray::ConstIterator>();
+}
+
 void tst_QCborValue::extendedTypes()
 {
     QFETCH(QCborValue, extended);
@@ -481,6 +522,7 @@ QT_WARNING_DISABLE_GCC("-Wself-move")
     // self-moving
     v = std::move(v);
     QCOMPARE(v, other); // make sure it's still valid
+    QT_TEST_ALL_COMPARISON_OPS(v, other, Qt::strong_ordering::equal);
 QT_WARNING_POP
 
     // moving
@@ -492,24 +534,15 @@ QT_WARNING_POP
     other = v;
     v = other;
 
-
     QCOMPARE(v.compare(other), 0);
-    QCOMPARE(v, other);
-    QVERIFY(!(v != other));
-    QVERIFY(!(v < other));
-#if 0 && __has_include(<compare>)
-    QVERIFY(v <= other);
-    QVERIFY(v >= other);
-    QVERIFY(!(v > other));
-#endif
+    QT_TEST_ALL_COMPARISON_OPS(v, other, Qt::strong_ordering::equal);
 
     if (v.isUndefined())
         other = nullptr;
     else
         other = {};
     QVERIFY(v.type() != other.type());
-    QVERIFY(!(v == other));
-    QVERIFY(v != other);
+    QT_TEST_EQUALITY_OPS(v, other, false);
 
     // they're different types, so they can't compare equal
     QVERIFY(v.compare(other) != 0);
@@ -539,9 +572,8 @@ void tst_QCborValue::arrayDefaultInitialization()
     QVERIFY(a.at(0).isUndefined());
     QCOMPARE(a.constBegin(), a.constEnd());
 
-    QVERIFY(a == a);
-    QVERIFY(a == QCborArray());
-    QVERIFY(QCborArray() == a);
+    QT_TEST_EQUALITY_OPS(a, a, true);
+    QT_TEST_EQUALITY_OPS(a, QCborArray(), true);
 
     QCborValue v(a);
     QVERIFY(v.isArray());
@@ -550,7 +582,7 @@ void tst_QCborValue::arrayDefaultInitialization()
 
     QCborArray a2 = v.toArray();
     QVERIFY(a2.isEmpty());
-    QCOMPARE(a2, a);
+    QT_TEST_EQUALITY_OPS(a2, a, true);
     auto front = v[0];
     QVERIFY(front.isUndefined());
     front = 1;
@@ -590,9 +622,8 @@ void tst_QCborValue::mapDefaultInitialization()
     QVERIFY(m.value("Hello").isUndefined());
 #endif
 
-    QVERIFY(m == m);
-    QVERIFY(m == QCborMap{});
-    QVERIFY(QCborMap{} == m);
+    QT_TEST_EQUALITY_OPS(m, m, true);
+    QT_TEST_EQUALITY_OPS(m, QCborMap{}, true);
 
     const QCborValue v(m);
     QVERIFY(v.isMap());
@@ -605,7 +636,7 @@ void tst_QCborValue::mapDefaultInitialization()
     QCborMap m2 = v.toMap();
     QVERIFY(m2.isEmpty());
     QCOMPARE(m2.size(), 0);
-    QCOMPARE(m2, m);
+    QT_TEST_EQUALITY_OPS(m2, m, true);
 }
 
 void tst_QCborValue::arrayEmptyInitializerList()
@@ -613,9 +644,8 @@ void tst_QCborValue::arrayEmptyInitializerList()
     QCborArray a{};
     QVERIFY(a.isEmpty());
     QCOMPARE(a.size(), 0);
-    QVERIFY(a == a);
-    QVERIFY(a == QCborArray());
-    QVERIFY(QCborArray() == a);
+    QT_TEST_EQUALITY_OPS(a, a, true);
+    QT_TEST_EQUALITY_OPS(a, QCborArray(), true);
 }
 
 void tst_QCborValue::mapEmptyInitializerList()
@@ -623,9 +653,8 @@ void tst_QCborValue::mapEmptyInitializerList()
     QCborMap m{};
     QVERIFY(m.isEmpty());
     QCOMPARE(m.size(), 0);
-    QVERIFY(m == m);
-    QVERIFY(m == QCborMap{});
-    QVERIFY(QCborMap{} == m);
+    QT_TEST_EQUALITY_OPS(m, m, true);
+    QT_TEST_EQUALITY_OPS(QCborMap{}, m, true);
 }
 
 void tst_QCborValue::arrayEmptyDetach()
@@ -635,9 +664,8 @@ void tst_QCborValue::arrayEmptyDetach()
     QVERIFY(a.isEmpty());
     QCOMPARE(a.size(), 0);
 
-    QVERIFY(a == a);
-    QVERIFY(a == QCborArray());
-    QVERIFY(QCborArray() == a);
+    QT_TEST_EQUALITY_OPS(a, a, true);
+    QT_TEST_EQUALITY_OPS(a, QCborArray(), true);
 
     QCborValue v(a);
     QVERIFY(v.isArray());
@@ -656,9 +684,8 @@ void tst_QCborValue::mapEmptyDetach()
     QVERIFY(m.isEmpty());
     QCOMPARE(m.size(), 0);
 
-    QVERIFY(m == m);
-    QVERIFY(m == QCborMap{});
-    QVERIFY(QCborMap{} == m);
+    QT_TEST_EQUALITY_OPS(m, m, true);
+    QT_TEST_EQUALITY_OPS(QCborMap{}, m, true);
 
     QCborValue v(m);
     QVERIFY(v.isMap());
@@ -667,7 +694,7 @@ void tst_QCborValue::mapEmptyDetach()
 
     QCborMap m2 = v.toMap();
     QVERIFY(m2.isEmpty());
-    QCOMPARE(m2, m);
+    QT_TEST_EQUALITY_OPS(m2, m, true);
 }
 
 void tst_QCborValue::arrayNonEmptyDetach()
@@ -728,6 +755,13 @@ void tst_QCborValue::mapNonEmptyDetach()
     { QCborMap copy(m); auto it = m.find(QLatin1String("3")); QVERIFY(it == m.end()); }
     { QCborMap copy(m); auto it = m.find(QString("3")); QVERIFY(it == m.end()); }
     { QCborMap copy(m); auto it = m.find(QCborValue(3)); QVERIFY(it == m.end()); }
+
+    QT_TEST_EQUALITY_OPS(m.constBegin(), m.constEnd(), false);
+    QT_TEST_EQUALITY_OPS(m.begin(), m.end(), false);
+    QT_TEST_EQUALITY_OPS(m.constFind(3), m.constEnd(), true);
+    QT_TEST_EQUALITY_OPS(m.find(3), m.end(), true);
+    QT_TEST_EQUALITY_OPS(m.find(3), m.constEnd(), true);
+    QT_TEST_EQUALITY_OPS(m.constFind(3), m.end(), true);
 }
 
 void tst_QCborValue::arrayInitializerList()
@@ -743,10 +777,9 @@ void tst_QCborValue::arrayInitializerList()
     QCOMPARE(a.at(5), QCborValue(QCborValue::Undefined));
     QCOMPARE(a.at(6), QCborValue(1.0));
 
-    QVERIFY(a == a);
-    QVERIFY(a != QCborArray{});
-    QVERIFY(QCborArray{} != a);
-    QVERIFY(a == QCborArray({0, -1, false, true, nullptr, {}, 1.0}));
+    QT_TEST_EQUALITY_OPS(a, a, true);
+    QT_TEST_EQUALITY_OPS(a, QCborArray{}, false);
+    QT_TEST_EQUALITY_OPS(a, QCborArray({0, -1, false, true, nullptr, {}, 1.0}), true);
 
     QCborValue v = a;
     QCOMPARE(v[0], QCborValue(0));
@@ -775,12 +808,17 @@ void tst_QCborValue::arrayInitializerList()
     // iterators
     auto it = a.constBegin();
     auto end = a.constEnd();
+    QT_TEST_ALL_COMPARISON_OPS(it, end, Qt::strong_ordering::less);
     QCOMPARE(end - it, 7);
     QCOMPARE(it + 7, end);
+    QT_TEST_EQUALITY_OPS(it + 7, end, true);
     QVERIFY(it->isInteger());
     QCOMPARE(*it, QCborValue(0));
     QCOMPARE(it[1], QCborValue(-1));
     QCOMPARE(*(it + 2), QCborValue(false));
+    QT_TEST_EQUALITY_OPS(*it, QCborValue(0), true);
+    QT_TEST_EQUALITY_OPS(it[1], QCborValue(-1), true);
+    QT_TEST_EQUALITY_OPS(*(it + 2), QCborValue(false), true);
     it += 3;
     QCOMPARE(*it, QCborValue(true));
     ++it;
@@ -791,6 +829,24 @@ void tst_QCborValue::arrayInitializerList()
     QCOMPARE(*end, QCborValue(1.0));
     end--;
     QCOMPARE(it, end);
+    QT_TEST_EQUALITY_OPS(it, end, true);
+    QT_TEST_EQUALITY_OPS(it, QCborArray::ConstIterator(), false);
+    QT_TEST_EQUALITY_OPS(QCborArray::ConstIterator(), end, false);
+    QT_TEST_EQUALITY_OPS(QCborArray::ConstIterator(), QCborArray::ConstIterator(), true);
+    QT_TEST_EQUALITY_OPS(QCborArray::ConstIterator(), QCborArray::Iterator(), true);
+
+    {
+        auto it = a.begin();
+        auto it1 = a.constBegin();
+        auto end = a.end();
+        QT_TEST_ALL_COMPARISON_OPS(it, end, Qt::strong_ordering::less);
+        QT_TEST_ALL_COMPARISON_OPS(it1, end, Qt::strong_ordering::less);
+        QT_TEST_EQUALITY_OPS(it + 7, end, true);
+        QT_TEST_EQUALITY_OPS(it1 + 7, end, true);
+        QT_TEST_EQUALITY_OPS(it, QCborArray::Iterator(), false);
+        QT_TEST_EQUALITY_OPS(QCborArray::Iterator(), end, false);
+        QT_TEST_EQUALITY_OPS(QCborArray::Iterator(), QCborArray::ConstIterator(), true);
+    }
 
     // range for
     int i = 0;
@@ -806,10 +862,9 @@ void tst_QCborValue::mapSimpleInitializerList()
 {
     QCborMap m{{0, 0}, {1, 0}, {2, "Hello"}, {"Hello", 2}, {3, QLatin1String("World")}, {QLatin1String("World"), 3}};
     QCOMPARE(m.size(), 6);
-    QVERIFY(m == m);
-    QVERIFY(m != QCborMap{});
-    QVERIFY(QCborMap{} != m);
-    QVERIFY(m == QCborMap({{0, 0}, {1, 0}, {2, "Hello"}, {"Hello", 2}, {3, QLatin1String("World")}, {QLatin1String("World"), 3}}));
+    QT_TEST_EQUALITY_OPS(m, m, true);
+    QT_TEST_EQUALITY_OPS(m, QCborMap{}, false);
+    QT_TEST_EQUALITY_OPS(m, QCborMap({{0, 0}, {1, 0}, {2, "Hello"}, {"Hello", 2}, {3, QLatin1String("World")}, {QLatin1String("World"), 3}}), true);
 
     QCborValue vmap = m;
     {
@@ -969,8 +1024,8 @@ void tst_QCborValue::arrayMutation()
         QVERIFY(v == a.at(0));
     }
 
-    QVERIFY(a == a);
-    QVERIFY(a == QCborArray{true});
+    QT_TEST_EQUALITY_OPS(a, a, true);
+    QT_TEST_EQUALITY_OPS(a, QCborArray{true}, true);
 
     QCborArray a2 = a;
     a.append(nullptr);
@@ -1092,27 +1147,27 @@ void tst_QCborValue::mapMutation()
         const QString strValue = QStringLiteral("value");
         v = strValue;
         QVERIFY(v.isString());
-        QCOMPARE(v, QCborValue(strValue));
-        QCOMPARE(m, QCborMap({{42, strValue}}));
+        QT_TEST_EQUALITY_OPS(v, QCborValue(strValue), true);
+        QT_TEST_EQUALITY_OPS(m, QCborMap({{42, strValue}}), true);
 
         // HasByteData -> HasByteData
         const QLatin1String otherStrValue("othervalue");
         v = otherStrValue;
         QVERIFY(v.isString());
-        QCOMPARE(v, QCborValue(otherStrValue));
-        QCOMPARE(m, QCborMap({{42, otherStrValue}}));
+        QT_TEST_EQUALITY_OPS(v, QCborValue(otherStrValue), true);
+        QT_TEST_EQUALITY_OPS(m, QCborMap({{42, otherStrValue}}), true);
 
         // HasByteData -> simple
         v = 42;
         QVERIFY(v.isInteger());
-        QCOMPARE(v, QCborValue(42));
-        QCOMPARE(m, QCborMap({{42, 42}}));
+        QT_TEST_EQUALITY_OPS(v, QCborValue(42), true);
+        QT_TEST_EQUALITY_OPS(m, QCborMap({{42, 42}}), true);
 
         // simple -> container
         v = QCborArray{1, 2, 3};
         QVERIFY(v.isArray());
-        QCOMPARE(v, QCborArray({1, 2, 3}));
-        QCOMPARE(m,  QCborMap({{42, QCborArray{1, 2, 3}}}));
+        QT_TEST_EQUALITY_OPS(v, QCborArray({1, 2, 3}), true);
+        QT_TEST_EQUALITY_OPS(m,  QCborMap({{42, QCborArray{1, 2, 3}}}), true);
 
         // container -> simple
         v = true;
@@ -1120,8 +1175,7 @@ void tst_QCborValue::mapMutation()
         QVERIFY(v.isTrue());
         QCOMPARE(m, QCborMap({{42, true}}));
         QVERIFY(m.begin()->isTrue());
-        QVERIFY(m.begin().value() == v);
-        QVERIFY(v == m.begin().value());
+        QT_TEST_EQUALITY_OPS(m.begin().value(), v, true);
     }
 
     QVERIFY(m == QCborMap({{42, true}}));
@@ -1143,18 +1197,27 @@ void tst_QCborValue::mapMutation()
     m2 = m;
     auto it = m.begin();    // detaches again
     auto end = m.end();
+    auto it1 = m.constBegin();    // detaches again
+    auto end2 = m.constEnd();
     QCOMPARE(end - it, 2);
+    QT_TEST_ALL_COMPARISON_OPS(it, it + 1, Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(it, it1 + 1, Qt::strong_ordering::less);
+    QT_TEST_ALL_COMPARISON_OPS(it, it - 1, Qt::strong_ordering::greater);
+    QT_TEST_ALL_COMPARISON_OPS(it, it1 - 1, Qt::strong_ordering::greater);
+    QT_TEST_EQUALITY_OPS(it, it1, true);
     QCOMPARE(it + 2, end);
-    QCOMPARE(it.key(), QCborValue(42));
-    QCOMPARE(it.value(), QCborValue(2.5));
-    QCOMPARE((++it).value(), QCborValue(nullptr));
-    QCOMPARE(it.key(), QCborValue(nullptr));
-    QVERIFY(m2 == m);
-    QVERIFY(m == m2);
+    QT_TEST_EQUALITY_OPS(it + 2, end, true);
+    QT_TEST_EQUALITY_OPS(it + 2, end2, true);
+    QT_TEST_EQUALITY_OPS(it1 + 2, end2, true);
+    QT_TEST_EQUALITY_OPS(it.key(), QCborValue(42), true);
+    QT_TEST_EQUALITY_OPS(it.value(), QCborValue(2.5), true);
+    QT_TEST_EQUALITY_OPS((++it).value(), QCborValue(nullptr), true);
+    QT_TEST_EQUALITY_OPS(it.key(), QCborValue(nullptr), true);
+    QT_TEST_EQUALITY_OPS(m2, m, true);
 
     it.value() = -1;
-    QCOMPARE(it.key(), QCborValue(nullptr));
-    QCOMPARE(it.value(), QCborValue(-1));
+    QT_TEST_EQUALITY_OPS(it.key(), QCborValue(nullptr), true);
+    QT_TEST_EQUALITY_OPS(it.value(), QCborValue(-1), true);
     QCOMPARE((m.end() - 1)->toInteger(), -1);
     QVERIFY((m2.end() - 1)->isNull());
     QCOMPARE(++it, end);
@@ -1201,11 +1264,13 @@ void tst_QCborValue::mapMutateWithCopies()
         // see QTBUG-83366
         QCborMap map;
         map[QLatin1String("value")] = "TEST";
+        QT_TEST_EQUALITY_OPS(map[QLatin1String("value")], "TEST", true);
         QCOMPARE(map.size(), 1);
         QCOMPARE(map.value("value"), "TEST");
 
         QCborValue v = map.value("value");
         map[QLatin1String("prop2")] = v;
+        QT_TEST_EQUALITY_OPS(map[QLatin1String("prop2")], v, true);
         QCOMPARE(map.size(), 2);
         QCOMPARE(map.value("value"), "TEST");
         QCOMPARE(map.value("prop2"), "TEST");
@@ -1219,6 +1284,7 @@ void tst_QCborValue::mapMutateWithCopies()
         // same as previous, but this is a QJsonValueRef
         QCborValueRef rv = map[QLatin1String("prop2")];
         rv = map[QLatin1String("value")];
+        QT_TEST_EQUALITY_OPS(map[QLatin1String("value")], rv, true);
         QCOMPARE(map.size(), 2);
         QCOMPARE(map.value("value"), "TEST");
         QCOMPARE(map.value("prop2"), "TEST");
@@ -1233,6 +1299,7 @@ void tst_QCborValue::mapMutateWithCopies()
         // after we create the source QCborValueRef
         QCborValueRef rv = map[QLatin1String("value")];
         map[QLatin1String("prop2")] = rv;
+        QT_TEST_EQUALITY_OPS(map[QLatin1String("prop2")], rv, true);
         QCOMPARE(map.size(), 2);
         QCOMPARE(map.value("value"), "TEST");
         QCOMPARE(map.value("prop2"), "TEST");
@@ -1259,8 +1326,8 @@ void tst_QCborValue::arrayPrepend()
     QCborArray a;
     a.prepend(0);
     a.prepend(nullptr);
-    QCOMPARE(a.at(1), QCborValue(0));
-    QCOMPARE(a.at(0), QCborValue(nullptr));
+    QT_TEST_EQUALITY_OPS(a.at(1), QCborValue(0), true);
+    QT_TEST_EQUALITY_OPS(a.at(0), QCborValue(nullptr), true);
     QCOMPARE(a.size(), 2);
 }
 
@@ -1270,22 +1337,22 @@ void tst_QCborValue::arrayValueRef()
     QCborArray a = { v };
 
     // methods that return QCborValueRef
-    QCOMPARE(a.first(), v);
-    QCOMPARE(a.last(), v);
-    QCOMPARE(a[0], v);
+    QT_TEST_EQUALITY_OPS(a.first(), v, true);
+    QT_TEST_EQUALITY_OPS(a.last(), v, true);
+    QT_TEST_EQUALITY_OPS(a[0], v, true);
     QVERIFY(v == a.first());
     QVERIFY(v == a.last());
     QVERIFY(v == a[0]);
+    QT_TEST_EQUALITY_OPS(a.first(), v, true);
+    QT_TEST_EQUALITY_OPS(a.last(), v, true);
 
     auto iteratorCheck = [&v](auto it) {
-        QCOMPARE(*it, v);
+        QT_TEST_EQUALITY_OPS(*it, v, true);
         QCOMPARE(it->type(), v.type()); // just to test operator->
-        QCOMPARE(it[0], v);
+        QT_TEST_EQUALITY_OPS(it[0], v, true);
     };
 
     iteratorCheck(a.begin());
-    if (QTest::currentTestFailed())
-        return;
     iteratorCheck(a.constBegin());
 }
 
@@ -1298,17 +1365,17 @@ void tst_QCborValue::arrayValueRefLargeKey()
     a[LargeKey + 1] = 123;
 
     QCborValue v(a);
-    QCOMPARE(std::as_const(v)[LargeKey], QCborValue());
+    QT_TEST_EQUALITY_OPS(std::as_const(v)[LargeKey], QCborValue(), true);
     QCOMPARE(std::as_const(v)[LargeKey + 1], 123);
-    QCOMPARE(v[LargeKey], QCborValue());
+    QT_TEST_EQUALITY_OPS(v[LargeKey], QCborValue(), true);
     QCOMPARE(v[LargeKey + 1], 123);
     QCOMPARE(v.type(), QCborValue::Array);
 
     QCborArray outer = { QCborValue(a) };
     QCborValueRef ref = outer[0];
-    QCOMPARE(std::as_const(ref)[LargeKey], QCborValue());
+    QT_TEST_EQUALITY_OPS(std::as_const(ref)[LargeKey], QCborValue(), true);
     QCOMPARE(std::as_const(ref)[LargeKey + 1], 123);
-    QCOMPARE(ref[LargeKey], QCborValue());
+    QT_TEST_EQUALITY_OPS(ref[LargeKey], QCborValue(), true);
     QCOMPARE(ref[LargeKey + 1], 123);
     QCOMPARE(ref.type(), QCborValue::Array);
 }
@@ -1325,9 +1392,9 @@ void tst_QCborValue::mapValueRef()
     QCOMPARE(m.size(), 3);
 
     // methods that return QCborValueRef
-    QCOMPARE(m[intKey], v);
-    QCOMPARE(m[stringKey], v);
-    QCOMPARE(m[v], v);
+    QT_TEST_EQUALITY_OPS(m[intKey], v, true);
+    QT_TEST_EQUALITY_OPS(m[stringKey], v, true);
+    QT_TEST_EQUALITY_OPS(m[v], v, true);
     QVERIFY(v == m[intKey]);
     QVERIFY(v == m[stringKey]);
     QVERIFY(v == m[v]);
@@ -1348,8 +1415,6 @@ void tst_QCborValue::mapValueRef()
     };
 
     iteratorCheck(m.begin());
-    if (QTest::currentTestFailed())
-        return;
     iteratorCheck(m.constBegin());
 }
 
@@ -1360,28 +1425,28 @@ void tst_QCborValue::arrayInsertRemove()
     a.append(42);
     a.append(v);
     a.insert(1, QCborValue(nullptr));
-    QCOMPARE(a.at(0), QCborValue(42));
-    QCOMPARE(a.at(1), QCborValue(nullptr));
-    QCOMPARE(a.at(2), v);
+    QT_TEST_EQUALITY_OPS(a.at(0), QCborValue(42), true);
+    QT_TEST_EQUALITY_OPS(a.at(1), QCborValue(nullptr), true);
+    QT_TEST_EQUALITY_OPS(a.at(2), v, true);
 
     // remove 42
     a.removeAt(0);
     QCOMPARE(a.size(), 2);
-    QCOMPARE(a.at(0), QCborValue(nullptr));
-    QCOMPARE(a.at(1), v);
+    QT_TEST_EQUALITY_OPS(a.at(0), QCborValue(nullptr), true);
+    QT_TEST_EQUALITY_OPS(a.at(1), v, true);
 
     auto it = a.begin();
     it = a.erase(it);   // removes nullptr
     QCOMPARE(a.size(), 1);
-    QCOMPARE(a.at(0), v);
+    QT_TEST_EQUALITY_OPS(a.at(0), v, true);
 
     it = a.erase(it);
     QVERIFY(a.isEmpty());
-    QCOMPARE(it, a.end());
+    QT_TEST_EQUALITY_OPS(it, a.end(), true);
 
     // reinsert the element so we can take it
     a.append(v);
-    QCOMPARE(a.takeAt(0), v);
+    QT_TEST_EQUALITY_OPS(a.takeAt(0), v, true);
     QVERIFY(a.isEmpty());
 }
 
@@ -1390,14 +1455,15 @@ void tst_QCborValue::arrayStringElements()
     QCborArray a{"Hello"};
     a.append(QByteArray("Hello"));
     a.append(QLatin1String("World"));
-    QVERIFY(a == a);
-    QVERIFY(a == QCborArray({QLatin1String("Hello"),
-                             QByteArray("Hello"), QStringLiteral("World")}));
+
+    QT_TEST_EQUALITY_OPS(a, a, true);
+    QT_TEST_EQUALITY_OPS(a, QCborArray({QLatin1String("Hello"),
+                                        QByteArray("Hello"), QStringLiteral("World")}), true);
 
     QCborValueRef r1 = a[0];
     QCOMPARE(r1.toString(), "Hello");
     QCOMPARE(r1.operator QCborValue(), QCborValue("Hello"));
-    QVERIFY(r1 == QCborValue("Hello"));
+    QT_TEST_EQUALITY_OPS(r1, QCborValue("Hello"), true);
 
     QCborValue v2 = a.at(1);
     QCOMPARE(v2.toByteArray(), QByteArray("Hello"));
@@ -1406,11 +1472,11 @@ void tst_QCborValue::arrayStringElements()
     // v2 must continue to be valid after the entry getting removed
     a.removeAt(1);
     QCOMPARE(v2.toByteArray(), QByteArray("Hello"));
-    QCOMPARE(v2, QCborValue(QByteArray("Hello")));
+    QT_TEST_EQUALITY_OPS(v2, QCborValue(QByteArray("Hello")), true);
 
     v2 = a.at(1);
     QCOMPARE(v2.toString(), "World");
-    QCOMPARE(v2, QCborValue("World"));
+    QT_TEST_EQUALITY_OPS(v2, QCborValue("World"), true);
 
     QCOMPARE(a.takeAt(1).toString(), "World");
     QCOMPARE(a.takeAt(0).toString(), "Hello");
@@ -1422,12 +1488,12 @@ void tst_QCborValue::mapStringValues()
     QCborMap m{{0, "Hello"}};
     m.insert({1, QByteArray("Hello")});
     m.insert({2, QLatin1String("World")});
-    QVERIFY(m == m);
+    QT_TEST_EQUALITY_OPS(m, m, true);
 
     QCborValueRef r1 = m[0];
     QCOMPARE(r1.toString(), "Hello");
     QCOMPARE(r1.operator QCborValue(), QCborValue("Hello"));
-    QVERIFY(r1 == QCborValue("Hello"));
+    QT_TEST_EQUALITY_OPS(r1, QCborValue("Hello"), true);
 
     QCborValue v2 = m.value(1);
     QCOMPARE(v2.toByteArray(), QByteArray("Hello"));
@@ -1436,7 +1502,7 @@ void tst_QCborValue::mapStringValues()
     // v2 must continue to be valid after the entry getting removed
     m.erase(m.constFind(1));
     QCOMPARE(v2.toByteArray(), QByteArray("Hello"));
-    QCOMPARE(v2, QCborValue(QByteArray("Hello")));
+    QT_TEST_EQUALITY_OPS(v2, QCborValue(QByteArray("Hello")), true);
 
     v2 = (m.begin() + 1).value();
     QCOMPARE(v2.toString(), "World");
@@ -1454,18 +1520,57 @@ void tst_QCborValue::mapStringKeys()
     QCOMPARE(m.value(QLatin1String("World")), QCborValue(2));
 
     QCborMap m2 = m;
-    QVERIFY(m2 == m);
-    QVERIFY(m == m2);
+    QT_TEST_EQUALITY_OPS(m2, m, true);
 
     m.insert({QByteArray("foo"), "bar"});
     QCOMPARE(m.size(), 3);
     QCOMPARE(m2.size(), 2);
-    QVERIFY(m2 != m);
-    QVERIFY(m != m2);
+    QT_TEST_EQUALITY_OPS(m2, m, false);
 
     QVERIFY(m2.value(QCborValue(QByteArray("foo"))).isUndefined());
     QVERIFY(m.value(QCborValue(QLatin1String("foo"))).isUndefined());
     QCOMPARE(m.value(QCborValue(QByteArray("foo"))).toString(), "bar");
+
+    m.insert(u"World"_s, QCborValue(3));    // replaces
+    QCOMPARE(m.size(), 3);
+    QCOMPARE(m.value(u"World"_s), QCborValue(3));
+    QCOMPARE(m.value("World"_L1), QCborValue(3));
+
+    m.insert(u"Hello"_s, QCborValue(4));    // replaces (must match Latin1)
+    QCOMPARE(m.size(), 3);
+    QCOMPARE(m.value(u"Hello"_s), QCborValue(4));
+    QCOMPARE(m.value("Hello"_L1), QCborValue(4));
+}
+
+void tst_QCborValue::mapStringKeysNonAscii()
+{
+    {
+        QCborMap m;
+        m["a"_L1] = 1;          // US-ASCII: 1 UTF-8 & UTF-16 code unit
+        m["\xE9"_L1] = 2;       // Latin-1: 2 UTF-8 code units, 1 UTF-16
+        m[u"ü"_s] = 3;          // ditto, but inserted as UTF-16
+        m[u"♭"_s] = 4;          // BMP over U+07FF: 3 UTF-8 code units, 1 UTF-16
+        m[u"\U00010000"_s] = 5; // non-BMP: 4 UTF-8 code units, 2 UTF-16
+
+        QCOMPARE(m.size(), 5);
+        QCOMPARE(m.value(u"a"_s), 1);
+        QCOMPARE(m.value(u"é"_s), 2);
+        QCOMPARE(m.value("\xFC"_L1), 3);
+
+        QCOMPARE(m.value(u"k♭"_s), QCborValue());
+        QCOMPARE(m.value("foo"_L1), QCborValue());
+    }
+    {
+        QCborMap m;
+        m[u"k♭"_s] = 1;
+        m[u"a"_s] = 2;
+        m[u"\U00010000"_s] = 3;
+
+        QCOMPARE(m.size(), 3);
+        QCOMPARE(m.value(u"b"_s), QCborValue());
+        QCOMPARE(m.value(u"♭"_s), QCborValue());
+        QCOMPARE(m.value("foo"_L1), QCborValue());
+    }
 }
 
 void tst_QCborValue::mapInsertRemove()
@@ -1479,8 +1584,7 @@ void tst_QCborValue::mapInsertRemove()
 
     m.insert(2, v);
     QVERIFY(m.contains(2));
-    QVERIFY(m[2] == v);
-    QVERIFY(v == m[2]);
+    QT_TEST_EQUALITY_OPS(m[2], v, true);
 
     auto it = m.find(2);
     it = m.erase(it);
@@ -1493,10 +1597,8 @@ void tst_QCborValue::mapInsertRemove()
 
     r = v;
     it = m.find(42);
-    QVERIFY(it.value() == v);
-    QVERIFY(v == it.value());
-    QVERIFY(it.value() == r);
-    QVERIFY(r == it.value());
+    QT_TEST_EQUALITY_OPS(it.value(), v, true);
+    QT_TEST_EQUALITY_OPS(it.value(), r, true);
 
     QCOMPARE(m.extract(it), v);
     QVERIFY(!m.contains(42));
@@ -1517,12 +1619,12 @@ void tst_QCborValue::arrayInsertTagged()
     QCborArray a{tagged};
     a.insert(1, tagged);
     QCOMPARE(a.size(), 2);
-    QCOMPARE(a.at(0), tagged);
-    QCOMPARE(a.at(1), tagged);
-    QCOMPARE(a.at(0).taggedValue(), v);
-    QCOMPARE(a.at(1).taggedValue(), v);
-    QCOMPARE(a.takeAt(0).taggedValue(), v);
-    QCOMPARE(a.takeAt(0).taggedValue(), v);
+    QT_TEST_EQUALITY_OPS(a.at(0), tagged, true);
+    QT_TEST_EQUALITY_OPS(a.at(1), tagged, true);
+    QT_TEST_EQUALITY_OPS(a.at(0).taggedValue(), v, true);
+    QT_TEST_EQUALITY_OPS(a.at(1).taggedValue(), v, true);
+    QT_TEST_EQUALITY_OPS(a.takeAt(0).taggedValue(), v, true);
+    QT_TEST_EQUALITY_OPS(a.takeAt(0).taggedValue(), v, true);
     QVERIFY(a.isEmpty());
 }
 
@@ -1536,13 +1638,13 @@ void tst_QCborValue::mapInsertTagged()
     QCborMap m{{11, tagged}};
     m.insert({-21, tagged});
     QCOMPARE(m.size(), 2);
-    QCOMPARE(m.constBegin().value(), tagged);
-    QCOMPARE(m.value(-21), tagged);
-    QCOMPARE(m.value(11).taggedValue(), v);
-    QCOMPARE((m.end() - 1).value().taggedValue(), v);
-    QCOMPARE(m.extract(m.end() - 1).taggedValue(), v);
+    QT_TEST_EQUALITY_OPS(m.constBegin().value(), tagged, true);
+    QT_TEST_EQUALITY_OPS(m.value(-21), tagged, true);
+    QT_TEST_EQUALITY_OPS(m.value(11).taggedValue(), v, true);
+    QT_TEST_EQUALITY_OPS((m.end() - 1).value().taggedValue(), v, true);
+    QT_TEST_EQUALITY_OPS(m.extract(m.end() - 1).taggedValue(), v, true);
     QVERIFY(!m.contains(-21));
-    QCOMPARE(m.take(11).taggedValue(), v);
+    QT_TEST_EQUALITY_OPS(m.take(11).taggedValue(), v, true);
     QVERIFY(m.isEmpty());
 }
 
@@ -1571,7 +1673,7 @@ void tst_QCborValue::arraySelfAssign()
 
         QCOMPARE(a.size(), 2);
         QCOMPARE(it->toArray().size(), 2);
-        QCOMPARE(it->toArray().last(), QCborValue(36));
+        QT_TEST_EQUALITY_OPS(it->toArray().last(), QCborValue(36), true);
     }
 }
 
@@ -1589,12 +1691,12 @@ void tst_QCborValue::mapSelfAssign()
         QCborValue vm = m;
         m[1] = vm;      // self-assign
         QCOMPARE(m.size(), 2);
-        QCOMPARE(m.value(0), v);
+        QT_TEST_EQUALITY_OPS(m.value(0), v, true);
 
         QCborMap m2 = m.value(1).toMap();
         // there mustn't be an element with key 1
         QCOMPARE(m2.size(), 1);
-        QCOMPARE(m2.value(0), v);
+        QT_TEST_EQUALITY_OPS(m2.value(0), v, true);
         QVERIFY(!m2.contains(1));
     }
 
@@ -1606,14 +1708,14 @@ void tst_QCborValue::mapSelfAssign()
         QCborValueRef rv = m[1];
         rv = m;     // self-assign (implicit QCborValue creation)
         QCOMPARE(m.size(), 2);
-        QCOMPARE(m.value(0), v);
+        QT_TEST_EQUALITY_OPS(m.value(0), v, true);
 
         QCborMap m2 = m.value(1).toMap();
         // there must be an element with key 1
         QCOMPARE(m2.size(), 2);
-        QCOMPARE(m2.value(0), v);
+        QT_TEST_EQUALITY_OPS(m2.value(0), v, true);
         QVERIFY(m2.contains(1));
-        QCOMPARE(m2.value(1), QCborValue());
+        QT_TEST_EQUALITY_OPS(m2.value(1), QCborValue(), true);
     }
 
     m = {{0, v}};
@@ -1637,8 +1739,8 @@ void tst_QCborValue::mapSelfAssign()
         QCOMPARE(m.size(), 2);
 
         auto it = m.constEnd() - 1;
-        QCOMPARE(it.value(), v);
-        QCOMPARE(it.key(), QCborMap({{0, v}}));
+        QT_TEST_EQUALITY_OPS(it.value(), v, true);
+        QT_TEST_EQUALITY_OPS(it.key(), QCborMap({{0, v}}), true);
     }
 }
 
@@ -1717,22 +1819,34 @@ void tst_QCborValue::arrayNested()
     {
         QCborArray a1 = { 42, 47 };
         QCborArray a2 = { QCborValue(a1) };
+        QCborArray a3 = { 41, 47 };
+        QCborArray a4 = { 41, 47, 87 };
         QCOMPARE(a2.size(), 1);
         const QCborValue &first = std::as_const(a2).first();
         QVERIFY(first.isArray());
         QCOMPARE(first.toArray(wrongArray).size(), 2);
         QCOMPARE(first.toArray(wrongArray).first(), 42);
         QCOMPARE(first.toArray(wrongArray).last(), 47);
+        QT_TEST_ALL_COMPARISON_OPS(a1, a3, Qt::strong_ordering::greater);
+        QT_TEST_ALL_COMPARISON_OPS(a3, a1, Qt::strong_ordering::less);
+        QT_TEST_ALL_COMPARISON_OPS(a3, a4, Qt::strong_ordering::less);
+        QT_TEST_ALL_COMPARISON_OPS(a3, a2, Qt::strong_ordering::greater);
     }
     {
         QCborArray a1 = { 42, 47 };
         QCborArray a2 = { QCborValue(a1) };
+        QCborArray a3 = { 41, 47 };
+        QCborArray a4 = { 41, 47, 87 };
         QCOMPARE(a2.size(), 1);
         QCborValueRef first = a2.first();
         QVERIFY(first.isArray());
         QCOMPARE(first.toArray(wrongArray).size(), 2);
         QCOMPARE(first.toArray(wrongArray).first(), 42);
         QCOMPARE(first.toArray(wrongArray).last(), 47);
+        QT_TEST_ALL_COMPARISON_OPS(a1, a3, Qt::strong_ordering::greater);
+        QT_TEST_ALL_COMPARISON_OPS(a3, a1, Qt::strong_ordering::less);
+        QT_TEST_ALL_COMPARISON_OPS(a3, a4, Qt::strong_ordering::less);
+        QT_TEST_ALL_COMPARISON_OPS(a3, a2, Qt::strong_ordering::greater);
     }
 
     {
@@ -1741,16 +1855,18 @@ void tst_QCborValue::arrayNested()
         QCOMPARE(a1.size(), 1);
         const QCborValue &first = std::as_const(a1).first();
         QVERIFY(first.isArray());
-        QCOMPARE(first, QCborArray());
-        QCOMPARE(first.toArray(wrongArray), QCborArray());
+        QT_TEST_ALL_COMPARISON_OPS(first, QCborArray(), Qt::strong_ordering::equal);
+        QT_TEST_ALL_COMPARISON_OPS(first.toArray(wrongArray), QCborArray(),
+                                   Qt::strong_ordering::equal);
     }
     {
         QCborArray a1;
         a1 = { QCborValue(a1) };        // insert it into itself
         QCborValueRef first = a1.first();
         QVERIFY(first.isArray());
-        QCOMPARE(first, QCborArray());
-        QCOMPARE(first.toArray(wrongArray), QCborArray());
+        QT_TEST_ALL_COMPARISON_OPS(first, QCborArray(), Qt::strong_ordering::equal);
+        QT_TEST_ALL_COMPARISON_OPS(first.toArray(wrongArray), QCborArray(),
+                                   Qt::strong_ordering::equal);
     }
     {
         QCborArray a1;
@@ -1758,16 +1874,18 @@ void tst_QCborValue::arrayNested()
         QCOMPARE(a1.size(), 1);
         const QCborValue &first = std::as_const(a1).first();
         QVERIFY(first.isArray());
-        QCOMPARE(first, QCborArray());
-        QCOMPARE(first.toArray(), QCborArray());
+        QT_TEST_ALL_COMPARISON_OPS(first, QCborArray(), Qt::strong_ordering::equal);
+        QT_TEST_ALL_COMPARISON_OPS(first.toArray(wrongArray), QCborArray(),
+                                   Qt::strong_ordering::equal);
     }
     {
         QCborArray a1;
         a1.append(a1);                  // insert into itself
         QCborValueRef first = a1.first();
         QVERIFY(first.isArray());
-        QCOMPARE(first, QCborArray());
-        QCOMPARE(first.toArray(), QCborArray());
+        QT_TEST_ALL_COMPARISON_OPS(first, QCborArray(), Qt::strong_ordering::equal);
+        QT_TEST_ALL_COMPARISON_OPS(first.toArray(wrongArray), QCborArray(),
+                                   Qt::strong_ordering::equal);
     }
 }
 
@@ -1796,7 +1914,7 @@ void tst_QCborValue::mapNested()
     }
 }
 
-void tst_QCborValue::sorting()
+void tst_QCborValue::sorting_data()
 {
     // CBOR data comparisons are done as if we were comparing their canonically
     // (deterministic) encoded forms in the byte stream, including the Major
@@ -1809,6 +1927,10 @@ void tst_QCborValue::sorting()
     //    (Major Type 0)
     //    Effectively, this means integers are sorted as sign+magnitude.
     // 4) floating point types (Major Type 7) sort after all integers
+
+    QTest::addColumn<QCborValue>("lhs");
+    QTest::addColumn<QCborValue>("rhs");
+    QTest::addColumn<Qt::strong_ordering>("expectedOrdering");
 
     QCborValue vundef, vnull(nullptr);
     QCborValue vtrue(true), vfalse(false);
@@ -1828,65 +1950,112 @@ void tst_QCborValue::sorting()
     QCborValue vurl1(QUrl("https://example.net")), vurl2(QUrl("https://example.com/"));
     QCborValue vuuid1{QUuid()}, vuuid2(QUuid::createUuid());
     QCborValue vsimple1(QCborSimpleType(1)), vsimple32(QCborSimpleType(32)), vsimple255(QCborSimpleType(255));
-    QCborValue vdouble1(1.5), vdouble2(qInf());
+    QCborValue vdouble1(1.5), vdouble2(qInf()), vdouble3(qQNaN());
     QCborValue vndouble1(-1.5), vndouble2(-qInf());
 
-#define CHECK_ORDER(v1, v2) \
-    QVERIFY(v1 < v2); \
-    QVERIFY(!(v2 < v2))
+    auto addRow = [](QCborValue lhs, QCborValue rhs, Qt::strong_ordering order) {
+        QTest::addRow("%s-cmp-%s", qPrintable(lhs.toDiagnosticNotation()),
+                      qPrintable(rhs.toDiagnosticNotation()))
+                << lhs << rhs << order;
+    };
+    auto addSelfCmp = [](QCborValue v) {
+        QTest::addRow("self-%s", qPrintable(v.toDiagnosticNotation()))
+                << v << v << Qt::strong_ordering::equal;
+    };
+
+    // self compares
+    addSelfCmp(vundef);
+    addSelfCmp(vnull);
+    addSelfCmp(vfalse);
+    addSelfCmp(vtrue);
+    addSelfCmp(vint1);
+    addSelfCmp(vint2);
+    addSelfCmp(vneg1);
+    addSelfCmp(vneg2);
+    addSelfCmp(vba1);
+    addSelfCmp(vba2);
+    addSelfCmp(vba3);
+    addSelfCmp(vs1);
+    addSelfCmp(vs2);
+    addSelfCmp(vs3);
+    addSelfCmp(va1);
+    addSelfCmp(va2);
+    addSelfCmp(va3);
+    addSelfCmp(vm1);
+    addSelfCmp(vm2);
+    addSelfCmp(vm3);
+    addSelfCmp(vdt1);
+    addSelfCmp(vdt2);
+    addSelfCmp(vtagged1);
+    addSelfCmp(vtagged2);
+    addSelfCmp(vtagged3);
+    addSelfCmp(vtagged4);
+    addSelfCmp(vtagged5);
+    addSelfCmp(vurl1);
+    addSelfCmp(vurl2);
+    addSelfCmp(vuuid1);
+    addSelfCmp(vuuid2);
+    addSelfCmp(vsimple1);
+    addSelfCmp(vsimple32);
+    addSelfCmp(vsimple255);
+    addSelfCmp(vdouble1);
+    addSelfCmp(vdouble2);
+    addSelfCmp(vdouble3);   // surprise: NaNs do compare
+    addSelfCmp(vndouble1);
+    addSelfCmp(vndouble2);
 
     // intra-type comparisons
-    CHECK_ORDER(vfalse, vtrue);
-    CHECK_ORDER(vsimple1, vsimple32);
-    CHECK_ORDER(vsimple32, vsimple255);
-    CHECK_ORDER(vint1, vint2);
-    CHECK_ORDER(vdouble1, vdouble2);
-    CHECK_ORDER(vndouble1, vndouble2);
-    CHECK_ORDER(vba1, vba2);
-    CHECK_ORDER(vba2, vba3);
-    CHECK_ORDER(vs1, vs2);
-    CHECK_ORDER(vs2, vs3);
-    CHECK_ORDER(va1, va2);
-    CHECK_ORDER(va2, va3);
-    CHECK_ORDER(vm1, vm2);
-    CHECK_ORDER(vm2, vm3);
-    CHECK_ORDER(vdt1, vdt2);
-    CHECK_ORDER(vtagged1, vtagged2);
-    CHECK_ORDER(vtagged2, vtagged3);
-    CHECK_ORDER(vtagged3, vtagged4);
-    CHECK_ORDER(vtagged4, vtagged5);
-    CHECK_ORDER(vurl1, vurl2);
-    CHECK_ORDER(vuuid1, vuuid2);
+    addRow(vfalse, vtrue, Qt::strong_ordering::less);
+    addRow(vsimple1, vsimple32, Qt::strong_ordering::less);
+    addRow(vsimple32, vsimple255, Qt::strong_ordering::less);
+    addRow(vint1, vint2, Qt::strong_ordering::less);
+    addRow(vdouble1, vdouble2, Qt::strong_ordering::less);
+    addRow(vdouble2, vdouble3, Qt::strong_ordering::less);  // surprise: NaNs do compare
+    addRow(vndouble1, vndouble2, Qt::strong_ordering::less); // surprise: -1.5 < -inf
+    addRow(va1, va2, Qt::strong_ordering::less);
+    addRow(va2, va3, Qt::strong_ordering::less);
+    addRow(vm1, vm2, Qt::strong_ordering::less);
+    addRow(vm2, vm3, Qt::strong_ordering::less);
+    addRow(vdt1, vdt2, Qt::strong_ordering::less);
+    addRow(vtagged1, vtagged2, Qt::strong_ordering::less);
+    addRow(vtagged2, vtagged3, Qt::strong_ordering::less);
+    addRow(vtagged3, vtagged4, Qt::strong_ordering::less);
+    addRow(vtagged4, vtagged5, Qt::strong_ordering::less);
+    addRow(vurl1, vurl2, Qt::strong_ordering::less);
+    addRow(vuuid1, vuuid2, Qt::strong_ordering::less);
 
-    // surprise 1: CBOR sorts integrals by absolute value
-    CHECK_ORDER(vneg1, vneg2);
+    // surprise 1: CBOR sorts strings by length first
+    addRow(vba1, vba2, Qt::strong_ordering::less);
+    addRow(vba2, vba3, Qt::strong_ordering::less);
+    addRow(vs1, vs2, Qt::strong_ordering::less);
+    addRow(vs2, vs3, Qt::strong_ordering::less);
 
-    // surprise 2: CBOR sorts negatives after positives (sign+magnitude)
-    CHECK_ORDER(vint2, vneg1);
-    QVERIFY(vint2.toInteger() > vneg1.toInteger());
-    CHECK_ORDER(vdouble2, vndouble1);
-    QVERIFY(vdouble2.toDouble() > vndouble1.toDouble());
+    // surprise 2: CBOR sorts integrals by absolute value
+    addRow(vneg1, vneg2, Qt::strong_ordering::less);
+
+    // surprise 3: CBOR sorts negatives after positives (sign+magnitude)
+    addRow(vint2, vneg1, Qt::strong_ordering::less);
+    addRow(vdouble2, vndouble1, Qt::strong_ordering::less);
 
     // inter-type comparisons
-    CHECK_ORDER(vneg2, vba1);
-    CHECK_ORDER(vba3, vs1);
-    CHECK_ORDER(vs3, va1);
-    CHECK_ORDER(va2, vm1);
-    CHECK_ORDER(vm2, vdt1);
-    CHECK_ORDER(vdt2, vtagged1);
-    CHECK_ORDER(vtagged2, vurl1);
-    CHECK_ORDER(vurl1, vuuid1);
-    CHECK_ORDER(vuuid2, vtagged3);
-    CHECK_ORDER(vtagged4, vsimple1);
-    CHECK_ORDER(vsimple1, vfalse);
-    CHECK_ORDER(vtrue, vnull);
-    CHECK_ORDER(vnull, vundef);
-    CHECK_ORDER(vundef, vsimple32);
-    CHECK_ORDER(vsimple255, vdouble1);
+    addRow(vneg2, vba1, Qt::strong_ordering::less);
+    addRow(vba3, vs1, Qt::strong_ordering::less);
+    addRow(vs3, va1, Qt::strong_ordering::less);
+    addRow(va2, vm1, Qt::strong_ordering::less);
+    addRow(vm2, vdt1, Qt::strong_ordering::less);
+    addRow(vdt2, vtagged1, Qt::strong_ordering::less);
+    addRow(vtagged2, vurl1, Qt::strong_ordering::less);
+    addRow(vurl1, vuuid1, Qt::strong_ordering::less);
+    addRow(vuuid2, vtagged3, Qt::strong_ordering::less);
+    addRow(vtagged4, vsimple1, Qt::strong_ordering::less);
+    addRow(vsimple1, vfalse, Qt::strong_ordering::less);
+    addRow(vtrue, vnull, Qt::strong_ordering::less);
+    addRow(vnull, vundef, Qt::strong_ordering::less);
+    addRow(vundef, vsimple32, Qt::strong_ordering::less);
+    addRow(vsimple255, vdouble1, Qt::strong_ordering::less);
 
     // which shows all doubles sorted after integrals
-    CHECK_ORDER(vint2, vdouble1);
-    QVERIFY(vint2.toInteger() > vdouble1.toDouble());
+    addRow(vint2, vdouble1, Qt::strong_ordering::less);
 
     // Add some non-US-ASCII strings. In the current implementation, QCborValue
     // can store a string as either US-ASCII, UTF-8, or UTF-16, so let's exercise
@@ -1899,29 +2068,23 @@ void tst_QCborValue::sorting()
         return QCborValue::fromCbor(str);
     };
 
-    auto addStringCmp = [&](const char *, const char *, QUtf8StringView lhs,
+    auto addStringCmp = [&](const char *prefix, const char *tag, QUtf8StringView lhs,
             QUtf8StringView rhs) {
         // CBOR orders strings by UTF-8 length
-        bool is_lt = (lhs.size() < rhs.size());
-        if (!is_lt)
-            is_lt = (lhs < rhs);
+        auto order = Qt::compareThreeWay(lhs.size(), rhs.size());
+        if (is_eq(order))
+            order = compareThreeWay(lhs, rhs);
+        Q_ASSERT(is_eq(order) || is_lt(order)); // please keep lhs <= rhs!
 
         QCborValue lhs_utf8 = utf8string(QByteArrayView(lhs).toByteArray());
         QCborValue rhs_utf8 = utf8string(QByteArrayView(rhs).toByteArray());
         QCborValue lhs_utf16 = QString::fromUtf8(lhs);
         QCborValue rhs_utf16 = QString::fromUtf8(rhs);
 
-        if (is_lt) {
-            CHECK_ORDER(lhs_utf8, rhs_utf8);
-            CHECK_ORDER(lhs_utf8, rhs_utf16);
-            CHECK_ORDER(lhs_utf16, rhs_utf8);
-            CHECK_ORDER(lhs_utf16, rhs_utf16);
-        } else {
-            QCOMPARE(lhs_utf8, rhs_utf8);
-            QCOMPARE(lhs_utf8, rhs_utf16);
-            QCOMPARE(lhs_utf16, rhs_utf8);
-            QCOMPARE(lhs_utf16, rhs_utf16);
-        }
+        QTest::addRow("string-%s%s:utf8-utf8", prefix, tag) << lhs_utf8 << rhs_utf8 << order;
+        QTest::addRow("string-%s%s:utf8-utf16", prefix, tag) << lhs_utf8 << rhs_utf16 << order;
+        QTest::addRow("string-%s%s:utf16-utf8", prefix, tag) << lhs_utf16 << rhs_utf8 << order;
+        QTest::addRow("string-%s%s:utf16-utf16", prefix, tag) << lhs_utf16 << rhs_utf16 << order;
     };
     auto addStringCmpSameLength = [&](const char *tag, QUtf8StringView lhs, QUtf8StringView rhs) {
         Q_ASSERT(lhs.size() == rhs.size());
@@ -1977,7 +2140,72 @@ void tst_QCborValue::sorting()
     addStringCmpShorter("1-vs-2continuation_surprise", "ab\u00A0", "aa\u0800");
     addStringCmpShorter("1-vs-3continuation_surprise", "abc\u00A0", "aa\U00010000");
     addStringCmpShorter("2-vs-3continuation_surprise", "ab\u0800", "aa\U00010000");
-#undef CHECK_ORDER
+}
+
+void tst_QCborValue::sorting()
+{
+    QFETCH(QCborValue, lhs);
+    QFETCH(QCborValue, rhs);
+    QFETCH(Qt::strong_ordering, expectedOrdering);
+
+    // do a QCOMPARE first so we get a proper QTest error in case QCborValue is
+    // broken
+    if (expectedOrdering == Qt::strong_ordering::equal)
+        QCOMPARE_EQ(lhs, rhs);
+    else if (expectedOrdering == Qt::strong_ordering::less)
+        QCOMPARE_LT(lhs, rhs);
+    else if (expectedOrdering == Qt::strong_ordering::greater)
+        QCOMPARE_GT(lhs, rhs);
+
+    QCborArray array{lhs, rhs};
+
+    QCborValueConstRef lhsCRef = array.constBegin()[0];
+    QCborValueConstRef rhsCRef = array.constBegin()[1];
+    QCborValueRef lhsRef = array[0];
+    QCborValueRef rhsRef = array[1];
+
+    // QCborValue vs QCborValue
+    QT_TEST_ALL_COMPARISON_OPS(lhs, rhs, expectedOrdering);
+    // QCborValueConstRef vs QCborValueConstRef
+    QT_TEST_ALL_COMPARISON_OPS(lhsCRef, rhsCRef, expectedOrdering);
+    // QCborValueRef vs QCborValueRef
+    QT_TEST_ALL_COMPARISON_OPS(lhsRef, rhsRef, expectedOrdering);
+    // QCborValue vs QCborValueConstRef (and reverse)
+    QT_TEST_ALL_COMPARISON_OPS(lhs, rhsCRef, expectedOrdering);
+    // QCborValue vs QCborValueRef (and reverse)
+    QT_TEST_ALL_COMPARISON_OPS(lhs, rhsRef, expectedOrdering);
+    // QCborValueConstRef vs QCborValueRef (and reverse)
+    QT_TEST_ALL_COMPARISON_OPS(lhsCRef, rhsRef, expectedOrdering);
+}
+
+void tst_QCborValue::comparisonMap_data()
+{
+    QTest::addColumn<QCborMap>("left");
+    QTest::addColumn<QCborMap>("right");
+    QTest::addColumn<Qt::strong_ordering>("expectedOrdering");
+
+    QTest::addRow("map{{0, 1}, {10, 0}}, map{{10, 1}, {10, 0}}")
+            << QCborMap{{0, 1}, {10, 0}}
+            << QCborMap{{10, 1}, {10, 0}}
+            << Qt::strong_ordering::greater;
+
+    QTest::addRow("map{{0, 1}, {0, 0}}, map{{0, 1}, {0, 0}}")
+            << QCborMap{{0, 1}, {0, 0}}
+            << QCborMap{{0, 1}, {0, 0}}
+            << Qt::strong_ordering::equivalent;
+
+    QTest::addRow("map{{0, 1}, {10, 0}}, map{{10, 1}, {10, 0}, {10, 0}}")
+            << QCborMap{{10, 1}, {10, 0}}
+            << QCborMap{{0, 1}, {10, 0}, {10, 0}}
+            << Qt::strong_ordering::less;
+}
+
+void tst_QCborValue::comparisonMap()
+{
+    QFETCH(QCborMap, left);
+    QFETCH(QCborMap, right);
+    QFETCH(Qt::strong_ordering, expectedOrdering);
+    QT_TEST_ALL_COMPARISON_OPS(left, right, expectedOrdering);
 }
 
 static void addCommonCborData()
@@ -2129,6 +2357,7 @@ void tst_QCborValue::toCbor_data()
     QTest::newRow("UseInteger:-2^65") << QCborValue(-2 * 18446744073709551616.0) << raw("\xfb\xc4\0\0\0""\0\0\0\0") << QCborValue::EncodingOptions(QCborValue::UseIntegers);
 }
 
+#if QT_CONFIG(cborstreamwriter)
 void tst_QCborValue::toCbor()
 {
     QFETCH(QCborValue, v);
@@ -2168,6 +2397,7 @@ void tst_QCborValue::toCborStreamWriter()
     QCOMPARE(buffer.pos(), result.size());
     QCOMPARE(output, result);
 }
+#endif
 
 void tst_QCborValue::fromCbor_data()
 {
@@ -2222,53 +2452,29 @@ void fromCbor_common(void (*doCheck)(const QCborValue &, const QByteArray &))
     QFETCH(QByteArray, result);
 
     doCheck(v, result);
-    if (QTest::currentTestFailed())
-        return;
 
     // in an array
     doCheck(QCborArray{v}, "\x81" + result);
-    if (QTest::currentTestFailed())
-        return;
-
     doCheck(QCborArray{v, v}, "\x82" + result + result);
-    if (QTest::currentTestFailed())
-        return;
 
     // in a map
     doCheck(QCborMap{{1, v}}, "\xa1\1" + result);
-    if (QTest::currentTestFailed())
-        return;
 
     // undefined-length arrays and maps
     doCheck(QCborArray{v}, "\x9f" + result + "\xff");
-    if (QTest::currentTestFailed())
-        return;
     doCheck(QCborArray{v, v}, "\x9f" + result + result + "\xff");
-    if (QTest::currentTestFailed())
-        return;
     doCheck(QCborMap{{1, v}}, "\xbf\1" + result + "\xff");
-    if (QTest::currentTestFailed())
-        return;
 
     // tagged
     QCborValue t(QCborKnownTags::Signature, v);
     doCheck(t, "\xd9\xd9\xf7" + result);
-    if (QTest::currentTestFailed())
-        return;
 
     // in an array
     doCheck(QCborArray{t}, "\x81\xd9\xd9\xf7" + result);
-    if (QTest::currentTestFailed())
-        return;
-
     doCheck(QCborArray{t, t}, "\x82\xd9\xd9\xf7" + result + "\xd9\xd9\xf7" + result);
-    if (QTest::currentTestFailed())
-        return;
 
     // in a map
     doCheck(QCborMap{{1, t}}, "\xa1\1\xd9\xd9\xf7" + result);
-    if (QTest::currentTestFailed())
-        return;
 }
 
 void tst_QCborValue::fromCbor()
@@ -2324,7 +2530,7 @@ void tst_QCborValue::validation_data()
     // Add QCborStreamReader-specific limitations due to use of QByteArray and
     // QString, which are allocated by QArrayData::allocate().
     const qsizetype MaxInvalid = std::numeric_limits<QByteArray::size_type>::max();
-    const qsizetype MinInvalid = MaxByteArraySize + 1 - sizeof(QByteArray::size_type);
+    const qsizetype MinInvalid = QByteArray::maxSize() + 1 - sizeof(QByteArray::size_type);
     addValidationColumns();
     addValidationData(MinInvalid);
     addValidationLargeData(MinInvalid, MaxInvalid);
@@ -2483,21 +2689,23 @@ void tst_QCborValue::extendedTypeValidation()
     QCborValue decoded = QCborValue::fromCbor(data, &error);
     QVERIFY2(error.error == QCborError(), qPrintable(error.errorString()));
     QCOMPARE(error.offset, data.size());
-    QCOMPARE(decoded, expected);
+    QT_TEST_EQUALITY_OPS(decoded, expected, true);
 
+#if QT_CONFIG(cborstreamwriter)
     QByteArray encoded = decoded.toCbor();
 #if QT_VERSION < QT_VERSION_CHECK(6,0,0)
     // behavior change, see qdatetime.cpp:fromIsoTimeString
     QEXPECT_FAIL("DateTime:Null-at-19", "QDateTime parsing fixed, but only in 6.0", Abort);
 #endif
     QCOMPARE(encoded, data);
+#endif
 }
 
 void tst_QCborValue::hugeDeviceValidation_data()
 {
     // because QCborValue will attempt to retain the original string in UTF-8,
     // the size which it can't store is actually the byte array size
-    addValidationHugeDevice(MaxByteArraySize + 1, MaxByteArraySize + 1);
+    addValidationHugeDevice(QByteArray::maxSize() + 1, QByteArray::maxSize() + 1);
 }
 
 void tst_QCborValue::hugeDeviceValidation()
@@ -2760,14 +2968,9 @@ template <typename ValueRef> static void cborValueRef_template()
     QCborArray a = { v };
     const ValueRef ref = a[0];
 
-    QCOMPARE(ref, v);
+    QT_TEST_EQUALITY_OPS(ref, v, true);
     QVERIFY(ref.compare(v) == 0);
     QVERIFY(v.compare(ref) == 0);
-    QVERIFY(v == ref);
-    QVERIFY(!(ref != v));
-    QVERIFY(!(v != ref));
-    QVERIFY(!(ref < v));
-    QVERIFY(!(v < ref));
 
     // compare properties of the QCborValueRef against the QCborValue it represents
     QCOMPARE(ref.type(), v.type());
@@ -2823,7 +3026,9 @@ template <typename ValueRef> static void cborValueRef_template()
     else
         QCOMPARE(ref.toVariant(), v.toVariant());
     QCOMPARE(ref.toJsonValue(), v.toJsonValue());
+#if QT_CONFIG(cborstreamwriter)
     QCOMPARE(ref.toCbor(), v.toCbor());
+#endif
     QCOMPARE(ref.toDiagnosticNotation(), v.toDiagnosticNotation());
 }
 
@@ -2856,10 +3061,10 @@ void tst_QCborValue::cborValueRefMutatingArray()
         QVERIFY(va.isArray());
         QCOMPARE(va.toArray().size(), 2);
         QCOMPARE(va.toArray().first(), 123);
-        QCOMPARE(va.toArray().last(), v);
+        QT_TEST_EQUALITY_OPS(va.toArray().last(), v, true);
 
         // ensure the array didn't get modified
-        QCOMPARE(origArray, QCborArray{123});
+        QT_TEST_EQUALITY_OPS(origArray, QCborArray{123}, true);
     }
     {
         QCborArray emptyArray;
@@ -2874,11 +3079,11 @@ void tst_QCborValue::cborValueRefMutatingArray()
         QCborValue va = a.at(0);
         QVERIFY(va.isArray());
         QCOMPARE(va.toArray().size(), 2);
-        QCOMPARE(va.toArray().first(), QCborValue());
-        QCOMPARE(va.toArray().last(), v);
+        QT_TEST_EQUALITY_OPS(va.toArray().first(), QCborValue(), true);
+        QT_TEST_EQUALITY_OPS(va.toArray().last(), v, true);
 
         // ensure the array didn't get modified
-        QCOMPARE(emptyArray, QCborArray());
+        QT_TEST_EQUALITY_OPS(emptyArray, QCborArray(), true);
     }
     {
         QCborArray emptyArray = { 123, 456 };
@@ -2895,11 +3100,11 @@ void tst_QCborValue::cborValueRefMutatingArray()
         QCborValue va = a.at(0);
         QVERIFY(va.isArray());
         QCOMPARE(va.toArray().size(), 2);
-        QCOMPARE(va.toArray().first(), QCborValue());
-        QCOMPARE(va.toArray().last(), v);
+        QT_TEST_EQUALITY_OPS(va.toArray().first(), QCborValue(), true);
+        QT_TEST_EQUALITY_OPS(va.toArray().last(), v, true);
 
         // ensure the array didn't get modified
-        QCOMPARE(emptyArray, QCborArray());
+        QT_TEST_EQUALITY_OPS(emptyArray, QCborArray(), true);
     }
 }
 
@@ -2929,14 +3134,9 @@ void tst_QCborValue::cborValueRefMutatingMapIntKey()
     };
     // accessing a negative index causes it to become a map
     executeTest(-1);
-    if (QTest::currentTestFailed())
-        return;
 
     // if the index is bigger than 0x10000, the array becomes a map
     executeTest(0x10000);
-    if (QTest::currentTestFailed())
-        return;
-
     if (type != QCborValue::Array)
         executeTest(5);
 }
@@ -2983,6 +3183,7 @@ void tst_QCborValue::datastreamSerialization_data()
 
 void tst_QCborValue::datastreamSerialization()
 {
+#if QT_CONFIG(cborstreamwriter)
     QFETCH(QCborValue, v);
     QByteArray buffer;
     {
@@ -3010,6 +3211,7 @@ void tst_QCborValue::datastreamSerialization()
         load >> output;
         QCOMPARE(output, map);
     }
+#endif
 }
 
 void tst_QCborValue::streamVariantSerialization()
@@ -3027,6 +3229,7 @@ void tst_QCborValue::streamVariantSerialization()
         load >> output;
         QCOMPARE(output.userType(), QMetaType::QCborArray);
         QCOMPARE(qvariant_cast<QCborArray>(output), array);
+        QT_TEST_EQUALITY_OPS(qvariant_cast<QCborArray>(output), array, true);
     }
     {
         QCborMap obj{{"foo", 42}};

@@ -88,11 +88,9 @@ void loader_init_global_debug_level(void) {
 
 void loader_set_global_debug_level(uint32_t new_loader_debug) { g_loader_debug = new_loader_debug; }
 
-uint32_t loader_get_global_debug_level(void) { return g_loader_debug; }
-
 void loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t msg_code, const char *format, ...) {
     (void)msg_code;
-    char msg[512];
+    char msg[512] = {0};
 
     va_list ap;
     va_start(ap, format);
@@ -104,9 +102,9 @@ void loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t ms
 
     if (inst) {
         VkDebugUtilsMessageSeverityFlagBitsEXT severity = 0;
-        VkDebugUtilsMessageTypeFlagsEXT type;
-        VkDebugUtilsMessengerCallbackDataEXT callback_data;
-        VkDebugUtilsObjectNameInfoEXT object_name;
+        VkDebugUtilsMessageTypeFlagsEXT type = 0;
+        VkDebugUtilsMessengerCallbackDataEXT callback_data = {0};
+        VkDebugUtilsObjectNameInfoEXT object_name = {0};
 
         if ((msg_type & VULKAN_LOADER_INFO_BIT) != 0) {
             severity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
@@ -132,22 +130,13 @@ void loader_log(const struct loader_instance *inst, VkFlags msg_type, int32_t ms
         }
 
         callback_data.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT;
-        callback_data.pNext = NULL;
-        callback_data.flags = 0;
         callback_data.pMessageIdName = "Loader Message";
-        callback_data.messageIdNumber = 0;
         callback_data.pMessage = msg;
-        callback_data.queueLabelCount = 0;
-        callback_data.pQueueLabels = NULL;
-        callback_data.cmdBufLabelCount = 0;
-        callback_data.pCmdBufLabels = NULL;
         callback_data.objectCount = 1;
         callback_data.pObjects = &object_name;
         object_name.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
-        object_name.pNext = NULL;
         object_name.objectType = VK_OBJECT_TYPE_INSTANCE;
         object_name.objectHandle = (uint64_t)(uintptr_t)inst;
-        object_name.pObjectName = NULL;
 
         util_SubmitDebugUtilsMessageEXT(inst, severity, type, &callback_data);
     }

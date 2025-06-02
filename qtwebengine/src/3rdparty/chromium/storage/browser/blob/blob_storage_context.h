@@ -254,8 +254,9 @@ class COMPONENT_EXPORT(STORAGE_BROWSER) BlobStorageContext
   void WriteBlobToFile(mojo::PendingRemote<::blink::mojom::Blob> blob,
                        const base::FilePath& path,
                        bool flush_on_write,
-                       absl::optional<base::Time> last_modified,
+                       std::optional<base::Time> last_modified,
                        WriteBlobToFileCallback callback) override;
+  void Clone(mojo::PendingReceiver<mojom::BlobStorageContext> cloned) override;
 
   base::FilePath profile_directory_;
   BlobStorageRegistry registry_;

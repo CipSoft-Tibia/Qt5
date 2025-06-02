@@ -75,9 +75,12 @@ class UpdateEngine : public base::RefCountedThreadSafe<UpdateEngine> {
       UpdateClient::CrxStateChangeCallback crx_state_change_callback,
       Callback update_callback);
 
-  void SendUninstallPing(const CrxComponent& crx_component,
-                         int reason,
-                         Callback update_callback);
+  void SendPing(const CrxComponent& crx_component,
+                int type,
+                int result_code,
+                int error_code,
+                int extra_code1,
+                Callback update_callback);
 
  private:
   friend class base::RefCountedThreadSafe<UpdateEngine>;
@@ -94,6 +97,9 @@ class UpdateEngine : public base::RefCountedThreadSafe<UpdateEngine> {
       UpdateClient::CrxDataCallback crx_data_callback,
       UpdateClient::CrxStateChangeCallback crx_state_change_callback,
       Callback update_callback);
+  void StartOperation(
+      scoped_refptr<UpdateContext> update_context,
+      const std::vector<absl::optional<CrxComponent>>& crx_components);
   void UpdateComplete(scoped_refptr<UpdateContext> update_context, Error error);
 
   void DoUpdateCheck(scoped_refptr<UpdateContext> update_context);
@@ -116,7 +122,6 @@ class UpdateEngine : public base::RefCountedThreadSafe<UpdateEngine> {
   scoped_refptr<Configurator> config_;
   UpdateChecker::Factory update_checker_factory_;
   scoped_refptr<PingManager> ping_manager_;
-  std::unique_ptr<PersistedData> metadata_;
 
   // Called when CRX state changes occur.
   const NotifyObserversCallback notify_observers_callback_;
@@ -202,7 +207,7 @@ struct UpdateContext : public base::RefCountedThreadSafe<UpdateContext> {
   // to uniquely identify an update context.
   const std::string session_id;
 
-  // Persists data using the prefs service. Not owned by this class.
+  // Persists data using the prefs service.
   raw_ptr<PersistedData> persisted_data = nullptr;
 
   // True if this context is for an update check operation.

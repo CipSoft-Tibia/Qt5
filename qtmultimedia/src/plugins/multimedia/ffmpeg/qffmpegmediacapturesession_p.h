@@ -15,8 +15,8 @@
 // We mean it.
 //
 
-#include <private/qplatformmediacapture_p.h>
-#include <private/qplatformmediaintegration_p.h>
+#include <QtMultimedia/private/qplatformmediacapture_p.h>
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 #include "qpointer.h"
 #include "qiodevice.h"
 
@@ -29,6 +29,8 @@ class QAudioSink;
 class QFFmpegAudioInput;
 class QAudioBuffer;
 class QPlatformVideoSource;
+class QPlatformAudioBufferInput;
+class QAudioBufferSource;
 
 class QFFmpegMediaCaptureSession : public QPlatformMediaCaptureSession
 {
@@ -49,6 +51,9 @@ public:
     QPlatformSurfaceCapture *windowCapture() override;
     void setWindowCapture(QPlatformSurfaceCapture *) override;
 
+    QPlatformVideoFrameInput *videoFrameInput() override;
+    void setVideoFrameInput(QPlatformVideoFrameInput *) override;
+
     QPlatformImageCapture *imageCapture() override;
     void setImageCapture(QPlatformImageCapture *imageCapture) override;
 
@@ -56,12 +61,18 @@ public:
     void setMediaRecorder(QPlatformMediaRecorder *recorder) override;
 
     void setAudioInput(QPlatformAudioInput *input) override;
-    QPlatformAudioInput *audioInput();
+    QPlatformAudioInput *audioInput() const;
+
+    void setAudioBufferInput(QPlatformAudioBufferInput *input) override;
 
     void setVideoPreview(QVideoSink *sink) override;
     void setAudioOutput(QPlatformAudioOutput *output) override;
 
     QPlatformVideoSource *primaryActiveVideoSource();
+
+    // it might be moved to the base class, but it needs QPlatformAudioInput
+    // to be QAudioBufferSource, which might not make sense
+    std::vector<QAudioBufferSource *> activeAudioInputs() const;
 
 private Q_SLOTS:
     void updateAudioSink();
@@ -79,9 +90,12 @@ private:
     QPointer<QPlatformCamera> m_camera;
     QPointer<QPlatformSurfaceCapture> m_screenCapture;
     QPointer<QPlatformSurfaceCapture> m_windowCapture;
+    QPointer<QPlatformVideoFrameInput> m_videoFrameInput;
     QPointer<QPlatformVideoSource> m_primaryActiveVideoSource;
 
-    QFFmpegAudioInput *m_audioInput = nullptr;
+    QPointer<QFFmpegAudioInput> m_audioInput;
+    QPointer<QPlatformAudioBufferInput> m_audioBufferInput;
+
     QFFmpegImageCapture *m_imageCapture = nullptr;
     QFFmpegMediaRecorder *m_mediaRecorder = nullptr;
     QPlatformAudioOutput *m_audioOutput = nullptr;

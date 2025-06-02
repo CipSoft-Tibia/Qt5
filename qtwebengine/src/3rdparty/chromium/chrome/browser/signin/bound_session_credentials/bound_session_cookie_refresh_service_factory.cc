@@ -15,7 +15,6 @@
 #include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service_impl.h"
 #include "chrome/browser/signin/bound_session_credentials/bound_session_params_storage.h"
 #include "chrome/browser/signin/bound_session_credentials/unexportable_key_service_factory.h"
-#include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/signin/signin_features.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/signin/public/base/account_consistency_method.h"
@@ -73,8 +72,8 @@ BoundSessionCookieRefreshServiceFactory::BuildServiceInstanceForBrowserContext(
       account_consistency_method ==
           signin::AccountConsistencyMethod::kDisabled ||
       (account_consistency_method == signin::AccountConsistencyMethod::kDice &&
-       base::FeatureList::IsEnabled(
-           kEnableBoundSessionCredentialsOnDiceProfiles));
+       switches::kEnableBoundSessionCredentialsDiceSupport.Get() ==
+           switches::EnableBoundSessionCredentialsDiceSupport::kEnabled);
 
   if (!should_create_service) {
     return nullptr;

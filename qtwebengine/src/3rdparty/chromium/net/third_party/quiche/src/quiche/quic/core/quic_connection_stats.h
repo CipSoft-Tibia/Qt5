@@ -17,9 +17,9 @@
 namespace quic {
 
 // Structure to hold stats for a QuicConnection.
-struct QUIC_EXPORT_PRIVATE QuicConnectionStats {
-  QUIC_EXPORT_PRIVATE friend std::ostream& operator<<(
-      std::ostream& os, const QuicConnectionStats& s);
+struct QUICHE_EXPORT QuicConnectionStats {
+  QUICHE_EXPORT friend std::ostream& operator<<(std::ostream& os,
+                                                const QuicConnectionStats& s);
 
   QuicByteCount bytes_sent = 0;  // Includes retransmissions.
   QuicPacketCount packets_sent = 0;
@@ -236,7 +236,7 @@ struct QUIC_EXPORT_PRIVATE QuicConnectionStats {
   // address while the validation is pending.
   size_t num_duplicated_packets_sent_to_server_preferred_address = 0;
 
-  struct QUIC_NO_EXPORT TlsServerOperationStats {
+  struct QUICHE_EXPORT TlsServerOperationStats {
     bool success = false;
     // If the operation is performed asynchronously, how long did it take.
     // Zero() for synchronous operations.
@@ -247,9 +247,12 @@ struct QUIC_EXPORT_PRIVATE QuicConnectionStats {
   // is performed by TlsServerHandshaker. If an operation is done within
   // BoringSSL, e.g. ticket decrypted without using
   // TlsServerHandshaker::SessionTicketOpen, it will not be recorded here.
-  absl::optional<TlsServerOperationStats> tls_server_select_cert_stats;
-  absl::optional<TlsServerOperationStats> tls_server_compute_signature_stats;
-  absl::optional<TlsServerOperationStats> tls_server_decrypt_ticket_stats;
+  std::optional<TlsServerOperationStats> tls_server_select_cert_stats;
+  std::optional<TlsServerOperationStats> tls_server_compute_signature_stats;
+  std::optional<TlsServerOperationStats> tls_server_decrypt_ticket_stats;
+
+  // The total number of streams which were pending from some time.
+  size_t num_total_pending_streams = 0;
 };
 
 }  // namespace quic

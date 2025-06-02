@@ -28,12 +28,16 @@ class QQmlPropertyValidator
 {
     Q_DECLARE_TR_FUNCTIONS(QQmlPropertyValidator)
 public:
-    QQmlPropertyValidator(QQmlEnginePrivate *enginePrivate, const QQmlImports *imports, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit);
+    QQmlPropertyValidator(
+            QQmlTypeLoader *typeLoader, const QQmlImports *imports,
+            const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &compilationUnit);
 
     QVector<QQmlError> validate();
 
     QQmlPropertyCache::ConstPtr rootPropertyCache() const { return propertyCaches.at(0); }
     QUrl documentSourceUrl() const { return compilationUnit->url(); }
+
+    QQmlTypeLoader *typeLoader() const { return m_typeLoader; }
 
 private:
     QVector<QQmlError> validateObject(
@@ -57,13 +61,13 @@ private:
         return compilationUnit->resolvedType(id);
     }
 
-    QQmlEnginePrivate *enginePrivate;
-    QQmlRefPointer<QV4::ExecutableCompilationUnit> compilationUnit;
+    QQmlTypeLoader *m_typeLoader;
+    QQmlRefPointer<QV4::CompiledData::CompilationUnit> compilationUnit;
     const QQmlImports *imports;
     const QV4::CompiledData::Unit *qmlUnit;
     const QQmlPropertyCacheVector &propertyCaches;
 
-    QVector<QV4::BindingPropertyData> * const bindingPropertyDataPerObject;
+    QVector<QV4::CompiledData::BindingPropertyData> * const bindingPropertyDataPerObject;
 };
 
 QT_END_NAMESPACE

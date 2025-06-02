@@ -4,6 +4,7 @@
 
 #include "qtimezone.h"
 #include "qtimezoneprivate_p.h"
+#include "qtimezonelocale_p.h"
 
 #include <unicode/ucal.h>
 
@@ -21,27 +22,6 @@ QT_BEGIN_NAMESPACE
 */
 
 // ICU utilities
-
-// Convert TimeType and NameType into ICU UCalendarDisplayNameType
-static UCalendarDisplayNameType ucalDisplayNameType(QTimeZone::TimeType timeType, QTimeZone::NameType nameType)
-{
-    // TODO ICU C UCalendarDisplayNameType does not support full set of C++ TimeZone::EDisplayType
-    switch (nameType) {
-    case QTimeZone::ShortName :
-    case QTimeZone::OffsetName :
-        if (timeType == QTimeZone::DaylightTime)
-            return UCAL_SHORT_DST;
-        // Includes GenericTime
-        return UCAL_SHORT_STANDARD;
-    case QTimeZone::DefaultName :
-    case QTimeZone::LongName :
-        if (timeType == QTimeZone::DaylightTime)
-            return UCAL_DST;
-        // Includes GenericTime
-        return UCAL_STANDARD;
-    }
-    return UCAL_STANDARD;
-}
 
 // Qt wrapper around ucal_getDefaultTimeZone()
 static QByteArray ucalDefaultTimeZoneId()
@@ -67,44 +47,6 @@ static QByteArray ucalDefaultTimeZoneId()
     }
 
     return QByteArray();
-}
-
-// Qt wrapper around ucal_getTimeZoneDisplayName()
-static QString ucalTimeZoneDisplayName(UCalendar *ucal, QTimeZone::TimeType timeType,
-                                       QTimeZone::NameType nameType,
-                                       const QString &localeCode)
-{
-    int32_t size = 50;
-    QString result(size, Qt::Uninitialized);
-    UErrorCode status = U_ZERO_ERROR;
-
-    // size = ucal_getTimeZoneDisplayName(cal, type, locale, result, resultLength, status)
-    size = ucal_getTimeZoneDisplayName(ucal,
-                                       ucalDisplayNameType(timeType, nameType),
-                                       localeCode.toUtf8(),
-                                       reinterpret_cast<UChar *>(result.data()),
-                                       size,
-                                       &status);
-
-    // If overflow, then resize and retry
-    if (status == U_BUFFER_OVERFLOW_ERROR) {
-        result.resize(size);
-        status = U_ZERO_ERROR;
-        size = ucal_getTimeZoneDisplayName(ucal,
-                                           ucalDisplayNameType(timeType, nameType),
-                                           localeCode.toUtf8(),
-                                           reinterpret_cast<UChar *>(result.data()),
-                                           size,
-                                           &status);
-    }
-
-    // If successful on first or second go, resize and return
-    if (U_SUCCESS(status)) {
-        result.resize(size);
-        return result;
-    }
-
-    return QString();
 }
 
 // Qt wrapper around ucal_get() for offsets
@@ -153,7 +95,7 @@ static QTimeZonePrivate::Data ucalTimeZoneTransition(UCalendar *m_ucal,
                                                      UTimeZoneTransitionType type,
                                                      qint64 atMSecsSinceEpoch)
 {
-    QTimeZonePrivate::Data tran = QTimeZonePrivate::invalidData();
+    QTimeZonePrivate::Data tran;
 
     // Clone the ucal so we don't change the shared object
     UErrorCode status = U_ZERO_ERROR;
@@ -203,13 +145,11 @@ static QTimeZonePrivate::Data ucalTimeZoneTransition(UCalendar *m_ucal,
     tran.offsetFromUtc = utc + dst;
     tran.standardTimeOffset = utc;
     tran.daylightTimeOffset = dst;
-    // TODO No ICU API, use short name instead
-    if (dst == 0)
-        tran.abbreviation = ucalTimeZoneDisplayName(m_ucal, QTimeZone::StandardTime,
-                                                    QTimeZone::ShortName, QLocale().name());
-    else
-        tran.abbreviation = ucalTimeZoneDisplayName(m_ucal, QTimeZone::DaylightTime,
-                                                    QTimeZone::ShortName, QLocale().name());
+    // TODO No ICU API, use short name as abbreviation.
+    QTimeZone::TimeType timeType = dst == 0 ? QTimeZone::StandardTime : QTimeZone::DaylightTime;
+    using namespace QtTimeZoneLocale;
+    tran.abbreviation = ucalTimeZoneDisplayName(m_ucal, timeType,
+                                                QTimeZone::ShortName, QLocale().name().toUtf8());
     return tran;
 }
 #endif // U_ICU_VERSION_SHORT
@@ -301,26 +241,24 @@ QString QIcuTimeZonePrivate::displayName(QTimeZone::TimeType timeType,
                                          QTimeZone::NameType nameType,
                                          const QLocale &locale) const
 {
-    // Return standard offset format name as ICU C api doesn't support it yet
+    // Base class has handled OffsetName if we came via the other overload.
     if (nameType == QTimeZone::OffsetName) {
-        const Data nowData = data(QDateTime::currentMSecsSinceEpoch());
-        // We can't use transitions reliably to find out right dst offset
-        // Instead use dst offset api to try get it if needed
+        int offset = standardTimeOffset(QDateTime::currentMSecsSinceEpoch());
+        // We can't use transitions reliably to find out right DST offset.
+        // Instead use DST offset API to try to get it, when needed:
         if (timeType == QTimeZone::DaylightTime)
-            return isoOffsetFormat(nowData.standardTimeOffset + ucalDaylightOffset(m_id));
-        else
-            return isoOffsetFormat(nowData.standardTimeOffset);
-    }
-    return ucalTimeZoneDisplayName(m_ucal, timeType, nameType, locale.name());
-}
+            offset += ucalDaylightOffset(m_id);
+        // This is only valid for times since the most recent standard offset
+        // change; for earlier times, caller must use the other overload.
 
-QString QIcuTimeZonePrivate::abbreviation(qint64 atMSecsSinceEpoch) const
-{
-    // TODO No ICU API, use short name instead
-    if (isDaylightTime(atMSecsSinceEpoch))
-        return displayName(QTimeZone::DaylightTime, QTimeZone::ShortName, QLocale());
-    else
-        return displayName(QTimeZone::StandardTime, QTimeZone::ShortName, QLocale());
+        // Use our own formating for offset names (ICU C API doesn't support it
+        // and we may as well be self-consistent anyway).
+        return isoOffsetFormat(offset);
+    }
+    // Technically this may be suspect, if locale isn't QLocale(), since that's
+    // what we used when constructing m_ucal; does ICU cope with inconsistency ?
+    using namespace QtTimeZoneLocale;
+    return ucalTimeZoneDisplayName(m_ucal, timeType, nameType, locale.name().toUtf8());
 }
 
 int QIcuTimeZonePrivate::offsetFromUtc(qint64 atMSecsSinceEpoch) const
@@ -387,7 +325,7 @@ bool QIcuTimeZonePrivate::isDaylightTime(qint64 atMSecsSinceEpoch) const
 QTimeZonePrivate::Data QIcuTimeZonePrivate::data(qint64 forMSecsSinceEpoch) const
 {
     // Available in ICU C++ api, and draft C api in v50
-    QTimeZonePrivate::Data data = invalidData();
+    QTimeZonePrivate::Data data;
 #if U_ICU_VERSION_MAJOR_NUM >= 50
     data = ucalTimeZoneTransition(m_ucal, UCAL_TZ_TRANSITION_PREVIOUS_INCLUSIVE,
                                   forMSecsSinceEpoch);
@@ -397,7 +335,12 @@ QTimeZonePrivate::Data QIcuTimeZonePrivate::data(qint64 forMSecsSinceEpoch) cons
         ucalOffsetsAtTime(m_ucal, forMSecsSinceEpoch, &data.standardTimeOffset,
                           &data.daylightTimeOffset);
         data.offsetFromUtc = data.standardTimeOffset + data.daylightTimeOffset;
-        data.abbreviation = abbreviation(forMSecsSinceEpoch);
+        // TODO No ICU API for abbreviation, use short name for it:
+        using namespace QtTimeZoneLocale;
+        QTimeZone::TimeType timeType
+            = data.daylightTimeOffset ? QTimeZone::DaylightTime : QTimeZone::StandardTime;
+        data.abbreviation = ucalTimeZoneDisplayName(m_ucal, timeType, QTimeZone::ShortName,
+                                                    QLocale().name().toUtf8());
     }
     data.atMSecsSinceEpoch = forMSecsSinceEpoch;
     return data;
@@ -420,7 +363,7 @@ QTimeZonePrivate::Data QIcuTimeZonePrivate::nextTransition(qint64 afterMSecsSinc
     return ucalTimeZoneTransition(m_ucal, UCAL_TZ_TRANSITION_NEXT, afterMSecsSinceEpoch);
 #else
     Q_UNUSED(afterMSecsSinceEpoch);
-    return invalidData();
+    return {};
 #endif
 }
 
@@ -431,7 +374,7 @@ QTimeZonePrivate::Data QIcuTimeZonePrivate::previousTransition(qint64 beforeMSec
     return ucalTimeZoneTransition(m_ucal, UCAL_TZ_TRANSITION_PREVIOUS, beforeMSecsSinceEpoch);
 #else
     Q_UNUSED(beforeMSecsSinceEpoch);
-    return invalidData();
+    return {};
 #endif
 }
 
@@ -482,6 +425,8 @@ QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds(QLocale::Territory t
     if (U_SUCCESS(status))
         result = uenumToIdList(uenum);
     uenum_close(uenum);
+    // We could merge in what matchingTimeZoneIds(territory) gives us, but
+    // hopefully that's redundant, as ICU packages CLDR.
     return result;
 }
 
@@ -496,6 +441,8 @@ QList<QByteArray> QIcuTimeZonePrivate::availableTimeZoneIds(int offsetFromUtc) c
     if (U_SUCCESS(status))
         result = uenumToIdList(uenum);
     uenum_close(uenum);
+    // We could merge in what matchingTimeZoneIds(offsetFromUtc) gives us, but
+    // hopefully that's redundant, as ICU packages CLDR.
     return result;
 #else
     return QTimeZonePrivate::availableTimeZoneIds(offsetFromUtc);

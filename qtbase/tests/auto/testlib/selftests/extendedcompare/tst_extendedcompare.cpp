@@ -4,6 +4,8 @@
 #include <QTest>
 #include <QtCore/qtimer.h>
 
+#include <cstdio>
+
 QT_BEGIN_NAMESPACE
 
 #define COMPARE_WITH_TYPE(Type, arg1, arg2) \
@@ -93,15 +95,17 @@ static ClassWithPointerGetter getClassForValue(int val)
 // various toString() overloads
 namespace QTest {
 
-char *toString(const int *val)
+template <> char *toString(const int *const &val)
 {
     return val ? toString(*val) : toString(nullptr);
 }
 
+} // namespace QTest
+
 char *toString(const MyClass &val)
 {
     char *msg = new char[128];
-    qsnprintf(msg, 128, "MyClass(%d)", val.value());
+    std::snprintf(msg, 128, "MyClass(%d)", val.value());
     return msg;
 }
 
@@ -110,14 +114,12 @@ char *toString(const MyClass *val)
     if (val) {
         char *msg = new char[128];
         const auto value = val->value();
-        qsnprintf(msg, 128, "MyClass(%d) on memory address with index %d", value,
-                  ClassWithPointerGetter::valueToIndex(value));
+        std::snprintf(msg, 128, "MyClass(%d) on memory address with index %d", value,
+                      ClassWithPointerGetter::valueToIndex(value));
         return msg;
     }
     return toString(nullptr);
 }
-
-} // namespace QTest
 
 enum MyUnregisteredEnum { MyUnregisteredEnumValue1, MyUnregisteredEnumValue2 };
 
@@ -293,16 +295,12 @@ public:
     }
 };
 
-namespace QTest {
-
 char *toString(const ClassWithDeferredSetter &val)
 {
     char *msg = new char[128];
-    qsnprintf(msg, 128, "ClassWithDeferredSetter(%d)", val.value());
+    std::snprintf(msg, 128, "ClassWithDeferredSetter(%d)", val.value());
     return msg;
 }
-
-} // namespace QTest
 
 void tst_ExtendedCompare::checkComparisonWithTimeout()
 {

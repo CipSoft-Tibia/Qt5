@@ -48,10 +48,8 @@ public:
     QLocale locale() const override;
     Qt::LayoutDirection inputDirection() const override;
 
-    // doing nothing in zwp_text_input_v3.
-    // enter() and leave() takes the role to enable/disable the surface
-    void enableSurface(::wl_surface *) override {};
-    void disableSurface(::wl_surface *) override {};
+    void enableSurface(::wl_surface *) override;
+    void disableSurface(::wl_surface *) override;
 
 protected:
     void zwp_text_input_v3_enter(struct ::wl_surface *surface) override;
@@ -73,6 +71,11 @@ private:
             text.clear();
             cursorBegin = 0;
             cursorEnd = 0;
+        }
+        friend bool operator==(const PreeditInfo& lhs, const PreeditInfo& rhs) {
+            return (lhs.text == rhs.text)
+                    && (lhs.cursorBegin == rhs.cursorBegin)
+                    && (lhs.cursorEnd == rhs.cursorEnd);
         }
     };
 

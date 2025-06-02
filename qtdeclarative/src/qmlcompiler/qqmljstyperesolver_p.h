@@ -15,7 +15,7 @@
 // We mean it.
 
 #include <memory>
-#include <private/qtqmlcompilerexports_p.h>
+#include <qtqmlcompilerexports.h>
 
 #include <private/qqmlirbuilder_p.h>
 #include <private/qqmljsast_p.h>
@@ -29,7 +29,7 @@
 QT_BEGIN_NAMESPACE
 
 class QQmlJSImportVisitor;
-class Q_QMLCOMPILER_PRIVATE_EXPORT QQmlJSTypeResolver
+class Q_QMLCOMPILER_EXPORT QQmlJSTypeResolver
 {
 public:
     enum ParentMode { UseDocumentParent, UseParentProperty };
@@ -54,6 +54,7 @@ public:
     QQmlJSScope::ConstPtr uint32Type() const { return m_uint32Type; }
     QQmlJSScope::ConstPtr int64Type() const { return m_int64Type; }
     QQmlJSScope::ConstPtr uint64Type() const { return m_uint64Type; }
+    QQmlJSScope::ConstPtr sizeType() const { return m_sizeType; }
     QQmlJSScope::ConstPtr boolType() const { return m_boolType; }
     QQmlJSScope::ConstPtr stringType() const { return m_stringType; }
     QQmlJSScope::ConstPtr stringListType() const { return m_stringListType; }
@@ -77,6 +78,9 @@ public:
     QQmlJSScope::ConstPtr forInIteratorPtr() const { return m_forInIteratorPtr; }
     QQmlJSScope::ConstPtr forOfIteratorPtr() const { return m_forOfIteratorPtr; }
 
+    QQmlJSScope::ConstPtr mathObject() const;
+    QQmlJSScope::ConstPtr consoleObject() const;
+
     QQmlJSScope::ConstPtr scopeForLocation(const QV4::CompiledData::Location &location) const;
 
     bool isPrefix(const QString &name) const
@@ -88,10 +92,24 @@ public:
     {
         return m_imports.types();
     }
+
+    const auto &importedNames() const
+    {
+        return m_imports.contextualTypes().names();
+    }
+
     QQmlJSScope::ConstPtr typeForName(const QString &name) const
     {
         return m_imports.type(name).scope;
     }
+    QString nameForType(const QQmlJSScope::ConstPtr &type) const
+    {
+        // We want here not the name of the original type. That one may not exist.
+        // We want the name of the type we've used as replacement since that is
+        // whatever we do with the type expects.
+        return m_imports.name(comparableType(type));
+    }
+
     QQmlJSScope::ConstPtr typeFromAST(QQmlJS::AST::Type *type) const;
     QQmlJSScope::ConstPtr typeForConst(QV4::ReturnedValue rv) const;
     QQmlJSRegisterContent typeForBinaryOperation(QSOperator::Op oper,
@@ -197,6 +215,7 @@ public:
     bool isIntegral(const QQmlJSScope::ConstPtr &type) const;
     bool isSignedInteger(const QQmlJSScope::ConstPtr &type) const;
     bool isUnsignedInteger(const QQmlJSScope::ConstPtr &type) const;
+    bool isNativeArrayIndex(const QQmlJSScope::ConstPtr &type) const;
 
     bool canHold(const QQmlJSScope::ConstPtr &container,
                  const QQmlJSScope::ConstPtr &contained) const;
@@ -214,6 +233,8 @@ public:
     bool isTriviallyCopyable(const QQmlJSScope::ConstPtr &type) const;
 
     bool inherits(const QQmlJSScope::ConstPtr &derived, const QQmlJSScope::ConstPtr &base) const;
+    QQmlJSLogger *logger() const { return m_logger; }
+    QStringList seenModuleQualifiers() const { return m_seenModuleQualifiers; }
 
 protected:
 
@@ -236,6 +257,7 @@ protected:
             const QQmlJSScope::ConstPtr &scopeType = QQmlJSScope::ConstPtr(),
             bool hasObjectModuelPrefix = false) const;
 
+    bool canFindComponentBoundaries(const QQmlJSScope::ConstPtr &scope) const;
 
     QQmlJSScope::ConstPtr m_voidType;
     QQmlJSScope::ConstPtr m_emptyType;
@@ -252,6 +274,7 @@ protected:
     QQmlJSScope::ConstPtr m_uint32Type;
     QQmlJSScope::ConstPtr m_int64Type;
     QQmlJSScope::ConstPtr m_uint64Type;
+    QQmlJSScope::ConstPtr m_sizeType;
     QQmlJSScope::ConstPtr m_boolType;
     QQmlJSScope::ConstPtr m_stringType;
     QQmlJSScope::ConstPtr m_stringListType;
@@ -279,6 +302,7 @@ protected:
     QHash<QV4::CompiledData::Location, QQmlJSScope::ConstPtr> m_objectsByLocation;
     QQmlJSImporter::ImportedTypes m_imports;
     QHash<QQmlJS::SourceLocation, QQmlJSMetaSignalHandler> m_signalHandlers;
+    QStringList m_seenModuleQualifiers;
 
     ParentMode m_parentMode = UseParentProperty;
     CloneMode m_cloneMode = CloneTypes;
@@ -302,12 +326,18 @@ protected:
 
 /*!
 \internal
-Keep this struct around to be able to populate deferred scopes obtained from a QQmlJSTypeResolver.
+
+QQmlJSTypeResolver expects to be outlived by its importer and mapper. It crashes when its importer
+or mapper gets destructed. Therefore, you can use this struct to extend the lifetime of its
+dependencies in case you need to store the resolver as a class member.
+QQmlJSTypeResolver also expects to be outlived by the logger used by the importvisitor, while the
+importvisitor actually does not and will not outlive the QQmlJSTypeResolver.
 */
 struct QQmlJSTypeResolverDependencies
 {
     std::shared_ptr<QQmlJSImporter> importer;
     std::shared_ptr<QQmlJSResourceFileMapper> mapper;
+    std::shared_ptr<QQmlJSLogger> logger;
 };
 
 QT_END_NAMESPACE

@@ -1,12 +1,11 @@
-load("//bazel:skia_rules.bzl", "exports_files_legacy", "skia_cc_deps", "skia_filegroup", "split_srcs_and_hdrs")
 load("//bazel:flags.bzl", "bool_flag")
+load("//bazel:skia_rules.bzl", "exports_files_legacy", "skia_cc_deps", "skia_cc_library", "skia_filegroup", "split_srcs_and_hdrs")
 
 licenses(["notice"])
 
 exports_files_legacy()
 
 CORE_FILES = [
-    "AHardwareBufferGL.cpp",
     "GrGLAssembleGLESInterfaceAutogen.cpp",
     "GrGLAssembleGLInterfaceAutogen.cpp",
     "GrGLAssembleHelpers.cpp",
@@ -21,9 +20,12 @@ CORE_FILES = [
     "GrGLContext.cpp",
     "GrGLContext.h",
     "GrGLDefines.h",
+    "GrGLDirectContext.cpp",
     "GrGLExtensions.cpp",
     "GrGLBackendSurface.cpp",
     "GrGLBackendSurfacePriv.h",
+    "GrGLFinishCallbacks.cpp",
+    "GrGLFinishCallbacks.h",
     "GrGLGLSL.cpp",
     "GrGLGLSL.h",
     "GrGLGpu.cpp",
@@ -45,6 +47,7 @@ CORE_FILES = [
     "GrGLTextureRenderTarget.cpp",
     "GrGLTextureRenderTarget.h",
     "GrGLTypesPriv.cpp",
+    "GrGLTypesPriv.h",
     "GrGLUniformHandler.cpp",
     "GrGLUniformHandler.h",
     "GrGLUtil.cpp",
@@ -84,8 +87,14 @@ skia_filegroup(
 )
 
 skia_filegroup(
+    name = "android_srcs",
+    srcs = ["AHardwareBufferGL.cpp"],
+)
+
+skia_filegroup(
     name = "srcs",
     srcs = [
+        ":android_srcs",
         ":core_srcs",
         "//src/gpu/ganesh/gl/builders:srcs",
     ] + select({
@@ -113,4 +122,31 @@ skia_cc_deps(
         "//conditions:default": [],
     }),
     visibility = ["//src/gpu/ganesh:__pkg__"],
+)
+
+skia_cc_library(
+    name = "ganesh_gl",
+    srcs = [
+        ":core_hdrs",
+        ":core_srcs",
+        "//src/gpu/ganesh/gl/builders:private_hdrs",
+        "//src/gpu/ganesh/gl/builders:srcs",
+    ],
+    hdrs = [
+        "//include/gpu:ganesh_hdrs",
+        "//include/gpu/ganesh:ganesh_hdrs",
+        "//include/gpu/ganesh/gl:public_hdrs",
+        "//include/gpu/gl:ganesh_gl_hdrs",
+    ],
+    defines = ["SK_DISABLE_LEGACY_GL_MAKE_NATIVE_INTERFACE"],
+    features = ["layering_check"],
+    visibility = ["//:__pkg__"],
+    deps = [
+        "//:core",
+        "//src/base",
+        "//src/core:core_priv",
+        "//src/gpu",
+        "//src/gpu/ganesh",
+        "//src/sksl/codegen:glsl",
+    ],
 )

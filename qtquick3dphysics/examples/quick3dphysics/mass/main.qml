@@ -46,7 +46,9 @@ Window {
             eulerRotation.y: 45
             castsShadow: true
             brightness: 1
-            shadowFactor: 100
+            shadowFactor: 50
+            shadowBias: 0.1
+            pcfFactor: 0.01
         }
         //! [environment]
 
@@ -146,9 +148,11 @@ Window {
     }
     //! [scene]
 
+
     //! [controller]
     WasdController {
         speed: 0.01
+        shiftSpeed: 0.1
         controlledObject: camera
         Keys.onPressed: (event) => {
             handleKeyPress(event);

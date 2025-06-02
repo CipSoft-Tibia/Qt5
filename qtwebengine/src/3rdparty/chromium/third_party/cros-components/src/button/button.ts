@@ -21,14 +21,12 @@ const MIN_WIDTH = css`64px`;
 
 /**
  * A chromeOS compliant button.
- * See spec
- * https://www.figma.com/file/1XsFoZH868xLcLPfPZRxLh/CrOS-Next---Component-Library-%26-Spec?node-id=2116%3A4082&t=kbaCFk5KdayGTyuL-0
  */
 export class Button extends LitElement {
+  /** @nocollapse */
   static override shadowRootOptions:
       ShadowRootInit = {mode: 'open', delegatesFocus: true};
 
-  // TODO(b/258982831): Centre icon. See spec.
   // Note that theme colours have opacity defined in the colour, but default
   // colours have opacities set separately. As a consequence, styles are broken
   // unless a cros theme is present.
@@ -36,7 +34,27 @@ export class Button extends LitElement {
   static override styles: CSSResultGroup = css`
     :host {
       display: inline-block;
-      --cros-button-max-width_ : var(--cros-button-max-width,200px);
+      text-overflow: ellipsis;
+      text-wrap: nowrap;
+      width: fit-content;
+    }
+
+    .button {
+      max-width: var(--cros-button-max-width,200px);
+      min-width: ${MIN_WIDTH};
+      text-overflow: inherit;
+      text-wrap: inherit;
+      width: 100%;
+      height: 100%;
+    }
+
+    .label {
+      overflow: hidden;
+      text-overflow: inherit;
+    }
+
+    :host([overflow="stack"]) {
+      text-wrap: wrap;
     }
 
     ::slotted(*) {
@@ -68,8 +86,6 @@ export class Button extends LitElement {
     }
 
     md-filled-button {
-      max-width: var(--cros-button-max-width_);
-      min-width: ${MIN_WIDTH};
       --md-filled-button-container-height: ${CONTAINER_HEIGHT};
       --md-filled-button-disabled-container-color: var(--cros-sys-disabled_container);
       --md-filled-button-disabled-container-opacity: 100%;
@@ -78,11 +94,35 @@ export class Button extends LitElement {
       --md-filled-button-focus-state-layer-opacity: 100%;
       --md-filled-button-hover-container-elevation: 0;
       --md-filled-button-hover-state-layer-opacity: 100%;
-      --md-filled-button-label-text-type: var(--cros-button-2-font);
+      --md-filled-button-label-text-font: var(--cros-button-2-font-family);
+      --md-filled-button-label-text-size: var(--cros-button-2-font-size);
+      --md-filled-button-label-text-line-height: var(--cros-button-2-line-height);
+      --md-filled-button-label-text-weight: var(--cros-button-2-font-weight);
       --md-filled-button-leading-space: ${LABEL_PADDING_START_END};
       --md-filled-button-pressed-state-layer-opacity: 100%;
       --md-filled-button-trailing-space: ${LABEL_PADDING_START_END};
+      --md-focus-ring-duration: 0s;
+      --md-focus-ring-width: 2px;
       --md-sys-color-secondary: var(--cros-sys-focus_ring);
+    }
+
+    :host(:not([button-style="secondary"]):is([inverted][disabled])) {
+      opacity: var(--cros-disabled-opacity);
+    }
+
+    :host([inverted][button-style="primary"]) md-filled-button {
+      /** Base styles */
+      --md-sys-color-primary: var(--cros-sys-inverse_primary);
+      --md-sys-color-secondary: var(--cros-sys-inverse_focus_ring);
+      --md-sys-color-on-primary: var(--cros-sys-inverse_on_primary);
+      --md-filled-button-label-text-color: var(--cros-sys-inverse_on_primary);
+      /** Disabled */
+      --md-filled-button-disabled-container-color: var(--cros-sys-inverse_primary);
+      --md-filled-button-disabled-label-text-color: var(--cros-sys-inverse_on_primary);
+      /** Hover */
+      --md-filled-button-hover-state-layer-color: var(--cros-sys-inverse_hover_on_prominent);
+      /** Pressed */
+      --md-filled-button-pressed-state-layer-color: var(--cros-sys-inverse_ripple_primary);
     }
 
     :host([button-style="primary"]) md-filled-button {
@@ -100,21 +140,40 @@ export class Button extends LitElement {
     }
 
     md-text-button {
-      max-width: var(--cros-button-max-width_);
-      min-width: ${MIN_WIDTH};
       --md-sys-color-primary: var(--cros-sys-primary);
       --md-sys-color-secondary: var(--cros-sys-focus_ring);
+      --md-focus-ring-duration: 0s;
+      --md-focus-ring-width: 2px;
       --md-text-button-container-height: ${CONTAINER_HEIGHT};
       --md-text-button-disabled-label-text-color: var(--cros-sys-disabled);
       --md-text-button-disabled-label-text-opacity: 100%;
       --md-text-button-focus-state-layer-opacity: 100%;
       --md-text-button-hover-state-layer-color: var(--cros-sys-hover_on_subtle);
       --md-text-button-hover-state-layer-opacity: 100%;
-      --md-text-button-label-text-type: var(--cros-button-2-font);
+      --md-text-button-label-text-color: var(--cros-sys-primary);
+      --md-text-button-label-text-font: var(--cros-button-2-font-family);
+      --md-text-button-label-text-size: var(--cros-button-2-font-size);
+      --md-text-button-label-text-line-height: var(--cros-button-2-line-height);
+      --md-text-button-label-text-weight: var(--cros-button-2-font-weight);
       --md-text-button-leading-space: ${LABEL_PADDING_START_END};
       --md-text-button-pressed-state-layer-color: var(--cros-sys-ripple_neutral_on_subtle);
       --md-text-button-pressed-state-layer-opacity: 100%;
       --md-text-button-trailing-space: ${LABEL_PADDING_START_END};
+    }
+
+    :host([inverted]) md-text-button {
+      /** Base styles */
+      --md-sys-color-primary: var(--cros-sys-inverse_primary);
+      --md-sys-color-secondary: var(--cros-sys-inverse_focus_ring);
+      --md-text-button-label-text-color: var(--cros-sys-inverse_primary);
+      /** Disabled */
+      --md-text-button-disabled-label-text-color: var(--cros-sys-inverse_primary);
+      --md-text-button-pressed-state-layer-color: var(--cros-sys-inverse_ripple_neutral_on_subtle);
+      --md-text-button-hover-state-layer-color: var(--cros-sys-inverse_hover_on_subtle);
+    }
+
+    ::slotted(ea-icon) {
+      --ea-icon-size: 20px;
     }
   `;
 
@@ -128,12 +187,30 @@ export class Button extends LitElement {
    */
   buttonStyle: 'primary'|'secondary'|'floating' = 'primary';
 
+  /**
+   * If the button should be in the inverted color scheme, eg for use in
+   * cros-snackbar. Inverted color schemes are only supported for `primary` and
+   * floating button styles.
+   * @export
+   */
+  inverted = false;
+
+  /**
+   * If button should truncate with ellipsis or stack contents if label
+   * overflows button container.
+   * @export
+   */
+  overflow: 'truncate'|'stack' = 'truncate';
+
   /** @nocollapse */
   static override properties = {
     ariaLabel: {type: String, reflect: true, attribute: 'aria-label'},
     label: {type: String, reflect: true},
     disabled: {type: Boolean, reflect: true},
     buttonStyle: {type: String, reflect: true, attribute: 'button-style'},
+    inverted: {type: Boolean, reflect: true},
+    ariaHasPopup: {type: String, reflect: true, attribute: 'aria-haspopup'},
+    overflow: {type: String, reflect: true},
   };
 
   constructor() {
@@ -144,6 +221,27 @@ export class Button extends LitElement {
     this.disabled = false;
   }
 
+  override connectedCallback() {
+    super.connectedCallback();
+    // All aria properties on button just get proxied down to the real <button>
+    // element, as such we set role to presentation so screenreaders ignore
+    // this component and instead only read aria attributes off the inner
+    // interactive element.
+    this.setAttribute('role', 'presentation');
+  }
+
+  override firstUpdated() {
+    this.addEventListener('click', this.clickListener);
+  }
+
+  private clickListener (e: MouseEvent) {
+    if (this.disabled) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      return;
+    }
+  }
+
   override render() {
     const ariaHasPopup = (this.ariaHasPopup ?? 'false') as 'false' | 'true' |
         'menu' | 'listbox' | 'tree' | 'grid' | 'dialog';
@@ -151,6 +249,7 @@ export class Button extends LitElement {
     if (this.buttonStyle === 'floating') {
       return html`
         <md-text-button
+            class="button"
             aria-label=${this.ariaLabel || ''}
             aria-haspopup=${ariaHasPopup}
             ?disabled=${this.disabled}>
@@ -161,6 +260,7 @@ export class Button extends LitElement {
 
     return html`
         <md-filled-button
+            class="button"
             aria-label=${this.ariaLabel || ''}
             aria-haspopup=${ariaHasPopup}
             ?disabled=${this.disabled}>
@@ -173,7 +273,7 @@ export class Button extends LitElement {
     return html`
       <div class="content-container">
         <slot name="leading-icon" @slotchange=${this.onSlotChange}></slot>
-        ${this.label}
+        <span class="label">${this.label}</span>
         <slot name="trailing-icon" @slotchange=${this.onSlotChange}></slot>
       </div>
     `;

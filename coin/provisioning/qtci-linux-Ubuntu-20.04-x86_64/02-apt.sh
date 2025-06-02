@@ -116,6 +116,7 @@ installPackages+=(g++-multilib)
 # python3 development package
 installPackages+=(python3-dev)
 installPackages+=(python3-pip)
+installPackages+=(python3-venv)
 installPackages+=(virtualenv)
 installPackages+=(python3-wheel)
 # python2 development package
@@ -137,8 +138,8 @@ installPackages+=(libicu-dev)
 installPackages+=(zlib1g-dev)
 installPackages+=(zlib1g)
 installPackages+=(openjdk-8-jdk)
-#Java 11 for Android
-installPackages+=(openjdk-11-jdk)
+#Java 17 for Android
+installPackages+=(openjdk-17-jdk)
 installPackages+=(libgtk-3-dev)
 installPackages+=(ninja-build)
 installPackages+=(libssl-dev)
@@ -217,6 +218,8 @@ sudo dpkg --add-architecture i386
 installPackages+=(nfs-kernel-server)
 installPackages+=(net-tools)
 installPackages+=(bridge-utils)
+# Fix dependencies in shared ffmpeg libs
+installPackages+=(patchelf)
 
 echo "Running update for apt"
 waitLoop

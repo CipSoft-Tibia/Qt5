@@ -27,7 +27,7 @@ DCompSurfaceOverlayImageRepresentation::DCompSurfaceOverlayImageRepresentation(
 DCompSurfaceOverlayImageRepresentation::
     ~DCompSurfaceOverlayImageRepresentation() = default;
 
-absl::optional<gl::DCLayerOverlayImage>
+std::optional<gl::DCLayerOverlayImage>
 DCompSurfaceOverlayImageRepresentation::GetDCLayerOverlayImage() {
   return static_cast<DCompSurfaceImageBacking*>(backing())
       ->GetDCLayerOverlayImage();
@@ -144,6 +144,6 @@ void DCompSurfaceDawnImageRepresentation::EndAccess() {
       static_cast<DCompSurfaceImageBacking*>(backing());
   dcomp_backing->EndDrawDawn(device_, std::move(texture_));
 }
-#endif  // BUIDFLAG(USE_DAWN)
+#endif  // BUILDFLAG(USE_DAWN)
 
 }  // namespace gpu

@@ -34,6 +34,7 @@ public:
 
     void registerXdgOutput(QWaylandOutput *output, QWaylandXdgOutputV1 *xdgOutput);
     void unregisterXdgOutput(QWaylandOutput *output);
+    QWaylandXdgOutputV1 *xdgOutput(QWaylandOutput *output) const;
 
     static QWaylandXdgOutputManagerV1Private *get(QWaylandXdgOutputManagerV1 *manager) { return manager ? manager->d_func() : nullptr; }
 
@@ -69,7 +70,6 @@ public:
     QSize logicalSize;
     QString name;
     QString description;
-    bool needToSendDone = false;
 
 protected:
     void zxdg_output_v1_bind_resource(Resource *resource) override;

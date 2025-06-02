@@ -26,6 +26,7 @@
 #include "components/supervised_user/core/common/features.h"
 #include "components/supervised_user/core/common/pref_names.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
+#include "components/supervised_user/core/common/supervised_user_utils.h"
 #include "components/sync/base/user_selectable_type.h"
 #include "components/sync/service/sync_prefs.h"
 #include "extensions/buildflags/buildflags.h"
@@ -129,20 +130,23 @@ void SupervisedUserPrefStore::OnNewSettingsAvailable(
   prefs_ = std::make_unique<PrefValueMap>();
   if (!settings.empty()) {
     // Set hardcoded prefs and defaults.
-    prefs_->SetInteger(prefs::kDefaultSupervisedUserFilteringBehavior,
-                       supervised_user::SupervisedUserURLFilter::ALLOW);
-    prefs_->SetBoolean(policy::policy_prefs::kForceGoogleSafeSearch, true);
+    prefs_->SetInteger(
+        prefs::kDefaultSupervisedUserFilteringBehavior,
+        static_cast<int>(supervised_user::FilteringBehavior::kAllow));
+
+    if (base::FeatureList::IsEnabled(
+            supervised_user::kForceGoogleSafeSearchForSupervisedUsers)) {
+      prefs_->SetBoolean(policy::policy_prefs::kForceGoogleSafeSearch, true);
+    }
+
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS)
     prefs_->SetInteger(policy::policy_prefs::kForceYouTubeRestrict,
                        safe_search_api::YOUTUBE_RESTRICT_MODERATE);
+#endif
+
     prefs_->SetBoolean(policy::policy_prefs::kHideWebStoreIcon, false);
-
-// TODO(b/290004926): Modifying `prefs::kSigninAllowed` causes check failures on
-// iOS.
-#if !BUILDFLAG(IS_IOS)
-    prefs_->SetBoolean(prefs::kSigninAllowed, false);
-#endif  // !BUILDFLAG(IS_IOS)
-
-    prefs_->SetBoolean(feed::prefs::kEnableSnippets, false);
+    prefs_->SetBoolean(feed::prefs::kEnableSnippets,
+                       supervised_user::IsKidFriendlyContentFeedAvailable());
 
 #if BUILDFLAG(IS_ANDROID)
     syncer::SyncPrefs::SetTypeDisabledByCustodian(
@@ -167,6 +171,7 @@ void SupervisedUserPrefStore::OnNewSettingsAvailable(
           static_cast<int>(policy::IncognitoModeAvailability::kDisabled));
     }
 
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS)
     {
       // Note that |policy::policy_prefs::kForceGoogleSafeSearch| is set
       // automatically as part of |kSupervisedUserSettingsPrefMapping|, but this
@@ -179,6 +184,7 @@ void SupervisedUserPrefStore::OnNewSettingsAvailable(
                              ? safe_search_api::YOUTUBE_RESTRICT_MODERATE
                              : safe_search_api::YOUTUBE_RESTRICT_OFF);
     }
+#endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
     {

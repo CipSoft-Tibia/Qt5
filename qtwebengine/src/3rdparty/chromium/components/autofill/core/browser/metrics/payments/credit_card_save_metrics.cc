@@ -95,14 +95,6 @@ void LogSaveCardPromptOfferMetric(
     base::UmaHistogramEnumeration(
         metric_with_destination_and_show + ".RequestingExpirationDate", metric);
   }
-  if (options.has_non_focusable_field) {
-    base::UmaHistogramEnumeration(
-        metric_with_destination_and_show + ".FromNonFocusableForm", metric);
-  }
-  if (options.from_dynamic_change_form) {
-    base::UmaHistogramEnumeration(
-        metric_with_destination_and_show + ".FromDynamicChangeForm", metric);
-  }
   if (options.has_multiple_legal_lines) {
     base::UmaHistogramEnumeration(
         metric_with_destination_and_show + ".WithMultipleLegalLines", metric);
@@ -111,6 +103,11 @@ void LogSaveCardPromptOfferMetric(
     base::UmaHistogramEnumeration(metric_with_destination_and_show +
                                       ".WithSameLastFourButDifferentExpiration",
                                   metric);
+  }
+  if (options.card_save_type ==
+      AutofillClient::CardSaveType::kCardSaveWithCvc) {
+    base::UmaHistogramEnumeration(
+        metric_with_destination_and_show + ".SavingWithCvc", metric);
   }
 
   if (security_level != security_state::SecurityLevel::SECURITY_LEVEL_COUNT) {
@@ -150,14 +147,6 @@ void LogSaveCardPromptResultMetric(
     base::UmaHistogramEnumeration(
         metric_with_destination_and_show + ".RequestingExpirationDate", metric);
   }
-  if (options.has_non_focusable_field) {
-    base::UmaHistogramEnumeration(
-        metric_with_destination_and_show + ".FromNonFocusableForm", metric);
-  }
-  if (options.from_dynamic_change_form) {
-    base::UmaHistogramEnumeration(
-        metric_with_destination_and_show + ".FromDynamicChangeForm", metric);
-  }
   if (options.has_multiple_legal_lines) {
     base::UmaHistogramEnumeration(
         metric_with_destination_and_show + ".WithMultipleLegalLines", metric);
@@ -166,6 +155,11 @@ void LogSaveCardPromptResultMetric(
     base::UmaHistogramEnumeration(metric_with_destination_and_show +
                                       ".WithSameLastFourButDifferentExpiration",
                                   metric);
+  }
+  if (options.card_save_type ==
+      AutofillClient::CardSaveType::kCardSaveWithCvc) {
+    base::UmaHistogramEnumeration(
+        metric_with_destination_and_show + ".SavingWithCvc", metric);
   }
 
   if (security_level != security_state::SecurityLevel::SECURITY_LEVEL_COUNT) {
@@ -198,6 +192,15 @@ void LogSaveCvcPromptResultMetric(SaveCardPromptResult metric,
 
   base::UmaHistogramEnumeration(
       base::StrCat({base_histogram_name, destination, show}), metric);
+}
+
+void LogCvcInfoBarMetric(AutofillMetrics::InfoBarMetric metric,
+                         bool is_uploading) {
+  CHECK_LT(metric, AutofillMetrics::InfoBarMetric::NUM_INFO_BAR_METRICS);
+  base::UmaHistogramEnumeration(
+      base::StrCat(
+          {"Autofill.CvcInfoBar", is_uploading ? ".Upload" : ".Local"}),
+      metric, AutofillMetrics::InfoBarMetric::NUM_INFO_BAR_METRICS);
 }
 
 void LogSaveCardRequestExpirationDateReasonMetric(

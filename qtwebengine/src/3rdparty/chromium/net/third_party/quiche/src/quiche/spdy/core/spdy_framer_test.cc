@@ -8,21 +8,28 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
+#include <ios>
 #include <limits>
 #include <memory>
-#include <tuple>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/strings/string_view.h"
 #include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/platform/api/quiche_test.h"
 #include "quiche/common/quiche_text_utils.h"
 #include "quiche/spdy/core/array_output_buffer.h"
+#include "quiche/spdy/core/hpack/hpack_encoder.h"
 #include "quiche/spdy/core/http2_frame_decoder_adapter.h"
+#include "quiche/spdy/core/http2_header_block.h"
 #include "quiche/spdy/core/recording_headers_handler.h"
+#include "quiche/spdy/core/spdy_alt_svc_wire_format.h"
 #include "quiche/spdy/core/spdy_bitmasks.h"
 #include "quiche/spdy/core/spdy_frame_builder.h"
+#include "quiche/spdy/core/spdy_headers_handler_interface.h"
 #include "quiche/spdy/core/spdy_protocol.h"
 #include "quiche/spdy/test_tools/mock_spdy_framer_visitor.h"
 #include "quiche/spdy/test_tools/spdy_test_utils.h"
@@ -5003,17 +5010,17 @@ TEST_P(SpdyFramerTest, ProcessAllInput) {
 
 namespace {
 void CheckFrameAndIRSize(SpdyFrameIR* ir, SpdyFramer* framer,
-                         ArrayOutputBuffer* output_buffer) {
-  output_buffer->Reset();
+                         ArrayOutputBuffer* array_output_buffer) {
+  array_output_buffer->Reset();
   SpdyFrameType type = ir->frame_type();
   size_t ir_size = ir->size();
-  framer->SerializeFrame(*ir, output_buffer);
+  framer->SerializeFrame(*ir, array_output_buffer);
   if (type == SpdyFrameType::HEADERS || type == SpdyFrameType::PUSH_PROMISE) {
     // For HEADERS and PUSH_PROMISE, the size is an estimate.
-    EXPECT_GE(ir_size, output_buffer->Size() * 9 / 10);
-    EXPECT_LT(ir_size, output_buffer->Size() * 11 / 10);
+    EXPECT_GE(ir_size, array_output_buffer->Size() * 9 / 10);
+    EXPECT_LT(ir_size, array_output_buffer->Size() * 11 / 10);
   } else {
-    EXPECT_EQ(ir_size, output_buffer->Size());
+    EXPECT_EQ(ir_size, array_output_buffer->Size());
   }
 }
 }  // namespace

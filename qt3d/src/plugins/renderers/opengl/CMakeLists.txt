@@ -71,17 +71,26 @@ if(QT_FEATURE_private_tests)
     target_compile_definitions(OpenGLRendererLib PRIVATE
         BUILD_QT3D_MODULE
         QT_BUILDING_QT
-        QT_NO_CONTEXTLESS_CONNECT
+        QT_NO_FOREACH
+    )
+
+    set(openGLRendererImguiSources
+            debug/imguirenderer.cpp debug/imguirenderer_p.h
+            ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui.cpp
+            ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui_draw.cpp
+            ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui_tables.cpp
+            ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui_widgets.cpp
     )
 
     qt_internal_extend_target(OpenGLRendererLib CONDITION NOT INTEGRITY
         SOURCES
-            debug/imguirenderer.cpp debug/imguirenderer_p.h
-            ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui.cpp
-            ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui_draw.cpp
-            ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui_widgets.cpp
+            ${openGLRendererImguiSources}
+        NO_PCH_SOURCES
+            ${openGLRendererImguiSources} # various defines (e.g. IMGUI_DEFINE_MATH_OPERATORS)
         INCLUDE_DIRECTORIES
             debug
+            ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui
+        ATTRIBUTION_FILE_DIR_PATHS
             ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui
     )
 
@@ -100,7 +109,7 @@ qt_internal_add_plugin(OpenGLRendererPlugin
     DEFINES
         BUILD_QT3D_MODULE
         QT_BUILDING_QT
-        QT_NO_CONTEXTLESS_CONNECT
+        QT_NO_FOREACH
     INCLUDE_DIRECTORIES
         graphicshelpers
         io
@@ -129,9 +138,12 @@ qt_internal_extend_target(OpenGLRendererPlugin CONDITION NOT INTEGRITY
         debug/imguirenderer.cpp debug/imguirenderer_p.h
         ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui.cpp
         ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui_draw.cpp
+        ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui_tables.cpp
         ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui/imgui_widgets.cpp
     INCLUDE_DIRECTORIES
         debug
+        ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui
+    ATTRIBUTION_FILE_DIR_PATHS
         ${PROJECT_SOURCE_DIR}/src/3rdparty/imgui
 )
 

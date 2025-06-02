@@ -17,9 +17,12 @@ if TYPE_CHECKING:
   from .timing import Timing
   from crossbench.browsers.browser import Browser
   from crossbench import plt
+  from crossbench.exception import ExceptionAnnotationScope
 
 
 class Actions(helper.TimeScope):
+
+  _max_end_datetime: dt.datetime
 
   def __init__(self,
                message: str,
@@ -31,7 +34,8 @@ class Actions(helper.TimeScope):
                timeout: dt.timedelta = dt.timedelta()):
     assert message, "Actions need a name"
     super().__init__(message)
-    self._exception_annotation = run.exceptions.info(f"Action: {message}")
+    self._exception_annotation: ExceptionAnnotationScope = run.exceptions.info(
+        f"Action: {message}")
     self._run: Run = run
     self._browser: Browser = browser or run.browser
     self._runner: Runner = runner or run.runner
@@ -62,10 +66,10 @@ class Actions(helper.TimeScope):
     self._is_active = True
     logging.debug("Action begin: %s", self._message)
     if self._verbose:
-      logging.info(self._message)
+      logging.info(self._message.ljust(30))
     else:
       # Print message that doesn't overlap with helper.Spinner
-      sys.stdout.write(f"   {self._message}\r")
+      sys.stdout.write(f"   {self._message.ljust(30)}\r")
     return self
 
   def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
@@ -111,11 +115,16 @@ class Actions(helper.TimeScope):
           f"js_code did not return a bool, but got: {result}\n"
           f"js-code: {js_code}")
 
-  def show_url(self, url: str) -> None:
+  def show_url(self, url: str, target: Optional[str] = None) -> None:
     self._assert_is_active()
-    self._browser.show_url(
-        self._runner,  # pytype: disable=wrong-arg-types
-        url)
+    if target:
+      # TODO: use target in the driver instead.
+      self.js(f"window.open('{url}','{target}');")
+    else:
+      self._browser.show_url(
+          self._runner,  # pytype: disable=wrong-arg-types
+          url,
+          target=None)
 
   def wait(
       self, seconds: Union[dt.timedelta,

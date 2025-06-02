@@ -342,8 +342,6 @@ sk_sp<SkShader> SkImageShader::MakeSubset(sk_sp<SkImage> image,
     if (!SkRect::Make(image->bounds()).contains(subset)) {
         return nullptr;
     }
-    // TODO(skbug.com/12784): GPU-only for now since it's only supported in onAsFragmentProcessor()
-    SkASSERT(!needs_subset(image.get(), subset) || image->isTextureBacked());
     return SkLocalMatrixShader::MakeWrapped<SkImageShader>(localMatrix,
                                                            std::move(image),
                                                            subset,
@@ -371,6 +369,55 @@ sk_sp<SkShader> SkMakeBitmapShaderForPaint(const SkPaint& paint, const SkBitmap&
         s = SkShaders::Blend(SkBlendMode::kDstIn, paint.refShader(), std::move(s));
     }
     return s;
+}
+
+SkRect SkModifyPaintAndDstForDrawImageRect(const SkImage* image,
+                                           const SkSamplingOptions& sampling,
+                                           SkRect src,
+                                           SkRect dst,
+                                           bool strictSrcSubset,
+                                           SkPaint* paint) {
+    // The paint should have already been cleaned for a regular drawImageRect, e.g. no path
+    // effect and is a fill.
+    SkASSERT(paint);
+    SkASSERT(paint->getStyle() == SkPaint::kFill_Style && !paint->getPathEffect());
+
+    SkASSERT(image);
+    SkRect imgBounds = SkRect::Make(image->bounds());
+
+    SkASSERT(src.isFinite() && dst.isFinite() && dst.isSorted());
+    SkMatrix localMatrix = SkMatrix::RectToRect(src, dst);
+    if (!imgBounds.contains(src)) {
+        if (!src.intersect(imgBounds)) {
+            return SkRect::MakeEmpty(); // Nothing to draw for this entry
+        }
+        // Update dst to match smaller src
+        dst = localMatrix.mapRect(src);
+    }
+
+    bool imageIsAlphaOnly = SkColorTypeIsAlphaOnly(image->colorType());
+
+    sk_sp<SkShader> imgShader;
+    if (strictSrcSubset) {
+        imgShader = SkImageShader::MakeSubset(sk_ref_sp(image), src,
+                                              SkTileMode::kClamp, SkTileMode::kClamp,
+                                              sampling, &localMatrix);
+    } else {
+        imgShader = image->makeShader(SkTileMode::kClamp, SkTileMode::kClamp,
+                                      sampling, &localMatrix);
+    }
+    if (!imgShader) {
+        return SkRect::MakeEmpty();
+    }
+    if (imageIsAlphaOnly && paint->getShader()) {
+        // Compose the image shader with the paint's shader. Alpha images+shaders should output the
+        // texture's alpha multiplied by the shader's color. DstIn (d*sa) will achieve this with
+        // the source image and dst shader (MakeBlend takes dst first, src second).
+        imgShader = SkShaders::Blend(SkBlendMode::kDstIn, paint->refShader(), std::move(imgShader));
+    }
+
+    paint->setShader(std::move(imgShader));
+    return dst;
 }
 
 void SkShaderBase::RegisterFlattenables() { SK_REGISTER_FLATTENABLE(SkImageShader); }
@@ -572,6 +619,7 @@ bool SkImageShader::appendStages(const SkStageRec& rec, const SkShaders::MatrixR
             case kRGBA_F16Norm_SkColorType:
             case kRGBA_F16_SkColorType:     p->append(SkRasterPipelineOp::gather_f16,   ctx); break;
             case kRGBA_F32_SkColorType:     p->append(SkRasterPipelineOp::gather_f32,   ctx); break;
+            case kRGBA_10x6_SkColorType:    p->append(SkRasterPipelineOp::gather_10x6,  ctx); break;
 
             case kGray_8_SkColorType:       p->append(SkRasterPipelineOp::gather_a8,    ctx);
                                             p->append(SkRasterPipelineOp::alpha_to_gray    ); break;
@@ -611,7 +659,7 @@ bool SkImageShader::appendStages(const SkStageRec& rec, const SkShaders::MatrixR
 
             case kSRGBA_8888_SkColorType:
                 p->append(SkRasterPipelineOp::gather_8888, ctx);
-                p->append_transfer_function(*skcms_sRGB_TransferFunction());
+                p->appendTransferFunction(*skcms_sRGB_TransferFunction());
                 break;
 
             case kUnknown_SkColorType: SkASSERT(false);
@@ -626,8 +674,10 @@ bool SkImageShader::appendStages(const SkStageRec& rec, const SkShaders::MatrixR
         SkAlphaType   at = upper.pm.alphaType();
 
         // Color for alpha-only images comes from the paint (already converted to dst color space).
+        // If we were sampled by a runtime effect, the paint color was replaced with transparent
+        // black, so this tinting is effectively suppressed. See also: RuntimeEffectRPCallbacks
         if (SkColorTypeIsAlphaOnly(upper.pm.colorType()) && !fRaw) {
-            p->append_set_rgb(alloc, rec.fPaintColor);
+            p->appendSetRGB(alloc, rec.fPaintColor);
 
             cs = rec.fDstCS;
             at = kUnpremul_SkAlphaType;

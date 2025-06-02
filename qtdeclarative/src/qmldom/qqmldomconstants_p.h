@@ -194,6 +194,7 @@ enum class DomType {
     ScriptBlockStatement = ScriptElementStart,
     ScriptIdentifierExpression,
     ScriptLiteral,
+    ScriptRegExpLiteral,
     ScriptForStatement,
     ScriptIfStatement,
     ScriptPostExpression,
@@ -219,6 +220,10 @@ enum class DomType {
     ScriptWhileStatement,
     ScriptDoWhileStatement,
     ScriptForEachStatement,
+    ScriptTemplateExpressionPart,
+    ScriptTemplateLiteral,
+    ScriptTemplateStringPart,
+    ScriptTaggedTemplate,
     ScriptTryCatchStatement,
     ScriptThrowStatement,
     ScriptLabelledStatement,
@@ -227,6 +232,12 @@ enum class DomType {
     ScriptConditionalExpression,
     ScriptEmptyStatement,
     ScriptParenthesizedExpression,
+    ScriptFunctionExpression,
+    ScriptYieldExpression,
+    ScriptNewExpression,
+    ScriptNewMemberExpression,
+    ScriptThisExpression,
+    ScriptSuperLiteral,
 
     ScriptElementStop, // marker to check if a DomType is a scriptelement or not
 };
@@ -248,14 +259,6 @@ enum class ListOptions {
     Reverse
 };
 Q_ENUM_NS(ListOptions)
-
-enum class LoadOption {
-    DefaultLoad = 0x0,
-    ForceLoad = 0x1,
-};
-Q_ENUM_NS(LoadOption)
-Q_DECLARE_FLAGS(LoadOptions, LoadOption)
-Q_DECLARE_OPERATORS_FOR_FLAGS(LoadOptions)
 
 enum class EscapeOptions{
     OuterQuotes,
@@ -359,9 +362,11 @@ enum FileLocationRegion : int {
     ComponentKeywordRegion,
     ContinueKeywordRegion,
     DefaultKeywordRegion,
+    DollarLeftBraceTokenRegion,
     EllipsisTokenRegion,
     ElseKeywordRegion,
     EnumKeywordRegion,
+    EnumValueRegion,
     EqualTokenRegion,
     ForKeywordRegion,
     FinallyKeywordRegion,
@@ -371,13 +376,16 @@ enum FileLocationRegion : int {
     IdNameRegion,
     IdTokenRegion,
     IdentifierRegion,
+    IfKeywordRegion,
     ImportTokenRegion,
     ImportUriRegion,
     InOfTokenRegion,
+    LeftBacktickTokenRegion,
     LeftBraceRegion,
     LeftBracketRegion,
     LeftParenthesisRegion,
     MainRegion,
+    NewKeywordRegion,
     OperatorTokenRegion,
     OnTargetRegion,
     OnTokenRegion,
@@ -388,27 +396,32 @@ enum FileLocationRegion : int {
     ReadonlyKeywordRegion,
     RequiredKeywordRegion,
     ReturnKeywordRegion,
+    RightBacktickTokenRegion,
     RightBraceRegion,
     RightBracketRegion,
     RightParenthesisRegion,
     SecondSemicolonRegion,
     SemicolonTokenRegion,
     SignalKeywordRegion,
+    SuperKeywordRegion,
+    StarTokenRegion,
+    SwitchKeywordRegion,
+    ThisKeywordRegion,
     ThrowKeywordRegion,
     TryKeywordRegion,
     TypeIdentifierRegion,
+    TypeModifierRegion,
+    VersionRegion,
     WhileKeywordRegion,
+    YieldKeywordRegion,
 };
 Q_ENUM_NS(FileLocationRegion);
 
 enum DomCreationOption : char {
-    None = 0,
-    WithSemanticAnalysis = 1,
-    WithScriptExpressions = 2,
-    WithRecovery = 4
+    Default, // required by qmlformat for example
+    Extended, // required by qmlls for example
+    Minimal, // required by QmlDocumentParser in Qt Design Studio, for example
 };
-
-Q_DECLARE_FLAGS(DomCreationOptions, DomCreationOption);
 
 } // end namespace Dom
 } // end namespace QQmlJS

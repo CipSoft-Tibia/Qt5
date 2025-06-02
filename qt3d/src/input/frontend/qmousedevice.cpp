@@ -21,7 +21,7 @@ QMouseDevicePrivate::QMouseDevicePrivate()
 
 /*!
     \qmltype MouseDevice
-    \instantiates Qt3DInput::QMouseDevice
+    \nativetype Qt3DInput::QMouseDevice
     \inqmlmodule Qt3D.Input
     \since 5.5
     \brief Delegates mouse events to the attached MouseHandler objects.
@@ -51,7 +51,7 @@ QMouseDevicePrivate::QMouseDevicePrivate()
  */
 
 /*!
-    \enum QMouseDevice::Axis
+    \enum Qt3DInput::QMouseDevice::Axis
 
     The mouse axis.
 

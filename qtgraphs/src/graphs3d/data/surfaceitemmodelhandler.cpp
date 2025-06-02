@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "qsurface3dseries_p.h"
 #include "surfaceitemmodelhandler_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -127,8 +128,8 @@ void SurfaceItemModelHandler::resolveModel()
 
     if (m_proxy->useModelCategories()) {
         // If dimensions have changed, recreate the array
-        if (m_proxyArray.data() != m_proxy->array().data() || columnCount != m_proxy->columnCount()
-            || rowCount != m_proxyArray.size()) {
+        if (m_proxyArray.data() != m_proxy->series()->dataArray().data()
+            || columnCount != m_proxy->columnCount() || rowCount != m_proxyArray.size()) {
             m_proxyArray.clear();
             m_proxyArray.reserve(rowCount);
             for (int i = 0; i < rowCount; i++)
@@ -280,7 +281,7 @@ void SurfaceItemModelHandler::resolveModel()
             columnList = m_proxy->columnCategories();
 
         // If dimensions have changed, recreate the array
-        if (m_proxyArray.data() != m_proxy->array().data()
+        if (m_proxyArray.data() != m_proxy->series()->dataArray().data()
             || columnList.size() != m_proxy->columnCount()
             || rowList.size() != m_proxyArray.size()) {
             m_proxyArray.clear();

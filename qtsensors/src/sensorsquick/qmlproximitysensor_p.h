@@ -23,7 +23,7 @@ QT_BEGIN_NAMESPACE
 
 class QProximitySensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlProximitySensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlProximitySensor : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(ProximitySensor)
@@ -39,7 +39,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlProximitySensorReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlProximitySensorReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(bool near READ near NOTIFY nearChanged BINDABLE bindableNear)

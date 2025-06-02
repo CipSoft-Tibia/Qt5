@@ -1,6 +1,6 @@
-/* Copyright (c) 2021-2022 The Khronos Group Inc.
- * Copyright (c) 2021-2023 Valve Corporation
- * Copyright (c) 2021-2023 LunarG, Inc.
+/* Copyright (c) 2021-2024 The Khronos Group Inc.
+ * Copyright (c) 2021-2024 Valve Corporation
+ * Copyright (c) 2021-2024 LunarG, Inc.
  * Copyright (C) 2021-2022 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -53,26 +53,22 @@ struct Location {
 
     // the dot() method is for walking down into a structure that is being validated
     // eg:  loc.dot(Field::pMemoryBarriers, 5).dot(Field::srcStagemask)
-    Location dot(vvl::Struct s, vvl::Field sub_field, uint32_t sub_index) const {
+    Location dot(vvl::Struct s, vvl::Field sub_field, uint32_t sub_index = kNoIndex) const {
         Location result(*this, s, sub_field, sub_index, false);
-        return result;
-    }
-    Location dot(vvl::Struct s, vvl::Field sub_field) const {
-        Location result(*this, s, sub_field, kNoIndex, false);
         return result;
     }
     Location dot(vvl::Field sub_field, uint32_t sub_index = kNoIndex) const {
         Location result(*this, this->structure, sub_field, sub_index, false);
         return result;
     }
-
-    // same as dot() but will mark these were part of a pNext struct
-    Location pNext(vvl::Struct s, vvl::Field sub_field, uint32_t sub_index) const {
-        Location result(*this, s, sub_field, sub_index, true);
+    Location dot(uint32_t sub_index) const {
+        Location result(*this, this->structure, this->field, sub_index, false);
         return result;
     }
-    Location pNext(vvl::Struct s, vvl::Field sub_field) const {
-        Location result(*this, s, sub_field, kNoIndex, true);
+
+    // same as dot() but will mark these were part of a pNext struct
+    Location pNext(vvl::Struct s, vvl::Field sub_field = vvl::Field::Empty, uint32_t sub_index = kNoIndex) const {
+        Location result(*this, s, sub_field, sub_index, true);
         return result;
     }
 
@@ -154,8 +150,25 @@ struct Entry {
 // look for a matching VUID in a vector or array-ish table
 template <typename Table>
 static const std::string& FindVUID(const Location& loc, const Table& table) {
+    // TODO - Remove having to squash KHR version here
+    Func f = loc.function;
+    if (f == Func::vkQueueSubmit2KHR) {
+        f = Func::vkQueueSubmit2;
+    } else if (f == Func::vkCmdPipelineBarrier2KHR) {
+        f = Func::vkCmdPipelineBarrier2;
+    } else if (f == Func::vkCmdResetEvent2KHR) {
+        f = Func::vkCmdResetEvent2;
+    } else if (f == Func::vkCmdSetEvent2KHR) {
+        f = Func::vkCmdSetEvent2;
+    } else if (f == Func::vkCmdWaitEvents2KHR) {
+        f = Func::vkCmdWaitEvents2;
+    } else if (f == Func::vkCmdWriteTimestamp2KHR) {
+        f = Func::vkCmdWriteTimestamp2;
+    }
+    const Location core_loc(f, loc.structure, loc.field, loc.index);
+
     static const std::string empty;
-    auto predicate = [&loc](const Entry& entry) { return entry.k == loc; };
+    auto predicate = [&core_loc](const Entry& entry) { return entry.k == core_loc; };
 
     // consistency check: there should never be more than 1 match in a table
     assert(std::count_if(table.begin(), table.end(), predicate) <= 1);

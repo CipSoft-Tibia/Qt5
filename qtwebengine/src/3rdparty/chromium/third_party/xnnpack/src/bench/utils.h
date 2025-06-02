@@ -30,10 +30,31 @@ uint64_t GetCurrentCpuFrequency();
 // Can overestimate, but not underestimate LLC size.
 size_t GetMaxCacheSize();
 
+// Set number of elements for a reduction microkernel such that:
+// - It is divisible by 2, 3, 4, 5, 6.
+// - It is divisible by AVX512 width.
+// - Total memory footprint does not exceed the characteristic cache size for
+//   the architecture.
+template<class InType>
+void ReductionParameters(benchmark::internal::Benchmark* benchmark) {
+  benchmark->ArgName("N");
+
+  size_t characteristic_l1 = 32 * 1024;
+  size_t characteristic_l2 = 256 * 1024;
+#if XNN_ARCH_ARM
+  characteristic_l1 = 16 * 1024;
+  characteristic_l2 = 128 * 1024;
+#endif  // XNN_ARCH_ARM
+
+  const size_t elementwise_size = sizeof(InType);
+  benchmark->Arg(characteristic_l1 / elementwise_size / 960 * 960);
+  benchmark->Arg(characteristic_l2 / elementwise_size / 960 * 960);
+}
+
 // Set number of elements for a unary elementwise microkernel such that:
 // - It is divisible by 2, 3, 4, 5, 6.
 // - It is divisible by AVX512 width.
-// - Total memory footprint does not exceed the characteristic cache size for 
+// - Total memory footprint does not exceed the characteristic cache size for
 //   the architecture.
 template<class InType, class OutType>
 void UnaryElementwiseParameters(benchmark::internal::Benchmark* benchmark) {
@@ -54,7 +75,7 @@ void UnaryElementwiseParameters(benchmark::internal::Benchmark* benchmark) {
 // Set number of elements for a binary elementwise microkernel such that:
 // - It is divisible by 2, 3, 4, 5, 6.
 // - It is divisible by AVX512 width.
-// - Total memory footprint does not exceed the characteristic cache size for 
+// - Total memory footprint does not exceed the characteristic cache size for
 //   the architecture.
 template<class InType, class OutType>
 void BinaryElementwiseParameters(benchmark::internal::Benchmark* benchmark) {
@@ -117,6 +138,10 @@ bool CheckNEONBF16(benchmark::State& state);
 // If DOT is unsupported, report error in benchmark state, and return false.
 bool CheckNEONDOT(benchmark::State& state);
 
+// Check if ARM I8MM extension is supported.
+// If I8MM is unsupported, report error in benchmark state, and return false.
+bool CheckNEONI8MM(benchmark::State& state);
+
 // Check if RISC-V V (vector) extension is supported.
 // If V is unsupported, report error in benchmark state, and return false.
 bool CheckRVV(benchmark::State& state);
@@ -161,6 +186,14 @@ bool CheckAVX512SKX(benchmark::State& state);
 // If VBMI or SKX-level AVX512 extensions are unsupported, report error in benchmark state, and return false.
 bool CheckAVX512VBMI(benchmark::State& state);
 
+// Check if x86 VNNI + SKX-level AVX512 extensions (AVX512F, AVX512CD, AVX512BW, AVX512DQ, and AVX512VL) are supported.
+// If VNNI or SKX-level AVX512 extensions are unsupported, report error in benchmark state, and return false.
+bool CheckAVX512VNNI(benchmark::State& state);
+
+// Check if x86 AVX-VNNI extension is supported.
+// If AVX-VNNI extension is unsupported, report error in benchmark state, and return false.
+bool CheckAVXVNNI(benchmark::State& state);
+
 // Check if PSHUFB instruction is available in WAsm Relaxed SIMD as Relaxed Swizzle.
 // If WAsm PSHUFB is unsupported, report error in benchmark state, and return false.
 bool CheckWAsmPSHUFB(benchmark::State& state);
@@ -168,6 +201,10 @@ bool CheckWAsmPSHUFB(benchmark::State& state);
 // Check if SDOT instruction is available in WAsm Relaxed SIMD as Relaxed Integer Dot Product with Accumulation.
 // If WAsm SDOT is unsupported, report error in benchmark state, and return false.
 bool CheckWAsmSDOT(benchmark::State& state);
+
+// Check if BLENDVPS instruction is available in WAsm Relaxed SIMD as Relaxed Lane Select.
+// If WAsm BLENDVPS is unsupported, report error in benchmark state, and return false.
+bool CheckWAsmBLENDVPS(benchmark::State& state);
 
 template <class T>
 inline T DivideRoundUp(T x, T q) {

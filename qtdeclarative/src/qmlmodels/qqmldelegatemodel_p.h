@@ -29,13 +29,12 @@ QT_BEGIN_NAMESPACE
 
 class QQmlChangeSet;
 class QQuickPackage;
-class QQmlV4Function;
 class QQmlDelegateModelGroup;
 class QQmlDelegateModelAttached;
 class QQmlDelegateModelPrivate;
 
 
-class Q_QMLMODELS_PRIVATE_EXPORT QQmlDelegateModel : public QQmlInstanceModel, public QQmlParserStatus
+class Q_QMLMODELS_EXPORT QQmlDelegateModel : public QQmlInstanceModel, public QQmlParserStatus
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQmlDelegateModel)
@@ -133,7 +132,7 @@ private:
 };
 
 class QQmlDelegateModelGroupPrivate;
-class Q_QMLMODELS_PRIVATE_EXPORT QQmlDelegateModelGroup : public QObject
+class Q_QMLMODELS_EXPORT QQmlDelegateModelGroup : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
@@ -157,14 +156,14 @@ public:
     Q_INVOKABLE QJSValue get(int index);
 
 public Q_SLOTS:
-    void insert(QQmlV4Function *);
-    void create(QQmlV4Function *);
-    void resolve(QQmlV4Function *);
-    void remove(QQmlV4Function *);
-    void addGroups(QQmlV4Function *);
-    void removeGroups(QQmlV4Function *);
-    void setGroups(QQmlV4Function *);
-    void move(QQmlV4Function *);
+    void insert(QQmlV4FunctionPtr);
+    void create(QQmlV4FunctionPtr);
+    void resolve(QQmlV4FunctionPtr);
+    void remove(QQmlV4FunctionPtr);
+    void addGroups(QQmlV4FunctionPtr);
+    void removeGroups(QQmlV4FunctionPtr);
+    void setGroups(QQmlV4FunctionPtr);
+    void move(QQmlV4FunctionPtr);
 
 Q_SIGNALS:
     void countChanged();

@@ -26,7 +26,7 @@ namespace Qt3DInput {
     \qmltype InputSettings
     \inqmlmodule Qt3D.Input
     \inherits Component3D
-    \instantiates Qt3DInput::QInputSettings
+    \nativetype Qt3DInput::QInputSettings
     \brief InputSettings holds the pointer to an input event source object.
     \since 5.7
 
@@ -53,7 +53,7 @@ QInputSettings::~QInputSettings()
 }
 
 /*!
-    \property QInputSettings::eventSource
+    \property Qt3DInput::QInputSettings::eventSource
 
     Holds the current event source. An event source is an object that is capable
     of receiving various input events, such as mouse or keyboard events.

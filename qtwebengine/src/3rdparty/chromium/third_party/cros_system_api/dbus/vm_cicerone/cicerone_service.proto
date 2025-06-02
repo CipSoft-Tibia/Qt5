@@ -10,8 +10,10 @@ option optimize_for = LITE_RUNTIME;
 package vm_tools.cicerone;
 option go_package = "chromiumos/system_api/vm_cicerone_proto";
 
-// Message sent to cicerone when a VM has started up. This is just for
-// tracking purposes by cicerone.
+import "vm_applications/apps.proto";
+
+// Message sent from concierge to cicerone when a VM has started up. This is
+// just for tracking purposes by cicerone.
 message NotifyVmStartedRequest {
   // Name of the VM.
   string vm_name = 1;
@@ -28,6 +30,9 @@ message NotifyVmStartedRequest {
 
   // The pid of the main VM process.
   uint32 pid = 5;
+
+  // The type of VM.
+  vm_tools.apps.VmType vm_type = 6;
 }
 
 // Message sent to cicerone when concierge is about to stop a VM.
@@ -907,6 +912,7 @@ message GetLxdContainerUsernameResponse {
   // The home directory of uid 1000 in the container.
   string homedir = 4;
 }
+
 // Request for setting up the user for an LXD container.
 message SetUpLxdContainerUserRequest {
   // Name of the VM to target.
@@ -1409,6 +1415,9 @@ message UpgradeContainerRequest {
 
     // Debian 11 AKA Bullseye.
     DEBIAN_BULLSEYE = 3;
+
+    // Debian 12 AKA Bookworm.
+    DEBIAN_BOOKWORM = 4;
   }
 
   // Version from which the container will upgrade.

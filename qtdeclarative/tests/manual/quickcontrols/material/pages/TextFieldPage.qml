@@ -91,6 +91,26 @@ Page {
 
             Material.containerStyle: layout.containerStyle
         }
+
+        TextField {
+            placeholderText: "leftPadding 0"
+            leftPadding: 0
+
+            Material.containerStyle: layout.containerStyle
+        }
+
+        TextField {
+            placeholderText: "No leftPadding"
+
+            Material.containerStyle: layout.containerStyle
+        }
+
+        TextField {
+            placeholderText: "leftPadding 50"
+            leftPadding: 50
+
+            Material.containerStyle: layout.containerStyle
+        }
     }
 
     ColumnLayout {

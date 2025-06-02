@@ -14,24 +14,34 @@
 
 #include "./centipede/centipede_callbacks.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdlib>
-#include <filesystem>
+#include <filesystem>  // NOLINT
 #include <string>
 #include <string_view>
+#include <system_error>  // NOLINT
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "./centipede/binary_info.h"
+#include "./centipede/blob_file.h"
 #include "./centipede/command.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/defs.h"
 #include "./centipede/logging.h"
+#include "./centipede/mutation_input.h"
 #include "./centipede/runner_request.h"
 #include "./centipede/runner_result.h"
 #include "./centipede/util.h"
+#include "./centipede/workdir.h"
 
 namespace centipede {
 
@@ -116,12 +126,15 @@ Command &CentipedeCallbacks::GetOrCreateCommandForBinary(
       disable_coverage)};
 
   if (env_.clang_coverage_binary == binary)
-    env.emplace_back(absl::StrCat(
-        "LLVM_PROFILE_FILE=", env_.MakeSourceBasedCoverageRawProfilePath()));
+    env.emplace_back(
+        absl::StrCat("LLVM_PROFILE_FILE=",
+                     WorkDir{env_}.SourceBasedCoverageRawProfilePath()));
 
   // Allow for the time it takes to fork a subprocess etc.
   const auto amortized_timeout =
-      absl::Seconds(env_.timeout_per_batch) + absl::Seconds(5);
+      env_.timeout_per_batch == 0
+          ? absl::InfiniteDuration()
+          : absl::Seconds(env_.timeout_per_batch) + absl::Seconds(5);
   Command &cmd = commands_.emplace_back(Command(
       /*path=*/binary, /*args=*/{},
       /*env=*/env,
@@ -207,6 +220,45 @@ int CentipedeCallbacks::ExecuteCentipedeSancovBinaryWithShmem(
   return retval;
 }
 
+// See also: DumpSeedsToDir().
+bool CentipedeCallbacks::GetSeedsViaExternalBinary(
+    std::string_view binary, size_t &num_avail_seeds,
+    std::vector<ByteArray> &seeds) {
+  const auto output_dir = std::filesystem::path(temp_dir_) / "seed_inputs";
+  std::error_code error;
+  CHECK(std::filesystem::create_directories(output_dir, error));
+  CHECK(!error);
+
+  Command cmd(binary, {},
+              {absl::StrCat("CENTIPEDE_RUNNER_FLAGS=:dump_seed_inputs:arg1=",
+                            output_dir.string(), ":")},
+              /*out=*/execute_log_path_,
+              /*err=*/execute_log_path_,
+              /*timeout=*/absl::InfiniteDuration(),
+              /*temp_file_path=*/temp_input_file_path_);
+  const int retval = cmd.Execute();
+
+  std::vector<std::string> seed_input_filenames;
+  for (const auto &dir_ent : std::filesystem::directory_iterator(output_dir)) {
+    seed_input_filenames.push_back(dir_ent.path().filename());
+  }
+  std::sort(seed_input_filenames.begin(), seed_input_filenames.end());
+  num_avail_seeds = seed_input_filenames.size();
+
+  size_t num_seeds_read;
+  for (num_seeds_read = 0; num_seeds_read < seeds.size() &&
+                           num_seeds_read < seed_input_filenames.size();
+       ++num_seeds_read) {
+    ReadFromLocalFile(
+        (output_dir / seed_input_filenames[num_seeds_read]).string(),
+        seeds[num_seeds_read]);
+  }
+  seeds.resize(num_seeds_read);
+  std::filesystem::remove_all(output_dir);
+
+  return retval == 0;
+}
+
 // See also: MutateInputsFromShmem().
 bool CentipedeCallbacks::MutateViaExternalBinary(
     std::string_view binary, const std::vector<MutationInputRef> &inputs,
@@ -259,10 +311,17 @@ size_t CentipedeCallbacks::LoadDictionary(std::string_view dictionary_path) {
               << dictionary_path;
     return entries.size();
   }
-  // Didn't parse as plain text. Assume Centipede-native corpus format.
-  ByteArray packed_dictionary(text.begin(), text.end());
+  // Didn't parse as plain text. Assume encoded corpus format.
+  auto reader = DefaultBlobFileReaderFactory();
+  CHECK_OK(reader->Open(dictionary_path))
+      << "Error in opening dictionary file: " << dictionary_path;
   std::vector<ByteArray> unpacked_dictionary;
-  UnpackBytesFromAppendFile(packed_dictionary, &unpacked_dictionary);
+  ByteSpan blob;
+  while (reader->Read(blob).ok()) {
+    unpacked_dictionary.emplace_back(blob.begin(), blob.end());
+  }
+  CHECK_OK(reader->Close())
+      << "Error in closing dictionary file: " << dictionary_path;
   CHECK(!unpacked_dictionary.empty())
       << "Empty or corrupt dictionary file: " << dictionary_path;
   env_.use_legacy_default_mutator

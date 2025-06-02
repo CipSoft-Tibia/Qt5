@@ -8,6 +8,7 @@
 
 #include "base/barrier_closure.h"
 #include "base/containers/adapters.h"
+#include "base/containers/contains.h"
 #include "base/i18n/case_conversion.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros_local.h"
@@ -172,6 +173,7 @@ std::string GetCanonicalSearchURL(const GURL& url,
 PageContentAnnotationsService::PageContentAnnotationsService(
     std::unique_ptr<AutocompleteProviderClient> autocomplete_provider_client,
     const std::string& application_locale,
+    const std::string& country_code,
     OptimizationGuideModelProvider* optimization_guide_model_provider,
     history::HistoryService* history_service,
     TemplateURLService* template_url_service,
@@ -231,11 +233,16 @@ PageContentAnnotationsService::PageContentAnnotationsService(
   }
 #endif
 
+  is_remote_page_metadata_fetching_enabled_ =
+      features::RemotePageMetadataEnabled(application_locale, country_code);
+  is_salient_image_metadata_fetching_enabled_ =
+      features::ShouldPersistSalientImageMetadata(application_locale,
+                                                  country_code);
   std::vector<proto::OptimizationType> optimization_types;
-  if (features::RemotePageMetadataEnabled()) {
+  if (is_remote_page_metadata_fetching_enabled_) {
     optimization_types.emplace_back(proto::PAGE_ENTITIES);
   }
-  if (features::ShouldPersistSalientImageMetadata()) {
+  if (is_salient_image_metadata_fetching_enabled_) {
     optimization_types.emplace_back(proto::SALIENT_IMAGE);
   }
   if (optimization_guide_decider_ && !optimization_types.empty()) {
@@ -603,9 +610,7 @@ void PageContentAnnotationsService::OnZeroSuggestResponseUpdated(
   for (const auto& result : suggest_results) {
     const auto subtypes = result.subtypes();
     // Suggestions with HIVEMIND subtype are considered "related searches".
-    auto it = std::find(subtypes.begin(), subtypes.end(),
-                        omnibox::SuggestSubtype::SUBTYPE_HIVEMIND);
-    if (it != subtypes.end()) {
+    if (base::Contains(subtypes, omnibox::SuggestSubtype::SUBTYPE_HIVEMIND)) {
       related_searches.push_back(base::UTF16ToUTF8(
           base::CollapseWhitespace(result.suggestion(), true)));
     }
@@ -858,7 +863,8 @@ void PageContentAnnotationsService::OnURLVisitedWithNavigationId(
     return;
   }
 
-  if (features::RemotePageMetadataEnabled() && optimization_guide_decider_) {
+  if (is_remote_page_metadata_fetching_enabled_ &&
+      optimization_guide_decider_) {
     optimization_guide_decider_->CanApplyOptimization(
         url_row.url(), proto::PAGE_ENTITIES,
         base::BindOnce(
@@ -866,7 +872,7 @@ void PageContentAnnotationsService::OnURLVisitedWithNavigationId(
             weak_ptr_factory_.GetWeakPtr(), history_visit,
             proto::PAGE_ENTITIES));
   }
-  if (features::ShouldPersistSalientImageMetadata() &&
+  if (is_salient_image_metadata_fetching_enabled_ &&
       optimization_guide_decider_) {
     optimization_guide_decider_->CanApplyOptimization(
         url_row.url(), proto::SALIENT_IMAGE,

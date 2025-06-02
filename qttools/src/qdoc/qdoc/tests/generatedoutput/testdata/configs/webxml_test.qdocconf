@@ -1,3 +1,0 @@
-include(config.qdocconf)
-include(test.qdocconf)
-include(webxml.qdocconf)

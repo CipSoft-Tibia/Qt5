@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/core/css/css_font_face_source.h"
 
+#include "skia/ext/font_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/platform/fonts/font_cache_key.h"
 #include "third_party/blink/renderer/platform/fonts/font_description.h"
@@ -19,7 +20,7 @@ class DummyFontFaceSource : public CSSFontFaceSource {
       const FontDescription&,
       const FontSelectionCapabilities&) override {
     return SimpleFontData::Create(
-        FontPlatformData(SkTypeface::MakeDefault(), /* name */ std::string(),
+        FontPlatformData(skia::DefaultTypeface(), /* name */ std::string(),
                          /* text_size */ 0, /* synthetic_bold */ false,
                          /* synthetic_italic */ false,
                          TextRenderingMode::kAutoTextRendering, {}));
@@ -31,9 +32,9 @@ class DummyFontFaceSource : public CSSFontFaceSource {
     FontDescription font_description;
     font_description.SetComputedSize(size);
     FontSelectionCapabilities normal_capabilities(
-        {NormalWidthValue(), NormalWidthValue()},
-        {NormalSlopeValue(), NormalSlopeValue()},
-        {NormalWeightValue(), NormalWeightValue()});
+        {kNormalWidthValue, kNormalWidthValue},
+        {kNormalSlopeValue, kNormalSlopeValue},
+        {kNormalWeightValue, kNormalWeightValue});
     return GetFontData(font_description, normal_capabilities);
   }
 };
@@ -54,8 +55,8 @@ TEST(CSSFontFaceSourceTest, HashCollision) {
 
   // Even if the hash value collide, fontface cache should return different
   // value for different fonts, values determined experimentally.
-  constexpr float kEqualHashesFirst = 2157;
-  constexpr float kEqualHashesSecond = 5505272;
+  constexpr float kEqualHashesFirst = 950;
+  constexpr float kEqualHashesSecond = 13740;
   EXPECT_EQ(SimulateHashCalculation(kEqualHashesFirst),
             SimulateHashCalculation(kEqualHashesSecond));
   EXPECT_NE(font_face_source.GetFontDataForSize(kEqualHashesFirst),
@@ -67,9 +68,9 @@ TEST(CSSFontFaceSourceTest, UnboundedGrowth) {
   DummyFontFaceSource font_face_source;
   FontDescription font_description_variable;
   FontSelectionCapabilities normal_capabilities(
-      {NormalWidthValue(), NormalWidthValue()},
-      {NormalSlopeValue(), NormalSlopeValue()},
-      {NormalWeightValue(), NormalWeightValue()});
+      {kNormalWidthValue, kNormalWidthValue},
+      {kNormalSlopeValue, kNormalSlopeValue},
+      {kNormalWeightValue, kNormalWeightValue});
 
   // Roughly 3000 font variants.
   for (float wght = 700; wght < 705; wght += 1 / 6.f) {

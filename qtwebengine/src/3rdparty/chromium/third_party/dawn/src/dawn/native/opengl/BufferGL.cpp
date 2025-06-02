@@ -1,16 +1,29 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/opengl/BufferGL.h"
 
@@ -18,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/CommandBuffer.h"
 #include "dawn/native/opengl/DeviceGL.h"
 
@@ -29,7 +43,7 @@ namespace dawn::native::opengl {
 ResultOrError<Ref<Buffer>> Buffer::CreateInternalBuffer(Device* device,
                                                         const BufferDescriptor* descriptor,
                                                         bool shouldLazyClear) {
-    Ref<Buffer> buffer = AcquireRef(new Buffer(device, descriptor, shouldLazyClear));
+    Ref<Buffer> buffer = AcquireRef(new Buffer(device, Unpack(descriptor), shouldLazyClear));
     if (descriptor->mappedAtCreation) {
         DAWN_TRY(buffer->MapAtCreationInternal());
     }
@@ -37,7 +51,7 @@ ResultOrError<Ref<Buffer>> Buffer::CreateInternalBuffer(Device* device,
     return std::move(buffer);
 }
 
-Buffer::Buffer(Device* device, const BufferDescriptor* descriptor)
+Buffer::Buffer(Device* device, const UnpackedPtr<BufferDescriptor>& descriptor)
     : BufferBase(device, descriptor) {
     const OpenGLFunctions& gl = device->GetGL();
     // Allocate at least 4 bytes so clamped accesses are always in bounds.
@@ -61,7 +75,9 @@ Buffer::Buffer(Device* device, const BufferDescriptor* descriptor)
     TrackUsage();
 }
 
-Buffer::Buffer(Device* device, const BufferDescriptor* descriptor, bool shouldLazyClear)
+Buffer::Buffer(Device* device,
+               const UnpackedPtr<BufferDescriptor>& descriptor,
+               bool shouldLazyClear)
     : Buffer(device, descriptor) {
     if (!shouldLazyClear) {
         SetIsDataInitialized();
@@ -112,7 +128,7 @@ bool Buffer::EnsureDataInitializedAsDestination(const CopyTextureToBufferCmd* co
 }
 
 void Buffer::InitializeToZero() {
-    ASSERT(NeedsInitialization());
+    DAWN_ASSERT(NeedsInitialization());
 
     const uint64_t size = GetAllocatedSize();
     Device* device = ToBackend(GetDevice());
@@ -161,7 +177,7 @@ MaybeError Buffer::MapAsyncImpl(wgpu::MapMode mode, size_t offset, size_t size) 
     if (mode & wgpu::MapMode::Read) {
         mappedData = gl.MapBufferRange(GL_ARRAY_BUFFER, offset, size, GL_MAP_READ_BIT);
     } else {
-        ASSERT(mode & wgpu::MapMode::Write);
+        DAWN_ASSERT(mode & wgpu::MapMode::Write);
         mappedData = gl.MapBufferRange(GL_ARRAY_BUFFER, offset, size,
                                        GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
     }

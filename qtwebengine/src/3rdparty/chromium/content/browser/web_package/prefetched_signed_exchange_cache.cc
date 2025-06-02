@@ -16,6 +16,7 @@
 #include "components/link_header_util/link_header_util.h"
 #include "content/browser/loader/cross_origin_read_blocking_checker.h"
 #include "content/browser/loader/navigation_loader_interceptor.h"
+#include "content/browser/loader/response_head_update_params.h"
 #include "content/browser/navigation_subresource_loader_params.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
@@ -97,7 +98,7 @@ class RedirectResponseURLLoader : public network::mojom::URLLoader {
       const std::vector<std::string>& removed_headers,
       const net::HttpRequestHeaders& modified_headers,
       const net::HttpRequestHeaders& modified_cors_exempt_headers,
-      const absl::optional<GURL>& new_url) override {
+      const std::optional<GURL>& new_url) override {
     NOTREACHED();
   }
   void SetPriority(net::RequestPriority priority,
@@ -171,17 +172,17 @@ class PrefetchedNavigationLoaderInterceptor
         return;
       }
     }
-    NOTREACHED();
+    DUMP_WILL_BE_NOTREACHED_NORETURN();
   }
 
-  absl::optional<SubresourceLoaderParams> MaybeCreateSubresourceLoaderParams()
+  std::optional<SubresourceLoaderParams> MaybeCreateSubresourceLoaderParams()
       override {
     if (state_ != State::kInnerResponseRequested)
-      return absl::nullopt;
+      return std::nullopt;
 
     SubresourceLoaderParams params;
     params.prefetched_signed_exchanges = std::move(info_list_);
-    return absl::make_optional(std::move(params));
+    return std::make_optional(std::move(params));
   }
 
  private:
@@ -202,6 +203,7 @@ class PrefetchedNavigationLoaderInterceptor
         request.url, request.trusted_params->isolation_info.site_for_cookies(),
         *request.trusted_params->isolation_info.top_frame_origin(),
         request.has_storage_access, std::move(match_options),
+        request.is_ad_tagged,
         base::BindOnce(&PrefetchedNavigationLoaderInterceptor::OnGetCookies,
                        weak_factory_.GetWeakPtr(), std::move(callback),
                        std::move(fallback_callback)));
@@ -214,10 +216,14 @@ class PrefetchedNavigationLoaderInterceptor
     if (!results.empty()) {
       signed_exchange_utils::RecordLoadResultHistogram(
           SignedExchangeLoadResult::kHadCookieForCookielessOnlySXG);
+
+      ResponseHeadUpdateParams head_update_params;
+      head_update_params.load_timing_info =
+          this->exchange_->outer_response()->load_timing;
       std::move(fallback_callback)
           .Run(true /* reset_subresource_loader_params */,
                // TODO(crbug.com/1441384) test workerStart in SXG scenarios
-               this->exchange_->outer_response()->load_timing);
+               head_update_params);
       return;
     }
     state_ = State::kInnerResponseRequested;
@@ -356,7 +362,7 @@ std::map<GURL, net::SHA256HashValue> GetAllowedAltSXG(
 
   for (const auto& value : link_header_util::SplitLinkHeader(link_header)) {
     std::string link_url;
-    std::unordered_map<std::string, absl::optional<std::string>> link_params;
+    std::unordered_map<std::string, std::optional<std::string>> link_params;
     if (!link_header_util::ParseLinkHeaderValue(value.first, value.second,
                                                 &link_url, &link_params)) {
       continue;

@@ -22,7 +22,11 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-Q_LOGGING_CATEGORY(log, "qlitehtml.browser")
+#ifdef Q_STATIC_LOGGING_CATEGORY
+Q_STATIC_LOGGING_CATEGORY(log, "qlitehtml.browser")
+#else
+static Q_LOGGING_CATEGORY(log, "qlitehtml.browser")
+#endif
 
 class BrowserWindow : public QWidget
 {

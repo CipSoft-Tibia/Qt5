@@ -439,6 +439,15 @@
     "xor",
     // highlight
     "plus-lighter",
+
+    //
+    // mask-composite
+    //
+    // "add",
+    "subtract",
+    "intersect",
+    "exclude",
+
     //
     // vertical-align
     //
@@ -498,6 +507,7 @@
     "flex",
     "grid",
     //"math",
+    //"ruby",
     // The order must match the order found in IsDisplayBox().
     "contents",
     //none
@@ -510,6 +520,7 @@
     "table-column",
     "table-cell",
     "table-caption",
+    "ruby-text",
     // The order must match the order found in IsDisplayLegacy().
     "inline-block",
     "inline-table",
@@ -706,6 +717,7 @@
     // last baseline,
     // first baseline,
     // stretch
+    "anchor-center",
 
     // justify-content
     // start
@@ -787,6 +799,14 @@
     // auto
     "from-font",
 
+    //
+    // text-spacing-trim
+    //
+    // normal
+    "space-all",
+    "space-first",
+    "trim-start",
+
     // text-underline-position
     // auto
     // "from-font",
@@ -825,11 +845,6 @@
     "manual",
 
     // -webkit-appearance
-    // The order here must match the order in the ControlPart enum in
-    // theme_types.h.
-    // All appearance values that should be accepted by the parser should be
-    // listed between 'checkbox' and 'textarea'. This is checked in
-    // CSSParserFastPaths::IsValidKeywordPropertyAndValue.
     "checkbox",
     "radio",
     "button",
@@ -879,6 +894,9 @@
 
     // CSS 3 SHAPES
     "margin-box",
+
+    // https://drafts.fxtf.org/css-masking/#valdef-mask-clip-no-clip
+    "no-clip",
 
     //
     // background-size
@@ -1097,6 +1115,12 @@
     "window-controls-overlay",
     "tabbed",
 
+    // (display-state:) media feature
+    // normal
+    // fullscreen
+    "minimized",
+    "maximized",
+
     // (overflow-block:) media feature
     "paged",
 
@@ -1167,6 +1191,11 @@
     // mask-type
     "alpha",
     "luminance",
+
+    // mask-mode
+    // alpha
+    // luminance
+    "match-source",
 
     // color-interpolation / color-interpolation-filters
     // auto
@@ -1249,6 +1278,7 @@
     // right
     // unsafe
     // safe
+    // anchor-center
     "legacy",
 
     // scroll-behavior
@@ -1275,6 +1305,7 @@
     "repeating-radial-gradient",
     "repeating-conic-gradient",
     "paint",
+    "cross-fade",
     "-webkit-cross-fade",
     "-webkit-gradient",
     "-webkit-linear-gradient",
@@ -1500,7 +1531,7 @@
     // @container
     // size
     // style
-    "state",
+    "scroll-state",
     // top
     // left
     // right
@@ -1634,27 +1665,17 @@
     "numbers",
     "words",
 
-    // ([video]-dynamic-range) media feature
+    // ([video]-dynamic-range) media feature, and dynamic-range-limit property
     "standard",
     "high",
     "constrained-high",
+    "dynamic-range-limit-mix",
 
     // Layered @import rule
     "layer",
 
-    // toggle-root
-    "group",
-    "self",
-    "cycle",
-    "cycle-on",
-
-    // toggle-trigger
-    "prev",
-    "next",
-    "set",
-
-    // toggle-visibility
-    "toggle",
+    // supports in import rule: @import supports()
+    "supports",
 
     // color-contrast()
     "color-contrast",
@@ -1710,6 +1731,7 @@
     // scroll()
     "root",
     "nearest",
+    "self",
 
     // transition-behavior
     "allow-discrete",
@@ -1718,20 +1740,50 @@
     "inverted",
     // none
 
-    // navigation-trigger
-    "cross-document-same-origin",
+    // @view-transition navigation
+    // auto
     // none
 
     // container-type
     // inline-size,
     // normal,
     // size,
-    "snap",
-    // sticky,
+    // scroll-state,
 
     // (scripting:) media feature
     "enabled",
     "initial-only",
     // none
+
+    // inset-area
+    // none,
+    // all,
+    // center,
+    // start,
+    // end,
+    // self-start,
+    // self-end,
+    // top,
+    // bottom,
+    // left,
+    // right,
+    "x-start",
+    "x-end",
+    "y-start",
+    "y-end",
+    "x-self-start",
+    "x-self-end",
+    "y-self-start",
+    "y-self-end",
+
+    // resize
+    // none
+    // both
+    // horizontal
+    // vertical
+    // block
+    // inline
+    // auto (legacy version of -internal-textarea-auto)
+    "-internal-textarea-auto",
   ],
 }

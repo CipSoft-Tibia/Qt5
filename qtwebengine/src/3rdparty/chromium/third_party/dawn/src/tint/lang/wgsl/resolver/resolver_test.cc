@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/resolver.h"
 
@@ -39,6 +52,7 @@
 #include "src/tint/lang/wgsl/ast/variable_decl_statement.h"
 #include "src/tint/lang/wgsl/ast/workgroup_attribute.h"
 #include "src/tint/lang/wgsl/resolver/resolver_helper_test.h"
+#include "src/tint/lang/wgsl/sem/array.h"
 #include "src/tint/lang/wgsl/sem/call.h"
 #include "src/tint/lang/wgsl/sem/function.h"
 #include "src/tint/lang/wgsl/sem/member_accessor_expression.h"
@@ -423,7 +437,7 @@ TEST_F(ResolverTest, ArraySize_UnsignedLiteral) {
     ASSERT_NE(TypeOf(a), nullptr);
     auto* ref = TypeOf(a)->As<core::type::Reference>();
     ASSERT_NE(ref, nullptr);
-    auto* ary = ref->StoreType()->As<core::type::Array>();
+    auto* ary = ref->StoreType()->As<sem::Array>();
     EXPECT_EQ(ary->Count(), create<core::type::ConstantArrayCount>(10u));
 }
 
@@ -436,7 +450,7 @@ TEST_F(ResolverTest, ArraySize_SignedLiteral) {
     ASSERT_NE(TypeOf(a), nullptr);
     auto* ref = TypeOf(a)->As<core::type::Reference>();
     ASSERT_NE(ref, nullptr);
-    auto* ary = ref->StoreType()->As<core::type::Array>();
+    auto* ary = ref->StoreType()->As<sem::Array>();
     EXPECT_EQ(ary->Count(), create<core::type::ConstantArrayCount>(10u));
 }
 
@@ -451,7 +465,7 @@ TEST_F(ResolverTest, ArraySize_UnsignedConst) {
     ASSERT_NE(TypeOf(a), nullptr);
     auto* ref = TypeOf(a)->As<core::type::Reference>();
     ASSERT_NE(ref, nullptr);
-    auto* ary = ref->StoreType()->As<core::type::Array>();
+    auto* ary = ref->StoreType()->As<sem::Array>();
     EXPECT_EQ(ary->Count(), create<core::type::ConstantArrayCount>(10u));
 }
 
@@ -466,7 +480,7 @@ TEST_F(ResolverTest, ArraySize_SignedConst) {
     ASSERT_NE(TypeOf(a), nullptr);
     auto* ref = TypeOf(a)->As<core::type::Reference>();
     ASSERT_NE(ref, nullptr);
-    auto* ary = ref->StoreType()->As<core::type::Array>();
+    auto* ary = ref->StoreType()->As<sem::Array>();
     EXPECT_EQ(ary->Count(), create<core::type::ConstantArrayCount>(10u));
 }
 
@@ -481,7 +495,7 @@ TEST_F(ResolverTest, ArraySize_NamedOverride) {
     ASSERT_NE(TypeOf(a), nullptr);
     auto* ref = TypeOf(a)->As<core::type::Reference>();
     ASSERT_NE(ref, nullptr);
-    auto* ary = ref->StoreType()->As<core::type::Array>();
+    auto* ary = ref->StoreType()->As<sem::Array>();
     auto* sem_override = Sem().Get(override);
     ASSERT_NE(sem_override, nullptr);
     EXPECT_EQ(ary->Count(), create<sem::NamedOverrideArrayCount>(sem_override));
@@ -500,12 +514,12 @@ TEST_F(ResolverTest, ArraySize_NamedOverride_Equivalence) {
     ASSERT_NE(TypeOf(a), nullptr);
     auto* ref_a = TypeOf(a)->As<core::type::Reference>();
     ASSERT_NE(ref_a, nullptr);
-    auto* ary_a = ref_a->StoreType()->As<core::type::Array>();
+    auto* ary_a = ref_a->StoreType()->As<sem::Array>();
 
     ASSERT_NE(TypeOf(b), nullptr);
     auto* ref_b = TypeOf(b)->As<core::type::Reference>();
     ASSERT_NE(ref_b, nullptr);
-    auto* ary_b = ref_b->StoreType()->As<core::type::Array>();
+    auto* ary_b = ref_b->StoreType()->As<sem::Array>();
 
     auto* sem_override = Sem().Get(override);
     ASSERT_NE(sem_override, nullptr);
@@ -526,7 +540,7 @@ TEST_F(ResolverTest, ArraySize_UnnamedOverride) {
     ASSERT_NE(TypeOf(a), nullptr);
     auto* ref = TypeOf(a)->As<core::type::Reference>();
     ASSERT_NE(ref, nullptr);
-    auto* ary = ref->StoreType()->As<core::type::Array>();
+    auto* ary = ref->StoreType()->As<sem::Array>();
     auto* sem_override = Sem().Get(override);
     ASSERT_NE(sem_override, nullptr);
     EXPECT_EQ(ary->Count(), create<sem::UnnamedOverrideArrayCount>(Sem().Get(cnt)));
@@ -547,12 +561,12 @@ TEST_F(ResolverTest, ArraySize_UnamedOverride_Equivalence) {
     ASSERT_NE(TypeOf(a), nullptr);
     auto* ref_a = TypeOf(a)->As<core::type::Reference>();
     ASSERT_NE(ref_a, nullptr);
-    auto* ary_a = ref_a->StoreType()->As<core::type::Array>();
+    auto* ary_a = ref_a->StoreType()->As<sem::Array>();
 
     ASSERT_NE(TypeOf(b), nullptr);
     auto* ref_b = TypeOf(b)->As<core::type::Reference>();
     ASSERT_NE(ref_b, nullptr);
-    auto* ary_b = ref_b->StoreType()->As<core::type::Array>();
+    auto* ary_b = ref_b->StoreType()->As<sem::Array>();
 
     auto* sem_override = Sem().Get(override);
     ASSERT_NE(sem_override, nullptr);
@@ -882,9 +896,9 @@ TEST_F(ResolverTest, Function_Parameters_Locations) {
     auto* func_sem = Sem().Get(func);
     ASSERT_NE(func_sem, nullptr);
     EXPECT_EQ(func_sem->Parameters().Length(), 3u);
-    EXPECT_EQ(3u, func_sem->Parameters()[0]->Location());
-    EXPECT_FALSE(func_sem->Parameters()[1]->Location().has_value());
-    EXPECT_EQ(1u, func_sem->Parameters()[2]->Location());
+    EXPECT_EQ(3u, func_sem->Parameters()[0]->Attributes().location);
+    EXPECT_FALSE(func_sem->Parameters()[1]->Attributes().location.has_value());
+    EXPECT_EQ(1u, func_sem->Parameters()[2]->Attributes().location);
 }
 
 TEST_F(ResolverTest, Function_GlobalVariable_Location) {
@@ -896,7 +910,7 @@ TEST_F(ResolverTest, Function_GlobalVariable_Location) {
 
     auto* sem = Sem().Get<sem::GlobalVariable>(var);
     ASSERT_NE(sem, nullptr);
-    EXPECT_EQ(3u, sem->Location());
+    EXPECT_EQ(3u, sem->Attributes().location);
 }
 
 TEST_F(ResolverTest, Function_RegisterInputOutputVariables) {
@@ -1225,7 +1239,7 @@ TEST_F(ResolverTest, Expr_MemberAccessor_Type) {
 
     EXPECT_FALSE(r()->Resolve()) << r()->error();
     EXPECT_EQ(r()->error(), R"(12:34 error: cannot use type 'f32' as value
-12:34 note: are you missing '()' for value constructor?)");
+12:34 note: are you missing '()'?)");
 }
 
 TEST_F(ResolverTest, Expr_MemberAccessor_Struct) {
@@ -1917,8 +1931,10 @@ TEST_F(ResolverTest, BindingPoint_SetForResources) {
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 
-    EXPECT_EQ(Sem().Get<sem::GlobalVariable>(s1)->BindingPoint(), (BindingPoint{1u, 2u}));
-    EXPECT_EQ(Sem().Get<sem::GlobalVariable>(s2)->BindingPoint(), (BindingPoint{3u, 4u}));
+    EXPECT_EQ(Sem().Get<sem::GlobalVariable>(s1)->Attributes().binding_point,
+              (BindingPoint{1u, 2u}));
+    EXPECT_EQ(Sem().Get<sem::GlobalVariable>(s2)->Attributes().binding_point,
+              (BindingPoint{3u, 4u}));
 }
 
 TEST_F(ResolverTest, Function_EntryPoints_StageAttribute) {
@@ -2067,7 +2083,7 @@ TEST_F(ResolverTest, ASTNodeNotReached) {
         {
             ProgramBuilder b;
             b.Ident("ident");
-            Resolver(&b).Resolve();
+            Resolver(&b, {}).Resolve();
         },
         "internal compiler error: AST node 'tint::ast::Identifier' was not reached by the "
         "resolver");
@@ -2080,7 +2096,7 @@ TEST_F(ResolverTest, ASTNodeReachedTwice) {
             auto* expr = b.Expr(1_i);
             b.GlobalVar("a", b.ty.i32(), core::AddressSpace::kPrivate, expr);
             b.GlobalVar("b", b.ty.i32(), core::AddressSpace::kPrivate, expr);
-            Resolver(&b).Resolve();
+            Resolver(&b, {}).Resolve();
         },
         "internal compiler error: AST node 'tint::ast::IntLiteralExpression' was encountered twice "
         "in the same AST of a Program");
@@ -2237,6 +2253,105 @@ TEST_F(ResolverTest, TextureSampler_TextureSampleFunctionDiamondDifferentVariabl
     EXPECT_TRUE(outer_pairs[0].second == inner_pairs_1[0].second);
     EXPECT_TRUE(outer_pairs[1].first == inner_pairs_2[0].first);
     EXPECT_TRUE(outer_pairs[1].second == inner_pairs_2[0].second);
+}
+
+TEST_F(ResolverTest, TextureSampler_TextureSampleInFunctionPassedAsArguments) {
+    GlobalVar("gt", ty.sampled_texture(core::type::TextureDimension::k2d, ty.f32()), Group(1_a),
+              Binding(1_a));
+    GlobalVar("gs", ty.sampler(core::type::SamplerKind::kSampler), Group(1_a), Binding(2_a));
+
+    auto* inner_coords = Param("coords", ty.vec2<f32>());
+    auto* inner_t = Param("t", ty.sampled_texture(core::type::TextureDimension::k2d, ty.f32()));
+    auto* inner_s = Param("s", ty.sampler(core::type::SamplerKind::kSampler));
+    auto* inner_call = Assign(Phony(), Call("textureSample", inner_t, inner_s, inner_coords));
+    const ast::Function* inner_func =
+        Func("inner_func", Vector{inner_coords, inner_t, inner_s}, ty.void_(), Vector{inner_call});
+
+    auto* middle_coords = Param("coords", ty.vec2<f32>());
+    auto* middle_s = Param("s", ty.sampler(core::type::SamplerKind::kSampler));
+    auto* middle_t = Param("t", ty.sampled_texture(core::type::TextureDimension::k2d, ty.f32()));
+    auto* middle_call = CallStmt(Call("inner_func", middle_coords, "t", "s"));
+    const ast::Function* middle_func = Func(
+        "middle_func", Vector{middle_coords, middle_s, middle_t}, ty.void_(), Vector{middle_call});
+
+    auto* outer_call = CallStmt(Call("middle_func", Call<vec2<f32>>(1_f, 2_f), "gs", "gt"));
+    const ast::Function* outer_func =
+        Func("outer_func", tint::Empty, ty.void_(), Vector{outer_call},
+             Vector{Stage(ast::PipelineStage::kFragment)});
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto inner_pairs = Sem().Get(inner_func)->TextureSamplerPairs();
+    ASSERT_EQ(inner_pairs.Length(), 1u);
+    auto* inner_pair_texture = As<sem::Parameter>(inner_pairs[0].first);
+    ASSERT_NE(inner_pair_texture, nullptr);
+    EXPECT_EQ(inner_pair_texture->Index(), 1u);
+    auto* inner_pair_sampler = As<sem::Parameter>(inner_pairs[0].second);
+    ASSERT_NE(inner_pair_sampler, nullptr);
+    EXPECT_EQ(inner_pair_sampler->Index(), 2u);
+
+    auto middle_pairs = Sem().Get(middle_func)->TextureSamplerPairs();
+    ASSERT_EQ(middle_pairs.Length(), 1u);
+    auto* middle_pair_texture = As<sem::Parameter>(middle_pairs[0].first);
+    ASSERT_NE(middle_pair_texture, nullptr);
+    EXPECT_EQ(middle_pair_texture->Index(), 2u);
+    auto* middle_pair_sampler = As<sem::Parameter>(middle_pairs[0].second);
+    ASSERT_NE(middle_pair_sampler, nullptr);
+    EXPECT_EQ(middle_pair_sampler->Index(), 1u);
+
+    auto outer_pairs = Sem().Get(outer_func)->TextureSamplerPairs();
+    ASSERT_EQ(outer_pairs.Length(), 1u);
+    EXPECT_TRUE(outer_pairs[0].first != nullptr);
+    EXPECT_TRUE(outer_pairs[0].second != nullptr);
+}
+
+TEST_F(ResolverTest, TextureSampler_UnusedTextureSampleInFunctionPassedAsArguments) {
+    GlobalVar("gt", ty.sampled_texture(core::type::TextureDimension::k2d, ty.f32()), Group(1_a),
+              Binding(1_a));
+    GlobalVar("gs", ty.sampler(core::type::SamplerKind::kSampler), Group(1_a), Binding(2_a));
+
+    auto* inner_coords = Param("coords", ty.vec2<f32>());
+    auto* inner_t = Param("t", ty.sampled_texture(core::type::TextureDimension::k2d, ty.f32()));
+    auto* inner_s = Param("s", ty.sampler(core::type::SamplerKind::kSampler));
+    const ast::Function* inner_func =
+        Func("inner_func", Vector{inner_coords, inner_t, inner_s}, ty.void_(), Empty);
+
+    auto* middle_coords = Param("coords", ty.vec2<f32>());
+    auto* middle_s = Param("s", ty.sampler(core::type::SamplerKind::kSampler));
+    auto* middle_t = Param("t", ty.sampled_texture(core::type::TextureDimension::k2d, ty.f32()));
+    auto* middle_call = CallStmt(Call("inner_func", middle_coords, "t", "s"));
+    const ast::Function* middle_func = Func(
+        "middle_func", Vector{middle_coords, middle_s, middle_t}, ty.void_(), Vector{middle_call});
+
+    auto* outer_call = CallStmt(Call("middle_func", Call<vec2<f32>>(1_f, 2_f), "gs", "gt"));
+    const ast::Function* outer_func =
+        Func("outer_func", tint::Empty, ty.void_(), Vector{outer_call},
+             Vector{Stage(ast::PipelineStage::kFragment)});
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto inner_pairs = Sem().Get(inner_func)->TextureSamplerPairs();
+    ASSERT_EQ(inner_pairs.Length(), 2u);
+    auto* inner_pair_texture = As<sem::Parameter>(inner_pairs[0].first);
+    ASSERT_NE(inner_pair_texture, nullptr);
+    EXPECT_EQ(inner_pair_texture->Index(), 1u);
+    auto* inner_pair_sampler = As<sem::Parameter>(inner_pairs[1].second);
+    ASSERT_NE(inner_pair_sampler, nullptr);
+    EXPECT_EQ(inner_pair_sampler->Index(), 2u);
+
+    auto middle_pairs = Sem().Get(middle_func)->TextureSamplerPairs();
+    ASSERT_EQ(middle_pairs.Length(), 2u);
+    auto* middle_pair_texture = As<sem::Parameter>(middle_pairs[0].first);
+    ASSERT_NE(middle_pair_texture, nullptr);
+    EXPECT_EQ(middle_pair_texture->Index(), 2u);
+    auto* middle_pair_sampler = As<sem::Parameter>(middle_pairs[1].second);
+    ASSERT_NE(middle_pair_sampler, nullptr);
+    EXPECT_EQ(middle_pair_sampler->Index(), 1u);
+
+    auto outer_pairs = Sem().Get(outer_func)->TextureSamplerPairs();
+    ASSERT_EQ(outer_pairs.Length(), 2u);
+    EXPECT_TRUE(outer_pairs[0].first != nullptr);
+    EXPECT_TRUE(outer_pairs[1].second != nullptr);
 }
 
 TEST_F(ResolverTest, TextureSampler_TextureDimensions) {

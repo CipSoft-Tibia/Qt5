@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 
 class QIRProximitySensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlIRProximitySensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlIRProximitySensor : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(IRProximitySensor)
@@ -37,7 +37,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlIRProximitySensorReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlIRProximitySensorReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal reflectance READ reflectance

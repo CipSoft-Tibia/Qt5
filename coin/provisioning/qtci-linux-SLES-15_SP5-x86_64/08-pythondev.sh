@@ -18,9 +18,9 @@ source "${BASH_SOURCE%/*}/../common/unix/DownloadURL.sh"
 # https://raw.githubusercontent.com/linux-on-ibm-z/scripts/master/Python3/build_python3.sh
 export PACKAGE_NAME="python"
 python2Version="2.7.18"
-python3Version="3.8.16"
+python3Version="3.12.3"
 python2Sha="678d4cf483a1c92efd347ee8e1e79326dc82810b"
-python3Sha="d85dbb3774132473d8081dcb158f34a10ccad7a90b96c7e50ea4bb61f5ce4562"
+python3Sha="56bfef1fdfc1221ce6720e43a661e3eb41785dd914ce99698d8c7896af4bdaa1"
 
 
 function InstallPython {
@@ -71,7 +71,13 @@ python3 --version | grep -F "$python3Version"
 
 pip3 install --user wheel
 pip3 install --user virtualenv
+pip3 install --user -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
 
 # shellcheck source=../common/unix/SetEnvVar.sh
 source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 SetEnvVar "PYTHON3_PATH" "/usr/local/bin"
+
+# Provisioning during installation says:
+# 'The script sbom2doc is installed in '/home/qt/.local/bin' which is not on PATH.'
+# hence the explicit assignment to SBOM_PYTHON_APPS_PATH.
+SetEnvVar "SBOM_PYTHON_APPS_PATH" "/home/qt/.local/bin"

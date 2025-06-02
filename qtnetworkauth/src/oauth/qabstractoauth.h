@@ -4,9 +4,9 @@
 #ifndef QABSTRACTOAUTH_H
 #define QABSTRACTOAUTH_H
 
-#ifndef QT_NO_HTTP
-
 #include <QtNetworkAuth/qoauthglobal.h>
+
+#ifndef QT_NO_HTTP
 
 #include <QtCore/qurl.h>
 #include <QtCore/qobject.h>

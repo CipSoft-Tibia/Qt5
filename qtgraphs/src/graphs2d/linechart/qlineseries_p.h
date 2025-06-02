@@ -14,6 +14,7 @@
 #define QLINESERIES_P_H
 
 #include <QtGraphs/qlineseries.h>
+#include <private/qgraphpointanimation_p.h>
 #include <private/qxyseries_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -21,7 +22,7 @@ QT_BEGIN_NAMESPACE
 class QLineSeriesPrivate : public QXYSeriesPrivate
 {
 public:
-    QLineSeriesPrivate(QLineSeries *q);
+    QLineSeriesPrivate();
 
 protected:
     qreal m_width = 2.0;

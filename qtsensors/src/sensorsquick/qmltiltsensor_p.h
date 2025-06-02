@@ -22,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 class QTiltSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlTiltSensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlTiltSensor : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(TiltSensor)
@@ -40,7 +40,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlTiltSensorReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlTiltSensorReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal yRotation READ yRotation NOTIFY yRotationChanged BINDABLE bindableYRotation)

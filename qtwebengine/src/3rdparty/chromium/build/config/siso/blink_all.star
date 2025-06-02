@@ -5,9 +5,10 @@
 """Siso configuration for blink scripts."""
 
 load("@builtin//struct.star", "module")
+load("./platform.star", "platform")
 
-__filegroups = {
-}
+def __filegroups(ctx):
+    return {}
 
 __handlers = {
 }
@@ -19,12 +20,7 @@ def __step_config(ctx, step_config):
     step_config["rules"].extend([
         {
             "name": "blink/generate_bindings",
-            "command_prefix": "python3 ../../third_party/blink/renderer/bindings/scripts/generate_bindings.py",
-            "inputs": [
-                # build/print_python_deps.py couldn't detect this?
-                # TODO(crbug.com/1475569): fix build/print_python_deps.py
-                "third_party/mako/mako/mako/ext/pygmentplugin.py",
-            ],
+            "command_prefix": platform.python_bin + " ../../third_party/blink/renderer/bindings/scripts/generate_bindings.py",
             "remote": True,
             "platform_ref": "large",
         },

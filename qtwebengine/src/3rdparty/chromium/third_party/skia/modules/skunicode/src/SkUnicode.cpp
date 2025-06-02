@@ -25,17 +25,23 @@ std::unique_ptr<SkUnicode> SkUnicode::Make() {
         return unicode;
     }
 #endif
+#ifdef SK_UNICODE_ICU4X_IMPLEMENTATION
+    unicode = SkUnicode::MakeIcu4xBasedUnicode();
+    if (unicode) {
+        return unicode;
+    }
+#endif
     return nullptr;
 }
 
 std::unique_ptr<SkUnicode> MakeClientBasedUnicode(
         SkSpan<char> text,
-        std::vector<SkUnicode::Position> words,
-        std::vector<SkUnicode::Position> graphemeBreaks,
-        std::vector<SkUnicode::LineBreakBefore> lineBreaks) {
+        std::vector<SkUnicode::Position> words,               // NOLINT(performance-unnecessary-value-param)
+        std::vector<SkUnicode::Position> graphemeBreaks,      // NOLINT(performance-unnecessary-value-param)
+        std::vector<SkUnicode::LineBreakBefore> lineBreaks) { // NOLINT(performance-unnecessary-value-param)
 #ifdef SK_UNICODE_CLIENT_IMPLEMENTATION
-    std::unique_ptr<SkUnicode> unicode =
-            SkUnicode::MakeClientBasedUnicode(text, words, graphemeBreaks, lineBreaks);
+    std::unique_ptr<SkUnicode> unicode = SkUnicode::MakeClientBasedUnicode(
+            text, std::move(words), std::move(graphemeBreaks), std::move(lineBreaks));
     if (unicode) {
         return unicode;
     }

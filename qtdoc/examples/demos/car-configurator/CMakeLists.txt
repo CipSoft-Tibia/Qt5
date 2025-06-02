@@ -1,15 +1,18 @@
-cmake_minimum_required(VERSION 3.21.1)
+cmake_minimum_required(VERSION 3.19)
+
+option(BUILD_QDS_COMPONENTS "Build design studio components" ON)
 
 project(CarRenderingApp LANGUAGES CXX)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS
+find_package(Qt6 REQUIRED COMPONENTS
              Core
              Gui
              Qml
              Quick
-             Quick3D)
+             Quick3D
+             ExamplesAssetDownloaderPrivate)
 
-qt_standard_project_setup()
+qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(CarRenderingApp
     src/main.cpp
@@ -22,12 +25,6 @@ qt_add_resources(CarRenderingApp "configuration"
         qtquickcontrols2.conf
 )
 
-qt_add_resources(CarRenderingApp "download"
-    PREFIX "/qt/qml"
-    FILES
-        assets/assets_download.json
-)
-
 target_link_libraries(CarRenderingApp PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -37,6 +34,19 @@ target_link_libraries(CarRenderingApp PRIVATE
 )
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/qmlmodules.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/qmlcomponents.cmake)
+
+if (ANDROID)
+    FetchContent_Declare(
+        android_openssl
+        DOWNLOAD_EXTRACT_TIMESTAMP true
+        URL https://github.com/KDAB/android_openssl/archive/refs/heads/master.zip
+        )
+    FetchContent_MakeAvailable(android_openssl)
+    include(${android_openssl_SOURCE_DIR}/android_openssl.cmake)
+
+    add_android_openssl_libraries(CarRenderingApp)
+endif()
 
 install(TARGETS CarRenderingApp
     BUNDLE  DESTINATION .

@@ -5,25 +5,20 @@
 #ifndef QGRPCSTREAM_H
 #define QGRPCSTREAM_H
 
-#include <QtCore/qbytearray.h>
-#include <QtCore/qlist.h>
-#include <QtCore/qstring.h>
 #include <QtGrpc/qgrpcoperation.h>
 #include <QtGrpc/qtgrpcglobal.h>
 
 #include <memory>
-#include <type_traits>
 
 QT_BEGIN_NAMESPACE
-
-class QAbstractGrpcClient;
 
 class Q_GRPC_EXPORT QGrpcServerStream final : public QGrpcOperation
 {
     Q_OBJECT
 
 public:
-    explicit QGrpcServerStream(std::shared_ptr<QGrpcChannelOperation> channelOperation);
+    explicit QGrpcServerStream(std::shared_ptr<QGrpcOperationContext> operationContext,
+                               QObject *parent = nullptr);
     ~QGrpcServerStream() override;
 
 Q_SIGNALS:
@@ -31,6 +26,9 @@ Q_SIGNALS:
 
 private:
     Q_DISABLE_COPY_MOVE(QGrpcServerStream)
+
+public:
+    bool event(QEvent *event) override;
 };
 
 class Q_GRPC_EXPORT QGrpcClientStream final : public QGrpcOperation
@@ -38,40 +36,40 @@ class Q_GRPC_EXPORT QGrpcClientStream final : public QGrpcOperation
     Q_OBJECT
 
 public:
-    explicit QGrpcClientStream(std::shared_ptr<QGrpcChannelOperation> channelOperation);
+    explicit QGrpcClientStream(std::shared_ptr<QGrpcOperationContext> operationContext,
+                               QObject *parent = nullptr);
     ~QGrpcClientStream() override;
 
-    template <typename T>
-    void sendMessage(const T &message)
-    {
-        sendMessage(serializer()->serialize<T>(&message));
-    }
+    void writeMessage(const QProtobufMessage &message);
+    void writesDone();
 
 private:
-    void sendMessage(const QByteArray &data);
     Q_DISABLE_COPY_MOVE(QGrpcClientStream)
+
+public:
+    bool event(QEvent *event) override;
 };
 
-class Q_GRPC_EXPORT QGrpcBidirStream final : public QGrpcOperation
+class Q_GRPC_EXPORT QGrpcBidiStream final : public QGrpcOperation
 {
     Q_OBJECT
 
 public:
-    explicit QGrpcBidirStream(std::shared_ptr<QGrpcChannelOperation> channelOperation);
-    ~QGrpcBidirStream() override;
+    explicit QGrpcBidiStream(std::shared_ptr<QGrpcOperationContext> operationContext,
+                             QObject *parent = nullptr);
+    ~QGrpcBidiStream() override;
 
-    template <typename T>
-    void sendMessage(const T &message)
-    {
-        sendMessage(serializer()->serialize<T>(&message));
-    }
+    void writeMessage(const QProtobufMessage &message);
+    void writesDone();
 
 Q_SIGNALS:
     void messageReceived();
 
 private:
-    void sendMessage(const QByteArray &data);
-    Q_DISABLE_COPY_MOVE(QGrpcBidirStream)
+    Q_DISABLE_COPY_MOVE(QGrpcBidiStream)
+
+public:
+    bool event(QEvent *event) override;
 };
 
 QT_END_NAMESPACE

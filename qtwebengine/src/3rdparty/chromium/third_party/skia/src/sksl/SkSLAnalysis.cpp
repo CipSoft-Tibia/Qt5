@@ -9,7 +9,6 @@
 
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/SkSLDefines.h"
 #include "include/private/SkSLSampleUsage.h"
 #include "include/private/base/SkTArray.h"
 #include "src/base/SkEnumBitMask.h"
@@ -18,6 +17,7 @@
 #include "src/sksl/SkSLCompiler.h"
 #include "src/sksl/SkSLConstantFolder.h"
 #include "src/sksl/SkSLContext.h"
+#include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLErrorReporter.h"
 #include "src/sksl/SkSLIntrinsicList.h"
 #include "src/sksl/SkSLOperator.h"
@@ -661,15 +661,7 @@ template <typename T> bool TProgramVisitor<T>::visitStatement(typename T::Statem
         }
         case Statement::Kind::kSwitch: {
             auto& sw = s.template as<SwitchStatement>();
-            if (this->visitExpressionPtr(sw.value())) {
-                return true;
-            }
-            for (auto& c : sw.cases()) {
-                if (this->visitStatementPtr(c)) {
-                    return true;
-                }
-            }
-            return false;
+            return this->visitExpressionPtr(sw.value()) || this->visitStatementPtr(sw.caseBlock());
         }
         case Statement::Kind::kVarDeclaration: {
             auto& v = s.template as<VarDeclaration>();

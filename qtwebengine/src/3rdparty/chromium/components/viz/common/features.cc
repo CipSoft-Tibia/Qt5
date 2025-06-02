@@ -33,24 +33,36 @@ const char kDynamicSchedulerPercentile[] = "percentile";
 
 namespace features {
 
-CONSTINIT const base::Feature kUseMultipleOverlays(
-             "UseMultipleOverlays",
 #if BUILDFLAG(IS_CHROMEOS_ASH)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kUseDrmBlackFullscreenOptimization,
+             "UseDrmBlackFullscreenOptimization",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kUseDrmBlackFullscreenOptimization,
+             "UseDrmBlackFullscreenOptimization",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+BASE_FEATURE(kUseMultipleOverlays,
+             "UseMultipleOverlays",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#else
+BASE_FEATURE(kUseMultipleOverlays,
+             "UseMultipleOverlays",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 const char kMaxOverlaysParam[] = "max_overlays";
 
-CONSTINIT const base::Feature kDelegatedCompositing(
-             "DelegatedCompositing",
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kDelegatedCompositing,
+             "DelegatedCompositing",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kDelegatedCompositing,
+             "DelegatedCompositing",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
 
 BASE_FEATURE(kVideoDetectorIgnoreNonVideos,
              "VideoDetectorIgnoreNonVideos",
@@ -170,18 +182,24 @@ BASE_FEATURE(kCanSkipRenderPassOverlay,
 #if BUILDFLAG(IS_MAC)
 BASE_FEATURE(kCVDisplayLinkBeginFrameSource,
              "CVDisplayLinkBeginFrameSource",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
 // Allow SkiaRenderer to skip drawing render passes that contain a single
 // RenderPassDrawQuad.
 BASE_FEATURE(kAllowBypassRenderPassQuads,
              "AllowBypassRenderPassQuads",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kAllowUndamagedNonrootRenderPassToSkip,
              "AllowUndamagedNonrootRenderPassToSkip",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Allow SurfaceAggregator to merge render passes when they contain quads that
+// require overlay (e.g. protected video). See usage in |EmitSurfaceContent|.
+BASE_FEATURE(kAllowForceMergeRenderPassWithRequireOverlayQuads,
+             "AllowForceMergeRenderPassWithRequireOverlayQuads",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Whether to:
 // - Perform periodic inactive frame culling.
@@ -216,48 +234,44 @@ BASE_FEATURE(kBufferQueueImageSetPurgeable,
 // On platforms using SkiaOutputDeviceBufferQueue, when this is true
 // SkiaRenderer will allocate and maintain a buffer queue of images for the root
 // render pass, instead of SkiaOutputDeviceBufferQueue itself.
-CONSTINIT const base::Feature kRendererAllocatesImages(
-             "RendererAllocatesImages",
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_CHROMEOS)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kRendererAllocatesImages,
+             "RendererAllocatesImages",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kRendererAllocatesImages,
+             "RendererAllocatesImages",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
-
-// On all platforms when attempting to evict a FrameTree, the active
-// viz::Surface can be not included. This feature ensures that the we always add
-// the active viz::Surface to the eviction list.
-//
-// Furthermore, by default on Android, when a client is being evicted, it only
-// evicts itself. This differs from Destkop platforms which evict the entire
-// FrameTree along with the topmost viz::Surface. When this feature is enabled,
-// Android will begin also evicting the entire FrameTree.
-BASE_FEATURE(kEvictSubtree, "EvictSubtree", base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, CompositorFrameSinkClient::OnBeginFrame is also treated as the
 // DidReceiveCompositorFrameAck. Both in providing the Ack for the previous
-// frame, and in returning resources. While enabled the separate Ack and
-// ReclaimResources signals will not be sent.
+// frame, and in returning resources. While enabled we attempt to not send
+// separate Ack and ReclaimResources signals. However if while sending an
+// OnBeginFrame there is a pending Ack, then if the Ack arrives before the next
+// OnBeginFrame we will send the Ack immediately, rather than batching it.
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+BASE_FEATURE(kOnBeginFrameAcks,
+             "OnBeginFrameAcks",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#else
 BASE_FEATURE(kOnBeginFrameAcks,
              "OnBeginFrameAcks",
              base::FEATURE_DISABLED_BY_DEFAULT);
-
-// If enabled, and kOnBeginFrameAcks is also enabled, then if we issue an
-// CompositorFrameSinkClient::OnBeginFrame, while we are pending an Ack. If the
-// Ack arrives before the next OnBeginFrame we will send it immediately, instead
-// of batching it. This is to support a frame submission/draw that occurs right
-// near the OnBeginFrame boundary.
-BASE_FEATURE(kOnBeginFrameAllowLateAcks,
-             "OnBeginFrameAllowLateAcks",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 // if enabled, Any CompositorFrameSink of type video that defines a preferred
 // framerate that is below the display framerate will throttle OnBeginFrame
 // callbacks to match the preferred framerate.
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kOnBeginFrameThrottleVideo,
+             "OnBeginFrameThrottleVideo",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#else
 BASE_FEATURE(kOnBeginFrameThrottleVideo,
              "OnBeginFrameThrottleVideo",
              base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 BASE_FEATURE(kSharedBitmapToSharedImage,
              "SharedBitmapToSharedImage",
@@ -274,27 +288,16 @@ const base::FeatureParam<base::TimeDelta> kADPFBoostTimeout{
     &kEnableADPFScrollBoost, "adpf_boost_mode_timeout",
     base::Milliseconds(200)};
 
-// If enabled, Chrome uses ADPF(Android Dynamic Performance Framework) to
-// request more CPU resources in the middle of a frame production if the frame
-// is taking longer than expected.
-BASE_FEATURE(kEnableADPFMidFrameBoost,
-             "EnableADPFMidFrameBoost",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Allows delegating transforms over Wayland when it is also supported by Ash.
-CONSTINIT const base::Feature kDelegateTransforms(
-             "DelegateTransforms",
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kDelegateTransforms,
+             "DelegateTransforms",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kDelegateTransforms,
+             "DelegateTransforms",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
-
-// The deadline for requesting a boost in the middle of a frame production is
-// this multiplier * ADPF target_duration.
-const base::FeatureParam<double> kADPFMidFrameBoostDurationMultiplier{
-    &kEnableADPFMidFrameBoost, "adpf_mid_frame_boost_multiplier", 1.0};
 
 // If enabled, Chrome includes the Renderer Main thread(s) into the
 // ADPF(Android Dynamic Performance Framework) hint session.
@@ -302,21 +305,63 @@ BASE_FEATURE(kEnableADPFRendererMain,
              "EnableADPFRendererMain",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// If enabled, Chrome verifies that Renderer threads do not belong to the
+// Browser process asynchronously via a mojo call to the Browser before
+// including them into the ADPF(Android Dynamic Performance Framework) hint
+// session.
+BASE_FEATURE(kEnableADPFAsyncThreadsVerification,
+             "EnableADPFAsyncThreadsVerification",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 // If enabled, surface activation and draw do not block on dependencies.
-CONSTINIT const base::Feature kDrawImmediatelyWhenInteractive(
-             "DrawImmediatelyWhenInteractive",
 #if BUILDFLAG(IS_IOS)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kDrawImmediatelyWhenInteractive,
+             "DrawImmediatelyWhenInteractive",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kDrawImmediatelyWhenInteractive,
+             "DrawImmediatelyWhenInteractive",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
+
+// When enabled, SDR maximum luminance nits of then current display will be used
+// as the HDR metadata NDWL nits.
+BASE_FEATURE(kUseDisplaySDRMaxLuminanceNits,
+             "UseDisplaySDRMaxLuminanceNits",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Invalidate the `viz::LocalSurfaceId` on the browser side when the page is
 // navigated away. This flag serves as the kill-switch for the uncaught edge
 // cases in production.
 BASE_FEATURE(kInvalidateLocalSurfaceIdPreCommit,
              "InvalidateLocalSurfaceIdPreCommit",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// On mac, when the RenderWidgetHostViewMac is hidden, also hide the
+// DelegatedFrameHost. Among other things, it unlocks the compositor frames,
+// which can saves hundreds of MiB of memory with bfcache entries.
+BASE_FEATURE(kHideDelegatedFrameHostMac,
+             "HideDelegatedFrameHostMac",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// When enabled, ClientResourceProvider will attempt to unlock and delete
+// TransferableResources that have been returned as a part of eviction.
+BASE_FEATURE(kEvictionUnlocksResources,
+             "EvictionUnlocksResources",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// If enabled, FrameRateDecider will toggle to half framerate if there's only
+// one video on screen whose framerate is lower than the display vsync and in
+// perfect cadence.
+BASE_FEATURE(kSingleVideoFrameRateThrottling,
+             "SingleVideoFrameRateThrottling",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// When enabled, ClientResourceProvider will take callbacks intended to be ran
+// on the Main-thread, and will batch them into a single jump to that thread.
+// Rather than each performing its own separate post task.
+BASE_FEATURE(kBatchMainThreadReleaseCallbacks,
+             "BatchMainThreadReleaseCallbacks",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 bool IsDelegatedCompositingEnabled() {

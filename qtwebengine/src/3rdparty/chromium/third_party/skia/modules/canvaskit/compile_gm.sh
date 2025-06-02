@@ -163,6 +163,7 @@ fi
 GLOBIGNORE="gm/compressed_textures.cpp:"\
 "gm/fiddle.cpp:"\
 "gm/fontations.cpp:"\
+"gm/fontations_ft_compare.cpp:"\
 "gm/video_decoder.cpp:"
 
 # These tests do not compile with the WASM code (require other deps).
@@ -173,6 +174,7 @@ GLOBIGNORE+="tests/CodecTest.cpp:"\
 "tests/FontMgrAndroidParserTest.cpp:"\
 "tests/FontMgrFontConfigTest.cpp:"\
 "tests/FontationsTest.cpp:"\
+"tests/FontationsFtCompTest.cpp:"\
 "tests/FCITest.cpp:"\
 "tests/JpegGainmapTest.cpp:"\
 "tests/TypefaceMacTest.cpp:"
@@ -187,14 +189,10 @@ GLOBIGNORE+="tests/BackendAllocationTest.cpp:"\
 "tests/VkHardwareBufferTest.cpp:"
 
 # All the tests in these files crash.
-GLOBIGNORE+="tests/GrThreadSafeCacheTest.cpp"
+GLOBIGNORE+="tests/GrThreadSafeCacheTest.cpp:"
 
 # Bazel-related ignores (test runners, incompatible GMs, etc.).
-GLOBIGNORE+="tests/BazelNoopRunner.cpp:"\
-"tests/BazelTestRunner.cpp:"\
-"gm/BazelGMRunner.cpp:"\
-"gm/BazelNoopRunner.cpp:"\
-"gm/png_codec.cpp"
+GLOBIGNORE+="gm/png_codec.cpp"
 
 # Emscripten prefers that the .a files go last in order, otherwise, it
 # may drop symbols that it incorrectly thinks aren't used. One day,

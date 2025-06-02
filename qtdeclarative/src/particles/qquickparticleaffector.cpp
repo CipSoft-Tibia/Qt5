@@ -9,14 +9,14 @@
 QT_BEGIN_NAMESPACE
 
 /*!
-    \qmltype Affector
-//!    \instantiates QQuickParticleAffector
+    \qmltype ParticleAffector
+//!    \nativetype QQuickParticleAffector
     \inqmlmodule QtQuick.Particles
     \brief Applies alterations to the attributes of logical particles at any
     point in their lifetime.
     \ingroup qtquick-particles
 
-    The base Affector does not alter any attributes, but can be used to emit a signal
+    The base ParticleAffector does not alter any attributes, but can be used to emit a signal
     when a particle meets certain conditions.
 
     If an affector has a defined size, then it will only affect particles within its size and
@@ -35,33 +35,33 @@ possible on some hardware, but on less capable hardware you should expect small 
 simulation as simulates with worse granularity.
 */
 /*!
-    \qmlproperty ParticleSystem QtQuick.Particles::Affector::system
+    \qmlproperty ParticleSystem QtQuick.Particles::ParticleAffector::system
     This is the system which will be affected by the element.
-    If the Affector is a direct child of a ParticleSystem, it will automatically be associated with
+    If the ParticleAffector is a direct child of a ParticleSystem, it will automatically be associated with
    it.
 */
 /*!
-    \qmlproperty list<string> QtQuick.Particles::Affector::groups
+    \qmlproperty list<string> QtQuick.Particles::ParticleAffector::groups
     Which logical particle groups will be affected.
 
     If empty, it will affect all particles.
 */
 /*!
-    \qmlproperty list<string> QtQuick.Particles::Affector::whenCollidingWith
-    If any logical particle groups are specified here, then the affector
+    \qmlproperty list<string> QtQuick.Particles::ParticleAffector::whenCollidingWith
+    If any logical particle groups are specified here, then the particle affector
     will only be triggered if the particle being examined intersects with
     a particle of one of these groups.
 
     This is different from the groups property. The groups property selects which
     particles might be examined, and if they meet other criteria (including being
-    within the bounds of the Affector, modified by shape) then they will be tested
+    within the bounds of the ParticleAffector, modified by shape) then they will be tested
     again to see if they intersect with a particles from one of the particle groups
     in whenCollidingWith.
 
     By default, no groups are specified.
 */
 /*!
-    \qmlproperty bool QtQuick.Particles::Affector::enabled
+    \qmlproperty bool QtQuick.Particles::ParticleAffector::enabled
     If enabled is set to false, this affector will not affect any particles.
 
     Usually this is used to conditionally turn an affector on or off.
@@ -69,7 +69,7 @@ simulation as simulates with worse granularity.
     Default value is true.
 */
 /*!
-    \qmlproperty bool QtQuick.Particles::Affector::once
+    \qmlproperty bool QtQuick.Particles::ParticleAffector::once
     If once is set to true, this affector will only affect each particle
     once in their lifetimes. If the affector normally simulates a continuous
     effect over time, then it will simulate the effect of one second of time
@@ -78,19 +78,19 @@ simulation as simulates with worse granularity.
     Default value is false.
 */
 /*!
-    \qmlproperty Shape QtQuick.Particles::Affector::shape
+    \qmlproperty Shape QtQuick.Particles::ParticleAffector::shape
     If a size has been defined, the shape property can be used to affect a
     non-rectangular area.
 */
 /*!
-    \qmlsignal QtQuick.Particles::Affector::affected(real x, real y)
+    \qmlsignal QtQuick.Particles::ParticleAffector::affected(real x, real y)
 
     This signal is emitted when a particle is selected to be affected. It will not be emitted
-    if a particle is considered by the Affector but not actually altered in any way.
+    if a particle is considered by the ParticleAffector but not actually altered in any way.
 
-    In the special case where an Affector has no possible effect (e.g. Affector {}), this signal
+    In the special case where an ParticleAffector has no possible effect (e.g. ParticleAffector {}), this signal
     will be emitted for all particles being considered if you connect to it. This allows you to
-    execute arbitrary code in response to particles (use the Affector::onAffectParticles
+    execute arbitrary code in response to particles (use the ParticleAffector::onAffectParticles
     signal handler if you want to execute code which affects the particles
     themselves). As this executes JavaScript code per particle, it is not recommended to use this
     signal with a high-volume particle system.

@@ -113,6 +113,11 @@ void SiteInstanceGroup::RenderProcessExited(
     observer.RenderProcessGone(this, info);
 }
 
+const StoragePartitionConfig& SiteInstanceGroup::GetStoragePartitionConfig()
+    const {
+  return process()->GetStoragePartition()->GetConfig();
+}
+
 // static
 SiteInstanceGroup* SiteInstanceGroup::CreateForTesting(
     BrowserContext* browser_context,
@@ -121,8 +126,10 @@ SiteInstanceGroup* SiteInstanceGroup::CreateForTesting(
       new BrowsingInstance(browser_context,
                            WebExposedIsolationInfo::CreateNonIsolated(),
                            /*is_guest=*/false,
-                           /*is_fenced=*/false, /*coop_related_group=*/nullptr,
-                           /*common_coop_origin=*/absl::nullopt),
+                           /*is_fenced=*/false,
+                           /*is_fixed_storage_partition=*/false,
+                           /*coop_related_group=*/nullptr,
+                           /*common_coop_origin=*/std::nullopt),
       process);
 }
 

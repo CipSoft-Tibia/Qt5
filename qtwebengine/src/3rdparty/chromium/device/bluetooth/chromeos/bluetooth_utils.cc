@@ -20,6 +20,8 @@
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
+#include <string_view>
+
 #include "ash/constants/ash_features.h"
 #include "ash/constants/ash_switches.h"
 #include "chromeos/ash/services/nearby/public/cpp/nearby_client_uuids.h"
@@ -41,6 +43,9 @@ const char kHIDServiceUUID[] = "1812";
 const char kSecurityKeyServiceUUID[] = "FFFD";
 
 constexpr base::TimeDelta kMaxDeviceSelectionDuration = base::Seconds(30);
+
+constexpr uint8_t kLimitedDiscoveryFlag = 0x01;
+constexpr uint8_t kGeneralDiscoveryFlag = 0x02;
 
 // Get limited number of devices from |devices| and
 // prioritize paired/connecting devices over other devices.
@@ -193,7 +198,7 @@ void EmitFilteredFailureReason(ConnectionFailureReason failure_reason,
 bool IsPolyDevice(const device::BluetoothDevice* device) {
   // OUI portions of Bluetooth addresses for devices manufactured by Poly. See
   // https://standards-oui.ieee.org/.
-  constexpr auto kPolyOuis = base::MakeFixedFlatSet<base::StringPiece>(
+  constexpr auto kPolyOuis = base::MakeFixedFlatSet<std::string_view>(
       {"64:16:7F", "48:25:67", "00:04:F2"});
 
   return base::Contains(kPolyOuis, device->GetOuiPortionOfBluetoothAddress());
@@ -283,9 +288,17 @@ bool IsUnsupportedDevice(const device::BluetoothDevice* device) {
     // Device with invalid bluetooth transport is filtered out.
     case BLUETOOTH_TRANSPORT_INVALID:
       break;
-    // For LE devices, check the service UUID to determine if it supports HID
-    // or second factor authenticator (security key).
+    // For LE devices, check the discoverable flag and UUIDs.
     case BLUETOOTH_TRANSPORT_LE:
+      // Hide the LE device that mark itself as non-discoverble.
+      if (device->GetAdvertisingDataFlags().has_value()) {
+        if (!((kLimitedDiscoveryFlag | kGeneralDiscoveryFlag) &
+              device->GetAdvertisingDataFlags().value())) {
+          return true;
+        }
+      }
+      // Check the service UUID to determine if it supports HID or second factor
+      // authenticator (security key).
       if (base::Contains(device->GetUUIDs(),
                          device::BluetoothUUID(kHIDServiceUUID)) ||
           base::Contains(device->GetUUIDs(),

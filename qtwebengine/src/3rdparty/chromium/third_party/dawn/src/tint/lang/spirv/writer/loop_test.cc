@@ -1,18 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// GEN_BUILD:CONDITION(tint_build_ir)
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/spirv/writer/common/helper_test.h"
 
@@ -332,7 +343,7 @@ TEST_F(SpirvWriterTest, Loop_Phi_SingleValue) {
         auto* loop = b.Loop();
 
         b.Append(loop->Initializer(), [&] {  //
-            b.NextIteration(loop, 1_i, false);
+            b.NextIteration(loop, 1_i);
         });
 
         auto* loop_param = b.BlockParam(ty.i32());
@@ -424,6 +435,187 @@ TEST_F(SpirvWriterTest, Loop_Phi_MultipleValue) {
          %17 = OpLogicalEqual %bool %19 %false
                OpBranchConditional %20 %9 %8
           %9 = OpLabel
+               OpReturn
+               OpFunctionEnd
+)");
+}
+
+TEST_F(SpirvWriterTest, Loop_Phi_NestedIf) {
+    auto* func = b.Function("foo", ty.void_());
+
+    b.Append(func->Block(), [&] {
+        auto* loop = b.Loop();
+        b.Append(loop->Initializer(), [&] {  //
+            b.NextIteration(loop, 1_i);
+        });
+
+        auto* loop_param = b.BlockParam(ty.i32());
+        loop->Body()->SetParams({loop_param});
+        b.Append(loop->Body(), [&] {
+            auto* inner = b.If(true);
+            inner->SetResults(b.InstructionResult(ty.i32()));
+            b.Append(inner->True(), [&] {  //
+                b.ExitIf(inner, 10_i);
+            });
+            b.Append(inner->False(), [&] {  //
+                b.ExitIf(inner, 20_i);
+            });
+            b.Continue(loop, inner->Result(0));
+        });
+
+        auto* cont_param = b.BlockParam(ty.i32());
+        loop->Continuing()->SetParams({cont_param});
+        b.Append(loop->Continuing(), [&] {
+            auto* cmp = b.GreaterThan(ty.bool_(), cont_param, 5_i);
+            b.BreakIf(loop, cmp, cont_param);
+        });
+
+        b.Return(func);
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST(R"(
+          %4 = OpLabel
+               OpBranch %5
+          %5 = OpLabel
+               OpBranch %8
+          %8 = OpLabel
+         %11 = OpPhi %int %int_1 %5 %13 %7
+               OpLoopMerge %9 %7 None
+               OpBranch %6
+          %6 = OpLabel
+               OpSelectionMerge %14 None
+               OpBranchConditional %true %15 %16
+         %15 = OpLabel
+               OpBranch %14
+         %16 = OpLabel
+               OpBranch %14
+         %14 = OpLabel
+         %19 = OpPhi %int %int_10 %15 %int_20 %16
+               OpBranch %7
+          %7 = OpLabel
+         %13 = OpPhi %int %19 %14
+         %22 = OpSGreaterThan %bool %13 %int_5
+               OpBranchConditional %22 %9 %8
+          %9 = OpLabel
+               OpReturn
+               OpFunctionEnd
+)");
+}
+
+TEST_F(SpirvWriterTest, Loop_Phi_NestedLoop) {
+    auto* func = b.Function("foo", ty.void_());
+
+    b.Append(func->Block(), [&] {
+        auto* outer = b.Loop();
+        b.Append(outer->Initializer(), [&] {  //
+            b.NextIteration(outer, 1_i);
+        });
+
+        auto* outer_param = b.BlockParam(ty.i32());
+        outer->Body()->SetParams({outer_param});
+        b.Append(outer->Body(), [&] {
+            auto* inner = b.Loop();
+            b.Append(inner->Initializer(), [&] {  //
+                b.NextIteration(inner);
+            });
+            b.Append(inner->Body(), [&] {  //
+                b.Continue(inner);
+            });
+            b.Append(inner->Continuing(), [&] {  //
+                b.BreakIf(inner, true);
+            });
+
+            b.Continue(outer, outer_param);
+        });
+
+        auto* cont_param = b.BlockParam(ty.i32());
+        outer->Continuing()->SetParams({cont_param});
+        b.Append(outer->Continuing(), [&] {
+            auto* cmp = b.GreaterThan(ty.bool_(), cont_param, 5_i);
+            b.BreakIf(outer, cmp, cont_param);
+        });
+
+        b.Return(func);
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST(R"(
+          %4 = OpLabel
+               OpBranch %5
+          %5 = OpLabel
+               OpBranch %8
+          %8 = OpLabel
+         %11 = OpPhi %int %int_1 %5 %13 %7
+               OpLoopMerge %9 %7 None
+               OpBranch %6
+          %6 = OpLabel
+               OpBranch %14
+         %14 = OpLabel
+               OpBranch %17
+         %17 = OpLabel
+               OpLoopMerge %18 %16 None
+               OpBranch %15
+         %15 = OpLabel
+               OpBranch %16
+         %16 = OpLabel
+               OpBranchConditional %true %18 %17
+         %18 = OpLabel
+               OpBranch %7
+          %7 = OpLabel
+         %13 = OpPhi %int %11 %18
+         %21 = OpSGreaterThan %bool %13 %int_5
+               OpBranchConditional %21 %9 %8
+          %9 = OpLabel
+               OpReturn
+               OpFunctionEnd
+)");
+}
+
+TEST_F(SpirvWriterTest, Loop_Phi_NestedIfWithResultAndImplicitFalse_InContinuing) {
+    auto* func = b.Function("foo", ty.void_());
+
+    b.Append(func->Block(), [&] {
+        auto* loop = b.Loop();
+
+        b.Append(loop->Body(), [&] {  //
+            b.Continue(loop);
+        });
+
+        b.Append(loop->Continuing(), [&] {
+            auto* if_ = b.If(true);
+            auto* cond = b.InstructionResult(ty.bool_());
+            if_->SetResults(Vector{cond});
+            b.Append(if_->True(), [&] {  //
+                b.ExitIf(if_, true);
+            });
+            b.BreakIf(loop, cond);
+        });
+
+        b.Return(func);
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST("%15 = OpUndef %bool");
+    EXPECT_INST(R"(
+          %4 = OpLabel
+               OpBranch %7
+          %7 = OpLabel
+               OpLoopMerge %8 %6 None
+               OpBranch %5
+          %5 = OpLabel
+               OpBranch %6
+          %6 = OpLabel
+               OpSelectionMerge %9 None
+               OpBranchConditional %true %10 %11
+         %10 = OpLabel
+               OpBranch %9
+         %11 = OpLabel
+               OpBranch %9
+          %9 = OpLabel
+         %14 = OpPhi %bool %true %10 %15 %11
+               OpBranchConditional %14 %8 %7
+          %8 = OpLabel
                OpReturn
                OpFunctionEnd
 )");

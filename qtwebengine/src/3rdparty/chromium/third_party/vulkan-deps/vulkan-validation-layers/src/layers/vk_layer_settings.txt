@@ -80,17 +80,23 @@ khronos_validation.enables =
 # Enable descriptor indexing and buffer out of bounds checking
 #khronos_validation.gpuav_descriptor_checks = true
 
-# Check Draw Indirect Count Buffers and firstInstance values
+# Check Draw/Dispatch/TraceRays Indirect Buffers
 # =====================
-# <LayerIdentifier>.validate_draw_indirect
-# Enable draw indirect checking
-#khronos_validation.validate_draw_indirect = true
+# <LayerIdentifier>.validate_indirect_buffer
+# Enable draw/dispatch/traceRays indirect checking
+#khronos_validation.validate_indirect_buffer = true
 
-# Check Dispatch Indirect group count values
+# Cache instrumented shaders rather than instrumenting them on every run
 # =====================
-# <LayerIdentifier>.validate_dispatch_indirect
-# Enable dispatch indirect checking
-#khronos_validation.validate_dispatch_indirect = true
+# <LayerIdentifier>.use_instrumented_shader_cache
+# Enable instrumented shader caching
+#khronos_validation.use_instrumented_shader_cache = true
+
+# Select which shaders to instrument by passing a VkValidationFeaturesEXT struct with GPU-AV enabled in the VkShaderModuleCreateInfo pNext
+# =====================
+# <LayerIdentifier>.
+# Enable selection of shaders to instrument
+#khronos_validation.select_instrumented_shaders = false
 
 # Use linear vma allocator for GPU-AV output buffers
 # =====================

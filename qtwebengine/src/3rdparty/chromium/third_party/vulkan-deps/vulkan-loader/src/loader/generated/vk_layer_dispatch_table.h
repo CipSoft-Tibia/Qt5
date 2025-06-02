@@ -5,6 +5,8 @@
  * Copyright (c) 2015-2022 The Khronos Group Inc.
  * Copyright (c) 2015-2022 Valve Corporation
  * Copyright (c) 2015-2022 LunarG, Inc.
+ * Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023-2023 RasterGrid Kft.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +24,7 @@
  * Author: Mark Young <marky@lunarg.com>
  */
 
+// clang-format off
 #pragma once
 
 #if !defined(PFN_GetPhysicalDeviceProcAddr)
@@ -33,7 +36,7 @@ typedef struct VkLayerInstanceDispatchTable_ {
     // Manually add in GetPhysicalDeviceProcAddr entry
     PFN_GetPhysicalDeviceProcAddr GetPhysicalDeviceProcAddr;
 
-    // ---- Core 1_0 commands
+    // ---- Core Vulkan 1.0 commands
     PFN_vkCreateInstance CreateInstance;
     PFN_vkDestroyInstance DestroyInstance;
     PFN_vkEnumeratePhysicalDevices EnumeratePhysicalDevices;
@@ -51,7 +54,7 @@ typedef struct VkLayerInstanceDispatchTable_ {
     PFN_vkEnumerateDeviceLayerProperties EnumerateDeviceLayerProperties;
     PFN_vkGetPhysicalDeviceSparseImageFormatProperties GetPhysicalDeviceSparseImageFormatProperties;
 
-    // ---- Core 1_1 commands
+    // ---- Core Vulkan 1.1 commands
     PFN_vkEnumerateInstanceVersion EnumerateInstanceVersion;
     PFN_vkEnumeratePhysicalDeviceGroups EnumeratePhysicalDeviceGroups;
     PFN_vkGetPhysicalDeviceFeatures2 GetPhysicalDeviceFeatures2;
@@ -65,7 +68,7 @@ typedef struct VkLayerInstanceDispatchTable_ {
     PFN_vkGetPhysicalDeviceExternalFenceProperties GetPhysicalDeviceExternalFenceProperties;
     PFN_vkGetPhysicalDeviceExternalSemaphoreProperties GetPhysicalDeviceExternalSemaphoreProperties;
 
-    // ---- Core 1_3 commands
+    // ---- Core Vulkan 1.3 commands
     PFN_vkGetPhysicalDeviceToolProperties GetPhysicalDeviceToolProperties;
 
     // ---- VK_KHR_surface extension commands
@@ -167,12 +170,13 @@ typedef struct VkLayerInstanceDispatchTable_ {
     PFN_vkGetPhysicalDeviceFragmentShadingRatesKHR GetPhysicalDeviceFragmentShadingRatesKHR;
 
     // ---- VK_KHR_video_encode_queue extension commands
-#if defined(VK_ENABLE_BETA_EXTENSIONS)
     PFN_vkGetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR GetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR;
-#endif // VK_ENABLE_BETA_EXTENSIONS
 
     // ---- VK_KHR_cooperative_matrix extension commands
     PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR GetPhysicalDeviceCooperativeMatrixPropertiesKHR;
+
+    // ---- VK_KHR_calibrated_timestamps extension commands
+    PFN_vkGetPhysicalDeviceCalibrateableTimeDomainsKHR GetPhysicalDeviceCalibrateableTimeDomainsKHR;
 
     // ---- VK_EXT_debug_report extension commands
     PFN_vkCreateDebugReportCallbackEXT CreateDebugReportCallbackEXT;
@@ -291,7 +295,7 @@ typedef struct VkLayerInstanceDispatchTable_ {
 typedef struct VkLayerDispatchTable_ {
     uint64_t magic; // Should be DEVICE_DISP_TABLE_MAGIC_NUMBER
 
-    // ---- Core 1_0 commands
+    // ---- Core Vulkan 1.0 commands
     PFN_vkGetDeviceProcAddr GetDeviceProcAddr;
     PFN_vkDestroyDevice DestroyDevice;
     PFN_vkGetDeviceQueue GetDeviceQueue;
@@ -414,7 +418,7 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkCmdEndRenderPass CmdEndRenderPass;
     PFN_vkCmdExecuteCommands CmdExecuteCommands;
 
-    // ---- Core 1_1 commands
+    // ---- Core Vulkan 1.1 commands
     PFN_vkBindBufferMemory2 BindBufferMemory2;
     PFN_vkBindImageMemory2 BindImageMemory2;
     PFN_vkGetDeviceGroupPeerMemoryFeatures GetDeviceGroupPeerMemoryFeatures;
@@ -432,7 +436,7 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkUpdateDescriptorSetWithTemplate UpdateDescriptorSetWithTemplate;
     PFN_vkGetDescriptorSetLayoutSupport GetDescriptorSetLayoutSupport;
 
-    // ---- Core 1_2 commands
+    // ---- Core Vulkan 1.2 commands
     PFN_vkCmdDrawIndirectCount CmdDrawIndirectCount;
     PFN_vkCmdDrawIndexedIndirectCount CmdDrawIndexedIndirectCount;
     PFN_vkCreateRenderPass2 CreateRenderPass2;
@@ -447,7 +451,7 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkGetBufferOpaqueCaptureAddress GetBufferOpaqueCaptureAddress;
     PFN_vkGetDeviceMemoryOpaqueCaptureAddress GetDeviceMemoryOpaqueCaptureAddress;
 
-    // ---- Core 1_3 commands
+    // ---- Core Vulkan 1.3 commands
     PFN_vkCreatePrivateDataSlot CreatePrivateDataSlot;
     PFN_vkDestroyPrivateDataSlot DestroyPrivateDataSlot;
     PFN_vkSetPrivateData SetPrivateData;
@@ -636,12 +640,8 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkUnmapMemory2KHR UnmapMemory2KHR;
 
     // ---- VK_KHR_video_encode_queue extension commands
-#if defined(VK_ENABLE_BETA_EXTENSIONS)
     PFN_vkGetEncodedVideoSessionParametersKHR GetEncodedVideoSessionParametersKHR;
-#endif // VK_ENABLE_BETA_EXTENSIONS
-#if defined(VK_ENABLE_BETA_EXTENSIONS)
     PFN_vkCmdEncodeVideoKHR CmdEncodeVideoKHR;
-#endif // VK_ENABLE_BETA_EXTENSIONS
 
     // ---- VK_KHR_synchronization2 extension commands
     PFN_vkCmdSetEvent2KHR CmdSetEvent2KHR;
@@ -674,6 +674,17 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkGetRenderingAreaGranularityKHR GetRenderingAreaGranularityKHR;
     PFN_vkGetDeviceImageSubresourceLayoutKHR GetDeviceImageSubresourceLayoutKHR;
     PFN_vkGetImageSubresourceLayout2KHR GetImageSubresourceLayout2KHR;
+
+    // ---- VK_KHR_calibrated_timestamps extension commands
+    PFN_vkGetCalibratedTimestampsKHR GetCalibratedTimestampsKHR;
+
+    // ---- VK_KHR_maintenance6 extension commands
+    PFN_vkCmdBindDescriptorSets2KHR CmdBindDescriptorSets2KHR;
+    PFN_vkCmdPushConstants2KHR CmdPushConstants2KHR;
+    PFN_vkCmdPushDescriptorSet2KHR CmdPushDescriptorSet2KHR;
+    PFN_vkCmdPushDescriptorSetWithTemplate2KHR CmdPushDescriptorSetWithTemplate2KHR;
+    PFN_vkCmdSetDescriptorBufferOffsets2EXT CmdSetDescriptorBufferOffsets2EXT;
+    PFN_vkCmdBindDescriptorBufferEmbeddedSamplers2EXT CmdBindDescriptorBufferEmbeddedSamplers2EXT;
 
     // ---- VK_EXT_debug_marker extension commands
     PFN_vkDebugMarkerSetObjectTagEXT DebugMarkerSetObjectTagEXT;
@@ -908,6 +919,14 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkSetPrivateDataEXT SetPrivateDataEXT;
     PFN_vkGetPrivateDataEXT GetPrivateDataEXT;
 
+    // ---- VK_NV_cuda_kernel_launch extension commands
+    PFN_vkCreateCudaModuleNV CreateCudaModuleNV;
+    PFN_vkGetCudaModuleCacheNV GetCudaModuleCacheNV;
+    PFN_vkCreateCudaFunctionNV CreateCudaFunctionNV;
+    PFN_vkDestroyCudaModuleNV DestroyCudaModuleNV;
+    PFN_vkDestroyCudaFunctionNV DestroyCudaFunctionNV;
+    PFN_vkCmdCudaLaunchKernelNV CmdCudaLaunchKernelNV;
+
     // ---- VK_EXT_metal_objects extension commands
 #if defined(VK_USE_PLATFORM_METAL_EXT)
     PFN_vkExportMetalObjectsEXT ExportMetalObjectsEXT;
@@ -1088,6 +1107,13 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkGetFramebufferTilePropertiesQCOM GetFramebufferTilePropertiesQCOM;
     PFN_vkGetDynamicRenderingTilePropertiesQCOM GetDynamicRenderingTilePropertiesQCOM;
 
+    // ---- VK_NV_low_latency2 extension commands
+    PFN_vkSetLatencySleepModeNV SetLatencySleepModeNV;
+    PFN_vkLatencySleepNV LatencySleepNV;
+    PFN_vkSetLatencyMarkerNV SetLatencyMarkerNV;
+    PFN_vkGetLatencyTimingsNV GetLatencyTimingsNV;
+    PFN_vkQueueNotifyOutOfBandNV QueueNotifyOutOfBandNV;
+
     // ---- VK_EXT_attachment_feedback_loop_dynamic_state extension commands
     PFN_vkCmdSetAttachmentFeedbackLoopEnableEXT CmdSetAttachmentFeedbackLoopEnableEXT;
 
@@ -1128,4 +1154,4 @@ typedef struct VkLayerDispatchTable_ {
     PFN_vkCmdDrawMeshTasksIndirectCountEXT CmdDrawMeshTasksIndirectCountEXT;
 } VkLayerDispatchTable;
 
-
+// clang-format on

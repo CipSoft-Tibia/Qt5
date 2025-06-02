@@ -9,18 +9,16 @@ namespace commerce {
 MockAccountChecker::MockAccountChecker()
     : AccountChecker(nullptr, nullptr, nullptr, nullptr) {
   // Default to an account checker with the fewest restrictions.
-  SetOptedIntoSync(true);
+  SetSignedIn(true);
   SetSyncingBookmarks(true);
   SetAnonymizedUrlDataCollectionEnabled(true);
-  SetWebAndAppActivityEnabled(true);
   SetIsSubjectToParentalControls(false);
 }
 
 MockAccountChecker::~MockAccountChecker() = default;
 
-void MockAccountChecker::SetOptedIntoSync(bool opted_into_sync) {
-  ON_CALL(*this, IsOptedIntoSync)
-      .WillByDefault(testing::Return(opted_into_sync));
+void MockAccountChecker::SetSignedIn(bool signed_in) {
+  ON_CALL(*this, IsSignedIn).WillByDefault(testing::Return(signed_in));
 }
 
 void MockAccountChecker::SetSyncingBookmarks(bool syncing) {
@@ -29,11 +27,6 @@ void MockAccountChecker::SetSyncingBookmarks(bool syncing) {
 
 void MockAccountChecker::SetAnonymizedUrlDataCollectionEnabled(bool enabled) {
   ON_CALL(*this, IsAnonymizedUrlDataCollectionEnabled)
-      .WillByDefault(testing::Return(enabled));
-}
-
-void MockAccountChecker::SetWebAndAppActivityEnabled(bool enabled) {
-  ON_CALL(*this, IsWebAndAppActivityEnabled)
       .WillByDefault(testing::Return(enabled));
 }
 

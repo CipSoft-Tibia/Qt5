@@ -44,6 +44,13 @@ public:
     static bool s_quoting;
 
 private:
+
+    enum class ArgumentParsingOptions {
+        Default,
+        Verbatim,
+        MacroArguments
+    };
+
     Location &location();
     QString detailsUnknownCommand(const QSet<QString> &metaCommandSet, const QString &str);
     void insertTarget(const QString &target);
@@ -55,10 +62,8 @@ private:
     void startSection(Doc::Sections unit, int cmd);
     void endSection(int unit, int endCmd);
     void parseAlso();
-    void append(const QString &string);
-    void append(Atom::AtomType type, const QString &string = QString());
-    void append(Atom::AtomType type, const QString &p1, const QString &p2);
-    void append(const QString &p1, const QString &p2);
+    void appendAtom(const Atom&);
+    void appendAtom(const LinkAtom&);
     void appendChar(QChar ch);
     void appendWord(const QString &word);
     void appendToCode(const QString &code);
@@ -70,12 +75,12 @@ private:
     void leaveValueList();
     void leaveTableRow();
     void quoteFromFile(const QString& filename);
-    bool expandMacro();
+    bool expandMacro(ArgumentParsingOptions options);
     void expandMacro(const QString &def, const QStringList &args);
     QString expandMacroToString(const QString &name, const Macro &macro);
     Doc::Sections getSectioningUnit();
-    QString getArgument(bool verbatim = false);
-    QString getBracedArgument(bool verbatim);
+    QString getArgument(ArgumentParsingOptions options = ArgumentParsingOptions::Default);
+    QString getBracedArgument(ArgumentParsingOptions options);
     QString getBracketedArgument();
     QStringList getMacroArguments(const QString &name, const Macro &macro);
     QString getOptionalArgument();

@@ -7,8 +7,6 @@
 #include <QApplication>
 #include <QFile>
 
-#include <stdlib.h>
-
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -16,7 +14,7 @@ int main(int argc, char *argv[])
     if (!createConnection())
         return EXIT_FAILURE;
 
-    QFile albumDetails("albumdetails.xml");
+    QFile albumDetails(":/albumdetails.xml");
     MainWindow window("artists", "albums", &albumDetails);
     window.show();
     return app.exec();

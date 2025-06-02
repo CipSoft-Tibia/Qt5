@@ -3,7 +3,8 @@
 
 #include "qffmpegwindowcapture_uwp_p.h"
 #include "qffmpegsurfacecapturegrabber_p.h"
-#include <private/qabstractvideobuffer_p.h>
+#include "qabstractvideobuffer.h"
+#include <private/qvideoframe_p.h>
 
 #include <unknwn.h>
 #include <winrt/base.h>
@@ -34,20 +35,21 @@ auto wait_for(Async const& async, Windows::Foundation::TimeSpan const& timeout);
 #include <qloggingcategory.h>
 #include <qguiapplication.h>
 #include <private/qmultimediautils_p.h>
-#include <private/qwindowsmultimediautils_p.h>
 #include <private/qcapturablewindow_p.h>
 #include <qpa/qplatformscreen_p.h>
+#include <QtCore/private/qsystemerror_p.h>
 
 #include <memory>
 #include <system_error>
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 using namespace winrt::Windows::Graphics::Capture;
 using namespace winrt::Windows::Graphics::DirectX;
 using namespace winrt::Windows::Graphics::DirectX::Direct3D11;
 using namespace Windows::Graphics::DirectX::Direct3D11;
-using namespace QWindowsMultimediaUtils;
 
 using winrt::check_hresult;
 using winrt::com_ptr;
@@ -82,12 +84,9 @@ struct MultithreadedApartment
 class QUwpTextureVideoBuffer : public QAbstractVideoBuffer
 {
 public:
-    QUwpTextureVideoBuffer(com_ptr<IDXGISurface> &&surface)
-        : QAbstractVideoBuffer(QVideoFrame::NoHandle), m_surface(surface)
-    {
-    }
+    QUwpTextureVideoBuffer(com_ptr<IDXGISurface> &&surface) : m_surface(surface) { }
 
-    ~QUwpTextureVideoBuffer() override { QUwpTextureVideoBuffer::unmap(); }
+    ~QUwpTextureVideoBuffer() override { Q_ASSERT(m_mapMode == QVideoFrame::NotMapped); }
 
     MapData map(QVideoFrame::MapMode mode) override
     {
@@ -102,16 +101,17 @@ public:
                 hr = m_surface->GetDesc(&desc);
 
                 MapData md = {};
-                md.nPlanes = 1;
+                md.planeCount = 1;
                 md.bytesPerLine[0] = rect.Pitch;
                 md.data[0] = rect.pBits;
-                md.size[0] = rect.Pitch * desc.Height;
+                md.dataSize[0] = rect.Pitch * desc.Height;
 
                 m_mapMode = QVideoFrame::ReadOnly;
 
                 return md;
             } else {
-                qCDebug(qLcWindowCaptureUwp) << "Failed to map DXGI surface" << errorString(hr);
+                qCDebug(qLcWindowCaptureUwp)
+                        << "Failed to map DXGI surface" << QSystemError::windowsComString(hr);
                 return {};
             }
         }
@@ -126,10 +126,13 @@ public:
 
         const HRESULT hr = m_surface->Unmap();
         if (FAILED(hr))
-            qCDebug(qLcWindowCaptureUwp) << "Failed to unmap surface" << errorString(hr);
+            qCDebug(qLcWindowCaptureUwp)
+                    << "Failed to unmap surface" << QSystemError::windowsComString(hr);
 
         m_mapMode = QVideoFrame::NotMapped;
     }
+
+    QVideoFrameFormat format() const override { return {}; }
 
 private:
     QVideoFrame::MapMode m_mapMode = QVideoFrame::NotMapped;
@@ -292,7 +295,6 @@ private:
 
 class QFFmpegWindowCaptureUwp::Grabber : public QFFmpegSurfaceCaptureGrabber
 {
-    Q_OBJECT
 public:
     Grabber(QFFmpegWindowCaptureUwp &capture, HWND hwnd)
         : m_hwnd(hwnd),
@@ -304,7 +306,7 @@ public:
 
         const qreal refreshRate = getMonitorRefreshRateHz(monitor);
 
-        m_format.setFrameRate(refreshRate);
+        m_format.setStreamFrameRate(refreshRate);
         setFrameRate(refreshRate);
 
         addFrameCallback(capture, &QFFmpegWindowCaptureUwp::newVideoFrame);
@@ -352,7 +354,8 @@ protected:
 
             m_format.setFrameSize(size);
 
-            return QVideoFrame(new QUwpTextureVideoBuffer(std::move(texture)), m_format);
+            return QVideoFramePrivate::createFrame(
+                    std::make_unique<QUwpTextureVideoBuffer>(std::move(texture)), m_format);
 
         } catch (const winrt::hresult_error &err) {
 
@@ -433,34 +436,34 @@ QFFmpegWindowCaptureUwp::~QFFmpegWindowCaptureUwp() = default;
 static QString isCapturableWindow(HWND hwnd)
 {
     if (!IsWindow(hwnd))
-        return "Invalid window handle";
+        return u"Invalid window handle"_s;
 
     if (hwnd == GetShellWindow())
-        return "Cannot capture the shell window";
+        return u"Cannot capture the shell window"_s;
 
     wchar_t className[MAX_PATH] = {};
     GetClassName(hwnd, className, MAX_PATH);
     if (QString::fromWCharArray(className).length() == 0)
-        return "Cannot capture windows without a class name";
+        return u"Cannot capture windows without a class name"_s;
 
     if (!IsWindowVisible(hwnd))
-        return "Cannot capture invisible windows";
+        return u"Cannot capture invisible windows"_s;
 
     if (GetAncestor(hwnd, GA_ROOT) != hwnd)
-        return "Can only capture root windows";
+        return u"Can only capture root windows"_s;
 
     const LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
     if (style & WS_DISABLED)
-        return "Cannot capture disabled windows";
+        return u"Cannot capture disabled windows"_s;
 
     const LONG_PTR exStyle = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
     if (exStyle & WS_EX_TOOLWINDOW)
-        return "No tooltips";
+        return u"No tooltips"_s;
 
     DWORD cloaked = FALSE;
     const HRESULT hr = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
     if (SUCCEEDED(hr) && cloaked == DWM_CLOAKED_SHELL)
-        return "Cannot capture cloaked windows";
+        return u"Cannot capture cloaked windows"_s;
 
     return {};
 }
@@ -503,5 +506,3 @@ QVideoFrameFormat QFFmpegWindowCaptureUwp::frameFormat() const
 }
 
 QT_END_NAMESPACE
-
-#include "qffmpegwindowcapture_uwp.moc"

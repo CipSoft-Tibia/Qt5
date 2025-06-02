@@ -11,4 +11,5 @@ qt_internal_add_test(tst_qaudiosink
     LIBRARIES
         Qt::Gui
         Qt::MultimediaPrivate
+        Qt::MultimediaTestLibPrivate
 )

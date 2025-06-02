@@ -57,11 +57,13 @@ public:
         CoverArtImage,
 
         Orientation,
-        Resolution
+        Resolution,
+
+        HasHdrContent,
     };
     Q_ENUM(Key)
 
-    static constexpr int NumMetaData = Resolution + 1;
+    static constexpr int NumMetaData = HasHdrContent + 1;
 
 //    QMetaType typeForKey(Key k);
     Q_INVOKABLE QVariant value(Key k) const { return data.value(k); }
@@ -77,7 +79,12 @@ public:
 
     Q_INVOKABLE static QString metaDataKeyToString(Key k);
 
+    QT_POST_CXX17_API_IN_EXPORTED_CLASS // don't export QHash's key-value-range
+    QT_TECH_PREVIEW_API auto asKeyValueRange() const { return data.asKeyValueRange(); }
+
 protected:
+    Q_MULTIMEDIA_EXPORT friend QDebug operator<<(QDebug, const QMediaMetaData &);
+
     friend bool operator==(const QMediaMetaData &a, const QMediaMetaData &b)
     { return a.data == b.data; }
     friend bool operator!=(const QMediaMetaData &a, const QMediaMetaData &b)

@@ -22,14 +22,14 @@ class Generator : public MacroAssembler {
 };
 
 
-// void xnn_qs8_igemm_minmax_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_prfm_ld64
+// void xnn_qs8_igemm_minmax_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_ld64_prfm
 //     size_t mr,                                      r0
 //     size_t nc,                                      r1
 //     size_t kc,                                      r2 -> r5 -> sp + 36
 //     size_t ks,                                      r3 -> sp + 40 -> r14
-//     const int8_t**restrict a,           sp + 80  -> r2
-//     const void*restrict w,              sp + 84  -> r9
-//     int8_t*restrict c,                  sp + 88  -> r11
+//     const int8_t** restrict a,           sp + 80  -> r2
+//     const void* restrict w,              sp + 84  -> r9
+//     int8_t* restrict c,                  sp + 88  -> r11
 //     size_t cm_stride,                   sp + 92  -> (r6)
 //     size_t cn_stride,                   sp + 96  -> (r7)
 //     size_t a_offset,                    sp + 100 -> (r5)
@@ -60,10 +60,10 @@ class Generator : public MacroAssembler {
 //    int8_t output_max;          d11[7]
 //  } rndnu_neon;
 
-// Converted from: src/qs8-igemm/gen/4x8-minmax-rndnu-aarch32-neon-mlal-lane-prfm-ld64.S
+// Converted from: src/qs8-igemm/gen/4x8-minmax-rndnu-aarch32-neon-mlal-lane-ld64-prfm.S
 void Generator::generate(bool prefetch, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const void* params)
 {
-  assert(nc_mod_nr < 8);
+  assert(nc_mod_nr < 8 || nc_mod_nr == SIZE_MAX);
   assert(kc != 0);
   assert(ks != 0);
 
@@ -509,7 +509,7 @@ xnn_status_t xnn_generate_qs8_igemm_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_ld
   return xnn_status_success;
 }
 
-xnn_status_t xnn_generate_qs8_igemm_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_prfm_ld64(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const void* params) {
+xnn_status_t xnn_generate_qs8_igemm_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_ld64_prfm(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const void* params) {
   using namespace xnnpack::aarch32;
   Generator g(code);
   g.generate(true, max_mr, nc_mod_nr, kc, ks, nullptr);

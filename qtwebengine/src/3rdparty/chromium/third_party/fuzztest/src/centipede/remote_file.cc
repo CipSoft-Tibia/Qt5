@@ -21,6 +21,7 @@
 
 #include <cstdio>
 #include <filesystem>  // NOLINT
+#include <memory>
 #include <string>
 #include <string_view>
 #include <system_error>  // NOLINT
@@ -31,6 +32,12 @@
 #include "absl/log/log.h"
 #include "./centipede/defs.h"
 #include "./centipede/logging.h"
+#ifndef CENTIPEDE_DISABLE_RIEGELI
+#include "riegeli/bytes/fd_reader.h"
+#include "riegeli/bytes/fd_writer.h"
+#include "riegeli/bytes/reader.h"
+#include "riegeli/bytes/writer.h"
+#endif  // CENTIPEDE_DISABLE_RIEGELI
 
 namespace centipede {
 
@@ -146,5 +153,30 @@ ABSL_ATTRIBUTE_WEAK void RemoteGlobMatch(std::string_view glob,
   }
   ::globfree(&glob_ret);
 }
+
+ABSL_ATTRIBUTE_WEAK std::vector<std::string> RemoteListFilesRecursively(
+    std::string_view path) {
+  if (!std::filesystem::exists(path)) return {};
+  std::vector<std::string> ret;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(path)) {
+    if (entry.is_directory()) continue;
+    ret.push_back(entry.path());
+  }
+  return ret;
+}
+
+#ifndef CENTIPEDE_DISABLE_RIEGELI
+ABSL_ATTRIBUTE_WEAK std::unique_ptr<riegeli::Reader> CreateRiegeliFileReader(
+    std::string_view file_path) {
+  return std::make_unique<riegeli::FdReader<>>(file_path);
+}
+
+ABSL_ATTRIBUTE_WEAK std::unique_ptr<riegeli::Writer> CreateRiegeliFileWriter(
+    std::string_view file_path, bool append) {
+  return std::make_unique<riegeli::FdWriter<>>(
+      file_path, riegeli::FdWriterBase::Options().set_append(append));
+}
+#endif  // CENTIPEDE_DISABLE_RIEGELI
 
 }  // namespace centipede

@@ -51,6 +51,15 @@
 #define NOINLINE
 #endif
 
+// Annotate a function indicating it should not be optimized.
+#if defined(__clang__) && HAS_ATTRIBUTE(optnone)
+#define NOOPT [[clang::optnone]]
+#elif defined(COMPILER_GCC) && HAS_ATTRIBUTE(optimize)
+#define NOOPT __attribute__((optimize(0)))
+#else
+#define NOOPT
+#endif
+
 #if defined(__clang__) && defined(NDEBUG) && HAS_ATTRIBUTE(always_inline)
 #define ALWAYS_INLINE [[clang::always_inline]] inline
 #elif defined(COMPILER_GCC) && defined(NDEBUG) && HAS_ATTRIBUTE(always_inline)
@@ -101,7 +110,13 @@
 // References:
 // * https://en.cppreference.com/w/cpp/language/attributes/no_unique_address
 // * https://wg21.link/dcl.attr.nouniqueaddr
-#if HAS_CPP_ATTRIBUTE(no_unique_address)
+#if defined(COMPILER_MSVC) && HAS_CPP_ATTRIBUTE(msvc::no_unique_address)
+// Unfortunately MSVC ignores [[no_unique_address]] (see
+// https://devblogs.microsoft.com/cppblog/msvc-cpp20-and-the-std-cpp20-switch/#msvc-extensions-and-abi),
+// and clang-cl matches it for ABI compatibility reasons. We need to prefer
+// [[msvc::no_unique_address]] when available if we actually want any effect.
+#define NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#elif HAS_CPP_ATTRIBUTE(no_unique_address)
 #define NO_UNIQUE_ADDRESS [[no_unique_address]]
 #else
 #define NO_UNIQUE_ADDRESS
@@ -374,6 +389,20 @@ inline constexpr bool AnalyzerAssumeTrue(bool arg) {
 #define TRIVIAL_ABI
 #endif
 
+// Detect whether a type is trivially relocatable, ie. a move-and-destroy
+// sequence can replaced with memmove(). This can be used to optimise the
+// implementation of containers. This is automatically true for types that were
+// defined with TRIVIAL_ABI such as scoped_refptr.
+//
+// See also:
+//   https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/p1144r8.html
+//   https://clang.llvm.org/docs/LanguageExtensions.html#:~:text=__is_trivially_relocatable
+#if defined(__clang__) && HAS_BUILTIN(__is_trivially_relocatable)
+#define IS_TRIVIALLY_RELOCATABLE(t) __is_trivially_relocatable(t)
+#else
+#define IS_TRIVIALLY_RELOCATABLE(t) false
+#endif
+
 // Marks a member function as reinitializing a moved-from variable.
 // See also
 // https://clang.llvm.org/extra/clang-tidy/checks/bugprone-use-after-move.html#reinitialization
@@ -381,16 +410,6 @@ inline constexpr bool AnalyzerAssumeTrue(bool arg) {
 #define REINITIALIZES_AFTER_MOVE [[clang::reinitializes]]
 #else
 #define REINITIALIZES_AFTER_MOVE
-#endif
-
-// Requires constant initialization. See constinit in C++20. Allows to rely on a
-// variable being initialized before execution, and not requiring a global
-// constructor.
-#if HAS_ATTRIBUTE(require_constant_initialization)
-#define CONSTINIT __attribute__((require_constant_initialization))
-#endif
-#if !defined(CONSTINIT)
-#define CONSTINIT
 #endif
 
 #if defined(__clang__)

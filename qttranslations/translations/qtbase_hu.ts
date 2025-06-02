@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU">
-    <extra-po-header-language>hu</extra-po-header-language>
-    <extra-po-header-language_team>Hungarian &lt;kde-l10n-hu@kde.org&gt;</extra-po-header-language_team>
-    <extra-po-header-last_translator>Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header-last_translator>
-    <extra-po-header-po_revision_date>2024-02-07 22:24+0100</extra-po-header-po_revision_date>
-    <extra-po-header-project_id_version></extra-po-header-project_id_version>
-    <extra-po-header-x_generator>Lokalize 23.08.4</extra-po-header-x_generator>
-    <extra-po-header_comment># SPDX-FileCopyrightText: 2024 Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header_comment>
-    <extra-po-headers>MIME-Version,Content-Type,Content-Transfer-Encoding,Plural-Forms,X-Language,X-Qt-Contexts,Last-Translator,PO-Revision-Date,Project-Id-Version,Language-Team,Language,X-Generator</extra-po-headers>
 <context>
     <name>CloseButton</name>
     <message>
@@ -593,6 +585,10 @@ Nyomja meg az ESC billentyűt a megszakításhoz</translation>
         <translation>Érvénytelen domainnév</translation>
     </message>
     <message>
+        <source>SSL/TLS support not present</source>
+        <translation>Nincs SSL/TLS támogatás</translation>
+    </message>
+    <message>
         <source>Request timed out</source>
         <translation>A kérés túllépte az időkorlátot</translation>
     </message>
@@ -663,6 +659,10 @@ Nyomja meg az ESC billentyűt a megszakításhoz</translation>
     <message>
         <source>Invalid service record</source>
         <translation>Érvénytelen szolgáltatás rekord</translation>
+    </message>
+    <message>
+        <source>Invalid TLS association record</source>
+        <translation>Érvénytelen TLS társítási rekord</translation>
     </message>
     <message>
         <source>Invalid text record</source>
@@ -1499,7 +1499,7 @@ Mindenképp törölni szeretné?</translation>
     <name>QIBaseDriver</name>
     <message>
         <source>failed to query time zone mapping from system table</source>
-        <translation>az időzóna-leképezés lekérése a rendszertáblából sikertelen</translation>
+        <translation type="vanished">az időzóna-leképezés lekérése a rendszertáblából sikertelen</translation>
     </message>
     <message>
         <source>Error opening database</source>
@@ -1516,6 +1516,14 @@ Mindenképp törölni szeretné?</translation>
     <message>
         <source>Unable to rollback transaction</source>
         <translation>Nem vonható vissza a tranzakció</translation>
+    </message>
+    <message>
+        <source>Could not subscribe to event notifications for %1.</source>
+        <translation>Nem sikerült feliratkozni a(z) %1 eseményértesítéseire.</translation>
+    </message>
+    <message>
+        <source>Could not unsubscribe from event notifications for %1.</source>
+        <translation>Nem sikerült leiratkozni a(z) %1 eseményértesítéseiről.</translation>
     </message>
 </context>
 <context>
@@ -1543,6 +1551,18 @@ Mindenképp törölni szeretné?</translation>
     <message>
         <source>Could not get array data</source>
         <translation>Nem sikerült lekérni a tömbadatokat</translation>
+    </message>
+    <message>
+        <source>Array size mismatch. Field name: %3, expected size: %1. Supplied size: %2</source>
+        <translation>Tömbméreteltérés. Mezőnév: %3, várt méret: %1. Megadott méret: %2</translation>
+    </message>
+    <message>
+        <source>Array dimensions mismatch. Field name: %1</source>
+        <translation>Tömbdimenzió-eltérés. Mezőnév: %1</translation>
+    </message>
+    <message>
+        <source>Array size mismatch: size of %1 is %2, size of provided list is %3</source>
+        <translation>Tömbméreteltérés: %1 mérete %2, a megadott lista mérete %3</translation>
     </message>
     <message>
         <source>Could not get query info</source>
@@ -1757,6 +1777,10 @@ Mindenképp törölni szeretné?</translation>
     <message>
         <source>The shared library was not found.</source>
         <translation>Az osztott programkönyvtár nem található.</translation>
+    </message>
+    <message>
+        <source>Could not resolve &apos;qt_plugin_instance&apos; function</source>
+        <translation>Nem sikerült feloldani a „qt_plugin_instance” függvényt</translation>
     </message>
     <message>
         <source>metadata too small</source>
@@ -2234,11 +2258,16 @@ Mindenképp törölni szeretné?</translation>
         <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
         <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
         <translatorcomment>Nem szabad lefordítani.</translatorcomment>
-        <translation>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
+        <translation type="vanished">&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>&lt;h3&gt;About Qt&lt;/h3&gt;&lt;p&gt;This program uses Qt version %1.&lt;/p&gt;</source>
         <translation>&lt;h3&gt;A Qt névjegye&lt;/h3&gt;&lt;p&gt;Ez a program a Qt %1 verzióját használja.&lt;/p&gt;</translation>
+    </message>
+    <message>
+        <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd. product developed as an open source project. See &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
+        <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
+        <translation>&lt;p&gt;A Qt egy C++ eszközkészlet keresztplatformos alkalmazásfejlesztéshez.&lt;/p&gt;&lt;p&gt;A Qt hordozhatóságot biztosít minden nagyobb asztali operációs rendszerhez egyetlen forráskódból. Beágyazott Linux és más beágyazott és mobil operációs rendszerekhez is elérhető.&lt;/p&gt;&lt;p&gt;A Qt többféle licencelési lehetőséggel érhető el, hogy megfeleljen a különböző felhasználók igényeinek.&lt;/p&gt;&lt;p&gt;A kereskedelmi licencszerződésünk alapján licencelt Qt olyan zárt/kereskedelmi szoftverek fejlesztésére alkalmas, ahol nem kíván forráskódot megosztani harmadik féllel, vagy más módon nem tud megfelelni a GNU (L)GPL feltételeinek.&lt;/p&gt;&lt;p&gt;A GNU (L)GPL alatt licencelt Qt alkalmas a Qt&amp;nbsp;alkalmazások fejlesztésére, feltéve, hogy a vonatkozó licencek feltételeinek megfelel.&lt;/p&gt;&lt;p&gt;A Qt licencelésének áttekintéséhez keresse fel a &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; weboldalt.&lt;/p&gt;&lt;p&gt;Copyright (C) A The Qt Company Ltd. és más közreműködők.&lt;/p&gt;&lt;p&gt;A Qt és a Qt logó a The Qt Company Ltd. védjegyei.&lt;/p&gt;&lt;p&gt;A Qt a The Qt Company Ltd. nyílt forráskódú projektként fejlesztett terméke. További információkért lásd a &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; weboldalt.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -2548,6 +2577,10 @@ Mindenképp törölni szeretné?</translation>
     <message>
         <source>Unable to execute statement</source>
         <translation>Nem hajtható végre az utasítás</translation>
+    </message>
+    <message>
+        <source>QODBCResult::reset: Unable to set &apos;SQL_ATTR_CURSOR_TYPE&apos; as statement attribute. Please check your ODBC driver configuration</source>
+        <translation>QODBCResult::reset: Az „SQL_ATTR_CURSOR_TYPE” nem állítható be utasítás attribútumaként. Kérjük, ellenőrizze az OBDC illesztőprogram beállításait</translation>
     </message>
     <message>
         <source>Unable to fetch</source>
@@ -4454,6 +4487,10 @@ Kapcsoljon ki ezen beállítások közül egyet.</translation>
     <message>
         <source>PCRE2_MATCH_INVALID_UTF is not supported for DFA matching</source>
         <translation>a PCRE2_MATCH_INVALID_UTF nem támogatott DFA illesztésnél</translation>
+    </message>
+    <message>
+        <source>INTERNAL ERROR: invalid substring offset</source>
+        <translation>BELSŐ HIBA: érvénytelen részkarakterlánc-eltolás</translation>
     </message>
     <message>
         <source>parentheses are too deeply nested</source>
@@ -7652,6 +7689,29 @@ A szükséges minimális Direct2D verzió %1. A Direct2D verziója ezen a rendsz
     <message>
         <source>Error occurred while processing notation declaration</source>
         <translation>Hiba történt a jelölésdeklaráció feldolgozása során</translation>
+    </message>
+</context>
+<context>
+    <name>Assets::Downloader::AssetDownloader</name>
+    <message>
+        <source>Downloading JSON file...</source>
+        <translation>JSON-fájl letöltése…</translation>
+    </message>
+    <message>
+        <source>Downloading zip file...</source>
+        <translation>ZIP-fájl letöltése…</translation>
+    </message>
+    <message>
+        <source>Unzipping...</source>
+        <translation>Kibontás…</translation>
+    </message>
+    <message>
+        <source>Downloading assets...</source>
+        <translation>Objektumok letöltése…</translation>
+    </message>
+    <message>
+        <source>Copying assets...</source>
+        <translation>Objektumok másolása…</translation>
     </message>
 </context>
 </TS>

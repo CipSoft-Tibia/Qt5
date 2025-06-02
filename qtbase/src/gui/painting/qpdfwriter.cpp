@@ -6,9 +6,11 @@
 #ifndef QT_NO_PDF
 
 #include "qpagedpaintdevice_p.h"
-#include <QtCore/private/qobject_p.h>
-#include "private/qpdf_p.h"
+#include "qpdf_p.h"
+#include "qpdfoutputintent.h"
+
 #include <QtCore/qfile.h>
+#include <QtCore/private/qobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -189,6 +191,27 @@ void QPdfWriter::setCreator(const QString &creator)
 }
 
 /*!
+  \since 6.8
+  Returns the ID of the document. By default, the ID is a
+  randomly generated UUID.
+  */
+QUuid QPdfWriter::documentId() const
+{
+    Q_D(const QPdfWriter);
+    return d->engine->d_func()->documentId;
+}
+
+/*!
+  \since 6.8
+  Sets the ID of the document to \a documentId.
+  */
+void QPdfWriter::setDocumentId(QUuid documentId)
+{
+    Q_D(QPdfWriter);
+    d->engine->d_func()->documentId = documentId;
+}
+
+/*!
   \reimp
   */
 QPaintEngine *QPdfWriter::paintEngine() const
@@ -293,6 +316,75 @@ bool QPdfWriter::newPage()
     Q_D(QPdfWriter);
 
     return d->engine->newPage();
+}
+
+/*!
+  \enum QPdfWriter::ColorModel
+  \since 6.8
+
+  This enumeration describes the way in which the PDF engine interprets
+  stroking and filling colors, set as a QPainter's pen or brush (via
+  QPen and QBrush).
+
+  \value RGB All colors are converted to RGB and saved as such in the
+  PDF.
+
+  \value Grayscale All colors are converted to grayscale. For backwards
+  compatibility, they are emitted in the PDF output as RGB colors, with
+  identical quantities of red, green and blue.
+
+  \value CMYK All colors are converted to CMYK and saved as such.
+
+  \value Auto RGB colors are emitted as RGB; CMYK colors are emitted as
+  CMYK. Colors of any other color spec are converted to RGB.
+  This is the default since Qt 6.8.
+
+  \sa QColor, QGradient
+*/
+
+/*!
+  \since 6.8
+
+  Returns the color model used by this PDF writer.
+  The default is QPdfWriter::ColorModel::Auto.
+*/
+QPdfWriter::ColorModel QPdfWriter::colorModel() const
+{
+    Q_D(const QPdfWriter);
+    return static_cast<ColorModel>(d->engine->d_func()->colorModel);
+}
+
+/*!
+  \since 6.8
+
+  Sets the color model used by this PDF writer to \a model.
+*/
+void QPdfWriter::setColorModel(ColorModel model)
+{
+    Q_D(QPdfWriter);
+    d->engine->d_func()->colorModel = static_cast<QPdfEngine::ColorModel>(model);
+}
+
+/*!
+  \since 6.8
+
+  Returns the output intent used by this PDF writer.
+*/
+QPdfOutputIntent QPdfWriter::outputIntent() const
+{
+    Q_D(const QPdfWriter);
+    return d->engine->d_func()->outputIntent;
+}
+
+/*!
+  \since 6.8
+
+  Sets the output intent used by this PDF writer to \a intent.
+*/
+void QPdfWriter::setOutputIntent(const QPdfOutputIntent &intent)
+{
+    Q_D(QPdfWriter);
+    d->engine->d_func()->outputIntent = intent;
 }
 
 QT_END_NAMESPACE

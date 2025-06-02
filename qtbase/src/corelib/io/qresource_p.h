@@ -49,8 +49,8 @@ public:
 
     QDateTime fileTime(QFile::FileTime time) const override;
 
-    Iterator *beginEntryList(QDir::Filters filters, const QStringList &filterNames) override;
-    Iterator *endEntryList() override;
+    IteratorUniquePtr beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
+                                     const QStringList &filterNames) override;
 
     bool extension(Extension extension, const ExtensionOption *option = nullptr, ExtensionReturn *output = nullptr) override;
     bool supportsExtension(Extension extension) const override;

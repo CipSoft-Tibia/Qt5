@@ -97,7 +97,7 @@ void QSGRhiSupport::applySettings()
             }
 #if defined(Q_OS_WIN)
             m_rhiBackend = QRhi::D3D11;
-#elif defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#elif QT_CONFIG(metal)
             m_rhiBackend = QRhi::Metal;
 #elif QT_CONFIG(opengl)
             m_rhiBackend = QRhi::OpenGLES2;
@@ -120,7 +120,7 @@ void QSGRhiSupport::applySettings()
 
 void QSGRhiSupport::adjustToPlatformQuirks()
 {
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     // A macOS VM may not have Metal support at all. We have to decide at this
     // point, it will be too late afterwards, and the only way is to see if
     // MTLCreateSystemDefaultDevice succeeds.
@@ -215,12 +215,24 @@ void QSGRhiSupport::checkEnvQSgInfo()
 #define GL_RGB10_A2                       0x8059
 #endif
 
-QRhiTexture::Format QSGRhiSupport::toRhiTextureFormatFromGL(uint format)
+#ifndef GL_SRGB_ALPHA
+#define GL_SRGB_ALPHA                     0x8C42
+#endif
+
+#ifndef GL_SRGB8_ALPHA8
+#define GL_SRGB8_ALPHA8                   0x8C43
+#endif
+
+QRhiTexture::Format QSGRhiSupport::toRhiTextureFormatFromGL(uint format, QRhiTexture::Flags *flags)
 {
+    bool sRGB = false;
     auto rhiFormat = QRhiTexture::UnknownFormat;
     switch (format) {
-    case GL_RGBA:
+    case GL_SRGB_ALPHA:
+    case GL_SRGB8_ALPHA8:
+        sRGB = true;
         Q_FALLTHROUGH();
+    case GL_RGBA:
     case GL_RGBA8:
     case 0:
         rhiFormat = QRhiTexture::RGBA8;
@@ -282,6 +294,8 @@ QRhiTexture::Format QSGRhiSupport::toRhiTextureFormatFromGL(uint format)
         qWarning("GL format %d is not supported", format);
         break;
     }
+    if (sRGB)
+        (*flags) |=(QRhiTexture::sRGB);
     return rhiFormat;
 }
 #endif
@@ -598,7 +612,7 @@ QRhiTexture::Format QSGRhiSupport::toRhiTextureFormatFromDXGI(uint format, QRhiT
 }
 #endif
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
 namespace QSGRhiSupportMac {
     QRhiTexture::Format toRhiTextureFormatFromMetal(uint format, QRhiTexture::Flags *flags);
 }
@@ -758,7 +772,7 @@ static const void *qsgrhi_d3d12_rifResource(QSGRendererInterface::Resource res, 
 }
 #endif
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
 static const void *qsgrhi_mtl_rifResource(QSGRendererInterface::Resource res, const QRhiNativeHandles *nat,
                                     const QRhiNativeHandles *cbNat)
 {
@@ -805,7 +819,7 @@ const void *QSGRhiSupport::rifResource(QSGRendererInterface::Resource res,
     case QSGRendererInterface::RhiRedirectCommandBuffer:
         return QQuickWindowPrivate::get(w)->redirect.commandBuffer;
     case QSGRendererInterface::RhiRedirectRenderTarget:
-        return QQuickWindowPrivate::get(w)->redirect.rt.renderTarget;
+        return QQuickWindowPrivate::get(w)->redirect.rt.rt.renderTarget;
     default:
         break;
     }
@@ -835,7 +849,7 @@ const void *QSGRhiSupport::rifResource(QSGRendererInterface::Resource res,
     case QRhi::D3D12:
         return qsgrhi_d3d12_rifResource(res, nat);
 #endif
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     case QRhi::Metal:
     {
         QRhiCommandBuffer *cb = rc->currentFrameCommandBuffer();
@@ -1248,7 +1262,7 @@ QSGRhiSupport::RhiCreateResult QSGRhiSupport::createRhi(QQuickWindow *window, QS
         }
     }
 #endif
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     if (backend == QRhi::Metal) {
         QRhiMetalInitParams rhiParams;
         if (customDevD->type == QQuickGraphicsDevicePrivate::Type::DeviceAndCommandQueue) {
@@ -1574,20 +1588,22 @@ QRhiTexture::Format QSGRhiSupport::toRhiTextureFormat(uint nativeFormat, QRhiTex
 #if QT_CONFIG(opengl)
     case QRhi::OpenGLES2:
         Q_UNUSED(flags);
-        return toRhiTextureFormatFromGL(nativeFormat);
+        return toRhiTextureFormatFromGL(nativeFormat, flags);
 #endif
 #ifdef Q_OS_WIN
     case QRhi::D3D11:
     case QRhi::D3D12:
         return toRhiTextureFormatFromDXGI(nativeFormat, flags);
 #endif
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     case QRhi::Metal:
         return toRhiTextureFormatFromMetal(nativeFormat, flags);
 #endif
     default:
         return QRhiTexture::UnknownFormat;
     }
+    Q_UNUSED(nativeFormat)
+    Q_UNUSED(flags)
 }
 
 bool QSGRhiSupport::attemptReinitWithSwRastUponFail() const

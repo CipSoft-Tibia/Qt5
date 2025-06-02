@@ -170,7 +170,7 @@ QObjectPrivate::QObjectPrivate(int version)
     isDeletingChildren = false;                 // set by deleteChildren()
     sendChildEvents = true;                     // if we should send ChildAdded and ChildRemoved events to parent
     receiveChildEvents = true;
-    postedEvents = 0;
+    postedEvents.storeRelaxed(0);
     extraData = nullptr;
     metaObject = nullptr;
     isWindow = false;
@@ -191,14 +191,14 @@ QObjectPrivate::~QObjectPrivate()
                 thisThreadData->eventDispatcher.loadRelaxed()->unregisterTimers(q_ptr);
 
             // release the timer ids back to the pool
-            for (int i = 0; i < extraData->runningTimers.size(); ++i)
-                QAbstractEventDispatcherPrivate::releaseTimerId(extraData->runningTimers.at(i));
+            for (auto id : std::as_const(extraData->runningTimers))
+                QAbstractEventDispatcherPrivate::releaseTimerId(id);
         } else {
             qWarning("QObject::~QObject: Timers cannot be stopped from another thread");
         }
     }
 
-    if (postedEvents)
+    if (postedEvents.loadRelaxed())
         QCoreApplication::removePostedEvents(q_ptr, 0);
 
     thisThreadData->deref();
@@ -227,27 +227,6 @@ static void computeOffsets(const QMetaObject *metaobject, int *signalOffset, int
 }
 
 // Used by QAccessibleWidget
-bool QObjectPrivate::isSender(const QObject *receiver, const char *signal) const
-{
-    Q_Q(const QObject);
-    int signal_index = signalIndex(signal);
-    ConnectionData *cd = connections.loadRelaxed();
-    if (signal_index < 0 || !cd)
-        return false;
-    QMutexLocker locker(signalSlotLock(q));
-    if (signal_index < cd->signalVectorCount()) {
-        const QObjectPrivate::Connection *c = cd->signalVector.loadRelaxed()->at(signal_index).first.loadRelaxed();
-
-        while (c) {
-            if (c->receiver.loadRelaxed() == receiver)
-                return true;
-            c = c->nextConnectionList.loadRelaxed();
-        }
-    }
-    return false;
-}
-
-// Used by QAccessibleWidget
 QObjectList QObjectPrivate::receiverList(const char *signal) const
 {
     QObjectList returnValue;
@@ -264,19 +243,6 @@ QObjectList QObjectPrivate::receiverList(const char *signal) const
                 returnValue << r;
             c = c->nextConnectionList.loadRelaxed();
         }
-    }
-    return returnValue;
-}
-
-// Used by QAccessibleWidget
-QObjectList QObjectPrivate::senderList() const
-{
-    QObjectList returnValue;
-    ConnectionData *cd = connections.loadRelaxed();
-    if (cd) {
-        QMutexLocker locker(signalSlotLock(q_func()));
-        for (Connection *c = cd->senders; c; c = c->next)
-            returnValue << c->sender;
     }
     return returnValue;
 }
@@ -689,7 +655,7 @@ QMetaCallEvent* QMetaCallEvent::create_impl(QtPrivate::SlotObjUniquePtr slotObj,
     \reentrant
 
     QSignalBlocker can be used wherever you would otherwise use a
-    pair of calls to blockSignals(). It blocks signals in its
+    pair of calls to QObject::blockSignals(). It blocks signals in its
     constructor and in the destructor it resets the state to what
     it was before the constructor ran.
 
@@ -814,7 +780,7 @@ QMetaCallEvent* QMetaCallEvent::create_impl(QtPrivate::SlotObjUniquePtr slotObj,
     to catch child events.
 
     Last but not least, QObject provides the basic timer support in
-    Qt; see QTimer for high-level support for timers.
+    Qt; see QChronoTimer for high-level support for timers.
 
     Notice that the Q_OBJECT macro is mandatory for any object that
     implements signals, slots or properties. You also need to run the
@@ -897,9 +863,9 @@ QMetaCallEvent* QMetaCallEvent::create_impl(QtPrivate::SlotObjUniquePtr slotObj,
 
     \l uic generates code that invokes this function to enable
     auto-connection to be performed between widgets on forms created
-    with \e{Qt Designer}. More information about using auto-connection with \e{Qt Designer} is
+    with \e{\QD}. More information about using auto-connection with \e{\QD} is
     given in the \l{Using a Designer UI File in Your Application} section of
-    the \e{Qt Designer} manual.
+    the \l{Qt Widgets Designer Manual}{\QD} manual.
 
     \section1 Dynamic Properties
 
@@ -910,7 +876,7 @@ QMetaCallEvent* QMetaCallEvent::create_impl(QtPrivate::SlotObjUniquePtr slotObj,
     and setProperty() to write them.
 
     Dynamic properties are supported by
-    \l{Qt Designer's Widget Editing Mode#The Property Editor}{Qt Designer},
+    \l{Qt Widgets Designer's Widget Editing Mode#The Property Editor}{\QD},
     and both standard Qt widgets and user-created forms can be given dynamic
     properties.
 
@@ -1434,7 +1400,7 @@ bool QObject::event(QEvent *e)
         break;
 
     case QEvent::DeferredDelete:
-        qDeleteInEventHandler(this);
+        delete this;
         break;
 
     case QEvent::MetaCall:
@@ -1458,7 +1424,7 @@ bool QObject::event(QEvent *e)
         QThreadData *threadData = d->threadData.loadRelaxed();
         QAbstractEventDispatcher *eventDispatcher = threadData->eventDispatcher.loadRelaxed();
         if (eventDispatcher) {
-            QList<QAbstractEventDispatcher::TimerInfo> timers = eventDispatcher->registeredTimers(this);
+            QList<QAbstractEventDispatcher::TimerInfoV2> timers = eventDispatcher->timersForObject(this);
             if (!timers.isEmpty()) {
                 const bool res = eventDispatcher->unregisterTimers(this);
                 // do not to release our timer ids back to the pool (since the timer ids are moving to a new thread).
@@ -1493,9 +1459,9 @@ bool QObject::event(QEvent *e)
     This event handler can be reimplemented in a subclass to receive
     timer events for the object.
 
-    QTimer provides a higher-level interface to the timer
-    functionality, and also more general information about timers. The
-    timer event is passed in the \a event parameter.
+    QChronoTimer provides higher-level interfaces to the timer functionality,
+    and also more general information about timers. The timer event is passed
+    in the \a event parameter.
 
     \sa startTimer(), killTimer(), event()
 */
@@ -1771,8 +1737,8 @@ void QObjectPrivate::setThreadData_helper(QThreadData *currentData, QThreadData 
     }
 
     // move posted events
-    int eventsMoved = 0;
-    for (int i = 0; i < currentData->postEventList.size(); ++i) {
+    qsizetype eventsMoved = 0;
+    for (qsizetype i = 0; i < currentData->postEventList.size(); ++i) {
         const QPostEvent &pe = currentData->postEventList.at(i);
         if (!pe.event)
             continue;
@@ -1844,18 +1810,19 @@ void QObjectPrivate::setThreadData_helper(QThreadData *currentData, QThreadData 
     startTimer(std::chrono::milliseconds{interval}, timerType);
     \endcode
 
-    \sa timerEvent(), killTimer(), QTimer::singleShot()
+    \sa timerEvent(), killTimer(), QChronoTimer, QBasicTimer
 */
 
 int QObject::startTimer(int interval, Qt::TimerType timerType)
 {
+    // no overflow can happen here:
+    // 2^31 ms * 1,000,000 always fits a 64-bit signed integer type
     return startTimer(std::chrono::milliseconds{interval}, timerType);
 }
 
 /*!
     \since 5.9
     \overload
-    \fn int QObject::startTimer(std::chrono::milliseconds interval, Qt::TimerType timerType)
 
     Starts a timer and returns a timer identifier, or returns zero if
     it could not start a timer.
@@ -1869,34 +1836,47 @@ int QObject::startTimer(int interval, Qt::TimerType timerType)
     event parameter class when a timer event occurs. Reimplement this
     function to get timer events.
 
-    If multiple timers are running, the QTimerEvent::timerId() can be
+    If multiple timers are running, the QTimerEvent::id() method can be
     used to find out which timer was activated.
 
     Example:
 
     \snippet code/src_corelib_kernel_qobject.cpp 8
 
-    Note that QTimer's accuracy depends on the underlying operating system and
-    hardware. The \a timerType argument allows you to customize the accuracy of
+    Note that the accuracy of the timer depends on the underlying operating
+    system and hardware.
+
+    The \a timerType argument allows you to customize the accuracy of
     the timer. See Qt::TimerType for information on the different timer types.
     Most platforms support an accuracy of 20 milliseconds; some provide more.
     If Qt is unable to deliver the requested number of timer events, it will
     silently discard some.
 
-    The QTimer class provides a high-level programming interface with
-    single-shot timers and timer signals instead of events. There is
-    also a QBasicTimer class that is more lightweight than QTimer and
-    less clumsy than using timer IDs directly.
+    The QTimer and QChronoTimer classes provide a high-level programming
+    interface with single-shot timers and timer signals instead of
+    events. There is also a QBasicTimer class that is more lightweight than
+    QChronoTimer but less clumsy than using timer IDs directly.
 
-    \sa timerEvent(), killTimer(), QTimer::singleShot()
+    \note Starting from Qt 6.8 the type of \a interval
+    is \c std::chrono::nanoseconds, prior to that it was \c
+    std::chrono::milliseconds. This change is backwards compatible with
+    older releases of Qt.
+
+    \note In Qt 6.8, QObject was changed to use Qt::TimerId to represent timer
+    IDs. This method converts the TimerId to int for backwards compatibility
+    reasons, however you can use Qt::TimerId to check the value returned by
+    this method, for example:
+    \snippet code/src_corelib_kernel_qobject.cpp invalid-timer-id
+
+    \sa timerEvent(), killTimer(), QChronoTimer, QBasicTimer
 */
-int QObject::startTimer(std::chrono::milliseconds interval, Qt::TimerType timerType)
+int QObject::startTimer(std::chrono::nanoseconds interval, Qt::TimerType timerType)
 {
     Q_D(QObject);
 
     using namespace std::chrono_literals;
 
-    if (Q_UNLIKELY(interval < 0ms)) {
+    if (Q_UNLIKELY(interval < 0ns)) {
         qWarning("QObject::startTimer: Timers cannot have negative intervals");
         return 0;
     }
@@ -1912,10 +1892,10 @@ int QObject::startTimer(std::chrono::milliseconds interval, Qt::TimerType timerT
     }
 
     auto dispatcher = thisThreadData->eventDispatcher.loadRelaxed();
-    int timerId = dispatcher->registerTimer(interval.count(), timerType, this);
+    Qt::TimerId timerId = dispatcher->registerTimer(interval, timerType, this);
     d->ensureExtraData();
     d->extraData->runningTimers.append(timerId);
-    return timerId;
+    return int(timerId);
 }
 
 /*!
@@ -1929,17 +1909,26 @@ int QObject::startTimer(std::chrono::milliseconds interval, Qt::TimerType timerT
 
 void QObject::killTimer(int id)
 {
+    killTimer(Qt::TimerId{id});
+}
+
+/*!
+    \since 6.8
+    \overload
+*/
+void QObject::killTimer(Qt::TimerId id)
+{
     Q_D(QObject);
     if (Q_UNLIKELY(thread() != QThread::currentThread())) {
         qWarning("QObject::killTimer: Timers cannot be stopped from another thread");
         return;
     }
-    if (id) {
+    if (id > Qt::TimerId::Invalid) {
         int at = d->extraData ? d->extraData->runningTimers.indexOf(id) : -1;
         if (at == -1) {
             // timer isn't owned by this object
             qWarning("QObject::killTimer(): Error: timer id %d is not valid for object %p (%s, %ls), timer has not been killed",
-                     id,
+                     qToUnderlying(id),
                      this,
                      metaObject()->className(),
                      qUtf16Printable(objectName()));
@@ -1954,7 +1943,6 @@ void QObject::killTimer(int id)
         QAbstractEventDispatcherPrivate::releaseTimerId(id);
     }
 }
-
 
 /*!
     \fn QObject *QObject::parent() const
@@ -2449,24 +2437,53 @@ void QObject::deleteLater()
         qWarning("You are deferring the delete of QCoreApplication, this may not work as expected.");
 #endif
 
-    {
-        // De-bounce QDeferredDeleteEvents. Use the post event list mutex
-        // to guard access to deleteLaterCalled, so we don't need a separate
-        // mutex in QObjectData.
-        auto locker = QCoreApplicationPrivate::lockThreadPostEventList(this);
 
-        // FIXME: The deleteLaterCalled flag is part of a bit field,
-        // so we likely have data races here, even with the mutex above,
-        // as long as we're not guarding every access to the bit field.
+    // De-bounce QDeferredDeleteEvents. Use the post event list mutex
+    // to guard access to deleteLaterCalled, so we don't need a separate
+    // mutex in QObjectData.
+    auto eventListLocker = QCoreApplicationPrivate::lockThreadPostEventList(this);
+    if (!eventListLocker.threadData)
+        return;
 
-        Q_D(QObject);
-        if (d->deleteLaterCalled)
-            return;
+    // FIXME: The deleteLaterCalled flag is part of a bit field,
+    // so we likely have data races here, even with the mutex above,
+    // as long as we're not guarding every access to the bit field.
 
-        d->deleteLaterCalled = true;
+    Q_D(QObject);
+    if (d->deleteLaterCalled)
+        return;
+
+    d->deleteLaterCalled = true;
+
+    int loopLevel = 0;
+    int scopeLevel = 0;
+
+    auto *objectThreadData = eventListLocker.threadData;
+    if (objectThreadData == QThreadData::current()) {
+        // Remember the current running eventloop for deleteLater
+        // calls in the object's own thread.
+
+        // Events sent by non-Qt event handlers (such as glib) may not
+        // have the scopeLevel set correctly. The scope level makes sure that
+        // code like this:
+        //     foo->deleteLater();
+        //     qApp->processEvents(); // without passing QEvent::DeferredDelete
+        // will not cause "foo" to be deleted before returning to the event loop.
+
+        loopLevel = objectThreadData->loopLevel;
+        scopeLevel = objectThreadData->scopeLevel;
+
+        // If the scope level is 0 while loopLevel != 0, we are called from a
+        // non-conformant code path, and our best guess is that the scope level
+        // should be 1. (Loop level 0 is special: it means that no event loops
+        // are running.)
+        if (scopeLevel == 0 && loopLevel != 0)
+            scopeLevel = 1;
     }
 
-    QCoreApplication::postEvent(this, new QDeferredDeleteEvent());
+    eventListLocker.unlock();
+    QCoreApplication::postEvent(this,
+        new QDeferredDeleteEvent(loopLevel, scopeLevel));
 }
 
 /*!
@@ -2702,10 +2719,16 @@ int QObject::senderSignalIndex() const
 
     \snippet code/src_corelib_kernel_qobject.cpp 21
 
+    As the code snippet above illustrates, you can use this function to avoid
+    expensive operations or emitting a signal that nobody listens to.
+
+    \warning In a multithreaded application, consecutive calls to this
+    function are not guaranteed to yield the same results.
+
     \warning This function violates the object-oriented principle of
-    modularity. However, it might be useful when you need to perform
-    expensive initialization only if something is connected to a
-    signal.
+    modularity. In particular, this function must not be called from an
+    override of connectNotify() or disconnectNotify(), as those might get
+    called from any thread.
 
     \sa isSignalConnected()
 */
@@ -2762,14 +2785,17 @@ int QObject::receivers(const char *signal) const
     \snippet code/src_corelib_kernel_qobject.cpp 49
 
     As the code snippet above illustrates, you can use this function to avoid
-    expensive initialization or emitting a signal that nobody listens to.
-    However, in a multithreaded application, connections might change after
-    this function returns and before the signal gets emitted.
+    expensive operations or emitting a signal that nobody listens to.
+
+    \warning In a multithreaded application, consecutive calls to this
+    function are not guaranteed to yield the same results.
 
     \warning This function violates the object-oriented principle of
     modularity. In particular, this function must not be called from an
     override of connectNotify() or disconnectNotify(), as those might get
     called from any thread.
+
+    \sa receivers()
 */
 bool QObject::isSignalConnected(const QMetaMethod &signal) const
 {
@@ -3183,6 +3209,9 @@ QMetaObject::Connection QObject::connect(const QObject *sender, const QMetaMetho
 
     \endlist
 
+    \include includes/qobject.qdocinc disconnect-mismatch
+    \include includes/qobject.qdocinc disconnect-queued
+
     \nullptr may be used as a wildcard, meaning "any signal", "any receiving
     object", or "any slot in the receiving object", respectively.
 
@@ -3335,6 +3364,9 @@ bool QObject::disconnect(const QObject *sender, const char *signal,
 
     \endlist
 
+    \include includes/qobject.qdocinc disconnect-mismatch
+    \include includes/qobject.qdocinc disconnect-queued
+
     QMetaMethod() may be used as wildcard in the meaning "any signal" or "any slot in receiving object".
     In the same way \nullptr can be used for \a receiver in the meaning "any receiving object".
     In this case method should also be QMetaMethod(). \a sender parameter should be never \nullptr.
@@ -3408,6 +3440,9 @@ bool QObject::disconnect(const QObject *sender, const QMetaMethod &signal,
 
     Disconnects \a signal from \a method of \a receiver.
 
+    \include includes/qobject.qdocinc disconnect-mismatch
+    \include includes/qobject.qdocinc disconnect-queued
+
     A signal-slot connection is removed when either of the objects
     involved are destroyed.
 
@@ -3420,6 +3455,9 @@ bool QObject::disconnect(const QObject *sender, const QMetaMethod &signal,
 
     Disconnects all signals in this object from \a receiver's \a
     method.
+
+    \include includes/qobject.qdocinc disconnect-mismatch
+    \include includes/qobject.qdocinc disconnect-queued
 
     A signal-slot connection is removed when either of the objects
     involved are destroyed.
@@ -3439,8 +3477,7 @@ bool QObject::disconnect(const QObject *sender, const QMetaMethod &signal,
 
     \warning This function violates the object-oriented principle of
     modularity. However, it might be useful when you need to perform
-    expensive initialization only if something is connected to a
-    signal.
+    an expensive operation only if something is connected to a signal.
 
     \warning This function is called from the thread which performs the
     connection, which may be a different thread from the thread in which
@@ -4442,15 +4479,23 @@ void QObject::dumpObjectInfo() const
 
 
 #ifndef QT_NO_DEBUG_STREAM
+void QObjectPrivate::writeToDebugStream(QDebug &dbg) const
+{
+    Q_Q(const QObject);
+    dbg.nospace() << q->metaObject()->className() << '(' << (const void *)q;
+    if (!q->objectName().isEmpty())
+        dbg << ", name = " << q->objectName();
+    dbg << ')';
+}
+
 QDebug operator<<(QDebug dbg, const QObject *o)
 {
     QDebugStateSaver saver(dbg);
     if (!o)
         return dbg << "QObject(0x0)";
-    dbg.nospace() << o->metaObject()->className() << '(' << (const void *)o;
-    if (!o->objectName().isEmpty())
-        dbg << ", name = " << o->objectName();
-    dbg << ')';
+
+    const QObjectPrivate *d = QObjectPrivate::get(o);
+    d->writeToDebugStream(dbg);
     return dbg;
 }
 #endif
@@ -4997,11 +5042,6 @@ QDebug operator<<(QDebug dbg, const QObject *o)
     Synonym for QList<QObject *>.
 */
 
-void qDeleteInEventHandler(QObject *o)
-{
-    delete o;
-}
-
 /*!
     \fn template<typename PointerToMemberFunction> QMetaObject::Connection QObject::connect(const QObject *sender, PointerToMemberFunction signal, const QObject *receiver, PointerToMemberFunction method, Qt::ConnectionType type)
     \overload connect()
@@ -5354,7 +5394,12 @@ bool QObject::disconnect(const QMetaObject::Connection &connection)
     \note It is not possible to use this overload to disconnect signals
     connected to functors or lambda expressions. That is because it is not
     possible to compare them. Instead, use the overload that takes a
-    QMetaObject::Connection
+    QMetaObject::Connection.
+
+    \note Unless \a method is \nullptr, this function will also not break
+    connections that were made using the string-based version of connect(). To
+    break such connections, use the corresponding string-based overload of
+    disconnect().
 
     \sa connect()
 */

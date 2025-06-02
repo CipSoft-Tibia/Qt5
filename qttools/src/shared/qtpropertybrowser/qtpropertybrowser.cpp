@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtpropertybrowser.h"
+#include "qtpropertybrowser_p.h"
 #include <QtCore/QHash>
 #include <QtGui/QIcon>
 
@@ -14,10 +14,11 @@ QT_BEGIN_NAMESPACE
 class QtPropertyPrivate
 {
 public:
-    QtPropertyPrivate(QtAbstractPropertyManager *manager) : m_enabled(true), m_modified(false), m_manager(manager) {}
+    explicit QtPropertyPrivate(QtAbstractPropertyManager *manager) : m_manager(manager) {}
+
     QtProperty *q_ptr;
 
-    QSet<QtProperty *> m_parentItems;
+    QtProperty *m_parentItem = nullptr;
     QList<QtProperty *> m_subItems;
 
     QString m_valueToolTip;
@@ -25,8 +26,8 @@ public:
     QString m_statusTip;
     QString m_whatsThis;
     QString m_name;
-    bool m_enabled;
-    bool m_modified;
+    bool m_enabled = true;
+    bool m_modified = false;
 
     QtAbstractPropertyManager * const m_manager;
 };
@@ -124,16 +125,17 @@ QtProperty::QtProperty(QtAbstractPropertyManager *manager)
 */
 QtProperty::~QtProperty()
 {
-    for (QtProperty *property : std::as_const(d_ptr->m_parentItems))
-        property->d_ptr->m_manager->d_ptr->propertyRemoved(this, property);
+    auto *parent = d_ptr->m_parentItem;
+    if (parent)
+        parent->d_ptr->m_manager->d_ptr->propertyRemoved(this, parent);
 
     d_ptr->m_manager->d_ptr->propertyDestroyed(this);
 
     for (QtProperty *property : std::as_const(d_ptr->m_subItems))
-        property->d_ptr->m_parentItems.remove(this);
+        property->d_ptr->m_parentItem = nullptr;
 
-    for (QtProperty *property : std::as_const(d_ptr->m_parentItems))
-        property->d_ptr->m_subItems.removeAll(this);
+    if (parent)
+        parent->d_ptr->m_subItems.removeAll(this);
 }
 
 /*!
@@ -147,6 +149,11 @@ QtProperty::~QtProperty()
 QList<QtProperty *> QtProperty::subProperties() const
 {
     return d_ptr->m_subItems;
+}
+
+QtProperty *QtProperty::parentProperty() const
+{
+    return d_ptr->m_parentItem;
 }
 
 /*!
@@ -444,7 +451,8 @@ void QtProperty::insertSubProperty(QtProperty *property,
     }
 
     d_ptr->m_subItems.insert(newPos, property);
-    property->d_ptr->m_parentItems.insert(this);
+    Q_ASSERT(property->d_ptr->m_parentItem == nullptr);
+    property->d_ptr->m_parentItem = this;
 
     d_ptr->m_manager->d_ptr->propertyInserted(property, this, properAfterProperty);
 }
@@ -467,8 +475,8 @@ void QtProperty::removeSubProperty(QtProperty *property)
     while (pos < pendingList.size()) {
         if (pendingList.at(pos) == property) {
             d_ptr->m_subItems.removeAt(pos);
-            property->d_ptr->m_parentItems.remove(this);
 
+            property->d_ptr->m_parentItem = nullptr;
             return;
         }
         pos++;
@@ -1903,4 +1911,4 @@ void QtAbstractPropertyBrowser::setCurrentItem(QtBrowserItem *item)
 
 QT_END_NAMESPACE
 
-#include "moc_qtpropertybrowser.cpp"
+#include "moc_qtpropertybrowser_p.cpp"

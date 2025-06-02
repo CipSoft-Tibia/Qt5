@@ -16,9 +16,9 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype TrailEmitter
-    \instantiates QQuickTrailEmitter
+    \nativetype QQuickTrailEmitter
     \inqmlmodule QtQuick.Particles
-    \inherits QQuickParticleEmitter
+    \inherits Emitter
     \brief Emits logical particles from other logical particles.
     \ingroup qtquick-particles
 
@@ -50,7 +50,7 @@ QQuickTrailEmitter::QQuickTrailEmitter(QQuickItem *parent) :
     The type of logical particle which this is emitting from.
 */
 /*!
-    \qmlproperty qreal QtQuick.Particles::TrailEmitter::velocityFromMovement
+    \qmlproperty real QtQuick.Particles::TrailEmitter::velocityFromMovement
 
     If this value is non-zero, then any movement of the emitter will provide additional
     starting velocity to the particles based on the movement. The additional vector will be the

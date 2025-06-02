@@ -1,16 +1,29 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_PHYSICALDEVICE_H_
 #define SRC_DAWN_NATIVE_PHYSICALDEVICE_H_
@@ -26,6 +39,7 @@
 #include "dawn/common/ityp_span.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/Features.h"
+#include "dawn/native/Forward.h"
 #include "dawn/native/Limits.h"
 #include "dawn/native/Toggles.h"
 #include "dawn/native/dawn_platform.h"
@@ -34,7 +48,15 @@ namespace dawn::native {
 
 class DeviceBase;
 
-enum class FeatureLevel { Compatibility, Core };
+struct FeatureValidationResult {
+    // Constructor of successful result
+    FeatureValidationResult();
+    // Constructor of failed result
+    explicit FeatureValidationResult(std::string errorMsg);
+
+    bool success;
+    std::string errorMessage;
+};
 
 class PhysicalDeviceBase : public RefCounted {
   public:
@@ -44,7 +66,7 @@ class PhysicalDeviceBase : public RefCounted {
     MaybeError Initialize();
 
     ResultOrError<Ref<DeviceBase>> CreateDevice(AdapterBase* adapter,
-                                                const DeviceDescriptor* descriptor,
+                                                const UnpackedPtr<DeviceDescriptor>& descriptor,
                                                 const TogglesState& deviceToggles);
 
     uint32_t GetVendorId() const;
@@ -82,8 +104,11 @@ class PhysicalDeviceBase : public RefCounted {
     virtual void SetupBackendDeviceToggles(TogglesState* deviceToggles) const = 0;
 
     // Check if a feature os supported by this adapter AND suitable with given toggles.
-    MaybeError ValidateFeatureSupportedWithToggles(wgpu::FeatureName feature,
-                                                   const TogglesState& toggles) const;
+    FeatureValidationResult ValidateFeatureSupportedWithToggles(wgpu::FeatureName feature,
+                                                                const TogglesState& toggles) const;
+
+    // Populate backend properties. Ownership of allocations written are owned by the caller.
+    virtual void PopulateBackendProperties(UnpackedPtr<AdapterProperties>& properties) const = 0;
 
   protected:
     uint32_t mVendorId = 0xFFFFFFFF;
@@ -104,10 +129,13 @@ class PhysicalDeviceBase : public RefCounted {
     // Used for the tests that intend to use an adapter without all features enabled.
     void SetSupportedFeaturesForTesting(const std::vector<wgpu::FeatureName>& requiredFeatures);
 
+    void GetDefaultLimitsForSupportedFeatureLevel(Limits* limits) const;
+
   private:
-    virtual ResultOrError<Ref<DeviceBase>> CreateDeviceImpl(AdapterBase* adapter,
-                                                            const DeviceDescriptor* descriptor,
-                                                            const TogglesState& deviceToggles) = 0;
+    virtual ResultOrError<Ref<DeviceBase>> CreateDeviceImpl(
+        AdapterBase* adapter,
+        const UnpackedPtr<DeviceDescriptor>& descriptor,
+        const TogglesState& deviceToggles) = 0;
 
     virtual MaybeError InitializeImpl() = 0;
 
@@ -119,7 +147,7 @@ class PhysicalDeviceBase : public RefCounted {
 
     virtual void InitializeVendorArchitectureImpl();
 
-    virtual MaybeError ValidateFeatureSupportedWithTogglesImpl(
+    virtual FeatureValidationResult ValidateFeatureSupportedWithTogglesImpl(
         wgpu::FeatureName feature,
         const TogglesState& toggles) const = 0;
 

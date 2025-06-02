@@ -13,12 +13,11 @@
 #include "qcbormap.h"
 #include "qcborstreamreader.h"
 #include "qcborvalue.h"
-#include "qdiriterator.h"
+#include "qdirlisting.h"
 #include "qfileinfo.h"
 #include "qjsonarray.h"
 #include "qjsondocument.h"
 #include "qjsonobject.h"
-#include "qmap.h"
 #include "qmutex.h"
 #include "qplugin.h"
 #include "qplugin_p.h"
@@ -30,6 +29,7 @@
 
 #include <qtcore_tracepoints_p.h>
 
+#include <map>
 #include <vector>
 
 QT_BEGIN_NAMESPACE
@@ -261,7 +261,7 @@ public:
     mutable QMutex mutex;
     QDuplicateTracker<QString> loadedPaths;
     std::vector<QLibraryPrivate::UniquePtr> libraries;
-    QMap<QString,QLibraryPrivate*> keyMap;
+    std::map<QString, QLibraryPrivate*> keyMap;
     QString suffix;
     QString extraSearchPath;
     Qt::CaseSensitivity cs;
@@ -303,30 +303,17 @@ inline void QFactoryLoaderPrivate::updateSinglePath(const QString &path)
 
     qCDebug(lcFactoryLoader) << "checking directory path" << path << "...";
 
-    QDirIterator plugins(path,
+    QDirListing plugins(path,
 #if defined(Q_OS_WIN)
                 QStringList(QStringLiteral("*.dll")),
 #elif defined(Q_OS_ANDROID)
                 QStringList("libplugins_%1_*.so"_L1.arg(suffix)),
 #endif
-                QDir::Files);
+                QDirListing::IteratorFlag::FilesOnly | QDirListing::IteratorFlag::ResolveSymlinks);
 
-    while (plugins.hasNext()) {
-        QString fileName = plugins.next();
-#ifdef Q_OS_DARWIN
-        const bool isDebugPlugin = fileName.endsWith("_debug.dylib"_L1);
-        const bool isDebugLibrary =
-            #ifdef QT_DEBUG
-                true;
-            #else
-                false;
-            #endif
-
-        // Skip mismatching plugins so that we don't end up loading both debug and release
-        // versions of the same Qt libraries (due to the plugin's dependencies).
-        if (isDebugPlugin != isDebugLibrary)
-            continue;
-#elif defined(Q_PROCESSOR_X86)
+    for (const auto &dirEntry : plugins) {
+        const QString &fileName = dirEntry.fileName();
+#if defined(Q_PROCESSOR_X86)
         if (fileName.endsWith(".avx2"_L1) || fileName.endsWith(".avx512"_L1)) {
             // ignore AVX2-optimized file, we'll do a bait-and-switch to it later
             continue;
@@ -337,7 +324,7 @@ inline void QFactoryLoaderPrivate::updateSinglePath(const QString &path)
         Q_TRACE(QFactoryLoader_update, fileName);
 
         QLibraryPrivate::UniquePtr library;
-        library.reset(QLibraryPrivate::findOrCreate(QFileInfo(fileName).canonicalFilePath()));
+        library.reset(QLibraryPrivate::findOrCreate(dirEntry.canonicalFilePath()));
         if (!library->isPlugin()) {
             qCDebug(lcFactoryLoader) << library->errorString << Qt::endl
                                      << "         not a plugin";
@@ -361,22 +348,38 @@ inline void QFactoryLoaderPrivate::updateSinglePath(const QString &path)
         if (!metaDataOk)
             continue;
 
+        static constexpr qint64 QtVersionNoPatch = QT_VERSION_CHECK(QT_VERSION_MAJOR, QT_VERSION_MINOR, 0);
+        int thisVersion = library->metaData.value(QtPluginMetaDataKeys::QtVersion).toInteger();
+        if (iid.startsWith(QStringLiteral("org.qt-project.Qt.QPA"))) {
+            // QPA plugins must match Qt Major.Minor
+            if (thisVersion != QtVersionNoPatch) {
+                qCDebug(lcFactoryLoader) << "Ignoring QPA plugin due to mismatching Qt versions" << QtVersionNoPatch << thisVersion;
+                continue;
+            }
+        }
+
         int keyUsageCount = 0;
         for (const QString &key : std::as_const(keys)) {
-            // first come first serve, unless the first
-            // library was built with a future Qt version,
-            // whereas the new one has a Qt version that fits
-            // better
-            constexpr int QtVersionNoPatch = QT_VERSION_CHECK(QT_VERSION_MAJOR, QT_VERSION_MINOR, 0);
-            QLibraryPrivate *previous = keyMap.value(key);
-            int prev_qt_version = 0;
-            if (previous)
-                prev_qt_version = int(previous->metaData.value(QtPluginMetaDataKeys::QtVersion).toInteger());
-            int qt_version = int(library->metaData.value(QtPluginMetaDataKeys::QtVersion).toInteger());
-            if (!previous || (prev_qt_version > QtVersionNoPatch && qt_version <= QtVersionNoPatch)) {
-                keyMap[key] = library.get();    // we WILL .release()
-                ++keyUsageCount;
+            QLibraryPrivate *&keyMapEntry = keyMap[key];
+            if (QLibraryPrivate *existingLibrary = keyMapEntry) {
+                static constexpr bool QtBuildIsDebug = QT_CONFIG(debug);
+                bool existingIsDebug = existingLibrary->metaData.value(QtPluginMetaDataKeys::IsDebug).toBool();
+                bool thisIsDebug = library->metaData.value(QtPluginMetaDataKeys::IsDebug).toBool();
+                bool configsAreDifferent = thisIsDebug != existingIsDebug;
+                bool thisConfigDoesNotMatchQt = thisIsDebug != QtBuildIsDebug;
+                if (configsAreDifferent && thisConfigDoesNotMatchQt)
+                    continue; // Existing library matches Qt's build config
+
+                // If the existing library was built with a future Qt version,
+                // whereas the one we're considering has a Qt version that fits
+                // better, we prioritize the better match.
+                int existingVersion = existingLibrary->metaData.value(QtPluginMetaDataKeys::QtVersion).toInteger();
+                if (!(existingVersion > QtVersionNoPatch && thisVersion <= QtVersionNoPatch))
+                    continue; // Existing version is a better match
             }
+
+            keyMapEntry = library.get();
+            ++keyUsageCount;
         }
         if (keyUsageCount || keys.isEmpty()) {
             library->setLoadHints(QLibrary::PreventUnloadHint); // once loaded, don't unload
@@ -391,6 +394,9 @@ void QFactoryLoader::update()
 #ifdef QT_SHARED
     Q_D(QFactoryLoader);
 
+    if (!d->extraSearchPath.isEmpty())
+        d->updateSinglePath(d->extraSearchPath);
+
     const QStringList paths = QCoreApplication::libraryPaths();
     for (const QString &pluginDir : paths) {
 #ifdef Q_OS_ANDROID
@@ -398,11 +404,8 @@ void QFactoryLoader::update()
 #else
         QString path = pluginDir + d->suffix;
 #endif
-
         d->updateSinglePath(path);
     }
-    if (!d->extraSearchPath.isEmpty())
-        d->updateSinglePath(d->extraSearchPath);
 #else
     Q_D(QFactoryLoader);
     qCDebug(lcFactoryLoader) << "ignoring" << d->iid
@@ -422,7 +425,10 @@ QFactoryLoader::~QFactoryLoader()
 QLibraryPrivate *QFactoryLoader::library(const QString &key) const
 {
     Q_D(const QFactoryLoader);
-    return d->keyMap.value(d->cs ? key : key.toLower());
+    const auto it = d->keyMap.find(d->cs ? key : key.toLower());
+    if (it == d->keyMap.cend())
+        return nullptr;
+    return it->second;
 }
 #endif
 

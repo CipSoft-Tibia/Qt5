@@ -447,6 +447,11 @@ void QSSGRhiShaderPipeline::addStage(const QRhiShaderStage &stage, StageFlags fl
               -1);
 }
 
+int QSSGRhiShaderPipeline::ub0ShadowDataOffset() const
+{
+    return m_ub0NextUBufOffset + m_context.rhi()->ubufAligned(sizeof(QSSGShaderLightsUniformData));
+}
+
 void QSSGRhiShaderPipeline::setUniformValue(char *ubufData, const char *name, const QVariant &inValue, QSSGRenderShaderValue::Type inType)
 {
     using namespace QSSGRenderShaderValue;
@@ -986,9 +991,11 @@ void QSSGRhiShaderPipeline::setUniformArray(char *ubufData, const char *name, co
     }
 }
 
-void QSSGRhiShaderPipeline::ensureCombinedMainLightsUniformBuffer(QRhiBuffer **ubuf)
+void QSSGRhiShaderPipeline::ensureCombinedUniformBuffer(QRhiBuffer **ubuf)
 {
-    const quint32 totalBufferSize = m_ub0NextUBufOffset + sizeof(QSSGShaderLightsUniformData);
+    const quint32 alignedLightsSize = m_context.rhi()->ubufAligned(sizeof(QSSGShaderLightsUniformData));
+    const quint32 alignedShadowsSize = m_context.rhi()->ubufAligned(sizeof(QSSGShaderShadowsUniformData));
+    const quint32 totalBufferSize = m_ub0NextUBufOffset + alignedLightsSize + alignedShadowsSize;
     if (!*ubuf) {
         *ubuf = m_context.rhi()->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, totalBufferSize);
         (*ubuf)->create();
@@ -1125,6 +1132,21 @@ int QSSGRhiContext::mainPassSampleCount() const
 {
     Q_D(const QSSGRhiContext);
     return d->m_mainSamples;
+}
+
+void QSSGRhiContextPrivate::setMainPassViewCount(int viewCount)
+{
+    m_mainViewCount = viewCount;
+}
+
+/*!
+    Returns the multiview count used in the main render pass. This is either 2,
+    when multiview rendering is in use, or 1 (no multiview).
+ */
+int QSSGRhiContext::mainPassViewCount() const
+{
+    Q_D(const QSSGRhiContext);
+    return d->m_mainViewCount;
 }
 
 void QSSGRhiContextPrivate::releaseCachedResources()
@@ -1368,26 +1390,32 @@ void QSSGRhiContextPrivate::cleanupDrawCallData(const QSSGRenderModel *model)
     object is not found. The necessary upload operations are then enqueued on
     this given update batch.
 
+    When \a arraySize is 2 or more, a 2D texture array is returned.
+
     The ownership of the returned texture stays with Qt Quick 3D.
  */
 QRhiTexture *QSSGRhiContext::dummyTexture(QRhiTexture::Flags flags, QRhiResourceUpdateBatch *rub,
-                                          const QSize &size, const QColor &fillColor)
+                                          const QSize &size, const QColor &fillColor, int arraySize)
 {
     Q_D(QSSGRhiContext);
-    auto it = d->m_dummyTextures.constFind({flags, size, fillColor});
+    auto it = d->m_dummyTextures.constFind({flags, size, fillColor, arraySize});
     if (it != d->m_dummyTextures.constEnd())
         return *it;
 
-    QRhiTexture *t = d->m_rhi->newTexture(QRhiTexture::RGBA8, size, 1, flags);
+    QRhiTexture *t = arraySize < 2
+        ? d->m_rhi->newTexture(QRhiTexture::RGBA8, size, 1, flags)
+        : d->m_rhi->newTextureArray(QRhiTexture::RGBA8, arraySize, size, 1, flags);
     if (t->create()) {
         QImage image(t->pixelSize(), QImage::Format_RGBA8888);
         image.fill(fillColor);
         rub->uploadTexture(t, image);
+        for (int layer = 1; layer < arraySize; ++layer)
+            rub->uploadTexture(t, QRhiTextureUploadDescription(QRhiTextureUploadEntry(layer, 0, QRhiTextureSubresourceUploadDescription(image))));
     } else {
         qWarning("Failed to build dummy texture");
     }
 
-    d->m_dummyTextures.insert({flags, size, fillColor}, t);
+    d->m_dummyTextures.insert({flags, size, fillColor, arraySize}, t);
     return t;
 }
 
@@ -1636,6 +1664,7 @@ QRhiGraphicsPipeline *QSSGRhiContextPrivate::pipeline(const QSSGGraphicsPipeline
     ps->setTargetBlends(targetBlends.cbegin(), targetBlends.cend());
 
     ps->setSampleCount(key.state.samples);
+    ps->setMultiViewCount(key.state.viewCount);
 
     ps->setDepthTest(key.state.flags.testFlag(QSSGRhiGraphicsPipelineState::Flag::DepthTestEnabled));
     ps->setDepthWrite(key.state.flags.testFlag(QSSGRhiGraphicsPipelineState::Flag::DepthWriteEnabled));

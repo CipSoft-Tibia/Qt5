@@ -25,9 +25,12 @@
 #include <string>
 #include <vector>
 #include <bitset>
+#include <shared_mutex>
+
+#include <vulkan/utility/vk_format_utils.h>
+
 #include "cast_utils.h"
 #include "generated/vk_extension_helper.h"
-#include "generated/vk_format_utils.h"
 #include "error_message/logging.h"
 
 #ifndef WIN32
@@ -49,8 +52,6 @@
 #define VVL_PRETTY_FUNCTION __FILE__ ":" STRINGIFY(__LINE__)
 #endif
 #endif
-
-#ifdef __cplusplus
 
 static inline VkExtent3D CastTo3D(const VkExtent2D &d2) {
     VkExtent3D d3 = {d2.width, d2.height, 1};
@@ -357,28 +358,9 @@ static inline uint32_t GetIndexAlignment(VkIndexType indexType) {
     }
 }
 
-static inline uint32_t GetPlaneIndex(VkImageAspectFlags aspect) {
-    // Returns an out of bounds index on error
-    switch (aspect) {
-        case VK_IMAGE_ASPECT_PLANE_0_BIT:
-            return 0;
-            break;
-        case VK_IMAGE_ASPECT_PLANE_1_BIT:
-            return 1;
-            break;
-        case VK_IMAGE_ASPECT_PLANE_2_BIT:
-            return 2;
-            break;
-        default:
-            // If more than one plane bit is set, return error condition
-            return FORMAT_MAX_PLANES;
-            break;
-    }
-}
-
 // vkspec.html#formats-planes-image-aspect
 static inline bool IsValidPlaneAspect(VkFormat format, VkImageAspectFlags aspect_mask) {
-    const uint32_t planes = FormatPlaneCount(format);
+    const uint32_t planes = vkuFormatPlaneCount(format);
     constexpr VkImageAspectFlags valid_planes =
         VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT;
 
@@ -401,6 +383,29 @@ static inline bool IsMultiplePlaneAspect(VkImageAspectFlags aspect_mask) {
         VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT;
     const VkImageAspectFlags planes = aspect_mask & valid_planes;
     return planes != 0 && !IsPowerOfTwo(planes);
+}
+
+static inline bool IsAnyPlaneAspect(VkImageAspectFlags aspect_mask) {
+    constexpr VkImageAspectFlags valid_planes =
+        VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT;
+    return (aspect_mask & valid_planes) != 0;
+}
+
+static bool inline IsStageInPipelineBindPoint(VkShaderStageFlags stages, VkPipelineBindPoint bind_point) {
+    switch (bind_point) {
+        case VK_PIPELINE_BIND_POINT_GRAPHICS:
+            return (stages & (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
+                              VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_GEOMETRY_BIT |
+                              VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_TASK_BIT_EXT | VK_SHADER_STAGE_MESH_BIT_EXT)) != 0;
+        case VK_PIPELINE_BIND_POINT_COMPUTE:
+            return (stages & VK_SHADER_STAGE_COMPUTE_BIT) != 0;
+        case VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR:
+            return (stages &
+                    (VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR |
+                     VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_INTERSECTION_BIT_KHR | VK_SHADER_STAGE_CALLABLE_BIT_KHR)) != 0;
+        default:
+            return false;
+    }
 }
 
 // all "advanced blend operation" found in spec
@@ -490,8 +495,8 @@ static inline uint32_t FullMipChainLevels(VkExtent3D extent) {
 
     // If multi-plane, adjust per-plane extent
     const VkFormat format = ci.format;
-    if (FormatIsMultiplane(format)) {
-        VkExtent2D divisors = FindMultiplaneExtentDivisors(format, aspect_mask);
+    if (vkuFormatIsMultiplane(format)) {
+        VkExtent2D divisors = vkuFindMultiplaneExtentDivisors(format, static_cast<VkImageAspectFlagBits>(aspect_mask));
         extent.width /= divisors.width;
         extent.height /= divisors.height;
     }
@@ -534,6 +539,21 @@ constexpr uint32_t ResolveRemainingLayers(const VkImageCreateInfo &ci, VkImageSu
     return (range.layerCount == VK_REMAINING_ARRAY_LAYERS) ? (ci.arrayLayers - range.baseArrayLayer) : range.layerCount;
 }
 
+// Used to get the VkExternalFormatANDROID without having to use ifdef in logic
+// Result of zero is same of not having pNext struct
+constexpr uint64_t GetExternalFormat(const void *pNext) {
+#if defined(VK_USE_PLATFORM_ANDROID_KHR)
+    if (pNext) {
+        const auto *external_format = vku::FindStructInPNextChain<VkExternalFormatANDROID>(pNext);
+        if (external_format) {
+            return external_format->externalFormat;
+        }
+    }
+#endif
+    (void)pNext;
+    return 0;
+}
+
 // Find whether or not an element is in list
 // Two definitions, to be able to do the following calls:
 // IsValueIn(1, {1, 2, 3});
@@ -549,9 +569,6 @@ bool IsValueIn(const T &v, const std::initializer_list<T> &list) {
     return IsValueIn<T, decltype(list)>(v, list);
 }
 
-extern "C" {
-#endif
-
 #define VK_LAYER_API_VERSION VK_HEADER_VERSION_COMPLETE
 
 typedef enum VkStringErrorFlagBits {
@@ -565,13 +582,7 @@ void layer_debug_messenger_actions(debug_report_data *report_data, const char *l
 
 VkStringErrorFlags vk_string_validate(const int max_length, const char *char_array);
 bool white_list(const char *item, const std::set<std::string> &whitelist);
-
-#ifdef __cplusplus
-}
-#endif
-
-#ifdef __cplusplus
-#include <shared_mutex>
+std::string GetTempFilePath();
 
 // Aliases to avoid excessive typing. We can't easily auto these away because
 // there are virtual methods in ValidationObject which return lock guards
@@ -810,6 +821,11 @@ const typename T::value_type *DataOrNull(const T &container) {
     return nullptr;
 }
 
-}  // namespace vvl
 
-#endif
+// Workaround for static_assert(false) before C++ 23 arrives
+// https://en.cppreference.com/w/cpp/language/static_assert
+// https://cplusplus.github.io/CWG/issues/2518.html
+template <typename>
+inline constexpr bool dependent_false_v = false;
+
+}  // namespace vvl

@@ -9,7 +9,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype IntValidator
-    \instantiates QIntValidator
+    \nativetype QIntValidator
     \inqmlmodule QtQuick
     \ingroup qtquick-text-utility
     \ingroup qtquick-text-validators
@@ -21,6 +21,12 @@ QT_BEGIN_NAMESPACE
     interpret the number and will accept locale specific digits, group separators, and positive
     and negative signs.  In addition, IntValidator is always guaranteed to accept a number
     formatted according to the "C" locale.
+
+    The following example shows a TextInput object with an IntValidator to check
+    that the user has input an integer within the specified range, updating the
+    text color to highlight invalid input:
+
+    \snippet qml/intvalidator.qml 0
 
     \sa DoubleValidator, RegularExpressionValidator, {Validating Input Text}
 */
@@ -75,7 +81,7 @@ void QQuickIntValidator::resetLocaleName()
 
 /*!
     \qmltype DoubleValidator
-    \instantiates QDoubleValidator
+    \nativetype QDoubleValidator
     \inqmlmodule QtQuick
     \ingroup qtquick-text-utility
     \ingroup qtquick-text-validators
@@ -83,22 +89,29 @@ void QQuickIntValidator::resetLocaleName()
 
     The DoubleValidator type provides a validator for non-integer numbers.
 
-    Input is accepted if it contains a double that is within the valid range
-    and is in the  correct format.
+    \list
+    \li Accepted Input: Input is accepted if it contains a double that is within
+        the valid range and is in the correct format.
+    \li Accepted but Invalid Input: Input is accepted but considered invalid if
+        it contains a double that is outside the valid range or is in the wrong
+        format (for example, too many digits after the decimal point or empty).
+    \li Rejected Input: Input is rejected if it is not a double.
+    \endlist
 
-    Input is accepected but invalid if it contains a double that is outside
-    the range or is in the wrong format; e.g. with too many digits after the
-    decimal point or is empty.
+    \note If the valid range consists of only positive doubles (for example,
+    0.0 to 100.0) and the input is a negative double, it is rejected. If
+    \l notation is set to \c DoubleValidator.StandardNotation and the input
+    contains more digits before the decimal point than a double in the valid
+    range may have, it is also rejected. If \l notation is
+    \c DoubleValidator.ScientificNotation and the input is not in the valid
+    range, it is accepted but invalid. The value may become valid by changing
+    the exponent.
 
-    Input is rejected if it is not a double.
+    The following example shows a TextInput object with a DoubleValidator to
+    check that the user has input a double within the specified range,
+    updating the text color to highlight invalid input:
 
-    Note: If the valid range consists of just positive doubles (e.g. 0.0 to
-    100.0) and input is a negative double then it is rejected. If \l notation
-    is set to DoubleValidator.StandardNotation, and  the input contains more
-    digits before the decimal point than a double in the valid range may have,
-    it is also rejected. If \l notation is DoubleValidator.ScientificNotation,
-    and the input is not in the valid range, it is accecpted but invalid. The
-    value may yet become valid by changing the exponent.
+    \snippet qml/doublevalidator.qml 0
 
     \sa IntValidator, RegularExpressionValidator, {Validating Input Text}
 */
@@ -168,7 +181,7 @@ void QQuickDoubleValidator::resetLocaleName()
 
 /*!
     \qmltype RegularExpressionValidator
-    \instantiates QRegularExpressionValidator
+    \nativetype QRegularExpressionValidator
     \inqmlmodule QtQuick
     \ingroup qtquick-text-utility
     \ingroup qtquick-text-validators

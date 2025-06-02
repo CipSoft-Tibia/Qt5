@@ -18,14 +18,14 @@ Item {
         id: graphData
     }
 
-    Theme3D {
+    GraphsTheme {
         id: firstTheme
-        type: Theme3D.Theme.Qt
+        theme: GraphsTheme.Theme.QtGreen
     }
 
-    Theme3D {
+    GraphsTheme {
         id: secondTheme
-        type: Theme3D.Theme.Ebony
+        theme: GraphsTheme.Theme.PurpleSeries
     }
 
     Item {
@@ -35,8 +35,8 @@ Item {
         Bars3D {
             id: barGraph
             anchors.fill: parent
-            selectionMode: AbstractGraph3D.SelectionItemAndRow
-            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
+            selectionMode: Graphs3D.SelectionFlag.ItemAndRow
+            cameraPreset: Graphs3D.CameraPreset.IsometricLeftHigh
             theme: firstTheme
             valueAxis.labelFormat: "%d\u00B0C"
 

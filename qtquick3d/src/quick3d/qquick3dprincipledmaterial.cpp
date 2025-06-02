@@ -145,6 +145,29 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlproperty bool PrincipledMaterial::baseColorSingleChannelEnabled
+    \since 6.8
+
+    When this property is enabled, the material will use the single value of the baseColorChannel from
+    the baseColorMap as RGB value and use 1.0 as alpha value.
+    The default value is false.
+*/
+
+/*!
+    \qmlproperty enumeration PrincipledMaterial::baseColorChannel
+    \since 6.8
+
+    This property defines the texture channel used to read the baseColor value from baseColorMap.
+    In order to use a single texture channel as color you have to enable the baseColorSingleChannelEnabled
+    The default value is \c Material.R.
+
+    \value Material.R Read value from texture R channel.
+    \value Material.G Read value from texture G channel.
+    \value Material.B Read value from texture B channel.
+    \value Material.A Read value from texture A channel.
+*/
+
+/*!
     \qmlproperty real PrincipledMaterial::metalness
 
     The metalness property defines the \e metalness of the the material. The value
@@ -175,6 +198,29 @@ QT_BEGIN_NAMESPACE
     \value Material.G Read value from texture G channel.
     \value Material.B Read value from texture B channel.
     \value Material.A Read value from texture A channel.
+*/
+
+/*!
+    \qmlproperty bool PrincipledMaterial::emissiveSingleChannelEnabled
+    \since 6.8
+
+    When this property is enabled, the material will use the single value of the emissiveChannel from
+    the emissiveMap as RGB value.
+    The default value is false.
+*/
+
+/*!
+    \qmlproperty enumeration PrincipledMaterial::emissiveChannel
+    \since 6.8
+
+    This property defines the texture channel used to read the emissive value from emissiveMap.
+    In order to use a single texture channel as color you have to enable the emissiveSingleChannelEnabled
+    The default value is \c Material.R.
+
+     \value Material.R Read value from texture R channel.
+     \value Material.G Read value from texture G channel.
+     \value Material.B Read value from texture B channel.
+     \value Material.A Read value from texture A channel.
 */
 
 /*!
@@ -233,6 +279,29 @@ QT_BEGIN_NAMESPACE
     by the specularAmount.
 
     \note The specular map will be ignored unless the material is dielectric.
+*/
+
+/*!
+    \qmlproperty bool PrincipledMaterial::specularSingleChannelEnabled
+    \since 6.8
+
+    When this property is enabled, the material will use the single value of the specularChannel from
+    the specularMap as RGB value.
+    The default value is false.
+*/
+
+/*!
+    \qmlproperty enumeration PrincipledMaterial::specularChannel
+    \since 6.8
+
+    This property defines the texture channel used to read the specular color value from specularMap.
+    In order to use a single texture channel as color you have to enable the specularSingleChannelEnabled
+    The default value is \c Material.R.
+
+    \value Material.R Read value from texture R channel.
+    \value Material.G Read value from texture G channel.
+    \value Material.B Read value from texture B channel.
+    \value Material.A Read value from texture A channel.
 */
 
 /*!
@@ -297,6 +366,14 @@ QT_BEGIN_NAMESPACE
 
     This property defines a Texture used to control the opacity differently for
     different parts of the material.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::invertOpacityMapValue
+    \since 6.8
+
+    This property inverts the opacity value of the opacityMap.
+    The default value is \c false.
 */
 
 /*!
@@ -517,7 +594,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PrincipledMaterial::clearcoatAmount
+    \qmlproperty real PrincipledMaterial::clearcoatAmount
 
     This property defines the intensity of the clearcoat layer.
 
@@ -547,7 +624,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PrincipledMaterial::clearcoatRoughnessAmount
+    \qmlproperty real PrincipledMaterial::clearcoatRoughnessAmount
 
     This property defines the roughness of the clearcoat layer.
     The default value is \c 0.0
@@ -584,8 +661,15 @@ QT_BEGIN_NAMESPACE
 
 */
 
+
 /*!
-    \qmlproperty float PrincipledMaterial::transmissionFactor
+    \qmlproperty real PrincipledMaterial::clearcoatNormalStrength
+
+    This property controls the amount of simulated displacement for the clearcoatNormalMap.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::transmissionFactor
 
     This property defines the percentage of light that is transmitted through
     the material's surface.
@@ -617,7 +701,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PrincipledMaterial::thicknessFactor
+    \qmlproperty real PrincipledMaterial::thicknessFactor
 
     This property defines the thickness of the volume beneath the surface.
     Unlike many other properties of PrincipledMaterial, the value in defined
@@ -651,7 +735,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty float PrincipledMaterial::attenuationDistance
+    \qmlproperty real PrincipledMaterial::attenuationDistance
 
     This property defines the Density of the medium given as the average
     distance that light travels in the medium before interacting with a
@@ -704,12 +788,175 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
+    \qmlproperty real PrincipledMaterial::fresnelScaleBiasEnabled
+
+    By Setting the value to true the material will take Fresnel Scale and Fresnel Bias into account.
+    The default value is \c false.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::fresnelScale
+
+    This property scale head-on reflections (looking directly at the
+    surface) while maintaining reflections seen at grazing angles.
+    In order to affect changes to the material you have to enable fresnelScaleBiasEnabled.
+    The default value is \c 1.0.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::fresnelBias
+
+    This property push forward head-on reflections (looking directly at the
+    surface) while maintaining reflections seen at grazing angles.
+    In order to affect changes to the material you have to enable fresnelScaleBiasEnabled.
+    The default value is \c 0.0.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::fresnelPower
+
+    This property decreases head-on reflections (looking directly at the
+    surface) while maintaining reflections seen at grazing angles.
+    The default value is \c 5.0.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::clearcoatFresnelScaleBiasEnabled
+
+    By Setting the value to true the material will take Clearcoat Fresnel Scale and Clearcoat Fresnel Bias into account.
+    The default value is \c false.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::clearcoatFresnelScale
+
+    This property scale head-on reflections (looking directly at the
+    surface) while maintaining reflections seen at grazing angles.
+    In order to affect changes to the material you have to enable clearcoatFresnelScaleBiasEnabled.
+    The default value is \c 1.0.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::clearcoatFresnelBias
+
+    This property push forward head-on reflections (looking directly at the
+    surface) while maintaining reflections seen at grazing angles.
+    In order to affect changes to the material you have to enable clearcoatFresnelScaleBiasEnabled.
+    The default value is \c 0.0.
+*/
+
+/*!
+    \qmlproperty real PrincipledMaterial::clearcoatFresnelPower
+
+    This property decreases head-on reflections (looking directly at the
+    surface) while maintaining reflections seen at grazing angles.
+    The default value is \c 5.0.
+*/
+
+/*!
     \qmlproperty bool PrincipledMaterial::vertexColorsEnabled
     \since 6.5
 
     When this property is enabled, the material will use vertex colors from the
     mesh. These will be multiplied by any other colors specified for the
     material. The default value is true.
+*/
+
+/*!
+    \qmlproperty bool PrincipledMaterial::vertexColorsMaskEnabled
+    \since 6.8
+
+    When this property is enabled, the material will use vertex colors from the
+    mesh as mask of various properties e.g RoughnessAmount, SpecularAmount, ... .
+    The default value is false.
+*/
+
+/*!
+    \qmlproperty enumeration PrincipledMaterial::vertexColorRedMask
+    \since 6.8
+
+    This property defines the vertex color red channel used as the specifies mask.
+    The value is a bit-wise combination of flags.
+    The default value is \c PrincipledMaterial.NoMask.
+
+    \value PrincipledMaterial.NoMask.
+    \value PrincipledMaterial.ClearcoatAmountMask.
+    \value PrincipledMaterial.ClearcoatRoughnessAmountMask.
+    \value PrincipledMaterial.ClearcoatNormalStrengthMask.
+    \value PrincipledMaterial.HeightAmountMask.
+    \value PrincipledMaterial.MetalnessMask.
+    \value PrincipledMaterial.RoughnessMask.
+    \value PrincipledMaterial.NormalStrengthMask.
+    \value PrincipledMaterial.OcclusionAmountMask.
+    \value PrincipledMaterial.SpecularAmountMask.
+    \value PrincipledMaterial.ThicknessFactorMask.
+    \value PrincipledMaterial.TransmissionFactorMask.
+ */
+
+/*!
+    \qmlproperty enumeration PrincipledMaterial::vertexColorGreenMask
+    \since 6.8
+
+    This property defines the vertex color green channel used as the specifies mask.
+    The value is a bit-wise combination of flags.
+    The default value is \c PrincipledMaterial.NoMask.
+
+    \value PrincipledMaterial.NoMask.
+    \value PrincipledMaterial.ClearcoatAmountMask.
+    \value PrincipledMaterial.ClearcoatRoughnessAmountMask.
+    \value PrincipledMaterial.ClearcoatNormalStrengthMask.
+    \value PrincipledMaterial.HeightAmountMask.
+    \value PrincipledMaterial.MetalnessMask.
+    \value PrincipledMaterial.RoughnessMask.
+    \value PrincipledMaterial.NormalStrengthMask.
+    \value PrincipledMaterial.OcclusionAmountMask.
+    \value PrincipledMaterial.SpecularAmountMask.
+    \value PrincipledMaterial.ThicknessFactorMask.
+    \value PrincipledMaterial.TransmissionFactorMask.
+*/
+
+/*!
+    \qmlproperty enumeration PrincipledMaterial::vertexColorBlueMask
+    \since 6.8
+
+    This property defines the vertex color blue channel used as the specifies mask.
+    The value is a bit-wise combination of flags.
+    The default value is \c PrincipledMaterial.NoMask.
+
+    \value PrincipledMaterial.NoMask.
+    \value PrincipledMaterial.ClearcoatAmountMask.
+    \value PrincipledMaterial.ClearcoatRoughnessAmountMask.
+    \value PrincipledMaterial.ClearcoatNormalStrengthMask.
+    \value PrincipledMaterial.HeightAmountMask.
+    \value PrincipledMaterial.MetalnessMask.
+    \value PrincipledMaterial.RoughnessMask.
+    \value PrincipledMaterial.NormalStrengthMask.
+    \value PrincipledMaterial.OcclusionAmountMask.
+    \value PrincipledMaterial.SpecularAmountMask.
+    \value PrincipledMaterial.ThicknessFactorMask.
+    \value PrincipledMaterial.TransmissionFactorMask.
+*/
+
+/*!
+    \qmlproperty enumeration PrincipledMaterial::vertexColorAlphaMask
+    \since 6.8
+
+    This property defines the vertex color alpha channel used as the specifies mask.
+    The value is a bit-wise combination of flags.
+    The default value is \c PrincipledMaterial.NoMask.
+
+    \value PrincipledMaterial.NoMask.
+    \value PrincipledMaterial.ClearcoatAmountMask.
+    \value PrincipledMaterial.ClearcoatRoughnessAmountMask.
+    \value PrincipledMaterial.ClearcoatNormalStrengthMask.
+    \value PrincipledMaterial.HeightAmountMask.
+    \value PrincipledMaterial.MetalnessMask.
+    \value PrincipledMaterial.RoughnessMask.
+    \value PrincipledMaterial.NormalStrengthMask.
+    \value PrincipledMaterial.OcclusionAmountMask.
+    \value PrincipledMaterial.SpecularAmountMask.
+    \value PrincipledMaterial.ThicknessFactorMask.
+    \value PrincipledMaterial.TransmissionFactorMask.
 */
 
 QQuick3DPrincipledMaterial::QQuick3DPrincipledMaterial(QQuick3DObject *parent)
@@ -738,6 +985,36 @@ QColor QQuick3DPrincipledMaterial::baseColor() const
 QQuick3DTexture *QQuick3DPrincipledMaterial::baseColorMap() const
 {
     return m_baseColorMap;
+}
+
+bool QQuick3DPrincipledMaterial::baseColorSingleChannelEnabled() const
+{
+    return m_baseColorSingleChannelEnabled;
+}
+
+QQuick3DMaterial::TextureChannelMapping QQuick3DPrincipledMaterial::baseColorChannel() const
+{
+    return m_baseColorChannel;
+}
+
+bool QQuick3DPrincipledMaterial::specularSingleChannelEnabled() const
+{
+    return m_specularSingleChannelEnabled;
+}
+
+QQuick3DMaterial::TextureChannelMapping QQuick3DPrincipledMaterial::specularChannel() const
+{
+    return m_specularChannel;
+}
+
+bool QQuick3DPrincipledMaterial::emissiveSingleChannelEnabled() const
+{
+    return m_emissiveSingleChannelEnabled;
+}
+
+QQuick3DMaterial::TextureChannelMapping QQuick3DPrincipledMaterial::emissiveChannel() const
+{
+    return m_emissiveChannel;
 }
 
 QQuick3DTexture *QQuick3DPrincipledMaterial::emissiveMap() const
@@ -778,6 +1055,11 @@ float QQuick3DPrincipledMaterial::roughness() const
 QQuick3DTexture *QQuick3DPrincipledMaterial::roughnessMap() const
 {
     return m_roughnessMap;
+}
+
+bool QQuick3DPrincipledMaterial::invertOpacityMapValue() const
+{
+    return m_invertOpacityMapValue;
 }
 
 float QQuick3DPrincipledMaterial::opacity() const
@@ -933,6 +1215,66 @@ void QQuick3DPrincipledMaterial::setBaseColorMap(QQuick3DTexture *baseColorMap)
     markDirty(BaseColorDirty);
 }
 
+void QQuick3DPrincipledMaterial::setBaseColorSingleChannelEnabled(bool baseColorSingleChannelEnabled)
+{
+    if (m_baseColorSingleChannelEnabled == baseColorSingleChannelEnabled)
+        return;
+
+    m_baseColorSingleChannelEnabled = baseColorSingleChannelEnabled;
+    emit baseColorSingleChannelEnabledChanged(baseColorSingleChannelEnabled);
+    markDirty(BaseColorDirty);
+}
+
+void QQuick3DPrincipledMaterial::setBaseColorChannel(TextureChannelMapping channel)
+{
+    if (m_baseColorChannel == channel)
+        return;
+
+    m_baseColorChannel = channel;
+    emit baseColorChannelChanged(channel);
+    markDirty(BaseColorDirty);
+}
+
+void QQuick3DPrincipledMaterial::setSpecularSingleChannelEnabled(bool specularSingleChannelEnabled)
+{
+    if (m_specularSingleChannelEnabled == specularSingleChannelEnabled)
+        return;
+
+    m_specularSingleChannelEnabled = specularSingleChannelEnabled;
+    emit specularSingleChannelEnabledChanged(specularSingleChannelEnabled);
+    markDirty(SpecularDirty);
+}
+
+void QQuick3DPrincipledMaterial::setSpecularChannel(TextureChannelMapping channel)
+{
+    if (m_specularChannel == channel)
+        return;
+
+    m_specularChannel = channel;
+    emit specularChannelChanged(channel);
+    markDirty(SpecularDirty);
+}
+
+void QQuick3DPrincipledMaterial::setEmissiveSingleChannelEnabled(bool emissiveSingleChannelEnabled)
+{
+    if (m_emissiveSingleChannelEnabled == emissiveSingleChannelEnabled)
+        return;
+
+    m_emissiveSingleChannelEnabled = emissiveSingleChannelEnabled;
+    emit emissiveSingleChannelEnabledChanged(emissiveSingleChannelEnabled);
+    markDirty(EmissiveDirty);
+}
+
+void QQuick3DPrincipledMaterial::setEmissiveChannel(TextureChannelMapping channel)
+{
+    if (m_emissiveChannel == channel)
+        return;
+
+    m_emissiveChannel = channel;
+    emit emissiveChannelChanged(channel);
+    markDirty(EmissiveDirty);
+}
+
 void QQuick3DPrincipledMaterial::setEmissiveMap(QQuick3DTexture *emissiveMap)
 {
     if (m_emissiveMap == emissiveMap)
@@ -1022,6 +1364,16 @@ void QQuick3DPrincipledMaterial::setRoughnessMap(QQuick3DTexture *roughnessMap)
     m_roughnessMap = roughnessMap;
     emit roughnessMapChanged(m_roughnessMap);
     markDirty(RoughnessDirty);
+}
+
+void QQuick3DPrincipledMaterial::setInvertOpacityMapValue(bool invertOpacityMapValue)
+{
+    if (invertOpacityMapValue == m_invertOpacityMapValue)
+        return;
+
+    m_invertOpacityMapValue = invertOpacityMapValue;
+    emit invertOpacityMapValueChanged(m_invertOpacityMapValue);
+    markDirty(OpacityDirty);
 }
 
 void QQuick3DPrincipledMaterial::setOpacity(float opacity)
@@ -1276,6 +1628,8 @@ QSSGRenderGraphObject *QQuick3DPrincipledMaterial::updateSpatialNode(QSSGRenderG
             material->colorMap = m_baseColorMap->getRenderImage();
 
         material->color = QSSGUtils::color::sRGBToLinear(m_baseColor);
+        material->baseColorSingleChannelEnabled = m_baseColorSingleChannelEnabled;
+        material->baseColorChannel = channelMapping(m_baseColorChannel);
     }
 
     if (m_dirtyAttributes & EmissiveDirty) {
@@ -1285,10 +1639,9 @@ QSSGRenderGraphObject *QQuick3DPrincipledMaterial::updateSpatialNode(QSSGRenderG
             material->emissiveMap = m_emissiveMap->getRenderImage();
 
         material->emissiveColor = m_emissiveFactor;
+        material->emissiveSingleChannelEnabled = m_emissiveSingleChannelEnabled;
+        material->emissiveChannel = channelMapping(m_emissiveChannel);
     }
-
-    material->fresnelPower = 5.0f;
-    material->vertexColorsEnabled = false;
 
     if (m_dirtyAttributes & RoughnessDirty) {
         if (!m_roughnessMap)
@@ -1326,6 +1679,12 @@ QSSGRenderGraphObject *QQuick3DPrincipledMaterial::updateSpatialNode(QSSGRenderG
         material->specularAmount = m_specularAmount;
         material->specularTint = QVector3D(m_specularTint, m_specularTint, m_specularTint);
         material->ior = m_indexOfRefraction;
+        material->fresnelScaleBiasEnabled = m_fresnelScaleBiasEnabled;
+        material->fresnelScale = m_fresnelScale;
+        material->fresnelBias = m_fresnelBias;
+        material->fresnelPower = m_fresnelPower;
+        material->specularAmountSingleChannelEnabled = m_specularSingleChannelEnabled;
+        material->specularAmountChannel = channelMapping(m_specularChannel);
     }
 
     if (m_dirtyAttributes & OpacityDirty) {
@@ -1335,6 +1694,7 @@ QSSGRenderGraphObject *QQuick3DPrincipledMaterial::updateSpatialNode(QSSGRenderG
         else
             material->opacityMap = m_opacityMap->getRenderImage();
 
+        material->invertOpacityMapValue = m_invertOpacityMapValue;
         material->opacity = m_opacity;
         material->opacityChannel = channelMapping(m_opacityChannel);
     }
@@ -1396,6 +1756,11 @@ QSSGRenderGraphObject *QQuick3DPrincipledMaterial::updateSpatialNode(QSSGRenderG
             material->clearcoatNormalMap = nullptr;
         else
             material->clearcoatNormalMap = m_clearcoatNormalMap->getRenderImage();
+        material->clearcoatNormalStrength = m_clearcoatNormalStrength;
+        material->clearcoatFresnelScaleBiasEnabled = m_clearcoatFresnelScaleBiasEnabled;
+        material->clearcoatFresnelScale = m_clearcoatFresnelScale;
+        material->clearcoatFresnelBias = m_clearcoatFresnelBias;
+        material->clearcoatFresnelPower = m_clearcoatFresnelPower;
     }
 
     if (m_dirtyAttributes & TransmissionDirty) {
@@ -1419,8 +1784,14 @@ QSSGRenderGraphObject *QQuick3DPrincipledMaterial::updateSpatialNode(QSSGRenderG
         material->attenuationColor = QSSGUtils::color::sRGBToLinear(m_attenuationColor).toVector3D();
     }
 
-    if (m_dirtyAttributes & VertexColorsDirty)
+    if (m_dirtyAttributes & VertexColorsDirty) {
         material->vertexColorsEnabled = m_vertexColorsEnabled;
+        material->vertexColorsMaskEnabled = m_vertexColorsMaskEnabled;
+        material->vertexColorRedMask = QSSGRenderDefaultMaterial::VertexColorMaskFlags::fromInt(m_vertexColorRedMask);
+        material->vertexColorGreenMask = QSSGRenderDefaultMaterial::VertexColorMaskFlags::fromInt(m_vertexColorGreenMask);
+        material->vertexColorBlueMask = QSSGRenderDefaultMaterial::VertexColorMaskFlags::fromInt(m_vertexColorBlueMask);
+        material->vertexColorAlphaMask = QSSGRenderDefaultMaterial::VertexColorMaskFlags::fromInt(m_vertexColorAlphaMask);
+    }
 
     m_dirtyAttributes = 0;
 
@@ -1586,6 +1957,22 @@ void QQuick3DPrincipledMaterial::setClearcoatNormalMap(QQuick3DTexture *newClear
     markDirty(ClearcoatDirty);
 }
 
+
+float QQuick3DPrincipledMaterial::clearcoatNormalStrength() const
+{
+    return m_clearcoatNormalStrength;
+}
+
+void QQuick3DPrincipledMaterial::setClearcoatNormalStrength(float newClearcoatNormalStrength)
+{
+    if (qFuzzyCompare(m_clearcoatNormalStrength, newClearcoatNormalStrength))
+        return;
+
+    m_clearcoatNormalStrength = newClearcoatNormalStrength;
+    emit clearcoatNormalStrengthChanged(m_clearcoatNormalStrength);
+    markDirty(ClearcoatDirty);
+}
+
 float QQuick3DPrincipledMaterial::transmissionFactor() const
 {
     return m_transmissionFactor;
@@ -1625,6 +2012,46 @@ QQuick3DMaterial::TextureChannelMapping QQuick3DPrincipledMaterial::transmission
 float QQuick3DPrincipledMaterial::indexOfRefraction() const
 {
     return m_indexOfRefraction;
+}
+
+bool QQuick3DPrincipledMaterial::fresnelScaleBiasEnabled() const
+{
+    return m_fresnelScaleBiasEnabled;
+}
+
+float QQuick3DPrincipledMaterial::fresnelScale() const
+{
+    return m_fresnelScale;
+}
+
+float QQuick3DPrincipledMaterial::fresnelBias() const
+{
+    return m_fresnelBias;
+}
+
+float QQuick3DPrincipledMaterial::fresnelPower() const
+{
+    return m_fresnelPower;
+}
+
+bool QQuick3DPrincipledMaterial::clearcoatFresnelScaleBiasEnabled() const
+{
+    return m_clearcoatFresnelScaleBiasEnabled;
+}
+
+float QQuick3DPrincipledMaterial::clearcoatFresnelScale() const
+{
+    return m_clearcoatFresnelScale;
+}
+
+float QQuick3DPrincipledMaterial::clearcoatFresnelBias() const
+{
+    return m_clearcoatFresnelBias;
+}
+
+float QQuick3DPrincipledMaterial::clearcoatFresnelPower() const
+{
+    return m_clearcoatFresnelPower;
 }
 
 bool QQuick3DPrincipledMaterial::vertexColorsEnabled() const
@@ -1724,6 +2151,86 @@ void QQuick3DPrincipledMaterial::setIndexOfRefraction(float indexOfRefraction)
     markDirty(SpecularDirty);
 }
 
+void QQuick3DPrincipledMaterial::setFresnelScaleBiasEnabled(bool fresnelScaleBiasEnabled)
+{
+    if (m_fresnelScaleBiasEnabled == fresnelScaleBiasEnabled)
+        return;
+
+    m_fresnelScaleBiasEnabled = fresnelScaleBiasEnabled;
+    emit fresnelScaleBiasEnabledChanged(m_fresnelScaleBiasEnabled);
+    markDirty(SpecularDirty);
+}
+
+void QQuick3DPrincipledMaterial::setFresnelScale(float fresnelScale)
+{
+    if (qFuzzyCompare(m_fresnelScale, fresnelScale))
+        return;
+
+    m_fresnelScale = fresnelScale;
+    emit fresnelScaleChanged(m_fresnelScale);
+    markDirty(SpecularDirty);
+}
+
+void QQuick3DPrincipledMaterial::setFresnelBias(float fresnelBias)
+{
+    if (qFuzzyCompare(m_fresnelBias, fresnelBias))
+        return;
+
+    m_fresnelBias = fresnelBias;
+    emit fresnelBiasChanged(m_fresnelBias);
+    markDirty(SpecularDirty);
+}
+
+void QQuick3DPrincipledMaterial::setFresnelPower(float fresnelPower)
+{
+    if (qFuzzyCompare(m_fresnelPower, fresnelPower))
+        return;
+
+    m_fresnelPower = fresnelPower;
+    emit fresnelPowerChanged(m_fresnelPower);
+    markDirty(SpecularDirty);
+}
+
+void QQuick3DPrincipledMaterial::setClearcoatFresnelScaleBiasEnabled(bool clearcoatFresnelScaleBiasEnabled)
+{
+    if (m_clearcoatFresnelScaleBiasEnabled == clearcoatFresnelScaleBiasEnabled)
+        return;
+
+    m_clearcoatFresnelScaleBiasEnabled = clearcoatFresnelScaleBiasEnabled;
+    emit clearcoatFresnelScaleBiasEnabledChanged(m_clearcoatFresnelScaleBiasEnabled);
+    markDirty(ClearcoatDirty);
+}
+
+void QQuick3DPrincipledMaterial::setClearcoatFresnelScale(float clearcoatFresnelScale)
+{
+    if (qFuzzyCompare(m_clearcoatFresnelScale, clearcoatFresnelScale))
+        return;
+
+    m_clearcoatFresnelScale = clearcoatFresnelScale;
+    emit clearcoatFresnelScaleChanged(m_clearcoatFresnelScale);
+    markDirty(ClearcoatDirty);
+}
+
+void QQuick3DPrincipledMaterial::setClearcoatFresnelBias(float clearcoatFresnelBias)
+{
+    if (qFuzzyCompare(m_clearcoatFresnelBias, clearcoatFresnelBias))
+        return;
+
+    m_clearcoatFresnelBias = clearcoatFresnelBias;
+    emit clearcoatFresnelBiasChanged(m_clearcoatFresnelBias);
+    markDirty(ClearcoatDirty);
+}
+
+void QQuick3DPrincipledMaterial::setClearcoatFresnelPower(float clearcoatFresnelPower)
+{
+    if (qFuzzyCompare(m_clearcoatFresnelPower, clearcoatFresnelPower))
+        return;
+
+    m_clearcoatFresnelPower = clearcoatFresnelPower;
+    emit clearcoatFresnelPowerChanged(m_clearcoatFresnelPower);
+    markDirty(ClearcoatDirty);
+}
+
 void QQuick3DPrincipledMaterial::setVertexColorsEnabled(bool vertexColors)
 {
     if (m_vertexColorsEnabled == vertexColors)
@@ -1734,4 +2241,75 @@ void QQuick3DPrincipledMaterial::setVertexColorsEnabled(bool vertexColors)
     markDirty(VertexColorsDirty);
 }
 
+bool QQuick3DPrincipledMaterial::vertexColorsMaskEnabled() const
+{
+    return m_vertexColorsMaskEnabled;
+}
+
+void QQuick3DPrincipledMaterial::setVertexColorsMaskEnabled(bool vertexColorsMaskEnabled)
+{
+    if (m_vertexColorsMaskEnabled == vertexColorsMaskEnabled)
+        return;
+    m_vertexColorsMaskEnabled = vertexColorsMaskEnabled;
+    emit vertexColorsMaskEnabledChanged();
+    markDirty(VertexColorsDirty);
+}
+
+QQuick3DPrincipledMaterial::VertexColorMaskFlags QQuick3DPrincipledMaterial::vertexColorRedMask() const
+{
+    return m_vertexColorRedMask;
+}
+
+void QQuick3DPrincipledMaterial::setVertexColorRedMask(QQuick3DPrincipledMaterial::VertexColorMaskFlags vertexColorRedMask)
+{
+    if (m_vertexColorRedMask == vertexColorRedMask)
+        return;
+    m_vertexColorRedMask = vertexColorRedMask;
+    emit vertexColorRedMaskChanged();
+    markDirty(VertexColorsDirty);
+}
+
+QQuick3DPrincipledMaterial::VertexColorMaskFlags QQuick3DPrincipledMaterial::vertexColorGreenMask() const
+{
+    return m_vertexColorGreenMask;
+}
+
+void QQuick3DPrincipledMaterial::setVertexColorGreenMask(QQuick3DPrincipledMaterial::VertexColorMaskFlags vertexColorGreenMask)
+{
+    if (m_vertexColorGreenMask == vertexColorGreenMask)
+        return;
+    m_vertexColorGreenMask = vertexColorGreenMask;
+    emit vertexColorGreenMaskChanged();
+    markDirty(VertexColorsDirty);
+}
+
+QQuick3DPrincipledMaterial::VertexColorMaskFlags QQuick3DPrincipledMaterial::vertexColorBlueMask() const
+{
+    return m_vertexColorBlueMask;
+}
+
+void QQuick3DPrincipledMaterial::setVertexColorBlueMask(QQuick3DPrincipledMaterial::VertexColorMaskFlags vertexColorBlueMask)
+{
+    if (m_vertexColorBlueMask == vertexColorBlueMask)
+        return;
+    m_vertexColorBlueMask = vertexColorBlueMask;
+    emit vertexColorBlueMaskChanged();
+    markDirty(VertexColorsDirty);
+}
+
+QQuick3DPrincipledMaterial::VertexColorMaskFlags QQuick3DPrincipledMaterial::vertexColorAlphaMask() const
+{
+    return m_vertexColorAlphaMask;
+}
+
+void QQuick3DPrincipledMaterial::setVertexColorAlphaMask(QQuick3DPrincipledMaterial::VertexColorMaskFlags vertexColorAlphaMask)
+{
+    if (m_vertexColorAlphaMask == vertexColorAlphaMask)
+        return;
+    m_vertexColorAlphaMask = vertexColorAlphaMask;
+    emit vertexColorAlphaMaskChanged();
+    markDirty(VertexColorsDirty);
+}
+
 QT_END_NAMESPACE
+

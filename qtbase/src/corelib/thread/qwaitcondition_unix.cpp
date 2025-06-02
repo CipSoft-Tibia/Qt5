@@ -74,7 +74,10 @@ static void qt_abstime_for_timeout(timespec *ts, QDeadlineTimer deadline)
     using Clock =
         std::conditional_t<SteadyClockClockId == CLOCK_REALTIME, system_clock, steady_clock>;
     auto timePoint = deadline.deadline<Clock>();
-    *ts = durationToTimespec(timePoint.time_since_epoch());
+    if (timePoint < Clock::time_point{})
+        *ts = {};
+    else
+        *ts = durationToTimespec(timePoint.time_since_epoch());
 }
 
 class QWaitConditionPrivate

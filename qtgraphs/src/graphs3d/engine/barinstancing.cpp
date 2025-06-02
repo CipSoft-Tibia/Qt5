@@ -18,20 +18,26 @@ QByteArray BarInstancing::getInstanceBuffer(int *instanceCount)
 
         for (int i = 0; i < m_dataArray.size(); ++i) {
             auto item = m_dataArray.at(i);
+
+            if ((item->color.alphaF() < 1.0) || transparency())
+                setDepthSortingEnabled(true);
+            else
+                setDepthSortingEnabled(false);
+
             if (!item->selectedBar) {
-                auto entry = calculateTableEntry(item->position,
-                                                 item->scale,
-                                                 item->eulerRotation,
-                                                 item->color);
+                auto entry = calculateTableEntryFromQuaternion(item->position,
+                                                               item->scale,
+                                                               item->rotation,
+                                                               item->color);
                 m_instanceData.append(reinterpret_cast<char *>(&entry), sizeof(entry));
             } else {
                 // Even selected bars need to be drawn in a very small scale.
                 // If this is not done, the program can't find the selected bars in the
                 // graph and detects the wrong bars as selected ones.
-                auto entry = calculateTableEntry(item->position,
-                                                 QVector3D{.001f, .001f, .001f},
-                                                 item->eulerRotation,
-                                                 QColor(Qt::white));
+                auto entry = calculateTableEntryFromQuaternion(item->position,
+                                                               QVector3D{.001f, .001f, .001f},
+                                                               item->rotation,
+                                                               QColor(Qt::white));
                 m_instanceData.append(reinterpret_cast<char *>(&entry), sizeof(entry));
             }
             instanceNumber++;
@@ -46,14 +52,14 @@ QByteArray BarInstancing::getInstanceBuffer(int *instanceCount)
     return m_instanceData;
 }
 
-bool BarInstancing::rangeGradient() const
+bool BarInstancing::transparency() const
 {
-    return m_rangeGradient;
+    return m_transparency;
 }
 
-void BarInstancing::setRangeGradient(bool newRangeGradient)
+void BarInstancing::setTransparency(bool newTransparencyValue)
 {
-    m_rangeGradient = newRangeGradient;
+    m_transparency = newTransparencyValue;
 }
 
 void BarInstancing::clearDataArray()

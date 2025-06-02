@@ -27,6 +27,8 @@
 #endif // QT_CONFIG(draganddrop)
 
 #include <private/qevent_p.h>
+#include <private/qeventpoint_p.h>
+#include <private/qguiapplication_p.h>
 
 #include <QtCore/QTimer>
 #include <QtCore/QDebug>
@@ -36,6 +38,8 @@
 #include <qpa/qplatformwindow_p.h>
 
 QT_BEGIN_NAMESPACE
+
+Q_DECLARE_LOGGING_CATEGORY(lcPopup)
 
 /*!
     \class QWindow
@@ -186,6 +190,7 @@ QWindow::~QWindow()
     // Decouple from parent before window goes under
     setParent(nullptr);
     QGuiApplicationPrivate::window_list.removeAll(this);
+    QGuiApplicationPrivate::popup_list.removeAll(this);
     if (!QGuiApplicationPrivate::is_app_closing)
         QGuiApplicationPrivate::instance()->modalWindowList.removeOne(this);
 
@@ -409,6 +414,13 @@ void QWindowPrivate::setVisible(bool visible)
 #endif // QT_CONFIG(draganddrop)
               ) {
         QGuiApplicationPrivate::updateBlockedStatus(q);
+    }
+
+    if (q->type() == Qt::Popup) {
+        if (visible)
+            QGuiApplicationPrivate::activatePopup(q);
+        else
+            QGuiApplicationPrivate::closePopup(q);
     }
 
 #ifndef QT_NO_CURSOR
@@ -2071,16 +2083,6 @@ void QWindowPrivate::destroy()
         QObject *object = childrenWindows.at(i);
         if (object->isWindowType()) {
             QWindow *w = static_cast<QWindow*>(object);
-            auto *childPlatformWindow = w->handle();
-            if (!childPlatformWindow)
-                continue;
-
-            // Decouple the foreign window from this window,
-            // so that destroying our native handle doesn't
-            // bring down the foreign window as well.
-            if (childPlatformWindow->isForeignWindow())
-                childPlatformWindow->setParent(nullptr);
-
             qt_window_private(w)->destroy();
         }
     }
@@ -2121,6 +2123,11 @@ void QWindowPrivate::destroy()
     resizeEventPending = true;
     receivedExpose = false;
     exposed = false;
+
+    // Position set via setFramePosition will have propagated back to
+    // our geometry member as client geometry, so when creating the
+    // window again we need to ensure the policy matches that.
+    positionPolicy = QWindowPrivate::WindowFrameExclusive;
 }
 
 /*!
@@ -2369,8 +2376,13 @@ bool QWindow::close()
     if (!isTopLevel())
         return false;
 
-    if (!d->platformWindow)
+    if (!d->platformWindow) {
+        // dock widgets can transition back and forth to being popups;
+        // avoid getting stuck
+        if (QGuiApplicationPrivate::activePopupWindow() == this)
+            QGuiApplicationPrivate::closePopup(this);
         return true;
+    }
 
     // The window might be deleted during close,
     // as a result of delivering the close event.
@@ -2408,6 +2420,54 @@ bool QWindowPrivate::treatAsVisible() const
 {
     Q_Q(const QWindow);
     return q->isVisible();
+}
+
+/*! \internal
+    Returns the popup window that has consumed \a event, if any.
+    \a activePopupOnPress is the window that we have observed previously handling the press.
+*/
+const QWindow *QWindowPrivate::forwardToPopup(QEvent *event, const QWindow */*activePopupOnPress*/)
+{
+    Q_Q(const QWindow);
+    qCDebug(lcPopup) << "checking for popup alternative to" << q << "for" << event
+                     << "active popup?" << QGuiApplicationPrivate::activePopupWindow();
+    QWindow *ret = nullptr;
+    if (QWindow *popupWindow = QGuiApplicationPrivate::activePopupWindow()) {
+        if (q == popupWindow)
+            return nullptr; // avoid infinite recursion: we're already handling it
+        if (event->isPointerEvent()) {
+            // detach eventPoints before modifying them
+            QScopedPointer<QPointerEvent> pointerEvent(static_cast<QPointerEvent *>(event)->clone());
+            for (int i = 0; i < pointerEvent->pointCount(); ++i) {
+                QEventPoint &eventPoint = pointerEvent->point(i);
+                const QPoint globalPos = eventPoint.globalPosition().toPoint();
+                const QPointF mapped = popupWindow->mapFromGlobal(globalPos);
+                QMutableEventPoint::setPosition(eventPoint, mapped);
+                QMutableEventPoint::setScenePosition(eventPoint, mapped);
+            }
+
+            /*  Popups are expected to be able to directly handle the
+                drag-release sequence after pressing to open, as well as
+                any other mouse events that occur within the popup's bounds. */
+            if (QCoreApplication::sendSpontaneousEvent(popupWindow, pointerEvent.get())) {
+                event->setAccepted(pointerEvent->isAccepted());
+                if (pointerEvent->isAccepted())
+                    ret = popupWindow;
+            }
+            qCDebug(lcPopup) << q << "forwarded" << event->type() <<  "to popup" << popupWindow
+                             << "handled?" << (ret != nullptr)
+                             << "accepted?" << event->isAccepted();
+            return ret;
+        } else if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
+            if (QCoreApplication::sendSpontaneousEvent(popupWindow, event))
+                ret = popupWindow;
+            qCDebug(lcPopup) << q << "forwarded" << event->type() <<  "to popup" << popupWindow
+                             << "handled?" << (ret != nullptr)
+                             << "accepted?" << event->isAccepted();
+            return ret;
+        }
+    }
+    return ret;
 }
 
 /*!
@@ -2662,16 +2722,14 @@ bool QWindow::event(QEvent *ev)
         This logic could be simplified by always synthesizing events in
         QGuiApplicationPrivate, or perhaps even in each QPA plugin. See QTBUG-93486.
     */
-    static const QEvent::Type contextMenuTrigger =
-        QGuiApplicationPrivate::platformTheme()->themeHint(QPlatformTheme::ContextMenuOnMouseRelease).toBool() ?
-        QEvent::MouseButtonRelease : QEvent::MouseButtonPress;
     auto asMouseEvent = [](QEvent *ev) {
         const auto t = ev->type();
         return t == QEvent::MouseButtonPress || t == QEvent::MouseButtonRelease
                 ? static_cast<QMouseEvent *>(ev) : nullptr ;
     };
-    if (QMouseEvent *me = asMouseEvent(ev); me &&
-        ev->type() == contextMenuTrigger && me->button() == Qt::RightButton) {
+    if (QMouseEvent *me = asMouseEvent(ev);
+        me && ev->type() == QGuiApplicationPrivate::contextMenuEventType()
+        && me->button() == Qt::RightButton) {
         QContextMenuEvent e(QContextMenuEvent::Mouse, me->position().toPoint(),
                             me->globalPosition().toPoint(), me->modifiers());
         QGuiApplication::sendEvent(this, &e);
@@ -2709,7 +2767,7 @@ bool QWindow::event(QEvent *ev)
 */
 void QWindow::requestUpdate()
 {
-    Q_ASSERT_X(QThread::currentThread() == QCoreApplication::instance()->thread(),
+    Q_ASSERT_X(QThread::isMainThread(),
         "QWindow", "Updates can only be scheduled from the GUI (main) thread");
 
     Q_D(QWindow);

@@ -28,7 +28,7 @@ QT_BEGIN_NAMESPACE
  **/
 class QQuickGridLayoutBasePrivate;
 
-class Q_QUICKLAYOUTS_PRIVATE_EXPORT QQuickGridLayoutBase : public QQuickLayout
+class Q_QUICKLAYOUTS_EXPORT QQuickGridLayoutBase : public QQuickLayout
 {
     Q_OBJECT
 
@@ -111,7 +111,7 @@ public:
  **
  **/
 class QQuickGridLayoutPrivate;
-class Q_QUICKLAYOUTS_PRIVATE_EXPORT QQuickGridLayout : public QQuickGridLayoutBase
+class Q_QUICKLAYOUTS_EXPORT QQuickGridLayout : public QQuickGridLayoutBase
 {
     Q_OBJECT
 
@@ -183,7 +183,7 @@ public:
  **
  **/
 class QQuickLinearLayoutPrivate;
-class Q_QUICKLAYOUTS_PRIVATE_EXPORT QQuickLinearLayout : public QQuickGridLayoutBase
+class Q_QUICKLAYOUTS_EXPORT QQuickLinearLayout : public QQuickGridLayoutBase
 {
     Q_OBJECT
     QML_ANONYMOUS
@@ -221,7 +221,7 @@ public:
  ** QQuickRowLayout
  **
  **/
-class Q_QUICKLAYOUTS_PRIVATE_EXPORT  QQuickRowLayout : public QQuickLinearLayout
+class Q_QUICKLAYOUTS_EXPORT  QQuickRowLayout : public QQuickLinearLayout
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(RowLayout)
@@ -238,7 +238,7 @@ public:
  ** QQuickColumnLayout
  **
  **/
-class Q_QUICKLAYOUTS_PRIVATE_EXPORT QQuickColumnLayout : public QQuickLinearLayout
+class Q_QUICKLAYOUTS_EXPORT QQuickColumnLayout : public QQuickLinearLayout
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(ColumnLayout)

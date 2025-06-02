@@ -3,9 +3,14 @@
 
 package org.qtproject.qt.android;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,36 +23,35 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
+import java.lang.IllegalArgumentException;
 
 public class QtActivityBase extends Activity
 {
+    public static final String EXTRA_SOURCE_INFO = "org.qtproject.qt.android.sourceInfo";
+
     private String m_applicationParams = "";
     private boolean m_isCustomThemeSet = false;
     private boolean m_retainNonConfigurationInstance = false;
-
-    private QtActivityDelegate m_delegate;
-
-    public static final String EXTRA_SOURCE_INFO = "org.qtproject.qt.android.sourceInfo";
+    private Configuration m_prevConfig;
+    private final QtActivityDelegate m_delegate;
 
     private void addReferrer(Intent intent)
     {
-        if (intent.getExtras() != null && intent.getExtras().getString(EXTRA_SOURCE_INFO) != null)
+        Bundle extras = intent.getExtras();
+        if (extras != null && extras.getString(EXTRA_SOURCE_INFO) != null)
             return;
 
-        String browserApplicationId = "";
-        if (intent.getExtras() != null)
-            browserApplicationId = intent.getExtras().getString(Browser.EXTRA_APPLICATION_ID);
-
-        String sourceInformation = "";
-        if (browserApplicationId != null && !browserApplicationId.isEmpty()) {
-            sourceInformation = browserApplicationId;
-        } else {
+        if (extras == null) {
             Uri referrer = getReferrer();
-            if (referrer != null)
-                sourceInformation = referrer.toString().replaceFirst("android-app://", "");
+            if (referrer != null) {
+                String cleanReferrer = referrer.toString().replaceFirst("android-app://", "");
+                intent.putExtra(EXTRA_SOURCE_INFO, cleanReferrer);
+            }
+        } else {
+            String applicationId = extras.getString(Browser.EXTRA_APPLICATION_ID);
+            if (applicationId != null)
+                intent.putExtra(EXTRA_SOURCE_INFO, applicationId);
         }
-
-        intent.putExtra(EXTRA_SOURCE_INFO, sourceInformation);
     }
 
     // Append any parameters to your application.
@@ -76,6 +80,11 @@ public class QtActivityBase extends Activity
         Runtime.getRuntime().exit(0);
     }
 
+    public QtActivityBase()
+    {
+        m_delegate = new QtActivityDelegate(this);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
@@ -95,16 +104,27 @@ public class QtActivityBase extends Activity
             restartApplication();
         }
 
-        m_delegate = new QtActivityDelegate(this);
-
+        QtNative.registerAppStateListener(m_delegate);
         addReferrer(getIntent());
 
-        QtActivityLoader loader = new QtActivityLoader(this);
-        loader.appendApplicationParameters(m_applicationParams);
+        try {
+            QtActivityLoader loader = QtActivityLoader.getActivityLoader(this);
+            loader.appendApplicationParameters(m_applicationParams);
 
-        loader.loadQtLibraries();
-        m_delegate.startNativeApplication(loader.getApplicationParameters(),
-                loader.getMainLibraryPath());
+            QtLoader.LoadingResult result = loader.loadQtLibraries();
+
+            if (result == QtLoader.LoadingResult.Succeeded) {
+                m_delegate.startNativeApplication(loader.getApplicationParameters(),
+                        loader.getMainLibraryPath());
+            } else if (result == QtLoader.LoadingResult.Failed) {
+                showErrorDialog();
+            }
+        } catch (IllegalArgumentException e) {
+            e.printStackTrace();
+            showErrorDialog();
+        }
+
+        m_prevConfig = new Configuration(getResources().getConfiguration());
     }
 
     @Override
@@ -137,7 +157,7 @@ public class QtActivityBase extends Activity
             m_delegate.displayManager().registerDisplayListener();
             QtNative.updateWindow();
             // Suspending the app clears the immersive mode, so we need to set it again.
-            m_delegate.displayManager().updateFullScreen();
+            m_delegate.displayManager().reinstateFullScreen();
         }
     }
 
@@ -153,6 +173,7 @@ public class QtActivityBase extends Activity
     {
         super.onDestroy();
         if (!m_retainNonConfigurationInstance) {
+            QtNative.unregisterAppStateListener(m_delegate);
             QtNative.terminateQt();
             QtNative.setActivity(null);
             QtNative.getQtThread().exit();
@@ -165,6 +186,12 @@ public class QtActivityBase extends Activity
     {
         super.onConfigurationChanged(newConfig);
         m_delegate.handleUiModeChange(newConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK);
+
+        int diff = newConfig.diff(m_prevConfig);
+        if ((diff & ActivityInfo.CONFIG_LOCALE) != 0)
+            QtNative.updateLocale();
+
+        m_prevConfig = new Configuration(newConfig);
     }
 
     @Override
@@ -263,8 +290,9 @@ public class QtActivityBase extends Activity
     {
         super.onRestoreInstanceState(savedInstanceState);
         QtNative.setStarted(savedInstanceState.getBoolean("Started"));
-        int savedSystemUiVisibility = savedInstanceState.getInt("SystemUiVisibility");
-        m_delegate.displayManager().setSystemUiVisibility(savedSystemUiVisibility);
+        boolean isFullScreen = savedInstanceState.getBoolean("isFullScreen");
+        boolean expandedToCutout = savedInstanceState.getBoolean("expandedToCutout");
+        m_delegate.displayManager().setSystemUiVisibility(isFullScreen, expandedToCutout);
         // FIXME restore all surfaces
     }
 
@@ -280,7 +308,8 @@ public class QtActivityBase extends Activity
     protected void onSaveInstanceState(Bundle outState)
     {
         super.onSaveInstanceState(outState);
-        outState.putInt("SystemUiVisibility", m_delegate.displayManager().systemUiVisibility());
+        outState.putBoolean("isFullScreen", m_delegate.displayManager().isFullScreen());
+        outState.putBoolean("expandedToCutout", m_delegate.displayManager().expandedToCutout());
         outState.putBoolean("Started", QtNative.getStateDetails().isStarted);
     }
 
@@ -289,7 +318,7 @@ public class QtActivityBase extends Activity
     {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus)
-            m_delegate.displayManager().updateFullScreen();
+            m_delegate.displayManager().reinstateFullScreen();
     }
 
     @Override
@@ -322,5 +351,17 @@ public class QtActivityBase extends Activity
     QtActivityDelegateBase getActivityDelegate()
     {
         return m_delegate;
+    }
+
+    private void showErrorDialog() {
+        Resources resources = getResources();
+        String packageName = getPackageName();
+        AlertDialog errorDialog = new AlertDialog.Builder(this).create();
+        @SuppressLint("DiscouragedApi") int id = resources.getIdentifier(
+                "fatal_error_msg", "string", packageName);
+        errorDialog.setMessage(resources.getString(id));
+        errorDialog.setButton(Dialog.BUTTON_POSITIVE, resources.getString(android.R.string.ok),
+                (dialog, which) -> finish());
+        errorDialog.show();
     }
 }

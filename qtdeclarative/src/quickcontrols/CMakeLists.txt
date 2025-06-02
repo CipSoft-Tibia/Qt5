@@ -17,6 +17,7 @@ qt_internal_add_qml_module(QuickControls2
         QtQuick.Controls.Material/auto
         QtQuick.Controls.Imagine/auto
         QtQuick.Controls.Universal/auto
+        QtQuick.Controls.FluentWinUI3/auto
         QtQuick.Controls.Windows/auto
         QtQuick.Controls.macOS/auto
         QtQuick.Controls.iOS/auto
@@ -43,7 +44,6 @@ qt_internal_add_qml_module(QuickControls2
         Qt::Core
         Qt::Gui
         Qt::Quick
-    GENERATE_CPP_EXPORTS
 )
 
 qt_internal_extend_target(qtquickcontrols2plugin
@@ -81,6 +81,10 @@ endif()
 
 if(QT_FEATURE_quickcontrols2_universal)
     add_subdirectory(universal)
+endif()
+
+if(QT_FEATURE_quickcontrols2_fluentwinui3)
+    add_subdirectory(fluentwinui3)
 endif()
 
 if(QT_FEATURE_quickcontrols2_macos)

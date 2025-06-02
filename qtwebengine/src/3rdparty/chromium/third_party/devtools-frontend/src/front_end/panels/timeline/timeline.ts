@@ -4,17 +4,20 @@
 
 import * as AnimationsTrackAppender from './AnimationsTrackAppender.js';
 import * as AppenderUtils from './AppenderUtils.js';
+import * as BenchmarkEvents from './BenchmarkEvents.js';
 import * as CLSLinkifier from './CLSLinkifier.js';
 import * as CompatibilityTracksAppender from './CompatibilityTracksAppender.js';
 import * as CountersGraph from './CountersGraph.js';
 import * as EventsTimelineTreeView from './EventsTimelineTreeView.js';
 import * as EventUICategory from './EventUICategory.js';
 import * as GPUTrackAppender from './GPUTrackAppender.js';
+import * as Initiators from './Initiators.js';
 import * as InteractionsTrackAppender from './InteractionsTrackAppender.js';
 import * as LayoutShiftsTrackAppender from './LayoutShiftsTrackAppender.js';
 import * as NetworkTrackAppender from './NetworkTrackAppender.js';
 import * as PerformanceModel from './PerformanceModel.js';
 import * as SaveFileFormatter from './SaveFileFormatter.js';
+import * as SourceMapsResolver from './SourceMapsResolver.js';
 import * as ThreadAppender from './ThreadAppender.js';
 import * as TimelineController from './TimelineController.js';
 import * as TimelineDetailsView from './TimelineDetailsView.js';
@@ -39,17 +42,20 @@ import * as UIDevtoolsUtils from './UIDevtoolsUtils.js';
 export {
   AnimationsTrackAppender,
   AppenderUtils,
+  BenchmarkEvents,
   CLSLinkifier,
   CompatibilityTracksAppender,
   CountersGraph,
   EventsTimelineTreeView,
   EventUICategory,
   GPUTrackAppender,
+  Initiators,
   InteractionsTrackAppender,
   LayoutShiftsTrackAppender,
   NetworkTrackAppender,
   PerformanceModel,
   SaveFileFormatter,
+  SourceMapsResolver,
   ThreadAppender,
   TimelineController,
   TimelineDetailsView,

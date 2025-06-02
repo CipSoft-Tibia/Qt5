@@ -21,6 +21,7 @@
 #include "components/viz/common/resources/resource_id.h"
 #include "components/viz/common/resources/returned_resource.h"
 #include "components/viz/common/surfaces/frame_sink_bundle_id.h"
+#include "gpu/command_buffer/client/raster_interface.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_types.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -92,9 +93,17 @@ class VideoFrameSubmitter::FrameSinkBundleProxy
     bundle_->SetNeedsBeginFrame(frame_sink_id_.sink_id(), needs_begin_frame);
   }
 
+  void SetWantsBeginFrameAcks() override {
+    if (!bundle_) {
+      return;
+    }
+
+    bundle_->SetWantsBeginFrameAcks(frame_sink_id_.sink_id());
+  }
+
   // Not used by VideoFrameSubmitter.
   void SetWantsAnimateOnlyBeginFrames() override { NOTREACHED(); }
-  void SetWantsBeginFrameAcks() override { NOTREACHED(); }
+  void SetAutoNeedsBeginFrame() override { NOTREACHED(); }
 
   void SubmitCompositorFrame(
       const viz::LocalSurfaceId& local_surface_id,
@@ -333,7 +342,7 @@ void VideoFrameSubmitter::OnBeginFrame(
     const WTF::HashMap<uint32_t, viz::FrameTimingDetails>& timing_details,
     bool frame_ack,
     WTF::Vector<viz::ReturnedResource> resources) {
-  if (features::IsOnBeginFrameAcksEnabled()) {
+  if (::features::IsOnBeginFrameAcksEnabled()) {
     if (frame_ack) {
       DidReceiveCompositorFrameAck(std::move(resources));
     } else if (!resources.empty()) {
@@ -523,7 +532,7 @@ bool VideoFrameSubmitter::MaybeAcceptContextProvider(
     return false;
   }
 
-  return context_provider_->ContextGL()->GetGraphicsResetStatusKHR() ==
+  return context_provider_->RasterInterface()->GetGraphicsResetStatusKHR() ==
          GL_NO_ERROR;
 }
 
@@ -548,6 +557,7 @@ void VideoFrameSubmitter::StartSubmitting() {
         remote_frame_sink_.BindNewPipeAndPassReceiver());
     compositor_frame_sink_ = remote_frame_sink_.get();
   }
+  compositor_frame_sink_->SetWantsBeginFrameAcks();
 
   if (!surface_embedder_.is_bound()) {
     provider->ConnectToEmbedder(frame_sink_id_,

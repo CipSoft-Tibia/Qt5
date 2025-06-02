@@ -16,7 +16,7 @@
 
 #include <QtCore/private/qobject_p.h>
 #include <QtGraphs/q3dscene.h>
-#include <private/graphsglobal_p.h>
+#include <private/qgraphsglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -45,7 +45,7 @@ struct Q3DSceneChangeBitField
     {}
 };
 
-class Q3DScenePrivate : public QObjectPrivate
+class Q_GRAPHS_EXPORT Q3DScenePrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(Q3DScene)
 
@@ -55,21 +55,15 @@ public:
 
     void sync(Q3DScenePrivate &other);
 
-    void setViewport(const QRect &viewport);
+    void setViewport(const QRect viewport);
     void setViewportSize(int width, int height);
-    void setWindowSize(const QSize &size);
+    void setWindowSize(QSize size);
     QSize windowSize() const;
-    void calculateSubViewports();
-    void updateGLViewport();
-    void updateGLSubViewports();
-
-    QRect glViewport();
-    QRect glPrimarySubViewport();
-    QRect glSecondarySubViewport();
+    void updateDefaultViewports();
 
     void markDirty();
 
-    bool isInArea(const QRect &area, int x, int y) const;
+    bool isInArea(const QRect area, int x, int y) const;
 
 public:
     Q3DSceneChangeBitField m_changeTracker;
@@ -78,15 +72,12 @@ public:
     QRect m_primarySubViewport;
     QRect m_secondarySubViewport;
     bool m_isSecondarySubviewOnTop;
-    float m_devicePixelRatio;
+    qreal m_devicePixelRatio;
     bool m_isUnderSideCameraEnabled;
     bool m_isSlicingActive;
     QPoint m_selectionQueryPosition;
     QPoint m_graphPositionQueryPosition;
     QSize m_windowSize;
-    QRect m_glViewport;
-    QRect m_glPrimarySubViewport;
-    QRect m_glSecondarySubViewport;
     bool m_sceneDirty;
     QRect m_defaultSmallViewport;
     QRect m_defaultLargeViewport;

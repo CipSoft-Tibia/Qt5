@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include "qendian.h"
 
+#include <QtCore/q20memory.h>
+
 QT_BEGIN_NAMESPACE
 
 constexpr quint32 QDataStream::NullCode;
@@ -271,7 +273,7 @@ constexpr quint32 QDataStream::ExtendedSize;
         return retVal;
 
 #define CHECK_STREAM_TRANSACTION_PRECOND(retVal) \
-    if (!d || d->transactionDepth == 0) { \
+    if (transactionDepth == 0) { \
         qWarning("QDataStream: No transaction in progress"); \
         return retVal; \
     }
@@ -284,12 +286,6 @@ constexpr quint32 QDataStream::ExtendedSize;
 
 QDataStream::QDataStream()
 {
-    dev = nullptr;
-    owndev = false;
-    byteorder = BigEndian;
-    ver = Qt_DefaultCompiledVersion;
-    noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
-    q_status = Ok;
 }
 
 /*!
@@ -301,11 +297,6 @@ QDataStream::QDataStream()
 QDataStream::QDataStream(QIODevice *d)
 {
     dev = d;                                // set device
-    owndev = false;
-    byteorder = BigEndian;                        // default byte order
-    ver = Qt_DefaultCompiledVersion;
-    noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
-    q_status = Ok;
 }
 
 /*!
@@ -330,10 +321,6 @@ QDataStream::QDataStream(QByteArray *a, OpenMode flags)
     buf->open(flags);
     dev = buf;
     owndev = true;
-    byteorder = BigEndian;
-    ver = Qt_DefaultCompiledVersion;
-    noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
-    q_status = Ok;
 }
 
 /*!
@@ -354,10 +341,6 @@ QDataStream::QDataStream(const QByteArray &a)
     buf->open(QIODevice::ReadOnly);
     dev = buf;
     owndev = true;
-    byteorder = BigEndian;
-    ver = Qt_DefaultCompiledVersion;
-    noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
-    q_status = Ok;
 }
 
 /*!
@@ -419,16 +402,14 @@ bool QDataStream::atEnd() const
 }
 
 /*!
+    \fn QDataStream::FloatingPointPrecision QDataStream::floatingPointPrecision() const
+
     Returns the floating point precision of the data stream.
 
     \since 4.6
 
     \sa FloatingPointPrecision, setFloatingPointPrecision()
 */
-QDataStream::FloatingPointPrecision QDataStream::floatingPointPrecision() const
-{
-    return d ? d->floatingPointPrecision : QDataStream::DoublePrecision;
-}
 
 /*!
     Sets the floating point precision of the data stream to \a precision. If the floating point precision is
@@ -452,21 +433,16 @@ QDataStream::FloatingPointPrecision QDataStream::floatingPointPrecision() const
 */
 void QDataStream::setFloatingPointPrecision(QDataStream::FloatingPointPrecision precision)
 {
-    if (!d)
-        d.reset(new QDataStreamPrivate());
-    d->floatingPointPrecision = precision;
+    fpPrecision = precision;
 }
 
 /*!
+    \fn QDataStream::status() const
+
     Returns the status of the data stream.
 
     \sa Status, setStatus(), resetStatus()
 */
-
-QDataStream::Status QDataStream::status() const
-{
-    return q_status;
-}
 
 /*!
     Resets the status of the data stream.
@@ -515,11 +491,14 @@ void QDataStream::setStatus(Status status)
 
 void QDataStream::setByteOrder(ByteOrder bo)
 {
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+    // accessed by inline byteOrder() prior to Qt 6.8
     byteorder = bo;
+#endif
     if (QSysInfo::ByteOrder == QSysInfo::BigEndian)
-        noswap = (byteorder == BigEndian);
+        noswap = (bo == BigEndian);
     else
-        noswap = (byteorder == LittleEndian);
+        noswap = (bo == LittleEndian);
 }
 
 
@@ -569,6 +548,7 @@ void QDataStream::setByteOrder(ByteOrder bo)
     \value Qt_6_5 Same as Qt_6_0
     \value Qt_6_6 Version 21 (Qt 6.6)
     \value Qt_6_7 Version 22 (Qt 6.7)
+    \value Qt_6_8 Same as Qt_6_7
     \omitvalue Qt_DefaultCompiledVersion
 
     \sa setVersion(), version()
@@ -642,10 +622,7 @@ void QDataStream::startTransaction()
 {
     CHECK_STREAM_PRECOND(Q_VOID)
 
-    if (!d)
-        d.reset(new QDataStreamPrivate());
-
-    if (++d->transactionDepth == 1) {
+    if (++transactionDepth == 1) {
         dev->startTransaction();
         resetStatus();
     }
@@ -674,7 +651,7 @@ void QDataStream::startTransaction()
 bool QDataStream::commitTransaction()
 {
     CHECK_STREAM_TRANSACTION_PRECOND(false)
-    if (--d->transactionDepth == 0) {
+    if (--transactionDepth == 0) {
         CHECK_STREAM_PRECOND(false)
 
         if (q_status == ReadPastEnd) {
@@ -714,7 +691,7 @@ void QDataStream::rollbackTransaction()
     setStatus(ReadPastEnd);
 
     CHECK_STREAM_TRANSACTION_PRECOND(Q_VOID)
-    if (--d->transactionDepth != 0)
+    if (--transactionDepth != 0)
         return;
 
     CHECK_STREAM_PRECOND(Q_VOID)
@@ -750,7 +727,7 @@ void QDataStream::abortTransaction()
     q_status = ReadCorruptData;
 
     CHECK_STREAM_TRANSACTION_PRECOND(Q_VOID)
-    if (--d->transactionDepth != 0)
+    if (--transactionDepth != 0)
         return;
 
     CHECK_STREAM_PRECOND(Q_VOID)
@@ -1054,7 +1031,7 @@ QDataStream &QDataStream::operator>>(char32_t &c)
 
 #if QT_DEPRECATED_SINCE(6, 11)
 
-/*
+/*!
     \deprecated [6.11] Use an overload that takes qint64 length instead.
 */
 QDataStream &QDataStream::readBytes(char *&s, uint &l)
@@ -1111,7 +1088,7 @@ QDataStream &QDataStream::readBytes(char *&s, qint64 &l)
         return *this;
     }
 
-    qsizetype step = 1024 * 1024;
+    qsizetype step = (dev->bytesAvailable() >= len) ? len : 1024 * 1024;
     qsizetype allocated = 0;
     std::unique_ptr<char[]> curBuf = nullptr;
 
@@ -1119,7 +1096,7 @@ QDataStream &QDataStream::readBytes(char *&s, qint64 &l)
     do {
         qsizetype blockSize = qMin(step, len - allocated);
         const qsizetype n = allocated + blockSize + 1;
-        if (const auto prevBuf = std::exchange(curBuf, std::make_unique<char[]>(n)))
+        if (const auto prevBuf = std::exchange(curBuf, q20::make_unique_for_overwrite<char[]>(n)))
             memcpy(curBuf.get(), prevBuf.get(), allocated);
         if (readBlock(curBuf.get() + allocated, blockSize) != blockSize)
             return *this;
@@ -1281,17 +1258,12 @@ QDataStream &QDataStream::operator<<(qint64 i)
 */
 
 /*!
+    \fn QDataStream &QDataStream::operator<<(bool i)
+    \overload
+
     Writes a boolean value, \a i, to the stream. Returns a reference
     to the stream.
 */
-
-QDataStream &QDataStream::operator<<(bool i)
-{
-    CHECK_STREAM_WRITE_PRECOND(*this)
-    if (!dev->putChar(qint8(i)))
-        q_status = WriteFailed;
-    return *this;
-}
 
 /*!
     \overload

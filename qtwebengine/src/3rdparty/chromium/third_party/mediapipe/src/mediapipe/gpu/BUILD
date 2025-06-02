@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@bazel_skylib//lib:selects.bzl", "selects")  # buildifier: disable=out-of-order-load
 load("//mediapipe/gpu:metal.bzl", "metal_library")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
-load("//mediapipe/framework/port:build_config.bzl", "mediapipe_proto_library")
-load("//mediapipe/framework:mediapipe_cc_test.bzl", "mediapipe_cc_test")
+load("//mediapipe/framework/port:build_config.bzl", "mediapipe_proto_library")  # buildifier: disable=out-of-order-load
+load("//mediapipe/framework:mediapipe_cc_test.bzl", "mediapipe_cc_test")  # buildifier: disable=out-of-order-load
 load("//mediapipe/framework:more_selects.bzl", "more_selects")
 
 licenses(["notice"])
@@ -96,7 +96,7 @@ GL_BASE_LINK_OPTS_OSS = GL_BASE_LINK_OPTS + select({
         "-lEGL",
     ],
     "//mediapipe:android": [],
-    "//mediapipe:ios": [],
+    ":platform_apple_with_gpu": [],
     ":disable_gpu": [],
 })
 
@@ -196,6 +196,7 @@ cc_library(
         ":gpu_buffer_format",
         "//mediapipe/framework:executor",
         "//mediapipe/framework:mediapipe_profiling",
+        "//mediapipe/framework:port",
         "//mediapipe/framework:timestamp",
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:ret_check",
@@ -209,6 +210,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ] + select({
         "//conditions:default": [],
@@ -246,7 +248,7 @@ cc_library(
         "//mediapipe/framework/formats:image_frame",
     ] + select({
         "//conditions:default": [],
-        ":platform_ios_with_gpu": [
+        ":platform_apple_with_gpu": [
             ":gl_texture_util",
             ":gpu_buffer_storage_cv_pixel_buffer",
         ],
@@ -287,6 +289,14 @@ selects.config_setting_group(
     ],
 )
 
+selects.config_setting_group(
+    name = "platform_apple_with_gpu",
+    match_all = [
+        ":not_disable_gpu",
+        "//mediapipe:apple",
+    ],
+)
+
 cc_library(
     name = "gpu_buffer",
     srcs = ["gpu_buffer.cc"],
@@ -315,6 +325,7 @@ cc_library(
         ":platform_macos_with_gpu": [
             ":gl_texture_buffer",
             ":gl_texture_view",
+            ":gpu_buffer_storage_cv_pixel_buffer",
             "//mediapipe/objc:CFHolder",
         ],
         ":disable_gpu": [],
@@ -502,11 +513,20 @@ cc_library(
         ],
     }),
     deps = [
+        ":gl_base_hdr",
+        ":gl_context",
         ":gl_texture_buffer",
+        ":gl_texture_view",
         ":gpu_buffer_format",
         ":gpu_buffer_storage",
         ":image_frame_view",
+        "//mediapipe/framework:port",
+        "//mediapipe/framework/formats:ahwb_view",
+        "//mediapipe/framework/formats:hardware_buffer",
         "//mediapipe/framework/formats:image_frame",
+        "//mediapipe/framework/port:ret_check",
+        "//third_party/GL:EGL_headers",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -517,12 +537,14 @@ mediapipe_proto_library(
     visibility = ["//visibility:public"],
 )
 
-objc_library(
+cc_library(
     name = "pixel_buffer_pool_util",
-    srcs = ["pixel_buffer_pool_util.mm"],
+    srcs = ["pixel_buffer_pool_util.cc"],
     hdrs = ["pixel_buffer_pool_util.h"],
     copts = [
+        "-x objective-c++",
         "-Wno-shorten-64-to-32",
+        "-fobjc-arc",  # enable reference-counting
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -533,13 +555,14 @@ objc_library(
     ],
 )
 
-objc_library(
+cc_library(
     name = "metal_shared_resources",
-    srcs = ["metal_shared_resources.mm"],
+    srcs = ["metal_shared_resources.cc"],
     hdrs = ["metal_shared_resources.h"],
     copts = [
         "-x objective-c++",
         "-Wno-shorten-64-to-32",
+        "-fobjc-arc",  # enable reference-counting
     ],
     features = ["-layering_check"],
     visibility = ["//visibility:public"],
@@ -548,15 +571,17 @@ objc_library(
         "@google_toolbox_for_mac//:GTM_Defines",
     ] + [
     ],
+    alwayslink = 1,
 )
 
-objc_library(
+cc_library(
     name = "MPPMetalUtil",
-    srcs = ["MPPMetalUtil.mm"],
+    srcs = ["MPPMetalUtil.cc"],
     hdrs = ["MPPMetalUtil.h"],
     copts = [
         "-x objective-c++",
         "-Wno-shorten-64-to-32",
+        "-fobjc-arc",  # enable reference-counting
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -566,6 +591,7 @@ objc_library(
         "@com_google_absl//absl/time",
         "@google_toolbox_for_mac//:GTM_Defines",
     ],
+    alwayslink = 1,
 )
 
 mediapipe_proto_library(
@@ -646,6 +672,8 @@ cc_library(
         "//mediapipe/framework/port:ret_check",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
     ] + select({
         "//conditions:default": [],
         "//mediapipe:apple": [
@@ -767,7 +795,10 @@ cc_library(
     deps = [
         ":gl_base",
         "//mediapipe/framework/port:logging",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -845,12 +876,14 @@ cc_library(
     }),
 )
 
-objc_library(
+cc_library(
     name = "MPPMetalHelper",
-    srcs = ["MPPMetalHelper.mm"],
+    srcs = ["MPPMetalHelper.cc"],
     hdrs = ["MPPMetalHelper.h"],
     copts = [
         "-Wno-shorten-64-to-32",
+        "-x objective-c++",
+        "-fobjc-arc",
     ],
     features = ["-layering_check"],
     visibility = ["//visibility:public"],
@@ -1203,9 +1236,13 @@ mediapipe_cc_test(
     ],
     requires_full_emulation = True,
     deps = [
+        ":gl_texture_buffer",
+        ":gl_texture_util",
         ":gpu_buffer_format",
         ":gpu_buffer_storage_ahwb",
+        ":gpu_test_base",
         "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/tool:test_util",
     ],
 )
 

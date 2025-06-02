@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtGraphs/qlineseries.h>
-#include <private/qxypoint_p.h>
-#include <private/qlineseries_p.h>
 #include <private/qgraphsview_p.h>
+#include <private/qlineseries_p.h>
+#include <private/qxypoint_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -19,7 +19,7 @@ QT_BEGIN_NAMESPACE
 */
 /*!
     \qmltype LineSeries
-    \instantiates QLineSeries
+    \nativetype QLineSeries
     \inqmlmodule QtGraphs
     \ingroup graphs_qml_2D
     \inherits XYSeries
@@ -54,53 +54,57 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty Component LineSeries::pointMarker
+    \qmlproperty Component LineSeries::pointDelegate
     Marks the point with the given QML component.
 
     \code
-        pointMarker: Image {
+        pointDelegate: Image {
             source: "images/happy_box.png"
         }
     \endcode
 */
 
+/*!
+    \qmlsignal LineSeries::widthChanged()
+    This signal is emitted when the line series width changes.
+*/
+
+/*!
+    \qmlsignal LineSeries::capStyleChanged()
+    This signal is emitted when the line series cap style changes.
+*/
+
 QLineSeries::QLineSeries(QObject *parent)
-    : QXYSeries(*new QLineSeriesPrivate(this), parent)
-{
+    : QXYSeries(*(new QLineSeriesPrivate()), parent)
+{}
 
-}
+QLineSeries::~QLineSeries() {}
 
-QLineSeries::QLineSeries(QLineSeriesPrivate &d, QObject *parent)
-    : QXYSeries(d, parent)
-{
-
-}
+QLineSeries::QLineSeries(QLineSeriesPrivate &dd, QObject *parent)
+    : QXYSeries(dd, parent)
+{}
 
 void QLineSeries::componentComplete()
 {
+    Q_D(QLineSeries);
+
     for (auto *child : children()) {
         if (auto point = qobject_cast<QXYPoint *>(child))
             append(point->x(), point->y());
     }
-}
 
-QLineSeries::~QLineSeries()
-{
-    Q_D(QLineSeries);
-    if (d->m_graph)
-        d->m_graph->removeSeries(this);
-}
+    if (d->m_graphTransition)
+        d->m_graphTransition->initialize();
 
+    QAbstractSeries::componentComplete();
+}
 
 QAbstractSeries::SeriesType QLineSeries::type() const
 {
-    return QAbstractSeries::SeriesTypeLine;
+    return QAbstractSeries::SeriesType::Line;
 }
 
-QLineSeriesPrivate::QLineSeriesPrivate(QLineSeries *q)
-    : QXYSeriesPrivate(q)
-{
-}
+QLineSeriesPrivate::QLineSeriesPrivate() {}
 
 qreal QLineSeries::width() const
 {
@@ -126,7 +130,7 @@ Qt::PenCapStyle QLineSeries::capStyle() const
     return d->m_capStyle;
 }
 
-void QLineSeries::setCapStyle(const Qt::PenCapStyle &newCapStyle)
+void QLineSeries::setCapStyle(Qt::PenCapStyle newCapStyle)
 {
     Q_D(QLineSeries);
     Qt::PenCapStyle validCapStyle = newCapStyle;

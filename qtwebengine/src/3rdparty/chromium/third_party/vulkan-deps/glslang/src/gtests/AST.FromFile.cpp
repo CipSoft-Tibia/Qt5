@@ -281,6 +281,9 @@ INSTANTIATE_TEST_SUITE_P(
         "glsl.es320.subgroupShuffleRelative.comp",
         "glsl.es320.subgroupQuad.comp",
         "glsl.es320.subgroupVote.comp",
+        "glsl.es320.extTextureShadowLod.frag",
+        "gl_samplemask_array_size.frag",
+        "glsl.ext.textureShadowLod.frag",
         "terminate.frag",
         "terminate.vert",
         "negativeWorkGroupSize.comp",
@@ -293,11 +296,16 @@ INSTANTIATE_TEST_SUITE_P(
         "GL_ARB_draw_instanced.vert",
         "GL_ARB_fragment_coord_conventions.vert",
         "GL_ARB_bindless_texture.frag",
+        "GL_ARB_texture_multisample.vert",
         "BestMatchFunction.vert",
         "EndStreamPrimitive.geom",
         "floatBitsToInt.vert",
         "coord_conventions.frag",
-        "gl_FragCoord.frag"
+        "gl_FragCoord.frag",
+        "glsl.interpOp.error.frag",
+        "GL_EXT_draw_instanced.vert",
+        "overflow_underflow_toinf_0.frag",
+        "GL_EXT_texture_array.frag",
     })),
     FileNameAsCustomTestSuffix
 );

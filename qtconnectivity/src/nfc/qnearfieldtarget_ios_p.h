@@ -33,10 +33,10 @@ class ResponseProvider : public QObject
     Q_OBJECT
 
     public:
-        void provideResponse(QNearFieldTarget::RequestId requestId, bool success, QByteArray recvBuffer);
+        void provideResponse(QNearFieldTarget::RequestId requestId, QNearFieldTarget::Error error, QByteArray recvBuffer);
 
     Q_SIGNALS:
-        void responseReceived(QNearFieldTarget::RequestId requestId, bool success, QByteArray recvBuffer);
+        void responseReceived(QNearFieldTarget::RequestId requestId, QNearFieldTarget::Error error, QByteArray recvBuffer);
 };
 
 struct NfcDeleter
@@ -95,6 +95,7 @@ private:
     bool hasNDEFMessage = false;
 
     bool connected = false;
+    bool justConnected = false;
     QTimer targetCheckTimer;
     QNearFieldTarget::RequestId requestInProgress;
     QQueue<std::pair<QNearFieldTarget::RequestId, QByteArray>> queue;
@@ -108,7 +109,7 @@ private Q_SLOTS:
     void onTargetCheck();
     void onTargetError(QNearFieldTarget::Error error, const QNearFieldTarget::RequestId &id);
     void onExecuteRequest();
-    void onResponseReceived(QNearFieldTarget::RequestId requestId, bool success, QByteArray recvBuffer);
+    void onResponseReceived(QNearFieldTarget::RequestId requestId, QNearFieldTarget::Error error, QByteArray recvBuffer);
     // NDEF:
     void messageRead(const QNdefMessage &ndefMessage, QNearFieldTarget::RequestId request);
     void messageWritten(QNearFieldTarget::RequestId request);

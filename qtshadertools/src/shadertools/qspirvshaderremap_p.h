@@ -20,7 +20,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_SHADERTOOLS_PRIVATE_EXPORT QSpirvShaderRemapper
+class Q_SHADERTOOLS_EXPORT QSpirvShaderRemapper
 {
 public:
     QByteArray remap(const QByteArray &ir, QSpirvShader::RemapFlags flags);

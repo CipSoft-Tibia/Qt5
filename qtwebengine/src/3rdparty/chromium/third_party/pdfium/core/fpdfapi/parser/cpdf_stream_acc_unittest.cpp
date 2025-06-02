@@ -4,6 +4,7 @@
 
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
@@ -22,8 +23,8 @@ TEST(StreamAccTest, ReadRawDataFailed) {
   EXPECT_TRUE(stream_acc->GetSpan().empty());
 }
 
-// Regression test for crbug.com/1361849. Should not trigger
-// ProbeForLowSeverityLifetimeIssue() failure.
+// Regression test for crbug.com/1361849. Should not trigger dangling pointer
+// failure with UnownedPtr.
 TEST(StreamAccTest, DataStreamLifeTime) {
   constexpr uint8_t kData[] = {'a', 'b', 'c'};
   auto stream = pdfium::MakeRetain<CPDF_Stream>();
@@ -31,5 +32,7 @@ TEST(StreamAccTest, DataStreamLifeTime) {
   auto stream_acc = pdfium::MakeRetain<CPDF_StreamAcc>(stream);
   stream_acc->LoadAllDataRaw();
   stream.Reset();
-  EXPECT_EQ(pdfium::make_span(kData), stream_acc->GetSpan());
+  auto span = stream_acc->GetSpan();
+  EXPECT_TRUE(
+      std::equal(std::begin(kData), std::end(kData), span.begin(), span.end()));
 }

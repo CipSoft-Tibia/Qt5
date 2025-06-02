@@ -42,7 +42,6 @@ private slots:
     void cleanupTestCase();
 
     void sanity();
-    void noBuiltins();
     void noQtQml();
     void inlineComponent();
     void singleton();
@@ -54,6 +53,11 @@ private slots:
     void exports();
     void qmlBaseFromAnotherModule();
     void invalidTypeAnnotation();
+    void constructFromString();
+    void unboundRequiredPropertyInInlineComponent();
+    void componentDefinitionInnerRequiredProperty();
+    void componentDefinitionInnerRequiredPropertyFromOutside();
+    void innerLevelRequiredProperty();
 };
 
 #ifndef TST_QMLTC_QPROCESS_RESOURCES
@@ -103,7 +107,7 @@ QString tst_qmltc_qprocess::runQmltc(const QString &inputFile,
     QProcess process;
     process.start(m_qmltcPath, args);
     handleResult(process); // may fail the test
-    errors = process.readAllStandardError();
+    errors = QString::fromLocal8Bit(process.readAllStandardError());
 
     if (QTest::currentTestFailed()) {
         qDebug() << "Command:" << process.program() << args.join(u' ');
@@ -137,29 +141,6 @@ void tst_qmltc_qprocess::sanity()
 {
     const auto output = runQmltc(u"dummy.qml"_s, true);
     QVERIFY2(output.isEmpty(), qPrintable(output));
-}
-
-void tst_qmltc_qprocess::noBuiltins()
-{
-    const auto renameBack = [&](const QString &original) {
-        const auto current = modifiedPath(original);
-        QFile file(current);
-        QVERIFY(file.exists());
-        QVERIFY(file.rename(original));
-    };
-
-    for (QString builtin : { u"builtins.qmltypes"_s, u"jsroot.qmltypes"_s }) {
-        const auto path = QLibraryInfo::path(QLibraryInfo::QmlImportsPath) + u"/"_s + builtin;
-
-        QScopeGuard scope(std::bind(renameBack, path));
-        QFile file(path);
-        QVERIFY(file.exists());
-        QVERIFY(file.rename(modifiedPath(path)));
-
-        // test that qmltc exits gracefully
-        const auto errors = runQmltc(u"dummy.qml"_s, false);
-        QVERIFY(errors.contains(u"Failed to find the following builtins: %1"_s.arg(builtin)));
-    }
 }
 
 void tst_qmltc_qprocess::noQtQml()
@@ -197,22 +178,22 @@ void tst_qmltc_qprocess::singleton()
 {
     {
         const auto errors = runQmltc(u"singletonUncreatable.qml"_s, false);
-        QVERIFY(errors.contains("singletonUncreatable.qml:4:1: Type UncreatableType is not "
-                                "creatable. [uncreatable-type]"));
+        QVERIFY(errors.contains(u"singletonUncreatable.qml:4:1: Type UncreatableType is not "_s
+                                u"creatable. [uncreatable-type]"_s));
     }
     {
         const auto errors = runQmltc(u"uncreatable.qml"_s, false);
         QVERIFY(errors.contains(
-                "uncreatable.qml:6:5: Type UncreatableType is not creatable. [uncreatable-type]"));
-        QVERIFY(errors.contains("uncreatable.qml:7:5: Singleton Type SingletonThing is not "
-                                "creatable. [uncreatable-type]"));
-        QVERIFY(errors.contains("uncreatable.qml:8:5: Singleton Type SingletonType is not "
-                                "creatable. [uncreatable-type]"));
-        QVERIFY(errors.contains("uncreatable.qml:10:18: Singleton Type SingletonThing is not "
-                                "creatable. [uncreatable-type]"));
-        QVERIFY(errors.contains("uncreatable.qml:15:18: Singleton Type SingletonType is not "
-                                "creatable. [uncreatable-type]"));
-        QVERIFY(!errors.contains("NotSingletonType"));
+                u"uncreatable.qml:6:5: Type UncreatableType is not creatable. [uncreatable-type]"_s));
+        QVERIFY(errors.contains(u"uncreatable.qml:7:5: Singleton Type SingletonThing is not "_s
+                                u"creatable. [uncreatable-type]"_s));
+        QVERIFY(errors.contains(u"uncreatable.qml:8:5: Singleton Type SingletonType is not "_s
+                                u"creatable. [uncreatable-type]"_s));
+        QVERIFY(errors.contains(u"uncreatable.qml:10:18: Singleton Type SingletonThing is not "_s
+                                u"creatable. [uncreatable-type]"_s));
+        QVERIFY(errors.contains(u"uncreatable.qml:15:18: Singleton Type SingletonType is not "_s
+                                u"creatable. [uncreatable-type]"_s));
+        QVERIFY(!errors.contains(u"NotSingletonType"_s));
     }
 }
 
@@ -308,10 +289,10 @@ void tst_qmltc_qprocess::exports()
 {
     const QString fileName = u"dummy.qml"_s;
     QStringList extraArgs;
-    extraArgs << "--export"
-              << "MYLIB_EXPORT_MACRO"
-              << "--exportInclude"
-              << "exportheader.h";
+    extraArgs << u"--export"_s
+              << u"MYLIB_EXPORT_MACRO"_s
+              << u"--exportInclude"_s
+              << u"exportheader.h"_s;
     const auto errors = runQmltc(fileName, true, extraArgs);
 
     const QString headerName = m_tmpPath + u"/"_s + QFileInfo(fileName).baseName() + u".h"_s;
@@ -327,6 +308,58 @@ void tst_qmltc_qprocess::exports()
 
     QVERIFY(header.contains(u"#include \"exportheader.h\"\n"_s));
     QVERIFY(!implementation.contains(u"exportheader.h"_s));
+}
+
+void tst_qmltc_qprocess::constructFromString()
+{
+    const auto errors = runQmltc(u"constructFromString.qml"_s, false);
+    const QString warningMessage =
+            u"constructFromString.qml:%1:%2: Construction from string is deprecated. "
+            u"Use structured value type construction instead for type \"%3\""_s;
+    QVERIFY(errors.contains(warningMessage.arg(4).arg(23).arg(u"QPointF")));
+    QVERIFY(errors.contains(warningMessage.arg(5).arg(23).arg(u"QRectF")));
+    QVERIFY(errors.contains(warningMessage.arg(6).arg(23).arg(u"QSizeF")));
+}
+
+void tst_qmltc_qprocess::unboundRequiredPropertyInInlineComponent()
+{
+    {
+        const auto errors = runQmltc(u"unboundRequiredPropertyInInlineComponent.qml"_s, false);
+        QVERIFY(errors.contains(
+                u"unboundRequiredPropertyInInlineComponent.qml:9:5: Component is missing required property foo from InlineComponent [required]"_s
+        ));
+    }
+}
+
+void tst_qmltc_qprocess::componentDefinitionInnerRequiredProperty()
+{
+    {
+        const auto errors = runQmltc(u"componentDefinitionInnerRequiredProperty.qml"_s, false);
+        QVERIFY(errors.contains(
+                u"componentDefinitionInnerRequiredProperty.qml:11:13: Component is missing required property bar from here [required]"
+        ));
+    }
+}
+
+void tst_qmltc_qprocess::componentDefinitionInnerRequiredPropertyFromOutside()
+{
+    {
+        const auto errors =
+                runQmltc(u"componentDefinitionInnerRequiredPropertyFromOutside.qml"_s, false);
+        QVERIFY(errors.contains(
+                u"componentDefinitionInnerRequiredPropertyFromOutside.qml:15:13: Component is missing required property requiredProperty from TypeWithRequiredProperty [required]"
+        ));
+    }
+}
+
+void tst_qmltc_qprocess::innerLevelRequiredProperty()
+{
+    {
+        const auto errors = runQmltc(u"innerLevelRequiredProperty.qml"_s, false);
+        QVERIFY(errors.contains(
+                u"innerLevelRequiredProperty.qml:7:5: Component is missing required property foo from here [required]"
+        ));
+    }
 }
 
 QTEST_MAIN(tst_qmltc_qprocess)

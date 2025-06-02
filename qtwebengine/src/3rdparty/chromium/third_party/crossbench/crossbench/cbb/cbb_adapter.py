@@ -19,8 +19,9 @@ import crossbench.benchmarks.all as benchmarks
 import crossbench.browsers.browser
 import crossbench.browsers.webdriver as cb_webdriver
 import crossbench.env
+import crossbench.runner.run
 import crossbench.runner.runner
-from crossbench.benchmarks.benchmark import PressBenchmark
+from crossbench.benchmarks.base import PressBenchmark
 from crossbench.stories.press_benchmark import PressBenchmarkStory
 
 press_benchmarks = [
@@ -101,8 +102,24 @@ def get_probe_result_file(benchmark_name: str,
     probe_cls = benchmark_cls.DEFAULT_STORY_CLS.PROBES[0]
     probe_name = probe_cls.NAME
 
-  result_file = output_dir_path / browser.unique_name / f"{probe_name}.json"
+  result_file = (
+      output_dir_path / browser.unique_name / "stories" / f"{probe_name}.json")
   return str(result_file)
+
+
+class CbbRunner(crossbench.runner.runner.Runner):
+
+  def create_run(self, browser_session, story, repetition, temperature, index,
+                 name, timeout, throw) -> crossbench.runner.run.Run:
+    return CbbRun(self, browser_session, story, repetition, temperature, index,
+                  name, timeout, throw)
+
+
+class CbbRun(crossbench.runner.run.Run):
+
+  def _create_session_dir(self) -> None:
+    # Don't create symlink loops and skip this step
+    pass
 
 
 def run_benchmark(output_folder: Union[str, pathlib.Path],
@@ -116,7 +133,7 @@ def run_benchmark(output_folder: Union[str, pathlib.Path],
     browser_list: List of browsers to run the benchmark on.
     benchmark: The Benchmark instance to run.
   """
-  runner = crossbench.runner.runner.Runner(
+  runner = CbbRunner(
       out_dir=pathlib.Path(output_folder),
       browsers=browser_list,
       benchmark=benchmark,

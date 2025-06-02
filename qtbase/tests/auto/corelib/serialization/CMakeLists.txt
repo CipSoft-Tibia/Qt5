@@ -2,8 +2,15 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 add_subdirectory(json)
+if (NOT WASM) # QTBUG-121822
 add_subdirectory(qcborstreamreader)
-add_subdirectory(qcborstreamwriter)
+endif()
+if(QT_FEATURE_cborstreamwriter)
+    if (NOT WASM) # QTBUG-121822
+    add_subdirectory(qcborstreamwriter)
+    endif()
+endif()
+# also (but not only!) QTBUG-121822:
 if(NOT WASM)
     add_subdirectory(qcborvalue)
 endif()

@@ -249,7 +249,6 @@ message AuthenticatorSelectionCriteria {
   UserVerificationRequirement user_verification = 3;
 }
 
-
 // Parameters passed into calls to MakeCredential.
 message PublicKeyCredentialCreationOptions {
   // Information about the relying party and user entities, respectively.

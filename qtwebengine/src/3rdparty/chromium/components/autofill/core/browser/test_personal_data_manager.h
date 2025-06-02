@@ -6,6 +6,7 @@
 #define COMPONENTS_AUTOFILL_CORE_BROWSER_TEST_PERSONAL_DATA_MANAGER_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -20,7 +21,6 @@
 #include "components/autofill/core/browser/strike_databases/autofill_profile_migration_strike_database.h"
 #include "components/autofill/core/browser/strike_databases/test_inmemory_strike_database.h"
 #include "components/signin/public/identity_manager/account_info.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace autofill {
 
@@ -45,31 +45,27 @@ class TestPersonalDataManager : public PersonalDataManager {
   bool IsPaymentsWalletSyncTransportEnabled() const override;
   void RecordUseOf(absl::variant<const AutofillProfile*, const CreditCard*>
                        profile_or_credit_card) override;
+  void RecordUseOfIban(Iban& iban) override;
   std::string SaveImportedCreditCard(
       const CreditCard& imported_credit_card) override;
-  void AddUpiId(const std::string& upi_id) override;
   void AddProfile(const AutofillProfile& profile) override;
   void UpdateProfile(const AutofillProfile& profile) override;
   void RemoveByGUID(const std::string& guid) override;
   bool IsEligibleForAddressAccountStorage() const override;
   void AddCreditCard(const CreditCard& credit_card) override;
-  std::string AddIban(const Iban& iban) override;
+  std::string AddAsLocalIban(const Iban iban) override;
+  std::string UpdateIban(const Iban& iban) override;
   void DeleteLocalCreditCards(const std::vector<CreditCard>& cards) override;
   void UpdateCreditCard(const CreditCard& credit_card) override;
-  void AddFullServerCreditCard(const CreditCard& credit_card) override;
   const std::string& GetDefaultCountryCodeForNewAddress() const override;
-  void SetProfilesForAllSources(
-      std::vector<AutofillProfile>* profiles) override;
-  bool SetProfilesForSource(base::span<const AutofillProfile> new_profiles,
-                            AutofillProfile::Source source) override;
   void LoadProfiles() override;
   void LoadCreditCards() override;
   void LoadCreditCardCloudTokenData() override;
   void LoadIbans() override;
   bool IsAutofillProfileEnabled() const override;
-  bool IsAutofillCreditCardEnabled() const override;
+  bool IsAutofillPaymentMethodsEnabled() const override;
   bool IsAutofillWalletImportEnabled() const override;
-  bool ShouldSuggestServerCards() const override;
+  bool ShouldSuggestServerPaymentMethods() const override;
   std::string CountryCodeForCurrentTimezone() const override;
   void ClearAllLocalData() override;
   bool IsDataLoaded() const override;
@@ -83,6 +79,10 @@ class TestPersonalDataManager : public PersonalDataManager {
       const override;
   bool IsPaymentMethodsMandatoryReauthEnabled() override;
   void SetPaymentMethodsMandatoryReauthEnabled(bool enabled) override;
+  bool IsPaymentCvcStorageEnabled() override;
+  void AddServerCvc(int64_t instrument_id, const std::u16string& cvc) override;
+  void ClearServerCvcs() override;
+  void ClearLocalCvcs() override;
 
   // Unique to TestPersonalDataManager:
 
@@ -98,8 +98,9 @@ class TestPersonalDataManager : public PersonalDataManager {
   // Clears |autofill_offer_data_|.
   void ClearCreditCardOfferData();
 
-  // Adds a card to |server_credit_cards_|.  Functionally identical to
-  // AddFullServerCreditCard().
+  // Adds a card to `server_credit_cards_`. This test class treats masked and
+  // full server cards equally, relying on their preset RecordType to
+  // differentiate them.
   void AddServerCreditCard(const CreditCard& credit_card);
 
   // Adds a cloud token data to |server_credit_card_cloud_token_data_|.
@@ -107,6 +108,9 @@ class TestPersonalDataManager : public PersonalDataManager {
 
   // Adds offer data to |autofill_offer_data_|.
   void AddAutofillOfferData(const AutofillOfferData& offer_data);
+
+  // Adds an `iban` to `server_ibans_`.
+  void AddServerIban(const Iban& iban);
 
   // Adds a `url` to `image` mapping to the local `credit_card_art_images_`
   // cache.
@@ -130,12 +134,8 @@ class TestPersonalDataManager : public PersonalDataManager {
     return num_times_save_imported_credit_card_called_;
   }
 
-  int num_times_save_upi_id_called() const {
-    return num_times_save_upi_id_called_;
-  }
-
-  void SetAutofillCreditCardEnabled(bool autofill_credit_card_enabled) {
-    autofill_credit_card_enabled_ = autofill_credit_card_enabled;
+  void SetAutofillPaymentMethodsEnabled(bool autofill_payment_methods_enabled) {
+    autofill_payment_methods_enabled_ = autofill_payment_methods_enabled;
   }
 
   void SetAutofillProfileEnabled(bool autofill_profile_enabled) {
@@ -163,20 +163,28 @@ class TestPersonalDataManager : public PersonalDataManager {
     account_info_ = account_info;
   }
 
+  void SetIsPaymentCvcStorageEnabled(bool enabled) {
+    payments_cvc_storage_enabled_ = enabled;
+  }
+
   void ClearCreditCardArtImages() { credit_card_art_images_.clear(); }
 
  private:
+  // This should be called when you just want to delete the element via `guid`
+  // and not trigger `NotifyPersonalDataObserver()`.
+  void RemoveByGuidWithoutNotifications(const std::string& guid);
+
   std::string timezone_country_code_;
   std::string default_country_code_;
   int num_times_save_imported_credit_card_called_ = 0;
-  int num_times_save_upi_id_called_ = 0;
-  absl::optional<bool> autofill_profile_enabled_;
-  absl::optional<bool> autofill_credit_card_enabled_;
-  absl::optional<bool> autofill_wallet_import_enabled_;
-  absl::optional<bool> eligible_for_account_storage_;
-  absl::optional<bool> payment_methods_mandatory_reauth_enabled_;
-  absl::optional<bool> payments_wallet_sync_transport_enabled_;
+  std::optional<bool> autofill_profile_enabled_;
+  std::optional<bool> autofill_payment_methods_enabled_;
+  std::optional<bool> autofill_wallet_import_enabled_;
+  std::optional<bool> eligible_for_account_storage_;
+  std::optional<bool> payment_methods_mandatory_reauth_enabled_;
+  std::optional<bool> payments_wallet_sync_transport_enabled_;
   CoreAccountInfo account_info_;
+  std::optional<bool> payments_cvc_storage_enabled_;
 
   TestInMemoryStrikeDatabase inmemory_strike_database_;
   AutofillProfileMigrationStrikeDatabase

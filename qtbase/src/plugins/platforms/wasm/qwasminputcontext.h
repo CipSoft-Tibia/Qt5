@@ -7,6 +7,8 @@
 
 #include <qpa/qplatforminputcontext.h>
 #include <private/qstdweb_p.h>
+#include <QtCore/qloggingcategory.h>
+
 #include <emscripten/bind.h>
 #include <emscripten/html5.h>
 #include <emscripten/emscripten.h>
@@ -37,15 +39,18 @@ public:
 
     void insertText(QString inputStr, bool replace = false);
 
-    bool usingTextInput() { return m_usingTextInput; }
-    void setUsingTextInput(bool enable) { m_usingTextInput = enable; }
+    bool usingTextInput() const { return m_inputMethodAccepted; }
     void setFocusObject(QObject *object) override;
+
+private:
+    void updateInputElement();
 
 private:
     QString m_preeditString;
     int m_replaceSize = 0;
 
-    bool m_usingTextInput = false;
+    bool m_visibleInputPanel = false;
+    bool m_inputMethodAccepted = false;
     QObject *m_focusObject = nullptr;
 };
 

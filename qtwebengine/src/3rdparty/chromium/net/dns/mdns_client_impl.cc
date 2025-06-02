@@ -7,12 +7,16 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "base/containers/fixed_flat_set.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/observer_list.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/clock.h"
@@ -26,7 +30,6 @@
 #include "net/dns/public/util.h"
 #include "net/dns/record_rdata.h"
 #include "net/socket/datagram_socket.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 // TODO(gene): Remove this temporary method of disabling NSEC support once it
 // becomes clear whether this feature should be
@@ -43,6 +46,39 @@ namespace {
 // the original TTL.
 const double kListenerRefreshRatio1 = 0.85;
 const double kListenerRefreshRatio2 = 0.95;
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class mdnsQueryType {
+  kInitial = 0,  // Initial mDNS query sent.
+  kRefresh = 1,  // Refresh mDNS query sent.
+  kMaxValue = kRefresh,
+};
+
+void RecordQueryMetric(mdnsQueryType query_type, std::string_view host) {
+  constexpr auto kPrintScanServices = base::MakeFixedFlatSet<std::string_view>({
+      "_ipps._tcp.local",
+      "_ipp._tcp.local",
+      "_pdl-datastream._tcp.local",
+      "_printer._tcp.local",
+      "_print._sub._ipps._tcp.local",
+      "_print._sub._ipp._tcp.local",
+      "_scanner._tcp.local",
+      "_uscans._tcp.local",
+      "_uscan._tcp.local",
+  });
+
+  if (host.ends_with("_googlecast._tcp.local")) {
+    base::UmaHistogramEnumeration("Network.Mdns.Googlecast", query_type);
+  } else if (base::ranges::any_of(kPrintScanServices,
+                                  [&host](std::string_view service) {
+                                    return host.ends_with(service);
+                                  })) {
+    base::UmaHistogramEnumeration("Network.Mdns.PrintScan", query_type);
+  } else {
+    base::UmaHistogramEnumeration("Network.Mdns.Other", query_type);
+  }
+}
 
 }  // namespace
 
@@ -220,7 +256,7 @@ int MDnsClientImpl::Core::Init(MDnsSocketFactory* socket_factory) {
 }
 
 bool MDnsClientImpl::Core::SendQuery(uint16_t rrtype, const std::string& name) {
-  absl::optional<std::vector<uint8_t>> name_dns =
+  std::optional<std::vector<uint8_t>> name_dns =
       dns_names_util::DottedNameToNetwork(name);
   if (!name_dns.has_value())
     return false;
@@ -616,6 +652,7 @@ void MDnsListenerImpl::ScheduleNextRefresh() {
 }
 
 void MDnsListenerImpl::DoRefresh() {
+  RecordQueryMetric(mdnsQueryType::kRefresh, name_);
   client_->core()->SendQuery(rrtype_, name_);
 }
 
@@ -747,6 +784,7 @@ bool MDnsTransactionImpl::QueryAndListen() {
     return false;
 
   DCHECK(client_->core());
+  RecordQueryMetric(mdnsQueryType::kInitial, name_);
   if (!client_->core()->SendQuery(rrtype_, name_))
     return false;
 

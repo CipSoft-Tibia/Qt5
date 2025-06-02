@@ -12,7 +12,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Position
-    //! \instantiates QDeclarativePosition
+    //! \nativetype QDeclarativePosition
     \inqmlmodule QtPositioning
     \since 5.2
 

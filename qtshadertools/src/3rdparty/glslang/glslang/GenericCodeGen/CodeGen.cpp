@@ -42,10 +42,9 @@ namespace QtShaderTools {
 //
 class TGenericCompiler : public TCompiler {
 public:
-    TGenericCompiler(EShLanguage l, int dOptions) : TCompiler(l, infoSink), debugOptions(dOptions) { }
+    TGenericCompiler(EShLanguage l) : TCompiler(l, infoSink) {}
     virtual bool compile(TIntermNode* root, int version = 0, EProfile profile = ENoProfile);
     TInfoSink infoSink;
-    int debugOptions;
 };
 
 //
@@ -53,10 +52,7 @@ public:
 // compile object used by higher level code.  It returns
 // a subclass of TCompiler.
 //
-TCompiler* ConstructCompiler(EShLanguage language, int debugOptions)
-{
-    return new TGenericCompiler(language, debugOptions);
-}
+TCompiler* ConstructCompiler(EShLanguage language, int) { return new TGenericCompiler(language); }
 
 //
 // Delete the compiler made by ConstructCompiler

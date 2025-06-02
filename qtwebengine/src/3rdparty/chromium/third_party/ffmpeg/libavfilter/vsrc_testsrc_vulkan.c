@@ -26,6 +26,7 @@
 #include "internal.h"
 #include "filters.h"
 #include "colorspace.h"
+#include "video.h"
 
 enum TestSrcVulkanMode {
     TESTSRC_COLOR,
@@ -187,8 +188,6 @@ static av_cold int init_filter(AVFilterContext *ctx, enum TestSrcVulkanMode mode
     RET(ff_vk_exec_pipeline_register(vkctx, &s->e, &s->pl));
 
     s->initialized = 1;
-
-    return 0;
 
 fail:
     if (spv_opaque)

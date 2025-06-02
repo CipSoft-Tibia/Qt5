@@ -24,6 +24,9 @@ qt_internal_add_tool(${target_name}
         WrapProtobuf::WrapLibProtobuf
         WrapProtobuf::WrapLibProtoc
         QtProtocCommon
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../
+    ATTRIBUTION_ENTRY_INDEX 0
 )
 
 qt_internal_return_unless_building_tools()

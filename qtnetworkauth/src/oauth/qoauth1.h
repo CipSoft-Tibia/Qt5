@@ -4,9 +4,10 @@
 #ifndef QOAUTH1_H
 #define QOAUTH1_H
 
+#include <QtNetworkAuth/qoauthglobal.h>
+
 #ifndef QT_NO_HTTP
 
-#include <QtNetworkAuth/qoauthglobal.h>
 #include <QtNetworkAuth/qabstractoauth.h>
 
 #include <QtNetwork/qnetworkaccessmanager.h>
@@ -38,15 +39,15 @@ public:
 
     QString clientSharedSecret() const;
     void setClientSharedSecret(const QString &clientSharedSecret);
-    QPair<QString, QString> clientCredentials() const;
-    void setClientCredentials(const QPair<QString, QString> &clientCredentials);
+    std::pair<QString, QString> clientCredentials() const;
+    void setClientCredentials(const std::pair<QString, QString> &clientCredentials);
     void setClientCredentials(const QString &clientIdentifier, const QString &clientSharedSecret);
 
     // Token credentials: https://tools.ietf.org/html/rfc5849#section-2.3
     QString tokenSecret() const;
     void setTokenSecret(const QString &tokenSecret);
-    QPair<QString, QString> tokenCredentials() const;
-    void setTokenCredentials(const QPair<QString, QString> &tokenCredentials);
+    std::pair<QString, QString> tokenCredentials() const;
+    void setTokenCredentials(const std::pair<QString, QString> &tokenCredentials);
     void setTokenCredentials(const QString &token, const QString &tokenSecret);
 
     // Temporary Credentials: https://tools.ietf.org/html/rfc5849#section-2.1
@@ -90,7 +91,7 @@ protected:
 
     QNetworkReply *requestTokenCredentials(QNetworkAccessManager::Operation operation,
                                            const QUrl &url,
-                                           const QPair<QString, QString> &temporaryToken,
+                                           const std::pair<QString, QString> &temporaryToken,
                                            const QVariantMap &parameters = QVariantMap());
 
     void setup(QNetworkRequest *request,

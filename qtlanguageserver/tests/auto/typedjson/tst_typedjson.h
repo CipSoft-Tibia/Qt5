@@ -123,10 +123,46 @@ public:
     }
 };
 
+class TextDocumentEdit
+{
+public:
+    TextDocumentIdentifier textDocument = {};
+
+    template<typename W>
+    void walk(W &w)
+    {
+        field(w, "textDocument", textDocument);
+    }
+};
+class WorkspaceEdit
+{
+public:
+    std::optional<
+            std::variant<QList<TextDocumentEdit>, QList<std::variant<TextDocumentEdit, Position>>>>
+            documentChanges = {};
+
+    template<typename W>
+    void walk(W &w)
+    {
+        field(w, "documentChanges", documentChanges);
+    }
+};
+class PatchedWorkspaceEdit
+{
+public:
+    std::optional<QList<std::variant<TextDocumentEdit, Position>>> documentChanges = {};
+
+    template<typename W>
+    void walk(W &w)
+    {
+        field(w, "documentChanges", documentChanges);
+    }
+};
 } // namespace TestSpec
 
 QT_BEGIN_NAMESPACE
 namespace QTypedJson {
+using namespace Qt::StringLiterals;
 
 class TestTypedJson : public QObject
 {
@@ -184,6 +220,100 @@ private slots:
         QCOMPARE(value2.textDocument.uri, QByteArray("file:///folder/file.ts"));
         QCOMPARE(value2.position.line, 9);
         QCOMPARE(value2.position.character, 5);
+    }
+
+    void qtbug124592()
+    {
+        const QString jsonList{ uR"({
+"documentChanges" : [
+    { "textDocument": { "uri": "a" } },
+    { "textDocument": { "uri": "b" } },
+    { "textDocument": { "uri": "c" } }
+] })"_s };
+        const QString jsonListOfVariants{ uR"({
+"documentChanges" : [
+    { "textDocument": { "uri": "a" } },
+    { "textDocument": { "uri": "b" } },
+    { "textDocument": { "uri": "c" } },
+    { "line": 5, "character": 6 }
+] })"_s };
+
+        QJsonDocument list = QJsonDocument::fromJson(jsonList.toUtf8());
+        QVERIFY(!list.isNull());
+        QJsonDocument listOfVariants = QJsonDocument::fromJson(jsonListOfVariants.toUtf8());
+        QVERIFY(!listOfVariants.isNull());
+
+        {
+            TestSpec::WorkspaceEdit edit;
+            QTypedJson::Reader r(list.object());
+            QTypedJson::doWalk(r, edit);
+            QVERIFY(edit.documentChanges);
+            QVERIFY(std::holds_alternative<QList<TestSpec::TextDocumentEdit>>(
+                    *edit.documentChanges));
+            auto list = std::get<QList<TestSpec::TextDocumentEdit>>(*edit.documentChanges);
+            QCOMPARE(list.size(), 3);
+            QCOMPARE(list[0].textDocument.uri, u"a"_s);
+            QCOMPARE(list[1].textDocument.uri, u"b"_s);
+            QCOMPARE(list[2].textDocument.uri, u"c"_s);
+        }
+
+        {
+            TestSpec::WorkspaceEdit edit;
+            QTypedJson::Reader r(listOfVariants.object());
+            QTypedJson::doWalk(r, edit);
+            QVERIFY(edit.documentChanges);
+            auto isVariant = std::holds_alternative<
+                    QList<std::variant<TestSpec::TextDocumentEdit, TestSpec::Position>>>(
+                    *edit.documentChanges);
+            QVERIFY(isVariant);
+
+            auto list =
+                    std::get<QList<std::variant<TestSpec::TextDocumentEdit, TestSpec::Position>>>(
+                            *edit.documentChanges);
+            QCOMPARE(list.size(), 4);
+            QVERIFY(std::holds_alternative<TestSpec::TextDocumentEdit>(list[0]));
+            QCOMPARE(std::get<TestSpec::TextDocumentEdit>(list[0]).textDocument.uri, u"a"_s);
+            QVERIFY(std::holds_alternative<TestSpec::TextDocumentEdit>(list[1]));
+            QCOMPARE(std::get<TestSpec::TextDocumentEdit>(list[1]).textDocument.uri, u"b"_s);
+            QVERIFY(std::holds_alternative<TestSpec::TextDocumentEdit>(list[2]));
+            QCOMPARE(std::get<TestSpec::TextDocumentEdit>(list[2]).textDocument.uri, u"c"_s);
+            QVERIFY(std::holds_alternative<TestSpec::Position>(list[3]));
+            QCOMPARE(std::get<TestSpec::Position>(list[3]).line, 5);
+            QCOMPARE(std::get<TestSpec::Position>(list[3]).character, 6);
+        }
+    }
+
+    void equivalenceListAndListOfVariants()
+    {
+        const QString jsonList{ uR"({
+"documentChanges" : [
+    { "textDocument": { "uri": "a" } },
+    { "textDocument": { "uri": "b" } },
+    { "textDocument": { "uri": "c" } }
+] })"_s };
+
+        QJsonDocument jsonDocument = QJsonDocument::fromJson(jsonList.toUtf8());
+        QVERIFY(!jsonDocument.isNull());
+
+        // show that the list of variant can serialize from the list of TextDocumentEdit
+        TestSpec::PatchedWorkspaceEdit hasListOfVariant;
+        QTypedJson::Reader r(jsonDocument.object());
+        QTypedJson::doWalk(r, hasListOfVariant);
+        QVERIFY(hasListOfVariant.documentChanges);
+        auto list = *hasListOfVariant.documentChanges;
+        QCOMPARE(list.size(), 3);
+        QVERIFY(std::holds_alternative<TestSpec::TextDocumentEdit>(list[0]));
+        QCOMPARE(std::get<TestSpec::TextDocumentEdit>(list[0]).textDocument.uri, u"a"_s);
+        QVERIFY(std::holds_alternative<TestSpec::TextDocumentEdit>(list[1]));
+        QCOMPARE(std::get<TestSpec::TextDocumentEdit>(list[1]).textDocument.uri, u"b"_s);
+        QVERIFY(std::holds_alternative<TestSpec::TextDocumentEdit>(list[2]));
+        QCOMPARE(std::get<TestSpec::TextDocumentEdit>(list[2]).textDocument.uri, u"c"_s);
+
+        // show that the list of variant can deserialize into the list of TextDocumentEdit
+        TestSpec::WorkspaceEdit hasListOfTextDocuments;
+        QTypedJson::Reader r2(jsonDocument.object());
+        QTypedJson::doWalk(r2, hasListOfTextDocuments);
+        QCOMPARE(toJsonValue(hasListOfVariant), toJsonValue(hasListOfTextDocuments));
     }
 };
 

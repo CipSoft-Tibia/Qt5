@@ -13,13 +13,13 @@
 // limitations under the License.
 
 import {
-  Command,
+  createStore,
   MetricVisualisation,
   Plugin,
   PluginContext,
-  PluginInfo,
-  TracePluginContext,
-  TrackInfo,
+  PluginContextTrace,
+  PluginDescriptor,
+  Store,
 } from '../../public';
 
 interface State {
@@ -27,46 +27,37 @@ interface State {
 }
 
 // SKELETON: Rename this class to match your plugin.
-class Skeleton implements Plugin<State> {
+class Skeleton implements Plugin {
+  private store: Store<State> = createStore({foo: 'foo'});
+
   onActivate(_: PluginContext): void {
     //
   }
 
-  migrate(_initialState: unknown): State {
-    return {foo: 'bar'};
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    this.store = ctx.mountStore((_: unknown): State => {
+      return {foo: 'bar'};
+    });
+
+    this.store.edit((state) => {
+      state.foo = 'baz';
+    });
   }
 
-  async onTraceLoad(_: TracePluginContext<State>): Promise<void> {
-    //
-  }
-
-  async onTraceUnload(_: TracePluginContext<State>): Promise<void> {
-    //
+  async onTraceUnload(_: PluginContextTrace): Promise<void> {
+    this.store.dispose();
   }
 
   onDeactivate(_: PluginContext): void {
     //
   }
 
-  commands(_: PluginContext): Command[] {
-    return [];
-  }
-
-  traceCommands(_: TracePluginContext<State>): Command[] {
-    return [];
-  }
-
-  async findPotentialTracks(_: TracePluginContext<State>):
-      Promise<TrackInfo[]> {
-    return [];
-  }
-
-  metricVisualisations(_: TracePluginContext<State>): MetricVisualisation[] {
+  metricVisualisations(_: PluginContextTrace): MetricVisualisation[] {
     return [];
   }
 }
 
-export const plugin: PluginInfo<State> = {
+export const plugin: PluginDescriptor = {
   // SKELETON: Update pluginId to match the directory of the plugin.
   pluginId: 'com.example.Skeleton',
   plugin: Skeleton,

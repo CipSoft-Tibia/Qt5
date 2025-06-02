@@ -98,7 +98,7 @@ doesn't work well for Chromium:
 Synopsis:
 
 ```shell
-tools/clang/scripts/build.py --bootstrap --without-android \
+tools/clang/scripts/build.py --bootstrap --without-android --without-fuchsia \
   --extra-tools rewrite_to_chrome_style
 ```
 

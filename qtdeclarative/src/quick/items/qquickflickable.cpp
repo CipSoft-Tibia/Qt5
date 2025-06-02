@@ -265,7 +265,7 @@ void QQuickFlickablePrivate::init()
     q->setFlag(QQuickItem::ItemIsViewport);
     QQuickItemPrivate *viewportPrivate = QQuickItemPrivate::get(contentItem);
     viewportPrivate->addItemChangeListener(this, QQuickItemPrivate::Geometry);
-    setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Preferred);
+    setSizePolicy(QLayoutPolicy::Expanding, QLayoutPolicy::Expanding);
 }
 
 /*!
@@ -629,7 +629,7 @@ void QQuickFlickablePrivate::updateBeginningEnd()
 
 /*!
     \qmltype Flickable
-    \instantiates QQuickFlickable
+    \nativetype QQuickFlickable
     \inqmlmodule QtQuick
     \ingroup qtquick-input
     \ingroup qtquick-containers
@@ -1239,7 +1239,7 @@ void QQuickFlickablePrivate::drag(qint64 currentTimestamp, QEvent::Type eventTyp
                     }
                 }
             }
-            if (!rejectY && stealMouse && dy != 0.0 && dy != vData.previousDragDelta) {
+            if (!rejectY && stealMouse && dy != vData.previousDragDelta) {
                 clearTimeline();
                 vData.move.setValue(newY);
                 vMoved = true;
@@ -1312,8 +1312,7 @@ void QQuickFlickablePrivate::drag(qint64 currentTimestamp, QEvent::Type eventTyp
                     }
                 }
             }
-
-            if (!rejectX && stealMouse && dx != 0.0 && dx != hData.previousDragDelta) {
+            if (!rejectX && stealMouse && dx != hData.previousDragDelta) {
                 clearTimeline();
                 hData.move.setValue(newX);
                 hMoved = true;
@@ -1375,7 +1374,17 @@ void QQuickFlickablePrivate::handleMoveEvent(QPointerEvent *event)
     const QVector2D velocity = firstPointLocalVelocity(event);
     bool overThreshold = false;
 
-    if (event->pointCount() == 1) {
+    if (q->isMoving()) {
+        /*
+            Only the first drag should be used to determine if the Flickable should start moving,
+            to the exclusion of some inner Control (such as Slider) or a child Flickable.
+            If the user releases the mouse or finger and drags again, this Flickable is the only
+            sensible recipient as long as it's still moving.
+            We also only care about the drag threshold for the first drag. If it's already moving,
+            every subsequent move event (however small) should move the content item immediately.
+        */
+        overThreshold = true;
+    } else if (event->pointCount() == 1) {
         if (q->yflick())
             overThreshold |= QQuickDeliveryAgentPrivate::dragOverThreshold(deltas.y(), Qt::YAxis, firstPoint);
         if (q->xflick())
@@ -1814,7 +1823,9 @@ void QQuickFlickable::wheelEvent(QWheelEvent *event)
                 || (yflick() && qAbs(d->accumulatedWheelPixelDelta.y()) > qAbs(d->accumulatedWheelPixelDelta.x() * 2))) {
             d->drag(currentTimestamp, event->type(), event->position(), d->accumulatedWheelPixelDelta,
                     true, !d->scrollingPhase, true, velocity);
-            event->accept();
+            d->updateBeginningEnd();
+            if ((xflick() && !isAtXBeginning() && !isAtXEnd()) || (yflick() && !isAtYBeginning() && !isAtYEnd()))
+                event->accept();
         } else {
             qCDebug(lcWheel) << "not dragging: accumulated deltas" << d->accumulatedWheelPixelDelta <<
                                 "moving?" << isMoving() << "can flick horizontally?" << xflick() << "vertically?" << yflick();
@@ -2698,6 +2709,7 @@ bool QQuickFlickable::filterPointerEvent(QQuickItem *receiver, QPointerEvent *ev
     if (event->pointCount() > 1) {
         qCDebug(lcFilter) << objectName() << "ignoring multi-touch" << event << "for" << receiver;
         d->stealMouse = false;
+        return false;
     } else {
         qCDebug(lcFilter) << objectName() << "filtering" << event << "for" << receiver;
     }
@@ -2766,12 +2778,26 @@ bool QQuickFlickable::filterPointerEvent(QQuickItem *receiver, QPointerEvent *ev
         } else if (d->delayedPressEvent) {
             event->setExclusiveGrabber(firstPoint, this);
         }
-
-        const bool filtered = !receiverRelinquishGrab && (stealThisEvent || d->delayedPressEvent || receiverDisabled);
-        if (filtered) {
+        /*
+            Note that d->stealMouse can be false before the call to d->handleMoveEvent(), but true
+            afterwards. That means we detected a drag. But even so, we deliberately don't filter
+            the move event that cause this to happen, since the user might actually be dragging on
+            a child item, such as a Slider, in which case the child should get a chance to detect
+            the drag instead, and take the grab. Only if we receive another move event after this,
+            without the child grabbing the mouse in-between, do we initiate a flick.
+            An exception is if the user is already in a flicking session started from an earlier
+            drag, meaning that the content item is still moving (isMoving() == true). In that
+            case, we see any subsequent drags as being a continuation of the flicking.
+            Then we filter all events straight away, to avoid triggering any taps or drags in a child.
+        */
+        if (isMoving() || (!receiverRelinquishGrab && (stealThisEvent || d->delayedPressEvent || receiverDisabled))) {
+            // Filter the event
             event->setAccepted(true);
+            return true;
         }
-        return filtered;
+
+        // Don't filter the event
+        return false;
     } else if (d->lastPosTime != -1) {
         d->lastPosTime = -1;
         returnToBounds();

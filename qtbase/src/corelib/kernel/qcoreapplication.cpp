@@ -13,7 +13,6 @@
 #endif
 #include "qmetaobject.h"
 #include <private/qproperty_p.h>
-#include "qcorecmdlineargs_p.h"
 #include <qdatastream.h>
 #include <qdebug.h>
 #include <qdir.h>
@@ -43,6 +42,7 @@
 #include <private/qlocale_p.h>
 #include <private/qlocking_p.h>
 #include <private/qhooks_p.h>
+#include <private/qnativeinterface_p.h>
 
 #if QT_CONFIG(permissions)
 #include <private/qpermissions_p.h>
@@ -109,6 +109,10 @@
 #include <memory>
 #include <string>
 
+#ifdef Q_OS_WIN
+#  include <qt_windows.h>
+#endif
+
 QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
@@ -131,6 +135,11 @@ extern QString qAppFileName();
 #endif
 
 Q_CONSTINIT bool QCoreApplicationPrivate::setuidAllowed = false;
+
+Q_CONSTINIT QCoreApplication *QCoreApplication::self = nullptr;
+Q_CONSTINIT static QBasicAtomicPointer<QCoreApplication> g_self = nullptr;
+#  undef qApp
+#  define qApp g_self.loadRelaxed()
 
 #if !defined(Q_OS_WIN)
 #ifdef Q_OS_DARWIN
@@ -191,7 +200,7 @@ Q_CONSTINIT QString *QCoreApplicationPrivate::cachedApplicationFilePath = nullpt
 
 bool QCoreApplicationPrivate::checkInstance(const char *function)
 {
-    bool b = (QCoreApplication::self != nullptr);
+    bool b = (qApp != nullptr);
     if (!b)
         qWarning("QApplication::%s: Please instantiate the QApplication object first", function);
     return b;
@@ -237,7 +246,11 @@ void QCoreApplicationPrivate::processCommandLineArguments()
 
 // Support for introspection
 
-extern "C" void Q_DECL_EXPORT_OVERRIDABLE qt_startup_hook()
+extern "C" void
+#ifdef QT_SHARED
+Q_DECL_EXPORT_OVERRIDABLE
+#endif
+qt_startup_hook()
 {
 }
 
@@ -347,19 +360,20 @@ Q_CONSTINIT QAbstractEventDispatcher *QCoreApplicationPrivate::eventDispatcher =
 
 #endif // QT_NO_QOBJECT
 
-Q_CONSTINIT QCoreApplication *QCoreApplication::self = nullptr;
 Q_CONSTINIT uint QCoreApplicationPrivate::attribs =
     (1 << Qt::AA_SynthesizeMouseForUnhandledTouchEvents) |
     (1 << Qt::AA_SynthesizeMouseForUnhandledTabletEvents);
 
-struct QCoreApplicationData {
+struct QCoreApplicationData
+{
     QCoreApplicationData() noexcept {
         applicationNameSet = false;
         applicationVersionSet = false;
     }
     ~QCoreApplicationData() {
-#ifndef QT_NO_QOBJECT
+#if !defined(QT_NO_QOBJECT) && defined(Q_OS_WIN)
         // cleanup the QAdoptedThread created for the main() thread
+        // (for Unix systems, see qthread_unix.cpp:set_thread_data())
         if (auto *t = QCoreApplicationPrivate::theMainThread.loadAcquire()) {
             QThreadData *data = QThreadData::get2(t);
             data->deref(); // deletes the data and the adopted thread
@@ -475,6 +489,11 @@ QCoreApplicationPrivate::~QCoreApplicationPrivate()
     QCoreApplicationPrivate::clearApplicationFilePath();
 }
 
+bool QCoreApplicationPrivate::isAlive() noexcept
+{
+    return qApp != nullptr;
+}
+
 #ifndef QT_NO_QOBJECT
 
 void QCoreApplicationPrivate::cleanupThreadData()
@@ -491,7 +510,7 @@ void QCoreApplicationPrivate::cleanupThreadData()
         const auto locker = qt_scoped_lock(thisThreadData->postEventList.mutex);
         for (const QPostEvent &pe : std::as_const(thisThreadData->postEventList)) {
             if (pe.event) {
-                --pe.receiver->d_func()->postedEvents;
+                pe.receiver->d_func()->postedEvents.fetchAndSubAcquire(1);
                 pe.event->m_posted = false;
                 delete pe.event;
             }
@@ -517,6 +536,7 @@ void QCoreApplicationPrivate::eventDispatcherReady()
 }
 
 Q_CONSTINIT QBasicAtomicPointer<QThread> QCoreApplicationPrivate::theMainThread = Q_BASIC_ATOMIC_INITIALIZER(nullptr);
+Q_CONSTINIT QBasicAtomicPointer<void> QCoreApplicationPrivate::theMainThreadId = Q_BASIC_ATOMIC_INITIALIZER(nullptr);
 QThread *QCoreApplicationPrivate::mainThread()
 {
     Q_ASSERT(theMainThread.loadRelaxed() != nullptr);
@@ -848,6 +868,7 @@ void Q_TRACE_INSTRUMENT(qtcore) QCoreApplicationPrivate::init()
 
     Q_ASSERT_X(!QCoreApplication::self, "QCoreApplication", "there should be only one application object");
     QCoreApplication::self = q;
+    g_self.storeRelaxed(q);
 
 #if QT_CONFIG(thread)
 #ifdef Q_OS_WASM
@@ -949,6 +970,7 @@ QCoreApplication::~QCoreApplication()
     qt_call_post_routines();
 
     self = nullptr;
+    g_self.storeRelaxed(nullptr);
 #ifndef QT_NO_QOBJECT
     QCoreApplicationPrivate::is_app_closing = true;
     QCoreApplicationPrivate::is_app_running = false;
@@ -1028,7 +1050,6 @@ bool QCoreApplication::isSetuidAllowed()
     return QCoreApplicationPrivate::setuidAllowed;
 }
 
-
 /*!
     Sets the attribute \a attribute if \a on is true;
     otherwise clears the attribute.
@@ -1041,6 +1062,10 @@ bool QCoreApplication::isSetuidAllowed()
 */
 void QCoreApplication::setAttribute(Qt::ApplicationAttribute attribute, bool on)
 {
+    // Since we bit-shift these values, we can't go higher than 32 on 32 bit operating systems
+    // without changing the storage type of QCoreApplicationPrivate::attribs to quint64.
+    static_assert(Qt::AA_AttributeCount <= sizeof(QCoreApplicationPrivate::attribs) * CHAR_BIT);
+
     if (on)
         QCoreApplicationPrivate::attribs |= 1 << attribute;
     else
@@ -1124,7 +1149,7 @@ void QCoreApplication::setQuitLockEnabled(bool enabled)
 bool QCoreApplication::notifyInternal2(QObject *receiver, QEvent *event)
 {
     bool selfRequired = QCoreApplicationPrivate::threadRequiresCoreApplication();
-    if (selfRequired && !self)
+    if (selfRequired && !qApp)
         return false;
 
     // Make it possible for Qt Script to hook into events even
@@ -1146,10 +1171,10 @@ bool QCoreApplication::notifyInternal2(QObject *receiver, QEvent *event)
         return doNotify(receiver, event);
 
 #if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0)
-    if (threadData->thread.loadRelaxed() != QCoreApplicationPrivate::mainThread())
+    if (!QThread::isMainThread())
         return false;
 #endif
-    return self->notify(receiver, event);
+    return qApp->notify(receiver, event);
 }
 
 /*!
@@ -1256,7 +1281,7 @@ static bool doNotify(QObject *receiver, QEvent *event)
 bool QCoreApplicationPrivate::sendThroughApplicationEventFilters(QObject *receiver, QEvent *event)
 {
     // We can't access the application event filters outside of the main thread (race conditions)
-    Q_ASSERT(receiver->d_func()->threadData.loadAcquire()->thread.loadRelaxed() == mainThread());
+    Q_ASSERT(QThread::isMainThread());
 
     if (extraData) {
         // application event filters are only called for objects in the GUI thread
@@ -1277,9 +1302,7 @@ bool QCoreApplicationPrivate::sendThroughApplicationEventFilters(QObject *receiv
 
 bool QCoreApplicationPrivate::sendThroughObjectEventFilters(QObject *receiver, QEvent *event)
 {
-    if ((receiver->d_func()->threadData.loadRelaxed()->thread.loadAcquire() != mainThread()
-         || receiver != QCoreApplication::instance())
-        && receiver->d_func()->extraData) {
+    if (receiver != qApp && receiver->d_func()->extraData) {
         for (qsizetype i = 0; i < receiver->d_func()->extraData->eventFilters.size(); ++i) {
             QObject *obj = receiver->d_func()->extraData->eventFilters.at(i);
             if (!obj)
@@ -1310,7 +1333,7 @@ bool QCoreApplicationPrivate::notify_helper(QObject *receiver, QEvent * event)
     Q_TRACE_EXIT(QCoreApplication_notify_exit, consumed, filtered);
 
     // send to all application event filters (only does anything in the main thread)
-    if (receiver->d_func()->threadData.loadRelaxed()->thread.loadAcquire() == mainThread()
+    if (QThread::isMainThread()
             && QCoreApplication::self
             && QCoreApplication::self->d_func()->sendThroughApplicationEventFilters(receiver, event)) {
         filtered = true;
@@ -1378,7 +1401,8 @@ bool QCoreApplication::closingDown()
 
     \threadsafe
 
-    \sa exec(), QTimer, QEventLoop::processEvents(), sendPostedEvents()
+    \sa exec(), QTimer, QChronoTimer, QEventLoop::processEvents(),
+    sendPostedEvents()
 */
 void QCoreApplication::processEvents(QEventLoop::ProcessEventsFlags flags)
 {
@@ -1427,7 +1451,7 @@ void QCoreApplication::processEvents(QEventLoop::ProcessEventsFlags flags, int m
 
     \threadsafe
 
-    \sa exec(), QTimer, QEventLoop::processEvents()
+    \sa exec(), QTimer, QChronoTimer, QEventLoop::processEvents()
 */
 void QCoreApplication::processEvents(QEventLoop::ProcessEventsFlags flags, QDeadlineTimer deadline)
 {
@@ -1457,10 +1481,10 @@ void QCoreApplication::processEvents(QEventLoop::ProcessEventsFlags flags, QDead
     main event loop receives events from the window system and
     dispatches these to the application widgets.
 
-    To make your application perform idle processing (by executing a
-    special function whenever there are no pending events), use a
-    QTimer with 0 timeout. More advanced idle processing schemes can
-    be achieved using processEvents().
+    To make your application perform idle processing (by executing a special
+    function whenever there are no pending events), use a QChronoTimer
+    with 0ns timeout. More advanced idle processing schemes can be achieved
+    using processEvents().
 
     We recommend that you connect clean-up code to the
     \l{QCoreApplication::}{aboutToQuit()} signal, instead of putting it in
@@ -1689,35 +1713,10 @@ void QCoreApplication::postEvent(QObject *receiver, QEvent *event, int priority)
     QThreadData *data = locker.threadData;
 
     // if this is one of the compressible events, do compression
-    if (receiver->d_func()->postedEvents
+    if (receiver->d_func()->postedEvents.loadAcquire()
         && self && self->compressEvent(event, receiver, &data->postEventList)) {
         Q_TRACE(QCoreApplication_postEvent_event_compressed, receiver, event);
         return;
-    }
-
-    if (event->type() == QEvent::DeferredDelete && data == QThreadData::current()) {
-        // remember the current running eventloop for DeferredDelete
-        // events posted in the receiver's thread.
-
-        // Events sent by non-Qt event handlers (such as glib) may not
-        // have the scopeLevel set correctly. The scope level makes sure that
-        // code like this:
-        //     foo->deleteLater();
-        //     qApp->processEvents(); // without passing QEvent::DeferredDelete
-        // will not cause "foo" to be deleted before returning to the event loop.
-
-        // If the scope level is 0 while loopLevel != 0, we are called from a
-        // non-conformant code path, and our best guess is that the scope level
-        // should be 1. (Loop level 0 is special: it means that no event loops
-        // are running.)
-        int loopLevel = data->loopLevel;
-        int scopeLevel = data->scopeLevel;
-        if (scopeLevel == 0 && loopLevel != 0)
-            scopeLevel = 1;
-
-        QDeferredDeleteEvent *deleteEvent = static_cast<QDeferredDeleteEvent *>(event);
-        deleteEvent->m_loopLevel = loopLevel;
-        deleteEvent->m_scopeLevel = scopeLevel;
     }
 
     // delete the event on exceptions to protect against memory leaks till the event is
@@ -1727,7 +1726,7 @@ void QCoreApplication::postEvent(QObject *receiver, QEvent *event, int priority)
     data->postEventList.addEvent(QPostEvent(receiver, event, priority));
     Q_UNUSED(eventDeleter.release());
     event->m_posted = true;
-    ++receiver->d_func()->postedEvents;
+    receiver->d_func()->postedEvents.fetchAndAddRelease(1);
     data->canWait = false;
     locker.unlock();
 
@@ -1829,7 +1828,8 @@ void QCoreApplicationPrivate::sendPostedEvents(QObject *receiver, int event_type
     // events, canWait will be set to false.
     data->canWait = (data->postEventList.size() == 0);
 
-    if (data->postEventList.size() == 0 || (receiver && !receiver->d_func()->postedEvents)) {
+    if (data->postEventList.size() == 0
+            || (receiver && !receiver->d_func()->postedEvents.loadAcquire())) {
         --data->postEventList.recursion;
         return;
     }
@@ -1935,7 +1935,7 @@ void QCoreApplicationPrivate::sendPostedEvents(QObject *receiver, int event_type
         QEvent *e = pe.event;
         QObject * r = pe.receiver;
 
-        --r->d_func()->postedEvents;
+        r->d_func()->postedEvents.fetchAndSubAcquire(1);
         Q_ASSERT(r->d_func()->postedEvents >= 0);
 
         // next, update the data structure so that we're ready
@@ -1986,7 +1986,7 @@ void QCoreApplication::removePostedEvents(QObject *receiver, int eventType)
     // happen while the event loop is in the middle of posting events,
     // and when we get here, we may not have any more posted events
     // for this object.
-    if (receiver && !receiver->d_func()->postedEvents)
+    if (receiver && !receiver->d_func()->postedEvents.loadAcquire())
         return;
 
     //we will collect all the posted events for the QObject
@@ -2000,7 +2000,7 @@ void QCoreApplication::removePostedEvents(QObject *receiver, int eventType)
 
         if ((!receiver || pe.receiver == receiver)
             && (pe.event && (eventType == 0 || pe.event->type() == eventType))) {
-            --pe.receiver->d_func()->postedEvents;
+            pe.receiver->d_func()->postedEvents.fetchAndSubAcquire(1);
             pe.event->m_posted = false;
             events.append(pe.event);
             const_cast<QPostEvent &>(pe).event = nullptr;
@@ -2061,7 +2061,7 @@ void QCoreApplicationPrivate::removePostedEvent(QEvent * event)
                      pe.receiver->metaObject()->className(),
                      pe.receiver->objectName().toLocal8Bit().data());
 #endif
-            --pe.receiver->d_func()->postedEvents;
+            pe.receiver->d_func()->postedEvents.fetchAndSubAcquire(1);
             pe.event->m_posted = false;
             delete pe.event;
             const_cast<QPostEvent &>(pe).event = nullptr;
@@ -2174,7 +2174,7 @@ void QCoreApplicationPrivate::quit()
 {
     Q_Q(QCoreApplication);
 
-    if (QThread::currentThread() == mainThread()) {
+    if (QThread::isMainThread()) {
         QEvent quitEvent(QEvent::Quit);
         QCoreApplication::sendEvent(q, &quitEvent);
     } else {
@@ -2223,7 +2223,7 @@ void QCoreApplicationPrivate::quit()
     to all toplevel widgets, where a reimplementation of changeEvent can
     re-translate the user interface by passing user-visible strings via the
     tr() function to the respective property setters. User-interface classes
-    generated by Qt Designer provide a \c retranslateUi() function that can be
+    generated by \QD provide a \c retranslateUi() function that can be
     called.
 
     The function returns \c true on success and false on failure.
@@ -2508,7 +2508,7 @@ QString QCoreApplication::applicationFilePath()
 
     if (d->argc) {
         static QByteArray procName = QByteArray(d->argv[0]);
-        if (procName != d->argv[0]) {
+        if (procName != QByteArrayView(d->argv[0])) {
             // clear the cache if the procname changes, so we reprocess it.
             QCoreApplicationPrivate::clearApplicationFilePath();
             procName.assign(d->argv[0]);
@@ -2567,6 +2567,22 @@ qint64 QCoreApplication::applicationPid()
 #endif
 }
 
+#ifdef Q_OS_WIN
+static inline QStringList winCmdArgs(const QString &cmdLine)
+{
+    QStringList result;
+    int size;
+    if (wchar_t **argv = CommandLineToArgvW(reinterpret_cast<const wchar_t *>(cmdLine.utf16()), &size)) {
+        result.reserve(size);
+        wchar_t **argvEnd = argv + size;
+        for (wchar_t **a = argv; a < argvEnd; ++a)
+            result.append(QString::fromWCharArray(*a));
+        LocalFree(argv);
+    }
+    return result;
+}
+#endif // Q_OS_WIN
+
 /*!
     \since 4.1
 
@@ -2622,7 +2638,7 @@ QStringList QCoreApplication::arguments()
         // the Windows API instead of using argv. Note that we only
         // do this when argv were not modified by the user in main().
         QString cmdline = QString::fromWCharArray(GetCommandLine());
-        QStringList commandLineArguments = qWinCmdArgs(cmdline);
+        QStringList commandLineArguments = winCmdArgs(cmdline);
 
         // Even if the user didn't modify argv before passing them
         // on to QCoreApplication, derived QApplications might have.
@@ -2918,7 +2934,7 @@ void QCoreApplication::requestPermission(const QPermission &requestedPermission,
     QtPrivate::SlotObjUniquePtr slotObj{slotObjRaw}; // adopts
     Q_ASSERT(slotObj);
 
-    if (QThread::currentThread() != QCoreApplicationPrivate::mainThread()) {
+    if (!QThread::isMainThread()) {
         qCWarning(lcPermissions, "Permissions can only be requested from the GUI (main) thread");
         return;
     }
@@ -3393,6 +3409,16 @@ void QCoreApplication::setEventDispatcher(QAbstractEventDispatcher *eventDispatc
 
 void *QCoreApplication::resolveInterface(const char *name, int revision) const
 {
+#if defined(Q_OS_ANDROID)
+    // The QAndroidApplication is wrongly using static methods for
+    // its native interface (QTBUG-128796). Until we fix that we at
+    // least want the preferred way of resolving a native interface
+    // to work, so provide a minimal subclass of the interface.
+    using namespace QNativeInterface;
+    struct AndroidApplication : public QAndroidApplication {};
+    static AndroidApplication androidApplication;
+    QT_NATIVE_INTERFACE_RETURN_IF(QAndroidApplication, &androidApplication);
+#endif
     Q_UNUSED(name); Q_UNUSED(revision);
     return nullptr;
 }

@@ -7,13 +7,13 @@ vars = {
 
   'effcee_revision': '19b4aa87af25cb4ee779a071409732f34bfc305c',
 
-  'googletest_revision': '8a6feabf04bec8fb125e0df0ad1195c42350725f',
+  'googletest_revision': '7c07a863693b0c831f80473f7c6905d7e458682c',
 
   # Use protobufs before they gained the dependency on abseil
   'protobuf_revision': 'v21.12',
 
-  're2_revision': '523f9b097163895957f0fdd91cb8aa595c7f65a1',
-  'spirv_headers_revision': 'd790ced752b5bfc06b6988baadef6eb2d16bdf96',
+  're2_revision': 'c042630ed8f94c32106d92a6a8deb192dabe558d',
+  'spirv_headers_revision': 'bdd1b2ab1f03e616047bbcf8971157dccd50c792',
 }
 
 deps = {

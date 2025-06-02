@@ -42,9 +42,6 @@ class NinjaBinaryTargetWriter : public NinjaTargetWriter {
   std::vector<OutputFile> WriteInputsStampAndGetDep(
       size_t num_stamp_uses) const;
 
-  // Writes the stamp line for a source set. These are not linked.
-  void WriteSourceSetStamp(const std::vector<OutputFile>& object_files);
-
   // Gets all target dependencies and classifies them, as well as accumulates
   // object files from source sets we need to link.
   ClassifiedDeps GetClassifiedDeps() const;
@@ -56,15 +53,13 @@ class NinjaBinaryTargetWriter : public NinjaTargetWriter {
   void ClassifyDependency(const Target* dep,
                           ClassifiedDeps* classified_deps) const;
 
-  OutputFile WriteStampAndGetDep(const UniqueVector<const SourceFile*>& files,
-                                 const std::string& stamp_ext) const;
-
   void WriteCompilerBuildLine(const std::vector<SourceFile>& sources,
                               const std::vector<OutputFile>& extra_deps,
                               const std::vector<OutputFile>& order_only_deps,
                               const char* tool_name,
                               const std::vector<OutputFile>& outputs,
-                              bool can_write_source_info = true);
+                              bool can_write_source_info = true,
+                              bool restat_output_allowed = false);
 
   void WriteLinkerFlags(std::ostream& out,
                         const Tool* tool,

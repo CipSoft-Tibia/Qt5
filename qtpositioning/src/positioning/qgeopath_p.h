@@ -133,7 +133,7 @@ inline static void updateBBox(const QList<QGeoCoordinate> &m_path, QList<double>
 }
 
 // Lazy by default. Eager, within the module, used only in MapItems/MapObjectsQSG
-class Q_POSITIONING_PRIVATE_EXPORT QGeoPathPrivate : public QGeoShapePrivate
+class Q_POSITIONING_EXPORT QGeoPathPrivate : public QGeoShapePrivate
 {
 public:
     QGeoPathPrivate();
@@ -179,7 +179,7 @@ public:
     bool m_bboxDirty = false;
 };
 
-class Q_POSITIONING_PRIVATE_EXPORT QGeoPathPrivateEager : public QGeoPathPrivate
+class Q_POSITIONING_EXPORT QGeoPathPrivateEager : public QGeoPathPrivate
 {
 public:
     QGeoPathPrivateEager();
@@ -207,7 +207,7 @@ public:
 };
 
 // This is a mean of creating a QGeoPathPrivateEager and injecting it into QGeoPaths via operator=
-class Q_POSITIONING_PRIVATE_EXPORT QGeoPathEager : public QGeoPath
+class Q_POSITIONING_EXPORT QGeoPathEager : public QGeoPath
 {
     Q_GADGET
 public:

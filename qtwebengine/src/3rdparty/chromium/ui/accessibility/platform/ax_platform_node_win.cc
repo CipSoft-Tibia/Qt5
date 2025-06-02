@@ -47,6 +47,8 @@
 #include "ui/accessibility/ax_mode_observer.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/accessibility/ax_node_position.h"
+#include "ui/accessibility/ax_position.h"
+#include "ui/accessibility/ax_range.h"
 #include "ui/accessibility/ax_role_properties.h"
 #include "ui/accessibility/ax_selection.h"
 #include "ui/accessibility/ax_tree_data.h"
@@ -613,6 +615,8 @@ void AXPlatformNodeWin::Dispose() {
 }
 
 void AXPlatformNodeWin::Destroy() {
+  destroy_was_called_ = true;
+
   RemoveAlertTarget();
 
   // This will end up calling Dispose() which may result in deleting this object
@@ -658,7 +662,9 @@ void AXPlatformNodeWin::NotifyAccessibilityEvent(ax::mojom::Event event_type) {
     }
   }
 
-  if (event_type == ax::mojom::Event::kValueChanged) {
+  if (event_type == ax::mojom::Event::kValueChanged ||
+      event_type == ax::mojom::Event::kLiveRegionCreated ||
+      event_type == ax::mojom::Event::kLiveRegionChanged) {
     // For the IAccessibleText interface to work on non-web content nodes, we
     // need to update the nodes' hypertext
     // when the value changes. Otherwise, for web and PDF content, this is
@@ -880,9 +886,12 @@ AXPlatformNodeWin::UIARoleProperties AXPlatformNodeWin::GetUIARoleProperties() {
               L"complementary"};
 
     case ax::mojom::Role::kContentDeletion:
+      return {UIALocalizationStrategy::kSupply, UIA_GroupControlTypeId,
+              L"deletion"};
+
     case ax::mojom::Role::kContentInsertion:
       return {UIALocalizationStrategy::kSupply, UIA_GroupControlTypeId,
-              L"group"};
+              L"insertion"};
 
     case ax::mojom::Role::kContentInfo:
     case ax::mojom::Role::kFooter:
@@ -923,6 +932,7 @@ AXPlatformNodeWin::UIARoleProperties AXPlatformNodeWin::GetUIARoleProperties() {
               UIA_WindowControlTypeId, L"dialog"};
 
     case ax::mojom::Role::kDisclosureTriangle:
+    case ax::mojom::Role::kDisclosureTriangleGrouped:
       return {UIALocalizationStrategy::kSupply, UIA_ButtonControlTypeId,
               L"button"};
 
@@ -1246,10 +1256,6 @@ AXPlatformNodeWin::UIARoleProperties AXPlatformNodeWin::GetUIARoleProperties() {
       return {UIALocalizationStrategy::kSupply, UIA_ButtonControlTypeId,
               L"button"};
 
-    case ax::mojom::Role::kPre:
-      return {UIALocalizationStrategy::kSupply, UIA_PaneControlTypeId,
-              L"region"};
-
     case ax::mojom::Role::kProgressIndicator:
       return {UIALocalizationStrategy::kSupply, UIA_ProgressBarControlTypeId,
               L"progressbar"};
@@ -1449,6 +1455,9 @@ AXPlatformNodeWin::UIARoleProperties AXPlatformNodeWin::GetUIARoleProperties() {
     case ax::mojom::Role::kUnknown:
       return {UIALocalizationStrategy::kSupply, UIA_PaneControlTypeId,
               L"region"};
+
+    case ax::mojom::Role::kPreDeprecated:
+      NOTREACHED_NORETURN();
   }
 }
 
@@ -5276,7 +5285,7 @@ HRESULT AXPlatformNodeWin::GetPropertyValueImpl(PROPERTYID property_id,
     case UIA_DescribedByPropertyId:
       result->vt = VT_ARRAY | VT_UNKNOWN;
       result->parray = CreateUIAElementsArrayForRelation(
-          ax::mojom::IntListAttribute::kDescribedbyIds);
+          ax::mojom::IntListAttribute::kDetailsIds);
       break;
 
     case UIA_FlowsFromPropertyId:
@@ -6060,7 +6069,7 @@ HRESULT AXPlatformNodeWin::GetAnnotationTypesAttribute(
 
 absl::optional<LCID> AXPlatformNodeWin::GetCultureAttributeAsLCID() const {
   const std::u16string language =
-      GetInheritedString16Attribute(ax::mojom::StringAttribute::kLanguage);
+      base::UTF8ToUTF16(GetDelegate()->GetLanguage());
   const LCID lcid =
       LocaleNameToLCID(base::as_wcstr(language), LOCALE_ALLOW_NEUTRAL_NAMES);
   if (!lcid)
@@ -6454,6 +6463,7 @@ int AXPlatformNodeWin::MSAARole() {
       return ROLE_SYSTEM_DIALOG;
 
     case ax::mojom::Role::kDisclosureTriangle:
+    case ax::mojom::Role::kDisclosureTriangleGrouped:
       return ROLE_SYSTEM_PUSHBUTTON;
 
     case ax::mojom::Role::kDirectory:
@@ -6708,9 +6718,6 @@ int AXPlatformNodeWin::MSAARole() {
     case ax::mojom::Role::kPortal:
       return ROLE_SYSTEM_PUSHBUTTON;
 
-    case ax::mojom::Role::kPre:
-      return ROLE_SYSTEM_TEXT;
-
     case ax::mojom::Role::kProgressIndicator:
       return ROLE_SYSTEM_PROGRESSBAR;
 
@@ -6865,6 +6872,8 @@ int AXPlatformNodeWin::MSAARole() {
     case ax::mojom::Role::kNone:
     case ax::mojom::Role::kUnknown:
       return ROLE_SYSTEM_PANE;
+    case ax::mojom::Role::kPreDeprecated:
+      NOTREACHED_NORETURN();
   }
 }
 
@@ -7134,9 +7143,6 @@ int32_t AXPlatformNodeWin::ComputeIA2Role() {
         ia2_role = IA2_ROLE_EMBEDDED_OBJECT;
       }
       break;
-    case ax::mojom::Role::kPre:
-      ia2_role = IA2_ROLE_PARAGRAPH;
-      break;
     case ax::mojom::Role::kRegion:
       ia2_role = IA2_ROLE_LANDMARK;
       break;
@@ -7164,9 +7170,12 @@ int32_t AXPlatformNodeWin::ComputeIA2Role() {
     case ax::mojom::Role::kStrong:
     case ax::mojom::Role::kSubscript:
     case ax::mojom::Role::kSuperscript:
+    case ax::mojom::Role::kTerm:
     case ax::mojom::Role::kTime:
       ia2_role = IA2_ROLE_TEXT_FRAME;
       break;
+    case ax::mojom::Role::kPreDeprecated:
+      NOTREACHED_NORETURN();
     default:
       break;
   }
@@ -7241,14 +7250,10 @@ std::wstring AXPlatformNodeWin::ComputeUIAProperties() {
   }
 
   // aria-dropeffect is deprecated in WAI-ARIA 1.1.
-  if (HasIntAttribute(ax::mojom::IntAttribute::kDropeffect)) {
-    properties.push_back(
-        L"dropeffect=" +
-        base::UTF8ToWide(GetData().DropeffectBitfieldToString()));
+  if (HasIntAttribute(ax::mojom::IntAttribute::kDropeffectDeprecated)) {
+    NOTREACHED();
   }
   StateToUIAAriaProperty(properties, ax::mojom::State::kExpanded, "expanded");
-  BoolAttributeToUIAAriaProperty(properties, ax::mojom::BoolAttribute::kGrabbed,
-                                 "grabbed");
 
   switch (static_cast<ax::mojom::HasPopup>(
       GetIntAttribute(ax::mojom::IntAttribute::kHasPopup))) {
@@ -7677,6 +7682,14 @@ ULONG AXPlatformNodeWin::InternalRelease() {
   if (ref_count == 1) {
     OnDereferenced();
   }
+
+  // `AXPlatformNodeWin` holds a reference to itself that is released when its
+  // owner calls `AXPlatformNode::Destroy()`. If the refcount ever reaches zero
+  // without `AXPlatformNode::Destroy()` having been called, there is a double-
+  // free somewhere; either in an accessibility tool's code, or in the browser.
+  // Crash fast if this happens to expose the last true reference holder (which
+  // is not necessarily the holder that committed the double-free).
+  CHECK(ref_count != 0 || destroy_was_called_);
   return ref_count;
 }
 
@@ -7941,6 +7954,8 @@ absl::optional<EVENTID> AXPlatformNodeWin::MojoEventToUIAEvent(
       return UIA_SelectionItem_ElementAddedToSelectionEventId;
     case ax::mojom::Event::kSelectionRemove:
       return UIA_SelectionItem_ElementRemovedFromSelectionEventId;
+    case ax::mojom::Event::kTextSelectionChanged:
+      return UIA_Text_TextSelectionChangedEventId;
     case ax::mojom::Event::kTooltipClosed:
       return UIA_ToolTipClosedEventId;
     case ax::mojom::Event::kTooltipOpened:
@@ -8025,15 +8040,13 @@ HRESULT AXPlatformNodeWin::ComputeListItemNameAsBstr(BSTR* value_bstr) const {
   DCHECK_EQ(GetRole(), ax::mojom::Role::kListItem);
   DCHECK(!HasStringAttribute(ax::mojom::StringAttribute::kName));
   std::wstring str;
-  // The list item name will result in the concatenation of its children's
-  // accessible names, excluding the list item marker.
-  for (size_t i = 0; i < GetChildCount(); ++i) {
-    auto* child = static_cast<AXPlatformNodeWin*>(
-        FromNativeViewAccessible(ChildAtIndex(i)));
-    if (child->GetDelegate()->IsText() &&
-        child->GetRole() != ax::mojom::Role::kListMarker)
-      str += base::UTF8ToWide(child->GetName());
+  // If the name is specified by the author.
+  if (GetNameFrom() == ax::mojom::NameFrom::kAttribute) {
+    str = base::UTF8ToWide(GetName());
+  } else {
+    str = GetDelegate()->ComputeListItemNameFromContent();
   }
+
   *value_bstr = SysAllocString(str.c_str());
   DCHECK(*value_bstr);
   return S_OK;
@@ -8241,7 +8254,9 @@ AXPlatformNodeWin::GetPatternProviderFactoryMethod(PATTERNID pattern_id) {
       break;
 
     case UIA_GridItemPatternId:
-      if (IsUIACellOrTableHeader(GetRole())) {
+      // Griditem pattern should not be exposed unless the
+      // the gridpattern role is exposed on an ancestor.
+      if (IsUIACellOrTableHeader(GetRole()) && GetUIATableAncestor()) {
         return &PatternProvider<IGridItemProvider>;
       }
       break;
@@ -8571,6 +8586,18 @@ void AXPlatformNodeWin::NotifyAPIObserverForPropertyRequest(
     if (uiautomation_id_requested)
       observer.OnUIAutomationIdRequested();
   }
+}
+
+AXPlatformNodeWin* AXPlatformNodeWin::GetUIATableAncestor() const {
+  AXPlatformNodeWin* parent = const_cast<AXPlatformNodeWin*>(this);
+  while (parent) {
+    if (IsUIATableLike(parent->GetRole())) {
+      return parent;
+    }
+    parent = parent->GetParentPlatformNodeWin();
+  }
+
+  return nullptr;
 }
 
 // static

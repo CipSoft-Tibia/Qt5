@@ -13,11 +13,6 @@
 // limitations under the License.
 
 import {sqliteString} from '../base/string_utils';
-import {Engine} from '../common/engine';
-import {LONG, NUM, STR} from '../common/query_result';
-import {escapeSearchQuery} from '../common/query_utils';
-import {CurrentSearchResults, SearchSummary} from '../common/search_data';
-import {OmniboxState} from '../common/state';
 import {
   Duration,
   duration,
@@ -25,9 +20,17 @@ import {
   time,
   Time,
   TimeSpan,
-} from '../common/time';
+} from '../base/time';
+import {exists} from '../base/utils';
+import {pluginManager} from '../common/plugins';
+import {CurrentSearchResults, SearchSummary} from '../common/search_data';
+import {OmniboxState} from '../common/state';
 import {globals} from '../frontend/globals';
 import {publishSearch, publishSearchResult} from '../frontend/publish';
+import {Engine} from '../trace_processor/engine';
+import {LONG, NUM, STR} from '../trace_processor/query_result';
+import {escapeSearchQuery} from '../trace_processor/query_utils';
+import {CPU_SLICE_TRACK_KIND} from '../tracks/cpu_slices';
 
 import {Controller} from './controller';
 
@@ -105,7 +108,7 @@ export class SearchController extends Controller<'main'> {
         tsStarts: new BigInt64Array(0),
         utids: new Float64Array(0),
         sources: [],
-        trackIds: [],
+        trackKeys: [],
         totalResults: 0,
       });
       return;
@@ -199,9 +202,11 @@ export class SearchController extends Controller<'main'> {
     // easier once the track table has entries for all the tracks.
     const cpuToTrackId = new Map();
     for (const track of Object.values(globals.state.tracks)) {
-      if (track.kind === 'CpuSliceTrack') {
-        cpuToTrackId.set((track.config as {cpu: number}).cpu, track.id);
-        continue;
+      if (exists(track?.uri)) {
+        const trackInfo = pluginManager.resolveTrackInfo(track.uri);
+        if (trackInfo?.kind === CPU_SLICE_TRACK_KIND) {
+          exists(trackInfo.cpu) && cpuToTrackId.set(trackInfo.cpu, track.key);
+        }
       }
     }
 
@@ -262,7 +267,7 @@ export class SearchController extends Controller<'main'> {
       sliceIds: new Float64Array(rows),
       tsStarts: new BigInt64Array(rows),
       utids: new Float64Array(rows),
-      trackIds: [],
+      trackKeys: [],
       sources: [],
       totalResults: 0,
     };
@@ -274,12 +279,15 @@ export class SearchController extends Controller<'main'> {
       if (it.source === 'cpu') {
         trackId = cpuToTrackId.get(it.sourceId);
       } else if (it.source === 'track') {
-        trackId = globals.state.uiTrackIdByTraceTrackId[it.sourceId];
+        trackId = globals.state.trackKeyByTrackId[it.sourceId];
       } else if (it.source === 'log') {
-        const logTracks = Object.values(globals.state.tracks)
-                              .filter((t) => t.kind === 'AndroidLogTrack');
+        const logTracks =
+            Object.values(globals.state.tracks).filter((track) => {
+              const trackDesc = pluginManager.resolveTrackInfo(track.uri);
+              return (trackDesc && trackDesc.kind === 'AndroidLogTrack');
+            });
         if (logTracks.length > 0) {
-          trackId = logTracks[0].id;
+          trackId = logTracks[0].key;
         }
       }
 
@@ -289,7 +297,7 @@ export class SearchController extends Controller<'main'> {
       }
 
       const i = searchResults.totalResults++;
-      searchResults.trackIds.push(trackId);
+      searchResults.trackKeys.push(trackId);
       searchResults.sources.push(it.source);
       searchResults.sliceIds[i] = it.sliceId;
       searchResults.tsStarts[i] = it.ts;

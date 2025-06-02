@@ -67,7 +67,7 @@ interfaces
     \li \image qformlayout-with-6-children.png
     \endtable
 
-    \l {Qt Designer} is a powerful tool for interactively creating and
+    \l {Qt Widgets Designer} is a powerful tool for interactively creating and
     arranging widgets in layouts.
 
 
@@ -79,7 +79,7 @@ interfaces
     which use lists and tables are structured to separate the data and view
     using models, views, and delegates.
 
-    \image windows-treeview.png
+    \image fusion-treeview.png
 
     \section1 Graphics View
 
@@ -106,7 +106,7 @@ interfaces
     \list
         \li \l{Widgets Tutorial}
         \li \l{Getting Started Programming with Qt Widgets}
-        \li \l{Creating a Qt Widget Based Application}
+        \li \l{\QC: Tutorial: Qt Widgets application}
         \li \l{Model/View Tutorial}
     \endlist
 

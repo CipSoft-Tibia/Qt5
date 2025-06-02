@@ -93,9 +93,6 @@
            with the layout can be overridden by explicitly setting
            \l{Layout::fillWidth}{Layout.fillWidth} or
            \l{Layout::fillHeight}{Layout.fillHeight}.
-           \b Note: This API is considered tech preview and may change or be removed in future
-           versions of Qt.
-
 
     \value AA_DontShowIconsInMenus Actions with the Icon property won't be
            shown in any menus unless specifically set by the
@@ -275,6 +272,12 @@
            text input widget gains focus on a system without a physical keyboard.
            Currently supported on the Windows platform only.
            This value was added in 5.15
+
+    \value AA_DontUseNativeMenuWindows Menu popup windows (e.g. context menus,
+           combo box menus, and non-native menubar menus) created while this
+           attribute is set to true will not be represented as native top
+           level windows, unless required by the implementation.
+           This value was added in Qt 6.8.
 
     \omitvalue AA_AttributeCount
     \omitvalue AA_EnableHighDpiScaling
@@ -1071,13 +1074,13 @@
     by QWidget::setGeometry().
 
     \value WA_NoChildEventsForParent Indicates that the widget does
-    not want ChildAdded or ChildRemoved events sent to its
+    not want \l{QEvent::}{ChildAdded} or \l{QEvent::}{ChildRemoved} events sent to its
     parent. This is rarely necessary but can help to avoid automatic
     insertion widgets like splitters and layouts. This is set by a
     widget's author.
 
     \value WA_NoChildEventsFromChildren Indicates that the widget does
-    not want to receive ChildAdded or ChildRemoved events sent from its
+    not want to receive \l{QEvent::}{ChildAdded} or \l{QEvent::}{ChildRemoved} events sent from its
     children. This is set by a widget's author.
 
     \value WA_NoMouseReplay Used for pop-up widgets. Indicates that the most
@@ -1325,7 +1328,7 @@
     QQuickWidget to be drawn last, on top of other widgets. Ignored for other
     type of widgets. Setting this attribute breaks the stacking order, but
     allows having a semi-transparent OpenGL widget with other widgets visible
-    underneath. It is strongly recommended to call update() on the widget's
+    underneath. It is strongly recommended to call \l{QWidget::}{update()} on the widget's
     top-level window after enabling or disabling this attribute.
 
     \value WA_ContentsMarginsRespectsSafeArea A QWidget respects the safe
@@ -1409,7 +1412,7 @@
                           On Windows keyboards, this key is mapped to the
                           Windows key.
     \value Key_Alt
-    \value Key_AltGr      On Windows, when the KeyDown event for this key is
+    \value Key_AltGr      On Windows, when the \c KeyDown event for this key is
                           sent, the Ctrl+Alt modifiers are also set.
     \value Key_CapsLock
     \value Key_NumLock
@@ -2079,6 +2082,18 @@
 */
 
 /*!
+    \enum Qt::ContextMenuTrigger
+    \since 6.8
+
+    This enum type defines the mouse event used to trigger a context menu event.
+
+    \value Press context menu on mouse press event, default on UNIX systems.
+    \value Release context menu on mouse release event, default on Windows.
+
+    \sa QStyleHints::contextMenuTrigger
+*/
+
+/*!
     \enum Qt::FocusPolicy
 
     This enum type defines the various policies a widget can have with
@@ -2385,7 +2400,7 @@
     \enum Qt::SplitBehaviorFlags
     \since 5.14
 
-    This enum specifies how the split() functions should behave with
+    This enum specifies how the QString::split() functions should behave with
     respect to empty strings.
 
     \value KeepEmptyParts  If a field is empty, keep it in the result.
@@ -2484,7 +2499,7 @@
     This enum is used in widgets that can display both plain text and
     rich text, for example QLabel. It is used for deciding whether a text
     string should be interpreted as one or the other. This is normally
-    done by passing one of the enum values to a QTextEdit::setTextFormat()
+    done by passing one of the enum values to a QStaticText::setTextFormat()
     function.
 
     \value PlainText  The text string is interpreted as a plain text
@@ -3233,6 +3248,26 @@
 */
 
 /*!
+    \enum Qt::TimerId
+    \since 6.8
+    \relates QObject
+    \relates QTimer
+    \relates QChronoTimer
+
+    This is used to represent timer IDs (for example, QTimer and QChronoTimer).
+    The underlying type is \c int. You can use \l qToUnderlying() to convert
+    Qt::TimerId to \c int.
+
+    \value Invalid Represents a no-op timer ID; its usage depends on the
+    context, for example, this is the value returned by QObject::startTimer()
+    to indicate it failed to start a timer; whereas QChronoTimer::id() returns
+    this value when the timer is inactive, that is, \c timer.isActive()
+    returns \c false.
+
+    \sa QTimer::id(), QChronoTimer::id(), QObject::startTimer()
+*/
+
+/*!
     \enum Qt::ScrollPhase
     \since 5.2
 
@@ -3314,7 +3349,7 @@
   This enum describes the possible High-DPI scale factor rounding policies, which
   decide how non-integer scale factors (such as Windows 150%) are handled.
 
-  The active policy is set by calling QGuiApplication::setHighDdpiScaleFactorRoundingPolicy() before
+  The active policy is set by calling QGuiApplication::setHighDpiScaleFactorRoundingPolicy() before
   the application object is created.
 
   \sa QGuiApplication::setHighDpiScaleFactorRoundingPolicy()
@@ -3378,6 +3413,8 @@
   \inmodule QtCore
   \since 6.0
   \brief The QKeyCombination class stores a combination of a key with optional modifiers.
+
+  \compares equality
 
   The QKeyCombination class can be used to represent a combination of a key
   with zero or more keyboard modifiers.
@@ -3461,14 +3498,14 @@
 #endif
 
 /*!
-  \fn bool QKeyCombination::operator==(QKeyCombination lhs, QKeyCombination rhs) noexcept
+  \fn bool QKeyCombination::operator==(const QKeyCombination &lhs, const QKeyCombination &rhs)
 
   Returns \c true if \a lhs and \a rhs have the same combination
   of key and modifiers, and \c false otherwise.
 */
 
 /*!
-  \fn bool QKeyCombination::operator!=(QKeyCombination lhs, QKeyCombination rhs) noexcept
+  \fn bool QKeyCombination::operator!=(const QKeyCombination &lhs, const QKeyCombination &rhs)
 
   Returns \c true if \a lhs and \a rhs have different combinations
   of key and modifiers, otherwise \c false.
@@ -3530,9 +3567,7 @@
 
 /*!
   \fn size_t qHash(QKeyCombination key, size_t seed = 0) noexcept
-  \relates QKeyCombination
-
-  Returns the hash value for the \a key, using \a seed to seed the calculation.
+  \qhashold{QKeyCombination}
 */
 
 #ifndef QT_NO_DEBUG_STREAM

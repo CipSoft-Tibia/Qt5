@@ -22,7 +22,7 @@ Section {
                 backendValue: backendValues.renderingMode
                 model: ["Indirect", "DirectToBackground"]
                 Layout.fillWidth: true
-                scope: "AbstractGraph3D"
+                scope: "Graphs3D"
             }
         }
         PropertyLabel {
@@ -37,7 +37,7 @@ Section {
                     "High", "SoftLow", "SoftMedium",
                     "SoftHigh"]
                 Layout.fillWidth: true
-                scope: "AbstractGraph3D"
+                scope: "Graphs3D"
             }
         }
         PropertyLabel {
@@ -50,7 +50,7 @@ Section {
                 backendValue: backendValues.optimizationHint
                 model: ["Default", "Legacy"]
                 Layout.fillWidth: true
-                scope: "AbstractGraph3D"
+                scope: "Graphs3D"
             }
         }
         PropertyLabel {

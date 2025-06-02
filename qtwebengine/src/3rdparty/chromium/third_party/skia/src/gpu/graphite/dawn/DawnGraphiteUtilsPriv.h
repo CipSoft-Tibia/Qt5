@@ -13,7 +13,7 @@
 #include "src/sksl/SkSLProgramKind.h"
 #include "src/sksl/ir/SkSLProgram.h"
 
-#include "webgpu/webgpu_cpp.h"
+#include "webgpu/webgpu_cpp.h"  // NO_G3_REWRITE
 
 namespace SkSL {
 class Compiler;
@@ -32,11 +32,6 @@ bool DawnFormatIsDepth(wgpu::TextureFormat);
 bool DawnFormatIsStencil(wgpu::TextureFormat);
 
 wgpu::TextureFormat DawnDepthStencilFlagsToFormat(SkEnumBitMask<DepthStencilFlags>);
-
-bool DawnCompileSPIRVShaderModule(const DawnSharedContext* sharedContext,
-                                  const std::string& spirv,
-                                  wgpu::ShaderModule* module,
-                                  ShaderErrorHandler*);
 
 bool DawnCompileWGSLShaderModule(const DawnSharedContext* sharedContext,
                                  const std::string& wgsl,

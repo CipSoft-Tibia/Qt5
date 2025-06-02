@@ -7,6 +7,7 @@
 #include <QtMultimedia/qtmultimediaexports.h>
 #include <QtCore/qobjectdefs.h>
 #include <QtCore/qtconfigmacros.h>
+#include <QtCore/qtypes.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -14,9 +15,15 @@ namespace QtVideo
 {
 Q_NAMESPACE_EXPORT(Q_MULTIMEDIA_EXPORT)
 
-enum class Rotation { None = 0, Clockwise90 = 90, Clockwise180 = 180, Clockwise270 = 270 };
+enum class Rotation {
+    None = 0,
+    Clockwise90 = 90,
+    Clockwise180 = 180,
+    Clockwise270 = 270,
+};
 Q_ENUM_NS(Rotation)
-}
+
+} // namespace QtVideo
 
 QT_END_NAMESPACE
 

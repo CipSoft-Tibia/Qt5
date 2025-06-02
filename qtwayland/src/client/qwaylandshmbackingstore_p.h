@@ -42,11 +42,14 @@ public:
     QImage *image() { return &mImage; }
 
     QImage *imageInsideMargins(const QMargins &margins);
+
+    QRegion &dirtyRegion() { return mDirtyRegion; }
 private:
     QImage mImage;
     struct wl_shm_pool *mShmPool = nullptr;
     QMargins mMargins;
     QImage *mMarginsImage = nullptr;
+    QRegion mDirtyRegion;
 };
 
 class Q_WAYLANDCLIENT_EXPORT QWaylandShmBackingStore : public QPlatformBackingStore
@@ -58,7 +61,6 @@ public:
     QPaintDevice *paintDevice() override;
     void flush(QWindow *window, const QRegion &region, const QPoint &offset) override;
     void resize(const QSize &size, const QRegion &staticContents) override;
-    void resize(const QSize &size);
     void beginPaint(const QRegion &region) override;
     void endPaint() override;
 
@@ -67,7 +69,7 @@ public:
     QMargins windowDecorationMargins() const;
     QImage *entireSurface() const;
     QImage *contentSurface() const;
-    void ensureSize();
+    bool recreateBackBufferIfNeeded();
 
     QWaylandWindow *waylandWindow() const;
     void iterateBuffer();
@@ -77,8 +79,9 @@ public:
 #endif
 
 private:
+    void updateDirtyStates(const QRegion &region);
     void updateDecorations();
-    QWaylandShmBuffer *getBuffer(const QSize &size);
+    QWaylandShmBuffer *getBuffer(const QSize &size, bool &bufferWasRecreated);
 
     QWaylandDisplay *mDisplay = nullptr;
     std::list<QWaylandShmBuffer *> mBuffers;

@@ -114,7 +114,6 @@ qt_internal_add_qml_module(QuickControls2Imagine
         Qt::QuickControls2Private
         Qt::QuickPrivate
         Qt::QuickTemplates2Private
-    GENERATE_CPP_EXPORTS
 )
 
 target_sources(qtquickcontrols2imaginestyleplugin
@@ -122,8 +121,8 @@ target_sources(qtquickcontrols2imaginestyleplugin
         qtquickcontrols2imaginestyleplugin.cpp
 )
 
-target_link_libraries(qtquickcontrols2imaginestyleplugin
-    PRIVATE
+qt_internal_extend_target(qtquickcontrols2imaginestyleplugin
+    LIBRARIES
         Qt::QuickControls2Private
 )
 

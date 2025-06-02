@@ -166,10 +166,16 @@ class WebThemeEngine {
     bool right_to_left = false;
   };
 
+  enum class SpinArrowsDirection : int {
+    kLeftRight,
+    kUpDown,
+  };
+
   // Extra parameters for PartInnerSpinButton
   struct InnerSpinButtonExtraParams {
     bool spin_up = false;
     bool read_only = false;
+    SpinArrowsDirection spin_arrows_direction = SpinArrowsDirection::kUpDown;
   };
 
   // Extra parameters for PartProgressBar
@@ -191,7 +197,10 @@ class WebThemeEngine {
   };
 
   struct ScrollbarButtonExtraParams {
+    // TODO(crbug.com/1493088): We should probably pass the border-radius
+    // instead.
     float zoom = 0;
+    bool needs_rounded_corner = false;
     bool right_to_left = false;
     absl::optional<SkColor> thumb_color;
     absl::optional<SkColor> track_color;
@@ -252,11 +261,10 @@ class WebThemeEngine {
   struct ScrollbarStyle {
     int thumb_thickness;
     int scrollbar_margin;
-    int thumb_thickness_thin;
-    int scrollbar_margin_thin;
-    SkColor color;
+    SkColor4f color;
     base::TimeDelta fade_out_delay;
     base::TimeDelta fade_out_duration;
+    float idle_thickness_scale;
   };
 
   // Gets the overlay scrollbar style. Not used on Mac.
@@ -271,6 +279,9 @@ class WebThemeEngine {
     // NativeTheme so these fields are unused in non-Android WebThemeEngines.
   }
 
+  virtual bool IsFluentOverlayScrollbarEnabled() const { return false; }
+  virtual int GetPaintedScrollbarTrackInset() const { return 0; }
+
   // Paint the given the given theme part.
   virtual void Paint(
       cc::PaintCanvas*,
@@ -279,10 +290,15 @@ class WebThemeEngine {
       const gfx::Rect&,
       const ExtraParams*,
       blink::mojom::ColorScheme,
+      const ui::ColorProvider*,
       const absl::optional<SkColor>& accent_color = absl::nullopt) {}
 
   virtual absl::optional<SkColor> GetSystemColor(
       SystemThemeColor system_theme) const {
+    return absl::nullopt;
+  }
+
+  virtual absl::optional<SkColor> GetAccentColor() const {
     return absl::nullopt;
   }
 
@@ -295,13 +311,15 @@ class WebThemeEngine {
     SystemColorInfoState state;
     return state;
   }
-  virtual void EmulateForcedColors(bool is_dark_theme) {}
+  virtual void EmulateForcedColors(bool is_dark_theme, bool is_web_test) {}
 
-  // Updates the WebThemeEngine's global light and dark ColorProvider instances
-  // using the RendererColorMaps provided. Returns true if new ColorProviders
-  // were created, returns false otherwise.
-  virtual bool UpdateColorProviders(const ui::RendererColorMap& light_colors,
-                                    const ui::RendererColorMap& dark_colors) {
+  // Updates the WebThemeEngine's global light, dark and forced colors
+  // ColorProvider instances using the RendererColorMaps provided. Returns true
+  // if new ColorProviders were created, returns false otherwise.
+  virtual bool UpdateColorProviders(
+      const ui::RendererColorMap& light_colors,
+      const ui::RendererColorMap& dark_colors,
+      const ui::RendererColorMap& forced_colors_map) {
     return false;
   }
 };

@@ -19,7 +19,7 @@
 #include "media/base/mac/video_frame_mac.h"
 #include "media/base/media_log.h"
 #include "media/base/media_switches.h"
-#include "media/gpu/mac/video_toolbox_decode_metadata.h"
+#include "media/gpu/mac/video_toolbox_decompression_metadata.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/rect.h"
@@ -33,7 +33,8 @@ namespace {
 constexpr uint32_t kSharedImageUsage =
     gpu::SHARED_IMAGE_USAGE_DISPLAY_READ | gpu::SHARED_IMAGE_USAGE_SCANOUT |
     gpu::SHARED_IMAGE_USAGE_MACOS_VIDEO_TOOLBOX |
-    gpu::SHARED_IMAGE_USAGE_RASTER | gpu::SHARED_IMAGE_USAGE_GLES2;
+    gpu::SHARED_IMAGE_USAGE_RASTER_READ | gpu::SHARED_IMAGE_USAGE_RASTER_WRITE |
+    gpu::SHARED_IMAGE_USAGE_GLES2_READ;
 
 constexpr char kSharedImageDebugLabel[] = "VideoToolboxVideoDecoder";
 
@@ -44,6 +45,8 @@ absl::optional<viz::SharedImageFormat> PixelFormatToImageFormat(
       return viz::MultiPlaneFormat::kNV12;
     case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
       return viz::MultiPlaneFormat::kP010;
+    case kCVPixelFormatType_420YpCbCr8VideoRange_8A_TriPlanar:
+      return viz::MultiPlaneFormat::kNV12A;
     default:
       return absl::nullopt;
   }
@@ -55,6 +58,8 @@ VideoPixelFormat PixelFormatToVideoPixelFormat(OSType pixel_format) {
       return PIXEL_FORMAT_NV12;
     case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
       return PIXEL_FORMAT_P016LE;
+    case kCVPixelFormatType_420YpCbCr8VideoRange_8A_TriPlanar:
+      return PIXEL_FORMAT_NV12A;
     default:
       return PIXEL_FORMAT_UNKNOWN;
   }
@@ -152,19 +157,19 @@ void VideoToolboxFrameConverter::Convert(
     return;
   }
 
-  const gfx::Size coded_size(CVPixelBufferGetWidth(image),
-                             CVPixelBufferGetHeight(image));
-  const gfx::Rect visible_rect(CVImageBufferGetCleanRect(image));
+  const gfx::Size coded_size(CVPixelBufferGetWidth(image.get()),
+                             CVPixelBufferGetHeight(image.get()));
+  const gfx::Rect visible_rect(CVImageBufferGetCleanRect(image.get()));
   const gfx::Size natural_size =
       metadata->aspect_ratio.GetNaturalSize(visible_rect);
 
   gfx::GpuMemoryBufferHandle handle;
   handle.id = gfx::GpuMemoryBufferHandle::kInvalidId;
   handle.type = gfx::GpuMemoryBufferType::IO_SURFACE_BUFFER;
-  handle.io_surface.reset(CVPixelBufferGetIOSurface(image),
+  handle.io_surface.reset(CVPixelBufferGetIOSurface(image.get()),
                           base::scoped_policy::RETAIN);
 
-  OSType pixel_format = IOSurfaceGetPixelFormat(handle.io_surface);
+  OSType pixel_format = IOSurfaceGetPixelFormat(handle.io_surface.get());
   absl::optional<viz::SharedImageFormat> format =
       PixelFormatToImageFormat(pixel_format);
   if (!format) {
@@ -190,7 +195,7 @@ void VideoToolboxFrameConverter::Convert(
 
   // Extract IOSurface webgpu compatible attribute before image is moved.
   const bool is_webgpu_compatible =
-      IOSurfaceIsWebGPUCompatible(CVPixelBufferGetIOSurface(image));
+      IOSurfaceIsWebGPUCompatible(CVPixelBufferGetIOSurface(image.get()));
 
   GLenum target = texture_rectangle_ ? GL_TEXTURE_RECTANGLE_ARB : GL_TEXTURE_2D;
 
@@ -226,11 +231,14 @@ void VideoToolboxFrameConverter::Convert(
   // IOSurface color space. There doesn't seem to be a way to specify it for
   // H.264 unless we create the format description manually.
   frame->set_color_space(metadata->color_space);
+  frame->set_hdr_metadata(metadata->hdr_metadata);
   frame->set_shared_image_format_type(
       IsMultiPlaneFormatForHardwareVideoEnabled()
           ? SharedImageFormatType::kSharedImageFormat
           : SharedImageFormatType::kLegacy);
-  frame->metadata().frame_duration = metadata->duration;
+  if (metadata->duration != kNoTimestamp && !metadata->duration.is_zero()) {
+    frame->metadata().frame_duration = metadata->duration;
+  }
   frame->metadata().allow_overlay = true;
   // Releasing |image| must happen after command buffer commands are complete
   // (not just submitted).

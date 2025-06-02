@@ -20,12 +20,14 @@
 #include "media/base/decoder_buffer.h"
 #include "media/base/limits.h"
 #include "media/base/media_log.h"
+#include "media/base/media_switches.h"
 #include "media/base/timestamp_constants.h"
 #include "media/base/video_aspect_ratio.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_util.h"
 #include "media/ffmpeg/ffmpeg_common.h"
 #include "media/ffmpeg/ffmpeg_decoding_loop.h"
+#include "media/filters/ffmpeg_glue.h"
 
 namespace media {
 
@@ -121,11 +123,26 @@ static void ReleaseVideoBufferImpl(void* opaque, uint8_t* data) {
 
 // static
 bool FFmpegVideoDecoder::IsCodecSupported(VideoCodec codec) {
+  if (codec == VideoCodec::kTheora &&
+      !base::FeatureList::IsEnabled(kTheoraVideoCodec)) {
+    return false;
+  }
+  if (codec == VideoCodec::kVP8 &&
+      !base::FeatureList::IsEnabled(kFFmpegDecodeOpaqueVP8)) {
+    return false;
+  }
+#if BUILDFLAG(IS_CHROMEOS)
+  if (codec == VideoCodec::kMPEG4 &&
+      !base::FeatureList::IsEnabled(kCrOSLegacyMediaFormats)) {
+    return false;
+  }
+#endif
+
   return avcodec_find_decoder(VideoCodecToCodecID(codec)) != nullptr;
 }
 
 FFmpegVideoDecoder::FFmpegVideoDecoder(MediaLog* media_log)
-    : media_log_(media_log) {
+    : media_log_(media_log), timestamp_map_(128) {
   DVLOG(1) << __func__;
   DETACH_FROM_SEQUENCE(sequence_checker_);
 }
@@ -204,10 +221,6 @@ int FFmpegVideoDecoder::GetVideoBuffer(struct AVCodecContext* codec_context,
     frame->linesize[plane] = layout->planes()[plane].stride;
   }
 
-  // This seems unsafe, given threaded decoding.  However, `reordered_opaque` is
-  // also going away upstream, so we need a whole new mechanism either way.
-  frame->reordered_opaque = codec_context->reordered_opaque;
-
   // This will be freed by `ReleaseVideoBufferImpl`.
   auto* opaque = new OpaqueData(fb_priv, frame_pool_, data, allocation_size,
                                 std::move(*layout));
@@ -242,14 +255,14 @@ void FFmpegVideoDecoder::Initialize(const VideoDecoderConfig& config,
   }
 
   InitCB bound_init_cb = base::BindPostTaskToCurrentDefault(std::move(init_cb));
-
   if (config.is_encrypted()) {
     std::move(bound_init_cb)
         .Run(DecoderStatus::Codes::kUnsupportedEncryptionMode);
     return;
   }
 
-  if (!ConfigureDecoder(config, low_delay)) {
+  if (!IsCodecSupported(config.codec()) ||
+      !ConfigureDecoder(config, low_delay)) {
     std::move(bound_init_cb).Run(DecoderStatus::Codes::kUnsupportedConfig);
     return;
   }
@@ -354,8 +367,10 @@ bool FFmpegVideoDecoder::FFmpegDecode(const DecoderBuffer& buffer) {
     DCHECK(packet->data);
     DCHECK_GT(packet->size, 0);
 
-    // Let FFmpeg handle presentation timestamp reordering.
-    codec_context_->reordered_opaque = buffer.timestamp().InMicroseconds();
+    const int64_t timestamp = buffer.timestamp().InMicroseconds();
+    const TimestampId timestamp_id = timestamp_id_generator_.GenerateNextId();
+    timestamp_map_.Put(std::make_pair(timestamp_id, timestamp));
+    packet->opaque = reinterpret_cast<void*>(timestamp_id.GetUnsafeValue());
   }
   FFmpegDecodingLoop::DecodeStatus decode_status = decoding_loop_->DecodePacket(
       packet, base::BindRepeating(&FFmpegVideoDecoder::OnNewFrame,
@@ -414,7 +429,12 @@ bool FFmpegVideoDecoder::OnNewFrame(AVFrame* frame) {
   }
   gfx::Size natural_size = aspect_ratio.GetNaturalSize(visible_rect);
 
-  const auto pts = base::Microseconds(frame->reordered_opaque);
+  const auto ts_id = TimestampId(reinterpret_cast<size_t>(frame->opaque));
+  const auto ts_lookup = timestamp_map_.Get(ts_id);
+  if (ts_lookup == timestamp_map_.end()) {
+    return false;
+  }
+  const auto pts = base::Microseconds(std::get<1>(*ts_lookup));
   auto video_frame = VideoFrame::WrapExternalDataWithLayout(
       opaque->layout, visible_rect, natural_size, opaque->data, opaque->size,
       pts);
@@ -489,13 +509,21 @@ bool FFmpegVideoDecoder::ConfigureDecoder(const VideoDecoderConfig& config,
   codec_context_->thread_count = GetFFmpegVideoDecoderThreadCount(config);
   codec_context_->thread_type =
       FF_THREAD_SLICE | (low_delay ? 0 : FF_THREAD_FRAME);
+
   codec_context_->opaque = this;
   codec_context_->get_buffer2 = GetVideoBufferImpl;
+  codec_context_->flags |= AV_CODEC_FLAG_COPY_OPAQUE;
 
-  if (decode_nalus_)
+  if (decode_nalus_) {
     codec_context_->flags2 |= AV_CODEC_FLAG2_CHUNKS;
+  }
 
+#if BUILDFLAG(IS_QTWEBENGINE) && BUILDFLAG(USE_SYSTEM_FFMPEG)
+  const AVCodec* codec =
+      FindDecoder(codec_context_->codec_id, codec_context_->codec_whitelist);
+#else
   const AVCodec* codec = avcodec_find_decoder(codec_context_->codec_id);
+#endif
   if (!codec || avcodec_open2(codec_context_.get(), codec, NULL) < 0) {
     ReleaseFFmpegResources();
     return false;

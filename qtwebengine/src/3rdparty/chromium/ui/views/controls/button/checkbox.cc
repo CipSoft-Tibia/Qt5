@@ -19,6 +19,7 @@
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/color_palette.h"
 #include "ui/gfx/color_utils.h"
+#include "ui/gfx/geometry/size_f.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 #include "ui/gfx/image/image_skia_operations.h"
 #include "ui/gfx/paint_vector_icon.h"
@@ -201,8 +202,8 @@ gfx::ImageSkia Checkbox::GetImage(ButtonState for_state) const {
           GetVectorIcon(), kCheckboxIconDipSize, GetIconCheckColor(icon_state));
 
       return gfx::ImageSkiaOperations::CreateImageWithRoundRectBackground(
-          kCheckboxIconDipSize, kCheckboxIconCornerRadius, container_color,
-          check_icon);
+          gfx::SizeF(kCheckboxIconDipSize, kCheckboxIconDipSize),
+          kCheckboxIconCornerRadius, container_color, check_icon);
     }
     return gfx::CreateVectorIcon(GetVectorIcon(), kCheckboxIconDipSize,
                                  container_color);
@@ -312,7 +313,7 @@ void Checkbox::GetExtraParams(ui::NativeTheme::ExtraParams* params) const {
   absl::get<ui::NativeTheme::ButtonExtraParams>(*params).checked = GetChecked();
 }
 
-BEGIN_METADATA(Checkbox, LabelButton)
+BEGIN_METADATA(Checkbox)
 ADD_PROPERTY_METADATA(bool, Checked)
 ADD_PROPERTY_METADATA(bool, MultiLine)
 END_METADATA

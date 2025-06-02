@@ -37,7 +37,7 @@ class CORE_EXPORT Report : public ScriptWrappable {
 
   String type() const { return type_; }
   String url() const { return url_; }
-  ReportBody* body() const { return body_; }
+  ReportBody* body() const { return body_.Get(); }
 
   void Trace(Visitor* visitor) const override {
     visitor->Trace(body_);
@@ -49,6 +49,12 @@ class CORE_EXPORT Report : public ScriptWrappable {
   // Provides a hash-like value for identifying reports with same content.
   // Collision of match id is possible.
   unsigned MatchId() const;
+
+  // Determines whether this report is allowed to be sent to observers or the
+  // reporting endpoints. This should return false if the report should not be
+  // sent, for example, if the body of the report would reveal private
+  // information, such as extension URLs.
+  bool ShouldSendReport() const;
 
  private:
   const String type_;

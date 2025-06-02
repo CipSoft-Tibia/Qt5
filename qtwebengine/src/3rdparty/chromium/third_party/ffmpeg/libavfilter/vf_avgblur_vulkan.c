@@ -23,6 +23,7 @@
 #include "vulkan_filter.h"
 #include "vulkan_spirv.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct AvgBlurVulkanContext {
     FFVulkanContext vkctx;
@@ -151,8 +152,6 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
     s->opts.filter_norm[1] = s->opts.filter_norm[0];
     s->opts.filter_norm[2] = s->opts.filter_norm[0];
     s->opts.filter_norm[3] = s->opts.filter_norm[0];
-
-    return 0;
 
 fail:
     if (spv_opaque)

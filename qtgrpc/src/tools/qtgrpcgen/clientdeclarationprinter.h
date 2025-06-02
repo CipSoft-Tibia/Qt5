@@ -31,7 +31,7 @@ public:
         printOpenNamespace();
         printClientClass();
         printPublicBlock();
-        printConstructor();
+        printConstructorDestructor();
         printClientMethodsDeclaration();
         encloseClass();
         printCloseNamespace();
@@ -40,7 +40,7 @@ public:
 private:
     void printOpenNamespace();
     void printClientClass();
-    void printConstructor();
+    void printConstructorDestructor();
     void printClientMethodsDeclaration();
     void printCloseNamespace();
 };

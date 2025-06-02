@@ -14,20 +14,17 @@
 // We mean it.
 //
 
-#include <private/qqmlengine_p.h>
 #include <private/qqmllistwrapper_p.h>
-#include <private/qqmlvaluetype_p.h>
 #include <private/qqmlvaluetypewrapper_p.h>
+
 #include <private/qv4alloca_p.h>
-#include <private/qv4context_p.h>
 #include <private/qv4dateobject_p.h>
 #include <private/qv4function_p.h>
 #include <private/qv4functionobject_p.h>
-#include <private/qv4object_p.h>
 #include <private/qv4qobjectwrapper_p.h>
 #include <private/qv4regexpobject_p.h>
 #include <private/qv4scopedvalue_p.h>
-#include <private/qv4stackframe_p.h>
+#include <private/qv4sequenceobject_p.h>
 #include <private/qv4urlobject_p.h>
 #include <private/qv4variantobject_p.h>
 
@@ -113,15 +110,15 @@ void populateJSCallArguments(ExecutionEngine *v4, JSCallArguments &jsCall, int a
 
 template<typename Callable>
 ReturnedValue convertAndCall(
-        ExecutionEngine *engine, const QQmlPrivate::AOTCompiledFunction *aotFunction,
+        ExecutionEngine *engine, const Function::AOTCompiledFunction *aotFunction,
         const Value *thisObject, const Value *argv, int argc, Callable call)
 {
-    const qsizetype numFunctionArguments = aotFunction->argumentTypes.size();
+    const qsizetype numFunctionArguments = aotFunction->types.length() - 1;
     Q_ALLOCA_VAR(void *, values, (numFunctionArguments + 1) * sizeof(void *));
     Q_ALLOCA_VAR(QMetaType, types, (numFunctionArguments + 1) * sizeof(QMetaType));
 
     for (qsizetype i = 0; i < numFunctionArguments; ++i) {
-        const QMetaType argumentType = aotFunction->argumentTypes[i];
+        const QMetaType argumentType = aotFunction->types[i + 1];
         types[i + 1] = argumentType;
         if (const qsizetype argumentSize = argumentType.sizeOf()) {
             Q_ALLOCA_VAR(void, argument, argumentSize);
@@ -144,7 +141,7 @@ ReturnedValue convertAndCall(
     }
 
     Q_ALLOCA_DECLARE(void, returnValue);
-    types[0] = aotFunction->returnType;
+    types[0] = aotFunction->types[0];
     if (const qsizetype returnSize = types[0].sizeOf()) {
         Q_ALLOCA_ASSIGN(void, returnValue, returnSize);
         values[0] = returnValue;
@@ -244,7 +241,7 @@ enum CoercionProblem
     InvalidListType
 };
 
-Q_QML_PRIVATE_EXPORT void warnAboutCoercionToVoid(
+Q_QML_EXPORT void warnAboutCoercionToVoid(
         ExecutionEngine *engine, const Value &value, CoercionProblem problem);
 
 inline ReturnedValue coerceListType(
@@ -291,8 +288,9 @@ inline ReturnedValue coerceListType(
 
         const qsizetype length = array->getLength();
         qsizetype i = 0;
+        ScopedValue v(scope);
         for (; i < length; ++i) {
-            ScopedValue v(scope, array->get(i));
+            v = array->get(i);
             listProperty->append(listProperty, coerceQObject(v, qmlType));
         }
 
@@ -302,8 +300,11 @@ inline ReturnedValue coerceListType(
     QV4::Scoped<Sequence> sequence(
             scope, SequencePrototype::fromData(engine, type, metaSequence(), nullptr));
     const qsizetype length = array->getLength();
-    for (qsizetype i = 0; i < length; ++i)
-        sequence->containerPutIndexed(i, array->get(i));
+    ScopedValue v(scope);
+    for (qsizetype i = 0; i < length; ++i) {
+        v =  array->get(i);
+        sequence->containerPutIndexed(i, v);
+    }
     return sequence->asReturnedValue();
 }
 
@@ -392,7 +393,7 @@ inline ReturnedValue coerce(
             return value.asReturnedValue();
     }
 
-    if (void *target = QQmlValueTypeProvider::heapCreateValueType(qmlType, value)) {
+    if (void *target = QQmlValueTypeProvider::heapCreateValueType(qmlType, value, engine)) {
         Heap::QQmlValueTypeWrapper *wrapper = engine->memoryManager->allocate<QQmlValueTypeWrapper>(
                 nullptr, metaType, qmlType.metaObjectForValueType(),
                 nullptr, -1, Heap::ReferenceObject::NoFlag);
@@ -412,16 +413,16 @@ ReturnedValue coerceAndCall(
 {
     Scope scope(engine);
 
-    QV4::JSCallArguments jsCallData(scope, typedFunction->argumentTypes.size());
+    QV4::JSCallArguments jsCallData(scope, typedFunction->types.size() - 1);
     const CompiledData::Parameter *formals = compiledFunction->formalsTable();
     for (qsizetype i = 0; i < jsCallData.argc; ++i) {
         jsCallData.args[i] = coerce(
-            engine, i < argc ? argv[i] : Encode::undefined(),
-            typedFunction->argumentTypes[i], formals[i].type.isList());
+            engine, i < argc ? argv[i] : QV4::Value::fromReturnedValue(Encode::undefined()),
+            typedFunction->types[i + 1], formals[i].type.isList());
     }
 
     ScopedValue result(scope, call(jsCallData.args, jsCallData.argc));
-    return coerce(engine, result, typedFunction->returnType, compiledFunction->returnType.isList());
+    return coerce(engine, result, typedFunction->types[0], compiledFunction->returnType.isList());
 }
 
 // Note: \a to is unininitialized here! This is in contrast to most other related functions.

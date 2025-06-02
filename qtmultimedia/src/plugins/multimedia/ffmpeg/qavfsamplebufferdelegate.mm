@@ -8,6 +8,7 @@
 #include "qffmpeghwaccel_p.h"
 #include "qavfhelpers_p.h"
 #include "qffmpegvideobuffer_p.h"
+#include "private/qvideoframe_p.h"
 
 #undef AVMediaType
 
@@ -25,15 +26,14 @@ namespace {
 class CVImageVideoBuffer : public QAbstractVideoBuffer
 {
 public:
-    CVImageVideoBuffer(CVImageBufferRef imageBuffer)
-        : QAbstractVideoBuffer(QVideoFrame::NoHandle), m_buffer(imageBuffer)
+    CVImageVideoBuffer(CVImageBufferRef imageBuffer) : m_buffer(imageBuffer)
     {
         CVPixelBufferRetain(imageBuffer);
     }
 
     ~CVImageVideoBuffer()
     {
-        CVImageVideoBuffer::unmap();
+        Q_ASSERT(m_mode == QVideoFrame::NotMapped);
         CVPixelBufferRelease(m_buffer);
     }
 
@@ -47,22 +47,22 @@ public:
             m_mode = mode;
         }
 
-        mapData.nPlanes = CVPixelBufferGetPlaneCount(m_buffer);
-        Q_ASSERT(mapData.nPlanes <= 3);
+        mapData.planeCount = CVPixelBufferGetPlaneCount(m_buffer);
+        Q_ASSERT(mapData.planeCount <= 3);
 
-        if (!mapData.nPlanes) {
+        if (!mapData.planeCount) {
             // single plane
             mapData.bytesPerLine[0] = CVPixelBufferGetBytesPerRow(m_buffer);
             mapData.data[0] = static_cast<uchar *>(CVPixelBufferGetBaseAddress(m_buffer));
-            mapData.size[0] = CVPixelBufferGetDataSize(m_buffer);
-            mapData.nPlanes = mapData.data[0] ? 1 : 0;
+            mapData.dataSize[0] = CVPixelBufferGetDataSize(m_buffer);
+            mapData.planeCount = mapData.data[0] ? 1 : 0;
             return mapData;
         }
 
         // For a bi-planar or tri-planar format we have to set the parameters correctly:
-        for (int i = 0; i < mapData.nPlanes; ++i) {
+        for (int i = 0; i < mapData.planeCount; ++i) {
             mapData.bytesPerLine[i] = CVPixelBufferGetBytesPerRowOfPlane(m_buffer, i);
-            mapData.size[i] = mapData.bytesPerLine[i] * CVPixelBufferGetHeightOfPlane(m_buffer, i);
+            mapData.dataSize[i] = mapData.bytesPerLine[i] * CVPixelBufferGetHeightOfPlane(m_buffer, i);
             mapData.data[i] = static_cast<uchar *>(CVPixelBufferGetBaseAddressOfPlane(m_buffer, i));
         }
 
@@ -77,6 +77,8 @@ public:
             m_mode = QVideoFrame::NotMapped;
         }
     }
+
+    QVideoFrameFormat format() const override { return {}; }
 
 private:
     CVImageBufferRef m_buffer;
@@ -111,6 +113,7 @@ static QFFmpeg::AVFrameUPtr allocHWFrame(AVBufferRef *hwContext, const CVPixelBu
 @implementation QAVFSampleBufferDelegate {
 @private
     std::function<void(const QVideoFrame &)> frameHandler;
+    std::function<VideoTransformation()> transformationProvider;
     AVBufferRef *hwFramesContext;
     std::unique_ptr<QFFmpeg::HWAccel> m_accel;
     qint64 startTime;
@@ -145,7 +148,8 @@ static QVideoFrame createHwVideoFrame(QAVFSampleBufferDelegate &delegate,
 
     avFrame->pts = delegate.startTime - *delegate.baseTime;
 
-    return QVideoFrame(new QFFmpegVideoBuffer(std::move(avFrame)), format);
+    return QVideoFramePrivate::createFrame(std::make_unique<QFFmpegVideoBuffer>(std::move(avFrame)),
+                                           format);
 }
 
 - (instancetype)initWithFrameHandler:(std::function<void(const QVideoFrame &)>)handler
@@ -160,6 +164,11 @@ static QVideoFrame createHwVideoFrame(QAVFSampleBufferDelegate &delegate,
     startTime = 0;
     frameRate = 0.;
     return self;
+}
+
+- (void)setTransformationProvider:(std::function<VideoTransformation()>)provider
+{
+    transformationProvider = std::move(provider);
 }
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput
@@ -194,11 +203,18 @@ static QVideoFrame createHwVideoFrame(QAVFSampleBufferDelegate &delegate,
         return;
     }
 
-    format.setFrameRate(frameRate);
+    if (transformationProvider) {
+        const VideoTransformation transform = transformationProvider();
+        format.setRotation(transform.rotation);
+        format.setMirrored(transform.mirrorredHorizontallyAfterRotation);
+    }
+
+    format.setStreamFrameRate(frameRate);
 
     auto frame = createHwVideoFrame(*self, imageBuffer, format);
     if (!frame.isValid())
-        frame = QVideoFrame(new CVImageVideoBuffer(imageBuffer), format);
+        frame = QVideoFramePrivate::createFrame(std::make_unique<CVImageVideoBuffer>(imageBuffer),
+                                                std::move(format));
 
     frame.setStartTime(startTime - *baseTime);
     frame.setEndTime(frameTime - *baseTime);

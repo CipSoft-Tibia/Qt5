@@ -5,7 +5,7 @@
 #include <QtCore/qmath.h>
 #include <QtCore/qrandom.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dtheme.h>
+#include <QtGraphs/qgraphstheme.h>
 #include <QtGraphs/qscatter3dseries.h>
 #include <QtGraphs/qscatterdataproxy.h>
 #include <QtGraphs/qvalue3daxis.h>
@@ -20,21 +20,19 @@ const float curveDivider = 7.5f;
 const int lowerNumberOfItems = 900;
 const float lowerCurveDivider = 0.75f;
 
-ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter, QObject *parent)
+ScatterDataModifier::ScatterDataModifier(Q3DScatterWidgetItem *scatter, QObject *parent)
     : QObject(parent)
     , m_graph(scatter)
     , m_itemCount(lowerNumberOfItems)
     , m_curveDivider(lowerCurveDivider)
-    ,
-    //! [7]
-    m_inputHandler(new AxesInputHandler(scatter))
-//! [7]
 {
     //! [0]
-    m_graph->activeTheme()->setType(Q3DTheme::Theme::StoneMoss);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftHigh);
-    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
+    m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::SoftHigh);
+    m_graph->setCameraPreset(QtGraphs3D::CameraPreset::Front);
     m_graph->setCameraZoomLevel(80.f);
+    // These are set through active theme
+    m_graph->activeTheme()->setTheme(QGraphsTheme::Theme::MixSeries);
+    m_graph->activeTheme()->setColorScheme(QGraphsTheme::ColorScheme::Dark);
     //! [0]
 
     //! [1]
@@ -45,15 +43,16 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter, QObject *parent)
     m_graph->addSeries(series);
     //! [1]
 
-    //! [8]
-    // Give ownership of the handler to the graph and make it the active handler
-    m_graph->setActiveInputHandler(m_inputHandler);
-    //! [8]
 
-    //! [9]
-    // Give our axes to the input handler
-    m_inputHandler->setAxes(m_graph->axisX(), m_graph->axisZ(), m_graph->axisY());
-    //! [9]
+    // Give ownership of the handler to the graph and make it the active handler
+    //! [8]
+    connect(m_graph,
+            &Q3DGraphsWidgetItem::selectedElementChanged,
+            this,
+            &ScatterDataModifier::handleElementSelected);
+    connect(m_graph, &Q3DGraphsWidgetItem::dragged, this, &ScatterDataModifier::handleAxisDragging);
+    m_graph->setDragButton(Qt::LeftButton);
+    //! [8]
 
     //! [2]
     addData();
@@ -117,42 +116,114 @@ void ScatterDataModifier::setSmoothDots(int smooth)
 
 void ScatterDataModifier::changeTheme(int theme)
 {
-    Q3DTheme *currentTheme = m_graph->activeTheme();
-    currentTheme->setType(Q3DTheme::Theme(theme));
-    emit backgroundEnabledChanged(currentTheme->isBackgroundEnabled());
-    emit gridEnabledChanged(currentTheme->isGridEnabled());
+    QGraphsTheme *currentTheme = m_graph->activeTheme();
+    currentTheme->setTheme(QGraphsTheme::Theme(theme));
+    emit backgroundVisibleChanged(currentTheme->isPlotAreaBackgroundVisible());
+    emit gridVisibleChanged(currentTheme->isGridVisible());
 }
 
 void ScatterDataModifier::changePresetCamera()
 {
-    static int preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
+    static int preset = int(QtGraphs3D::CameraPreset::FrontLow);
 
-    m_graph->setCameraPreset((QAbstract3DGraph::CameraPreset) preset);
+    m_graph->setCameraPreset((QtGraphs3D::CameraPreset) preset);
 
-    if (++preset > int(QAbstract3DGraph::CameraPreset::DirectlyBelow))
-        preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
+    if (++preset > int(QtGraphs3D::CameraPreset::DirectlyBelow))
+        preset = int(QtGraphs3D::CameraPreset::FrontLow);
 }
 
-void ScatterDataModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality sq)
+void ScatterDataModifier::shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality sq)
 {
     int quality = int(sq);
     emit shadowQualityChanged(quality); // connected to a checkbox in scattergraph.cpp
 }
 
+void ScatterDataModifier::handleElementSelected(QtGraphs3D::ElementType type)
+{
+    //! [9]
+    switch (type) {
+    case QtGraphs3D::ElementType::AxisXLabel:
+        m_state = StateDraggingX;
+        break;
+    case QtGraphs3D::ElementType::AxisYLabel:
+        m_state = StateDraggingY;
+        break;
+    case QtGraphs3D::ElementType::AxisZLabel:
+        m_state = StateDraggingZ;
+        break;
+    default:
+        m_state = StateNormal;
+        break;
+    }
+    //! [9]
+}
+
+//! [10]
+void ScatterDataModifier::handleAxisDragging(QVector2D delta)
+//! [10]
+{
+    float distance = 0.0f;
+    //! [11]
+    // Get scene orientation from active camera
+    float xRotation = m_graph->cameraXRotation();
+    float yRotation = m_graph->cameraYRotation();
+    //! [11]
+
+    //! [12]
+    // Calculate directional drag multipliers based on rotation
+    float xMulX = qCos(qDegreesToRadians(xRotation));
+    float xMulY = qSin(qDegreesToRadians(xRotation));
+    float zMulX = qSin(qDegreesToRadians(xRotation));
+    float zMulY = qCos(qDegreesToRadians(xRotation));
+    //! [12]
+
+    //! [13]
+    // Get the drag amount
+    QPoint move = delta.toPoint();
+
+    // Flip the effect of y movement if we're viewing from below
+    float yMove = (yRotation < 0) ? -move.y() : move.y();
+    //! [13]
+
+    //! [14]
+    // Adjust axes
+    QValue3DAxis *axis = nullptr;
+    switch (m_state) {
+    case StateDraggingX:
+        axis = m_graph->axisX();
+        distance = (move.x() * xMulX - yMove * xMulY) / m_dragSpeedModifier;
+        axis->setRange(axis->min() - distance, axis->max() - distance);
+        break;
+    case StateDraggingZ:
+        axis = m_graph->axisZ();
+        distance = (move.x() * zMulX + yMove * zMulY) / m_dragSpeedModifier;
+        axis->setRange(axis->min() + distance, axis->max() + distance);
+        break;
+    case StateDraggingY:
+        axis = m_graph->axisY();
+        distance = move.y() / m_dragSpeedModifier; // No need to use adjusted y move here
+        axis->setRange(axis->min() + distance, axis->max() + distance);
+        break;
+    default:
+        break;
+    }
+    //! [14]
+}
+
 void ScatterDataModifier::changeShadowQuality(int quality)
 {
-    QAbstract3DGraph::ShadowQuality sq = QAbstract3DGraph::ShadowQuality(quality);
+    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
 }
 
-void ScatterDataModifier::setBackgroundEnabled(int enabled)
+void ScatterDataModifier::setBackgroundVisible(int visible)
 {
-    m_graph->activeTheme()->setBackgroundEnabled((bool) enabled);
+    m_graph->activeTheme()->setPlotAreaBackgroundVisible((bool)visible);
 }
 
-void ScatterDataModifier::setGridEnabled(int enabled)
+void ScatterDataModifier::setGridVisible(int visible)
 {
-    m_graph->activeTheme()->setGridEnabled((bool) enabled);
+    m_graph->activeTheme()->setGridVisible((bool)visible);
 }
 
 void ScatterDataModifier::toggleItemCount()
@@ -173,12 +244,12 @@ void ScatterDataModifier::toggleRanges()
     if (!m_autoAdjust) {
         m_graph->axisX()->setAutoAdjustRange(true);
         m_graph->axisZ()->setAutoAdjustRange(true);
-        m_inputHandler->setDragSpeedModifier(1.5f);
+        m_dragSpeedModifier = 1.5f;
         m_autoAdjust = true;
     } else {
         m_graph->axisX()->setRange(-10.0f, 10.0f);
         m_graph->axisZ()->setRange(-10.0f, 10.0f);
-        m_inputHandler->setDragSpeedModifier(15.0f);
+        m_dragSpeedModifier = 15.0f;
         m_autoAdjust = false;
     }
 }

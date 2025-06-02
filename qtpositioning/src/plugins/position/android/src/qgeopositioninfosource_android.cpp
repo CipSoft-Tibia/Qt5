@@ -4,15 +4,23 @@
 #include "qgeopositioninfosource_android_p.h"
 #include "jnipositioning.h"
 #include <QGeoPositionInfo>
+#include <QVariantMap>
+
+using namespace Qt::StringLiterals;
 
 static constexpr int kUpdateFromColdStart = 2 * 60 * 1000;
 static constexpr int kRegularUpdatesTimerInterval = 30 * 1000;
 
-QGeoPositionInfoSourceAndroid::QGeoPositionInfoSourceAndroid(QObject *parent) :
+static constexpr auto kUseAltitudeConverter = "useMslAltitude"_L1;
+
+QGeoPositionInfoSourceAndroid::QGeoPositionInfoSourceAndroid(const QVariantMap &parameters,
+                                                             QObject *parent) :
     QGeoPositionInfoSource(parent)
 {
     androidClassKeyForUpdate = AndroidPositioning::registerPositionInfoSource(this);
     androidClassKeyForSingleRequest = AndroidPositioning::registerPositionInfoSource(this);
+
+    parseParameters(parameters);
 
     //by default use all methods
     setPreferredPositioningMethods(AllPositioningMethods);
@@ -55,7 +63,8 @@ void QGeoPositionInfoSourceAndroid::setUpdateInterval(int msec)
 
 QGeoPositionInfo QGeoPositionInfoSourceAndroid::lastKnownPosition(bool fromSatellitePositioningMethodsOnly) const
 {
-    return AndroidPositioning::lastKnownPosition(fromSatellitePositioningMethodsOnly);
+    return AndroidPositioning::lastKnownPosition(fromSatellitePositioningMethodsOnly,
+                                                 useAltitudeConverter());
 }
 
 QGeoPositionInfoSource::PositioningMethods QGeoPositionInfoSourceAndroid::supportedPositioningMethods() const
@@ -84,11 +93,21 @@ QGeoPositionInfoSource::Error QGeoPositionInfoSourceAndroid::error() const
     return m_error;
 }
 
+bool QGeoPositionInfoSourceAndroid::useAltitudeConverter() const
+{
+    return m_useAltitudeConverter;
+}
+
 void QGeoPositionInfoSourceAndroid::setError(Error error)
 {
     m_error = error;
     if (error != QGeoPositionInfoSource::NoError)
         emit QGeoPositionInfoSource::errorOccurred(m_error);
+}
+
+void QGeoPositionInfoSourceAndroid::parseParameters(const QVariantMap &parameters)
+{
+    m_useAltitudeConverter = parameters.value(kUseAltitudeConverter, false).toBool();
 }
 
 void QGeoPositionInfoSourceAndroid::startUpdates()

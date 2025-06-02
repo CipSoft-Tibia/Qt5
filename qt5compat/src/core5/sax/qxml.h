@@ -11,7 +11,8 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qlist.h>
-#include <QtCore/qscopedpointer.h>
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -172,7 +173,7 @@ public:
     QString message() const;
 
 private:
-    QScopedPointer<QXmlParseExceptionPrivate> d;
+    std::unique_ptr<QXmlParseExceptionPrivate> d;
 };
 
 //
@@ -241,7 +242,7 @@ public:
 private:
     Q_DISABLE_COPY(QXmlSimpleReader)
     Q_DECLARE_PRIVATE(QXmlSimpleReader)
-    QScopedPointer<QXmlSimpleReaderPrivate> d_ptr;
+    std::unique_ptr<QXmlSimpleReaderPrivate> d_ptr;
 
     friend class QXmlSimpleReaderLocator;
 };

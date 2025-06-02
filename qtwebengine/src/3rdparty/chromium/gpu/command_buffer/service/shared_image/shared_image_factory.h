@@ -15,8 +15,9 @@
 #include "build/build_config.h"
 #include "components/viz/common/resources/shared_image_format.h"
 #include "gpu/command_buffer/common/mailbox.h"
+#include "gpu/command_buffer/common/shared_image_capabilities.h"
 #include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
-#include "gpu/command_buffer/service/texture_manager.h"
+#include "gpu/config/gpu_driver_bug_workarounds.h"
 #include "gpu/config/gpu_preferences.h"
 #include "gpu/gpu_gles2_export.h"
 #include "gpu/ipc/common/gpu_memory_buffer_support.h"
@@ -31,7 +32,6 @@ class VulkanContextProvider;
 }  // namespace viz
 
 namespace gpu {
-class GpuDriverBugWorkarounds;
 class MemoryTracker;
 class SharedContextState;
 class SharedImageBackingFactory;
@@ -102,6 +102,7 @@ class GPU_GLES2_EXPORT SharedImageFactory {
   bool UpdateSharedImage(const Mailbox& mailbox,
                          std::unique_ptr<gfx::GpuFence> in_fence);
   bool DestroySharedImage(const Mailbox& mailbox);
+  bool SetSharedImagePurgeable(const Mailbox& mailbox, bool purgeable);
   bool HasImages() const { return !shared_images_.empty(); }
   void DestroyAllSharedImages(bool have_context);
 
@@ -150,6 +151,10 @@ class GPU_GLES2_EXPORT SharedImageFactory {
   void RegisterSharedImageBackingFactoryForTesting(
       SharedImageBackingFactory* factory);
 
+  gpu::SharedImageCapabilities MakeCapabilities();
+
+  bool HasSharedImage(const Mailbox& mailbox) const;
+
  private:
   bool IsSharedBetweenThreads(uint32_t usage);
 
@@ -166,7 +171,7 @@ class GPU_GLES2_EXPORT SharedImageFactory {
   bool IsNativeBufferSupported(gfx::BufferFormat format,
                                gfx::BufferUsage usage);
 
-  raw_ptr<SharedImageManager, DanglingUntriaged> shared_image_manager_;
+  raw_ptr<SharedImageManager> shared_image_manager_;
   raw_ptr<SharedContextState> shared_context_state_;
   std::unique_ptr<MemoryTypeTracker> memory_tracker_;
 
@@ -200,6 +205,8 @@ class GPU_GLES2_EXPORT SharedImageFactory {
   gfx::GpuExtraInfo gpu_extra_info_;
   gpu::GpuMemoryBufferConfigurationSet supported_gmb_configurations_;
   bool supported_gmb_configurations_inited_ = false;
+  gpu::GpuPreferences gpu_preferences_;
+  gpu::GpuDriverBugWorkarounds workarounds_;
 
   raw_ptr<SharedImageBackingFactory> backing_factory_for_testing_ = nullptr;
 };
@@ -227,7 +234,8 @@ class GPU_GLES2_EXPORT SharedImageRepresentationFactory {
       const Mailbox& mailbox,
       const wgpu::Device& device,
       wgpu::BackendType backend_type,
-      std::vector<wgpu::TextureFormat> view_formats);
+      std::vector<wgpu::TextureFormat> view_formats,
+      scoped_refptr<SharedContextState> context_state);
   std::unique_ptr<OverlayImageRepresentation> ProduceOverlay(
       const Mailbox& mailbox);
   std::unique_ptr<MemoryImageRepresentation> ProduceMemory(

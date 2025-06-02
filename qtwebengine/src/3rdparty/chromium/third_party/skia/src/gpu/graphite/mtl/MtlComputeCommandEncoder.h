@@ -34,6 +34,8 @@ public:
                 new MtlComputeCommandEncoder(sharedContext, std::move(encoder)));
     }
 
+    const char* getResourceType() const override { return "Metal Compute Command Encoder"; }
+
     void setLabel(NSString* label) { [(*fCommandEncoder) setLabel:label]; }
 
     void pushDebugGroup(NSString* string) { [(*fCommandEncoder) pushDebugGroup:string]; }
@@ -88,7 +90,9 @@ public:
         }
     }
 
+    // `length` must be 16-byte aligned
     void setThreadgroupMemoryLength(NSUInteger length, NSUInteger index) {
+        SkASSERT(length % 16 == 0);
         [(*fCommandEncoder) setThreadgroupMemoryLength:length atIndex:index];
     }
 
@@ -109,7 +113,11 @@ private:
 
     MtlComputeCommandEncoder(const SharedContext* sharedContext,
                              sk_cfp<id<MTLComputeCommandEncoder>> encoder)
-            : Resource(sharedContext, Ownership::kOwned, skgpu::Budgeted::kYes, /*gpuMemorySize=*/0)
+            : Resource(sharedContext,
+                       Ownership::kOwned,
+                       skgpu::Budgeted::kYes,
+                       /*gpuMemorySize=*/0,
+                       /*label=*/"MtlComputeCommandEncoder")
             , fCommandEncoder(std::move(encoder)) {
         for (int i = 0; i < kMaxExpectedBuffers; i++) {
             fBuffers[i] = nil;

@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QGuiApplication>
 #include <QtGui/private/qguiapplication_p.h>
@@ -13,7 +13,7 @@
 #include <QtWaylandClient/private/qwaylanddisplay_p.h>
 #include <QtWaylandClient/private/qwaylandintegration_p.h>
 #include <QtWaylandClient/private/qwaylandserverbufferintegration_p.h>
-#include "texturesharingextension.h"
+#include "texturesharingextension_p.h"
 
 #include <QDebug>
 #include <QtGui/qpa/qplatformnativeinterface.h>

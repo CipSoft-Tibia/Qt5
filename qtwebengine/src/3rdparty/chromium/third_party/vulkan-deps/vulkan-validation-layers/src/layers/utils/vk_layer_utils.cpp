@@ -18,6 +18,7 @@
 #include "vk_layer_utils.h"
 
 #include <string.h>
+#include <sys/stat.h>
 
 #include "vulkan/vulkan.h"
 
@@ -114,7 +115,7 @@ void layer_debug_messenger_actions(debug_report_data *report_data, const char *l
     // Flag as default if these settings are not from a vk_layer_settings.txt file
     const bool default_layer_callback = (debug_action & VK_DBG_LAYER_ACTION_DEFAULT) != 0;
 
-    auto dbg_create_info = LvlInitStruct<VkDebugUtilsMessengerCreateInfoEXT>();
+    VkDebugUtilsMessengerCreateInfoEXT dbg_create_info = vku::InitStructHelper();
     dbg_create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
     if (report_flags & kErrorBit) {
         dbg_create_info.messageSeverity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
@@ -174,4 +175,22 @@ VkLayerDeviceCreateInfo *get_chain_info(const VkDeviceCreateInfo *pCreateInfo, V
     }
     assert(chain_info != NULL);
     return chain_info;
+}
+
+std::string GetTempFilePath() {
+    auto tmp_path = GetEnvironment("XDG_CACHE_HOME");
+    if (!tmp_path.size()) {
+        auto cachepath = GetEnvironment("HOME") + "/.cache";
+        struct stat info;
+        if (stat(cachepath.c_str(), &info) == 0) {
+            if ((info.st_mode & S_IFMT) == S_IFDIR) {
+                tmp_path = cachepath;
+            }
+        }
+    }
+    if (!tmp_path.size()) tmp_path = GetEnvironment("TMPDIR");
+    if (!tmp_path.size()) tmp_path = GetEnvironment("TMP");
+    if (!tmp_path.size()) tmp_path = GetEnvironment("TEMP");
+    if (!tmp_path.size()) tmp_path = "/tmp";
+    return tmp_path;
 }

@@ -9,6 +9,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -16,7 +17,6 @@
 #include "base/containers/flat_set.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
-#include "base/strings/string_piece_forward.h"
 #include "base/time/time.h"
 #include "components/autofill/core/browser/autofill_client.h"
 #include "components/autofill/core/browser/autofill_progress_dialog_type.h"
@@ -49,7 +49,6 @@ class CreditCard;
 
 namespace autofill_metrics {
 class FormEventLoggerBase;
-struct FormGroupFillingStats;
 }  // namespace autofill_metrics
 
 // A given maximum is enforced to minimize the number of buckets generated.
@@ -116,15 +115,18 @@ class AutofillMetrics {
     NUM_AUTOCOMPLETE_EVENTS
   };
 
-  // The user action that triggered the deletion of an Autocomplete entry.
+  // The user action that triggered the deletion of a suggestion entry.
   // These values are used in enums.xml; do not reorder or renumber entries!
-  enum class AutocompleteSingleEntryRemovalMethod {
+  enum class SingleEntryRemovalMethod {
     // The user pressed shift delete while an Autofill popup menu entry was
     // selected.
     kKeyboardShiftDeletePressed = 0,
     // The user clicked the delete button in the Autofill popup menu.
     kDeleteButtonClicked = 1,
-    kMaxValue = kDeleteButtonClicked
+    // The user confirmed the entry deletion via the dialog shown by the
+    // keyboard accessory.
+    kKeyboardAccessory = 2,
+    kMaxValue = kKeyboardAccessory
   };
 
   // Represents card submitted state.
@@ -578,15 +580,6 @@ class AutofillMetrics {
     NUM_WALLET_REQUIRED_ACTIONS
   };
 
-  // For measuring how wallet addresses are converted to local profiles.
-  enum WalletAddressConversionType : int {
-    // The converted wallet address was merged into an existing local profile.
-    CONVERTED_ADDRESS_MERGED,
-    // The converted wallet address was added as a new local profile.
-    CONVERTED_ADDRESS_ADDED,
-    NUM_CONVERTED_ADDRESS_CONVERSION_TYPES
-  };
-
   // To record whether the upload event was sent.
   enum class UploadEventStatus { kNotSent, kSent, kMaxValue = kSent };
 
@@ -629,7 +622,8 @@ class AutofillMetrics {
     kValid = 1,
     kGarbage = 2,
     kOff = 3,
-    kMaxValue = kOff
+    kPassword = 4,
+    kMaxValue = kPassword
   };
 
   // The autofill statuses of a field that are recorded into UKM to help us
@@ -638,8 +632,10 @@ class AutofillMetrics {
     kIsFocusable = 0,
     kWasFocused = 1,
     kWasAutofillTriggered = 2,
-    // kWasAutofilled is only set when kWasAutofillTriggered is set.
-    kWasAutofilled = 3,
+    // Note that this is set before checking the iframe security policy.
+    // This value is true even when the filling was prevented because of the
+    // cross iframe autofill security policy.
+    kWasAutofilledBeforeSecurityPolicy = 3,
     kWasRefill = 4,
     // The below suggestion statuses are set only when kWasFocused is set.
     kSuggestionWasAvailable = 5,
@@ -650,7 +646,11 @@ class AutofillMetrics {
     kHadValueBeforeFilling = 10,
     kHadTypedOrFilledValueAtSubmission = 11,
     kIsInSubFrame = 12,
-    kMaxValue = kIsInSubFrame
+    kFillingPreventedByIframeSecurityPolicy = 13,
+    // The field was sent to the renderer for autofilling. Note that this is
+    // still true if the user later edited the autofilled value.
+    kWasAutofilledAfterSecurityPolicy = 14,
+    kMaxValue = kWasAutofilledAfterSecurityPolicy
   };
 
   struct FormEventSetTraits {
@@ -682,7 +682,7 @@ class AutofillMetrics {
       kMaxValue = kPartialFill,
     };
 
-    explicit CreditCardSeamlessness(const ServerFieldTypeSet& filled_types);
+    explicit CreditCardSeamlessness(const FieldTypeSet& filled_types);
 
     explicit operator bool() const { return is_valid(); }
     bool is_valid() const { return name_ || number_ || exp_ || cvc_; }
@@ -713,13 +713,13 @@ class AutofillMetrics {
   // Utility to log URL keyed form interaction events.
   class FormInteractionsUkmLogger {
    public:
-    FormInteractionsUkmLogger(ukm::UkmRecorder* ukm_recorder,
-                              const ukm::SourceId source_id);
+    FormInteractionsUkmLogger(AutofillClient* autofill_client,
+                              ukm::UkmRecorder* ukm_recorder);
 
     bool has_pinned_timestamp() const { return !pinned_timestamp_.is_null(); }
     void set_pinned_timestamp(base::TimeTicks t) { pinned_timestamp_ = t; }
 
-    ukm::builders::Autofill_CreditCardFill CreateCreditCardFillBuilder() const;
+    ukm::builders::Autofill_CreditCardFill CreateCreditCardFillBuilder();
     void Record(ukm::builders::Autofill_CreditCardFill&& builder);
 
     // Initializes this logger with a source_id. Unless forms is parsed no
@@ -740,10 +740,11 @@ class AutofillMetrics {
                              const AutofillField& field,
                              const base::TimeTicks& form_parsed_timestamp,
                              bool off_the_record);
-    void LogDidFillSuggestion(absl::variant<AutofillProfile::RecordType,
-                                            CreditCard::RecordType> record_type,
-                              const FormStructure& form,
-                              const AutofillField& field);
+    // For address suggestions, the `record_type` is irrelevant.
+    void LogDidFillSuggestion(
+        const FormStructure& form,
+        const AutofillField& field,
+        std::optional<CreditCard::RecordType> record_type = std::nullopt);
     void LogTextFieldDidChange(const FormStructure& form,
                                const AutofillField& field);
     void LogEditedAutofilledFieldAtSubmission(const FormStructure& form,
@@ -756,8 +757,8 @@ class AutofillMetrics {
                       FieldSignature field_signature,
                       QualityMetricPredictionSource prediction_source,
                       QualityMetricType metric_type,
-                      ServerFieldType predicted_type,
-                      ServerFieldType actual_type);
+                      FieldType predicted_type,
+                      FieldType actual_type);
     void LogAutofillFieldInfoAtFormRemove(
         const FormStructure& form,
         const AutofillField& field,
@@ -781,7 +782,7 @@ class AutofillMetrics {
                        bool suggestion_filled,
                        const FormInteractionCounts& form_interaction_counts,
                        const FormInteractionsFlowId& flow_id,
-                       absl::optional<int64_t> fast_checkout_run_id);
+                       std::optional<int64_t> fast_checkout_run_id);
     void LogFormEvent(autofill_metrics::FormEvent form_event,
                       const DenseSet<FormType>& form_types,
                       const base::TimeTicks& form_parsed_timestamp);
@@ -797,7 +798,7 @@ class AutofillMetrics {
     void LogRepeatedServerTypePredictionRationalized(
         const FormSignature form_signature,
         const AutofillField& field,
-        ServerFieldType old_type);
+        FieldType old_type);
 
     // Logs a hash of the `sectioning_signature` for a specific
     // `form_signature`. This is useful for detecting sites where different
@@ -812,8 +813,13 @@ class AutofillMetrics {
     int64_t MillisecondsSinceFormParsed(
         const base::TimeTicks& form_parsed_timestamp) const;
 
-    raw_ptr<ukm::UkmRecorder> ukm_recorder_;  // Weak reference.
-    ukm::SourceId source_id_;
+    ukm::SourceId GetSourceId();
+
+    // These objects outlive.
+    raw_ptr<AutofillClient> autofill_client_;
+    raw_ptr<ukm::UkmRecorder> ukm_recorder_;
+
+    std::optional<ukm::SourceId> source_id_;
     base::TimeTicks pinned_timestamp_;
   };
 
@@ -866,11 +872,6 @@ class AutofillMetrics {
   AutofillMetrics() = delete;
   AutofillMetrics(const AutofillMetrics&) = delete;
   AutofillMetrics& operator=(const AutofillMetrics&) = delete;
-
-  // When the autofill-use-improved-label-disambiguation experiment is enabled
-  // and suggestions are available, records if a LabelFormatter successfully
-  // created the suggestions.
-  static void LogProfileSuggestionsMadeWithFormatter(bool made_with_formatter);
 
   static void LogSubmittedCardStateMetric(SubmittedCardStateMetric metric);
 
@@ -1115,9 +1116,6 @@ class AutofillMetrics {
   // Logs that the user cleared the form.
   static void LogAutofillFormCleared();
 
-  // Logs that the user used Undo to revert some autofill operation.
-  static void LogAutofillUndo();
-
   // Log the number of days since an Autocomplete suggestion was last used.
   static void LogAutocompleteDaysSinceLastUse(size_t days);
 
@@ -1130,7 +1128,7 @@ class AutofillMetrics {
   // Log that an autocomplete suggestion was deleted directly from the popup
   // menu.
   static void OnAutocompleteSuggestionDeleted(
-      AutocompleteSingleEntryRemovalMethod removal_method);
+      SingleEntryRemovalMethod removal_method);
 
   // Log how many autofilled fields in a given form were edited before the
   // submission or when the user unfocused the form (depending on
@@ -1138,39 +1136,6 @@ class AutofillMetrics {
   static void LogNumberOfEditedAutofilledFields(
       size_t num_edited_autofilled_fields,
       bool observed_submission);
-
-  // Logs the `filling_stats` of the fields within a `form_type`. The filling
-  // status consistent of the number of accepted, corrected or and unfilled
-  // fields.
-  static void LogFieldFillingStats(
-      FormType form_type,
-      const autofill_metrics::FormGroupFillingStats& filling_stats);
-
-  // Logs a form-wide score for the fields of `form_type` based on the
-  // field-wise `filling_stats`. The score is calculated as follows:
-  // S = 2*number(filled and accepted) - 3*number(filled and corrected) + 100
-  // Note that the score is offset by 100 since UMA cannot log negative numbers
-  // It is also limited to 200.
-  // Each filled and accepted field contributes to a positive score of 2, while
-  // each filled and correct field contributes with a negative score of 3.
-  // The metric is only recorded if at least one field was accepted or
-  // corrected.
-  static void LogFormFillingScore(
-      FormType form_type,
-      const autofill_metrics::FormGroupFillingStats& filling_stats);
-
-  // Similar to LogFormFillingScore but with a different score function:
-  // S = number(filled and accepted) * 10 + number(corrected)
-  // This score serves as a 2D histogram to record the number of corrected and
-  // accepted fields into a single histogram.
-  // Note that the number of accepted fields is limited to 19 and the number of
-  // corrected fields is limited to 9.
-  // A score of 45 would mean that 4 fields have been accepted and 5 corrected.
-  // The metric is only recorded if at least one field was accepted or
-  // corrected.
-  static void LogFormFillingComplexScore(
-      FormType form_type,
-      const autofill_metrics::FormGroupFillingStats& filling_stats);
 
   // Logs the number of sections and the number of fields/section.
   static void LogSectioningMetrics(
@@ -1222,7 +1187,7 @@ class AutofillMetrics {
 
   // Logs Autofill.CreditCard.SeamlessFills.AtSubmissionTime.
   static void LogCreditCardSeamlessnessAtSubmissionTime(
-      const ServerFieldTypeSet& autofilled_types);
+      const FieldTypeSet& autofilled_types);
 
   // This should be called when parsing each form.
   static void LogParseFormTiming(const base::TimeDelta& duration);
@@ -1236,10 +1201,6 @@ class AutofillMetrics {
   // Log whether the Autofill query on a credit card form is made in a secure
   // context.
   static void LogIsQueriedCreditCardFormSecure(bool is_secure);
-
-  // Log how the converted wallet address was added to the local autofill
-  // profiles.
-  static void LogWalletAddressConversionType(WalletAddressConversionType type);
 
   // This should be called when the user selects the Form-Not-Secure warning
   // suggestion to show an explanation of the warning.
@@ -1304,7 +1265,7 @@ class AutofillMetrics {
   static void LogFieldParsingPageTranslationStatusMetric(bool metric);
 
   // Records the visible page language upon form submission.
-  static void LogFieldParsingTranslatedFormLanguageMetric(base::StringPiece);
+  static void LogFieldParsingTranslatedFormLanguageMetric(std::string_view);
 
   static const char* GetMetricsSyncStateSuffix(PaymentsSigninState sync_state);
 
@@ -1354,12 +1315,6 @@ class AutofillMetrics {
   // Logs the roundtrip latency for fetching an image in AutofillImageFetcher.
   static void LogImageFetcherRequestLatency(const base::TimeDelta& latency);
 
-  // Logs whether the submitted field value is same as the non-empty value
-  // to be autofilled in the field, when the field had a different prefilled
-  // value.
-  static void LogIsValueNotAutofilledOverExistingValueSameAsSubmittedValue(
-      bool is_same);
-
   // Logs a field's (PredictionState, AutocompleteState) pair on form submit.
   static void LogAutocompletePredictionCollisionState(
       PredictionState prediction_state,
@@ -1369,8 +1324,8 @@ class AutofillMetrics {
   // corresponding to the field's `autocomplete_state`.
   static void LogAutocompletePredictionCollisionTypes(
       AutocompleteState autocomplete_state,
-      ServerFieldType server_type,
-      ServerFieldType heuristic_types);
+      FieldType server_type,
+      FieldType heuristic_types);
 
   // Logs whether a heuristic detection for an NUMERIC_QUANTITY collides with a
   // server prediction.
@@ -1392,7 +1347,7 @@ class AutofillMetrics {
   // Logs the context menu impressions based on the autofill type as well as
   // based on the autocomplete type.
   static void LogContextMenuImpressionsForField(
-      ServerFieldType field_type,
+      FieldType field_type,
       AutocompleteState autocomplete_state);
 
   // Logs the context menu impressions for a submitted form. Mainly logs the
@@ -1408,13 +1363,29 @@ class AutofillMetrics {
   static uint64_t FieldGlobalIdToHash64Bit(
       const FieldGlobalId& field_global_id);
 
+  // Log the Autofill2_FieldInfoAfterSubmission UKM event after the form is
+  // submitted and uploaded for votes to the crowdsourcing server.
+  static void LogAutofillFieldInfoAfterSubmission(
+      ukm::UkmRecorder* ukm_recorder,
+      ukm::SourceId source_id,
+      const FormStructure& form,
+      const base::TimeTicks& form_submitted_timestamp);
+
+  // This metric is recorded when an address is deleted from a first-level popup
+  // using shift+delete.
+  static void LogDeleteAddressProfileFromPopup();
+
+  // This metric is recorded when an address is deleted from the keyboard
+  // accessory.
+  static void LogDeleteAddressProfileFromKeyboardAccessory();
+
  private:
   static void Log(AutocompleteEvent event);
 };
 
 #if defined(UNIT_TEST)
 int GetFieldTypeUserEditStatusMetric(
-    ServerFieldType server_type,
+    FieldType server_type,
     AutofillMetrics::AutofilledFieldUserEditingStatusMetric metric);
 #endif
 

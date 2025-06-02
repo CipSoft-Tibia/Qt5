@@ -26,7 +26,7 @@ bool IsOffTheRecordContextAllowed(content::BrowserContext* browser_context) {
   // In Guest mode on Chrome OS we want to create a task queue for OTR profile.
   if (ExtensionsBrowserClient::Get()->IsGuestSession(browser_context))
     return true;
-#elif defined(TOOLKIT_QT)
+#elif BUILDFLAG(IS_QTWEBENGINE)
   return true;
 #else
   // In other cases don't create a task queue for OTR profile.
@@ -124,12 +124,16 @@ void DoTaskQueueFunction(content::BrowserContext* browser_context,
 
 LazyContextTaskQueue* GetTaskQueueForLazyContextId(
     const LazyContextId& context_id) {
-  if (context_id.is_for_event_page())
+  if (context_id.IsForBackgroundPage()) {
     return LazyBackgroundTaskQueue::Get(context_id.browser_context());
+  }
 
-  DCHECK(context_id.is_for_service_worker());
-  return GetServiceWorkerTaskQueueForExtensionId(context_id.browser_context(),
-                                                 context_id.extension_id());
+  if (context_id.IsForServiceWorker()) {
+    return GetServiceWorkerTaskQueueForExtensionId(context_id.browser_context(),
+                                                   context_id.extension_id());
+  }
+
+  return nullptr;
 }
 
 void ActivateTaskQueueForExtension(content::BrowserContext* browser_context,

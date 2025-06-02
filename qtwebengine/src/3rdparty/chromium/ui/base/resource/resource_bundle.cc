@@ -22,6 +22,7 @@
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/path_service.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
@@ -199,7 +200,7 @@ void DecompressIfNeeded(base::StringPiece data, OutputBufferType output) {
     DCHECK(success);
   } else {
     base::span<uint8_t> dest = GetBufferForWriting(output, data.size());
-    memcpy(dest.data(), data.data(), dest.size());
+    base::ranges::copy(data, dest.data());
   }
 }
 
@@ -489,12 +490,11 @@ std::string ResourceBundle::LoadLocaleResources(const std::string& pref_locale,
 void ResourceBundle::LoadTestResources(const base::FilePath& path,
                                        const base::FilePath& locale_path) {
   is_test_resources_ = true;
-  DCHECK(!ui::GetSupportedResourceScaleFactors().empty());
   // Use the given resource pak for both common and localized resources.
 
   if (!path.empty()) {
-    const ResourceScaleFactor scale_factor(
-        ui::GetSupportedResourceScaleFactors()[0]);
+    const ResourceScaleFactor scale_factor =
+        ui::GetSupportedResourceScaleFactors()[0];
     auto data_pack = std::make_unique<DataPack>(scale_factor);
     CHECK(data_pack->LoadFromPath(path));
     AddResourceHandle(std::move(data_pack));

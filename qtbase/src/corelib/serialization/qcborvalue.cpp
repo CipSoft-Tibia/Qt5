@@ -19,7 +19,6 @@
 #include <qlocale.h>
 #include <qdatetime.h>
 #include <qtimezone.h>
-#include <private/qbytearray_p.h>
 #include <private/qnumeric_p.h>
 #include <private/qsimd_p.h>
 
@@ -51,6 +50,8 @@ Q_DECL_UNUSED static constexpr quint64 MaximumPreallocatedElementCount =
     \since 5.12
 
     \brief The QCborValue class encapsulates a value in CBOR.
+
+    \compares strong
 
     This class can be used to hold one of the many types available in CBOR.
     CBOR is the Concise Binary Object Representation, a very compact form of
@@ -463,8 +464,7 @@ Q_DECL_UNUSED static constexpr quint64 MaximumPreallocatedElementCount =
 
 /*!
     \fn void QCborValue::swap(QCborValue &other)
-
-    Swaps the contents of this QCborValue object and \a other.
+    \memberswap{value}
  */
 
 /*!
@@ -903,12 +903,12 @@ static void writeDoubleToCbor(QCborStreamWriter &writer, double d, QCborValue::E
 }
 #endif // QT_CONFIG(cborstreamwriter)
 
-static inline int typeOrder(Element e1, Element e2)
+static inline int typeOrder(QCborValue::Type e1, QCborValue::Type  e2)
 {
-    auto comparable = [](Element e) {
-        if (e.type >= 0x10000)      // see QCborValue::isTag_helper()
+    auto comparable = [](QCborValue::Type type) {
+        if (type >= 0x10000)        // see QCborValue::isTag_helper()
             return QCborValue::Tag;
-        return e.type;
+        return type;
     };
     return comparable(e1) - comparable(e2);
 }
@@ -1064,6 +1064,12 @@ Q_NEVER_INLINE void QCborContainerPrivate::appendAsciiString(QStringView s)
     qt_to_latin1_unchecked(l, s.utf16(), len);
 }
 
+void QCborContainerPrivate::appendNonAsciiString(QStringView s)
+{
+    appendByteData(reinterpret_cast<const char *>(s.utf16()), s.size() * 2,
+                   QCborValue::String, QtCbor::Element::StringIsUtf16);
+}
+
 QCborValue QCborContainerPrivate::extractAt_complex(Element e)
 {
     // create a new container for the returned value, containing the byte data
@@ -1118,8 +1124,11 @@ static qsizetype stringLengthInUtf8(const char16_t *ptr, const char16_t *end) no
     return len;
 }
 
-static int compareStringsInUtf8(QStringView lhs, QStringView rhs) noexcept
+static int compareStringsInUtf8(QStringView lhs, QStringView rhs, Comparison mode) noexcept
 {
+    if (mode == Comparison::ForEquality)
+        return lhs == rhs ? 0 : 1;
+
     // The UTF-16 length is *usually* comparable, but not always. There are
     // pathological cases where they can be wrong, so we need to compare as if
     // we were doing it in UTF-8. That includes the case of UTF-16 surrogate
@@ -1149,9 +1158,62 @@ static int compareStringsInUtf8(QStringView lhs, QStringView rhs) noexcept
     return len1 < len2 ? -1 : 1;
 }
 
+static int compareStringsInUtf8(QUtf8StringView lhs, QStringView rhs, Comparison mode) noexcept
+{
+    // CBOR requires that the shortest of the two strings be sorted first, so
+    // we have to calculate the UTF-8 length of the UTF-16 string while
+    // comparing. Unlike the UTF-32 comparison above, we convert the UTF-16
+    // string to UTF-8 so we only need to decode one string.
+
+    const qsizetype len1 = lhs.size();
+    const auto src1 = reinterpret_cast<const uchar *>(lhs.data());
+    const char16_t *src2 = rhs.utf16();
+    const char16_t *const end2 = src2 + rhs.size();
+
+    // Compare the two strings until we find a difference.
+    int diff = 0;
+    qptrdiff idx1 = 0;
+    qsizetype len2 = 0;
+    do {
+        uchar utf8[4];      // longest possible Unicode character in UTF-8
+        uchar *ptr = utf8;
+        char16_t uc = *src2++;
+        int r = QUtf8Functions::toUtf8<QUtf8BaseTraits>(uc, ptr, src2, end2);
+        Q_UNUSED(r);    // ignore failure to encode proper UTF-16 surrogates
+
+        qptrdiff n = ptr - utf8;
+        len2 += n;
+        if (len1 - idx1 < n)
+            return -1;      // lhs is definitely shorter
+        diff = memcmp(src1 + idx1, utf8, n);
+        idx1 += n;
+    } while (diff == 0 && idx1 < len1 && src2 < end2);
+
+    if (mode == Comparison::ForEquality && diff)
+        return diff;
+    if ((idx1 == len1) != (src2 == end2)) {
+        // One of the strings ended earlier than the other
+        return idx1 == len1 ? -1 : 1;
+    }
+
+    // We found a difference and neither string ended, so continue calculating
+    // the UTF-8 length of rhs.
+    len2 += stringLengthInUtf8(src2, end2);
+
+    if (len1 != len2)
+        return len1 < len2 ? -1 : 1;
+    return diff;
+}
+
+static int compareStringsInUtf8(QStringView lhs, QUtf8StringView rhs, Comparison mode) noexcept
+{
+    return -compareStringsInUtf8(rhs, lhs, mode);
+}
+
 QT_WARNING_DISABLE_MSVC(4146)   // unary minus operator applied to unsigned type, result still unsigned
-static int compareContainer(const QCborContainerPrivate *c1, const QCborContainerPrivate *c2);
-static int compareElementNoData(const Element &e1, const Element &e2)
+static int compareContainer(const QCborContainerPrivate *c1, const QCborContainerPrivate *c2,
+                            Comparison mode) noexcept;
+static int compareElementNoData(const Element &e1, const Element &e2) noexcept
 {
     Q_ASSERT(e1.type == e2.type);
 
@@ -1195,15 +1257,16 @@ static int compareElementNoData(const Element &e1, const Element &e2)
 }
 
 static int compareElementRecursive(const QCborContainerPrivate *c1, const Element &e1,
-                                   const QCborContainerPrivate *c2, const Element &e2)
+                                   const QCborContainerPrivate *c2, const Element &e2,
+                                   Comparison mode) noexcept
 {
-    int cmp = typeOrder(e1, e2);
+    int cmp = typeOrder(e1.type, e2.type);
     if (cmp != 0)
         return cmp;
 
     if ((e1.flags & Element::IsContainer) || (e2.flags & Element::IsContainer))
         return compareContainer(e1.flags & Element::IsContainer ? e1.container : nullptr,
-                                e2.flags & Element::IsContainer ? e2.container : nullptr);
+                                e2.flags & Element::IsContainer ? e2.container : nullptr, mode);
 
     // string data?
     const ByteData *b1 = c1 ? c1->byteData(e1) : nullptr;
@@ -1223,35 +1286,33 @@ static int compareElementRecursive(const QCborContainerPrivate *c1, const Elemen
         // is the UTF-8 length. But the UTF-16 length may not be directly
         // comparable.
         if ((e1.flags & Element::StringIsUtf16) && (e2.flags & Element::StringIsUtf16))
-            return compareStringsInUtf8(b1->asStringView(), b2->asStringView());
+            return compareStringsInUtf8(b1->asStringView(), b2->asStringView(), mode);
 
         if (!(e1.flags & Element::StringIsUtf16) && !(e2.flags & Element::StringIsUtf16)) {
             // Neither is UTF-16, so lengths are comparable too
             // (this case includes byte arrays too)
-            if (len1 == len2)
+            if (len1 == len2) {
+                if (mode == Comparison::ForEquality) {
+                    // GCC optimizes this to __memcmpeq(); Clang to bcmp()
+                    return memcmp(b1->byte(), b2->byte(), size_t(len1)) == 0 ? 0 : 1;
+                }
                 return memcmp(b1->byte(), b2->byte(), size_t(len1));
+            }
             return len1 < len2 ? -1 : 1;
         }
 
         // Only one is UTF-16
-        // (we can't use QUtf8::compareUtf8 because we need to compare lengths)
-        auto string = [](const Element &e, const ByteData *b) -> QByteArray {
-            if (e.flags & Element::StringIsUtf16)
-                return b->asStringView().toUtf8();
-            return b->asByteArrayView();    // actually a QByteArray::fromRaw
-        };
-
-        QByteArray s1 = string(e1, b1);
-        QByteArray s2 = string(e2, b2);
-        if (s1.size() == s2.size())
-            return memcmp(s1.constData(), s2.constData(), s1.size());
-        return s1.size() < s2.size() ? -1 : 1;
+        if (e1.flags & Element::StringIsUtf16)
+            return compareStringsInUtf8(b1->asStringView(), b2->asUtf8StringView(), mode);
+        else
+            return compareStringsInUtf8(b1->asUtf8StringView(), b2->asStringView(), mode);
     }
 
     return compareElementNoData(e1, e2);
 }
 
-static int compareContainer(const QCborContainerPrivate *c1, const QCborContainerPrivate *c2)
+static int compareContainer(const QCborContainerPrivate *c1, const QCborContainerPrivate *c2,
+                            Comparison mode) noexcept
 {
     auto len1 = c1 ? c1->elements.size() : 0;
     auto len2 = c2 ? c2->elements.size() : 0;
@@ -1263,7 +1324,7 @@ static int compareContainer(const QCborContainerPrivate *c1, const QCborContaine
     for (qsizetype i = 0; i < len1; ++i) {
         const Element &e1 = c1->elements.at(i);
         const Element &e2 = c2->elements.at(i);
-        int cmp = QCborContainerPrivate::compareElement_helper(c1, e1, c2, e2);
+        int cmp = compareElementRecursive(c1, e1, c2, e2, mode);
         if (cmp)
             return cmp;
     }
@@ -1272,15 +1333,16 @@ static int compareContainer(const QCborContainerPrivate *c1, const QCborContaine
 }
 
 inline int QCborContainerPrivate::compareElement_helper(const QCborContainerPrivate *c1, Element e1,
-                                                        const QCborContainerPrivate *c2, Element e2)
+                                                        const QCborContainerPrivate *c2, Element e2,
+                                                        Comparison mode) noexcept
 {
-    return compareElementRecursive(c1, e1, c2, e2);
+    return compareElementRecursive(c1, e1, c2, e2, mode);
 }
 
 /*!
-    \fn bool QCborValue::operator==(const QCborValue &other) const
+    \fn bool QCborValue::operator==(const QCborValue &lhs, const QCborValue &rhs)
 
-    Compares this value and \a other, and returns true if they hold the same
+    Compares \a lhs and \a rhs, and returns true if they hold the same
     contents, false otherwise. If each QCborValue contains an array or map, the
     comparison is recursive to elements contained in them.
 
@@ -1291,9 +1353,9 @@ inline int QCborContainerPrivate::compareElement_helper(const QCborContainerPriv
  */
 
 /*!
-    \fn bool QCborValue::operator!=(const QCborValue &other) const
+    \fn bool QCborValue::operator!=(const QCborValue &lhs, const QCborValue &rhs)
 
-    Compares this value and \a other, and returns true if contents differ,
+    Compares \a lhs and \a rhs, and returns true if contents differ,
     false otherwise. If each QCborValue contains an array or map, the comparison
     is recursive to elements contained in them.
 
@@ -1302,12 +1364,20 @@ inline int QCborContainerPrivate::compareElement_helper(const QCborContainerPriv
     \sa compare(), QCborValue::operator==(), QCborMap::operator==(),
         operator==(), operator<()
  */
+bool comparesEqual(const QCborValue &lhs,
+                   const QCborValue &rhs) noexcept
+{
+    Element e1 = QCborContainerPrivate::elementFromValue(lhs);
+    Element e2 = QCborContainerPrivate::elementFromValue(rhs);
+    return compareElementRecursive(lhs.container, e1, rhs.container, e2,
+                                   Comparison::ForEquality) == 0;
+}
 
 /*!
-    \fn bool QCborValue::operator<(const QCborValue &other) const
+    \fn bool QCborValue::operator<(const QCborValue &lhs, const QCborValue &rhs)
 
-    Compares this value and \a other, and returns true if this value should be
-    sorted before \a other, false otherwise. If each QCborValue contains an
+    Compares \a lhs and \a rhs, and returns true if \a lhs should be
+    sorted before \a rhs, false otherwise. If each QCborValue contains an
     array or map, the comparison is recursive to elements contained in them.
 
     For more information on CBOR sorting order, see QCborValue::compare().
@@ -1315,6 +1385,47 @@ inline int QCborContainerPrivate::compareElement_helper(const QCborContainerPriv
     \sa compare(), QCborValue::operator==(), QCborMap::operator==(),
         operator==(), operator!=()
  */
+
+/*!
+    \fn bool QCborValue::operator<=(const QCborValue &lhs, const QCborValue &rhs)
+
+    Compares \a lhs and \a rhs, and returns true if \a lhs should be
+    sorted before \a rhs or is being equal to \a rhs, false otherwise.
+    If each QCborValue contains an array or map, the comparison is recursive
+    to elements contained in them.
+
+    For more information on CBOR sorting order, see QCborValue::compare().
+
+    \sa compare(), QCborValue::operator<(), QCborMap::operator==(),
+        operator==(), operator!=()
+*/
+
+/*!
+    \fn bool QCborValue::operator>(const QCborValue &lhs, const QCborValue &rhs)
+
+    Compares \a lhs and \a rhs, and returns true if \a lhs should be
+    sorted after \a rhs, false otherwise. If each QCborValue contains an
+    array or map, the comparison is recursive to elements contained in them.
+
+    For more information on CBOR sorting order, see QCborValue::compare().
+
+    \sa compare(), QCborValue::operator>=(), QCborMap::operator==(),
+        operator==(), operator!=()
+*/
+
+/*!
+    \fn bool QCborValue::operator>=(const QCborValue &lhs, const QCborValue &rhs)
+
+    Compares \a lhs and \a rhs, and returns true if \a lhs should be
+    sorted after \a rhs or is being equal to \a rhs, false otherwise.
+    If each QCborValue contains an array or map, the comparison is recursive
+    to elements contained in them.
+
+    For more information on CBOR sorting order, see QCborValue::compare().
+
+    \sa compare(), QCborValue::operator>(), QCborMap::operator==(),
+        operator==(), operator!=()
+*/
 
 /*!
     Compares this value and \a other, and returns an integer that indicates
@@ -1381,17 +1492,59 @@ int QCborValue::compare(const QCborValue &other) const
 {
     Element e1 = QCborContainerPrivate::elementFromValue(*this);
     Element e2 = QCborContainerPrivate::elementFromValue(other);
-    return compareElementRecursive(container, e1, other.container, e2);
+    return compareElementRecursive(container, e1, other.container, e2, Comparison::ForOrdering);
+}
+
+bool comparesEqual(const QCborArray &lhs, const QCborArray &rhs) noexcept
+{
+    return compareContainer(lhs.d.constData(), rhs.d.constData(), Comparison::ForEquality) == 0;
 }
 
 int QCborArray::compare(const QCborArray &other) const noexcept
 {
-    return compareContainer(d.data(), other.d.data());
+    return compareContainer(d.data(), other.d.data(), Comparison::ForOrdering);
+}
+
+bool QCborArray::comparesEqual_helper(const QCborArray &lhs, const QCborValue &rhs) noexcept
+{
+    if (typeOrder(QCborValue::Array, rhs.type()))
+        return false;
+    return compareContainer(lhs.d.constData(), rhs.container, Comparison::ForEquality) == 0;
+}
+
+Qt::strong_ordering
+QCborArray::compareThreeWay_helper(const QCborArray &lhs, const QCborValue &rhs) noexcept
+{
+    int c = typeOrder(QCborValue::Array, rhs.type());
+    if (c == 0)
+        c = compareContainer(lhs.d.constData(), rhs.container, Comparison::ForOrdering);
+    return Qt::compareThreeWay(c, 0);
+}
+
+bool comparesEqual(const QCborMap &lhs, const QCborMap &rhs) noexcept
+{
+    return compareContainer(lhs.d.constData(), rhs.d.constData(), Comparison::ForEquality) == 0;
 }
 
 int QCborMap::compare(const QCborMap &other) const noexcept
 {
-    return compareContainer(d.data(), other.d.data());
+    return compareContainer(d.data(), other.d.data(), Comparison::ForOrdering);
+}
+
+bool QCborMap::comparesEqual_helper(const QCborMap &lhs, const QCborValue &rhs) noexcept
+{
+    if (typeOrder(QCborValue::Map, rhs.type()))
+        return false;
+    return compareContainer(lhs.d.constData(), rhs.container, Comparison::ForEquality) == 0;
+}
+
+Qt::strong_ordering
+QCborMap::compareThreeWay_helper(const QCborMap &lhs, const QCborValue &rhs) noexcept
+{
+    int c = typeOrder(QCborValue::Map, rhs.type());
+    if (c == 0)
+        c = compareContainer(lhs.d.constData(), rhs.container, Comparison::ForOrdering);
+    return Qt::compareThreeWay(c, 0);
 }
 
 #if QT_CONFIG(cborstreamwriter)
@@ -1654,7 +1807,7 @@ void QCborContainerPrivate::decodeStringFromCbor(QCborStreamReader &reader)
         // add space for aligned ByteData (this can't overflow)
         offset += sizeof(QtCbor::ByteData) + alignof(QtCbor::ByteData);
         offset &= ~(alignof(QtCbor::ByteData) - 1);
-        if (offset > size_t(MaxByteArraySize)) {
+        if (offset > size_t(QByteArray::maxSize())) {
             // overflow
             setErrorInReader(reader, { QCborError::DataTooLarge });
             return;
@@ -1667,9 +1820,9 @@ void QCborContainerPrivate::decodeStringFromCbor(QCborStreamReader &reader)
             // so capa how much we allocate
             newCapacity = offset + MaxMemoryIncrement - EstimatedOverhead;
         }
-        if (newCapacity > size_t(MaxByteArraySize)) {
+        if (newCapacity > size_t(QByteArray::maxSize())) {
             // this may cause an allocation failure
-            newCapacity = MaxByteArraySize;
+            newCapacity = QByteArray::maxSize();
         }
         if (newCapacity > size_t(data.capacity()))
             data.reserve(newCapacity);
@@ -1720,7 +1873,7 @@ void QCborContainerPrivate::decodeStringFromCbor(QCborStreamReader &reader)
 
         // check that this UTF-8 text string can be loaded onto a QString
         if (e.type == QCborValue::String) {
-            if (Q_UNLIKELY(b->len > MaxStringSize)) {
+            if (Q_UNLIKELY(b->len > QString::maxSize())) {
                 setErrorInReader(reader, { QCborError::DataTooLarge });
                 status = QCborStreamReader::Error;
             }
@@ -2731,6 +2884,76 @@ QString QCborValueConstRef::concreteString(QCborValueConstRef self, const QStrin
     if (e.type != QCborValue::String)
         return defaultValue;
     return self.d->stringAt(self.i);
+}
+
+bool
+QCborValueConstRef::comparesEqual_helper(QCborValueConstRef lhs, QCborValueConstRef rhs) noexcept
+{
+    QtCbor::Element e1 = lhs.d->elements.at(lhs.i);
+    QtCbor::Element e2 = rhs.d->elements.at(rhs.i);
+    return compareElementRecursive(lhs.d, e1, rhs.d, e2, Comparison::ForEquality) == 0;
+}
+
+Qt::strong_ordering
+QCborValueConstRef::compareThreeWay_helper(QCborValueConstRef lhs, QCborValueConstRef rhs) noexcept
+{
+    QtCbor::Element e1 = lhs.d->elements.at(lhs.i);
+    QtCbor::Element e2 = rhs.d->elements.at(rhs.i);
+    int c = compareElementRecursive(lhs.d, e1, rhs.d, e2, Comparison::ForOrdering);
+    return Qt::compareThreeWay(c, 0);
+}
+
+bool
+QCborValueConstRef::comparesEqual_helper(QCborValueConstRef lhs, const QCborValue &rhs) noexcept
+{
+    QtCbor::Element e1 = lhs.d->elements.at(lhs.i);
+    QtCbor::Element e2 = QCborContainerPrivate::elementFromValue(rhs);
+    return compareElementRecursive(lhs.d, e1, rhs.container, e2, Comparison::ForEquality) == 0;
+}
+
+Qt::strong_ordering
+QCborValueConstRef::compareThreeWay_helper(QCborValueConstRef lhs, const QCborValue &rhs) noexcept
+{
+    QtCbor::Element e1 = lhs.d->elements.at(lhs.i);
+    QtCbor::Element e2 = QCborContainerPrivate::elementFromValue(rhs);
+    int c = compareElementRecursive(lhs.d, e1, rhs.container, e2, Comparison::ForOrdering);
+    return Qt::compareThreeWay(c, 0);
+}
+
+bool QCborArray::comparesEqual_helper(const QCborArray &lhs, QCborValueConstRef rhs) noexcept
+{
+    QtCbor::Element e2 = rhs.d->elements.at(rhs.i);
+    if (typeOrder(QCborValue::Array, e2.type))
+        return false;
+    return compareContainer(lhs.d.constData(), e2.container, Comparison::ForEquality) == 0;
+}
+
+Qt::strong_ordering
+QCborArray::compareThreeWay_helper(const QCborArray &lhs, QCborValueConstRef rhs) noexcept
+{
+    QtCbor::Element e2 = rhs.d->elements.at(rhs.i);
+    int c = typeOrder(QCborValue::Array, e2.type);
+    if (c == 0)
+        c = compareContainer(lhs.d.constData(), e2.container, Comparison::ForOrdering);
+    return Qt::compareThreeWay(c, 0);
+}
+
+bool QCborMap::comparesEqual_helper(const QCborMap &lhs, QCborValueConstRef rhs) noexcept
+{
+    QtCbor::Element e2 = rhs.d->elements.at(rhs.i);
+    if (typeOrder(QCborValue::Array, e2.type))
+        return false;
+    return compareContainer(lhs.d.constData(), e2.container, Comparison::ForEquality) == 0;
+}
+
+Qt::strong_ordering
+QCborMap::compareThreeWay_helper(const QCborMap &lhs, QCborValueConstRef rhs) noexcept
+{
+    QtCbor::Element e2 = rhs.d->elements.at(rhs.i);
+    int c = typeOrder(QCborValue::Map, e2.type);
+    if (c == 0)
+        c = compareContainer(lhs.d.constData(), e2.container, Comparison::ForOrdering);
+    return Qt::compareThreeWay(c, 0);
 }
 
 QCborValue QCborValueConstRef::concrete(QCborValueConstRef self) noexcept

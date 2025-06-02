@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 from __future__ import annotations
+import abc
 
 import csv
 import pathlib
@@ -65,6 +66,8 @@ class Flatten:
                data,
                ignore_toplevel: bool = False) -> None:
     for name, item in data.items():
+      if item is None:
+        continue
       path = parent_path + (name,)
       if self._is_leaf_item(item):
         if ignore_toplevel and parent_path == ():
@@ -219,14 +222,68 @@ def _merge_csv_append(csv_data, table, table_headers, row_header_len, headers,
   return table_row_len
 
 
-class V8CheckoutFinder:
+class BaseCheckoutFinder(abc.ABC):
+
+  def __init__(self, platform: plt.Platform, candidates: Tuple[pathlib.Path,
+                                                               ...]) -> None:
+    self._platform = platform
+    self._candidates = candidates
+    self._path: Optional[pathlib.Path] = self._find_checkout()
+    if self._path:
+      assert self._is_checkout_dir(self._path)
+
+  @property
+  def candidates(self) -> Tuple[pathlib.Path, ...]:
+    return self._candidates
+
+  @property
+  def platform(self) -> plt.Platform:
+    return self._platform
+
+  @property
+  def path(self) -> Optional[pathlib.Path]:
+    return self._path
+
+  def _find_checkout(self) -> Optional[pathlib.Path]:
+    # Try potential build location
+    for candidate_dir in self._candidates:
+      if self._is_checkout_dir(candidate_dir):
+        return candidate_dir
+    return None
+
+  @abc.abstractmethod
+  def _is_checkout_dir(self, candidate_dir: pathlib.Path) -> bool:
+    return False
+
+
+class ChromiumCheckoutFinder(BaseCheckoutFinder):
 
   def __init__(self, platform: plt.Platform) -> None:
-    self.platform = platform
     # A generous list of potential locations of a V8 or chromium checkout
-    self.checkout_candidates = [
+    candidates = (
         # Assume crossbench is in chrome's src/third_party/crossbench
-        pathlib.Path(__file__).parents[3] / "v8",
+        # __file__ == src/third_party/crossbench/crossbench/probes/helper.py
+        pathlib.Path(__file__).parents[3],
+        # Guessing default locations
+        pathlib.Path.home() / "Documents/chromium/src",
+        pathlib.Path.home() / "chromium/src",
+        pathlib.Path("C:") / "src/chromium/src",
+        pathlib.Path.home() / "Documents/chrome/src",
+        pathlib.Path.home() / "chrome/src",
+        pathlib.Path("C:") / "src/chrome/src",
+    )
+    super().__init__(platform, candidates)
+
+  def _is_checkout_dir(self, candidate_dir: pathlib.Path) -> bool:
+    return (self.platform.is_dir(candidate_dir / "v8") and
+            self.platform.is_dir(candidate_dir / "chrome") and
+            self.platform.is_dir(candidate_dir / ".git"))
+
+
+class V8CheckoutFinder(BaseCheckoutFinder):
+
+  def __init__(self, platform: plt.Platform) -> None:
+    candidates = (
         # V8 Checkouts
         pathlib.Path.home() / "Documents/v8/v8",
         pathlib.Path.home() / "v8/v8",
@@ -235,22 +292,14 @@ class V8CheckoutFinder:
         pathlib.Path.home() / "Documents/v8",
         pathlib.Path.home() / "v8",
         pathlib.Path("C:") / "src/v8/",
-        # V8 in chromium checkouts
-        pathlib.Path.home() / "Documents/chromium/src/v8",
-        pathlib.Path.home() / "chromium/src/v8",
-        pathlib.Path("C:") / "src/chromium/src/v8",
-        # Chromium checkouts
-        pathlib.Path.home() / "Documents/chromium/src",
-        pathlib.Path.home() / "chromium/src",
-        pathlib.Path("C:") / "src/chromium/src",
-    ]
-    self.v8_checkout: Optional[pathlib.Path] = self._find_v8_checkout()
+    )
+    super().__init__(platform, candidates)
 
-  def _find_v8_checkout(self) -> Optional[pathlib.Path]:
-    # Try potential build location
-    for candidate_dir in self.checkout_candidates:
-      if self._is_checkout_dir(candidate_dir):
-        return candidate_dir
+  def _find_checkout(self) -> Optional[pathlib.Path]:
+    if v8_checkout := super()._find_checkout():
+      return v8_checkout
+    if chromium_checkout := ChromiumCheckoutFinder(self.platform).path:
+      return chromium_checkout / "v8"
     maybe_d8_path = self.platform.environ.get("D8_PATH")
     if not maybe_d8_path:
       return None
@@ -261,6 +310,5 @@ class V8CheckoutFinder:
 
   def _is_checkout_dir(self, candidate_dir: pathlib.Path) -> bool:
     v8_header_file = candidate_dir / "include" / "v8.h"
-    git_dir = candidate_dir / ".git"
-    return self.platform.is_file(v8_header_file) and (
-        self.platform.is_dir(git_dir))
+    return (self.platform.is_file(v8_header_file) and
+            (self.platform.is_dir(candidate_dir / ".git")))

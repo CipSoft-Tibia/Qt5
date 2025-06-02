@@ -16,7 +16,7 @@ namespace Qt3DRender
 /*!
  * \qmltype EnvironmentLight
  * \inqmlmodule Qt3D.Render
- * \instantiates Qt3DRender::QEnvironmentLight
+ * \nativetype Qt3DRender::QEnvironmentLight
  * \brief Encapsulate an environment light object in a Qt 3D scene.
  * \since 5.9
  *
@@ -124,7 +124,7 @@ QEnvironmentLight::~QEnvironmentLight()
 */
 
 /*!
-    \property QEnvironmentLight::irradiance
+    \property Qt3DRender::QEnvironmentLight::irradiance
 
     Holds the current environment irradiance map texture.
 
@@ -151,7 +151,7 @@ QAbstractTexture *QEnvironmentLight::irradiance() const
 */
 
 /*!
-    \property QEnvironmentLight::specular
+    \property Qt3DRender::QEnvironmentLight::specular
 
     Holds the current environment specular map texture.
 

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <memory>
 
+#include "base/callback_list.h"
 #include "base/containers/contains.h"
 #include "base/containers/queue.h"
 #include "base/files/file.h"
@@ -28,7 +29,6 @@
 #include "components/optimization_guide/core/optimization_guide_model_provider.h"
 #include "components/optimization_guide/proto/models.pb.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/content/browser/client_side_detection_host.h"
 #include "components/safe_browsing/content/browser/client_side_phishing_model.h"
 #include "components/safe_browsing/content/browser/web_ui/safe_browsing_ui.h"
 #include "components/safe_browsing/content/common/safe_browsing.mojom.h"
@@ -41,8 +41,6 @@
 #include "components/safe_browsing/core/common/utils.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/notification_service.h"
-#include "content/public/browser/notification_types.h"
 #include "content/public/browser/render_process_host.h"
 #include "crypto/sha2.h"
 #include "google_apis/google_api_keys.h"
@@ -222,7 +220,11 @@ void ClientSideDetectionService::SendModelToRenderers() {
   for (content::RenderProcessHost::iterator it(
            content::RenderProcessHost::AllHostsIterator());
        !it.IsAtEnd(); it.Advance()) {
-    SetPhishingModel(it.GetCurrentValue());
+    SetPhishingModel(it.GetCurrentValue(), /*new_renderer_process_host=*/false);
+  }
+  if (client_side_phishing_model_) {
+    trigger_model_version_ =
+        client_side_phishing_model_->GetTriggerModelVersion();
   }
 }
 
@@ -270,11 +272,6 @@ void ClientSideDetectionService::StartClientReportPhishingRequest(
               "Users can enable or disable this feature by toggling 'Protect "
               "you and your device from dangerous sites' in Chrome settings "
               "under Privacy. This feature is enabled by default."
-            chrome_policy {
-              ClientSidePhishingProtectionAllowed {
-                ClientSidePhishingProtectionAllowed: false
-              }
-            }
             chrome_policy {
               SafeBrowsingProtectionLevel {
                 policy_options {mode: MANDATORY}
@@ -444,7 +441,7 @@ void ClientSideDetectionService::AddPhishingReport(base::Time timestamp) {
 
   base::Value::List time_list;
   for (const base::Time& report_time : phishing_report_times_) {
-    time_list.Append(base::Value(report_time.ToDoubleT()));
+    time_list.Append(base::Value(report_time.InSecondsFSinceUnixEpoch()));
   }
   delegate_->GetPrefs()->SetList(prefs::kSafeBrowsingCsdPingTimestamps,
                                  std::move(time_list));
@@ -459,7 +456,7 @@ void ClientSideDetectionService::LoadPhishingReportTimesFromPrefs() {
   for (const base::Value& timestamp :
        delegate_->GetPrefs()->GetList(prefs::kSafeBrowsingCsdPingTimestamps)) {
     phishing_report_times_.push_back(
-        base::Time::FromDoubleT(timestamp.GetDouble()));
+        base::Time::FromSecondsSinceUnixEpoch(timestamp.GetDouble()));
   }
 }
 
@@ -510,11 +507,12 @@ void ClientSideDetectionService::SetURLLoaderFactoryForTesting(
 
 void ClientSideDetectionService::OnRenderProcessHostCreated(
     content::RenderProcessHost* rph) {
-  SetPhishingModel(rph);
+  SetPhishingModel(rph, /*new_renderer_process_host=*/true);
 }
 
 void ClientSideDetectionService::SetPhishingModel(
-    content::RenderProcessHost* rph) {
+    content::RenderProcessHost* rph,
+    bool new_renderer_process_host) {
   // We want to check if the trigger model has been sent. If we have received a
   // callback after sending the trigger models before and the models are now
   // unavailable, that means the OptimizationGuide server sent us a null model
@@ -551,9 +549,20 @@ void ClientSideDetectionService::SetPhishingModel(
             HasImageEmbeddingModel()) {
           base::UmaHistogramBoolean(
               "SBClientPhishing.ImageEmbeddingModelVersionMatch", true);
-          model_setter->SetImageEmbeddingAndPhishingFlatBufferModel(
-              GetModelSharedMemoryRegion(), GetVisualTfLiteModel().Duplicate(),
-              GetImageEmbeddingModel().Duplicate());
+          if (!new_renderer_process_host &&
+              trigger_model_version_ ==
+                  client_side_phishing_model_->GetTriggerModelVersion()) {
+            // If the trigger model version remains the same in the same
+            // renderer process host, we can just attach the complementary image
+            // embedding model to the current scorer.
+            model_setter->AttachImageEmbeddingModel(
+                GetImageEmbeddingModel().Duplicate());
+          } else {
+            model_setter->SetImageEmbeddingAndPhishingFlatBufferModel(
+                GetModelSharedMemoryRegion(),
+                GetVisualTfLiteModel().Duplicate(),
+                GetImageEmbeddingModel().Duplicate());
+          }
         } else {
           base::UmaHistogramBoolean(
               "SBClientPhishing.ImageEmbeddingModelVersionMatch", false);
@@ -674,6 +683,12 @@ bool ClientSideDetectionService::IsSubscribedToImageEmbeddingModelUpdates() {
                ->IsSubscribedToImageEmbeddingModelUpdates();
   }
   return false;
+}
+
+base::CallbackListSubscription
+ClientSideDetectionService::RegisterCallbackForModelUpdates(
+    base::RepeatingCallback<void()> callback) {
+  return client_side_phishing_model_->RegisterCallback(callback);
 }
 
 // IN-TEST

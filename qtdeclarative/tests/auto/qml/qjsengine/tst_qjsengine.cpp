@@ -19,6 +19,7 @@
 #include <QModelIndex>
 #include <QtQml/qqmllist.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
+#include <private/qv4functionobject_p.h>
 
 #ifdef Q_CC_MSVC
 #define NO_INLINE __declspec(noinline)
@@ -297,6 +298,8 @@ private slots:
     void staticInNestedClasses();
     void callElement();
 
+    void functionCtorGeneratedCUIsNotCollectedByGc();
+
     void tdzViolations_data();
     void tdzViolations();
 
@@ -317,14 +320,21 @@ private slots:
     void deleteDefineCycle();
     void deleteFromSparseArray();
 
-    void generatorFunctionInTailCallPosition();
-    void generatorMethodInTailCallPosition();
+    void emptyStringLiteralEvaluatesToANonNullString();
 
     void consoleLogSequence();
+
+    void generatorFunctionInTailCallPosition();
+    void generatorMethodInTailCallPosition();
 
     void generatorStackOverflow_data();
     void generatorStackOverflow();
     void generatorInfiniteRecursion();
+
+    void setDeleteDuringForEach();
+    void mapDeleteDuringForEach();
+
+    void multiMatchingRegularExpression();
 
 public:
     Q_INVOKABLE QJSValue throwingCppMethod1();
@@ -969,7 +979,7 @@ void tst_QJSEngine::newQObject_ownership()
             QJSValue v = eng.newQObject(ptr);
         }
         QObject *before = ptr;
-        eng.collectGarbage();
+        gc(*eng.handle(), GCFlags::DontSendPostedEvents);
         QCOMPARE(ptr.data(), before);
         delete ptr;
     }
@@ -987,7 +997,7 @@ void tst_QJSEngine::newQObject_ownership()
         {
             QJSValue v = eng.newQObject(ptr);
         }
-        eng.collectGarbage();
+        gc(*eng.handle(), GCFlags::DontSendPostedEvents);
         // no parent, so it should be like ScriptOwnership
         if (ptr)
             QGuiApplication::sendPostedEvents(ptr, QEvent::DeferredDelete);
@@ -1000,7 +1010,7 @@ void tst_QJSEngine::newQObject_ownership()
         {
             QJSValue v = eng.newQObject(child);
         }
-        eng.collectGarbage();
+        gc(*eng.handle(), GCFlags::DontSendPostedEvents);
         // has parent, so it should be like QtOwnership
         QVERIFY(child != nullptr);
     }
@@ -1011,7 +1021,7 @@ void tst_QJSEngine::newQObject_ownership()
             QQmlEngine::setObjectOwnership(ptr.data(), QQmlEngine::CppOwnership);
             QJSValue v = eng.newQObject(ptr);
         }
-        eng.collectGarbage();
+        gc(*eng.handle(), GCFlags::DontSendPostedEvents);
         if (ptr)
             QGuiApplication::sendPostedEvents(ptr, QEvent::DeferredDelete);
         QVERIFY(!ptr.isNull());
@@ -1735,6 +1745,8 @@ void tst_QJSEngine::valueConversion_basic()
 
 void tst_QJSEngine::valueConversion_QVariant()
 {
+    QT_WARNING_PUSH
+    QT_WARNING_DISABLE_DEPRECATED
     QJSEngine eng;
     // qScriptValueFromValue() should be "smart" when the argument is a QVariant
     {
@@ -1824,6 +1836,7 @@ void tst_QJSEngine::valueConversion_QVariant()
         QVERIFY(val.isObject());
         QCOMPARE(val.property(42).toString(), map.value(QStringLiteral("42")).toString());
     }
+    QT_WARNING_POP
 }
 
 void tst_QJSEngine::valueConversion_basic2()
@@ -4754,7 +4767,7 @@ public:
 
     bool called = false;
 
-    Q_INVOKABLE void callMe(QQmlV4Function *) {
+    Q_INVOKABLE void callMe(QQmlV4FunctionPtr) {
         called = true;
     }
 };
@@ -5135,11 +5148,11 @@ void tst_QJSEngine::mathMinMax()
 
     QJSValue result = engine.evaluate("var a = .5; Math.min(1, 2, 3.5 + a, '5')");
     QCOMPARE(result.toNumber(), 1.0);
-    QVERIFY(QV4::Value(QJSValuePrivate::asReturnedValue(&result)).isInteger());
+    QVERIFY(QV4::Value::fromReturnedValue(QJSValuePrivate::asReturnedValue(&result)).isInteger());
 
     result = engine.evaluate("var a = .5; Math.max('0', 1, 2, 3.5 + a)");
     QCOMPARE(result.toNumber(), 4.0);
-    QVERIFY(QV4::Value(QJSValuePrivate::asReturnedValue(&result)).isInteger());
+    QVERIFY(QV4::Value::fromReturnedValue(QJSValuePrivate::asReturnedValue(&result)).isInteger());
 }
 
 void tst_QJSEngine::mathNegativeZero()
@@ -5242,7 +5255,7 @@ void tst_QJSEngine::registerModule()
     ret = engine.registerModule("qt_info", obj);
     QVERIFY2(ret, "Error registering qt_info");
     QJSValue result = engine.importModule(QStringLiteral(":/testregister.mjs"));
-    QVERIFY(!result.isError());
+    QVERIFY2(!result.isError(), qPrintable(result.toString()));
 
     QJSValue nameVal = result.property("getName").call();
     QJSValue magicVal = result.property("getMagic").call();
@@ -5292,7 +5305,7 @@ void tst_QJSEngine::registerModuleNamedError() {
     QVERIFY(ret);
 
     QJSValue result = engine.importModule(QStringLiteral(":/testregister3.mjs"));
-    QCOMPARE(result.toString(), QString("ReferenceError: Unable to resolve import reference subval because notanobject is not an object"));
+    QCOMPARE(result.toString(), QString("ReferenceError: Unable to resolve import reference subval"));
 }
 
 void tst_QJSEngine::equality()
@@ -5932,6 +5945,38 @@ void tst_QJSEngine::callElement()
     QCOMPARE(engine.evaluate(program).toString(), u"a"_s);
 }
 
+void tst_QJSEngine::functionCtorGeneratedCUIsNotCollectedByGc()
+{
+    QJSEngine engine;
+    auto v4 = engine.handle();
+    QVERIFY(!v4->isGCOngoing);
+
+    // run gc until roots are collected
+    // we run the gc steps manually, so use "Forever" as the dealine to avoid interference
+    v4->memoryManager->gcStateMachine->deadline = QDeadlineTimer(QDeadlineTimer::Forever);
+    auto sm = v4->memoryManager->gcStateMachine.get();
+    sm->reset();
+    while (sm->state != QV4::GCState::InitMarkPersistentValues) {
+        QV4::GCStateInfo& stateInfo = sm->stateInfoMap[int(sm->state)];
+        sm->state = stateInfo.execute(sm, sm->stateData);
+    }
+
+    const QString program = "new Function('a', 'b', 'let x = \"Hello\"; return a + b');";
+    auto sumFunc = engine.evaluate(program);
+    QVERIFY(sumFunc.isCallable());
+    auto *function = QJSValuePrivate::asManagedType<QV4::JavaScriptFunctionObject>(&sumFunc);
+    auto *cu = function->d()->function->executableCompilationUnit();
+    QVERIFY(cu->runtimeStrings); // should exist for "Hello"
+    QVERIFY(cu->runtimeStrings[0]->isMarked());
+    while (sm->state != QV4::GCState::Invalid) {
+        QV4::GCStateInfo& stateInfo = sm->stateInfoMap[int(sm->state)];
+        sm->state = stateInfo.execute(sm, sm->stateData);
+    }
+
+    auto sum = sumFunc.call({QJSValue(12), QJSValue(13)});
+    QCOMPARE(sum.toInt(), 25);
+}
+
 void tst_QJSEngine::tdzViolations_data()
 {
     QTest::addColumn<QString>("type");
@@ -6260,7 +6305,7 @@ public:
     {
         QJSValueList args;
         args << url << host;
-        engine->collectGarbage();
+        gc(*engine->handle(), GCFlags::DontSendPostedEvents);
         QJSValue callResult = jsFindProxyForURL.call(args);
         return callResult.toString().trimmed();
     }
@@ -6389,6 +6434,52 @@ void tst_QJSEngine::deleteFromSparseArray()
     QVERIFY(result.property(20000).isUndefined());
 }
 
+void tst_QJSEngine::emptyStringLiteralEvaluatesToANonNullString() {
+  QJSEngine engine;
+  QJSValue result = engine.evaluate(R"(
+    function f() {
+        return "";
+    }
+    f();
+  )");
+
+  QVERIFY(result.isString());
+  QVERIFY(!result.toString().isNull());
+  QVERIFY(result.toString().isEmpty());
+}
+
+
+static unsigned stringListFetchCount = 0;
+class StringListProvider : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QStringList strings READ strings CONSTANT)
+
+public:
+    QStringList strings() const
+    {
+        ++stringListFetchCount;
+        QStringList ret;
+        for (int i = 0; i < 10; ++i)
+            ret.append(QString::number(i));
+        return ret;
+    }
+};
+
+void tst_QJSEngine::consoleLogSequence()
+{
+    QJSEngine engine;
+    engine.installExtensions(QJSEngine::ConsoleExtension);
+
+    engine.globalObject().setProperty(
+                QStringLiteral("object"), engine.newQObject(new StringListProvider));
+
+    QTest::ignoreMessage(QtDebugMsg, "[0,1,2,3,4,5,6,7,8,9]");
+
+    engine.evaluate(QStringLiteral("console.log(object.strings)"));
+    QCOMPARE(stringListFetchCount, 1);
+}
+
 void tst_QJSEngine::generatorFunctionInTailCallPosition() {
   QJSEngine engine;
   QJSValue result = engine.evaluate(R"(
@@ -6421,37 +6512,6 @@ void tst_QJSEngine::generatorMethodInTailCallPosition() {
 
   QVERIFY(!result.isError());
   QVERIFY(!result.isUndefined());
-}
-
-static unsigned stringListFetchCount = 0;
-class StringListProvider : public QObject
-{
-    Q_OBJECT
-    Q_PROPERTY(QStringList strings READ strings CONSTANT)
-
-public:
-    QStringList strings() const
-    {
-        ++stringListFetchCount;
-        QStringList ret;
-        for (int i = 0; i < 10; ++i)
-            ret.append(QString::number(i));
-        return ret;
-    }
-};
-
-void tst_QJSEngine::consoleLogSequence()
-{
-    QJSEngine engine;
-    engine.installExtensions(QJSEngine::ConsoleExtension);
-
-    engine.globalObject().setProperty(
-                QStringLiteral("object"), engine.newQObject(new StringListProvider));
-
-    QTest::ignoreMessage(QtDebugMsg, "[0,1,2,3,4,5,6,7,8,9]");
-
-    engine.evaluate(QStringLiteral("console.log(object.strings)"));
-    QCOMPARE(stringListFetchCount, 1);
 }
 
 void tst_QJSEngine::generatorStackOverflow_data() {
@@ -6506,6 +6566,60 @@ void tst_QJSEngine::generatorInfiniteRecursion() {
     QVERIFY(result.isError());
     QCOMPARE(result.errorType(), QJSValue::RangeError);
     QCOMPARE(result.toString(), "RangeError: Maximum call stack size exceeded.");
+}
+
+void tst_QJSEngine::setDeleteDuringForEach() {
+  QJSEngine engine;
+  QJSValue result = engine.evaluate(R"(
+    let set = new Set([1,2,3]);
+    let visited = []
+    set.forEach((v) => {
+        visited.push(v);
+        set.delete(v)
+    })
+    visited
+  )");
+
+  QVERIFY(result.isArray());
+
+  QJsonArray visited = engine.fromScriptValue<QJsonArray>(result);
+  QCOMPARE(visited, QJsonArray({1, 2, 3}));
+}
+
+void tst_QJSEngine::mapDeleteDuringForEach() {
+  QJSEngine engine;
+  QJSValue result = engine.evaluate(R"(
+    let map = new Map([[1, 1], [2, 2], [3, 3]]);
+    let visited = []
+    map.forEach((v, k) => {
+        visited.push(v);
+        map.delete(k)
+    })
+    visited
+  )");
+
+  QVERIFY(result.isArray());
+
+  QJsonArray visited = engine.fromScriptValue<QJsonArray>(result);
+  QCOMPARE(visited, QJsonArray({1, 2, 3}));
+}
+
+void tst_QJSEngine::multiMatchingRegularExpression()
+{
+    QJSEngine engine;
+    const QJSValue result = engine.evaluate(R"(
+        "33312345.897".replace(/\./g, ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+    )");
+
+    QVERIFY(result.isString());
+    QCOMPARE(result.toString(), "33.312.345,897"_L1);
+
+    const QJSValue result2 = engine.evaluate(R"(
+        "4F159D7AD40255D94A5B7EB9AAACD7408C79245D".replace(/(....)/g, '$1 ')
+    )");
+
+    QVERIFY(result2.isString());
+    QCOMPARE(result2.toString(), "4F15 9D7A D402 55D9 4A5B 7EB9 AAAC D740 8C79 245D "_L1);
 }
 
 QTEST_MAIN(tst_QJSEngine)

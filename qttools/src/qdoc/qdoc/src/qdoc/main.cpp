@@ -14,6 +14,7 @@
 #include "qdocdatabase.h"
 #include "qmlcodemarker.h"
 #include "qmlcodeparser.h"
+#include "sourcefileparser.h"
 #include "utilities.h"
 #include "tokenizer.h"
 #include "tree.h"
@@ -22,6 +23,7 @@
 #include "filesystem/fileresolver.h"
 #include "boundaries/filesystem/directorypath.h"
 
+#include <QtCore/qcompilerdetection.h>
 #include <QtCore/qdatetime.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qglobal.h>
@@ -59,16 +61,58 @@ bool creationTimeBefore(const QFileInfo &fi1, const QFileInfo &fi2)
 
     \sa CodeParser::parserForSourceFile, CodeParser::sourceFileNameFilter
 */
-static void parseSourceFiles(const std::set<QString> &sources)
-{
-    CppCodeParser cpp_code_parser{};
-    for (const QString& source_file_path : sources) {
-        auto *codeParser = CodeParser::parserForSourceFile(source_file_path);
-        if (!codeParser) continue;
+static void parseSourceFiles(
+    std::vector<QString>&& sources,
+    SourceFileParser& source_file_parser,
+    CppCodeParser& cpp_code_parser
+) {
+    ParserErrorHandler error_handler{};
+    std::stable_sort(sources.begin(), sources.end());
 
-        qCDebug(lcQdoc, "Parsing %s", qPrintable(source_file_path));
-        codeParser->parseSourceFile(Config::instance().location(), source_file_path, cpp_code_parser);
-    }
+    sources.erase (
+        std::unique(sources.begin(), sources.end()),
+        sources.end()
+    );
+
+    sources.erase(std::remove_if(sources.begin(), sources.end(),
+        [](const QString &source) {
+            return Utilities::isGeneratedFile(source);
+        }),
+        sources.end());
+
+    auto qml_sources =
+        std::stable_partition(sources.begin(), sources.end(), [](const QString& source){
+            return CodeParser::parserForSourceFile(source) == CodeParser::parserForLanguage("QML");
+        });
+
+
+    std::for_each(qml_sources, sources.end(),
+            [&source_file_parser, &cpp_code_parser, &error_handler](const QString& source){
+        qCDebug(lcQdoc, "Parsing %s", qPrintable(source));
+
+        auto [untied_documentation, tied_documentation] = source_file_parser(tag_source_file(source));
+        std::vector<FnMatchError> errors{};
+
+        for (auto untied : untied_documentation) {
+            auto result = cpp_code_parser.processTopicArgs(untied);
+            tied_documentation.insert(tied_documentation.end(), result.first.begin(), result.first.end());
+        };
+
+        cpp_code_parser.processMetaCommands(tied_documentation);
+
+        // Process errors that occurred during parsing
+        for (const auto &e : errors)
+            error_handler(e);
+    });
+
+    std::for_each(sources.begin(), qml_sources, [&cpp_code_parser](const QString& source){
+        auto *codeParser = CodeParser::parserForSourceFile(source);
+        if (!codeParser) return;
+
+        qCDebug(lcQdoc, "Parsing %s", qPrintable(source));
+        codeParser->parseSourceFile(Config::instance().location(), source, cpp_code_parser);
+    });
+
 }
 
 /*!
@@ -101,13 +145,14 @@ static void loadIndexFiles(const QSet<QString> &formats)
     bool useNoSubDirs = false;
     QSet<QString> subDirs;
 
+    // Add format-specific output subdirectories to the set of
+    // subdirectories where we look for index files
     for (const auto &format : formats) {
         if (config.get(format + Config::dot + "nosubdirs").asBool()) {
             useNoSubDirs = true;
-            QString singleOutputSubdir{config.get(format + Config::dot + "outputsubdir").asString()};
-            if (singleOutputSubdir.isEmpty())
-                singleOutputSubdir = "html";
-            subDirs << singleOutputSubdir;
+            const auto singleOutputSubdir{QDir(config.getOutputDir(format)).dirName()};
+            if (!singleOutputSubdir.isEmpty())
+                subDirs << singleOutputSubdir;
         }
     }
 
@@ -257,7 +302,6 @@ static void processQdocconfFile(const QString &fileName)
 {
     Config &config = Config::instance();
     config.setPreviousCurrentDir(QDir::currentPath());
-    ClangCodeParser clangParser;
 
     /*
       With the default configuration values in place, load
@@ -304,11 +348,7 @@ static void processQdocconfFile(const QString &fileName)
     QStringList search_directories{config.getCanonicalPathList(CONFIG_EXAMPLEDIRS)};
     QStringList image_search_directories{config.getCanonicalPathList(CONFIG_IMAGEDIRS)};
 
-    const auto &excludedDirList = config.getCanonicalPathList(CONFIG_EXCLUDEDIRS);
-    QSet<QString> excludedDirs = QSet<QString>(excludedDirList.cbegin(), excludedDirList.cend());
-    const auto &excludedFilesList = config.getCanonicalPathList(CONFIG_EXCLUDEFILES);
-    QSet<QString> excludedFiles =
-            QSet<QString>(excludedFilesList.cbegin(), excludedFilesList.cend());
+    const auto& [excludedDirs, excludedFiles] = config.getExcludedPaths();
 
     qCDebug(lcQdoc, "Adding doc/image dirs found in exampledirs to imagedirs");
     QSet<QString> exampleImageDirs;
@@ -394,19 +434,7 @@ static void processQdocconfFile(const QString &fileName)
     WebXMLGenerator webXMLGenerator{file_resolver};
     DocBookGenerator docBookGenerator{file_resolver};
 
-    /*
-      Initialize all the classes and data structures with the
-      qdoc configuration. This is safe to do for each qdocconf
-      file processed, because all the data structures created
-      are either cleared after they have been used, or they
-      are cleared in the terminate() functions below.
-     */
-    Location::initialize();
-    Tokenizer::initialize();
-    CodeMarker::initialize();
-    CodeParser::initialize();
     Generator::initialize();
-    Doc::initialize(file_resolver);
 
     /*
       Initialize the qdoc database, where all the parsed source files
@@ -452,38 +480,77 @@ static void processQdocconfFile(const QString &fileName)
                 config.get(CONFIG_NAVIGATION + Config::dot + CONFIG_LANDINGTITLE).asString(title));
     }
 
-    if (config.dualExec() || config.preparing()) {
-        QStringList headerList;
-        QStringList sourceList;
 
-        qCDebug(lcQdoc, "Reading headerdirs");
-        headerList =
-                config.getAllFiles(CONFIG_HEADERS, CONFIG_HEADERDIRS, excludedDirs, excludedFiles);
-        QMap<QString, QString> headers;
-        QMultiMap<QString, QString> headerFileNames;
-        for (const auto &header : headerList) {
-            if (header.contains(QLatin1String("doc/snippets")))
-                continue;
+    std::vector<QByteArray> include_paths{};
+    {
+        auto args = config.getCanonicalPathList(CONFIG_INCLUDEPATHS,
+                                                Config::IncludePaths);
+#ifdef Q_OS_MACOS
+        args.append(Utilities::getInternalIncludePaths(QStringLiteral("clang++")));
+#elif defined(Q_OS_LINUX)
+        args.append(Utilities::getInternalIncludePaths(QStringLiteral("g++")));
+#endif
 
-            if (headers.contains(header))
-                continue;
-
-            if (!ClangCodeParser::accepted_header_file_extensions.contains(QFileInfo{header}.suffix()))
-                continue;
-
-            headers.insert(header, header);
-            QString t = header.mid(header.lastIndexOf('/') + 1);
-            headerFileNames.insert(t, t);
+        for (const auto &path : std::as_const(args)) {
+            if (!path.isEmpty())
+                include_paths.push_back(path.toUtf8());
         }
+
+        include_paths.erase(std::unique(include_paths.begin(), include_paths.end()),
+                            include_paths.end());
+    }
+
+    QList<QByteArray> clang_defines{};
+    {
+        const QStringList config_defines{config.get(CONFIG_DEFINES).asStringList()};
+        for (const QString &def : config_defines) {
+            if (!def.contains(QChar('*'))) {
+                QByteArray tmp("-D");
+                tmp.append(def.toUtf8());
+                clang_defines.append(tmp.constData());
+            }
+        }
+    }
+
+    std::optional<PCHFile> pch = std::nullopt;
+    if (config.dualExec() || config.preparing()) {
+        const QString moduleHeader = config.get(CONFIG_MODULEHEADER).asString();
+        pch = buildPCH(
+            QDocDatabase::qdocDB(),
+            moduleHeader.isNull() ? project : moduleHeader,
+            Config::instance().getHeaderFiles(),
+            include_paths,
+            clang_defines
+        );
+    }
+
+    ClangCodeParser clangParser(QDocDatabase::qdocDB(), Config::instance(), include_paths, clang_defines, pch);
+    PureDocParser docParser{config.location()};
+
+    /*
+      Initialize all the classes and data structures with the
+      qdoc configuration. This is safe to do for each qdocconf
+      file processed, because all the data structures created
+      are either cleared after they have been used, or they
+      are cleared in the terminate() functions below.
+     */
+    Location::initialize();
+    Tokenizer::initialize();
+    CodeMarker::initialize();
+    CodeParser::initialize();
+    Doc::initialize(file_resolver);
+
+    if (config.dualExec() || config.preparing()) {
+        QStringList sourceList;
 
         qCDebug(lcQdoc, "Reading sourcedirs");
         sourceList =
                 config.getAllFiles(CONFIG_SOURCES, CONFIG_SOURCEDIRS, excludedDirs, excludedFiles);
-        std::set<QString> sources{};
+
+        std::vector<QString> sources{};
         for (const auto &source : sourceList) {
-            if (source.contains(QLatin1String("doc/snippets")))
-                continue;
-            sources.emplace(source);
+            if (!source.contains(QLatin1String("doc/snippets")))
+                sources.emplace_back(source);
         }
         /*
           Find all the qdoc files in the example dirs, and add
@@ -492,21 +559,9 @@ static void processQdocconfFile(const QString &fileName)
         qCDebug(lcQdoc, "Reading exampledirs");
         QStringList exampleQdocList = config.getExampleQdocFiles(excludedDirs, excludedFiles);
         for (const auto &example : exampleQdocList) {
-            sources.emplace(example);
+            if (!example.contains(QLatin1String("doc/snippets")))
+                sources.emplace_back(example);
         }
-        /*
-          Parse each header file in the set using the appropriate parser and add it
-          to the big tree.
-        */
-
-        qCDebug(lcQdoc, "Parsing header files");
-        for (auto it = headers.constBegin(); it != headers.constEnd(); ++it) {
-            qCDebug(lcQdoc, "Parsing %s", qPrintable(it.key()));
-            clangParser.parseHeaderFile(config.location(), it.key());
-        }
-
-        const QString moduleHeader = config.get(CONFIG_MODULEHEADER).asString();
-        clangParser.precompileHeaders(moduleHeader.isNull() ? project : moduleHeader);
 
         /*
           Parse each source text file in the set using the appropriate parser and
@@ -516,7 +571,11 @@ static void processQdocconfFile(const QString &fileName)
             qCInfo(lcQdoc) << "Parse source files for" << project;
 
 
-        parseSourceFiles(sources);
+        auto headers = config.getHeaderFiles();
+        CppCodeParser cpp_code_parser(FnCommandParser(qdb, headers, clang_defines, pch));
+
+        SourceFileParser source_file_parser{clangParser, docParser};
+        parseSourceFiles(std::move(sources), source_file_parser, cpp_code_parser);
 
         if (config.get(CONFIG_LOGPROGRESS).asBool())
             qCInfo(lcQdoc) << "Source files parsed for" << project;
@@ -634,7 +693,6 @@ int main(int argc, char **argv)
       and create a tree for C++.
      */
     QmlCodeParser qmlParser;
-    PureDocParser docParser;
 
     /*
       Create code markers for plain text, C++,

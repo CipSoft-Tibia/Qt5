@@ -1553,8 +1553,14 @@ class COMPONENT_EXPORT(AX_PLATFORM) __declspec(
 
   UIARoleProperties GetUIARoleProperties();
 
+  AXPlatformNodeWin* GetUIATableAncestor() const;
+
   // Start and end offsets of an active composition
   gfx::Range active_composition_range_;
+
+  // Set to true when the `Destroy` function is called. This is used to crash
+  // early and detect double-free, either caused by the browser or by AT.
+  bool destroy_was_called_ = false;
 
   friend AXPlatformNode* AXPlatformNode::Create(
       AXPlatformNodeDelegate* delegate);

@@ -13,7 +13,7 @@
 #include <string.h>
 #include <math.h>
 
-#include <fp16.h>
+#include <fp16/fp16.h>
 
 #include <xnnpack.h>
 #include <xnnpack/allocator.h>
@@ -64,7 +64,8 @@ static enum xnn_status create_deconvolution2d_nhwc(
     const struct xnn_gemm_config* gemm_config,
     const struct gemm_fused_ukernels* gemm_ukernels,
     enum xnn_operator_type operator_type,
-    xnn_caches_t caches,
+    xnn_code_cache_t code_cache,
+    xnn_weights_cache_t weights_cache,
     xnn_operator_t* deconvolution_op_out)
 {
   xnn_operator_t deconvolution_op = NULL;
@@ -150,10 +151,8 @@ static enum xnn_status create_deconvolution2d_nhwc(
     goto error;
   }
 
-  if (caches != NULL) {
-    deconvolution_op->code_cache = caches->code_cache;
-    deconvolution_op->weights_cache = caches->weights_cache;
-  }
+  deconvolution_op->code_cache = code_cache;
+  deconvolution_op->weights_cache = weights_cache;
 
   const uint32_t mr = gemm_config->mr;
   const uint32_t nr = gemm_config->nr;
@@ -211,8 +210,8 @@ static enum xnn_status create_deconvolution2d_nhwc(
       pack_conv_goki_w(
         groups, group_output_channels, kernel_size, group_input_channels,
         nr, kr, sr,
-        kernel, bias, weights_ptr,
-        0 /* extra bytes */,
+        kernel, bias, /*scale=*/NULL, weights_ptr,
+        /*extra_bytes=*/0,
         packing_params);
       break;
     case xnn_microkernel_type_subconv2d:
@@ -220,7 +219,7 @@ static enum xnn_status create_deconvolution2d_nhwc(
         groups, group_output_channels, kernel_height, kernel_width, group_input_channels,
         stride_height, stride_width,
         nr, kr, sr,
-        kernel, bias, weights_ptr, deconvolution_op->subconvolution_buffer,
+        kernel, bias, /*scale=*/NULL, weights_ptr, deconvolution_op->subconvolution_buffer,
         packing_params);
       // We assume that the first subconvolution param weights point to the start of the weights, this is used to check
       // if the weights cache has moved.
@@ -323,7 +322,8 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_qs8(
     int8_t output_min,
     int8_t output_max,
     uint32_t flags,
-    xnn_caches_t caches,
+    xnn_code_cache_t code_cache,
+    xnn_weights_cache_t weights_cache,
     xnn_operator_t* deconvolution_op_out)
 {
   if (input_scale <= 0.0f || !isnormal(input_scale)) {
@@ -386,14 +386,15 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_qs8(
     /*log2_input_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
     /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
     /*bias_element_size=*/sizeof(int32_t),
-    (xnn_pack_conv_goki_w_fn) xnn_pack_qs8_conv_goki_w,
-    (xnn_pack_deconv_goki_w_fn) xnn_pack_qs8_deconv_goki_w,
+    (xnn_pack_conv_goki_w_fn) gemm_config->pack_igemm_goki,
+    (xnn_pack_deconv_goki_w_fn) gemm_config->pack_deconv_goki,
     &packing_params, input_zero_point /* input padding byte */, 0 /* packed weights padding byte */,
     &params, sizeof(params),
     /*jit_gemm_params=*/NULL,
     gemm_config, &gemm_config->minmax,
     xnn_operator_type_deconvolution_nhwc_qs8,
-    caches,
+    /*code_cache=*/code_cache,
+    /*weights_cache=*/weights_cache,
     deconvolution_op_out);
 }
 
@@ -424,7 +425,8 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_qu8(
     uint8_t output_min,
     uint8_t output_max,
     uint32_t flags,
-    xnn_caches_t caches,
+    xnn_code_cache_t code_cache,
+    xnn_weights_cache_t weights_cache,
     xnn_operator_t* deconvolution_op_out)
 {
   if (input_scale <= 0.0f || !isnormal(input_scale)) {
@@ -495,7 +497,8 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_qu8(
     /*jit_gemm_params=*/NULL,
     gemm_config, &gemm_config->minmax,
     xnn_operator_type_deconvolution_nhwc_qu8,
-    caches,
+    /*code_cache=*/code_cache,
+    /*weights_cache=*/weights_cache,
     deconvolution_op_out);
 }
 
@@ -520,7 +523,8 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_f16(
     float output_min,
     float output_max,
     uint32_t flags,
-    xnn_caches_t caches,
+    xnn_code_cache_t code_cache,
+    xnn_weights_cache_t weights_cache,
     xnn_operator_t* deconvolution_op_out)
 {
   if (isnan(output_min)) {
@@ -598,7 +602,8 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_f16(
     /*jit_gemm_params=*/&jit_gemm_params,
     gemm_config, gemm_ukernels,
     xnn_operator_type_deconvolution_nhwc_f16,
-    caches,
+    /*code_cache=*/code_cache,
+    /*weights_cache=*/weights_cache,
     deconvolution_op_out);
 }
 
@@ -623,7 +628,8 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_f32(
     float output_min,
     float output_max,
     uint32_t flags,
-    xnn_caches_t caches,
+    xnn_code_cache_t code_cache,
+    xnn_weights_cache_t weights_cache,
     xnn_operator_t* deconvolution_op_out)
 {
   if (isnan(output_min)) {
@@ -654,8 +660,8 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_f32(
     return xnn_status_unsupported_hardware;
   }
 
-  const struct xnn_gemm_config* gemm2_config = xnn_init_f32_gemm2_config();
-  if (gemm2_config == NULL) {
+  const struct xnn_gemm_config* gemm_nr2_config = xnn_init_f32_gemm_nr2_config();
+  if (gemm_nr2_config == NULL) {
     xnn_log_error("failed to create %s operator: unsupported hardware configuration",
                   xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_f32));
     return xnn_status_unsupported_hardware;
@@ -663,8 +669,8 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_f32(
 
   if (gemm_config->nr > group_output_channels) {
     // Default micro-kernel is suboptimal. Try to find a better micro-kernel.
-    if (gemm2_config->minmax.igemm[gemm2_config->mr - 1].function[XNN_UARCH_DEFAULT] != NULL) {
-      gemm_config = gemm2_config;
+    if (gemm_nr2_config->minmax.igemm[gemm_nr2_config->mr - 1].function[XNN_UARCH_DEFAULT] != NULL) {
+      gemm_config = gemm_nr2_config;
     }
   }
 
@@ -704,19 +710,14 @@ enum xnn_status xnn_create_deconvolution2d_nhwc_f32(
     /*jit_gemm_params=*/&jit_gemm_params,
     gemm_config, gemm_ukernels,
     xnn_operator_type_deconvolution_nhwc_f32,
-    caches,
+    /*code_cache=*/code_cache,
+    /*weights_cache=*/weights_cache,
     deconvolution_op_out);
 }
 
-static enum xnn_status setup_conv_path(
+static enum xnn_status reshape_conv_path(
   xnn_operator_t deconvolution_op,
   size_t batch_size,
-  size_t input_height,
-  size_t input_width,
-  const void* input,
-  size_t output_height,
-  size_t output_width,
-  void* output,
   uint32_t log2_input_element_size,
   uint32_t log2_filter_element_size,
   uint32_t bias_element_size,
@@ -727,6 +728,10 @@ static enum xnn_status setup_conv_path(
 {
   assert(deconvolution_op->ukernel.type == xnn_microkernel_type_igemm);
 
+  const size_t input_height = deconvolution_op->input_height;
+  const size_t input_width = deconvolution_op->input_width;
+  const size_t output_height = deconvolution_op->output_height;
+  const size_t output_width = deconvolution_op->output_width;
   const size_t kernel_height = deconvolution_op->kernel_height;
   const size_t kernel_width = deconvolution_op->kernel_width;
   const size_t kernel_size = kernel_height * kernel_width;
@@ -764,11 +769,15 @@ static enum xnn_status setup_conv_path(
       return xnn_status_out_of_memory;
     }
     deconvolution_op->indirection_buffer = indirection_buffer;
-    deconvolution_op->last_input = input;
-    deconvolution_op->last_input_height = input_height;
-    deconvolution_op->last_input_width = input_width;
     xnn_log_debug("allocated %zu bytes for indirection buffer in %s operator",
       indirection_buffer_size, xnn_operator_type_to_string(deconvolution_op->type));
+
+    // Set a dummy input first, the actual input offset is calculated in setup when we have the input pointer.
+    // This offset must be aligned properly because inputs and input offsets need to be aligned.
+    deconvolution_op->input = (void*) ((uintptr_t) deconvolution_op->zero_buffer + XNN_ALLOCATION_ALIGNMENT);
+    deconvolution_op->last_input = deconvolution_op->input;
+    deconvolution_op->last_input_height = input_height;
+    deconvolution_op->last_input_width = input_width;
 
     xnn_indirection_init_deconv2d(deconvolution_op, mr, log2_input_element_size);
   }
@@ -778,25 +787,23 @@ static enum xnn_status setup_conv_path(
 
   const size_t w_stride = bias_element_size +
     (round_up_po2(group_input_channels, deconvolution_op->ukernel.igemm.kr * deconvolution_op->ukernel.igemm.sr) * kernel_size << log2_filter_element_size);
-  deconvolution_op->context.igemm = (struct igemm_context) {
-      .ks = kernel_size,
-      .ks_scaled = kernel_size * mr * sizeof(void*),
-      .kc = group_input_channels << log2_input_element_size,
-      .w_stride = w_stride,
-      .indirect_a = deconvolution_op->indirection_buffer,
-      .a_offset = (size_t) ((uintptr_t) input - (uintptr_t) deconvolution_op->last_input),
-      .zero = deconvolution_op->zero_buffer,
-      .packed_w = packed_weights(deconvolution_op),
-      .c = deconvolution_op->output,
-      .cm_stride = deconvolution_op->output_pixel_stride << log2_output_element_size,
-      .cn_stride = nr << log2_output_element_size,
-      .ga_stride = group_input_channels << log2_input_element_size,
-      .gw_stride = w_stride * round_up(group_output_channels, nr),
-      .gc_stride = group_output_channels << log2_output_element_size,
-      .ba_stride = input_height * input_width * deconvolution_op->input_pixel_stride << log2_input_element_size,
-      .bc_stride = output_size * deconvolution_op->output_pixel_stride << log2_output_element_size,
-      .log2_csize = log2_output_element_size,
-      .ukernel = igemm_ukernel,
+  deconvolution_op->context.igemm = (struct igemm_context){
+    .ks = kernel_size,
+    .ks_scaled = kernel_size * mr * sizeof(void*),
+    .kc = group_input_channels << log2_input_element_size,
+    .w_stride = w_stride,
+    .indirect_a = deconvolution_op->indirection_buffer,
+    .zero = deconvolution_op->zero_buffer,
+    .packed_w = packed_weights(deconvolution_op),
+    .cm_stride = deconvolution_op->output_pixel_stride << log2_output_element_size,
+    .cn_stride = nr << log2_output_element_size,
+    .ga_stride = group_input_channels << log2_input_element_size,
+    .gw_stride = w_stride * round_up(group_output_channels, nr),
+    .gc_stride = group_output_channels << log2_output_element_size,
+    .ba_stride = input_height * input_width * deconvolution_op->input_pixel_stride << log2_input_element_size,
+    .bc_stride = output_size * deconvolution_op->output_pixel_stride << log2_output_element_size,
+    .log2_csize = log2_output_element_size,
+    .ukernel = igemm_ukernel,
   };
   memcpy(&deconvolution_op->context.igemm.params, params, params_size);
 
@@ -892,30 +899,27 @@ static enum xnn_status setup_conv_path(
     deconvolution_op->compute[0].tile[0] = mr;
     deconvolution_op->compute[0].tile[1] = nc;
   }
-  deconvolution_op->state = xnn_run_state_ready;
+  deconvolution_op->state = xnn_run_state_needs_setup;
   return xnn_status_success;
 }
 
-static enum xnn_status setup_subconv2d_path(
+static enum xnn_status reshape_subconv2d_path(
   xnn_operator_t deconvolution_op,
   size_t batch_size,
-  size_t input_height,
-  size_t input_width,
-  const void* input,
-  size_t output_height,
-  size_t output_width,
-  void* output,
   uint32_t log2_input_element_size,
   uint32_t log2_filter_element_size,
   uint32_t bias_element_size,
   uint32_t log2_output_element_size,
   const void* params,
   size_t params_size,
-  size_t num_threads,
-  bool use_gemm)
+  size_t num_threads)
 {
   assert(deconvolution_op->ukernel.type == xnn_microkernel_type_subconv2d);
 
+  const size_t input_height = deconvolution_op->input_height;
+  const size_t input_width = deconvolution_op->input_width;
+  const size_t output_height = deconvolution_op->output_height;
+  const size_t output_width = deconvolution_op->output_width;
   const size_t kernel_height = deconvolution_op->kernel_height;
   const size_t kernel_width = deconvolution_op->kernel_width;
   const size_t kernel_size = kernel_height * kernel_width;
@@ -928,6 +932,7 @@ static enum xnn_status setup_subconv2d_path(
   const size_t output_size = output_height * output_width;
   uint32_t mr = deconvolution_op->ukernel.igemm.mr;
   const uint32_t nr = deconvolution_op->ukernel.igemm.nr;
+  bool use_gemm = deconvolution_op->ukernel.subtype == xnn_microkernel_type_gemm;
   #if XNN_ENABLE_GEMM_M_SPECIALIZATION
     if (use_gemm) {
       mr = xnn_get_heuristic_mr_gemm(
@@ -963,7 +968,9 @@ static enum xnn_status setup_subconv2d_path(
     }
   }
 
-  if (any_size_change || output != deconvolution_op->last_output) {
+  if (any_size_change) {
+    // Use dummy output pointer for now, it will be set during setup.
+    void* output = NULL;
     // Initialize subconvolution parameters which depend on output dimensions or MR.
     struct subconvolution_params* subconvolution_params = deconvolution_op->subconvolution_buffer;
     const size_t modulo_padding_top = deconvolution_op->padding_top % stride_height;
@@ -997,12 +1004,16 @@ static enum xnn_status setup_subconv2d_path(
         return xnn_status_out_of_memory;
       }
       deconvolution_op->indirection_buffer = indirection_buffer;
-      deconvolution_op->last_input = input;
       xnn_log_debug("allocated %zu bytes for indirection buffer in %s operator",
-        indirection_buffer_size, xnn_operator_type_to_string(deconvolution_op->type));
+                    indirection_buffer_size, xnn_operator_type_to_string(deconvolution_op->type));
 
+      // Set a dummy input first, the actual input offset is calculated in setup when we have the input pointer.
+      // This offset must be aligned properly because inputs and input offsets need to be aligned.
+      deconvolution_op->input = (void*) ((uintptr_t) deconvolution_op->zero_buffer + XNN_ALLOCATION_ALIGNMENT);
       xnn_indirection_init_subconv2d(deconvolution_op, mr, log2_input_element_size);
     }
+
+    deconvolution_op->last_input = deconvolution_op->input;
     deconvolution_op->last_input_height = input_height;
     deconvolution_op->last_input_width = input_width;
     deconvolution_op->last_output_height = output_height;
@@ -1024,7 +1035,6 @@ static enum xnn_status setup_subconv2d_path(
     deconvolution_op->context.subgemm = (struct subgemm_context) {
         .subconvolution_params = deconvolution_op->subconvolution_buffer,
         .kc = group_input_channels << log2_input_element_size,
-        .a = input,
         .ax_stride = input_pixel_stride,
         .ay_stride = input_width * input_pixel_stride,
         .cx_stride = stride_width * output_pixel_stride,
@@ -1047,7 +1057,6 @@ static enum xnn_status setup_subconv2d_path(
     deconvolution_op->context.subconv = (struct subconv_context) {
         .subconvolution_params = deconvolution_op->subconvolution_buffer,
         .kc = group_input_channels << log2_input_element_size,
-        .a_offset = (size_t) ((uintptr_t) input - (uintptr_t) deconvolution_op->last_input),
         .zero = deconvolution_op->zero_buffer,
         .cx_stride = stride_width * output_pixel_stride,
         .cy_stride = stride_height * output_width * output_pixel_stride,
@@ -1103,45 +1112,45 @@ static enum xnn_status setup_subconv2d_path(
     deconvolution_op->compute[0].tile[1] = nc;
   }
 
-  deconvolution_op->state = xnn_run_state_ready;
+  deconvolution_op->state = xnn_run_state_needs_setup;
   return xnn_status_success;
 }
 
-static enum xnn_status setup_deconvolution2d_nhwc(
+static enum xnn_status reshape_deconvolution2d_nhwc(
   xnn_operator_t deconvolution_op,
   size_t batch_size,
   size_t input_height,
   size_t input_width,
   uint32_t adjustment_height,
   uint32_t adjustment_width,
-  const void* input,
-  void* output,
   uint32_t log2_input_element_size,
   uint32_t log2_filter_element_size,
   uint32_t bias_element_size,
   uint32_t log2_output_element_size,
   const void* params,
   size_t params_size,
-  size_t num_threads)
+  size_t* output_height_out,
+  size_t* output_width_out,
+  pthreadpool_t threadpool)
 {
   deconvolution_op->state = xnn_run_state_invalid;
 
   if ((xnn_params.init_flags & XNN_INIT_FLAG_XNNPACK) == 0) {
-    xnn_log_error("failed to setup %s operator: XNNPACK is not initialized",
+    xnn_log_error("failed to reshape %s operator: XNNPACK is not initialized",
       xnn_operator_type_to_string(deconvolution_op->type));
     return xnn_status_uninitialized;
   }
 
   if (input_width == 0 || input_height == 0) {
     xnn_log_error(
-      "failed to setup %s operator with %zux%zu input: input dimensions must be non-zero",
+      "failed to reshape %s operator with %zux%zu input: input dimensions must be non-zero",
       xnn_operator_type_to_string(deconvolution_op->type), input_width, input_height);
     return xnn_status_invalid_parameter;
   }
 
   if (adjustment_height >= deconvolution_op->stride_height) {
     xnn_log_error(
-      "failed to setup %s operator with %" PRIu32 " height adjustment: "
+      "failed to reshape %s operator with %" PRIu32 " height adjustment: "
       "height adjustment must be smaller than height stride (%" PRIu32 ")",
       xnn_operator_type_to_string(deconvolution_op->type), adjustment_height, deconvolution_op->stride_height);
     return xnn_status_invalid_parameter;
@@ -1149,7 +1158,7 @@ static enum xnn_status setup_deconvolution2d_nhwc(
 
   if (adjustment_width >= deconvolution_op->stride_width) {
     xnn_log_error(
-      "failed to setup %s operator with %" PRIu32 " width adjustment: "
+      "failed to reshape %s operator with %" PRIu32 " width adjustment: "
       "width adjustment must be smaller than width stride (%" PRIu32 ")",
       xnn_operator_type_to_string(deconvolution_op->type), adjustment_width, deconvolution_op->stride_width);
     return xnn_status_invalid_parameter;
@@ -1161,7 +1170,7 @@ static enum xnn_status setup_deconvolution2d_nhwc(
   }
 
   if (deconvolution_op->weights_cache != NULL && !xnn_weights_cache_is_finalized(deconvolution_op->weights_cache)) {
-    xnn_log_error("failed to setup %s operator: weights cache is not finalized",
+    xnn_log_error("failed to reshape %s operator: weights cache is not finalized",
                   xnn_operator_type_to_string(deconvolution_op->type));
     return xnn_status_invalid_state;
   }
@@ -1169,23 +1178,27 @@ static enum xnn_status setup_deconvolution2d_nhwc(
   deconvolution_op->batch_size = batch_size;
   deconvolution_op->input_height = input_height;
   deconvolution_op->input_width = input_width;
-  deconvolution_op->input = input;
-  deconvolution_op->output = output;
 
   deconvolution_op->output_height = xnn_compute_deconvolution_output_dimension(
       input_height, deconvolution_op->padding_top + deconvolution_op->padding_bottom,
       adjustment_height, deconvolution_op->kernel_height, deconvolution_op->dilation_height, deconvolution_op->stride_height);
-  deconvolution_op->output_width = deconvolution_op->output_width = xnn_compute_deconvolution_output_dimension(
+  deconvolution_op->output_width = xnn_compute_deconvolution_output_dimension(
       input_width, deconvolution_op->padding_left + deconvolution_op->padding_right,
       adjustment_width, deconvolution_op->kernel_width, deconvolution_op->dilation_width, deconvolution_op->stride_width);
 
+  if (output_height_out != NULL) {
+    *output_height_out = deconvolution_op->output_height;
+  }
+  if (output_width_out != NULL) {
+    *output_width_out = deconvolution_op->output_width;
+  }
+
+  const size_t num_threads = pthreadpool_get_threads_count(threadpool);
   switch (deconvolution_op->ukernel.type) {
     case xnn_microkernel_type_igemm:
-      return setup_conv_path(
+      return reshape_conv_path(
         deconvolution_op,
         batch_size,
-        input_height, input_width, input,
-        deconvolution_op->output_height, deconvolution_op->output_width, output,
         log2_input_element_size, log2_filter_element_size, bias_element_size, log2_output_element_size,
         params, params_size, num_threads);
     case xnn_microkernel_type_subconv2d:
@@ -1197,13 +1210,230 @@ static enum xnn_status setup_deconvolution2d_nhwc(
         deconvolution_op->kernel_height == deconvolution_op->stride_height &&
         deconvolution_op->kernel_width == deconvolution_op->stride_width &&
         deconvolution_op->ukernel.igemm.gemm_cases[mr - 1].function[XNN_UARCH_DEFAULT] != NULL;
-      return setup_subconv2d_path(
+      if (use_gemm) {
+        deconvolution_op->ukernel.subtype = xnn_microkernel_type_gemm;
+      } else {
+        deconvolution_op->ukernel.subtype = xnn_microkernel_type_igemm;
+      }
+      return reshape_subconv2d_path(
         deconvolution_op,
         batch_size,
-        input_height, input_width, input,
-        deconvolution_op->output_height, deconvolution_op->output_width, output,
         log2_input_element_size, log2_filter_element_size, bias_element_size, log2_output_element_size,
-        params, params_size, num_threads, use_gemm);
+        params, params_size, num_threads);
+    }
+    default:
+      XNN_UNREACHABLE;
+  }
+}
+
+enum xnn_status xnn_reshape_deconvolution2d_nhwc_qs8(
+  xnn_operator_t deconvolution_op,
+  size_t batch_size,
+  size_t input_height,
+  size_t input_width,
+  uint32_t adjustment_height,
+  uint32_t adjustment_width,
+  size_t* output_height_out,
+  size_t* output_width_out,
+  pthreadpool_t threadpool)
+{
+  if (deconvolution_op->type != xnn_operator_type_deconvolution_nhwc_qs8) {
+    xnn_log_error("failed to reshape operator: operator type mismatch (expected %s, got %s)",
+      xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_qs8),
+      xnn_operator_type_to_string(deconvolution_op->type));
+    return xnn_status_invalid_parameter;
+  }
+
+  return reshape_deconvolution2d_nhwc(
+    deconvolution_op,
+    batch_size, input_height, input_width,
+    adjustment_height, adjustment_width,
+    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
+    /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
+    /*bias_element_size=*/sizeof(int32_t),
+    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
+    &deconvolution_op->params.qs8_conv_minmax, sizeof(deconvolution_op->params.qs8_conv_minmax),
+    output_height_out, output_width_out,
+    threadpool);
+}
+
+enum xnn_status xnn_reshape_deconvolution2d_nhwc_qu8(
+  xnn_operator_t deconvolution_op,
+  size_t batch_size,
+  size_t input_height,
+  size_t input_width,
+  uint32_t adjustment_height,
+  uint32_t adjustment_width,
+  size_t* output_height_out,
+  size_t* output_width_out,
+  pthreadpool_t threadpool)
+{
+  if (deconvolution_op->type != xnn_operator_type_deconvolution_nhwc_qu8) {
+    xnn_log_error("failed to reshape operator: operator type mismatch (expected %s, got %s)",
+      xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_qu8),
+      xnn_operator_type_to_string(deconvolution_op->type));
+    return xnn_status_invalid_parameter;
+  }
+
+  return reshape_deconvolution2d_nhwc(
+    deconvolution_op,
+    batch_size, input_height, input_width,
+    adjustment_height, adjustment_width,
+    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
+    /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
+    /*bias_element_size=*/sizeof(int32_t),
+    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
+    &deconvolution_op->params.qu8_conv_minmax, sizeof(deconvolution_op->params.qu8_conv_minmax),
+    output_height_out, output_width_out,
+    threadpool);
+}
+
+enum xnn_status xnn_reshape_deconvolution2d_nhwc_f16(
+  xnn_operator_t deconvolution_op,
+  size_t batch_size,
+  size_t input_height,
+  size_t input_width,
+  uint32_t adjustment_height,
+  uint32_t adjustment_width,
+  size_t* output_height_out,
+  size_t* output_width_out,
+  pthreadpool_t threadpool)
+{
+  if (deconvolution_op->type != xnn_operator_type_deconvolution_nhwc_f16) {
+    xnn_log_error("failed to reshape operator: operator type mismatch (expected %s, got %s)",
+      xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_f16),
+      xnn_operator_type_to_string(deconvolution_op->type));
+    return xnn_status_invalid_parameter;
+  }
+
+  return reshape_deconvolution2d_nhwc(
+    deconvolution_op,
+    batch_size, input_height, input_width,
+    adjustment_height, adjustment_width,
+    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_HALF,
+    /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_HALF,
+    /*bias_element_size=*/sizeof(uint16_t),
+    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_HALF,
+    &deconvolution_op->params.f16_minmax, sizeof(deconvolution_op->params.f16_minmax),
+    output_height_out, output_width_out,
+    threadpool);
+}
+
+enum xnn_status xnn_reshape_deconvolution2d_nhwc_f32(
+  xnn_operator_t deconvolution_op,
+  size_t batch_size,
+  size_t input_height,
+  size_t input_width,
+  uint32_t adjustment_height,
+  uint32_t adjustment_width,
+  size_t* output_height_out,
+  size_t* output_width_out,
+  pthreadpool_t threadpool)
+{
+  if (deconvolution_op->type != xnn_operator_type_deconvolution_nhwc_f32) {
+    xnn_log_error("failed to reshape operator: operator type mismatch (expected %s, got %s)",
+      xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_f32),
+      xnn_operator_type_to_string(deconvolution_op->type));
+    return xnn_status_invalid_parameter;
+  }
+
+  return reshape_deconvolution2d_nhwc(
+    deconvolution_op,
+    batch_size, input_height, input_width,
+    adjustment_height, adjustment_width,
+    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    /*bias_element_size=*/sizeof(float),
+    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
+    &deconvolution_op->params.f32_minmax, sizeof(deconvolution_op->params.f32_minmax),
+    output_height_out, output_width_out,
+    threadpool);
+}
+
+static enum xnn_status setup_conv_path(
+  xnn_operator_t deconvolution_op,
+  const void* input,
+  void* output)
+{
+  assert(deconvolution_op->ukernel.type == xnn_microkernel_type_igemm);
+
+  deconvolution_op->context.igemm.a_offset = (size_t) ((uintptr_t) input - (uintptr_t) deconvolution_op->last_input);
+  deconvolution_op->context.igemm.c = deconvolution_op->output;
+
+  deconvolution_op->state = xnn_run_state_ready;
+  return xnn_status_success;
+}
+
+static enum xnn_status setup_subconv2d_path(
+  xnn_operator_t deconvolution_op,
+  const void* input,
+  void* output)
+{
+  assert(deconvolution_op->ukernel.type == xnn_microkernel_type_subconv2d);
+
+  bool use_gemm = deconvolution_op->ukernel.subtype == xnn_microkernel_type_gemm;
+  const size_t stride_height = deconvolution_op->stride_height;
+  const size_t stride_width = deconvolution_op->stride_width;
+
+  if (output != deconvolution_op->last_output) {
+    struct subconvolution_params* subconvolution_params = deconvolution_op->subconvolution_buffer;
+    for (size_t offset_y = 0; offset_y < stride_height; offset_y++) {
+      for (size_t offset_x = 0; offset_x < stride_width; offset_x++) {
+        subconvolution_params->output = (void*) ((uintptr_t) subconvolution_params->output +
+                                                 ((uintptr_t) output - (uintptr_t) deconvolution_op->last_output));
+        ++subconvolution_params;
+      }
+    }
+    deconvolution_op->last_output = output;
+  }
+
+  if (use_gemm) {
+    deconvolution_op->context.subgemm.a = input;
+  } else {
+    deconvolution_op->context.subconv.a_offset = (size_t) ((uintptr_t) input - (uintptr_t) deconvolution_op->last_input);
+  }
+
+  deconvolution_op->state = xnn_run_state_ready;
+  return xnn_status_success;
+}
+
+static enum xnn_status setup_deconvolution2d_nhwc(
+  xnn_operator_t deconvolution_op,
+  enum xnn_operator_type expected_operator_type,
+  const void* input,
+  void* output)
+{
+  if (deconvolution_op->type != expected_operator_type) {
+    xnn_log_error("failed to setup operator: operator type mismatch (expected %s, got %s)",
+      xnn_operator_type_to_string(expected_operator_type),
+      xnn_operator_type_to_string(deconvolution_op->type));
+    return xnn_status_invalid_parameter;
+  }
+
+  switch (deconvolution_op->state) {
+    case xnn_run_state_skip:
+      return xnn_status_success;
+    case xnn_run_state_invalid:
+      xnn_log_error(
+        "failed to setup %s operator: operator has not been reshaped yet",
+        xnn_operator_type_to_string(deconvolution_op->type));
+      return xnn_status_invalid_state;
+    case xnn_run_state_needs_setup:
+      // Operator has been reshaped, but not setup, continue with setup.
+    case xnn_run_state_ready:
+      // Operator has been reshaped, and we are setting up with different pointers.
+      break;
+  }
+
+  deconvolution_op->input = input;
+  deconvolution_op->output = output;
+
+  switch (deconvolution_op->ukernel.type) {
+    case xnn_microkernel_type_igemm:
+      return setup_conv_path(deconvolution_op, input, output);
+    case xnn_microkernel_type_subconv2d:
+    {
+      return setup_subconv2d_path(deconvolution_op, input, output);
     }
     default:
       XNN_UNREACHABLE;
@@ -1212,124 +1442,32 @@ static enum xnn_status setup_deconvolution2d_nhwc(
 
 enum xnn_status xnn_setup_deconvolution2d_nhwc_qs8(
     xnn_operator_t deconvolution_op,
-    size_t batch_size,
-    size_t input_height,
-    size_t input_width,
-    uint32_t adjustment_height,
-    uint32_t adjustment_width,
     const int8_t* input,
-    int8_t* output,
-    pthreadpool_t threadpool)
+    int8_t* output)
 {
-  if (deconvolution_op->type != xnn_operator_type_deconvolution_nhwc_qs8) {
-    xnn_log_error("failed to setup operator: operator type mismatch (expected %s, got %s)",
-      xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_qs8),
-      xnn_operator_type_to_string(deconvolution_op->type));
-    return xnn_status_invalid_parameter;
-  }
-
-  return setup_deconvolution2d_nhwc(
-    deconvolution_op,
-    batch_size, input_height, input_width,
-    adjustment_height, adjustment_width,
-    input, output,
-    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
-    /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
-    /*bias_element_size=*/sizeof(int32_t),
-    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_INT8_T,
-    &deconvolution_op->params.qs8_conv_minmax, sizeof(deconvolution_op->params.qs8_conv_minmax),
-    pthreadpool_get_threads_count(threadpool));
+  return setup_deconvolution2d_nhwc(deconvolution_op, xnn_operator_type_deconvolution_nhwc_qs8, input, output);
 }
 
 enum xnn_status xnn_setup_deconvolution2d_nhwc_qu8(
     xnn_operator_t deconvolution_op,
-    size_t batch_size,
-    size_t input_height,
-    size_t input_width,
-    uint32_t adjustment_height,
-    uint32_t adjustment_width,
     const uint8_t* input,
-    uint8_t* output,
-    pthreadpool_t threadpool)
+    uint8_t* output)
 {
-  if (deconvolution_op->type != xnn_operator_type_deconvolution_nhwc_qu8) {
-    xnn_log_error("failed to setup operator: operator type mismatch (expected %s, got %s)",
-      xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_qu8),
-      xnn_operator_type_to_string(deconvolution_op->type));
-    return xnn_status_invalid_parameter;
-  }
-
-  return setup_deconvolution2d_nhwc(
-    deconvolution_op,
-    batch_size, input_height, input_width,
-    adjustment_height, adjustment_width,
-    input, output,
-    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
-    /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
-    /*bias_element_size=*/sizeof(int32_t),
-    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_UINT8_T,
-    &deconvolution_op->params.qu8_conv_minmax, sizeof(deconvolution_op->params.qu8_conv_minmax),
-    pthreadpool_get_threads_count(threadpool));
+  return setup_deconvolution2d_nhwc(deconvolution_op, xnn_operator_type_deconvolution_nhwc_qu8, input, output);
 }
 
 enum xnn_status xnn_setup_deconvolution2d_nhwc_f16(
     xnn_operator_t deconvolution_op,
-    size_t batch_size,
-    size_t input_height,
-    size_t input_width,
-    uint32_t adjustment_height,
-    uint32_t adjustment_width,
     const void* input,
-    void* output,
-    pthreadpool_t threadpool)
+    void* output)
 {
-  if (deconvolution_op->type != xnn_operator_type_deconvolution_nhwc_f16) {
-    xnn_log_error("failed to setup operator: operator type mismatch (expected %s, got %s)",
-      xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_f16),
-      xnn_operator_type_to_string(deconvolution_op->type));
-    return xnn_status_invalid_parameter;
-  }
-
-  return setup_deconvolution2d_nhwc(
-    deconvolution_op,
-    batch_size, input_height, input_width,
-    adjustment_height, adjustment_width,
-    input, output,
-    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_HALF,
-    /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_HALF,
-    /*bias_element_size=*/sizeof(uint16_t),
-    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_HALF,
-    &deconvolution_op->params.f16_minmax, sizeof(deconvolution_op->params.f16_minmax),
-    pthreadpool_get_threads_count(threadpool));
+  return setup_deconvolution2d_nhwc(deconvolution_op, xnn_operator_type_deconvolution_nhwc_f16, input, output);
 }
 
 enum xnn_status xnn_setup_deconvolution2d_nhwc_f32(
     xnn_operator_t deconvolution_op,
-    size_t batch_size,
-    size_t input_height,
-    size_t input_width,
-    uint32_t adjustment_height,
-    uint32_t adjustment_width,
     const float* input,
-    float* output,
-    pthreadpool_t threadpool)
+    float* output)
 {
-  if (deconvolution_op->type != xnn_operator_type_deconvolution_nhwc_f32) {
-    xnn_log_error("failed to setup operator: operator type mismatch (expected %s, got %s)",
-      xnn_operator_type_to_string(xnn_operator_type_deconvolution_nhwc_f32),
-      xnn_operator_type_to_string(deconvolution_op->type));
-    return xnn_status_invalid_parameter;
-  }
-
-  return setup_deconvolution2d_nhwc(
-    deconvolution_op,
-    batch_size, input_height, input_width,
-    adjustment_height, adjustment_width,
-    input, output,
-    /*log2_input_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
-    /*log2_filter_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
-    /*bias_element_size=*/sizeof(float),
-    /*log2_output_element_size=*/XNN_LOG2_SIZEOF_FLOAT,
-    &deconvolution_op->params.f32_minmax, sizeof(deconvolution_op->params.f32_minmax),
-    pthreadpool_get_threads_count(threadpool));
+  return setup_deconvolution2d_nhwc(deconvolution_op, xnn_operator_type_deconvolution_nhwc_f32, input, output);
 }

@@ -1,21 +1,26 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtTest/qtest.h>
 
-#include <QBuffer>
-#include <QByteArray>
-#include <QCoreApplication>
-#include <QDebug>
-#include <QFile>
-#include <QList>
-#include <QRegularExpression>
-#include <QScopeGuard>
-#include <QTextStream>
-#include <QTest>
-#include <QtXml>
-#include <QVariant>
-#include <cmath>
+#include <QtXml/qdom.h>
+
+#include <QtCore/qbuffer.h>
+#include <QtCore/qbytearray.h>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qfile.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qregularexpression.h>
+#include <QtCore/qscopeguard.h>
+#include <QtCore/qtemporaryfile.h>
+#include <QtCore/qtextstream.h>
+#include <QtCore/qvariant.h>
+#include <QtCore/qxmlstream.h>
+
 #include <QtXml/private/qdom_p.h>
+
+#include <cmath>
 
 QT_REQUIRE_CONFIG(dom);
 QT_FORWARD_DECLARE_CLASS(QDomDocument)
@@ -109,6 +114,7 @@ private slots:
     void QTBUG49113_dontCrashWithNegativeIndex() const;
     void standalone();
     void splitTextLeakMemory() const;
+    void noCrashOnDeepNesting() const;
 
     void cleanupTestCase() const;
 
@@ -2330,6 +2336,22 @@ void tst_QDom::splitTextLeakMemory() const
     // only the parent node and the document have a reference on the nodes
     QCOMPARE(text.impl->ref.loadRelaxed(), 2);
     QCOMPARE(end.impl->ref.loadRelaxed(), 2);
+}
+
+// The fix of QTBUG-131151 crash
+void tst_QDom::noCrashOnDeepNesting() const
+{
+    const QString prefix = QFINDTESTDATA("testdata/");
+    if (prefix.isEmpty())
+        QFAIL("Cannot find testdata directory!");
+
+    QFile file(prefix + "/deeply-nested.svg");
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QDomDocument doc;
+    doc.setContent(&file);
+    QByteArray array = doc.toByteArray();
+    QVERIFY(array.size());
+    file.close();
 }
 
 QTEST_MAIN(tst_QDom)

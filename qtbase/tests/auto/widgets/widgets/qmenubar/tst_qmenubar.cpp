@@ -93,13 +93,6 @@ private slots:
 #endif
     void allowActiveAndDisabled();
     void taskQTBUG56860_focus();
-    void check_endKey();
-    void check_homeKey();
-
-//     void check_mouse1_data();
-//     void check_mouse1();
-//     void check_mouse2_data();
-//     void check_mouse2();
 
     void check_altPress();
     void check_altClosePress();
@@ -131,6 +124,9 @@ private slots:
     void platformMenu();
     void addActionQt5connect();
     void QTBUG_65488_hiddenActionTriggered();
+    void pressDragRelease_data();
+    void pressDragRelease();
+
 protected slots:
     void onSimpleActivated( QAction*);
     void onComplexActionTriggered();
@@ -148,6 +144,7 @@ private:
     int m_simpleActivatedCount;
     int m_complexTriggerCount[int('k')];
     QMenuBar* taskQTBUG53205MenuBar;
+    QScopedPointer<QPointingDevice> m_touchScreen = QScopedPointer<QPointingDevice>(QTest::createTouchDevice());
 };
 
 // Testing get/set functions
@@ -336,7 +333,6 @@ void tst_QMenuBar::accel()
     QMainWindow w;
     const TestMenu menu = initWindowWithSimpleMenuBar(w);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
     // shortcuts won't work unless the window is active
     QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_A, Qt::ControlModifier );
@@ -358,7 +354,6 @@ void tst_QMenuBar::activatedCount()
     QFETCH( bool, forceNonNative );
     initWindowWithSimpleMenuBar(w, forceNonNative);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_A, Qt::ControlModifier );
@@ -558,7 +553,6 @@ void tst_QMenuBar::check_accelKeys()
     QMainWindow w;
     initWindowWithComplexMenuBar(w);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     // start with a bogus key that shouldn't trigger anything
@@ -637,7 +631,6 @@ void tst_QMenuBar::check_cursorKeys1()
     QMainWindow w;
     initWindowWithComplexMenuBar(w);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     // start with a ALT + 1 that activates the first popupmenu
@@ -677,7 +670,6 @@ void tst_QMenuBar::check_cursorKeys2()
     QMainWindow w;
     initWindowWithComplexMenuBar(w);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     // select popupmenu2
@@ -716,7 +708,6 @@ void tst_QMenuBar::check_cursorKeys3()
     QMainWindow w;
     initWindowWithComplexMenuBar(w);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     // select Popupmenu 2
@@ -758,7 +749,6 @@ void tst_QMenuBar::taskQTBUG56860_focus()
 
     w.setCentralWidget(e);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QTRY_COMPARE(QApplication::focusWidget(), e);
@@ -785,85 +775,6 @@ void tst_QMenuBar::taskQTBUG56860_focus()
 }
 
 /*!
-    If a popupmenu is active you can use home to go quickly to the first item in the menu.
-*/
-void tst_QMenuBar::check_homeKey()
-{
-    // I'm temporarily shutting up this testcase.
-    // Seems like the behaviour i'm expecting isn't ok.
-    QSKIP("This test has been \"temporarily\" disabled at least since 2009 :)");
-
-    QEXPECT_FAIL( "0", "Popupmenu should respond to a Home key", Abort );
-
-    QMainWindow w;
-    initWindowWithComplexMenuBar(w);
-    w.show();
-    QApplicationPrivate::setActiveWindow(&w);
-    QVERIFY(QTest::qWaitForWindowActive(&w));
-
-    // select Popupmenu 2
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_2, Qt::AltModifier );
-
-    // Simulate some keys
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_Down );
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_Down );
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_Down );
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_Home );
-    // and press ENTER
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_Enter );
-    // Let's see if the correct slot is called...
-//    QVERIFY2( m_complexActionTriggerCount[int('c')] == 1, "Popupmenu should respond to a Home key" );
-    QCOMPARE(m_complexTriggerCount[int('c')], 1);
-    QCOMPARE(m_complexTriggerCount[3], 0);
-    QCOMPARE(m_complexTriggerCount[4], 0);
-    QCOMPARE(m_complexTriggerCount[int('a')], 0);
-    QCOMPARE(m_complexTriggerCount[int('b')], 0);
-    QCOMPARE(m_complexTriggerCount[int('d')], 0);
-    QCOMPARE(m_complexTriggerCount[int('e')], 0);
-    QCOMPARE(m_complexTriggerCount[int('f')], 0);
-    QCOMPARE(m_complexTriggerCount[int('g')], 0);
-    QCOMPARE(m_complexTriggerCount[int('h')], 0);
-}
-
-/*!
-    If a popupmenu is active you can use end to go quickly to the last item in the menu.
-*/
-void tst_QMenuBar::check_endKey()
-{
-    // I'm temporarily silenting this testcase.
-    // Seems like the behaviour i'm expecting isn't ok.
-    QSKIP("This test has been \"temporarily\" disabled at least since 2009 :)");
-
-    QEXPECT_FAIL( "0", "Popupmenu should respond to an End key", Abort );
-
-    QMainWindow w;
-    initWindowWithComplexMenuBar(w);
-    w.show();
-    QApplicationPrivate::setActiveWindow(&w);
-    QVERIFY(QTest::qWaitForWindowActive(&w));
-
-    // select Popupmenu 2
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_2, Qt::AltModifier );
-
-    // Simulate some keys
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_End );
-    // and press ENTER
-    QTest::keyClick(static_cast<QWidget *>(0), Qt::Key_Enter );
-    // Let's see if the correct slot is called...
-//    QVERIFY2( m_complexActionTriggerCount[int('h')] == 1, "Popupmenu should respond to an End key" );
-    QCOMPARE(m_complexTriggerCount[int('h')], 1);//, "Popupmenu should respond to an End key");
-    QCOMPARE(m_complexTriggerCount[3], 0);
-    QCOMPARE(m_complexTriggerCount[4], 0);
-    QCOMPARE(m_complexTriggerCount[int('a')], 0);
-    QCOMPARE(m_complexTriggerCount[int('b')], 0);
-    QCOMPARE(m_complexTriggerCount[int('c')], 0);
-    QCOMPARE(m_complexTriggerCount[int('d')], 0);
-    QCOMPARE(m_complexTriggerCount[int('e')], 0);
-    QCOMPARE(m_complexTriggerCount[int('f')], 0);
-    QCOMPARE(m_complexTriggerCount[int('g')], 0);
-}
-
-/*!
     If a popupmenu is active you can use esc to hide the menu and then the
     menubar should become active.
     If Down is pressed next the popup is activated again.
@@ -880,7 +791,6 @@ void tst_QMenuBar::check_escKey()
     const TestMenu menu = initWindowWithComplexMenuBar(w);
     w.show();
     w.setFocus();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QVERIFY( !menu.menus.at(0)->isActiveWindow() );
@@ -917,112 +827,6 @@ void tst_QMenuBar::check_escKey()
 }
 #endif
 
-
-// void tst_QMenuBar::check_mouse1_data()
-// {
-//     QTest::addColumn<QString>("popup_item");
-//     QTest::addColumn<int>("itemA_count");
-//     QTest::addColumn<int>("itemB_count");
-
-//     QTest::newRow( "A" ) << QString( "Item A Ctrl+A" ) << 1 << 0;
-//     QTest::newRow( "B" ) << QString( "Item B Ctrl+B" ) << 0 << 1;
-// }
-
-// /*!
-//     Check if the correct signals are emitted if we select a popupmenu.
-// */
-// void tst_QMenuBar::check_mouse1()
-// {
-//     if (QSystem::curStyle() == "Motif")
-//         QSKIP("This fails in Motif due to a bug in the testing framework");
-//     QFETCH( QString, popup_item );
-//     QFETCH( int, itemA_count );
-//     QFETCH( int, itemB_count );
-
-// //    initComplexMenubar();
-//     QVERIFY( !pm1->isActiveWindow() );
-//     QVERIFY( !pm2->isActiveWindow() );
-
-//     QTest::qWait(1000);
-//     QtTestMouse mouse;
-//     mouse.mouseEvent( QtTestMouse::MouseClick, mb, "Menu &1", Qt::LeftButton );
-
-//     QVERIFY( pm1->isActiveWindow() );
-//     QVERIFY( !pm2->isActiveWindow() );
-
-//     QTest::qWait(1000);
-//     mouse.mouseEvent( QtTestMouse::MouseClick, pm1, popup_item, Qt::LeftButton );
-
-//     QCOMPARE(m_complexActionTriggerCount[3], 0);
-//     QCOMPARE(m_complexActionTriggerCount[4], 0);
-//     QCOMPARE(m_complexActionTriggerCount['a'], (uint)itemA_count); // this option should have fired
-//     QCOMPARE(m_complexActionTriggerCount['b'], (uint)itemB_count);
-//     QCOMPARE(m_complexActionTriggerCount['c'], 0);
-//     QCOMPARE(m_complexActionTriggerCount['d'], 0);
-//     QCOMPARE(m_complexActionTriggerCount['e'], 0);
-//     QCOMPARE(m_complexActionTriggerCount['f'], 0);
-//     QCOMPARE(m_complexActionTriggerCount['g'], 0);
-// }
-
-// void tst_QMenuBar::check_mouse2_data()
-// {
-//     QTest::addColumn<QString>("label");
-//     QTest::addColumn<int>("itemA_count");
-//     QTest::addColumn<int>("itemB_count");
-//     QTest::addColumn<int>("itemC_count");
-//     QTest::addColumn<int>("itemD_count");
-//     QTest::addColumn<int>("itemE_count");
-//     QTest::addColumn<int>("itemF_count");
-//     QTest::addColumn<int>("itemG_count");
-//     QTest::addColumn<int>("itemH_count");
-//     QTest::addColumn<int>("menu3_count");
-
-//     QTest::newRow( "A" ) << QString( "Menu &1/Item A Ctrl+A" ) << 1 << 0 << 0 << 0 << 0 << 0 << 0 << 0 << 0;
-//     QTest::newRow( "B" ) << QString( "Menu &1/Item B Ctrl+B" ) << 0 << 1 << 0 << 0 << 0 << 0 << 0 << 0 << 0;
-//     QTest::newRow( "C" ) << QString( "Menu &2/Item C Ctrl+C" ) << 0 << 0 << 1 << 0 << 0 << 0 << 0 << 0 << 0;
-//     QTest::newRow( "D" ) << QString( "Menu &2/Item D Ctrl+D" ) << 0 << 0 << 0 << 1 << 0 << 0 << 0 << 0 << 0;
-//     QTest::newRow( "E" ) << QString( "Menu &2/Item E Ctrl+E" ) << 0 << 0 << 0 << 0 << 1 << 0 << 0 << 0 << 0;
-//     QTest::newRow( "F" ) << QString( "Menu &2/Item F Ctrl+F" ) << 0 << 0 << 0 << 0 << 0 << 1 << 0 << 0 << 0;
-//     QTest::newRow( "G" ) << QString( "Menu &2/Item G Ctrl+G" ) << 0 << 0 << 0 << 0 << 0 << 0 << 1 << 0 << 0;
-//     QTest::newRow( "H" ) << QString( "Menu &2/Item H Ctrl+H" ) << 0 << 0 << 0 << 0 << 0 << 0 << 0 << 1 << 0;
-//     QTest::newRow( "menu 3" ) << QString( "M&enu 3" )          << 0 << 0 << 0 << 0 << 0 << 0 << 0 << 0 << 1;
-// }
-
-// /*!
-//     Check if the correct signals are emitted if we select a popupmenu.
-//     This time, we use a little bit more magic from the testframework.
-// */
-// void tst_QMenuBar::check_mouse2()
-// {
-//     if (QSystem::curStyle() == "Motif")
-//         QSKIP("This fails in Motif due to a bug in the testing framework");
-//     QFETCH( QString, label );
-//     QFETCH( int, itemA_count );
-//     QFETCH( int, itemB_count );
-//     QFETCH( int, itemC_count );
-//     QFETCH( int, itemD_count );
-//     QFETCH( int, itemE_count );
-//     QFETCH( int, itemF_count );
-//     QFETCH( int, itemG_count );
-//     QFETCH( int, itemH_count );
-//     QFETCH( int, menu3_count );
-
-// //    initComplexMenubar();
-//     QtTestMouse mouse;
-//     mouse.click( QtTestMouse::Menu, label, Qt::LeftButton );
-
-//     // check if the correct signals have fired
-//     QCOMPARE(m_complexActionTriggerCount[3], (uint)menu3_count);
-//     QCOMPARE(m_complexActionTriggerCount[4], 0);
-//     QCOMPARE(m_complexActionTriggerCount['a'], (uint)itemA_count);
-//     QCOMPARE(m_complexActionTriggerCount['b'], (uint)itemB_count);
-//     QCOMPARE(m_complexActionTriggerCount['c'], (uint)itemC_count);
-//     QCOMPARE(m_complexActionTriggerCount['d'], (uint)itemD_count);
-//     QCOMPARE(m_complexActionTriggerCount['e'], (uint)itemE_count);
-//     QCOMPARE(m_complexActionTriggerCount['f'], (uint)itemF_count);
-//     QCOMPARE(m_complexActionTriggerCount['g'], (uint)itemG_count);
-//     QCOMPARE(m_complexActionTriggerCount['h'], (uint)itemH_count);
-// }
 
 void tst_QMenuBar::allowActiveAndDisabled()
 {
@@ -1078,7 +882,6 @@ void tst_QMenuBar::check_altPress()
     initWindowWithSimpleMenuBar(w);
     w.show();
     w.setFocus();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QTest::keyClick( &w, Qt::Key_Alt );
@@ -1108,7 +911,6 @@ void tst_QMenuBar::check_altClosePress()
 
     w.show();
     w.move(QGuiApplication::primaryScreen()->availableGeometry().center());
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QTest::keyClick(&w, Qt::Key_F, Qt::AltModifier);
@@ -1129,7 +931,6 @@ void tst_QMenuBar::check_shortcutPress()
     const TestMenu menu = initWindowWithComplexMenuBar(w);
     w.show();
     w.setFocus();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QCOMPARE(m_complexTriggerCount[3], 0);
@@ -1186,7 +987,6 @@ void tst_QMenuBar::check_menuPosition()
     QAction *menu_action = w.menuBar()->addMenu(&menu);
     centerOnScreen(&w);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     //the menu should be below the menubar item
@@ -1290,22 +1090,20 @@ void tst_QMenuBar::task256322_highlight()
     if (!QGuiApplication::platformName().compare(QLatin1String("minimal"), Qt::CaseInsensitive))
         QSKIP("Highlighting does not work correctly for minimal platform");
 
-    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
-        QSKIP("Wayland: This fails. Figure out why.");
-
     QMainWindow win;
     win.menuBar()->setNativeMenuBar(false);  //we can't check the geometry of native menubars
     QMenu menu;
+    menu.addAction("New");
     QAction *file = win.menuBar()->addMenu(&menu);
     file->setText("file");
     QMenu menu2;
+    menu2.addAction("Open");
     QAction *file2 = win.menuBar()->addMenu(&menu2);
     file2->setText("file2");
     QAction *nothing = win.menuBar()->addAction("nothing");
 
     centerOnScreen(&win);
     win.show();
-    QApplicationPrivate::setActiveWindow(&win);
     QVERIFY(QTest::qWaitForWindowActive(&win));
 
     const QPoint filePos = menuBarActionWindowPos(win.menuBar(), file);
@@ -1445,7 +1243,6 @@ void tst_QMenuBar::taskQTBUG11823_crashwithInvisibleActions()
 
     centerOnScreen(&menubar);
     menubar.show();
-    QApplicationPrivate::setActiveWindow(&menubar);
     QVERIFY(QTest::qWaitForWindowActive(&menubar));
     menubar.setActiveAction(m);
     QCOMPARE(menubar.activeAction(), m);
@@ -1476,7 +1273,6 @@ void tst_QMenuBar::closeOnSecondClickAndOpenOnThirdClick() // QTBUG-32807, menu 
     QMenu *fileMenu = menuBar->addMenu(QStringLiteral("OpenCloseOpen"));
     fileMenu->addAction(QStringLiteral("Quit"));
     mainWindow.show();
-    QApplicationPrivate::setActiveWindow(&mainWindow);
     QVERIFY(QTest::qWaitForWindowActive(&mainWindow));
 
     const QPoint center = menuBarActionWindowPos(mainWindow.menuBar(), fileMenu->menuAction());
@@ -1571,7 +1367,6 @@ void tst_QMenuBar::taskQTBUG53205_crashReparentNested()
     mainWindow.resize(300, 200);
     centerOnScreen(&mainWindow);
     const TestMenu testMenus = initWindowWithComplexMenuBar(mainWindow);
-    QApplicationPrivate::setActiveWindow(&mainWindow);
 
     // they can't be windows
     QWidget hiddenParent(&mainWindow, {});
@@ -1621,12 +1416,75 @@ void tst_QMenuBar::QTBUG_65488_hiddenActionTriggered()
     // resize to action's size to make Action1 hidden
     win.resize(actRect.width() - 10, win.size().height());
     win.show();
-    QApplicationPrivate::setActiveWindow(&win);
     QVERIFY(QTest::qWaitForWindowExposed(&win));
     // click center of the blank area on the menubar where Action1 resided
     QTest::mouseClick(win.windowHandle(), Qt::LeftButton, Qt::NoModifier, win.menuBar()->geometry().center());
     QCoreApplication::sendPostedEvents(); // make sure all queued events also dispatched
     QCOMPARE(spy.size(), 0);
+}
+
+void tst_QMenuBar::pressDragRelease_data()
+{
+    QTest::addColumn<QPointingDevice *>("device");
+
+    QTest::newRow("mouse") << const_cast<QPointingDevice *>(QPointingDevice::primaryPointingDevice());
+    QTest::newRow("touchscreen") << m_touchScreen.get();
+}
+
+void tst_QMenuBar::pressDragRelease()
+{
+    QFETCH(QPointingDevice *, device);
+
+    QMainWindow w;
+    const TestMenu menu = initWindowWithComplexMenuBar(w);
+    const QMenu *firstMenu = menu.menus.first();
+    QAction *hoveredAction = nullptr;
+    connect(firstMenu, &QMenu::hovered, firstMenu, [&hoveredAction](QAction *hov) { hoveredAction = hov; });
+    w.show();
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+    QWindow *win = w.windowHandle();
+    const QPoint p1(50, w.menuBar()->geometry().height() / 2);
+    switch (device->type()) {
+    case QInputDevice::DeviceType::Mouse:
+    case QInputDevice::DeviceType::TouchPad:
+        QTest::mousePress(win, Qt::LeftButton, {}, p1);
+       break;
+    case QInputDevice::DeviceType::TouchScreen:
+        QTest::touchEvent(win, device).press(0, p1);
+      break;
+    default:
+        break;
+    }
+
+    QTRY_VERIFY(firstMenu->isVisible());
+    const QPoint firstMenuItemPos = firstMenu->geometry().center() - QPoint(0, 2);
+    const QPoint firstMenuItemPosInWin = w.mapFromGlobal(firstMenuItemPos);
+    switch (device->type()) {
+    case QInputDevice::DeviceType::Mouse:
+    case QInputDevice::DeviceType::TouchPad:
+        QTest::mouseMove(win, firstMenuItemPosInWin);
+        break;
+    case QInputDevice::DeviceType::TouchScreen:
+        QTest::touchEvent(win, device).move(0, firstMenuItemPosInWin);
+        break;
+    default:
+        break;
+    }
+    QVERIFY(hoveredAction);
+    QCOMPARE(hoveredAction, firstMenu->actionAt(firstMenu->mapFromGlobal(firstMenuItemPos)));
+    QSignalSpy triggeredSpy(hoveredAction, &QAction::triggered);
+    switch (device->type()) {
+    case QInputDevice::DeviceType::Mouse:
+    case QInputDevice::DeviceType::TouchPad:
+        QTest::mouseRelease(win, Qt::LeftButton, {}, firstMenuItemPosInWin);
+        break;
+    case QInputDevice::DeviceType::TouchScreen:
+        QTest::touchEvent(win, device).release(0, firstMenuItemPosInWin);
+        break;
+    default:
+        break;
+    }
+    QTRY_COMPARE(triggeredSpy.size(), 1);
 }
 
 // QTBUG-56526
@@ -1693,7 +1551,6 @@ void tst_QMenuBar::QTBUG_25669_menubarActionDoubleTriggered()
     QSignalSpy spy(win.menuBar(), &QMenuBar::triggered);
 
     win.show();
-    QApplicationPrivate::setActiveWindow(&win);
     QVERIFY(QTest::qWaitForWindowExposed(&win));
 
     QPoint posAct1 = menuBarActionWindowPos(win.menuBar(), act1);
@@ -1730,7 +1587,6 @@ void tst_QMenuBar::taskQTBUG46812_doNotLeaveMenubarHighlighted()
     initWindowWithSimpleMenuBar(mainWindow);
 
     mainWindow.show();
-    QApplicationPrivate::setActiveWindow(&mainWindow);
     QVERIFY(QTest::qWaitForWindowActive(&mainWindow));
 
     QVERIFY(!mainWindow.menuBar()->hasFocus());
@@ -1842,7 +1698,6 @@ void tst_QMenuBar::taskQTBUG55966_subMenuRemoved()
     delete subMenu;
 
     window.show();
-    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
     QTest::qWait(500);
 }

@@ -95,8 +95,6 @@ qt_internal_add_module(Location
         Qt::QuickPrivate
         Qt::PositioningPrivate
         Qt::PositioningQuickPrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
 )
 
 set_source_files_properties(maps/MapView.qml PROPERTIES
@@ -176,6 +174,7 @@ qt_internal_add_qml_module(Location
     DEPENDENCIES
         QtQuick/auto
         QtPositioning/auto
+    NO_GENERATE_CPP_EXPORTS
 )
 
 qt_internal_add_docs(Location

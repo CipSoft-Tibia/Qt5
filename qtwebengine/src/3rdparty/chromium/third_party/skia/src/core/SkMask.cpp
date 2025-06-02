@@ -8,9 +8,12 @@
 #include "src/core/SkMask.h"
 
 #include "include/private/base/SkMalloc.h"
+#include "include/private/base/SkMath.h"
+#include "include/private/base/SkTFitsIn.h"
 #include "include/private/base/SkTo.h"
 #include "src/base/SkSafeMath.h"
 
+#include <array>
 #include <climits>
 
 /** returns the product if it is positive and fits in 31 bits. Otherwise this
@@ -111,7 +114,7 @@ const void* SkMask::getAddr(int x, int y) const {
     SkASSERT(fBounds.contains(x, y));
     SkASSERT(fImage);
 
-    char* addr = (char*)fImage;
+    const char* addr = (const char*)fImage;
     addr += (y - fBounds.fTop) * fRowBytes;
     addr += (x - fBounds.fLeft) << maskFormatToShift(fFormat);
     return addr;

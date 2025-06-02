@@ -118,8 +118,11 @@
     "UNASSIGNED-BestPractices-vkCreateSwapchainKHR-suboptimal-swapchain-image-count";
 [[maybe_unused]] static const char *kVUID_BestPractices_NoVkSwapchainPresentModesCreateInfoEXTProvided =
     "UNASSIGNED-BestPractices-vkCreateSwapchainKHR-no-VkSwapchainPresentModesCreateInfoEXT-provided";
+[[maybe_unused]] static const char *kVUID_BestPractices_SubpassResolve_NonOptimalFormat =
+    "UNASSIGNED-BestPractices-vkCreateRenderPass-SubpassResolve-NonOptimalFormat";
 
 [[maybe_unused]] static const char *kVUID_BestPractices_Swapchain_InvalidCount = "UNASSIGNED-BestPractices-SwapchainInvalidCount";
+[[maybe_unused]] static const char *kVUID_BestPractices_Swapchain_PriorCount = "UNASSIGNED-BestPractices-SwapchainPriorCount";
 [[maybe_unused]] static const char *kVUID_BestPractices_DepthBiasNoAttachment = "UNASSIGNED-BestPractices-DepthBiasNoAttachment";
 [[maybe_unused]] static const char *kVUID_BestPractices_SpirvDeprecated_WorkgroupSize =
     "UNASSIGNED-BestPractices-SpirvDeprecated_WorkgroupSize";
@@ -127,9 +130,9 @@
 [[maybe_unused]] static const char *kVUID_BestPractices_TransitionUndefinedToReadOnly =
     "UNASSIGNED-BestPractices-TransitionUndefinedToReadOnly";
 [[maybe_unused]] static const char *kVUID_BestPractices_SemaphoreCount = "UNASSIGNED-BestPractices-SemaphoreCount";
+[[maybe_unused]] static const char *kVUID_BestPractices_PushConstants = "UNASSIGNED-BestPractices-PushConstants";
 [[maybe_unused]] static const char *kVUID_BestPractices_EmptyDescriptorPool =
     "UNASSIGNED-BestPractices-EmptyDescriptorPool";
-[[maybe_unused]] static const char *kVUID_BestPractices_DescriptorTypeNotInPool = "UNASSIGNED-BestPractices-DescriptorTypeNotInPool";
 [[maybe_unused]] static const char *kVUID_BestPractices_ClearValueWithoutLoadOpClear = "UNASSIGNED-BestPractices-vkCmdBeginRenderPass-ClearValueWithoutLoadOpClear";
 [[maybe_unused]] static const char *kVUID_BestPractices_ClearValueCountHigherThanAttachmentCount = "UNASSIGNED-BestPractices-vkCmdBeginRenderPass-ClearValueCountHigherThanAttachmentCount";
 [[maybe_unused]] static const char *kVUID_BestPractices_StoreOpDontCareThenLoadOpLoad = "UNASSIGNED-BestPractices-vkCmdBeginRenderPass-StoreOpDontCareThenLoadOpLoad";
@@ -140,9 +143,10 @@
 [[maybe_unused]] static const char *kVUID_BestPractices_DrawState_MismatchedImageType = "UNASSIGNED-BestPractices-DrawState-MismatchedImageType";
 [[maybe_unused]] static const char *kVUID_BestPractices_DrawState_InvalidExtents = "UNASSIGNED-BestPractices-DrawState-InvalidExtents";
 [[maybe_unused]] static const char *kVUID_BestPractices_DrawState_InvalidCommandBufferSimultaneousUse = "UNASSIGNED-BestPractices-DrawState-InvalidCommandBufferSimultaneousUse";
-[[maybe_unused]] static const char *kVUID_BestPractices_Shader_InputNotProduced = "UNASSIGNED-BestPractices-Shader-InputNotProduced";
-[[maybe_unused]] static const char *kVUID_BestPractices_Shader_OutputNotConsumed = "UNASSIGNED-BestPractices-Shader-OutputNotConsumed";
-[[maybe_unused]] static const char *kVUID_BestPractices_Shader_FragmentOutputMismatch = "UNASSIGNED-BestPractices-Shader-FragmentOutputMismatch";
+[[maybe_unused]] static const char *kVUID_BestPractices_Pipeline_NoRendering = "UNASSIGNED-BestPractices-Pipeline-NoRendering";
+[[maybe_unused]] static const char *kVUID_BestPractices_QueryPool_Unavailable = "UNASSIGNED-BestPractices-QueryPool-Unavailable";
+[[maybe_unused]] static const char *kVUID_BestPractices_Shader_MissingInputAttachment =
+    "UNASSIGNED-BestPractices-Shader-MissingInputAttachment";
 
 // Arm-specific best practice
 [[maybe_unused]] static const char *kVUID_BestPractices_AllocateDescriptorSets_SuboptimalReuse =

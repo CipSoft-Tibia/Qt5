@@ -52,23 +52,20 @@ void tst_lines::initialProperties()
     QVERIFY(m_series);
 
     // Properties from QLineSeries
-    QCOMPARE(m_series->axisX(), nullptr);
-    QCOMPARE(m_series->axisY(), nullptr);
     QCOMPARE(m_series->width(), 2.0);
     QCOMPARE(m_series->capStyle(), Qt::PenCapStyle::SquareCap);
-    QCOMPARE(m_series->pointMarker(), nullptr);
+    QCOMPARE(m_series->pointDelegate(), nullptr);
 
     // Properties from QXYSeries
-    QCOMPARE(m_series->color(), "#ffffff");
-    QCOMPARE(m_series->selectedColor(), QColor::Invalid);
-    QCOMPARE(m_series->markerSize(), 15.0);
+    QCOMPARE(m_series->color(), QColor(Qt::transparent));
+    QCOMPARE(m_series->selectedColor(), QColor(Qt::transparent));
+    QCOMPARE(m_series->isDraggable(), false);
 
     // Properties from QAbstractSeries
-    QCOMPARE(m_series->theme(), nullptr);
     QCOMPARE(m_series->name(), "");
     QCOMPARE(m_series->isVisible(), true);
-    QCOMPARE(m_series->selectable(), false);
-    QCOMPARE(m_series->hoverable(), false);
+    QCOMPARE(m_series->isSelectable(), false);
+    QCOMPARE(m_series->isHoverable(), false);
     QCOMPARE(m_series->opacity(), 1.0);
     QCOMPARE(m_series->valuesMultiplier(), 1.0);
 }
@@ -77,22 +74,31 @@ void tst_lines::initializeProperties()
 {
     QVERIFY(m_series);
 
-    auto axisX = new QValueAxis(this);
-    auto axisY = new QValueAxis(this);
-    auto marker = new QQmlComponent(this);
-    auto theme = new QSeriesTheme(this);
+    QSignalSpy spy0(m_series, &QLineSeries::widthChanged);
+    QSignalSpy spy1(m_series, &QLineSeries::capStyleChanged);
+    QSignalSpy spy2(m_series, &QLineSeries::pointDelegateChanged);
 
-    m_series->setAxisX(axisX);
-    m_series->setAxisY(axisY);
+    QSignalSpy spy3(m_series, &QLineSeries::colorChanged);
+    QSignalSpy spy4(m_series, &QLineSeries::selectedColorChanged);
+    QSignalSpy spy5(m_series, &QLineSeries::draggableChanged);
+
+    QSignalSpy spy6(m_series, &QLineSeries::nameChanged);
+    QSignalSpy spy7(m_series, &QLineSeries::visibleChanged);
+    QSignalSpy spy8(m_series, &QLineSeries::selectableChanged);
+    QSignalSpy spy9(m_series, &QLineSeries::hoverableChanged);
+    QSignalSpy spy10(m_series, &QLineSeries::opacityChanged);
+    QSignalSpy spy11(m_series, &QLineSeries::valuesMultiplierChanged);
+
+    auto marker = new QQmlComponent(this);
+
     m_series->setWidth(5.0);
     m_series->setCapStyle(Qt::PenCapStyle::RoundCap);
-    m_series->setPointMarker(marker);
+    m_series->setPointDelegate(marker);
 
     m_series->setColor("#ff0000");
     m_series->setSelectedColor("#0000ff");
-    m_series->setMarkerSize(5.0);
+    m_series->setDraggable(true);
 
-    m_series->setTheme(theme);
     m_series->setName("LineSeries");
     m_series->setVisible(false);
     m_series->setSelectable(true);
@@ -100,23 +106,35 @@ void tst_lines::initializeProperties()
     m_series->setOpacity(0.5);
     m_series->setValuesMultiplier(0.5);
 
-    QCOMPARE(m_series->axisX(), axisX);
-    QCOMPARE(m_series->axisY(), axisY);
     QCOMPARE(m_series->width(), 5.0);
     QCOMPARE(m_series->capStyle(), Qt::PenCapStyle::RoundCap);
-    QCOMPARE(m_series->pointMarker(), marker);
+    QCOMPARE(m_series->pointDelegate(), marker);
 
     QCOMPARE(m_series->color(), "#ff0000");
     QCOMPARE(m_series->selectedColor(), "#0000ff");
-    QCOMPARE(m_series->markerSize(), 5.0);
+    QCOMPARE(m_series->isDraggable(), true);
 
-    QCOMPARE(m_series->theme(), theme);
     QCOMPARE(m_series->name(), "LineSeries");
     QCOMPARE(m_series->isVisible(), false);
-    QCOMPARE(m_series->selectable(), true);
-    QCOMPARE(m_series->hoverable(), true);
+    QCOMPARE(m_series->isSelectable(), true);
+    QCOMPARE(m_series->isHoverable(), true);
     QCOMPARE(m_series->opacity(), 0.5);
     QCOMPARE(m_series->valuesMultiplier(), 0.5);
+
+    QCOMPARE(spy0.size(), 1);
+    QCOMPARE(spy1.size(), 1);
+    QCOMPARE(spy2.size(), 1);
+
+    QCOMPARE(spy3.size(), 1);
+    QCOMPARE(spy4.size(), 1);
+    QCOMPARE(spy5.size(), 1);
+
+    QCOMPARE(spy6.size(), 1);
+    QCOMPARE(spy7.size(), 1);
+    QCOMPARE(spy8.size(), 1);
+    QCOMPARE(spy9.size(), 1);
+    QCOMPARE(spy10.size(), 1);
+    QCOMPARE(spy11.size(), 1);
 }
 
 void tst_lines::invalidProperties()

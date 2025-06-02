@@ -8,6 +8,7 @@
 #include <QtQuickControls2/qquickstyle.h>
 #include <QtQuickTemplates2/private/qquickabstractbutton_p.h>
 #include <QtQuickTemplates2/private/qquickapplicationwindow_p.h>
+#include <QtQuickTemplates2/private/qquickcontrol_p_p.h>
 
 QQuickControlsTestUtils::QQuickControlsApplicationHelper::QQuickControlsApplicationHelper(QQmlDataTest *testCase,
     const QString &testFilePath, const QVariantMap &initialProperties, const QStringList &qmlImportPaths)
@@ -182,4 +183,18 @@ Q_INVOKABLE QQmlComponent *QQuickControlsTestUtils::ComponentCreator::createComp
 QString QQuickControlsTestUtils::StyleInfo::styleName() const
 {
     return QQuickStyle::name();
+}
+
+QString QQuickControlsTestUtils::visualFocusFailureMessage(QQuickControl *control)
+{
+    QString message;
+    QDebug debug(&message);
+    const auto *controlPrivate = QQuickControlPrivate::get(control);
+    const QQuickWindow *window = control->window();
+    const QString activeFocusItemStr = window
+        ? QDebug::toString(window->activeFocusItem()) : QStringLiteral("(unknown; control has no window)");
+    debug.nospace() << "control: " << control << " activeFocus: " << control->hasActiveFocus()
+        << " focusReason: " << static_cast<Qt::FocusReason>(controlPrivate->focusReason)
+        << " activeFocusItem: " << activeFocusItemStr;
+    return message;
 }

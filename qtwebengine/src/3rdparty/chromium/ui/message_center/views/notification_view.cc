@@ -8,6 +8,8 @@
 
 #include "build/build_config.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
 #include "ui/compositor/layer.h"
@@ -116,6 +118,8 @@ gfx::Insets CalculateTopPadding(int font_list_height) {
 // as well as capitalizing the given label string. Used by chrome notifications.
 // Ash notifications create their own.
 class NotificationTextButton : public views::MdTextButton {
+  METADATA_HEADER(NotificationTextButton, views::MdTextButton)
+
  public:
   NotificationTextButton(PressedCallback callback, const std::u16string& label)
       : views::MdTextButton(std::move(callback), label) {
@@ -151,9 +155,14 @@ class NotificationTextButton : public views::MdTextButton {
   absl::optional<SkColor> color_;
 };
 
+BEGIN_METADATA(NotificationTextButton)
+END_METADATA
+
 // InlineSettingsRadioButton ///////////////////////////////////////////////////
 
 class InlineSettingsRadioButton : public views::RadioButton {
+  METADATA_HEADER(InlineSettingsRadioButton, views::RadioButton)
+
  public:
   explicit InlineSettingsRadioButton(const std::u16string& label_text)
       : views::RadioButton(label_text, 1 /* group */) {
@@ -174,6 +183,9 @@ class InlineSettingsRadioButton : public views::RadioButton {
     return GetColorProvider()->GetColor(ui::kColorLabelForeground);
   }
 };
+
+BEGIN_METADATA(InlineSettingsRadioButton)
+END_METADATA
 
 // NotificationInkDropImpl /////////////////////////////////////////////////////
 
@@ -303,6 +315,7 @@ NotificationView::NotificationView(
           .SetBorder(views::CreateEmptyBorder(kLargeImageContainerPadding))
           .Build());
   AddChildView(CreateInlineSettingsBuilder().Build());
+  AddChildView(CreateSnoozeSettingsBuilder().Build());
   AddChildView(CreateActionsRow());
 
   CreateOrUpdateViews(notification);
@@ -436,8 +449,9 @@ void NotificationView::CreateOrUpdateInlineSettingsViews(
   }
   DCHECK_NE(block_notifications_message_id, 0);
 
-  inline_settings_row()->SetLayoutManager(std::make_unique<views::BoxLayout>(
-      views::BoxLayout::Orientation::kVertical, kSettingsRowPadding, 0));
+  inline_settings_row()->SetOrientation(
+      views::BoxLayout::Orientation::kVertical);
+  inline_settings_row()->SetInsideBorderInsets(kSettingsRowPadding);
 
   auto block_all_button = std::make_unique<InlineSettingsRadioButton>(
       l10n_util::GetStringUTF16(block_notifications_message_id));
@@ -469,6 +483,11 @@ void NotificationView::CreateOrUpdateInlineSettingsViews(
   settings_done_button_ =
       settings_button_row->AddChildView(std::move(settings_done_button));
   inline_settings_row()->AddChildView(std::move(settings_button_row));
+}
+
+void NotificationView::CreateOrUpdateSnoozeSettingsViews(
+    const Notification& notification) {
+  // Not implemented by default.
 }
 
 std::unique_ptr<views::LabelButton>
@@ -559,6 +578,10 @@ void NotificationView::ToggleInlineSettings(const ui::Event& event) {
   // point after it's called.
   if (disable_notification)
     MessageCenter::Get()->DisableNotification(notification_id());
+}
+
+void NotificationView::ToggleSnoozeSettings(const ui::Event& event) {
+  // Not implemented by default.
 }
 
 bool NotificationView::IsExpandable() const {
@@ -687,5 +710,8 @@ void NotificationView::HeaderRowPressed() {
   Layout();
   SchedulePaint();
 }
+
+BEGIN_METADATA(NotificationView, NotificationViewBase)
+END_METADATA
 
 }  // namespace message_center

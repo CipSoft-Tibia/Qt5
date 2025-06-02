@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtcolorline.h"
+#include "qtcolorline_p.h"
 #include "qdrawutil.h"
 
 #include <QtGui/QPainter>
@@ -13,13 +13,13 @@ QT_BEGIN_NAMESPACE
 
 class QtColorLinePrivate
 {
-    QtColorLine *q_ptr;
+    QtColorLine *q_ptr = nullptr;
     Q_DECLARE_PUBLIC(QtColorLine)
 public:
     QtColorLinePrivate();
 
     QColor color() const;
-    void setColor(const QColor &color);
+    void setColor(QColor color);
 
     QtColorLine::ColorComponent colorComponent() const;
     void setColorComponent(QtColorLine::ColorComponent component);
@@ -50,35 +50,37 @@ private:
     bool isMainPixmapValid() const;
     void validate();
     void recreateMainPixmap();
-    QSize pixmapSizeFromGeometrySize(const QSize &geometrySize) const;
-    QPixmap gradientPixmap(int size, Qt::Orientation orientation, const QColor &begin, const QColor &end, bool flipped = false) const;
-    QPixmap gradientPixmap(Qt::Orientation orientation, const QColor &begin, const QColor &end, bool flipped = false) const;
+    QSize pixmapSizeFromGeometrySize(QSize geometrySize) const;
+    QPixmap gradientPixmap(int size, Qt::Orientation orientation,
+                           QColor begin, QColor end, bool flipped = false) const;
+    QPixmap gradientPixmap(Qt::Orientation orientation,
+                           QColor begin, QColor end, bool flipped = false) const;
     QPixmap hueGradientPixmap(int size, Qt::Orientation orientation, bool flipped = false,
                 int saturation = 0xFF, int value = 0xFF, int alpha = 0xFF) const;
     QPixmap hueGradientPixmap(Qt::Orientation orientation, bool flipped = false,
                 int saturation = 0xFF, int value = 0xFF, int alpha = 0xFF) const;
 
-    QList<QRect> rects(const QPointF &point) const;
+    QList<QRect> rects(QPointF point) const;
 
-    QColor colorFromPoint(const QPointF &point) const;
-    QPointF pointFromColor(const QColor &color) const;
+    QColor colorFromPoint(QPointF point) const;
+    QPointF pointFromColor(QColor color) const;
 
-    QColor m_color;
-    QtColorLine::ColorComponent m_component;
-    bool m_flipped;
-    bool m_backgroundCheckered;
-    Qt::Orientation m_orientation;
-    bool m_dragging;
-    bool m_combiningAlpha;
-    int m_indicatorSize;
-    int m_indicatorSpace;
+    QColor m_color = Qt::black;
+    QtColorLine::ColorComponent m_component = QtColorLine::Value;
+    bool m_flipped = false;
+    bool m_backgroundCheckered = true;
+    Qt::Orientation m_orientation = Qt::Horizontal;
+    bool m_dragging = false;
+    bool m_combiningAlpha = false;
+    int m_indicatorSize = 22;
+    int m_indicatorSpace = 0;
     QPointF m_point;
     QPoint m_clickOffset;
 
     QPixmap m_mainPixmap;
     QPixmap m_alphalessPixmap;
     QPixmap m_semiAlphaPixmap;
-    QSize m_pixmapSize;
+    QSize m_pixmapSize{0, 0};
 
     struct PixData {
         QSize size;
@@ -92,16 +94,11 @@ private:
 };
 
 QtColorLinePrivate::QtColorLinePrivate()
-    : m_color(Qt::black), m_component(QtColorLine::Value),
-        m_flipped(false), m_backgroundCheckered(true), m_orientation(Qt::Horizontal), m_dragging(false), m_combiningAlpha(false)
+    : m_point(pointFromColor(m_color))
 {
-    m_indicatorSize = 22;
-    m_indicatorSpace = 0;
-    m_pixmapSize = QSize(0, 0);
-    m_point = pointFromColor(m_color);
 }
 
-void QtColorLinePrivate::setColor(const QColor &color)
+void QtColorLinePrivate::setColor(QColor color)
 {
     if (m_color == color)
         return;
@@ -324,7 +321,8 @@ void QtColorLinePrivate::validate()
     recreateMainPixmap();
 }
 
-QPixmap QtColorLinePrivate::gradientPixmap(Qt::Orientation orientation, const QColor &begin, const QColor &end, bool flipped) const
+QPixmap QtColorLinePrivate::gradientPixmap(Qt::Orientation orientation,
+                                           QColor begin, QColor end, bool flipped) const
 {
     int size = m_pixmapSize.width();
     if (orientation == Qt::Vertical)
@@ -333,7 +331,7 @@ QPixmap QtColorLinePrivate::gradientPixmap(Qt::Orientation orientation, const QC
 }
 
 QPixmap QtColorLinePrivate::gradientPixmap(int size, Qt::Orientation orientation,
-            const QColor &begin, const QColor &end, bool flipped) const
+                                           QColor begin, QColor end, bool flipped) const
 {
     int gradW = size;
     int gradH = size;
@@ -483,8 +481,7 @@ void QtColorLinePrivate::recreateMainPixmap()
         m_mainPixmap = m_alphalessPixmap;
 }
 
-QSize QtColorLinePrivate::pixmapSizeFromGeometrySize(
-        const QSize &geometrySize) const
+QSize QtColorLinePrivate::pixmapSizeFromGeometrySize(QSize geometrySize) const
 {
     QSize size(m_indicatorSize + 2 * m_indicatorSpace - 1,
                 m_indicatorSize + 2 * m_indicatorSpace - 1);
@@ -495,7 +492,7 @@ QSize QtColorLinePrivate::pixmapSizeFromGeometrySize(
     return geometrySize - size;
 }
 
-QColor QtColorLinePrivate::colorFromPoint(const QPointF &point) const
+QColor QtColorLinePrivate::colorFromPoint(QPointF point) const
 {
     QPointF p = point;
     if (p.x() < 0)
@@ -542,7 +539,7 @@ QColor QtColorLinePrivate::colorFromPoint(const QPointF &point) const
     return c;
 }
 
-QPointF QtColorLinePrivate::pointFromColor(const QColor &color) const
+QPointF QtColorLinePrivate::pointFromColor(QColor color) const
 {
     qreal hue = color.hueF();
     if (color.hue() == 360)
@@ -584,7 +581,7 @@ QPointF QtColorLinePrivate::pointFromColor(const QColor &color) const
     return p;
 }
 
-QList<QRect> QtColorLinePrivate::rects(const QPointF &point) const
+QList<QRect> QtColorLinePrivate::rects(QPointF point) const
 {
     QRect r = q_ptr->geometry();
     r.moveTo(0, 0);
@@ -978,7 +975,7 @@ QSize QtColorLine::sizeHint() const
     return QSize(d_ptr->m_indicatorSize, d_ptr->m_indicatorSize);
 }
 
-void QtColorLine::setColor(const QColor &color)
+void QtColorLine::setColor(QColor color)
 {
     d_ptr->setColor(color);
 }

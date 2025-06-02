@@ -15,7 +15,9 @@
 QT_BEGIN_NAMESPACE
 
 class QIODevice;
+class QPdfOutputIntent;
 class QPdfWriterPrivate;
+class QUuid;
 
 class Q_GUI_EXPORT QPdfWriter : public QObject, public QPagedPaintDevice
 {
@@ -34,6 +36,9 @@ public:
     QString creator() const;
     void setCreator(const QString &creator);
 
+    QUuid documentId() const;
+    void setDocumentId(QUuid documentId);
+
     bool newPage() override;
 
     void setResolution(int resolution);
@@ -43,6 +48,21 @@ public:
     QByteArray documentXmpMetadata() const;
 
     void addFileAttachment(const QString &fileName, const QByteArray &data, const QString &mimeType = QString());
+
+    enum class ColorModel
+    {
+        RGB,
+        Grayscale,
+        CMYK,
+        Auto,
+    };
+    Q_ENUM(ColorModel)
+
+    ColorModel colorModel() const;
+    void setColorModel(ColorModel model);
+
+    QPdfOutputIntent outputIntent() const;
+    void setOutputIntent(const QPdfOutputIntent &intent);
 
 protected:
     QPaintEngine *paintEngine() const override;

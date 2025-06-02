@@ -24,7 +24,7 @@ QPainterPath TrimPath::trimmed(qreal f1, qreal f2, qreal offset) const
         return res;
     if (f1 > f2)
         qSwap(f1, f2);
-    if (qFuzzyCompare(f2 - f1, 1.0))  // Shortcut for no trimming
+    if (qFuzzyCompare(f2 - f1, qreal(1.0))) // Shortcut for no trimming
         return mPath;
 
     qreal dummy;

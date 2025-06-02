@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qandroidvideodevices_p.h"
+#include "qandroidvideoframebuffer_p.h"
 
 #include <private/qcameradevice_p.h>
 
@@ -9,15 +10,12 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/private/qandroidextras_p.h>
 #include <QtCore/qcoreapplication_platform.h>
-#include <QJniEnvironment>
+#include <QtCore/qjnienvironment.h>
 #include <jni.h>
 
-static Q_LOGGING_CATEGORY(qLCAndroidVideoDevices, "qt.multimedia.ffmpeg.android.videoDevices")
+using namespace Qt::StringLiterals;
 
-Q_DECLARE_JNI_CLASS(QtVideoDeviceManager,
-                    "org/qtproject/qt/android/multimedia/QtVideoDeviceManager");
-Q_DECLARE_JNI_TYPE(StringArray, "[Ljava/lang/String;")
-Q_DECLARE_JNI_CLASS(AndroidImageFormat, "android/graphics/ImageFormat");
+static Q_LOGGING_CATEGORY(qLCAndroidVideoDevices, "qt.multimedia.ffmpeg.android.videoDevices")
 
 QCameraFormat createCameraFormat(int width, int height, int fpsMin, int fpsMax)
 {
@@ -33,7 +31,7 @@ QCameraFormat createCameraFormat(int width, int height, int fpsMin, int fpsMax)
     return format->create();
 }
 
-QList<QCameraDevice> QAndroidVideoDevices::findVideoDevices()
+QList<QCameraDevice> QAndroidVideoDevices::findVideoInputs() const
 {
     QList<QCameraDevice> devices;
 
@@ -45,24 +43,17 @@ QList<QCameraDevice> QAndroidVideoDevices::findVideoDevices()
         return devices;
     }
 
-    QJniObject cameraIdList = deviceManager.callMethod<QtJniTypes::StringArray>("getCameraIdList");
-
-    QJniEnvironment jniEnv;
-    int numCameras = jniEnv->GetArrayLength(cameraIdList.object<jarray>());
-    if (jniEnv.checkAndClearExceptions())
+    const QJniArray cameraIdList = deviceManager.callMethod<QtJniTypes::String[]>("getCameraIdList");
+    if (!cameraIdList.isValid())
         return devices;
 
-    for (int cameraIndex = 0; cameraIndex < numCameras; cameraIndex++) {
-
-        QJniObject cameraIdObject =
-                jniEnv->GetObjectArrayElement(cameraIdList.object<jobjectArray>(), cameraIndex);
-        if (jniEnv.checkAndClearExceptions())
+    int cameraIndex = 0;
+    for (const auto &cameraId : cameraIdList) {
+        if (!cameraId.isValid())
             continue;
 
-        jstring cameraId = cameraIdObject.object<jstring>();
-
         QCameraDevicePrivate *info = new QCameraDevicePrivate;
-        info->id = cameraIdObject.toString().toUtf8();
+        info->id = cameraId.toString().toUtf8();
 
         info->orientation = deviceManager.callMethod<jint>("getSensorOrientation", cameraId);
 
@@ -76,39 +67,26 @@ QList<QCameraDevice> QAndroidVideoDevices::findVideoDevices()
         case LENS_FACING_EXTERNAL:
         case LENS_FACING_BACK:
             info->position = QCameraDevice::BackFace;
-            info->description = QString("Rear Camera: %1").arg(cameraIndex);
+            info->description = QString(u"Rear Camera: %1").arg(cameraIndex);
             break;
         case LENS_FACING_FRONT:
             info->position = QCameraDevice::FrontFace;
-            info->description = QString("Front Camera: %1").arg(cameraIndex);
+            info->description = QString(u"Front Camera: %1").arg(cameraIndex);
             break;
         }
+        ++cameraIndex;
 
-        QJniObject fpsRangesObject =
-                deviceManager.callMethod<QtJniTypes::StringArray>("getFpsRange", cameraId);
-        jobjectArray fpsRanges = fpsRangesObject.object<jobjectArray>();
-
-        int numRanges = jniEnv->GetArrayLength(fpsRanges);
-        if (jniEnv.checkAndClearExceptions())
-            continue;
+        const auto fpsRanges = deviceManager.callMethod<QStringList>("getFpsRange", cameraId);
 
         int maxFps = 0, minFps = 0;
+        for (auto range : fpsRanges) {
+            range = range.remove(u"["_s);
+            range = range.remove(u"]"_s);
 
-        for (int rangeIndex = 0; rangeIndex < numRanges; rangeIndex++) {
+            const auto split = range.split(u","_s);
 
-            QJniObject rangeString = jniEnv->GetObjectArrayElement(fpsRanges, rangeIndex);
-            if (jniEnv.checkAndClearExceptions())
-                continue;
-
-            QString range = rangeString.toString();
-
-            range = range.remove("[");
-            range = range.remove("]");
-
-            auto split = range.split(",");
-
-            int min = split[0].toInt();
-            int max = split[1].toInt();
+            int min = split.at(0).toInt();
+            int max = split.at(1).toInt();
 
             if (max > maxFps) {
                 maxFps = max;
@@ -119,26 +97,17 @@ QList<QCameraDevice> QAndroidVideoDevices::findVideoDevices()
         const static int imageFormat =
                 QJniObject::getStaticField<QtJniTypes::AndroidImageFormat, jint>("YUV_420_888");
 
-        QJniObject sizesObject = deviceManager.callMethod<QtJniTypes::StringArray>(
+        const QStringList sizes = deviceManager.callMethod<QStringList>(
                 "getStreamConfigurationsSizes", cameraId, imageFormat);
 
-        jobjectArray streamSizes = sizesObject.object<jobjectArray>();
-        int numSizes = jniEnv->GetArrayLength(streamSizes);
-        if (jniEnv.checkAndClearExceptions())
+        if (sizes.isEmpty())
             continue;
 
-        for (int sizesIndex = 0; sizesIndex < numSizes; sizesIndex++) {
+        for (const auto &sizeString : sizes) {
+            const auto split = sizeString.split(u"x"_s);
 
-            QJniObject sizeStringObject = jniEnv->GetObjectArrayElement(streamSizes, sizesIndex);
-            if (jniEnv.checkAndClearExceptions())
-                continue;
-
-            QString sizeString = sizeStringObject.toString();
-
-            auto split = sizeString.split("x");
-
-            int width = split[0].toInt();
-            int height = split[1].toInt();
+            int width = split.at(0).toInt();
+            int height = split.at(1).toInt();
 
             info->videoFormats.append(createCameraFormat(width, height, minFps, maxFps));
         }

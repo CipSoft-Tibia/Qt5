@@ -32,6 +32,9 @@ QT_BEGIN_NAMESPACE
 class QQuickVideoBackend;
 class QVideoOutputOrientationHandler;
 class QVideoSink;
+class QSGVideoNode;
+class QVideoFrameTexturePool;
+using QVideoFrameTexturePoolWPtr = std::weak_ptr<QVideoFrameTexturePool>;
 
 class QQuickVideoSink : public QVideoSink
 {
@@ -72,7 +75,7 @@ public:
     Q_ENUM(FillMode)
 
     QQuickVideoOutput(QQuickItem *parent = 0);
-    ~QQuickVideoOutput();
+    ~QQuickVideoOutput() override;
 
     Q_INVOKABLE QVideoSink *videoSink() const;
 
@@ -105,15 +108,15 @@ private:
 
     void setFrame(const QVideoFrame &frame);
 
-    void invalidateSceneGraph();
-
     void initRhiForSink();
+    void updateHdr(QSGVideoNode *videoNode);
 
 private Q_SLOTS:
     void _q_newFrame(QSize);
     void _q_updateGeometry();
     void _q_invalidateSceneGraph();
     void _q_sceneGraphInitialized();
+    void _q_afterFrameEnd();
 
 private:
     QSize m_nativeSize;
@@ -122,14 +125,15 @@ private:
     QRectF m_lastRect;      // Cache of last rect to avoid recalculating geometry
     QRectF m_contentRect;   // Destination pixel coordinates, unclipped
     int m_orientation = 0;
-    int m_frameOrientation = 0;
+    bool m_mirrored = false;
+    QtVideo::Rotation m_frameDisplayingRotation = QtVideo::Rotation::None;
     Qt::AspectRatioMode m_aspectRatioMode = Qt::KeepAspectRatio;
 
     QPointer<QQuickWindow> m_window;
     QVideoSink *m_sink = nullptr;
     QVideoFrameFormat m_videoFormat;
 
-    QList<QVideoFrame> m_videoFrameQueue;
+    QVideoFrameTexturePoolWPtr m_texturePool;
     QVideoFrame m_frame;
     bool m_frameChanged = false;
     QMutex m_frameMutex;

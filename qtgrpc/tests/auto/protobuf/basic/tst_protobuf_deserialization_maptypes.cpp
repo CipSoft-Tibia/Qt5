@@ -16,26 +16,26 @@ using namespace qtprotobufnamespace::tests;
 class QtProtobufMapTypesDeserializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { serializer.reset(new QProtobufSerializer); }
 
-    void SimpleFixed32StringMapDeserializeTest();
-    void SimpleSFixed32StringMapDeserializeTest();
-    void SimpleInt32StringMapDeserializeTest();
-    void SimpleSInt32StringMapDeserializeTest();
-    void SimpleUInt32StringMapDeserializeTest();
-    void SimpleFixed64StringMapDeserializeTest();
-    void SimpleSFixed64StringMapDeserializeTest();
-    void SimpleInt64StringMapDeserializeTest();
-    void SimpleSInt64StringMapDeserializeTest();
-    void SimpleUInt64StringMapDeserializeTest();
-    void SimpleStringStringMapDeserializeTest();
+    void simpleFixed32StringMapDeserializeTest();
+    void simpleSFixed32StringMapDeserializeTest();
+    void simpleInt32StringMapDeserializeTest();
+    void simpleSInt32StringMapDeserializeTest();
+    void simpleUInt32StringMapDeserializeTest();
+    void simpleFixed64StringMapDeserializeTest();
+    void simpleSFixed64StringMapDeserializeTest();
+    void simpleInt64StringMapDeserializeTest();
+    void simpleSInt64StringMapDeserializeTest();
+    void simpleUInt64StringMapDeserializeTest();
+    void simpleStringStringMapDeserializeTest();
 
 private:
     std::unique_ptr<QProtobufSerializer> serializer;
 };
 
-void QtProtobufMapTypesDeserializationTest::SimpleFixed32StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleFixed32StringMapDeserializeTest()
 {
     SimpleFixed32StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -46,7 +46,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleFixed32StringMapDeserializeTes
                      { { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleSFixed32StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleSFixed32StringMapDeserializeTest()
 {
     SimpleSFixed32StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -58,7 +58,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleSFixed32StringMapDeserializeTe
                                                              { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleInt32StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleInt32StringMapDeserializeTest()
 {
     SimpleInt32StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -70,7 +70,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleInt32StringMapDeserializeTest(
                                                           { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleSInt32StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleSInt32StringMapDeserializeTest()
 {
     SimpleSInt32StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -82,7 +82,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleSInt32StringMapDeserializeTest
                                                            { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleUInt32StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleUInt32StringMapDeserializeTest()
 {
     SimpleUInt32StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -93,7 +93,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleUInt32StringMapDeserializeTest
                      { { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleFixed64StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleFixed64StringMapDeserializeTest()
 {
     SimpleFixed64StringMapMessage test;
     test.deserialize(
@@ -105,7 +105,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleFixed64StringMapDeserializeTes
                      { { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleSFixed64StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleSFixed64StringMapDeserializeTest()
 {
     SimpleSFixed64StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -118,7 +118,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleSFixed64StringMapDeserializeTe
                                                              { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleInt64StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleInt64StringMapDeserializeTest()
 {
     SimpleInt64StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -130,7 +130,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleInt64StringMapDeserializeTest(
                                                           { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleSInt64StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleSInt64StringMapDeserializeTest()
 {
     SimpleSInt64StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -142,7 +142,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleSInt64StringMapDeserializeTest
                                                            { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleUInt64StringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleUInt64StringMapDeserializeTest()
 {
     SimpleUInt64StringMapMessage test;
     test.deserialize(serializer.get(),
@@ -153,7 +153,7 @@ void QtProtobufMapTypesDeserializationTest::SimpleUInt64StringMapDeserializeTest
                      { { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } }));
 }
 
-void QtProtobufMapTypesDeserializationTest::SimpleStringStringMapDeserializeTest()
+void QtProtobufMapTypesDeserializationTest::simpleStringStringMapDeserializeTest()
 {
     SimpleStringStringMapMessage test;
     test.deserialize(serializer.get(),

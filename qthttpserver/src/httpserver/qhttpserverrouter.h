@@ -9,7 +9,6 @@
 
 #include <QtCore/qscopedpointer.h>
 #include <QtCore/qmetatype.h>
-#include <QtCore/qregularexpression.h>
 
 #include <functional>
 #include <initializer_list>
@@ -17,87 +16,64 @@
 
 QT_BEGIN_NAMESPACE
 
+class QAbstractHttpServer;
 class QHttpServerResponder;
 class QHttpServerRequest;
 class QHttpServerRouterRule;
 
 class QHttpServerRouterPrivate;
-class Q_HTTPSERVER_EXPORT QHttpServerRouter
+class QHttpServerRouter
 {
     Q_DECLARE_PRIVATE(QHttpServerRouter)
     Q_DISABLE_COPY_MOVE(QHttpServerRouter)
 
 public:
-    QHttpServerRouter();
-    ~QHttpServerRouter();
+    Q_HTTPSERVER_EXPORT QHttpServerRouter(QAbstractHttpServer *server);
+    Q_HTTPSERVER_EXPORT ~QHttpServerRouter();
 
     template<typename Type>
     bool addConverter(QAnyStringView regexp) {
-        if (!QMetaType::registerConverter<QString, Type>())
+        // The QMetaType converter registry is shared by all parts of Qt which uses it.
+        // Only register a converter if it is not already registered. If registering fails,
+        // check that it has been registered by a different thread between the two calls
+        // or return false. The registerConverter function will output an warning if a
+        // converter is already registered.
+        if (!QMetaType::hasRegisteredConverterFunction<QString, Type>()
+            && !QMetaType::registerConverter<QString, Type>()
+            && !QMetaType::hasRegisteredConverterFunction<QString, Type>())
             return false;
 
         addConverter(QMetaType::fromType<Type>(), regexp);
         return true;
     }
 
-    void addConverter(QMetaType metaType, QAnyStringView regexp);
-    void removeConverter(QMetaType metaType);
-    void clearConverters();
-    const QHash<QMetaType, QString> &converters() const;
+    Q_HTTPSERVER_EXPORT void addConverter(QMetaType metaType, QAnyStringView regexp);
+    Q_HTTPSERVER_EXPORT void removeConverter(QMetaType metaType);
+    Q_HTTPSERVER_EXPORT void clearConverters();
+    Q_HTTPSERVER_EXPORT const QHash<QMetaType, QString> &converters() const &;
+    Q_HTTPSERVER_EXPORT QHash<QMetaType, QString> converters() &&;
 
     template<typename ViewHandler, typename ViewTraits = QHttpServerRouterViewTraits<ViewHandler>>
-    bool addRule(std::unique_ptr<QHttpServerRouterRule> rule)
+    QHttpServerRouterRule *addRule(std::unique_ptr<QHttpServerRouterRule> rule)
     {
         return addRuleHelper<ViewTraits>(
                 std::move(rule),
                 typename ViewTraits::Arguments::Indexes{});
     }
 
-    template<typename ViewHandler, typename ViewTraits = QHttpServerRouterViewTraits<ViewHandler>>
-    typename ViewTraits::BindableType bindCaptured(ViewHandler &&handler,
-                      const QRegularExpressionMatch &match) const
-    {
-        return bindCapturedImpl<ViewHandler, ViewTraits>(
-                std::forward<ViewHandler>(handler), match,
-                typename ViewTraits::Arguments::CapturableIndexes{});
-    }
-
-    bool handleRequest(const QHttpServerRequest &request, QHttpServerResponder &responder) const;
+    Q_HTTPSERVER_EXPORT bool handleRequest(const QHttpServerRequest &request,
+                                           QHttpServerResponder &responder) const;
 
 private:
     template<typename ViewTraits, int ... Idx>
-    bool addRuleHelper(std::unique_ptr<QHttpServerRouterRule> rule,
+    QHttpServerRouterRule *addRuleHelper(std::unique_ptr<QHttpServerRouterRule> rule,
                        QtPrivate::IndexesList<Idx...>)
     {
         return addRuleImpl(std::move(rule), {ViewTraits::Arguments::template metaType<Idx>()...});
     }
 
-    bool addRuleImpl(std::unique_ptr<QHttpServerRouterRule> rule,
-                     std::initializer_list<QMetaType> metaTypes);
-
-    // Implementation of C++20 std::bind_front() in C++17
-    template<typename F, typename... Args>
-    auto bind_front(F &&f, Args &&...args) const
-    {
-        return [f = std::forward<F>(f),
-                args = std::make_tuple(std::forward<Args>(args)...)](auto &&...callArgs) {
-            return std::apply(f,
-                              std::tuple_cat(args,
-                                             std::forward_as_tuple(std::forward<decltype(callArgs)>(
-                                                     callArgs)...)));
-        };
-    }
-
-    template<typename ViewHandler, typename ViewTraits, int... Cx>
-    typename ViewTraits::BindableType bindCapturedImpl(ViewHandler &&handler,
-                                                       const QRegularExpressionMatch &match,
-                                                       QtPrivate::IndexesList<Cx...>) const
-    {
-        return bind_front(
-                std::forward<ViewHandler>(handler),
-                QVariant(match.captured(Cx + 1))
-                        .value<typename ViewTraits::Arguments::template Arg<Cx>::CleanType>()...);
-    }
+    Q_HTTPSERVER_EXPORT QHttpServerRouterRule *addRuleImpl(std::unique_ptr<QHttpServerRouterRule> rule,
+                                         std::initializer_list<QMetaType> metaTypes);
 
     std::unique_ptr<QHttpServerRouterPrivate> d_ptr;
 };

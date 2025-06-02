@@ -186,10 +186,6 @@ Type::bitset BitsetType::Lub(MapRefLike map, JSHeapBroker* broker) {
           return kNull;
         case OddballType::kUndefined:
           return kUndefined;
-        case OddballType::kUninitialized:
-        case OddballType::kOther:
-          // TODO(neis): We should add a kOtherOddball type.
-          return kOtherInternal;
       }
       UNREACHABLE();
     case HOLE_TYPE:
@@ -347,6 +343,7 @@ Type::bitset BitsetType::Lub(MapRefLike map, JSHeapBroker* broker) {
     case ACCESSOR_PAIR_TYPE:
     case EMBEDDER_DATA_ARRAY_TYPE:
     case FIXED_ARRAY_TYPE:
+    case CLASS_BOILERPLATE_TYPE:
     case PROPERTY_DESCRIPTOR_OBJECT_TYPE:
     case HASH_TABLE_TYPE:
     case ORDERED_HASH_MAP_TYPE:
@@ -920,13 +917,8 @@ Type Type::Constant(JSHeapBroker* broker, ObjectRef ref, Zone* zone) {
   if (ref.IsString() && !ref.IsInternalizedString()) {
     return Type::String();
   }
-  switch (ref.HoleType()) {
-    case HoleType::kNone:
-      break;
-    case HoleType::kGeneric:
-      return Type::TheHole();
-    case HoleType::kPropertyCell:
-      return Type::PropertyCellHole();
+  if (ref.HoleType() != HoleType::kNone) {
+    return Type::Hole();
   }
   return HeapConstant(ref.AsHeapObject(), broker, zone);
 }

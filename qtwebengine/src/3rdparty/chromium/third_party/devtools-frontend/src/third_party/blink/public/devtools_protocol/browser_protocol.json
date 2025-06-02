@@ -1011,7 +1011,8 @@
                         "WarnSameSiteLaxCrossDowngradeLax",
                         "WarnAttributeValueExceedsMaxSize",
                         "WarnDomainNonASCII",
-                        "WarnThirdPartyPhaseout"
+                        "WarnThirdPartyPhaseout",
+                        "WarnCrossSiteRedirectDowngradeChangesInclusion"
                     ]
                 },
                 {
@@ -1099,6 +1100,7 @@
                         "Frame",
                         "Image",
                         "Import",
+                        "JSON",
                         "Manifest",
                         "Ping",
                         "PluginData",
@@ -1108,6 +1110,7 @@
                         "Script",
                         "ServiceWorker",
                         "SharedWorker",
+                        "SpeculationRules",
                         "Stylesheet",
                         "Track",
                         "Video",
@@ -1582,6 +1585,20 @@
                     ]
                 },
                 {
+                    "id": "CookieDeprecationMetadataIssueDetails",
+                    "description": "This issue warns about third-party sites that are accessing cookies on the\ncurrent page, and have been permitted due to having a global metadata grant.\nNote that in this context 'site' means eTLD+1. For example, if the URL\n`https://example.test:80/web_page` was accessing cookies, the site reported\nwould be `example.test`.",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "allowedSites",
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    ]
+                },
+                {
                     "id": "ClientHintIssueReason",
                     "type": "string",
                     "enum": [
@@ -1632,13 +1649,16 @@
                         "IdTokenHttpNotFound",
                         "IdTokenNoResponse",
                         "IdTokenInvalidResponse",
+                        "IdTokenIdpErrorResponse",
+                        "IdTokenCrossSiteIdpErrorResponse",
                         "IdTokenInvalidRequest",
                         "IdTokenInvalidContentType",
                         "ErrorIdToken",
                         "Canceled",
                         "RpPageNotVisible",
                         "SilentMediationFailure",
-                        "ThirdPartyCookiesBlocked"
+                        "ThirdPartyCookiesBlocked",
+                        "NotSignedInWithIdp"
                     ]
                 },
                 {
@@ -1735,6 +1755,39 @@
                     ]
                 },
                 {
+                    "id": "PropertyRuleIssueReason",
+                    "type": "string",
+                    "enum": [
+                        "InvalidSyntax",
+                        "InvalidInitialValue",
+                        "InvalidInherits",
+                        "InvalidName"
+                    ]
+                },
+                {
+                    "id": "PropertyRuleIssueDetails",
+                    "description": "This issue warns about errors in property rules that lead to property\nregistrations being ignored.",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "sourceCodeLocation",
+                            "description": "Source code position of the property rule.",
+                            "$ref": "SourceCodeLocation"
+                        },
+                        {
+                            "name": "propertyRuleIssueReason",
+                            "description": "Reason why the property rule was discarded.",
+                            "$ref": "PropertyRuleIssueReason"
+                        },
+                        {
+                            "name": "propertyValue",
+                            "description": "The value of the property rule property that failed to parse",
+                            "optional": true,
+                            "type": "string"
+                        }
+                    ]
+                },
+                {
                     "id": "InspectorIssueCode",
                     "description": "A unique identifier for the type of issue. Each type may use one of the\noptional fields in InspectorIssueDetails to convey more specific\ninformation about the kind of issue.",
                     "type": "string",
@@ -1755,8 +1808,10 @@
                         "ClientHintIssue",
                         "FederatedAuthRequestIssue",
                         "BounceTrackingIssue",
+                        "CookieDeprecationMetadataIssue",
                         "StylesheetLoadingIssue",
-                        "FederatedAuthUserInfoRequestIssue"
+                        "FederatedAuthUserInfoRequestIssue",
+                        "PropertyRuleIssue"
                     ]
                 },
                 {
@@ -1846,9 +1901,19 @@
                             "$ref": "BounceTrackingIssueDetails"
                         },
                         {
+                            "name": "cookieDeprecationMetadataIssueDetails",
+                            "optional": true,
+                            "$ref": "CookieDeprecationMetadataIssueDetails"
+                        },
+                        {
                             "name": "stylesheetLoadingIssueDetails",
                             "optional": true,
                             "$ref": "StylesheetLoadingIssueDetails"
+                        },
+                        {
+                            "name": "propertyRuleIssueDetails",
+                            "optional": true,
+                            "$ref": "PropertyRuleIssueDetails"
                         },
                         {
                             "name": "federatedAuthUserInfoRequestIssueDetails",
@@ -2029,8 +2094,22 @@
                         },
                         {
                             "name": "value",
-                            "description": "address field name, for example Jon Doe.",
+                            "description": "address field value, for example Jon Doe.",
                             "type": "string"
+                        }
+                    ]
+                },
+                {
+                    "id": "AddressFields",
+                    "description": "A list of address fields.",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "fields",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AddressField"
+                            }
                         }
                     ]
                 },
@@ -2040,11 +2119,97 @@
                     "properties": [
                         {
                             "name": "fields",
-                            "description": "fields and values defining a test address.",
+                            "description": "fields and values defining an address.",
                             "type": "array",
                             "items": {
                                 "$ref": "AddressField"
                             }
+                        }
+                    ]
+                },
+                {
+                    "id": "AddressUI",
+                    "description": "Defines how an address can be displayed like in chrome://settings/addresses.\nAddress UI is a two dimensional array, each inner array is an \"address information line\", and when rendered in a UI surface should be displayed as such.\nThe following address UI for instance:\n[[{name: \"GIVE_NAME\", value: \"Jon\"}, {name: \"FAMILY_NAME\", value: \"Doe\"}], [{name: \"CITY\", value: \"Munich\"}, {name: \"ZIP\", value: \"81456\"}]]\nshould allow the receiver to render:\nJon Doe\nMunich 81456",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "addressFields",
+                            "description": "A two dimension array containing the repesentation of values from an address profile.",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AddressFields"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "FillingStrategy",
+                    "description": "Specified whether a filled field was done so by using the html autocomplete attribute or autofill heuristics.",
+                    "type": "string",
+                    "enum": [
+                        "autocompleteAttribute",
+                        "autofillInferred"
+                    ]
+                },
+                {
+                    "id": "FilledField",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "htmlType",
+                            "description": "The type of the field, e.g text, password etc.",
+                            "type": "string"
+                        },
+                        {
+                            "name": "id",
+                            "description": "the html id",
+                            "type": "string"
+                        },
+                        {
+                            "name": "name",
+                            "description": "the html name",
+                            "type": "string"
+                        },
+                        {
+                            "name": "value",
+                            "description": "the field value",
+                            "type": "string"
+                        },
+                        {
+                            "name": "autofillType",
+                            "description": "The actual field type, e.g FAMILY_NAME",
+                            "type": "string"
+                        },
+                        {
+                            "name": "fillingStrategy",
+                            "description": "The filling strategy",
+                            "$ref": "FillingStrategy"
+                        },
+                        {
+                            "name": "fieldId",
+                            "description": "The form field's DOM node",
+                            "$ref": "DOM.BackendNodeId"
+                        }
+                    ]
+                }
+            ],
+            "events": [
+                {
+                    "name": "addressFormFilled",
+                    "description": "Emitted when an address form is filled.",
+                    "parameters": [
+                        {
+                            "name": "filledFields",
+                            "description": "Information about the fields that were filled",
+                            "type": "array",
+                            "items": {
+                                "$ref": "FilledField"
+                            }
+                        },
+                        {
+                            "name": "addressUi",
+                            "description": "An UI representation of the address used to fill the form.\nConsists of a 2D array where each child represents an address/profile line.",
+                            "$ref": "AddressUI"
                         }
                     ]
                 }
@@ -2084,6 +2249,14 @@
                             }
                         }
                     ]
+                },
+                {
+                    "name": "disable",
+                    "description": "Disables autofill domain notifications."
+                },
+                {
+                    "name": "enable",
+                    "description": "Enables autofill domain notifications."
                 }
             ]
         },
@@ -2316,6 +2489,7 @@
                         "audioCapture",
                         "backgroundSync",
                         "backgroundFetch",
+                        "capturedSurfaceControl",
                         "clipboardReadWrite",
                         "clipboardSanitizedWrite",
                         "displayCapture",
@@ -2353,7 +2527,7 @@
                 },
                 {
                     "id": "PermissionDescriptor",
-                    "description": "Definition of PermissionDescriptor defined in the Permissions API:\nhttps://w3c.github.io/permissions/#dictdef-permissiondescriptor.",
+                    "description": "Definition of PermissionDescriptor defined in the Permissions API:\nhttps://w3c.github.io/permissions/#dom-permissiondescriptor.",
                     "experimental": true,
                     "type": "object",
                     "properties": [
@@ -2512,7 +2686,6 @@
                 {
                     "name": "resetPermissions",
                     "description": "Reset all permission management for all origins.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "browserContextId",
@@ -3701,6 +3874,11 @@
                             "type": "string"
                         },
                         {
+                            "name": "postScriptName",
+                            "description": "Font's PostScript name reported by platform.",
+                            "type": "string"
+                        },
+                        {
                             "name": "isCustomFont",
                             "description": "Indicates if the font was downloaded or resolved locally.",
                             "type": "boolean"
@@ -3892,6 +4070,34 @@
                     ]
                 },
                 {
+                    "id": "CSSFontPaletteValuesRule",
+                    "description": "CSS font-palette-values rule representation.",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "styleSheetId",
+                            "description": "The css style sheet identifier (absent for user agent stylesheet and user-specified\nstylesheet rules) this rule came from.",
+                            "optional": true,
+                            "$ref": "StyleSheetId"
+                        },
+                        {
+                            "name": "origin",
+                            "description": "Parent stylesheet's origin.",
+                            "$ref": "StyleSheetOrigin"
+                        },
+                        {
+                            "name": "fontPaletteName",
+                            "description": "Associated font palette name.",
+                            "$ref": "Value"
+                        },
+                        {
+                            "name": "style",
+                            "description": "Associated style declaration.",
+                            "$ref": "CSSStyle"
+                        }
+                    ]
+                },
+                {
                     "id": "CSSPropertyRule",
                     "description": "CSS property at-rule representation.",
                     "type": "object",
@@ -3989,6 +4195,13 @@
                             "name": "location",
                             "description": "Text position of a new rule in the target style sheet.",
                             "$ref": "SourceRange"
+                        },
+                        {
+                            "name": "nodeForPropertySyntaxValidation",
+                            "description": "NodeId for the DOM node in whose context custom property declarations for registered properties should be\nvalidated. If omitted, declarations in the new rule text can only be validated statically, which may produce\nincorrect results if the declaration contains a var() for example.",
+                            "experimental": true,
+                            "optional": true,
+                            "$ref": "DOM.NodeId"
                         }
                     ],
                     "returns": [
@@ -4236,6 +4449,12 @@
                             }
                         },
                         {
+                            "name": "cssFontPaletteValuesRule",
+                            "description": "A font-palette-values rule matching this node.",
+                            "optional": true,
+                            "$ref": "CSSFontPaletteValuesRule"
+                        },
+                        {
                             "name": "parentLayoutNodeId",
                             "description": "Id of the first parent element that does not have display: contents.",
                             "experimental": true,
@@ -4356,6 +4575,31 @@
                         {
                             "name": "value",
                             "type": "string"
+                        }
+                    ]
+                },
+                {
+                    "name": "setPropertyRulePropertyName",
+                    "description": "Modifies the property rule property name.",
+                    "parameters": [
+                        {
+                            "name": "styleSheetId",
+                            "$ref": "StyleSheetId"
+                        },
+                        {
+                            "name": "range",
+                            "$ref": "SourceRange"
+                        },
+                        {
+                            "name": "propertyName",
+                            "type": "string"
+                        }
+                    ],
+                    "returns": [
+                        {
+                            "name": "propertyName",
+                            "description": "The resulting key text after modification.",
+                            "$ref": "Value"
                         }
                     ]
                 },
@@ -4544,6 +4788,13 @@
                             "items": {
                                 "$ref": "StyleDeclarationEdit"
                             }
+                        },
+                        {
+                            "name": "nodeForPropertySyntaxValidation",
+                            "description": "NodeId for the DOM node in whose context custom property declarations for registered properties should be\nvalidated. If omitted, declarations in the new rule text can only be validated statically, which may produce\nincorrect results if the declaration contains a var() for example.",
+                            "experimental": true,
+                            "optional": true,
+                            "$ref": "DOM.NodeId"
                         }
                     ],
                     "returns": [
@@ -5603,7 +5854,6 @@
                 {
                     "name": "scrollIntoViewIfNeeded",
                     "description": "Scrolls the specified rect of the given node into view if not already visible.\nNote: exactly one between nodeId, backendNodeId and objectId should be passed\nto identify the node.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "nodeId",
@@ -6813,7 +7063,6 @@
             "description": "DOM debugging allows setting breakpoints on particular DOM operations and events. JavaScript\nexecution will stop on these operations as if there was a regular breakpoint set.",
             "dependencies": [
                 "DOM",
-                "Debugger",
                 "Runtime"
             ],
             "types": [
@@ -6970,6 +7219,8 @@
                     "name": "removeInstrumentationBreakpoint",
                     "description": "Removes breakpoint on particular native event.",
                     "experimental": true,
+                    "deprecated": true,
+                    "redirect": "EventBreakpoints",
                     "parameters": [
                         {
                             "name": "eventName",
@@ -7042,6 +7293,8 @@
                     "name": "setInstrumentationBreakpoint",
                     "description": "Sets breakpoint on particular native event.",
                     "experimental": true,
+                    "deprecated": true,
+                    "redirect": "EventBreakpoints",
                     "parameters": [
                         {
                             "name": "eventName",
@@ -7065,7 +7318,7 @@
         },
         {
             "domain": "EventBreakpoints",
-            "description": "EventBreakpoints permits setting breakpoints on particular operations and\nevents in targets that run JavaScript but do not have a DOM.\nJavaScript execution will stop on these operations as if there was a regular\nbreakpoint set.",
+            "description": "EventBreakpoints permits setting JavaScript breakpoints on operations and events\noccurring in native code invoked from JavaScript. Once breakpoint is hit, it is\nreported through Debugger domain, similarly to regular breakpoints being hit.",
             "experimental": true,
             "commands": [
                 {
@@ -7089,6 +7342,10 @@
                             "type": "string"
                         }
                     ]
+                },
+                {
+                    "name": "disable",
+                    "description": "Removes all breakpoints"
                 }
             ]
         },
@@ -8335,6 +8592,21 @@
                     ]
                 },
                 {
+                    "id": "DevicePosture",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "type",
+                            "description": "Current posture of the device",
+                            "type": "string",
+                            "enum": [
+                                "continuous",
+                                "folded"
+                            ]
+                        }
+                    ]
+                },
+                {
                     "id": "MediaFeature",
                     "type": "object",
                     "properties": [
@@ -8438,6 +8710,120 @@
                     ]
                 },
                 {
+                    "id": "SensorType",
+                    "description": "Used to specify sensor types to emulate.\nSee https://w3c.github.io/sensors/#automation for more information.",
+                    "experimental": true,
+                    "type": "string",
+                    "enum": [
+                        "absolute-orientation",
+                        "accelerometer",
+                        "ambient-light",
+                        "gravity",
+                        "gyroscope",
+                        "linear-acceleration",
+                        "magnetometer",
+                        "proximity",
+                        "relative-orientation"
+                    ]
+                },
+                {
+                    "id": "SensorMetadata",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "available",
+                            "optional": true,
+                            "type": "boolean"
+                        },
+                        {
+                            "name": "minimumFrequency",
+                            "optional": true,
+                            "type": "number"
+                        },
+                        {
+                            "name": "maximumFrequency",
+                            "optional": true,
+                            "type": "number"
+                        }
+                    ]
+                },
+                {
+                    "id": "SensorReadingSingle",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "value",
+                            "type": "number"
+                        }
+                    ]
+                },
+                {
+                    "id": "SensorReadingXYZ",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "x",
+                            "type": "number"
+                        },
+                        {
+                            "name": "y",
+                            "type": "number"
+                        },
+                        {
+                            "name": "z",
+                            "type": "number"
+                        }
+                    ]
+                },
+                {
+                    "id": "SensorReadingQuaternion",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "x",
+                            "type": "number"
+                        },
+                        {
+                            "name": "y",
+                            "type": "number"
+                        },
+                        {
+                            "name": "z",
+                            "type": "number"
+                        },
+                        {
+                            "name": "w",
+                            "type": "number"
+                        }
+                    ]
+                },
+                {
+                    "id": "SensorReading",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "single",
+                            "optional": true,
+                            "$ref": "SensorReadingSingle"
+                        },
+                        {
+                            "name": "xyz",
+                            "optional": true,
+                            "$ref": "SensorReadingXYZ"
+                        },
+                        {
+                            "name": "quaternion",
+                            "optional": true,
+                            "$ref": "SensorReadingQuaternion"
+                        }
+                    ]
+                },
+                {
                     "id": "DisabledImageType",
                     "description": "Enum of image types that can be disabled.",
                     "experimental": true,
@@ -8501,7 +8887,6 @@
                 {
                     "name": "setCPUThrottlingRate",
                     "description": "Enables CPU throttling to emulate slow CPUs.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "rate",
@@ -8607,6 +8992,13 @@
                             "experimental": true,
                             "optional": true,
                             "$ref": "DisplayFeature"
+                        },
+                        {
+                            "name": "devicePosture",
+                            "description": "If set, the posture of a foldable device. If not set the posture is set\nto continuous.",
+                            "experimental": true,
+                            "optional": true,
+                            "$ref": "DevicePosture"
                         }
                     ]
                 },
@@ -8677,7 +9069,6 @@
                 {
                     "name": "setEmulatedVisionDeficiency",
                     "description": "Emulates the given vision deficiency.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "type",
@@ -8720,9 +9111,59 @@
                     ]
                 },
                 {
+                    "name": "getOverriddenSensorInformation",
+                    "experimental": true,
+                    "parameters": [
+                        {
+                            "name": "type",
+                            "$ref": "SensorType"
+                        }
+                    ],
+                    "returns": [
+                        {
+                            "name": "requestedSamplingFrequency",
+                            "type": "number"
+                        }
+                    ]
+                },
+                {
+                    "name": "setSensorOverrideEnabled",
+                    "description": "Overrides a platform sensor of a given type. If |enabled| is true, calls to\nSensor.start() will use a virtual sensor as backend rather than fetching\ndata from a real hardware sensor. Otherwise, existing virtual\nsensor-backend Sensor objects will fire an error event and new calls to\nSensor.start() will attempt to use a real sensor instead.",
+                    "experimental": true,
+                    "parameters": [
+                        {
+                            "name": "enabled",
+                            "type": "boolean"
+                        },
+                        {
+                            "name": "type",
+                            "$ref": "SensorType"
+                        },
+                        {
+                            "name": "metadata",
+                            "optional": true,
+                            "$ref": "SensorMetadata"
+                        }
+                    ]
+                },
+                {
+                    "name": "setSensorOverrideReadings",
+                    "description": "Updates the sensor readings reported by a sensor type previously overriden\nby setSensorOverrideEnabled.",
+                    "experimental": true,
+                    "parameters": [
+                        {
+                            "name": "type",
+                            "$ref": "SensorType"
+                        },
+                        {
+                            "name": "reading",
+                            "$ref": "SensorReading"
+                        }
+                    ]
+                },
+                {
                     "name": "setIdleOverride",
                     "description": "Overrides the Idle state.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "isUserActive",
@@ -8738,8 +9179,7 @@
                 },
                 {
                     "name": "clearIdleOverride",
-                    "description": "Clears Idle state overrides.",
-                    "experimental": true
+                    "description": "Clears Idle state overrides."
                 },
                 {
                     "name": "setNavigatorOverrides",
@@ -8846,7 +9286,6 @@
                 {
                     "name": "setTimezoneOverride",
                     "description": "Overrides default host system timezone with the specified one.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "timezoneId",
@@ -8909,7 +9348,7 @@
                         },
                         {
                             "name": "acceptLanguage",
-                            "description": "Browser langugage to emulate.",
+                            "description": "Browser language to emulate.",
                             "optional": true,
                             "type": "string"
                         },
@@ -9695,16 +10134,14 @@
                         {
                             "name": "tiltX",
                             "description": "The plane angle between the Y-Z plane and the plane containing both the stylus axis and the Y axis, in degrees of the range [-90,90], a positive tiltX is to the right (default: 0)",
-                            "experimental": true,
                             "optional": true,
-                            "type": "integer"
+                            "type": "number"
                         },
                         {
                             "name": "tiltY",
                             "description": "The plane angle between the X-Z plane and the plane containing both the stylus axis and the X axis, in degrees of the range [-90,90], a positive tiltY is towards the user (default: 0).",
-                            "experimental": true,
                             "optional": true,
-                            "type": "integer"
+                            "type": "number"
                         },
                         {
                             "name": "twist",
@@ -10068,16 +10505,14 @@
                         {
                             "name": "tiltX",
                             "description": "The plane angle between the Y-Z plane and the plane containing both the stylus axis and the Y axis, in degrees of the range [-90,90], a positive tiltX is to the right (default: 0).",
-                            "experimental": true,
                             "optional": true,
-                            "type": "integer"
+                            "type": "number"
                         },
                         {
                             "name": "tiltY",
                             "description": "The plane angle between the X-Z plane and the plane containing both the stylus axis and the X axis, in degrees of the range [-90,90], a positive tiltY is towards the user (default: 0).",
-                            "experimental": true,
                             "optional": true,
-                            "type": "integer"
+                            "type": "number"
                         },
                         {
                             "name": "twist",
@@ -11865,6 +12300,17 @@
                     ]
                 },
                 {
+                    "id": "ServiceWorkerRouterInfo",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "ruleIdMatched",
+                            "type": "integer"
+                        }
+                    ]
+                },
+                {
                     "id": "Response",
                     "description": "HTTP response data.",
                     "type": "object",
@@ -11899,6 +12345,11 @@
                         {
                             "name": "mimeType",
                             "description": "Resource mimeType as determined by the browser.",
+                            "type": "string"
+                        },
+                        {
+                            "name": "charset",
+                            "description": "Resource charset as determined by the browser (if applicable).",
                             "type": "string"
                         },
                         {
@@ -11953,6 +12404,13 @@
                             "description": "Specifies that the request was served from the prefetch cache.",
                             "optional": true,
                             "type": "boolean"
+                        },
+                        {
+                            "name": "serviceWorkerRouterInfo",
+                            "description": "Infomation about how Service Worker Static Router was used.",
+                            "experimental": true,
+                            "optional": true,
+                            "$ref": "ServiceWorkerRouterInfo"
                         },
                         {
                             "name": "encodedDataLength",
@@ -12227,6 +12685,7 @@
                             "name": "sameParty",
                             "description": "True if cookie is SameParty.",
                             "experimental": true,
+                            "deprecated": true,
                             "type": "boolean"
                         },
                         {
@@ -12269,6 +12728,7 @@
                         "SameSiteUnspecifiedTreatedAsLax",
                         "SameSiteNoneInsecure",
                         "UserPreferences",
+                        "ThirdPartyPhaseout",
                         "ThirdPartyBlockedInFirstPartySet",
                         "SyntaxError",
                         "SchemeNotSupported",
@@ -12282,7 +12742,8 @@
                         "SamePartyFromCrossPartyContext",
                         "SamePartyConflictsWithOtherAttributes",
                         "NameValuePairExceedsMaxSize",
-                        "DisallowedCharacter"
+                        "DisallowedCharacter",
+                        "NoCookieContent"
                     ]
                 },
                 {
@@ -12299,6 +12760,7 @@
                         "SameSiteUnspecifiedTreatedAsLax",
                         "SameSiteNoneInsecure",
                         "UserPreferences",
+                        "ThirdPartyPhaseout",
                         "ThirdPartyBlockedInFirstPartySet",
                         "UnknownError",
                         "SchemefulSameSiteStrict",
@@ -13472,7 +13934,6 @@
                 {
                     "name": "setBypassServiceWorker",
                     "description": "Toggles ignoring of service worker for each request.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "bypass",
@@ -13658,7 +14119,7 @@
                         },
                         {
                             "name": "acceptLanguage",
-                            "description": "Browser langugage to emulate.",
+                            "description": "Browser language to emulate.",
                             "optional": true,
                             "type": "string"
                         },
@@ -13674,6 +14135,25 @@
                             "experimental": true,
                             "optional": true,
                             "$ref": "Emulation.UserAgentMetadata"
+                        }
+                    ]
+                },
+                {
+                    "name": "streamResourceContent",
+                    "description": "Enables streaming of the response for the given requestId.\nIf enabled, the dataReceived event contains the data that was received during streaming.",
+                    "experimental": true,
+                    "parameters": [
+                        {
+                            "name": "requestId",
+                            "description": "Identifier of the request to stream.",
+                            "$ref": "RequestId"
+                        }
+                    ],
+                    "returns": [
+                        {
+                            "name": "bufferedData",
+                            "description": "Data that has been buffered until streaming is enabled.",
+                            "type": "binary"
                         }
                     ]
                 },
@@ -13762,6 +14242,13 @@
                             "name": "encodedDataLength",
                             "description": "Actual bytes received (might be less than dataLength for compressed encodings).",
                             "type": "integer"
+                        },
+                        {
+                            "name": "data",
+                            "description": "Data that was received.",
+                            "experimental": true,
+                            "optional": true,
+                            "type": "binary"
                         }
                     ]
                 },
@@ -15105,6 +15592,28 @@
                     ]
                 },
                 {
+                    "id": "WindowControlsOverlayConfig",
+                    "description": "Configuration for Window Controls Overlay",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "showCSS",
+                            "description": "Whether the title bar CSS should be shown when emulating the Window Controls Overlay.",
+                            "type": "boolean"
+                        },
+                        {
+                            "name": "selectedPlatform",
+                            "description": "Seleted platforms to show the overlay.",
+                            "type": "string"
+                        },
+                        {
+                            "name": "themeColor",
+                            "description": "The theme color defined in app manifest.",
+                            "type": "string"
+                        }
+                    ]
+                },
+                {
                     "id": "ContainerQueryHighlightConfig",
                     "type": "object",
                     "properties": [
@@ -15638,6 +16147,18 @@
                             }
                         }
                     ]
+                },
+                {
+                    "name": "setShowWindowControlsOverlay",
+                    "description": "Show Window Controls Overlay for PWA",
+                    "parameters": [
+                        {
+                            "name": "windowControlsOverlayConfig",
+                            "description": "Window Controls Overlay data, null means hide Window Controls Overlay",
+                            "optional": true,
+                            "$ref": "WindowControlsOverlayConfig"
+                        }
+                    ]
                 }
             ],
             "events": [
@@ -15801,12 +16322,14 @@
                         "bluetooth",
                         "browsing-topics",
                         "camera",
+                        "captured-surface-control",
                         "ch-dpr",
                         "ch-device-memory",
                         "ch-downlink",
                         "ch-ect",
                         "ch-prefers-color-scheme",
                         "ch-prefers-reduced-motion",
+                        "ch-prefers-reduced-transparency",
                         "ch-rtt",
                         "ch-save-data",
                         "ch-ua",
@@ -15855,6 +16378,7 @@
                         "private-aggregation",
                         "private-state-token-issuance",
                         "private-state-token-redemption",
+                        "publickey-credentials-create",
                         "publickey-credentials-get",
                         "run-ad-auction",
                         "screen-wake-lock",
@@ -15864,10 +16388,13 @@
                         "shared-storage-select-url",
                         "smart-card",
                         "storage-access",
+                        "sub-apps",
                         "sync-xhr",
                         "unload",
                         "usb",
+                        "usb-unrestricted",
                         "vertical-scroll",
+                        "web-printing",
                         "web-share",
                         "window-management",
                         "window-placement",
@@ -16803,6 +17330,9 @@
                         "WebRTCSticky",
                         "WebTransportSticky",
                         "WebSocketSticky",
+                        "SmartCard",
+                        "LiveMediaStreamTrack",
+                        "UnloadHandler",
                         "ContentSecurityHandler",
                         "ContentWebAuthenticationAPI",
                         "ContentFileChooser",
@@ -16842,6 +17372,35 @@
                     ]
                 },
                 {
+                    "id": "BackForwardCacheBlockingDetails",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "url",
+                            "description": "Url of the file where blockage happened. Optional because of tests.",
+                            "optional": true,
+                            "type": "string"
+                        },
+                        {
+                            "name": "function",
+                            "description": "Function name where blockage happened. Optional because of anonymous functions and tests.",
+                            "optional": true,
+                            "type": "string"
+                        },
+                        {
+                            "name": "lineNumber",
+                            "description": "Line number in the script (0-based).",
+                            "type": "integer"
+                        },
+                        {
+                            "name": "columnNumber",
+                            "description": "Column number in the script (0-based).",
+                            "type": "integer"
+                        }
+                    ]
+                },
+                {
                     "id": "BackForwardCacheNotRestoredExplanation",
                     "experimental": true,
                     "type": "object",
@@ -16861,6 +17420,14 @@
                             "description": "Context associated with the reason. The meaning of this context is\ndependent on the reason:\n- EmbedderExtensionSentMessageToCachedFrame: the extension ID.",
                             "optional": true,
                             "type": "string"
+                        },
+                        {
+                            "name": "details",
+                            "optional": true,
+                            "type": "array",
+                            "items": {
+                                "$ref": "BackForwardCacheBlockingDetails"
+                            }
                         }
                     ]
                 },
@@ -17206,23 +17773,6 @@
                     ]
                 },
                 {
-                    "name": "getCookies",
-                    "description": "Returns all browser cookies for the page and all of its subframes. Depending\non the backend support, will return detailed cookie information in the\n`cookies` field.",
-                    "experimental": true,
-                    "deprecated": true,
-                    "redirect": "Network",
-                    "returns": [
-                        {
-                            "name": "cookies",
-                            "description": "Array of cookie objects.",
-                            "type": "array",
-                            "items": {
-                                "$ref": "Network.Cookie"
-                            }
-                        }
-                    ]
-                },
-                {
                     "name": "getFrameTree",
                     "description": "Returns present frame tree structure.",
                     "returns": [
@@ -17524,6 +18074,13 @@
                             "experimental": true,
                             "optional": true,
                             "type": "boolean"
+                        },
+                        {
+                            "name": "generateDocumentOutline",
+                            "description": "Whether or not to embed the document outline into the PDF.",
+                            "experimental": true,
+                            "optional": true,
+                            "type": "boolean"
                         }
                     ],
                     "returns": [
@@ -17659,7 +18216,6 @@
                 {
                     "name": "setBypassCSP",
                     "description": "Enable page Content Security Policy by-passing.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "enabled",
@@ -17911,7 +18467,6 @@
                 {
                     "name": "setLifecycleEventsEnabled",
                     "description": "Controls whether page will emit lifecycle events.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "enabled",
@@ -17996,8 +18551,7 @@
                 },
                 {
                     "name": "close",
-                    "description": "Tries to close page, running its beforeunload hooks, if any.",
-                    "experimental": true
+                    "description": "Tries to close page, running its beforeunload hooks, if any."
                 },
                 {
                     "name": "setWebLifecycleState",
@@ -18103,7 +18657,6 @@
                 {
                     "name": "setInterceptFileChooserDialog",
                     "description": "Intercept file chooser requests and transfer control to protocol clients.\nWhen file chooser interception is enabled, native file chooser dialog is not shown.\nInstead, a protocol event `Page.fileChooserOpened` is emitted.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "enabled",
@@ -19174,7 +19727,6 @@
                 {
                     "name": "setIgnoreCertificateErrors",
                     "description": "Enable/disable whether all certificate errors should be ignored.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "ignore",
@@ -19391,6 +19943,11 @@
                             "name": "targetId",
                             "optional": true,
                             "$ref": "Target.TargetID"
+                        },
+                        {
+                            "name": "routerRules",
+                            "optional": true,
+                            "type": "string"
                         }
                     ]
                 },
@@ -19658,6 +20215,11 @@
                     ]
                 },
                 {
+                    "id": "InterestGroupAuctionId",
+                    "description": "Protected audience interest group auction identifier.",
+                    "type": "string"
+                },
+                {
                     "id": "InterestGroupAccessType",
                     "description": "Enum of interest group access types.",
                     "type": "string",
@@ -19667,7 +20229,21 @@
                         "update",
                         "loaded",
                         "bid",
-                        "win"
+                        "win",
+                        "additionalBid",
+                        "additionalBidWin",
+                        "topLevelBid",
+                        "topLevelAdditionalBid",
+                        "clear"
+                    ]
+                },
+                {
+                    "id": "InterestGroupAuctionEventType",
+                    "description": "Enum of auction events.",
+                    "type": "string",
+                    "enum": [
+                        "started",
+                        "configResolved"
                     ]
                 },
                 {
@@ -19676,7 +20252,7 @@
                     "type": "object",
                     "properties": [
                         {
-                            "name": "renderUrl",
+                            "name": "renderURL",
                             "type": "string"
                         },
                         {
@@ -19708,22 +20284,22 @@
                             "type": "string"
                         },
                         {
-                            "name": "biddingUrl",
+                            "name": "biddingLogicURL",
                             "optional": true,
                             "type": "string"
                         },
                         {
-                            "name": "biddingWasmHelperUrl",
+                            "name": "biddingWasmHelperURL",
                             "optional": true,
                             "type": "string"
                         },
                         {
-                            "name": "updateUrl",
+                            "name": "updateURL",
                             "optional": true,
                             "type": "string"
                         },
                         {
-                            "name": "trustedBiddingSignalsUrl",
+                            "name": "trustedBiddingSignalsURL",
                             "optional": true,
                             "type": "string"
                         },
@@ -19997,6 +20573,47 @@
                     ]
                 },
                 {
+                    "id": "AttributionReportingFilterConfig",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "filterValues",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AttributionReportingFilterDataEntry"
+                            }
+                        },
+                        {
+                            "name": "lookbackWindow",
+                            "description": "duration in seconds",
+                            "optional": true,
+                            "type": "integer"
+                        }
+                    ]
+                },
+                {
+                    "id": "AttributionReportingFilterPair",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "filters",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AttributionReportingFilterConfig"
+                            }
+                        },
+                        {
+                            "name": "notFilters",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AttributionReportingFilterConfig"
+                            }
+                        }
+                    ]
+                },
+                {
                     "id": "AttributionReportingAggregationKeysEntry",
                     "experimental": true,
                     "type": "object",
@@ -20012,6 +20629,54 @@
                     ]
                 },
                 {
+                    "id": "AttributionReportingEventReportWindows",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "start",
+                            "description": "duration in seconds",
+                            "type": "integer"
+                        },
+                        {
+                            "name": "ends",
+                            "description": "duration in seconds",
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "AttributionReportingTriggerSpec",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "triggerData",
+                            "description": "number instead of integer because not all uint32 can be represented by\nint",
+                            "type": "array",
+                            "items": {
+                                "type": "number"
+                            }
+                        },
+                        {
+                            "name": "eventReportWindows",
+                            "$ref": "AttributionReportingEventReportWindows"
+                        }
+                    ]
+                },
+                {
+                    "id": "AttributionReportingTriggerDataMatching",
+                    "experimental": true,
+                    "type": "string",
+                    "enum": [
+                        "exact",
+                        "modulus"
+                    ]
+                },
+                {
                     "id": "AttributionReportingSourceRegistration",
                     "experimental": true,
                     "type": "object",
@@ -20023,19 +20688,18 @@
                         {
                             "name": "expiry",
                             "description": "duration in seconds",
-                            "optional": true,
                             "type": "integer"
                         },
                         {
-                            "name": "eventReportWindow",
-                            "description": "duration in seconds",
-                            "optional": true,
-                            "type": "integer"
+                            "name": "triggerSpecs",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AttributionReportingTriggerSpec"
+                            }
                         },
                         {
                             "name": "aggregatableReportWindow",
                             "description": "duration in seconds",
-                            "optional": true,
                             "type": "integer"
                         },
                         {
@@ -20083,6 +20747,10 @@
                             "name": "debugKey",
                             "optional": true,
                             "$ref": "UnsignedInt64AsBase10"
+                        },
+                        {
+                            "name": "triggerDataMatching",
+                            "$ref": "AttributionReportingTriggerDataMatching"
                         }
                     ]
                 },
@@ -20103,6 +20771,202 @@
                         "destinationBothLimitsReached",
                         "reportingOriginsPerSiteLimitReached",
                         "exceedsMaxChannelCapacity"
+                    ]
+                },
+                {
+                    "id": "AttributionReportingSourceRegistrationTimeConfig",
+                    "experimental": true,
+                    "type": "string",
+                    "enum": [
+                        "include",
+                        "exclude"
+                    ]
+                },
+                {
+                    "id": "AttributionReportingAggregatableValueEntry",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "key",
+                            "type": "string"
+                        },
+                        {
+                            "name": "value",
+                            "description": "number instead of integer because not all uint32 can be represented by\nint",
+                            "type": "number"
+                        }
+                    ]
+                },
+                {
+                    "id": "AttributionReportingEventTriggerData",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "data",
+                            "$ref": "UnsignedInt64AsBase10"
+                        },
+                        {
+                            "name": "priority",
+                            "$ref": "SignedInt64AsBase10"
+                        },
+                        {
+                            "name": "dedupKey",
+                            "optional": true,
+                            "$ref": "UnsignedInt64AsBase10"
+                        },
+                        {
+                            "name": "filters",
+                            "$ref": "AttributionReportingFilterPair"
+                        }
+                    ]
+                },
+                {
+                    "id": "AttributionReportingAggregatableTriggerData",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "keyPiece",
+                            "$ref": "UnsignedInt128AsBase16"
+                        },
+                        {
+                            "name": "sourceKeys",
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        {
+                            "name": "filters",
+                            "$ref": "AttributionReportingFilterPair"
+                        }
+                    ]
+                },
+                {
+                    "id": "AttributionReportingAggregatableDedupKey",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "dedupKey",
+                            "optional": true,
+                            "$ref": "UnsignedInt64AsBase10"
+                        },
+                        {
+                            "name": "filters",
+                            "$ref": "AttributionReportingFilterPair"
+                        }
+                    ]
+                },
+                {
+                    "id": "AttributionReportingTriggerRegistration",
+                    "experimental": true,
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "filters",
+                            "$ref": "AttributionReportingFilterPair"
+                        },
+                        {
+                            "name": "debugKey",
+                            "optional": true,
+                            "$ref": "UnsignedInt64AsBase10"
+                        },
+                        {
+                            "name": "aggregatableDedupKeys",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AttributionReportingAggregatableDedupKey"
+                            }
+                        },
+                        {
+                            "name": "eventTriggerData",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AttributionReportingEventTriggerData"
+                            }
+                        },
+                        {
+                            "name": "aggregatableTriggerData",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AttributionReportingAggregatableTriggerData"
+                            }
+                        },
+                        {
+                            "name": "aggregatableValues",
+                            "type": "array",
+                            "items": {
+                                "$ref": "AttributionReportingAggregatableValueEntry"
+                            }
+                        },
+                        {
+                            "name": "debugReporting",
+                            "type": "boolean"
+                        },
+                        {
+                            "name": "aggregationCoordinatorOrigin",
+                            "optional": true,
+                            "type": "string"
+                        },
+                        {
+                            "name": "sourceRegistrationTimeConfig",
+                            "$ref": "AttributionReportingSourceRegistrationTimeConfig"
+                        },
+                        {
+                            "name": "triggerContextId",
+                            "optional": true,
+                            "type": "string"
+                        }
+                    ]
+                },
+                {
+                    "id": "AttributionReportingEventLevelResult",
+                    "experimental": true,
+                    "type": "string",
+                    "enum": [
+                        "success",
+                        "successDroppedLowerPriority",
+                        "internalError",
+                        "noCapacityForAttributionDestination",
+                        "noMatchingSources",
+                        "deduplicated",
+                        "excessiveAttributions",
+                        "priorityTooLow",
+                        "neverAttributedSource",
+                        "excessiveReportingOrigins",
+                        "noMatchingSourceFilterData",
+                        "prohibitedByBrowserPolicy",
+                        "noMatchingConfigurations",
+                        "excessiveReports",
+                        "falselyAttributedSource",
+                        "reportWindowPassed",
+                        "notRegistered",
+                        "reportWindowNotStarted",
+                        "noMatchingTriggerData"
+                    ]
+                },
+                {
+                    "id": "AttributionReportingAggregatableResult",
+                    "experimental": true,
+                    "type": "string",
+                    "enum": [
+                        "success",
+                        "internalError",
+                        "noCapacityForAttributionDestination",
+                        "noMatchingSources",
+                        "excessiveAttributions",
+                        "excessiveReportingOrigins",
+                        "noHistograms",
+                        "insufficientBudget",
+                        "noMatchingSourceFilterData",
+                        "notRegistered",
+                        "prohibitedByBrowserPolicy",
+                        "deduplicated",
+                        "reportWindowPassed",
+                        "excessiveReports"
                     ]
                 }
             ],
@@ -20416,6 +21280,17 @@
                     ]
                 },
                 {
+                    "name": "setInterestGroupAuctionTracking",
+                    "description": "Enables/Disables issuing of interestGroupAuctionEvent events.",
+                    "experimental": true,
+                    "parameters": [
+                        {
+                            "name": "enable",
+                            "type": "boolean"
+                        }
+                    ]
+                },
+                {
                     "name": "getSharedStorageMetadata",
                     "description": "Gets metadata for an origin's shared storage.",
                     "experimental": true,
@@ -20691,7 +21566,7 @@
                 },
                 {
                     "name": "interestGroupAccessed",
-                    "description": "One of the interest groups was accessed by the associated page.",
+                    "description": "One of the interest groups was accessed. Note that these events are global\nto all targets sharing an interest group store.",
                     "parameters": [
                         {
                             "name": "accessTime",
@@ -20708,6 +21583,59 @@
                         {
                             "name": "name",
                             "type": "string"
+                        },
+                        {
+                            "name": "componentSellerOrigin",
+                            "description": "For topLevelBid/topLevelAdditionalBid, and when appropriate,\nwin and additionalBidWin",
+                            "optional": true,
+                            "type": "string"
+                        },
+                        {
+                            "name": "bid",
+                            "description": "For bid or somethingBid event, if done locally and not on a server.",
+                            "optional": true,
+                            "type": "number"
+                        },
+                        {
+                            "name": "bidCurrency",
+                            "optional": true,
+                            "type": "string"
+                        },
+                        {
+                            "name": "uniqueAuctionId",
+                            "description": "For non-global events --- links to interestGroupAuctionEvent",
+                            "optional": true,
+                            "$ref": "InterestGroupAuctionId"
+                        }
+                    ]
+                },
+                {
+                    "name": "interestGroupAuctionEventOccurred",
+                    "description": "An auction involving interest groups is taking place. These events are\ntarget-specific.",
+                    "parameters": [
+                        {
+                            "name": "eventTime",
+                            "$ref": "Network.TimeSinceEpoch"
+                        },
+                        {
+                            "name": "type",
+                            "$ref": "InterestGroupAuctionEventType"
+                        },
+                        {
+                            "name": "uniqueAuctionId",
+                            "$ref": "InterestGroupAuctionId"
+                        },
+                        {
+                            "name": "parentAuctionId",
+                            "description": "Set for child auctions.",
+                            "optional": true,
+                            "$ref": "InterestGroupAuctionId"
+                        },
+                        {
+                            "name": "auctionConfig",
+                            "description": "Set for started and configResolved",
+                            "optional": true,
+                            "type": "object"
                         }
                     ]
                 },
@@ -20762,7 +21690,6 @@
                 },
                 {
                     "name": "attributionReportingSourceRegistered",
-                    "description": "TODO(crbug.com/1458532): Add other Attribution Reporting events, e.g.\ntrigger registration.",
                     "experimental": true,
                     "parameters": [
                         {
@@ -20772,6 +21699,24 @@
                         {
                             "name": "result",
                             "$ref": "AttributionReportingSourceRegistrationResult"
+                        }
+                    ]
+                },
+                {
+                    "name": "attributionReportingTriggerRegistered",
+                    "experimental": true,
+                    "parameters": [
+                        {
+                            "name": "registration",
+                            "$ref": "AttributionReportingTriggerRegistration"
+                        },
+                        {
+                            "name": "eventLevel",
+                            "$ref": "AttributionReportingEventLevelResult"
+                        },
+                        {
+                            "name": "aggregatable",
+                            "$ref": "AttributionReportingAggregatableResult"
                         }
                     ]
                 }
@@ -21288,29 +22233,32 @@
                 {
                     "name": "createBrowserContext",
                     "description": "Creates a new empty BrowserContext. Similar to an incognito profile but you can have more than\none.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "disposeOnDetach",
                             "description": "If specified, disposes this context when debugging session disconnects.",
+                            "experimental": true,
                             "optional": true,
                             "type": "boolean"
                         },
                         {
                             "name": "proxyServer",
                             "description": "Proxy server, similar to the one passed to --proxy-server",
+                            "experimental": true,
                             "optional": true,
                             "type": "string"
                         },
                         {
                             "name": "proxyBypassList",
                             "description": "Proxy bypass list, similar to the one passed to --proxy-bypass-list",
+                            "experimental": true,
                             "optional": true,
                             "type": "string"
                         },
                         {
                             "name": "originsWithUniversalNetworkAccess",
                             "description": "An optional list of origins to grant unlimited cross-origin access to.\nParts of the URL other than those constituting origin are ignored.",
+                            "experimental": true,
                             "optional": true,
                             "type": "array",
                             "items": {
@@ -21329,7 +22277,6 @@
                 {
                     "name": "getBrowserContexts",
                     "description": "Returns all browser contexts created with `Target.createBrowserContext` method.",
-                    "experimental": true,
                     "returns": [
                         {
                             "name": "browserContextIds",
@@ -21426,7 +22373,6 @@
                 {
                     "name": "disposeBrowserContext",
                     "description": "Deletes a BrowserContext. All the belonging pages will be closed without calling their\nbeforeunload hooks.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "browserContextId",
@@ -21502,7 +22448,6 @@
                 {
                     "name": "setAutoAttach",
                     "description": "Controls whether to automatically attach to new targets which are considered to be related to\nthis one. When turned on, attaches to all existing related targets as well. When turned off,\nautomatically detaches from all currently attached targets.\nThis also clears all targets added by `autoAttachRelated` from the list of targets to watch\nfor creation of related targets.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "autoAttach",
@@ -21517,6 +22462,7 @@
                         {
                             "name": "flatten",
                             "description": "Enables \"flat\" access to the session via specifying sessionId attribute in the commands.\nWe plan to make this the default, deprecate non-flattened mode,\nand eventually retire it. See crbug.com/991325.",
+                            "experimental": true,
                             "optional": true,
                             "type": "boolean"
                         },
@@ -23081,6 +24027,18 @@
                             "description": "Sets whether User Verification succeeds or fails for an authenticator.\nDefaults to false.",
                             "optional": true,
                             "type": "boolean"
+                        },
+                        {
+                            "name": "defaultBackupEligibility",
+                            "description": "Credentials created by this authenticator will have the backup\neligibility (BE) flag set to this value. Defaults to false.\nhttps://w3c.github.io/webauthn/#sctn-credential-backup",
+                            "optional": true,
+                            "type": "boolean"
+                        },
+                        {
+                            "name": "defaultBackupState",
+                            "description": "Credentials created by this authenticator will have the backup state\n(BS) flag set to this value. Defaults to false.\nhttps://w3c.github.io/webauthn/#sctn-credential-backup",
+                            "optional": true,
+                            "type": "boolean"
                         }
                     ]
                 },
@@ -23777,7 +24735,6 @@
                         "LowEndDevice",
                         "InvalidSchemeRedirect",
                         "InvalidSchemeNavigation",
-                        "InProgressNavigation",
                         "NavigationRequestBlockedByCsp",
                         "MainFrameNavigation",
                         "MojoBinderPolicy",
@@ -23789,7 +24746,6 @@
                         "NavigationBadHttpStatus",
                         "ClientCertRequested",
                         "NavigationRequestNetworkError",
-                        "MaxNumOfRunningPrerendersExceeded",
                         "CancelAllHostsForTesting",
                         "DidFailLoad",
                         "Stop",
@@ -23801,9 +24757,8 @@
                         "MixedContent",
                         "TriggerBackgrounded",
                         "MemoryLimitExceeded",
-                        "FailToGetMemoryUsage",
                         "DataSaverEnabled",
-                        "HasEffectiveUrl",
+                        "TriggerUrlHasEffectiveUrl",
                         "ActivatedBeforeStarted",
                         "InactivePageRestriction",
                         "StartFailed",
@@ -23832,9 +24787,14 @@
                         "MemoryPressureOnTrigger",
                         "MemoryPressureAfterTriggered",
                         "PrerenderingDisabledByDevTools",
-                        "ResourceLoadBlockedByClient",
                         "SpeculationRuleRemoved",
-                        "ActivatedWithAuxiliaryBrowsingContexts"
+                        "ActivatedWithAuxiliaryBrowsingContexts",
+                        "MaxNumOfRunningEagerPrerendersExceeded",
+                        "MaxNumOfRunningNonEagerPrerendersExceeded",
+                        "MaxNumOfRunningEmbedderPrerendersExceeded",
+                        "PrerenderingUrlHasEffectiveUrl",
+                        "RedirectedPrerenderingUrlHasEffectiveUrl",
+                        "ActivationUrlHasEffectiveUrl"
                     ]
                 },
                 {
@@ -23862,7 +24822,8 @@
                         "PrefetchFailedNetError",
                         "PrefetchFailedNon2XX",
                         "PrefetchFailedPerPageLimitExceeded",
-                        "PrefetchEvicted",
+                        "PrefetchEvictedAfterCandidateRemoved",
+                        "PrefetchEvictedForNewerPrefetch",
                         "PrefetchHeldback",
                         "PrefetchIneligibleRetryAfter",
                         "PrefetchIsPrivacyDecoy",
@@ -23885,6 +24846,27 @@
                         "PrefetchResponseUsed",
                         "PrefetchSuccessfulButNotUsed",
                         "PrefetchNotUsedProbeFailed"
+                    ]
+                },
+                {
+                    "id": "PrerenderMismatchedHeaders",
+                    "description": "Information of headers to be displayed when the header mismatch occurred.",
+                    "type": "object",
+                    "properties": [
+                        {
+                            "name": "headerName",
+                            "type": "string"
+                        },
+                        {
+                            "name": "initialValue",
+                            "optional": true,
+                            "type": "string"
+                        },
+                        {
+                            "name": "activationValue",
+                            "optional": true,
+                            "type": "string"
+                        }
                     ]
                 }
             ],
@@ -23913,35 +24895,6 @@
                         {
                             "name": "id",
                             "$ref": "RuleSetId"
-                        }
-                    ]
-                },
-                {
-                    "name": "prerenderAttemptCompleted",
-                    "description": "Fired when a prerender attempt is completed.",
-                    "parameters": [
-                        {
-                            "name": "key",
-                            "$ref": "PreloadingAttemptKey"
-                        },
-                        {
-                            "name": "initiatingFrameId",
-                            "description": "The frame id of the frame initiating prerendering.",
-                            "$ref": "Page.FrameId"
-                        },
-                        {
-                            "name": "prerenderingUrl",
-                            "type": "string"
-                        },
-                        {
-                            "name": "finalStatus",
-                            "$ref": "PrerenderFinalStatus"
-                        },
-                        {
-                            "name": "disallowedApiMethod",
-                            "description": "This is used to give users more information about the name of the API call\nthat is incompatible with prerender and has caused the cancellation of the attempt",
-                            "optional": true,
-                            "type": "string"
                         }
                     ]
                 },
@@ -24024,6 +24977,14 @@
                             "description": "This is used to give users more information about the name of Mojo interface\nthat is incompatible with prerender and has caused the cancellation of the attempt.",
                             "optional": true,
                             "type": "string"
+                        },
+                        {
+                            "name": "mismatchedHeaders",
+                            "optional": true,
+                            "type": "array",
+                            "items": {
+                                "$ref": "PrerenderMismatchedHeaders"
+                            }
                         }
                     ]
                 },
@@ -24062,12 +25023,23 @@
                 },
                 {
                     "id": "DialogType",
-                    "description": "Whether the dialog shown is an account chooser or an auto re-authentication dialog.",
+                    "description": "The types of FedCM dialogs.",
                     "type": "string",
                     "enum": [
                         "AccountChooser",
                         "AutoReauthn",
-                        "ConfirmIdpSignin"
+                        "ConfirmIdpLogin",
+                        "Error"
+                    ]
+                },
+                {
+                    "id": "DialogButton",
+                    "description": "The buttons on the FedCM dialog.",
+                    "type": "string",
+                    "enum": [
+                        "ConfirmIdpLoginContinue",
+                        "ErrorGotIt",
+                        "ErrorMoreDetails"
                     ]
                 },
                 {
@@ -24100,7 +25072,7 @@
                             "type": "string"
                         },
                         {
-                            "name": "idpSigninUrl",
+                            "name": "idpLoginUrl",
                             "type": "string"
                         },
                         {
@@ -24151,6 +25123,16 @@
                             "type": "string"
                         }
                     ]
+                },
+                {
+                    "name": "dialogClosed",
+                    "description": "Triggered when a dialog is closed, either by user action, JS abort,\nor a command below.",
+                    "parameters": [
+                        {
+                            "name": "dialogId",
+                            "type": "string"
+                        }
+                    ]
                 }
             ],
             "commands": [
@@ -24178,6 +25160,19 @@
                         {
                             "name": "accountIndex",
                             "type": "integer"
+                        }
+                    ]
+                },
+                {
+                    "name": "clickDialogButton",
+                    "parameters": [
+                        {
+                            "name": "dialogId",
+                            "type": "string"
+                        },
+                        {
+                            "name": "dialogButton",
+                            "$ref": "DialogButton"
                         }
                     ]
                 },
@@ -26360,7 +27355,7 @@
                 },
                 {
                     "id": "SerializationOptions",
-                    "description": "Represents options for serialization. Overrides `generatePreview`, `returnByValue` and\n`generateWebDriverValue`.",
+                    "description": "Represents options for serialization. Overrides `generatePreview` and `returnByValue`.",
                     "type": "object",
                     "properties": [
                         {
@@ -26417,7 +27412,8 @@
                                 "typedarray",
                                 "arraybuffer",
                                 "node",
-                                "window"
+                                "window",
+                                "generator"
                             ]
                         },
                         {
@@ -26518,13 +27514,6 @@
                             "description": "String representation of the object.",
                             "optional": true,
                             "type": "string"
-                        },
-                        {
-                            "name": "webDriverValue",
-                            "description": "Deprecated. Use `deepSerializedValue` instead. WebDriver BiDi representation of the value.",
-                            "deprecated": true,
-                            "optional": true,
-                            "$ref": "DeepSerializedValue"
                         },
                         {
                             "name": "deepSerializedValue",
@@ -27195,15 +28184,8 @@
                             "type": "string"
                         },
                         {
-                            "name": "generateWebDriverValue",
-                            "description": "Deprecated. Use `serializationOptions: {serialization:\"deep\"}` instead.\nWhether the result should contain `webDriverValue`, serialized according to\nhttps://w3c.github.io/webdriver-bidi. This is mutually exclusive with `returnByValue`, but\nresulting `objectId` is still provided.",
-                            "deprecated": true,
-                            "optional": true,
-                            "type": "boolean"
-                        },
-                        {
                             "name": "serializationOptions",
-                            "description": "Specifies the result serialization. If provided, overrides\n`generatePreview`, `returnByValue` and `generateWebDriverValue`.",
+                            "description": "Specifies the result serialization. If provided, overrides\n`generatePreview` and `returnByValue`.",
                             "experimental": true,
                             "optional": true,
                             "$ref": "SerializationOptions"
@@ -27377,15 +28359,8 @@
                             "type": "string"
                         },
                         {
-                            "name": "generateWebDriverValue",
-                            "description": "Deprecated. Use `serializationOptions: {serialization:\"deep\"}` instead.\nWhether the result should contain `webDriverValue`, serialized\naccording to\nhttps://w3c.github.io/webdriver-bidi. This is mutually exclusive with `returnByValue`, but\nresulting `objectId` is still provided.",
-                            "deprecated": true,
-                            "optional": true,
-                            "type": "boolean"
-                        },
-                        {
                             "name": "serializationOptions",
-                            "description": "Specifies the result serialization. If provided, overrides\n`generatePreview`, `returnByValue` and `generateWebDriverValue`.",
+                            "description": "Specifies the result serialization. If provided, overrides\n`generatePreview` and `returnByValue`.",
                             "experimental": true,
                             "optional": true,
                             "$ref": "SerializationOptions"
@@ -27683,7 +28658,6 @@
                 {
                     "name": "addBinding",
                     "description": "If executionContextId is empty, adds binding with the given name on the\nglobal objects of all inspected contexts, including those created later,\nbindings survive reloads.\nBinding function takes exactly one argument, this argument should be string,\nin case of any other input, function throws an exception.\nEach binding function call produces Runtime.bindingCalled notification.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "name",
@@ -27692,6 +28666,7 @@
                         {
                             "name": "executionContextId",
                             "description": "If specified, the binding would only be exposed to the specified\nexecution context. If omitted and `executionContextName` is not set,\nthe binding is exposed to all execution contexts of the target.\nThis parameter is mutually exclusive with `executionContextName`.\nDeprecated in favor of `executionContextName` due to an unclear use case\nand bugs in implementation (crbug.com/1169639). `executionContextId` will be\nremoved in the future.",
+                            "experimental": true,
                             "deprecated": true,
                             "optional": true,
                             "$ref": "ExecutionContextId"
@@ -27699,7 +28674,6 @@
                         {
                             "name": "executionContextName",
                             "description": "If specified, the binding is exposed to the executionContext with\nmatching name, even for contexts created after the binding is added.\nSee also `ExecutionContext.name` and `worldName` parameter to\n`Page.addScriptToEvaluateOnNewDocument`.\nThis parameter is mutually exclusive with `executionContextId`.",
-                            "experimental": true,
                             "optional": true,
                             "type": "string"
                         }
@@ -27708,7 +28682,6 @@
                 {
                     "name": "removeBinding",
                     "description": "This method does not remove binding function from global object but\nunsubscribes current runtime agent from Runtime.bindingCalled notifications.",
-                    "experimental": true,
                     "parameters": [
                         {
                             "name": "name",

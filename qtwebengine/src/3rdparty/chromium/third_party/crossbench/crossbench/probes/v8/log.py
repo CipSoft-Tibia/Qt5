@@ -10,28 +10,28 @@ import os
 import pathlib
 import re
 import subprocess
-from typing import TYPE_CHECKING, Iterable, List, Optional, cast
+from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple, cast
 
-from crossbench import cli_helper, compat, helper
+from crossbench import cli_helper, compat, helper, plt
 from crossbench.browsers.browser import Browser
 from crossbench.browsers.chromium.chromium import Chromium
 from crossbench.flags import JSFlags
-from crossbench import plt
 from crossbench.probes import helper as probe_helper
-from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeScope,
+from crossbench.probes.chromium_probe import ChromiumProbe
+from crossbench.probes.probe import (ProbeConfigParser, ProbeContext,
                                      ResultLocation)
 from crossbench.probes.results import ProbeResult
 
 if TYPE_CHECKING:
   from crossbench.env import HostEnvironment
-  from crossbench.runner.run import Run
   from crossbench.runner.groups import BrowsersRunGroup
+  from crossbench.runner.run import Run
 
 _PROF_FLAG = "--prof"
 _LOG_ALL_FLAG = "--log-all"
 
 
-class V8LogProbe(Probe):
+class V8LogProbe(ChromiumProbe):
   """
   Chromium-only probe that produces a v8.log file with detailed internal V8
   performance and logging information.
@@ -92,10 +92,10 @@ class V8LogProbe(Probe):
                d8_binary: Optional[pathlib.Path] = None,
                v8_checkout: Optional[pathlib.Path] = None) -> None:
     super().__init__()
-    self._profview = profview
+    self._profview: bool = profview
     self._js_flags = JSFlags()
-    self._d8_binary = d8_binary
-    self._v8_checkout = v8_checkout
+    self._d8_binary: Optional[pathlib.Path] = d8_binary
+    self._v8_checkout: Optional[pathlib.Path] = v8_checkout
     assert isinstance(log_all,
                       bool), (f"Expected bool value, got log_all={log_all}")
     assert isinstance(prof, bool), f"Expected bool value, got log_all={prof}"
@@ -115,22 +115,35 @@ class V8LogProbe(Probe):
       raise ValueError(f"{self}: V8LogProbe has no effect")
 
   @property
+  def key(self) -> Tuple[Tuple, ...]:
+    return super().key + (
+        ("profview", self._profview),
+        ("js_flags", str(self.js_flags)),
+        ("d8_binary", str(self._d8_binary)),
+        ("v8_checkout", str(self._v8_checkout)),
+    )
+
+  @property
   def js_flags(self) -> JSFlags:
     return self._js_flags.copy()
 
-  def is_compatible(self, browser: Browser) -> bool:
-    if not isinstance(browser, Chromium):
-      return False
+  def validate_env(self, env: HostEnvironment) -> None:
+    super().validate_env(env)
+    if env.runner.repetitions != 1:
+      env.handle_warning(f"Probe({self.NAME}) cannot merge data over multiple "
+                         f"repetitions={env.runner.repetitions}.")
+
+  def validate_browser(self, env: HostEnvironment, browser: Browser) -> None:
+    super().validate_browser(env, browser)
     # --prof sometimes causes issues on enterprise chrome on linux.
     if not _PROF_FLAG in self._js_flags:
-      return True
+      return
     if not browser.platform.is_linux or browser.major_version <= 106:
-      return True
+      return
     for search_path in cast(plt.LinuxPlatform, browser.platform).SEARCH_PATHS:
       if compat.is_relative_to(browser.path, search_path):
         logging.error(
             "Probe with V8 --prof might not work with enterprise profiles")
-    return True
 
   def attach(self, browser: Browser) -> None:
     super().attach(browser)
@@ -139,12 +152,6 @@ class V8LogProbe(Probe):
     browser = cast(Chromium, browser)
     browser.flags.set("--no-sandbox")
     browser.js_flags.update(self._js_flags)
-
-  def pre_check(self, env: HostEnvironment) -> None:
-    super().pre_check(env)
-    if env.runner.repetitions != 1:
-      env.handle_warning(f"Probe={self.NAME} cannot merge data over multiple "
-                         f"repetitions={env.runner.repetitions}.")
 
   def process_log_files(self,
                         log_files: List[pathlib.Path]) -> List[pathlib.Path]:
@@ -172,8 +179,8 @@ class V8LogProbe(Probe):
                        [(finder.d8_binary, finder.tick_processor, log_file)
                         for log_file in log_files]))
 
-  def get_scope(self, run: Run) -> V8LogProbeScope:
-    return V8LogProbeScope(self, run)
+  def get_context(self, run: Run) -> V8LogProbeContext:
+    return V8LogProbeContext(self, run)
 
   def log_browsers_result(self, group: BrowsersRunGroup) -> None:
     runs: List[Run] = list(run for run in group.runs if self in run.results)
@@ -209,23 +216,23 @@ class V8LogProbe(Probe):
                      largest_profview_file.parent, len(profview_files))
 
 
-class V8LogProbeScope(ProbeScope[V8LogProbe]):
+class V8LogProbeContext(ProbeContext[V8LogProbe]):
 
   def get_default_result_path(self) -> pathlib.Path:
     log_dir = super().get_default_result_path()
     self.browser_platform.mkdir(log_dir)
     return log_dir / self.probe.result_path_name
 
-  def setup(self, run: Run) -> None:
-    run.extra_js_flags["--logfile"] = str(self.result_path)
+  def setup(self) -> None:
+    self.session.extra_js_flags["--logfile"] = str(self.result_path)
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     pass
 
-  def stop(self, run: Run) -> None:
+  def stop(self) -> None:
     pass
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     log_dir = self.result_path.parent
     log_files = helper.sort_by_file_size(log_dir.glob("*-v8.log"))
     # Only convert a v8.log file with profile ticks.
@@ -251,23 +258,26 @@ def _process_profview_json(d8_binary: pathlib.Path,
         log_file,
         env=env,
         stdout=f,
-        stderr=subprocess.DEVNULL)
+        stderr=subprocess.PIPE)
   return result_json
 
 
-class V8ToolsFinder(probe_helper.V8CheckoutFinder):
+class V8ToolsFinder:
   """Helper class to find d8 binaries and the tick-processor.
   If no explicit d8 and checkout path are given, $D8_PATH and common v8 and
   chromium installation directories are checked."""
 
   def __init__(self, platform: plt.Platform, d8_binary: Optional[pathlib.Path],
                v8_checkout: Optional[pathlib.Path]) -> None:
-    super().__init__(platform)
+    self.platform = platform
     self.d8_binary: Optional[pathlib.Path] = d8_binary
+    self.v8_checkout: Optional[pathlib.Path] = None
     if v8_checkout:
       self.v8_checkout = v8_checkout
+    else:
+      self.v8_checkout = probe_helper.V8CheckoutFinder(self.platform).path
     self.tick_processor: Optional[pathlib.Path] = None
-    self.d8_binary = self._find_d8()
+    self.d8_binary: Optional[pathlib.Path] = self._find_d8()
     if self.d8_binary:
       self.tick_processor = self._find_v8_tick_processor()
     logging.debug("V8ToolsFinder found d8_binary='%s' tick_processor='%s'",
@@ -285,7 +295,8 @@ class V8ToolsFinder(probe_helper.V8CheckoutFinder):
       if candidate.is_file():
         return candidate
     # Try potential build location
-    for candidate_dir in self.checkout_candidates:
+    for candidate_dir in probe_helper.V8CheckoutFinder(
+        self.platform).candidates:
       for build_type in ("release", "optdebug", "Default", "Release"):
         candidates = list(candidate_dir.glob(f"out/*{build_type}/d8"))
         if candidates and candidates[0].is_file():

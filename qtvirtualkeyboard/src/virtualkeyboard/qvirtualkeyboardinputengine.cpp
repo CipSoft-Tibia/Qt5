@@ -52,7 +52,7 @@ public:
                 accept = fallbackInputMethod->keyEvent(key, text, modifiers);
             }
             emit q->virtualKeyClicked(key, text, modifiers, isAutoRepeat);
-        } else if (QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS) {
+        } else if (QtVirtualKeyboard::forceEventsWithoutFocus()) {
             accept = fallbackInputMethod->keyEvent(key, text, modifiers);
             emit q->virtualKeyClicked(key, text, modifiers, isAutoRepeat);
         } else {
@@ -101,7 +101,7 @@ private:
     \qmltype InputEngine
     \inqmlmodule QtQuick.VirtualKeyboard
     \ingroup qtvirtualkeyboard-internal-qml
-    \instantiates QVirtualKeyboardInputEngine
+    \nativetype QVirtualKeyboardInputEngine
     \brief Maps the user input to the input methods.
 
     The input engine is responsible for routing input events to input

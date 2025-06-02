@@ -59,6 +59,8 @@ class CORE_EXPORT LocationReportBody : public ReportBody {
 
   unsigned MatchId() const override;
 
+  bool IsExtensionSource() const override;
+
  protected:
   const String source_file_;
   const absl::optional<uint32_t> line_number_;

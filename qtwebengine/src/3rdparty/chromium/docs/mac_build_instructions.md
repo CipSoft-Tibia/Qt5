@@ -163,6 +163,17 @@ this dramatically reduces the total amount of work needed. Check out the
 
 Enable jumbo builds by setting the GN arg `use_jumbo_build=true`.
 
+#### Use Reclient
+
+In addition, Google employees should use Reclient, a distributed compilation system.
+Detailed information is available internally but the relevant gn arg is:
+* `use_remoteexec = true`
+
+Google employees can visit
+[go/building-chrome-mac#using-remote-execution](https://goto.google.com/building-chrome-mac#using-remote-execution)
+for more information. For external contributors, Reclient does not support Mac
+builds.
+
 #### CCache
 
 You might also want to [install ccache](ccache_mac.md) to speed up the build.
@@ -355,12 +366,9 @@ $ git config core.untrackedCache true
 
 You can significantly speed up git by using [fsmonitor.](https://github.blog/2022-06-29-improve-git-monorepo-performance-with-a-file-system-monitor/)
 You should enable fsmonitor in large repos, such as Chromium and v8. Enabling
-it globally will launch many processes and probably isn't worthwhile. The
+it globally will launch many processes and probably isn't worthwhile. Be sure
+you have at least version 2.43 (fsmonitor on the Mac is broken before then). The
 command to enable fsmonitor in the current repo is:
-
-> WARNING: There is a major issue with fsmonitor resulting in git diff-index
-> returning wrong results. Skip enabling this until
-[crbug.com/1475405](https://crbug.com/1475405) is fixed.
 
 ```shell
 $ git config core.fsmonitor true

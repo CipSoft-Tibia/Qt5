@@ -53,6 +53,13 @@ See the documentation about
 \l{qtqml-typesystem-sequencetypes.html}{sequence types in the QML type system}
 for in-depth information about sequence types.
 
+\section1 Enumerations
+
+Enumerations are treated as special properties of types in QML.
+
+See the the documentation about \l{QML Enumerations} for in-depth
+information about enumerations.
+
 \section1 QML Namespaces
 
 QML Namespaces can be used to expose enumerations from C++ namespaces.

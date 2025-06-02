@@ -6,6 +6,10 @@
 #include <QList>
 #include <QTest>
 
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
+
 #include <algorithm>
 #include <array>
 #ifdef __cpp_lib_span
@@ -125,6 +129,8 @@ private Q_SLOTS:
     void fromQList() const;
     void fromInitList() const;
 
+    void constQSpansDontDetachQtContainers() const;
+
 private:
     template <typename T, std::size_t N>
     void check_nonempty_span(QSpan<T, N>, qsizetype expectedSize) const;
@@ -141,8 +147,8 @@ private:
     void from_variable_size_container_impl(C &&c) const;
 };
 
-#define RETURN_IF_FAILED() \
-    do { if (QTest::currentTestFailed()) return; } while (false)
+template <typename T>
+const void *as_const_void(T *p) noexcept { return static_cast<const void *>(p); }
 
 void tst_QSpan::onlyZeroExtentSpansHaveDefaultCtors() const
 {
@@ -153,19 +159,15 @@ void tst_QSpan::onlyZeroExtentSpansHaveDefaultCtors() const
 
     QSpan<int, 0> si;
     check_null_span(si);
-    RETURN_IF_FAILED();
 
     QSpan<const int, 0> sci;
     check_null_span(sci);
-    RETURN_IF_FAILED();
 
     QSpan<int> sdi;
     check_null_span(sdi);
-    RETURN_IF_FAILED();
 
     QSpan<const int> sdci;
     check_null_span(sdci);
-    RETURN_IF_FAILED();
 
     static_assert(!std::is_default_constructible_v<QSpan<int, 1>>);
     static_assert(!std::is_default_constructible_v<QSpan<const int, 42>>);
@@ -177,22 +179,18 @@ void tst_QSpan::zeroExtentSpansMaintainADataPointer() const
     QSpan<int, 0> si{&i, 0};
     QCOMPARE(si.data(), &i);
     check_empty_span_incl_subspans(si);
-    RETURN_IF_FAILED();
 
     QSpan<const int, 0> sci{&i, 0};
     QCOMPARE(sci.data(), &i);
     check_empty_span_incl_subspans(sci);
-    RETURN_IF_FAILED();
 
     QSpan<int, 0> sdi{&i, 0};
     QCOMPARE(sdi.data(), &i);
     check_empty_span_incl_subspans(sdi);
-    RETURN_IF_FAILED();
 
     QSpan<const int, 0> sdci{&i, 0};
     QCOMPARE(sdci.data(), &i);
     check_empty_span_incl_subspans(sdci);
-    RETURN_IF_FAILED();
 }
 
 template <typename T, std::size_t N>
@@ -230,18 +228,14 @@ void tst_QSpan::check_nonempty_span(QSpan<T, N> s, qsizetype expectedSize) const
         // don't run into Mandates: Offset >= Extent
         if constexpr (N > 0) { // incl. N == std::dynamic_extent
             check_empty_span_incl_subspans(s.template subspan<1>());
-            RETURN_IF_FAILED();
         }
         check_empty_span_incl_subspans(s.subspan(1));
-        RETURN_IF_FAILED();
     } else {
         // don't run into Mandates: Offset >= Extent
         if constexpr (N > 1) { // incl. N == std::dynamic_extent
             check_nonempty_span(s.template subspan<1>(), expectedSize - 1);
-            RETURN_IF_FAILED();
         }
         check_nonempty_span(s.subspan(1), expectedSize - 1);
-        RETURN_IF_FAILED();
     }
 }
 
@@ -263,55 +257,46 @@ template <typename T, std::size_t N>
 void tst_QSpan::check_empty_span_incl_subspans(QSpan<T, N> s) const
 {
     check_empty_span(s);
-    RETURN_IF_FAILED();
 
     {
         const auto fi = s.template first<0>();
         check_empty_span(fi);
-        RETURN_IF_FAILED();
         QCOMPARE_EQ(fi.data(), s.data());
     }
     {
         const auto la = s.template last<0>();
         check_empty_span(la);
-        RETURN_IF_FAILED();
         QCOMPARE_EQ(la.data(), s.data());
     }
     {
         const auto ss = s.template subspan<0>();
         check_empty_span(ss);
-        RETURN_IF_FAILED();
         QCOMPARE_EQ(ss.data(), s.data());
     }
     {
         const auto ss = s.template subspan<0, 0>();
         check_empty_span(ss);
-        RETURN_IF_FAILED();
         QCOMPARE_EQ(ss.data(), s.data());
     }
 
     {
         const auto fi = s.first(0);
         check_empty_span(fi);
-        RETURN_IF_FAILED();
         QCOMPARE_EQ(fi.data(), s.data());
     }
     {
         const auto la = s.last(0);
         check_empty_span(la);
-        RETURN_IF_FAILED();
         QCOMPARE_EQ(la.data(), s.data());
     }
     {
         const auto ss = s.subspan(0);
         check_empty_span(ss);
-        RETURN_IF_FAILED();
         QCOMPARE_EQ(ss.data(), s.data());
     }
     {
         const auto ss = s.subspan(0, 0);
         check_empty_span(ss);
-        RETURN_IF_FAILED();
         QCOMPARE_EQ(ss.data(), s.data());
     }
 }
@@ -334,6 +319,8 @@ void tst_QSpan::from_container_impl(C &&c) const
     const auto c_data = QSpanPrivate::adl_data(c);
 
     using V = std::remove_reference_t<QSpanPrivate::range_reference_t<C>>;
+    constexpr auto ExpectedBytesExtent
+        = ExpectedExtent == q20::dynamic_extent ? q20::dynamic_extent : ExpectedExtent * sizeof(V);
     {
         QSpan si = c; // CTAD
         static_assert(std::is_same_v<decltype(si), QSpan<V, ExpectedExtent>>);
@@ -342,7 +329,20 @@ void tst_QSpan::from_container_impl(C &&c) const
         QCOMPARE_EQ(si.data(), c_data);
 
         check_nonempty_span(si, c_size);
-        RETURN_IF_FAILED();
+
+        auto bi = as_bytes(si);
+        static_assert(std::is_same_v<decltype(bi), QSpan<const std::byte, ExpectedBytesExtent>>);
+        QCOMPARE_EQ(bi.size(), si.size_bytes());
+        QCOMPARE_EQ(as_const_void(bi.data()),
+                    as_const_void(si.data()));
+
+        if constexpr (!std::is_const_v<V>) { // e.g. std::initializer_list<int>
+            auto wbi = as_writable_bytes(si);
+            static_assert(std::is_same_v<decltype(wbi), QSpan<std::byte, ExpectedBytesExtent>>);
+            QCOMPARE_EQ(wbi.size(), si.size_bytes());
+            QCOMPARE_EQ(as_const_void(wbi.data()),
+                        as_const_void(si.data()));
+        }
 
         QSpan<const int> sci = c;
 
@@ -350,7 +350,12 @@ void tst_QSpan::from_container_impl(C &&c) const
         QCOMPARE_EQ(sci.data(), c_data);
 
         check_nonempty_span(sci, c_size);
-        RETURN_IF_FAILED();
+
+        auto bci = as_bytes(sci);
+        static_assert(std::is_same_v<decltype(bci), QSpan<const std::byte>>);
+        QCOMPARE_EQ(bci.size(), sci.size_bytes());
+        QCOMPARE_EQ(as_const_void(bci.data()),
+                    as_const_void(sci.data()));
     }
     {
         QSpan sci = std::as_const(c); // CTAD
@@ -360,7 +365,12 @@ void tst_QSpan::from_container_impl(C &&c) const
         QCOMPARE_EQ(sci.data(), c_data);
 
         check_nonempty_span(sci, c_size);
-        RETURN_IF_FAILED();
+
+        auto bci = as_bytes(sci);
+        static_assert(std::is_same_v<decltype(bci), QSpan<const std::byte, ExpectedBytesExtent>>);
+        QCOMPARE_EQ(bci.size(), sci.size_bytes());
+        QCOMPARE_EQ(as_const_void(bci.data()),
+                    as_const_void(sci.data()));
     }
 }
 
@@ -395,7 +405,6 @@ void tst_QSpan::fromStdInitializerList() const
     QCOMPARE_EQ(sci.data(), il.begin());
 
     check_nonempty_span(sci, 4);
-    RETURN_IF_FAILED();
 }
 
 void tst_QSpan::fromZeroSizeStdArray() const
@@ -433,6 +442,32 @@ void tst_QSpan::fromQList() const
     from_variable_size_container_impl(li);
 }
 
+void tst_QSpan::constQSpansDontDetachQtContainers() const
+{
+    QList<int> li = {42, 84, 168, 336};
+
+    {
+        [[maybe_unused]] const QList copy = li;
+        QVERIFY(!li.isDetached());
+        [[maybe_unused]] QSpan<const int> cvspan = li; // should not detach (QTBUG-132133)
+        QEXPECT_FAIL("", "QTBUG-132133", Continue);
+        QVERIFY(!li.isDetached());
+        [[maybe_unused]] QSpan<int> mvspan = li; // this _has_ to detach, though
+        QVERIFY(li.isDetached());
+    }
+
+    // same check for fixed-size spans
+    {
+        [[maybe_unused]] const QList copy = li;
+        QVERIFY(!li.isDetached());
+        [[maybe_unused]] QSpan<const int, 4> cfspan = li; // should not detach (QTBUG-132133)
+        QEXPECT_FAIL("", "QTBUG-132133", Continue);
+        QVERIFY(!li.isDetached());
+        [[maybe_unused]] QSpan<int, 4> mfspan = li; // this _has_ to detach, though
+        QVERIFY(li.isDetached());
+    }
+}
+
 void tst_QSpan::fromInitList() const
 {
     from_variable_size_container_impl(std::initializer_list<int>{42, 84, 168, 336});
@@ -443,8 +478,6 @@ void tst_QSpan::fromInitList() const
     auto l2 = [](QSpan<const int, 3>){};
     l2({4, 5, 6});
 }
-
-#undef RETURN_IF_FAILED
 
 QTEST_APPLESS_MAIN(tst_QSpan);
 #include "tst_qspan.moc"

@@ -31,7 +31,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_POSITIONINGQUICK_PRIVATE_EXPORT LocationSingleton : public QObject
+class Q_POSITIONINGQUICK_EXPORT LocationSingleton : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(QtPositioning)

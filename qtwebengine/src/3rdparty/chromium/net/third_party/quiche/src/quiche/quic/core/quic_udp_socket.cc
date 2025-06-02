@@ -7,9 +7,10 @@
 #define __APPLE_USE_RFC_3542
 #endif  // defined(__APPLE__) && !defined(__APPLE_USE_RFC_3542)
 
+#include "quiche/quic/core/quic_udp_socket.h"
+
 #include "absl/base/optimization.h"
 #include "quiche/quic/core/io/socket.h"
-#include "quiche/quic/core/quic_udp_socket.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/quic/platform/api/quic_flag_utils.h"
 
@@ -96,16 +97,16 @@ QuicUdpSocketFd QuicUdpSocketApi::Create(int address_family,
   }
 
 #if !defined(_WIN32)
-  SetGoogleSocketOptions(socket.value());
+  SetGoogleSocketOptions(*socket);
 #endif
 
-  if (!SetupSocket(socket.value(), address_family, receive_buffer_size,
+  if (!SetupSocket(*socket, address_family, receive_buffer_size,
                    send_buffer_size, ipv6_only)) {
-    Destroy(socket.value());
+    Destroy(*socket);
     return kQuicInvalidSocketFd;
   }
 
-  return socket.value();
+  return *socket;
 }
 
 void QuicUdpSocketApi::Destroy(QuicUdpSocketFd fd) {
@@ -171,7 +172,7 @@ bool QuicUdpSocketApi::EnableReceiveSelfIpAddressForV6(QuicUdpSocketFd fd) {
 }
 
 bool QuicUdpSocketApi::EnableReceiveTimestamp(QuicUdpSocketFd fd) {
-#if defined(__linux__) && (!defined(__ANDROID_API__) || __ANDROID_API__ >= 21)
+#if defined(QUIC_UDP_SOCKET_SUPPORT_LINUX_TIMESTAMPING)
   int timestamping = SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_SOFTWARE;
   return 0 == setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &timestamping,
                          sizeof(timestamping));

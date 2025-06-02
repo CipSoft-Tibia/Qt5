@@ -10,38 +10,74 @@ Item {
     height: 150
     width: 150
 
-    ItemModelSurfaceDataProxy {
-        id: initial
+    Surface3DSeries {
+        dataProxy: ItemModelSurfaceDataProxy {
+            id: initial
+        }
     }
 
-    ItemModelSurfaceDataProxy {
-        id: initialized
+    Surface3DSeries {
+        dataProxy: ItemModelSurfaceDataProxy {
+            id: initialized
 
-        autoColumnCategories: false
-        autoRowCategories: false
-        columnCategories: ["colcat1", "colcat2"]
-        columnRole: "col"
-        columnRolePattern: /^.*-(\d\d)$/
-        columnRoleReplace: "\\1"
-        itemModel: ListModel { objectName: "model1" }
-        multiMatchBehavior: ItemModelSurfaceDataProxy.MultiMatchBehavior.Average
-        rowCategories: ["rowcat1", "rowcat2"]
-        rowRole: "row"
-        rowRolePattern: /^(\d\d\d\d).*$/
-        rowRoleReplace: "\\1"
-        xPosRole: "x"
-        xPosRolePattern: /^.*-(\d\d)$/
-        xPosRoleReplace: "\\1"
-        yPosRole: "y"
-        yPosRolePattern: /^(\d\d\d\d).*$/
-        yPosRoleReplace: "\\1"
-        zPosRole: "z"
-        zPosRolePattern: /-/
-        zPosRoleReplace: "\\1"
+            autoColumnCategories: false
+            autoRowCategories: false
+            columnCategories: ["colcat1", "colcat2"]
+            columnRole: "col"
+            columnRolePattern: /^.*-(\d\d)$/
+            columnRoleReplace: "\\1"
+            itemModel: ListModel { objectName: "model1" }
+            multiMatchBehavior: ItemModelSurfaceDataProxy.MultiMatchBehavior.Average
+            rowCategories: ["rowcat1", "rowcat2"]
+            rowRole: "row"
+            rowRolePattern: /^(\d\d\d\d).*$/
+            rowRoleReplace: "\\1"
+            xPosRole: "x"
+            xPosRolePattern: /^.*-(\d\d)$/
+            xPosRoleReplace: "\\1"
+            yPosRole: "y"
+            yPosRolePattern: /^(\d\d\d\d).*$/
+            yPosRoleReplace: "\\1"
+            zPosRole: "z"
+            zPosRolePattern: /-/
+            zPosRoleReplace: "\\1"
+        }
     }
 
-    ItemModelSurfaceDataProxy {
-        id: change
+    Surface3DSeries {
+        dataProxy: ItemModelSurfaceDataProxy {
+            id: rowcolumnreplace
+
+            autoColumnCategories: true
+            autoRowCategories: true
+            itemModel: ListModel {
+                ListElement{ rowcol: "1st,AA"; data: "0/1/2"; }
+                ListElement{ rowcol: "2nd,BB"; data: "1/2/3"; }
+                ListElement{ rowcol: "3rd,CC"; data: "2/3/4"; }
+                ListElement{ rowcol: "4th,DD"; data: "3/4/5"; }
+            }
+            columnRole: "rowcol"
+            columnRolePattern: /(\d),(\d)/
+            columnRoleReplace: "\\2"
+            rowRole: "rowcol"
+            rowRolePattern: /(\d),(\d)/
+            rowRoleReplace: "\\1"
+            xPosRole: "data"
+            xPosRolePattern: /^([^\/]*)\/([^\/]*)\/(.*)$/
+            xPosRoleReplace: "\\1"
+            yPosRole: "data"
+            yPosRolePattern: /^([^\/]*)\/([^\/]*)\/(.*)$/
+            yPosRoleReplace: "\\2"
+            zPosRole: "data"
+            zPosRolePattern: /^([^\/]*)\/([^\/]*)\/(.*)$/
+            zPosRoleReplace: "\\3"
+        }
+    }
+
+    Surface3DSeries {
+        dataProxy: ItemModelSurfaceDataProxy {
+            id: change
+        }
     }
 
     TestCase {
@@ -73,7 +109,7 @@ Item {
 
             compare(initial.columnCount, 0)
             compare(initial.rowCount, 0)
-            verify(!initial.series)
+            verify(initial.series)
 
             compare(initial.type, AbstractDataProxy.DataType.Surface)
         }
@@ -83,6 +119,7 @@ Item {
         name: "ItemModelSurfaceDataProxy Initialized"
 
         function test_initialized() {
+            verify(initialized.series)
             compare(initialized.autoColumnCategories, false)
             compare(initialized.autoRowCategories, false)
             compare(initialized.columnCategories.length, 2)
@@ -111,6 +148,33 @@ Item {
 
             compare(initialized.columnCount, 2)
             compare(initialized.rowCount, 2)
+        }
+    }
+
+    TestCase {
+        name: "ItemModelSurfaceDataProxy RoleReplace"
+
+        function test_initialized() {
+            verify(rowcolumnreplace.series)
+            compare(rowcolumnreplace.columnCategories.length, 4)
+            // TODO: These fail, see QTBUG-132351
+            // compare(rowcolumnreplace.columnCategories[0], "AA")
+            // compare(rowcolumnreplace.columnCategories[1], "BB")
+            // compare(rowcolumnreplace.columnCategories[2], "CC")
+            // compare(rowcolumnreplace.columnCategories[3], "DD")
+            compare(rowcolumnreplace.rowCategories.length, 4)
+            // TODO: These fail, see QTBUG-132351
+            // compare(rowcolumnreplace.rowCategories[0], "1st")
+            // compare(rowcolumnreplace.rowCategories[1], "2nd")
+            // compare(rowcolumnreplace.rowCategories[2], "3rd")
+            // compare(rowcolumnreplace.rowCategories[3], "4th")
+            // TODO: Do we have a way to check what the x, y, and z values are after the replace (in QML)?
+            compare(rowcolumnreplace.xPosRole, "data")
+            compare(rowcolumnreplace.xPosRoleReplace, "\\1")
+            compare(rowcolumnreplace.yPosRole, "data")
+            compare(rowcolumnreplace.yPosRoleReplace, "\\2")
+            compare(rowcolumnreplace.zPosRole, "data")
+            compare(rowcolumnreplace.zPosRoleReplace, "\\3")
         }
     }
 
@@ -175,6 +239,30 @@ Item {
 
             compare(change.columnCount, 0)
             compare(change.rowCount, 0)
+
+            // Signals
+            compare(autoColumnCategoriesSpy.count, 1)
+            compare(autoRowCategoriesSpy.count, 1)
+            compare(columnCategoriesSpy.count, 1)
+            compare(columnRoleSpy.count, 1)
+            compare(columnPatternSpy.count, 1)
+            compare(columnReplaceSpy.count, 1)
+            compare(itemModelSpy.count, 1)
+            compare(multiMatchSpy.count, 1)
+            compare(rowCategoriesSpy.count, 1)
+            compare(rowRoleSpy.count, 1)
+            compare(rowPatternSpy.count, 1)
+            compare(rowReplaceSpy.count, 1)
+            compare(useModelCategoriesSpy.count, 1)
+            compare(xPosSpy.count, 1)
+            compare(xPosPatternSpy.count, 1)
+            compare(xPosReplaceSpy.count, 1)
+            compare(yPosSpy.count, 1)
+            compare(yPosPatternSpy.count, 1)
+            compare(yPosReplaceSpy.count, 1)
+            compare(zPosSpy.count, 1)
+            compare(zPosPatternSpy.count, 1)
+            compare(zPosReplaceSpy.count, 1)
         }
     }
 
@@ -198,7 +286,7 @@ Item {
                     rowRole: "coords"
                     columnRole: "coords"
                     yPosRole: "data"
-                    rowRolePattern: /(\d),\d/
+                    rowRolePattern: /(\d),(\d)/
                     columnRolePattern: /(\d),(\d)/
                     rowRoleReplace: "\\1"
                     columnRoleReplace: "\\2"
@@ -244,5 +332,137 @@ Item {
         function test_9_test_multimatch() {
             compare(surface1.axisY.max, 20)
         }
+    }
+
+    SignalSpy {
+        id: itemModelSpy
+        target: change
+        signalName: "itemModelChanged"
+    }
+
+    SignalSpy {
+        id: rowRoleSpy
+        target: change
+        signalName: "rowRoleChanged"
+    }
+
+    SignalSpy {
+        id: columnRoleSpy
+        target: change
+        signalName: "columnRoleChanged"
+    }
+
+    SignalSpy {
+        id: xPosSpy
+        target: change
+        signalName: "xPosRoleChanged"
+    }
+
+    SignalSpy {
+        id: yPosSpy
+        target: change
+        signalName: "yPosRoleChanged"
+    }
+
+    SignalSpy {
+        id: zPosSpy
+        target: change
+        signalName: "zPosRoleChanged"
+    }
+
+    SignalSpy {
+        id: rowCategoriesSpy
+        target: change
+        signalName: "rowCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: columnCategoriesSpy
+        target: change
+        signalName: "columnCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: useModelCategoriesSpy
+        target: change
+        signalName: "useModelCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: autoRowCategoriesSpy
+        target: change
+        signalName: "autoRowCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: autoColumnCategoriesSpy
+        target: change
+        signalName: "autoColumnCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: rowPatternSpy
+        target: change
+        signalName: "rowRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: columnPatternSpy
+        target: change
+        signalName: "columnRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: xPosPatternSpy
+        target: change
+        signalName: "xPosRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: yPosPatternSpy
+        target: change
+        signalName: "yPosRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: rowReplaceSpy
+        target: change
+        signalName: "rowRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: columnReplaceSpy
+        target: change
+        signalName: "columnRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: zPosPatternSpy
+        target: change
+        signalName: "zPosRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: xPosReplaceSpy
+        target: change
+        signalName: "xPosRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: yPosReplaceSpy
+        target: change
+        signalName: "yPosRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: zPosReplaceSpy
+        target: change
+        signalName: "zPosRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: multiMatchSpy
+        target: change
+        signalName: "multiMatchBehaviorChanged"
     }
 }

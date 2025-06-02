@@ -6,6 +6,7 @@
 
 #include <QtProtobuf/qprotobufjsonserializer.h>
 #include <QtProtobuf/qprotobufserializer.h>
+#include <QtProtobuf/qprotobufregistration.h>
 
 #include <optional.qpb.h>
 
@@ -19,22 +20,22 @@ class QtProtobufOptionalSerializationTest : public QObject
 
     enum Format { Protobuf, JSON };
 
-private slots:
+private Q_SLOTS:
     void initTestCase_data();
     void initTestCase() { }
     void init();
 
-    void SerializeEmptyOptional();
-    void SerializeOptionalInt_data();
-    void SerializeOptionalInt();
-    void SerializeOptionalBool_data();
-    void SerializeOptionalBool();
-    void SerializeOptionalString_data();
-    void SerializeOptionalString();
-    void SerializeOptionalBytes_data();
-    void SerializeOptionalBytes();
-    void SerializeOptionalMessage_data();
-    void SerializeOptionalMessage();
+    void serializeEmptyOptional();
+    void serializeOptionalInt_data();
+    void serializeOptionalInt();
+    void serializeOptionalBool_data();
+    void serializeOptionalBool();
+    void serializeOptionalString_data();
+    void serializeOptionalString();
+    void serializeOptionalBytes_data();
+    void serializeOptionalBytes();
+    void serializeOptionalMessage_data();
+    void serializeOptionalMessage();
 
 private:
     std::shared_ptr<QAbstractProtobufSerializer> m_serializer;
@@ -60,13 +61,13 @@ void QtProtobufOptionalSerializationTest::init()
     m_serializer = std::move(serializer);
 }
 
-void QtProtobufOptionalSerializationTest::SerializeEmptyOptional()
+void QtProtobufOptionalSerializationTest::serializeEmptyOptional()
 {
     qtprotobufnamespace::optional::tests::OptionalMessage msg1;
     QCOMPARE(msg1.serialize(m_serializer.get()), m_format == Protobuf ? ""_ba : "{}"_ba);
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalInt_data()
+void QtProtobufOptionalSerializationTest::serializeOptionalInt_data()
 {
     QTest::addColumn<QtProtobuf::sint32>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -78,7 +79,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalInt_data()
                            << "{\"testFieldOpt\":84}"_ba;
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalInt()
+void QtProtobufOptionalSerializationTest::serializeOptionalInt()
 {
     QFETCH(const QtProtobuf::sint32, value);
     QFETCH(const QByteArray, expectedData);
@@ -97,7 +98,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalInt()
     QCOMPARE(result, m_format == Protobuf ? ""_ba : "{}"_ba);
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalBool_data()
+void QtProtobufOptionalSerializationTest::serializeOptionalBool_data()
 {
     QTest::addColumn<bool>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -109,7 +110,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalBool_data()
                           << "{\"testFieldBoolOpt\":true}"_ba;
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalBool()
+void QtProtobufOptionalSerializationTest::serializeOptionalBool()
 {
     QFETCH(const bool, value);
     QFETCH(const QByteArray, expectedData);
@@ -128,7 +129,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalBool()
     QCOMPARE(result, m_format == Protobuf ? ""_ba : "{}"_ba);
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalString_data()
+void QtProtobufOptionalSerializationTest::serializeOptionalString_data()
 {
     QTest::addColumn<QString>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -139,7 +140,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalString_data()
                            << "{\"testFieldStringOpt\":\"qwerty\"}"_ba;
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalString()
+void QtProtobufOptionalSerializationTest::serializeOptionalString()
 {
     QFETCH(const QString, value);
     QFETCH(const QByteArray, expectedData);
@@ -158,7 +159,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalString()
     QCOMPARE(result, m_format == Protobuf ? ""_ba : "{}"_ba);
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalBytes_data()
+void QtProtobufOptionalSerializationTest::serializeOptionalBytes_data()
 {
     QTest::addColumn<QByteArray>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -172,7 +173,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalBytes_data()
                            << "{\"testFieldBytesOpt\":\"cXdlcnR5\"}"_ba;
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalBytes()
+void QtProtobufOptionalSerializationTest::serializeOptionalBytes()
 {
     QFETCH(const QByteArray, value);
     QFETCH(const QByteArray, expectedData);
@@ -191,7 +192,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalBytes()
     QCOMPARE(result, m_format == Protobuf ? ""_ba : "{}"_ba);
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalMessage_data()
+void QtProtobufOptionalSerializationTest::serializeOptionalMessage_data()
 {
     QTest::addColumn<qtprotobufnamespace::optional::tests::TestStringMessage>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -202,7 +203,7 @@ void QtProtobufOptionalSerializationTest::SerializeOptionalMessage_data()
                                   << "{\"testFieldMessageOpt\":{}}"_ba;
 }
 
-void QtProtobufOptionalSerializationTest::SerializeOptionalMessage()
+void QtProtobufOptionalSerializationTest::serializeOptionalMessage()
 {
     QFETCH(const qtprotobufnamespace::optional::tests::TestStringMessage, value);
     QFETCH(const QByteArray, expectedData);

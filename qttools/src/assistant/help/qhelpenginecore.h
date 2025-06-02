@@ -5,11 +5,15 @@
 #define QHELPENGINECORE_H
 
 #include <QtHelp/qhelp_global.h>
+#include <QtHelp/qhelpcontentitem.h>
 
-#include <QtCore/QUrl>
-#include <QtCore/QMap>
-#include <QtCore/QObject>
-#include <QtCore/QVariant>
+#if QT_CONFIG(future)
+#include <QtCore/qfuture.h>
+#endif
+
+#include <QtCore/qobject.h>
+#include <QtCore/qurl.h>
+#include <QtCore/qvariant.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -63,14 +67,12 @@ public:
     void setCurrentFilter(const QString &filterName);
 
     QList<QStringList> filterAttributeSets(const QString &namespaceName) const;
-    QList<QUrl> files(const QString namespaceName,
-        const QStringList &filterAttributes,
-        const QString &extensionFilter = QString());
+    QList<QUrl> files(const QString namespaceName, const QStringList &filterAttributes,
+                      const QString &extensionFilter = {});
 // #endif
 
-    QList<QUrl> files(const QString namespaceName,
-                      const QString &filterName,
-                      const QString &extensionFilter = QString());
+    QList<QUrl> files(const QString namespaceName, const QString &filterName,
+                      const QString &extensionFilter = {});
     QUrl findFile(const QUrl &url) const;
 
     QList<QHelpLink> documentsForIdentifier(const QString &id) const;
@@ -79,12 +81,10 @@ public:
     QList<QHelpLink> documentsForKeyword(const QString &keyword, const QString &filterName) const;
 
     bool removeCustomValue(const QString &key);
-    QVariant customValue(const QString &key,
-        const QVariant &defaultValue = QVariant()) const;
+    QVariant customValue(const QString &key, const QVariant &defaultValue = {}) const;
     bool setCustomValue(const QString &key, const QVariant &value);
 
-    static QVariant metaData(const QString &documentationFileName,
-        const QString &name);
+    static QVariant metaData(const QString &documentationFileName, const QString &name);
 
     QString error() const;
 
@@ -93,6 +93,14 @@ public:
 
     void setUsesFilterEngine(bool uses);
     bool usesFilterEngine() const;
+
+#if QT_CONFIG(future)
+    QFuture<std::shared_ptr<QHelpContentItem>> requestContentForCurrentFilter() const;
+    QFuture<std::shared_ptr<QHelpContentItem>> requestContent(const QString &filter) const;
+
+    QFuture<QStringList> requestIndexForCurrentFilter() const;
+    QFuture<QStringList> requestIndex(const QString &filter) const;
+#endif
 
 Q_SIGNALS:
     void setupStarted();
@@ -105,12 +113,12 @@ Q_SIGNALS:
 // #endif
 
 protected:
-    QHelpEngineCore(QHelpEngineCorePrivate *helpEngineCorePrivate,
-        QObject *parent);
+#if QT_DEPRECATED_SINCE(6, 8)
+    QHelpEngineCore(QHelpEngineCorePrivate *helpEngineCorePrivate, QObject *parent);
+#endif
 
 private:
     QHelpEngineCorePrivate *d;
-    friend class QHelpEngineCorePrivate;
 };
 
 QT_END_NAMESPACE

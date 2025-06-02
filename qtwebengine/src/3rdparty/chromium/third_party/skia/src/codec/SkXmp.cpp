@@ -21,6 +21,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <utility>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // XMP parsing helper functions
@@ -559,7 +560,6 @@ bool SkXmpImpl::getGainmapInfoHDRGainMap(SkGainmapInfo* info) const {
     info->fDisplayRatioSdr = 1.f;
     info->fDisplayRatioHdr = kRatioMax;
     info->fBaseImageType = SkGainmapInfo::BaseImageType::kSDR;
-    info->fType = SkGainmapInfo::Type::kMultiPicture;
     return true;
 }
 
@@ -587,13 +587,13 @@ bool SkXmpImpl::getGainmapInfoHDRGM(SkGainmapInfo* outGainmapInfo) const {
 
     // Initialize the parameters to their defaults.
     bool baseRenditionIsHDR = false;
-    SkColor4f gainMapMin = {1.f, 1.f, 1.f, 1.f};
-    SkColor4f gainMapMax = {2.f, 2.f, 2.f, 1.f};
+    SkColor4f gainMapMin = {0.f, 0.f, 0.f, 1.f};  // log2 value
+    SkColor4f gainMapMax = {1.f, 1.f, 1.f, 1.f};  // log2 value
     SkColor4f gamma = {1.f, 1.f, 1.f, 1.f};
     SkColor4f offsetSdr = {1.f / 64.f, 1.f / 64.f, 1.f / 64.f, 0.f};
     SkColor4f offsetHdr = {1.f / 64.f, 1.f / 64.f, 1.f / 64.f, 0.f};
-    SkScalar hdrCapacityMin = 1.f;
-    SkScalar hdrCapacityMax = 2.f;
+    SkScalar hdrCapacityMin = 0.f;  // log2 value
+    SkScalar hdrCapacityMax = 1.f;  // log2 value
 
     // Read all parameters that are present.
     get_attr_bool(dom, node, hdrgmPrefix, "BaseRenditionIsHDR", &baseRenditionIsHDR);
@@ -625,13 +625,12 @@ bool SkXmpImpl::getGainmapInfoHDRGM(SkGainmapInfo* outGainmapInfo) const {
     } else {
         outGainmapInfo->fBaseImageType = SkGainmapInfo::BaseImageType::kSDR;
     }
-    outGainmapInfo->fType = SkGainmapInfo::Type::kHDRGM;
     return true;
 }
 
 bool SkXmpImpl::parseDom(sk_sp<SkData> xmpData, bool extended) {
     SkDOM* dom = extended ? &fExtendedDOM : &fStandardDOM;
-    auto xmpdStream = SkMemoryStream::Make(xmpData);
+    auto xmpdStream = SkMemoryStream::Make(std::move(xmpData));
     if (!dom->build(*xmpdStream)) {
         SkCodecPrintf("Failed to parse XMP %s metadata.\n", extended ? "extended" : "standard");
         return false;
@@ -644,7 +643,7 @@ bool SkXmpImpl::parseDom(sk_sp<SkData> xmpData, bool extended) {
 
 std::unique_ptr<SkXmp> SkXmp::Make(sk_sp<SkData> xmpData) {
     std::unique_ptr<SkXmpImpl> xmp(new SkXmpImpl);
-    if (!xmp->parseDom(xmpData, /*extended=*/false)) {
+    if (!xmp->parseDom(std::move(xmpData), /*extended=*/false)) {
         return nullptr;
     }
     return xmp;
@@ -652,11 +651,11 @@ std::unique_ptr<SkXmp> SkXmp::Make(sk_sp<SkData> xmpData) {
 
 std::unique_ptr<SkXmp> SkXmp::Make(sk_sp<SkData> xmpStandard, sk_sp<SkData> xmpExtended) {
     std::unique_ptr<SkXmpImpl> xmp(new SkXmpImpl);
-    if (!xmp->parseDom(xmpStandard, /*extended=*/false)) {
+    if (!xmp->parseDom(std::move(xmpStandard), /*extended=*/false)) {
         return nullptr;
     }
     // Try to parse extended xmp but ignore the return value: if parsing fails, we'll still return
     // the standard xmp.
-    (void)xmp->parseDom(xmpExtended, /*extended=*/true);
+    (void)xmp->parseDom(std::move(xmpExtended), /*extended=*/true);
     return xmp;
 }

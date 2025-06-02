@@ -13,33 +13,33 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufRepeatedTypesJsonSerializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() {
         m_serializer.reset(new QProtobufJsonSerializer);
     }
-    void RepeatedIntMessageTest();
-    void RepeatedSIntMessageTest();
-    void RepeatedUIntMessageTest();
-    void RepeatedInt64MessageTest();
-    void RepeatedSInt64MessageTest();
-    void RepeatedUInt64MessageTest();
-    void RepeatedFixedIntMessageTest();
-    void RepeatedSFixedIntMessageTest();
-    void RepeatedFixedInt64MessageTest();
-    void RepeatedSFixedInt64MessageTest();
-    void RepeatedStringMessageTest();
-    void RepeatedFloatMessageTest();
-    void RepeatedDoubleMessageTest();
-    void RepeatedBytesMessageTest();
-    void RepeatedComplexMessageTest();
-    void RepeatedBoolMessageTest();
+    void repeatedIntMessageTest();
+    void repeatedSIntMessageTest();
+    void repeatedUIntMessageTest();
+    void repeatedInt64MessageTest();
+    void repeatedSInt64MessageTest();
+    void repeatedUInt64MessageTest();
+    void repeatedFixedIntMessageTest();
+    void repeatedSFixedIntMessageTest();
+    void repeatedFixedInt64MessageTest();
+    void repeatedSFixedInt64MessageTest();
+    void repeatedStringMessageTest();
+    void repeatedFloatMessageTest();
+    void repeatedDoubleMessageTest();
+    void repeatedBytesMessageTest();
+    void repeatedComplexMessageTest();
+    void repeatedBoolMessageTest();
 private:
     std::unique_ptr<QProtobufJsonSerializer> m_serializer;
 };
 
 using namespace qtprotobufnamespace::tests;
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedIntMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedIntMessageTest()
 {
     RepeatedIntMessage test;
     test.setTestRepeatedInt({0, 1, 321, -65999, 123245, -3, 3});
@@ -54,7 +54,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedIntMessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedSIntMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedSIntMessageTest()
 {
     RepeatedSIntMessage test;
     test.setTestRepeatedInt({1, 321, -65999, 123245, -3, 3, 0});
@@ -68,7 +68,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedSIntMessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedUIntMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedUIntMessageTest()
 {
     RepeatedUIntMessage test;
     test.setTestRepeatedInt({1, 0, 321, 65999, 123245, 3});
@@ -82,7 +82,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedUIntMessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedInt64MessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedInt64MessageTest()
 {
     RepeatedInt64Message test;
     test.setTestRepeatedInt({1, 321, -65999, 12324523123123, -3, 0, 3});
@@ -96,7 +96,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedInt64MessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedSInt64MessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedSInt64MessageTest()
 {
     RepeatedSInt64Message test;
     test.setTestRepeatedInt({1, 321, -65999, 12324523123123, 0, -3, 3});
@@ -110,7 +110,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedSInt64MessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedUInt64MessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedUInt64MessageTest()
 {
     RepeatedUInt64Message test;
     test.setTestRepeatedInt({1, 321, 0, 65999, 123245, 123245324235425234, 3});
@@ -126,7 +126,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedUInt64MessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedFixedIntMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedFixedIntMessageTest()
 {
     RepeatedFixedIntMessage test;
     test.setTestRepeatedInt({1, 321, 65999, 12324523, 3, 3, 0});
@@ -140,7 +140,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedFixedIntMessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedSFixedIntMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedSFixedIntMessageTest()
 {
     RepeatedSFixedIntMessage test;
     test.setTestRepeatedInt({0, 1, 321, -65999, 12324523, -3, 3});
@@ -154,7 +154,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedSFixedIntMessageTest(
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedFixedInt64MessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedFixedInt64MessageTest()
 {
     RepeatedFixedInt64Message test;
     test.setTestRepeatedInt({1, 321, 65999, 123245324235425234, 3, 3, 0});
@@ -170,7 +170,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedFixedInt64MessageTest
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedSFixedInt64MessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedSFixedInt64MessageTest()
 {
     RepeatedSFixedInt64Message test;
     test.setTestRepeatedInt({1, 321, -65999, 123245324235425234, -3, 3, 0});
@@ -184,7 +184,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedSFixedInt64MessageTes
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedStringMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedStringMessageTest()
 {
     RepeatedStringMessage test;
     test.setTestRepeatedString({"aaaa","bbbbb","ccc","dddddd","eeeee", ""});
@@ -199,7 +199,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedStringMessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedFloatMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedFloatMessageTest()
 {
     RepeatedFloatMessage test;
     test.setTestRepeatedFloat({ 0.4f, 1.2f, 0.5f, 3.91235f, 0.6f });
@@ -215,7 +215,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedFloatMessageTest()
     QCOMPARE(result, "{}"_ba);
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedDoubleMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedDoubleMessageTest()
 {
     RepeatedDoubleMessage test;
     test.setTestRepeatedDouble({0.1, 0.2, 0.3, 3.912348239293, 0.5});
@@ -229,7 +229,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedDoubleMessageTest()
     QCOMPARE(result, "{}"_ba);
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedBytesMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedBytesMessageTest()
 {
     RepeatedBytesMessage test;
     test.setTestRepeatedBytes({QByteArray::fromHex("010203040506"),
@@ -256,7 +256,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedBytesMessageTest()
              "{\"testRepeatedBytes\":[\"AQIDBAUG\",\"\",\"6urq6uo=\",\"AQIDBAUG\"]}"_ba);
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedComplexMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedComplexMessageTest()
 {
     SimpleStringMessage stringMsg;
     stringMsg.setTestFieldString("qwerty");
@@ -277,7 +277,7 @@ void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedComplexMessageTest()
     QCOMPARE(result, "{}"_ba);
 }
 
-void QtProtobufRepeatedTypesJsonSerializationTest::RepeatedBoolMessageTest()
+void QtProtobufRepeatedTypesJsonSerializationTest::repeatedBoolMessageTest()
 {
     RepeatedBoolMessage boolMsg;
     boolMsg.setTestRepeatedBool({ true, true, true, false, false, false, false, false,

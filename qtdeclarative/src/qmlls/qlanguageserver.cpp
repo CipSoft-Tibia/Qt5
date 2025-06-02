@@ -325,10 +325,15 @@ void QLanguageServer::registerHandlers(QLanguageServerProtocol *protocol)
 
     QObject::connect(notifySignals(), &QLspNotifySignals::receivedExitNotification, this,
                      [this](const QLspSpecification::Notifications::ExitParamsType &) {
-                         if (runStatus() != RunStatus::Stopped)
+                         Q_D(QLanguageServer);
+                         QMutexLocker l(&d->mutex);
+                         RunStatus runStatus = d->runStatus;
+                         if (runStatus != RunStatus::WaitingForExit) {
                              emit lifecycleError();
-                         else
-                             emit exit();
+                             return;
+                         }
+                         d->runStatus = RunStatus::Stopped;
+                         emit exit();
                      });
 }
 
@@ -347,7 +352,7 @@ void QLanguageServer::executeShutdown()
         rStatus = d->runStatus;
         if (rStatus == RunStatus::Stopping) {
             shutdownResponse = std::move(d->shutdownResponse);
-            d->runStatus = RunStatus::Stopped;
+            d->runStatus = RunStatus::WaitingForExit;
         }
     }
     if (rStatus != RunStatus::Stopping)
@@ -376,6 +381,7 @@ bool QLanguageServer::isInitialized() const
     case RunStatus::WaitPending:
     case RunStatus::Stopping:
     case RunStatus::Stopped:
+    case RunStatus::WaitingForExit:
         break;
     }
     return true;

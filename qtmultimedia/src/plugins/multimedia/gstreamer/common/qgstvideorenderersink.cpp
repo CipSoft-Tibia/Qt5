@@ -124,7 +124,6 @@ QT_WARNING_DISABLE_GCC("-Wswitch") // case value not in enumerated type ‘QEven
         return;
     }
     case stopEvent: {
-        m_currentState.buffer = {};
         m_currentPipelineFrame = {};
         updateCurrentVideoFrame(m_currentVideoFrame);
         return;
@@ -141,13 +140,9 @@ void QGstVideoRenderer::handleNewBuffer(RenderBufferState state)
 {
     auto videoBuffer = std::make_unique<QGstVideoBuffer>(state.buffer, m_videoInfo, m_sink,
                                                          state.format, state.memoryFormat);
-    QVideoFrame frame = QVideoFrame(videoBuffer.release(), state.format);
+    QVideoFrame frame = QVideoFramePrivate::createFrame(std::move(videoBuffer), state.format);
     QGstUtils::setFrameTimeStampsFromBuffer(&frame, state.buffer.get());
-    frame.setMirrored(state.mirrored);
-    frame.setRotation(state.rotationAngle);
-
     m_currentPipelineFrame = std::move(frame);
-    m_currentState = std::move(state);
 
     if (!m_isActive) {
         qCDebug(qLcGstVideoRenderer) << "    showing empty video frame";
@@ -167,17 +162,16 @@ bool QGstVideoRenderer::start(const QGstCaps& caps)
 {
     qCDebug(qLcGstVideoRenderer) << "QGstVideoRenderer::start" << caps;
 
-    {
-        m_frameRotationAngle = QtVideo::Rotation::None;
-        auto optionalFormatAndVideoInfo = caps.formatAndVideoInfo();
-        if (optionalFormatAndVideoInfo) {
-            std::tie(m_format, m_videoInfo) = std::move(*optionalFormatAndVideoInfo);
-        } else {
-            m_format = {};
-            m_videoInfo = {};
-        }
-        m_memoryFormat = caps.memoryFormat();
+    auto optionalFormatAndVideoInfo = caps.formatAndVideoInfo();
+    if (optionalFormatAndVideoInfo) {
+        std::tie(m_format, m_videoInfo) = std::move(*optionalFormatAndVideoInfo);
+    } else {
+        m_format = {};
+        m_videoInfo = {};
     }
+    m_memoryFormat = caps.memoryFormat();
+
+    // NOTE: m_format will not be fully populated until GST_EVENT_TAG is processed
 
     return true;
 }
@@ -224,11 +218,9 @@ GstFlowReturn QGstVideoRenderer::render(GstBuffer *buffer)
     }
 
     RenderBufferState state{
-        .buffer = QGstBufferHandle{ buffer, QGstBufferHandle::NeedsRef },
-        .format = m_format,
-        .memoryFormat = m_memoryFormat,
-        .mirrored = m_frameMirrored,
-        .rotationAngle = m_frameRotationAngle,
+        QGstBufferHandle{ buffer, QGstBufferHandle::NeedsRef },
+        m_format,
+        m_memoryFormat,
     };
 
     qCDebug(qLcGstVideoRenderer) << "    sending video frame";
@@ -314,14 +306,16 @@ void QGstVideoRenderer::gstEventHandleTag(GstEvent *event)
     if (!taglist)
         return;
 
+    qCDebug(qLcGstVideoRenderer) << "QGstVideoRenderer::gstEventHandleTag:" << taglist;
+
     QGString value;
     if (!gst_tag_list_get_string(taglist, GST_TAG_IMAGE_ORIENTATION, &value))
         return;
 
     RotationResult parsed = parseRotationTag(value.get());
 
-    m_frameRotationAngle = parsed.rotation;
-    m_frameMirrored = parsed.flip;
+    m_format.setMirrored(parsed.flip);
+    m_format.setRotation(parsed.rotation);
 }
 
 void QGstVideoRenderer::gstEventHandleEOS(GstEvent *)
@@ -454,7 +448,10 @@ void QGstVideoRendererSink::finalize(GObject *object)
 GstStateChangeReturn QGstVideoRendererSink::change_state(
         GstElement *element, GstStateChange transition)
 {
-    return GST_ELEMENT_CLASS(gvrs_sink_parent_class)->change_state(element, transition);
+    GstStateChangeReturn ret =
+            GST_ELEMENT_CLASS(gvrs_sink_parent_class)->change_state(element, transition);
+    qCDebug(qLcGstVideoRenderer) << "QGstVideoRenderer::change_state:" << transition << ret;
+    return ret;
 }
 
 GstCaps *QGstVideoRendererSink::get_caps(GstBaseSink *base, GstCaps *filter)
@@ -475,7 +472,7 @@ gboolean QGstVideoRendererSink::set_caps(GstBaseSink *base, GstCaps *gcaps)
 
     qCDebug(qLcGstVideoRenderer) << "set_caps:" << caps;
 
-    if (caps.isNull()) {
+    if (!caps) {
         sink->renderer->stop();
         return TRUE;
     }

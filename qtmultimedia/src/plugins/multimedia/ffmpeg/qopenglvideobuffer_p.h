@@ -15,22 +15,22 @@
 // We mean it.
 //
 
-#include <private/qabstractvideobuffer_p.h>
+#include <QtMultimedia/private/qhwvideobuffer_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QImageVideoBuffer;
 class QOpenGLFramebufferObject;
 
-class QOpenGLVideoBuffer : public QAbstractVideoBuffer
+class QOpenGLVideoBuffer : public QHwVideoBuffer
 {
 public:
     QOpenGLVideoBuffer(std::unique_ptr<QOpenGLFramebufferObject> fbo);
-    ~QOpenGLVideoBuffer();
+    ~QOpenGLVideoBuffer() override;
 
     MapData map(QVideoFrame::MapMode mode) override;
     void unmap() override;
-    quint64 textureHandle(QRhi *, int plane) const override;
+    quint64 textureHandle(QRhi &, int plane) override;
 
     QImageVideoBuffer &ensureImageBuffer();
 

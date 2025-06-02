@@ -4,20 +4,17 @@ set(LIBCXX_LIB_CMAKEFILES_DIR "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTOR
 set(LIBCXX_SOURCES
   algorithm.cpp
   any.cpp
-  atomic.cpp
-  barrier.cpp
   bind.cpp
+  call_once.cpp
   charconv.cpp
   chrono.cpp
-  condition_variable.cpp
-  condition_variable_destructor.cpp
+  error_category.cpp
   exception.cpp
   filesystem/filesystem_clock.cpp
   filesystem/filesystem_error.cpp
   filesystem/path_parser.h
   filesystem/path.cpp
   functional.cpp
-  future.cpp
   hash.cpp
   include/apple_availability.h
   include/atomic_support.h
@@ -36,16 +33,14 @@ set(LIBCXX_SOURCES
   legacy_pointer_safety.cpp
   memory.cpp
   memory_resource.cpp
-  mutex.cpp
-  mutex_destructor.cpp
   new_handler.cpp
   new_helpers.cpp
   optional.cpp
+  print.cpp
   random_shuffle.cpp
   ryu/d2fixed.cpp
   ryu/d2s.cpp
   ryu/f2s.cpp
-  shared_mutex.cpp
   stdexcept.cpp
   string.cpp
   support/runtime/exception_fallback.ipp
@@ -60,7 +55,6 @@ set(LIBCXX_SOURCES
   support/runtime/stdexcept_default.ipp
   support/runtime/stdexcept_vcruntime.ipp
   system_error.cpp
-  thread.cpp
   typeinfo.cpp
   valarray.cpp
   variant.cpp
@@ -68,10 +62,17 @@ set(LIBCXX_SOURCES
   verbose_abort.cpp
   )
 
-if (LIBCXX_ENABLE_DEBUG_MODE OR LIBCXX_ENABLE_BACKWARDS_COMPATIBILITY_DEBUG_MODE_SYMBOLS)
+if (LIBCXX_ENABLE_THREADS)
   list(APPEND LIBCXX_SOURCES
-    debug.cpp
-    legacy_debug_handler.cpp
+    atomic.cpp
+    barrier.cpp
+    condition_variable_destructor.cpp
+    condition_variable.cpp
+    future.cpp
+    mutex_destructor.cpp
+    mutex.cpp
+    shared_mutex.cpp
+    thread.cpp
     )
 endif()
 
@@ -83,11 +84,13 @@ endif()
 
 if (LIBCXX_ENABLE_LOCALIZATION)
   list(APPEND LIBCXX_SOURCES
+    fstream.cpp
     include/sso_allocator.h
     ios.cpp
     ios.instantiations.cpp
     iostream.cpp
     locale.cpp
+    ostream.cpp
     regex.cpp
     strstream.cpp
     )
@@ -227,7 +230,7 @@ if (LIBCXX_ENABLE_SHARED)
   # Maybe re-export symbols from libc++abi
   # In particular, we don't re-export the symbols if libc++abi is merged statically
   # into libc++ because in that case there's no dylib to re-export from.
-  if (APPLE AND LIBCXX_CXX_ABI STREQUAL "libcxxabi"
+  if (APPLE AND LIBCXX_CXX_ABI MATCHES "libcxxabi$"
             AND NOT DEFINED LIBCXX_OSX_REEXPORT_LIBCXXABI_SYMBOLS
             AND NOT LIBCXX_STATICALLY_LINK_ABI_IN_SHARED_LIBRARY)
     set(LIBCXX_OSX_REEXPORT_LIBCXXABI_SYMBOLS ON)
@@ -322,8 +325,21 @@ endif()
 add_custom_target(cxx DEPENDS ${LIBCXX_BUILD_TARGETS})
 
 set(LIBCXX_EXPERIMENTAL_SOURCES
-  experimental/memory_resource.cpp
+  experimental/keep.cpp
   )
+
+if (LIBCXX_PSTL_CPU_BACKEND STREQUAL "libdispatch")
+  list(APPEND LIBCXX_EXPERIMENTAL_SOURCES
+    pstl/libdispatch.cpp
+    )
+endif()
+
+if (LIBCXX_ENABLE_LOCALIZATION AND LIBCXX_ENABLE_FILESYSTEM AND LIBCXX_ENABLE_TIME_ZONE_DATABASE)
+  list(APPEND LIBCXX_EXPERIMENTAL_SOURCES
+    tz.cpp
+    tzdb_list.cpp
+    )
+endif()
 
 add_library(cxx_experimental STATIC ${LIBCXX_EXPERIMENTAL_SOURCES})
 target_link_libraries(cxx_experimental PUBLIC cxx-headers)
@@ -346,27 +362,6 @@ set_target_properties(cxx_experimental
 )
 cxx_add_common_build_flags(cxx_experimental)
 target_compile_options(cxx_experimental PUBLIC -D_LIBCPP_ENABLE_EXPERIMENTAL)
-
-
-if (LIBCXX_BUILD_EXTERNAL_THREAD_LIBRARY)
-  set(LIBCXX_EXTERNAL_THREADING_SUPPORT_SOURCES
-      "${CMAKE_CURRENT_SOURCE_DIR}/../test/support/external_threads.cpp")
-
-  if (LIBCXX_ENABLE_SHARED)
-    add_library(cxx_external_threads SHARED ${LIBCXX_EXTERNAL_THREADING_SUPPORT_SOURCES})
-  else()
-    add_library(cxx_external_threads STATIC ${LIBCXX_EXTERNAL_THREADING_SUPPORT_SOURCES})
-  endif()
-
-  set_target_properties(cxx_external_threads
-    PROPERTIES
-      LINK_FLAGS    "${LIBCXX_LINK_FLAGS}"
-      COMPILE_FLAGS "${LIBCXX_COMPILE_FLAGS}"
-      OUTPUT_NAME   "c++external_threads"
-  )
-
-  target_link_libraries(cxx_external_threads PRIVATE cxx-headers)
-endif()
 
 if (LIBCXX_INSTALL_SHARED_LIBRARY)
   install(TARGETS cxx_shared

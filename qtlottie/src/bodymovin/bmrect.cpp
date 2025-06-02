@@ -79,7 +79,7 @@ void BMRect::updateProperties(int frame)
     m_path.addRoundedRect(QRectF(pos, m_size.value()),
                                m_roundness.value(), m_roundness.value());
 
-    if (m_direction)
+    if (hasReversedDirection())
         m_path = m_path.toReversed();
 }
 

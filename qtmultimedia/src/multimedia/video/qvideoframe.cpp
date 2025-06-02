@@ -8,6 +8,7 @@
 #include "qmultimediautils_p.h"
 #include "qmemoryvideobuffer_p.h"
 #include "qvideoframeconverter_p.h"
+#include "qimagevideobuffer_p.h"
 #include "qpainter.h"
 #include <qtextlayout.h>
 
@@ -57,6 +58,23 @@ QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QVideoFramePrivate);
 
     \note Since video frames can be expensive to copy, QVideoFrame is explicitly shared, so any
     change made to a video frame will also apply to any copies.
+
+    \sa QAbstractVideoBuffer, QVideoFrameFormat, QVideoFrame::MapMode
+*/
+
+/*!
+    \enum QVideoFrame::HandleType
+
+    Identifies the type of a video buffers handle.
+
+    \value NoHandle
+    The buffer has no handle, its data can only be accessed by mapping the buffer.
+    \value RhiTextureHandle
+    The handle of the buffer is defined by The Qt Rendering Hardware Interface
+    (RHI). RHI is Qt's internal graphics abstraction for 3D APIs, such as
+    OpenGL, Vulkan, Metal, and Direct 3D.
+
+    \sa handleType()
 */
 
 
@@ -67,6 +85,8 @@ QVideoFrame::QVideoFrame()
 {
 }
 
+#if QT_DEPRECATED_SINCE(6, 8)
+
 /*!
     \internal
     Constructs a video frame from a \a buffer with the given pixel \a format and \a size in pixels.
@@ -74,9 +94,8 @@ QVideoFrame::QVideoFrame()
     \note This doesn't increment the reference count of the video buffer.
 */
 QVideoFrame::QVideoFrame(QAbstractVideoBuffer *buffer, const QVideoFrameFormat &format)
-    : d(new QVideoFramePrivate(format))
+    : d(new QVideoFramePrivate(format, std::unique_ptr<QAbstractVideoBuffer>(buffer)))
 {
-    d->buffer.reset(buffer);
 }
 
 /*!
@@ -84,8 +103,10 @@ QVideoFrame::QVideoFrame(QAbstractVideoBuffer *buffer, const QVideoFrameFormat &
 */
 QAbstractVideoBuffer *QVideoFrame::videoBuffer() const
 {
-    return d ? d->buffer.get() : nullptr;
+    return d ? d->videoBuffer.get() : nullptr;
 }
+
+#endif
 
 /*!
     Constructs a video frame of the given pixel \a format.
@@ -102,8 +123,95 @@ QVideoFrame::QVideoFrame(const QVideoFrameFormat &format)
 
         // Check the memory was successfully allocated.
         if (!data.isEmpty())
-            d->buffer = std::make_unique<QMemoryVideoBuffer>(data, textureDescription->strideForWidth(format.frameWidth()));
+            d->videoBuffer = std::make_unique<QMemoryVideoBuffer>(
+                    data, textureDescription->strideForWidth(format.frameWidth()));
     }
+}
+
+/*!
+    Constructs a QVideoFrame from a QImage.
+    \since 6.8
+
+    If the QImage::Format matches one of the formats in
+    QVideoFrameFormat::PixelFormat, the QVideoFrame will hold an instance of
+    the \a image and use that format without any pixel format conversion.
+    In this case, pixel data will be copied only if you call \l{QVideoFrame::map}
+    with \c WriteOnly flag while keeping the original image.
+
+    Otherwise, if the QImage::Format matches none of video formats,
+    the image is first converted to a supported (A)RGB format using
+    QImage::convertedTo() with the Qt::AutoColor flag.
+    This may incur a performance penalty.
+
+    If QImage::isNull() evaluates to true for the input QImage, the
+    QVideoFrame will be invalid and QVideoFrameFormat::isValid() will
+    return false.
+
+    \sa QVideoFrameFormat::pixelFormatFromImageFormat()
+    \sa QImage::convertedTo()
+    \sa QImage::isNull()
+*/
+QVideoFrame::QVideoFrame(const QImage &image)
+{
+    auto buffer = std::make_unique<QImageVideoBuffer>(image);
+
+    // If the QImage::Format is not convertible to QVideoFrameFormat,
+    // QImageVideoBuffer automatically converts image to a compatible
+    // (A)RGB format.
+    const QImage &bufferImage = buffer->underlyingImage();
+
+    if (bufferImage.isNull())
+        return;
+
+    // `bufferImage` is now supported by QVideoFrameFormat::pixelFormatFromImageFormat()
+    QVideoFrameFormat format = {
+        bufferImage.size(), QVideoFrameFormat::pixelFormatFromImageFormat(bufferImage.format())
+    };
+
+    Q_ASSERT(format.isValid());
+
+    d = new QVideoFramePrivate{ std::move(format), std::move(buffer) };
+}
+
+/*!
+    Constructs a QVideoFrame from a \l QAbstractVideoBuffer.
+
+    \since 6.8
+
+    The specified \a videoBuffer refers to an instance a reimplemented
+    \l QAbstractVideoBuffer. The instance is expected to contain a preallocated custom
+    video buffer and must implement \l QAbstractVideoBuffer::format,
+    \l QAbstractVideoBuffer::map, and \l QAbstractVideoBuffer::unmap for GPU content.
+
+    If \a videoBuffer is null or gets an invalid \l QVideoFrameFormat,
+    the constructors creates an invalid video frame.
+
+    The created frame will hold ownership of the specified video buffer for its lifetime.
+    Considering that QVideoFrame is implemented via a shared private object,
+    the specified video buffer will be destroyed upon destruction of the last copy
+    of the created video frame.
+
+    Note, if a video frame has been passed to \l QMediaRecorder or a rendering pipeline,
+    the lifetime of the frame is undefined, and the media recorder can destroy it
+    in a different thread.
+
+    QVideoFrame will contain own instance of QVideoFrameFormat.
+    Upon invoking \l setStreamFrameRate, \l setMirrored, or \l setRotation,
+    the inner format can be modified, and \l surfaceFormat will return
+    a detached instance.
+
+    \sa QAbstractVideoBuffer, QVideoFrameFormat
+*/
+QVideoFrame::QVideoFrame(std::unique_ptr<QAbstractVideoBuffer> videoBuffer)
+{
+    if (!videoBuffer)
+        return;
+
+    QVideoFrameFormat format = videoBuffer->format();
+    if (!format.isValid())
+        return;
+
+    d = new QVideoFramePrivate{ std::move(format), std::move(videoBuffer) };
 }
 
 /*!
@@ -169,7 +277,7 @@ QVideoFrame::~QVideoFrame() = default;
 */
 bool QVideoFrame::isValid() const
 {
-    return (d && d->buffer) && d->format.pixelFormat() != QVideoFrameFormat::Format_Invalid;
+    return d && d->videoBuffer && d->format.pixelFormat() != QVideoFrameFormat::Format_Invalid;
 }
 
 /*!
@@ -196,7 +304,7 @@ QVideoFrameFormat QVideoFrame::surfaceFormat() const
 */
 QVideoFrame::HandleType QVideoFrame::handleType() const
 {
-    return (d && d->buffer) ? d->buffer->handleType() : QVideoFrame::NoHandle;
+    return (d && d->hwVideoBuffer) ? d->hwVideoBuffer->handleType() : QVideoFrame::NoHandle;
 }
 
 /*!
@@ -276,6 +384,27 @@ bool QVideoFrame::isReadable() const
 }
 
 /*!
+    \enum QVideoFrame::MapMode
+
+    Enumerates how a video buffer's data is mapped to system memory.
+
+    \value NotMapped
+    The video buffer is not mapped to memory.
+    \value ReadOnly
+    The mapped memory is populated with data from the video buffer when mapped,
+    but the content of the mapped memory may be discarded when unmapped.
+    \value WriteOnly
+    The mapped memory is uninitialized when mapped, but the possibly modified
+    content will be used to populate the video buffer when unmapped.
+    \value ReadWrite
+    The mapped memory is populated with data from the video
+    buffer, and the video buffer is repopulated with the content of the mapped
+    memory when it is unmapped.
+
+    \sa mapMode(), map()
+*/
+
+/*!
     Returns the mode a video frame was mapped to system memory in.
 
     \sa map(), QVideoFrame::MapMode
@@ -317,8 +446,7 @@ QVideoFrame::MapMode QVideoFrame::mapMode() const
 */
 bool QVideoFrame::map(QVideoFrame::MapMode mode)
 {
-
-    if (!d || !d->buffer)
+    if (!d || !d->videoBuffer)
         return false;
 
     QMutexLocker lock(&d->mapMutex);
@@ -337,16 +465,16 @@ bool QVideoFrame::map(QVideoFrame::MapMode mode)
 
     Q_ASSERT(d->mapData.data[0] == nullptr);
     Q_ASSERT(d->mapData.bytesPerLine[0] == 0);
-    Q_ASSERT(d->mapData.nPlanes == 0);
-    Q_ASSERT(d->mapData.size[0] == 0);
+    Q_ASSERT(d->mapData.planeCount == 0);
+    Q_ASSERT(d->mapData.dataSize[0] == 0);
 
-    d->mapData = d->buffer->map(mode);
-    if (d->mapData.nPlanes == 0)
+    d->mapData = d->videoBuffer->map(mode);
+    if (d->mapData.planeCount == 0)
         return false;
 
     d->mapMode = mode;
 
-    if (d->mapData.nPlanes == 1) {
+    if (d->mapData.planeCount == 1) {
         auto pixelFmt = d->format.pixelFormat();
         // If the plane count is 1 derive the additional planes for planar formats.
         switch (pixelFmt) {
@@ -384,16 +512,16 @@ bool QVideoFrame::map(QVideoFrame::MapMode mode)
             const int height = this->height();
             const int yStride = d->mapData.bytesPerLine[0];
             const int uvHeight = pixelFmt == QVideoFrameFormat::Format_YUV422P ? height : height / 2;
-            const int uvStride = (d->mapData.size[0] - (yStride * height)) / uvHeight / 2;
+            const int uvStride = (d->mapData.dataSize[0] - (yStride * height)) / uvHeight / 2;
 
             // Three planes, the second and third vertically (and horizontally for other than Format_YUV422P formats) subsampled.
-            d->mapData.nPlanes = 3;
+            d->mapData.planeCount = 3;
             d->mapData.bytesPerLine[2] = d->mapData.bytesPerLine[1] = uvStride;
-            d->mapData.size[0] = yStride * height;
-            d->mapData.size[1] = uvStride * uvHeight;
-            d->mapData.size[2] = uvStride * uvHeight;
-            d->mapData.data[1] = d->mapData.data[0] + d->mapData.size[0];
-            d->mapData.data[2] = d->mapData.data[1] + d->mapData.size[1];
+            d->mapData.dataSize[0] = yStride * height;
+            d->mapData.dataSize[1] = uvStride * uvHeight;
+            d->mapData.dataSize[2] = uvStride * uvHeight;
+            d->mapData.data[1] = d->mapData.data[0] + d->mapData.dataSize[0];
+            d->mapData.data[2] = d->mapData.data[1] + d->mapData.dataSize[1];
             break;
         }
         case QVideoFrameFormat::Format_NV12:
@@ -403,25 +531,25 @@ bool QVideoFrame::map(QVideoFrame::MapMode mode)
         case QVideoFrameFormat::Format_P010:
         case QVideoFrameFormat::Format_P016: {
             // Semi planar, Full resolution Y plane with interleaved subsampled U and V planes.
-            d->mapData.nPlanes = 2;
+            d->mapData.planeCount = 2;
             d->mapData.bytesPerLine[1] = d->mapData.bytesPerLine[0];
-            int size = d->mapData.size[0];
-            d->mapData.size[0] = (d->mapData.bytesPerLine[0] * height());
-            d->mapData.size[1] = size - d->mapData.size[0];
-            d->mapData.data[1] = d->mapData.data[0] + d->mapData.size[0];
+            int size = d->mapData.dataSize[0];
+            d->mapData.dataSize[0] = (d->mapData.bytesPerLine[0] * height());
+            d->mapData.dataSize[1] = size - d->mapData.dataSize[0];
+            d->mapData.data[1] = d->mapData.data[0] + d->mapData.dataSize[0];
             break;
         }
         case QVideoFrameFormat::Format_IMC1:
         case QVideoFrameFormat::Format_IMC3: {
             // Three planes, the second and third vertically and horizontally subsumpled,
             // but with lines padded to the width of the first plane.
-            d->mapData.nPlanes = 3;
+            d->mapData.planeCount = 3;
             d->mapData.bytesPerLine[2] = d->mapData.bytesPerLine[1] = d->mapData.bytesPerLine[0];
-            d->mapData.size[0] = (d->mapData.bytesPerLine[0] * height());
-            d->mapData.size[1] = (d->mapData.bytesPerLine[0] * height() / 2);
-            d->mapData.size[2] = (d->mapData.bytesPerLine[0] * height() / 2);
-            d->mapData.data[1] = d->mapData.data[0] + d->mapData.size[0];
-            d->mapData.data[2] = d->mapData.data[1] + d->mapData.size[1];
+            d->mapData.dataSize[0] = (d->mapData.bytesPerLine[0] * height());
+            d->mapData.dataSize[1] = (d->mapData.bytesPerLine[0] * height() / 2);
+            d->mapData.dataSize[2] = (d->mapData.bytesPerLine[0] * height() / 2);
+            d->mapData.data[1] = d->mapData.data[0] + d->mapData.dataSize[0];
+            d->mapData.data[2] = d->mapData.data[1] + d->mapData.dataSize[1];
             break;
         }
         }
@@ -452,7 +580,7 @@ bool QVideoFrame::map(QVideoFrame::MapMode mode)
 */
 void QVideoFrame::unmap()
 {
-    if (!d || !d->buffer)
+    if (!d || !d->videoBuffer)
         return;
 
     QMutexLocker lock(&d->mapMutex);
@@ -467,7 +595,7 @@ void QVideoFrame::unmap()
     if (d->mappedCount == 0) {
         d->mapData = {};
         d->mapMode = QVideoFrame::NotMapped;
-        d->buffer->unmap();
+        d->videoBuffer->unmap();
     }
 }
 
@@ -484,7 +612,7 @@ int QVideoFrame::bytesPerLine(int plane) const
 {
     if (!d)
         return 0;
-    return plane >= 0 && plane < d->mapData.nPlanes ? d->mapData.bytesPerLine[plane] : 0;
+    return plane >= 0 && plane < d->mapData.planeCount ? d->mapData.bytesPerLine[plane] : 0;
 }
 
 /*!
@@ -503,7 +631,7 @@ uchar *QVideoFrame::bits(int plane)
 {
     if (!d)
         return nullptr;
-    return plane >= 0 && plane < d->mapData.nPlanes ? d->mapData.data[plane] : nullptr;
+    return plane >= 0 && plane < d->mapData.planeCount ? d->mapData.data[plane] : nullptr;
 }
 
 /*!
@@ -521,7 +649,7 @@ const uchar *QVideoFrame::bits(int plane) const
 {
     if (!d)
         return nullptr;
-    return plane >= 0 && plane < d->mapData.nPlanes ?  d->mapData.data[plane] : nullptr;
+    return plane >= 0 && plane < d->mapData.planeCount ?  d->mapData.data[plane] : nullptr;
 }
 
 /*!
@@ -535,7 +663,7 @@ int QVideoFrame::mappedBytes(int plane) const
 {
     if (!d)
         return 0;
-    return plane >= 0 && plane < d->mapData.nPlanes ? d->mapData.size[plane] : 0;
+    return plane >= 0 && plane < d->mapData.planeCount ? d->mapData.dataSize[plane] : 0;
 }
 
 /*!
@@ -637,41 +765,91 @@ void QVideoFrame::setEndTime(qint64 time)
 
 /*!
     Sets the \a angle the frame should be rotated clockwise before displaying.
+
+    Transformations of \c QVideoFrame, specifically rotation and mirroring,
+    are used only for displaying the video frame and are applied on top
+    of the surface transformation, which is determined by \l QVideoFrameFormat.
+    Rotation is applied before mirroring.
+
+    Default value is \c QtVideo::Rotation::None.
 */
 void QVideoFrame::setRotation(QtVideo::Rotation angle)
 {
     if (d)
-        d->rotation = angle;
+        d->presentationTransformation.rotation = angle;
 }
 
 /*!
     Returns the angle the frame should be rotated clockwise before displaying.
+
+    Transformations of \c QVideoFrame, specifically rotation and mirroring,
+    are used only for displaying the video frame and are applied on top
+    of the surface transformation, which is determined by \l QVideoFrameFormat.
+    Rotation is applied before mirroring.
  */
 QtVideo::Rotation QVideoFrame::rotation() const
 {
-    return QtVideo::Rotation(d ? d->rotation : QtVideo::Rotation::None);
+    return d ? d->presentationTransformation.rotation : QtVideo::Rotation::None;
 }
 
 /*!
-    Sets the \a mirrored flag for the frame and
-    sets the flag to the underlying \l surfaceFormat.
+    Sets whether the frame should be \a mirrored around its vertical axis before displaying.
+
+    Transformations of \c QVideoFrame, specifically rotation and mirroring,
+    are used only for displaying the video frame and are applied on top
+    of the surface transformation, which is determined by \l QVideoFrameFormat.
+    Mirroring is applied after rotation.
+
+    Mirroring is typically needed for video frames coming from a front camera of a mobile device.
+
+    Default value is \c false.
 */
 void QVideoFrame::setMirrored(bool mirrored)
 {
     if (d)
-        d->format.setMirrored(mirrored);
+        d->presentationTransformation.mirrorredHorizontallyAfterRotation = mirrored;
 }
 
 /*!
-    Returns whether the frame should be mirrored before displaying.
+    Returns whether the frame should be mirrored around its vertical axis before displaying.
+
+    Transformations of \c QVideoFrame, specifically rotation and mirroring,
+    are used only for displaying the video frame and are applied on top
+    of the surface transformation, which is determined by \l QVideoFrameFormat.
+    Mirroring is applied after rotation.
+
+    Mirroring is typically needed for video frames coming from a front camera of a mobile device.
 */
 bool QVideoFrame::mirrored() const
 {
-    return d && d->format.isMirrored();
+    return d && d->presentationTransformation.mirrorredHorizontallyAfterRotation;
 }
 
 /*!
-    Based on the pixel format converts current video frame to image.
+    Sets the frame \a rate of a video stream in frames per second.
+*/
+void QVideoFrame::setStreamFrameRate(qreal rate)
+{
+    if (d)
+        d->format.setStreamFrameRate(rate);
+}
+
+/*!
+    Returns the frame rate of a video stream in frames per second.
+*/
+qreal QVideoFrame::streamFrameRate() const
+{
+    return d ? d->format.streamFrameRate() : 0.;
+}
+
+/*!
+    Converts current video frame to image.
+
+    The consversion is based on the current pixel data and
+    the \l {surface format}{QVideoFrame::surfaceFormat}.
+    Transformations of the frame don't impact the result
+    since they are applied for presentation only.
+
     \since 5.15
 */
 QImage QVideoFrame::toImage() const
@@ -681,10 +859,8 @@ QImage QVideoFrame::toImage() const
 
     QMutexLocker lock(&d->imageMutex);
 
-    if (d->image.isNull()) {
-        const bool mirrorY = surfaceFormat().scanLineDirection() != QVideoFrameFormat::TopToBottom;
-        d->image = qImageFromVideoFrame(*this, rotation(), mirrored(), mirrorY);
-    }
+    if (d->image.isNull())
+        d->image = qImageFromVideoFrame(*this, qNormalizedSurfaceTransformation(d->format));
 
     return d->image;
 }
@@ -723,7 +899,7 @@ void QVideoFrame::paint(QPainter *painter, const QRectF &rect, const PaintOption
     }
 
     QRectF targetRect = rect;
-    QSizeF size = qRotatedFrameSize(*this);
+    QSizeF size = qRotatedFramePresentationSize(*this);
 
     size.scale(targetRect.size(), options.aspectRatioMode);
 
@@ -757,7 +933,15 @@ void QVideoFrame::paint(QPainter *painter, const QRectF &rect, const PaintOption
         transform.translate(targetRect.center().x() - size.width()/2,
                             targetRect.center().y() - size.height()/2);
         painter->setTransform(transform);
-        QImage image = toImage();
+
+        const bool hasPresentationTransformation =
+                d->presentationTransformation != VideoTransformation{};
+
+        // Use cache for images without presentation transform
+        const QImage image = hasPresentationTransformation
+                ? qImageFromVideoFrame(*this, qNormalizedFrameTransformation(*this))
+                : toImage();
+
         painter->drawImage({{}, size}, image, {{},image.size()});
         painter->setTransform(oldTransform);
 

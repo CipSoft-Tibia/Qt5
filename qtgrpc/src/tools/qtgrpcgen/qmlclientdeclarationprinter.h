@@ -27,6 +27,7 @@ public:
     void run()
     {
         printOpenNamespace();
+        printStreamSenders();
         printClientClass();
         printPublicBlock();
         printConstructor();
@@ -37,6 +38,7 @@ public:
 
 private:
     void printOpenNamespace();
+    void printStreamSenders();
     void printClientClass();
     void printConstructor();
     void printClientMethodsDeclaration();

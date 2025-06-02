@@ -10,9 +10,6 @@
 
 #include <QtNetwork/qnetworkaccessmanager.h>
 
-#include <functional>
-#include <type_traits>
-
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(loggingCategory, "qt.networkauth.oauth1.signature")
@@ -430,7 +427,7 @@ QOAuth1Signature &QOAuth1Signature::operator=(const QOAuth1Signature &other)
 }
 
 /*!
-    Move-assignment operator.
+    Move-assigns \a other to this signature and returns a reference to this QOAuth1Signature.
 */
 QOAuth1Signature &QOAuth1Signature::operator=(QOAuth1Signature &&other)
 {

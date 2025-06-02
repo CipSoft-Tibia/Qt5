@@ -27,11 +27,10 @@
 // The implicit check is done in format utils, while feature checks are done here in CoreChecks
 bool CoreChecks::FormatRequiresYcbcrConversionExplicitly(const VkFormat format) const {
     // VK_EXT_rgba10x6_formats
-    if (format == VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16 &&
-        enabled_features.rgba10x6_formats_features.formatRgba10x6WithoutYCbCrSampler) {
+    if (format == VK_FORMAT_R10X6G10X6B10X6A10X6_UNORM_4PACK16 && enabled_features.formatRgba10x6WithoutYCbCrSampler) {
         return false;
     }
-    return FormatRequiresYcbcrConversion(format);
+    return vkuFormatRequiresYcbcrConversion(format);
 }
 
 bool CoreChecks::PreCallValidateCreateSamplerYcbcrConversion(VkDevice device, const VkSamplerYcbcrConversionCreateInfo *pCreateInfo,
@@ -43,21 +42,15 @@ bool CoreChecks::PreCallValidateCreateSamplerYcbcrConversion(VkDevice device, co
     const Location create_info_loc = error_obj.location.dot(Field::pCreateInfo);
 
     // Need to check for external format conversion first as it allows for non-UNORM format
-    bool external_format = false;
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-    const VkExternalFormatANDROID *ext_format_android = LvlFindInChain<VkExternalFormatANDROID>(pCreateInfo->pNext);
-    if ((nullptr != ext_format_android) && (0 != ext_format_android->externalFormat)) {
-        external_format = true;
+    const uint64_t external_format = GetExternalFormat(pCreateInfo->pNext);
+    if (external_format != 0) {
         if (VK_FORMAT_UNDEFINED != conversion_format) {
             return LogError("VUID-VkSamplerYcbcrConversionCreateInfo-format-01904", device, create_info_loc.dot(Field::format),
                             "(%s) is not VK_FORMAT_UNDEFINED while "
                             "there is a chained VkExternalFormatANDROID struct with a non-zero externalFormat.",
                             string_VkFormat(conversion_format));
         }
-    }
-#endif  // VK_USE_PLATFORM_ANDROID_KHR
-
-    if ((external_format == false) && (FormatIsUNORM(conversion_format) == false)) {
+    } else if (vkuFormatIsUNORM(conversion_format) == false) {
         skip |= LogError("VUID-VkSamplerYcbcrConversionCreateInfo-format-04061", device, create_info_loc.dot(Field::format),
                          "(%s) is not an UNORM format and there is no external format conversion being created.",
                          string_VkFormat(conversion_format));
@@ -67,16 +60,14 @@ bool CoreChecks::PreCallValidateCreateSamplerYcbcrConversion(VkDevice device, co
     // (vkspec.html#potential-format-features)
     VkFormatFeatureFlags2KHR format_features = ~0ULL;
     if (conversion_format == VK_FORMAT_UNDEFINED) {
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
         // only check for external format inside VK_FORMAT_UNDEFINED check to prevent unnecessary extra errors from no format
         // features being supported
-        if (external_format == true) {
-            auto it = ahb_ext_formats_map.find(ext_format_android->externalFormat);
+        if (external_format != 0) {
+            auto it = ahb_ext_formats_map.find(external_format);
             if (it != ahb_ext_formats_map.end()) {
                 format_features = it->second;
             }
         }
-#endif  // VK_USE_PLATFORM_ANDROID_KHR
     } else {
         format_features = GetPotentialFormatFeatures(conversion_format);
     }
@@ -91,14 +82,14 @@ bool CoreChecks::PreCallValidateCreateSamplerYcbcrConversion(VkDevice device, co
                          string_VkFormat(conversion_format));
     }
     if ((format_features & VK_FORMAT_FEATURE_2_COSITED_CHROMA_SAMPLES_BIT_KHR) == 0) {
-        if (FormatIsXChromaSubsampled(conversion_format) && pCreateInfo->xChromaOffset == VK_CHROMA_LOCATION_COSITED_EVEN) {
+        if (vkuFormatIsXChromaSubsampled(conversion_format) && pCreateInfo->xChromaOffset == VK_CHROMA_LOCATION_COSITED_EVEN) {
             skip |=
                 LogError("VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01651", device, create_info_loc.dot(Field::format),
                          "(%s) does not support VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT so xChromaOffset can't "
                          "be VK_CHROMA_LOCATION_COSITED_EVEN",
                          string_VkFormat(conversion_format));
         }
-        if (FormatIsYChromaSubsampled(conversion_format) && pCreateInfo->yChromaOffset == VK_CHROMA_LOCATION_COSITED_EVEN) {
+        if (vkuFormatIsYChromaSubsampled(conversion_format) && pCreateInfo->yChromaOffset == VK_CHROMA_LOCATION_COSITED_EVEN) {
             skip |=
                 LogError("VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01651", device, create_info_loc.dot(Field::format),
                          "(%s) does not support VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT so yChromaOffset can't "
@@ -107,14 +98,14 @@ bool CoreChecks::PreCallValidateCreateSamplerYcbcrConversion(VkDevice device, co
         }
     }
     if ((format_features & VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT_KHR) == 0) {
-        if (FormatIsXChromaSubsampled(conversion_format) && pCreateInfo->xChromaOffset == VK_CHROMA_LOCATION_MIDPOINT) {
+        if (vkuFormatIsXChromaSubsampled(conversion_format) && pCreateInfo->xChromaOffset == VK_CHROMA_LOCATION_MIDPOINT) {
             skip |=
                 LogError("VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01652", device, create_info_loc.dot(Field::format),
                          "(%s) does not support VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT so xChromaOffset can't "
                          "be VK_CHROMA_LOCATION_MIDPOINT",
                          string_VkFormat(conversion_format));
         }
-        if (FormatIsYChromaSubsampled(conversion_format) && pCreateInfo->yChromaOffset == VK_CHROMA_LOCATION_MIDPOINT) {
+        if (vkuFormatIsYChromaSubsampled(conversion_format) && pCreateInfo->yChromaOffset == VK_CHROMA_LOCATION_MIDPOINT) {
             skip |=
                 LogError("VUID-VkSamplerYcbcrConversionCreateInfo-xChromaOffset-01652", device, create_info_loc.dot(Field::format),
                          "(%s) does not support VK_FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT so yChromaOffset can't "

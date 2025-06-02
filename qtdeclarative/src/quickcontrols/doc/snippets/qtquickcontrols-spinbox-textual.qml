@@ -11,7 +11,7 @@ SpinBox {
     to: items.length - 1
     value: 1 // "Medium"
 
-    property var items: ["Small", "Medium", "Large"]
+    property list<string> items: ["Small", "Medium", "Large"]
 
     validator: RegularExpressionValidator {
         regularExpression: new RegExp("(Small|Medium|Large)", "i")

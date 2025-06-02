@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_HLSL_WRITER_AST_PRINTER_AST_PRINTER_H_
 #define SRC_TINT_LANG_HLSL_WRITER_AST_PRINTER_AST_PRINTER_H_
@@ -24,8 +37,8 @@
 #include "src/tint/api/common/binding_point.h"
 #include "src/tint/api/options/array_length_from_uniform.h"
 #include "src/tint/lang/core/builtin_value.h"
+#include "src/tint/lang/hlsl/writer/ast_raise/decompose_memory_access.h"
 #include "src/tint/lang/hlsl/writer/common/options.h"
-#include "src/tint/lang/wgsl/ast/transform/decompose_memory_access.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/utils/containers/scope_stack.h"
 #include "src/tint/utils/generator/text_generator.h"
@@ -33,7 +46,7 @@
 
 // Forward declarations
 namespace tint::sem {
-class Builtin;
+class BuiltinFn;
 class Call;
 class ValueConstructor;
 class ValueConversion;
@@ -61,21 +74,21 @@ struct SanitizedResult {
 /// @param program the input program
 /// @param options The HLSL generator options.
 /// @returns the sanitized program and any supplementary information
-SanitizedResult Sanitize(const Program* program, const Options& options);
+SanitizedResult Sanitize(const Program& program, const Options& options);
 
 /// Implementation class for HLSL generator
 class ASTPrinter : public tint::TextGenerator {
   public:
     /// Constructor
     /// @param program the program to generate
-    explicit ASTPrinter(const Program* program);
+    explicit ASTPrinter(const Program& program);
     ~ASTPrinter() override;
 
     /// @returns true on successful generation; false otherwise
     bool Generate();
 
     /// Handles an index accessor expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the expression to emit
     /// @returns true if the index accessor was emitted
     bool EmitIndexAccessor(StringStream& out, const ast::IndexAccessorExpression* expr);
@@ -84,12 +97,12 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the statement was emitted successfully
     bool EmitAssign(const ast::AssignmentStatement* stmt);
     /// Handles generating a binary expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the binary expression
     /// @returns true if the expression was emitted, false otherwise
     bool EmitBinary(StringStream& out, const ast::BinaryExpression* expr);
     /// Handles generating a bitcast expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the as expression
     /// @returns true if the bitcast was emitted
     bool EmitBitcast(StringStream& out, const ast::BitcastExpression* expr);
@@ -114,24 +127,24 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the statement was emitted successfully
     bool EmitBreakIf(const ast::BreakIfStatement* stmt);
     /// Handles generating a call expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @returns true if the call expression is emitted
     bool EmitCall(StringStream& out, const ast::CallExpression* expr);
     /// Handles generating a function call expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param call the call expression
     /// @param function the function being called
     /// @returns true if the expression is emitted
     bool EmitFunctionCall(StringStream& out, const sem::Call* call, const sem::Function* function);
     /// Handles generating a builtin call expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param call the call expression
     /// @param builtin the builtin being called
     /// @returns true if the expression is emitted
-    bool EmitBuiltinCall(StringStream& out, const sem::Call* call, const sem::Builtin* builtin);
+    bool EmitBuiltinCall(StringStream& out, const sem::Call* call, const sem::BuiltinFn* builtin);
     /// Handles generating a value conversion expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param call the call expression
     /// @param conv the value conversion
     /// @returns true if the expression is emitted
@@ -139,7 +152,7 @@ class ASTPrinter : public tint::TextGenerator {
                              const sem::Call* call,
                              const sem::ValueConversion* conv);
     /// Handles generating a value constructor expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param call the call expression
     /// @param ctor the value constructor
     /// @returns true if the expression is emitted
@@ -147,149 +160,149 @@ class ASTPrinter : public tint::TextGenerator {
                               const sem::Call* call,
                               const sem::ValueConstructor* ctor);
     /// Handles generating a call expression to a
-    /// ast::transform::DecomposeMemoryAccess::Intrinsic for a uniform buffer
-    /// @param out the output of the expression stream
+    /// DecomposeMemoryAccess::Intrinsic for a uniform buffer
+    /// @param out the output stream
     /// @param expr the call expression
-    /// @param intrinsic the ast::transform::DecomposeMemoryAccess::Intrinsic
+    /// @param intrinsic the DecomposeMemoryAccess::Intrinsic
     /// @returns true if the call expression is emitted
     bool EmitUniformBufferAccess(StringStream& out,
                                  const ast::CallExpression* expr,
-                                 const ast::transform::DecomposeMemoryAccess::Intrinsic* intrinsic);
+                                 const DecomposeMemoryAccess::Intrinsic* intrinsic);
     /// Handles generating a call expression to a
-    /// ast::transform::DecomposeMemoryAccess::Intrinsic for a storage buffer
-    /// @param out the output of the expression stream
+    /// DecomposeMemoryAccess::Intrinsic for a storage buffer
+    /// @param out the output stream
     /// @param expr the call expression
-    /// @param intrinsic the ast::transform::DecomposeMemoryAccess::Intrinsic
+    /// @param intrinsic the DecomposeMemoryAccess::Intrinsic
     /// @returns true if the call expression is emitted
     bool EmitStorageBufferAccess(StringStream& out,
                                  const ast::CallExpression* expr,
-                                 const ast::transform::DecomposeMemoryAccess::Intrinsic* intrinsic);
+                                 const DecomposeMemoryAccess::Intrinsic* intrinsic);
     /// Handles generating a barrier intrinsic call
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param builtin the semantic information for the barrier builtin
     /// @returns true if the call expression is emitted
-    bool EmitBarrierCall(StringStream& out, const sem::Builtin* builtin);
+    bool EmitBarrierCall(StringStream& out, const sem::BuiltinFn* builtin);
     /// Handles generating an atomic intrinsic call for a storage buffer variable
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param intrinsic the atomic intrinsic
     /// @returns true if the call expression is emitted
     bool EmitStorageAtomicCall(StringStream& out,
                                const ast::CallExpression* expr,
-                               const ast::transform::DecomposeMemoryAccess::Intrinsic* intrinsic);
+                               const DecomposeMemoryAccess::Intrinsic* intrinsic);
     /// Handles generating the helper function for the atomic intrinsic function
     /// @param func the function
     /// @param intrinsic the atomic intrinsic
     /// @returns true if the function is emitted
-    bool EmitStorageAtomicIntrinsic(
-        const ast::Function* func,
-        const ast::transform::DecomposeMemoryAccess::Intrinsic* intrinsic);
+    bool EmitStorageAtomicIntrinsic(const ast::Function* func,
+                                    const DecomposeMemoryAccess::Intrinsic* intrinsic);
     /// Handles generating an atomic intrinsic call for a workgroup variable
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the atomic builtin
     /// @returns true if the call expression is emitted
     bool EmitWorkgroupAtomicCall(StringStream& out,
                                  const ast::CallExpression* expr,
-                                 const sem::Builtin* builtin);
+                                 const sem::BuiltinFn* builtin);
     /// Handles generating a call to a texture function (`textureSample`,
     /// `textureSampleGrad`, etc)
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param call the call expression
     /// @param builtin the semantic information for the texture builtin
     /// @returns true if the call expression is emitted
-    bool EmitTextureCall(StringStream& out, const sem::Call* call, const sem::Builtin* builtin);
+    bool EmitTextureCall(StringStream& out, const sem::Call* call, const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `select()` builtin
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @returns true if the call expression is emitted
     bool EmitSelectCall(StringStream& out, const ast::CallExpression* expr);
     /// Handles generating a call to the `modf()` builtin
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitModfCall(StringStream& out,
                       const ast::CallExpression* expr,
-                      const sem::Builtin* builtin);
+                      const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `frexp()` builtin
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitFrexpCall(StringStream& out,
                        const ast::CallExpression* expr,
-                       const sem::Builtin* builtin);
+                       const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `degrees()` builtin
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitDegreesCall(StringStream& out,
                          const ast::CallExpression* expr,
-                         const sem::Builtin* builtin);
+                         const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `radians()` builtin
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitRadiansCall(StringStream& out,
                          const ast::CallExpression* expr,
-                         const sem::Builtin* builtin);
+                         const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `sign()` builtin
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param call the call semantic node
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
-    bool EmitSignCall(StringStream& out, const sem::Call* call, const sem::Builtin* builtin);
+    bool EmitSignCall(StringStream& out, const sem::Call* call, const sem::BuiltinFn* builtin);
     /// Handles generating a call to data packing builtin
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitDataPackingCall(StringStream& out,
                              const ast::CallExpression* expr,
-                             const sem::Builtin* builtin);
+                             const sem::BuiltinFn* builtin);
     /// Handles generating a call to data unpacking builtin
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitDataUnpackingCall(StringStream& out,
                                const ast::CallExpression* expr,
-                               const sem::Builtin* builtin);
+                               const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `quantizeToF16()` intrinsic
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitQuantizeToF16Call(StringStream& out,
                                const ast::CallExpression* expr,
-                               const sem::Builtin* builtin);
+                               const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `trunc()` intrinsic
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitTruncCall(StringStream& out,
                        const ast::CallExpression* expr,
-                       const sem::Builtin* builtin);
-    /// Handles generating a call to DP4a builtins (dot4I8Packed and dot4U8Packed)
-    /// @param out the output of the expression stream
+                       const sem::BuiltinFn* builtin);
+    /// Handles generating a call to the builtins defined in the language extension
+    /// `packed_4x8_integer_dot_product`.
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
-    bool EmitDP4aCall(StringStream& out,
-                      const ast::CallExpression* expr,
-                      const sem::Builtin* builtin);
+    bool EmitPacked4x8IntegerDotProductBuiltinCall(StringStream& out,
+                                                   const ast::CallExpression* expr,
+                                                   const sem::BuiltinFn* builtin);
     /// Handles generating a call to subgroup builtins.
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the call expression
     /// @param builtin the semantic information for the builtin
     /// @returns true if the call expression is emitted
     bool EmitSubgroupCall(StringStream& out,
                           const ast::CallExpression* expr,
-                          const sem::Builtin* builtin);
+                          const sem::BuiltinFn* builtin);
     /// Handles a case statement
     /// @param s the switch statement
     /// @param case_idx the index of the switch case in the switch statement
@@ -303,11 +316,19 @@ class ASTPrinter : public tint::TextGenerator {
     /// @param stmt the statement to emit
     /// @returns true if the statement was emitted successfully
     bool EmitContinue(const ast::ContinueStatement* stmt);
-    /// Handles generate an Expression
-    /// @param out the output of the expression stream
+    /// Handles generating an Expression
+    /// @param out the output stream
     /// @param expr the expression
     /// @returns true if the expression was emitted
     bool EmitExpression(StringStream& out, const ast::Expression* expr);
+    /// Handles generating an Expression for texture or storage buffer call arguments. This is
+    /// specifically to work around a DXC bug around passing signed integer splatted constants as
+    /// args to these functions (see crbug.com/tint/1976)
+    /// @param out the output stream
+    /// @param expr the expression
+    /// @returns true if the expression was emitted
+    bool EmitTextureOrStorageBufferCallArgExpression(StringStream& out,
+                                                     const ast::Expression* expr);
     /// Handles generating a function
     /// @param func the function to generate
     /// @returns true if the function was emitted
@@ -385,12 +406,12 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the statement was emitted
     bool EmitWhile(const ast::WhileStatement* stmt);
     /// Handles generating an identifier expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the identifier expression
     /// @returns true if the identifeir was emitted
     bool EmitIdentifier(StringStream& out, const ast::IdentifierExpression* expr);
     /// Handles a member accessor expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the member accessor expression
     /// @returns true if the member accessor was emitted
     bool EmitMemberAccessor(StringStream& out, const ast::MemberAccessorExpression* expr);
@@ -444,7 +465,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the struct is emitted
     bool EmitStructType(TextBuffer* buffer, const core::type::Struct* ty);
     /// Handles a unary op expression
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param expr the expression to emit
     /// @returns true if the expression was emitted
     bool EmitUnaryOp(StringStream& out, const ast::UnaryOpExpression* expr);
@@ -500,7 +521,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// Handles generating a builtin method name
     /// @param builtin the semantic info for the builtin
     /// @returns the name or "" if not valid
-    std::string generate_builtin_name(const sem::Builtin* builtin);
+    std::string generate_builtin_name(const sem::BuiltinFn* builtin);
     /// Converts a builtin to an attribute name
     /// @param builtin the builtin to convert
     /// @returns the string name of the builtin or blank on error
@@ -522,8 +543,8 @@ class ASTPrinter : public tint::TextGenerator {
     };
 
     struct DMAIntrinsic {
-        ast::transform::DecomposeMemoryAccess::Intrinsic::Op op;
-        ast::transform::DecomposeMemoryAccess::Intrinsic::DataType type;
+        DecomposeMemoryAccess::Intrinsic::Op op;
+        DecomposeMemoryAccess::Intrinsic::DataType type;
         bool operator==(const DMAIntrinsic& rhs) const { return op == rhs.op && type == rhs.type; }
         /// Hasher is a std::hash function for DMAIntrinsic
         struct Hasher {
@@ -543,7 +564,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// if it hasn't been built already. If the builtin needs to be built then
     /// CallBuiltinHelper will generate the function signature and will call
     /// `build` to emit the body of the function.
-    /// @param out the output of the expression stream
+    /// @param out the output stream
     /// @param call the call expression
     /// @param builtin the semantic information for the builtin
     /// @param build a function with the signature:
@@ -555,7 +576,7 @@ class ASTPrinter : public tint::TextGenerator {
     template <typename F>
     bool CallBuiltinHelper(StringStream& out,
                            const ast::CallExpression* call,
-                           const sem::Builtin* builtin,
+                           const sem::BuiltinFn* builtin,
                            F&& build);
 
     /// @param s the structure
@@ -575,6 +596,10 @@ class ASTPrinter : public tint::TextGenerator {
         return builder_.TypeOf(ptr);
     }
 
+    /// @return true if ty is a struct or array with a matrix member (recursively), false otherwise.
+    /// @param ty the type that will be queried.
+    bool IsStructOrArrayOfMatrix(const core::type::Type* ty);
+
     ProgramBuilder builder_;
 
     /// Helper functions emitted at the top of the output
@@ -584,7 +609,7 @@ class ASTPrinter : public tint::TextGenerator {
     std::unordered_map<const core::type::Struct*, std::string> builtin_struct_names_;
     std::function<bool()> emit_continuing_;
     std::unordered_map<const core::type::Matrix*, std::string> matrix_scalar_inits_;
-    std::unordered_map<const sem::Builtin*, std::string> builtins_;
+    std::unordered_map<const sem::BuiltinFn*, std::string> builtins_;
     // Polyfill functions for bitcast expression, BinaryType indicates the source type and the
     // destination type.
     std::unordered_map<BinaryType, std::string> bitcast_funcs_;
@@ -593,6 +618,10 @@ class ASTPrinter : public tint::TextGenerator {
     std::unordered_map<const core::type::Matrix*, std::string> dynamic_matrix_scalar_write_;
     std::unordered_map<const core::type::Type*, std::string> value_or_one_if_zero_;
     std::unordered_set<const core::type::Struct*> emitted_structs_;
+    std::unordered_map<const core::type::Type*, bool> is_struct_or_array_of_matrix_;
+
+    // The line index in current_buffer_ of the current global declaration / function.
+    size_t global_insertion_point_ = 0;
 };
 
 }  // namespace tint::hlsl::writer

@@ -21,10 +21,10 @@ licenses(["notice"])
 package(default_visibility = ["//visibility:public"])
 
 selects.config_setting_group(
-    name = "ios_or_disable_gpu",
+    name = "apple_or_disable_gpu",
     match_any = [
         "//mediapipe/gpu:disable_gpu",
-        "//mediapipe:ios",
+        "//mediapipe:apple",
     ],
 )
 
@@ -299,7 +299,7 @@ cc_library(
         "//mediapipe/util:render_data_cc_proto",
         "@org_tensorflow//tensorflow/lite:framework",
     ] + select({
-        ":ios_or_disable_gpu": [],
+        ":apple_or_disable_gpu": [],
         "//conditions:default": [
             "@org_tensorflow//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         ],
@@ -325,6 +325,7 @@ cc_library(
         ":concatenate_vector_calculator_cc_proto",
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/api2:node",
+        "//mediapipe/framework/formats:body_rig_cc_proto",
         "//mediapipe/framework/formats:classification_cc_proto",
         "//mediapipe/framework/formats:landmark_cc_proto",
         "//mediapipe/framework/port:ret_check",
@@ -726,6 +727,7 @@ cc_library(
         "//mediapipe/framework/port:logging",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
@@ -741,6 +743,7 @@ cc_test(
         "//mediapipe/framework/port:parse_text_proto",
         "//mediapipe/framework/port:status",
         "//mediapipe/framework/tool:options_util",
+        "//mediapipe/util:packet_test_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -912,7 +915,7 @@ cc_library(
         "@org_tensorflow//tensorflow/lite:framework",
         "@org_tensorflow//tensorflow/lite/kernels:builtin_ops",
     ] + select({
-        ":ios_or_disable_gpu": [],
+        ":apple_or_disable_gpu": [],
         "//conditions:default": [
             "@org_tensorflow//tensorflow/lite/delegates/gpu/gl:gl_buffer",
         ],
@@ -944,6 +947,7 @@ cc_library(
     deps = [
         ":split_vector_calculator_cc_proto",
         "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/formats:body_rig_cc_proto",
         "//mediapipe/framework/formats:landmark_cc_proto",
         "//mediapipe/framework/port:ret_check",
         "//mediapipe/framework/port:status",
@@ -1387,5 +1391,28 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "value_or_default_calculator",
+    srcs = ["value_or_default_calculator.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework/port:status",
+    ],
+    alwayslink = True,
+)
+
+cc_test(
+    name = "value_or_default_calculator_test",
+    srcs = ["value_or_default_calculator_test.cc"],
+    deps = [
+        ":value_or_default_calculator",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:calculator_runner",
+        "//mediapipe/framework:packet",
+        "//mediapipe/framework/port:gtest_main",
     ],
 )

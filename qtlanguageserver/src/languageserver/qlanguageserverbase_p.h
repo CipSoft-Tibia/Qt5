@@ -27,9 +27,9 @@
 
 QT_BEGIN_NAMESPACE
 
-namespace QLspSpecification {
-
 Q_DECLARE_LOGGING_CATEGORY(lspLog);
+
+namespace QLspSpecification {
 
 class ProtocolBasePrivate;
 class Q_LANGUAGESERVER_EXPORT ProtocolBase

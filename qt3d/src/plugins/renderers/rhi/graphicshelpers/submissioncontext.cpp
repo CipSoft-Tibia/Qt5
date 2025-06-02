@@ -52,19 +52,6 @@ namespace Qt3DRender {
 namespace Render {
 namespace Rhi {
 
-static QHash<unsigned int, SubmissionContext *> static_contexts;
-
-unsigned int nextFreeContextId() noexcept
-{
-    for (unsigned int i = 0; i < 0xffff; ++i) {
-        if (!static_contexts.contains(i))
-            return i;
-    }
-
-    qFatal("Couldn't find free context ID");
-    return 0;
-}
-
 namespace {
 
 //RHIBuffer::Type attributeTypeToGLBufferType(QAttribute::AttributeType type) noexcept
@@ -426,6 +413,13 @@ void applyStateHelper(const StencilMask *state, QRhiGraphicsPipeline *gp) noexce
     gp->setStencilReadMask(std::get<1>(values));
 }
 
+void applyStateHelper(const LineWidth *state, QRhiGraphicsPipeline *gp) noexcept
+{
+    const auto values = state->values();
+    gp->setLineWidth(std::get<0>(values));
+    // no GL_LINE_SMOOTH equivalent on RHI
+}
+
 static QShader::Stage rhiShaderStage(QShaderProgram::ShaderType type) noexcept
 {
     switch (type) {
@@ -452,7 +446,6 @@ SubmissionContext::SubmissionContext()
     : m_initialized(false),
       m_ownsRhiCtx(false),
       m_drivenExternally(false),
-      m_id(nextFreeContextId()),
       m_material(nullptr),
       m_renderer(nullptr),
       m_rhi(nullptr),
@@ -465,7 +458,6 @@ SubmissionContext::SubmissionContext()
       m_fallbackSurface(nullptr)
 #endif
 {
-    static_contexts[m_id] = this;
     m_contextInfo.m_api = QGraphicsApiFilter::RHI;
 
     // We set those version numbers because QShaderGenerator wants major > 0
@@ -476,9 +468,6 @@ SubmissionContext::SubmissionContext()
 SubmissionContext::~SubmissionContext()
 {
     releaseResources();
-
-    Q_ASSERT(static_contexts[m_id] == this);
-    static_contexts.remove(m_id);
 }
 
 void SubmissionContext::initialize()
@@ -1528,12 +1517,14 @@ void SubmissionContext::loadShader(Shader *shaderNode, ShaderManager *shaderMana
     const std::vector<Qt3DCore::QNodeId> &sharedShaderIds =
             rhiShaderManager->shaderIdsForProgram(rhiShader);
     if (sharedShaderIds.size() == 1) {
-        // Shader in the cache hasn't been loaded yet
-        // We want a copy of the QByteArray as preprocessRHIShader will
-        // modify them
-        std::vector<QByteArray> shaderCodes = shaderNode->shaderCode();
-        preprocessRHIShader(shaderCodes);
-        rhiShader->setShaderCode(shaderCodes);
+        {
+            // Shader in the cache hasn't been loaded yet
+            // We want a copy of the QByteArray as preprocessRHIShader will
+            // modify them
+            std::vector<QByteArray> shaderCodes = shaderNode->shaderCode();
+            preprocessRHIShader(shaderCodes);
+            rhiShader->setShaderCode(std::move(shaderCodes));
+        }
 
         const ShaderCreationInfo loadResult = createShaderProgram(rhiShader);
         shaderNode->setStatus(loadResult.linkSucceeded ? QShaderProgram::Ready

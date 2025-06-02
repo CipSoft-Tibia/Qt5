@@ -8,7 +8,7 @@
 AnimatedParam::AnimatedParam(QObject *parent) : QVariantAnimation(parent)
 {
     setDuration(1500);
-    setEasingCurve(QEasingCurve::InOutCubic);
+    setEasingCurve(QEasingCurve::Linear);
 
     connect(this, &QVariantAnimation::valueChanged, this, &AnimatedParam::valueChanged);
     connect(this, &QAbstractAnimation::stateChanged, this, [this](QAbstractAnimation::State newState, QAbstractAnimation::State) {
@@ -23,7 +23,9 @@ int AnimatedParam::value() const
 
 void AnimatedParam::setValue(int newValue)
 {
-    stop();
+    if (newValue == endValue().toInt())
+        return;
+
     setStartValue(value());
     setEndValue(newValue);
     start();

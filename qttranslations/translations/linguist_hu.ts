@@ -1154,7 +1154,7 @@ Minden fájl (*)</translation>
     </message>
     <message>
         <source>Copyright (C) %1 The Qt Company Ltd.</source>
-        <translation>Copyright (C) %1 A Qt Company Ltd.</translation>
+        <translation type="vanished">Copyright (C) %1 A Qt Company Ltd.</translation>
     </message>
     <message>
         <source>&lt;center&gt;&lt;img src=&quot;:/images/splash.png&quot;/&gt;&lt;/img&gt;&lt;p&gt;%1&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Qt Linguist is a tool for adding translations to Qt applications.&lt;/p&gt;&lt;p&gt;Copyright (C) %2 The Qt Company Ltd.</source>

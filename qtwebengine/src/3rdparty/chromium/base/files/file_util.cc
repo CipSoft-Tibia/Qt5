@@ -310,11 +310,11 @@ bool ReadStreamToStringWithMaxSize(FILE* stream,
   }
 
   std::string content_string;
-  bool read_successs = ReadStreamToSpanWithMaxSize(
-      stream, max_size, [&content_string](size_t size) {
-        content_string.resize(size);
-        return as_writable_bytes(make_span(content_string));
-      });
+  auto f = [&content_string](size_t size) {
+    content_string.resize(size);
+    return as_writable_bytes(make_span(content_string));
+  };
+  bool read_successs = ReadStreamToSpanWithMaxSize(stream, max_size, f);
 
   if (contents) {
     contents->swap(content_string);
@@ -439,6 +439,18 @@ bool TruncateFile(FILE* file) {
     return false;
 #endif
   return true;
+}
+
+int ReadFile(const FilePath& filename, char* data, int max_size) {
+  if (max_size < 0) {
+    return -1;
+  }
+  std::optional<uint64_t> result =
+      ReadFile(filename, make_span(data, static_cast<uint32_t>(max_size)));
+  if (!result) {
+    return -1;
+  }
+  return checked_cast<int>(result.value());
 }
 
 bool WriteFile(const FilePath& filename, span<const uint8_t> data) {

@@ -1,15 +1,12 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QT_NO_HTTP
-
 #include <qabstractoauth.h>
 #include <qabstractoauthreplyhandler.h>
 
 #include <private/qabstractoauth_p.h>
 
 #include <QtCore/qurl.h>
-#include <QtCore/qpair.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qurlquery.h>
 #include <QtCore/qjsondocument.h>
@@ -21,6 +18,8 @@
 
 #include <QtCore/qrandom.h>
 #include <QtCore/private/qlocking_p.h>
+
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -273,7 +272,7 @@ void QAbstractOAuthPrivate::setStatus(QAbstractOAuth::Status newStatus)
     }
 }
 
-QByteArray QAbstractOAuthPrivate::generateRandomString(quint8 length)
+QByteArray QAbstractOAuthPrivate::generateRandomBase64String(quint8 length)
 {
     // We'll use QByteArray::toBase64() to create a random-looking string from
     // pure random data. In Base64 encoding, we get 6 bits of randomness per
@@ -296,6 +295,16 @@ QByteArray QAbstractOAuthPrivate::generateRandomString(quint8 length)
     return ba;
 }
 
+void QAbstractOAuthPrivate::setExtraTokens(const QVariantMap &tokens)
+{
+    if (extraTokens == tokens)
+        return;
+    Q_Q(QAbstractOAuth);
+    extraTokens = tokens;
+    emit q->extraTokensChanged(extraTokens);
+}
+
+// ### Qt 7 remove when removing HTTP method support (QTBUG-124329)
 QByteArray QAbstractOAuthPrivate::convertParameters(const QVariantMap &parameters)
 {
     QByteArray data;
@@ -307,7 +316,7 @@ QByteArray QAbstractOAuthPrivate::convertParameters(const QVariantMap &parameter
         QUrlQuery query;
         for (auto it = parameters.begin(), end = parameters.end(); it != end; ++it)
             query.addQueryItem(it.key(), it->toString());
-        data = query.toString(QUrl::FullyEncoded).toUtf8();
+        data = query.toString(QUrl::FullyEncoded).toLatin1();
         break;
     }
     }
@@ -612,9 +621,7 @@ void QAbstractOAuth::resourceOwnerAuthorization(const QUrl &url, const QMultiMap
 */
 QByteArray QAbstractOAuth::generateRandomString(quint8 length)
 {
-    return QAbstractOAuthPrivate::generateRandomString(length);
+    return QAbstractOAuthPrivate::generateRandomBase64String(length);
 }
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_HTTP

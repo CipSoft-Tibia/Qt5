@@ -7,7 +7,7 @@
 #include "qaudiosystem_p.h"
 #include "qaudiosource.h"
 
-#include <private/qplatformmediadevices_p.h>
+#include <private/qplatformaudiodevices_p.h>
 #include <private/qplatformmediaintegration_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -96,7 +96,7 @@ QAudioSource::QAudioSource(const QAudioFormat &format, QObject *parent)
 QAudioSource::QAudioSource(const QAudioDevice &audioDevice, const QAudioFormat &format, QObject *parent):
     QObject(parent)
 {
-    d = QPlatformMediaIntegration::instance()->mediaDevices()->audioInputDevice(format, audioDevice, parent);
+    d = QPlatformMediaIntegration::instance()->audioDevices()->audioInputDevice(format, audioDevice, parent);
     if (d) {
         connect(d, &QPlatformAudioSource::stateChanged, this, [this](QAudio::State state) {
             // if the signal has been emitted from another thread,
@@ -144,6 +144,12 @@ void QAudioSource::start(QIODevice* device)
 {
     if (!d)
         return;
+    if (!device->isWritable()) {
+        qWarning() << "QAudioSource::start: QIODevice is not writable";
+        d->setError(QAudio::OpenError);
+        return;
+    }
+
     d->elapsedTime.start();
     d->start(device);
 }
@@ -328,8 +334,6 @@ qint64 QAudioSource::processedUSecs() const
     Returns the microseconds since start() was called, including time in Idle and
     Suspend states.
 */
-
-#include <qdebug.h>
 
 qint64 QAudioSource::elapsedUSecs() const
 {

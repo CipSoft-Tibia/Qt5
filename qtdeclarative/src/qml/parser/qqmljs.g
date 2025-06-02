@@ -13,7 +13,6 @@
 %token T_DIVIDE_EQ "/="         T_DO "do"                   T_DOT "."
 %token T_ELSE "else"            T_EQ "="                    T_EQ_EQ "=="
 %token T_EQ_EQ_EQ "==="         T_FINALLY "finally"         T_FOR "for"
-%token T_FUNCTION_STAR "function *"
 %token T_FUNCTION "function"    T_GE ">="                   T_GT ">"
 %token T_GT_GT ">>"             T_GT_GT_EQ ">>="            T_GT_GT_GT ">>>"
 %token T_GT_GT_GT_EQ ">>>="     T_IDENTIFIER "identifier"   T_IF "if"
@@ -302,17 +301,17 @@ public:
     inline int errorColumnNumber() const
     { return diagnosticMessage().loc.startColumn; }
 
-    inline bool identifierInsertion() const
-    { return m_enableIdentifierInsertion; }
+    inline bool identifierInsertionEnabled() const
+    { return m_identifierInsertionEnabled; }
 
-    inline void enableIdentifierInsertion()
-    { m_enableIdentifierInsertion = true; }
+    inline void setIdentifierInsertionEnabled(bool enable)
+    { m_identifierInsertionEnabled = enable; }
 
-    inline bool incompleteBindings() const
-    { return m_enableIncompleteBindings; }
+    inline bool incompleteBindingsEnabled() const
+    { return m_incompleteBindingsEnabled; }
 
-    inline void enableIncompleteBindings()
-    { m_enableIncompleteBindings = true; }
+    inline void setIncompleteBindingsEnabled(bool enable)
+    { m_incompleteBindingsEnabled = enable; }
 
 protected:
     bool parse(int startToken);
@@ -404,8 +403,8 @@ protected:
     CoverExpressionType coverExpressionType = CE_Invalid;
 
     QList<DiagnosticMessage> diagnostic_messages;
-    bool m_enableIdentifierInsertion = false;
-    bool m_enableIncompleteBindings = false;
+    bool m_identifierInsertionEnabled = false;
+    bool m_incompleteBindingsEnabled = false;
 };
 
 } // end of namespace QQmlJS
@@ -778,6 +777,7 @@ UiPragma: T_PRAGMA PragmaId Semicolon;
     case $rule_number: {
         AST::UiPragma *pragma = new (pool) AST::UiPragma(stringRef(2));
         pragma->pragmaToken = loc(1);
+        pragma->pragmaIdToken = loc(2);
         pragma->semicolonToken = loc(3);
         sym(1).Node = pragma;
     } break;
@@ -789,6 +789,7 @@ UiPragma: T_PRAGMA PragmaId T_COLON UiPragmaValueList Semicolon;
         AST::UiPragma *pragma = new (pool) AST::UiPragma(
                 stringRef(2), sym(4).UiPragmaValueList->finish());
         pragma->pragmaToken = loc(1);
+        pragma->pragmaIdToken = loc(2);
         pragma->colonToken = loc(3);
         pragma->semicolonToken = loc(5);
         sym(1).Node = pragma;
@@ -1152,7 +1153,7 @@ case $rule_number:
 UiObjectMember: UiQualifiedId Semicolon;
 /.
     case $rule_number: {
-    if (!m_enableIncompleteBindings) {
+    if (!m_incompleteBindingsEnabled) {
         diagnostic_messages.append(compileError(loc(1), QLatin1String("Incomplete binding, expected token `:` or `{`")));
         return false;
     }
@@ -2267,6 +2268,7 @@ MemberExpression: MemberExpression T_QUESTION_DOT T_LBRACKET Expression_In T_RBR
 /.
     case $rule_number: {
         AST::ArrayMemberExpression *node = new (pool) AST::ArrayMemberExpression(sym(1).Expression, sym(4).Expression);
+        node->optionalToken = loc(2);
         node->lbracketToken = loc(3);
         node->rbracketToken = loc(5);
         node->isOptional = true;
@@ -2358,6 +2360,7 @@ CallExpression: MemberExpression T_QUESTION_DOT T_LPAREN Arguments T_RPAREN;
 /.
     case $rule_number: {
         AST::CallExpression *node = new (pool) AST::CallExpression(sym(1).Expression, sym(4).ArgumentList);
+        node->optionalToken = loc(2);
         node->lparenToken = loc(3);
         node->rparenToken = loc(5);
         node->isOptional = true;
@@ -2381,6 +2384,7 @@ CallExpression: CallExpression T_QUESTION_DOT T_LPAREN Arguments T_RPAREN;
 /.
     case $rule_number: {
         AST::CallExpression *node = new (pool) AST::CallExpression(sym(1).Expression, sym(4).ArgumentList);
+        node->optionalToken = loc(2);
         node->lparenToken = loc(3);
         node->rparenToken = loc(5);
         node->isOptional = true;
@@ -2403,6 +2407,7 @@ CallExpression: CallExpression T_QUESTION_DOT T_LBRACKET Expression_In T_RBRACKE
 /.
     case $rule_number: {
         AST::ArrayMemberExpression *node = new (pool) AST::ArrayMemberExpression(sym(1).Expression, sym(4).Expression);
+        node->optionalToken = loc(2);
         node->lbracketToken = loc(3);
         node->rbracketToken = loc(5);
         node->isOptional = true;
@@ -3397,6 +3402,7 @@ BindingProperty: PropertyName T_COLON BindingIdentifier InitializerOpt_In;
     case $rule_number: {
         AST::PatternProperty *node = new (pool) AST::PatternProperty(sym(1).PropertyName, stringRef(3), sym(4).Expression);
         node->colonToken = loc(2);
+        node->identifierToken = loc(3);
         sym(1).Node = node;
     } break;
 ./
@@ -3480,7 +3486,7 @@ ExpressionStatementLookahead: ;
         int token = lookaheadToken(lexer);
         if (token == T_LBRACE)
             pushToken(T_FORCE_BLOCK);
-        else if (token == T_FUNCTION || token == T_FUNCTION_STAR || token == T_CLASS || token == T_LET || token == T_CONST)
+        else if (token == T_FUNCTION || token == T_CLASS || token == T_LET || token == T_CONST)
             pushToken(T_FORCE_DECLARATION);
     } break;
 ./
@@ -3565,6 +3571,11 @@ IterationStatement: T_FOR T_LPAREN LexicalDeclaration T_SEMICOLON ExpressionOpt_
         AST::ForStatement *node = new (pool) AST::ForStatement(
           static_cast<AST::VariableStatement *>(sym(3).Node)->declarations, sym(5).Expression,
           sym(7).Expression, sym(9).Statement);
+        if (node->declarations) {
+            AST::PatternElement *pe = node->declarations->declaration;
+            pe->isForDeclaration = true;
+            pe->declarationKindToken = loc(3);
+        }
         node->forToken = loc(1);
         node->lparenToken = loc(2);
         node->firstSemicolonToken = loc(4);
@@ -3636,6 +3647,7 @@ ForDeclaration: Var BindingIdentifier TypeAnnotationOpt;
         node->identifierToken = loc(2);
         node->scope = sym(1).scope;
         node->isForDeclaration = true;
+        node->declarationKindToken = loc(1);
         sym(1).Node = node;
     } break;
 ./
@@ -3648,6 +3660,7 @@ ForDeclaration: Var BindingPattern;
         auto *node = new (pool) AST::PatternElement(sym(2).Pattern, nullptr);
         node->scope = sym(1).scope;
         node->isForDeclaration = true;
+        node->declarationKindToken = loc(1);
         sym(1).Node = node;
     } break;
 ./
@@ -4157,6 +4170,7 @@ MethodDefinition: T_STAR PropertyName GeneratorLParen StrictFormalParameters T_R
         if (!ensureNoFunctionTypeAnnotations(sym(6).TypeAnnotation, sym(4).FormalParameterList))
             return false;
         AST::FunctionExpression *f = new (pool) AST::FunctionExpression(stringRef(2), sym(4).FormalParameterList, sym(8).StatementList);
+        f->starToken = loc(1);
         f->functionToken = sym(2).PropertyName->firstSourceLocation();
         f->lparenToken = loc(3);
         f->rparenToken = loc(5);
@@ -4225,17 +4239,27 @@ GeneratorRBrace: T_RBRACE;
     } break;
 ./
 
-FunctionStar: T_FUNCTION_STAR %prec REDUCE_HERE;
+FunctionStar: T_FUNCTION T_STAR %prec REDUCE_HERE;
+/.
+    case $rule_number: {
+        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(QStringView(), nullptr, nullptr);
+        node->functionToken = loc(1);
+        node->starToken = loc(2);
+        sym(1).FunctionDeclaration = node;
+    } break;
+./
 
 GeneratorDeclaration: FunctionStar BindingIdentifier GeneratorLParen FormalParameters T_RPAREN FunctionLBrace GeneratorBody GeneratorRBrace;
 /.
     case $rule_number: {
-        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(stringRef(2), sym(4).FormalParameterList, sym(7).StatementList);
-        node->functionToken = loc(1);
+        AST::FunctionDeclaration *node = sym(1).FunctionDeclaration;
         node->identifierToken = loc(2);
+        node->name = stringRef(2);
         node->lparenToken = loc(3);
+        node->formals = sym(4).FormalParameterList;
         node->rparenToken = loc(5);
         node->lbraceToken = loc(6);
+        node->body = sym(7).StatementList;
         node->rbraceToken = loc(8);
         node->isGenerator = true;
         sym(1).Node = node;
@@ -4246,42 +4270,45 @@ GeneratorDeclaration_Default: GeneratorDeclaration;
 GeneratorDeclaration_Default: FunctionStar GeneratorLParen FormalParameters T_RPAREN FunctionLBrace GeneratorBody GeneratorRBrace;
 /.
     case $rule_number: {
-        AST::FunctionDeclaration *node = new (pool) AST::FunctionDeclaration(QStringView(), sym(3).FormalParameterList, sym(6).StatementList);
-        node->functionToken = loc(1);
+        AST::FunctionDeclaration *node = sym(1).FunctionDeclaration;
         node->lparenToken = loc(2);
+        node->formals = sym(3).FormalParameterList;
         node->rparenToken = loc(4);
         node->lbraceToken = loc(5);
+        node->body = sym(6).StatementList;
         node->rbraceToken = loc(7);
         node->isGenerator = true;
         sym(1).Node = node;
     } break;
 ./
 
-GeneratorExpression: T_FUNCTION_STAR BindingIdentifier GeneratorLParen FormalParameters T_RPAREN FunctionLBrace GeneratorBody GeneratorRBrace;
+GeneratorExpression: T_FUNCTION T_STAR BindingIdentifier GeneratorLParen FormalParameters T_RPAREN FunctionLBrace GeneratorBody GeneratorRBrace;
 /.
     case $rule_number: {
-        AST::FunctionExpression *node = new (pool) AST::FunctionExpression(stringRef(2), sym(4).FormalParameterList, sym(7).StatementList);
+        AST::FunctionExpression *node = new (pool) AST::FunctionExpression(stringRef(3), sym(5).FormalParameterList, sym(8).StatementList);
         node->functionToken = loc(1);
-        if (!stringRef(2).isNull())
-          node->identifierToken = loc(2);
+        node->starToken = loc(2);
+        if (!stringRef(3).isNull())
+          node->identifierToken = loc(3);
+        node->lparenToken = loc(4);
+        node->rparenToken = loc(6);
+        node->lbraceToken = loc(7);
+        node->rbraceToken = loc(9);
+        node->isGenerator = true;
+        sym(1).Node = node;
+    } break;
+./
+
+GeneratorExpression: T_FUNCTION T_STAR GeneratorLParen FormalParameters T_RPAREN FunctionLBrace GeneratorBody GeneratorRBrace;
+/.
+    case $rule_number: {
+        AST::FunctionExpression *node = new (pool) AST::FunctionExpression(QStringView(), sym(4).FormalParameterList, sym(7).StatementList);
+        node->functionToken = loc(1);
+        node->starToken = loc(2);
         node->lparenToken = loc(3);
         node->rparenToken = loc(5);
         node->lbraceToken = loc(6);
         node->rbraceToken = loc(8);
-        node->isGenerator = true;
-        sym(1).Node = node;
-    } break;
-./
-
-GeneratorExpression: T_FUNCTION_STAR GeneratorLParen FormalParameters T_RPAREN FunctionLBrace GeneratorBody GeneratorRBrace;
-/.
-    case $rule_number: {
-        AST::FunctionExpression *node = new (pool) AST::FunctionExpression(QStringView(), sym(3).FormalParameterList, sym(6).StatementList);
-        node->functionToken = loc(1);
-        node->lparenToken = loc(2);
-        node->rparenToken = loc(4);
-        node->lbraceToken = loc(5);
-        node->rbraceToken = loc(7);
         node->isGenerator = true;
         sym(1).Node = node;
     } break;
@@ -4668,7 +4695,7 @@ ExportDeclarationLookahead: ;
 /.
     case $rule_number: {
         int token = lookaheadToken(lexer);
-        if (token == T_FUNCTION || token == T_FUNCTION_STAR || token == T_CLASS)
+        if (token == T_FUNCTION || token == T_CLASS)
             pushToken(T_FORCE_DECLARATION);
     } break;
 ./
@@ -4827,7 +4854,7 @@ ExportSpecifier: IdentifierName T_AS IdentifierName;
         const int errorState = state_stack[tos];
 
         // automatic insertion of missing identifiers after dots
-        if (yytoken != -1 && m_enableIdentifierInsertion && t_action(errorState, T_IDENTIFIER) && yyprevtoken == T_DOT) {
+        if (yytoken != -1 && m_identifierInsertionEnabled && t_action(errorState, T_IDENTIFIER) && yyprevtoken == T_DOT) {
 #ifdef PARSER_DEBUG
             qDebug() << "Inserting missing identifier between" << spell[yyprevtoken] << "and"
                      << spell[yytoken];

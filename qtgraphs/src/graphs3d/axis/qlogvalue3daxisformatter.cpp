@@ -21,11 +21,11 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmltype LogValueAxis3DFormatter
+ * \qmltype LogValue3DAxisFormatter
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QLogValue3DAxisFormatter
- * \inherits ValueAxis3DFormatter
+ * \nativetype QLogValue3DAxisFormatter
+ * \inherits Value3DAxisFormatter
  * \brief Provides formatting rules for a logarithmic value axis.
  *
  * When a formatter is attached to a value axis, the axis range
@@ -33,7 +33,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty real LogValueAxis3DFormatter::base
+ * \qmlproperty real LogValue3DAxisFormatter::base
  *
  * The base of the logarithm used to map axis values. If the base is non-zero,
  * the parent axis segment count will be ignored when the grid line and label
@@ -43,11 +43,11 @@ QT_BEGIN_NAMESPACE
  * The base has to be zero or a positive value and it cannot be equal to one.
  * Defaults to ten.
  *
- * \sa ValueAxis3D::segmentCount
+ * \sa Value3DAxis::segmentCount
  */
 
 /*!
- * \qmlproperty bool LogValueAxis3DFormatter::autoSubGrid
+ * \qmlproperty bool LogValue3DAxisFormatter::autoSubGrid
  *
  * Defines whether sub-grid positions are generated automatically.
  *
@@ -58,11 +58,11 @@ QT_BEGIN_NAMESPACE
  * This property is ignored when the base value is zero.
  * Defaults to \c true.
  *
- * \sa base, ValueAxis3D::subSegmentCount
+ * \sa base, Value3DAxis::subSegmentCount
  */
 
 /*!
- * \qmlproperty bool LogValueAxis3DFormatter::showEdgeLabels
+ * \qmlproperty bool LogValue3DAxisFormatter::edgeLabelsVisible
  *
  * Defines whether the first and last label on the axis are visible.
  *
@@ -74,8 +74,29 @@ QT_BEGIN_NAMESPACE
  * suppress showing the minimum and maximum labels for the axis in cases where
  * the segments do not exactly fit the axis. Defaults to \c true.
  *
- * \sa base, AbstractAxis3D::labels
+ * \sa base, Abstract3DAxis::labels
  */
+
+/*!
+    \qmlsignal LogValue3DAxisFormatter::baseChanged(real base)
+
+    This signal is emitted when the base of the logarithm used to map axis
+    values changes to \a base.
+*/
+
+/*!
+    \qmlsignal LogValue3DAxisFormatter::autoSubGridChanged(bool enabled)
+
+    This signal is emitted when the value that specifies whether sub-grid
+    positions are generated automatically changes to \a enabled.
+*/
+
+/*!
+    \qmlsignal LogValue3DAxisFormatter::edgeLabelsVisibleChanged(bool enabled)
+
+    This signal is emitted when the value that specifies whether to show
+    the first and last label on the axis changes to \a enabled.
+*/
 
 /*!
  * \internal
@@ -123,9 +144,9 @@ void QLogValue3DAxisFormatter::setBase(qreal base)
 {
     Q_D(QLogValue3DAxisFormatter);
     if (base < 0.0f || base == 1.0f) {
-        qWarning() << "Warning: The logarithm base must be greater than 0 and not "
-                      "equal to 1,"
-                   << "attempted:" << base;
+        qWarning(
+            "Warning: The logarithm base must be greater than 0 and not equal to 1, attempted: %f",
+            base);
         return;
     }
     if (d->m_base != base) {
@@ -137,7 +158,7 @@ void QLogValue3DAxisFormatter::setBase(qreal base)
 
 qreal QLogValue3DAxisFormatter::base() const
 {
-    const Q_D(QLogValue3DAxisFormatter);
+    Q_D(const QLogValue3DAxisFormatter);
     return d->m_base;
 }
 
@@ -166,12 +187,12 @@ void QLogValue3DAxisFormatter::setAutoSubGrid(bool enabled)
 
 bool QLogValue3DAxisFormatter::autoSubGrid() const
 {
-    const Q_D(QLogValue3DAxisFormatter);
+    Q_D(const QLogValue3DAxisFormatter);
     return d->m_autoSubGrid;
 }
 
 /*!
- * \property QLogValue3DAxisFormatter::showEdgeLabels
+ * \property QLogValue3DAxisFormatter::edgeLabelsVisible
  *
  * \brief Whether the first and last label on the axis are visible.
  *
@@ -185,20 +206,20 @@ bool QLogValue3DAxisFormatter::autoSubGrid() const
  *
  * \sa base, QAbstract3DAxis::labels
  */
-void QLogValue3DAxisFormatter::setShowEdgeLabels(bool enabled)
+void QLogValue3DAxisFormatter::setEdgeLabelsVisible(bool enabled)
 {
     Q_D(QLogValue3DAxisFormatter);
-    if (d->m_showEdgeLabels != enabled) {
-        d->m_showEdgeLabels = enabled;
+    if (d->m_edgeLabelsVisible != enabled) {
+        d->m_edgeLabelsVisible = enabled;
         markDirty(true);
-        emit showEdgeLabelsChanged(enabled);
+        emit edgeLabelsVisibleChanged(enabled);
     }
 }
 
-bool QLogValue3DAxisFormatter::showEdgeLabels() const
+bool QLogValue3DAxisFormatter::edgeLabelsVisible() const
 {
-    const Q_D(QLogValue3DAxisFormatter);
-    return d->m_showEdgeLabels;
+    Q_D(const QLogValue3DAxisFormatter);
+    return d->m_edgeLabelsVisible;
 }
 
 /*!
@@ -223,7 +244,7 @@ void QLogValue3DAxisFormatter::recalculate()
  */
 float QLogValue3DAxisFormatter::positionAt(float value) const
 {
-    const Q_D(QLogValue3DAxisFormatter);
+    Q_D(const QLogValue3DAxisFormatter);
     return d->positionAt(value);
 }
 
@@ -232,7 +253,7 @@ float QLogValue3DAxisFormatter::positionAt(float value) const
  */
 float QLogValue3DAxisFormatter::valueAt(float position) const
 {
-    const Q_D(QLogValue3DAxisFormatter);
+    Q_D(const QLogValue3DAxisFormatter);
     return d->valueAt(position);
 }
 
@@ -253,7 +274,7 @@ QLogValue3DAxisFormatterPrivate::QLogValue3DAxisFormatterPrivate()
     , m_logMax(0.0)
     , m_logRangeNormalizer(0.0)
     , m_autoSubGrid(true)
-    , m_showEdgeLabels(true)
+    , m_edgeLabelsVisible(true)
     , m_evenMinSegment(true)
     , m_evenMaxSegment(true)
 {}
@@ -263,6 +284,7 @@ QLogValue3DAxisFormatterPrivate::~QLogValue3DAxisFormatterPrivate() {}
 void QLogValue3DAxisFormatterPrivate::recalculate()
 {
     Q_Q(QLogValue3DAxisFormatter);
+
     // When doing position/value mappings, base doesn't matter, so just use
     // natural logarithm
     m_logMin = qLn(qreal(m_min));
@@ -282,8 +304,8 @@ void QLogValue3DAxisFormatterPrivate::recalculate()
         qreal minDiff = qCeil(logMin) - logMin;
         qreal maxDiff = logMax - qFloor(logMax);
 
-        m_evenMinSegment = qFuzzyCompare(0.0, minDiff);
-        m_evenMaxSegment = qFuzzyCompare(0.0, maxDiff);
+        m_evenMinSegment = qFuzzyCompare(qreal(0.0), minDiff);
+        m_evenMaxSegment = qFuzzyCompare(qreal(0.0), maxDiff);
 
         segmentCount = qRound(logRangeNormalizer - minDiff - maxDiff);
 
@@ -311,25 +333,29 @@ void QLogValue3DAxisFormatterPrivate::recalculate()
         if (!m_evenMinSegment) {
             m_gridPositions[0] = 0.0f;
             m_labelPositions[0] = 0.0f;
-            if (m_showEdgeLabels)
+            if (m_edgeLabelsVisible)
                 m_labelStrings << q->stringForValue(qreal(m_min), labelFormat);
             else
-                m_labelStrings << QString();
+                m_labelStrings << hiddenLabelTag;
             index++;
         }
         for (int i = 0; i < segmentCount; i++) {
             float gridValue = float((minDiff + qreal(i)) / qreal(logRangeNormalizer));
             m_gridPositions[index] = gridValue;
             m_labelPositions[index] = gridValue;
-            m_labelStrings << q->stringForValue(qPow(m_base, minDiff + qreal(i) + logMin),
-                                                labelFormat);
+            if (i != 0 || m_edgeLabelsVisible) {
+                m_labelStrings << q->stringForValue(qPow(m_base, minDiff + qreal(i) + logMin),
+                                                    labelFormat);
+            } else {
+                m_labelStrings << hiddenLabelTag;
+            }
             index++;
         }
         // Ensure max value doesn't suffer from any rounding errors
         m_gridPositions[segmentCount] = 1.0f;
         m_labelPositions[segmentCount] = 1.0f;
-        QString finalLabel;
-        if (m_showEdgeLabels || m_evenMaxSegment)
+        QString finalLabel = hiddenLabelTag;
+        if (m_edgeLabelsVisible || m_evenMaxSegment)
             finalLabel = q->stringForValue(qreal(m_max), labelFormat);
 
         if (m_labelStrings.size() > segmentCount)

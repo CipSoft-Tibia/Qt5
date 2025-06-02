@@ -161,7 +161,7 @@ MainWindow::MainWindow()
                                 "This is due to widgets themselves relying on QPropertyAnimation and similar, which are driven by the same QAnimationDriver.\n"
                                 "In any case, the functionality of the widgets are not affected, just the rendering may lag behind.\n"
                                 "When not checked, Qt Quick animations advance based on the system time, i.e. the time elapsed since the last press of the Next button."));
-    QObject::connect(animCheckBox, &QCheckBox::stateChanged, animCheckBox, [this, animCheckBox, animSlider, animLabel] {
+    QObject::connect(animCheckBox, &QCheckBox::checkStateChanged, animCheckBox, [this, animCheckBox, animSlider, animLabel] {
         if (animCheckBox->isChecked()) {
             animSlider->setEnabled(true);
             animLabel->setEnabled(true);
@@ -183,7 +183,7 @@ MainWindow::MainWindow()
 //! [anim-slider]
 
     QCheckBox *mirrorCheckBox = new QCheckBox(tr("Mirror vertically"));
-    QObject::connect(mirrorCheckBox, &QCheckBox::stateChanged, mirrorCheckBox, [this, mirrorCheckBox] {
+    QObject::connect(mirrorCheckBox, &QCheckBox::checkStateChanged, mirrorCheckBox, [this, mirrorCheckBox] {
         m_mirrorVertically = mirrorCheckBox->isChecked();
     });
     controlLayout->addWidget(mirrorCheckBox);
@@ -524,7 +524,7 @@ void MainWindow::render()
     m_frameCount += 1;
 
     double v = 0;
-    for (double t : m_cpuTimes)
+    for (double t : std::as_const(m_cpuTimes))
         v += t;
     v /= m_cpuTimes.count();
     m_avgCpuMsg->setText(tr("Avg. CPU render time: %1 ms").arg(v, 0, 'f', 4));
@@ -533,7 +533,7 @@ void MainWindow::render()
         m_cpuTimes.append(v);
     }
     v = 0;
-    for (double t : m_gpuTimes)
+    for (double t : std::as_const(m_gpuTimes))
         v += t;
     v /= m_gpuTimes.count();
     m_avgGpuMsg->setText(tr("Avg. GPU render time: %1 ms").arg(v, 0, 'f', 4));
@@ -576,7 +576,7 @@ int main(int argc, char **argv)
     apiList->addItem("Direct3D 12");
     apiValues.append(QSGRendererInterface::Direct3D12);
 #endif
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     apiList->addItem("Metal");
     apiValues.append(QSGRendererInterface::Metal);
 #endif

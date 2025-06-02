@@ -7,7 +7,7 @@
             "sub_dir": "Vulkan-Headers",
             "build_dir": "Vulkan-Headers/build",
             "install_dir": "Vulkan-Headers/build/install",
-            "commit": "v1.3.262"
+            "commit": "v1.3.275"
         },
         {
             "name": "MoltenVK",
@@ -15,9 +15,9 @@
             "sub_dir": "MoltenVK",
             "build_dir": "MoltenVK",
             "install_dir": "MoltenVK",
-            "commit": "v1.2.5",
+            "commit": "v1.2.7",
             "custom_build": [
-                "./fetchDependencies --macos --no-parallel-build",
+                "./fetchDependencies --macos",
                 "xcodebuild -project MoltenVKPackaging.xcodeproj GCC_PREPROCESSOR_DEFINITIONS='$GCC_PREPROCESSOR_DEFINITIONS MVK_CONFIG_LOG_LEVEL=1' -scheme \"MoltenVK Package (macOS only)\" build"
             ],
             "build_step": "custom",
@@ -26,13 +26,16 @@
             ]
         },
         {
-            "name": "Vulkan-Loader",
+            "name": "volk",
             "api": "vulkan",
-            "url": "https://github.com/KhronosGroup/Vulkan-Loader.git",
-            "sub_dir": "Vulkan-Loader",
-            "build_dir": "Vulkan-Loader/build",
-            "install_dir": "Vulkan-Loader/build/install",
-            "commit": "v1.3.262",
+            "url": "https://github.com/zeux/volk",
+            "sub_dir": "volk",
+            "build_dir": "volk/build",
+            "install_dir": "volk/build/install",
+            "cmake_options": [
+                "-DVOLK_INSTALL=ON"
+            ],
+            "commit": "vulkan-sdk-1.3.275",
             "deps": [
                 {
                     "var_name": "VULKAN_HEADERS_INSTALL_DIR",
@@ -51,16 +54,45 @@
                 "-Dgtest_force_shared_crt=ON",
                 "-DBUILD_SHARED_LIBS=OFF"
             ],
-            "commit": "v1.13.0",
+            "build_platforms": [
+                "windows",
+                "linux",
+                "darwin"
+            ],
+            "commit": "v1.14.0",
             "optional": [
                 "tests"
+            ]
+        },
+        {
+            "name": "Vulkan-Loader",
+            "api": "vulkan",
+            "url": "https://github.com/KhronosGroup/Vulkan-Loader.git",
+            "sub_dir": "Vulkan-Loader",
+            "build_dir": "Vulkan-Loader/build",
+            "install_dir": "Vulkan-Loader/build/install",
+            "cmake_options": [
+                "-DLOADER_USE_UNSAFE_FILE_SEARCH=ON"
+            ],
+            "commit": "v1.3.275",
+            "build_platforms": [
+                "windows",
+                "linux",
+                "darwin"
+            ],
+            "deps": [
+                {
+                    "var_name": "VULKAN_HEADERS_INSTALL_DIR",
+                    "repo_name": "Vulkan-Headers"
+                }
             ]
         }
     ],
     "install_names": {
         "Vulkan-Headers": "VULKAN_HEADERS_INSTALL_DIR",
-        "Vulkan-Loader": "VULKAN_LOADER_INSTALL_DIR",
+        "volk": "VOLK_INSTALL_DIR",
         "MoltenVK": "MOLTENVK_REPO_ROOT",
-        "googletest": "GOOGLETEST_INSTALL_DIR"
+        "googletest": "GOOGLETEST_INSTALL_DIR",
+        "Vulkan-Loader": "VULKAN_LOADER_INSTALL_DIR"
     }
 }

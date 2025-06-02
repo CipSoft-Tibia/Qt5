@@ -34,6 +34,7 @@ qt_internal_add_test(tst_qqmlengine
 
 
 qt_add_library(tst_qqmlengine_qml STATIC)
+target_link_libraries(tst_qqmlengine_qml PRIVATE Qt::QmlPrivate)
 qt_autogen_tools_initial_setup(tst_qqmlengine_qml)
 qt_add_qml_module(tst_qqmlengine_qml
     URI OnlyDeclarative

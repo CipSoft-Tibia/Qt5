@@ -25,7 +25,7 @@ QT_BEGIN_NAMESPACE
  * \inqmlmodule QtDataVisualization
  * \since QtDataVisualization 1.1
  * \ingroup datavisualization_qml
- * \instantiates QLogValue3DAxisFormatter
+ * \nativetype QLogValue3DAxisFormatter
  * \inherits ValueAxis3DFormatter
  * \brief Provides formatting rules for a logarithmic value axis.
  *
@@ -293,8 +293,8 @@ void QLogValue3DAxisFormatterPrivate::recalculate()
         qreal minDiff = qCeil(logMin) - logMin;
         qreal maxDiff = logMax - qFloor(logMax);
 
-        m_evenMinSegment = qFuzzyCompare(0.0, minDiff);
-        m_evenMaxSegment = qFuzzyCompare(0.0, maxDiff);
+        m_evenMinSegment = qFuzzyCompare(qreal(0), minDiff);
+        m_evenMaxSegment = qFuzzyCompare(qreal(0), maxDiff);
 
         segmentCount = qRound(logRangeNormalizer - minDiff - maxDiff);
 

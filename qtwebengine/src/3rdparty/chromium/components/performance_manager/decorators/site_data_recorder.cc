@@ -193,11 +193,11 @@ void SiteDataNodeData::OnMainFrameUrlChanged(const GURL& url,
 
   // The writer is assumed not to be LoadingState::kLoadedIdle at this point.
   // Make adjustments if it is LoadingState::kLoadedIdle.
-  if (RecorderHeuristics().IsLoadedIdle(page_node_->loading_state())) {
+  if (RecorderHeuristics().IsLoadedIdle(page_node_->GetLoadingState())) {
     OnIsLoadedIdleChanged(true);
   }
 
-  DCHECK_EQ(RecorderHeuristics().IsLoadedIdle(page_node_->loading_state()),
+  DCHECK_EQ(RecorderHeuristics().IsLoadedIdle(page_node_->GetLoadingState()),
             !loaded_idle_time_.is_null());
 }
 
@@ -227,10 +227,10 @@ void SiteDataNodeData::OnIsVisibleChanged(bool is_visible) {
     return;
   if (is_visible) {
     writer_->NotifySiteForegrounded(
-        RecorderHeuristics().IsLoadedIdle(page_node_->loading_state()));
+        RecorderHeuristics().IsLoadedIdle(page_node_->GetLoadingState()));
   } else {
     writer_->NotifySiteBackgrounded(
-        RecorderHeuristics().IsLoadedIdle(page_node_->loading_state()));
+        RecorderHeuristics().IsLoadedIdle(page_node_->GetLoadingState()));
   }
 }
 
@@ -261,7 +261,7 @@ void SiteDataNodeData::OnFaviconUpdated() {
 void SiteDataNodeData::Reset() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (writer_ && !loaded_idle_time_.is_null() &&
-      RecorderHeuristics().IsLoadedIdle(page_node_->loading_state())) {
+      RecorderHeuristics().IsLoadedIdle(page_node_->GetLoadingState())) {
     writer_->NotifySiteUnloaded(GetPageNodeVisibility(page_node_));
     loaded_idle_time_ = base::TimeTicks();
   }
@@ -277,7 +277,7 @@ bool SiteDataNodeData::ShouldRecordFeatureUsageEvent(FeatureType feature_type) {
   }
 
   const SiteDataRecorderHeuristics& heuristics = RecorderHeuristics();
-  if (!heuristics.IsLoadedIdle(page_node_->loading_state())) {
+  if (!heuristics.IsLoadedIdle(page_node_->GetLoadingState())) {
     return false;
   }
   CHECK(!loaded_idle_time_.is_null());
@@ -287,7 +287,7 @@ bool SiteDataNodeData::ShouldRecordFeatureUsageEvent(FeatureType feature_type) {
          heuristics.IsInBackground(page_node_) &&
          heuristics.IsOutsideBackgroundingGracePeriod(
              page_node_, feature_type,
-             page_node_->TimeSinceLastVisibilityChange());
+             page_node_->GetTimeSinceLastVisibilityChange());
 }
 
 void SiteDataNodeData::MaybeNotifyBackgroundFeatureUsage(

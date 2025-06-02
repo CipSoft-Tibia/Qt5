@@ -9,13 +9,15 @@
 #include "tlv.qpb.h"
 #include "sensors.qpb.h"
 
+using namespace qt::examples::sensors;
+
 namespace {
 QByteArray makeTlvMessage(QProtobufSerializer *serializer, const QByteArray &data,
-                          qt::examples::sensors::tlv::MessageTypeGadget::MessageType type)
+                          tlv::MessageTypeGadget::MessageType type)
 {
 //! [0]
     Q_ASSERT(serializer != nullptr);
-    qt::examples::sensors::tlv::TlvMessage msg;
+    tlv::TlvMessage msg;
     msg.setType(type);
     msg.setValue(data);
     return msg.serialize(serializer);
@@ -31,22 +33,22 @@ void SensorEmulator::send(const QByteArray &data)
         qWarning() << "Unable to send data of size: " << data.size() << "to UDP port 65500";
 }
 
-void SensorEmulator::sendCoordinates(const qt::examples::sensors::Coordinates &coords)
+void SensorEmulator::sendCoordinates(const Coordinates &coords)
 {
     send(makeTlvMessage(&m_serializer, coords.serialize(&m_serializer),
-                        qt::examples::sensors::tlv::MessageTypeGadget::Coordinates));
+                        tlv::MessageTypeGadget::MessageType::Coordinates));
 }
 
-void SensorEmulator::sendTemperature(const qt::examples::sensors::Temperature &temp)
+void SensorEmulator::sendTemperature(const Temperature &temp)
 {
     send(makeTlvMessage(&m_serializer, temp.serialize(&m_serializer),
-                        qt::examples::sensors::tlv::MessageTypeGadget::Temperature));
+                        tlv::MessageTypeGadget::MessageType::Temperature));
 }
 
-void SensorEmulator::sendWarning(const qt::examples::sensors::WarningNotification &warn)
+void SensorEmulator::sendWarning(const WarningNotification &warn)
 {
     send(makeTlvMessage(&m_serializer, warn.serialize(&m_serializer),
-                        qt::examples::sensors::tlv::MessageTypeGadget::WarningNotification));
+                        tlv::MessageTypeGadget::MessageType::WarningNotification));
 }
 
 #include "moc_sensoremulator.cpp"

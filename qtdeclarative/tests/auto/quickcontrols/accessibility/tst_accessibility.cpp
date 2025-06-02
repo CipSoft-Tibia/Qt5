@@ -31,6 +31,10 @@ private slots:
     void override();
 
     void ordering();
+
+    void actionAccessibility();
+    void actionAccessibilityImplicitName();
+
 private:
     QQmlEngine engine;
 };
@@ -271,6 +275,64 @@ void tst_accessibility::ordering()
     QStringList strings;
     a11yDescendants(iface, [&](QAccessibleInterface *iface) {strings << iface->text(QAccessible::Name);});
     QCOMPARE(strings.join(QLatin1String(", ")), "Header, Content item 1, Content item 2, Footer");
+#endif
+}
+
+void tst_accessibility::actionAccessibility()
+{
+#if QT_CONFIG(accessibility)
+    if (!QAccessible::isActive()) {
+        QPlatformAccessibility *accessibility = platformAccessibility();
+        if (!accessibility)
+            QSKIP("No QPlatformAccessibility available.");
+        accessibility->setActive(true);
+    }
+
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("actionAccessibility/button.qml"));
+
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
+
+    QQuickItem *item = qobject_cast<QQuickItem *>(object.data());
+    QVERIFY(item);
+    const QString description = "Show peaches some love";
+    QCOMPARE(item->property("text"), description);
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(item);
+    QVERIFY(iface);
+    QCOMPARE(iface->text(QAccessible::Name), "Peach");
+    QCOMPARE(iface->text(QAccessible::Description), description);
+
+    QVERIFY(iface->actionInterface()->actionNames().contains(QAccessibleActionInterface::pressAction()));
+    iface->actionInterface()->doAction(QAccessibleActionInterface::pressAction());
+    QCOMPARE(item->property("pressCount").toInt(), 1);
+#endif
+}
+
+void tst_accessibility::actionAccessibilityImplicitName()
+{
+#if QT_CONFIG(accessibility)
+    if (!QAccessible::isActive()) {
+        QPlatformAccessibility *accessibility = platformAccessibility();
+        if (!accessibility)
+            QSKIP("No QPlatformAccessibility available.");
+        accessibility->setActive(true);
+    }
+
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("actionAccessibility/button2.qml"));
+
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
+
+    QQuickItem *item = qobject_cast<QQuickItem *>(object.data());
+    QVERIFY(item);
+    const QString description = "Show pears some love";
+    QCOMPARE(item->property("text"), "Pears");
+    QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(item);
+    QVERIFY(iface);
+    QCOMPARE(iface->text(QAccessible::Name), "Pears"); // We get the action.text implicitly
+    QCOMPARE(iface->text(QAccessible::Description), description);
 #endif
 }
 

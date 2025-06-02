@@ -20,6 +20,8 @@
 
 QT_BEGIN_NAMESPACE
 
+class QHttp2Stream;
+
 class QHttpServerRequestPrivate
 {
 public:
@@ -56,7 +58,9 @@ public:
     qsizetype getChunkSize(QIODevice *socket, qsizetype *chunkSize);
 
     bool parse(QIODevice *socket);
-
+#if QT_CONFIG(http)
+    bool parse(QHttp2Stream *socket);
+#endif
     void clear();
 
     qint64 contentLength() const;

@@ -25,7 +25,7 @@
 QT_BEGIN_NAMESPACE
 
 /* Allow State Machines created from QML to have children. */
-class Q_SCXMLQML_PRIVATE_EXPORT QScxmlStateMachineExtended : public QObject
+class Q_SCXMLQML_EXPORT QScxmlStateMachineExtended : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QQmlListProperty<QObject> children READ children)
@@ -39,7 +39,7 @@ private:
 };
 
 // The QScxmlStateMachine is defined in the scxml library
-struct Q_SCXMLQML_PRIVATE_EXPORT QScxmlStateMachineForeign
+struct Q_SCXMLQML_EXPORT QScxmlStateMachineForeign
 {
     Q_GADGET
     QML_UNCREATABLE("Only created through derived types")

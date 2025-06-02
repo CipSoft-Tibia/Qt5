@@ -15,11 +15,11 @@
 #include "base/containers/span.h"
 #include "crypto/sha2.h"
 #include "device/fido/cable/cable_discovery_data.h"
-#include "device/fido/device_public_key_extension.h"
 #include "device/fido/fido_constants.h"
 #include "device/fido/json_request.h"
 #include "device/fido/large_blob.h"
 #include "device/fido/pin.h"
+#include "device/fido/prf_input.h"
 #include "device/fido/public_key_credential_descriptor.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
@@ -28,20 +28,6 @@ class Value;
 }
 
 namespace device {
-
-// PRFInput contains salts for the hmac-secret or prf extension, potentially
-// specific to a given credential ID.
-struct COMPONENT_EXPORT(DEVICE_FIDO) PRFInput {
-  PRFInput();
-  PRFInput(const PRFInput&);
-  PRFInput(PRFInput&&);
-  PRFInput& operator=(const PRFInput&);
-  ~PRFInput();
-
-  absl::optional<std::vector<uint8_t>> credential_id;
-  std::array<uint8_t, 32> salt1;
-  absl::optional<std::array<uint8_t, 32>> salt2;
-};
 
 // CtapGetAssertionOptions contains values that are pertinent to a
 // |GetAssertionTask|, but are not specific to an individual
@@ -163,10 +149,6 @@ struct COMPONENT_EXPORT(DEVICE_FIDO) CtapGetAssertionRequest {
   // in getAssertion requests.
   bool large_blob_extension_read = false;
   absl::optional<LargeBlob> large_blob_extension_write;
-
-  // device_public_key contains parameters for the devicePubKey extension
-  // https://github.com/w3c/webauthn/pull/1663
-  absl::optional<DevicePublicKeyRequest> device_public_key;
 };
 
 struct CtapGetNextAssertionRequest {};

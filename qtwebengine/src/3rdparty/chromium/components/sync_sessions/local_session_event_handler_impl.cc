@@ -14,6 +14,7 @@
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "components/sync/base/features.h"
+#include "components/sync/base/time.h"
 #include "components/sync/protocol/session_specifics.pb.h"
 #include "components/sync/protocol/sync_enums.pb.h"
 #include "components/sync_sessions/sync_sessions_client.h"
@@ -136,7 +137,7 @@ void LocalSessionEventHandlerImpl::OnSessionRestoreComplete() {
 
 sync_pb::SessionTab
 LocalSessionEventHandlerImpl::GetTabSpecificsFromDelegateForTest(
-    const SyncedTabDelegate& tab_delegate) const {
+    SyncedTabDelegate& tab_delegate) const {
   return GetTabSpecificsFromDelegate(tab_delegate);
 }
 
@@ -347,7 +348,6 @@ void LocalSessionEventHandlerImpl::AssociateTab(
   specifics->set_session_tag(current_session_tag_);
   specifics->set_tab_node_id(tab_node_id);
   GetTabSpecificsFromDelegate(*tab_delegate).Swap(specifics->mutable_tab());
-  WriteTasksIntoSpecifics(specifics->mutable_tab(), tab_delegate);
 
   // Update the tracker's session representation. Timestamp will be overwriten,
   // so we set a null time first to prevent the update from being ignored, if
@@ -358,28 +358,6 @@ void LocalSessionEventHandlerImpl::AssociateTab(
 
   // Write to the sync model itself.
   batch->Put(std::move(specifics));
-}
-
-void LocalSessionEventHandlerImpl::WriteTasksIntoSpecifics(
-    sync_pb::SessionTab* tab_specifics,
-    SyncedTabDelegate* tab_delegate) {
-  for (int i = 0; i < tab_specifics->navigation_size(); i++) {
-    // Excluding blocked navigations, which are appended at tail.
-    if (tab_specifics->navigation(i).blocked_state() ==
-        sync_pb::TabNavigation::STATE_BLOCKED) {
-      break;
-    }
-    int64_t task_id = tab_delegate->GetTaskIdForNavigationId(
-        tab_specifics->navigation(i).unique_id());
-    int64_t parent_task_id = tab_delegate->GetParentTaskIdForNavigationId(
-        tab_specifics->navigation(i).unique_id());
-    int64_t root_task_id = tab_delegate->GetRootTaskIdForNavigationId(
-        tab_specifics->navigation(i).unique_id());
-
-    tab_specifics->mutable_navigation(i)->set_task_id(task_id);
-    tab_specifics->mutable_navigation(i)->add_ancestor_task_id(root_task_id);
-    tab_specifics->mutable_navigation(i)->add_ancestor_task_id(parent_task_id);
-  }
 }
 
 void LocalSessionEventHandlerImpl::OnLocalTabModified(
@@ -410,7 +388,7 @@ void LocalSessionEventHandlerImpl::OnLocalTabModified(
 }
 
 sync_pb::SessionTab LocalSessionEventHandlerImpl::GetTabSpecificsFromDelegate(
-    const SyncedTabDelegate& tab_delegate) const {
+    SyncedTabDelegate& tab_delegate) const {
   sync_pb::SessionTab specifics;
   specifics.set_window_id(tab_delegate.GetWindowId().id());
   specifics.set_tab_id(tab_delegate.GetSessionId().id());
@@ -423,6 +401,11 @@ sync_pb::SessionTab LocalSessionEventHandlerImpl::GetTabSpecificsFromDelegate(
   specifics.set_pinned(
       window_delegate ? window_delegate->IsTabPinned(&tab_delegate) : false);
   specifics.set_extension_app_id(tab_delegate.GetExtensionAppId());
+  if (base::FeatureList::IsEnabled(syncer::kSyncSessionOnVisibilityChanged)) {
+    specifics.set_last_active_time_unix_epoch_millis(
+        (tab_delegate.GetLastActiveTime() - base::Time::UnixEpoch())
+            .InMilliseconds());
+  }
   const int current_index = tab_delegate.GetCurrentEntryIndex();
   const int min_index = std::max(0, current_index - kMaxSyncNavigationCount);
   const int max_index = std::min(current_index + kMaxSyncNavigationCount,
@@ -443,16 +426,6 @@ sync_pb::SessionTab LocalSessionEventHandlerImpl::GetTabSpecificsFromDelegate(
 
     sync_pb::TabNavigation* navigation = specifics.add_navigation();
     SessionNavigationToSyncData(serialized_entry).Swap(navigation);
-
-    const std::string page_language = tab_delegate.GetPageLanguageAtIndex(i);
-    if (!page_language.empty()) {
-      navigation->set_page_language(page_language);
-    }
-
-    if (has_child_account) {
-      navigation->set_blocked_state(
-          sync_pb::TabNavigation_BlockedState_STATE_ALLOWED);
-    }
   }
 
   // If the current navigation is invalid, set the index to the end of the
@@ -464,13 +437,12 @@ sync_pb::SessionTab LocalSessionEventHandlerImpl::GetTabSpecificsFromDelegate(
   if (has_child_account) {
     const std::vector<std::unique_ptr<const SerializedNavigationEntry>>*
         blocked_navigations = tab_delegate.GetBlockedNavigations();
-    DCHECK(blocked_navigations);
-    for (const auto& entry_unique_ptr : *blocked_navigations) {
-      sync_pb::TabNavigation* navigation = specifics.add_navigation();
-      SessionNavigationToSyncData(*entry_unique_ptr).Swap(navigation);
-      navigation->set_blocked_state(
-          sync_pb::TabNavigation_BlockedState_STATE_BLOCKED);
-      // TODO(bauerb): Add categories
+
+    if (blocked_navigations) {
+      for (const auto& entry_unique_ptr : *blocked_navigations) {
+        sync_pb::TabNavigation* navigation = specifics.add_navigation();
+        SessionNavigationToSyncData(*entry_unique_ptr).Swap(navigation);
+      }
     }
   }
 

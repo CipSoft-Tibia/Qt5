@@ -9,6 +9,7 @@
 #include "functionnode.h"
 #include "node.h"
 #include "qdocdatabase.h"
+#include "qmlpropertyarguments.h"
 #include "qmlpropertynode.h"
 #include "tokenizer.h"
 #include "utilities.h"
@@ -21,6 +22,8 @@
 #include <private/qqmljsengine_p.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
   The constructor stores all the parameters in local data members.
@@ -147,16 +150,16 @@ Node *QmlDocVisitor::applyDocumentation(QQmlJS::SourceLocation location, Node *n
             QString args = topicsUsed.at(i).m_args;
             if (topic.endsWith(QLatin1String("property"))) {
                 auto *qmlProperty = static_cast<QmlPropertyNode *>(node);
-                QmlPropArgs qpa;
-                if (splitQmlPropertyArg(doc, args, qpa)) {
-                    if (qpa.m_name == node->name()) {
-                        if (qmlProperty->isAlias())
-                            qmlProperty->setDataType(qpa.m_type);
+                if (auto qpa = QmlPropertyArguments::parse(args, doc.location())) {
+                    if (qpa->m_name == node->name()) {
+                        // Allow overriding data type from the arguments
+                        qmlProperty->setDataType(qpa->m_type);
                     } else {
                         bool isAttached = topic.contains(QLatin1String("attached"));
-                        QmlPropertyNode *n = parent->hasQmlProperty(qpa.m_name, isAttached);
+                        QmlPropertyNode *n = parent->hasQmlProperty(qpa->m_name, isAttached);
                         if (n == nullptr)
-                            n = new QmlPropertyNode(parent, qpa.m_name, qpa.m_type, isAttached);
+                            n = new QmlPropertyNode(parent, qpa->m_name, qpa->m_type, isAttached);
+                        n->setIsList(qpa->m_isList);
                         n->setLocation(doc.location());
                         n->setDoc(doc);
                         // Use the const-overload of QmlPropertyNode::isReadOnly() as there's
@@ -343,51 +346,6 @@ bool QmlSignatureParser::matchFunctionDecl()
 }
 
 /*!
-  A QML property argument has the form...
-
-  <type> <component>::<name>
-  <type> <QML-module>::<component>::<name>
-
-  This function splits the argument into one of those
-  two forms. The three part form is the old form, which
-  was used before the creation of QtQuick 2 and Qt
-  Components. A <QML-module> is the QML equivalent of a
-  C++ namespace. So this function splits \a arg on "::"
-  and stores the parts in the \e {type}, \e {module},
-  \e {component}, and \a {name}, fields of \a qpa. If it
-  is successful, it returns \c true. If not enough parts
-  are found, a qdoc warning is emitted and false is
-  returned.
- */
-bool QmlDocVisitor::splitQmlPropertyArg(const Doc &doc, const QString &arg, QmlPropArgs &qpa)
-{
-    qpa.clear();
-    QStringList blankSplit = arg.split(QLatin1Char(' '));
-    if (blankSplit.size() > 1) {
-        qpa.m_type = blankSplit[0];
-        QStringList colonSplit(blankSplit[1].split("::"));
-        if (colonSplit.size() == 3) {
-            qpa.m_module = colonSplit[0];
-            qpa.m_component = colonSplit[1];
-            qpa.m_name = colonSplit[2];
-            return true;
-        } else if (colonSplit.size() == 2) {
-            qpa.m_component = colonSplit[0];
-            qpa.m_name = colonSplit[1];
-            return true;
-        } else if (colonSplit.size() == 1) {
-            qpa.m_name = colonSplit[0];
-            return true;
-        }
-        doc.location().warning(
-                QStringLiteral("Unrecognizable QML module/component qualifier for %1.").arg(arg));
-    } else {
-        doc.location().warning(QStringLiteral("Missing property type for %1.").arg(arg));
-    }
-    return false;
-}
-
-/*!
   Applies the metacommands found in the comment.
  */
 void QmlDocVisitor::applyMetacommands(QQmlJS::SourceLocation, Node *node, Doc &doc)
@@ -403,9 +361,7 @@ void QmlDocVisitor::applyMetacommands(QQmlJS::SourceLocation, Node *node, Doc &d
                     node->setAbstract(true);
                 }
             } else if (command == COMMAND_DEPRECATED) {
-                node->setStatus(Node::Deprecated);
-                if (!args[0].second.isEmpty())
-                    node->setDeprecatedSince(args[0].second);
+                node->setDeprecated(args[0].second);
             } else if (command == COMMAND_INQMLMODULE) {
                 qdb->addToQmlModule(args[0].first, node);
             } else if (command == COMMAND_QMLINHERITS) {
@@ -428,6 +384,14 @@ void QmlDocVisitor::applyMetacommands(QQmlJS::SourceLocation, Node *node, Doc &d
                 }
             } else if (command == COMMAND_QMLDEFAULT) {
                 node->markDefault();
+            } else if (command == COMMAND_QMLENUMERATORSFROM) {
+                if (!node->isQmlProperty()) {
+                    doc.location().warning("Ignored '\\%1', applies only to '\\%2'"_L1
+                            .arg(command, COMMAND_QMLPROPERTY));
+                } else if (!static_cast<QmlPropertyNode*>(node)->setEnumNode(args[0].first, args[0].second)) {
+                    doc.location().warning("Failed to find C++ enumeration '%2' passed to \\%1"_L1
+                            .arg(command, args[0].first), "Use \\value commands instead"_L1);
+                }
             } else if (command == COMMAND_QMLREADONLY) {
                 node->markReadOnly(1);
             } else if (command == COMMAND_QMLREQUIRED) {
@@ -528,7 +492,7 @@ bool QmlDocVisitor::visit(QQmlJS::AST::UiImport *import)
         version = m_document.mid(start, end - start);
     }
     QString importUri = getFullyQualifiedId(import->importUri);
-    m_importList.append(ImportRec(name, version, importUri));
+    m_importList.append(ImportRec(name, version, importUri, import->importId));
 
     return true;
 }
@@ -613,6 +577,7 @@ bool QmlDocVisitor::visit(QQmlJS::AST::UiPublicMember *member)
                     qmlPropNode->markDefault();
                 if (member->requiredToken().isValid())
                     qmlPropNode->setRequired();
+                qmlPropNode->setIsList(member->typeModifier == "list"_L1);
                 applyDocumentation(member->firstSourceLocation(), qmlPropNode);
             }
         }

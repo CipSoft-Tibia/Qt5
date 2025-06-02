@@ -4,6 +4,7 @@
 
 #include "extensions/renderer/api/i18n_hooks_delegate.h"
 
+#include <string_view>
 #include <vector>
 
 #include "base/check.h"
@@ -16,15 +17,17 @@
 #include "extensions/common/message_bundle.h"
 #include "extensions/renderer/bindings/api_binding_types.h"
 #include "extensions/renderer/bindings/js_runner.h"
+#include "extensions/renderer/extension_frame_helper.h"
 #include "extensions/renderer/get_script_context.h"
 #include "extensions/renderer/script_context.h"
+#include "extensions/renderer/service_worker_data.h"
 #include "extensions/renderer/shared_l10n_map.h"
 #include "extensions/renderer/worker_thread_dispatcher.h"
 #include "gin/converter.h"
 #include "gin/data_object_builder.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "third_party/cld_3/src/src/nnet_language_identifier.h"
-#endif // !defined(TOOLKIT_QT)
+#endif // !BUILDFLAG(IS_QTWEBENGINE)
 #include "v8/include/v8-container.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-exception.h"
@@ -104,7 +107,7 @@ v8::Local<v8::Value> LanguageDetectionResult::ToV8(
       .Build();
 }
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 void InitDetectedLanguages(
     const std::vector<chrome_lang_id::NNetLanguageIdentifier::Result>&
         lang_results,
@@ -144,7 +147,7 @@ void InitDetectedLanguages(
   if (detected_languages->empty())
     *is_reliable = false;
 }
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
 // Returns the localized method for the given |message_name| and
 // substitutions. This can result in a synchronous IPC being sent to the browser
@@ -153,12 +156,12 @@ v8::Local<v8::Value> GetI18nMessage(const std::string& message_name,
                                     const std::string& extension_id,
                                     v8::Local<v8::Value> v8_substitutions,
                                     v8::Local<v8::Value> v8_options,
-                                    IPC::Sender* message_sender,
+                                    SharedL10nMap::IPCTarget* ipc_target,
                                     v8::Local<v8::Context> context) {
   v8::Isolate* isolate = context->GetIsolate();
 
   std::string message = SharedL10nMap::GetInstance().GetMessage(
-      extension_id, message_name, message_sender);
+      extension_id, message_name, ipc_target);
 
   std::vector<std::string> substitutions;
   // For now, we just suppress all errors, but that's really not the best.
@@ -213,7 +216,7 @@ v8::Local<v8::Value> GetI18nMessage(const std::string& message_name,
 // Returns the detected language for the sample |text|.
 v8::Local<v8::Value> DetectTextLanguage(v8::Local<v8::Context> context,
                                         const std::string& text) {
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   chrome_lang_id::NNetLanguageIdentifier nnet_lang_id(/*min_num_bytes=*/0,
                                                       /*max_num_bytes=*/512);
   std::vector<chrome_lang_id::NNetLanguageIdentifier::Result> lang_results =
@@ -225,15 +228,15 @@ v8::Local<v8::Value> DetectTextLanguage(v8::Local<v8::Context> context,
     for (auto& result : lang_results)
       result.is_reliable = false;
   }
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   LanguageDetectionResult result;
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Populate LanguageDetectionResult with prediction reliability, languages,
   // and the corresponding percentages.
   InitDetectedLanguages(lang_results, &result);
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
   return result.ToV8(context);
 }
 
@@ -248,13 +251,13 @@ RequestResult I18nHooksDelegate::HandleRequest(
     const std::string& method_name,
     const APISignature* signature,
     v8::Local<v8::Context> context,
-    std::vector<v8::Local<v8::Value>>* arguments,
+    v8::LocalVector<v8::Value>* arguments,
     const APITypeReferenceMap& refs) {
   using Handler = RequestResult (I18nHooksDelegate::*)(
       ScriptContext*, const APISignature::V8ParseResult&);
   static constexpr struct {
     Handler handler;
-    base::StringPiece method;
+    std::string_view method;
   } kHandlers[] = {
       {&I18nHooksDelegate::HandleGetMessage, kGetMessage},
       {&I18nHooksDelegate::HandleGetUILanguage, kGetUILanguage},
@@ -288,22 +291,31 @@ RequestResult I18nHooksDelegate::HandleRequest(
 RequestResult I18nHooksDelegate::HandleGetMessage(
     ScriptContext* script_context,
     const APISignature::V8ParseResult& parse_result) {
-  const std::vector<v8::Local<v8::Value>>& arguments = *parse_result.arguments;
+  const v8::LocalVector<v8::Value>& arguments = *parse_result.arguments;
   DCHECK_EQ(binding::AsyncResponseType::kNone, parse_result.async_type);
   DCHECK(script_context->extension());
   DCHECK(arguments[0]->IsString());
 
-  IPC::Sender* message_sender = nullptr;
+  SharedL10nMap::IPCTarget* ipc_target = nullptr;
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
   if (script_context->IsForServiceWorker()) {
-    message_sender = WorkerThreadDispatcher::Get();
+    ipc_target = WorkerThreadDispatcher::Get();
   } else {
-    message_sender = script_context->GetRenderFrame();
+    ipc_target = script_context->GetRenderFrame();
   }
+#else
+  if (script_context->IsForServiceWorker()) {
+    ipc_target =
+        WorkerThreadDispatcher::GetServiceWorkerData()->GetRendererHost();
+  } else if (auto* frame = script_context->GetRenderFrame()) {
+    ipc_target = ExtensionFrameHelper::Get(frame)->GetRendererHost();
+  }
+#endif
 
-  v8::Local<v8::Value> message = GetI18nMessage(
-      gin::V8ToString(script_context->isolate(), arguments[0]),
-      script_context->extension()->id(), arguments[1], arguments[2],
-      message_sender, script_context->v8_context());
+  v8::Local<v8::Value> message =
+      GetI18nMessage(gin::V8ToString(script_context->isolate(), arguments[0]),
+                     script_context->extension()->id(), arguments[1],
+                     arguments[2], ipc_target, script_context->v8_context());
 
   RequestResult result(RequestResult::HANDLED);
   result.return_value = message;
@@ -325,7 +337,7 @@ RequestResult I18nHooksDelegate::HandleGetUILanguage(
 RequestResult I18nHooksDelegate::HandleDetectLanguage(
     ScriptContext* script_context,
     const APISignature::V8ParseResult& parse_result) {
-  const std::vector<v8::Local<v8::Value>>& arguments = *parse_result.arguments;
+  const v8::LocalVector<v8::Value>& arguments = *parse_result.arguments;
   DCHECK(arguments[0]->IsString());
 
   v8::Local<v8::Context> v8_context = script_context->v8_context();

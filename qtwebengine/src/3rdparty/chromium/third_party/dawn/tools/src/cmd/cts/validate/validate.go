@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 package validate
 
@@ -19,6 +32,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"dawn.googlesource.com/dawn/tools/src/cmd/cts/common"
 	"dawn.googlesource.com/dawn/tools/src/cts/expectations"
@@ -28,10 +42,21 @@ func init() {
 	common.Register(&cmd{})
 }
 
+type arrayFlags []string
+
+func (i *arrayFlags) String() string {
+	return strings.Join((*i), " ")
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
 type cmd struct {
 	flags struct {
-		expectations string // expectations file path
-		slow         string // slow test expectations file path
+		expectations arrayFlags // expectations file path
+		slow         string     // slow test expectations file path
 	}
 }
 
@@ -44,36 +69,41 @@ func (cmd) Desc() string {
 }
 
 func (c *cmd) RegisterFlags(ctx context.Context, cfg common.Config) ([]string, error) {
-	defaultExpectations := common.DefaultExpectationsPath()
 	slowExpectations := common.DefaultSlowExpectationsPath()
-	flag.StringVar(&c.flags.expectations, "expectations", defaultExpectations, "path to CTS expectations file to validate")
+	flag.Var(&c.flags.expectations, "expectations", "path to CTS expectations file(s) to validate")
 	flag.StringVar(&c.flags.slow, "slow", slowExpectations, "path to CTS slow expectations file to validate")
 	return nil, nil
 }
 
 func (c *cmd) Run(ctx context.Context, cfg common.Config) error {
-	// Load expectations.txt
-	content, err := expectations.Load(c.flags.expectations)
-	if err != nil {
-		return err
+	if len(c.flags.expectations) == 0 {
+		c.flags.expectations = common.DefaultExpectationsPaths()
 	}
-	diags := content.Validate()
 
-	// Print any diagnostics
-	diags.Print(os.Stdout, c.flags.expectations)
-	if numErrs := diags.NumErrors(); numErrs > 0 {
-		return fmt.Errorf("%v errors found", numErrs)
+	for _, expectationFilename := range c.flags.expectations {
+		// Load expectations.txt
+		content, err := expectations.Load(expectationFilename)
+		if err != nil {
+			return err
+		}
+		diags := content.Validate()
+
+		// Print any diagnostics
+		diags.Print(os.Stdout, expectationFilename)
+		if numErrs := diags.NumErrors(); numErrs > 0 {
+			return fmt.Errorf("%v errors found in %v", numErrs, expectationFilename)
+		}
 	}
 
 	// Load slow_tests.txt
-	content, err = expectations.Load(c.flags.slow)
+	content, err := expectations.Load(c.flags.slow)
 	if err != nil {
 		return err
 	}
 
-	diags = content.ValidateSlowTests()
+	diags := content.ValidateSlowTests()
 	// Print any diagnostics
-	diags.Print(os.Stdout, c.flags.expectations)
+	diags.Print(os.Stdout, c.flags.slow)
 	if numErrs := diags.NumErrors(); numErrs > 0 {
 		return fmt.Errorf("%v errors found", numErrs)
 	}

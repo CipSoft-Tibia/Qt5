@@ -2,19 +2,56 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-export class CategorizedBreakpoint {
-  readonly #categoryInternal: string;
-  titleInternal: string;
-  enabledInternal: boolean;
+export const enum Category {
+  Animation = 'Animation',
+  AuctionWorklet = 'AuctionWorklet',
+  Canvas = 'Canvas',
+  Clipboard = 'Clipboard',
+  Control = 'Control',
+  Device = 'Device',
+  DomMutation = 'DomMutation',
+  DragDrop = 'DragDrop',
+  Geolocation = 'Geolocation',
+  Keyboard = 'Keyboard',
+  Load = 'Load',
+  Media = 'Media',
+  Mouse = 'Mouse',
+  Notification = 'Notification',
+  Parse = 'Parse',
+  PictureInPicture = 'PictureInPicture',
+  Pointer = 'Pointer',
+  Script = 'Script',
+  SharedStorageWorklet = 'SharedStorageWorklet',
+  Timer = 'Timer',
+  Touch = 'Touch',
+  TrustedTypeViolation = 'TrustedTypeViolation',
+  WebAudio = 'WebAudio',
+  Window = 'Window',
+  Worker = 'Worker',
+  Xhr = 'Xhr',
+}
 
-  constructor(category: string, title: string) {
-    this.#categoryInternal = category;
-    this.titleInternal = title;
+export class CategorizedBreakpoint {
+  /**
+   * The name of this breakpoint as passed to 'setInstrumentationBreakpoint',
+   * 'setEventListenerBreakpoint' and 'setBreakOnCSPViolation'.
+   *
+   * Note that the backend adds a 'listener:' and 'instrumentation:' prefix
+   * to this name in the 'Debugger.paused' CDP event.
+   */
+  readonly name: string;
+
+  readonly #category: Category;
+  private enabledInternal: boolean;
+
+  constructor(category: Category, name: string) {
+    this.#category = category;
+    this.name = name;
     this.enabledInternal = false;
   }
 
-  category(): string {
-    return this.#categoryInternal;
+  category(): Category {
+    return this.#category;
   }
 
   enabled(): boolean {
@@ -23,13 +60,5 @@ export class CategorizedBreakpoint {
 
   setEnabled(enabled: boolean): void {
     this.enabledInternal = enabled;
-  }
-
-  title(): string {
-    return this.titleInternal;
-  }
-
-  setTitle(title: string): void {
-    this.titleInternal = title;
   }
 }

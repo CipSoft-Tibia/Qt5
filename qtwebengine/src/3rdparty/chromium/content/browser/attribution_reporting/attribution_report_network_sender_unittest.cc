@@ -462,9 +462,8 @@ TEST_F(AttributionReportNetworkSenderTest, ManyReports_AllSentSuccessfully) {
 
 TEST_F(AttributionReportNetworkSenderTest, HeadersPopulated) {
   AttributionReport report =
-      ReportBuilder(
-          AttributionInfoBuilder().Build(),
-          SourceBuilder(base::Time::FromJavaTime(1234483200000)).BuildStored())
+      ReportBuilder(AttributionInfoBuilder().Build(),
+                    SourceBuilder().BuildStored())
           .SetAggregatableHistogramContributions(
               {AggregatableHistogramContribution(/*key=*/1, /*value=*/2)})
           .BuildAggregatableAttribution();
@@ -799,14 +798,10 @@ TEST_F(AttributionReportNetworkSenderTest,
   static constexpr char kErrorReportUrl[] =
       "https://report.test/.well-known/attribution-reporting/debug/verbose";
 
-  absl::optional<AttributionDebugReport> report =
-      AttributionDebugReport::Create(
-          SourceBuilder().SetDebugReporting(true).Build(),
-          /*is_debug_cookie_set=*/false,
-          StoreSourceResult(
-              StorableSource::Result::kInsufficientUniqueDestinationCapacity,
-              /*min_fake_report_time=*/absl::nullopt,
-              /*max_destinations_per_source_site_reporting_site=*/3));
+  std::optional<AttributionDebugReport> report = AttributionDebugReport::Create(
+      SourceBuilder().SetDebugReporting(true).Build(),
+      /*is_debug_cookie_set=*/false,
+      StoreSourceResult::InsufficientUniqueDestinationCapacity(3));
   ASSERT_TRUE(report);
 
   base::MockCallback<AttributionReportSender::DebugReportSentCallback> callback;
@@ -832,14 +827,10 @@ TEST_F(AttributionReportNetworkSenderTest,
   static constexpr char kErrorReportUrl[] =
       "https://report.test/.well-known/attribution-reporting/debug/verbose";
 
-  absl::optional<AttributionDebugReport> report =
-      AttributionDebugReport::Create(
-          SourceBuilder().SetDebugReporting(true).Build(),
-          /*is_debug_cookie_set=*/false,
-          StoreSourceResult(
-              StorableSource::Result::kInsufficientUniqueDestinationCapacity,
-              /*min_fake_report_time=*/absl::nullopt,
-              /*max_destinations_per_source_site_reporting_site=*/3));
+  std::optional<AttributionDebugReport> report = AttributionDebugReport::Create(
+      SourceBuilder().SetDebugReporting(true).Build(),
+      /*is_debug_cookie_set=*/false,
+      StoreSourceResult::InsufficientUniqueDestinationCapacity(3));
   ASSERT_TRUE(report);
 
   base::MockCallback<AttributionReportSender::DebugReportSentCallback> callback;

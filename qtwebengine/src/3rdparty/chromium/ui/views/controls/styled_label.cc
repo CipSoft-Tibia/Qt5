@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "base/i18n/rtl.h"
+#include "base/memory/raw_ptr.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -26,7 +27,10 @@
 #include "ui/views/controls/label.h"
 #include "ui/views/controls/link.h"
 #include "ui/views/controls/link_fragment.h"
+#include "ui/views/style/typography.h"
+#include "ui/views/style/typography_provider.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/view_utils.h"
 
 namespace views {
 
@@ -71,7 +75,7 @@ bool StyledLabel::StyleRange::operator<(
 
 struct StyledLabel::LayoutViews {
   // All views to be added as children, line by line.
-  std::vector<std::vector<View*>> views_per_line;
+  std::vector<std::vector<raw_ptr<View, VectorExperimental>>> views_per_line;
 
   // The subset of |views| that are created by StyledLabel itself.  Basically,
   // this is all non-custom views;  These appear in the same order as |views|.
@@ -95,8 +99,9 @@ void StyledLabel::SetText(std::u16string text) {
   // text elider tries to do so internally. There's no obvious reason to
   // preserve trailing whitespace anyway.
   base::TrimWhitespace(std::move(text), base::TRIM_TRAILING, &text);
-  if (text_ == text)
+  if (text_ == text) {
     return;
+  }
 
   text_ = text;
   SetAccessibleName(text_);
@@ -106,7 +111,7 @@ void StyledLabel::SetText(std::u16string text) {
 }
 
 gfx::FontList StyledLabel::GetFontList(const RangeStyleInfo& style_info) const {
-  return style_info.custom_font.value_or(style::GetFont(
+  return style_info.custom_font.value_or(TypographyProvider::Get().GetFont(
       text_context_, style_info.text_style.value_or(default_text_style_)));
 }
 
@@ -135,8 +140,9 @@ int StyledLabel::GetTextContext() const {
 }
 
 void StyledLabel::SetTextContext(int text_context) {
-  if (text_context_ == text_context)
+  if (text_context_ == text_context) {
     return;
+  }
 
   text_context_ = text_context;
   SetAccessibleRole(text_context_ == style::CONTEXT_DIALOG_TITLE
@@ -150,21 +156,37 @@ int StyledLabel::GetDefaultTextStyle() const {
 }
 
 void StyledLabel::SetDefaultTextStyle(int text_style) {
-  if (default_text_style_ == text_style)
+  if (default_text_style_ == text_style) {
     return;
+  }
 
   default_text_style_ = text_style;
   OnPropertyChanged(&default_text_style_, kPropertyEffectsPreferredSizeChanged);
 }
 
+absl::optional<ui::ColorId> StyledLabel::GetDefaultEnabledColorId() const {
+  return default_enabled_color_id_;
+}
+
+void StyledLabel::SetDefaultEnabledColorId(
+    absl::optional<ui::ColorId> enabled_color_id) {
+  if (default_enabled_color_id_ == enabled_color_id) {
+    return;
+  }
+
+  default_enabled_color_id_ = enabled_color_id;
+  OnPropertyChanged(&default_enabled_color_id_, kPropertyEffectsPaint);
+}
+
 int StyledLabel::GetLineHeight() const {
-  return line_height_.value_or(
-      style::GetLineHeight(text_context_, default_text_style_));
+  return line_height_.value_or(TypographyProvider::Get().GetLineHeight(
+      text_context_, default_text_style_));
 }
 
 void StyledLabel::SetLineHeight(int line_height) {
-  if (line_height_ == line_height)
+  if (line_height_ == line_height) {
     return;
+  }
 
   line_height_ = line_height;
   OnPropertyChanged(&line_height_, kPropertyEffectsPreferredSizeChanged);
@@ -193,8 +215,9 @@ bool StyledLabel::GetAutoColorReadabilityEnabled() const {
 }
 
 void StyledLabel::SetAutoColorReadabilityEnabled(bool auto_color_readability) {
-  if (auto_color_readability_enabled_ == auto_color_readability)
+  if (auto_color_readability_enabled_ == auto_color_readability) {
     return;
+  }
 
   auto_color_readability_enabled_ = auto_color_readability;
   OnPropertyChanged(&auto_color_readability_enabled_, kPropertyEffectsPaint);
@@ -205,8 +228,9 @@ bool StyledLabel::GetSubpixelRenderingEnabled() const {
 }
 
 void StyledLabel::SetSubpixelRenderingEnabled(bool subpixel_rendering_enabled) {
-  if (subpixel_rendering_enabled_ == subpixel_rendering_enabled)
+  if (subpixel_rendering_enabled_ == subpixel_rendering_enabled) {
     return;
+  }
 
   subpixel_rendering_enabled_ = subpixel_rendering_enabled;
   OnPropertyChanged(&subpixel_rendering_enabled_, kPropertyEffectsPaint);
@@ -252,7 +276,7 @@ void StyledLabel::Layout() {
     for (size_t line = 0; line < layout_views_->views_per_line.size(); ++line) {
       const auto& line_size = layout_size_info_.line_sizes[line];
       int x = StartX(width() - line_size.width());
-      for (auto* view : layout_views_->views_per_line[line]) {
+      for (views::View* view : layout_views_->views_per_line[line]) {
         gfx::Size size = view->GetPreferredSize();
         size.set_width(std::min(size.width(), width() - x));
         // Compute the view y such that the view center y and the line center y
@@ -313,8 +337,9 @@ void StyledLabel::SetHorizontalAlignment(gfx::HorizontalAlignment alignment) {
   DCHECK_NE(gfx::ALIGN_TO_HEAD, alignment);
   alignment = gfx::MaybeFlipForRTL(alignment);
 
-  if (horizontal_alignment_ == alignment)
+  if (horizontal_alignment_ == alignment) {
     return;
+  }
   horizontal_alignment_ = alignment;
   PreferredSizeChanged();
 }
@@ -330,10 +355,8 @@ void StyledLabel::ClickFirstLinkForTesting() {
 }
 
 views::Link* StyledLabel::GetFirstLinkForTesting() {
-  const auto it = base::ranges::find(children(), LinkFragment::kViewClassName,
-                                     &View::GetClassName);
-  DCHECK(it != children().cend());
-  return static_cast<views::Link*>(*it);
+  const auto it = base::ranges::find_if(children(), &IsViewClass<LinkFragment>);
+  return (it == children().cend()) ? nullptr : static_cast<views::Link*>(*it);
 }
 
 int StyledLabel::StartX(int excess_space) const {
@@ -393,8 +416,9 @@ void StyledLabel::CalculateLayout(int width) const {
       }
 
       gfx::Range range = gfx::Range::InvalidRange();
-      if (current_range != style_ranges_.end())
+      if (current_range != style_ranges_.end()) {
         range = current_range->range;
+      }
 
       const size_t position = text_.size() - remaining_string.size();
       std::vector<std::u16string> substrings;
@@ -512,8 +536,9 @@ void StyledLabel::CalculateLayout(int width) const {
           std::max(line_size.height(), child_size.height()));
 
       views.push_back(child_view);
-      if (label)
+      if (label) {
         layout_views_->owned_views.push_back(std::move(label));
+      }
 
       remaining_string = remaining_string.substr(chunk.size());
 
@@ -577,9 +602,12 @@ std::unique_ptr<Label> StyledLabel::CreateLabel(
     result->SetEnabledColorId(style_info.override_color_id.value());
   } else if (style_info.override_color) {
     result->SetEnabledColor(style_info.override_color.value());
+  } else if (default_enabled_color_id_) {
+    result->SetEnabledColorId(default_enabled_color_id_);
   }
-  if (!style_info.tooltip.empty())
+  if (!style_info.tooltip.empty()) {
     result->SetTooltipText(style_info.tooltip);
+  }
   if (!style_info.accessible_name.empty())
     result->SetAccessibleName(style_info.accessible_name);
   if (absl::holds_alternative<SkColor>(displayed_on_background_color_)) {
@@ -600,8 +628,7 @@ void StyledLabel::UpdateLabelBackgroundColor() {
     if (!child->GetProperty(kStyledLabelCustomViewKey)) {
       // TODO(kylixrd): Should updating the label background color even be
       // allowed if there are custom views?
-      DCHECK((child->GetClassName() == Label::kViewClassName) ||
-             (child->GetClassName() == LinkFragment::kViewClassName));
+      DCHECK(IsViewClass<Label>(child) || IsViewClass<LinkFragment>(child));
       static_cast<Label*>(child)->SetBackgroundColorId(
           absl::holds_alternative<ui::ColorId>(displayed_on_background_color_)
               ? absl::optional<ui::ColorId>(
@@ -623,13 +650,14 @@ void StyledLabel::RemoveOrDeleteAllChildViews() {
   }
 }
 
-BEGIN_METADATA(StyledLabel, View)
+BEGIN_METADATA(StyledLabel)
 ADD_PROPERTY_METADATA(std::u16string, Text)
 ADD_PROPERTY_METADATA(int, TextContext)
 ADD_PROPERTY_METADATA(int, DefaultTextStyle)
 ADD_PROPERTY_METADATA(int, LineHeight)
 ADD_PROPERTY_METADATA(bool, AutoColorReadabilityEnabled)
 ADD_PROPERTY_METADATA(StyledLabel::ColorVariant, DisplayedOnBackgroundColor)
+ADD_PROPERTY_METADATA(absl::optional<ui::ColorId>, DefaultEnabledColorId)
 END_METADATA
 
 }  // namespace views

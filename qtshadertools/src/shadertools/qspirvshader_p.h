@@ -22,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 struct QSpirvShaderPrivate;
 
-class Q_SHADERTOOLS_PRIVATE_EXPORT QSpirvShader
+class Q_SHADERTOOLS_EXPORT QSpirvShader
 {
 public:
     enum class GlslFlag {

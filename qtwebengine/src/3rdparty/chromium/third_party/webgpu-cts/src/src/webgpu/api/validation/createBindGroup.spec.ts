@@ -5,9 +5,10 @@ export const description = `
 `;
 
 import { makeTestGroup } from '../../../common/framework/test_group.js';
-import { assert, unreachable } from '../../../common/util/util.js';
+import { assert, makeValueTestVariant, unreachable } from '../../../common/util/util.js';
 import {
   allBindingEntries,
+  BindableResource,
   bindingTypeInfo,
   bufferBindingEntries,
   bufferBindingTypeInfo,
@@ -15,7 +16,6 @@ import {
   kBufferBindingTypes,
   kBufferUsages,
   kCompareFunctions,
-  kLimitInfo,
   kSamplerBindingTypes,
   kTextureUsages,
   kTextureViewDimensions,
@@ -107,7 +107,7 @@ g.test('binding_must_contain_resource_defined_in_layout')
   .desc(
     'Test that only compatible resource types specified in the BindGroupLayout are allowed for each entry.'
   )
-  .paramsSubcasesOnly(u =>
+  .params(u =>
     u //
       .combine('resourceType', kBindableResources)
       .combine('entry', allBindingEntries(false))
@@ -122,6 +122,17 @@ g.test('binding_must_contain_resource_defined_in_layout')
 
     const resource = t.getBindingResource(resourceType);
 
+    const IsStorageTextureResourceType = (resourceType: BindableResource) => {
+      switch (resourceType) {
+        case 'readonlyStorageTex':
+        case 'readwriteStorageTex':
+        case 'writeonlyStorageTex':
+          return true;
+        default:
+          return false;
+      }
+    };
+
     let resourceBindingIsCompatible;
     switch (info.resource) {
       // Either type of sampler may be bound to a filtering sampler binding.
@@ -131,6 +142,11 @@ g.test('binding_must_contain_resource_defined_in_layout')
       // But only non-filtering samplers can be used with non-filtering sampler bindings.
       case 'nonFiltSamp':
         resourceBindingIsCompatible = resourceType === 'nonFiltSamp';
+        break;
+      case 'readonlyStorageTex':
+      case 'readwriteStorageTex':
+      case 'writeonlyStorageTex':
+        resourceBindingIsCompatible = IsStorageTextureResourceType(resourceType);
         break;
       default:
         resourceBindingIsCompatible = info.resource === resourceType;
@@ -167,7 +183,7 @@ g.test('texture_binding_must_have_correct_usage')
 
     const descriptor = {
       size: { width: 16, height: 16, depthOrArrayLayers: 1 },
-      format: 'rgba8unorm' as const,
+      format: 'r32float' as const,
       usage: appliedUsage,
       sampleCount: info.resource === 'sampledTexMS' ? 4 : 1,
     };
@@ -314,6 +330,19 @@ g.test('texture_must_have_correct_dimension')
     });
 
     t.skipIfTextureViewDimensionNotSupported(viewDimension, dimension);
+    if (t.isCompatibility && texture.dimension === '2d') {
+      if (depthOrArrayLayers === 1) {
+        t.skipIf(
+          viewDimension !== '2d',
+          '1 layer 2d textures default to textureBindingViewDimension: "2d" in compat mode'
+        );
+      } else {
+        t.skipIf(
+          viewDimension !== '2d-array',
+          '> 1 layer 2d textures default to textureBindingViewDimension "2d-array" in compat mode'
+        );
+      }
+    }
 
     const shouldError = viewDimension !== dimension;
     const textureView = texture.createView({ dimension });
@@ -467,19 +496,20 @@ g.test('minBindingSize')
       usage: GPUBufferUsage.STORAGE,
     });
 
-    t.expectValidationError(() => {
-      t.device.createBindGroup({
-        layout: bindGroupLayout,
-        entries: [
-          {
-            binding: 0,
-            resource: {
-              buffer: storageBuffer,
+    t.expectValidationError(
+      () => {
+        t.device.createBindGroup({
+          layout: bindGroupLayout,
+          entries: [
+            {
+              binding: 0,
+              resource: { buffer: storageBuffer },
             },
-          },
-        ],
-      });
-    }, minBindingSize !== undefined && size < minBindingSize);
+          ],
+        });
+      },
+      minBindingSize !== undefined && size < minBindingSize
+    );
   });
 
 g.test('buffer,resource_state')
@@ -526,9 +556,7 @@ g.test('buffer,resource_state')
 g.test('texture,resource_state')
   .desc('Test bind group creation with various texture resource states')
   .paramsSubcasesOnly(u =>
-    u
-      .combine('state', kResourceStates)
-      .combine('entry', sampledAndStorageBindingEntries(true, 'rgba8unorm'))
+    u.combine('state', kResourceStates).combine('entry', sampledAndStorageBindingEntries(true))
   )
   .fn(t => {
     const { state, entry } = t.params;
@@ -548,10 +576,11 @@ g.test('texture,resource_state')
     const usage = entry.texture?.multisampled
       ? info.usage | GPUConst.TextureUsage.RENDER_ATTACHMENT
       : info.usage;
+    const format = entry.storageTexture !== undefined ? 'r32float' : 'rgba8unorm';
     const texture = t.createTextureWithState(state, {
       usage,
       size: [1, 1],
-      format: 'rgba8unorm',
+      format,
       sampleCount: entry.texture?.multisampled ? 4 : 1,
     });
 
@@ -626,7 +655,9 @@ g.test('binding_resources,device_mismatch')
         { buffer: { type: 'storage' } },
         { sampler: { type: 'filtering' } },
         { texture: { multisampled: false } },
-        { storageTexture: { access: 'write-only', format: 'rgba8unorm' } },
+        { storageTexture: { access: 'write-only', format: 'r32float' } },
+        { storageTexture: { access: 'read-only', format: 'r32float' } },
+        { storageTexture: { access: 'read-write', format: 'r32float' } },
       ] as const)
       .beginSubcases()
       .combineWithParams([
@@ -784,6 +815,10 @@ g.test('storage_texture,format')
       .combine('storageTextureFormat', kStorageTextureFormats)
       .combine('resourceFormat', kStorageTextureFormats)
   )
+  .beforeAllSubcases(t => {
+    const { storageTextureFormat, resourceFormat } = t.params;
+    t.skipIfTextureFormatNotUsableAsStorageTexture(storageTextureFormat, resourceFormat);
+  })
   .fn(t => {
     const { storageTextureFormat, resourceFormat } = t.params;
 
@@ -882,24 +917,20 @@ g.test('buffer,resource_offset')
     u //
       .combine('type', kBufferBindingTypes)
       .beginSubcases()
-      .expand('offset', ({ type }) =>
-        type === 'uniform'
-          ? [
-              kLimitInfo.minUniformBufferOffsetAlignment.default,
-              kLimitInfo.minUniformBufferOffsetAlignment.default * 0.5,
-              kLimitInfo.minUniformBufferOffsetAlignment.default * 1.5,
-              kLimitInfo.minUniformBufferOffsetAlignment.default + 2,
-            ]
-          : [
-              kLimitInfo.minStorageBufferOffsetAlignment.default,
-              kLimitInfo.minStorageBufferOffsetAlignment.default * 0.5,
-              kLimitInfo.minStorageBufferOffsetAlignment.default * 1.5,
-              kLimitInfo.minStorageBufferOffsetAlignment.default + 2,
-            ]
-      )
+      .combine('offsetAddMult', [
+        { add: 0, mult: 0 },
+        { add: 0, mult: 0.5 },
+        { add: 0, mult: 1.5 },
+        { add: 2, mult: 0 },
+      ])
   )
   .fn(t => {
-    const { type, offset } = t.params;
+    const { type, offsetAddMult } = t.params;
+    const minAlignment =
+      t.device.limits[
+        type === 'uniform' ? 'minUniformBufferOffsetAlignment' : 'minStorageBufferOffsetAlignment'
+      ];
+    const offset = makeValueTestVariant(minAlignment, offsetAddMult);
 
     const bindGroupLayout = t.device.createBindGroupLayout({
       entries: [
@@ -911,14 +942,8 @@ g.test('buffer,resource_offset')
       ],
     });
 
-    let usage, isValid;
-    if (type === 'uniform') {
-      usage = GPUBufferUsage.UNIFORM;
-      isValid = offset % kLimitInfo.minUniformBufferOffsetAlignment.default === 0;
-    } else {
-      usage = GPUBufferUsage.STORAGE;
-      isValid = offset % kLimitInfo.minStorageBufferOffsetAlignment.default === 0;
-    }
+    const usage = type === 'uniform' ? GPUBufferUsage.UNIFORM : GPUBufferUsage.STORAGE;
+    const isValid = offset % minAlignment === 0;
 
     const buffer = t.device.createBuffer({
       size: 1024,
@@ -947,22 +972,23 @@ g.test('buffer,resource_binding_size')
       .beginSubcases()
       // Test a size of 1 (for uniform buffer) or 4 (for storage and read-only storage buffer)
       // then values just within and just above the limit.
-      .expand('bindingSize', ({ type }) =>
-        type === 'uniform'
-          ? [
-              1,
-              kLimitInfo.maxUniformBufferBindingSize.default,
-              kLimitInfo.maxUniformBufferBindingSize.default + 1,
-            ]
-          : [
-              4,
-              kLimitInfo.maxStorageBufferBindingSize.default,
-              kLimitInfo.maxStorageBufferBindingSize.default + 4,
-            ]
-      )
+      .combine('bindingSize', [
+        { base: 1, limit: 0 },
+        { base: 0, limit: 1 },
+        { base: 1, limit: 1 },
+      ])
   )
   .fn(t => {
-    const { type, bindingSize } = t.params;
+    const {
+      type,
+      bindingSize: { base, limit },
+    } = t.params;
+    const mult = type === 'uniform' ? 1 : 4;
+    const maxBindingSize =
+      t.device.limits[
+        type === 'uniform' ? 'maxUniformBufferBindingSize' : 'maxStorageBufferBindingSize'
+      ];
+    const bindingSize = base * mult + maxBindingSize * limit;
 
     const bindGroupLayout = t.device.createBindGroupLayout({
       entries: [
@@ -974,17 +1000,12 @@ g.test('buffer,resource_binding_size')
       ],
     });
 
-    let usage, isValid;
-    if (type === 'uniform') {
-      usage = GPUBufferUsage.UNIFORM;
-      isValid = bindingSize <= kLimitInfo.maxUniformBufferBindingSize.default;
-    } else {
-      usage = GPUBufferUsage.STORAGE;
-      isValid = bindingSize <= kLimitInfo.maxStorageBufferBindingSize.default;
-    }
+    const usage = type === 'uniform' ? GPUBufferUsage.UNIFORM : GPUBufferUsage.STORAGE;
+    const isValid = bindingSize <= maxBindingSize;
 
+    // MAINTENANCE_TODO: Allocating the max size seems likely to fail. Refactor test.
     const buffer = t.device.createBuffer({
-      size: kLimitInfo.maxStorageBufferBindingSize.default,
+      size: maxBindingSize,
       usage,
     });
 
@@ -1007,26 +1028,18 @@ g.test('buffer,effective_buffer_binding_size')
     u
       .combine('type', kBufferBindingTypes)
       .beginSubcases()
-      .expand('offset', ({ type }) =>
-        type === 'uniform'
-          ? [0, kLimitInfo.minUniformBufferOffsetAlignment.default]
-          : [0, kLimitInfo.minStorageBufferOffsetAlignment.default]
-      )
-      .expand('bufferSize', ({ type }) =>
-        type === 'uniform'
-          ? [
-              kLimitInfo.minUniformBufferOffsetAlignment.default + 8,
-              kLimitInfo.minUniformBufferOffsetAlignment.default + 10,
-            ]
-          : [
-              kLimitInfo.minStorageBufferOffsetAlignment.default + 8,
-              kLimitInfo.minStorageBufferOffsetAlignment.default + 10,
-            ]
-      )
+      .combine('offsetMult', [0, 1])
+      .combine('bufferSizeAddition', [8, 10])
       .combine('bindingSize', [undefined, 2, 4, 6])
   )
   .fn(t => {
-    const { type, offset, bufferSize, bindingSize } = t.params;
+    const { type, offsetMult, bufferSizeAddition, bindingSize } = t.params;
+    const minAlignment =
+      t.device.limits[
+        type === 'uniform' ? 'minUniformBufferOffsetAlignment' : 'minStorageBufferOffsetAlignment'
+      ];
+    const offset = minAlignment * offsetMult;
+    const bufferSize = minAlignment + bufferSizeAddition;
 
     const bindGroupLayout = t.device.createBindGroupLayout({
       entries: [

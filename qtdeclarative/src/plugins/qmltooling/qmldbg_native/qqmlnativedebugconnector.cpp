@@ -23,36 +23,42 @@ QT_USE_NAMESPACE
 static bool expectSyncronousResponse = false;
 Q_GLOBAL_STATIC(QByteArray, responseBuffer)
 
+#ifdef QT_SHARED
+#  define QML_DEBUG_EXPORT Q_DECL_EXPORT
+#else
+#  define QML_DEBUG_EXPORT
+#endif
+
 extern "C" {
 
-Q_DECL_EXPORT const char *qt_qmlDebugMessageBuffer;
-Q_DECL_EXPORT int qt_qmlDebugMessageLength;
-Q_DECL_EXPORT bool qt_qmlDebugConnectionBlocker;
+QML_DEBUG_EXPORT const char *qt_qmlDebugMessageBuffer;
+QML_DEBUG_EXPORT int qt_qmlDebugMessageLength;
+QML_DEBUG_EXPORT bool qt_qmlDebugConnectionBlocker;
 
 // In blocking mode, this will busy wait until the debugger sets block to false.
-Q_DECL_EXPORT void qt_qmlDebugConnectorOpen();
+QML_DEBUG_EXPORT void qt_qmlDebugConnectorOpen();
 
 // First thing, set the debug stream version. Please use this function as we might move the version
 // member to some other place.
-Q_DECL_EXPORT void qt_qmlDebugSetStreamVersion(int version)
+QML_DEBUG_EXPORT void qt_qmlDebugSetStreamVersion(int version)
 {
     QQmlNativeDebugConnector::setDataStreamVersion(version);
 }
 
 
 // Break in this one to process output from an asynchronous message/
-Q_DECL_EXPORT void qt_qmlDebugMessageAvailable()
+QML_DEBUG_EXPORT void qt_qmlDebugMessageAvailable()
 {
 }
 
 
 // Break in this one to get notified about construction and destruction of
 // interesting objects, such as QmlEngines.
-Q_DECL_EXPORT void qt_qmlDebugObjectAvailable()
+QML_DEBUG_EXPORT void qt_qmlDebugObjectAvailable()
 {
 }
 
-Q_DECL_EXPORT void qt_qmlDebugClearBuffer()
+QML_DEBUG_EXPORT void qt_qmlDebugClearBuffer()
 {
     responseBuffer->clear();
     qt_qmlDebugMessageBuffer = nullptr;
@@ -60,7 +66,7 @@ Q_DECL_EXPORT void qt_qmlDebugClearBuffer()
 }
 
 // Send a message to a service.
-Q_DECL_EXPORT bool qt_qmlDebugSendDataToService(const char *serviceName, const char *hexData)
+QML_DEBUG_EXPORT bool qt_qmlDebugSendDataToService(const char *serviceName, const char *hexData)
 {
     QByteArray msg = QByteArray::fromHex(hexData);
 
@@ -81,7 +87,7 @@ Q_DECL_EXPORT bool qt_qmlDebugSendDataToService(const char *serviceName, const c
 }
 
 // Enable a service.
-Q_DECL_EXPORT bool qt_qmlDebugEnableService(const char *data)
+QML_DEBUG_EXPORT bool qt_qmlDebugEnableService(const char *data)
 {
     QQmlDebugConnector *instance = QQmlDebugConnector::instance();
     if (!instance)
@@ -98,7 +104,7 @@ Q_DECL_EXPORT bool qt_qmlDebugEnableService(const char *data)
     return true;
 }
 
-Q_DECL_EXPORT bool qt_qmlDebugDisableService(const char *data)
+QML_DEBUG_EXPORT bool qt_qmlDebugDisableService(const char *data)
 {
     QQmlDebugConnector *instance = QQmlDebugConnector::instance();
     if (!instance)
@@ -128,7 +134,7 @@ quintptr qt_qmlDebugTestHooks[] = {
 };
 
 // In blocking mode, this will busy wait until the debugger sets block to false.
-Q_DECL_EXPORT void qt_qmlDebugConnectorOpen()
+QML_DEBUG_EXPORT void qt_qmlDebugConnectorOpen()
 {
     TRACE_PROTOCOL("Opening native debug connector");
 

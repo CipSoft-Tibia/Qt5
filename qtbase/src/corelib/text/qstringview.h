@@ -5,7 +5,10 @@
 #define QSTRINGVIEW_H
 
 #include <QtCore/qchar.h>
+#include <QtCore/qcompare.h>
+#include <QtCore/qcontainerfwd.h>
 #include <QtCore/qbytearray.h>
+#include <QtCore/qstringfwd.h>
 #include <QtCore/qstringliteral.h>
 #include <QtCore/qstringalgorithms.h>
 
@@ -20,13 +23,8 @@ Q_FORWARD_DECLARE_OBJC_CLASS(NSString);
 
 QT_BEGIN_NAMESPACE
 
-class QString;
-class QStringView;
 class QRegularExpression;
 class QRegularExpressionMatch;
-#ifdef Q_QDOC
-class QUtf8StringView;
-#endif
 
 namespace QtPrivate {
 template <typename Char>
@@ -66,6 +64,8 @@ struct IsContainerCompatibleWithQStringView<T, std::enable_if_t<std::conjunction
 
             // These need to be treated specially due to the empty vs null distinction
             std::negation<std::is_same<std::decay_t<T>, QString>>,
+#define QSTRINGVIEW_REFUSES_QSTRINGREF 1
+            std::negation<std::is_same<q20::remove_cvref_t<T>, QStringRef>>, // QStringRef::op QStringView()
 
             // Don't make an accidental copy constructor
             std::negation<std::is_same<std::decay_t<T>, QStringView>>
@@ -148,10 +148,13 @@ public:
     template <typename Char>
     constexpr QStringView(const Char *str) noexcept;
 #else
-
     template <typename Pointer, if_compatible_pointer<Pointer> = true>
     constexpr QStringView(const Pointer &str) noexcept
         : QStringView(str, str ? lengthHelperPointer(str) : 0) {}
+
+    template <typename Char, if_compatible_char<Char> = true>
+    constexpr QStringView(const Char (&str)[]) noexcept // array of unknown bounds
+        : QStringView{&*str} {} // decay to pointer
 #endif
 
 #ifdef Q_QDOC
@@ -159,7 +162,7 @@ public:
 #else
     template <typename String, if_compatible_qstring_like<String> = true>
     QStringView(const String &str) noexcept
-        : QStringView(str.isNull() ? nullptr : str.data(), qsizetype(str.size())) {}
+        : QStringView{str.begin(), str.size()} {}
 #endif
 
     template <typename Container, if_compatible_container<Container> = true>
@@ -236,6 +239,11 @@ public:
 
     [[nodiscard]] QStringView trimmed() const noexcept { return QtPrivate::trimmed(*this); }
 
+    constexpr QStringView &slice(qsizetype pos)
+    { *this = sliced(pos); return *this; }
+    constexpr QStringView &slice(qsizetype pos, qsizetype n)
+    { *this = sliced(pos, n); return *this; }
+
     template <typename Needle, typename...Flags>
     [[nodiscard]] constexpr inline auto tokenize(Needle &&needle, Flags...flags) const
         noexcept(noexcept(qTokenize(std::declval<const QStringView&>(), std::forward<Needle>(needle), flags...)))
@@ -270,7 +278,7 @@ public:
     { return QtPrivate::endsWith(*this, QStringView(&c, 1), cs); }
 
     [[nodiscard]] qsizetype indexOf(QChar c, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::findString(*this, from, QStringView(&c, 1), cs); }
+    { return QtPrivate::findString(*this, from, c.unicode(), cs); }
     [[nodiscard]] qsizetype indexOf(QStringView s, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return QtPrivate::findString(*this, from, s, cs); }
     [[nodiscard]] inline qsizetype indexOf(QLatin1StringView s, qsizetype from = 0, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
@@ -290,7 +298,7 @@ public:
     [[nodiscard]] qsizetype lastIndexOf(QChar c, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return lastIndexOf(c, -1, cs); }
     [[nodiscard]] qsizetype lastIndexOf(QChar c, qsizetype from, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
-    { return QtPrivate::lastIndexOf(*this, from, QStringView(&c, 1), cs); }
+    { return QtPrivate::lastIndexOf(*this, from, c.unicode(), cs); }
     [[nodiscard]] qsizetype lastIndexOf(QStringView s, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
     { return lastIndexOf(s, size(), cs); }
     [[nodiscard]] qsizetype lastIndexOf(QStringView s, qsizetype from, Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept
@@ -366,27 +374,22 @@ public:
 #endif
 
     // QStringView <> QStringView
-    friend bool operator==(QStringView lhs, QStringView rhs) noexcept { return lhs.size() == rhs.size() && QtPrivate::equalStrings(lhs, rhs); }
-    friend bool operator!=(QStringView lhs, QStringView rhs) noexcept { return !(lhs == rhs); }
-    friend bool operator< (QStringView lhs, QStringView rhs) noexcept { return QtPrivate::compareStrings(lhs, rhs) <  0; }
-    friend bool operator<=(QStringView lhs, QStringView rhs) noexcept { return QtPrivate::compareStrings(lhs, rhs) <= 0; }
-    friend bool operator> (QStringView lhs, QStringView rhs) noexcept { return QtPrivate::compareStrings(lhs, rhs) >  0; }
-    friend bool operator>=(QStringView lhs, QStringView rhs) noexcept { return QtPrivate::compareStrings(lhs, rhs) >= 0; }
+    friend bool comparesEqual(const QStringView &lhs, const QStringView &rhs) noexcept
+    { return lhs.size() == rhs.size() && QtPrivate::equalStrings(lhs, rhs); }
+    friend Qt::strong_ordering
+    compareThreeWay(const QStringView &lhs, const QStringView &rhs) noexcept
+    {
+        const int res = QtPrivate::compareStrings(lhs, rhs);
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QStringView)
 
     // QStringView <> QChar
-    friend bool operator==(QStringView lhs, QChar rhs) noexcept { return lhs == QStringView(&rhs, 1); }
-    friend bool operator!=(QStringView lhs, QChar rhs) noexcept { return lhs != QStringView(&rhs, 1); }
-    friend bool operator< (QStringView lhs, QChar rhs) noexcept { return lhs <  QStringView(&rhs, 1); }
-    friend bool operator<=(QStringView lhs, QChar rhs) noexcept { return lhs <= QStringView(&rhs, 1); }
-    friend bool operator> (QStringView lhs, QChar rhs) noexcept { return lhs >  QStringView(&rhs, 1); }
-    friend bool operator>=(QStringView lhs, QChar rhs) noexcept { return lhs >= QStringView(&rhs, 1); }
-
-    friend bool operator==(QChar lhs, QStringView rhs) noexcept { return QStringView(&lhs, 1) == rhs; }
-    friend bool operator!=(QChar lhs, QStringView rhs) noexcept { return QStringView(&lhs, 1) != rhs; }
-    friend bool operator< (QChar lhs, QStringView rhs) noexcept { return QStringView(&lhs, 1) <  rhs; }
-    friend bool operator<=(QChar lhs, QStringView rhs) noexcept { return QStringView(&lhs, 1) <= rhs; }
-    friend bool operator> (QChar lhs, QStringView rhs) noexcept { return QStringView(&lhs, 1) >  rhs; }
-    friend bool operator>=(QChar lhs, QStringView rhs) noexcept { return QStringView(&lhs, 1) >= rhs; }
+    friend bool comparesEqual(const QStringView &lhs, QChar rhs) noexcept
+    { return lhs.size() == 1 && lhs[0] == rhs; }
+    friend Qt::strong_ordering compareThreeWay(const QStringView &lhs, QChar rhs) noexcept
+    { return compareThreeWay(lhs, QStringView(&rhs, 1)); }
+    Q_DECLARE_STRONGLY_ORDERED(QStringView, QChar)
 
     //
     // STL compatibility API:
@@ -407,6 +410,8 @@ public:
     [[nodiscard]] Q_IMPLICIT operator std::u16string_view() const noexcept
     { return std::u16string_view(m_data, size_t(m_size)); }
 
+    [[nodiscard]] constexpr qsizetype max_size() const noexcept { return maxSize(); }
+
     //
     // Qt compatibility API:
     //
@@ -418,6 +423,12 @@ public:
     { return size(); }
     [[nodiscard]] constexpr QChar first() const { return front(); }
     [[nodiscard]] constexpr QChar last()  const { return back(); }
+
+    [[nodiscard]] static constexpr qsizetype maxSize() noexcept
+    {
+        // -1 to deal with the pointer one-past-the-end;
+        return QtPrivate::MaxAllocSize / sizeof(storage_type) - 1;
+    }
 private:
 #if QT_VERSION >= QT_VERSION_CHECK(7, 0, 0) || defined(QT_BOOTSTRAPPED)
     const storage_type *m_data = nullptr;
@@ -438,6 +449,23 @@ private:
 
     constexpr int compare_single_char_helper(int diff) const noexcept
     { return diff ? diff : size() > 1 ? 1 : 0; }
+
+    Q_CORE_EXPORT static bool equal_helper(QStringView sv, const char *data, qsizetype len);
+    Q_CORE_EXPORT static int compare_helper(QStringView sv, const char *data, qsizetype len);
+
+#if !defined(QT_NO_CAST_FROM_ASCII) && !defined(QT_RESTRICTED_CAST_FROM_ASCII)
+    friend bool comparesEqual(const QStringView &lhs, const QByteArrayView &rhs) noexcept
+    { return equal_helper(lhs, rhs.data(), rhs.size()); }
+    friend Qt::strong_ordering
+    compareThreeWay(const QStringView &lhs, const QByteArrayView &rhs) noexcept
+    {
+        const int res = compare_helper(lhs, rhs.data(), rhs.size());
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QStringView, QByteArrayView, QT_ASCII_CAST_WARN)
+    Q_DECLARE_STRONGLY_ORDERED(QStringView, QByteArray, QT_ASCII_CAST_WARN)
+    Q_DECLARE_STRONGLY_ORDERED(QStringView, const char *, QT_ASCII_CAST_WARN)
+#endif // !defined(QT_NO_CAST_FROM_ASCII) && !defined(QT_RESTRICTED_CAST_FROM_ASCII)
 };
 Q_DECLARE_TYPEINFO(QStringView, Q_PRIMITIVE_TYPE);
 
@@ -445,7 +473,7 @@ template <typename QStringLike, typename std::enable_if<
     std::is_same<QStringLike, QString>::value,
     bool>::type = true>
 inline QStringView qToStringViewIgnoringNull(const QStringLike &s) noexcept
-{ return QStringView(s.data(), s.size()); }
+{ return QStringView(s.begin(), s.size()); }
 
 // QChar inline functions:
 
@@ -461,6 +489,27 @@ inline QStringView qToStringViewIgnoringNull(const QStringLike &s) noexcept
     return requiresSurrogates(c) ? R{{QChar::highSurrogate(c),
                                       QChar::lowSurrogate(c)}} :
                                    R{{char16_t(c), u'\0'}} ;
+}
+
+qsizetype QtPrivate::findString(QStringView str, qsizetype from, QChar ch, Qt::CaseSensitivity cs) noexcept
+{
+    if (from < -str.size()) // from < 0 && abs(from) > str.size(), avoiding overflow
+        return -1;
+    if (from < 0)
+        from = qMax(from + str.size(), qsizetype(0));
+    if (from < str.size()) {
+        const char16_t *s = str.utf16();
+        char16_t c = ch.unicode();
+        const char16_t *n = s + from;
+        const char16_t *e = s + str.size();
+        if (cs == Qt::CaseSensitive)
+            n = qustrchr(QStringView(n, e), c);
+        else
+            n = qustrcasechr(QStringView(n, e), c);
+        if (n != e)
+            return n - s;
+    }
+    return -1;
 }
 
 QT_END_NAMESPACE

@@ -17,17 +17,25 @@
 namespace v8 {
 namespace internal {
 
-#include "torque-generated/src/objects/bytecode-array-tq-inl.inc"
+CAST_ACCESSOR(BytecodeArray)
+OBJECT_CONSTRUCTORS_IMPL(BytecodeArray, ExposedTrustedObject)
 
-TQ_OBJECT_CONSTRUCTORS_IMPL(BytecodeArray)
+SMI_ACCESSORS(BytecodeArray, length, kLengthOffset)
+RELEASE_ACQUIRE_SMI_ACCESSORS(BytecodeArray, length, kLengthOffset)
+PROTECTED_POINTER_ACCESSORS(BytecodeArray, handler_table, TrustedByteArray,
+                            kHandlerTableOffset)
+ACCESSORS(BytecodeArray, constant_pool, Tagged<FixedArray>, kConstantPoolOffset)
+ACCESSORS(BytecodeArray, wrapper, Tagged<BytecodeWrapper>, kWrapperOffset)
+RELEASE_ACQUIRE_ACCESSORS(BytecodeArray, source_position_table,
+                          Tagged<HeapObject>, kSourcePositionTableOffset)
 
 uint8_t BytecodeArray::get(int index) const {
-  DCHECK(index >= 0 && index < this->length());
+  DCHECK(index >= 0 && index < length());
   return ReadField<uint8_t>(kHeaderSize + index * kCharSize);
 }
 
 void BytecodeArray::set(int index, uint8_t value) {
-  DCHECK(index >= 0 && index < this->length());
+  DCHECK(index >= 0 && index < length());
   WriteField<uint8_t>(kHeaderSize + index * kCharSize, value);
 }
 
@@ -126,9 +134,10 @@ DEF_GETTER(BytecodeArray, raw_constant_pool, Tagged<Object>) {
 
 DEF_GETTER(BytecodeArray, raw_handler_table, Tagged<Object>) {
   Tagged<Object> value =
-      TaggedField<Object>::load(cage_base, *this, kHandlerTableOffset);
+      TaggedField<Object, kHandlerTableOffset,
+                  TrustedSpaceCompressionScheme>::load(*this);
   // This field might be 0 during deserialization.
-  DCHECK(value == Smi::zero() || IsByteArray(value));
+  DCHECK(value == Smi::zero() || IsTrustedByteArray(value));
   return value;
 }
 
@@ -152,16 +161,27 @@ DEF_GETTER(BytecodeArray, SizeIncludingMetadata, int) {
     DCHECK_EQ(maybe_constant_pool, Smi::zero());
   }
   Tagged<Object> maybe_handler_table = raw_handler_table(cage_base);
-  if (IsByteArray(maybe_handler_table)) {
-    size += ByteArray::cast(maybe_handler_table)->Size();
+  if (IsTrustedByteArray(maybe_handler_table)) {
+    size += TrustedByteArray::cast(maybe_handler_table)->AllocatedSize();
   } else {
     DCHECK_EQ(maybe_handler_table, Smi::zero());
   }
   Tagged<Object> maybe_table = raw_source_position_table(cage_base);
   if (IsByteArray(maybe_table)) {
-    size += ByteArray::cast(maybe_table)->Size();
+    size += ByteArray::cast(maybe_table)->AllocatedSize();
   }
   return size;
+}
+
+CAST_ACCESSOR(BytecodeWrapper)
+OBJECT_CONSTRUCTORS_IMPL(BytecodeWrapper, Struct)
+
+TRUSTED_POINTER_ACCESSORS(BytecodeWrapper, bytecode, BytecodeArray,
+                          kBytecodeOffset, kBytecodeArrayIndirectPointerTag)
+
+void BytecodeWrapper::clear_padding() {
+  WriteField<int32_t>(kPadding1Offset, 0);
+  WriteField<int32_t>(kPadding2Offset, 0);
 }
 
 }  // namespace internal

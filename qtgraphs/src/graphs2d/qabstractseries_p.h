@@ -16,39 +16,37 @@
 
 #include <QtGraphs/qabstractseries.h>
 #include <memory>
+#include <private/qobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QAbstractAxis;
 class QGraphsView;
 
-class QAbstractSeriesPrivate : public QObject
+class QAbstractSeriesPrivate : public QObjectPrivate
 {
-    Q_OBJECT
+    Q_DECLARE_PUBLIC(QAbstractSeries)
 public:
-    QAbstractSeriesPrivate(QAbstractSeries *q);
-    ~QAbstractSeriesPrivate();
+    explicit QAbstractSeriesPrivate();
+    ~QAbstractSeriesPrivate() override;
 
-    virtual void initializeAxes() = 0;
+    void setLegendData(const QList<QLegendData> &legendData);
+    void clearLegendData();
 
-Q_SIGNALS:
-    void countChanged();
+    static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
 
 protected:
-    QAbstractSeries *q_ptr;
-    QGraphsView *m_graph;
-    QList<QAbstractAxis*> m_axes;
+    QGraphsView *m_graph = nullptr;
 
 private:
-    QSeriesTheme *m_theme = nullptr;
     QString m_name;
-    bool m_visible;
+    bool m_visible = true;
+    bool m_loaded = false;
     bool m_selectable = false;
     bool m_hoverable = false;
-    qreal m_opacity;
-    qreal m_valuesMultiplier;
-
-    friend class QAbstractSeries;
+    qreal m_opacity = 1.0;
+    qreal m_valuesMultiplier = 1.0;
+    QList<QLegendData> m_legendData;
 };
 
 QT_END_NAMESPACE

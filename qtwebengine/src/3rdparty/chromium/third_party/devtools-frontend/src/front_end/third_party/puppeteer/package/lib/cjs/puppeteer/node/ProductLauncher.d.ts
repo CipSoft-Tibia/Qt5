@@ -1,10 +1,10 @@
 import { launch } from '@puppeteer/browsers';
-import { Browser, BrowserCloseCallback } from '../api/Browser.js';
-import { Connection } from '../common/Connection.js';
-import { Product } from '../common/Product.js';
-import { Viewport } from '../common/PuppeteerViewport.js';
-import { BrowserLaunchArgumentOptions, ChromeReleaseChannel, PuppeteerNodeLaunchOptions } from './LaunchOptions.js';
-import { PuppeteerNode } from './PuppeteerNode.js';
+import type { Browser, BrowserCloseCallback } from '../api/Browser.js';
+import { Connection } from '../cdp/Connection.js';
+import type { Product } from '../common/Product.js';
+import type { Viewport } from '../common/Viewport.js';
+import type { BrowserLaunchArgumentOptions, ChromeReleaseChannel, PuppeteerNodeLaunchOptions } from './LaunchOptions.js';
+import type { PuppeteerNode } from './PuppeteerNode.js';
 /**
  * @internal
  */
@@ -19,7 +19,7 @@ export interface ResolvedLaunchArgs {
  *
  * @public
  */
-export declare class ProductLauncher {
+export declare abstract class ProductLauncher {
     #private;
     /**
      * @internal
@@ -35,8 +35,8 @@ export declare class ProductLauncher {
     constructor(puppeteer: PuppeteerNode, product: Product);
     get product(): Product;
     launch(options?: PuppeteerNodeLaunchOptions): Promise<Browser>;
-    executablePath(channel?: ChromeReleaseChannel): string;
-    defaultArgs(object: BrowserLaunchArgumentOptions): string[];
+    abstract executablePath(channel?: ChromeReleaseChannel): string;
+    abstract defaultArgs(object: BrowserLaunchArgumentOptions): string[];
     /**
      * Set only for Firefox, after the launcher resolves the `latest` revision to
      * the actual revision.
@@ -46,17 +46,17 @@ export declare class ProductLauncher {
     /**
      * @internal
      */
-    protected computeLaunchArguments(options: PuppeteerNodeLaunchOptions): Promise<ResolvedLaunchArgs>;
+    protected abstract computeLaunchArguments(options: PuppeteerNodeLaunchOptions): Promise<ResolvedLaunchArgs>;
     /**
      * @internal
      */
-    protected cleanUserDataDir(path: string, opts: {
+    protected abstract cleanUserDataDir(path: string, opts: {
         isTemp: boolean;
     }): Promise<void>;
     /**
      * @internal
      */
-    protected closeBrowser(browserProcess: ReturnType<typeof launch>, connection?: Connection): Promise<void>;
+    protected closeBrowser(browserProcess: ReturnType<typeof launch>, cdpConnection?: Connection): Promise<void>;
     /**
      * @internal
      */
@@ -64,7 +64,7 @@ export declare class ProductLauncher {
     /**
      * @internal
      */
-    protected createCDPSocketConnection(browserProcess: ReturnType<typeof launch>, opts: {
+    protected createCdpSocketConnection(browserProcess: ReturnType<typeof launch>, opts: {
         timeout: number;
         protocolTimeout: number | undefined;
         slowMo: number;
@@ -72,7 +72,7 @@ export declare class ProductLauncher {
     /**
      * @internal
      */
-    protected createCDPPipeConnection(browserProcess: ReturnType<typeof launch>, opts: {
+    protected createCdpPipeConnection(browserProcess: ReturnType<typeof launch>, opts: {
         timeout: number;
         protocolTimeout: number | undefined;
         slowMo: number;
@@ -80,7 +80,7 @@ export declare class ProductLauncher {
     /**
      * @internal
      */
-    protected createBiDiOverCDPBrowser(browserProcess: ReturnType<typeof launch>, connection: Connection, closeCallback: BrowserCloseCallback, opts: {
+    protected createBiDiOverCdpBrowser(browserProcess: ReturnType<typeof launch>, connection: Connection, closeCallback: BrowserCloseCallback, opts: {
         timeout: number;
         protocolTimeout: number | undefined;
         slowMo: number;

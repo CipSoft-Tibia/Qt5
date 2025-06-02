@@ -1,213 +1,375 @@
-// Copyright (C) 2023 The Qt Company Ltd.
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
+// Copyright (C) 2024 Dennis Oberst <dennis.ob@protonmail.com>
+// Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <iostream>
-#include <string_view>
-#include <list>
-#include <cassert>
-#include <optional>
+#include "chatmessages.pb.h"
+#include "qtgrpcchat.grpc.pb.h"
+#include "credentials/certificates.h"
 
 #include <grpc++/grpc++.h>
-#include <simplechat.pb.h>
-#include <simplechat.grpc.pb.h>
-using namespace qtgrpc::examples::chat;
+#include <grpc++/security/server_credentials.h>
 
-class MessageListHandler;
-class UserListHandler;
+#include <chrono>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <string>
+#include <vector>
 
-constexpr std::string_view nameHeader("user-name");
-constexpr std::string_view passwordHeader("user-password");
-class SimpleChatService final : public SimpleChat::WithAsyncMethod_messageList<SimpleChat::Service>
+namespace {
+
+std::ostream &operator<<(std::ostream &os, const chat::Credentials &u)
+{
+    return os << u.name() << ' ' << u.password() << '\n';
+}
+
+std::istream &operator>>(std::istream &is, chat::Credentials &u)
+{
+    std::string name, password;
+    if (is >> name >> password) {
+        u.set_name(std::move(name));
+        u.set_password(std::move(password));
+    }
+    return is;
+}
+
+} // namespace
+
+class QtGrpcChatService;
+
+// A ChatRoomReactor instance represent the bidirectional streaming RPC, i.e. a connected client.
+class ChatRoomReactor : public grpc::ServerBidiReactor<chat::ChatMessage, chat::ChatMessage>
 {
 public:
-    SimpleChatService();
-    void run(std::string_view address);
+    explicit ChatRoomReactor(QtGrpcChatService *parent, grpc::CallbackServerContext *context);
 
-    grpc::Status sendMessage(grpc::ServerContext *context, const ChatMessage *request,
-                               None *) override;
+    const std::string &name() const noexcept { return m_user.name(); }
+    chat::UserStatus::Type userStatusType() const noexcept { return m_userStatusType; }
+
+//! [server-4]
+    // Share \a response. It will be kept alive until the last write operation finishes.
+    void startSharedWrite(std::shared_ptr<chat::ChatMessage> response)
+    {
+        std::scoped_lock lock(m_writeMtx);
+        if (m_response) {
+            m_responseQueue.emplace(std::move(response));
+        } else {
+            m_response = std::move(response);
+            StartWrite(m_response.get());
+        }
+    }
+//! [server-4]
+
+    std::shared_ptr<chat::ChatMessage> createMessage() const
+    {
+        auto message = std::make_shared<chat::ChatMessage>();
+        message->set_username(name());
+        message->set_timestamp(std::chrono::system_clock::now().time_since_epoch().count());
+        return message;
+    }
 
 private:
-    std::optional<std::string> checkUserCredentials(grpc::ServerContext *context);
-    void addMessageHandler(MessageListHandler *userHandler);
-    void sendMessageToClients(const ChatMessage *message);
+    void OnDone() override;
+    void OnCancel() override;
+    void OnReadDone(bool ok) override;
+    void OnWriteDone(bool ok) override;
 
-    Users m_usersDatabase;
-    ChatMessages m_messages;
-    std::list<MessageListHandler *> m_activeClients;
+private:
+    static const std::string &userNameHeader()
+    {
+        static std::string userNameHeader = "user-name";
+        return userNameHeader;
+    }
+    static const std::string &userPasswordHeader()
+    {
+        static std::string userPasswordHeader = "user-password";
+        return userPasswordHeader;
+    }
+
+    bool m_hasLogin = false;
+    grpc::CallbackServerContext *m_context;
+    QtGrpcChatService *m_service;
+    chat::Credentials m_user;
+    chat::UserStatus::Type m_userStatusType;
+
+    std::shared_ptr<chat::ChatMessage> m_request;
+    std::shared_ptr<chat::ChatMessage> m_response;
+    std::queue<std::shared_ptr<chat::ChatMessage>> m_responseQueue;
+    std::mutex m_writeMtx;
 };
 
-struct HandlerTag
-{
-    enum Type { Request = 1, Reply, Disconnect, Reject };
-
-    HandlerTag(HandlerTag::Type t, MessageListHandler *h) : tag(t), handler(h) { }
-
-    HandlerTag::Type tag;
-    MessageListHandler *handler;
-};
-
-class MessageListHandler
+//! [server-1]
+class QtGrpcChatService final : public chat::QtGrpcChat::CallbackService
+//! [server-1]
 {
 public:
-    MessageListHandler(SimpleChatService *service, grpc::ServerCompletionQueue *queue)
-        : writer(&ctx), cq(queue)
+    static const std::string &httpsAddress()
     {
-        ctx.AsyncNotifyWhenDone(new HandlerTag(HandlerTag::Disconnect, this));
-        service->RequestmessageList(&ctx, &request, &writer, cq, cq,
-                                    new HandlerTag(HandlerTag::Request, this));
+        static std::string address = "0.0.0.0:65002";
+        return address;
+    }
+    static const std::string &httpAddress()
+    {
+        static std::string address = "0.0.0.0:65003";
+        return address;
     }
 
-    None request;
-    grpc::ServerAsyncWriter<qtgrpc::examples::chat::ChatMessages> writer;
-    grpc::ServerContext ctx;
-    grpc::ServerCompletionQueue *cq;
+    const std::string &dbPath() const noexcept { return m_dbPath; }
+    const std::vector<ChatRoomReactor *> &activeClients() & noexcept { return m_activeClients; }
+
+    bool login(ChatRoomReactor *client)
+    {
+        std::unique_lock lock(m_activeClientsMtx);
+        if (std::find(m_activeClients.begin(), m_activeClients.end(), client) != m_activeClients.end())
+            return false;
+
+        std::cout << "login:  " << client << ", " << client->name() << '\n';
+        m_activeClients.push_back(client);
+
+        // Notify all clients including the connecting one about the new login
+        auto msg = client->createMessage();
+        msg->mutable_user_status()->set_type(chat::UserStatus::LOGIN);
+        broadcast(msg, nullptr);
+
+        // Send all active clients of the session to the connecting client
+        for (auto *activeClient : m_activeClients) {
+            if (activeClient == client)
+                continue;
+            msg = activeClient->createMessage();
+            msg->mutable_user_status()->set_type(activeClient->userStatusType());
+            msg->mutable_user_status()->set_fetched(true);
+            client->startSharedWrite(msg);
+        }
+
+        msg.reset(); // detach
+        return true;
+    }
+
+    bool logout(ChatRoomReactor *client)
+    {
+        std::unique_lock lock(m_activeClientsMtx);
+        if (const auto it = std::find(m_activeClients.begin(), m_activeClients.end(), client);
+            it != m_activeClients.end()) {
+            std::cout << "logout: " << client << ", " << client->name() << '\n';
+            m_activeClients.erase(it);
+            return true;
+        }
+        return false;
+    }
+
+//! [server-3]
+    // Broadcast \a message to all connected clients. Optionally \a skip a client
+    void broadcast(const std::shared_ptr<chat::ChatMessage> &message, const ChatRoomReactor *skip)
+    {
+        for (auto *client : activeClients()) {
+            assert(client);
+            if (skip && client == skip)
+                continue;
+            client->startSharedWrite(message);
+        }
+    }
+//! [server-3]
+
+private:
+//! [server-2]
+    grpc::ServerBidiReactor<chat::ChatMessage, chat::ChatMessage> *
+    ChatRoom(grpc::CallbackServerContext *context) override
+    {
+        return new ChatRoomReactor(this, context);
+    }
+
+    grpc::ServerUnaryReactor *Register(grpc::CallbackServerContext *context,
+                                       const chat::Credentials *request,
+                                       chat::None * /*response*/) override
+//! [server-2]
+    {
+        auto *reactor = context->DefaultReactor();
+        if (request->name().empty() || request->password().empty()) {
+            reactor->Finish({ grpc::StatusCode::INVALID_ARGUMENT, "Invalid user request" });
+            return reactor;
+        }
+
+        std::fstream file(m_dbPath, std::ios::in | std::ios::out | std::ios::app);
+        if (!file) {
+            reactor->Finish({ grpc::StatusCode::UNAVAILABLE, "Database unavailable" });
+            return reactor;
+        }
+
+        chat::Credentials credSearch;
+        file.seekg(0);
+        while (file >> credSearch) {
+            if (credSearch.name() == request->name()) {
+                reactor->Finish({ grpc::StatusCode::ALREADY_EXISTS,
+                                  request->name() + " already exists" });
+                return reactor;
+            }
+        }
+
+        file.clear();
+        if (!(file << *request)) {
+            reactor->Finish({ grpc::StatusCode::DATA_LOSS, "Failed to register user" });
+            return reactor;
+        }
+
+        reactor->Finish(grpc::Status::OK);
+        return reactor;
+    }
+
+private:
+    std::string m_dbPath = "users.db";
+    std::vector<ChatRoomReactor *> m_activeClients;
+    std::mutex m_activeClientsMtx;
 };
 
-void SimpleChatService::run(std::string_view address)
+ChatRoomReactor::ChatRoomReactor(QtGrpcChatService *parent, grpc::CallbackServerContext *context)
+    : m_context(context), m_service(parent)
 {
-    grpc::ServerBuilder builder;
-    builder.AddListeningPort(std::string(address), grpc::InsecureServerCredentials());
-    builder.RegisterService(this);
-    std::unique_ptr<grpc::ServerCompletionQueue> cq = builder.AddCompletionQueue();
-    std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
-    std::cout << "Server listening on " << address << '\n';
+    const auto &metadata = m_context->client_metadata();
+    const auto nameIt = metadata.find(userNameHeader());
+    const auto passIt = metadata.find(userPasswordHeader());
 
-    MessageListHandler *pending = new MessageListHandler(this, cq.get());
-    while (true) {
-        HandlerTag *tag = nullptr;
-        bool ok = false;
-        cq->Next(reinterpret_cast<void **>(&tag), &ok);
-
-        if (tag == nullptr)
-            continue;
-
-        if (!ok) {
-            std::cout << "Unable to proccess tag from the completion queue\n";
-            delete tag;
-            continue;
-        }
-
-        switch (tag->tag) {
-        case HandlerTag::Request: {
-            std::cout << "New connection request received\n";
-            const auto name = checkUserCredentials(&(pending->ctx));
-            if (!name.has_value()) {
-                std::cout << "Authentication failed\n";
-                pending->writer.Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                                      "User or login are invalid"),
-                                       new HandlerTag(HandlerTag::Reject, pending));
-            } else {
-                std::cout << "User " << name.value() << " connected to chat\n";
-                addMessageHandler(pending);
-                pending->writer.Write(m_messages, nullptr);
-            }
-            pending = new MessageListHandler(this, cq.get());
-        } break;
-        case HandlerTag::Disconnect: {
-            auto it = std::find(m_activeClients.begin(), m_activeClients.end(), tag->handler);
-            if (it != m_activeClients.end()) {
-                std::cout << "Client disconnected\n";
-                m_activeClients.erase(it);
-                delete tag->handler;
-            }
-        } break;
-        case HandlerTag::Reject:
-            std::cout << "Connection rejected\n";
-            m_activeClients.remove(tag->handler);
-            delete tag->handler;
-            break;
-        case HandlerTag::Reply:
-            std::cout << "Sending data to users\n";
-            break;
-        }
-        delete tag;
+    if (nameIt == metadata.end() || passIt == metadata.end()) {
+        Finish({ grpc::StatusCode::NOT_FOUND, "Metadata not found" });
+        return;
     }
-}
 
-std::optional<std::string> SimpleChatService::checkUserCredentials(grpc::ServerContext *context)
-{
-    assert(context != nullptr);
+    if (nameIt->second.empty() || passIt->second.empty()) {
+        Finish({ grpc::StatusCode::INVALID_ARGUMENT, "Invalid metadata" });
+        return;
+    }
 
-    std::string name;
-    std::string password;
-    for (const auto &[key, value] : std::as_const(context->client_metadata())) {
-        if (std::string(key.data(), key.size()) == nameHeader) {
-            name = std::string(value.data(), value.size());
-        }
-        if (std::string(key.data(), key.size()) == passwordHeader) {
-            password = std::string(value.data(), value.size());
+    for (const auto *client : m_service->activeClients()) {
+        if (client->name() == nameIt->second) {
+            Finish({ grpc::StatusCode::ALREADY_EXISTS, "User already active" });
+            return;
         }
     }
 
-    return std::find_if(m_usersDatabase.users().begin(), m_usersDatabase.users().end(),
-                        [&name, &password](const auto &it) {
-                            return it.name() == name && it.password() == password;
-                        })
-                    != m_usersDatabase.users().end()
-            ? std::optional{ name }
-            : std::nullopt;
+    std::fstream file(m_service->dbPath(), std::ios::in);
+    if (!file) {
+        Finish({ grpc::StatusCode::UNAVAILABLE, "Database unavailable" });
+        return;
+    }
+
+    chat::Credentials credentials;
+    bool found = false;
+    while (file >> credentials) {
+        if (credentials.name() == nameIt->second) {
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        Finish({ grpc::StatusCode::UNAUTHENTICATED, "User not found" });
+        return;
+    }
+
+    if (credentials.password() != passIt->second) {
+        Finish({ grpc::StatusCode::INVALID_ARGUMENT, "Invalid password" });
+        return;
+    }
+
+    m_user = credentials;
+    if (m_hasLogin = m_service->login(this); !m_hasLogin) {
+        Finish({ grpc::StatusCode::INTERNAL, "Login failed" });
+        return;
+    }
+
+    m_userStatusType = chat::UserStatus::ACTIVE;
+    m_request = std::make_shared<chat::ChatMessage>();
+    StartRead(m_request.get());
 }
 
-SimpleChatService::SimpleChatService()
+void ChatRoomReactor::OnDone()
 {
-    // All passwords are 'qwerty' by default
-    User *newUser = m_usersDatabase.add_users();
-    newUser->set_name("user1");
-    newUser->set_password("qwerty");
-    newUser = m_usersDatabase.add_users();
-    newUser->set_name("user2");
-    newUser->set_password("qwerty");
-    newUser = m_usersDatabase.add_users();
-    newUser->set_name("user3");
-    newUser->set_password("qwerty");
-    newUser = m_usersDatabase.add_users();
-    newUser->set_name("user4");
-    newUser->set_password("qwerty");
-    newUser = m_usersDatabase.add_users();
-    newUser->set_name("user5");
-    newUser->set_password("qwerty");
+    if (m_hasLogin && m_service->logout(this)) {
+        // If the stream is not cancelled we expect a graceful logout
+        // attempt and inform all other users. Otherwise we expect
+        // a reconnect attempt from the client.
+        if (!m_context->IsCancelled()) {
+            auto msg = createMessage();
+            msg->mutable_user_status()->set_type(chat::UserStatus::LOGOUT);
+            m_service->broadcast(msg, this);
+        }
+    } else {
+        std::cerr << "Failed to logout client" << m_user.name() << '\n';
+    }
+
+    delete this;
 }
 
-void SimpleChatService::sendMessageToClients(const ChatMessage *message)
+void ChatRoomReactor::OnCancel()
 {
-    assert(message != nullptr);
-
-    // Send only new messages after users received all the messages for this session after stream
-    // call.
-    ChatMessages messages;
-    ChatMessage *msg = messages.add_messages();
-    *msg = *message;
-
-    for (auto client : m_activeClients)
-        client->writer.Write(messages, new HandlerTag(HandlerTag::Reply, client));
+    Finish(grpc::Status::CANCELLED);
 }
 
-void SimpleChatService::addMessageHandler(MessageListHandler *handler)
+void ChatRoomReactor::OnReadDone(bool ok)
 {
-    assert(handler != nullptr);
-    m_activeClients.push_back(handler);
+    if (!ok) {
+        if (m_context->IsCancelled())
+            return;
+        Finish(grpc::Status::OK);
+        return;
+    }
+
+    if (m_request->has_user_status())
+        m_userStatusType = m_request->user_status().type();
+
+//! [server-5]
+    // Distribute the incoming message to all other clients.
+    m_service->broadcast(m_request, this);
+    m_request = std::make_shared<chat::ChatMessage>(); // detach
+    StartRead(m_request.get());
+//! [server-5]
 }
 
-grpc::Status SimpleChatService::sendMessage(grpc::ServerContext *context,
-                                              const ChatMessage *request, None *)
+void ChatRoomReactor::OnWriteDone(bool ok)
 {
-    assert(context != nullptr);
-    assert(request != nullptr);
+    if (!ok) {
+        if (m_context->IsCancelled())
+            return;
+        Finish(grpc::Status::OK);
+        return;
+    }
 
-    auto name = checkUserCredentials(context);
-    if (!name)
-        return grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Login or password are invalid");
+//! [server-6]
+    std::scoped_lock lock(m_writeMtx);
 
-    auto msg = m_messages.add_messages();
-    *msg = *request;
-    msg->set_from(*name);
-    sendMessageToClients(msg);
-    return grpc::Status();
+    if (!m_responseQueue.empty()) {
+        m_response = std::move(m_responseQueue.front());
+        m_responseQueue.pop();
+        StartWrite(m_response.get());
+        return;
+    }
+
+    m_response.reset();
+//! [server-6]
 }
 
-int main(int, char *[])
+int main(int /* argc */, char * /* argv */[])
 {
-    SimpleChatService srv;
-    srv.run("localhost:65002");
+    std::unique_ptr<grpc::Server> server;
+    QtGrpcChatService service;
+    {
+        grpc::ServerBuilder builder;
+//! [server-ssl]
+        grpc::SslServerCredentialsOptions sslOpts;
+        sslOpts.pem_key_cert_pairs.emplace_back(grpc::SslServerCredentialsOptions::PemKeyCertPair{
+            LocalhostKey,
+            LocalhostCert,
+        });
+        builder.AddListeningPort(QtGrpcChatService::httpsAddress(), grpc::SslServerCredentials(sslOpts));
+        builder.AddListeningPort(QtGrpcChatService::httpAddress(), grpc::InsecureServerCredentials());
+//! [server-ssl]
+        builder.RegisterService(&service);
+        server = builder.BuildAndStart();
+        std::cout << "Server listening on https://" << QtGrpcChatService::httpsAddress() << '\n';
+        std::cout << "Server listening on http://" << QtGrpcChatService::httpAddress() << '\n';
+    }
+    server->Wait();
 }

@@ -1,8 +1,8 @@
 Name: MediaPipe
 Short Name: mediapipe
 URL: https://github.com/google/mediapipe
-Version: 62e682363c7500e84d9876afb683731609380330
-Date: 2023/08/31
+Version: 7fa30ad347d5829e8135a046190613b2fb470928
+Date: 2024-01-18
 License: Apache 2.0
 License File: LICENSE
 Security Critical: Yes
@@ -91,6 +91,8 @@ in Chromium, so it would potentially need to be a more complex change in
 MediaPipe (i.e. we need a replacement for `EnsureEglThreadRelease()` in
 gl_context_egl.cc).
 
+* no-consume.patch - MediaPipe still uses shared_ptr::unique() but only in code that Chrome does not exercise. This needs to actually be fixed properly upstream.
+
 Other patches
 =============
 * update-any-usage.patch - Renames usage of the proto google.protobuf.Any to
@@ -118,3 +120,9 @@ Here's the set of functions that were added to the generated file:
                                        &(const_cast<AnyLite*>(this)->value_));
     return any_metadata.Is<T>();
   }
+
+* dont-use-dedicated-context-for-some-calculators.patch - temporary patch that
+is only needed when unit-testing with GPU support (not yet official). Will be
+removed after MediaPipe w/ GPU is taught how to use Chromium's GL thread and
+GL context instead of creating its own.
+TODO(https://crbug.com/1492217): remove this patch once it is no longer needed.

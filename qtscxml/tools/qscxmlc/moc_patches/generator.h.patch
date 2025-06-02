@@ -1,5 +1,5 @@
---- .upstream/generator.h	2023-06-22 20:40:43.078529554 +0200
-+++ generator.h	2024-02-05 14:06:04.258179059 +0100
+--- .upstream/generator.h	2023-06-22 08:29:43.218633538 +0200
++++ generator.h	2024-08-05 16:00:04.719392449 +0200
 @@ -6,23 +6,34 @@
  
  #include "moc.h"
@@ -29,7 +29,7 @@
 +              QIODevice &outfile, // -- QtScxml
                bool requireCompleteTypes = false);
      void generateCode();
-     qsizetype registeredStringsCount() { return strings.size(); };
+     qsizetype registeredStringsCount() { return strings.size(); }
  
 +// -- QtScxml
 +    void generateAccessorDefs();

@@ -9,7 +9,10 @@
 #include <QtCore/qpointer.h>
 
 #include <algorithm>
+#include <climits> // For INT_MAX
 #include <memory>
+
+using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
 
@@ -258,7 +261,7 @@ void QThreadPoolPrivate::startThread(QRunnable *runnable)
 /*!
     \internal
 
-    Helper function only to be called from waitForDone(int)
+    Helper function only to be called from waitForDone()
 
     Deletes all current threads.
 */
@@ -285,22 +288,17 @@ void QThreadPoolPrivate::reset()
 /*!
     \internal
 
-    Helper function only to be called from waitForDone(int)
+    Helper function only to be called from the public waitForDone()
 */
 bool QThreadPoolPrivate::waitForDone(const QDeadlineTimer &timer)
 {
+    QMutexLocker locker(&mutex);
     while (!(queue.isEmpty() && activeThreads == 0) && !timer.hasExpired())
         noActiveThreads.wait(&mutex, timer);
 
-    return queue.isEmpty() && activeThreads == 0;
-}
-
-bool QThreadPoolPrivate::waitForDone(int msecs)
-{
-    QMutexLocker locker(&mutex);
-    QDeadlineTimer timer(msecs);
-    if (!waitForDone(timer))
+    if (!queue.isEmpty() || activeThreads)
         return false;
+
     reset();
     // New jobs might have started during reset, but return anyway
     // as the active thread and task count did reach 0 once, and
@@ -484,7 +482,9 @@ QThreadPool *QThreadPoolPrivate::qtGuiInstance()
 {
     Q_CONSTINIT static QPointer<QThreadPool> guiInstance;
     Q_CONSTINIT static QBasicMutex theMutex;
-
+    const static bool runtime_disable = qEnvironmentVariableIsSet("QT_NO_GUI_THREADPOOL");
+    if (runtime_disable)
+        return nullptr;
     const QMutexLocker locker(&theMutex);
     if (guiInstance.isNull() && !QCoreApplication::closingDown()) {
         guiInstance = new QThreadPool();
@@ -603,18 +603,22 @@ bool QThreadPool::tryStart(QRunnable *runnable)
 
 int QThreadPool::expiryTimeout() const
 {
+    using namespace std::chrono;
     Q_D(const QThreadPool);
     QMutexLocker locker(&d->mutex);
-    return d->expiryTimeout;
+    if (d->expiryTimeout == decltype(d->expiryTimeout)::max())
+        return -1;
+    return duration_cast<milliseconds>(d->expiryTimeout).count();
 }
 
 void QThreadPool::setExpiryTimeout(int expiryTimeout)
 {
     Q_D(QThreadPool);
     QMutexLocker locker(&d->mutex);
-    if (d->expiryTimeout == expiryTimeout)
-        return;
-    d->expiryTimeout = expiryTimeout;
+    if (expiryTimeout < 0)
+        d->expiryTimeout = decltype(d->expiryTimeout)::max();
+    else
+        d->expiryTimeout = expiryTimeout * 1ms;
 }
 
 /*! \property QThreadPool::maxThreadCount
@@ -813,15 +817,24 @@ void QThreadPool::startOnReservedThread(QRunnable *runnable)
 */
 
 /*!
+    \fn bool QThreadPool::waitForDone(int msecs)
     Waits up to \a msecs milliseconds for all threads to exit and removes all
     threads from the thread pool. Returns \c true if all threads were removed;
-    otherwise it returns \c false. If \a msecs is -1 (the default), the timeout
-    is ignored (waits for the last thread to exit).
+    otherwise it returns \c false. If \a msecs is -1, this function waits for
+    the last thread to exit.
 */
-bool QThreadPool::waitForDone(int msecs)
+
+/*!
+    \since 6.8
+
+    Waits until \a deadline expires for all threads to exit and removes all
+    threads from the thread pool. Returns \c true if all threads were removed;
+    otherwise it returns \c false.
+*/
+bool QThreadPool::waitForDone(QDeadlineTimer deadline)
 {
     Q_D(QThreadPool);
-    return d->waitForDone(msecs);
+    return d->waitForDone(deadline);
 }
 
 /*!

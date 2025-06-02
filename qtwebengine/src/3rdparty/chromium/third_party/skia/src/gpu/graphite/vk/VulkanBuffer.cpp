@@ -46,7 +46,8 @@ sk_sp<Buffer> VulkanBuffer::Make(const VulkanSharedContext* sharedContext,
     bufInfo.size = size;
 
     // To support SkMesh buffer updates we make Vertex and Index buffers capable of being transfer
-    // dsts.
+    // dsts. To support rtAdjust uniform buffer updates, we make host-visible uniform buffers also
+    // capable of being transfer dsts.
     switch (type) {
         case BufferType::kVertex:
             bufInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -85,7 +86,7 @@ sk_sp<Buffer> VulkanBuffer::Make(const VulkanSharedContext* sharedContext,
     // transfer dst usage bit in case we need to do a copy to write data. It doesn't really hurt
     // to set this extra usage flag, but we could narrow the scope of buffers we set it on more than
     // just not dynamic.
-    if (!requiresMappable) {
+    if (!requiresMappable || accessPattern == AccessPattern::kGpuOnly) {
         bufInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     }
 
@@ -134,17 +135,6 @@ sk_sp<Buffer> VulkanBuffer::Make(const VulkanSharedContext* sharedContext,
         return nullptr;
     }
 
-    // TODO: If this is a uniform buffer, we must set up a descriptor set.
-    // const GrVkDescriptorSet* uniformDescSet = nullptr;
-    // if (bufferType == kUniform::kUniform) {
-    //     uniformDescSet = make_uniform_desc_set(gpu, buffer, size);
-    //     if (!uniformDescSet) {
-    //         VK_CALL(gpu, DestroyBuffer(gpu->device(), buffer, nullptr));
-    //         skgpu::VulkanMemory::FreeBufferMemory(allocator, alloc);
-    //         return nullptr;
-    //     }
-    // }
-
     return sk_sp<Buffer>(new VulkanBuffer(
             sharedContext, size, type, accessPattern, std::move(buffer), alloc, bufInfo.usage));
 }
@@ -168,12 +158,6 @@ void VulkanBuffer::freeGpuData() {
         this->internalUnmap(0, this->size());
         fMapPtr = nullptr;
     }
-
-    // TODO: If this is a uniform buffer, we must clean up the descriptor set.
-    //if (fUniformDescriptorSet) {
-    //    fUniformDescriptorSet->recycle();
-    //    fUniformDescriptorSet = nullptr;
-    //}
 
     const VulkanSharedContext* sharedContext =
             static_cast<const VulkanSharedContext*>(this->sharedContext());
@@ -205,17 +189,24 @@ void VulkanBuffer::internalMap(size_t readOffset, size_t readSize) {
 
         auto allocator = sharedContext->memoryAllocator();
         auto checkResult = [sharedContext](VkResult result) {
+            VULKAN_LOG_IF_NOT_SUCCESS(result, "skgpu::VulkanMemory::MapAlloc");
             return sharedContext->checkVkResult(result);
         };
         fMapPtr = skgpu::VulkanMemory::MapAlloc(allocator, fAlloc, checkResult);
         if (fMapPtr && readSize != 0) {
+            auto checkResult_invalidate = [sharedContext, readOffset, readSize](VkResult result) {
+                VULKAN_LOG_IF_NOT_SUCCESS(result, "skgpu::VulkanMemory::InvalidateMappedAlloc "
+                                                  "(readOffset:%zu, readSize:%zu)",
+                                          readOffset, readSize);
+                return sharedContext->checkVkResult(result);
+            };
             // "Invalidate" here means make device writes visible to the host. That is, it makes
             // sure any GPU writes are finished in the range we might read from.
             skgpu::VulkanMemory::InvalidateMappedAlloc(allocator,
                                                        fAlloc,
                                                        readOffset,
                                                        readSize,
-                                                       nullptr);
+                                                       checkResult_invalidate);
         }
     }
 }
@@ -226,8 +217,16 @@ void VulkanBuffer::internalUnmap(size_t flushOffset, size_t flushSize) {
     SkASSERT(fAlloc.fSize > 0);
     SkASSERT(fAlloc.fSize >= flushOffset + flushSize);
 
-    auto allocator = this->vulkanSharedContext()->memoryAllocator();
-    skgpu::VulkanMemory::FlushMappedAlloc(allocator, fAlloc, flushOffset, flushSize, nullptr);
+    const VulkanSharedContext* sharedContext = this->vulkanSharedContext();
+    auto checkResult = [sharedContext, flushOffset, flushSize](VkResult result) {
+       VULKAN_LOG_IF_NOT_SUCCESS(result, "skgpu::VulkanMemory::FlushMappedAlloc "
+                                         "(flushOffset:%zu, flushSize:%zu)",
+                                         flushOffset, flushSize);
+        return sharedContext->checkVkResult(result);
+    };
+
+    auto allocator = sharedContext->memoryAllocator();
+    skgpu::VulkanMemory::FlushMappedAlloc(allocator, fAlloc, flushOffset, flushSize, checkResult);
     skgpu::VulkanMemory::UnmapAlloc(allocator, fAlloc);
 }
 
@@ -246,10 +245,11 @@ void VulkanBuffer::onUnmap() {
 
 void VulkanBuffer::setBufferAccess(VulkanCommandBuffer* cmdBuffer,
                                    VkAccessFlags dstAccessMask,
-                                   VkPipelineStageFlags dstStageMask,
-                                   bool byRegion) const {
+                                   VkPipelineStageFlags dstStageMask) const {
     // TODO: fill out other cases where we need a barrier
-    if (dstAccessMask == VK_ACCESS_HOST_READ_BIT) {
+    if (dstAccessMask == VK_ACCESS_HOST_READ_BIT      ||
+        dstAccessMask == VK_ACCESS_TRANSFER_WRITE_BIT ||
+        dstAccessMask == VK_ACCESS_UNIFORM_READ_BIT) {
         VkPipelineStageFlags srcStageMask =
             VulkanBuffer::AccessMaskToPipelineSrcStageFlags(fCurrentAccessMask);
 
@@ -264,10 +264,7 @@ void VulkanBuffer::setBufferAccess(VulkanCommandBuffer* cmdBuffer,
                  0,                                        // offset
                  this->size(),                             // size
         };
-
-        // TODO: restrict to area of buffer we're interested in
-        cmdBuffer->addBufferMemoryBarrier(srcStageMask, dstStageMask, byRegion,
-                                          &bufferMemoryBarrier);
+        cmdBuffer->addBufferMemoryBarrier(srcStageMask, dstStageMask, &bufferMemoryBarrier);
     }
 
     fCurrentAccessMask = dstAccessMask;
@@ -295,6 +292,10 @@ VkPipelineStageFlags VulkanBuffer::AccessMaskToPipelineSrcStageFlags(const VkAcc
     }
     if (srcMask & VK_ACCESS_SHADER_READ_BIT ||
         srcMask & VK_ACCESS_UNIFORM_READ_BIT) {
+        // TODO(b/307577875): It is possible that uniforms could have simply been used in the vertex
+        // shader and not the fragment shader, so using the fragment shader pipeline stage bit
+        // indiscriminately is a bit overkill. This call should be modified to check & allow for
+        // selecting VK_PIPELINE_STAGE_VERTEX_SHADER_BIT when appropriate.
         flags |= (VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
     if (srcMask & VK_ACCESS_SHADER_WRITE_BIT) {
@@ -315,4 +316,3 @@ VkPipelineStageFlags VulkanBuffer::AccessMaskToPipelineSrcStageFlags(const VkAcc
 }
 
 } // namespace skgpu::graphite
-

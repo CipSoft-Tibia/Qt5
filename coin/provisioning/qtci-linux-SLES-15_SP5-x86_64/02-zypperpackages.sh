@@ -67,7 +67,8 @@ sudo zypper -nq install libxml2-devel libxslt-devel
 sudo zypper -nq install yasm
 
 # GStreamer (qtwebkit and qtmultimedia), pulseaudio (qtmultimedia)
-sudo zypper -nq install gstreamer-devel gstreamer-plugins-base-devel libpulse-devel
+sudo zypper -nq install gstreamer-devel gstreamer-plugins-base-devel libpulse-devel \
+          gstreamer-plugins-bad-devel
 
 # cups
 sudo zypper -nq install cups-devel
@@ -91,6 +92,12 @@ sudo zypper -nq update open-vm-tools
 # Tools to build Git
 sudo zypper -nq install autoconf libcurl-devel libexpat-devel
 
+# used for reading vcpkg packages version, from vcpkg.json
+sudo zypper -nq install jq
+
+# zip, needed for vcpkg caching
+sudo zypper -nq install zip
+
 # Nodejs - required by QtWebengine
 sudo zypper -nq install nodejs18
 
@@ -100,5 +107,11 @@ sudo zypper -nq install openssl-3
 # cifs-utils, for mounting smb drive
 sudo zypper -nq install cifs-utils
 
+# For tst_license.pl with all the machines generating SBOM
+sudo zypper -nq install perl-JSON
+
 gccVersion="$(gcc --version |grep gcc |cut -b 17-23)"
 echo "GCC = $gccVersion" >> versions.txt
+
+OpenSSLVersion="$(openssl-3 version |cut -b 9-14)"
+echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt

@@ -1,8 +1,9 @@
 # Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-qt_feature_evaluate_features("${CMAKE_CURRENT_SOURCE_DIR}/graphs2d/configure.cmake")
-qt_feature_evaluate_features("${CMAKE_CURRENT_SOURCE_DIR}/graphs3d/configure.cmake")
+qt_feature_evaluate_features("${CMAKE_CURRENT_SOURCE_DIR}/configure.cmake")
+
+set(QT_SBOM_DEFAULT_QT_LICENSE_ID_LIBRARIES "QT_COMMERCIAL_OR_GPL3")
 
 if(NOT QT_FEATURE_graphs_2d AND NOT QT_FEATURE_graphs_3d)
     message("You must have either FEATURE_graphs_2d or FEATURE_graphs_3d ON, or nothing will be built.")
@@ -62,6 +63,7 @@ else()
         "graphs3d/qml/resources/VolumeLowDefMaterial.qml"
         "graphs3d/qml/resources/VolumeSliceMaterial.qml"
         "graphs3d/qml/resources/VolumeFrameMaterial.qml"
+        "graphs3d/qml/resources/BackgroundMaterial.qml"
     )
 
     foreach(file IN LISTS qml_material_resources)
@@ -146,6 +148,7 @@ else()
         "graphs3d/engine/shaders/texture3d.vert"
         "graphs3d/engine/shaders/texture3dlowdef.frag"
         "graphs3d/engine/shaders/texture3dslice.frag"
+        "graphs3d/engine/shaders/backgroundgrid.frag"
     )
 
     foreach(file IN LISTS shader_resource_files)
@@ -167,13 +170,12 @@ else()
             PAST_MAJOR_VERSIONS 1
             DEPENDENCIES
                 QtQuick
-                # 2D specific
-                QtQuickPrivate
                 # 3D specific
                 QtQuick3D
             LIBRARIES
-                # 2D specific
+                # Common
                 Qt::QuickPrivate
+                # 2D specific
                 Qt::QuickShapesPrivate
                 # 3D specific
                 Qt::Quick3DPrivate
@@ -182,13 +184,13 @@ else()
                 Qt::Core
                 Qt::Gui
                 Qt::Quick
-                Qt::QuickWidgets
                 Qt::Quick3D
             PRIVATE_MODULE_INTERFACE
+                # Common
+                Qt::QuickPrivate
                 # 3D specific
                 Qt::Quick3DPrivate
                 Qt::Quick3DRuntimeRenderPrivate
-            GENERATE_CPP_EXPORTS
         )
 
         # CMake 3.16 forces these to be added here instead of the graphs3d folder
@@ -258,18 +260,18 @@ else()
                     QtQuick
                     QtQuick3D
                 LIBRARIES
+                    Qt::QuickPrivate
                     Qt::Quick3DPrivate
                     Qt::Quick3DRuntimeRenderPrivate
                 PUBLIC_LIBRARIES
                     Qt::Core
                     Qt::Gui
                     Qt::Quick
-                    Qt::QuickWidgets
                     Qt::Quick3D
                 PRIVATE_MODULE_INTERFACE
+                    Qt::QuickPrivate
                     Qt::Quick3DPrivate
                     Qt::Quick3DRuntimeRenderPrivate
-                GENERATE_CPP_EXPORTS
             )
 
             # CMake 3.16 forces these to be added here instead of the graphs3d folder
@@ -327,7 +329,6 @@ else()
                 PAST_MAJOR_VERSIONS 1
                 DEPENDENCIES
                     QtQuick
-                    QtQuickPrivate
                 LIBRARIES
                     Qt::QuickPrivate
                     Qt::QuickShapesPrivate
@@ -335,7 +336,6 @@ else()
                     Qt::Core
                     Qt::Gui
                     Qt::Quick
-                GENERATE_CPP_EXPORTS
             )
 
             # CMake 3.16 forces these to be added here instead of the graphs2d folder
@@ -355,6 +355,13 @@ qt_configure_add_summary_section(NAME "Qt Graphs Support")
 qt_configure_add_summary_entry(ARGS "graphs-2d")
 qt_configure_add_summary_entry(ARGS "graphs-3d")
 qt_configure_end_summary_section() # end of "Qt Graphs Support" section
+
+add_subdirectory(common)
+
+qt_internal_extend_target(Graphs
+    INCLUDE_DIRECTORIES
+        common
+)
 
 if(QT_FEATURE_graphs_3d)
     add_subdirectory(graphs3d)

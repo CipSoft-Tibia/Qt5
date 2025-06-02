@@ -10,13 +10,26 @@ load("./clang_all.star", "clang_all")
 load("./clang_code_coverage_wrapper.star", "clang_code_coverage_wrapper")
 load("./rewrapper_cfg.star", "rewrapper_cfg")
 
-__filegroups = {
-    "build/mac_files/xcode_binaries/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk:headers": {
-        "type": "glob",
-        "includes": ["*"],
-    },
-}
-__filegroups.update(clang_all.filegroups)
+def __filegroups(ctx):
+    fg = {
+        "build/mac_files/xcode_binaries/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk:headers": {
+            "type": "glob",
+            "includes": [
+                "*.h",
+                "*.json",
+                "*.modulemap",
+                "Current",
+                "Frameworks",
+                "Headers",
+                "Modules",
+                "crt*.o",
+                "usr/include/c++/v1/*",
+                "usr/include/c++/v1/*/*",
+            ],
+        },
+    }
+    fg.update(clang_all.filegroups(ctx))
+    return fg
 
 def __clang_compile_coverage(ctx, cmd):
     clang_command = clang_code_coverage_wrapper.run(ctx, list(cmd.args))
@@ -39,6 +52,7 @@ def __step_config(ctx, step_config):
                 "name": "clang/cxx",
                 "action": "(.*_)?cxx",
                 "command_prefix": "../../third_party/llvm-build/Release+Asserts/bin/clang++",
+                "exclude_input_patterns": ["*.stamp"],
                 "platform_ref": "clang",
                 "remote": True,
                 "remote_wrapper": reproxy_config["remote_wrapper"],
@@ -47,6 +61,7 @@ def __step_config(ctx, step_config):
                 "name": "clang/cc",
                 "action": "(.*_)?cc",
                 "command_prefix": "../../third_party/llvm-build/Release+Asserts/bin/clang",
+                "exclude_input_patterns": ["*.stamp"],
                 "platform_ref": "clang",
                 "remote": True,
                 "remote_wrapper": reproxy_config["remote_wrapper"],
@@ -55,6 +70,7 @@ def __step_config(ctx, step_config):
                 "name": "clang/objcxx",
                 "action": "(.*_)?objcxx",
                 "command_prefix": "../../third_party/llvm-build/Release+Asserts/bin/clang++",
+                "exclude_input_patterns": ["*.stamp"],
                 "platform_ref": "clang",
                 "remote": True,
                 "remote_wrapper": reproxy_config["remote_wrapper"],
@@ -63,6 +79,7 @@ def __step_config(ctx, step_config):
                 "name": "clang/objc",
                 "action": "(.*_)?objc",
                 "command_prefix": "../../third_party/llvm-build/Release+Asserts/bin/clang",
+                "exclude_input_patterns": ["*.stamp"],
                 "platform_ref": "clang",
                 "remote": True,
                 "remote_wrapper": reproxy_config["remote_wrapper"],
@@ -74,6 +91,7 @@ def __step_config(ctx, step_config):
                 "inputs": [
                     "third_party/llvm-build/Release+Asserts/bin/clang++",
                 ],
+                "exclude_input_patterns": ["*.stamp"],
                 "handler": "clang_compile_coverage",
                 "platform_ref": "clang",
                 "remote": True,
@@ -86,6 +104,7 @@ def __step_config(ctx, step_config):
                 "inputs": [
                     "third_party/llvm-build/Release+Asserts/bin/clang",
                 ],
+                "exclude_input_patterns": ["*.stamp"],
                 "handler": "clang_compile_coverage",
                 "platform_ref": "clang",
                 "remote": True,
@@ -98,6 +117,7 @@ def __step_config(ctx, step_config):
                 "inputs": [
                     "third_party/llvm-build/Release+Asserts/bin/clang++",
                 ],
+                "exclude_input_patterns": ["*.stamp"],
                 "handler": "clang_compile_coverage",
                 "platform_ref": "clang",
                 "remote": True,
@@ -110,6 +130,7 @@ def __step_config(ctx, step_config):
                 "inputs": [
                     "third_party/llvm-build/Release+Asserts/bin/clang",
                 ],
+                "exclude_input_patterns": ["*.stamp"],
                 "handler": "clang_compile_coverage",
                 "platform_ref": "clang",
                 "remote": True,

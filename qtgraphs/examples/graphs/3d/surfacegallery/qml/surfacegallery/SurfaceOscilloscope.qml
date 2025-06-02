@@ -5,7 +5,7 @@ import QtQuick
 import QtQuick.Controls
 import QtGraphs
 //! [0]
-import SurfaceGallery
+import SurfaceGalleryExample
 //! [0]
 
 Item {
@@ -34,69 +34,6 @@ Item {
     }
     //![1]
 
-    Item {
-        id: dataView
-        anchors.bottom: parent.bottom
-        width: parent.width
-        height: parent.height - controlArea.height
-
-        //! [2]
-        Surface3D {
-            id: surfaceGraph
-            anchors.fill: parent
-
-            Surface3DSeries {
-                id: surfaceSeries
-                drawMode: Surface3DSeries.DrawSurfaceAndWireframe
-                itemLabelFormat: "@xLabel, @zLabel: @yLabel"
-                //! [2]
-                //! [3]
-                itemLabelVisible: false
-                //! [3]
-
-                //! [4]
-                onItemLabelChanged: {
-                    if (surfaceSeries.selectedPoint == surfaceSeries.invalidSelectionPosition)
-                        selectionText.text = "No selection";
-                    else
-                        selectionText.text = surfaceSeries.itemLabel;
-                }
-                //! [4]
-            }
-
-            shadowQuality: AbstractGraph3D.ShadowQuality.None
-            selectionMode: AbstractGraph3D.SelectionSlice | AbstractGraph3D.SelectionItemAndColumn
-            theme: Theme3D {
-                type: Theme3D.Theme.Isabelle
-                backgroundEnabled: false
-            }
-            cameraPreset: AbstractGraph3D.CameraPreset.FrontHigh
-
-            axisX.labelFormat: "%d ms"
-            axisY.labelFormat: "%d W"
-            axisZ.labelFormat: "%d mV"
-            axisX.min: 0
-            axisY.min: 0
-            axisZ.min: 0
-            axisX.max: 1000
-            axisY.max: 100
-            axisZ.max: 800
-            axisX.segmentCount: 4
-            axisY.segmentCount: 4
-            axisZ.segmentCount: 4
-            measureFps: true
-            renderingMode: AbstractGraph3D.RenderingMode.DirectToBackground
-
-            onCurrentFpsChanged: (currentFps)=> {
-                                     fpsText.text = "FPS: " + currentFps;
-                                 }
-
-            //! [5]
-            Component.onCompleted: oscilloscopeView.generateData();
-            //! [5]
-        }
-    }
-
     //! [7]
     Timer {
         id: refreshTimer
@@ -109,8 +46,8 @@ Item {
 
     Rectangle {
         id: controlArea
-        height: oscilloscopeView.portraitMode ? flatShadingToggle.implicitHeight * 7
-                                              : flatShadingToggle.implicitHeight * 2
+        height: oscilloscopeView.portraitMode ? flatShadingToggle.implicitHeight * 8
+                                              : flatShadingToggle.implicitHeight * 2.5
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.right: parent.right
@@ -125,8 +62,8 @@ Item {
             anchors.top: parent.top
             anchors.margins: 5
 
-            color: surfaceGraph.theme.windowColor
-            border.color: surfaceGraph.theme.gridLineColor
+            color: surfaceGraph.theme.backgroundColor
+            border.color: surfaceGraph.theme.grid.mainColor
             border.width: 1
             radius: 4
 
@@ -150,7 +87,7 @@ Item {
                         width: sampleSlider.availableWidth
                         height: implicitHeight
                         radius: 2
-                        color: surfaceGraph.theme.gridLineColor
+                        color: surfaceGraph.theme.grid.mainColor
 
                         Rectangle {
                             width: sampleSlider.visualPosition * parent.width
@@ -168,10 +105,10 @@ Item {
                         implicitWidth: 20
                         implicitHeight: 20
                         radius: 10
-                        color: sampleSlider.pressed ? surfaceGraph.theme.gridLineColor
-                                                    : surfaceGraph.theme.windowColor
+                        color: sampleSlider.pressed ? surfaceGraph.theme.grid.mainColor
+                                                    : surfaceGraph.theme.backgroundColor
                         border.color: sampleSlider.pressed ? surfaceGraph.theme.labelTextColor
-                                                           : surfaceGraph.theme.gridLineColor
+                                                           : surfaceGraph.theme.grid.mainColor
                     }
 
                     Component.onCompleted: value = from;
@@ -196,8 +133,8 @@ Item {
             anchors.top: oscilloscopeView.portraitMode ? samples.bottom : parent.top
             anchors.margins: 5
 
-            color: surfaceGraph.theme.windowColor
-            border.color: surfaceGraph.theme.gridLineColor
+            color: surfaceGraph.theme.backgroundColor
+            border.color: surfaceGraph.theme.grid.mainColor
             border.width: 1
             radius: 4
 
@@ -222,7 +159,7 @@ Item {
                         width: frequencySlider.availableWidth
                         height: implicitHeight
                         radius: 2
-                        color: surfaceGraph.theme.gridLineColor
+                        color: surfaceGraph.theme.grid.mainColor
 
                         Rectangle {
                             width: frequencySlider.visualPosition * parent.width
@@ -240,10 +177,10 @@ Item {
                         implicitWidth: 20
                         implicitHeight: 20
                         radius: 10
-                        color: frequencySlider.pressed ? surfaceGraph.theme.gridLineColor
-                                                       : surfaceGraph.theme.windowColor
+                        color: frequencySlider.pressed ? surfaceGraph.theme.grid.mainColor
+                                                       : surfaceGraph.theme.backgroundColor
                         border.color: frequencySlider.pressed ? surfaceGraph.theme.labelTextColor
-                                                              : surfaceGraph.theme.gridLineColor
+                                                              : surfaceGraph.theme.grid.mainColor
                     }
                 }
 
@@ -266,8 +203,8 @@ Item {
             anchors.top: oscilloscopeView.portraitMode ? frequency.bottom : parent.top
             anchors.margins: 5
 
-            color: surfaceGraph.theme.windowColor
-            border.color: surfaceGraph.theme.gridLineColor
+            color: surfaceGraph.theme.backgroundColor
+            border.color: surfaceGraph.theme.grid.mainColor
             border.width: 1
             radius: 4
 
@@ -289,8 +226,8 @@ Item {
             anchors.top: oscilloscopeView.portraitMode ? fpsindicator.bottom : parent.top
             anchors.margins: 5
 
-            color: surfaceGraph.theme.windowColor
-            border.color: surfaceGraph.theme.gridLineColor
+            color: surfaceGraph.theme.backgroundColor
+            border.color: surfaceGraph.theme.grid.mainColor
             border.width: 1
             radius: 4
 
@@ -316,11 +253,11 @@ Item {
             enabled: surfaceSeries.flatShadingSupported
 
             onClicked: {
-                if (surfaceSeries.flatShadingEnabled) {
-                    surfaceSeries.flatShadingEnabled = false;
+                if (surfaceSeries.shading === Surface3DSeries.Shading.Flat) {
+                    surfaceSeries.shading = Surface3DSeries.Shading.Smooth;
                     text = "Show\nFlat"
                 } else {
-                    surfaceSeries.flatShadingEnabled = true;
+                    surfaceSeries.shading = Surface3DSeries.Shading.Flat;
                     text = "Show\nSmooth"
                 }
             }
@@ -336,10 +273,10 @@ Item {
 
             background: Rectangle {
                 opacity: flatShadingToggle.enabled ? 1 : 0.3
-                color: flatShadingToggle.down ? surfaceGraph.theme.gridLineColor
-                                              : surfaceGraph.theme.windowColor
+                color: flatShadingToggle.down ? surfaceGraph.theme.grid.mainColor
+                                              : surfaceGraph.theme.backgroundColor
                 border.color: flatShadingToggle.down ? surfaceGraph.theme.labelTextColor
-                                                     : surfaceGraph.theme.gridLineColor
+                                                     : surfaceGraph.theme.grid.mainColor
                 border.width: 1
                 radius: 2
             }
@@ -374,10 +311,10 @@ Item {
             }
 
             background: Rectangle {
-                color: surfaceGridToggle.down ? surfaceGraph.theme.gridLineColor
-                                              : surfaceGraph.theme.windowColor
+                color: surfaceGridToggle.down ? surfaceGraph.theme.grid.mainColor
+                                              : surfaceGraph.theme.backgroundColor
                 border.color: surfaceGridToggle.down ? surfaceGraph.theme.labelTextColor
-                                                     : surfaceGraph.theme.gridLineColor
+                                                     : surfaceGraph.theme.grid.mainColor
                 border.width: 1
                 radius: 2
             }
@@ -405,13 +342,81 @@ Item {
             }
 
             background: Rectangle {
-                color: exitButton.down ? surfaceGraph.theme.gridLineColor
-                                       : surfaceGraph.theme.windowColor
+                color: exitButton.down ? surfaceGraph.theme.grid.mainColor
+                                       : surfaceGraph.theme.backgroundColor
                 border.color: exitButton.down ? surfaceGraph.theme.labelTextColor
-                                              : surfaceGraph.theme.gridLineColor
+                                              : surfaceGraph.theme.grid.mainColor
                 border.width: 1
                 radius: 2
             }
+        }
+    }
+
+    Item {
+        id: dataView
+        anchors.top: controlArea.bottom
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+
+        //! [2]
+        Surface3D {
+            id: surfaceGraph
+            anchors.fill: parent
+
+            Surface3DSeries {
+                id: surfaceSeries
+                drawMode: Surface3DSeries.DrawSurfaceAndWireframe
+                itemLabelFormat: "@xLabel, @zLabel: @yLabel"
+                //! [2]
+                //! [3]
+                itemLabelVisible: false
+                //! [3]
+
+                //! [4]
+                onItemLabelChanged: {
+                    if (surfaceSeries.selectedPoint == surfaceSeries.invalidSelectionPosition)
+                        selectionText.text = "No selection";
+                    else
+                        selectionText.text = surfaceSeries.itemLabel;
+                }
+                //! [4]
+            }
+
+            shadowQuality: Graphs3D.ShadowQuality.None
+            selectionMode: Graphs3D.SelectionFlag.Slice | Graphs3D.SelectionFlag.ItemAndColumn
+            theme: GraphsTheme {
+                colorScheme: GraphsTheme.ColorScheme.Dark
+                baseColors: [ Color { color: "yellow" } ]
+                plotAreaBackgroundVisible: false
+                backgroundVisible: false
+                labelBorderVisible: false
+                labelBackgroundVisible: false
+            }
+            cameraPreset: Graphs3D.CameraPreset.FrontHigh
+
+            axisX.labelFormat: "%d ms"
+            axisY.labelFormat: "%d W"
+            axisZ.labelFormat: "%d mV"
+            axisX.min: 0
+            axisY.min: 0
+            axisZ.min: 0
+            axisX.max: 1000
+            axisY.max: 100
+            axisZ.max: 800
+            axisX.segmentCount: 4
+            axisY.segmentCount: 4
+            axisZ.segmentCount: 4
+            measureFps: true
+            renderingMode: Graphs3D.RenderingMode.DirectToBackground
+
+            onCurrentFpsChanged: (currentFps)=> {
+                                     fpsText.text = "FPS: " + currentFps;
+                                 }
+
+            //! [5]
+            Component.onCompleted: oscilloscopeView.generateData();
+            //! [5]
         }
     }
 

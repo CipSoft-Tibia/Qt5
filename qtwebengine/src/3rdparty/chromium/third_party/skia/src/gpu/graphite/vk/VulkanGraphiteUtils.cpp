@@ -16,6 +16,7 @@
 #include "src/gpu/graphite/vk/VulkanQueueManager.h"
 #include "src/gpu/graphite/vk/VulkanSharedContext.h"
 #include "src/sksl/SkSLProgramSettings.h"
+
 namespace skgpu::graphite::ContextFactory {
 
 std::unique_ptr<Context> MakeVulkan(const VulkanBackendContext& backendContext,
@@ -73,14 +74,15 @@ void DescriptorDataToVkDescSetLayout(const VulkanSharedContext* ctxt,
     skia_private::STArray<kDescriptorTypeCount, VkDescriptorSetLayoutBinding> bindingLayouts;
     for (size_t i = 0; i < requestedDescriptors.size(); i++) {
         if (requestedDescriptors[i].count != 0) {
+            const DescriptorData& currDescriptor = requestedDescriptors[i];
             VkDescriptorSetLayoutBinding& layoutBinding = bindingLayouts.push_back();
             memset(&layoutBinding, 0, sizeof(VkDescriptorSetLayoutBinding));
-            layoutBinding.binding = requestedDescriptors[i].bindingIndex;
-            layoutBinding.descriptorType = DsTypeEnumToVkDs(requestedDescriptors[i].type);
-            layoutBinding.descriptorCount = requestedDescriptors[i].count;
-            // TODO: Obtain layout binding stage flags from visibility (vertex or shader)
-            layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-            // TODO: Optionally set immutableSamplers here.
+            layoutBinding.binding = currDescriptor.bindingIndex;
+            layoutBinding.descriptorType = DsTypeEnumToVkDs(currDescriptor.type);
+            layoutBinding.descriptorCount = currDescriptor.count;
+            layoutBinding.stageFlags =
+                    PipelineStageFlagsToVkShaderStageFlags(currDescriptor.pipelineStageFlags);
+            // TODO(b/302126498): Optionally set immutableSamplers here. Needed for YCbCr
             layoutBinding.pImmutableSamplers = nullptr;
         }
     }
@@ -110,8 +112,6 @@ VkDescriptorType DsTypeEnumToVkDs(DescriptorType type) {
     switch (type) {
         case DescriptorType::kUniformBuffer:
             return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case DescriptorType::kInlineUniform:
-            return VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT;
         case DescriptorType::kTextureSampler:
             return VK_DESCRIPTOR_TYPE_SAMPLER;
         case DescriptorType::kTexture:
@@ -157,6 +157,21 @@ bool vkFormatIsSupported(VkFormat format) {
         default:
             return false;
     }
+}
+
+VkShaderStageFlags PipelineStageFlagsToVkShaderStageFlags(
+        SkEnumBitMask<PipelineStageFlags> stageFlags) {
+    VkShaderStageFlags vkStageFlags = 0;
+    if (stageFlags & PipelineStageFlags::kVertexShader) {
+        vkStageFlags |= VK_SHADER_STAGE_VERTEX_BIT;
+    }
+    if (stageFlags & PipelineStageFlags::kFragmentShader) {
+        vkStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    if (stageFlags & PipelineStageFlags::kCompute) {
+        vkStageFlags |= VK_SHADER_STAGE_COMPUTE_BIT;
+    }
+    return vkStageFlags;
 }
 
 } // namespace skgpu::graphite

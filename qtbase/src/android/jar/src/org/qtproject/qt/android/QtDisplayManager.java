@@ -16,46 +16,46 @@ import android.view.Surface;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.view.WindowManager.LayoutParams;
 import android.view.WindowMetrics;
+import android.view.WindowInsetsController;
+import android.view.Window;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import android.graphics.Color;
+import android.util.TypedValue;
+import android.content.res.Resources.Theme;
+
 class QtDisplayManager {
 
     // screen methods
-    public static native void setDisplayMetrics(int screenWidthPixels, int screenHeightPixels,
+    static native void setDisplayMetrics(int screenWidthPixels, int screenHeightPixels,
                                                 int availableLeftPixels, int availableTopPixels,
                                                 int availableWidthPixels, int availableHeightPixels,
                                                 double XDpi, double YDpi, double scaledDensity,
                                                 double density, float refreshRate);
-    public static native void handleOrientationChanged(int newRotation, int nativeOrientation);
-    public static native void handleRefreshRateChanged(float refreshRate);
-    public static native void handleUiDarkModeChanged(int newUiMode);
-    public static native void handleScreenAdded(int displayId);
-    public static native void handleScreenChanged(int displayId);
-    public static native void handleScreenRemoved(int displayId);
+    static native void handleOrientationChanged(int newRotation, int nativeOrientation);
+    static native void handleRefreshRateChanged(float refreshRate);
+    static native void handleUiDarkModeChanged(int newUiMode);
+    static native void handleScreenAdded(int displayId);
+    static native void handleScreenChanged(int displayId);
+    static native void handleScreenRemoved(int displayId);
     // screen methods
 
-    // Keep in sync with QtAndroid::SystemUiVisibility in androidjnimain.h
-    public static final int SYSTEM_UI_VISIBILITY_NORMAL = 0;
-    public static final int SYSTEM_UI_VISIBILITY_FULLSCREEN = 1;
-    public static final int SYSTEM_UI_VISIBILITY_TRANSLUCENT = 2;
-    private int m_systemUiVisibility = SYSTEM_UI_VISIBILITY_NORMAL;
+    private boolean m_isFullScreen = false;
+    private boolean m_expandedToCutout = false;
 
     private static int m_previousRotation = -1;
 
-    private DisplayManager.DisplayListener m_displayListener = null;
+    private final DisplayManager.DisplayListener m_displayListener;
     private final Activity m_activity;
 
     QtDisplayManager(Activity activity)
     {
         m_activity = activity;
-        initDisplayListener();
-    }
-
-    private void initDisplayListener() {
         m_displayListener = new DisplayManager.DisplayListener() {
             @Override
             public void onDisplayAdded(int displayId) {
@@ -89,7 +89,7 @@ class QtDisplayManager {
         m_previousRotation = currentRotation;
     }
 
-    public static int getDisplayRotation(Activity activity) {
+    static int getDisplayRotation(Activity activity) {
         Display display = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ?
                 activity.getWindowManager().getDefaultDisplay() :
                 activity.getDisplay();
@@ -113,81 +113,115 @@ class QtDisplayManager {
         return display != null ? display.getRefreshRate() : 60.0f;
     }
 
-    public void registerDisplayListener()
+    void registerDisplayListener()
     {
         DisplayManager displayManager =
                 (DisplayManager) m_activity.getSystemService(Context.DISPLAY_SERVICE);
         displayManager.registerDisplayListener(m_displayListener, null);
     }
 
-    public void unregisterDisplayListener()
+    void unregisterDisplayListener()
     {
         DisplayManager displayManager =
                 (DisplayManager) m_activity.getSystemService(Context.DISPLAY_SERVICE);
         displayManager.unregisterDisplayListener(m_displayListener);
     }
 
-    public void setSystemUiVisibility(int systemUiVisibility)
+    void setSystemUiVisibility(boolean isFullScreen, boolean expandedToCutout)
     {
-        if (m_systemUiVisibility == systemUiVisibility)
+        if (m_isFullScreen == isFullScreen && m_expandedToCutout == expandedToCutout)
             return;
 
-        m_systemUiVisibility = systemUiVisibility;
+        m_isFullScreen = isFullScreen;
+        m_expandedToCutout = expandedToCutout;
+        Window window = m_activity.getWindow();
+        View decorView = window.getDecorView();
 
-        int systemUiVisibilityFlags = View.SYSTEM_UI_FLAG_VISIBLE;
-        switch (m_systemUiVisibility) {
-            case SYSTEM_UI_VISIBILITY_NORMAL:
-                m_activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
-                m_activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    m_activity.getWindow().getAttributes().layoutInDisplayCutoutMode =
-                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            int cutoutMode;
+            if (m_isFullScreen || m_expandedToCutout) {
+                window.setDecorFitsSystemWindows(false);
+                cutoutMode = LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            } else {
+                window.setDecorFitsSystemWindows(true);
+                cutoutMode = LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            }
+            LayoutParams layoutParams = window.getAttributes();
+            layoutParams.layoutInDisplayCutoutMode = cutoutMode;
+            window.setAttributes(layoutParams);
+
+            final WindowInsetsController insetsControl = window.getInsetsController();
+            if (insetsControl != null) {
+                int sysBarsBehavior;
+                if (m_isFullScreen) {
+                    insetsControl.hide(WindowInsets.Type.systemBars());
+                    sysBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE;
+                } else {
+                    insetsControl.show(WindowInsets.Type.systemBars());
+                    sysBarsBehavior = WindowInsetsController.BEHAVIOR_DEFAULT;
                 }
-                break;
-            case SYSTEM_UI_VISIBILITY_FULLSCREEN:
-                m_activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-                m_activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
-                systemUiVisibilityFlags = View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.INVISIBLE;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    m_activity.getWindow().getAttributes().layoutInDisplayCutoutMode =
-                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+                insetsControl.setSystemBarsBehavior(sysBarsBehavior);
+            }
+
+
+        } else {
+            int systemUiVisibility;
+
+            if (m_isFullScreen || m_expandedToCutout) {
+                systemUiVisibility =  View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+                if (m_isFullScreen) {
+                    systemUiVisibility |=  View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
                 }
-                break;
-            case SYSTEM_UI_VISIBILITY_TRANSLUCENT:
-                m_activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN
-                        | WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION
-                        | WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-                m_activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    m_activity.getWindow().getAttributes().layoutInDisplayCutoutMode =
-                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
-                }
-                break;
+            } else {
+                systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE;
+            }
+
+            decorView.setSystemUiVisibility(systemUiVisibility);
         }
-        m_activity.getWindow().getDecorView().setSystemUiVisibility(systemUiVisibilityFlags);
+
+        // Handle transparent status and navigation bars
+        if (m_expandedToCutout) {
+            window.setStatusBarColor(Color.TRANSPARENT);
+            window.setNavigationBarColor(Color.TRANSPARENT);
+        } else {
+            // Restore theme's system bars colors
+            Theme theme = m_activity.getTheme();
+            TypedValue typedValue = new TypedValue();
+
+            theme.resolveAttribute(android.R.attr.statusBarColor, typedValue, true);
+            int defaultStatusBarColor = typedValue.data;
+            window.setStatusBarColor(defaultStatusBarColor);
+
+            theme.resolveAttribute(android.R.attr.navigationBarColor, typedValue, true);
+            int defaultNavigationBarColor = typedValue.data;
+            window.setNavigationBarColor(defaultNavigationBarColor);
+        }
     }
 
-    public int systemUiVisibility()
+    boolean isFullScreen()
     {
-        return m_systemUiVisibility;
+        return m_isFullScreen;
     }
 
-    public void updateFullScreen()
+    boolean expandedToCutout()
     {
-        if (m_systemUiVisibility == SYSTEM_UI_VISIBILITY_FULLSCREEN) {
-            m_systemUiVisibility = SYSTEM_UI_VISIBILITY_NORMAL;
-            setSystemUiVisibility(SYSTEM_UI_VISIBILITY_FULLSCREEN);
+        return m_expandedToCutout;
+    }
+
+    void reinstateFullScreen()
+    {
+        if (m_isFullScreen) {
+            m_isFullScreen = false;
+            setSystemUiVisibility(true, m_expandedToCutout);
         }
     }
 
     @UsedFromNativeCode
-    public static Display getDisplay(Context context, int displayId)
+    static Display getDisplay(Context context, int displayId)
     {
         DisplayManager displayManager =
                 (DisplayManager)context.getSystemService(Context.DISPLAY_SERVICE);
@@ -198,7 +232,7 @@ class QtDisplayManager {
     }
 
     @UsedFromNativeCode
-    public static List<Display> getAvailableDisplays(Context context)
+    static List<Display> getAvailableDisplays(Context context)
     {
         DisplayManager displayManager =
                 (DisplayManager)context.getSystemService(Context.DISPLAY_SERVICE);
@@ -210,7 +244,7 @@ class QtDisplayManager {
     }
 
     @UsedFromNativeCode
-    public static Size getDisplaySize(Context displayContext, Display display)
+    static Size getDisplaySize(Context displayContext, Display display)
     {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             DisplayMetrics realMetrics = new DisplayMetrics();
@@ -227,7 +261,7 @@ class QtDisplayManager {
         return new Size(bounds.width(), bounds.height());
     }
 
-    public static void setApplicationDisplayMetrics(Activity activity, int width, int height)
+    static void setApplicationDisplayMetrics(Activity activity, int width, int height)
     {
         if (activity == null)
             return;
@@ -273,13 +307,13 @@ class QtDisplayManager {
                 scaledDensity, density, getRefreshRate(display));
     }
 
-    public static float getXDpi(final DisplayMetrics metrics) {
+    static float getXDpi(final DisplayMetrics metrics) {
         if (metrics.xdpi < android.util.DisplayMetrics.DENSITY_LOW)
             return android.util.DisplayMetrics.DENSITY_LOW;
         return metrics.xdpi;
     }
 
-    public static float getYDpi(final DisplayMetrics metrics) {
+    static float getYDpi(final DisplayMetrics metrics) {
         if (metrics.ydpi < android.util.DisplayMetrics.DENSITY_LOW)
             return android.util.DisplayMetrics.DENSITY_LOW;
         return metrics.ydpi;

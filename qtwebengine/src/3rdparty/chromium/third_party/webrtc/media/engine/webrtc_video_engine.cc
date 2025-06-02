@@ -29,6 +29,7 @@
 #include "api/media_stream_interface.h"
 #include "api/media_types.h"
 #include "api/priority.h"
+#include "api/rtc_error.h"
 #include "api/rtp_transceiver_direction.h"
 #include "api/units/time_delta.h"
 #include "api/units/timestamp.h"
@@ -47,6 +48,7 @@
 #include "common_video/frame_counts.h"
 #include "common_video/include/quality_limitation_reason.h"
 #include "media/base/codec.h"
+#include "media/base/media_channel.h"
 #include "media/base/media_constants.h"
 #include "media/base/rid_description.h"
 #include "media/base/rtp_utils.h"
@@ -356,8 +358,11 @@ static bool ValidateStreamParams(const StreamParams& sp) {
     }
   }
   for (const auto& group : sp.ssrc_groups) {
-    if (group.semantics != kSimSsrcGroupSemantics)
+    if (!(group.semantics == kFidSsrcGroupSemantics ||
+          group.semantics == kSimSsrcGroupSemantics ||
+          group.semantics == kFecFrSsrcGroupSemantics)) {
       continue;
+    }
     for (uint32_t group_ssrc : group.ssrcs) {
       auto it = absl::c_find_if(sp.ssrcs, [&group_ssrc](uint32_t ssrc) {
         return ssrc == group_ssrc;
@@ -365,7 +370,7 @@ static bool ValidateStreamParams(const StreamParams& sp) {
       if (it == sp.ssrcs.end()) {
         RTC_LOG(LS_ERROR) << "SSRC '" << group_ssrc
                           << "' missing from StreamParams ssrcs with semantics "
-                          << kSimSsrcGroupSemantics << ": " << sp.ToString();
+                          << group.semantics << ": " << sp.ToString();
         return false;
       }
     }
@@ -740,6 +745,19 @@ void ExtractCodecInformation(
   }
 }
 
+int ParseReceiveBufferSize(const webrtc::FieldTrialsView& trials) {
+  webrtc::FieldTrialParameter<int> size_bytes("size_bytes",
+                                              kVideoRtpRecvBufferSize);
+  webrtc::ParseFieldTrial({&size_bytes},
+                          trials.Lookup("WebRTC-ReceiveBufferSize"));
+  if (size_bytes.Get() < 10'000 || size_bytes.Get() > 10'000'000) {
+    RTC_LOG(LS_WARNING) << "WebRTC-ReceiveBufferSize out of bounds: "
+                        << size_bytes.Get();
+    return kVideoRtpRecvBufferSize;
+  }
+  return size_bytes.Get();
+}
+
 }  // namespace
 // --------------- WebRtcVideoEngine ---------------------------
 
@@ -963,6 +981,15 @@ WebRtcVideoSendChannel::WebRtcVideoSendStream::ConfigureVideoEncoderSettings(
     return rtc::make_ref_counted<
         webrtc::VideoEncoderConfig::Vp9EncoderSpecificSettings>(vp9_settings);
   }
+  if (absl::EqualsIgnoreCase(codec.name, kAv1CodecName)) {
+    webrtc::VideoCodecAV1 av1_settings = {.automatic_resize_on =
+                                              automatic_resize};
+    if (NumSpatialLayersFromEncoding(rtp_parameters_, /*idx=*/0) > 1) {
+      av1_settings.automatic_resize_on = false;
+    }
+    return rtc::make_ref_counted<
+        webrtc::VideoEncoderConfig::Av1EncoderSpecificSettings>(av1_settings);
+  }
   return nullptr;
 }
 std::vector<VideoCodecSettings> WebRtcVideoSendChannel::SelectSendVideoCodecs(
@@ -1011,13 +1038,19 @@ bool WebRtcVideoSendChannel::GetChangedSenderParameters(
     return false;
   }
 
-  std::vector<VideoCodecSettings> negotiated_codecs =
-      SelectSendVideoCodecs(MapCodecs(params.codecs));
-
-  // We should only fail here if send direction is enabled.
-  if (params.is_stream_active && negotiated_codecs.empty()) {
-    RTC_LOG(LS_ERROR) << "No video codecs supported.";
+  std::vector<VideoCodecSettings> mapped_codecs = MapCodecs(params.codecs);
+  if (mapped_codecs.empty()) {
+    // This suggests a failure in MapCodecs, e.g. inconsistent RTX codecs.
     return false;
+  }
+
+  std::vector<VideoCodecSettings> negotiated_codecs =
+      SelectSendVideoCodecs(mapped_codecs);
+
+  if (params.is_stream_active && negotiated_codecs.empty()) {
+    // This is not a failure but will lead to the answer being rejected.
+    RTC_LOG(LS_ERROR) << "No video codecs in common.";
+    return true;
   }
 
   // Never enable sending FlexFEC, unless we are in the experiment.
@@ -1324,17 +1357,24 @@ webrtc::RTCError WebRtcVideoSendChannel::SetRtpSendParameters(
         break;
     }
 
+    // Since we validate that all layers have the same value, we can just check
+    // the first layer.
     // TODO(orphis): Support mixed-codec simulcast
     if (parameters.encodings[0].codec && send_codec_ &&
         !send_codec_->codec.MatchesRtpCodec(*parameters.encodings[0].codec)) {
-      RTC_LOG(LS_ERROR) << "Trying to change codec to "
-                        << parameters.encodings[0].codec->name;
+      RTC_LOG(LS_VERBOSE) << "Trying to change codec to "
+                          << parameters.encodings[0].codec->name;
       auto matched_codec =
           absl::c_find_if(negotiated_codecs_, [&](auto negotiated_codec) {
             return negotiated_codec.codec.MatchesRtpCodec(
                 *parameters.encodings[0].codec);
           });
-      RTC_CHECK(matched_codec != negotiated_codecs_.end());
+      if (matched_codec == negotiated_codecs_.end()) {
+        return webrtc::InvokeSetParametersCallback(
+            callback, webrtc::RTCError(
+                          webrtc::RTCErrorType::INVALID_MODIFICATION,
+                          "Attempted to use an unsupported codec for layer 0"));
+      }
 
       ChangedSenderParameters params;
       params.send_codec = *matched_codec;
@@ -1637,14 +1677,6 @@ void WebRtcVideoSendChannel::SetEncoderSelector(
     matching_stream->second->SetEncoderSelector(encoder_selector);
   } else {
     RTC_LOG(LS_ERROR) << "No stream found to attach encoder selector";
-  }
-}
-
-void WebRtcVideoSendChannel::SetVideoCodecSwitchingEnabled(bool enabled) {
-  RTC_DCHECK_RUN_ON(&thread_checker_);
-  allow_codec_switching_ = enabled;
-  if (allow_codec_switching_) {
-    RTC_LOG(LS_INFO) << "Encoder switching enabled.";
   }
 }
 
@@ -2202,7 +2234,20 @@ WebRtcVideoSendChannel::WebRtcVideoSendStream::CreateVideoEncoderConfig(
   // Ensure frame dropping is always enabled.
   encoder_config.frame_drop_enabled = true;
 
-  int max_qp = kDefaultQpMax;
+  int max_qp;
+  switch (encoder_config.codec_type) {
+    case webrtc::kVideoCodecH264:
+    case webrtc::kVideoCodecH265:
+      max_qp = kDefaultVideoMaxQpH26x;
+      break;
+    case webrtc::kVideoCodecVP8:
+    case webrtc::kVideoCodecVP9:
+    case webrtc::kVideoCodecAV1:
+    case webrtc::kVideoCodecGeneric:
+    case webrtc::kVideoCodecMultiplex:
+      max_qp = kDefaultVideoMaxQpVpx;
+      break;
+  }
   codec.GetParam(kCodecParamMaxQuantization, &max_qp);
   encoder_config.max_qp = max_qp;
 
@@ -2564,7 +2609,8 @@ WebRtcVideoReceiveChannel::WebRtcVideoReceiveChannel(
       discard_unknown_ssrc_packets_(
           IsEnabled(call_->trials(),
                     "WebRTC-Video-DiscardPacketsWithUnknownSsrc")),
-      crypto_options_(crypto_options) {
+      crypto_options_(crypto_options),
+      receive_buffer_size_(ParseReceiveBufferSize(call_->trials())) {
   RTC_DCHECK_RUN_ON(&thread_checker_);
   rtcp_receiver_report_ssrc_ = kDefaultRtcpReceiverReportSsrc;
   recv_codecs_ = MapCodecs(GetPayloadTypesAndDefaultCodecs(
@@ -2670,7 +2716,7 @@ bool WebRtcVideoReceiveChannel::GetChangedReceiverParameters(
                                         /*is_decoder_factory=*/true,
                                         /*include_rtx=*/true, call_->trials());
     for (const VideoCodecSettings& mapped_codec : mapped_codecs) {
-      if (!FindMatchingCodec(local_supported_codecs, mapped_codec.codec)) {
+      if (!FindMatchingVideoCodec(local_supported_codecs, mapped_codec.codec)) {
         RTC_LOG(LS_ERROR) << "GetChangedReceiverParameters called with "
                              "unsupported video codec: "
                           << mapped_codec.codec.ToString();
@@ -3161,7 +3207,7 @@ void WebRtcVideoReceiveChannel::SetInterface(
   MediaChannelUtil::SetInterface(iface);
   // Set the RTP recv/send buffer to a bigger size.
   MediaChannelUtil::SetOption(MediaChannelNetworkInterface::ST_RTP,
-                              rtc::Socket::OPT_RCVBUF, kVideoRtpRecvBufferSize);
+                              rtc::Socket::OPT_RCVBUF, receive_buffer_size_);
 }
 
 void WebRtcVideoReceiveChannel::SetFrameDecryptor(

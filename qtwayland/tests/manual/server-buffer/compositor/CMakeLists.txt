@@ -22,6 +22,7 @@ qt_add_executable(compositor
 qt6_generate_wayland_protocol_server_sources(compositor
     FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/../share-buffer.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../src/extensions/server-buffer-extension.xml
 )
 
 set_target_properties(compositor PROPERTIES

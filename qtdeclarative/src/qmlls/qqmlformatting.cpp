@@ -47,12 +47,12 @@ void QQmlDocumentFormatting::process(RequestPointerArgument request)
 
     DomItem file = doc.snapshot.doc.fileObject(GoTo::MostLikely);
     if (!file) {
-        guard.setError(QQmlLSUtilsErrorMessage{
+        guard.setError(QQmlLSUtils::ErrorMessage{
                 0, u"Could not find the file %1"_s.arg(doc.snapshot.doc.canonicalFilePath()) });
         return;
     }
     if (!file.field(Fields::isValid).value().toBool(false)) {
-        guard.setError(QQmlLSUtilsErrorMessage{ 0, u"Cannot format invalid documents!"_s });
+        guard.setError(QQmlLSUtils::ErrorMessage{ 0, u"Cannot format invalid documents!"_s });
         return;
     }
     if (auto envPtr = file.environment().ownerAs<DomEnvironment>())
@@ -66,28 +66,10 @@ void QQmlDocumentFormatting::process(RequestPointerArgument request)
                     return true;
                 },
                 true);
-        guard.setError(QQmlLSUtilsErrorMessage{
+        guard.setError(QQmlLSUtils::ErrorMessage{
                 0, u"Failed to parse %1"_s.arg(file.canonicalFilePath()) });
         return;
     }
-
-    const auto &code = qmlFile->code();
-
-    // Recreate the Dom to avoid misformatting comments, due to the FileLocations added
-    // by the 'WithScriptExpression' required by other qmlls features. Do not pass any import paths
-    // here, as else the DomEnvironment will try to parse all QML modules that it can find (and that
-    // takes quite some time and is not needed to format the code).
-    const DomItem newCurrent = DomEnvironment::create({});
-    const DomCreationOptions creationOptions = DomCreationOption::None;
-    DomItem fileWithoutScriptExpressions;
-    newCurrent.loadFile(
-            FileToLoad::fromMemory(newCurrent.ownerAs<DomEnvironment>(), file.canonicalFilePath(),
-                                   code, creationOptions),
-            [&fileWithoutScriptExpressions](Path, const DomItem &, const DomItem &newValue) {
-                fileWithoutScriptExpressions = newValue.fileObject();
-            },
-            {});
-    newCurrent.loadPendingDependencies();
 
     // TODO: implement formatting options
     // For now, qmlformat's default options.
@@ -98,9 +80,9 @@ void QQmlDocumentFormatting::process(RequestPointerArgument request)
     QLspSpecification::TextEdit formattedText;
     LineWriter lw([&formattedText](QStringView s) {formattedText.newText += s.toUtf8(); }, QString(), options);
     OutWriter ow(lw);
-    MutableDomItem formatted = fileWithoutScriptExpressions.writeOutForFile(ow, WriteOutCheck::None);
+    file.writeOutForFile(ow, WriteOutCheck::None);
     ow.flush();
-
+    const auto &code = qmlFile->code();
     const auto [endLine, endColumn] = QQmlLSUtils::textRowAndColumnFrom(code, code.length());
 
     Q_UNUSED(endColumn);

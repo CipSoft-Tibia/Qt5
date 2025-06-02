@@ -10,6 +10,7 @@
 
 #include "base/cfi_buildflags.h"
 #include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
@@ -38,6 +39,7 @@
 #include "third_party/blink/renderer/platform/scheduler/public/agent_group_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
 #include "third_party/blink/renderer/platform/webrtc/webrtc_source.h"
 #include "third_party/webrtc/api/media_stream_interface.h"
@@ -180,7 +182,7 @@ class WebRtcAudioRendererTest : public testing::Test {
     EXPECT_CALL(
         *audio_device_factory_platform_,
         MockNewAudioRendererSink(blink::WebAudioDeviceSourceType::kWebRtc,
-                                 web_local_frame_, _))
+                                 web_local_frame_.get(), _))
         .Times(testing::AtLeast(1))
         .WillRepeatedly(DoAll(SaveArg<2>(&params), InvokeWithoutArgs([&]() {
                                 EXPECT_EQ(params.device_id, device_id.Utf8());
@@ -234,13 +236,14 @@ class WebRtcAudioRendererTest : public testing::Test {
 
   blink::ScopedTestingPlatformSupport<AudioDeviceFactoryTestingPlatformSupport>
       audio_device_factory_platform_;
+  test::TaskEnvironment task_environment_;
   std::unique_ptr<MockAudioRendererSource> source_;
   Persistent<MediaStreamDescriptor> stream_descriptor_;
   std::unique_ptr<blink::scheduler::WebAgentGroupScheduler>
       agent_group_scheduler_;
-  WebView* web_view_ = nullptr;
+  raw_ptr<WebView, DanglingUntriaged> web_view_ = nullptr;
   WebLocalFrameClient web_local_frame_client_;
-  WebLocalFrame* web_local_frame_ = nullptr;
+  raw_ptr<WebLocalFrame, ExperimentalRenderer> web_local_frame_ = nullptr;
   scoped_refptr<blink::WebRtcAudioRenderer> renderer_;
   scoped_refptr<blink::WebMediaStreamAudioRenderer> renderer_proxy_;
 };

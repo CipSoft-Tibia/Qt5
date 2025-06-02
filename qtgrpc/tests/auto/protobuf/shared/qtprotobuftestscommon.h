@@ -13,8 +13,8 @@ static void qProtobufAssertMessagePropertyRegistered(int fieldIndex, const char 
 {
     // TODO: there should be(?) a mapping available: PropertyType -> propertyTypeName
 
-    int index = MessageType::propertyOrdering.indexOfFieldNumber(fieldIndex);
-    const int propertyNumber = MessageType::propertyOrdering.getPropertyIndex(index);
+    int index = MessageType::staticPropertyOrdering.indexOfFieldNumber(fieldIndex);
+    const int propertyNumber = MessageType::staticPropertyOrdering.propertyIndex(index);
     // TODO Qt6: Property type name check is disable because metatype system changes in Qt6.
     // Q_PROPERTY returns non-aliased type for the aliases defined using the 'using' keyword.
     // QCOMPARE(QLatin1String(propertyTypeName), QLatin1String(MessageType::staticMetaObject.property(propertyNumber).typeName()));

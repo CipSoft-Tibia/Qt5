@@ -128,6 +128,8 @@ public:
 protected:
     HWND parentHwnd() const { return GetAncestor(handle(), GA_PARENT); }
     bool isTopLevel_sys() const;
+    inline bool hasMaximumHeight() const;
+    inline bool hasMaximumWidth() const;
     inline bool hasMaximumSize() const;
     QRect frameGeometry_sys() const;
     QRect geometry_sys() const;
@@ -160,6 +162,7 @@ class QWindowsForeignWindow : public QWindowsBaseWindow
 {
 public:
     explicit QWindowsForeignWindow(QWindow *window, HWND hwnd);
+    ~QWindowsForeignWindow();
 
     void setParent(const QPlatformWindow *window) override;
     void setGeometry(const QRect &rect) override { setGeometry_sys(rect); }
@@ -367,6 +370,7 @@ private:
     void fireExpose(const QRegion &region, bool force=false);
     void fireFullExpose(bool force=false);
     void calculateFullFrameMargins();
+    void correctWindowPlacement(WINDOWPLACEMENT &windowPlacement);
 
     mutable QWindowsWindowData m_data;
     QPointer<QWindowsMenuBar> m_menuBar;

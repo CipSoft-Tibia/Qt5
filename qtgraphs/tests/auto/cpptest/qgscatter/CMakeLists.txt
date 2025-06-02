@@ -10,4 +10,5 @@ qt_internal_add_test(tst_qgscatter
         Qt::Gui
         Qt::GuiPrivate
         Qt::Graphs
+        Qt::GraphsWidgets
 )

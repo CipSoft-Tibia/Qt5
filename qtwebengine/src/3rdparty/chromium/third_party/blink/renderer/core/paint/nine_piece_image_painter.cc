@@ -12,7 +12,7 @@
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/style/nine_piece_image.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context.h"
-#include "third_party/blink/renderer/platform/graphics/scoped_interpolation_quality.h"
+#include "third_party/blink/renderer/platform/graphics/scoped_image_rendering_settings.h"
 #include "ui/gfx/geometry/outsets.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -94,8 +94,7 @@ void PaintPieces(GraphicsContext& context,
                  const gfx::SizeF& unzoomed_image_size,
                  PhysicalBoxSides sides_to_include) {
   const RespectImageOrientationEnum respect_orientation =
-      style.RespectImageOrientation() ? kRespectImageOrientation
-                                      : kDoNotRespectImageOrientation;
+      style.ImageOrientation();
   // |image_size| is in the image's native resolution and |slice_scale| defines
   // the effective size of a CSS pixel in the image.
   const gfx::SizeF image_size = image.SizeAsFloat(respect_orientation);
@@ -120,8 +119,8 @@ void PaintPieces(GraphicsContext& context,
   // TODO(penglin):  We need to make a single classification for the entire grid
   auto image_auto_dark_mode = ImageAutoDarkMode::Disabled();
 
-  ScopedInterpolationQuality interpolation_quality_scope(
-      context, style.GetInterpolationQuality());
+  ScopedImageRenderingSettings image_rendering_settings_scope(
+      context, style.GetInterpolationQuality(), style.GetDynamicRangeLimit());
   for (NinePiece piece = kMinPiece; piece < kMaxPiece; ++piece) {
     NinePieceImageGrid::NinePieceDrawInfo draw_info =
         grid.GetNinePieceDrawInfo(piece);
@@ -213,8 +212,7 @@ bool NinePieceImagePainter::Paint(GraphicsContext& graphics_context,
   // image with either "native" size (raster images) or size scaled by effective
   // zoom.
   const RespectImageOrientationEnum respect_orientation =
-      style.RespectImageOrientation() ? kRespectImageOrientation
-                                      : kDoNotRespectImageOrientation;
+      style.ImageOrientation();
   const gfx::SizeF default_object_size(border_image_rect.size);
   gfx::SizeF image_size = style_image->ImageSize(
       style.EffectiveZoom(), default_object_size, respect_orientation);

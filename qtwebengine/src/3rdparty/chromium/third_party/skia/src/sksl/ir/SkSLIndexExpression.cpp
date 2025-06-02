@@ -8,12 +8,12 @@
 #include "src/sksl/ir/SkSLIndexExpression.h"
 
 #include "include/core/SkTypes.h"
-#include "include/private/SkSLDefines.h"
 #include "include/private/base/SkTArray.h"
 #include "src/sksl/SkSLAnalysis.h"
 #include "src/sksl/SkSLBuiltinTypes.h"
 #include "src/sksl/SkSLConstantFolder.h"
 #include "src/sksl/SkSLContext.h"
+#include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLErrorReporter.h"
 #include "src/sksl/SkSLOperator.h"
 #include "src/sksl/ir/SkSLConstructorArray.h"
@@ -26,7 +26,6 @@
 
 #include <cstdint>
 #include <optional>
-#include <type_traits>
 
 namespace SkSL {
 
@@ -143,8 +142,7 @@ std::unique_ptr<Expression> IndexExpression::Make(const Context& context,
                 // we're not obligated to simplify anything.
                 const Expression* baseExpr = ConstantFolder::GetConstantValueForVariable(*base);
                 int vecWidth = baseType.rows();
-                const Type& scalarType = baseType.componentType();
-                const Type& vecType = scalarType.toCompound(context, vecWidth, /*rows=*/1);
+                const Type& vecType = baseType.columnType(context);
                 indexValue *= vecWidth;
 
                 double ctorArgs[4];

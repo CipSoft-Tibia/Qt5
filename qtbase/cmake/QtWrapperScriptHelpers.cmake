@@ -19,13 +19,18 @@ function(qt_internal_create_wrapper_scripts)
         set(generate_non_unix TRUE)
     endif()
 
+    set(extra_qt_cmake_code "")
     if(generate_unix)
-        if(IOS)
-            set(infix ".ios")
-        else()
-            set(infix "")
+
+        if(UIKIT)
+            set(extra_qt_cmake_code [=[
+# Specify Xcode as the default generator by assigning it to the CMAKE_GENERATOR env var.
+# An explicit -G or -D CMAKE_GENERATOR given on the command line will still take precedence.
+export CMAKE_GENERATOR=Xcode
+]=])
         endif()
-        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bin/qt-cmake${infix}.in"
+
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/bin/qt-cmake.in"
                        "${QT_BUILD_DIR}/${INSTALL_BINDIR}/qt-cmake" @ONLY
                        NEWLINE_STYLE LF)
         qt_install(PROGRAMS "${QT_BUILD_DIR}/${INSTALL_BINDIR}/qt-cmake"
@@ -53,6 +58,10 @@ function(qt_internal_create_wrapper_scripts)
         qt_install(PROGRAMS "${QT_BUILD_DIR}/${INSTALL_BINDIR}/qt-cmake-create.bat"
                 DESTINATION "${INSTALL_BINDIR}")
     endif()
+
+    # Reset the contents for the next script.
+    set(extra_qt_cmake_code "")
+
     # Provide a private convenience wrapper with options that should not be propagated via the
     # public qt-cmake wrapper e.g. CMAKE_GENERATOR.
     # These options can not be set in a toolchain file, but only on the command line.
@@ -227,6 +236,10 @@ function(qt_internal_create_wrapper_scripts)
     qt_internal_create_qt_configure_part_wrapper_script("STANDALONE_TESTS")
     qt_internal_create_qt_configure_part_wrapper_script("STANDALONE_EXAMPLES")
     qt_internal_create_qt_configure_redo_script()
+
+    if(NOT CMAKE_CROSSCOMPILING)
+        qt_internal_create_qt_android_runner_wrapper_script()
+    endif()
 endfunction()
 
 function(qt_internal_create_qt_configure_part_wrapper_script component)
@@ -321,4 +334,10 @@ function(qt_internal_create_qt_configure_redo_script)
     endif()
 
     configure_file("${input_script_path}" "${output_path}" @ONLY NEWLINE_STYLE ${newline_style})
+endfunction()
+
+function(qt_internal_create_qt_android_runner_wrapper_script)
+    qt_path_join(android_runner_destination "${QT_INSTALL_DIR}" "${INSTALL_LIBEXECDIR}")
+    qt_path_join(android_runner "${CMAKE_CURRENT_SOURCE_DIR}" "libexec" "qt-android-runner.py")
+    qt_copy_or_install(PROGRAMS "${android_runner}" DESTINATION "${android_runner_destination}")
 endfunction()

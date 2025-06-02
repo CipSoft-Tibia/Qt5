@@ -3,17 +3,26 @@ import("{{Repeat "../" .Depth}}../../../scripts/tint_overrides_with_defaults.gni
 
 import("${tint_src_dir}/tint.gni")
 
-{{- if or ($.Project.Target $ "test") ($.Project.Target $ "test_cmd")}}
+{{- if or ($.Project.Target $ "test")
+          ($.Project.Target $ "test_cmd")
+          ($.Project.Target $ "bench")
+          ($.Project.Target $ "bench_cmd") }}
 {{/*   newline */}}
-if (tint_build_unittests) {
+if (tint_build_unittests || tint_build_benchmarks) {
   import("//testing/test.gni")
 }
 {{- end}}
 
+
 {{- Eval "TargetIfNotEmpty" ($.Project.Target $ "lib")}}
+{{- Eval "TargetIfNotEmpty" ($.Project.Target $ "proto")}}
 {{- Eval "TargetIfNotEmpty" ($.Project.Target $ "cmd")}}
 {{- Eval "TargetIfNotEmpty" ($.Project.Target $ "test")}}
 {{- Eval "TargetIfNotEmpty" ($.Project.Target $ "test_cmd")}}
+{{- Eval "TargetIfNotEmpty" ($.Project.Target $ "bench")}}
+{{- Eval "TargetIfNotEmpty" ($.Project.Target $ "bench_cmd")}}
+{{- Eval "TargetIfNotEmpty" ($.Project.Target $ "fuzz")}}
+{{- Eval "TargetIfNotEmpty" ($.Project.Target $ "fuzz_cmd")}}
 
 
 {{- /*
@@ -35,8 +44,10 @@ if (tint_build_unittests) {
 */ -}}
 {{- define "Target"}}
 
-{{-   if Contains (print $.Kind) "test"}}
+{{-   if $.Kind.IsTestOrTestCmd}}
 if (tint_build_unittests) {
+{{-   else if $.Kind.IsBenchOrBenchCmd}}
+if (tint_build_benchmarks) {
 {{-   end}}
 
 {{- /* Target condition */}}
@@ -46,13 +57,24 @@ if({{$.Condition}}) {
 
 {{  if      $.Kind.IsLib -}}
 libtint_source_set("{{$.Directory.Name}}") {
+{{- else if $.Kind.IsProto -}}
+tint_proto_library("proto") {
 {{- else if $.Kind.IsCmd -}}
-executable("{{$.Directory.Name}}") {
+tint_executable("{{$.Directory.Name}}") {
 {{- else if $.Kind.IsTest -}}
 tint_unittests_source_set("unittests") {
-  testonly = true
+{{- else if $.Kind.IsBench -}}
+tint_unittests_source_set("bench") {
+{{- else if $.Kind.IsFuzz -}}
+tint_fuzz_source_set("fuzz") {
 {{- else if $.Kind.IsTestCmd -}}
-test("{{$.Directory.Name}}") {
+test("test_cmd") {
+  testonly = true
+{{- else if $.Kind.IsBenchCmd -}}
+test("bench_cmd") {
+  testonly = true
+{{- else if $.Kind.IsFuzzCmd -}}
+tint_fuzzer_test("{{$.Directory.Name}}") {
 {{- else }}{{Error $.Kind}}
 {{- end  }}
 {{- if $.OutputName }}
@@ -65,7 +87,7 @@ test("{{$.Directory.Name}}") {
   ]
   deps = [
 
-{{- /* Emit unconditional inernal dependencies */}}
+{{- /* Emit unconditional internal dependencies */}}
 {{- range $Dep := $.Dependencies.UnconditionalInternal}}
     "{{Eval "Dependency" $Dep}}",
 {{- end}}
@@ -105,7 +127,6 @@ test("{{$.Directory.Name}}") {
 {{- end}}
 
 {{- if $.Kind.IsTestCmd }}
-  testonly = true
   configs += [ "${tint_src_dir}:tint_unittests_config" ]
 
   if (build_with_chromium) {
@@ -117,8 +138,8 @@ test("{{$.Directory.Name}}") {
 
 {{- /* Target condition */}}
 {{-   if $.Condition}}}{{end}}
-{{- /* if(tint_build_unittests) */}}
-{{-   if $.Kind.IsTestOrTestCmd}}}{{end}}
+{{- /* if(tint_build_unittests) or if(tint_build_benchmarks) */}}
+{{-   if or $.Kind.IsTestOrTestCmd $.Kind.IsBenchOrBenchCmd}}}{{end}}
 
 {{- end}}
 
@@ -146,10 +167,11 @@ test("{{$.Directory.Name}}") {
 {{-        if eq $.Name "abseil"             -}}"${tint_src_dir}:abseil",
 {{-   else if eq $.Name "glslang-res-limits" -}}"${tint_glslang_dir}:glslang_default_resource_limits_sources",
 {{-   else if eq $.Name "glslang"            -}}"${tint_glslang_dir}:glslang_lib_sources",
+{{-   else if eq $.Name "google-benchmark"   -}}"${tint_src_dir}:google_benchmark",
 {{-   else if eq $.Name "gtest"              -}}"${tint_src_dir}:gmock_and_gtest",
 {{-   else if eq $.Name "metal"              -}}"${tint_src_dir}:metal",
 {{-   else if eq $.Name "spirv-headers"      -}}"${tint_spirv_headers_dir}:spv_headers",
-{{-   else if eq $.Name "spirv-opt-internal" -}}"${tint_spirv_tools_dir}:spvtools", "${tint_spirv_tools_dir}:spvtools_opt",
+{{-   else if eq $.Name "spirv-opt-internal" -}}"${tint_spirv_tools_dir}:spvtools", "${tint_spirv_tools_dir}:spvtools_opt", "${tint_spirv_tools_dir}:spvtools_val",
 {{-   else if eq $.Name "spirv-tools"        -}}"${tint_spirv_tools_dir}:spvtools_headers", "${tint_spirv_tools_dir}:spvtools_val",
 {{-   else if eq $.Name "thread"             -}}"${tint_src_dir}:thread",
 {{-   else if eq $.Name "winsock"            -}}"${tint_src_dir}:winsock",

@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,12 +30,12 @@
 #include "absl/strings/string_view.h"
 #include "anonymous_tokens/cpp/crypto/constants.h"
 #include "anonymous_tokens/cpp/shared/status_utils.h"
-#include "anonymous_tokens/proto/anonymous_tokens.pb.h"
+#include <openssl/bytestring.h>
 #include <openssl/err.h>
 #include <openssl/hkdf.h>
+#include <openssl/mem.h>
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
-
 
 namespace anonymous_tokens {
 
@@ -42,7 +43,7 @@ namespace internal {
 
 // Approximation of sqrt(2) taken from
 // //depot/google3/third_party/openssl/boringssl/src/crypto/fipsmodule/rsa/rsa_impl.c;l=997
-const std::vector<uint32_t> kBoringSSLRSASqrtTwo = {
+constexpr uint32_t kBoringSSLRSASqrtTwo[] = {
     0x4d7c60a5, 0xe633e3e1, 0x5fcf8f7b, 0xca3ea33b, 0xc246785e, 0x92957023,
     0xf9acce41, 0x797f2805, 0xfdfe170f, 0xd3b1f780, 0xd24f4a76, 0x3facb882,
     0x18838a2e, 0xaff5f3b2, 0xc1fcbdde, 0xa2f7dc33, 0xdea06241, 0xf7aa81c2,
@@ -92,6 +93,27 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> PublicMetadataHashWithHKDF(
 }
 
 }  // namespace internal
+
+namespace {
+
+// Marshals an RSA public key in the DER format.
+absl::StatusOr<std::string> MarshalRsaPublicKey(const RSA* rsa) {
+  uint8_t* rsa_public_key_bytes;
+  size_t rsa_public_key_bytes_len = 0;
+  if (!RSA_public_key_to_bytes(&rsa_public_key_bytes, &rsa_public_key_bytes_len,
+                               rsa)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to marshall rsa public key to a DER encoded RSAPublicKey "
+        "structure (RFC 8017): ",
+        GetSslErrors()));
+  }
+  std::string rsa_public_key_str(reinterpret_cast<char*>(rsa_public_key_bytes),
+                                 rsa_public_key_bytes_len);
+  OPENSSL_free(rsa_public_key_bytes);
+  return rsa_public_key_str;
+}
+
+}  // namespace
 
 absl::StatusOr<BnCtxPtr> GetAndStartBigNumCtx() {
   // Create context to be used in intermediate computation.
@@ -149,20 +171,6 @@ std::string GetSslErrors() {
   return ret;
 }
 
-absl::StatusOr<std::string> GenerateMask(
-    const RSABlindSignaturePublicKey& public_key) {
-  std::string mask;
-  if (public_key.message_mask_type() == AT_MESSAGE_MASK_CONCAT &&
-      public_key.message_mask_size() >= kRsaMessageMaskSizeInBytes32) {
-    mask = std::string(public_key.message_mask_size(), '\0');
-    RAND_bytes(reinterpret_cast<uint8_t*>(mask.data()), mask.size());
-  } else {
-    return absl::InvalidArgumentError(
-        "Undefined or unsupported message mask type.");
-  }
-  return mask;
-}
-
 std::string MaskMessageConcat(absl::string_view mask,
                               absl::string_view message) {
   return absl::StrCat(mask, message);
@@ -184,37 +192,12 @@ std::string EncodeMessagePublicMetadata(absl::string_view message,
   return absl::StrCat(encoding, public_metadata, message);
 }
 
-absl::StatusOr<const EVP_MD*> ProtoHashTypeToEVPDigest(
-    const HashType hash_type) {
-  switch (hash_type) {
-    case AT_HASH_TYPE_SHA256:
-      return EVP_sha256();
-    case AT_HASH_TYPE_SHA384:
-      return EVP_sha384();
-    case AT_HASH_TYPE_UNDEFINED:
-    default:
-      return absl::InvalidArgumentError("Unknown hash type.");
-  }
-}
-
-absl::StatusOr<const EVP_MD*> ProtoMaskGenFunctionToEVPDigest(
-    const MaskGenFunction mgf) {
-  switch (mgf) {
-    case AT_MGF_SHA256:
-      return EVP_sha256();
-    case AT_MGF_SHA384:
-      return EVP_sha384();
-    case AT_MGF_UNDEFINED:
-    default:
-      return absl::InvalidArgumentError(
-          "Unknown hash type for mask generation hash function.");
-  }
-}
-
 absl::StatusOr<bssl::UniquePtr<BIGNUM>> GetRsaSqrtTwo(int x) {
   // Compute hard-coded sqrt(2).
   ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> sqrt2, NewBigNum());
-  for (int i = internal::kBoringSSLRSASqrtTwo.size() - 2; i >= 0; i = i - 2) {
+  const int sqrt2_size = sizeof(internal::kBoringSSLRSASqrtTwo) /
+                         sizeof(*internal::kBoringSSLRSASqrtTwo);
+  for (int i = sqrt2_size - 2; i >= 0; i = i - 2) {
     // Add the uint32_t values as words directly and shift.
     // 'i' is the "hi" value of a uint64_t, and 'i+1' is the "lo" value.
     if (BN_add_word(sqrt2.get(), internal::kBoringSSLRSASqrtTwo[i]) != 1) {
@@ -222,10 +205,10 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> GetRsaSqrtTwo(int x) {
           "Cannot add word to compute RSA sqrt(2): ", GetSslErrors()));
     }
     if (BN_lshift(sqrt2.get(), sqrt2.get(), 32) != 1) {
-        return absl::InternalError(absl::StrCat(
-            "Cannot shift to compute RSA sqrt(2): ", GetSslErrors()));
+      return absl::InternalError(absl::StrCat(
+          "Cannot shift to compute RSA sqrt(2): ", GetSslErrors()));
     }
-    if (BN_add_word(sqrt2.get(), internal::kBoringSSLRSASqrtTwo[i+1]) != 1) {
+    if (BN_add_word(sqrt2.get(), internal::kBoringSSLRSASqrtTwo[i + 1]) != 1) {
       return absl::InternalError(absl::StrCat(
           "Cannot add word to compute RSA sqrt(2): ", GetSslErrors()));
     }
@@ -238,7 +221,7 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> GetRsaSqrtTwo(int x) {
   }
 
   // Check that hard-coded result is correct length.
-  int sqrt2_bits = 32 * internal::kBoringSSLRSASqrtTwo.size();
+  int sqrt2_bits = 32 * sqrt2_size;
   if (BN_num_bits(sqrt2.get()) != sqrt2_bits) {
     return absl::InternalError("RSA sqrt(2) is not correct length.");
   }
@@ -295,76 +278,87 @@ absl::StatusOr<std::string> ComputeHash(absl::string_view input,
   return digest;
 }
 
-absl::StatusOr<bssl::UniquePtr<RSA>> AnonymousTokensRSAPrivateKeyToRSA(
-    const RSAPrivateKey& private_key) {
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> n,
-                               StringToBignum(private_key.n()));
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> e,
-                               StringToBignum(private_key.e()));
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> d,
-                               StringToBignum(private_key.d()));
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> p,
-                               StringToBignum(private_key.p()));
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> q,
-                               StringToBignum(private_key.q()));
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> dp,
-                               StringToBignum(private_key.dp()));
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> dq,
-                               StringToBignum(private_key.dq()));
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> crt,
-                               StringToBignum(private_key.crt()));
+absl::StatusOr<bssl::UniquePtr<RSA>> CreatePrivateKeyRSA(
+    const absl::string_view rsa_modulus,
+    const absl::string_view public_exponent,
+    const absl::string_view private_exponent, const absl::string_view p,
+    const absl::string_view q, const absl::string_view dp,
+    const absl::string_view dq, const absl::string_view crt) {
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> n_bn,
+                               StringToBignum(rsa_modulus));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> e_bn,
+                               StringToBignum(public_exponent));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> d_bn,
+                               StringToBignum(private_exponent));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> p_bn, StringToBignum(p));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> q_bn, StringToBignum(q));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> dp_bn,
+                               StringToBignum(dp));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> dq_bn,
+                               StringToBignum(dq));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> crt_bn,
+                               StringToBignum(crt));
 
-  bssl::UniquePtr<RSA> rsa_private_key(RSA_new());
-  // Populate private key.
+  bssl::UniquePtr<RSA> rsa_private_key(
+      RSA_new_private_key(n_bn.get(), e_bn.get(), d_bn.get(), p_bn.get(),
+                          q_bn.get(), dp_bn.get(), dq_bn.get(), crt_bn.get()));
   if (!rsa_private_key.get()) {
     return absl::InternalError(
-        absl::StrCat("RSA_new failed: ", GetSslErrors()));
-  } else if (RSA_set0_key(rsa_private_key.get(), n.get(), e.get(), d.get()) !=
-             kBsslSuccess) {
-    return absl::InternalError(
-        absl::StrCat("RSA_set0_key failed: ", GetSslErrors()));
-  } else if (RSA_set0_factors(rsa_private_key.get(), p.get(), q.get()) !=
-             kBsslSuccess) {
-    return absl::InternalError(
-        absl::StrCat("RSA_set0_factors failed: ", GetSslErrors()));
-  } else if (RSA_set0_crt_params(rsa_private_key.get(), dp.get(), dq.get(),
-                                 crt.get()) != kBsslSuccess) {
-    return absl::InternalError(
-        absl::StrCat("RSA_set0_crt_params failed: ", GetSslErrors()));
-  } else {
-    n.release();
-    e.release();
-    d.release();
-    p.release();
-    q.release();
-    dp.release();
-    dq.release();
-    crt.release();
+        absl::StrCat("RSA_new_private_key failed: ", GetSslErrors()));
   }
-  return std::move(rsa_private_key);
+  return rsa_private_key;
 }
 
-absl::StatusOr<bssl::UniquePtr<RSA>> AnonymousTokensRSAPublicKeyToRSA(
-    const RSAPublicKey& public_key) {
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> rsa_modulus,
-                               StringToBignum(public_key.n()));
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> rsa_e,
-                               StringToBignum(public_key.e()));
+absl::StatusOr<bssl::UniquePtr<RSA>> CreatePublicKeyRSA(
+    const absl::string_view rsa_modulus,
+    const absl::string_view public_exponent) {
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> n_bn,
+                               StringToBignum(rsa_modulus));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> e_bn,
+                               StringToBignum(public_exponent));
   // Convert to OpenSSL RSA.
-  bssl::UniquePtr<RSA> rsa_public_key(RSA_new());
+  bssl::UniquePtr<RSA> rsa_public_key(
+      RSA_new_public_key(n_bn.get(), e_bn.get()));
   if (!rsa_public_key.get()) {
     return absl::InternalError(
-        absl::StrCat("RSA_new failed: ", GetSslErrors()));
-  } else if (RSA_set0_key(rsa_public_key.get(), rsa_modulus.get(), rsa_e.get(),
-                          nullptr) != kBsslSuccess) {
-    return absl::InternalError(
-        absl::StrCat("RSA_set0_key failed: ", GetSslErrors()));
+        absl::StrCat("RSA_new_public_key failed: ", GetSslErrors()));
   }
-  // RSA_set0_key takes ownership of the pointers under rsa_modulus, new_e on
-  // success.
-  rsa_modulus.release();
-  rsa_e.release();
   return rsa_public_key;
+}
+
+absl::StatusOr<bssl::UniquePtr<RSA>> CreatePublicKeyRSAWithPublicMetadata(
+    const BIGNUM& rsa_modulus, const BIGNUM& public_exponent,
+    absl::string_view public_metadata, const bool use_rsa_public_exponent) {
+  bssl::UniquePtr<BIGNUM> derived_rsa_e;
+  if (use_rsa_public_exponent) {
+    ANON_TOKENS_ASSIGN_OR_RETURN(
+        derived_rsa_e, ComputeExponentWithPublicMetadataAndPublicExponent(
+                           rsa_modulus, public_exponent, public_metadata));
+  } else {
+    ANON_TOKENS_ASSIGN_OR_RETURN(
+        derived_rsa_e,
+        ComputeExponentWithPublicMetadata(rsa_modulus, public_metadata));
+  }
+  bssl::UniquePtr<RSA> rsa_public_key = bssl::UniquePtr<RSA>(
+      RSA_new_public_key_large_e(&rsa_modulus, derived_rsa_e.get()));
+  if (!rsa_public_key.get()) {
+    return absl::InternalError(
+        absl::StrCat("RSA_new_public_key_large_e failed: ", GetSslErrors()));
+  }
+  return rsa_public_key;
+}
+
+absl::StatusOr<bssl::UniquePtr<RSA>> CreatePublicKeyRSAWithPublicMetadata(
+    const absl::string_view rsa_modulus,
+    const absl::string_view public_exponent,
+    const absl::string_view public_metadata,
+    const bool use_rsa_public_exponent) {
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> rsa_n,
+                               StringToBignum(rsa_modulus));
+  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> rsa_e,
+                               StringToBignum(public_exponent));
+  return CreatePublicKeyRSAWithPublicMetadata(
+      *rsa_n.get(), *rsa_e.get(), public_metadata, use_rsa_public_exponent);
 }
 
 absl::StatusOr<bssl::UniquePtr<BIGNUM>> ComputeCarmichaelLcm(
@@ -387,7 +381,7 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> ComputeCarmichaelLcm(
   return lcm;
 }
 
-absl::StatusOr<bssl::UniquePtr<BIGNUM>> PublicMetadataExponent(
+absl::StatusOr<bssl::UniquePtr<BIGNUM>> ComputeExponentWithPublicMetadata(
     const BIGNUM& n, absl::string_view public_metadata) {
   // Check modulus length.
   if (BN_num_bits(&n) % 2 == 1) {
@@ -432,10 +426,12 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> PublicMetadataExponent(
   return exponent;
 }
 
-absl::StatusOr<bssl::UniquePtr<BIGNUM>> ComputeFinalExponentUnderPublicMetadata(
+absl::StatusOr<bssl::UniquePtr<BIGNUM>>
+ComputeExponentWithPublicMetadataAndPublicExponent(
     const BIGNUM& n, const BIGNUM& e, absl::string_view public_metadata) {
-  ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> md_exp,
-                               PublicMetadataExponent(n, public_metadata));
+  ANON_TOKENS_ASSIGN_OR_RETURN(
+      bssl::UniquePtr<BIGNUM> md_exp,
+      ComputeExponentWithPublicMetadata(n, public_metadata));
   ANON_TOKENS_ASSIGN_OR_RETURN(BnCtxPtr bn_ctx, GetAndStartBigNumCtx());
   // new_e=e*md_exp
   ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> new_e, NewBigNum());
@@ -446,18 +442,14 @@ absl::StatusOr<bssl::UniquePtr<BIGNUM>> ComputeFinalExponentUnderPublicMetadata(
   return new_e;
 }
 
-absl::Status RsaBlindSignatureVerify(
-    const int salt_length, const EVP_MD* sig_hash, const EVP_MD* mgf1_hash,
-    RSA* rsa_public_key, const BIGNUM& rsa_modulus,
-    const BIGNUM& augmented_rsa_e, absl::string_view signature,
-    absl::string_view message,
-    std::optional<absl::string_view> public_metadata) {
-  std::string augmented_message(message);
-  if (public_metadata.has_value()) {
-    augmented_message = EncodeMessagePublicMetadata(message, *public_metadata);
-  }
+absl::Status RsaBlindSignatureVerify(const int salt_length,
+                                     const EVP_MD* sig_hash,
+                                     const EVP_MD* mgf1_hash,
+                                     const absl::string_view signature,
+                                     const absl::string_view message,
+                                     RSA* rsa_public_key) {
   ANON_TOKENS_ASSIGN_OR_RETURN(std::string message_digest,
-                               ComputeHash(augmented_message, *sig_hash));
+                               ComputeHash(message, *sig_hash));
   const int hash_size = EVP_MD_size(sig_hash);
   // Make sure the size of the digest is correct.
   if (message_digest.size() != hash_size) {
@@ -466,50 +458,27 @@ absl::Status RsaBlindSignatureVerify(
                      "of the hashing algorithm; expected ",
                      hash_size, " got ", message_digest.size()));
   }
-  const int rsa_modulus_size = BN_num_bytes(&rsa_modulus);
+  // Make sure the size of the signature is correct.
+  const int rsa_modulus_size = BN_num_bytes(RSA_get0_n(rsa_public_key));
   if (signature.size() != rsa_modulus_size) {
     return absl::InvalidArgumentError(
         "Signature size not equal to modulus size.");
   }
 
   std::string recovered_message_digest(rsa_modulus_size, 0);
-  if (!public_metadata.has_value()) {
-    int recovered_message_digest_size = RSA_public_decrypt(
-        /*flen=*/signature.size(),
-        /*from=*/reinterpret_cast<const uint8_t*>(signature.data()),
-        /*to=*/
-        reinterpret_cast<uint8_t*>(recovered_message_digest.data()),
-        /*rsa=*/rsa_public_key,
-        /*padding=*/RSA_NO_PADDING);
-    if (recovered_message_digest_size != rsa_modulus_size) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Invalid signature size (likely an incorrect key is "
-                       "used); expected ",
-                       rsa_modulus_size, " got ", recovered_message_digest_size,
-                       ": ", GetSslErrors()));
-    }
-  } else {
-    ANON_TOKENS_ASSIGN_OR_RETURN(bssl::UniquePtr<BIGNUM> signature_bn,
-                                 StringToBignum(signature));
-    if (BN_ucmp(signature_bn.get(), &rsa_modulus) >= 0) {
-      return absl::InternalError("Data too large for modulus.");
-    }
-    ANON_TOKENS_ASSIGN_OR_RETURN(BnCtxPtr bn_ctx, GetAndStartBigNumCtx());
-    bssl::UniquePtr<BN_MONT_CTX> bn_mont_ctx(
-        BN_MONT_CTX_new_for_modulus(&rsa_modulus, bn_ctx.get()));
-    if (!bn_mont_ctx) {
-      return absl::InternalError("BN_MONT_CTX_new_for_modulus failed.");
-    }
-    ANON_TOKENS_ASSIGN_OR_RETURN(
-        bssl::UniquePtr<BIGNUM> recovered_message_digest_bn, NewBigNum());
-    if (BN_mod_exp_mont(recovered_message_digest_bn.get(), signature_bn.get(),
-                        &augmented_rsa_e, &rsa_modulus, bn_ctx.get(),
-                        bn_mont_ctx.get()) != kBsslSuccess) {
-      return absl::InternalError("Exponentiation failed.");
-    }
-    ANON_TOKENS_ASSIGN_OR_RETURN(
-        recovered_message_digest,
-        BignumToString(*recovered_message_digest_bn, rsa_modulus_size));
+  int recovered_message_digest_size = RSA_public_decrypt(
+      /*flen=*/signature.size(),
+      /*from=*/reinterpret_cast<const uint8_t*>(signature.data()),
+      /*to=*/
+      reinterpret_cast<uint8_t*>(recovered_message_digest.data()),
+      /*rsa=*/rsa_public_key,
+      /*padding=*/RSA_NO_PADDING);
+  if (recovered_message_digest_size != rsa_modulus_size) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid signature size (likely an incorrect key is "
+                     "used); expected ",
+                     rsa_modulus_size, " got ", recovered_message_digest_size,
+                     ": ", GetSslErrors()));
   }
   if (RSA_verify_PKCS1_PSS_mgf1(
           rsa_public_key, reinterpret_cast<const uint8_t*>(&message_digest[0]),
@@ -522,5 +491,125 @@ absl::Status RsaBlindSignatureVerify(
   return absl::OkStatus();
 }
 
-}  // namespace anonymous_tokens
+absl::StatusOr<std::string> RsaSsaPssPublicKeyToDerEncoding(const RSA* rsa) {
+  if (rsa == NULL) {
+    return absl::InvalidArgumentError("Public Key rsa is null.");
+  }
+  // Create DER encoded RSA public key string.
+  ANON_TOKENS_ASSIGN_OR_RETURN(std::string rsa_public_key_str,
+                               MarshalRsaPublicKey(rsa));
+  // Main CRYPTO ByteBuilder object cbb which will be passed to CBB_finish to
+  // finalize and output the DER encoding of the RsaSsaPssPublicKey.
+  bssl::ScopedCBB cbb;
+  // initial_capacity only serves as a hint.
+  if (!CBB_init(cbb.get(), /*initial_capacity=*/2 * RSA_size(rsa))) {
+    return absl::InternalError("CBB_init() failed.");
+  }
 
+  // Temporary CBB objects to write ASN1 sequences and object identifiers into.
+  CBB outer_seq, inner_seq, param_seq, sha384_seq, mgf1_seq, mgf1_sha384_seq;
+  CBB param0_tag, param1_tag, param2_tag;
+  CBB rsassa_pss_oid, sha384_oid, mgf1_oid, mgf1_sha384_oid;
+  CBB public_key_bit_str_cbb;
+  // RsaSsaPssPublicKey ASN.1 structure example:
+  //
+  //  SEQUENCE {                                               # outer_seq
+  //    SEQUENCE {                                             # inner_seq
+  //      OBJECT_IDENTIFIER{1.2.840.113549.1.1.10}             # rsassa_pss_oid
+  //      SEQUENCE {                                           # param_seq
+  //        [0] {                                              # param0_tag
+  //              {                                            # sha384_seq
+  //                OBJECT_IDENTIFIER{2.16.840.1.101.3.4.2.2}  # sha384_oid
+  //              }
+  //            }
+  //        [1] {                                              # param1_tag
+  //              {                                            # mgf1_seq
+  //                OBJECT_IDENTIFIER{1.2.840.113549.1.1.8}    # mgf1_oid
+  //                {                                          # mgf1_sha384_seq
+  //                  OBJECT_IDENTIFIER{2.16.840.1.101.3.4.2.2}# mgf1_sha384_oid
+  //                }
+  //              }
+  //            }
+  //        [2] {                                              # param2_tag
+  //              INTEGER { 48 }                               # salt length
+  //            }
+  //      }
+  //    }
+  //    BIT STRING {                                    # public_key_bit_str_cbb
+  //      0                                             # unused bits
+  //      der_encoded_rsa_public_key_structure
+  //    }
+  //  }
+  //
+  // Start with the outer sequence.
+  if (!CBB_add_asn1(cbb.get(), &outer_seq, CBS_ASN1_SEQUENCE) ||
+      // The outer sequence consists of two parts; the inner sequence and the
+      // encoded rsa public key.
+      //
+      // Add the inner sequence to the outer sequence.
+      !CBB_add_asn1(&outer_seq, &inner_seq, CBS_ASN1_SEQUENCE) ||
+      // Add object identifier for RSASSA-PSS algorithm to the inner sequence.
+      !CBB_add_asn1(&inner_seq, &rsassa_pss_oid, CBS_ASN1_OBJECT) ||
+      !CBB_add_asn1_oid_from_text(&rsassa_pss_oid, kRsaSsaPssOid,
+                                  strlen(kRsaSsaPssOid)) ||
+      // Add a parameter sequence to the inner sequence.
+      !CBB_add_asn1(&inner_seq, &param_seq, CBS_ASN1_SEQUENCE) ||
+      // SHA384 hash function algorithm identifier will be parameter 0 in the
+      // parameter sequence.
+      !CBB_add_asn1(&param_seq, &param0_tag,
+                    CBS_ASN1_CONSTRUCTED | CBS_ASN1_CONTEXT_SPECIFIC | 0) ||
+      !CBB_add_asn1(&param0_tag, &sha384_seq, CBS_ASN1_SEQUENCE) ||
+      // Add SHA384 object identifier to finish the SHA384 algorithm identifier
+      // and parameter 0.
+      !CBB_add_asn1(&sha384_seq, &sha384_oid, CBS_ASN1_OBJECT) ||
+      !CBB_add_asn1_oid_from_text(&sha384_oid, kSha384Oid,
+                                  strlen(kSha384Oid)) ||
+      // mgf1-SHA384 algorithm identifier as parameter 1 to the parameter
+      // sequence.
+      !CBB_add_asn1(&param_seq, &param1_tag,
+                    CBS_ASN1_CONSTRUCTED | CBS_ASN1_CONTEXT_SPECIFIC | 1) ||
+      !CBB_add_asn1(&param1_tag, &mgf1_seq, CBS_ASN1_SEQUENCE) ||
+      // Add mgf1 object identifier to the mgf1-SHA384 algorithm identifier.
+      !CBB_add_asn1(&mgf1_seq, &mgf1_oid, CBS_ASN1_OBJECT) ||
+      !CBB_add_asn1_oid_from_text(&mgf1_oid, kRsaSsaPssMgf1Oid,
+                                  strlen(kRsaSsaPssMgf1Oid)) ||
+      // Add SHA384 algorithm identifier to the mgf1-SHA384 algorithm
+      // identifier.
+      !CBB_add_asn1(&mgf1_seq, &mgf1_sha384_seq, CBS_ASN1_SEQUENCE) ||
+      // Add SHA384 object identifier to finish SHA384 algorithm identifier,
+      // mgf1-SHA384 algorithm identifier and parameter 1.
+      !CBB_add_asn1(&mgf1_sha384_seq, &mgf1_sha384_oid, CBS_ASN1_OBJECT) ||
+      !CBB_add_asn1_oid_from_text(&mgf1_sha384_oid, kSha384Oid,
+                                  strlen(kSha384Oid)) ||
+      // Add salt length as parameter 2 to the parameter sequence to finish the
+      // parameter sequence and the inner sequence.
+      !CBB_add_asn1(&param_seq, &param2_tag,
+                    CBS_ASN1_CONSTRUCTED | CBS_ASN1_CONTEXT_SPECIFIC | 2) ||
+      !CBB_add_asn1_int64(&param2_tag, kSaltLengthInBytes48) ||
+      // Add public key to the outer sequence as an ASN1 bitstring.
+      !CBB_add_asn1(&outer_seq, &public_key_bit_str_cbb, CBS_ASN1_BITSTRING) ||
+      !CBB_add_u8(&public_key_bit_str_cbb, 0 /* no unused bits */) ||
+      !CBB_add_bytes(
+          &public_key_bit_str_cbb,
+          reinterpret_cast<const uint8_t*>(rsa_public_key_str.data()),
+          rsa_public_key_str.size())) {
+    return absl::InvalidArgumentError(
+        "Failed to set the crypto byte builder object.");
+  }
+  // Finish creating the DER-encoding of RsaSsaPssPublicKey.
+  uint8_t* rsa_ssa_pss_public_key_der;
+  size_t rsa_ssa_pss_public_key_der_len;
+  if (!CBB_finish(cbb.get(), &rsa_ssa_pss_public_key_der,
+                  &rsa_ssa_pss_public_key_der_len)) {
+    return absl::InternalError("CBB_finish() failed.");
+  }
+  std::string rsa_ssa_pss_public_key_der_str(
+      reinterpret_cast<const char*>(rsa_ssa_pss_public_key_der),
+      rsa_ssa_pss_public_key_der_len);
+  // Free memory.
+  OPENSSL_free(rsa_ssa_pss_public_key_der);
+  // Return the DER encoding as string.
+  return rsa_ssa_pss_public_key_der_str;
+}
+
+}  // namespace anonymous_tokens

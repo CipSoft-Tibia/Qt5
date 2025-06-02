@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <type_traits>
 
@@ -108,7 +121,7 @@ TEST_P(ResolverBitcastValidationTestPass, Test) {
     auto dst = std::get<1>(GetParam());
 
     if (src.used_f16 || dst.used_f16) {
-        Enable(core::Extension::kF16);
+        Enable(wgsl::Extension::kF16);
     }
 
     auto* cast = Bitcast(dst.ast(*this), src.expr(*this, 0));
@@ -151,7 +164,7 @@ TEST_P(ResolverBitcastValidationTestInvalidSrcTy, Test) {
     auto dst = std::get<1>(GetParam());
 
     if (src.used_f16 || dst.used_f16) {
-        Enable(core::Extension::kF16);
+        Enable(wgsl::Extension::kF16);
     }
 
     auto* cast = Bitcast(dst.ast(*this), Expr(Source{{12, 34}}, "src"));
@@ -196,7 +209,7 @@ TEST_P(ResolverBitcastValidationTestInvalidDstTy, Test) {
     auto dst = std::get<1>(GetParam());
 
     if (src.used_f16 || dst.used_f16) {
-        Enable(core::Extension::kF16);
+        Enable(wgsl::Extension::kF16);
     }
 
     // Use an alias so we can put a Source on the bitcast type
@@ -242,7 +255,7 @@ TEST_P(ResolverBitcastValidationTestIncompatible, Test) {
     auto dst = std::get<1>(GetParam());
 
     if (src.used_f16 || dst.used_f16) {
-        Enable(core::Extension::kF16);
+        Enable(wgsl::Extension::kF16);
     }
 
     WrapInFunction(Bitcast(Source{{12, 34}}, dst.ast(*this), src.expr(*this, 0)));
@@ -379,7 +392,7 @@ INSTANTIATE_TEST_SUITE_P(128BitsTo96Bits,
 ////////////////////////////////////////////////////////////////////////////////
 using ResolverBitcastValidationTestInvalidConst = tint::resolver::ResolverTest;
 TEST_F(ResolverBitcastValidationTestInvalidConst, ConstBitcastToF16NaN) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     // Lower 16 bits of const u32 0x7e10 is NaN in f16.
     auto* a = Const("a", Expr(u32(0x00007e10)));
@@ -393,7 +406,7 @@ TEST_F(ResolverBitcastValidationTestInvalidConst, ConstBitcastToF16NaN) {
 }
 
 TEST_F(ResolverBitcastValidationTestInvalidConst, ConstBitcastToF16Inf) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     // 0xfc00 is -Inf in f16.
     auto* a = Const("a", Call<vec2<u32>>(u32(0x00007010), u32(0xfc008000)));
@@ -417,7 +430,7 @@ TEST_F(ResolverBitcastValidationTestInvalidConst, ConstBitcastToF32NaN) {
 }
 
 TEST_F(ResolverBitcastValidationTestInvalidConst, ConstBitcastToF32Inf) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     // 0x7f800000 is Inf in f32.
     auto* a = Const("a", Call<vec3<u32>>(u32(0xA0008000), u32(0x7f800000), u32(0x40000000)));

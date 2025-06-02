@@ -4,12 +4,16 @@
 
 #include "components/policy/core/common/cloud/encrypted_reporting_job_configuration.h"
 
+#include <initializer_list>
+#include <string>
 #include <utility>
 
 #include "base/containers/contains.h"
+#include "base/containers/flat_set.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
 #include "components/reporting/proto/synced/record_constants.pb.h"
+#include "components/reporting/util/encrypted_reporting_json_keys.h"
 #include "net/base/backoff_entry.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -17,19 +21,6 @@
 namespace policy {
 
 namespace {
-
-// EncryptedReportingJobConfiguration strings
-constexpr char kEncryptedRecordListKey[] = "encryptedRecord";
-constexpr char kSequenceInformationKey[] = "sequenceInformation";
-constexpr char kSequenceId[] = "sequencingId";
-constexpr char kGenerationId[] = "generationId";
-constexpr char kPriority[] = "priority";
-constexpr char kAttachConfigurationFileKey[] = "attachConfigurationFile";
-constexpr char kAttachEncryptionSettingsKey[] = "attachEncryptionSettings";
-constexpr char kSourceKey[] = "source";
-constexpr char kDeviceKey[] = "device";
-constexpr char kBrowserKey[] = "browser";
-constexpr char kRequestId[] = "requestId";
 
 // Generate new backoff entry.
 std::unique_ptr<::net::BackoffEntry> GetBackoffEntry(
@@ -170,22 +161,25 @@ EncryptedReportingJobConfiguration::EncryptedReportingJobConfiguration(
   // TODO(b/232455728): if test_request_payload is moved to components/
   // we would be able to use it here.
   const auto* const encrypted_record_list =
-      payload_.FindList(kEncryptedRecordListKey);
+      payload_.FindList(reporting::json_keys::kEncryptedRecordList);
   // If there are no records, assume UNDEFINED priority and seq_id = -1.
   priority_ = ::reporting::UNDEFINED_PRIORITY;
   generation_id_ = -1;
   sequence_id_ = -1;
   if (encrypted_record_list != nullptr && !encrypted_record_list->empty()) {
+    record_count_ = encrypted_record_list->size();
     const auto sequence_information_it =
         std::prev(encrypted_record_list->cend());
     const auto* const sequence_information =
-        sequence_information_it->GetDict().FindDict(kSequenceInformationKey);
+        sequence_information_it->GetDict().FindDict(
+            reporting::json_keys::kSequenceInformation);
     if (sequence_information != nullptr) {
-      const auto maybe_priority = sequence_information->FindInt(kPriority);
+      const auto maybe_priority =
+          sequence_information->FindInt(reporting::json_keys::kPriority);
       auto* const generation_id_ptr =
-          sequence_information->FindString(kGenerationId);
+          sequence_information->FindString(reporting::json_keys::kGenerationId);
       auto* const sequence_id_ptr =
-          sequence_information->FindString(kSequenceId);
+          sequence_information->FindString(reporting::json_keys::kSequencingId);
       if (maybe_priority.has_value() &&
           ::reporting::Priority_IsValid(maybe_priority.value())) {
         priority_ = static_cast<::reporting::Priority>(maybe_priority.value());
@@ -232,6 +226,10 @@ base::TimeDelta EncryptedReportingJobConfiguration::WhenIsAllowedToProceed()
   // Now pick up the state.
   const auto* const state =
       AccessState(priority_, generation_id_, sequence_id_);
+  // If there are no records, allow upload (it will not overload the server).
+  if (record_count_ == 0u) {
+    return base::TimeDelta();  // 0 - allowed right away.
+  }
   // Use and update previously recorded state, base upload decision on it.
   if (state->last_sequence_id > sequence_id_) {
     // Sequence id decreased, the upload is outdated, reject it forever.
@@ -320,17 +318,18 @@ std::string EncryptedReportingJobConfiguration::GetUmaString() const {
   return "Browser.ERP.Unmanaged";
 }
 
-std::set<std::string>
+// static
+const base::flat_set<std::string>&
 EncryptedReportingJobConfiguration::GetTopLevelKeyAllowList() {
-  static std::set<std::string> kTopLevelKeyAllowList{
-      kAttachConfigurationFileKey,
-      kAttachEncryptionSettingsKey,
-      kBrowserKey,
-      kDeviceKey,
-      kEncryptedRecordListKey,
-      kRequestId,
-      kSourceKey};
-  return kTopLevelKeyAllowList;
+  static const base::NoDestructor<base::flat_set<std::string>>
+      kTopLevelKeyAllowList{std::initializer_list<std::string>{
+          reporting::json_keys::kAttachEncryptionSettings,
+          reporting::json_keys::kBrowser,
+          reporting::json_keys::kConfigurationFileVersion,
+          reporting::json_keys::kDevice,
+          reporting::json_keys::kEncryptedRecordList,
+          reporting::json_keys::kRequestId, reporting::json_keys::kSource}};
+  return *kTopLevelKeyAllowList;
 }
 
 // static

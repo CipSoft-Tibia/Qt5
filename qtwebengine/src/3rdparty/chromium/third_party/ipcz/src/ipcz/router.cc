@@ -764,12 +764,17 @@ Ref<Router> Router::Deserialize(const RouterDescriptor& descriptor,
               ? descriptor.decaying_incoming_sequence_length
               : descriptor.next_incoming_sequence_number);
 
+      auto link_state =
+          from_node_link.memory().AdoptFragmentRefIfValid<RouterLinkState>(
+              descriptor.new_link_state_fragment);
+      if (link_state.is_null()) {
+        // Central links require a valid link state fragment.
+        return nullptr;
+      }
       new_outward_link = from_node_link.AddRemoteRouterLink(
           context, descriptor.new_sublink,
-          from_node_link.memory().AdoptFragmentRef<RouterLinkState>(
-              from_node_link.memory().GetFragment(
-                  descriptor.new_link_state_fragment)),
-          LinkType::kCentral, LinkSide::kB, router);
+          std::move(link_state), LinkType::kCentral,
+          LinkSide::kB, router);
       if (!new_outward_link) {
         return nullptr;
       }
@@ -1841,6 +1846,11 @@ void Router::MaybeStartBridgeBypass(const OperationContext& context) {
   if (!first_local_peer && !second_local_peer) {
     {
       MultiMutexLock lock(&mutex_, &second_bridge->mutex_);
+      if (!bridge_ || !second_bridge->bridge_) {
+        // If another thread raced to sever this link, we can give up
+        // immediately.
+        return;
+      }
       outward_edge_.BeginPrimaryLinkDecay();
       second_bridge->outward_edge_.BeginPrimaryLinkDecay();
       bridge_->BeginPrimaryLinkDecay();
@@ -1875,6 +1885,11 @@ void Router::MaybeStartBridgeBypass(const OperationContext& context) {
   {
     MultiMutexLock lock(&mutex_, &second_bridge->mutex_,
                         &first_local_peer->mutex_, &second_local_peer->mutex_);
+    if (!bridge_ || !second_bridge->bridge_) {
+      // If another thread raced to sever this link, we can give up immediately.
+      return;
+    }
+
     const SequenceNumber length_from_first_peer =
         first_local_peer->outbound_parcels_.current_sequence_number();
     const SequenceNumber length_from_second_peer =
@@ -1981,6 +1996,10 @@ void Router::StartBridgeBypassFromLocalPeer(
       local_peer);
   {
     MultiMutexLock lock(&mutex_, &other_bridge->mutex_, &local_peer->mutex_);
+    if (!bridge_ || !other_bridge->bridge_) {
+      // If another thread raced to sever this link, we can give up immediately.
+      return;
+    }
 
     length_from_local_peer =
         local_peer->outbound_parcels_.current_sequence_number();

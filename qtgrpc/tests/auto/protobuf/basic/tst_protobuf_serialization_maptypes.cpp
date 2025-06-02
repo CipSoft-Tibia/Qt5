@@ -15,25 +15,25 @@ using namespace qtprotobufnamespace::tests;
 class QtProtobufMapTypesSerializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { m_serializer.reset(new QProtobufSerializer); }
-    void SimpleFixed32StringMapSerializeTest();
-    void SimpleSFixed32StringMapSerializeTest();
-    void SimpleInt32StringMapSerializeTest();
-    void SimpleSInt32StringMapSerializeTest();
-    void SimpleUInt32StringMapSerializeTest();
-    void SimpleFixed64StringMapSerializeTest();
-    void SimpleSFixed64StringMapSerializeTest();
-    void SimpleInt64StringMapSerializeTest();
-    void SimpleSInt64StringMapSerializeTest();
-    void SimpleUInt64StringMapSerializeTest();
-    void SimpleStringStringMapSerializeTest();
+    void simpleFixed32StringMapSerializeTest();
+    void simpleSFixed32StringMapSerializeTest();
+    void simpleInt32StringMapSerializeTest();
+    void simpleSInt32StringMapSerializeTest();
+    void simpleUInt32StringMapSerializeTest();
+    void simpleFixed64StringMapSerializeTest();
+    void simpleSFixed64StringMapSerializeTest();
+    void simpleInt64StringMapSerializeTest();
+    void simpleSInt64StringMapSerializeTest();
+    void simpleUInt64StringMapSerializeTest();
+    void simpleStringStringMapSerializeTest();
 
 private:
     std::unique_ptr<QProtobufSerializer> m_serializer;
 };
 
-void QtProtobufMapTypesSerializationTest::SimpleFixed32StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleFixed32StringMapSerializeTest()
 {
     SimpleFixed32StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -45,7 +45,7 @@ void QtProtobufMapTypesSerializationTest::SimpleFixed32StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleSFixed32StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleSFixed32StringMapSerializeTest()
 {
     SimpleSFixed32StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { -42, { "minus fourty two" } }, { 15, { "fifteen" } } });
@@ -58,7 +58,7 @@ void QtProtobufMapTypesSerializationTest::SimpleSFixed32StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleInt32StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleInt32StringMapSerializeTest()
 {
     SimpleInt32StringMapMessage test;
     test.setMapField({ { -10, { "minus ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -71,7 +71,7 @@ void QtProtobufMapTypesSerializationTest::SimpleInt32StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleSInt32StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleSInt32StringMapSerializeTest()
 {
     SimpleSInt32StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { -42, { "minus fourty two" } }, { 15, { "fifteen" } } });
@@ -82,7 +82,7 @@ void QtProtobufMapTypesSerializationTest::SimpleSInt32StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleUInt32StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleUInt32StringMapSerializeTest()
 {
     SimpleUInt32StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -94,7 +94,7 @@ void QtProtobufMapTypesSerializationTest::SimpleUInt32StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleFixed64StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleFixed64StringMapSerializeTest()
 {
     SimpleFixed64StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -106,7 +106,7 @@ void QtProtobufMapTypesSerializationTest::SimpleFixed64StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleSFixed64StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleSFixed64StringMapSerializeTest()
 {
     SimpleSFixed64StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { -42, { "minus fourty two" } }, { 15, { "fifteen" } } });
@@ -119,7 +119,7 @@ void QtProtobufMapTypesSerializationTest::SimpleSFixed64StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleInt64StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleInt64StringMapSerializeTest()
 {
     SimpleInt64StringMapMessage test;
     test.setMapField({ { -10, { "minus ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -132,7 +132,7 @@ void QtProtobufMapTypesSerializationTest::SimpleInt64StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleSInt64StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleSInt64StringMapSerializeTest()
 {
     SimpleSInt64StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { -42, { "minus fourty two" } }, { 15, { "fifteen" } } });
@@ -142,7 +142,7 @@ void QtProtobufMapTypesSerializationTest::SimpleSInt64StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleUInt64StringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleUInt64StringMapSerializeTest()
 {
     SimpleUInt64StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -154,7 +154,7 @@ void QtProtobufMapTypesSerializationTest::SimpleUInt64StringMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleStringStringMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleStringStringMapSerializeTest()
 {
     SimpleStringStringMapMessage test;
     test.setMapField({ { "ben", "ten" },

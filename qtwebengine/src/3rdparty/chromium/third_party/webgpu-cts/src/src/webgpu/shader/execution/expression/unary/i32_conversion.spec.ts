@@ -4,73 +4,13 @@ Execution Tests for the i32 conversion operations
 
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
 import { GPUTest } from '../../../../gpu_test.js';
-import { kValue } from '../../../../util/constants.js';
-import {
-  bool,
-  f32,
-  i32,
-  reinterpretU32AsI32,
-  TypeBool,
-  TypeF32,
-  TypeI32,
-  TypeU32,
-  u32,
-} from '../../../../util/conversion.js';
-import { fullF32Range, fullI32Range, fullU32Range, quantizeToF32 } from '../../../../util/math.js';
-import { makeCaseCache } from '../case_cache.js';
-import { allInputSources, run, ShaderBuilder } from '../expression.js';
+import { TypeBool, TypeF16, TypeF32, TypeI32, TypeU32 } from '../../../../util/conversion.js';
+import { ShaderBuilder, allInputSources, run } from '../expression.js';
 
+import { d } from './i32_conversion.cache.js';
 import { unary } from './unary.js';
 
 export const g = makeTestGroup(GPUTest);
-
-export const d = makeCaseCache('unary/i32_conversion', {
-  bool: () => {
-    return [
-      { input: bool(true), expected: i32(1) },
-      { input: bool(false), expected: i32(0) },
-    ];
-  },
-  u32: () => {
-    return fullU32Range().map(u => {
-      return { input: u32(u), expected: i32(reinterpretU32AsI32(u)) };
-    });
-  },
-  i32: () => {
-    return fullI32Range().map(i => {
-      return { input: i32(i), expected: i32(i) };
-    });
-  },
-  f32: () => {
-    return fullF32Range().map(f => {
-      // Handles zeros and subnormals
-      if (Math.abs(f) < 1.0) {
-        return { input: f32(f), expected: i32(0) };
-      }
-
-      if (f <= kValue.i32.negative.min) {
-        return { input: f32(f), expected: i32(kValue.i32.negative.min) };
-      }
-
-      if (f >= kValue.i32.positive.max) {
-        return { input: f32(f), expected: i32(kValue.i32.positive.max) };
-      }
-
-      // All integers <= 2^24 are precisely representable as f32, so just need
-      // to round towards 0 for the nearest integer to 0 from f.
-      if (Math.abs(f) <= 2 ** 24) {
-        return { input: f32(f), expected: i32(Math.trunc(f)) };
-      }
-
-      // All f32s between 2 ** 24 and kValue.i32.negative.min/.positive.max are
-      // integers, so in theory one could use them directly, expect that number
-      // is actually f64 internally, so they need to be quantized to f32 first.
-      // Cannot just use trunc here, since that might produce a i32 value that
-      // is precise in f64, but not in f32.
-      return { input: f32(f), expected: i32(quantizeToF32(f)) };
-    });
-  },
-});
 
 /** Generate a ShaderBuilder based on how the test case is to be vectorized */
 function vectorizeToExpression(vectorize: undefined | 2 | 3 | 4): ShaderBuilder {
@@ -157,4 +97,10 @@ e is converted to u32, rounding towards zero
   .params(u =>
     u.combine('inputSource', allInputSources).combine('vectorize', [undefined, 2, 3, 4] as const)
   )
-  .unimplemented();
+  .beforeAllSubcases(t => {
+    t.selectDeviceOrSkipTestCase('shader-f16');
+  })
+  .fn(async t => {
+    const cases = await d.get('f16');
+    await run(t, vectorizeToExpression(t.params.vectorize), [TypeF16], TypeI32, t.params, cases);
+  });

@@ -52,7 +52,7 @@ The `cluster` field is used to glyphs in the output glyph stream back to charact
 
 * The `feature_t` array
 
-To communicated user-selected OpenType features to the user-defined WASM shaper, the host shaping engine passes an array of feature structures:
+To communicate user-selected OpenType features to the user-defined WASM shaper, the host shaping engine passes an array of feature structures:
 
 | type | field | description|
 | - | - | - |
@@ -357,7 +357,7 @@ void debugprint(char* str)
 void debugprint1(char* str, int32 arg1)
 void debugprint2(char* str, int32 arg1, int32 arg2)
 void debugprint3(char* str, int32 arg1, int32 arg2, int32 arg3)
-void debugprint3(
+void debugprint4(
     char* str,
     int32 arg1,
     int32 arg2,
@@ -370,17 +370,14 @@ Produces a debugging message in the host shaper's log output; the variants `debu
 
 ## Enabling the WASM shaper when building Harfbuzz
 
-First, you will need the `wasm-micro-runtime` library installed on your computer. Download `wasm-micro-runtime` from [its GitHub repository](https://github.com/bytecodealliance/wasm-micro-runtime/tree/main); then follow [the instructions for building](https://github.com/bytecodealliance/wasm-micro-runtime/blob/main/product-mini/README.md), except add the `-DWAMR_BUILD_REF_TYPES=1` flag to the `cmake` line. (You may want to enable "fast JIT".) Follow this with a `make install`.
+First, you will need the `wasm-micro-runtime` library installed on your computer. Download `wasm-micro-runtime` from [its GitHub repository](https://github.com/bytecodealliance/wasm-micro-runtime/tree/main); then follow [the instructions for building](https://github.com/bytecodealliance/wasm-micro-runtime/blob/main/product-mini/README.md), except run the cmake command from the repository root directory and add the `-DWAMR_BUILD_REF_TYPES=1` flag to the `cmake` line. (You may want to enable "fast JIT".) Then, install it.
 
 So, for example:
 
 ```
-$ cd product-mini/platforms/darwin
-$ mkdir build
-$ cd build
-$ cmake .. -DWAMR_BUILD_REF_TYPES=1 -DWAMR_BUILD_FAST_JIT=1
-$ make
-$ make install
+$ cmake -B build -DWAMR_BUILD_REF_TYPES=1 -DWAMR_BUILD_FAST_JIT=1
+$ cmake --build build --parallel
+$ sudo cmake --build build --target install
 ```
 
 (If you don't want to install `wasm-micro-runtime` globally, you can copy `libiwasm.*` and `libvmlib.a` into a directory that your compiler can see when building Harfbuzz.)
@@ -506,9 +503,9 @@ pub fn shape(_shape_plan:u32, font_ref: u32, buf_ref: u32, _features: u32, _num_
     let mut buffer = GlyphBuffer::from_ref(buf_ref);
     for mut item in buffer.glyphs.iter_mut() {
         // Map character to glyph
-        item.codepoint = font.get_glyph(codepoint, 0);
+        item.codepoint = font.get_glyph(item.codepoint, 0);
         // Set advance width
-        item.h_advance = font.get_glyph_h_advance(item.codepoint);
+        item.x_advance = font.get_glyph_h_advance(item.codepoint);
     }
     1
 }

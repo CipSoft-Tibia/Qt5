@@ -1,6 +1,13 @@
 # Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+cmake_minimum_required(VERSION 3.16)
+
+if (NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    project(tst_qmlsurfacelayers LANGUAGES C CXX ASM)
+    find_package(Qt6BuildInternals COMPONENTS STANDALONE_TEST)
+endif()
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 qt_internal_add_manual_test(tst_qmlsurfacelayers
@@ -19,6 +26,7 @@ target_link_libraries(tst_qmlsurfacelayers PUBLIC
 
 set(qmlsurfacelayers_resource_files
     "qml/qmlsurfacelayers/main.qml"
+    "qml/qmlsurfacelayers/ResizableRect.qml"
 )
 
 qt6_add_resources(tst_qmlsurfacelayers "qmlsurfacelayers"

@@ -10,6 +10,8 @@ AxisGrid::AxisGrid(QQuickItem *parent) :
 {
 }
 
+AxisGrid::~AxisGrid() {}
+
 void AxisGrid::componentComplete()
 {
     QQuickShaderEffect::componentComplete();
@@ -61,17 +63,17 @@ void AxisGrid::setOrigo(int newOrigo)
     emit origoChanged();
 }
 
-QVector4D AxisGrid::barsVisibility() const
+QVector4D AxisGrid::gridVisibility() const
 {
-    return m_barsVisibility;
+    return m_gridVisibility;
 }
 
-void AxisGrid::setBarsVisibility(const QVector4D &newBarsVisibility)
+void AxisGrid::setGridVisibility(const QVector4D &newGridVisibility)
 {
-    if (m_barsVisibility == newBarsVisibility)
+    if (m_gridVisibility == newGridVisibility)
         return;
-    m_barsVisibility = newBarsVisibility;
-    emit barsVisibilityChanged();
+    m_gridVisibility = newGridVisibility;
+    emit gridVisibilityChanged();
 }
 
 qreal AxisGrid::gridWidth() const
@@ -113,82 +115,95 @@ void AxisGrid::setGridMovement(QPointF newGridMovement)
     emit gridMovementChanged();
 }
 
-QColor AxisGrid::minorColor() const
+QColor AxisGrid::subGridColor() const
 {
-    return m_minorColor;
+    return m_subGridColor;
 }
 
-void AxisGrid::setMinorColor(const QColor &newMinorColor)
+void AxisGrid::setSubGridColor(QColor newSubGridColor)
 {
-    if (m_minorColor == newMinorColor)
+    if (m_subGridColor == newSubGridColor)
         return;
-    m_minorColor = newMinorColor;
-    emit minorColorChanged();
+    m_subGridColor = newSubGridColor;
+    emit subGridColorChanged();
 }
 
-QColor AxisGrid::majorColor() const
+QColor AxisGrid::gridColor() const
 {
-    return m_majorColor;
+    return m_gridColor;
 }
 
-void AxisGrid::setMajorColor(const QColor &newMajorColor)
+void AxisGrid::setGridColor(QColor newGridColor)
 {
-    if (m_majorColor == newMajorColor)
+    if (m_gridColor == newGridColor)
         return;
-    m_majorColor = newMajorColor;
-    emit majorColorChanged();
+    m_gridColor = newGridColor;
+    emit gridColorChanged();
 }
 
-qreal AxisGrid::minorBarWidth() const
+QColor AxisGrid::plotAreaBackgroundColor() const
 {
-    return m_minorBarWidth;
+    return m_plotAreaBackgroundColor;
 }
 
-void AxisGrid::setMinorBarWidth(qreal newMinorBarWidth)
+void AxisGrid::setPlotAreaBackgroundColor(QColor color)
 {
-    if (qFuzzyCompare(m_minorBarWidth, newMinorBarWidth))
+    if (m_plotAreaBackgroundColor == color)
         return;
-    m_minorBarWidth = newMinorBarWidth;
-    emit minorBarWidthChanged();
+    m_plotAreaBackgroundColor = color;
+    emit plotAreaBackgroundColorChanged();
 }
 
-qreal AxisGrid::majorBarWidth() const
+qreal AxisGrid::subGridLineWidth() const
 {
-    return m_majorBarWidth;
+    return m_subGridLineWidth;
 }
 
-void AxisGrid::setMajorBarWidth(qreal newMajorBarWidth)
+void AxisGrid::setSubGridLineWidth(qreal newSubGridLineWidth)
 {
-    if (qFuzzyCompare(m_majorBarWidth, newMajorBarWidth))
+    if (qFuzzyCompare(m_subGridLineWidth, newSubGridLineWidth))
         return;
-    m_majorBarWidth = newMajorBarWidth;
-    emit majorBarWidthChanged();
+    m_subGridLineWidth = newSubGridLineWidth;
+    emit subGridLineWidthChanged();
 }
 
-qreal AxisGrid::verticalMinorTickScale() const
+qreal AxisGrid::gridLineWidth() const
 {
-    return m_verticalMinorTickScale;
+    return m_gridLineWidth;
 }
 
-void AxisGrid::setVerticalMinorTickScale(qreal newVerticalMinorTickScale)
+void AxisGrid::setGridLineWidth(qreal newGridLineWidth)
 {
-    if (qFuzzyCompare(m_verticalMinorTickScale, newVerticalMinorTickScale))
+    if (qFuzzyCompare(m_gridLineWidth, newGridLineWidth))
         return;
-    m_verticalMinorTickScale = newVerticalMinorTickScale;
-    emit verticalMinorTickScaleChanged();
+    m_gridLineWidth = newGridLineWidth;
+    emit gridLineWidthChanged();
 }
 
-qreal AxisGrid::horizontalMinorTickScale() const
+qreal AxisGrid::verticalSubGridScale() const
 {
-    return m_horizontalMinorTickScale;
+    return m_verticalSubGridScale;
 }
 
-void AxisGrid::setHorizontalMinorTickScale(qreal newHorizontalMinorTickScale)
+void AxisGrid::setVerticalSubGridScale(qreal newVerticalSubGridScale)
 {
-    if (qFuzzyCompare(m_horizontalMinorTickScale, newHorizontalMinorTickScale))
+    if (qFuzzyCompare(m_verticalSubGridScale, newVerticalSubGridScale))
         return;
-    m_horizontalMinorTickScale = newHorizontalMinorTickScale;
-    emit horizontalMinorTickScaleChanged();
+    m_verticalSubGridScale = newVerticalSubGridScale;
+    emit verticalSubGridScaleChanged();
+}
+
+qreal AxisGrid::horizontalSubGridScale() const
+{
+    return m_horizontalSubGridScale;
+}
+
+void AxisGrid::setHorizontalSubGridScale(qreal newHorizontalSubGridScale)
+{
+    if (qFuzzyCompare(m_horizontalSubGridScale, newHorizontalSubGridScale))
+        return;
+    m_horizontalSubGridScale = newHorizontalSubGridScale;
+    emit horizontalSubGridScaleChanged();
 }
 
 QT_END_NAMESPACE

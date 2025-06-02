@@ -2561,6 +2561,11 @@ void AXPlatformNodeAuraLinux::DestroyAtkObjects() {
       SetWeakGPtrToAtkObject(&g_current_focused, nullptr);
     atk_object::Detach(AX_PLATFORM_NODE_AURALINUX(atk_object_));
 
+    // Under some circumstances, menu open and close requests can arrive
+    // in unexpected orders; let's ensure this object is no longer in
+    // the stack of open menus.
+    std::erase(GetActiveMenus(), atk_object_);
+
     g_object_unref(atk_object_);
     atk_object_ = nullptr;
   }
@@ -2697,6 +2702,7 @@ AtkRole AXPlatformNodeAuraLinux::GetAtkRole() const {
     case ax::mojom::Role::kDirectory:
       return ATK_ROLE_LIST;
     case ax::mojom::Role::kDisclosureTriangle:
+    case ax::mojom::Role::kDisclosureTriangleGrouped:
       return ATK_ROLE_TOGGLE_BUTTON;
     case ax::mojom::Role::kDocCover:
       return ATK_ROLE_IMAGE;
@@ -2918,8 +2924,6 @@ AtkRole AXPlatformNodeAuraLinux::GetAtkRole() const {
       return ATK_ROLE_PUSH_BUTTON;
     case ax::mojom::Role::kPortal:
       return ATK_ROLE_PUSH_BUTTON;
-    case ax::mojom::Role::kPre:
-      return ATK_ROLE_SECTION;
     case ax::mojom::Role::kProgressIndicator:
       return ATK_ROLE_PROGRESS_BAR;
     case ax::mojom::Role::kRadioButton:
@@ -3032,6 +3036,8 @@ AtkRole AXPlatformNodeAuraLinux::GetAtkRole() const {
     case ax::mojom::Role::kKeyboard:
     case ax::mojom::Role::kNone:
       return ATK_ROLE_REDUNDANT_OBJECT;
+    case ax::mojom::Role::kPreDeprecated:
+      NOTREACHED_NORETURN();
   }
 }
 
@@ -3471,10 +3477,12 @@ void AXPlatformNodeAuraLinux::OnMenuPopupEnd() {
   // kMenuPopupHide may be called multiple times for the same menu, so only
   // remove it if our parent frame matches the most recently opened menu.
   std::vector<AtkObject*>& active_menus = GetActiveMenus();
-  DCHECK(!active_menus.empty())
-      << "Asymmetrical menupopupend events -- too many";
 
-  active_menus.pop_back();
+  // We don't trust menu show/hide events to arrive in
+  // any sensible order if multiple menus are involved, so ensure we delete
+  // this particular menu from the stack even if it's not topmost.
+  std::erase(active_menus, atk_object);
+
   AtkObject* new_active_item = ComputeActiveTopLevelFrame();
   if (new_active_item != parent_frame) {
     // Newly activated menu has the different AtkWindow as the previous one.
@@ -3580,8 +3588,10 @@ void AXPlatformNodeAuraLinux::OnScrolledToAnchor() {
   AtkObject* atk_object = GetOrCreateAtkObject();
   if (!atk_object)
     return;
-  DCHECK(ATK_IS_TEXT(atk_object));
-  g_signal_emit_by_name(atk_object, "text-caret-moved", 0);
+  // The text-caret-moved event is used to signal a scroll to anchor event.
+  if (ATK_IS_TEXT(atk_object)) {
+    g_signal_emit_by_name(atk_object, "text-caret-moved", 0);
+  }
 }
 
 void AXPlatformNodeAuraLinux::SetActiveViewsDialog() {
@@ -4011,7 +4021,6 @@ void AXPlatformNodeAuraLinux::OnAriaCurrentChanged() {
 }
 
 void AXPlatformNodeAuraLinux::OnAlertShown() {
-  DCHECK(ui::IsAlert(GetRole()));
   atk_object_notify_state_change(ATK_OBJECT(GetOrCreateAtkObject()),
                                  ATK_STATE_SHOWING, TRUE);
 }

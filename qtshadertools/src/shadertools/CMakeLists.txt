@@ -29,15 +29,12 @@ qt_internal_add_module(ShaderTools
         Qt::BundledGlslang_Glslang
         Qt::BundledGlslang_Spirv
         Qt::BundledGlslang_Osdependent
-        Qt::BundledGlslang_Oglcompiler
 # special case end
     PUBLIC_LIBRARIES
         Qt::Core
         Qt::Gui
     PRIVATE_MODULE_INTERFACE
         Qt::GuiPrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
     RHI_HEADER_FILTERS
         "(^|/)qshaderbaker\\.h$"
 )

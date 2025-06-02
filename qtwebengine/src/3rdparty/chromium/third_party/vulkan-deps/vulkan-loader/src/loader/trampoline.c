@@ -4,6 +4,8 @@
  * Copyright (c) 2015-2023 Valve Corporation
  * Copyright (c) 2015-2023 LunarG, Inc.
  * Copyright (C) 2015 Google Inc.
+ * Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023-2023 RasterGrid Kft.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,10 +99,8 @@ LOADER_EXPORT VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkI
         struct loader_instance *ptr_instance = loader_get_instance(instance);
         // If we've gotten here and the pointer is NULL, it's invalid
         if (ptr_instance == NULL) {
-            loader_log(NULL,
-                       VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT |
-                           VULKAN_LOADER_VALIDATION_BIT,
-                       0, "vkGetInstanceProcAddr: Invalid instance [VUID-vkGetInstanceProcAddr-instance-parameter]");
+            loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
+                       "vkGetInstanceProcAddr: Invalid instance [VUID-vkGetInstanceProcAddr-instance-parameter]");
             abort(); /* Intentionally fail so user can correct issue. */
         }
         // Return trampoline code for non-global entrypoints including any extensions.
@@ -486,12 +486,51 @@ LOADER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateInstanceVersion(uint32_t
     return res;
 }
 
+// Add the "instance-only" debug functions to the list of active debug functions
+// at the very end.  This way it doesn't get replaced by any new messengers
+void loader_add_instance_only_debug_funcs(struct loader_instance *ptr_instance) {
+    VkLayerDbgFunctionNode *cur_node = ptr_instance->current_dbg_function_head;
+    if (cur_node == NULL) {
+        ptr_instance->current_dbg_function_head = ptr_instance->instance_only_dbg_function_head;
+    } else {
+        while (cur_node != NULL) {
+            if (cur_node == ptr_instance->instance_only_dbg_function_head) {
+                // Already added
+                break;
+            }
+            // Last item
+            else if (cur_node->pNext == NULL) {
+                cur_node->pNext = ptr_instance->instance_only_dbg_function_head;
+            }
+            cur_node = cur_node->pNext;
+        }
+    }
+}
+
+// Remove the "instance-only" debug functions from the list of active debug functions.
+// It should be added after the last actual debug utils/debug report function.
+void loader_remove_instance_only_debug_funcs(struct loader_instance *ptr_instance) {
+    VkLayerDbgFunctionNode *cur_node = ptr_instance->current_dbg_function_head;
+
+    // Only thing in list is the instance only head
+    if (cur_node == ptr_instance->instance_only_dbg_function_head) {
+        ptr_instance->current_dbg_function_head = NULL;
+    }
+    while (cur_node != NULL) {
+        if (cur_node->pNext == ptr_instance->instance_only_dbg_function_head) {
+            cur_node->pNext = NULL;
+            break;
+        }
+        cur_node = cur_node->pNext;
+    }
+}
+
 LOADER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCreateInfo *pCreateInfo,
                                                               const VkAllocationCallbacks *pAllocator, VkInstance *pInstance) {
     struct loader_instance *ptr_instance = NULL;
     VkInstance created_instance = VK_NULL_HANDLE;
     VkResult res = VK_ERROR_INITIALIZATION_FAILED;
-    VkInstanceCreateInfo ici = *pCreateInfo;
+    VkInstanceCreateInfo ici = {0};
     struct loader_envvar_all_filters layer_filters = {0};
 
     LOADER_PLATFORM_THREAD_ONCE(&once_init, loader_initialize);
@@ -501,6 +540,8 @@ LOADER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCr
                    "vkCreateInstance: \'pCreateInfo\' is NULL (VUID-vkCreateInstance-pCreateInfo-parameter)");
         goto out;
     }
+    ici = *pCreateInfo;
+
     if (pInstance == NULL) {
         loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
                    "vkCreateInstance \'pInstance\' not valid (VUID-vkCreateInstance-pInstance-parameter)");
@@ -556,6 +597,15 @@ LOADER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCr
         log_settings(ptr_instance, &ptr_instance->settings);
     }
 
+    // Providing an apiVersion less than VK_API_VERSION_1_0 but greater than zero prevents the validation layers from starting
+    if (pCreateInfo->pApplicationInfo && pCreateInfo->pApplicationInfo->apiVersion < VK_API_VERSION_1_0) {
+        loader_log(ptr_instance, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT, 0,
+                   "VkInstanceCreateInfo::pApplicationInfo::apiVersion has value of %u which is not permitted. If apiVersion is "
+                   "not 0, then it must be "
+                   "greater than or equal to the value of VK_API_VERSION_1_0 [VUID-VkApplicationInfo-apiVersion]",
+                   pCreateInfo->pApplicationInfo->apiVersion);
+    }
+
     // Check the VkInstanceCreateInfoFlags wether to allow the portability enumeration flag
     if ((pCreateInfo->flags & VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR) == 1) {
         ptr_instance->portability_enumeration_flag_bit_set = true;
@@ -574,14 +624,15 @@ LOADER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkCreateInstance(const VkInstanceCr
         }
     }
 
-    // Make sure the application provided API version has 0 for its variant
+    // Make sure the application provided API version has the correct variant
     if (NULL != pCreateInfo->pApplicationInfo) {
         uint32_t variant_version = VK_API_VERSION_VARIANT(pCreateInfo->pApplicationInfo->apiVersion);
-        if (0 != variant_version) {
+        const uint32_t expected_variant = 0;
+        if (expected_variant != variant_version) {
             loader_log(ptr_instance, VULKAN_LOADER_WARN_BIT, 0,
                        "vkCreateInstance: The API Variant specified in pCreateInfo->pApplicationInfo.apiVersion is %d instead of "
-                       "the expected value of 0.",
-                       variant_version);
+                       "the expected value of %d.",
+                       variant_version, expected_variant);
         }
     }
 
@@ -749,8 +800,7 @@ out:
             loader_instance_heap_free(ptr_instance, ptr_instance);
         } else {
             // success path, swap out created debug callbacks out so they aren't used until instance destruction
-            ptr_instance->InstanceCreationDeletionDebugFunctionHead = ptr_instance->DbgFunctionHead;
-            ptr_instance->DbgFunctionHead = NULL;
+            loader_remove_instance_only_debug_funcs(ptr_instance);
         }
         // Only unlock when ptr_instance isn't NULL, as if it is, the above code didn't make it to when loader_lock was locked.
         loader_platform_thread_unlock_mutex(&loader_lock);
@@ -770,10 +820,8 @@ LOADER_EXPORT VKAPI_ATTR void VKAPI_CALL vkDestroyInstance(VkInstance instance, 
 
     ptr_instance = loader_get_instance(instance);
     if (ptr_instance == NULL) {
-        loader_log(
-            NULL,
-            VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT,
-            0, "vkDestroyInstance: Invalid instance [VUID-vkDestroyInstance-instance-parameter]");
+        loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
+                   "vkDestroyInstance: Invalid instance [VUID-vkDestroyInstance-instance-parameter]");
         loader_platform_thread_unlock_mutex(&loader_lock);
         abort(); /* Intentionally fail so user can correct issue. */
     }
@@ -786,8 +834,7 @@ LOADER_EXPORT VKAPI_ATTR void VKAPI_CALL vkDestroyInstance(VkInstance instance, 
     destroy_debug_callbacks_chain(ptr_instance, pAllocator);
 
     // Swap in the debug callbacks created during instance creation
-    ptr_instance->DbgFunctionHead = ptr_instance->InstanceCreationDeletionDebugFunctionHead;
-    ptr_instance->InstanceCreationDeletionDebugFunctionHead = NULL;
+    loader_add_instance_only_debug_funcs(ptr_instance);
 
     disp = loader_get_instance_layer_dispatch(instance);
     disp->DestroyInstance(ptr_instance->instance, pAllocator);
@@ -829,20 +876,15 @@ LOADER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkEnumeratePhysicalDevices(VkInstan
 
     inst = loader_get_instance(instance);
     if (NULL == inst) {
-        loader_log(
-            NULL,
-            VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT,
-            0, "vkEnumeratePhysicalDevices: Invalid instance [VUID-vkEnumeratePhysicalDevices-instance-parameter]");
+        loader_log(NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
+                   "vkEnumeratePhysicalDevices: Invalid instance [VUID-vkEnumeratePhysicalDevices-instance-parameter]");
         abort(); /* Intentionally fail so user can correct issue. */
     }
 
     if (NULL == pPhysicalDeviceCount) {
-        loader_log(
-            inst,
-            VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT,
-            0,
-            "vkEnumeratePhysicalDevices: Received NULL pointer for physical device count return value. "
-            "[VUID-vkEnumeratePhysicalDevices-pPhysicalDeviceCount-parameter]");
+        loader_log(inst, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
+                   "vkEnumeratePhysicalDevices: Received NULL pointer for physical device count return value. "
+                   "[VUID-vkEnumeratePhysicalDevices-pPhysicalDeviceCount-parameter]");
         res = VK_ERROR_INITIALIZATION_FAILED;
         goto out;
     }
@@ -870,9 +912,8 @@ LOADER_EXPORT VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFeatures(VkPhysicalD
     VkPhysicalDevice unwrapped_phys_dev = loader_unwrap_physical_device(physicalDevice);
     if (VK_NULL_HANDLE == unwrapped_phys_dev) {
         loader_log(
-            NULL,
-            VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT,
-            0, "vkGetPhysicalDeviceFeatures: Invalid physicalDevice [VUID-vkGetPhysicalDeviceFeatures-physicalDevice-parameter]");
+            NULL, VULKAN_LOADER_FATAL_ERROR_BIT | VULKAN_LOADER_ERROR_BIT | VULKAN_LOADER_VALIDATION_BIT, 0,
+            "vkGetPhysicalDeviceFeatures: Invalid physicalDevice [VUID-vkGetPhysicalDeviceFeatures-physicalDevice-parameter]");
         abort(); /* Intentionally fail so user can correct issue. */
     }
     disp = loader_get_instance_layer_dispatch(physicalDevice);
@@ -1943,7 +1984,7 @@ LOADER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkAllocateCommandBuffers(VkDevice d
     if (res == VK_SUCCESS) {
         for (uint32_t i = 0; i < pAllocateInfo->commandBufferCount; i++) {
             if (pCommandBuffers[i]) {
-                loader_init_dispatch(pCommandBuffers[i], disp);
+                loader_set_dispatch(pCommandBuffers[i], disp);
             }
         }
     }
@@ -2752,7 +2793,7 @@ LOADER_EXPORT VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceExternalBufferProper
 }
 
 LOADER_EXPORT VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceExternalSemaphoreProperties(
-    VkPhysicalDevice physicalDevice, const VkPhysicalDeviceExternalSemaphoreInfoKHR *pExternalSemaphoreInfo,
+    VkPhysicalDevice physicalDevice, const VkPhysicalDeviceExternalSemaphoreInfo *pExternalSemaphoreInfo,
     VkExternalSemaphoreProperties *pExternalSemaphoreProperties) {
     VkPhysicalDevice unwrapped_phys_dev = loader_unwrap_physical_device(physicalDevice);
     if (VK_NULL_HANDLE == unwrapped_phys_dev) {

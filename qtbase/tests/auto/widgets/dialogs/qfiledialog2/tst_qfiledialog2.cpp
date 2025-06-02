@@ -25,6 +25,7 @@
 #include <qlayout.h>
 #include <qmenu.h>
 #include <qrandom.h>
+#include <qpointer.h>
 #include "../../../../../src/widgets/dialogs/qsidebar_p.h"
 #include "../../../../../src/gui/itemmodels/qfilesystemmodel_p.h"
 #include "../../../../../src/widgets/dialogs/qfiledialog_p.h"
@@ -104,6 +105,7 @@ private slots:
     void QTBUG4419_lineEditSelectAll();
     void QTBUG6558_showDirsOnly();
     void QTBUG4842_selectFilterWithHideNameFilterDetails();
+    void noCrashWhenParentIsDeleted();
     void dontShowCompleterOnRoot();
     void nameFilterParsing_data();
     void nameFilterParsing();
@@ -1110,7 +1112,6 @@ void tst_QFileDialog2::task254490_selectFileMultipleTimes()
     QTemporaryFile *t;
     t = new QTemporaryFile;
     QVERIFY2(t->open(), qPrintable(t->errorString()));
-    t->open();
     QFileDialog fd(0, "TestFileDialog");
 
     fd.setDirectory(tempPath);
@@ -1253,7 +1254,7 @@ void tst_QFileDialog2::QTBUG6558_showDirsOnly()
 
     //Create a file
     QFile tempFile(dirPath + "/plop.txt");
-    tempFile.open(QIODevice::WriteOnly | QIODevice::Text);
+    QVERIFY(tempFile.open(QIODevice::WriteOnly | QIODevice::Text));
     QTextStream out(&tempFile);
     out << "The magic number is: " << 49 << "\n";
     tempFile.close();
@@ -1266,7 +1267,6 @@ void tst_QFileDialog2::QTBUG6558_showDirsOnly()
     fd.setOption(QFileDialog::ShowDirsOnly, true);
     fd.show();
 
-    QApplicationPrivate::setActiveWindow(&fd);
     QVERIFY(QTest::qWaitForWindowActive(&fd));
     QCOMPARE(fd.isVisible(), true);
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&fd));
@@ -1310,7 +1310,6 @@ void tst_QFileDialog2::QTBUG4842_selectFilterWithHideNameFilterDetails()
     fd.selectNameFilter(chosenFilterString);
     fd.show();
 
-    QApplicationPrivate::setActiveWindow(&fd);
     QVERIFY(QTest::qWaitForWindowActive(&fd));
     QCOMPARE(fd.isVisible(), true);
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&fd));
@@ -1326,7 +1325,6 @@ void tst_QFileDialog2::QTBUG4842_selectFilterWithHideNameFilterDetails()
     fd2.selectNameFilter(chosenFilterString);
     fd2.show();
 
-    QApplicationPrivate::setActiveWindow(&fd2);
     QVERIFY(QTest::qWaitForWindowActive(&fd2));
     QCOMPARE(fd2.isVisible(), true);
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&fd2));
@@ -1335,6 +1333,53 @@ void tst_QFileDialog2::QTBUG4842_selectFilterWithHideNameFilterDetails()
     //We compare the current combobox text with the non stripped version
     QCOMPARE(filters2->currentText(), chosenFilterString);
 
+}
+
+void tst_QFileDialog2::noCrashWhenParentIsDeleted()
+{
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        const QUrl url = QFileDialog::getOpenFileUrl(mainWindow.get(),
+                                                     QStringLiteral("getOpenFileUrl"));
+        QVERIFY(url.isEmpty());
+        QVERIFY(!url.isValid());
+        QVERIFY(!mainWindow.get());
+    }
+
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        const QUrl url = QFileDialog::getSaveFileUrl(mainWindow.get(),
+                                                     QStringLiteral("getSaveFileUrl"));
+        QVERIFY(url.isEmpty());
+        QVERIFY(!url.isValid());
+        QVERIFY(!mainWindow.get());
+    }
+
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        const QUrl url
+                = QFileDialog::getExistingDirectoryUrl(mainWindow.get(),
+                                                       QStringLiteral("getExistingDirectoryUrl"));
+        QVERIFY(url.isEmpty());
+        QVERIFY(!url.isValid());
+        QVERIFY(!mainWindow.get());
+    }
+
+    {
+        QPointer<QWidget> mainWindow = new QWidget();
+        QTimer::singleShot(1000, mainWindow, [mainWindow]
+                           { if (mainWindow.get()) mainWindow->deleteLater(); });
+        const QList<QUrl> url = QFileDialog::getOpenFileUrls(mainWindow.get(),
+                                                      QStringLiteral("getOpenFileUrls"));
+        QVERIFY(url.isEmpty());
+        QVERIFY(!mainWindow.get());
+    }
 }
 
 void tst_QFileDialog2::dontShowCompleterOnRoot()
@@ -1346,7 +1391,6 @@ void tst_QFileDialog2::dontShowCompleterOnRoot()
     fd.setAcceptMode(QFileDialog::AcceptSave);
     fd.show();
 
-    QApplicationPrivate::setActiveWindow(&fd);
     QVERIFY(QTest::qWaitForWindowActive(&fd));
     QCOMPARE(fd.isVisible(), true);
     QCOMPARE(QApplication::activeWindow(), static_cast<QWidget*>(&fd));

@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
 #include "src/tint/lang/msl/writer/ast_printer/helper_test.h"
@@ -62,7 +75,7 @@ TEST_F(MslASTPrinterTest_Constructor, Float) {
 }
 
 TEST_F(MslASTPrinterTest_Constructor, F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     // Use a number close to 1<<16 but whose decimal representation ends in 0.
     WrapInFunction(Expr(f16((1 << 15) - 8)));
@@ -83,7 +96,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Float) {
 }
 
 TEST_F(MslASTPrinterTest_Constructor, Type_F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     WrapInFunction(Call<f16>(-1.2e-3_h));
 
@@ -130,7 +143,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Vec_F32) {
 }
 
 TEST_F(MslASTPrinterTest_Constructor, Type_Vec_F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     WrapInFunction(Call<vec3<f16>>(1_h, 2_h, 3_h));
 
@@ -150,7 +163,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Vec_Empty_F32) {
 }
 
 TEST_F(MslASTPrinterTest_Constructor, Type_Vec_Empty_F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     WrapInFunction(Call<vec3<f16>>());
 
@@ -170,7 +183,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Vec_SingleScalar_F32_Literal) {
 }
 
 TEST_F(MslASTPrinterTest_Constructor, Type_Vec_SingleScalar_F16_Literal) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     WrapInFunction(Call<vec3<f16>>(2_h));
 
@@ -193,7 +206,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Vec_SingleScalar_F32_Var) {
 }
 
 TEST_F(MslASTPrinterTest_Constructor, Type_Vec_SingleScalar_F16_Var) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* var = Var("v", Expr(2_h));
     auto* cast = Call<vec3<f16>>(var);
@@ -246,7 +259,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Mat_F32) {
 }
 
 TEST_F(MslASTPrinterTest_Constructor, Type_Mat_F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     WrapInFunction(
         Call<mat2x3<f16>>(Call<vec3<f16>>(1_h, 2_h, 3_h), Call<vec3<f16>>(3_h, 4_h, 5_h)));
@@ -292,7 +305,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Mat_Complex_F16) {
     //     vec4<f16>(7.0h),
     //     vec4<f16>(vec4<f16>(42.0h, 21.0h, 6.0h, -5.0h)),
     //   );
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* vector_literal = Call<vec4<f16>>(f16(2.0), f16(3.0), f16(4.0), f16(8.0));
     auto* vector_zero_init = Call<vec4<f16>>();
@@ -325,7 +338,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Mat_Empty_F32) {
 }
 
 TEST_F(MslASTPrinterTest_Constructor, Type_Mat_Empty_F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     WrapInFunction(Call<mat2x3<f16>>());
 
@@ -361,7 +374,7 @@ TEST_F(MslASTPrinterTest_Constructor, Type_Mat_Identity_F16) {
     //     var m_2: mat4x4<f16> = mat4x4<f16>(m_1);
     // }
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* m_1 = Var("m_1", ty.mat4x4(ty.f16()), Call<mat4x4<f16>>());
     auto* m_2 = Var("m_2", ty.mat4x4(ty.f16()), Call<mat4x4<f16>>(m_1));

@@ -1001,6 +1001,29 @@ void tst_QCoreApplication::threadedEventDelivery()
 
 }
 
+#if QT_CONFIG(process)
+#if defined(Q_OS_WIN)
+#  define EXE ".exe"
+#else
+#  define EXE ""
+#endif
+void tst_QCoreApplication::runHelperTest()
+{
+#  ifdef Q_OS_ANDROID
+    QSKIP("Skipped on Android: helper not present");
+#  endif
+    int argc = 0;
+    QCoreApplication app(argc, nullptr);
+    QProcess process;
+    process.start(QFINDTESTDATA("apphelper" EXE), { QTest::currentTestFunction() });
+    QVERIFY2(process.waitForFinished(5000), qPrintable(process.errorString()));
+    QCOMPARE(process.readAllStandardError(), QString());
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 0);
+}
+#undef EXE
+#endif
+
 void tst_QCoreApplication::testTrWithPercantegeAtTheEnd()
 {
     QCoreApplication::translate("testcontext", "this will crash%", "testdisamb", 3);
@@ -1041,7 +1064,7 @@ void tst_QCoreApplication::addRemoveLibPaths()
 static bool theMainThreadIsSet()
 {
     // QCoreApplicationPrivate::mainThread() has a Q_ASSERT we'd trigger
-    return QCoreApplicationPrivate::theMainThread.loadRelaxed() != nullptr;
+    return QCoreApplicationPrivate::theMainThreadId.loadRelaxed() != nullptr;
 }
 
 static bool theMainThreadWasUnset = !theMainThreadIsSet(); // global static
@@ -1053,8 +1076,8 @@ void tst_QCoreApplication::theMainThread()
     int argc = 1;
     char *argv[] = { const_cast<char*>(QTest::currentAppName()) };
     TestApplication app(argc, argv);
-    QVERIFY(QCoreApplicationPrivate::theMainThread.loadRelaxed());
-    QCOMPARE(QCoreApplicationPrivate::theMainThread.loadRelaxed(), thread());
+    QVERIFY(QCoreApplicationPrivate::theMainThreadId.loadRelaxed());
+    QVERIFY(QThread::isMainThread());
     QCOMPARE(app.thread(), thread());
     QCOMPARE(app.thread(), QThread::currentThread());
 }
@@ -1064,13 +1087,6 @@ static void createQObjectOnDestruction()
     // Make sure that we can create a QObject (and thus have an associated
     // QThread) after the last QObject has been destroyed (especially after
     // QCoreApplication has).
-
-#if !defined(QT_QGUIAPPLICATIONTEST) && !defined(Q_OS_WIN) && !defined(Q_OS_VXWORKS)
-    // QCoreApplicationData's global static destructor has run and cleaned up
-    // the QAdoptedThrad.
-    if (theMainThreadIsSet())
-        qFatal("theMainThreadIsSet() returned true; some QObject must have leaked");
-#endif
 
     // Before the fixes, this would cause a dangling pointer dereference. If
     // the problem comes back, it's possible that the following causes no
@@ -1106,6 +1122,57 @@ void tst_QCoreApplication::testDeleteLaterFromBeforeOutermostEventLoop()
     QTimer::singleShot(0, &loop, &QEventLoop::quit);
     loop.exec();
     QVERIFY(!spyPointer);
+}
+
+void tst_QCoreApplication::setIndividualAttributes_data()
+{
+    QTest::addColumn<Qt::ApplicationAttribute>("attribute");
+
+    const QMetaEnum &metaEnum = Qt::staticMetaObject.enumerator(Qt::staticMetaObject.indexOfEnumerator("ApplicationAttribute"));
+    // - 1 to avoid AA_AttributeCount.
+    for (int i = 0; i < metaEnum.keyCount(); ++i) {
+        const auto attribute = static_cast<Qt::ApplicationAttribute>(metaEnum.value(i));
+        if (attribute == Qt::AA_AttributeCount)
+            continue;
+
+        QTest::addRow("%s", metaEnum.key(i)) << attribute;
+    }
+}
+
+void tst_QCoreApplication::setIndividualAttributes()
+{
+    QFETCH(Qt::ApplicationAttribute, attribute);
+
+    const auto originalValue = QCoreApplication::testAttribute(attribute);
+    auto cleanup = qScopeGuard([=]() {
+        QCoreApplication::setAttribute(attribute, originalValue);
+    });
+
+    QCoreApplication::setAttribute(attribute, true);
+    QVERIFY(QCoreApplication::testAttribute(attribute));
+
+    QCoreApplication::setAttribute(attribute, false);
+    QVERIFY(!QCoreApplication::testAttribute(attribute));
+}
+
+void tst_QCoreApplication::setMultipleAttributes()
+{
+    const auto originalDontUseNativeMenuWindowsValue = QCoreApplication::testAttribute(Qt::AA_DontUseNativeMenuWindows);
+    const auto originalDisableSessionManagerValue = QCoreApplication::testAttribute(Qt::AA_DisableSessionManager);
+    auto cleanup = qScopeGuard([=]() {
+        QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuWindows, originalDontUseNativeMenuWindowsValue);
+        QCoreApplication::setAttribute(Qt::AA_DisableSessionManager, originalDisableSessionManagerValue);
+    });
+
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuWindows, true);
+    QCoreApplication::setAttribute(Qt::AA_DisableSessionManager, true);
+    QVERIFY(QCoreApplication::testAttribute(Qt::AA_DontUseNativeMenuWindows));
+    QVERIFY(QCoreApplication::testAttribute(Qt::AA_DisableSessionManager));
+
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuWindows, false);
+    QCoreApplication::setAttribute(Qt::AA_DisableSessionManager, false);
+    QVERIFY(!QCoreApplication::testAttribute(Qt::AA_DontUseNativeMenuWindows));
+    QVERIFY(!QCoreApplication::testAttribute(Qt::AA_DisableSessionManager));
 }
 
 #ifndef QT_QGUIAPPLICATIONTEST

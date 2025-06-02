@@ -280,6 +280,10 @@ qreal QScreen::logicalDotsPerInch() const
     Common values are 1.0 on normal displays and 2.0 on "retina" displays.
     Higher values are also possible.
 
+    \note On some platforms the devicePixelRatio of a window and the screen it is on can
+    be different. Use this function only when you don't know which window you are targeting.
+    If you do know the target window, use QWindow::devicePixelRatio() instead.
+
     \sa QWindow::devicePixelRatio(), QGuiApplication::devicePixelRatio()
 */
 qreal QScreen::devicePixelRatio() const
@@ -461,8 +465,8 @@ Qt::ScreenOrientation QScreen::orientation() const
   \property QScreen::refreshRate
   \brief the approximate vertical refresh rate of the screen in Hz
 
-  \warning Avoid using the screen's refresh rate to drive animations
-  via a timer such as QTimer. Instead use QWindow::requestUpdate().
+  \warning Avoid using the screen's refresh rate to drive animations via a
+  timer such as QChronoTimer. Instead use QWindow::requestUpdate().
 
   \sa QWindow::requestUpdate()
 */

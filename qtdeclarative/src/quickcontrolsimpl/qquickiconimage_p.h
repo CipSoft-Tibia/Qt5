@@ -22,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 class QQuickIconImagePrivate;
 
-class Q_QUICKCONTROLS2IMPL_PRIVATE_EXPORT QQuickIconImage : public QQuickImage
+class Q_QUICKCONTROLS2IMPL_EXPORT QQuickIconImage : public QQuickImage
 {
     Q_OBJECT
     Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged FINAL)
@@ -40,6 +40,8 @@ public:
     void setColor(const QColor &color);
 
     void setSource(const QUrl &url) override;
+
+    void snapPositionTo(QPointF pos);
 
 Q_SIGNALS:
     void nameChanged();

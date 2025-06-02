@@ -17,10 +17,6 @@
 #include "components/security_interstitials/core/metrics_helper.h"
 #include "url/gurl.h"
 
-namespace content {
-class NavigationHandle;
-}
-
 namespace security_interstitials {
 class SettingsPageHelper;
 }
@@ -48,7 +44,11 @@ class BaseBlockingPage
 
   // Returns true if the passed |unsafe_resources| is blocking the load of
   // the main page.
-  static bool IsMainPageLoadBlocked(const UnsafeResourceList& unsafe_resources);
+  static bool IsMainPageLoadPending(const UnsafeResourceList& unsafe_resources);
+
+  // Returns true if one of the resources in |unsafe_resources| is from
+  // subresource.
+  static bool IsSubresource(const UnsafeResourceList& unsafe_resources);
 
   // SecurityInterstitialPage method:
   void CommandReceived(const std::string& command) override;
@@ -71,11 +71,7 @@ class BaseBlockingPage
       std::unique_ptr<security_interstitials::SettingsPageHelper>
           settings_page_helper);
 
-  // If `this` was created for a post commit error page,
-  // `error_page_navigation_handle` is the navigation created for this blocking
-  // page.
-  virtual void CreatedPostCommitErrorPageNavigation(
-      content::NavigationHandle* error_page_navigation_handle) {}
+  BaseSafeBrowsingErrorUI* sb_error_ui() const;
 
  protected:
   // Don't instantiate this class directly, use ShowBlockingPage instead.
@@ -125,8 +121,6 @@ class BaseBlockingPage
   bool proceeded() const;
 
   int64_t threat_details_proceed_delay() const;
-
-  BaseSafeBrowsingErrorUI* sb_error_ui() const;
 
   void set_proceeded(bool proceeded);
 

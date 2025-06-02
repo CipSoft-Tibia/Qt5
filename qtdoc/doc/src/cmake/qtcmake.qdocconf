@@ -33,6 +33,7 @@ depends += \
     qtgui \
     qtinterfaceframework \
     qtlinguist \
+    qtmultimedia \
     qtnetwork \
     qtprotobuf \
     qtgrpc \
@@ -44,5 +45,7 @@ depends += \
     qtsql \
     qtwebengine \
     qtwidgets \
+    qtwaylandcompositor \
+    qtwaylandclient \
 
 navigation.landingpage = "Build with CMake"

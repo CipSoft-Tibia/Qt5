@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/metal/CommandRecordingContext.h"
 
@@ -22,7 +35,7 @@ CommandRecordingContext::CommandRecordingContext() = default;
 
 CommandRecordingContext::~CommandRecordingContext() {
     // Commands must be acquired.
-    ASSERT(mCommands == nullptr);
+    DAWN_ASSERT(mCommands == nullptr);
 }
 
 id<MTLCommandBuffer> CommandRecordingContext::GetCommands() {
@@ -45,9 +58,9 @@ bool CommandRecordingContext::WasUsed() const {
 
 MaybeError CommandRecordingContext::PrepareNextCommandBuffer(id<MTLCommandQueue> queue) {
     @autoreleasepool {
-        ASSERT(mCommands == nil);
-        ASSERT(!mNeedsSubmit);
-        ASSERT(!mUsed);
+        DAWN_ASSERT(mCommands == nil);
+        DAWN_ASSERT(!mNeedsSubmit);
+        DAWN_ASSERT(!mUsed);
 
         mCommands = [queue commandBuffer];
         if (mCommands == nil) {
@@ -64,7 +77,7 @@ NSPRef<id<MTLCommandBuffer>> CommandRecordingContext::AcquireCommands() {
         EndBlit();
     }
 
-    ASSERT(!mInEncoder);
+    DAWN_ASSERT(!mInEncoder);
     mNeedsSubmit = false;
     mUsed = false;
     return std::move(mCommands);
@@ -73,10 +86,10 @@ NSPRef<id<MTLCommandBuffer>> CommandRecordingContext::AcquireCommands() {
 id<MTLBlitCommandEncoder> CommandRecordingContext::BeginBlit(MTLBlitPassDescriptor* descriptor)
     API_AVAILABLE(macos(11.0), ios(14.0)) {
     @autoreleasepool {
-        ASSERT(descriptor);
-        ASSERT(mCommands != nullptr);
-        ASSERT(mBlit == nullptr);
-        ASSERT(!mInEncoder);
+        DAWN_ASSERT(descriptor);
+        DAWN_ASSERT(mCommands != nullptr);
+        DAWN_ASSERT(mBlit == nullptr);
+        DAWN_ASSERT(!mInEncoder);
 
         mInEncoder = true;
         mBlit = [*mCommands blitCommandEncoderWithDescriptor:descriptor];
@@ -85,11 +98,11 @@ id<MTLBlitCommandEncoder> CommandRecordingContext::BeginBlit(MTLBlitPassDescript
 }
 
 id<MTLBlitCommandEncoder> CommandRecordingContext::EnsureBlit() {
-    ASSERT(mCommands != nullptr);
+    DAWN_ASSERT(mCommands != nullptr);
 
     if (mBlit == nullptr) {
         @autoreleasepool {
-            ASSERT(!mInEncoder);
+            DAWN_ASSERT(!mInEncoder);
             mInEncoder = true;
             mBlit = [*mCommands blitCommandEncoder];
         }
@@ -98,7 +111,7 @@ id<MTLBlitCommandEncoder> CommandRecordingContext::EnsureBlit() {
 }
 
 void CommandRecordingContext::EndBlit() {
-    ASSERT(mCommands != nullptr);
+    DAWN_ASSERT(mCommands != nullptr);
 
     if (mBlit != nullptr) {
         [*mBlit endEncoding];
@@ -109,9 +122,9 @@ void CommandRecordingContext::EndBlit() {
 
 id<MTLComputeCommandEncoder> CommandRecordingContext::BeginCompute() {
     @autoreleasepool {
-        ASSERT(mCommands != nullptr);
-        ASSERT(mCompute == nullptr);
-        ASSERT(!mInEncoder);
+        DAWN_ASSERT(mCommands != nullptr);
+        DAWN_ASSERT(mCompute == nullptr);
+        DAWN_ASSERT(!mInEncoder);
 
         mInEncoder = true;
         mCompute = [*mCommands computeCommandEncoder];
@@ -122,10 +135,10 @@ id<MTLComputeCommandEncoder> CommandRecordingContext::BeginCompute() {
 id<MTLComputeCommandEncoder> CommandRecordingContext::BeginCompute(
     MTLComputePassDescriptor* descriptor) API_AVAILABLE(macos(11.0), ios(14.0)) {
     @autoreleasepool {
-        ASSERT(descriptor);
-        ASSERT(mCommands != nullptr);
-        ASSERT(mCompute == nullptr);
-        ASSERT(!mInEncoder);
+        DAWN_ASSERT(descriptor);
+        DAWN_ASSERT(mCommands != nullptr);
+        DAWN_ASSERT(mCompute == nullptr);
+        DAWN_ASSERT(!mInEncoder);
 
         mInEncoder = true;
         mCompute = [*mCommands computeCommandEncoderWithDescriptor:descriptor];
@@ -134,8 +147,8 @@ id<MTLComputeCommandEncoder> CommandRecordingContext::BeginCompute(
 }
 
 void CommandRecordingContext::EndCompute() {
-    ASSERT(mCommands != nullptr);
-    ASSERT(mCompute != nullptr);
+    DAWN_ASSERT(mCommands != nullptr);
+    DAWN_ASSERT(mCompute != nullptr);
 
     [*mCompute endEncoding];
     mCompute = nullptr;
@@ -145,9 +158,9 @@ void CommandRecordingContext::EndCompute() {
 id<MTLRenderCommandEncoder> CommandRecordingContext::BeginRender(
     MTLRenderPassDescriptor* descriptor) {
     @autoreleasepool {
-        ASSERT(mCommands != nullptr);
-        ASSERT(mRender == nullptr);
-        ASSERT(!mInEncoder);
+        DAWN_ASSERT(mCommands != nullptr);
+        DAWN_ASSERT(mRender == nullptr);
+        DAWN_ASSERT(!mInEncoder);
 
         mInEncoder = true;
         mRender = [*mCommands renderCommandEncoderWithDescriptor:descriptor];
@@ -156,8 +169,8 @@ id<MTLRenderCommandEncoder> CommandRecordingContext::BeginRender(
 }
 
 void CommandRecordingContext::EndRender() {
-    ASSERT(mCommands != nullptr);
-    ASSERT(mRender != nullptr);
+    DAWN_ASSERT(mCommands != nullptr);
+    DAWN_ASSERT(mRender != nullptr);
 
     [*mRender endEncoding];
     mRender = nullptr;

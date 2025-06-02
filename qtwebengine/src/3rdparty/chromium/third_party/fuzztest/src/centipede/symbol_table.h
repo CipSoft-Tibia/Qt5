@@ -17,10 +17,19 @@
 
 #include <cstddef>
 #include <istream>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "absl/container/node_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/pc_info.h"
@@ -31,6 +40,35 @@ namespace centipede {
 // function names, file names, line numbers, column numbers.
 class SymbolTable {
  public:
+  // Defines a symbol table entry.
+  struct Entry {
+    std::string_view func;
+    std::string_view file;
+    int line = -1;
+    int col = -1;
+    bool operator==(const Entry &other) const = default;
+    std::string file_line_col() const {
+      if (absl::StrContains(file, "?")) {
+        return std::string{file};
+      }
+      std::string ret = std::string{file};
+      if (line >= 0) {
+        absl::StrAppend(&ret, ":", line);
+      }
+      if (col >= 0) {
+        absl::StrAppend(&ret, ":", col);
+      }
+      return ret;
+    }
+  };
+
+  SymbolTable() = default;
+  SymbolTable(const SymbolTable &) = delete;
+  SymbolTable(SymbolTable &&) = default;
+  SymbolTable &operator=(SymbolTable &&) = default;
+
+  bool operator==(const SymbolTable &other) const;
+
   // Reads the symbols from a stream produced by `llvm-symbolizer --no-inlines`.
   // https://llvm.org/docs/CommandGuide/llvm-symbolizer.html.
   // The input consists of tuples of 3 lines each:
@@ -39,6 +77,10 @@ class SymbolTable {
   //   <empty line>
   // If called multiple times, this function will append symbols to `this`.
   void ReadFromLLVMSymbolizer(std::istream &in);
+
+  // Writes the contents of `this` to `path` in the same format as read by
+  // `ReadFromLLVMSymbolizer`.
+  void WriteToLLVMSymbolizer(std::ostream &out);
 
   // Invokes `symbolizer_path --no-inlines` on all binaries from `dso_table`,
   // pipes through it all PCs in pc_table that correspond to each of the
@@ -63,30 +105,38 @@ class SymbolTable {
   size_t size() const { return entries_.size(); }
 
   // Returns "FunctionName" for idx-th entry.
-  const std::string &func(size_t idx) const { return entries_[idx].func; }
+  std::string_view func(size_t idx) const { return entries_[idx].func; }
+
+  Entry entry(size_t idx) const { return entries_[idx]; }
 
   // Returns source code location for idx-th entry,
-  const std::string &location(size_t idx) const {
-    return entries_[idx].file_line_col;
+  std::string location(size_t idx) const {
+    return entries_[idx].file_line_col();
   }
 
   // Returns a full human-readable description for idx-th entry.
   std::string full_description(size_t idx) const {
-    return func(idx) + " " + location(idx);
+    return std::string{func(idx)} + " " + location(idx);
   }
-
-  // Defines a symbol table entry.
-  struct Entry {
-    std::string func;
-    std::string file_line_col;
-  };
 
   // Add function name and file location to symbol table.
-  void AddEntry(std::string_view func, std::string_view file_line_col) {
-    entries_.push_back({std::string(func), std::string(file_line_col)});
-  }
+  void AddEntry(std::string_view func, std::string_view file_line_col);
 
  private:
+  void AddEntryInternal(std::string_view func, std::string_view file,
+                        int line = -1, int col = -1);
+
+  std::string_view GetOrInsert(std::string_view str);
+
+  // Declaration order matters here, because we want `table_` to be deleted last
+  // in order to avoid having dangling ptrs in `entries_`.
+
+  // Holds the strings for files and function names of the stored symbols. This
+  // avoids storing duplicate values. `node_hash_set` was chosen in order to
+  // have pointer stability and not bother with storing strings in `unique_ptr`.
+  absl::node_hash_set<std::string> table_;
+
+  // Holds the the symbol entries.
   std::vector<Entry> entries_;
 };
 

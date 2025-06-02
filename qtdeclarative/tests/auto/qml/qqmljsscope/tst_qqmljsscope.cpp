@@ -31,27 +31,27 @@ class tst_qqmljsscope : public QQmlDataTest
 {
     Q_OBJECT
 
-    QString loadUrl(const QString &url)
+    QString loadFile(const QString &file)
     {
-        const QFileInfo fi(url);
+        const QFileInfo fi(file);
         QFile f(fi.absoluteFilePath());
-        f.open(QIODevice::ReadOnly);
-        QByteArray data(fi.size(), Qt::Uninitialized);
-        f.read(data.data(), data.size());
+        if (!f.open(QIODevice::ReadOnly))
+            qFatal("Could not open file %s", qPrintable(file));
+        QByteArray data = f.readAll();
         return QString::fromUtf8(data);
     }
 
-    QQmlJSScope::ConstPtr run(QString url, bool expectErrorsOrWarnings = false)
+    QQmlJSScope::ConstPtr run(const QString &unresolved, bool expectErrorsOrWarnings = false)
     {
-        QmlIR::Document document(false);
-        return run(url, &document, expectErrorsOrWarnings);
+        const QString resolved = testFile(unresolved);
+        QmlIR::Document document(resolved, resolved, false);
+        return run(resolved, &document, expectErrorsOrWarnings);
     }
 
-    QQmlJSScope::ConstPtr run(QString url, QmlIR::Document *document,
+    QQmlJSScope::ConstPtr run(const QString &resolvedFile, QmlIR::Document *document,
                               bool expectErrorsOrWarnings = false)
     {
-        url = testFile(url);
-        const QString sourceCode = loadUrl(url);
+        const QString sourceCode = loadFile(resolvedFile);
         if (sourceCode.isEmpty())
             return QQmlJSScope::ConstPtr();
 
@@ -59,7 +59,7 @@ class tst_qqmljsscope : public QQmlDataTest
         QQmlJSSaveFunction noop([](auto &&...) { return true; });
         QQmlJSCompileError error;
         [&]() {
-            QVERIFY2(qCompileQmlFile(*document, url, noop, nullptr, &error),
+            QVERIFY2(qCompileQmlFile(*document, resolvedFile, noop, nullptr, &error),
                      qPrintable(error.message));
         }();
         if (!error.message.isEmpty())
@@ -67,10 +67,11 @@ class tst_qqmljsscope : public QQmlDataTest
 
 
         QQmlJSLogger logger;
-        logger.setFileName(url);
+        logger.setFilePath(resolvedFile);
         logger.setCode(sourceCode);
         logger.setSilent(expectErrorsOrWarnings);
         QQmlJSScope::Ptr target = QQmlJSScope::create();
+        target->setOwnModuleName(u"HelloModule"_s);
         QQmlJSImportVisitor visitor(target, &m_importer, &logger, dataDirectory());
         QQmlJSTypeResolver typeResolver { &m_importer };
         typeResolver.init(&visitor, document->program);
@@ -92,6 +93,7 @@ private Q_SLOTS:
     void signalCreationDifferences();
     void allTypesAvailable();
     void shadowing();
+    void requiredAlias();
 
 #ifdef LABS_QML_MODELS_PRESENT
     void componentWrappedObjects();
@@ -106,12 +108,17 @@ private Q_SLOTS:
     void scriptIndices();
     void extensions();
     void emptyBlockBinding();
+    void hasOwnEnumerationKeys();
+    void ownModuleName();
     void resolvedNonUniqueScopes();
     void compilationUnitsAreCompatible();
     void attachedTypeResolution_data();
     void attachedTypeResolution();
     void builtinTypeResolution_data();
     void builtinTypeResolution();
+    void methodAndSignalSourceLocation();
+    void modulePrefixes();
+    void javaScriptBuiltinFlag();
 
 public:
     tst_qqmljsscope()
@@ -207,7 +214,7 @@ void tst_qqmljsscope::allTypesAvailable()
 
         QQmlJSImporter importer { importPaths, /* resource file mapper */ nullptr };
         const auto imported = importer.importModule(u"QtQml"_s);
-        QCOMPARE(imported.context(), QQmlJS::ContextualTypes::QML);
+        QCOMPARE(imported.contextualTypes().context(), QQmlJS::ContextualTypes::QML);
         const auto types = imported.types();
         QVERIFY(types.contains(u"$internal$.QObject"_s));
         QVERIFY(types.contains(u"QtObject"_s));
@@ -236,6 +243,16 @@ void tst_qqmljsscope::shadowing()
 
     QCOMPARE(methods[u"method_not_shadowed"_s].parameterNames().size(), 1);
     QCOMPARE(methods[u"method_shadowed"_s].parameterNames().size(), 0);
+}
+
+void tst_qqmljsscope::requiredAlias()
+{
+    QQmlJSScope::ConstPtr root = run(u"requiredAlias.qml"_s);
+    QVERIFY(root);
+
+    // Check whether aliases marked as required are required
+    QVERIFY(root->isPropertyRequired("sameScopeAlias"));
+    QVERIFY(root->isPropertyRequired("innerScopeAlias"));
 }
 
 #ifdef LABS_QML_MODELS_PRESENT
@@ -506,10 +523,11 @@ void tst_qqmljsscope::scriptIndices()
         QVERIFY2(root, qPrintable(component.errorString()));
     }
 
-    QmlIR::Document document(false); // we need QmlIR information here
-    QQmlJSScope::ConstPtr root = run(u"functionAndBindingIndices.qml"_s, &document);
+    const QString file = testFile(u"functionAndBindingIndices.qml"_s);
+    QmlIR::Document document(file, file, false); // we need QmlIR information here
+    QQmlJSScope::ConstPtr root = run(file, &document);
     QVERIFY(root);
-    QVERIFY(document.javaScriptCompilationUnit.unitData());
+    QVERIFY(document.javaScriptCompilationUnit->unitData());
 
     // compare QQmlJSScope and QmlIR:
 
@@ -677,6 +695,52 @@ void tst_qqmljsscope::emptyBlockBinding()
     QVERIFY(root->hasOwnPropertyBindings(u"y"_s));
 }
 
+void tst_qqmljsscope::hasOwnEnumerationKeys()
+{
+    QQmlJSScope::ConstPtr root = run(u"extensions.qml"_s);
+    QVERIFY(root);
+    QQmlJSScope::ConstPtr extendedDerived = root->childScopes().front();
+    QVERIFY(extendedDerived);
+    // test that enumeration keys from base cannot be found
+    QVERIFY(!extendedDerived->hasOwnEnumerationKey(u"ThisIsTheEnumFromExtended"_s));
+    QVERIFY(!extendedDerived->hasOwnEnumerationKey(u"ThisIsTheFlagFromExtended"_s));
+
+    QQmlJSScope::ConstPtr extended = extendedDerived->baseType();
+    QVERIFY(extended);
+
+    QVERIFY(extended->hasOwnEnumerationKey(u"ThisIsTheEnumFromExtended"_s));
+    QVERIFY(extended->hasOwnEnumerationKey(u"ThisIsTheFlagFromExtended"_s));
+    QVERIFY(!extended->hasOwnEnumerationKey(u"ThisIsTheEnumFromExtension"_s));
+    QVERIFY(!extended->hasOwnEnumerationKey(u"ThisIsTheFlagFromExtension"_s));
+}
+
+void tst_qqmljsscope::ownModuleName()
+{
+    const QString moduleName = u"HelloModule"_s;
+    QQmlJSScope::ConstPtr root = run(u"ownModuleName.qml"_s);
+    QVERIFY(root);
+    QCOMPARE(root->moduleName(), moduleName);
+    QCOMPARE(root->ownModuleName(), moduleName);
+
+    QCOMPARE(root->childScopes().size(), 2);
+    QQmlJSScope::ConstPtr child = root->childScopes().front();
+    QVERIFY(child);
+    // only root and inline components have own module names, but the child should be able to query
+    // its component's module Name via moduleName()
+    QCOMPARE(child->ownModuleName(), QString());
+    QCOMPARE(child->moduleName(), moduleName);
+
+    QQmlJSScope::ConstPtr ic = root->childScopes()[1];
+    QVERIFY(ic);
+    QCOMPARE(ic->ownModuleName(), moduleName);
+    QCOMPARE(ic->moduleName(), moduleName);
+
+    QQmlJSScope::ConstPtr icChild = ic->childScopes().front();
+    QVERIFY(icChild);
+    QCOMPARE(icChild->ownModuleName(), QString());
+    QCOMPARE(icChild->moduleName(), moduleName);
+}
+
 void tst_qqmljsscope::resolvedNonUniqueScopes()
 {
     QQmlJSScope::ConstPtr root = run(u"resolvedNonUniqueScope.qml"_s);
@@ -734,13 +798,12 @@ getRuntimeInfoFromCompilationUnit(const QV4::CompiledData::Unit *unit,
 // Note: this test is here because we never explicitly test qCompileQmlFile()
 void tst_qqmljsscope::compilationUnitsAreCompatible()
 {
-    const QString url = u"compilationUnitsCompatibility.qml"_s;
     QList<const QV4::CompiledData::Function *> componentFunctions;
     QList<const QV4::CompiledData::Function *> cachegenFunctions;
 
     QQmlEngine engine;
     QQmlComponent component(&engine);
-    component.loadUrl(testFileUrl(url));
+    component.loadUrl(testFileUrl(u"compilationUnitsCompatibility.qml"_s));
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     QScopedPointer<QObject> root(component.create());
     QVERIFY2(root, qPrintable(component.errorString()));
@@ -754,10 +817,11 @@ void tst_qqmljsscope::compilationUnitsAreCompatible()
     if (QTest::currentTestFailed())
         return;
 
-    QmlIR::Document document(false); // we need QmlIR information here
-    QVERIFY(run(url, &document));
-    QVERIFY(document.javaScriptCompilationUnit.unitData());
-    getRuntimeInfoFromCompilationUnit(document.javaScriptCompilationUnit.unitData(),
+    const QString file = testFile(u"compilationUnitsCompatibility.qml"_s);
+    QmlIR::Document document(file, file, false); // we need QmlIR information here
+    QVERIFY(run(file, &document));
+    QVERIFY(document.javaScriptCompilationUnit->unitData());
+    getRuntimeInfoFromCompilationUnit(document.javaScriptCompilationUnit->unitData(),
                                       cachegenFunctions);
     if (QTest::currentTestFailed())
         return;
@@ -819,14 +883,14 @@ void tst_qqmljsscope::attachedTypeResolution()
         QSKIP("Unable to open qml file");
 
     logger->setCode(qmlFile.readAll());
-    logger->setFileName(QString(qmlFile.filesystemFileName().string().c_str()));
-    QQmlJSImporter importer{ { "data" }, nullptr, true };
+    logger->setFilePath(QString(qmlFile.filesystemFileName().string().c_str()));
+    QQmlJSImporter importer{ { "data" }, nullptr, UseOptionalImports };
     QStringList defaultImportPaths =
             QStringList{ QLibraryInfo::path(QLibraryInfo::QmlImportsPath) };
     importer.setImportPaths(defaultImportPaths);
     QQmlJSTypeResolver resolver(&importer);
     const auto &implicitImportDirectory = QQmlJSImportVisitor::implicitImportDirectory(
-            logger->fileName(), importer.resourceFileMapper());
+            logger->filePath(), importer.resourceFileMapper());
     QQmlJSImportVisitor v{
         QQmlJSScope::create(), &importer, logger.get(), implicitImportDirectory, {}
     };
@@ -878,7 +942,7 @@ void tst_qqmljsscope::builtinTypeResolution()
     QFETCH(bool, valid);
     QFETCH(QString, typeName);
 
-    QQmlJSImporter importer{ { "data" }, nullptr, true };
+    QQmlJSImporter importer{ { "data" }, nullptr, UseOptionalImports };
     QStringList defaultImportPaths =
             QStringList{ QLibraryInfo::path(QLibraryInfo::QmlImportsPath) };
     importer.setImportPaths(defaultImportPaths);
@@ -896,6 +960,89 @@ void tst_qqmljsscope::builtinTypeResolution()
     TestPass pass{ manager.get() };
     auto element = pass.resolveBuiltinType(typeName);
     QCOMPARE(element.isNull(), !valid);
+}
+
+void tst_qqmljsscope::methodAndSignalSourceLocation()
+{
+    auto jsscope = run(u"methodAndSignalSourceLocation.qml"_s, false);
+
+    std::array<std::array<int, 9>, 2> offsetsByLineEnding = {
+        std::array{ 29, 51, 74, 102, 128, 160, 219, 235, 257 }, // 1 char line endings
+        std::array{ 32, 55, 79, 108, 135, 168, 231, 248, 271 }  // 2 char line endinds
+    };
+
+    // Try to detect the size of line endings as they lead to different source locations
+    auto offset1 = jsscope->methods("f1")[0].sourceLocation().offset;
+    QVERIFY(offset1 == 29 || offset1 == 32);
+    bool oneCharEndings = offset1 == 29;
+    std::array<int, 9> &offsets = oneCharEndings ? offsetsByLineEnding[0] : offsetsByLineEnding[1];
+
+    using namespace QQmlJS;
+    QCOMPARE(jsscope->methods("f1")[0].sourceLocation(), SourceLocation(offsets[0], 17, 4, 5));
+    QCOMPARE(jsscope->methods("f2")[0].sourceLocation(), SourceLocation(offsets[1], 18, 5, 5));
+    QCOMPARE(jsscope->methods("f3")[0].sourceLocation(), SourceLocation(offsets[2], 23, 6, 5));
+    QCOMPARE(jsscope->methods("f4")[0].sourceLocation(), SourceLocation(offsets[3], 21, 7, 5));
+    QCOMPARE(jsscope->methods("f5")[0].sourceLocation(), SourceLocation(offsets[4], 27, 8, 5));
+    QCOMPARE(jsscope->methods("f6")[0].sourceLocation(), SourceLocation(offsets[5], oneCharEndings ? 53 : 55, 9, 5));
+
+    QCOMPARE(jsscope->methods("s1")[0].sourceLocation(), SourceLocation(offsets[6], 11, 13, 5));
+    QCOMPARE(jsscope->methods("s2")[0].sourceLocation(), SourceLocation(offsets[7], 17, 14, 5));
+    QCOMPARE(jsscope->methods("s3")[0].sourceLocation(), SourceLocation(offsets[8], 28, 15, 5));
+}
+
+void tst_qqmljsscope::modulePrefixes()
+{
+    const auto url = testFile("modulePrefixes.qml");
+    const QString sourceCode = loadFile(url);
+    QQmlJSLogger logger;
+    logger.setFilePath(url);
+    logger.setCode(sourceCode);
+
+    QQmlJSScope::Ptr target = QQmlJSScope::create();
+    QmlIR::Document document(url, url, false);
+    QQmlJSSaveFunction noop([](auto &&...) { return true; });
+    QQmlJSCompileError error;
+    [&]() {
+        QVERIFY2(qCompileQmlFile(document, url, noop, nullptr, &error), qPrintable(error.message));
+    }();
+    if (!error.message.isEmpty())
+        return;
+
+    QQmlJSImportVisitor visitor(target, &m_importer, &logger, dataDirectory());
+    QQmlJSTypeResolver typeResolver{ &m_importer };
+    typeResolver.init(&visitor, document.program);
+
+    const auto prefixes = typeResolver.seenModuleQualifiers();
+    QVERIFY(prefixes.contains("QML"_L1));
+    QVERIFY(prefixes.contains("CD"_L1));
+    QVERIFY(prefixes.contains("QQ"_L1));
+}
+
+void tst_qqmljsscope::javaScriptBuiltinFlag()
+{
+    const auto url = testFile("ComponentType.qml");
+    QQmlJSLogger logger;
+    logger.setFilePath(url);
+    logger.setCode(loadFile(url));
+
+    QQmlJSScope::Ptr target = QQmlJSScope::create();
+    QmlIR::Document document(url, url, false);
+    QQmlJSSaveFunction noop([](auto &&...) { return true; });
+    QQmlJSCompileError error;
+    [&]() {
+        QVERIFY2(qCompileQmlFile(document, url, noop, nullptr, &error), qPrintable(error.message));
+    }();
+    if (!error.message.isEmpty())
+        return;
+
+    QQmlJSImportVisitor visitor(target, &m_importer, &logger, dataDirectory());
+    QQmlJSTypeResolver typeResolver{ &m_importer };
+    typeResolver.init(&visitor, document.program);
+
+
+    QVERIFY(typeResolver.mathObject()->isJavaScriptBuiltin()); // JS
+    QVERIFY(!typeResolver.typeForName("ComponentType")->isJavaScriptBuiltin()); // QML
+    QVERIFY(!typeResolver.varType()->isJavaScriptBuiltin()); // C++
 }
 
 QTEST_MAIN(tst_qqmljsscope)

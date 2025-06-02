@@ -213,6 +213,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  padding: 0 3px;
 }
 
 .timeline-details-warning .timeline-details-view-row-value {
@@ -244,8 +245,8 @@
 
 .timeline-flamechart-resizer {
   flex: 8px 0 0;
-  background-color: var(--color-background-elevation-1);
-  border: 1px var(--color-details-hairline);
+  background-color: var(--sys-color-surface2);
+  border: 1px var(--sys-color-divider);
   border-style: solid none;
   display: flex;
   flex-direction: row;
@@ -324,7 +325,7 @@
 .timeline-tree-view .data-grid div.background-percent-bar {
   float: right;
   position: relative;
-  z-index: 999;
+  z-index: 1;
 }
 
 .timeline-tree-view .data-grid span.percent-column {
@@ -335,6 +336,10 @@
 
 .timeline-tree-view .data-grid tr.selected span {
   color: inherit;
+}
+
+.timeline-tree-view .data-grid tr.selected {
+  background-color: var(--sys-color-tonal-container);
 }
 
 .timeline-tree-view .data-grid .name-container {
@@ -370,7 +375,7 @@
 }
 
 .timeline-tree-view .data-grid tr.selected .name-container .activity-warning::after {
-  color: var(--color-text-secondary-selected);
+  color: var(--sys-color-on-tonal-container);
 }
 
 .timeline-tree-view .data-grid .name-container .activity-link {
@@ -388,24 +393,15 @@
 }
 
 .timeline-tree-view .data-grid .background-bar {
-  --override-background-bar-background-color: hsl(43deg 84% 64% / 20%);
-  --override-background-bar-border-color: hsl(43deg 84% 64%);
-
   float: right;
   height: 18px;
-  background-color: var(--override-background-bar-background-color);
-  border-bottom: 1px solid var(--override-background-bar-border-color);
+  background-color: var(--sys-color-surface-yellow);
+  border-bottom: 1px solid var(--sys-color-yellow-outline);
 }
 
 .timeline-tree-view .data-grid .selected .background-bar {
-  background-color: var(--app-color-selected);
-  border-bottom: 1px solid var(--app-border-selected);
-}
-
-.-theme-with-dark-background .timeline-tree-view .data-grid .background-bar,
-:host-context(.-theme-with-dark-background) .timeline-tree-view .data-grid .background-bar {
-  --override-background-bar-background-color: rgb(169 126 15 / 20%);
-  --override-background-bar-border-color: rgb(169 126 15);
+  background-color: var(--app-color-selected-progress-bar);
+  border-bottom: 1px solid var(--app-border-selected-progress-bar);
 }
 
 .timeline-tree-view .timeline-details-view-body .full-widget-dimmed-banner {
@@ -418,6 +414,8 @@
 
 .timeline-tree-view .data-grid thead {
   height: 21px;
+  /* so the header is always above any body rows that the user has scrolled past */
+  z-index: 2;
 }
 
 .timeline-stack-view-header {
@@ -436,7 +434,7 @@
   align-items: center;
   overflow: auto;
   font-size: 13px;
-  color: var(--sys-color-token-subtle);
+  color: var(--sys-color-on-surface-subtle);
 }
 
 @media (forced-colors: active) {
@@ -480,7 +478,7 @@
 .timeline-details-chip-title > div {
   width: 12px;
   height: 12px;
-  border: 1px solid var(--color-details-hairline);
+  border: 1px solid var(--sys-color-divider);
   display: inline-block;
   margin-right: 4px;
   content: " ";

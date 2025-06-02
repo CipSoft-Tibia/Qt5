@@ -3,6 +3,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "types.h"
+
 #include <QtCore/QFile>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonObject>
@@ -56,14 +58,10 @@ static IdMap<T> tryLoadFromFile(const FromJsonFactory<T> &itemFactory, const QSt
     return IdMap<T>();
 }
 
-static QByteArray getValueFromHeader(const QList<QPair<QByteArray, QByteArray>> &headers,
+static QByteArray getValueFromHeader(const QHttpHeaders &headers,
                                      QByteArrayView headerName)
 {
-    for (const auto &[key, value] : headers) {
-        if (key.compare(headerName, Qt::CaseInsensitive) == 0)
-            return value;
-    }
-    return QByteArray();
+    return headers.value(headerName).toByteArray();
 }
 
 static std::optional<QString> getTokenFromRequest(const QHttpServerRequest &request)

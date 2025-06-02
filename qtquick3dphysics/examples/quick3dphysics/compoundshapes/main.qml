@@ -49,11 +49,7 @@ Window {
             eulerRotation.y: 45
             castsShadow: true
             brightness: 1.5
-            shadowFactor: 15
-            shadowFilter: 10
-            shadowMapFar: 100
-            shadowBias: -0.01
-            shadowMapQuality: Light.ShadowMapQualityVeryHigh
+            shadowMapQuality: Light.ShadowMapQualityHigh
         }
         //! [environment]
 

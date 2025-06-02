@@ -36,7 +36,7 @@ qt_internal_add_module(WaylandCompositor
         extensions/qwaylandqttextinputmethodmanager.cpp extensions/qwaylandqttextinputmethodmanager.h extensions/qwaylandqttextinputmethodmanager_p.h
         extensions/qwaylandqtwindowmanager.cpp extensions/qwaylandqtwindowmanager.h extensions/qwaylandqtwindowmanager_p.h
         extensions/qwaylandshell.cpp extensions/qwaylandshell.h extensions/qwaylandshell_p.h
-        extensions/qwaylandshellsurface.cpp extensions/qwaylandshellsurface.h
+        extensions/qwaylandshellsurface.cpp extensions/qwaylandshellsurface.h extensions/qwaylandshellsurface_p.h
         extensions/qwaylandtextinput.cpp extensions/qwaylandtextinput.h extensions/qwaylandtextinput_p.h
         extensions/qwaylandtextinputmanager.cpp extensions/qwaylandtextinputmanager.h extensions/qwaylandtextinputmanager_p.h
         extensions/qwaylandtextinputv3.cpp extensions/qwaylandtextinputv3.h extensions/qwaylandtextinputv3_p.h
@@ -46,6 +46,7 @@ qt_internal_add_module(WaylandCompositor
         extensions/qwaylandxdgdecorationv1.cpp extensions/qwaylandxdgdecorationv1.h extensions/qwaylandxdgdecorationv1_p.h
         extensions/qwaylandxdgoutputv1.cpp extensions/qwaylandxdgoutputv1.h extensions/qwaylandxdgoutputv1_p.h
         extensions/qwaylandxdgshell.cpp extensions/qwaylandxdgshell.h extensions/qwaylandxdgshell_p.h
+        extensions/qwaylandxdgdialogv1.cpp extensions/qwaylandxdgdialogv1_p.h
         extensions/qwlqtkey.cpp extensions/qwlqtkey_p.h
         extensions/qwlqttouch.cpp extensions/qwlqttouch_p.h
         global/qtwaylandcompositorglobal.h global/qtwaylandcompositorglobal_p.h
@@ -62,7 +63,6 @@ qt_internal_add_module(WaylandCompositor
         extensions
         global
         wayland_wrapper
-    GENERATE_CPP_EXPORTS
     LIBRARIES
         Qt::CorePrivate
         Qt::GuiPrivate
@@ -77,6 +77,24 @@ qt_internal_add_module(WaylandCompositor
         Qt::WaylandGlobalPrivate
     PRIVATE_HEADER_FILTERS
         "^qwayland-.*\.h|^wayland-.*-protocol\.h"
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../3rdparty/protocol/ivi
+        ../3rdparty/protocol/presentation-time
+        ../3rdparty/protocol/scaler
+        ../3rdparty/protocol/text-input/v2
+        ../3rdparty/protocol/text-input/v3
+        ../3rdparty/protocol/viewporter
+        ../3rdparty/protocol/wayland
+        ../3rdparty/protocol/xdg-decoration
+        ../3rdparty/protocol/xdg-output
+        ../3rdparty/protocol/xdg-shell
+        ../3rdparty/protocol/xdg-dialog
+)
+
+# all those macros define structs with Q_OBJECT macros, and should be picked up by moc
+set_target_properties(WaylandCompositor WaylandCompositorPrivate
+    PROPERTIES
+        INTERFACE_AUTOMOC_MACRO_NAMES  "Q_COMPOSITOR_DECLARE_QUICK_EXTENSION_NAMED_ELEMENT;Q_COMPOSITOR_DECLARE_QUICK_EXTENSION_NAMED_CLASS;Q_COMPOSITOR_DECLARE_QUICK_EXTENSION_CLASS;Q_COMPOSITOR_DECLARE_QUICK_EXTENSION_CONTAINER_CLASS"
 )
 
 set(compositor_no_pch_sources
@@ -106,18 +124,20 @@ qt_internal_add_resource(WaylandCompositor "compositor"
 )
 
 qt6_generate_wayland_protocol_server_sources(WaylandCompositor
+    PRIVATE_CODE
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/idle-inhibit-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/ivi-application.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/presentation-time.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/scaler.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/text-input-unstable-v2.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/text-input-unstable-v3.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/viewporter.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/wayland.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-decoration-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-output-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-shell.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/idle-inhibit/idle-inhibit-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/ivi/ivi-application.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/presentation-time/presentation-time.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/scaler/scaler.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/text-input/v2/text-input-unstable-v2.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/text-input/v3/text-input-unstable-v3.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/viewporter/viewporter.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/wayland/wayland.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-decoration/xdg-decoration-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-output/xdg-output-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-shell/xdg-shell.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/protocol/xdg-dialog/xdg-dialog-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/hardware-integration.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-key-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/../extensions/qt-text-input-method-unstable-v1.xml
@@ -222,6 +242,7 @@ if (TARGET Qt::Qml)
             qmlfiles/WaylandOutputWindow.qml
         DEPENDENCIES
             QtQuick
+        NO_GENERATE_CPP_EXPORTS
     )
 endif()
 

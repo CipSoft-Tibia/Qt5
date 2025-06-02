@@ -2,9 +2,10 @@
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtprotobufqtcoretypes.h"
-#include "qtprotobufqttypescommon_p.h"
-#include "private/QtCore.qpb.h"
+#include <QtProtobufQtCoreTypes/qtprotobufqtcoretypes.h>
+
+#include <QtProtobufQtCoreTypes/private/QtCore.qpb.h>
+#include <QtProtobufQtCoreTypes/private/qtprotobufqttypescommon_p.h>
 
 #include <QtCore/qurl.h>
 #include <QtCore/qchar.h>
@@ -317,9 +318,11 @@ static std::optional<QtProtobufPrivate::QtCore::QVersionNumber> convert(const QV
         return std::nullopt;
 
     QtProtobufPrivate::QtCore::QVersionNumber version;
+    QtProtobuf::int32List newSegments;
     const auto segments = from.segments();
     for (const auto &segment : segments)
-        version.segments().append(segment);
+        newSegments.append(segment);
+    version.setSegments(std::move(newSegments));
     return version;
 }
 
@@ -328,7 +331,7 @@ namespace QtProtobuf {
 /*!
     Registers serializers for the Qt::ProtobufQtCoreTypes library.
 */
-void qRegisterProtobufQtCoreTypes() {
+void registerProtobufQtCoreTypes() {
     QtProtobufPrivate::registerQtTypeHandler<QUrl, QtProtobufPrivate::QtCore::QUrl>();
     QtProtobufPrivate::registerQtTypeHandler<QChar, QtProtobufPrivate::QtCore::QChar>();
     QtProtobufPrivate::registerQtTypeHandler<QUuid, QtProtobufPrivate::QtCore::QUuid>();

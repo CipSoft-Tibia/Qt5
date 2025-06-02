@@ -207,7 +207,7 @@ class AXSelectionDeserializer final {
                                         HTMLElement& element) {
     element.setInnerHTML(String::FromUTF8(html_snippet));
     element.GetDocument().View()->UpdateAllLifecyclePhasesForTest();
-    AXObject* root = ax_object_cache_->GetOrCreate(&element);
+    AXObject* root = ax_object_cache_->Get(&element);
     if (!root || root->IsDetached())
       return {};
 
@@ -347,6 +347,13 @@ class AXSelectionDeserializer final {
 AccessibilitySelectionTest::AccessibilitySelectionTest(
     LocalFrameClient* local_frame_client)
     : AccessibilityTest(local_frame_client) {}
+
+void AccessibilitySelectionTest::SetUp() {
+  RenderingTest::SetUp();
+  // Do not include noisy inline textboxes in selection tests.
+  ax_context_ =
+      std::make_unique<AXContext>(GetDocument(), ui::AXMode::kWebContents);
+}
 
 std::string AccessibilitySelectionTest::GetCurrentSelectionText() const {
   const SelectionInDOMTree selection =

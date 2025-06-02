@@ -15,7 +15,7 @@
 #include "src/gpu/graphite/dawn/DawnErrorChecker.h"
 #include "src/gpu/graphite/dawn/DawnGraphiteUtilsPriv.h"
 #include "src/gpu/graphite/dawn/DawnSharedContext.h"
-#include "src/sksl/SkSLCompiler.h"
+#include "src/gpu/graphite/dawn/DawnUtilsPriv.h"
 #include "src/sksl/SkSLProgramSettings.h"
 
 namespace skgpu::graphite {
@@ -48,21 +48,19 @@ static ShaderInfo compile_shader_module(const DawnSharedContext* sharedContext,
         }
         info.fEntryPoint = std::move(nativeShader.fEntryPoint);
     } else {
-        // TODO(skia:40044196) Compile to WGSL when SkSL supports it
-        std::string spirv;
+        std::string wgsl;
         SkSL::Program::Interface interface;
         SkSL::ProgramSettings settings;
 
-        SkSL::Compiler compiler(caps->shaderCaps());
         std::string sksl = BuildComputeSkSL(caps, step);
-        if (SkSLToSPIRV(&compiler,
-                        sksl,
-                        SkSL::ProgramKind::kCompute,
-                        settings,
-                        &spirv,
-                        &interface,
-                        errorHandler)) {
-            if (!DawnCompileSPIRVShaderModule(sharedContext, spirv, &info.fModule, errorHandler)) {
+        if (skgpu::SkSLToWGSL(caps->shaderCaps(),
+                              sksl,
+                              SkSL::ProgramKind::kCompute,
+                              settings,
+                              &wgsl,
+                              &interface,
+                              errorHandler)) {
+            if (!DawnCompileWGSLShaderModule(sharedContext, wgsl, &info.fModule, errorHandler)) {
                 return {};
             }
             info.fEntryPoint = "main";
@@ -173,19 +171,26 @@ sk_sp<DawnComputePipeline> DawnComputePipeline::Make(const DawnSharedContext* sh
     descriptor.compute.entryPoint = entryPointName.c_str();
     descriptor.layout = std::move(layout);
 
-    DawnErrorChecker errorChecker(device);
+    std::optional<DawnErrorChecker> errorChecker;
+    if (sharedContext->dawnCaps()->allowScopedErrorChecks()) {
+        errorChecker.emplace(sharedContext);
+    }
     wgpu::ComputePipeline pipeline = device.CreateComputePipeline(&descriptor);
     SkASSERT(pipeline);
-    if (errorChecker.popErrorScopes() != DawnErrorType::kNoError) {
+    if (errorChecker.has_value() && errorChecker->popErrorScopes() != DawnErrorType::kNoError) {
         return nullptr;
     }
 
-    return sk_sp<DawnComputePipeline>(new DawnComputePipeline(sharedContext, std::move(pipeline)));
+    return sk_sp<DawnComputePipeline>(new DawnComputePipeline(
+            sharedContext, std::move(pipeline), std::move(bindGroupLayout)));
 }
 
 DawnComputePipeline::DawnComputePipeline(const SharedContext* sharedContext,
-                                         wgpu::ComputePipeline pso)
-        : ComputePipeline(sharedContext), fPipeline(std::move(pso)) {}
+                                         wgpu::ComputePipeline pso,
+                                         wgpu::BindGroupLayout groupLayout)
+        : ComputePipeline(sharedContext)
+        , fPipeline(std::move(pso))
+        , fGroupLayout(std::move(groupLayout)) {}
 
 void DawnComputePipeline::freeGpuData() { fPipeline = nullptr; }
 

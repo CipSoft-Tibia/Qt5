@@ -478,10 +478,12 @@ void tst_qqmllocale::toString_data()
     QTest::newRow(qPrintable(functionCallScript)) << "ar" << functionCallScript << "١٦" << QString();
 
     functionCallScript = "locale.toString(new Date(2022, 7, 16), Locale.ShortFormat)";
-    QTest::newRow(qPrintable(functionCallScript)) << "en_AU" << functionCallScript << "16/8/22 12:00 AM" << QString();
+    QTest::newRow(qPrintable(functionCallScript))
+        << "en_AU" << functionCallScript << "16/8/22 12:00 am" << QString();
 
     functionCallScript = "locale.toString(new Date(2022, 7, 16, 1, 23, 4), Locale.ShortFormat)";
-    QTest::newRow(qPrintable(functionCallScript)) << "en_AU" << functionCallScript << "16/8/22 1:23 AM" << QString();
+    QTest::newRow(qPrintable(functionCallScript))
+        << "en_AU" << functionCallScript << "16/8/22 1:23 am" << QString();
 }
 
 void tst_qqmllocale::toString()
@@ -1495,7 +1497,11 @@ void tst_qqmllocale::timeZoneUpdated()
     });
 
     // Set the timezone to Brisbane time, AEST-10:00
+#if defined(Q_OS_VXWORKS)
+    setTimeZone(QByteArray("AEST-10:00"));
+#else
     setTimeZone(QByteArray("Australia/Brisbane"));
+#endif
 
     DateFormatter formatter;
     QQmlEngine e;
@@ -1508,7 +1514,11 @@ void tst_qqmllocale::timeZoneUpdated()
     QVERIFY(obj->property("success").toBool());
 
     // Change to Indian time, IST-05:30
+#if defined(Q_OS_VXWORKS)
+    setTimeZone(QByteArray("IST-05:30"));
+#else
     setTimeZone(QByteArray("Asia/Kolkata"));
+#endif
 
     QMetaObject::invokeMethod(obj.data(), "check");
     QVERIFY(obj->property("success").toBool());

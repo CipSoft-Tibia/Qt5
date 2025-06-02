@@ -69,13 +69,15 @@ private:
     void generateClassHierarchy(const Node *relative, NodeMultiMap &classMap);
     void generateAnnotatedLists(const Node *relative, CodeMarker *marker,
                                 const NodeMultiMap &nodeMap);
-    void generateAnnotatedList(const Node *relative, CodeMarker *marker, const NodeList &nodes);
+    void generateAnnotatedList(const Node *relative, CodeMarker *marker, const NodeList &nodes,
+                               Qt::SortOrder sortOrder = Qt::AscendingOrder);
     void generateCompactList(ListType listType, const Node *relative, const NodeMultiMap &classMap,
                              bool includeAlphabet, const QString &commonPrefix);
     void generateFunctionIndex(const Node *relative);
     void generateLegaleseList(const Node *relative, CodeMarker *marker);
-    bool generateGroupList(CollectionNode *cn);
-    void generateList(const Node *relative, CodeMarker *marker, const QString &selector);
+    bool generateGroupList(CollectionNode *cn, Qt::SortOrder sortOrder = Qt::AscendingOrder);
+    void generateList(const Node *relative, CodeMarker *marker, const QString &selector,
+                      Qt::SortOrder sortOrder = Qt::AscendingOrder);
     void generateSectionList(const Section &section, const Node *relative, CodeMarker *marker,
                              bool useObsoloteMembers = false);
     void generateQmlSummary(const NodeVector &members, const Node *relative, CodeMarker *marker);
@@ -101,8 +103,7 @@ private:
     void beginLink(const QString &link, const Node *node, const Node *relative);
     void endLink();
     void generateExtractionMark(const Node *node, ExtractionMarkType markType);
-    void addIncludeFileToMap(const Aggregate *aggregate, CodeMarker *marker,
-                              QMap<QString, Text> &requisites, Text& text,
+    void addIncludeFileToMap(const Aggregate *aggregate, QMap<QString, Text> &requisites, Text& text,
                               const QString &headerText);
     void addSinceToMap(const Aggregate *aggregate, QMap<QString, Text> &requisites, Text *text,
                        const QString &sinceText) const;
@@ -112,14 +113,15 @@ private:
                            const QString &CMakeInfo) const;
     void addQtVariableToMap(const Aggregate *aggregate, QMap<QString, Text> &requisites, Text *text,
                             const QString &qtVariableText) const;
-    void addInstantiatedByToMap(QMap<QString, Text> &requisites, Text *text,
-                                const QString &instantiatedByText, ClassNode *classe) const;
+    void addQmlNativeTypesToMap(QMap<QString, Text> &requisites, Text *text,
+                                const QString &nativeTypeText,
+                                ClassNode *classe) const;
     void addInheritsToMap(QMap<QString, Text> &requisites, Text *text, const QString &inheritsText,
                           ClassNode *classe);
     void addInheritedByToMap(QMap<QString, Text> &requisites, Text *text,
                              const QString &inheritedBytext, ClassNode *classe);
     void generateTheTable(const QStringList &requisiteOrder, const QMap<QString, Text> &requisites,
-                          const QString &headerText, const Aggregate *aggregate,
+                          const Aggregate *aggregate,
                           CodeMarker *marker);
     inline void openUnorderedList();
     inline void closeUnorderedList();
@@ -155,6 +157,7 @@ private:
     QString m_cppclassestitle {};
     QString m_qmltypespage {};
     QString m_qmltypestitle {};
+    QString m_trademarkspage {};
     QString m_buildversion {};
     QString m_qflagsHref {};
     int tocDepth {};

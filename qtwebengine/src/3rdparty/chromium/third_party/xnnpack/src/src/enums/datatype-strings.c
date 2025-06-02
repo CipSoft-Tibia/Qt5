@@ -28,10 +28,14 @@ const char* xnn_datatype_to_string(enum xnn_datatype type) {
       return "QUINT8";
     case xnn_datatype_qint32:
       return "QINT32";
+    case xnn_datatype_qcint4:
+      return "QCINT4";
     case xnn_datatype_qcint8:
       return "QCINT8";
     case xnn_datatype_qcint32:
       return "QCINT32";
+    case xnn_datatype_qdint8:
+      return "QDINT8";
   }
   XNN_UNREACHABLE;
   return NULL;

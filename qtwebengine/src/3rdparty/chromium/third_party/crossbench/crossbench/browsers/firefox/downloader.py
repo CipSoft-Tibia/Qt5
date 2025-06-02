@@ -8,10 +8,12 @@ import abc
 import pathlib
 import re
 import urllib.parse
-from typing import Dict, Final, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Dict, Final, Optional, Tuple, Type, Union
 
 from crossbench.browsers.downloader import DMGArchiveHelper, Downloader
-from crossbench import plt
+
+if TYPE_CHECKING:
+  from crossbench import plt
 
 _PLATFORM_NAME_LOOKUP: Final[Dict[Tuple[str, str], str]] = {
     ("win", "ia32"): "win32",
@@ -88,10 +90,10 @@ class FirefoxDownloader(Downloader):
 
   def _find_exact_archive_url(self, version: str) -> Optional[str]:
     folder_url = f"{self.STORAGE_URL}{version}/mac/en-GB"
-    return self._archive_url(folder_url, version)
+    return self._archive_urls(folder_url, version)[0]
 
   @abc.abstractmethod
-  def _archive_url(self, folder_url: str, version_str: str) -> str:
+  def _archive_urls(self, folder_url: str, version_str: str) -> Tuple[str, ...]:
     pass
 
   def _download_archive(self, archive_url: str, tmp_dir: pathlib.Path) -> None:
@@ -127,8 +129,8 @@ class FirefoxDownloaderLinux(FirefoxDownloader):
   def _default_app_path(self) -> pathlib.Path:
     return self._default_extracted_path() / "firefox-bin"
 
-  def _archive_url(self, folder_url: str, version_str: str) -> str:
-    return f"{folder_url}/firefox-{version_str}.tar.bz2"
+  def _archive_urls(self, folder_url: str, version_str: str) -> Tuple[str, ...]:
+    return (f"{folder_url}/firefox-{version_str}.tar.bz2",)
 
   def _extract_archive(self, archive_path: pathlib.Path) -> None:
     raise NotImplementedError("Missing linux supoprt")
@@ -155,8 +157,9 @@ class FirefoxDownloaderMacOS(FirefoxDownloader):
           f"but requested {self._requested_version_str} is too old.")
     super()._download_archive(archive_url, tmp_dir)
 
-  def _archive_url(self, folder_url: str, version_str: str) -> str:
-    return f"{folder_url}/" + urllib.parse.quote(f"Firefox {version_str}.dmg")
+  def _archive_urls(self, folder_url: str, version_str: str) -> Tuple[str, ...]:
+    return (f"{folder_url}/" +
+            urllib.parse.quote(f"Firefox {version_str}.dmg"),)
 
   def _default_extracted_path(self) -> pathlib.Path:
     return self._default_app_path()
@@ -178,4 +181,4 @@ class FirefoxDownloaderWin(FirefoxDownloader):
     return False
 
   def _extract_archive(self, archive_path: pathlib.Path) -> None:
-    raise NotImplementedError("Missing windows supoprt")
+    raise NotImplementedError("Missing windows support")

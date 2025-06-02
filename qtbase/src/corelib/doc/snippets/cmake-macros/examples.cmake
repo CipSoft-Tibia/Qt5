@@ -28,6 +28,11 @@ target_compile_definitions(myapp PRIVATE "$<$<CONFIG:Debug>:MY_OPTION_FOR_DEBUG>
                                          "$<$<BOOL:TRUE>:DEFINE_CMDLINE_SIGNAL_IN_GENEX=void cmdlineSignal(const QMap<int$<COMMA> int$<ANGLE-R> &i)>")
 #! [qt_wrap_cpp_3]
 
+#! [qt_wrap_cpp_4]
+qt_add_executable(myapp myapp.cpp main.cpp)
+qt_wrap_cpp(myapp myapp.cpp)
+#! [qt_wrap_cpp_4]
+
 #! [qt_add_resources]
 set(SOURCES main.cpp)
 qt_add_resources(SOURCES example.qrc)
@@ -63,11 +68,11 @@ qt_generate_moc(main.cpp main.moc TARGET myapp)
 
 #! [qt_import_plugins]
 qt_add_executable(myapp main.cpp)
-target_link_libraries(myapp Qt::Gui Qt::Sql)
+target_link_libraries(myapp Qt6::Gui Qt6::Sql)
 qt_import_plugins(myapp
-    INCLUDE Qt::QCocoaIntegrationPlugin
-    EXCLUDE Qt::QMinimalIntegrationPlugin
-    INCLUDE_BY_TYPE imageformats Qt::QGifPlugin Qt::QJpegPlugin
+    INCLUDE Qt6::QCocoaIntegrationPlugin
+    EXCLUDE Qt6::QMinimalIntegrationPlugin
+    INCLUDE_BY_TYPE imageformats Qt6::QGifPlugin Qt6::QJpegPlugin
     EXCLUDE_BY_TYPE sqldrivers
 )
 #! [qt_import_plugins]
@@ -99,3 +104,11 @@ add_subdirectory(mylib)
 
 qt_finalize_project()
 #! [qt_finalize_project_manual]
+
+#! [AUTOGEN_BETTER_GRAPH_MULTI_CONFIG_1]
+set(CMAKE_AUTOGEN_BETTER_GRAPH_MULTI_CONFIG ON)
+#! [AUTOGEN_BETTER_GRAPH_MULTI_CONFIG_1]
+
+#! [AUTOGEN_BETTER_GRAPH_MULTI_CONFIG_2]
+set_target_properties(app PROPERTIES AUTOGEN_BETTER_GRAPH_MULTI_CONFIG ON)
+#! [AUTOGEN_BETTER_GRAPH_MULTI_CONFIG_2]

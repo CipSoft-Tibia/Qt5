@@ -6,12 +6,12 @@
 
 #include <QtHelp/qhelp_global.h>
 
-#include <QtCore/QSharedDataPointer>
+#include <QtCore/qshareddata.h>
 
 QT_BEGIN_NAMESPACE
 
-class QVersionNumber;
 class QCompressedHelpInfoPrivate;
+class QVersionNumber;
 
 class QHELP_EXPORT QCompressedHelpInfo final
 {
@@ -40,4 +40,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QHELPCOLLECTIONDETAILS_H
+#endif // QCOMPRESSEDHELPINFO_H

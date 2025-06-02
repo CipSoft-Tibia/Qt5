@@ -127,7 +127,7 @@ GPU_TRACK_TABLE = Table(
     ],
     parent=TRACK_TABLE,
     tabledoc=TableDoc(
-        doc='Tracks assocaited to a GPU.',
+        doc='Tracks associated to a GPU.',
         group='Tracks',
         columns={
             'scope':
@@ -136,6 +136,36 @@ GPU_TRACK_TABLE = Table(
                 'The description of the track. For debugging purposes only.',
             'context_id':
                 'The context id for the GPU this track is associated to.'
+        }))
+
+UID_TRACK_TABLE = Table(
+    python_module=__file__,
+    class_name='UidTrackTable',
+    sql_name='uid_track',
+    columns=[
+        C('uid', CppInt32()),
+    ],
+    parent=TRACK_TABLE,
+    tabledoc=TableDoc(
+        doc='Tracks associated to a UID.',
+        group='Tracks',
+        columns={
+            'uid': 'The uid associated with this track.',
+        }))
+
+GPU_WORK_PERIOD_TRACK_TABLE = Table(
+    python_module=__file__,
+    class_name='GpuWorkPeriodTrackTable',
+    sql_name='gpu_work_period_track',
+    columns=[
+        C('gpu_id', CppUint32()),
+    ],
+    parent=UID_TRACK_TABLE,
+    tabledoc=TableDoc(
+        doc='Tracks containing gpu_work_period events.',
+        group='Tracks',
+        columns={
+            'gpu_id': 'The identifier for the GPU.',
         }))
 
 COUNTER_TRACK_TABLE = Table(
@@ -171,7 +201,7 @@ THREAD_COUNTER_TRACK_TABLE = Table(
     parent=COUNTER_TRACK_TABLE,
     tabledoc=TableDoc(
         doc='Tracks containing counter-like events associated to a thread.',
-        group='Tracks',
+        group='Counter Tracks',
         columns={
             'utid':
                 ColumnDoc(
@@ -192,7 +222,7 @@ PROCESS_COUNTER_TRACK_TABLE = Table(
         doc='''
           Tracks containing counter-like events associated to a process.
         ''',
-        group='Tracks',
+        group='Counter Tracks',
         columns={
             'upid':
                 ColumnDoc(
@@ -210,7 +240,7 @@ CPU_COUNTER_TRACK_TABLE = Table(
     parent=COUNTER_TRACK_TABLE,
     tabledoc=TableDoc(
         doc='Tracks containing counter-like events associated to a CPU.',
-        group='Tracks',
+        group='Counter Tracks',
         columns={'cpu': 'The CPU this track is associated with'}))
 
 IRQ_COUNTER_TRACK_TABLE = Table(
@@ -223,7 +253,7 @@ IRQ_COUNTER_TRACK_TABLE = Table(
     parent=COUNTER_TRACK_TABLE,
     tabledoc=TableDoc(
         doc='Tracks containing counter-like events associated to an hardirq',
-        group='Tracks',
+        group='Counter Tracks',
         columns={'irq': 'The identifier for the hardirq.'}))
 
 SOFTIRQ_COUNTER_TRACK_TABLE = Table(
@@ -236,7 +266,7 @@ SOFTIRQ_COUNTER_TRACK_TABLE = Table(
     parent=COUNTER_TRACK_TABLE,
     tabledoc=TableDoc(
         doc='Tracks containing counter-like events associated to a softirq',
-        group='Tracks',
+        group='Counter Tracks',
         columns={'softirq': 'The identifier for the softirq.'}))
 
 GPU_COUNTER_TRACK_TABLE = Table(
@@ -249,7 +279,7 @@ GPU_COUNTER_TRACK_TABLE = Table(
     parent=COUNTER_TRACK_TABLE,
     tabledoc=TableDoc(
         doc='Tracks containing counter-like events associated to a GPU',
-        group='Tracks',
+        group='Counter Tracks',
         columns={'gpu_id': 'The identifier for the GPU.'}))
 
 PERF_COUNTER_TRACK_TABLE = Table(
@@ -264,7 +294,7 @@ PERF_COUNTER_TRACK_TABLE = Table(
     parent=COUNTER_TRACK_TABLE,
     tabledoc=TableDoc(
         doc='Sampled counters\' values for samples in the perf_sample table.',
-        group='Tracks',
+        group='Counter Tracks',
         columns={
             'perf_session_id':
                 'id of a distict profiling stream',
@@ -292,7 +322,7 @@ ENERGY_COUNTER_TRACK_TABLE = Table(
           Energy consumers' values for energy descriptors in
           energy_estimation_breakdown packet
         ''',
-        group='Tracks',
+        group='Counter Tracks',
         columns={
             'consumer_id': 'id of a distinct energy consumer',
             'consumer_type': 'type of energy consumer',
@@ -309,7 +339,7 @@ UID_COUNTER_TRACK_TABLE = Table(
     parent=COUNTER_TRACK_TABLE,
     tabledoc=TableDoc(
         doc='The uid associated with this track',
-        group='Tracks',
+        group='Counter Tracks',
         columns={'uid': 'uid of process for which breakdowns are emitted'}))
 
 ENERGY_PER_UID_COUNTER_TRACK_TABLE = Table(
@@ -322,7 +352,7 @@ ENERGY_PER_UID_COUNTER_TRACK_TABLE = Table(
     parent=UID_COUNTER_TRACK_TABLE,
     tabledoc=TableDoc(
         doc='Energy consumer values for per uid in uid_counter_track',
-        group='Tracks',
+        group='Counter Tracks',
         columns={'consumer_id': 'id of the consumer process'}))
 
 # Keep this list sorted.
@@ -334,6 +364,7 @@ ALL_TABLES = [
     ENERGY_PER_UID_COUNTER_TRACK_TABLE,
     GPU_COUNTER_TRACK_TABLE,
     GPU_TRACK_TABLE,
+    GPU_WORK_PERIOD_TRACK_TABLE,
     IRQ_COUNTER_TRACK_TABLE,
     PERF_COUNTER_TRACK_TABLE,
     PROCESS_COUNTER_TRACK_TABLE,
@@ -343,4 +374,5 @@ ALL_TABLES = [
     THREAD_TRACK_TABLE,
     TRACK_TABLE,
     UID_COUNTER_TRACK_TABLE,
+    UID_TRACK_TABLE,
 ]

@@ -23,6 +23,7 @@
 
     \list
       \li \l {abstract-command} {\\abstract}
+      \li \l {attribution-command} {\\attribution}
       \li \l {compares-command}{\\compares} (Since QDoc 6.7)
       \li \l {compareswith-command}{\\compareswith} (Since QDoc 6.7)
       \li \l {default-command} {\\default}
@@ -40,7 +41,9 @@
       \li \l {previouspage-command}{\\previouspage}
       \li \l {qmlabstract-command} {\\qmlabstract}
       \li \l {qmldefault-command} {\\qmldefault}
+      \li \qdoccmd qmlenumeratorsfrom (Since QDoc 6.8)
       \li \l {qtcmakepackage-command} {\\qtcmakepackage}
+      \li \l {qtcmaketargetitem-command} {\\qtcmaketargetitem}
       \li \l {readonly-command} {\\readonly}
       \li \l {reentrant-command}{\\reentrant}
       \li \l {reimp-command}{\\reimp}
@@ -154,6 +157,16 @@
     generated. It the abstract QML type is not marked internal, it
     will have a reference page in the documentation.
 
+    \target attribution-command
+    \section1 \\attribution
+
+    The \\attribution command marks a documented \qdoccmd page as license
+    attribution documentation.
+
+    The \l {annotatedattributions} {\\generatelist annotatedattributions}
+    command generates an annotated list of all license attribution pages
+    in the documentation project.
+
     \target default-command
     \section1 \\default
 
@@ -262,6 +275,50 @@
 
     See how QDoc renders this property on the reference page for the
     \l {QtQuick::State::changes}{State} type.
+
+    \target qmlenumeratorsfrom-command
+    \section1 \\qmlenumeratorsfrom
+
+    Use the \\qmlenumeratorsfrom command in a \qdoccmd qmlproperty topic
+    with a property type \e enumeration, to automatically replicate the
+    documentation for enumerators from a C++ \qdoccmd enum topic.
+
+    The command takes a fully qualified C++ enum as an argument,
+    and generates a list of enumerators and their descriptions.
+
+    \note The C++ enum must be documented in the same project; QDoc
+          cannot access its documentation if it's part of an external
+          documentation set that the current project \qdocvar depends
+          on.
+
+    By default, each enumerator is prefixed with the type name the
+    property belongs to, with \c{.} as the separator.
+
+    For example:
+
+    \badcode *
+    /\1!
+        \qmlproperty enumeration QtMultimedia::Camera::error
+        \qmlenumeratorsfrom QCamera::Error
+
+        //! Outputs documentation for 'Camera.NoError', 'Camera.CameraError'
+    \1/
+    \endcode
+
+    If the enumerators are registered to QML under a different type
+    name, this name (prefix) can be specified using the optional
+    argument in square brackets:
+
+    \badcode
+        \qmlenumeratorsfrom [Errors] QCamera::Error
+
+        //! Outputs documentation for 'Errors.NoError', 'Errors.CameraError'
+    \1/
+    \endcode
+
+    This command was introduced in QDoc 6.8.
+
+    See also \qdoccmd {qmlproperty}, \qdoccmd {enum}, and \qdoccmd {value}.
 
     \target dontdocument-command
     \section1 \\dontdocument
@@ -646,7 +703,7 @@
     \badcode *
     /\1!
         \qmltype PauseAnimation
-        \instantiates QDeclarativePauseAnimation
+        \nativetype QDeclarativePauseAnimation
         \ingroup qml-animation-transition
         \since 4.7
         \inherits Animation
@@ -727,12 +784,14 @@
     \section2 \\reimp
 
     The \\reimp command is for indicating that a function is a
-    reimplementation of a virtual function.
+    reimplementation of a virtual function without requiring any
+    additional documentation.
+
+    By default, QDoc will omit a reimplemented virtual function from the
+    class reference unless it is documented. This command ensures that an
+    otherwise undocumented function will be included.
 
     The command must stand on its own line.
-
-    QDoc will omit the reimplemented function from the class
-    reference.
 
     \badcode *
     /\1!
@@ -755,9 +814,13 @@
     \target relates-command
     \section2 \\relates
 
-    The \\relates command is for including the documentation of a
-    global element to some class or header file. The argument is a
-    class name or header file. For template types, use the type name only.
+    The \\relates command is for including the documentation of an
+    entity (a function, macro, typedef, enum, or variable) to a class,
+    namespace, or header file. The argument is the name of the class,
+    namespace, or header the entity is related to.
+
+    If the argument refers to a templated type, use the type name only
+    (without template parameters).
 
     \badcode *
     /\1!
@@ -776,8 +839,8 @@
     }
     \endcode
 
-    The documentation for this function will be included on the reference page
-    for class QChar.
+    The documentation for this function is included on the reference
+    page for class QChar, listed under the \e {Related Non-members} section.
 */
 
 /*!

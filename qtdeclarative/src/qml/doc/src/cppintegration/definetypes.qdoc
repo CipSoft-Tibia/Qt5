@@ -52,9 +52,19 @@ see \l {Choosing the Correct Integration Method Between C++ and QML}.
 
 \section2 Preconditions
 
-All the macros mentioned below are available from the \c qqmlregistration.h
-header. You need to add the following code to the files using them in order to
+All the macros mentioned below are available from the \l qqmlintegration.h
+header file from the QtQmlIntegration module.
+
+You need to add the following code to the files using them in order to
 make the macros available:
+
+\code
+#include <QtQmlIntegration/qqmlintegration.h>
+\endcode
+
+If you are already linking to the QtQml module, you can instead use the \l
+qqmlregistration.h header file, which will include \l qqmlintegration.h, as
+follows:
 
 \code
 #include <QtQml/qqmlregistration.h>
@@ -111,10 +121,10 @@ number to the project file. For example, to make the type available in the
 \c com.mycompany.messaging namespace with version 1.0:
 
 \if defined(onlinedocs)
-    \tab {build-qt-app}{tab-cmake}{CMake}{selected}
+    \tab {build-qt-app}{tab-cmake}{CMake}{checked}
     \tab {build-qt-app}{tab-qmake}{qmake}{}
     \tabcontent {tab-cmake}
- \else
+\else
     \section3 Using CMake
 \endif
     \badcode
@@ -131,7 +141,7 @@ number to the project file. For example, to make the type available in the
 \else
     \section3 Using QMake
 \endif
-    \code
+    \badcode
     CONFIG += qmltypes
     QML_IMPORT_NAME = com.mycompany.messaging
     QML_IMPORT_MAJOR_VERSION = 1
@@ -141,7 +151,7 @@ number to the project file. For example, to make the type available in the
     include path, you may have to amend the include path so that the generated
     registration code can be compiled.
 
-    \code
+    \badcode
     INCLUDEPATH += com/mycompany/messaging
     \endcode
 \if defined(onlinedocs)
@@ -395,17 +405,17 @@ types without breaking existing programs.
 
 The REVISION tag is used to mark the \c root property as added in revision 1
 of the type. Methods such as Q_INVOKABLE's, signals and slots can also be
-tagged for a revision using the \c Q_REVISION(x) macro:
+tagged for a revision using the \l Q_REVISION macro:
 
 \code
 class CppType : public BaseType
 {
     Q_OBJECT
-    Q_PROPERTY(int root READ root WRITE setRoot NOTIFY rootChanged REVISION 1)
+    Q_PROPERTY(int root READ root WRITE setRoot NOTIFY rootChanged REVISION(1, 0))
     QML_ELEMENT
 
 signals:
-    Q_REVISION(1) void rootChanged();
+    Q_REVISION(1, 0) void rootChanged();
 };
 \endcode
 
@@ -532,8 +542,8 @@ When considering the above example, there are several parties involved:
 
 \list
 \li There is an instance of an anonymous \e {attached object type}, with
-an \c enabled and a \c returnPressed signal, that has been attached to the
-\l Item object to enable it to access and set these attributes.
+an \c enabled property and a \c returnPressed signal, that has been attached to
+the \l Item object to enable it to access and set these attributes.
 \li The \l Item object is the \e {attachee}, to which the instance of the \e
 {attached object type} has been attached.
 \li \l Keys is the \e {attaching type}, which provides the \e {attachee} with a
@@ -604,7 +614,7 @@ terms of the concepts described earlier, the parties involved here are:
 
 \list
 \li An instance of an anonymous \e{attached object type}, which provides a
-    \c published signal and an expired property. This type is implemented by
+    \c published signal and an \c expired property. This type is implemented by
     \c MessageBoardAttachedType below
 \li A \c Message object, which will be the \e attachee
 \li The \c MessageBoard type, which will be the \e {attaching type} that is
@@ -918,7 +928,7 @@ private:
 };
 \endcode
 
-Defining the parent property affords \l qmllint and other tools better insight
+Defining the parent property affords \l{qmllint} and other tools better insight
 into the intention of your code and avoids false positive warnings on some
 property accesses.
 

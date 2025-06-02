@@ -234,8 +234,7 @@ class TestView : public TestRenderWidgetHostView {
   }
   void GestureEventAck(
       const WebGestureEvent& event,
-      blink::mojom::InputEventResultState ack_result,
-      blink::mojom::ScrollResultDataPtr scroll_result_data) override {
+      blink::mojom::InputEventResultState ack_result) override {
     gesture_event_type_ = event.GetType();
     ack_result_ = ack_result;
   }
@@ -276,6 +275,7 @@ class MockRenderViewHostDelegateView : public RenderViewHostDelegateView {
 
   // RenderViewHostDelegateView:
   void StartDragging(const DropData& drop_data,
+                     const url::Origin& source_origin,
                      blink::DragOperationsMask allowed_ops,
                      const gfx::ImageSkia& image,
                      const gfx::Vector2d& cursor_offset,
@@ -468,9 +468,9 @@ class MockRenderWidgetHostDelegate : public RenderWidgetHostDelegate {
 
   bool ShouldIgnoreInputEvents() override { return ignore_input_events_; }
 
-  void ExecuteEditCommand(
-      const std::string& command,
-      const absl::optional<std::u16string>& value) override {}
+  void ExecuteEditCommand(const std::string& command,
+                          const std::optional<std::u16string>& value) override {
+  }
 
   void Undo() override {}
   void Redo() override {}
@@ -631,6 +631,7 @@ class RenderWidgetHostTest : public testing::Test {
   }
 
   void TearDown() override {
+    sink_ = nullptr;
     view_.reset();
     host_.reset();
     delegate_.reset();
@@ -826,7 +827,7 @@ class RenderWidgetHostTest : public testing::Test {
   bool handle_mouse_event_ = false;
   base::TimeTicks last_simulated_event_time_;
   base::TimeDelta simulated_event_time_delta_;
-  raw_ptr<IPC::TestSink, DanglingUntriaged> sink_;
+  raw_ptr<IPC::TestSink> sink_;
   std::unique_ptr<FakeRenderFrameMetadataObserver>
       renderer_render_frame_metadata_observer_;
   MockWidget widget_;
@@ -971,7 +972,7 @@ TEST_F(RenderWidgetHostTest, SynchronizeVisualProperties) {
   EXPECT_EQ(original_size.size(), host_->old_visual_properties_->new_size);
   cc::RenderFrameMetadata metadata;
   metadata.viewport_size_in_pixels = original_size.size();
-  metadata.local_surface_id = absl::nullopt;
+  metadata.local_surface_id = std::nullopt;
   static_cast<RenderFrameMetadataProvider::Observer&>(*host_)
       .OnLocalSurfaceIdChanged(metadata);
   EXPECT_FALSE(host_->visual_properties_ack_pending_);
@@ -1004,7 +1005,7 @@ TEST_F(RenderWidgetHostTest, SynchronizeVisualProperties) {
   // sent. Since this isn't the second_size, the message handler should
   // immediately send a new resize message for the new size to the renderer.
   metadata.viewport_size_in_pixels = original_size.size();
-  metadata.local_surface_id = absl::nullopt;
+  metadata.local_surface_id = std::nullopt;
   static_cast<RenderFrameMetadataProvider::Observer&>(*host_)
       .OnLocalSurfaceIdChanged(metadata);
   EXPECT_TRUE(host_->visual_properties_ack_pending_);
@@ -1016,7 +1017,7 @@ TEST_F(RenderWidgetHostTest, SynchronizeVisualProperties) {
 
   // Send the visual properties ACK for the latest size.
   metadata.viewport_size_in_pixels = third_size.size();
-  metadata.local_surface_id = absl::nullopt;
+  metadata.local_surface_id = std::nullopt;
   static_cast<RenderFrameMetadataProvider::Observer&>(*host_)
       .OnLocalSurfaceIdChanged(metadata);
   EXPECT_FALSE(host_->visual_properties_ack_pending_);
@@ -1341,7 +1342,9 @@ TEST_F(RenderWidgetHostTest, Background) {
 #if defined(USE_AURA)
   view = new RenderWidgetHostViewAura(host_.get());
 #elif BUILDFLAG(IS_ANDROID)
-  view = new RenderWidgetHostViewAndroid(host_.get(), nullptr);
+  view = new RenderWidgetHostViewAndroid(host_.get(),
+                                         /*parent_native_view=*/nullptr,
+                                         /*parent_layer=*/nullptr);
 #elif BUILDFLAG(IS_MAC)
   view = CreateRenderWidgetHostViewMacForTesting(host_.get());
 #elif BUILDFLAG(IS_IOS)
@@ -1422,7 +1425,7 @@ TEST_F(RenderWidgetHostTest, HideShowMessages) {
   process_->sink().ClearMessages();
   cc::RenderFrameMetadata metadata;
   metadata.viewport_size_in_pixels = gfx::Size(100, 100);
-  metadata.local_surface_id = absl::nullopt;
+  metadata.local_surface_id = std::nullopt;
   static_cast<RenderFrameMetadataProvider::Observer&>(*host_)
       .OnLocalSurfaceIdChanged(metadata);
 
@@ -2137,7 +2140,7 @@ TEST_F(RenderWidgetHostTest, RendererExitedNoDrag) {
       DropDataToDragData(
           drop_data, file_system_manager, process_->GetID(),
           ChromeBlobStorageContext::GetFor(process_->GetBrowserContext())),
-      drag_operation, SkBitmap(), gfx::Vector2d(), gfx::Rect(),
+      url::Origin(), drag_operation, SkBitmap(), gfx::Vector2d(), gfx::Rect(),
       blink::mojom::DragEventSourceInfo::New());
   EXPECT_EQ(delegate_->mock_delegate_view()->start_dragging_count(), 1);
 
@@ -2148,7 +2151,7 @@ TEST_F(RenderWidgetHostTest, RendererExitedNoDrag) {
       DropDataToDragData(
           drop_data, file_system_manager, process_->GetID(),
           ChromeBlobStorageContext::GetFor(process_->GetBrowserContext())),
-      drag_operation, SkBitmap(), gfx::Vector2d(), gfx::Rect(),
+      url::Origin(), drag_operation, SkBitmap(), gfx::Vector2d(), gfx::Rect(),
       blink::mojom::DragEventSourceInfo::New());
   EXPECT_EQ(delegate_->mock_delegate_view()->start_dragging_count(), 1);
 }
@@ -2339,6 +2342,37 @@ TEST_F(RenderWidgetHostTest, AddAndRemoveInputEventObserver) {
 
   // Remove InputEventObserver.
   host_->RemoveInputEventObserver(&observer);
+
+  // Confirm InputEventObserver is removed.
+  EXPECT_CALL(observer, OnInputEvent(_)).Times(0);
+  latency_info = ui::LatencyInfo();
+  event_latency_metadata = ui::EventLatencyMetadata();
+  host_->DispatchInputEventWithLatencyInfo(native_event, &latency_info,
+                                           &event_latency_metadata);
+}
+
+TEST_F(RenderWidgetHostTest, ScopedObservationWithInputEventObserver) {
+  // Verify that the specialization of `ScopedObserverationTraits` correctly
+  // adds and removes InputEventObservers.
+  MockInputEventObserver observer;
+  base::ScopedObservation<RenderWidgetHost,
+                          RenderWidgetHost::InputEventObserver>
+      scoped_observation(&observer);
+
+  // Add InputEventObserver.
+  scoped_observation.Observe(host_.get());
+
+  // Confirm OnInputEvent is triggered.
+  NativeWebKeyboardEvent native_event(WebInputEvent::Type::kChar, 0,
+                                      GetNextSimulatedEventTime());
+  ui::LatencyInfo latency_info = ui::LatencyInfo();
+  ui::EventLatencyMetadata event_latency_metadata;
+  EXPECT_CALL(observer, OnInputEvent(_)).Times(1);
+  host_->DispatchInputEventWithLatencyInfo(native_event, &latency_info,
+                                           &event_latency_metadata);
+
+  // Remove InputEventObserver.
+  scoped_observation.Reset();
 
   // Confirm InputEventObserver is removed.
   EXPECT_CALL(observer, OnInputEvent(_)).Times(0);

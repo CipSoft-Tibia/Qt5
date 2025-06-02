@@ -20,7 +20,7 @@ QT_BEGIN_NAMESPACE
 */
 /*!
     \qmltype ScatterSeries
-    \instantiates QScatterSeries
+    \nativetype QScatterSeries
     \inqmlmodule QtGraphs
     \ingroup graphs_qml_2D
     \inherits XYSeries
@@ -34,23 +34,22 @@ QT_BEGIN_NAMESPACE
     \image graphs2d-scatter.png
 
     You can represent scatter data by creating a ScatterSeries inside
-    GraphsView. Axis types should be then defined for ScatterSeries
-    using axisX and axisY properties. Finally data can be added
-    to the graph by creating XYPoints as children for the ScatterSeries
-    that define the x and y values of each point.
+    GraphsView. The data can be added to the graph by creating XYPoints as
+    children for the ScatterSeries that define the x and y values of each
+    point.
 
     \code
     GraphsView {
         anchors.fill: parent
+        axisX: ValueAxis {
+            max: 3
+        }
+        axisY: ValueAxis {
+            max: 3
+        }
+
         ScatterSeries {
             color: "#00ff00"
-            axisX: ValueAxis {
-                max: 3
-            }
-            axisY: ValueAxis {
-                max: 3
-            }
-
             XYPoint { x: 0.5; y: 0.5 }
             XYPoint { x: 1; y: 1 }
             XYPoint { x: 2; y: 2 }
@@ -93,53 +92,48 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty Component ScatterSeries::pointMarker
+    \qmlproperty Component ScatterSeries::pointDelegate
     Marks points with the given QML component.
 
     \code
-        pointMarker: Image {
+        pointDelegate: Image {
             source: "images/happy_box.png"
         }
     \endcode
 */
 
 QScatterSeries::QScatterSeries(QObject *parent)
-    : QXYSeries(*new QScatterSeriesPrivate(this), parent)
-{
+    : QXYSeries(*(new QScatterSeriesPrivate()), parent)
+{}
 
-}
+QScatterSeries::~QScatterSeries() {}
 
-QScatterSeries::QScatterSeries(QScatterSeriesPrivate &d, QObject *parent)
-    : QXYSeries(d, parent)
-{
-
-}
+QScatterSeries::QScatterSeries(QScatterSeriesPrivate &dd, QObject *parent)
+    : QXYSeries(dd, parent)
+{}
 
 void QScatterSeries::componentComplete()
 {
+    Q_D(QScatterSeries);
+
     for (auto *child : children()) {
         if (auto point = qobject_cast<QXYPoint *>(child))
             append(point->x(), point->y());
     }
-}
 
-QScatterSeries::~QScatterSeries()
-{
-    Q_D(QScatterSeries);
-    if (d->m_graph)
-        d->m_graph->removeSeries(this);
-}
+    if (d->m_graphTransition)
+        d->m_graphTransition->initialize();
 
+    QAbstractSeries::componentComplete();
+}
 
 QAbstractSeries::SeriesType QScatterSeries::type() const
 {
-    return QAbstractSeries::SeriesTypeScatter;
+    return QAbstractSeries::SeriesType::Scatter;
 }
 
-QScatterSeriesPrivate::QScatterSeriesPrivate(QScatterSeries *q)
-    : QXYSeriesPrivate(q)
+QScatterSeriesPrivate::QScatterSeriesPrivate()
 {
 }
-
 
 QT_END_NAMESPACE

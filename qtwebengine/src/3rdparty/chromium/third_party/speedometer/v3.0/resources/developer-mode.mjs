@@ -13,14 +13,18 @@ export function createDeveloperModeContainer() {
     const content = document.createElement("div");
     content.className = "developer-mode-content";
     content.append(createUIForSuites());
+
     content.append(document.createElement("hr"));
     content.append(createUIForMeasurementMethod());
     content.append(document.createElement("br"));
     content.append(createUIForWarmupSuite());
     content.append(document.createElement("br"));
     content.append(createUIForIterationCount());
-    details.append(content);
 
+    content.append(document.createElement("hr"));
+    content.append(createUIForRun());
+
+    details.append(content);
     container.append(details);
     return container;
 }
@@ -83,6 +87,7 @@ export function createUIForIterationCount() {
 
     return label;
 }
+
 
 export function createUIForSuites() {
     const control = document.createElement("nav");
@@ -179,6 +184,18 @@ export function createUIForSuites() {
     return control;
 }
 
+function createUIForRun() {
+    let button = document.createElement("button");
+    button.textContent = `Start Test`;
+    button.onclick = (event) => {
+        globalThis.benchmarkClient.start();
+    }
+    let buttons = document.createElement("div");
+    buttons.className = "button-bar";
+    buttons.appendChild(button);
+    return buttons
+}
+
 function updateURL() {
     const url = new URL(window.location.href);
 
@@ -186,7 +203,7 @@ function updateURL() {
     // to comma separate only the selected
     const selectedSuites = Suites.filter((suite) => !suite.disabled);
 
-    if (!selectedSuites.length || selectedSuites.length === Suites.length) {
+    if (!selectedSuites.length) {
         url.searchParams.delete("tags");
         url.searchParams.delete("suites");
         url.searchParams.delete("suite");
@@ -202,7 +219,11 @@ function updateURL() {
                 commonTags = new Set(suite.tags.filter((tag) => commonTags.has(tag)));
         }
         if (commonTags.size) {
-            url.searchParams.set("tags", [...commonTags][0]);
+            const tags = [...commonTags][0];
+            if (tags === "default")
+                url.searchParams.delete("tags");
+            else
+                url.searchParams.set("tags", tags);
             url.searchParams.delete("suites");
         } else {
             url.searchParams.delete("tags");

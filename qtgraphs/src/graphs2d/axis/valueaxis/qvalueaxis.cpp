@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtGraphs/QValueAxis>
 #include <private/qvalueaxis_p.h>
 #include <private/charthelpers_p.h>
 #include <QtCore/QtMath>
@@ -17,7 +18,7 @@ QT_BEGIN_NAMESPACE
 */
 /*!
     \qmltype ValueAxis
-    \instantiates QValueAxis
+    \nativetype QValueAxis
     \inqmlmodule QtGraphs
     \ingroup graphs_qml_2D
     \inherits AbstractAxis
@@ -29,15 +30,15 @@ QT_BEGIN_NAMESPACE
     The following example code illustrates how to use the ValueAxis type:
     \code
     GraphsView {
+        axisX: ValueAxis {
+            max: 10
+            tickInterval: 1
+        }
+        axisY: ValueAxis {
+            min -20
+            max: 40
+        }
         LineSeries {
-            axisX: ValueAxis {
-                max: 10
-                tickInterval: 1
-            }
-            axisY: ValueAxis {
-                min -20
-                max: 40
-            }
             // Add a few XYPoint data...
         }
     }
@@ -79,14 +80,14 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-  \property QValueAxis::minorTickCount
-  \brief The number of minor tick marks on the axis. This indicates how many grid lines are drawn
-  between major ticks on the graph. Labels are not drawn for minor ticks. The default value is 0.
+  \property QValueAxis::subTickCount
+  \brief The number of subticks on the axis. This indicates how many subticks are drawn
+  between major lines on the graph. Labels are not drawn for subticks. The default value is 0.
 */
 /*!
-  \qmlproperty int ValueAxis::minorTickCount
-  The number of minor tick marks on the axis. This indicates how many grid lines are drawn
-  between major ticks on the graph. Labels are not drawn for minor ticks. The default value is 0.
+  \qmlproperty int ValueAxis::subTickCount
+  The number of subticks on the axis. This indicates how many subticks are drawn
+  between major lines on the graph. Labels are not drawn for subticks. The default value is 0.
 */
 
 /*!
@@ -147,82 +148,67 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-  \fn void QValueAxis::minChanged(qreal min)
-  This signal is emitted when the minimum value of the axis, specified by \a min, changes.
+  \qmlsignal ValueAxis::minChanged(real min)
+  This signal is emitted when the minimum value of the axis changes to \a min.
 */
 
 /*!
-  \fn void QValueAxis::maxChanged(qreal max)
-  This signal is emitted when the maximum value of the axis, specified by \a max, changes.
+  \qmlsignal ValueAxis::maxChanged(real max)
+  This signal is emitted when the maximum value of the axis changes to \a max.
 */
 
 /*!
-  \fn void QValueAxis::minorTickCountChanged(int minorTickCount)
-  This signal is emitted when the number of minor tick marks on the axis, specified by
-  \a minorTickCount, changes.
+  \qmlsignal ValueAxis::subTickCountChanged(int subTickCount)
+  This signal is emitted when the number of subticks on the axis, specified by
+  \a subTickCount, changes.
 */
 
 /*!
-  \fn void QValueAxis::rangeChanged(qreal min, qreal max)
-  This signal is emitted when the minimum or maximum value of the axis, specified by \a min
-  and \a max, changes.
+    \qmlsignal ValueAxis::rangeChanged(real min, real max)
+  This signal is emitted when the minimum or maximum value of the axis
+  changes to \a min and \a max, respectively.
 */
 
 /*!
-    \qmlsignal ValueAxis::rangeChanged(string min, string max)
-    This signal is emitted when \a min or \a max value of the axis changes.
-
-    The corresponding signal handler is \c onRangeChanged.
+  \qmlsignal ValueAxis::labelFormatChanged(string format)
+  This signal is emitted when the format of axis labels changes to \a format.
 */
 
 /*!
-  \fn void QValueAxis::labelFormatChanged(const QString &format)
-  This signal is emitted when the \a format of axis labels changes.
+  \qmlsignal ValueAxis::labelDecimalsChanged(int decimals)
+  This signal is emitted when the amount of axis label decimals changes to \a decimals.
 */
 
 /*!
-  \fn void QValueAxis::labelDecimalsChanged(int decimals)
-  This signal is emitted when the \a decimals amount of axis labels changes.
+  \qmlsignal ValueAxis::tickAnchorChanged(real tickAnchor)
+  This signal is emitted when the tick anchoring value changes to \a tickAnchor.
 */
 
 /*!
-  \fn void QValueAxis::tickAnchorChanged(qreal tickAnchor)
-  This signal is emitted when the tick anchoring value, specified by
-  \a tickAnchor, changes.
-*/
-
-/*!
-  \fn void QValueAxis::tickIntervalChanged(qreal tickInterval)
-  This signal is emitted when the tick interval value, specified by
-  \a tickInterval, changes.
+  \qmlsignal ValueAxis::tickIntervalChanged(real tickInterval)
+  This signal is emitted when the tick interval value, changes to
+  \a tickInterval.
 */
 
 /*!
     Constructs an axis object that is a child of \a parent.
 */
-QValueAxis::QValueAxis(QObject *parent) :
-    QAbstractAxis(*new QValueAxisPrivate(this), parent)
-{
-
-}
+QValueAxis::QValueAxis(QObject *parent)
+    : QAbstractAxis(*(new QValueAxisPrivate), parent)
+{}
 
 /*!
     \internal
 */
 QValueAxis::QValueAxis(QValueAxisPrivate &d, QObject *parent)
     : QAbstractAxis(d, parent)
-{
-
-}
+{}
 
 /*!
     Destroys the object.
 */
 QValueAxis::~QValueAxis()
 {
-    Q_D(QValueAxis);
-    if (d->m_graph)
-        d->m_graph->removeAxis(this);
 }
 
 void QValueAxis::setMin(qreal min)
@@ -260,20 +246,20 @@ void QValueAxis::setRange(qreal min, qreal max)
     emit update();
 }
 
-void QValueAxis::setMinorTickCount(int count)
+void QValueAxis::setSubTickCount(qsizetype count)
 {
     Q_D(QValueAxis);
-    if (d->m_minorTickCount != count && count >= 0) {
-        d->m_minorTickCount = count;
+    if (d->m_subTickCount != count && count >= 0) {
+        d->m_subTickCount = count;
         emit update();
-        emit minorTickCountChanged(count);
+        emit subTickCountChanged(count);
     }
 }
 
-int QValueAxis::minorTickCount() const
+qsizetype QValueAxis::subTickCount() const
 {
     Q_D(const QValueAxis);
-    return d->m_minorTickCount;
+    return d->m_subTickCount;
 }
 
 void QValueAxis::setTickAnchor(qreal anchor)
@@ -343,28 +329,22 @@ int QValueAxis::labelDecimals() const
 */
 QAbstractAxis::AxisType QValueAxis::type() const
 {
-    return AxisTypeValue;
+    return QAbstractAxis::AxisType::Value;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-QValueAxisPrivate::QValueAxisPrivate(QValueAxis *q)
-    : QAbstractAxisPrivate(q),
-      m_min(0),
-      m_max(10),
-      m_minorTickCount(0),
-      m_format(),
-      m_decimals(-1),
-      m_tickAnchor(0.0),
-      m_tickInterval(0.0)
-{
+QValueAxisPrivate::QValueAxisPrivate()
+    : m_min(0)
+    , m_max(10)
+    , m_subTickCount(0)
+    , m_format()
+    , m_decimals(-1)
+    , m_tickAnchor(0.0)
+    , m_tickInterval(0.0)
+{}
 
-}
-
-QValueAxisPrivate::~QValueAxisPrivate()
-{
-
-}
+QValueAxisPrivate::~QValueAxisPrivate() {}
 
 void QValueAxisPrivate::setMin(const QVariant &min)
 {
@@ -404,8 +384,7 @@ void QValueAxisPrivate::setRange(qreal min, qreal max)
         return;
 
     if (!isValidValue(min, max)) {
-        qWarning() << "Attempting to set invalid range for value axis: ["
-                   << min << " - " << max << "]";
+        qWarning("Attempting to set invalid range for value axis: [%f - %f]", min, max);
         return;
     }
 
@@ -421,13 +400,10 @@ void QValueAxisPrivate::setRange(qreal min, qreal max)
         emit q->maxChanged(max);
     }
 
-    if (changed) {
-        emit rangeChanged(min,max);
+    if (changed)
         emit q->rangeChanged(min, max);
-    }
 }
 
 QT_END_NAMESPACE
 
 #include "moc_qvalueaxis.cpp"
-#include "moc_qvalueaxis_p.cpp"

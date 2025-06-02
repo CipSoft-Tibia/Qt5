@@ -139,6 +139,31 @@ typedef struct SVC {
    * Force zero-mv in mode search for the spatial/inter-layer reference.
    */
   int force_zero_mode_spatial_ref;
+
+  /*!
+   * Flag to indicate that current spatial layer has a lower quality layer
+   * (at the same timestamp) that can be used as a reference.
+   * Lower quality layer refers to the same resolution but encoded at
+   * different/lower bitrate.
+   */
+  int has_lower_quality_layer;
+
+  /*!
+   * Flag to indicate the frame drop mode for SVC: one of the two settings:
+   * AOM_LAYER_DROP (default) or AOM_FULL_SUPERFRAME_DROP.
+   */
+  AOM_SVC_FRAME_DROP_MODE framedrop_mode;
+
+  /*!
+   * Flag to indicate if frame was dropped for a given spatial_layer_id on
+   * previous superframe.
+   */
+  bool last_layer_dropped[AOM_MAX_SS_LAYERS];
+
+  /*!
+   * Flag to indicate if a previous spatial was dropped for the same superframe.
+   */
+  bool drop_spatial_layer[AOM_MAX_SS_LAYERS];
 } SVC;
 
 struct AV1_COMP;

@@ -7,8 +7,7 @@
 
 QGeoPositionInfoSource *QGeoPositionInfoSourceFactoryAndroid::positionInfoSource(QObject *parent, const QVariantMap &parameters)
 {
-    Q_UNUSED(parameters)
-    QGeoPositionInfoSourceAndroid *src = new QGeoPositionInfoSourceAndroid(parent);
+    QGeoPositionInfoSourceAndroid *src = new QGeoPositionInfoSourceAndroid(parameters, parent);
     return src;
 }
 

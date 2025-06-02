@@ -28,8 +28,12 @@ ls -la "$(dirname "$0")"
 source "$(dirname "$0")/../test_util.sh"
 
 readonly centipede_dir="$(centipede::get_centipede_test_srcdir)"
-centipede::maybe_set_var_to_executable_path centipede "${centipede_dir}/centipede"
+centipede::maybe_set_var_to_executable_path centipede "${centipede_dir}/centipede_uninstrumented"
 readonly centipede
+centipede::maybe_set_var_to_executable_path llvm_symbolizer "$(centipede::get_llvm_symbolizer_path)"
+readonly llvm_symbolizer
+centipede::maybe_set_var_to_executable_path objdump "$(centipede::get_objdump_path)"
+readonly objdump
 
 readonly target_name="$(basename "$0")"
 readonly seed_and_puzzle_name="${target_name#run_}"
@@ -57,16 +61,21 @@ function Run() {
   echo "======== Run $*"
   rm -rf "${workdir}"
   mkdir "${workdir}"
-  "${centipede}" \
+  if "${centipede}" \
     --workdir "${workdir}" \
     --binary "${puzzle_path}" \
+    --symbolizer_path="${llvm_symbolizer}" \
+    --objdump_path="${objdump}$" \
     --seed="${seed}" \
     --num_runs=2000000 \
     --timeout_per_input=10 \
     --exit_on_crash \
     "$@" \
-    > "${log}" 2>&1 && exit 1  # Centipede must exit with failure.
-  cat "${log}"
+    |& tee "${log}"
+  then
+    # Centipede must exit with failure.
+    return 1
+  fi
 }
 
 # Checks that $1 is the solution for the puzzle.

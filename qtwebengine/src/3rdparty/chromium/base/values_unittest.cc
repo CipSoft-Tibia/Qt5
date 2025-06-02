@@ -40,23 +40,15 @@ namespace base {
 // This test is limited to NDEBUG builds, since some containers may require
 // extra storage for supporting debug checks for things like iterators.
 TEST(ValuesTest, SizeOfValue) {
-#if BUILDFLAG(IS_WIN)
-  // On Windows, clang-cl does not support `[[no_unique_address]]` (see
-  // https://github.com/llvm/llvm-project/issues/49358). `base::Value::Dict` has
-  // a `base::flat_tree` which relies on this attribute to avoid wasting space
-  // when the comparator is stateless. Unfortunately, this means
-  // `base::Value::Dict` ends up taking 4 machine words instead of 3. An
-  // additional word is used by absl::variant for the type index.
-  constexpr size_t kExpectedSize = 5 * sizeof(void*);
-#elif defined(__GLIBCXX__)
+#if defined(__GLIBCXX__)
   // libstdc++ std::string takes already 4 machine words, so the absl::variant
   // takes 5
   constexpr size_t kExpectedSize = 5 * sizeof(void*);
-#else   // !BUILDFLAG(IS_WIN) && !defined(__GLIBCXX__)
+#else   // !defined(__GLIBCXX__)
   // libc++'s std::string and std::vector both take 3 machine words. An
   // additional word is used by absl::variant for the type index.
   constexpr size_t kExpectedSize = 4 * sizeof(void*);
-#endif  // BUILDFLAG(IS_WIN)
+#endif  // defined(__GLIBCXX__)
 
   // Use std::integral_constant so the compiler error message includes the
   // evaluated size. In future versions of clang, it should be possible to
@@ -69,16 +61,15 @@ TEST(ValuesTest, SizeOfValue) {
 #endif
 
 TEST(ValuesTest, TestNothrow) {
-  static_assert(std::is_nothrow_move_constructible<Value>::value,
+  static_assert(std::is_nothrow_move_constructible_v<Value>,
                 "IsNothrowMoveConstructible");
-  static_assert(std::is_nothrow_default_constructible<Value>::value,
+  static_assert(std::is_nothrow_default_constructible_v<Value>,
                 "IsNothrowDefaultConstructible");
-  static_assert(std::is_nothrow_constructible<Value, std::string&&>::value,
+  static_assert(std::is_nothrow_constructible_v<Value, std::string&&>,
                 "IsNothrowMoveConstructibleFromString");
-  static_assert(
-      std::is_nothrow_constructible<Value, Value::BlobStorage&&>::value,
-      "IsNothrowMoveConstructibleFromBlob");
-  static_assert(std::is_nothrow_move_assignable<Value>::value,
+  static_assert(std::is_nothrow_constructible_v<Value, Value::BlobStorage&&>,
+                "IsNothrowMoveConstructibleFromBlob");
+  static_assert(std::is_nothrow_move_assignable_v<Value>,
                 "IsNothrowMoveAssignable");
 }
 
@@ -106,15 +97,15 @@ TEST(ValuesTest, ConstructBool) {
 }
 
 TEST(ValuesTest, ConstructFromPtrs) {
-  static_assert(!std::is_constructible<Value, int*>::value, "");
-  static_assert(!std::is_constructible<Value, const int*>::value, "");
-  static_assert(!std::is_constructible<Value, wchar_t*>::value, "");
-  static_assert(!std::is_constructible<Value, const wchar_t*>::value, "");
+  static_assert(!std::is_constructible_v<Value, int*>, "");
+  static_assert(!std::is_constructible_v<Value, const int*>, "");
+  static_assert(!std::is_constructible_v<Value, wchar_t*>, "");
+  static_assert(!std::is_constructible_v<Value, const wchar_t*>, "");
 
-  static_assert(std::is_constructible<Value, char*>::value, "");
-  static_assert(std::is_constructible<Value, const char*>::value, "");
-  static_assert(std::is_constructible<Value, char16_t*>::value, "");
-  static_assert(std::is_constructible<Value, const char16_t*>::value, "");
+  static_assert(std::is_constructible_v<Value, char*>, "");
+  static_assert(std::is_constructible_v<Value, const char*>, "");
+  static_assert(std::is_constructible_v<Value, char16_t*>, "");
+  static_assert(std::is_constructible_v<Value, const char16_t*>, "");
 }
 
 TEST(ValuesTest, ConstructInt) {

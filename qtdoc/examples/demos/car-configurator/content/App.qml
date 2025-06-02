@@ -1,9 +1,11 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
+import Assets.Downloader
 import CarRendering
 
 Window {
@@ -19,27 +21,56 @@ Window {
 
     property url downloadBase
 
-    function downloadProgress(progress: double) {
-        progressBar.value = progress
-    }
-
-    function downloadStart(num: int) {
-        progressText.text = qsTr("Downloading asset %1 of %2").arg(num).arg(AssetDownloader.downloadCount)
+    function downloadProgress(progressValue: int, progressMaximum: int, text: string) {
+        progressBar.from = 0
+        progressBar.to = progressMaximum
+        progressBar.value = progressValue
+        progressText.text = text
     }
 
     function downloadComplete() {
         messageText.text = qsTr("Initializing...")
         progressText.text = ""
         progressBar.visible = false
-        downloadBase = AssetDownloader.downloadUrl
+        rootWindow.downloadBase = downloader.localDownloadDir
         loader.sourceComponent = mainComponent
     }
 
+    function downloadFailed() {
+        messageText.text = qsTr("Cannot download assets")
+        progressText.text = ""
+        progressBar.visible = false
+    }
+
+    AssetDownloader {
+        id: downloader
+
+        downloadBase: "https://download.qt.io/learning/examples/"
+        jsonFileName : "car-configurator-assets-v3.json"
+        zipFileName : "car-configurator-assets-v3.zip"
+        offlineAssetsFilePath: "assets/assets_download.json"
+        preferredLocalDownloadDir: StandardPaths.writableLocation(StandardPaths.AppDataLocation)
+    }
+
+    DirectoryFontLoader {
+        fontDirectory: rootWindow.downloadBase + "/content/fonts"
+    }
+
     Connections {
-        target: AssetDownloader
-        function onDownloadStarted(num: int) { rootWindow.downloadStart(num) }
-        function onDownloadProgressChanged(progress: double) { rootWindow.downloadProgress(progress) }
-        function onFinished() { rootWindow.downloadComplete() }
+        target: downloader
+
+        function onProgressChanged(progressValue: int,
+                                   progressMaximum: int,
+                                   text: string) {
+            rootWindow.downloadProgress(progressValue, progressMaximum, text)
+        }
+
+        function onFinished(success: bool) {
+            if (success)
+                rootWindow.downloadComplete()
+            else
+                rootWindow.downloadFailed()
+        }
     }
 
     Rectangle {
@@ -54,7 +85,7 @@ Window {
             id: loader
 
             anchors.fill: parent
-            Component.onCompleted: AssetDownloader.start()
+            Component.onCompleted: downloader.start()
         }
 
         Component {
@@ -112,7 +143,7 @@ Window {
         ProgressBar {
             id: progressBar
 
-            width: progressText.width
+            width: parent.width * 0.3
             height: 10
 
             anchors.top: progressText.bottom

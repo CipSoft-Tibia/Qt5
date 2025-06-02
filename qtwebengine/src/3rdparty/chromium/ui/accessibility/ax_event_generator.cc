@@ -5,6 +5,7 @@
 #include "ui/accessibility/ax_event_generator.h"
 
 #include "base/containers/contains.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/no_destructor.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_event.h"
@@ -538,7 +539,7 @@ void AXEventGenerator::OnIntAttributeChanged(AXTree* tree,
     case ax::mojom::IntAttribute::kAriaCurrentState:
       AddEvent(node, Event::ARIA_CURRENT_CHANGED);
       break;
-    case ax::mojom::IntAttribute::kDropeffect:
+    case ax::mojom::IntAttribute::kDropeffectDeprecated:
       AddEvent(node, Event::DROPEFFECT_CHANGED);
       break;
     case ax::mojom::IntAttribute::kHasPopup:
@@ -669,7 +670,7 @@ void AXEventGenerator::OnBoolAttributeChanged(AXTree* tree,
       if (!new_value)
         AddEvent(node, Event::LAYOUT_INVALIDATED);
       break;
-    case ax::mojom::BoolAttribute::kGrabbed:
+    case ax::mojom::BoolAttribute::kGrabbedDeprecated:
       AddEvent(node, Event::GRABBED_CHANGED);
       break;
     case ax::mojom::BoolAttribute::kLiveAtomic:
@@ -722,6 +723,16 @@ void AXEventGenerator::OnIntListAttributeChanged(
       break;
     }
     case ax::mojom::IntListAttribute::kLabelledbyIds:
+      if (new_value.size() > 1) {
+        UMA_HISTOGRAM_BOOLEAN("Accessibility.AriaLabelledBy.HasMultipleIds",
+                              true);
+        UMA_HISTOGRAM_EXACT_LINEAR(
+            "Accessibility.AriaLabelledBy.HadMultipleIds.TotalIds",
+            new_value.size(), 11);
+      } else if (new_value.size() == 1) {
+        UMA_HISTOGRAM_BOOLEAN("Accessibility.AriaLabelledBy.HasMultipleIds",
+                              false);
+      }
       AddEvent(node, Event::LABELED_BY_CHANGED);
       break;
     case ax::mojom::IntListAttribute::kMarkerEnds:

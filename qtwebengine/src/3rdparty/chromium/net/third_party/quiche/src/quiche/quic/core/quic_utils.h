@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <type_traits>
 
@@ -15,7 +16,6 @@
 #include "absl/numeric/int128.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/frames/quic_frame.h"
@@ -29,7 +29,7 @@
 
 namespace quic {
 
-class QUIC_EXPORT_PRIVATE QuicUtils {
+class QUICHE_EXPORT QuicUtils {
  public:
   QuicUtils() = delete;
 
@@ -227,13 +227,13 @@ bool IsValidWebTransportSessionId(WebTransportSessionId id,
 QuicByteCount MemSliceSpanTotalSize(absl::Span<quiche::QuicheMemSlice> span);
 
 // Computes a SHA-256 hash and returns the raw bytes of the hash.
-QUIC_EXPORT_PRIVATE std::string RawSha256(absl::string_view input);
+QUICHE_EXPORT std::string RawSha256(absl::string_view input);
 
 // BitMask<Index, Mask> is a set of elements of type `Index` represented as a
 // bitmask of an underlying integer type `Mask` (uint64_t by default). The
 // underlying type has to be large enough to fit all possible values of `Index`.
 template <typename Index, typename Mask = uint64_t>
-class QUIC_EXPORT_PRIVATE BitMask {
+class QUICHE_EXPORT BitMask {
  public:
   explicit constexpr BitMask(std::initializer_list<Index> bits) {
     for (Index bit : bits) {
@@ -259,9 +259,9 @@ class QUIC_EXPORT_PRIVATE BitMask {
   bool Any() const { return mask_ != 0; }
 
   // Returns the highest bit set, or nullopt if the mask is all zeroes.
-  absl::optional<Index> Max() const {
+  std::optional<Index> Max() const {
     if (!Any()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     return static_cast<Index>(NumBits() - absl::countl_zero(mask_) - 1);
   }

@@ -25,6 +25,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -43,6 +45,7 @@ struct SkISize;
 
 namespace skgpu {
     class KeyBuilder;
+    enum class Mipmapped : bool;
 }
 namespace GrTest {
     struct TestFormatColorTypeCombination;
@@ -58,6 +61,10 @@ public:
     void dumpJSON(SkJSONWriter*) const;
 
     const GrShaderCaps* shaderCaps() const { return fShaderCaps.get(); }
+
+#if defined(GR_TEST_UTILS)
+    std::string_view deviceName() const { return fDeviceName; }
+#endif
 
     bool npotTextureTileSupport() const { return fNPOTTextureTileSupport; }
     /** To avoid as-yet-unnecessary complexity we don't allow any partial support of MIP Maps (e.g.
@@ -391,11 +398,15 @@ public:
 
     bool wireframeMode() const { return fWireframeMode; }
 
-    /** Supports using GrFence. */
-    bool fenceSyncSupport() const { return fFenceSyncSupport; }
-
-    /** Supports using GrSemaphore. */
+    /** Supports using GrSemaphores. */
     bool semaphoreSupport() const { return fSemaphoreSupport; }
+
+    /** Supports using GrBackendSemaphore as "signal" semaphores or for waiting. See also
+     *  GrFlushInfo and GrDirectContext. */
+    bool backendSemaphoreSupport() const { return fBackendSemaphoreSupport; }
+
+    /** Supports async callback for finishedProcs */
+    bool finishedProcAsyncCallbackSupport() const { return fFinishedProcAsyncCallbackSupport; }
 
     bool crossContextTextureSupport() const { return fCrossContextTextureSupport; }
     /**
@@ -452,8 +463,12 @@ public:
         return {};
     }
 
-    bool validateSurfaceParams(const SkISize&, const GrBackendFormat&, GrRenderable renderable,
-                               int renderTargetSampleCnt, GrMipmapped, GrTextureType) const;
+    bool validateSurfaceParams(const SkISize&,
+                               const GrBackendFormat&,
+                               GrRenderable renderable,
+                               int renderTargetSampleCnt,
+                               skgpu::Mipmapped,
+                               GrTextureType) const;
 
     bool areColorTypeAndFormatCompatible(GrColorType grCT, const GrBackendFormat& format) const;
 
@@ -558,6 +573,12 @@ protected:
     // NOTE: this method will only reduce the caps, never expand them.
     void finishInitialization(const GrContextOptions& options);
 
+#if defined(GR_TEST_UTILS)
+    void setDeviceName(const char* n) {
+        fDeviceName = n;
+    }
+#endif
+
     virtual bool onSupportsDynamicMSAA(const GrRenderTargetProxy*) const { return false; }
 
     std::unique_ptr<GrShaderCaps> fShaderCaps;
@@ -614,8 +635,9 @@ protected:
     // ANGLE performance workaround
     bool fPreferVRAMUseOverFlushes                   : 1;
 
-    bool fFenceSyncSupport                           : 1;
     bool fSemaphoreSupport                           : 1;
+    bool fBackendSemaphoreSupport                    : 1;
+    bool fFinishedProcAsyncCallbackSupport           : 1;
 
     // Requires fence sync support in GL.
     bool fCrossContextTextureSupport                 : 1;
@@ -644,6 +666,10 @@ protected:
     size_t fBufferUpdateDataPreserveAlignment = 1;
 
     GrDriverBugWorkarounds fDriverBugWorkarounds;
+
+#if defined(GR_TEST_UTILS)
+    std::string fDeviceName;
+#endif
 
 private:
     void applyOptionsOverrides(const GrContextOptions& options);

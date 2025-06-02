@@ -11,6 +11,7 @@
 
 #include "base/component_export.h"
 #include "base/time/time.h"
+#include "base/values.h"
 #include "components/services/app_service/public/cpp/icon_types.h"
 #include "components/services/app_service/public/cpp/intent_filter.h"
 #include "components/services/app_service/public/cpp/macros.h"
@@ -32,7 +33,6 @@ ENUM(AppType,
      kCrostini,                    // Linux (via Crostini) app.
      kChromeApp,                   // Chrome app.
      kWeb,                         // Web app.
-     kMacOs,                       // Mac OS app.
      kPluginVm,                    // Plugin VM app, see go/pluginvm.
      kStandaloneBrowser,           // Lacros browser app, see //docs/lacros.md.
      kRemote,                      // Remote app.
@@ -132,13 +132,36 @@ struct COMPONENT_EXPORT(APP_TYPES) App {
 
   ~App();
 
+  bool operator==(const App& other) const;
+  bool operator!=(const App& other) const;
+
   std::unique_ptr<App> Clone() const;
+
+  // Adds a new field for `extra`. The type `T` can be any type, e.g. int,
+  // double, string, base::Value::Dict, base::Value::List, base::Value, etc. The
+  // value is saved in base::Value::Dict `extra`. If the type `T` can't be
+  // converted to base::Value, an explicit convert function can be added to
+  // convert `value` to base::Value.
+  template <typename T>
+  void SetExtraField(const std::string& field_name, T&& value) {
+    if (!extra.has_value()) {
+      extra = base::Value::Dict();
+    }
+    extra->Set(field_name, value);
+  }
 
   AppType app_type;
   std::string app_id;
 
   Readiness readiness = Readiness::kUnknown;
+
+  // The full name of the app. Will be used in most UIs.
   absl::optional<std::string> name;
+  // A shortened version of the app name. May omit branding (e.g.
+  // "Google" prefixes) or rely on abbreviations (e.g. "YT Music"). If no
+  // `short_name` is supplied, the `name` will be used instead.
+  // The `short_name` may be used in UIs where space is limited and/or we want
+  // to optimize for scannability.
   absl::optional<std::string> short_name;
 
   // An optional, publisher-specific ID for this app, e.g. for Android apps,
@@ -162,11 +185,13 @@ struct COMPONENT_EXPORT(APP_TYPES) App {
   // There is no guarantee that this is sorted by any criteria.
   Permissions permissions;
 
-  // Whether the app was installed by sync, policy or as a default app.
+  // The main reason why this app is currently installed on the device (e.g.
+  // because it is required by Policy). This may change over time and is not
+  // necessarily the reason why the app was originally installed.
   InstallReason install_reason = InstallReason::kUnknown;
 
-  // Where the app was installed from, e.g. from Play Store, from Chrome Web
-  // Store, etc.
+  // How installation of the app was triggered on this device. Either a UI
+  // surface (e.g. Play Store), or a system component (e.g. Sync).
   InstallSource install_source = InstallSource::kUnknown;
 
   // IDs used for policy to identify the app.
@@ -214,15 +239,39 @@ struct COMPONENT_EXPORT(APP_TYPES) App {
   // Whether the app runs on os login in a new window or not.
   absl::optional<RunOnOsLogin> run_on_os_login;
 
+  // Whether the app can be closed by the user.
+  absl::optional<bool> allow_close;
+
   // Storage space size for app and associated data.
   absl::optional<uint64_t> app_size_in_bytes;
   absl::optional<uint64_t> data_size_in_bytes;
 
-  // When adding new fields to the App type, the `Clone` function and the
-  // `AppUpdate` class should also be updated.
+  // App-specified supported locales.
+  std::vector<std::string> supported_locales;
+  // Currently selected locale, empty string means system language is used.
+  // ARC-specific note: Based on Android implementation, `selected_locale`
+  //  is not necessarily part of `supported_locales`.
+  absl::optional<std::string> selected_locale;
+
+  // The extra information used by the app platform(e.g. ARC, GuestOS) for an
+  // app. `extra` needs to be modified as a whole, and we can't only modify part
+  // of `extra`. AppService doesn't use the fields saved in `extra`. App
+  // publishers modify the content saved in `extra`.
+  absl::optional<base::Value::Dict> extra;
+
+  // When adding new fields to the App type, the `Clone` function, the
+  // `operator==` function, and the `AppUpdate` class should also be updated. If
+  // the new fields should be saved, below functions should be updated:
+  // `AppStorage::IsAppChanged`
+  // `AppStorageFileHandler::ConvertAppsToValue`
+  // `AppStorageFileHandler::ConvertValueToApps`
 };
 
 using AppPtr = std::unique_ptr<App>;
+
+COMPONENT_EXPORT(APP_TYPES)
+bool IsEqual(const std::vector<AppPtr>& source,
+             const std::vector<AppPtr>& target);
 
 COMPONENT_EXPORT(APP_TYPES)
 ApplicationType ConvertAppTypeToProtoApplicationType(AppType app_type);

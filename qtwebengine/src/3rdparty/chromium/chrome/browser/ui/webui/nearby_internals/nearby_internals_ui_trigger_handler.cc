@@ -60,7 +60,8 @@ enum class TriggerEvent {
 };
 
 base::Value GetJavascriptTimestamp() {
-  return base::Value(base::Time::Now().ToJsTimeIgnoringNull());
+  return base::Value(
+      base::Time::Now().InMillisecondsFSinceUnixEpochIgnoringNull());
 }
 
 std::string StatusCodeToString(
@@ -487,8 +488,8 @@ void NearbyInternalsUiTriggerHandler::SendText(const base::Value::List& args) {
 
   std::vector<std::unique_ptr<Attachment>> attachments;
   attachments.push_back(std::make_unique<TextAttachment>(
-      TextAttachment::Type::kText, kPayloadExample, /*title=*/absl::nullopt,
-      /*mime_type=*/absl::nullopt));
+      TextAttachment::Type::kText, kPayloadExample, /*title=*/std::nullopt,
+      /*mime_type=*/std::nullopt));
 
   const base::Value& callback_id = args[0];
   ResolveJavascriptCallback(
@@ -622,8 +623,8 @@ void NearbyInternalsUiTriggerHandler::ShowReceivedNotification(
   // Create a share target with a fake text attachment.
   TextAttachment attachment(TextAttachment::Type::kText,
                             kTextAttachmentFakeBodyText,
-                            /*title=*/absl::nullopt,
-                            /*mime_type=*/absl::nullopt);
+                            /*title=*/std::nullopt,
+                            /*mime_type=*/std::nullopt);
   ShareTarget target;
   target.is_incoming = true;
   target.device_name = kShareTargetFakeFullName;

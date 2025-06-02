@@ -14,6 +14,7 @@
 #include <QString>
 #include <QVector>
 
+#include <litehtml/types.h>
 #include <unordered_map>
 
 class Selection
@@ -114,6 +115,7 @@ public: // document_container API
 
     QPaintDevice *m_paintDevice = nullptr;
     litehtml::document::ptr m_document;
+    litehtml::media_type mediaType = litehtml::media_type_screen;
     Index m_index;
     QString m_baseUrl;
     QRect m_clientRect;

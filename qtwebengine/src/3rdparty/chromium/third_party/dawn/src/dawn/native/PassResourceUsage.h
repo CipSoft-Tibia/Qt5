@@ -1,23 +1,36 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_PASSRESOURCEUSAGE_H_
 #define SRC_DAWN_NATIVE_PASSRESOURCEUSAGE_H_
 
-#include <set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "dawn/native/SubresourceStorage.h"
 #include "dawn/native/dawn_platform.h"
 
@@ -32,18 +45,33 @@ class BufferBase;
 class QuerySetBase;
 class TextureBase;
 
+// Info about how a buffer is used and in which shader stages
+struct BufferSyncInfo {
+    wgpu::BufferUsage usage = wgpu::BufferUsage::None;
+    wgpu::ShaderStage shaderStages = wgpu::ShaderStage::None;
+};
+
+// Info about how a texture is used and in which shader stages
+// TODO(crbug.com/dawn/851): Optimize by merging into one u32?
+struct TextureSyncInfo {
+    wgpu::TextureUsage usage = wgpu::TextureUsage::None;
+    wgpu::ShaderStage shaderStages = wgpu::ShaderStage::None;
+};
+
+bool operator==(const TextureSyncInfo& a, const TextureSyncInfo& b);
+
 // The texture usage inside passes must be tracked per-subresource.
-using TextureSubresourceUsage = SubresourceStorage<wgpu::TextureUsage>;
+using TextureSubresourceSyncInfo = SubresourceStorage<TextureSyncInfo>;
 
 // Which resources are used by a synchronization scope and how they are used. The command
 // buffer validation pre-computes this information so that backends with explicit barriers
 // don't have to re-compute it.
 struct SyncScopeResourceUsage {
     std::vector<BufferBase*> buffers;
-    std::vector<wgpu::BufferUsage> bufferUsages;
+    std::vector<BufferSyncInfo> bufferSyncInfos;
 
     std::vector<TextureBase*> textures;
-    std::vector<TextureSubresourceUsage> textureUsages;
+    std::vector<TextureSubresourceSyncInfo> textureSyncInfos;
 
     std::vector<ExternalTextureBase*> externalTextures;
 };
@@ -64,9 +92,9 @@ struct ComputePassResourceUsage {
     std::vector<SyncScopeResourceUsage> dispatchUsages;
 
     // All the resources referenced by this compute pass for validation in Queue::Submit.
-    std::set<BufferBase*> referencedBuffers;
-    std::set<TextureBase*> referencedTextures;
-    std::set<ExternalTextureBase*> referencedExternalTextures;
+    absl::flat_hash_set<BufferBase*> referencedBuffers;
+    absl::flat_hash_set<TextureBase*> referencedTextures;
+    absl::flat_hash_set<ExternalTextureBase*> referencedExternalTextures;
 };
 
 // Contains all the resource usage data for a render pass.
@@ -90,9 +118,9 @@ struct CommandBufferResourceUsage {
     ComputePassUsages computePasses;
 
     // Resources used in commands that aren't in a pass.
-    std::set<BufferBase*> topLevelBuffers;
-    std::set<TextureBase*> topLevelTextures;
-    std::set<QuerySetBase*> usedQuerySets;
+    absl::flat_hash_set<BufferBase*> topLevelBuffers;
+    absl::flat_hash_set<TextureBase*> topLevelTextures;
+    absl::flat_hash_set<QuerySetBase*> usedQuerySets;
 };
 
 }  // namespace dawn::native

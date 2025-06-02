@@ -5,15 +5,15 @@
 
 import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
+import type * as Platform from '../../core/platform/platform.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
 
 import {Issue, IssueCategory, IssueKind} from './Issue.js';
-
 import {
-  resolveLazyDescription,
   type LazyMarkdownIssueDescription,
   type MarkdownIssueDescription,
+  resolveLazyDescription,
 } from './MarkdownIssueDescription.js';
 
 const UIStrings = {
@@ -41,17 +41,37 @@ const UIStrings = {
    * @description Label for a link for third-party cookie Issues.
    */
   thirdPartyPhaseoutExplained: 'Prepare for phasing out third-party cookies',
+  /**
+   * @description Label for a link for cross-site redirect Issues.
+   */
+  fileCrosSiteRedirectBug: 'File a bug',
+  /**
+   * @description text to show in Console panel when a third-party cookie will be blocked in Chrome.
+   */
+  consoleTpcdWarningMessage: 'Third-party cookie will be blocked in future Chrome versions as part of Privacy Sandbox.',
+  /**
+   * @description text to show in Console panel when a third-party cookie is blocked in Chrome.
+   */
+  consoleTpcdErrorMessage: 'Third-party cookie is blocked in Chrome as part of Privacy Sandbox.',
 
 };
 const str_ = i18n.i18n.registerUIStrings('models/issues_manager/CookieIssue.ts', UIStrings);
 const i18nLazyString = i18n.i18n.getLazilyComputedLocalizedString.bind(undefined, str_);
 
+// The enum string values need to match the IssueExpanded enum values in UserMetrics.ts.
+export const enum CookieIssueSubCategory {
+  GenericCookie = 'GenericCookie',
+  SameSiteCookie = 'SameSiteCookie',
+  ThirdPartyPhaseoutCookie = 'ThirdPartyPhaseoutCookie',
+}
+
 export class CookieIssue extends Issue {
   #issueDetails: Protocol.Audits.CookieIssueDetails;
 
   constructor(
-      code: string, issueDetails: Protocol.Audits.CookieIssueDetails, issuesModel: SDK.IssuesModel.IssuesModel) {
-    super(code, issuesModel);
+      code: string, issueDetails: Protocol.Audits.CookieIssueDetails, issuesModel: SDK.IssuesModel.IssuesModel,
+      issueId: Protocol.Audits.IssueId|undefined) {
+    super(code, issuesModel, issueId);
     this.#issueDetails = issueDetails;
   }
 
@@ -73,7 +93,8 @@ export class CookieIssue extends Issue {
    * Returns an array of issues from a given CookieIssueDetails.
    */
   static createIssuesFromCookieIssueDetails(
-      cookieIssueDetails: Protocol.Audits.CookieIssueDetails, issuesModel: SDK.IssuesModel.IssuesModel): CookieIssue[] {
+      cookieIssueDetails: Protocol.Audits.CookieIssueDetails, issuesModel: SDK.IssuesModel.IssuesModel,
+      issueId: Protocol.Audits.IssueId|undefined): CookieIssue[] {
     const issues: CookieIssue[] = [];
 
     // Exclusion reasons have priority. It means a cookie was blocked. Create an issue
@@ -83,9 +104,9 @@ export class CookieIssue extends Issue {
       for (const exclusionReason of cookieIssueDetails.cookieExclusionReasons) {
         const code = CookieIssue.codeForCookieIssueDetails(
             exclusionReason, cookieIssueDetails.cookieWarningReasons, cookieIssueDetails.operation,
-            cookieIssueDetails.cookieUrl);
+            cookieIssueDetails.cookieUrl as Platform.DevToolsPath.UrlString | undefined);
         if (code) {
-          issues.push(new CookieIssue(code, cookieIssueDetails, issuesModel));
+          issues.push(new CookieIssue(code, cookieIssueDetails, issuesModel, issueId));
         }
       }
       return issues;
@@ -95,9 +116,10 @@ export class CookieIssue extends Issue {
       for (const warningReason of cookieIssueDetails.cookieWarningReasons) {
         // warningReasons should be an empty array here.
         const code = CookieIssue.codeForCookieIssueDetails(
-            warningReason, [], cookieIssueDetails.operation, cookieIssueDetails.cookieUrl);
+            warningReason, [], cookieIssueDetails.operation,
+            cookieIssueDetails.cookieUrl as Platform.DevToolsPath.UrlString | undefined);
         if (code) {
-          issues.push(new CookieIssue(code, cookieIssueDetails, issuesModel));
+          issues.push(new CookieIssue(code, cookieIssueDetails, issuesModel, issueId));
         }
       }
     }
@@ -109,12 +131,15 @@ export class CookieIssue extends Issue {
    * can uniquely identify a specific cookie issue.
    * warningReasons is only needed for some CookieExclusionReason in order to determine if an issue should be raised.
    * It is not required if reason is a CookieWarningReason.
+   *
+   * The issue code will be mapped to a CookieIssueSubCategory enum for metric purpose.
    */
   static codeForCookieIssueDetails(
       reason: Protocol.Audits.CookieExclusionReason|Protocol.Audits.CookieWarningReason,
       warningReasons: Protocol.Audits.CookieWarningReason[], operation: Protocol.Audits.CookieOperation,
-      cookieUrl?: string): string|null {
-    const isURLSecure = cookieUrl && (cookieUrl.startsWith('https://') || cookieUrl.startsWith('wss://'));
+      cookieUrl?: Platform.DevToolsPath.UrlString): string|null {
+    const isURLSecure =
+        cookieUrl && (Common.ParsedURL.schemeIs(cookieUrl, 'https:') || Common.ParsedURL.schemeIs(cookieUrl, 'wss:'));
     const secure = isURLSecure ? 'Secure' : 'Insecure';
 
     if (reason === Protocol.Audits.CookieExclusionReason.ExcludeSameSiteStrict ||
@@ -140,6 +165,13 @@ export class CookieIssue extends Issue {
             secure,
           ].join('::');
         }
+      }
+
+      if (warningReasons.includes(Protocol.Audits.CookieWarningReason.WarnCrossSiteRedirectDowngradeChangesInclusion)) {
+        return [
+          Protocol.Audits.InspectorIssueCode.CookieIssue,
+          'CrossSiteRedirectDowngradeChangesInclusion',
+        ].join('::');
       }
 
       // If we have ExcludeSameSiteUnspecifiedTreatedAsLax but no corresponding warnings, then add just
@@ -219,7 +251,33 @@ export class CookieIssue extends Issue {
       return [];
     }
 
-    return CookieIssue.createIssuesFromCookieIssueDetails(cookieIssueDetails, issuesModel);
+    return CookieIssue.createIssuesFromCookieIssueDetails(cookieIssueDetails, issuesModel, inspectorIssue.issueId);
+  }
+
+  static getSubCategory(code: string): CookieIssueSubCategory {
+    if (code.includes('SameSite') || code.includes('Downgrade')) {
+      return CookieIssueSubCategory.SameSiteCookie;
+    }
+    if (code.includes('ThirdPartyPhaseout')) {
+      return CookieIssueSubCategory.ThirdPartyPhaseoutCookie;
+    }
+    return CookieIssueSubCategory.GenericCookie;
+  }
+
+  override maybeCreateConsoleMessage(): SDK.ConsoleModel.ConsoleMessage|undefined {
+    const issuesModel = this.model();
+    if (issuesModel && CookieIssue.getSubCategory(this.code()) === CookieIssueSubCategory.ThirdPartyPhaseoutCookie) {
+      return new SDK.ConsoleModel.ConsoleMessage(
+          issuesModel.target().model(SDK.RuntimeModel.RuntimeModel), SDK.ConsoleModel.FrontendMessageSource.IssuePanel,
+          Protocol.Log.LogEntryLevel.Warning,
+          this.getKind() === IssueKind.PageError ? UIStrings.consoleTpcdErrorMessage :
+                                                   UIStrings.consoleTpcdWarningMessage,
+          {
+            url: this.#issueDetails.request?.url as Platform.DevToolsPath.UrlString | undefined,
+            affectedResources: {requestId: this.#issueDetails.request?.requestId, issueId: this.issueId},
+          });
+    }
+    return;
   }
 }
 
@@ -430,15 +488,15 @@ const excludeDomainNonAscii: LazyMarkdownIssueDescription = {
   links: [],
 };
 
-const excludeBlockedWithinFirstPartySet: LazyMarkdownIssueDescription = {
-  file: 'cookieExcludeBlockedWithinFirstPartySet.md',
+const excludeBlockedWithinRelatedWebsiteSet: LazyMarkdownIssueDescription = {
+  file: 'cookieExcludeBlockedWithinRelatedWebsiteSet.md',
   links: [],
 };
 
 const cookieWarnThirdPartyPhaseoutSet: LazyMarkdownIssueDescription = {
   file: 'cookieWarnThirdPartyPhaseoutSet.md',
   links: [{
-    link: 'https://developer.chrome.com/docs/privacy-sandbox/third-party-cookie-phase-out/',
+    link: 'https://goo.gle/3pcd-dev-issue',
     linkTitle: i18nLazyString(UIStrings.thirdPartyPhaseoutExplained),
   }],
 };
@@ -446,7 +504,7 @@ const cookieWarnThirdPartyPhaseoutSet: LazyMarkdownIssueDescription = {
 const cookieWarnThirdPartyPhaseoutRead: LazyMarkdownIssueDescription = {
   file: 'cookieWarnThirdPartyPhaseoutRead.md',
   links: [{
-    link: 'https://developer.chrome.com/docs/privacy-sandbox/third-party-cookie-phase-out/',
+    link: 'https://goo.gle/3pcd-dev-issue',
     linkTitle: i18nLazyString(UIStrings.thirdPartyPhaseoutExplained),
   }],
 };
@@ -454,7 +512,7 @@ const cookieWarnThirdPartyPhaseoutRead: LazyMarkdownIssueDescription = {
 const cookieExcludeThirdPartyPhaseoutSet: LazyMarkdownIssueDescription = {
   file: 'cookieExcludeThirdPartyPhaseoutSet.md',
   links: [{
-    link: 'https://developer.chrome.com/docs/privacy-sandbox/third-party-cookie-phase-out/',
+    link: 'https://goo.gle/3pcd-dev-issue',
     linkTitle: i18nLazyString(UIStrings.thirdPartyPhaseoutExplained),
   }],
 };
@@ -462,8 +520,17 @@ const cookieExcludeThirdPartyPhaseoutSet: LazyMarkdownIssueDescription = {
 const cookieExcludeThirdPartyPhaseoutRead: LazyMarkdownIssueDescription = {
   file: 'cookieExcludeThirdPartyPhaseoutRead.md',
   links: [{
-    link: 'https://developer.chrome.com/docs/privacy-sandbox/third-party-cookie-phase-out/',
+    link: 'https://goo.gle/3pcd-dev-issue',
     linkTitle: i18nLazyString(UIStrings.thirdPartyPhaseoutExplained),
+  }],
+};
+
+const cookieCrossSiteRedirectDowngrade: LazyMarkdownIssueDescription = {
+  file: 'cookieCrossSiteRedirectDowngrade.md',
+  links: [{
+    link:
+        'https://bugs.chromium.org/p/chromium/issues/entry?template=Defect%20report%20from%20user&summary=[Cross-Site Redirect Chain] <INSERT BUG SUMMARY HERE>&comment=Chrome Version: (copy from chrome://version)%0AChannel: (e.g. Canary, Dev, Beta, Stable)%0A%0AAffected URLs:%0A%0AWhat is the expected result?%0A%0AWhat happens instead?%0A%0AWhat is the purpose of the cross-site redirect?:%0A%0AWhat steps will reproduce the problem?:%0A(1)%0A(2)%0A(3)%0A%0APlease provide any additional information below.&components=Internals%3ENetwork%3ECookies',
+    linkTitle: i18nLazyString(UIStrings.fileCrosSiteRedirectBug),
   }],
 };
 
@@ -501,15 +568,16 @@ const issueDescriptions: Map<string, LazyMarkdownIssueDescription> = new Map([
   ['CookieIssue::ExcludeDomainNonASCII::ReadCookie', excludeDomainNonAscii],
   ['CookieIssue::ExcludeDomainNonASCII::SetCookie', excludeDomainNonAscii],
   [
-    'CookieIssue::ExcludeThirdPartyCookieBlockedInFirstPartySet::ReadCookie',
-    excludeBlockedWithinFirstPartySet,
+    'CookieIssue::ExcludeThirdPartyCookieBlockedInRelatedWebsiteSet::ReadCookie',
+    excludeBlockedWithinRelatedWebsiteSet,
   ],
   [
-    'CookieIssue::ExcludeThirdPartyCookieBlockedInFirstPartySet::SetCookie',
-    excludeBlockedWithinFirstPartySet,
+    'CookieIssue::ExcludeThirdPartyCookieBlockedInRelatedWebsiteSet::SetCookie',
+    excludeBlockedWithinRelatedWebsiteSet,
   ],
   ['CookieIssue::WarnThirdPartyPhaseout::ReadCookie', cookieWarnThirdPartyPhaseoutRead],
   ['CookieIssue::WarnThirdPartyPhaseout::SetCookie', cookieWarnThirdPartyPhaseoutSet],
   ['CookieIssue::ExcludeThirdPartyPhaseout::ReadCookie', cookieExcludeThirdPartyPhaseoutRead],
   ['CookieIssue::ExcludeThirdPartyPhaseout::SetCookie', cookieExcludeThirdPartyPhaseoutSet],
+  ['CookieIssue::CrossSiteRedirectDowngradeChangesInclusion', cookieCrossSiteRedirectDowngrade],
 ]);

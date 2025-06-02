@@ -530,6 +530,9 @@ QXcbForeignWindow::QXcbForeignWindow(QWindow *window, WId nativeHandle)
 
 QXcbForeignWindow::~QXcbForeignWindow()
 {
+    if (QPlatformWindow::parent())
+        setParent(nullptr);
+
     // Clear window so that destroy() does not affect it
     m_window = 0;
 
@@ -2432,7 +2435,7 @@ bool QXcbWindow::startSystemMoveResize(const QPoint &pos, int edges)
     if (startedByTouch) {
         const QString wmname = connection()->windowManagerName();
         if (wmname != "kwin"_L1 && wmname != "openbox"_L1) {
-            qCDebug(lcQpaXInputDevices) << "only KDE and OpenBox support startSystemMove/Resize which is triggered from touch events: XDG_CURRENT_DESKTOP="
+            qCDebug(lcQpaInputDevices) << "only KDE and OpenBox support startSystemMove/Resize which is triggered from touch events: XDG_CURRENT_DESKTOP="
                                         << qgetenv("XDG_CURRENT_DESKTOP");
             connection()->abortSystemMoveResize(m_window);
             return false;
@@ -2470,7 +2473,7 @@ static uint qtEdgesToXcbMoveResizeDirection(Qt::Edges edges)
 
 void QXcbWindow::doStartSystemMoveResize(const QPoint &globalPos, int edges)
 {
-    qCDebug(lcQpaXInputDevices) << "triggered system move or resize via sending _NET_WM_MOVERESIZE client message";
+    qCDebug(lcQpaInputDevices) << "triggered system move or resize via sending _NET_WM_MOVERESIZE client message";
     const xcb_atom_t moveResize = connection()->atom(QXcbAtom::Atom_NET_WM_MOVERESIZE);
     xcb_client_message_event_t xev;
     xev.response_type = XCB_CLIENT_MESSAGE;

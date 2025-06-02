@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
   from crossbench.browsers.splash_screen import SplashScreen
   from crossbench.browsers.viewport import Viewport
+  from crossbench.network.base import Network
   from crossbench.flags import Flags
   from crossbench import plt
 
@@ -39,6 +40,7 @@ class ChromeAppleScript(ChromePathMixin, ChromiumAppleScript):
       js_flags: Optional[Flags.InitialDataType] = None,
       cache_dir: Optional[pathlib.Path] = None,
       type: str = "chrome",  # pylint: disable=redefined-builtin
+      network: Optional[Network] = None,
       driver_path: Optional[pathlib.Path] = None,
       viewport: Optional[Viewport] = None,
       splash_screen: Optional[SplashScreen] = None,
@@ -50,6 +52,7 @@ class ChromeAppleScript(ChromePathMixin, ChromiumAppleScript):
         js_flags,
         cache_dir,
         type=type,
+        network=network,
         driver_path=None,
         viewport=viewport,
         splash_screen=splash_screen,

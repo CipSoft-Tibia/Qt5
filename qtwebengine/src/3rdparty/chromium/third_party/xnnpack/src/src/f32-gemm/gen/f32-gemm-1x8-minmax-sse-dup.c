@@ -9,7 +9,7 @@
 
 #include <assert.h>
 
-#include <xmmintrin.h>
+#include <immintrin.h>
 
 #include <xnnpack/gemm.h>
 
@@ -18,10 +18,10 @@ void xnn_f32_gemm_minmax_ukernel_1x8__sse_dup(
     size_t mr,
     size_t nc,
     size_t kc,
-    const float*restrict a,
+    const float* restrict a,
     size_t a_stride,
-    const float*restrict w,
-    float*restrict c,
+    const float* restrict w,
+    float* restrict c,
     size_t cm_stride,
     size_t cn_stride,
     const union xnn_f32_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])
@@ -44,7 +44,7 @@ void xnn_f32_gemm_minmax_ukernel_1x8__sse_dup(
     w += 8;
 
     size_t k = kc;
-    while (k >= 4 * sizeof(float)) {
+    for (; k >= 4 * sizeof(float); k -= 4 * sizeof(float)) {
       const __m128 va0 = _mm_loadu_ps(a0);
       a0 += 4;
 
@@ -82,22 +82,42 @@ void xnn_f32_gemm_minmax_ukernel_1x8__sse_dup(
       vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(va0c3333, vb4567c3));
 
       w += 32;
-      k -= 4 * sizeof(float);
+    }
+    if XNN_UNLIKELY(k >= 2 * sizeof(float)) {
+      const __m128 va0 = _mm_loadl_pi(_mm_undefined_ps(), (const __m64*) a0);
+      a0 += 2;
+
+      const __m128 va0c0000 = _mm_shuffle_ps(va0, va0, _MM_SHUFFLE(0, 0, 0, 0));
+
+      const __m128 vb0123c0 = _mm_load_ps(w + 0);
+      const __m128 vb4567c0 = _mm_load_ps(w + 4);
+
+      vacc0x0123 = _mm_add_ps(vacc0x0123, _mm_mul_ps(va0c0000, vb0123c0));
+      vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(va0c0000, vb4567c0));
+
+      const __m128 va0c1111 = _mm_shuffle_ps(va0, va0, _MM_SHUFFLE(1, 1, 1, 1));
+
+      const __m128 vb0123c1 = _mm_load_ps(w + 8);
+      const __m128 vb4567c1 = _mm_load_ps(w + 12);
+
+      vacc0x0123 = _mm_add_ps(vacc0x0123, _mm_mul_ps(va0c1111, vb0123c1));
+      vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(va0c1111, vb4567c1));
+
+      w += 16;
+      k -= 2 * sizeof(float);
     }
     if XNN_UNLIKELY(k != 0) {
-      do {
-        const __m128 va0 = _mm_load1_ps(a0);
-        a0 += 1;
+      const __m128 va0 = _mm_load1_ps(a0);
+      a0 += 1;
 
-        const __m128 vb0123 = _mm_load_ps(w);
-        const __m128 vb4567 = _mm_load_ps(w + 4);
-        w += 8;
+      const __m128 vb0123 = _mm_load_ps(w);
+      const __m128 vb4567 = _mm_load_ps(w + 4);
+      w += 8;
 
-        vacc0x0123 = _mm_add_ps(vacc0x0123, _mm_mul_ps(va0, vb0123));
-        vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(va0, vb4567));
+      vacc0x0123 = _mm_add_ps(vacc0x0123, _mm_mul_ps(va0, vb0123));
+      vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(va0, vb4567));
 
-        k -= sizeof(float);
-      } while (k != 0);
+      k -= sizeof(float);
     }
 
     const __m128 vmax = _mm_load_ps(params->sse.max);

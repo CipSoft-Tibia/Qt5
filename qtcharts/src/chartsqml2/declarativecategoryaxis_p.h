@@ -22,7 +22,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeCategoryRange : public QObject
+class Q_CHARTSQML_EXPORT DeclarativeCategoryRange : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(qreal endValue READ endValue WRITE setEndValue)
@@ -81,12 +81,13 @@ public Q_SLOTS:
     Q_INVOKABLE void append(const QString &label, qreal categoryEndValue);
     Q_INVOKABLE void remove(const QString &label);
     Q_INVOKABLE void replace(const QString &oldLabel, const QString &newLabel);
-    static void appendAxisChildren(QQmlListProperty<QObject> *list, QObject *element);
 
 private:
     static bool endValueLessThan(const QPair<QString, qreal> &value1, const QPair<QString, qreal> &value2);
 
 private:
+    static void appendAxisChildren(QQmlListProperty<QObject> *list, QObject *element);
+
     AxisLabelsPosition m_labelsPosition;
 };
 

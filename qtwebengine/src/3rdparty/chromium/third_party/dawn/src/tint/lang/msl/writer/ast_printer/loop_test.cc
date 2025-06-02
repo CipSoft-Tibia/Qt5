@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/fluent_types.h"
 #include "src/tint/lang/msl/writer/ast_printer/helper_test.h"
@@ -33,12 +46,22 @@ TEST_F(MslASTPrinterTest, Emit_Loop) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+    EXPECT_EQ(gen.Result(), R"(#include <metal_stdlib>
 
-    ASSERT_TRUE(gen.EmitStatement(l)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while (true) {
+using namespace metal;
+
+#define TINT_ISOLATE_UB(VOLATILE_NAME) \
+  volatile bool VOLATILE_NAME = true; \
+  if (VOLATILE_NAME)
+
+fragment void F() {
+  TINT_ISOLATE_UB(tint_volatile_true) while(true) {
     break;
   }
+  return;
+}
+
 )");
 }
 
@@ -53,15 +76,28 @@ TEST_F(MslASTPrinterTest, Emit_LoopWithContinuing) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+    EXPECT_EQ(gen.Result(), R"(#include <metal_stdlib>
 
-    ASSERT_TRUE(gen.EmitStatement(l)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while (true) {
+using namespace metal;
+
+#define TINT_ISOLATE_UB(VOLATILE_NAME) \
+  volatile bool VOLATILE_NAME = true; \
+  if (VOLATILE_NAME)
+
+void a_statement() {
+}
+
+fragment void F() {
+  TINT_ISOLATE_UB(tint_volatile_true) while(true) {
     break;
     {
       a_statement();
     }
   }
+  return;
+}
+
 )");
 }
 
@@ -76,16 +112,29 @@ TEST_F(MslASTPrinterTest, Emit_LoopWithContinuing_BreakIf) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+    EXPECT_EQ(gen.Result(), R"(#include <metal_stdlib>
 
-    ASSERT_TRUE(gen.EmitStatement(l)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while (true) {
+using namespace metal;
+
+#define TINT_ISOLATE_UB(VOLATILE_NAME) \
+  volatile bool VOLATILE_NAME = true; \
+  if (VOLATILE_NAME)
+
+void a_statement() {
+}
+
+fragment void F() {
+  TINT_ISOLATE_UB(tint_volatile_true) while(true) {
     break;
     {
       a_statement();
       if (true) { break; }
     }
   }
+  return;
+}
+
 )");
 }
 
@@ -109,21 +158,19 @@ TEST_F(MslASTPrinterTest, Emit_LoopNestedWithContinuing) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(outer)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while (true) {
-    while (true) {
-      break;
-      {
-        a_statement();
-      }
-    }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) while(true) {
+  TINT_ISOLATE_UB(tint_volatile_true_1) while(true) {
+    break;
     {
-      lhs = rhs;
-      if (true) { break; }
+      a_statement();
     }
   }
+  {
+    lhs = rhs;
+    if (true) { break; }
+  }
+}
 )");
 }
 
@@ -149,17 +196,15 @@ TEST_F(MslASTPrinterTest, Emit_LoopWithVarUsedInContinuing) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(outer)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while (true) {
-    float lhs = 2.5f;
-    float other = 0.0f;
-    break;
-    {
-      lhs = rhs;
-    }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) while(true) {
+  float lhs = 2.5f;
+  float other = 0.0f;
+  break;
+  {
+    lhs = rhs;
   }
+}
 )");
 }
 
@@ -174,12 +219,10 @@ TEST_F(MslASTPrinterTest, Emit_ForLoop) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(f)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  for(; ; ) {
-    return;
-  }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) for(; ; ) {
+  return;
+}
 )");
 }
 
@@ -194,12 +237,10 @@ TEST_F(MslASTPrinterTest, Emit_ForLoopWithSimpleInit) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(f)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  for(int i = 0; ; ) {
-    return;
-  }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) for(int i = 0; ; ) {
+  return;
+}
 )");
 }
 
@@ -222,18 +263,16 @@ TEST_F(MslASTPrinterTest, Emit_ForLoopWithMultiStmtInit) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(loop)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  {
-    {
-      f(1);
-      f(2);
-    }
-    for(; ; ) {
-      return;
-    }
+    EXPECT_EQ(gen.Result(), R"({
+  {
+    f(1);
+    f(2);
   }
+  TINT_ISOLATE_UB(tint_volatile_true) for(; ; ) {
+    return;
+  }
+}
 )");
 }
 
@@ -248,12 +287,10 @@ TEST_F(MslASTPrinterTest, Emit_ForLoopWithSimpleCond) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(f)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  for(; true; ) {
-    return;
-  }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) for(; true; ) {
+  return;
+}
 )");
 }
 
@@ -269,13 +306,12 @@ TEST_F(MslASTPrinterTest, Emit_ForLoopWithSimpleCont) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(f)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(),
-              R"(  for(; ; i = as_type<int>((as_type<uint>(i) + as_type<uint>(1)))) {
-    return;
-  }
+    EXPECT_EQ(
+        gen.Result(),
+        R"(TINT_ISOLATE_UB(tint_volatile_true) for(; ; i = as_type<int>((as_type<uint>(i) + as_type<uint>(1)))) {
+  return;
+}
 )");
 }
 
@@ -298,16 +334,14 @@ TEST_F(MslASTPrinterTest, Emit_ForLoopWithMultiStmtCont) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(loop)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while (true) {
-    return;
-    {
-      f(1);
-      f(2);
-    }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) while(true) {
+  return;
+  {
+    f(1);
+    f(2);
   }
+}
 )");
 }
 
@@ -324,13 +358,12 @@ TEST_F(MslASTPrinterTest, Emit_ForLoopWithSimpleInitCondCont) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(f)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(),
-              R"(  for(int i = 0; true; i = as_type<int>((as_type<uint>(i) + as_type<uint>(1)))) {
-    a_statement();
-  }
+    EXPECT_EQ(
+        gen.Result(),
+        R"(TINT_ISOLATE_UB(tint_volatile_true) for(int i = 0; true; i = as_type<int>((as_type<uint>(i) + as_type<uint>(1)))) {
+  a_statement();
+}
 )");
 }
 
@@ -354,23 +387,21 @@ TEST_F(MslASTPrinterTest, Emit_ForLoopWithMultiStmtInitCondCont) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(loop)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  {
+    EXPECT_EQ(gen.Result(), R"({
+  {
+    f(1);
+    f(2);
+  }
+  TINT_ISOLATE_UB(tint_volatile_true) while(true) {
+    if (!(true)) { break; }
+    return;
     {
-      f(1);
-      f(2);
-    }
-    while (true) {
-      if (!(true)) { break; }
-      return;
-      {
-        f(3);
-        f(4);
-      }
+      f(3);
+      f(4);
     }
   }
+}
 )");
 }
 
@@ -384,12 +415,10 @@ TEST_F(MslASTPrinterTest, Emit_While) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(f)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while(true) {
-    return;
-  }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) while(true) {
+  return;
+}
 )");
 }
 
@@ -403,12 +432,10 @@ TEST_F(MslASTPrinterTest, Emit_While_WithContinue) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(f)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while(true) {
-    continue;
-  }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) while(true) {
+  continue;
+}
 )");
 }
 
@@ -425,12 +452,10 @@ TEST_F(MslASTPrinterTest, Emit_WhileWithMultiCond) {
 
     ASTPrinter& gen = Build();
 
-    gen.IncrementIndent();
-
     ASSERT_TRUE(gen.EmitStatement(f)) << gen.Diagnostics();
-    EXPECT_EQ(gen.Result(), R"(  while((t && false)) {
-    return;
-  }
+    EXPECT_EQ(gen.Result(), R"(TINT_ISOLATE_UB(tint_volatile_true) while((t && false)) {
+  return;
+}
 )");
 }
 

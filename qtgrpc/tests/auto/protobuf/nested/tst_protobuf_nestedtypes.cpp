@@ -15,30 +15,30 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufNestedTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init()
     {
         m_serializer.reset(new QProtobufSerializer);
     }
-    void NestedMessageTest();
-    void SimpleTest();
-    void SerializationTest();
-    void DeserializationTest();
-    void NeighborTest();
-    void NestedNoFieldsTest();
-    void NestedCyclingTest();
-    void UnusedNestedMessageTest();
+    void nestedMessageTest();
+    void simpleTest();
+    void serializationTest();
+    void deserializationTest();
+    void neighborTest();
+    void nestedNoFieldsTest();
+    void nestedCyclingTest();
+    void unusedNestedMessageTest();
 private:
     std::unique_ptr<QProtobufSerializer> m_serializer;
 };
 
-void QtProtobufNestedTest::NestedMessageTest()
+void QtProtobufNestedTest::nestedMessageTest()
 {
     qProtobufAssertMessagePropertyRegistered<NestedFieldMessage::NestedMessage,
             QtProtobuf::sint32>(1, "QtProtobuf::sint32", "testFieldInt");
 }
 
-void QtProtobufNestedTest::SimpleTest()
+void QtProtobufNestedTest::simpleTest()
 {
     const char *propertyName = "nested_p";
     qProtobufAssertMessagePropertyRegistered<NestedFieldMessage, NestedFieldMessage::NestedMessage*>(2, "qtprotobufnamespace::tests::nested::NestedFieldMessage::NestedMessage*", "nested_p");
@@ -110,13 +110,13 @@ void QtProtobufNestedTest::SimpleTest()
              level2);
     QCOMPARE(test2.nested2(), level2);
 
-    QCOMPARE(test.propertyOrdering.getMessageFullName(),
+    QCOMPARE(test.staticPropertyOrdering.messageFullName(),
              "qtprotobufnamespace.tests.nested.NestedFieldMessage");
-    QCOMPARE(nestedMsg.propertyOrdering.getMessageFullName(),
+    QCOMPARE(nestedMsg.staticPropertyOrdering.messageFullName(),
              "qtprotobufnamespace.tests.nested.NestedFieldMessage.NestedMessage");
 }
 
-void QtProtobufNestedTest::SerializationTest()
+void QtProtobufNestedTest::serializationTest()
 {
     NestedFieldMessage::NestedMessage nested;
     nested.setTestFieldInt(15);
@@ -158,7 +158,7 @@ void QtProtobufNestedTest::SerializationTest()
     QCOMPARE(QLatin1StringView(result.toHex()), "0a02081e12020828"_L1);
 }
 
-void QtProtobufNestedTest::DeserializationTest()
+void QtProtobufNestedTest::deserializationTest()
 {
     NestedFieldMessage::NestedMessage nested;
 
@@ -185,7 +185,7 @@ void QtProtobufNestedTest::DeserializationTest()
 }
 
 
-void QtProtobufNestedTest::NeighborTest()
+void QtProtobufNestedTest::neighborTest()
 {
     qProtobufAssertMessagePropertyRegistered<NeighborNested, NestedFieldMessage::NestedMessage*>(1, "qtprotobufnamespace::tests::nested::NestedFieldMessage::NestedMessage*", "neighborNested_p");
     qProtobufAssertMessagePropertyRegistered<NeighborNested, NestedFieldMessage2::NestedMessageLevel1::NestedMessageLevel2*>(2, "qtprotobufnamespace::tests::nested::NestedFieldMessage2::NestedMessageLevel1::NestedMessageLevel2*", "neighborNested2_p");
@@ -223,12 +223,12 @@ void QtProtobufNestedTest::NeighborTest()
              level2);
     QCOMPARE(test.neighborNested2(), level2);
 
-    QCOMPARE(level2.propertyOrdering.getMessageFullName(),
+    QCOMPARE(level2.staticPropertyOrdering.messageFullName(),
              "qtprotobufnamespace.tests.nested.NestedFieldMessage2.NestedMessageLevel1."
              "NestedMessageLevel2");
 }
 
-void QtProtobufNestedTest::NestedNoFieldsTest()
+void QtProtobufNestedTest::nestedNoFieldsTest()
 {
     qProtobufAssertMessagePropertyRegistered<NestedNoFields::Nested, QtProtobuf::sint32>(1, "QtProtobuf::sint32", "testFieldInt");
 
@@ -243,7 +243,7 @@ void QtProtobufNestedTest::NestedNoFieldsTest()
     QCOMPARE(test.testFieldInt(), 55);
 }
 
-void QtProtobufNestedTest::NestedCyclingTest()
+void QtProtobufNestedTest::nestedCyclingTest()
 {
     qProtobufAssertMessagePropertyRegistered<NestedCyclingA::NestedCyclingB, qtprotobufnamespace::tests::nested::NestedCyclingAA::NestedCyclingBB*>(1, "qtprotobufnamespace::tests::nested::NestedCyclingAA::NestedCyclingBB*", "testField_p");
     qProtobufAssertMessagePropertyRegistered<NestedCyclingAA::NestedCyclingBB, qtprotobufnamespace::tests::nested::NestedCyclingA::NestedCyclingB*>(1, "qtprotobufnamespace::tests::nested::NestedCyclingA::NestedCyclingB*", "testField_p");
@@ -254,7 +254,7 @@ void QtProtobufNestedTest::NestedCyclingTest()
     test2.setTestField(test);
 }
 
-void QtProtobufNestedTest::UnusedNestedMessageTest()
+void QtProtobufNestedTest::unusedNestedMessageTest()
 {
     qProtobufAssertMessagePropertyRegistered<NestedFieldMessage::UnusedNestedMessage,
                                              QtProtobuf::sint32>(1, "QtProtobuf::sint32",

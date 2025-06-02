@@ -14,7 +14,7 @@
 // We mean it.
 //
 
-#include "qffmpeghwaccel_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
 
 #if QT_CONFIG(vaapi)
 
@@ -31,15 +31,16 @@ class VAAPITextureConverter : public TextureConverterBackend
 {
 public:
     VAAPITextureConverter(QRhi *rhi);
-    ~VAAPITextureConverter();
+    ~VAAPITextureConverter() override;
 
-    TextureSet *getTextures(AVFrame *frame) override;
+    QVideoFrameTexturesHandlesUPtr
+    createTextureHandles(AVFrame *frame, QVideoFrameTexturesHandlesUPtr oldHandles) override;
 
     Qt::HANDLE eglDisplay = nullptr;
     QOpenGLContext *glContext = nullptr;
     QFunctionPointer eglImageTargetTexture2D = nullptr;
 };
-}
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

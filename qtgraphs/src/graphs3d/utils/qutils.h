@@ -1,25 +1,25 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QUTILS_H
-#define QUTILS_H
+#ifndef QTGRAPHS_QUTILS_H
+#define QTGRAPHS_QUTILS_H
 
-#include <QtCore/QCoreApplication>
-#include <QtGui/QSurfaceFormat>
+#include <QtGraphs/qgraphsglobal.h>
+#include <QtCore/qcoreapplication.h>
+#include <QtGui/qsurfaceformat.h>
+#include <QtQuick3D/qquick3d.h>
+
 
 QT_BEGIN_NAMESPACE
 
 [[maybe_unused]] static inline QSurfaceFormat qDefaultSurfaceFormat(bool antialias)
 {
     QSurfaceFormat surfaceFormat;
-    surfaceFormat.setDepthBufferSize(24);
-    surfaceFormat.setStencilBufferSize(8);
-    surfaceFormat.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
-    surfaceFormat.setRenderableType(QSurfaceFormat::DefaultRenderableType);
+
     if (antialias)
-        surfaceFormat.setSamples(8);
+        surfaceFormat = QQuick3D::idealSurfaceFormat(8);
     else
-        surfaceFormat.setSamples(0);
+        surfaceFormat = QQuick3D::idealSurfaceFormat();
 
     return surfaceFormat;
 }

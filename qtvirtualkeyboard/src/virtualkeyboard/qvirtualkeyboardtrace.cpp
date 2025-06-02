@@ -90,7 +90,7 @@ public:
 
 /*!
     \qmltype Trace
-    \instantiates QVirtualKeyboardTrace
+    \nativetype QVirtualKeyboardTrace
     \inqmlmodule QtQuick.VirtualKeyboard
     \ingroup qtvirtualkeyboard-internal-qml
     \since QtQuick.VirtualKeyboard 2.0
@@ -458,7 +458,7 @@ void QVirtualKeyboardTrace::timerEvent(QTimerEvent *event)
     whose \c canceled property set to true.
 */
 
-/*! \qmlproperty qreal Trace::opacity
+/*! \qmlproperty real Trace::opacity
     \since QtQuick.VirtualKeyboard 2.4
 
     This property defines how opaque the Trace is.

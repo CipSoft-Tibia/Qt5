@@ -5,7 +5,9 @@
 #include <QTest>
 #include <QBuffer>
 
-#include <QtCore/private/qbytearray_p.h>
+#ifndef QTEST_THROW_ON_FAIL
+# error This test requires QTEST_THROW_ON_FAIL being active.
+#endif
 
 class tst_QCborStreamReader : public QObject
 {
@@ -629,8 +631,6 @@ void tst_QCborStreamReader::strings_data()
 void tst_QCborStreamReader::strings()
 {
     fixed();
-    if (QTest::currentTestFailed())
-        return;
 
     // Extra string checks:
     // We'll compare the reads using readString() and readByteArray()
@@ -816,9 +816,6 @@ void tst_QCborStreamReader::arrays()
     removeIndicators(expected);
 
     checkContainer(1, '\x81' + data, '[' + expected + ']');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(2, '\x82' + data + data, '[' + expected + ", " + expected + ']');
 }
 
@@ -830,19 +827,11 @@ void tst_QCborStreamReader::maps()
 
     // int keys
     checkContainer(1, "\xa1\1" + data, "{1: " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(2, "\xa2\1" + data + '\x20' + data,
                    "{1: " + expected + ", -1: " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
 
     // string keys
     checkContainer(1, "\xa1\x65Hello" + data, "{\"Hello\": " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(2, "\xa2\x65World" + data + "\x65Hello" + data,
                    "{\"World\": " + expected + ", \"Hello\": " + expected + '}');
 }
@@ -854,9 +843,6 @@ void tst_QCborStreamReader::undefLengthArrays()
     removeIndicators(expected);
 
     checkContainer(-1, '\x9f' + data + '\xff', '[' + expected + ']');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(-2, '\x9f' + data + data + '\xff', '[' + expected + ", " + expected + ']');
 }
 
@@ -868,19 +854,11 @@ void tst_QCborStreamReader::undefLengthMaps()
 
     // int keys
     checkContainer(-1, "\xbf\1" + data + '\xff', "{1: " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(-2, "\xbf\1" + data + '\x20' + data + '\xff',
                    "{1: " + expected + ", -1: " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
 
     // string keys
     checkContainer(-1, "\xbf\x65Hello" + data + '\xff', "{\"Hello\": " + expected + '}');
-    if (QTest::currentTestFailed())
-        return;
-
     checkContainer(-2, "\xbf\x65World" + data + "\x65Hello" + data + '\xff',
                    "{\"World\": " + expected + ", \"Hello\": " + expected + '}');
 }
@@ -920,7 +898,7 @@ void tst_QCborStreamReader::validation_data()
     // Add QCborStreamReader-specific limitations due to use of QByteArray and
     // QString, which are allocated by QArrayData::allocate().
     const qsizetype MaxInvalid = std::numeric_limits<QByteArray::size_type>::max();
-    const qsizetype MinInvalid = MaxByteArraySize + 1;
+    const qsizetype MinInvalid = QByteArray::maxSize() + 1;
 
     addValidationColumns();
     addValidationData(MinInvalid);
@@ -997,7 +975,7 @@ void tst_QCborStreamReader::validation()
 
 void tst_QCborStreamReader::hugeDeviceValidation_data()
 {
-    addValidationHugeDevice(MaxByteArraySize + 1, MaxStringSize + 1);
+    addValidationHugeDevice(QByteArray::maxSize() + 1, QString::maxSize() + 1);
 }
 
 void tst_QCborStreamReader::hugeDeviceValidation()

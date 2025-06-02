@@ -5,9 +5,14 @@
 #include "qffmpegvideobuffer_p.h"
 #include "qffmpegrecordingengine_p.h"
 #include "qffmpegvideoframeencoder_p.h"
+#include "qffmpegrecordingengineutils_p.h"
+#include "private/qvideoframe_p.h"
+#include "private/qmultimediautils_p.h"
 #include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace QFFmpeg {
 
@@ -15,14 +20,12 @@ static Q_LOGGING_CATEGORY(qLcFFmpegVideoEncoder, "qt.multimedia.ffmpeg.videoenco
 
 VideoEncoder::VideoEncoder(RecordingEngine &recordingEngine, const QMediaEncoderSettings &settings,
                            const QVideoFrameFormat &format, std::optional<AVPixelFormat> hwFormat)
-    : EncoderThread(recordingEngine)
+    : EncoderThread(recordingEngine), m_settings(settings)
 {
     setObjectName(QLatin1String("VideoEncoder"));
 
-    AVPixelFormat swFormat = QFFmpegVideoBuffer::toAVPixelFormat(format.pixelFormat());
-    AVPixelFormat ffmpegPixelFormat =
-            hwFormat && *hwFormat != AV_PIX_FMT_NONE ? *hwFormat : swFormat;
-    auto frameRate = format.frameRate();
+    const AVPixelFormat swFormat = QFFmpegVideoBuffer::toAVPixelFormat(format.pixelFormat());
+    qreal frameRate = format.streamFrameRate();
     if (frameRate <= 0.) {
         qWarning() << "Invalid frameRate" << frameRate << "; Using the default instead";
 
@@ -30,68 +33,98 @@ VideoEncoder::VideoEncoder(RecordingEngine &recordingEngine, const QMediaEncoder
         frameRate = 30.;
     }
 
-    m_frameEncoder =
-            VideoFrameEncoder::create(settings, format.frameSize(), frameRate, ffmpegPixelFormat,
-                                      swFormat, recordingEngine.avFormatContext());
+    m_sourceParams.size = format.frameSize();
+    m_sourceParams.format = hwFormat && *hwFormat != AV_PIX_FMT_NONE ? *hwFormat : swFormat;
+    // Temporary: check isSwPixelFormat because of android issue (QTBUG-116836)
+    // TODO: assign swFormat.
+    m_sourceParams.swFormat =
+            isSwPixelFormat(m_sourceParams.format) ? m_sourceParams.format : swFormat;
+    m_sourceParams.transform = qNormalizedSurfaceTransformation(format);
+    m_sourceParams.frameRate = frameRate;
+    m_sourceParams.colorTransfer = QFFmpeg::toAvColorTransfer(format.colorTransfer());
+    m_sourceParams.colorSpace = QFFmpeg::toAvColorSpace(format.colorSpace());
+    m_sourceParams.colorRange = QFFmpeg::toAvColorRange(format.colorRange());
+
+    if (!m_settings.videoResolution().isValid())
+        m_settings.setVideoResolution(m_sourceParams.size);
+
+    if (m_settings.videoFrameRate() <= 0.)
+        m_settings.setVideoFrameRate(m_sourceParams.frameRate);
 }
 
 VideoEncoder::~VideoEncoder() = default;
 
-bool VideoEncoder::isValid() const
-{
-    return m_frameEncoder != nullptr;
-}
-
 void VideoEncoder::addFrame(const QVideoFrame &frame)
 {
-    QMutexLocker locker = lockLoopData();
-
-    // Drop frames if encoder can not keep up with the video source data rate
-    const bool queueFull = m_videoFrameQueue.size() >= m_maxQueueSize;
-
-    if (queueFull) {
-        qCDebug(qLcFFmpegVideoEncoder) << "RecordingEngine frame queue full. Frame lost.";
-    } else if (!m_paused.loadRelaxed()) {
-        m_videoFrameQueue.push(frame);
-
-        locker.unlock(); // Avoid context switch on wake wake-up
-
-        dataReady();
+    if (!frame.isValid()) {
+        setEndOfSourceStream();
+        return;
     }
+
+    {
+        auto guard = lockLoopData();
+
+        resetEndOfSourceStream();
+
+        if (m_paused) {
+            m_shouldAdjustTimeBaseForNextFrame = true;
+            return;
+        }
+
+        // Drop frames if encoder can not keep up with the video source data rate;
+        // canPushFrame might be used instead
+        const bool queueFull = m_videoFrameQueue.size() >= m_maxQueueSize;
+
+        if (queueFull) {
+            qCDebug(qLcFFmpegVideoEncoder) << "RecordingEngine frame queue full. Frame lost.";
+            return;
+        }
+
+        m_videoFrameQueue.push({ frame, m_shouldAdjustTimeBaseForNextFrame });
+        m_shouldAdjustTimeBaseForNextFrame = false;
+    }
+
+    dataReady();
 }
 
-QVideoFrame VideoEncoder::takeFrame()
+VideoEncoder::FrameInfo VideoEncoder::takeFrame()
 {
-    QMutexLocker locker = lockLoopData();
+    auto guard = lockLoopData();
     return dequeueIfPossible(m_videoFrameQueue);
 }
 
 void VideoEncoder::retrievePackets()
 {
-    if (!m_frameEncoder)
-        return;
+    Q_ASSERT(m_frameEncoder);
     while (auto packet = m_frameEncoder->retrievePacket())
         m_recordingEngine.getMuxer()->addPacket(std::move(packet));
 }
 
-void VideoEncoder::init()
+bool VideoEncoder::init()
 {
+    m_frameEncoder = VideoFrameEncoder::create(m_settings, m_sourceParams,
+                                               m_recordingEngine.avFormatContext());
+
     qCDebug(qLcFFmpegVideoEncoder) << "VideoEncoder::init started video device thread.";
-    bool ok = m_frameEncoder->open();
-    if (!ok)
+    if (!m_frameEncoder) {
         emit m_recordingEngine.sessionError(QMediaRecorder::ResourceError,
-                                            "Could not initialize encoder");
+                                            u"Could not initialize encoder"_s);
+        return false;
+    }
+
+    return EncoderThread::init();
 }
 
 void VideoEncoder::cleanup()
 {
+    Q_ASSERT(m_frameEncoder);
+
     while (!m_videoFrameQueue.empty())
         processOne();
-    if (m_frameEncoder) {
-        while (m_frameEncoder->sendFrame(nullptr) == AVERROR(EAGAIN))
-            retrievePackets();
+
+    while (m_frameEncoder->sendFrame(nullptr) == AVERROR(EAGAIN))
         retrievePackets();
-    }
+    retrievePackets();
 }
 
 bool VideoEncoder::hasData() const
@@ -112,20 +145,19 @@ static void freeQVideoFrame(void *opaque, uint8_t *)
 
 void VideoEncoder::processOne()
 {
+    Q_ASSERT(m_frameEncoder);
+
     retrievePackets();
 
-    auto frame = takeFrame();
-    if (!frame.isValid())
-        return;
-
-    if (!isValid())
-        return;
+    FrameInfo frameInfo = takeFrame();
+    QVideoFrame &frame = frameInfo.frame;
+    Q_ASSERT(frame.isValid());
 
     //    qCDebug(qLcFFmpegEncoder) << "new video buffer" << frame.startTime();
 
     AVFrameUPtr avFrame;
 
-    auto *videoBuffer = dynamic_cast<QFFmpegVideoBuffer *>(frame.videoBuffer());
+    auto *videoBuffer = dynamic_cast<QFFmpegVideoBuffer *>(QVideoFramePrivate::hwBuffer(frame));
     if (videoBuffer) {
         // ffmpeg video buffer, let's use the native AVFrame stored in there
         auto *hwFrame = videoBuffer->getHWFrame();
@@ -146,6 +178,15 @@ void VideoEncoder::processOne()
             avFrame->linesize[i] = frame.bytesPerLine(i);
         }
 
+        // TODO: investigate if we need to set color params to AVFrame.
+        //       Setting only codec carameters might be sufficient.
+        //       What happens if frame color params are set and not equal codec prms?
+        //
+        // QVideoFrameFormat format = frame.surfaceFormat();
+        // avFrame->color_trc = QFFmpeg::toAvColorTransfer(format.colorTransfer());
+        // avFrame->colorspace = QFFmpeg::toAvColorSpace(format.colorSpace());
+        // avFrame->color_range = QFFmpeg::toAvColorRange(format.colorRange());
+
         QImage img;
         if (frame.pixelFormat() == QVideoFrameFormat::Format_Jpeg) {
             // the QImage is cached inside the video frame, so we can take the pointer to the image
@@ -161,14 +202,16 @@ void VideoEncoder::processOne()
                                                new QVideoFrameHolder{ frame, img }, 0);
     }
 
-    if (m_baseTime.loadAcquire() == std::numeric_limits<qint64>::min()) {
-        m_baseTime.storeRelease(frame.startTime() - m_lastFrameTime);
-        qCDebug(qLcFFmpegVideoEncoder) << ">>>> adjusting base time to" << m_baseTime.loadAcquire()
-                                       << frame.startTime() << m_lastFrameTime;
+    const auto [startTime, endTime] = frameTimeStamps(frame);
+
+    if (frameInfo.shouldAdjustTimeBase) {
+        m_baseTime += startTime - m_lastFrameTime;
+        qCDebug(qLcFFmpegVideoEncoder)
+                << ">>>> adjusting base time to" << m_baseTime << startTime << m_lastFrameTime;
     }
 
-    qint64 time = frame.startTime() - m_baseTime.loadAcquire();
-    m_lastFrameTime = frame.endTime() - m_baseTime.loadAcquire();
+    const qint64 time = startTime - m_baseTime;
+    m_lastFrameTime = endTime;
 
     setAVFrameTime(*avFrame, m_frameEncoder->getPts(time), m_frameEncoder->getTimeBase());
 
@@ -181,6 +224,38 @@ void VideoEncoder::processOne()
         qCDebug(qLcFFmpegVideoEncoder) << "error sending frame" << ret << err2str(ret);
         emit m_recordingEngine.sessionError(QMediaRecorder::ResourceError, err2str(ret));
     }
+}
+
+bool VideoEncoder::checkIfCanPushFrame() const
+{
+    if (m_encodingStarted)
+        return m_videoFrameQueue.size() < m_maxQueueSize;
+    if (!isFinished())
+        return m_videoFrameQueue.empty();
+
+    return false;
+}
+
+std::pair<qint64, qint64> VideoEncoder::frameTimeStamps(const QVideoFrame &frame) const
+{
+    qint64 startTime = frame.startTime();
+    qint64 endTime = frame.endTime();
+
+    if (startTime == -1) {
+        startTime = m_lastFrameTime;
+        endTime = -1;
+    }
+
+    if (endTime == -1) {
+        qreal frameRate = frame.streamFrameRate();
+        if (frameRate <= 0.)
+            frameRate = m_settings.videoFrameRate();
+
+        Q_ASSERT(frameRate > 0.f);
+        endTime = startTime + static_cast<qint64>(std::round(VideoFrameTimeBase / frameRate));
+    }
+
+    return { startTime, endTime };
 }
 
 } // namespace QFFmpeg

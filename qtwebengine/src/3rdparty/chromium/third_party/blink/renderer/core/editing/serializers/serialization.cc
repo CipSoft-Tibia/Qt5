@@ -31,6 +31,7 @@
 
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/timer/elapsed_timer.h"
 #include "services/network/public/cpp/resource_request.h"
@@ -58,6 +59,7 @@
 #include "third_party/blink/renderer/core/editing/serializers/styled_markup_serializer.h"
 #include "third_party/blink/renderer/core/editing/visible_selection.h"
 #include "third_party/blink/renderer/core/editing/visible_units.h"
+#include "third_party/blink/renderer/core/execution_context/agent.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
@@ -79,7 +81,6 @@
 #include "third_party/blink/renderer/core/svg/svg_use_element.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/runtime_call_stats.h"
-#include "third_party/blink/renderer/platform/bindings/v8_per_isolate_data.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader_client.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
@@ -147,11 +148,7 @@ class EmptyLocalFrameClientWithFailingLoaderFactory final
 #if defined(USE_INNER_HTML_PARSER_FAST_PATH)
 void LogFastPathParserTotalTime(base::TimeDelta parse_time) {
   // The time needed to parse is typically < 1ms (even at the 99%).
-  if (!base::TimeTicks::IsHighResolution()) {
-    return;
-  }
-
-  base::UmaHistogramCustomMicrosecondsTimes(
+  UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
       "Blink.HTMLFastPathParser.TotalParseTime2", parse_time,
       base::Microseconds(1), base::Milliseconds(10), 100);
 }
@@ -658,8 +655,8 @@ DocumentFragment* CreateFragmentForInnerOuterHTML(
     const String& markup,
     Element* context_element,
     ParserContentPolicy parser_content_policy,
-    const char* method,
-    bool include_shadow_roots,
+    Element::IncludeShadowRoots include_shadow_roots,
+    Element::ForceHtml force_html,
     ExceptionState& exception_state) {
   DCHECK(context_element);
   const HTMLTemplateElement* template_element =
@@ -673,36 +670,33 @@ DocumentFragment* CreateFragmentForInnerOuterHTML(
           ? context_element->GetDocument().EnsureTemplateDocument()
           : context_element->GetDocument();
   DocumentFragment* fragment = DocumentFragment::Create(document);
-  document.setAllowDeclarativeShadowRoots(include_shadow_roots);
+  document.setAllowDeclarativeShadowRoots(
+      include_shadow_roots == Element::IncludeShadowRoots::kInclude);
 
-  if (IsA<HTMLDocument>(document)) {
+  if (IsA<HTMLDocument>(document) || force_html == Element::ForceHtml::kForce) {
 #if defined(USE_INNER_HTML_PARSER_FAST_PATH)
     bool log_tag_stats = false;
-    const bool fast_path_enabled =
-        RuntimeEnabledFeatures::InnerHTMLParserFastpathEnabled();
     base::ElapsedTimer parse_timer;
-    if (fast_path_enabled) {
-      const bool parsed_fast_path = TryParsingHTMLFragment(
-          markup, document, *fragment, *context_element, parser_content_policy,
-          include_shadow_roots, &log_tag_stats);
-      if (parsed_fast_path) {
-        LogFastPathParserTotalTime(parse_timer.Elapsed());
+    const bool parsed_fast_path = TryParsingHTMLFragment(
+        markup, document, *fragment, *context_element, parser_content_policy,
+        include_shadow_roots == Element::IncludeShadowRoots::kInclude,
+        &log_tag_stats);
+    if (parsed_fast_path) {
+      LogFastPathParserTotalTime(parse_timer.Elapsed());
 #if DCHECK_IS_ON()
-        // As a sanity check for the fast-path, create another fragment using
-        // the full parser and compare the results.
-        // See https://bugs.chromium.org/p/chromium/issues/detail?id=1407201
-        // for details.
-        DocumentFragment* fragment2 = DocumentFragment::Create(document);
-        fragment2->ParseHTML(markup, context_element, parser_content_policy);
-        DCHECK_EQ(CreateMarkup(fragment), CreateMarkup(fragment2))
-            << " supplied value " << markup;
-        DCHECK(fragment->isEqualNode(fragment2));
+      // As a sanity check for the fast-path, create another fragment using
+      // the full parser and compare the results.
+      // See https://bugs.chromium.org/p/chromium/issues/detail?id=1407201
+      // for details.
+      DocumentFragment* fragment2 = DocumentFragment::Create(document);
+      fragment2->ParseHTML(markup, context_element, parser_content_policy);
+      DCHECK_EQ(CreateMarkup(fragment), CreateMarkup(fragment2))
+          << " supplied value " << markup;
+      DCHECK(fragment->isEqualNode(fragment2));
 #endif
-        return fragment;
-      } else {
-        fragment = DocumentFragment::Create(document);
-      }
+      return fragment;
     }
+    fragment = DocumentFragment::Create(document);
 #endif
     fragment->ParseHTML(markup, context_element, parser_content_policy);
 #if defined(USE_INNER_HTML_PARSER_FAST_PATH)
@@ -783,8 +777,9 @@ DocumentFragment* CreateContextualFragment(
   DCHECK(element);
 
   DocumentFragment* fragment = CreateFragmentForInnerOuterHTML(
-      markup, element, parser_content_policy, "createContextualFragment",
-      /*include_shadow_roots=*/false, exception_state);
+      markup, element, parser_content_policy,
+      Element::IncludeShadowRoots::kDontInclude, Element::ForceHtml::kDontForce,
+      exception_state);
   if (!fragment)
     return nullptr;
 
@@ -809,10 +804,10 @@ DocumentFragment* CreateContextualFragment(
 void ReplaceChildrenWithFragment(ContainerNode* container,
                                  DocumentFragment* fragment,
                                  ExceptionState& exception_state) {
-  RUNTIME_CALL_TIMER_SCOPE(
-      V8PerIsolateData::MainThreadIsolate(),
-      RuntimeCallStats::CounterId::kReplaceChildrenWithFragment);
   DCHECK(container);
+  RUNTIME_CALL_TIMER_SCOPE(
+      container->GetDocument().GetAgent().isolate(),
+      RuntimeCallStats::CounterId::kReplaceChildrenWithFragment);
   ContainerNode* container_node(container);
 
   ChildListMutationScope mutation(*container_node);
@@ -919,18 +914,22 @@ static bool ContainsStyleElements(const DocumentFragment& fragment) {
 }
 
 // Returns true if any svg <use> element is removed.
-static bool StripSVGUseDataURLs(Node& node) {
+static bool StripSVGUseNonLocalHrefs(Node& node) {
   if (auto* use = DynamicTo<SVGUseElement>(node)) {
     SVGURLReferenceResolver resolver(use->HrefString(), use->GetDocument());
-    if (resolver.AbsoluteUrl().ProtocolIsData())
+    if ((RuntimeEnabledFeatures::PastingBlocksSVGUseNonLocalHrefsEnabled() &&
+         !resolver.IsLocal()) ||
+        resolver.AbsoluteUrl().ProtocolIsData()) {
       node.remove();
+    }
     return true;
   }
   bool stripped = false;
   for (Node* child = node.firstChild(); child;) {
     Node* next = child->nextSibling();
-    if (StripSVGUseDataURLs(*child))
+    if (StripSVGUseNonLocalHrefs(*child)) {
       stripped = true;
+    }
     child = next;
   }
   return stripped;
@@ -977,8 +976,9 @@ String CreateSanitizedMarkupWithContext(Document& document,
     bool needs_sanitization = false;
     if (ContainsStyleElements(*fragment))
       needs_sanitization = true;
-    if (StripSVGUseDataURLs(*fragment))
+    if (StripSVGUseNonLocalHrefs(*fragment)) {
       needs_sanitization = true;
+    }
 
     if (!needs_sanitization) {
       markup = CreateMarkup(fragment);

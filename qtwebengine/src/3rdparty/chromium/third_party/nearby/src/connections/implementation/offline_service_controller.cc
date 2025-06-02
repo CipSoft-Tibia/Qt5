@@ -19,6 +19,9 @@
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "connections/discovery_options.h"
+#include "connections/listeners.h"
+#include "internal/interop/device.h"
 
 namespace nearby {
 namespace connections {
@@ -53,13 +56,12 @@ void OfflineServiceController::StopAdvertising(ClientProxy* client) {
 
 Status OfflineServiceController::StartDiscovery(
     ClientProxy* client, const std::string& service_id,
-    const DiscoveryOptions& discovery_options,
-    const DiscoveryListener& listener) {
+    const DiscoveryOptions& discovery_options, DiscoveryListener listener) {
   if (stop_) return {Status::kOutOfOrderApiCall};
   NEARBY_LOGS(INFO) << "Client " << client->GetClientId()
                     << " requested discovery to start.";
   return pcp_manager_.StartDiscovery(client, service_id, discovery_options,
-                                     listener);
+                                     std::move(listener));
 }
 
 void OfflineServiceController::StopDiscovery(ClientProxy* client) {
@@ -99,6 +101,18 @@ Status OfflineServiceController::RequestConnection(
                     << " requested a connection to endpoint_id=" << endpoint_id;
   return pcp_manager_.RequestConnection(client, endpoint_id, info,
                                         connection_options);
+}
+
+Status OfflineServiceController::RequestConnectionV3(
+    ClientProxy* client, const NearbyDevice& remote_device,
+    const ConnectionRequestInfo& info,
+    const ConnectionOptions& connection_options) {
+  if (stop_) return {Status::kOutOfOrderApiCall};
+  NEARBY_LOGS(INFO) << "Client " << client->GetClientId()
+                    << " requested a connection to endpoint_id="
+                    << remote_device.GetEndpointId();
+  return pcp_manager_.RequestConnectionV3(client, remote_device, info,
+                                          connection_options);
 }
 
 Status OfflineServiceController::AcceptConnection(

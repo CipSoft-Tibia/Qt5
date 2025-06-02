@@ -1,9 +1,0 @@
-include(config.qdocconf)
-include(testcpp.qdocconf)
-defines += test_template
-
-headers += ../testtemplate/testtemplate.h
-sources += ../testtemplate/testtemplate.cpp
-
-HTML.nosubdirs          = true
-HTML.outputsubdir       = template

@@ -16,11 +16,11 @@
 //
 
 #include <QtCore/qglobal.h>
-#include <QtStateMachineQml/private/qtstatemachineqmlexports_p.h>
+#include <QtStateMachineQml/qtstatemachineqmlexports.h>
 
 QT_BEGIN_NAMESPACE
 
-void Q_STATEMACHINEQML_PRIVATE_EXPORT qml_register_types_QtQml_StateMachine();
+void Q_STATEMACHINEQML_EXPORT qml_register_types_QtQml_StateMachine();
 
 QT_END_NAMESPACE
 

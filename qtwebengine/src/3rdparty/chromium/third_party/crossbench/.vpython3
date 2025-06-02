@@ -59,6 +59,11 @@ wheel: <
 >
 
 wheel: <
+  name: "infra/python/wheels/colorama-py2_py3"
+  version: "version:0.4.1"
+>
+
+wheel: <
   name: "infra/python/wheels/iniconfig-py3"
   version: "version:1.1.1"
 >
@@ -221,6 +226,11 @@ wheel: <
 wheel: <
   name: "infra/python/wheels/pycparser-py2_py3"
   version: "version:2.19"
+>
+
+wheel: <
+  name: "infra/python/wheels/ordered-set-py3"
+  version: "version:4.1.0"
 >
 
 wheel: <

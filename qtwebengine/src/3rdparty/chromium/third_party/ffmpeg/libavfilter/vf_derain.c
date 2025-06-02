@@ -24,12 +24,11 @@
  * http://openaccess.thecvf.com/content_ECCV_2018/html/Xia_Li_Recurrent_Squeeze-and-Excitation_Context_ECCV_2018_paper.html
  */
 
-#include "libavformat/avio.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "dnn_filter_common.h"
-#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct DRContext {
     const AVClass *class;
@@ -110,13 +109,6 @@ static const AVFilterPad derain_inputs[] = {
     },
 };
 
-static const AVFilterPad derain_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_derain = {
     .name          = "derain",
     .description   = NULL_IF_CONFIG_SMALL("Apply derain filter to the input."),
@@ -124,7 +116,7 @@ const AVFilter ff_vf_derain = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(derain_inputs),
-    FILTER_OUTPUTS(derain_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_RGB24),
     .priv_class    = &derain_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,

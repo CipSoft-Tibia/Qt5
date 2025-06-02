@@ -32,7 +32,7 @@ static inline bool isValidValue(qreal x, qreal y)
     return (isValidValue(x) && isValidValue(y));
 }
 
-static inline bool isValidValue(const QPointF point)
+static inline bool isValidValue(QPointF point)
 {
     return (isValidValue(point.x()) && isValidValue(point.y()));
 }

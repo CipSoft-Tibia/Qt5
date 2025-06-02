@@ -14,6 +14,7 @@
 namespace blink {
 
 class CanvasContextCreationAttributesCore;
+class ExceptionState;
 class EXTClipControl;
 class EXTColorBufferFloat;
 class EXTColorBufferHalfFloat;
@@ -34,6 +35,7 @@ class OESSampleVariables;
 class OESShaderMultisampleInterpolation;
 class OESTextureFloatLinear;
 class OVRMultiview2;
+class WebGLBlendFuncExtended;
 class WebGLClipCullDistance;
 class WebGLDebugRendererInfo;
 class WebGLDrawInstancedBaseVertexBaseInstance;
@@ -45,7 +47,6 @@ class WebGLProvokingVertex;
 class WebGLRenderSharedExponent;
 class WebGLShaderPixelLocalStorage;
 class WebGLStencilTexturing;
-class WebGLVideoTexture;
 
 class WebGL2RenderingContext : public WebGL2RenderingContextBase {
   DEFINE_WRAPPERTYPEINFO();
@@ -76,7 +77,7 @@ class WebGL2RenderingContext : public WebGL2RenderingContextBase {
       const Platform::GraphicsInfo&,
       const CanvasContextCreationAttributesCore& requested_attributes);
 
-  ImageBitmap* TransferToImageBitmap(ScriptState*) final;
+  ImageBitmap* TransferToImageBitmap(ScriptState*, ExceptionState&) final;
   String ContextName() const override { return "WebGL2RenderingContext"; }
   void RegisterContextExtensions() override;
   V8RenderingContext* AsV8RenderingContext() final;
@@ -108,6 +109,7 @@ class WebGL2RenderingContext : public WebGL2RenderingContextBase {
       oes_shader_multisample_interpolation_;
   Member<OESTextureFloatLinear> oes_texture_float_linear_;
   Member<OVRMultiview2> ovr_multiview2_;
+  Member<WebGLBlendFuncExtended> webgl_blend_func_extended_;
   Member<WebGLClipCullDistance> webgl_clip_cull_distance_;
   Member<WebGLCompressedTextureASTC> webgl_compressed_texture_astc_;
   Member<WebGLCompressedTextureETC> webgl_compressed_texture_etc_;
@@ -128,7 +130,6 @@ class WebGL2RenderingContext : public WebGL2RenderingContextBase {
   Member<WebGLRenderSharedExponent> webgl_render_shared_exponent_;
   Member<WebGLShaderPixelLocalStorage> webgl_shader_pixel_local_storage_;
   Member<WebGLStencilTexturing> webgl_stencil_texturing_;
-  Member<WebGLVideoTexture> webgl_video_texture_;
 };
 
 }  // namespace blink

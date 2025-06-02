@@ -13,55 +13,48 @@
 #ifndef QBARSET_P_H
 #define QBARSET_P_H
 
-#include <QtGraphs/qbarset.h>
+#include <QSet>
 #include <QtCore/QMap>
-#include <QtGui/QPen>
+#include <QtGraphs/qbarset.h>
 #include <QtGui/QBrush>
 #include <QtGui/QFont>
-#include <QSet>
+#include <QtGui/QPen>
+#include <private/qobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
-class QBarSetPrivate : public QObject
+class QBarSetPrivate : public QObjectPrivate
 {
-    Q_OBJECT
-
+    Q_DECLARE_PUBLIC(QBarSet)
 public:
-    QBarSetPrivate(const QString label, QBarSet *parent);
-    ~QBarSetPrivate();
+    QBarSetPrivate(const QString &label);
+    ~QBarSetPrivate() override;
 
     void append(QPointF value);
     void append(const QList<QPointF> &values);
     void append(const QList<qreal> &values);
 
-    void insert(const int index, const qreal value);
-    void insert(const int index, const QPointF value);
-    int remove(const int index, const int count);
+    void insert(qsizetype index, qreal value);
+    void insert(qsizetype index, QPointF value);
+    qsizetype remove(qsizetype index, qsizetype count);
 
-    void replace(const int index, const qreal value);
+    void replace(qsizetype index, qreal value);
 
-    qreal pos(const int index);
-    qreal value(const int index);
+    qreal pos(qsizetype index) const;
+    qreal value(qsizetype index) const;
 
     void setVisualsDirty(bool dirty) { m_visualsDirty = dirty; }
     bool visualsDirty() const { return m_visualsDirty; }
     void setLabelsDirty(bool dirty) { m_labelsDirty = dirty; }
     bool labelsDirty() const { return m_labelsDirty; }
 
-    void setBarSelected(int index, bool selected, bool &callSignal);
-    bool isBarSelected(int index) const;
-
-Q_SIGNALS:
-    void updatedBars();
-    void valueChanged(int index);
-    void valueAdded(int index, int count);
-    void valueRemoved(int index, int count);
+    void setBarSelected(qsizetype index, bool selected, bool &callSignal);
+    bool isBarSelected(qsizetype index) const;
 
 public:
-    QBarSet * const q_ptr;
     QString m_label;
     QList<QPointF> m_values;
-    QSet<int> m_selectedBars;
+    QSet<qsizetype> m_selectedBars;
     // By default colors are transparent, meaning that use the ones from theme
     QColor m_color = QColor(Qt::transparent);
     QColor m_borderColor = QColor(Qt::transparent);
@@ -72,7 +65,7 @@ public:
     bool m_visualsDirty;
     bool m_labelsDirty;
 
-    friend class QBarSet;
+    friend class QBarSeries;
 };
 
 QT_END_NAMESPACE

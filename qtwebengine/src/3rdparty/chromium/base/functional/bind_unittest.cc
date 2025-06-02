@@ -12,12 +12,11 @@
 
 #include "base/allocator/partition_alloc_features.h"
 #include "base/allocator/partition_alloc_support.h"
-#include "base/allocator/partition_allocator/dangling_raw_ptr_checks.h"
-#include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
-#include "base/allocator/partition_allocator/partition_alloc_for_testing.h"
-#include "base/allocator/partition_allocator/partition_root.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/dangling_raw_ptr_checks.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc_buildflags.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc_for_testing.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_root.h"
 #include "base/functional/callback.h"
-#include "base/functional/disallow_unretained.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
@@ -40,24 +39,6 @@ using ::testing::StrictMock;
 
 namespace base {
 namespace {
-
-class AllowsUnretained {};
-
-class BansUnretained {
- public:
-  DISALLOW_UNRETAINED();
-};
-
-class BansUnretainedInPrivate {
-  DISALLOW_UNRETAINED();
-};
-
-class DerivedButBaseBansUnretained : public BansUnretained {};
-
-static_assert(internal::TypeSupportsUnretainedV<AllowsUnretained>);
-static_assert(!internal::TypeSupportsUnretainedV<BansUnretained>);
-static_assert(!internal::TypeSupportsUnretainedV<BansUnretainedInPrivate>);
-static_assert(!internal::TypeSupportsUnretainedV<DerivedButBaseBansUnretained>);
 
 class NoRef {
  public:
@@ -956,9 +937,7 @@ struct RepeatingTestConfig {
   using ClosureType = RepeatingClosure;
 
   template <typename F, typename... Args>
-  static CallbackType<internal::MakeUnboundRunType<F, Args...>> Bind(
-      F&& f,
-      Args&&... args) {
+  static auto Bind(F&& f, Args&&... args) {
     return BindRepeating(std::forward<F>(f), std::forward<Args>(args)...);
   }
 };
@@ -969,9 +948,7 @@ struct OnceTestConfig {
   using ClosureType = OnceClosure;
 
   template <typename F, typename... Args>
-  static CallbackType<internal::MakeUnboundRunType<F, Args...>> Bind(
-      F&& f,
-      Args&&... args) {
+  static auto Bind(F&& f, Args&&... args) {
     return BindOnce(std::forward<F>(f), std::forward<Args>(args)...);
   }
 };
@@ -1485,23 +1462,33 @@ TEST_F(BindTest, ArgumentCopiesAndMoves) {
   EXPECT_EQ(0, move_assigns);
 }
 
+TEST_F(BindTest, RepeatingWithoutPassed) {
+  // It should be possible to use a move-only type with `BindRepeating` without
+  // `Passed` if running the callback does not require copying the instance.
+  struct S {
+    S() = default;
+    S(S&&) = default;
+    S& operator=(S&&) = default;
+  } s;
+  BindRepeating([](const S&) {}, std::move(s));
+}
+
 TEST_F(BindTest, CapturelessLambda) {
-  EXPECT_FALSE(internal::IsCallableObject<void>::value);
-  EXPECT_FALSE(internal::IsCallableObject<int>::value);
-  EXPECT_FALSE(internal::IsCallableObject<void (*)()>::value);
-  EXPECT_FALSE(internal::IsCallableObject<void (NoRef::*)()>::value);
+  EXPECT_FALSE(internal::IsCallableObject<void>);
+  EXPECT_FALSE(internal::IsCallableObject<int>);
+  EXPECT_FALSE(internal::IsCallableObject<void (*)()>);
+  EXPECT_FALSE(internal::IsCallableObject<void (NoRef::*)()>);
 
   auto f = [] {};
-  EXPECT_TRUE(internal::IsCallableObject<decltype(f)>::value);
+  EXPECT_TRUE(internal::IsCallableObject<decltype(f)>);
 
   int i = 0;
   auto g = [i] { (void)i; };
-  EXPECT_TRUE(internal::IsCallableObject<decltype(g)>::value);
+  EXPECT_TRUE(internal::IsCallableObject<decltype(g)>);
 
   auto h = [](int, double) { return 'k'; };
-  EXPECT_TRUE(
-      (std::is_same<char(int, double),
-                    internal::ExtractCallableRunType<decltype(h)>>::value));
+  EXPECT_TRUE((std::is_same_v<char(int, double),
+                              internal::ExtractCallableRunType<decltype(h)>>));
 
   EXPECT_EQ(42, BindRepeating([] { return 42; }).Run());
   EXPECT_EQ(42, BindRepeating([](int i) { return i * 7; }, 6).Run());
@@ -1529,9 +1516,9 @@ TEST_F(BindTest, EmptyFunctor) {
     int operator()() const { return 42; }
   };
 
-  EXPECT_TRUE(internal::IsCallableObject<NonEmptyFunctor>::value);
-  EXPECT_TRUE(internal::IsCallableObject<EmptyFunctor>::value);
-  EXPECT_TRUE(internal::IsCallableObject<EmptyFunctorConst>::value);
+  EXPECT_TRUE(internal::IsCallableObject<NonEmptyFunctor>);
+  EXPECT_TRUE(internal::IsCallableObject<EmptyFunctor>);
+  EXPECT_TRUE(internal::IsCallableObject<EmptyFunctorConst>);
   EXPECT_EQ(42, BindOnce(EmptyFunctor()).Run());
   EXPECT_EQ(42, BindOnce(EmptyFunctorConst()).Run());
   EXPECT_EQ(42, BindRepeating(EmptyFunctorConst()).Run());
@@ -1598,56 +1585,51 @@ TEST_F(BindTest, OnceCallback) {
   // Check if Callback variants have declarations of conversions as expected.
   // Copy constructor and assignment of RepeatingCallback.
   static_assert(
-      std::is_constructible<RepeatingClosure, const RepeatingClosure&>::value,
+      std::is_constructible_v<RepeatingClosure, const RepeatingClosure&>,
       "RepeatingClosure should be copyable.");
-  static_assert(
-      std::is_assignable<RepeatingClosure, const RepeatingClosure&>::value,
-      "RepeatingClosure should be copy-assignable.");
+  static_assert(std::is_assignable_v<RepeatingClosure, const RepeatingClosure&>,
+                "RepeatingClosure should be copy-assignable.");
 
   // Move constructor and assignment of RepeatingCallback.
-  static_assert(
-      std::is_constructible<RepeatingClosure, RepeatingClosure&&>::value,
-      "RepeatingClosure should be movable.");
-  static_assert(std::is_assignable<RepeatingClosure, RepeatingClosure&&>::value,
+  static_assert(std::is_constructible_v<RepeatingClosure, RepeatingClosure&&>,
+                "RepeatingClosure should be movable.");
+  static_assert(std::is_assignable_v<RepeatingClosure, RepeatingClosure&&>,
                 "RepeatingClosure should be move-assignable");
 
   // Conversions from OnceCallback to RepeatingCallback.
-  static_assert(
-      !std::is_constructible<RepeatingClosure, const OnceClosure&>::value,
-      "OnceClosure should not be convertible to RepeatingClosure.");
-  static_assert(
-      !std::is_assignable<RepeatingClosure, const OnceClosure&>::value,
-      "OnceClosure should not be convertible to RepeatingClosure.");
+  static_assert(!std::is_constructible_v<RepeatingClosure, const OnceClosure&>,
+                "OnceClosure should not be convertible to RepeatingClosure.");
+  static_assert(!std::is_assignable_v<RepeatingClosure, const OnceClosure&>,
+                "OnceClosure should not be convertible to RepeatingClosure.");
 
   // Destructive conversions from OnceCallback to RepeatingCallback.
-  static_assert(!std::is_constructible<RepeatingClosure, OnceClosure&&>::value,
+  static_assert(!std::is_constructible_v<RepeatingClosure, OnceClosure&&>,
                 "OnceClosure should not be convertible to RepeatingClosure.");
-  static_assert(!std::is_assignable<RepeatingClosure, OnceClosure&&>::value,
+  static_assert(!std::is_assignable_v<RepeatingClosure, OnceClosure&&>,
                 "OnceClosure should not be convertible to RepeatingClosure.");
 
   // Copy constructor and assignment of OnceCallback.
-  static_assert(!std::is_constructible<OnceClosure, const OnceClosure&>::value,
+  static_assert(!std::is_constructible_v<OnceClosure, const OnceClosure&>,
                 "OnceClosure should not be copyable.");
-  static_assert(!std::is_assignable<OnceClosure, const OnceClosure&>::value,
+  static_assert(!std::is_assignable_v<OnceClosure, const OnceClosure&>,
                 "OnceClosure should not be copy-assignable");
 
   // Move constructor and assignment of OnceCallback.
-  static_assert(std::is_constructible<OnceClosure, OnceClosure&&>::value,
+  static_assert(std::is_constructible_v<OnceClosure, OnceClosure&&>,
                 "OnceClosure should be movable.");
-  static_assert(std::is_assignable<OnceClosure, OnceClosure&&>::value,
+  static_assert(std::is_assignable_v<OnceClosure, OnceClosure&&>,
                 "OnceClosure should be move-assignable.");
 
   // Conversions from RepeatingCallback to OnceCallback.
-  static_assert(
-      std::is_constructible<OnceClosure, const RepeatingClosure&>::value,
-      "RepeatingClosure should be convertible to OnceClosure.");
-  static_assert(std::is_assignable<OnceClosure, const RepeatingClosure&>::value,
+  static_assert(std::is_constructible_v<OnceClosure, const RepeatingClosure&>,
+                "RepeatingClosure should be convertible to OnceClosure.");
+  static_assert(std::is_assignable_v<OnceClosure, const RepeatingClosure&>,
                 "RepeatingClosure should be convertible to OnceClosure.");
 
   // Destructive conversions from RepeatingCallback to OnceCallback.
-  static_assert(std::is_constructible<OnceClosure, RepeatingClosure&&>::value,
+  static_assert(std::is_constructible_v<OnceClosure, RepeatingClosure&&>,
                 "RepeatingClosure should be convertible to OnceClosure.");
-  static_assert(std::is_assignable<OnceClosure, RepeatingClosure&&>::value,
+  static_assert(std::is_assignable_v<OnceClosure, RepeatingClosure&&>,
                 "RepeatingClosure should be covretible to OnceClosure.");
 
   OnceClosure cb = BindOnce(&VoidPolymorphic<>::Run);
@@ -1881,10 +1863,11 @@ void HandleOOM(size_t unused_size) {
 // Basic set of options to mostly only enable `BackupRefPtr::kEnabled`.
 // This avoids the boilerplate of having too much options enabled for simple
 // testing purpose.
-static constexpr partition_alloc::PartitionOptions
-    kOnlyEnableBackupRefPtrOptions = {
-        .backup_ref_ptr = partition_alloc::PartitionOptions::kEnabled,
-};
+static constexpr auto kOnlyEnableBackupRefPtrOptions = []() {
+  partition_alloc::PartitionOptions opts;
+  opts.backup_ref_ptr = partition_alloc::PartitionOptions::kEnabled;
+  return opts;
+}();
 
 class BindUnretainedDanglingInternalFixture : public BindTest {
  public:

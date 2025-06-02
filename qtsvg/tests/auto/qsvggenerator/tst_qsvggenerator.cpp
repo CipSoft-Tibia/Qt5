@@ -8,7 +8,7 @@
 #include <QDomElement>
 #include <QDomNode>
 
-#include <qapplication.h>
+#include <qguiapplication.h>
 #include <qdebug.h>
 #include <qpainter.h>
 #include <qsvggenerator.h>
@@ -201,7 +201,7 @@ void tst_QSvgGenerator::outputDevice()
     }
     {
         // Device is not open, WriteOnly
-        file.open(QIODevice::WriteOnly);
+        QVERIFY(file.open(QIODevice::WriteOnly));
 
         QSvgGenerator generator;
         generator.setOutputDevice(&file);
@@ -214,7 +214,7 @@ void tst_QSvgGenerator::outputDevice()
     }
     {
         // Device is not open, ReadOnly
-        file.open(QIODevice::ReadOnly);
+        QVERIFY(file.open(QIODevice::ReadOnly));
 
         QSvgGenerator generator;
         generator.setOutputDevice(&file);

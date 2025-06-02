@@ -14,17 +14,14 @@ using namespace Qt::StringLiterals;
 
 bool done = true;
 
-QFileSystemIterator::QFileSystemIterator(const QFileSystemEntry &entry, QDir::Filters filters,
-                                         const QStringList &nameFilters, QDirIterator::IteratorFlags flags)
-    : nativePath(entry.nativeFilePath())
-    , dirPath(entry.filePath())
+QFileSystemIterator::QFileSystemIterator(const QFileSystemEntry &entry)
+    : dirPath(entry.filePath())
+    , nativePath(entry.nativeFilePath())
     , findFileHandle(INVALID_HANDLE_VALUE)
     , uncFallback(false)
     , uncShareIndex(0)
     , onlyDirs(false)
 {
-    Q_UNUSED(nameFilters);
-    Q_UNUSED(flags);
     if (nativePath.endsWith(u".lnk"_s) && !QFileSystemEngine::isDirPath(dirPath, nullptr)) {
         QFileSystemMetaData metaData;
         QFileSystemEntry link = QFileSystemEngine::getLinkTarget(entry, metaData);
@@ -36,8 +33,20 @@ QFileSystemIterator::QFileSystemIterator(const QFileSystemEntry &entry, QDir::Fi
     // In MSVC2015+ case we prepend //?/ for longer file-name support
     if (!dirPath.endsWith(u'/'))
         dirPath.append(u'/');
+}
+
+QFileSystemIterator::QFileSystemIterator(const QFileSystemEntry &entry, QDir::Filters filters)
+    : QFileSystemIterator(entry)
+{
     if ((filters & (QDir::Dirs|QDir::Drives)) && (!(filters & (QDir::Files))))
         onlyDirs = true;
+}
+
+QFileSystemIterator::QFileSystemIterator(const QFileSystemEntry &entry,
+                                         QDirListing::IteratorFlags flags)
+    : QFileSystemIterator(entry)
+{
+    onlyDirs = flags.testAnyFlags(QDirListing::IteratorFlag::DirsOnly);
 }
 
 QFileSystemIterator::~QFileSystemIterator()

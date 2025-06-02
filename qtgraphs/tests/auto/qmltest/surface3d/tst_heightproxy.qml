@@ -10,25 +10,32 @@ Item {
     height: 150
     width: 150
 
-    HeightMapSurfaceDataProxy {
-        id: initial
+    Surface3DSeries {
+        dataProxy: HeightMapSurfaceDataProxy {
+            id: initial
+        }
     }
 
-    HeightMapSurfaceDataProxy {
-        id: initialized
-        heightMapFile: ":/customtexture.jpg"
-        maxXValue: 10.0
-        maxZValue: 10.0
-        minXValue: -10.0
-        minZValue: -10.0
+    Surface3DSeries {
+        dataProxy: HeightMapSurfaceDataProxy {
+            id: initialized
+            heightMapFile: ":/customtexture.jpg"
+            maxXValue: 10.0
+            maxZValue: 10.0
+            minXValue: -10.0
+            minZValue: -10.0
+        }
     }
 
-    HeightMapSurfaceDataProxy {
-        id: change
+    Surface3DSeries {
+        dataProxy: HeightMapSurfaceDataProxy {
+            id: change
+        }
     }
-
-    HeightMapSurfaceDataProxy {
-        id: invalid
+    Surface3DSeries {
+        dataProxy: HeightMapSurfaceDataProxy {
+            id: invalid
+        }
     }
 
     TestCase {
@@ -43,7 +50,7 @@ Item {
 
             compare(initial.columnCount, 0)
             compare(initial.rowCount, 0)
-            verify(!initial.series)
+            verify(initial.series)
 
             compare(initial.type, AbstractDataProxy.DataType.Surface)
         }
@@ -69,22 +76,38 @@ Item {
 
         function test_1_change() {
             change.heightMapFile = ":/customtexture.jpg"
-            change.maxXValue = 10.0
-            change.maxZValue = 10.0
+            change.maxXValue = 11.0
+            change.maxZValue = 11.0
+            change.maxYValue = 11.0
             change.minXValue = -10.0
             change.minZValue = -10.0
+            change.minYValue = -10.0
+            change.autoScaleY = true
         }
 
         function test_2_test_change() {
             // This test has a dependency to the previous one due to asynchronous item model resolving
             compare(change.heightMapFile, ":/customtexture.jpg")
-            compare(change.maxXValue, 10.0)
-            compare(change.maxZValue, 10.0)
+            compare(change.maxXValue, 11.0)
+            compare(change.maxZValue, 11.0)
+            compare(change.maxYValue, 11.0)
             compare(change.minXValue, -10.0)
             compare(change.minZValue, -10.0)
+            compare(change.minYValue, -10.0)
 
             compare(change.columnCount, 24)
             compare(change.rowCount, 24)
+
+            // Signals
+            compare(heightMapSpy.count, 1)
+            compare(heightMapFileSpy.count, 1)
+            compare(maxXValueSpy.count, 1)
+            compare(maxZValueSpy.count, 1)
+            compare(maxYValueSpy.count, 1)
+            compare(minXValueSpy.count, 1)
+            compare(minZValueSpy.count, 1)
+            compare(minYValueSpy.count, 1)
+            compare(autoScaleYSpy.count, 1)
         }
     }
 
@@ -97,5 +120,59 @@ Item {
             invalid.minZValue = 20
             compare(invalid.maxZValue, 21)
         }
+    }
+
+    SignalSpy {
+        id: heightMapSpy
+        target: change
+        signalName: "heightMapChanged"
+    }
+
+    SignalSpy {
+        id: heightMapFileSpy
+        target: change
+        signalName: "heightMapFileChanged"
+    }
+
+    SignalSpy {
+        id: minXValueSpy
+        target: change
+        signalName: "minXValueChanged"
+    }
+
+    SignalSpy {
+        id: minYValueSpy
+        target: change
+        signalName: "minYValueChanged"
+    }
+
+    SignalSpy {
+        id: minZValueSpy
+        target: change
+        signalName: "minZValueChanged"
+    }
+
+    SignalSpy {
+        id: maxXValueSpy
+        target: change
+        signalName: "maxXValueChanged"
+    }
+
+    SignalSpy {
+        id: maxYValueSpy
+        target: change
+        signalName: "maxYValueChanged"
+    }
+
+    SignalSpy {
+        id: maxZValueSpy
+        target: change
+        signalName: "maxZValueChanged"
+    }
+
+    SignalSpy {
+        id: autoScaleYSpy
+        target: change
+        signalName: "autoScaleYChanged"
     }
 }

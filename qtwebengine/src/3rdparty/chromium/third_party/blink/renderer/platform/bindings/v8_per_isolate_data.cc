@@ -28,7 +28,8 @@
 #include <memory>
 #include <utility>
 
-#include "base/allocator/partition_allocator/oom.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/oom.h"
+#include "base/debug/crash_logging.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/ranges/algorithm.h"
 #include "base/task/single_thread_task_runner.h"
@@ -52,6 +53,46 @@
 #include "third_party/blink/renderer/platform/wtf/leak_annotations.h"
 
 namespace blink {
+
+namespace {
+void AddCrashKey(v8::CrashKeyId id, const std::string& value) {
+  using base::debug::AllocateCrashKeyString;
+  using base::debug::CrashKeySize;
+  using base::debug::SetCrashKeyString;
+
+  switch (id) {
+    case v8::CrashKeyId::kIsolateAddress:
+      static auto* const isolate_address =
+          AllocateCrashKeyString("v8_isolate_address", CrashKeySize::Size32);
+      SetCrashKeyString(isolate_address, value);
+      break;
+    case v8::CrashKeyId::kReadonlySpaceFirstPageAddress:
+      static auto* const ro_space_firstpage_address = AllocateCrashKeyString(
+          "v8_ro_space_firstpage_address", CrashKeySize::Size32);
+      SetCrashKeyString(ro_space_firstpage_address, value);
+      break;
+    case v8::CrashKeyId::kMapSpaceFirstPageAddress:
+      static auto* const map_space_firstpage_address = AllocateCrashKeyString(
+          "v8_map_space_firstpage_address", CrashKeySize::Size32);
+      SetCrashKeyString(map_space_firstpage_address, value);
+      break;
+    case v8::CrashKeyId::kCodeSpaceFirstPageAddress:
+      static auto* const code_space_firstpage_address = AllocateCrashKeyString(
+          "v8_code_space_firstpage_address", CrashKeySize::Size32);
+      SetCrashKeyString(code_space_firstpage_address, value);
+      break;
+    case v8::CrashKeyId::kDumpType:
+      static auto* const dump_type =
+          AllocateCrashKeyString("dump-type", CrashKeySize::Size32);
+      SetCrashKeyString(dump_type, value);
+      break;
+    default:
+      // Doing nothing for new keys is a valid option. Having this case allows
+      // to introduce new CrashKeyId's without triggering a build break.
+      break;
+  }
+}
+}  // namespace
 
 // Function defined in third_party/blink/public/web/blink.h.
 v8::Isolate* MainThreadIsolate() {
@@ -106,8 +147,12 @@ V8PerIsolateData::V8PerIsolateData(
     GetIsolate()->Enter();
     GetIsolate()->AddBeforeCallEnteredCallback(&BeforeCallEnteredCallback);
   }
-  if (IsMainThread())
+  if (IsMainThread()) {
     g_main_thread_per_isolate_data = this;
+    GetIsolate()->SetAddCrashKeyCallback(AddCrashKey);
+    main_world_ = DOMWrapperWorld::Create(GetIsolate(),
+                                          DOMWrapperWorld::WorldType::kMain);
+  }
 }
 
 V8PerIsolateData::~V8PerIsolateData() = default;
@@ -153,7 +198,7 @@ void V8PerIsolateData::WillBeDestroyed(v8::Isolate* isolate) {
     data->profiler_group_ = nullptr;
   }
 
-  data->ClearScriptRegexpContext();
+  data->ClearUtilityScriptState();
 
   ThreadState::Current()->DetachFromIsolate();
 
@@ -182,15 +227,17 @@ void V8PerIsolateData::Destroy(v8::Isolate* isolate) {
   V8PerIsolateData* data = From(isolate);
 
   // Clear everything before exiting the Isolate.
-  if (data->script_regexp_script_state_)
-    data->script_regexp_script_state_->DisposePerContextData();
+  if (data->utility_script_state_) {
+    data->utility_script_state_->DisposePerContextData();
+  }
   data->private_property_.reset();
   data->string_cache_->Dispose();
   data->string_cache_.reset();
   data->v8_template_map_for_main_world_.clear();
   data->v8_template_map_for_non_main_worlds_.clear();
-  if (IsMainThread())
+  if (IsMainThread()) {
     g_main_thread_per_isolate_data = nullptr;
+  }
 
   // FIXME: Remove once all v8::Isolate::GetCurrent() calls are gone.
   isolate->Exit();
@@ -299,25 +346,27 @@ V8PerIsolateData::FindOrCreateEternalNameCache(
                                                  vector->size());
 }
 
-v8::Local<v8::Context> V8PerIsolateData::EnsureScriptRegexpContext() {
-  if (!script_regexp_script_state_) {
-    LEAK_SANITIZER_DISABLED_SCOPE;
-    v8::Local<v8::Context> context(v8::Context::New(GetIsolate()));
-    script_regexp_script_state_ = ScriptState::Create(
-        context,
-        DOMWrapperWorld::Create(GetIsolate(),
-                                DOMWrapperWorld::WorldType::kRegExp),
-        /* execution_context = */ nullptr);
-  }
-  return script_regexp_script_state_->GetContext();
+ScriptState* V8PerIsolateData::EnsureUtilityScriptStateSlow() {
+  // This runs at most once per isolate, so the performance impact is
+  // negligible.
+  CHECK(!utility_script_state_);
+  LEAK_SANITIZER_DISABLED_SCOPE;
+  v8::HandleScope handle_scope(GetIsolate());
+  v8::Local<v8::Context> context(v8::Context::New(GetIsolate()));
+  utility_script_state_ = ScriptState::Create(
+      context,
+      DOMWrapperWorld::Create(
+          GetIsolate(), DOMWrapperWorld::WorldType::kBlinkInternalNonJSExposed),
+      /* execution_context = */ nullptr);
+  return utility_script_state_.Get();
 }
 
-void V8PerIsolateData::ClearScriptRegexpContext() {
-  if (script_regexp_script_state_) {
-    script_regexp_script_state_->DisposePerContextData();
-    script_regexp_script_state_->DissociateContext();
+void V8PerIsolateData::ClearUtilityScriptState() {
+  if (utility_script_state_) {
+    utility_script_state_->DisposePerContextData();
+    utility_script_state_->DissociateContext();
   }
-  script_regexp_script_state_ = nullptr;
+  utility_script_state_ = nullptr;
 }
 
 void V8PerIsolateData::SetThreadDebugger(

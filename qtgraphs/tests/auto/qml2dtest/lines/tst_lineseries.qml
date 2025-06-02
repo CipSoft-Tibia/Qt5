@@ -17,18 +17,16 @@ Item {
     LineSeries {
         id: initialized
 
-        axisX: ValueAxis { max: 4 }
-        axisY: ValueAxis { max: 8 }
         width: 10.0
         capStyle: Qt.RoundCap
-        pointMarker: Rectangle {
+        pointDelegate: Rectangle {
             width: 5
             height: 5
         }
 
         color: "#ff00ff"
         selectedColor: "#00ff00"
-        markerSize: 5.0
+        draggable: true
 
         name: "LineSeries"
         visible: false
@@ -39,8 +37,6 @@ Item {
     }
 
     // Values used for changing the properties
-    ValueAxis { id: axisx; max: 10 }
-    ValueAxis { id: axisy; max: 10 }
     Component { id: marker; Rectangle { width: 10; height: 10 } }
 
     TestCase {
@@ -48,21 +44,19 @@ Item {
 
         function test_1_initial() {
             // Properties from QLineSeries
-            compare(initial.axisX, null)
-            compare(initial.axisY, null)
             compare(initial.width, 2.0)
             compare(initial.capStyle, Qt.SquareCap)
-            compare(initial.pointMarker, null)
+            compare(initial.pointDelegate, null)
         }
 
         function test_2_initial_common() {
             // Properties from QXYSeries
-            compare(initial.color, "#ffffff")
-            compare(initial.selectedColor, "#000000")
-            compare(initial.markerSize, 15.0)
+            compare(initial.color, "#00000000")
+            compare(initial.selectedColor, "#00000000")
+            compare(initial.draggable, false)
+            compare(initial.selectedPoints, [])
 
             // Properties from QAbstractSeries
-            compare(initial.theme, null)
             compare(initial.name, "")
             compare(initial.visible, true)
             compare(initial.selectable, false)
@@ -72,15 +66,13 @@ Item {
         }
 
         function test_3_initial_change() {
-            initial.axisX = axisx
-            initial.axisY = axisy
             initial.width = 10.0
             initial.capStyle = Qt.RoundCap
-            initial.pointMarker = marker
+            initial.pointDelegate = marker
 
             initial.color = "#ff00ff"
             initial.selectedColor = "#00ff00"
-            initial.markerSize = 5.0
+            initial.draggable = true
 
             initial.name = "Lines"
             initial.visible = false
@@ -89,17 +81,13 @@ Item {
             initial.opacity = 0.5
             initial.valuesMultiplier = 0.5
 
-            compare(initial.axisX, axisx)
-            compare(initial.axisY, axisy)
-            compare(initial.axisX.max, 10)
-            compare(initial.axisY.max, 10)
             compare(initial.width, 10.0)
             compare(initial.capStyle, Qt.RoundCap)
-            compare(initial.pointMarker, marker)
+            compare(initial.pointDelegate, marker)
 
             compare(initial.color, "#ff00ff")
             compare(initial.selectedColor, "#00ff00")
-            compare(initial.markerSize, 5.0)
+            compare(initial.draggable, true)
 
             compare(initial.name, "Lines")
             compare(initial.visible, false)
@@ -108,21 +96,50 @@ Item {
             compare(initial.opacity, 0.5)
             compare(initial.valuesMultiplier, 0.5)
         }
+        function test_3_initial_selections() {
+            initial.deselectAllPoints();
+            initial.clear();
+            compare(initial.selectedPoints, [])
+            initial.append(0, 0)
+            initial.append(1, 1)
+            initial.append(2, 2)
+            initial.append(3, 3)
+            initial.append(4, 4)
+            compare(initial.isPointSelected(0), false)
+            initial.selectPoint(0);
+            compare(initial.isPointSelected(0), true)
+            compare(initial.selectedPoints, [0])
+            initial.selectPoint(2);
+            // Note: Checking just length as the order of the elements may differ
+            compare(initial.selectedPoints.length, 2) // [0, 2]
+            initial.toggleSelection([3])
+            compare(initial.selectedPoints.length, 3) // [0, 2, 3]
+            initial.toggleSelection([3])
+            compare(initial.selectedPoints.length, 2) // [0, 2]
+            initial.setPointSelected(0, false)
+            compare(initial.selectedPoints.length, 1) // [0]
+            initial.selectAllPoints()
+            compare(initial.selectedPoints.length, 5) // [0, 1, 2, 3, 4]
+            initial.deselectAllPoints()
+            compare(initial.selectedPoints.length, 0)
+            initial.selectPoints([1, 2, 3])
+            compare(initial.selectedPoints.length, 3) // [1, 2, 3]
+            initial.deselectPoints([2, 3, 4])
+            compare(initial.selectedPoints.length, 1) // [1]
+        }
     }
 
     TestCase {
         name: "LineSeries Initialized"
 
         function test_1_initialized() {
-            compare(initialized.axisX.max, 4)
-            compare(initialized.axisY.max, 8)
             compare(initialized.width, 10.0)
             compare(initialized.capStyle, Qt.RoundCap)
-            verify(initialized.pointMarker)
+            verify(initialized.pointDelegate)
 
             compare(initialized.color, "#ff00ff")
             compare(initialized.selectedColor, "#00ff00")
-            compare(initialized.markerSize, 5.0)
+            compare(initialized.draggable, true)
 
             compare(initialized.name, "LineSeries")
             compare(initialized.visible, false)
@@ -133,15 +150,13 @@ Item {
         }
 
         function test_2_initialized_change() {
-            initialized.axisX = axisx
-            initialized.axisY = axisy
             initialized.width = 1.0
             initialized.capStyle = Qt.SquareCap
-            initialized.pointMarker = null
+            initialized.pointDelegate = null
 
             initialized.color = "#0000ff"
             initialized.selectedColor = "#ff0000"
-            initialized.markerSize = 10.0
+            initialized.draggable = false
 
             initialized.name = "Lines"
             initialized.visible = true
@@ -150,15 +165,13 @@ Item {
             initialized.opacity = 0.5
             initialized.valuesMultiplier = 0.25
 
-            compare(initialized.axisX.max, 10)
-            compare(initialized.axisY.max, 10)
             compare(initialized.width, 1.0)
             compare(initialized.capStyle, Qt.SquareCap)
-            verify(!initialized.pointMarker)
+            verify(!initialized.pointDelegate)
 
             compare(initialized.color, "#0000ff")
             compare(initialized.selectedColor, "#ff0000")
-            compare(initialized.markerSize, 10.0)
+            compare(initialized.draggable, false)
 
             compare(initialized.name, "Lines")
             compare(initialized.visible, true)
@@ -166,17 +179,20 @@ Item {
             compare(initialized.hoverable, false)
             compare(initialized.opacity, 0.5)
             compare(initialized.valuesMultiplier, 0.25)
+
+            // LineSeries signals
+            compare(widthSpy.count, 1)
+            compare(capStyleSpy.count, 1)
+
+            //QXYSeries signals
+            compare(colorSpy.count, 1)
+            compare(selectedColorSpy.count, 1)
+            compare(pointDelegateSpy.count, 1)
+            compare(draggableSpy.count, 1)
+            compare(selectedPointsSpy.count, 0)
         }
 
-        function test_3_initialized_change_to_null() {
-            initialized.axisX = null
-            initialized.axisY = null
-
-            verify(!initialized.axisX)
-            verify(!initialized.axisY)
-        }
-
-        function test_4_initialized_change_to_invalid() {
+        function test_3_initialized_change_to_invalid() {
             initialized.width = -10.0
             initialized.capStyle = -1
             initialized.valuesMultiplier = 2.0 // range 0...1
@@ -187,6 +203,50 @@ Item {
 
             initialized.valuesMultiplier = -1.0 // range 0...1
             compare(initialized.valuesMultiplier, 0.0)
+        }
+
+        // LineSeries signals
+        SignalSpy {
+            id: widthSpy
+            target: initialized
+            signalName: "widthChanged"
+        }
+
+        SignalSpy {
+            id: capStyleSpy
+            target: initialized
+            signalName: "capStyleChanged"
+        }
+
+        // QXYSeries signals
+        SignalSpy {
+            id: colorSpy
+            target: initialized
+            signalName: "colorChanged"
+        }
+
+        SignalSpy {
+            id: selectedColorSpy
+            target: initialized
+            signalName: "selectedColorChanged"
+        }
+
+        SignalSpy {
+            id: pointDelegateSpy
+            target: initialized
+            signalName: "pointDelegateChanged"
+        }
+
+        SignalSpy {
+            id: draggableSpy
+            target: initialized
+            signalName: "draggableChanged"
+        }
+
+        SignalSpy {
+            id: selectedPointsSpy
+            target: initialized
+            signalName: "selectedPointsChanged"
         }
     }
 }

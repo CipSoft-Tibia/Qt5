@@ -12,6 +12,7 @@
 
 // clang-format off
 
+// IWYU pragma: private
 #include "./InternalHeaderCheck.h"
 
 namespace Eigen {

@@ -18,7 +18,7 @@
 #include <quuid.h>
 #include <qwidget.h>
 #include <qlist.h>
-
+#include <QtAxBase/private/qbstr_p.h>
 #include <qt_windows.h>
 #ifndef QT_NO_QAXSCRIPT
 #include <initguid.h>
@@ -246,16 +246,15 @@ HRESULT WINAPI QAxScriptSite::OnScriptError(IActiveScriptError *error)
     DWORD context;
     ULONG lineNumber;
     LONG charPos;
-    BSTR bstrLineText;
+    QBStr bstrLineText;
     QString lineText;
 
     error->GetExceptionInfo(&exception);
     error->GetSourcePosition(&context, &lineNumber, &charPos);
     HRESULT hres = error->GetSourceLineText(&bstrLineText);
-    if (hres == S_OK) {
-        lineText = QString::fromWCharArray(bstrLineText);
-        SysFreeString(bstrLineText);
-    }
+    if (hres == S_OK)
+        lineText = bstrLineText.str();
+
     SysFreeString(exception.bstrSource);
     SysFreeString(exception.bstrDescription);
     SysFreeString(exception.bstrHelpFile);
@@ -463,13 +462,14 @@ bool QAxScriptEngine::initialize(IUnknown **ptr)
         return false;
     }
 
-    BSTR bstrCode = QStringToBSTR(script_code->scriptCode());
+    QBStr bstrCode{ script_code->scriptCode() };
 #ifdef Q_OS_WIN64
-    hres = parser->ParseScriptText(bstrCode, nullptr, nullptr, nullptr, DWORDLONG(this), 0, SCRIPTTEXT_ISVISIBLE, nullptr, nullptr);
+    hres = parser->ParseScriptText(bstrCode.bstr(), nullptr, nullptr, nullptr, DWORDLONG(this), 0,
+                                   SCRIPTTEXT_ISVISIBLE, nullptr, nullptr);
 #else
-    hres = parser->ParseScriptText(bstrCode, 0, 0, 0, DWORD(this), 0, SCRIPTTEXT_ISVISIBLE, 0, 0);
+    hres = parser->ParseScriptText(bstrCode.bstr(), 0, 0, 0, DWORD(this), 0, SCRIPTTEXT_ISVISIBLE,
+                                   0, 0);
 #endif
-    SysFreeString(bstrCode);
 
     parser->Release();
     parser = nullptr;

@@ -22,8 +22,8 @@
 #include "generated/chassis.h"
 #include "core_validation.h"
 
-bool CoreChecks::ValidateComputePipelineShaderState(const PIPELINE_STATE &pipeline, const Location &create_info_loc) const {
-    StageCreateInfo stage_create_info(create_info_loc.function, &pipeline);
+bool CoreChecks::ValidateComputePipelineShaderState(const vvl::Pipeline &pipeline, const Location &create_info_loc) const {
+    StageCreateInfo stage_create_info(&pipeline);
     return ValidatePipelineShaderStage(stage_create_info, pipeline.stage_states[0], create_info_loc.dot(Field::stage));
 }
 
@@ -36,17 +36,20 @@ bool CoreChecks::PreCallValidateCreateComputePipelines(VkDevice device, VkPipeli
 
     auto *ccpl_state = reinterpret_cast<create_compute_pipeline_api_state *>(ccpl_state_data);
     for (uint32_t i = 0; i < count; i++) {
-        const PIPELINE_STATE *pipeline = ccpl_state->pipe_state[i].get();
+        const vvl::Pipeline *pipeline = ccpl_state->pipe_state[i].get();
         if (!pipeline) {
             continue;
         }
         const Location create_info_loc = error_obj.location.dot(Field::pCreateInfos, i);
         skip |= ValidateComputePipelineShaderState(*pipeline, create_info_loc);
         skip |= ValidateShaderModuleId(*pipeline, create_info_loc);
-        skip |= ValidatePipelineCacheControlFlags(pCreateInfos[i].flags, create_info_loc.dot(Field::flags),
+        skip |= ValidatePipelineCacheControlFlags(pipeline->create_flags, create_info_loc.dot(Field::flags),
                                                   "VUID-VkComputePipelineCreateInfo-pipelineCreationCacheControl-02875");
+        skip |= ValidatePipelineIndirectBindableFlags(pipeline->create_flags, create_info_loc.dot(Field::flags),
+                                                      "VUID-VkComputePipelineCreateInfo-flags-09007");
 
-        if (const auto *pipeline_robustness_info = LvlFindInChain<VkPipelineRobustnessCreateInfoEXT>(pCreateInfos[i].pNext);
+        if (const auto *pipeline_robustness_info =
+                vku::FindStructInPNextChain<VkPipelineRobustnessCreateInfoEXT>(pCreateInfos[i].pNext);
             pipeline_robustness_info) {
             skip |= ValidatePipelineRobustnessCreateInfo(*pipeline, *pipeline_robustness_info, create_info_loc);
         }

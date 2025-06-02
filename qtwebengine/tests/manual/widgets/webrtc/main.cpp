@@ -35,44 +35,44 @@ private slots:
 Page::Page(QWebEngineProfile *profile, QObject *parent) : QWebEnginePage(profile, parent)
 {
     settings()->setAttribute(QWebEngineSettings::ScreenCaptureEnabled, true);
-    connect(this, &QWebEnginePage::featurePermissionRequested, this,
+    connect(this, &QWebEnginePage::permissionRequested, this,
             &Page::handlePermissionRequest);
     connect(this, &QWebEnginePage::desktopMediaRequested, this, &Page::handleDesktopMediaRequest);
 }
 
-void Page::handlePermissionRequest(const QUrl &origin, Feature feature)
+void Page::handlePermissionRequest(QWebEnginePermission permission)
 {
     if (QMessageBox::question(QApplication::activeWindow(), tr("Permission request"),
                               tr("allow access?"))
         == QMessageBox::Yes)
-        setFeaturePermission(origin, feature, PermissionGrantedByUser);
+        permission.grant();
     else
-        setFeaturePermission(origin, feature, PermissionDeniedByUser);
+        permission.deny();
 }
 
 void Page::handleDesktopMediaRequest(const QWebEngineDesktopMediaRequest &request)
 {
-        Ui::MediaPickerDialog mediaPickerDialog;
-        QDialog dialog;
-        dialog.setModal(true);
-        mediaPickerDialog.setupUi(&dialog);
+    Ui::MediaPickerDialog mediaPickerDialog;
+    QDialog dialog;
+    dialog.setModal(true);
+    mediaPickerDialog.setupUi(&dialog);
 
-        auto *screensView = mediaPickerDialog.screensView;
-        auto *windowsView = mediaPickerDialog.windowsView;
-        auto *screensModel = request.screensModel();
-        auto *windowsModel = request.windowsModel();
+    auto *screensView = mediaPickerDialog.screensView;
+    auto *windowsView = mediaPickerDialog.windowsView;
+    auto *screensModel = request.screensModel();
+    auto *windowsModel = request.windowsModel();
 
-        screensView->setModel(screensModel);
-        windowsView->setModel(windowsModel);
+    screensView->setModel(screensModel);
+    windowsView->setModel(windowsModel);
 
-        if (dialog.exec() == QDialog::Accepted) {
-            if (mediaPickerDialog.tabWidget->currentIndex() == 0)
-                request.selectWindow(windowsView->selectionModel()->selectedIndexes().first());
-            else
-                request.selectScreen(screensView->selectionModel()->selectedIndexes().first());
-        } else {
-            request.cancel();
-        }
+    if (dialog.exec() == QDialog::Accepted) {
+        if (mediaPickerDialog.tabWidget->currentIndex() == 0)
+            request.selectWindow(windowsView->selectionModel()->selectedIndexes().first());
+        else
+            request.selectScreen(screensView->selectionModel()->selectedIndexes().first());
+    } else {
+        request.cancel();
+    }
 }
 
 int main(int argc, char *argv[])

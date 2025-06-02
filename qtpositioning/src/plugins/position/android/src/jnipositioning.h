@@ -13,7 +13,8 @@ namespace AndroidPositioning
     void unregisterPositionInfoSource(int key);
 
     QGeoPositionInfoSource::PositioningMethods availableProviders();
-    QGeoPositionInfo lastKnownPosition(bool fromSatellitePositioningMethodsOnly);
+    QGeoPositionInfo lastKnownPosition(bool fromSatellitePositioningMethodsOnly,
+                                       bool useAltitudeConverter);
 
     QGeoPositionInfoSource::Error startUpdates(int androidClassKey);
     void stopUpdates(int androidClassKey);

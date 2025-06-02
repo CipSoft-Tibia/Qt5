@@ -5,64 +5,89 @@
 #ifndef DEVICE_FIDO_ENCLAVE_ENCLAVE_AUTHENTICATOR_H_
 #define DEVICE_FIDO_ENCLAVE_ENCLAVE_AUTHENTICATOR_H_
 
+#include <array>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/component_export.h"
 #include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "components/sync/protocol/webauthn_credential_specifics.pb.h"
 #include "device/fido/authenticator_get_assertion_response.h"
+#include "device/fido/authenticator_make_credential_response.h"
 #include "device/fido/cable/v2_constants.h"
 #include "device/fido/ctap_get_assertion_request.h"
+#include "device/fido/ctap_make_credential_request.h"
+#include "device/fido/enclave/enclave_protocol_utils.h"
+#include "device/fido/enclave/enclave_websocket_client.h"
 #include "device/fido/fido_authenticator.h"
 #include "device/fido/fido_types.h"
+#include "device/fido/network_context_factory.h"
+#include "services/network/public/mojom/network_context.mojom.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "url/gurl.h"
 
-namespace device {
+namespace device::enclave {
 
-namespace cablev2 {
-class Crypter;
-class HandshakeInitiator;
-}  // namespace cablev2
+struct CredentialRequest;
 
-namespace enclave {
-
-class EnclaveHttpClient;
-
-// TODO(kenrb): Remove the export directive when it is no longer used by the
-// client stand-alone app.
 class COMPONENT_EXPORT(DEVICE_FIDO) EnclaveAuthenticator
     : public FidoAuthenticator {
  public:
   EnclaveAuthenticator(
-      const GURL& service_url,
-      base::span<const uint8_t, device::kP256X962Length> peer_identity,
-      std::vector<sync_pb::WebauthnCredentialSpecifics> passkeys);
+      std::unique_ptr<CredentialRequest> ui_request,
+      base::RepeatingCallback<void(sync_pb::WebauthnCredentialSpecifics)>
+          save_passkey_callback,
+      NetworkContextFactory network_context_factory);
   ~EnclaveAuthenticator() override;
 
   EnclaveAuthenticator(const EnclaveAuthenticator&) = delete;
   EnclaveAuthenticator& operator=(const EnclaveAuthenticator&) = delete;
 
-  // TODO(kenrb): Make this private when no longer embedded in test app.
+  // TODO(kenrb): Make these private when no longer embedded in test app.
   void GetAssertion(CtapGetAssertionRequest request,
                     CtapGetAssertionOptions options,
                     GetAssertionCallback callback) override;
+  void MakeCredential(CtapMakeCredentialRequest request,
+                      MakeCredentialOptions options,
+                      MakeCredentialCallback callback) override;
+
+  void SetOauthToken(absl::optional<std::string_view> token);
 
  private:
-  enum class State {
-    kInitialized,
-    kWaitingForHandshakeResponse,
-    kConnected,
-    kError,
+  struct PendingGetAssertionRequest {
+    PendingGetAssertionRequest(CtapGetAssertionRequest,
+                               CtapGetAssertionOptions,
+                               GetAssertionCallback);
+    ~PendingGetAssertionRequest();
+    PendingGetAssertionRequest(const PendingGetAssertionRequest&) = delete;
+    PendingGetAssertionRequest& operator=(const PendingGetAssertionRequest&) =
+        delete;
+
+    CtapGetAssertionRequest request;
+    CtapGetAssertionOptions options;
+    GetAssertionCallback callback;
+  };
+
+  struct PendingMakeCredentialRequest {
+    PendingMakeCredentialRequest(CtapMakeCredentialRequest,
+                                 MakeCredentialOptions,
+                                 MakeCredentialCallback);
+    ~PendingMakeCredentialRequest();
+    PendingMakeCredentialRequest(const PendingMakeCredentialRequest&) = delete;
+    PendingMakeCredentialRequest& operator=(
+        const PendingMakeCredentialRequest&) = delete;
+
+    CtapMakeCredentialRequest request;
+    MakeCredentialOptions options;
+    MakeCredentialCallback callback;
   };
 
   // FidoAuthenticator:
   void InitializeAuthenticator(base::OnceClosure callback) override;
-  void MakeCredential(CtapMakeCredentialRequest request,
-                      MakeCredentialOptions options,
-                      MakeCredentialCallback callback) override;
   void Cancel() override;
   AuthenticatorType GetType() const override;
   std::string GetId() const override;
@@ -70,32 +95,33 @@ class COMPONENT_EXPORT(DEVICE_FIDO) EnclaveAuthenticator
   absl::optional<FidoTransportProtocol> AuthenticatorTransport() const override;
   base::WeakPtr<FidoAuthenticator> GetWeakPtr() override;
 
-  void OnResponseReceived(int status,
-                          absl::optional<std::vector<uint8_t>> data);
-  void SendCommand();
+  void ProcessMakeCredentialResponse(absl::optional<cbor::Value> response);
+  void ProcessGetAssertionResponse(absl::optional<cbor::Value> response);
+  void CompleteRequestWithError(CtapDeviceResponseCode error);
+  void CompleteMakeCredentialRequest(
+      CtapDeviceResponseCode status,
+      absl::optional<AuthenticatorMakeCredentialResponse> response);
+  void CompleteGetAssertionRequest(
+      CtapDeviceResponseCode status,
+      std::vector<AuthenticatorGetAssertionResponse> responses);
 
-  State state_ = State::kInitialized;
+  const std::array<uint8_t, 8> id_;
+  const NetworkContextFactory network_context_factory_;
+  const std::unique_ptr<CredentialRequest> ui_request_;
 
-  std::unique_ptr<EnclaveHttpClient> http_client_;
+  // Callback for storing a newly-created passkey.
+  const base::RepeatingCallback<void(sync_pb::WebauthnCredentialSpecifics)>
+      save_passkey_callback_;
 
-  // The peer's public key.
-  const std::array<uint8_t, device::kP256X962Length> peer_identity_;
-
-  std::unique_ptr<cablev2::HandshakeInitiator> handshake_;
-  absl::optional<std::array<uint8_t, 32>> handshake_hash_;
-  std::unique_ptr<cablev2::Crypter> crypter_;
-
-  // GetAssertion arguments while waiting for the connection to be established.
-  std::string pending_request_body_;
-  GetAssertionCallback pending_get_assertion_callback_;
-
-  std::vector<sync_pb::WebauthnCredentialSpecifics> available_passkeys_;
+  // Caches the request while waiting for the connection to be established.
+  // At most one of these can be non-null at any given time.
+  std::unique_ptr<PendingGetAssertionRequest> pending_get_assertion_request_;
+  std::unique_ptr<PendingMakeCredentialRequest>
+      pending_make_credential_request_;
 
   base::WeakPtrFactory<EnclaveAuthenticator> weak_factory_{this};
 };
 
-}  // namespace enclave
-
-}  // namespace device
+}  // namespace device::enclave
 
 #endif  // DEVICE_FIDO_ENCLAVE_ENCLAVE_AUTHENTICATOR_H_

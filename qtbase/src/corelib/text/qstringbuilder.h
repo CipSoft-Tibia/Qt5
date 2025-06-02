@@ -253,7 +253,7 @@ template <> struct QConcatenable<QString> : private QAbstractConcatenable
     {
         const qsizetype n = a.size();
         if (n)
-            memcpy(out, reinterpret_cast<const char*>(a.constData()), sizeof(QChar) * n);
+            memcpy(out, a.data(), sizeof(QChar) * n);
         out += n;
     }
 };
@@ -373,10 +373,10 @@ template <> struct QConcatenable<QByteArray> : private QAbstractConcatenable
 #endif
     static inline void appendTo(const QByteArray &ba, char *&out)
     {
-        const char *a = ba.constData();
-        const char * const end = ba.end();
-        while (a != end)
-            *out++ = *a++;
+        const qsizetype n = ba.size();
+        if (n)
+            memcpy(out, ba.begin(), n);
+        out += n;
     }
 };
 

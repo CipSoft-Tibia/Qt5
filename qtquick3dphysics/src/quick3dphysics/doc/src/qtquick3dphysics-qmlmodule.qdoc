@@ -9,7 +9,7 @@
 
 Qt Quick 3D Physics provides the following QML types:
 
-\section1 QtQuick3D Physics QML Types
+\section1 QtQuick3D.Physics QML Types
 
 Import the QtQuick3D.Physics module with the following statement:
 
@@ -19,6 +19,15 @@ import QtQuick3D.Physics
 
 \generatelist qmltypesbymodule QtQuick3D.Physics
 
+\section1 QtQuick3D.Physics.Helpers QML Types
+
+Import the QtQuick3D.Helpers module with the following statement:
+
+\qml
+import QtQuick3D.Physics.Helpers
+\endqml
+
+\generatelist qmltypesbymodule QtQuick3D.Physics.Helpers
 
 \noautolist
 */

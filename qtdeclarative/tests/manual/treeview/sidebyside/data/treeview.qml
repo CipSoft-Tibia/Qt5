@@ -36,6 +36,11 @@ ApplicationWindow {
                 text: "Use file system model"
             }
 
+            CheckBox {
+                id: interactiveMode
+                text: "Interactive"
+            }
+
             Button {
                 text: "Show QTreeView"
                 onClicked: callback.showQTreeView(treeView.model)
@@ -88,12 +93,17 @@ ApplicationWindow {
             anchors.bottom: parent.bottom
             anchors.leftMargin: 100
             anchors.topMargin: 100
+            interactive: interactiveMode.checked
             clip: true
 
             selectionModel: ItemSelectionModel {}
 
             model: useFileSystemModel.checked ? fileSystemModel : testModel
             delegate: useCustomDelegate.checked ? customDelegate : treeViewDelegate
+        }
+
+        SelectionRectangle {
+            target: treeView
         }
     }
 
@@ -118,11 +128,13 @@ ApplicationWindow {
 
     Component {
         id: customDelegate
-        Item {
+        Rectangle {
             id: root
 
             implicitWidth: padding + label.x + label.implicitWidth + padding
             implicitHeight: label.implicitHeight * 1.5
+
+            required property bool selected
 
             readonly property real indentation: 20
             readonly property real padding: 5
@@ -131,8 +143,10 @@ ApplicationWindow {
             required property TreeView treeView
             required property bool isTreeNode
             required property bool expanded
-            required property int hasChildren
+            required property bool hasChildren
             required property int depth
+
+            color: selected ? "lightblue" : "transparent"
 
             Text {
                 id: indicator

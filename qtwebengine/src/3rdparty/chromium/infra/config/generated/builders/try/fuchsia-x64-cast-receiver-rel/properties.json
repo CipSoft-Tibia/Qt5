@@ -1,17 +1,21 @@
 {
   "$build/chromium_orchestrator": {
     "compilator": "fuchsia-x64-cast-receiver-rel-compilator",
-    "compilator_watcher_git_revision": "e3cad57252d996ab02463019e7f49343d739b885"
+    "compilator_watcher_git_revision": "27c191f304c8d7329a393d8a69020fc14032c3c3",
+    "propagate_properties_to_compilator": true
   },
   "$build/chromium_tests_builder_config": {
     "builder_config": {
+      "additional_exclusions": [
+        "infra/config/generated/builders/try/fuchsia-x64-cast-receiver-rel/gn-args.json"
+      ],
       "builder_db": {
         "entries": [
           {
             "builder_id": {
               "bucket": "ci",
               "builder": "fuchsia-x64-cast-receiver-rel",
-              "project": "chromium-m118"
+              "project": "chromium-m122"
             },
             "builder_spec": {
               "build_gs_bucket": "chromium-linux-archive",
@@ -40,7 +44,7 @@
         {
           "bucket": "ci",
           "builder": "fuchsia-x64-cast-receiver-rel",
-          "project": "chromium-m118"
+          "project": "chromium-m122"
         }
       ]
     }
@@ -55,6 +59,21 @@
   "$build/flakiness": {
     "check_for_flakiness": true,
     "check_for_flakiness_with_resultdb": true
+  },
+  "$build/reclient": {
+    "instance": "rbe-chromium-untrusted",
+    "jobs": 500,
+    "metrics_project": "chromium-reclient-metrics",
+    "scandeps_server": true
+  },
+  "$build/siso": {
+    "configs": [
+      "builder"
+    ],
+    "enable_cloud_profiler": true,
+    "enable_cloud_trace": true,
+    "experiments": [],
+    "project": "rbe-chromium-untrusted"
   },
   "$recipe_engine/resultdb/test_presentation": {
     "column_keys": [],

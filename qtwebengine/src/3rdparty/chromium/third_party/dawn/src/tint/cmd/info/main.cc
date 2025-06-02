@@ -1,17 +1,30 @@
 
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <iostream>
 
@@ -71,7 +84,7 @@ bool ParseArgs(const std::vector<std::string>& args, Options* opts) {
     return true;
 }
 
-void EmitJson(const tint::Program* program) {
+void EmitJson(const tint::Program& program) {
     tint::inspector::Inspector inspector(program);
 
     std::cout << "{" << std::endl;
@@ -95,14 +108,9 @@ void EmitJson(const tint::Program* program) {
         std::cout << std::endl;
         std::cout << "{" << std::endl;
         std::cout << "\"name\": \"" << var.name << "\"";
-        if (var.has_location_attribute) {
-            std::cout << "," << std::endl;
-            std::cout << "\"location\": " << var.location_attribute << "," << std::endl;
-            std::cout << "\"component_type\": \""
-                      << tint::cmd::ComponentTypeToString(var.component_type) << "\"," << std::endl;
-            std::cout << "\"composition_type\": \""
-                      << tint::cmd::CompositionTypeToString(var.composition_type) << "\","
-                      << std::endl;
+        std::cout << "," << std::endl;
+        if (auto location = var.attributes.location) {
+            std::cout << "\"location\": " << location.value() << "," << std::endl;
             std::cout << "\"interpolation\": {" << std::endl;
             std::cout << "\"type\": \""
                       << tint::cmd::InterpolationTypeToString(var.interpolation_type) << "\","
@@ -110,8 +118,15 @@ void EmitJson(const tint::Program* program) {
             std::cout << "\"sampling\": \""
                       << tint::cmd::InterpolationSamplingToString(var.interpolation_sampling)
                       << "\"" << std::endl;
-            std::cout << "}" << std::endl;
+            std::cout << "}," << std::endl;
         }
+        if (auto color = var.attributes.color) {
+            std::cout << "\"color\": " << color.value() << "," << std::endl;
+        }
+        std::cout << "\"component_type\": \""
+                  << tint::cmd::ComponentTypeToString(var.component_type) << "\"," << std::endl;
+        std::cout << "\"composition_type\": \""
+                  << tint::cmd::CompositionTypeToString(var.composition_type) << "\"" << std::endl;
         std::cout << std::endl;
         std::cout << "}";
     };
@@ -223,7 +238,7 @@ void EmitJson(const tint::Program* program) {
     std::cout << "\"structures\": [";
 
     bool struct_first = true;
-    for (const auto* ty : program->Types()) {
+    for (const auto* ty : program.Types()) {
         if (!ty->Is<tint::core::type::Struct>()) {
             continue;
         }
@@ -277,7 +292,7 @@ void EmitJson(const tint::Program* program) {
     std::cout << "}" << std::endl;
 }
 
-void EmitText(const tint::Program* program) {
+void EmitText(const tint::Program& program) {
     tint::inspector::Inspector inspector(program);
     if (!inspector.GetUsedExtensionNames().empty()) {
         std::cout << "Extensions:" << std::endl;
@@ -290,7 +305,7 @@ void EmitText(const tint::Program* program) {
     tint::cmd::PrintInspectorData(inspector);
 
     bool has_struct = false;
-    for (const auto* ty : program->Types()) {
+    for (const auto* ty : program.Types()) {
         if (!ty->Is<tint::core::type::Struct>()) {
             continue;
         }
@@ -300,7 +315,7 @@ void EmitText(const tint::Program* program) {
 
     if (has_struct) {
         std::cout << "Structures" << std::endl;
-        for (const auto* ty : program->Types()) {
+        for (const auto* ty : program.Types()) {
             if (!ty->Is<tint::core::type::Struct>()) {
                 continue;
             }
@@ -328,25 +343,18 @@ int main(int argc, const char** argv) {
         return 0;
     }
 
-    std::unique_ptr<tint::Program> program;
-    std::unique_ptr<tint::Source::File> source_file;
-
-    {
-        tint::cmd::LoadProgramOptions opts;
-        opts.filename = options.input_filename;
+    tint::cmd::LoadProgramOptions opts;
+    opts.filename = options.input_filename;
 #if TINT_BUILD_SPV_READER
-        opts.spirv_reader_options = options.spirv_reader_options;
+    opts.spirv_reader_options = options.spirv_reader_options;
 #endif
 
-        auto info = tint::cmd::LoadProgramInfo(opts);
-        program = std::move(info.program);
-        source_file = std::move(info.source_file);
-    }
+    auto info = tint::cmd::LoadProgramInfo(opts);
 
     if (options.emit_json) {
-        EmitJson(program.get());
+        EmitJson(info.program);
     } else {
-        EmitText(program.get());
+        EmitText(info.program);
     }
 
     return 0;

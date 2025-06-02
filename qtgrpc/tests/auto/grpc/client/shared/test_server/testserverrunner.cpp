@@ -60,6 +60,94 @@ private:
             ::grpc::ServerContext *context,
             ::grpc::ServerReaderWriter<::qtgrpc::tests::SimpleStringMessage,
                                        ::qtgrpc::tests::SimpleStringMessage> *stream) override;
+    grpc::Status
+    testMethodClientStreamWithDone(::grpc::ServerContext *,
+                           ::grpc::ServerReader<::qtgrpc::tests::SimpleStringMessage> *reader,
+                           ::qtgrpc::tests::SimpleStringMessage *response) override;
+
+    grpc::Status testMethodBiStreamWithDone(
+        ::grpc::ServerContext *context,
+        ::grpc::ServerReaderWriter<::qtgrpc::tests::SimpleStringMessage,
+                                   ::qtgrpc::tests::SimpleStringMessage> *stream) override;
+
+    grpc::Status testMethodSleep(grpc::ServerContext *context,
+                                 const qtgrpc::tests::SleepMessage *request,
+                                 qtgrpc::tests::Empty * /* response */) override
+    {
+        if (request->has_sleeptimems())
+            QThread::msleep(request->sleeptimems());
+
+        if (context->IsCancelled())
+            return { grpc::StatusCode::CANCELLED, "testMethodSleep" };
+        return grpc::Status::OK;
+    }
+
+    grpc::Status
+    testMethodServerStreamSleep(grpc::ServerContext *context,
+                                const qtgrpc::tests::ServerStreamSleepMessage *request,
+                                grpc::ServerWriter<qtgrpc::tests::Empty> *writer) override
+    {
+        size_t count = 0;
+        while (count < request->amountresponses()) {
+            if (request->sleepmessage().has_sleeptimems())
+                QThread::msleep(request->sleepmessage().sleeptimems());
+            writer->Write(qtgrpc::tests::Empty());
+            ++count;
+        }
+
+        if (context->IsCancelled())
+            return { grpc::StatusCode::CANCELLED, "testMethodServerStreamSleep" };
+        return grpc::Status::OK;
+    }
+
+    grpc::Status
+    testMethodClientStreamSleep(grpc::ServerContext *context,
+                                grpc::ServerReader<qtgrpc::tests::SleepMessage> *reader,
+                                qtgrpc::tests::Empty * /* response */) override
+    {
+        qtgrpc::tests::SleepMessage request;
+        while (reader->Read(&request)) {
+            if (request.has_sleeptimems())
+                QThread::msleep(request.sleeptimems());
+        }
+
+        if (context->IsCancelled())
+            return { grpc::StatusCode::CANCELLED, "testMethodClientStreamSleep" };
+        return grpc::Status::OK;
+    }
+
+    grpc::Status
+    testMethodBiStreamSleep(grpc::ServerContext *context,
+                            grpc::ServerReaderWriter<qtgrpc::tests::Empty,
+                                                     qtgrpc::tests::SleepMessage> *stream) override
+    {
+        qtgrpc::tests::SleepMessage request;
+
+        while (stream->Read(&request)) {
+            if (request.has_sleeptimems())
+                QThread::msleep(request.sleeptimems());
+            if (!stream->Write(Empty()))
+                return { grpc::StatusCode::ABORTED, "testMethodBiStreamSleep failed to write" };
+        }
+
+        if (context->IsCancelled())
+            return { grpc::StatusCode::CANCELLED, "testMethodBiStreamSleep" };
+        return grpc::Status::OK;
+    }
+
+    ::grpc::Status replyWithMetadata(::grpc::ServerContext *ctx, const ::qtgrpc::tests::Empty *,
+                                     ::qtgrpc::tests::MetadataMessage *response) override
+    {
+        qInfo() << "replyWithMetadata called";
+        for (const auto &header : ctx->client_metadata()) {
+            auto *headerValue = response->mutable_values()->Add();
+            headerValue->set_key(std::string(header.first.data(), header.first.size()));
+            headerValue->set_value(std::string(header.second.data(), header.second.size()));
+        }
+
+        return Status();
+    }
+
     qint64 m_latency;
 };
 }
@@ -198,17 +286,60 @@ grpc::Status TestServiceServiceImpl::testMethodBiStream(
     return {};
 }
 
+grpc::Status TestServiceServiceImpl::testMethodClientStreamWithDone(
+    ::grpc::ServerContext *, ::grpc::ServerReader<::qtgrpc::tests::SimpleStringMessage> *reader,
+    ::qtgrpc::tests::SimpleStringMessage *response)
+{
+    ::qtgrpc::tests::SimpleStringMessage req;
+    std::string rspString;
+    int i = 0;
+    while (reader->Read(&req)) {
+        rspString += req.testfieldstring();
+        rspString += std::to_string(++i);
+    }
+
+    response->set_testfieldstring(rspString);
+    return {};
+}
+
+grpc::Status TestServiceServiceImpl::testMethodBiStreamWithDone(
+    ::grpc::ServerContext *,
+    ::grpc::ServerReaderWriter<::qtgrpc::tests::SimpleStringMessage,
+                               ::qtgrpc::tests::SimpleStringMessage> *stream)
+{
+    ::qtgrpc::tests::SimpleStringMessage req;
+    int i = 0;
+    while (stream->Read(&req)) {
+        std::string rspString = req.testfieldstring() + std::to_string(++i);
+        ::qtgrpc::tests::SimpleStringMessage rsp;
+        rsp.set_testfieldstring(rspString);
+        if (!stream->Write(rsp, {})) {
+            qInfo() << "Unable to write message to bidirectional stream";
+            return grpc::Status(grpc::StatusCode::DATA_LOSS, "Write failed");
+        }
+        QThread::msleep(m_latency);
+    }
+
+    return {};
+}
+
 void TestServer::run(qint64 latency)
 {
     TestServiceServiceImpl service(latency);
 
     grpc::ServerBuilder builder;
     QFile cfile(":/assets/cert.pem");
-    cfile.open(QFile::ReadOnly);
+    if (!cfile.open(QFile::ReadOnly)) {
+        qDebug() << "Unable to open SSL certificate. Test lacks resources.";
+        return;
+    }
     QString cert = cfile.readAll();
 
     QFile kfile(":/assets/key.pem");
-    kfile.open(QFile::ReadOnly);
+    if (!kfile.open(QFile::ReadOnly)){
+        qDebug() << "Unable to open SSL key. Test lacks resources.";
+        return;
+    }
     QString key = kfile.readAll();
 
     grpc::SslServerCredentialsOptions opts(GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE);

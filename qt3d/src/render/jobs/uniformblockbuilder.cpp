@@ -18,7 +18,6 @@ using namespace Qt3DCore;
 namespace {
 
 const QString blockArray = QStringLiteral("[%1]");
-const int qNodeIdTypeId = qMetaTypeId<QNodeId>();
 
 }
 
@@ -47,10 +46,8 @@ void UniformBlockValueBuilder::buildActiveUniformNameValueMapHelper(const Shader
         if (value->isNode) { // Array of struct qmlPropertyName[i].structMember
             for (int i = 0; i < list.size(); ++i) {
                 const QVariant variantElement = list.at(i);
-                if (list.at(i).userType() == qNodeIdTypeId) {
-                    const auto nodeId = variantElement.value<QNodeId>();
-                    ShaderData *subShaderData = m_shaderDataManager->lookupResource(nodeId);
-                    if (subShaderData) {
+                if (const auto nodeId = get_if<QNodeId>(&variantElement)) {
+                    if (ShaderData *subShaderData = m_shaderDataManager->lookupResource(*nodeId)) {
                         buildActiveUniformNameValueMapStructHelper(subShaderData,
                                                                    blockName + QLatin1Char('.') + StringToInt::lookupString(propertyNameId) + blockArray.arg(i));
                     }

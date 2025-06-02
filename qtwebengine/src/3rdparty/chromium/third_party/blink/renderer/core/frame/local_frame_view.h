@@ -36,7 +36,7 @@
 #include "base/time/time.h"
 #include "third_party/blink/public/common/metrics/document_update_reason.h"
 #include "third_party/blink/public/mojom/frame/lifecycle.mojom-blink-forward.h"
-#include "third_party/blink/public/mojom/frame/viewport_intersection_state.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/frame/viewport_intersection_state.mojom-blink.h"
 #include "third_party/blink/public/mojom/scroll/scroll_into_view_params.mojom-blink-forward.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/dom/document_lifecycle.h"
@@ -88,6 +88,7 @@ class HTMLVideoElement;
 class JSONObject;
 class KURL;
 class LayoutBox;
+class LayoutBoxModelObject;
 class LayoutEmbeddedObject;
 class LayoutObject;
 class LayoutShiftTracker;
@@ -186,7 +187,7 @@ class CORE_EXPORT LocalFrameView final
 
   unsigned LayoutCountForTesting() const { return layout_count_for_testing_; }
   // Returns the number of block layout calls.
-  //  * It's incremented when NGBlockNode::Layout() is called with NeedsLayout()
+  //  * It's incremented when BlockNode::Layout() is called with NeedsLayout()
   //  * It can overflow. Do not use it in production.
   uint32_t BlockLayoutCountForTesting() const {
     return block_layout_count_for_testing_;
@@ -215,16 +216,11 @@ class CORE_EXPORT LocalFrameView final
   enum IntersectionObservationState {
     // The next painting frame does not need an intersection observation.
     kNotNeeded = 0,
-    // The next painting frame only needs to update frame viewport intersection,
-    // not intersection observations. Note that intersection observations in
-    // child remote frames happen during the parent frame's viewport
-    // intersection update, with kDesired or kRequired set on the child frames.
-    kFrameViewportIntersectionOnly = 1,
     // The next painting frame needs an intersection observation.
-    kDesired = 2,
+    kDesired = 1,
     // The next painting frame must be generated up to intersection observation
     // (even if frame is throttled).
-    kRequired = 3
+    kRequired = 2
   };
 
   // Sets the internal IntersectionObservationState to the max of the
@@ -235,16 +231,13 @@ class CORE_EXPORT LocalFrameView final
       const {
     return intersection_observation_state_;
   }
+  void InvalidateIntersectionObservations();
 
   // Get the InstersectionObservation::ComputeFlags for target elements in this
   // view.
   unsigned GetIntersectionObservationFlags(unsigned parent_flags) const;
 
   void ForceUpdateViewportIntersections();
-
-  gfx::Vector2dF MinScrollDeltaToUpdateIntersectionForTesting() const {
-    return min_scroll_delta_to_update_intersection_;
-  }
 
   void SetPaintArtifactCompositorNeedsUpdate();
 
@@ -295,30 +288,20 @@ class CORE_EXPORT LocalFrameView final
 
   void DidChangeScrollOffset();
 
-  void ViewportSizeChanged(bool width_changed, bool height_changed);
-  void MarkFixedPositionObjectsForLayout(bool width_changed,
-                                         bool height_changed);
+  void ViewportSizeChanged();
+  void InvalidateLayoutForViewportConstrainedObjects();
   void DynamicViewportUnitsChanged();
 
   AtomicString MediaType() const;
   void SetMediaType(const AtomicString&);
   void AdjustMediaTypeForPrinting(bool printing);
 
-  typedef HeapHashSet<Member<LayoutObject>> ObjectSet;
-  void AddFixedPositionObject(LayoutObject&);
-  void RemoveFixedPositionObject(LayoutObject&);
-  const ObjectSet* FixedPositionObjects() const {
-    return fixed_position_objects_;
-  }
-  bool HasFixedPositionObjects() const {
-    return fixed_position_objects_ && fixed_position_objects_->size() > 0;
-  }
-
   // Objects with background-attachment:fixed.
-  void AddBackgroundAttachmentFixedObject(LayoutObject*);
-  void RemoveBackgroundAttachmentFixedObject(LayoutObject*);
+  typedef HeapHashSet<Member<LayoutBoxModelObject>> BoxModelObjectSet;
+  void AddBackgroundAttachmentFixedObject(LayoutBoxModelObject&);
+  void RemoveBackgroundAttachmentFixedObject(LayoutBoxModelObject&);
   bool RequiresMainThreadScrollingForBackgroundAttachmentFixed() const;
-  const ObjectSet& BackgroundAttachmentFixedObjects() const {
+  const BoxModelObjectSet& BackgroundAttachmentFixedObjects() const {
     return background_attachment_fixed_objects_;
   }
   void InvalidateBackgroundAttachmentFixedDescendantsOnScroll(
@@ -433,7 +416,7 @@ class CORE_EXPORT LocalFrameView final
   void ProcessUrlFragment(const KURL&,
                           bool same_document_navigation,
                           bool should_scroll = true);
-  FragmentAnchor* GetFragmentAnchor() { return fragment_anchor_; }
+  FragmentAnchor* GetFragmentAnchor() { return fragment_anchor_.Get(); }
   void InvokeFragmentAnchor();
   void ClearFragmentAnchor();
 
@@ -701,7 +684,7 @@ class CORE_EXPORT LocalFrameView final
   }
 
   MobileFriendlinessChecker* GetMobileFriendlinessChecker() const {
-    return mobile_friendliness_checker_;
+    return mobile_friendliness_checker_.Get();
   }
   void RegisterTapEvent(Element* target);
 
@@ -768,6 +751,7 @@ class CORE_EXPORT LocalFrameView final
   bool ExecuteAllPendingUpdates();
 
   void AddPendingStickyUpdate(PaintLayerScrollableArea*);
+  bool HasPendingStickyUpdate(PaintLayerScrollableArea*) const;
   void ExecutePendingStickyUpdates();
 
   void AddPendingSnapUpdate(PaintLayerScrollableArea*);
@@ -783,8 +767,11 @@ class CORE_EXPORT LocalFrameView final
   void SelfVisibleChanged() override;
   void ParentVisibleChanged() override;
   void NotifyFrameRectsChangedIfNeeded();
+
+  // Updates viewport intersection state when LocalFrame's scroll positions,
+  // clips, etc have any change.
   void SetViewportIntersection(const mojom::blink::ViewportIntersectionState&
-                                   intersection_state) override {}
+                                   intersection_state) override;
   void VisibilityForThrottlingChanged() override;
   bool LifecycleUpdatesThrottled() const override {
     return lifecycle_updates_throttled_;
@@ -961,14 +948,13 @@ class CORE_EXPORT LocalFrameView final
 
   void ForAllRemoteFrameViews(base::FunctionRef<void(RemoteFrameView&)>);
 
-  IntersectionUpdateResult UpdateViewportIntersectionsForSubtree(
+  bool UpdateViewportIntersectionsForSubtree(
       unsigned parent_flags,
       absl::optional<base::TimeTicks>& monotonic_time) override;
   void DeliverSynchronousIntersectionObservations();
 
   bool RunScrollSnapshotClientSteps();
-
-  bool RunCSSToggleSteps();
+  bool ShouldDeferLayoutSnap() const;
 
   bool NotifyResizeObservers();
   bool RunResizeObserverSteps(DocumentLifecycle::LifecycleState target_state);
@@ -1003,9 +989,6 @@ class CORE_EXPORT LocalFrameView final
   void GetUserScrollTranslationNodes(
       Vector<const TransformPaintPropertyNode*>& scroll_translation_nodes);
 
-  void GetAnchorPositionScrollerIds(
-      Vector<const TransformPaintPropertyNode*>& anchor_position_scrollers);
-
   // Return the sticky-ad detector for this frame, creating it if necessary.
   StickyAdDetector& EnsureStickyAdDetector();
 
@@ -1022,6 +1005,10 @@ class CORE_EXPORT LocalFrameView final
   DarkModeFilter& EnsureDarkModeFilter();
 
   bool HasViewTransitionThrottlingRendering() const;
+
+  void UpdateCanCompositeBackgroundAttachmentFixed();
+
+  void EnqueueSnapChangingFromImplIfNecessary();
 
   typedef HeapHashSet<Member<LayoutEmbeddedObject>> EmbeddedObjectSet;
   EmbeddedObjectSet part_update_set_;
@@ -1066,8 +1053,7 @@ class CORE_EXPORT LocalFrameView final
   Member<ScrollableAreaSet> animating_scrollable_areas_;
   // Scrollable areas which are user-scrollable, whether they overflow or not.
   Member<ScrollableAreaSet> user_scrollable_areas_;
-  Member<ObjectSet> fixed_position_objects_;
-  ObjectSet background_attachment_fixed_objects_;
+  BoxModelObjectSet background_attachment_fixed_objects_;
   Member<FrameViewAutoSizeInfo> auto_size_info_;
 
   gfx::Size layout_size_;
@@ -1122,8 +1108,9 @@ class CORE_EXPORT LocalFrameView final
 #endif
 
   IntersectionObservationState intersection_observation_state_;
-  gfx::Vector2dF min_scroll_delta_to_update_intersection_;
   gfx::Vector2dF accumulated_scroll_delta_since_last_intersection_update_;
+
+  mojom::blink::ViewportIntersectionState last_intersection_state_;
 
   bool needs_focus_on_fragment_;
 
@@ -1198,6 +1185,11 @@ class CORE_EXPORT LocalFrameView final
   // A set of objects needing snap-area constraint updates. These updates are
   // registered during style/layout, and deferred until the end of layout.
   Member<HeapHashSet<Member<PaintLayerScrollableArea>>> pending_snap_updates_;
+
+  // These are scrollers that had their SnapContainerData changed but still need
+  // to have SnapAfterLayout called. We defer the SnapAfterLayout until the user
+  // has stopped scrolling.
+  Member<HeapHashSet<Member<PaintLayerScrollableArea>>> pending_perform_snap_;
 
   // These are elements that were disconnected while having a remembered
   // size. We need to clear the remembered at resize observer timing,

@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_UTILS_TRAITS_TRAITS_H_
 #define SRC_TINT_UTILS_TRAITS_TRAITS_H_
@@ -177,11 +190,12 @@ static constexpr bool IsTypeIn = traits::detail::IsTypeIn<T, TypeContainer>::val
 template <typename T>
 using PtrElTy = Decay<std::remove_pointer_t<Decay<T>>>;
 
-/// Evaluates to true if `T` decayed is a `std::string`, `std::string_view` or `const char*`
+/// Evaluates to true if `T` decayed is a `std::string`, `std::string_view`, `const char*` or
+/// `char*`
 template <typename T>
 static constexpr bool IsStringLike =
     std::is_same_v<Decay<T>, std::string> || std::is_same_v<Decay<T>, std::string_view> ||
-    std::is_same_v<Decay<T>, const char*>;
+    std::is_same_v<Decay<T>, const char*> || std::is_same_v<Decay<T>, char*>;
 
 namespace detail {
 /// Helper for CharArrayToCharPtr
@@ -209,6 +223,9 @@ struct CharArrayToCharPtrImpl<const char[N]> {
 template <typename T>
 using CharArrayToCharPtr = typename traits::detail::CharArrayToCharPtrImpl<T>::type;
 
+////////////////////////////////////////////////////////////////////////////////
+// IsOStream
+////////////////////////////////////////////////////////////////////////////////
 namespace detail {
 /// Helper for determining whether the type T can be used as a stream writer
 template <typename T, typename ENABLE = void>
@@ -238,6 +255,26 @@ static constexpr bool IsOStream = detail::IsOStream<T>::value;
 /// If `CONDITION` is true then EnableIfIsOStream resolves to type T, otherwise an invalid type.
 template <typename T = void>
 using EnableIfIsOStream = EnableIf<IsOStream<T>, T>;
+
+////////////////////////////////////////////////////////////////////////////////
+// HasOperatorShiftLeft
+////////////////////////////////////////////////////////////////////////////////
+namespace detail {
+/// Helper for determining whether the operator<<(LHS, RHS) exists
+template <typename LHS, typename RHS, typename = void>
+struct HasOperatorShiftLeft : std::false_type {};
+/// Specialization to detect operator
+template <typename LHS, typename RHS>
+struct HasOperatorShiftLeft<LHS,
+                            RHS,
+                            std::void_t<decltype((std::declval<LHS>() << std::declval<RHS>()))>>
+    : std::true_type {};
+
+}  // namespace detail
+
+/// Is true if operator<<(LHS, RHS) exists
+template <typename LHS, typename RHS>
+static constexpr bool HasOperatorShiftLeft = detail::HasOperatorShiftLeft<LHS, RHS>::value;
 
 }  // namespace tint::traits
 

@@ -59,15 +59,19 @@
         \list
             \li \l{cmake-commands-qtcore}{Qt6::Core}
             \li \l{cmake-commands-qtdbus}{Qt6::DBus}
+            \li \l{cmake-commands-qtgrpc}{Qt6::Grpc}
             \li \l{cmake-commands-qtinterfaceframework}{Qt6::InterfaceFramework}
             \li \l{cmake-commands-qtlinguisttools}{Qt6::LinguistTools}
+            \li \l{cmake-commands-qtmultimedia}{Qt6::Multimedia}
             \li \l{cmake-commands-qtprotobuf}{Qt6::Protobuf}
-            \li \l{cmake-commands-qtgrpc}{Qt6::Grpc}
             \li \l{cmake-commands-qtqml}{Qt6::Qml}
             \li \l{cmake-macros-qtremoteobjects}{Qt6::RemoteObjects}
             \li \l{cmake-macros-qtscxml}{Qt6::Scxml}
-            \li \l{cmake-macros-qtwidgets}{Qt6::Widgets}
+            \li \l{cmake-commands-qtshadertools}{Qt6::ShaderTools}
+            \li \l{cmake-commands-qtwaylandclient}{Qt6::WaylandClient}
+            \li \l{cmake-commands-qtwaylandcompositor}{Qt6::WaylandCompositor}
             \li \l{cmake-commands-qtwebenginecore}{Qt6::WebEngineCore}
+            \li \l{cmake-macros-qtwidgets}{Qt6::Widgets}
         \endlist
         \li \l{CMake Variable Reference}
         \list
@@ -82,6 +86,7 @@
             \li \l{cmake-properties-qtdbus}{Qt6::DBus}
             \li \l{cmake-properties-qtlinguisttools}{Qt6::LinguistTools}
             \li \l{cmake-properties-qtqml}{Qt6::Qml}
+            \li \l{Standard CMake properties}
         \endlist
     \endlist
 */
@@ -154,12 +159,26 @@
     \l{Module variables}. It furthermore imports the \c{Qt6::Core} target
     that we use below.
 
-    For \c{find_package} to be successful, \c CMake must find the Qt
-    installation. There are different ways you can tell \c CMake about Qt,
-    but the most common and recommended approach is to set the CMake cache
-    variable \c{CMAKE_PREFIX_PATH} to include the Qt 6 installation prefix.
-    Note that \l{Qt Creator Manual}{Qt Creator} will handle this transparently
-    for you.
+    For \c{find_package} to be successful, CMake must find the Qt
+    installation. \l{Qt Creator Manual}{Qt Creator} and \c{qt-cmake}
+    (\c{qt-cmake.bat} on Windows) handle this transparently.
+
+    When using vanilla CMake directly, there are different ways you can tell
+    CMake about Qt, but the most common and recommended approach is to set
+    the CMake cache variable \c{CMAKE_PREFIX_PATH} to include the Qt 6
+    installation prefix. This is a directory where Qt binaries are installed.
+    On Linux, it usually looks something like this:
+    \tt{"~/Qt/\QtVersion/gcc_64"} and you would pass it on the command line as
+    \tt{-DCMAKE_PREFIX_PATH=$HOME/Qt/\QtVersion/gcc_64}.
+
+    \note When cross-compiling (compiling for a platform other than the one you
+    are on, such as WebAssembly or Android) and when using vanilla \c{cmake},
+    set \c{CMAKE_TOOLCHAIN_FILE} instead of \c{CMAKE_PREFIX_PATH}. On Linux,
+    the toolchain file (specific to a particular target platform) is typically
+    located at a path similar to this:
+    \tt{"~/Qt/\QtVersion/wasm_singlethread/lib/cmake/Qt6/qt.toolchain.cmake"}. It sets
+    the required variables like \c{CMAKE_PREFIX_PATH}, \c{CMAKE_FIND_ROOT_PATH},
+    and \c{QT_HOST_PATH}.
 
     \printuntil qt_standard_project_setup(
 
@@ -239,8 +258,26 @@
 
     \printuntil )
 
-    We add a \l{Qt Designer} file (\c{mainwindow.ui}) and its corresponding C++
+    We add a \l{Qt Widgets Designer} file (\c{mainwindow.ui}) and its corresponding C++
     source file (\c{mainwindow.cpp}) to the application target's sources.
+
+    In specific cases, such as the example below where the include directive
+    uses a relative path, \l{qt6_add_ui}{qt_add_ui} can be used to generate the
+    \c{ui_calculatorform.h} file instead of relying on
+    \l{CMake AUTOUIC Documentation}{AUTOUIC}.
+
+    \l{When to prefer qt_add_ui over AUTOUIC}
+
+    \code
+        #include "src/files/ui_mainwindow.h"
+    \endcode
+
+    \code
+        qt_add_ui(calculatorform SOURCES mainwindow.ui INCLUDE_PREFIX src/files)
+    \endcode
+
+    When \c{qt_add_ui} is used, no need to pass \c{mainwindow.ui} to the
+    \c{qt_add_executable} command.
 
     \printuntil target_link_libraries
 
@@ -545,8 +582,10 @@
     and \c{CMAKE_CXX_STANDARD_REQUIRED}.
     By passing \c {REQUIRES 6.5} to \c {qt_standard_project_setup}, we opt-in
     to useful defaults for \l{qt6_add_qml_module}{qt_add_qml_module}. It
-    enables all the \l{Qt CMake policies} up to version 6.5, in particular
-    \l{QTP0001} that defines a sane default resource prefix for QML modules.
+    enables all the \l{Qt CMake policies} up to version 6.5. In particular
+    \l{QTP0001} that defines a default resource prefix for QML modules, which
+    ensures that they end up under one of the QML engine's default
+    \l[QtQml]{QML Import Path}{import paths}.
 
     \printuntil CMAKE_CXX_STANDARD_REQUIRED
 
@@ -694,7 +733,7 @@
     shows how this is done on Windows:
 
     \badcode \QtVersion
-    cmake -DCMAKE_PREFIX_PATH=C:\Qt\\1\msvc2019_64 -S <source-dir> -B <build-dir>
+    cmake -DCMAKE_PREFIX_PATH=C:\Qt\\1\msvc2022_64 -S <source-dir> -B <build-dir>
     \endcode
 
     The \c{<source-dir>} and \c{<build-dir>} placeholders represent the source
@@ -728,7 +767,7 @@
     you can use it just like you would use \c{cmake}:
 
     \badcode \QtVersion
-    C:\Qt\\1\msvc2019_64\bin\qt-cmake -G Ninja -S <source-dir> -B <build-dir>
+    C:\Qt\\1\msvc2022_64\bin\qt-cmake -G Ninja -S <source-dir> -B <build-dir>
     \endcode
 
     After the build system files are generated, your project is ready to be
@@ -1184,13 +1223,25 @@
 
     \annotatedlist cmake-variables-qtcore
 
+    \section2 Qt6::InterfaceFramework
+
+    \annotatedlist cmake-variables-qtinterfaceframework
+
+    \section2 Qt6::Multimedia
+
+    \annotatedlist cmake-variables-qtmultimedia
+
     \section2 Qt6::Qml
 
     \annotatedlist cmake-variables-qtqml
 
-    \section2 Qt6::InterfaceFramework
+    \section1 Standard CMake Variables
 
-    \annotatedlist cmake-variables-qtinterfaceframework
+    \table
+        \row
+            \li \l{https://cmake.org/cmake/help/latest/variable/CMAKE_AUTOGEN_BETTER_GRAPH_MULTI_CONFIG.html}{CMAKE_AUTOGEN_BETTER_GRAPH_MULTI_CONFIG}
+            \li Improves the dependency graph for multi-configuration generators
+    \endtable
 */
 
 /*!
@@ -1221,6 +1272,17 @@
 
     \annotatedlist cmake-source-file-properties-qtdbus
 
+    \section1 Qt6::LinguistTools
+    \target cmake-properties-qtlinguisttools
+
+    \section2 Target Properties
+
+    \annotatedlist cmake-target-properties-qtlinguisttools
+
+    \section2 Directory Properties
+
+    \annotatedlist cmake-directory-properties-qtlinguisttools
+
     \section1 Qt6::Qml
     \target cmake-properties-qtqml
 
@@ -1232,16 +1294,9 @@
 
     \annotatedlist cmake-global-properties-qtqml
 
-    \section1 Qt6::LinguistTools
-    \target cmake-properties-qtlinguisttools
+    \section1 Standard CMake Properties
 
-    \section2 Target Properties
-
-    \annotatedlist cmake-target-properties-qtlinguisttools
-
-    \section2 Directory Properties
-
-    \annotatedlist cmake-directory-properties-qtlinguisttools
+    \annotatedlist cmake-standard-properties
 */
 
 /*!
@@ -1261,6 +1316,11 @@
 
     \annotatedlist cmake-commands-qtdbus
 
+    \section2 Qt6::Grpc
+    \target cmake-commands-qtgrpc
+
+    \annotatedlist cmake-commands-qtgrpc
+
     \section2 Qt6::InterfaceFramework
     \target cmake-commands-qtinterfaceframework
 
@@ -1271,15 +1331,15 @@
 
     \annotatedlist cmake-commands-qtlinguisttools
 
+    \target cmake-commands-qtmultimedia
+    \section2 Qt6::Multimedia
+
+    \annotatedlist cmake-commands-qtmultimedia
+
     \section2 Qt6::Protobuf
     \target cmake-commands-qtprotobuf
 
     \annotatedlist cmake-commands-qtprotobuf
-
-    \section2 Qt6::Grpc
-    \target cmake-commands-qtgrpc
-
-    \annotatedlist cmake-commands-qtgrpc
 
     \section2 Qt6::Qml
     \target cmake-commands-qtqml
@@ -1301,13 +1361,24 @@
 
     \annotatedlist cmake-commands-qtshadertools
 
-    \section2 Qt6::Widgets
-    \target cmake-macros-qtwidgets
+    \section2 Qt6::WaylandClient
+    \target cmake-commands-qtwaylandclient
 
-    \annotatedlist cmake-macros-qtwidgets
+    \annotatedlist cmake-commands-qtwaylandclient
+
+    \section2 Qt6::WaylandCompositor
+    \target cmake-commands-qtwaylandcompositor
+
+    \annotatedlist cmake-commands-qtwaylandcompositor
 
     \target cmake-commands-qtwebenginecore
     \section2 Qt6::WebEngineCore
 
     \annotatedlist cmake-commands-qtwebenginecore
+
+    \section2 Qt6::Widgets
+    \target cmake-macros-qtwidgets
+
+    \annotatedlist cmake-macros-qtwidgets
+
 */

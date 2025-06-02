@@ -23,34 +23,39 @@ int main(int argc, char **argv)
     QHBoxLayout *hLayout = new QHBoxLayout(widget);
     QVBoxLayout *vLayout = new QVBoxLayout();
 
-    Q3DSurface *surface = new Q3DSurface();
-    Q3DScatter *scatter = new Q3DScatter();
-    Q3DBars *bars = new Q3DBars();
+    auto surfaceQuickWidget = new QQuickWidget;
+    auto scatterQuickWidget = new QQuickWidget;
+    auto barsQuickWidget = new QQuickWidget;
+    Q3DSurfaceWidgetItem *surface = new Q3DSurfaceWidgetItem();
+    Q3DScatterWidgetItem *scatter = new Q3DScatterWidgetItem();
+    Q3DBarsWidgetItem *bars = new Q3DBarsWidgetItem();
+    surface->setWidget(surfaceQuickWidget);
+    scatter->setWidget(scatterQuickWidget);
+    bars->setWidget(barsQuickWidget);
+    QSize screenSize = surface->widget()->screen()->size();
 
-    QSize screenSize = surface->screen()->size();
+    surface->widget()->setMinimumSize(QSize(screenSize.height() / 1.2, screenSize.height() / 1.2));
+    surface->widget()->setMaximumSize(screenSize);
+    surface->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    surface->widget()->setFocusPolicy(Qt::StrongFocus);
 
-    surface->setMinimumSize(QSize(screenSize.height() / 1.2, screenSize.height() / 1.2));
-    surface->setMaximumSize(screenSize);
-    surface->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    surface->setFocusPolicy(Qt::StrongFocus);
+    scatter->widget()->setMinimumSize(QSize(screenSize.height() / 1.2, screenSize.height() / 1.2));
+    scatter->widget()->setMaximumSize(screenSize);
+    scatter->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    scatter->widget()->setFocusPolicy(Qt::StrongFocus);
+    scatter->widget()->setVisible(false);
 
-    scatter->setMinimumSize(QSize(screenSize.height() / 1.2, screenSize.height() / 1.2));
-    scatter->setMaximumSize(screenSize);
-    scatter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    scatter->setFocusPolicy(Qt::StrongFocus);
-    scatter->setVisible(false);
-
-    bars->setMinimumSize(QSize(screenSize.height() / 1.2, screenSize.height() / 1.2));
-    bars->setMaximumSize(screenSize);
-    bars->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    bars->setFocusPolicy(Qt::StrongFocus);
-    bars->setVisible(false);
+    bars->widget()->setMinimumSize(QSize(screenSize.height() / 1.2, screenSize.height() / 1.2));
+    bars->widget()->setMaximumSize(screenSize);
+    bars->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    bars->widget()->setFocusPolicy(Qt::StrongFocus);
+    bars->widget()->setVisible(false);
 
     widget->setWindowTitle(QStringLiteral("Test switching graphs on the fly"));
 
-    hLayout->addWidget(surface, 1);
-    hLayout->addWidget(scatter, 1);
-    hLayout->addWidget(bars, 1);
+    hLayout->addWidget(surface->widget(), 1);
+    hLayout->addWidget(scatter->widget(), 1);
+    hLayout->addWidget(bars->widget(), 1);
     hLayout->addLayout(vLayout);
 
     QPushButton *startButton = new QPushButton(widget);
@@ -120,7 +125,11 @@ int main(int argc, char **argv)
     widget->show();
 
     Data datagen(surface, scatter, bars, status, widget);
-    ContainerChanger changer(surface, scatter, bars, gradientOneButton, gradientTwoButton);
+    ContainerChanger changer(surface->widget(),
+                             scatter->widget(),
+                             bars->widget(),
+                             gradientOneButton,
+                             gradientTwoButton);
 
     QObject::connect(startButton, &QPushButton::clicked, &datagen, &Data::start);
     QObject::connect(stopButton, &QPushButton::clicked, &datagen, &Data::stop);
@@ -133,5 +142,7 @@ int main(int argc, char **argv)
     QObject::connect(gradientTwoButton, &QPushButton::clicked, &datagen,
                      &Data::useGradientTwo);
 
-    return app.exec();
+    int retVal = app.exec();
+
+    return retVal;
 }

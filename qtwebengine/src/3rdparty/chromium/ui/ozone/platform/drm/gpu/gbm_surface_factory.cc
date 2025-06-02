@@ -41,13 +41,17 @@
 #include "ui/ozone/platform/drm/gpu/screen_manager.h"
 #include "ui/ozone/public/surface_ozone_canvas.h"
 
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ui/gfx/linux/gbm_util.h"  // nogncheck
+#endif
+
 #if BUILDFLAG(ENABLE_VULKAN)
 #include "gpu/vulkan/vulkan_function_pointers.h"
 #include "ui/ozone/platform/drm/gpu/vulkan_implementation_gbm.h"
 #define VK_STRUCTURE_TYPE_DMA_BUF_IMAGE_CREATE_INFO_INTEL 1024
 typedef struct VkDmaBufImageCreateInfo_ {
   VkStructureType sType;
-  raw_ptr<const void, ExperimentalAsh> pNext;
+  raw_ptr<const void> pNext;
   int fd;
   VkFormat format;
   VkExtent3D extent;
@@ -194,12 +198,16 @@ class GLOzoneEGLGbm : public GLOzoneEGL {
   }
 
  private:
-  raw_ptr<GbmSurfaceFactory, ExperimentalAsh> surface_factory_;
-  raw_ptr<DrmThreadProxy, ExperimentalAsh> drm_thread_proxy_;
+  raw_ptr<GbmSurfaceFactory> surface_factory_;
+  raw_ptr<DrmThreadProxy> drm_thread_proxy_;
   gl::EGLDisplayPlatform native_display_;
 };
 
 std::vector<gfx::BufferFormat> EnumerateSupportedBufferFormatsForTexturing() {
+#if BUILDFLAG(IS_CHROMEOS)
+  CHECK(ui::IntelMediaCompressionEnvVarIsSet());
+#endif
+
   std::vector<gfx::BufferFormat> supported_buffer_formats;
   // We cannot use FileEnumerator here because the sandbox is already closed.
   constexpr char kRenderNodeFilePattern[] = "/dev/dri/renderD%d";

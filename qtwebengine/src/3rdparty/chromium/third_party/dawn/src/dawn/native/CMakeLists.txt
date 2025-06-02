@@ -1,16 +1,29 @@
-# Copyright 2020 The Dawn Authors
+# Copyright 2020 The Dawn & Tint Authors
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 DawnJSONGenerator(
     TARGET "native_utils"
@@ -26,9 +39,11 @@ if(BUILD_SHARED_LIBS)
     target_compile_definitions(dawn_native PRIVATE "DAWN_NATIVE_SHARED_LIBRARY")
 endif()
 
-target_sources(dawn_native PRIVATE
+target_sources(dawn_native
+  INTERFACE
     "${DAWN_INCLUDE_DIR}/dawn/native/DawnNative.h"
     "${DAWN_INCLUDE_DIR}/dawn/native/dawn_native_export.h"
+  PRIVATE
     ${DAWN_NATIVE_UTILS_GEN_SOURCES}
     "Adapter.h"
     "Adapter.cpp"
@@ -77,7 +92,7 @@ target_sources(dawn_native PRIVATE
     "CallbackTaskManager.cpp"
     "CallbackTaskManager.h"
     "ChainUtils.h"
-    "ChainUtilsImpl.h"
+    "ChainUtilsImpl.inl"
     "CommandAllocator.cpp"
     "CommandAllocator.h"
     "CommandBuffer.cpp"
@@ -116,6 +131,8 @@ target_sources(dawn_native PRIVATE
     "ErrorInjector.h"
     "ErrorScope.cpp"
     "ErrorScope.h"
+    "EventManager.cpp"
+    "EventManager.h"
     "Features.cpp"
     "Features.h"
     "ExternalTexture.cpp"
@@ -138,6 +155,10 @@ target_sources(dawn_native PRIVATE
     "IntegerTypes.h"
     "Limits.cpp"
     "Limits.h"
+    "SystemEvent.cpp"
+    "SystemEvent.h"
+    "SystemHandle.cpp"
+    "SystemHandle.h"
     "ObjectBase.cpp"
     "ObjectBase.h"
     "PassResourceUsage.cpp"
@@ -193,7 +214,6 @@ target_sources(dawn_native PRIVATE
     "SharedFence.h"
     "SharedTextureMemory.cpp"
     "SharedTextureMemory.h"
-    "StreamImplTint.cpp"
     "Subresource.cpp"
     "Subresource.h"
     "SubresourceStorage.h"
@@ -209,9 +229,8 @@ target_sources(dawn_native PRIVATE
     "Toggles.cpp"
     "Toggles.h"
     "UsageValidationMode.h"
-    "VertexFormat.cpp"
-    "VertexFormat.h"
     "VisitableMembers.h"
+    "WaitAnySystemEvent.h"
     "dawn_platform.h"
     "webgpu_absl_format.cpp"
     "webgpu_absl_format.h"
@@ -228,6 +247,7 @@ target_sources(dawn_native PRIVATE
 )
 target_link_libraries(dawn_native
     PUBLIC dawncpp_headers
+           partition_alloc
     PRIVATE dawn_common
             dawn_platform
             dawn_internal_config
@@ -235,6 +255,8 @@ target_link_libraries(dawn_native
             SPIRV-Tools-opt
             absl_strings
             absl_str_format_internal
+            absl_flat_hash_map
+            absl_flat_hash_set
 )
 
 target_include_directories(dawn_native PRIVATE ${DAWN_ABSEIL_DIR})
@@ -244,6 +266,13 @@ if (DAWN_USE_X11)
     target_sources(dawn_native PRIVATE
         "X11Functions.cpp"
         "X11Functions.h"
+    )
+endif()
+
+if (ANDROID)
+    target_sources(dawn_native PRIVATE
+        "AHBFunctions.cpp"
+        "AHBFunctions.h"
     )
 endif()
 
@@ -266,8 +295,10 @@ if (WINDOWS_STORE)
 endif()
 
 if (DAWN_ENABLE_D3D11 OR DAWN_ENABLE_D3D12)
-    target_sources(dawn_native PRIVATE
+    target_sources(dawn_native
+      INTERFACE
         "${DAWN_INCLUDE_DIR}/dawn/native/D3DBackend.h"
+      PRIVATE
         "d3d/BackendD3D.cpp"
         "d3d/BackendD3D.h"
         "d3d/BlobD3D.cpp"
@@ -279,13 +310,13 @@ if (DAWN_ENABLE_D3D11 OR DAWN_ENABLE_D3D12)
         "d3d/DeviceD3D.h"
         "d3d/ExternalImageDXGIImpl.cpp"
         "d3d/ExternalImageDXGIImpl.h"
-        "d3d/Fence.cpp"
-        "d3d/Fence.h"
         "d3d/Forward.h"
         "d3d/PhysicalDeviceD3D.cpp"
         "d3d/PhysicalDeviceD3D.h"
         "d3d/PlatformFunctions.cpp"
         "d3d/PlatformFunctions.h"
+        "d3d/QueueD3D.cpp"
+        "d3d/QueueD3D.h"
         "d3d/ShaderUtils.cpp"
         "d3d/ShaderUtils.h"
         "d3d/SharedFenceD3D.cpp"
@@ -303,8 +334,10 @@ if (DAWN_ENABLE_D3D11 OR DAWN_ENABLE_D3D12)
 endif()
 
 if (DAWN_ENABLE_D3D11)
-    target_sources(dawn_native PRIVATE
+    target_sources(dawn_native
+      INTERFACE
         "${DAWN_INCLUDE_DIR}/dawn/native/D3D11Backend.h"
+      PRIVATE
         "d3d11/BackendD3D11.cpp"
         "d3d11/BackendD3D11.h"
         "d3d11/BindGroupD3D11.cpp"
@@ -325,8 +358,6 @@ if (DAWN_ENABLE_D3D11)
         "d3d11/DeviceD3D11.h"
         "d3d11/DeviceInfoD3D11.cpp"
         "d3d11/DeviceInfoD3D11.h"
-        "d3d11/FenceD3D11.cpp"
-        "d3d11/FenceD3D11.h"
         "d3d11/Forward.h"
         "d3d11/PhysicalDeviceD3D11.cpp"
         "d3d11/PhysicalDeviceD3D11.h"
@@ -358,8 +389,10 @@ if (DAWN_ENABLE_D3D11)
 endif()
 
 if (DAWN_ENABLE_D3D12)
-    target_sources(dawn_native PRIVATE
+    target_sources(dawn_native
+      INTERFACE
         "${DAWN_INCLUDE_DIR}/dawn/native/D3D12Backend.h"
+      PRIVATE
         "d3d12/BackendD3D12.cpp"
         "d3d12/BackendD3D12.h"
         "d3d12/BindGroupD3D12.cpp"
@@ -382,8 +415,6 @@ if (DAWN_ENABLE_D3D12)
         "d3d12/D3D12Info.h"
         "d3d12/DeviceD3D12.cpp"
         "d3d12/DeviceD3D12.h"
-        "d3d12/FenceD3D12.cpp"
-        "d3d12/FenceD3D12.h"
         "d3d12/Forward.h"
         "d3d12/GPUDescriptorHeapAllocationD3D12.cpp"
         "d3d12/GPUDescriptorHeapAllocationD3D12.h"
@@ -440,11 +471,18 @@ if (DAWN_ENABLE_D3D12)
         "d3d12/d3d12_platform.h"
     )
     target_link_libraries(dawn_native PRIVATE dxguid.lib)
+    if (DAWN_USE_BUILT_DXC)
+        target_compile_definitions(dawn_native PRIVATE "DAWN_USE_BUILT_DXC")
+        target_link_libraries(dawn_native PRIVATE dxcompiler)
+        add_dependencies(dawn_native copy_dxil_dll)
+    endif()
 endif()
 
 if (DAWN_ENABLE_METAL)
-    target_sources(dawn_native PRIVATE
+    target_sources(dawn_native
+      INTERFACE
         "${DAWN_INCLUDE_DIR}/dawn/native/MetalBackend.h"
+      PRIVATE
         "Surface_metal.mm"
         "metal/BackendMTL.h"
         "metal/BackendMTL.mm"
@@ -486,8 +524,10 @@ if (DAWN_ENABLE_METAL)
         "metal/UtilsMetal.h"
         "metal/UtilsMetal.mm"
     )
+    if (DAWN_TARGET_MACOS)
+        target_link_libraries(dawn_native PRIVATE "-framework Cocoa")
+    endif()
     target_link_libraries(dawn_native PRIVATE
-        "-framework Cocoa"
         "-framework IOKit"
         "-framework IOSurface"
         "-framework QuartzCore"
@@ -496,8 +536,10 @@ if (DAWN_ENABLE_METAL)
 endif()
 
 if (DAWN_ENABLE_NULL)
-    target_sources(dawn_native PRIVATE
+    target_sources(dawn_native
+      INTERFACE
         "${DAWN_INCLUDE_DIR}/dawn/native/NullBackend.h"
+      PRIVATE
         "null/DeviceNull.cpp"
         "null/DeviceNull.h"
     )
@@ -522,8 +564,10 @@ if (DAWN_ENABLE_OPENGL)
         RESULT_VARIABLE "DAWN_NATIVE_OPENGL_AUTOGEN_SOURCES"
     )
 
-    target_sources(dawn_native PRIVATE
+    target_sources(dawn_native
+      INTERFACE
         "${DAWN_INCLUDE_DIR}/dawn/native/OpenGLBackend.h"
+      PRIVATE
         ${DAWN_NATIVE_OPENGL_AUTOGEN_SOURCES}
         "opengl/BackendGL.cpp"
         "opengl/BackendGL.h"
@@ -587,7 +631,9 @@ endif()
 
 if (DAWN_ENABLE_VULKAN)
     target_sources(dawn_native PRIVATE
+       INTERFACE
         "${DAWN_INCLUDE_DIR}/dawn/native/VulkanBackend.h"
+      PRIVATE
         "vulkan/BackendVk.cpp"
         "vulkan/BackendVk.h"
         "vulkan/BindGroupLayoutVk.cpp"
@@ -616,6 +662,7 @@ if (DAWN_ENABLE_VULKAN)
         "vulkan/PipelineCacheVk.h"
         "vulkan/PipelineLayoutVk.cpp"
         "vulkan/PipelineLayoutVk.h"
+        "vulkan/RefCountedVkHandle.h"
         "vulkan/QuerySetVk.cpp"
         "vulkan/QuerySetVk.h"
         "vulkan/QueueVk.cpp"
@@ -632,6 +679,10 @@ if (DAWN_ENABLE_VULKAN)
         "vulkan/SamplerVk.h"
         "vulkan/ShaderModuleVk.cpp"
         "vulkan/ShaderModuleVk.h"
+        "vulkan/SharedFenceVk.cpp"
+        "vulkan/SharedFenceVk.h"
+        "vulkan/SharedTextureMemoryVk.cpp"
+        "vulkan/SharedTextureMemoryVk.h"
         "vulkan/StreamImplVk.cpp"
         "vulkan/SwapChainVk.cpp"
         "vulkan/SwapChainVk.h"
@@ -659,7 +710,7 @@ if (DAWN_ENABLE_VULKAN)
     )
 
     target_link_libraries(dawn_native PUBLIC Vulkan-Headers)
-    target_include_directories(dawn_native PRIVATE ${DAWN_VULKAN_TOOLS_DIR})
+    target_include_directories(dawn_native PRIVATE ${DAWN_VULKAN_UTILITY_LIBRARIES_DIR}/include)
 
     if (ANDROID)
         target_sources(dawn_native PRIVATE
@@ -719,3 +770,6 @@ if(BUILD_SHARED_LIBS)
     target_compile_definitions(webgpu_dawn PRIVATE "WGPU_SHARED_LIBRARY")
 endif()
 target_sources(webgpu_dawn PRIVATE ${WEBGPU_DAWN_NATIVE_PROC_GEN})
+
+install_if_enabled(dawn_native)
+install_if_enabled(webgpu_dawn)

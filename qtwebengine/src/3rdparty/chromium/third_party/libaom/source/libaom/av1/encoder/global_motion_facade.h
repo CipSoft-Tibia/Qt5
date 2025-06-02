@@ -46,7 +46,8 @@ static AOM_INLINE void gm_dealloc_data(GlobalMotionData *gm_data) {
 }
 
 void av1_compute_gm_for_valid_ref_frames(
-    AV1_COMP *cpi, YV12_BUFFER_CONFIG *ref_buf[REF_FRAMES], int frame,
+    AV1_COMP *cpi, struct aom_internal_error_info *error_info,
+    YV12_BUFFER_CONFIG *ref_buf[REF_FRAMES], int frame,
     MotionModel *motion_models, uint8_t *segment_map, int segment_map_w,
     int segment_map_h);
 void av1_compute_global_motion_facade(struct AV1_COMP *cpi);

@@ -43,6 +43,7 @@ jumbo_component("touch_selection") {
 
   if (use_aura && toolkit_views) {
     deps += [
+      "//cc/paint",
       "//skia:skia",
       "//ui/aura",
       "//ui/base",

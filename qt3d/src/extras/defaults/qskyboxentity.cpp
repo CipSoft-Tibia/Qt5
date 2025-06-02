@@ -220,7 +220,7 @@ void QSkyboxEntityPrivate::reloadTexture()
 
 /*!
  * \qmltype SkyboxEntity
- * \instantiates Qt3DExtras::QSkyboxEntity
+ * \nativetype Qt3DExtras::QSkyboxEntity
  * \inqmlmodule Qt3D.Extras
  *
  * \brief SkyboxEntity is a convenience Entity subclass that can be used to
@@ -269,7 +269,7 @@ void QSkyboxEntity::setBaseName(const QString &baseName)
     }
 }
 /*!
-    \property QSkyboxEntity::baseName
+    \property Qt3DExtras::QSkyboxEntity::baseName
 
     Contains the base name of the Skybox.
 */
@@ -301,7 +301,7 @@ void QSkyboxEntity::setExtension(const QString &extension)
 }
 
 /*!
-    \property QSkyboxEntity::extension
+    \property Qt3DExtras::QSkyboxEntity::extension
 
     Contains the extension of the filename for the skybox image, including the
     leading '.'.
@@ -352,7 +352,7 @@ bool QSkyboxEntity::isGammaCorrectEnabled() const
 } // namespace Qt3DExtras
 
 /*!
-    \property QSkyboxEntity::gammaCorrect
+    \property Qt3DExtras::QSkyboxEntity::gammaCorrect
 
     A boolean indicating whether gamma correction is enabled.
     \since 5.9

@@ -11,9 +11,10 @@ CustomMaterial {
 
     property real xDiff: 0.0
     property real yDiff: 0.0
-    property vector2d rangeMin
-    property vector2d range
-    property vector2d vertices
+    property real graphHeight
+    property vector2d uvOffset
+    property vector2d size
+    property vector2d vertCount
 
     property real gradientMin
     property real gradientHeight

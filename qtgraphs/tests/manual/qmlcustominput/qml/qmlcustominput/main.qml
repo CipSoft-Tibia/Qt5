@@ -26,10 +26,9 @@ Item {
             id: scatterGraph
             width: dataView.width
             height: dataView.height
-            theme: Theme3D { type: Theme3D.Theme.Ebony }
-            shadowQuality: AbstractGraph3D.ShadowQuality.Medium
+            theme: GraphsTheme { theme: GraphsTheme.Theme.QtGreen }
+            shadowQuality: Graphs3D.ShadowQuality.Medium
             cameraYRotation: 30.0
-            inputHandler: null
 
             Scatter3DSeries {
                 id: scatterSeriesOne
@@ -68,6 +67,10 @@ Item {
                     yPosRole: "yPos"
                     zPosRole: "zPos"
                 }
+            }
+
+            Component.onCompleted: {
+                scatterGraph.unsetDefaultInputHandler();
             }
 
             onQueriedGraphPositionChanged:
@@ -162,11 +165,11 @@ Item {
             Layout.minimumWidth: parent.width / 3 // 3 buttons divided equally in the layout
             text: "Hide Shadows"
             onClicked: {
-                if (scatterGraph.shadowQuality === AbstractGraph3D.ShadowQuality.None) {
-                    scatterGraph.shadowQuality = AbstractGraph3D.ShadowQuality.Medium;
+                if (scatterGraph.shadowQuality === Graphs3D.ShadowQuality.None) {
+                    scatterGraph.shadowQuality = Graphs3D.ShadowQuality.Medium;
                     text = "Hide Shadows";
                 } else {
-                    scatterGraph.shadowQuality = AbstractGraph3D.ShadowQuality.None;
+                    scatterGraph.shadowQuality = Graphs3D.ShadowQuality.None;
                     text = "Show Shadows";
                 }
             }

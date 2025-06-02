@@ -34,7 +34,7 @@ class QQuickGraphicsConfiguration;
 // In addition, the class provides handy conversion and query stuff for the
 // renderloop and the QSGRendererInterface implementations.
 //
-class Q_QUICK_PRIVATE_EXPORT QSGRhiSupport
+class Q_QUICK_EXPORT QSGRhiSupport
 {
 public:
     static QSGRhiSupport *instance_internal();
@@ -45,7 +45,7 @@ public:
     static void checkEnvQSgInfo();
 
 #if QT_CONFIG(opengl)
-    static QRhiTexture::Format toRhiTextureFormatFromGL(uint format);
+    static QRhiTexture::Format toRhiTextureFormatFromGL(uint format, QRhiTexture::Flags *flags);
 #endif
 
 #if QT_CONFIG(vulkan)
@@ -56,7 +56,7 @@ public:
     static QRhiTexture::Format toRhiTextureFormatFromDXGI(uint format, QRhiTexture::Flags *flags);
 #endif
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     static QRhiTexture::Format toRhiTextureFormatFromMetal(uint format, QRhiTexture::Flags *flags);
 #endif
 

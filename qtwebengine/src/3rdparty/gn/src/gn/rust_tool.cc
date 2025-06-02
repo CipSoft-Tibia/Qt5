@@ -18,9 +18,11 @@ RustTool::RustTool(const char* n) : Tool(n) {
   CHECK(ValidateName(n));
   // TODO: should these be settable in toolchain definition?
   set_framework_switch("-lframework=");
+  set_framework_dir_switch("-Lframework=");
   set_lib_dir_switch("-Lnative=");
   set_lib_switch("-l");
   set_linker_arg("-Clink-arg=");
+  set_dynamic_link_switch("-Clink-arg=-Bdynamic");
 }
 
 RustTool::~RustTool() = default;
@@ -39,8 +41,8 @@ bool RustTool::ValidateName(const char* name) const {
 }
 
 bool RustTool::MayLink() const {
-  return name_ == kRsToolBin || name_ == kRsToolCDylib || name_ == kRsToolDylib ||
-         name_ == kRsToolMacro;
+  return name_ == kRsToolBin || name_ == kRsToolCDylib ||
+         name_ == kRsToolDylib || name_ == kRsToolMacro;
 }
 
 void RustTool::SetComplete() {
@@ -115,6 +117,13 @@ bool RustTool::InitTool(Scope* scope, Toolchain* toolchain, Err* err) {
   if (!ReadString(scope, "rust_sysroot", &rust_sysroot_, err)) {
     return false;
   }
+
+  if (MayLink()) {
+    if (!ReadString(scope, "dynamic_link_switch", &dynamic_link_switch_, err)) {
+      return false;
+    }
+  }
+
   return true;
 }
 

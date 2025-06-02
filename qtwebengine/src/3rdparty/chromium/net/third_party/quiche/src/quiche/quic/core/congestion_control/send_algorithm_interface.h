@@ -29,10 +29,10 @@ using QuicRoundTripCount = uint64_t;
 class CachedNetworkParameters;
 class RttStats;
 
-class QUIC_EXPORT_PRIVATE SendAlgorithmInterface {
+class QUICHE_EXPORT SendAlgorithmInterface {
  public:
   // Network Params for AdjustNetworkParameters.
-  struct QUIC_NO_EXPORT NetworkParams {
+  struct QUICHE_EXPORT NetworkParams {
     NetworkParams() = default;
     NetworkParams(const QuicBandwidth& bandwidth, const QuicTime::Delta& rtt,
                   bool allow_cwnd_to_decrease)
@@ -168,10 +168,12 @@ class QUIC_EXPORT_PRIVATE SendAlgorithmInterface {
   // Called before connection close to collect stats.
   virtual void PopulateConnectionStats(QuicConnectionStats* stats) const = 0;
 
-  // Returns true if the algorithm will respond to Congestion Experienced (CE)
-  // indications in accordance with RFC3168 [ECT(0)] or RFC9331 [ECT(1)].
-  virtual bool SupportsECT0() const = 0;
-  virtual bool SupportsECT1() const = 0;
+  // Causes this send algorithm to respond to Congestion Experienced (CE)
+  // indications in accordance with RFC3168 [ECT(0)] or RFC9331 [ECT(1)] and
+  // returns true, if this mode is supported. Otherwise, returns false. Once an
+  // ECN mode is enabled, it is an error to call either of these methods.
+  virtual bool EnableECT0() = 0;
+  virtual bool EnableECT1() = 0;
 };
 
 }  // namespace quic

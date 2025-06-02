@@ -86,7 +86,10 @@ void RenderArea::paintEvent(QPaintEvent * /* event */)
     if (m_level == 0.0)
         return;
 
-    const int pos = qRound(qreal(frame.width() - 1) * m_level);
+    float remappedLevel = QtAudio::convertVolume(m_level, QtAudio::LinearVolumeScale,
+                                                 QtAudio::LogarithmicVolumeScale);
+
+    const int pos = qRound(qreal(frame.width() - 1) * remappedLevel);
     painter.fillRect(frame.left() + 1, frame.top() + 1, pos, frame.height() - 1, Qt::red);
 }
 
@@ -109,14 +112,9 @@ void InputTest::initializeWindow()
     layout->addWidget(m_canvas);
 
     m_deviceBox = new QComboBox(this);
-    const QAudioDevice &defaultDeviceInfo = QMediaDevices::defaultAudioInput();
-    m_deviceBox->addItem(defaultDeviceInfo.description(), QVariant::fromValue(defaultDeviceInfo));
-    for (auto &deviceInfo : m_devices->audioInputs()) {
-        if (deviceInfo != defaultDeviceInfo)
-            m_deviceBox->addItem(deviceInfo.description(), QVariant::fromValue(deviceInfo));
-    }
-
     connect(m_deviceBox, &QComboBox::activated, this, &InputTest::deviceChanged);
+    connect(m_devices, &QMediaDevices::audioInputsChanged, this, &InputTest::updateAudioDevices);
+    updateAudioDevices();
     layout->addWidget(m_deviceBox);
 
     m_volumeSlider = new QSlider(Qt::Horizontal, this);
@@ -137,7 +135,7 @@ void InputTest::initializeWindow()
 void InputTest::initializeAudio(const QAudioDevice &deviceInfo)
 {
     QAudioFormat format;
-    format.setSampleRate(8000);
+    format.setSampleRate(44100);
     format.setChannelCount(1);
     format.setSampleFormat(QAudioFormat::Int16);
 
@@ -246,6 +244,17 @@ void InputTest::sliderChanged(int value)
                                                QAudio::LinearVolumeScale);
 
     m_audioInput->setVolume(linearVolume);
+}
+
+void InputTest::updateAudioDevices()
+{
+    m_deviceBox->clear();
+    const QAudioDevice &defaultDeviceInfo = QMediaDevices::defaultAudioInput();
+    m_deviceBox->addItem(defaultDeviceInfo.description(), QVariant::fromValue(defaultDeviceInfo));
+    for (auto &deviceInfo : m_devices->audioInputs()) {
+        if (deviceInfo != defaultDeviceInfo)
+            m_deviceBox->addItem(deviceInfo.description(), QVariant::fromValue(deviceInfo));
+    }
 }
 
 #include "moc_audiosource.cpp"

@@ -15,6 +15,7 @@
     \li \l {a-command} {\\a}
     \li \l {abstract-command} {\\abstract}
     \li \l {annotatedlist-command} {\\annotatedlist}
+    \li \l {attribution-command} {\\attribution}
     \li \l {b-command} {\\b}
     \li \l {badcode-command} {\\badcode}
     \li \l {b-command} {\\bold} (deprecated, use \\b)
@@ -39,7 +40,6 @@
     \li \l {example-command} {\\example}
     \li \l {externalpage-command} {\\externalpage}
     \li \l {fn-command} {\\fn}
-    \li \l {footnote-command} {\\footnote}
     \li \l {generatelist-command} {\\generatelist}
     \li \l {group-command} {\\group}
     \li \l {header-command} {\\header}
@@ -54,7 +54,7 @@
     \li \l {inlineimage-command} {\\inlineimage}
     \li \l {inmodule-command} {\\inmodule}
     \li \l {inqmlmodule-command} {\\inqmlmodule}
-    \li \l {instantiates-command} {\\instantiates}
+    \li \l {instantiates-command} {\\instantiates} (deprecated, use \\nativetype)
     \li \l {internal-command} {\\internal}
     \li \l {keyword-command} {\\keyword}
     \li \l {l-command} {\\l}
@@ -66,6 +66,7 @@
     \li \l {module-command} {\\module}
     \li \l {modulestate-command} {\\modulestate}
     \li \l {namespace-command} {\\namespace}
+    \li \l {nativetype-command} {\\nativetype}
     \li \l {nextpage-command} {\\nextpage}
     \li \l {noautolist-command} {\\noautolist}
     \li \l {nonreentrant-command} {\\nonreentrant}
@@ -88,12 +89,14 @@
     \li \l {qmlvaluetype-command} {\\qmlvaluetype}
     \li \l {qmlclass-command} {\\qmlclass} (deprecated, use \\qmltype)
     \li \l {qmldefault-command} {\\qmldefault}
+    \li \qdoccmd qmlenumeratorsfrom
     \li \l {qmltype-command} {\\qmltype}
     \li \l {qmlmethod-command} {\\qmlmethod}
     \li \l {qmlproperty-command} {\\qmlproperty}
     \li \l {qmlsignal-command} {\\qmlsignal}
     \li \l {qmlmodule-command} {\\qmlmodule}
     \li \l {qtcmakepackage-command} {\\qtcmakepackage}
+    \li \l {qtcmaketargetitem-command} {\\qtcmaketargetitem}
     \li \l {quotation-command} {\\quotation}
     \li \l {quotefile-command} {\\quotefile}
     \li \l {quotefromfile-command} {\\quotefromfile}
@@ -125,6 +128,7 @@
     \li \l {target-command} {\\target}
     \li \l {threadsafe-command} {\\threadsafe}
     \li \l {title-command} {\\title}
+    \li \qdoccmd tm
     \li \l {tt-command} {\\tt}
     \li \l {typealias-command} {\\typealias}
     \li \l {typedef-command} {\\typedef}

@@ -58,6 +58,8 @@ struct Q_GUI_EXPORT QCocoaWindow
     QT_DECLARE_NATIVE_INTERFACE(QCocoaWindow, 1, QWindow)
     virtual void setContentBorderEnabled(bool enable) = 0;
     virtual QPoint bottomLeftClippedByNSWindowOffset() const = 0;
+
+    virtual bool inLiveResize() const = 0;
 };
 #endif
 
@@ -126,6 +128,8 @@ public:
 Q_SIGNALS:
     void surfaceCreated();
     void surfaceDestroyed();
+    void surfaceRoleCreated();
+    void surfaceRoleDestroyed();
     void xdgActivationTokenCreated(const QString &token);
 
 protected:

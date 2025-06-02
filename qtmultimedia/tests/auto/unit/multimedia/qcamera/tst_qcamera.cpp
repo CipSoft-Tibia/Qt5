@@ -18,6 +18,8 @@
 #include "qmockmediacapturesession.h"
 #include "qmockcamera.h"
 
+#include <private/mediabackendutils_p.h>
+
 QT_USE_NAMESPACE
 
 Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
@@ -76,7 +78,7 @@ private slots:
 void tst_QCamera::initTestCase()
 {
 #ifdef Q_OS_MACOS
-    if (qEnvironmentVariable("QTEST_ENVIRONMENT").toLower() == "ci")
+    if (isCI())
         QSKIP("Flakiness on macOS CI, to be investigated, QTBUG-111812");
 #endif
 }
@@ -601,8 +603,8 @@ void tst_QCamera::testErrorSignal()
     QCamera camera;
     session.setCamera(&camera);
     auto *service = QMockIntegration::instance()->lastCaptureService();
-    Q_ASSERT(service);
-    Q_ASSERT(service->mockCameraControl);
+    QTEST_ASSERT(service);
+    QTEST_ASSERT(service->mockCameraControl);
 
     QSignalSpy spyError(&camera, &QCamera::errorOccurred);
 

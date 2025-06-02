@@ -11,6 +11,14 @@
     \ingroup tools
     \ingroup string-processing
 
+    \compares strong
+    \compareswith strong char16_t QChar {const char16_t *} QString QStringView \
+                  QLatin1StringView
+    \endcompareswith
+    \compareswith strong {const char *} QByteArray QByteArrayView
+    The contents of byte arrays is interpreted as UTF-8.
+    \endcompareswith
+
     A QUtf8StringView references a contiguous portion of a UTF-8
     string it does not own. It acts as an interface type to all kinds
     of UTF-8 string, without the need to construct a QString or
@@ -547,7 +555,7 @@
     \a n is negative (default), the function returns all code points that
     are available from \a pos.
 
-    \sa first(), last(), sliced(), chopped(), chop(), truncate()
+    \sa first(), last(), sliced(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -561,7 +569,7 @@
     The entire string view is returned if \a n is greater than or equal
     to size(), or less than zero.
 
-    \sa first(), last(), sliced(), chopped(), chop(), truncate()
+    \sa first(), last(), sliced(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -575,7 +583,7 @@
     The entire string view is returned if \a n is greater than or equal
     to size(), or less than zero.
 
-    \sa first(), last(), sliced(), chopped(), chop(), truncate()
+    \sa first(), last(), sliced(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -586,7 +594,7 @@
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa last(), sliced(), chopped(), chop(), truncate()
+    \sa last(), sliced(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -596,7 +604,7 @@
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa first(), sliced(), chopped(), chop(), truncate()
+    \sa first(), sliced(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -610,7 +618,7 @@
     or \a pos + \a n > size().
 //! [UB-sliced-index-length]
 
-    \sa first(), last(), chopped(), chop(), truncate()
+    \sa first(), last(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -623,7 +631,32 @@
     \note The behavior is undefined when \a pos < 0 or \a pos > size().
 //! [UB-sliced-index-only]
 
-    \sa first(), last(), chopped(), chop(), truncate()
+    \sa first(), last(), chopped(), chop(), truncate(), slice()
+*/
+
+/*!
+    \fn QUtf8StringView &QUtf8StringView::slice(qsizetype pos, qsizetype n)
+    \since 6.8
+
+    Modifies this string view to start at position \a pos, extending for
+    \a n code points.
+
+    \include qutf8stringview.qdoc UB-sliced-index-length
+
+    \sa sliced(), first(), last(), chopped(), chop(), truncate()
+*/
+
+/*!
+    \fn QUtf8StringView &QUtf8StringView::slice(qsizetype pos)
+    \since 6.8
+    \overload
+
+    Modifies this string view to start at position \a pos, extending
+    to its end.
+
+    \include qutf8stringview.qdoc UB-sliced-index-only
+
+    \sa sliced(), first(), last(), chopped(), chop(), truncate()
 */
 
 /*!
@@ -636,7 +669,7 @@
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa sliced(), first(), last(), chop(), truncate()
+    \sa sliced(), first(), last(), chop(), truncate(), slice()
 */
 
 /*!
@@ -709,4 +742,22 @@
     \c{std::basic_string_view} object. The returned view will have the
     same data pointer and length of this view. The character type of
     the returned view will be \c{storage_type}.
+*/
+
+/*!
+    \fn QUtf8StringView::maxSize()
+    \since 6.8
+
+    It returns the maximum number of elements that the view can
+    theoretically represent. In practice, the number can be much smaller,
+    limited by the amount of memory available to the system.
+*/
+
+/*!
+    \fn QUtf8StringView::max_size() const
+    \since 6.8
+
+    This function is provided for STL compatibility.
+
+    Returns maxSize().
 */

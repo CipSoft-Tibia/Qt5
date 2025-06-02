@@ -35,7 +35,6 @@ void FaviconServiceImpl::RunFaviconImageCallbackWithBitmapResults(
   image_result.image = favicon_base::SelectFaviconFramesFromPNGs(
       favicon_bitmap_results, favicon_base::GetFaviconScales(),
       desired_size_in_dip);
-  favicon_base::SetFaviconColorSpace(&image_result.image);
 
   image_result.icon_url = image_result.image.IsEmpty()
                               ? GURL()
@@ -48,7 +47,7 @@ FaviconServiceImpl::FaviconServiceImpl(
     history::HistoryService* history_service)
     : favicon_client_(std::move(favicon_client)),
       history_service_(history_service) {
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // TODO(https://crbug.com/1024959): convert to DCHECK once crash is resolved.
   CHECK(history_service_);
 #endif

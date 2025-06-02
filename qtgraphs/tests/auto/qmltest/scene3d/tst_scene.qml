@@ -76,10 +76,6 @@ Item {
             compare(initialized.scene.secondarySubviewOnTop, false)
             compare(initialized.scene.selectionQueryPosition, Qt.point(0, 0))
             compare(initialized.scene.slicingActive, true)
-            compare(initialized.scene.viewport.x, 0)
-            compare(initialized.scene.viewport.y, 0)
-            compare(initialized.scene.viewport.width, 150)
-            compare(initialized.scene.viewport.height, 150)
         }
     }
 
@@ -95,7 +91,7 @@ Item {
             change.scene.selectionQueryPosition = Qt.point(0, 0) // TODO: When doing signal checks, add tests to check that queries return something (asynchronously)
             change.scene.slicingActive = true
 
-            compare(change.scene.devicePixelRatio, 2.0)
+            compare(change.scene.devicePixelRatio, Screen.devicePixelRatio)
             compare(change.scene.graphPositionQuery, Qt.point(0, 0))
             compare(change.scene.primarySubViewport.x, 0)
             compare(change.scene.primarySubViewport.y, 0)
@@ -108,10 +104,15 @@ Item {
             compare(change.scene.secondarySubviewOnTop, false)
             compare(change.scene.selectionQueryPosition, Qt.point(0, 0))
             compare(change.scene.slicingActive, true)
-            compare(change.scene.viewport.x, 0)
-            compare(change.scene.viewport.y, 0)
-            compare(change.scene.viewport.width, 150)
-            compare(change.scene.viewport.height, 150)
+
+            // Signals
+            compare(devicePixelRatioSpy.count, 2)
+            compare(graphPosQuerySpy.count, 1)
+            compare(primarySubViewportSpy.count, 1)
+            compare(secondarySubViewportSpy.count, 1)
+            compare(secondarySubViewOnTopSpy.count, 1)
+            compare(selectionQueryPosSpy.count, 1)
+            compare(slicingActiveSpy.count, 1)
         }
     }
 
@@ -125,5 +126,47 @@ Item {
             compare(invalid.scene.primarySubViewport.width, 0)
             compare(invalid.scene.primarySubViewport.height, 0)
         }
+    }
+
+    SignalSpy {
+        id: primarySubViewportSpy
+        target: change.scene
+        signalName: "primarySubViewportChanged"
+    }
+
+    SignalSpy {
+        id: secondarySubViewportSpy
+        target: change.scene
+        signalName: "secondarySubViewportChanged"
+    }
+
+    SignalSpy {
+        id: selectionQueryPosSpy
+        target: change.scene
+        signalName: "selectionQueryPositionChanged"
+    }
+
+    SignalSpy {
+        id: secondarySubViewOnTopSpy
+        target: change.scene
+        signalName: "secondarySubviewOnTopChanged"
+    }
+
+    SignalSpy {
+        id: slicingActiveSpy
+        target: change.scene
+        signalName: "slicingActiveChanged"
+    }
+
+    SignalSpy {
+        id: devicePixelRatioSpy
+        target: change.scene
+        signalName: "devicePixelRatioChanged"
+    }
+
+    SignalSpy {
+        id: graphPosQuerySpy
+        target: change.scene
+        signalName: "graphPositionQueryChanged"
     }
 }

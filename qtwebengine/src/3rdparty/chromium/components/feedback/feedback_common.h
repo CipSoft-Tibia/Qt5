@@ -26,6 +26,8 @@ namespace userfeedback {
 class ExtensionSubmit;
 }
 
+inline constexpr int kOrcaFeedbackProductId = 5314436;
+
 // This is the base class for FeedbackData. It primarily knows about
 // data common to all feedback reports and how to zip things.
 class FeedbackCommon : public base::RefCountedThreadSafe<FeedbackCommon> {
@@ -60,6 +62,12 @@ class FeedbackCommon : public base::RefCountedThreadSafe<FeedbackCommon> {
   // the feedback report's system logs.
   static bool IncludeInSystemLogs(const std::string& key, bool is_google_email);
 
+  static int GetChromeBrowserProductId();
+
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+  static int GetChromeOSProductId();
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
+
   // Getters
   const absl::optional<std::string>& mac_address() const {
     return mac_address_;
@@ -74,6 +82,11 @@ class FeedbackCommon : public base::RefCountedThreadSafe<FeedbackCommon> {
   std::string user_agent() const { return user_agent_; }
   std::string locale() const { return locale_; }
   std::string& autofill_metadata() { return autofill_metadata_; }
+  bool include_chrome_platform() const { return include_chrome_platform_; }
+  const absl::optional<bool>& is_offensive_or_unsafe() {
+    return is_offensive_or_unsafe_;
+  }
+  std::string& ai_metadata() { return ai_metadata_; }
 
   const AttachedFile* attachment(size_t i) const { return &attachments_[i]; }
   size_t attachments() const { return attachments_.size(); }
@@ -101,6 +114,15 @@ class FeedbackCommon : public base::RefCountedThreadSafe<FeedbackCommon> {
   void set_autofill_metadata(const std::string& autofill_metadata) {
     autofill_metadata_ = autofill_metadata;
   }
+  // If true, includes whether the report is from ChromeOS or Chrome on another
+  // platform.
+  void set_include_chrome_platform(bool include_chrome_platform) {
+    include_chrome_platform_ = include_chrome_platform;
+  }
+  void set_is_offensive_or_unsafe(const absl::optional<bool>& value) {
+    is_offensive_or_unsafe_ = value;
+  }
+  void set_ai_metadata(const std::string& value) { ai_metadata_ = value; }
 
  protected:
   virtual ~FeedbackCommon();
@@ -133,6 +155,9 @@ class FeedbackCommon : public base::RefCountedThreadSafe<FeedbackCommon> {
   std::string user_agent_;
   std::string locale_;
   std::string autofill_metadata_;
+  bool include_chrome_platform_ = true;
+  absl::optional<bool> is_offensive_or_unsafe_;
+  std::string ai_metadata_;
 
   std::string image_;
 

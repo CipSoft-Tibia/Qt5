@@ -161,7 +161,7 @@ class SkiaOutputSurfaceImplOnGpu
       sk_sp<GrDeferredDisplayList> ddl,
       sk_sp<GrDeferredDisplayList> overdraw_ddl,
       std::unique_ptr<skgpu::graphite::Recording> graphite_recording,
-      std::vector<ImageContextImpl*> image_contexts,
+      std::vector<raw_ptr<ImageContextImpl, VectorExperimental>> image_contexts,
       std::vector<gpu::SyncToken> sync_tokens,
       base::OnceClosure on_finished,
       base::OnceCallback<void(gfx::GpuFenceHandle)> return_release_fence_cb,
@@ -188,7 +188,7 @@ class SkiaOutputSurfaceImplOnGpu
       sk_sp<GrDeferredDisplayList> ddl,
       sk_sp<GrDeferredDisplayList> overdraw_ddl,
       std::unique_ptr<skgpu::graphite::Recording> graphite_recording,
-      std::vector<ImageContextImpl*> image_contexts,
+      std::vector<raw_ptr<ImageContextImpl, VectorExperimental>> image_contexts,
       std::vector<gpu::SyncToken> sync_tokens,
       base::OnceClosure on_finished,
       base::OnceCallback<void(gfx::GpuFenceHandle)> return_release_fence_cb,
@@ -204,9 +204,11 @@ class SkiaOutputSurfaceImplOnGpu
                   std::unique_ptr<CopyOutputRequest> request,
                   const gpu::Mailbox& mailbox);
 
-  void BeginAccessImages(const std::vector<ImageContextImpl*>& image_contexts,
-                         std::vector<GrBackendSemaphore>* begin_semaphores,
-                         std::vector<GrBackendSemaphore>* end_semaphores);
+  void BeginAccessImages(
+      const std::vector<raw_ptr<ImageContextImpl, VectorExperimental>>&
+          image_contexts,
+      std::vector<GrBackendSemaphore>* begin_semaphores,
+      std::vector<GrBackendSemaphore>* end_semaphores);
   void ResetStateOfImages();
   void EndAccessImages(const base::flat_set<ImageContextImpl*>& image_contexts);
 
@@ -241,7 +243,6 @@ class SkiaOutputSurfaceImplOnGpu
   const gpu::gles2::FeatureInfo* GetFeatureInfo() const override;
   const gpu::GpuPreferences& GetGpuPreferences() const override;
   GpuVSyncCallback GetGpuVSyncCallback() override;
-  base::TimeDelta GetGpuBlockedTimeSinceLastSwap() override;
 
   void PostTaskToClientThread(base::OnceClosure closure) {
     dependency_->PostTaskToClientThread(std::move(closure));
@@ -278,6 +279,7 @@ class SkiaOutputSurfaceImplOnGpu
                          SharedImageFormat format,
                          const gfx::Size& size,
                          const gfx::ColorSpace& color_space,
+                         SkAlphaType alpha_type,
                          uint32_t usage,
                          std::string debug_label,
                          gpu::SurfaceHandle surface_handle);
@@ -285,9 +287,18 @@ class SkiaOutputSurfaceImplOnGpu
                                    const SkColor4f& color,
                                    const gfx::ColorSpace& color_space);
   void DestroySharedImage(gpu::Mailbox mailbox);
+  void SetSharedImagePurgeable(const gpu::Mailbox& mailbox, bool purgeable);
 
   // Called on the viz thread!
   base::ScopedClosureRunner GetCacheBackBufferCb();
+
+  // Checks the relevant context for completed tasks and, indirectly, causes
+  // associated completion callbacks to run.
+  void CheckAsyncWorkCompletion();
+
+  gpu::SharedContextState* context_state() const {
+    return context_state_.get();
+  }
 
  private:
   struct MailboxAccessData {
@@ -310,6 +321,7 @@ class SkiaOutputSurfaceImplOnGpu
   bool InitializeForGL();
   bool InitializeForVulkan();
   bool InitializeForDawn();
+  bool InitializeForMetal();
 
   // Provided as a callback to |device_|.
   void DidSwapBuffersCompleteInternal(gpu::SwapBuffersCompleteParams params,
@@ -349,6 +361,12 @@ class SkiaOutputSurfaceImplOnGpu
                                            gpu::GrContextType::kGraphiteDawn;
   }
 
+  bool is_using_graphite_metal() const {
+    return !!context_state_->metal_context_provider() &&
+           gpu_preferences_.gr_context_type ==
+               gpu::GrContextType::kGraphiteMetal;
+  }
+
   // Helper for `FlushSurface()` & `FlushContext()` methods, flushes writes
   // to either the surface if it is non-null or to the context otherwise, using
   // |end_semaphores| and |end_state|.
@@ -356,8 +374,10 @@ class SkiaOutputSurfaceImplOnGpu
       SkSurface* surface,
       std::vector<GrBackendSemaphore>& end_semaphores,
       gpu::SkiaImageRepresentation::ScopedWriteAccess* scoped_write_access,
-      GrGpuFinishedProc finished_proc = nullptr,
-      GrGpuFinishedContext finished_context = nullptr);
+      GrGpuFinishedProc ganesh_finished_proc = nullptr,
+      GrGpuFinishedContext ganesh_finished_context = nullptr,
+      skgpu::graphite::GpuFinishedProc graphite_finished_proc = nullptr,
+      skgpu::graphite::GpuFinishedContext graphite_finished_context = nullptr);
 
   // Helper for `CopyOutput()` method, handles the RGBA format.
   void CopyOutputRGBA(SkSurface* surface,
@@ -407,16 +427,10 @@ class SkiaOutputSurfaceImplOnGpu
       SkSurface* surface,
       std::vector<GrBackendSemaphore>& end_semaphores,
       gpu::SkiaImageRepresentation::ScopedWriteAccess* scoped_write_access,
-      GrGpuFinishedProc finished_proc = nullptr,
-      GrGpuFinishedContext finished_context = nullptr);
-
-  // Helper for `CopyOutputNV12()` & `CopyOutputRGBA()` methods, flushes writes
-  // to the Skia context with |end_semaphores| and |end_state|.
-  bool FlushContext(
-      std::vector<GrBackendSemaphore>& end_semaphores,
-      gpu::SkiaImageRepresentation::ScopedWriteAccess* scoped_write_access,
-      GrGpuFinishedProc finished_proc = nullptr,
-      GrGpuFinishedContext finished_context = nullptr);
+      GrGpuFinishedProc ganesh_finished_proc = nullptr,
+      GrGpuFinishedContext ganesh_finished_context = nullptr,
+      skgpu::graphite::GpuFinishedProc graphite_finished_proc = nullptr,
+      skgpu::graphite::GpuFinishedContext graphite_finished_context = nullptr);
 
   // Creates surfaces needed to store the data in NV12 format.
   // |mailbox_access_datas| will be populated with information needed to access
@@ -551,7 +565,8 @@ class SkiaOutputSurfaceImplOnGpu
 
     ~PromiseImageAccessHelper();
 
-    void BeginAccess(std::vector<ImageContextImpl*> image_contexts,
+    void BeginAccess(std::vector<raw_ptr<ImageContextImpl, VectorExperimental>>
+                         image_contexts,
                      std::vector<GrBackendSemaphore>* begin_semaphores,
                      std::vector<GrBackendSemaphore>* end_semaphores);
     void EndAccess();

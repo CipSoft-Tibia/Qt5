@@ -56,20 +56,28 @@ void tst_axis::initialProperties()
 
     QCOMPARE(m_formatter->autoSubGrid(), true);
     QCOMPARE(m_formatter->base(), 10.0);
-    QCOMPARE(m_formatter->showEdgeLabels(), true);
+    QCOMPARE(m_formatter->edgeLabelsVisible(), true);
 }
 
 void tst_axis::initializeProperties()
 {
     QVERIFY(m_formatter);
 
+    QSignalSpy baseSpy(m_formatter, &QLogValue3DAxisFormatter::baseChanged);
+    QSignalSpy subGridSpy(m_formatter, &QLogValue3DAxisFormatter::autoSubGridChanged);
+    QSignalSpy edgeLabelVisibleSpy(m_formatter, &QLogValue3DAxisFormatter::edgeLabelsVisibleChanged);
+
     m_formatter->setAutoSubGrid(false);
     m_formatter->setBase(0.1);
-    m_formatter->setShowEdgeLabels(false);
+    m_formatter->setEdgeLabelsVisible(false);
 
     QCOMPARE(m_formatter->autoSubGrid(), false);
     QCOMPARE(m_formatter->base(), 0.1);
-    QCOMPARE(m_formatter->showEdgeLabels(), false);
+    QCOMPARE(m_formatter->edgeLabelsVisible(), false);
+
+    QCOMPARE(baseSpy.size(), 1);
+    QCOMPARE(subGridSpy.size(), 1);
+    QCOMPARE(edgeLabelVisibleSpy.size(), 1);
 }
 
 void tst_axis::invalidProperties()

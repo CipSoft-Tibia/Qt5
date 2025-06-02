@@ -31,9 +31,7 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderItem2D : public QSSGRenderNode
 {
     Q_DISABLE_COPY(QSSGRenderItem2D)
 
-    QMatrix4x4 MVP;
-    float combinedOpacity = 1.0;
-    float zOrder = 0;
+    QVarLengthArray<QMatrix4x4, 2> mvps;
 
     QPointer<QSGRenderer> m_renderer;
     QRhiRenderPassDescriptor *m_rp = nullptr;

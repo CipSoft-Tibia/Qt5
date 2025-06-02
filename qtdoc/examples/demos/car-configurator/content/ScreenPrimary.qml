@@ -8,16 +8,15 @@ import QtQuick3D
 import QtQuick3D.Effects
 import QtQuick3D.Helpers
 import CarRendering
-import Quick3DAssets.Uk5ofde_LOD0
-import Quick3DAssets.Uk5pebv_LOD0
-import Quick3DAssets.Ulbrbdt_LOD0
 import Quick3DAssets.Venodhb_LOD0
-import Quick3DAssets.Ventdee_LOD0
-import "FigmaExportCarConfig"
+import "doorIcon"
 import "WallEffect1"
 import "WallEffect2"
 import "WallEffect3"
 import Quick3DAssets.EV_SportsCar_low
+import Quick3DAssets.Pebbles
+import Quick3DAssets.InteriorShadow
+import Quick3DAssets.ShadowPlane
 
 Rectangle {
     id: root
@@ -113,9 +112,17 @@ Rectangle {
 
                     Node {
                         id: cameraRoot
+                        y: 0
+                        eulerRotation.x: 0
 
-                        eulerRotation.y: 360
+                        eulerRotation.y: 0
                         eulerRotation.z: 0
+                        onEulerRotationChanged: {
+                            if (cameraResetAnimation.running)
+                                return
+                            cameraRoot.eulerRotation.y -=
+                                    Math.floor(cameraRoot.eulerRotation.y / 360) * 360
+                        }
 
                         PerspectiveCamera {
                             id: sceneCamera2
@@ -143,6 +150,10 @@ Rectangle {
                                 enabled: !demo.running
                                 NumberAnimation{}
                             }
+                            Behavior on eulerRotation {
+                                enabled: !demo.running
+                                NumberAnimation{duration: 2000}
+                            }
                         }
                     }
                 }
@@ -150,19 +161,19 @@ Rectangle {
                 Model {
                     id: plane3
 
-                    x: -8.062
+                    x: -13.056
                     y: 4.1
                     visible: true
                     source: "#Rectangle"
                     castsShadows: false
                     receivesShadows: false
                     receivesReflections: false
-                    z: 8.06232
+                    z: -2.65002
                     eulerRotation.x: -90
                     eulerRotation.y: -45
                     eulerRotation.z: -90
-                    scale.x: 11.78291
-                    scale.y: 13.01303
+                    scale.x: 12.00987
+                    scale.y: 14.11107
                     scale.z: 13
                     materials: groundMat1
                     depthBias: -500
@@ -173,10 +184,10 @@ Rectangle {
 
                     y: 250
                     visible: false
-                    source: "#Rectangle"
+                    source: "#Sphere"
                     receivesReflections: false
                     z: -500
-                    scale.x: 20
+                    scale.x: 50
                     scale.y: 10
                     scale.z: 10
                     materials: principledMaterial2
@@ -186,12 +197,11 @@ Rectangle {
 
                 Headlights {
                     id: headlights
-                    x: -23
-                    y: -20
+                    x: -18.519
+                    y: -22.316
+                    opacity: 1
+                    z: 6.0437
                     visible: btnLight.checked
-
-                    z: 17
-
                     eulerRotation.x: 0
                     eulerRotation.y: -45
                     eulerRotation.z: 0
@@ -202,11 +212,12 @@ Rectangle {
                     Model {
                         id: backlight_red
 
-                        x: 0
-                        y: 17
+                        x: -0.001
+                        y: 65.679
                         source: "#Rectangle"
+                        depthBias: -24
                         materials: backlightNew
-                        z: -2540.18164
+                        z: -2540.17969
                         eulerRotation.x: -90
                         eulerRotation.y: 180
                         scale.x: 42
@@ -220,24 +231,12 @@ Rectangle {
 
                     y: -21.468
                     visible: false
-                    scale.x: 5
-                    scale.y: 5
-                    scale.z: 5
+                    scale.x: 10
+                    scale.y: 10
+                    scale.z: 10
 
-                    Uk5ofde_LOD0 {
-                        id: uk5ofde_LOD0
-                    }
-
-                    Uk5pebv_LOD0 {
-                        id: uk5pebv_LOD0
-                    }
-
-                    Ulbrbdt_LOD0 {
-                        id: ulbrbdt_LOD0
-                    }
-
-                    Ventdee_LOD0 {
-                        id: ventdee_LOD0
+                    Pebbles {
+                        id: pebbles
                     }
                 }
 
@@ -245,11 +244,13 @@ Rectangle {
                     id: garageFloor
 
                     y: 0.5
+                    visible: true
                     source: "#Rectangle"
+                    castsShadows: false
                     receivesReflections: true
-                    scale.x: 20
-                    scale.y: 20
-                    scale.z: 20
+                    scale.x: 70
+                    scale.y: 70
+                    scale.z: 70
                     eulerRotation.y: 0
                     eulerRotation.x: -90
                     materials: rectMaterial
@@ -368,52 +369,76 @@ Rectangle {
                 Ev_SportsCar_low {
                     id: ev_SportsCar_low
                     x: -19
+                    y: 1.965
+                    desert: false
+                    headlightsVisible: !btnLight.checked
+                    trunkIsOpen: trunkbutton.isChecked
+                    hoodIsOpen: hoodButton.isChecked
+                    z: 0
+                    stateController: 0
                     eulerRotation.y: -45
                     scale.z: 120
                     scale.y: 120
                     scale.x: 120
                     lightsOn: btnLight.checked
+                    doorLeftIsOpen: doorButtonLeft.isChecked
+                    doorRightIsOpen: doorButtonRight.isChecked
 
                     PointLight {
                         id: lightPoint
 
                         x: 0.774
                         y: 1.143
-                        visible: btnLight.checked
+                        visible: false
                         color: "#ff2f00"
                         linearFade: 10
                         constantFade: 1
                         quadraticFade: 10
                         z: -2.60213
-                        brightness: 1
+                        brightness: 2
                     }
 
                     PointLight {
                         id: lightPoint1
-                        visible: btnLight.checked
                         x: -0.832
                         y: 1.143
+                        visible: false
                         color: "#ff2f00"
                         linearFade: 10
                         constantFade: 1
                         quadraticFade: 10
-                        brightness: 1
+                        brightness: 2
                         z: -2.49196
                     }
+
+                    InteriorPointLight {
+                        id: pointLight
+                        x: 0
+                        y: 0.931
+                        quadraticFade: 6.24865
+                        scope: ev_SportsCar_low
+                        z: 0.01401
+                        shadowBias: 0.04099
+                        shadowMapQuality: Light.ShadowMapQualityVeryHigh
+                        shadowFilter: 93
+                        shadowFactor: 98
+                        castsShadow: false
+
+                        isOn: ev_SportsCar_low.doorLeftIsOpen || ev_SportsCar_low.doorRightIsOpen? true : false
+                    }
+
+                    InteriorShadow {
+                        id: interiorShadow
+                        visible: true
+                    }
+
+                    ShadowPlane {
+                        id: shadowPlane
+                        visible: false
+                        hoodOpen: ev_SportsCar_low.hoodIsOpen
+                        doorOpen: ev_SportsCar_low.doorLeftIsOpen
+                    }
                 }
-            }
-
-            PerspectiveCamera {
-                id: sceneCamera3
-
-                x: 0
-                y: -270.618
-                z: -395.07288
-                eulerRotation.y: 0
-                eulerRotation.z: 0
-                eulerRotation.x: -18
-                fieldOfView: 100
-                fieldOfViewOrientation: PerspectiveCamera.Horizontal
             }
 
             DirectionalLight {
@@ -430,8 +455,8 @@ Rectangle {
                 id: lightDirectional1
 
                 shadowFactor: 100
-                shadowMapQuality: Light.ShadowMapQualityMedium
-                castsShadow: true
+                shadowMapQuality: Light.ShadowMapQualityVeryHigh
+                castsShadow: false
                 brightness: 0.5
                 eulerRotation.z: -0.00002
                 eulerRotation.y: 0.00002
@@ -444,6 +469,15 @@ Rectangle {
 
             ExtendedSceneEnvironment {
                 id: showhall
+
+                glowBloom: 0
+                glowStrength: 0
+                glowEnabled: false
+                depthOfFieldFocusDistance: 600
+                depthOfFieldFocusRange: 627
+                depthOfFieldBlurAmount: 19.97
+                depthOfFieldEnabled: false
+                exposure: 1.2
 
                 lightProbe: _Hall
                 backgroundMode: SceneEnvironment.SkyBox
@@ -469,6 +503,10 @@ Rectangle {
                 id: desert
 
                 lightProbe: _Desert
+                glowStrength: 2
+                glowBloom: 0.11191
+                glowEnabled: true
+
                 depthPrePassEnabled: false
                 probeExposure: 1.5
                 tonemapMode: SceneEnvironment.TonemapModeLinear
@@ -479,6 +517,7 @@ Rectangle {
                 clearColor: "#000000"
                 probeHorizon: 0.5
                 temporalAAEnabled: false
+                fog: Fog {}
             }
 
             ExtendedSceneEnvironment {
@@ -505,16 +544,17 @@ Rectangle {
 
             ExtendedSceneEnvironment {
                 id: studio
+                aoEnabled: false
+                antialiasingQuality: SceneEnvironment.VeryHigh
+                antialiasingMode: SceneEnvironment.MSAA
 
                 tonemapMode: SceneEnvironment.TonemapModeLinear
                 probeExposure: 1
                 probeHorizon: 1
                 clearColor: "#000000"
-                antialiasingQuality: perfMode ? SceneEnvironment.Medium : SceneEnvironment.VeryHigh
                 temporalAAEnabled: false
                 depthTestEnabled: true
-                backgroundMode: SceneEnvironment.SkyBox
-                antialiasingMode: SceneEnvironment.MSAA
+                backgroundMode: SceneEnvironment.Color
                 depthPrePassEnabled: false
             }
         }
@@ -524,7 +564,7 @@ Rectangle {
 
             PrincipledMaterial {
                 id: groundMat1
-                opacity: 0.875
+                opacity: 1
                 normalStrength: 0.5
                 specularAmount: 0
                 metalness: 0
@@ -565,6 +605,7 @@ Rectangle {
                     // Adjust these to suit the target HW quality/performance
                     property real videoWallWidth: 1024
                     property real videoWallHeight: 512
+                    mappingMode: Texture.Environment
                     sourceItem: wallEffect1
 
                     WallEffect1 {
@@ -599,6 +640,8 @@ Rectangle {
 
             PrincipledMaterial {
                 id: rectMaterial
+                fresnelScaleBiasEnabled: false
+                opacityMap: dot
                 baseColor: "#b1a5b7"
                 objectName: "rectMaterial"
                 baseColorMap: tg1kfdzq_2K_Albedo
@@ -611,7 +654,7 @@ Rectangle {
 
             Texture {
                 id: _Desert
-                source: rootWindow.downloadBase + "/content/images/HDR/_Desert.ktx"
+                source: rootWindow.downloadBase + "/content/images/HDR/low/_Desert.ktx"
                 mipFilter: Texture.Linear
                 scaleV: 3
             }
@@ -645,36 +688,36 @@ Rectangle {
                 id: tg1kfdzq_2K_Albedo
                 source: rootWindow.downloadBase + "/content/images/tg1kfdzq_2K_Albedo.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 6
+                scaleV: 40
                 generateMipmaps: true
-                scaleU: 6
+                scaleU: 40
             }
 
             Texture {
                 id: tg1kfdzq_2K_AO
                 source: rootWindow.downloadBase + "/content/images/tg1kfdzq_2K_AO.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 6
+                scaleV: 40
                 generateMipmaps: true
-                scaleU: 6
+                scaleU: 40
             }
 
             Texture {
                 id: tg1kfdzq_2K_Normal
                 source: rootWindow.downloadBase + "/content/images/tg1kfdzq_2K_Normal.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 6
+                scaleV: 40
                 generateMipmaps: true
-                scaleU: 6
+                scaleU: 40
             }
 
             Texture {
                 id: tg1kfdzq_2K_Roughness
                 source: rootWindow.downloadBase + "/content/images/tg1kfdzq_2K_Roughness.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 6
+                scaleV: 40
                 generateMipmaps: true
-                scaleU: 6
+                scaleU: 40
             }
 
             PrincipledMaterial {
@@ -687,7 +730,8 @@ Rectangle {
 
             PrincipledMaterial {
                 id: rectMaterial2
-                specularAmount: 0.1
+                fresnelScaleBiasEnabled: false
+                specularAmount: 0.3
                 clearcoatAmount: 0
                 specularTint: 0.95
                 baseColor: "#222222"
@@ -704,36 +748,36 @@ Rectangle {
                 id: vlkhcah_2K_Albedo
                 source: rootWindow.downloadBase + "/content/images/vlkhcah_2K_Albedo.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 4
+                scaleV: 20
                 generateMipmaps: true
-                scaleU: 4
+                scaleU: 20
             }
 
             Texture {
                 id: vlkhcah_2K_AO
                 source: rootWindow.downloadBase + "/content/images/vlkhcah_2K_AO.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 4
+                scaleV: 20
                 generateMipmaps: true
-                scaleU: 4
+                scaleU: 20
             }
 
             Texture {
                 id: vlkhcah_2K_Normal
                 source: rootWindow.downloadBase + "/content/images/vlkhcah_2K_Normal.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 4
+                scaleV: 20
                 generateMipmaps: true
-                scaleU: 4
+                scaleU: 20
             }
 
             Texture {
                 id: vlkhcah_2K_Roughness
                 source: rootWindow.downloadBase + "/content/images/vlkhcah_2K_Roughness.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 4
+                scaleV: 20
                 generateMipmaps: true
-                scaleU: 4
+                scaleU: 20
             }
 
             PrincipledMaterial {
@@ -763,7 +807,9 @@ Rectangle {
 
             PrincipledMaterial {
                 id: backlightNew
-                opacity: 0.3
+                opacity: 0.551
+                lighting: PrincipledMaterial.NoLighting
+                blendMode: PrincipledMaterial.Screen
                 emissiveFactor.x: 1
                 opacityMap: backlight1
                 baseColor: "#fe0303"
@@ -774,41 +820,46 @@ Rectangle {
                 id: vlkhcah_2K_Albedo1
                 source: rootWindow.downloadBase + "/content/images/vlkhcah_2K_Albedo.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 4
+                scaleV: 20
                 generateMipmaps: true
-                scaleU: 4
+                scaleU: 20
             }
 
             Texture {
                 id: vlkhcah_2K_AO1
                 source: rootWindow.downloadBase + "/content/images/vlkhcah_2K_AO.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 4
+                scaleV: 20
                 generateMipmaps: true
-                scaleU: 4
+                scaleU: 20
             }
 
             Texture {
                 id: vlkhcah_2K_Normal1
                 source: rootWindow.downloadBase + "/content/images/vlkhcah_2K_Normal.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 4
+                scaleV: 20
                 generateMipmaps: true
-                scaleU: 4
+                scaleU: 20
             }
 
             Texture {
                 id: vlkhcah_2K_Roughness1
                 source: rootWindow.downloadBase + "/content/images/vlkhcah_2K_Roughness.jpg"
                 mipFilter: Texture.Linear
-                scaleV: 4
+                scaleV: 20
                 generateMipmaps: true
-                scaleU: 4
+                scaleU: 20
             }
 
             Texture {
                 id: backlight1
                 source: rootWindow.downloadBase + "/content/images/backlight.png"
+            }
+
+            Texture {
+                id: dot
+                source: rootWindow.downloadBase + "/content/images/dot.png"
             }
         }
     }
@@ -822,6 +873,39 @@ Rectangle {
         anchors.fill: parent
     }
 
+    DoorButton {
+        id: doorButtonLeft
+        x: 0
+        y: 0
+        // > than 326
+        isRendered: cameraRoot.eulerRotation.y < 123 && !demo.running || cameraRoot.eulerRotation.y > 326 && !demo.running || ev_SportsCar_low.doorLeftIsOpen? 1.0 : 0.0 && !demo.running
+        visible: true
+        trackedWorldPosition: ev_SportsCar_low.leftDoorPositionerPos
+    }
+    DoorButton {
+        id: doorButtonRight
+        x: 0
+        y: 0
+        isRendered: cameraRoot.eulerRotation.y < 305 && cameraRoot.eulerRotation.y > 150 && !demo.running || ev_SportsCar_low.doorRightIsOpen? 1.0 : 0.0 && !demo.running
+        visible: true
+        trackedWorldPosition: ev_SportsCar_low.rightDoorPositionerPos
+    }
+    DoorButton {
+        id: hoodButton
+        x: 0
+        y: 0
+        isRendered: cameraRoot.eulerRotation.y < 50 && !demo.running || cameraRoot.eulerRotation.y > 226 && !demo.running || ev_SportsCar_low.hoodIsOpen? 1.0 : 0.0&& !demo.running
+        visible: true
+        trackedWorldPosition: ev_SportsCar_low.hoodPositionerPos
+    }
+    DoorButton {
+        id: trunkbutton
+        x: 0
+        y: 0
+        isRendered: cameraRoot.eulerRotation.y > 50 && cameraRoot.eulerRotation.y < 226 && !demo.running || ev_SportsCar_low.trunkIsOpen? 1.0 : 0.0&& !demo.running
+        visible: true
+        trackedWorldPosition: ev_SportsCar_low.trunkPositionerPos
+    }
     Item {
         id: gui
 
@@ -832,8 +916,8 @@ Rectangle {
 
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.rightMargin: 15
-            anchors.topMargin:15
+            anchors.rightMargin: 28
+            anchors.topMargin: 28
 
             MouseArea {
                 anchors.fill: parent
@@ -862,11 +946,11 @@ Rectangle {
             visible: false
             width: videoRow.width
             height: videoRow.height
-            radius: 16
+            radius: 8
             color: "#5c000000"
             anchors.horizontalCenter: mainControls.horizontalCenter
             anchors.bottom: mainControls.top
-            anchors.bottomMargin: 30 - (1 - videoControls.scale) * 110
+            anchors.bottomMargin: 16 - (1 - videoControls.scale) * 110
 
             scale: mainControls.scale
 
@@ -887,7 +971,7 @@ Rectangle {
 
                     width: 53
                     height: 43
-                    radius: 5
+                    radius: 8
                     iconId: 5
                     group: groupVideo
                     checked: true
@@ -906,7 +990,7 @@ Rectangle {
 
                     width: 53
                     height: 43
-                    radius: 5
+                    radius: 8
                     iconId: 5
                     group: groupVideo
 
@@ -924,7 +1008,7 @@ Rectangle {
 
                     width: 53
                     height: 43
-                    radius: 5
+                    radius: 8
                     iconId: 5
                     group: groupVideo
 
@@ -941,17 +1025,62 @@ Rectangle {
 
         Row {
             id: mainControls
-
-            spacing: 10
+            property bool isOn: false
+            spacing: 8
             width: parent.width
 
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 20 - (1 - mainControls.scale) * 60
+            anchors.bottomMargin: 28 - (1 - mainControls.scale) * 60
+            layer.enabled: true
+            rightPadding: 0
             scale: parent.width / Constants.width
             transformOrigin: Item.Left
 
+
+            NumberAnimation {
+                id: menuOffAnimation
+                target: mainControls
+                property: "x"
+                duration: 1000
+                easing.type: Easing.InOutQuad
+                running: !mainControls.isOn
+                from: 0
+                to: root.width
+            }
+            NumberAnimation {
+                id: menuOnAnimation
+                target: mainControls
+                property: "x"
+                duration: 1000
+                easing.type: Easing.InOutQuad
+                running: mainControls.isOn
+                from: root.width
+                to: 0
+
+            }
+            NumberAnimation {
+                id: menuOnAnimationOpacity
+                target: mainControls
+                property: "opacity"
+                duration: 500
+                easing.type: Easing.InOutQuad
+                running: mainControls.isOn
+                from: 0
+                to: 1
+            }
+            NumberAnimation {
+                id: menuOffAnimationOpacity
+                target: mainControls
+                property: "opacity"
+                duration: 500
+                easing.type: Easing.InOutQuad
+                running: !mainControls.isOn
+                from: 1
+                to: 0
+            }
+
             Item {
-                width: 10
+                width: 20
                 height: 1
             }
 
@@ -961,8 +1090,11 @@ Rectangle {
                 iconId: btnDemo.checked ? 8 : 7
                 buttonText: "Demo Mode"
                 group: "toggle"
+                onClicked: {
+                    cameraRoot.eulerRotation.y > 180? cameraResetAnimation.yVal = 365 : cameraResetAnimation.yVal = 5
+                    btnDemo.checked? cameraResetAnimation.running = true : demo.running = false
+                }
 
-                onCheckedChanged: demo.running = btnDemo.checked
             }
 
             KissButton {
@@ -972,10 +1104,8 @@ Rectangle {
                 buttonText: "Reset camera"
 
                 onClicked: {
-                    demo.running = true
-                    demoAnimation.currentFrame = 1
-                    demo.running = false
-                    demoAnimation.currentFrame = 0
+                    cameraRoot.eulerRotation.y > 180? cameraResetAnimation.yVal = 360 : cameraResetAnimation.yVal = 0
+                    cameraResetAnimation.running = true
 
                     if (btnDemo.checked)
                         btnDemo.toggleCheck()
@@ -1048,6 +1178,7 @@ Rectangle {
 
             KissButton {
                 id: blackPaint
+                checked: true
 
                 iconId: 11
                 buttonText: "Black"
@@ -1086,6 +1217,63 @@ Rectangle {
                 buttonText: "Lights"
                 group: "toggle"
                 checked: true
+            }
+
+            KissButtonSeparator {
+            }
+
+            KissButton {
+                id: rightseparator
+                iconId: btnLight.checked ? 15 : 14
+                group: "toggle"
+                checked: true
+                buttonText: ""
+                width: 70
+                visible: false
+            }
+        }
+
+        KissButton {
+            id: menutoggle
+            menubutton: true
+            anchors.right: parent.right
+            anchors.rightMargin: 30 - (1 - mainControls.scale) * 60
+            iconId: mainControls.isOn ? 25 : 24
+            group: "toggle"
+            checked: false
+            buttonText: ""
+            width: 70
+            scale: parent.width / Constants.width
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 38 - (1 - mainControls.scale) * 60
+            onCheckedChanged: !checked? mainControls.isOn = false : mainControls.isOn = true
+            onClicked: {
+                buttonLoopAnimation.running = false
+                menutoggle.scale = 1
+            }
+
+            SequentialAnimation{
+                id: buttonLoopAnimation
+                running: true
+                loops: -1
+
+                NumberAnimation {
+                    target: menutoggle
+                    property: "scale"
+                    duration: 1000
+                    easing.type: Easing.InOutQuad
+                    from: 1
+                    to: 1.1
+                }
+
+                NumberAnimation {
+                    target: menutoggle
+                    property: "scale"
+                    duration: 1000
+                    easing.type: Easing.InOutQuad
+                    from: 1.1
+                    to: 1
+                }
             }
         }
     }
@@ -1757,8 +1945,13 @@ Rectangle {
             property: "eulerRotation.y"
 
             Keyframe {
+                value: 5
+                frame: 0
+            }
+
+            Keyframe {
                 value: 0
-                frame: 5
+                frame: 5979
             }
         }
 
@@ -1767,14 +1960,51 @@ Rectangle {
             property: "eulerRotation.x"
 
             Keyframe {
+                value: 9
+                frame: 0
+            }
+
+            Keyframe {
                 value: 0
-                frame: 5
+                frame: 5979
             }
         }
 
         KeyframeGroup {
             target: cameraRoot
             property: "eulerRotation.z"
+
+            Keyframe {
+                value: 0
+                frame: 5
+            }
+        }
+        KeyframeGroup {
+            target: cameraRoot
+            property: "y"
+
+            Keyframe {
+                value: -5
+                frame: 5
+            }
+
+            Keyframe {
+                value: 0
+                frame: 5979
+            }
+        }
+        KeyframeGroup {
+            target: cameraRoot
+            property: "x"
+
+            Keyframe {
+                value: 0
+                frame: 5
+            }
+        }
+        KeyframeGroup {
+            target: cameraRoot
+            property: "z"
 
             Keyframe {
                 value: 0
@@ -1783,104 +2013,126 @@ Rectangle {
         }
     }
 
-    Timeline {
-        id: demoEnding
-        animations: [
-            TimelineAnimation {
-                id: demoEndAnimation
-                running: !btnDemo.checked
-                loops: 1
-                duration: 2000
-                to: 2000
-                from: 0
-            }
-        ]
-        enabled: false
-        endFrame: 2000
-        startFrame: 0
+    ParallelAnimation {
+        id:cameraResetAnimation
+        running: false
+        property real yVal: 0
+        onFinished: btnDemo.checked? demo.running = true : demo.running = false
+        NumberAnimation {
+            target: cameraRoot
+            property: "eulerRotation.y"
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: cameraRoot.eulerRotation.y
+            to: cameraResetAnimation.yVal
+        }
 
-        KeyframeGroup {
+        NumberAnimation {
+            target: cameraRoot
+            property: "eulerRotation.x"
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: cameraRoot.eulerRotation.x
+            to: 9
+        }
+
+        NumberAnimation {
+            target: cameraRoot
+            property: "eulerRotation.z"
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: cameraRoot.eulerRotation.z
+            to: 0
+        }
+
+        NumberAnimation {
+            target: cameraRoot
+            property: "x"
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: cameraRoot.x
+            to: 0
+        }
+
+        NumberAnimation {
+            target: cameraRoot
+            property: "y"
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: cameraRoot.y
+            to: -5
+        }
+
+        NumberAnimation {
+            target: cameraRoot
+            property: "z"
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: cameraRoot.z
+            to: 0
+        }
+
+        NumberAnimation {
+            target: sceneCamera2
+            property: "fieldOfView"
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: sceneCamera2.fieldOfView
+            to:64
+        }
+
+        NumberAnimation {
             target: sceneCamera2
             property: "x"
-            Keyframe {
-                value: sceneCamera2.x
-                frame: 0
-            }
-
-            Keyframe {
-                value: -29.83084
-                frame: 2000
-            }
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: sceneCamera2.x
+            to:-31.83
         }
 
-        KeyframeGroup {
-            target: sceneCamera2
-            property: "z"
-            Keyframe {
-                value: sceneCamera2.z
-                frame: 0
-            }
-
-            Keyframe {
-                value: 622.0304
-                frame: 2000
-            }
-        }
-
-        KeyframeGroup {
+        NumberAnimation {
             target: sceneCamera2
             property: "y"
-            Keyframe {
-                value: sceneCamera2.y
-                frame: 0
-            }
-
-            Keyframe {
-                value: 188.52927
-                frame: 2000
-            }
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: sceneCamera2.y
+            to: 223.61
         }
 
-        KeyframeGroup {
+        NumberAnimation {
+            target: sceneCamera2
+            property: "z"
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: sceneCamera2.z
+            to:665.36
+        }
+
+        NumberAnimation {
             target: sceneCamera2
             property: "eulerRotation.x"
-            Keyframe {
-                value: sceneCamera2.eulerRotation.x
-                frame: 0
-            }
-
-            Keyframe {
-                value: -12.07
-                frame: 2000
-            }
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: sceneCamera2.eulerRotation.x
+            to:-12.17
         }
 
-        KeyframeGroup {
+        NumberAnimation {
             target: sceneCamera2
             property: "eulerRotation.y"
-            Keyframe {
-                value: sceneCamera2.eulerRotation.y
-                frame: 0
-            }
-
-            Keyframe {
-                value: 0
-                frame: 2000
-            }
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: sceneCamera2.eulerRotation.y
+            to:0
         }
 
-        KeyframeGroup {
+        NumberAnimation {
             target: sceneCamera2
             property: "eulerRotation.z"
-            Keyframe {
-                value: sceneCamera2.eulerRotation.z
-                frame: 0
-            }
-
-            Keyframe {
-                value: 0
-                frame: 2000
-            }
+            duration: 1000
+            easing.type: Easing.InOutQuad
+            from: sceneCamera2.eulerRotation.z
+            to:0
         }
     }
 
@@ -1897,8 +2149,11 @@ Rectangle {
 
             PropertyChanges {
                 target: lightDirectional
-                color: "#c5cbc4"
-                brightness: 1
+                color: "#e1e1e1"
+                shadowMapQuality: Light.ShadowMapQualityVeryHigh
+                shadowMapFar: 0
+                castsShadow: false
+                brightness: 0
                 ambientColor: "#385667"
                 eulerRotation.z: -179.99934
                 eulerRotation.y: 179.99934
@@ -1907,8 +2162,8 @@ Rectangle {
 
             PropertyChanges {
                 target: lightDirectional1
-                color: "#c8e2f5"
-                brightness: 1
+                color: "#e6f4fe"
+                brightness: 2.58
                 ambientColor: "#223843"
                 eulerRotation.z: -0.00001
                 eulerRotation.y: 0.00001
@@ -1920,10 +2175,9 @@ Rectangle {
                 x: 0
                 y: 1
                 visible: true
-                z: 0
-                eulerRotation.z: 0
-                eulerRotation.y: 0
-                eulerRotation.x: 0
+                scale.z: 60
+                scale.x: 60
+
             }
 
             PropertyChanges {
@@ -1932,83 +2186,59 @@ Rectangle {
             }
 
             PropertyChanges {
-                target: uk5ofde_LOD0
-                x: 117.9
-                y: -52.252
-                visible: true
-                eulerRotation.z: -0
-                eulerRotation.y: 11.50532
-                eulerRotation.x: 0
-                z: -24.19652
-            }
-
-            PropertyChanges {
-                target: uk5pebv_LOD0
-                x: -0
-                y: -69.778
-                visible: true
-                eulerRotation.z: -0
-                eulerRotation.y: 0
-                eulerRotation.x: -11.28177
-                z: 125.24512
-            }
-
-            PropertyChanges {
-                target: ulbrbdt_LOD0
-                x: -36.694
-                y: -70.351
-                visible: true
-                eulerRotation.z: 20.75727
-                eulerRotation.y: 107.97124
-                eulerRotation.x: -20.11145
-                z: -121.36554
-                scale.z: 0.1
-                scale.y: 0.15
-                scale.x: 0.1
-            }
-
-            PropertyChanges {
-                target: ventdee_LOD0
-                x: -123.265
-                y: -86.877
-                visible: true
-                scale.z: 1
-                scale.y: 1.5
-                scale.x: 0.62114
-                eulerRotation.z: 0
-                eulerRotation.x: -10.07419
-                z: 47.0688
-                eulerRotation.y: -69.7391
-            }
-
-
-            PropertyChanges {
                 target: desert
+                probeOrientation.y: -70
+                lightProbe: _Desert
+                antialiasingQuality: SceneEnvironment.VeryHigh
+                fxaaEnabled: false
+                specularAAEnabled: false
+                aoStrength: 72
+                aoSoftness: 39.8591
+                aoBias: 1
+                lutEnabled: false
+                aoDither: true
+                aoSampleRate: 4
+                temporalAAStrength: 2
+                temporalAAEnabled: true
+                aoDistance: 25
+                depthOfFieldBlurAmount: 3
+                depthOfFieldFocusRange: 200
+                depthOfFieldEnabled: true
+                lensFlareDistortion: 0.20282
+                lensFlareBlurAmount: 2.45517
+                lensFlareApplyDirtTexture: false
+                lensFlareLensColorTexture: _Desert
+                sharpnessAmount: 0
+                whitePoint: 0.83817
+                skyboxBlurAmount: 0.18745
+                glowBlendMode: ExtendedSceneEnvironment.GlowBlendMode.Additive
+                glowUseBicubicUpscale: false
+                exposure: 0.8
                 lensFlareApplyStarburstTexture: false
                 lensFlareGhostCount: 0
-                lensFlareBloomBias: 1.41332
+                lensFlareBloomBias: 0.38856
                 lensFlareEnabled: false
                 vignetteEnabled: false
-                glowBlendMode: ExtendedSceneEnvironment.GlowBlendMode.Screen
-                glowHDRScale: 2.36038
+                glowHDRScale: 0
                 glowQualityHigh: true
-                glowHDRMaximumValue: 13
-                glowStrength: 0.40564
+                glowHDRMaximumValue: 27.76875
+                glowStrength: 0.02647
                 glowIntensity: 2
-                glowHDRMinimumValue: 0
-                glowLevel: ExtendedSceneEnvironment.GlowLevel.One | ExtendedSceneEnvironment.GlowLevel.Two | ExtendedSceneEnvironment.GlowLevel.Three
-                glowBloom: 1
-                glowEnabled: true
+                glowHDRMinimumValue: 3.77218
+                glowLevel: ExtendedSceneEnvironment.GlowLevel.One | ExtendedSceneEnvironment.GlowLevel.Two | ExtendedSceneEnvironment.GlowLevel.Three | ExtendedSceneEnvironment.GlowLevel.Four | ExtendedSceneEnvironment.GlowLevel.Five | ExtendedSceneEnvironment.GlowLevel.Six | ExtendedSceneEnvironment.GlowLevel.Seven
+                glowBloom: 0.15158
+                glowEnabled: false
                 aoEnabled: false
-                probeExposure: 1.5
+                probeExposure: 2
             }
 
             PropertyChanges {
                 target: plane3
-                x: -8.062
-                y: 2
+                x: -11.348
+                y: 4.23
                 opacity: 1
                 visible: true
+                z: -5.52203
                 receivesShadows: true
                 castsReflections: false
                 levelOfDetailBias: 0
@@ -2017,21 +2247,90 @@ Rectangle {
 
             PropertyChanges {
                 target: groundMat1
-                opacity: 0.815
+                opacity: 0.93
+                lightProbe: _Desert
                 cullMode: Material.NoCulling
-                blendMode: PrincipledMaterial.SourceOver
                 vertexColorsEnabled: false
                 depthDrawMode: Material.AlwaysDepthDraw
             }
 
             PropertyChanges {
                 target: headlights
-                opacity: 0.316
+                x: -18.519
+                y: -22.316
+                z: 6.0437
             }
 
             PropertyChanges {
                 target: lightPoint1
                 visible: btnLight.checked
+            }
+
+            PropertyChanges {
+                target: rectMaterial4
+                lightProbe: _Desert
+            }
+
+            PropertyChanges {
+                target: backlight_red
+                x: -0.001
+                y: 252.129
+            }
+
+            PropertyChanges {
+                target: pebbles
+                x: 0.241
+                y: -0.013
+                z: -2.06169
+                eulerRotation.z: -0.00002
+                eulerRotation.y: -47.88068
+                eulerRotation.x: -0.00001
+                scale.z: 7
+                scale.y: 27
+                scale.x: 7
+            }
+
+            PropertyChanges {
+                target: _Desert
+                source: rootWindow.downloadBase + "/content/images/HDR/low/_Desert.ktx"
+            }
+
+            PropertyChanges {
+                target: desert.fog
+                color: "#aea89f"
+                depthCurve: 1
+                transmitCurve: 15
+                heightCurve: 0
+                depthFar: 5000
+                transmitEnabled: true
+                density: 0.70495
+                leastIntenseY: 2
+                depthNear: 200
+                heightEnabled: false
+                depthEnabled: true
+                enabled: true
+            }
+
+            PropertyChanges {
+                target: ev_SportsCar_low
+                x: -19
+                y: 2.343
+                desert: true
+                z: 0
+            }
+
+            PropertyChanges {
+                target: shadowPlane
+                x: 0
+                y: 0.008
+                opacity: 0.705
+                visible: true
+                z: -0
+            }
+
+            PropertyChanges {
+                target: plane2
+                visible: false
             }
         },
         State {
@@ -2049,7 +2348,7 @@ Rectangle {
             }
             PropertyChanges {
                 target: lightDirectional
-                visible: true
+                visible: false
                 ambientColor: "#3c3c3c"
                 brightness: 0.5
                 eulerRotation.z: 180
@@ -2059,9 +2358,10 @@ Rectangle {
 
             PropertyChanges {
                 target: lightDirectional1
-                visible: true
+                visible: false
+                castsShadow: false
                 ambientColor: "#282828"
-                brightness: 1
+                brightness: 2
                 eulerRotation.z: -0.00001
                 eulerRotation.y: 0
                 eulerRotation.x: -6.62763
@@ -2086,8 +2386,19 @@ Rectangle {
 
             PropertyChanges {
                 target: studio
-                probeExposure: 1
+                lightProbe: _Hall
                 backgroundMode: SceneEnvironment.Color
+                depthOfFieldEnabled: false
+                glowBloom: 0.40265
+                glowLevel: ExtendedSceneEnvironment.GlowLevel.One | ExtendedSceneEnvironment.GlowLevel.Two | ExtendedSceneEnvironment.GlowLevel.Three | ExtendedSceneEnvironment.GlowLevel.Four | ExtendedSceneEnvironment.GlowLevel.Five | ExtendedSceneEnvironment.GlowLevel.Six | ExtendedSceneEnvironment.GlowLevel.Seven
+                glowEnabled: false
+                lensFlareEnabled: false
+                aoDither: true
+                aoDistance: 1
+                aoStrength: 100
+                aoEnabled: false
+                clearColor: "#121212"
+                probeExposure: 1
             }
 
             PropertyChanges {
@@ -2098,13 +2409,19 @@ Rectangle {
 
             PropertyChanges {
                 target: rectMaterial2
-                roughness: 0.18541
-                normalStrength: 0.5
+                specularAmount: 0.51741
+                fresnelPower: 3.8
+                metalness: 0.24579
+                baseColor: "#828282"
+                occlusionAmount: 1
+                opacityMap: dot
+                roughness: 0.26648
+                normalStrength: 1
             }
 
             PropertyChanges {
                 target: groundMat1
-                opacity: 0.91
+                opacity: 1
             }
 
             PropertyChanges {
@@ -2114,8 +2431,40 @@ Rectangle {
                 z: 10.0102
             }
 
+            PropertyChanges {
+                target: desert
+                antialiasingQuality: SceneEnvironment.VeryHigh
+                temporalAAEnabled: true
+                glowLevel: ExtendedSceneEnvironment.GlowLevel.One
+                glowHDRMinimumValue: 0.33772
+                glowIntensity: 0.54665
+                glowQualityHigh: true
+            }
 
+            PropertyChanges {
+                target: backlight_red
+                x: -0.002
+                y: 222.524
+                z: -2765.60449
+            }
 
+            PropertyChanges {
+                target: backlightNew
+                opacity: 0.264
+            }
+
+            PropertyChanges {
+                target: rectMaterial4
+                normalStrength: 1
+                metalness: 0.18864
+            }
+
+            PropertyChanges {
+                target: videoRoom
+                temporalAAStrength: 2
+                temporalAAEnabled: true
+                antialiasingQuality: SceneEnvironment.VeryHigh
+            }
         },
         State {
             name: "State3"
@@ -2123,9 +2472,15 @@ Rectangle {
 
             PropertyChanges {
                 target: plane2
+                x: 0
                 visible: true
-                y: 500
-                z: -750
+                scale.z: 50
+                scale.y: 50
+                eulerRotation.z: 0
+                eulerRotation.y: 139.22893
+                eulerRotation.x: -90
+                y: 222.14
+                z: -13.11121
             }
 
             PropertyChanges {
@@ -2135,6 +2490,7 @@ Rectangle {
 
             PropertyChanges {
                 target: lightDirectional1
+                castsShadow: false
                 ambientColor: "#2b2b2b"
                 brightness: 1
                 eulerRotation.z: -0.00001
@@ -2169,13 +2525,13 @@ Rectangle {
             PropertyChanges {
                 target: animatedstateFloor
                 x: -0
-                y: 0
+                y: -0
                 visible: true
                 castsReflections: true
                 receivesReflections: true
-                scale.y: 30
-                scale.x: 200
-                z: 750
+                scale.y: 66.01047
+                scale.x: 49.36702
+                z: -23.71246
             }
 
             PropertyChanges {
@@ -2186,17 +2542,24 @@ Rectangle {
 
             PropertyChanges {
                 target: reflectionProbe1
+                x: 0
+                y: 0
+                z: -598.11938
                 parallaxCorrection: true
                 timeSlicing: ReflectionProbe.AllFacesAtOnce
                 refreshMode: ReflectionProbe.EveryFrame
                 quality: ReflectionProbe.Low
-                boxSize.z: 3000
-                boxSize.x: 3000
-                boxSize.y: 1000
+                boxSize.z: 6000
+                boxSize.x: 6000
+                boxSize.y: 6000
             }
 
             PropertyChanges {
                 target: rectMaterial2
+                lighting: PrincipledMaterial.FragmentLighting
+                cullMode: Material.BackFaceCulling
+                depthDrawMode: Material.NeverDepthDraw
+                alphaMode: PrincipledMaterial.Blend
                 specularAmount: 0.25
                 clearcoatAmount: 0
                 roughness: 0.4
@@ -2204,6 +2567,7 @@ Rectangle {
 
             PropertyChanges {
                 target: principledMaterial2
+                cullMode: Material.NoCulling
                 baseColor: "#ffffff"
                 roughness: 1
             }
@@ -2235,16 +2599,41 @@ Rectangle {
 
             PropertyChanges {
                 target: rectMaterial4
+                opacityMap: dot
                 clearcoatRoughnessAmount: 0
                 roughnessChannel: Material.G
-                roughness: 0.5
-                metalness: 0
+                roughness: 0.30017
+                metalness: 0.16695
                 normalStrength: 0.5
             }
 
             PropertyChanges {
                 target: groundMat1
-                opacity: 0.939
+                opacity: 1
+            }
+
+            PropertyChanges {
+                target: studio
+                lightProbe: _Desert
+            }
+
+            PropertyChanges {
+                target: backlight_red
+                x: -0.003
+                y: 116.157
+                z: -2740.36426
+            }
+
+            PropertyChanges {
+                target: backlightNew
+                opacity: 0.275
+                depthDrawMode: Material.AlwaysDepthDraw
+                cullMode: Material.BackFaceCulling
+            }
+
+            PropertyChanges {
+                target: videoRoom
+                lightProbe: _Desert
             }
         }
     ]

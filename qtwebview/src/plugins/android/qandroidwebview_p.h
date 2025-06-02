@@ -23,10 +23,11 @@
 
 #include <private/qabstractwebview_p.h>
 
+QT_BEGIN_NAMESPACE
+
 Q_DECLARE_JNI_CLASS(WebViewController, "org/qtproject/qt/android/view/QtAndroidWebViewController");
 Q_DECLARE_JNI_CLASS(WebView, "android/webkit/WebView");
 
-QT_BEGIN_NAMESPACE
 
 class QAndroidWebViewSettingsPrivate : public QAbstractWebViewSettings
 {

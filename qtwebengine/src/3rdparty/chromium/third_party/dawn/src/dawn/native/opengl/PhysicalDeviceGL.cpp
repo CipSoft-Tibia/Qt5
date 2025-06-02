@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/opengl/PhysicalDeviceGL.h"
 
@@ -21,6 +34,7 @@
 #include <utility>
 
 #include "dawn/common/GPUInfo.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/Instance.h"
 #include "dawn/native/opengl/ContextEGL.h"
 #include "dawn/native/opengl/DeviceGL.h"
@@ -129,9 +143,9 @@ bool PhysicalDevice::SupportsExternalImages() const {
 
 MaybeError PhysicalDevice::InitializeImpl() {
     if (mFunctions.GetVersion().IsES()) {
-        ASSERT(GetBackendType() == wgpu::BackendType::OpenGLES);
+        DAWN_ASSERT(GetBackendType() == wgpu::BackendType::OpenGLES);
     } else {
-        ASSERT(GetBackendType() == wgpu::BackendType::OpenGL);
+        DAWN_ASSERT(GetBackendType() == wgpu::BackendType::OpenGL);
     }
 
     mName = reinterpret_cast<const char*>(mFunctions.GetString(GL_RENDERER));
@@ -241,7 +255,7 @@ GLint GetIndexed(const OpenGLFunctions& gl, GLenum pname, GLuint index) {
 
 MaybeError PhysicalDevice::InitializeSupportedLimitsImpl(CombinedLimits* limits) {
     const OpenGLFunctions& gl = mFunctions;
-    GetDefaultLimits(&limits->v1);
+    GetDefaultLimitsForSupportedFeatureLevel(&limits->v1);
 
     limits->v1.maxTextureDimension1D = limits->v1.maxTextureDimension2D =
         Get(gl, GL_MAX_TEXTURE_SIZE);
@@ -269,11 +283,17 @@ MaybeError PhysicalDevice::InitializeSupportedLimitsImpl(CombinedLimits* limits)
     limits->v1.minStorageBufferOffsetAlignment = Get(gl, GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT);
     limits->v1.maxVertexBuffers = Get(gl, GL_MAX_VERTEX_ATTRIB_BINDINGS);
     limits->v1.maxBufferSize = kAssumedMaxBufferSize;
-    GLint maxVertexAttribs = Get(gl, GL_MAX_VERTEX_ATTRIBS);
-    limits->v1.maxVertexAttributes = limits->v1.maxVertexBuffers * maxVertexAttribs;
+    limits->v1.maxVertexAttributes = Get(gl, GL_MAX_VERTEX_ATTRIBS);
     limits->v1.maxVertexBufferArrayStride = Get(gl, GL_MAX_VERTEX_ATTRIB_STRIDE);
     limits->v1.maxInterStageShaderComponents = Get(gl, GL_MAX_VARYING_COMPONENTS);
     limits->v1.maxInterStageShaderVariables = Get(gl, GL_MAX_VARYING_VECTORS);
+    // TODO(dawn:685, dawn:1448): Support higher values as ANGLE compiler always generates
+    // additional shader varyings (gl_PointSize and dx_Position) on ANGLE D3D backends.
+    limits->v1.maxInterStageShaderComponents =
+        std::min(limits->v1.maxInterStageShaderComponents, kMaxInterStageShaderComponents);
+    limits->v1.maxInterStageShaderVariables =
+        std::min(limits->v1.maxInterStageShaderVariables, kMaxInterStageShaderVariables);
+
     limits->v1.maxColorAttachments =
         std::min(Get(gl, GL_MAX_COLOR_ATTACHMENTS), Get(gl, GL_MAX_DRAW_BUFFERS));
 
@@ -371,11 +391,18 @@ void PhysicalDevice::SetupBackendDeviceToggles(TogglesState* deviceToggles) cons
 
     // For OpenGL ES, use compute shader blit to emulate bgra8unorm texture to buffer copies.
     deviceToggles->Default(Toggle::UseBlitForBGRA8UnormTextureToBufferCopy, !supportsBGRARead);
+
+    // For OpenGL ES, use compute shader blit to emulate rgb9e5ufloat texture to buffer copies.
+    deviceToggles->Default(Toggle::UseBlitForRGB9E5UfloatTextureCopy, gl.GetVersion().IsES());
+
+    // Use a blit to emulate stencil-only buffer-to-texture copies.
+    deviceToggles->Default(Toggle::UseBlitForBufferToStencilTextureCopy, true);
 }
 
-ResultOrError<Ref<DeviceBase>> PhysicalDevice::CreateDeviceImpl(AdapterBase* adapter,
-                                                                const DeviceDescriptor* descriptor,
-                                                                const TogglesState& deviceToggles) {
+ResultOrError<Ref<DeviceBase>> PhysicalDevice::CreateDeviceImpl(
+    AdapterBase* adapter,
+    const UnpackedPtr<DeviceDescriptor>& descriptor,
+    const TogglesState& deviceToggles) {
     EGLenum api =
         GetBackendType() == wgpu::BackendType::OpenGL ? EGL_OPENGL_API : EGL_OPENGL_ES_API;
     std::unique_ptr<Device::Context> context;
@@ -395,9 +422,12 @@ bool PhysicalDevice::SupportsFeatureLevel(FeatureLevel featureLevel) const {
     return featureLevel == FeatureLevel::Compatibility;
 }
 
-MaybeError PhysicalDevice::ValidateFeatureSupportedWithTogglesImpl(
+FeatureValidationResult PhysicalDevice::ValidateFeatureSupportedWithTogglesImpl(
     wgpu::FeatureName feature,
     const TogglesState& toggles) const {
     return {};
 }
+
+void PhysicalDevice::PopulateBackendProperties(UnpackedPtr<AdapterProperties>& properties) const {}
+
 }  // namespace dawn::native::opengl

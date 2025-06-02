@@ -40,12 +40,7 @@ struct common {
         NEIGHBOR_ENUM
     };
 
-    static std::string buildExportMacro(std::string identifier)
-    {
-        if (identifier.empty())
-            return identifier;
-        return "QPB_" + identifier + "_EXPORT";
-    }
+    static std::string buildExportMacro(bool addTrailingSpace = true);
 
     static std::string getFullNamespace(std::string_view fullDescriptorName,
                                         std::string_view separator,
@@ -132,6 +127,7 @@ struct common {
     static std::string qualifiedQmlName(const std::string &name);
     static bool isOneofField(const FieldDescriptor *field);
     static bool isOptionalField(const FieldDescriptor *field);
+    static bool isTriviallyCopyable(const FieldDescriptor *field);
     static bool isLocalEnum(const EnumDescriptor *type, const google::protobuf::Descriptor *scope);
     static EnumVisibility enumVisibility(const EnumDescriptor *type, const Descriptor *scope);
     static bool hasQmlAlias(const FieldDescriptor *field);
@@ -161,6 +157,13 @@ struct common {
 
     static bool isExtraNamespacedFile(const std::string &file);
     static void setExtraNamespacedFiles(const std::set<std::string> &files);
+
+    static std::string headerGuardFromFilename(std::string fileName);
+
+    static std::string generateRelativeFilePath(const ::google::protobuf::FileDescriptor *file,
+                                                const std::string &name);
+
+    static bool hasCustomJsonCoversion(const Descriptor *message);
 
 private:
     static std::set<std::string> m_extraNamespacedFiles;

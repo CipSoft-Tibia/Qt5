@@ -12,7 +12,6 @@
 
 #include "base/functional/callback_forward.h"
 #include "base/task/cancelable_task_tracker.h"
-#include "components/bookmarks/browser/bookmark_node.h"
 #include "components/bookmarks/common/bookmark_metrics.h"
 #include "components/favicon_base/favicon_callback.h"
 #include "components/keyed_service/core/keyed_service.h"
@@ -22,6 +21,7 @@ class GURL;
 namespace bookmarks {
 
 class BookmarkModel;
+class BookmarkNode;
 class BookmarkPermanentNode;
 
 // A callback that generates a std::unique_ptr<BookmarkPermanentNode>, given a
@@ -68,10 +68,6 @@ class BookmarkClient {
   // |url_typed_count_map| must not be null.
   virtual void GetTypedCountForUrls(UrlTypedCountMap* url_typed_count_map);
 
-  // Returns whether the embedder wants permanent node of type |type|
-  // to always be visible or to only show them when not empty.
-  virtual bool IsPermanentNodeVisibleWhenEmpty(BookmarkNode::Type type) = 0;
-
   // Returns a task that will be used to load a managed root node. This task
   // will be invoked in the Profile's IO task runner.
   virtual LoadManagedNodeCallback GetLoadManagedNodeCallback() = 0;
@@ -82,14 +78,8 @@ class BookmarkClient {
   // Returns true if the |permanent_node| can have its title updated.
   virtual bool CanSetPermanentNodeTitle(const BookmarkNode* permanent_node) = 0;
 
-  // Returns true if |node| should sync.
-  virtual bool CanSyncNode(const BookmarkNode* node) = 0;
-
-  // Returns true if this node can be edited by the user.
-  // TODO(joaodasilva): the model should check this more aggressively, and
-  // should give the client a means to temporarily disable those checks.
-  // http://crbug.com/49598
-  virtual bool CanBeEditedByUser(const BookmarkNode* node) = 0;
+  // Returns true if |node| is considered a managed node.
+  virtual bool IsNodeManaged(const BookmarkNode* node) = 0;
 
   // Encodes the bookmark sync data into a string blob. It's used by the
   // bookmark model to persist the sync metadata together with the bookmark

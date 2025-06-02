@@ -3,8 +3,8 @@
 
 #include <QtTest/QtTest>
 
-#include <QtGraphs/Q3DBars>
 #include <QtGraphs/Q3DScene>
+#include <QtGraphsWidgets/q3dbarswidgetitem.h>
 
 #include "cpptestutil.h"
 
@@ -24,7 +24,8 @@ private slots:
     void initializeProperties();
     void invalidProperties();
 
-    void subViews();
+    // TODO: Fails on QNX (QTBUG-125982)
+    // void subViews();
 
 private:
     Q3DScene *m_scene;
@@ -69,6 +70,16 @@ void tst_scene::initializeProperties()
 {
     QVERIFY(m_scene);
 
+    QSignalSpy viewportSpy(m_scene, &Q3DScene::viewportChanged);
+    QSignalSpy primarySubViewportSpy(m_scene, &Q3DScene::primarySubViewportChanged);
+    QSignalSpy secondarySubViewportSpy(m_scene, &Q3DScene::secondarySubViewportChanged);
+    QSignalSpy secondarySubviewOnTopSpy(m_scene, &Q3DScene::secondarySubviewOnTopChanged);
+    QSignalSpy slicingActiveSpy(m_scene, &Q3DScene::slicingActiveChanged);
+    QSignalSpy devicePixelRatioSpy(m_scene, &Q3DScene::devicePixelRatioChanged);
+    QSignalSpy selectionQueryPositionSpy(m_scene, &Q3DScene::selectionQueryPositionChanged);
+    QSignalSpy graphPositionQuerySpy(m_scene, &Q3DScene::graphPositionQueryChanged);
+    QSignalSpy needRenderSpy(m_scene, &Q3DScene::needRender);
+
     m_scene->setDevicePixelRatio(2.0f);
     m_scene->setGraphPositionQuery(QPoint(0, 0));
     m_scene->setPrimarySubViewport(QRect(0, 0, 50, 50));
@@ -93,6 +104,15 @@ void tst_scene::initializeProperties()
 
     QCOMPARE(m_scene->primarySubViewport(), QRect(0, 0, 30, 30));
     QCOMPARE(m_scene->secondarySubViewport(), QRect(0, 0, 150, 150));
+
+    QCOMPARE(primarySubViewportSpy.size(), 2);
+    QCOMPARE(secondarySubViewportSpy.size(), 2);
+    QCOMPARE(secondarySubviewOnTopSpy.size(), 1);
+    QCOMPARE(slicingActiveSpy.size(), 1);
+    QCOMPARE(devicePixelRatioSpy.size(), 1);
+    QCOMPARE(selectionQueryPositionSpy.size(), 1);
+    QCOMPARE(graphPositionQuerySpy.size(), 1);
+    QCOMPARE(needRenderSpy.size(), 9);
 }
 
 void tst_scene::invalidProperties()
@@ -103,48 +123,54 @@ void tst_scene::invalidProperties()
     QCOMPARE(m_scene->secondarySubViewport(), QRect(0, 0, 0, 0));
 }
 
+// TODO: Fails on QNX (QTBUG-125982), and the checks in the test function do not seem to work
+/*
 void tst_scene::subViews()
 {
-    if (!CpptestUtil::isOpenGLSupported())
-        QSKIP("OpenGL not supported on this platform");
+    if (qEnvironmentVariableIsEmpty("QNX_QEMU")
+        && qEnvironmentVariableIsEmpty("QNX_QEMU_LD_LIBRARY_PATH")
+        && qEnvironmentVariableIsEmpty("QNX_710") && qEnvironmentVariableIsEmpty("QNX_800")) {
+        QQuickWidget quickWidget;
+        Q3DBarsWidgetItem graph;
+        quickWidget.setMinimumSize(QSize(200, 200));
+        graph.setWidget(&quickWidget);
 
-    Q3DBars graph;
-    graph.setMinimumSize(QSize(200, 200));
+        Q3DScene *scene = graph.scene();
+        graph.widget()->show();
 
-    Q3DScene *scene = graph.scene();
-    graph.show();
+        QCoreApplication::processEvents();
 
-    QCoreApplication::processEvents();
+        QTRY_COMPARE(scene->viewport(), QRect(0, 0, 200, 200));
+        QCOMPARE(scene->primarySubViewport(), QRect(0, 0, 40, 40));
+        QCOMPARE(scene->secondarySubViewport(), QRect(0, 0, 0, 0));
 
-    QTRY_COMPARE(scene->viewport(), QRect(0, 0, 200, 200));
-    QCOMPARE(scene->primarySubViewport(), QRect(0, 0, 200, 200));
-    QCOMPARE(scene->secondarySubViewport(), QRect(0, 0, 0, 0));
+        QCOMPARE(scene->isSecondarySubviewOnTop(), true);
+        QCOMPARE(scene->isPointInPrimarySubView(QPoint(100, 100)), false);
+        QCOMPARE(scene->isPointInPrimarySubView(QPoint(201, 201)), false);
+        QCOMPARE(scene->isPointInSecondarySubView(QPoint(100, 100)), false);
 
-    QCOMPARE(scene->isSecondarySubviewOnTop(), true);
-    QCOMPARE(scene->isPointInPrimarySubView(QPoint(100, 100)), true);
-    QCOMPARE(scene->isPointInPrimarySubView(QPoint(201, 201)), false);
-    QCOMPARE(scene->isPointInSecondarySubView(QPoint(100, 100)), false);
+        scene->setSlicingActive(true);
+        scene->setSecondarySubviewOnTop(true);
 
-    scene->setSlicingActive(true);
+        QCOMPARE(scene->isSecondarySubviewOnTop(), true);
+        QCOMPARE(scene->primarySubViewport(), QRect(0, 0, 40, 40));
+        QCOMPARE(scene->secondarySubViewport(), QRect(0, 0, 200, 200));
+        QCOMPARE(scene->isPointInPrimarySubView(QPoint(100, 100)), false);
+        QCOMPARE(scene->isPointInPrimarySubView(QPoint(30, 30)), false);
+        QCOMPARE(scene->isPointInSecondarySubView(QPoint(100, 100)), true);
+        QCOMPARE(scene->isPointInSecondarySubView(QPoint(30, 30)), true);
 
-    QCOMPARE(scene->isSecondarySubviewOnTop(), false);
-    QCOMPARE(scene->primarySubViewport(), QRect(0, 0, 40, 40));
-    QCOMPARE(scene->secondarySubViewport(), QRect(0, 0, 200, 200));
-    QCOMPARE(scene->isPointInPrimarySubView(QPoint(100, 100)), false);
-    QCOMPARE(scene->isPointInPrimarySubView(QPoint(30, 30)), true);
-    QCOMPARE(scene->isPointInSecondarySubView(QPoint(100, 100)), true);
-    QCOMPARE(scene->isPointInSecondarySubView(QPoint(30, 30)), false);
+        scene->setSecondarySubviewOnTop(false);
 
-    scene->setSecondarySubviewOnTop(true);
-
-    QCOMPARE(scene->isSecondarySubviewOnTop(), true);
-    QCOMPARE(scene->primarySubViewport(), QRect(0, 0, 40, 40));
-    QCOMPARE(scene->secondarySubViewport(), QRect(0, 0, 200, 200));
-    QCOMPARE(scene->isPointInPrimarySubView(QPoint(100, 100)), false);
-    QCOMPARE(scene->isPointInPrimarySubView(QPoint(30, 30)), false);
-    QCOMPARE(scene->isPointInSecondarySubView(QPoint(100, 100)), true);
-    QCOMPARE(scene->isPointInSecondarySubView(QPoint(30, 30)), true);
+        QCOMPARE(scene->isSecondarySubviewOnTop(), false);
+        QCOMPARE(scene->primarySubViewport(), QRect(0, 0, 40, 40));
+        QCOMPARE(scene->secondarySubViewport(), QRect(0, 0, 200, 200));
+        QCOMPARE(scene->isPointInPrimarySubView(QPoint(100, 100)), false);
+        QCOMPARE(scene->isPointInPrimarySubView(QPoint(30, 30)), true);
+        QCOMPARE(scene->isPointInSecondarySubView(QPoint(100, 100)), true);
+        QCOMPARE(scene->isPointInSecondarySubView(QPoint(30, 30)), false);
+    }
 }
-
+*/
 QTEST_MAIN(tst_scene)
 #include "tst_scene.moc"

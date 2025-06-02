@@ -40,6 +40,7 @@
 #    include "qandroidvideodevices_p.h"
 #    include "qandroidcamera_p.h"
 #    include "qandroidimagecapture_p.h"
+#    include "qandroidscreencapture_p.h"
 extern "C" {
 #  include <libavutil/log.h>
 #  include <libavcodec/jni.h>
@@ -60,29 +61,19 @@ extern "C" {
 #include "qx11capturablewindows_p.h"
 #endif
 
+#if QT_CONFIG(pipewire_screencapture)
+#  include <QtMultimedia/private/qpipewire_screencapture_p.h>
+#endif
+
 #if QT_CONFIG(eglfs)
 #include "qeglfsscreencapture_p.h"
 #endif
 
+#include <QtCore/qloggingcategory.h>
+
 QT_BEGIN_NAMESPACE
 
-class QFFmpegMediaPlugin : public QPlatformMediaPlugin
-{
-    Q_OBJECT
-    Q_PLUGIN_METADATA(IID QPlatformMediaPlugin_iid FILE "ffmpeg.json")
-
-public:
-    QFFmpegMediaPlugin()
-      : QPlatformMediaPlugin()
-    {}
-
-    QPlatformMediaIntegration* create(const QString &name) override
-    {
-        if (name == u"ffmpeg")
-            return new QFFmpegMediaIntegration;
-        return nullptr;
-    }
-};
+static Q_LOGGING_CATEGORY(qLcFFmpeg, "qt.multimedia.ffmpeg");
 
 bool thread_local FFmpegLogsEnabledInThread = true;
 static bool UseCustomFFmpegLogger = false;
@@ -100,7 +91,7 @@ static void qffmpegLogCallback(void *ptr, int level, const char *fmt, va_list vl
         return;
 
     QString message = QStringLiteral("FFmpeg log: %1").arg(QString::vasprintf(fmt, vl));
-    if (message.endsWith("\n"))
+    if (message.endsWith(u"\n"))
         message.removeLast();
 
     if (level == AV_LOG_DEBUG || level == AV_LOG_TRACE)
@@ -173,15 +164,16 @@ QFFmpegMediaIntegration::QFFmpegMediaIntegration()
 {
     setupFFmpegLogger();
 
-#ifndef QT_NO_DEBUG
-    qDebug() << "Available HW decoding frameworks:";
-    for (auto type : QFFmpeg::HWAccel::decodingDeviceTypes())
-        qDebug() << "    " << av_hwdevice_get_type_name(type);
+    qCInfo(qLcFFmpeg) << "Using Qt multimedia with FFmpeg version" << av_version_info()
+                      << avutil_license();
 
-    qDebug() << "Available HW encoding frameworks:";
+    qCDebug(qLcFFmpeg) << "Available HW decoding frameworks:";
+    for (auto type : QFFmpeg::HWAccel::decodingDeviceTypes())
+        qCDebug(qLcFFmpeg) << "    " << av_hwdevice_get_type_name(type);
+
+    qCDebug(qLcFFmpeg) << "Available HW encoding frameworks:";
     for (auto type : QFFmpeg::HWAccel::encodingDeviceTypes())
-        qDebug() << "    " << av_hwdevice_get_type_name(type);
-#endif
+        qCDebug(qLcFFmpeg) << "    " << av_hwdevice_get_type_name(type);
 }
 
 QMaybe<QPlatformAudioDecoder *> QFFmpegMediaIntegration::createAudioDecoder(QAudioDecoder *decoder)
@@ -224,7 +216,8 @@ QMaybe<QPlatformCamera *> QFFmpegMediaIntegration::createCamera(QCamera *camera)
 
 QPlatformSurfaceCapture *QFFmpegMediaIntegration::createScreenCapture(QScreenCapture *)
 {
-    static const QString screenCaptureBackend = qgetenv("QT_SCREEN_CAPTURE_BACKEND").toLower();
+    static const QString screenCaptureBackend =
+            QString::fromLocal8Bit(qgetenv("QT_SCREEN_CAPTURE_BACKEND")).toLower();
 
     if (!screenCaptureBackend.isEmpty()) {
         if (auto screenCapture = createScreenCaptureByBackend(screenCaptureBackend))
@@ -238,6 +231,11 @@ QPlatformSurfaceCapture *QFFmpegMediaIntegration::createScreenCapture(QScreenCap
         return new QX11SurfaceCapture(QPlatformSurfaceCapture::ScreenSource{});
 #endif
 
+#if QT_CONFIG(pipewire_screencapture)
+    if (QtPipeWire::QPipeWireCapture::isSupported())
+        return new QtPipeWire::QPipeWireCapture(QPlatformSurfaceCapture::ScreenSource{});
+#endif
+
 #if QT_CONFIG(eglfs)
     if (QEglfsScreenCapture::isSupported())
         return new QEglfsScreenCapture;
@@ -247,6 +245,8 @@ QPlatformSurfaceCapture *QFFmpegMediaIntegration::createScreenCapture(QScreenCap
     return new QFFmpegScreenCaptureDxgi;
 #elif defined(Q_OS_MACOS) // TODO: probably use it for iOS as well
     return new QAVFScreenCapture;
+#elif defined(Q_OS_ANDROID)
+    return new QAndroidScreenCapture;
 #else
     return new QGrabWindowSurfaceCapture(QPlatformSurfaceCapture::ScreenSource{});
 #endif
@@ -254,7 +254,8 @@ QPlatformSurfaceCapture *QFFmpegMediaIntegration::createScreenCapture(QScreenCap
 
 QPlatformSurfaceCapture *QFFmpegMediaIntegration::createWindowCapture(QWindowCapture *)
 {
-    static const QString windowCaptureBackend = qgetenv("QT_WINDOW_CAPTURE_BACKEND").toLower();
+    static const QString windowCaptureBackend =
+            QString::fromLocal8Bit(qgetenv("QT_WINDOW_CAPTURE_BACKEND")).toLower();
 
     if (!windowCaptureBackend.isEmpty()) {
         if (auto windowCapture = createWindowCaptureByBackend(windowCaptureBackend))
@@ -324,7 +325,9 @@ QPlatformVideoDevices *QFFmpegMediaIntegration::createVideoDevices()
 #elif QT_CONFIG(linux_v4l)
     return new QV4L2CameraDevices(this);
 #elif defined Q_OS_DARWIN
-    return new QAVFVideoDevices(this);
+    return new QAVFVideoDevices(
+        this,
+        &QFFmpeg::isCVFormatSupported);
 #elif defined(Q_OS_WINDOWS)
     return new QWindowsVideoDevices(this);
 #else
@@ -363,13 +366,13 @@ Q_DECL_EXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void * /*reserved*/)
     if (av_jni_set_java_vm(vm, nullptr))
         return JNI_ERR;
 
-    if (!QAndroidCamera::registerNativeMethods())
+    if (!QAndroidCamera::registerNativeMethods()
+            ||!QAndroidScreenCapture::registerNativeMethods()) {
         return JNI_ERR;
+    }
 
     return JNI_VERSION_1_6;
 }
 #endif
 
 QT_END_NAMESPACE
-
-#include "qffmpegmediaintegration.moc"

@@ -7,8 +7,12 @@
 load("@stdlib//internal/graph.star", "graph")
 load("@stdlib//internal/luci/common.star", "keys", "kinds", "triggerer")
 load("./args.star", "args")
+load("./builder_url.star", "linkify_builder")
+load("./sheriff_rotations.star", "get_sheriff_rotations")
+load("./chrome_settings.star", "per_builder_outputs_config")
 load("./nodes.star", "nodes")
 load("./structs.star", "structs")
+load("./targets.star", "TARGET_BUNDLE", targets_lib = "targets")
 load("//project.star", "settings")
 
 def _enum(**kwargs):
@@ -426,7 +430,15 @@ _MIRRORS_COPY_FROM = nodes.create_link_node_type(
     _BUILDER_CONFIG,
 )
 
-def register_builder_config(bucket, name, builder_group, builder_spec, mirrors, try_settings):
+def register_builder_config(
+        bucket,
+        name,
+        builder_group,
+        builder_spec,
+        mirrors,
+        try_settings,
+        targets,
+        additional_exclusions):
     """Registers the builder config so the properties can be computed.
 
     At most one of builder_spec or mirrors can be set. If neither builder_spec
@@ -439,6 +451,10 @@ def register_builder_config(bucket, name, builder_group, builder_spec, mirrors, 
         builder_spec: The spec describing the configuration for the builder.
         mirrors: References to the builders that the builder should mirror.
         try_settings: The object determining the try-specific settings.
+        targets: The targets to be built/run by the builder.
+        additional_exclusions: A list of paths that are excluded when analyzing
+            the change to determine affected targets. The paths should be
+            relative to the per-builder output root dir.
     """
     if not builder_spec and not mirrors:
         if try_settings:
@@ -452,6 +468,8 @@ def register_builder_config(bucket, name, builder_group, builder_spec, mirrors, 
         fail("builder_group must be set to use chromium_tests_builder_config")
     if builder_spec and mirrors:
         fail("only one of builder_spec or mirrors can be set")
+    if targets and not builder_spec:
+        fail("builder_spec must be set to set targets")
 
     if not try_settings:
         try_settings = _try_settings(include_all_triggered_testers = not mirrors)
@@ -460,6 +478,7 @@ def register_builder_config(bucket, name, builder_group, builder_spec, mirrors, 
         builder_spec = builder_spec,
         mirrors = mirrors,
         try_settings = try_settings,
+        additional_exclusions = additional_exclusions,
     ))
 
     if _is_copy_from(builder_spec):
@@ -470,6 +489,18 @@ def register_builder_config(bucket, name, builder_group, builder_spec, mirrors, 
     else:
         for m in mirrors or []:
             _BUILDER_CONFIG_MIRROR.link(builder_config_key, m)
+
+    if targets:
+        # Register the bundle under the qualified builder name, this allows for
+        # explicitly setting a builder's targets to be another builder's with
+        # some modifications
+        targets_key = targets_lib.bundle(
+            name = "{}/{}".format(bucket, name),
+            targets = targets,
+        ).get(TARGET_BUNDLE.kind)
+
+        # Link the builder config to the bundle
+        graph.add_edge(builder_config_key, targets_key)
 
     graph.add_edge(builder_config_key, keys.builder(bucket, name))
 
@@ -578,6 +609,59 @@ def _check_specs_for_consistency(bucket_name, builder_name, entries):
                 ),
             ))
 
+def _get_builder_mirror_description(bucket_name, builder, bc_state):
+    node = _BUILDER_CONFIG.get(bucket_name, builder.name)
+    if not node:
+        return builder.description_html
+    mirrored_builders = bc_state.mirrors(node)
+    mirroring_builders = _get_mirroring_builders(bc_state, node)
+    if not mirrored_builders and not mirroring_builders:
+        return builder.description_html
+    elif mirrored_builders and mirroring_builders:
+        # Need to change the descriptions below if this assertion no
+        # longer holds true.
+        fail("A builder can't both mirror and be mirrored:", builder.name)
+
+    description = builder.description_html
+    if description:
+        description += "<br/>"
+    if mirrored_builders:
+        description += "This builder mirrors the following CI builders:<br/>"
+    else:
+        description += "This builder is mirrored by any of the following try builders:<br/>"
+
+    description += "<ul>"
+    m_ids = [_builder_id(m) for m in mirrored_builders or mirroring_builders]
+    for m_id in sorted(m_ids, key = _builder_id_sort_key):
+        if (bucket_name, m_id["bucket"]) not in [("try", "ci"), ("ci", "try")]:
+            # Change the descriptions above if this assertion no
+            # longer holds true.
+            fail("{} to {} mirroring is not allowed. Only 'try' can mirror 'ci'.".format(bucket_name, m_id["bucket"]))
+        link = linkify_builder(m_id["bucket"], m_id["builder"])
+        description += "<li>%s</li>" % link
+    return description + "</ul>"
+
+def _targets_spec(bc_state, nodes):
+    # We only want to return a non-None value if one of the nodes actually
+    # specifies targets
+    valid = False
+
+    targets_spec = {}
+
+    for n in nodes:
+        # Make sure that for each builder group, we generate a file, even if
+        # there's no builder with targets defined. The recipe is going to try
+        # and open a file for each builder group, so it must exist.
+        group_dict = targets_spec.setdefault(n.props.builder_group, {})
+        targets_spec_for_n = bc_state.targets_spec(n)
+        if targets_spec_for_n != None:
+            group_dict[n.key.id] = targets_spec_for_n
+            valid = True
+
+    if not valid:
+        return None
+    return targets_spec
+
 def _set_builder_config_property(ctx):
     cfg = None
     for f in ctx.output:
@@ -588,6 +672,7 @@ def _set_builder_config_property(ctx):
         fail("There is no buildbucket configuration file to update properties")
 
     bc_state = _bc_state()
+    needs_mega_cq_mode = set()
 
     for bucket in cfg.buckets:
         if not proto.has(bucket, "swarming"):
@@ -602,6 +687,8 @@ def _set_builder_config_property(ctx):
             entries = []
             builder_ids = []
             builder_ids_in_scope_for_testing = []
+            targets_spec_nodes = []
+            mirrors = []
 
             builder_spec = bc_state.builder_spec(node)
             if builder_spec:
@@ -609,9 +696,11 @@ def _set_builder_config_property(ctx):
                 if parent:
                     entries.append(_entry(bc_state, parent))
                 entries.append(_entry(bc_state, node, parent))
+                targets_spec_nodes.append(node)
                 builder_ids.append(_builder_id(node))
                 for child in bc_state.children(node):
                     entries.append(_entry(bc_state, child, node))
+                    targets_spec_nodes.append(child)
                     builder_ids_in_scope_for_testing.append(_builder_id(child))
             else:
                 mirrors = bc_state.mirrors(node)
@@ -625,6 +714,7 @@ def _set_builder_config_property(ctx):
                     if node_id not in encountered:
                         entry = _entry(bc_state, node, parent)
                         entries.append(entry)
+                        targets_spec_nodes.append(node)
                         if bc_state.builder_spec(node).execution_mode == _execution_mode.COMPILE_AND_TEST:
                             builder_id = _builder_id(node)
                             builder_ids.append(builder_id)
@@ -661,6 +751,14 @@ def _set_builder_config_property(ctx):
                 builder_ids = sorted(builder_ids, key = _builder_id_sort_key),
                 **structs.to_proto_properties(node.props.try_settings)
             )
+            if node.props.additional_exclusions:
+                builder_config["additional_exclusions"] = [
+                    "infra/config/generated/{}/{}".format(
+                        per_builder_outputs_config().root_dir,
+                        exclusion,
+                    )
+                    for exclusion in node.props.additional_exclusions
+                ]
             builder_config.pop("include_all_triggered_testers", None)
 
             if builder_ids_in_scope_for_testing:
@@ -675,11 +773,110 @@ def _set_builder_config_property(ctx):
                     for group, builder in sorted([(b.props.builder_group, b.key.id) for b in mirroring_builders])
                 ]
 
+            targets_spec = _targets_spec(bc_state, targets_spec_nodes)
+            if targets_spec:
+                builder_config["targets_spec_directory"] = "src/infra/config/generated/builders/{}/{}/targets".format(bucket_name, builder_name)
+                for builder_group, contents in targets_spec.items():
+                    json_file = "builders/{}/{}/targets/{}.json".format(bucket_name, builder_name, builder_group)
+                    ctx.output[json_file] = json.indent(json.encode(contents), indent = "  ")
+
             builder_properties = json.decode(builder.properties)
             builder_properties["$build/chromium_tests_builder_config"] = dict(
                 builder_config = builder_config,
             )
             builder.properties = json.encode(builder_properties)
+
+            builder.description_html = _get_builder_mirror_description(bucket_name, builder, bc_state)
+
+            # Enforce that most gardened CI bots have a matching trybot.
+            rotations = get_sheriff_rotations(bucket_name, builder.name)
+            excluded_rotations = [
+                # Most/all the clang bots build using clang built from HEAD.
+                # Failures on them hopefully/rarely lead to reverts of random
+                # CLs on the Chromium-side. So trybots for these aren't as
+                # critical.
+                "chromium.clang",
+                # Some GPU trybots share the same limited pool of bots, so can't
+                # handle more than a few builds at a time. Keep them out of the
+                # mega CQ for now.
+                "chromium.gpu",
+                # "cft" builders are very red.
+                "cft",
+            ]
+            excluded_builders = [
+                # TODO(crbug.com/1484233): Remove the following as trybots are
+                # created for them.
+                "android-arm64-archive-rel",
+                "lacros-arm-archive-rel",
+                "lacros64-archive-rel",
+                "linux-chromeos-archive-rel",
+                "mac-arm64-dbg",
+            ]
+            is_excluded = (
+                builder.name in excluded_builders or
+                any([s.key.id in excluded_rotations for s in rotations])
+            )
+            if rotations and not mirroring_builders and not is_excluded:
+                fail("{} is on a sheriff/gardener rotation, but lacks a matching trybot".format(builder.name))
+
+            # Put most gardened CI bots' trybots onto the mega CQ. We skip a
+            # trybot if any of the following are true:
+            # - It doesn't run a normal Chromium trybot recipe
+            # - Any of its CI mirrors isn't gardened
+            # - All of its CI mirrors are on an excluded rotation
+            # The last two prevent trybots of un-gardened child testers
+            # triggered by gardened parent builders from getting added to the
+            # mega CQ.
+            if not mirrors:
+                continue
+            is_excluded = False
+            all_mirror_rotations = []
+            for m in mirrors:
+                mirror_id = _builder_id(m)
+                mirror_rotations = get_sheriff_rotations(mirror_id["bucket"], mirror_id["builder"])
+                all_mirror_rotations += mirror_rotations
+                if not mirror_rotations:
+                    is_excluded = True
+                if json.decode(builder.properties)["recipe"] not in ["chromium_trybot", "chromium/orchestrator"]:
+                    is_excluded = True
+                if mirror_id["builder"] in excluded_builders:
+                    is_excluded = True
+                if is_excluded:
+                    break
+            if all([r.key.id in excluded_rotations for r in all_mirror_rotations]):
+                is_excluded = True
+            if not is_excluded:
+                cq_identifier = "{}/{}/{}".format(
+                    settings.project,
+                    bucket_name,
+                    builder.name,
+                )
+                needs_mega_cq_mode = needs_mega_cq_mode.union([cq_identifier])
+
+    cq_config_groups = []
+    for f in ctx.output:
+        if f == "luci/commit-queue.cfg":
+            cq_config_groups = ctx.output[f].config_groups
+            break
+    for cq_group in cq_config_groups:
+        if cq_group.name != "cq":
+            continue
+        for b in cq_group.verifiers.tryjob.builders:
+            if b.name not in needs_mega_cq_mode:
+                continue
+
+            # TODO(crbug.com/1483511): Uncomment the following when CV actually
+            # supports custom run modes.
+            #if "CQ_MODE_MEGA_DRY_RUN" not in b.mode_allowlist:
+            #    b.mode_allowlist.append("CQ_MODE_MEGA_DRY_RUN")
+            #if "CQ_MODE_MEGA_FULL_RUN" not in b.mode_allowlist:
+            #    b.mode_allowlist.append("CQ_MODE_MEGA_FULL_RUN")
+
+    # Print the mega CQ bots to a txt file for debugging / parsing purposes.
+    # TODO(crbug.com/1483511): Can delete this when CV full supports custom
+    # run modes with all features needed by chrome.
+    mega_cq_bots_file = "cq-usage/mega_cq_bots.txt"
+    ctx.output[mega_cq_bots_file] = "".join(["{}\n".format(b) for b in sorted(needs_mega_cq_mode)])
 
 lucicfg.generator(_set_builder_config_property)
 
@@ -695,6 +892,58 @@ def _node_cached(f):
         return cache[node]
 
     return execute
+
+def _get_bundle_resolver():
+    resolved_bundle_by_bundle_node = {}
+
+    def resolved_bundle(*, additional_compile_targets, test_spec_and_source_by_name):
+        return struct(
+            additional_compile_targets = additional_compile_targets,
+            test_spec_and_source_by_name = test_spec_and_source_by_name,
+        )
+
+    def visitor(_, children):
+        return [c for c in children if c.key.kind == TARGET_BUNDLE.kind]
+
+    def resolve(bundle_node):
+        for n in graph.descendants(bundle_node.key, visitor = visitor, topology = graph.DEPTH_FIRST):
+            if n in resolved_bundle_by_bundle_node:
+                continue
+
+            # TODO: crbug.com/1420012 - Update the handling of conflicting defs
+            # so that more context is provided about where the error is
+            # resulting from
+            additional_compile_targets = set(n.props.additional_compile_targets)
+            test_spec_and_source_by_name = {name: (spec, n.key) for name, spec in n.props.test_spec_by_name.items()}
+            for child in graph.children(n.key, kind = TARGET_BUNDLE.kind):
+                child_resolved_bundle = resolved_bundle_by_bundle_node[child]
+                additional_compile_targets = additional_compile_targets | child_resolved_bundle.additional_compile_targets
+                for name, (spec, source) in child_resolved_bundle.test_spec_and_source_by_name.items():
+                    if name in test_spec_and_source_by_name:
+                        existing_spec, existing_source = test_spec_and_source_by_name[name]
+                        if existing_spec != spec:
+                            fail("target {} has conflicting definitions in deps of {}\n  {}: {}\n  {}: {}".format(
+                                name,
+                                n.key,
+                                existing_source,
+                                existing_spec,
+                                source,
+                                spec,
+                            ))
+                    test_spec_and_source_by_name[name] = (spec, source)
+
+            resolved_bundle_by_bundle_node[n] = resolved_bundle(
+                additional_compile_targets = additional_compile_targets,
+                test_spec_and_source_by_name = test_spec_and_source_by_name,
+            )
+
+        resolved = resolved_bundle_by_bundle_node[bundle_node]
+        return (
+            resolved.additional_compile_targets,
+            {name: spec for name, (spec, _) in resolved.test_spec_and_source_by_name.items()},
+        )
+
+    return resolve
 
 def _bc_state():
     def get_parent(node):
@@ -913,11 +1162,35 @@ def _bc_state():
 
         return get
 
+    bundle_resolver = _get_bundle_resolver()
+
+    def get_targets_spec(node):
+        bundle_nodes = graph.children(node.key, TARGET_BUNDLE.kind)
+        if not bundle_nodes:
+            return None
+        if len(bundle_nodes) > 1:
+            fail("internal error: there should be at most 1 targets_spec")
+
+        additional_compile_targets, test_spec_by_name = bundle_resolver(bundle_nodes[0])
+        sort_key_and_specs_by_type_key = {}
+        for name, spec in test_spec_by_name.items():
+            type_key, sort_key, spec = spec.spec_type.finalize(name, spec.spec_value)
+            sort_key_and_specs_by_type_key.setdefault(type_key, []).append((sort_key, spec))
+
+        specs_by_type_key = {}
+        if additional_compile_targets:
+            specs_by_type_key["additional_compile_targets"] = sorted(additional_compile_targets)
+        for type_key, sort_key_and_specs in sorted(sort_key_and_specs_by_type_key.items()):
+            specs_by_type_key[type_key] = [spec for _, spec in sorted(sort_key_and_specs)]
+
+        return specs_by_type_key
+
     bc_state = struct(
         parent = _node_cached(get_parent),
         children = _node_cached(get_children),
         builder_spec = builder_spec_getter(),
         mirrors = mirrors_getter(),
+        targets_spec = _node_cached(get_targets_spec),
     )
 
     return bc_state

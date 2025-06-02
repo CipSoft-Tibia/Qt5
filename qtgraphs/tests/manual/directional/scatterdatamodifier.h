@@ -4,7 +4,7 @@
 #ifndef SCATTERDATAMODIFIER_H
 #define SCATTERDATAMODIFIER_H
 
-#include <QtGraphs/q3dscatter.h>
+#include <QtGraphsWidgets/q3dscatterwidgetitem.h>
 #include <QtGraphs/qabstract3dseries.h>
 #include <QtGui/QFont>
 #include <QtCore/QTimer>
@@ -13,7 +13,7 @@ class ScatterDataModifier : public QObject
 {
     Q_OBJECT
 public:
-    explicit ScatterDataModifier(Q3DScatter *scatter);
+    explicit ScatterDataModifier(Q3DScatterWidgetItem *scatter);
     ~ScatterDataModifier();
 
     void fpsChanged(int fps);
@@ -24,8 +24,8 @@ public:
     void changeFont(const QFont &font);
     void changeFontSize(int fontsize);
     void enableOptimization(int enabled);
-    void setBackgroundEnabled(int enabled);
-    void setGridEnabled(int enabled);
+    void setBackgroundVisible(int visible);
+    void setGridVisible(int visible);
     void toggleRotation();
     void start();
 
@@ -33,17 +33,17 @@ public Q_SLOTS:
     void changeStyle(int style);
     void changeTheme(int theme);
     void changeShadowQuality(int quality);
-    void shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality shadowQuality);
+    void shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality shadowQuality);
     void triggerRotation();
 
 Q_SIGNALS:
-    void backgroundEnabledChanged(bool enabled);
-    void gridEnabledChanged(bool enabled);
+    void backgroundVisibleChanged(bool enabled);
+    void gridVisibleChanged(bool enabled);
     void shadowQualityChanged(int quality);
     void fontChanged(const QFont &font);
 
 private:
-    Q3DScatter *m_graph;
+    Q3DScatterWidgetItem *m_graph;
     int m_fontSize;
     QAbstract3DSeries::Mesh m_style;
     bool m_smooth;

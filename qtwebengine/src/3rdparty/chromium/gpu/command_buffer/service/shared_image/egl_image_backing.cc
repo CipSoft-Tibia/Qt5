@@ -294,7 +294,8 @@ std::unique_ptr<DawnImageRepresentation> EGLImageBacking::ProduceDawn(
     MemoryTypeTracker* tracker,
     const wgpu::Device& device,
     wgpu::BackendType backend_type,
-    std::vector<wgpu::TextureFormat> view_formats) {
+    std::vector<wgpu::TextureFormat> view_formats,
+    scoped_refptr<SharedContextState> context_state) {
 #if BUILDFLAG(USE_DAWN) && BUILDFLAG(DAWN_ENABLE_BACKEND_OPENGLES)
   if (backend_type == wgpu::BackendType::OpenGLES) {
     std::unique_ptr<GLTextureImageRepresentationBase> gl_representation;
@@ -494,11 +495,8 @@ EGLImageBacking::GenEGLImageSibling(base::span<const uint8_t> pixel_data) {
 
   if (use_passthrough_) {
     auto texture_passthrough =
-        base::MakeRefCounted<gpu::gles2::TexturePassthrough>(
-            service_id, GL_TEXTURE_2D, format_info_.gl_format, size().width(),
-            size().height(),
-            /*depth=*/1, /*border=*/0, format_info_.gl_format,
-            format_info_.gl_type);
+        base::MakeRefCounted<gpu::gles2::TexturePassthrough>(service_id,
+                                                             GL_TEXTURE_2D);
     return base::MakeRefCounted<TextureHolder>(std::move(texture_passthrough));
   }
 

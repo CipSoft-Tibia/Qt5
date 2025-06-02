@@ -54,14 +54,14 @@ static VkSubpassDependency2 ImplicitDependencyToExternal(uint32_t subpass) {
                                         0};
     return to_external;
 }
-// NOTE: The functions below are only called from the RENDER_PASS_STATE constructor, and use const_cast<> to set up
+// NOTE: The functions below are only called from the vvl::RenderPass constructor, and use const_cast<> to set up
 // members that never change after construction is finished.
-static void RecordRenderPassDAG(const VkRenderPassCreateInfo2 *pCreateInfo, RENDER_PASS_STATE *render_pass) {
-    auto &subpass_to_node = const_cast<RENDER_PASS_STATE::DAGNodeVec &>(render_pass->subpass_to_node);
+static void RecordRenderPassDAG(const VkRenderPassCreateInfo2 *pCreateInfo, vvl::RenderPass *render_pass) {
+    auto &subpass_to_node = const_cast<vvl::RenderPass::DAGNodeVec &>(render_pass->subpass_to_node);
     subpass_to_node.resize(pCreateInfo->subpassCount);
-    auto &self_dependencies = const_cast<RENDER_PASS_STATE::SelfDepVec &>(render_pass->self_dependencies);
+    auto &self_dependencies = const_cast<vvl::RenderPass::SelfDepVec &>(render_pass->self_dependencies);
     self_dependencies.resize(pCreateInfo->subpassCount);
-    auto &subpass_dependencies = const_cast<RENDER_PASS_STATE::SubpassGraphVec &>(render_pass->subpass_dependencies);
+    auto &subpass_dependencies = const_cast<vvl::RenderPass::SubpassGraphVec &>(render_pass->subpass_dependencies);
     subpass_dependencies.resize(pCreateInfo->subpassCount);
 
     for (uint32_t i = 0; i < pCreateInfo->subpassCount; ++i) {
@@ -136,22 +136,22 @@ static void RecordRenderPassDAG(const VkRenderPassCreateInfo2 *pCreateInfo, REND
 }
 
 struct AttachmentTracker {  // This is really only of local interest, but a bit big for a lambda
-    RENDER_PASS_STATE *const rp;
-    RENDER_PASS_STATE::SubpassVec &first;
-    RENDER_PASS_STATE::FirstIsTransitionVec &first_is_transition;
-    RENDER_PASS_STATE::SubpassVec &last;
-    RENDER_PASS_STATE::TransitionVec &subpass_transitions;
-    RENDER_PASS_STATE::FirstReadMap &first_read;
+    vvl::RenderPass *const rp;
+    vvl::RenderPass::SubpassVec &first;
+    vvl::RenderPass::FirstIsTransitionVec &first_is_transition;
+    vvl::RenderPass::SubpassVec &last;
+    vvl::RenderPass::TransitionVec &subpass_transitions;
+    vvl::RenderPass::FirstReadMap &first_read;
     const uint32_t attachment_count;
     std::vector<VkImageLayout> attachment_layout;
     std::vector<std::vector<VkImageLayout>> subpass_attachment_layout;
-    explicit AttachmentTracker(RENDER_PASS_STATE *render_pass)
+    explicit AttachmentTracker(vvl::RenderPass *render_pass)
         : rp(render_pass),
-          first(const_cast<RENDER_PASS_STATE::SubpassVec &>(rp->attachment_first_subpass)),
-          first_is_transition(const_cast<RENDER_PASS_STATE::FirstIsTransitionVec &>(rp->attachment_first_is_transition)),
-          last(const_cast<RENDER_PASS_STATE::SubpassVec &>(rp->attachment_last_subpass)),
-          subpass_transitions(const_cast<RENDER_PASS_STATE::TransitionVec &>(rp->subpass_transitions)),
-          first_read(const_cast<RENDER_PASS_STATE::FirstReadMap &>(rp->attachment_first_read)),
+          first(const_cast<vvl::RenderPass::SubpassVec &>(rp->attachment_first_subpass)),
+          first_is_transition(const_cast<vvl::RenderPass::FirstIsTransitionVec &>(rp->attachment_first_is_transition)),
+          last(const_cast<vvl::RenderPass::SubpassVec &>(rp->attachment_last_subpass)),
+          subpass_transitions(const_cast<vvl::RenderPass::TransitionVec &>(rp->subpass_transitions)),
+          first_read(const_cast<vvl::RenderPass::FirstReadMap &>(rp->attachment_first_read)),
           attachment_count(rp->createInfo.attachmentCount),
           attachment_layout(),
           subpass_attachment_layout() {
@@ -244,7 +244,7 @@ struct AttachmentTracker {  // This is really only of local interest, but a bit 
     }
 };
 
-static void InitRenderPassState(RENDER_PASS_STATE *render_pass) {
+static void InitRenderPassState(vvl::RenderPass *render_pass) {
     auto create_info = render_pass->createInfo.ptr();
 
     RecordRenderPassDAG(create_info, render_pass);
@@ -267,8 +267,10 @@ static void InitRenderPassState(RENDER_PASS_STATE *render_pass) {
     attachment_tracker.FinalTransitions();
 }
 
-RENDER_PASS_STATE::RENDER_PASS_STATE(VkRenderPass rp, VkRenderPassCreateInfo2 const *pCreateInfo)
-    : BASE_NODE(rp, kVulkanObjectTypeRenderPass),
+namespace vvl {
+
+RenderPass::RenderPass(VkRenderPass rp, VkRenderPassCreateInfo2 const *pCreateInfo)
+    : StateObject(rp, kVulkanObjectTypeRenderPass),
       use_dynamic_rendering(false),
       use_dynamic_rendering_inherited(false),
       has_multiview_enabled(false),
@@ -281,8 +283,8 @@ static safe_VkRenderPassCreateInfo2 ConvertCreateInfo(const VkRenderPassCreateIn
     return create_info_2;
 }
 
-RENDER_PASS_STATE::RENDER_PASS_STATE(VkRenderPass rp, VkRenderPassCreateInfo const *pCreateInfo)
-    : BASE_NODE(rp, kVulkanObjectTypeRenderPass),
+RenderPass::RenderPass(VkRenderPass rp, VkRenderPassCreateInfo const *pCreateInfo)
+    : StateObject(rp, kVulkanObjectTypeRenderPass),
       use_dynamic_rendering(false),
       use_dynamic_rendering_inherited(false),
       has_multiview_enabled(false),
@@ -293,8 +295,8 @@ RENDER_PASS_STATE::RENDER_PASS_STATE(VkRenderPass rp, VkRenderPassCreateInfo con
 const VkPipelineRenderingCreateInfo VkPipelineRenderingCreateInfo_default = {
     VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, nullptr, 0, 0, nullptr, VK_FORMAT_UNDEFINED, VK_FORMAT_UNDEFINED};
 
-RENDER_PASS_STATE::RENDER_PASS_STATE(VkPipelineRenderingCreateInfo const *pPipelineRenderingCreateInfo, bool rasterization_enabled)
-    : BASE_NODE(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),
+RenderPass::RenderPass(VkPipelineRenderingCreateInfo const *pPipelineRenderingCreateInfo, bool rasterization_enabled)
+    : StateObject(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),
       use_dynamic_rendering(true),
       use_dynamic_rendering_inherited(false),
       has_multiview_enabled(false),
@@ -303,7 +305,7 @@ RENDER_PASS_STATE::RENDER_PASS_STATE(VkPipelineRenderingCreateInfo const *pPipel
                                                  ? pPipelineRenderingCreateInfo
                                                  : &VkPipelineRenderingCreateInfo_default) {}
 
-bool RENDER_PASS_STATE::UsesColorAttachment(uint32_t subpass_num) const {
+bool RenderPass::UsesColorAttachment(uint32_t subpass_num) const {
     bool result = false;
 
     if (subpass_num < createInfo.subpassCount) {
@@ -315,11 +317,24 @@ bool RENDER_PASS_STATE::UsesColorAttachment(uint32_t subpass_num) const {
                 break;
             }
         }
+
+#if defined(VK_USE_PLATFORM_ANDROID_KHR)
+        // VK_ANDROID_external_format_resolve allows for the only color attachment to be VK_ATTACHMENT_UNUSED
+        // but in this case, it will use the resolve attachment as color attachment. Which means that we do
+        // actually use color attachments
+        if (subpass.pResolveAttachments != nullptr) {
+            for (uint32_t i = 0; i < subpass.colorAttachmentCount && !result; ++i) {
+                uint32_t resolveAttachmentIndex = subpass.pResolveAttachments[i].attachment;
+                const void* resolveAtatchmentPNextChain = createInfo.pAttachments[resolveAttachmentIndex].pNext;
+                if (vku::FindStructInPNextChain<VkExternalFormatANDROID>(resolveAtatchmentPNextChain)) result = true;
+            }
+        }
+#endif
     }
     return result;
 }
 
-bool RENDER_PASS_STATE::UsesDepthStencilAttachment(uint32_t subpass_num) const {
+bool RenderPass::UsesDepthStencilAttachment(uint32_t subpass_num) const {
     bool result = false;
     if (subpass_num < createInfo.subpassCount) {
         const auto &subpass = createInfo.pSubpasses[subpass_num];
@@ -330,7 +345,7 @@ bool RENDER_PASS_STATE::UsesDepthStencilAttachment(uint32_t subpass_num) const {
     return result;
 }
 
-uint32_t RENDER_PASS_STATE::GetDynamicRenderingColorAttachmentCount() const {
+uint32_t RenderPass::GetDynamicRenderingColorAttachmentCount() const {
     if (use_dynamic_rendering_inherited) {
         return inheritance_rendering_info.colorAttachmentCount;
     } else if (use_dynamic_rendering) {
@@ -339,7 +354,7 @@ uint32_t RENDER_PASS_STATE::GetDynamicRenderingColorAttachmentCount() const {
     return 0;
 }
 
-uint32_t RENDER_PASS_STATE::GetDynamicRenderingViewMask() const {
+uint32_t RenderPass::GetDynamicRenderingViewMask() const {
     if (use_dynamic_rendering_inherited) {
         return inheritance_rendering_info.viewMask;
     } else if (use_dynamic_rendering) {
@@ -348,7 +363,7 @@ uint32_t RENDER_PASS_STATE::GetDynamicRenderingViewMask() const {
     return 0;
 }
 
-uint32_t RENDER_PASS_STATE::GetViewMaskBits(uint32_t subpass) const {
+uint32_t RenderPass::GetViewMaskBits(uint32_t subpass) const {
     if (use_dynamic_rendering_inherited) {
         return GetBitSetCount(inheritance_rendering_info.viewMask);
     } else if (use_dynamic_rendering) {
@@ -362,40 +377,49 @@ uint32_t RENDER_PASS_STATE::GetViewMaskBits(uint32_t subpass) const {
     return 0;
 }
 
-RENDER_PASS_STATE::RENDER_PASS_STATE(VkRenderingInfo const *pRenderingInfo, bool rasterization_enabled)
-    : BASE_NODE(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),
+const VkMultisampledRenderToSingleSampledInfoEXT *RenderPass::GetMSRTSSInfo(uint32_t subpass) const {
+    if (UsesDynamicRendering()) {
+        return vku::FindStructInPNextChain<VkMultisampledRenderToSingleSampledInfoEXT>(
+            dynamic_rendering_begin_rendering_info.pNext);
+    }
+    return vku::FindStructInPNextChain<VkMultisampledRenderToSingleSampledInfoEXT>(createInfo.pSubpasses[subpass].pNext);
+}
+
+RenderPass::RenderPass(VkRenderingInfo const *pRenderingInfo, bool rasterization_enabled)
+    : StateObject(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),
       use_dynamic_rendering(true),
       use_dynamic_rendering_inherited(false),
       has_multiview_enabled(false),
       rasterization_enabled(rasterization_enabled),
       dynamic_rendering_begin_rendering_info((pRenderingInfo && rasterization_enabled) ? pRenderingInfo : nullptr) {}
 
-RENDER_PASS_STATE::RENDER_PASS_STATE(VkCommandBufferInheritanceRenderingInfo const *pInheritanceRenderingInfo)
-    : BASE_NODE(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),
+RenderPass::RenderPass(VkCommandBufferInheritanceRenderingInfo const *pInheritanceRenderingInfo)
+    : StateObject(static_cast<VkRenderPass>(VK_NULL_HANDLE), kVulkanObjectTypeRenderPass),
       use_dynamic_rendering(false),
       use_dynamic_rendering_inherited(true),
       has_multiview_enabled(false),
       inheritance_rendering_info(pInheritanceRenderingInfo) {}
 
-FRAMEBUFFER_STATE::FRAMEBUFFER_STATE(VkFramebuffer fb, const VkFramebufferCreateInfo *pCreateInfo,
-                                     std::shared_ptr<RENDER_PASS_STATE> &&rpstate,
-                                     std::vector<std::shared_ptr<IMAGE_VIEW_STATE>> &&attachments)
-    : BASE_NODE(fb, kVulkanObjectTypeFramebuffer),
+Framebuffer::Framebuffer(VkFramebuffer fb, const VkFramebufferCreateInfo *pCreateInfo, std::shared_ptr<RenderPass> &&rpstate,
+                         std::vector<std::shared_ptr<vvl::ImageView>> &&attachments)
+    : StateObject(fb, kVulkanObjectTypeFramebuffer),
       createInfo(pCreateInfo),
       rp_state(rpstate),
       attachments_view_state(std::move(attachments)) {}
 
-void FRAMEBUFFER_STATE::LinkChildNodes() {
+void Framebuffer::LinkChildNodes() {
     // Connect child node(s), which cannot safely be done in the constructor.
     for (auto &a : attachments_view_state) {
         a->AddParent(this);
     }
 }
 
-void FRAMEBUFFER_STATE::Destroy() {
+void Framebuffer::Destroy() {
     for (auto &view : attachments_view_state) {
         view->RemoveParent(this);
     }
     attachments_view_state.clear();
-    BASE_NODE::Destroy();
+    StateObject::Destroy();
 }
+
+}  // namespace vvl

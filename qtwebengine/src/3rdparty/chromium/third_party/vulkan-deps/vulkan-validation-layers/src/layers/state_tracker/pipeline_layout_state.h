@@ -21,21 +21,21 @@
 
 #include <vector>
 #include <memory>
-#include "state_tracker/base_node.h"
+#include "state_tracker/state_object.h"
 #include "utils/hash_util.h"
 #include "utils/hash_vk_types.h"
 #include "state_tracker/state_tracker.h"
 
 // Fwd declarations -- including descriptor_set.h creates an ugly include loop
-namespace cvdescriptorset {
+namespace vvl {
 class DescriptorSetLayout;
 class DescriptorSetLayoutDef;
-}  // namespace cvdescriptorset
+}  // namespace vvl
 
 class ValidationStateTracker;
 
 // Canonical dictionary for the pipeline layout's layout of descriptorsetlayouts
-using DescriptorSetLayoutDef = cvdescriptorset::DescriptorSetLayoutDef;
+using DescriptorSetLayoutDef = vvl::DescriptorSetLayoutDef;
 using DescriptorSetLayoutId = std::shared_ptr<const DescriptorSetLayoutDef>;
 using PipelineLayoutSetLayoutsDef = std::vector<DescriptorSetLayoutId>;
 using PipelineLayoutSetLayoutsDict =
@@ -66,10 +66,12 @@ using PipelineLayoutCompatId = PipelineLayoutCompatDict::Id;
 
 PushConstantRangesId GetCanonicalId(uint32_t pushConstantRangeCount, const VkPushConstantRange *pPushConstantRanges);
 
+namespace vvl {
+
 // Store layouts and pushconstants for PipelineLayout
-class PIPELINE_LAYOUT_STATE : public BASE_NODE {
+class PipelineLayout : public StateObject {
   public:
-    using SetLayoutVector = std::vector<std::shared_ptr<cvdescriptorset::DescriptorSetLayout const>>;
+    using SetLayoutVector = std::vector<std::shared_ptr<vvl::DescriptorSetLayout const>>;
     const SetLayoutVector set_layouts;
     // canonical form IDs for the "compatible for set" contents
     const PushConstantRangesId push_constant_ranges;
@@ -77,17 +79,16 @@ class PIPELINE_LAYOUT_STATE : public BASE_NODE {
     const std::vector<PipelineLayoutCompatId> set_compat_ids;
     VkPipelineLayoutCreateFlags create_flags;
 
-    PIPELINE_LAYOUT_STATE(ValidationStateTracker *dev_data, VkPipelineLayout l, const VkPipelineLayoutCreateInfo *pCreateInfo);
+    PipelineLayout(ValidationStateTracker *dev_data, VkPipelineLayout l, const VkPipelineLayoutCreateInfo *pCreateInfo);
     // Merge 2 or more non-overlapping layouts
-    PIPELINE_LAYOUT_STATE(const vvl::span<const PIPELINE_LAYOUT_STATE *const> &layouts);
+    PipelineLayout(const vvl::span<const PipelineLayout *const> &layouts);
     template <typename Container>
-    PIPELINE_LAYOUT_STATE(const Container &layouts)
-        : PIPELINE_LAYOUT_STATE(vvl::span<const PIPELINE_LAYOUT_STATE *const>{layouts}) {}
+    PipelineLayout(const Container &layouts) : PipelineLayout(vvl::span<const PipelineLayout *const>{layouts}) {}
 
     VkPipelineLayout layout() const { return handle_.Cast<VkPipelineLayout>(); }
 
-    std::shared_ptr<cvdescriptorset::DescriptorSetLayout const> GetDsl(uint32_t set) const {
-        std::shared_ptr<cvdescriptorset::DescriptorSetLayout const> dsl = nullptr;
+    std::shared_ptr<vvl::DescriptorSetLayout const> GetDsl(uint32_t set) const {
+        std::shared_ptr<vvl::DescriptorSetLayout const> dsl = nullptr;
         if (set < set_layouts.size()) {
             dsl = set_layouts[set];
         }
@@ -97,6 +98,8 @@ class PIPELINE_LAYOUT_STATE : public BASE_NODE {
     VkPipelineLayoutCreateFlags CreateFlags() const { return create_flags; }
 };
 
+}  // namespace vvl
+
 std::vector<PipelineLayoutCompatId> GetCompatForSet(
-    const std::vector<std::shared_ptr<cvdescriptorset::DescriptorSetLayout const>> &set_layouts,
+    const std::vector<std::shared_ptr<vvl::DescriptorSetLayout const>> &set_layouts,
     const PushConstantRangesId &push_constant_ranges);

@@ -25,7 +25,7 @@ namespace Qt3DRender {
 
 /*!
     \qmltype TextureImage
-    \instantiates Qt3DRender::QTextureImage
+    \nativetype Qt3DRender::QTextureImage
     \inherits AbstractTextureImage
     \inqmlmodule Qt3D.Render
     \since 5.5
@@ -34,7 +34,7 @@ namespace Qt3DRender {
 */
 
 /*!
-    \enum QTextureImage::Status
+    \enum Qt3DRender::QTextureImage::Status
 
     This  enumeration specifies the status values for texture image loading.
 
@@ -66,7 +66,7 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property QTextureImage::status
+    \property Qt3DRender::QTextureImage::status
 
     This property holds the status of the texture image loading.
 

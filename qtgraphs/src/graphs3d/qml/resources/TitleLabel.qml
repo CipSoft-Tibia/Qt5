@@ -12,9 +12,9 @@ Model {
 
     property string labelText: ""
     property color backgroundColor: "gray"
-    property bool backgroundEnabled: false
+    property bool backgroundVisible: false
     property color labelTextColor: "transparent"
-    property bool borderEnabled : false
+    property bool borderVisible: false
     property font labelFont
     property real labelWidth: -1
     property real labelHeight: -1
@@ -31,9 +31,9 @@ Model {
                     id: labelBackground
                     anchors.fill: parent
                     color: root.backgroundColor
-                    visible: root.backgroundEnabled
+                    visible: root.backgroundVisible
                     border.color: root.labelTextColor
-                    border.width: root.borderEnabled
+                    border.width: root.borderVisible
                                   ? Math.max(0.5, (text0.font.pointSize / 16)) : 0
                     radius: 4
                 }

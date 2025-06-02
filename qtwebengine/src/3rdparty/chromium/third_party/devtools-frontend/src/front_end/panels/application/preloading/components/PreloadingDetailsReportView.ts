@@ -4,6 +4,7 @@
 
 import * as Common from '../../../../core/common/common.js';
 import * as i18n from '../../../../core/i18n/i18n.js';
+import type * as Platform from '../../../../core/platform/platform.js';
 import {assertNotNullOrUndefined} from '../../../../core/platform/platform.js';
 import * as SDK from '../../../../core/sdk/sdk.js';
 import * as Protocol from '../../../../generated/protocol.js';
@@ -16,10 +17,11 @@ import * as ReportView from '../../../../ui/components/report_view/report_view.j
 import * as RequestLinkIcon from '../../../../ui/components/request_link_icon/request_link_icon.js';
 import * as UI from '../../../../ui/legacy/legacy.js';
 import * as LitHtml from '../../../../ui/lit-html/lit-html.js';
+import * as VisualLogging from '../../../../ui/visual_logging/visual_logging.js';
 import * as PreloadingHelper from '../helper/helper.js';
-import type * as Platform from '../../../../core/platform/platform.js';
 
 import preloadingDetailsReportViewStyles from './preloadingDetailsReportView.css.js';
+import * as PreloadingString from './PreloadingString.js';
 import {prefetchFailureReason, prerenderFailureReason, ruleSetLocationShort} from './PreloadingString.js';
 
 const UIStrings = {
@@ -50,27 +52,27 @@ const UIStrings = {
   /**
    *@description Description: status
    */
-  detailedStatusNotTriggered: 'Preloading attempt is not yet triggered.',
+  detailedStatusNotTriggered: 'Speculative load attempt is not yet triggered.',
   /**
    *@description Description: status
    */
-  detailedStatusPending: 'Preloading attempt is eligible but pending.',
+  detailedStatusPending: 'Speculative load attempt is eligible but pending.',
   /**
    *@description Description: status
    */
-  detailedStatusRunning: 'Preloading is running.',
+  detailedStatusRunning: 'Speculative load is running.',
   /**
    *@description Description: status
    */
-  detailedStatusReady: 'Preloading finished and the result is ready for the next navigation.',
+  detailedStatusReady: 'Speculative load finished and the result is ready for the next navigation.',
   /**
    *@description Description: status
    */
-  detailedStatusSuccess: 'Preloading finished and used for a navigation.',
+  detailedStatusSuccess: 'Speculative load finished and used for a navigation.',
   /**
    *@description Description: status
    */
-  detailedStatusFailure: 'Preloading failed.',
+  detailedStatusFailure: 'Speculative load failed.',
   /**
    *@description button: Contents of button to inspect prerendered page
    */
@@ -89,16 +91,6 @@ const str_ =
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
 
 class PreloadingUIUtils {
-  static action({key}: SDK.PreloadingModel.PreloadingAttempt): string {
-    // Use "prefetch"/"prerender" as is in SpeculationRules.
-    switch (key.action) {
-      case Protocol.Preload.SpeculationAction.Prefetch:
-        return i18n.i18n.lockedString('prefetch');
-      case Protocol.Preload.SpeculationAction.Prerender:
-        return i18n.i18n.lockedString('prerender');
-    }
-  }
-
   static detailedStatus({status}: SDK.PreloadingModel.PreloadingAttempt): string {
     // See content/public/browser/preloading.h PreloadingAttemptOutcome.
     switch (status) {
@@ -172,7 +164,8 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
       // Disabled until https://crbug.com/1079231 is fixed.
       // clang-format off
       LitHtml.render(LitHtml.html`
-        <${ReportView.ReportView.Report.litTagName} .data=${{reportTitle: 'Preloading Attempt'} as ReportView.ReportView.ReportData}>
+        <${ReportView.ReportView.Report.litTagName} .data=${{reportTitle: 'Speculative Loading Attempt'} as ReportView.ReportView.ReportData}
+        jslog=${VisualLogging.section().context('preloading-details')}>
           <${ReportView.ReportView.ReportSectionHeader.litTagName}>${i18nString(UIStrings.detailsDetailedInformation)}</${
             ReportView.ReportView.ReportSectionHeader.litTagName}>
 
@@ -244,7 +237,7 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
     assertNotNullOrUndefined(this.#data);
     const attempt = this.#data.preloadingAttempt;
 
-    const action = PreloadingUIUtils.action(this.#data.preloadingAttempt);
+    const action = PreloadingString.capitalizedAction(this.#data.preloadingAttempt.action);
 
     let maybeInspectButton: LitHtml.LitTemplate = LitHtml.nothing;
     ((): void => {
@@ -276,6 +269,7 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
             .size=${Buttons.Button.Size.SMALL}
             .variant=${Buttons.Button.Variant.SECONDARY}
             .disabled=${disabled}
+            jslog=${VisualLogging.action().track({click: true}).context('inspect-prerendered-page')}
           >
             ${i18nString(UIStrings.buttonInspect)}
           </${Buttons.Button.Button.litTagName}>
@@ -359,9 +353,10 @@ export class PreloadingDetailsReportView extends LegacyWrapper.LegacyWrapper.Wra
             @click=${revealRuleSetView}
             title=${i18nString(UIStrings.buttonClickToRevealRuleSet)}
             style=${LitHtml.Directives.styleMap({
-              color: 'var(--color-link)',
+              color: 'var(--sys-color-primary)',
               'text-decoration': 'underline',
             })}
+            jslog=${VisualLogging.action().track({click: true}).context('reveal-rule-set')}
           >
             ${location}
           </button>

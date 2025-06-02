@@ -11,7 +11,7 @@ Rectangle {
     id: window
     width: 320; height: 480; color: "#232323"
 
-    property var easingCurve: [ 0.2, 0.2, 0.13, 0.65, 0.2, 0.8,
+    property list<real> easingCurve: [ 0.2, 0.2, 0.13, 0.65, 0.2, 0.8,
                                 0.624, 0.98, 0.93, 0.95, 1, 1 ]
 
     ListModel {

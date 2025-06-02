@@ -12,7 +12,8 @@
 #include <QtGui/qaccessible.h>
 #include <QtGui/qwindow.h>
 #include <QtCore/qrect.h>
-#include <QtGui/private/qwindowsuiawrapper_p.h>
+#include <QtCore/private/qbstr_p.h>
+#include "qwindowsuiautomation.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -31,16 +32,6 @@ long roleToControlTypeId(QAccessible::Role role);
 bool isTextUnitSeparator(TextUnit unit, const QChar &ch);
 
 void clearVariant(VARIANT *variant);
-
-void setVariantI4(int value, VARIANT *variant);
-
-void setVariantBool(bool value, VARIANT *variant);
-
-void setVariantDouble(double value, VARIANT *variant);
-
-BSTR bStrFromQString(const QString &value);
-
-void setVariantString(const QString &value, VARIANT *variant);
 
 } // namespace QWindowsUiAutomation
 

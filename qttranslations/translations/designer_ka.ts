@@ -632,8 +632,8 @@
 <context>
     <name>Designer</name>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Unable to launch %1: %2</source>
@@ -1162,8 +1162,8 @@
         <translation>ფორმა</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1464,8 +1464,8 @@ This indicates an inconsistency in the ui-file.</source>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>Qt Designer-ის &amp;დახმარება</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>Qt Widgets Designer-ის &amp;დახმარება</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1476,8 +1476,8 @@ This indicates an inconsistency in the ui-file.</source>
         <translation>დამატებების შესახებ</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>Qt Designer-ს შესახებ</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer-ს შესახებ</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1534,8 +1534,8 @@ Do you want to update the file location or generate a new form?</source>
         <translation>&amp;ახალი ფორმა</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -3334,12 +3334,12 @@ Do you want overwrite the template?</source>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;ვერსია %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;&apos;Qt Designer&apos; Qt-ის აპლიკაციების გრაფიკული მომხმარებლის ინტერფეისის დიზაინერია&gt;&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;&apos;Qt Widgets Designer&apos; Qt-ის აპლიკაციების გრაფიკული მომხმარებლის ინტერფეისის დიზაინერია&gt;&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
@@ -4842,12 +4842,12 @@ Please select another name.</source>
         <translation>ჩავარდნილი დამატებები</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer-მა დამატებები ვერ იპოვა</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer-მა დამატებები ვერ იპოვა</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer-მა იპოვა შემდეგი დამატებები</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer-მა იპოვა შემდეგი დამატებები</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

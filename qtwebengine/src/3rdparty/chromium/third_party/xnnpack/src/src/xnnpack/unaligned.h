@@ -11,6 +11,11 @@
 #include <xnnpack/common.h>
 
 
+XNN_INLINE static uint16_t unaligned_load_u16(const void* address) {
+  typedef XNN_UNALIGNED uint16_t xnn_unaligned_uint16_t;
+  return *((const xnn_unaligned_uint16_t*) address);
+}
+
 XNN_INLINE static float unaligned_load_f32(const void* address) {
   typedef XNN_UNALIGNED float xnn_unaligned_float;
   return *((const xnn_unaligned_float*) address);
@@ -74,4 +79,9 @@ XNN_INLINE static void unaligned_indexed_store_s32(void* address, size_t index, 
 XNN_INLINE static void unaligned_indexed_store_u32(void* address, size_t index, uint32_t value) {
   typedef XNN_UNALIGNED uint32_t xnn_unaligned_uint32_t;
   ((xnn_unaligned_uint32_t*) address)[index] = value;
+}
+
+XNN_INLINE static void unaligned_indexed_store_u16(void* address, size_t index, uint16_t value) {
+  typedef XNN_UNALIGNED uint16_t xnn_unaligned_uint16_t;
+  ((xnn_unaligned_uint16_t*) address)[index] = value;
 }

@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtgradientstopsmodel.h"
+#include "qtgradientstopsmodel_p.h"
 
 #include <QtGui/QColor>
 #include <QtCore/QHash>
@@ -11,9 +11,9 @@ QT_BEGIN_NAMESPACE
 class QtGradientStopPrivate
 {
 public:
-    qreal m_position;
-    QColor m_color;
-    QtGradientStopsModel *m_model;
+    qreal m_position = 0;
+    QColor m_color = Qt::white;
+    QtGradientStopsModel *m_model = nullptr;
 };
 
 qreal QtGradientStop::position() const
@@ -31,7 +31,7 @@ QtGradientStopsModel *QtGradientStop::gradientModel() const
     return d_ptr->m_model;
 }
 
-void QtGradientStop::setColor(const QColor &color)
+void QtGradientStop::setColor(QColor color)
 {
     d_ptr->m_color = color;
 }
@@ -44,8 +44,6 @@ void QtGradientStop::setPosition(qreal position)
 QtGradientStop::QtGradientStop(QtGradientStopsModel *model)
     : d_ptr(new QtGradientStopPrivate())
 {
-    d_ptr->m_position = 0;
-    d_ptr->m_color = Qt::white;
     d_ptr->m_model = model;
 }
 
@@ -55,13 +53,13 @@ QtGradientStop::~QtGradientStop()
 
 class QtGradientStopsModelPrivate
 {
-    QtGradientStopsModel *q_ptr;
+    QtGradientStopsModel *q_ptr = nullptr;
     Q_DECLARE_PUBLIC(QtGradientStopsModel)
 public:
     QMap<qreal, QtGradientStop *> m_posToStop;
     QHash<QtGradientStop *, qreal> m_stopToPos;
     QHash<QtGradientStop *, bool> m_selection;
-    QtGradientStop *m_current;
+    QtGradientStop *m_current = nullptr;
 };
 
 
@@ -70,7 +68,6 @@ QtGradientStopsModel::QtGradientStopsModel(QObject *parent)
     : QObject(parent), d_ptr(new QtGradientStopsModelPrivate)
 {
     d_ptr->q_ptr = this;
-    d_ptr->m_current = 0;
 }
 
 QtGradientStopsModel::~QtGradientStopsModel()
@@ -145,7 +142,7 @@ bool QtGradientStopsModel::isSelected(QtGradientStop *stop) const
     return false;
 }
 
-QtGradientStop *QtGradientStopsModel::addStop(qreal pos, const QColor &color)
+QtGradientStop *QtGradientStopsModel::addStop(qreal pos, QColor color)
 {
     qreal newPos = pos;
     if (pos < 0.0)
@@ -224,7 +221,7 @@ void QtGradientStopsModel::swapStops(QtGradientStop *stop1, QtGradientStop *stop
     d_ptr->m_posToStop[pos2] = stop1;
 }
 
-void QtGradientStopsModel::changeStop(QtGradientStop *stop, const QColor &newColor)
+void QtGradientStopsModel::changeStop(QtGradientStop *stop, QColor newColor)
 {
     if (!d_ptr->m_stopToPos.contains(stop))
         return;

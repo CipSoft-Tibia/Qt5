@@ -110,12 +110,14 @@ const AVMetadataIDs keyToAVMetaDataID[] = {
     // Orientation
     { nil, nil, AVMetadataIdentifierQuickTimeMetadataVideoOrientation, nil, nil, nil },
     // Resolution
+    { nil, nil, nil, nil, nil, nil },
+    // HasHdrContent
     { nil, nil, nil, nil, nil, nil }
 };
 
 static AVMetadataIdentifier toIdentifier(QMediaMetaData::Key key, AVMetadataKeySpace keySpace)
 {
-    static_assert(sizeof(keyToAVMetaDataID)/sizeof(AVMetadataIDs) == QMediaMetaData::Key::Resolution + 1);
+    static_assert(sizeof(keyToAVMetaDataID) / sizeof(AVMetadataIDs) == QMediaMetaData::NumMetaData);
 
     AVMetadataIdentifier identifier = nil;
     if ([keySpace isEqualToString:AVMetadataKeySpaceiTunes]) {
@@ -132,7 +134,7 @@ static AVMetadataIdentifier toIdentifier(QMediaMetaData::Key key, AVMetadataKeyS
 
 static std::optional<QMediaMetaData::Key> toKey(AVMetadataItem *item)
 {
-    static_assert(sizeof(keyToAVMetaDataID)/sizeof(AVMetadataIDs) == QMediaMetaData::Key::Resolution + 1);
+    static_assert(sizeof(keyToAVMetaDataID) / sizeof(AVMetadataIDs) == QMediaMetaData::NumMetaData);
 
     // The item identifier may be different than the ones we support,
     // so check by common key first, as it will get the metadata
@@ -181,7 +183,7 @@ static std::optional<QMediaMetaData::Key> toKey(AVMetadataItem *item)
         itemKeySpace = ID3;
     }
 
-    for (int key = 0; key < QMediaMetaData::Resolution + 1; key++) {
+    for (int key = 0; key < QMediaMetaData::NumMetaData; key++) {
         AVMetadataIdentifier idForKey = nil;
         switch (itemKeySpace) {
         case iTunes:
@@ -266,6 +268,23 @@ QMediaMetaData AVFMetaData::fromAssetTrack(AVAssetTrack *asset)
             AVFMediaPlayer::videoOrientationForAssetTrack(asset, angle, mirrored);
             Q_UNUSED(mirrored);
             metadata.insert(QMediaMetaData::Orientation, int(angle));
+        }
+
+        // add HDR content
+        if (metadata.value(QMediaMetaData::HasHdrContent).isNull()) {
+            auto hasHdrContent = false;
+
+            NSArray *formatDescriptions = [asset formatDescriptions];
+            for (id formatDescription in formatDescriptions) {
+                NSDictionary *extensions = (__bridge NSDictionary *)CMFormatDescriptionGetExtensions((CMFormatDescriptionRef)formatDescription);
+                NSString *transferFunction = extensions[(__bridge NSString *)kCMFormatDescriptionExtension_TransferFunction];
+                if ([transferFunction isEqualToString:(__bridge NSString *)kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ]) {
+                    hasHdrContent = true;
+                    break;
+                }
+            }
+
+            metadata.insert(QMediaMetaData::HasHdrContent, hasHdrContent);
         }
     }
     return metadata;

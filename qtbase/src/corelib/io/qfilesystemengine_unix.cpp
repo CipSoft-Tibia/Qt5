@@ -39,6 +39,11 @@
 #if defined(Q_OS_DARWIN)
 # include <QtCore/private/qcore_mac_p.h>
 # include <CoreFoundation/CFBundle.h>
+# include <UniformTypeIdentifiers/UTType.h>
+# include <UniformTypeIdentifiers/UTCoreTypes.h>
+# include <Foundation/Foundation.h>
+# include <sys/clonefile.h>
+# include <copyfile.h>
 #endif
 
 #ifdef Q_OS_MACOS
@@ -47,15 +52,6 @@
 
 #if defined(QT_PLATFORM_UIKIT)
 #include <MobileCoreServices/MobileCoreServices.h>
-#endif
-
-#if defined(Q_OS_DARWIN)
-# include <sys/clonefile.h>
-# include <copyfile.h>
-// We cannot include <Foundation/Foundation.h> (it's an Objective-C header), but
-// we need these declarations:
-Q_FORWARD_DECLARE_OBJC_CLASS(NSString);
-extern "C" NSString *NSTemporaryDirectory();
 #endif
 
 #if defined(Q_OS_LINUX)
@@ -127,10 +123,9 @@ static bool isPackage(const QFileSystemMetaData &data, const QFileSystemEntry &e
     QString suffix = info.suffix();
 
     if (suffix.length() > 0) {
-        // First step: is the extension known ?
-        QCFType<CFStringRef> extensionRef = suffix.toCFString();
-        QCFType<CFStringRef> uniformTypeIdentifier = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, extensionRef, NULL);
-        if (UTTypeConformsTo(uniformTypeIdentifier, kUTTypeBundle))
+        // First step: is it a bundle?
+        const auto *utType = [UTType typeWithFilenameExtension:suffix.toNSString()];
+        if ([utType conformsToType:UTTypeBundle])
             return true;
 
         // Second step: check if an application knows the package type
@@ -159,6 +154,15 @@ static bool isPackage(const QFileSystemMetaData &data, const QFileSystemEntry &e
 
     // Third step: check if the directory has the package bit set
     return hasResourcePropertyFlag(data, entry, kCFURLIsPackageKey);
+}
+#endif
+
+#ifdef Q_OS_VXWORKS
+static inline void forceRequestedPermissionsOnVxWorks(QByteArray dirName, mode_t mode)
+{
+    if (mode == 0) {
+        chmod(dirName, 0);
+    }
 }
 #endif
 
@@ -673,8 +677,7 @@ QFileSystemEntry QFileSystemEngine::canonicalName(const QFileSystemEntry &entry,
     if (resolved_name) {
         data.knownFlagsMask |= QFileSystemMetaData::ExistsAttribute;
         data.entryFlags |= QFileSystemMetaData::ExistsAttribute;
-        QString canonicalPath = QDir::cleanPath(QFile::decodeName(resolved_name));
-        return QFileSystemEntry(canonicalPath);
+        return QFileSystemEntry(resolved_name, QFileSystemEntry::FromNativePath{});
     } else if (errno == ENOENT || errno == ENOTDIR) { // file doesn't exist
         data.knownFlagsMask |= QFileSystemMetaData::ExistsAttribute;
         data.entryFlags &= ~(QFileSystemMetaData::ExistsAttribute);
@@ -808,7 +811,7 @@ QString QFileSystemEngine::resolveGroupName(uint groupId)
 #endif
     if (gr)
         return QFile::decodeName(QByteArray(gr->gr_name));
-#else // Integrity || WASM
+#else // Integrity || WASM || VxWorks
     Q_UNUSED(groupId);
 #endif
     return QString();
@@ -837,7 +840,7 @@ bool QFileSystemEngine::fillMetaData(const QFileSystemEntry &entry, QFileSystemM
     Q_CHECK_FILE_NAME(entry, false);
 
 #if defined(Q_OS_DARWIN)
-    if (what & QFileSystemMetaData::BundleType) {
+    if (what & (QFileSystemMetaData::BundleType | QFileSystemMetaData::CaseSensitive)) {
         if (!data.hasFlags(QFileSystemMetaData::DirectoryType))
             what |= QFileSystemMetaData::DirectoryType;
     }
@@ -992,6 +995,13 @@ bool QFileSystemEngine::fillMetaData(const QFileSystemEntry &entry, QFileSystemM
 
         data.knownFlagsMask |= QFileSystemMetaData::BundleType;
     }
+
+    if (what & QFileSystemMetaData::CaseSensitive) {
+        if (entryErrno == 0 && hasResourcePropertyFlag(
+            data, entry, kCFURLVolumeSupportsCaseSensitiveNamesKey))
+            data.entryFlags |= QFileSystemMetaData::CaseSensitive;
+        data.knownFlagsMask |= QFileSystemMetaData::CaseSensitive;
+    }
 #endif
 
     if (what & QFileSystemMetaData::HiddenAttribute
@@ -1083,8 +1093,12 @@ static bool createDirectoryWithParents(const QByteArray &nativeName, mode_t mode
         return QT_STAT(nativeName.constData(), &st) == 0 && (st.st_mode & S_IFMT) == S_IFDIR;
     };
 
-    if (shouldMkdirFirst && QT_MKDIR(nativeName, mode) == 0)
+    if (shouldMkdirFirst && QT_MKDIR(nativeName, mode) == 0) {
+#ifdef Q_OS_VXWORKS
+        forceRequestedPermissionsOnVxWorks(nativeName, mode);
+#endif
         return true;
+    }
     if (errno == EISDIR)
         return true;
     if (errno == EEXIST || errno == EROFS)
@@ -1102,8 +1116,12 @@ static bool createDirectoryWithParents(const QByteArray &nativeName, mode_t mode
         return false;
 
     // try again
-    if (QT_MKDIR(nativeName, mode) == 0)
+    if (QT_MKDIR(nativeName, mode) == 0) {
+#ifdef Q_OS_VXWORKS
+        forceRequestedPermissionsOnVxWorks(nativeName, mode);
+#endif
         return true;
+    }
     return errno == EEXIST && isDir(nativeName);
 }
 
@@ -1111,7 +1129,7 @@ static bool createDirectoryWithParents(const QByteArray &nativeName, mode_t mode
 bool QFileSystemEngine::createDirectory(const QFileSystemEntry &entry, bool createParents,
                                         std::optional<QFile::Permissions> permissions)
 {
-    QString dirName = entry.filePath();
+    QByteArray dirName = entry.nativeFilePath();
     Q_CHECK_FILE_NAME(dirName, false);
 
     // Darwin doesn't support trailing /'s, so remove for everyone
@@ -1119,14 +1137,17 @@ bool QFileSystemEngine::createDirectory(const QFileSystemEntry &entry, bool crea
         dirName.chop(1);
 
     // try to mkdir this directory
-    QByteArray nativeName = QFile::encodeName(dirName);
     mode_t mode = permissions ? QtPrivate::toMode_t(*permissions) : 0777;
-    if (QT_MKDIR(nativeName, mode) == 0)
+    if (QT_MKDIR(dirName, mode) == 0) {
+#ifdef Q_OS_VXWORKS
+        forceRequestedPermissionsOnVxWorks(dirName, mode);
+#endif
         return true;
+    }
     if (!createParents)
         return false;
 
-    return createDirectoryWithParents(nativeName, mode, false);
+    return createDirectoryWithParents(dirName, mode, false);
 }
 
 //static
@@ -1168,7 +1189,7 @@ bool QFileSystemEngine::createLink(const QFileSystemEntry &source, const QFileSy
 
 #ifdef Q_OS_DARWIN
 // see qfilesystemengine_mac.mm
-#elif defined(QT_BOOTSTRAPPED) || !defined(AT_FDCWD)
+#elif defined(QT_BOOTSTRAPPED) || !defined(AT_FDCWD) || defined(Q_OS_ANDROID) || defined(Q_OS_VXWORKS)
 // bootstrapped tools don't need this, and we don't want QStorageInfo
 //static
 bool QFileSystemEngine::moveFileToTrash(const QFileSystemEntry &, QFileSystemEntry &,
@@ -1774,4 +1795,19 @@ QFileSystemEntry QFileSystemEngine::currentPath()
 #endif
     return result;
 }
+
+bool QFileSystemEngine::isCaseSensitive(const QFileSystemEntry &entry, QFileSystemMetaData &metaData)
+{
+#if defined(Q_OS_DARWIN)
+    if (!metaData.hasFlags(QFileSystemMetaData::CaseSensitive))
+        fillMetaData(entry, metaData, QFileSystemMetaData::CaseSensitive);
+    return metaData.entryFlags.testFlag(QFileSystemMetaData::CaseSensitive);
+#else
+    Q_UNUSED(entry);
+    Q_UNUSED(metaData);
+    // FIXME: This may not be accurate for all file systems (QTBUG-28246)
+    return true;
+#endif
+}
+
 QT_END_NAMESPACE

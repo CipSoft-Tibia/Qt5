@@ -1,50 +1,79 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// GEN_BUILD:CONDITION(tint_build_ir)
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <string>
 
 #include "src/tint/cmd/bench/bench.h"
 #include "src/tint/lang/spirv/writer/writer.h"
 
+#if TINT_BUILD_WGSL_READER
+#include "src/tint/lang/wgsl/reader/reader.h"
+#endif  // TINT_BUILD_WGSL_READER
+
 namespace tint::spirv::writer {
 namespace {
 
-void RunBenchmark(benchmark::State& state, std::string input_name, Options options) {
+void GenerateSPIRV(benchmark::State& state, std::string input_name) {
     auto res = bench::LoadProgram(input_name);
-    if (auto err = std::get_if<bench::Error>(&res)) {
-        state.SkipWithError(err->msg.c_str());
+    if (res != Success) {
+        state.SkipWithError(res.Failure().reason.str());
         return;
     }
-    auto& program = std::get<bench::ProgramAndFile>(res).program;
     for (auto _ : state) {
-        auto res = Generate(&program, options);
-        if (!res) {
-            state.SkipWithError(res.Failure());
+        auto gen_res = Generate(res->program, {});
+        if (gen_res != Success) {
+            state.SkipWithError(gen_res.Failure().reason.str());
         }
     }
 }
 
-void GenerateSPIRV(benchmark::State& state, std::string input_name) {
-    RunBenchmark(state, input_name, {});
-}
-
 void GenerateSPIRV_UseIR(benchmark::State& state, std::string input_name) {
-    Options options;
-    options.use_tint_ir = true;
-    RunBenchmark(state, input_name, std::move(options));
+#if TINT_BUILD_WGSL_READER
+    auto res = bench::LoadProgram(input_name);
+    if (res != Success) {
+        state.SkipWithError(res.Failure().reason.str());
+        return;
+    }
+    for (auto _ : state) {
+        // Convert the AST program to an IR module.
+        auto ir = tint::wgsl::reader::ProgramToLoweredIR(res->program);
+        if (ir != Success) {
+            state.SkipWithError(ir.Failure().reason.str());
+            return;
+        }
+
+        auto gen_res = Generate(ir.Get(), {});
+        if (gen_res != Success) {
+            state.SkipWithError(gen_res.Failure().reason.str());
+        }
+    }
+#else
+#error "WGSL Reader is required to build IR generator"
+#endif  // TINT_BUILD_WGSL_READER
 }
 
 TINT_BENCHMARK_PROGRAMS(GenerateSPIRV);

@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "components/password_manager/core/browser/affiliation/affiliation_utils.h"
-#include "components/password_manager/core/browser/sql_table_builder.h"
 
 namespace base {
 class FilePath;
@@ -57,6 +56,10 @@ class AffiliationDatabase {
 
   // Retrieves all stored groups.
   std::vector<GroupedFacets> GetAllGroups() const;
+
+  // Retrieves a group for |facet_uri| or empty group with only |facet_uri| if
+  // there are no matches in the database.
+  GroupedFacets GetGroup(const FacetURI& facet_uri) const;
 
   // Retrieves psl extension list.
   std::vector<std::string> GetPSLExtensions() const;

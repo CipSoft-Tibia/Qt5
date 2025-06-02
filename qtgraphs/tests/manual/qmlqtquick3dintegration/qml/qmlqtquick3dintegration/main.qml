@@ -37,8 +37,8 @@ Item {
     Bars3D {
         id: barGraph
         anchors.fill: parent
-        shadowQuality: AbstractGraph3D.ShadowQuality.Medium
-        selectionMode: AbstractGraph3D.SelectionItem
+        shadowQuality: Graphs3D.ShadowQuality.Medium
+        selectionMode: Graphs3D.SelectionFlag.Item
         msaaSamples: 8
         theme: Theme3D {
             type: Theme3D.Theme.Ebony
@@ -46,7 +46,7 @@ Item {
             font.pointSize: 35
             labelBackgroundEnabled: true
             backgroundEnabled: false
-            gridEnabled: false
+            gridVisible: false
             labelsEnabled: false
             colorStyle: Theme3D.ColorStyle.RangeGradient
             singleHighlightGradient: customGradient
@@ -60,7 +60,7 @@ Item {
         barThickness: 0.7
         barSpacing: Qt.size(0.5, 0.5)
         barSpacingRelative: false
-        valueAxis: ValueAxis3D {
+        valueAxis: Value3DAxis {
             // Use this for live data
             min: 64
             max: 256

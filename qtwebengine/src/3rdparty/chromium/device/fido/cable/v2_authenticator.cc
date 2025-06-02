@@ -4,8 +4,11 @@
 
 #include "device/fido/cable/v2_authenticator.h"
 
+#include <string_view>
+
 #include "base/feature_list.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "base/strings/string_number_conversions.h"
@@ -38,9 +41,7 @@
 #include "third_party/boringssl/src/include/openssl/ec_key.h"
 #include "third_party/boringssl/src/include/openssl/obj.h"
 
-namespace device {
-namespace cablev2 {
-namespace authenticator {
+namespace device::cablev2::authenticator {
 
 using device::CtapDeviceResponseCode;
 using device::CtapRequestCommand;
@@ -85,9 +86,8 @@ constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
         })");
 
 struct MakeCredRequest {
-  // All fields below are not a raw_ptr<T> because cbor_extract.cc would
-  // cast the raw_ptr<T> to a void*, skipping an AddRef() call and causing a
-  // ref-counting mismatch.
+  // RAW_PTR_EXCLUSION: cbor_extract.cc would cast the raw_ptr<T> to a void*,
+  // skipping an AddRef() call and causing a ref-counting mismatch.
   RAW_PTR_EXCLUSION const std::vector<uint8_t>* client_data_hash;
   RAW_PTR_EXCLUSION const std::string* rp_id;
   RAW_PTR_EXCLUSION const std::string* rp_name;
@@ -97,7 +97,6 @@ struct MakeCredRequest {
   RAW_PTR_EXCLUSION const cbor::Value::ArrayValue* cred_params;
   RAW_PTR_EXCLUSION const cbor::Value::ArrayValue* excluded_credentials;
   RAW_PTR_EXCLUSION const bool* resident_key;
-  RAW_PTR_EXCLUSION const std::string* device_public_key_attestation;
   RAW_PTR_EXCLUSION const cbor::Value* prf;
 };
 
@@ -135,16 +134,6 @@ static constexpr StepOrByte<MakeCredRequest> kMakeCredParseSteps[] = {
 
     Map<MakeCredRequest>(Is::kOptional),
     IntKey<MakeCredRequest>(6),
-      Map<MakeCredRequest>(Is::kOptional),
-      StringKey<MakeCredRequest>(), 'd', 'e', 'v', 'i', 'c', 'e',
-                                    'P', 'u', 'b', 'K', 'e', 'y', '\0',
-        // The presence of the attestation type is used to detect when DPK is
-        // requested.
-        ELEMENT(Is::kRequired, MakeCredRequest, device_public_key_attestation),
-        StringKey<MakeCredRequest>(), 'a', 't', 't', 'e', 's', 't', 'a', 't',
-                                      'i', 'o', 'n', '\0',
-      Stop<MakeCredRequest>(),
-
       ELEMENT(Is::kOptional, MakeCredRequest, prf),
       StringKey<MakeCredRequest>(), 'p', 'r', 'f', '\0',
     Stop<MakeCredRequest>(),
@@ -160,9 +149,8 @@ static constexpr StepOrByte<MakeCredRequest> kMakeCredParseSteps[] = {
 };
 
 struct AttestationObject {
-  // All fields below are not a raw_ptr<T> because cbor_extract.cc would
-  // cast the raw_ptr<T> to a void*, skipping an AddRef() call and causing a
-  // ref-counting mismatch.
+  // RAW_PTR_EXCLUSION: cbor_extract.cc would cast the raw_ptr<T> to a void*,
+  // skipping an AddRef() call and causing a ref-counting mismatch.
   RAW_PTR_EXCLUSION const std::string* fmt;
   RAW_PTR_EXCLUSION const std::vector<uint8_t>* auth_data;
   RAW_PTR_EXCLUSION const cbor::Value* statement;
@@ -184,13 +172,11 @@ static constexpr StepOrByte<AttestationObject> kAttObjParseSteps[] = {
 };
 
 struct GetAssertionRequest {
-  // All fields below are not a raw_ptr<T> because cbor_extract.cc would
-  // cast the raw_ptr<T> to a void*, skipping an AddRef() call and causing a
-  // ref-counting mismatch.
+  // RAW_PTR_EXCLUSION: cbor_extract.cc would cast the raw_ptr<T> to a void*,
+  // skipping an AddRef() call and causing a ref-counting mismatch.
   RAW_PTR_EXCLUSION const std::string* rp_id;
   RAW_PTR_EXCLUSION const std::vector<uint8_t>* client_data_hash;
   RAW_PTR_EXCLUSION const cbor::Value::ArrayValue* allowed_credentials;
-  RAW_PTR_EXCLUSION const std::string* device_public_key_attestation;
   RAW_PTR_EXCLUSION const std::vector<uint8_t>* prf_eval_first;
   RAW_PTR_EXCLUSION const std::vector<uint8_t>* prf_eval_second;
   RAW_PTR_EXCLUSION const cbor::Value* prf_eval_by_cred;
@@ -209,16 +195,6 @@ static constexpr StepOrByte<GetAssertionRequest> kGetAssertionParseSteps[] = {
 
     Map<GetAssertionRequest>(Is::kOptional),
     IntKey<GetAssertionRequest>(4),
-      Map<GetAssertionRequest>(Is::kOptional),
-      StringKey<GetAssertionRequest>(), 'd', 'e', 'v', 'i', 'c', 'e',
-                                        'P', 'u', 'b', 'K', 'e', 'y', '\0',
-        // The presence of the attestation type is used to detect when DPK is
-        // requested.
-        ELEMENT(Is::kRequired, GetAssertionRequest, device_public_key_attestation),
-        StringKey<GetAssertionRequest>(), 'a', 't', 't', 'e', 's', 't', 'a', 't',
-                                          'i', 'o', 'n', '\0',
-      Stop<GetAssertionRequest>(),
-
       Map<GetAssertionRequest>(Is::kOptional),
       StringKey<GetAssertionRequest>(), 'p', 'r', 'f', '\0',
         Map<GetAssertionRequest>(Is::kOptional),
@@ -260,7 +236,6 @@ std::vector<uint8_t> BuildGetInfoResponse() {
   transports.emplace_back("internal");
 
   cbor::Value::ArrayValue extensions;
-  extensions.emplace_back("devicePubKey");
   extensions.emplace_back("prf");
 
   cbor::Value::MapValue response_map;
@@ -393,8 +368,9 @@ class TunnelTransport : public Transport {
 
     network_context_factory_.Run()->CreateWebSocket(
         target_, {device::kCableWebSocketProtocol}, net::SiteForCookies(),
-        net::IsolationInfo(), /*additional_headers=*/{},
-        network::mojom::kBrowserProcessId, url::Origin::Create(target_),
+        /*has_storage_access=*/false, net::IsolationInfo(),
+        /*additional_headers=*/{}, network::mojom::kBrowserProcessId,
+        url::Origin::Create(target_),
         network::mojom::kWebSocketOptionBlockAllCookies,
         net::MutableNetworkTrafficAnnotationTag(kTrafficAnnotation),
         websocket_client_->BindNewHandshakeClientPipe(),
@@ -477,7 +453,6 @@ class TunnelTransport : public Transport {
         update_callback_.Run(Platform::Status::HANDSHAKE_COMPLETE);
         websocket_client_->Write(response);
         crypter_ = std::move(result->first);
-        crypter_->UseNewConstruction();
 
         cbor::Value::MapValue post_handshake_msg;
         post_handshake_msg.emplace(1, BuildGetInfoResponse());
@@ -773,13 +748,6 @@ class CTAP2Processor : public Transaction {
                : device::ResidentKeyRequirement::kDiscouraged,
             device::UserVerificationRequirement::kRequired);
 
-        if (make_cred_request.device_public_key_attestation) {
-          // Play Services doesn't support any of the devicePubKey parameters so
-          // this code doesn't bother parsing them nor passing them on.
-          params->device_public_key =
-              blink::mojom::DevicePublicKeyRequest::New();
-        }
-
         if (make_cred_request.prf) {
           params->prf_enable = true;
         }
@@ -851,13 +819,6 @@ class CTAP2Processor : public Transaction {
         if (!CopyCredIds(get_assertion_request.allowed_credentials,
                          &params->allow_credentials)) {
           return Platform::Error::INTERNAL_ERROR;
-        }
-
-        if (get_assertion_request.device_public_key_attestation) {
-          // Play Services doesn't support any of the devicePubKey parameters so
-          // this code doesn't bother parsing them nor passing them on.
-          params->extensions->device_public_key =
-              blink::mojom::DevicePublicKeyRequest::New();
         }
 
         if (get_assertion_request.prf_eval_first) {
@@ -938,7 +899,6 @@ class CTAP2Processor : public Transaction {
       bool was_discoverable_credential_request,
       uint32_t ctap_status,
       base::span<const uint8_t> attestation_object_bytes,
-      absl::optional<base::span<const uint8_t>> device_public_key_signature,
       bool prf_enabled) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     DCHECK_LE(ctap_status, 0xFFu);
@@ -962,16 +922,12 @@ class CTAP2Processor : public Transaction {
       }
 
       cbor::Value::MapValue response_map;
-      response_map.emplace(1, base::StringPiece(*attestation_object.fmt));
+      response_map.emplace(1, std::string_view(*attestation_object.fmt));
       response_map.emplace(
           2, base::span<const uint8_t>(*attestation_object.auth_data));
       response_map.emplace(3, attestation_object.statement->Clone());
 
       cbor::Value::MapValue unsigned_extension_outputs;
-      if (device_public_key_signature) {
-        unsigned_extension_outputs.emplace(kExtensionDevicePublicKey,
-                                           *device_public_key_signature);
-      }
       if (prf_enabled) {
         cbor::Value::MapValue prf;
         prf.emplace(kExtensionPRFEnabled, true);
@@ -1057,17 +1013,13 @@ class CTAP2Processor : public Transaction {
       }
 
       cbor::Value::MapValue unsigned_extension_outputs;
-      if (auth_response->device_public_key) {
-        unsigned_extension_outputs.emplace(
-            kExtensionDevicePublicKey,
-            auth_response->device_public_key->signature);
-      }
-      if (auth_response->prf_results) {
+      if (auth_response->extensions->prf_results) {
         cbor::Value::MapValue prf, results;
-        results.emplace(kExtensionPRFFirst, auth_response->prf_results->first);
-        if (auth_response->prf_results->second) {
+        results.emplace(kExtensionPRFFirst,
+                        auth_response->extensions->prf_results->first);
+        if (auth_response->extensions->prf_results->second) {
           results.emplace(kExtensionPRFSecond,
-                          *auth_response->prf_results->second);
+                          *auth_response->extensions->prf_results->second);
         }
         prf.emplace(kExtensionPRFResults, std::move(results));
         unsigned_extension_outputs.emplace(kExtensionPRF, std::move(prf));
@@ -1313,6 +1265,4 @@ std::unique_ptr<Transaction> TransactFromFCMDeprecated(
                          client_nonce, std::move(contact_id));
 }
 
-}  // namespace authenticator
-}  // namespace cablev2
-}  // namespace device
+}  // namespace device::cablev2::authenticator

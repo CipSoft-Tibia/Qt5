@@ -21,9 +21,9 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "vaapi_vpp.h"
+#include "video.h"
 
 // Denoise min/max/default Values
 #define DENOISE_MIN            0

@@ -25,10 +25,6 @@ _BUILD_ANDROID_GYP = os.path.join(_CHROMIUM_SRC, 'build', 'android', 'gyp')
 # (if set); item 2 is system libraries.
 sys.path.insert(1, _BUILD_ANDROID_GYP)
 
-from util import build_utils
-import action_helpers  # build_utils adds //build to sys.path.
-import zip_helpers  # build_utils adds //build to sys.path.
-
 from codegen import placeholder_gen_jni_java
 from codegen import proxy_impl_java
 import common
@@ -138,7 +134,7 @@ def JavaTypeToCForDeclaration(java_type):
   c_type = java_type.to_cpp()
   if java_type.is_primitive():
     return c_type
-  return f'const base::android::JavaParamRef<{c_type}>&'
+  return f'const jni_zero::JavaParamRef<{c_type}>&'
 
 
 def JavaTypeToCForCalledByNativeParam(java_type):
@@ -148,14 +144,14 @@ def JavaTypeToCForCalledByNativeParam(java_type):
     if c_type == 'jint':
       return 'JniIntWrapper'
     return c_type
-  return f'const base::android::JavaRef<{c_type}>&'
+  return f'const jni_zero::JavaRef<{c_type}>&'
 
 
 def _GetJNIFirstParam(native, for_declaration):
   c_type = 'jclass' if native.static else 'jobject'
 
   if for_declaration:
-    c_type = f'const base::android::JavaParamRef<{c_type}>&'
+    c_type = f'const jni_zero::JavaParamRef<{c_type}>&'
   return [c_type + ' jcaller']
 
 
@@ -425,7 +421,7 @@ extern const char kClassPath_${JAVA_CLASS}[];
 """)
     else:
       template = Template("""
-JNI_REGISTRATION_EXPORT extern const char kClassPath_${JAVA_CLASS}[];
+JNI_ZERO_COMPONENT_BUILD_EXPORT extern const char kClassPath_${JAVA_CLASS}[];
 const char kClassPath_${JAVA_CLASS}[] = \
 "${JNI_CLASS_PATH}";
 """)
@@ -456,7 +452,7 @@ extern std::atomic<jclass> g_${JAVA_CLASS}_clazz;
     else:
       template = Template("""\
 // Leaking this jclass as we cannot use LazyInstance from some threads.
-JNI_REGISTRATION_EXPORT std::atomic<jclass> g_${JAVA_CLASS}_clazz(nullptr);
+JNI_ZERO_COMPONENT_BUILD_EXPORT std::atomic<jclass> g_${JAVA_CLASS}_clazz(nullptr);
 """ + class_getter)
 
     for full_clazz in classes.values():
@@ -519,6 +515,7 @@ class InlHeaderFileGenerator(object):
 
 #include <jni.h>
 
+#include "third_party/jni_zero/jni_export.h"
 ${INCLUDES}
 
 // Step 1: Forward declarations.
@@ -613,12 +610,10 @@ $METHOD_STUBS
     ])
 
   def GetJavaParamRefForCall(self, c_type, name):
-    return Template(
-        'base::android::JavaParamRef<${TYPE}>(env, ${NAME})').substitute({
-            'TYPE':
-            c_type,
-            'NAME':
-            name,
+    return Template('jni_zero::JavaParamRef<${TYPE}>(env, ${NAME})').substitute(
+        {
+            'TYPE': c_type,
+            'NAME': name,
         })
 
   def GetImplementationMethodName(self, native):
@@ -650,11 +645,7 @@ $METHOD_STUBS
     post_call = ''
     if not native.return_type.is_primitive():
       post_call = '.Release()'
-      return_declaration = ('base::android::ScopedJavaLocalRef<' + return_type +
-                            '>')
-    profiling_entered_native = ''
-    if self.options.enable_profiling:
-      profiling_entered_native = '  JNI_LINK_SAVED_FRAME_POINTER;\n'
+      return_declaration = ('jni_zero::ScopedJavaLocalRef<' + return_type + '>')
 
     values = {
         'RETURN': return_type,
@@ -666,7 +657,6 @@ $METHOD_STUBS
         'PARAMS_IN_CALL': params_in_call,
         'POST_CALL': post_call,
         'STUB_NAME': self.helper.GetStubName(native),
-        'PROFILING_ENTERED_NATIVE': profiling_entered_native,
     }
 
     namespace_qual = self.namespace + '::' if self.namespace else ''
@@ -680,10 +670,9 @@ $METHOD_STUBS
           'P0_TYPE': native.first_param_cpp_type,
       })
       template = Template("""\
-JNI_GENERATOR_EXPORT ${RETURN} ${STUB_NAME}(
+JNI_BOUNDARY_EXPORT ${RETURN} ${STUB_NAME}(
     JNIEnv* env,
     ${PARAMS_IN_STUB}) {
-${PROFILING_ENTERED_NATIVE}\
   ${P0_TYPE}* native = reinterpret_cast<${P0_TYPE}*>(${PARAM0_NAME});
   CHECK_NATIVE_PTR(env, jcaller, native, "${NAME}"${OPTIONAL_ERROR_RETURN});
   return native->${NAME}(${PARAMS_IN_CALL})${POST_CALL};
@@ -695,10 +684,9 @@ ${PROFILING_ENTERED_NATIVE}\
       template = Template("""\
 static ${RETURN_DECLARATION} ${IMPL_METHOD_NAME}(JNIEnv* env${PARAMS});
 
-JNI_GENERATOR_EXPORT ${RETURN} ${STUB_NAME}(
+JNI_BOUNDARY_EXPORT ${RETURN} ${STUB_NAME}(
     JNIEnv* env,
     ${PARAMS_IN_STUB}) {
-${PROFILING_ENTERED_NATIVE}\
   return ${IMPL_METHOD_NAME}(${PARAMS_IN_CALL})${POST_CALL};
 }
 """)
@@ -721,8 +709,7 @@ ${PROFILING_ENTERED_NATIVE}\
       first_param_in_declaration = ''
       first_param_in_call = 'clazz'
     else:
-      first_param_in_declaration = (
-          ', const base::android::JavaRef<jobject>& obj')
+      first_param_in_declaration = (', const jni_zero::JavaRef<jobject>& obj')
       first_param_in_call = 'obj.obj()'
     params_in_declaration = self.GetCalledByNativeParamsInDeclaration(
         called_by_native)
@@ -759,12 +746,8 @@ ${PROFILING_ENTERED_NATIVE}\
       if return_type.is_primitive():
         return_clause = 'return ret;'
       else:
-        return_type_str = (
-            f'base::android::ScopedJavaLocalRef<{return_type_str}>')
+        return_type_str = (f'jni_zero::ScopedJavaLocalRef<{return_type_str}>')
         return_clause = f'return {return_type_str}(env, ret);'
-    profiling_leaving_native = ''
-    if self.options.enable_profiling:
-      profiling_leaving_native = '  JNI_SAVE_FRAME_POINTER;\n'
     sig = called_by_native.signature
     jni_descriptor = sig.to_descriptor()
 
@@ -783,7 +766,6 @@ ${PROFILING_ENTERED_NATIVE}\
         'FIRST_PARAM_IN_CALL': first_param_in_call,
         'PARAMS_IN_CALL': params_in_call,
         'CHECK_EXCEPTION': check_exception,
-        'PROFILING_LEAVING_NATIVE': profiling_leaving_native,
         'JNI_NAME': called_by_native.name,
         'JNI_DESCRIPTOR': jni_descriptor,
         'METHOD_ID_MEMBER_NAME': method_id_member_name,
@@ -809,7 +791,7 @@ ${FUNCTION_HEADER}
   CHECK_CLAZZ(env, ${FIRST_PARAM_IN_CALL},
       ${JAVA_CLASS}_clazz(env)${OPTIONAL_ERROR_RETURN});
 
-  jni_generator::JniJavaCallContext${CHECK_EXCEPTION} call_context;
+  jni_zero::JniJavaCallContext${CHECK_EXCEPTION} call_context;
   call_context.Init<
       base::android::MethodID::TYPE_${METHOD_ID_TYPE}>(
           env,
@@ -818,7 +800,6 @@ ${FUNCTION_HEADER}
           "${JNI_DESCRIPTOR}",
           &g_${JAVA_CLASS}_${METHOD_ID_VAR_NAME});
 
-${PROFILING_LEAVING_NATIVE}\
   ${RETURN_DECLARATION}
      ${PRE_CALL}env->${ENV_CALL}(${FIRST_PARAM_IN_CALL},
           ${METHOD_ID_MEMBER_NAME}${PARAMS_IN_CALL})${POST_CALL};
@@ -928,7 +909,7 @@ def _ParseClassFiles(jar_file, class_files, args):
 
 
 def _CreateSrcJar(srcjar_path, gen_jni_class, jni_objs, *, script_name):
-  with action_helpers.atomic_output(srcjar_path) as f:
+  with common.atomic_output(srcjar_path) as f:
     with zipfile.ZipFile(f, 'w') as srcjar:
       for jni_obj in jni_objs:
         if not jni_obj.proxy_natives:
@@ -936,21 +917,21 @@ def _CreateSrcJar(srcjar_path, gen_jni_class, jni_objs, *, script_name):
         content = proxy_impl_java.Generate(jni_obj,
                                            gen_jni_class=gen_jni_class,
                                            script_name=script_name)
-        zip_path = f'{jni_obj.java_class.full_name_with_slashes}Jni.java'
-        zip_helpers.add_to_zip_hermetic(srcjar, zip_path, data=content)
+        zip_path = f'{jni_obj.java_class.class_without_prefix.full_name_with_slashes}Jni.java'
+        common.add_to_zip_hermetic(srcjar, zip_path, data=content)
 
       content = placeholder_gen_jni_java.Generate(jni_objs,
                                                   gen_jni_class=gen_jni_class,
                                                   script_name=script_name)
       zip_path = f'{gen_jni_class.full_name_with_slashes}.java'
-      zip_helpers.add_to_zip_hermetic(srcjar, zip_path, data=content)
+      common.add_to_zip_hermetic(srcjar, zip_path, data=content)
 
 
 def _WriteHeaders(jni_objs, output_names, output_dir):
   for jni_obj, header_name in zip(jni_objs, output_names):
     output_file = os.path.join(output_dir, header_name)
     content = jni_obj.GetContent()
-    with action_helpers.atomic_output(output_file, 'w') as f:
+    with common.atomic_output(output_file, 'w') as f:
       f.write(content)
 
 

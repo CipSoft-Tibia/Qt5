@@ -23,9 +23,17 @@
 #  undef max
 #endif
 
-#if defined(Q_CC_MSVC)
+//
+// SIMDe (SIMD Everywhere) can't be used if intrin.h has been included as many definitions
+// conflict.   Defining Q_NUMERIC_NO_INTRINSICS allows SIMDe users to use Qt, at the cost of
+// falling back to the prior implementations of qMulOverflow and qAddOverflow.
+//
+#if defined(Q_CC_MSVC) && !defined(Q_NUMERIC_NO_INTRINSICS)
 #  include <intrin.h>
 #  include <float.h>
+#  if defined(Q_PROCESSOR_X86) || defined(Q_PROCESSOR_X86_64)
+#    define Q_HAVE_ADDCARRY
+#  endif
 #  if defined(Q_PROCESSOR_X86_64) || defined(Q_PROCESSOR_ARM_64)
 #    define Q_INTRINSIC_MUL_OVERFLOW64
 #    define Q_UMULH(v1, v2) __umulh(v1, v2);
@@ -223,7 +231,7 @@ template <> inline bool qMulOverflow(int64_t v1, int64_t v2, int64_t *r)
 #    endif // OS_INTEGRITY ARM64
 #  endif // Q_INTRINSIC_MUL_OVERFLOW64
 
-#  if defined(Q_CC_MSVC) && defined(Q_PROCESSOR_X86)
+#  if defined(Q_HAVE_ADDCARRY) && defined(Q_PROCESSOR_X86)
 // We can use intrinsics for the unsigned operations with MSVC
 template <> inline bool qAddOverflow(unsigned v1, unsigned v2, unsigned *r)
 { return _addcarry_u32(0, v1, v2, r); }
@@ -242,7 +250,8 @@ template <> inline bool qAddOverflow(quint64 v1, quint64 v2, quint64 *r)
     return carry;
 #    endif // !x86-64
 }
-#  endif // MSVC X86
+#  endif // HAVE ADDCARRY
+#undef Q_HAVE_ADDCARRY
 #endif // !GCC
 
 // Implementations for addition, subtraction or multiplication by a
@@ -327,6 +336,16 @@ template <auto V2, typename T> bool qMulOverflow(T v1, T *r)
 template <typename T>
 constexpr inline T qAbs(const T &t) { return t >= 0 ? t : -t; }
 
+namespace QtPrivate {
+template <typename T,
+          typename std::enable_if_t<std::is_integral_v<T>, bool> = true>
+constexpr inline auto qUnsignedAbs(T t)
+{
+    using U = std::make_unsigned_t<T>;
+    return (t >= 0) ? U(t) : U(~U(t) + U(1));
+}
+} // namespace QtPrivate
+
 // gcc < 10 doesn't have __has_builtin
 #if defined(Q_PROCESSOR_ARM_64) && (__has_builtin(__builtin_round) || defined(Q_CC_GNU)) && !defined(Q_CC_CLANG)
 // ARM64 has a single instruction that can do C++ rounding with conversion to integer.
@@ -366,22 +385,22 @@ template <typename T>
 constexpr inline const T &min(const T &a, const T &b) { return (a < b) ? a : b; }
 }
 
-[[nodiscard]] constexpr bool qFuzzyCompare(double p1, double p2)
+[[nodiscard]] constexpr bool qFuzzyCompare(double p1, double p2) noexcept
 {
     return (qAbs(p1 - p2) * 1000000000000. <= QtPrivate::min(qAbs(p1), qAbs(p2)));
 }
 
-[[nodiscard]] constexpr bool qFuzzyCompare(float p1, float p2)
+[[nodiscard]] constexpr bool qFuzzyCompare(float p1, float p2) noexcept
 {
     return (qAbs(p1 - p2) * 100000.f <= QtPrivate::min(qAbs(p1), qAbs(p2)));
 }
 
-[[nodiscard]] constexpr bool qFuzzyIsNull(double d)
+[[nodiscard]] constexpr bool qFuzzyIsNull(double d) noexcept
 {
     return qAbs(d) <= 0.000000000001;
 }
 
-[[nodiscard]] constexpr bool qFuzzyIsNull(float f)
+[[nodiscard]] constexpr bool qFuzzyIsNull(float f) noexcept
 {
     return qAbs(f) <= 0.00001f;
 }

@@ -64,17 +64,25 @@
 
   &:has(.workspace) {
     max-width: 400px;
-    border: 2px dashed var(--color-background-elevation-2);
+    border: 2px dashed var(--sys-color-neutral-outline);
     margin-block-start: 20px;
     padding: 10px;
     margin-inline: 20px;
+  }
 
-    & button {
-      background: transparent;
-      border: none;
-      padding: 0;
-      text-decoration: underline;
-      margin-inline: 4px;
+  & button {
+    cursor: pointer;
+    color: var(--text-link);
+    background: transparent;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    margin-inline: 5px;
+
+    &:focus-visible {
+      outline: 2px solid var(--sys-color-state-focus-ring);
+      outline-offset: 2px;
+      border-radius: 2px;
     }
   }
 }
@@ -141,7 +149,7 @@
 
 .tabbed-pane-header-tab:hover,
 .tabbed-pane-shadow .tabbed-pane-header-tab:focus-visible {
-  color: var(--color-text-primary);
+  color: var(--sys-color-on-surface);
   background-color: var(--sys-color-state-hover-on-subtle);
 }
 
@@ -190,20 +198,14 @@
   height: 100%;
 }
 
-.tabbed-pane-header-tabs-drop-down-container > .chevron-icon {
-  background-color: var(--icon-default);
-  display: block;
-}
-
 .tabbed-pane-header-tabs-drop-down-container > .chevron-icon:hover,
 .tabbed-pane-header-tabs-drop-down-container > .chevron-icon:focus-visible {
-  background-color: var(--icon-default-hover);
-  display: block;
+  color: var(--icon-default-hover);
 }
 
 .tabbed-pane-header-tabs-drop-down-container:hover,
 .tabbed-pane-header-tabs-drop-down-container:focus-visible {
-  background-color: var(--color-background-elevation-2);
+  background-color: var(--sys-color-state-hover-on-subtle);
 }
 
 .tabbed-pane-header-tabs-drop-down-container.measuring {
@@ -250,7 +252,7 @@
   border: none transparent;
   font-weight: normal;
   text-shadow: none;
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   height: 26px;
   padding-left: 10px;
   margin: 0;
@@ -332,7 +334,7 @@
 
 .close-button:hover,
 .close-button:active {
-  background-color: var(--color-details-hairline);
+  background-color: var(--sys-color-state-hover-on-subtle);
 }
 
 .tabbed-pane-header-tab.preview.closeable .close-button {
@@ -374,7 +376,7 @@
 
   .tabbed-pane-header-tab:hover .tabbed-pane-close-button,
   .tabbed-pane-shadow .tabbed-pane-header-tab:focus-visible .tabbed-pane-close-button {
-    --icon-color: HighlightText;
+    color: HighlightText;
   }
 
   .tabbed-pane-header-tabs-drop-down-container {
@@ -387,12 +389,12 @@
   }
 
   .tabbed-pane-header-tabs-drop-down-container > .chevron-icon {
-    background-color: ButtonText;
+    color: ButtonText;
   }
 
   .tabbed-pane-header-tabs-drop-down-container:hover > .chevron-icon,
   .tabbed-pane-header-tabs-drop-down-container:focus-visible > .chevron-icon {
-    background-color: HighlightText;
+    color: HighlightText;
   }
 
   .tabbed-pane-header-tabs .tabbed-pane-header-tab .preview-icon {

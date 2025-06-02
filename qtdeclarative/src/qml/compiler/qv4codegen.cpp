@@ -3,22 +3,25 @@
 
 #include "qv4codegen_p.h"
 
-#include <QtCore/QCoreApplication>
-#include <QtCore/QStringList>
-#include <QtCore/QStack>
-#include <QtCore/qurl.h>
-#include <QtCore/qloggingcategory.h>
-#include <QScopeGuard>
 #include <private/qqmljsast_p.h>
+#include <private/qqmljsdiagnosticmessage_p.h>
 #include <private/qqmljslexer_p.h>
 #include <private/qqmljsparser_p.h>
-#include <private/qv4staticvalue_p.h>
+#include <private/qv4bytecodegenerator_p.h>
 #include <private/qv4compilercontext_p.h>
 #include <private/qv4compilercontrolflow_p.h>
-#include <private/qv4bytecodegenerator_p.h>
 #include <private/qv4compilerscanfunctions_p.h>
+#include <private/qv4object_p.h>
+#include <private/qv4objectiterator_p.h>
+#include <private/qv4staticvalue_p.h>
 #include <private/qv4stringtoarrayindex_p.h>
-#include <private/qqmljsdiagnosticmessage_p.h>
+
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qscopeguard.h>
+#include <QtCore/qstack.h>
+#include <QtCore/qstringlist.h>
+#include <QtCore/qurl.h>
 
 #include <cmath>
 
@@ -161,21 +164,13 @@ const char *Codegen::s_globalNames[] = {
     nullptr
 };
 
-void Codegen::generateFromProgram(const QString &fileName,
-                                  const QString &finalUrl,
-                                  const QString &sourceCode,
-                                  Program *node,
-                                  Module *module,
-                                  ContextType contextType)
+void Codegen::generateFromProgram(
+        const QString &sourceCode, Program *node, Module *module, ContextType contextType)
 {
     Q_ASSERT(node);
 
     _module = module;
     _context = nullptr;
-
-    // ### should be set on the module outside of this method
-    _module->fileName = fileName;
-    _module->finalUrl = finalUrl;
 
     if (contextType == ContextType::ScriptImportedByQML) {
         // the global object is frozen, so we know that members of it are
@@ -198,20 +193,12 @@ void Codegen::generateFromProgram(const QString &fileName,
     defineFunction(QStringLiteral("%entry"), node, nullptr, node->statements);
 }
 
-void Codegen::generateFromModule(const QString &fileName,
-                                 const QString &finalUrl,
-                                 const QString &sourceCode,
-                                 ESModule *node,
-                                 Module *module)
+void Codegen::generateFromModule(const QString &sourceCode, ESModule *node, Module *module)
 {
     Q_ASSERT(node);
 
     _module = module;
     _context = nullptr;
-
-    // ### should be set on the module outside of this method
-    _module->fileName = fileName;
-    _module->finalUrl = finalUrl;
 
     ScanFunctions scan(this, sourceCode, ContextType::ESModule);
     scan(node);
@@ -242,6 +229,52 @@ void Codegen::generateFromModule(const QString &fileName,
     std::sort(_module->indirectExportEntries.begin(), _module->indirectExportEntries.end(), ExportEntry::lessThan);
 
     defineFunction(QStringLiteral("%entry"), node, nullptr, node->body);
+}
+
+void Codegen::generateFromModule(const Value &value, Module *module)
+{
+    _module = module;
+    _context = nullptr;
+
+    _module->newContext(nullptr, nullptr, ContextType::ESModule);
+    enterContext(nullptr);
+
+    _context->name = QStringLiteral("%entry");
+    _module->functions.append(_context);
+    _context->functionIndex = _module->functions.size() - 1;
+
+    ExportEntry entry;
+    entry.localName = entry.exportName = QLatin1String("default");
+    _module->localExportEntries << entry;
+
+    if (Object *o = value.objectValue()) {
+        QV4::Scope scope(o);
+        QV4::ObjectIterator it(scope, o, QV4::ObjectIterator::EnumerableOnly);
+        QV4::PropertyAttributes attrs;
+        QV4::ScopedPropertyKey name(scope);
+        while (true) {
+            name = it.next(nullptr, &attrs);
+            if (!name->isValid())
+                break;
+
+            ExportEntry entry;
+            entry.localName = entry.exportName = name->toQString();
+            _module->localExportEntries << entry;
+        }
+    }
+
+    std::sort(_module->localExportEntries.begin(), _module->localExportEntries.end(),
+              ExportEntry::lessThan);
+
+    for (auto it = _module->localExportEntries.cbegin(), end = _module->localExportEntries.cend();
+         it != end; ++it) {
+        Context::Member member;
+        member.index = _context->locals.size();
+        _context->locals.append(it->exportName);
+        _context->members.insert(it->exportName, member);
+    }
+
+    leaveContext();
 }
 
 void Codegen::enterContext(Node *node)
@@ -2427,7 +2460,7 @@ bool Codegen::traverseOptionalChain(Node *node)
     return true;
 }
 
-void Codegen::optionalChainFinalizer(Reference expressionResult, bool tailOfChain,
+void Codegen::optionalChainFinalizer(const Reference &expressionResult, bool tailOfChain,
                                      bool isDeleteExpression)
 {
     auto &chainState = m_optionalChainsStates.top();
@@ -4132,14 +4165,16 @@ QQmlJS::DiagnosticMessage Codegen::error() const
     return _error;
 }
 
-QV4::CompiledData::CompilationUnit Codegen::generateCompilationUnit(
+QQmlRefPointer<QV4::CompiledData::CompilationUnit> Codegen::generateCompilationUnit(
         bool generateUnitData)
 {
-    return QV4::CompiledData::CompilationUnit(
-            generateUnitData ? jsUnitGenerator->generateUnit() : nullptr);
+    return QQmlRefPointer<QV4::CompiledData::CompilationUnit>(
+            new QV4::CompiledData::CompilationUnit(
+                    generateUnitData ? jsUnitGenerator->generateUnit() : nullptr),
+            QQmlRefPointer<QV4::CompiledData::CompilationUnit>::Adopt);
 }
 
-CompiledData::CompilationUnit Codegen::compileModule(
+QQmlRefPointer<QV4::CompiledData::CompilationUnit> Codegen::compileModule(
         bool debugMode, const QString &url, const QString &sourceCode,
         const QDateTime &sourceTimeStamp, QList<QQmlJS::DiagnosticMessage> *diagnostics)
 {
@@ -4154,7 +4189,7 @@ CompiledData::CompilationUnit Codegen::compileModule(
         *diagnostics = parser.diagnosticMessages();
 
     if (!parsed)
-        return CompiledData::CompilationUnit();
+        return QQmlRefPointer<CompiledData::CompilationUnit>();
 
     QQmlJS::AST::ESModule *moduleNode = QQmlJS::AST::cast<QQmlJS::AST::ESModule*>(parser.rootNode());
     if (!moduleNode) {
@@ -4166,19 +4201,32 @@ CompiledData::CompilationUnit Codegen::compileModule(
     }
 
     using namespace QV4::Compiler;
-    Compiler::Module compilerModule(debugMode);
+    Compiler::Module compilerModule(url, url, debugMode);
     compilerModule.unitFlags |= CompiledData::Unit::IsESModule;
     compilerModule.sourceTimeStamp = sourceTimeStamp;
     JSUnitGenerator jsGenerator(&compilerModule);
     Codegen cg(&jsGenerator, /*strictMode*/true);
-    cg.generateFromModule(url, url, sourceCode, moduleNode, &compilerModule);
+    cg.generateFromModule(sourceCode, moduleNode, &compilerModule);
     if (cg.hasError()) {
         if (diagnostics)
             *diagnostics << cg.error();
-        return CompiledData::CompilationUnit();
+        return QQmlRefPointer<CompiledData::CompilationUnit>();
     }
 
     return cg.generateCompilationUnit();
+}
+
+const QV4::CompiledData::Unit *Codegen::generateNativeModuleUnitData(
+        bool debugMode, const QString &url, const Value &value)
+{
+    using namespace QV4::Compiler;
+    Compiler::Module compilerModule(url, url, debugMode);
+    compilerModule.unitFlags |= CompiledData::Unit::IsESModule;
+    JSUnitGenerator jsGenerator(&compilerModule);
+    Codegen cg(&jsGenerator, /*strictMode*/true);
+    cg.generateFromModule(value, &compilerModule);
+    Q_ASSERT(!cg.hasError());
+    return jsGenerator.generateUnit();
 }
 
 class Codegen::VolatileMemoryLocationScanner: protected QQmlJS::AST::Visitor

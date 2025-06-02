@@ -112,7 +112,7 @@ static constexpr SkColorSpacePrimaries kXYZD65 = {1.0f, 0.0f, 0.0f,    1.0f,
 // Additional helper color primaries.
 
 // Invalid primaries, initialized to zero.
-static constexpr SkColorSpacePrimaries kInvalid = {0};
+static constexpr SkColorSpacePrimaries kInvalid = {};
 
 // The GenericRGB space on macOS.
 static constexpr SkColorSpacePrimaries kAppleGenericRGB = {

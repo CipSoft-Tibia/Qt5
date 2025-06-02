@@ -19,7 +19,7 @@ public:
 
 /*!
     \qmltype Translate
-    \instantiates QQuickTranslate
+    \nativetype QQuickTranslate
     \inqmlmodule QtQuick
     \ingroup qtquick-visual-transforms
     \brief Provides a way to move an Item without changing its x or y properties.
@@ -119,7 +119,7 @@ public:
 
 /*!
     \qmltype Scale
-    \instantiates QQuickScale
+    \nativetype QQuickScale
     \inqmlmodule QtQuick
     \ingroup qtquick-visual-transforms
     \brief Provides a way to scale an Item.
@@ -265,7 +265,7 @@ public:
 
 /*!
     \qmltype Rotation
-    \instantiates QQuickRotation
+    \nativetype QQuickRotation
     \inqmlmodule QtQuick
     \ingroup qtquick-visual-transforms
     \brief Provides a way to rotate an Item.
@@ -416,7 +416,7 @@ public:
 
 /*!
     \qmltype Matrix4x4
-    \instantiates QQuickMatrix4x4
+    \nativetype QQuickMatrix4x4
     \inqmlmodule QtQuick
     \ingroup qtquick-visual-transforms
     \since 5.3
@@ -452,7 +452,7 @@ QQuickMatrix4x4::QQuickMatrix4x4(QObject *parent)
 }
 
 /*!
-    \qmlproperty QMatrix4x4 QtQuick::Matrix4x4::matrix
+    \qmlproperty matrix4x4 QtQuick::Matrix4x4::matrix
 
     4x4-matrix which will be used in the tranformation of an \l Item
 */

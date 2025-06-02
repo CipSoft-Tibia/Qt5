@@ -1,8 +1,6 @@
-// Copyright (C) 2022 The Qt Company Ltd.
+// Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qtestblacklist_p.h"
-#include "qtestresult_p.h"
-
 #include <QtTest/qtestcase.h>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qfile.h>
@@ -23,13 +21,14 @@ using namespace Qt::StringLiterals;
 
   Blank lines and everything after # is simply ignored.  An initial #-line
   referring to this documentation is kind to readers.  Comments can also be used
-  to indicate the reasons for ignoring particular cases.
+  to indicate the reasons for ignoring particular cases. Please scope comments
+  to keywords if possible, to avoid confusion when additional keywords or tests
+  cases are added later.
 
   Each blacklist line is interpreted as a list of keywords in an AND-relationship.
   To blacklist a test for multiple platforms (OR-relationship), use separate lines.
 
-  The key "ci" applies only when run by COIN. The key "cmake" applies when Qt
-  is built using CMake. Other keys name platforms, operating systems,
+  The key "ci" applies only when run by COIN. Other keys name platforms, operating systems,
   distributions, tool-chains or architectures; a ! prefix reverses what it
   checks. A version, joined to a key (at present, only for distributions and
   for msvc) with a hyphen, limits the key to the specific version. A keyword
@@ -54,18 +53,15 @@ using namespace Qt::StringLiterals;
         # Test doesn't work on QNX at all
         qnx
 
-        # QTBUG-12345
         [testFunction]
-        linux
-        windows 64bit
+        linux # QTBUG-12345
+        windows 64bit # QTBUG-12345
 
-        # Flaky in COIN on macOS, not reproducible by developers
         [testSlowly]
-        macos ci
+        macos ci # Flaky in COIN on macOS, not reproducible by developers
 
-        # Needs basic C++11 support
         [testfunction2:testData]
-        msvc-2010
+        msvc-2010 # Needs basic C++11 support
 
         [getFile:withProxy SSL:localhost]
         android
@@ -76,9 +72,8 @@ using namespace Qt::StringLiterals;
 
   For example, to blacklist a QML test on RHEL 7.6:
 
-        # QTBUG-12345
         [Button::test_display:TextOnly]
-        ci rhel-7.6
+        ci rhel-7.6 # QTBUG-12345
 
   Keys are lower-case.  Distribution name and version are supported if
   QSysInfo's productType() and productVersion() return them.
@@ -118,6 +113,9 @@ static QSet<QByteArray> keywords()
 #endif
 #ifdef Q_OS_WATCHOS
             << "watchos"
+#endif
+#ifdef Q_OS_VISIONOS
+            << "visionos"
 #endif
 #ifdef Q_OS_ANDROID
             << "android"
@@ -173,8 +171,6 @@ static QSet<QByteArray> keywords()
 #ifdef QT_BUILD_INTERNAL
             << "developer-build"
 #endif
-
-            << "cmake"
             ;
 
             QCoreApplication *app = QCoreApplication::instance();
@@ -248,7 +244,7 @@ namespace QTestPrivate {
 
 void parseBlackList()
 {
-    QString filename = QTest::qFindTestData(QStringLiteral("BLACKLIST"));
+    const QString filename = QTest::qFindTestData(QStringLiteral("BLACKLIST"));
     if (filename.isEmpty())
         return;
     QFile ignored(filename);
@@ -269,7 +265,7 @@ void parseBlackList()
             function = line.mid(1, line.size() - 2);
             continue;
         }
-        bool condition = checkCondition(line);
+        const bool condition = checkCondition(line);
         if (condition) {
             if (!function.size()) {
                 ignoreAll = true;

@@ -1,15 +1,11 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef Q3DSCENE_H
-#define Q3DSCENE_H
+#ifndef QTGRAPHS_Q3DSCENE_H
+#define QTGRAPHS_Q3DSCENE_H
 
-#if 0
-#  pragma qt_class(Q3DScene)
-#endif
-
-#include <QtCore/QObject>
-#include <QtCore/QRect>
+#include <QtCore/qobject.h>
+#include <QtCore/qrect.h>
 #include <QtGraphs/qgraphsglobal.h>
 #include <QtQmlIntegration/qqmlintegration.h>
 
@@ -17,7 +13,7 @@ QT_BEGIN_NAMESPACE
 
 class Q3DScenePrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT Q3DScene : public QObject
+class Q_GRAPHS_EXPORT Q3DScene : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(Q3DScene)
@@ -32,14 +28,14 @@ class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT Q3DScene : public QObject
                    setSecondarySubviewOnTop NOTIFY secondarySubviewOnTopChanged)
     Q_PROPERTY(
         bool slicingActive READ isSlicingActive WRITE setSlicingActive NOTIFY slicingActiveChanged)
-    Q_PROPERTY(float devicePixelRatio READ devicePixelRatio WRITE setDevicePixelRatio NOTIFY
+    Q_PROPERTY(qreal devicePixelRatio READ devicePixelRatio WRITE setDevicePixelRatio NOTIFY
                    devicePixelRatioChanged)
     Q_PROPERTY(QPoint graphPositionQuery READ graphPositionQuery WRITE setGraphPositionQuery NOTIFY
                    graphPositionQueryChanged)
     Q_PROPERTY(QPoint invalidSelectionPoint READ invalidSelectionPoint CONSTANT)
 
     QML_NAMED_ELEMENT(Scene3D)
-    QML_UNCREATABLE("Trying to create uncreatable: Scene3D.")
+    QML_UNCREATABLE("")
 
 public:
     explicit Q3DScene(QObject *parent = nullptr);
@@ -48,17 +44,17 @@ public:
     QRect viewport() const;
 
     QRect primarySubViewport() const;
-    void setPrimarySubViewport(const QRect &primarySubViewport);
-    bool isPointInPrimarySubView(const QPoint &point);
+    void setPrimarySubViewport(QRect primarySubViewport);
+    bool isPointInPrimarySubView(QPoint point);
 
     QRect secondarySubViewport() const;
-    void setSecondarySubViewport(const QRect &secondarySubViewport);
-    bool isPointInSecondarySubView(const QPoint &point);
+    void setSecondarySubViewport(QRect secondarySubViewport);
+    bool isPointInSecondarySubView(QPoint point);
 
-    void setSelectionQueryPosition(const QPoint &point);
-    const QPoint selectionQueryPosition() const;
+    void setSelectionQueryPosition(QPoint point);
+    QPoint selectionQueryPosition() const;
 
-    void setGraphPositionQuery(const QPoint &point);
+    void setGraphPositionQuery(QPoint point);
     QPoint graphPositionQuery() const;
 
     void setSlicingActive(bool isSlicing);
@@ -67,26 +63,26 @@ public:
     void setSecondarySubviewOnTop(bool isSecondaryOnTop);
     bool isSecondarySubviewOnTop() const;
 
-    float devicePixelRatio() const;
-    void setDevicePixelRatio(float pixelRatio);
+    qreal devicePixelRatio() const;
+    void setDevicePixelRatio(qreal pixelRatio);
 
     QPoint invalidSelectionPoint() const;
 
 Q_SIGNALS:
-    void viewportChanged(const QRect &viewport);
-    void primarySubViewportChanged(const QRect &subViewport);
-    void secondarySubViewportChanged(const QRect &subViewport);
+    void viewportChanged(QRect viewport);
+    void primarySubViewportChanged(QRect subViewport);
+    void secondarySubViewportChanged(QRect subViewport);
     void secondarySubviewOnTopChanged(bool isSecondaryOnTop);
     void slicingActiveChanged(bool isSlicingActive);
-    void devicePixelRatioChanged(float pixelRatio);
-    void selectionQueryPositionChanged(const QPoint &position);
-    void graphPositionQueryChanged(const QPoint &position);
+    void devicePixelRatioChanged(qreal pixelRatio);
+    void selectionQueryPositionChanged(QPoint position);
+    void graphPositionQueryChanged(QPoint position);
     void needRender();
 
 private:
     Q_DISABLE_COPY(Q3DScene)
 
-    friend class QAbstract3DGraph;
+    friend class Q3DGraphsWidgetItem;
     friend class QQuickGraphsItem;
 };
 

@@ -62,8 +62,10 @@ static void appendWrapped(QQmlListProperty<QObject> *p, QObject *o)
     }
 
     ArrayData::realloc(object.object, Heap::ArrayData::Simple, length + 1, false);
+    QV4::Scope scope(object.scope.engine);
+    QV4::ScopedValue wrappedObject(scope, QV4::QObjectWrapper::wrap(object.scope.engine, o));
     arrayData->vtable()->put(
-            object.object, length, QV4::QObjectWrapper::wrap(object.scope.engine, o));
+            object.object, length, wrappedObject);
 }
 
 static qsizetype countWrapped(QQmlListProperty<QObject> *p)
@@ -88,8 +90,10 @@ static void clearWrapped(QQmlListProperty<QObject> *p)
 static void replaceWrapped(QQmlListProperty<QObject> *p, qsizetype i, QObject *o)
 {
     ListWrapperObject object(p);
+    QV4::Scope scope(object.scope.engine);
+    QV4::ScopedObject wrappedObject(scope, QV4::QObjectWrapper::wrap(object.scope.engine, o));
     object.arrayData()->vtable()->put(
-            object.object, i, QV4::QObjectWrapper::wrap(object.scope.engine, o));
+            object.object, i, wrappedObject);
 }
 
 static void removeLastWrapped(QQmlListProperty<QObject> *p)
@@ -481,9 +485,11 @@ ReturnedValue PropertyListPrototype::method_splice(const FunctionObject *b, cons
     ScopedArrayObject newArray(scope, scope.engine->newArrayObject());
     newArray->arrayReserve(deleteCount);
     ScopedValue v(scope);
+    QV4::ScopedValue wrappedObject(scope);
     for (qsizetype i = 0; i < deleteCount; ++i) {
+        wrappedObject = QObjectWrapper::wrap(scope.engine, property->at(property, start + i));
         newArray->arrayPut(
-                    i, QObjectWrapper::wrap(scope.engine, property->at(property, start + i)));
+                    i, wrappedObject);
     }
     newArray->setArrayLengthUnchecked(deleteCount);
 

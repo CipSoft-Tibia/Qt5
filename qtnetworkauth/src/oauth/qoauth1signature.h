@@ -4,9 +4,9 @@
 #ifndef QOAUTH1SIGNATURE_H
 #define QOAUTH1SIGNATURE_H
 
-#ifndef QT_NO_HTTP
-
 #include <QtNetworkAuth/qoauthglobal.h>
+
+#ifndef QT_NO_HTTP
 
 #include <QtCore/qurl.h>
 #include <QtCore/qvariant.h>

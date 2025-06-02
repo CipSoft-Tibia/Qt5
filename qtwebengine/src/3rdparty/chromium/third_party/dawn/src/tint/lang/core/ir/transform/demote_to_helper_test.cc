@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/ir/transform/demote_to_helper.h"
 
@@ -32,7 +45,7 @@ using IR_DemoteToHelperTest = TransformTest;
 TEST_F(IR_DemoteToHelperTest, NoModify_NoDiscard) {
     auto* buffer = b.Var("buffer", ty.ptr<storage, i32>());
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetReturnLocation(0_u, {});
@@ -66,10 +79,10 @@ TEST_F(IR_DemoteToHelperTest, NoModify_NoDiscard) {
 TEST_F(IR_DemoteToHelperTest, DiscardInEntryPoint_WriteInEntryPoint) {
     auto* buffer = b.Var("buffer", ty.ptr<storage, i32>());
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -145,7 +158,7 @@ TEST_F(IR_DemoteToHelperTest, DiscardInEntryPoint_WriteInEntryPoint) {
 TEST_F(IR_DemoteToHelperTest, DiscardInEntryPoint_WriteInHelper) {
     auto* buffer = b.Var("buffer", ty.ptr<storage, i32>());
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* helper = b.Function("foo", ty.void_());
     b.Append(helper->Block(), [&] {
@@ -154,7 +167,7 @@ TEST_F(IR_DemoteToHelperTest, DiscardInEntryPoint_WriteInHelper) {
     });
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -242,7 +255,7 @@ TEST_F(IR_DemoteToHelperTest, DiscardInEntryPoint_WriteInHelper) {
 TEST_F(IR_DemoteToHelperTest, DiscardInHelper_WriteInEntryPoint) {
     auto* buffer = b.Var("buffer", ty.ptr<storage, i32>());
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* cond = b.FunctionParam("cond", ty.bool_());
     auto* helper = b.Function("foo", ty.void_());
@@ -257,7 +270,7 @@ TEST_F(IR_DemoteToHelperTest, DiscardInHelper_WriteInEntryPoint) {
     });
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -341,7 +354,7 @@ TEST_F(IR_DemoteToHelperTest, DiscardInHelper_WriteInEntryPoint) {
 TEST_F(IR_DemoteToHelperTest, DiscardInHelper_WriteInHelper) {
     auto* buffer = b.Var("buffer", ty.ptr<storage, i32>());
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* cond = b.FunctionParam("cond", ty.bool_());
     auto* helper = b.Function("foo", ty.void_());
@@ -357,7 +370,7 @@ TEST_F(IR_DemoteToHelperTest, DiscardInHelper_WriteInHelper) {
     });
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -438,9 +451,9 @@ TEST_F(IR_DemoteToHelperTest, DiscardInHelper_WriteInHelper) {
 }
 
 TEST_F(IR_DemoteToHelperTest, WriteToInvocationPrivateAddressSpace) {
-    auto* priv = b.RootBlock()->Append(b.Var("priv", ty.ptr<private_, i32>()));
+    auto* priv = mod.root_block->Append(b.Var("priv", ty.ptr<private_, i32>()));
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -521,10 +534,10 @@ TEST_F(IR_DemoteToHelperTest, TextureStore) {
                                     core::type::TextureDimension::k2d, format, core::Access::kWrite,
                                     core::type::StorageTexture::SubtypeFor(format, ty))));
     texture->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(texture);
+    mod.root_block->Append(texture);
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* coord = b.FunctionParam("coord", ty.vec2<i32>());
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing, coord});
@@ -536,13 +549,14 @@ TEST_F(IR_DemoteToHelperTest, TextureStore) {
             b.Discard();
             b.ExitIf(ifelse);
         });
-        b.Call(ty.void_(), core::Function::kTextureStore, texture, coord, 0.5_f);
+        b.Call(ty.void_(), core::BuiltinFn::kTextureStore, b.Load(texture), coord,
+               b.Splat(b.ir.Types().vec4<f32>(), 0.5_f, 4));
         b.Return(ep, 0.5_f);
     });
 
     auto* src = R"(
 %b1 = block {  # root
-  %texture:ptr<handle, texture_storage_2d<r32float, write>, read_write> = var @binding_point(0, 0)
+  %texture:ptr<handle, texture_storage_2d<r32float, write>, read> = var @binding_point(0, 0)
 }
 
 %ep = @fragment func(%front_facing:bool [@front_facing], %coord:vec2<i32>):f32 [@location(0)] -> %b2 {
@@ -553,7 +567,8 @@ TEST_F(IR_DemoteToHelperTest, TextureStore) {
         exit_if  # if_1
       }
     }
-    %5:void = textureStore %texture, %coord, 0.5f
+    %5:texture_storage_2d<r32float, write> = load %texture
+    %6:void = textureStore %5, %coord, vec4<f32>(0.5f)
     ret 0.5f
   }
 }
@@ -562,7 +577,7 @@ TEST_F(IR_DemoteToHelperTest, TextureStore) {
 
     auto* expect = R"(
 %b1 = block {  # root
-  %texture:ptr<handle, texture_storage_2d<r32float, write>, read_write> = var @binding_point(0, 0)
+  %texture:ptr<handle, texture_storage_2d<r32float, write>, read> = var @binding_point(0, 0)
   %continue_execution:ptr<private, bool, read_write> = var, true
 }
 
@@ -574,16 +589,17 @@ TEST_F(IR_DemoteToHelperTest, TextureStore) {
         exit_if  # if_1
       }
     }
-    %6:bool = load %continue_execution
-    if %6 [t: %b4] {  # if_2
+    %6:texture_storage_2d<r32float, write> = load %texture
+    %7:bool = load %continue_execution
+    if %7 [t: %b4] {  # if_2
       %b4 = block {  # true
-        %7:void = textureStore %texture, %coord, 0.5f
+        %8:void = textureStore %6, %coord, vec4<f32>(0.5f)
         exit_if  # if_2
       }
     }
-    %8:bool = load %continue_execution
-    %9:bool = eq %8, false
-    if %9 [t: %b5] {  # if_3
+    %9:bool = load %continue_execution
+    %10:bool = eq %9, false
+    if %10 [t: %b5] {  # if_3
       %b5 = block {  # true
         terminate_invocation
       }
@@ -601,10 +617,10 @@ TEST_F(IR_DemoteToHelperTest, TextureStore) {
 TEST_F(IR_DemoteToHelperTest, AtomicStore) {
     auto* buffer = b.Var("buffer", ty.ptr(storage, ty.atomic<i32>()));
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -615,7 +631,7 @@ TEST_F(IR_DemoteToHelperTest, AtomicStore) {
             b.Discard();
             b.ExitIf(ifelse);
         });
-        b.Call(ty.void_(), core::Function::kAtomicStore, buffer, 42_i);
+        b.Call(ty.void_(), core::BuiltinFn::kAtomicStore, buffer, 42_i);
         b.Return(ep, 0.5_f);
     });
 
@@ -680,10 +696,10 @@ TEST_F(IR_DemoteToHelperTest, AtomicStore) {
 TEST_F(IR_DemoteToHelperTest, AtomicAdd) {
     auto* buffer = b.Var("buffer", ty.ptr(storage, ty.atomic<i32>()));
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -694,7 +710,7 @@ TEST_F(IR_DemoteToHelperTest, AtomicAdd) {
             b.Discard();
             b.ExitIf(ifelse);
         });
-        auto* old = b.Call(ty.i32(), core::Function::kAtomicAdd, buffer, 42_i);
+        auto* old = b.Call(ty.i32(), core::BuiltinFn::kAtomicAdd, buffer, 42_i);
         b.Add(ty.i32(), old, 1_i);
         b.Return(ep, 0.5_f);
     });
@@ -763,10 +779,10 @@ TEST_F(IR_DemoteToHelperTest, AtomicAdd) {
 TEST_F(IR_DemoteToHelperTest, AtomicCompareExchange) {
     auto* buffer = b.Var("buffer", ty.ptr(storage, ty.atomic<i32>()));
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -779,7 +795,7 @@ TEST_F(IR_DemoteToHelperTest, AtomicCompareExchange) {
         });
         auto* result =
             b.Call(core::type::CreateAtomicCompareExchangeResult(ty, mod.symbols, ty.i32()),
-                   core::Function::kAtomicCompareExchangeWeak, buffer, 0_i, 42_i);
+                   core::BuiltinFn::kAtomicCompareExchangeWeak, buffer, 0_i, 42_i);
         b.Add(ty.i32(), b.Access(ty.i32(), result, 0_i), 1_i);
         b.Return(ep, 0.5_f);
     });
@@ -848,6 +864,42 @@ __atomic_compare_exchange_result_i32 = struct @align(4) {
       }
     }
     ret 0.5f
+  }
+}
+)";
+
+    Run(DemoteToHelper);
+
+    EXPECT_EQ(expect, str());
+}
+
+// Test that we transform unreachable functions that discard (see crbug.com/tint/2052).
+TEST_F(IR_DemoteToHelperTest, UnreachableHelperThatDiscards) {
+    auto* helper = b.Function("foo", ty.void_());
+    b.Append(helper->Block(), [&] {
+        b.Discard();
+        b.Return(helper);
+    });
+
+    auto* src = R"(
+%foo = func():void -> %b1 {
+  %b1 = block {
+    discard
+    ret
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+%b1 = block {  # root
+  %continue_execution:ptr<private, bool, read_write> = var, true
+}
+
+%foo = func():void -> %b2 {
+  %b2 = block {
+    store %continue_execution, false
+    ret
   }
 }
 )";

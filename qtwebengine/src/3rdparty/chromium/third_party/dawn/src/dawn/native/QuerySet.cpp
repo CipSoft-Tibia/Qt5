@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/QuerySet.h"
 
@@ -31,7 +44,7 @@ class ErrorQuerySet final : public QuerySetBase {
         : QuerySetBase(device, descriptor, ObjectBase::kError) {}
 
   private:
-    void DestroyImpl() override { UNREACHABLE(); }
+    void DestroyImpl() override { DAWN_UNREACHABLE(); }
 };
 
 }  // anonymous namespace
@@ -47,48 +60,13 @@ MaybeError ValidateQuerySetDescriptor(DeviceBase* device, const QuerySetDescript
 
     switch (descriptor->type) {
         case wgpu::QueryType::Occlusion:
-            DAWN_INVALID_IF(descriptor->pipelineStatisticCount != 0,
-                            "Pipeline statistics specified for a query of type %s.",
-                            descriptor->type);
             break;
 
-        case wgpu::QueryType::PipelineStatistics: {
-            // TODO(crbug.com/1177506): Pipeline statistics query is not fully implemented.
-            // Allow it only as unsafe until the implementaion is completed.
-            DAWN_INVALID_IF(!device->IsToggleEnabled(Toggle::AllowUnsafeAPIs),
-                            "Pipeline statistics queries are disallowed because they are not "
-                            "fully implemented");
-
-            DAWN_INVALID_IF(
-                !device->HasFeature(Feature::PipelineStatisticsQuery),
-                "Pipeline statistics query set created without the feature being enabled.");
-
-            DAWN_INVALID_IF(descriptor->pipelineStatisticCount == 0,
-                            "Pipeline statistics query set created with 0 statistics.");
-
-            std::set<wgpu::PipelineStatisticName> pipelineStatisticsSet;
-            for (uint32_t i = 0; i < descriptor->pipelineStatisticCount; i++) {
-                DAWN_TRY(ValidatePipelineStatisticName(descriptor->pipelineStatistics[i]));
-
-                auto [_, inserted] =
-                    pipelineStatisticsSet.insert((descriptor->pipelineStatistics[i]));
-                DAWN_INVALID_IF(!inserted, "Statistic %s is specified more than once.",
-                                descriptor->pipelineStatistics[i]);
-            }
-        } break;
-
         case wgpu::QueryType::Timestamp:
-            DAWN_INVALID_IF(!device->IsToggleEnabled(Toggle::AllowUnsafeAPIs),
-                            "Timestamp queries are disallowed because they may expose precise "
-                            "timing information.");
-
-            DAWN_INVALID_IF(!device->HasFeature(Feature::TimestampQuery) &&
-                                !device->HasFeature(Feature::TimestampQueryInsidePasses),
-                            "Timestamp query set created without the feature being enabled.");
-
-            DAWN_INVALID_IF(descriptor->pipelineStatisticCount != 0,
-                            "Pipeline statistics specified for a query of type %s.",
-                            descriptor->type);
+            DAWN_INVALID_IF(
+                !device->HasFeature(Feature::TimestampQuery) &&
+                    !device->HasFeature(Feature::ChromiumExperimentalTimestampQueryInsidePasses),
+                "Timestamp query set created without the feature being enabled.");
             break;
 
         default:
@@ -103,10 +81,6 @@ QuerySetBase::QuerySetBase(DeviceBase* device, const QuerySetDescriptor* descrip
       mQueryType(descriptor->type),
       mQueryCount(descriptor->count),
       mState(QuerySetState::Available) {
-    for (uint32_t i = 0; i < descriptor->pipelineStatisticCount; i++) {
-        mPipelineStatistics.push_back(descriptor->pipelineStatistics[i]);
-    }
-
     mQueryAvailability.resize(descriptor->count);
     GetObjectTrackingList()->Track(this);
 }
@@ -120,16 +94,24 @@ QuerySetBase::QuerySetBase(DeviceBase* device,
 
 QuerySetBase::~QuerySetBase() {
     // Uninitialized or already destroyed
-    ASSERT(mState == QuerySetState::Unavailable || mState == QuerySetState::Destroyed);
+    DAWN_ASSERT(mState == QuerySetState::Unavailable || mState == QuerySetState::Destroyed);
 }
 
 void QuerySetBase::DestroyImpl() {
+    // TODO(crbug.com/dawn/831): DestroyImpl is called from two places.
+    // - It may be called if the query set is explicitly destroyed with APIDestroy.
+    //   This case is NOT thread-safe and needs proper synchronization with other
+    //   simultaneous uses of the query set.
+    // - It may be called when the last ref to the query set is dropped and it
+    //   is implicitly destroyed. This case is thread-safe because there are no
+    //   other threads using the query set since there are no other live refs.
     mState = QuerySetState::Destroyed;
 }
 
 // static
-QuerySetBase* QuerySetBase::MakeError(DeviceBase* device, const QuerySetDescriptor* descriptor) {
-    return new ErrorQuerySet(device, descriptor);
+Ref<QuerySetBase> QuerySetBase::MakeError(DeviceBase* device,
+                                          const QuerySetDescriptor* descriptor) {
+    return AcquireRef(new ErrorQuerySet(device, descriptor));
 }
 
 ObjectType QuerySetBase::GetType() const {
@@ -144,10 +126,6 @@ uint32_t QuerySetBase::GetQueryCount() const {
     return mQueryCount;
 }
 
-const std::vector<wgpu::PipelineStatisticName>& QuerySetBase::GetPipelineStatistics() const {
-    return mPipelineStatistics;
-}
-
 const std::vector<bool>& QuerySetBase::GetQueryAvailability() const {
     return mQueryAvailability;
 }
@@ -157,7 +135,7 @@ void QuerySetBase::SetQueryAvailability(uint32_t index, bool available) {
 }
 
 MaybeError QuerySetBase::ValidateCanUseInSubmitNow() const {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
     DAWN_INVALID_IF(mState == QuerySetState::Destroyed, "%s used while destroyed.", this);
     return {};
 }

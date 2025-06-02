@@ -75,10 +75,16 @@ def CheckChange(input_api, output_api, on_commit):
         input_api.Command(
             name="pytype",
             cmd=[
-                input_api.python3_executable, "-m", "pytype", "--keep-going",
-                "--jobs=auto", "--overriding-parameter-count-checks",
+                input_api.python3_executable,
+                "-m",
+                "pytype",
+                "--keep-going",
+                "--jobs=auto",
+                "--overriding-parameter-count-checks",
+                "--use-enum-overlay",
                 str(testing_path / "crossbench"),
-                str(testing_path / "tests")
+                # Skip tests to speed up type checking.
+                # str(testing_path / "tests")
             ],
             message=output_api.PresubmitError,
             kwargs={},

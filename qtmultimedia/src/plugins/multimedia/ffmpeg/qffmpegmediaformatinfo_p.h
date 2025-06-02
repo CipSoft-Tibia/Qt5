@@ -15,11 +15,11 @@
 // We mean it.
 //
 
-#include <private/qplatformmediaformatinfo_p.h>
+#include <QtMultimedia/private/qplatformmediaformatinfo_p.h>
 #include <qhash.h>
 #include <qlist.h>
 #include <qaudioformat.h>
-#include "qffmpeg_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -27,11 +27,11 @@ class QFFmpegMediaFormatInfo : public QPlatformMediaFormatInfo
 {
 public:
     QFFmpegMediaFormatInfo();
-    ~QFFmpegMediaFormatInfo();
+    ~QFFmpegMediaFormatInfo() override;
 
     static QMediaFormat::VideoCodec videoCodecForAVCodecId(AVCodecID id);
     static QMediaFormat::AudioCodec audioCodecForAVCodecId(AVCodecID id);
-    static QMediaFormat::FileFormat fileFormatForAVInputFormat(const AVInputFormat *format);
+    static QMediaFormat::FileFormat fileFormatForAVInputFormat(const AVInputFormat &format);
 
     static const AVOutputFormat *outputFormatForFileFormat(QMediaFormat::FileFormat format);
 
@@ -44,7 +44,7 @@ public:
     static int64_t avChannelLayout(QAudioFormat::ChannelConfig channelConfig);
     static QAudioFormat::ChannelConfig channelConfigForAVLayout(int64_t avChannelLayout);
 
-    static QAudioFormat audioFormatFromCodecParameters(AVCodecParameters *codecPar);
+    static QAudioFormat audioFormatFromCodecParameters(const AVCodecParameters &codecPar);
 };
 
 QT_END_NAMESPACE

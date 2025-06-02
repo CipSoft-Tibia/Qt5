@@ -20,10 +20,6 @@
 #include "device/fido/network_context_factory.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 
-namespace network::mojom {
-class NetworkContext;
-}
-
 namespace device::cablev2 {
 
 class Crypter;

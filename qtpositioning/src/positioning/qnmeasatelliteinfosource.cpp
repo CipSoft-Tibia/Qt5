@@ -431,7 +431,7 @@ QNmeaSatelliteInfoSource::UpdateMode QNmeaSatelliteInfoSource::updateMode() cons
 
 /*!
     Sets the NMEA data source to \a device. If the device is not open, it
-    will be opened in QIODevice::ReadOnly mode.
+    will be opened in \l{QIODeviceBase::}{ReadOnly} mode.
 
     The source device can only be set once and must be set before calling
     \l startUpdates() or \l requestUpdate().

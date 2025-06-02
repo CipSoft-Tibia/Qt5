@@ -10,6 +10,7 @@
 #ifndef EIGEN_MATH_FUNCTIONS_SVE_H
 #define EIGEN_MATH_FUNCTIONS_SVE_H
 
+// IWYU pragma: private
 #include "../../InternalHeaderCheck.h"
 
 namespace Eigen {

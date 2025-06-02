@@ -13,6 +13,7 @@
 #include "base/types/strong_alias.h"
 #include "components/autofill/core/common/form_data.h"
 #include "components/autofill/core/common/unique_ids.h"
+#include "testing/gmock/include/gmock/gmock.h"
 
 namespace autofill {
 
@@ -120,6 +121,10 @@ inline FieldGlobalId MakeFieldGlobalId(
   return {MakeLocalFrameToken(randomize), MakeFieldRendererId()};
 }
 
+// Returns a copy of `form` in which the host frame of its and its fields is
+// set to `frame_token`.
+FormData CreateFormDataForFrame(FormData form, LocalFrameToken frame_token);
+
 // Returns a copy of `form` with cleared values.
 FormData WithoutValues(FormData form);
 
@@ -141,17 +146,17 @@ inline constexpr char kIbanValue_2[] = "CH93 0076 2011 6238 5295 7";
 [[nodiscard]] FormFieldData CreateTestFormField(std::string_view label,
                                                 std::string_view name,
                                                 std::string_view value,
-                                                std::string_view type);
+                                                FormControlType type);
 
 [[nodiscard]] FormFieldData CreateTestFormField(std::string_view label,
                                                 std::string_view name,
                                                 std::string_view value,
-                                                std::string_view type,
+                                                FormControlType type,
                                                 std::string_view autocomplete);
 [[nodiscard]] FormFieldData CreateTestFormField(std::string_view label,
                                                 std::string_view name,
                                                 std::string_view value,
-                                                std::string_view type,
+                                                FormControlType type,
                                                 std::string_view autocomplete,
                                                 uint64_t max_length);
 
@@ -181,7 +186,7 @@ inline constexpr char kIbanValue_2[] = "CH93 0076 2011 6238 5295 7";
     std::string_view autocomplete,
     const std::vector<const char*>& values,
     const std::vector<const char*>& contents,
-    std::string_view field_type);
+    FormControlType type);
 
 // Provides a quick way to populate a datalist field.
 [[nodiscard]] FormFieldData CreateTestDatalistField(
@@ -207,6 +212,27 @@ inline constexpr char kIbanValue_2[] = "CH93 0076 2011 6238 5295 7";
 // which can be useful for building up more complex test forms.
 [[nodiscard]] FormData CreateTestIbanFormData(
     std::string_view value = kIbanValue);
+
+// Creates a `form_data` with a single unclassified field.
+[[nodiscard]] FormData CreateTestUnclassifiedFormData();
+
+MATCHER_P(DeepEqualsFormData,
+          form_data,
+          negation ? "does not equal" : "equals") {
+  return FormData::DeepEqual(arg, form_data);
+}
+
+MATCHER_P(SameFieldsAs, fields, negation ? "does not equal" : "equals") {
+  if (fields.size() != arg.fields.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < arg.fields.size(); ++i) {
+    if (!arg.fields[i].SameFieldAs(fields[i])) {
+      return false;
+    }
+  }
+  return true;
+}
 
 }  // namespace test
 

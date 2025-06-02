@@ -5,16 +5,10 @@ const int $kTileModeRepeat = 1;
 const int $kTileModeMirror = 2;
 const int $kTileModeDecal  = 3;
 
-const int $kReadSwizzleNormalRGBA = 0;
-const int $kReadSwizzleRGB1 = 1;
-const int $kReadSwizzleRRRR = 2;
-const int $kReadSwizzleRRR1 = 3;
-const int $kReadSwizzleBGRA = 4;
-
 const int $kFilterModeNearest = 0;
 const int $kFilterModeLinear  = 1;
 
-const int $kTFTypeSRGB  = 1;
+const int $kTFTypeSRGB = 1;
 const int $kTFTypePQ = 2;
 const int $kTFTypeHLG = 3;
 const int $kTFTypeHLGinv = 4;
@@ -24,9 +18,18 @@ const int $kColorSpaceXformFlagLinearize = 0x2;
 const int $kColorSpaceXformFlagGamutTransform = 0x4;
 const int $kColorSpaceXformFlagEncode = 0x8;
 const int $kColorSpaceXformFlagPremul = 0x10;
+const int $kColorSpaceXformFlagAlphaSwizzle = 0x20;
+
+const int $kMaskFormatA8   = 0;
+const int $kMaskFormatA565 = 1;
+const int $kMaskFormatARGB = 2;
+
+// Matches GrTextureEffect::kLinearInset, to make sure we don't touch an outer
+// row or column with a weight of 0 when linear filtering.
+const float $kLinearInset = 0.5 + 0.00001;
 
 $pure half4 sk_error() {
-    return half4(1.0, 0.0, 1.0, 1.0);
+    return half4(1.0, 0.0, 0.0, 1.0);
 }
 
 $pure half4 sk_passthrough(half4 color) {
@@ -37,19 +40,12 @@ $pure half4 sk_solid_shader(float4 colorParam) {
     return half4(colorParam);
 }
 
-$pure half4 $apply_swizzle(int swizzleType, half4 color) {
-    switch (swizzleType) {
-        case $kReadSwizzleRGB1:
-            return color.rgb1;
-        case $kReadSwizzleRRRR:
-            return color.rrrr;
-        case $kReadSwizzleRRR1:
-            return color.rrr1;
-        case $kReadSwizzleBGRA:
-            return color.bgra;
-        default:
-            return color;
-    }
+$pure half4 sk_rgb_opaque(float4 colorParam) {
+    return half4(colorParam.rgb, 1.0);
+}
+
+$pure half4 sk_alpha_only(float4 colorParam) {
+    return half4(0.0, 0.0, 0.0, colorParam.a);
 }
 
 $pure float $apply_xfer_fn(int kind, float x, half4 cs[2]) {
@@ -63,7 +59,8 @@ $pure float $apply_xfer_fn(int kind, float x, half4 cs[2]) {
                         : pow(A * x + B, G) + E;
             break;
         case $kTFTypePQ:
-            x = pow(max(A + B * pow(x, C), 0) / (D + E * pow(x, C)), F);
+            float x_C = pow(x, C);
+            x = pow(max(A + B * x_C, 0) / (D + E * x_C), F);
             break;
         case $kTFTypeHLG:
             x = (x * A <= 1) ? pow(x * A, B)
@@ -117,6 +114,22 @@ $pure half4 sk_color_space_transform(half4 halfColor,
     return half4(color);
 }
 
+$pure half4 $color_space_transform_swizzle(half4 halfColor,
+                                           int flags,
+                                           int srcKind,
+                                           half3x3 gamutTransform,
+                                           int dstKind,
+                                           half4x4 coeffs) {
+    if (flags == 0) {
+        return halfColor;
+    } else {
+        if (bool(flags & $kColorSpaceXformFlagAlphaSwizzle)) {
+            halfColor.a = dot(halfColor.r1, half2(coeffs[1][3], coeffs[3][3]));
+        }
+        return sk_color_space_transform(halfColor, flags, srcKind, gamutTransform, dstKind, coeffs);
+    }
+}
+
 $pure float $tile(int tileMode, float f, float low, float high) {
     switch (tileMode) {
         case $kTileModeClamp:
@@ -138,14 +151,17 @@ $pure float $tile(int tileMode, float f, float low, float high) {
     }
 }
 
-$pure half4 $sample_image(float2 pos,
-                          float2 imgSize,
-                          float4 subset,
-                          int tileModeX,
-                          int tileModeY,
-                          int filterMode,
-                          int readSwizzle,
-                          sampler2D s) {
+$pure half4 $sample_image(float2 pos, float2 invImgSize, sampler2D s) {
+    return sample(s, pos * invImgSize);
+}
+
+$pure half4 $sample_image_subset(float2 pos,
+                                 float2 invImgSize,
+                                 float4 subset,
+                                 int tileModeX,
+                                 int tileModeY,
+                                 int filterMode,
+                                 sampler2D s) {
     // Do hard-edge shader transitions to the border color for nearest-neighbor decal tiling at the
     // subset boundaries. Snap the input coordinates to nearest neighbor before comparing to the
     // subset rect, to avoid GPU interpolation errors. See https://crbug.com/skia/10403.
@@ -169,13 +185,12 @@ $pure half4 $sample_image(float2 pos,
     // texel boundaries.
     float4 insetClamp;
     if (filterMode == $kFilterModeNearest) {
-        insetClamp = float4(floor(subset.xy) + 0.5, ceil(subset.zw) - 0.5);
+        insetClamp = float4(floor(subset.xy) + $kLinearInset, ceil(subset.zw) - $kLinearInset);
     } else {
-        insetClamp = float4(subset.xy + 0.5, subset.zw - 0.5);
+        insetClamp = float4(subset.xy + $kLinearInset, subset.zw - $kLinearInset);
     }
     float2 clampedPos = clamp(pos, insetClamp.xy, insetClamp.zw);
-    half4 color = sample(s, clampedPos / imgSize);
-    color = $apply_swizzle(readSwizzle, color);
+    half4 color = $sample_image(clampedPos, invImgSize, s);
 
     if (filterMode == $kFilterModeLinear) {
         // Remember the amount the coord moved for clamping. This is used to implement shader-based
@@ -195,17 +210,17 @@ $pure half4 $sample_image(float2 pos,
             half4 extraColorY;
             if (sampleExtraX) {
                 extraCoordX = error.x > 0 ? insetClamp.x : insetClamp.z;
-                extraColorX = sample(s, float2(extraCoordX, clampedPos.y) / imgSize);
-                extraColorX = $apply_swizzle(readSwizzle, extraColorX);
+                extraColorX = $sample_image(float2(extraCoordX, clampedPos.y),
+                                            invImgSize, s);
             }
             if (sampleExtraY) {
                 extraCoordY = error.y > 0 ? insetClamp.y : insetClamp.w;
-                extraColorY = sample(s, float2(clampedPos.x, extraCoordY) / imgSize);
-                extraColorY = $apply_swizzle(readSwizzle, extraColorY);
+                extraColorY = $sample_image(float2(clampedPos.x, extraCoordY),
+                                            invImgSize, s);
             }
             if (sampleExtraX && sampleExtraY) {
-                half4 extraColorXY = sample(s, float2(extraCoordX, extraCoordY) / imgSize);
-                extraColorXY = $apply_swizzle(readSwizzle, extraColorXY);
+                half4 extraColorXY = $sample_image(float2(extraCoordX, extraCoordY),
+                                                   invImgSize, s);
                 color = mix(mix(color, extraColorX, absError.x),
                             mix(extraColorY, extraColorXY, absError.x),
                             absError.y);
@@ -230,12 +245,11 @@ $pure half4 $sample_image(float2 pos,
 }
 
 $pure half4 $cubic_filter_image(float2 pos,
-                                float2 imgSize,
+                                float2 invImgSize,
                                 float4 subset,
                                 int tileModeX,
                                 int tileModeY,
                                 half4x4 coeffs,
-                                int readSwizzle,
                                 sampler2D s) {
     // Determine pos's fractional offset f between texel centers.
     float2 f = fract(pos - 0.5);
@@ -250,9 +264,9 @@ $pure half4 $cubic_filter_image(float2 pos,
     for (int y = 0; y < 4; ++y) {
         half4 rowColor = half4(0);
         for (int x = 0; x < 4; ++x) {
-            rowColor += wx[x] * $sample_image(pos + float2(x, y), imgSize, subset,
-                                              tileModeX, tileModeY, $kFilterModeNearest,
-                                              readSwizzle, s);
+            rowColor += wx[x] * $sample_image_subset(pos + float2(x, y), invImgSize, subset,
+                                                     tileModeX, tileModeY, $kFilterModeNearest,
+                                                     s);
         }
         color += wy[y] * rowColor;
     }
@@ -263,51 +277,60 @@ $pure half4 $cubic_filter_image(float2 pos,
 }
 
 $pure half4 sk_image_shader(float2 coords,
-                            float2 imgSize,
+                            float2 invImgSize,
                             float4 subset,
                             int tileModeX,
                             int tileModeY,
                             int filterMode,
-                            int readSwizzle,
                             int csXformFlags,
                             int csXformSrcKind,
                             half3x3 csXformGamutTransform,
                             int csXformDstKind,
                             half4x4 csXformCoeffs,
                             sampler2D s) {
-    half4 sampleColor =
-        $sample_image(coords, imgSize, subset, tileModeX, tileModeY, filterMode, readSwizzle, s);
-    return sk_color_space_transform(sampleColor, csXformFlags, csXformSrcKind,
-                                    csXformGamutTransform, csXformDstKind, csXformCoeffs);
+    half4 sampleColor = $sample_image_subset(coords, invImgSize, subset, tileModeX, tileModeY,
+                                             filterMode, s);
+    return $color_space_transform_swizzle(sampleColor, csXformFlags, csXformSrcKind,
+                                          csXformGamutTransform, csXformDstKind, csXformCoeffs);
 }
 
 $pure half4 sk_cubic_image_shader(float2 coords,
-                                  float2 imgSize,
+                                  float2 invImgSize,
                                   float4 subset,
                                   int tileModeX,
                                   int tileModeY,
                                   half4x4 cubicCoeffs,
-                                  int readSwizzle,
                                   int csXformFlags,
                                   int csXformSrcKind,
                                   half3x3 csXformGamutTransform,
                                   int csXformDstKind,
                                   half4x4 csXformCoeffs,
                                   sampler2D s) {
-    half4 sampleColor = $cubic_filter_image(coords, imgSize, subset, tileModeX, tileModeY,
-                                            cubicCoeffs, readSwizzle, s);
-    return sk_color_space_transform(sampleColor, csXformFlags, csXformSrcKind,
-                                    csXformGamutTransform, csXformDstKind, csXformCoeffs);
+    half4 sampleColor = $cubic_filter_image(coords, invImgSize, subset, tileModeX, tileModeY,
+                                            cubicCoeffs, s);
+    return $color_space_transform_swizzle(sampleColor, csXformFlags, csXformSrcKind,
+                                          csXformGamutTransform, csXformDstKind, csXformCoeffs);
+}
+
+$pure half4 sk_hw_image_shader(float2 coords,
+                               float2 invImgSize,
+                               int csXformFlags,
+                               int csXformSrcKind,
+                               half3x3 csXformGamutTransform,
+                               int csXformDstKind,
+                               half4x4 csXformCoeffs,
+                               sampler2D s) {
+    half4 sampleColor = $sample_image(coords, invImgSize, s);
+    return $color_space_transform_swizzle(sampleColor, csXformFlags, csXformSrcKind,
+                                          csXformGamutTransform, csXformDstKind, csXformCoeffs);
 }
 
 $pure half4 sk_yuv_image_shader(float2 coords,
-                                float2 imgSize,
+                                float2 invImgSize,
                                 float4 subset,
                                 int tileModeX,
                                 int tileModeY,
                                 int filterMode,
-                                int useCubic,
-                                half4x4 cubicCoeffs,
                                 half4 channelSelectY,
                                 half4 channelSelectU,
                                 half4 channelSelectV,
@@ -323,35 +346,74 @@ $pure half4 sk_yuv_image_shader(float2 coords,
                                 sampler2D sU,
                                 sampler2D sV,
                                 sampler2D sA) {
-    half4 sampleColorY = (useCubic != 0)
-        ? $cubic_filter_image(coords, imgSize, subset, tileModeX, tileModeY, cubicCoeffs,
-                              $kReadSwizzleNormalRGBA, sY)
-        : $sample_image(coords, imgSize, subset, tileModeX, tileModeY, filterMode,
-                        $kReadSwizzleNormalRGBA, sY);
-    half4 sampleColorU = (useCubic != 0)
-        ? $cubic_filter_image(coords, imgSize, subset, tileModeX, tileModeY, cubicCoeffs,
-                              $kReadSwizzleNormalRGBA, sU)
-        : $sample_image(coords, imgSize, subset, tileModeX, tileModeY, filterMode,
-                        $kReadSwizzleNormalRGBA, sU);
-    half4 sampleColorV = (useCubic != 0)
-        ? $cubic_filter_image(coords, imgSize, subset, tileModeX, tileModeY, cubicCoeffs,
-                              $kReadSwizzleNormalRGBA, sY)
-        : $sample_image(coords, imgSize, subset, tileModeX, tileModeY, filterMode,
-                        $kReadSwizzleNormalRGBA, sV);
+    half4 sampleColorY, sampleColorU, sampleColorV;
+    sampleColorY = $sample_image_subset(coords, invImgSize, subset, tileModeX, tileModeY,
+                                        filterMode, sY);
+    sampleColorU = $sample_image_subset(coords, invImgSize, subset, tileModeX, tileModeY,
+                                        filterMode, sU);
+    sampleColorV = $sample_image_subset(coords, invImgSize, subset, tileModeX, tileModeY,
+                                        filterMode, sV);
     float Y = dot(channelSelectY, sampleColorY);
     float U = dot(channelSelectU, sampleColorU);
     float V = dot(channelSelectV, sampleColorV);
     half3 preColor = half3(Y, U, V);
     half4 sampleColor;
-    sampleColor.rgb = saturate(preColor.rgb * yuvToRGBMatrix + half3(yuvToRGBTranslate));
+    sampleColor.rgb = saturate(yuvToRGBMatrix * preColor.rgb + half3(yuvToRGBTranslate));
     if (channelSelectA == half4(0)) {
         sampleColor.a = 1;
     } else {
-        half4 sampleColorA = (useCubic != 0)
-            ? $cubic_filter_image(coords, imgSize, subset, tileModeX, tileModeY, cubicCoeffs,
-                                  $kReadSwizzleNormalRGBA, sA)
-            : $sample_image(coords, imgSize, subset, tileModeX, tileModeY, filterMode,
-                            $kReadSwizzleNormalRGBA, sA);
+        half4 sampleColorA =
+            $sample_image_subset(coords, invImgSize, subset, tileModeX, tileModeY, filterMode,
+                                 sA);
+        sampleColor.a = dot(channelSelectA, sampleColorA);
+        // premul alpha
+        sampleColor.rgb *= sampleColor.a;
+    }
+
+    return sk_color_space_transform(sampleColor, csXformFlags, csXformSrcKind,
+                                    csXformGamutTransform, csXformDstKind, csXformCoeffs);
+}
+
+$pure half4 sk_cubic_yuv_image_shader(float2 coords,
+                                      float2 invImgSize,
+                                      float4 subset,
+                                      int tileModeX,
+                                      int tileModeY,
+                                      half4x4 cubicCoeffs,
+                                      half4 channelSelectY,
+                                      half4 channelSelectU,
+                                      half4 channelSelectV,
+                                      half4 channelSelectA,
+                                      half3x3 yuvToRGBMatrix,
+                                      float3 yuvToRGBTranslate,
+                                      int csXformFlags,
+                                      int csXformSrcKind,
+                                      half3x3 csXformGamutTransform,
+                                      int csXformDstKind,
+                                      half4x4 csXformCoeffs,
+                                      sampler2D sY,
+                                      sampler2D sU,
+                                      sampler2D sV,
+                                      sampler2D sA) {
+    half4 sampleColorY, sampleColorU, sampleColorV;
+    sampleColorY = $cubic_filter_image(coords, invImgSize, subset, tileModeX, tileModeY,
+                                       cubicCoeffs, sY);
+    sampleColorU = $cubic_filter_image(coords, invImgSize, subset, tileModeX, tileModeY,
+                                       cubicCoeffs, sU);
+    sampleColorV = $cubic_filter_image(coords, invImgSize, subset, tileModeX, tileModeY,
+                                       cubicCoeffs, sV);
+    float Y = dot(channelSelectY, sampleColorY);
+    float U = dot(channelSelectU, sampleColorU);
+    float V = dot(channelSelectV, sampleColorV);
+    half3 preColor = half3(Y, U, V);
+    half4 sampleColor;
+    sampleColor.rgb = saturate(yuvToRGBMatrix * preColor.rgb + half3(yuvToRGBTranslate));
+    if (channelSelectA == half4(0)) {
+        sampleColor.a = 1;
+    } else {
+        half4 sampleColorA =
+            $cubic_filter_image(coords, invImgSize, subset, tileModeX, tileModeY, cubicCoeffs,
+                                sA);
         sampleColor.a = dot(channelSelectA, sampleColorA);
         // premul alpha
         sampleColor.rgb *= sampleColor.a;
@@ -1055,36 +1117,36 @@ $pure half4 sk_blend(half4 src, half4 dst, int blendMode) {
     const int kLuminosity = 28;
 
     switch (blendMode) {
-        case kClear:      { return blend_clear(src, dst); }
-        case kSrc:        { return blend_src(src, dst); }
-        case kDst:        { return blend_dst(src, dst); }
-        case kSrcOver:    { return blend_porter_duff(half4(1, 0,  0, -1), src, dst); }
-        case kDstOver:    { return blend_porter_duff(half4(0, 1, -1,  0), src, dst); }
-        case kSrcIn:      { return blend_porter_duff(half4(0, 0,  1,  0), src, dst); }
-        case kDstIn:      { return blend_porter_duff(half4(0, 0,  0,  1), src, dst); }
-        case kSrcOut:     { return blend_porter_duff(half4(0, 0, -1,  0), src, dst); }
-        case kDstOut:     { return blend_porter_duff(half4(0, 0,  0, -1), src, dst); }
-        case kSrcATop:    { return blend_porter_duff(half4(0, 0,  1, -1), src, dst); }
-        case kDstATop:    { return blend_porter_duff(half4(0, 0, -1,  1), src, dst); }
-        case kXor:        { return blend_porter_duff(half4(0, 0, -1, -1), src, dst); }
-        case kPlus:       { return blend_porter_duff(half4(1, 1,  0,  0), src, dst); }
-        case kModulate:   { return blend_modulate(src, dst); }
-        case kScreen:     { return blend_screen(src, dst); }
-        case kOverlay:    { return blend_overlay(/*flip=*/0, src, dst); }
-        case kDarken:     { return blend_darken(/*mode=*/1, src, dst); }
-        case kLighten:    { return blend_darken(/*mode=*/-1, src, dst); }
-        case kColorDodge: { return blend_color_dodge(src, dst); }
-        case kColorBurn:  { return blend_color_burn(src, dst); }
-        case kHardLight:  { return blend_overlay(/*flip=*/1, src, dst); }
-        case kSoftLight:  { return blend_soft_light(src, dst); }
-        case kDifference: { return blend_difference(src, dst); }
-        case kExclusion:  { return blend_exclusion(src, dst); }
-        case kMultiply:   { return blend_multiply(src, dst); }
-        case kHue:        { return blend_hslc(/*flipSat=*/half2(0, 1), src, dst); }
-        case kSaturation: { return blend_hslc(/*flipSat=*/half2(1), src, dst); }
-        case kColor:      { return blend_hslc(/*flipSat=*/half2(0), src, dst); }
-        case kLuminosity: { return blend_hslc(/*flipSat=*/half2(1, 0), src, dst); }
-        default: return half4(0);  // Avoids 'blend can exit without returning a value' error
+        case kClear:      return blend_clear(src, dst);
+        case kSrc:        return blend_src(src, dst);
+        case kDst:        return blend_dst(src, dst);
+        case kSrcOver:    return blend_porter_duff(half4(1, 0,  0, -1), src, dst);
+        case kDstOver:    return blend_porter_duff(half4(0, 1, -1,  0), src, dst);
+        case kSrcIn:      return blend_porter_duff(half4(0, 0,  1,  0), src, dst);
+        case kDstIn:      return blend_porter_duff(half4(0, 0,  0,  1), src, dst);
+        case kSrcOut:     return blend_porter_duff(half4(0, 0, -1,  0), src, dst);
+        case kDstOut:     return blend_porter_duff(half4(0, 0,  0, -1), src, dst);
+        case kSrcATop:    return blend_porter_duff(half4(0, 0,  1, -1), src, dst);
+        case kDstATop:    return blend_porter_duff(half4(0, 0, -1,  1), src, dst);
+        case kXor:        return blend_porter_duff(half4(0, 0, -1, -1), src, dst);
+        case kPlus:       return blend_porter_duff(half4(1, 1,  0,  0), src, dst);
+        case kModulate:   return blend_modulate(src, dst);
+        case kScreen:     return blend_screen(src, dst);
+        case kOverlay:    return blend_overlay(/*flip=*/0, src, dst);
+        case kDarken:     return blend_darken(/*mode=*/1, src, dst);
+        case kLighten:    return blend_darken(/*mode=*/-1, src, dst);
+        case kColorDodge: return blend_color_dodge(src, dst);
+        case kColorBurn:  return blend_color_burn(src, dst);
+        case kHardLight:  return blend_overlay(/*flip=*/1, src, dst);
+        case kSoftLight:  return blend_soft_light(src, dst);
+        case kDifference: return blend_difference(src, dst);
+        case kExclusion:  return blend_exclusion(src, dst);
+        case kMultiply:   return blend_multiply(src, dst);
+        case kHue:        return blend_hslc(/*flipSat=*/half2(0, 1), src, dst);
+        case kSaturation: return blend_hslc(/*flipSat=*/half2(1), src, dst);
+        case kColor:      return blend_hslc(/*flipSat=*/half2(0), src, dst);
+        case kLuminosity: return blend_hslc(/*flipSat=*/half2(1, 0), src, dst);
+        default:          return half4(0); // avoid 'blend can exit without returning a value' error
     }
 }
 
@@ -1126,14 +1188,8 @@ $pure half4 sample_indexed_atlas(float2 textureCoords,
 }
 
 $pure half4 bitmap_text_coverage_fn(half4 texColor, int maskFormat) {
-    switch (maskFormat) {
-        case 0:  // A8
-            return texColor.rrrr;
-        case 1:  // LCD
-            return half4(texColor.rgb, max(max(texColor.r, texColor.g), texColor.b));
-        default:
-            return texColor;
-    }
+    return (maskFormat == $kMaskFormatA8) ? texColor.rrrr
+                                          : texColor;
 }
 
 $pure half4 sdf_text_coverage_fn(half texColor,
@@ -1235,17 +1291,15 @@ void $corner_distance(inout float2 dist,
     float2 uv = radii - cornerEdgeDist;
     // NOTE: For mitered corners uv > 0 only if it's stroked, and in that case the
     // subsequent conditions skip calculating anything.
-    if (uv.x > 0.0 && uv.y > 0.0) {
-        if ((radii.x > 0.0 && radii.y > 0.0) ||
+    if (all(greaterThan(uv, float2(0.0)))) {
+        if (all(greaterThan(radii, float2(0.0))) ||
             (strokeParams.x > 0.0 && strokeParams.y < 0.0 /* round-join */)) {
             // A rounded corner so incorporate outer elliptical distance if we're within the
             // quarter circle.
             float2 d = $elliptical_distance(uv * xyFlip, radii, strokeParams.x, jacobian);
-            if (radii.x - strokeParams.x <= 0.0) {
-                d.y = 1.0; // disregard inner curve since it's collapsed into an inner miter.
-            } else {
-                d.y *= -1.0; // Negate so that "min" accumulates the maximum value instead
-            }
+            d.y = (radii.x - strokeParams.x <= 0.0)
+                      ? 1.0    // Disregard inner curve since it's collapsed into an inner miter.
+                      : -d.y;  // Negate so that "min" accumulates the maximum value instead.
             dist = min(dist, d);
         } else if (strokeParams.y == 0.0 /* bevel-join */) {
             // Bevels are--by construction--interior mitered, so inner distance is based
@@ -1353,4 +1407,13 @@ $pure half4 analytic_rrect_coverage_fn(float4 coords,
 
         return half4(saturate(finalCoverage));
     }
+}
+
+$pure half4 per_edge_aa_quad_coverage_fn(float4 coords,
+                                         float4 edgeDistances) {
+    // This represents a filled rectangle or quadrilateral, where the distances have already
+    // been converted to device space.
+    float2 outerDist = min(edgeDistances.xy, edgeDistances.zw);
+    float c = min(outerDist.x, outerDist.y) * coords.w;
+    return half4(saturate(c));
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="de">
+<TS version="2.1" language="de_DE">
 <context>
     <name>FilterNameDialogClass</name>
     <message>
@@ -249,7 +249,7 @@
     </message>
 </context>
 <context>
-    <name>fulltextsearch::qt::QHelpSearchIndexWriter</name>
+    <name>fulltextsearch::QHelpSearchIndexWriter</name>
     <message>
         <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
         <translation>Kann die Datenbank &quot;%1&quot; über die Verbindung &quot;%2&quot; nicht öffnen: %3</translation>

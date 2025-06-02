@@ -122,11 +122,9 @@ class MdIPHBubbleButton : public views::MdTextButton {
                     PressedCallback callback,
                     const std::u16string& text,
                     bool is_default_button)
-      : MdTextButton(callback, text),
+      : MdTextButton(std::move(callback), text),
         delegate_(delegate),
         is_default_button_(is_default_button) {
-    // Prominent style gives a button hover highlight.
-    SetProminent(true);
     GetViewAccessibility().OverrideIsLeaf(true);
 
     if (features::IsChromeRefresh2023()) {
@@ -143,6 +141,8 @@ class MdIPHBubbleButton : public views::MdTextButton {
               : delegate_->GetHelpBubbleForegroundColorId());
       ink_drop->SetHighlightOpacity(absl::nullopt);
     } else {
+      // Prominent style gives a button hover highlight.
+      SetStyle(ui::ButtonStyle::kProminent);
       // Focus ring rendering varies significantly between pre- and post-refresh
       // Chrome. The pre-refresh tactic of setting the focus color to background
       // is actually a hack; the post-refresh approach is more "correct".
@@ -210,7 +210,7 @@ class ClosePromoButton : public views::ImageButton {
                    const std::u16string accessible_name,
                    PressedCallback callback)
       : delegate_(delegate) {
-    SetCallback(callback);
+    SetCallback(std::move(callback));
     views::ConfigureVectorImageButton(this);
     views::HighlightPathGenerator::Install(
         this,
@@ -437,7 +437,8 @@ class MenuEventMonitor {
     if (IsInButton(screen_coords, help_bubble_->default_button_)) {
       return help_bubble_->default_button_;
     }
-    for (auto* const button : help_bubble_->non_default_buttons_) {
+    for (views::MdTextButton* const button :
+         help_bubble_->non_default_buttons_) {
       if (IsInButton(screen_coords, button)) {
         return button;
       }
@@ -466,6 +467,7 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(HelpBubbleView,
                                       kDefaultButtonIdForTesting);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(HelpBubbleView,
                                       kFirstNonDefaultButtonIdForTesting);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(HelpBubbleView, kCloseButtonIdForTesting);
 
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(HelpBubbleView, kBodyTextIdForTesting);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(HelpBubbleView, kTitleTextIdForTesting);
@@ -534,8 +536,7 @@ HelpBubbleView::HelpBubbleView(const HelpBubbleDelegate* delegate,
   timeout_ = params.timeout.value_or(params.buttons.empty()
                                          ? kDefaultTimeoutWithoutButtons
                                          : kDefaultTimeoutWithButtons);
-  if (!timeout_.is_zero())
-    timeout_callback_ = std::move(params.timeout_callback);
+  timeout_callback_ = std::move(params.timeout_callback);
   SetCancelCallback(std::move(params.dismiss_callback));
 
   accessible_name_ = params.title_text;
@@ -646,6 +647,8 @@ HelpBubbleView::HelpBubbleView(const HelpBubbleDelegate* delegate,
                           delegate, alt_text,
                           base::BindRepeating(&DialogDelegate::CancelDialog,
                                               base::Unretained(this))));
+  close_button_->SetProperty(views::kElementIdentifierKey,
+                             kCloseButtonIdForTesting);
 
   // Add other buttons.
   if (!params.buttons.empty()) {
@@ -668,8 +671,8 @@ HelpBubbleView::HelpBubbleView(const HelpBubbleDelegate* delegate,
     for (HelpBubbleButtonParams& button_params : params.buttons) {
       auto button = std::make_unique<MdIPHBubbleButton>(
           delegate,
-          base::BindRepeating(run_callback_and_close, base::Unretained(this),
-                              base::Passed(std::move(button_params.callback))),
+          base::BindOnce(run_callback_and_close, base::Unretained(this),
+                         std::move(button_params.callback)),
           button_params.text, button_params.is_default);
       button->SetMinSize(gfx::Size(0, 0));
       if (button_params.is_default) {
@@ -750,12 +753,19 @@ HelpBubbleView::HelpBubbleView(const HelpBubbleDelegate* delegate,
             .WithAlignment(views::LayoutAlignment::kEnd));
     close_button_->SetProperty(views::kMarginsKey,
                                gfx::Insets::TLBR(0, default_spacing, 0, 0));
+    close_button_->SetProperty(views::kElementIdentifierKey,
+                               kCloseButtonIdForTesting);
   }
 
   // Icon view should have padding between it and the title or body label.
   if (icon_view_) {
-    icon_view_->SetProperty(views::kMarginsKey,
-                            gfx::Insets::TLBR(0, 0, 0, default_spacing));
+    // When there is no title, distance from icon and body text to buttons can
+    // appear cramped, so add a small bit of extra margin.
+    const int bottom_margin =
+        !params.buttons.empty() && params.title_text.empty() ? 2 : 0;
+    icon_view_->SetProperty(
+        views::kMarginsKey,
+        gfx::Insets::TLBR(0, 0, bottom_margin, default_spacing));
   }
 
   // Set label flex properties. This ensures that if the width of the bubble
@@ -866,10 +876,16 @@ HelpBubbleView::HelpBubbleView(const HelpBubbleDelegate* delegate,
     frame_view->set_use_anchor_window_bounds(false);
   }
 
+  // Bubbles get a 1-dip border that's either light or dark depending on system
+  // light or dark mode, but this does not match with the help bubble (see
+  // b/303069420).
+  frame_view->bubble_border()->set_draw_border_stroke(false);
+
   SizeToContents();
 
   // Most help bubbles with buttons take focus when they show.
-  bool show_active = !params.buttons.empty();
+  bool show_active =
+      params.focus_on_show_hint.value_or(!params.buttons.empty());
   if (auto* const anchor_bubble =
           anchor_widget()->widget_delegate()->AsBubbleDialogDelegate()) {
     // Make sure that if the help bubble is attaching to a dialog, the dialog
@@ -900,7 +916,9 @@ void HelpBubbleView::MaybeStartAutoCloseTimer() {
 }
 
 void HelpBubbleView::OnTimeout() {
-  std::move(timeout_callback_).Run();
+  if (timeout_callback_) {
+    std::move(timeout_callback_).Run();
+  }
   GetWidget()->Close();
 }
 
@@ -941,7 +959,7 @@ void HelpBubbleView::OnThemeChanged() {
         foreground_color, icon_view_->GetPreferredSize().height() / 2));
   }
 
-  for (auto* label : labels_) {
+  for (views::Label* label : labels_) {
     label->SetBackgroundColor(background_color);
     label->SetEnabledColor(foreground_color);
   }
@@ -1022,7 +1040,7 @@ bool HelpBubbleView::IsFocusInHelpBubble() const {
     return true;
   if (default_button_ && default_button_->HasFocus())
     return true;
-  for (auto* button : non_default_buttons_) {
+  for (views::MdTextButton* button : non_default_buttons_) {
     if (button->HasFocus())
       return true;
   }

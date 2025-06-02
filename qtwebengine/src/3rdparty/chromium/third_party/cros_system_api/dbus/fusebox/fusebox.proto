@@ -58,6 +58,22 @@ message CreateResponseProto {
   optional DirEntryProto stat = 3;
 }
 
+// Flush flushes a fuse_handle previously returned by Open2.
+//
+// The fdatasync bit distinguishes between fsync (flush everything) and
+// fdatasync (flush data but not metadata), per "man 2 fdatasync". This is just
+// a hint from the RPC caller. The RPC callee can ignore the hint and flush
+// everything.
+
+message FlushRequestProto {
+  optional uint64 fuse_handle = 2;
+  optional bool fdatasync = 4;
+}
+
+message FlushResponseProto {
+  optional int32 posix_error_code = 1;
+}
+
 // ListStorages returns a snapshot summarizing all previous StorageAttached and
 // StorageDetached signals.
 

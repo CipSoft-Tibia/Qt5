@@ -3,113 +3,66 @@
 
 #include "qhelpindexwidget.h"
 #include "qhelpenginecore.h"
-#include "qhelpengine_p.h"
-#include "qhelpdbreader_p.h"
-#include "qhelpcollectionhandler_p.h"
+#include "qhelplink.h"
 
-#include <QtCore/QThread>
-#include <QtCore/QMutex>
-#include <QtHelp/QHelpLink>
-#include <QtWidgets/QListView>
-#include <QtWidgets/QHeaderView>
-
-#include <algorithm>
+#if QT_CONFIG(future)
+#include <QtCore/qfuturewatcher.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
-class QHelpIndexProvider : public QThread
-{
-public:
-    QHelpIndexProvider(QHelpEnginePrivate *helpEngine);
-    ~QHelpIndexProvider() override;
-    void collectIndices(const QString &customFilterName);
-    void stopCollecting();
-    QStringList indices() const;
-
-private:
-    void run() override;
-
-    QHelpEnginePrivate *m_helpEngine;
-    QString m_currentFilter;
-    QStringList m_filterAttributes;
-    QStringList m_indices;
-    mutable QMutex m_mutex;
-};
-
 class QHelpIndexModelPrivate
 {
-public:
-    QHelpIndexModelPrivate(QHelpEnginePrivate *hE)
-        : helpEngine(hE),
-          indexProvider(new QHelpIndexProvider(helpEngine))
-    {
-    }
+#if QT_CONFIG(future)
+    using FutureProvider = std::function<QFuture<QStringList>()>;
 
-    QHelpEnginePrivate *helpEngine;
-    QHelpIndexProvider *indexProvider;
-    QStringList indices;
+    struct WatcherDeleter
+    {
+        void operator()(QFutureWatcherBase *watcher) {
+            watcher->disconnect();
+            watcher->cancel();
+            watcher->waitForFinished();
+            delete watcher;
+        }
+    };
+#endif
+
+public:
+#if QT_CONFIG(future)
+    void createIndex(const FutureProvider &futureProvider);
+#endif
+
+    QHelpIndexModel *q = nullptr;
+    QHelpEngineCore *helpEngine = nullptr;
+    QStringList indices = {};
+#if QT_CONFIG(future)
+    std::unique_ptr<QFutureWatcher<QStringList>, WatcherDeleter> watcher = {};
+#endif
 };
 
-QHelpIndexProvider::QHelpIndexProvider(QHelpEnginePrivate *helpEngine)
-    : QThread(helpEngine),
-      m_helpEngine(helpEngine)
+#if QT_CONFIG(future)
+void QHelpIndexModelPrivate::createIndex(const FutureProvider &futureProvider)
 {
-}
+    const bool wasRunning = bool(watcher);
+    watcher.reset(new QFutureWatcher<QStringList>);
+    QObject::connect(watcher.get(), &QFutureWatcherBase::finished, q, [this] {
+        if (!watcher->isCanceled()) {
+            indices = watcher->result();
+            q->filter({});
+        }
+        watcher.release()->deleteLater();
+        emit q->indexCreated();
+    });
+    watcher->setFuture(futureProvider());
 
-QHelpIndexProvider::~QHelpIndexProvider()
-{
-    stopCollecting();
-}
-
-void QHelpIndexProvider::collectIndices(const QString &customFilterName)
-{
-    m_mutex.lock();
-    m_currentFilter = customFilterName;
-    m_filterAttributes = m_helpEngine->q->filterAttributes(customFilterName);
-    m_mutex.unlock();
-
-    if (isRunning())
-        stopCollecting();
-    start(LowPriority);
-}
-
-void QHelpIndexProvider::stopCollecting()
-{
-    if (!isRunning())
-        return;
-    wait();
-}
-
-QStringList QHelpIndexProvider::indices() const
-{
-    QMutexLocker lck(&m_mutex);
-    return m_indices;
-}
-
-void QHelpIndexProvider::run()
-{
-    m_mutex.lock();
-    const QString currentFilter = m_currentFilter;
-    const QStringList attributes = m_filterAttributes;
-    const QString collectionFile = m_helpEngine->collectionHandler->collectionFile();
-    m_indices = QStringList();
-    m_mutex.unlock();
-
-    if (collectionFile.isEmpty())
+    if (wasRunning)
         return;
 
-    QHelpCollectionHandler collectionHandler(collectionFile);
-    if (!collectionHandler.openCollectionFile())
-        return;
-
-    const QStringList result = m_helpEngine->usesFilterEngine
-            ? collectionHandler.indicesForFilter(currentFilter)
-            : collectionHandler.indicesForFilter(attributes);
-
-    m_mutex.lock();
-    m_indices = result;
-    m_mutex.unlock();
+    indices.clear();
+    q->filter({});
+    emit q->indexCreationStarted();
 }
+#endif
 
 /*!
     \class QHelpIndexModel
@@ -117,8 +70,6 @@ void QHelpIndexProvider::run()
     \inmodule QtHelp
     \brief The QHelpIndexModel class provides a model that
     supplies index keywords to views.
-
-
 */
 
 /*!
@@ -137,14 +88,10 @@ void QHelpIndexProvider::run()
     This signal is emitted when the index has been created.
 */
 
-QHelpIndexModel::QHelpIndexModel(QHelpEnginePrivate *helpEngine)
+QHelpIndexModel::QHelpIndexModel(QHelpEngineCore *helpEngine)
     : QStringListModel(helpEngine)
-{
-    d = new QHelpIndexModelPrivate(helpEngine);
-
-    connect(d->indexProvider, &QThread::finished,
-            this, &QHelpIndexModel::insertIndices);
-}
+    , d(new QHelpIndexModelPrivate{this, helpEngine})
+{}
 
 QHelpIndexModel::~QHelpIndexModel()
 {
@@ -152,30 +99,31 @@ QHelpIndexModel::~QHelpIndexModel()
 }
 
 /*!
-    Creates a new index by querying the help system for
-    keywords for the specified \a customFilterName.
+    \since 6.8
+
+    Creates a new index by querying the help system for keywords for the current filter.
 */
-void QHelpIndexModel::createIndex(const QString &customFilterName)
+void QHelpIndexModel::createIndexForCurrentFilter()
 {
-    const bool running = d->indexProvider->isRunning();
-    d->indexProvider->collectIndices(customFilterName);
-    if (running)
-        return;
-
-    d->indices = QStringList();
-    filter(QString());
-    emit indexCreationStarted();
+#if QT_CONFIG(future)
+    d->createIndex([this] { return d->helpEngine->requestIndexForCurrentFilter(); });
+#endif
 }
 
+/*!
+    Creates a new index by querying the help system for
+    keywords for the specified custom \a filter name.
+*/
+void QHelpIndexModel::createIndex(const QString &filter)
+{
+#if QT_CONFIG(future)
+    d->createIndex([this, filter] { return d->helpEngine->requestIndex(filter); });
+#endif
+}
+
+// TODO: Remove me
 void QHelpIndexModel::insertIndices()
-{
-    if (d->indexProvider->isRunning())
-        return;
-
-    d->indices = d->indexProvider->indices();
-    filter(QString());
-    emit indexCreated();
-}
+{}
 
 /*!
     Returns true if the index is currently built up, otherwise
@@ -183,7 +131,11 @@ void QHelpIndexModel::insertIndices()
 */
 bool QHelpIndexModel::isCreatingIndex() const
 {
-    return d->indexProvider->isRunning();
+#if QT_CONFIG(future)
+    return bool(d->watcher);
+#else
+    return false;
+#endif
 }
 
 /*!
@@ -193,7 +145,7 @@ bool QHelpIndexModel::isCreatingIndex() const
 */
 QHelpEngineCore *QHelpIndexModel::helpEngine() const
 {
-    return d->helpEngine->q;
+    return d->helpEngine;
 }
 
 /*!
@@ -210,57 +162,46 @@ QModelIndex QHelpIndexModel::filter(const QString &filter, const QString &wildca
 {
     if (filter.isEmpty()) {
         setStringList(d->indices);
-        return index(-1, 0, QModelIndex());
+        return index(-1, 0, {});
     }
 
-    QStringList lst;
-    int goodMatch = -1;
+    using Checker = std::function<bool(const QString &)>;
+    const auto checkIndices = [this, filter](const Checker &checker) {
+        QStringList filteredList;
+        int goodMatch = -1;
+        int perfectMatch = -1;
+        for (const QString &index : std::as_const(d->indices)) {
+            if (checker(index)) {
+                filteredList.append(index);
+                if (perfectMatch == -1 && index.startsWith(filter, Qt::CaseInsensitive)) {
+                    if (goodMatch == -1)
+                        goodMatch = filteredList.size() - 1;
+                    if (filter.size() == index.size())
+                        perfectMatch = filteredList.size() - 1;
+                } else if (perfectMatch > -1 && index == filter) {
+                    perfectMatch = filteredList.size() - 1;
+                }
+            }
+        }
+        setStringList(filteredList);
+        return perfectMatch >= 0 ? perfectMatch : qMax(0, goodMatch);
+    };
+
     int perfectMatch = -1;
-
     if (!wildcard.isEmpty()) {
-        auto re = QRegularExpression::wildcardToRegularExpression(wildcard,
-                                                                  QRegularExpression::UnanchoredWildcardConversion);
+        const auto re = QRegularExpression::wildcardToRegularExpression(wildcard,
+                        QRegularExpression::UnanchoredWildcardConversion);
         const QRegularExpression regExp(re, QRegularExpression::CaseInsensitiveOption);
-        for (const QString &index : std::as_const(d->indices)) {
-            if (index.contains(regExp)) {
-                lst.append(index);
-                if (perfectMatch == -1 && index.startsWith(filter, Qt::CaseInsensitive)) {
-                    if (goodMatch == -1)
-                        goodMatch = lst.size() - 1;
-                    if (filter.size() == index.size()){
-                        perfectMatch = lst.size() - 1;
-                    }
-                } else if (perfectMatch > -1 && index == filter) {
-                    perfectMatch = lst.size() - 1;
-                }
-            }
-        }
+        perfectMatch = checkIndices([regExp](const QString &index) {
+            return index.contains(regExp);
+        });
     } else {
-        for (const QString &index : std::as_const(d->indices)) {
-            if (index.contains(filter, Qt::CaseInsensitive)) {
-                lst.append(index);
-                if (perfectMatch == -1 && index.startsWith(filter, Qt::CaseInsensitive)) {
-                    if (goodMatch == -1)
-                        goodMatch = lst.size() - 1;
-                    if (filter.size() == index.size()){
-                        perfectMatch = lst.size() - 1;
-                    }
-                } else if (perfectMatch > -1 && index == filter) {
-                    perfectMatch = lst.size() - 1;
-                }
-            }
-        }
-
+        perfectMatch = checkIndices([filter](const QString &index) {
+            return index.contains(filter, Qt::CaseInsensitive);
+        });
     }
-
-    if (perfectMatch == -1)
-        perfectMatch = qMax(0, goodMatch);
-
-    setStringList(lst);
-    return index(perfectMatch, 0, QModelIndex());
+    return index(perfectMatch, 0, {});
 }
-
-
 
 /*!
     \class QHelpIndexWidget
@@ -306,12 +247,10 @@ QModelIndex QHelpIndexModel::filter(const QString &filter, const QString &wildca
 */
 
 QHelpIndexWidget::QHelpIndexWidget()
-    : QListView(nullptr)
 {
     setEditTriggers(QAbstractItemView::NoEditTriggers);
     setUniformItemSizes(true);
-    connect(this, &QAbstractItemView::activated,
-            this, &QHelpIndexWidget::showLink);
+    connect(this, &QAbstractItemView::activated, this, &QHelpIndexWidget::showLink);
 }
 
 void QHelpIndexWidget::showLink(const QModelIndex &index)
@@ -367,7 +306,7 @@ void QHelpIndexWidget::activateCurrentItem()
 */
 void QHelpIndexWidget::filterIndices(const QString &filter, const QString &wildcard)
 {
-    QHelpIndexModel *indexModel = qobject_cast<QHelpIndexModel*>(model());
+    QHelpIndexModel *indexModel = qobject_cast<QHelpIndexModel *>(model());
     if (!indexModel)
         return;
     const QModelIndex &idx = indexModel->filter(filter, wildcard);

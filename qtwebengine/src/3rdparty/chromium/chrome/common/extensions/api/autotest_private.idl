@@ -5,7 +5,6 @@
 // API for integration testing. To be used on test images with a test component
 // extension.
 [platforms=("chromeos"),
- modernised_enums,
  implemented_in="chrome/browser/ash/extensions/autotest_private/autotest_private_api.h"]
 namespace autotestPrivate {
 
@@ -71,6 +70,16 @@ namespace autotestPrivate {
     UninstalledByMigration
   };
 
+  // A mapping of arc::mojom::WakefulnessMode
+  enum WakefulnessMode {
+    Unknown,
+    Asleep,
+    Awake,
+    Dreaming,
+    Dozing
+  };
+  callback WakefulnessModeCallback = void (WakefulnessMode mode);
+
   // A subset of Window State types in ash::WindowStateType. We may add more
   // into the set in the future.
   enum WindowStateType {
@@ -80,6 +89,8 @@ namespace autotestPrivate {
     Fullscreen,
     PrimarySnapped,
     SecondarySnapped,
+    Pinned,
+    TrustedPinned,
     PIP,
     Floated
   };
@@ -278,7 +289,8 @@ namespace autotestPrivate {
     Mounting,
     Unavailable,
     Stopped,
-    CreatingLogFile,
+    PreparingForLaunch,
+    WaitingOwnerFetch,
     PreLaunched,
     Starting,
     Running,
@@ -301,7 +313,11 @@ namespace autotestPrivate {
     DOMString lacrosPath;
     // Specifies the mode Lacros is currently running.
     // For a full list of supported mode, see LacrosMode enum definition.
+    // DEPRECATED: please use isEnabled.
+    // TODO(crbug.com/1494005): Remove this field after tests are fixed.
     LacrosMode mode;
+    // True iff Lacros is enabled for the current user session's primary user.
+    boolean isEnabled;
   };
 
   callback GetLacrosInfoCallback = void (LacrosInfo info);
@@ -360,7 +376,9 @@ namespace autotestPrivate {
   dictionary ArcAppTracingInfo {
     boolean success;
     double fps;
+    double perceivedFps;
     double commitDeviation;
+    double presentDeviation;
     double renderQuality;
   };
 
@@ -425,14 +443,6 @@ namespace autotestPrivate {
   };
 
   callback GetAllInstalledAppsCallback = void (App[] apps);
-
-  dictionary CryptohomeRecoveryDataDict {
-    DOMString reauthProofToken;
-    DOMString refreshToken;
-  };
-
-  callback GetCryptohomeRecoveryDataCallback = void (
-    CryptohomeRecoveryDataDict dict);
 
   dictionary ShelfItem {
     DOMString appId;
@@ -767,7 +777,7 @@ namespace autotestPrivate {
     // Event name
     DOMString name;
     // Number of frames actually shown for this animation.
-    long microsecnods_since_unix_epoch;
+    double microsecnods_since_unix_epoch;
   };
 
   // Callback invoked to report the collection ui::LoginEventRecorder data
@@ -826,6 +836,17 @@ namespace autotestPrivate {
   // Response callback for current input method keyboard layout.
   callback GetCurrentInputMethodDescriptorCallback = void
       (GetCurrentInputMethodDescriptorData data);
+
+  // Response callback to report if a field trial exists and has been activated.
+  callback IsFieldTrialActiveCallback = void(boolean active);
+
+  // Request data containing the mock responses from
+  // overrideOrcaResponseForTesting.
+  dictionary OrcaResponseArray {
+    DOMString[] responses;
+  };
+
+  callback OverrideOrcaResponseForTestingCallback = void(boolean success);
 
   interface Functions {
     // Must be called to allow autotestPrivateAPI events to be fired.
@@ -949,10 +970,6 @@ namespace autotestPrivate {
     [supportsPromises] static void getArcPackage(
         DOMString packageName,
         GetArcPackageCallback callback);
-
-    // Gets the data needed for Cryptohome Recovery.
-    [supportsPromises] static void getCryptohomeRecoveryData(
-        GetCryptohomeRecoveryDataCallback callback);
 
     // Waits for system web apps to complete the installation.
     [supportsPromises] static void waitForSystemWebAppsInstall(
@@ -1092,12 +1109,6 @@ namespace autotestPrivate {
         DOMString display_id,
         TakeScreenshotCallback callback);
 
-    // Makes a basic request to ML Service, triggering 1. ML Service
-    // daemon startup, and 2. the initial D-Bus -> Mojo IPC bootstrap.
-    // |callback|: Called when the operation has completed.
-    [supportsPromises] static void bootstrapMachineLearningService(
-        VoidCallback callback);
-
     // Triggers an on-demand update of smart dim component and checks whether
     // it's successfully loaded by smart dim ml_agent.
     // |callback|: Called when the operation has completed.
@@ -1153,6 +1164,10 @@ namespace autotestPrivate {
     [supportsPromises] static void setAllowedPref(DOMString pref_name,
                                                   any value,
                                                   VoidCallback callback);
+
+    // Clears value for the specified user pref in the pref tree.
+    [supportsPromises] static void clearAllowedPref(DOMString pref_name,
+                                                    VoidCallback callback);
 
     // DEPRECATED: use SetAllowedPref instead, see crbug/1262034
     // Set value for the specified user pref in the pref tree.
@@ -1594,11 +1609,32 @@ namespace autotestPrivate {
     [supportsPromises] static void getCurrentInputMethodDescriptor(
         GetCurrentInputMethodDescriptorCallback callback);
 
+    // Overrides the response from Orca Provider and returns the boolean value
+    // that indicates if the overriding is successful or not.
+    [supportsPromises] static void overrideOrcaResponseForTesting(
+        OrcaResponseArray array,
+        OverrideOrcaResponseForTestingCallback callback);
+
     // ARC set interactive enable/disable state.
     // |enabled|: Enable ARC interactive.
     // |callback|: Called when the operation sent to ARC by mojo.
     [supportsPromises] static void setArcInteractiveState(
       boolean enabled, VoidCallback callback);
+
+    // Returns whether a field trial exists and has been activated.
+    [supportsPromises] static void isFieldTrialActive(
+        DOMString trial_name,
+        DOMString group_name,
+        IsFieldTrialActiveCallback callback);
+
+    // ARC get wakefulness mode.
+    [supportsPromises] static void getArcWakefulnessMode(
+      WakefulnessModeCallback callback);
+
+    // Sets the default device language.
+    // A restart is required for this change to take effect.
+    // |value|: the locale of the language.
+    static void setDeviceLanguage(DOMString locale, VoidCallback callback);
   };
 
   interface Events {

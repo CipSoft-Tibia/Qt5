@@ -10,11 +10,12 @@
 #include <cstdlib>
 #include <iomanip>
 #include <ios>
+#include <limits>
 #include <vector>
 
 #include <gtest/gtest.h>
 
-#include <fp16.h>
+#include <fp16/fp16.h>
 
 #include <xnnpack/aligned-allocator.h>
 #include <xnnpack/common.h>

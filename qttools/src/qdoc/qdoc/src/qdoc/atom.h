@@ -134,12 +134,15 @@ public:
     virtual ~Atom() = default;
 
     void appendChar(QChar ch) { m_strs[0] += ch; }
-    void appendString(const QString &string) { m_strs[0] += string; }
+    void concatenateString(const QString &string) { m_strs[0] += string; }
+    void append(const QString &string) { m_strs << string; }
     void chopString() { m_strs[0].chop(1); }
     void setString(const QString &string) { m_strs[0] = string; }
     Atom *next() { return m_next; }
     void setNext(Atom *newNext) { m_next = newNext; }
 
+    [[nodiscard]] const Atom *find(AtomType t) const;
+    [[nodiscard]] const Atom *find(AtomType t, const QString &s) const;
     [[nodiscard]] const Atom *next() const { return m_next; }
     [[nodiscard]] const Atom *next(AtomType t) const;
     [[nodiscard]] const Atom *next(AtomType t, const QString &s) const;
@@ -154,11 +157,9 @@ public:
     [[nodiscard]] virtual bool isLinkAtom() const { return false; }
     virtual Node::Genus genus() { return Node::DontCare; }
     virtual Tree *domain() { return nullptr; }
-    virtual const QString &error() { return s_noError; }
     virtual void resolveSquareBracketParams() {}
 
 protected:
-    static QString s_noError;
     Atom *m_next = nullptr;
     AtomType m_type {};
     QStringList m_strs {};
@@ -167,7 +168,7 @@ protected:
 class LinkAtom : public Atom
 {
 public:
-    LinkAtom(const QString &p1, const QString &p2);
+    LinkAtom(const QString &p1, const QString &p2, Location location = Location());
     LinkAtom(const LinkAtom &t);
     LinkAtom(Atom *previous, const LinkAtom &t);
     ~LinkAtom() override = default;
@@ -183,14 +184,15 @@ public:
         resolveSquareBracketParams();
         return m_domain;
     }
-    const QString &error() override { return m_error; }
     void resolveSquareBracketParams() override;
+
+public:
+    Location location;
 
 protected:
     bool m_resolved {};
     Node::Genus m_genus {};
     Tree *m_domain {};
-    QString m_error {};
     QString m_squareBracketParams {};
 };
 
@@ -203,6 +205,7 @@ protected:
 #define ATOM_FORMATTING_SUBSCRIPT "subscript"
 #define ATOM_FORMATTING_SUPERSCRIPT "superscript"
 #define ATOM_FORMATTING_TELETYPE "teletype"
+#define ATOM_FORMATTING_TRADEMARK "trademark"
 #define ATOM_FORMATTING_UICONTROL "uicontrol"
 #define ATOM_FORMATTING_UNDERLINE "underline"
 

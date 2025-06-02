@@ -9,15 +9,46 @@
 #include "private/qvideoframeconverter_p.h"
 #include "private/qplatformmediaintegration_p.h"
 #include "private/qimagevideobuffer_p.h"
+#include "private/qvideoframe_p.h"
+#include "private/qvideotexturehelper_p.h"
+#include "private/qthreadlocalrhi_p.h"
+#include <private/qfileutil_p.h>
+#include <private/qmultimedia_enum_to_string_converter_p.h>
+#include <private/osdetection_p.h>
 #include <QtGui/QColorSpace>
 #include <QtGui/QImage>
 #include <QtCore/QPointer>
 
-#include "../../../integration/shared/mediabackendutils.h"
+#include <private/mediabackendutils_p.h>
+
+QT_BEGIN_NAMESPACE
+
+using namespace QtMultimediaPrivate;
+
+enum class RenderingMode { Rhi, Rhi_R8_Excluded, Rhi_RG8_Excluded, Rhi_R8_RG8_Excluded,
+                           Rhi_R16_Excluded, Rhi_RG16_Excluded, Cpu };
+
+// clang-format off
+
+QT_MM_MAKE_STRING_RESOLVER(RenderingMode, EnumName,
+                           (RenderingMode::Rhi, "Rhi")
+                           (RenderingMode::Rhi_R8_Excluded, "Rhi_R8_Excluded")
+                           (RenderingMode::Rhi_RG8_Excluded, "Rhi_RG8_Excluded")
+                           (RenderingMode::Rhi_R8_RG8_Excluded, "Rhi_R8_RG8_Excluded")
+                           (RenderingMode::Rhi_R16_Excluded, "Rhi_R16_Excluded")
+                           (RenderingMode::Rhi_RG16_Excluded, "Rhi_RG16_Excluded")
+                           (RenderingMode::Cpu, "Cpu")
+                          );
+
+// clang-format on
+
+QT_END_NAMESPACE
 
 QT_USE_NAMESPACE
+using namespace QVideoTextureHelper;
 
 namespace {
+
 
 struct TestParams
 {
@@ -25,7 +56,7 @@ struct TestParams
     QVideoFrameFormat::PixelFormat pixelFormat;
     QVideoFrameFormat::ColorSpace colorSpace;
     QVideoFrameFormat::ColorRange colorRange;
-    bool forceCpu;
+    RenderingMode renderingMode;
 };
 
 QString toString(QVideoFrameFormat::ColorRange r)
@@ -36,7 +67,7 @@ QString toString(QVideoFrameFormat::ColorRange r)
     case QVideoFrameFormat::ColorRange_Full:
         return "Full";
     default:
-        Q_ASSERT(false);
+        QTEST_ASSERT(false);
         return "";
     }
 }
@@ -78,6 +109,19 @@ const QSet s_formats{ QVideoFrameFormat::Format_ARGB8888,
                       QVideoFrameFormat::Format_P016,
                       QVideoFrameFormat::Format_YUV420P10 };
 
+QList<QRhiTexture::Format> excludedRhiFormats(RenderingMode mode) {
+    QList<QRhiTexture::Format> excludedFormats;
+    if (mode == RenderingMode::Rhi_R8_RG8_Excluded || mode == RenderingMode::Rhi_R8_Excluded)
+        excludedFormats.push_back(QRhiTexture::R8);
+    if (mode == RenderingMode::Rhi_R8_RG8_Excluded || mode == RenderingMode::Rhi_RG8_Excluded)
+        excludedFormats.push_back(QRhiTexture::RG8);
+    if (mode == RenderingMode::Rhi_R16_Excluded)
+        excludedFormats.push_back(QRhiTexture::R16);
+    if (mode == RenderingMode::Rhi_RG16_Excluded)
+        excludedFormats.push_back(QRhiTexture::RG16);
+    return excludedFormats;
+}
+
 bool hasCorrespondingFFmpegFormat(QVideoFrameFormat::PixelFormat format)
 {
     return format != QVideoFrameFormat::Format_AYUV
@@ -99,25 +143,6 @@ QSet<QVideoFrameFormat::PixelFormat> pixelFormats()
     return s_formats;
 }
 
-bool isSupportedPixelFormat(QVideoFrameFormat::PixelFormat pixelFormat)
-{
-#ifdef Q_OS_ANDROID
-    // TODO: QTBUG-125238
-    switch (pixelFormat) {
-    case QVideoFrameFormat::Format_Y16:
-    case QVideoFrameFormat::Format_P010:
-    case QVideoFrameFormat::Format_P016:
-    case QVideoFrameFormat::Format_YUV420P10:
-        return false;
-    default:
-        return true;
-    }
-#else
-    return true;
-#endif
-}
-
-
 QString toString(QVideoFrameFormat::ColorSpace s)
 {
     switch (s) {
@@ -130,7 +155,7 @@ QString toString(QVideoFrameFormat::ColorSpace s)
     case QVideoFrameFormat::ColorSpace_BT2020:
         return "BT2020";
     default:
-        Q_ASSERT(false);
+        QTEST_ASSERT(false);
         return "";
     }
 }
@@ -141,22 +166,90 @@ std::vector<QVideoFrameFormat::ColorSpace> colorSpaces()
              QVideoFrameFormat::ColorSpace_AdobeRgb, QVideoFrameFormat::ColorSpace_BT2020 };
 }
 
-QString name(const TestParams &p)
+bool areTextureFormatsUsedForPixelFormat(QVideoFrameFormat::PixelFormat pixelFormat,
+                                    const QList<TextureDescription::TextureFormat>& textureFormats)
 {
+    const auto textureDescription = QVideoTextureHelper::textureDescription(pixelFormat);
+    return std::all_of(textureFormats.cbegin(), textureFormats.cend(), [textureDescription](auto textureFormat) {
+        return textureDescription->hasTextureFormat(textureFormat);
+    });
+}
+
+bool areRhiTextureFormatsSupported(const QRhi& rhi, const QList<QRhiTexture::Format>& rhiFormats) {
+    return std::all_of(rhiFormats.cbegin(), rhiFormats.cend(), [&rhi](QRhiTexture::Format rhiFormat) {
+        return rhi.isTextureFormatSupported(rhiFormat);
+    });
+}
+
+std::vector<RenderingMode> renderingModes(QVideoFrameFormat::PixelFormat pixelFormat)
+{
+    std::vector<RenderingMode> result;
+    if (supportsCpuConversion(pixelFormat))
+        result.push_back(RenderingMode::Cpu); // Only run tests on GPU if RHI is supported
+    if (isRhiRenderingSupported()) {
+        QRhi *rhi = ensureThreadLocalRhi();
+        QTEST_ASSERT(rhi);
+
+        result.push_back(RenderingMode::Rhi);
+
+        auto addRenderingModeWithExclusions = [&](RenderingMode mode, QList<TextureDescription::TextureFormat> testedFormats) {
+            // We want to emulate excluding QRhi formats only if those are
+            // supported by the rhi.
+
+            if (areTextureFormatsUsedForPixelFormat(pixelFormat, testedFormats) &&
+                areRhiTextureFormatsSupported(*rhi, excludedRhiFormats(mode)))
+                result.push_back(mode);
+        };
+
+        addRenderingModeWithExclusions(RenderingMode::Rhi_R8_Excluded, { TextureDescription::Red_8 });
+        addRenderingModeWithExclusions(RenderingMode::Rhi_RG8_Excluded, { TextureDescription::RG_8 });
+        addRenderingModeWithExclusions(RenderingMode::Rhi_R8_RG8_Excluded, { TextureDescription::RG_8, TextureDescription::Red_8 });
+
+        // QTBUG-134113:
+        // YUV420P10 fails on Linux CI
+        const bool shouldSkip_Rhi_R16_Excluded = isLinux && isCI() && pixelFormat == QVideoFrameFormat::Format_YUV420P10;
+        if (!shouldSkip_Rhi_R16_Excluded)
+            addRenderingModeWithExclusions(RenderingMode::Rhi_R16_Excluded, { TextureDescription::Red_16 });
+        addRenderingModeWithExclusions(RenderingMode::Rhi_RG16_Excluded, { TextureDescription::RG_16 });
+    }
+    return result;
+}
+
+QString fileName(const TestParams &p)
+{
+    // TODO: remove the hack; target files should be the same
+    const auto suffix = p.renderingMode == RenderingMode::Cpu ? u"_cpu" : u"";
+
     QString name = QStringLiteral("%1_%2_%3_%4%5")
-                                 .arg(p.fileName)
-                                 .arg(toString(p.pixelFormat))
-                                 .arg(toString(p.colorSpace))
-                                 .arg(toString(p.colorRange))
-                                 .arg(p.forceCpu ? "_cpu" : "")
-                                 .toLower();
-    name.replace(" ", "_");
+            .arg(p.fileName,
+                 toString(p.pixelFormat),
+                 toString(p.colorSpace),
+                 toString(p.colorRange),
+                 suffix)
+            .toLower()
+            .replace(" ", "_");
     return name;
 }
 
-QString path(const QTemporaryDir &dir, const TestParams &param, const QString &suffix = ".png")
+
+QString resultPath(const QTemporaryDir &dir, const TestParams &params, const QString &suffix = ".png")
 {
-    return dir.filePath(name(param) + suffix);
+    const auto renderingModeDescription = StringResolver<RenderingMode>::toQString(params.renderingMode);
+    QTEST_ASSERT(renderingModeDescription);
+    QDir currentDir(dir.path());
+    QString resultFolderName = QStringLiteral("result_") + *renderingModeDescription;
+    const bool subdirCreated = currentDir.exists(resultFolderName) || currentDir.mkdir(resultFolderName);
+    QTEST_ASSERT(subdirCreated);
+
+    return currentDir.filePath(resultFolderName + QDir::separator() + fileName(params) + suffix);
+}
+
+QString testName(const TestParams &params)
+{
+    const auto renderingModeDescription = StringResolver<RenderingMode>::toQString(params.renderingMode);
+    QTEST_ASSERT(renderingModeDescription);
+
+    return QStringLiteral("%1, %2").arg(fileName(params), *renderingModeDescription);
 }
 
 QVideoFrame createTestFrame(const TestParams &params, const QImage &image)
@@ -171,7 +264,7 @@ QVideoFrame createTestFrame(const TestParams &params, const QImage &image)
         image.size(), QVideoFrameFormat::pixelFormatFromImageFormat(image.format())
     };
 
-    QVideoFrame source{ buffer.release(), imageFormat };
+    QVideoFrame source = QVideoFramePrivate::createFrame(std::move(buffer), imageFormat);
     return QPlatformMediaIntegration::instance()->convertVideoFrame(source, format);
 }
 
@@ -206,7 +299,7 @@ QRgb pixelDiff(QRgb lhs, QRgb rhs)
 std::optional<ImageDiffReport> compareImagesRgb32(const QImage &computed, const QImage &baseline,
                                              int channelThreshold)
 {
-    Q_ASSERT(baseline.format() == QImage::Format_RGB32);
+    QTEST_ASSERT(baseline.format() == QImage::Format_RGB32);
 
     if (computed.size() != baseline.size())
         return {};
@@ -250,23 +343,6 @@ std::optional<ImageDiffReport> compareImagesRgb32(const QImage &computed, const 
     return report;
 }
 
-bool copyAllFiles(const QDir &source, const QDir &dest)
-{
-    if (!source.exists() || !dest.exists())
-        return false;
-
-    QDirIterator it(source);
-    while (it.hasNext()) {
-        QFileInfo file{ it.next() };
-        if (file.isFile()) {
-            const QString destination = dest.absolutePath() + "/" + file.fileName();
-            QFile::copy(file.absoluteFilePath(), destination);
-        }
-    }
-
-    return true;
-}
-
 class ReferenceData
 {
 public:
@@ -301,7 +377,7 @@ public:
 
     QImage getReference(const TestParams &param) const
     {
-        const QString referenceName = name(param);
+        const QString referenceName = fileName(param);
         const QString referencePath = m_testdataDir->filePath(referenceName + ".png");
         QImage result;
         if (result.load(referencePath))
@@ -311,10 +387,10 @@ public:
 
     void saveNewReference(const QImage &reference, const TestParams &params) const
     {
-        const QString filename = path(*m_testdataDir, params);
+        const QString filename = resultPath(*m_testdataDir, params);
         if (!reference.save(filename)) {
             qDebug() << "Failed to save reference file";
-            Q_ASSERT(false);
+            QTEST_ASSERT(false);
         }
 
         m_testdataDir->setAutoRemove(false);
@@ -322,9 +398,9 @@ public:
 
     bool saveComputedImage(const TestParams &params, const QImage &image, const QString& suffix) const
     {
-        if (!image.save(path(*m_testdataDir, params, suffix))) {
+        if (!image.save(resultPath(*m_testdataDir, params, suffix))) {
             qDebug() << "Unexpectedly failed to save actual image to file";
-            Q_ASSERT(false);
+            QTEST_ASSERT(false);
             return false;
         }
         m_testdataDir->setAutoRemove(false);
@@ -383,10 +459,11 @@ class tst_qvideoframecolormanagement : public QObject
 {
     Q_OBJECT
 private slots:
+    void cleanup() { QVideoTextureHelper::setExcludedRhiTextureFormats({}); }
+
     void initTestCase()
     {
-        if (!isFFMPEGPlatform())
-            QSKIP("This test requires the ffmpeg backend to create test frames");
+        QSKIP_IF_NOT_FFMPEG("This test requires the FFmpeg backend to create test frames");
     }
 
     void qImageFromVideoFrame_returnsQImageWithCorrectColors_data()
@@ -395,28 +472,16 @@ private slots:
         QTest::addColumn<TestParams>("params");
         for (const char *file : { "umbrellas.jpg" }) {
             for (const QVideoFrameFormat::PixelFormat pixelFormat : pixelFormats()) {
+                if (!hasCorrespondingFFmpegFormat(pixelFormat))
+                    continue;
+
                 for (const QVideoFrameFormat::ColorSpace colorSpace : colorSpaces()) {
                     for (const QVideoFrameFormat::ColorRange colorRange : colorRanges()) {
-
-                        QList<bool> cpuChoices = { true };
-                        if (isRhiRenderingSupported())
-                            cpuChoices.push_back(false); // Only run tests on GPU if RHI is supported
-
-                        for (const bool forceCpu : cpuChoices) {
-
-                            if (!isSupportedPixelFormat(pixelFormat))
-                                continue;
-
-                            if (forceCpu && !supportsCpuConversion(pixelFormat))
-                                continue; // TODO: CPU Conversion not implemented
-
-                            if (!hasCorrespondingFFmpegFormat(pixelFormat))
-                                continue;
-
+                        for (const RenderingMode renderingMode : renderingModes(pixelFormat)) {
                             TestParams param{
-                                file, pixelFormat, colorSpace, colorRange, forceCpu,
+                                file, pixelFormat, colorSpace, colorRange, renderingMode,
                             };
-                            QTest::addRow("%s", name(param).toLatin1().data()) << file << param;
+                            QTest::newRow(testName(param).toLatin1().data()) << file << param;
                         }
                     }
                 }
@@ -434,6 +499,8 @@ private slots:
         QFETCH(const QString, fileName);
         QFETCH(const TestParams, params);
 
+        // Arrange
+        applyRenderingMode(params.renderingMode);
         const QImage templateImage = m_reference.getTestdata(fileName);
         QVERIFY(!templateImage.isNull());
 
@@ -441,7 +508,7 @@ private slots:
 
         // Act
         const QImage actual =
-                qImageFromVideoFrame(frame, QtVideo::Rotation::None, false, false, params.forceCpu);
+                qImageFromVideoFrame(frame, params.renderingMode == RenderingMode::Cpu);
 
         // Assert
         constexpr int diffThreshold = 4;
@@ -464,6 +531,11 @@ private slots:
         QCOMPARE_LT(result->MaxDiff, 6); // Maximum per-channel difference
     }
 
+private:
+    void applyRenderingMode(RenderingMode mode)
+    {
+        QVideoTextureHelper::setExcludedRhiTextureFormats(excludedRhiFormats(mode));
+    }
 
 private:
     ReferenceData m_reference;

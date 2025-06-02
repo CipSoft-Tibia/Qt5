@@ -7,15 +7,14 @@ import * as Host from '../../core/host/host.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as Root from '../../core/root/root.js';
 import * as SDK from '../../core/sdk/sdk.js';
+import type * as Protocol from '../../generated/protocol.js';
 import * as Feedback from '../../ui/components/panel_feedback/panel_feedback.js';
 import * as UI from '../../ui/legacy/legacy.js';
-
-import axBreadcrumbsStyles from './axBreadcrumbs.css.js';
-
-import type * as Protocol from '../../generated/protocol.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
 import {type AccessibilitySidebarView} from './AccessibilitySidebarView.js';
 import {AccessibilitySubPane} from './AccessibilitySubPane.js';
+import axBreadcrumbsStyles from './axBreadcrumbs.css.js';
 
 const UIStrings = {
   /**
@@ -70,6 +69,7 @@ export class AXBreadcrumbsPane extends AccessibilitySubPane {
 
     this.hoveredBreadcrumb = null;
     const previewToggle = new Feedback.PreviewToggle.PreviewToggle();
+    previewToggle.setAttribute('jslog', `${VisualLogging.toggle().context('full-accessibility-tree')}`);
     const name = i18nString(UIStrings.fullTreeExperimentName);
     const experiment = Root.Runtime.ExperimentName.FULL_ACCESSIBILITY_TREE;
     const onChangeCallback: (checked: boolean) => void = checked => {
@@ -338,12 +338,14 @@ export class AXBreadcrumbsPane extends AccessibilitySubPane {
       // This will collapse and preselect/focus the breadcrumb.
       this.collapseBreadcrumb(breadcrumb);
       breadcrumb.nodeElement().focus();
+      void VisualLogging.logClick(breadcrumb.expandLoggable, event);
       return;
     }
     if (!breadcrumb.isDOMNode()) {
       return;
     }
     this.inspectDOMNode(breadcrumb.axNode());
+    void VisualLogging.logClick(breadcrumb.expandLoggable, event);
   }
 
   private setHoveredBreadcrumb(breadcrumb: AXBreadcrumb|null): void {
@@ -441,11 +443,13 @@ export class AXBreadcrumb {
   private preselectedInternal: boolean;
   private parent: AXBreadcrumb|null;
   private inspectedInternal: boolean;
+  expandLoggable = {};
   constructor(axNode: SDK.AccessibilityModel.AccessibilityNode, depth: number, inspected: boolean) {
     this.axNodeInternal = axNode;
 
     this.elementInternal = document.createElement('div');
     this.elementInternal.classList.add('ax-breadcrumb');
+    this.elementInternal.setAttribute('jslog', `${VisualLogging.treeItem().track({click: true})}`);
     elementsToAXBreadcrumb.set(this.elementInternal, this);
 
     this.nodeElementInternal = document.createElement('div');
@@ -491,6 +495,7 @@ export class AXBreadcrumb {
     if (!this.axNodeInternal.ignored() && this.axNodeInternal.hasOnlyUnloadedChildren()) {
       this.nodeElementInternal.classList.add('children-unloaded');
       UI.ARIAUtils.setExpanded(this.nodeElementInternal, false);
+      VisualLogging.registerLoggable(this.expandLoggable, `${VisualLogging.treeItemExpand()}`, this.elementInternal);
     }
 
     if (!this.axNodeInternal.isDOMNode()) {
@@ -512,6 +517,7 @@ export class AXBreadcrumb {
     this.nodeElementInternal.classList.add('parent');
     UI.ARIAUtils.setExpanded(this.nodeElementInternal, true);
     this.childrenGroupElement.appendChild(breadcrumb.element());
+    VisualLogging.registerLoggable(this.expandLoggable, `${VisualLogging.treeItemExpand()}`, this.elementInternal);
   }
 
   hasExpandedChildren(): number {

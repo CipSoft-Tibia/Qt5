@@ -7,6 +7,7 @@
 
 #include "base/strings/string_util_win.h"
 #include "base/strings/stringprintf.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/win/scoped_handle.h"
 #include "sandbox/win/src/handle_closer_agent.h"
 #include "sandbox/win/src/nt_internals.h"
@@ -33,12 +34,12 @@ HANDLE GetMarkerFile(const wchar_t* extension) {
   base::win::ScopedHandle module(
       ::CreateFile(path_buffer, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, nullptr,
                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-  CHECK(module.IsValid());
+  CHECK(module.is_valid());
   FILETIME timestamp;
-  CHECK(::GetFileTime(module.Get(), &timestamp, nullptr, nullptr));
-  marker_path +=
-      base::StringPrintf(L"%08x%08x%08x", ::GetFileSize(module.Get(), nullptr),
-                         timestamp.dwLowDateTime, timestamp.dwHighDateTime);
+  CHECK(::GetFileTime(module.get(), &timestamp, nullptr, nullptr));
+  marker_path += base::ASCIIToWide(base::StringPrintf(
+      "%08lx%08lx%08lx", ::GetFileSize(module.get(), nullptr),
+      timestamp.dwLowDateTime, timestamp.dwHighDateTime));
   marker_path += extension;
 
   // Make the file delete-on-close so cleanup is automatic.
@@ -154,8 +155,8 @@ TEST(HandleCloserTest, CheckForMarkerFiles) {
   std::wstring command = std::wstring(L"CheckForFileHandles Y");
   for (const wchar_t* kExtension : kFileExtensions) {
     base::win::ScopedHandle marker(GetMarkerFile(kExtension));
-    CHECK(marker.IsValid());
-    auto handle_name = GetPathFromHandle(marker.Get());
+    CHECK(marker.is_valid());
+    auto handle_name = GetPathFromHandle(marker.get());
     CHECK(handle_name);
     command += (L" ");
     command += handle_name.value();
@@ -174,8 +175,8 @@ TEST(HandleCloserTest, CloseMarkerFiles) {
   std::wstring command = std::wstring(L"CheckForFileHandles N");
   for (const wchar_t* kExtension : kFileExtensions) {
     base::win::ScopedHandle marker(GetMarkerFile(kExtension));
-    CHECK(marker.IsValid());
-    auto handle_name = GetPathFromHandle(marker.Get());
+    CHECK(marker.is_valid());
+    auto handle_name = GetPathFromHandle(marker.get());
     CHECK(handle_name);
     CHECK_EQ(policy->GetConfig()->AddKernelObjectToClose(L"File",
                                                          handle_name->c_str()),
@@ -196,8 +197,8 @@ TEST(HandleCloserTest, CheckStuffedHandle) {
 
   for (const wchar_t* kExtension : kFileExtensions) {
     base::win::ScopedHandle marker(GetMarkerFile(kExtension));
-    CHECK(marker.IsValid());
-    auto handle_name = GetPathFromHandle(marker.Get());
+    CHECK(marker.is_valid());
+    auto handle_name = GetPathFromHandle(marker.get());
     CHECK(handle_name);
     CHECK_EQ(policy->GetConfig()->AddKernelObjectToClose(L"File",
                                                          handle_name->c_str()),

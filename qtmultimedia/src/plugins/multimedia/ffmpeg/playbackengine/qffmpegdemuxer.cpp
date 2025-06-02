@@ -3,40 +3,60 @@
 
 #include "playbackengine/qffmpegdemuxer_p.h"
 #include <qloggingcategory.h>
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
+namespace QFFmpeg {
+
 // 4 sec for buffering. TODO: maybe move to env var customization
-static constexpr qint64 MaxBufferedDurationUs = 4'000'000;
+static constexpr TrackDuration MaxBufferedDurationUs{ 4'000'000 };
 
 // around 4 sec of hdr video
 static constexpr qint64 MaxBufferedSize = 32 * 1024 * 1024;
 
-namespace QFFmpeg {
-
 static Q_LOGGING_CATEGORY(qLcDemuxer, "qt.multimedia.ffmpeg.demuxer");
 
-static qint64 streamTimeToUs(const AVStream *stream, qint64 time)
+static TrackPosition packetEndPos(const Packet &packet, const AVStream *stream,
+                                  const AVFormatContext *context)
 {
-    Q_ASSERT(stream);
-
-    const auto res = mul(time * 1000000, stream->time_base);
-    return res ? *res : time;
+    const AVPacket &avPacket = *packet.avPacket();
+    return packet.loopOffset().loopStartTimeUs.asDuration()
+            + toTrackPosition(AVStreamPosition(avPacket.pts + avPacket.duration), stream, context);
 }
 
-static qint64 packetEndPos(const AVStream *stream, const Packet &packet)
+static bool isPacketWithinStreamDuration(const AVFormatContext *context, const Packet &packet)
 {
-    return packet.loopOffset().pos
-            + streamTimeToUs(stream, packet.avPacket()->pts + packet.avPacket()->duration);
+    const AVPacket &avPacket = *packet.avPacket();
+    const AVStream &avStream = *context->streams[avPacket.stream_index];
+    const AVStreamDuration streamDuration(avStream.duration);
+    if (streamDuration.get() <= 0
+        || context->duration_estimation_method != AVFMT_DURATION_FROM_STREAM)
+        return true; // Stream duration shouldn't or doesn't need to be compared to pts
+
+    if (avStream.start_time != AV_NOPTS_VALUE)
+        return AVStreamDuration(avPacket.pts - avStream.start_time) <= streamDuration;
+
+    const TrackPosition trackPos = toTrackPosition(AVStreamPosition(avPacket.pts), &avStream, context);
+    const TrackPosition trackPosOfStreamEnd = toTrackDuration(streamDuration, &avStream).asTimePoint();
+    return trackPos <= trackPosOfStreamEnd;
+
+    // TODO: If there is a packet that starts before the canonical end of the stream but has a
+    // malformed duration, rework doNextStep to check for eof after that packet.
 }
 
-Demuxer::Demuxer(AVFormatContext *context, const PositionWithOffset &posWithOffset,
-                 const StreamIndexes &streamIndexes, int loops)
-    : m_context(context), m_posWithOffset(posWithOffset), m_loops(loops)
+Demuxer::Demuxer(AVFormatContext *context, TrackPosition initialPosUs, bool seekPending,
+                 const LoopOffset &loopOffset, const StreamIndexes &streamIndexes, int loops)
+    : m_context(context),
+      m_seeked(!seekPending && initialPosUs == TrackPosition{ 0 }), // Don't seek to 0 unless seek requested
+      m_posInLoopUs{ initialPosUs },
+      m_loopOffset(loopOffset),
+      m_loops(loops)
 {
     qCDebug(qLcDemuxer) << "Create demuxer."
-                        << "pos:" << posWithOffset.pos << "loop offset:" << posWithOffset.offset.pos
-                        << "loop index:" << posWithOffset.offset.index << "loops:" << loops;
+                        << "pos:" << m_posInLoopUs.get()
+                        << "loop offset:" << m_loopOffset.loopStartTimeUs.get()
+                        << "loop index:" << m_loopOffset.loopIndex << "loops:" << loops;
 
     Q_ASSERT(m_context);
 
@@ -53,12 +73,15 @@ void Demuxer::doNextStep()
 {
     ensureSeeked();
 
-    Packet packet(m_posWithOffset.offset, AVPacketUPtr{ av_packet_alloc() }, id());
-    if (av_read_frame(m_context, packet.avPacket()) < 0) {
-        ++m_posWithOffset.offset.index;
+    Packet packet(m_loopOffset, AVPacketUPtr{ av_packet_alloc() }, id());
+
+    const int demuxStatus = av_read_frame(m_context, packet.avPacket());
+
+    if (demuxStatus == AVERROR_EOF || !isPacketWithinStreamDuration(m_context, packet)) {
+        ++m_loopOffset.loopIndex;
 
         const auto loops = m_loops.loadAcquire();
-        if (loops >= 0 && m_posWithOffset.offset.index >= loops) {
+        if (loops >= 0 && m_loopOffset.loopIndex >= loops) {
             qCDebug(qLcDemuxer) << "finish demuxing";
 
             if (!std::exchange(m_buffered, true))
@@ -66,21 +89,49 @@ void Demuxer::doNextStep()
 
             setAtEnd(true);
         } else {
+            // start next loop
             m_seeked = false;
-            m_posWithOffset.pos = 0;
-            m_posWithOffset.offset.pos = m_maxPacketsEndPos;
-            m_maxPacketsEndPos = 0;
+            m_posInLoopUs = TrackPosition(0);
+            m_loopOffset.loopStartTimeUs = m_maxPacketsEndPos;
+            m_maxPacketsEndPos = TrackPosition(0);
 
             ensureSeeked();
 
-            qCDebug(qLcDemuxer) << "Demuxer loops changed. Index:" << m_posWithOffset.offset.index
-                                << "Offset:" << m_posWithOffset.offset.pos;
+            qCDebug(qLcDemuxer) << "Demuxer loops changed. Index:" << m_loopOffset.loopIndex
+                                << "Offset:" << m_loopOffset.loopStartTimeUs.get();
 
             scheduleNextStep(false);
         }
 
         return;
     }
+
+    if (demuxStatus < 0) {
+        qCWarning(qLcDemuxer) << "Demuxing failed" << demuxStatus << err2str(demuxStatus);
+
+        if (demuxStatus == AVERROR(EAGAIN) && m_demuxerRetryCount != s_maxDemuxerRetries) {
+            // When demuxer reports EAGAIN, we can try to recover by calling av_read_frame again.
+            // The documentation for av_read_frame does not mention this, but FFmpeg command line
+            // tool does this, see input_thread() function in ffmpeg_demux.c. There, the response
+            // is to sleep for 10 ms before trying again. NOTE: We do not have any known way of
+            // reproducing this in our tests.
+            ++m_demuxerRetryCount;
+
+            qCDebug(qLcDemuxer) << "Retrying";
+            scheduleNextStep(false);
+        } else {
+            // av_read_frame reports another error. This could for example happen if network is
+            // disconnected while playing a network stream, where av_read_frame may return
+            // ETIMEDOUT.
+            // TODO: Demuxer errors should likely stop playback in media player examples.
+            emit error(QMediaPlayer::ResourceError,
+                       QLatin1StringView("Demuxing failed"));
+        }
+
+        return;
+    }
+
+    m_demuxerRetryCount = 0;
 
     auto &avPacket = *packet.avPacket();
 
@@ -91,12 +142,12 @@ void Demuxer::doNextStep()
     if (it != m_streams.end()) {
         auto &streamData = it->second;
 
-        const auto endPos = packetEndPos(stream, packet);
+        const TrackPosition endPos = packetEndPos(packet, stream, m_context);
         m_maxPacketsEndPos = qMax(m_maxPacketsEndPos, endPos);
 
         // Increase buffered metrics as the packet has been processed.
 
-        streamData.bufferedDuration += streamTimeToUs(stream, avPacket.duration);
+        streamData.bufferedDuration += toTrackDuration(AVStreamDuration(avPacket.duration), stream);
         streamData.bufferedSize += avPacket.size;
         streamData.maxSentPacketsPos = qMax(streamData.maxSentPacketsPos, endPos);
         updateStreamDataLimitFlag(streamData);
@@ -108,8 +159,7 @@ void Demuxer::doNextStep()
 
         if (!m_firstPacketFound) {
             m_firstPacketFound = true;
-            const auto pos = streamTimeToUs(stream, avPacket.pts);
-            emit firstPacketFound(std::chrono::steady_clock::now(), pos);
+            emit firstPacketFound(id(), m_posInLoopUs + m_loopOffset.loopStartTimeUs.asDuration());
         }
 
         auto signal = signalByTrackType(it->second.trackType);
@@ -137,18 +187,24 @@ void Demuxer::onPacketProcessed(Packet packet)
 
         // Decrease buffered metrics as new data (the packet) has been received (buffered)
 
-        streamData.bufferedDuration -= streamTimeToUs(stream, avPacket.duration);
+        streamData.bufferedDuration -= toTrackDuration(AVStreamDuration(avPacket.duration), stream);
         streamData.bufferedSize -= avPacket.size;
         streamData.maxProcessedPacketPos =
-                qMax(streamData.maxProcessedPacketPos, packetEndPos(stream, packet));
+                qMax(streamData.maxProcessedPacketPos, packetEndPos(packet, stream, m_context));
 
-        Q_ASSERT(it->second.bufferedDuration >= 0);
+        Q_ASSERT(it->second.bufferedDuration >= TrackDuration(0));
         Q_ASSERT(it->second.bufferedSize >= 0);
 
         updateStreamDataLimitFlag(streamData);
     }
 
     scheduleNextStep();
+}
+
+std::chrono::milliseconds Demuxer::timerInterval() const
+{
+    using namespace std::chrono_literals;
+    return m_demuxerRetryCount != 0 ? s_demuxerRetryInterval : PlaybackEngineObject::timerInterval();
 }
 
 bool Demuxer::canDoNextStep() const
@@ -173,15 +229,27 @@ void Demuxer::ensureSeeked()
         return;
 
     if ((m_context->ctx_flags & AVFMTCTX_UNSEEKABLE) == 0) {
-        const qint64 seekPos = m_posWithOffset.pos * AV_TIME_BASE / 1000000;
-        auto err = av_seek_frame(m_context, -1, seekPos, AVSEEK_FLAG_BACKWARD);
+
+        // m_posInLoopUs is intended to be the number of microseconds since playback start, and is
+        // in the range [0, duration()]. av_seek_frame seeks to a position relative to the start of
+        // the media timeline, which may be non-zero. We adjust for this by adding the
+        // AVFormatContext's start_time.
+        //
+        // NOTE: m_posInLoop is not calculated correctly if the start_time is non-zero, but
+        // this must be fixed separately.
+        const AVContextPosition seekPos = toContextPosition(m_posInLoopUs, m_context);
+
+        qCDebug(qLcDemuxer).nospace()
+                << "Seeking to offset " << m_posInLoopUs.get() << "us from media start.";
+
+        auto err = av_seek_frame(m_context, -1, seekPos.get(), AVSEEK_FLAG_BACKWARD);
 
         if (err < 0) {
-            qCWarning(qLcDemuxer) << "Failed to seek, pos" << seekPos;
+            qCWarning(qLcDemuxer) << "Failed to seek, pos" << seekPos.get();
 
             // Drop an error of seeking to initial position of streams with undefined duration.
             // This needs improvements.
-            if (seekPos != 0 || m_context->duration > 0)
+            if (m_posInLoopUs != TrackPosition{ 0 } || m_context->duration > 0)
                 emit error(QMediaPlayer::ResourceError,
                            QLatin1StringView("Failed to seek: ") + err2str(err));
         }
@@ -214,11 +282,12 @@ void Demuxer::setLoops(int loopsCount)
 
 void Demuxer::updateStreamDataLimitFlag(StreamData &streamData)
 {
-    const auto packetsPosDiff = streamData.maxSentPacketsPos - streamData.maxProcessedPacketPos;
-    streamData.isDataLimitReached =
-           streamData.bufferedDuration >= MaxBufferedDurationUs
-        || (streamData.bufferedDuration == 0 && packetsPosDiff >= MaxBufferedDurationUs)
-        || streamData.bufferedSize >= MaxBufferedSize;
+    const TrackDuration packetsPosDiff =
+            streamData.maxSentPacketsPos - streamData.maxProcessedPacketPos;
+    streamData.isDataLimitReached = streamData.bufferedDuration >= MaxBufferedDurationUs
+            || (streamData.bufferedDuration == TrackDuration(0)
+                && packetsPosDiff >= MaxBufferedDurationUs)
+            || streamData.bufferedSize >= MaxBufferedSize;
 }
 
 } // namespace QFFmpeg

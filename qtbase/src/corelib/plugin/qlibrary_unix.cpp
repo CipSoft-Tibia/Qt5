@@ -174,8 +174,10 @@ bool QLibraryPrivate::load_sys()
             // add ".avx2" to each suffix in the list
             transform(suffixes, [](QString *s) { s->append(".avx2"_L1); });
         } else {
-            // prepend "haswell/" to each prefix in the list
-            transform(prefixes, [](QString *s) { s->prepend("haswell/"_L1); });
+#  ifdef __GLIBC__
+            // prepend "glibc-hwcaps/x86-64-v3/" to each prefix in the list
+            transform(prefixes, [](QString *s) { s->prepend("glibc-hwcaps/x86-64-v3/"_L1); });
+#  endif
         }
     }
 #endif
@@ -267,20 +269,6 @@ bool QLibraryPrivate::unload_sys()
     errorString.clear();
     return true;
 }
-
-#if defined(Q_OS_LINUX)
-Q_CORE_EXPORT QFunctionPointer qt_linux_find_symbol_sys(const char *symbol)
-{
-    return QFunctionPointer(dlsym(RTLD_DEFAULT, symbol));
-}
-#endif
-
-#ifdef Q_OS_DARWIN
-Q_CORE_EXPORT QFunctionPointer qt_mac_resolve_sys(void *handle, const char *symbol)
-{
-    return QFunctionPointer(dlsym(handle, symbol));
-}
-#endif
 
 QFunctionPointer QLibraryPrivate::resolve_sys(const char *symbol)
 {

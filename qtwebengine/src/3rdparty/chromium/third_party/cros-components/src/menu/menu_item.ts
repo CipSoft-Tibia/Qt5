@@ -4,70 +4,97 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import '@material/web/menu/menu-item';
-import '../icon/icon';
+import '@material/web/menu/menu-item.js';
 import '../switch/switch';
 
-import {MenuItem as MenuItemType} from '@material/web/menu/menu-item';
+import {CloseMenuEvent, MenuItem as MenuItemType} from '@material/web/menu/menu-item.js';
 import {css, CSSResultGroup, html, LitElement, PropertyValues} from 'lit';
+import {ifDefined} from 'lit/directives/if-defined';
+
+const CHECKED_ICON = html`
+  <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+    <path d="M13.7071 7.29289C13.3166 6.90237 12.6834 6.90237 12.2929 7.29289L9 10.5858L7.70711 9.29289C7.31658 8.90237 6.68342 8.90237 6.29289 9.29289C5.90237 9.68342 5.90237 10.3166 6.29289 10.7071L8.29289 12.7071C8.68342 13.0976 9.31658 13.0976 9.70711 12.7071L13.7071 8.70711C14.0976 8.31658 14.0976 7.68342 13.7071 7.29289Z"/>
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M10 18C14.4183 18 18 14.4183 18 10C18 5.58172 14.4183 2 10 2C5.58172 2 2 5.58172 2 10C2 14.4183 5.58172 18 10 18ZM10 16C13.3137 16 16 13.3137 16 10C16 6.68629 13.3137 4 10 4C6.68629 4 4 6.68629 4 10C4 13.3137 6.68629 16 10 16Z"/>
+  </svg>
+`;
+
+/**
+ * Fired when the user clicks on or otherwise activates the menu
+ * item i.e. via a enter or space key.
+ */
+export type MenuItemTriggeredEvent = CustomEvent<{
+  menuItem: MenuItem,
+}>;
 
 /**
  * A cros compliant menu-item component for use in cros-menu.
- * @fires trigger Fired when the user clicks on or otherwise activates the menu
- * item i.e. via a enter or space key.
  */
 export class MenuItem extends LitElement implements MenuItemType {
-  /** @nocollapse */
-  // TODO(b/198759625): Remove negative margin-inline-end when mwc token
+  // TODO: b/198759625 - Remove negative margin-inline-end when mwc token
   // available (padding 16px)
   /** @nocollapse */
   static override styles: CSSResultGroup = css`
     md-menu-item {
-      --md-list-item-disabled-label-text-opacity: var(--cros-sys-opacity-disabled);
-      --md-list-item-disabled-leading-icon-opacity: var(--cros-sys-opacity-disabled);
-      --md-list-item-disabled-trailing-icon-opacity: var(--cros-sys-opacity-disabled);
-      --md-list-item-disabled-label-text-color: var(--cros-sys-on_surface);
-      --md-list-item-focus-label-text-color: var(--cros-sys-on_surface);
-      --md-list-item-hover-label-text-color: var(--cros-sys-on_surface);
-      --md-list-item-hover-state-layer-color: var(--cros-sys-hover_on_subtle);
-      --md-list-item-hover-state-layer-opacity: 1;
-      --md-list-item-label-text-color: var(--cros-sys-on_surface);
-      --md-list-item-label-text-type: var(--cros-button-2-font);
-      --md-list-item-leading-icon-color: var(--cros-sys-on_surface);
-      --md-list-item-pressed-label-text-color: var(--cros-sys-on_surface);
-      --md-list-item-pressed-state-layer-color: var(--cros-sys-ripple_neutral_on_subtle);
-      --md-list-item-pressed-state-layer-opacity: 1;
-      --md-list-item-trailing-element-headline-trailing-element-space: 48px;
-      --md-list-item-trailing-space: 16px;
+      --md-menu-item-disabled-label-text-opacity: var(--cros-sys-opacity-disabled);
+      --md-menu-item-disabled-leading-icon-opacity: var(--cros-sys-opacity-disabled);
+      --md-menu-item-disabled-trailing-icon-opacity: var(--cros-sys-opacity-disabled);
+      --md-menu-item-disabled-label-text-color: var(--cros-sys-on_surface);
+      --md-menu-item-focus-label-text-color: var(--cros-sys-on_surface);
+      --md-menu-item-hover-label-text-color: var(--cros-sys-on_surface);
+      --md-menu-item-hover-state-layer-color: var(--cros-sys-hover_on_subtle);
+      --md-menu-item-hover-state-layer-opacity: 1;
+      --md-menu-item-label-text-color: var(--cros-sys-on_surface);
+      --md-menu-item-label-text-font: var(--cros-button-2-font-family);
+      --md-menu-item-label-text-size: var(--cros-button-2-font-size);
+      --md-menu-item-label-text-line-height: var(--cros-button-2-line-height);
+      --md-menu-item-label-text-weight: var(--cros-button-2-font-weight);
+      --md-menu-item-leading-icon-color: var(--cros-sys-on_surface);
+      --md-menu-item-pressed-label-text-color: var(--cros-sys-on_surface);
+      --md-menu-item-pressed-state-layer-color: var(--cros-sys-ripple_neutral_on_subtle);
+      --md-menu-item-pressed-state-layer-opacity: 1;
+      --md-menu-item-trailing-element-headline-trailing-element-space: 48px;
+      --md-menu-item-trailing-space: 16px;
+      --md-menu-item-selected-container-color: var(--cros-sys-hover_on_subtle);
+      --md-menu-item-selected-label-text-color: var(--cros-sys-on_surface);
     }
     md-menu-item([itemEnd=null]) {
-      --md-list-item-trailing-space: 48px;
+      --md-menu-item-trailing-space: 48px;
     }
     :host([itemEnd="icon"]) md-menu-item {
-      --md-list-item-trailing-space: 12px;
+      --md-menu-item-trailing-space: 12px;
     }
     :host([checked]) md-menu-item {
-      --md-list-item-trailing-space: 12px;
+      --md-menu-item-trailing-space: 12px;
     }
     md-menu-item::part(focus-ring) {
       --md-focus-ring-active-width: 2px;
       --md-focus-ring-color: var(--cros-sys-focus_ring);
+      --md-focus-ring-duration: 0s;
       --md-focus-ring-width: 2px;
     }
-    :host {
-      display: inline block;
-    }
 
-    :host([checked]) cros-icon {
-      color: var(--cros-sys-primary);
+    :host([checked]) #checked-icon {
+      display: inline-block;
+      fill: var(--cros-sys-primary);
       height: 20px;
       width: 20px;
     }
 
-    ::slotted([slot="start"]), ::slotted([slot="end"]) {
+    md-menu-item[selected]:hover::part(ripple) {
+      --md-ripple-hover-opacity: 0;
+    }
+
+    ::slotted(:is(
+      [slot="start"],
+      [slot="end"],
+    )) {
       color: var(--cros-sys-on_surface);
       height: 20px;
       width: 20px;
+    }
+
+    ::slotted(ea-icon) {
+      --ea-icon-size: 20px;
     }
 
     cros-switch {
@@ -84,6 +111,21 @@ export class MenuItem extends LitElement implements MenuItemType {
     #shortcut {
       color: var(--cros-sys-secondary);
     }
+
+    #headline {
+      white-space: nowrap;
+    }
+
+    :host-context([dir=rtl]) ::slotted(:is(
+      [slot="start"],
+      [slot="end"]
+    )) {
+      transform: scaleX(-1);
+    }
+
+    :host-context([dir=rtl]) #checked-icon {
+      transform: scaleX(1);
+    }
   `;
 
   static override shadowRootOptions = {
@@ -96,13 +138,22 @@ export class MenuItem extends LitElement implements MenuItemType {
     headline: {type: String},
     itemStart: {type: String},
     itemEnd: {type: String},
-    active: {type: Boolean, reflect: true},
+    tabIndex: {type: Number, reflect: true},
     disabled: {type: Boolean},
+    keepOpen: {type: Boolean, attribute: 'keep-open'},
     isMenuItem: {type: Boolean, reflect: true, attribute: 'md-menu-item'},
-    isListItem: {type: Boolean, reflect: true, attribute: 'md-list-item'},
     checked: {type: Boolean, reflect: true},
     shortcutText: {type: String},
+    typeaheadText: {type: String, attribute: 'typeahead-text'},
+    selected: {type: Boolean},
+    type: {type: String},
   };
+
+  /** @nocollapse */
+  static events = {
+    /** Triggers when an item is clicked or equivalent. */
+    MENU_ITEM_TRIGGERED: 'cros-menu-item-triggered',
+  } as const;
 
   /**
    * Headline is the primary text of the list item, name follows from
@@ -121,8 +172,14 @@ export class MenuItem extends LitElement implements MenuItemType {
    * slot.
    * @export
    */
-  itemEnd: 'shortcut'|'icon'|'switch'|null;
+  itemEnd: 'shortcut'|'icon'|'switch'|'';
 
+  /**
+   * If true, keeps the menu open when clicked. (used by submenu)
+   *
+   * @export
+   */
+  keepOpen: boolean;
   // The following properties are necessary for wrapping and keyboard
   // navigation
   /**
@@ -132,14 +189,6 @@ export class MenuItem extends LitElement implements MenuItemType {
   disabled: boolean;
   /** @export */
   readonly isMenuItem: boolean;
-  /** @export */
-  readonly isListItem: boolean;
-  /**
-   * Whether or not the element is actively being interacted with by md-list.
-   * When active, tabindex is set to 0, and focuses the underlying item.
-   * @export
-   */
-  active: boolean;
   /**
    * If true, this will result in a checkmark icon used in the end slot. This
    * overrides any other components in end slot if otherwise specified.
@@ -152,23 +201,34 @@ export class MenuItem extends LitElement implements MenuItemType {
    * @export
    */
   shortcutText: string;
+  /**
+   * Sets the behavior and role of the menu item, defaults to "menuitem".
+   */
+  type: 'menuitem'|'option'|'button'|'link';
+
+  /**
+   * For properties menu-item proxies to a child element via a setter, any
+   * attempt to set the value before firstUpdated() will cause the value to be
+   * dropped since there is no md-menu-item to send the value to. To prevent
+   * this we cache these values and set them on first render.
+   */
+  protected missedPropertySets: Partial<
+      {selected: boolean, typeaheadText: string, switchSelected: boolean}> = {};
 
   constructor() {
     super();
 
     this.headline = '';
     this.itemStart = '';
-    this.itemEnd = null;
+    this.itemEnd = '';
 
+    this.keepOpen = false;
     this.disabled = false;
     this.isMenuItem = true;
-    this.isListItem = true;
-    // NOTE: unlike md-sub-menu-item md-menu-item does not internally set
-    // `.active`, so we do not require accessors to synchronize `this.active`
-    // with `md-menu-item.active`
-    this.active = false;
+    this.tabIndex = 0;
     this.checked = false;
     this.shortcutText = 'Shortcut';
+    this.type = 'menuitem';
   }
 
   // Start slot should exist when `itemStart` is  `icon`.
@@ -183,40 +243,111 @@ export class MenuItem extends LitElement implements MenuItemType {
 
   override updated(changedProperties: PropertyValues<this>) {
     super.updated(changedProperties);
+    if (changedProperties.has('keepOpen') && this.keepOpen) {
+      this.addEventListener('keydown', this.keyDownListener);
+      this.addEventListener('click', this.clickListener);
+    }
     if (changedProperties.has('itemEnd') && this.itemEnd === 'switch') {
-      this.addEventListener('keydown', this.switchKeyDownListener);
+      this.addEventListener('keydown', this.keyDownListener);
       this.setAttribute('role', 'menuitemcheckbox');
+      this.setAttribute('aria-checked', 'false');
+      this.addEventListener('click', this.clickListener);
     }
     if (changedProperties.has('itemStart') && this.itemStart === 'icon' &&
         this.startSlot) {
       const startItems = this.startSlot.assignedElements();
       startItems.forEach((startItem) => {
-        startItem.setAttribute('data-variant', 'icon');
+        startItem.setAttribute('slot', 'start');
       });
     }
     if (changedProperties.has('itemEnd') && this.itemEnd === 'icon' &&
         this.endSlot) {
       const endItems = this.endSlot.assignedElements();
       endItems.forEach((endItem) => {
-        endItem.setAttribute('data-variant', 'icon');
+        endItem.setAttribute('slot', 'end');
       });
+    }
+  }
+
+  /**
+   * The text that is selectable via typeahead. If not set, defaults to the
+   * `headline` property.
+   */
+  get typeaheadText() {
+    return this.renderRoot?.querySelector('md-menu-item')?.typeaheadText ?? '';
+  }
+
+  set typeaheadText(text: string) {
+    const item = this.renderRoot?.querySelector('md-menu-item');
+    if (!item) {
+      this.missedPropertySets.typeaheadText = text;
+    } else {
+      item.typeaheadText = text;
+    }
+  }
+
+  /**
+   * Whether or not to display the menu item in the selected visual state.
+   */
+  get selected() {
+    return this.renderRoot?.querySelector('md-menu-item')?.selected ?? false;
+  }
+
+  set selected(selected: boolean) {
+    const item = this.renderRoot?.querySelector('md-menu-item');
+    if (!item) {
+      this.missedPropertySets.selected = selected;
+    } else {
+      item.selected = selected;
+    }
+  }
+
+  get switchSelected() {
+    return this.renderRoot?.querySelector('cros-switch')?.selected ?? false;
+  }
+
+  set switchSelected(value: boolean) {
+    if (!this.renderRoot) return;
+    const crosSwitch = this.renderRoot.querySelector('cros-switch');
+    if (!crosSwitch) {
+      this.missedPropertySets.switchSelected = value;
+    } else {
+      crosSwitch.selected = value;
     }
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    if (this.itemEnd === 'switch') {
-      this.removeEventListener('keydown', this.switchKeyDownListener);
+    if (this.itemEnd === 'switch' || this.keepOpen) {
+      this.removeEventListener('keydown', this.keyDownListener);
+      this.removeEventListener('click', this.clickListener);
     }
   }
 
-  // Toggles switch item within the end slot on `enter` or `space`.
-  private readonly switchKeyDownListener = (e: KeyboardEvent) => {
+  private keyDownListener(e: KeyboardEvent) {
     if (e.key === 'Enter' || e.key === ' ') {
-      const crosSwitch = this.renderRoot.querySelector('cros-switch')!;
-      crosSwitch.selected = !crosSwitch.selected;
+      e.preventDefault();
+      this.onTrigger();
     }
-  };
+  }
+
+  private clickListener() {
+    this.onTrigger();
+  }
+
+  private onTrigger() {
+    if (this.itemEnd === 'switch') {
+      const crosSwitch = this.renderRoot.querySelector('cros-switch')!;
+      if (this.disabled) return;
+      crosSwitch.selected = !crosSwitch.selected;
+      if (crosSwitch.selected) {
+        this.setAttribute('aria-checked', 'true');
+      } else {
+        this.setAttribute('aria-checked', 'false');
+      }
+    }
+    this.fireTriggerEvent();
+  }
 
   // Set item to be placed in `end` slot of menu item (if any).
   // Checked property (check mark) will always take precedence over any icon
@@ -227,13 +358,7 @@ export class MenuItem extends LitElement implements MenuItemType {
   // slotted element via cros-menu-item.
   private getEndSlot() {
     if (this.checked) {
-      return html`
-          <cros-icon
-              slot="end"
-              class="slot-end"
-              data-variant="icon"
-              aria-hidden="true">
-          </cros-icon>`;
+      return html`<div id="checked-icon" slot="end">${CHECKED_ICON}</div>`;
     }
     let endSlot;
     switch (this.itemEnd) {
@@ -242,8 +367,7 @@ export class MenuItem extends LitElement implements MenuItemType {
           <span
               slot="end"
               class="slot-end"
-              id="shortcut"
-              data-variant="icon">
+              id="shortcut">
             ${this.shortcutText}
           </span>`;
         break;
@@ -261,42 +385,52 @@ export class MenuItem extends LitElement implements MenuItemType {
           <cros-switch
               slot="end"
               class="slot-end"
-              data-variant="icon">
+              ?selected=${!!this.missedPropertySets.switchSelected}>
           </cros-switch>`;
         break;
       default:
-        // md-list-item has a ::slotted(*) selector which will never select
-        // the children of a <slot> or a <slot> itself which is why default
-        // content is not set as children of slot.
-        // i.e. <slot slot="end">${slotEnd}</slot>
-        endSlot = html`<slot slot="end"></slot>`;
+        endSlot = html``;
         break;
     }
-    return endSlot;
+
+    // md-list-item has a ::slotted(*) selector which will never select
+    // the children of a <slot> or a <slot> itself which is why default
+    // content is not set as children of slot.
+    // i.e. <slot slot="end">${slotEnd}</slot>
+    return [html`<slot name="end" slot="end"></slot>`, endSlot];
   }
 
-  private fireTriggerEvent() {
+  private fireTriggerEvent(e?: CloseMenuEvent) {
+    const reason = e?.detail.reason;
+    if (reason && reason.kind === 'keydown' && reason.key === 'Escape') {
+      return;
+    }
+
     this.dispatchEvent(
-        new CustomEvent<void>('trigger', {bubbles: true, composed: true}));
+        new CustomEvent(MenuItem.events.MENU_ITEM_TRIGGERED, {bubbles: true, composed: true}));
   }
 
   override render() {
     const endSlot = this.getEndSlot();
     // `keep-open` property needs to be true in switch case so cros-switch can
     // be selected/unselected without menu closing.
-    const keepOpen = this.itemEnd === 'switch';
+    const keepOpen = this.itemEnd === 'switch' || this.keepOpen;
     let startSlot = null;
     if (this.itemStart === 'icon') {
-      startSlot =
-          html`<slot name="start" slot="start" aria-hidden="true"></slot>`;
+      startSlot = html`
+        <slot name="start" slot="start" aria-hidden="true"></slot>
+      `;
     }
     return html`
       <md-menu-item
-          @close-menu=${() => void this.fireTriggerEvent()}
-          headline=${this.headline}
+          @close-menu=${(e: CloseMenuEvent) => void this.fireTriggerEvent(e)}
           .keepOpen=${keepOpen}
           .disabled=${this.disabled}
-          .active=${this.active}>
+          .tabIndex=${this.tabIndex}
+           ?selected=${!!this.missedPropertySets.selected}
+           typeahead-text=${ifDefined(this.missedPropertySets.typeaheadText)}
+          .type=${this.type}>
+        <div slot="headline" id="headline">${this.headline}</div>
         ${startSlot}
         ${endSlot}
       </md-menu-item>
@@ -313,6 +447,9 @@ export class MenuItem extends LitElement implements MenuItemType {
 customElements.define('cros-menu-item', MenuItem);
 
 declare global {
+  interface HTMLElementEventMap {
+    [MenuItem.events.MENU_ITEM_TRIGGERED]: MenuItemTriggeredEvent;
+  }
   interface HTMLElementTagNameMap {
     'cros-menu-item': MenuItem;
   }

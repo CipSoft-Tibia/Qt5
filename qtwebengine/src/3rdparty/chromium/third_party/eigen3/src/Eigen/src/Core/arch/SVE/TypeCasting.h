@@ -10,6 +10,7 @@
 #ifndef EIGEN_TYPE_CASTING_SVE_H
 #define EIGEN_TYPE_CASTING_SVE_H
 
+// IWYU pragma: private
 #include "../../InternalHeaderCheck.h"
 
 namespace Eigen {
@@ -48,4 +49,4 @@ EIGEN_STRONG_INLINE PacketXi preinterpret<PacketXi, PacketXf>(const PacketXf& a)
 }  // namespace internal
 }  // namespace Eigen
 
-#endif // EIGEN_TYPE_CASTING_SVE_H
+#endif  // EIGEN_TYPE_CASTING_SVE_H

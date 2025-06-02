@@ -48,6 +48,7 @@ message ProbeRequest {
     cellular = 12;
     ethernet = 13;
     wireless = 14;
+    cpu = 15;
   }
   reserved 1;
   repeated SupportCategory categories = 4;
@@ -196,6 +197,21 @@ message Storage {
     string ufs_vendor = 16;
     // Model name.
     string ufs_model = 17;
+
+    // The following are fields for mmc_host. Every field name comes with prefix
+    // "mmc_host_".
+    // The bus type, could be pci / usb / sdio / uninterested.
+    string mmc_host_bus_type = 18;
+    // Vendor ID, 16 bits hex string
+    string mmc_host_pci_vendor_id = 19;
+    // Device ID, 16 bits hex string
+    string mmc_host_pci_device_id = 20;
+    // Device revision, 8 bits hex string
+    string mmc_host_pci_revision = 21;
+    // Subsystem ID, 16 bits hex string
+    string mmc_host_pci_subsystem = 22;
+    // Device class indicator, 32 bits
+    string mmc_host_pci_class = 23;
   }
   // Component alias.
   string name = 1;
@@ -572,6 +588,17 @@ message Tcpc {
   Fields values = 2;
 }
 
+message Cpu {
+  message Fields {
+    // CPU model name
+    string model = 1;
+    // Number of cores.
+    uint32 cores = 2;
+  }
+  string name = 1;
+  Fields values = 2;
+}
+
 // A ProbeResult contains all potential probe results. For category not
 // existed or not requested for probing, field is expected to be empty.
 message ProbeResult {
@@ -596,6 +623,7 @@ message ProbeResult {
   repeated Network cellular = 14;
   repeated Network ethernet = 15;
   repeated Network wireless = 16;
+  repeated Cpu cpu = 17;
 }
 
 // Holds componenet fields for any component categories.
@@ -614,6 +642,7 @@ message ComponentFields {
     Network.Fields cellular = 11;
     Network.Fields ethernet = 12;
     Network.Fields wireless = 13;
+    Cpu.Fields cpu = 14;
   }
 }
 
@@ -636,4 +665,5 @@ message ProbeSsfcComponentsResponse {
   repeated ApI2c ap_i2c = 11;
   repeated EcI2c ec_i2c = 12;
   repeated Tcpc tcpc = 13;
+  repeated InputDevice touchscreen = 14;
 }

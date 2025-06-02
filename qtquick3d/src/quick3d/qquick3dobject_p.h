@@ -36,7 +36,7 @@ QT_BEGIN_NAMESPACE
 
 class QQuick3DItem2D;
 
-class Q_QUICK3D_PRIVATE_EXPORT QQuick3DObjectPrivate : public QObjectPrivate
+class Q_QUICK3D_EXPORT QQuick3DObjectPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QQuick3DObject)
 public:
@@ -152,7 +152,7 @@ public:
 
     void _q_resourceObjectDeleted(QObject *);
     void _q_cleanupContentItem2D();
-    quint64 _q_createJSWrapper(QV4::ExecutionEngine *engine);
+    quint64 _q_createJSWrapper(QQmlV4ExecutionEnginePtr engine);
 
     enum ChangeType {
         Geometry = 0x01,

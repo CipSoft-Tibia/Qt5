@@ -37,7 +37,7 @@ target_link_libraries(hellographs PUBLIC
 )
 
 qt6_add_qml_module(hellographs
-    URI HelloGraphs
+    URI HelloGraphsExample
     NO_RESOURCE_TARGET_PATH
     QML_FILES
         qml/hellographs/main.qml

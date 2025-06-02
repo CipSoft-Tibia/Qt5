@@ -14,6 +14,7 @@
 
 # FuzzTest: a coverage-guided fuzzing / property-based testing framework.
 
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 
 package(default_visibility = ["//visibility:public"])
@@ -21,6 +22,105 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 exports_files(["LICENSE"])
+
+################################################################################
+# Flag and setting to enable the Centipede integration.
+################################################################################
+bool_flag(
+    name = "centipede_integration",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "use_centipede",
+    flag_values = {":centipede_integration": "True"},
+)
+################################################################################
+
+cc_library(
+    name = "fuzztest",
+    srcs = ["fuzztest.cc"],
+    hdrs = ["fuzztest.h"],
+    deps = [
+        ":domain",
+        ":io",
+        ":registration",
+        ":registry",
+    ],
+)
+
+cc_library(
+    name = "fuzztest_gtest_main",
+    testonly = 1,
+    srcs = ["fuzztest_gtest_main.cc"],
+    deps = [
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_absl//absl/strings",
+        "@com_google_fuzztest//fuzztest:init_fuzztest",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "init_fuzztest",
+    testonly = 1,
+    srcs = ["init_fuzztest.cc"],
+    hdrs = ["init_fuzztest.h"],
+    deps = [
+        ":configuration",
+        ":flag_name",
+        ":googletest_adaptor",
+        ":io",
+        ":registry",
+        ":runtime",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest",
+    ],
+    alwayslink = True,
+)
+
+# TODO(hadi88): Add an e2e test for llvm_fuzzer_wrapper.
+cc_library(
+    name = "llvm_fuzzer_main",
+    testonly = True,
+    srcs = ["llvm_fuzzer_main.cc"],
+    deps = [
+        ":init_fuzztest",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_googletest//:gtest",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "llvm_fuzzer_wrapper",
+    testonly = True,
+    srcs = ["llvm_fuzzer_wrapper.cc"],
+    deps = [
+        ":domain_core",
+        ":fuzztest",
+        ":io",
+        ":llvm_fuzzer_main",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_googlesource_code_re2//:re2",
+    ],
+    alwayslink = True,
+)
+
+################################################################################
+# Internal
+################################################################################
+
+# TODO(lszekeres): Move these to internal/BUILD.
 
 cc_library(
     name = "absl_helpers",
@@ -51,6 +151,41 @@ cc_test(
 )
 
 cc_library(
+    name = "centipede_adaptor",
+    srcs = ["internal/centipede_adaptor.cc"],
+    hdrs = ["internal/centipede_adaptor.h"],
+    defines = ["FUZZTEST_USE_CENTIPEDE"],
+    linkopts = [
+        # Needed for linking the Centipede engine with the runner, due to
+        # the common source code built separately for the engine and runner.
+        "-Wl,--warn-backrefs-exclude=*/centipede/*",
+    ],
+    deps = [
+        ":configuration",
+        ":coverage",
+        ":domain_core",
+        ":fixture_driver",
+        ":logging",
+        ":runtime",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@com_google_fuzztest//centipede:centipede_callbacks",
+        "@com_google_fuzztest//centipede:centipede_interface",
+        "@com_google_fuzztest//centipede:centipede_runner_no_main",
+        "@com_google_fuzztest//centipede:defs",
+        "@com_google_fuzztest//centipede:early_exit",
+        "@com_google_fuzztest//centipede:environment",
+        "@com_google_fuzztest//centipede:runner_result",
+        "@com_google_fuzztest//centipede:shared_memory_blob_sequence",
+    ],
+)
+
+cc_library(
     name = "compatibility_mode",
     srcs = ["internal/compatibility_mode.cc"],
     hdrs = ["internal/compatibility_mode.h"],
@@ -62,20 +197,20 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-    ],
+    ] + select({
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
-    name = "centipede_adaptor",
-    srcs = ["internal/centipede_adaptor.cc"],
-    hdrs = ["internal/centipede_adaptor.h"],
+    name = "configuration",
+    srcs = ["internal/configuration.cc"],
+    hdrs = ["internal/configuration.h"],
     deps = [
-        ":domain_core",
-        ":fixture_driver",
-        ":logging",
-        ":runtime",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_fuzztest//centipede:centipede_runner_no_main",
+        ":io",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -83,87 +218,16 @@ cc_library(
     name = "coverage",
     srcs = ["internal/coverage.cc"],
     hdrs = ["internal/coverage.h"],
+    defines = select({
+        "@com_google_fuzztest//fuzztest:use_centipede": ["FUZZTEST_USE_CENTIPEDE"],
+        "//conditions:default": [],
+    }),
     deps = [
+        ":flag_name",
         ":logging",
         ":table_of_recent_compares",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "table_of_recent_compares",
-    hdrs = ["internal/table_of_recent_compares.h"],
-    deps = [
-        ":type_support",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/random:bit_gen_ref",
-        "@com_google_absl//absl/random:distributions",
-    ],
-)
-
-cc_test(
-    name = "table_of_recent_compares_test",
-    srcs = ["internal/table_of_recent_compares_test.cc"],
-    deps = [
-        ":domain",
-        ":table_of_recent_compares",
-        "@com_google_absl//absl/random",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-# The core domain library without external dependencies e.g. re2. Mainly used
-# by the default Centipede mutation.
-cc_library(
-    name = "domain_core",
-    hdrs = [
-        "domain_core.h",
-        "internal/domains/aggregate_of_impl.h",
-        "internal/domains/arbitrary_impl.h",
-        "internal/domains/bit_flag_combination_of_impl.h",
-        "internal/domains/container_mutation_helpers.h",
-        "internal/domains/container_of_impl.h",
-        "internal/domains/domain_base.h",
-        "internal/domains/element_of_impl.h",
-        "internal/domains/filter_impl.h",
-        "internal/domains/flat_map_impl.h",
-        "internal/domains/in_range_impl.h",
-        "internal/domains/map_impl.h",
-        "internal/domains/one_of_impl.h",
-        "internal/domains/optional_of_impl.h",
-        "internal/domains/serialization_helpers.h",
-        "internal/domains/smart_pointer_of_impl.h",
-        "internal/domains/unique_elements_container_of_impl.h",
-        "internal/domains/value_mutation_helpers.h",
-        "internal/domains/variant_of_impl.h",
-    ],
-    visibility = [
-        "@com_google_fuzztest//centipede:__subpackages__",
-        "@com_google_fuzztest//domain_tests:__pkg__",
-    ],
-    deps = [
-        ":absl_helpers",
-        ":any",
-        ":coverage",
-        ":logging",
-        ":meta",
-        ":serialization",
-        ":status",
-        ":table_of_recent_compares",
-        ":type_support",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/numeric:bits",
-        "@com_google_absl//absl/numeric:int128",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/random:bit_gen_ref",
-        "@com_google_absl//absl/random:distributions",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -200,6 +264,57 @@ cc_library(
     ],
 )
 
+# The core domain library without external dependencies e.g. re2. Mainly used
+# by the default Centipede mutation.
+cc_library(
+    name = "domain_core",
+    hdrs = [
+        "domain_core.h",
+        "internal/domains/aggregate_of_impl.h",
+        "internal/domains/arbitrary_impl.h",
+        "internal/domains/bit_flag_combination_of_impl.h",
+        "internal/domains/container_mutation_helpers.h",
+        "internal/domains/container_of_impl.h",
+        "internal/domains/domain_base.h",
+        "internal/domains/element_of_impl.h",
+        "internal/domains/filter_impl.h",
+        "internal/domains/flat_map_impl.h",
+        "internal/domains/in_range_impl.h",
+        "internal/domains/map_impl.h",
+        "internal/domains/one_of_impl.h",
+        "internal/domains/optional_of_impl.h",
+        "internal/domains/serialization_helpers.h",
+        "internal/domains/smart_pointer_of_impl.h",
+        "internal/domains/unique_elements_container_of_impl.h",
+        "internal/domains/value_mutation_helpers.h",
+        "internal/domains/variant_of_impl.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":absl_helpers",
+        ":any",
+        ":coverage",
+        ":logging",
+        ":meta",
+        ":serialization",
+        ":status",
+        ":table_of_recent_compares",
+        ":type_support",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
+        "@com_google_absl//absl/random:distributions",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 cc_library(
     name = "fixture_driver",
     srcs = ["internal/fixture_driver.cc"],
@@ -223,52 +338,32 @@ cc_test(
     srcs = ["internal/fixture_driver_test.cc"],
     deps = [
         ":any",
-        ":domain",
+        ":domain_core",
         ":fixture_driver",
         ":logging",
         ":registration",
-        ":type_support",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_library(
-    name = "fuzztest",
-    srcs = ["fuzztest.cc"],
-    hdrs = ["fuzztest.h"],
-    deps = [
-        ":domain",
-        ":io",
-        ":registry",
-        ":runtime",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
-cc_library(
-    name = "fuzztest_gtest_main",
-    testonly = 1,
-    srcs = ["fuzztest_gtest_main.cc"],
-    deps = [
-        ":fuzztest",
-        ":googletest_adaptor",
-        ":runtime",
-        "@com_google_absl//absl/flags:flag",
-        "@com_google_absl//absl/flags:parse",
-        "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest",
-    ],
+    name = "flag_name",
+    hdrs = ["internal/flag_name.h"],
 )
 
 cc_library(
     name = "googletest_adaptor",
     testonly = True,
-    hdrs = ["googletest_adaptor.h"],
+    srcs = ["internal/googletest_adaptor.cc"],
+    hdrs = ["internal/googletest_adaptor.h"],
     deps = [
+        ":configuration",
+        ":io",
         ":registry",
         ":runtime",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -291,6 +386,7 @@ cc_library(
         ":logging",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -329,6 +425,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/random:distributions",
+        "@com_google_absl//absl/strings:string_view",
         "@com_googlesource_code_re2//:re2",
     ],
 )
@@ -358,7 +455,9 @@ cc_library(
         ":runtime",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/strings:string_view",
     ] + select({
+        "@com_google_fuzztest//fuzztest:use_centipede": [":centipede_adaptor"],
         "//conditions:default": [],
     }),
 )
@@ -368,10 +467,12 @@ cc_library(
     srcs = ["internal/runtime.cc"],
     hdrs = ["internal/runtime.h"],
     deps = [
+        ":configuration",
         ":coverage",
         ":domain",
         ":domain_core",
         ":fixture_driver",
+        ":flag_name",
         ":io",
         ":logging",
         ":meta",
@@ -458,6 +559,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
@@ -478,7 +580,30 @@ cc_test(
     srcs = ["internal/subprocess_test.cc"],
     deps = [
         ":subprocess",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "table_of_recent_compares",
+    hdrs = ["internal/table_of_recent_compares.h"],
+    deps = [
+        ":type_support",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/random:bit_gen_ref",
+        "@com_google_absl//absl/random:distributions",
+    ],
+)
+
+cc_test(
+    name = "table_of_recent_compares_test",
+    srcs = ["internal/table_of_recent_compares_test.cc"],
+    deps = [
+        ":domain",
+        ":table_of_recent_compares",
+        "@com_google_absl//absl/random",
         "@com_google_googletest//:gtest_main",
     ],
 )

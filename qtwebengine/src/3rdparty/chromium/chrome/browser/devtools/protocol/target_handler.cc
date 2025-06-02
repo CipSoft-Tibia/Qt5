@@ -12,6 +12,7 @@
 #include "chrome/browser/ui/browser_navigator.h"
 #include "chrome/common/webui_url_constants.h"
 #include "content/public/browser/devtools_agent_host.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/common/url_utils.h"
 
@@ -39,8 +40,9 @@ NavigateParams CreateNavigateParams(Profile* profile,
 }  // namespace
 
 TargetHandler::TargetHandler(protocol::UberDispatcher* dispatcher,
-                             bool is_trusted)
-    : is_trusted_(is_trusted) {
+                             bool is_trusted,
+                             bool may_read_local_files)
+    : is_trusted_(is_trusted), may_read_local_files_(may_read_local_files) {
   protocol::Target::Dispatcher::wire(dispatcher, this);
 }
 
@@ -102,7 +104,7 @@ protocol::Response TargetHandler::CreateTarget(
   if (!create_new_window) {
     // Find a browser to open a new tab.
     // We shouldn't use browser that is scheduled to close.
-    for (auto* browser : *BrowserList::GetInstance()) {
+    for (Browser* browser : *BrowserList::GetInstance()) {
       if (browser->profile() == profile &&
           !browser->IsAttemptingToCloseBrowser()) {
         target_browser = browser;
@@ -128,6 +130,11 @@ protocol::Response TargetHandler::CreateTarget(
         "Refusing to create a target with the specified URL");
   }
 
+  if (!may_read_local_files_ && gurl.SchemeIsFile()) {
+    return protocol::Response::ServerError(
+        "Creating a target with a local URL is not allowed");
+  }
+
   create_new_window = !target_browser;
   NavigateParams params = CreateNavigateParams(
       profile, gurl, ui::PAGE_TRANSITION_AUTO_TOPLEVEL, create_new_window,
@@ -135,6 +142,10 @@ protocol::Response TargetHandler::CreateTarget(
   Navigate(&params);
   if (!params.navigated_or_inserted_contents)
     return protocol::Response::ServerError("Failed to open a new tab");
+
+  if (!create_in_background) {
+    params.navigated_or_inserted_contents->Focus();
+  }
 
   if (for_tab.value_or(false)) {
     *out_target_id = content::DevToolsAgentHost::GetOrCreateForTab(

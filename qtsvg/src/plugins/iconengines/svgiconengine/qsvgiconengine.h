@@ -23,18 +23,19 @@ public:
                      QIcon::State state) override;
     QPixmap pixmap(const QSize &size, QIcon::Mode mode,
                    QIcon::State state) override;
+    QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode,
+                         QIcon::State state, qreal scale) override;
 
     void addPixmap(const QPixmap &pixmap, QIcon::Mode mode,
                    QIcon::State state) override;
     void addFile(const QString &fileName, const QSize &size,
                  QIcon::Mode mode, QIcon::State state) override;
 
+    bool isNull() override;
     QString key() const override;
     QIconEngine *clone() const override;
     bool read(QDataStream &in) override;
     bool write(QDataStream &out) const override;
-
-    void virtual_hook(int id, void *data) override;
 private:
     QSharedDataPointer<QSvgIconEnginePrivate> d;
 };

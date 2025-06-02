@@ -1,28 +1,45 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_CORE_IR_INSTRUCTION_H_
 #define SRC_TINT_LANG_CORE_IR_INSTRUCTION_H_
 
+#include <string>
+
 #include "src/tint/lang/core/ir/instruction_result.h"
 #include "src/tint/lang/core/ir/value.h"
+#include "src/tint/utils/containers/const_propagating_ptr.h"
 #include "src/tint/utils/containers/enum_set.h"
 #include "src/tint/utils/rtti/castable.h"
 
 // Forward declarations
 namespace tint::core::ir {
 class Block;
+class CloneContext;
 }  // namespace tint::core::ir
 
 namespace tint::core::ir {
@@ -41,24 +58,33 @@ class Instruction : public Castable<Instruction> {
     /// @returns the operands of the instruction
     virtual VectorRef<ir::Value*> Operands() = 0;
 
-    /// @returns true if the instruction has result values
-    virtual bool HasResults() { return false; }
-    /// @returns true if the instruction has multiple values
-    virtual bool HasMultiResults() { return false; }
+    /// @returns the operands of the instruction
+    virtual VectorRef<const ir::Value*> Operands() const = 0;
 
-    /// @returns the first result. Returns `nullptr` if there are no results, or if ther are
-    /// multi-results
-    virtual InstructionResult* Result() { return nullptr; }
+    /// Replaces the operands of the instruction
+    /// @param operands the new operands of the instruction
+    virtual void SetOperands(VectorRef<ir::Value*> operands) = 0;
+
+    /// Replaces the results of the instruction
+    /// @param results the new results of the instruction
+    virtual void SetResults(VectorRef<ir::InstructionResult*> results) = 0;
 
     /// @returns the result values for this instruction
-    virtual VectorRef<InstructionResult*> Results() { return tint::Empty; }
+    virtual VectorRef<InstructionResult*> Results() = 0;
+
+    /// @returns the result values for this instruction
+    virtual VectorRef<const InstructionResult*> Results() const = 0;
 
     /// Removes the instruction from the block, and destroys all the result values.
     /// The result values must not be in use.
     virtual void Destroy();
 
     /// @returns the friendly name for the instruction
-    virtual std::string_view FriendlyName() = 0;
+    virtual std::string FriendlyName() const = 0;
+
+    /// @param ctx the CloneContext used to clone this instruction
+    /// @returns a clone of this instruction
+    virtual Instruction* Clone(CloneContext& ctx) = 0;
 
     /// @returns true if the Instruction has not been destroyed with Destroy()
     bool Alive() const { return !flags_.Contains(Flag::kDead); }
@@ -74,6 +100,9 @@ class Instruction : public Castable<Instruction> {
     /// @returns the block that owns this instruction
     ir::Block* Block() { return block_; }
 
+    /// @returns the block that owns this instruction
+    const ir::Block* Block() const { return block_; }
+
     /// Adds the new instruction before the given instruction in the owning block
     /// @param before the instruction to insert before
     void InsertBefore(Instruction* before);
@@ -86,18 +115,42 @@ class Instruction : public Castable<Instruction> {
     /// Removes this instruction from the owning block
     void Remove();
 
+    /// @param idx the index of the operand
+    /// @returns the operand with index @p idx, or `nullptr` if there are no operands or the index
+    /// is out of bounds.
+    Value* Operand(size_t idx) {
+        auto res = Operands();
+        return idx < res.Length() ? res[idx] : nullptr;
+    }
+
+    /// @param idx the index of the operand
+    /// @returns the operand with index @p idx, or `nullptr` if there are no operands or the index
+    /// is out of bounds.
+    const Value* Operand(size_t idx) const {
+        auto res = Operands();
+        return idx < res.Length() ? res[idx] : nullptr;
+    }
+
     /// @param idx the index of the result
     /// @returns the result with index @p idx, or `nullptr` if there are no results or the index is
     /// out of bounds.
-    Value* Result(size_t idx) {
+    InstructionResult* Result(size_t idx) {
+        auto res = Results();
+        return idx < res.Length() ? res[idx] : nullptr;
+    }
+
+    /// @param idx the index of the result
+    /// @returns the result with index @p idx, or `nullptr` if there are no results or the index is
+    /// out of bounds.
+    const InstructionResult* Result(size_t idx) const {
         auto res = Results();
         return idx < res.Length() ? res[idx] : nullptr;
     }
 
     /// Pointer to the next instruction in the list
-    Instruction* next = nullptr;
+    ConstPropagatingPtr<Instruction> next;
     /// Pointer to the previous instruction in the list
-    Instruction* prev = nullptr;
+    ConstPropagatingPtr<Instruction> prev;
 
   protected:
     /// Flags applied to an Instruction
@@ -112,7 +165,7 @@ class Instruction : public Castable<Instruction> {
     Instruction();
 
     /// The block that owns this instruction
-    ir::Block* block_ = nullptr;
+    ConstPropagatingPtr<ir::Block> block_;
 
     /// Bitset of instruction flags
     tint::EnumSet<Flag> flags_;

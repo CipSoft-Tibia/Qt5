@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
 #include "src/tint/lang/core/constant/scalar.h"
@@ -32,7 +45,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_Vertex) {
          Vector{Builtin(core::BuiltinValue::kPosition)});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%test = @vertex func():vec4<f32> [@position] -> %b1 {
   %b1 = block {
@@ -47,7 +60,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_Fragment) {
          Vector{Stage(ast::PipelineStage::kFragment)});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%test = @fragment func():void -> %b1 {
   %b1 = block {
@@ -62,7 +75,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_Compute) {
          Vector{Stage(ast::PipelineStage::kCompute), WorkgroupSize(8_i, 4_i, 2_i)});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()),
               R"(%test = @compute @workgroup_size(8, 4, 2) func():void -> %b1 {
@@ -78,7 +91,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_Return) {
          tint::Empty);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%test = func():vec3<f32> -> %b1 {
   %b1 = block {
@@ -93,7 +106,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_UnreachableEnd_ReturnValue) {
          Vector{If(true, Block(Return(0_f)), Else(Block(Return(1_f))))}, tint::Empty);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%test = func():f32 -> %b1 {
   %b1 = block {
@@ -117,7 +130,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_ReturnPosition) {
          Vector{Builtin(core::BuiltinValue::kPosition)});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%test = @vertex func():vec4<f32> [@position] -> %b1 {
   %b1 = block {
@@ -133,7 +146,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_ReturnPositionInvariant) {
          Vector{Builtin(core::BuiltinValue::kPosition), Invariant()});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()),
               R"(%test = @vertex func():vec4<f32> [@invariant, @position] -> %b1 {
@@ -149,7 +162,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_ReturnLocation) {
          Vector{Stage(ast::PipelineStage::kFragment)}, Vector{Location(1_i)});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()),
               R"(%test = @fragment func():vec4<f32> [@location(1)] -> %b1 {
@@ -167,7 +180,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_ReturnLocation_Interpolate) {
                                            core::InterpolationSampling::kCentroid)});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(
         Disassemble(m.Get()),
@@ -185,7 +198,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_ReturnFragDepth) {
          Vector{Builtin(core::BuiltinValue::kFragDepth)});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%test = @fragment func():f32 [@frag_depth] -> %b1 {
   %b1 = block {
@@ -201,7 +214,7 @@ TEST_F(ProgramToIRFunctionTest, EmitFunction_ReturnSampleMask) {
          Vector{Builtin(core::BuiltinValue::kSampleMask)});
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     EXPECT_EQ(Disassemble(m.Get()), R"(%test = @fragment func():u32 [@sample_mask] -> %b1 {
   %b1 = block {

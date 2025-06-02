@@ -74,6 +74,7 @@ class GpuChildThread : public ChildThreadImpl,
 
   // viz::VizMainImpl::Delegate:
   void OnInitializationFailed() override;
+  void OnGpuChannelManagerCreated(gpu::GpuChannelManager* manager) override;
   void OnGpuServiceConnection(viz::GpuServiceImpl* gpu_service) override;
   void PostCompositorThreadCreated(
       base::SingleThreadTaskRunner* task_runner) override;

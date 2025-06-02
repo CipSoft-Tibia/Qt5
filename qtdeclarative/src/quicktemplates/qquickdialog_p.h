@@ -25,7 +25,7 @@ QT_BEGIN_NAMESPACE
 
 class QQuickDialogPrivate;
 
-class Q_QUICKTEMPLATES2_PRIVATE_EXPORT QQuickDialog : public QQuickPopup
+class Q_QUICKTEMPLATES2_EXPORT QQuickDialog : public QQuickPopup
 {
     Q_OBJECT
     Q_PROPERTY(QString title READ title WRITE setTitle NOTIFY titleChanged FINAL)
@@ -73,6 +73,8 @@ public:
 
     qreal implicitFooterWidth() const;
     qreal implicitFooterHeight() const;
+
+    void setOpacity(qreal opacity) override;
 
 public Q_SLOTS:
     virtual void accept();

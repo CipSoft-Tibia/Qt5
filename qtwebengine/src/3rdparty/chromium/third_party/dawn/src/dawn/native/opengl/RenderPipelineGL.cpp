@@ -1,16 +1,29 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/opengl/RenderPipelineGL.h"
 
@@ -35,8 +48,10 @@ GLenum GLPrimitiveTopology(wgpu::PrimitiveTopology primitiveTopology) {
             return GL_TRIANGLES;
         case wgpu::PrimitiveTopology::TriangleStrip:
             return GL_TRIANGLE_STRIP;
+        case wgpu::PrimitiveTopology::Undefined:
+            break;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 void ApplyFrontFaceAndCulling(const OpenGLFunctions& gl,
@@ -93,9 +108,10 @@ GLenum GLBlendFactor(wgpu::BlendFactor factor, bool alpha) {
             return GL_SRC1_ALPHA;
         case wgpu::BlendFactor::OneMinusSrc1Alpha:
             return GL_ONE_MINUS_SRC1_ALPHA;
-            UNREACHABLE();
+        case wgpu::BlendFactor::Undefined:
+            break;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 GLenum GLBlendMode(wgpu::BlendOperation operation) {
@@ -110,8 +126,10 @@ GLenum GLBlendMode(wgpu::BlendOperation operation) {
             return GL_MIN;
         case wgpu::BlendOperation::Max:
             return GL_MAX;
+        case wgpu::BlendOperation::Undefined:
+            break;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 void ApplyColorState(const OpenGLFunctions& gl,
@@ -176,8 +194,10 @@ GLuint OpenGLStencilOperation(wgpu::StencilOperation stencilOperation) {
             return GL_INCR_WRAP;
         case wgpu::StencilOperation::DecrementWrap:
             return GL_DECR_WRAP;
+        case wgpu::StencilOperation::Undefined:
+            break;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 void ApplyDepthStencilState(const OpenGLFunctions& gl,
@@ -225,11 +245,12 @@ void ApplyDepthStencilState(const OpenGLFunctions& gl,
 // static
 Ref<RenderPipeline> RenderPipeline::CreateUninitialized(
     Device* device,
-    const RenderPipelineDescriptor* descriptor) {
+    const UnpackedPtr<RenderPipelineDescriptor>& descriptor) {
     return AcquireRef(new RenderPipeline(device, descriptor));
 }
 
-RenderPipeline::RenderPipeline(Device* device, const RenderPipelineDescriptor* descriptor)
+RenderPipeline::RenderPipeline(Device* device,
+                               const UnpackedPtr<RenderPipelineDescriptor>& descriptor)
     : RenderPipelineBase(device, descriptor),
       mVertexArrayObject(0),
       mGlPrimitiveTopology(GLPrimitiveTopology(GetPrimitiveTopology())) {}
@@ -255,9 +276,8 @@ GLenum RenderPipeline::GetGLPrimitiveTopology() const {
     return mGlPrimitiveTopology;
 }
 
-ityp::bitset<VertexAttributeLocation, kMaxVertexAttributes>
-RenderPipeline::GetAttributesUsingVertexBuffer(VertexBufferSlot slot) const {
-    ASSERT(!IsError());
+VertexAttributeMask RenderPipeline::GetAttributesUsingVertexBuffer(VertexBufferSlot slot) const {
+    DAWN_ASSERT(!IsError());
     return mAttributesUsingVertexBuffer[slot];
 }
 
@@ -287,7 +307,8 @@ void RenderPipeline::CreateVAOForVertexState() {
                     gl.VertexAttribDivisor(glAttrib, 1);
                     break;
                 case wgpu::VertexStepMode::VertexBufferNotUsed:
-                    UNREACHABLE();
+                case wgpu::VertexStepMode::Undefined:
+                    DAWN_UNREACHABLE();
             }
         }
     }
@@ -297,7 +318,7 @@ void RenderPipeline::ApplyNow(PersistentPipelineState& persistentPipelineState) 
     const OpenGLFunctions& gl = ToBackend(GetDevice())->GetGL();
     PipelineGL::ApplyNow(gl);
 
-    ASSERT(mVertexArrayObject);
+    DAWN_ASSERT(mVertexArrayObject);
     gl.BindVertexArray(mVertexArrayObject);
 
     ApplyFrontFaceAndCulling(gl, GetFrontFace(), GetCullMode());
@@ -325,12 +346,12 @@ void RenderPipeline::ApplyNow(PersistentPipelineState& persistentPipelineState) 
     }
 
     if (!GetDevice()->IsToggleEnabled(Toggle::DisableIndexedDrawBuffers)) {
-        for (ColorAttachmentIndex attachmentSlot : IterateBitSet(GetColorAttachmentsMask())) {
+        for (auto attachmentSlot : IterateBitSet(GetColorAttachmentsMask())) {
             ApplyColorState(gl, attachmentSlot, GetColorTargetState(attachmentSlot));
         }
     } else {
         const ColorTargetState* prevDescriptor = nullptr;
-        for (ColorAttachmentIndex attachmentSlot : IterateBitSet(GetColorAttachmentsMask())) {
+        for (auto attachmentSlot : IterateBitSet(GetColorAttachmentsMask())) {
             const ColorTargetState* descriptor = GetColorTargetState(attachmentSlot);
             if (!prevDescriptor) {
                 ApplyColorState(gl, descriptor);
@@ -338,13 +359,13 @@ void RenderPipeline::ApplyNow(PersistentPipelineState& persistentPipelineState) 
             } else if ((descriptor->blend == nullptr) != (prevDescriptor->blend == nullptr)) {
                 // TODO(crbug.com/dawn/582): GLES < 3.2 does not support different blend states
                 // per color target. Add validation to prevent this as it is not.
-                ASSERT(false);
+                DAWN_ASSERT(false);
             } else if (descriptor->blend != nullptr) {
                 if (!Equal(descriptor->blend->alpha, prevDescriptor->blend->alpha) ||
                     !Equal(descriptor->blend->color, prevDescriptor->blend->color) ||
                     descriptor->writeMask != prevDescriptor->writeMask) {
                     // TODO(crbug.com/dawn/582)
-                    ASSERT(false);
+                    DAWN_ASSERT(false);
                 }
             }
         }

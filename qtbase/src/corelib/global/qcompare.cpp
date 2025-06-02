@@ -912,6 +912,13 @@ CHECK(strong, equivalent);
         // inline implementation which uses comparesEqual()
     }
     \endcode
+
+//! [noexcept-requirement-desc]
+    These macros generate \c {noexcept} relational operators, and so they check
+    that the helper functions are \c {noexcept}.
+    Use the \c {_NON_NOEXCEPT} versions of the macros if the relational
+    operators of your class cannot be \c {noexcept}.
+//! [noexcept-requirement-desc]
 */
 
 /*!
@@ -1068,6 +1075,8 @@ CHECK(strong, equivalent);
     }
     \endcode
 
+    \include qcompare.cpp noexcept-requirement-desc
+
     \sa Q_DECLARE_EQUALITY_COMPARABLE, Q_DECLARE_WEAKLY_ORDERED,
         Q_DECLARE_STRONGLY_ORDERED
 */
@@ -1096,6 +1105,8 @@ CHECK(strong, equivalent);
     The \c {*_LITERAL_TYPE} overloads are used to generate \c constexpr
     operators. This means that the helper \c {comparesEqual()} and
     \c {compareThreeWay()} functions must also be \c constexpr.
+
+    \include qcompare.cpp noexcept-requirement-desc
 
     See \l {Q_DECLARE_PARTIALLY_ORDERED} for usage examples.
 
@@ -1128,10 +1139,59 @@ CHECK(strong, equivalent);
     operators. This means that the helper \c {comparesEqual()} and
     \c {compareThreeWay()} functions must also be \c constexpr.
 
+    \include qcompare.cpp noexcept-requirement-desc
+
     See \l {Q_DECLARE_PARTIALLY_ORDERED} for usage examples.
 
     \sa Q_DECLARE_PARTIALLY_ORDERED, Q_DECLARE_WEAKLY_ORDERED,
         Q_DECLARE_EQUALITY_COMPARABLE
+*/
+
+/*!
+    \internal
+    \macro Q_DECLARE_EQUALITY_COMPARABLE(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_EQUALITY_COMPARABLE_LITERAL_TYPE(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_PARTIALLY_ORDERED(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_PARTIALLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_WEAKLY_ORDERED(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_WEAKLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_STRONGLY_ORDERED(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(LeftType, RightType, Attributes)
+    \since 6.8
+    \relates <QtCompare>
+
+    These macros behave like their two-argument versions, but allow
+    specification of C++ attributes to add before every generated relational
+    operator.
+
+    As an example, the \c Attributes parameter can be used in Qt to pass
+    the \c QT_ASCII_CAST_WARN marco (whose expansion can mark the function as
+    deprecated) when implementing comparison of encoding-aware string types
+    with C-style strings or byte arrays.
+
+    \include qcompare.cpp noexcept-requirement-desc
+*/
+
+/*!
+    \internal
+    \macro Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(Type)
+    \macro Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(LeftType, RightType)
+    \macro Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT(Type)
+    \macro Q_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT(LeftType, RightType)
+    \macro Q_DECLARE_PARTIALLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(Type)
+    \macro Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(LeftType, RightType)
+    \macro Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes)
+    \macro Q_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT(Type)
+    \macro Q_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT(LeftType, RightType)
+    \macro Q_DECLARE_STRONGLY_ORDERED_NON_NOEXCEPT(LeftType, RightType, Attributes)
+    \since 6.8
+    \relates <QtCompare>
+
+    These macros behave like their versions without the \c {_NON_NOEXCEPT}
+    suffix, but should be used when the relational operators cannot be
+    \c {noexcept}.
 */
 
 /*!
@@ -1251,9 +1311,12 @@ CHECK(strong, equivalent);
     \l Qt::partial_ordering::unordered is returned.
 */
 
+#if QT_DEPRECATED_SINCE(6, 8)
 /*!
     \fn template <typename LeftType, typename RightType, Qt::if_compatible_pointers<LeftType, RightType> = true> Qt::compareThreeWay(const LeftType *lhs, const RightType *rhs)
     \since 6.7
+    \deprecated [6.8] Wrap the pointers into Qt::totally_ordered_wrapper and
+    use the respective Qt::compareThreeWay() overload instead.
     \relates <QtCompare>
     \overload
 
@@ -1266,6 +1329,7 @@ CHECK(strong, equivalent);
     Returns an instance of \l Qt::strong_ordering that represents the relation
     between \a lhs and \a rhs.
 */
+#endif // QT_DEPRECATED_SINCE(6, 8)
 
 /*!
     \fn template <class Enum, Qt::if_enum<Enum> = true> Qt::compareThreeWay(Enum lhs, Enum rhs)
@@ -1280,6 +1344,86 @@ CHECK(strong, equivalent);
 
     This function converts \c Enum to its underlying type and calls the
     overload for integral types.
+
+    Returns an instance of \l Qt::strong_ordering that represents the relation
+    between \a lhs and \a rhs.
+*/
+
+/*!
+    \fn template <typename T, typename U, Qt::if_compatible_pointers<T, U> = true> Qt::compareThreeWay(Qt::totally_ordered_wrapper<T*> lhs, Qt::totally_ordered_wrapper<U*> rhs)
+    \since 6.8
+    \relates <QtCompare>
+    \overload
+
+    Implements three-way comparison of pointers that are wrapped into
+    \l Qt::totally_ordered_wrapper. Uses
+    \l {https://en.cppreference.com/w/cpp/language/operator_comparison#Pointer_total_order}
+    {strict total order over pointers} when doing the comparison.
+
+    \note This function participates in overload resolution if \c T and \c U
+    are the same type, or base and derived types.
+
+    Returns an instance of \l Qt::strong_ordering that represents the relation
+    between \a lhs and \a rhs.
+*/
+
+/*!
+    \fn template <typename T, typename U, Qt::if_compatible_pointers<T, U> = true> Qt::compareThreeWay(Qt::totally_ordered_wrapper<T*> lhs, U *rhs)
+    \since 6.8
+    \relates <QtCompare>
+    \overload
+
+    Implements three-way comparison of a pointer wrapped into
+    \l Qt::totally_ordered_wrapper with a normal pointer. Uses
+    \l {https://en.cppreference.com/w/cpp/language/operator_comparison#Pointer_total_order}
+    {strict total order over pointers} when doing the comparison.
+
+    \note This function participates in overload resolution if \c T and \c U
+    are the same type, or base and derived types.
+
+    Returns an instance of \l Qt::strong_ordering that represents the relation
+    between \a lhs and \a rhs.
+*/
+
+/*!
+    \fn template <typename T, typename U, Qt::if_compatible_pointers<T, U> = true> Qt::compareThreeWay(U *lhs, Qt::totally_ordered_wrapper<T*> rhs)
+    \since 6.8
+    \relates <QtCompare>
+    \overload
+
+    Implements three-way comparison of a normal pointer with a pointer wrapped
+    into \l Qt::totally_ordered_wrapper. Uses
+    \l {https://en.cppreference.com/w/cpp/language/operator_comparison#Pointer_total_order}
+    {strict total order over pointers} when doing the comparison.
+
+    \note This function participates in overload resolution if \c T and \c U
+    are the same type, or base and derived types.
+
+    Returns an instance of \l Qt::strong_ordering that represents the relation
+    between \a lhs and \a rhs.
+*/
+
+/*!
+    \fn template <typename T> Qt::compareThreeWay(Qt::totally_ordered_wrapper<T*> lhs, std::nullptr_t rhs)
+    \since 6.8
+    \relates <QtCompare>
+    \overload
+
+    Implements three-way comparison of a pointer wrapped into
+    \l Qt::totally_ordered_wrapper with \c {std::nullptr_t}.
+
+    Returns an instance of \l Qt::strong_ordering that represents the relation
+    between \a lhs and \a rhs.
+*/
+
+/*!
+    \fn template <typename T> Qt::compareThreeWay(std::nullptr_t lhs, Qt::totally_ordered_wrapper<T*> rhs)
+    \since 6.8
+    \relates <QtCompare>
+    \overload
+
+    Implements three-way comparison of \c {std::nullptr_t} with a pointer
+    wrapped into \l Qt::totally_ordered_wrapper.
 
     Returns an instance of \l Qt::strong_ordering that represents the relation
     between \a lhs and \a rhs.
@@ -1332,6 +1476,59 @@ CHECK(strong, equivalent);
     C++20 or later.
 
     \sa Qt::partial_ordering, Qt::weak_ordering, Qt::strong_ordering
+*/
+
+/*!
+    \class Qt::totally_ordered_wrapper
+    \inmodule QtCore
+    \inheaderfile QtCompare
+    \brief Qt::totally_ordered_wrapper is a wrapper type that provides strict
+    total order for the wrapped types.
+    \since 6.8
+
+    One of its primary usecases is to prevent \e {Undefined Behavior} (UB) when
+    comparing pointers.
+
+    Consider the following simple class:
+
+    \code
+    template <typename T>
+    struct PointerWrapperBad {
+        int val;
+        T *ptr;
+    };
+    \endcode
+
+    Lexicographical comparison of the two instances of the \c PointerWrapperBad
+    type would result in UB, because it will call \c {operator<()} or
+    \c {operator<=>()} on the \c {ptr} members.
+
+    To fix it, use the new wrapper type:
+
+    \code
+    template <typename T>
+    struct PointerWrapperGood {
+        int val;
+        Qt::totally_ordered_wrapper<T *> ptr;
+
+        friend bool
+        operator==(PointerWrapperGood lhs, PointerWrapperGood rhs) noexcept = default;
+        friend auto
+        operator<=>(PointerWrapperGood lhs, PointerWrapperGood rhs) noexecpt = default;
+    };
+    \endcode
+
+    The \c {operator<()} and (if available) \c {operator<=>()} operators for
+    the \c {Qt::totally_ordered_wrapper} type use the
+    \l {https://en.cppreference.com/w/cpp/utility/functional/less}{std::less}
+    and \l {https://en.cppreference.com/w/cpp/utility/compare/compare_three_way}
+    {std::compare_three_way} function objects respectively, providing
+    \l {https://en.cppreference.com/w/cpp/language/operator_comparison#Pointer_total_order}
+    {strict total order over pointers} when doing the comparison.
+
+    As a result, the relational operators for \c {PointerWrapperGood::ptr}
+    member will be well-defined, and we can even \c {=default} the relational
+    operators for the \c {PointerWrapperGood} class, like it's shown above.
 */
 
 QT_END_NAMESPACE

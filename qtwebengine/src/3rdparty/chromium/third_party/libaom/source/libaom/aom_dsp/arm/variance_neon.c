@@ -384,100 +384,62 @@ MSE_WXH_NEON(16, 16)
 
 #undef MSE_WXH_NEON
 
-#define COMPUTE_MSE_16BIT(src_16x8, dst_16x8)                           \
-  /* r7 r6 r5 r4 r3 r2 r1 r0 - 16 bit */                                \
-  const uint16x8_t diff = vabdq_u16(src_16x8, dst_16x8);                \
-  /*r3 r2 r1 r0 - 16 bit */                                             \
-  const uint16x4_t res0_low_16x4 = vget_low_u16(diff);                  \
-  /*r7 r6 r5 r4 - 16 bit */                                             \
-  const uint16x4_t res0_high_16x4 = vget_high_u16(diff);                \
-  /* (r3*r3)= b3 (r2*r2)= b2 (r1*r1)= b1 (r0*r0)= b0 - 32 bit */        \
-  const uint32x4_t res0_32x4 = vmull_u16(res0_low_16x4, res0_low_16x4); \
-  /* (r7*r7)= b7 (r6*r6)= b6 (r5*r5)= b5 (r4*r4)= b4 - 32 bit*/         \
-  /* b3+b7 b2+b6 b1+b5 b0+b4 - 32 bit*/                                 \
-  const uint32x4_t res_32x4 =                                           \
-      vmlal_u16(res0_32x4, res0_high_16x4, res0_high_16x4);             \
-                                                                        \
-  /*a1 a0 - 64 bit*/                                                    \
-  const uint64x2_t vl = vpaddlq_u32(res_32x4);                          \
-  /*a1+a2= f1 a3+a0= f0*/                                               \
-  square_result = vaddq_u64(square_result, vl);
+static INLINE uint64x2_t mse_accumulate_u16_u8_8x2(uint64x2_t sum,
+                                                   uint16x8_t s0, uint16x8_t s1,
+                                                   uint8x8_t d0, uint8x8_t d1) {
+  int16x8_t e0 = vreinterpretq_s16_u16(vsubw_u8(s0, d0));
+  int16x8_t e1 = vreinterpretq_s16_u16(vsubw_u8(s1, d1));
 
-static AOM_INLINE uint64_t mse_4xh_16bit_neon(uint8_t *dst, int dstride,
-                                              uint16_t *src, int sstride,
-                                              int h) {
-  uint64x2_t square_result = vdupq_n_u64(0);
-  uint32_t d0, d1;
-  int i = h;
-  uint8_t *dst_ptr = dst;
-  uint16_t *src_ptr = src;
-  do {
-    // d03 d02 d01 d00 - 8 bit
-    memcpy(&d0, dst_ptr, 4);
-    dst_ptr += dstride;
-    // d13 d12 d11 d10 - 8 bit
-    memcpy(&d1, dst_ptr, 4);
-    dst_ptr += dstride;
-    // duplication
-    uint8x8_t tmp0_8x8 = vreinterpret_u8_u32(vdup_n_u32(d0));
-    // d03 d02 d01 d00 - 16 bit
-    const uint16x4_t dst0_16x4 = vget_low_u16(vmovl_u8(tmp0_8x8));
-    // duplication
-    tmp0_8x8 = vreinterpret_u8_u32(vdup_n_u32(d1));
-    // d13 d12 d11 d10 - 16 bit
-    const uint16x4_t dst1_16x4 = vget_low_u16(vmovl_u8(tmp0_8x8));
-    // d13 d12 d11 d10 d03 d02 d01 d00 - 16 bit
-    const uint16x8_t dst_16x8 = vcombine_u16(dst0_16x4, dst1_16x4);
+  int32x4_t mse = vmull_s16(vget_low_s16(e0), vget_low_s16(e0));
+  mse = vmlal_s16(mse, vget_high_s16(e0), vget_high_s16(e0));
+  mse = vmlal_s16(mse, vget_low_s16(e1), vget_low_s16(e1));
+  mse = vmlal_s16(mse, vget_high_s16(e1), vget_high_s16(e1));
 
-    // b1r0 - s03 s02 s01 s00 - 16 bit
-    const uint16x4_t src0_16x4 = vld1_u16(src_ptr);
-    src_ptr += sstride;
-    // b1r1 - s13 s12 s11 s10 - 16 bit
-    const uint16x4_t src1_16x4 = vld1_u16(src_ptr);
-    src_ptr += sstride;
-    // s13 s12 s11 s10 s03 s02 s01 s00 - 16 bit
-    const uint16x8_t src_16x8 = vcombine_u16(src0_16x4, src1_16x4);
-
-    COMPUTE_MSE_16BIT(src_16x8, dst_16x8)
-    i -= 2;
-  } while (i != 0);
-  uint64x1_t sum =
-      vadd_u64(vget_high_u64(square_result), vget_low_u64(square_result));
-  return vget_lane_u64(sum, 0);
+  return vpadalq_u32(sum, vreinterpretq_u32_s32(mse));
 }
 
-static AOM_INLINE uint64_t mse_8xh_16bit_neon(uint8_t *dst, int dstride,
-                                              uint16_t *src, int sstride,
-                                              int h) {
-  uint64x2_t square_result = vdupq_n_u64(0);
-  int i = h;
-  do {
-    // d7 d6 d5 d4 d3 d2 d1 d0 - 8 bit
-    const uint16x8_t dst_16x8 = vmovl_u8(vld1_u8(dst));
-    // s7 s6 s5 s4 s3 s2 s1 s0 - 16 bit
-    const uint16x8_t src_16x8 = vld1q_u16(src);
+static uint64x2_t mse_wxh_16bit(uint8_t *dst, int dstride, const uint16_t *src,
+                                int sstride, int w, int h) {
+  assert((w == 8 || w == 4) && (h == 8 || h == 4));
 
-    COMPUTE_MSE_16BIT(src_16x8, dst_16x8)
+  uint64x2_t sum = vdupq_n_u64(0);
 
-    dst += dstride;
-    src += sstride;
-  } while (--i != 0);
-  uint64x1_t sum =
-      vadd_u64(vget_high_u64(square_result), vget_low_u64(square_result));
-  return vget_lane_u64(sum, 0);
+  if (w == 8) {
+    do {
+      uint8x8_t d0 = vld1_u8(dst + 0 * dstride);
+      uint8x8_t d1 = vld1_u8(dst + 1 * dstride);
+      uint16x8_t s0 = vld1q_u16(src + 0 * sstride);
+      uint16x8_t s1 = vld1q_u16(src + 1 * sstride);
+
+      sum = mse_accumulate_u16_u8_8x2(sum, s0, s1, d0, d1);
+
+      dst += 2 * dstride;
+      src += 2 * sstride;
+      h -= 2;
+    } while (h != 0);
+  } else {
+    do {
+      uint8x8_t d0 = load_unaligned_u8_4x2(dst + 0 * dstride, dstride);
+      uint8x8_t d1 = load_unaligned_u8_4x2(dst + 2 * dstride, dstride);
+      uint16x8_t s0 = load_unaligned_u16_4x2(src + 0 * sstride, sstride);
+      uint16x8_t s1 = load_unaligned_u16_4x2(src + 2 * sstride, sstride);
+
+      sum = mse_accumulate_u16_u8_8x2(sum, s0, s1, d0, d1);
+
+      dst += 4 * dstride;
+      src += 4 * sstride;
+      h -= 4;
+    } while (h != 0);
+  }
+
+  return sum;
 }
 
 // Computes mse for a given block size. This function gets called for specific
 // block sizes, which are 8x8, 8x4, 4x8 and 4x4.
 uint64_t aom_mse_wxh_16bit_neon(uint8_t *dst, int dstride, uint16_t *src,
                                 int sstride, int w, int h) {
-  assert((w == 8 || w == 4) && (h == 8 || h == 4) &&
-         "w=8/4 and h=8/4 must satisfy");
-  switch (w) {
-    case 4: return mse_4xh_16bit_neon(dst, dstride, src, sstride, h);
-    case 8: return mse_8xh_16bit_neon(dst, dstride, src, sstride, h);
-    default: assert(0 && "unsupported width"); return -1;
-  }
+  return horizontal_add_u64x2(mse_wxh_16bit(dst, dstride, src, sstride, w, h));
 }
 
 uint32_t aom_get_mb_ss_neon(const int16_t *a) {
@@ -491,4 +453,18 @@ uint32_t aom_get_mb_ss_neon(const int16_t *a) {
   }
 
   return horizontal_add_s32x4(vaddq_s32(sse[0], sse[1]));
+}
+
+uint64_t aom_mse_16xh_16bit_neon(uint8_t *dst, int dstride, uint16_t *src,
+                                 int w, int h) {
+  uint64x2_t sum = vdupq_n_u64(0);
+
+  int num_blks = 16 / w;
+  do {
+    sum = vaddq_u64(sum, mse_wxh_16bit(dst, dstride, src, w, w, h));
+    dst += w;
+    src += w * h;
+  } while (--num_blks != 0);
+
+  return horizontal_add_u64x2(sum);
 }

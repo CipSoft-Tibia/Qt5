@@ -767,6 +767,17 @@ std::optional<QRhiVertexInputAttribute::Format> rhiAttributeType(Attribute *attr
             return QRhiVertexInputAttribute::UNormByte4;
         break;
     }
+    case Qt3DCore::QAttribute::Int: {
+        if (attr->vertexSize() == 1)
+            return QRhiVertexInputAttribute::SInt;
+        if (attr->vertexSize() == 2)
+            return QRhiVertexInputAttribute::SInt2;
+        if (attr->vertexSize() == 3)
+            return QRhiVertexInputAttribute::SInt3;
+        if (attr->vertexSize() == 4)
+            return QRhiVertexInputAttribute::SInt4;
+        break;
+    }
     case Qt3DCore::QAttribute::UnsignedInt: {
         if (attr->vertexSize() == 1)
             return QRhiVertexInputAttribute::UInt;
@@ -776,6 +787,17 @@ std::optional<QRhiVertexInputAttribute::Format> rhiAttributeType(Attribute *attr
             return QRhiVertexInputAttribute::UInt3;
         if (attr->vertexSize() == 4)
             return QRhiVertexInputAttribute::UInt4;
+        break;
+    }
+    case Qt3DCore::QAttribute::HalfFloat: {
+        if (attr->vertexSize() == 1)
+            return QRhiVertexInputAttribute::Half;
+        if (attr->vertexSize() == 2)
+            return QRhiVertexInputAttribute::Half2;
+        if (attr->vertexSize() == 3)
+            return QRhiVertexInputAttribute::Half3;
+        if (attr->vertexSize() >= 4)
+            return QRhiVertexInputAttribute::Half4;
         break;
     }
     case Qt3DCore::QAttribute::Float: {
@@ -1653,7 +1675,7 @@ bool Renderer::prepareGeometryInputBindings(const Geometry *geometry, const RHIS
                                             QHash<int, int> &attributeNameToBinding)
 {
     // shader requires no attributes
-    if (shader->attributes().size() == 0)
+    if (shader->attributes().empty())
         return true;
 
     // QRhiVertexInputBinding -> specifies the stride of an attribute,
@@ -2230,7 +2252,7 @@ void Renderer::jobsDone(Qt3DCore::QAspectManager *manager)
     }
 
     // Do we need to notify any texture about property changes?
-    if (m_updatedTextureProperties.size() > 0)
+    if (!m_updatedTextureProperties.empty())
         sendTextureChangesToFrontend(manager);
 
     sendDisablesToFrontend(manager);

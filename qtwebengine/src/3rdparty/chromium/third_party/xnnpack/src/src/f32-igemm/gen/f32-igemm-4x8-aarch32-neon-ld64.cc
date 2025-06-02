@@ -10,6 +10,7 @@
 #include <xnnpack.h>
 #include <xnnpack/aarch32-assembler.h>
 #include <xnnpack/igemm.h>
+#include <xnnpack/log.h>
 #include <xnnpack/memory.h>
 #include <xnnpack/microparams.h>
 #include <xnnpack/post-operation.h>
@@ -31,9 +32,9 @@ class Generator : public MacroAssembler {
 //     size_t nc,                            r1
 //     size_t kc,                            r2 -> r5 -> sp + 68
 //     size_t ks,                            r3 -> sp + 72 -> r14
-//     const float**restrict a,  sp + 112 -> r2
-//     const void*restrict w,    sp + 116 -> r9
-//     uint8_t*restrict c,       sp + 120 -> r11
+//     const float** restrict a,  sp + 112 -> r2
+//     const void* restrict w,    sp + 116 -> r9
+//     uint8_t* restrict c,       sp + 120 -> r11
 //     size_t cm_stride,         sp + 124 -> (r6)
 //     size_t cn_stride,         sp + 128 -> (r7)
 //     size_t a_offset,          sp + 132 -> (r5)
@@ -59,7 +60,7 @@ class Generator : public MacroAssembler {
 void Generator::generate(size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const jit_gemm_params* jit_gemm_params)
 {
   assert(max_mr <= 4);
-  assert(nc_mod_nr < 8);
+  assert(nc_mod_nr < 8 || nc_mod_nr == SIZE_MAX);
   assert(kc != 0);
   assert(kc % sizeof(float) == 0);
   assert(ks != 0);
@@ -408,7 +409,7 @@ void Generator::perform_post_operations(
         break;
       }
       default:
-        XNN_UNREACHABLE;
+        XNN_LOG_UNREACHABLE("unsupported post operation: %u", post_operations[i].op_type);
     }
   }
 }

@@ -13,13 +13,13 @@
 
 #ifndef BARINSTANCING_H
 #define BARINSTANCING_H
-
-#include <QtQuick3D/private/qquick3dinstancing_p.h>
+#include <QtGraphs/qgraphsglobal.h>
+#include <private/qquick3dinstancing_p.h>
 
 struct BarItemHolder
 {
     QVector3D position = {.0f, .0f, .0f};
-    QVector3D eulerRotation = {.0f, .0f, .0f};
+    QQuaternion rotation = {1.f, .0f, .0f, .0f};
     QVector3D scale = {.0f, .0f, .0f};
     QPoint coord;
     float heightValue = .0f;
@@ -28,7 +28,7 @@ struct BarItemHolder
     ;
 };
 
-class BarInstancing : public QQuick3DInstancing
+class Q_GRAPHS_EXPORT BarInstancing : public QQuick3DInstancing
 {
     Q_OBJECT
 public:
@@ -39,8 +39,8 @@ public:
     void setDataArray(const QList<BarItemHolder *> &newDataArray);
 
     void markDataDirty();
-    bool rangeGradient() const;
-    void setRangeGradient(bool newRangeGradient);
+    bool transparency() const;
+    void setTransparency(bool newTransparencyValue);
 
     void clearDataArray();
 
@@ -52,7 +52,7 @@ private:
     QList<BarItemHolder *> m_dataArray;
     int m_instanceCount = 0;
     bool m_dirty = true;
-    bool m_rangeGradient = false;
+    bool m_transparency = false;
 };
 
 #endif // BARINSTANCING_H

@@ -112,8 +112,7 @@ void ShoppingBookmarkModelObserver::BookmarkNodeAdded(
   //                    instead. Presumably, shopping data is primarily being
   //                    added to new bookmarks, so we could potentially use the
   //                    node change event.
-  if (added_by_user &&
-      base::FeatureList::IsEnabled(kShoppingListTrackByDefault)) {
+  if (added_by_user) {
     SetPriceTrackingStateForBookmark(shopping_service_, model, node, true,
                                      base::DoNothing());
   }
@@ -129,6 +128,15 @@ void ShoppingBookmarkModelObserver::BookmarkNodeMoved(
   if (IsShoppingCollectionBookmarkFolder(node)) {
     base::RecordAction(base::UserMetricsAction(
         "Commerce.PriceTracking.ShoppingCollection.ParentChanged"));
+  }
+
+  // Record movement of bookmarks into or out of the collection.
+  if (IsShoppingCollectionBookmarkFolder(old_parent)) {
+    base::RecordAction(base::UserMetricsAction(
+        "Commerce.PriceTracking.ShoppingCollection.MovedFromCollection"));
+  } else if (IsShoppingCollectionBookmarkFolder(new_parent)) {
+    base::RecordAction(base::UserMetricsAction(
+        "Commerce.PriceTracking.ShoppingCollection.MovedToCollection"));
   }
 }
 

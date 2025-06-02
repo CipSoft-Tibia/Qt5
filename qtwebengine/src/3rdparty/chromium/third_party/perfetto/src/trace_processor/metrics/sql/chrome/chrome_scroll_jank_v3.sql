@@ -28,11 +28,11 @@ DROP VIEW IF EXISTS chrome_scroll_jank_v3_intermediate;
 --                                   janky frames, percent of janky frames,
 --                                   maximum presentation delay, and the causes
 --                                   of jank (cause, sub-cause, delay).
-CREATE VIEW chrome_scroll_jank_v3_intermediate AS
+CREATE PERFETTO VIEW chrome_scroll_jank_v3_intermediate AS
 SELECT
   -- MAX does not matter for these aggregations, since the values are the
   -- same across rows.
-  (SELECT COUNT(*) FROM chrome_janky_frame_info_with_delay)
+  (SELECT COUNT(*) FROM chrome_frame_info_with_delay)
     AS trace_num_frames,
   (SELECT COUNT(*) FROM chrome_janky_frames)
     AS trace_num_janky_frames,
@@ -65,7 +65,7 @@ DROP VIEW IF EXISTS chrome_scroll_jank_v3_output;
 --                                 frames, vsync interval, and a summary of this
 --                                 data (including individual causes) for each
 --                                 scroll.
-CREATE VIEW chrome_scroll_jank_v3_output AS
+CREATE PERFETTO VIEW chrome_scroll_jank_v3_output AS
 SELECT
   ChromeScrollJankV3(
     'trace_num_frames',

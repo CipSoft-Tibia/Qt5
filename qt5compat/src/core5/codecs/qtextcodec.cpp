@@ -305,21 +305,6 @@ static void setup() {}
 #endif // icu
 
 /*!
-    \typealias QTextCodec::ConversionFlags
-
-    \value DefaultConversion  No flag is set.
-    \value ConvertInvalidToNull  If this flag is set, each invalid input
-                                 character is output as a null character.
-    \value IgnoreHeader  Ignore any Unicode byte-order mark and don't generate any.
-
-    \omitvalue FreeFunction
-*/
-
-/*!
-    \typealias QTextCodec::ConverterState
-*/
-
-/*!
     \class QTextCodec
     \inmodule QtCore5Compat
     \brief The QTextCodec class provides conversions between text encodings.
@@ -799,7 +784,8 @@ QTextEncoder* QTextCodec::makeEncoder(QTextCodec::ConversionFlags flags) const
 */
 QByteArray QTextCodec::fromUnicode(const QString& str) const
 {
-    return convertFromUnicode(str.constData(), str.size(), nullptr);
+    ConverterState state = DefaultConversion | Flag::Stateless;
+    return convertFromUnicode(str.constData(), str.size(), &state);
 }
 
 /*!
@@ -811,7 +797,8 @@ QByteArray QTextCodec::fromUnicode(const QString& str) const
 */
 QByteArray QTextCodec::fromUnicode(QStringView str) const
 {
-    return convertFromUnicode(str.data(), str.size(), nullptr);
+    ConverterState state = DefaultConversion | Flag::Stateless;
+    return convertFromUnicode(str.data(), str.size(), &state);
 }
 
 /*!
@@ -831,7 +818,8 @@ QByteArray QTextCodec::fromUnicode(QStringView str) const
 */
 QString QTextCodec::toUnicode(const QByteArray& a) const
 {
-    return convertToUnicode(a.constData(), a.size(), nullptr);
+    ConverterState state = DefaultConversion | Flag::Stateless;
+    return convertToUnicode(a.constData(), a.size(), &state);
 }
 
 /*!

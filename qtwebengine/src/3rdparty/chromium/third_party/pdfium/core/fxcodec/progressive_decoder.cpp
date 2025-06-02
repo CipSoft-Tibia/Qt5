@@ -1273,8 +1273,7 @@ FXCODEC_STATUS ProgressiveDecoder::TiffContinueDecode() {
   }
 
   auto pDIBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
-  pDIBitmap->Create(m_SrcWidth, m_SrcHeight, FXDIB_Format::kArgb);
-  if (pDIBitmap->GetBuffer().empty()) {
+  if (!pDIBitmap->Create(m_SrcWidth, m_SrcHeight, FXDIB_Format::kArgb)) {
     m_pDeviceBitmap = nullptr;
     m_pFile = nullptr;
     m_status = FXCODEC_STATUS::kError;
@@ -1299,33 +1298,46 @@ FXCODEC_STATUS ProgressiveDecoder::TiffContinueDecode() {
     return m_status;
   }
   RetainPtr<CFX_DIBitmap> pFormatBitmap;
+  bool created_format_bitmap = false;
   switch (m_pDeviceBitmap->GetFormat()) {
     case FXDIB_Format::k8bppRgb:
       pFormatBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
-      pFormatBitmap->Create(pClipBitmap->GetWidth(), pClipBitmap->GetHeight(),
-                            FXDIB_Format::k8bppRgb);
+      created_format_bitmap = pFormatBitmap->Create(pClipBitmap->GetWidth(),
+                                                    pClipBitmap->GetHeight(),
+                                                    FXDIB_Format::k8bppRgb);
       break;
     case FXDIB_Format::k8bppMask:
       pFormatBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
-      pFormatBitmap->Create(pClipBitmap->GetWidth(), pClipBitmap->GetHeight(),
-                            FXDIB_Format::k8bppMask);
+      created_format_bitmap = pFormatBitmap->Create(pClipBitmap->GetWidth(),
+                                                    pClipBitmap->GetHeight(),
+                                                    FXDIB_Format::k8bppMask);
       break;
     case FXDIB_Format::kRgb:
       pFormatBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
-      pFormatBitmap->Create(pClipBitmap->GetWidth(), pClipBitmap->GetHeight(),
-                            FXDIB_Format::kRgb);
+      created_format_bitmap =
+          pFormatBitmap->Create(pClipBitmap->GetWidth(),
+                                pClipBitmap->GetHeight(), FXDIB_Format::kRgb);
       break;
     case FXDIB_Format::kRgb32:
       pFormatBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
-      pFormatBitmap->Create(pClipBitmap->GetWidth(), pClipBitmap->GetHeight(),
-                            FXDIB_Format::kRgb32);
+      created_format_bitmap =
+          pFormatBitmap->Create(pClipBitmap->GetWidth(),
+                                pClipBitmap->GetHeight(), FXDIB_Format::kRgb32);
       break;
     case FXDIB_Format::kArgb:
       pFormatBitmap = pClipBitmap;
+      created_format_bitmap = true;
       break;
     default:
       break;
   }
+  if (!created_format_bitmap) {
+    m_pDeviceBitmap = nullptr;
+    m_pFile = nullptr;
+    m_status = FXCODEC_STATUS::kError;
+    return m_status;
+  }
+
   switch (m_pDeviceBitmap->GetFormat()) {
     case FXDIB_Format::k8bppRgb:
     case FXDIB_Format::k8bppMask: {
@@ -1365,12 +1377,6 @@ FXCODEC_STATUS ProgressiveDecoder::TiffContinueDecode() {
     default:
       break;
   }
-  if (!pFormatBitmap) {
-    m_pDeviceBitmap = nullptr;
-    m_pFile = nullptr;
-    m_status = FXCODEC_STATUS::kError;
-    return m_status;
-  }
 
   FXDIB_ResampleOptions options;
   options.bInterpolateBilinear = true;
@@ -1384,7 +1390,7 @@ FXCODEC_STATUS ProgressiveDecoder::TiffContinueDecode() {
     return m_status;
   }
   m_pDeviceBitmap->TransferBitmap(m_startX, m_startY, m_sizeX, m_sizeY,
-                                  pStrechBitmap, 0, 0);
+                                  std::move(pStrechBitmap), 0, 0);
   m_pDeviceBitmap = nullptr;
   m_pFile = nullptr;
   m_status = FXCODEC_STATUS::kDecodeFinished;

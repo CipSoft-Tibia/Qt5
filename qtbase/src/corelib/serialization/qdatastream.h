@@ -8,6 +8,7 @@
 #include <QtCore/qiodevicebase.h>
 #include <QtCore/qcontainerfwd.h>
 #include <QtCore/qnamespace.h>
+#include <QtCore/qttypetraits.h>
 
 #include <iterator>         // std::distance(), std::next()
 
@@ -25,7 +26,7 @@ class QDataStream;
 class QIODevice;
 class QString;
 
-#if !defined(QT_NO_DATASTREAM) || defined(QT_BOOTSTRAPPED)
+#if !defined(QT_NO_DATASTREAM)
 class QDataStreamPrivate;
 namespace QtPrivate {
 class StreamStateSaver;
@@ -45,7 +46,7 @@ QDataStream &writeAssociativeMultiContainer(QDataStream &s, const Container &c);
 class Q_CORE_EXPORT QDataStream : public QIODeviceBase
 {
 public:
-    enum Version {
+    enum Version QT7_ONLY(: quint8) {
         Qt_1_0 = 1,
         Qt_2_0 = 2,
         Qt_2_1 = 3,
@@ -86,8 +87,9 @@ public:
         Qt_6_5 = Qt_6_0,
         Qt_6_6 = 21,
         Qt_6_7 = 22,
-        Qt_DefaultCompiledVersion = Qt_6_7
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        Qt_6_8 = Qt_6_7,
+        Qt_DefaultCompiledVersion = Qt_6_8
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
 #error Add the datastream version for this Qt version and update Qt_DefaultCompiledVersion
 #endif
     };
@@ -97,7 +99,7 @@ public:
         LittleEndian = QSysInfo::LittleEndian
     };
 
-    enum Status {
+    enum Status QT7_ONLY(: quint8) {
         Ok,
         ReadPastEnd,
         ReadCorruptData,
@@ -105,7 +107,7 @@ public:
         SizeLimitExceeded,
     };
 
-    enum FloatingPointPrecision {
+    enum FloatingPointPrecision QT7_ONLY(: quint8) {
         SinglePrecision,
         DoublePrecision
     };
@@ -121,10 +123,12 @@ public:
 
     bool atEnd() const;
 
+    QT_CORE_INLINE_SINCE(6, 8)
     Status status() const;
     void setStatus(Status status);
     void resetStatus();
 
+    QT_CORE_INLINE_SINCE(6, 8)
     FloatingPointPrecision floatingPointPrecision() const;
     void setFloatingPointPrecision(FloatingPointPrecision precision);
 
@@ -165,7 +169,18 @@ public:
     QDataStream &operator<<(qint64 i);
     QDataStream &operator<<(quint64 i);
     QDataStream &operator<<(std::nullptr_t) { return *this; }
+#if QT_CORE_REMOVED_SINCE(6, 8) || defined(Q_QDOC)
     QDataStream &operator<<(bool i);
+#endif
+#if !defined(Q_QDOC)
+    // Disable implicit conversions to bool (e.g. for pointers)
+    template <typename T,
+             std::enable_if_t<std::is_same_v<T, bool>, bool> = true>
+    QDataStream &operator<<(T i)
+    {
+        return (*this << qint8(i));
+    }
+#endif
 #if QT_CORE_REMOVED_SINCE(6, 3)
     QDataStream &operator<<(qfloat16 f);
 #endif
@@ -174,7 +189,6 @@ public:
     QDataStream &operator<<(const char *str);
     QDataStream &operator<<(char16_t c);
     QDataStream &operator<<(char32_t c);
-    QDataStream &operator<<(const volatile void *) = delete;
 
 #if QT_DEPRECATED_SINCE(6, 11)
     QT_DEPRECATED_VERSION_X_6_11("Use an overload that takes qint64 length.")
@@ -203,12 +217,19 @@ private:
 
     QScopedPointer<QDataStreamPrivate> d;
 
-    QIODevice *dev;
-    bool owndev;
-    bool noswap;
-    ByteOrder byteorder;
-    int ver;
-    Status q_status;
+    QIODevice *dev = nullptr;
+    bool owndev = false;
+    bool noswap = QSysInfo::ByteOrder == QSysInfo::BigEndian;
+    quint8 fpPrecision = QDataStream::DoublePrecision;
+    quint8 q_status = Ok;
+#if QT_VERSION < QT_VERSION_CHECK(7, 0, 0) && !defined(QT_BOOTSTRAPPED)
+    ByteOrder byteorder = BigEndian;
+    int ver = Qt_DefaultCompiledVersion;
+#else
+    Version ver = Qt_DefaultCompiledVersion;
+#endif
+    quint16 transactionDepth = 0;
+
 #if QT_CORE_REMOVED_SINCE(6, 7)
     int readBlock(char *data, int len);
 #endif
@@ -409,14 +430,30 @@ using QDataStreamIfHasIStreamOperatorsContainer =
 inline QIODevice *QDataStream::device() const
 { return dev; }
 
+#if QT_CORE_INLINE_IMPL_SINCE(6, 8)
+QDataStream::Status QDataStream::status() const
+{
+    return Status(q_status);
+}
+
+QDataStream::FloatingPointPrecision QDataStream::floatingPointPrecision() const
+{
+    return FloatingPointPrecision(fpPrecision);
+}
+#endif // INLINE_SINCE 6.8
+
 inline QDataStream::ByteOrder QDataStream::byteOrder() const
-{ return byteorder; }
+{
+    if constexpr (QSysInfo::ByteOrder == QSysInfo::BigEndian)
+        return noswap ? BigEndian : LittleEndian;
+    return noswap ? LittleEndian : BigEndian;
+}
 
 inline int QDataStream::version() const
 { return ver; }
 
 inline void QDataStream::setVersion(int v)
-{ ver = v; }
+{ ver = Version(v); }
 
 qint64 QDataStream::readQSizeType(QDataStream &s)
 {

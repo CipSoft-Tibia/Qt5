@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/demote_to_helper.h"
 
@@ -40,14 +53,14 @@ DemoteToHelper::DemoteToHelper() = default;
 
 DemoteToHelper::~DemoteToHelper() = default;
 
-Transform::ApplyResult DemoteToHelper::Apply(const Program* src, const DataMap&, DataMap&) const {
-    auto& sem = src->Sem();
+Transform::ApplyResult DemoteToHelper::Apply(const Program& src, const DataMap&, DataMap&) const {
+    auto& sem = src.Sem();
 
     // Collect the set of functions that need to be processed.
     // A function needs to be processed if it is reachable by a shader that contains a discard at
     // any point in its call hierarchy.
     std::unordered_set<const sem::Function*> functions_to_process;
-    for (auto* func : src->AST().Functions()) {
+    for (auto* func : src.AST().Functions()) {
         if (!func->IsEntryPoint()) {
             continue;
         }
@@ -80,7 +93,7 @@ Transform::ApplyResult DemoteToHelper::Apply(const Program* src, const DataMap&,
     }
 
     ProgramBuilder b;
-    program::CloneContext ctx{&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx{&b, &src, /* auto_clone_symbols */ true};
 
     // Create a module-scope flag that indicates whether the current invocation has been discarded.
     auto flag = b.Symbols().New("tint_discarded");
@@ -107,7 +120,7 @@ Transform::ApplyResult DemoteToHelper::Apply(const Program* src, const DataMap&,
     // We also insert a discard statement before all return statements in entry points for shaders
     // that discard.
     std::unordered_map<const core::type::Type*, Symbol> atomic_cmpxchg_result_types;
-    for (auto* node : src->ASTNodes().Objects()) {
+    for (auto* node : src.ASTNodes().Objects()) {
         Switch(
             node,
 
@@ -149,17 +162,17 @@ Transform::ApplyResult DemoteToHelper::Apply(const Program* src, const DataMap&,
                 auto* sem_call = sem.Get<sem::Call>(call);
                 auto* stmt = sem_call ? sem_call->Stmt() : nullptr;
                 auto* func = stmt ? stmt->Function() : nullptr;
-                auto* builtin = sem_call ? sem_call->Target()->As<sem::Builtin>() : nullptr;
+                auto* builtin = sem_call ? sem_call->Target()->As<sem::BuiltinFn>() : nullptr;
                 if (functions_to_process.count(func) == 0 || !builtin) {
                     return;
                 }
 
-                if (builtin->Type() == core::Function::kTextureStore) {
+                if (builtin->Fn() == wgsl::BuiltinFn::kTextureStore) {
                     // A call to textureStore() will always be a statement.
                     // Wrap it inside a conditional block.
                     auto* masked_call = b.If(b.Not(flag), b.Block(ctx.Clone(stmt->Declaration())));
                     ctx.Replace(stmt->Declaration(), masked_call);
-                } else if (builtin->IsAtomic() && builtin->Type() != core::Function::kAtomicLoad) {
+                } else if (builtin->IsAtomic() && builtin->Fn() != wgsl::BuiltinFn::kAtomicLoad) {
                     // A call to an atomic builtin can be a statement or an expression.
                     if (auto* call_stmt = stmt->Declaration()->As<CallStatement>();
                         call_stmt && call_stmt->expr == call) {
@@ -178,50 +191,10 @@ Transform::ApplyResult DemoteToHelper::Apply(const Program* src, const DataMap&,
                         //   }
                         //   let y = x + tmp;
                         auto result = b.Sym();
-                        Type result_ty;
-                        const Statement* masked_call = nullptr;
-                        if (builtin->Type() == core::Function::kAtomicCompareExchangeWeak) {
-                            // Special case for atomicCompareExchangeWeak as we cannot name its
-                            // result type. We have to declare an equivalent struct and copy the
-                            // original member values over to it.
-
-                            // Declare a struct to hold the result values.
-                            auto* result_struct = sem_call->Type()->As<core::type::Struct>();
-                            auto* atomic_ty = result_struct->Members()[0]->Type();
-                            result_ty =
-                                b.ty(tint::GetOrCreate(atomic_cmpxchg_result_types, atomic_ty, [&] {
-                                    auto name = b.Sym();
-                                    b.Structure(
-                                        name,
-                                        tint::Vector{
-                                            b.Member("old_value", CreateASTTypeFor(ctx, atomic_ty)),
-                                            b.Member("exchanged", b.ty.bool_()),
-                                        });
-                                    return name;
-                                }));
-
-                            // Generate the masked call and member-wise copy:
-                            //   if (!tint_discarded) {
-                            //     let tmp_result = atomicCompareExchangeWeak(&p, 1, 2);
-                            //     result.exchanged = tmp_result.exchanged;
-                            //     result.old_value = tmp_result.old_value;
-                            //   }
-                            auto tmp_result = b.Sym();
-                            masked_call =
-                                b.If(b.Not(flag),
-                                     b.Block(tint::Vector{
-                                         b.Decl(b.Let(tmp_result, ctx.CloneWithoutTransform(call))),
-                                         b.Assign(b.MemberAccessor(result, "old_value"),
-                                                  b.MemberAccessor(tmp_result, "old_value")),
-                                         b.Assign(b.MemberAccessor(result, "exchanged"),
-                                                  b.MemberAccessor(tmp_result, "exchanged")),
-                                     }));
-                        } else {
-                            result_ty = CreateASTTypeFor(ctx, sem_call->Type());
-                            masked_call =
-                                b.If(b.Not(flag),
-                                     b.Block(b.Assign(result, ctx.CloneWithoutTransform(call))));
-                        }
+                        auto result_ty = CreateASTTypeFor(ctx, sem_call->Type());
+                        auto* masked_call =
+                            b.If(b.Not(flag),
+                                 b.Block(b.Assign(result, ctx.CloneWithoutTransform(call))));
                         auto* result_decl = b.Decl(b.Var(result, result_ty));
                         hoist_to_decl_before.Prepare(sem_call);
                         hoist_to_decl_before.InsertBefore(stmt, result_decl);

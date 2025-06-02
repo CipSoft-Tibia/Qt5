@@ -545,9 +545,8 @@ weston_desktop_surface_get_root_geometry(struct weston_desktop_surface *surface,
 		geometry->y = surface->position.y;
 		if (surface->parent) {
 			struct weston_geometry parent_geometry;
-			weston_desktop_api_get_desktop_surface_root_geometry(
-					surface->parent->desktop, surface->parent,
-					&parent_geometry);
+			weston_desktop_surface_get_root_geometry(
+					surface->parent, &parent_geometry);
 			geometry->x = parent_geometry.x + geometry->x;
 			geometry->y = parent_geometry.y + geometry->y;
 		}

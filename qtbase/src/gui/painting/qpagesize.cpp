@@ -869,7 +869,7 @@ QSizeF QPageSizePrivate::size(QPageSize::Unit units) const
 
 QSize QPageSizePrivate::sizePixels(int resolution) const
 {
-    return qt_convertPointsToPixels(m_pointSize, resolution);;
+    return qt_convertPointsToPixels(m_pointSize, resolution);
 }
 
 
@@ -1207,9 +1207,7 @@ QPageSize &QPageSize::operator=(const QPageSize &other)
 
 /*!
     \fn void QPageSize::swap(QPageSize &other)
-
-    Swaps this QPageSize with \a other. This function is very fast and
-    never fails.
+    \memberswap{QPageSize}
 */
 
 /*!

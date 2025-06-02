@@ -659,11 +659,11 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
 
                 if (!(opt->state & State_Enabled)) {
                     imagePainter.translate(1, 1);
-                    imagePainter.setBrush(opt->palette.light().color());
+                    imagePainter.setBrush(opt->palette.light());
                     imagePainter.setPen(opt->palette.light().color());
                     imagePainter.drawPolygon(a);
                     imagePainter.translate(-1, -1);
-                    imagePainter.setBrush(opt->palette.mid().color());
+                    imagePainter.setBrush(opt->palette.mid());
                     imagePainter.setPen(opt->palette.mid().color());
                 }
 
@@ -1367,7 +1367,7 @@ void QCommonStyle::drawControl(ControlElement element, const QStyleOption *opt, 
             QPalette pal2 = pb->palette;
             // Correct the highlight color if it is the same as the background
             if (pal2.highlight() == pal2.window())
-                pal2.setColor(QPalette::Highlight, pb->palette.color(QPalette::Active,
+                pal2.setBrush(QPalette::Highlight, pb->palette.brush(QPalette::Active,
                                                                      QPalette::Highlight));
             bool reverse = pb->direction == Qt::RightToLeft;
             if (inverted)
@@ -4443,7 +4443,7 @@ int QCommonStyle::pixelMetric(PixelMetric m, const QStyleOption *opt) const
         ret = int(QStyleHelper::dpiScaled(13, opt));
         break;
     case PM_MessageBoxIconSize:
-#ifdef Q_OS_MAC
+#ifdef Q_OS_APPLE
         if (QGuiApplication::desktopSettingsAware()) {
             ret = 64; // No DPI scaling, it's handled elsewhere.
         } else
@@ -5662,7 +5662,7 @@ QIcon QCommonStyle::standardIcon(StandardPixmap standardIcon, const QStyleOption
     if (!icon.isNull())
         return icon;
 
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_MACOS)
     if (QGuiApplication::desktopSettingsAware()) {
         switch (standardIcon) {
         case SP_DirIcon: {
@@ -5730,7 +5730,7 @@ QIcon QCommonStyle::standardIcon(StandardPixmap standardIcon, const QStyleOption
             break;
         }
     } // if (QGuiApplication::desktopSettingsAware())
-#endif // Q_OS_MAC
+#endif // Q_OS_MACOS
 
     switch (standardIcon) {
 #ifndef QT_NO_IMAGEFORMAT_PNG

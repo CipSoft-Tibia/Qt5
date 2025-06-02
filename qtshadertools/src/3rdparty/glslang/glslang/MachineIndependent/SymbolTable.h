@@ -68,7 +68,6 @@
 #include "../Include/Common.h"
 #include "../Include/intermediate.h"
 #include "../Include/InfoSink.h"
-#include <cstdint>
 
 namespace QtShaderTools {
 namespace glslang {
@@ -190,7 +189,7 @@ public:
             (*memberExtensions)[member].push_back(exts[e]);
     }
     virtual bool hasMemberExtensions() const { return memberExtensions != nullptr; }
-    virtual int getNumMemberExtensions(int member) const
+    virtual int getNumMemberExtensions(int member) const 
     {
         return memberExtensions == nullptr ? 0 : (int)(*memberExtensions)[member].size();
     }
@@ -248,7 +247,8 @@ public:
         TSymbol(name),
         mangledName(*name + '('),
         op(tOp),
-        defined(false), prototyped(false), implicitThis(false), illegalImplicitThis(false), defaultParamCount(0)
+        defined(false), prototyped(false), implicitThis(false), illegalImplicitThis(false), defaultParamCount(0),
+        linkType(ELinkNone)
     {
         returnType.shallowCopy(retType);
         declaredBuiltIn = retType.getQualifier().builtIn;
@@ -328,6 +328,9 @@ public:
 
     virtual void dump(TInfoSink& infoSink, bool complete = false) const override;
 
+    void setExport() { linkType = ELinkExport; }
+    TLinkType getLinkType() const { return linkType; }
+
 protected:
     explicit TFunction(const TFunction&);
     TFunction& operator=(const TFunction&);
@@ -349,6 +352,7 @@ protected:
     int  defaultParamCount;
 
     TSpirvInstruction spirvInst; // SPIR-V instruction qualifiers
+    TLinkType linkType;
 };
 
 //
@@ -573,6 +577,7 @@ public:
 
     void relateToOperator(const char* name, TOperator op);
     void setFunctionExtensions(const char* name, int num, const char* const extensions[]);
+    void setSingleFunctionExtensions(const char* name, int num, const char* const extensions[]);
     void dump(TInfoSink& infoSink, bool complete = false) const;
     TSymbolTableLevel* clone() const;
     void readOnly();
@@ -872,6 +877,12 @@ public:
     {
         for (unsigned int level = 0; level < table.size(); ++level)
             table[level]->setFunctionExtensions(name, num, extensions);
+    }
+
+    void setSingleFunctionExtensions(const char* name, int num, const char* const extensions[])
+    {
+        for (unsigned int level = 0; level < table.size(); ++level)
+            table[level]->setSingleFunctionExtensions(name, num, extensions);
     }
 
     void setVariableExtensions(const char* name, int numExts, const char* const extensions[])

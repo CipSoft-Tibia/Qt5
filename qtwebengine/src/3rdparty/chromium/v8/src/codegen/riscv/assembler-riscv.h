@@ -49,6 +49,7 @@
 #include "src/codegen/riscv/base-assembler-riscv.h"
 #include "src/codegen/riscv/base-riscv-i.h"
 #include "src/codegen/riscv/extension-riscv-a.h"
+#include "src/codegen/riscv/extension-riscv-b.h"
 #include "src/codegen/riscv/extension-riscv-c.h"
 #include "src/codegen/riscv/extension-riscv-d.h"
 #include "src/codegen/riscv/extension-riscv-f.h"
@@ -83,16 +84,16 @@ class Operand {
       : rm_(no_reg), rmode_(rmode) {
     value_.immediate = immediate;
   }
+
+  V8_INLINE explicit Operand(Tagged<Smi> value)
+      : Operand(static_cast<intptr_t>(value.ptr())) {}
+
   V8_INLINE explicit Operand(const ExternalReference& f)
       : rm_(no_reg), rmode_(RelocInfo::EXTERNAL_REFERENCE) {
     value_.immediate = static_cast<intptr_t>(f.address());
   }
 
   explicit Operand(Handle<HeapObject> handle);
-  V8_INLINE explicit Operand(Smi value)
-      : rm_(no_reg), rmode_(RelocInfo::NO_INFO) {
-    value_.immediate = static_cast<intptr_t>(value.ptr());
-  }
 
   static Operand EmbeddedNumber(double number);  // Smi or HeapNumber.
 
@@ -165,6 +166,7 @@ class V8_EXPORT_PRIVATE MemOperand : public Operand {
 class V8_EXPORT_PRIVATE Assembler : public AssemblerBase,
                                     public AssemblerRISCVI,
                                     public AssemblerRISCVA,
+                                    public AssemblerRISCVB,
                                     public AssemblerRISCVF,
                                     public AssemblerRISCVD,
                                     public AssemblerRISCVM,
@@ -288,7 +290,7 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase,
   // This is for calls and branches within generated code.  The serializer
   // has already deserialized the lui/ori instructions etc.
   inline static void deserialization_set_special_target_at(Address location,
-                                                           Code code,
+                                                           Tagged<Code> code,
                                                            Address target);
 
   // Get the size of the special target encoded at 'instruction_payload'.
@@ -463,6 +465,10 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase,
   void dd(Label* label);
 
   Instruction* pc() const { return reinterpret_cast<Instruction*>(pc_); }
+
+  Instruction* InstructionAt(ptrdiff_t offset) const {
+    return reinterpret_cast<Instruction*>(buffer_start_ + offset);
+  }
 
   // Postpone the generation of the trampoline pool for the specified number of
   // instructions.
@@ -745,7 +751,7 @@ class V8_EXPORT_PRIVATE Assembler : public AssemblerBase,
   template <typename T>
   inline void EmitHelper(T x);
 
-  static void disassembleInstr(Instr instr);
+  static void disassembleInstr(uint8_t* pc);
 
   // Labels.
   void print(const Label* L);

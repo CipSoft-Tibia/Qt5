@@ -8,11 +8,11 @@ import 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
 import 'chrome://resources/cr_elements/cr_shared_style.css.js';
 import 'chrome://resources/polymer/v3_0/iron-icon/iron-icon.js';
 
-import {Url} from 'chrome://resources/mojo/url/mojom/url.mojom-webui.js';
+import type {Url} from 'chrome://resources/mojo/url/mojom/url.mojom-webui.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
 import {I18nMixin, loadTimeData} from '../../../i18n_setup.js';
-import {MenuItem, ModuleHeaderElementV2} from '../module_header.js';
+import type {MenuItem, ModuleHeaderElementV2} from '../module_header.js';
 
 import {getTemplate} from './header_tile.html.js';
 
@@ -51,6 +51,12 @@ export class HistoryClustersHeaderElementV2 extends ElementBase {
         'show-all-button-click', {bubbles: true, composed: true}));
   }
 
+  private onDoneClick_(e: Event) {
+    e.stopPropagation();
+    this.dispatchEvent(
+        new CustomEvent('done-button-click', {bubbles: true, composed: true}));
+  }
+
   private onSuggestClick_(e: Event) {
     e.stopPropagation();
     this.dispatchEvent(
@@ -58,7 +64,6 @@ export class HistoryClustersHeaderElementV2 extends ElementBase {
   }
 
   private onMenuButtonClick_(e: Event) {
-    e.stopPropagation();
     const moduleHeader = this.shadowRoot!.querySelector<ModuleHeaderElementV2>(
         'ntp-module-header-v2')!;
     moduleHeader.showAt(e);
@@ -70,7 +75,7 @@ export class HistoryClustersHeaderElementV2 extends ElementBase {
         {
           action: 'done',
           icon: 'modules:done',
-          text: this.i18n('modulesJourneysDoneButton'),
+          text: this.i18n('modulesHistoryDoneButton'),
         },
         {
           action: 'dismiss',

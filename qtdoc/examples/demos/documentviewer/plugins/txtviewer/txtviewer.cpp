@@ -47,8 +47,8 @@ void TxtViewer::setupTxtUi()
 {
     QMenu *editMenu = addMenu(tr("&Edit"));
     QToolBar *editToolBar = addToolBar(tr("Edit"));
-#ifndef QT_NO_CLIPBOARD
-    const QIcon cutIcon = QIcon::fromTheme("edit-cut"_L1,
+#if QT_CONFIG(clipboard)
+    const QIcon cutIcon = QIcon::fromTheme(QIcon::ThemeIcon::EditCut,
                                            QIcon(":/demos/documentviewer/images/cut.png"_L1));
     QAction *cutAct = new QAction(cutIcon, tr("Cu&t"), this);
     cutAct->setShortcuts(QKeySequence::Cut);
@@ -58,7 +58,7 @@ void TxtViewer::setupTxtUi()
     editMenu->addAction(cutAct);
     editToolBar->addAction(cutAct);
 
-    const QIcon copyIcon = QIcon::fromTheme("edit-copy"_L1,
+    const QIcon copyIcon = QIcon::fromTheme(QIcon::ThemeIcon::EditCopy,
                                             QIcon(":/demos/documentviewer/images/copy.png"_L1));
     QAction *copyAct = new QAction(copyIcon, tr("&Copy"), this);
     copyAct->setShortcuts(QKeySequence::Copy);
@@ -68,7 +68,7 @@ void TxtViewer::setupTxtUi()
     editMenu->addAction(copyAct);
     editToolBar->addAction(copyAct);
 
-    const QIcon pasteIcon = QIcon::fromTheme("edit-paste"_L1,
+    const QIcon pasteIcon = QIcon::fromTheme(QIcon::ThemeIcon::EditPaste,
                                              QIcon(":/demos/documentviewer/images/paste.png"_L1));
     QAction *pasteAct = new QAction(pasteIcon, tr("&Paste"), this);
     pasteAct->setShortcuts(QKeySequence::Paste);
@@ -84,7 +84,7 @@ void TxtViewer::setupTxtUi()
     copyAct->setEnabled(false);
     connect(m_textEdit, &QPlainTextEdit::copyAvailable, cutAct, &QAction::setEnabled);
     connect(m_textEdit, &QPlainTextEdit::copyAvailable, copyAct, &QAction::setEnabled);
-#endif // !QT_NO_CLIPBOARD
+#endif // QT_CONFIG(clipboard)
 
     openFile();
 

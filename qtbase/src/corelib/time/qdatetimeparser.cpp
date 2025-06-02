@@ -338,7 +338,7 @@ int QDateTimeParser::sectionPos(int sectionIndex) const
     return sectionPos(sectionNode(sectionIndex));
 }
 
-int QDateTimeParser::sectionPos(const SectionNode &sn) const
+int QDateTimeParser::sectionPos(SectionNode sn) const
 {
     switch (sn.type) {
     case FirstSection: return 0;
@@ -945,7 +945,7 @@ QDateTimeParser::parseSection(const QDateTime &currentValue, int sectionIndex, i
                         m_text.insert(offset, QString(missingZeroes, u'0'));
                         ++(const_cast<QDateTimeParser*>(this)->sectionNodes[sectionIndex].zeroesAdded);
                     } else {
-                        result = ParsedSection(Intermediate, lastVal, used);;
+                        result = ParsedSection(Intermediate, lastVal, used);
                     }
                 } else {
                     result = ParsedSection(Acceptable, lastVal, used);
@@ -1000,7 +1000,7 @@ static int yearInCenturyFrom(int y2d, int baseYear)
   when on valid date is consistent with the data.
 */
 
-static QDate actualDate(QDateTimeParser::Sections known, const QCalendar &calendar, int baseYear,
+static QDate actualDate(QDateTimeParser::Sections known, QCalendar calendar, int baseYear,
                         int year, int year2digits, int month, int day, int dayofweek)
 {
     QDate actual(year, month, day, calendar);
@@ -1265,7 +1265,7 @@ QDateTimeParser::scanString(const QDateTime &defaultValue, bool fixup) const
         if (fixup && sect.state == Intermediate && sect.used < sn.count) {
             const FieldInfo fi = fieldInfo(index);
             if ((fi & (Numeric|FixedWidth)) == (Numeric|FixedWidth)) {
-                const QString newText = QString("%1"_L1).arg(sect.value, sn.count, 10, '0'_L1);
+                const QString newText = QString::asprintf("%0*d", sn.count, sect.value);
                 m_text.replace(pos, sect.used, newText);
                 sect.used = sn.count;
             }
@@ -1350,7 +1350,9 @@ QDateTimeParser::scanString(const QDateTime &defaultValue, bool fixup) const
         if (year % 100 != year2digits && (isSet & YearSection2Digits)) {
             const QDate date = actualDate(isSet, calendar, defaultCenturyStart,
                                           year, year2digits, month, day, dayofweek);
-            if (!(isSet & YearSection)) {
+            if (!date.isValid()) {
+                state = Invalid;
+            } else if (!(isSet & YearSection)) {
                 year = date.year();
             } else {
                 conflicts = true;
@@ -1612,16 +1614,11 @@ QDateTimeParser::parse(const QString &input, int position,
                 }
             }
         } else {
-            if (context == FromString) {
-                // optimization
-                Q_ASSERT(maximum.date().toJulianDay() == 5373484);
-                if (scan.value.date().toJulianDay() > 5373484)
-                    scan.state = Invalid;
-            } else if (scan.value > maximum) {
+            if (scan.value > maximum)
                 scan.state = Invalid;
-            }
 
-            QDTPDEBUG << "not checking intermediate because scanned value is" << scan.value << minimum << maximum;
+            QDTPDEBUG << "not checking intermediate because scanned value is"
+                      << scan.value << minimum << maximum;
         }
     }
 
@@ -1642,7 +1639,7 @@ QDateTimeParser::parse(const QString &input, int position,
   length of overlap in *used (if \a used is non-NULL) and the first entry that
   overlapped this much in *usedText (if \a usedText is non-NULL).
  */
-static int findTextEntry(const QString &text, const ShortVector<QString> &entries, QString *usedText, int *used)
+static int findTextEntry(QStringView text, const ShortVector<QString> &entries, QString *usedText, int *used)
 {
     if (text.isEmpty())
         return -1;
@@ -1679,7 +1676,7 @@ static int findTextEntry(const QString &text, const ShortVector<QString> &entrie
   match. Starting from \a index; str should already by lowered
 */
 
-int QDateTimeParser::findMonth(const QString &str1, int startMonth, int sectionIndex,
+int QDateTimeParser::findMonth(QStringView str, int startMonth, int sectionIndex,
                                int year, QString *usedMonth, int *used) const
 {
     const SectionNode &sn = sectionNode(sectionIndex);
@@ -1695,11 +1692,11 @@ int QDateTimeParser::findMonth(const QString &str1, int startMonth, int sectionI
     for (int month = startMonth; month <= 12; ++month)
         monthNames.append(calendar.monthName(l, month, year, type));
 
-    const int index = findTextEntry(str1, monthNames, usedMonth, used);
+    const int index = findTextEntry(str, monthNames, usedMonth, used);
     return index < 0 ? index : index + startMonth;
 }
 
-int QDateTimeParser::findDay(const QString &str1, int startDay, int sectionIndex, QString *usedDay, int *used) const
+int QDateTimeParser::findDay(QStringView str, int startDay, int sectionIndex, QString *usedDay, int *used) const
 {
     const SectionNode &sn = sectionNode(sectionIndex);
     if (!(sn.type & DaySectionMask)) {
@@ -1714,7 +1711,7 @@ int QDateTimeParser::findDay(const QString &str1, int startDay, int sectionIndex
     for (int day = startDay; day <= 7; ++day)
         daysOfWeek.append(l.dayName(day, type));
 
-    const int index = findTextEntry(str1, daysOfWeek, usedDay, used);
+    const int index = findTextEntry(str, daysOfWeek, usedDay, used);
     return index < 0 ? index : index + startDay;
 }
 
@@ -2316,8 +2313,8 @@ QString QDateTimeParser::getAmPmText(AmPm ap, Case cs) const
     QString raw = ap == AmText ? loc.amText() : loc.pmText();
     switch (cs)
     {
-    case UpperCase: return raw.toUpper();
-    case LowerCase: return raw.toLower();
+    case UpperCase: return std::move(raw).toUpper();
+    case LowerCase: return std::move(raw).toLower();
     case NativeCase: return raw;
     }
     Q_UNREACHABLE_RETURN(raw);
@@ -2325,11 +2322,9 @@ QString QDateTimeParser::getAmPmText(AmPm ap, Case cs) const
 
 /*
   \internal
-
-  I give arg2 preference because arg1 is always a QDateTime.
 */
 
-bool operator==(const QDateTimeParser::SectionNode &s1, const QDateTimeParser::SectionNode &s2)
+bool operator==(QDateTimeParser::SectionNode s1, QDateTimeParser::SectionNode s2)
 {
     return (s1.type == s2.type) && (s1.pos == s2.pos) && (s1.count == s2.count);
 }
@@ -2338,7 +2333,7 @@ bool operator==(const QDateTimeParser::SectionNode &s1, const QDateTimeParser::S
   Sets \a cal as the calendar to use. The default is Gregorian.
 */
 
-void QDateTimeParser::setCalendar(const QCalendar &cal)
+void QDateTimeParser::setCalendar(QCalendar cal)
 {
     calendar = cal;
 }

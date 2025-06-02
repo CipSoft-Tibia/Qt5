@@ -1,9 +1,11 @@
-                                           /*
-* Copyright 2023 Google Inc.
-*
-* Use of this source code is governed by a BSD-style license that can be
-* found in the LICENSE file.
-*/
+/*
+ * Copyright 2023 Google Inc.
+ *
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
+
+#include "include/private/base/SkDebug.h"
 #include "modules/skunicode/src/SkUnicode_hardcoded.h"
 #include <algorithm>
 #include <array>
@@ -80,11 +82,31 @@ bool SkUnicodeHardCodedCharProperties::isTabulation(SkUnichar utf8) {
 }
 
 bool SkUnicodeHardCodedCharProperties::isHardBreak(SkUnichar utf8) {
-    return utf8 == '\n';
+    return utf8 == '\n' || utf8 == u'\u2028';
 }
 
 bool SkUnicodeHardCodedCharProperties::isEmoji(SkUnichar unichar) {
-    SkDEBUGFAIL("Not implemented");
+    SkDEBUGFAIL("isEmoji Not implemented");
+    return false;
+}
+
+bool SkUnicodeHardCodedCharProperties::isEmojiComponent(SkUnichar utf8)  {
+    SkDEBUGFAIL("isEmojiComponent Not implemented");
+    return false;
+}
+
+bool SkUnicodeHardCodedCharProperties::isEmojiModifier(SkUnichar utf8)  {
+    SkDEBUGFAIL("isEmojiModifier Not implemented");
+    return false;
+}
+
+bool SkUnicodeHardCodedCharProperties::isEmojiModifierBase(SkUnichar utf8) {
+    SkDEBUGFAIL("isEmojiModifierBase Not implemented");
+    return false;
+}
+
+bool SkUnicodeHardCodedCharProperties::isRegionalIndicator(SkUnichar unichar) {
+    SkDEBUGFAIL("isRegionalIndicator Not implemented");
     return false;
 }
 
@@ -106,5 +128,3 @@ bool SkUnicodeHardCodedCharProperties::isIdeographic(SkUnichar unichar) {
     }
     return false;
 }
-
-

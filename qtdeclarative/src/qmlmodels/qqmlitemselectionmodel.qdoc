@@ -3,7 +3,7 @@
 
 /*!
     \qmltype ItemSelectionModel
-    \instantiates QItemSelectionModel
+    \nativetype QItemSelectionModel
     \inqmlmodule QtQml.Models
     \since 5.5
     \ingroup qtquick-models
@@ -41,10 +41,13 @@
 */
 
 /*!
-    \qmlproperty QModelIndexList ItemSelectionModel::selectedIndexes
+    \qmlproperty list<var> ItemSelectionModel::selectedIndexes
     \readonly
 
-    Contains the list of all the indexes in the selection model.
+    Contains the list of all the indexes (QModelIndex instances) in
+    the selection model.
+
+    \sa {QModelIndexList Type}
 */
 
 /*!
@@ -88,21 +91,21 @@
 */
 
 /*!
-    \qmlmethod QModelIndexList ItemSelectionModel::selectedRows(int column)
+    \qmlmethod list<var> ItemSelectionModel::selectedRows(int column)
 
-    Returns the indexes in the given \a column for the rows where all columns
-    are selected.
+    Returns the indexes (a list of QModelIndex instances) in the given \a column
+    for the rows where all columns are selected.
 
-    \sa selectedColumns()
+    \sa selectedColumns(), {QModelIndexList Type}
 */
 
 /*!
-    \qmlmethod QModelIndexList ItemSelectionModel::selectedColumns(int row)
+    \qmlmethod list<var> ItemSelectionModel::selectedColumns(int row)
 
-    Returns the indexes in the given \a row for columns where all rows are
-    selected.
+    Returns the indexes (a list of QModelIndex instances) in the given \a row for
+    columns where all rows are selected.
 
-    \sa selectedRows()
+    \sa selectedRows(), {QModelIndexList Type}
 */
 
 /*!

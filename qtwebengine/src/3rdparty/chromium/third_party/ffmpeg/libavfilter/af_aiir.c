@@ -26,7 +26,9 @@
 #include "libavutil/xga_font_data.h"
 #include "audio.h"
 #include "avfilter.h"
+#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct ThreadData {
     AVFrame *in, *out;
@@ -1307,7 +1309,7 @@ static int config_output(AVFilterLink *outlink)
         av_log(ctx, AV_LOG_WARNING, "transfer function coefficients format is not recommended for too high number of zeros/poles.\n");
 
     if (s->format > 0 && s->process == 0) {
-        av_log(ctx, AV_LOG_WARNING, "Direct processsing is not recommended for zp coefficients format.\n");
+        av_log(ctx, AV_LOG_WARNING, "Direct processing is not recommended for zp coefficients format.\n");
 
         ret = convert_zp2tf(ctx, inlink->ch_layout.nb_channels);
         if (ret < 0)

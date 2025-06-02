@@ -105,6 +105,7 @@ public:
         AcceptMatch = 3,
         AcceptNewBaseline = 4,
         AcceptMismatch = 5,
+        FinalizeTesting = 6,
         // Responses
         Ack = 128,
         Abort = 129,
@@ -115,12 +116,14 @@ public:
     // For client:
 
     // For advanced client:
-    bool connect(const QString &testCase, bool *dryrun = nullptr, const PlatformInfo& clientInfo = PlatformInfo());
+    bool connect(const QString &testCase, bool *dryrun = nullptr,
+                 const PlatformInfo &clientInfo = PlatformInfo(), const QString &server = QString());
     bool disconnect();
     bool requestBaselineChecksums(const QString &testFunction, ImageItemList *itemList);
     bool submitMatch(const ImageItem &item, QByteArray *serverMsg);
     bool submitNewBaseline(const ImageItem &item, QByteArray *serverMsg);
     bool submitMismatch(const ImageItem &item, QByteArray *serverMsg, bool *fuzzyMatch = nullptr);
+    bool finalizeTesting(QByteArray *serverMsg);
 
     // For server:
     bool acceptConnection(PlatformInfo *pi);

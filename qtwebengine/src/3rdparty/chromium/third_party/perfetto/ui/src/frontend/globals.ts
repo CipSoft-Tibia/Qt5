@@ -14,6 +14,13 @@
 
 import {BigintMath} from '../base/bigint_math';
 import {assertExists} from '../base/logging';
+import {
+  duration,
+  Span,
+  Time,
+  time,
+  TimeSpan,
+} from '../base/time';
 import {Actions, DeferredAction} from '../common/actions';
 import {AggregateData} from '../common/aggregation_data';
 import {Args} from '../common/arg_types';
@@ -22,7 +29,6 @@ import {
   ConversionJobName,
   ConversionJobStatus,
 } from '../common/conversion_jobs';
-import {Engine} from '../common/engine';
 import {
   HighPrecisionTime,
   HighPrecisionTimeSpan,
@@ -37,22 +43,17 @@ import {
   RESOLUTION_DEFAULT,
   State,
 } from '../common/state';
-import {
-  duration,
-  Span,
-  Time,
-  time,
-  TimeSpan,
-  TimestampFormat,
-  timestampFormat,
-} from '../common/time';
+import {TimestampFormat, timestampFormat} from '../common/timestamp_format';
 import {setPerfHooks} from '../core/perf';
 import {raf} from '../core/raf_scheduler';
+import {Engine} from '../trace_processor/engine';
+import {HttpRpcState} from '../trace_processor/http_rpc_engine';
 
 import {Analytics, initAnalytics} from './analytics';
 import {BottomTabList} from './bottom_tab';
-import {FrontendLocalState} from './frontend_local_state';
+import {Timeline} from './frontend_local_state';
 import {Router} from './router';
+import {horizontalScrollToTs} from './scroll_helper';
 import {ServiceWorkerController} from './service_worker_controller';
 import {SliceSqlId} from './sql_types';
 import {createStore, Store} from './store';
@@ -124,6 +125,9 @@ export interface Flow {
   begin: FlowPoint;
   end: FlowPoint;
   dur: duration;
+
+  // Whether this flow connects a slice with its descendant.
+  flowToDescendant: boolean;
 
   category?: string;
   name?: string;
@@ -231,6 +235,8 @@ export interface MakeSelectionOpts {
   clearSearch?: boolean;
 }
 
+type OpenQueryHandler = (query: string, title: string, tag?: string) => void;
+
 /**
  * Global accessors for state/dispatch in the frontend.
  */
@@ -242,7 +248,7 @@ class Globals {
   private _testing = false;
   private _dispatch?: Dispatch = undefined;
   private _store?: Store<State>;
-  private _frontendLocalState?: FrontendLocalState = undefined;
+  private _timeline?: Timeline = undefined;
   private _serviceWorkerController?: ServiceWorkerController = undefined;
   private _logging?: Analytics = undefined;
   private _isInternalUser: boolean|undefined = undefined;
@@ -274,6 +280,15 @@ class Globals {
   private _ftraceCounters?: FtraceStat[] = undefined;
   private _ftracePanelData?: FtracePanelData = undefined;
   private _cmdManager?: CommandManager = undefined;
+  private _realtimeOffset = Time.ZERO;
+  private _utcOffset = Time.ZERO;
+  private _traceTzOffset = Time.ZERO;
+  private _openQueryHandler?: OpenQueryHandler;
+
+  scrollToTrackKey?: string|number;
+  httpRpcState: HttpRpcState = {connected: false};
+  newVersionAvailable = false;
+  showPanningHint = false;
 
   // TODO(hjd): Remove once we no longer need to update UUID on redraw.
   private _publishRedraw?: () => void = undefined;
@@ -282,7 +297,7 @@ class Globals {
     sliceIds: new Float64Array(0),
     tsStarts: new BigInt64Array(0),
     utids: new Float64Array(0),
-    trackIds: [],
+    trackKeys: [],
     sources: [],
     totalResults: 0,
   };
@@ -301,18 +316,17 @@ class Globals {
     this._router = router;
     this._store = createStore(initialState);
     this._cmdManager = cmdManager;
-    this._frontendLocalState = new FrontendLocalState();
+    this._timeline = new Timeline();
 
     setPerfHooks(
         () => this.state.perfDebug,
         () => this.dispatch(Actions.togglePerfDebug({})));
 
-    raf.beforeRedraw = () => this.frontendLocalState.clearVisibleTracks();
-    raf.afterRedraw = () => this.frontendLocalState.sendVisibleTracks();
-
     this._serviceWorkerController = new ServiceWorkerController();
     this._testing =
+        /* eslint-disable @typescript-eslint/strict-boolean-expressions */
         self.location && self.location.search.indexOf('testing=1') >= 0;
+    /* eslint-enable */
     this._logging = initAnalytics();
 
     // TODO(hjd): Unify trackDataStore, queryResults, overviewStore, threads.
@@ -368,8 +382,8 @@ class Globals {
     }
   }
 
-  get frontendLocalState() {
-    return assertExists(this._frontendLocalState);
+  get timeline() {
+    return assertExists(this._timeline);
   }
 
   get logging() {
@@ -588,7 +602,7 @@ class Globals {
     // levels. Logic: each zoom level represents a delta of 0.1 * (visible
     // window span). Therefore, zooming out by six levels is 1.1^6 ~= 2.
     // Similarily, zooming in six levels is 0.9^6 ~= 0.5.
-    const timeScale = this.frontendLocalState.visibleTimeScale;
+    const timeScale = this.timeline.visibleTimeScale;
     // TODO(b/186265930): Remove once fixed:
     if (timeScale.pxSpan.delta === 0) {
       console.error(`b/186265930: Bad pxToSec suppressed`);
@@ -645,7 +659,7 @@ class Globals {
   resetForTesting() {
     this._dispatch = undefined;
     this._store = undefined;
-    this._frontendLocalState = undefined;
+    this._timeline = undefined;
     this._serviceWorkerController = undefined;
 
     // TODO(hjd): Unify trackDataStore, queryResults, overviewStore, threads.
@@ -662,7 +676,7 @@ class Globals {
       sliceIds: new Float64Array(0),
       tsStarts: new BigInt64Array(0),
       utids: new Float64Array(0),
-      trackIds: [],
+      trackKeys: [],
       sources: [],
       totalResults: 0,
     };
@@ -725,16 +739,43 @@ class Globals {
   // How many pixels to use for one quanta of horizontal resolution
   get quantPx(): number {
     const quantPx = (self as {} as {quantPx: number | undefined}).quantPx;
-    if (quantPx) {
-      return quantPx;
-    } else {
-      // Default to 1px per quanta if not defined
-      return 1;
-    }
+    return quantPx ?? 1;
   }
 
   get commandManager(): CommandManager {
     return assertExists(this._cmdManager);
+  }
+
+
+  // This is the ts value at the time of the Unix epoch.
+  // Normally some large negative value, because the unix epoch is normally in
+  // the past compared to ts=0.
+  get realtimeOffset(): time {
+    return this._realtimeOffset;
+  }
+
+  set realtimeOffset(time: time) {
+    this._realtimeOffset = time;
+  }
+
+  // This is the timestamp that we should use for our offset when in UTC mode.
+  // Usually the most recent UTC midnight compared to the trace start time.
+  get utcOffset(): time {
+    return this._utcOffset;
+  }
+
+  set utcOffset(offset: time) {
+    this._utcOffset = offset;
+  }
+
+  // Trace TZ is like UTC but keeps into account also the timezone_off_mins
+  // recorded into the trace, to show timestamps in the device local time.
+  get traceTzOffset(): time {
+    return this._traceTzOffset;
+  }
+
+  set traceTzOffset(offset: time) {
+    this._traceTzOffset = offset;
   }
 
   // Offset between t=0 and the configured time domain.
@@ -743,10 +784,14 @@ class Globals {
     switch (fmt) {
       case TimestampFormat.Timecode:
       case TimestampFormat.Seconds:
-        return globals.state.traceTime.start;
+        return this.state.traceTime.start;
       case TimestampFormat.Raw:
       case TimestampFormat.RawLocale:
         return Time.ZERO;
+      case TimestampFormat.UTC:
+        return this.utcOffset;
+      case TimestampFormat.TraceTz:
+        return this.traceTzOffset;
       default:
         const x: never = fmt;
         throw new Error(`Unsupported format ${x}`);
@@ -780,6 +825,7 @@ class Globals {
       }
     } else if (selection.kind === 'THREAD_STATE') {
       const threadState = this.threadStateDetails;
+      // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
       if (threadState.ts && threadState.dur) {
         start = threadState.ts;
         end = Time.add(start, threadState.dur);
@@ -789,6 +835,7 @@ class Globals {
       end = selection.rightTs;
     } else if (selection.kind === 'AREA') {
       const selectedArea = this.state.areas[selection.areaId];
+      // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
       if (selectedArea) {
         start = selectedArea.start;
         end = selectedArea.end;
@@ -797,6 +844,7 @@ class Globals {
       const selectedNote = this.state.notes[selection.id];
       // Notes can either be default or area notes. Area notes are handled
       // above in the AREA case.
+      // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
       if (selectedNote && selectedNote.noteType === 'DEFAULT') {
         start = selectedNote.timestamp;
         end = Time.add(selectedNote.timestamp, INSTANT_FOCUS_DURATION);
@@ -813,6 +861,26 @@ class Globals {
     }
 
     return {start, end};
+  }
+
+  // The implementation of the query results tab is not part of the core so we
+  // decouple globals from the implementation using this registration interface.
+  // Once we move the implementation to a plugin, this decoupling will be
+  // simpler as we just need to call a command with a well-known ID, and a
+  // plugin will provide the implementation.
+  registerOpenQueryHandler(cb: OpenQueryHandler) {
+    this._openQueryHandler = cb;
+  }
+
+  // Runs a query and displays results in a new tab.
+  // Queries will override previously opened queries with the same tag.
+  // If the tag is omitted, the results will always open in a new tab.
+  openQuery(query: string, title: string, tag?: string) {
+    assertExists(this._openQueryHandler)(query, title, tag);
+  }
+
+  panToTimestamp(ts: time): void {
+    horizontalScrollToTs(ts);
   }
 }
 

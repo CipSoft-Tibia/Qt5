@@ -9,6 +9,7 @@
 #include <QtQuick/private/qquickitemchangelistener_p.h>
 #include <QtQuickTemplates2/private/qquickpopup_p.h>
 #include <QtQuickTemplates2/private/qquickpopupitem_p_p.h>
+#include <QtQuickTemplates2/private/qquickpopupwindow_p_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -38,18 +39,49 @@ Q_LOGGING_CATEGORY(lcAttached, "qt.quick.controls.attachedpropertypropagator")
     as it is better suited for that use case, and is more efficient in that
     it only requires one QObject.
 
-    To use QQuickAttachedPropertyPropagator:
-    \list
-    \li Derive from it
-    \li Call \l initialize() in the constructor
-    \li Define set/inherit/propagate/reset functions for each property as needed
-    \li Reimplement \l attachedParentChange() to handle property inheritance
+    To implement a custom attached property:
+
+    \list 1
+    \li Derive a class that exposes the attached property from
+        QQuickAttachedPropertyPropagator.
+
+        For example, to implement an attached \c {MyStyle.theme} property,
+        declare the \c {MyStyle} class:
+
+        \quotefromfile ../../examples/quickcontrols/attachedstyleproperties/MyStyle/mystyle.h
+        \skipto class
+        \printto {
+
+    \li Call \l initialize() in the constructor of your class:
+
+        \quotefromfile ../../examples/quickcontrols/attachedstyleproperties/MyStyle/mystyle.cpp
+        \skipto MyStyle::MyStyle
+        \printuntil }
+
+    \li Define set/inherit/propagate/reset functions for the attached property
+        as needed. For example, to define a \c theme attached property:
+
+        \quotefromfile ../../examples/quickcontrols/attachedstyleproperties/MyStyle/mystyle.cpp
+        \skipto theme()
+        \printto MyStyle::themeChange()
+
+    \li Reimplement \l attachedParentChange() to handle property inheritance:
+
+        \quotefromfile ../../examples/quickcontrols/attachedstyleproperties/MyStyle/mystyle.cpp
+        \skipto attachedParentChange
+        \printuntil /^\}/
+
     \li Implement a static \c qmlAttachedProperties function and declare the
         type as an attached QML type with \l QML_ELEMENT and \l QML_ATTACHED,
-        as detailed in \l {Providing Attached Properties}
+        as detailed in \l {Providing Attached Properties}:
+
+        \quotefromfile ../../examples/quickcontrols/attachedstyleproperties/MyStyle/mystyle.cpp
+        \skipto qmlAttachedProperties
+        \printuntil }
+
     \endlist
 
-    For an example that demonstrates this in depth, see
+    The complete implementation is available in
     \l {Qt Quick Controls - Attached Style Properties Example}.
 
     \sa {Styling Qt Quick Controls}
@@ -145,7 +177,13 @@ static QQuickAttachedPropertyPropagator *findAttachedParent(const QMetaObject *o
         QQuickPopup *popup = qobject_cast<QQuickPopup *>(objectWeAreAttachedTo);
         if (popup) {
             qCDebug(lcAttached).noquote() << "- attachee is a popup; checking its window";
-            return attachedObject(ourAttachedType, popup->popupItem()->window());
+            auto* popupWindow = popup->popupItem()->window();
+            auto *object = attachedObject(ourAttachedType, popupWindow);
+            // Check if the attached object exists for the popup window. If it
+            // doesn't, use transient parent attached object
+            if (!object && qobject_cast<QQuickPopupWindow *>(popupWindow))
+                return attachedObject(ourAttachedType, popupWindow->transientParent());
+            return object;
         }
     }
 
@@ -282,17 +320,6 @@ void QQuickAttachedPropertyPropagatorPrivate::detachFrom(QObject *object)
     }
 }
 
-static QString debugName(QQuickAttachedPropertyPropagator *attached)
-{
-    QString string;
-    QDebug stream(&string);
-    if (!attached)
-        stream << "(null)";
-    else
-        stream.nospace().noquote() << attached << " (which is attached to " << attached->parent() << ')';
-    return string;
-}
-
 /*!
     \internal
 
@@ -318,14 +345,14 @@ void QQuickAttachedPropertyPropagatorPrivate::setAttachedParent(QQuickAttachedPr
         return;
 
     QQuickAttachedPropertyPropagator *oldParent = attachedParent;
-    qCDebug(lcAttached).noquote() << "setAttachedParent called on" << debugName(q) << "with parent" << debugName(parent);
+    qCDebug(lcAttached).noquote() << "setAttachedParent called on" << q << "with parent" << parent;
     if (attachedParent) {
-        qCDebug(lcAttached).noquote() << "- removing ourselves as an attached child of" << debugName(attachedParent);
+        qCDebug(lcAttached).noquote() << "- removing ourselves as an attached child of" << attachedParent;
         QQuickAttachedPropertyPropagatorPrivate::get(attachedParent)->attachedChildren.removeOne(q);
     }
     attachedParent = parent;
     if (parent) {
-        qCDebug(lcAttached).noquote() << "- adding ourselves as an attached child of" << debugName(parent);
+        qCDebug(lcAttached).noquote() << "- adding ourselves as an attached child of" << parent;
         QQuickAttachedPropertyPropagatorPrivate::get(parent)->attachedChildren.append(q);
     }
     q->attachedParentChange(parent, oldParent);
@@ -352,6 +379,7 @@ void QQuickAttachedPropertyPropagatorPrivate::itemWindowChanged(QQuickWindow *wi
     Q_Q(QQuickAttachedPropertyPropagator);
     QQuickAttachedPropertyPropagator *attachedParent = nullptr;
     qCDebug(lcAttached).noquote() << "window of" << q << "changed to" << window;
+
     attachedParent = findAttachedParent(firstCppMetaObject(q), q->parent());
     if (!attachedParent)
         attachedParent = attachedObject(firstCppMetaObject(q), window);
@@ -484,6 +512,22 @@ void QQuickAttachedPropertyPropagator::attachedParentChange(QQuickAttachedProper
     Q_UNUSED(newParent);
     Q_UNUSED(oldParent);
 }
+
+#ifndef QT_NO_DEBUG_STREAM
+QDebug operator<<(QDebug debug, const QQuickAttachedPropertyPropagator *propagator)
+{
+    QDebugStateSaver saver(debug);
+    debug.nospace().noquote();
+    if (!propagator) {
+        debug << "QQuickAttachedPropertyPropagator(nullptr)";
+        return debug;
+    }
+
+    // Cast to QObject to avoid recursion.
+    debug << static_cast<const QObject *>(propagator) << " (which is attached to " << propagator->parent() << ')';
+    return debug;
+}
+#endif
 
 QT_END_NAMESPACE
 

@@ -74,12 +74,27 @@ void tst_series::initializeProperties()
 {
     QVERIFY(m_series);
 
+    QSignalSpy dataProxySpy(m_series, &QScatter3DSeries::dataProxyChanged);
+    QSignalSpy selectedItemSpy(m_series, &QScatter3DSeries::selectedItemChanged);
+    QSignalSpy itemSizeSpy(m_series, &QScatter3DSeries::itemSizeChanged);
+    QSignalSpy dataArraySpy(m_series, &QScatter3DSeries::dataArrayChanged);
+
     m_series->setDataProxy(new QScatterDataProxy());
     m_series->setItemSize(0.5f);
     m_series->setSelectedItem(0);
 
     QCOMPARE(m_series->itemSize(), 0.5f);
     QCOMPARE(m_series->selectedItem(), 0);
+
+    QCOMPARE(dataProxySpy.size(), 1);
+    QCOMPARE(itemSizeSpy.size(), 1);
+    QCOMPARE(selectedItemSpy.size(), 1);
+
+    QScatterDataArray data;
+    data << QScatterDataItem(0.5f, 0.5f, 0.5f) << QScatterDataItem(1.0f, 1.0f, 1.0f);
+    m_series->setDataArray(data);
+
+    QCOMPARE(dataArraySpy.size(), 1);
 
     // Common properties. The ones identical between different series are tested in QBar3DSeries tests
     m_series->setMesh(QAbstract3DSeries::Mesh::Point);

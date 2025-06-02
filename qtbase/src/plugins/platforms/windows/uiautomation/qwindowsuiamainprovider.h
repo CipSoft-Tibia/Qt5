@@ -14,21 +14,20 @@
 #include <QtCore/qmutex.h>
 #include <QtCore/qt_windows.h>
 #include <QtGui/qaccessible.h>
+#include <QtCore/private/qcomptr_p.h>
 
 QT_BEGIN_NAMESPACE
 
 // The main UI Automation class.
 class QWindowsUiaMainProvider :
     public QWindowsUiaBaseProvider,
-    public IRawElementProviderSimple,
-    public IRawElementProviderFragment,
-    public IRawElementProviderFragmentRoot
+    public QComObject<IRawElementProviderSimple, IRawElementProviderFragment, IRawElementProviderFragmentRoot>
 {
     Q_OBJECT
     Q_DISABLE_COPY_MOVE(QWindowsUiaMainProvider)
 public:
-    static QWindowsUiaMainProvider *providerForAccessible(QAccessibleInterface *accessible);
-    explicit QWindowsUiaMainProvider(QAccessibleInterface *a, int initialRefCount = 1);
+    static ComPtr<QWindowsUiaMainProvider> providerForAccessible(QAccessibleInterface *accessible);
+    explicit QWindowsUiaMainProvider(QAccessibleInterface *a);
     virtual ~QWindowsUiaMainProvider();
     static void notifyFocusChange(QAccessibleEvent *event);
     static void notifyStateChange(QAccessibleStateChangeEvent *event);
@@ -36,11 +35,10 @@ public:
     static void notifyNameChange(QAccessibleEvent *event);
     static void notifySelectionChange(QAccessibleEvent *event);
     static void notifyTextChange(QAccessibleEvent *event);
+    static void raiseNotification(QAccessibleAnnouncementEvent *event);
 
     // IUnknown
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, LPVOID *iface) override;
-    ULONG STDMETHODCALLTYPE AddRef() override;
-    ULONG STDMETHODCALLTYPE Release() override;
 
     // IRawElementProviderSimple methods
     HRESULT STDMETHODCALLTYPE get_ProviderOptions(ProviderOptions *pRetVal) override;
@@ -61,10 +59,11 @@ public:
     HRESULT STDMETHODCALLTYPE GetFocus(IRawElementProviderFragment **pRetVal) override;
 
 private:
-    QString automationIdForAccessible(const QAccessibleInterface *accessible);
     static void fillVariantArrayForRelation(QAccessibleInterface *accessible, QAccessible::Relation relation, VARIANT *pRetVal);
-    ULONG m_ref;
-    static QMutex m_mutex;
+    static void setAriaProperties(QAccessibleInterface *accessible, VARIANT *pRetVal);
+    static void setStyle(QAccessibleInterface *accessible, VARIANT *pRetVal);
+    /** Returns the UIA style ID for a heading level from 1 to 9. */
+    static int styleIdForHeadingLevel(int headingLevel);
 };
 
 QT_END_NAMESPACE

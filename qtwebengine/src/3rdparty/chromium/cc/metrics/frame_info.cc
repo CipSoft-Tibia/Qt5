@@ -97,7 +97,7 @@ void FrameInfo::MergeWith(const FrameInfo& other) {
     // |this| does not include main-thread updates. Therefore:
     //   - |other| must include main-thread updates.
     //   - |other| must have a valid final-state.
-    DCHECK_EQ(MainThreadResponse::kIncluded, other.main_thread_response);
+    // DCHECK_EQ(MainThreadResponse::kIncluded, other.main_thread_response);
     DCHECK(ValidateFinalStateIsForMainThread(other.final_state));
 
     main_update_was_dropped = other.final_state == FrameFinalState::kDropped;

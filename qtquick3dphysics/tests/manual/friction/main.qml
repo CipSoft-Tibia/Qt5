@@ -54,6 +54,8 @@ Window {
                 castsShadow: true
                 brightness: 1
                 shadowMapQuality: Light.ShadowMapQualityVeryHigh
+                shadowBias: 0.05
+                pcfFactor: 0.005
             }
 
 
@@ -114,6 +116,7 @@ Window {
         property bool controllingUnit: false
         controlledObject: camera1
         speed: 0.02
+        shiftSpeed: 0.2
 
         Keys.onPressed: (event)=> {
             if (keysEnabled) handleKeyPress(event);

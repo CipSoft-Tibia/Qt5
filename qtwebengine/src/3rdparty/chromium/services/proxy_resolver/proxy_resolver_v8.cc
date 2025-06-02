@@ -242,8 +242,7 @@ bool GetHostnameArgument(const v8::FunctionCallbackInfo<v8::Value>& args,
   // Otherwise try to convert it from IDN to punycode.
   const int kInitialBufferSize = 256;
   url::RawCanonOutputT<char16_t, kInitialBufferSize> punycode_output;
-  if (!url::IDNToASCII(hostname_utf16.data(), hostname_utf16.length(),
-                       &punycode_output)) {
+  if (!url::IDNToASCII(hostname_utf16, &punycode_output)) {
     return false;
   }
 
@@ -760,10 +759,12 @@ class ProxyResolverV8::Context {
     bool terminate = false;
 
     {
+      args.GetIsolate()->Exit();
       v8::Unlocker unlocker(args.GetIsolate());
       success =
           context->js_bindings()->ResolveDns(hostname, op, &result, &terminate);
     }
+    args.GetIsolate()->Enter();
 
     if (terminate)
       args.GetIsolate()->TerminateExecution();

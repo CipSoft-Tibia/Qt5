@@ -39,73 +39,81 @@
         \li \l{3D Surface Graphs}{3D surface graphs}
     \endlist
 
-    The QAbstract3DGraph class subclasses a QQuickWidget and provides a renderer based on
-    QtQuick3D for its own subclasses that implement the different graph types: Q3DBars,
-    Q3DScatter, and Q3DSurface. The graph type determines how the data is
-    presented.
+    The Q3DGraphsWidgetItem class provides a widget API for its own subclasses,
+    Q3DBarsWidgetItem, Q3DScatterWidgetItem, and Q3DSurfaceWidgetItem that
+    implement the different graph types: bars, scatter, and surface.
+    The graph type determines how the data is presented.
+
+    All rendering happens in \c QQuickGraphsItem, which inherits a
+    \c QQuick3DViewport, which in turn offers a \l View3D using QtQuick3D. It
+    has its own subclasses for Bars3D, Scatter3D, and Surface3D.
 
     \section2 3D Bar Graphs
 
     3D bar graphs present data as 3D bars that are grouped by category. The
-    Q3DBars class is used to create a graph, and the QBar3DSeries and
-    QBarDataProxy classes are used to set data to the graph, as well as to
-    control the visual properties of the graph, such as draw mode and shading.
-    In QML, the corresponding types are Bars3D, Bar3DSeries, and BarDataProxy.
+    \l Q3DGraphsWidgetItem class is used to create a graph. The
+    \l QBar3DSeries and \l QBarDataProxy classes are used to set data to the
+    graph and to control the visual properties of the graph, such as draw mode
+    and shading. In QML, the corresponding types are \l Bars3D, \l Bar3DSeries,
+    and \l BarDataProxy.
 
     \image q3dbars-minimal.png
 
-    For more information, see \l{How to construct a minimal Q3DBars graph}, and
-    \l {Simple Bar Graph} examples.
+    For more information, see \l{How to construct a minimal Q3DBarsWidgetItem graph}
+    and \l {Simple Bar Graph} examples.
 
     \section2 3D Scatter Graphs
 
-    3D scatter graphs present data as a collection of points. The Q3DScatter
-    class is used to create a graph, and the QScatter3DSeries and
-    QScatterDataProxy classes are used to set data to the graph, as well as to
-    control the visual properties of the graph. In QML, the corresponding types
-    are Scatter3D, Scatter3DSeries, and ScatterDataProxy.
+    3D scatter graphs present data as a collection of points. The
+    \l Q3DScatterWidgetItem class is used to create a graph. The
+    \l QScatter3DSeries and \l QScatterDataProxy classes are used to set data to
+    the graph and to control the visual properties of the graph. In QML, the
+    corresponding types are \l Scatter3D, \l Scatter3DSeries, and
+    \l ScatterDataProxy.
 
     \image q3dscatter-minimal.png
 
-    For more information, see \l{How to construct a minimal Q3DScatter graph}, and
-    \l{Simple Scatter Graph} examples.
+    For more information, see \l{How to construct a minimal Q3DScatterWidgetItem graph}
+    and \l{Simple Scatter Graph} examples.
 
     \section2 3D Surface Graphs
 
-    3D surface graphs present data as 3D surface plots. The Q3DSurface class is
-    used to create a graph, and the QSurface3DSeries and QSurfaceDataProxy
-    classes are used to set data to the graph, as well as to control the visual
-    properties of the graph. In QML, the corresponding types are Surface3D,
-    Surface3DSeries, and SurfaceDataProxy.
+    3D surface graphs present data as 3D surface plots. The
+    \l Q3DSurfaceWidgetItem class is used to create a graph. The
+    \l QSurface3DSeries and \l QSurfaceDataProxy classes are used to set data to
+    the graph and to control the visual properties of the graph. In QML, the
+    corresponding types are \l Surface3D, \l Surface3DSeries, and
+    \l SurfaceDataProxy.
 
     \image q3dsurface-minimal.png
 
-    For more information, see \l{How to construct a minimal Q3DSurface graph}, \l{Graph Gallery},
-    and \l{Surface Graph Gallery} examples.
+    For more information, see \l{How to construct a minimal Q3DSurfaceWidgetItem graph},
+    \l{Graph Gallery}, and \l{Surface Graph Gallery} examples.
 
     \section1 Using OpenGL ES for Rendering Data
 
-    As Qt Graphs is based on QtQuick3D, it automatically uses the native backend of the target
-    platform for rendering. However, if OpenGL ES2 ends up being used in targets that do not
-    support anything above it, such as OpenGL ES3 or Vulkan, the following features are not
-    supported:
+    Qt Graphs is based on QtQuick3D, that means Qt Graphs uses the native
+    backend of the target platform for rendering. However, if OpenGL ES2 ends up
+    being used in targets that do not support anything above it, such as OpenGL
+    ES3 or Vulkan, the following features are not supported:
 
     \list
         \li Volumetric objects, because they use 3D textures
-        \li Instancing, i.e. QAbstract3DGraph::OptimizationHint::Default does not work, and
-        QAbstract3DGraph::OptimizationHint::Legacy has to be used instead.
+        \li Instancing, that means that \l {QtGraphs3D::OptimizationHint::Default}
+          does not work, and \l {QtGraphs3D::OptimizationHint::Legacy} has to be
+          used instead.
     \endlist
 
     \section1 Selecting Rendering Mode
 
-    In QML, you can set the \l{AbstractGraph3D::renderingMode}
-    {AbstractGraph3D.RenderingMode} property to determine whether the graph will
+    In QML, you can set the \l{GraphsItem3D::renderingMode}
+    {GraphsItem3D.RenderingMode} property to determine whether the graph will
     be rendered directly on the window background or to an offscreen surface
     that is then drawn during normal QML item rendering.
 
     Background rendering modes offer slightly better performance than the
     indirect rendering mode, at the cost of non-standard QML behavior. For
-    example, the graphs do not support anti-aliasing. Therefore, changing
+    example, the graphs do not support antialiasing. Therefore, changing
     the rendering mode is a question of performance versus quality.
 
     Qt Quick uses a dedicated scenegraph for data rendering, and is therefore
@@ -121,18 +129,20 @@
     \endlist
 
     An axis can be set up to show a line or a grid. Both axis types are
-    specializations of the QAbstract3DAxis class or the AbstractAxis3D QML type.
+    specializations of the QAbstract3DAxis class or the Abstract3DAxis QML type.
 
-    A value axis can be given a range of values and segment and subsegment
-    counts to divide the range into. Labels are drawn between each segment.
-    Grid lines are drawn between each segment and each subsegment. The value
-    axis is implemented using the QValue3DAxis class or the ValueAxis3D QML type.
+    For a value axis, you can set a range of values and segment and subsegment
+    counts to divide the range. Labels are drawn between each segment by default.
+    Grid lines are drawn between each segment and each subsegment by default.
+    The value axis is implemented using the \l QValue3DAxis class or the
+    \l Value3DAxis QML type.
 
     A category axis has named ranges and adjustable range widths. It is divided
     into equal-sized categories based on the data window size defined by the
-    axis range. Labels are drawn to the positions of categories, if provided.
-    Grid lines are drawn between categories, if visible. A category axis is
-    implemented using the QCategory3DAxis class or the CategoryAxis3D QML type.
+    axis range. Labels are drawn to the positions of categories by default,
+    if provided. Grid lines are drawn between categories by default. A category
+    axis is implemented using the QCategory3DAxis class or the Category3DAxis
+    QML type.
 
     If no axes are set explicitly for a graph, temporary default axes with no
     labels are created. These default axes can be modified via axis accessors,
@@ -145,43 +155,14 @@
     explicitly defined for the row and column axes.
 
     Axis formatters can be used to customize value axis grid lines and labels.
-    The QValue3DAxisFormatter class and ValueAxis3DFormatter QML type provide
-    formatting rules for a linear value 3D axis. The QLogValue3DAxisFormatter
-    class and the LogValueAxis3DFormatter QML type provide formatting rules for
-    a logarithmic value 3D axis.
+    The \l QValue3DAxisFormatter class and \l Value3DAxisFormatter QML type
+    provide formatting rules for a linear value 3D axis. The
+    \l QLogValue3DAxisFormatter class and the \l LogValue3DAxisFormatter QML
+    type provide formatting rules for a logarithmic value 3D axis.
 
     Polar horizontal axes can be used for surface and scatter graphs by setting
-    the \l{AbstractGraph3D::polar}{polar} property. It can be set for bars as well,
+    the \l{GraphsItem3D::polar}{polar} property. It can be set for bars as well,
     but doing so will produce a warning and be ignored.
-
-    \section1 3D Themes
-
-    A theme is a built-in collection of UI style related settings applied to all
-    the visual elements of a graph, such as the colors, fonts, and visibility of
-    the elements, as well as the strenght of the light and ambient light.
-
-    Qt Graphs comes with the following predefined themes that can be used as
-    basis for custom themes:
-
-    \list
-        \li \e Qt is a light theme with green as the base color.
-        \li \e {Primary colors} is a light theme with yellow as the base color.
-        \li \e {Stone moss} is a medium dark theme with yellow as the base
-            color.
-        \li \e {Army blue} is a medium light theme with blue as the base color.
-        \li \e Retro is a medium light theme with brown as the base color.
-        \li \e Ebony is a dark theme with white as the base color.
-        \li \e Isabelle is a dark theme with yellow as the base color.
-        \li \e {User defined} is the default theme that is meant to be
-            customized. For more information, see \l {Default Theme}.
-    \endlist
-
-    Custom themes can also be created from scratch.
-
-    If a graph displays the data from several data series, some settings can be
-    specified separately for each series. For example, different gradients can
-    be specified for different layers of the graph to make it look more
-    realistic. For an example, see \l{Surface Graph Gallery}.
 
     \section1 Customizing 3D Scenes
 
@@ -191,22 +172,31 @@
 
     \section1 Customizing Items
 
-    Qt Graphs has predefined mesh types for bars and scatter items. The mesh type determines
-    how a bar or a scatter item looks on a graph. In addition to the pre-defined
-    meshes, a user-defined geometry can be specified as a mesh file. For more information,
-    see QAbstract3DSeries::userDefinedMesh().
+    Qt Graphs has predefined mesh types for bars and scatter items. The mesh
+    type determines how a bar or a scatter item looks on a graph. You can also
+    specify a custom geometry as a mesh file. For more information,
+    see \l {QAbstract3DSeries::userDefinedMesh()}.
     For more variety, a quaternion can be set for mesh rotation.
 
-    In addition to customizing individual items, the QCustom3DItem class or the
-    Custom3DItem QML type can be used to add custom items to graphs. The items
-    have custom mesh, position, scaling, rotation, and an optional texture.
+    In addition to customizing individual items, you can use the
+    \l QCustom3DItem class or the \l Custom3DItem QML type to add custom items
+    to graphs. The items have custom mesh, position, scaling, rotation, and an
+    optional texture.
 
-    The QCustom3DVolume class and the Custom3DVolume QML type can be used to
-    create volume-rendered objects to be added to a graph. A volume-rendered
-    object is a box with a 3D texture. Three slice planes are supported for the
-    volume, one along each main axis of the volume.
+    Use the \l QCustom3DVolume class and \l Custom3DVolume QML type to create
+    volume-rendered objects to be added to a graph. A volume-rendered object is
+    a box with a 3D texture. Three slice planes are supported for the volume,
+    one along each main axis of the volume.
 
-    The QCustom3DLabel class and the Custom3DLabel QML type implement custom
-    labels with the specified text, font, position, scaling, and rotation. Label
-    colors, borders, and background are determined by the active theme.
+    The \l QCustom3DLabel class and \l Custom3DLabel QML type implement custom
+    labels with the specified text, font, position, scaling, and rotation. The
+    active theme determines label colors, borders, and background.
+
+    \section1 Handling Custom Input
+
+    Qt Graphs implements default input handlers for typical actions like selecting,
+    rotating, and zooming. To implement custom input handlers instead of the
+    default ones, override the necessary input signals.
+
+    \snippet doc_src_qmlgraphs.cpp 4
 */

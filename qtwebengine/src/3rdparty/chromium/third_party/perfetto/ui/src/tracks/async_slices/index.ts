@@ -12,141 +12,312 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {BigintMath as BIMath} from '../../base/bigint_math';
-import {LONG, LONG_NULL, NUM, STR} from '../../common/query_result';
-import {duration, time} from '../../common/time';
-import {TrackData} from '../../common/track_data';
 import {
-  TrackController,
-} from '../../controller/track_controller';
-import {NewTrackArgs, Track} from '../../frontend/track';
-import {Plugin, PluginContext, PluginInfo} from '../../public';
-import {ChromeSliceTrack} from '../chrome_slices';
+  Plugin,
+  PluginContext,
+  PluginContextTrace,
+  PluginDescriptor,
+} from '../../public';
+import {getTrackName} from '../../public/utils';
+import {
+  NUM,
+  NUM_NULL,
+  STR,
+  STR_NULL,
+} from '../../trace_processor/query_result';
+
+import {AsyncSliceTrack} from './async_slice_track';
+import {AsyncSliceTrackV2} from './async_slice_track_v2';
 
 export const ASYNC_SLICE_TRACK_KIND = 'AsyncSliceTrack';
 
-export interface Config {
-  maxDepth: number;
-  trackIds: number[];
-}
+class AsyncSlicePlugin implements Plugin {
+  onActivate(_ctx: PluginContext) {}
 
-export interface Data extends TrackData {
-  // Slices are stored in a columnar fashion. All fields have the same length.
-  strings: string[];
-  sliceIds: Float64Array;
-  starts: BigInt64Array;
-  ends: BigInt64Array;
-  depths: Uint16Array;
-  titles: Uint16Array;  // Index in |strings|.
-  isInstant: Uint16Array;
-  isIncomplete: Uint16Array;
-}
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    await this.addGlobalAsyncTracks(ctx);
+    await this.addProcessAsyncSliceTracks(ctx);
+    await this.addUserAsyncSliceTracks(ctx);
+  }
 
-class AsyncSliceTrackController extends TrackController<Config, Data> {
-  static readonly kind = ASYNC_SLICE_TRACK_KIND;
-  private maxDurNs: duration = 0n;
+  async addGlobalAsyncTracks(ctx: PluginContextTrace): Promise<void> {
+    const {engine} = ctx;
+    const rawGlobalAsyncTracks = await engine.query(`
+      with tracks_with_slices as materialized (
+        select distinct track_id
+        from slice
+      ),
+      global_tracks as (
+        select
+          track.parent_id as parent_id,
+          track.id as track_id,
+          track.name as name
+        from track
+        join tracks_with_slices on tracks_with_slices.track_id = track.id
+        where
+          track.type = "track"
+          or track.type = "gpu_track"
+          or track.type = "cpu_track"
+      ),
+      global_tracks_grouped as (
+        select
+          parent_id,
+          name,
+          group_concat(track_id) as trackIds,
+          count(track_id) as trackCount
+        from global_tracks track
+        group by parent_id, name
+      )
+      select
+        t.parent_id as parentId,
+        p.name as parentName,
+        t.name as name,
+        t.trackIds as trackIds,
+        max_layout_depth(t.trackCount, t.trackIds) as maxDepth
+      from global_tracks_grouped AS t
+      left join track p on (t.parent_id = p.id)
+      order by p.name, t.name;
+    `);
+    const it = rawGlobalAsyncTracks.iter({
+      name: STR_NULL,
+      parentName: STR_NULL,
+      parentId: NUM_NULL,
+      trackIds: STR,
+      maxDepth: NUM_NULL,
+    });
 
-  async onBoundsChange(start: time, end: time, resolution: duration):
-      Promise<Data> {
-    if (this.maxDurNs === 0n) {
-      const maxDurResult = await this.query(`
-        select max(iif(dur = -1, (SELECT end_ts FROM trace_bounds) - ts, dur))
-        as maxDur from experimental_slice_layout
-        where filter_track_ids = '${this.config.trackIds.join(',')}'
-      `);
-      this.maxDurNs = maxDurResult.firstRow({maxDur: LONG_NULL}).maxDur || 0n;
+    // let scrollJankRendered = false;
+
+    for (; it.valid(); it.next()) {
+      const rawName = it.name === null ? undefined : it.name;
+      // const rawParentName = it.parentName === null ? undefined :
+      // it.parentName;
+      const displayName =
+          getTrackName({name: rawName, kind: ASYNC_SLICE_TRACK_KIND});
+      const rawTrackIds = it.trackIds;
+      const trackIds = rawTrackIds.split(',').map((v) => Number(v));
+      // const parentTrackId = it.parentId;
+      const maxDepth = it.maxDepth;
+
+      // If there are no slices in this track, skip it.
+      if (maxDepth === null) {
+        continue;
+      }
+
+      // if (ENABLE_SCROLL_JANK_PLUGIN_V2.get() && !scrollJankRendered &&
+      //     name.includes(INPUT_LATENCY_TRACK)) {
+      //   // This ensures that the scroll jank tracks render above the tracks
+      //   // for GestureScrollUpdate.
+      //   await this.addScrollJankTracks(this.engine);
+      //   scrollJankRendered = true;
+      // }
+
+      ctx.registerTrack({
+        uri: `perfetto.AsyncSlices#${rawName}.${it.parentId}`,
+        displayName,
+        trackIds,
+        kind: ASYNC_SLICE_TRACK_KIND,
+        track: ({trackKey}) => {
+          return new AsyncSliceTrack(
+              engine,
+              maxDepth,
+              trackKey,
+              trackIds,
+          );
+        },
+      });
+
+      ctx.registerTrack({
+        uri: `perfetto.AsyncSlices#${rawName}.${it.parentId}.v2`,
+        displayName,
+        trackIds,
+        kind: ASYNC_SLICE_TRACK_KIND,
+        track: ({trackKey}) => {
+          return new AsyncSliceTrackV2(
+              {engine, trackKey},
+              maxDepth,
+              trackIds,
+          );
+        },
+      });
     }
+  }
 
-    const queryRes = await this.query(`
-      SELECT
-      (ts + ${resolution / 2n}) / ${resolution} * ${resolution} as tsq,
-        ts,
-        max(iif(dur = -1, (SELECT end_ts FROM trace_bounds) - ts, dur)) as dur,
-        layout_depth as depth,
-        ifnull(name, '[null]') as name,
-        id,
-        dur = 0 as isInstant,
-        dur = -1 as isIncomplete
-      from experimental_slice_layout
-      where
-        filter_track_ids = '${this.config.trackIds.join(',')}' and
-        ts >= ${start - this.maxDurNs} and
-        ts <= ${end}
-      group by tsq, layout_depth
-      order by tsq, layout_depth
+  async addProcessAsyncSliceTracks(ctx: PluginContextTrace): Promise<void> {
+    const result = await ctx.engine.query(`
+      with process_async_tracks as materialized (
+        select
+          process_track.upid as upid,
+          process_track.name as trackName,
+          process.name as processName,
+          process.pid as pid,
+          group_concat(process_track.id) as trackIds,
+          count(1) as trackCount
+        from process_track
+        left join process using(upid)
+        where
+            process_track.name is null or
+            process_track.name not like "% Timeline"
+        group by
+          process_track.upid,
+          process_track.name
+      )
+      select
+        t.*,
+        max_layout_depth(t.trackCount, t.trackIds) as maxDepth
+      from process_async_tracks t;
     `);
 
-    const numRows = queryRes.numRows();
-    const slices: Data = {
-      start,
-      end,
-      resolution,
-      length: numRows,
-      strings: [],
-      sliceIds: new Float64Array(numRows),
-      starts: new BigInt64Array(numRows),
-      ends: new BigInt64Array(numRows),
-      depths: new Uint16Array(numRows),
-      titles: new Uint16Array(numRows),
-      isInstant: new Uint16Array(numRows),
-      isIncomplete: new Uint16Array(numRows),
-    };
-
-    const stringIndexes = new Map<string, number>();
-    function internString(str: string) {
-      let idx = stringIndexes.get(str);
-      if (idx !== undefined) return idx;
-      idx = slices.strings.length;
-      slices.strings.push(str);
-      stringIndexes.set(str, idx);
-      return idx;
-    }
-
-    const it = queryRes.iter({
-      tsq: LONG,
-      ts: LONG,
-      dur: LONG,
-      depth: NUM,
-      name: STR,
-      id: NUM,
-      isInstant: NUM,
-      isIncomplete: NUM,
+    const it = result.iter({
+      upid: NUM,
+      trackName: STR_NULL,
+      trackIds: STR,
+      processName: STR_NULL,
+      pid: NUM_NULL,
+      maxDepth: NUM_NULL,
     });
-    for (let row = 0; it.valid(); it.next(), row++) {
-      const startQ = it.tsq;
-      const start = it.ts;
-      const dur = it.dur;
-      const end = start + dur;
-      const minEnd = startQ + resolution;
-      const endQ = BIMath.max(BIMath.quant(end, resolution), minEnd);
+    for (; it.valid(); it.next()) {
+      const upid = it.upid;
+      const trackName = it.trackName;
+      const rawTrackIds = it.trackIds;
+      const trackIds = rawTrackIds.split(',').map((v) => Number(v));
+      const processName = it.processName;
+      const pid = it.pid;
+      const maxDepth = it.maxDepth;
 
-      slices.starts[row] = startQ;
-      slices.ends[row] = endQ;
-      slices.depths[row] = it.depth;
-      slices.titles[row] = internString(it.name);
-      slices.sliceIds[row] = it.id;
-      slices.isInstant[row] = it.isInstant;
-      slices.isIncomplete[row] = it.isIncomplete;
+      if (maxDepth === null) {
+        // If there are no slices in this track, skip it.
+        continue;
+      }
+
+      const kind = ASYNC_SLICE_TRACK_KIND;
+      const displayName =
+          getTrackName({name: trackName, upid, pid, processName, kind});
+
+      ctx.registerTrack({
+        uri: `perfetto.AsyncSlices#process.${pid}${rawTrackIds}`,
+        displayName,
+        trackIds,
+        kind: ASYNC_SLICE_TRACK_KIND,
+        track: ({trackKey}) => {
+          return new AsyncSliceTrack(
+              ctx.engine,
+              maxDepth,
+              trackKey,
+              trackIds,
+          );
+        },
+      });
+
+      ctx.registerTrack({
+        uri: `perfetto.AsyncSlices#process.${pid}${rawTrackIds}.v2`,
+        displayName,
+        trackIds,
+        kind: ASYNC_SLICE_TRACK_KIND,
+        track: ({trackKey}) => {
+          return new AsyncSliceTrackV2(
+              {engine: ctx.engine, trackKey},
+              maxDepth,
+              trackIds,
+          );
+        },
+      });
     }
-    return slices;
+  }
+
+  async addUserAsyncSliceTracks(ctx: PluginContextTrace): Promise<void> {
+    const {engine} = ctx;
+    const result = await engine.query(`
+      with tracks_with_slices as materialized (
+        select distinct track_id
+        from slice
+      ),
+      global_tracks as (
+        select
+          uid_track.name,
+          uid_track.uid,
+          group_concat(uid_track.id) as trackIds,
+          count(uid_track.id) as trackCount
+        from uid_track
+        join tracks_with_slices
+        where tracks_with_slices.track_id == uid_track.id
+        group by uid_track.uid
+      )
+      select
+        t.name as name,
+        t.uid as uid,
+        package_list.package_name as package_name,
+        t.trackIds as trackIds,
+        max_layout_depth(t.trackCount, t.trackIds) as maxDepth
+      from global_tracks t
+      join package_list
+      where t.uid = package_list.uid
+      group by t.uid
+      `);
+
+    const it = result.iter({
+      name: STR_NULL,
+      uid: NUM_NULL,
+      package_name: STR_NULL,
+      trackIds: STR,
+      maxDepth: NUM_NULL,
+    });
+
+    for (; it.valid(); it.next()) {
+      const kind = ASYNC_SLICE_TRACK_KIND;
+      const rawName = it.name === null ? undefined : it.name;
+      const userName = it.package_name === null ? undefined : it.package_name;
+      const uid = it.uid === null ? undefined : it.uid;
+      const rawTrackIds = it.trackIds;
+      const trackIds = rawTrackIds.split(',').map((v) => Number(v));
+      const maxDepth = it.maxDepth;
+
+      // If there are no slices in this track, skip it.
+      if (maxDepth === null) {
+        continue;
+      }
+
+      const displayName = getTrackName({
+        name: rawName,
+        uid,
+        userName,
+        kind,
+        uidTrack: true,
+      });
+
+      ctx.registerTrack({
+        uri: `perfetto.AsyncSlices#${rawName}.${uid}`,
+        displayName,
+        trackIds,
+        kind: ASYNC_SLICE_TRACK_KIND,
+        track: ({trackKey}) => {
+          return new AsyncSliceTrack(
+              engine,
+              maxDepth,
+              trackKey,
+              trackIds,
+          );
+        },
+      });
+
+      ctx.registerTrack({
+        uri: `perfetto.AsyncSlices#${rawName}.${uid}.v2`,
+        displayName,
+        trackIds,
+        kind: ASYNC_SLICE_TRACK_KIND,
+        track: ({trackKey}) => {
+          return new AsyncSliceTrackV2(
+              {engine, trackKey},
+              maxDepth,
+              trackIds,
+          );
+        },
+      });
+    }
   }
 }
 
-export class AsyncSliceTrack extends ChromeSliceTrack {
-  static readonly kind = ASYNC_SLICE_TRACK_KIND;
-  static create(args: NewTrackArgs): Track {
-    return new AsyncSliceTrack(args);
-  }
-}
-
-class AsyncSlicePlugin implements Plugin {
-  onActivate(ctx: PluginContext) {
-    ctx.registerTrackController(AsyncSliceTrackController);
-    ctx.registerTrack(AsyncSliceTrack);
-  }
-}
-
-export const plugin: PluginInfo = {
+export const plugin: PluginDescriptor = {
   pluginId: 'perfetto.AsyncSlices',
   plugin: AsyncSlicePlugin,
 };

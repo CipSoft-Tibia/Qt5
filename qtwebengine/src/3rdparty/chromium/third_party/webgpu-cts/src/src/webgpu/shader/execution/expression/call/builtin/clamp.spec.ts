@@ -15,91 +15,19 @@ Component-wise when T is a vector.
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
 import { GPUTest } from '../../../../../gpu_test.js';
-import { kValue } from '../../../../../util/constants.js';
-import { ScalarType, TypeF32, TypeI32, TypeU32 } from '../../../../../util/conversion.js';
-import { FP } from '../../../../../util/floating_point.js';
-import { sparseF32Range } from '../../../../../util/math.js';
-import { makeCaseCache } from '../../case_cache.js';
-import { allInputSources, Case, run } from '../../expression.js';
+import {
+  TypeAbstractFloat,
+  TypeF16,
+  TypeF32,
+  TypeI32,
+  TypeU32,
+} from '../../../../../util/conversion.js';
+import { allInputSources, onlyConstInputSource, run } from '../../expression.js';
 
-import { builtin } from './builtin.js';
+import { abstractBuiltin, builtin } from './builtin.js';
+import { d } from './clamp.cache.js';
 
 export const g = makeTestGroup(GPUTest);
-
-const u32Values = [kValue.u32.min, 1, 2, 0x70000000, 0x80000000, kValue.u32.max];
-
-const i32Values = [kValue.i32.negative.min, -2, -1, 0, 1, 2, 0x70000000, kValue.i32.positive.max];
-
-export const d = makeCaseCache('clamp', {
-  u32_non_const: () => {
-    return generateIntegerTestCases(u32Values, TypeU32, 'non-const');
-  },
-  u32_const: () => {
-    return generateIntegerTestCases(u32Values, TypeU32, 'const');
-  },
-  i32_non_const: () => {
-    return generateIntegerTestCases(i32Values, TypeI32, 'non-const');
-  },
-  i32_const: () => {
-    return generateIntegerTestCases(i32Values, TypeI32, 'const');
-  },
-  f32_const: () => {
-    return generateF32TestCases(sparseF32Range(), 'const');
-  },
-  f32_non_const: () => {
-    return generateF32TestCases(sparseF32Range(), 'non-const');
-  },
-});
-
-/** @returns a set of clamp test cases from an ascending list of integer values */
-function generateIntegerTestCases(
-  test_values: Array<number>,
-  type: ScalarType,
-  stage: 'const' | 'non-const'
-): Array<Case> {
-  const cases = new Array<Case>();
-  for (const e of test_values) {
-    for (const low of test_values) {
-      for (const high of test_values) {
-        if (stage === 'const' && low > high) {
-          continue; // This would result in a shader compilation error
-        }
-        cases.push({
-          input: [type.create(e), type.create(low), type.create(high)],
-          expected: type.create(Math.min(Math.max(e, low), high)),
-        });
-      }
-    }
-  }
-  return cases;
-}
-
-function generateF32TestCases(
-  test_values: Array<number>,
-  stage: 'const' | 'non-const'
-): Array<Case> {
-  const cases = new Array<Case>();
-  for (const e of test_values) {
-    for (const low of test_values) {
-      for (const high of test_values) {
-        if (stage === 'const' && low > high) {
-          continue; // This would result in a shader compilation error
-        }
-        const c = FP.f32.makeScalarTripleToIntervalCase(
-          e,
-          low,
-          high,
-          stage === 'const' ? 'finite' : 'unfiltered',
-          ...FP.f32.clampIntervals
-        );
-        if (c !== undefined) {
-          cases.push(c);
-        }
-      }
-    }
-  }
-  return cases;
-}
 
 g.test('abstract_int')
   .specURL('https://www.w3.org/TR/WGSL/#integer-builtin-functions')
@@ -135,9 +63,21 @@ g.test('abstract_float')
   .specURL('https://www.w3.org/TR/WGSL/#float-builtin-functions')
   .desc(`abstract float tests`)
   .params(u =>
-    u.combine('inputSource', allInputSources).combine('vectorize', [undefined, 2, 3, 4] as const)
+    u
+      .combine('inputSource', onlyConstInputSource)
+      .combine('vectorize', [undefined, 2, 3, 4] as const)
   )
-  .unimplemented();
+  .fn(async t => {
+    const cases = await d.get('abstract_const');
+    await run(
+      t,
+      abstractBuiltin('clamp'),
+      [TypeAbstractFloat, TypeAbstractFloat, TypeAbstractFloat],
+      TypeAbstractFloat,
+      t.params,
+      cases
+    );
+  });
 
 g.test('f32')
   .specURL('https://www.w3.org/TR/WGSL/#float-builtin-functions')
@@ -156,4 +96,10 @@ g.test('f16')
   .params(u =>
     u.combine('inputSource', allInputSources).combine('vectorize', [undefined, 2, 3, 4] as const)
   )
-  .unimplemented();
+  .beforeAllSubcases(t => {
+    t.selectDeviceOrSkipTestCase('shader-f16');
+  })
+  .fn(async t => {
+    const cases = await d.get(t.params.inputSource === 'const' ? 'f16_const' : 'f16_non_const');
+    await run(t, builtin('clamp'), [TypeF16, TypeF16, TypeF16], TypeF16, t.params, cases);
+  });

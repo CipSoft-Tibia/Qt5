@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/resolver.h"
 
@@ -171,7 +184,12 @@ TEST_P(ResolverExpressionKindTest, Test) {
         }
         case Def::kBuiltinFunction: {
             sym = Sym("workgroupBarrier");
-            check_expr = [](const sem::Expression* expr) { EXPECT_EQ(expr, nullptr); };
+            check_expr = [](const sem::Expression* expr) {
+                ASSERT_NE(expr, nullptr);
+                auto* fn_expr = expr->As<sem::BuiltinEnumExpression<wgsl::BuiltinFn>>();
+                ASSERT_NE(fn_expr, nullptr);
+                EXPECT_EQ(fn_expr->Value(), wgsl::BuiltinFn::kWorkgroupBarrier);
+            };
             break;
         }
         case Def::kBuiltinType: {
@@ -291,7 +309,6 @@ TEST_P(ResolverExpressionKindTest, Test) {
             GlobalVar("v", ty("texture_storage_2d", "rgba8unorm", expr), Group(0_u), Binding(0_u));
             break;
         case Use::kAddressSpace:
-            Enable(core::Extension::kChromiumExperimentalFullPtrParameters);
             Func(Symbols().New(), Vector{Param("p", ty("ptr", expr, ty.f32()))}, ty.void_(),
                  tint::Empty);
             break;
@@ -415,37 +432,40 @@ INSTANTIATE_TEST_SUITE_P(
          R"(5:6 error: cannot use address space 'workgroup' as value)"},
 
         {Def::kBuiltinFunction, Use::kAccess,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as access)"},
         {Def::kBuiltinFunction, Use::kAddressSpace,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as address space)"},
         {Def::kBuiltinFunction, Use::kBinaryOp,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as value
+7:8 note: are you missing '()'?)"},
         {Def::kBuiltinFunction, Use::kBuiltinValue,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as builtin value)"},
         {Def::kBuiltinFunction, Use::kCallStmt, kPass},
         {Def::kBuiltinFunction, Use::kFunctionReturnType,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as type)"},
         {Def::kBuiltinFunction, Use::kInterpolationSampling,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as interpolation sampling)"},
         {Def::kBuiltinFunction, Use::kInterpolationType,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as interpolation type)"},
         {Def::kBuiltinFunction, Use::kMemberType,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as type)"},
         {Def::kBuiltinFunction, Use::kTexelFormat,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as texel format)"},
         {Def::kBuiltinFunction, Use::kValueExpression,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as value
+7:8 note: are you missing '()'?)"},
         {Def::kBuiltinFunction, Use::kVariableType,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as type)"},
         {Def::kBuiltinFunction, Use::kUnaryOp,
-         R"(7:8 error: missing '(' for builtin function call)"},
+         R"(5:6 error: cannot use builtin function 'workgroupBarrier' as value
+7:8 note: are you missing '()'?)"},
 
         {Def::kBuiltinType, Use::kAccess, R"(5:6 error: cannot use type 'vec4<f32>' as access)"},
         {Def::kBuiltinType, Use::kAddressSpace,
          R"(5:6 error: cannot use type 'vec4<f32>' as address space)"},
         {Def::kBuiltinType, Use::kBinaryOp,
          R"(5:6 error: cannot use type 'vec4<f32>' as value
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
         {Def::kBuiltinType, Use::kBuiltinValue,
          R"(5:6 error: cannot use type 'vec4<f32>' as builtin value)"},
         {Def::kBuiltinType, Use::kCallExpr, kPass},
@@ -459,11 +479,11 @@ INSTANTIATE_TEST_SUITE_P(
          R"(5:6 error: cannot use type 'vec4<f32>' as texel format)"},
         {Def::kBuiltinType, Use::kValueExpression,
          R"(5:6 error: cannot use type 'vec4<f32>' as value
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
         {Def::kBuiltinType, Use::kVariableType, kPass},
         {Def::kBuiltinType, Use::kUnaryOp,
          R"(5:6 error: cannot use type 'vec4<f32>' as value
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
 
         {Def::kBuiltinValue, Use::kAccess,
          R"(5:6 error: cannot use builtin value 'position' as access)"},
@@ -499,7 +519,8 @@ INSTANTIATE_TEST_SUITE_P(
          R"(5:6 error: cannot use function 'FUNCTION' as address space
 1:2 note: function 'FUNCTION' declared here)"},
         {Def::kFunction, Use::kBinaryOp, R"(5:6 error: cannot use function 'FUNCTION' as value
-1:2 note: function 'FUNCTION' declared here)"},
+1:2 note: function 'FUNCTION' declared here
+7:8 note: are you missing '()'?)"},
         {Def::kFunction, Use::kBuiltinValue,
          R"(5:6 error: cannot use function 'FUNCTION' as builtin value
 1:2 note: function 'FUNCTION' declared here)"},
@@ -522,12 +543,14 @@ INSTANTIATE_TEST_SUITE_P(
 1:2 note: function 'FUNCTION' declared here)"},
         {Def::kFunction, Use::kValueExpression,
          R"(5:6 error: cannot use function 'FUNCTION' as value
-1:2 note: function 'FUNCTION' declared here)"},
+1:2 note: function 'FUNCTION' declared here
+7:8 note: are you missing '()'?)"},
         {Def::kFunction, Use::kVariableType,
          R"(5:6 error: cannot use function 'FUNCTION' as type
 1:2 note: function 'FUNCTION' declared here)"},
         {Def::kFunction, Use::kUnaryOp, R"(5:6 error: cannot use function 'FUNCTION' as value
-1:2 note: function 'FUNCTION' declared here)"},
+1:2 note: function 'FUNCTION' declared here
+7:8 note: are you missing '()'?)"},
 
         {Def::kInterpolationSampling, Use::kAccess,
          R"(5:6 error: cannot use interpolation sampling 'center' as access)"},
@@ -605,7 +628,7 @@ INSTANTIATE_TEST_SUITE_P(
 1:2 note: struct 'STRUCT' declared here)"},
         {Def::kStruct, Use::kBinaryOp, R"(5:6 error: cannot use type 'STRUCT' as value
 1:2 note: struct 'STRUCT' declared here
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
         {Def::kStruct, Use::kBuiltinValue,
          R"(5:6 error: cannot use type 'STRUCT' as builtin value
 1:2 note: struct 'STRUCT' declared here)"},
@@ -622,12 +645,12 @@ INSTANTIATE_TEST_SUITE_P(
         {Def::kStruct, Use::kValueExpression,
          R"(5:6 error: cannot use type 'STRUCT' as value
 1:2 note: struct 'STRUCT' declared here
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
         {Def::kStruct, Use::kVariableType, kPass},
         {Def::kStruct, Use::kUnaryOp,
          R"(5:6 error: cannot use type 'STRUCT' as value
 1:2 note: struct 'STRUCT' declared here
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
 
         {Def::kTexelFormat, Use::kAccess,
          R"(5:6 error: cannot use texel format 'rgba8unorm' as access)"},
@@ -662,7 +685,7 @@ INSTANTIATE_TEST_SUITE_P(
          R"(5:6 error: cannot use type 'i32' as address space)"},
         {Def::kTypeAlias, Use::kBinaryOp,
          R"(5:6 error: cannot use type 'i32' as value
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
         {Def::kTypeAlias, Use::kBuiltinValue,
          R"(5:6 error: cannot use type 'i32' as builtin value)"},
         {Def::kTypeAlias, Use::kCallExpr, kPass},
@@ -675,11 +698,11 @@ INSTANTIATE_TEST_SUITE_P(
         {Def::kTypeAlias, Use::kTexelFormat, R"(5:6 error: cannot use type 'i32' as texel format)"},
         {Def::kTypeAlias, Use::kValueExpression,
          R"(5:6 error: cannot use type 'i32' as value
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
         {Def::kTypeAlias, Use::kVariableType, kPass},
         {Def::kTypeAlias, Use::kUnaryOp,
          R"(5:6 error: cannot use type 'i32' as value
-7:8 note: are you missing '()' for value constructor?)"},
+7:8 note: are you missing '()'?)"},
 
         {Def::kVariable, Use::kAccess, R"(5:6 error: cannot use const 'VARIABLE' as access
 1:2 note: const 'VARIABLE' declared here)"},

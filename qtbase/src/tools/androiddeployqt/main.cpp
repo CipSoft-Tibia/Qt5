@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QStringList>
 #include <QDir>
+#include <QDirIterator>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -13,13 +14,16 @@
 #include <QXmlStreamReader>
 #include <QStandardPaths>
 #include <QUuid>
-#include <QDirIterator>
+#include <QDirListing>
 #include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QHash>
 #include <QSet>
 #include <QMap>
+#if QT_CONFIG(process)
+#include <QProcess>
+#endif
 
 #include <depfile_shared.h>
 #include <shellquote_shared.h>
@@ -105,6 +109,9 @@ struct Options
         , installApk(false)
         , uninstallApk(false)
         , qmlImportScannerBinaryPath()
+        , buildAar(false)
+        , qmlDomBinaryPath()
+        , generateJavaQmlComponents(false)
     {}
 
     enum DeploymentMechanism
@@ -164,7 +171,7 @@ struct Options
     // Versioning
     QString versionName;
     QString versionCode;
-    QByteArray minSdkVersion{"23"};
+    QByteArray minSdkVersion{"28"};
     QByteArray targetSdkVersion{"34"};
 
     // lib c++ path
@@ -234,12 +241,17 @@ struct Options
 
     // Per package collected information
     QStringList initClasses;
-    QStringList permissions;
+    // permissions 'name' => 'optional additional attributes'
+    QMap<QString, QString> permissions;
     QStringList features;
 
     // Override qml import scanner path
     QString qmlImportScannerBinaryPath;
     bool qmlSkipImportScanning = false;
+    bool buildAar;
+    QString qmlDomBinaryPath;
+    bool generateJavaQmlComponents;
+    QSet<QString> selectedJavaQmlComponents;
 };
 
 static const QHash<QByteArray, QByteArray> elfArchitectures = {
@@ -522,6 +534,8 @@ Options parseOptions()
             options.protectedAuthenticationPath = true;
         } else if (argument.compare("--aux-mode"_L1, Qt::CaseInsensitive) == 0) {
             options.auxMode = true;
+        } else if (argument.compare("--build-aar"_L1, Qt::CaseInsensitive) == 0) {
+            options.buildAar = true;
         } else if (argument.compare("--qml-importscanner-binary"_L1, Qt::CaseInsensitive) == 0) {
             options.qmlImportScannerBinaryPath = arguments.at(++i).trimmed();
         } else if (argument.compare("--no-rcc-bundle-cleanup"_L1,
@@ -530,6 +544,23 @@ Options parseOptions()
         } else if (argument.compare("--copy-dependencies-only"_L1,
                                     Qt::CaseInsensitive) == 0) {
             options.copyDependenciesOnly = true;
+        }
+    }
+
+    if (options.buildAar) {
+        if (options.installApk || options.uninstallApk) {
+            fprintf(stderr, "Warning: Skipping %s, AAR packages are not installable.\n",
+                    options.uninstallApk ? "--reinstall" : "--install");
+            options.installApk = false;
+            options.uninstallApk = false;
+        }
+        if (options.buildAAB) {
+            fprintf(stderr, "Warning: Skipping -aab as --build-aar is present.\n");
+            options.buildAAB = false;
+        }
+        if (!options.keyStore.isEmpty()) {
+            fprintf(stderr, "Warning: Skipping --sign, signing AAR packages is not supported.\n");
+            options.keyStore.clear();
         }
     }
 
@@ -610,7 +641,7 @@ Optional arguments:
          --tsa <url>: Location of the Time Stamping Authority.
          --tsacert <alias>: Public key certificate for TSA.
          --internalsf: Include the .SF file inside the signature block.
-         --sectionsonly: Don't compute hash of entire manifest.
+         --sectionsonly: Do not compute hash of entire manifest.
          --protected: Keystore has protected authentication path.
          --jarsigner: Deprecated, ignored.
 
@@ -640,6 +671,9 @@ Optional arguments:
 
     --apk <path/where/to/copy/the/apk>: Path where to copy the built apk.
 
+    --build-aar: Build an AAR package. This option skips --aab, --install,
+       --reinstall, and --sign options if they are provided.
+
     --qml-importscanner-binary <path/to/qmlimportscanner>: Override the
        default qmlimportscanner binary path. By default the
        qmlimportscanner binary is located using the Qt directory
@@ -653,7 +687,7 @@ Optional arguments:
     --no-rcc-bundle-cleanup: skip cleaning rcc bundle directory after
        running androiddeployqt. This option simplifies debugging of
        the resource bundle content, but it should not be used when deploying
-       a project, since it litters the 'assets' directory.
+       a project, since it litters the "assets" directory.
 
     --copy-dependencies-only: resolve application dependencies and stop
        deploying process after all libraries and resources that the
@@ -767,25 +801,39 @@ GradleBuildConfigs gradleBuildConfigs(const QString &path)
         } else if (trimmedLine.contains("compileSdkVersion androidCompileSdkVersion.toInteger()")) {
             configs.usesIntegerCompileSdkVersion = true;
         } else if (trimmedLine.contains("namespace")) {
-            configs.appNamespace = QString::fromUtf8(extractValue(trimmedLine));
+            const QString value = QString::fromUtf8(extractValue(trimmedLine));
+            const bool singleQuoted = value.startsWith(u'\'') && value.endsWith(u'\'');
+            const bool doubleQuoted = value.startsWith(u'\"') && value.endsWith(u'\"');
+
+            if (singleQuoted || doubleQuoted)
+                configs.appNamespace = value.mid(1, value.length() - 2);
+            else
+                configs.appNamespace = value;
         }
     }
 
     return configs;
 }
 
-QString cleanPackageName(QString packageName)
+QString cleanPackageName(QString packageName, bool *cleaned = nullptr)
 {
     auto isLegalChar = [] (QChar c) -> bool {
         ushort ch = c.unicode();
         return (ch >= '0' && ch <= '9') ||
                 (ch >= 'A' && ch <= 'Z') ||
                 (ch >= 'a' && ch <= 'z') ||
-                ch == '.';
+                ch == '.' || ch == '_';
     };
+
+    if (cleaned)
+        *cleaned = false;
+
     for (QChar &c : packageName) {
-        if (!isLegalChar(c))
+        if (!isLegalChar(c)) {
             c = u'_';
+            if (cleaned)
+                *cleaned = true;
+        }
     }
 
     static QStringList keywords;
@@ -820,12 +868,16 @@ QString cleanPackageName(QString packageName)
             QChar c = word[0];
             if ((c >= u'0' && c <= u'9') || c == u'_') {
                 packageName.insert(index + 1, u'a');
+                if (cleaned)
+                    *cleaned = true;
                 index = next + 1;
                 continue;
             }
         }
         if (keywords.contains(word)) {
             packageName.insert(next, "_"_L1);
+            if (cleaned)
+                *cleaned = true;
             index = next + 1;
         } else {
             index = next;
@@ -857,26 +909,29 @@ QString detectLatestAndroidPlatform(const QString &sdkPath)
 
 QString extractPackageName(Options *options)
 {
-    QString packageName;
+    {
+        const QString gradleBuildFile = options->androidSourceDirectory + "/build.gradle"_L1;
+        QString packageName = gradleBuildConfigs(gradleBuildFile).appNamespace;
+
+        if (!packageName.isEmpty() && packageName != "androidPackageName"_L1)
+            return packageName;
+    }
+
     QFile androidManifestXml(options->androidSourceDirectory + "/AndroidManifest.xml"_L1);
     if (androidManifestXml.open(QIODevice::ReadOnly)) {
         QXmlStreamReader reader(&androidManifestXml);
         while (!reader.atEnd()) {
             reader.readNext();
-            if (reader.isStartElement() && reader.name() == "manifest"_L1)
-                packageName = reader.attributes().value("package"_L1).toString();
+            if (reader.isStartElement() && reader.name() == "manifest"_L1) {
+                QString packageName = reader.attributes().value("package"_L1).toString();
+                if (!packageName.isEmpty() && packageName != "org.qtproject.example"_L1)
+                    return packageName;
+                break;
+            }
         }
     }
 
-    if (packageName.isEmpty()) {
-        const QString gradleBuildFile = options->androidSourceDirectory + "/build.gradle"_L1;
-        packageName = gradleBuildConfigs(gradleBuildFile).appNamespace;
-    }
-
-    if (packageName.isEmpty() || packageName == "androidPackageName"_L1)
-        packageName = "org.qtproject.example.%1"_L1.arg(options->applicationBinary);
-
-    return cleanPackageName(packageName);
+    return QString();
 }
 
 bool parseCmakeBoolean(const QJsonValue &value)
@@ -1254,6 +1309,40 @@ bool readInputFile(Options *options)
     }
 
     {
+        const QJsonValue genJavaQmlComponents = jsonObject.value("generate-java-qtquickview-contents"_L1);
+        if (!genJavaQmlComponents.isUndefined() && genJavaQmlComponents.isBool()) {
+            options->generateJavaQmlComponents = genJavaQmlComponents.toBool(false);
+            if (options->generateJavaQmlComponents && !options->buildAar) {
+                fprintf(stderr,
+                        "Warning: Skipping the generation of Java QtQuickView contents from QML "
+                        "as it can be enabled only for an AAR target.\n");
+                options->generateJavaQmlComponents = false;
+            }
+        }
+    }
+
+    {
+        const QJsonValue qmlDomBinaryPath = jsonObject.value("qml-dom-binary"_L1);
+        if (!qmlDomBinaryPath.isUndefined()) {
+            options->qmlDomBinaryPath = qmlDomBinaryPath.toString();
+        } else if (options->generateJavaQmlComponents) {
+            fprintf(stderr,
+                    "No qmldom binary defined in json file which is required when "
+                    "building with QT_ANDROID_GENERATE_JAVA_QTQUICKVIEW_CONTENTS flag.\n");
+            return false;
+        }
+    }
+
+    {
+        const QJsonValue qmlFiles = jsonObject.value("qml-files-for-code-generator"_L1);
+        if (!qmlFiles.isUndefined() && qmlFiles.isArray()) {
+            const QJsonArray jArray = qmlFiles.toArray();
+            for (auto &item : jArray)
+                options->selectedJavaQmlComponents << item.toString();
+        }
+    }
+
+    {
         const QJsonValue applicationBinary = jsonObject.value("application-binary"_L1);
         if (applicationBinary.isUndefined()) {
             fprintf(stderr, "No application binary defined in json file.\n");
@@ -1274,6 +1363,25 @@ bool readInputFile(Options *options)
     }
 
     {
+        const QJsonValue androidPackageName = jsonObject.value("android-package-name"_L1);
+        const QString extractedPackageName = extractPackageName(options);
+        if (!extractedPackageName.isEmpty())
+            options->packageName = extractedPackageName;
+        else if (!androidPackageName.isUndefined())
+            options->packageName = androidPackageName.toString();
+        else
+            options->packageName = "org.qtproject.example.%1"_L1.arg(options->applicationBinary);
+
+        bool cleaned;
+        options->packageName = cleanPackageName(options->packageName, &cleaned);
+        if (cleaned) {
+            fprintf(stderr, "Warning: Package name contained illegal characters and was cleaned "
+                            "to \"%s\"\n", qPrintable(options->packageName));
+        }
+    }
+
+    {
+        using ItFlag = QDirListing::IteratorFlag;
         const QJsonValue deploymentDependencies = jsonObject.value("deployment-dependencies"_L1);
         if (!deploymentDependencies.isUndefined()) {
             QString deploymentDependenciesString = deploymentDependencies.toString();
@@ -1282,11 +1390,9 @@ bool readInputFile(Options *options)
                 QString path = options->qtInstallDirectory + QChar::fromLatin1('/');
                 path += dependency;
                 if (QFileInfo(path).isDir()) {
-                    QDirIterator iterator(path, QDirIterator::Subdirectories);
-                    while (iterator.hasNext()) {
-                        iterator.next();
-                        if (iterator.fileInfo().isFile()) {
-                            QString subPath = iterator.filePath();
+                    for (const auto &dirEntry : QDirListing(path, ItFlag::Recursive)) {
+                        if (dirEntry.isFile()) {
+                            const QString subPath = dirEntry.filePath();
                             auto arch = fileArchitecture(*options, subPath);
                             if (!arch.isEmpty()) {
                                 options->qtDependencies[arch].append(QtDependency(subPath.mid(options->qtInstallDirectory.size() + 1),
@@ -1331,7 +1437,6 @@ bool readInputFile(Options *options)
             options->isZstdCompressionEnabled = zstdCompressionFlag.toBool();
         }
     }
-    options->packageName = extractPackageName(options);
 
     return true;
 }
@@ -1430,6 +1535,9 @@ bool copyAndroidTemplate(const Options &options)
 
     if (!copyAndroidTemplate(options, "/src/android/templates"_L1))
         return false;
+
+    if (options.buildAar)
+        return copyAndroidTemplate(options, "/src/android/templates_aar"_L1);
 
     return true;
 }
@@ -1655,10 +1763,26 @@ bool updateLibsXml(Options *options)
 
         QStringList localLibs;
         localLibs = options->localLibs[it.key()];
+        const QString archSuffix = it.key() + ".so"_L1;
+
+        const QList<QtDependency>& deps = options->qtDependencies[it.key()];
+        auto notExistsInDependencies = [&deps, archSuffix] (const QString &libName) {
+            QString lib = QFileInfo(libName).fileName();
+            if (lib.endsWith(archSuffix))
+                lib.chop(archSuffix.length());
+            return std::none_of(deps.begin(), deps.end(), [&lib] (const QtDependency &dep) {
+                return QFileInfo(dep.absolutePath).fileName().contains(lib);
+            });
+        };
+
+        // Clean up localLibs: remove libs that were not added to qtDependecies
+        localLibs.erase(std::remove_if(localLibs.begin(), localLibs.end(), notExistsInDependencies),
+                        localLibs.end());
+
         // If .pro file overrides dependency detection, we need to see which platform plugin they picked
         if (localLibs.isEmpty()) {
             QString plugin;
-            for (const QtDependency &qtDependency : options->qtDependencies[it.key()]) {
+            for (const QtDependency &qtDependency : deps) {
                 if (qtDependency.relativePath.contains("libplugins_platforms_qtforandroid_"_L1))
                     plugin = qtDependency.relativePath;
 
@@ -1755,9 +1879,24 @@ bool updateAndroidManifest(Options &options)
     replacements[QStringLiteral("-- %%INSERT_VERSION_CODE%% --")] = options.versionCode;
     replacements[QStringLiteral("package=\"org.qtproject.example\"")] = "package=\"%1\""_L1.arg(options.packageName);
 
+    const QString androidManifestPath = options.outputDirectory + "/AndroidManifest.xml"_L1;
+    QFile androidManifestXml(androidManifestPath);
+    // User may have manually defined permissions in the AndroidManifest.xml
+    // Read these permissions in order to remove any duplicates, as otherwise the
+    // application build would fail.
+    if (androidManifestXml.exists() && androidManifestXml.open(QIODevice::ReadOnly)) {
+        QXmlStreamReader reader(&androidManifestXml);
+        while (!reader.atEnd()) {
+            reader.readNext();
+            if (reader.isStartElement() && reader.name() == "uses-permission"_L1)
+                options.permissions.remove(QString(reader.attributes().value("android:name"_L1)));
+        }
+        androidManifestXml.close();
+    }
+
     QString permissions;
-    for (const QString &permission : std::as_const(options.permissions))
-        permissions += "    <uses-permission android:name=\"%1\" />\n"_L1.arg(permission);
+    for (auto [name, extras] : options.permissions.asKeyValueRange())
+        permissions += "    <uses-permission android:name=\"%1\" %2 />\n"_L1.arg(name).arg(extras);
     replacements[QStringLiteral("<!-- %%INSERT_PERMISSIONS -->")] = permissions.trimmed();
 
     QString features;
@@ -1768,13 +1907,11 @@ bool updateAndroidManifest(Options &options)
 
     replacements[QStringLiteral("<!-- %%INSERT_FEATURES -->")] = features.trimmed();
 
-    QString androidManifestPath = options.outputDirectory + "/AndroidManifest.xml"_L1;
     if (!updateFile(androidManifestPath, replacements))
         return false;
 
     // read the package, min & target sdk API levels from manifest file.
     bool checkOldAndroidLabelString = false;
-    QFile androidManifestXml(androidManifestPath);
     if (androidManifestXml.exists()) {
         if (!androidManifestXml.open(QIODevice::ReadOnly)) {
             fprintf(stderr, "Cannot open %s for reading.\n", qPrintable(androidManifestPath));
@@ -1788,8 +1925,8 @@ bool updateAndroidManifest(Options &options)
             if (reader.isStartElement()) {
                 if (reader.name() == "uses-sdk"_L1) {
                     if (reader.attributes().hasAttribute("android:minSdkVersion"_L1))
-                        if (reader.attributes().value("android:minSdkVersion"_L1).toInt() < 23) {
-                            fprintf(stderr, "Invalid minSdkVersion version, minSdkVersion must be >= 23\n");
+                        if (reader.attributes().value("android:minSdkVersion"_L1).toInt() < 28) {
+                            fprintf(stderr, "Invalid minSdkVersion version, minSdkVersion must be >= 28\n");
                             return false;
                         }
                 } else if ((reader.name() == "application"_L1 ||
@@ -2028,7 +2165,13 @@ bool readAndroidDependencyXml(Options *options,
                     }
                 } else if (reader.name() == "permission"_L1) {
                     QString name = reader.attributes().value("name"_L1).toString();
-                    options->permissions.append(name);
+                    QString extras = reader.attributes().value("extras"_L1).toString();
+                    // With duplicate permissions prioritize the one without any attributes,
+                    // as that is likely the most permissive
+                    if (!options->permissions.contains(name)
+                        || !options->permissions.value(name).isEmpty()) {
+                        options->permissions.insert(name, extras);
+                    }
                 } else if (reader.name() == "feature"_L1) {
                     QString name = reader.attributes().value("name"_L1).toString();
                     options->features.append(name);
@@ -2043,7 +2186,6 @@ bool readAndroidDependencyXml(Options *options,
     } else if (options->verbose) {
         fprintf(stdout, "No android dependencies for %s\n", qPrintable(moduleName));
     }
-    options->permissions.removeDuplicates();
     options->features.removeDuplicates();
 
     return true;
@@ -2260,7 +2402,7 @@ bool scanImports(Options *options, QSet<QString> *usedDependencies)
         if (path.isEmpty()) {
             fprintf(stderr, "Warning: QML import could not be resolved in any of the import paths: %s\n",
                     qPrintable(object.value("name"_L1).toString()));
-        } else {
+        } else if (object.value("type"_L1).toString() == "module"_L1) {
             if (options->verbose)
                 fprintf(stdout, "  -- Adding '%s' as QML dependency\n", qPrintable(path));
 
@@ -2361,6 +2503,9 @@ bool scanImports(Options *options, QSet<QString> *usedDependencies)
             }
 
             options->qtDependencies[options->currentArchitecture].append(qmlImportsDependencies);
+        } else {
+            // We don't need to handle file and directory imports. Generally those should be
+            // considered as part of the application and are therefore scanned separately.
         }
     }
 
@@ -2767,12 +2912,11 @@ static bool mergeGradleProperties(const QString &path, GradleProperties properti
 void checkAndWarnGradleLongPaths(const QString &outputDirectory)
 {
     QStringList longFileNames;
-    QDirIterator it(outputDirectory, QStringList(QStringLiteral("*.java")), QDir::Files,
-                    QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        const QString &filePath = it.next();
-        if (filePath.size() >= MAX_PATH)
-            longFileNames.append(filePath);
+    using F = QDirListing::IteratorFlag;
+    for (const auto &dirEntry : QDirListing(outputDirectory, QStringList(u"*.java"_s),
+                                            F::FilesOnly | F::Recursive)) {
+        if (dirEntry.size() >= MAX_PATH)
+            longFileNames.append(dirEntry.filePath());
     }
 
     if (!longFileNames.isEmpty()) {
@@ -2848,6 +2992,9 @@ bool buildAndroidProject(const Options &options)
         abiList.append(it.key());
     }
     gradleProperties["qtTargetAbiList"] = abiList.toLocal8Bit();// armeabi-v7a or arm64-v8a or ...
+    gradleProperties["qtGradlePluginType"] = options.buildAar
+                                           ? "com.android.library"
+                                           : "com.android.application";
     if (!mergeGradleProperties(gradlePropertiesPath, gradleProperties))
         return false;
 
@@ -2935,39 +3082,43 @@ bool uninstallApk(const Options &options)
 
 enum PackageType {
     AAB,
+    AAR,
     UnsignedAPK,
     SignedAPK
 };
 
-QString packagePath(const Options &options, PackageType pt)
+QString packagePath(const Options &options, PackageType packageType)
 {
-    QString path(options.outputDirectory);
-    path += "/build/outputs/%1/"_L1.arg(pt >= UnsignedAPK ? QStringLiteral("apk") : QStringLiteral("bundle"));
-    QString buildType(options.releasePackage ? "release/"_L1 : "debug/"_L1);
-    if (QDir(path + buildType).exists())
-        path += buildType;
-    path += QDir(options.outputDirectory).dirName() + u'-';
-    if (options.releasePackage) {
-        path += "release-"_L1;
-        if (pt >= UnsignedAPK) {
-            if (pt == UnsignedAPK)
-                path += "un"_L1;
-            path += "signed.apk"_L1;
-        } else {
-            path.chop(1);
-            path += ".aab"_L1;
-        }
-    } else {
-        path += "debug"_L1;
-        if (pt >= UnsignedAPK) {
-            if (pt == SignedAPK)
-                path += "-signed"_L1;
-            path += ".apk"_L1;
-        } else {
-            path += ".aab"_L1;
-        }
-    }
-    return path;
+    // The package type is always AAR if option.buildAar has been set
+    if (options.buildAar)
+        packageType = AAR;
+
+    static const QHash<PackageType, QLatin1StringView> packageTypeToPath{
+        { AAB, "bundle"_L1 }, { AAR, "aar"_L1 }, { UnsignedAPK, "apk"_L1 }, { SignedAPK, "apk"_L1 }
+    };
+    static const QHash<PackageType, QLatin1StringView> packageTypeToExtension{
+        { AAB, "aab"_L1 }, { AAR, "aar"_L1 }, { UnsignedAPK, "apk"_L1 }, { SignedAPK, "apk"_L1 }
+    };
+
+    const QString buildType(options.releasePackage ? "release"_L1 : "debug"_L1);
+    QString signedSuffix;
+    if (packageType == SignedAPK)
+        signedSuffix = "-signed"_L1;
+    else if (packageType == UnsignedAPK && options.releasePackage)
+        signedSuffix = "-unsigned"_L1;
+
+    QString dirPath(options.outputDirectory);
+    dirPath += "/build/outputs/%1/"_L1.arg(packageTypeToPath[packageType]);
+    if (QDir(dirPath + buildType).exists())
+        dirPath += buildType;
+
+    const QString fileName = "/%1-%2%3.%4"_L1.arg(
+            QDir(options.outputDirectory).dirName(),
+            buildType,
+            signedSuffix,
+            packageTypeToExtension[packageType]);
+
+    return dirPath + fileName;
 }
 
 bool installApk(const Options &options)
@@ -3272,7 +3423,8 @@ enum ErrorCode
     CannotInstallApk = 16,
     CannotCopyAndroidExtraResources = 19,
     CannotCopyApk = 20,
-    CannotCreateRcc = 21
+    CannotCreateRcc = 21,
+    CannotGenerateJavaQmlComponents = 22
 };
 
 bool writeDependencyFile(const Options &options)
@@ -3303,6 +3455,399 @@ bool writeDependencyFile(const Options &options)
         depFile.write("\n");
     }
     return true;
+}
+
+int generateJavaQmlComponents(const Options &options)
+{
+    const auto firstCharToUpper = [](const QString &str) -> QString {
+        if (str.isEmpty())
+            return str;
+        return str.left(1).toUpper() + str.mid(1);
+    };
+
+    const auto upperFirstAndAfterDot = [](QString str) -> QString {
+        if (str.isEmpty())
+            return str;
+
+        str[0] = str[0].toUpper();
+
+        for (int i = 0; i < str.size(); ++i) {
+            if (str[i] == "."_L1) {
+                // Move to the next character after the dot
+                int j = i + 1;
+                if (j < str.size()) {
+                    str[j] = str[j].toUpper();
+                }
+            }
+        }
+        return str;
+    };
+
+    const auto getImportPaths = [options](const QString &buildPath, const QString &libName,
+                             QStringList &appImports, QStringList &externalImports) -> bool {
+        QFile confRspFile("%1/.qt/qml_imports/%2_conf.rsp"_L1.arg(buildPath, libName));
+        if (!confRspFile.exists() || !confRspFile.open(QFile::ReadOnly))
+            return false;
+        QTextStream rspStream(&confRspFile);
+        while (!rspStream.atEnd()) {
+            QString currentLine = rspStream.readLine();
+            if (currentLine.compare("-importPath"_L1) == 0) {
+                currentLine = rspStream.readLine();
+                if (QDir::cleanPath(currentLine).startsWith(QDir::cleanPath(buildPath)))
+                    appImports << currentLine;
+                else
+                    externalImports << currentLine;
+            }
+        }
+
+        // Find inner qmldir files
+        QSet<QString> qmldirDirectories;
+        for (const QString &path : appImports) {
+            QDirIterator it(path, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                const QDir dir(it.next());
+                const QString absolutePath = dir.absolutePath();
+                if (!absolutePath.startsWith(options.outputDirectory)
+                    && dir.exists("qmldir"_L1)) {
+                    qmldirDirectories.insert(absolutePath);
+                }
+            }
+        }
+        appImports << qmldirDirectories.values();
+
+        return appImports.count() + externalImports.count();
+    };
+
+    struct ComponentInfo {
+        QString name;
+        QString path;
+    };
+
+    struct ModuleInfo
+    {
+        QString moduleName;
+        QString preferPath;
+        QList<ComponentInfo> qmlComponents;
+        bool isValid() { return qmlComponents.size() && moduleName.size(); }
+    };
+
+    const auto getModuleInfo = [](const QString &qmldirPath) -> ModuleInfo {
+        QFile qmlDirFile(qmldirPath + "/qmldir"_L1);
+        if (!qmlDirFile.exists() || !qmlDirFile.open(QFile::ReadOnly))
+            return ModuleInfo();
+        ModuleInfo moduleInfo;
+        QSet<QString> qmlComponentNames;
+        QTextStream qmldirStream(&qmlDirFile);
+        while (!qmldirStream.atEnd()) {
+            const QString currentLine = qmldirStream.readLine();
+            if (currentLine.size() && currentLine[0].isLower()) {
+                // TODO QTBUG-125891: Handling of  QML modules with dotted URI
+                if (currentLine.startsWith("module "_L1))
+                    moduleInfo.moduleName = currentLine.split(" "_L1)[1];
+                else if (currentLine.startsWith("prefer "_L1))
+                    moduleInfo.preferPath = currentLine.split(" "_L1)[1];
+            } else if (currentLine.size()
+                       && (currentLine[0].isUpper() || currentLine.startsWith("singleton"_L1))) {
+                const QStringList parts = currentLine.split(" "_L1);
+                if (parts.size() > 2 && !qmlComponentNames.contains(parts.first())) {
+                    moduleInfo.qmlComponents.append({ parts.first(), parts.last() });
+                    qmlComponentNames.insert(parts.first());
+                }
+            }
+        }
+        return moduleInfo;
+    };
+
+    const auto extractDomInfo = [](const QString &qmlDomExecPath, const QString &qmldirPath,
+                             const QString &qmlFile,
+                             const QStringList &otherImportPaths) -> QJsonObject {
+        QByteArray domInfo;
+#if QT_CONFIG(process)
+        QStringList qmlDomArgs {"-d"_L1, "-D"_L1, "required"_L1, "-f"_L1, "+:propertyInfos"_L1 };
+        for (auto &importPath : otherImportPaths)
+            qmlDomArgs << "-I"_L1 << importPath;
+        qmlDomArgs << "%1/%2"_L1.arg(qmldirPath, qmlFile);
+        const QString qmlDomCmd = "%1 %2"_L1.arg(qmlDomExecPath, qmlDomArgs.join(u' '));
+        QProcess process;
+        process.start(qmlDomExecPath, qmlDomArgs);
+        if (!process.waitForStarted()) {
+            fprintf(stderr, "Cannot execute command %s\n", qPrintable(qmlDomCmd));
+            return QJsonObject();
+        }
+        // Wait, maximum 30 seconds
+        if (!process.waitForFinished(30000)) {
+            fprintf(stderr, "Execution of command %s timed out.\n", qPrintable(qmlDomCmd));
+            return QJsonObject();
+        }
+        domInfo = process.readAllStandardOutput();
+
+        QJsonParseError jsonError;
+        const QJsonDocument jsonDoc = QJsonDocument::fromJson(domInfo, &jsonError);
+        if (jsonError.error != QJsonParseError::NoError)
+            fprintf(stderr, "Output of %s is not valid JSON document.", qPrintable(qmlDomCmd));
+        return jsonDoc.object();
+#else
+#warning Generating QtQuickView Java Contents is not possible with missing QProcess feature.
+        return QJsonObject();
+#endif
+    };
+
+    const auto getComponent = [](const QJsonObject &dom) -> QJsonObject {
+        if (dom.isEmpty())
+            return QJsonObject();
+
+        const QJsonObject currentItem = dom.value("currentItem"_L1).toObject();
+        if (!currentItem.value("isValid"_L1).toBool(false))
+            return QJsonObject();
+
+        const QJsonArray components =
+                currentItem.value("components"_L1).toObject().value(""_L1).toArray();
+        if (components.isEmpty())
+            return QJsonObject();
+        return components.constBegin()->toObject();
+    };
+
+    const auto getProperties = [](const QJsonObject &component) -> QJsonArray {
+        QJsonArray properties;
+        const QJsonArray objects = component.value("objects"_L1).toArray();
+        if (objects.isEmpty())
+            return QJsonArray();
+        const QJsonObject propertiesObject =
+                objects[0].toObject().value("propertyInfos"_L1).toObject();
+        for (const auto &jsonProperty : propertiesObject) {
+            const QJsonArray propertyDefs =
+                    jsonProperty.toObject().value("propertyDefs"_L1).toArray();
+            if (propertyDefs.isEmpty())
+                continue;
+
+            properties.append(propertyDefs[0].toObject());
+        }
+        return properties;
+    };
+
+    const auto getMethods = [](const QJsonObject &component) -> QJsonArray {
+        QJsonArray methods;
+        const QJsonArray objects = component.value("objects"_L1).toArray();
+        if (objects.isEmpty())
+            return QJsonArray();
+        const QJsonObject methodsObject = objects[0].toObject().value("methods"_L1).toObject();
+        for (const auto &jsonMethod : methodsObject) {
+            const QJsonArray overloads = jsonMethod.toArray();
+            for (const auto &m : overloads)
+                methods.append(m);
+        }
+        return methods;
+    };
+
+    const static QHash<QString, QString> qmlToJavaType = {
+        { "qreal"_L1, "Double"_L1 }, { "double"_L1, "Double"_L1 }, { "int"_L1, "Integer"_L1 },
+        { "float"_L1, "Float"_L1 },  { "bool"_L1, "Boolean"_L1 },  { "string"_L1, "String"_L1 },
+        { "void"_L1, "Void"_L1 }
+    };
+
+    const auto endBlock = [](QTextStream &stream, int indentWidth = 0) {
+        stream << QString(indentWidth, u' ') << "}\n";
+    };
+
+    const auto createHeaderBlock = [](QTextStream &stream, const QString &javaPackage) {
+        stream << "/* This file is autogenerated by androiddeployqt. Do not edit */\n\n"
+               << "package %1;\n\n"_L1.arg(javaPackage)
+               << "import org.qtproject.qt.android.QtSignalListener;\n"
+               << "import org.qtproject.qt.android.QtQuickViewContent;\n\n";
+    };
+
+    const auto beginComponentBlock = [](QTextStream &stream, const QString &libName,
+                                        const QString &moduleName, const QString &preferPath,
+                                        const ComponentInfo &componentInfo, int indentWidth = 8) {
+        const QString indent(indentWidth, u' ');
+
+        stream << indent
+               << "public final class %1 extends QtQuickViewContent {\n"_L1
+                                                        .arg(componentInfo.name)
+               << indent << "    @Override public String getLibraryName() {\n"_L1
+               << indent << "        return \"%1\";\n"_L1.arg(libName)
+               << indent << "    }\n"_L1
+               << indent << "    @Override public String getModuleName() {\n"_L1
+               << indent << "        return \"%1\";\n"_L1.arg(moduleName)
+               << indent << "    }\n"_L1
+               << indent << "    @Override public String getFilePath() {\n"_L1
+               << indent << "        return \"qrc%1%2\";\n"_L1.arg(preferPath)
+                                                         .arg(componentInfo.path)
+               << indent << "    }\n"_L1;
+    };
+
+    const auto beginPropertyBlock = [firstCharToUpper](QTextStream &stream,
+                                                       const QJsonObject &propertyData,
+                                                       int indentWidth = 8) {
+        const QString indent(indentWidth, u' ');
+        const QString propertyName = propertyData["name"_L1].toString();
+        if (propertyName.isEmpty())
+            return;
+        const QString upperPropertyName = firstCharToUpper(propertyName);
+        const QString typeName = propertyData["typeName"_L1].toString();
+        const bool isReadyonly = propertyData["isReadonly"_L1].toBool();
+
+        const QString javaTypeName = qmlToJavaType.value(typeName, "Object"_L1);
+
+        if (!isReadyonly) {
+            stream << indent
+                   << "public void set%1(%2 %3) { setProperty(\"%3\", %3); }\n"_L1.arg(
+                              upperPropertyName, javaTypeName, propertyName);
+        }
+
+        stream << indent
+               << "public %2 get%1() { return this.<%2>getProperty(\"%3\"); }\n"_L1
+                          .arg(upperPropertyName, javaTypeName, propertyName)
+               << indent
+               << "public int connect%1ChangeListener(QtSignalListener<%2> signalListener) {\n"_L1
+                          .arg(upperPropertyName, javaTypeName)
+               << indent
+               << "    return connectSignalListener(\"%1\", %2.class, signalListener);\n"_L1.arg(
+                          propertyName, javaTypeName)
+               << indent << "}\n";
+    };
+
+    const auto beginSignalBlock = [firstCharToUpper](QTextStream &stream,
+                                                     const QJsonObject &methodData,
+                                                     int indentWidth = 8) {
+        const QString indent(indentWidth, u' ');
+        if (methodData["methodType"_L1] != 0)
+            return;
+        const QJsonArray parameters = methodData["parameters"_L1].toArray();
+        if (parameters.size() > 1)
+            return;
+
+        const QString methodName = methodData["name"_L1].toString();
+        if (methodName.isEmpty())
+            return;
+        const QString upperMethodName = firstCharToUpper(methodName);
+        const QString typeName = !parameters.isEmpty()
+                ? parameters[0].toObject()["typeName"_L1].toString()
+                : "void"_L1;
+
+        const QString javaTypeName = qmlToJavaType.value(typeName, "Object"_L1);
+        stream << indent
+               << "public int connect%1Listener(QtSignalListener<%2> signalListener) {\n"_L1.arg(
+                          upperMethodName, javaTypeName)
+               << indent
+               << "    return connectSignalListener(\"%1\", %2.class, signalListener);\n"_L1.arg(
+                          methodName, javaTypeName)
+               << indent << "}\n";
+    };
+
+    constexpr static auto markerFileName = "qml_java_contents"_L1;
+    const QString libName(options.applicationBinary);
+    QString javaPackageBase = options.packageName;
+    const QString expectedBaseLeaf = ".%1"_L1.arg(libName);
+    if (!javaPackageBase.endsWith(expectedBaseLeaf))
+        javaPackageBase += expectedBaseLeaf;
+    const QString baseSourceDir = "%1/src/%2"_L1.arg(options.outputDirectory,
+                                                     QString(javaPackageBase).replace(u'.', u'/'));
+    const QString buildPath(QDir(options.buildDirectory).absolutePath());
+    const QString domBinaryPath(options.qmlDomBinaryPath);
+
+    fprintf(stdout, "Generating Java QML Components in %s directory.\n", qPrintable(baseSourceDir));
+    if (!QDir().current().mkpath(baseSourceDir)) {
+        fprintf(stderr, "Cannot create %s directory\n", qPrintable(baseSourceDir));
+        return false;
+    }
+
+    QStringList appImports;
+    QStringList externalImports;
+    if (!getImportPaths(buildPath, libName, appImports, externalImports))
+        return false;
+
+    // Remove previous directories generated by this code generator
+    {
+        const QString srcDir = "%1/src"_L1.arg(options.outputDirectory);
+        QDirIterator iter(srcDir, { markerFileName }, QDir::Files, QDirIterator::Subdirectories);
+        while (iter.hasNext())
+            iter.nextFileInfo().dir().removeRecursively();
+    }
+
+    int generatedComponents = 0;
+    for (const auto &importPath : appImports) {
+        ModuleInfo moduleInfo = getModuleInfo(importPath);
+        if (!moduleInfo.isValid())
+            continue;
+
+        const QString modulePackageSuffix = upperFirstAndAfterDot(moduleInfo.moduleName);
+        if (moduleInfo.moduleName == libName) {
+            fprintf(stderr,
+                    "A QML module name (%s) cannot be the same as the target name when building "
+                    "with QT_ANDROID_GENERATE_JAVA_QTQUICKVIEW_CONTENTS flag.\n",
+                    qPrintable(moduleInfo.moduleName));
+            return false;
+        }
+
+        const QString javaPackage = "%1.%2"_L1.arg(javaPackageBase, modulePackageSuffix);
+        const QString outputDir =
+                "%1/%2"_L1.arg(baseSourceDir, QString(modulePackageSuffix).replace(u'.', u'/'));
+        if (!QDir().current().mkpath(outputDir)) {
+            fprintf(stderr, "Cannot create %s directory\n", qPrintable(outputDir));
+            return false;
+        }
+
+        // Add a marker file to indicate this as a module package source directory
+        {
+            QFile markerFile("%1/%2"_L1.arg(outputDir, markerFileName));
+            if (!markerFile.open(QFile::WriteOnly)) {
+                fprintf(stderr, "Cannot create %s file\n", qPrintable(markerFile.fileName()));
+                return false;
+            }
+        }
+
+        int indentBase = 0;
+
+        for (const auto &qmlComponent : moduleInfo.qmlComponents) {
+            const bool isSelected = options.selectedJavaQmlComponents.contains(
+                    "%1.%2"_L1.arg(moduleInfo.moduleName, qmlComponent.name));
+            if (!options.selectedJavaQmlComponents.isEmpty() && !isSelected)
+                continue;
+
+            QJsonObject domInfo = extractDomInfo(domBinaryPath, importPath, qmlComponent.path,
+                                                 externalImports + appImports);
+            QJsonObject component = getComponent(domInfo);
+            if (component.isEmpty())
+                continue;
+
+            QByteArray componentClassBody;
+            QTextStream outputStream(&componentClassBody, QTextStream::ReadWrite);
+
+            createHeaderBlock(outputStream, javaPackage);
+
+            beginComponentBlock(outputStream, libName, moduleInfo.moduleName, moduleInfo.preferPath,
+                                qmlComponent, indentBase);
+            indentBase += 4;
+
+            const QJsonArray properties = getProperties(component);
+            for (const QJsonValue &p : std::as_const(properties))
+                beginPropertyBlock(outputStream, p.toObject(), indentBase);
+
+            const QJsonArray methods = getMethods(component);
+            for (const QJsonValue &m : std::as_const(methods))
+                beginSignalBlock(outputStream, m.toObject(), indentBase);
+
+            indentBase -= 4;
+            endBlock(outputStream, indentBase);
+            outputStream.flush();
+
+            // Write component class body to file
+            QFile outputFile("%1/%2.java"_L1.arg(outputDir, qmlComponent.name));
+            if (outputFile.exists())
+                outputFile.remove();
+            if (!outputFile.open(QFile::WriteOnly)) {
+                fprintf(stderr, "Cannot open %s file to write.\n",
+                        qPrintable(outputFile.fileName()));
+                return false;
+            }
+            outputFile.write(componentClassBody);
+            outputFile.close();
+
+            generatedComponents++;
+        }
+    }
+    return generatedComponents;
 }
 
 int main(int argc, char *argv[])
@@ -3391,6 +3936,16 @@ int main(int argc, char *argv[])
 
         if (Q_UNLIKELY(options.timing))
             fprintf(stdout, "[TIMING] %lld ns: Copied GNU STL\n", options.timer.nsecsElapsed());
+
+        if (options.generateJavaQmlComponents) {
+            if (!generateJavaQmlComponents(options))
+                return CannotGenerateJavaQmlComponents;
+        }
+
+        if (Q_UNLIKELY(options.timing)) {
+            fprintf(stdout, "[TIMING] %lld ns: Generate Java QtQuickViewContents.\n",
+                    options.timer.nsecsElapsed());
+        }
 
         // If Unbundled deployment is used, remove app lib as we don't want it packaged inside the APK
         if (options.deploymentMechanism == Options::Unbundled) {

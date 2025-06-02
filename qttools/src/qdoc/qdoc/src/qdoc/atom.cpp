@@ -113,8 +113,6 @@ QT_BEGIN_NAMESPACE
   \value UnknownCommand
 */
 
-QString Atom::s_noError = QString();
-
 static const struct
 {
     const char *english;
@@ -241,7 +239,7 @@ static const struct
   \also string()
 */
 
-/*! \fn void Atom::appendString(const QString &string)
+/*! \fn void Atom::concatenateString(const QString &string)
 
   Appends \a string to the string parameter of this atom.
 
@@ -252,6 +250,32 @@ static const struct
 
   \also string()
 */
+
+/*!
+    Starting from this Atom, searches the linked list for the
+    atom of specified type \a t and returns it. Returns \nullptr
+    if no such atom is found.
+*/
+const Atom *Atom::find(AtomType t) const
+{
+    const auto *a{this};
+    while (a && a->type() != t)
+        a = a->next();
+    return a;
+}
+
+/*!
+    Starting from this Atom, searches the linked list for the
+    atom of specified type \a t and string \a s, and returns it.
+    Returns \nullptr if no such atom is found.
+*/
+const Atom *Atom::find(AtomType t, const QString &s) const
+{
+    const auto *a{this};
+    while (a && (a->type() != t || a->string() != s))
+        a = a->next();
+    return a;
+}
 
 /*! \fn Atom *Atom::next()
   Return the next atom in the atom list.
@@ -351,8 +375,9 @@ QString Atom::linkText() const
   words separated by spaces. The constructor splits \a p2 on
   the space character.
  */
-LinkAtom::LinkAtom(const QString &p1, const QString &p2)
+LinkAtom::LinkAtom(const QString &p1, const QString &p2, Location location)
     : Atom(Atom::Link, p1),
+      location(location),
       m_resolved(false),
       m_genus(Node::DontCare),
       m_domain(nullptr),
@@ -395,7 +420,6 @@ void LinkAtom::resolveSquareBracketParams()
             m_genus = Node::API;
             continue;
         }
-        m_error = m_squareBracketParams;
         break;
     }
     m_resolved = true;
@@ -406,10 +430,10 @@ void LinkAtom::resolveSquareBracketParams()
  */
 LinkAtom::LinkAtom(const LinkAtom &t)
     : Atom(Link, t.string()),
+      location(t.location),
       m_resolved(t.m_resolved),
       m_genus(t.m_genus),
       m_domain(t.m_domain),
-      m_error(t.m_error),
       m_squareBracketParams(t.m_squareBracketParams)
 {
     // nothing
@@ -422,10 +446,10 @@ LinkAtom::LinkAtom(const LinkAtom &t)
  */
 LinkAtom::LinkAtom(Atom *previous, const LinkAtom &t)
     : Atom(previous, Link, t.string()),
+      location(t.location),
       m_resolved(t.m_resolved),
       m_genus(t.m_genus),
       m_domain(t.m_domain),
-      m_error(t.m_error),
       m_squareBracketParams(t.m_squareBracketParams)
 {
     previous->m_next = this;

@@ -38,22 +38,22 @@ EmbedderTestEnvironment* EmbedderTestEnvironment::GetInstance() {
 }
 
 void EmbedderTestEnvironment::SetUp() {
-  FPDF_LIBRARY_CONFIG config;
-  config.version = 4;
-  config.m_pUserFontPaths = nullptr;
-  config.m_v8EmbedderSlot = 0;
-  config.m_pPlatform = nullptr;
-
-  config.m_pUserFontPaths = test_fonts_.font_paths();
+  FPDF_LIBRARY_CONFIG config = {
+      .version = 4,
+      .m_pUserFontPaths = test_fonts_.font_paths(),
 
 #ifdef PDF_ENABLE_V8
-  config.m_pIsolate = V8TestEnvironment::GetInstance()->isolate();
-  config.m_pPlatform = V8TestEnvironment::GetInstance()->platform();
+      .m_pIsolate = V8TestEnvironment::GetInstance()->isolate(),
+      .m_v8EmbedderSlot = 0,
+      .m_pPlatform = V8TestEnvironment::GetInstance()->platform(),
 #else   // PDF_ENABLE_V8
-  config.m_pIsolate = nullptr;
-  config.m_pPlatform = nullptr;
+      .m_pIsolate = nullptr,
+      .m_v8EmbedderSlot = 0,
+      .m_pPlatform = nullptr,
 #endif  // PDF_ENABLE_V8
-  config.m_RendererType = renderer_type_;
+
+      .m_RendererType = renderer_type_,
+  };
 
   FPDF_InitLibraryWithConfig(&config);
 
@@ -74,7 +74,7 @@ void EmbedderTestEnvironment::AddFlag(const std::string& flag) {
     write_pngs_ = true;
     return;
   }
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
   std::string value;
   if (ParseSwitchKeyValue(flag, "--use-renderer=", &value)) {
     if (value == "agg") {
@@ -87,7 +87,7 @@ void EmbedderTestEnvironment::AddFlag(const std::string& flag) {
     }
     return;
   }
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
 
   std::cerr << "Unknown flag: " << flag << "\n";
 }

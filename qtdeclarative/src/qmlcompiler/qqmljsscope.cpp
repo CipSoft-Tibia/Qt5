@@ -172,15 +172,19 @@ bool QQmlJSScope::hasEnumeration(const QString &name) const
             this, [&](const QQmlJSScope *scope) { return scope->m_enumerations.contains(name); });
 }
 
+bool QQmlJSScope::hasOwnEnumerationKey(const QString &name) const
+{
+    for (const auto &e : m_enumerations) {
+        if (e.keys().contains(name))
+            return true;
+    }
+    return false;
+}
+
 bool QQmlJSScope::hasEnumerationKey(const QString &name) const
 {
-    return QQmlJSUtils::searchBaseAndExtensionTypes(this, [&](const QQmlJSScope *scope) {
-        for (const auto &e : scope->m_enumerations) {
-            if (e.keys().contains(name))
-                return true;
-        }
-        return false;
-    });
+    return QQmlJSUtils::searchBaseAndExtensionTypes(
+            this, [&](const QQmlJSScope *scope) { return scope->hasOwnEnumerationKey(name); });
 }
 
 QQmlJSMetaEnum QQmlJSScope::enumeration(const QString &name) const
@@ -217,6 +221,7 @@ QHash<QString, QQmlJSMetaEnum> QQmlJSScope::enumerations() const
 QString QQmlJSScope::augmentedInternalName() const
 {
     using namespace Qt::StringLiterals;
+    Q_ASSERT(!m_internalName.isEmpty());
 
     switch (m_semantics) {
     case AccessSemantics::Reference:
@@ -267,22 +272,31 @@ QString QQmlJSScope::prettyName(QAnyStringView name)
 
 /*!
     \internal
-    Returns true if the scope is the outermost element of a separate Component
+    Returns \c Yes if the scope is the outermost element of a separate Component
     Either because it has been implicitly wrapped, e.g. due to an assignment to
     a Component property, or because it is the first (and only) child of a
     Component.
+    Returns \c No if we can clearly determine that this is not the case.
+    Returns \c Maybe if the scope is assigned to an unknown property. This may
+    or may not be a Component.
     For visitors: This method should only be called after implicit components
     are detected, that is, after QQmlJSImportVisitor::endVisit(UiProgram *)
     was called.
  */
-bool QQmlJSScope::isComponentRootElement() const {
+QQmlJSScope::IsComponentRoot QQmlJSScope::componentRootStatus() const {
     if (m_flags.testFlag(WrappedInImplicitComponent))
-        return true;
+        return IsComponentRoot::Yes;
+
+    // If the object is assigned to an unknown property, assume it's Component.
+    if (m_flags.testFlag(AssignedToUnknownProperty))
+        return IsComponentRoot::Maybe;
 
     auto base = nonCompositeBaseType(parentScope()); // handles null parentScope()
     if (!base)
-        return false;
-    return base->internalName() == u"QQmlComponent";
+        return IsComponentRoot::No;
+    return base->internalName() == u"QQmlComponent"
+            ? IsComponentRoot::Yes
+            : IsComponentRoot::No;
 }
 
 std::optional<QQmlJSScope::JavaScriptIdentifier>
@@ -690,15 +704,17 @@ void QQmlJSScope::resolveList(const QQmlJSScope::Ptr &self, const QQmlJSScope::C
     const QQmlJSImportedScope element = {self, QTypeRevision()};
     const QQmlJSImportedScope array = {arrayType, QTypeRevision()};
     QQmlJS::ContextualTypes contextualTypes(
-                QQmlJS::ContextualTypes::INTERNAL, { { self->internalName(), element }, },
-                arrayType);
+            QQmlJS::ContextualTypes::INTERNAL,
+            { { self->internalName(), element }, },
+            { { self, self->internalName() }, },
+            arrayType);
     QQmlJSScope::resolveTypes(listType, contextualTypes);
 
     Q_ASSERT(listType->valueType() == self);
     self->m_listType = listType;
 }
 
-void QQmlJSScope::resolveGeneralizedGroup(
+void QQmlJSScope::resolveGroup(
         const Ptr &self, const ConstPtr &baseType,
         const QQmlJS::ContextualTypes &contextualTypes, QSet<QString> *usedTypes)
 {
@@ -1007,6 +1023,22 @@ void QQmlJSScope::setBaseTypeError(const QString &baseTypeError)
     m_baseTypeNameOrError = baseTypeError;
 }
 
+/*!
+\internal
+The name of the module is only saved in the QmlComponent. Iterate through the parent scopes until
+the QmlComponent or the root is reached to find out the module name of the component in which `this`
+resides.
+*/
+QString QQmlJSScope::moduleName() const
+{
+    for (const QQmlJSScope *it = this; it; it = it->parentScope().get()) {
+        const QString name = it->ownModuleName();
+        if (!name.isEmpty())
+            return name;
+    }
+    return {};
+}
+
 QString QQmlJSScope::baseTypeError() const
 {
     return m_flags.testFlag(HasBaseTypeError) ? m_baseTypeNameOrError : QString();
@@ -1123,15 +1155,33 @@ bool QQmlJSScope::Export::isValid() const
     return m_version.isValid() || !m_package.isEmpty() || !m_type.isEmpty();
 }
 
+QDeferredFactory<QQmlJSScope>::QDeferredFactory(QQmlJSImporter *importer, const QString &filePath,
+                                                const TypeReader &typeReader)
+    : m_filePath(filePath),
+      m_importer(importer),
+      m_typeReader(typeReader ? typeReader
+                              : [](QQmlJSImporter *importer, const QString &filePath,
+                                   const QSharedPointer<QQmlJSScope> &scopeToPopulate) {
+                                    QQmlJSTypeReader defaultTypeReader(importer, filePath);
+                                    defaultTypeReader(scopeToPopulate);
+                                    return defaultTypeReader.errors();
+                                })
+{
+}
+
 void QDeferredFactory<QQmlJSScope>::populate(const QSharedPointer<QQmlJSScope> &scope) const
 {
-    scope->setModuleName(m_moduleName);
-    QQmlJSTypeReader typeReader(m_importer, m_filePath);
-    typeReader(scope);
-    m_importer->m_globalWarnings.append(typeReader.errors());
+    scope->setOwnModuleName(m_moduleName);
+    scope->setFilePath(m_filePath);
+
+    QList<QQmlJS::DiagnosticMessage> errors = m_typeReader(m_importer, m_filePath, scope);
+    m_importer->m_globalWarnings.append(errors);
+
     scope->setInternalName(internalName());
-    QQmlJSScope::resolveEnums(scope, m_importer->builtinInternalNames());
-    QQmlJSScope::resolveList(scope, m_importer->builtinInternalNames().arrayType());
+    QQmlJSScope::resolveEnums(
+            scope, m_importer->builtinInternalNames().contextualTypes());
+    QQmlJSScope::resolveList(
+            scope, m_importer->builtinInternalNames().contextualTypes().arrayType());
 
     if (m_isSingleton && !scope->isSingleton()) {
         m_importer->m_globalWarnings.append(
@@ -1244,6 +1294,22 @@ QVector<QQmlJSScope::ConstPtr> QQmlJSScope::childScopes() const
     for (const auto &child : m_childScopes)
         result.append(child);
     return result;
+}
+
+/*!
+    \internal
+
+    Returns true if this type or any base type of it has the "EnforcesScopedEnums" flag.
+    The rationale is that you can turn on enforcement of scoped enums, but you cannot turn
+    it off explicitly.
+ */
+bool QQmlJSScope::enforcesScopedEnums() const
+{
+    for (const QQmlJSScope *scope = this; scope; scope = scope->baseType().get()) {
+        if (scope->hasEnforcesScopedEnumsFlag())
+            return true;
+    }
+    return false;
 }
 
 /*!

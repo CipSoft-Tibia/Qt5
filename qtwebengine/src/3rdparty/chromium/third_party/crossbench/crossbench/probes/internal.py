@@ -9,7 +9,7 @@ import logging
 from typing import TYPE_CHECKING, Iterable, Optional
 
 from crossbench.probes import probe
-from crossbench.probes.json import JsonResultProbe, JsonResultProbeScope
+from crossbench.probes.json import JsonResultProbe, JsonResultProbeContext
 from crossbench.probes.metric import MetricsMerger
 from crossbench.probes.results import (EmptyProbeResult, ProbeResult,
                                        ProbeResultDict)
@@ -30,20 +30,20 @@ class InternalJsonResultProbe(JsonResultProbe, InternalProbe):
   IS_GENERAL_PURPOSE = False
   FLATTEN = False
 
-  def get_scope(self, run: Run) -> InternalJsonResultProbeScope:
-    return InternalJsonResultProbeScope(self, run)
+  def get_context(self, run: Run) -> InternalJsonResultProbeContext:
+    return InternalJsonResultProbeContext(self, run)
 
 
-class InternalJsonResultProbeScope(JsonResultProbeScope[InternalJsonResultProbe]
-                                  ):
+class InternalJsonResultProbeContext(
+    JsonResultProbeContext[InternalJsonResultProbe]):
 
-  def stop(self, run: Run) -> None:
-    # Only extract data in the late TearDown phase.
+  def stop(self) -> None:
+    # Only extract data in the late tear_down phase.
     pass
 
-  def tear_down(self, run: Run) -> ProbeResult:
-    self._json_data = self.extract_json(run)
-    return super().tear_down(run)
+  def tear_down(self) -> ProbeResult:
+    self._json_data = self.extract_json(self.run)  # pylint: disable=no-member
+    return super().tear_down()
 
 
 class LogProbe(InternalProbe):
@@ -53,17 +53,17 @@ class LogProbe(InternalProbe):
   """
   NAME = "cb.log"
 
-  def get_scope(self, run: Run) -> LogProbeScope:
-    return LogProbeScope(self, run)
+  def get_context(self, run: Run) -> LogProbeContext:
+    return LogProbeContext(self, run)
 
 
-class LogProbeScope(probe.ProbeScope[LogProbe]):
+class LogProbeContext(probe.ProbeContext[LogProbe]):
 
   def __init__(self, probe_instance: LogProbe, run: Run) -> None:
     super().__init__(probe_instance, run)
     self._log_handler: Optional[logging.Handler] = None
 
-  def setup(self, run: Run) -> None:
+  def setup(self) -> None:
     log_formatter = logging.Formatter(
         "%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s] "
         "[%(name)s]  %(message)s")
@@ -72,13 +72,13 @@ class LogProbeScope(probe.ProbeScope[LogProbe]):
     self._log_handler.setLevel(logging.DEBUG)
     logging.getLogger().addHandler(self._log_handler)
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     pass
 
-  def stop(self, run: Run) -> None:
+  def stop(self) -> None:
     pass
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     assert self._log_handler
     logging.getLogger().removeHandler(self._log_handler)
     self._log_handler = None

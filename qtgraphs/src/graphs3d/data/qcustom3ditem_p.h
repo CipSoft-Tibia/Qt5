@@ -47,8 +47,8 @@ class QCustom3DItemPrivate : public QObjectPrivate
 public:
     QCustom3DItemPrivate();
     QCustom3DItemPrivate(const QString &meshFile,
-                         const QVector3D &position,
-                         const QVector3D &scaling,
+                         QVector3D position,
+                         QVector3D scaling,
                          const QQuaternion &rotation);
     ~QCustom3DItemPrivate() override;
 

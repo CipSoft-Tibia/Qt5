@@ -128,6 +128,7 @@ class MEDIA_EXPORT DemuxerManager {
 
   void OnPipelineError(PipelineStatus error);
   void SetLoadedUrl(GURL url);
+  const GURL& LoadedUrl() const;
 #if BUILDFLAG(ENABLE_HLS_DEMUXER) || BUILDFLAG(IS_ANDROID)
   void PopulateHlsHistograms(bool cryptographic_url);
   PipelineStatus SelectHlsFallbackMechanism(bool cryptographic_url);
@@ -143,22 +144,24 @@ class MEDIA_EXPORT DemuxerManager {
 
   // Returns a forwarded error/success from |on_demuxer_created|, or an error
   // if a demuxer couldn't be created.
-  PipelineStatus CreateDemuxer(bool load_media_source,
-                               DataSource::Preload preload,
-                               bool has_poster,
-                               DemuxerCreatedCB on_demuxer_created);
+  PipelineStatus CreateDemuxer(
+      bool load_media_source,
+      DataSource::Preload preload,
+      bool needs_first_frame,
+      DemuxerCreatedCB on_demuxer_created,
+      base::flat_map<std::string, std::string> headers);
 
 #if BUILDFLAG(IS_ANDROID)
   void SetAllowMediaPlayerRendererCredentials(bool allow);
 #endif  // BUILDFLAG(IS_ANDROID)
 
   // Methods that help manage or access |data_source_|
-  const DataSource* GetDataSourceForTesting() const;
+  DataSource* GetDataSourceForTesting() const;
   void SetDataSource(std::unique_ptr<DataSource> data_source);
   void OnBufferingHaveEnough(bool enough);
   void SetPreload(DataSource::Preload preload);
 
-  void StopAndResetClient(Client* client);
+  void StopAndResetClient();
   int64_t GetDataSourceMemoryUsage();
   void OnDataSourcePlaybackRateChange(double rate, bool paused);
 
@@ -185,7 +188,9 @@ class MEDIA_EXPORT DemuxerManager {
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
-  std::unique_ptr<media::Demuxer> CreateMediaUrlDemuxer(bool hls_content);
+  std::unique_ptr<media::Demuxer> CreateMediaUrlDemuxer(
+      bool hls_content, 
+      base::flat_map<std::string, std::string> headers);
 #endif  // BUILDFLAG(IS_ANDROID)
 
   void SetDemuxer(std::unique_ptr<Demuxer> demuxer);
@@ -231,6 +236,7 @@ class MEDIA_EXPORT DemuxerManager {
   // Used for MediaUrlDemuxer when playing HLS content, as well as
   // FFmpegDemuxer in most cases. Also used for creating MemoryDataSource
   // objects.
+  // Note: this may be very large, take care when making copies.
   GURL loaded_url_;
 
   // The data source for creating a demuxer. This should be null when using

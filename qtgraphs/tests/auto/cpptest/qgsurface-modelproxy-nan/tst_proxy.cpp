@@ -4,7 +4,7 @@
 #include <QtTest/QtTest>
 
 #include <QtGraphs/QItemModelSurfaceDataProxy>
-#include <QtGraphs/Q3DSurface>
+#include <QtGraphsWidgets/q3dsurfacewidgetitem.h>
 
 #include "cpptestutil.h"
 
@@ -49,7 +49,10 @@ void tst_proxy::dataContainingNaNFirstRow()
 
     QItemModelSurfaceDataProxy *proxy  = new QItemModelSurfaceDataProxy();
     QSurface3DSeries *series = new QSurface3DSeries(proxy);
-    Q3DSurface *graph = new Q3DSurface();
+    Q3DSurfaceWidgetItem *graph = new Q3DSurfaceWidgetItem();
+    QQuickWidget quickWidget;
+    graph->setWidget(&quickWidget);
+
     graph->addSeries(series);
 
     // X
@@ -123,7 +126,9 @@ void tst_proxy::dataContainingNaNLastRow()
     const int missingRow = size -  1;
     QItemModelSurfaceDataProxy *proxy  = new QItemModelSurfaceDataProxy();
     QSurface3DSeries *series = new QSurface3DSeries(proxy);
-    Q3DSurface *graph = new Q3DSurface();
+    Q3DSurfaceWidgetItem *graph = new Q3DSurfaceWidgetItem();
+    QQuickWidget quickWidget;
+    graph->setWidget(&quickWidget);
     graph->addSeries(series);
 
     // X
@@ -196,7 +201,9 @@ void tst_proxy::dataContainingNaNFirstLastRow()
     const int rowLast = size -  1;
     QItemModelSurfaceDataProxy *proxy = new QItemModelSurfaceDataProxy();
     QSurface3DSeries *series = new QSurface3DSeries(proxy);
-    Q3DSurface *graph = new Q3DSurface();
+    Q3DSurfaceWidgetItem *graph = new Q3DSurfaceWidgetItem();
+    QQuickWidget quickWidget;
+    graph->setWidget(&quickWidget);
     graph->addSeries(series);
 
     // X

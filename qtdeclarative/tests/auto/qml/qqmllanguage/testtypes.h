@@ -6,6 +6,7 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qrect.h>
 #include <QtCore/qdatetime.h>
+#include <QtCore/qjsonarray.h>
 #include <QtGui/qtransform.h>
 #include <QtGui/qcolor.h>
 #include <QtGui/qvector2d.h>
@@ -120,8 +121,10 @@ class MyAttachedObject : public QObject
     Q_OBJECT
     Q_PROPERTY(int value READ value WRITE setValue NOTIFY valueChanged)
     Q_PROPERTY(int value2 READ value2 WRITE setValue2)
+    Q_PROPERTY(int length MEMBER length)
+    Q_PROPERTY(QString name MEMBER name)
 public:
-    MyAttachedObject(QObject *parent) : QObject(parent), m_value(0), m_value2(0) {}
+    MyAttachedObject(QObject *parent) : QObject(parent), m_value(0), m_value2(0), name("attached") {}
 
     int value() const { return m_value; }
     void setValue(int v) { if (m_value != v) { m_value = v; emit valueChanged(); } }
@@ -135,6 +138,8 @@ signals:
 private:
     int m_value;
     int m_value2;
+    int length = 10;
+    QString name;
 };
 
 class SomethingUnknown : public QObject {
@@ -308,6 +313,7 @@ class MyTypeObject : public QObject
     Q_PROPERTY(qreal realProperty READ realProperty WRITE setRealProperty NOTIFY realPropertyChanged)
     Q_PROPERTY(double doubleProperty READ doubleProperty WRITE setDoubleProperty NOTIFY doublePropertyChanged)
     Q_PROPERTY(float floatProperty READ floatProperty WRITE setFloatProperty NOTIFY floatPropertyChanged)
+    Q_PROPERTY(qsizetype qsizetypeProperty READ qsizetypeProperty WRITE setQsizetypeProperty NOTIFY qsizetypePropertyChanged)
     Q_PROPERTY(QColor colorProperty READ colorProperty WRITE setColorProperty NOTIFY colorPropertyChanged)
     Q_PROPERTY(QDate dateProperty READ dateProperty WRITE setDateProperty NOTIFY datePropertyChanged)
     Q_PROPERTY(QTime timeProperty READ timeProperty WRITE setTimeProperty NOTIFY timePropertyChanged)
@@ -459,6 +465,15 @@ public:
     void setIntProperty(const int &v) {
         intPropertyValue = v;
         emit intPropertyChanged();
+    }
+
+    qsizetype qsizetypePropertyValue;
+    qsizetype qsizetypeProperty() const {
+        return qsizetypePropertyValue;
+    }
+    void setQsizetypeProperty(const qsizetype &v) {
+        qsizetypePropertyValue = v;
+        emit qsizetypePropertyChanged();
     }
 
     qreal realPropertyValue;
@@ -677,6 +692,7 @@ signals:
     void byteArrayPropertyChanged();
     void uintPropertyChanged();
     void intPropertyChanged();
+    void qsizetypePropertyChanged();
     void realPropertyChanged();
     void doublePropertyChanged();
     void floatPropertyChanged();
@@ -899,15 +915,23 @@ class MyCustomParserType : public QObject
 class MyCustomParserTypeParser : public QQmlCustomParser
 {
 public:
-    void verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) override {}
-    void applyBindings(QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) override {}
+    void verifyBindings(
+            const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) override {}
+    void applyBindings(
+            QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) override {}
 };
 
 class EnumSupportingCustomParser : public QQmlCustomParser
 {
 public:
-    void verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) override;
-    void applyBindings(QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) override {}
+    void verifyBindings(
+            const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) override;
+    void applyBindings(
+            QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) override {}
 };
 
 class MyParserStatus : public QObject, public QQmlParserStatus
@@ -1434,8 +1458,12 @@ public:
 
 class CustomBindingParser : public QQmlCustomParser
 {
-    void verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) override {}
-    void applyBindings(QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) override;
+    void verifyBindings(
+            const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) override {}
+    void applyBindings(
+            QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) override;
 };
 
 class SimpleObjectWithCustomParser : public QObject
@@ -1480,8 +1508,12 @@ private:
 
 class SimpleObjectCustomParser : public QQmlCustomParser
 {
-    void verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) override {}
-    void applyBindings(QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) override;
+    void verifyBindings(
+            const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) override {}
+    void applyBindings(
+            QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) override;
 };
 
 class RootObjectInCreationTester : public QObject
@@ -2942,6 +2974,74 @@ public:
     }
 };
 
+class TypeWithQJsonArrayProperty : public QObject {
+    Q_OBJECT
+    QML_ELEMENT
+
+    Q_PROPERTY(QJsonArray jsonArray READ jsonArray WRITE setJsonArray NOTIFY jsonArrayChanged)
+
+public:
+    TypeWithQJsonArrayProperty(QObject *parent = nullptr) : QObject(parent) {}
+
+    const QJsonArray& jsonArray() { return m_jsonArray; }
+    void setJsonArray(const QJsonArray& a) { m_jsonArray = a; }
+
+signals:
+    void jsonArrayChanged();
+
+private:
+    QJsonArray m_jsonArray;
+};
+
+class InvokableSingleton : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
+public:
+    InvokableSingleton() = default;
+    Q_INVOKABLE InvokableSingleton(int a, QObject *parent) : QObject(parent), m_a(a) {}
+
+    int m_a = 0;
+};
+
+class InvokableExtension : public QObject
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE InvokableExtension(QObject *parent = nullptr) : QObject(parent) {}
+};
+
+class InvokableExtended : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_EXTENDED(InvokableExtension)
+
+public:
+    Q_INVOKABLE InvokableExtended() = default;
+};
+
+class InvokableUncreatable : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_UNCREATABLE("no")
+
+public:
+    Q_INVOKABLE InvokableUncreatable() = default;
+};
+
+class InvokableValueType
+{
+    Q_GADGET
+    QML_VALUE_TYPE(vv)
+public:
+    Q_INVOKABLE InvokableValueType() = default;
+    Q_INVOKABLE InvokableValueType(const QString &s) : m_s(s) {}
+    QString m_s;
+};
+
 class NestedVectors : public QObject
 {
     Q_OBJECT
@@ -2973,5 +3073,45 @@ public:
 private:
     std::vector<std::vector<int>> m_list;
 };
+
+namespace YepNamespaceA {
+class YepAttached : public QObject
+{
+    Q_OBJECT
+    QML_ANONYMOUS
+
+public:
+    YepAttached(QObject *parent) : QObject(parent) { }
+    Q_INVOKABLE QString s() const { return QStringLiteral("StaticTest Attached Type"); }
+};
+class Yep : public QObject
+{
+    Q_OBJECT
+    QML_ATTACHED(YepAttached)
+    QML_ELEMENT
+
+public:
+    static YepAttached *qmlAttachedProperties(QObject *object) { return new YepAttached(object); }
+};
+
+class YepSingleton : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
+
+public:
+    Q_INVOKABLE QString s() const { return QStringLiteral("StaticTest Singleton"); }
+};
+
+class MyObject : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+
+public:
+    Q_INVOKABLE QString s() const { return QStringLiteral("StaticTest"); }
+};
+} // namespace YepNamespaceA
 
 #endif // TESTTYPES_H

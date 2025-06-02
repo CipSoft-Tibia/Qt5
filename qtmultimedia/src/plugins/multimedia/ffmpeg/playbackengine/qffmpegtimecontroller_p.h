@@ -15,6 +15,7 @@
 //
 
 #include "qglobal.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegtime_p.h>
 
 #include <chrono>
 #include <optional>
@@ -25,11 +26,8 @@ namespace QFFmpeg {
 
 class TimeController
 {
-    using TrackTime = std::chrono::microseconds;
-
 public:
-    using Clock = std::chrono::steady_clock;
-    using TimePoint = Clock::time_point;
+    using TimePoint = RealClock::time_point;
     using PlaybackRate = float;
 
     TimeController();
@@ -38,52 +36,51 @@ public:
 
     void setPlaybackRate(PlaybackRate playbackRate);
 
-    void sync(qint64 trackPos = 0);
+    void sync(TrackPosition trackPos = TrackPosition(0));
 
-    void sync(const TimePoint &tp, qint64 pos);
+    void sync(TimePoint tp, TrackPosition pos);
 
-    void syncSoft(const TimePoint &tp, qint64 pos,
-                  const Clock::duration &fixingTime = std::chrono::seconds(4));
+    void syncSoft(TimePoint tp, TrackPosition pos,
+                  RealClock::duration fixingTime = std::chrono::seconds(4));
 
-    qint64 currentPosition(const Clock::duration &offset = Clock::duration{ 0 }) const;
+    TrackPosition currentPosition(RealClock::duration offset = RealClock::duration{ 0 }) const;
 
     void setPaused(bool paused);
 
-    qint64 positionFromTime(TimePoint tp, bool ignorePause = false) const;
+    TrackPosition positionFromTime(TimePoint tp, bool ignorePause = false) const;
 
-    TimePoint timeFromPosition(qint64 pos, bool ignorePause = false) const;
+    TimePoint timeFromPosition(TrackPosition pos, bool ignorePause = false) const;
 
 private:
     struct SoftSyncData
     {
         TimePoint srcTimePoint;
-        TrackTime srcPosition;
+        TrackPosition srcPosition = 0;
         TimePoint dstTimePoint;
-        TrackTime srcPosOffest;
-        TrackTime dstPosition;
+        TrackDuration srcPosOffest = 0;
+        TrackPosition dstPosition = 0;
         PlaybackRate internalRate = 1;
     };
 
-    SoftSyncData makeSoftSyncData(const TimePoint &srcTp, const TrackTime &srcPos,
+    SoftSyncData makeSoftSyncData(const TimePoint &srcTp, const TrackPosition &srcPos,
                                   const TimePoint &dstTp) const;
 
-    TrackTime positionFromTimeInternal(const TimePoint &tp) const;
+    TrackPosition positionFromTimeInternal(const TimePoint &tp) const;
 
-    TimePoint timeFromPositionInternal(const TrackTime &pos) const;
+    TimePoint timeFromPositionInternal(const TrackPosition &pos) const;
 
     void scrollTimeTillNow();
 
-    template<typename T>
-    static Clock::duration toClockTime(const T &t);
+    static RealClock::duration toClockDuration(TrackDuration trackDuration,
+                                               PlaybackRate rate = 1.f);
 
-    template<typename T>
-    static TrackTime toTrackTime(const T &t);
+    static TrackDuration toTrackDuration(RealClock::duration clockDuration, PlaybackRate rate);
 
 private:
     bool m_paused = true;
     PlaybackRate m_playbackRate = 1;
-    TrackTime m_position;
-    TimePoint m_timePoint = {};
+    TrackPosition m_position = 0;
+    TimePoint m_timePoint;
     std::optional<SoftSyncData> m_softSyncData;
 };
 

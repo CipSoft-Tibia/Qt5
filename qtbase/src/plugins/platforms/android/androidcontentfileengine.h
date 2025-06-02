@@ -30,8 +30,8 @@ public:
     QDateTime fileTime(QFile::FileTime time) const override;
     FileFlags fileFlags(FileFlags type = FileInfoAll) const override;
     QString fileName(FileName file = DefaultName) const override;
-    QAbstractFileEngine::Iterator *beginEntryList(QDir::Filters filters, const QStringList &filterNames) override;
-    QAbstractFileEngine::Iterator *endEntryList() override;
+    IteratorUniquePtr beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
+                                     const QStringList &filterNames) override;
 
 private:
     void closeNativeFileDescriptor();
@@ -43,19 +43,22 @@ private:
 
 class AndroidContentFileEngineHandler : public QAbstractFileEngineHandler
 {
+    Q_DISABLE_COPY_MOVE(AndroidContentFileEngineHandler)
 public:
     AndroidContentFileEngineHandler();
     ~AndroidContentFileEngineHandler();
-    QAbstractFileEngine *create(const QString &fileName) const override;
+    std::unique_ptr<QAbstractFileEngine> create(const QString &fileName) const override;
 };
 
 class AndroidContentFileEngineIterator : public QAbstractFileEngineIterator
 {
 public:
-    AndroidContentFileEngineIterator(QDir::Filters filters, const QStringList &filterNames);
+    AndroidContentFileEngineIterator(const QString &path, QDirListing::IteratorFlags filters,
+                                     const QStringList &filterNames);
     ~AndroidContentFileEngineIterator();
-    QString next() override;
-    bool hasNext() const override;
+
+    bool advance() override;
+
     QString currentFileName() const override;
     QString currentFilePath() const override;
 private:

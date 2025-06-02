@@ -58,6 +58,7 @@
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
+#include "third_party/blink/renderer/core/html/canvas/html_canvas_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_text_area_element.h"
 #include "third_party/blink/renderer/core/input/event_handler.h"
@@ -69,6 +70,8 @@
 #include "third_party/blink/renderer/core/page/page.h"
 
 namespace blink {
+
+using mojom::blink::FormControlType;
 
 namespace {
 
@@ -256,10 +259,10 @@ int ComputeAutocapitalizeFlags(const Element* element) {
   // autocapitalization hint" for the focused element:
   // https://html.spec.whatwg.org/C/#used-autocapitalization-hint
   if (auto* input = DynamicTo<HTMLInputElement>(*html_element)) {
-    const AtomicString& input_type = input->type();
-    if (input_type == input_type_names::kEmail ||
-        input_type == input_type_names::kUrl ||
-        input_type == input_type_names::kPassword) {
+    FormControlType input_type = input->FormControlType();
+    if (input_type == FormControlType::kInputEmail ||
+        input_type == FormControlType::kInputUrl ||
+        input_type == FormControlType::kInputPassword) {
       // The autocapitalize IDL attribute value is ignored for these input
       // types, so we set the None flag.
       return kWebTextInputFlagAutocapitalizeNone;
@@ -411,8 +414,7 @@ void InputMethodController::DispatchBeforeInputFromComposition(
   if (auto* node = target->ToNode())
     ranges = TargetRangesForInputEvent(*node);
   InputEvent* before_input_event = InputEvent::CreateBeforeInput(
-      input_type, data, InputTypeIsCancelable(input_type),
-      InputEvent::EventIsComposing::kIsComposing, ranges);
+      input_type, data, InputEvent::EventIsComposing::kIsComposing, ranges);
   target->DispatchEvent(*before_input_event);
 }
 
@@ -449,15 +451,16 @@ void InputMethodController::InsertTextDuringCompositionWithEvents(
   if (!target)
     return;
 
+  DispatchCompositionUpdateEvent(frame, text);
+  // 'compositionupdate' event handler may destroy document.
+  if (!IsAvailable()) {
+    return;
+  }
+
   DispatchBeforeInputFromComposition(
       target, InputEvent::InputType::kInsertCompositionText, text);
 
   // 'beforeinput' event handler may destroy document.
-  if (!IsAvailable())
-    return;
-
-  DispatchCompositionUpdateEvent(frame, text);
-  // 'compositionupdate' event handler may destroy document.
   if (!IsAvailable())
     return;
 
@@ -1819,10 +1822,25 @@ void InputMethodController::SetVirtualKeyboardVisibilityRequest(
 }
 
 DOMNodeId InputMethodController::NodeIdOfFocusedElement() const {
-  return DOMNodeIds::IdForNode(GetDocument().FocusedElement());
+  Element* element = GetDocument().FocusedElement();
+  return element ? element->GetDomNodeId() : kInvalidDOMNodeId;
 }
 
 WebTextInputType InputMethodController::TextInputType() const {
+  if (!IsAvailable()) {
+    return kWebTextInputTypeNone;
+  }
+
+  // Since selection can never go inside a <canvas> element, if the user is
+  // editing inside a <canvas> with EditContext we need to handle that case
+  // directly before looking at the selection position.
+  if (GetActiveEditContext()) {
+    Element* element = GetDocument().FocusedElement();
+    if (IsA<HTMLCanvasElement>(element)) {
+      return kWebTextInputTypeContentEditable;
+    }
+  }
+
   if (!GetFrame().Selection().IsAvailable()) {
     // "mouse-capture-inside-shadow.html" reaches here.
     return kWebTextInputTypeNone;
@@ -1834,35 +1852,35 @@ WebTextInputType InputMethodController::TextInputType() const {
   if (!RootEditableElementOfSelection(GetFrame().Selection()))
     return kWebTextInputTypeNone;
 
-  if (!IsAvailable())
-    return kWebTextInputTypeNone;
-
   Element* element = GetDocument().FocusedElement();
-  if (!element)
+  if (!element) {
     return kWebTextInputTypeNone;
+  }
 
   if (auto* input = DynamicTo<HTMLInputElement>(*element)) {
-    const AtomicString& type = input->type();
+    FormControlType type = input->FormControlType();
 
     if (input->IsDisabledOrReadOnly())
       return kWebTextInputTypeNone;
 
-    if (type == input_type_names::kPassword)
-      return kWebTextInputTypePassword;
-    if (type == input_type_names::kSearch)
-      return kWebTextInputTypeSearch;
-    if (type == input_type_names::kEmail)
-      return kWebTextInputTypeEmail;
-    if (type == input_type_names::kNumber)
-      return kWebTextInputTypeNumber;
-    if (type == input_type_names::kTel)
-      return kWebTextInputTypeTelephone;
-    if (type == input_type_names::kUrl)
-      return kWebTextInputTypeURL;
-    if (type == input_type_names::kText)
-      return kWebTextInputTypeText;
-
-    return kWebTextInputTypeNone;
+    switch (type) {
+      case FormControlType::kInputPassword:
+        return kWebTextInputTypePassword;
+      case FormControlType::kInputSearch:
+        return kWebTextInputTypeSearch;
+      case FormControlType::kInputEmail:
+        return kWebTextInputTypeEmail;
+      case FormControlType::kInputNumber:
+        return kWebTextInputTypeNumber;
+      case FormControlType::kInputTelephone:
+        return kWebTextInputTypeTelephone;
+      case FormControlType::kInputUrl:
+        return kWebTextInputTypeURL;
+      case FormControlType::kInputText:
+        return kWebTextInputTypeText;
+      default:
+        return kWebTextInputTypeNone;
+    }
   }
 
   if (auto* textarea = DynamicTo<HTMLTextAreaElement>(*element)) {

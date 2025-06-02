@@ -1,21 +1,6 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# This function recursively walks transitive link libraries of the given target
-# and promotes those targets to be IMPORTED_GLOBAL if they are not.
-#
-# This is required for .prl file generation in top-level builds, to make sure that imported 3rd
-# party library targets in any repo are made global, so there are no scoping issues.
-#
-# Only works if called from qt_find_package(), because the promotion needs to happen in the same
-# directory scope where the imported target is first created.
-#
-# Uses __qt_internal_walk_libs.
-function(qt_find_package_promote_targets_to_global_scope target)
-    __qt_internal_walk_libs("${target}" _discarded_out_var _discarded_out_var_2
-                            "qt_find_package_targets_dict" "promote_global")
-endfunction()
-
 # As an optimization when using -developer-build, qt_find_package records which
 # packages were found during the initial configuration. Then on subsequent
 # reconfigurations it skips looking for packages that were not found on the
@@ -182,12 +167,34 @@ macro(qt_find_package)
                     set(qt_find_package_target_name ${aliased_target})
                 endif()
 
+                if("${qt_find_package_target_name}" MATCHES "${QT_CMAKE_EXPORT_NAMESPACE}::"
+                    AND QT_FEATURE_developer_build
+                )
+                    message(AUTHOR_WARNING
+                        "qt_find_package() should NOT be used to look up Qt packages. "
+                        "It should only be used to look up 3rd party packages. "
+                        "Please remove the "
+                        "qt_find_package(${ARGV0} PROVIDED_TARGETS "
+                        "${qt_find_package_target_name}) call and contact the build tools team "
+                        "in case the removal is causing issues."
+                    )
+                endif()
+
                 set_target_properties(${qt_find_package_target_name} PROPERTIES
                     INTERFACE_QT_PACKAGE_NAME ${ARGV0}
                     INTERFACE_QT_PACKAGE_IS_OPTIONAL ${arg_MARK_OPTIONAL})
                 if(package_version)
                     set_target_properties(${qt_find_package_target_name}
                                           PROPERTIES INTERFACE_QT_PACKAGE_VERSION ${ARGV1})
+                endif()
+
+                # Save the retrieved package version.
+                set(_qt_find_package_found_version "")
+                if(${ARGV0}_VERSION)
+                    set(_qt_find_package_found_version "${${ARGV0}_VERSION}")
+                    set_target_properties(${qt_find_package_target_name}
+                        PROPERTIES
+                            _qt_package_found_version "${_qt_find_package_found_version}")
                 endif()
 
                 if(arg_COMPONENTS)
@@ -203,17 +210,39 @@ macro(qt_find_package)
                                  ${components_as_string})
                 endif()
 
-                get_property(is_global TARGET ${qt_find_package_target_name} PROPERTY
-                                                                             IMPORTED_GLOBAL)
-                qt_internal_should_not_promote_package_target_to_global(
-                    "${qt_find_package_target_name}" should_not_promote)
-                if(NOT is_global AND NOT should_not_promote)
-                    __qt_internal_promote_target_to_global(${qt_find_package_target_name})
-                    qt_find_package_promote_targets_to_global_scope(
-                        "${qt_find_package_target_name}")
+                # Work around: QTBUG-125371
+                if(NOT "${ARGV0}" STREQUAL "Qt6")
+                    # Record the package + component + optional component provided targets.
+                    qt_internal_record_package_component_provided_targets(
+                        PACKAGE_NAME "${ARGV0}"
+                        ON_TARGET ${qt_find_package_target_name}
+                        PROVIDED_TARGETS ${arg_PROVIDED_TARGETS}
+                        COMPONENTS ${arg_COMPONENTS}
+                        OPTIONAL_COMPONENTS ${arg_OPTIONAL_COMPONENTS}
+                    )
+                endif()
+
+                _qt_internal_promote_3rd_party_provided_target_and_3rd_party_deps_to_global(
+                    "${qt_find_package_target_name}")
+
+                set(_qt_find_package_sbom_args "")
+
+                if(_qt_find_package_found_version)
+                    list(APPEND _qt_find_package_sbom_args
+                        PACKAGE_VERSION "${_qt_find_package_found_version}"
+                    )
+                endif()
+
+                # Work around: QTBUG-125371
+                if(NOT "${ARGV0}" STREQUAL "Qt6")
+                    _qt_internal_sbom_record_system_library_usage(
+                        "${qt_find_package_target_name}"
+                        TYPE SYSTEM_LIBRARY
+                        FRIENDLY_PACKAGE_NAME "${ARGV0}"
+                        ${_qt_find_package_sbom_args}
+                    )
                 endif()
             endif()
-
         endforeach()
 
         if(arg_MODULE_NAME AND arg_QMAKE_LIB
@@ -233,6 +262,56 @@ macro(qt_find_package)
         endif()
     endif()
 endmacro()
+
+# Records information about a package's provided targets, given a specific list of components.
+#
+# A package might contain multiple components, and create only a subset of targets based on which
+# components are looked for.
+# This function computes a unique key / id using the package name and the components that are
+# passed.
+# Then it saves the id in a property on the ON_TARGET target. The ON_TARGET target is one
+# of the provided targets for that package id. This allows us to create a relationship to find
+# the package id, given a target.
+# The function also appends the list of provided targets for that package id to a global property.
+# This information will later be saved into the module Dependencies.cmake file.
+function(qt_internal_record_package_component_provided_targets)
+    set(opt_args "")
+    set(single_args
+        PACKAGE_NAME
+        ON_TARGET
+    )
+    set(multi_args
+        COMPONENTS
+        OPTIONAL_COMPONENTS
+        PROVIDED_TARGETS
+    )
+    cmake_parse_arguments(PARSE_ARGV 0 arg "${opt_args}" "${single_args}" "${multi_args}")
+    _qt_internal_validate_all_args_are_parsed(arg)
+
+    if(NOT arg_PACKAGE_NAME)
+        message(FATAL_ERROR "PACKAGE_NAME is required.")
+    endif()
+
+    if(NOT arg_ON_TARGET)
+        message(FATAL_ERROR "ON_TARGET is required.")
+    endif()
+
+    _qt_internal_get_package_components_id(
+        PACKAGE_NAME "${arg_PACKAGE_NAME}"
+        COMPONENTS ${arg_COMPONENTS}
+        OPTIONAL_COMPONENTS ${arg_OPTIONAL_COMPONENTS}
+        OUT_VAR_KEY package_key
+    )
+
+    set_target_properties(${arg_ON_TARGET} PROPERTIES
+        _qt_package_components_id "${package_key}"
+    )
+
+    _qt_internal_append_to_cmake_property_without_duplicates(
+        _qt_find_package_${package_key}_provided_targets
+        "${arg_PROVIDED_TARGETS}"
+    )
+endfunction()
 
 # Save found packages in the cache. They will be read on next reconfiguration to skip looking
 # for packages that were not previously found.
@@ -521,8 +600,15 @@ function(qt_register_target_dependencies target public_libs private_libs)
     endif()
 
     foreach(lib IN LISTS lib_list)
-        if ("${lib}" MATCHES "^Qt::(.*)")
+        if("${lib}" MATCHES "^Qt::(.*)")
             set(lib "${CMAKE_MATCH_1}")
+        elseif("${lib}" MATCHES "^${QT_CMAKE_EXPORT_NAMESPACE}::(.*)")
+            set(lib "${CMAKE_MATCH_1}")
+        else()
+            set(lib "")
+        endif()
+
+        if(lib)
             qt_internal_get_package_name_of_target("${lib}" package_name)
             qt_internal_get_package_version_of_target("${lib}" package_version)
             list(APPEND target_deps "${package_name}\;${package_version}")
@@ -538,8 +624,16 @@ function(qt_register_target_dependencies target public_libs private_libs)
     # INTERFACE libraries. INTERFACE libraries in most cases will be FooPrivate libraries.
     if(target_is_shared AND private_libs)
         foreach(lib IN LISTS private_libs)
-            if ("${lib}" MATCHES "^Qt::(.*)")
-                set(lib_namespaced "${lib}")
+            set(lib_namespaced "${lib}")
+            if("${lib}" MATCHES "^Qt::(.*)")
+                set(lib "${CMAKE_MATCH_1}")
+            elseif("${lib}" MATCHES "^${QT_CMAKE_EXPORT_NAMESPACE}::(.*)")
+                set(lib "${CMAKE_MATCH_1}")
+            else()
+                set(lib "")
+            endif()
+
+            if(lib)
                 set(lib "${CMAKE_MATCH_1}")
 
                 qt_internal_is_lib_part_of_qt6_package("${lib}" is_part_of_qt6)
@@ -554,10 +648,4 @@ function(qt_register_target_dependencies target public_libs private_libs)
     endif()
 
     set_target_properties("${target}" PROPERTIES _qt_target_deps "${target_deps}")
-endfunction()
-
-# Sets out_var to to TRUE if the target was marked to not be promoted to global scope.
-function(qt_internal_should_not_promote_package_target_to_global target out_var)
-    get_property(should_not_promote TARGET "${target}" PROPERTY _qt_no_promote_global)
-    set("${out_var}" "${should_not_promote}" PARENT_SCOPE)
 endfunction()

@@ -25,6 +25,7 @@
 #include "media/base/decoder_buffer.h"
 #include "media/base/media_log.h"
 #include "media/base/media_switches.h"
+#include "media/base/supported_types.h"
 #include "media/base/video_aspect_ratio.h"
 #include "media/base/video_codecs.h"
 #include "media/base/video_decoder_config.h"
@@ -95,7 +96,8 @@ std::unique_ptr<VideoDecoder> D3D11VideoDecoder::Create(
     base::RepeatingCallback<gpu::CommandBufferStub*()> get_stub_cb,
     D3D11VideoDecoder::GetD3D11DeviceCB get_d3d11_device_cb,
     SupportedConfigs supported_configs,
-    bool system_hdr_enabled) {
+    bool system_hdr_enabled,
+    CHROME_LUID luid) {
   // Note that the output callback will hop to our thread, post the video
   // frame, and along with a callback that will hop back to the impl thread
   // when it's released.
@@ -107,7 +109,7 @@ std::unique_ptr<VideoDecoder> D3D11VideoDecoder::Create(
   return base::WrapUnique<VideoDecoder>(new D3D11VideoDecoder(
       gpu_task_runner, std::move(media_log), gpu_preferences, gpu_workarounds,
       get_helper_cb, std::move(get_d3d11_device_cb),
-      std::move(supported_configs), system_hdr_enabled));
+      std::move(supported_configs), system_hdr_enabled, luid));
 }
 
 D3D11VideoDecoder::D3D11VideoDecoder(
@@ -118,7 +120,8 @@ D3D11VideoDecoder::D3D11VideoDecoder(
     base::RepeatingCallback<scoped_refptr<CommandBufferHelper>()> get_helper_cb,
     GetD3D11DeviceCB get_d3d11_device_cb,
     SupportedConfigs supported_configs,
-    bool system_hdr_enabled)
+    bool system_hdr_enabled,
+    CHROME_LUID luid)
     : media_log_(std::move(media_log)),
       mailbox_release_helper_(
           base::MakeRefCounted<D3D11VideoFrameMailboxReleaseHelper>(
@@ -134,7 +137,8 @@ D3D11VideoDecoder::D3D11VideoDecoder(
       system_hdr_enabled_(system_hdr_enabled),
       use_shared_handle_(
           base::FeatureList::IsEnabled(kD3D11VideoDecoderUseSharedHandle) ||
-          gpu_preferences.gr_context_type != gpu::GrContextType::kGL) {
+          gpu_preferences.gr_context_type != gpu::GrContextType::kGL),
+      luid_(luid) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(media_log_);
 }
@@ -360,7 +364,10 @@ void D3D11VideoDecoder::Initialize(const VideoDecoderConfig& config,
     }
   }
 
-  if (!is_supported) {
+  // If we don't have support support for a given codec, try to initialize
+  // anyways -- otherwise we're certain to fail playback.
+  if (gpu_workarounds_.disable_d3d11_video_decoder ||
+      (!is_supported && IsBuiltInVideoCodec(config.codec()))) {
     return PostDecoderStatus(
         DecoderStatus(DecoderStatus::Codes::kUnsupportedConfig)
             .WithData("config", config));
@@ -521,6 +528,14 @@ void D3D11VideoDecoder::Decode(scoped_refptr<DecoderBuffer> buffer,
     return;
   }
 
+  const bool is_spatial_layer_buffer =
+      buffer->has_side_data() && !buffer->side_data()->spatial_layers.empty();
+  if (config_.codec() == VideoCodec::kVP9 && is_spatial_layer_buffer &&
+      gpu_workarounds_.disable_d3d11_vp9_ksvc_decoding) {
+    PostDecoderStatus(DecoderStatus::Codes::kPlatformDecodeFailure);
+    return;
+  }
+
   input_buffer_queue_.push_back(
       std::make_pair(std::move(buffer), std::move(decode_cb)));
 
@@ -639,24 +654,29 @@ void D3D11VideoDecoder::DoDecode() {
       const auto new_coded_size = accelerated_video_decoder_->GetPicSize();
       const auto new_chroma_sampling =
           accelerated_video_decoder_->GetChromaSampling();
+      const auto new_color_space =
+          accelerated_video_decoder_->GetVideoColorSpace();
       if (new_profile == config_.profile() &&
           new_coded_size == config_.coded_size() &&
           new_bit_depth == bit_depth_ && !picture_buffers_.size() &&
-          new_chroma_sampling == chroma_sampling_) {
+          new_chroma_sampling == chroma_sampling_ &&
+          new_color_space == color_space_) {
         continue;
       }
 
       // Update the config.
       MEDIA_LOG(INFO, media_log_)
           << "D3D11VideoDecoder config change: profile: "
-          << static_cast<int>(new_profile) << " chroma_sampling_format: "
+          << GetProfileName(new_profile) << ", chroma_sampling_format: "
           << VideoChromaSamplingToString(new_chroma_sampling)
-          << " coded_size: (" << new_coded_size.width() << ", "
-          << new_coded_size.height() << ")";
+          << ", coded_size: " << new_coded_size.ToString()
+          << ", bit_depth: " << base::strict_cast<int>(new_bit_depth)
+          << ", color_space: " << new_color_space.ToString();
       profile_ = new_profile;
       config_.set_profile(profile_);
       config_.set_coded_size(new_coded_size);
       chroma_sampling_ = new_chroma_sampling;
+      color_space_ = new_color_space;
 
       // Replace the decoder, and clear any picture buffers we have.  It's okay
       // if we don't have any picture buffer yet; this might be before the
@@ -672,14 +692,6 @@ void D3D11VideoDecoder::DoDecode() {
       }
       CHECK(set_accelerator_decoder_wrapper_cb_);
       set_accelerator_decoder_wrapper_cb_.Run(std::move(wrapper));
-      picture_buffers_.clear();
-    } else if (result == media::AcceleratedVideoDecoder::kColorSpaceChange) {
-      MEDIA_LOG(INFO, media_log_)
-          << "D3D11VideoDecoder color space change: color_space: "
-          << accelerated_video_decoder_->GetVideoColorSpace().ToString();
-
-      // Clear the picture buffers and recreate the pictures leading to new
-      // shared images with new color space.
       picture_buffers_.clear();
     } else if (result == media::AcceleratedVideoDecoder::kTryAgain) {
       LOG(ERROR) << "Try again is not supported";
@@ -766,11 +778,6 @@ void D3D11VideoDecoder::CreatePictureBuffers() {
   auto hdr_metadata = accelerated_video_decoder_->GetHDRMetadata()
                           ? accelerated_video_decoder_->GetHDRMetadata()
                           : config_.hdr_metadata();
-
-  gfx::HDRMetadata stream_metadata;
-  if (hdr_metadata)
-    stream_metadata = *hdr_metadata;
-  // else leave |stream_metadata| default-initialized.  We might use it anyway.
 
   absl::optional<DXGI_HDR_METADATA_HDR10> display_metadata;
   if (decoder_configurator_->TextureFormat() == DXGI_FORMAT_P010) {
@@ -862,11 +869,11 @@ void D3D11VideoDecoder::CreatePictureBuffers() {
       // If system hdr is not enabled, don't set metadata can help us avoid
       // video processor's tone mapping (if gpu vendor is intel), since we
       // always want to use gfx::ColorTransform do PQ tone-mapping.
-      if ((config_.hdr_metadata() && system_hdr_enabled_) ||
+      if ((hdr_metadata && system_hdr_enabled_) ||
           gpu_workarounds_.use_empty_video_hdr_metadata) {
         // It's okay if this has an empty-initialized metadata.
         picture_buffers_[i]->texture_wrapper()->SetStreamHDRMetadata(
-            stream_metadata);
+            hdr_metadata.value_or(gfx::HDRMetadata()));
       }
       picture_buffers_[i]->texture_wrapper()->SetDisplayHDRMetadata(
           *display_metadata);

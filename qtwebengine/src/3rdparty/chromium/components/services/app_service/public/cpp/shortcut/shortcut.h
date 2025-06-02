@@ -14,6 +14,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/stack_allocated.h"
 #include "base/types/strong_alias.h"
+#include "components/services/app_service/public/cpp/icon_types.h"
 #include "components/services/app_service/public/cpp/macros.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
@@ -22,11 +23,14 @@ namespace apps {
 using ShortcutId = base::StrongAlias<class ShortcutIdTag, std::string>;
 
 // Where the shortcut was created from.
-ENUM_FOR_COMPONENT(SHORTCUT,
-                   ShortcutSource,
-                   kUnknown = 0,
-                   kUser = 1,      // Created by the user.
-                   kDeveloper = 2  // Created by the developer. e.g. jumplist
+ENUM_FOR_COMPONENT(
+    SHORTCUT,
+    ShortcutSource,
+    kUnknown = 0,
+    kUser = 1,    // Created by the user and managed by sync. This includes any
+                  // shortcuts created by syncing between devices.
+    kPolicy = 2,  // Created by organization policy.
+    kDefault = 3  // Created by default.
 )
 
 struct COMPONENT_EXPORT(SHORTCUT) Shortcut {
@@ -50,6 +54,7 @@ struct COMPONENT_EXPORT(SHORTCUT) Shortcut {
   // - source: Source::kUser
   // - host_app_id: app_1
   // - local_id: shortcut_1
+  // - allow_removal: true
   std::string ToString() const;
   // Name of the shortcut.
   absl::optional<std::string> name;
@@ -68,6 +73,13 @@ struct COMPONENT_EXPORT(SHORTCUT) Shortcut {
   // 'shortcut_id' is generated from the hash of 'host_app_id' and 'local_id',
   // these value should not be updated separately.
   const ShortcutId shortcut_id;
+
+  // Represents what icon should be loaded for this shortcut, icon key will
+  // change if the icon has been updated from the publisher.
+  absl::optional<IconKey> icon_key;
+
+  // Whether the shortcut publisher allows the shortcut to be removed by user.
+  absl::optional<bool> allow_removal;
 };
 
 // A view class to reduce the risk of lifetime issues by preventing

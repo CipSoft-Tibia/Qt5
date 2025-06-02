@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "functionnode.h"
-
 #include "propertynode.h"
+
+#include <string>
 
 QT_BEGIN_NAMESPACE
 
@@ -15,24 +16,15 @@ QT_BEGIN_NAMESPACE
   global function, a QML method, or a macro, with or without
   parameters.
 
-  A C++ function can be a signal a slot, a constructor of any
+  A C++ function can be a signal, a slot, a constructor of any
   kind, a destructor, a copy or move assignment operator, or
-  just a plain old member function or global function.
+  just a plain old member function or a global function.
 
   A QML method can be a plain old method, or a
   signal or signal handler.
 
-  If the function is not an overload, its overload flag is
-  false. If it is an overload, its overload flag is true.
-  If it is not an overload but it has overloads, its next
-  overload pointer will point to an overload function. If it
-  is an overload function, its overload flag is true, and it
-  may or may not have a non-null next overload pointer.
-
-  So all the overloads of a function are in a linked list
-  using the next overload pointer. If a function has no
-  overloads, its overload flag is false and its overload
-  pointer is null.
+  If the function is an overload, its overload flag is
+  true.
 
   The function node also has an overload number. If the
   node's overload flag is set, this overload number is
@@ -64,8 +56,7 @@ FunctionNode::FunctionNode(Aggregate *parent, const QString &name)
       m_constexpr{false},
       m_metaness(Plain),
       m_virtualness(NonVirtual),
-      m_overloadNumber(0),
-      m_nextOverload(nullptr)
+      m_overloadNumber(0)
 {
     // nothing
 }
@@ -97,8 +88,7 @@ FunctionNode::FunctionNode(Metaness kind, Aggregate *parent, const QString &name
       m_constexpr{false},
       m_metaness(kind),
       m_virtualness(NonVirtual),
-      m_overloadNumber(0),
-      m_nextOverload(nullptr)
+      m_overloadNumber(0)
 {
     setGenus(getGenus(m_metaness));
     if (!isCppNode() && name.startsWith("__"))
@@ -113,7 +103,6 @@ Node *FunctionNode::clone(Aggregate *parent)
 {
     auto *fn = new FunctionNode(*this); // shallow copy
     fn->setParent(nullptr);
-    fn->setNextOverload(nullptr);
     parent->addChild(fn);
     return fn;
 }
@@ -251,63 +240,6 @@ void FunctionNode::setOverloadNumber(signed short number)
 }
 
 /*!
-  Appends \a functionNode to the linked list of overloads for this function.
-
-  \note Although this function appends an overload function to the list of
-  overloads for this function's name, it does not set the function's
-  overload number or it's overload flag. If the function has the
-  \c{\\overload} in its QDoc comment, that will set the overload
-  flag. But qdoc treats the \c{\\overload} command as a hint that the
-  function should be documented as an overload. The hint is almost
-  always correct, but QDoc reserves the right to decide which function
-  should be the primary function and which functions are the overloads.
-  These decisions are made in Aggregate::normalizeOverloads().
- */
-void FunctionNode::appendOverload(FunctionNode *functionNode)
-{
-    auto current = this;
-    while (current->m_nextOverload)
-        current = current->m_nextOverload;
-    current->m_nextOverload = functionNode;
-    functionNode->m_nextOverload = nullptr;
-}
-
-/*!
-  Removes \a functionNode from the linked list of function overloads.
-*/
-void FunctionNode::removeOverload(FunctionNode *functionNode)
-{
-    auto head = this;
-    auto **indirect = &head;
-    while ((*indirect) != functionNode) {
-        if (!(*indirect)->m_nextOverload)
-            return;
-        indirect = &(*indirect)->m_nextOverload;
-    }
-    *indirect = functionNode->m_nextOverload;
-}
-
-/*!
-  Returns the primary function - the first function
-  from the linked list of overloads that is \e not
-  marked as an overload. If found, the primary function
-  is removed from the list and returned. Otherwise
-  returns \c nullptr.
- */
-FunctionNode *FunctionNode::findPrimaryFunction()
-{
-    auto current = this;
-    while (current->m_nextOverload && current->m_nextOverload->isOverload())
-        current = current->m_nextOverload;
-
-    auto primary = current->m_nextOverload;
-    if (primary)
-        current->m_nextOverload = primary->m_nextOverload;
-
-    return primary;
-}
-
-/*!
   \fn void FunctionNode::setReimpFlag()
 
   Sets the function node's reimp flag to \c true, which means
@@ -388,6 +320,33 @@ void FunctionNode::addAssociatedProperty(PropertyNode *p)
 }
 
 /*!
+  Returns the \e primary associated property, if this is an
+  access function for one or more properties.
+
+  An associated property is considered a primary if this
+  function's name starts with the property name. If there's
+  no such property, return the first one available as a
+  fallback.
+
+  If no associated properties exist, returns \nullptr.
+ */
+const PropertyNode *FunctionNode::primaryAssociatedProperty() const
+{
+    if (m_associatedProperties.isEmpty())
+        return nullptr;
+    if (m_associatedProperties.size() == 1)
+        return m_associatedProperties[0];
+
+    auto it = std::find_if(
+            m_associatedProperties.cbegin(), m_associatedProperties.cend(),
+                    [this](const PropertyNode *p) {
+                        return name().startsWith(p->name());
+                    });
+
+    return it != m_associatedProperties.cend() ? *it : m_associatedProperties[0];
+}
+
+/*!
     \reimp
 
     Returns \c true if this is an access function for an obsolete property,
@@ -430,7 +389,7 @@ QString FunctionNode::signature(Node::SignatureOptions options) const
     if (options & Node::SignatureTemplateParams && templateDecl())
         elements << (*templateDecl()).to_qstring();
     if (options & Node::SignatureReturnType)
-        elements << m_returnType;
+        elements << m_returnType.first;
     elements.removeAll(QString());
 
     if (!isMacroWithoutParams()) {
@@ -452,36 +411,56 @@ QString FunctionNode::signature(Node::SignatureOptions options) const
 }
 
 /*!
-  Compares this FunctionNode to \a node. If \a sameParent is \c true, compares
-  also the parent of the two nodes. Returns \c true if they describe
-  the same function.
- */
-bool FunctionNode::compare(const Node *node, bool sameParent) const
-{
-    if (!node || !node->isFunction())
-        return false;
+  \fn int FunctionNode::compare(const FunctionNode *f1, const FunctionNode *f2)
 
-    const auto *functionNode = static_cast<const FunctionNode *>(node);
-    if (metaness() != functionNode->metaness())
-        return false;
-    if (sameParent && parent() != functionNode->parent())
-        return false;
-    if (m_returnType != functionNode->returnType())
-        return false;
-    if (isConst() != functionNode->isConst())
-        return false;
-    if (isAttached() != functionNode->isAttached())
-        return false;
-    const Parameters &p = functionNode->parameters();
-    if (m_parameters.count() != p.count())
-        return false;
-    if (!p.isEmpty()) {
-        for (int i = 0; i < p.count(); ++i) {
-            if (m_parameters.at(i).type() != p.at(i).type())
-                return false;
+  Compares FunctionNode \a f1 with \a f2, assumed to have identical names.
+  Returns an integer less than, equal to, or greater than zero if f1 is
+  considered less than, equal to, or greater than f2.
+
+  The main purpose is to provide stable ordering for function overloads.
+ */
+[[nodiscard]] int compare(const FunctionNode *f1, const FunctionNode *f2)
+{
+    // Compare parameter count
+    int param_count{f1->parameters().count()};
+
+    if (int param_diff = param_count - f2->parameters().count(); param_diff != 0)
+        return param_diff;
+
+    // Constness
+    if (f1->isConst() != f2->isConst())
+        return f1->isConst() ? 1 : -1;
+
+    // Reference qualifiers
+    if (f1->isRef() != f2->isRef())
+        return f1->isRef() ? 1 : -1;
+    if (f1->isRefRef() != f2->isRefRef())
+        return f1->isRefRef() ? 1 : -1;
+
+    // Attachedness (applies to QML methods)
+    if (f1->isAttached() != f2->isAttached())
+        return f1->isAttached() ? 1 : -1;
+
+    // Parameter types
+    const Parameters &p1{f1->parameters()};
+    const Parameters &p2{f2->parameters()};
+    for (qsizetype i = 0; i < param_count; ++i) {
+        if (int type_comp = QString::compare(p1.at(i).type(), p2.at(i).type());
+                type_comp != 0) {
+            return type_comp;
         }
     }
-    return true;
+
+    // Template declarations
+    const auto t1{f1->templateDecl()};
+    const auto t2{f2->templateDecl()};
+    if (!t1 && !t2)
+        return 0;
+
+    if (t1 && t2)
+        return (*t1).to_std_string().compare((*t2).to_std_string());
+
+    return t1 ? 1 : -1;
 }
 
 /*!
@@ -514,24 +493,21 @@ bool FunctionNode::isIgnored() const
 }
 
 /*!
-  Returns true if this function has overloads. Otherwise false.
-  First, if this function node's overload pointer is not nullptr,
-  return true. Next, if this function node's overload flag is true
-  return true. Finally, if this function's parent Aggregate has a
-  function by the same name as this one in its function map and
-  that function has overloads, return true. Otherwise return false.
-
-  There is a failsafe way to test it under any circumstances.
+  \fn bool FunctionNode::hasOverloads() const
+  Returns \c true if this function has overloads.
  */
-bool FunctionNode::hasOverloads() const
-{
-    if (m_nextOverload != nullptr)
-        return true;
-    if (m_overloadFlag)
-        return true;
-    if (parent())
-        return parent()->hasOverloads(this);
-    return false;
-}
 
+/*!
+    \internal
+    \brief Returns the type of the function as a string.
+
+    The returned string is either the type as declared in the header, or `auto`
+    if that's the return type in the `\\fn` command for the function.
+ */
+QString FunctionNode::returnTypeString() const
+{
+    if (m_returnType.second.has_value())
+        return m_returnType.second.value();
+    return m_returnType.first;
+}
 QT_END_NAMESPACE

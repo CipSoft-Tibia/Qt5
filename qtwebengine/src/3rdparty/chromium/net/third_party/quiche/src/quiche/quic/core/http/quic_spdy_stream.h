@@ -52,13 +52,13 @@ class QuicSpdySession;
 class WebTransportHttp3;
 
 // A QUIC stream that can send and receive HTTP2 (SPDY) headers.
-class QUIC_EXPORT_PRIVATE QuicSpdyStream
+class QUICHE_EXPORT QuicSpdyStream
     : public QuicStream,
       public quiche::CapsuleParser::Visitor,
       public QpackDecodedHeadersAccumulator::Visitor {
  public:
   // Visitor receives callbacks from the stream.
-  class QUIC_EXPORT_PRIVATE Visitor {
+  class QUICHE_EXPORT Visitor {
    public:
     Visitor() {}
     Visitor(const Visitor&) = delete;
@@ -66,10 +66,6 @@ class QUIC_EXPORT_PRIVATE QuicSpdyStream
 
     // Called when the stream is closed.
     virtual void OnClose(QuicSpdyStream* stream) = 0;
-
-    // Allows subclasses to override and do work.
-    virtual void OnPromiseHeadersComplete(QuicStreamId /*promised_id*/,
-                                          size_t /*frame_len*/) {}
 
    protected:
     virtual ~Visitor() {}
@@ -98,11 +94,6 @@ class QUIC_EXPORT_PRIVATE QuicSpdyStream
   // should be closed; no more data will be sent by the peer.
   virtual void OnStreamHeaderList(bool fin, size_t frame_len,
                                   const QuicHeaderList& header_list);
-
-  // Called by the session when decompressed push promise headers have
-  // been completely delivered to this stream.
-  virtual void OnPromiseHeaderList(QuicStreamId promised_id, size_t frame_len,
-                                   const QuicHeaderList& header_list);
 
   // Called by the session when a PRIORITY frame has been been received for this
   // stream. This method will only be called for server streams.
@@ -266,7 +257,7 @@ class QUIC_EXPORT_PRIVATE QuicSpdyStream
   // to allow mocking in tests.
   virtual MessageStatus SendHttp3Datagram(absl::string_view payload);
 
-  class QUIC_EXPORT_PRIVATE Http3DatagramVisitor {
+  class QUICHE_EXPORT Http3DatagramVisitor {
    public:
     virtual ~Http3DatagramVisitor() {}
 
@@ -293,7 +284,7 @@ class QUIC_EXPORT_PRIVATE QuicSpdyStream
   // Mainly meant to be used by the visitors' move operators.
   void ReplaceHttp3DatagramVisitor(Http3DatagramVisitor* visitor);
 
-  class QUIC_EXPORT_PRIVATE ConnectIpVisitor {
+  class QUICHE_EXPORT ConnectIpVisitor {
    public:
     virtual ~ConnectIpVisitor() {}
 
@@ -365,10 +356,10 @@ class QUIC_EXPORT_PRIVATE QuicSpdyStream
 
   void OnWriteSideInDataRecvdState() override;
 
-  virtual bool ValidatedReceivedHeaders(const QuicHeaderList& header_list);
+  virtual bool ValidateReceivedHeaders(const QuicHeaderList& header_list);
   // TODO(b/202433856) Merge AreHeaderFieldValueValid into
-  // ValidatedReceivedHeaders once all flags guarding the behavior of
-  // ValidatedReceivedHeaders has been rolled out.
+  // ValidateReceivedHeaders once all flags guarding the behavior of
+  // ValidateReceivedHeaders has been rolled out.
   virtual bool AreHeaderFieldValuesValid(
       const QuicHeaderList& header_list) const;
 
@@ -389,7 +380,7 @@ class QUIC_EXPORT_PRIVATE QuicSpdyStream
   friend class QuicStreamUtils;
   class HttpDecoderVisitor;
 
-  struct QUIC_EXPORT_PRIVATE WebTransportDataStream {
+  struct QUICHE_EXPORT WebTransportDataStream {
     WebTransportDataStream(QuicSpdyStream* stream,
                            WebTransportSessionId session_id);
 

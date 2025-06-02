@@ -4,10 +4,11 @@
 
 #include "base/allocator/partition_alloc_features.h"
 
-#include "base/allocator/partition_allocator/partition_alloc_base/time/time.h"
-#include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
-#include "base/allocator/partition_allocator/partition_root.h"
-#include "base/allocator/partition_allocator/thread_cache.h"
+#include "base/allocator/miracle_parameter.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc_base/time/time.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc_buildflags.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_root.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/thread_cache.h"
 #include "base/base_export.h"
 #include "base/feature_list.h"
 #include "base/features.h"
@@ -38,16 +39,11 @@ const base::FeatureParam<UnretainedDanglingPtrMode>
         &kUnretainedDanglingPtrModeOption,
 };
 
-CONSTINIT const base::Feature kPartitionAllocDanglingPtr(
+// TODO(crbug.com/324994233): Re-enable DPD once we annotate all
+// `DanglingUntriaged`.
+BASE_FEATURE(kPartitionAllocDanglingPtr,
              "PartitionAllocDanglingPtr",
-#if BUILDFLAG(ENABLE_DANGLING_RAW_PTR_FEATURE_FLAG) ||                   \
-    (BUILDFLAG(ENABLE_DANGLING_RAW_PTR_CHECKS) && BUILDFLAG(IS_LINUX) && \
-     !defined(OFFICIAL_BUILD) && (!defined(NDEBUG) || DCHECK_IS_ON()))
-             FEATURE_ENABLED_BY_DEFAULT
-#else
-             FEATURE_DISABLED_BY_DEFAULT
-#endif
-);
+             FEATURE_DISABLED_BY_DEFAULT);
 
 constexpr FeatureParam<DanglingPtrMode>::Option kDanglingPtrModeOption[] = {
     {DanglingPtrMode::kCrash, "crash"},
@@ -94,38 +90,52 @@ BASE_FEATURE(kPartitionAllocLargeThreadCacheSize,
              "PartitionAllocLargeThreadCacheSize",
              FEATURE_ENABLED_BY_DEFAULT);
 
-const base::FeatureParam<int> kPartitionAllocLargeThreadCacheSizeValue{
-    &kPartitionAllocLargeThreadCacheSize,
+MIRACLE_PARAMETER_FOR_INT(
+    GetPartitionAllocLargeThreadCacheSizeValue,
+    kPartitionAllocLargeThreadCacheSize,
     "PartitionAllocLargeThreadCacheSizeValue",
-    ::partition_alloc::ThreadCacheLimits::kLargeSizeThreshold};
+    ::partition_alloc::ThreadCacheLimits::kLargeSizeThreshold)
 
-const base::FeatureParam<int>
-    kPartitionAllocLargeThreadCacheSizeValueForLowRAMAndroid{
-        &kPartitionAllocLargeThreadCacheSize,
-        "PartitionAllocLargeThreadCacheSizeValueForLowRAMAndroid",
-        ::partition_alloc::ThreadCacheLimits::kDefaultSizeThreshold};
+MIRACLE_PARAMETER_FOR_INT(
+    GetPartitionAllocLargeThreadCacheSizeValueForLowRAMAndroid,
+    kPartitionAllocLargeThreadCacheSize,
+    "PartitionAllocLargeThreadCacheSizeValueForLowRAMAndroid",
+    ::partition_alloc::ThreadCacheLimits::kDefaultSizeThreshold)
 
 BASE_FEATURE(kPartitionAllocLargeEmptySlotSpanRing,
              "PartitionAllocLargeEmptySlotSpanRing",
              FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPartitionAllocSchedulerLoopQuarantine,
+             "PartitionAllocSchedulerLoopQuarantine",
+             FEATURE_DISABLED_BY_DEFAULT);
+// Scheduler Loop Quarantine's capacity in bytes.
+const base::FeatureParam<int> kPartitionAllocSchedulerLoopQuarantineCapacity{
+    &kPartitionAllocSchedulerLoopQuarantine,
+    "PartitionAllocSchedulerLoopQuarantineCapacity", 0};
+// Scheduler Loop Quarantine's capacity count.
+const base::FeatureParam<int>
+    kPartitionAllocSchedulerLoopQuarantineCapacityCount{
+        &kPartitionAllocSchedulerLoopQuarantine,
+        "PartitionAllocSchedulerLoopQuarantineCapacityCount", 1024};
+
+BASE_FEATURE(kPartitionAllocZappingByFreeFlags,
+             "PartitionAllocZappingByFreeFlags",
+             FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 
-CONSTINIT const base::Feature kPartitionAllocBackupRefPtr(
-             "PartitionAllocBackupRefPtr",
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_CHROMEOS_LACROS) ||     \
     (BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CASTOS)) ||                  \
     BUILDFLAG(ENABLE_BACKUP_REF_PTR_FEATURE_FLAG)
-             FEATURE_ENABLED_BY_DEFAULT
-#else
-             FEATURE_DISABLED_BY_DEFAULT
-#endif
-);
-
-BASE_EXPORT BASE_DECLARE_FEATURE(kPartitionAllocBackupRefPtrForAsh);
-BASE_FEATURE(kPartitionAllocBackupRefPtrForAsh,
-             "PartitionAllocBackupRefPtrForAsh",
+BASE_FEATURE(kPartitionAllocBackupRefPtr,
+             "PartitionAllocBackupRefPtr",
              FEATURE_ENABLED_BY_DEFAULT);
+#else
+BASE_FEATURE(kPartitionAllocBackupRefPtr,
+             "PartitionAllocBackupRefPtr",
+             FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 constexpr FeatureParam<BackupRefPtrEnabledProcesses>::Option
     kBackupRefPtrEnabledProcessesOptions[] = {
@@ -141,34 +151,26 @@ const base::FeatureParam<BackupRefPtrEnabledProcesses>
         BackupRefPtrEnabledProcesses::kNonRenderer,
         &kBackupRefPtrEnabledProcessesOptions};
 
-constexpr FeatureParam<BackupRefPtrRefCountSize>::Option
-    kBackupRefPtrRefCountSizeOptions[] = {
-        {BackupRefPtrRefCountSize::kNatural, "natural"},
-        {BackupRefPtrRefCountSize::k4B, "4B"},
-        {BackupRefPtrRefCountSize::k8B, "8B"},
-        {BackupRefPtrRefCountSize::k16B, "16B"}};
-
-const base::FeatureParam<BackupRefPtrRefCountSize>
-    kBackupRefPtrRefCountSizeParam{
-        &kPartitionAllocBackupRefPtr, "ref-count-size",
-        BackupRefPtrRefCountSize::kNatural, &kBackupRefPtrRefCountSizeOptions};
-
-// Map -with-memory-reclaimer modes onto their counterpars without the suffix.
+// Map *-with-memory-reclaimer modes onto their counterpars without the suffix.
 // They are the same, as memory reclaimer is now controlled independently.
-// However, we need to keep both option strings, as there is a long tail of
-// clients that may have an old field trial config, which used these modes.
 //
-// DO NOT USE -with-memory-reclaimer modes in new configs!
+// Similarly, map disabled-but-*-way-split onto plain disabled, as we are done
+// experimenting with partition split.
+//
+// We need to keep those option strings, as there is a long tail of clients that
+// may have an old field trial config, which used these modes.
+//
+// DO NOT USE *-with-memory-reclaimer and disabled-but-*-way-split modes in new
+// configs!
 constexpr FeatureParam<BackupRefPtrMode>::Option kBackupRefPtrModeOptions[] = {
     {BackupRefPtrMode::kDisabled, "disabled"},
     {BackupRefPtrMode::kEnabled, "enabled"},
     {BackupRefPtrMode::kEnabled, "enabled-with-memory-reclaimer"},
-    {BackupRefPtrMode::kDisabledButSplitPartitions2Way,
-     "disabled-but-2-way-split"},
-    {BackupRefPtrMode::kDisabledButSplitPartitions2Way,
+    {BackupRefPtrMode::kEnabledInSameSlotMode, "enabled-in-same-slot-mode"},
+    {BackupRefPtrMode::kDisabled, "disabled-but-2-way-split"},
+    {BackupRefPtrMode::kDisabled,
      "disabled-but-2-way-split-with-memory-reclaimer"},
-    {BackupRefPtrMode::kDisabledButSplitPartitions3Way,
-     "disabled-but-3-way-split"},
+    {BackupRefPtrMode::kDisabled, "disabled-but-3-way-split"},
 };
 
 const base::FeatureParam<BackupRefPtrMode> kBackupRefPtrModeParam{
@@ -220,14 +222,15 @@ const base::FeatureParam<bool> kBackupRefPtrAsanEnableInstantiationCheckParam{
 //
 // We enable this by default everywhere except for 32-bit Android, since we saw
 // regressions there.
-CONSTINIT const base::Feature kPartitionAllocUseDenserDistribution(
-             "PartitionAllocUseDenserDistribution",
 #if BUILDFLAG(IS_ANDROID) && defined(ARCH_CPU_32_BITS)
-             FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kPartitionAllocUseDenserDistribution,
+             "PartitionAllocUseDenserDistribution",
+             FEATURE_DISABLED_BY_DEFAULT);
 #else
-             FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kPartitionAllocUseDenserDistribution,
+             "PartitionAllocUseDenserDistribution",
+             FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_ANDROID) && defined(ARCH_CPU_32_BITS)
-);
 const base::FeatureParam<BucketDistributionMode>::Option
     kPartitionAllocBucketDistributionOption[] = {
         {BucketDistributionMode::kDefault, "default"},
@@ -276,14 +279,15 @@ BASE_FEATURE(kPartitionAllocPCScanEagerClearing,
              FEATURE_DISABLED_BY_DEFAULT);
 
 // In addition to heap, scan also the stack of the current mutator.
-CONSTINIT const base::Feature kPartitionAllocPCScanStackScanning(
-             "PartitionAllocPCScanStackScanning",
 #if BUILDFLAG(PCSCAN_STACK_SUPPORTED)
-             FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kPartitionAllocPCScanStackScanning,
+             "PartitionAllocPCScanStackScanning",
+             FEATURE_ENABLED_BY_DEFAULT);
 #else
-             FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kPartitionAllocPCScanStackScanning,
+             "PartitionAllocPCScanStackScanning",
+             FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(PCSCAN_STACK_SUPPORTED)
-);
 
 BASE_FEATURE(kPartitionAllocDCScan,
              "PartitionAllocDCScan",
@@ -329,7 +333,7 @@ BASE_FEATURE(kPageAllocatorRetryOnCommitFailure,
              FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
-#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS)
 // A parameter to exclude or not exclude PartitionAllocSupport from
 // PartialLowModeOnMidRangeDevices. This is used to see how it affects
 // renderer performances, e.g. blink_perf.parser benchmark.
@@ -345,12 +349,15 @@ BASE_FEATURE(kEnableConfigurableThreadCacheMultiplier,
              "EnableConfigurableThreadCacheMultiplier",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::FeatureParam<double> kThreadCacheMultiplier{
-    &kEnableConfigurableThreadCacheMultiplier, "ThreadCacheMultiplier", 2.};
+MIRACLE_PARAMETER_FOR_DOUBLE(GetThreadCacheMultiplier,
+                             kEnableConfigurableThreadCacheMultiplier,
+                             "ThreadCacheMultiplier",
+                             2.)
 
-const base::FeatureParam<double> kThreadCacheMultiplierForAndroid{
-    &kEnableConfigurableThreadCacheMultiplier,
-    "ThreadCacheMultiplierForAndroid", 1.};
+MIRACLE_PARAMETER_FOR_DOUBLE(GetThreadCacheMultiplierForAndroid,
+                             kEnableConfigurableThreadCacheMultiplier,
+                             "ThreadCacheMultiplierForAndroid",
+                             1.)
 
 constexpr partition_alloc::internal::base::TimeDelta ToPartitionAllocTimeDelta(
     base::TimeDelta time_delta) {
@@ -367,42 +374,66 @@ BASE_FEATURE(kEnableConfigurableThreadCachePurgeInterval,
              "EnableConfigurableThreadCachePurgeInterval",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::FeatureParam<base::TimeDelta> kThreadCacheMinPurgeInterval{
-    &kEnableConfigurableThreadCachePurgeInterval, "ThreadCacheMinPurgeInterval",
-    FromPartitionAllocTimeDelta(partition_alloc::kMinPurgeInterval)};
+MIRACLE_PARAMETER_FOR_TIME_DELTA(
+    GetThreadCacheMinPurgeIntervalValue,
+    kEnableConfigurableThreadCachePurgeInterval,
+    "ThreadCacheMinPurgeInterval",
+    FromPartitionAllocTimeDelta(partition_alloc::kMinPurgeInterval))
 
-const base::FeatureParam<base::TimeDelta> kThreadCacheMaxPurgeInterval{
-    &kEnableConfigurableThreadCachePurgeInterval, "ThreadCacheMaxPurgeInterval",
-    FromPartitionAllocTimeDelta(partition_alloc::kMaxPurgeInterval)};
+MIRACLE_PARAMETER_FOR_TIME_DELTA(
+    GetThreadCacheMaxPurgeIntervalValue,
+    kEnableConfigurableThreadCachePurgeInterval,
+    "ThreadCacheMaxPurgeInterval",
+    FromPartitionAllocTimeDelta(partition_alloc::kMaxPurgeInterval))
 
-const base::FeatureParam<base::TimeDelta> kThreadCacheDefaultPurgeInterval{
-    &kEnableConfigurableThreadCachePurgeInterval,
+MIRACLE_PARAMETER_FOR_TIME_DELTA(
+    GetThreadCacheDefaultPurgeIntervalValue,
+    kEnableConfigurableThreadCachePurgeInterval,
     "ThreadCacheDefaultPurgeInterval",
-    FromPartitionAllocTimeDelta(partition_alloc::kDefaultPurgeInterval)};
+    FromPartitionAllocTimeDelta(partition_alloc::kDefaultPurgeInterval))
 
 const partition_alloc::internal::base::TimeDelta
 GetThreadCacheMinPurgeInterval() {
-  return ToPartitionAllocTimeDelta(kThreadCacheMinPurgeInterval.Get());
+  return ToPartitionAllocTimeDelta(GetThreadCacheMinPurgeIntervalValue());
 }
 
 const partition_alloc::internal::base::TimeDelta
 GetThreadCacheMaxPurgeInterval() {
-  return ToPartitionAllocTimeDelta(kThreadCacheMaxPurgeInterval.Get());
+  return ToPartitionAllocTimeDelta(GetThreadCacheMaxPurgeIntervalValue());
 }
 
 const partition_alloc::internal::base::TimeDelta
 GetThreadCacheDefaultPurgeInterval() {
-  return ToPartitionAllocTimeDelta(kThreadCacheDefaultPurgeInterval.Get());
+  return ToPartitionAllocTimeDelta(GetThreadCacheDefaultPurgeIntervalValue());
 }
 
 BASE_FEATURE(kEnableConfigurableThreadCacheMinCachedMemoryForPurging,
              "EnableConfigurableThreadCacheMinCachedMemoryForPurging",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-const base::FeatureParam<int> kThreadCacheMinCachedMemoryForPurgingBytes{
-    &kEnableConfigurableThreadCacheMinCachedMemoryForPurging,
+MIRACLE_PARAMETER_FOR_INT(
+    GetThreadCacheMinCachedMemoryForPurgingBytes,
+    kEnableConfigurableThreadCacheMinCachedMemoryForPurging,
     "ThreadCacheMinCachedMemoryForPurgingBytes",
-    partition_alloc::kMinCachedMemoryForPurgingBytes};
+    partition_alloc::kMinCachedMemoryForPurgingBytes)
+
+// An apparent quarantine leak in the buffer partition unacceptably
+// bloats memory when MiraclePtr is enabled in the renderer process.
+// We believe we have found and patched the leak, but out of an
+// abundance of caution, we provide this toggle that allows us to
+// wholly disable MiraclePtr in the buffer partition, if necessary.
+//
+// TODO(crbug.com/1444624): this is unneeded once
+// MiraclePtr-for-Renderer launches.
+BASE_FEATURE(kPartitionAllocDisableBRPInBufferPartition,
+             "PartitionAllocDisableBRPInBufferPartition",
+             FEATURE_DISABLED_BY_DEFAULT);
+
+#if BUILDFLAG(USE_FREELIST_POOL_OFFSETS)
+BASE_FEATURE(kUsePoolOffsetFreelists,
+             "PartitionAllocUsePoolOffsetFreelists",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 }  // namespace features
 }  // namespace base

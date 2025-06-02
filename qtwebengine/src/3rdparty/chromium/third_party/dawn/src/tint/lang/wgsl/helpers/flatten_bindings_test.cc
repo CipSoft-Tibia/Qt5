@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/helpers/flatten_bindings.h"
 
@@ -22,7 +35,7 @@
 #include "src/tint/lang/wgsl/resolver/resolve.h"
 #include "src/tint/lang/wgsl/sem/variable.h"
 
-namespace tint::writer {
+namespace tint::wgsl {
 namespace {
 
 using namespace tint::core::number_suffixes;  // NOLINT
@@ -32,9 +45,9 @@ class FlattenBindingsTest : public ::testing::Test {};
 TEST_F(FlattenBindingsTest, NoBindings) {
     ProgramBuilder b;
     Program program(resolver::Resolve(b));
-    ASSERT_TRUE(program.IsValid()) << program.Diagnostics().str();
+    ASSERT_TRUE(program.IsValid()) << program.Diagnostics();
 
-    auto flattened = tint::writer::FlattenBindings(&program);
+    auto flattened = FlattenBindings(program);
     EXPECT_FALSE(flattened);
 }
 
@@ -45,9 +58,9 @@ TEST_F(FlattenBindingsTest, AlreadyFlat) {
     b.GlobalVar("c", b.ty.i32(), core::AddressSpace::kUniform, b.Group(0_a), b.Binding(2_a));
 
     Program program(resolver::Resolve(b));
-    ASSERT_TRUE(program.IsValid()) << program.Diagnostics().str();
+    ASSERT_TRUE(program.IsValid()) << program.Diagnostics();
 
-    auto flattened = tint::writer::FlattenBindings(&program);
+    auto flattened = FlattenBindings(program);
     EXPECT_FALSE(flattened);
 }
 
@@ -59,27 +72,27 @@ TEST_F(FlattenBindingsTest, NotFlat_SingleNamespace) {
     b.WrapInFunction(b.Expr("a"), b.Expr("b"), b.Expr("c"));
 
     Program program(resolver::Resolve(b));
-    ASSERT_TRUE(program.IsValid()) << program.Diagnostics().str();
+    ASSERT_TRUE(program.IsValid()) << program.Diagnostics();
 
-    auto flattened = tint::writer::FlattenBindings(&program);
+    auto flattened = FlattenBindings(program);
     EXPECT_TRUE(flattened);
 
     auto& vars = flattened->AST().GlobalVariables();
 
     auto* sem = flattened->Sem().Get<sem::GlobalVariable>(vars[0]);
     ASSERT_NE(sem, nullptr);
-    EXPECT_EQ(sem->BindingPoint()->group, 0u);
-    EXPECT_EQ(sem->BindingPoint()->binding, 0u);
+    EXPECT_EQ(sem->Attributes().binding_point->group, 0u);
+    EXPECT_EQ(sem->Attributes().binding_point->binding, 0u);
 
     sem = flattened->Sem().Get<sem::GlobalVariable>(vars[1]);
     ASSERT_NE(sem, nullptr);
-    EXPECT_EQ(sem->BindingPoint()->group, 0u);
-    EXPECT_EQ(sem->BindingPoint()->binding, 1u);
+    EXPECT_EQ(sem->Attributes().binding_point->group, 0u);
+    EXPECT_EQ(sem->Attributes().binding_point->binding, 1u);
 
     sem = flattened->Sem().Get<sem::GlobalVariable>(vars[2]);
     ASSERT_NE(sem, nullptr);
-    EXPECT_EQ(sem->BindingPoint()->group, 0u);
-    EXPECT_EQ(sem->BindingPoint()->binding, 2u);
+    EXPECT_EQ(sem->Attributes().binding_point->group, 0u);
+    EXPECT_EQ(sem->Attributes().binding_point->binding, 2u);
 }
 
 TEST_F(FlattenBindingsTest, NotFlat_MultipleNamespaces) {
@@ -121,9 +134,9 @@ TEST_F(FlattenBindingsTest, NotFlat_MultipleNamespaces) {
                      b.Assign(b.Phony(), "texture6"));
 
     Program program(resolver::Resolve(b));
-    ASSERT_TRUE(program.IsValid()) << program.Diagnostics().str();
+    ASSERT_TRUE(program.IsValid()) << program.Diagnostics();
 
-    auto flattened = tint::writer::FlattenBindings(&program);
+    auto flattened = FlattenBindings(program);
     EXPECT_TRUE(flattened);
 
     auto& vars = flattened->AST().GlobalVariables();
@@ -131,22 +144,22 @@ TEST_F(FlattenBindingsTest, NotFlat_MultipleNamespaces) {
     for (size_t i = 0; i < num_buffers; ++i) {
         auto* sem = flattened->Sem().Get<sem::GlobalVariable>(vars[i]);
         ASSERT_NE(sem, nullptr);
-        EXPECT_EQ(sem->BindingPoint()->group, 0u);
-        EXPECT_EQ(sem->BindingPoint()->binding, i);
+        EXPECT_EQ(sem->Attributes().binding_point->group, 0u);
+        EXPECT_EQ(sem->Attributes().binding_point->binding, i);
     }
     for (size_t i = 0; i < num_samplers; ++i) {
         auto* sem = flattened->Sem().Get<sem::GlobalVariable>(vars[i + num_buffers]);
         ASSERT_NE(sem, nullptr);
-        EXPECT_EQ(sem->BindingPoint()->group, 0u);
-        EXPECT_EQ(sem->BindingPoint()->binding, i);
+        EXPECT_EQ(sem->Attributes().binding_point->group, 0u);
+        EXPECT_EQ(sem->Attributes().binding_point->binding, i);
     }
     for (size_t i = 0; i < num_textures; ++i) {
         auto* sem = flattened->Sem().Get<sem::GlobalVariable>(vars[i + num_buffers + num_samplers]);
         ASSERT_NE(sem, nullptr);
-        EXPECT_EQ(sem->BindingPoint()->group, 0u);
-        EXPECT_EQ(sem->BindingPoint()->binding, i);
+        EXPECT_EQ(sem->Attributes().binding_point->group, 0u);
+        EXPECT_EQ(sem->Attributes().binding_point->binding, i);
     }
 }
 
 }  // namespace
-}  // namespace tint::writer
+}  // namespace tint::wgsl

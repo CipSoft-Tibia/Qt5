@@ -84,40 +84,40 @@ bool PagedSpaceBase::Contains(Tagged<Object> o) const {
   return Page::FromAddress(o.ptr())->owner() == this;
 }
 
-bool PagedSpaceBase::TryFreeLast(Address object_address, int object_size) {
-  if (allocation_info_.top() != kNullAddress) {
-    return allocation_info_.DecrementTopIfAdjacent(object_address, object_size);
+template <bool during_sweep>
+size_t PagedSpaceBase::FreeInternal(Address start, size_t size_in_bytes) {
+  if (size_in_bytes == 0) return 0;
+  size_t wasted;
+  if (executable_) {
+    WritableJitPage jit_page(start, size_in_bytes);
+    WritableFreeSpace free_space = jit_page.FreeRange(start, size_in_bytes);
+    heap()->CreateFillerObjectAtBackground(free_space);
+    wasted = free_list_->Free(
+        free_space, during_sweep ? kDoNotLinkCategory : kLinkCategory);
+  } else {
+    WritableFreeSpace free_space =
+        WritableFreeSpace::ForNonExecutableMemory(start, size_in_bytes);
+    heap()->CreateFillerObjectAtBackground(free_space);
+    wasted = free_list_->Free(
+        free_space, during_sweep ? kDoNotLinkCategory : kLinkCategory);
   }
-  return false;
+
+  if constexpr (!during_sweep) {
+    Page* page = Page::FromAddress(start);
+    accounting_stats_.DecreaseAllocatedBytes(size_in_bytes, page);
+    free_list()->increase_wasted_bytes(wasted);
+  }
+
+  DCHECK_GE(size_in_bytes, wasted);
+  return size_in_bytes - wasted;
 }
 
-V8_INLINE bool PagedSpaceBase::EnsureAllocation(int size_in_bytes,
-                                                AllocationAlignment alignment,
-                                                AllocationOrigin origin,
-                                                int* out_max_aligned_size) {
-  if (!is_compaction_space() &&
-      !((identity() == NEW_SPACE) && heap_->ShouldOptimizeForLoadTime())) {
-    // Start incremental marking before the actual allocation, this allows the
-    // allocation function to mark the object black when incremental marking is
-    // running.
-    heap()->StartIncrementalMarkingIfAllocationLimitIsReached(
-        heap()->GCFlagsForIncrementalMarking(),
-        kGCCallbackScheduleIdleGarbageCollection);
-  }
-  if (identity() == NEW_SPACE && heap()->incremental_marking()->IsStopped()) {
-    heap()->StartMinorMSIncrementalMarkingIfNeeded();
-  }
+size_t PagedSpaceBase::Free(Address start, size_t size_in_bytes) {
+  return FreeInternal</*during_sweep=*/false>(start, size_in_bytes);
+}
 
-  // We don't know exactly how much filler we need to align until space is
-  // allocated, so assume the worst case.
-  size_in_bytes += Heap::GetMaximumFillToAlign(alignment);
-  if (out_max_aligned_size) {
-    *out_max_aligned_size = size_in_bytes;
-  }
-  if (allocation_info_.top() + size_in_bytes <= allocation_info_.limit()) {
-    return true;
-  }
-  return RefillLabMain(size_in_bytes, origin);
+size_t PagedSpaceBase::FreeDuringSweep(Address start, size_t size_in_bytes) {
+  return FreeInternal</*during_sweep=*/true>(start, size_in_bytes);
 }
 
 }  // namespace internal

@@ -1,28 +1,40 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/simplify_pointers.h"
 
-#include <memory>
-#include <unordered_map>
-#include <utility>
-#include <vector>
+#include <unordered_set>
+#include "src/tint/utils/containers/hashset.h"
 
 #include "src/tint/lang/wgsl/ast/transform/unshadow.h"
 #include "src/tint/lang/wgsl/program/clone_context.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/resolve.h"
+#include "src/tint/lang/wgsl/sem/accessor_expression.h"
 #include "src/tint/lang/wgsl/sem/block_statement.h"
 #include "src/tint/lang/wgsl/sem/function.h"
 #include "src/tint/lang/wgsl/sem/statement.h"
@@ -51,15 +63,18 @@ struct PointerOp {
 /// PIMPL state for the transform
 struct SimplifyPointers::State {
     /// The source program
-    const Program* const src;
+    const Program& src;
     /// The target program builder
     ProgramBuilder b;
     /// The clone context
-    program::CloneContext ctx = {&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx = {&b, &src, /* auto_clone_symbols */ true};
+    /// Set of accessor expression objects that are pointers, used to handle
+    /// pointer-index/dot sugar syntax.
+    Hashset<const Expression*, 4> is_accessor_object_pointer;
 
     /// Constructor
     /// @param program the source program
-    explicit State(const Program* program) : src(program) {}
+    explicit State(const Program& program) : src(program) {}
 
     /// Traverses the expression `expr` looking for non-literal array indexing
     /// expressions that would affect the computed address of a pointer
@@ -97,9 +112,14 @@ struct SimplifyPointers::State {
     /// indirection ops into a PointerOp.
     /// @param in the expression to walk
     /// @returns the reduced PointerOp
-    PointerOp Reduce(const Expression* in) const {
+    PointerOp Reduce(const Expression* in) {
         PointerOp op{0, in};
         while (true) {
+            if (is_accessor_object_pointer.Contains(op.expr)) {
+                // Object is an implicitly dereferenced pointer (i.e. syntax sugar).
+                op.indirections++;
+            }
+
             if (auto* unary = op.expr->As<UnaryOpExpression>()) {
                 switch (unary->op) {
                     case core::UnaryOp::kIndirection:
@@ -213,6 +233,14 @@ struct SimplifyPointers::State {
                         // will be no pointers that can be inlined.
                         needs_transform = true;
                     }
+                },
+                [&](const AccessorExpression* accessor) {
+                    if (auto* a = ctx.src->Sem().Get<sem::ValueExpression>(accessor->object)) {
+                        if (a->Type()->Is<core::type::Pointer>()) {
+                            // Object is an implicitly dereferenced pointer (i.e. syntax sugar).
+                            is_accessor_object_pointer.Add(accessor->object);
+                        }
+                    }
                 });
         }
 
@@ -259,7 +287,7 @@ SimplifyPointers::SimplifyPointers() = default;
 
 SimplifyPointers::~SimplifyPointers() = default;
 
-Transform::ApplyResult SimplifyPointers::Apply(const Program* src, const DataMap&, DataMap&) const {
+Transform::ApplyResult SimplifyPointers::Apply(const Program& src, const DataMap&, DataMap&) const {
     return State(src).Run();
 }
 

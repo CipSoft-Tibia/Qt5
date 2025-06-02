@@ -205,11 +205,13 @@ void SerialPortUnderlyingSink::OnHandleReady(MojoResult result,
 }
 
 void SerialPortUnderlyingSink::OnFlushOrDrain() {
-  DCHECK(pending_operation_);
-
-  pending_operation_->Resolve();
-  pending_operation_ = nullptr;
-  serial_port_->UnderlyingSinkClosed();
+  // If pending_operation_ is nullptr, that means SignalError happened before
+  // flush finished and SerialPort::UnderlyingSinkClosed has been called.
+  if (pending_operation_) {
+    pending_operation_->Resolve();
+    pending_operation_ = nullptr;
+    serial_port_->UnderlyingSinkClosed();
+  }
 }
 
 void SerialPortUnderlyingSink::WriteData() {
@@ -264,6 +266,12 @@ void SerialPortUnderlyingSink::PipeClosed() {
   watcher_.Cancel();
   data_pipe_.reset();
   abort_handle_.Clear();
+}
+
+void SerialPortUnderlyingSink::Dispose() {
+  // Ensure that `watcher_` is disarmed so that `OnHandleReady()` is not called
+  // after this object becomes garbage.
+  PipeClosed();
 }
 
 }  // namespace blink

@@ -16,26 +16,21 @@
 #define THIRD_PARTY_CENTIPEDE_CENTIPEDE_CALLBACKS_H_
 
 #include <cstddef>
-#include <filesystem>
+#include <filesystem>  // NOLINT
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "./centipede/binary_info.h"
 #include "./centipede/byte_array_mutator.h"
-#include "./centipede/call_graph.h"
 #include "./centipede/command.h"
-#include "./centipede/control_flow.h"
 #include "./centipede/defs.h"
 #include "./centipede/environment.h"
 #include "./centipede/fuzztest_mutator.h"
-#include "./centipede/knobs.h"
-#include "./centipede/logging.h"
 #include "./centipede/mutation_input.h"
-#include "./centipede/runner_request.h"
 #include "./centipede/runner_result.h"
 #include "./centipede/shared_memory_blob_sequence.h"
-#include "./centipede/symbol_table.h"
 #include "./centipede/util.h"
 
 namespace centipede {
@@ -51,7 +46,7 @@ class CentipedeCallbacks {
   CentipedeCallbacks(const Environment &env)
       : env_(env),
         byte_array_mutator_(env.knobs, GetRandomSeed(env.seed)),
-        fuzztest_mutator_(GetRandomSeed(env.seed)),
+        fuzztest_mutator_(env.knobs, GetRandomSeed(env.seed)),
         inputs_blobseq_(shmem_name1_.c_str(), env.shmem_size_mb << 20,
                         env.use_posix_shmem),
         outputs_blobseq_(shmem_name2_.c_str(), env.shmem_size_mb << 20,
@@ -109,6 +104,20 @@ class CentipedeCallbacks {
   // If `disable_coverage`, coverage options are not added.
   std::string ConstructRunnerFlags(std::string_view extra_flags = "",
                                    bool disable_coverage = false);
+
+  // Uses an external binary `binary` to generate seed inputs. The binary should
+  // be linked against :centipede_runner and implement the RunnerCallbacks
+  // interface as described in runner_interface.h.
+  //
+  // Retrieves the first `seeds.size()` inputs (if exist) from `binary`,
+  // replacing the existing elements of `seeds`, and shrinking `seeds` if
+  // needed. Sets `num_avail_seeds` to the number of available seeds, which may
+  // be more than `seeds.size()`.
+  //
+  // Returns true on success.
+  bool GetSeedsViaExternalBinary(std::string_view binary,
+                                 size_t &num_avail_seeds,
+                                 std::vector<ByteArray> &seeds);
 
   // Uses an external binary `binary` to mutate `inputs`. The binary
   // should be linked against :centipede_runner and implement the

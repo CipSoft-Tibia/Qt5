@@ -25,6 +25,7 @@
 #include <QtCore/QVariant>
 #include <QtCore/private/qcoreapplication_p.h>
 #include <QtCore/private/qabstracteventdispatcher_p.h>
+#include <QtCore/private/qminimalflatset_p.h>
 #include <QtCore/qmutex.h>
 #include <QtCore/private/qthread_p.h>
 #include <QtCore/private/qlocking_p.h>
@@ -105,6 +106,8 @@
 #include <limits>
 
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcPopup, "qt.gui.popup");
 Q_LOGGING_CATEGORY(lcVirtualKeyboard, "qt.gui.virtualkeyboard");
 
 using namespace Qt::StringLiterals;
@@ -180,12 +183,15 @@ Q_CONSTINIT QClipboard *QGuiApplicationPrivate::qt_clipboard = nullptr;
 Q_CONSTINIT QList<QScreen *> QGuiApplicationPrivate::screen_list;
 
 Q_CONSTINIT QWindowList QGuiApplicationPrivate::window_list;
+Q_CONSTINIT QWindowList QGuiApplicationPrivate::popup_list;
+Q_CONSTINIT const QWindow *QGuiApplicationPrivate::active_popup_on_press = nullptr;
 Q_CONSTINIT QWindow *QGuiApplicationPrivate::focus_window = nullptr;
 
 Q_CONSTINIT static QBasicMutex applicationFontMutex;
 Q_CONSTINIT QFont *QGuiApplicationPrivate::app_font = nullptr;
 Q_CONSTINIT QStyleHints *QGuiApplicationPrivate::styleHints = nullptr;
 Q_CONSTINIT bool QGuiApplicationPrivate::obey_desktop_settings = true;
+Q_CONSTINIT bool QGuiApplicationPrivate::popup_closed_on_press = false;
 
 Q_CONSTINIT QInputDeviceManager *QGuiApplicationPrivate::m_inputDeviceManager = nullptr;
 
@@ -588,13 +594,10 @@ static QWindowGeometrySpecification windowGeometrySpecification = Q_WINDOW_GEOME
             \c none disables them.
 
         \li \c {fontengine=freetype}, uses the FreeType font engine.
-        \li \c {fontengine=directwrite}, uses the experimental DirectWrite
-               font database and defaults to using the DirectWrite font
+        \li \c {fontengine=gdi}, uses the legacy GDI-based
+               font database and defaults to using the GDI font
                engine (which is otherwise only used for some font types
-               or font properties.) This affects font selection and aims
-               to provide font naming more consistent with other platforms,
-               but does not support all font formats, such as Postscript
-               Type-1 or Microsoft FNT fonts.
+               or font properties.) (Since Qt 6.8).
         \li \c {menus=[native|none]}, controls the use of native menus.
 
                Native menus are implemented using Win32 API and are simpler than
@@ -608,7 +611,8 @@ static QWindowGeometrySpecification windowGeometrySpecification = Q_WINDOW_GEOME
         \li \c {nocolorfonts} Turn off DirectWrite Color fonts
                (since Qt 5.8).
 
-        \li \c {nodirectwrite} Turn off DirectWrite fonts (since Qt 5.8).
+        \li \c {nodirectwrite} Turn off DirectWrite fonts (since Qt 5.8). This implicitly
+               also selects the GDI font engine.
 
         \li \c {nomousefromtouch} Ignores mouse events synthesized
                from touch events by the operating system.
@@ -960,6 +964,43 @@ bool QGuiApplicationPrivate::isWindowBlocked(QWindow *window, QWindow **blocking
         }
     }
     return false;
+}
+
+QWindow *QGuiApplicationPrivate::activePopupWindow()
+{
+    // might be the same as focusWindow() if that's a popup
+    return QGuiApplicationPrivate::popup_list.isEmpty() ?
+            nullptr : QGuiApplicationPrivate::popup_list.constLast();
+}
+
+void QGuiApplicationPrivate::activatePopup(QWindow *popup)
+{
+    if (!popup->isVisible())
+        return;
+    popup_list.removeOne(popup); // ensure that there's only one entry, and it's the last
+    qCDebug(lcPopup) << "appending popup" << popup << "to existing" << popup_list;
+    popup_list.append(popup);
+}
+
+bool QGuiApplicationPrivate::closePopup(QWindow *popup)
+{
+    const auto removed = QGuiApplicationPrivate::popup_list.removeAll(popup);
+    qCDebug(lcPopup) << "removed?" << removed << "popup" << popup << "; remaining" << popup_list;
+    return removed; // >= 1 if something was removed
+}
+
+/*!
+    Returns \c true if there are no more open popups.
+*/
+bool QGuiApplicationPrivate::closeAllPopups()
+{
+    // Close all popups: In case some popup refuses to close,
+    // we give up after 1024 attempts (to avoid an infinite loop).
+    int maxiter = 1024;
+    QWindow *popup;
+    while ((popup = activePopupWindow()) && maxiter--)
+        popup->close(); // this will call QApplicationPrivate::closePopup
+    return QGuiApplicationPrivate::popup_list.isEmpty();
 }
 
 /*!
@@ -1538,7 +1579,7 @@ void QGuiApplicationPrivate::createPlatformIntegration()
 
     init_platform(QLatin1StringView(platformName), platformPluginPath, platformThemeName, argc, argv);
     if (const QPlatformTheme *theme = platformTheme())
-        QStyleHintsPrivate::get(QGuiApplication::styleHints())->setColorScheme(theme->colorScheme());
+        QStyleHintsPrivate::get(QGuiApplication::styleHints())->updateColorScheme(theme->colorScheme());
 
     if (!icon.isEmpty())
         forcedWindowIcon = QDir::isAbsolutePath(icon) ? QIcon(icon) : QIcon::fromTheme(icon);
@@ -1792,6 +1833,7 @@ QGuiApplicationPrivate::~QGuiApplicationPrivate()
     platform_integration = nullptr;
 
     window_list.clear();
+    popup_list.clear();
     screen_list.clear();
 
     self = nullptr;
@@ -1912,9 +1954,10 @@ QFunctionPointer QGuiApplication::platformFunction(const QByteArray &function)
 
     Generally, no user interaction can take place before calling exec().
 
-    To make your application perform idle processing, e.g., executing a special
-    function whenever there are no pending events, use a QTimer with 0 timeout.
-    More advanced idle processing schemes can be achieved using processEvents().
+    To make your application perform idle processing, e.g., executing a
+    special function whenever there are no pending events, use a QChronoTimer
+    with 0ns timeout. More advanced idle processing schemes can be achieved
+    using processEvents().
 
     We recommend that you connect clean-up code to the
     \l{QCoreApplication::}{aboutToQuit()} signal, instead of putting it in your
@@ -1990,9 +2033,24 @@ void QGuiApplicationPrivate::captureGlobalModifierState(QEvent *e)
 */
 bool QGuiApplication::notify(QObject *object, QEvent *event)
 {
+    Q_D(QGuiApplication);
     if (object->isWindowType()) {
         if (QGuiApplicationPrivate::sendQWindowEventToQPlatformWindow(static_cast<QWindow *>(object), event))
             return true; // Platform plugin ate the event
+    }
+
+    switch (event->type()) {
+    case QEvent::ApplicationDeactivate:
+    case QEvent::OrientationChange:
+        // Close all popups (triggers when switching applications
+        // by pressing ALT-TAB on Windows, which is not received as a key event.
+        // triggers when the screen rotates.)
+        // This is also necessary on Wayland, and platforms where
+        // QWindow::setMouseGrabEnabled(true) doesn't work.
+        d->closeAllPopups();
+        break;
+    default:
+        break;
     }
 
     QGuiApplicationPrivate::captureGlobalModifierState(event);
@@ -2368,6 +2426,14 @@ void QGuiApplicationPrivate::processMouseEvent(QWindowSystemInterfacePrivate::Mo
     }
 #endif
 
+    const auto *activePopup = activePopupWindow();
+    if (type == QEvent::MouseButtonPress)
+        active_popup_on_press = activePopup;
+    if (window->d_func()->blockedByModalWindow && !activePopup) {
+        // a modal window is blocking this window, don't allow mouse events through
+        return;
+    }
+
     QMouseEvent ev(type, localPoint, localPoint, globalPoint, button, e->buttons, e->modifiers, e->source, device);
     Q_ASSERT(devPriv->pointById(0) == persistentEPD); // we don't expect reallocation in QPlatformCursor::pointerEvenmt()
     // restore globalLastPosition to avoid invalidating the velocity calculations,
@@ -2376,14 +2442,20 @@ void QGuiApplicationPrivate::processMouseEvent(QWindowSystemInterfacePrivate::Mo
     persistentEPD = nullptr; // incoming and synth events can cause reallocation during delivery, so don't use this again
     // ev now contains a detached copy of the QEventPoint from QPointingDevicePrivate::activePoints
     ev.setTimestamp(e->timestamp);
-    if (window->d_func()->blockedByModalWindow && !qApp->d_func()->popupActive()) {
-        // a modal window is blocking this window, don't allow mouse events through
-        return;
+
+    if (activePopup && activePopup != window && (!popup_closed_on_press || type == QEvent::MouseButtonRelease)) {
+        // If the popup handles the event, we're done.
+        auto *handlingPopup = window->d_func()->forwardToPopup(&ev, active_popup_on_press);
+        if (handlingPopup) {
+            if (type == QEvent::MouseButtonPress)
+                active_popup_on_press = handlingPopup;
+            return;
+        }
     }
 
     if (doubleClick && (ev.type() == QEvent::MouseButtonPress)) {
         // QtBUG-25831, used to suppress delivery in qwidgetwindow.cpp
-        QMutableSinglePointEvent::from(ev).setDoubleClick();
+        QMutableSinglePointEvent::setDoubleClick(&ev, true);
     }
 
     QGuiApplication::sendSpontaneousEvent(window, &ev);
@@ -2430,6 +2502,7 @@ void QGuiApplicationPrivate::processMouseEvent(QWindowSystemInterfacePrivate::Mo
         }
     }
     if (type == QEvent::MouseButtonRelease && e->buttons == Qt::NoButton) {
+        popup_closed_on_press = false;
         if (auto *persistentEPD = devPriv->queryPointById(0)) {
             ev.setExclusiveGrabber(persistentEPD->eventPoint, nullptr);
             ev.clearPassiveGrabbers(persistentEPD->eventPoint);
@@ -2484,6 +2557,11 @@ void QGuiApplicationPrivate::processKeyEvent(QWindowSystemInterfacePrivate::KeyE
         window = QGuiApplication::focusWindow();
     }
 
+    if (!window) {
+        e->eventAccepted = false;
+        return;
+    }
+
 #if defined(Q_OS_ANDROID)
     static bool backKeyPressAccepted = false;
     static bool menuKeyPressAccepted = false;
@@ -2492,7 +2570,7 @@ void QGuiApplicationPrivate::processKeyEvent(QWindowSystemInterfacePrivate::KeyE
 #if !defined(Q_OS_MACOS)
     // FIXME: Include OS X in this code path by passing the key event through
     // QPlatformInputContext::filterEvent().
-    if (e->keyType == QEvent::KeyPress && window) {
+    if (e->keyType == QEvent::KeyPress) {
         if (QWindowSystemInterface::handleShortcutEvent(window, e->timestamp, e->key, e->modifiers,
             e->nativeScanCode, e->nativeVirtualKey, e->nativeModifiers, e->unicode, e->repeat, e->repeatCount)) {
 #if defined(Q_OS_ANDROID)
@@ -2509,9 +2587,16 @@ void QGuiApplicationPrivate::processKeyEvent(QWindowSystemInterfacePrivate::KeyE
                  e->unicode, e->repeat, e->repeatCount);
     ev.setTimestamp(e->timestamp);
 
+    const auto *activePopup = activePopupWindow();
+    if (activePopup && activePopup != window) {
+        // If the popup handles the event, we're done.
+        if (window->d_func()->forwardToPopup(&ev, active_popup_on_press))
+            return;
+    }
+
     // only deliver key events when we have a window, and no modal window is blocking this window
 
-    if (window && !window->d_func()->blockedByModalWindow)
+    if (!window->d_func()->blockedByModalWindow)
         QGuiApplication::sendSpontaneousEvent(window, &ev);
 #ifdef Q_OS_ANDROID
     else
@@ -2582,10 +2667,15 @@ void QGuiApplicationPrivate::processFocusWindowEvent(QWindowSystemInterfacePriva
     if (previous == newFocus)
         return;
 
-    if (newFocus)
+    bool activatedPopup = false;
+    if (newFocus) {
         if (QPlatformWindow *platformWindow = newFocus->handle())
             if (platformWindow->isAlertState())
                 platformWindow->setAlertState(false);
+        activatedPopup = (newFocus->flags() & Qt::WindowType_Mask) == Qt::Popup;
+        if (activatedPopup)
+            activatePopup(newFocus);
+    }
 
     QObject *previousFocusObject = previous ? previous->focusObject() : nullptr;
 
@@ -2600,8 +2690,7 @@ void QGuiApplicationPrivate::processFocusWindowEvent(QWindowSystemInterfacePriva
 
     if (previous) {
         Qt::FocusReason r = e->reason;
-        if ((r == Qt::OtherFocusReason || r == Qt::ActiveWindowFocusReason) &&
-                newFocus && (newFocus->flags() & Qt::Popup) == Qt::Popup)
+        if ((r == Qt::OtherFocusReason || r == Qt::ActiveWindowFocusReason) && activatedPopup)
             r = Qt::PopupFocusReason;
         QFocusEvent focusOut(QEvent::FocusOut, r);
         QCoreApplication::sendSpontaneousEvent(previous, &focusOut);
@@ -2705,28 +2794,18 @@ void QGuiApplicationPrivate::processThemeChanged(QWindowSystemInterfacePrivate::
 
     QIconPrivate::clearIconCache();
 
-    QStyleHintsPrivate::get(QGuiApplication::styleHints())->setColorScheme(colorScheme());
-
     QEvent themeChangeEvent(QEvent::ThemeChange);
     const QWindowList windows = tce->window ? QWindowList{tce->window} : window_list;
     for (auto *window : windows)
         QGuiApplication::sendSpontaneousEvent(window, &themeChangeEvent);
 }
 
-/*!
-   \internal
-   \brief QGuiApplicationPrivate::colorScheme
-   \return the platform theme's color scheme
-   or Qt::ColorScheme::Unknown if a platform theme cannot be established
- */
-Qt::ColorScheme QGuiApplicationPrivate::colorScheme()
-{
-    return platformTheme() ? platformTheme()->colorScheme()
-                           : Qt::ColorScheme::Unknown;
-}
-
 void QGuiApplicationPrivate::handleThemeChanged()
 {
+    const auto newColorScheme = platformTheme() ? platformTheme()->colorScheme()
+                                                : Qt::ColorScheme::Unknown;
+    QStyleHintsPrivate::get(QGuiApplication::styleHints())->updateColorScheme(newColorScheme);
+
     updatePalette();
 
     QIconLoader::instance()->updateSystemTheme();
@@ -2854,6 +2933,7 @@ void QGuiApplicationPrivate::processTabletEvent(QWindowSystemInterfacePrivate::T
         }
         if (!window)
             return;
+        active_popup_on_press = activePopupWindow();
         pointData.target = window;
     } else {
         if (e->nullWindow()) {
@@ -2881,12 +2961,25 @@ void QGuiApplicationPrivate::processTabletEvent(QWindowSystemInterfacePrivate::T
         }
     }
 
+    const auto *activePopup = activePopupWindow();
+    if (window->d_func()->blockedByModalWindow && !activePopup) {
+        // a modal window is blocking this window, don't allow events through
+        return;
+    }
+
     QTabletEvent tabletEvent(type, device, local, e->global,
                              e->pressure, e->xTilt, e->yTilt,
                              e->tangentialPressure, e->rotation, e->z,
                              e->modifiers, button, e->buttons);
     tabletEvent.setAccepted(false);
     tabletEvent.setTimestamp(e->timestamp);
+
+    if (activePopup && activePopup != window) {
+        // If the popup handles the event, we're done.
+        if (window->d_func()->forwardToPopup(&tabletEvent, active_popup_on_press))
+            return;
+    }
+
     QGuiApplication::sendSpontaneousEvent(window, &tabletEvent);
     pointData.state = e->buttons;
     if (!tabletEvent.isAccepted()
@@ -2979,6 +3072,7 @@ void QGuiApplicationPrivate::processContextMenuEvent(QWindowSystemInterfacePriva
 
     QContextMenuEvent ev(QContextMenuEvent::Keyboard, e->pos, e->globalPos, e->modifiers);
     QGuiApplication::sendSpontaneousEvent(e->window.data(), &ev);
+    e->eventAccepted = ev.isAccepted();
 }
 #endif
 
@@ -2996,17 +3090,17 @@ void QGuiApplicationPrivate::processTouchEvent(QWindowSystemInterfacePrivate::To
         // Send the TouchCancel to all windows with active touches and clean up.
         QTouchEvent touchEvent(QEvent::TouchCancel, device, e->modifiers);
         touchEvent.setTimestamp(e->timestamp);
-        QSet<QWindow *> windowsNeedingCancel;
+        constexpr qsizetype Prealloc = decltype(devPriv->activePoints)::mapped_container_type::PreallocatedSize;
+        QMinimalVarLengthFlatSet<QWindow *, Prealloc> windowsNeedingCancel;
 
         for (auto &epd : devPriv->activePoints.values()) {
             if (QWindow *w = QMutableEventPoint::window(epd.eventPoint))
                 windowsNeedingCancel.insert(w);
         }
 
-        for (QSet<QWindow *>::const_iterator winIt = windowsNeedingCancel.constBegin(),
-            winItEnd = windowsNeedingCancel.constEnd(); winIt != winItEnd; ++winIt) {
-            QGuiApplication::sendSpontaneousEvent(*winIt, &touchEvent);
-        }
+        for (QWindow *w : windowsNeedingCancel)
+            QGuiApplication::sendSpontaneousEvent(w, &touchEvent);
+
         if (!self->synthesizedMousePoints.isEmpty() && !e->synthetic()) {
             for (QHash<QWindow *, SynthesizedMouseData>::const_iterator synthIt = self->synthesizedMousePoints.constBegin(),
                  synthItEnd = self->synthesizedMousePoints.constEnd(); synthIt != synthItEnd; ++synthIt) {
@@ -3059,6 +3153,7 @@ void QGuiApplicationPrivate::processTouchEvent(QWindowSystemInterfacePrivate::To
             if (!window)
                 window = QGuiApplication::topLevelAt(tempPt.globalPosition().toPoint());
             QMutableEventPoint::setWindow(ep, window);
+            active_popup_on_press = activePopupWindow();
             break;
 
         case QEventPoint::State::Released:
@@ -3129,7 +3224,8 @@ void QGuiApplicationPrivate::processTouchEvent(QWindowSystemInterfacePrivate::To
             break;
         }
 
-        if (window->d_func()->blockedByModalWindow && !qApp->d_func()->popupActive()) {
+        const auto *activePopup = activePopupWindow();
+        if (window->d_func()->blockedByModalWindow && !activePopup) {
             // a modal window is blocking this window, don't allow touch events through
 
             // QTBUG-37371 temporary fix; TODO: revisit when we have a forwarding solution
@@ -3141,6 +3237,12 @@ void QGuiApplicationPrivate::processTouchEvent(QWindowSystemInterfacePrivate::To
                 QGuiApplication::sendSpontaneousEvent(window, &touchEvent);
             }
             continue;
+        }
+
+        if (activePopup && activePopup != window) {
+            // If the popup handles the event, we're done.
+            if (window->d_func()->forwardToPopup(&touchEvent, active_popup_on_press))
+                return;
         }
 
         // Note: after the call to sendSpontaneousEvent, touchEvent.position() will have
@@ -3521,6 +3623,15 @@ void QGuiApplicationPrivate::updatePalette()
     }
 }
 
+QEvent::Type QGuiApplicationPrivate::contextMenuEventType()
+{
+    switch (QGuiApplication::styleHints()->contextMenuTrigger()) {
+    case Qt::ContextMenuTrigger::Press: return QEvent::MouseButtonPress;
+    case Qt::ContextMenuTrigger::Release: return QEvent::MouseButtonRelease;
+    }
+    return QEvent::None;
+}
+
 void QGuiApplicationPrivate::clearPalette()
 {
     delete app_pal;
@@ -3871,6 +3982,8 @@ Qt::ApplicationState QGuiApplication::applicationState()
 */
 void QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy policy)
 {
+    if (qApp)
+        qWarning("setHighDpiScaleFactorRoundingPolicy must be called before creating the QGuiApplication instance");
     QGuiApplicationPrivate::highDpiScaleFactorRoundingPolicy = policy;
 }
 
@@ -4388,7 +4501,7 @@ const QColorTrcLut *QGuiApplicationPrivate::colorProfileForA8Text()
 {
 #ifdef Q_OS_WIN
     if (!m_a8ColorProfile)
-        m_a8ColorProfile = QColorTrcLut::fromGamma(2.31); // This is a hard-coded thing for Windows text rendering
+        m_a8ColorProfile = QColorTrcLut::fromGamma(2.31f); // This is a hard-coded thing for Windows text rendering
     return m_a8ColorProfile.get();
 #else
     return colorProfileForA32Text();
@@ -4398,7 +4511,7 @@ const QColorTrcLut *QGuiApplicationPrivate::colorProfileForA8Text()
 const QColorTrcLut *QGuiApplicationPrivate::colorProfileForA32Text()
 {
     if (!m_a32ColorProfile)
-        m_a32ColorProfile = QColorTrcLut::fromGamma(fontSmoothingGamma);
+        m_a32ColorProfile = QColorTrcLut::fromGamma(float(fontSmoothingGamma));
     return m_a32ColorProfile.get();
 }
 
@@ -4463,6 +4576,9 @@ void *QGuiApplication::resolveInterface(const char *name, int revision) const
 #endif
 #if QT_CONFIG(wayland)
     QT_NATIVE_INTERFACE_RETURN_IF(QWaylandApplication, platformNativeInterface());
+#endif
+#if defined(Q_OS_VISIONOS)
+    QT_NATIVE_INTERFACE_RETURN_IF(QVisionOSApplication, platformIntegration);
 #endif
 
     return QCoreApplication::resolveInterface(name, revision);

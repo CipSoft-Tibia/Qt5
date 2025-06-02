@@ -6,6 +6,7 @@
 #include <QtLanguageServer/private/qlanguageserverspec_p.h>
 #include <QtQmlCompiler/private/qqmljslinter_p.h>
 #include <QtQmlCompiler/private/qqmljslogger_p.h>
+#include <QtQmlCompiler/private/qqmljsutils_p.h>
 #include <QtQmlDom/private/qqmldom_utils_p.h>
 #include <QtQmlDom/private/qqmldomtop_p.h>
 #include <QtCore/qdebug.h>
@@ -57,7 +58,7 @@ static void codeActionHandler(
         int version = data[u"version"].toInt();
         QJsonArray suggestions = data[u"suggestions"].toArray();
 
-        QList<TextDocumentEdit> edits;
+        QList<WorkspaceEdit::DocumentChange> edits;
         QString message;
         for (const QJsonValue &suggestion : suggestions) {
             QString replacement = suggestion[u"replacement"].toString();
@@ -141,10 +142,10 @@ static Diagnostic createMissingBuildDirDiagnostic()
     Position &positionEnd = range.end;
     positionEnd.line = 1;
     diagnostic.message =
-            "qmlls could not find a build directory, without a build directory "
-            "containing a current build there could be spurious warnings, you might "
-            "want to pass the --build-dir <buildDir> option to qmlls, or set the "
-            "environment variable QMLLS_BUILD_DIRS.";
+            "qmlls couldn't find a build directory. Pass the \"--build-dir <buildDir>\" option to "
+            "qmlls, set the environment variable \"QMLLS_BUILD_DIRS\", or create a .qmlls.ini "
+            "configuration file with a \"buildDir\" value in your project's source folder to avoid "
+            "spurious warnings";
     diagnostic.source = QByteArray("qmllint");
     return diagnostic;
 }
@@ -306,8 +307,8 @@ void QmlLintSuggestions::diagnoseHelper(const QByteArray &url,
 
     qCDebug(lintLog) << "has doc, do real lint";
     QStringList imports = m_codeModel->buildPathsForFileUrl(url);
-    imports.append(QLibraryInfo::path(QLibraryInfo::QmlImportsPath));
     const QString filename = doc.canonicalFilePath();
+    imports.append(m_codeModel->importPathsForFile(filename));
     // add source directory as last import as fallback in case there is no qmldir in the build
     // folder this mimics qmllint behaviors
     imports.append(QFileInfo(filename).dir().absolutePath());
@@ -315,7 +316,7 @@ void QmlLintSuggestions::diagnoseHelper(const QByteArray &url,
     bool silent = true;
     const QString fileContents = doc.field(Fields::code).value().toString();
     const QStringList qmltypesFiles;
-    const QStringList resourceFiles = resourceFilesFromBuildFolders(imports);
+    const QStringList resourceFiles = QQmlJSUtils::resourceFilesFromBuildFolders(imports);
 
     QList<QQmlJS::LoggerCategory> categories = QQmlJSLogger::defaultCategories();
 
@@ -367,9 +368,21 @@ void QmlLintSuggestions::diagnoseHelper(const QByteArray &url,
 
     if (const QQmlJSLogger *logger = linter.logger()) {
         qsizetype nDiagnostics = diagnostics.size();
-        for (const auto &messages : { logger->infos(), logger->warnings(), logger->errors() })
-            for (const Message &message : messages)
-                diagnostics.append(messageToDiagnostic(message));
+        for (const auto &messages : { logger->infos(), logger->warnings(), logger->errors() }) {
+            for (const Message &message : messages) {
+                if (!message.message.contains(u"Failed to import")) {
+                    diagnostics.append(messageToDiagnostic(message));
+                    continue;
+                }
+
+                Message modified {message};
+                modified.message.append(
+                        u" Did you build your project? If yes, did you set the "
+                        u"\"QT_QML_GENERATE_QMLLS_INI\" CMake variable on your project to \"ON\"?");
+
+                diagnostics.append(messageToDiagnostic(modified));
+            }
+        }
         if (diagnostics.size() != nDiagnostics && imports.size() == 1)
             diagnostics.append(createMissingBuildDirDiagnostic());
     }

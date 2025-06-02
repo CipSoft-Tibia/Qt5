@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/robustness.h"
 
@@ -18,13 +31,14 @@
 #include <limits>
 #include <utility>
 
+#include "src/tint/lang/core/type/memory_view.h"
 #include "src/tint/lang/core/type/reference.h"
 #include "src/tint/lang/wgsl/ast/transform/hoist_to_decl_before.h"
 #include "src/tint/lang/wgsl/program/clone_context.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/resolve.h"
 #include "src/tint/lang/wgsl/sem/block_statement.h"
-#include "src/tint/lang/wgsl/sem/builtin.h"
+#include "src/tint/lang/wgsl/sem/builtin_fn.h"
 #include "src/tint/lang/wgsl/sem/call.h"
 #include "src/tint/lang/wgsl/sem/function.h"
 #include "src/tint/lang/wgsl/sem/index_accessor_expression.h"
@@ -47,7 +61,7 @@ struct Robustness::State {
     /// Constructor
     /// @param p the source program
     /// @param c the transform config
-    State(const Program* p, Config&& c) : src(p), cfg(std::move(c)) {}
+    State(const Program& p, Config&& c) : src(p), cfg(std::move(c)) {}
 
     /// Runs the transform
     /// @returns the new program or SkipTransform if the transform is not required
@@ -139,7 +153,7 @@ struct Robustness::State {
                     if (auto* call = sem.Get<sem::Call>(e)) {
                         Switch(
                             call->Target(),  //
-                            [&](const sem::Builtin* builtin) {
+                            [&](const sem::BuiltinFn* builtin) {
                                 // Calls to builtins may require robustness transformation.
                                 // Inspect.
                                 if (builtin->IsTexture()) {
@@ -181,7 +195,7 @@ struct Robustness::State {
                 if (auto pred = predicates.Get(expr)) {
                     // Expression is predicated
                     auto* sem_expr = sem.GetVal(expr);
-                    if (!sem_expr->Type()->IsAnyOf<core::type::Reference, core::type::Pointer>()) {
+                    if (!sem_expr->Type()->Is<core::type::MemoryView>()) {
                         auto pred_load = b.Symbols().New("predicated_expr");
                         auto ty = CreateASTTypeFor(ctx, sem_expr->Type());
                         hoist.InsertBefore(sem_expr->Stmt(), b.Decl(b.Var(pred_load, ty)));
@@ -204,13 +218,13 @@ struct Robustness::State {
 
   private:
     /// The source program
-    const Program* const src;
+    const Program& src;
     /// The transform's config
     Config cfg;
     /// The target program builder
     ProgramBuilder b{};
     /// The clone context
-    program::CloneContext ctx = {&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx = {&b, &src, /* auto_clone_symbols */ true};
     /// Helper for hoisting declarations
     HoistToDeclBefore hoist{ctx};
     /// Alias to the source program's semantic info
@@ -223,7 +237,7 @@ struct Robustness::State {
     const Expression* DynamicLimitFor(const sem::IndexAccessorExpression* expr) {
         auto* obj_type = expr->Object()->Type();
         return Switch(
-            obj_type->UnwrapRef(),  //
+            obj_type->UnwrapPtrOrRef(),  //
             [&](const core::type::Vector* vec) -> const Expression* {
                 if (expr->Index()->ConstantValue() || expr->Index()->Is<sem::Swizzle>()) {
                     // Index and size is constant.
@@ -246,7 +260,7 @@ struct Robustness::State {
                     // Must clamp, even if the index is constant.
 
                     auto* arr_ptr = b.AddressOf(ctx.Clone(expr->Object()->Declaration()));
-                    return b.Sub(b.Call(core::Function::kArrayLength, arr_ptr), 1_u);
+                    return b.Sub(b.Call(wgsl::BuiltinFn::kArrayLength, arr_ptr), 1_u);
                 }
                 if (auto count = arr->ConstantCount()) {
                     if (expr->Index()->ConstantValue()) {
@@ -261,18 +275,14 @@ struct Robustness::State {
                 b.Diagnostics().add_error(diag::System::Transform,
                                           core::type::Array::kErrExpectedConstantCount);
                 return nullptr;
-            },
-            [&](Default) -> const Expression* {
-                TINT_ICE() << "unhandled object type in robustness of array index: "
-                           << obj_type->UnwrapRef()->FriendlyName();
-                return nullptr;
-            });
+            },  //
+            TINT_ICE_ON_NO_MATCH);
     }
 
     /// Transform the program to insert additional predicate parameters to all user functions that
     /// have a pointer parameter type in an address space that has predicate action.
     void AddPredicateParameters() {
-        for (auto* fn : src->AST().Functions()) {
+        for (auto* fn : src.AST().Functions()) {
             for (auto* param : fn->params) {
                 auto* sem_param = sem.Get(param);
                 if (auto* ptr = sem_param->Type()->As<core::type::Pointer>()) {
@@ -352,12 +362,12 @@ struct Robustness::State {
 
         auto* expr_sem = expr->Unwrap()->As<sem::IndexAccessorExpression>();
         auto idx = CastToU32(expr_sem->Index());
-        auto* clamped_idx = b.Call(core::Function::kMin, idx, max);
+        auto* clamped_idx = b.Call(wgsl::BuiltinFn::kMin, idx, max);
         ctx.Replace(expr->Declaration()->index, clamped_idx);
     }
 
     /// Applies predication to the non-texture builtin call, if required.
-    void MaybePredicateNonTextureBuiltin(const sem::Call* call, const sem::Builtin* builtin) {
+    void MaybePredicateNonTextureBuiltin(const sem::Call* call, const sem::BuiltinFn* builtin) {
         // Gather the predications for the builtin arguments
         const Expression* predicate = nullptr;
         for (auto* arg : call->Declaration()->args) {
@@ -367,14 +377,14 @@ struct Robustness::State {
         }
 
         if (predicate) {
-            if (builtin->Type() == core::Function::kWorkgroupUniformLoad) {
+            if (builtin->Fn() == wgsl::BuiltinFn::kWorkgroupUniformLoad) {
                 // https://www.w3.org/TR/WGSL/#workgroupUniformLoad-builtin:
                 //  "Executes a control barrier synchronization function that affects memory and
                 //   atomic operations in the workgroup address space."
                 // Because the call acts like a control barrier, we need to make sure that we still
                 // trigger a workgroup barrier if the predicate fails.
                 PredicateCall(call, predicate,
-                              b.Block(b.CallStmt(b.Call(core::Function::kWorkgroupBarrier))));
+                              b.Block(b.CallStmt(b.Call(wgsl::BuiltinFn::kWorkgroupBarrier))));
             } else {
                 PredicateCall(call, predicate);
             }
@@ -383,8 +393,8 @@ struct Robustness::State {
 
     /// Applies predication to texture builtins, based on whether the coordinates, array index and
     /// level arguments are all in bounds.
-    void PredicateTextureBuiltin(const sem::Call* call, const sem::Builtin* builtin) {
-        if (!TextureBuiltinNeedsRobustness(builtin->Type())) {
+    void PredicateTextureBuiltin(const sem::Call* call, const sem::BuiltinFn* builtin) {
+        if (!TextureBuiltinNeedsRobustness(builtin->Fn())) {
             return;
         }
 
@@ -417,7 +427,7 @@ struct Robustness::State {
                 // let num_levels = textureNumLevels(texture-arg);
                 num_levels = b.Symbols().New("num_levels");
                 hoist.InsertBefore(
-                    stmt, b.Decl(b.Let(num_levels, b.Call(core::Function::kTextureNumLevels,
+                    stmt, b.Decl(b.Let(num_levels, b.Call(wgsl::BuiltinFn::kTextureNumLevels,
                                                           ctx.Clone(texture_arg)))));
 
                 // predicate: level_idx < num_levels
@@ -442,12 +452,12 @@ struct Robustness::State {
                 // predicate: all(coords < textureDimensions(texture))
                 auto* dimensions =
                     level_idx.IsValid()
-                        ? b.Call(core::Function::kTextureDimensions, ctx.Clone(texture_arg),
-                                 b.Call(core::Function::kMin, b.Expr(level_idx),
+                        ? b.Call(wgsl::BuiltinFn::kTextureDimensions, ctx.Clone(texture_arg),
+                                 b.Call(wgsl::BuiltinFn::kMin, b.Expr(level_idx),
                                         b.Sub(num_levels, 1_a)))
-                        : b.Call(core::Function::kTextureDimensions, ctx.Clone(texture_arg));
+                        : b.Call(wgsl::BuiltinFn::kTextureDimensions, ctx.Clone(texture_arg));
                 predicate =
-                    And(predicate, b.Call(core::Function::kAll, b.LessThan(coords, dimensions)));
+                    And(predicate, b.Call(wgsl::BuiltinFn::kAll, b.LessThan(coords, dimensions)));
 
                 // Replace the level argument with `coord`
                 ctx.Replace(arg, b.Expr(coords));
@@ -457,7 +467,7 @@ struct Robustness::State {
         if (array_arg_idx >= 0) {
             // let array_idx = u32(array-arg)
             auto* arg = expr->args[static_cast<size_t>(array_arg_idx)];
-            auto* num_layers = b.Call(core::Function::kTextureNumLayers, ctx.Clone(texture_arg));
+            auto* num_layers = b.Call(wgsl::BuiltinFn::kTextureNumLayers, ctx.Clone(texture_arg));
             auto array_idx = b.Symbols().New("array_idx");
             hoist.InsertBefore(stmt, b.Decl(b.Let(array_idx, CastToUnsigned(ctx.Clone(arg), 1u))));
 
@@ -475,8 +485,8 @@ struct Robustness::State {
 
     /// Applies bounds clamping to the coordinates, array index and level arguments of the texture
     /// builtin.
-    void ClampTextureBuiltin(const sem::Call* call, const sem::Builtin* builtin) {
-        if (!TextureBuiltinNeedsRobustness(builtin->Type())) {
+    void ClampTextureBuiltin(const sem::Call* call, const sem::BuiltinFn* builtin) {
+        if (!TextureBuiltinNeedsRobustness(builtin->Fn())) {
             return;
         }
 
@@ -502,10 +512,10 @@ struct Robustness::State {
                 const auto* arg = expr->args[static_cast<size_t>(level_arg_idx)];
                 level_idx = b.Symbols().New("level_idx");
                 const auto* num_levels =
-                    b.Call(core::Function::kTextureNumLevels, ctx.Clone(texture_arg));
+                    b.Call(wgsl::BuiltinFn::kTextureNumLevels, ctx.Clone(texture_arg));
                 const auto* max = b.Sub(num_levels, 1_a);
                 hoist.InsertBefore(
-                    stmt, b.Decl(b.Let(level_idx, b.Call(core::Function::kMin,
+                    stmt, b.Decl(b.Let(level_idx, b.Call(wgsl::BuiltinFn::kMin,
                                                          b.Call<u32>(ctx.Clone(arg)), max))));
                 ctx.Replace(arg, b.Expr(level_idx));
             }
@@ -519,9 +529,9 @@ struct Robustness::State {
                 const auto width = WidthOf(param->Type());
                 const auto* dimensions =
                     level_idx.IsValid()
-                        ? b.Call(core::Function::kTextureDimensions, ctx.Clone(texture_arg),
+                        ? b.Call(wgsl::BuiltinFn::kTextureDimensions, ctx.Clone(texture_arg),
                                  level_idx)
-                        : b.Call(core::Function::kTextureDimensions, ctx.Clone(texture_arg));
+                        : b.Call(wgsl::BuiltinFn::kTextureDimensions, ctx.Clone(texture_arg));
 
                 // dimensions is u32 or vecN<u32>
                 const auto* unsigned_max = b.Sub(dimensions, ScalarOrVec(b.Expr(1_a), width));
@@ -529,9 +539,9 @@ struct Robustness::State {
                     const auto* zero = ScalarOrVec(b.Expr(0_a), width);
                     const auto* signed_max = CastToSigned(unsigned_max, width);
                     ctx.Replace(arg,
-                                b.Call(core::Function::kClamp, ctx.Clone(arg), zero, signed_max));
+                                b.Call(wgsl::BuiltinFn::kClamp, ctx.Clone(arg), zero, signed_max));
                 } else {
-                    ctx.Replace(arg, b.Call(core::Function::kMin, ctx.Clone(arg), unsigned_max));
+                    ctx.Replace(arg, b.Call(wgsl::BuiltinFn::kMin, ctx.Clone(arg), unsigned_max));
                 }
             }
         }
@@ -540,14 +550,14 @@ struct Robustness::State {
         if (array_arg_idx >= 0) {
             auto* param = builtin->Parameters()[static_cast<size_t>(array_arg_idx)];
             auto* arg = expr->args[static_cast<size_t>(array_arg_idx)];
-            auto* num_layers = b.Call(core::Function::kTextureNumLayers, ctx.Clone(texture_arg));
+            auto* num_layers = b.Call(wgsl::BuiltinFn::kTextureNumLayers, ctx.Clone(texture_arg));
 
             const auto* unsigned_max = b.Sub(num_layers, 1_a);
             if (param->Type()->is_signed_integer_scalar()) {
                 const auto* signed_max = CastToSigned(unsigned_max, 1u);
-                ctx.Replace(arg, b.Call(core::Function::kClamp, ctx.Clone(arg), 0_a, signed_max));
+                ctx.Replace(arg, b.Call(wgsl::BuiltinFn::kClamp, ctx.Clone(arg), 0_a, signed_max));
             } else {
-                ctx.Replace(arg, b.Call(core::Function::kMin, ctx.Clone(arg), unsigned_max));
+                ctx.Replace(arg, b.Call(wgsl::BuiltinFn::kMin, ctx.Clone(arg), unsigned_max));
             }
         }
     }
@@ -555,9 +565,9 @@ struct Robustness::State {
     /// @param type builtin type
     /// @returns true if the given builtin is a texture function that requires predication or
     /// clamping of arguments.
-    bool TextureBuiltinNeedsRobustness(core::Function type) {
-        return type == core::Function::kTextureLoad || type == core::Function::kTextureStore ||
-               type == core::Function::kTextureDimensions;
+    bool TextureBuiltinNeedsRobustness(wgsl::BuiltinFn type) {
+        return type == wgsl::BuiltinFn::kTextureLoad || type == wgsl::BuiltinFn::kTextureStore ||
+               type == wgsl::BuiltinFn::kTextureDimensions;
     }
 
     /// @returns a bitwise and of the two expressions, or the other expression if one is null.
@@ -690,16 +700,16 @@ struct Robustness::State {
         if (globalVariable == nullptr) {
             return false;
         }
-        if (!globalVariable->BindingPoint().has_value()) {
+        auto binding_point = globalVariable->Attributes().binding_point;
+        if (!binding_point.has_value()) {
             return false;
         }
-        BindingPoint bindingPoint = *globalVariable->BindingPoint();
-        return cfg.bindings_ignored.find(bindingPoint) != cfg.bindings_ignored.cend();
+        return cfg.bindings_ignored.find(*binding_point) != cfg.bindings_ignored.cend();
     }
 
     /// @returns true if expr is an IndexAccessorExpression whose object is a runtime-sized array.
     bool IsIndexAccessingRuntimeSizedArray(const sem::IndexAccessorExpression* expr) {
-        auto* array_type = expr->Object()->Type()->UnwrapRef()->As<core::type::Array>();
+        auto* array_type = expr->Object()->Type()->UnwrapPtrOrRef()->As<core::type::Array>();
         return array_type != nullptr && array_type->Count()->Is<core::type::RuntimeArrayCount>();
     }
 
@@ -722,7 +732,7 @@ Robustness::Config& Robustness::Config::operator=(const Config&) = default;
 Robustness::Robustness() = default;
 Robustness::~Robustness() = default;
 
-Transform::ApplyResult Robustness::Apply(const Program* src,
+Transform::ApplyResult Robustness::Apply(const Program& src,
                                          const DataMap& inputs,
                                          DataMap&) const {
     Config cfg;

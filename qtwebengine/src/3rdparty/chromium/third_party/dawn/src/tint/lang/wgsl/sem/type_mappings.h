@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_SEM_TYPE_MAPPINGS_H_
 #define SRC_TINT_LANG_WGSL_SEM_TYPE_MAPPINGS_H_
@@ -27,6 +40,7 @@ namespace tint::ast {
 class AccessorExpression;
 class BinaryExpression;
 class BitcastExpression;
+class BlockStatement;
 class BuiltinAttribute;
 class CallExpression;
 class Expression;
@@ -36,26 +50,29 @@ class IfStatement;
 class LiteralExpression;
 class Node;
 class Override;
+class Parameter;
 class PhonyExpression;
 class Statement;
 class Struct;
 class StructMember;
 class SwitchStatement;
 class TypeDecl;
+class UnaryOpExpression;
 class Variable;
 class WhileStatement;
-class UnaryOpExpression;
 }  // namespace tint::ast
 namespace tint::core {
 enum class BuiltinValue : uint8_t;
 }
 namespace tint::sem {
+class BlockStatement;
 class Expression;
 class ForLoopStatement;
 class Function;
 class GlobalVariable;
 class IfStatement;
 class Node;
+class Parameter;
 class Statement;
 class Struct;
 class StructMember;
@@ -77,6 +94,7 @@ namespace tint::sem {
 /// rules will be used to infer the return type based on the argument type.
 struct TypeMappings {
     //! @cond Doxygen_Suppress
+    BlockStatement* operator()(ast::BlockStatement*);
     BuiltinEnumExpression<core::BuiltinValue>* operator()(ast::BuiltinAttribute*);
     CastableBase* operator()(ast::Node*);
     Expression* operator()(ast::Expression*);
@@ -84,6 +102,7 @@ struct TypeMappings {
     Function* operator()(ast::Function*);
     GlobalVariable* operator()(ast::Override*);
     IfStatement* operator()(ast::IfStatement*);
+    Parameter* operator()(ast::Parameter*);
     Statement* operator()(ast::Statement*);
     Struct* operator()(ast::Struct*);
     StructMember* operator()(ast::StructMember*);

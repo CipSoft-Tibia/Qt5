@@ -92,6 +92,7 @@ class SKUNICODE_API SkUnicode {
             kIdeographic = 0x100,
             kEmoji = 0x200,
             kWordBreak = 0x400,
+            kSentenceBreak = 0x800,
         };
         enum class TextDirection {
             kLTR,
@@ -111,11 +112,7 @@ class SKUNICODE_API SkUnicode {
             kHardLineBreak = 100,
         };
 
-        enum class BreakType {
-            kWords,
-            kGraphemes,
-            kLines
-        };
+        enum class BreakType { kWords, kGraphemes, kLines, kSentences };
         struct LineBreakBefore {
             LineBreakBefore(Position pos, LineBreakType breakType)
               : pos(pos), breakType(breakType) { }
@@ -132,7 +129,17 @@ class SKUNICODE_API SkUnicode {
         virtual bool isSpace(SkUnichar utf8) = 0;
         virtual bool isTabulation(SkUnichar utf8) = 0;
         virtual bool isHardBreak(SkUnichar utf8) = 0;
+        /**
+         * Returns if a code point may start an emoji sequence.
+         * Returns true for '#', '*', and '0'-'9' since they may start an emoji sequence.
+         * To determine if a list of code points begins with an emoji sequence, use
+         * getEmojiSequence.
+         **/
         virtual bool isEmoji(SkUnichar utf8) = 0;
+        virtual bool isEmojiComponent(SkUnichar utf8) = 0;
+        virtual bool isEmojiModifierBase(SkUnichar utf8) = 0;
+        virtual bool isEmojiModifier(SkUnichar utf8) = 0;
+        virtual bool isRegionalIndicator(SkUnichar utf8) = 0;
         virtual bool isIdeographic(SkUnichar utf8) = 0;
 
         // Methods used in SkShaper and SkText
@@ -160,8 +167,17 @@ class SKUNICODE_API SkUnicode {
                                     int utf8Units,
                                     TextDirection dir,
                                     std::vector<BidiRegion>* results) = 0;
+        // Returns results in utf16
         virtual bool getWords(const char utf8[], int utf8Units, const char* locale,
                               std::vector<Position>* results) = 0;
+        virtual bool getUtf8Words(const char utf8[],
+                                  int utf8Units,
+                                  const char* locale,
+                                  std::vector<Position>* results) = 0;
+        virtual bool getSentences(const char utf8[],
+                                  int utf8Units,
+                                  const char* locale,
+                                  std::vector<Position>* results) = 0;
         virtual bool computeCodeUnitFlags(
                 char utf8[], int utf8Units, bool replaceTabs,
                 skia_private::TArray<SkUnicode::CodeUnitFlags, true>* results) = 0;
@@ -297,6 +313,8 @@ class SKUNICODE_API SkUnicode {
                 std::vector<SkUnicode::LineBreakBefore> lineBreaks);
 
         static std::unique_ptr<SkUnicode> MakeLibgraphemeBasedUnicode();
+
+        static std::unique_ptr<SkUnicode> MakeIcu4xBasedUnicode();
 };
 
 namespace sknonstd {

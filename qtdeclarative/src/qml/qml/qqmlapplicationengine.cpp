@@ -219,9 +219,6 @@ void QQmlApplicationEnginePrivate::ensureLoadingFinishes(QQmlComponent *c)
   \list
   \li Connecting Qt.quit() to QCoreApplication::quit()
   \li Automatically loads translation files from an i18n directory adjacent to the main QML file.
-      \list
-          \li Translation files must have "qml_" prefix e.g. qml_ja_JP.qm.
-      \endlist
   \li Translations are reloaded when the \c QJSEngine::uiLanguage / \c Qt.uiLanguage property is changed.
   \li Automatically sets an incubation controller if the scene contains a QQuickWindow.
   \li Automatically sets a \c QQmlFileSelector as the url interceptor, applying file selectors to all
@@ -230,6 +227,15 @@ void QQmlApplicationEnginePrivate::ensureLoadingFinishes(QQmlComponent *c)
 
   The engine behavior can be further tweaked by using the inherited methods from QQmlEngine.
 
+  \note Translation files must have a \e qml_ prefix in order to be recognized,
+        e.g. \e{qml_ja_JP.qm}.
+
+  \note Placing translation files relative to the main QML file involves adding
+        a \e RESOURCE_PREFIX to the relevant \l qt_add_translations call. This
+        needs to include the resource prefix of the main file's QML module
+        (\e{/qt/qml} by default) and the module URI. For example, to provide
+        translation files for a module called "Translated":
+        \snippet qml-i18n/CMakeLists.txt 0
 */
 
 /*!
@@ -305,16 +311,23 @@ QQmlApplicationEngine::QQmlApplicationEngine(QAnyStringView uri, QAnyStringView 
     loadFromModule(uri, typeName);
 }
 
+static QUrl urlFromFilePath(const QString &filePath)
+{
+    return filePath.startsWith(QLatin1Char(':'))
+        ? QUrl(QLatin1String("qrc") + filePath)
+        : QUrl::fromUserInput(filePath, QLatin1String("."), QUrl::AssumeLocalFile);
+}
+
 /*!
   Create a new QQmlApplicationEngine and loads the QML file at the given
-  \a filePath, which must be a local file path. If a relative path is
+  \a filePath, which must be a local file or qrc path. If a relative path is
   given then it will be interpreted as relative to the working directory of the
   application.
 
   This is provided as a convenience, and is the same as using the empty constructor and calling load afterwards.
 */
 QQmlApplicationEngine::QQmlApplicationEngine(const QString &filePath, QObject *parent)
-    : QQmlApplicationEngine(QUrl::fromUserInput(filePath, QLatin1String("."), QUrl::AssumeLocalFile), parent)
+    : QQmlApplicationEngine(urlFromFilePath(filePath), parent)
 {
 }
 
@@ -346,16 +359,16 @@ void QQmlApplicationEngine::load(const QUrl &url)
 
 /*!
   Loads the root QML file located at \a filePath. \a filePath must be a path to
-  a local file. If \a filePath is a relative path, it is taken as relative to
-  the application's working directory. The object tree defined by the file is
-  instantiated immediately.
+  a local file or a path to a file in the resource file system. If \a filePath
+  is a relative path, it is taken as relative to the application's working
+  directory. The object tree defined by the file is instantiated immediately.
 
   If an error occurs, error messages are printed with qWarning.
 */
 void QQmlApplicationEngine::load(const QString &filePath)
 {
     Q_D(QQmlApplicationEngine);
-    d->startLoad(QUrl::fromUserInput(filePath, QLatin1String("."), QUrl::AssumeLocalFile));
+    d->startLoad(urlFromFilePath(filePath));
 }
 
 /*!

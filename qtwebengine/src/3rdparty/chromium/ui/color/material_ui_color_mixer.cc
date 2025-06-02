@@ -82,7 +82,7 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
                                                         : kColorRefSecondary0};
   mixer[kColorFrameInactive] = {kColorSysHeaderInactive};
   mixer[kColorIcon] = {kColorSysOnSurfaceSubtle};
-  mixer[kColorHistoryClustersSidePanelDivider] = {kColorSysOnBaseDivider};
+  mixer[kColorHistoryClustersSidePanelDivider] = {kColorSysDivider};
   mixer[kColorHistoryClustersSidePanelDialogBackground] = {kColorSysSurface};
   mixer[kColorHistoryClustersSidePanelDialogDivider] = {
       kColorSysNeutralOutline};
@@ -97,6 +97,10 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
   mixer[kColorListItemFolderIconBackground] = {kColorSysTonalContainer};
   mixer[kColorListItemFolderIconForeground] = {kColorSysOnTonalContainer};
   mixer[kColorListItemUrlFaviconBackground] = {kColorSysNeutralContainer};
+  mixer[kColorLoadingGradientBorder] = {kColorSysTonalContainer};
+  mixer[kColorLoadingGradientEnd] = {kColorSysGradientTertiary};
+  mixer[kColorLoadingGradientMiddle] = {kColorSysGradientPrimary};
+  mixer[kColorLoadingGradientStart] = {SK_ColorTRANSPARENT};
   mixer[kColorMenuButtonBackground] = {kColorSysNeutralContainer};
   mixer[kColorMenuButtonBackgroundSelected] = {GetResultingPaintColor(
       {kColorSysStateHoverOnSubtle}, {kColorMenuButtonBackground})};
@@ -163,6 +167,7 @@ void AddMaterialUiColorMixer(ColorProvider* provider,
   mixer[kColorThemeColorPickerHueSliderDialogIcon] = {kColorSysOnSurfaceSubtle};
   mixer[kColorThemeColorPickerHueSliderHandle] = {kColorSysWhite};
   mixer[kColorThemeColorPickerOptionBackground] = {kColorSysNeutralContainer};
+  mixer[kColorThrobber] = {kColorSysPrimary};
   mixer[kColorToastBackground] = {kColorSysInverseSurface};
   mixer[kColorToastButton] = {kColorSysInversePrimary};
   mixer[kColorToastForeground] = {kColorSysInverseOnSurface};

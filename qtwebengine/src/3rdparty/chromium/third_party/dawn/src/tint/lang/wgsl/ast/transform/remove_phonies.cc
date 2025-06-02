@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/remove_phonies.h"
 
@@ -43,16 +56,16 @@ RemovePhonies::RemovePhonies() = default;
 
 RemovePhonies::~RemovePhonies() = default;
 
-Transform::ApplyResult RemovePhonies::Apply(const Program* src, const DataMap&, DataMap&) const {
+Transform::ApplyResult RemovePhonies::Apply(const Program& src, const DataMap&, DataMap&) const {
     ProgramBuilder b;
-    program::CloneContext ctx{&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx{&b, &src, /* auto_clone_symbols */ true};
 
-    auto& sem = src->Sem();
+    auto& sem = src.Sem();
 
-    Hashmap<SinkSignature, Symbol, 8, Hasher<SinkSignature>> sinks;
+    Hashmap<SinkSignature, Symbol, 8> sinks;
 
     bool made_changes = false;
-    for (auto* node : src->ASTNodes().Objects()) {
+    for (auto* node : src.ASTNodes().Objects()) {
         Switch(
             node,
             [&](const AssignmentStatement* stmt) {
@@ -71,7 +84,7 @@ Transform::ApplyResult RemovePhonies::Apply(const Program* src, const DataMap&, 
                                 // have side effects. Just skip.
                                 return TraverseAction::Skip;
                             }
-                            if (call->Target()->IsAnyOf<sem::Function, sem::Builtin>() &&
+                            if (call->Target()->IsAnyOf<sem::Function, sem::BuiltinFn>() &&
                                 call->HasSideEffects()) {
                                 side_effects.push_back(expr);
                                 return TraverseAction::Skip;

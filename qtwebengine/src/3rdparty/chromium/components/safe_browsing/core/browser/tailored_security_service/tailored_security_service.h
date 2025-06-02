@@ -23,6 +23,7 @@
 #include "base/values.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/prefs/pref_change_registrar.h"
+#include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "url/gurl.h"
 
@@ -172,6 +173,9 @@ class TailoredSecurityService : public KeyedService {
  private:
   FRIEND_TEST_ALL_PREFIXES(
       TailoredSecurityServiceTest,
+      HistorySyncEnabledForUserReturnsFalseWhenSyncServiceIsNull);
+  FRIEND_TEST_ALL_PREFIXES(
+      TailoredSecurityServiceTest,
       RetryEnabledTimestampUpdateCallbackSetsStateToRetryNeeded);
   FRIEND_TEST_ALL_PREFIXES(TailoredSecurityServiceTest,
                            RetryEnabledTimestampUpdateCallbackRecordsStartTime);
@@ -181,6 +185,9 @@ class TailoredSecurityService : public KeyedService {
   FRIEND_TEST_ALL_PREFIXES(TailoredSecurityServiceTest,
                            RetryDisabledStateRemainsUnset);
   friend class TailoredSecurityTabHelperTest;
+
+  // Saves the supplied `TailoredSecurityRetryState` to preferences.
+  void SaveRetryState(TailoredSecurityRetryState state);
 
   // Stores pointer to `IdentityManager` instance. It must outlive the
   // `TailoredSecurityService` and can be null during tests.
@@ -220,11 +227,7 @@ class TailoredSecurityService : public KeyedService {
   QueryTailoredSecurityBitCallback saved_callback_;
 
   // The preferences for the given profile.
-  // This dangling raw_ptr occurred in:
-  // unit_tests:
-  // All/IsolatedWebAppReaderRegistryFactoryTest.GuardedBehindFeatureFlag/1
-  // https://ci.chromium.org/ui/p/chromium/builders/try/linux-rel/1428246/test-results?q=ExactID%3Aninja%3A%2F%2Fchrome%2Ftest%3Aunit_tests%2FIsolatedWebAppReaderRegistryFactoryTest.GuardedBehindFeatureFlag%2FAll.1+VHash%3A728d3f3a440b40c1
-  raw_ptr<PrefService, FlakyDanglingUntriaged> prefs_;
+  raw_ptr<PrefService> prefs_;
 
   // This is used to observe when sync users update their Tailored Security
   // setting.

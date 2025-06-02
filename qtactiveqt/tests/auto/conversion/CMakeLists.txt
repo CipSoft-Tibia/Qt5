@@ -20,4 +20,5 @@ qt_internal_add_test(conversion
         Qt::AxContainer
         Qt::Gui
         Qt::AxBasePrivate
+        Qt::CorePrivate
 )

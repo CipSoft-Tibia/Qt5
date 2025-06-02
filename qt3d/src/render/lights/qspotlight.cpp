@@ -62,8 +62,8 @@ QSpotLightPrivate::QSpotLightPrivate()
 
 /*!
     \qmltype SpotLight
-    \instantiates Qt3DRender::QSpotLight
-    \inherits AbstractLight
+    \nativetype Qt3DRender::QSpotLight
+    \inherits Light
     \inqmlmodule Qt3D.Render
     \since 5.5
     \brief Encapsulate a Spot Light object in a Qt 3D scene.
@@ -103,7 +103,7 @@ QSpotLight::QSpotLight(QSpotLightPrivate &dd, QNode *parent)
 }
 
 /*!
-  \qmlproperty float Qt3D.Render::SpotLight::constantAttenuation
+  \qmlproperty real Qt3D.Render::SpotLight::constantAttenuation
     Specifies the constant attenuation of the spot light.
 
     \note The exact meaning and use of this property is up to the
@@ -133,7 +133,7 @@ void QSpotLight::setConstantAttenuation(float value)
 }
 
 /*!
-  \qmlproperty float Qt3D.Render::SpotLight::linearAttenuation
+  \qmlproperty real Qt3D.Render::SpotLight::linearAttenuation
     Specifies the linear attenuation of the spot light.
 
     \note The exact meaning and use of this property is up to the
@@ -163,7 +163,7 @@ void QSpotLight::setLinearAttenuation(float value)
 }
 
 /*!
-  \qmlproperty float Qt3D.Render::SpotLight::quadraticAttenuation
+  \qmlproperty real Qt3D.Render::SpotLight::quadraticAttenuation
     Specifies the quadratic attenuation of the spot light.
 
     \note The exact meaning and use of this property is up to the
@@ -214,7 +214,7 @@ QVector3D QSpotLight::localDirection() const
 }
 
 /*!
-  \qmlproperty float Qt3D.Render::SpotLight::cutOffAngle
+  \qmlproperty real Qt3D.Render::SpotLight::cutOffAngle
     Specifies the cut off angle of the spot light.
 
     \note The exact meaning and use of this property is up to the

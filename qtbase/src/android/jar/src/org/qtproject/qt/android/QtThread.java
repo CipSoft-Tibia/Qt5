@@ -6,7 +6,7 @@ package org.qtproject.qt.android;
 import java.util.ArrayList;
 import java.util.concurrent.Semaphore;
 
-public class QtThread {
+class QtThread {
     private final ArrayList<Runnable> m_pendingRunnables = new ArrayList<>();
     private boolean m_exit = false;
     private final Thread m_qtThread = new Thread(new Runnable() {
@@ -35,14 +35,14 @@ public class QtThread {
         m_qtThread.start();
     }
 
-    public void post(final Runnable runnable) {
+    void post(final Runnable runnable) {
         synchronized (m_qtThread) {
             m_pendingRunnables.add(runnable);
             m_qtThread.notify();
         }
     }
 
-    public void sleep(int milliseconds) {
+    void sleep(int milliseconds) {
         try {
             m_qtThread.sleep(milliseconds);
         } catch (InterruptedException e) {
@@ -50,7 +50,7 @@ public class QtThread {
         }
     }
 
-    public void run(final Runnable runnable) {
+    void run(final Runnable runnable) {
         final Semaphore sem = new Semaphore(0);
         synchronized (m_qtThread) {
             m_pendingRunnables.add(() -> {
@@ -66,7 +66,7 @@ public class QtThread {
         }
     }
 
-    public void exit()
+    void exit()
     {
         m_exit = true;
         synchronized (m_qtThread) {

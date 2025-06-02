@@ -346,7 +346,7 @@ std::optional<uint32_t> qt_mac_sipConfiguration()
             return config;
 #endif
 
-        QIOType<io_registry_entry_t> nvram = IORegistryEntryFromPath(kIOMasterPortDefault, "IODeviceTree:/options");
+        QIOType<io_registry_entry_t> nvram = IORegistryEntryFromPath(kIOMainPortDefault, "IODeviceTree:/options");
         if (!nvram) {
             qWarning("Failed to locate NVRAM entry in IO registry");
             return {};
@@ -541,7 +541,7 @@ QMacRootLevelAutoReleasePool::QMacRootLevelAutoReleasePool()
     if (qEnvironmentVariableIsSet(ROOT_LEVEL_POOL_DISABLE_SWITCH))
         return;
 
-    pool.reset(new QMacAutoReleasePool);
+    pool.emplace();
 
     [[[ROOT_LEVEL_POOL_MARKER alloc] init] autorelease];
 
@@ -567,6 +567,9 @@ void qt_apple_check_os_version()
 #elif defined(__TV_OS_VERSION_MIN_REQUIRED)
     const char *os = "tvOS";
     const int version = __TV_OS_VERSION_MIN_REQUIRED;
+#elif defined(__VISION_OS_VERSION_MIN_REQUIRED)
+    const char *os = "visionOS";
+    const int version = __VISION_OS_VERSION_MIN_REQUIRED;
 #elif defined(__IPHONE_OS_VERSION_MIN_REQUIRED)
     const char *os = "iOS";
     const int version = __IPHONE_OS_VERSION_MIN_REQUIRED;
@@ -768,6 +771,20 @@ QMacVersion::VersionTuple QMacVersion::libraryVersion()
     }();
     return version;
 }
+
+// -------------------------------------------------------------------------
+
+#if !(__has_feature(objc_arc_weak) && __has_feature(objc_arc_fields))
+QT_END_NAMESPACE
+@implementation QT_MANGLE_NAMESPACE(WeakPointerLifetimeTracker)
+- (void)dealloc
+{
+    *self.pointer = {};
+    [super dealloc];
+}
+@end
+QT_BEGIN_NAMESPACE
+#endif
 
 // -------------------------------------------------------------------------
 

@@ -231,7 +231,7 @@
         };
     \endcode
 
-    This enum can be cocumented this way:
+    This enum can be documented this way:
 
     \badcode *
     /\1!
@@ -339,6 +339,13 @@
     the function's signature, including its template parameters (if
     any), return type, const-ness, and list of formal arguments with
     types. If the named function doesn't exist, QDoc emits a warning.
+
+    The command accepts \c auto as the type of a function, even though
+    the full type can be deduced by QDoc. In certain situations, it may
+    be preferable to use \e auto instead of the actual type of a
+    function. Using \c auto as the return type in the
+    \\fn-command lets the author to do this explicitly, also for types
+    that are defined without the \e auto keyword.
 
     Since QDoc version 6.0, the \\fn command can be used for documenting
     class members that are not explicitly declared in the header,
@@ -736,7 +743,7 @@
     has one argument, which is the name of the QML type.
 
     If the QML type has an equivalent C++ class, you can specify that class
-    with the \l{instantiates-command}{\\instantiates} context command.
+    with the \qdoccmd nativetype context command.
 
     The \l {inqmlmodule-command}{\\inqmlmodule} command documents the
     QML module the type belongs to. The argument passed to this command
@@ -746,7 +753,7 @@
     \badcode *
     /\1!
         \qmltype Transform
-        \instantiates QGraphicsTransform
+        \nativetype QGraphicsTransform
         \inqmlmodule QtQuick
 
         \brief Provides a way to build advanced transformations on Items.
@@ -756,7 +763,7 @@
     \1/
     \endcode
 
-    Here, the \e{\\qmltype} comment includes \e{\\instantiates}
+    Here, the \e{\\qmltype} comment includes \qdoccmd nativetype
     to specify that a Transform is the QML counterpart to the
     C++ class QGraphicsTransform. A \\qmltype comment should
     always include a \l {since-command} {\\since} command, because all
@@ -894,17 +901,32 @@
     \target instantiates-command
     \section1 \\instantiates
 
-    The \\instantiates command must be used in conjunction with the
-    \qdoccmd qmltype topic command. The command takes a C++ class as its
-    argument. If QDoc cannot find the C++ class, it issues a warning.
+    The \\instantiates command is deprecated since Qt 6.8.
+    Use \qdoccmd nativetype instead.
 
-    Use the \\instantiates command to specify what the type is called in C++.
-    Any one QML type can only be the counterpart of one C++ class.
+
+    \target nativetype-command
+    \section1 \\nativetype
+
+    The \\nativetype-command must be used in conjunction with the
+    \qdoccmd qmltype topic command. The command takes a C++ class as its
+    argument. If QDoc cannot find the C++ class, it issues a warning. This
+    command was introduced with Qt 6.8.
+
+    Use the \\nativetype-command to specify what the type is called in C++.
+    This ensures that the requisites block generated in the documentation for
+    the QML type contains an "In C++" entry. The C++ class will have a
+    corresponding "In QML" entry.
+
+    Any one QML type can only have one native type. QDoc issues a warning if
+    redefinition occurs. However, multiple QML types can have the same C++
+    class as their native type. The C++ class documentation will contain a list
+    of all corresponding types in QML.
 
     \badcode *
     /\1!
         \qmltype Transform
-        \instantiates QGraphicsTransform
+        \nativetype QGraphicsTransform
         \inqmlmodule QtQuick
 
         \brief Provides a way to build advanced transformations on Items.
@@ -914,9 +936,9 @@
     \1/
     \endcode
 
-    Here, the \e{\\qmltype} comment includes \l{instantiates-command}
-    {\\instantiates} to specify that Transform is QGraphicsTransform
-    in C++.
+    Here, the \e{\\qmltype} topic includes \e{\\nativetype} to specify that a
+    Transform is called QGraphicsTransform in C++.
+
 
     \target typealias-command
     \section1 \\typealias

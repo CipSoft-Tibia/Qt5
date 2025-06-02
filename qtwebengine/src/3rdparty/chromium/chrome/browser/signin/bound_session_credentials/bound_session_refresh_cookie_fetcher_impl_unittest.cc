@@ -5,11 +5,13 @@
 #include "chrome/browser/signin/bound_session_credentials/bound_session_refresh_cookie_fetcher_impl.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/base64url.h"
 #include "base/containers/span.h"
 #include "base/json/json_reader.h"
+#include "base/strings/string_split.h"
 #include "base/strings/stringprintf.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/task_environment.h"
@@ -36,7 +38,6 @@
 #include "services/network/test/test_url_loader_factory.h"
 #include "services/network/test/test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace {
 using RefreshTestFuture =
@@ -76,7 +77,7 @@ std::string GetChallengeFromJwt(std::string_view jwt) {
           parts[1], base::Base64UrlDecodePolicy::DISALLOW_PADDING, &payload)) {
     return std::string();
   }
-  absl::optional<base::Value::Dict> payload_dict =
+  std::optional<base::Value::Dict> payload_dict =
       base::JSONReader::ReadDict(payload);
   if (!payload_dict) {
     return std::string();
@@ -158,8 +159,9 @@ class BoundSessionRefreshCookieFetcherImplTest : public ::testing::Test {
       network::mojom::CookieAccessDetails::Type access_type) {
     std::vector<network::mojom::CookieAccessDetailsPtr> cookie_access_details;
     cookie_access_details.emplace_back(network::mojom::CookieAccessDetails::New(
-        access_type, kGairaUrl, net::SiteForCookies(),
-        CreateReportedCookies(cookies_), absl::nullopt));
+        access_type, kGairaUrl, url::Origin(), net::SiteForCookies(),
+        CreateReportedCookies(cookies_), std::nullopt, /*count=*/1,
+        /*is_ad_tagged=*/false, net::CookieSettingOverrides()));
     fetcher_->OnCookiesAccessed(std::move(cookie_access_details));
   }
 
@@ -169,11 +171,18 @@ class BoundSessionRefreshCookieFetcherImplTest : public ::testing::Test {
 
   bool expected_cookies_set() { return fetcher_->expected_cookies_set_; }
 
-  void VerifyMetricRecorded(
-      BoundSessionRefreshCookieFetcher::Result expected_result) {
+  void VerifyMetricsRecorded(
+      BoundSessionRefreshCookieFetcher::Result expected_result,
+      size_t expect_assertion_was_generated_count) {
     EXPECT_THAT(histogram_tester_.GetAllSamples(
                     "Signin.BoundSessionCredentials.CookieRotationResult"),
                 ElementsAre(base::Bucket(expected_result, /*count=*/1)));
+    histogram_tester_.ExpectTotalCount(
+        "Signin.BoundSessionCredentials.CookieRotationTotalDuration", 1);
+    histogram_tester_.ExpectTotalCount(
+        "Signin.BoundSessionCredentials."
+        "CookieRotationGenerateAssertionDuration",
+        expect_assertion_was_generated_count);
   }
 
   base::test::TaskEnvironment task_environment_{
@@ -214,7 +223,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest, SuccessExpectedCookieSet) {
 
   EXPECT_TRUE(future.IsReady());
   EXPECT_EQ(future.Get(), Result::kSuccess);
-  VerifyMetricRecorded(Result::kSuccess);
+  VerifyMetricsRecorded(Result::kSuccess,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -238,7 +248,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
   EXPECT_TRUE(expected_cookies_set());
 
   EXPECT_EQ(future.Get(), Result::kSuccess);
-  VerifyMetricRecorded(Result::kSuccess);
+  VerifyMetricsRecorded(Result::kSuccess,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -262,7 +273,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
 
   SimulateOnCookiesAccessed(network::mojom::CookieAccessDetails::Type::kChange);
   EXPECT_EQ(future.Get(), Result::kSuccess);
-  VerifyMetricRecorded(Result::kSuccess);
+  VerifyMetricsRecorded(Result::kSuccess,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest, CookiesNotReported) {
@@ -283,7 +295,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest, CookiesNotReported) {
   EXPECT_TRUE(future.IsReady());
   EXPECT_FALSE(reported_cookies_notified());
   EXPECT_EQ(future.Get(), Result::kServerUnexepectedResponse);
-  VerifyMetricRecorded(Result::kServerUnexepectedResponse);
+  VerifyMetricsRecorded(Result::kServerUnexepectedResponse,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -308,7 +321,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
 
   EXPECT_TRUE(future.IsReady());
   EXPECT_EQ(future.Get(), Result::kServerUnexepectedResponse);
-  VerifyMetricRecorded(Result::kServerUnexepectedResponse);
+  VerifyMetricsRecorded(Result::kServerUnexepectedResponse,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -333,7 +347,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
 
   EXPECT_TRUE(future.IsReady());
   EXPECT_EQ(future.Get(), Result::kServerUnexepectedResponse);
-  VerifyMetricRecorded(Result::kServerUnexepectedResponse);
+  VerifyMetricsRecorded(Result::kServerUnexepectedResponse,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest, FailureNetError) {
@@ -354,7 +369,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest, FailureNetError) {
   EXPECT_FALSE(reported_cookies_notified());
   BoundSessionRefreshCookieFetcher::Result result = future.Get<0>();
   EXPECT_EQ(result, Result::kConnectionError);
-  VerifyMetricRecorded(Result::kConnectionError);
+  VerifyMetricsRecorded(Result::kConnectionError,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest, FailureHttpError) {
@@ -373,7 +389,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest, FailureHttpError) {
   EXPECT_FALSE(reported_cookies_notified());
   BoundSessionRefreshCookieFetcher::Result result = future.Get();
   EXPECT_EQ(result, Result::kServerPersistentError);
-  VerifyMetricRecorded(Result::kServerPersistentError);
+  VerifyMetricsRecorded(Result::kServerPersistentError,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest, ChallengeRequired) {
@@ -403,7 +420,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest, ChallengeRequired) {
 
   EXPECT_TRUE(future.IsReady());
   EXPECT_EQ(future.Get(), Result::kSuccess);
-  VerifyMetricRecorded(Result::kSuccess);
+  VerifyMetricsRecorded(Result::kSuccess,
+                        /*expect_assertion_was_generated_count=*/1);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -414,6 +432,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
 
   SimulateChallengeRequired(CreateChallengeHeaderValue("\xF0\x8F\xBF\xBE"));
   EXPECT_EQ(future.Get(), Result::kChallengeRequiredUnexpectedFormat);
+  VerifyMetricsRecorded(Result::kChallengeRequiredUnexpectedFormat,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -423,7 +443,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
   fetcher_->Start(future.GetCallback());
   SimulateChallengeRequired("");
   EXPECT_EQ(future.Get(), Result::kChallengeRequiredUnexpectedFormat);
-  VerifyMetricRecorded(Result::kChallengeRequiredUnexpectedFormat);
+  VerifyMetricsRecorded(Result::kChallengeRequiredUnexpectedFormat,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -433,6 +454,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
   fetcher_->Start(future.GetCallback());
   SimulateChallengeRequired("session_id=12345;");
   EXPECT_EQ(future.Get(), Result::kChallengeRequiredUnexpectedFormat);
+  VerifyMetricsRecorded(Result::kChallengeRequiredUnexpectedFormat,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -442,7 +465,8 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
   fetcher_->Start(future.GetCallback());
   SimulateChallengeRequired(CreateChallengeHeaderValue(""));
   EXPECT_EQ(future.Get(), Result::kChallengeRequiredUnexpectedFormat);
-  VerifyMetricRecorded(Result::kChallengeRequiredUnexpectedFormat);
+  VerifyMetricsRecorded(Result::kChallengeRequiredUnexpectedFormat,
+                        /*expect_assertion_was_generated_count=*/0);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
@@ -461,7 +485,9 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest,
               assertion_requests > max_assertion_requests_allowed);
   } while (!future.IsReady());
   EXPECT_EQ(future.Get(), Result::kChallengeRequiredLimitExceeded);
-  VerifyMetricRecorded(Result::kChallengeRequiredLimitExceeded);
+  VerifyMetricsRecorded(
+      Result::kChallengeRequiredLimitExceeded,
+      /*expect_assertion_was_generated_count=*/assertion_requests - 1);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest, SignChallengeFailed) {
@@ -480,14 +506,15 @@ TEST_F(BoundSessionRefreshCookieFetcherImplTest, SignChallengeFailed) {
 
   SimulateChallengeRequired(CreateChallengeHeaderValue(kChallenge));
   EXPECT_EQ(future.Get(), Result::kSignChallengeFailed);
-  VerifyMetricRecorded(Result::kSignChallengeFailed);
+  VerifyMetricsRecorded(Result::kSignChallengeFailed,
+                        /*expect_assertion_was_generated_count=*/1);
 }
 
 TEST_F(BoundSessionRefreshCookieFetcherImplTest,
        GetResultFromNetErrorAndHttpStatusCode) {
   // Connection error.
   EXPECT_EQ(fetcher_->GetResultFromNetErrorAndHttpStatusCode(
-                net::ERR_CONNECTION_TIMED_OUT, absl::nullopt),
+                net::ERR_CONNECTION_TIMED_OUT, std::nullopt),
             Result::kConnectionError);
   // net::OK.
   EXPECT_EQ(

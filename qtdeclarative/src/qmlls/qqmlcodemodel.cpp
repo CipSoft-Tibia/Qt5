@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qqmlcodemodel_p.h"
+#include "qqmllsplugin_p.h"
 #include "qtextdocument_p.h"
 #include "qqmllsutils_p.h"
 
@@ -82,13 +83,13 @@ worker thread (or more) that work on it exist.
 
 QQmlCodeModel::QQmlCodeModel(QObject *parent, QQmlToolingSettings *settings)
     : QObject { parent },
+      m_importPaths(QLibraryInfo::path(QLibraryInfo::QmlImportsPath)),
       m_currentEnv(std::make_shared<DomEnvironment>(
-                       QStringList(QLibraryInfo::path(QLibraryInfo::QmlImportsPath)),
-                       DomEnvironment::Option::SingleThreaded)),
+              m_importPaths, DomEnvironment::Option::SingleThreaded, DomCreationOption::Extended)),
       m_validEnv(std::make_shared<DomEnvironment>(
-                     QStringList(QLibraryInfo::path(QLibraryInfo::QmlImportsPath)),
-                     DomEnvironment::Option::SingleThreaded)),
-      m_settings(settings)
+              m_importPaths, DomEnvironment::Option::SingleThreaded, DomCreationOption::Extended)),
+      m_settings(settings),
+      m_pluginLoader(QmlLSPluginInterface_iid, u"/qmlls"_s)
 {
 }
 
@@ -196,16 +197,12 @@ void QQmlCodeModel::indexDirectory(const QString &path, int depthLeft)
         if (indexCancelled())
             return;
         QString fPath = dir.filePath(file);
-        DomCreationOptions options;
-        options.setFlag(DomCreationOption::WithScriptExpressions);
-        options.setFlag(DomCreationOption::WithSemanticAnalysis);
-        options.setFlag(DomCreationOption::WithRecovery);
-        FileToLoad fileToLoad =
-                FileToLoad::fromFileSystem(newCurrent.ownerAs<DomEnvironment>(), fPath, options);
+        auto newCurrentPtr = newCurrent.ownerAs<DomEnvironment>();
+        FileToLoad fileToLoad = FileToLoad::fromFileSystem(newCurrentPtr, fPath);
         if (!fileToLoad.canonicalPath().isEmpty()) {
-            newCurrent.loadBuiltins();
-            newCurrent.loadFile(fileToLoad, [](Path, const DomItem &, const DomItem &) {}, {});
-            newCurrent.loadPendingDependencies();
+            newCurrentPtr->loadBuiltins();
+            newCurrentPtr->loadFile(fileToLoad, [](Path, const DomItem &, const DomItem &) {});
+            newCurrentPtr->loadPendingDependencies();
             newCurrent.commitToBase(m_validEnv.ownerAs<DomEnvironment>());
         }
         {
@@ -315,6 +312,18 @@ OpenDocument QQmlCodeModel::openDocumentByUrl(const QByteArray &url)
 {
     QMutexLocker l(&m_mutex);
     return m_openDocuments.value(url);
+}
+
+RegisteredSemanticTokens &QQmlCodeModel::registeredTokens()
+{
+    QMutexLocker l(&m_mutex);
+    return m_tokens;
+}
+
+const RegisteredSemanticTokens &QQmlCodeModel::registeredTokens() const
+{
+    QMutexLocker l(&m_mutex);
+    return m_tokens;
 }
 
 void QQmlCodeModel::indexNeedsUpdate()
@@ -500,9 +509,26 @@ return all the found file paths.
 
 This is an overapproximation and might find unrelated files with the same name.
 */
-QStringList QQmlCodeModel::findFilePathsFromFileNames(const QStringList &fileNames) const
+QStringList QQmlCodeModel::findFilePathsFromFileNames(const QStringList &_fileNamesToSearch)
 {
+    QStringList fileNamesToSearch{ _fileNamesToSearch };
+
+    // ignore files that were not found last time
+    fileNamesToSearch.erase(std::remove_if(fileNamesToSearch.begin(), fileNamesToSearch.end(),
+                                           [this](const QString &fileName) {
+                                               return m_ignoreForWatching.contains(fileName);
+                                           }),
+                            fileNamesToSearch.end());
+
+    // early return:
+    if (fileNamesToSearch.isEmpty())
+        return {};
+
+    QSet<QString> foundFiles;
+    foundFiles.reserve(fileNamesToSearch.size());
+
     QStringList result;
+
     for (const auto &rootUrl : m_rootUrls) {
         const QString rootDir = QUrl(QString::fromUtf8(rootUrl)).toLocalFile();
 
@@ -510,11 +536,18 @@ QStringList QQmlCodeModel::findFilePathsFromFileNames(const QStringList &fileNam
             continue;
 
         qCDebug(codeModelLog) << "Searching for files to watch in workspace folder" << rootDir;
-        QDirIterator it(rootDir, fileNames, QDir::Files, QDirIterator::Subdirectories);
+        QDirIterator it(rootDir, fileNamesToSearch, QDir::Files, QDirIterator::Subdirectories);
         while (it.hasNext()) {
-            QFileInfo info = it.nextFileInfo();
+            const QFileInfo info = it.nextFileInfo();
+            const QString fileName = info.fileName();
+            foundFiles.insert(fileName);
             result << info.absoluteFilePath();
         }
+    }
+
+    for (const auto& fileName: fileNamesToSearch) {
+        if (!foundFiles.contains(fileName))
+            m_ignoreForWatching.insert(fileName);
     }
     return result;
 }
@@ -538,12 +571,20 @@ QStringList QQmlCodeModel::fileNamesToWatch(const DomItem &qmlFile)
 
     QStringList result;
     for (const auto &type : types) {
-        if (!type.scope || type.scope->isComposite())
+        if (!type.scope)
+            continue;
+        // note: the factory only loads composite types
+        const bool isComposite = type.scope.factory() || type.scope->isComposite();
+        if (isComposite)
             continue;
 
         const QString filePath = QFileInfo(type.scope->filePath()).fileName();
-        result << filePath;
+        if (!filePath.isEmpty())
+            result << filePath;
     }
+
+    std::sort(result.begin(), result.end());
+    result.erase(std::unique(result.begin(), result.end()), result.end());
 
     return result;
 }
@@ -586,24 +627,30 @@ void QQmlCodeModel::newDocForOpenFile(const QByteArray &url, int version, const 
         m_rebuildRequired = false;
     }
 
-    loadPaths.append(QLibraryInfo::path(QLibraryInfo::QmlImportsPath));
+    loadPaths.append(importPathsForFile(fPath));
     if (std::shared_ptr<DomEnvironment> newCurrentPtr = newCurrent.ownerAs<DomEnvironment>()) {
         newCurrentPtr->setLoadPaths(loadPaths);
     }
+
+    // if the documentation root path is not set through the commandline,
+    // try to set it from the settings file (.qmlls.ini file)
+    if (m_documentationRootPath.isEmpty() && m_settings) {
+        // note: settings already searched current file in importPathsForFile() call above
+        const QString docDir = QStringLiteral(u"docDir");
+        if (m_settings->isSet(docDir))
+            setDocumentationRootPath(m_settings->value(docDir).toString());
+    }
+
     Path p;
-    const DomCreationOptions options = DomCreationOptions{}
-            | DomCreationOption::WithScriptExpressions | DomCreationOption::WithSemanticAnalysis
-            | DomCreationOption::WithRecovery;
-    newCurrent.loadFile(
-            FileToLoad::fromMemory(newCurrent.ownerAs<DomEnvironment>(), fPath, docText, options),
-            [&p, this](Path, const DomItem &, const DomItem &newValue) {
-                const DomItem file = newValue.fileObject();
-                p = file.canonicalPath();
-                if (m_cmakeStatus == HasCMake)
-                    addFileWatches(file);
-            },
-            {});
-    newCurrent.loadPendingDependencies();
+    auto newCurrentPtr = newCurrent.ownerAs<DomEnvironment>();
+    newCurrentPtr->loadFile(FileToLoad::fromMemory(newCurrentPtr, fPath, docText),
+                            [&p, this](Path, const DomItem &, const DomItem &newValue) {
+                                const DomItem file = newValue.fileObject();
+                                p = file.canonicalPath();
+                                if (m_cmakeStatus == HasCMake)
+                                    addFileWatches(file);
+                            });
+    newCurrentPtr->loadPendingDependencies();
     if (p) {
         newCurrent.commitToBase(m_validEnv.ownerAs<DomEnvironment>());
         DomItem item = m_currentEnv.path(p);
@@ -700,6 +747,18 @@ static bool isNotSeparator(char c)
     return c != '/';
 }
 
+QStringList QQmlCodeModel::importPathsForFile(const QString &fileName) const
+{
+    QStringList result = importPaths();
+
+    const QString importPaths = u"importPaths"_s;
+    if (m_settings && m_settings->search(fileName) && m_settings->isSet(importPaths)) {
+        result.append(m_settings->value(importPaths).toString().split(QDir::listSeparator()));
+    }
+
+    return result;
+}
+
 QStringList QQmlCodeModel::buildPathsForFileUrl(const QByteArray &url)
 {
     QList<QByteArray> roots;
@@ -791,6 +850,15 @@ QStringList QQmlCodeModel::buildPathsForFileUrl(const QByteArray &url)
         }
     }
     return res;
+}
+
+void QQmlCodeModel::setDocumentationRootPath(const QString &path)
+{
+    QMutexLocker l(&m_mutex);
+    if (m_documentationRootPath != path) {
+        m_documentationRootPath = path;
+        emit documentationRootPathChanged(path);
+    }
 }
 
 void QQmlCodeModel::setBuildPathsForRootUrl(QByteArray url, const QStringList &paths)

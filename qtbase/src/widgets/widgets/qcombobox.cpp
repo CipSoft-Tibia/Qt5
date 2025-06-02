@@ -111,7 +111,7 @@ QStyleOptionMenuItem QComboMenuDelegate::getStyleOption(const QStyleOptionViewIt
     else
         menuOption.menuItemType = QStyleOptionMenuItem::Normal;
 
-    QVariant variant = index.model()->data(index, Qt::DecorationRole);
+    const QVariant variant = index.data(Qt::DecorationRole);
     switch (variant.userType()) {
     case QMetaType::QIcon:
         menuOption.icon = qvariant_cast<QIcon>(variant);
@@ -129,7 +129,7 @@ QStyleOptionMenuItem QComboMenuDelegate::getStyleOption(const QStyleOptionViewIt
         menuOption.palette.setBrush(QPalette::All, QPalette::Window,
                                     qvariant_cast<QBrush>(index.data(Qt::BackgroundRole)));
     }
-    menuOption.text = index.model()->data(index, Qt::DisplayRole).toString().replace(u'&', "&&"_L1);
+    menuOption.text = index.data(Qt::DisplayRole).toString().replace(u'&', "&&"_L1);
     menuOption.reservedShortcutWidth = 0;
     menuOption.maxIconWidth =  option.decorationSize.width() + 4;
     menuOption.menuRect = option.rect;
@@ -1269,7 +1269,7 @@ void QComboBoxPrivate::updateLineEditGeometry()
     q->initStyleOption(&opt);
     QRect editRect = q->style()->subControlRect(QStyle::CC_ComboBox, &opt,
                                                 QStyle::SC_ComboBoxEditField, q);
-    if (!q->itemIcon(q->currentIndex()).isNull()) {
+    if (currentIndex.isValid() && !q->itemIcon(q->currentIndex()).isNull()) {
         QRect comboRect(editRect);
         editRect.setWidth(editRect.width() - q->iconSize().width() - 4);
         editRect = QStyle::alignedRect(q->layoutDirection(), Qt::AlignRight,

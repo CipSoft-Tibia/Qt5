@@ -7,7 +7,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.0.2'
+        classpath 'com.android.tools.build:gradle:8.6.0'
     }
 }
 
@@ -26,7 +26,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        minSdkVersion 23
+        minSdkVersion 28
     }
 
     sourceSets {

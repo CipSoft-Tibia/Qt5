@@ -32,6 +32,8 @@ QT_BEGIN_NAMESPACE
     \qmlproperty bool PhysicsNode::sendContactReports
     This property determines whether this body will send contact reports when colliding with other
     bodies.
+
+    Default value: \c{false}
 */
 
 /*!
@@ -39,18 +41,24 @@ QT_BEGIN_NAMESPACE
     This property determines whether this body will receive contact reports when colliding with
     other bodies. If activated, this means that the bodyContact signal will be emitted on a
     collision with a body that has sendContactReports set to true.
+
+    Default value: \c{false}
 */
 
 /*!
     \qmlproperty bool PhysicsNode::sendTriggerReports
     This property determines whether this body will send reports when entering or leaving a trigger
     body.
+
+    Default value: \c{false}
 */
 
 /*!
     \qmlproperty bool PhysicsNode::receiveTriggerReports
     This property determines whether this body will receive reports when entering or leaving a
     trigger body.
+
+    Default value: \c{false}
 */
 
 /*!

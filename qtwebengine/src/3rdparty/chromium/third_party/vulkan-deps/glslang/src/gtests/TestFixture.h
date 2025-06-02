@@ -48,6 +48,7 @@
 #include "SPIRV/disassemble.h"
 #include "SPIRV/doc.h"
 #include "SPIRV/SPVRemapper.h"
+#include "glslang/Include/Types.h"
 #include "glslang/Public/ResourceLimits.h"
 #include "glslang/Public/ShaderLang.h"
 
@@ -248,36 +249,58 @@ public:
             }
         }
 
+        if (options().compileOnly)
+            shader.setCompileOnly();
+
         bool success = compile(
                 &shader, code, entryPointName, controls, nullptr, &shaderName);
 
         glslang::TProgram program;
-        program.addShader(&shader);
-        success &= program.link(controls);
-        if (success)
-            program.mapIO();
+        spv::SpvBuildLogger logger;
+        std::vector<uint32_t> spirv_binary;
 
-        if (success && (controls & EShMsgSpvRules)) {
-            spv::SpvBuildLogger logger;
-            std::vector<uint32_t> spirv_binary;
+        if (!options().compileOnly) {
+            program.addShader(&shader);
+            success &= program.link(controls);
+            if (success)
+                program.mapIO();
+
+            if (success && (controls & EShMsgSpvRules)) {
+                options().disableOptimizer = !enableOptimizer;
+                options().generateDebugInfo = enableDebug;
+                options().emitNonSemanticShaderDebugInfo = enableNonSemanticShaderDebugInfo;
+                options().emitNonSemanticShaderDebugSource = enableNonSemanticShaderDebugInfo;
+                glslang::GlslangToSpv(*program.getIntermediate(stage), spirv_binary, &logger, &options());
+            } else {
+                return {{
+                            {shaderName, shader.getInfoLog(), shader.getInfoDebugLog()},
+                        },
+                        program.getInfoLog(),
+                        program.getInfoDebugLog(),
+                        true,
+                        "",
+                        ""};
+            }
+        } else {
             options().disableOptimizer = !enableOptimizer;
             options().generateDebugInfo = enableDebug;
             options().emitNonSemanticShaderDebugInfo = enableNonSemanticShaderDebugInfo;
             options().emitNonSemanticShaderDebugSource = enableNonSemanticShaderDebugInfo;
-            glslang::GlslangToSpv(*program.getIntermediate(stage),
-                                  spirv_binary, &logger, &options());
-
-            std::ostringstream disassembly_stream;
-            spv::Parameterize();
-            spv::Disassemble(disassembly_stream, spirv_binary);
-            bool validation_result = !options().validate || logger.getAllMessages().empty();
-            return {{{shaderName, shader.getInfoLog(), shader.getInfoDebugLog()},},
-                    program.getInfoLog(), program.getInfoDebugLog(),
-                    validation_result, logger.getAllMessages(), disassembly_stream.str()};
-        } else {
-            return {{{shaderName, shader.getInfoLog(), shader.getInfoDebugLog()},},
-                    program.getInfoLog(), program.getInfoDebugLog(), true, "", ""};
+            glslang::GlslangToSpv(*shader.getIntermediate(), spirv_binary, &logger, &options());
         }
+
+        std::ostringstream disassembly_stream;
+        spv::Parameterize();
+        spv::Disassemble(disassembly_stream, spirv_binary);
+        bool validation_result = !options().validate || logger.getAllMessages().empty();
+        return {{
+                    {shaderName, shader.getInfoLog(), shader.getInfoDebugLog()},
+                },
+                program.getInfoLog(),
+                program.getInfoDebugLog(),
+                validation_result,
+                logger.getAllMessages(),
+                disassembly_stream.str()};
     }
 
     // Compiles and links the given source |code| of the given shader

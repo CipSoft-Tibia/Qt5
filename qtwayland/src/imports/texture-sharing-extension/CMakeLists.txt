@@ -27,6 +27,8 @@ qt_internal_add_qml_module(WaylandTextureSharingExtension
         Qt::QuickPrivate
         Qt::WaylandCompositor
         Qt::WaylandCompositorPrivate
+    NO_GENERATE_CPP_EXPORTS
+    QT_LICENSE_ID QT_COMMERCIAL_OR_LGPL3
 )
 
 qt_internal_add_autogen_sync_header_dependencies(WaylandTextureSharingExtension WaylandCompositor)

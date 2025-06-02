@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
 #include "src/tint/lang/core/constant/scalar.h"
@@ -28,7 +41,7 @@ namespace tint::wgsl::reader {
 namespace {
 
 core::ir::Value* GlobalVarInitializer(core::ir::Module& m) {
-    if (m.root_block->Length() == 0u) {
+    if (m.root_block->IsEmpty()) {
         ADD_FAILURE() << "m.root_block has no instruction";
         return nullptr;
     }
@@ -51,7 +64,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_Bool_True) {
     GlobalVar("a", ty.bool_(), core::AddressSpace::kPrivate, expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto* init = GlobalVarInitializer(m.Get());
     ASSERT_TRUE(Is<core::ir::Constant>(init));
@@ -65,7 +78,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_Bool_False) {
     GlobalVar("a", ty.bool_(), core::AddressSpace::kPrivate, expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto* init = GlobalVarInitializer(m.Get());
     ASSERT_TRUE(Is<core::ir::Constant>(init));
@@ -81,7 +94,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_Bool_Deduped) {
     GlobalVar("d", ty.bool_(), core::AddressSpace::kPrivate, Expr(false));
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto itr = m.Get().root_block->begin();
     auto* var_a = (*itr)->As<core::ir::Var>();
@@ -109,7 +122,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_F32) {
     GlobalVar("a", ty.f32(), core::AddressSpace::kPrivate, expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto* init = GlobalVarInitializer(m.Get());
     ASSERT_TRUE(Is<core::ir::Constant>(init));
@@ -124,7 +137,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_F32_Deduped) {
     GlobalVar("c", ty.f32(), core::AddressSpace::kPrivate, Expr(1.2_f));
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto itr = m.Get().root_block->begin();
     auto* var_a = (*itr)->As<core::ir::Var>();
@@ -143,12 +156,12 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_F32_Deduped) {
 }
 
 TEST_F(ProgramToIRLiteralTest, EmitLiteral_F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     auto* expr = Expr(1.2_h);
     GlobalVar("a", ty.f16(), core::AddressSpace::kPrivate, expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto* init = GlobalVarInitializer(m.Get());
     ASSERT_TRUE(Is<core::ir::Constant>(init));
@@ -158,13 +171,13 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_F16) {
 }
 
 TEST_F(ProgramToIRLiteralTest, EmitLiteral_F16_Deduped) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     GlobalVar("a", ty.f16(), core::AddressSpace::kPrivate, Expr(1.2_h));
     GlobalVar("b", ty.f16(), core::AddressSpace::kPrivate, Expr(1.25_h));
     GlobalVar("c", ty.f16(), core::AddressSpace::kPrivate, Expr(1.2_h));
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto itr = m.Get().root_block->begin();
     auto* var_a = (*itr)->As<core::ir::Var>();
@@ -187,7 +200,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_I32) {
     GlobalVar("a", ty.i32(), core::AddressSpace::kPrivate, expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto* init = GlobalVarInitializer(m.Get());
     ASSERT_TRUE(Is<core::ir::Constant>(init));
@@ -202,7 +215,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_I32_Deduped) {
     GlobalVar("c", ty.i32(), core::AddressSpace::kPrivate, Expr(-2_i));
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto itr = m.Get().root_block->begin();
     auto* var_a = (*itr)->As<core::ir::Var>();
@@ -225,7 +238,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_U32) {
     GlobalVar("a", ty.u32(), core::AddressSpace::kPrivate, expr);
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto* init = GlobalVarInitializer(m.Get());
     ASSERT_TRUE(Is<core::ir::Constant>(init));
@@ -240,7 +253,7 @@ TEST_F(ProgramToIRLiteralTest, EmitLiteral_U32_Deduped) {
     GlobalVar("c", ty.u32(), core::AddressSpace::kPrivate, Expr(2_u));
 
     auto m = Build();
-    ASSERT_TRUE(m) << (!m ? m.Failure() : "");
+    ASSERT_EQ(m, Success);
 
     auto itr = m.Get().root_block->begin();
     auto* var_a = (*itr)->As<core::ir::Var>();

@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/type/builtin_structs.h"
 
@@ -18,7 +31,7 @@
 #include <string>
 #include <utility>
 
-#include "src/tint/lang/core/builtin.h"
+#include "src/tint/lang/core/builtin_type.h"
 #include "src/tint/lang/core/type/abstract_float.h"
 #include "src/tint/lang/core/type/abstract_int.h"
 #include "src/tint/lang/core/type/bool.h"
@@ -36,39 +49,39 @@ namespace tint::core::type {
 
 /// An array of `modf()` return type names for an argument of `vecN<f32>`.
 constexpr std::array kModfVecF32Names{
-    core::Builtin::kModfResultVec2F32,  // return type of modf(vec2<f32>)
-    core::Builtin::kModfResultVec3F32,  // return type of modf(vec3<f32>)
-    core::Builtin::kModfResultVec4F32,  // return type of modf(vec4<f32>)
+    core::BuiltinType::kModfResultVec2F32,  // return type of modf(vec2<f32>)
+    core::BuiltinType::kModfResultVec3F32,  // return type of modf(vec3<f32>)
+    core::BuiltinType::kModfResultVec4F32,  // return type of modf(vec4<f32>)
 };
 
 /// An array of `modf()` return type names for an argument of `vecN<f16>`.
 constexpr std::array kModfVecF16Names{
-    core::Builtin::kModfResultVec2F16,  // return type of modf(vec2<f16>)
-    core::Builtin::kModfResultVec3F16,  // return type of modf(vec3<f16>)
-    core::Builtin::kModfResultVec4F16,  // return type of modf(vec4<f16>)
+    core::BuiltinType::kModfResultVec2F16,  // return type of modf(vec2<f16>)
+    core::BuiltinType::kModfResultVec3F16,  // return type of modf(vec3<f16>)
+    core::BuiltinType::kModfResultVec4F16,  // return type of modf(vec4<f16>)
 };
 
 /// An array of `modf()` return type names for an argument of `vecN<abstract-float>`.
 constexpr std::array kModfVecAbstractNames{
-    core::Builtin::kModfResultVec2Abstract,  // return type of modf(vec2<abstract-float>)
-    core::Builtin::kModfResultVec3Abstract,  // return type of modf(vec3<abstract-float>)
-    core::Builtin::kModfResultVec4Abstract,  // return type of modf(vec4<abstract-float>)
+    core::BuiltinType::kModfResultVec2Abstract,  // return type of modf(vec2<abstract-float>)
+    core::BuiltinType::kModfResultVec3Abstract,  // return type of modf(vec3<abstract-float>)
+    core::BuiltinType::kModfResultVec4Abstract,  // return type of modf(vec4<abstract-float>)
 };
 
 Struct* CreateModfResult(Manager& types, SymbolTable& symbols, const Type* ty) {
-    auto build = [&](core::Builtin name, const Type* t) {
+    auto build = [&](core::BuiltinType name, const Type* t) {
         return types.Struct(symbols.Register(tint::ToString(name)),
                             {{symbols.Register("fract"), t}, {symbols.Register("whole"), t}});
     };
     return Switch(
         ty,  //
-        [&](const F32*) { return build(core::Builtin::kModfResultF32, ty); },
-        [&](const F16*) { return build(core::Builtin::kModfResultF16, ty); },
+        [&](const F32*) { return build(core::BuiltinType::kModfResultF32, ty); },
+        [&](const F16*) { return build(core::BuiltinType::kModfResultF16, ty); },
         [&](const AbstractFloat*) {
-            auto* abstract = build(core::Builtin::kModfResultAbstract, ty);
+            auto* abstract = build(core::BuiltinType::kModfResultAbstract, ty);
             abstract->SetConcreteTypes(tint::Vector{
-                build(core::Builtin::kModfResultF32, types.f32()),
-                build(core::Builtin::kModfResultF16, types.f16()),
+                build(core::BuiltinType::kModfResultF32, types.f32()),
+                build(core::BuiltinType::kModfResultF16, types.f16()),
             });
             return abstract;
         },
@@ -85,54 +98,48 @@ Struct* CreateModfResult(Manager& types, SymbolTable& symbols, const Type* ty) {
                         build(kModfVecF16Names[width - 2], types.vec(types.f16(), width)),
                     });
                     return abstract;
-                },
-                [&](Default) {
-                    TINT_UNREACHABLE() << "unhandled modf type";
-                    return nullptr;
-                });
-        },
-        [&](Default) {
-            TINT_UNREACHABLE() << "unhandled modf type";
-            return nullptr;
-        });
+                },  //
+                TINT_ICE_ON_NO_MATCH);
+        },  //
+        TINT_ICE_ON_NO_MATCH);
 }
 
 /// An array of `frexp()` return type names for an argument of `vecN<f32>`.
 constexpr std::array kFrexpVecF32Names{
-    core::Builtin::kFrexpResultVec2F32,  // return type of frexp(vec2<f32>)
-    core::Builtin::kFrexpResultVec3F32,  // return type of frexp(vec3<f32>)
-    core::Builtin::kFrexpResultVec4F32,  // return type of frexp(vec4<f32>)
+    core::BuiltinType::kFrexpResultVec2F32,  // return type of frexp(vec2<f32>)
+    core::BuiltinType::kFrexpResultVec3F32,  // return type of frexp(vec3<f32>)
+    core::BuiltinType::kFrexpResultVec4F32,  // return type of frexp(vec4<f32>)
 };
 
 /// An array of `frexp()` return type names for an argument of `vecN<f16>`.
 constexpr std::array kFrexpVecF16Names{
-    core::Builtin::kFrexpResultVec2F16,  // return type of frexp(vec2<f16>)
-    core::Builtin::kFrexpResultVec3F16,  // return type of frexp(vec3<f16>)
-    core::Builtin::kFrexpResultVec4F16,  // return type of frexp(vec4<f16>)
+    core::BuiltinType::kFrexpResultVec2F16,  // return type of frexp(vec2<f16>)
+    core::BuiltinType::kFrexpResultVec3F16,  // return type of frexp(vec3<f16>)
+    core::BuiltinType::kFrexpResultVec4F16,  // return type of frexp(vec4<f16>)
 };
 
 /// An array of `frexp()` return type names for an argument of `vecN<abstract-float>`.
 constexpr std::array kFrexpVecAbstractNames{
-    core::Builtin::kFrexpResultVec2Abstract,  // return type of frexp(vec2<abstract-float>)
-    core::Builtin::kFrexpResultVec3Abstract,  // return type of frexp(vec3<abstract-float>)
-    core::Builtin::kFrexpResultVec4Abstract,  // return type of frexp(vec4<abstract-float>)
+    core::BuiltinType::kFrexpResultVec2Abstract,  // return type of frexp(vec2<abstract-float>)
+    core::BuiltinType::kFrexpResultVec3Abstract,  // return type of frexp(vec3<abstract-float>)
+    core::BuiltinType::kFrexpResultVec4Abstract,  // return type of frexp(vec4<abstract-float>)
 };
 
 Struct* CreateFrexpResult(Manager& types, SymbolTable& symbols, const Type* ty) {
-    auto build = [&](core::Builtin name, const Type* fract_ty, const Type* exp_ty) {
+    auto build = [&](core::BuiltinType name, const Type* fract_ty, const Type* exp_ty) {
         return types.Struct(
             symbols.Register(tint::ToString(name)),
             {{symbols.Register("fract"), fract_ty}, {symbols.Register("exp"), exp_ty}});
     };
     return Switch(
         ty,  //
-        [&](const F32*) { return build(core::Builtin::kFrexpResultF32, ty, types.i32()); },
-        [&](const F16*) { return build(core::Builtin::kFrexpResultF16, ty, types.i32()); },
+        [&](const F32*) { return build(core::BuiltinType::kFrexpResultF32, ty, types.i32()); },
+        [&](const F16*) { return build(core::BuiltinType::kFrexpResultF16, ty, types.i32()); },
         [&](const AbstractFloat*) {
-            auto* abstract = build(core::Builtin::kFrexpResultAbstract, ty, types.AInt());
+            auto* abstract = build(core::BuiltinType::kFrexpResultAbstract, ty, types.AInt());
             abstract->SetConcreteTypes(tint::Vector{
-                build(core::Builtin::kFrexpResultF32, types.f32(), types.i32()),
-                build(core::Builtin::kFrexpResultF16, types.f16(), types.i32()),
+                build(core::BuiltinType::kFrexpResultF32, types.f32(), types.i32()),
+                build(core::BuiltinType::kFrexpResultF16, types.f16(), types.i32()),
             });
             return abstract;
         },
@@ -157,20 +164,14 @@ Struct* CreateFrexpResult(Manager& types, SymbolTable& symbols, const Type* ty) 
                         build(kFrexpVecF16Names[width - 2], vec_f16, vec_i32),
                     });
                     return abstract;
-                },
-                [&](Default) {
-                    TINT_UNREACHABLE() << "unhandled frexp type";
-                    return nullptr;
-                });
-        },
-        [&](Default) {
-            TINT_UNREACHABLE() << "unhandled frexp type";
-            return nullptr;
-        });
+                },  //
+                TINT_ICE_ON_NO_MATCH);
+        },  //
+        TINT_ICE_ON_NO_MATCH);
 }
 
 Struct* CreateAtomicCompareExchangeResult(Manager& types, SymbolTable& symbols, const Type* ty) {
-    auto build = [&](core::Builtin name) {
+    auto build = [&](core::BuiltinType name) {
         return types.Struct(symbols.Register(tint::ToString(name)),
                             {
                                 {symbols.Register("old_value"), ty},
@@ -179,12 +180,9 @@ Struct* CreateAtomicCompareExchangeResult(Manager& types, SymbolTable& symbols, 
     };
     return Switch(
         ty,  //
-        [&](const I32*) { return build(core::Builtin::kAtomicCompareExchangeResultI32); },
-        [&](const U32*) { return build(core::Builtin::kAtomicCompareExchangeResultU32); },
-        [&](Default) {
-            TINT_UNREACHABLE() << "unhandled atomic_compare_exchange type";
-            return nullptr;
-        });
+        [&](const I32*) { return build(core::BuiltinType::kAtomicCompareExchangeResultI32); },
+        [&](const U32*) { return build(core::BuiltinType::kAtomicCompareExchangeResultU32); },
+        TINT_ICE_ON_NO_MATCH);
 }
 
 }  // namespace tint::core::type

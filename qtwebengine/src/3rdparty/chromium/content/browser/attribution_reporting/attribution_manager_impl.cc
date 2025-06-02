@@ -5,6 +5,7 @@
 #include "content/browser/attribution_reporting/attribution_manager_impl.h"
 
 #include <cmath>
+#include <optional>
 #include <set>
 #include <utility>
 #include <vector>
@@ -18,6 +19,8 @@
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/functional/overloaded.h"
+#include "base/location.h"
+#include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ref.h"
 #include "base/memory/scoped_refptr.h"
@@ -71,6 +74,7 @@
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/storage_partition.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
 #include "net/base/schemeful_site.h"
@@ -79,7 +83,6 @@
 #include "services/network/public/mojom/attribution.mojom.h"
 #include "services/network/public/mojom/network_change_manager.mojom-forward.h"
 #include "storage/browser/quota/special_storage_policy.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -107,6 +110,15 @@ enum class ConversionReportSendOutcome {
   kFailedToAssemble = 3,
   kMaxValue = kFailedToAssemble,
 };
+enum class ConversionReportSendRetryCount {
+  kNone = 0,
+  kOnce = 1,
+  kTwice = 2,
+  kFailed = 3,
+  kMaxValue = kFailed,
+};
+
+const base::TimeDelta kPrivacySandboxAttestationsTimeout = base::Minutes(5);
 
 // This class consolidates logic regarding when to schedule the browser to send
 // attribution reports. It talks directly to the `AttributionStorage` to help
@@ -138,15 +150,18 @@ class AttributionReportScheduler : public ReportSchedulerTimer::Delegate {
  private:
   // ReportSchedulerTimer::Delegate:
   void GetNextReportTime(
-      base::OnceCallback<void(absl::optional<base::Time>)> callback,
+      base::OnceCallback<void(std::optional<base::Time>)> callback,
       base::Time now) override {
     attribution_storage_->AsyncCall(&AttributionStorage::GetNextReportTime)
         .WithArgs(now)
         .Then(std::move(callback));
   }
-  void OnReportingTimeReached(base::Time now) override { send_reports_.Run(); }
+  void OnReportingTimeReached(base::Time now,
+                              base::Time timer_desired_run_time) override {
+    send_reports_.Run();
+  }
   void AdjustOfflineReportTimes(
-      base::OnceCallback<void(absl::optional<base::Time>)> maybe_set_timer_cb)
+      base::OnceCallback<void(std::optional<base::Time>)> maybe_set_timer_cb)
       override {
     // Add delay to all reports that should have been sent while the browser was
     // offline so they are not temporally joinable. We do this in storage to
@@ -181,20 +196,20 @@ bool IsStorageKeySessionOnly(
   return false;
 }
 
-void RecordStoreSourceStatus(StoreSourceResult result) {
+void RecordStoreSourceStatus(const StoreSourceResult& result) {
   static_assert(StorableSource::Result::kMaxValue ==
-                    StorableSource::Result::kEventReportWindowsInvalidStartTime,
-                "Bump version of Conversions.SourceStoredStatus6 histogram.");
-  base::UmaHistogramEnumeration("Conversions.SourceStoredStatus6",
-                                result.status);
+                    StorableSource::Result::kExceedsMaxChannelCapacity,
+                "Bump version of Conversions.SourceStoredStatus8 histogram.");
+  base::UmaHistogramEnumeration("Conversions.SourceStoredStatus8",
+                                result.status());
 }
 
-void RecordCreateReportStatus(CreateReportResult result) {
+void RecordCreateReportStatus(const CreateReportResult& result) {
   static_assert(
       AttributionTrigger::EventLevelResult::kMaxValue ==
-          AttributionTrigger::EventLevelResult::kReportWindowNotStarted,
-      "Bump version of Conversions.CreateReportStatus8 histogram.");
-  base::UmaHistogramEnumeration("Conversions.CreateReportStatus8",
+          AttributionTrigger::EventLevelResult::kNoMatchingTriggerData,
+      "Bump version of Conversions.CreateReportStatus9 histogram.");
+  base::UmaHistogramEnumeration("Conversions.CreateReportStatus9",
                                 result.event_level_status());
   static_assert(
       AttributionTrigger::AggregatableResult::kMaxValue ==
@@ -204,6 +219,21 @@ void RecordCreateReportStatus(CreateReportResult result) {
   base::UmaHistogramEnumeration(
       "Conversions.AggregatableReport.CreateReportStatus4",
       result.aggregatable_status());
+}
+
+// If `retry_attempts` <= 2, represents the number of retries before success.
+// If `retry_attempts == 3`, represents failure after two retries.
+void RecordReportRetriesEventLevel(int retry_attempts) {
+  DCHECK_LT(retry_attempts, 4);
+  base::UmaHistogramEnumeration(
+      "Conversions.EventLevelReport.ReportRetriesTillSuccessOrFailure",
+      static_cast<ConversionReportSendRetryCount>(retry_attempts));
+}
+void RecordReportRetriesAggregatable(int retry_attempts) {
+  DCHECK_LT(retry_attempts, 4);
+  base::UmaHistogramEnumeration(
+      "Conversions.AggregatableReport.ReportRetriesTillSuccessOrFailure",
+      static_cast<ConversionReportSendRetryCount>(retry_attempts));
 }
 
 ConversionReportSendOutcome ConvertToConversionReportSendOutcome(
@@ -332,6 +362,8 @@ void LogMetricsOnReportSent(const AttributionReport& report) {
       UMA_HISTOGRAM_COUNTS_1000(
           "Conversions.TimeFromTriggerToReportSentSuccessfully",
           time_from_conversion_to_report_sent.InHours());
+
+      RecordReportRetriesEventLevel(report.failed_send_attempts());
       break;
     case AttributionReport::Type::kAggregatableAttribution:
       UMA_HISTOGRAM_CUSTOM_TIMES(
@@ -344,6 +376,8 @@ void LogMetricsOnReportSent(const AttributionReport& report) {
           "Conversions.AggregatableReport.ExtraReportDelayForSuccessfulSend",
           time_since_original_report_time, base::Seconds(1), base::Days(24),
           /*bucket_count=*/50);
+
+      RecordReportRetriesAggregatable(report.failed_send_attempts());
       break;
     case AttributionReport::Type::kNullAggregatable:
       break;
@@ -367,10 +401,11 @@ bool IsOperationAllowed(
     content::RenderFrameHost* rfh,
     const url::Origin* source_origin,
     const url::Origin* destination_origin,
-    const url::Origin* reporting_origin) {
+    const url::Origin* reporting_origin,
+    bool* can_bypass = nullptr) {
   return GetContentClient()->browser()->IsAttributionReportingOperationAllowed(
       storage_partition.browser_context(), operation, rfh, source_origin,
-      destination_origin, reporting_origin);
+      destination_origin, reporting_origin, can_bypass);
 }
 
 std::unique_ptr<AttributionOsLevelManager> CreateOsLevelManager() {
@@ -392,7 +427,12 @@ struct AttributionManagerImpl::PendingReportTimings {
   base::Time report_time;
 };
 
-absl::optional<base::TimeDelta> GetFailedReportDelay(int failed_send_attempts) {
+struct AttributionManagerImpl::SourceOrTriggerRFH {
+  SourceOrTrigger source_or_trigger;
+  GlobalRenderFrameHostId rfh_id;
+};
+
+std::optional<base::TimeDelta> GetFailedReportDelay(int failed_send_attempts) {
   DCHECK_GT(failed_send_attempts, 0);
 
   const int kMaxFailedSendAttempts = 2;
@@ -400,7 +440,7 @@ absl::optional<base::TimeDelta> GetFailedReportDelay(int failed_send_attempts) {
   const int kDelayFactor = 3;
 
   if (failed_send_attempts > kMaxFailedSendAttempts) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return kInitialReportDelay * std::pow(kDelayFactor, failed_send_attempts - 1);
@@ -502,13 +542,6 @@ AttributionManagerImpl::AttributionManagerImpl(
           storage_task_runner_,
           g_run_in_memory ? base::FilePath() : user_data_directory,
           std::move(storage_delegate))),
-      scheduler_timer_(std::make_unique<AttributionReportScheduler>(
-          base::BindRepeating(&AttributionManagerImpl::GetReportsToSend,
-                              base::Unretained(this)),
-          base::BindRepeating(
-              &AttributionManagerImpl::RecordPendingAggregatableReportsTimings,
-              base::Unretained(this)),
-          attribution_storage_)),
       data_host_manager_(
           std::make_unique<AttributionDataHostManagerImpl>(this)),
       special_storage_policy_(std::move(special_storage_policy)),
@@ -520,10 +553,22 @@ AttributionManagerImpl::AttributionManagerImpl(
   DCHECK(cookie_checker_);
   DCHECK(report_sender_);
   DCHECK(os_level_manager_);
+
+  if (GetContentClient()->browser()->AddPrivacySandboxAttestationsObserver(
+          this)) {
+    OnAttestationsLoaded();
+  } else {
+    privacy_sandbox_attestations_timer_.Start(
+        FROM_HERE, kPrivacySandboxAttestationsTimeout,
+        base::BindOnce(&AttributionManagerImpl::OnAttestationsLoaded,
+                       weak_factory_.GetWeakPtr()));
+  }
 }
 
 AttributionManagerImpl::~AttributionManagerImpl() {
   RecordPendingAggregatableReportsTimings();
+
+  GetContentClient()->browser()->RemovePrivacySandboxAttestationsObserver(this);
 
   // Browser contexts are not required to have a special storage policy.
   if (!special_storage_policy_ ||
@@ -558,23 +603,8 @@ AttributionDataHostManager* AttributionManagerImpl::GetDataHostManager() {
 void AttributionManagerImpl::HandleSource(
     StorableSource source,
     GlobalRenderFrameHostId render_frame_id) {
-  bool allowed = IsOperationAllowed(
-      *storage_partition_,
-      ContentBrowserClient::AttributionReportingOperation::kSource,
-      RenderFrameHost::FromID(render_frame_id),
-      &*source.common_info().source_origin(),
-      /*destination_origin=*/nullptr,
-      &*source.common_info().reporting_origin());
-  if (!allowed) {
-    OnSourceStored(
-        source,
-        /*cleared_debug_key=*/absl::nullopt,
-        /*is_debug_cookie_set=*/false,
-        StoreSourceResult(StorableSource::Result::kProhibitedByBrowserPolicy));
-    return;
-  }
-
-  MaybeEnqueueEvent(std::move(source));
+  MaybeEnqueueEvent(SourceOrTriggerRFH{.source_or_trigger = std::move(source),
+                                       .rfh_id = render_frame_id});
 }
 
 void AttributionManagerImpl::RecordPendingAggregatableReportsTimings() {
@@ -595,17 +625,23 @@ void AttributionManagerImpl::RecordPendingAggregatableReportsTimings() {
 
 void AttributionManagerImpl::OnSourceStored(
     const StorableSource& source,
-    absl::optional<uint64_t> cleared_debug_key,
+    std::optional<uint64_t> cleared_debug_key,
     bool is_debug_cookie_set,
     StoreSourceResult result) {
+  CHECK(IsReady());
+
   RecordStoreSourceStatus(result);
 
   base::Time now = base::Time::Now();
   for (auto& observer : observers_) {
-    observer.OnSourceHandled(source, now, cleared_debug_key, result.status);
+    observer.OnSourceHandled(source, now, cleared_debug_key, result.status());
   }
 
-  scheduler_timer_.MaybeSet(result.min_fake_report_time);
+  if (const auto* success_noised =
+          absl::get_if<StoreSourceResult::SuccessNoised>(&result.result())) {
+    scheduler_timer_->MaybeSet(success_noised->min_fake_report_time);
+    NotifyReportsChanged();
+  }
 
   NotifySourcesChanged();
 
@@ -615,33 +651,16 @@ void AttributionManagerImpl::OnSourceStored(
 void AttributionManagerImpl::HandleTrigger(
     AttributionTrigger trigger,
     GlobalRenderFrameHostId render_frame_id) {
-  bool allowed = IsOperationAllowed(
-      *storage_partition_,
-      ContentBrowserClient::AttributionReportingOperation::kTrigger,
-      RenderFrameHost::FromID(render_frame_id),
-      /*source_origin=*/nullptr, &*trigger.destination_origin(),
-      &*trigger.reporting_origin());
-  if (!allowed) {
-    OnReportStored(
-        trigger,
-        /*cleared_debug_key=*/absl::nullopt, /*is_debug_cookie_set=*/false,
-        CreateReportResult(
-            /*trigger_time=*/base::Time::Now(),
-            AttributionTrigger::EventLevelResult::kProhibitedByBrowserPolicy,
-            AttributionTrigger::AggregatableResult::
-                kProhibitedByBrowserPolicy));
-    return;
-  }
-
-  MaybeEnqueueEvent(std::move(trigger));
+  MaybeEnqueueEvent(SourceOrTriggerRFH{.source_or_trigger = std::move(trigger),
+                                       .rfh_id = render_frame_id});
 }
 
 void AttributionManagerImpl::StoreTrigger(AttributionTrigger trigger,
                                           bool is_debug_cookie_set) {
-  absl::optional<uint64_t> cleared_debug_key;
+  std::optional<uint64_t> cleared_debug_key;
   if (!is_debug_cookie_set) {
     cleared_debug_key =
-        std::exchange(trigger.registration().debug_key, absl::nullopt);
+        std::exchange(trigger.registration().debug_key, std::nullopt);
   }
 
   attribution_storage_.AsyncCall(&AttributionStorage::MaybeCreateAndStoreReport)
@@ -651,7 +670,7 @@ void AttributionManagerImpl::StoreTrigger(AttributionTrigger trigger,
                            cleared_debug_key, is_debug_cookie_set));
 }
 
-void AttributionManagerImpl::MaybeEnqueueEvent(SourceOrTrigger event) {
+void AttributionManagerImpl::MaybeEnqueueEvent(SourceOrTriggerRFH event) {
   const size_t size_before_push = pending_events_.size();
 
   // Avoid unbounded memory growth with adversarial input.
@@ -671,36 +690,70 @@ void AttributionManagerImpl::MaybeEnqueueEvent(SourceOrTrigger event) {
 }
 
 void AttributionManagerImpl::ProcessEvents() {
+  if (!IsReady()) {
+    DLOG(WARNING) << "Still waiting for attestations loading";
+    return;
+  }
+
   // Process as many events not requiring a cookie check (synchronously) as
   // possible. Once reaching the first to require a cookie check, start the
   // async check and stop processing further events.
   while (!pending_events_.empty()) {
-    const attribution_reporting::SuitableOrigin* cookie_origin = absl::visit(
+    const attribution_reporting::SuitableOrigin* cookie_origin = nullptr;
+    const attribution_reporting::SuitableOrigin* reporting_origin = nullptr;
+    const url::Origin* source_origin = nullptr;
+    const url::Origin* destination_origin = nullptr;
+    ContentBrowserClient::AttributionReportingOperation operation;
+    ContentBrowserClient::AttributionReportingOperation registration_operation;
+
+    absl::visit(
         base::Overloaded{
-            [](const StorableSource& source) {
-              return source.registration().debug_key.has_value() ||
-                             source.registration().debug_reporting
-                         ? &source.common_info().reporting_origin()
-                         : nullptr;
+            [&](const StorableSource& source) {
+              reporting_origin = &source.common_info().reporting_origin();
+              cookie_origin = reporting_origin;
+              source_origin = &*source.common_info().source_origin();
+              operation = ContentBrowserClient::AttributionReportingOperation::
+                  kSourceTransitionalDebugReporting;
+              registration_operation =
+                  ContentBrowserClient::AttributionReportingOperation::kSource;
             },
-            [](const AttributionTrigger& trigger) {
+            [&](const AttributionTrigger& trigger) {
               const attribution_reporting::TriggerRegistration& registration =
                   trigger.registration();
-              return registration.debug_key.has_value() ||
-                             registration.debug_reporting
-                         ? &trigger.reporting_origin()
-                         : nullptr;
+              reporting_origin = &trigger.reporting_origin();
+              cookie_origin = registration.debug_key.has_value() ||
+                                      registration.debug_reporting
+                                  ? reporting_origin
+                                  : nullptr;
+              destination_origin = &*trigger.destination_origin();
+              operation = ContentBrowserClient::AttributionReportingOperation::
+                  kTriggerTransitionalDebugReporting;
+              registration_operation =
+                  ContentBrowserClient::AttributionReportingOperation::kTrigger;
             },
         },
-        pending_events_.front());
-    if (cookie_origin) {
+        pending_events_.front().source_or_trigger);
+
+    bool registration_allowed = IsOperationAllowed(
+        *storage_partition_, registration_operation,
+        RenderFrameHost::FromID(pending_events_.front().rfh_id), source_origin,
+        destination_origin, &**reporting_origin);
+
+    // TODO(https://crbug.com/1501357): Clean up `can_bypass` after the cookie
+    // deprecation experiment.
+    bool can_bypass = false;
+    if (registration_allowed && cookie_origin &&
+        IsOperationAllowed(*storage_partition_, operation,
+                           /*rfh=*/nullptr, source_origin, destination_origin,
+                           &**cookie_origin, &can_bypass)) {
       cookie_checker_->IsDebugCookieSet(
           *cookie_origin,
           base::BindOnce(
               [](base::WeakPtr<AttributionManagerImpl> manager,
                  bool is_debug_cookie_set) {
                 if (manager) {
-                  manager->ProcessNextEvent(is_debug_cookie_set);
+                  manager->ProcessNextEvent(/*registration_allowed=*/true,
+                                            is_debug_cookie_set);
                   manager->ProcessEvents();
                 }
               },
@@ -708,36 +761,57 @@ void AttributionManagerImpl::ProcessEvents() {
       return;
     }
 
-    ProcessNextEvent(/*is_debug_cookie_set=*/false);
+    ProcessNextEvent(registration_allowed, /*is_debug_cookie_set=*/can_bypass);
   }
 }
 
-void AttributionManagerImpl::ProcessNextEvent(bool is_debug_cookie_set) {
+void AttributionManagerImpl::ProcessNextEvent(bool registration_allowed,
+                                              bool is_debug_cookie_set) {
   DCHECK(!pending_events_.empty());
 
-  absl::visit(base::Overloaded{
-                  [&](StorableSource& source) {
-                    StoreSource(std::move(source), is_debug_cookie_set);
-                  },
-                  [&](AttributionTrigger& trigger) {
-                    StoreTrigger(std::move(trigger), is_debug_cookie_set);
-                  },
-              },
-              pending_events_.front());
+  absl::visit(
+      base::Overloaded{
+          [&](StorableSource& source) {
+            if (registration_allowed) {
+              StoreSource(std::move(source), is_debug_cookie_set);
+            } else {
+              OnSourceStored(source,
+                             /*cleared_debug_key=*/std::nullopt,
+                             /*is_debug_cookie_set=*/false,
+                             StoreSourceResult::ProhibitedByBrowserPolicy());
+            }
+          },
+          [&](AttributionTrigger& trigger) {
+            if (registration_allowed) {
+              StoreTrigger(std::move(trigger), is_debug_cookie_set);
+            } else {
+              OnReportStored(trigger,
+                             /*cleared_debug_key=*/std::nullopt,
+                             /*is_debug_cookie_set=*/false,
+                             CreateReportResult(
+                                 /*trigger_time=*/base::Time::Now(),
+                                 AttributionTrigger::EventLevelResult::
+                                     kProhibitedByBrowserPolicy,
+                                 AttributionTrigger::AggregatableResult::
+                                     kProhibitedByBrowserPolicy));
+            }
+          },
+      },
+      pending_events_.front().source_or_trigger);
 
   pending_events_.pop_front();
 }
 
 void AttributionManagerImpl::StoreSource(StorableSource source,
                                          bool is_debug_cookie_set) {
-  absl::optional<uint64_t> cleared_debug_key;
+  std::optional<uint64_t> cleared_debug_key;
   if (!is_debug_cookie_set) {
     cleared_debug_key =
-        std::exchange(source.registration().debug_key, absl::nullopt);
+        std::exchange(source.registration().debug_key, std::nullopt);
   }
 
   attribution_storage_.AsyncCall(&AttributionStorage::StoreSource)
-      .WithArgs(source)
+      .WithArgs(source, is_debug_cookie_set)
       .Then(base::BindOnce(&AttributionManagerImpl::OnSourceStored,
                            weak_factory_.GetWeakPtr(), std::move(source),
                            cleared_debug_key, is_debug_cookie_set));
@@ -765,12 +839,14 @@ void AttributionManagerImpl::AddPendingAggregatableReportTiming(
 
 void AttributionManagerImpl::OnReportStored(
     const AttributionTrigger& trigger,
-    absl::optional<uint64_t> cleared_debug_key,
+    std::optional<uint64_t> cleared_debug_key,
     bool is_debug_cookie_set,
     CreateReportResult result) {
+  CHECK(IsReady());
+
   RecordCreateReportStatus(result);
 
-  absl::optional<base::Time> min_new_report_time;
+  std::optional<base::Time> min_new_report_time;
 
   if (auto& report = result.new_event_level_report()) {
     min_new_report_time = report->report_time();
@@ -789,7 +865,7 @@ void AttributionManagerImpl::OnReportStored(
   min_new_report_time = AttributionReport::MinReportTime(
       min_new_report_time, result.min_null_aggregatable_report_time());
 
-  scheduler_timer_.MaybeSet(min_new_report_time);
+  scheduler_timer_->MaybeSet(min_new_report_time);
 
   bool notify_reports_changed = false;
 
@@ -859,6 +935,13 @@ void AttributionManagerImpl::SendReportsForWebUI(
     const std::vector<AttributionReport::Id>& ids,
     base::OnceClosure done) {
   DCHECK(done);
+
+  // TODO(linnan): Consider returning an error to the web UI.
+  if (!IsReady()) {
+    std::move(done).Run();
+    return;
+  }
+
   attribution_storage_.AsyncCall(&AttributionStorage::GetReports)
       .WithArgs(ids)
       .Then(base::BindOnce(&AttributionManagerImpl::OnGetReportsToSendFromWebUI,
@@ -1063,38 +1146,52 @@ void AttributionManagerImpl::PrepareToSendReport(AttributionReport report,
 void AttributionManagerImpl::OnReportSent(base::OnceClosure done,
                                           const AttributionReport& report,
                                           SendResult info) {
+  CHECK(IsReady());
+
   // If there was a transient failure, and another attempt is allowed,
   // update the report's DB state to reflect that. Otherwise, delete the report
   // from storage.
 
-  absl::optional<base::Time> new_report_time;
+  std::optional<base::Time> new_report_time;
   // TODO(linnan): Retry on transient assembly failure isn't privacy sensitive,
   // therefore we could consider subjecting these failures to a different limit.
   if (info.status == SendResult::Status::kTransientFailure ||
       info.status == SendResult::Status::kTransientAssemblyFailure) {
-    if (absl::optional<base::TimeDelta> delay =
-            GetFailedReportDelay(report.failed_send_attempts() + 1)) {
+    int retry_attempts = report.failed_send_attempts() + 1;
+    if (std::optional<base::TimeDelta> delay =
+            GetFailedReportDelay(retry_attempts)) {
       new_report_time = base::Time::Now() + *delay;
+    } else {
+      switch (report.GetReportType()) {
+        case AttributionReport::Type::kEventLevel:
+          RecordReportRetriesEventLevel(retry_attempts);
+          break;
+        case AttributionReport::Type::kAggregatableAttribution:
+          RecordReportRetriesAggregatable(retry_attempts);
+          break;
+        case AttributionReport::Type::kNullAggregatable:
+          break;
+      }
     }
   }
 
   if (info.status == SendResult::Status::kTransientFailure ||
       info.status == SendResult::Status::kFailure) {
     RecordNetworkConnectionTypeOnFailure(report.GetReportType(),
-                                         scheduler_timer_.connection_type());
+                                         scheduler_timer_->connection_type());
   }
 
   base::OnceCallback then = base::BindOnce(
       [](base::OnceClosure done, base::WeakPtr<AttributionManagerImpl> manager,
          AttributionReport::Id report_id,
-         absl::optional<base::Time> new_report_time, bool success) {
+         std::optional<base::Time> new_report_time, bool success) {
         if (done) {
           std::move(done).Run();
         }
 
         if (manager && success) {
           manager->MarkReportCompleted(report_id);
-          manager->scheduler_timer_.MaybeSet(new_report_time);
+          manager->scheduler_timer_->MaybeSet(new_report_time);
           manager->NotifyReportsChanged();
         }
       },
@@ -1157,7 +1254,7 @@ void AttributionManagerImpl::AssembleAggregatableReport(
     return;
   }
 
-  absl::optional<AggregatableReportRequest> request =
+  std::optional<AggregatableReportRequest> request =
       CreateAggregatableReportRequest(report);
   if (!request.has_value()) {
     RecordAssembleAggregatableReportStatus(
@@ -1179,7 +1276,7 @@ void AttributionManagerImpl::OnAggregatableReportAssembled(
     bool is_debug_report,
     ReportSentCallback callback,
     AggregatableReportRequest,
-    absl::optional<AggregatableReport> assembled_report,
+    std::optional<AggregatableReport> assembled_report,
     AggregationService::AssemblyStatus) {
   if (!assembled_report.has_value()) {
     RecordAssembleAggregatableReportStatus(
@@ -1192,7 +1289,9 @@ void AttributionManagerImpl::OnAggregatableReportAssembled(
 
   absl::visit(
       base::Overloaded{
-          [](const AttributionReport::EventLevelData&) { NOTREACHED(); },
+          [](const AttributionReport::EventLevelData&) {
+            NOTREACHED_NORETURN();
+          },
           [&](AttributionReport::AggregatableAttributionData& data) {
             data.common_data.assembled_report = std::move(assembled_report);
           },
@@ -1239,7 +1338,7 @@ void AttributionManagerImpl::MaybeSendVerboseDebugReport(
     return;
   }
 
-  if (absl::optional<AttributionDebugReport> debug_report =
+  if (std::optional<AttributionDebugReport> debug_report =
           AttributionDebugReport::Create(source, is_debug_cookie_set, result)) {
     report_sender_->SendReport(
         std::move(*debug_report),
@@ -1266,7 +1365,7 @@ void AttributionManagerImpl::MaybeSendVerboseDebugReport(
     return;
   }
 
-  if (absl::optional<AttributionDebugReport> debug_report =
+  if (std::optional<AttributionDebugReport> debug_report =
           AttributionDebugReport::Create(trigger, is_debug_cookie_set,
                                          result)) {
     report_sender_->SendReport(
@@ -1276,10 +1375,10 @@ void AttributionManagerImpl::MaybeSendVerboseDebugReport(
   }
 }
 
-void AttributionManagerImpl::HandleOsRegistration(
-    OsRegistration registration,
-    GlobalRenderFrameHostId render_frame_id) {
-  if (!network::HasAttributionOsSupport(GetSupport())) {
+void AttributionManagerImpl::HandleOsRegistration(OsRegistration registration) {
+  if (!network::HasAttributionOsSupport(
+          GetAttributionSupport(content::WebContents::FromRenderFrameHost(
+              RenderFrameHost::FromID(registration.render_frame_id))))) {
     NotifyOsRegistration(registration,
                          /*is_debug_key_allowed=*/false,
                          OsRegistrationResult::kUnsupported);
@@ -1292,34 +1391,6 @@ void AttributionManagerImpl::HandleOsRegistration(
     NotifyOsRegistration(registration,
                          /*is_debug_key_allowed=*/false,
                          OsRegistrationResult::kInvalidRegistrationUrl);
-    return;
-  }
-
-  ContentBrowserClient::AttributionReportingOperation operation;
-  const url::Origin* source_origin;
-  const url::Origin* destination_origin;
-  switch (registration.GetType()) {
-    case RegistrationType::kSource:
-      operation =
-          ContentBrowserClient::AttributionReportingOperation::kOsSource;
-      source_origin = &registration.top_level_origin;
-      destination_origin = nullptr;
-      break;
-    case RegistrationType::kTrigger:
-      operation =
-          ContentBrowserClient::AttributionReportingOperation::kOsTrigger;
-      source_origin = nullptr;
-      destination_origin = &registration.top_level_origin;
-      break;
-  }
-
-  if (!IsOperationAllowed(*storage_partition_, operation,
-                          RenderFrameHost::FromID(render_frame_id),
-                          source_origin, destination_origin,
-                          /*reporting_origin=*/&registration_origin)) {
-    NotifyOsRegistration(registration,
-                         /*is_debug_key_allowed=*/false,
-                         OsRegistrationResult::kProhibitedByBrowserPolicy);
     return;
   }
 
@@ -1340,38 +1411,93 @@ void AttributionManagerImpl::HandleOsRegistration(
   // Only process the new event if it is the only one in the queue. Otherwise,
   // there's already an async cookie-check in progress.
   if (size_before_push == 0) {
-    ProcessNextOsEvent();
+    ProcessOsEvents();
   }
 }
 
-void AttributionManagerImpl::ProcessNextOsEvent() {
+void AttributionManagerImpl::ProcessOsEvents() {
+  if (!IsReady()) {
+    DLOG(WARNING) << "Still waiting for attestations loading";
+    return;
+  }
+
+  while (!pending_os_events_.empty()) {
+    const OsRegistration& event = pending_os_events_.front();
+
+    const auto reporting_origin = url::Origin::Create(event.registration_url);
+
+    ContentBrowserClient::AttributionReportingOperation operation;
+    ContentBrowserClient::AttributionReportingOperation registration_operation;
+    const url::Origin* source_origin;
+    const url::Origin* destination_origin;
+    switch (event.GetType()) {
+      case RegistrationType::kSource:
+        registration_operation =
+            ContentBrowserClient::AttributionReportingOperation::kOsSource;
+        operation = ContentBrowserClient::AttributionReportingOperation::
+            kOsSourceTransitionalDebugReporting;
+        source_origin = &event.top_level_origin;
+        destination_origin = nullptr;
+        break;
+      case RegistrationType::kTrigger:
+        registration_operation =
+            ContentBrowserClient::AttributionReportingOperation::kOsTrigger;
+        operation = ContentBrowserClient::AttributionReportingOperation::
+            kOsTriggerTransitionalDebugReporting;
+        source_origin = nullptr;
+        destination_origin = &event.top_level_origin;
+        break;
+    }
+
+    bool registration_allowed = IsOperationAllowed(
+        *storage_partition_, registration_operation,
+        RenderFrameHost::FromID(event.render_frame_id), source_origin,
+        destination_origin, &reporting_origin);
+    bool can_bypass = false;
+    if (registration_allowed &&
+        IsOperationAllowed(*storage_partition_, operation,
+                           RenderFrameHost::FromID(event.render_frame_id),
+                           source_origin, destination_origin, &reporting_origin,
+                           &can_bypass)) {
+      cookie_checker_->IsDebugCookieSet(
+          reporting_origin,
+          base::BindOnce(
+              [](base::WeakPtr<AttributionManagerImpl> manager,
+                 bool is_debug_key_allowed) {
+                if (manager) {
+                  manager->ProcessNextOsEvent(/*registration_allowed=*/true,
+                                              is_debug_key_allowed);
+                  manager->ProcessOsEvents();
+                }
+              },
+              weak_factory_.GetWeakPtr()));
+      return;
+    }
+
+    ProcessNextOsEvent(registration_allowed,
+                       /*is_debug_key_allowed=*/can_bypass);
+  }
+}
+
+void AttributionManagerImpl::ProcessNextOsEvent(bool registration_allowed,
+                                                bool is_debug_key_allowed) {
   DCHECK(!pending_os_events_.empty());
 
-  cookie_checker_->IsDebugCookieSet(
-      url::Origin::Create(pending_os_events_.front().registration_url),
-      base::BindOnce(
-          [](base::WeakPtr<AttributionManagerImpl> manager,
-             bool is_debug_key_allowed) {
-            if (!manager) {
-              return;
-            }
+  {
+    auto& event = pending_os_events_.front();
+    if (registration_allowed) {
+      os_level_manager_->Register(
+          std::move(event), is_debug_key_allowed,
+          base::BindOnce(&AttributionManagerImpl::OnOsRegistration,
+                         weak_factory_.GetWeakPtr(), is_debug_key_allowed));
+    } else {
+      NotifyOsRegistration(event,
+                           /*is_debug_key_allowed=*/false,
+                           OsRegistrationResult::kProhibitedByBrowserPolicy);
+    }
+  }
 
-            DCHECK(!manager->pending_os_events_.empty());
-
-            {
-              auto& event = manager->pending_os_events_.front();
-              manager->os_level_manager_->Register(
-                  std::move(event), is_debug_key_allowed,
-                  base::BindOnce(&AttributionManagerImpl::OnOsRegistration,
-                                 manager, is_debug_key_allowed));
-            }
-
-            manager->pending_os_events_.pop_front();
-            if (!manager->pending_os_events_.empty()) {
-              manager->ProcessNextOsEvent();
-            }
-          },
-          weak_factory_.GetWeakPtr()));
+  pending_os_events_.pop_front();
 }
 
 void AttributionManagerImpl::NotifyOsRegistration(
@@ -1405,7 +1531,7 @@ void AttributionManagerImpl::OnOsRegistration(
                                : OsRegistrationResult::kRejectedByOs);
 }
 
-void AttributionManagerImpl::SetDebugMode(absl::optional<bool> enabled,
+void AttributionManagerImpl::SetDebugMode(std::optional<bool> enabled,
                                           base::OnceClosure done) {
   bool debug_mode =
       enabled.value_or(base::CommandLine::ForCurrentProcess()->HasSwitch(
@@ -1451,13 +1577,40 @@ void AttributionManagerImpl::MaybeSendVerboseDebugReport(
     return;
   }
 
-  if (absl::optional<AttributionDebugReport> debug_report =
+  if (std::optional<AttributionDebugReport> debug_report =
           AttributionDebugReport::Create(registration)) {
     report_sender_->SendReport(
         std::move(*debug_report),
         base::BindOnce(&AttributionManagerImpl::NotifyDebugReportSent,
                        weak_factory_.GetWeakPtr()));
   }
+}
+
+void AttributionManagerImpl::OnAttestationsLoaded() {
+  if (IsReady()) {
+    return;
+  }
+
+  base::UmaHistogramCustomTimes("Conversions.DelayOnAttestationsLoaded",
+                                time_since_construction_.Elapsed(),
+                                base::Milliseconds(1), base::Minutes(5),
+                                /*buckets=*/50);
+
+  scheduler_timer_ = std::make_unique<ReportSchedulerTimer>(
+      std::make_unique<AttributionReportScheduler>(
+          base::BindRepeating(&AttributionManagerImpl::GetReportsToSend,
+                              base::Unretained(this)),
+          base::BindRepeating(
+              &AttributionManagerImpl::RecordPendingAggregatableReportsTimings,
+              base::Unretained(this)),
+          attribution_storage_));
+
+  ProcessEvents();
+  ProcessOsEvents();
+}
+
+bool AttributionManagerImpl::IsReady() const {
+  return !!scheduler_timer_;
 }
 
 }  // namespace content

@@ -50,7 +50,7 @@ class SubKeyReceiver : public base::RefCountedThreadSafe<SubKeyReceiver> {
 
  private:
   friend class base::RefCountedThreadSafe<SubKeyReceiver>;
-  ~SubKeyReceiver() {}
+  ~SubKeyReceiver() = default;
 
   int subkeys_size_;
 };
@@ -68,7 +68,7 @@ class TestSubKeyRequester : public SubKeyRequester {
   TestSubKeyRequester(const TestSubKeyRequester&) = delete;
   TestSubKeyRequester& operator=(const TestSubKeyRequester&) = delete;
 
-  ~TestSubKeyRequester() override {}
+  ~TestSubKeyRequester() override = default;
 
   void ShouldLoadRules(bool should_load_rules) {
     should_load_rules_ = should_load_rules;
@@ -94,7 +94,7 @@ class SubKeyRequesterTest : public testing::Test {
  protected:
   SubKeyRequesterTest() {
     base::FilePath file_path;
-    CHECK(base::PathService::Get(base::DIR_SOURCE_ROOT, &file_path));
+    CHECK(base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &file_path));
     file_path = file_path.Append(FILE_PATH_LITERAL("third_party"))
                     .Append(FILE_PATH_LITERAL("libaddressinput"))
                     .Append(FILE_PATH_LITERAL("src"))
@@ -107,7 +107,7 @@ class SubKeyRequesterTest : public testing::Test {
         std::unique_ptr<Storage>(new NullStorage), kLanguage);
   }
 
-  ~SubKeyRequesterTest() override {}
+  ~SubKeyRequesterTest() override = default;
 
   base::test::TaskEnvironment task_environment_;
   std::unique_ptr<TestSubKeyRequester> requester_;

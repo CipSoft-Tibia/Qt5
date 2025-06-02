@@ -42,23 +42,10 @@ devtools_entrypoint("bundle") {
     "../../panels/coverage/*",
     "../../panels/sources/*",
     "../../panels/utils/*",
-
-    # TODO(crbug.com/1202788): Remove invalid dependents
     "../../ui/components/text_editor/*",
     "../../ui/legacy/components/object_ui/*",
     "../../ui/legacy/components/source_frame/*",
   ]
 
   visibility += devtools_models_visibility
-}
-
-devtools_entrypoint("legacy") {
-  entrypoint = "formatter-legacy.ts"
-
-  deps = [ ":bundle" ]
-
-  visibility = [
-    "../..:legacy_entrypoints",
-    "../../legacy_test_runner/*",
-  ]
 }

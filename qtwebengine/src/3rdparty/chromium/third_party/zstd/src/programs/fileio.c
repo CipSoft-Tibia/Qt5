@@ -527,7 +527,7 @@ static int FIO_removeFile(const char* path)
         DISPLAYLEVEL(2, "zstd: Refusing to remove non-regular file %s\n", path);
         return 0;
     }
-#if defined(_WIN32) || defined(WIN32)
+#if defined(_WIN32)
     /* windows doesn't allow remove read-only files,
      * so try to make it writable first */
     if (!(statbuf.st_mode & _S_IWRITE)) {
@@ -2222,6 +2222,7 @@ static dRess_t FIO_createDResources(FIO_prefs_t* const prefs, const char* dictFi
     int forceNoUseMMap = prefs->mmapDict == ZSTD_ps_disable;
     stat_t statbuf;
     dRess_t ress;
+    memset(&statbuf, 0, sizeof(statbuf));
     memset(&ress, 0, sizeof(ress));
 
     FIO_getDictFileStat(dictFileName, &statbuf);

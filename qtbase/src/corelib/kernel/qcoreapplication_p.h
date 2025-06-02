@@ -64,6 +64,7 @@ public:
 #endif
     ~QCoreApplicationPrivate();
 
+    static bool isAlive() noexcept;
     void init();
 
     QString appName() const;
@@ -103,6 +104,7 @@ public:
     virtual void quit();
 
     static QBasicAtomicPointer<QThread> theMainThread;
+    static QBasicAtomicPointer<void> theMainThreadId;
     static QThread *mainThread();
     static bool threadRequiresCoreApplication();
 

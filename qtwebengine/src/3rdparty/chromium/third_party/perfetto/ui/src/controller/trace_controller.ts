@@ -15,22 +15,53 @@
 import {BigintMath} from '../base/bigint_math';
 import {assertExists, assertTrue} from '../base/logging';
 import {
+  Duration,
+  duration,
+  Span,
+  time,
+  Time,
+  TimeSpan,
+} from '../base/time';
+import {
   Actions,
   DeferredAction,
 } from '../common/actions';
 import {cacheTrace} from '../common/cache_manager';
-import {Engine} from '../common/engine';
-import {featureFlags, Flag, PERF_SAMPLE_FLAG} from '../common/feature_flags';
 import {
   HighPrecisionTime,
   HighPrecisionTimeSpan,
 } from '../common/high_precision_time';
-import {HttpRpcEngine} from '../common/http_rpc_engine';
 import {
   getEnabledMetatracingCategories,
   isMetatracingEnabled,
 } from '../common/metatracing';
 import {pluginManager} from '../common/plugins';
+import {onSelectionChanged} from '../common/selection_observer';
+import {
+  defaultTraceTime,
+  EngineMode,
+  PendingDeeplinkState,
+  ProfileType,
+} from '../common/state';
+import {featureFlags, Flag, PERF_SAMPLE_FLAG} from '../core/feature_flags';
+import {BottomTabList} from '../frontend/bottom_tab';
+import {
+  FtraceStat,
+  globals,
+  QuantizedLoad,
+  ThreadDesc,
+} from '../frontend/globals';
+import {
+  clearOverviewData,
+  publishFtraceCounters,
+  publishMetricError,
+  publishOverviewData,
+  publishRealtimeOffset,
+  publishThreads,
+} from '../frontend/publish';
+import {Router} from '../frontend/router';
+import {Engine} from '../trace_processor/engine';
+import {HttpRpcEngine} from '../trace_processor/http_rpc_engine';
 import {
   LONG,
   LONG_NULL,
@@ -39,40 +70,12 @@ import {
   QueryError,
   STR,
   STR_NULL,
-} from '../common/query_result';
-import {onSelectionChanged} from '../common/selection_observer';
+} from '../trace_processor/query_result';
 import {
-  defaultTraceTime,
-  EngineMode,
-  PendingDeeplinkState,
-  ProfileType,
-} from '../common/state';
-import {
-  Duration,
-  duration,
-  Span,
-  time,
-  Time,
-  TimeSpan,
-} from '../common/time';
-import {resetEngineWorker, WasmEngineProxy} from '../common/wasm_engine_proxy';
-import {BottomTabList} from '../frontend/bottom_tab';
-import {
-  FtraceStat,
-  globals,
-  QuantizedLoad,
-  ThreadDesc,
-} from '../frontend/globals';
-import {showModal} from '../frontend/modal';
-import {
-  clearOverviewData,
-  publishFtraceCounters,
-  publishMetricError,
-  publishOverviewData,
-  publishThreads,
-} from '../frontend/publish';
-import {runQueryInNewTab} from '../frontend/query_result_tab';
-import {Router} from '../frontend/router';
+  resetEngineWorker,
+  WasmEngineProxy,
+} from '../trace_processor/wasm_engine_proxy';
+import {showModal} from '../widgets/modal';
 
 import {
   CounterAggregationController,
@@ -127,9 +130,7 @@ import {
   TraceHttpStream,
   TraceStream,
 } from './trace_stream';
-import {TrackControllerArgs, trackControllerRegistry} from './track_controller';
 import {decideTracks} from './track_decider';
-import {VisualisedArgController} from './visualised_args_controller';
 
 type States = 'init' | 'loading_trace' | 'ready';
 
@@ -216,6 +217,31 @@ function showJsonWarning() {
   });
 }
 
+// TODO(stevegolton): Move this into some global "SQL extensions" file and
+// ensure it's only run once.
+async function defineMaxLayoutDepthSqlFunction(engine: Engine): Promise<void> {
+  await engine.query(`
+    select create_function(
+      'max_layout_depth(track_count INT, track_ids STRING)',
+      'INT',
+      '
+        select iif(
+          $track_count = 1,
+          (
+            select max(depth)
+            from slice
+            where track_id = cast($track_ids AS int)
+          ),
+          (
+            select max(layout_depth)
+            from experimental_slice_layout($track_ids)
+          )
+        );
+      '
+    );
+  `);
+}
+
 // TraceController handles handshakes with the frontend for everything that
 // concerns a single trace. It owns the WASM trace processor engine, handles
 // tracks data and SQL queries. There is one TraceController instance for each
@@ -260,21 +286,6 @@ export class TraceController extends Controller<States> {
         // At this point we are ready to serve queries and handle tracks.
         const engine = assertExists(this.engine);
         const childControllers: Children = [];
-
-        // Create a TrackController for each track.
-        for (const trackId of Object.keys(globals.state.tracks)) {
-          const trackCfg = globals.state.tracks[trackId];
-          if (trackCfg.engineId !== this.engineId) continue;
-          if (!trackControllerRegistry.has(trackCfg.kind)) continue;
-          const trackCtlFactory = trackControllerRegistry.get(trackCfg.kind);
-          const trackArgs: TrackControllerArgs = {trackId, engine};
-          childControllers.push(Child(trackId, trackCtlFactory, trackArgs));
-        }
-
-        for (const argName of globals.state.visualisedArgs) {
-          childControllers.push(
-            Child(argName, VisualisedArgController, {argName, engine}));
-        }
 
         const selectionArgs: SelectionControllerArgs = {engine};
         childControllers.push(
@@ -469,8 +480,6 @@ export class TraceController extends Controller<States> {
       }
     }
 
-    pluginManager.onTraceLoad(engine);
-
     const emptyOmniboxState = {
       omnibox: '',
       mode: globals.state.omniboxState.mode || 'SEARCH',
@@ -500,6 +509,11 @@ export class TraceController extends Controller<States> {
     // Make sure the helper views are available before we start adding tracks.
     await this.initialiseHelperViews();
 
+    await defineMaxLayoutDepthSqlFunction(engine);
+
+    this.updateStatus('Loading plugins');
+    await pluginManager.onTraceLoad(engine);
+
     {
       // When we reload from a permalink don't create extra tracks:
       const {pinnedTracks, tracks} = globals.state;
@@ -528,6 +542,75 @@ export class TraceController extends Controller<States> {
       publishFtraceCounters(counters);
     }
 
+    {
+      // Find the first REALTIME or REALTIME_COARSE clock snapshot.
+      // Prioritize REALTIME over REALTIME_COARSE.
+      const query = `select
+            ts,
+            clock_value as clockValue,
+            clock_name as clockName
+          from clock_snapshot
+          where
+            snapshot_id = 0 AND
+            clock_name in ('REALTIME', 'REALTIME_COARSE')
+          `;
+      const result = await assertExists(this.engine).query(query);
+      const it = result.iter({
+        ts: LONG,
+        clockValue: LONG,
+        clockName: STR,
+      });
+
+      let snapshot = {
+        clockName: '',
+        ts: Time.ZERO,
+        clockValue: Time.ZERO,
+      };
+
+      // Find the most suitable snapshot
+      for (let row = 0; it.valid(); it.next(), row++) {
+        if (it.clockName === 'REALTIME') {
+          snapshot = {
+            clockName: it.clockName,
+            ts: Time.fromRaw(it.ts),
+            clockValue: Time.fromRaw(it.clockValue),
+          };
+          break;
+        } else if (it.clockName === 'REALTIME_COARSE') {
+          if (snapshot.clockName !== 'REALTIME') {
+            snapshot = {
+              clockName: it.clockName,
+              ts: Time.fromRaw(it.ts),
+              clockValue: Time.fromRaw(it.clockValue),
+            };
+          }
+        }
+      }
+
+      // The max() is so the query returns NULL if the tz info doesn't exist.
+      const queryTz = `select max(int_value) as tzOffMin from metadata
+          where name = 'timezone_off_mins'`;
+      const resTz = await assertExists(this.engine).query(queryTz);
+      const tzOffMin = resTz.firstRow({tzOffMin: NUM_NULL}).tzOffMin ?? 0;
+
+      // This is the offset between the unix epoch and ts in the ts domain.
+      // I.e. the value of ts at the time of the unix epoch - usually some large
+      // negative value.
+      const realtimeOffset = Time.sub(snapshot.ts, snapshot.clockValue);
+
+      // Find the previous closest midnight from the trace start time.
+      const utcOffset = Time.getLatestMidnight(
+          globals.state.traceTime.start,
+          realtimeOffset,
+      );
+
+      const traceTzOffset = Time.getLatestMidnight(
+          globals.state.traceTime.start,
+          Time.sub(realtimeOffset, Time.fromSeconds(tzOffMin * 60)));
+
+      publishRealtimeOffset(realtimeOffset, utcOffset, traceTzOffset);
+    }
+
     globals.dispatch(Actions.sortThreadTracks({}));
     globals.dispatch(Actions.maybeExpandOnlyTrackGroup({}));
 
@@ -546,7 +629,7 @@ export class TraceController extends Controller<States> {
             pendingDeeplink.visStart, pendingDeeplink.visEnd);
       }
       if (pendingDeeplink.query !== undefined) {
-        runQueryInNewTab(pendingDeeplink.query, 'Deeplink Query');
+        globals.openQuery(pendingDeeplink.query, 'Deeplink Query');
       }
     }
 
@@ -607,7 +690,11 @@ export class TraceController extends Controller<States> {
     if (profile.numRows() !== 1) return;
     const row = profile.firstRow({ts: LONG, type: STR, upid: NUM});
     const ts = Time.fromRaw(row.ts);
-    const type = profileType(row.type);
+    let profType = row.type;
+    if (profType == 'heap_profile:libc.malloc,com.android.art') {
+      profType = 'heap_profile:com.android.art,libc.malloc';
+    }
+    const type = profileType(profType);
     const upid = row.upid;
     globals.dispatch(Actions.selectHeapProfile({id: 0, upid, ts, type}));
   }
@@ -646,13 +733,13 @@ export class TraceController extends Controller<States> {
       });
 
       const id = row.traceProcessorTrackId;
-      const trackId = globals.state.uiTrackIdByTraceTrackId[id];
-      if (trackId === undefined) {
+      const trackKey = globals.state.trackKeyByTrackId[id];
+      if (trackKey === undefined) {
         return;
       }
       globals.makeSelection(Actions.selectChromeSlice({
         id: row.id,
-        trackId,
+        trackKey,
         table: '',
         scroll: true,
       }));
@@ -662,7 +749,7 @@ export class TraceController extends Controller<States> {
   private async listTracks() {
     this.updateStatus('Loading tracks');
     const engine = assertExists<Engine>(this.engine);
-    const actions = await decideTracks(this.engineId, engine);
+    const actions = await decideTracks(engine);
     globals.dispatchMultiple(actions);
   }
 
@@ -704,39 +791,43 @@ export class TraceController extends Controller<States> {
 
   private async loadTimelineOverview(trace: Span<time, duration>) {
     clearOverviewData();
-
     const engine = assertExists<Engine>(this.engine);
     const stepSize = Duration.max(1n, trace.duration / 100n);
-    let hasSchedOverview = false;
-    for (let start = trace.start; start < trace.end;
-         start = Time.add(start, stepSize)) {
-      const progress = start - trace.start;
-      const ratio = Number(progress) / Number(trace.duration);
-      this.updateStatus(
-          'Loading overview ' +
-          `${Math.round(ratio * 100)}%`);
-      const end = Time.add(start, stepSize);
-
-      // Sched overview.
-      const schedResult = await engine.query(
-          `select cast(sum(dur) as float)/${
-              stepSize} as load, cpu from sched ` +
-          `where ts >= ${start} and ts < ${end} and utid != 0 ` +
-          'group by cpu order by cpu');
-      const schedData: {[key: string]: QuantizedLoad} = {};
-      const it = schedResult.iter({load: NUM, cpu: NUM});
-      for (; it.valid(); it.next()) {
-        const load = it.load;
-        const cpu = it.cpu;
-        schedData[cpu] = {start, end, load};
-        hasSchedOverview = true;
-      }
-      publishOverviewData(schedData);
-    }
-
+    const hasSchedSql = 'select ts from sched limit 1';
+    const hasSchedOverview = (await engine.query(hasSchedSql)).numRows() > 0;
     if (hasSchedOverview) {
+      const stepPromises = [];
+      for (let start = trace.start; start < trace.end;
+           start = Time.add(start, stepSize)) {
+        const progress = start - trace.start;
+        const ratio = Number(progress) / Number(trace.duration);
+        this.updateStatus(
+            'Loading overview ' +
+            `${Math.round(ratio * 100)}%`);
+        const end = Time.add(start, stepSize);
+        // The (async() => {})() queues all the 100 async promises in one batch.
+        // Without that, we would wait for each step to be rendered before
+        // kicking off the next one. That would interleave an animation frame
+        // between each step, slowing down significantly the overall process.
+        stepPromises.push((async () => {
+          const schedResult = await engine.query(
+              `select cast(sum(dur) as float)/${
+                  stepSize} as load, cpu from sched ` +
+              `where ts >= ${start} and ts < ${end} and utid != 0 ` +
+              'group by cpu order by cpu');
+          const schedData: {[key: string]: QuantizedLoad} = {};
+          const it = schedResult.iter({load: NUM, cpu: NUM});
+          for (; it.valid(); it.next()) {
+            const load = it.load;
+            const cpu = it.cpu;
+            schedData[cpu] = {start, end, load};
+          }
+          publishOverviewData(schedData);
+        })());
+      }  // for(start = ...)
+      await Promise.all(stepPromises);
       return;
-    }
+    }  // if (hasSchedOverview)
 
     // Slices overview.
     const sliceResult = await engine.query(`select

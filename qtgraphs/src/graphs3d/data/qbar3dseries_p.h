@@ -24,6 +24,7 @@ class QBar3DSeriesPrivate : public QAbstract3DSeriesPrivate
     Q_DECLARE_PUBLIC(QBar3DSeries)
 
 public:
+    static QBar3DSeriesPrivate *get(QBar3DSeries *item) { return item->d_func(); }
     QBar3DSeriesPrivate();
     ~QBar3DSeriesPrivate() override;
 
@@ -31,11 +32,25 @@ public:
     void connectGraphAndProxy(QQuickGraphsItem *newGraph) override;
     void createItemLabel() override;
 
-    void setSelectedBar(const QPoint &position);
+    void setSelectedBar(QPoint position);
 
     void setRowColors(const QList<QColor> &colors);
 
+    void setDataArray(const QBarDataArray &newDataArray);
+    void clearRow(qsizetype rowIndex);
+    void clearArray();
+
+    void setRowLabels(const QStringList &labels);
+    void setColumnLabels(const QStringList &labels);
+    void fixRowLabels(qsizetype startIndex,
+                      qsizetype count,
+                      const QStringList &newLabels,
+                      bool isInsert);
+
 private:
+    QBarDataArray m_dataArray;
+    QStringList m_rowLabels;
+    QStringList m_columnLabels;
     QPoint m_selectedBar;
     QList<QColor> m_rowColors;
 

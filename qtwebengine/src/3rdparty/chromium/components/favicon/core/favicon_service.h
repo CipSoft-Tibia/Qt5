@@ -168,7 +168,7 @@ class FaviconService : public CoreFaviconService {
                                    favicon_base::IconType icon_type,
                                    const gfx::Image& image,
                                    base::OnceCallback<void(bool)> callback) = 0;
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
   virtual history::HistoryService* HistoryService() const = 0;
   virtual void SetHistoryService(history::HistoryService* history_service) = 0;
 #endif

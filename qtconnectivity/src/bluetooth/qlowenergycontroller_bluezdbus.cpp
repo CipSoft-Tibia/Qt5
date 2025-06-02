@@ -340,10 +340,10 @@ void QLowEnergyControllerPrivateBluezDBus::connectToDeviceHelper()
     device = new OrgBluezDevice1Interface(
                                 QStringLiteral("org.bluez"), devicePath,
                                 QDBusConnection::systemBus(), this);
-    deviceMonitor = new OrgFreedesktopDBusPropertiesInterface(
+    deviceMonitor = new OrgFreedesktopDBusPropertiesInterfaceBluetooth(
                                 QStringLiteral("org.bluez"), devicePath,
                                 QDBusConnection::systemBus(), this);
-    connect(deviceMonitor, &OrgFreedesktopDBusPropertiesInterface::PropertiesChanged,
+    connect(deviceMonitor, &OrgFreedesktopDBusPropertiesInterfaceBluetooth::PropertiesChanged,
             this, &QLowEnergyControllerPrivateBluezDBus::devicePropertiesChanged);
 }
 
@@ -644,7 +644,6 @@ void QLowEnergyControllerPrivateBluezDBus::discoverServiceDetails(
         return;
     }
 
-    QStringList descriptorPaths;
     const ManagedObjectList managedObjectList = reply.value();
     for (ManagedObjectList::const_iterator it = managedObjectList.constBegin(); it != managedObjectList.constEnd(); ++it) {
         const InterfaceList &ifaceList = it.value();
@@ -737,11 +736,11 @@ void QLowEnergyControllerPrivateBluezDBus::discoverServiceDetails(
             // every ClientCharacteristicConfiguration needs to track property changes
             if (descData.uuid
                         == QBluetoothUuid(QBluetoothUuid::DescriptorType::ClientCharacteristicConfiguration)) {
-                dbusChar.charMonitor = QSharedPointer<OrgFreedesktopDBusPropertiesInterface>::create(
+                dbusChar.charMonitor = QSharedPointer<OrgFreedesktopDBusPropertiesInterfaceBluetooth>::create(
                                                 QStringLiteral("org.bluez"),
                                                 dbusChar.characteristic->path(),
                                                 QDBusConnection::systemBus(), this);
-                connect(dbusChar.charMonitor.data(), &OrgFreedesktopDBusPropertiesInterface::PropertiesChanged,
+                connect(dbusChar.charMonitor.data(), &OrgFreedesktopDBusPropertiesInterfaceBluetooth::PropertiesChanged,
                         this, [this, indexHandle](const QString &interface, const QVariantMap &changedProperties,
                         const QStringList &removedProperties) {
 
@@ -1491,7 +1490,7 @@ void QLowEnergyControllerPrivateBluezDBus::handlePeripheralConnectivityChanged(b
 void QLowEnergyControllerPrivateBluezDBus::requestConnectionUpdate(
                     const QLowEnergyConnectionParameters & /* params */)
 {
-    qCWarning(QT_BT_BLUEZ) << "Connection udpate requests not supported on Bluez DBus";
+    qCWarning(QT_BT_BLUEZ) << "Connection update requests not supported on Bluez DBus";
 }
 
 void QLowEnergyControllerPrivateBluezDBus::addToGenericAttributeList(

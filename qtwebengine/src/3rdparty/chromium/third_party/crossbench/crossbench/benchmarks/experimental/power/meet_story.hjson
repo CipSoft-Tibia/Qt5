@@ -1,0 +1,14 @@
+{
+  // Usage:
+  //   ./cb.py loading --page-config=meet_story.hjson --probe=powersampler
+  "pages": {
+    "Meet": [
+      // Join a Google meeting for 15 minutes
+      {
+        "action": "get",
+        "url": "https://meet.google.com/",
+        "duration": "15m"
+      }
+    ]
+  }
+}

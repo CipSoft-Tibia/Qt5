@@ -48,11 +48,19 @@ WebContentsViewChildFrame::WebContentsViewChildFrame(
 WebContentsViewChildFrame::~WebContentsViewChildFrame() = default;
 
 WebContentsView* WebContentsViewChildFrame::GetOuterView() {
-  return web_contents_->GetOuterWebContents()->GetView();
+  if (auto* outer_web_contents = web_contents_->GetOuterWebContents()) {
+    return outer_web_contents->GetView();
+  }
+
+  return nullptr;
 }
 
 const WebContentsView* WebContentsViewChildFrame::GetOuterView() const {
-  return web_contents_->GetOuterWebContents()->GetView();
+  if (auto* outer_web_contents = web_contents_->GetOuterWebContents()) {
+    return outer_web_contents->GetView();
+  }
+
+  return nullptr;
 }
 
 RenderViewHostDelegateView* WebContentsViewChildFrame::GetOuterDelegateView() {
@@ -63,15 +71,27 @@ RenderViewHostDelegateView* WebContentsViewChildFrame::GetOuterDelegateView() {
 }
 
 gfx::NativeView WebContentsViewChildFrame::GetNativeView() const {
-  return GetOuterView()->GetNativeView();
+  if (auto* outer_view = GetOuterView()) {
+    return outer_view->GetNativeView();
+  }
+
+  return gfx::NativeView();
 }
 
 gfx::NativeView WebContentsViewChildFrame::GetContentNativeView() const {
-  return GetOuterView()->GetContentNativeView();
+  if (auto* outer_view = GetOuterView()) {
+    return outer_view->GetContentNativeView();
+  }
+
+  return gfx::NativeView();
 }
 
 gfx::NativeWindow WebContentsViewChildFrame::GetTopLevelNativeWindow() const {
-  return GetOuterView()->GetTopLevelNativeWindow();
+  if (auto* outer_view = GetOuterView()) {
+    return outer_view->GetTopLevelNativeWindow();
+  }
+
+  return gfx::NativeWindow();
 }
 
 gfx::Rect WebContentsViewChildFrame::GetContainerBounds() const {
@@ -153,10 +173,16 @@ DropData* WebContentsViewChildFrame::GetDropData() const {
   return nullptr;
 }
 
-void WebContentsViewChildFrame::UpdateDragCursor(
-    ui::mojom::DragOperation operation) {
-  if (auto* view = GetOuterDelegateView())
-    view->UpdateDragCursor(operation);
+void WebContentsViewChildFrame::TransferDragSecurityInfo(WebContentsView*) {
+  NOTREACHED();
+}
+
+void WebContentsViewChildFrame::UpdateDragOperation(
+    ui::mojom::DragOperation operation,
+    bool document_is_handling_drag) {
+  if (auto* view = GetOuterDelegateView()) {
+    view->UpdateDragOperation(operation, document_is_handling_drag);
+  }
 }
 
 void WebContentsViewChildFrame::GotFocus(
@@ -199,6 +225,7 @@ void WebContentsViewChildFrame::ShowPopupMenu(
 
 void WebContentsViewChildFrame::StartDragging(
     const DropData& drop_data,
+    const url::Origin& source_origin,
     DragOperationsMask ops,
     const gfx::ImageSkia& image,
     const gfx::Vector2d& cursor_offset,
@@ -206,8 +233,8 @@ void WebContentsViewChildFrame::StartDragging(
     const blink::mojom::DragEventSourceInfo& event_info,
     RenderWidgetHostImpl* source_rwh) {
   if (auto* view = GetOuterDelegateView()) {
-    view->StartDragging(drop_data, ops, image, cursor_offset, drag_obj_rect,
-                        event_info, source_rwh);
+    view->StartDragging(drop_data, source_origin, ops, image, cursor_offset,
+                        drag_obj_rect, event_info, source_rwh);
   } else {
     web_contents_->GetOuterWebContents()->SystemDragEnded(source_rwh);
   }

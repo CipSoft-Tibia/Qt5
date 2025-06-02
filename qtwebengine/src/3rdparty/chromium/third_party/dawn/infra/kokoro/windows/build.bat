@@ -1,16 +1,29 @@
-@rem Copyright 2021 The Tint and Dawn Authors.
+@rem Copyright 2021 The Dawn & Tint Authors
 @rem
-@rem Licensed under the Apache License, Version 2.0 (the "License");
-@rem you may not use this file except in compliance with the License.
-@rem You may obtain a copy of the License at
+@rem Redistribution and use in source and binary forms, with or without
+@rem modification, are permitted provided that the following conditions are met:
 @rem
-@rem     http://www.apache.org/licenses/LICENSE-2.0
+@rem 1. Redistributions of source code must retain the above copyright notice, this
+@rem    list of conditions and the following disclaimer.
 @rem
-@rem Unless required by applicable law or agreed to in writing, software
-@rem distributed under the License is distributed on an "AS IS" BASIS,
-@rem WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-@rem See the License for the specific language governing permissions and
-@rem limitations under the License.
+@rem 2. Redistributions in binary form must reproduce the above copyright notice,
+@rem    this list of conditions and the following disclaimer in the documentation
+@rem    and/or other materials provided with the distribution.
+@rem
+@rem 3. Neither the name of the copyright holder nor the names of its
+@rem    contributors may be used to endorse or promote products derived from
+@rem    this software without specific prior written permission.
+@rem
+@rem THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+@rem AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+@rem IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+@rem DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+@rem FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+@rem DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+@rem SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+@rem CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+@rem OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+@rem OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 @echo off
 SETLOCAL ENABLEDELAYEDEXPANSION
@@ -59,13 +72,6 @@ if exist %TEMP_DIR% (
     rmdir /q/s %TEMP_DIR% > NUL || goto :error
 )
 mkdir %TEMP_DIR% || goto :error
-
-call :status "Fetching and installing DXC"
-@echo on
-set DXC_RELEASE="https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.7.2207/dxc_2022_07_18.zip"
-curl -k -L %DXC_RELEASE% --output "%TEMP_DIR%\dxc_release.zip" || goto :error
-powershell.exe -Command "Expand-Archive -LiteralPath '%TEMP_DIR%\dxc_release.zip' -DestinationPath '%TEMP_DIR%\dxc'" || goto :error
-set DXC_PATH=%TEMP_DIR%\dxc\bin\x64
 
 call :status "Fetching and installing Windows SDK for d3dcompiler DLL"
 @echo on
@@ -126,7 +132,8 @@ set COMMON_CMAKE_FLAGS=             ^
     -DTINT_BUILD_MSL_WRITER=1       ^
     -DTINT_BUILD_SPV_WRITER=1       ^
     -DTINT_BUILD_WGSL_WRITER=1      ^
-    -DTINT_RANDOMIZE_HASHES=1
+    -DTINT_RANDOMIZE_HASHES=1       ^
+    -DDAWN_USE_BUILT_DXC=1
 
 @echo off
 
@@ -150,13 +157,19 @@ call :status "Running tint_unittests"
 tint_unittests.exe || goto :error
 @echo off
 
-call :status "Testing test/tint/test-all.sh"
+call :status "Testing end-to-end tests"
 @echo on
 cd /d %SRC_DIR% || goto :error
 rem Run tests with DXC, FXC and Metal validation
 set OLD_PATH=%PATH%
-set PATH=C:\Program Files\Metal Developer Tools\macos\bin;%PATH%
-call git bash -- ./test/tint/test-all.sh %BUILD_DIR%/tint.exe --verbose || goto :error
+set PATH=C:\Program Files\Metal Developer Tools\macos\bin;%D3DCOMPILER_PATH%;%PATH%
+if "%BUILD_TYPE%" == "Debug" (
+    rem TODO(crbug.com/2034): Add back glsl once we fix the ~7x slowdown in Windows Debug builds
+    set TEST_ALL_FORMATS=wgsl,spvasm,msl,hlsl
+) else (
+    set TEST_ALL_FORMATS=wgsl,spvasm,msl,hlsl,glsl
+)
+call git bash -- ./tools/run tests --tint %BUILD_DIR%/tint.exe --verbose --format %TEST_ALL_FORMATS% || goto :error
 set PATH=%OLD_PATH%
 @echo off
 

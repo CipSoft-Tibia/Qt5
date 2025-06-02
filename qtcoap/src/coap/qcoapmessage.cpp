@@ -383,7 +383,7 @@ void QCoapMessage::swap(QCoapMessage &other) noexcept
 }
 
 /*!
-    Move-assignment operator.
+    Moves \a other into this message and returns a reference to this QCoapMessage.
  */
 QCoapMessage &QCoapMessage::operator=(QCoapMessage &&other) noexcept
 {

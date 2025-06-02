@@ -71,6 +71,7 @@ protected:
 
 class Q_GUI_EXPORT QPointerEvent : public QInputEvent
 {
+    Q_GADGET
     Q_DECL_EVENT_COMMON(QPointerEvent)
 public:
     explicit QPointerEvent(Type type, const QPointingDevice *dev,
@@ -133,6 +134,7 @@ public:
 
 protected:
     friend class ::tst_QEvent;
+    friend class QMutableSinglePointEvent;
     QSinglePointEvent(Type type, const QPointingDevice *dev, const QEventPoint &point,
                       Qt::MouseButton button, Qt::MouseButtons buttons,
                       Qt::KeyboardModifiers modifiers, Qt::MouseEventSource source);
@@ -942,6 +944,7 @@ public:
     bool isEndEvent() const override;
 
 protected:
+    friend class QMutableTouchEvent;
     QObject *m_target = nullptr;
     QEventPoint::States m_touchPointStates = QEventPoint::State::Unknown;
     quint32 m_reserved : 24;

@@ -41,8 +41,7 @@ class SkColorSpace;
 class SkImage;
 
 extern "C" {
-#include "jmorecfg.h"
-#include "jpeglib.h"
+#include "jpeglib.h"  // NO_G3_REWRITE
 }
 
 class SkJpegEncoderMgr final : SkNoncopyable {
@@ -362,7 +361,7 @@ bool SkJpegEncoderImpl::onEncodeRows(int numRows) {
         const size_t jpegSrcBytes = fEncoderMgr->cinfo()->input_components * fSrc.width();
         const void* srcRow = fSrc.addr(0, fCurrRow);
         for (int i = 0; i < numRows; i++) {
-            JSAMPLE* jpegSrcRow = (JSAMPLE*)srcRow;
+            JSAMPLE* jpegSrcRow = (JSAMPLE*)(const_cast<void*>(srcRow));
             if (fEncoderMgr->proc()) {
                 sk_msan_assert_initialized(srcRow, SkTAddOffset<const void>(srcRow, srcBytes));
                 fEncoderMgr->proc()((char*)fStorage.get(),

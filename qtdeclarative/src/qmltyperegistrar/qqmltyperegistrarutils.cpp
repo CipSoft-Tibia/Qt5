@@ -6,11 +6,18 @@
 #include "qanystringviewutils_p.h"
 #include "qqmltyperegistrarconstants_p.h"
 #include "qqmltyperegistrarconstants_p.h"
+#include "qmetatypesjsonprocessor_p.h"
 
 #include <QtCore/qcborarray.h>
 #include <QtCore/qcbormap.h>
 #include <QtCore/qcborvalue.h>
 #include <QtCore/qdebug.h>
+#include <QtCore/qfile.h>
+#include <QtCore/qdiriterator.h>
+#include <QtCore/private/qduplicatetracker_p.h>
+#include <QtCore/qtextstream.h>
+
+using namespace Qt::Literals::StringLiterals;
 
 QT_BEGIN_NAMESPACE
 
@@ -23,19 +30,9 @@ QTypeRevision handleInMinorVersion(QTypeRevision revision, int majorVersion)
     return revision;
 }
 
-QAnyStringView interfaceName(const QCborValue &iface)
+QAnyStringView interfaceName(const Interface &iface)
 {
-    using namespace Constants::MetatypesDotJson;
-    using namespace QAnyStringViewUtils;
-
-    if (iface.isArray()) {
-        QCborArray needlessWrapping = iface.toArray();
-        if (needlessWrapping.size() > 0)
-            return toStringView(needlessWrapping[0].toMap(), S_CLASS_NAME);
-        return QAnyStringView();
-    }
-
-    return toStringView(iface.toMap(), S_CLASS_NAME);
+    return iface.className;
 }
 
 static QDebug message(QDebug base, QAnyStringView message, QAnyStringView fileName, int lineNumber)
@@ -50,22 +47,67 @@ QDebug warning(QAnyStringView fileName, int lineNumber)
     return message(qWarning(), "Warning", fileName, lineNumber);
 }
 
-QDebug warning(const QCborMap &classDef)
+QDebug warning(const MetaType &classDef)
 {
-    // TODO: Once we have line numbers, use them
-    const QAnyStringView file = QAnyStringViewUtils::toStringView(
-            classDef, Constants::MetatypesDotJson::S_INPUT_FILE);
+    const QAnyStringView file = classDef.inputFile();
+    int lineNo = classDef.lineNumber();
     if (!file.isEmpty())
-        return warning(file);
+        return warning(file, lineNo);
 
-    const QAnyStringView name = QAnyStringViewUtils::toStringView(
-            classDef, Constants::MetatypesDotJson::S_QUALIFIED_CLASS_NAME);
-    return warning(name);
+    return warning(classDef.qualifiedClassName());
 }
 
 QDebug error(QAnyStringView fileName, int lineNumber)
 {
     return message(qCritical(), "Error", fileName, lineNumber);
+}
+
+/*!
+    \internal
+    \a pathToList points to a file listing all qt.parts.conf files
+    In any given directory, there might be more than one qt.parts.conf file (especially on Winodws).
+    We need to merge all import paths for a a given folder (but want to avoid duplicate entries).
+ */
+int mergeQtConfFiles(const QString &pathToList)
+{
+    QFile listFile(pathToList);
+    if (!listFile.open(QFile::ReadOnly | QFile::Text))
+        return EXIT_FAILURE;
+    QMultiHash<QString, QString> directoryToNecessaryImports;
+    while (!listFile.atEnd()) {
+        QByteArray partFilePath = listFile.readLine().trimmed();
+        QString directoryPath = QFileInfo(QString::fromUtf8(partFilePath)).absolutePath();
+        QDirIterator dirIt(directoryPath, { "*_qt.part.conf"_L1 }, QDir::Filter::Files );
+        while (dirIt.hasNext()) {
+            QFile partialFile(dirIt.next());
+            if (!partialFile.open(QFile::ReadOnly | QFile::Text)) {
+                qDebug() << "could not open" << partialFile.fileName();
+                return EXIT_FAILURE;
+            }
+            while (!partialFile.atEnd()) {
+                QByteArray import = partialFile.readLine().trimmed();
+                directoryToNecessaryImports.insert(directoryPath, QString::fromUtf8(import));
+            }
+        }
+    }
+    for (const QString &directoryPath: directoryToNecessaryImports.keys()) {
+        QFile consolidatedQtConfFile(directoryPath + QDir::separator() + u"qt.conf");
+        if (!consolidatedQtConfFile.open(QFile::WriteOnly | QFile::Text)) {
+            qDebug() << "could not open" << consolidatedQtConfFile.fileName();
+            return EXIT_FAILURE;
+        }
+        QTextStream out(&consolidatedQtConfFile);
+        QStringList allIncludes = directoryToNecessaryImports.values(directoryPath);
+        allIncludes.removeDuplicates();
+        out << "[Config]\nMergeQtConf = true\n"
+            << "[Paths]\nQmlImports = "
+            << allIncludes.join(u",") << Qt::endl;
+    }
+    QFile outfile(pathToList + u".done");
+    if (!outfile.open(QFile::WriteOnly | QFile::Text))
+        return EXIT_FAILURE;
+    outfile.write(QByteArray::number(QDateTime::currentSecsSinceEpoch()));
+    return EXIT_SUCCESS;
 }
 
 QT_END_NAMESPACE

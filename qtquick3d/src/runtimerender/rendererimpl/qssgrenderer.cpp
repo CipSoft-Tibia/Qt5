@@ -109,7 +109,7 @@ bool QSSGRenderer::prepareLayerForRender(QSSGRenderLayer &inLayer)
 void QSSGRenderer::rhiPrepare(QSSGRenderLayer &inLayer)
 {
     QSSGLayerRenderData *theRenderData = getOrCreateLayerRenderData(inLayer);
-    QSSG_ASSERT(theRenderData && theRenderData->camera, return);
+    QSSG_ASSERT(theRenderData && !theRenderData->renderedCameras.isEmpty(), return);
 
     const auto layerPrepResult = theRenderData->layerPrepResult;
     if (layerPrepResult.isLayerVisible()) {
@@ -137,9 +137,8 @@ void QSSGRenderer::rhiPrepare(QSSGRenderLayer &inLayer)
 void QSSGRenderer::rhiRender(QSSGRenderLayer &inLayer)
 {
     QSSGLayerRenderData *theRenderData = getOrCreateLayerRenderData(inLayer);
-    QSSG_ASSERT(theRenderData && theRenderData->camera, return);
+    QSSG_ASSERT(theRenderData && !theRenderData->renderedCameras.isEmpty(), return);
     if (theRenderData->layerPrepResult.isLayerVisible()) {
-        QSSG_ASSERT(theRenderData->camera, return);
         beginLayerRender(*theRenderData);
         const auto &activePasses = theRenderData->activePasses;
         for (const auto &pass : activePasses) {
@@ -167,7 +166,8 @@ static void cleanupResourcesImpl(const QSSGRenderContextInterface &rci, const Co
             auto model = static_cast<QSSGRenderModel*>(resource);
             QSSGRhiContextPrivate::get(rhiCtx.get())->cleanupDrawCallData(model);
             delete model->particleBuffer;
-        } else if (resource->type == QSSGRenderGraphObject::Type::TextureData) {
+        } else if (resource->type == QSSGRenderGraphObject::Type::TextureData || resource->type == QSSGRenderGraphObject::Type::Skin) {
+            static_assert(std::is_base_of_v<QSSGRenderTextureData, QSSGRenderSkin>, "QSSGRenderSkin is expected to be a QSSGRenderTextureData type!");
             auto textureData = static_cast<QSSGRenderTextureData *>(resource);
             bufferManager->releaseTextureData(textureData);
         } else if (resource->type == QSSGRenderGraphObject::Type::RenderExtension) {
@@ -273,13 +273,13 @@ QSSGRhiShaderPipelinePtr QSSGRendererPrivate::generateRhiShaderPipeline(QSSGRend
                                                                         QSSGSubsetRenderable &inRenderable,
                                                                         const QSSGShaderFeatures &inFeatureSet)
 {
-    auto &m_currentLayer = renderer.m_currentLayer;
-    auto &m_generatedShaderString = renderer.m_generatedShaderString;
+    auto *currentLayer = renderer.m_currentLayer;
+    auto &generatedShaderString = currentLayer->generatedShaderString;
     const auto &m_contextInterface = renderer.m_contextInterface;
     const auto &theCache = m_contextInterface->shaderCache();
     const auto &shaderProgramGenerator = m_contextInterface->shaderProgramGenerator();
     const auto &shaderLibraryManager = m_contextInterface->shaderLibraryManager();
-    return QSSGRendererPrivate::generateRhiShaderPipelineImpl(inRenderable, *shaderLibraryManager, *theCache, *shaderProgramGenerator, m_currentLayer->defaultMaterialShaderKeyProperties, inFeatureSet, m_generatedShaderString);
+    return QSSGRendererPrivate::generateRhiShaderPipelineImpl(inRenderable, *shaderLibraryManager, *theCache, *shaderProgramGenerator, currentLayer->defaultMaterialShaderKeyProperties, inFeatureSet, generatedShaderString);
 }
 
 void QSSGRenderer::beginFrame(QSSGRenderLayer &layer, bool allowRecursion)
@@ -334,41 +334,43 @@ QSSGRendererPrivate::PickResultList QSSGRendererPrivate::syncPickAll(const QSSGR
     return pickResults;
 }
 
-QSSGRenderPickResult QSSGRendererPrivate::syncPick(const QSSGRenderContextInterface &ctx,
-                                                   const QSSGRenderLayer &layer,
-                                                   const QSSGRenderRay &ray,
-                                                   QSSGRenderNode *target)
+QSSGRendererPrivate::PickResultList QSSGRendererPrivate::syncPick(const QSSGRenderContextInterface &ctx,
+                                                                  const QSSGRenderLayer &layer,
+                                                                  const QSSGRenderRay &ray,
+                                                                  QSSGRenderNode *target)
 {
-    static const auto processResults = [](PickResultList &pickResults) {
-        if (pickResults.empty())
-            return QSSGPickResultProcessResult();
-        // Things are rendered in a particular order and we need to respect that ordering.
-        std::stable_sort(pickResults.begin(), pickResults.end(), [](const QSSGRenderPickResult &lhs, const QSSGRenderPickResult &rhs) {
-            return lhs.m_distanceSq < rhs.m_distanceSq;
-        });
-        return QSSGPickResultProcessResult{ pickResults.at(0), true };
-    };
-
     const auto &bufferManager = ctx.bufferManager();
     const bool isGlobalPickingEnabled = QSSGRendererPrivate::isGlobalPickingEnabled(*ctx.renderer());
 
     Q_ASSERT(layer.getGlobalState(QSSGRenderNode::GlobalState::Active));
     PickResultList pickResults;
-    if (target) {
-        // Pick against only one target
+    if (target)
         intersectRayWithSubsetRenderable(*bufferManager, ray, *target, pickResults);
-        return processResults(pickResults);
-    } else {
+    else
         getLayerHitObjectList(layer, *bufferManager, ray, isGlobalPickingEnabled, pickResults);
-        QSSGPickResultProcessResult retval = processResults(pickResults);
-        if (retval.m_wasPickConsumed)
-            return retval;
-    }
 
-    return QSSGPickResultProcessResult();
+    std::stable_sort(pickResults.begin(), pickResults.end(), [](const QSSGRenderPickResult &lhs, const QSSGRenderPickResult &rhs) {
+        return lhs.m_distanceSq < rhs.m_distanceSq;
+    });
+    return pickResults;
 }
 
+QSSGRendererPrivate::PickResultList QSSGRendererPrivate::syncPickSubset(const QSSGRenderLayer &layer,
+                                                                        QSSGBufferManager &bufferManager,
+                                                                        const QSSGRenderRay &ray,
+                                                                        QVarLengthArray<QSSGRenderNode*> subset)
+{
+    QSSGRendererPrivate::PickResultList pickResults;
+    Q_ASSERT(layer.getGlobalState(QSSGRenderNode::GlobalState::Active));
 
+    for (auto target : subset)
+        intersectRayWithSubsetRenderable(bufferManager, ray, *target, pickResults);
+
+    std::stable_sort(pickResults.begin(), pickResults.end(), [](const QSSGRenderPickResult &lhs, const QSSGRenderPickResult &rhs) {
+        return lhs.m_distanceSq < rhs.m_distanceSq;
+    });
+    return pickResults;
+}
 
 void QSSGRendererPrivate::setGlobalPickingEnabled(QSSGRenderer &renderer, bool isEnabled)
 {
@@ -395,6 +397,18 @@ const std::unique_ptr<QSSGRhiCubeRenderer> &QSSGRenderer::rhiCubeRenderer() cons
 
     return m_rhiCubeRenderer;
 
+}
+
+void QSSGRenderer::beginSubLayerRender(QSSGLayerRenderData &inLayer)
+{
+    inLayer.saveRenderState(*this);
+    m_currentLayer = nullptr;
+}
+
+void QSSGRenderer::endSubLayerRender(QSSGLayerRenderData &inLayer)
+{
+    inLayer.restoreRenderState(*this);
+    m_currentLayer = &inLayer;
 }
 
 void QSSGRenderer::beginLayerRender(QSSGLayerRenderData &inLayer)
@@ -557,7 +571,7 @@ void QSSGRendererPrivate::intersectRayWithItem2D(const QSSGRenderRay &inRay, con
                                                                        qmlCoordinate,
                                                                        intersectionPoint,
                                                                        localIntersectionPoint,
-                                                                       normal });
+                                                                       -normal });
         }
     }
 }
@@ -603,10 +617,8 @@ QSSGRhiShaderPipelinePtr QSSGRendererPrivate::getShaderPipelineForDefaultMateria
     }
 
     if (shaderPipeline != nullptr) {
-        if (m_currentLayer && m_currentLayer->camera) {
-            if (!m_currentLayer->cameraData.has_value())
-                [[maybe_unused]] const auto cd = m_currentLayer->getCachedCameraData();
-        }
+        if (m_currentLayer && !m_currentLayer->renderedCameras.isEmpty())
+            m_currentLayer->ensureCachedCameraDatas();
     }
 
     const auto &rhiContext = renderer.m_contextInterface->rhiContext();

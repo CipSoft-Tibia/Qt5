@@ -14,10 +14,8 @@
 
 import m from 'mithril';
 
+import {duration, Time, time} from '../../base/time';
 import {exists} from '../../base/utils';
-import {EngineProxy} from '../../common/engine';
-import {LONG, NUM, STR} from '../../common/query_result';
-import {duration, Time, time} from '../../common/time';
 import {raf} from '../../core/raf_scheduler';
 import {
   BottomTab,
@@ -30,13 +28,16 @@ import {
 import {getSlice, SliceDetails} from '../../frontend/sql/slice';
 import {asSliceSqlId} from '../../frontend/sql_types';
 import {sqlValueToString} from '../../frontend/sql_utils';
-import {DetailsShell} from '../../frontend/widgets/details_shell';
 import {DurationWidget} from '../../frontend/widgets/duration';
-import {GridLayout, GridLayoutColumn} from '../../frontend/widgets/grid_layout';
-import {Section} from '../../frontend/widgets/section';
-import {SqlRef} from '../../frontend/widgets/sql_ref';
 import {Timestamp} from '../../frontend/widgets/timestamp';
-import {dictToTreeNodes, Tree, TreeNode} from '../../frontend/widgets/tree';
+import {EngineProxy} from '../../trace_processor/engine';
+import {LONG, NUM, STR} from '../../trace_processor/query_result';
+import {DetailsShell} from '../../widgets/details_shell';
+import {GridLayout, GridLayoutColumn} from '../../widgets/grid_layout';
+import {Section} from '../../widgets/section';
+import {SqlRef} from '../../widgets/sql_ref';
+import {MultiParagraphText, TextParagraph} from '../../widgets/text_paragraph';
+import {dictToTreeNodes, Tree, TreeNode} from '../../widgets/tree';
 
 import {EventLatencyTrack} from './event_latency_track';
 import {
@@ -190,7 +191,7 @@ export class ScrollJankV3DetailsPanel extends
       const queryResult = await this.engine.query(`
         SELECT
           COUNT(*) AS jankyFrames
-        FROM chrome_janky_frame_info_with_delay
+        FROM chrome_frame_info_with_delay
         WHERE delay_since_last_frame >
           (
             SELECT
@@ -239,15 +240,15 @@ export class ScrollJankV3DetailsPanel extends
 
   private getDescriptionText(): m.Child {
     return m(
-        `div[style='white-space:pre-wrap']`,
-        `Delay between when the frame was expected to be presented and when it
-        was actually presented.{new_lines}
-
-        This is the period of time during which the user is viewing a frame
-        that isn't correct.`.replace(/\s\s+/g, ' ')
-            .replace(/{new_lines}/g, '\n\n')
-            .replace(' This', 'This'),
-    );
+        MultiParagraphText,
+        m(TextParagraph, {
+          text: `Delay between when the frame was expected to be presented and
+                 when it was actually presented.`,
+        }),
+        m(TextParagraph, {
+          text: `This is the period of time during which the user is viewing a
+                 frame that isn't correct.`,
+        }));
   }
 
   private getLinksSection(): m.Child[] {
@@ -330,10 +331,6 @@ export class ScrollJankV3DetailsPanel extends
 
   isLoading() {
     return !this.loaded;
-  }
-
-  renderTabCanvas() {
-    return;
   }
 }
 

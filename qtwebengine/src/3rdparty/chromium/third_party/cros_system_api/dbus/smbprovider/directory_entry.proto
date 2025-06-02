@@ -54,7 +54,9 @@ message DirectoryEntryProto {
 
 // DirectoryEntryListProto is included in responses to ReadDirectory D-Bus
 // method calls.
-message DirectoryEntryListProto { repeated DirectoryEntryProto entries = 1; }
+message DirectoryEntryListProto {
+  repeated DirectoryEntryProto entries = 1;
+}
 
 // Used for passing inputs into SmbProvider.GetShares().
 message GetSharesOptionsProto {

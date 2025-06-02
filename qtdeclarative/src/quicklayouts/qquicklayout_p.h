@@ -31,7 +31,7 @@ class QQuickLayoutAttached;
 Q_DECLARE_LOGGING_CATEGORY(lcQuickLayouts)
 
 class QQuickLayoutPrivate;
-class Q_QUICKLAYOUTS_PRIVATE_EXPORT QQuickLayout : public QQuickItem, public QQuickItemChangeListener
+class Q_QUICKLAYOUTS_EXPORT QQuickLayout : public QQuickItem, public QQuickItemChangeListener
 
 {
     Q_OBJECT
@@ -52,6 +52,12 @@ public:
         Recursive                     = 0b001,
         ApplySizeHints                = 0b010
     };
+
+    enum SizePolicy {
+        SizePolicyImplicit = 1,
+        SizePolicyExplicit
+    };
+    Q_ENUM(SizePolicy)
 
     Q_DECLARE_FLAGS(EnsureLayoutItemsUpdatedOptions, EnsureLayoutItemsUpdatedOption)
 
@@ -157,7 +163,7 @@ protected:
 };
 
 
-class Q_QUICKLAYOUTS_PRIVATE_EXPORT QQuickLayoutAttached : public QObject
+class Q_QUICKLAYOUTS_EXPORT QQuickLayoutAttached : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(qreal minimumWidth READ minimumWidth WRITE setMinimumWidth NOTIFY minimumWidthChanged FINAL)
@@ -168,6 +174,7 @@ class Q_QUICKLAYOUTS_PRIVATE_EXPORT QQuickLayoutAttached : public QObject
     Q_PROPERTY(qreal maximumHeight READ maximumHeight WRITE setMaximumHeight NOTIFY maximumHeightChanged FINAL)
     Q_PROPERTY(bool fillHeight READ fillHeight WRITE setFillHeight NOTIFY fillHeightChanged FINAL)
     Q_PROPERTY(bool fillWidth READ fillWidth WRITE setFillWidth NOTIFY fillWidthChanged FINAL)
+    Q_PROPERTY(QQuickLayout::SizePolicy useDefaultSizePolicy READ useDefaultSizePolicy WRITE setUseDefaultSizePolicy NOTIFY useDefaultSizePolicyChanged FINAL REVISION(6, 8))
     Q_PROPERTY(int row READ row WRITE setRow NOTIFY rowChanged FINAL)
     Q_PROPERTY(int column READ column WRITE setColumn NOTIFY columnChanged FINAL)
     Q_PROPERTY(int rowSpan READ rowSpan WRITE setRowSpan NOTIFY rowSpanChanged FINAL)
@@ -213,20 +220,30 @@ public:
     void setMaximumImplicitSize(const QSizeF &sz);
 
     bool fillWidth() const {
-        if (auto *itemPriv = itemForSizePolicy(m_isFillWidthSet))
-            return (itemPriv->sizePolicy().horizontalPolicy() == QLayoutPolicy::Preferred);
+        if (auto *itemPriv = itemForSizePolicy(m_isFillWidthSet)) {
+            QLayoutPolicy::Policy hPolicy = itemPriv->sizePolicy().horizontalPolicy();
+            return hPolicy & QLayoutPolicy::GrowFlag;
+        }
         return m_fillWidth;
     }
     void setFillWidth(bool fill);
     bool isFillWidthSet() const { return m_isFillWidthSet; }
 
     bool fillHeight() const {
-        if (auto *itemPriv = itemForSizePolicy(m_isFillHeightSet))
-            return (itemPriv->sizePolicy().verticalPolicy() == QLayoutPolicy::Preferred);
+        if (auto *itemPriv = itemForSizePolicy(m_isFillHeightSet)) {
+            QLayoutPolicy::Policy vPolicy = itemPriv->sizePolicy().verticalPolicy();
+            return vPolicy & QLayoutPolicy::GrowFlag;
+        }
         return m_fillHeight;
     }
     void setFillHeight(bool fill);
     bool isFillHeightSet() const { return m_isFillHeightSet; }
+
+    QQuickLayout::SizePolicy useDefaultSizePolicy() const {
+        const bool appDefSizePolicy = QGuiApplication::testAttribute(Qt::AA_QtQuickUseDefaultSizePolicy);
+        return (m_isUseDefaultSizePolicySet ? m_useDefaultSizePolicy : (appDefSizePolicy ? QQuickLayout::SizePolicyImplicit : QQuickLayout::SizePolicyExplicit));
+    }
+    void setUseDefaultSizePolicy(QQuickLayout::SizePolicy sizePolicy);
 
     int row() const { return qMax(m_row, 0); }
     void setRow(int row);
@@ -330,6 +347,7 @@ Q_SIGNALS:
     void maximumHeightChanged();
     void fillWidthChanged();
     void fillHeightChanged();
+    Q_REVISION(6, 8) void useDefaultSizePolicyChanged();
     void leftMarginChanged();
     void topMarginChanged();
     void rightMarginChanged();
@@ -371,6 +389,8 @@ private:
     unsigned m_fillHeight : 1;
     unsigned m_isFillWidthSet : 1;
     unsigned m_isFillHeightSet : 1;
+    unsigned m_isUseDefaultSizePolicySet: 1;
+    QQuickLayout::SizePolicy m_useDefaultSizePolicy;
     unsigned m_isMinimumWidthSet : 1;
     unsigned m_isMinimumHeightSet : 1;
     // preferredWidth and preferredHeight are always explicit, since

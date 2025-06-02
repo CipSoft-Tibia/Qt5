@@ -6,18 +6,19 @@ from __future__ import annotations
 
 import pathlib
 import shlex
-from typing import TYPE_CHECKING, Dict, Iterable, Optional
+from typing import TYPE_CHECKING, Dict, Iterable, Tuple
 from crossbench import cli_helper, plt
 from crossbench.browsers.browser import Browser
 from crossbench.browsers.chromium import chromium
 
-from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeScope,
-                                     ResultLocation)
+from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeContext,
+                                     ProbeValidationError, ResultLocation)
 from crossbench.probes.results import EmptyProbeResult, ProbeResult
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser
   from crossbench.runner.run import Run
+  from crossbench.env import HostEnvironment
 
 _DEBUGGER_LOOKUP: Dict[str, str] = {
     "macos": "lldb",
@@ -51,6 +52,14 @@ class DebuggerProbe(Probe):
         default=True,
         help="Automatically start the renderer process in the debugger.")
     parser.add_argument(
+        "spare_renderer_process",
+        type=bool,
+        default=False,
+        help=("Chrome-only: Enable/Disable spare renderer processes via \n"
+              "--enable-/--disable-features=SpareRendererForSitePerProcess.\n"
+              "Spare renderers are disabled by default when profiling "
+              "for fewer uninteresting processes."))
+    parser.add_argument(
         "geometry",
         type=str,
         default=DEFAULT_GEOMETRY,
@@ -58,7 +67,7 @@ class DebuggerProbe(Probe):
     parser.add_argument(
         "args",
         type=str,
-        default=None,
+        default=tuple(),
         is_list=True,
         help="Additional args that are passed to the debugger.")
     return parser
@@ -67,6 +76,7 @@ class DebuggerProbe(Probe):
       self,
       debugger: pathlib.Path,
       auto_run: bool = True,
+      spare_renderer_process: bool = False,
       geometry: str = DEFAULT_GEOMETRY,
       args: Iterable[str] = ()) -> None:
     super().__init__()
@@ -74,18 +84,29 @@ class DebuggerProbe(Probe):
     self._debugger_args = args
     self._auto_run = auto_run
     self._geometry = geometry
+    self._spare_renderer_process = spare_renderer_process
 
-  def is_compatible(self, browser: Browser) -> bool:
+  @property
+  def key(self) -> Tuple[Tuple, ...]:
+    return super().key + (
+        ("debugger", str(self._debugger_bin)),
+        ("debugger_args", tuple(self._debugger_args)),
+        ("auto_run", self._auto_run),
+        ("geometry", str(self._geometry)),
+        ("spare_renderer_process", self._spare_renderer_process),
+    )
+
+  def validate_browser(self, env: HostEnvironment, browser: Browser) -> None:
+    super().validate_browser(env, browser)
+    self.expect_browser(browser, chromium.Chromium)
     # TODO: support more platforms
     if not (browser.platform.is_macos or browser.platform.is_linux):
-      raise ValueError(
-          f"Probe: {self.name} is currently only supported on linux and macOS.")
+      raise ValueError(f"Only supported on linux and macOS, but got {browser}")
     if browser.platform.is_remote:
-      raise TypeError(f"Probe({self.name}) does not run on remote platforms.")
+      raise ProbeValidationError(self, "Does not run on remote platforms.")
     # TODO: support more terminals.
     if not browser.platform.which("xterm"):
-      raise ValueError("Please install xterm on your system.")
-    return isinstance(browser, chromium.Chromium)
+      raise ProbeValidationError(self, "Please install xterm on your system.")
 
   def attach(self, browser: Browser) -> None:
     super().attach(browser)
@@ -94,6 +115,8 @@ class DebuggerProbe(Probe):
     flags.set("--no-sandbox")
     flags.set("--disable-hang-monitor")
     flags["--renderer-cmd-prefix"] = self.renderer_cmd_prefix()
+    if not self._spare_renderer_process:
+      browser.features.disable("SpareRendererForSitePerProcess")
 
   def renderer_cmd_prefix(self) -> str:
     # TODO: support more terminals.
@@ -109,27 +132,30 @@ class DebuggerProbe(Probe):
     if self._debugger_bin.name == "lldb":
       if self._auto_run:
         debugger_cmd += ["-o", "run"]
+      if self._debugger_args:
+        debugger_cmd.extend(self._debugger_args)
       debugger_cmd += ["--"]
     else:
       assert self._debugger_bin.name == "gdb", (
           f"Unsupported debugger: {self._debugger_bin}")
       if self._auto_run:
         debugger_cmd += ["-ex", "run"]
+      if self._debugger_args:
+        debugger_cmd.extend(self._debugger_args)
       debugger_cmd += ["--args"]
-    debugger_cmd.extend(self._debugger_args)
     return shlex.join(debugger_cmd)
 
-  def get_scope(self, run: Run) -> DebuggerScope:
-    return DebuggerScope(self, run)
+  def get_context(self, run: Run) -> DebuggerContext:
+    return DebuggerContext(self, run)
 
 
-class DebuggerScope(ProbeScope[DebuggerProbe]):
+class DebuggerContext(ProbeContext[DebuggerProbe]):
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     pass
 
-  def stop(self, run: Run) -> None:
+  def stop(self) -> None:
     pass
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     return EmptyProbeResult()

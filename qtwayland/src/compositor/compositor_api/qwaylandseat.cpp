@@ -28,6 +28,8 @@
 
 QT_BEGIN_NAMESPACE
 
+int QWaylandSeatPrivate::max_name = 0;
+
 QWaylandSeatPrivate::QWaylandSeatPrivate(QWaylandSeat *seat) :
 #if QT_CONFIG(wayland_datadevice)
     drag_handle(new QWaylandDrag(seat)),
@@ -86,6 +88,7 @@ void QWaylandSeatPrivate::seat_destroy_resource(wl_seat::Resource *)
 
 void QWaylandSeatPrivate::seat_bind_resource(wl_seat::Resource *resource)
 {
+    wl_seat::send_name(resource->handle, QStringLiteral("seat%1").arg(QString::number(name)));
     // The order of capabilities matches the order defined in the wayland protocol
     wl_seat::send_capabilities(resource->handle, (uint32_t)capabilities);
 }
@@ -113,7 +116,7 @@ void QWaylandSeatPrivate::seat_get_touch(wl_seat::Resource *resource, uint32_t i
 
 /*!
  * \qmltype WaylandSeat
- * \instantiates QWaylandSeat
+ * \nativetype QWaylandSeat
  * \inqmlmodule QtWayland.Compositor
  * \since 5.8
  * \brief Provides access to keyboard, mouse, and touch input.
@@ -151,6 +154,8 @@ QWaylandSeat::QWaylandSeat(QWaylandCompositor *compositor, CapabilityFlags capab
     : QWaylandObject(*new QWaylandSeatPrivate(this))
 {
     Q_D(QWaylandSeat);
+
+    d->name = d->max_name++;
     d->compositor = compositor;
     d->capabilities = capabilityFlags;
     if (compositor->isCreated())

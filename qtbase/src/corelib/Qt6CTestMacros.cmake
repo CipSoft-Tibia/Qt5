@@ -116,12 +116,21 @@ function(_qt_internal_get_cmake_test_configure_options out_var)
     if (NO_WIDGETS)
         list(APPEND option_list "-DNO_WIDGETS=True")
     endif()
+    if (NO_OPENGL)
+        list(APPEND option_list "-DNO_OPENGL=True")
+    endif()
     if (NO_DBUS)
         list(APPEND option_list "-DNO_DBUS=True")
     endif()
 
     list(APPEND option_list "-DCMAKE_MESSAGE_LOG_LEVEL=DEBUG")
     list(APPEND option_list "-DCMAKE_AUTOGEN_VERBOSE=TRUE")
+    if(QT_BUILD_DIR)
+        list(APPEND option_list "-DQT_BUILD_DIR=${QT_BUILD_DIR}")
+    endif()
+
+    # Pass a variable that can serve as a marker for cmake build tests in other build system code.
+    list(APPEND option_list "-DQT_INTERNAL_IS_CMAKE_BUILD_TEST=ON")
 
     if(APPLE AND CMAKE_OSX_ARCHITECTURES)
         list(LENGTH CMAKE_OSX_ARCHITECTURES osx_arch_count)
@@ -384,7 +393,7 @@ macro(_qt_internal_test_expect_pass _dir)
         endif()
         if(build_environment STREQUAL "ci"
             AND osx_arch_count GREATER_EQUAL 2
-            AND NOT QT_UIKIT_SDK
+            AND NOT QT_APPLE_SDK
             AND NOT QT_NO_IOS_BUILD_ADJUSTMENT_IN_CI)
             list(APPEND additional_configure_args
                 -DCMAKE_OSX_ARCHITECTURES=x86_64 -DCMAKE_OSX_SYSROOT=iphonesimulator)
@@ -448,6 +457,7 @@ macro(_qt_internal_test_expect_pass _dir)
       )
     endif()
     set_tests_properties(${testname} PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+    _qt_internal_make_check_target(${testname})
 
     if(_ARGS_BINARY)
         set(run_env_args "")
@@ -654,6 +664,9 @@ list(APPEND CMAKE_PREFIX_PATH \"${__expect_fail_prefixes}\")
     --build-project "${_dir}"
     --build-options ${option_list}
   )
+
+  _qt_internal_make_check_target(${testname})
+
   unset(__expect_fail_prefixes)
 endmacro()
 
@@ -766,5 +779,13 @@ function(_qt_internal_test_module_includes)
     --build-makeprogram "${make_program}"
     --build-project module_includes
     --build-options ${option_list}
+  )
+
+  # We need a unique name for the targets
+  # TODO: CTest name clash would make multiple tests be run as long as they are
+  #  defined in nested folders
+  string(TOLOWER "${PROJECT_NAME}" project_name_lower)
+  _qt_internal_make_check_target(${project_name_lower}_module_includes
+      CTEST_TEST_NAME module_includes
   )
 endfunction()

@@ -8,7 +8,7 @@
 #define GraphiteDawnWindowContext_DEFINED
 
 #include "tools/window/WindowContext.h"
-#include "webgpu/webgpu_cpp.h"
+#include "webgpu/webgpu_cpp.h"  // NO_G3_REWRITE
 #include "dawn/native/DawnNative.h"
 
 namespace skwindow::internal {
@@ -33,8 +33,6 @@ protected:
     virtual GrSurfaceOrigin getRTOrigin() const { return kTopLeft_GrSurfaceOrigin; }
 
     void onSwapBuffers() override;
-
-    static constexpr wgpu::TextureUsage kTextureUsage = wgpu::TextureUsage::RenderAttachment;
 
     wgpu::TextureFormat                     fSwapChainFormat;
     std::unique_ptr<dawn::native::Instance> fInstance;

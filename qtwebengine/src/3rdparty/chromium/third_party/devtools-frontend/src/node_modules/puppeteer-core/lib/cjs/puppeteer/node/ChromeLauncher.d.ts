@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Browser } from '../api/Browser.js';
-import { BrowserLaunchArgumentOptions, ChromeReleaseChannel, PuppeteerNodeLaunchOptions } from './LaunchOptions.js';
-import { ProductLauncher, ResolvedLaunchArgs } from './ProductLauncher.js';
-import { PuppeteerNode } from './PuppeteerNode.js';
+import type { Browser } from '../api/Browser.js';
+import type { BrowserLaunchArgumentOptions, ChromeReleaseChannel, PuppeteerNodeLaunchOptions } from './LaunchOptions.js';
+import { ProductLauncher, type ResolvedLaunchArgs } from './ProductLauncher.js';
+import type { PuppeteerNode } from './PuppeteerNode.js';
 /**
  * @internal
  */
@@ -36,4 +36,24 @@ export declare class ChromeLauncher extends ProductLauncher {
     defaultArgs(options?: BrowserLaunchArgumentOptions): string[];
     executablePath(channel?: ChromeReleaseChannel): string;
 }
+/**
+ * Extracts all features from the given command-line flag
+ * (e.g. `--enable-features`, `--enable-features=`).
+ *
+ * Example input:
+ * ["--enable-features=NetworkService,NetworkServiceInProcess", "--enable-features=Foo"]
+ *
+ * Example output:
+ * ["NetworkService", "NetworkServiceInProcess", "Foo"]
+ *
+ * @internal
+ */
+export declare function getFeatures(flag: string, options?: string[]): string[];
+/**
+ * Removes all elements in-place from the given string array
+ * that match the given command-line flag.
+ *
+ * @internal
+ */
+export declare function removeMatchingFlags(array: string[], flag: string): string[];
 //# sourceMappingURL=ChromeLauncher.d.ts.map

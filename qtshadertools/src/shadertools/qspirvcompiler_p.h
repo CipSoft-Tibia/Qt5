@@ -24,7 +24,7 @@ QT_BEGIN_NAMESPACE
 struct QSpirvCompilerPrivate;
 class QIODevice;
 
-class Q_SHADERTOOLS_PRIVATE_EXPORT QSpirvCompiler
+class Q_SHADERTOOLS_EXPORT QSpirvCompiler
 {
 public:
     QSpirvCompiler();

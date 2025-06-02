@@ -1,6 +1,6 @@
-load("//bazel:skia_rules.bzl", "exports_files_legacy", "skia_cc_library")
 load("//bazel:cc_test_with_flags.bzl", "cc_test_with_flags")
-load(":android_gm_test.bzl", "android_gm_test")
+load("//bazel:skia_rules.bzl", "exports_files_legacy", "skia_cc_library")
+load("//tools/testrunners/gm:android_gm_test.bzl", "android_gm_test")
 load(":png_codec.bzl", "png_codec_tests")
 
 licenses(["notice"])
@@ -11,7 +11,9 @@ filegroup(
     name = "gm_subset",
     srcs = [
         "bitmaprect.cpp",
+        "colrv1.cpp",
         "fontations.cpp",
+        "palette.cpp",
     ],
     visibility = ["//tools/viewer:__pkg__"],
 )
@@ -21,12 +23,10 @@ skia_cc_library(
     testonly = True,
     srcs = [
         "gm.cpp",
-        "verifiers/gmverifier.cpp",
-        "verifiers/gmverifier.h",
     ],
     hdrs = ["gm.h"],
     visibility = [
-        "//gm:__subpackages__",
+        "//tools/testrunners/gm:__subpackages__",
         "//tools/viewer:__pkg__",
     ],
     deps = [
@@ -40,16 +40,11 @@ skia_cc_library(
     name = "tests_base",
     testonly = True,
     srcs = [
-        "//src/utils:json_hdrs",
-        "//src/utils:json_srcs",
         "//tools/flags",
         "//tools/flags:common_flags",
     ],
     deps = [
         ":gm",
-        "//gm/surface_manager",
-        "//gm/vias",
-        "//tools:hash_and_encode",
         "//tools/timer",  # Required by animatedimageblurs.cpp.
     ],
 )
@@ -473,6 +468,7 @@ CPU_GMS = [
     # "wacky_yuv_formats.cpp",
     # "widebuttcaps.cpp",
     # "windowrectangles.cpp",
+    # "workingspace.cpp",
     # "xfermodeimagefilter.cpp",
     # "xfermodes2.cpp",
     # "xfermodes3.cpp",
@@ -501,7 +497,7 @@ GPU_GMS = [
 #     $ unzip -l bazel-testlogs/gm/cpu_8888_test/test.outputs/outputs.zip
 cc_test_with_flags(
     name = "cpu_8888_test",
-    srcs = ["BazelGMRunner.cpp"] + CPU_GMS,
+    srcs = CPU_GMS,
     args = [
         "--surfaceConfig",
         "8888",
@@ -513,7 +509,10 @@ cc_test_with_flags(
             "webp_decode_codec",
         ],
     },
-    deps = [":tests_base"],
+    deps = [
+        ":tests_base",
+        "//tools/testrunners/gm:testrunner",
+    ],
 )
 
 # Currently fails the "arithmode_blender" GM with "Deserialized and reference bitmap pixels do not
@@ -524,7 +523,7 @@ cc_test_with_flags(
 #                 the "via" flag in sync.
 cc_test_with_flags(
     name = "cpu_8888_via_picture_serialization_test",
-    srcs = ["BazelGMRunner.cpp"] + CPU_GMS,
+    srcs = CPU_GMS,
     args = [
         "--surfaceConfig",
         "8888",
@@ -542,12 +541,15 @@ cc_test_with_flags(
         ],
         "via": ["picture_serialization"],
     },
-    deps = [":tests_base"],
+    deps = [
+        ":tests_base",
+        "//tools/testrunners/gm:testrunner",
+    ],
 )
 
 cc_test_with_flags(
     name = "cpu_8888_via_picture_test",
-    srcs = ["BazelGMRunner.cpp"] + CPU_GMS,
+    srcs = CPU_GMS,
     args = [
         "--surfaceConfig",
         "8888",
@@ -565,7 +567,10 @@ cc_test_with_flags(
         ],
         "via": ["picture"],
     },
-    deps = [":tests_base"],
+    deps = [
+        ":tests_base",
+        "//tools/testrunners/gm:testrunner",
+    ],
 )
 
 png_codec_tests(name = "png_codec_tests")
@@ -582,7 +587,7 @@ test_suite(
 
 cc_test_with_flags(
     name = "gpu_gles_test",
-    srcs = ["BazelGMRunner.cpp"] + GPU_GMS,
+    srcs = GPU_GMS,
     args = [
         "--surfaceConfig",
         "gles",
@@ -594,20 +599,31 @@ cc_test_with_flags(
             "webp_decode_codec",
         ],
     },
-    deps = [":tests_base"],
+    deps = [
+        ":tests_base",
+        "//tools/testrunners/gm:testrunner",
+    ],
 )
 
 cc_test_with_flags(
     name = "hello_bazel_world_test",
-    srcs = [
-        "BazelGMRunner.cpp",
-        "hello_bazel_world.cpp",
-    ],
+    srcs = ["hello_bazel_world.cpp"],
     args = [
         "--surfaceConfig",
         "8888",
     ],
     data = ["//resources"],
+    deps = [
+        ":tests_base",
+        "//tools/testrunners/gm:testrunner",
+    ],
+)
+
+android_gm_test(
+    name = "hello_bazel_world_android_test",
+    srcs = ["hello_bazel_world.cpp"],
+    requires_resources_dir = True,
+    surface_config = "8888",
     deps = [":tests_base"],
 )
 
@@ -620,9 +636,8 @@ cc_test_with_flags(
     #
     #     $ unzip -l bazel-testlogs/gm/cpu_8888_android_test/test.outputs/outputs.zip
     android_gm_test(
-        name = "cpu_%s_android_test" % config,
+        name = "cpu_%s_android_test" % surface_config,
         srcs = CPU_GMS,
-        config = config,
         flags = {
             "include_decoder": [
                 "gif_decode_codec",
@@ -630,9 +645,10 @@ cc_test_with_flags(
             ],
         },
         requires_resources_dir = True,
+        surface_config = surface_config,
         deps = [":tests_base"],
     )
-    for config in [
+    for surface_config in [
         "8888",
         "565",
     ]
@@ -641,7 +657,6 @@ cc_test_with_flags(
 android_gm_test(
     name = "gpu_gles_android_test",
     srcs = GPU_GMS,
-    config = "gles",
     flags = {
         "include_decoder": [
             "png_decode_codec",
@@ -650,6 +665,7 @@ android_gm_test(
     },
     requires_condition = "//src/gpu:gl_ganesh",
     requires_resources_dir = True,
+    surface_config = "gles",
     deps = [":tests_base"],
 )
 
@@ -659,7 +675,6 @@ android_gm_test(
 android_gm_test(
     name = "gpu_gles_via_picture_serialization_android_test",
     srcs = GPU_GMS,
-    config = "gles",
     flags = {
         "include_decoder": [
             "png_decode_codec",
@@ -671,6 +686,7 @@ android_gm_test(
     },
     requires_condition = "//src/gpu:gl_ganesh",
     requires_resources_dir = True,
+    surface_config = "gles",
     via = "picture_serialization",
     deps = [":tests_base"],
 )
@@ -681,7 +697,6 @@ android_gm_test(
 android_gm_test(
     name = "gpu_gles_via_picture_android_test",
     srcs = GPU_GMS,
-    config = "gles",
     flags = {
         "include_decoder": [
             "png_decode_codec",
@@ -693,6 +708,7 @@ android_gm_test(
     },
     requires_condition = "//src/gpu:gl_ganesh",
     requires_resources_dir = True,
+    surface_config = "gles",
     via = "picture",
     deps = [":tests_base"],
 )

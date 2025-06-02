@@ -18,6 +18,7 @@
 
 #include "qnearfieldmanager_p.h"
 
+#include <QPointer>
 #include <QTimer>
 
 #import <os/availability.h>
@@ -61,7 +62,7 @@ private:
     bool detectionRunning = false;
     bool isSessionScheduled = false;
     QTimer sessionTimer;
-    QList<QNearFieldTargetPrivateImpl *> detectedTargets;
+    QList<QPointer<QNearFieldTargetPrivateImpl>> detectedTargets;
     QNearFieldTarget::AccessMethod activeAccessMethod = QNearFieldTarget::UnknownAccess;
 
     bool scheduleSession(QNearFieldTarget::AccessMethod accessMethod);

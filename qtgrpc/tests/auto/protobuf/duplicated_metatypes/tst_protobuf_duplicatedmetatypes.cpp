@@ -10,13 +10,13 @@
 class QtProtobufDuplicatedMetatypesTest : public QObject
 {
     Q_OBJECT
-private slots:
-    void SimpleTest();
+private Q_SLOTS:
+    void simpleTest();
 };
 
 using namespace qtprotobufnamespace::duplicated_metatypes;
 
-void QtProtobufDuplicatedMetatypesTest::SimpleTest()
+void QtProtobufDuplicatedMetatypesTest::simpleTest()
 {
     qProtobufAssertMessagePropertyRegistered<Message1, Message1::OptsEntry>(1, "qtprotobufnamespace::duplicated_metatypes::Message1::OptsEntry", "opts");
     qProtobufAssertMessagePropertyRegistered<Message2, Message2::OptsEntry>(1, "qtprotobufnamespace::duplicated_metatypes::Message2::OptsEntry", "opts");

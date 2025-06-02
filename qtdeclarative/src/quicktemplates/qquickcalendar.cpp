@@ -7,8 +7,8 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Calendar
-    \inherits QObject
-//! \instantiates QQuickCalendar
+    \inherits QtObject
+//! \nativetype QQuickCalendar
     \inqmlmodule QtQuick.Controls
     \brief A calendar namespace.
 

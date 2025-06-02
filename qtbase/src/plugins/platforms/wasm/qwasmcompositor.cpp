@@ -4,11 +4,15 @@
 #include "qwasmcompositor.h"
 #include "qwasmwindow.h"
 
+#include <private/qeventdispatcher_wasm_p.h>
+
 #include <qpa/qwindowsysteminterface.h>
 
 #include <emscripten/html5.h>
 
 using namespace emscripten;
+
+bool QWasmCompositor::m_requestUpdateHoldEnabled = false;
 
 QWasmCompositor::QWasmCompositor(QWasmScreen *screen) : QObject(screen)
 {
@@ -41,6 +45,16 @@ void QWasmCompositor::setEnabled(bool enabled)
     m_isEnabled = enabled;
 }
 
+// requestUpdate delivery is initially disabled at startup, while Qt completes
+// startup tasks such as font loading. This function enables requestUpdate delivery
+// again.
+bool QWasmCompositor::releaseRequestUpdateHold()
+{
+    const bool wasEnabled = m_requestUpdateHoldEnabled;
+    m_requestUpdateHoldEnabled = false;
+    return wasEnabled;
+}
+
 void QWasmCompositor::requestUpdateWindow(QWasmWindow *window, UpdateRequestDeliveryType updateType)
 {
     auto it = m_requestUpdateWindows.find(window);
@@ -60,6 +74,9 @@ void QWasmCompositor::requestUpdateWindow(QWasmWindow *window, UpdateRequestDeli
 void QWasmCompositor::requestUpdate()
 {
     if (m_requestAnimationFrameId != -1)
+        return;
+
+    if (m_requestUpdateHoldEnabled)
         return;
 
     static auto frame = [](double frameTime, void *context) -> EM_BOOL {

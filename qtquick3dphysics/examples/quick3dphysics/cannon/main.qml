@@ -35,7 +35,7 @@ Window {
             id: camera
             position: Qt.vector3d(-4000, 5000, 10000)
             eulerRotation: Qt.vector3d(-20, -20, 0)
-            clipFar: 500000
+            clipFar: 200000
             clipNear: 100
         }
         //! [camera]
@@ -46,7 +46,12 @@ Window {
             castsShadow: true
             brightness: 1
             shadowMapQuality: Light.ShadowMapQualityVeryHigh
-            shadowFactor: 100
+            shadowMapFar: camera.clipFar
+            shadowFactor: 50
+            csmNumSplits: 2
+            csmSplit1: 0.1
+            csmSplit2: 0.3
+            softShadowQuality: Light.PCF4
         }
         //! [light]
 

@@ -47,9 +47,16 @@ void QmlClientDefinitionPrinter::printMethods()
 void QmlClientDefinitionPrinter::printMethod(const MethodDescriptor *method)
 {
     MethodMap parameters = common::produceMethodMap(method, m_typeMap["classname"]);
-    if (!method->server_streaming() && !method->client_streaming()) {
+    if (method->server_streaming() && method->client_streaming()) {
+        m_printer->Print(parameters, GrpcTemplates::ClientMethodBidiStreamDefinitionQmlTemplate());
+    } else if (method->server_streaming()) {
+        m_printer->Print(parameters,
+                         GrpcTemplates::ClientMethodServerStreamDefinitionQmlTemplate());
+    } else if (method->client_streaming()) {
+        m_printer->Print(parameters,
+                         GrpcTemplates::ClientMethodClientStreamDefinitionQmlTemplate());
+    } else {
         m_printer->Print(parameters, GrpcTemplates::ClientMethodDefinitionQmlTemplate());
-        m_printer->Print("\n");
     }
 }
 

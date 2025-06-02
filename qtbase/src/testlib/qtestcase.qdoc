@@ -359,6 +359,10 @@
    is reached, a failure is recorded in the test log and the test won't be
    executed further.
 
+   //![chrono-timeout]
+   Since Qt 6.8, the \a timeout can also be a \c{std::chrono} literal such as \c{2s}.
+   //![chrono-timeout]
+
    \note This macro can only be used in a test function that is invoked
    by the test framework.
 
@@ -390,9 +394,11 @@
    except that it outputs a verbose \a message when \a condition is still false
    after the specified \a timeout (in milliseconds). The \a message is a plain C string.
 
+   \include qtestcase.qdoc chrono-timeout
+
    Example:
    \code
-   QTRY_VERIFY2_WITH_TIMEOUT(list.size() > 2, QByteArray::number(list.size()).constData(), 10000);
+   QTRY_VERIFY2_WITH_TIMEOUT(list.size() > 2, QByteArray::number(list.size()).constData(), 10s);
    \endcode
 
    \note This macro can only be used in a test function that is invoked
@@ -434,6 +440,8 @@
    will be processed.  If the timeout is reached, a failure is recorded in the
    test log and the test won't be executed further.
 
+   \include qtestcase.qdoc chrono-timeout
+
    \note This macro can only be used in a test function that is invoked
    by the test framework.
 
@@ -465,6 +473,8 @@
     comparison, events will be processed. If the timeout is reached, a failure
     is recorded in the test log and the test won't be executed further.
 
+    \include qtestcase.qdoc chrono-timeout
+
     \include qtestcase.qdoc macro-usage-limitation
 
     \sa QCOMPARE_EQ(), QTRY_COMPARE_EQ()
@@ -491,6 +501,8 @@
     \c true or the \a timeout (in milliseconds) is reached. Between each
     comparison, events will be processed. If the timeout is reached, a failure
     is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc chrono-timeout
 
     \include qtestcase.qdoc macro-usage-limitation
 
@@ -519,6 +531,8 @@
     comparison, events will be processed. If the timeout is reached, a failure
     is recorded in the test log and the test won't be executed further.
 
+    \include qtestcase.qdoc chrono-timeout
+
     \include qtestcase.qdoc macro-usage-limitation
 
     \sa QCOMPARE_LT(), QTRY_COMPARE_LT()
@@ -545,6 +559,8 @@
     \c true or the \a timeout (in milliseconds) is reached. Between each
     comparison, events will be processed. If the timeout is reached, a failure
     is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc chrono-timeout
 
     \include qtestcase.qdoc macro-usage-limitation
 
@@ -573,6 +589,8 @@
     comparison, events will be processed. If the timeout is reached, a failure
     is recorded in the test log and the test won't be executed further.
 
+    \include qtestcase.qdoc chrono-timeout
+
     \include qtestcase.qdoc macro-usage-limitation
 
     \sa QCOMPARE_GT(), QTRY_COMPARE_GT()
@@ -599,6 +617,8 @@
     \c true or the \a timeout (in milliseconds) is reached. Between each
     comparison, events will be processed. If the timeout is reached, a failure
     is recorded in the test log and the test won't be executed further.
+
+    \include qtestcase.qdoc chrono-timeout
 
     \include qtestcase.qdoc macro-usage-limitation
 
@@ -1363,6 +1383,17 @@
     moving the mouse pointer.
 */
 
+/*! \fn void QTest::wheelEvent(QWindow *window, QPointF pos, QPoint angleDelta, QPoint pixelDelta = QPoint(0, 0), Qt::KeyboardModifiers stateKey = Qt::NoModifier, Qt::ScrollPhase phase = Qt::NoScrollPhase)
+    \since 6.8
+
+    Simulates a wheel event within \a window at position \a pos in local
+    window coordinates. \a angleDelta contains the wheel rotation angle.
+    A positive value means forward rotation, and a negative one means backward.
+    \a pixelDelta contains the scrolling distance in pixels on screen. This value can be null.
+    The keyboard states at the time of the event are specified by \a stateKey.
+    The scrolling phase of the event is specified by \a phase.
+*/
+
 /*!
     \fn template <typename T1, typename T2> char *QTest::toString(const std::pair<T1, T2> &pair)
     \overload
@@ -1392,7 +1423,7 @@
 */
 
 /*!
-    \fn template<typename T> char *QTest::toString(const T &value)
+    \fn template <typename T> char *QTest::toString(const T &value)
 
     Returns a textual representation of \a value. This function is used by
     \l QCOMPARE() to output verbose information in case of a test failure.
@@ -1577,7 +1608,8 @@
 */
 
 /*!
-    \fn char *QTest::toString(QSizePolicy::ControlType ct)
+    \fn char *toString(QSizePolicy::ControlType ct)
+    \relates QTest
     \overload
     \since 5.5
 
@@ -1585,7 +1617,8 @@
 */
 
 /*!
-    \fn char *QTest::toString(QSizePolicy::ControlTypes cts)
+    \fn char *toString(QSizePolicy::ControlTypes cts)
+    \relates QTest
     \overload
     \since 5.5
 
@@ -1593,7 +1626,8 @@
 */
 
 /*!
-    \fn char *QTest::toString(QSizePolicy::Policy p)
+    \fn char *toString(QSizePolicy::Policy p)
+    \relates QTest
     \overload
     \since 5.5
 
@@ -1601,7 +1635,8 @@
 */
 
 /*!
-    \fn char *QTest::toString(QSizePolicy sp)
+    \fn char *toString(QSizePolicy sp)
+    \relates QTest
     \overload
     \since 5.5
 

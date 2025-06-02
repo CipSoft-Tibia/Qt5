@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 qt_internal_add_protobuf_module(ProtobufWellKnownTypes
-    GENERATE_CPP_EXPORTS
     SOURCES
         qtprotobufwellknowntypesglobal.h
         qprotobufanysupport.cpp qprotobufanysupport.h
+        qprotobufwellknowntypesjsonserializers_p.h qprotobufwellknowntypesjsonserializers.cpp
     PUBLIC_LIBRARIES
         Qt::Protobuf
     LIBRARIES

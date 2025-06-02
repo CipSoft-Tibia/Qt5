@@ -1253,11 +1253,11 @@ double av1_estimate_noise_from_single_plane_c(const uint8_t *src, int height,
 }
 
 #if CONFIG_AV1_HIGHBITDEPTH
-double av1_highbd_estimate_noise_from_single_plane(const uint16_t *src16,
-                                                   int height, int width,
-                                                   const int stride,
-                                                   int bit_depth,
-                                                   int edge_thresh) {
+double av1_highbd_estimate_noise_from_single_plane_c(const uint16_t *src16,
+                                                     int height, int width,
+                                                     const int stride,
+                                                     int bit_depth,
+                                                     int edge_thresh) {
   int64_t accum = 0;
   int count = 0;
   for (int i = 1; i < height - 1; ++i) {
@@ -1443,26 +1443,24 @@ int av1_is_temporal_filter_on(const AV1EncoderConfig *oxcf) {
   return oxcf->algo_cfg.arnr_max_frames > 0 && oxcf->gf_cfg.lag_in_frames > 1;
 }
 
-void av1_tf_info_alloc(TEMPORAL_FILTER_INFO *tf_info, const AV1_COMP *cpi) {
+bool av1_tf_info_alloc(TEMPORAL_FILTER_INFO *tf_info, const AV1_COMP *cpi) {
   const AV1EncoderConfig *oxcf = &cpi->oxcf;
   tf_info->is_temporal_filter_on = av1_is_temporal_filter_on(oxcf);
-  if (tf_info->is_temporal_filter_on == 0) return;
+  if (tf_info->is_temporal_filter_on == 0) return true;
 
   const AV1_COMMON *cm = &cpi->common;
   const SequenceHeader *const seq_params = cm->seq_params;
-  int ret;
   for (int i = 0; i < TF_INFO_BUF_COUNT; ++i) {
-    ret = aom_realloc_frame_buffer(
-        &tf_info->tf_buf[i], oxcf->frm_dim_cfg.width, oxcf->frm_dim_cfg.height,
-        seq_params->subsampling_x, seq_params->subsampling_y,
-        seq_params->use_highbitdepth, cpi->oxcf.border_in_pixels,
-        cm->features.byte_alignment, NULL, NULL, NULL,
-        cpi->image_pyramid_levels, 0);
-    if (ret) {
-      aom_internal_error(cm->error, AOM_CODEC_MEM_ERROR,
-                         "Failed to allocate tf_info");
+    if (aom_realloc_frame_buffer(
+            &tf_info->tf_buf[i], oxcf->frm_dim_cfg.width,
+            oxcf->frm_dim_cfg.height, seq_params->subsampling_x,
+            seq_params->subsampling_y, seq_params->use_highbitdepth,
+            cpi->oxcf.border_in_pixels, cm->features.byte_alignment, NULL, NULL,
+            NULL, cpi->image_pyramid_levels, 0)) {
+      return false;
     }
   }
+  return true;
 }
 
 void av1_tf_info_free(TEMPORAL_FILTER_INFO *tf_info) {

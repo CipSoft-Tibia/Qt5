@@ -28,10 +28,9 @@ public:
         , engine(engine)
     {}
 
-    void generateFromFunctionExpression(const QString &fileName,
-                                        const QString &sourceCode,
-                                        QQmlJS::AST::FunctionExpression *ast,
-                                        Compiler::Module *module);
+    void generateFromFunctionExpression(
+            const QString &sourceCode, QQmlJS::AST::FunctionExpression *ast,
+            Compiler::Module *module);
 
     void throwSyntaxError(const QQmlJS::SourceLocation &loc, const QString &detail) override;
     void throwReferenceError(const QQmlJS::SourceLocation &loc, const QString &detail) override;

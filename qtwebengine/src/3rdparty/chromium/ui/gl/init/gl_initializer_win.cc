@@ -126,7 +126,7 @@ bool InitializeStaticEGLInternal(GLImplementationParts implementation) {
 }
 
 bool InitializeStaticWGLInternal() {
-#ifdef TOOLKIT_QT
+#if BUILDFLAG(IS_QTWEBENGINE)
   const wchar_t *libraryName = L"opengl32.dll";
   if (usingSoftwareDynamicGL())
       libraryName = L"opengl32sw.dll";
@@ -205,7 +205,7 @@ bool InitializeStaticWGLInternal() {
 
 }  // namespace
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 GLDisplay* InitializeGLOneOffPlatform(gl::GpuPreference gpu_preference) {
   VSyncProviderWin::InitializeOneOff();
 

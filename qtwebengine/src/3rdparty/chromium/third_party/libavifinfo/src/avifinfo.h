@@ -40,7 +40,10 @@ typedef struct {
   uint32_t num_channels;    // Likely 1, 2, 3 or 4 channels:
                             //   (1 monochrome or 3 colors) + (0 or 1 alpha)
   uint8_t has_gainmap;      // True if a gain map was found.
-  uint8_t gainmap_item_id;  // Id of the gain map item.
+  // Id of the gain map item. Assumes there is at most one. If there are several
+  // gain map items (e.g. because the main image is tiled and each tile has an
+  // independent gain map), then this is one of the ids, arbitrarily chosen.
+  uint8_t gainmap_item_id;
   // Start location in bytes of the primary item id, relative to the beginning
   // of the given payload. The primary item id is a big endian number stored on
   // bytes primary_item_id_location to

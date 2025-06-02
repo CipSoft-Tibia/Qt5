@@ -78,12 +78,12 @@ Item {
                 Layout.alignment: Qt.AlignCenter
                 onClicked: {
                     if (optimization === "Legacy") {
-                        scatterGraph.optimizationHint = AbstractGraph3D.OptimizationHint.Default
-                        barGraph.optimizationHint = AbstractGraph3D.OptimizationHint.Default
+                        scatterGraph.optimizationHint = Graphs3D.OptimizationHint.Default
+                        barGraph.optimizationHint = Graphs3D.OptimizationHint.Default
                         optimization= "Default"
                     } else {
-                        scatterGraph.optimizationHint = AbstractGraph3D.OptimizationHint.Legacy
-                        barGraph.optimizationHint = AbstractGraph3D.OptimizationHint.Legacy
+                        scatterGraph.optimizationHint = Graphs3D.OptimizationHint.Legacy
+                        barGraph.optimizationHint = Graphs3D.OptimizationHint.Legacy
                         optimization = "Legacy"
                     }
                     console.log("Set optimization to " + optimization)
@@ -131,22 +131,41 @@ Item {
                     } else {
                         scatterSeries.mesh = Abstract3DSeries.Mesh.Sphere
                         mesh = "Sphere"
-                        }
+                    }
                 }
             }
 
-
             Button {
-                id: surfaceShadingToggle
-                visible: tabBar.currentIndex <= 2
-                text: qsTr("Flat shading: %1").arg(surfaceSeries.flatShadingEnabled.toString())
+                id: colorStyleToggle
+                visible: tabBar.currentIndex !== 0
+                property var activeTheme: (tabBar.currentIndex === 1 ? scatterTheme : barTheme);
+                text: qsTr("Color Style: %1").arg(activeTheme.colorStyle)
                 Layout.fillWidth: true
                 Layout.preferredHeight: 50
                 Layout.margins: 10
                 Layout.alignment: Qt.AlignCenter
                 onClicked: {
-                    surfaceSeries.flatShadingEnabled =
-                            !surfaceSeries.flatShadingEnabled
+                    if (++activeTheme.colorStyle > 2)
+                        activeTheme.colorStyle = 0
+                }
+            }
+
+            Button {
+                id: surfaceShadingToggle
+                visible: tabBar.currentIndex <= 2
+                text: surfaceSeries.flatShadingSupported ? "Show\nSmooth" : "Flat not\nsupported"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 50
+                Layout.margins: 10
+                Layout.alignment: Qt.AlignCenter
+                onClicked: {
+                    if (surfaceSeries.shading === Surface3DSeries.Shading.Flat) {
+                        surfaceSeries.shading = Surface3DSeries.Shading.Smooth;
+                        text = "Show\nFlat"
+                    } else {
+                        surfaceSeries.shading = Surface3DSeries.Shading.Flat;
+                        text = "Show\nSmooth"
+                    }
                     scatterSeries.meshSmooth = !scatterSeries.meshSmooth
                 }
             }
@@ -154,8 +173,8 @@ Item {
             Button {
                 id: gridToggle
                 visible: tabBar.currentIndex === 0
-                property bool gridEnabled
-                text: qsTr("Show grid: %1").arg(gridEnabled.toString())
+                property bool gridVisible
+                text: qsTr("Show grid: %1").arg(gridVisible.toString())
                 Layout.fillWidth: true
                 Layout.preferredHeight: 50
                 Layout.margins: 10
@@ -166,9 +185,43 @@ Item {
                     else
                         surfaceSeries.drawMode |= Surface3DSeries.DrawWireframe;
 
-                    gridEnabled = surfaceSeries.drawMode & Surface3DSeries.DrawWireframe
+                    gridVisible = surfaceSeries.drawMode & Surface3DSeries.DrawWireframe
                 }
+            }
 
+            ColumnLayout {
+                id: transparencyContainer
+                visible: tabBar.currentIndex !== 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: 30
+                Layout.margins: 10
+                Layout.alignment: Qt.AlignCenter
+
+                Text {
+                    text: "Transparency"
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                Slider {
+                    from: 0.0
+                    to: 1.0
+                    Layout.preferredWidth: parent.width
+                    value: 1.0
+                    onValueChanged: {
+                        // change scattergradient alpha
+                        scatterYGreenstop.color.a = value
+                        scatterYBluestop.color.a = value
+                        scatterYRedstop.color.a = value
+                        scatterYellowstop.color.a = value
+                        // change scatter series baseColor alpha
+                        scatterSeries.baseColor.a = value
+                        // change bargradient alpha
+                        barBlueStop.color.a = value
+                        barRedStop.color.a = value
+                        // change bar series baseColor alpha
+                        barSeries.baseColor.a = value
+                    }
+                }
             }
 
             ColumnLayout {
@@ -177,7 +230,6 @@ Item {
                 Layout.preferredHeight: 50
                 Layout.margins: 10
                 Layout.alignment: Qt.AlignCenter
-
 
                 Text {
                     id: spinboxTitle
@@ -298,7 +350,6 @@ Item {
         onAccepted: dataGenerator.setFilePath(currentFolder)
     }
 
-
     Timer {
         id: rotationTimer
         interval: 15
@@ -342,7 +393,6 @@ Item {
         }
     }
 
-
     StackLayout {
         anchors.top: tabBar.bottom
         anchors.bottom: parent.bottom
@@ -364,7 +414,7 @@ Item {
             Surface3D {
                 id: surfaceGraph
                 anchors.fill: parent
-                shadowQuality: AbstractGraph3D.ShadowQuality.None
+                shadowQuality: Graphs3D.ShadowQuality.None
                 cameraYRotation: 45.0
                 measureFps: true
 
@@ -375,9 +425,9 @@ Item {
                 horizontalAspectRatio: 1.0
 
 
-                theme : Theme3D {
-                    type: Theme3D.Theme.Qt
-                    colorStyle: Theme3D.ColorStyle.RangeGradient
+                theme : GraphsTheme {
+                    theme: GraphsTheme.Theme.QtGreen
+                    colorStyle: GraphsTheme.ColorStyle.RangeGradient
                     baseGradients: surfaceGradient
 
                     Gradient {
@@ -402,10 +452,10 @@ Item {
             Scatter3D {
                 id: scatterGraph
                 anchors.fill: parent
-                shadowQuality: AbstractGraph3D.ShadowQuality.None
+                shadowQuality: Graphs3D.ShadowQuality.None
                 aspectRatio: 1.0
                 horizontalAspectRatio: 1.0
-                    cameraYRotation: 45.0
+                cameraYRotation: 45.0
 
                 axisY.min: -1
                 axisY.max: 1
@@ -415,17 +465,18 @@ Item {
                 axisZ.max: 1
 
                 measureFps: true
-                theme : Theme3D {
-                    type: Theme3D.Theme.Qt
-                    colorStyle: Theme3D.ColorStyle.RangeGradient
+                theme : GraphsTheme {
+                    id: scatterTheme
+                    theme: GraphsTheme.Theme.QtGreen
+                    colorStyle: GraphsTheme.ColorStyle.RangeGradient
                     baseGradients: scatterGradient
 
                     Gradient {
                         id: scatterGradient
-                        GradientStop { position: 1.0; color: "yellow" }
-                        GradientStop { position: 0.6; color: "red" }
-                        GradientStop { position: 0.4; color: "blue" }
-                        GradientStop { position: 0.0; color: "green" }
+                        GradientStop { id: scatterYellowstop; position: 1.0; color: "yellow" }
+                        GradientStop { id: scatterYRedstop; position: 0.6; color: "red" }
+                        GradientStop { id: scatterYBluestop; position: 0.4; color: "blue" }
+                        GradientStop { id: scatterYGreenstop; position: 0.0; color: "green" }
                     }
                 }
                 Scatter3DSeries {
@@ -443,21 +494,22 @@ Item {
             Bars3D {
                 id: barGraph
                 anchors.fill: parent
-                shadowQuality: AbstractGraph3D.ShadowQuality.None
+                shadowQuality: Graphs3D.ShadowQuality.None
                 cameraYRotation: 45.0
                 measureFps: true
                 valueAxis.min: 0
                 valueAxis.max: 1
 
-                theme : Theme3D {
-                    type: Theme3D.Theme.Qt
-                    colorStyle: Theme3D.ColorStyle.RangeGradient
+                theme : GraphsTheme {
+                    id: barTheme
+                    theme: GraphsTheme.Theme.QtGreen
+                    colorStyle: GraphsTheme.ColorStyle.RangeGradient
                     baseGradients: barGradient
 
                     Gradient {
                         id: barGradient
-                        GradientStop { position: 1.0; color: "red" }
-                        GradientStop { position: 0.0; color: "blue" }
+                        GradientStop { id: barRedStop; position: 1.0; color: "red" }
+                        GradientStop { id: barBlueStop; position: 0.0; color: "blue" }
                     }
                 }
 
@@ -465,14 +517,11 @@ Item {
                     id: barSeries
                     dataProxy.onArrayReset: tests.dataPoints
                                             = dataProxy.colCount * dataProxy.rowCount
-
                 }
 
                 onCurrentFpsChanged: {
                     tests.currentFps = currentFps
                 }
-
-
             }
         }
     }

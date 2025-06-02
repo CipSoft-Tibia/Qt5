@@ -55,7 +55,7 @@ void QSkeletonLoaderPrivate::setRootJoint(QJoint *rootJoint)
     \qmltype SkeletonLoader
     \inqmlmodule Qt3D.Core
     \inherits AbstractSkeleton
-    \instantiates Qt3DCore::QSkeletonLoader
+    \nativetype Qt3DCore::QSkeletonLoader
     \since 5.10
     \brief Used to load a skeleton of joints from file.
 
@@ -95,7 +95,7 @@ void QSkeletonLoaderPrivate::setRootJoint(QJoint *rootJoint)
 */
 
 /*!
-    \enum QSkeletonLoader::Status
+    \enum Qt3DCore::QSkeletonLoader::Status
 
     This enum identifies the status of skeleton.
 

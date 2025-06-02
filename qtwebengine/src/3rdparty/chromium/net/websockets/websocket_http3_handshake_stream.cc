@@ -6,20 +6,31 @@
 
 #include <utility>
 
+#include "base/check.h"
+#include "base/check_op.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/strings/strcat.h"
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 #include "net/base/ip_endpoint.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_request_info.h"
 #include "net/http/http_response_headers.h"
+#include "net/http/http_response_info.h"
 #include "net/http/http_status_code.h"
 #include "net/spdy/spdy_http_utils.h"
+#include "net/third_party/quiche/src/quiche/spdy/core/http2_header_block.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
+#include "net/websockets/websocket_basic_stream.h"
 #include "net/websockets/websocket_deflate_predictor_impl.h"
 #include "net/websockets/websocket_deflate_stream.h"
 #include "net/websockets/websocket_handshake_constants.h"
+#include "net/websockets/websocket_handshake_request_info.h"
 
 namespace net {
+struct AlternativeService;
 
 namespace {
 
@@ -98,7 +109,7 @@ int WebSocketHttp3HandshakeStream::SendRequest(
 
   auto request = std::make_unique<WebSocketHandshakeRequestInfo>(
       request_info_->url, base::Time::Now());
-  request->headers.CopyFrom(request_headers);
+  request->headers = request_headers;
 
   AddVectorHeaderIfNonEmpty(websockets::kSecWebSocketExtensions,
                             requested_extensions_, &request->headers);
@@ -285,11 +296,9 @@ void WebSocketHttp3HandshakeStream::OnHeadersReceived(
   http_response_info_->was_alpn_negotiated = true;
   http_response_info_->response_time = base::Time::Now();
   http_response_info_->request_time = request_time_;
-  http_response_info_->connection_info =
-      HttpResponseInfo::CONNECTION_INFO_HTTP2;
+  http_response_info_->connection_info = HttpConnectionInfo::kHTTP2;
   http_response_info_->alpn_negotiated_protocol =
-      HttpResponseInfo::ConnectionInfoToString(
-          http_response_info_->connection_info);
+      HttpConnectionInfoToString(http_response_info_->connection_info);
 
   if (callback_) {
     std::move(callback_).Run(ValidateResponse());
@@ -311,7 +320,7 @@ void WebSocketHttp3HandshakeStream::OnClose(int status) {
     result_ = HandshakeResult::HTTP3_FAILED;
   }
 
-  OnFailure(std::string("Stream closed with error: ") + ErrorToString(status),
+  OnFailure(base::StrCat({"Stream closed with error: ", ErrorToString(status)}),
             status, absl::nullopt);
 
   if (callback_) {

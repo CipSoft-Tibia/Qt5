@@ -17,6 +17,8 @@
 
 #include <QtCore/qdebug.h>
 
+#include "qbstr_p.h"
+
 QT_BEGIN_NAMESPACE
 
 static inline QWindow *windowForWidget(QWidget *widget)
@@ -185,28 +187,25 @@ HRGN qaxHrgnFromQRegion(const QRegion &region, const QWidget *widget)
 QByteArray qaxTypeInfoName(ITypeInfo *typeInfo, MEMBERID memId)
 {
     QByteArray result;
-    BSTR names;
+    QBStr names;
     UINT cNames = 0;
     typeInfo->GetNames(memId, &names, 1, &cNames);
-    if (cNames && names) {
-        result = QString::fromWCharArray(names).toLatin1();
-        SysFreeString(names);
-    }
+    if (cNames && names)
+        result = names.str().toLatin1();
+
     return result;
 }
 
 QByteArrayList qaxTypeInfoNames(ITypeInfo *typeInfo, MEMBERID memId)
 {
     QByteArrayList result;
-    BSTR bstrNames[256];
+    QBStr bstrNames[256];
     UINT maxNames = 255;
     UINT maxNamesOut = 0;
     typeInfo->GetNames(memId, reinterpret_cast<BSTR *>(&bstrNames), maxNames, &maxNamesOut);
     result.reserve(maxNamesOut);
-    for (UINT p = 0; p < maxNamesOut; ++p) {
-        result.append(QString::fromWCharArray(bstrNames[p]).toLatin1());
-        SysFreeString(bstrNames[p]);
-    }
+    for (UINT p = 0; p < maxNamesOut; ++p)
+        result.append(bstrNames[p].str().toLatin1());
     return result;
 }
 

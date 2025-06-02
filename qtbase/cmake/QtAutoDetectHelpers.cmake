@@ -137,9 +137,9 @@ function(qt_auto_detect_android)
             # ANDROID_NATIVE_API_LEVEL is an just an alias to ANDROID_PLATFORM, check for both
             if(NOT DEFINED ANDROID_PLATFORM AND NOT DEFINED ANDROID_NATIVE_API_LEVEL)
                 message(STATUS "Neither ANDROID_PLATFORM nor ANDROID_NATIVE_API_LEVEL"
-                    " were specified, using API level 23 as default")
-                set(ANDROID_PLATFORM "android-23" CACHE STRING "")
-                set(ANDROID_NATIVE_API_LEVEL 23 CACHE STRING "")
+                    " were specified, using API level 28 as default")
+                set(ANDROID_PLATFORM "android-28" CACHE STRING "")
+                set(ANDROID_NATIVE_API_LEVEL 28 CACHE STRING "")
             endif()
             if(NOT DEFINED ANDROID_STL)
                 set(ANDROID_STL "c++_shared" CACHE STRING "")
@@ -152,7 +152,12 @@ function(qt_auto_detect_android)
 endfunction()
 
 function(qt_auto_detect_vcpkg)
-    if(QT_USE_VCPKG AND DEFINED ENV{VCPKG_ROOT})
+    if(QT_USE_VCPKG)
+        if(NOT DEFINED ENV{VCPKG_ROOT})
+            message(FATAL_ERROR
+                "Usage of vcpkg was requested but the environment variable VCPKG_ROOT is not set."
+            )
+        endif()
         set(vcpkg_toolchain_file "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
         get_filename_component(vcpkg_toolchain_file "${vcpkg_toolchain_file}" ABSOLUTE)
 
@@ -177,14 +182,34 @@ function(qt_auto_detect_vcpkg)
     endif()
 endfunction()
 
-function(qt_auto_detect_ios)
+function(qt_auto_detect_apple)
+    if(NOT APPLE)
+        if(CMAKE_OSX_ARCHITECTURES AND NOT QT_NO_SHOW_NON_APPLE_CMAKE_OSX_ARCHITECTURES_WARNING)
+            message(WARNING
+                "CMAKE_OSX_ARCHITECTURES is set while targeting a non-Apple platform. This can "
+                "lead to build failures. Consider reconfiguring with the variable unset.")
+        endif()
+        return()
+    endif()
+
+    if("${QT_QMAKE_TARGET_MKSPEC}" STREQUAL "macx-ios-clang")
+        set(CMAKE_SYSTEM_NAME "iOS" CACHE STRING "")
+    elseif("${QT_QMAKE_TARGET_MKSPEC}" STREQUAL "macx-visionos-clang")
+        set(CMAKE_SYSTEM_NAME "visionOS" CACHE STRING "")
+    endif()
+
     if(CMAKE_SYSTEM_NAME STREQUAL iOS)
         message(STATUS "Using internal CMake ${CMAKE_SYSTEM_NAME} toolchain file.")
 
-        # The QT_UIKIT_SDK check simulates the input.sdk condition for simulator_and_device in
+        # Pass on QT_UIKIT_SDK for compatibility
+        if(QT_UIKIT_SDK AND NOT QT_APPLE_SDK)
+            set(QT_APPLE_SDK "${QT_UIKIT_SDK}" CACHE STRING "")
+        endif()
+
+        # The QT_APPLE_SDK check simulates the input.sdk condition for simulator_and_device in
         # configure.json.
         # If the variable is explicitly provided, assume simulator_and_device to be off.
-        if(QT_UIKIT_SDK)
+        if(QT_APPLE_SDK)
             set(simulator_and_device OFF)
         else()
             # Default to simulator_and_device when an explicit sdk is not requested.
@@ -199,27 +224,28 @@ function(qt_auto_detect_ios)
         # architectures, otherwise compilation fails with unknown defines.
         if(simulator_and_device)
             set(osx_architectures "arm64;x86_64")
-        elseif(QT_UIKIT_SDK STREQUAL "iphoneos")
+        elseif(QT_APPLE_SDK STREQUAL "iphoneos")
             set(osx_architectures "arm64")
-        elseif(QT_UIKIT_SDK STREQUAL "iphonesimulator")
+        elseif(QT_APPLE_SDK STREQUAL "iphonesimulator")
             set(osx_architectures "x86_64")
         else()
-            if(NOT DEFINED QT_UIKIT_SDK)
-                message(FATAL_ERROR "Please provide a value for -DQT_UIKIT_SDK."
+            if(NOT DEFINED QT_APPLE_SDK)
+                message(FATAL_ERROR "Please provide a value for -DQT_APPLE_SDK."
                     " Possible values: iphoneos, iphonesimulator.")
             else()
                 message(FATAL_ERROR
-                        "Unknown SDK argument given to QT_UIKIT_SDK: ${QT_UIKIT_SDK}.")
+                        "Unknown SDK argument given to QT_APPLE_SDK: ${QT_APPLE_SDK}.")
             endif()
         endif()
 
-        # For non simulator_and_device builds, we need to explicitly set the SYSROOT aka the sdk
-        # value.
-        if(QT_UIKIT_SDK)
-            set(CMAKE_OSX_SYSROOT "${QT_UIKIT_SDK}" CACHE STRING "")
-        endif()
         set(CMAKE_OSX_ARCHITECTURES "${osx_architectures}" CACHE STRING "")
+    endif()
 
+    if(QT_APPLE_SDK)
+        set(CMAKE_OSX_SYSROOT "${QT_APPLE_SDK}" CACHE STRING "")
+    endif()
+
+    if(CMAKE_SYSTEM_NAME STREQUAL iOS OR CMAKE_SYSTEM_NAME STREQUAL visionOS)
         if(NOT DEFINED BUILD_SHARED_LIBS)
             qt_internal_ensure_static_qt_config()
         endif()
@@ -228,6 +254,50 @@ function(qt_auto_detect_ios)
         # bundles not being able to use paths outside the app bundle. Not sure this is strictly
         # needed though.
         set(QT_DISABLE_RPATH "OFF" CACHE BOOL "Disable automatic Qt rpath handling." FORCE)
+    endif()
+
+    # If no CMAKE_OSX_DEPLOYMENT_TARGET is provided, default to a value that Qt defines.
+    # This replicates the behavior in mkspecs/common/macx.conf where
+    # QMAKE_MACOSX_DEPLOYMENT_TARGET is set.
+    set(description
+        "Minimum OS X version to target for deployment (at runtime); newer APIs weak linked."
+        " Set to empty string for default value.")
+    if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+        if(NOT CMAKE_SYSTEM_NAME)
+            # macOS
+            set(version "${QT_SUPPORTED_MIN_MACOS_VERSION}")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL iOS)
+            set(version "${QT_SUPPORTED_MIN_IOS_VERSION}")
+        endif()
+        if(version)
+            set(CMAKE_OSX_DEPLOYMENT_TARGET "${version}" CACHE STRING "${description}")
+        endif()
+    endif()
+
+    _qt_internal_get_apple_sdk_version(apple_sdk_version)
+    set(QT_MAC_SDK_VERSION "${apple_sdk_version}" CACHE STRING "Darwin SDK version.")
+
+    _qt_internal_get_xcode_version_raw(xcode_version_raw)
+    set(QT_MAC_XCODE_VERSION "${xcode_version_raw}" CACHE STRING "Xcode version.")
+
+    if(NOT CMAKE_SYSTEM_NAME)
+        # macOS
+        list(LENGTH CMAKE_OSX_ARCHITECTURES arch_count)
+        if(arch_count GREATER 0)
+            foreach(arch ${CMAKE_OSX_ARCHITECTURES})
+                if(arch STREQUAL "arm64e")
+                    message(WARNING "Applications built against an arm64e Qt architecture will "
+                                     "likely fail to run on Apple Silicon. Consider targeting "
+                                     "'arm64' instead.")
+                endif()
+            endforeach()
+        endif()
+
+        set(is_universal "OFF")
+        if(arch_count GREATER 1)
+            set(is_universal "ON")
+        endif()
+        set(QT_IS_MACOS_UNIVERSAL "${is_universal}" CACHE INTERNAL "Build universal Qt for macOS")
     endif()
 endfunction()
 
@@ -273,56 +343,135 @@ function(qt_auto_detect_cyclic_toolchain)
     endif()
 endfunction()
 
-function(qt_auto_detect_darwin)
-    if(APPLE)
-        # If no CMAKE_OSX_DEPLOYMENT_TARGET is provided, default to a value that Qt defines.
-        # This replicates the behavior in mkspecs/common/macx.conf where
-        # QMAKE_MACOSX_DEPLOYMENT_TARGET is set.
-        set(description
-            "Minimum OS X version to target for deployment (at runtime); newer APIs weak linked."
-            " Set to empty string for default value.")
-        if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-            if(NOT CMAKE_SYSTEM_NAME)
-                # macOS
-                set(version "11.0")
-            elseif(CMAKE_SYSTEM_NAME STREQUAL iOS)
-                set(version "14.0")
-            endif()
-            if(version)
-                set(CMAKE_OSX_DEPLOYMENT_TARGET "${version}" CACHE STRING "${description}")
-            endif()
-        endif()
+# Gets output of running 'uname -m', finding uname in path, and caching its location in QT_UNAME.
+# Usually returns an architecture string like 'arch64' or 'x86_64'.
+# Returns an empty string in case of an error.
+# Does not pierce Rosetta, so will not always return the actual physical architecture.
+# Usually that is based on the architecture of the parent process that invokes cmake.
+function(qt_internal_get_uname_m_output out_var)
+    # This caches by default.
+    find_program(QT_UNAME NAMES uname PATHS /bin /usr/bin /usr/local/bin)
 
-        _qt_internal_get_apple_sdk_version(apple_sdk_version)
-        set(QT_MAC_SDK_VERSION "${apple_sdk_version}" CACHE STRING "Darwin SDK version.")
-
-        _qt_internal_get_xcode_version_raw(xcode_version_raw)
-        set(QT_MAC_XCODE_VERSION "${xcode_version_raw}" CACHE STRING "Xcode version.")
-
-        list(LENGTH CMAKE_OSX_ARCHITECTURES arch_count)
-        if(NOT CMAKE_SYSTEM_NAME STREQUAL iOS AND arch_count GREATER 0)
-            foreach(arch ${CMAKE_OSX_ARCHITECTURES})
-                if(arch STREQUAL "arm64e")
-                    message(WARNING "Applications built against an arm64e Qt architecture will "
-                                     "likely fail to run on Apple Silicon. Consider targeting "
-                                     "'arm64' instead.")
-                endif()
-            endforeach()
-        endif()
+    execute_process(COMMAND ${QT_UNAME} -m
+        OUTPUT_VARIABLE output
+        RESULT_VARIABLE result
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    if(result EQUAL 0)
+        set(value "${output}")
+    else()
+        set(value "")
     endif()
+
+    set(${out_var} "${value}" PARENT_SCOPE)
 endfunction()
 
-function(qt_auto_detect_macos_universal)
-    if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL iOS)
-        list(LENGTH CMAKE_OSX_ARCHITECTURES arch_count)
+# Sets out_var to TRUE if running on a host machine with an Apple silicon arm64 CPU.
+# This is TRUE even when running under Rosetta, aka it pierces Rosetta, unlike the result of
+# 'uname -m'.
+# Same as the logic in Modules/Platform/Darwin-Initialize.cmake
+# Or https://github.com/Homebrew/brew/pull/7995/files
+function(qt_internal_is_apple_physical_cpu_arm64 out_var)
+    execute_process(
+        COMMAND sysctl -q hw.optional.arm64
+        OUTPUT_VARIABLE sysctl_stdout
+        ERROR_VARIABLE sysctl_stderr
+        RESULT_VARIABLE sysctl_result)
 
-        set(is_universal "OFF")
-        if(arch_count GREATER 1)
-            set(is_universal "ON")
-        endif()
-
-        set(QT_IS_MACOS_UNIVERSAL "${is_universal}" CACHE INTERNAL "Build universal Qt for macOS")
+    if(sysctl_result EQUAL 0 AND sysctl_stdout MATCHES "hw.optional.arm64: 1")
+        set(value TRUE)
+    else()
+        set(value FALSE)
     endif()
+
+    set(${out_var} "${value}" PARENT_SCOPE)
+endfunction()
+
+# Mirror CMake's logic of detecting the CMAKE_HOST_SYSTEM_PROCESSOR, including handling of Apple
+# silicon, before project() is actually called.
+# Honors whatever architecture Rosetta reports.
+# Similar to the code in Modules/CMakeDetermineSystem.cmake
+# and thus allows override via CMAKE_APPLE_SILICON_PROCESSOR.
+function(qt_internal_get_early_apple_host_system_arch out_var_processor)
+    # If we are running on Apple Silicon, honor CMAKE_APPLE_SILICON_PROCESSOR.
+    if(DEFINED CMAKE_APPLE_SILICON_PROCESSOR)
+        set(processor "${CMAKE_APPLE_SILICON_PROCESSOR}")
+    elseif(DEFINED ENV{CMAKE_APPLE_SILICON_PROCESSOR})
+        set(processor "$ENV{CMAKE_APPLE_SILICON_PROCESSOR}")
+    else()
+        set(processor "")
+    endif()
+
+    if(processor)
+        # Handle case when CMAKE_APPLE_SILICON_PROCESSOR is passed on an Intel x86_64 machine, in
+        # that case we unset the given value, instead relying on the output of 'uname -m'.
+        if(";${processor};" MATCHES "^;(arm64|x86_64);$")
+            qt_internal_is_apple_physical_cpu_arm64(is_arm64)
+            if(NOT is_arm64)
+                set(processor "")
+            endif()
+        endif()
+    endif()
+
+    if(processor)
+        set(output "${processor}")
+    else()
+        qt_internal_get_uname_m_output(output)
+    endif()
+
+    set(${out_var_processor} "${output}" PARENT_SCOPE)
+endfunction()
+
+# Detect whether the user intends to cross-compile to arm64 on an x86_64 macOS host, or vice versa,
+# based on the passed-in CMAKE_OSX_ARCHITECTURES and the real physical host architecture.
+#
+# CMake doesn't handle this properly by default, unless one explicitly passes
+# -DCMAKE_SYSTEM_NAME=Darwin, which people don't really know about and is somewhat unintuitive.
+#
+# If a cross-compilation is detected, a host Qt will be required for tools.
+function(qt_auto_detect_macos_single_arch_cross_compilation)
+    # Skip on non-Apple platforms.
+    if(NOT APPLE
+
+        # If CMAKE_SYSTEM_NAME is explicitly specified, it means CMake will implicitly
+        # do `set(CMAKE_CROSSCOMPILING TRUE)`, so we don't need to do anything extra.
+        OR CMAKE_SYSTEM_NAME OR CMAKE_CROSSCOMPILING
+
+        # Opt out just in case this breaks something
+        OR QT_NO_HANDLE_APPLE_SINGLE_ARCH_CROSS_COMPILING
+
+        # Exit early if check was previously done, so we don't need to do extra process calls.
+        OR QT_INTERNAL_MACOS_SINGLE_ARCH_CROSS_COMPILING_DETECTION_DONE)
+        return()
+    endif()
+
+    list(LENGTH CMAKE_OSX_ARCHITECTURES arch_count)
+
+    # We only consider cross-compilation the case where arch count is exactly 1.
+    if(NOT arch_count EQUAL 1)
+        return()
+    else()
+        set(target_arch "${CMAKE_OSX_ARCHITECTURES}")
+    endif()
+
+    qt_internal_get_early_apple_host_system_arch(host_arch)
+    if(NOT "${host_arch}" STREQUAL "${target_arch}" AND
+            NOT ("${host_arch}" STREQUAL "x86_64" AND "${target_arch}" STREQUAL "x86_64h"))
+        message(
+            STATUS "Detected implicit macOS cross-compilation. "
+            "Host arch: ${host_arch} Target arch: ${target_arch}. "
+            "Setting CMAKE_CROSSCOMPILING to TRUE."
+        )
+
+        # Setting these tells CMake we are cross-compiling. This gets set in the correct scope
+        # for top-level builds as well, because it is included via
+        # qt_internal_top_level_setup_autodetect -> include() -> qt_internal_setup_autodetect()
+        # all of which are macros that don't create a new scope.
+        set(CMAKE_SYSTEM_NAME "Darwin" PARENT_SCOPE)
+        set(CMAKE_CROSSCOMPILING "TRUE" PARENT_SCOPE)
+    endif()
+
+    set(QT_INTERNAL_MACOS_SINGLE_ARCH_CROSS_COMPILING_DETECTION_DONE TRUE CACHE BOOL "")
 endfunction()
 
 function(qt_auto_detect_pch)
@@ -467,9 +616,8 @@ macro(qt_internal_setup_autodetect)
 
     qt_auto_detect_cyclic_toolchain()
     qt_auto_detect_cmake_config()
-    qt_auto_detect_darwin()
-    qt_auto_detect_macos_universal()
-    qt_auto_detect_ios()
+    qt_auto_detect_apple()
+    qt_auto_detect_macos_single_arch_cross_compilation()
     qt_auto_detect_android()
     qt_auto_detect_pch()
     qt_auto_detect_wasm()

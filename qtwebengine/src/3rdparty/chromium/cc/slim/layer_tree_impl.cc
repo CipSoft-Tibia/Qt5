@@ -454,11 +454,11 @@ void LayerTreeImpl::GenerateCompositorFrame(
   for (auto& resource_request :
        ui_resource_manager_.TakeUIResourcesRequests()) {
     switch (resource_request.GetType()) {
-      case cc::UIResourceRequest::UI_RESOURCE_CREATE:
+      case cc::UIResourceRequest::Type::kCreate:
         frame_sink_->UploadUIResource(resource_request.GetId(),
                                       resource_request.GetBitmap());
         break;
-      case cc::UIResourceRequest::UI_RESOURCE_DELETE:
+      case cc::UIResourceRequest::Type::kDelete:
         frame_sink_->MarkUIResourceForDeletion(resource_request.GetId());
         break;
     }
@@ -516,8 +516,10 @@ void LayerTreeImpl::GenerateCompositorFrame(
           background_opaque && unoccluded_region.GetRegionComplexity() <= 1;
       quad_state->SetAll(gfx::Transform(), gutter_bounding_rect,
                          gutter_bounding_rect, gfx::MaskFilterInfo(),
-                         /*clip=*/absl::nullopt, contents_opaque,
-                         /*opacity_f=*/1.0f, SkBlendMode::kSrcOver, 0);
+                         /*clip=*/std::nullopt, contents_opaque,
+                         /*opacity_f=*/1.0f, SkBlendMode::kSrcOver,
+                         /*sorting_context=*/0, /*layer_id=*/0u,
+                         /*fast_rounded_corner=*/false);
       for (gfx::Rect unoccluded_rect : unoccluded_region) {
         viz::SolidColorDrawQuad* quad =
             render_pass->CreateAndAppendDrawQuad<viz::SolidColorDrawQuad>();
@@ -571,7 +573,7 @@ void LayerTreeImpl::Draw(Layer& layer,
     return;
   }
 
-  absl::optional<gfx::Transform> transform_from_parent =
+  std::optional<gfx::Transform> transform_from_parent =
       layer.ComputeTransformFromParent();
   // If a 2d transform isn't invertible, then it must map the whole 2d space to
   // a single line or pointer, neither is visible.
@@ -745,17 +747,18 @@ void LayerTreeImpl::Draw(Layer& layer,
   // Any clip introduced by this layer is already applied by the bounds of the
   // new pass, so only need to apply any clips in parents target that came
   // from parent.
-  absl::optional<gfx::Rect> clip_opt;
+  std::optional<gfx::Rect> clip_opt;
   if (parent_clip_in_target) {
     clip_opt = gfx::ToEnclosingRect(*parent_clip_in_target);
   }
   const bool new_pass_contents_opaque =
       occlusion_in_new_pass.Contains(content_rect);
-  shared_quad_state->SetAll(
-      transform_new_pass_to_parent_target, content_rect, content_rect,
-      data.mask_filter_info_in_target, clip_opt, new_pass_contents_opaque,
-      parent_opacity * layer.opacity(), SkBlendMode::kSrcOver, 0);
-  shared_quad_state->is_fast_rounded_corner = true;
+  shared_quad_state->SetAll(transform_new_pass_to_parent_target, content_rect,
+                            content_rect, data.mask_filter_info_in_target,
+                            clip_opt, new_pass_contents_opaque,
+                            parent_opacity * layer.opacity(),
+                            SkBlendMode::kSrcOver, /*sorting_context=*/0,
+                            /*layer_id=*/0u, /*fast_rounded_corner=*/true);
   auto* quad =
       parent_pass.CreateAndAppendDrawQuad<viz::CompositorRenderPassDrawQuad>();
 
@@ -796,7 +799,7 @@ void LayerTreeImpl::DrawChildrenAndAppendQuads(
   const bool subtree_property_changed =
       layer.GetAndResetSubtreePropertyChanged() ||
       data.subtree_property_changed_from_parent;
-  absl::optional<base::AutoReset<gfx::MaskFilterInfo>>
+  std::optional<base::AutoReset<gfx::MaskFilterInfo>>
       auto_reset_mask_filter_info;
   if (layer.HasNonTrivialMaskFilterInfo()) {
     gfx::MaskFilterInfo info(gfx::RRectF(gfx::RectF(gfx::Rect(layer.bounds())),

@@ -92,6 +92,7 @@ private:
     bool m_cameraIsReady = false;
     bool m_cameraShouldStartActive = false;
     bool m_shouldBeActive = false;
+    QMetaObject::Connection m_readyChangedConnection;
 };
 
 QT_END_NAMESPACE

@@ -45,7 +45,7 @@ void tst_QtJson::initTestCase()
 void tst_QtJson::fromBinary()
 {
     QFile file(testDataDir + "/test.json");
-    file.open(QFile::ReadOnly);
+    QVERIFY(file.open(QFile::ReadOnly));
     QByteArray testJson = file.readAll();
 
     QJsonDocument doc = QJsonDocument::fromJson(testJson);
@@ -54,7 +54,7 @@ void tst_QtJson::fromBinary()
     QCOMPARE(doc, outdoc);
 
     QFile bfile(testDataDir + "/test.bjson");
-    bfile.open(QFile::ReadOnly);
+    QVERIFY(bfile.open(QFile::ReadOnly));
     QByteArray binary = bfile.readAll();
 
     QJsonDocument bdoc = QBinaryJson::fromBinaryData(binary);
@@ -102,7 +102,7 @@ void tst_QtJson::invalidBinaryData()
         if (!files.at(i).isFile())
             continue;
         QFile file(files.at(i).filePath());
-        file.open(QIODevice::ReadOnly);
+        QVERIFY(file.open(QIODevice::ReadOnly));
         QByteArray bytes = file.readAll();
         bytes.squeeze();
         QJsonDocument document = QBinaryJson::fromRawData(bytes.constData(), bytes.size());
@@ -209,7 +209,7 @@ void tst_QtJson::validation()
 
 
     QFile file2(testDataDir + "/test3.json");
-    file2.open(QFile::ReadOnly);
+    QVERIFY(file2.open(QFile::ReadOnly));
     testJson = file2.readAll();
     QVERIFY(!testJson.isEmpty());
 

@@ -851,14 +851,14 @@ QNmeaPositionInfoSource::UpdateMode QNmeaPositionInfoSource::updateMode() const
 
 /*!
     Sets the NMEA data source to \a device. If the device is not open, it
-    will be opened in QIODevice::ReadOnly mode.
+    will be opened in \l{QIODeviceBase::}{ReadOnly} mode.
 
     The source device can only be set once and must be set before calling
-    startUpdates() or requestUpdate().
+    \l startUpdates() or \l requestUpdate().
 
-    \b {Note:} The \a device must emit QIODevice::readyRead() for the
+    \note The \a device must emit \l {QIODevice::readyRead()} for the
     source to be notified when data is available for reading.
-    QNmeaPositionInfoSource does not assume the ownership of the device,
+    \l QNmeaPositionInfoSource does not assume the ownership of the device,
     and hence does not deallocate it upon destruction.
 */
 void QNmeaPositionInfoSource::setDevice(QIODevice *device)

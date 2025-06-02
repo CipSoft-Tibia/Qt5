@@ -54,15 +54,10 @@ class RecordingProofVerifier : public ProofVerifier {
       const ProofVerifyContext* context, std::string* error_details,
       std::unique_ptr<ProofVerifyDetails>* details,
       std::unique_ptr<ProofVerifierCallback> callback) override {
-    QuicAsyncStatus process_certs_result = ProcessCerts(certs, cert_sct);
-    if (process_certs_result != QUIC_SUCCESS) {
-      return process_certs_result;
+    QuicAsyncStatus status = ProcessCerts(certs, cert_sct);
+    if (verifier_ == nullptr) {
+      return status;
     }
-
-    if (!verifier_) {
-      return QUIC_SUCCESS;
-    }
-
     return verifier_->VerifyProof(hostname, port, server_config,
                                   transport_version, chlo_hash, certs, cert_sct,
                                   signature, context, error_details, details,
@@ -78,7 +73,7 @@ class RecordingProofVerifier : public ProofVerifier {
       std::unique_ptr<ProofVerifierCallback> callback) override {
     // Record the cert.
     QuicAsyncStatus status = ProcessCerts(certs, cert_sct);
-    if (verifier_ == NULL) {
+    if (verifier_ == nullptr) {
       return status;
     }
     return verifier_->VerifyCertChain(hostname, port, certs, ocsp_response,
@@ -298,7 +293,7 @@ QuicTestClient::QuicTestClient(
     QuicSocketAddress server_address, const std::string& server_hostname,
     const QuicConfig& config, const ParsedQuicVersionVector& supported_versions)
     : event_loop_(GetDefaultEventLoop()->Create(QuicDefaultClock::Get())),
-      client_(new MockableQuicClient(
+      client_(std::make_unique<MockableQuicClient>(
           server_address,
           QuicServerId(server_hostname, server_address.port(), false), config,
           supported_versions, event_loop_.get())) {
@@ -310,7 +305,7 @@ QuicTestClient::QuicTestClient(
     const QuicConfig& config, const ParsedQuicVersionVector& supported_versions,
     std::unique_ptr<ProofVerifier> proof_verifier)
     : event_loop_(GetDefaultEventLoop()->Create(QuicDefaultClock::Get())),
-      client_(new MockableQuicClient(
+      client_(std::make_unique<MockableQuicClient>(
           server_address,
           QuicServerId(server_hostname, server_address.port(), false), config,
           supported_versions, event_loop_.get(), std::move(proof_verifier))) {
@@ -323,7 +318,7 @@ QuicTestClient::QuicTestClient(
     std::unique_ptr<ProofVerifier> proof_verifier,
     std::unique_ptr<SessionCache> session_cache)
     : event_loop_(GetDefaultEventLoop()->Create(QuicDefaultClock::Get())),
-      client_(new MockableQuicClient(
+      client_(std::make_unique<MockableQuicClient>(
           server_address,
           QuicServerId(server_hostname, server_address.port(), false), config,
           supported_versions, event_loop_.get(), std::move(proof_verifier),
@@ -338,7 +333,7 @@ QuicTestClient::QuicTestClient(
     std::unique_ptr<SessionCache> session_cache,
     std::unique_ptr<QuicEventLoop> event_loop)
     : event_loop_(std::move(event_loop)),
-      client_(new MockableQuicClient(
+      client_(std::make_unique<MockableQuicClient>(
           server_address,
           QuicServerId(server_hostname, server_address.port(), false), config,
           supported_versions, event_loop_.get(), std::move(proof_verifier),
@@ -410,21 +405,6 @@ int64_t QuicTestClient::GetOrCreateStreamAndSendRequest(
     const spdy::Http2HeaderBlock* headers, absl::string_view body, bool fin,
     quiche::QuicheReferenceCountedPointer<QuicAckListenerInterface>
         ack_listener) {
-  if (headers) {
-    QuicClientPushPromiseIndex::TryHandle* handle;
-    QuicAsyncStatus rv =
-        client()->push_promise_index()->Try(*headers, this, &handle);
-    if (rv == QUIC_SUCCESS) return 1;
-    if (rv == QUIC_PENDING) {
-      // May need to retry request if asynchronous rendezvous fails.
-      std::unique_ptr<spdy::Http2HeaderBlock> new_headers(
-          new spdy::Http2HeaderBlock(headers->Clone()));
-      push_promise_data_to_resend_ = std::make_unique<TestClientDataToResend>(
-          std::move(new_headers), body, fin, this, std::move(ack_listener));
-      return 1;
-    }
-  }
-
   // Maybe it's better just to overload this.  it's just that we need
   // for the GetOrCreateStream function to call something else...which
   // is icky and complicated, but maybe not worse than this.
@@ -631,13 +611,10 @@ void QuicTestClient::ClearPerRequestState() {
   response_body_size_ = 0;
 }
 
-bool QuicTestClient::HaveActiveStream() {
-  return push_promise_data_to_resend_.get() || !open_streams_.empty();
-}
+bool QuicTestClient::HaveActiveStream() { return !open_streams_.empty(); }
 
 bool QuicTestClient::WaitUntil(
-    int timeout_ms,
-    absl::optional<quiche::UnretainedCallback<bool()>> trigger) {
+    int timeout_ms, std::optional<quiche::UnretainedCallback<bool()>> trigger) {
   QuicTime::Delta timeout = QuicTime::Delta::FromMilliseconds(timeout_ms);
   const QuicClock* clock = client()->session()->connection()->clock();
   QuicTime end_waiting_time = clock->Now() + timeout;
@@ -745,24 +722,6 @@ void QuicTestClient::OnClose(QuicSpdyStream* stream) {
   open_streams_.erase(id);
 }
 
-bool QuicTestClient::CheckVary(
-    const spdy::Http2HeaderBlock& /*client_request*/,
-    const spdy::Http2HeaderBlock& /*promise_request*/,
-    const spdy::Http2HeaderBlock& /*promise_response*/) {
-  return true;
-}
-
-void QuicTestClient::OnRendezvousResult(QuicSpdyStream* stream) {
-  std::unique_ptr<TestClientDataToResend> data_to_resend =
-      std::move(push_promise_data_to_resend_);
-  SetLatestCreatedStream(static_cast<QuicSpdyClientStream*>(stream));
-  if (stream) {
-    stream->OnBodyAvailable();
-  } else if (data_to_resend) {
-    data_to_resend->Resend();
-  }
-}
-
 void QuicTestClient::UseWriter(QuicPacketWriterWrapper* writer) {
   client_->UseWriter(writer);
 }
@@ -816,23 +775,6 @@ void QuicTestClient::WaitForWriteToFlush() {
   while (connected() && client()->session()->HasDataToWrite()) {
     client_->WaitForEvents();
   }
-}
-
-QuicTestClient::TestClientDataToResend::TestClientDataToResend(
-    std::unique_ptr<spdy::Http2HeaderBlock> headers, absl::string_view body,
-    bool fin, QuicTestClient* test_client,
-    quiche::QuicheReferenceCountedPointer<QuicAckListenerInterface>
-        ack_listener)
-    : QuicDefaultClient::QuicDataToResend(std::move(headers), body, fin),
-      test_client_(test_client),
-      ack_listener_(std::move(ack_listener)) {}
-
-QuicTestClient::TestClientDataToResend::~TestClientDataToResend() = default;
-
-void QuicTestClient::TestClientDataToResend::Resend() {
-  test_client_->GetOrCreateStreamAndSendRequest(headers_.get(), body_, fin_,
-                                                ack_listener_);
-  headers_.reset();
 }
 
 QuicTestClient::PerStreamState::PerStreamState(const PerStreamState& other)

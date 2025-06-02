@@ -1,21 +1,35 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/vulkan/DescriptorSetAllocator.h"
 
 #include <utility>
 
+#include "dawn/native/Queue.h"
 #include "dawn/native/vulkan/BindGroupLayoutVk.h"
 #include "dawn/native/vulkan/DeviceVk.h"
 #include "dawn/native/vulkan/FencedDeleter.h"
@@ -29,21 +43,21 @@ static constexpr uint32_t kMaxDescriptorsPerPool = 512;
 // static
 Ref<DescriptorSetAllocator> DescriptorSetAllocator::Create(
     BindGroupLayout* layout,
-    std::map<VkDescriptorType, uint32_t> descriptorCountPerType) {
+    absl::flat_hash_map<VkDescriptorType, uint32_t> descriptorCountPerType) {
     return AcquireRef(new DescriptorSetAllocator(layout, descriptorCountPerType));
 }
 
 DescriptorSetAllocator::DescriptorSetAllocator(
     BindGroupLayout* layout,
-    std::map<VkDescriptorType, uint32_t> descriptorCountPerType)
+    absl::flat_hash_map<VkDescriptorType, uint32_t> descriptorCountPerType)
     : ObjectBase(layout->GetDevice()), mLayout(layout) {
-    ASSERT(layout != nullptr);
+    DAWN_ASSERT(layout != nullptr);
 
     // Compute the total number of descriptors for this layout.
     uint32_t totalDescriptorCount = 0;
     mPoolSizes.reserve(descriptorCountPerType.size());
     for (const auto& [type, count] : descriptorCountPerType) {
-        ASSERT(count > 0);
+        DAWN_ASSERT(count > 0);
         totalDescriptorCount += count;
         mPoolSizes.push_back(VkDescriptorPoolSize{type, count});
     }
@@ -57,12 +71,12 @@ DescriptorSetAllocator::DescriptorSetAllocator(
         mPoolSizes.push_back(VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1});
         mMaxSets = kMaxDescriptorsPerPool;
     } else {
-        ASSERT(totalDescriptorCount <= kMaxBindingsPerPipelineLayout);
+        DAWN_ASSERT(totalDescriptorCount <= kMaxBindingsPerPipelineLayout);
         static_assert(kMaxBindingsPerPipelineLayout <= kMaxDescriptorsPerPool);
 
         // Compute the total number of descriptors sets that fits given the max.
         mMaxSets = kMaxDescriptorsPerPool / totalDescriptorCount;
-        ASSERT(mMaxSets > 0);
+        DAWN_ASSERT(mMaxSets > 0);
 
         // Grow the number of desciptors in the pool to fit the computed |mMaxSets|.
         for (auto& poolSize : mPoolSizes) {
@@ -73,7 +87,7 @@ DescriptorSetAllocator::DescriptorSetAllocator(
 
 DescriptorSetAllocator::~DescriptorSetAllocator() {
     for (auto& pool : mDescriptorPools) {
-        ASSERT(pool.freeSetIndices.size() == mMaxSets);
+        DAWN_ASSERT(pool.freeSetIndices.size() == mMaxSets);
         if (pool.vkPool != VK_NULL_HANDLE) {
             Device* device = ToBackend(GetDevice());
             device->GetFencedDeleter()->DeleteWhenUnused(pool.vkPool);
@@ -86,12 +100,12 @@ ResultOrError<DescriptorSetAllocation> DescriptorSetAllocator::Allocate() {
         DAWN_TRY(AllocateDescriptorPool());
     }
 
-    ASSERT(!mAvailableDescriptorPoolIndices.empty());
+    DAWN_ASSERT(!mAvailableDescriptorPoolIndices.empty());
 
     const PoolIndex poolIndex = mAvailableDescriptorPoolIndices.back();
     DescriptorPool* pool = &mDescriptorPools[poolIndex];
 
-    ASSERT(!pool->freeSetIndices.empty());
+    DAWN_ASSERT(!pool->freeSetIndices.empty());
 
     SetIndex setIndex = pool->freeSetIndices.back();
     pool->freeSetIndices.pop_back();
@@ -104,14 +118,14 @@ ResultOrError<DescriptorSetAllocation> DescriptorSetAllocator::Allocate() {
 }
 
 void DescriptorSetAllocator::Deallocate(DescriptorSetAllocation* allocationInfo) {
-    ASSERT(allocationInfo != nullptr);
-    ASSERT(allocationInfo->set != VK_NULL_HANDLE);
+    DAWN_ASSERT(allocationInfo != nullptr);
+    DAWN_ASSERT(allocationInfo->set != VK_NULL_HANDLE);
 
     // We can't reuse the descriptor set right away because the Vulkan spec says in the
     // documentation for vkCmdBindDescriptorSets that the set may be consumed any time between
     // host execution of the command and the end of the draw/dispatch.
     Device* device = ToBackend(GetDevice());
-    const ExecutionSerial serial = device->GetPendingCommandSerial();
+    const ExecutionSerial serial = device->GetQueue()->GetPendingCommandSerial();
     mPendingDeallocations.Enqueue({allocationInfo->poolIndex, allocationInfo->setIndex}, serial);
 
     if (mLastDeallocationSerial != serial) {
@@ -125,7 +139,7 @@ void DescriptorSetAllocator::Deallocate(DescriptorSetAllocation* allocationInfo)
 
 void DescriptorSetAllocator::FinishDeallocation(ExecutionSerial completedSerial) {
     for (const Deallocation& dealloc : mPendingDeallocations.IterateUpTo(completedSerial)) {
-        ASSERT(dealloc.poolIndex < mDescriptorPools.size());
+        DAWN_ASSERT(dealloc.poolIndex < mDescriptorPools.size());
 
         auto& freeSetIndices = mDescriptorPools[dealloc.poolIndex].freeSetIndices;
         if (freeSetIndices.empty()) {

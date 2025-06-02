@@ -220,11 +220,12 @@ bool NetworkServiceNetworkDelegate::OnCanSetCookie(
     const net::URLRequest& request,
     const net::CanonicalCookie& cookie,
     net::CookieOptions* options,
+    const net::FirstPartySetMetadata& first_party_set_metadata,
     net::CookieInclusionStatus* inclusion_status) {
   bool allowed =
       network_context_->cookie_manager()->cookie_settings().IsCookieAccessible(
           cookie, request.url(), request.site_for_cookies(),
-          request.isolation_info().top_frame_origin(),
+          request.isolation_info().top_frame_origin(), first_party_set_metadata,
           request.cookie_setting_overrides(), inclusion_status);
   if (!allowed)
     return false;
@@ -267,9 +268,11 @@ bool NetworkServiceNetworkDelegate::
   // Record information to help debug issues like http://crbug.com/422871.
   if (target_url.SchemeIsHTTPOrHTTPS()) {
     auto referrer_policy = request.referrer_policy();
-    base::debug::Alias(&referrer_policy);
-    DEBUG_ALIAS_FOR_GURL(target_buf, target_url);
-    DEBUG_ALIAS_FOR_GURL(referrer_buf, referrer_url);
+    SCOPED_CRASH_KEY_NUMBER("Bug1485060", "referrer_policy",
+                            static_cast<int>(referrer_policy));
+    SCOPED_CRASH_KEY_STRING256("Bug1485060", "target_url", target_url.spec());
+    SCOPED_CRASH_KEY_STRING256("Bug1485060", "referrer_url",
+                               referrer_url.spec());
     base::debug::DumpWithoutCrashing();
   }
   return true;
@@ -326,16 +329,6 @@ bool NetworkServiceNetworkDelegate::OnCanUseReportingClient(
       .IsFullCookieAccessAllowed(origin.GetURL(),
                                  net::SiteForCookies::FromOrigin(origin),
                                  origin, net::CookieSettingOverrides());
-}
-
-absl::optional<net::FirstPartySetsCacheFilter::MatchInfo>
-NetworkServiceNetworkDelegate::
-    OnGetFirstPartySetsCacheFilterMatchInfoMaybeAsync(
-        const net::SchemefulSite& request_site,
-        base::OnceCallback<void(net::FirstPartySetsCacheFilter::MatchInfo)>
-            callback) const {
-  return network_context_->first_party_sets_access_delegate()
-      .GetCacheFilterMatchInfo(request_site, std::move(callback));
 }
 
 int NetworkServiceNetworkDelegate::HandleClearSiteDataHeader(

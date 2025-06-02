@@ -19,6 +19,7 @@ private slots:
 
     void initialProperties();
     void initializeProperties();
+    void invalidProperties();
 
 private:
     QCustom3DItem *m_custom;
@@ -48,11 +49,11 @@ void tst_custom::construct()
     QVERIFY(custom);
     delete custom;
 
-    custom = new QCustom3DItem(":/customitem.obj", QVector3D(1.0f, 1.0f, 1.0f),
+    custom = new QCustom3DItem(":/customitem.mesh", QVector3D(1.0f, 1.0f, 1.0f),
                                QVector3D(1.0f, 1.0f, 1.0f), QQuaternion(1.0f, 1.0f, 10.0f, 100.0f),
                                QImage(":/customtexture.jpg"));
     QVERIFY(custom);
-    QCOMPARE(custom->meshFile(), QString(":/customitem.obj"));
+    QCOMPARE(custom->meshFile(), QString(":/customitem.mesh"));
     QCOMPARE(custom->position(), QVector3D(1.0f, 1.0f, 1.0f));
     QCOMPARE(custom->isPositionAbsolute(), false);
     QCOMPARE(custom->rotation(), QQuaternion(1.0f, 1.0f, 10.0f, 100.0f));
@@ -83,7 +84,18 @@ void tst_custom::initializeProperties()
 {
     QVERIFY(m_custom);
 
-    m_custom->setMeshFile(":/customitem.obj");
+    QSignalSpy meshFileSpy(m_custom, &QCustom3DItem::meshFileChanged);
+    QSignalSpy textureFileSpy(m_custom, &QCustom3DItem::textureFileChanged);
+    QSignalSpy positionSpy(m_custom, &QCustom3DItem::positionChanged);
+    QSignalSpy positionAbsoluteSpy(m_custom, &QCustom3DItem::positionAbsoluteChanged);
+    QSignalSpy scalingSpy(m_custom, &QCustom3DItem::scalingChanged);
+    QSignalSpy rotationSpy(m_custom, &QCustom3DItem::rotationChanged);
+    QSignalSpy visibleSpy(m_custom, &QCustom3DItem::visibleChanged);
+    QSignalSpy shadowCastingSpy(m_custom, &QCustom3DItem::shadowCastingChanged);
+    QSignalSpy scalingAbsoluteSpy(m_custom, &QCustom3DItem::scalingAbsoluteChanged);
+    QSignalSpy updateSpy(m_custom, &QCustom3DItem::needUpdate);
+
+    m_custom->setMeshFile(":/customitem.mesh");
     m_custom->setPosition(QVector3D(1.0f, 1.0f, 1.0f));
     m_custom->setPositionAbsolute(true);
     m_custom->setRotation(QQuaternion(1.0f, 1.0f, 10.0f, 100.0f));
@@ -93,7 +105,7 @@ void tst_custom::initializeProperties()
     m_custom->setTextureFile(":/customtexture.jpg");
     m_custom->setVisible(false);
 
-    QCOMPARE(m_custom->meshFile(), QString(":/customitem.obj"));
+    QCOMPARE(m_custom->meshFile(), QString(":/customitem.mesh"));
     QCOMPARE(m_custom->position(), QVector3D(1.0f, 1.0f, 1.0f));
     QCOMPARE(m_custom->isPositionAbsolute(), true);
     QCOMPARE(m_custom->rotation(), QQuaternion(1.0f, 1.0f, 10.0f, 100.0f));
@@ -105,6 +117,28 @@ void tst_custom::initializeProperties()
 
     m_custom->setTextureImage(QImage(QSize(10, 10), QImage::Format_ARGB32));
     QCOMPARE(m_custom->textureFile(), QString());
+
+    QCOMPARE(meshFileSpy.size(), 1);
+    QCOMPARE(textureFileSpy.size(), 2);
+    QCOMPARE(positionSpy.size(), 1);
+    QCOMPARE(positionAbsoluteSpy.size(), 1);
+    QCOMPARE(scalingSpy.size(), 1);
+    QCOMPARE(rotationSpy.size(), 1);
+    QCOMPARE(visibleSpy.size(), 1);
+    QCOMPARE(shadowCastingSpy.size(), 1);
+    QCOMPARE(scalingAbsoluteSpy.size(), 1);
+    QCOMPARE(updateSpy.size(), 10);
+}
+
+void tst_custom::invalidProperties()
+{
+    QVERIFY(m_custom);
+
+    // Verify we're getting this warning
+    QTest::ignoreMessage(QtWarningMsg, "Mesh file :/nonexistentitem.mesh does not exist.");
+    m_custom->setMeshFile(":/nonexistentitem.mesh");
+    QEXPECT_FAIL("", "Nonexistent file given", Continue);
+    QCOMPARE(m_custom->meshFile(), QString(":/nonexistentitem.mesh"));
 }
 
 QTEST_MAIN(tst_custom)

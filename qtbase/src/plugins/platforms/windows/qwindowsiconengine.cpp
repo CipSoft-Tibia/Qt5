@@ -52,8 +52,8 @@ QString QWindowsIconEngine::glyphs() const
         //{"format-justify-fill"_L1, u"\ue235"},
         {"format-justify-left"_L1, u"\ue8e4"},
         {"format-justify-right"_L1, u"\ue8e2"},
-        //{"format-text-direction-ltr"_L1, u"\ue247"},
-        //{"format-text-direction-rtl"_L1, u"\ue248"},
+        {"format-text-direction-ltr"_L1, u"\ue9aa"},
+        {"format-text-direction-rtl"_L1, u"\ue9ab"},
         {"format-text-bold"_L1, u"\ue8dd"},
         {"format-text-italic"_L1, u"\ue8db"},
         {"format-text-underline"_L1, u"\ue8dc"},
@@ -118,7 +118,7 @@ QString QWindowsIconEngine::glyphs() const
         {"window-new"_L1, u"\ue78b"},
         {"zoom-fit-best"_L1, u"\ue9a6"},
         {"zoom-in"_L1, u"\ue8a3"},
-        //{"zoom-original"_L1, u"\u"},
+        {"zoom-original"_L1, u"\ue71e"},
         {"zoom-out"_L1, u"\ue71f"},
 
         {"process-working"_L1, u"\ue9f3"},
@@ -141,7 +141,7 @@ QString QWindowsIconEngine::glyphs() const
         //{"system-software-install"_L1, u"\ueb71"},
         {"system-software-update"_L1, u"\uecc5"},
         {"utilities-system-monitor"_L1, u"\ue7f4"},
-        //{"utilities-terminal"_L1, u"\ueb8e"},
+        {"utilities-terminal"_L1, u"\ue756"},
 
         //{"applications-accessories"_L1, u"\u"},
         {"applications-development"_L1, u"\uec7a"},

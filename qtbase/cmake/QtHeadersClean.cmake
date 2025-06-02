@@ -5,6 +5,10 @@
 # ${module_headers} with a custom set of defines. This makes sure our public headers
 # are self-contained, and also compile with more strict compiler options.
 function(qt_internal_add_headersclean_target module_target module_headers)
+    if(INPUT_headersclean AND WASM)
+        message(FATAL_ERROR "The headersclean targets are not supported on WASM platform.")
+    endif()
+
     get_target_property(no_headersclean_check ${module_target} _qt_no_headersclean_check)
     if(no_headersclean_check)
         return()
@@ -108,6 +112,7 @@ function(qt_internal_add_headersclean_target module_target module_headers)
             -Woverloaded-virtual -Wshadow -Wundef -Wfloat-equal
             -Wnon-virtual-dtor -Wpointer-arith -Wformat-security
             -Wchar-subscripts -Wold-style-cast
+            -Wredundant-decls # QTBUG-115583
             -fno-operator-names)
 
         if(QT_FEATURE_reduce_relocations AND UNIX)
@@ -125,7 +130,8 @@ function(qt_internal_add_headersclean_target module_target module_headers)
         endif()
 
         if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang|IntelLLVM")
-            list(APPEND hcleanFLAGS -Wshorten-64-to-32)
+            list(APPEND hcleanFLAGS -Wshorten-64-to-32
+                -Wweak-vtables)
         endif()
 
         separate_arguments(cxx_flags NATIVE_COMMAND ${CMAKE_CXX_FLAGS})
@@ -143,10 +149,7 @@ function(qt_internal_add_headersclean_target module_target module_headers)
             # If additional package prefixes are provided, we consider they can contain frameworks
             # as well.
             foreach(prefix IN LISTS _qt_additional_packages_prefix_paths)
-                if(prefix MATCHES "/lib/cmake$") # Cut CMake files path
-                    string(APPEND prefix "/../..")
-                endif()
-                get_filename_component(prefix "${prefix}" ABSOLUTE)
+                __qt_internal_reverse_prefix_path_from_cmake_dir(path "${path}")
 
                 set(libdir "${prefix}/${INSTALL_LIBDIR}")
                 if(EXISTS "${libdir}")
@@ -234,12 +237,14 @@ function(qt_internal_add_headersclean_target module_target module_headers)
         get_filename_component(input_file_name ${input_path} NAME)
         set(artifact_path "${CMAKE_CURRENT_BINARY_DIR}/header_check/${input_file_name}.o")
 
-        unset(input_base_dir)
-        if(input_path MATCHES "${CMAKE_BINARY_DIR}")
-            set(input_base_dir "${CMAKE_BINARY_DIR}")
-        elseif(input_path MATCHES "${CMAKE_SOURCE_DIR}")
-            set(input_base_dir "${CMAKE_SOURCE_DIR}")
-        endif()
+        set(possible_base_dirs "${CMAKE_BINARY_DIR}" "${CMAKE_SOURCE_DIR}")
+        foreach(dir IN LISTS possible_base_dirs)
+            string(FIND "${input_path}" "${dir}" idx)
+            if(idx EQUAL "0")
+                set(input_base_dir "${dir}")
+                break()
+            endif()
+        endforeach()
 
         if(input_base_dir AND IS_ABSOLUTE "${input_base_dir}" AND IS_ABSOLUTE "${input_path}")
             file(RELATIVE_PATH comment_header_path "${input_base_dir}" "${input_path}")

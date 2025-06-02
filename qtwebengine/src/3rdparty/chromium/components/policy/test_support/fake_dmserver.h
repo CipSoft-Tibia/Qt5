@@ -2,6 +2,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifndef COMPONENTS_POLICY_TEST_SUPPORT_FAKE_DMSERVER_H_
+#define COMPONENTS_POLICY_TEST_SUPPORT_FAKE_DMSERVER_H_
+
+#include <memory>
+#include <set>
+#include <string>
+
+#include "base/command_line.h"
+#include "base/containers/unique_ptr_adapters.h"
+#include "base/files/file_path.h"
+#include "base/memory/weak_ptr.h"
+#include "base/sequence_checker.h"
+#include "base/values.h"
+#include "chromecast/cast_core/grpc/grpc_server.h"
+#include "chromecast/cast_core/grpc/grpc_unary_handler.h"
+#include "components/policy/test_support/client_storage.h"
+#include "components/policy/test_support/embedded_policy_test_server.h"
+#include "components/policy/test_support/remote_commands_service.castcore.pb.h"  // NOLINT(build/include_directory)
+#include "components/policy/test_support/remote_commands_state.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
+
 /*
 A bare-bones test server for testing cloud policy support.
 
@@ -73,26 +94,6 @@ Example:
   }
 }
 */
-
-#ifndef COMPONENTS_POLICY_TEST_SUPPORT_FAKE_DMSERVER_H_
-#define COMPONENTS_POLICY_TEST_SUPPORT_FAKE_DMSERVER_H_
-
-#include <set>
-#include <string>
-
-#include "base/command_line.h"
-#include "base/containers/unique_ptr_adapters.h"
-#include "base/memory/weak_ptr.h"
-#include "base/sequence_checker.h"
-#include "base/timer/timer.h"
-#include "base/values.h"
-#include "chromecast/cast_core/grpc/grpc_server.h"
-#include "chromecast/cast_core/grpc/grpc_unary_handler.h"
-#include "components/policy/test_support/client_storage.h"
-#include "components/policy/test_support/embedded_policy_test_server.h"
-#include "components/policy/test_support/remote_commands_service.castcore.pb.h"  // NOLINT(build/include_directory)
-#include "components/policy/test_support/remote_commands_state.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace fakedms {
 
@@ -184,6 +185,23 @@ class FakeDMServer : public policy::EmbeddedPolicyTestServer {
   // Triggers Shutting down the fake_dmserver_main and the grpc server.
   void TriggerShutdown();
 
+  // Writes the remote command result to the reactor, it will be triggered
+  // from RemoteCommandsWaitOperation::OnRemoteCommandResultAvailable.
+  void OnWaitRemoteCommandResultDone(
+      remote_commands::RemoteCommandsServiceHandler::WaitRemoteCommandResult::
+          Reactor*,
+      int64_t,
+      RemoteCommandsWaitOperation*,
+      bool);
+  // Writes the ack to the reactor, it will be triggered
+  // from RemoteCommandsWaitOperation::OnRemoteCommandAcked.
+  void OnWaitRemoteCommandAckDone(
+      remote_commands::RemoteCommandsServiceHandler::WaitRemoteCommandAcked::
+          Reactor*,
+      int64_t,
+      RemoteCommandsWaitOperation*,
+      bool);
+
   // Handles the RemoteCommandsService gRPC request SendRemoteCommand.
   void HandleSendRemoteCommand(
       remote_commands::SendRemoteCommandRequest request,
@@ -197,12 +215,19 @@ class FakeDMServer : public policy::EmbeddedPolicyTestServer {
       remote_commands::WaitRemoteCommandResultRequest request,
       remote_commands::RemoteCommandsServiceHandler::WaitRemoteCommandResult::
           Reactor* reactor);
+  // Handles the RemoteCommandsService gRPC request WaitRemoteCommandAcked. If
+  // the result isn't available withing 10 seconds, the grpc call will be
+  // cancelled.
+  void HandleWaitRemoteCommandAcked(
+      remote_commands::WaitRemoteCommandAckedRequest request,
+      remote_commands::RemoteCommandsServiceHandler::WaitRemoteCommandAcked::
+          Reactor* reactor);
 
   // Erase the wait operation from the waiters_ set.
   void EraseWaitOperation(RemoteCommandsWaitOperation*);
 
-  std::string policy_blob_path_;
-  std::string client_state_path_;
+  const base::FilePath policy_blob_path_;
+  const base::FilePath client_state_path_;
   std::string grpc_unix_socket_uri_;
 
   // Sequence checker for fake_dmserver main IO thread.

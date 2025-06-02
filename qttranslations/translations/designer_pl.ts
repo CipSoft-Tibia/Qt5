@@ -629,8 +629,8 @@
 <context>
     <name>Designer</name>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Custom Widgets</source>
@@ -1074,8 +1074,8 @@
         <translation>Formularz</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1372,8 +1372,8 @@ To wskazuje na niespójność w pliku ui.</translation>
         <translation>Dodatkowe czcionki...</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>Pomo&amp;c Qt Designer</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>Pomo&amp;c Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1384,8 +1384,8 @@ To wskazuje na niespójność w pliku ui.</translation>
         <translation>Informacje o wtyczkach</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>Informacje o Qt Designerze</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>Informacje o Qt Widgets Designerze</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1520,8 +1520,8 @@ Czy chcesz zaktualizować położenie pliku lub wygenerować nowy formularz?</tr
         <translation>Zachowaj formularz jako</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Preview failed</source>
@@ -3223,16 +3223,16 @@ Czy chcesz nadpisać szablon?</translation>
 <context>
     <name>VersionDialog</name>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Version %2</source>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Wersja %2</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer jest aplikacją umożliwiającą projektowanie interfejsów graficznych użytkownika w aplikacjach korzystających z Qt.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer jest aplikacją umożliwiającą projektowanie interfejsów graficznych użytkownika w aplikacjach korzystających z Qt.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
@@ -4671,12 +4671,12 @@ Wybierz inną nazwę.</translation>
         <translation>Wtyczki których nie można załadować</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer nie mógł znaleźć żadnej wtyczki</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer nie mógł znaleźć żadnej wtyczki</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer znalazł następujące wtyczki:</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer znalazł następujące wtyczki:</translation>
     </message>
     <message>
         <source>Refresh</source>

@@ -89,7 +89,7 @@ P2PSocketUdp::PendingPacket::PendingPacket(const net::IPEndPoint& to,
                                            const rtc::PacketOptions& options,
                                            uint64_t id)
     : to(to),
-      data(base::MakeRefCounted<net::IOBuffer>(content.size())),
+      data(base::MakeRefCounted<net::IOBufferWithSize>(content.size())),
       size(content.size()),
       packet_options(options),
       id(id) {
@@ -192,7 +192,8 @@ void P2PSocketUdp::Init(
   // NOTE: Remote address will be same as what renderer provided.
   client_->SocketCreated(address, remote_address.ip_address);
 
-  recv_buffer_ = base::MakeRefCounted<net::IOBuffer>(kUdpReadBufferSize);
+  recv_buffer_ =
+      base::MakeRefCounted<net::IOBufferWithSize>(kUdpReadBufferSize);
   DoRead();
 }
 
@@ -281,7 +282,8 @@ bool P2PSocketUdp::HandleReadResult(int result) {
     // 'ERR_IO_PENDING' if drained.
     pending_received_packets_.push_back(std::move(packet));
     pending_received_buffers_.push_back(std::move(recv_buffer_));
-    recv_buffer_ = base::MakeRefCounted<net::IOBuffer>(kUdpReadBufferSize);
+    recv_buffer_ =
+        base::MakeRefCounted<net::IOBufferWithSize>(kUdpReadBufferSize);
 
     MaybeDrainReceivedPackets(false);
   } else if (result == net::ERR_IO_PENDING) {
@@ -353,9 +355,9 @@ bool P2PSocketUdp::DoSend(const PendingPacket& packet) {
     }
   }
 
-  cricket::ApplyPacketOptions(
-      reinterpret_cast<uint8_t*>(packet.data->data()), packet.size,
-      packet.packet_options.packet_time_params, send_time_us);
+  cricket::ApplyPacketOptions(packet.data->bytes(), packet.size,
+                              packet.packet_options.packet_time_params,
+                              send_time_us);
   auto callback_binding = base::BindRepeating(
       &P2PSocketUdp::OnSend, base::Unretained(this), packet.id,
       packet.packet_options.packet_id, send_time_us / 1000);

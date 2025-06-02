@@ -117,10 +117,17 @@ public:
     bool endsWith(const QStringRef &c, Qt::CaseSensitivity cs = Qt::CaseSensitive) const;
 
     inline operator QStringView() const {
-        if (!m_string)
+        if (isNull())
             return {};
         return QStringView(m_string->data() + m_position, m_size);
     }
+
+#ifdef QSTRINGVIEW_REFUSES_QSTRINGREF
+    operator QAnyStringView() const noexcept { return QStringView{*this}; }
+#else
+    operator QAnyStringView() const noexcept { return operator QStringView(); }
+#endif
+
     inline QStringRef &operator=(const QString *string);
 
     inline const QChar *unicode() const

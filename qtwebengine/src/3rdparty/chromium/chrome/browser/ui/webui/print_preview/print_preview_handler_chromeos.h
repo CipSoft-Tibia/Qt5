@@ -37,8 +37,10 @@ class PrinterHandler;
 class PrintPreviewHandler;
 
 // The handler for Javascript messages related to the print preview dialog.
-class PrintPreviewHandlerChromeOS : public content::WebUIMessageHandler,
-                                    public crosapi::mojom::PrintServerObserver {
+class PrintPreviewHandlerChromeOS
+    : public content::WebUIMessageHandler,
+      public crosapi::mojom::PrintServerObserver,
+      public crosapi::mojom::LocalPrintersObserver {
  public:
   PrintPreviewHandlerChromeOS();
   PrintPreviewHandlerChromeOS(const PrintPreviewHandlerChromeOS&) = delete;
@@ -95,7 +97,7 @@ class PrintPreviewHandlerChromeOS : public content::WebUIMessageHandler,
   void HandleRequestPrinterStatusUpdate(const base::Value::List& args);
   void HandleRequestPrinterStatusUpdateCompletion(
       base::Value callback_id,
-      absl::optional<base::Value::Dict> result);
+      std::optional<base::Value::Dict> result);
 
   // crosapi::mojom::PrintServerObserver Implementation
   void OnPrintServersChanged(
@@ -120,9 +122,27 @@ class PrintPreviewHandlerChromeOS : public content::WebUIMessageHandler,
   // should be hidden if preview launched from the settings SWA.
   void HandleGetShowManagePrinters(const base::Value::List& args);
 
+  void HandleObserveLocalPrinters(const base::Value::List& args);
+
+  // Callback for `HandleGetShowManagePrinters()`.
+  void OnHandleObserveLocalPrinters(
+      const std::string& callback_id,
+      std::vector<crosapi::mojom::LocalDestinationInfoPtr> printers);
+
+  // crosapi::mojom::LocalPrintersObserver Implementation:
+  void OnLocalPrintersUpdated(
+      std::vector<crosapi::mojom::LocalDestinationInfoPtr> printers) override;
+
   void SetInitiatorForTesting(content::WebContents* test_initiator);
 
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  int GetLocalPrinterVersionForTesting() { return local_printer_version_; }
+#endif
+
   mojo::Receiver<crosapi::mojom::PrintServerObserver> receiver_{this};
+
+  mojo::Receiver<crosapi::mojom::LocalPrintersObserver>
+      local_printers_receiver_{this};
 
   // Used for testing, when `GetInitiator` called and `test_initiator` is set
   // then it will be returned instead of calling `PrintPreviewDialogController`
@@ -136,6 +156,11 @@ class PrintPreviewHandlerChromeOS : public content::WebUIMessageHandler,
   // lacros will automatically be restarted.
   raw_ptr<crosapi::mojom::LocalPrinter, DanglingUntriaged> local_printer_ =
       nullptr;
+
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+  // Version number of the LocalPrinter mojo service.
+  int local_printer_version_ = 0;
+#endif
 
   base::WeakPtrFactory<PrintPreviewHandlerChromeOS> weak_factory_{this};
 };

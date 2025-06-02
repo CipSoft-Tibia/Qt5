@@ -18,7 +18,20 @@
 #include "qlocale_p.h"
 #include "qstring.h"
 
+#if !defined(QT_SUPPORTS_INT128) && (defined(Q_CC_MSVC) && (_MSC_VER >= 1930) && __has_include(<__msvc_int128.hpp>))
+#include <__msvc_int128.hpp>
+#define QT_USE_MSVC_INT128
+#endif
+
 QT_BEGIN_NAMESPACE
+
+#if defined(QT_SUPPORTS_INT128)
+using qinternalint128 = qint128;
+using qinternaluint128 = quint128;
+#elif defined(QT_USE_MSVC_INT128)
+using qinternalint128 = std::_Signed128;
+using qinternaluint128 = std::_Unsigned128;
+#endif
 
 enum StrayCharacterMode {
     TrailingJunkProhibited,
@@ -36,15 +49,23 @@ void qt_doubleToAscii(double d, QLocaleData::DoubleForm form, int precision,
 
 [[nodiscard]] QString qulltoBasicLatin(qulonglong l, int base, bool negative);
 [[nodiscard]] QString qulltoa(qulonglong l, int base, const QStringView zero);
+[[nodiscard]] char *qulltoa2(char *p, qulonglong n, int base);
 [[nodiscard]] Q_CORE_EXPORT QString qdtoa(qreal d, int *decpt, int *sign);
 [[nodiscard]] QString qdtoBasicLatin(double d, QLocaleData::DoubleForm form,
                                      int precision, bool uppercase);
 [[nodiscard]] QByteArray qdtoAscii(double d, QLocaleData::DoubleForm form,
                                    int precision, bool uppercase);
 
+#if defined(QT_SUPPORTS_INT128) || defined(QT_USE_MSVC_INT128)
+[[nodiscard]] Q_CORE_EXPORT QString quint128toBasicLatin(qinternaluint128 number,
+                                                         int base = 10);
+[[nodiscard]] Q_CORE_EXPORT QString qint128toBasicLatin(qinternalint128 number,
+                                                        int base = 10);
+#endif
+
 [[nodiscard]] constexpr inline bool isZero(double d)
 {
-    return d == 0; // Amusingly, compilers do not grumble.
+    return qIsNull(d);
 }
 
 // Enough space for the digits before the decimal separator:

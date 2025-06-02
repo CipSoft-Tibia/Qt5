@@ -14,9 +14,9 @@ class Twitter : public QOAuth1
 
 public:
     Twitter(QObject *parent = nullptr);
-    Twitter(const QPair<QString, QString> &clientCredentials, QObject *parent = nullptr);
+    Twitter(const std::pair<QString, QString> &clientCredentials, QObject *parent = nullptr);
     Twitter(const QString &screenName,
-            const QPair<QString, QString> &clientCredentials,
+            const std::pair<QString, QString> &clientCredentials,
             QObject *parent = nullptr);
 
 signals:

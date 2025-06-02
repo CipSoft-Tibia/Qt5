@@ -80,10 +80,18 @@ qt_feature("protobuf-wellknowntypes" PUBLIC
             ( QT_FEATURE_qtprotobufgen AND NOT CMAKE_CROSSCOMPILING ) )
 )
 
+qt_feature("protobufquick" PUBLIC
+    SECTION "Qt Protobuf"
+    LABEL "QML Protobuf support"
+    PURPOSE "Allows using the generated Protobuf code from QML"
+    AUTODETECT TRUE
+    CONDITION TARGET Qt6::Quick
+)
 qt_configure_add_summary_section(NAME "Qt Protobuf")
 qt_configure_add_summary_entry(ARGS "protobuf-qtcoretypes")
 qt_configure_add_summary_entry(ARGS "protobuf-qtguitypes")
 qt_configure_add_summary_entry(ARGS "protobuf-wellknowntypes")
+qt_configure_add_summary_entry(ARGS "protobufquick")
 qt_configure_end_summary_section()
 qt_configure_add_summary_section(NAME "Qt Protobuf tools")
 qt_configure_add_summary_entry(ARGS "qtprotobufgen")

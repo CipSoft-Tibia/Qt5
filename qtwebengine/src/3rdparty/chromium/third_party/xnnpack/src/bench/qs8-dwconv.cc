@@ -7,12 +7,13 @@
 #include <cfloat>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <random>
 #include <vector>
 
-#include <benchmark/benchmark.h>
 #include "bench/dwconv.h"
 #include "bench/utils.h"
+#include <benchmark/benchmark.h>
 
 #include <xnnpack.h>
 #include <xnnpack/aligned-allocator.h>
@@ -95,7 +96,7 @@ static void DWConvBenchmark(benchmark::State& state,
   packing_params.input_zero_point = 0;
   xnn_pack_qs8_dwconv_ghw_w(primary_tile, 0, 0, kernel_height, kernel_width, channels,
                             channel_tile, channel_tile, /*channel_round=*/1,
-                            k.data(), b.data(), w.data(),
+                            k.data(), b.data(), /*scale=*/nullptr, w.data(),
                             /*per_tile_extra_bytes=*/0, /*per_subtile_extra_bytes=*/0, &packing_params);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(w.cbegin(), w.cbegin() + w_size, w.begin() + n * w_size);
@@ -120,7 +121,19 @@ static void DWConvBenchmark(benchmark::State& state,
   convolution_op.padding_top        = padding_top;
   convolution_op.padding_left       = padding_left;
 
-  xnn_indirection_init_dwconv2d(&convolution_op, step_height, step_width, primary_tile, XNN_LOG2_SIZEOF_INT8_T);
+  xnn_indirection_init_dwconv2d(
+    /*output_y_start=*/0, /*output_y_end=*/convolution_op.output_height,
+    convolution_op.indirection_buffer,
+    convolution_op.input,
+    convolution_op.input_pixel_stride << XNN_LOG2_SIZEOF_INT8_T,
+    convolution_op.zero_buffer,
+    convolution_op.input_height, convolution_op.input_width,
+    convolution_op.output_height, convolution_op.output_width,
+    convolution_op.kernel_height, convolution_op.kernel_width,
+    convolution_op.stride_height, convolution_op.stride_width,
+    convolution_op.dilation_height, convolution_op.dilation_width,
+    convolution_op.padding_top, convolution_op.padding_left,
+    step_height, step_width, primary_tile);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(i.cbegin(), i.cbegin() + i_elements, i.begin() + n * i_elements);
   }
@@ -154,7 +167,7 @@ static void DWConvBenchmark(benchmark::State& state,
     state.counters["cpufreq"] = cpu_frequency;
   }
 
-  state.counters["FLOPS"] = benchmark::Counter(
+  state.counters["OPS"] = benchmark::Counter(
     uint64_t(state.iterations()) * 2 * output_size * channels * kernel_size,
     benchmark::Counter::kIsRate);
 
@@ -222,7 +235,7 @@ static void DWConvBenchmark(benchmark::State& state,
 
   std::vector<int8_t> z(channels + XNN_EXTRA_BYTES / sizeof(int8_t));
   std::vector<int32_t, AlignedAllocator<int32_t, 64>> buffer(
-    channels + XNN_MAX_SIMD_SIZE / sizeof(int8_t));
+    channels + XNN_MULTIPASS_EXTRA_BYTES / sizeof(int8_t));
 
   const size_t tile_size = xnn_dwconv_multipass_tile_size(
     kernel_size, first_pass_tile, middle_pass_tile, last_pass_tile);
@@ -246,7 +259,7 @@ static void DWConvBenchmark(benchmark::State& state,
   xnn_pack_qs8_dwconv_ghw_w(first_pass_tile, middle_pass_tile, last_pass_tile,
                             kernel_height, kernel_width,
                             channels, channel_tile, channel_tile, channel_round,
-                            k.data(), b.data(), w.data(),
+                            k.data(), b.data(), /*scale=*/nullptr, w.data(),
                             /*per_tile_extra_bytes=*/0, /*per_subtile_extra_bytes=*/0, &packing_params);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(w.cbegin(), w.cbegin() + w_size, w.begin() + n * w_size);
@@ -271,7 +284,19 @@ static void DWConvBenchmark(benchmark::State& state,
   convolution_op.padding_top        = padding_top;
   convolution_op.padding_left       = padding_left;
 
-  xnn_indirection_init_dwconv2d(&convolution_op, step_height, step_width, tile_size, XNN_LOG2_SIZEOF_INT8_T);
+  xnn_indirection_init_dwconv2d(
+    /*output_y_start=*/0, /*output_y_end=*/convolution_op.output_height,
+    convolution_op.indirection_buffer,
+    convolution_op.input,
+    convolution_op.input_pixel_stride << XNN_LOG2_SIZEOF_INT8_T,
+    convolution_op.zero_buffer,
+    convolution_op.input_height, convolution_op.input_width,
+    convolution_op.output_height, convolution_op.output_width,
+    convolution_op.kernel_height, convolution_op.kernel_width,
+    convolution_op.stride_height, convolution_op.stride_width,
+    convolution_op.dilation_height, convolution_op.dilation_width,
+    convolution_op.padding_top, convolution_op.padding_left,
+    step_height, step_width, tile_size);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(i.cbegin(), i.cbegin() + i_elements, i.begin() + n * i_elements);
   }
@@ -307,7 +332,7 @@ static void DWConvBenchmark(benchmark::State& state,
     state.counters["cpufreq"] = cpu_frequency;
   }
 
-  state.counters["FLOPS"] = benchmark::Counter(
+  state.counters["OPS"] = benchmark::Counter(
     uint64_t(state.iterations()) * 2 * output_size * channels * kernel_size,
     benchmark::Counter::kIsRate);
 

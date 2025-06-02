@@ -17,7 +17,7 @@
 #include "base/observer_list.h"
 #include "base/task/sequenced_task_runner.h"
 #include "components/spellcheck/browser/spellcheck_dictionary.h"
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/sync/model/model_error.h"
 #include "components/sync/model/sync_data.h"
 #include "components/sync/model/syncable_service.h"
@@ -40,13 +40,12 @@ class SyncChangeProcessor;
 //   foo
 //   checksum_v1 = ec3df4034567e59e119fcf87f2d9bad4
 //
-#ifndef TOOLKIT_QT
-class SpellcheckCustomDictionary : public SpellcheckDictionary,
-                                   public syncer::SyncableService {
+#if !BUILDFLAG(IS_QTWEBENGINE)
+class SpellcheckCustomDictionary final : public SpellcheckDictionary,
+                                         public syncer::SyncableService {
 #else
-class SpellcheckCustomDictionary : public SpellcheckDictionary {
+class SpellcheckCustomDictionary final : public SpellcheckDictionary {
 #endif
-
  public:
   // A change to the dictionary.
   class Change {
@@ -168,7 +167,7 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
   // Returns true if the dictionary has been loaded. Otherwise returns false.
   bool IsLoaded();
 
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Returns true if the dictionary is being synced. Otherwise returns false.
   bool IsSyncing();
 #endif
@@ -176,18 +175,19 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
   // Overridden from SpellcheckDictionary:
   void Load() override;
 
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Overridden from syncer::SyncableService:
   void WaitUntilReadyToSync(base::OnceClosure done) override;
-  absl::optional<syncer::ModelError> MergeDataAndStartSyncing(
+  std::optional<syncer::ModelError> MergeDataAndStartSyncing(
       syncer::ModelType type,
       const syncer::SyncDataList& initial_sync_data,
       std::unique_ptr<syncer::SyncChangeProcessor> sync_processor) override;
   void StopSyncing(syncer::ModelType type) override;
   syncer::SyncDataList GetAllSyncDataForTesting(syncer::ModelType type) const;
-  absl::optional<syncer::ModelError> ProcessSyncChanges(
+  std::optional<syncer::ModelError> ProcessSyncChanges(
       const base::Location& from_here,
       const syncer::SyncChangeList& change_list) override;
+  base::WeakPtr<SyncableService> AsWeakPtr() override;
 #endif
 
  private:
@@ -224,11 +224,11 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
   // |dictionary_change| to pass it to the FILE thread.
   void Save(std::unique_ptr<Change> dictionary_change);
 
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Notifies the sync service of the |dictionary_change|. Syncs up to the
   // maximum syncable words on the server. Disables syncing of this dictionary
   // if the server contains the maximum number of syncable words.
-  absl::optional<syncer::ModelError> Sync(const Change& dictionary_change);
+  std::optional<syncer::ModelError> Sync(const Change& dictionary_change);
 #endif
 
   // Notifies observers of the dictionary change if the dictionary has been
@@ -247,7 +247,7 @@ class SpellcheckCustomDictionary : public SpellcheckDictionary {
   // Observers for dictionary load and content changes.
   base::ObserverList<Observer>::Unchecked observers_;
 
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Used to send local changes to the sync infrastructure.
   std::unique_ptr<syncer::SyncChangeProcessor> sync_processor_;
 #endif

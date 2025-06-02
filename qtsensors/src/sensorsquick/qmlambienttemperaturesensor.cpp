@@ -5,7 +5,7 @@
 
 /*!
     \qmltype AmbientTemperatureSensor
-//!    \instantiates QmlAmbientTemperatureSensor
+//!    \nativetype QmlAmbientTemperatureSensor
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.1
@@ -42,7 +42,7 @@ QSensor *QmlAmbientTemperatureSensor::sensor() const
 
 /*!
     \qmltype AmbientTemperatureReading
-//!    \instantiates QmlAmbientTemperatureReading
+//!    \nativetype QmlAmbientTemperatureReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.1
@@ -68,7 +68,7 @@ QmlAmbientTemperatureReading::~QmlAmbientTemperatureReading()
 }
 
 /*!
-    \qmlproperty qreal AmbientTemperatureReading::temperature
+    \qmlproperty real AmbientTemperatureReading::temperature
     This property holds the ambient temperature in degree Celsius.
 
     Please see QAmbientTemperatureReading::temperature for information about this property.

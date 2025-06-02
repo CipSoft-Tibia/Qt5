@@ -551,7 +551,11 @@ private slots:
 
     void visibilityDoesntClobberWindowState();
 
+    void showMethodSetsVisibility();
+
     void eventTypes();
+
+    void dataIsNotAList();
 
 private:
     QPointingDevice *touchDevice; // TODO make const after fixing QTBUG-107864
@@ -3870,7 +3874,7 @@ void tst_qquickwindow::rendererInterfaceWithRenderControl_data()
 #ifdef Q_OS_WIN
     QTest::newRow("D3D11") << QSGRendererInterface::Direct3D11Rhi;
 #endif
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     QTest::newRow("Metal") << QSGRendererInterface::MetalRhi;
 #endif
 }
@@ -4175,6 +4179,36 @@ void tst_qquickwindow::visibilityDoesntClobberWindowState()
     QTRY_COMPARE(window->windowState(), Qt::WindowMaximized);
 }
 
+void tst_qquickwindow::showMethodSetsVisibility()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("showMethodSetsVisibility.qml"));
+    QObject *created = component.create();
+    QScopedPointer<QObject> cleanup(created);
+    QVERIFY(created);
+
+    QQuickWindow *rootWindow = qobject_cast<QQuickWindow *>(created);
+    QVERIFY(rootWindow);
+    QCOMPARE(rootWindow->isVisible(), true);
+
+    QQuickWindow *childWindow = rootWindow->findChild<QQuickWindow *>("childWindow");
+    QVERIFY(childWindow);
+    QCOMPARE(childWindow->isVisible(), false);
+
+    QQuickWindow *anotherWindow = rootWindow->findChild<QQuickWindow *>("anotherWindow");
+    QVERIFY(anotherWindow);
+
+    anotherWindow->show();
+    QCOMPARE(anotherWindow->isVisible(), true);
+
+    childWindow->show();
+    QCOMPARE(childWindow->isVisible(), true);
+
+    childWindow->setTransientParent(anotherWindow);
+    QCOMPARE(childWindow->isVisible(), true);
+}
+
 void tst_qquickwindow::eventTypes()
 {
     QQmlEngine engine;
@@ -4183,6 +4217,35 @@ void tst_qquickwindow::eventTypes()
     QObject *created = component.create();
     QScopedPointer<QObject> cleanup(created);
     QVERIFY(created);
+}
+
+void tst_qquickwindow::dataIsNotAList()
+{
+    QQuickWindow window;
+    QObject child;
+    QQmlListProperty<QObject> data = window.property("data").value<QQmlListProperty<QObject>>();
+
+    QVERIFY(data.object);
+    QVERIFY(data.append);
+    QVERIFY(data.count);
+    QVERIFY(data.at);
+    QVERIFY(data.clear);
+    QVERIFY(data.removeLast);
+
+    // We must not synthesize the replace method on this property. QQuickItem doesn't support it.
+    QVERIFY(!data.replace);
+
+    QCOMPARE(data.count(&data), 0);
+    data.append(&data, &child);
+    QCOMPARE(data.count(&data), 1);
+    QCOMPARE(data.at(&data, 0), &child);
+    data.removeLast(&data);
+    QCOMPARE(data.count(&data), 0);
+    data.append(&data, &child);
+    QCOMPARE(data.count(&data), 1);
+    QCOMPARE(data.at(&data, 0), &child);
+    data.clear(&data);
+    QCOMPARE(data.count(&data), 0);
 }
 
 QTEST_MAIN(tst_qquickwindow)

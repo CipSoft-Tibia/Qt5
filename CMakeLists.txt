@@ -53,8 +53,9 @@ foreach(module IN LISTS QT_BUILD_SUBMODULES)
     if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${module}/CMakeLists.txt)
         message(FATAL_ERROR
             "Module '${module}' cannot be found. Please double-check the "
-            "spelling and try again. Or run `./init-repository` to get "
-            "the submodules.")
+            "spelling and try again. Or run\n"
+            "`./configure -init-submodules -submodules ${module}` "
+            "to clone the submodule and its dependencies.")
     endif()
 endforeach()
 
@@ -87,9 +88,15 @@ foreach(module IN LISTS QT_BUILD_SUBMODULES)
 
             if(NOT error_reason STREQUAL "")
                 if(required)
+                    if(QT_INTERNAL_CALLED_FROM_CONFIGURE)
+                        set(skip_argument "-skip ${module}")
+                    else()
+                        set(skip_argument "-DBUILD_${module}=OFF")
+                    endif()
+
                     message(FATAL_ERROR "Module '${module}' depends on '${dep}', "
                         "but ${error_reason}.\n"
-                        "Note: Use '-skip ${module}' to exclude it from the build.")
+                        "Note: Use '${skip_argument}' to exclude it from the build.")
                 else()
                     message(STATUS "Skipping optional dependency '${dep}' of '${module}', "
                         "because ${error_reason}.")

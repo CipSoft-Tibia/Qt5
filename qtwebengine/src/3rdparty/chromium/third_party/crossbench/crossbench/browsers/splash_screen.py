@@ -42,6 +42,10 @@ class SplashScreen:
     pass
 
 
+_BLANK_PAGE_HTML = "<html></html>"
+_BLANK_PAGE_DATA_URL = f"data:text/html;charset=utf-8,{urllib.parse.quote(_BLANK_PAGE_HTML)}"
+
+
 class BaseURLSplashScreen(SplashScreen, metaclass=abc.ABCMeta):
 
   def __init__(self, timeout: float = 2) -> None:
@@ -52,6 +56,7 @@ class BaseURLSplashScreen(SplashScreen, metaclass=abc.ABCMeta):
     with run.actions("SplashScreen") as action:
       action.show_url(self.get_url(run))
       action.wait(self._timeout)
+      action.show_url(_BLANK_PAGE_DATA_URL)
 
   @abc.abstractmethod
   def get_url(self, run: Run) -> str:
@@ -68,7 +73,7 @@ class DetailedSplashScreen(BaseURLSplashScreen):
             f"<title>Run Details</title>"
             "<style>"
             """
-            html { font-family: sans-serif; }
+            html { font-family: sans-serif; background-color: #000; color: #fff; }
             dl {
               display: grid;
               grid-template-columns: max-content auto;

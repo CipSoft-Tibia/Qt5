@@ -37,6 +37,7 @@
 #include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/core/testing/core_unit_test_helper.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 
 namespace blink {
@@ -157,7 +158,7 @@ class DisplayLockContextTest : public testing::Test,
   }
 
   void UnlockImmediate(DisplayLockContext* context) {
-    context->SetRequestedState(EContentVisibility::kVisible, g_null_atom);
+    context->SetRequestedState(EContentVisibility::kVisible);
   }
 
   mojom::blink::FindOptionsPtr FindOptions(bool new_session = true) {
@@ -194,6 +195,8 @@ class DisplayLockContextTest : public testing::Test,
   const int FAKE_FIND_ID = 1;
 
  private:
+  test::TaskEnvironment task_environment;
+
   frame_test_helpers::WebViewHelper web_view_helper_;
 };
 
@@ -2042,7 +2045,7 @@ class DisplayLockContextRenderingTest
     return context->needs_compositing_dependent_flag_update_;
   }
   void LockImmediate(DisplayLockContext* context) {
-    context->SetRequestedState(EContentVisibility::kHidden, g_null_atom);
+    context->SetRequestedState(EContentVisibility::kHidden);
   }
   void RunStartOfLifecycleTasks() {
     auto start_of_lifecycle_tasks =
@@ -2144,8 +2147,9 @@ TEST_P(DisplayLockContextRenderingTest, FloatChildLocked) {
   auto* lockable = GetDocument().getElementById(AtomicString("lockable"));
   auto* lockable_box = lockable->GetLayoutBox();
   auto* floating = GetDocument().getElementById(AtomicString("floating"));
-  EXPECT_EQ(LayoutRect(0, 0, 200, 100), lockable_box->VisualOverflowRect());
-  EXPECT_EQ(LayoutRect(0, 0, 200, 100), lockable_box->LayoutOverflowRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 200, 100), lockable_box->VisualOverflowRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 200, 100),
+            lockable_box->ScrollableOverflowRect());
 
   lockable->classList().Add(AtomicString("hidden"));
   UpdateAllLifecyclePhasesForTest();
@@ -2155,8 +2159,9 @@ TEST_P(DisplayLockContextRenderingTest, FloatChildLocked) {
   ASSERT_TRUE(lockable->GetDisplayLockContext());
   EXPECT_TRUE(DescendantDependentFlagUpdateWasBlocked(
       lockable->GetDisplayLockContext()));
-  EXPECT_EQ(LayoutRect(0, 0, 200, 50), lockable_box->VisualOverflowRect());
-  EXPECT_EQ(LayoutRect(0, 0, 200, 50), lockable_box->LayoutOverflowRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 200, 50), lockable_box->VisualOverflowRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 200, 50),
+            lockable_box->ScrollableOverflowRect());
 
   floating->setAttribute(html_names::kStyleAttr, AtomicString("height: 200px"));
   // The following should not crash/DCHECK.
@@ -2165,15 +2170,17 @@ TEST_P(DisplayLockContextRenderingTest, FloatChildLocked) {
   ASSERT_TRUE(lockable->GetDisplayLockContext());
   EXPECT_TRUE(DescendantDependentFlagUpdateWasBlocked(
       lockable->GetDisplayLockContext()));
-  EXPECT_EQ(LayoutRect(0, 0, 200, 50), lockable_box->VisualOverflowRect());
-  EXPECT_EQ(LayoutRect(0, 0, 200, 50), lockable_box->LayoutOverflowRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 200, 50), lockable_box->VisualOverflowRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 200, 50),
+            lockable_box->ScrollableOverflowRect());
 
   // After unlocking, we should process the pending visual overflow recalc.
   lockable->classList().Remove(AtomicString("hidden"));
   UpdateAllLifecyclePhasesForTest();
 
-  EXPECT_EQ(LayoutRect(0, 0, 200, 200), lockable_box->VisualOverflowRect());
-  EXPECT_EQ(LayoutRect(0, 0, 200, 200), lockable_box->LayoutOverflowRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 200, 200), lockable_box->VisualOverflowRect());
+  EXPECT_EQ(PhysicalRect(0, 0, 200, 200),
+            lockable_box->ScrollableOverflowRect());
 }
 
 TEST_P(DisplayLockContextRenderingTest,
@@ -3180,8 +3187,8 @@ TEST_P(DisplayLockContextRenderingTest, FirstAutoFramePaintsInViewport) {
   EXPECT_FALSE(visible->GetLayoutObject()->SelfNeedsFullLayout());
   EXPECT_FALSE(hidden->GetLayoutObject()->SelfNeedsFullLayout());
 
-  auto* visible_rect = visible->getBoundingClientRect();
-  auto* hidden_rect = hidden->getBoundingClientRect();
+  auto* visible_rect = visible->GetBoundingClientRect();
+  auto* hidden_rect = hidden->GetBoundingClientRect();
 
   EXPECT_FLOAT_EQ(visible_rect->height(), 100);
   EXPECT_FLOAT_EQ(hidden_rect->height(), 200);
@@ -3499,7 +3506,7 @@ TEST_P(DisplayLockContextTest, ReattachPropagationBlockedByDisplayLock) {
   auto* parent = GetDocument().getElementById(AtomicString("parent"));
 
   // Force update all layout objects
-  grandchild->getBoundingClientRect();
+  grandchild->GetBoundingClientRect();
 
   ASSERT_TRUE(locked->GetLayoutObject());
   ASSERT_TRUE(grandchild->GetLayoutObject());

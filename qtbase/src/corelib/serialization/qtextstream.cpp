@@ -196,6 +196,7 @@ static const int QTEXTSTREAM_BUFFERSIZE = 16384;
 #include "qnumeric.h"
 #include "qvarlengtharray.h"
 #include <private/qdebug_p.h>
+#include <private/qnumeric_p.h>
 #include <private/qtools_p.h>
 
 #include <locale.h>
@@ -247,6 +248,11 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 using namespace QtMiscUtils;
+
+#ifndef QT_NO_QOBJECT
+QDeviceClosedNotifier::~QDeviceClosedNotifier()
+    = default;
+#endif
 
 //-------------------------------------------------------------------
 
@@ -359,6 +365,7 @@ bool QTextStreamPrivate::fillReadBuffer(qint64 maxBytes)
     if (bytesRead <= 0)
         return false;
 
+#ifndef QT_BOOTSTRAPPED
     if (autoDetectUnicode) {
         autoDetectUnicode = false;
 
@@ -372,6 +379,7 @@ bool QTextStreamPrivate::fillReadBuffer(qint64 maxBytes)
     }
 #if defined (QTEXTSTREAM_DEBUG)
     qDebug("QTextStreamPrivate::fillReadBuffer(), using %s encoding", QStringConverter::nameForEncoding(encoding));
+#endif
 #endif
 
 #if defined (QTEXTSTREAM_DEBUG)
@@ -999,7 +1007,10 @@ QTextStream::QTextStream(FILE *fileHandle, OpenMode openMode)
            fileHandle, int(openMode));
 #endif
     QFile *file = new QFile;
-    file->open(fileHandle, openMode);
+    // Discarding the return value of open; even if it failed
+    // (and the file is not open), QTextStream still reports `Ok`
+    // for closed QIODevices, so there's nothing really to do here.
+    (void)file->open(fileHandle, openMode);
 
     Q_D(QTextStream);
     d->device = file;
@@ -1911,13 +1922,13 @@ bool QTextStreamPrivate::getReal(double *f)
     // nan/+inf/-inf, so here we also check for uppercase and mixed
     // case versions.
     if (!qstricmp(buf, "nan") || !qstricmp(buf, "+nan") || !qstricmp(buf, "-nan")) {
-        *f = qQNaN();
+        *f = qt_qnan();
         return true;
     } else if (!qstricmp(buf, "+inf") || !qstricmp(buf, "inf")) {
-        *f = qInf();
+        *f = qt_inf();
         return true;
     } else if (!qstricmp(buf, "-inf")) {
-        *f = -qInf();
+        *f = -qt_inf();
         return true;
     }
     bool ok;
@@ -2283,7 +2294,7 @@ QTextStream &QTextStream::operator<<(signed short i)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
-    d->putNumber((qulonglong)qAbs(qlonglong(i)), i < 0);
+    d->putNumber(QtPrivate::qUnsignedAbs(i), i < 0);
     return *this;
 }
 
@@ -2309,7 +2320,7 @@ QTextStream &QTextStream::operator<<(signed int i)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
-    d->putNumber((qulonglong)qAbs(qlonglong(i)), i < 0);
+    d->putNumber(QtPrivate::qUnsignedAbs(i), i < 0);
     return *this;
 }
 
@@ -2335,7 +2346,7 @@ QTextStream &QTextStream::operator<<(signed long i)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
-    d->putNumber((qulonglong)qAbs(qlonglong(i)), i < 0);
+    d->putNumber(QtPrivate::qUnsignedAbs(i), i < 0);
     return *this;
 }
 
@@ -2361,7 +2372,7 @@ QTextStream &QTextStream::operator<<(qlonglong i)
 {
     Q_D(QTextStream);
     CHECK_VALID_STREAM(*this);
-    d->putNumber((qulonglong)qAbs(i), i < 0);
+    d->putNumber(QtPrivate::qUnsignedAbs(i), i < 0);
     return *this;
 }
 
@@ -2822,7 +2833,7 @@ QTextStream &center(QTextStream &stream)
     \snippet code/src_corelib_io_qtextstream.cpp 9
 
     Note: On Windows, all '\\n' characters are written as '\\r\\n' if
-    QTextStream's device or string is opened using the QIODevice::Text flag.
+    QTextStream's device or string is opened using the \l QIODeviceBase::Text flag.
 
     \since 5.14
 

@@ -132,18 +132,18 @@ class ChromeDownloader(Downloader):
         logging.debug("Skipping download candidate: %s %s", version, url)
         continue
       version_str = ".".join(map(str, version))
-      archive_url = self._archive_url(url, version_str)
-      try:
-        result = self._platform.sh_stdout("gsutil", "ls", archive_url)
-      except plt.SubprocessError as e:
-        logging.debug("gsutil failed: %s", e)
-        continue
-      if result:
-        return archive_url
+      for archive_url in self._archive_urls(url, version_str):
+        try:
+          result = self._platform.sh_stdout("gsutil", "ls", archive_url)
+        except plt.SubprocessError as e:
+          logging.debug("gsutil failed: %s", e)
+          continue
+        if result:
+          return archive_url
     return None
 
   @abc.abstractmethod
-  def _archive_url(self, folder_url: str, version_str: str) -> str:
+  def _archive_urls(self, folder_url: str, version_str: str) -> Tuple[str, ...]:
     pass
 
   def _download_archive(self, archive_url: str, tmp_dir: pathlib.Path) -> None:
@@ -190,8 +190,8 @@ class ChromeDownloaderLinux(ChromeDownloader):
   def _default_app_path(self) -> pathlib.Path:
     return self._default_extracted_path() / "opt/google/chrome-unstable/chrome"
 
-  def _archive_url(self, folder_url: str, version_str: str) -> str:
-    return f"{folder_url}google-chrome-unstable-{version_str}-1.x86_64.rpm"
+  def _archive_urls(self, folder_url: str, version_str: str) -> Tuple[str, ...]:
+    return (f"{folder_url}google-chrome-unstable-{version_str}-1.x86_64.rpm",)
 
   def _extract_archive(self, archive_path: pathlib.Path) -> None:
     extracted_path = self._default_extracted_path()
@@ -232,9 +232,11 @@ class ChromeDownloaderMacOS(ChromeDownloader):
           f"but requested {self._requested_version_str} is too old.")
     super()._download_archive(archive_url, tmp_dir)
 
-  def _archive_url(self, folder_url: str, version_str: str) -> str:
-    # Use ChromeCanary since it's built for all version (unlike stable/beta).
-    return f"{folder_url}GoogleChromeCanary-{version_str}.dmg"
+  def _archive_urls(self, folder_url: str, version_str: str) -> Tuple[str, ...]:
+    stable_url = f"{folder_url}GoogleChrome-{version_str}.dmg"
+    beta_url = f"{folder_url}GoogleChromeBeta-{version_str}.dmg"
+    canary_url = f"{folder_url}GoogleChromeCanary-{version_str}.dmg"
+    return (stable_url, beta_url, canary_url)
 
   def _default_extracted_path(self) -> pathlib.Path:
     return self._default_app_path()
@@ -244,7 +246,10 @@ class ChromeDownloaderMacOS(ChromeDownloader):
 
   def _extract_archive(self, archive_path: pathlib.Path) -> None:
     extracted_path = self._default_extracted_path()
-    DMGArchiveHelper.extract(self._platform, archive_path, extracted_path)
+    if archive_path.suffix == ".dmg":
+      DMGArchiveHelper.extract(self._platform, archive_path, extracted_path)
+    else:
+      raise ValueError(f"Unknown archive type: {archive_path}")
     assert extracted_path.exists()
 
 
@@ -256,5 +261,5 @@ class ChromeDownloaderWin(ChromeDownloader):
                platform: plt.Platform) -> bool:
     return False
 
-  def _archive_url(self, folder_url: str, version_str: str) -> str:
+  def _archive_urls(self, folder_url: str, version_str: str) -> Tuple[str, ...]:
     raise NotImplementedError("Downloading on Windows not yet supported")

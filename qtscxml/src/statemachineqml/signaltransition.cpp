@@ -186,7 +186,9 @@ void SignalTransition::connectTriggered()
     }
 }
 
-void SignalTransitionParser::verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QList<const QV4::CompiledData::Binding *> &props)
+void SignalTransitionParser::verifyBindings(
+        const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &compilationUnit,
+        const QList<const QV4::CompiledData::Binding *> &props)
 {
     for (int ii = 0; ii < props.size(); ++ii) {
         const QV4::CompiledData::Binding *binding = props.at(ii);

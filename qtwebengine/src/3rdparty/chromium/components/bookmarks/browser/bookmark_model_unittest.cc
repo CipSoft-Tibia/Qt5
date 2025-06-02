@@ -26,6 +26,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/metrics/user_action_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
 #include "base/uuid.h"
@@ -34,8 +35,10 @@
 #include "components/bookmarks/browser/bookmark_node.h"
 #include "components/bookmarks/browser/bookmark_undo_provider.h"
 #include "components/bookmarks/browser/bookmark_utils.h"
+#include "components/bookmarks/browser/bookmark_uuids.h"
 #include "components/bookmarks/browser/titled_url_match.h"
 #include "components/bookmarks/browser/url_and_title.h"
+#include "components/bookmarks/common/bookmark_features.h"
 #include "components/bookmarks/common/bookmark_metrics.h"
 #include "components/bookmarks/common/storage_type.h"
 #include "components/bookmarks/test/bookmark_test_helpers.h"
@@ -44,6 +47,7 @@
 #include "components/favicon_base/favicon_callback.h"
 #include "components/favicon_base/favicon_types.h"
 #include "components/query_parser/query_parser.h"
+#include "components/sync/base/features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -54,6 +58,8 @@
 
 namespace bookmarks {
 namespace {
+
+using NodeTypeForUuidLookup = BookmarkModel::NodeTypeForUuidLookup;
 
 using base::ASCIIToUTF16;
 using base::Time;
@@ -525,6 +531,8 @@ class BookmarkModelTest : public testing::Test, public BookmarkModelObserver {
     model_->AddObserver(this);
   }
 
+  base::test::ScopedFeatureList features_{
+      syncer::kEnableBookmarkFoldersForAccountStorage};
   std::unique_ptr<BookmarkModel> model_;
   ObserverDetails observer_details_;
   std::vector<AllNodesRemovedDetail> all_bookmarks_removed_details_;
@@ -1387,7 +1395,7 @@ TEST_F(BookmarkModelTest, Copy) {
 
 // Tests the default node if no bookmarks have been added yet
 TEST_F(BookmarkModelTest, ParentForNewNodesWithEmptyModel) {
-#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   ASSERT_EQ(model_->mobile_node(), GetParentForNewNodes(model_.get()));
 #else
   ASSERT_EQ(model_->bookmark_bar_node(), GetParentForNewNodes(model_.get()));
@@ -1542,23 +1550,21 @@ TEST_F(BookmarkModelTest, GetMostRecentlyAddedUserNodeForURL) {
   ASSERT_EQ(n2, model_->GetMostRecentlyAddedUserNodeForURL(url));
 }
 
-// Makes sure GetBookmarks removes duplicates.
-TEST_F(BookmarkModelTest, GetBookmarksWithDups) {
+// Makes sure GetUniqueUrls removes duplicates.
+TEST_F(BookmarkModelTest, GetUniqueUrlsWithDups) {
   const GURL url("http://foo.com/0");
   const std::u16string title(u"blah");
   model_->AddURL(model_->bookmark_bar_node(), 0, title, url);
   model_->AddURL(model_->bookmark_bar_node(), 1, title, url);
 
-  std::vector<UrlAndTitle> bookmarks;
-  model_->GetBookmarks(&bookmarks);
+  std::vector<UrlAndTitle> bookmarks = model_->GetUniqueUrls();
   ASSERT_EQ(1U, bookmarks.size());
   EXPECT_EQ(url, bookmarks[0].url);
   EXPECT_EQ(title, bookmarks[0].title);
 
   model_->AddURL(model_->bookmark_bar_node(), 2, u"Title2", url);
   // Only one returned, even titles are different.
-  bookmarks.clear();
-  model_->GetBookmarks(&bookmarks);
+  bookmarks = model_->GetUniqueUrls();
   EXPECT_EQ(1U, bookmarks.size());
 }
 
@@ -1630,10 +1636,15 @@ TEST_F(BookmarkModelTest, Reorder) {
 }
 
 TEST_F(BookmarkModelTest, NodeVisibility) {
-  // Mobile node invisible by default
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  EXPECT_FALSE(model_->bookmark_bar_node()->IsVisible());
+  EXPECT_FALSE(model_->other_node()->IsVisible());
+  EXPECT_TRUE(model_->mobile_node()->IsVisible());
+#else
   EXPECT_TRUE(model_->bookmark_bar_node()->IsVisible());
   EXPECT_TRUE(model_->other_node()->IsVisible());
   EXPECT_FALSE(model_->mobile_node()->IsVisible());
+#endif
 
   // Arbitrary node should be visible
   TestNode bbn;
@@ -1641,9 +1652,44 @@ TEST_F(BookmarkModelTest, NodeVisibility) {
   const BookmarkNode* parent = model_->mobile_node();
   PopulateBookmarkNode(&bbn, model_.get(), parent);
   EXPECT_TRUE(parent->children().front()->IsVisible());
+  parent = model_->other_node();
+  PopulateBookmarkNode(&bbn, model_.get(), parent);
+  EXPECT_TRUE(parent->children().front()->IsVisible());
 
   // Mobile folder should be visible now that it has a child.
   EXPECT_TRUE(model_->mobile_node()->IsVisible());
+  EXPECT_TRUE(model_->other_node()->IsVisible());
+}
+
+TEST_F(BookmarkModelTest, NodeVisibility_AllBookmarksPhase0) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(
+      bookmarks::kAllBookmarksBaselineFolderVisibility);
+  model_->RemoveObserver(this);
+  model_ = TestBookmarkClient::CreateModelWithClient(
+      std::make_unique<TestBookmarkClientWithUndo>());
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  EXPECT_FALSE(model_->bookmark_bar_node()->IsVisible());
+#else
+  EXPECT_TRUE(model_->bookmark_bar_node()->IsVisible());
+#endif
+
+  EXPECT_TRUE(model_->other_node()->IsVisible());
+  // EXPECT_FALSE(model_->mobile_node()->IsVisible());
+
+  // Arbitrary node should be visible
+  TestNode bbn;
+  PopulateNodeFromString("B", &bbn);
+  const BookmarkNode* parent = model_->mobile_node();
+  PopulateBookmarkNode(&bbn, model_.get(), parent);
+  EXPECT_TRUE(parent->children().front()->IsVisible());
+  parent = model_->other_node();
+  PopulateBookmarkNode(&bbn, model_.get(), parent);
+  EXPECT_TRUE(parent->children().front()->IsVisible());
+
+  // Mobile folder should be visible now that it has a child.
+  EXPECT_TRUE(model_->mobile_node()->IsVisible());
+  EXPECT_TRUE(model_->other_node()->IsVisible());
 }
 
 TEST_F(BookmarkModelTest, MobileNodeVisibleWithChildren) {
@@ -1854,6 +1900,271 @@ TEST_F(BookmarkModelTest, TitledUrlIndexUpdatedOnChangeURL) {
                     .size());
 }
 
+TEST_F(BookmarkModelTest, GetNodeByUuid) {
+  const BookmarkNode* bookmark_bar_node = model_->bookmark_bar_node();
+  const base::Uuid explicit_uuid1 = base::Uuid::GenerateRandomV4();
+  const base::Uuid explicit_uuid2 = base::Uuid::GenerateRandomV4();
+
+  // Create two nodes (URL and folder) without specifying a UUID, which means
+  // a random one is used.
+  const BookmarkNode* url_node_with_implicit_uuid =
+      model_->AddURL(bookmark_bar_node, 0, u"title", GURL("http://foo.com"));
+  const BookmarkNode* folder_node_with_implicit_uuid =
+      model_->AddFolder(bookmark_bar_node, 0, u"title");
+
+  // Create two more with an explicit UUID provided.
+  const BookmarkNode* url_node_with_explicit_uuid = model_->AddURL(
+      bookmark_bar_node, 0, u"title", GURL("http://foo.com"),
+      /*meta_info=*/nullptr, /*creation_time=*/absl::nullopt, explicit_uuid1);
+  const BookmarkNode* folder_node_with_explicit_uuid = model_->AddFolder(
+      bookmark_bar_node, 0, u"title",
+      /*meta_info=*/nullptr, /*creation_time=*/absl::nullopt, explicit_uuid2);
+
+  ASSERT_TRUE(url_node_with_implicit_uuid);
+  ASSERT_TRUE(folder_node_with_implicit_uuid);
+  ASSERT_TRUE(url_node_with_explicit_uuid);
+  ASSERT_TRUE(folder_node_with_explicit_uuid);
+
+  EXPECT_EQ(
+      url_node_with_implicit_uuid,
+      model_->GetNodeByUuid(url_node_with_implicit_uuid->uuid(),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(
+      folder_node_with_implicit_uuid,
+      model_->GetNodeByUuid(folder_node_with_implicit_uuid->uuid(),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(url_node_with_explicit_uuid,
+            model_->GetNodeByUuid(
+                explicit_uuid1, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(folder_node_with_explicit_uuid,
+            model_->GetNodeByUuid(
+                explicit_uuid2, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  // Verify cases that should return nullptr.
+  EXPECT_EQ(nullptr,
+            model_->GetNodeByUuid(
+                base::Uuid(), NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         base::Uuid::GenerateRandomV4(),
+                         NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+}
+
+TEST_F(BookmarkModelTest, GetAccountNodeByUuid) {
+  model_->CreateAccountPermanentFolders();
+  const BookmarkNode* account_bookmark_bar_node =
+      model_->account_bookmark_bar_node();
+  ASSERT_NE(nullptr, account_bookmark_bar_node);
+  ASSERT_EQ(account_bookmark_bar_node,
+            model_->GetNodeByUuid(account_bookmark_bar_node->uuid(),
+                                  NodeTypeForUuidLookup::kAccountNodes));
+  ASSERT_NE(
+      account_bookmark_bar_node,
+      model_->GetNodeByUuid(account_bookmark_bar_node->uuid(),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  // Create two nodes (URL and folder) without specifying a UUID, which means
+  // a random one is used.
+  const BookmarkNode* url_node_with_implicit_uuid = model_->AddURL(
+      account_bookmark_bar_node, 0, u"title", GURL("http://foo.com"));
+  const BookmarkNode* folder_node_with_implicit_uuid =
+      model_->AddFolder(account_bookmark_bar_node, 0, u"title");
+
+  ASSERT_TRUE(url_node_with_implicit_uuid);
+  ASSERT_TRUE(folder_node_with_implicit_uuid);
+
+  EXPECT_EQ(url_node_with_implicit_uuid,
+            model_->GetNodeByUuid(url_node_with_implicit_uuid->uuid(),
+                                  NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(folder_node_with_implicit_uuid,
+            model_->GetNodeByUuid(folder_node_with_implicit_uuid->uuid(),
+                                  NodeTypeForUuidLookup::kAccountNodes));
+
+  // Verify that lookups using kLocalOrSyncableNodes return nullptr.
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         url_node_with_implicit_uuid->uuid(),
+                         NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         folder_node_with_implicit_uuid->uuid(),
+                         NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+}
+
+TEST_F(BookmarkModelTest, GetPermanentNodeByUuid) {
+  // Permanent nodes should be returned by UUID.
+  EXPECT_EQ(
+      model_->root_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kRootNodeUuid),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(
+      model_->bookmark_bar_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kBookmarkBarNodeUuid),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(model_->mobile_node(),
+            model_->GetNodeByUuid(
+                base::Uuid::ParseLowercase(kMobileBookmarksNodeUuid),
+                NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(
+      model_->other_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kOtherBookmarksNodeUuid),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  // Managed bookmarks don't exist by default.
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         base::Uuid::ParseLowercase(kManagedNodeUuid),
+                         NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  BookmarkPermanentNode* managed_node = ReloadModelWithManagedNode();
+  EXPECT_EQ(managed_node, model_->GetNodeByUuid(
+                              base::Uuid::ParseLowercase(kManagedNodeUuid),
+                              NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+}
+
+TEST_F(BookmarkModelTest, GetAccountPermanentNodeByUuid) {
+  BookmarkPermanentNode* managed_node = ReloadModelWithManagedNode();
+  ASSERT_NE(nullptr, managed_node);
+
+  ASSERT_EQ(nullptr, model_->account_bookmark_bar_node());
+  ASSERT_EQ(nullptr, model_->account_mobile_node());
+  ASSERT_EQ(nullptr, model_->account_other_node());
+
+  // Before account nodes are created, the lookups should return null.
+  EXPECT_EQ(nullptr,
+            model_->GetNodeByUuid(base::Uuid::ParseLowercase(kRootNodeUuid),
+                                  NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         base::Uuid::ParseLowercase(kBookmarkBarNodeUuid),
+                         NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         base::Uuid::ParseLowercase(kMobileBookmarksNodeUuid),
+                         NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         base::Uuid::ParseLowercase(kOtherBookmarksNodeUuid),
+                         NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(nullptr,
+            model_->GetNodeByUuid(base::Uuid::ParseLowercase(kManagedNodeUuid),
+                                  NodeTypeForUuidLookup::kAccountNodes));
+
+  model_->CreateAccountPermanentFolders();
+  ASSERT_NE(nullptr, model_->account_bookmark_bar_node());
+  ASSERT_NE(nullptr, model_->account_mobile_node());
+  ASSERT_NE(nullptr, model_->account_other_node());
+
+  // The root node's UUID should still return null.
+  EXPECT_EQ(nullptr,
+            model_->GetNodeByUuid(base::Uuid::ParseLowercase(kRootNodeUuid),
+                                  NodeTypeForUuidLookup::kAccountNodes));
+
+  // Account permanent nodes should be returned by UUID.
+  EXPECT_EQ(
+      model_->account_bookmark_bar_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kBookmarkBarNodeUuid),
+                            NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(model_->account_mobile_node(),
+            model_->GetNodeByUuid(
+                base::Uuid::ParseLowercase(kMobileBookmarksNodeUuid),
+                NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(
+      model_->account_other_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kOtherBookmarksNodeUuid),
+                            NodeTypeForUuidLookup::kAccountNodes));
+
+  // Managed bookmarks are not considered account nodes.
+  EXPECT_EQ(nullptr,
+            model_->GetNodeByUuid(base::Uuid::ParseLowercase(kManagedNodeUuid),
+                                  NodeTypeForUuidLookup::kAccountNodes));
+
+  // Verify that having created account bookmarks doesn't influence
+  // local-or-syncable lookups.
+  ASSERT_NE(model_->bookmark_bar_node(), model_->account_bookmark_bar_node());
+  ASSERT_NE(model_->mobile_node(), model_->account_mobile_node());
+  ASSERT_NE(model_->other_node(), model_->account_other_node());
+  EXPECT_EQ(
+      model_->root_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kRootNodeUuid),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(
+      model_->bookmark_bar_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kBookmarkBarNodeUuid),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(model_->mobile_node(),
+            model_->GetNodeByUuid(
+                base::Uuid::ParseLowercase(kMobileBookmarksNodeUuid),
+                NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(
+      model_->other_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kOtherBookmarksNodeUuid),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  // Removing account nodes should make lookups fail again.
+  model_->RemoveAccountPermanentFolders();
+  ASSERT_EQ(nullptr, model_->account_bookmark_bar_node());
+  ASSERT_EQ(nullptr, model_->account_mobile_node());
+  ASSERT_EQ(nullptr, model_->account_other_node());
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         base::Uuid::ParseLowercase(kBookmarkBarNodeUuid),
+                         NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         base::Uuid::ParseLowercase(kMobileBookmarksNodeUuid),
+                         NodeTypeForUuidLookup::kAccountNodes));
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         base::Uuid::ParseLowercase(kOtherBookmarksNodeUuid),
+                         NodeTypeForUuidLookup::kAccountNodes));
+}
+
+TEST_F(BookmarkModelTest, GetNodeByUuidAfterRemove) {
+  const BookmarkNode* folder1 =
+      model_->AddFolder(model_->bookmark_bar_node(), 0, u"title1");
+  const BookmarkNode* folder2 =
+      model_->AddFolder(model_->bookmark_bar_node(), 0, u"title2");
+
+  const base::Uuid uuid1 = folder1->uuid();
+  const base::Uuid uuid2 = folder2->uuid();
+
+  ASSERT_EQ(folder1, model_->GetNodeByUuid(
+                         uuid1, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  ASSERT_EQ(folder2, model_->GetNodeByUuid(
+                         uuid2, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  model_->Remove(folder1, bookmarks::metrics::BookmarkEditSource::kOther);
+
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         uuid1, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(folder2, model_->GetNodeByUuid(
+                         uuid2, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  model_->Remove(folder2, bookmarks::metrics::BookmarkEditSource::kOther);
+
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         uuid2, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+}
+
+TEST_F(BookmarkModelTest, GetNodeByUuidAfterRemoveAllUserBookmarks) {
+  const BookmarkNode* folder1 =
+      model_->AddFolder(model_->bookmark_bar_node(), 0, u"title1");
+  const BookmarkNode* folder2 =
+      model_->AddFolder(model_->bookmark_bar_node(), 0, u"title2");
+
+  const base::Uuid uuid1 = folder1->uuid();
+  const base::Uuid uuid2 = folder2->uuid();
+
+  ASSERT_EQ(folder1, model_->GetNodeByUuid(
+                         uuid1, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  ASSERT_EQ(folder2, model_->GetNodeByUuid(
+                         uuid2, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  model_->RemoveAllUserBookmarks();
+
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         uuid1, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+  EXPECT_EQ(nullptr, model_->GetNodeByUuid(
+                         uuid2, NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+
+  // Permanent nodes should continue to exist and be returned by UUID.
+  EXPECT_EQ(
+      model_->bookmark_bar_node(),
+      model_->GetNodeByUuid(base::Uuid::ParseLowercase(kBookmarkBarNodeUuid),
+                            NodeTypeForUuidLookup::kLocalOrSyncableNodes));
+}
+
 // Verifies the TitledUrlIndex is probably loaded.
 TEST(BookmarkModelLoadTest, TitledUrlIndexPopulatedOnLoad) {
   // Create a model with a single url.
@@ -1861,7 +2172,7 @@ TEST(BookmarkModelLoadTest, TitledUrlIndexPopulatedOnLoad) {
   ASSERT_TRUE(tmp_dir.CreateUniqueTempDir());
   base::test::TaskEnvironment task_environment{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
-  std::unique_ptr<BookmarkModel> model =
+  auto model =
       std::make_unique<BookmarkModel>(std::make_unique<TestBookmarkClient>());
   model->Load(tmp_dir.GetPath(), StorageType::kLocalOrSyncable);
   test::WaitForBookmarkModelToLoad(model.get());
@@ -1955,6 +2266,47 @@ TEST(BookmarkModelTest2, CreateAndRestore) {
   }
 }
 
+TEST_F(BookmarkModelTest, CreateAccountPermanentFolders) {
+  ASSERT_EQ(nullptr, model_->account_bookmark_bar_node());
+  ASSERT_EQ(nullptr, model_->account_other_node());
+  ASSERT_EQ(nullptr, model_->account_mobile_node());
+
+  ClearCounts();
+  model_->CreateAccountPermanentFolders();
+
+  ASSERT_NE(nullptr, model_->account_bookmark_bar_node());
+  ASSERT_NE(nullptr, model_->account_other_node());
+  ASSERT_NE(nullptr, model_->account_mobile_node());
+
+  EXPECT_TRUE(model_->account_bookmark_bar_node()->is_permanent_node());
+  EXPECT_TRUE(model_->account_other_node()->is_permanent_node());
+  EXPECT_TRUE(model_->account_mobile_node()->is_permanent_node());
+
+  EXPECT_EQ(BookmarkNode::BOOKMARK_BAR,
+            model_->account_bookmark_bar_node()->type());
+  EXPECT_EQ(BookmarkNode::OTHER_NODE, model_->account_other_node()->type());
+  EXPECT_EQ(BookmarkNode::MOBILE, model_->account_mobile_node()->type());
+
+  AssertObserverCount(3, 0, 0, 0, 0, 0, 0, 0, 0);
+}
+
+TEST_F(BookmarkModelTest, RemoveAccountPermanentFolders) {
+  model_->CreateAccountPermanentFolders();
+
+  ASSERT_NE(nullptr, model_->account_bookmark_bar_node());
+  ASSERT_NE(nullptr, model_->account_other_node());
+  ASSERT_NE(nullptr, model_->account_mobile_node());
+
+  ClearCounts();
+  model_->RemoveAccountPermanentFolders();
+
+  EXPECT_EQ(nullptr, model_->account_bookmark_bar_node());
+  EXPECT_EQ(nullptr, model_->account_other_node());
+  EXPECT_EQ(nullptr, model_->account_mobile_node());
+
+  AssertObserverCount(0, 0, 3, 0, 0, 3, 0, 0, 0);
+}
+
 }  // namespace
 
 class BookmarkModelFaviconTest : public testing::Test,
@@ -2028,7 +2380,7 @@ class BookmarkModelFaviconTest : public testing::Test,
       const std::set<GURL>& removed_urls) override {}
 
   std::unique_ptr<BookmarkModel> model_;
-  std::vector<const BookmarkNode*> updated_nodes_;
+  std::vector<raw_ptr<const BookmarkNode, VectorExperimental>> updated_nodes_;
 };
 
 // Test that BookmarkModel::OnFaviconsChanged() sends a notification that the

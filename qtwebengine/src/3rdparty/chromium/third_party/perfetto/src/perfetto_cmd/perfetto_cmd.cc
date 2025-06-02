@@ -60,11 +60,11 @@
 #include "perfetto/ext/traced/traced.h"
 #include "perfetto/ext/tracing/core/basic_types.h"
 #include "perfetto/ext/tracing/core/trace_packet.h"
-#include "perfetto/ext/tracing/ipc/default_socket.h"
 #include "perfetto/protozero/proto_utils.h"
 #include "perfetto/tracing/core/data_source_descriptor.h"
 #include "perfetto/tracing/core/trace_config.h"
 #include "perfetto/tracing/core/tracing_service_state.h"
+#include "perfetto/tracing/default_socket.h"
 #include "src/android_stats/statsd_logging_helper.h"
 #include "src/perfetto_cmd/bugreport_path.h"
 #include "src/perfetto_cmd/config.h"
@@ -144,7 +144,8 @@ bool ParseTraceConfigPbtxt(const std::string& file_name,
 }
 
 bool IsUserBuild() {
-#if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+#if PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD) && \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
   std::string build_type = base::GetAndroidProp("ro.build.type");
   if (build_type.empty()) {
     PERFETTO_ELOG("Unable to read ro.build.type: assuming user build");
@@ -153,7 +154,8 @@ bool IsUserBuild() {
   return build_type == "user";
 #else
   return false;
-#endif  // PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD)
+#endif  // PERFETTO_BUILDFLAG(PERFETTO_ANDROID_BUILD) &&
+        // PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
 }
 
 std::optional<PerfettoStatsdAtom> ConvertRateLimiterResponseToAtom(
@@ -236,8 +238,9 @@ Usage: %s
                              (e.g., file.0, file.1, file.2).
   --txt                    : Parse config as pbtxt. Not for production use.
                              Not a stable API.
-  --query                  : Queries the service state and prints it as
-                             human-readable text.
+  --query [--long]         : Queries the service state and prints it as
+                             human-readable text. --long allows the output to
+                             extend past 80 chars.
   --query-raw              : Like --query, but prints raw proto-encoded bytes
                              of tracing_service_state.proto.
   --help           -h
@@ -298,6 +301,7 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
     OPT_IS_DETACHED,
     OPT_STOP,
     OPT_QUERY,
+    OPT_LONG,
     OPT_QUERY_RAW,
     OPT_VERSION,
   };
@@ -326,6 +330,7 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
       {"is_detached", required_argument, nullptr, OPT_IS_DETACHED},
       {"stop", no_argument, nullptr, OPT_STOP},
       {"query", no_argument, nullptr, OPT_QUERY},
+      {"long", no_argument, nullptr, OPT_LONG},
       {"query-raw", no_argument, nullptr, OPT_QUERY_RAW},
       {"version", no_argument, nullptr, OPT_VERSION},
       {"save-for-bugreport", no_argument, nullptr, OPT_BUGREPORT},
@@ -520,6 +525,11 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
       continue;
     }
 
+    if (option == OPT_LONG) {
+      query_service_long_ = true;
+      continue;
+    }
+
     if (option == OPT_QUERY_RAW) {
       query_service_ = true;
       query_service_output_raw_ = true;
@@ -550,6 +560,11 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
     return 1;
   }
 
+  if (query_service_long_ && !query_service_) {
+    PERFETTO_ELOG("--long can only be used with --query");
+    return 1;
+  }
+
   if (is_detach() && is_attach()) {
     PERFETTO_ELOG("--attach and --detach are mutually exclusive");
     return 1;
@@ -574,6 +589,7 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
   // --save-for-bugreport is the equivalent of:
   // --clone kBugreportSessionId -o /data/misc/perfetto-traces/bugreport/...
   if (bugreport_ && trace_out_path_.empty()) {
+    PERFETTO_LOG("Invoked perfetto with --save-for-bugreport");
     clone_tsid_ = kBugreportSessionId;
     trace_out_path_ = GetBugreportTracePath();
   }
@@ -587,6 +603,7 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
   trace_config_.reset(new TraceConfig());
 
   bool parsed = false;
+  bool cfg_could_be_txt = false;
   const bool will_trace_or_trigger = !is_attach() && !query_service_;
   if (!will_trace_or_trigger) {
     if ((!trace_config_raw.empty() || has_config_options)) {
@@ -612,6 +629,14 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
                                      trace_config_.get());
     } else {
       parsed = trace_config_->ParseFromString(trace_config_raw);
+      cfg_could_be_txt =
+          !parsed && std::all_of(trace_config_raw.begin(),
+                                 trace_config_raw.end(), [](char c) {
+                                   // This is equiv to: isprint(c) || isspace(x)
+                                   // but doesn't depend on and load the locale.
+                                   return (c >= 32 && c <= 126) ||
+                                          (c >= 9 && c <= 13);
+                                 });
     }
   }
 
@@ -620,6 +645,12 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
     trace_config_raw.clear();
   } else if (will_trace_or_trigger && !clone_tsid_) {
     PERFETTO_ELOG("The trace config is invalid, bailing out.");
+    if (cfg_could_be_txt) {
+      PERFETTO_ELOG(
+          "Looks like you are passing a textual config but I'm expecting a "
+          "proto-encoded binary config.");
+      PERFETTO_ELOG("Try adding --txt to the cmdline.");
+    }
     return 1;
   }
 
@@ -796,24 +827,7 @@ std::optional<int> PerfettoCmd::ParseCmdlineAndMaybeDaemonize(int argc,
     if (!OpenOutputFile())
       return 1;
     if (!trace_config_->write_into_file())
-      packet_writer_ = CreateFilePacketWriter(trace_out_stream_.get());
-  }
-
-  // TODO(b/281043457): this code path will go away after Android U. Compression
-  // has been moved to the service. This code is here only as a fallback in case
-  // of bugs in the U timeframe.
-  if (trace_config_->compress_from_cli() &&
-      trace_config_->compression_type() ==
-          TraceConfig::COMPRESSION_TYPE_DEFLATE) {
-    if (packet_writer_) {
-#if PERFETTO_BUILDFLAG(PERFETTO_ZLIB)
-      packet_writer_ = CreateZipPacketWriter(std::move(packet_writer_));
-#else
-      PERFETTO_ELOG("Cannot compress. Zlib not enabled in the build config");
-#endif
-    } else {
-      PERFETTO_ELOG("Cannot compress when tracing directly to file.");
-    }
+      packet_writer_.emplace(trace_out_stream_.get());
   }
 
   bool will_trace_indefinitely =
@@ -1126,6 +1140,7 @@ void PerfettoCmd::CheckTraceDataTimeout() {
 void PerfettoCmd::OnTraceData(std::vector<TracePacket> packets, bool has_more) {
   trace_data_timeout_armed_ = false;
 
+  PERFETTO_CHECK(packet_writer_.has_value());
   if (!packet_writer_->WritePackets(packets)) {
     PERFETTO_ELOG("Failed to write packets");
     FinalizeTraceAndExit();
@@ -1396,15 +1411,17 @@ NAME                                     PRODUCER                     DETAILS
       }
     }
 
-    printf("%-40s %-40s ", ds.ds_descriptor().name().c_str(),
+    printf("%-40s %-28s ", ds.ds_descriptor().name().c_str(),
            producer_id_and_name);
     // Print the category names for clients using the track event SDK.
+    std::string cats;
     if (!ds.ds_descriptor().track_event_descriptor_raw().empty()) {
       const std::string& raw = ds.ds_descriptor().track_event_descriptor_raw();
       protos::gen::TrackEventDescriptor desc;
       if (desc.ParseFromArray(raw.data(), raw.size())) {
         for (const auto& cat : desc.available_categories()) {
-          printf("%s,", cat.name().c_str());
+          cats.append(cats.empty() ? "" : ",");
+          cats.append(cat.name());
         }
       }
     } else if (!ds.ds_descriptor().ftrace_descriptor_raw().empty()) {
@@ -1412,11 +1429,17 @@ NAME                                     PRODUCER                     DETAILS
       protos::gen::FtraceDescriptor desc;
       if (desc.ParseFromArray(raw.data(), raw.size())) {
         for (const auto& cat : desc.atrace_categories()) {
-          printf("%s,", cat.name().c_str());
+          cats.append(cats.empty() ? "" : ",");
+          cats.append(cat.name());
         }
       }
     }
-    printf("\n");
+    const size_t kCatsShortLen = 40;
+    if (!query_service_long_ && cats.length() > kCatsShortLen) {
+      cats = cats.substr(0, kCatsShortLen);
+      cats.append("... (use --long to expand)");
+    }
+    printf("%s\n", cats.c_str());
   }  // for data_sources()
 
   if (svc_state.supports_tracing_sessions()) {

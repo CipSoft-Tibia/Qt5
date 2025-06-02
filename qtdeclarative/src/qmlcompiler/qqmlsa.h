@@ -42,11 +42,11 @@ class PassManager;
 class PassManagerPrivate;
 class PropertyPass;
 class PropertyPrivate;
-enum class AccessSemantics;
 struct BindingInfo;
 struct PropertyPassInfo;
 
 enum class MethodType { Signal, Slot, Method, StaticMethod };
+enum class AccessSemantics { Reference, Value, None, Sequence };
 
 class Q_QMLCOMPILER_EXPORT Binding
 {
@@ -138,6 +138,7 @@ public:
     ~Method();
 
     QString methodName() const;
+    QQmlSA::SourceLocation sourceLocation() const;
     MethodType methodType() const;
 
     friend bool operator==(const Method &lhs, const Method &rhs)

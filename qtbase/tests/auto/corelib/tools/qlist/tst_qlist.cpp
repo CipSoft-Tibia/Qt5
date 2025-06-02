@@ -1,6 +1,12 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#ifdef QT_NO_STRICT_QLIST_ITERATORS
+#  ifdef QT_STRICT_QLIST_ITERATORS
+#    undef QT_STRICT_QLIST_ITERATORS
+#  endif
+#endif
+
 #include <QTest>
 #include <QAtomicInt>
 #include <QThread>
@@ -8,6 +14,8 @@
 #include <QAtomicScopedValueRollback>
 #include <qlist.h>
 
+#include <cstdio>
+#include <QtCore/q20memory.h>
 
 #ifdef QT_COMPILER_HAS_LWG3346
 #  if __has_include(<concepts>)
@@ -322,6 +330,7 @@ private slots:
     void resizeToZero() const;
     void resizeToTheSameSize_data();
     void resizeToTheSameSize() const;
+    void resizeForOverwrite() const;
     void iterators() const;
     void constIterators() const;
     void reverseIterators() const;
@@ -332,6 +341,7 @@ private slots:
     void swapInt() const { swap<int>(); }
     void swapMovable() const { swap<Movable>(); }
     void swapCustom() const { swap<Custom>(); }
+    void toAddress() const;
     void toList() const;
 #if QT_VERSION < QT_VERSION_CHECK(6,0,0)
     void fromStdVector() const;
@@ -984,7 +994,7 @@ namespace QTest {
 char *toString(const ConstructionCounted &cc)
 {
     char *str = new char[5];
-    qsnprintf(str, 4, "%d", cc.i);
+    std::snprintf(str, 4, "%d", cc.i);
     return str;
 }
 }
@@ -2531,6 +2541,51 @@ void tst_QList::resizeToTheSameSize() const
     QCOMPARE(y.size(), x.size());
 }
 
+void tst_QList::resizeForOverwrite() const
+{
+    constexpr int BUILD_COUNT = 42;
+    {
+        // Smoke test
+        QList<int> l(BUILD_COUNT, Qt::Uninitialized);
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+    }
+
+    {
+        const int beforeCounter = Movable::counter.loadRelaxed();
+        QList<Movable> l(BUILD_COUNT, Qt::Uninitialized);
+        const int after1Counter = Movable::counter.loadRelaxed();
+        QCOMPARE(after1Counter, beforeCounter + BUILD_COUNT);
+
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+        const int after2Counter = Movable::counter.loadRelaxed();
+        QCOMPARE(after2Counter, after1Counter + BUILD_COUNT);
+    }
+
+    struct QtInitializationSupport {
+        bool wasInitialized;
+        QtInitializationSupport() : wasInitialized(true) {}
+        explicit QtInitializationSupport(Qt::Initialization) : wasInitialized(false) {}
+    };
+
+    {
+        QList<QtInitializationSupport> l(BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(elem.wasInitialized);
+        l.resize(l.size() + BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(elem.wasInitialized);
+    }
+
+    {
+        QList<QtInitializationSupport> l(BUILD_COUNT, Qt::Uninitialized);
+        for (const auto &elem : l)
+            QVERIFY(!elem.wasInitialized);
+        l.resizeForOverwrite(l.size() + BUILD_COUNT);
+        for (const auto &elem : l)
+            QVERIFY(!elem.wasInitialized);
+    }
+}
+
 void tst_QList::iterators() const
 {
     QList<int> v;
@@ -2880,6 +2935,23 @@ void tst_QList::startsWith() const
     // remove it again :)
     myvec.remove(0);
     QVERIFY(myvec.startsWith(1));
+}
+
+void tst_QList::toAddress() const
+{
+    // Annoyingly, QList::iterator is a class; make sure std::to_address works on them
+    QList<int> l = {1, 2, 3, 4, 5};
+    auto check = [&](auto b, auto e) {
+        QCOMPARE_EQ(q20::to_address(b), l.data());
+        QCOMPARE_EQ(q20::to_address(e), l.data() + l.size());
+    };
+    // begin QTBUG-130643
+    check(l.begin(), l.end());
+    check(l.cbegin(), l.cend());
+    // end QTBUG-130643
+    // for reverse_iterator, account for the off-by-one to its ::base():
+    check(l.rend() - 1, l.rbegin() - 1);
+    check(l.crend() - 1, l.crbegin() - 1);
 }
 
 template<typename T>

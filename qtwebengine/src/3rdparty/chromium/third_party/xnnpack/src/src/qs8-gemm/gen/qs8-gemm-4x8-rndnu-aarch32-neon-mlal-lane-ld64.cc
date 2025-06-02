@@ -22,14 +22,14 @@ class Generator : public MacroAssembler {
 };
 
 
-// void xnn_qs8_gemm_minmax_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_prfm_ld64(
+// void xnn_qs8_gemm_minmax_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_ld64_prfm(
 //     size_t mr,                            r0
 //     size_t nc,                            r1
 //     size_t kc,                            r2 -> r5
-//     const uint8_t*restrict a,             r3
+//     const uint8_t* restrict a,             r3
 //     size_t a_stride,           sp + 64 -> (r7)
-//     const void*restrict w,     sp + 68 -> r9
-//     uint8_t*restrict c,        sp + 72 -> r11
+//     const void* restrict w,     sp + 68 -> r9
+//     uint8_t* restrict c,        sp + 72 -> r11
 //     size_t cm_stride,          sp + 76 -> (r6)
 //     size_t cn_stride,          sp + 80 -> r7
 //     xnn_qs8_conv_minmax_params params)  sp + 84 -> (r5)
@@ -58,10 +58,10 @@ class Generator : public MacroAssembler {
 //    int8_t output_max;          d11[7]
 //  } rndnu_neon;
 
-// Converted from: src/qs8-gemm/gen/4x8-minmax-rndnu-aarch32-neon-mlal-lane-prfm-ld64.S
+// Converted from: src/qs8-gemm/gen/4x8-minmax-rndnu-aarch32-neon-mlal-lane-ld64-prfm.S
 void Generator::generate(bool prefetch, size_t max_mr, size_t nc_mod_nr, size_t kc, const void* params)
 {
-  assert(nc_mod_nr < 8);
+  assert(nc_mod_nr < 8 || nc_mod_nr == SIZE_MAX);
   assert(kc != 0);
 
   Label l0, l1, l2, l3, l4, l5, l6, l7;
@@ -486,7 +486,7 @@ xnn_status_t xnn_generate_qs8_gemm_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_ld6
   return xnn_status_success;
 }
 
-xnn_status_t xnn_generate_qs8_gemm_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_prfm_ld64(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, const void* params) {
+xnn_status_t xnn_generate_qs8_gemm_rndnu_ukernel_4x8__aarch32_neon_mlal_lane_ld64_prfm(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, const void* params) {
   using namespace xnnpack::aarch32;
   Generator g(code);
   g.generate(true, max_mr, nc_mod_nr, kc, nullptr);

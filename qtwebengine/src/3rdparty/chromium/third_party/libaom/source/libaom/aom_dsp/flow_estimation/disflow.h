@@ -79,6 +79,9 @@ extern "C" {
 #define DISFLOW_INTERP_BITS 14
 
 typedef struct {
+  // Start of allocation for u and v buffers
+  double *buf0;
+
   // x and y directions of flow, per patch
   double *u;
   double *v;
@@ -93,7 +96,8 @@ bool av1_compute_global_motion_disflow(TransformationType type,
                                        YV12_BUFFER_CONFIG *src,
                                        YV12_BUFFER_CONFIG *ref, int bit_depth,
                                        MotionModel *motion_models,
-                                       int num_motion_models);
+                                       int num_motion_models,
+                                       bool *mem_alloc_failed);
 
 #ifdef __cplusplus
 }

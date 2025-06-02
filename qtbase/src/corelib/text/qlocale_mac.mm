@@ -344,7 +344,10 @@ static QVariant macToQtFormat(QStringView sys_fmt)
         case 'Y': // Year for Week-of-year calendars (1..n): 1..n = padded number
             break;
 
-        case 'u': // Extended Year (1..n): 2 = short year, 1 & 3..n = padded number
+        case 'u': // Extended Year (1..n), padded number.
+            // Explicitly has no special case for 'uu' as only the last two digits.
+            result += "yyyy"_L1;
+            break;
         case 'y': // Year (1..n): 2 = short year, 1 & 3..n = padded number
             // Qt only supports long (4) or short (2) year, use long for all others
             if (repeat == 2)
@@ -376,8 +379,8 @@ static QVariant macToQtFormat(QStringView sys_fmt)
         case 'a': // AM/PM (1..n): Qt supports no distinctions
         case 'b': // Like a, but also distinguishing noon, midnight (ignore difference).
         case 'B': // Flexible day period (at night, &c.)
-            // Translate to Qt uppercase AM/PM
-            result += "AP"_L1;
+            // Translate to Qt AM/PM, using locale-appropriate case:
+            result += "Ap"_L1;
             break;
         case 'h': // Hour [1..12] (1,2): 1,2 = padded number
         case 'K': // Hour [0..11] (1,2): 1,2 = padded number
@@ -400,13 +403,19 @@ static QVariant macToQtFormat(QStringView sys_fmt)
                 result += "zzz"_L1;
             break;
         case 'O': // Time Zone (1, 4)
+            result += u't';
+            break;
         case 'v': // Time Zone (1, 4)
         case 'V': // Time Zone (1..4)
+            result += "tttt"_L1;
+            break;
         case 'x': // Time Zone (1..5)
         case 'X': // Time Zone (1..5)
+            result += (repeat > 1 && (repeat & 1)) ? "ttt"_L1 : "tt"_L1;
+            break;
         case 'z': // Time Zone (1..4)
         case 'Z': // Time Zone (1..5)
-            result += u't';
+            result += repeat < 4 ? "tt"_L1 : repeat > 4 ? "ttt"_L1 : "t"_L1;
             break;
         default:
             // a..z and A..Z are reserved for format codes, so any occurrence of these not

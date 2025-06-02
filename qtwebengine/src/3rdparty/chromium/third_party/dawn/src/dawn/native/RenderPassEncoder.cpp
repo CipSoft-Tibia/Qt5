@@ -1,16 +1,29 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/RenderPassEncoder.h"
 
@@ -51,7 +64,7 @@ MaybeError ValidateQueryIndexOverwrite(QuerySetBase* querySet,
 // BeginRenderPassCmd. If we had RenderPassEncoder responsible for recording the
 // command, then this wouldn't be necessary.
 RenderPassEncoder::RenderPassEncoder(DeviceBase* device,
-                                     const RenderPassDescriptor* descriptor,
+                                     const UnpackedPtr<RenderPassDescriptor>& descriptor,
                                      CommandEncoder* commandEncoder,
                                      EncodingContext* encodingContext,
                                      RenderPassResourceUsageTracker usageTracker,
@@ -73,26 +86,25 @@ RenderPassEncoder::RenderPassEncoder(DeviceBase* device,
       mOcclusionQuerySet(descriptor->occlusionQuerySet),
       mEndCallback(std::move(endCallback)) {
     mUsageTracker = std::move(usageTracker);
-    const RenderPassDescriptorMaxDrawCount* maxDrawCountInfo = nullptr;
-    FindInChain(descriptor->nextInChain, &maxDrawCountInfo);
-    if (maxDrawCountInfo) {
+    if (auto* maxDrawCountInfo = descriptor.Get<RenderPassDescriptorMaxDrawCount>()) {
         mMaxDrawCount = maxDrawCountInfo->maxDrawCount;
     }
     GetObjectTrackingList()->Track(this);
 }
 
 // static
-Ref<RenderPassEncoder> RenderPassEncoder::Create(DeviceBase* device,
-                                                 const RenderPassDescriptor* descriptor,
-                                                 CommandEncoder* commandEncoder,
-                                                 EncodingContext* encodingContext,
-                                                 RenderPassResourceUsageTracker usageTracker,
-                                                 Ref<AttachmentState> attachmentState,
-                                                 uint32_t renderTargetWidth,
-                                                 uint32_t renderTargetHeight,
-                                                 bool depthReadOnly,
-                                                 bool stencilReadOnly,
-                                                 std::function<void()> endCallback) {
+Ref<RenderPassEncoder> RenderPassEncoder::Create(
+    DeviceBase* device,
+    const UnpackedPtr<RenderPassDescriptor>& descriptor,
+    CommandEncoder* commandEncoder,
+    EncodingContext* encodingContext,
+    RenderPassResourceUsageTracker usageTracker,
+    Ref<AttachmentState> attachmentState,
+    uint32_t renderTargetWidth,
+    uint32_t renderTargetHeight,
+    bool depthReadOnly,
+    bool stencilReadOnly,
+    std::function<void()> endCallback) {
     return AcquireRef(new RenderPassEncoder(device, descriptor, commandEncoder, encodingContext,
                                             std::move(usageTracker), std::move(attachmentState),
                                             renderTargetWidth, renderTargetHeight, depthReadOnly,
@@ -145,7 +157,7 @@ void RenderPassEncoder::APIEnd() {
 }
 
 void RenderPassEncoder::End() {
-    ASSERT(GetDevice()->IsLockedByCurrentThreadIfNeeded());
+    DAWN_ASSERT(GetDevice()->IsLockedByCurrentThreadIfNeeded());
 
     if (mEnded && IsValidationEnabled()) {
         GetDevice()->HandleError(DAWN_VALIDATION_ERROR("%s was already ended.", this));
@@ -333,12 +345,13 @@ void RenderPassEncoder::APIExecuteBundles(uint32_t count, RenderBundleBase* cons
 
                 const RenderPassResourceUsage& usages = bundles[i]->GetResourceUsage();
                 for (uint32_t j = 0; j < usages.buffers.size(); ++j) {
-                    mUsageTracker.BufferUsedAs(usages.buffers[j], usages.bufferUsages[j]);
+                    mUsageTracker.BufferUsedAs(usages.buffers[j], usages.bufferSyncInfos[j].usage,
+                                               usages.bufferSyncInfos[j].shaderStages);
                 }
 
                 for (uint32_t j = 0; j < usages.textures.size(); ++j) {
                     mUsageTracker.AddRenderBundleTextureUsage(usages.textures[j],
-                                                              usages.textureUsages[j]);
+                                                              usages.textureSyncInfos[j]);
                 }
 
                 if (IsValidationEnabled()) {
@@ -420,8 +433,9 @@ void RenderPassEncoder::APIWriteTimestamp(QuerySetBase* querySet, uint32_t query
         this,
         [&](CommandAllocator* allocator) -> MaybeError {
             if (IsValidationEnabled()) {
-                DAWN_TRY(ValidateTimestampQuery(GetDevice(), querySet, queryIndex,
-                                                Feature::TimestampQueryInsidePasses));
+                DAWN_TRY(ValidateTimestampQuery(
+                    GetDevice(), querySet, queryIndex,
+                    Feature::ChromiumExperimentalTimestampQueryInsidePasses));
                 DAWN_TRY_CONTEXT(ValidateQueryIndexOverwrite(
                                      querySet, queryIndex, mUsageTracker.GetQueryAvailabilityMap()),
                                  "validating the timestamp query index (%u) of %s", queryIndex,
@@ -445,7 +459,8 @@ void RenderPassEncoder::APIPixelLocalStorageBarrier() {
         this,
         [&](CommandAllocator* allocator) -> MaybeError {
             if (IsValidationEnabled()) {
-                DAWN_TRY(ValidateHasPLSFeature(GetDevice()));
+                DAWN_INVALID_IF(!GetAttachmentState()->HasPixelLocalStorage(),
+                                "%s does not define any pixel local storage.", this);
             }
 
             allocator->Allocate<PixelLocalStorageBarrierCmd>(Command::PixelLocalStorageBarrier);

@@ -28,21 +28,18 @@ bool IsImpulseScrollAnimationEnabled() {
 
 // Whether the compositor should attempt to sync with the scroll handlers before
 // submitting a frame.
-CONSTINIT const base::Feature kSynchronizedScrolling(
-             "SynchronizedScrolling",
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+BASE_FEATURE(kSynchronizedScrolling,
+             "SynchronizedScrolling",
              base::FEATURE_DISABLED_BY_DEFAULT);
 #else
+BASE_FEATURE(kSynchronizedScrolling,
+             "SynchronizedScrolling",
              base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
 BASE_FEATURE(kRemoveMobileViewportDoubleTap,
              "RemoveMobileViewportDoubleTap",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-// Design doc: bit.ly/scrollunification
-BASE_FEATURE(kScrollUnification,
-             "ScrollUnification",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kScrollSnapCoveringAvoidNestedSnapAreas,
@@ -57,9 +54,17 @@ BASE_FEATURE(kScrollSnapPreferCloserCovering,
              "ScrollSnapPreferCloserCovering",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kMainRepaintScrollPrefersNewContent,
+             "MainRepaintScrollPrefersNewContent",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 BASE_FEATURE(kHudDisplayForPerformanceMetrics,
              "HudDisplayForPerformanceMetrics",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kRenderSurfaceCommonAncestorClip,
+             "RenderSurfaceCommonAncestorClip",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kDurationEstimatesInCompositorTimingHistory,
              "DurationEstimatesInCompositorTimingHistory",
@@ -67,7 +72,7 @@ BASE_FEATURE(kDurationEstimatesInCompositorTimingHistory,
 
 BASE_FEATURE(kNonBlockingCommit,
              "NonBlockingCommit",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kNoPreserveLastMutation,
              "NoPreserveLastMutation",
@@ -83,32 +88,36 @@ BASE_FEATURE(kNormalPriorityImageDecoding,
 
 // Note that kUseDMSAAForTiles only controls vulkan launch on android. We will
 // be using a separate flag to control the launch on GL.
-CONSTINIT const base::Feature kUseDMSAAForTiles(
-             "UseDMSAAForTiles",
+
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kUseDMSAAForTiles,
+             "UseDMSAAForTiles",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kUseDMSAAForTiles,
+             "UseDMSAAForTiles",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
 
 #if BUILDFLAG(IS_ANDROID)
 // This flag controls the DMSAA for tile raster on Android GL backend whereas
 // above flag UseDMSAAForTiles controls the launch on Vulkan backend.
 BASE_FEATURE(kUseDMSAAForTilesAndroidGL,
              "UseDMSAAForTilesAndroidGL",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
 BASE_FEATURE(kUpdateBrowserControlsWithoutProxy,
              "UpdateBrowserControlsWithoutProxy",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-CONSTINIT const base::Feature kUIEnableSharedImageCacheForGpu(
-             "UIEnableSharedImageCacheForGpu",
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
+BASE_FEATURE(kUIEnableSharedImageCacheForGpu,
+             "UIEnableSharedImageCacheForGpu",
              base::FEATURE_ENABLED_BY_DEFAULT);
 #else
+BASE_FEATURE(kUIEnableSharedImageCacheForGpu,
+             "UIEnableSharedImageCacheForGpu",
              base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
@@ -136,16 +145,25 @@ BASE_FEATURE(kReclaimPrepaintTilesWhenIdle,
              "ReclaimPrepaintTilesWhenIdle",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// This saves memory on all platforms, but while on Android savings are
+// significant (~10MiB or more of foreground memory), on desktop they were
+// small, so only enable on Android.
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kSmallerInterestArea,
+             "SmallerInterestArea",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#else
 BASE_FEATURE(kSmallerInterestArea,
              "SmallerInterestArea",
              base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 const base::FeatureParam<int> kInterestAreaSizeInPixels{
     &kSmallerInterestArea, "size_in_pixels", kDefaultInterestAreaSizeInPixels};
 
 BASE_FEATURE(kImageCacheNoCache,
              "ImageCacheNoCache",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kReclaimOldPrepaintTiles,
              "ReclaimOldPrepaintTiles",
@@ -156,6 +174,18 @@ const base::FeatureParam<int> kReclaimDelayInSeconds{&kSmallerInterestArea,
 
 BASE_FEATURE(kUseMapRectForPixelMovement,
              "UseMapRectForPixelMovement",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kEvictionThrottlesDraw,
+             "EvictionThrottlesDraw",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kResetTimerWhenNoActiveTreeLikely,
+             "ResetTimerWhenNoActiveTreeLikely",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAdjustFastMainThreadThreshold,
+             "AdjustFastMainThreadThreshold",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 }  // namespace features

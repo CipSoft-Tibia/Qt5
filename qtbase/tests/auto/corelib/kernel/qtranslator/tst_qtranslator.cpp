@@ -9,9 +9,54 @@
 #include <qfile.h>
 #include <qtemporarydir.h>
 
+#include <QtCore/private/qlocale_p.h>
+
 #ifdef Q_OS_ANDROID
 #include <QDirIterator>
 #endif
+
+#if !defined(QT_NO_SYSTEMLOCALE) && defined(QT_BUILD_INTERNAL)
+// from tst_qlocale.cpp; override the system locale with one that supports multiple
+// languages
+class MySystemLocale : public QSystemLocale
+{
+    Q_DISABLE_COPY_MOVE(MySystemLocale)
+public:
+    MySystemLocale(const QStringList &languages)
+        : m_languages(languages), m_locale(languages.first())
+        , m_id(QLocaleId::fromName(languages.first()))
+    {
+    }
+
+    QVariant query(QueryType type, QVariant &&/*in*/) const override
+    {
+        switch (type) {
+        case UILanguages:
+            return QVariant(m_languages);
+        case LanguageId:
+            return m_id.language_id;
+        case TerritoryId:
+            return m_id.territory_id;
+        case ScriptId:
+            return m_id.script_id;
+
+        default:
+            break;
+        }
+        return QVariant();
+    }
+
+    QLocale fallbackLocale() const override
+    {
+        return m_locale;
+    }
+
+private:
+    QStringList m_languages;
+    const QLocale m_locale;
+    const QLocaleId m_id;
+};
+#endif // !defined(QT_NO_SYSTEMLOCALE) && defined(QT_BUILD_INTERNAL)
 
 class tst_QTranslator : public QObject
 {
@@ -96,7 +141,7 @@ void tst_QTranslator::load()
 
     {
         QFile file(filepath);
-        file.open(QFile::ReadOnly);
+        QVERIFY(file.open(QFile::ReadOnly));
         QByteArray data = file.readAll();
         QTranslator tor;
         QVERIFY(tor.load((const uchar *)data.constData(), data.length()));
@@ -119,21 +164,43 @@ void tst_QTranslator::load()
 
 void tst_QTranslator::loadLocale_data()
 {
-    QTest::addColumn<QString>("localeName");
-    QTest::addColumn<QStringList>("fileNames");
+    QTest::addColumn<QLocale>("wantedLocale");
+    QTest::addColumn<QStringList>("languages");
 
+    // variation of translation files for the same language
     QTest::addRow("US English")
-                            << "en_US"
-                            << QStringList{"en_US.qm", "en_US", "en.qm", "en"};
+                            << QLocale("en-US")
+                            << QStringList{"en-US", "en"};
     QTest::addRow("Australia")
-                            << "en_AU"
-                            << QStringList{"en_Latn_AU.qm", "en_AU.qm", "en.qm"};
+                            << QLocale("en-AU")
+                            << QStringList{"en-Latn-AU", "en-AU", "en"};
+    QTest::addRow("Taiwan") << QLocale("zh-TW") << QStringList{"zh-TW", "zh"};
+
+    // This produces a QLocale::uiLanguages list of
+    // {"en-NO", "en-Latn-NO", "nb-NO", "nb-Latn-NO", "nb",
+    //  "de-DE", "de-Latn-DE", "de", "zh-Hant-NO"}
+    QTest::addRow("System, mixed languages")
+                            << QLocale::system()
+                            << QStringList{"en-NO", "nb-NO", "de-DE", "zh-Hant-NO"};
+    QTest::addRow("System, mixed dialects")
+                            << QLocale::system()
+                            << QStringList{"en-AU", "en-NZ", "de-DE", "en-GB"};
+    QTest::addRow("System, Taiwan") << QLocale::system() << QStringList{"zh-TW", "zh"};
 }
 
 void tst_QTranslator::loadLocale()
 {
-    QFETCH(const QString, localeName);
-    QFETCH(const QStringList, fileNames);
+    QFETCH(const QLocale, wantedLocale);
+    QFETCH(const QStringList, languages);
+
+#if !defined(QT_NO_SYSTEMLOCALE) && defined(QT_BUILD_INTERNAL)
+    std::unique_ptr<MySystemLocale> systemLocaleOverride;
+    if (wantedLocale == QLocale::system())
+        systemLocaleOverride.reset(new MySystemLocale(languages));
+#else
+    if (wantedLocale == QLocale::system())
+        QSKIP("Test only applicable in developer builds with system locale");
+#endif
 
     QByteArray ba;
     {
@@ -153,8 +220,12 @@ void tst_QTranslator::loadLocale()
     file.close();
 
     QStringList files;
-    for (const auto &fileName : fileNames) {
-        files.append(path + "/foo-" + fileName);
+    for (auto language : languages) {
+        language.replace('-', '_');
+        const QString filename = path + "/foo-" + language;
+        files.append(filename + ".qm");
+        QVERIFY2(file.copy(files.last()), qPrintable(file.errorString()));
+        files.append(filename);
         QVERIFY2(file.copy(files.last()), qPrintable(file.errorString()));
     }
 
@@ -167,14 +238,28 @@ void tst_QTranslator::loadLocale()
     files.append(path + "/foo");
     QVERIFY2(file.rename(files.last()), qPrintable(file.errorString()));
 
-    QLocale locale(localeName);
+    // Verify that all files exist. They are removed at the latest when
+    // the temporary directory is destroyed.
+    for (const auto &filePath : files)
+        QVERIFY(QFile::exists(filePath));
+
+    const QRegularExpression localeExpr("foo-(.*)(\\.qm|$)");
     QTranslator tor;
+    // Load the translation for the wanted locale
+    QVERIFY(tor.load(wantedLocale, "foo", "-", path, ".qm"));
+    // The loaded translation file should be for the preferred language.
+    const QFileInfo fileInfo(tor.filePath());
+    const auto matches = localeExpr.match(fileInfo.fileName());
+    QVERIFY(matches.hasMatch());
+    QVERIFY(matches.hasCaptured(1));
+    const QLocale matchedLocale(matches.captured(1));
+    QCOMPARE(matchedLocale.language(), wantedLocale.language());
+
+    // Remove one file at a time, and verify that QTranslator falls back to the
+    // more general alternatives, or to languages with lower priority.
     for (const auto &filePath : files) {
-        QVERIFY(tor.load(locale, "foo", "-", path, ".qm"));
-        // As the file system might be case insensitive, we can't guarantee that
-        // the casing of the file name is preserved. The order of loading
-        // en_AU vs en_au if both exist is undefined anyway.
-        QCOMPARE(tor.filePath().toLower(), filePath.toLower());
+        QVERIFY(tor.load(wantedLocale, "foo", "-", path, ".qm"));
+        QCOMPARE(tor.filePath(), filePath);
         QVERIFY2(file.remove(filePath), qPrintable(file.errorString()));
     }
 }
@@ -325,7 +410,7 @@ void tst_QTranslator::dependencies()
     {
         QTranslator tor( 0 );
         QFile file("dependencies_la.qm");
-        file.open(QFile::ReadOnly);
+        QVERIFY(file.open(QFile::ReadOnly));
         QByteArray data = file.readAll();
         QVERIFY(tor.load((const uchar *)data.constData(), data.length()));
         QVERIFY(!tor.isEmpty());

@@ -28,6 +28,7 @@ QWaylandEglWindow::QWaylandEglWindow(QWindow *window, QWaylandDisplay *display)
         m_clientBufferIntegration = static_cast<QWaylandEglClientBufferIntegration *>(
                 mDisplay->clientBufferIntegration());
     });
+    ensureSize();
 }
 
 QWaylandEglWindow::~QWaylandEglWindow()
@@ -51,14 +52,15 @@ QWaylandWindow::WindowType QWaylandEglWindow::windowType() const
 void QWaylandEglWindow::ensureSize()
 {
     // this is always called on the main thread
-    QMargins margins = mWindowDecoration ? frameMargins() : QMargins{};
     QRect rect = geometry();
+    QMargins margins = clientSideMargins();
     QSize sizeWithMargins = (rect.size() + QSize(margins.left() + margins.right(), margins.top() + margins.bottom())) * scale();
     {
         QWriteLocker lock(&m_bufferSizeLock);
         m_bufferSize = sizeWithMargins;
     }
 
+    QMutexLocker lock (&m_eglSurfaceLock);
     updateSurface(false);
 }
 
@@ -74,6 +76,7 @@ void QWaylandEglWindow::setGeometry(const QRect &rect)
 
 void QWaylandEglWindow::updateSurface(bool create)
 {
+    // eglSurfaceLock should be locked before calling this method
 
     QSize sizeWithMargins;
     {
@@ -142,7 +145,7 @@ void QWaylandEglWindow::updateSurface(bool create)
 QRect QWaylandEglWindow::contentsRect() const
 {
     QRect r = geometry();
-    QMargins m = frameMargins();
+    QMargins m = clientSideMargins();
     return QRect(m.left(), m.bottom(), r.width(), r.height());
 }
 
@@ -153,6 +156,8 @@ QSurfaceFormat QWaylandEglWindow::format() const
 
 void QWaylandEglWindow::invalidateSurface()
 {
+    QMutexLocker lock (&m_eglSurfaceLock);
+
     if (m_eglSurface) {
         eglDestroySurface(m_clientBufferIntegration->eglDisplay(), m_eglSurface);
         m_eglSurface = 0;
@@ -168,6 +173,11 @@ void QWaylandEglWindow::invalidateSurface()
 EGLSurface QWaylandEglWindow::eglSurface() const
 {
     return m_eglSurface;
+}
+
+QMutex* QWaylandEglWindow::eglSurfaceLock()
+{
+    return &m_eglSurfaceLock;
 }
 
 GLuint QWaylandEglWindow::contentFBO() const

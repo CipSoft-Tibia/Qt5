@@ -841,7 +841,6 @@ gpu::ContextResult GLES2DecoderPassthroughImpl::Initialize(
       "GL_ANGLE_texture_usage",
       "GL_CHROMIUM_bind_uniform_location",
       "GL_CHROMIUM_sync_query",
-      "GL_CHROMIUM_texture_filtering_hint",
       "GL_EXT_debug_marker",
       "GL_EXT_memory_object",
       "GL_EXT_memory_object_fd",
@@ -995,10 +994,6 @@ gpu::ContextResult GLES2DecoderPassthroughImpl::Initialize(
   }
   bound_element_array_buffer_dirty_ = false;
 
-  if (feature_info_->feature_flags().chromium_texture_filtering_hint) {
-    api()->glHintFn(GL_TEXTURE_FILTERING_HINT_CHROMIUM, GL_NICEST);
-  }
-
   lose_context_when_out_of_memory_ =
       attrib_helper.lose_context_when_out_of_memory;
 
@@ -1010,7 +1005,7 @@ gpu::ContextResult GLES2DecoderPassthroughImpl::Initialize(
 
   if (offscreen_) {
 #if BUILDFLAG(IS_ANDROID)
-    const bool alpha_channel_requested = attrib_helper.alpha_size > 0;
+    const bool alpha_channel_requested = attrib_helper.need_alpha;
 #else
     const bool alpha_channel_requested = false;
 #endif
@@ -1073,6 +1068,17 @@ gpu::ContextResult GLES2DecoderPassthroughImpl::Initialize(
   if (feature_info_->IsWebGLContext())
     api()->glDisableFn(GL_TEXTURE_RECTANGLE_ANGLE);
 #endif
+
+  // TEMPORARY: Set primitive restart to enabled by default for WebGL2. Clear
+  // errors afterwards so that when this state is initialized and validated in
+  // ANGLE, it will not generate errors during command buffer initialization.
+  if (feature_info_->context_type() == CONTEXT_TYPE_WEBGL2) {
+    // If WebGL 2, the PRIMITIVE_RESTART_FIXED_INDEX should be always enabled.
+    // See the section <Primitive Restart is Always Enabled> in WebGL 2 spec:
+    // https://www.khronos.org/registry/webgl/specs/latest/2.0/#4.1.4
+    api()->glEnableFn(GL_PRIMITIVE_RESTART_FIXED_INDEX);
+    CheckErrorCallbackState();
+  }
 
   // Register this object as a GPU switching observer.
   if (feature_info_->IsWebGLContext()) {
@@ -1362,11 +1368,6 @@ gpu::Capabilities GLES2DecoderPassthroughImpl::GetCapabilities() {
 
   PopulateNumericCapabilities(&caps, feature_info_.get());
 
-  api()->glGetIntegervFn(GL_BIND_GENERATES_RESOURCE_CHROMIUM,
-                         &caps.bind_generates_resource_chromium);
-  DCHECK_EQ(caps.bind_generates_resource_chromium != GL_FALSE,
-            group_->bind_generates_resource());
-
   caps.egl_image_external =
       feature_info_->feature_flags().oes_egl_image_external;
   caps.egl_image_external_essl3 =
@@ -1382,14 +1383,13 @@ gpu::Capabilities GLES2DecoderPassthroughImpl::GetCapabilities() {
   caps.disable_one_component_textures =
       group_->shared_image_manager() &&
       group_->shared_image_manager()->display_context_on_another_thread() &&
-      features::IsUsingVulkan();
+      (feature_info_->workarounds().avoid_one_component_egl_images ||
+       features::IsUsingVulkan());
   caps.sync_query = feature_info_->feature_flags().chromium_sync_query;
   caps.texture_rg = feature_info_->feature_flags().ext_texture_rg;
   caps.texture_norm16 = feature_info_->feature_flags().ext_texture_norm16;
   caps.texture_half_float_linear =
       feature_info_->feature_flags().enable_texture_half_float_linear;
-  caps.image_ycbcr_422 =
-      feature_info_->feature_flags().chromium_image_ycbcr_422;
   caps.image_ycbcr_420v =
       feature_info_->feature_flags().chromium_image_ycbcr_420v;
   caps.image_ycbcr_420v_disabled_for_video_frames =
@@ -1408,39 +1408,16 @@ gpu::Capabilities GLES2DecoderPassthroughImpl::GetCapabilities() {
       feature_info_->workarounds().max_copy_texture_chromium_size;
   caps.render_buffer_format_bgra8888 =
       feature_info_->feature_flags().ext_render_buffer_format_bgra8888;
-  caps.occlusion_query_boolean =
-      feature_info_->feature_flags().occlusion_query_boolean;
-  caps.timer_queries = feature_info_->feature_flags().ext_disjoint_timer_query;
-  caps.gpu_rasterization =
-      group_->gpu_feature_info()
-          .status_values[GPU_FEATURE_TYPE_GPU_RASTERIZATION] ==
-      kGpuFeatureStatusEnabled;
+  caps.gpu_rasterization = false;
   caps.msaa_is_slow = MSAAIsSlow(feature_info_->workarounds());
   caps.avoid_stencil_buffers =
       feature_info_->workarounds().avoid_stencil_buffers;
-  caps.multisample_compatibility =
-      feature_info_->feature_flags().ext_multisample_compatibility;
-#if BUILDFLAG(IS_WIN)
-  caps.shared_image_d3d = D3DImageBackingFactory::IsD3DSharedImageSupported(
-      group_->gpu_preferences());
-  caps.shared_image_swap_chain =
-      caps.shared_image_d3d && D3DImageBackingFactory::IsSwapChainSupported();
-#endif  // BUILDFLAG(IS_WIN)
-  if (base::FeatureList::IsEnabled(features::kPassthroughYuvRgbConversion)) {
-    caps.supports_yuv_rgb_conversion = true;
-  }
+  caps.supports_yuv_to_rgb_conversion = true;
+  caps.supports_rgb_to_yuv_conversion = true;
   // Technically, YUV readback is handled on the client side, but enable it here
   // so that clients can use this to detect support.
   caps.supports_yuv_readback = true;
-  caps.texture_npot = feature_info_->feature_flags().npot_ok;
-  caps.supports_scanout_shared_images =
-      SharedImageManager::SupportsScanoutImages();
-  caps.supports_luminance_shared_images =
-      !feature_info_->gl_version_info().is_angle_metal;
-  caps.disable_r8_shared_images =
-      feature_info_->workarounds().r8_egl_images_broken;
   caps.chromium_gpu_fence = feature_info_->feature_flags().chromium_gpu_fence;
-  caps.chromium_nonblocking_readback = true;
   caps.mesa_framebuffer_flip_y =
       feature_info_->feature_flags().mesa_framebuffer_flip_y;
 
@@ -1457,6 +1434,20 @@ gpu::Capabilities GLES2DecoderPassthroughImpl::GetCapabilities() {
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   PopulateDRMCapabilities(&caps, feature_info_.get());
 #endif
+
+  return caps;
+}
+
+gpu::GLCapabilities GLES2DecoderPassthroughImpl::GetGLCapabilities() {
+  CHECK(initialized());
+  GLCapabilities caps;
+
+  PopulateGLCapabilities(&caps, feature_info_.get());
+  CHECK_EQ(caps.bind_generates_resource_chromium != GL_FALSE,
+           group_->bind_generates_resource());
+  caps.occlusion_query_boolean =
+      feature_info_->feature_flags().occlusion_query_boolean;
+  caps.timer_queries = feature_info_->feature_flags().ext_disjoint_timer_query;
 
   return caps;
 }
@@ -1665,8 +1656,7 @@ GLES2DecoderPassthroughImpl::CreateAbstractTexture(GLenum target,
   GLuint service_id = 0;
   api()->glGenTexturesFn(1, &service_id);
   scoped_refptr<TexturePassthrough> texture(
-      new TexturePassthrough(service_id, target, internal_format, width, height,
-                             depth, border, format, type));
+      new TexturePassthrough(service_id, target));
 
   // Unretained is safe, because of the destruction cb.
   std::unique_ptr<PassthroughAbstractTextureImpl> abstract_texture =
@@ -2204,6 +2194,11 @@ bool GLES2DecoderPassthroughImpl::IsIgnoredCap(GLenum cap) const {
   switch (cap) {
     case GL_DEBUG_OUTPUT:
       return true;
+
+    case GL_PRIMITIVE_RESTART_FIXED_INDEX:
+      // Disable setting primitive restart at the command decoder level until
+      // it's blocked in ANGLE for WebGL contexts.
+      return feature_info_->IsWebGLContext();
 
     default:
       return false;

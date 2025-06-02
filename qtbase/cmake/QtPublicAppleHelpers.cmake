@@ -97,9 +97,9 @@ function(_qt_internal_handle_ios_launch_screen target)
     endif()
 endfunction()
 
-function(_qt_internal_find_ios_development_team_id out_var)
+function(_qt_internal_find_apple_development_team_id out_var)
     get_property(team_id GLOBAL PROPERTY _qt_internal_ios_development_team_id)
-    get_property(team_id_computed GLOBAL PROPERTY _qt_internal_ios_development_team_id_computed)
+    get_property(team_id_computed GLOBAL PROPERTY _qt_internal_apple_development_team_id_computed)
     if(team_id_computed)
         # Just in case if the value is non-empty but still booly FALSE.
         if(NOT team_id)
@@ -109,17 +109,31 @@ function(_qt_internal_find_ios_development_team_id out_var)
         return()
     endif()
 
-    set_property(GLOBAL PROPERTY _qt_internal_ios_development_team_id_computed "TRUE")
+    set_property(GLOBAL PROPERTY _qt_internal_apple_development_team_id_computed "TRUE")
 
     set(home_dir "$ENV{HOME}")
     set(xcode_preferences_path "${home_dir}/Library/Preferences/com.apple.dt.Xcode.plist")
 
     # Extract the first account name (email) from the user's Xcode preferences
     message(DEBUG "Trying to extract an Xcode development team id from '${xcode_preferences_path}'")
-    execute_process(COMMAND "/usr/libexec/PlistBuddy"
-                            -x -c "print IDEProvisioningTeams" "${xcode_preferences_path}"
-                    OUTPUT_VARIABLE teams_xml
-                    ERROR_VARIABLE plist_error)
+
+    # Try Xcode 16.2 format first
+    _qt_internal_plist_buddy("${xcode_preferences_path}"
+        COMMANDS "print IDEProvisioningTeamByIdentifier"
+        EXTRA_ARGS -x
+        OUTPUT_VARIABLE teams_xml
+        ERROR_VARIABLE plist_error
+    )
+
+    # Then fall back to older format
+    if(plist_error OR NOT teams_xml)
+        _qt_internal_plist_buddy("${xcode_preferences_path}"
+            COMMANDS "print IDEProvisioningTeams"
+            EXTRA_ARGS -x
+            OUTPUT_VARIABLE teams_xml
+            ERROR_VARIABLE plist_error
+        )
+    endif()
 
     # Parsing state.
     set(is_free "")
@@ -149,6 +163,16 @@ function(_qt_internal_find_ios_development_team_id out_var)
     #            <true/>
     #            <key>teamID</key>
     #            <string>BBB</string>
+    #            ...
+    #        </dict>
+    #    </array>
+    #    <key>AAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE</key>
+    #    <array>
+    #        <dict>
+    #            <key>isFreeProvisioningTeam</key>
+    #            <false/>
+    #            <key>teamID</key>
+    #            <string>CCC</string>
     #            ...
     #        </dict>
     #    </array>
@@ -270,7 +294,7 @@ function(_qt_internal_get_default_apple_bundle_identifier target out_var)
 
         # For a better out-of-the-box experience, try to create a unique prefix by appending
         # the sha1 of the team id, if one is found.
-        _qt_internal_find_ios_development_team_id(team_id)
+        _qt_internal_find_apple_development_team_id(team_id)
         if(team_id)
             string(SHA1 hash "${team_id}")
             string(SUBSTRING "${hash}" 0 8 infix)
@@ -378,7 +402,7 @@ function(_qt_internal_set_xcode_development_team_id target)
     if(NOT CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM AND NOT QT_NO_SET_XCODE_DEVELOPMENT_TEAM_ID)
         get_target_property(existing_team_id "${target}" XCODE_ATTRIBUTE_DEVELOPMENT_TEAM)
         if(NOT existing_team_id)
-            _qt_internal_find_ios_development_team_id(team_id)
+            _qt_internal_find_apple_development_team_id(team_id)
             set_target_properties("${target}"
                                   PROPERTIES XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${team_id}")
         endif()
@@ -635,10 +659,10 @@ endfunction()
 
 function(_qt_internal_plist_buddy plist_file)
     cmake_parse_arguments(PARSE_ARGV 1 arg
-        "" "OUTPUT_VARIABLE;ERROR_VARIABLE" "COMMANDS")
+        "" "OUTPUT_VARIABLE;ERROR_VARIABLE;EXTRA_ARGS" "COMMANDS")
     foreach(command ${arg_COMMANDS})
         execute_process(COMMAND "/usr/libexec/PlistBuddy"
-                                -c "${command}" "${plist_file}"
+                                ${arg_EXTRA_ARGS} -c "${command}" "${plist_file}"
                     OUTPUT_VARIABLE plist_buddy_output
                     ERROR_VARIABLE plist_buddy_error)
         string(STRIP "${plist_buddy_output}" plist_buddy_output)
@@ -730,25 +754,48 @@ function(_qt_internal_set_ios_simulator_arch target)
         "x86_64")
 endfunction()
 
-# Export Apple platform sdk and xcode version requirements to Qt6ConfigExtras.cmake.
-function(_qt_internal_export_apple_sdk_and_xcode_version_requirements out_var)
-    if(NOT APPLE)
+function(_qt_internal_set_xcode_entrypoint_attribute target entrypoint)
+    if(CMAKE_XCODE_ATTRIBUTE_LD_ENTRY_POINT
+        OR QT_NO_SET_XCODE_LD_ENTRY_POINT)
         return()
     endif()
 
-    if(IOS)
-        set(vars_to_assign
-            QT_SUPPORTED_MIN_IOS_SDK_VERSION
-            QT_SUPPORTED_MAX_IOS_SDK_VERSION
-            QT_SUPPORTED_MIN_IOS_XCODE_VERSION
-        )
-    else()
-        set(vars_to_assign
-            QT_SUPPORTED_MIN_MACOS_SDK_VERSION
-            QT_SUPPORTED_MAX_MACOS_SDK_VERSION
-            QT_SUPPORTED_MIN_MACOS_XCODE_VERSION
-        )
+    get_target_property(existing_entrypoint
+        "${target}" XCODE_ATTRIBUTE_LD_ENTRY_POINT)
+    if(NOT existing_entrypoint MATCHES "-NOTFOUND")
+        return()
     endif()
+
+    set_target_properties("${target}"
+        PROPERTIES
+        "XCODE_ATTRIBUTE_LD_ENTRY_POINT"
+        "${entrypoint}")
+endfunction()
+
+
+# Export Apple platform sdk and xcode version requirements to Qt6ConfigExtras.cmake.
+# Always exported, even on non-Apple platforms, so that we can use them when building
+# documentation.
+function(_qt_internal_export_apple_sdk_and_xcode_version_requirements out_var)
+    set(vars_to_assign
+        QT_SUPPORTED_MIN_IOS_SDK_VERSION
+        QT_SUPPORTED_MAX_IOS_SDK_VERSION
+        QT_SUPPORTED_MIN_IOS_XCODE_VERSION
+        QT_SUPPORTED_MIN_IOS_VERSION
+        QT_SUPPORTED_MAX_IOS_VERSION_TESTED
+
+        QT_SUPPORTED_MIN_VISIONOS_SDK_VERSION
+        QT_SUPPORTED_MAX_VISIONOS_SDK_VERSION
+        QT_SUPPORTED_MIN_VISIONOS_XCODE_VERSION
+        QT_SUPPORTED_MIN_VISIONOS_VERSION
+        QT_SUPPORTED_MAX_VISIONOS_VERSION_TESTED
+
+        QT_SUPPORTED_MIN_MACOS_SDK_VERSION
+        QT_SUPPORTED_MAX_MACOS_SDK_VERSION
+        QT_SUPPORTED_MIN_MACOS_XCODE_VERSION
+        QT_SUPPORTED_MIN_MACOS_VERSION
+        QT_SUPPORTED_MAX_MACOS_VERSION_TESTED
+    )
 
     set(assignments "")
     foreach(var IN LISTS vars_to_assign)
@@ -768,6 +815,8 @@ function(_qt_internal_get_apple_sdk_version out_var)
     if(APPLE)
         if(CMAKE_SYSTEM_NAME STREQUAL iOS)
             set(sdk_name "iphoneos")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL visionOS)
+            set(sdk_name "xros")
         else()
             # Default to macOS
             set(sdk_name "macosx")
@@ -838,9 +887,9 @@ function(_qt_internal_get_cached_xcode_version out_var)
     set(${out_var} "${xcode_version}" PARENT_SCOPE)
 endfunction()
 
-# Warn when the platform SDK or Xcode version are not supported.
+# Warn or error out when the platform SDK or Xcode version are not supported.
 #
-# The warnings are currently only shown when building Qt, not when building user projects
+# The messages are currently only shown when building Qt, not when building user projects
 # with CMake.
 # The warnings ARE shown for qmake user projects.
 #
@@ -865,6 +914,10 @@ function(_qt_internal_check_apple_sdk_and_xcode_versions)
         set(min_sdk_version "${QT_SUPPORTED_MIN_IOS_SDK_VERSION}")
         set(max_sdk_version "${QT_SUPPORTED_MAX_IOS_SDK_VERSION}")
         set(min_xcode_version "${QT_SUPPORTED_MIN_IOS_XCODE_VERSION}")
+    elseif(VISIONOS)
+        set(min_sdk_version "${QT_SUPPORTED_MIN_VISIONOS_SDK_VERSION}")
+        set(max_sdk_version "${QT_SUPPORTED_MAX_VISIONOS_SDK_VERSION}")
+        set(min_xcode_version "${QT_SUPPORTED_MIN_VISIONOS_XCODE_VERSION}")
     else()
         set(min_sdk_version "${QT_SUPPORTED_MIN_MACOS_SDK_VERSION}")
         set(max_sdk_version "${QT_SUPPORTED_MAX_MACOS_SDK_VERSION}")
@@ -881,11 +934,14 @@ function(_qt_internal_check_apple_sdk_and_xcode_versions)
     endif()
 
     # The default differs in different branches.
-    set(failed_check_should_error FALSE)
+    set(failed_check_should_error TRUE)
 
     if(failed_check_should_error)
         # Allow downgrading the error into a warning.
-        if(QT_FORCE_WARN_APPLE_SDK_AND_XCODE_CHECK)
+        #
+        # Our cmake build tests might be executed on older not officially supported Xcode or SDK
+        # versions in the CI. Downgrade the error in this case as well.
+        if(QT_FORCE_WARN_APPLE_SDK_AND_XCODE_CHECK OR QT_INTERNAL_IS_CMAKE_BUILD_TEST)
             set(message_type WARNING)
             set(extra_message " Due to QT_FORCE_WARN_APPLE_SDK_AND_XCODE_CHECK being ON "
                 "the build will continue, but it will likely fail. Use at your own risk.")
@@ -946,7 +1002,7 @@ function(_qt_internal_check_apple_sdk_and_xcode_versions)
 endfunction()
 
 function(_qt_internal_finalize_apple_app target)
-    # Shared between macOS and iOS apps
+    # Shared between macOS and UIKit apps
 
     _qt_internal_copy_info_plist("${target}")
     _qt_internal_set_apple_localizations("${target}")
@@ -969,6 +1025,14 @@ function(_qt_internal_finalize_apple_app target)
     _qt_internal_set_placeholder_apple_bundle_version("${target}")
 endfunction()
 
+function(_qt_internal_finalize_uikit_app target)
+    if(CMAKE_SYSTEM_NAME STREQUAL iOS)
+        _qt_internal_finalize_ios_app("${target}")
+    else()
+        _qt_internal_finalize_apple_app("${target}")
+    endif()
+endfunction()
+
 function(_qt_internal_finalize_ios_app target)
     # Must be called before we generate the Info.plist
     _qt_internal_handle_ios_launch_screen("${target}")
@@ -977,6 +1041,8 @@ function(_qt_internal_finalize_ios_app target)
     _qt_internal_set_xcode_targeted_device_family("${target}")
     _qt_internal_set_xcode_bitcode_enablement("${target}")
     _qt_internal_set_ios_simulator_arch("${target}")
+
+    _qt_internal_set_xcode_entrypoint_attribute("${target}" "_qt_main_wrapper")
 endfunction()
 
 function(_qt_internal_finalize_macos_app target)

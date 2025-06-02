@@ -8,12 +8,14 @@
 #include <QtCore/qthread.h>
 #include <QtCore/qsocketnotifier.h>
 #include <QtCore/private/qstdweb_p.h>
+#include <sys/ioctl.h>
 
 #include "emscripten.h"
 #include <emscripten/html5.h>
 #include <emscripten/threading.h>
 #include <emscripten/val.h>
 
+using namespace std::chrono;
 using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
@@ -133,9 +135,10 @@ void qt_jspi_suspend_js()
     Q_UNREACHABLE();
 }
 
-void qt_jspi_resume_js()
+bool qt_jspi_resume_js()
 {
     Q_UNREACHABLE();
+    return false;
 }
 
 bool qt_jspi_can_resume_js()
@@ -192,7 +195,6 @@ std::multimap<int, QSocketNotifier *> QEventDispatcherWasm::g_socketNotifiers;
 std::map<int, QEventDispatcherWasm::SocketReadyState> QEventDispatcherWasm::g_socketState;
 
 QEventDispatcherWasm::QEventDispatcherWasm()
-    : QAbstractEventDispatcher()
 {
     // QEventDispatcherWasm operates in two main modes:
     // - On the main thread:
@@ -217,6 +219,12 @@ QEventDispatcherWasm::QEventDispatcherWasm()
 #if QT_CONFIG(thread)
         g_mainThread = pthread_self();
 #endif
+
+        // Call the "onLoaded" JavaScript callback, unless startup tasks
+        // have been registered which should complete first. Run async
+        // to make sure event dispatcher construction (in particular any
+        // subclass construction) has completed first.
+        runAsync(callOnLoadedIfRequired);
     } else {
 #if QT_CONFIG(thread)
         std::lock_guard<std::mutex> lock(g_staticDataMutex);
@@ -330,6 +338,14 @@ void QEventDispatcherWasm::registerSocketNotifier(QSocketNotifier *notifier)
     g_socketNotifiers.insert({notifier->socket(), notifier});
     if (wasEmpty)
         runOnMainThread([] { setEmscriptenSocketCallbacks(); });
+
+    int count;
+    ioctl(notifier->socket(), FIONREAD, &count);
+
+    // message may have arrived already
+    if (count > 0 && notifier->type() == QSocketNotifier::Read) {
+        QCoreApplication::postEvent(notifier, new QEvent(QEvent::SockAct));
+    }
 }
 
 void QEventDispatcherWasm::unregisterSocketNotifier(QSocketNotifier *notifier)
@@ -348,10 +364,10 @@ void QEventDispatcherWasm::unregisterSocketNotifier(QSocketNotifier *notifier)
         runOnMainThread([] { clearEmscriptenSocketCallbacks(); });
 }
 
-void QEventDispatcherWasm::registerTimer(int timerId, qint64 interval, Qt::TimerType timerType, QObject *object)
+void QEventDispatcherWasm::registerTimer(Qt::TimerId timerId, Duration interval, Qt::TimerType timerType, QObject *object)
 {
 #ifndef QT_NO_DEBUG
-    if (timerId < 1 || interval < 0 || !object) {
+    if (qToUnderlying(timerId) < 1 || interval < 0ns || !object) {
         qWarning("QEventDispatcherWasm::registerTimer: invalid arguments");
         return;
     } else if (object->thread() != thread() || thread() != QThread::currentThread()) {
@@ -360,16 +376,16 @@ void QEventDispatcherWasm::registerTimer(int timerId, qint64 interval, Qt::Timer
         return;
     }
 #endif
-    qCDebug(lcEventDispatcherTimers) << "registerTimer" << timerId << interval << timerType << object;
+    qCDebug(lcEventDispatcherTimers) << "registerTimer" << int(timerId) << interval << timerType << object;
 
     m_timerInfo->registerTimer(timerId, interval, timerType, object);
     updateNativeTimer();
 }
 
-bool QEventDispatcherWasm::unregisterTimer(int timerId)
+bool QEventDispatcherWasm::unregisterTimer(Qt::TimerId timerId)
 {
 #ifndef QT_NO_DEBUG
-    if (timerId < 1) {
+    if (qToUnderlying(timerId) < 1) {
         qWarning("QEventDispatcherWasm::unregisterTimer: invalid argument");
         return false;
     } else if (thread() != QThread::currentThread()) {
@@ -379,7 +395,7 @@ bool QEventDispatcherWasm::unregisterTimer(int timerId)
     }
 #endif
 
-    qCDebug(lcEventDispatcherTimers) << "unregisterTimer" << timerId;
+    qCDebug(lcEventDispatcherTimers) << "unregisterTimer" << int(timerId);
 
     bool ans = m_timerInfo->unregisterTimer(timerId);
     updateNativeTimer();
@@ -406,22 +422,22 @@ bool QEventDispatcherWasm::unregisterTimers(QObject *object)
     return ans;
 }
 
-QList<QAbstractEventDispatcher::TimerInfo>
-QEventDispatcherWasm::registeredTimers(QObject *object) const
+QList<QAbstractEventDispatcher::TimerInfoV2>
+QEventDispatcherWasm::timersForObject(QObject *object) const
 {
 #ifndef QT_NO_DEBUG
     if (!object) {
         qWarning("QEventDispatcherWasm:registeredTimers: invalid argument");
-        return QList<TimerInfo>();
+        return {};
     }
 #endif
 
     return m_timerInfo->registeredTimers(object);
 }
 
-int QEventDispatcherWasm::remainingTime(int timerId)
+QEventDispatcherWasm::Duration QEventDispatcherWasm::remainingTime(Qt::TimerId timerId) const
 {
-    return m_timerInfo->timerRemainingTime(timerId);
+    return m_timerInfo->remainingDuration(timerId);
 }
 
 void QEventDispatcherWasm::interrupt()
@@ -612,8 +628,8 @@ void QEventDispatcherWasm::updateNativeTimer()
     // access to m_timerInfo), and then call native API to set the new
     // wakeup time on the main thread.
 
-    const std::optional<std::chrono::milliseconds> wait = m_timerInfo->timerWait();
-    const auto toWaitDuration = wait.value_or(0ms);
+    const std::optional<std::chrono::nanoseconds> wait = m_timerInfo->timerWait();
+    const auto toWaitDuration = duration_cast<milliseconds>(wait.value_or(0ms));
     const auto newTargetTimePoint = m_timerInfo->currentTime + toWaitDuration;
     auto epochNsecs = newTargetTimePoint.time_since_epoch();
     auto newTargetTime = std::chrono::duration_cast<std::chrono::milliseconds>(epochNsecs);
@@ -892,6 +908,47 @@ void QEventDispatcherWasm::socketSelect(int timeout, int socket, bool waitForRea
 
     eventDispatcher->waitForSocketState(timeout, socket, waitForRead, waitForWrite,
                                         selectForRead, selectForWrite, socketDisconnect);
+}
+
+namespace {
+    int g_startupTasks = 0;
+}
+
+// The following functions manages sending the "qtLoaded" event/callback
+// from qtloader.js on startup, once Qt initialization has been completed
+// and the application is ready to display the first frame. This can be
+// either as soon as the event loop is running, or later, if additional
+// startup tasks (e.g. local font loading) have been registered.
+
+void QEventDispatcherWasm::registerStartupTask()
+{
+    ++g_startupTasks;
+}
+
+void QEventDispatcherWasm::completeStarupTask()
+{
+    --g_startupTasks;
+    callOnLoadedIfRequired();
+}
+
+void QEventDispatcherWasm::callOnLoadedIfRequired()
+{
+    if (g_startupTasks > 0)
+        return;
+
+    static bool qtLoadedCalled = false;
+    if (qtLoadedCalled)
+        return;
+    qtLoadedCalled = true;
+}
+
+void QEventDispatcherWasm::onLoaded()
+{
+    // TODO: call qtloader.js onLoaded from here, in order to delay
+    // hiding the "Loading..." message until the app is ready to paint
+    // the first frame. Currently onLoaded must be called early before
+    // main() in order to ensure that the screen/container elements
+    // have valid geometry at startup.
 }
 
 namespace {

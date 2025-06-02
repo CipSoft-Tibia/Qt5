@@ -25,7 +25,7 @@ namespace Qt3DRender {
     \since 5.7
     \ingroup renderstates
     \inqmlmodule Qt3D.Render
-    \instantiates Qt3DRender::QStencilTestArguments
+    \nativetype Qt3DRender::QStencilTestArguments
     \inherits QtObject
 
     The StencilTestArguments type specifies the arguments for
@@ -92,23 +92,23 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property QStencilTestArguments::faceMode
+    \property Qt3DRender::QStencilTestArguments::faceMode
     Holds the faces the arguments are applied to.
     \readonly
 */
 
 /*!
-    \property QStencilTestArguments::comparisonMask
+    \property Qt3DRender::QStencilTestArguments::comparisonMask
     Holds the stencil test comparison mask. Default is all zeroes.
 */
 
 /*!
-    \property QStencilTestArguments::referenceValue
+    \property Qt3DRender::QStencilTestArguments::referenceValue
     Holds the stencil test reference value. Default is zero.
 */
 
 /*!
-    \property QStencilTestArguments::stencilFunction
+    \property Qt3DRender::QStencilTestArguments::stencilFunction
     Holds the stencil test function. Default is Never.
     \sa Qt3DRender::QStencilTestArguments::StencilFunction
 */

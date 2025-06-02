@@ -85,6 +85,7 @@ class MEDIA_EXPORT FFmpegGlue {
  private:
   bool open_called_ = false;
   bool detected_hls_ = false;
+
   // This field is not a raw_ptr<> because it was filtered by the rewriter for:
   // #addr-of
   RAW_PTR_EXCLUSION AVFormatContext* format_context_ = nullptr;

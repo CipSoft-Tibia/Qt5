@@ -6,9 +6,11 @@
 \ingroup qmllint-warnings-and-errors
 
 \title Signal handler parameters
-\brief The signal handler does not satisfy the signal types.
+\brief [signal-handler-parameters] The signal handler does not satisfy the signal types.
 
 \qmllintwarningcategory signal-handler-parameters
+
+This warning category has multiple warnings, described in the sections below:
 
 \section1 Type of parameter in signal was not found
 
@@ -35,7 +37,7 @@ hidden dependencies.
 
 In both cases, QML tooling is not able to find the QML counterpart of the
 C++ type: the \l{Qt Quick Compiler}{compiler} can't compile this signal handler to
-C++ and \l{qmllint Reference}{qmllint} as well as \l{\QMLLS Reference}{\QMLLS}
+C++ and \l{qmllint} as well as \l{\QMLLS}
 can't analyze this handler.
 
 \section2 Example
@@ -131,6 +133,7 @@ You can fix this warning by TODO
 
 TODO: QML Lint cannot detect if you pass signal parameters by value, reference or pointer!
 Therefore, it will never print that warning.
+that warning
 \section1 Type of parameter in signal should be passed by value or const reference
 \section2 What happened?
 TODO

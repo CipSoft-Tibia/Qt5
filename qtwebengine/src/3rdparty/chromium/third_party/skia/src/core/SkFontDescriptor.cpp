@@ -5,11 +5,18 @@
  * found in the LICENSE file.
  */
 
-#include "include/core/SkData.h"
-#include "include/core/SkStream.h"
 #include "src/core/SkFontDescriptor.h"
+
+#include "include/core/SkData.h"
+#include "include/core/SkRefCnt.h"
+#include "include/core/SkStream.h"
+#include "include/private/base/SkAssert.h"
+#include "include/private/base/SkTFitsIn.h"
+#include "include/private/base/SkTo.h"
 #include "src/core/SkStreamPriv.h"
 
+#include <cstddef>
+#include <cstdint>
 enum {
     kInvalid        = 0x00,
 
@@ -242,18 +249,10 @@ void SkFontDescriptor::serialize(SkWStream* stream) const {
         }
     }
     if (fPaletteEntryOverrideCount > 0) {
-        int nonNegativePaletteOverrideIndexes = 0;
+        write_uint(stream, fPaletteEntryOverrideCount, kPaletteEntryOverrides);
         for (int i = 0; i < fPaletteEntryOverrideCount; ++i) {
-            if (0 <= fPaletteEntryOverrides[i].index) {
-                ++nonNegativePaletteOverrideIndexes;
-            }
-        }
-        write_uint(stream, nonNegativePaletteOverrideIndexes, kPaletteEntryOverrides);
-        for (int i = 0; i < fPaletteEntryOverrideCount; ++i) {
-            if (0 <= fPaletteEntryOverrides[i].index) {
-                stream->writePackedUInt(fPaletteEntryOverrides[i].index);
-                stream->write32(fPaletteEntryOverrides[i].color);
-            }
+            stream->writePackedUInt(fPaletteEntryOverrides[i].index);
+            stream->write32(fPaletteEntryOverrides[i].color);
         }
     }
 

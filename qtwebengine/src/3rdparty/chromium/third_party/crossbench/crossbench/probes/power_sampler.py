@@ -4,14 +4,17 @@
 
 from __future__ import annotations
 
+import atexit
 import csv
+import datetime as dt
+import enum
 import logging
 import pathlib
 import subprocess
 from typing import TYPE_CHECKING, Optional, Sequence, Tuple
 
-from crossbench import helper
-from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeScope,
+from crossbench import cli_helper, compat, helper
+from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeContext,
                                      ResultLocation)
 from crossbench.probes.results import ProbeResult
 
@@ -21,7 +24,8 @@ if TYPE_CHECKING:
   from crossbench.runner.run import Run
 
 
-class SamplerType(helper.StrEnumWithHelp):
+@enum.unique
+class SamplerType(compat.StrEnumWithHelp):
   MAIN_DISPLAY = ("main_display",
                   "Samples the backlight level of the main display.")
   BATTERY = ("battery", "Provides data retrieved from the IOPMPowerSource.")
@@ -46,7 +50,7 @@ class PowerSamplerProbe(Probe):
 
   NAME = "powersampler"
   RESULT_LOCATION = ResultLocation.BROWSER
-  BATTERY_ONLY = True
+  BATTERY_ONLY: bool = True
   SAMPLERS: Tuple[SamplerType,
                   ...] = (SamplerType.SMC, SamplerType.USER_IDLE_LEVEL,
                           SamplerType.MAIN_DISPLAY)
@@ -55,7 +59,10 @@ class PowerSamplerProbe(Probe):
   def config_parser(cls) -> ProbeConfigParser:
     parser = super().config_parser()
     parser.add_argument("bin_path", type=pathlib.Path)
-    parser.add_argument("sampling_interval", type=int, default=10)
+    parser.add_argument(
+        "sampling_interval",
+        type=cli_helper.Duration.parse_non_zero,
+        default=dt.timedelta(seconds=10))
     parser.add_argument(
         "samplers", type=SamplerType, default=cls.SAMPLERS, is_list=True)
     parser.add_argument(
@@ -68,7 +75,7 @@ class PowerSamplerProbe(Probe):
 
   def __init__(self,
                bin_path: pathlib.Path,
-               sampling_interval: int = 0,
+               sampling_interval: dt.timedelta = dt.timedelta(),
                samplers: Sequence[SamplerType] = SAMPLERS,
                wait_for_battery: bool = True):
     super().__init__()
@@ -76,18 +83,27 @@ class PowerSamplerProbe(Probe):
     assert self._bin_path.exists(), ("Could not find power_sampler binary at "
                                      f"'{self._bin_path}'")
     self._sampling_interval = sampling_interval
-    assert sampling_interval >= 0, (
-        f"Invalid sampling_interval={sampling_interval}")
+    if sampling_interval.total_seconds() < 0:
+      raise ValueError(f"Invalid sampling_interval={sampling_interval}")
     assert SamplerType.BATTERY not in samplers
     self._samplers = tuple(samplers)
     self._wait_for_battery = wait_for_battery
+
+  @property
+  def key(self) -> Tuple[Tuple, ...]:
+    return super().key + (
+        ("bin_path", str(self.bin_path)),
+        ("sampling_interval", self.sampling_interval.total_seconds()),
+        ("samplers", tuple(map(str, self.samplers))),
+        ("wait_for_battery", self.wait_for_battery),
+    )
 
   @property
   def bin_path(self) -> pathlib.Path:
     return self._bin_path
 
   @property
-  def sampling_interval(self) -> int:
+  def sampling_interval(self) -> dt.timedelta:
     return self._sampling_interval
 
   @property
@@ -98,57 +114,55 @@ class PowerSamplerProbe(Probe):
   def wait_for_battery(self) -> bool:
     return self._wait_for_battery
 
-  def pre_check(self, env: HostEnvironment) -> None:
-    super().pre_check(env)
-    for browser in self._browsers:
-      if not browser.platform.is_battery_powered:
-        env.handle_warning("Power Sampler only works on battery power, "
-                           f"but Browser {browser} is connected to power.")
+  def validate_browser(self, env: HostEnvironment, browser: Browser) -> None:
+    self.expect_macos(browser)
+    if not browser.platform.is_battery_powered:
+      env.handle_warning("Power Sampler only works on battery power, "
+                         f"but Browser {browser} is connected to power.")
     # TODO() warn when external monitors are connected
     # TODO() warn about open terminals
 
-  def is_compatible(self, browser: Browser) -> bool:
-    # For now only supported on MacOs
-    return browser.platform.is_macos
-
-  def get_scope(self, run: Run) -> PowerSamplerProbeScope:
-    return PowerSamplerProbeScope(self, run)
+  def get_context(self, run: Run) -> PowerSamplerProbeContext:
+    return PowerSamplerProbeContext(self, run)
 
 
-class PowerSamplerProbeScope(ProbeScope[PowerSamplerProbe]):
+class PowerSamplerProbeContext(ProbeContext[PowerSamplerProbe]):
 
   def __init__(self, probe: PowerSamplerProbe, run: Run) -> None:
     super().__init__(probe, run)
-    self._bin_path = probe.bin_path
+    self._bin_path: pathlib.Path = probe.bin_path
     self._active_user_process: Optional[subprocess.Popen] = None
     self._power_process: Optional[subprocess.Popen] = None
     self._power_battery_process: Optional[subprocess.Popen] = None
-    self._power_output = self.result_path.with_suffix(".power.json")
-    self._power_battery_output = self.result_path.with_suffix(
+    self._power_output: pathlib.Path = self.result_path.with_suffix(
+        ".power.json")
+    self._power_battery_output: pathlib.Path = self.result_path.with_suffix(
         ".power_battery.json")
 
-  def setup(self, run: Run) -> None:
+  def setup(self) -> None:
     self._active_user_process = self.browser_platform.popen(
         self._bin_path,
         "--no-samplers",
         "--simulate-user-active",
         stdout=subprocess.DEVNULL)
-    assert self._active_user_process is not None, (
-        "Could not start active user background sa")
+    if self._active_user_process.poll():
+      raise ValueError("Could not start active user background sampler")
+    atexit.register(self.stop_processes)
     if self.probe.wait_for_battery:
-      self._wait_for_battery_not_full(run)
+      self._wait_for_battery_not_full(self.run)
 
-  def start(self, run: Run) -> None:
-    assert self._active_user_process is not None
-    if self.probe.sampling_interval > 0:
+  def start(self) -> None:
+    assert self._active_user_process
+    if sampling_interval := self.probe.sampling_interval.total_seconds():
       self._power_process = self.browser_platform.popen(
           self._bin_path,
-          f"--sample-interval={self.probe.sampling_interval}",
+          f"--sample-interval={int(sampling_interval)}",
           f"--samplers={','.join(map(str, self.probe.samplers))}",
           f"--json-output-file={self._power_output}",
           f"--resource-coalition-pid={self.browser_pid}",
           stdout=subprocess.DEVNULL)
-      assert self._power_process is not None, "Could not start power sampler"
+      if self._power_process.poll():
+        raise ValueError("Could not start power sampler")
     self._power_battery_process = self.browser_platform.popen(
         self._bin_path,
         "--sample-on-notification",
@@ -156,28 +170,32 @@ class PowerSamplerProbeScope(ProbeScope[PowerSamplerProbe]):
         f"--json-output-file={self._power_battery_output}",
         f"--resource-coalition-pid={self.browser_pid}",
         stdout=subprocess.DEVNULL)
-    assert self._power_battery_process is not None, (
-        "Could not start power and battery sampler")
+    if self._power_battery_process.poll():
+      raise ValueError("Could not start power and battery sampler")
 
-  def stop(self, run: Run) -> None:
+  def stop(self) -> None:
     if self._power_process:
       self._power_process.terminate()
     if self._power_battery_process:
       self._power_battery_process.terminate()
 
-  def tear_down(self, run: Run) -> ProbeResult:
-    if self._power_process:
-      self._power_process.wait()
-      self._power_process.kill()
-    if self._power_battery_process:
-      self._power_battery_process.wait()
-      self._power_battery_process.kill()
-    if self._active_user_process:
-      self._active_user_process.kill()
-    if self.probe.sampling_interval > 0:
+  def tear_down(self) -> ProbeResult:
+    self.stop_processes()
+    if self.probe.sampling_interval:
       return self.browser_result(
           json=[self._power_output, self._power_battery_output])
     return self.browser_result(json=[self._power_battery_output])
+
+  def stop_processes(self) -> None:
+    if self._power_process:
+      helper.wait_and_kill(self._power_process)
+      self._power_process = None
+    if self._power_battery_process:
+      helper.wait_and_kill(self._power_battery_process)
+      self._power_battery_process = None
+    if self._active_user_process:
+      helper.wait_and_kill(self._active_user_process)
+      self._active_user_process = None
 
   def _wait_for_battery_not_full(self, run: Run) -> None:
     """

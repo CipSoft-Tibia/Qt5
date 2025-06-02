@@ -75,7 +75,7 @@ infobars::ContentInfoBarManager* GetInfoBarManager(
 
 ConfirmInfoBarDelegate* GetDelegate(Browser* browser, int tab) {
   return static_cast<ConfirmInfoBarDelegate*>(
-      GetInfoBarManager(browser, tab)->infobar_at(0)->delegate());
+      GetInfoBarManager(browser, tab)->infobars()[0]->delegate());
 }
 
 class InfobarUIChangeObserver : public TabStripModelObserver {
@@ -243,7 +243,7 @@ class WebRtcDesktopCaptureBrowserTest : public WebRtcTestBase {
   void InitializeTabSharingForFirstTab(
       MediaIDCallback media_id_callback,
       InfobarUIChangeObserver* observer,
-      absl::optional<std::string> extra_video_constraints = absl::nullopt) {
+      std::optional<std::string> extra_video_constraints = std::nullopt) {
     ASSERT_TRUE(embedded_test_server()->Start());
     LoadDesktopCaptureExtension();
     auto* first_tab = OpenTestPageInNewTab(kMainWebrtcTestHtmlPage);

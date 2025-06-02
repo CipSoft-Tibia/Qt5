@@ -4,10 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {MdOutlinedTextField} from '@material/web/textfield/outlined-text-field';
-import {cast} from 'google3/javascript/common/asserts/asserts';
+import {MdOutlinedTextField} from '@material/web/textfield/outlined-text-field.js';
+import {cast, castExists} from 'google3/javascript/common/asserts/asserts';
 import {isInstanceOf} from 'google3/javascript/common/asserts/guards';
-import {TextFieldHarness} from 'google3/third_party/javascript/material/web/textfield/harness';
+import {IconButton} from 'google3/third_party/javascript/cros_components/icon_button/icon-button';
+import {IconButtonHarness as MdIconButtonHarness} from 'google3/third_party/javascript/material/web/iconbutton/harness';
+import {TextFieldHarness as MdTextFieldHarness} from 'google3/third_party/javascript/material/web/textfield/harness';
 
 import {Textfield} from './textfield';
 
@@ -18,9 +20,29 @@ export function getMdTextfield(textfield: Textfield): MdOutlinedTextField {
       isInstanceOf(MdOutlinedTextField));
 }
 
+function getMDIconHarness(iconButton: IconButton) {
+  const mdIconButton =
+      castExists(iconButton.renderRoot.querySelector('md-icon-button'));
+  return new MdIconButtonHarness(mdIconButton);
+}
+
+/** Harness for the `cros-textfield` element. */
+export class TextfieldHarness extends MdTextFieldHarness {
+  constructor(readonly textfield: Textfield) {
+    super(getMdTextfield(textfield));
+  }
+
+  override async startHover() {
+    const icons = [...this.textfield.querySelectorAll('cros-icon-button')];
+    const harnesses = icons.map(
+        icon => getMDIconHarness(cast(icon, isInstanceOf(IconButton))));
+    await Promise.all(harnesses.map(harness => harness.startHover()));
+  }
+}
+
 /** Get a harness for the `cros-textfield` element. */
 export function getHarnessFor(textfield: Textfield) {
-  return new TextFieldHarness(getMdTextfield(textfield));
+  return new MdTextFieldHarness(getMdTextfield(textfield));
 }
 
 /**
@@ -28,7 +50,7 @@ export function getHarnessFor(textfield: Textfield) {
  * full sequence of events on the textfield.
  */
 export async function simulateInputChange(
-    harness: TextFieldHarness, input: string) {
+    harness: MdTextFieldHarness, input: string) {
   await harness.focusWithKeyboard();
   await harness.inputValue(input);
   await harness.blur();

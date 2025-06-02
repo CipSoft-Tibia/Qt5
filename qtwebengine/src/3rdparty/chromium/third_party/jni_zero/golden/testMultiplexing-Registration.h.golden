@@ -14,8 +14,9 @@
 
 #include <iterator>
 
-#include "base/android/jni_generator/jni_generator_helper.h"
-#include "base/android/jni_int_wrapper.h"
+#include "third_party/jni_zero/jni_export.h"
+#include "third_party/jni_zero/jni_int_wrapper.h"
+#include "third_party/jni_zero/jni_zero_helper.h"
 
 
 // Step 1: Forward declarations (classes).
@@ -23,59 +24,59 @@
 
 // Step 2: Forward declarations (methods).
 
-JNI_GENERATOR_EXPORT jobject Java_J_N_MxkAf2fl(
+JNI_BOUNDARY_EXPORT jobject Java_J_N_MxkAf2fl(
     JNIEnv* env,
     jclass jcaller,
     jobject sample);
-JNI_GENERATOR_EXPORT void Java_J_N_Md6LK1o9(
+JNI_BOUNDARY_EXPORT void Java_J_N_Md6LK1o9(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jboolean Java_J_N_M_000244zYzAg(
+JNI_BOUNDARY_EXPORT jboolean Java_J_N_M_000244zYzAg(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jclass Java_J_N_M4l0zJba(
+JNI_BOUNDARY_EXPORT jclass Java_J_N_M4l0zJba(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_MKH66mnL(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_MKH66mnL(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jobject Java_J_N_Mvc7ImXr(
+JNI_BOUNDARY_EXPORT jobject Java_J_N_Mvc7ImXr(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_MocgXEXX(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_MocgXEXX(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jstring Java_J_N_M3yd9YCr(
+JNI_BOUNDARY_EXPORT jstring Java_J_N_M3yd9YCr(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_M_1qL1Hyw(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_M_1qL1Hyw(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jobject Java_J_N_MxvVNTxJ(
+JNI_BOUNDARY_EXPORT jobject Java_J_N_MxvVNTxJ(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_MJLr_000245QK(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_MJLr_000245QK(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jthrowable Java_J_N_MXcljN68(
+JNI_BOUNDARY_EXPORT jthrowable Java_J_N_MXcljN68(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_M1FJFJy5(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_M1FJFJy5(
     JNIEnv* env,
     jclass jcaller);
-JNI_GENERATOR_EXPORT jstring Java_J_N_MGrgOT84(
+JNI_BOUNDARY_EXPORT jstring Java_J_N_MGrgOT84(
     JNIEnv* env,
     jclass jcaller,
     jstring stringToReverse);
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_MMtgBdva(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_MMtgBdva(
     JNIEnv* env,
     jclass jcaller,
     jobjectArray strs);
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_MPVz5ily(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_MPVz5ily(
     JNIEnv* env,
     jclass jcaller,
     jobjectArray strs);
-JNI_GENERATOR_EXPORT jintArray Java_J_N_MHRNkgW8(
+JNI_BOUNDARY_EXPORT jintArray Java_J_N_MHRNkgW8(
     JNIEnv* env,
     jclass jcaller,
     jint zint,
@@ -94,7 +95,7 @@ JNI_GENERATOR_EXPORT jintArray Java_J_N_MHRNkgW8(
     jfloatArray floats,
     jboolean zbool,
     jbooleanArray bools);
-JNI_GENERATOR_EXPORT void Java_J_N_MEbp5PPc(
+JNI_BOUNDARY_EXPORT void Java_J_N_MEbp5PPc(
     JNIEnv* env,
     jclass jcaller,
     jclass clazz,
@@ -109,7 +110,7 @@ JNI_GENERATOR_EXPORT void Java_J_N_MEbp5PPc(
     jobjectArray objects);
 
 
-JNI_GENERATOR_EXPORT void Java_J_N_resolve_1for_1void_1LLATTARRAOOAOOA(
+JNI_BOUNDARY_EXPORT void Java_J_N_resolve_1for_1void_1LLATTARRAOOAOOA(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num, jclass class_param1, jobjectArray class_array_param1, jthrowable throwable_param1, jobjectArray throwable_array_param1, jstring string_param1, jobjectArray string_array_param1, jobject object_param1, jobjectArray object_array_param1, jobject object_param2, jobjectArray object_array_param2) {
@@ -119,11 +120,12 @@ JNI_GENERATOR_EXPORT void Java_J_N_resolve_1for_1void_1LLATTARRAOOAOOA(
             return Java_J_N_MEbp5PPc(env, jcaller, class_param1, class_array_param1, throwable_param1, throwable_array_param1, string_param1, string_array_param1, object_param1, object_array_param1, object_param2, object_array_param2);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1void_1LLATTARRAOOAOOA was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1void_1LLATTARRAOOAOOA was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return;
         }
 }
-JNI_GENERATOR_EXPORT jintArray Java_J_N_resolve_1for_1int_1array_1IIAJJASSACCABBADDAFFAZZA(
+JNI_BOUNDARY_EXPORT jintArray Java_J_N_resolve_1for_1int_1array_1IIAJJASSACCABBADDAFFAZZA(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num, jint int_param1, jintArray int_array_param1, jlong long_param1, jlongArray long_array_param1, jshort short_param1, jshortArray short_array_param1, jchar char_param1, jcharArray char_array_param1, jbyte byte_param1, jbyteArray byte_array_param1, jdouble double_param1, jdoubleArray double_array_param1, jfloat float_param1, jfloatArray float_array_param1, jboolean boolean_param1, jbooleanArray boolean_array_param1) {
@@ -133,11 +135,12 @@ JNI_GENERATOR_EXPORT jintArray Java_J_N_resolve_1for_1int_1array_1IIAJJASSACCABB
             return Java_J_N_MHRNkgW8(env, jcaller, int_param1, int_array_param1, long_param1, long_array_param1, short_param1, short_array_param1, char_param1, char_array_param1, byte_param1, byte_array_param1, double_param1, double_array_param1, float_param1, float_array_param1, boolean_param1, boolean_array_param1);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1int_1array_1IIAJJASSACCABBADDAFFAZZA was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1int_1array_1IIAJJASSACCABBADDAFFAZZA was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jclass Java_J_N_resolve_1for_1class(
+JNI_BOUNDARY_EXPORT jclass Java_J_N_resolve_1for_1class(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -147,11 +150,12 @@ JNI_GENERATOR_EXPORT jclass Java_J_N_resolve_1for_1class(
             return Java_J_N_M4l0zJba(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1class was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1class was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jobject Java_J_N_resolve_1for_1object(
+JNI_BOUNDARY_EXPORT jobject Java_J_N_resolve_1for_1object(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -164,11 +168,12 @@ JNI_GENERATOR_EXPORT jobject Java_J_N_resolve_1for_1object(
             return Java_J_N_MxvVNTxJ(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1object was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1object was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jstring Java_J_N_resolve_1for_1string(
+JNI_BOUNDARY_EXPORT jstring Java_J_N_resolve_1for_1string(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -178,11 +183,12 @@ JNI_GENERATOR_EXPORT jstring Java_J_N_resolve_1for_1string(
             return Java_J_N_M3yd9YCr(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1string was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1string was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jstring Java_J_N_resolve_1for_1string_1R(
+JNI_BOUNDARY_EXPORT jstring Java_J_N_resolve_1for_1string_1R(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num, jstring string_param1) {
@@ -192,11 +198,12 @@ JNI_GENERATOR_EXPORT jstring Java_J_N_resolve_1for_1string_1R(
             return Java_J_N_MGrgOT84(env, jcaller, string_param1);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1string_1R was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1string_1R was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jthrowable Java_J_N_resolve_1for_1throwable(
+JNI_BOUNDARY_EXPORT jthrowable Java_J_N_resolve_1for_1throwable(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -206,11 +213,12 @@ JNI_GENERATOR_EXPORT jthrowable Java_J_N_resolve_1for_1throwable(
             return Java_J_N_MXcljN68(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1throwable was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1throwable was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1class_1array(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_resolve_1for_1class_1array(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -220,11 +228,12 @@ JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1class_1array(
             return Java_J_N_MKH66mnL(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1class_1array was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1class_1array was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1object_1array(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_resolve_1for_1object_1array(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -237,11 +246,12 @@ JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1object_1array(
             return Java_J_N_MJLr_000245QK(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1object_1array was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1object_1array was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1object_1array_1OA(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_resolve_1for_1object_1array_1OA(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num, jobjectArray object_array_param1) {
@@ -251,11 +261,12 @@ JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1object_1array_1OA(
             return Java_J_N_MMtgBdva(env, jcaller, object_array_param1);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1object_1array_1OA was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1object_1array_1OA was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1string_1array(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_resolve_1for_1string_1array(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -265,11 +276,12 @@ JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1string_1array(
             return Java_J_N_M_1qL1Hyw(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1string_1array was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1string_1array was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1string_1array_1RA(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_resolve_1for_1string_1array_1RA(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num, jobjectArray string_array_param1) {
@@ -279,11 +291,12 @@ JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1string_1array_1RA(
             return Java_J_N_MPVz5ily(env, jcaller, string_array_param1);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1string_1array_1RA was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1string_1array_1RA was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1throwable_1array(
+JNI_BOUNDARY_EXPORT jobjectArray Java_J_N_resolve_1for_1throwable_1array(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -293,11 +306,12 @@ JNI_GENERATOR_EXPORT jobjectArray Java_J_N_resolve_1for_1throwable_1array(
             return Java_J_N_M1FJFJy5(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1throwable_1array was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1throwable_1array was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT jboolean Java_J_N_resolve_1for_1boolean(
+JNI_BOUNDARY_EXPORT jboolean Java_J_N_resolve_1for_1boolean(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -307,11 +321,12 @@ JNI_GENERATOR_EXPORT jboolean Java_J_N_resolve_1for_1boolean(
             return Java_J_N_M_000244zYzAg(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1boolean was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1boolean was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }
-JNI_GENERATOR_EXPORT void Java_J_N_resolve_1for_1void(
+JNI_BOUNDARY_EXPORT void Java_J_N_resolve_1for_1void(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num) {
@@ -321,11 +336,12 @@ JNI_GENERATOR_EXPORT void Java_J_N_resolve_1for_1void(
             return Java_J_N_Md6LK1o9(env, jcaller);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1void was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1void was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return;
         }
 }
-JNI_GENERATOR_EXPORT jobject Java_J_N_resolve_1for_1object_1O(
+JNI_BOUNDARY_EXPORT jobject Java_J_N_resolve_1for_1object_1O(
     JNIEnv* env,
     jclass jcaller,
     jlong switch_num, jobject object_param1) {
@@ -335,7 +351,8 @@ JNI_GENERATOR_EXPORT jobject Java_J_N_resolve_1for_1object_1O(
             return Java_J_N_MxkAf2fl(env, jcaller, object_param1);
           
           default:
-            CHECK(false) << "JNI multiplexing function Java_J_N_resolve_1for_1object_1O was called with an invalid switch number: " << switch_num;
+            JNI_ZERO_ELOG("J_N_resolve_1for_1object_1O was called with an invalid switch number: %d", switch_num);
+            JNI_ZERO_DCHECK(false);
             return {};
         }
 }

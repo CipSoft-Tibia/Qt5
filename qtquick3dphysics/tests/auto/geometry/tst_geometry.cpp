@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtQuickTest/quicktest.h>
+#include "../shared/util.h"
 class tst_geometry: public QObject
 {
     Q_OBJECT
@@ -10,8 +11,9 @@ private slots:
 };
 int main(int argc, char **argv)
 {
-    if (!qEnvironmentVariableIsEmpty("QEMU_LD_PREFIX")) {
-        qWarning("This test is unstable on QEMU, so it will be skipped.");
+    QString message = needSkip();
+    if (!message.isEmpty()) {
+        qWarning() << message;
         tst_geometry skip;
         return QTest::qExec(&skip, argc, argv);
     }

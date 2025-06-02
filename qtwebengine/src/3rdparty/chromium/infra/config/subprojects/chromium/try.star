@@ -74,12 +74,21 @@ luci.bucket(
         luci.binding(
             roles = "role/buildbucket.creator",
             groups = [
+                "mdb/chrome-build-access-sphinx",
                 "mdb/chrome-troopers",
                 "chromium-led-users",
             ],
             users = [
                 "chromium-orchestrator@chops-service-accounts.iam.gserviceaccount.com",
                 "infra-try-recipes-tester@chops-service-accounts.iam.gserviceaccount.com",
+            ],
+        ),
+        # TODO(crbug.com/1501383): Remove this binding after shadow bucket
+        # could inherit the view permission from the actual bucket.
+        luci.binding(
+            roles = "role/buildbucket.reader",
+            groups = [
+                "all",
             ],
         ),
         # Allow try builders to create invocations in their own builds.
@@ -112,6 +121,20 @@ luci.cq_group(
         acl.entry(
             acl.CQ_DRY_RUNNER,
             groups = "project-chromium-tryjob-access",
+        ),
+    ],
+    additional_modes = [
+        cq.run_mode(
+            name = try_.MEGA_CQ_DRY_RUN_NAME,
+            cq_label_value = 1,
+            triggering_label = "Mega-CQ",
+            triggering_value = 1,
+        ),
+        cq.run_mode(
+            name = try_.MEGA_CQ_FULL_RUN_NAME,
+            cq_label_value = 2,
+            triggering_label = "Mega-CQ",
+            triggering_value = 1,
         ),
     ],
     tree_status_host = "chromium-status.appspot.com" if settings.is_main else None,
@@ -167,6 +190,7 @@ exec("./try/tryserver.chromium.chromiumos.star")
 exec("./try/tryserver.chromium.cft.star")
 exec("./try/tryserver.chromium.dawn.star")
 exec("./try/tryserver.chromium.fuchsia.star")
+exec("./try/tryserver.chromium.fuzz.star")
 exec("./try/tryserver.chromium.infra.star")
 exec("./try/tryserver.chromium.linux.star")
 exec("./try/tryserver.chromium.mac.star")

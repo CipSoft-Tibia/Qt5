@@ -1,45 +1,42 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QCUSTOM3DITEM_H
-#define QCUSTOM3DITEM_H
+#ifndef QTGRAPHS_QCUSTOM3DITEM_H
+#define QTGRAPHS_QCUSTOM3DITEM_H
 
-#if 0
-#  pragma qt_class(QCustom3DItem)
-#endif
-
-#include <QtCore/QObject>
+#include <QtCore/qobject.h>
 #include <QtGraphs/qgraphsglobal.h>
-#include <QtGui/QImage>
-#include <QtGui/QQuaternion>
-#include <QtGui/QVector3D>
+#include <QtGui/qimage.h>
+#include <QtGui/qquaternion.h>
+#include <QtGui/qvector3d.h>
 
 QT_BEGIN_NAMESPACE
 
 class QCustom3DItemPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QCustom3DItem : public QObject
+class Q_GRAPHS_EXPORT QCustom3DItem : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QCustom3DItem)
-    Q_PROPERTY(QString meshFile READ meshFile WRITE setMeshFile NOTIFY meshFileChanged)
-    Q_PROPERTY(QString textureFile READ textureFile WRITE setTextureFile NOTIFY textureFileChanged)
-    Q_PROPERTY(QVector3D position READ position WRITE setPosition NOTIFY positionChanged)
-    Q_PROPERTY(bool positionAbsolute READ isPositionAbsolute WRITE setPositionAbsolute NOTIFY
-                   positionAbsoluteChanged)
-    Q_PROPERTY(QVector3D scaling READ scaling WRITE setScaling NOTIFY scalingChanged)
-    Q_PROPERTY(QQuaternion rotation READ rotation WRITE setRotation NOTIFY rotationChanged)
-    Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged)
+    Q_PROPERTY(QString meshFile READ meshFile WRITE setMeshFile NOTIFY meshFileChanged FINAL)
     Q_PROPERTY(
-        bool shadowCasting READ isShadowCasting WRITE setShadowCasting NOTIFY shadowCastingChanged)
+        QString textureFile READ textureFile WRITE setTextureFile NOTIFY textureFileChanged FINAL)
+    Q_PROPERTY(QVector3D position READ position WRITE setPosition NOTIFY positionChanged FINAL)
+    Q_PROPERTY(bool positionAbsolute READ isPositionAbsolute WRITE setPositionAbsolute NOTIFY
+                   positionAbsoluteChanged FINAL)
+    Q_PROPERTY(QVector3D scaling READ scaling WRITE setScaling NOTIFY scalingChanged FINAL)
+    Q_PROPERTY(QQuaternion rotation READ rotation WRITE setRotation NOTIFY rotationChanged FINAL)
+    Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged FINAL)
+    Q_PROPERTY(bool shadowCasting READ isShadowCasting WRITE setShadowCasting NOTIFY
+                   shadowCastingChanged FINAL)
     Q_PROPERTY(bool scalingAbsolute READ isScalingAbsolute WRITE setScalingAbsolute NOTIFY
-                   scalingAbsoluteChanged)
+                   scalingAbsoluteChanged FINAL)
 
 public:
     explicit QCustom3DItem(QObject *parent = nullptr);
     explicit QCustom3DItem(const QString &meshFile,
-                           const QVector3D &position,
-                           const QVector3D &scaling,
+                           QVector3D position,
+                           QVector3D scaling,
                            const QQuaternion &rotation,
                            const QImage &texture,
                            QObject *parent = nullptr);
@@ -51,13 +48,13 @@ public:
     void setTextureFile(const QString &textureFile);
     QString textureFile() const;
 
-    void setPosition(const QVector3D &position);
+    void setPosition(QVector3D position);
     QVector3D position() const;
 
     void setPositionAbsolute(bool positionAbsolute);
     bool isPositionAbsolute() const;
 
-    void setScaling(const QVector3D &scaling);
+    void setScaling(QVector3D scaling);
     QVector3D scaling() const;
 
     void setScalingAbsolute(bool scalingAbsolute);
@@ -72,16 +69,16 @@ public:
     void setShadowCasting(bool enabled);
     bool isShadowCasting() const;
 
-    Q_INVOKABLE void setRotationAxisAndAngle(const QVector3D &axis, float angle);
+    Q_INVOKABLE void setRotationAxisAndAngle(QVector3D axis, float angle);
 
     void setTextureImage(const QImage &textureImage);
 
 Q_SIGNALS:
     void meshFileChanged(const QString &meshFile);
     void textureFileChanged(const QString &textureFile);
-    void positionChanged(const QVector3D &position);
+    void positionChanged(QVector3D position);
     void positionAbsoluteChanged(bool positionAbsolute);
-    void scalingChanged(const QVector3D &scaling);
+    void scalingChanged(QVector3D scaling);
     void rotationChanged(const QQuaternion &rotation);
     void visibleChanged(bool visible);
     void shadowCastingChanged(bool shadowCasting);

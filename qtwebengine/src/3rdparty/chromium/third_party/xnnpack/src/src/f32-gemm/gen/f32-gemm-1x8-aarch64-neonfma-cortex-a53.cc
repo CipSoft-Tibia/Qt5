@@ -10,6 +10,7 @@
 #include <xnnpack.h>
 #include <xnnpack/aarch64-assembler.h>
 #include <xnnpack/gemm.h>
+#include <xnnpack/log.h>
 #include <xnnpack/memory.h>
 #include <xnnpack/microparams.h>
 #include <xnnpack/post-operation.h>
@@ -25,17 +26,17 @@ class Generator : public MacroAssembler {
   void perform_post_operations(size_t max_mr, size_t num_post_operations, const xnn_post_operation* post_operations);
 };
 
-// void xnn_f32_gemm_minmax_ukernel_1x8__asm_aarch64_neonfma_prfm_cortex_a53(
+// void xnn_f32_gemm_minmax_ukernel_1x8__asm_aarch64_neonfma_cortex_a53_prfm(
 //     size_t mr,                (x0) - unused.  mr = 1
 //     size_t nc,                x1
 //     size_t kc,                x2 / x0
-//     const uint8_t*restrict a, x3
+//     const float* a,           x3
 //     size_t a_stride,          (x4) - unused
-//     const void*restrict w,    x5
-//     uint8_t*restrict c,       x6
+//     const float* w,           x5
+//     float* c,                 x6
 //     size_t cm_stride,         (x7) - unused
 //     size_t cn_stride,         [sp] -> x14
-//     const union xnn_f32_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])  [sp + 8] -> (x8)
+//     const xnn_f32_minmax_params* params)  [sp + 8] -> (x8)
 
 // d8-d15, x19-x30 need to be preserved if used. x18 is reserved by the OS.
 
@@ -48,11 +49,11 @@ class Generator : public MacroAssembler {
 
 // A53 based on A57/A75 but with LDR instead of LDP
 
-// Converted from: src/f32-gemm/gen/f32-gemm-1x8-minmax-asm-aarch64-neonfma-prfm-cortex-a53.S
+// Converted from: src/f32-gemm/gen/f32-gemm-1x8-minmax-asm-aarch64-neonfma-cortex-a53-prfm.S
 void Generator::generate(bool prefetch, size_t max_mr, size_t nc_mod_nr, size_t kc, const jit_gemm_params* jit_gemm_params)
 {
   assert(max_mr <= 1);
-  assert(nc_mod_nr < 8);
+  assert(nc_mod_nr < 8 || nc_mod_nr == SIZE_MAX);
   assert(kc != 0);
   assert(kc % sizeof(float) == 0);
 
@@ -318,7 +319,7 @@ void Generator::perform_post_operations(
         break;
       }
       default:
-        XNN_UNREACHABLE;
+        XNN_LOG_UNREACHABLE("unsupported post operation: %u", post_operations[i].op_type);
     }
   }
 }
@@ -339,7 +340,7 @@ xnn_status_t xnn_generate_f32_gemm_ukernel_1x8__aarch64_neonfma_cortex_a53(xnn_c
   return xnn_status_success;
 }
 
-xnn_status_t xnn_generate_f32_gemm_ukernel_1x8__aarch64_neonfma_prfm_cortex_a53(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, const void* params) {
+xnn_status_t xnn_generate_f32_gemm_ukernel_1x8__aarch64_neonfma_cortex_a53_prfm(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, const void* params) {
   using namespace xnnpack::aarch64;
   Generator g(code);
   assert(params != nullptr);

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 import argparse
+import contextlib
 
 import logging
 import sys
@@ -51,16 +52,20 @@ class ExceptionAnnotationScope:
   ExceptionAnnotator.
   """
 
-  def __init__(self,
-               annotator: ExceptionAnnotator,
-               exception_types: TExceptionTypes,
-               entries: Tuple[str, ...],
-               throw_cls: Optional[Type[BaseException]] = None) -> None:
+  def __init__(
+      self,
+      annotator: ExceptionAnnotator,
+      exception_types: TExceptionTypes,
+      ignore_exception_types: TExceptionTypes,
+      entries: Tuple[str, ...],
+      throw_cls: Optional[Type[BaseException]] = None,
+  ) -> None:
     logging.debug("ExceptionAnnotationScope: %s", entries)
     self._annotator = annotator
     self._exception_types = exception_types
+    self._ignore_exception_types = ignore_exception_types
     self._added_info_stack_entries = entries
-    self._throw_cls = throw_cls
+    self._throw_cls: Optional[Type[BaseException]] = throw_cls
     self._previous_info_stack: TInfoStack = ()
 
   def __enter__(self) -> ExceptionAnnotationScope:
@@ -73,9 +78,14 @@ class ExceptionAnnotationScope:
   def __exit__(self, exception_type: Optional[Type[BaseException]],
                exception_value: Optional[BaseException],
                traceback: Optional[TracebackType]) -> bool:
-    if not exception_value:
+    if not exception_value or not exception_type:
       self._annotator._info_stack = self._previous_info_stack
       # False => exception not handled
+      return False
+    if issubclass(exception_type, self._ignore_exception_types) and (
+        not issubclass(exception_type, MultiException)):
+      self._annotator._info_stack = self._previous_info_stack
+      # False => exception not handled, directly forward
       return False
     logging.debug("Intermediate Exception: %s:%s", exception_type,
                   exception_value)
@@ -155,14 +165,27 @@ class ExceptionAnnotator:
 
   def info(self, *stack_entries: str) -> ExceptionAnnotationScope:
     """Only sets info stack entries, exceptions are passed-through."""
-    return ExceptionAnnotationScope(self, tuple(), stack_entries)
+    return ExceptionAnnotationScope(self, tuple(), tuple(), stack_entries)
 
   def capture(
-      self, *stack_entries: str, exceptions: TExceptionTypes = (Exception,)
+      self,
+      *stack_entries: str,
+      exceptions: TExceptionTypes = (Exception,),
+      ignore: TExceptionTypes = tuple(),
   ) -> ExceptionAnnotationScope:
     """Sets info stack entries and captures exceptions."""
-    return ExceptionAnnotationScope(self, exceptions, stack_entries,
+    return ExceptionAnnotationScope(self, exceptions, ignore, stack_entries,
                                     self._throw_cls)
+
+  @contextlib.contextmanager
+  def annotate(self,
+               *stack_entries,
+               exceptions: TExceptionTypes = (Exception,),
+               ignore: TExceptionTypes = tuple()):
+    """Sets info stack entries and rethrows an annotated MultiException by default ."""
+    with self.capture(*stack_entries, exceptions=exceptions, ignore=ignore):
+      yield self
+    self.assert_success()
 
   def extend(self, annotator: ExceptionAnnotator,
              is_nested: bool = False) -> None:
@@ -247,6 +270,11 @@ class ExceptionAnnotator:
     return msg
 
   def __str__(self) -> str:
+    if len(self._exceptions) == 1:
+      entry = self._exceptions[0]
+      stack = "\n\t".join(entry.info_stack)
+      return f"{stack}: {entry.exception}"
+
     return "\n".join(
         f"{entry.info_stack}: {entry.exception}" for entry in self._exceptions)
 
@@ -254,17 +282,17 @@ class ExceptionAnnotator:
 # Expose simpler name
 Annotator = ExceptionAnnotator
 
-
 def annotate(
     *stack_entries: str,
     exceptions: TExceptionTypes = (Exception,),
+    ignore: TExceptionTypes = tuple(),
     throw_cls: Optional[Type[BaseException]] = MultiException
 ) -> ExceptionAnnotationScope:
-  """Use to annotate an exception.UserWarning.
+  """Use to annotate an exception.
   By default this will throw a MultiException which can keep track of 
   more annotations."""
   return ExceptionAnnotator(throw_cls=throw_cls).capture(
-      *stack_entries, exceptions=exceptions)
+      *stack_entries, exceptions=exceptions, ignore=ignore)
 
 
 class ArgumentTypeMultiException(MultiException, argparse.ArgumentTypeError):
@@ -274,8 +302,12 @@ class ArgumentTypeMultiException(MultiException, argparse.ArgumentTypeError):
 def annotate_argparsing(*stack_entries: str,
                         exceptions: TExceptionTypes = (Exception,)):
   """Use this to annotate argument parsing-related code blocks to get more
-  readable annotated exception back."""
+  readable annotated exception back.
+  - Wraps multiple exception in an ArgumentTypeMultiException
+  - Single ArgumentTypeError are raised directly
+  """
   return annotate(
       *stack_entries,
       exceptions=exceptions,
+      ignore=(argparse.ArgumentTypeError,),
       throw_cls=ArgumentTypeMultiException)

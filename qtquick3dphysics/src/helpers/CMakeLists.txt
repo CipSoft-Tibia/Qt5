@@ -27,5 +27,6 @@ qt_internal_add_qml_module(Quick3DPhysicsHelpers
         Qt::Qml
         Qt::Quick
         Qt::Quick3D
+    NO_GENERATE_CPP_EXPORTS
 )
 

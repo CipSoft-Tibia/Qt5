@@ -1028,8 +1028,6 @@ void QPlainTextEditPrivate::ensureViewportLayouted()
     \ingroup richtext-processing
     \inmodule QtWidgets
 
-    \tableofcontents
-
     \section1 Introduction and Concepts
 
     QPlainTextEdit is an advanced viewer/editor supporting plain
@@ -1671,8 +1669,7 @@ void QPlainTextEdit::keyPressEvent(QKeyEvent *e)
             break;
         case Qt::Key_Back:
         case Qt::Key_No:
-            if (!QApplicationPrivate::keypadNavigationEnabled()
-                    || (QApplicationPrivate::keypadNavigationEnabled() && !hasEditFocus())) {
+            if (!QApplicationPrivate::keypadNavigationEnabled() || !hasEditFocus()) {
                 e->ignore();
                 return;
             }

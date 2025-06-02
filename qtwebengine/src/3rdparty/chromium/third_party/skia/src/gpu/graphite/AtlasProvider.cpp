@@ -8,41 +8,75 @@
 #include "src/gpu/graphite/AtlasProvider.h"
 
 #include "include/gpu/graphite/Recorder.h"
+#include "src/gpu/graphite/DrawContext.h"
+#include "src/gpu/graphite/Log.h"
 #include "src/gpu/graphite/PathAtlas.h"
+#include "src/gpu/graphite/RasterPathAtlas.h"
 #include "src/gpu/graphite/RecorderPriv.h"
+#include "src/gpu/graphite/RendererProvider.h"
 #include "src/gpu/graphite/TextureProxy.h"
 #include "src/gpu/graphite/text/TextAtlasManager.h"
 
 namespace skgpu::graphite {
 
-AtlasProvider::AtlasProvider(Recorder* recorder)
-        : fTextAtlasManager(std::make_unique<TextAtlasManager>(recorder)) {}
-
-std::unique_ptr<ComputePathAtlas> AtlasProvider::createComputePathAtlas(Recorder* recorder) const {
-#ifdef SK_ENABLE_VELLO_SHADERS
-    if (recorder->priv().caps()->computeSupport()) {
-        return std::make_unique<VelloComputePathAtlas>();
+AtlasProvider::PathAtlasFlagsBitMask AtlasProvider::QueryPathAtlasSupport(const Caps* caps) {
+    PathAtlasFlagsBitMask flags = PathAtlasFlags::kNone;
+    flags |= PathAtlasFlags::kRaster;
+    if (RendererProvider::IsVelloRendererSupported(caps)) {
+        flags |= PathAtlasFlags::kCompute;
     }
-#endif  // SK_ENABLE_VELLO_SHADERS
+    return flags;
+}
+
+AtlasProvider::AtlasProvider(Recorder* recorder)
+        : fTextAtlasManager(std::make_unique<TextAtlasManager>(recorder))
+        , fRasterPathAtlas(std::make_unique<RasterPathAtlas>())
+        , fPathAtlasFlags(QueryPathAtlasSupport(recorder->priv().caps())) {}
+
+std::unique_ptr<ComputePathAtlas> AtlasProvider::createComputePathAtlas() const {
+    if (this->isAvailable(PathAtlasFlags::kCompute)) {
+        return ComputePathAtlas::CreateDefault();
+    }
     return nullptr;
 }
 
+RasterPathAtlas* AtlasProvider::getRasterPathAtlas() const {
+    return fRasterPathAtlas.get();
+}
+
 sk_sp<TextureProxy> AtlasProvider::getAtlasTexture(Recorder* recorder,
-                                                   uint32_t width,
-                                                   uint32_t height) {
-    uint64_t key = (static_cast<uint64_t>(width) << 32) | static_cast<uint64_t>(height);
+                                                   uint16_t width,
+                                                   uint16_t height,
+                                                   SkColorType colorType,
+                                                   uint16_t identifier,
+                                                   bool requireStorageUsage) {
+    uint64_t key = static_cast<uint64_t>(width)  << 48 |
+                   static_cast<uint64_t>(height) << 32 |
+                   static_cast<uint64_t>(colorType) << 16 |
+                   static_cast<uint64_t>(identifier);
     auto iter = fTexturePool.find(key);
     if (iter != fTexturePool.end()) {
         return iter->second;
     }
 
-    // TODO(chromium:1856): WebGPU does not support the "storage binding" usage for the R8Unorm
-    // texture format. This means that we may have to use RGBA8 on Dawn until it provides an
-    // optional feature.
-    auto proxy = TextureProxy::MakeStorage(recorder->priv().caps(),
-                                           SkISize::Make(int32_t(width), int32_t(height)),
-                                           kAlpha_8_SkColorType,
-                                           skgpu::Budgeted::kYes);
+    sk_sp<TextureProxy> proxy;
+    if (requireStorageUsage) {
+        proxy = TextureProxy::MakeStorage(recorder->priv().caps(),
+                                          SkISize::Make(int32_t(width), int32_t(height)),
+                                          colorType,
+                                          skgpu::Budgeted::kYes);
+    } else {
+        // We currently only make the distinction between a storage texture (written by a
+        // compute pass) and a plain sampleable texture (written via upload) that won't be
+        // used as a render attachment.
+        proxy = TextureProxy::Make(recorder->priv().caps(),
+                                   SkISize::Make(int32_t(width), int32_t(height)),
+                                   colorType,
+                                   skgpu::Mipmapped::kNo,
+                                   recorder->priv().isProtected(),
+                                   skgpu::Renderable::kNo,
+                                   skgpu::Budgeted::kYes);
+    }
     if (!proxy) {
         return nullptr;
     }
@@ -53,6 +87,16 @@ sk_sp<TextureProxy> AtlasProvider::getAtlasTexture(Recorder* recorder,
 
 void AtlasProvider::clearTexturePool() {
     fTexturePool.clear();
+}
+
+void AtlasProvider::recordUploads(DrawContext* dc, Recorder* recorder) {
+    if (!dc->recordTextUploads(fTextAtlasManager.get())) {
+        SKGPU_LOG_E("TextAtlasManager uploads have failed -- may see invalid results.");
+    }
+
+    if (fRasterPathAtlas) {
+        fRasterPathAtlas->recordUploads(dc, recorder);
+    }
 }
 
 }  // namespace skgpu::graphite

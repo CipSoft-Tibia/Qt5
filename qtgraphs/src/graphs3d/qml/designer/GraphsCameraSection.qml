@@ -26,7 +26,7 @@ Section {
                     "DirectlyAboveCW45", "DirectlyAboveCCW45", "FrontBelow",
                     "LeftBelow", "RightBelow", "BehindBelow", "DirectlyBelow"]
                 Layout.fillWidth: true
-                scope: "AbstractGraph3D"
+                scope: "Graphs3D"
             }
         }
         PropertyLabel {

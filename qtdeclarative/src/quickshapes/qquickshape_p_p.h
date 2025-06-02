@@ -18,6 +18,7 @@
 #include <QtQuickShapes/private/qquickshapesglobal_p.h>
 #include <QtQuickShapes/private/qquickshape_p.h>
 #include <private/qquickitem_p.h>
+#include <private/qsgtransform_p.h>
 #include <QPainterPath>
 #include <QColor>
 #include <QBrush>
@@ -47,6 +48,7 @@ public:
     virtual void setAsyncCallback(void (*)(void *), void *) { }
     virtual Flags flags() const { return {}; }
     virtual void setPath(int index, const QQuickPath *path) = 0;
+    virtual void setPath(int index, const QPainterPath &path, QQuickShapePath::PathHints pathHints = {}) = 0;
     virtual void setStrokeColor(int index, const QColor &color) = 0;
     virtual void setStrokeWidth(int index, qreal w) = 0;
     virtual void setFillColor(int index, const QColor &color) = 0;
@@ -56,7 +58,10 @@ public:
     virtual void setStrokeStyle(int index, QQuickShapePath::StrokeStyle strokeStyle,
                                 qreal dashOffset, const QVector<qreal> &dashPattern) = 0;
     virtual void setFillGradient(int index, QQuickShapeGradient *gradient) = 0;
+    virtual void setFillTextureProvider(int index, QQuickItem *textureProviderItem) = 0;
+    virtual void setFillTransform(int index, const QSGTransform &transform) = 0;
     virtual void setTriangulationScale(qreal) { }
+    virtual void handleSceneChange(QQuickWindow *window) = 0;
 
     // Render thread, with gui blocked
     virtual void updateNode() = 0;
@@ -79,9 +84,11 @@ struct QQuickShapeStrokeFillParams
     qreal dashOffset;
     QVector<qreal> dashPattern;
     QQuickShapeGradient *fillGradient;
+    QSGTransform fillTransform;
+    QQuickItem *fillItem;
 };
 
-class Q_QUICKSHAPES_PRIVATE_EXPORT QQuickShapePathPrivate : public QQuickPathPrivate
+class Q_QUICKSHAPES_EXPORT QQuickShapePathPrivate : public QQuickPathPrivate
 {
     Q_DECLARE_PUBLIC(QQuickShapePath)
 
@@ -95,14 +102,19 @@ public:
         DirtyStyle = 0x20,
         DirtyDash = 0x40,
         DirtyFillGradient = 0x80,
+        DirtyFillTransform = 0x100,
+        DirtyFillItem = 0x200,
 
-        DirtyAll = 0xFF
+        DirtyAll = 0x3FF
     };
 
     QQuickShapePathPrivate();
 
     void _q_pathChanged();
     void _q_fillGradientChanged();
+    void _q_fillItemDestroyed();
+
+    void handleSceneChange();
 
     static QQuickShapePathPrivate *get(QQuickShapePath *p) { return p->d_func(); }
 
@@ -126,6 +138,7 @@ public:
 
     void _q_shapePathChanged();
     void setStatus(QQuickShape::Status newStatus);
+    void handleSceneChange(QQuickWindow *w);
 
     static QQuickShapePrivate *get(QQuickShape *item) { return item->d_func(); }
 

@@ -4,7 +4,10 @@
 #ifndef CPPCODEPARSER_H
 #define CPPCODEPARSER_H
 
+#include "clangcodeparser.h"
 #include "codeparser.h"
+#include "parsererror.h"
+#include "utilities.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -30,11 +33,10 @@ public:
     static inline const QSet<QString> meta_commands = QSet<QString>(CodeParser::common_meta_commands)
         << COMMAND_COMPARES << COMMAND_COMPARESWITH << COMMAND_INHEADERFILE
         << COMMAND_NEXTPAGE << COMMAND_OVERLOAD << COMMAND_PREVIOUSPAGE
-        << COMMAND_QMLINSTANTIATES << COMMAND_REIMP << COMMAND_RELATES;
+        << COMMAND_QMLINSTANTIATES << COMMAND_QMLNATIVETYPE << COMMAND_REIMP << COMMAND_RELATES;
 
 public:
-    CppCodeParser();
-    ~CppCodeParser();
+    explicit CppCodeParser(FnCommandParser&& parser);
 
     FunctionNode *parseMacroArg(const Location &location, const QString &macroArg);
     FunctionNode *parseOtherFuncArg(const QString &topic, const Location &location,
@@ -42,33 +44,66 @@ public:
     static bool isQMLMethodTopic(const QString &t);
     static bool isQMLPropertyTopic(const QString &t);
 
-    [[nodiscard]] bool hasTooManyTopics(const Doc &doc) const;
-
-    void processTopicArgs(const Doc &doc, const QString &topic, NodeList &nodes, DocList &docs);
+    std::pair<std::vector<TiedDocumentation>, std::vector<FnMatchError>>
+    processTopicArgs(const UntiedDocumentation &untied);
 
     void processMetaCommand(const Doc &doc, const QString &command, const ArgPair &argLocPair,
                             Node *node);
     void processMetaCommands(const Doc &doc, Node *node);
-    void processMetaCommands(NodeList &nodes, DocList &docs);
+    void processMetaCommands(const std::vector<TiedDocumentation> &tied);
 
 protected:
     virtual Node *processTopicCommand(const Doc &doc, const QString &command,
                                       const ArgPair &arg);
-    void processQmlProperties(const Doc &doc, NodeList &nodes, DocList &docs);
-    bool splitQmlPropertyArg(const QString &arg, QString &type, QString &module, QString &element,
-                             QString &name, const Location &location);
+    std::vector<TiedDocumentation> processQmlProperties(const UntiedDocumentation& untied);
 
 private:
     void setExampleFileLists(ExampleNode *en);
     static void processComparesCommand(Node *node, const QString &arg, const Location &loc);
+    void processQmlNativeTypeCommand(Node *node, const QString &cmd,
+                                     const QString &arg, const Location &loc);
 
 private:
-    static QSet<QString> m_excludeDirs;
-    static QSet<QString> m_excludeFiles;
+    FnCommandParser fn_parser;
     QString m_exampleNameFilter;
     QString m_exampleImageFilter;
     bool m_showLinkErrors { false };
 };
+
+/*!
+  * \internal
+  * \brief Checks if there are too many topic commands in \a doc.
+  *
+  * This method compares the commands used in \a doc with the set of topic
+  * commands. If zero or one topic command is found, or if all found topic
+  * commands are {\\qml*}-commands, the method returns \c false.
+  *
+  * If more than one topic command is found, QDoc issues a warning and the list
+  * of topic commands used in \a doc, and the method returns \c true.
+  */
+[[nodiscard]] inline bool hasTooManyTopics(const Doc &doc)
+{
+    const QSet<QString> topicCommandsUsed = CppCodeParser::topic_commands & doc.metaCommandsUsed();
+
+    if (topicCommandsUsed.empty() || topicCommandsUsed.size() == 1)
+        return false;
+    if (std::all_of(topicCommandsUsed.cbegin(), topicCommandsUsed.cend(),
+                    [](const auto &cmd) { return cmd.startsWith(QLatin1String("qml")); }))
+        return false;
+
+    const QStringList commands = topicCommandsUsed.values();
+    const QString topicCommands{ std::accumulate(
+            commands.cbegin(), commands.cend(), QString{},
+            [index = qsizetype{ 0 }, numberOfCommands = commands.size()](
+                    const QString &accumulator, const QString &topic) mutable -> QString {
+                return accumulator + QLatin1String("\\") + topic
+                        + Utilities::separator(index++, numberOfCommands);
+            }) };
+
+    doc.location().warning(
+            QStringLiteral("Multiple topic commands found in comment: %1").arg(topicCommands));
+    return true;
+}
 
 QT_END_NAMESPACE
 

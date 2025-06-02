@@ -30,10 +30,6 @@ struct SkIPoint;
 struct SkIRect;
 enum class SkTextureCompressionType;
 
-namespace skif {
-Functors MakeRasterFunctors();
-} // namespace skif
-
 static bool valid_args(const SkImageInfo& info, size_t rowBytes, size_t* minSize) {
     const int maxDimension = SK_MaxS32 >> 2;
 
@@ -111,7 +107,8 @@ sk_sp<SkImage> MakeWithFilter(sk_sp<SkImage> src,
         return nullptr;
     }
 
-    return as_IFB(filter)->makeImageWithFilter(skif::MakeRasterFunctors(),
+    sk_sp<skif::Backend> backend = skif::MakeRasterBackend({}, src->colorType());
+    return as_IFB(filter)->makeImageWithFilter(std::move(backend),
                                                std::move(src),
                                                subset,
                                                clipBounds,

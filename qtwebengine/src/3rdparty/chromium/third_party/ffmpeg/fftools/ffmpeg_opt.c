@@ -56,7 +56,9 @@
 const char *const opt_name_codec_names[]                      = {"c", "codec", "acodec", "vcodec", "scodec", "dcodec", NULL};
 const char *const opt_name_frame_rates[]                      = {"r", NULL};
 const char *const opt_name_codec_tags[]                       = {"tag", "atag", "vtag", "stag", NULL};
+#if FFMPEG_OPT_TOP
 const char *const opt_name_top_field_first[]                  = {"top", NULL};
+#endif
 
 HWDevice *filter_hw_device;
 
@@ -372,9 +374,6 @@ static int opt_map(void *optctx, const char *opt, const char *arg)
     StreamMap *m = NULL;
     int i, negative = 0, file_idx, disabled = 0;
     int ret;
-#if FFMPEG_OPT_MAP_SYNC
-    char *sync;
-#endif
     char *map, *p;
     char *allow_unused;
 
@@ -387,10 +386,14 @@ static int opt_map(void *optctx, const char *opt, const char *arg)
         return AVERROR(ENOMEM);
 
 #if FFMPEG_OPT_MAP_SYNC
-    /* parse sync stream first, just pick first matching stream */
-    if (sync = strchr(map, ',')) {
-        *sync = 0;
-        av_log(NULL, AV_LOG_WARNING, "Specifying a sync stream is deprecated and has no effect\n");
+    {
+        /* parse sync stream first, just pick first matching stream */
+        char *sync = strchr(map, ',');
+
+        if (sync) {
+            *sync = 0;
+            av_log(NULL, AV_LOG_WARNING, "Specifying a sync stream is deprecated and has no effect\n");
+        }
     }
 #endif
 
@@ -401,13 +404,14 @@ static int opt_map(void *optctx, const char *opt, const char *arg)
 
         ret = GROW_ARRAY(o->stream_maps, o->nb_stream_maps);
         if (ret < 0)
-            return ret;
+            goto fail;
 
         m = &o->stream_maps[o->nb_stream_maps - 1];
         m->linklabel = av_get_token(&c, "]");
         if (!m->linklabel) {
             av_log(NULL, AV_LOG_ERROR, "Invalid output link label: %s.\n", map);
-            return AVERROR(EINVAL);
+            ret = AVERROR(EINVAL);
+            goto fail;
         }
     } else {
         if (allow_unused = strchr(map, '?'))
@@ -415,7 +419,8 @@ static int opt_map(void *optctx, const char *opt, const char *arg)
         file_idx = strtol(map, &p, 0);
         if (file_idx >= nb_input_files || file_idx < 0) {
             av_log(NULL, AV_LOG_FATAL, "Invalid input file index: %d.\n", file_idx);
-            return AVERROR(EINVAL);
+            ret = AVERROR(EINVAL);
+            goto fail;
         }
         if (negative)
             /* disable some already defined maps */
@@ -438,7 +443,7 @@ static int opt_map(void *optctx, const char *opt, const char *arg)
                 }
                 ret = GROW_ARRAY(o->stream_maps, o->nb_stream_maps);
                 if (ret < 0)
-                    return ret;
+                    goto fail;
 
                 m = &o->stream_maps[o->nb_stream_maps - 1];
 
@@ -453,16 +458,19 @@ static int opt_map(void *optctx, const char *opt, const char *arg)
         } else if (disabled) {
             av_log(NULL, AV_LOG_FATAL, "Stream map '%s' matches disabled streams.\n"
                                        "To ignore this, add a trailing '?' to the map.\n", arg);
-            return AVERROR(EINVAL);
+            ret = AVERROR(EINVAL);
+            goto fail;
         } else {
             av_log(NULL, AV_LOG_FATAL, "Stream map '%s' matches no streams.\n"
                                        "To ignore this, add a trailing '?' to the map.\n", arg);
-            return AVERROR(EINVAL);
+            ret = AVERROR(EINVAL);
+            goto fail;
         }
     }
-
+    ret = 0;
+fail:
     av_freep(&map);
-    return 0;
+    return ret;
 }
 
 static int opt_attach(void *optctx, const char *opt, const char *arg)
@@ -497,7 +505,7 @@ static int opt_map_channel(void *optctx, const char *opt, const char *arg)
 
     ret = GROW_ARRAY(o->audio_channel_maps, o->nb_audio_channel_maps);
     if (ret < 0)
-        return ret;
+        goto end;
 
     m = &o->audio_channel_maps[o->nb_audio_channel_maps - 1];
 
@@ -559,11 +567,13 @@ static int opt_map_channel(void *optctx, const char *opt, const char *arg)
         }
 
     }
+    ret = 0;
+end:
     av_free(mapchan);
-    return 0;
+    return ret;
 fail:
-    av_free(mapchan);
-    return AVERROR(EINVAL);
+    ret = AVERROR(EINVAL);
+    goto end;
 }
 #endif
 
@@ -1687,9 +1697,11 @@ const OptionDef options[] = {
     { "chroma_intra_matrix", OPT_VIDEO | HAS_ARG | OPT_EXPERT  | OPT_STRING | OPT_SPEC |
                       OPT_OUTPUT,                                                { .off = OFFSET(chroma_intra_matrices) },
         "specify intra matrix coeffs", "matrix" },
+#if FFMPEG_OPT_TOP
     { "top",          OPT_VIDEO | HAS_ARG | OPT_EXPERT  | OPT_INT| OPT_SPEC |
                       OPT_INPUT | OPT_OUTPUT,                                    { .off = OFFSET(top_field_first) },
-        "top=1/bottom=0/auto=-1 field first", "" },
+        "deprecated, use the setfield video filter", "" },
+#endif
     { "vtag",         OPT_VIDEO | HAS_ARG | OPT_EXPERT  | OPT_PERFILE |
                       OPT_INPUT | OPT_OUTPUT,                                    { .func_arg = opt_old2new },
         "force video tag/fourcc", "fourcc/tag" },

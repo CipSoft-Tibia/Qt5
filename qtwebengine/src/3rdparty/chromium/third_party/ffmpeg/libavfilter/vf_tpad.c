@@ -26,6 +26,7 @@
 #include "internal.h"
 #include "formats.h"
 #include "drawutils.h"
+#include "video.h"
 
 enum PadMode {
     MODE_ADD = 0,
@@ -69,11 +70,17 @@ static const AVOption tpad_options[] = {
 
 AVFILTER_DEFINE_CLASS(tpad);
 
+static int needs_drawing(const TPadContext *s) {
+    return (
+        (s->stop_mode  == MODE_ADD && (s->pad_stop  != 0 || s->stop_duration  != 0)) ||
+        (s->start_mode == MODE_ADD && (s->pad_start != 0 || s->start_duration != 0))
+    );
+}
+
 static int query_formats(AVFilterContext *ctx)
 {
     TPadContext *s = ctx->priv;
-    if ((s->stop_mode == MODE_ADD && s->pad_stop != 0) ||
-        (s->start_mode == MODE_ADD && s->pad_start != 0))
+    if (needs_drawing(s))
         return ff_set_common_formats(ctx, ff_draw_supported_pixel_formats(0));
 
     return ff_set_common_formats(ctx, ff_all_formats(AVMEDIA_TYPE_VIDEO));
@@ -195,8 +202,7 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     TPadContext *s = ctx->priv;
 
-    if ((s->stop_mode == MODE_ADD && s->pad_stop != 0) ||
-        (s->start_mode == MODE_ADD && s->pad_start != 0)) {
+    if (needs_drawing(s)) {
         ff_draw_init(&s->draw, inlink->format, 0);
         ff_draw_color(&s->draw, &s->color, s->rgba_color);
     }
@@ -224,13 +230,6 @@ static const AVFilterPad tpad_inputs[] = {
     },
 };
 
-static const AVFilterPad tpad_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_tpad = {
     .name          = "tpad",
     .description   = NULL_IF_CONFIG_SMALL("Temporarily pad video frames."),
@@ -239,6 +238,6 @@ const AVFilter ff_vf_tpad = {
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(tpad_inputs),
-    FILTER_OUTPUTS(tpad_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
 };

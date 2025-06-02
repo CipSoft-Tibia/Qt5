@@ -2,7 +2,8 @@
 # Copyright 2022 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-'''Assembles a Rust toolchain in-tree linked against in-tree LLVM.
+'''Assembles a Rust toolchain in-tree linked against the LLVM revision
+specified in //tools/clang/scripts/update.py.
 
 Builds a Rust toolchain bootstrapped from an untrusted rustc build.
 
@@ -21,9 +22,9 @@ can be extensively customized. See for details:
 https://rustc-dev-guide.rust-lang.org/building/bootstrapping.html
 
 This script clones the Rust repository, checks it out to a defined revision,
-then builds stage 1 rustc and libstd using the LLVM build from
-//tools/clang/scripts/build.py or clang-libs fetched from
-//tools/clang/scripts/update.py.
+builds LLVM and Clang via //tools/clang/scripts/build.py, then builds rustc and
+libstd against it. Clang is included in the build for libclang, which is needed
+for building and shipping bindgen.
 
 Ideally our build would begin with our own trusted stage0 rustc. As it is
 simpler, for now we use an official build.
@@ -70,19 +71,25 @@ EXCLUDED_TESTS = [
     os.path.join('tests', 'codegen', 'issue-45222.rs'),
     # https://github.com/rust-lang/rust/issues/96497
     os.path.join('tests', 'codegen', 'issue-96497-slice-size-nowrap.rs'),
-    # https://github.com/rust-lang/rust/issues/109671 the test is being
-    # optimized in newer LLVM which breaks its expectations.
-    os.path.join('tests', 'ui', 'abi', 'stack-protector.rs'),
-    # https://github.com/rust-lang/rust/issues/109672 the second panic in a
-    # double-panic is being optimized out (reasonably correctly) by newer LLVM.
-    os.path.join('tests', 'ui', 'backtrace.rs'),
-    # https://github.com/rust-lang/rust/issues/94322 large output from
-    # compiletests is breaking json parsing of the results.
-    os.path.join('tests', 'ui', 'numeric', 'numeric-cast.rs'),
+    # TODO(https://crbug.com/1515111): remove after rolling rust with fix
+    os.path.join('tests', 'codegen', 'abi-main-signature-32bit-c-int.rs'),
+    # TODO(https://crbug.com/1513478): remove after rolling rust with fix
+    os.path.join('tests', 'ui', 'asm', 'inline-syntax.rs'),
 ]
 EXCLUDED_TESTS_WINDOWS = [
     # https://github.com/rust-lang/rust/issues/96464
     os.path.join('tests', 'codegen', 'vec-shrink-panik.rs'),
+]
+EXCLUDED_TESTS_MAC = [
+    # https://crbug.com/1479875 This fails on Mac. It relates to the large code
+    # model which we don't use, so suppress it for now.
+    os.path.join('tests', 'ui', 'thread-local', 'thread-local-issue-37508.rs'),
+]
+EXCLUDED_TESTS_MAC_ARM64 = [
+    # https://crbug.com/1519640 This fails on Mac/ARM64. We didn't even run it
+    # until recently, so ignore it for now.
+    os.path.join('test', 'ui', 'extern',
+                 'issue-64655-extern-rust-must-allow-unwind.rs'),
 ]
 
 CLANG_SCRIPTS_DIR = os.path.join(CHROMIUM_DIR, 'tools', 'clang', 'scripts')
@@ -477,6 +484,14 @@ def GetTestArgs():
         for excluded in EXCLUDED_TESTS_WINDOWS:
             args.append('--exclude')
             args.append(excluded)
+    if sys.platform == 'darwin':
+        for excluded in EXCLUDED_TESTS_MAC:
+            args.append('--exclude')
+            args.append(excluded)
+    if sys.platform == 'darwin' and platform.machine() == 'arm64':
+        for excluded in EXCLUDED_TESTS_MAC_ARM64:
+            args.append('--exclude')
+            args.append(excluded)
     return args
 
 
@@ -546,8 +561,6 @@ def BuildLLVMLibraries(skip_build, build_mac_arm):
         if sys.platform.startswith('linux'):
             build_cmd.append('--without-android')
             build_cmd.append('--without-fuchsia')
-        if sys.platform == 'darwin':
-            build_cmd.append('--without-fuchsia')
         RunCommand(build_cmd + [
             '--build-dir', RUST_HOST_LLVM_BUILD_DIR, '--install-dir',
             RUST_HOST_LLVM_INSTALL_DIR
@@ -593,8 +606,12 @@ def BuildLLVMLibraries(skip_build, build_mac_arm):
     return (x86_64_llvm_config, aarch64_llvm_config, target_llvm_install_dir)
 
 
-def GitCherryPick(git_repository, commit):
-    print(f'Cherry-picking {commit} in {git_repository}')
+def GitCherryPick(git_repository, git_remote, commit):
+    print(f'Cherry-picking {commit} in {git_repository} from {git_remote}')
+    RunCommand(
+        ['git', '-C', git_repository, 'remote', 'add', 'github', git_remote],
+        fail_hard=False)
+    RunCommand(['git', '-C', git_repository, 'fetch', 'github', commit])
     if RunCommand([
             'git', '-C', git_repository, 'merge-base', '--is-ancestor', commit,
             'HEAD'
@@ -602,7 +619,10 @@ def GitCherryPick(git_repository, commit):
                   fail_hard=False):
         print('Commit already an ancestor; skipping.')
         return
-    RunCommand(['git', '-C', git_repository, 'cherry-pick', commit])
+    RunCommand([
+        'git', '-C', git_repository, 'cherry-pick', '--keep-redundant-commits',
+        commit
+    ])
 
 
 def main():
@@ -733,12 +753,27 @@ def main():
 
     if not args.skip_checkout:
         CheckoutGitRepo('Rust', RUST_GIT_URL, checkout_revision, RUST_SRC_DIR)
+        # TODO(crbug.com/1493085): remove once
+        # https://github.com/rust-lang/rust/pull/116672 has been merged.
+        GitCherryPick(RUST_SRC_DIR, 'https://github.com/rust-lang/rust.git',
+                      '01c30a41a9952b49405a537e1c8bae3f2272ccf4')
 
-        # NOTE(b/276962533): We patch in riscv64-linux-android support
-        # (https://github.com/rust-lang/rust/commit/0081d64e4b8413219ddec5d1).
-        # TODO(crbug.com/1472655): Remove this cherrypicking after the
-        # cherrypicked commit is included in the checkout.
-        GitCherryPick(RUST_SRC_DIR, '0081d64e4b8413219ddec5d1013d522edbf132')
+        # TODO: Remove once
+        # https://github.com/rust-lang/rust/pull/119185 has been merged.
+        GitCherryPick(RUST_SRC_DIR, 'https://github.com/rust-lang/rust.git',
+                      '14947b410ad23a09251180af50486e247f70b465')
+
+        # TODO: Remove the following cherry-picks in next rust roll.
+        GitCherryPick(RUST_SRC_DIR, 'https://github.com/rust-lang/rust.git',
+                      '81cd7c5b11766ed1e3214a2233371fb6d72ed89c')
+        GitCherryPick(RUST_SRC_DIR, 'https://github.com/rust-lang/rust.git',
+                      'b378059e6b2573c5356423fa31d184a89a3b6029')
+        GitCherryPick(RUST_SRC_DIR, 'https://github.com/rust-lang/rust.git',
+                      'a0c5079889b1f86dd9e246d8863a5c8b44fbdb78')
+        GitCherryPick(RUST_SRC_DIR, 'https://github.com/rust-lang/rust.git',
+                      '46a801559127441675f2341bd1d684809a47def1')
+        GitCherryPick(RUST_SRC_DIR, 'https://github.com/rust-lang/rust.git',
+                      '0a285e8de7eec36e1de68c83764d23f2522a4274')
 
         path = FetchBetaPackage('cargo', checkout_revision)
         if sys.platform == 'win32':
@@ -818,6 +853,14 @@ def main():
     if args.build_mac_arm:
         for a in DISTRIBUTION_ARTIFACTS_SKIPPED_CROSS_COMPILE:
             artifacts.remove(a)
+    # TODO(crbug.com/1504532): remove in next rust roll.
+    rust_llvm_dir = os.path.join(RUST_SRC_DIR, 'src', 'llvm-project')
+    GitCherryPick(rust_llvm_dir,
+                  'https://github.com/rust-lang/llvm-project.git',
+                  '823883116fdee662a3e150a88e6aad583036ccd3')
+    # Remove .git in llvm so x.py install will not sync it.
+    if (os.path.exists(os.path.join(rust_llvm_dir, '.git'))):
+        os.remove(os.path.join(rust_llvm_dir, '.git'))
     xpy.run('install', xpy_args + artifacts)
 
     # Copy additional vendored crates required for building stdlib.

@@ -6,8 +6,7 @@
 #include <QtGraphs/qscatter3dseries.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dtheme.h>
-#include <QtGraphs/Q3DInputHandler>
+#include <QtGraphs/qgraphstheme.h>
 #include <qmath.h>
 #include <qrandom.h>
 
@@ -15,41 +14,43 @@
 
 const int numberOfItems = 10000;
 
-ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
+ScatterDataModifier::ScatterDataModifier(Q3DScatterWidgetItem *scatter)
     : m_chart(scatter),
       m_fontSize(30.0f),
       m_loopCounter(0),
       m_selectedItem(-1),
       m_targetSeries(0)
 {
-    m_chart->activeTheme()->setType(Q3DTheme::Theme::StoneMoss);
-    QFont font = m_chart->activeTheme()->font();
+    m_chart->activeTheme()->setTheme(QGraphsTheme::Theme::QtGreen);
+    QFont font = m_chart->activeTheme()->labelFont();
     font.setPointSize(m_fontSize);
-    m_chart->activeTheme()->setFont(font);
-    m_chart->setShadowQuality(QAbstract3DGraph::ShadowQuality::None);
-    m_chart->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
+    m_chart->activeTheme()->setLabelFont(font);
+    m_chart->setShadowQuality(QtGraphs3D::ShadowQuality::None);
+    m_chart->setCameraPreset(QtGraphs3D::CameraPreset::Front);
     m_chart->setAxisX(new QValue3DAxis);
     m_chart->setAxisY(new QValue3DAxis);
     m_chart->setAxisZ(new QValue3DAxis);
     m_chart->axisY()->setLabelFormat(QStringLiteral("%.7f"));
-    static_cast<Q3DInputHandler *>(m_chart->activeInputHandler())->setZoomAtTargetEnabled(true);
+    m_chart->setZoomAtTargetEnabled(true);
 
     createAndAddSeries();
     createAndAddSeries();
 
-    m_chart->setSelectionMode(QAbstract3DGraph::SelectionItem);
+    m_chart->setSelectionMode(QtGraphs3D::SelectionFlag::Item);
 
     QObject::connect(&m_timer, &QTimer::timeout, this, &ScatterDataModifier::timeout);
-    QObject::connect(m_chart, &Q3DScatter::shadowQualityChanged, this,
+    QObject::connect(m_chart, &Q3DScatterWidgetItem::shadowQualityChanged, this,
                      &ScatterDataModifier::shadowQualityUpdatedByVisual);
 
-    QObject::connect(m_chart, &Q3DScatter::axisXChanged, this,
+    QObject::connect(m_chart, &Q3DScatterWidgetItem::axisXChanged, this,
                      &ScatterDataModifier::handleAxisXChanged);
-    QObject::connect(m_chart, &Q3DScatter::axisYChanged, this,
+    QObject::connect(m_chart, &Q3DScatterWidgetItem::axisYChanged, this,
                      &ScatterDataModifier::handleAxisYChanged);
-    QObject::connect(m_chart, &Q3DScatter::axisZChanged, this,
+    QObject::connect(m_chart, &Q3DScatterWidgetItem::axisZChanged, this,
                      &ScatterDataModifier::handleAxisZChanged);
-    QObject::connect(m_chart, &QAbstract3DGraph::currentFpsChanged, this,
+    QObject::connect(m_chart,
+                     &Q3DGraphsWidgetItem::currentFpsChanged,
+                     this,
                      &ScatterDataModifier::handleFpsChange);
 }
 
@@ -124,8 +125,8 @@ void ScatterDataModifier::massiveDataTest()
         m_chart->setAxisX(xAxis);
         m_chart->setAxisY(yAxis);
         m_chart->setAxisZ(zAxis);
-        m_chart->setCameraPreset(QAbstract3DGraph::CameraPreset::Right);
-        m_chart->setShadowQuality(QAbstract3DGraph::ShadowQuality::None);
+        m_chart->setCameraPreset(QtGraphs3D::CameraPreset::Right);
+        m_chart->setShadowQuality(QtGraphs3D::ShadowQuality::None);
         const auto scatteriesList = m_chart->seriesList();
         for (const auto &series : scatteriesList)
             m_chart->removeSeries(static_cast<QScatter3DSeries *>(series));
@@ -366,7 +367,6 @@ void ScatterDataModifier::testItemChanges()
         break;
     case 10: {
         qDebug() << __FUNCTION__ << counter << "Level the field single item at a time";
-        QScatterDataItem item;
         for (int i = 0; i < rowCount; i++) {
             for (int j = 0; j < colCount; j++) {
                 int itemIndex = i * colCount + j;
@@ -561,42 +561,43 @@ void ScatterDataModifier::changeStyle()
 
 void ScatterDataModifier::changePresetCamera()
 {
-    static int preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
+    static int preset = int(QtGraphs3D::CameraPreset::FrontLow);
 
-    m_chart->setCameraPreset((QAbstract3DGraph::CameraPreset)preset);
+    m_chart->setCameraPreset((QtGraphs3D::CameraPreset) preset);
 
-    if (++preset > int(QAbstract3DGraph::CameraPreset::DirectlyAboveCCW45))
-        preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
+    if (++preset > int(QtGraphs3D::CameraPreset::DirectlyAboveCCW45))
+        preset = int(QtGraphs3D::CameraPreset::FrontLow);
 }
 
 void ScatterDataModifier::changeTheme()
 {
-    static int theme = int(Q3DTheme::Theme::Qt);
+    static int theme = int(QGraphsTheme::Theme::QtGreen);
 
-    m_chart->activeTheme()->setType(Q3DTheme::Theme(theme));
+    m_chart->activeTheme()->setTheme(QGraphsTheme::Theme(theme));
 
-    if (++theme > int(Q3DTheme::Theme::Isabelle))
-        theme = int(Q3DTheme::Theme::Qt);
+    if (++theme > int(QGraphsTheme::Theme::UserDefined))
+        theme = int(QGraphsTheme::Theme::QtGreen);
 }
 
 void ScatterDataModifier::changeLabelStyle()
 {
-    m_chart->activeTheme()->setLabelBackgroundEnabled(!m_chart->activeTheme()->isLabelBackgroundEnabled());
+    m_chart->activeTheme()->setLabelBackgroundVisible(
+        !m_chart->activeTheme()->isLabelBackgroundVisible());
 }
 
 void ScatterDataModifier::changeFont(const QFont &font)
 {
     QFont newFont = font;
     newFont.setPointSizeF(m_fontSize);
-    m_chart->activeTheme()->setFont(newFont);
+    m_chart->activeTheme()->setLabelFont(newFont);
 }
 
 void ScatterDataModifier::changeFontSize(int fontSize)
 {
     m_fontSize = fontSize;
-    QFont font = m_chart->activeTheme()->font();
+    QFont font = m_chart->activeTheme()->labelFont();
     font.setPointSize(m_fontSize);
-    m_chart->activeTheme()->setFont(font);
+    m_chart->activeTheme()->setLabelFont(font);
 }
 
 void ScatterDataModifier::changePointSize(int pointSize)
@@ -604,7 +605,7 @@ void ScatterDataModifier::changePointSize(int pointSize)
     m_targetSeries->setItemSize(0.01f *  float(pointSize));
 }
 
-void ScatterDataModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality sq)
+void ScatterDataModifier::shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality sq)
 {
     int quality = int(sq);
      // Updates the UI component to show correct shadow quality
@@ -657,7 +658,8 @@ void ScatterDataModifier::addOne()
 
     QScatterDataItem item(randVector());
     int addIndex = m_targetSeries->dataProxy()->addItem(item);
-    qDebug() << m_loopCounter << "added one to index:" << addIndex << "array size:" << m_targetSeries->dataProxy()->array().size();
+    qDebug() << m_loopCounter << "added one to index:" << addIndex
+             << "array size:" << m_targetSeries->dataArray().size();
 }
 
 void ScatterDataModifier::addBunch()
@@ -669,7 +671,8 @@ void ScatterDataModifier::addBunch()
     for (int i = 0; i < items.size(); i++)
         items[i].setPosition(randVector());
     int addIndex = m_targetSeries->dataProxy()->addItems(items);
-    qDebug() << m_loopCounter << "added bunch to index:" << addIndex << "array size:" << m_targetSeries->dataProxy()->array().size();
+    qDebug() << m_loopCounter << "added bunch to index:" << addIndex
+             << "array size:" << m_targetSeries->dataArray().size();
 }
 
 void ScatterDataModifier::insertOne()
@@ -679,7 +682,7 @@ void ScatterDataModifier::insertOne()
 
     QScatterDataItem item(randVector());
     m_targetSeries->dataProxy()->insertItem(0, item);
-    qDebug() << m_loopCounter << "Inserted one, array size:" << m_targetSeries->dataProxy()->array().size();
+    qDebug() << m_loopCounter << "Inserted one, array size:" << m_targetSeries->dataArray().size();
 }
 
 void ScatterDataModifier::insertBunch()
@@ -691,7 +694,8 @@ void ScatterDataModifier::insertBunch()
     for (int i = 0; i < items.size(); i++)
         items[i].setPosition(randVector());
     m_targetSeries->dataProxy()->insertItems(0, items);
-    qDebug() << m_loopCounter << "Inserted bunch, array size:" << m_targetSeries->dataProxy()->array().size();
+    qDebug() << m_loopCounter
+             << "Inserted bunch, array size:" << m_targetSeries->dataArray().size();
 }
 
 void ScatterDataModifier::changeOne()
@@ -702,7 +706,8 @@ void ScatterDataModifier::changeOne()
     if (m_selectedItem >= 0 && m_selectedItem < m_targetSeries->dataProxy()->itemCount()) {
         QScatterDataItem item(randVector());
         m_targetSeries->dataProxy()->setItem(m_selectedItem, item);
-        qDebug() << m_loopCounter << "Changed one, array size:" << m_targetSeries->dataProxy()->array().size();
+        qDebug() << m_loopCounter
+                 << "Changed one, array size:" << m_targetSeries->dataArray().size();
     }
 }
 
@@ -711,8 +716,8 @@ void ScatterDataModifier::changeBunch()
     if (!m_targetSeries)
         createAndAddSeries();
 
-    if (m_targetSeries->dataProxy()->array().size()) {
-        int amount = qMin(m_targetSeries->dataProxy()->array().size(), 100);
+    if (m_targetSeries->dataArray().size()) {
+        int amount = qMin(m_targetSeries->dataArray().size(), 100);
         QScatterDataArray items(amount);
         for (int i = 0; i < items.size(); i++) {
             items[i].setPosition(randVector());
@@ -733,7 +738,8 @@ void ScatterDataModifier::changeBunch()
         }
 
         m_targetSeries->dataProxy()->setItems(0, items);
-        qDebug() << m_loopCounter << "Changed bunch, array size:" << m_targetSeries->dataProxy()->array().size();
+        qDebug() << m_loopCounter
+                 << "Changed bunch, array size:" << m_targetSeries->dataArray().size();
     }
 }
 
@@ -744,7 +750,8 @@ void ScatterDataModifier::removeOne()
 
     if (m_selectedItem >= 0) {
         m_targetSeries->dataProxy()->removeItems(m_selectedItem, 1);
-        qDebug() << m_loopCounter << "Removed one, array size:" << m_targetSeries->dataProxy()->array().size();
+        qDebug() << m_loopCounter
+                 << "Removed one, array size:" << m_targetSeries->dataArray().size();
     }
 }
 
@@ -754,7 +761,7 @@ void ScatterDataModifier::removeBunch()
         createAndAddSeries();
 
     m_targetSeries->dataProxy()->removeItems(0, 100);
-    qDebug() << m_loopCounter << "Removed bunch, array size:" << m_targetSeries->dataProxy()->array().size();
+    qDebug() << m_loopCounter << "Removed bunch, array size:" << m_targetSeries->dataArray().size();
 }
 
 void ScatterDataModifier::timeout()
@@ -829,7 +836,7 @@ void ScatterDataModifier::selectItem()
         m_chart->seriesList().at(0)->setSelectedItem(noSelection);
 }
 
-void ScatterDataModifier::handleSelectionChange(int index)
+void ScatterDataModifier::handleSelectionChange(qsizetype index)
 {
     m_selectedItem = index;
     m_targetSeries = static_cast<QScatter3DSeries *>(sender());
@@ -871,13 +878,13 @@ void ScatterDataModifier::setGradient()
         m_targetSeries->setBaseGradient(baseGradient);
         m_targetSeries->setSingleHighlightGradient(singleHighlightGradient);
 
-        Q3DTheme::ColorStyle oldStyle = m_targetSeries->colorStyle();
-        if (oldStyle == Q3DTheme::ColorStyle::Uniform)
-            m_targetSeries->setColorStyle(Q3DTheme::ColorStyle::ObjectGradient);
-        else if (oldStyle == Q3DTheme::ColorStyle::ObjectGradient)
-            m_targetSeries->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
-        if (oldStyle == Q3DTheme::ColorStyle::RangeGradient)
-            m_targetSeries->setColorStyle(Q3DTheme::ColorStyle::Uniform);
+        QGraphsTheme::ColorStyle oldStyle = m_targetSeries->colorStyle();
+        if (oldStyle == QGraphsTheme::ColorStyle::Uniform)
+            m_targetSeries->setColorStyle(QGraphsTheme::ColorStyle::ObjectGradient);
+        else if (oldStyle == QGraphsTheme::ColorStyle::ObjectGradient)
+            m_targetSeries->setColorStyle(QGraphsTheme::ColorStyle::RangeGradient);
+        if (oldStyle == QGraphsTheme::ColorStyle::RangeGradient)
+            m_targetSeries->setColorStyle(QGraphsTheme::ColorStyle::Uniform);
     }
 }
 
@@ -944,9 +951,16 @@ void ScatterDataModifier::handleFpsChange(int fps)
 
 void ScatterDataModifier::changeLabelRotation(int rotation)
 {
-    m_chart->axisX()->setLabelAutoRotation(float(rotation));
-    m_chart->axisY()->setLabelAutoRotation(float(rotation));
-    m_chart->axisZ()->setLabelAutoRotation(float(rotation));
+    m_chart->axisX()->setLabelAutoAngle(float(rotation));
+    m_chart->axisY()->setLabelAutoAngle(float(rotation));
+    m_chart->axisZ()->setLabelAutoAngle(float(rotation));
+}
+
+void ScatterDataModifier::changeTitleOffset(int offset)
+{
+    m_chart->axisX()->setTitleOffset(float(offset) / 100);
+    m_chart->axisY()->setTitleOffset(float(offset) / 100);
+    m_chart->axisZ()->setTitleOffset(float(offset) / 100);
 }
 
 void ScatterDataModifier::changeRadialLabelOffset(int offset)
@@ -989,9 +1003,9 @@ void ScatterDataModifier::togglePolar(int enable)
 void ScatterDataModifier::toggleLegacy(int enable)
 {
     if (!enable)
-        m_chart->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Default);
+        m_chart->setOptimizationHint(QtGraphs3D::OptimizationHint::Default);
     else
-        m_chart->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Legacy);
+        m_chart->setOptimizationHint(QtGraphs3D::OptimizationHint::Legacy);
 }
 
 void ScatterDataModifier::toggleOrtho(int enable)
@@ -1056,19 +1070,19 @@ void ScatterDataModifier::setZAxisSubsegemntCount(int count)
 }
 void ScatterDataModifier::changeShadowQuality(int quality)
 {
-    QAbstract3DGraph::ShadowQuality sq = QAbstract3DGraph::ShadowQuality(quality);
+    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
     m_chart->setShadowQuality(sq);
     emit shadowQualityChanged(quality);
 }
 
-void ScatterDataModifier::setBackgroundEnabled(int enabled)
+void ScatterDataModifier::setBackgroundVisible(int visible)
 {
-    m_chart->activeTheme()->setBackgroundEnabled((bool)enabled);
+    m_chart->activeTheme()->setBackgroundVisible((bool)visible);
 }
 
-void ScatterDataModifier::setGridEnabled(int enabled)
+void ScatterDataModifier::setGridVisible(int visible)
 {
-    m_chart->activeTheme()->setGridEnabled((bool)enabled);
+    m_chart->activeTheme()->setGridVisible((bool)visible);
 }
 
 void ScatterDataModifier::setMinX(int min)

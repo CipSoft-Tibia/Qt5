@@ -19,7 +19,6 @@
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace net {
-class SchemefulSite;
 class CookieInclusionStatus;
 }  // namespace net
 
@@ -75,10 +74,12 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkServiceNetworkDelegate
       const net::FirstPartySetMetadata& first_party_set_metadata,
       net::CookieAccessResultList& maybe_included_cookies,
       net::CookieAccessResultList& excluded_cookies) override;
-  bool OnCanSetCookie(const net::URLRequest& request,
-                      const net::CanonicalCookie& cookie,
-                      net::CookieOptions* options,
-                      net::CookieInclusionStatus* inclusion_status) override;
+  bool OnCanSetCookie(
+      const net::URLRequest& request,
+      const net::CanonicalCookie& cookie,
+      net::CookieOptions* options,
+      const net::FirstPartySetMetadata& first_party_set_metadata,
+      net::CookieInclusionStatus* inclusion_status) override;
   net::NetworkDelegate::PrivacySetting OnForcePrivacyMode(
       const net::URLRequest& request) const override;
   bool OnCancelURLRequestWithPolicyViolatingReferrerHeader(
@@ -93,11 +94,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkServiceNetworkDelegate
                                const GURL& endpoint) const override;
   bool OnCanUseReportingClient(const url::Origin& origin,
                                const GURL& endpoint) const override;
-  absl::optional<net::FirstPartySetsCacheFilter::MatchInfo>
-  OnGetFirstPartySetsCacheFilterMatchInfoMaybeAsync(
-      const net::SchemefulSite& request_site,
-      base::OnceCallback<void(net::FirstPartySetsCacheFilter::MatchInfo)>
-          callback) const override;
 
   int HandleClearSiteDataHeader(
       net::URLRequest* request,

@@ -22,6 +22,7 @@ QT_REQUIRE_CONFIG(quick_path);
 #include <qqml.h>
 
 #include <private/qqmlnullablevalue_p.h>
+#include <private/qlazilyallocated_p.h>
 #include <private/qbezier_p.h>
 #include <private/qtquickglobal_p.h>
 
@@ -40,7 +41,7 @@ struct QQuickPathData
     QList<QQuickCurve*> curves;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathElement : public QObject
+class Q_QUICK_EXPORT QQuickPathElement : public QObject
 {
     Q_OBJECT
     QML_ANONYMOUS
@@ -51,7 +52,7 @@ Q_SIGNALS:
     void changed();
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathAttribute : public QQuickPathElement
+class Q_QUICK_EXPORT QQuickPathAttribute : public QQuickPathElement
 {
     Q_OBJECT
 
@@ -78,7 +79,7 @@ private:
     qreal _value = 0;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickCurve : public QQuickPathElement
+class Q_QUICK_EXPORT QQuickCurve : public QQuickPathElement
 {
     Q_OBJECT
 
@@ -122,7 +123,7 @@ private:
     QQmlNullableValue<qreal> _relativeY;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathLine : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathLine : public QQuickCurve
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(PathLine)
@@ -133,7 +134,7 @@ public:
     void addToPath(QPainterPath &path, const QQuickPathData &) override;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathMove : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathMove : public QQuickCurve
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(PathMove)
@@ -144,7 +145,7 @@ public:
     void addToPath(QPainterPath &path, const QQuickPathData &) override;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathQuad : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathQuad : public QQuickCurve
 {
     Q_OBJECT
 
@@ -187,7 +188,7 @@ private:
     QQmlNullableValue<qreal> _relativeControlY;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathCubic : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathCubic : public QQuickCurve
 {
     Q_OBJECT
 
@@ -255,7 +256,7 @@ private:
     QQmlNullableValue<qreal> _relativeControl2Y;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathCatmullRomCurve : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathCatmullRomCurve : public QQuickCurve
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(PathCurve)
@@ -266,7 +267,7 @@ public:
     void addToPath(QPainterPath &path, const QQuickPathData &) override;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathArc : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathArc : public QQuickCurve
 {
     Q_OBJECT
     Q_PROPERTY(qreal radiusX READ radiusX WRITE setRadiusX NOTIFY radiusXChanged)
@@ -316,7 +317,7 @@ private:
     qreal _xAxisRotation = 0;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathAngleArc : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathAngleArc : public QQuickCurve
 {
     Q_OBJECT
     Q_PROPERTY(qreal centerX READ centerX WRITE setCenterX NOTIFY centerXChanged)
@@ -376,7 +377,7 @@ private:
     bool _moveToStart = true;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathSvg : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathSvg : public QQuickCurve
 {
     Q_OBJECT
     Q_PROPERTY(QString path READ path WRITE setPath NOTIFY pathChanged)
@@ -397,7 +398,84 @@ private:
     QString _path;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathPercent : public QQuickPathElement
+class Q_QUICK_EXPORT QQuickPathRectangle : public QQuickCurve
+{
+    Q_OBJECT
+
+    Q_PROPERTY(qreal width READ width WRITE setWidth NOTIFY widthChanged FINAL)
+    Q_PROPERTY(qreal height READ height WRITE setHeight NOTIFY heightChanged FINAL)
+    Q_PROPERTY(qreal strokeAdjustment READ strokeAdjustment WRITE setStrokeAdjustment NOTIFY strokeAdjustmentChanged FINAL)
+    Q_PROPERTY(qreal radius READ radius WRITE setRadius NOTIFY radiusChanged FINAL)
+    Q_PROPERTY(qreal topLeftRadius READ topLeftRadius WRITE setTopLeftRadius RESET resetTopLeftRadius NOTIFY topLeftRadiusChanged FINAL)
+    Q_PROPERTY(qreal topRightRadius READ topRightRadius WRITE setTopRightRadius NOTIFY topRightRadiusChanged RESET resetTopRightRadius FINAL)
+    Q_PROPERTY(qreal bottomLeftRadius READ bottomLeftRadius WRITE setBottomLeftRadius NOTIFY bottomLeftRadiusChanged RESET resetBottomLeftRadius FINAL)
+    Q_PROPERTY(qreal bottomRightRadius READ bottomRightRadius WRITE setBottomRightRadius NOTIFY bottomRightRadiusChanged RESET resetBottomRightRadius FINAL)
+
+    QML_NAMED_ELEMENT(PathRectangle)
+    QML_ADDED_IN_VERSION(6, 8)
+public:
+    QQuickPathRectangle(QObject *parent = nullptr) : QQuickCurve(parent) {}
+
+    qreal width() const;
+    void setWidth(qreal width);
+
+    qreal height() const;
+    void setHeight(qreal height);
+
+    qreal strokeAdjustment() const;
+    void setStrokeAdjustment(qreal newStrokeAdjustment);
+
+    qreal radius() const;
+    void setRadius(qreal newRadius);
+
+    qreal topLeftRadius() const { return cornerRadius(Qt::TopLeftCorner); }
+    void setTopLeftRadius(qreal radius) { setCornerRadius(Qt::TopLeftCorner, radius); }
+    void resetTopLeftRadius() { resetCornerRadius(Qt::TopLeftCorner); }
+
+    qreal topRightRadius() const { return cornerRadius(Qt::TopRightCorner); }
+    void setTopRightRadius(qreal radius) { setCornerRadius(Qt::TopRightCorner, radius); }
+    void resetTopRightRadius() { resetCornerRadius(Qt::TopRightCorner); }
+
+    qreal bottomLeftRadius() const { return cornerRadius(Qt::BottomLeftCorner); }
+    void setBottomLeftRadius(qreal radius) { setCornerRadius(Qt::BottomLeftCorner, radius); }
+    void resetBottomLeftRadius() { resetCornerRadius(Qt::BottomLeftCorner); }
+
+    qreal bottomRightRadius() const { return cornerRadius(Qt::BottomRightCorner); }
+    void setBottomRightRadius(qreal radius) { setCornerRadius(Qt::BottomRightCorner, radius); }
+    void resetBottomRightRadius() { resetCornerRadius(Qt::BottomRightCorner); }
+
+    qreal cornerRadius(Qt::Corner corner) const;
+    void setCornerRadius(Qt::Corner corner, qreal newCornerRadius);
+    void resetCornerRadius(Qt::Corner corner);
+
+    void addToPath(QPainterPath &path, const QQuickPathData &) override;
+
+Q_SIGNALS:
+    void widthChanged();
+    void heightChanged();
+    void strokeAdjustmentChanged();
+    void radiusChanged();
+    void topLeftRadiusChanged();
+    void topRightRadiusChanged();
+    void bottomLeftRadiusChanged();
+    void bottomRightRadiusChanged();
+
+private:
+    void emitCornerRadiusChanged(Qt::Corner corner);
+
+    qreal _width = 0;
+    qreal _height = 0;
+    qreal _strokeAdjustment = 0;
+    struct ExtraData
+    {
+        ExtraData() { std::fill_n(cornerRadii, 4, -1); }
+        qreal radius = 0;
+        qreal cornerRadii[4];
+    };
+    QLazilyAllocated<ExtraData> _extra;
+};
+
+class Q_QUICK_EXPORT QQuickPathPercent : public QQuickPathElement
 {
     Q_OBJECT
     Q_PROPERTY(qreal value READ value WRITE setValue NOTIFY valueChanged)
@@ -416,7 +494,7 @@ private:
     qreal _value = 0;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathPolyline : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathPolyline : public QQuickCurve
 {
     Q_OBJECT
     Q_PROPERTY(QPointF start READ start NOTIFY startChanged)
@@ -440,7 +518,7 @@ private:
     QVector<QPointF> m_path;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathMultiline : public QQuickCurve
+class Q_QUICK_EXPORT QQuickPathMultiline : public QQuickCurve
 {
     Q_OBJECT
     Q_PROPERTY(QPointF start READ start NOTIFY startChanged)
@@ -478,7 +556,7 @@ struct QQuickCachedBezier
 };
 
 class QQuickPathPrivate;
-class Q_QUICK_PRIVATE_EXPORT QQuickPath : public QObject, public QQmlParserStatus
+class Q_QUICK_EXPORT QQuickPath : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
 
@@ -509,6 +587,8 @@ public:
     bool isClosed() const;
 
     QPainterPath path() const;
+    void setPath(const QPainterPath &path);
+
     QStringList attributes() const;
     qreal attributeAt(const QString &, qreal) const;
     Q_REVISION(2, 14) Q_INVOKABLE QPointF pointAtPercent(qreal t) const;
@@ -520,6 +600,9 @@ public:
 
     bool simplify() const;
     void setSimplify(bool s);
+
+    bool isAsynchronous() const;
+    void setAsynchronous(bool a);
 
 Q_SIGNALS:
     void changed();
@@ -559,6 +642,7 @@ private:
         QHash<QString, qreal> values;
     };
 
+    void doProcessPath();
     void interpolate(int idx, const QString &name, qreal value);
     void endpoint(const QString &name);
     void createPointCache() const;
@@ -579,7 +663,7 @@ public:
     static QPointF sequentialPointAt(const QPainterPath &path, const qreal &pathLength, const QList<AttributePoint> &attributePoints, QQuickCachedBezier &prevBez, qreal p, qreal *angle = nullptr);
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickPathText : public QQuickPathElement
+class Q_QUICK_EXPORT QQuickPathText : public QQuickPathElement
 {
     Q_OBJECT
     Q_PROPERTY(qreal x READ x WRITE setX NOTIFY xChanged)

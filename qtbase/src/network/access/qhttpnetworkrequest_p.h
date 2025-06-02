@@ -52,7 +52,7 @@ public:
 
     explicit QHttpNetworkRequest(const QUrl &url = QUrl(), Operation operation = Get, Priority priority = NormalPriority);
     QHttpNetworkRequest(const QHttpNetworkRequest &other);
-    virtual ~QHttpNetworkRequest();
+    ~QHttpNetworkRequest() override;
     QHttpNetworkRequest &operator=(const QHttpNetworkRequest &other);
     bool operator==(const QHttpNetworkRequest &other) const;
 
@@ -65,7 +65,7 @@ public:
     qint64 contentLength() const override;
     void setContentLength(qint64 length) override;
 
-    QList<QPair<QByteArray, QByteArray> > header() const override;
+    QHttpHeaders header() const override;
     QByteArray headerField(QByteArrayView name, const QByteArray &defaultValue = QByteArray()) const override;
     void setHeaderField(const QByteArray &name, const QByteArray &data) override;
     void prependHeaderField(const QByteArray &name, const QByteArray &data);
@@ -117,6 +117,9 @@ public:
     QString peerVerifyName() const;
     void setPeerVerifyName(const QString &peerName);
 
+    QString fullLocalServerName() const;
+    void setFullLocalServerName(const QString &fullServerName);
+
 private:
     QSharedDataPointer<QHttpNetworkRequestPrivate> d;
     friend class QHttpNetworkRequestPrivate;
@@ -140,6 +143,7 @@ public:
 
     QHttpNetworkRequest::Operation operation;
     QByteArray customVerb;
+    QString fullLocalServerName; // for local sockets
     QHttpNetworkRequest::Priority priority;
     mutable QNonContiguousByteDevice* uploadByteDevice;
     bool autoDecompress;

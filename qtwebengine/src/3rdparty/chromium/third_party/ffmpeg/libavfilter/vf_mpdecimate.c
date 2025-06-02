@@ -30,7 +30,6 @@
 #include "libavutil/timestamp.h"
 #include "avfilter.h"
 #include "internal.h"
-#include "formats.h"
 #include "video.h"
 
 typedef struct DecimateContext {
@@ -142,13 +141,10 @@ static int decimate_frame(AVFilterContext *ctx,
                         cur->data[plane], cur->linesize[plane],
                         ref->data[plane], ref->linesize[plane],
                         AV_CEIL_RSHIFT(ref->width,  hsub),
-                        AV_CEIL_RSHIFT(ref->height, vsub))) {
-            emms_c();
+                        AV_CEIL_RSHIFT(ref->height, vsub)))
             return 0;
-        }
     }
 
-    emms_c();
     return 1;
 }
 
@@ -241,13 +237,6 @@ static const AVFilterPad mpdecimate_inputs[] = {
     },
 };
 
-static const AVFilterPad mpdecimate_outputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_mpdecimate = {
     .name          = "mpdecimate",
     .description   = NULL_IF_CONFIG_SMALL("Remove near-duplicate frames."),
@@ -256,6 +245,6 @@ const AVFilter ff_vf_mpdecimate = {
     .priv_size     = sizeof(DecimateContext),
     .priv_class    = &mpdecimate_class,
     FILTER_INPUTS(mpdecimate_inputs),
-    FILTER_OUTPUTS(mpdecimate_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
 };

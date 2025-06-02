@@ -16,6 +16,17 @@
 
 \section1 Synopsis
 
+\c{qt_wrap_cpp} supports two signatures. The first signature was added in Qt 6.8
+and has the following form:
+
+\badcode
+qt_wrap_cpp(<TARGET> src_file1 [src_file2 ...]
+            [OPTIONS ...]
+            [DEPENDS ...])
+\endcode
+
+\note The signature above is recommended over the older signature.
+
 \badcode
 qt_wrap_cpp(<VAR> src_file1 [src_file2 ...]
             [TARGET target]
@@ -40,6 +51,12 @@ You can set an explicit \c{TARGET}. This will make sure that the target
 properties \c{INCLUDE_DIRECTORIES} and \c{COMPILE_DEFINITIONS} are also used
 when scanning the source files with \c{moc}.
 
+Since Qt 6.8, when a source file is passed to \c{qt_wrap_cpp} instead of a
+header file to generate a \c{.moc} file for a target, the \c{TARGET} parameter
+is needed to set the correct include path for the generated \c{.moc} file in
+the source file. As generated \c{.moc} files are added to the target's
+sources by \c{qt_wrap_cpp}, they are not added to \c{<VAR>}.
+
 You can set additional \c{OPTIONS} that should be added to the \c{moc} calls.
 You can find possible options in the \l{moc}{moc documentation}.
 
@@ -58,6 +75,18 @@ Q_PLUGIN_METADATA() macro.
 
 \section1 Examples
 
+Since Qt 6.8:
+
+\snippet cmake-macros/examples.cmake qt_wrap_cpp_4
+\br
+\snippet cmake-macros/examples.cpp qt_wrap_cpp_4
+
+In the above file, \c{myapp.moc} is included in \c{myapp.cpp}.
+To generate the \c{myapp.moc} file, the \c{qt_wrap_cpp} macro is used with the
+\c{TARGET} parameter. The \c{.moc} file and its path will be added to the
+target's sources and include directories by the \c{qt_wrap_cpp} macro.
+
+The old version:
 \snippet cmake-macros/examples.cmake qt_wrap_cpp_1
 
 In the following example, the generator expressions passed to \c{OPTIONS}
@@ -70,4 +99,5 @@ The following example uses \l{https://cmake.org/cmake/help/latest/command/target
 to set \l{https://cmake.org/cmake/help/latest/prop_tgt/COMPILE_DEFINITIONS.html}{COMPILE_DEFINITIONS} which will be added to
 \c{OPTIONS}.
 \snippet cmake-macros/examples.cmake qt_wrap_cpp_3
+
 */

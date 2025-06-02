@@ -1,7 +1,17 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Generated from src.pro.
+
+qt_internal_find_apple_system_framework(FWAVFoundation AVFoundation)
+qt_internal_find_apple_system_framework(FWAppKit AppKit)
+qt_internal_find_apple_system_framework(FWAudioToolbox AudioToolbox)
+qt_internal_find_apple_system_framework(FWAudioUnit AudioUnit)
+qt_internal_find_apple_system_framework(FWCoreAudio CoreAudio)
+qt_internal_find_apple_system_framework(FWCoreMedia CoreMedia)
+qt_internal_find_apple_system_framework(FWCoreVideo CoreVideo)
+qt_internal_find_apple_system_framework(FWSecurity Security)
+qt_internal_find_apple_system_framework(FWVideoToolbox VideoToolbox)
+
 
 add_subdirectory(resonance-audio)
 add_subdirectory(multimedia)
@@ -25,4 +35,7 @@ if(TARGET Qt::Widgets)
 endif()
 
 add_subdirectory(plugins)
-#special case end
+
+if(QT_FEATURE_testlib AND TARGET Qt::Test)
+    add_subdirectory(multimediatestlib)
+endif()

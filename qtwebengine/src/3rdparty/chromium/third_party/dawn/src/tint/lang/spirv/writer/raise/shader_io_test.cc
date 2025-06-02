@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <utility>
 
@@ -55,9 +68,9 @@ TEST_F(SpirvWriter_ShaderIOTest, NoInputsOrOutputs) {
 TEST_F(SpirvWriter_ShaderIOTest, Parameters_NonStruct) {
     auto* ep = b.Function("foo", ty.void_());
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(core::ir::FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(core::BuiltinValue::kFrontFacing);
     auto* position = b.FunctionParam("position", ty.vec4<f32>());
-    position->SetBuiltin(core::ir::FunctionParam::Builtin::kPosition);
+    position->SetBuiltin(core::BuiltinValue::kPosition);
     position->SetInvariant(true);
     auto* color1 = b.FunctionParam("color1", ty.f32());
     color1->SetLocation(0, {});
@@ -94,27 +107,19 @@ TEST_F(SpirvWriter_ShaderIOTest, Parameters_NonStruct) {
     EXPECT_EQ(src, str());
 
     auto* expect = R"(
-foo_BuiltinInputsStruct = struct @align(16), @block {
-  front_facing:bool @offset(0), @builtin(front_facing)
-  position:vec4<f32> @offset(16), @invariant, @builtin(position)
-}
-
-foo_LocationInputsStruct = struct @align(4), @block {
-  color1:f32 @offset(0), @location(0)
-  color2:f32 @offset(4), @location(1), @interpolate(linear, sample)
-}
-
 %b1 = block {  # root
-  %foo_BuiltinInputs:ptr<__in, foo_BuiltinInputsStruct, read> = var
-  %foo_LocationInputs:ptr<__in, foo_LocationInputsStruct, read> = var
+  %foo_front_facing_Input:ptr<__in, bool, read> = var @builtin(front_facing)
+  %foo_position_Input:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
+  %foo_loc0_Input:ptr<__in, f32, read> = var @location(0)
+  %foo_loc1_Input:ptr<__in, f32, read> = var @location(1) @interpolate(linear, sample)
 }
 
 %foo_inner = func(%front_facing:bool, %position:vec4<f32>, %color1:f32, %color2:f32):void -> %b2 {
   %b2 = block {
     if %front_facing [t: %b3] {  # if_1
       %b3 = block {  # true
-        %8:f32 = add %color1, %color2
-        %9:vec4<f32> = mul %position, %8
+        %10:f32 = add %color1, %color2
+        %11:vec4<f32> = mul %position, %10
         exit_if  # if_1
       }
     }
@@ -123,15 +128,11 @@ foo_LocationInputsStruct = struct @align(4), @block {
 }
 %foo = @fragment func():void -> %b4 {
   %b4 = block {
-    %11:ptr<__in, bool, read> = access %foo_BuiltinInputs, 0u
-    %12:bool = load %11
-    %13:ptr<__in, vec4<f32>, read> = access %foo_BuiltinInputs, 1u
-    %14:vec4<f32> = load %13
-    %15:ptr<__in, f32, read> = access %foo_LocationInputs, 0u
-    %16:f32 = load %15
-    %17:ptr<__in, f32, read> = access %foo_LocationInputs, 1u
-    %18:f32 = load %17
-    %19:void = call %foo_inner, %12, %14, %16, %18
+    %13:bool = load %foo_front_facing_Input
+    %14:vec4<f32> = load %foo_position_Input
+    %15:f32 = load %foo_loc0_Input
+    %16:f32 = load %foo_loc1_Input
+    %17:void = call %foo_inner, %13, %14, %15, %16
     ret
   }
 }
@@ -150,27 +151,54 @@ TEST_F(SpirvWriter_ShaderIOTest, Parameters_Struct) {
                                  {
                                      mod.symbols.New("front_facing"),
                                      ty.bool_(),
-                                     {{}, {}, core::BuiltinValue::kFrontFacing, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kFrontFacing,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("position"),
                                      ty.vec4<f32>(),
-                                     {{}, {}, core::BuiltinValue::kPosition, {}, true},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kPosition,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ true,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("color1"),
                                      ty.f32(),
-                                     {0u, {}, {}, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 0u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("color2"),
                                      ty.f32(),
-                                     {1u,
-                                      {},
-                                      {},
-                                      core::Interpolation{core::InterpolationType::kLinear,
-                                                          core::InterpolationSampling::kSample},
-                                      false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 1u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */
+                                         core::Interpolation{
+                                             core::InterpolationType::kLinear,
+                                             core::InterpolationSampling::kSample,
+                                         },
+                                         /* invariant */ false,
+                                     },
                                  },
                              });
 
@@ -226,31 +254,23 @@ Inputs = struct @align(16) {
   color2:f32 @offset(36)
 }
 
-foo_BuiltinInputsStruct = struct @align(16), @block {
-  Inputs_front_facing:bool @offset(0), @builtin(front_facing)
-  Inputs_position:vec4<f32> @offset(16), @invariant, @builtin(position)
-}
-
-foo_LocationInputsStruct = struct @align(4), @block {
-  Inputs_color1:f32 @offset(0), @location(0)
-  Inputs_color2:f32 @offset(4), @location(1), @interpolate(linear, sample)
-}
-
 %b1 = block {  # root
-  %foo_BuiltinInputs:ptr<__in, foo_BuiltinInputsStruct, read> = var
-  %foo_LocationInputs:ptr<__in, foo_LocationInputsStruct, read> = var
+  %foo_front_facing_Input:ptr<__in, bool, read> = var @builtin(front_facing)
+  %foo_position_Input:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
+  %foo_loc0_Input:ptr<__in, f32, read> = var @location(0)
+  %foo_loc1_Input:ptr<__in, f32, read> = var @location(1) @interpolate(linear, sample)
 }
 
 %foo_inner = func(%inputs:Inputs):void -> %b2 {
   %b2 = block {
-    %5:bool = access %inputs, 0i
-    if %5 [t: %b3] {  # if_1
+    %7:bool = access %inputs, 0i
+    if %7 [t: %b3] {  # if_1
       %b3 = block {  # true
-        %6:vec4<f32> = access %inputs, 1i
-        %7:f32 = access %inputs, 2i
-        %8:f32 = access %inputs, 3i
-        %9:f32 = add %7, %8
-        %10:vec4<f32> = mul %6, %9
+        %8:vec4<f32> = access %inputs, 1i
+        %9:f32 = access %inputs, 2i
+        %10:f32 = access %inputs, 3i
+        %11:f32 = add %9, %10
+        %12:vec4<f32> = mul %8, %11
         exit_if  # if_1
       }
     }
@@ -259,16 +279,12 @@ foo_LocationInputsStruct = struct @align(4), @block {
 }
 %foo = @fragment func():void -> %b4 {
   %b4 = block {
-    %12:ptr<__in, bool, read> = access %foo_BuiltinInputs, 0u
-    %13:bool = load %12
-    %14:ptr<__in, vec4<f32>, read> = access %foo_BuiltinInputs, 1u
-    %15:vec4<f32> = load %14
-    %16:ptr<__in, f32, read> = access %foo_LocationInputs, 0u
-    %17:f32 = load %16
-    %18:ptr<__in, f32, read> = access %foo_LocationInputs, 1u
-    %19:f32 = load %18
-    %20:Inputs = construct %13, %15, %17, %19
-    %21:void = call %foo_inner, %20
+    %14:bool = load %foo_front_facing_Input
+    %15:vec4<f32> = load %foo_position_Input
+    %16:f32 = load %foo_loc0_Input
+    %17:f32 = load %foo_loc1_Input
+    %18:Inputs = construct %14, %15, %16, %17
+    %19:void = call %foo_inner, %18
     ret
   }
 }
@@ -287,18 +303,32 @@ TEST_F(SpirvWriter_ShaderIOTest, Parameters_Mixed) {
                                  {
                                      mod.symbols.New("position"),
                                      ty.vec4<f32>(),
-                                     {{}, {}, core::BuiltinValue::kPosition, {}, true},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kPosition,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ true,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("color1"),
                                      ty.f32(),
-                                     {0u, {}, {}, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 0u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                              });
 
     auto* ep = b.Function("foo", ty.void_());
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(core::ir::FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(core::BuiltinValue::kFrontFacing);
     auto* str_param = b.FunctionParam("inputs", str_ty);
     auto* color2 = b.FunctionParam("color2", ty.f32());
     color2->SetLocation(1, core::Interpolation{core::InterpolationType::kLinear,
@@ -347,29 +377,21 @@ Inputs = struct @align(16) {
   color1:f32 @offset(16)
 }
 
-foo_BuiltinInputsStruct = struct @align(16), @block {
-  front_facing:bool @offset(0), @builtin(front_facing)
-  Inputs_position:vec4<f32> @offset(16), @invariant, @builtin(position)
-}
-
-foo_LocationInputsStruct = struct @align(4), @block {
-  Inputs_color1:f32 @offset(0), @location(0)
-  color2:f32 @offset(4), @location(1), @interpolate(linear, sample)
-}
-
 %b1 = block {  # root
-  %foo_BuiltinInputs:ptr<__in, foo_BuiltinInputsStruct, read> = var
-  %foo_LocationInputs:ptr<__in, foo_LocationInputsStruct, read> = var
+  %foo_front_facing_Input:ptr<__in, bool, read> = var @builtin(front_facing)
+  %foo_position_Input:ptr<__in, vec4<f32>, read> = var @invariant @builtin(position)
+  %foo_loc0_Input:ptr<__in, f32, read> = var @location(0)
+  %foo_loc1_Input:ptr<__in, f32, read> = var @location(1) @interpolate(linear, sample)
 }
 
 %foo_inner = func(%front_facing:bool, %inputs:Inputs, %color2:f32):void -> %b2 {
   %b2 = block {
     if %front_facing [t: %b3] {  # if_1
       %b3 = block {  # true
-        %7:vec4<f32> = access %inputs, 0i
-        %8:f32 = access %inputs, 1i
-        %9:f32 = add %8, %color2
-        %10:vec4<f32> = mul %7, %9
+        %9:vec4<f32> = access %inputs, 0i
+        %10:f32 = access %inputs, 1i
+        %11:f32 = add %10, %color2
+        %12:vec4<f32> = mul %9, %11
         exit_if  # if_1
       }
     }
@@ -378,16 +400,12 @@ foo_LocationInputsStruct = struct @align(4), @block {
 }
 %foo = @fragment func():void -> %b4 {
   %b4 = block {
-    %12:ptr<__in, bool, read> = access %foo_BuiltinInputs, 0u
-    %13:bool = load %12
-    %14:ptr<__in, vec4<f32>, read> = access %foo_BuiltinInputs, 1u
-    %15:vec4<f32> = load %14
-    %16:ptr<__in, f32, read> = access %foo_LocationInputs, 0u
-    %17:f32 = load %16
-    %18:Inputs = construct %15, %17
-    %19:ptr<__in, f32, read> = access %foo_LocationInputs, 1u
-    %20:f32 = load %19
-    %21:void = call %foo_inner, %13, %18, %20
+    %14:bool = load %foo_front_facing_Input
+    %15:vec4<f32> = load %foo_position_Input
+    %16:f32 = load %foo_loc0_Input
+    %17:Inputs = construct %15, %16
+    %18:f32 = load %foo_loc1_Input
+    %19:void = call %foo_inner, %14, %17, %18
     ret
   }
 }
@@ -402,7 +420,7 @@ foo_LocationInputsStruct = struct @align(4), @block {
 
 TEST_F(SpirvWriter_ShaderIOTest, ReturnValue_NonStructBuiltin) {
     auto* ep = b.Function("foo", ty.vec4<f32>());
-    ep->SetReturnBuiltin(core::ir::Function::ReturnBuiltin::kPosition);
+    ep->SetReturnBuiltin(core::BuiltinValue::kPosition);
     ep->SetReturnInvariant(true);
     ep->SetStage(core::ir::Function::PipelineStage::kVertex);
 
@@ -421,12 +439,8 @@ TEST_F(SpirvWriter_ShaderIOTest, ReturnValue_NonStructBuiltin) {
     EXPECT_EQ(src, str());
 
     auto* expect = R"(
-foo_BuiltinOutputsStruct = struct @align(16), @block {
-  tint_symbol:vec4<f32> @offset(0), @invariant, @builtin(position)
-}
-
 %b1 = block {  # root
-  %foo_BuiltinOutputs:ptr<__out, foo_BuiltinOutputsStruct, write> = var
+  %foo_position_Output:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
 }
 
 %foo_inner = func():vec4<f32> -> %b2 {
@@ -438,8 +452,7 @@ foo_BuiltinOutputsStruct = struct @align(16), @block {
 %foo = @vertex func():void -> %b3 {
   %b3 = block {
     %5:vec4<f32> = call %foo_inner
-    %6:ptr<__out, vec4<f32>, write> = access %foo_BuiltinOutputs, 0u
-    store %6, %5
+    store %foo_position_Output, %5
     ret
   }
 }
@@ -472,12 +485,8 @@ TEST_F(SpirvWriter_ShaderIOTest, ReturnValue_NonStructLocation) {
     EXPECT_EQ(src, str());
 
     auto* expect = R"(
-foo_LocationOutputsStruct = struct @align(16), @block {
-  tint_symbol:vec4<f32> @offset(0), @location(1)
-}
-
 %b1 = block {  # root
-  %foo_LocationOutputs:ptr<__out, foo_LocationOutputsStruct, write> = var
+  %foo_loc1_Output:ptr<__out, vec4<f32>, write> = var @location(1)
 }
 
 %foo_inner = func():vec4<f32> -> %b2 {
@@ -489,8 +498,7 @@ foo_LocationOutputsStruct = struct @align(16), @block {
 %foo = @fragment func():void -> %b3 {
   %b3 = block {
     %5:vec4<f32> = call %foo_inner
-    %6:ptr<__out, vec4<f32>, write> = access %foo_LocationOutputs, 0u
-    store %6, %5
+    store %foo_loc1_Output, %5
     ret
   }
 }
@@ -509,22 +517,42 @@ TEST_F(SpirvWriter_ShaderIOTest, ReturnValue_Struct) {
                                  {
                                      mod.symbols.New("position"),
                                      ty.vec4<f32>(),
-                                     {{}, {}, core::BuiltinValue::kPosition, {}, true},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kPosition,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ true,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("color1"),
                                      ty.f32(),
-                                     {0u, {}, {}, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 0u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("color2"),
                                      ty.f32(),
-                                     {1u,
-                                      {},
-                                      {},
-                                      core::Interpolation{core::InterpolationType::kLinear,
-                                                          core::InterpolationSampling::kSample},
-                                      false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 1u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */
+                                         core::Interpolation{
+                                             core::InterpolationType::kLinear,
+                                             core::InterpolationSampling::kSample,
+                                         },
+                                         /* invariant */ false,
+                                     },
                                  },
                              });
 
@@ -559,39 +587,115 @@ Outputs = struct @align(16) {
   color2:f32 @offset(20)
 }
 
-foo_BuiltinOutputsStruct = struct @align(16), @block {
-  Outputs_position:vec4<f32> @offset(0), @invariant, @builtin(position)
-}
-
-foo_LocationOutputsStruct = struct @align(4), @block {
-  Outputs_color1:f32 @offset(0), @location(0)
-  Outputs_color2:f32 @offset(4), @location(1), @interpolate(linear, sample)
-}
-
 %b1 = block {  # root
-  %foo_BuiltinOutputs:ptr<__out, foo_BuiltinOutputsStruct, write> = var
-  %foo_LocationOutputs:ptr<__out, foo_LocationOutputsStruct, write> = var
+  %foo_position_Output:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
+  %foo_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %foo_loc1_Output:ptr<__out, f32, write> = var @location(1) @interpolate(linear, sample)
 }
 
 %foo_inner = func():Outputs -> %b2 {
   %b2 = block {
-    %4:vec4<f32> = construct 0.0f
-    %5:Outputs = construct %4, 0.25f, 0.75f
-    ret %5
+    %5:vec4<f32> = construct 0.0f
+    %6:Outputs = construct %5, 0.25f, 0.75f
+    ret %6
   }
 }
 %foo = @vertex func():void -> %b3 {
   %b3 = block {
-    %7:Outputs = call %foo_inner
-    %8:vec4<f32> = access %7, 0u
-    %9:ptr<__out, vec4<f32>, write> = access %foo_BuiltinOutputs, 0u
-    store %9, %8
-    %10:f32 = access %7, 1u
-    %11:ptr<__out, f32, write> = access %foo_LocationOutputs, 0u
-    store %11, %10
-    %12:f32 = access %7, 2u
-    %13:ptr<__out, f32, write> = access %foo_LocationOutputs, 1u
-    store %13, %12
+    %8:Outputs = call %foo_inner
+    %9:vec4<f32> = access %8, 0u
+    store %foo_position_Output, %9
+    %10:f32 = access %8, 1u
+    store %foo_loc0_Output, %10
+    %11:f32 = access %8, 2u
+    store %foo_loc1_Output, %11
+    ret
+  }
+}
+)";
+
+    ShaderIOConfig config;
+    config.clamp_frag_depth = false;
+    Run(ShaderIO, config);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(SpirvWriter_ShaderIOTest, ReturnValue_DualSourceBlending) {
+    auto* str_ty =
+        ty.Struct(mod.symbols.New("Output"), {
+                                                 {
+                                                     mod.symbols.New("color1"),
+                                                     ty.f32(),
+                                                     core::type::StructMemberAttributes{
+                                                         /* location */ 0u,
+                                                         /* index */ 0u,
+                                                         /* color */ std::nullopt,
+                                                         /* builtin */ std::nullopt,
+                                                         /* interpolation */ std::nullopt,
+                                                         /* invariant */ false,
+                                                     },
+                                                 },
+                                                 {
+                                                     mod.symbols.New("color2"),
+                                                     ty.f32(),
+                                                     core::type::StructMemberAttributes{
+                                                         /* location */ 0u,
+                                                         /* index */ 1u,
+                                                         /* color */ std::nullopt,
+                                                         /* builtin */ std::nullopt,
+                                                         /* interpolation */ std::nullopt,
+                                                         /* invariant */ false,
+                                                     },
+                                                 },
+                                             });
+
+    auto* ep = b.Function("foo", str_ty);
+    ep->SetStage(core::ir::Function::PipelineStage::kFragment);
+
+    b.Append(ep->Block(), [&] {  //
+        b.Return(ep, b.Construct(str_ty, 0.25_f, 0.75_f));
+    });
+
+    auto* src = R"(
+Output = struct @align(4) {
+  color1:f32 @offset(0), @location(0)
+  color2:f32 @offset(4), @location(0)
+}
+
+%foo = @fragment func():Output -> %b1 {
+  %b1 = block {
+    %2:Output = construct 0.25f, 0.75f
+    ret %2
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+Output = struct @align(4) {
+  color1:f32 @offset(0)
+  color2:f32 @offset(4)
+}
+
+%b1 = block {  # root
+  %foo_loc0_idx0_Output:ptr<__out, f32, write> = var @location(0) @index(0)
+  %foo_loc0_idx1_Output:ptr<__out, f32, write> = var @location(0) @index(1)
+}
+
+%foo_inner = func():Output -> %b2 {
+  %b2 = block {
+    %4:Output = construct 0.25f, 0.75f
+    ret %4
+  }
+}
+%foo = @fragment func():void -> %b3 {
+  %b3 = block {
+    %6:Output = call %foo_inner
+    %7:f32 = access %6, 0u
+    store %foo_loc0_idx0_Output, %7
+    %8:f32 = access %6, 1u
+    store %foo_loc0_idx1_Output, %8
     ret
   }
 }
@@ -611,12 +715,26 @@ TEST_F(SpirvWriter_ShaderIOTest, Struct_SharedByVertexAndFragment) {
                                  {
                                      mod.symbols.New("position"),
                                      vec4f,
-                                     {{}, {}, core::BuiltinValue::kPosition, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kPosition,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("color"),
                                      vec4f,
-                                     {0u, {}, {}, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 0u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                              });
 
@@ -638,6 +756,7 @@ TEST_F(SpirvWriter_ShaderIOTest, Struct_SharedByVertexAndFragment) {
         auto* inputs = b.FunctionParam("inputs", str_ty);
         ep->SetStage(core::ir::Function::PipelineStage::kFragment);
         ep->SetParams({inputs});
+        ep->SetReturnLocation(0u, {});
 
         b.Append(ep->Block(), [&] {  //
             auto* position = b.Access(vec4f, inputs, 0_u);
@@ -660,7 +779,7 @@ Interface = struct @align(16) {
     ret %4
   }
 }
-%frag = @fragment func(%inputs:Interface):vec4<f32> -> %b2 {
+%frag = @fragment func(%inputs:Interface):vec4<f32> [@location(0)] -> %b2 {
   %b2 = block {
     %7:vec4<f32> = access %inputs, 0u
     %8:vec4<f32> = access %inputs, 1u
@@ -677,32 +796,12 @@ Interface = struct @align(16) {
   color:vec4<f32> @offset(16)
 }
 
-vert_BuiltinOutputsStruct = struct @align(16), @block {
-  Interface_position:vec4<f32> @offset(0), @builtin(position)
-}
-
-vert_LocationOutputsStruct = struct @align(16), @block {
-  Interface_color:vec4<f32> @offset(0), @location(0)
-}
-
-frag_BuiltinInputsStruct = struct @align(16), @block {
-  Interface_position:vec4<f32> @offset(0), @builtin(position)
-}
-
-frag_LocationInputsStruct = struct @align(16), @block {
-  Interface_color:vec4<f32> @offset(0), @location(0)
-}
-
-frag_LocationOutputsStruct = struct @align(16), @block {
-  tint_symbol:vec4<f32> @offset(0)
-}
-
 %b1 = block {  # root
-  %vert_BuiltinOutputs:ptr<__out, vert_BuiltinOutputsStruct, write> = var
-  %vert_LocationOutputs:ptr<__out, vert_LocationOutputsStruct, write> = var
-  %frag_BuiltinInputs:ptr<__in, frag_BuiltinInputsStruct, read> = var
-  %frag_LocationInputs:ptr<__in, frag_LocationInputsStruct, read> = var
-  %frag_LocationOutputs:ptr<__out, frag_LocationOutputsStruct, write> = var
+  %vert_position_Output:ptr<__out, vec4<f32>, write> = var @builtin(position)
+  %vert_loc0_Output:ptr<__out, vec4<f32>, write> = var @location(0)
+  %frag_position_Input:ptr<__in, vec4<f32>, read> = var @builtin(position)
+  %frag_loc0_Input:ptr<__in, vec4<f32>, read> = var @location(0)
+  %frag_loc0_Output:ptr<__out, vec4<f32>, write> = var @location(0)
 }
 
 %vert_inner = func():Interface -> %b2 {
@@ -725,24 +824,19 @@ frag_LocationOutputsStruct = struct @align(16), @block {
   %b4 = block {
     %16:Interface = call %vert_inner
     %17:vec4<f32> = access %16, 0u
-    %18:ptr<__out, vec4<f32>, write> = access %vert_BuiltinOutputs, 0u
-    store %18, %17
-    %19:vec4<f32> = access %16, 1u
-    %20:ptr<__out, vec4<f32>, write> = access %vert_LocationOutputs, 0u
-    store %20, %19
+    store %vert_position_Output, %17
+    %18:vec4<f32> = access %16, 1u
+    store %vert_loc0_Output, %18
     ret
   }
 }
 %frag = @fragment func():void -> %b5 {
   %b5 = block {
-    %22:ptr<__in, vec4<f32>, read> = access %frag_BuiltinInputs, 0u
-    %23:vec4<f32> = load %22
-    %24:ptr<__in, vec4<f32>, read> = access %frag_LocationInputs, 0u
-    %25:vec4<f32> = load %24
-    %26:Interface = construct %23, %25
-    %27:vec4<f32> = call %frag_inner, %26
-    %28:ptr<__out, vec4<f32>, write> = access %frag_LocationOutputs, 0u
-    store %28, %27
+    %20:vec4<f32> = load %frag_position_Input
+    %21:vec4<f32> = load %frag_loc0_Input
+    %22:Interface = construct %20, %21
+    %23:vec4<f32> = call %frag_inner, %22
+    store %frag_loc0_Output, %23
     ret
   }
 }
@@ -762,16 +856,30 @@ TEST_F(SpirvWriter_ShaderIOTest, Struct_SharedWithBuffer) {
                                  {
                                      mod.symbols.New("position"),
                                      vec4f,
-                                     {{}, {}, core::BuiltinValue::kPosition, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kPosition,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("color"),
                                      vec4f,
-                                     {0u, {}, {}, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 0u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                              });
 
-    auto* buffer = b.RootBlock()->Append(b.Var(ty.ptr(storage, str_ty, read)));
+    auto* buffer = mod.root_block->Append(b.Var(ty.ptr(storage, str_ty, read)));
 
     auto* ep = b.Function("vert", str_ty);
     ep->SetStage(core::ir::Function::PipelineStage::kVertex);
@@ -805,18 +913,10 @@ Outputs = struct @align(16) {
   color:vec4<f32> @offset(16)
 }
 
-vert_BuiltinOutputsStruct = struct @align(16), @block {
-  Outputs_position:vec4<f32> @offset(0), @builtin(position)
-}
-
-vert_LocationOutputsStruct = struct @align(16), @block {
-  Outputs_color:vec4<f32> @offset(0), @location(0)
-}
-
 %b1 = block {  # root
   %1:ptr<storage, Outputs, read> = var
-  %vert_BuiltinOutputs:ptr<__out, vert_BuiltinOutputsStruct, write> = var
-  %vert_LocationOutputs:ptr<__out, vert_LocationOutputsStruct, write> = var
+  %vert_position_Output:ptr<__out, vec4<f32>, write> = var @builtin(position)
+  %vert_loc0_Output:ptr<__out, vec4<f32>, write> = var @location(0)
 }
 
 %vert_inner = func():Outputs -> %b2 {
@@ -829,11 +929,9 @@ vert_LocationOutputsStruct = struct @align(16), @block {
   %b3 = block {
     %7:Outputs = call %vert_inner
     %8:vec4<f32> = access %7, 0u
-    %9:ptr<__out, vec4<f32>, write> = access %vert_BuiltinOutputs, 0u
-    store %9, %8
-    %10:vec4<f32> = access %7, 1u
-    %11:ptr<__out, vec4<f32>, write> = access %vert_LocationOutputs, 0u
-    store %11, %10
+    store %vert_position_Output, %8
+    %9:vec4<f32> = access %7, 1u
+    store %vert_loc0_Output, %9
     ret
   }
 }
@@ -853,17 +951,31 @@ TEST_F(SpirvWriter_ShaderIOTest, SampleMask) {
                                  {
                                      mod.symbols.New("color"),
                                      ty.f32(),
-                                     {0u, {}, {}, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 0u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("mask"),
                                      ty.u32(),
-                                     {{}, {}, core::BuiltinValue::kSampleMask, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kSampleMask,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                              });
 
     auto* mask_in = b.FunctionParam("mask_in", ty.u32());
-    mask_in->SetBuiltin(core::ir::FunctionParam::Builtin::kSampleMask);
+    mask_in->SetBuiltin(core::BuiltinValue::kSampleMask);
 
     auto* ep = b.Function("foo", str_ty);
     ep->SetStage(core::ir::Function::PipelineStage::kFragment);
@@ -894,22 +1006,10 @@ Outputs = struct @align(4) {
   mask:u32 @offset(4)
 }
 
-foo_BuiltinInputsStruct = struct @align(4), @block {
-  mask_in:array<u32, 1> @offset(0), @builtin(sample_mask)
-}
-
-foo_BuiltinOutputsStruct = struct @align(4), @block {
-  Outputs_mask:array<u32, 1> @offset(0), @builtin(sample_mask)
-}
-
-foo_LocationOutputsStruct = struct @align(4), @block {
-  Outputs_color:f32 @offset(0), @location(0)
-}
-
 %b1 = block {  # root
-  %foo_BuiltinInputs:ptr<__in, foo_BuiltinInputsStruct, read> = var
-  %foo_BuiltinOutputs:ptr<__out, foo_BuiltinOutputsStruct, write> = var
-  %foo_LocationOutputs:ptr<__out, foo_LocationOutputsStruct, write> = var
+  %foo_sample_mask_Input:ptr<__in, array<u32, 1>, read> = var @builtin(sample_mask)
+  %foo_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %foo_sample_mask_Output:ptr<__out, array<u32, 1>, write> = var @builtin(sample_mask)
 }
 
 %foo_inner = func(%mask_in:u32):Outputs -> %b2 {
@@ -920,15 +1020,163 @@ foo_LocationOutputsStruct = struct @align(4), @block {
 }
 %foo = @fragment func():void -> %b3 {
   %b3 = block {
-    %8:ptr<__in, u32, read> = access %foo_BuiltinInputs, 0u, 0u
+    %8:ptr<__in, u32, read> = access %foo_sample_mask_Input, 0u
     %9:u32 = load %8
     %10:Outputs = call %foo_inner, %9
     %11:f32 = access %10, 0u
-    %12:ptr<__out, f32, write> = access %foo_LocationOutputs, 0u
-    store %12, %11
-    %13:u32 = access %10, 1u
-    %14:ptr<__out, u32, write> = access %foo_BuiltinOutputs, 0u, 0u
-    store %14, %13
+    store %foo_loc0_Output, %11
+    %12:u32 = access %10, 1u
+    %13:ptr<__out, u32, write> = access %foo_sample_mask_Output, 0u
+    store %13, %12
+    ret
+  }
+}
+)";
+
+    ShaderIOConfig config;
+    config.clamp_frag_depth = false;
+    Run(ShaderIO, config);
+
+    EXPECT_EQ(expect, str());
+}
+
+// Test that interpolation attributes are stripped from vertex inputs and fragment outputs.
+TEST_F(SpirvWriter_ShaderIOTest, InterpolationOnVertexInputOrFragmentOutput) {
+    auto* str_ty =
+        ty.Struct(mod.symbols.New("MyStruct"), {
+                                                   {
+                                                       mod.symbols.New("color"),
+                                                       ty.f32(),
+                                                       core::type::StructMemberAttributes{
+                                                           /* location */ 1u,
+                                                           /* index */ std::nullopt,
+                                                           /* color */ std::nullopt,
+                                                           /* builtin */ std::nullopt,
+                                                           /* interpolation */
+                                                           core::Interpolation{
+                                                               core::InterpolationType::kLinear,
+                                                               core::InterpolationSampling::kSample,
+                                                           },
+                                                           /* invariant */ false,
+                                                       },
+                                                   },
+                                               });
+
+    // Vertex shader.
+    {
+        auto* ep = b.Function("vert", ty.vec4<f32>());
+        ep->SetReturnBuiltin(core::BuiltinValue::kPosition);
+        ep->SetReturnInvariant(true);
+        ep->SetStage(core::ir::Function::PipelineStage::kVertex);
+
+        auto* str_param = b.FunctionParam("input", str_ty);
+        auto* ival = b.FunctionParam("ival", ty.i32());
+        ival->SetLocation(1, core::Interpolation{core::InterpolationType::kFlat});
+        ep->SetParams({str_param, ival});
+
+        b.Append(ep->Block(), [&] {  //
+            b.Return(ep, b.Construct(ty.vec4<f32>(), 0.5_f));
+        });
+    }
+
+    // Fragment shader with struct output.
+    {
+        auto* ep = b.Function("frag1", str_ty);
+        ep->SetStage(core::ir::Function::PipelineStage::kFragment);
+
+        b.Append(ep->Block(), [&] {  //
+            b.Return(ep, b.Construct(str_ty, 0.5_f));
+        });
+    }
+
+    // Fragment shader with non-struct output.
+    {
+        auto* ep = b.Function("frag2", ty.i32());
+        ep->SetStage(core::ir::Function::PipelineStage::kFragment);
+        ep->SetReturnLocation(0, core::Interpolation{core::InterpolationType::kFlat});
+
+        b.Append(ep->Block(), [&] {  //
+            b.Return(ep, b.Constant(42_i));
+        });
+    }
+
+    auto* src = R"(
+MyStruct = struct @align(4) {
+  color:f32 @offset(0), @location(1), @interpolate(linear, sample)
+}
+
+%vert = @vertex func(%input:MyStruct, %ival:i32 [@location(1), @interpolate(flat)]):vec4<f32> [@invariant, @position] -> %b1 {
+  %b1 = block {
+    %4:vec4<f32> = construct 0.5f
+    ret %4
+  }
+}
+%frag1 = @fragment func():MyStruct -> %b2 {
+  %b2 = block {
+    %6:MyStruct = construct 0.5f
+    ret %6
+  }
+}
+%frag2 = @fragment func():i32 [@location(0), @interpolate(flat)] -> %b3 {
+  %b3 = block {
+    ret 42i
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+MyStruct = struct @align(4) {
+  color:f32 @offset(0)
+}
+
+%b1 = block {  # root
+  %vert_loc1_Input:ptr<__in, f32, read> = var @location(1)
+  %vert_loc1_Input_1:ptr<__in, i32, read> = var @location(1)  # %vert_loc1_Input_1: 'vert_loc1_Input'
+  %vert_position_Output:ptr<__out, vec4<f32>, write> = var @invariant @builtin(position)
+  %frag1_loc1_Output:ptr<__out, f32, write> = var @location(1)
+  %frag2_loc0_Output:ptr<__out, i32, write> = var @location(0)
+}
+
+%vert_inner = func(%input:MyStruct, %ival:i32):vec4<f32> -> %b2 {
+  %b2 = block {
+    %9:vec4<f32> = construct 0.5f
+    ret %9
+  }
+}
+%frag1_inner = func():MyStruct -> %b3 {
+  %b3 = block {
+    %11:MyStruct = construct 0.5f
+    ret %11
+  }
+}
+%frag2_inner = func():i32 -> %b4 {
+  %b4 = block {
+    ret 42i
+  }
+}
+%vert = @vertex func():void -> %b5 {
+  %b5 = block {
+    %14:f32 = load %vert_loc1_Input
+    %15:MyStruct = construct %14
+    %16:i32 = load %vert_loc1_Input_1
+    %17:vec4<f32> = call %vert_inner, %15, %16
+    store %vert_position_Output, %17
+    ret
+  }
+}
+%frag1 = @fragment func():void -> %b6 {
+  %b6 = block {
+    %19:MyStruct = call %frag1_inner
+    %20:f32 = access %19, 0u
+    store %frag1_loc1_Output, %20
+    ret
+  }
+}
+%frag2 = @fragment func():void -> %b7 {
+  %b7 = block {
+    %22:i32 = call %frag2_inner
+    store %frag2_loc0_Output, %22
     ret
   }
 }
@@ -947,12 +1195,26 @@ TEST_F(SpirvWriter_ShaderIOTest, ClampFragDepth) {
                                  {
                                      mod.symbols.New("color"),
                                      ty.f32(),
-                                     {0u, {}, {}, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 0u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                                  {
                                      mod.symbols.New("depth"),
                                      ty.f32(),
-                                     {{}, {}, core::BuiltinValue::kFragDepth, {}, false},
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kFragDepth,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
                                  },
                              });
 
@@ -984,23 +1246,15 @@ Outputs = struct @align(4) {
   depth:f32 @offset(4)
 }
 
-foo_BuiltinOutputsStruct = struct @align(4), @block {
-  Outputs_depth:f32 @offset(0), @builtin(frag_depth)
-}
-
-foo_LocationOutputsStruct = struct @align(4), @block {
-  Outputs_color:f32 @offset(0), @location(0)
-}
-
 FragDepthClampArgs = struct @align(4), @block {
   min:f32 @offset(0)
   max:f32 @offset(4)
 }
 
 %b1 = block {  # root
-  %foo_BuiltinOutputs:ptr<__out, foo_BuiltinOutputsStruct, write> = var
-  %foo_LocationOutputs:ptr<__out, foo_LocationOutputsStruct, write> = var
-  %tint_frag_depth_clamp_args:ptr<push_constant, FragDepthClampArgs, read_write> = var
+  %foo_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %foo_frag_depth_Output:ptr<__out, f32, write> = var @builtin(frag_depth)
+  %tint_frag_depth_clamp_args:ptr<push_constant, FragDepthClampArgs, read> = var
 }
 
 %foo_inner = func():Outputs -> %b2 {
@@ -1013,15 +1267,13 @@ FragDepthClampArgs = struct @align(4), @block {
   %b3 = block {
     %7:Outputs = call %foo_inner
     %8:f32 = access %7, 0u
-    %9:ptr<__out, f32, write> = access %foo_LocationOutputs, 0u
-    store %9, %8
-    %10:f32 = access %7, 1u
-    %11:ptr<__out, f32, write> = access %foo_BuiltinOutputs, 0u
-    %12:FragDepthClampArgs = load %tint_frag_depth_clamp_args
-    %13:f32 = access %12, 0u
-    %14:f32 = access %12, 1u
-    %15:f32 = clamp %10, %13, %14
-    store %11, %15
+    store %foo_loc0_Output, %8
+    %9:f32 = access %7, 1u
+    %10:FragDepthClampArgs = load %tint_frag_depth_clamp_args
+    %11:f32 = access %10, 0u
+    %12:f32 = access %10, 1u
+    %13:f32 = clamp %9, %11, %12
+    store %foo_frag_depth_Output, %13
     ret
   }
 }
@@ -1029,6 +1281,211 @@ FragDepthClampArgs = struct @align(4), @block {
 
     ShaderIOConfig config;
     config.clamp_frag_depth = true;
+    Run(ShaderIO, config);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(SpirvWriter_ShaderIOTest, ClampFragDepth_MultipleFragmentShaders) {
+    auto* str_ty = ty.Struct(mod.symbols.New("Outputs"),
+                             {
+                                 {
+                                     mod.symbols.New("color"),
+                                     ty.f32(),
+                                     core::type::StructMemberAttributes{
+                                         /* location */ 0u,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ std::nullopt,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
+                                 },
+                                 {
+                                     mod.symbols.New("depth"),
+                                     ty.f32(),
+                                     core::type::StructMemberAttributes{
+                                         /* location */ std::nullopt,
+                                         /* index */ std::nullopt,
+                                         /* color */ std::nullopt,
+                                         /* builtin */ core::BuiltinValue::kFragDepth,
+                                         /* interpolation */ std::nullopt,
+                                         /* invariant */ false,
+                                     },
+                                 },
+                             });
+
+    auto make_entry_point = [&](std::string_view name) {
+        auto* ep = b.Function(name, str_ty);
+        ep->SetStage(core::ir::Function::PipelineStage::kFragment);
+        b.Append(ep->Block(), [&] {  //
+            b.Return(ep, b.Construct(str_ty, 0.5_f, 2_f));
+        });
+    };
+    make_entry_point("ep1");
+    make_entry_point("ep2");
+    make_entry_point("ep3");
+
+    auto* src = R"(
+Outputs = struct @align(4) {
+  color:f32 @offset(0), @location(0)
+  depth:f32 @offset(4), @builtin(frag_depth)
+}
+
+%ep1 = @fragment func():Outputs -> %b1 {
+  %b1 = block {
+    %2:Outputs = construct 0.5f, 2.0f
+    ret %2
+  }
+}
+%ep2 = @fragment func():Outputs -> %b2 {
+  %b2 = block {
+    %4:Outputs = construct 0.5f, 2.0f
+    ret %4
+  }
+}
+%ep3 = @fragment func():Outputs -> %b3 {
+  %b3 = block {
+    %6:Outputs = construct 0.5f, 2.0f
+    ret %6
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+Outputs = struct @align(4) {
+  color:f32 @offset(0)
+  depth:f32 @offset(4)
+}
+
+FragDepthClampArgs = struct @align(4), @block {
+  min:f32 @offset(0)
+  max:f32 @offset(4)
+}
+
+%b1 = block {  # root
+  %ep1_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %ep1_frag_depth_Output:ptr<__out, f32, write> = var @builtin(frag_depth)
+  %tint_frag_depth_clamp_args:ptr<push_constant, FragDepthClampArgs, read> = var
+  %ep2_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %ep2_frag_depth_Output:ptr<__out, f32, write> = var @builtin(frag_depth)
+  %ep3_loc0_Output:ptr<__out, f32, write> = var @location(0)
+  %ep3_frag_depth_Output:ptr<__out, f32, write> = var @builtin(frag_depth)
+}
+
+%ep1_inner = func():Outputs -> %b2 {
+  %b2 = block {
+    %9:Outputs = construct 0.5f, 2.0f
+    ret %9
+  }
+}
+%ep2_inner = func():Outputs -> %b3 {
+  %b3 = block {
+    %11:Outputs = construct 0.5f, 2.0f
+    ret %11
+  }
+}
+%ep3_inner = func():Outputs -> %b4 {
+  %b4 = block {
+    %13:Outputs = construct 0.5f, 2.0f
+    ret %13
+  }
+}
+%ep1 = @fragment func():void -> %b5 {
+  %b5 = block {
+    %15:Outputs = call %ep1_inner
+    %16:f32 = access %15, 0u
+    store %ep1_loc0_Output, %16
+    %17:f32 = access %15, 1u
+    %18:FragDepthClampArgs = load %tint_frag_depth_clamp_args
+    %19:f32 = access %18, 0u
+    %20:f32 = access %18, 1u
+    %21:f32 = clamp %17, %19, %20
+    store %ep1_frag_depth_Output, %21
+    ret
+  }
+}
+%ep2 = @fragment func():void -> %b6 {
+  %b6 = block {
+    %23:Outputs = call %ep2_inner
+    %24:f32 = access %23, 0u
+    store %ep2_loc0_Output, %24
+    %25:f32 = access %23, 1u
+    %26:FragDepthClampArgs = load %tint_frag_depth_clamp_args
+    %27:f32 = access %26, 0u
+    %28:f32 = access %26, 1u
+    %29:f32 = clamp %25, %27, %28
+    store %ep2_frag_depth_Output, %29
+    ret
+  }
+}
+%ep3 = @fragment func():void -> %b7 {
+  %b7 = block {
+    %31:Outputs = call %ep3_inner
+    %32:f32 = access %31, 0u
+    store %ep3_loc0_Output, %32
+    %33:f32 = access %31, 1u
+    %34:FragDepthClampArgs = load %tint_frag_depth_clamp_args
+    %35:f32 = access %34, 0u
+    %36:f32 = access %34, 1u
+    %37:f32 = clamp %33, %35, %36
+    store %ep3_frag_depth_Output, %37
+    ret
+  }
+}
+)";
+
+    ShaderIOConfig config;
+    config.clamp_frag_depth = true;
+    Run(ShaderIO, config);
+
+    EXPECT_EQ(expect, str());
+}
+
+TEST_F(SpirvWriter_ShaderIOTest, EmitVertexPointSize) {
+    auto* ep = b.Function("foo", ty.vec4<f32>());
+    ep->SetStage(core::ir::Function::PipelineStage::kVertex);
+    ep->SetReturnBuiltin(core::BuiltinValue::kPosition);
+
+    b.Append(ep->Block(), [&] {  //
+        b.Return(ep, b.Construct(ty.vec4<f32>(), 0.5_f));
+    });
+
+    auto* src = R"(
+%foo = @vertex func():vec4<f32> [@position] -> %b1 {
+  %b1 = block {
+    %2:vec4<f32> = construct 0.5f
+    ret %2
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+%b1 = block {  # root
+  %foo_position_Output:ptr<__out, vec4<f32>, write> = var @builtin(position)
+  %foo___point_size_Output:ptr<__out, f32, write> = var @builtin(__point_size)
+}
+
+%foo_inner = func():vec4<f32> -> %b2 {
+  %b2 = block {
+    %4:vec4<f32> = construct 0.5f
+    ret %4
+  }
+}
+%foo = @vertex func():void -> %b3 {
+  %b3 = block {
+    %6:vec4<f32> = call %foo_inner
+    store %foo_position_Output, %6
+    store %foo___point_size_Output, 1.0f
+    ret
+  }
+}
+)";
+
+    ShaderIOConfig config;
+    config.emit_vertex_point_size = true;
     Run(ShaderIO, config);
 
     EXPECT_EQ(expect, str());

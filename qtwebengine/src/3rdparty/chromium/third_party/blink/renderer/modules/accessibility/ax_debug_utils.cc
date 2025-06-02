@@ -20,7 +20,7 @@ std::string NewlineToSpaceReplacer(std::string str) {
 
 }  // namespace
 
-std::string TreeToStringHelper(const AXObject* obj, int indent, bool verbose) {
+std::string TreeToStringHelper(const AXObject* obj, bool verbose) {
   return TreeToStringWithMarkedObjectHelper(obj, nullptr, verbose);
 }
 
@@ -66,10 +66,32 @@ std::string TreeToStringWithMarkedObjectHelper(const AXObject* obj,
     return tree_str;
   }
 
+  if (!marked_object) {
+    return tree_str;
+  }
   return std::string("**** ERROR: Found marked objects was found ") +
          String::Number(marked_object_found_count).Utf8() +
          " times, should have been found exactly once.\n* Marked object: " +
          marked_object->ToString(true, cached).Utf8() + "\n\n" + tree_str;
+}
+
+std::string ParentChainToStringHelper(const AXObject* obj) {
+  bool cached = !obj->IsDetached() && !obj->AXObjectCache().IsFrozen();
+
+  AXObject::AXObjectVector ancestors;
+  while (obj) {
+    ancestors.push_back(const_cast<AXObject*>(obj));
+    obj = obj->ParentObject();
+  }
+
+  size_t indent = 0;
+  std::string builder;
+  for (auto iter = ancestors.rbegin(); iter != ancestors.rend(); iter++) {
+    builder = builder + std::string(2 * indent, ' ') +
+              (*iter)->ToString(true, cached).Utf8() + '\n';
+    ++indent;
+  }
+  return builder;
 }
 
 }  // namespace blink

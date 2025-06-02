@@ -31,7 +31,7 @@ std::unique_ptr<CommandBuffer> MtlQueueManager::getNewCommandBuffer(
     auto cmdBuffer = MtlCommandBuffer::Make(fQueue.get(),
                                             this->mtlSharedContext(),
                                             mtlResourceProvider);
-    return std::move(cmdBuffer);
+    return cmdBuffer;
 }
 
 class MtlWorkSubmission final : public GpuWorkSubmission {
@@ -40,10 +40,11 @@ public:
         : GpuWorkSubmission(std::move(cmdBuffer), queueManager) {}
     ~MtlWorkSubmission() override {}
 
-    bool isFinished() override {
+private:
+    bool onIsFinished() override {
         return static_cast<MtlCommandBuffer*>(this->commandBuffer())->isFinished();
     }
-    void waitUntilFinished() override {
+    void onWaitUntilFinished() override {
         return static_cast<MtlCommandBuffer*>(this->commandBuffer())->waitUntilFinished();
     }
 };

@@ -750,16 +750,16 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
     case PE_IndicatorArrowRight:
     case PE_IndicatorArrowLeft:
         {
-            if (opt->rect.width() <= 1 || opt->rect.height() <= 1)
+            const QRect &r = opt->rect;
+            if (r.width() <= 1 || r.height() <= 1)
                 break;
-            QRect r = opt->rect;
             int size = qMin(r.height(), r.width());
             QPixmap pixmap;
             const qreal dpr = p->device()->devicePixelRatio();
             const QString pixmapName = QStyleHelper::uniqueName("$qt_ia-"_L1
                                                      % QLatin1StringView(metaObject()->className())
                                                      % HexString<uint>(pe),
-                                             opt, QSize(size, size));
+                                             opt, QSize(size, size), dpr);
             if (!QPixmapCache::find(pixmapName, &pixmap)) {
                 // dpr scaling does not work well on such small pixel sizes, do it on our own
                 const int border = 1 * dpr;
@@ -769,8 +769,7 @@ void QCommonStyle::drawPrimitive(PrimitiveElement pe, const QStyleOption *opt, Q
                 const int add = ((width & 1) == 1);
                 if (pe == PE_IndicatorArrowRight || pe == PE_IndicatorArrowLeft)
                     std::swap(width, height);
-                pixmap = QPixmap(QSize(sizeDpr, sizeDpr));
-                pixmap.fill(Qt::transparent);
+                pixmap = styleCachePixmap(QSize(sizeDpr, sizeDpr), 1);
 
                 std::array<QPointF, 4> poly;
                 switch (pe) {
@@ -944,7 +943,7 @@ QString QCommonStylePrivate::calculateElidedText(const QString &text, const QTex
                     text.chop(1);
                 text += QChar(0x2026);
             }
-            const QStackTextEngine engine(text, font);
+            Q_DECL_UNINITIALIZED const QStackTextEngine engine(text, font);
             ret += engine.elidedText(textElideMode, textRect.width(), flags);
 
             // no newline for the last line (last visible or real)
@@ -1639,7 +1638,7 @@ void QCommonStyle::drawControl(ControlElement element, const QStyleOption *opt,
                 pbBits.palette = pal2;
                 int myY = pbBits.rect.y();
                 int myHeight = pbBits.rect.height();
-                pbBits.state = State_None;
+                pbBits.state &= QStyle::State_Horizontal;  // all other is irrelevant here
                 for (int i = 0; i < nu; ++i) {
                     pbBits.rect.setRect(x0 + x, myY, unit_width, myHeight);
                     pbBits.rect = m.mapRect(QRectF(pbBits.rect)).toRect();
@@ -1669,7 +1668,7 @@ void QCommonStyle::drawControl(ControlElement element, const QStyleOption *opt,
                     = header->icon.pixmap(QSize(iconExtent, iconExtent), p->device()->devicePixelRatio(), (header->state & State_Enabled) ? QIcon::Normal : QIcon::Disabled);
                 int pixw = pixmap.width() / pixmap.devicePixelRatio();
 
-                QRect aligned = alignedRect(header->direction, QFlag(header->iconAlignment), pixmap.size() / pixmap.devicePixelRatio(), rect);
+                QRect aligned = alignedRect(header->direction, header->iconAlignment, pixmap.size() / pixmap.devicePixelRatio(), rect);
                 QRect inter = aligned.intersected(rect);
                 p->drawPixmap(inter.x(), inter.y(), pixmap,
                               inter.x() - aligned.x(), inter.y() - aligned.y(),
@@ -2249,7 +2248,8 @@ void QCommonStyle::drawControl(ControlElement element, const QStyleOption *opt,
                     editRect.translate(cb->iconSize.width() + 4, 0);
             }
             if (!cb->currentText.isEmpty() && !cb->editable) {
-                proxy()->drawItemText(p, editRect.adjusted(1, 0, -1, 0),
+                // keep in sync with QLineEditPrivate::horizontalMargin = 2
+                proxy()->drawItemText(p, editRect.adjusted(2, 0, -2, 0),
                              visualAlignment(cb->direction, cb->textAlignment),
                              cb->palette, cb->state & State_Enabled, cb->currentText);
             }
@@ -4527,15 +4527,6 @@ int QCommonStyle::pixelMetric(PixelMetric m, const QStyleOption *opt, const QWid
     case PM_MenuBarHMargin:
         ret = 0;
         break;
-    case PM_DialogButtonsSeparator:
-        ret = int(QStyleHelper::dpiScaled(5, opt));
-        break;
-    case PM_DialogButtonsButtonWidth:
-        ret = int(QStyleHelper::dpiScaled(70, opt));
-        break;
-    case PM_DialogButtonsButtonHeight:
-        ret = int(QStyleHelper::dpiScaled(30, opt));
-        break;
     case PM_TitleBarHeight:
     {
         if (const QStyleOptionTitleBar *tb = qstyleoption_cast<const QStyleOptionTitleBar *>(opt)) {
@@ -5059,14 +5050,16 @@ QSize QCommonStyle::sizeFromContents(ContentsType contentsType, const QStyleOpti
 #if QT_CONFIG(spinbox)
     case CT_SpinBox:
         if (const auto *spinBoxOpt = qstyleoption_cast<const QStyleOptionSpinBox *>(opt)) {
-            // Add button + frame widths
-            const qreal dpi = QStyleHelper::dpi(opt);
+            const int frameWidth = spinBoxOpt->frame
+                ? proxy()->pixelMetric(PM_SpinBoxFrameWidth, spinBoxOpt, widget)
+                : 0;
+            size += QSize(2 * frameWidth, 2 * frameWidth);
             const bool hasButtons = (spinBoxOpt->buttonSymbols != QAbstractSpinBox::NoButtons);
-            const int buttonWidth = hasButtons ? qRound(QStyleHelper::dpiScaled(16, dpi)) : 0;
-            const int frameWidth = spinBoxOpt->frame ? proxy()->pixelMetric(PM_SpinBoxFrameWidth,
-                                                                         spinBoxOpt, widget) : 0;
-
-            size += QSize(buttonWidth + 2 * frameWidth, 2 * frameWidth);
+            if (hasButtons) {
+                const auto height = qMax(8, size.height() / 2 - frameWidth);
+                const auto buttonWidth = qMax(16, qMin(height * 8 / 5, size.width() / 3));
+                size.rwidth() += buttonWidth;
+            }
         }
         break;
 #endif
@@ -5510,8 +5503,8 @@ static inline QPixmap titleBarMenuCachedPixmapFromXPM() { return cachedPixmapFro
 #endif // QT_CONFIG(imageformat_xpm)
 
 #if QT_CONFIG(imageformat_png)
-static inline QString iconResourcePrefix() { return QStringLiteral(":/qt-project.org/styles/commonstyle/images/"); }
-static inline QString iconPngSuffix() { return QStringLiteral(".png"); }
+static constexpr QLatin1StringView iconResourcePrefix() noexcept { return ":/qt-project.org/styles/commonstyle/images/"_L1; }
+static constexpr QLatin1StringView iconPngSuffix() noexcept { return ".png"_L1; }
 
 template <typename T>
 static void addIconFiles(QStringView prefix, std::initializer_list<T> sizes, QIcon &icon,
@@ -5607,7 +5600,7 @@ QIcon QCommonStylePrivate::iconFromWindowsTheme(QCommonStyle::StandardPixmap sta
 {
     Q_UNUSED(option);
     Q_UNUSED(widget);
-    QIcon icon;;
+    QIcon icon;
 #ifdef Q_OS_WIN
     switch (standardIcon) {
     case QStyle::SP_DriveCDIcon:
@@ -5826,14 +5819,15 @@ QIcon QCommonStylePrivate::iconFromMacTheme(QCommonStyle::StandardPixmap standar
         case QStyle::SP_TitleBarNormalButton:
         case QStyle::SP_TitleBarCloseButton: {
             QIcon titleBarIcon;
-            QString prefix = standardIcon == QStyle::SP_TitleBarCloseButton
-                            ? QStringLiteral(":/qt-project.org/styles/macstyle/images/closedock-")
-                            : QStringLiteral(":/qt-project.org/styles/macstyle/images/dockdock-");
+            constexpr auto imagesPrefix = ":/qt-project.org/styles/macstyle/images/"_L1;
+            const auto namePrefix = standardIcon == QStyle::SP_TitleBarCloseButton
+                              ? "closedock-"_L1
+                              : "dockdock-"_L1;
             for (const auto size : dockTitleIconSizes) {
-                titleBarIcon.addFile(prefix + QStringLiteral("macstyle-") + QString::number(size) + iconPngSuffix(),
-                                     QSize(size, size), QIcon::Normal, QIcon::Off);
-                titleBarIcon.addFile(prefix + QStringLiteral("down-macstyle-") + QString::number(size) + iconPngSuffix(),
-                                     QSize(size, size), QIcon::Normal, QIcon::On);
+                titleBarIcon.addFile(imagesPrefix + namePrefix + "macstyle-"_L1 + QString::number(size)
+                                     + iconPngSuffix(), QSize(size, size), QIcon::Normal, QIcon::Off);
+                titleBarIcon.addFile(imagesPrefix + namePrefix + "down-macstyle-"_L1 + QString::number(size)
+                                     + iconPngSuffix(), QSize(size, size), QIcon::Normal, QIcon::On);
             }
             return titleBarIcon;
         }

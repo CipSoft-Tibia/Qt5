@@ -27,12 +27,28 @@ class ObjectPath;
 
 namespace floss {
 
-const char kScannerCallbackPath[] = "/org/chromium/bluetooth/scanner/callback";
+const char kScannerCallbackPath[] =
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+    "/org/chromium/bluetooth/scanner/callback/lacros";
+#else
+    "/org/chromium/bluetooth/scanner/callback";
+#endif
 const char kScannerCallbackInterfaceName[] =
     "org.chromium.bluetooth.ScannerCallback";
+const char kEmptyUuidStr[] = "00000000-0000-0000-0000-000000000000";
 
-// TODO(b/217274013): Update structs to support filtering
-class ScanSettings {};
+// Represents type of a scan.
+enum class ScanType {
+  kActive = 0,
+  kPassive = 1,
+};
+
+// Represents scanning configurations.
+struct ScanSettings {
+  int32_t interval;
+  int32_t window;
+  ScanType scan_type;
+};
 
 struct DEVICE_BLUETOOTH_EXPORT ScanFilterPattern {
   // Specifies the starting byte position of the pattern immediately following
@@ -153,6 +169,7 @@ class DEVICE_BLUETOOTH_EXPORT FlossLEScanClient : public FlossDBusClient,
   void Init(dbus::Bus* bus,
             const std::string& service_name,
             const int adapter_index,
+            base::Version version,
             base::OnceClosure on_ready) override;
 
   virtual void RegisterScanner(
@@ -161,7 +178,7 @@ class DEVICE_BLUETOOTH_EXPORT FlossLEScanClient : public FlossDBusClient,
                                  uint8_t scanner_id);
   virtual void StartScan(ResponseCallback<BtifStatus> callback,
                          uint8_t scanner_id,
-                         const ScanSettings& scan_settings,
+                         const absl::optional<ScanSettings>& scan_settings,
                          const absl::optional<ScanFilter>& filter);
   virtual void StopScan(ResponseCallback<BtifStatus> callback,
                         uint8_t scanner_id);

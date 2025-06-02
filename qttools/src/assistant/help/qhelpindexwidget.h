@@ -6,15 +6,15 @@
 
 #include <QtHelp/qhelp_global.h>
 
-#include <QtCore/QUrl>
-#include <QtCore/QStringListModel>
-#include <QtWidgets/QListView>
+#include <QtCore/qstringlistmodel.h>
+#include <QtCore/qurl.h>
+
+#include <QtWidgets/qlistview.h>
 
 QT_BEGIN_NAMESPACE
 
-
-class QHelpEnginePrivate;
 class QHelpEngineCore;
+class QHelpEnginePrivate;
 class QHelpIndexModelPrivate;
 struct QHelpLink;
 
@@ -23,9 +23,9 @@ class QHELP_EXPORT QHelpIndexModel : public QStringListModel
     Q_OBJECT
 
 public:
+    void createIndexForCurrentFilter();
     void createIndex(const QString &customFilterName);
-    QModelIndex filter(const QString &filter,
-        const QString &wildcard = QString());
+    QModelIndex filter(const QString &filter, const QString &wildcard = {});
 
     bool isCreatingIndex() const;
     QHelpEngineCore *helpEngine() const;
@@ -38,7 +38,7 @@ private Q_SLOTS:
     void insertIndices();
 
 private:
-    QHelpIndexModel(QHelpEnginePrivate *helpEngine);
+    QHelpIndexModel(QHelpEngineCore *helpEngine);
     ~QHelpIndexModel();
 
     QHelpIndexModelPrivate *d;
@@ -57,14 +57,11 @@ Q_SIGNALS:
     QT_DEPRECATED_X("Use documentsActivated() instead")
     void linksActivated(const QMultiMap<QString, QUrl> &links, const QString &keyword);
 #endif
-    void documentActivated(const QHelpLink &document,
-                           const QString &keyword);
-    void documentsActivated(const QList<QHelpLink> &documents,
-                            const QString &keyword);
+    void documentActivated(const QHelpLink &document, const QString &keyword);
+    void documentsActivated(const QList<QHelpLink> &documents, const QString &keyword);
 
 public Q_SLOTS:
-    void filterIndices(const QString &filter,
-        const QString &wildcard = QString());
+    void filterIndices(const QString &filter, const QString &wildcard = {});
     void activateCurrentItem();
 
 private Q_SLOTS:
@@ -77,4 +74,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif
+#endif // QHELPINDEXWIDGET_H

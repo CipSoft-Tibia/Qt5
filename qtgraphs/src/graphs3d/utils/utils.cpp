@@ -1,11 +1,11 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include "QtGui/qbrush.h"
+#include <QtCore/qregularexpression.h>
+#include <QtGui/qbrush.h>
+
 #include "private/qquickrectangle_p.h"
 #include "utils_p.h"
-
-#include <QtCore/QRegularExpression>
 
 QT_BEGIN_NAMESPACE
 
@@ -124,7 +124,7 @@ float Utils::wrapValue(float value, float min, float max)
     return value;
 }
 
-QQuaternion Utils::calculateRotation(const QVector3D &xyzRotations)
+QQuaternion Utils::calculateRotation(QVector3D xyzRotations)
 {
     QQuaternion rotQuatX = QQuaternion::fromAxisAndAngle(1.0f, 0.0f, 0.0f, xyzRotations.x());
     QQuaternion rotQuatY = QQuaternion::fromAxisAndAngle(0.0f, 1.0f, 0.0f, xyzRotations.y());
@@ -163,6 +163,25 @@ void Utils::setSeriesGradient(QAbstract3DSeries *series, QJSValue gradient, Grad
         break;
     case GradientType::Multi:
         series->setMultiHighlightGradient(linearGradient);
+        break;
+    default: // Never goes here
+        break;
+    }
+}
+
+void Utils::setSeriesGradient(QAbstract3DSeries *series, QQuickGradient *gradient, GradientType type)
+{
+    QLinearGradient lg;
+    lg.setStops(gradient->gradientStops());
+    switch (type) {
+    case GradientType::Base:
+        series->setBaseGradient(lg);
+        break;
+    case GradientType::Single:
+        series->setSingleHighlightGradient(lg);
+        break;
+    case GradientType::Multi:
+        series->setMultiHighlightGradient(lg);
         break;
     default: // Never goes here
         break;

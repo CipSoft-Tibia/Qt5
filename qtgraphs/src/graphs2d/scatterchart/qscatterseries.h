@@ -1,12 +1,8 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QSCATTERSERIES_H
-#define QSCATTERSERIES_H
-
-#if 0
-#  pragma qt_class(QScatterSeries)
-#endif
+#ifndef QTGRAPHS_QSCATTERSERIES_H
+#define QTGRAPHS_QSCATTERSERIES_H
 
 #include <QtGraphs/qxyseries.h>
 #include <QtGraphs/qgraphsglobal.h>
@@ -15,19 +11,19 @@ QT_BEGIN_NAMESPACE
 
 class QScatterSeriesPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QScatterSeries : public QXYSeries
+class Q_GRAPHS_EXPORT QScatterSeries : public QXYSeries
 {
     Q_OBJECT
 
+    QML_NAMED_ELEMENT(ScatterSeries)
 public:
     explicit QScatterSeries(QObject *parent = nullptr);
-    ~QScatterSeries();
+    ~QScatterSeries() override;
     QAbstractSeries::SeriesType type() const override;
 
-    QML_NAMED_ELEMENT(ScatterSeries)
 
 protected:
-    QScatterSeries(QScatterSeriesPrivate &d, QObject *parent = nullptr);
+    QScatterSeries(QScatterSeriesPrivate &dd, QObject *parent = nullptr);
 
     void componentComplete() override;
 
@@ -38,4 +34,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QSCATTERSERIES_H
+#endif // QTGRAPHS_QSCATTERSERIES_H

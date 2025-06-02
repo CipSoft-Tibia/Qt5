@@ -6,11 +6,13 @@
 
 #include <QtCore/qtemporaryfile.h>
 #include <QtCore/qstandardpaths.h>
+#include <QtTest/qsignalspy.h>
 #include <QtMultimedia/qmediaplayer.h>
-#include <QtQGstreamerMediaPluginImpl/private/qgstpipeline_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgstpipeline_p.h>
 #include <QtMultimedia/private/qgstreamer_platformspecificinterface_p.h>
 
 #include <memory>
+#include <optional>
 
 QT_USE_NAMESPACE
 
@@ -27,12 +29,15 @@ public slots:
     void cleanup();
 
 private slots:
-    void constructor_preparesGstPipeline();
     void videoSink_constructor_overridesConversionElement();
     void videoSink_constructor_overridesConversionElement_withMultipleElements();
 
+    void setSource_customGStreamerPipeline_videoTest();
+    void setSource_customGStreamerPipeline_uriDecodeBin();
+
 private:
     std::unique_ptr<QMediaPlayer> player;
+    std::optional<QSignalSpy> mediaStatusSpy;
 
     static QGStreamerPlatformSpecificInterface *gstInterface();
 

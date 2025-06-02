@@ -855,8 +855,12 @@ Oka:
         <translation>Nem található a hozzárendelt tartalomelem.</translation>
     </message>
     <message>
+        <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;</source>
+        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Verzió: %2&lt;/p&gt;&lt;p&gt;Böngésző: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) A The Qt Company Ltd. és más közreműködők.&lt;/p&gt;</translation>
+    </message>
+    <message>
         <source>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;Version %2&lt;/p&gt;&lt;p&gt;Browser: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</source>
-        <translation>&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;%2. verzió&lt;/p&gt;&lt;p&gt;Böngésző: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</translation>
+        <translation type="vanished">&lt;center&gt;&lt;h3&gt;%1&lt;/h3&gt;&lt;p&gt;%2. verzió&lt;/p&gt;&lt;p&gt;Böngésző: %3&lt;/p&gt;&lt;/center&gt;&lt;p&gt;Copyright (C) %4 The Qt Company Ltd.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About %1</source>

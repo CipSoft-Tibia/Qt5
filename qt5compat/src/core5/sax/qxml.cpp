@@ -3166,7 +3166,7 @@ bool QXmlSimpleReader::parse(const QXmlInputSource *input, bool incremental)
 
     // call the handler
     if (d->contentHnd) {
-        d->contentHnd->setDocumentLocator(d->locator.data());
+        d->contentHnd->setDocumentLocator(d->locator.get());
         if (!d->contentHnd->startDocument()) {
             d->reportParseError(d->contentHnd->errorString());
             clear(d->tags);

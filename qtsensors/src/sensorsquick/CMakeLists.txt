@@ -35,6 +35,4 @@ qt_internal_add_qml_module(SensorsQuick
         Qt::Sensors
     LIBRARIES
         Qt::CorePrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
 )

@@ -622,6 +622,10 @@ Drücken Sie ESC, um abzubrechen</translation>
         <translation>Ungültiger Domain-Name</translation>
     </message>
     <message>
+        <source>SSL/TLS support not present</source>
+        <translation>Es ist keine SSL/TLS-Unterstützung vorhanden</translation>
+    </message>
+    <message>
         <source>Request timed out</source>
         <translation>Das Zeitlimit der Anforderung wurde überschritten</translation>
     </message>
@@ -692,6 +696,10 @@ Drücken Sie ESC, um abzubrechen</translation>
     <message>
         <source>Invalid service record</source>
         <translation>Ungültigen Datensatz für Dienst erhalten</translation>
+    </message>
+    <message>
+        <source>Invalid TLS association record</source>
+        <translation>Ungültiger TLS-Zuweisungsdatensatz</translation>
     </message>
     <message>
         <source>Invalid text record</source>
@@ -1717,10 +1725,6 @@ Möchten Sie die Datei trotzdem löschen?</translation>
 <context>
     <name>QIBaseDriver</name>
     <message>
-        <source>failed to query time zone mapping from system table</source>
-        <translation>Zuordnung der Zeitzonen konnte nicht von der Systemtabelle abgefragt werden</translation>
-    </message>
-    <message>
         <source>Error opening database</source>
         <translation>Die Datenbankverbindung konnte nicht geöffnet werden</translation>
     </message>
@@ -1735,6 +1739,14 @@ Möchten Sie die Datei trotzdem löschen?</translation>
     <message>
         <source>Unable to rollback transaction</source>
         <translation>Die Transaktion konnte nicht rückgängig gemacht werden (Operation &apos;rollback&apos; fehlgeschlagen)</translation>
+    </message>
+    <message>
+        <source>Could not subscribe to event notifications for %1.</source>
+        <translation>Der Empfang von Ereignisbenachrichtigungen für %1 konnte nicht eingerichtet werden.</translation>
+    </message>
+    <message>
+        <source>Could not unsubscribe from event notifications for %1.</source>
+        <translation>Der Empfang von Ereignisbenachrichtigungen für %1 konnte nicht abgestellt werden.</translation>
     </message>
 </context>
 <context>
@@ -1762,6 +1774,18 @@ Möchten Sie die Datei trotzdem löschen?</translation>
     <message>
         <source>Could not get array data</source>
         <translation>Die Daten des Feldes konnten nicht gelesen werden</translation>
+    </message>
+    <message>
+        <source>Array size mismatch. Field name: %3, expected size: %1. Supplied size: %2</source>
+        <translation>Fehlerhafte Größenangabe für ein Array. Feldname: %3, erwartete Größe: %1, angegebene Größe: %2</translation>
+    </message>
+    <message>
+        <source>Array dimensions mismatch. Field name: %1</source>
+        <translation>Fehlerhafte Dimensionsangabe eines Arrays. Feldname: %1</translation>
+    </message>
+    <message>
+        <source>Array size mismatch: size of %1 is %2, size of provided list is %3</source>
+        <translation>Fehlerhafte Größenangabe für ein Array: Die Größe von %1 ist %2, die Größe der bereitgestellten Liste ist %3</translation>
     </message>
     <message>
         <source>Could not get query info</source>
@@ -1977,6 +2001,10 @@ Möchten Sie die Datei trotzdem löschen?</translation>
     <message>
         <source>The shared library was not found.</source>
         <translation>Die dynamische Bibliothek konnte nicht gefunden werden.</translation>
+    </message>
+    <message>
+        <source>Could not resolve &apos;qt_plugin_instance&apos; function</source>
+        <translation>Die Funktion &apos;qt_plugin_instance&apos; konnte nicht aufgelöst werden</translation>
     </message>
     <message>
         <source>metadata too small</source>
@@ -2455,9 +2483,9 @@ Möchten Sie die Datei trotzdem löschen?</translation>
         <translation>&lt;h3&gt;Über Qt&lt;/h3&gt;&lt;p&gt;Dieses Programm verwendet Qt Version %1.&lt;/p&gt;</translation>
     </message>
     <message>
-        <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
+        <source>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd. product developed as an open source project. See &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</source>
         <extracomment>Leave this text untranslated or include a verbatim copy of it below and note that it is the authoritative version in case of doubt.</extracomment>
-        <translation>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;http://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) %1 The Qt Company Ltd and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd product developed as an open source project. See &lt;a href=&quot;http://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
+        <translation>&lt;p&gt;Qt is a C++ toolkit for cross-platform application development.&lt;/p&gt;&lt;p&gt;Qt provides single-source portability across all major desktop operating systems. It is also available for embedded Linux and other embedded and mobile operating systems.&lt;/p&gt;&lt;p&gt;Qt is available under multiple licensing options designed to accommodate the needs of our various users.&lt;/p&gt;&lt;p&gt;Qt licensed under our commercial license agreement is appropriate for development of proprietary/commercial software where you do not want to share any source code with third parties or otherwise cannot comply with the terms of GNU (L)GPL.&lt;/p&gt;&lt;p&gt;Qt licensed under GNU (L)GPL is appropriate for the development of Qt&amp;nbsp;applications provided you can comply with the terms and conditions of the respective licenses.&lt;/p&gt;&lt;p&gt;Please see &lt;a href=&quot;https://%2/&quot;&gt;%2&lt;/a&gt; for an overview of Qt licensing.&lt;/p&gt;&lt;p&gt;Copyright (C) The Qt Company Ltd. and other contributors.&lt;/p&gt;&lt;p&gt;Qt and the Qt logo are trademarks of The Qt Company Ltd.&lt;/p&gt;&lt;p&gt;Qt is The Qt Company Ltd. product developed as an open source project. See &lt;a href=&quot;https://%3/&quot;&gt;%3&lt;/a&gt; for more information.&lt;/p&gt;</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -2767,6 +2795,10 @@ Möchten Sie die Datei trotzdem löschen?</translation>
     <message>
         <source>Unable to execute statement</source>
         <translation>Der Befehl konnte nicht ausgeführt werden</translation>
+    </message>
+    <message>
+        <source>QODBCResult::reset: Unable to set &apos;SQL_ATTR_CURSOR_TYPE&apos; as statement attribute. Please check your ODBC driver configuration</source>
+        <translation>QODBCResult::reset: &apos;SQL_ATTR_CURSOR_TYPE&apos; konnte nicht als Attribut des Befehls gesetzt werden. Bitte prüfen Sie die Konfiguration Ihres ODBC-Treibers</translation>
     </message>
     <message>
         <source>Unable to fetch</source>
@@ -4658,6 +4690,10 @@ Bitte deaktivieren Sie eine der beiden.</translation>
     <message>
         <source>PCRE2_MATCH_INVALID_UTF is not supported for DFA matching</source>
         <translation>PCRE2_MATCH_INVALID_UTF wird bei DFA-Matching nicht unterstützt</translation>
+    </message>
+    <message>
+        <source>INTERNAL ERROR: invalid substring offset</source>
+        <translation>Interner Fehler: Ungültiger Beginn des Teilstrings</translation>
     </message>
     <message>
         <source>requested value is not available</source>
@@ -7645,6 +7681,29 @@ Die minimal erforderliche Version von Direct2D ist %1 Die auf diesem System inst
     <message>
         <source>Could not roll back transaction</source>
         <translation>Transaktion konnte nicht rückgängig gemacht werden</translation>
+    </message>
+</context>
+<context>
+    <name>Assets::Downloader::AssetDownloader</name>
+    <message>
+        <source>Downloading JSON file...</source>
+        <translation>JSON-Datei wird heruntergeladen...</translation>
+    </message>
+    <message>
+        <source>Downloading zip file...</source>
+        <translation>ZIP-Datei wird heruntergeladen...</translation>
+    </message>
+    <message>
+        <source>Unzipping...</source>
+        <translation>Entpacken...</translation>
+    </message>
+    <message>
+        <source>Downloading assets...</source>
+        <translation>Lade Assets herunter...</translation>
+    </message>
+    <message>
+        <source>Copying assets...</source>
+        <translation>Kopiere Assets...</translation>
     </message>
 </context>
 </TS>

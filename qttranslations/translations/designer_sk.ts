@@ -645,8 +645,8 @@
         <translation>Podporované widgety</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file cannot be read because the extra info extension failed to load.</source>
@@ -990,8 +990,8 @@ Parsing grid layout minimum size values</extracomment>
         <translation>Formulár</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1223,8 +1223,8 @@ Toto indikuje nekonzistenciu v ui súbore.</translation>
         <translation>%1 - upozornenie</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This application cannot be used for the Console edition of Qt</source>
@@ -1324,24 +1324,24 @@ Chcete ho nahradiť?</translation>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>&amp;Pomocník Qt Designera</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>&amp;Pomocník Qt Widgets Designera</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
         <translation>Pomocník k aktuálneho widgetu</translation>
     </message>
     <message>
-        <source>What&apos;s New in Qt Designer?</source>
-        <translation>Čo je nové v Qt Designeri?</translation>
+        <source>What&apos;s New in Qt Widgets Designer?</source>
+        <translation>Čo je nové v Qt Widgets Designeri?</translation>
     </message>
     <message>
         <source>About Plugins</source>
         <translation>O pluginoch</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>O programe Qt Designer</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>O programe Qt Widgets Designer</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1398,8 +1398,8 @@ Chcete aktualizovať umiestnenie súboru alebo vytvoriť nový formulár?</trans
         <translation>&amp;Nový formulár</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -3111,12 +3111,12 @@ Chcete prepísať túto šablónu?</translation>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Verzia %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer je grafický návrhár používateľského rozhrania Qt aplikácií.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer je grafický návrhár používateľského rozhrania Qt aplikácií.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) 2015 The Qt Company Ltd.</source>
@@ -4634,12 +4634,12 @@ Prosím vyberte iný názov.</translation>
         <translation>Zlyhané moduly</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer nemohol nájsť žiadne moduly</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer nemohol nájsť žiadne moduly</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer našiel nasledovné moduly</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer našiel nasledovné moduly</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

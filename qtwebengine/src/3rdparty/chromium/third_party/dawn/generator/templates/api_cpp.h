@@ -1,16 +1,29 @@
-//* Copyright 2017 The Dawn Authors
+//* Copyright 2017 The Dawn & Tint Authors
 //*
-//* Licensed under the Apache License, Version 2.0 (the "License");
-//* you may not use this file except in compliance with the License.
-//* You may obtain a copy of the License at
+//* Redistribution and use in source and binary forms, with or without
+//* modification, are permitted provided that the following conditions are met:
 //*
-//*     http://www.apache.org/licenses/LICENSE-2.0
+//* 1. Redistributions of source code must retain the above copyright notice, this
+//*    list of conditions and the following disclaimer.
 //*
-//* Unless required by applicable law or agreed to in writing, software
-//* distributed under the License is distributed on an "AS IS" BASIS,
-//* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//* See the License for the specific language governing permissions and
-//* limitations under the License.
+//* 2. Redistributions in binary form must reproduce the above copyright notice,
+//*    this list of conditions and the following disclaimer in the documentation
+//*    and/or other materials provided with the distribution.
+//*
+//* 3. Neither the name of the copyright holder nor the names of its
+//*    contributors may be used to endorse or promote products derived from
+//*    this software without specific prior written permission.
+//*
+//* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+//* AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+//* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//* DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+//* FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+//* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//* SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+//* CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+//* OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+//* OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 {% set API = metadata.api.upper() %}
 {% set api = API.lower() %}
 {% if 'dawn' in enabled_tags %}
@@ -21,9 +34,9 @@
 #ifndef {{API}}_CPP_H_
 #define {{API}}_CPP_H_
 
-#include "dawn/{{api}}.h"
-#include "dawn/{{api}}_cpp_chained_struct.h"
-#include "dawn/EnumClassBitmasks.h"
+#include "{{api}}/{{api}}.h"
+#include "{{api}}/{{api}}_cpp_chained_struct.h"
+#include "{{api}}/{{api}}_enum_class_bitmasks.h"
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -175,7 +188,7 @@ namespace {{metadata.namespace}} {
         CType mHandle = nullptr;
     };
 
-{% macro render_cpp_default_value(member, is_struct=True, force_default=False) -%}
+{% macro render_cpp_default_value(member, is_struct, force_default=False) -%}
     {%- if member.json_data.get("no_default", false) -%}
     {%- elif member.annotation in ["*", "const*"] and member.optional or member.default_value == "nullptr" -%}
         {{" "}}= nullptr
@@ -252,9 +265,11 @@ namespace {{metadata.namespace}} {
                 }
         {% else %}
             struct {{as_cppType(type.name)}} {
+                {% if type.has_free_members_function %}
+                    {{as_cppType(type.name)}}() = default;
+                {% endif %}
         {% endif %}
             {% if type.has_free_members_function %}
-                {{as_cppType(type.name)}}() = default;
                 ~{{as_cppType(type.name)}}();
                 {{as_cppType(type.name)}}(const {{as_cppType(type.name)}}&) = delete;
                 {{as_cppType(type.name)}}& operator=(const {{as_cppType(type.name)}}&) = delete;
@@ -265,7 +280,7 @@ namespace {{metadata.namespace}} {
                 ChainedStruct{{Out}} {{const}} * nextInChain = nullptr;
             {% endif %}
             {% for member in type.members %}
-                {% set member_declaration = as_annotated_cppType(member, type.has_free_members_function) + render_cpp_default_value(member, False, type.has_free_members_function) %}
+                {% set member_declaration = as_annotated_cppType(member, type.has_free_members_function) + render_cpp_default_value(member, True, type.has_free_members_function) %}
                 {% if type.chained and loop.first %}
                     //* Align the first member after ChainedStruct to match the C struct layout.
                     //* It has to be aligned both to its natural and ChainedStruct's alignment.
@@ -279,20 +294,22 @@ namespace {{metadata.namespace}} {
 
     {% endfor %}
 
-    // The operators of EnumClassBitmmasks in the dawn:: namespace need to be imported
-    // in the {{metadata.namespace}} namespace for Argument Dependent Lookup.
-    DAWN_IMPORT_BITMASK_OPERATORS
+    {%- if metadata.namespace != 'wgpu' %}
+        // The operators of webgpu_enum_class_bitmasks.h are in the wgpu:: namespace,
+        // and need to be imported into this namespace for Argument Dependent Lookup.
+        WGPU_IMPORT_BITMASK_OPERATORS
+    {% endif %}
 }  // namespace {{metadata.namespace}}
 
-namespace dawn {
+namespace wgpu {
     {% for type in by_category["bitmask"] %}
         template<>
-        struct IsDawnBitmask<{{metadata.namespace}}::{{as_cppType(type.name)}}> {
+        struct IsWGPUBitmask<{{metadata.namespace}}::{{as_cppType(type.name)}}> {
             static constexpr bool enable = true;
         };
 
     {% endfor %}
-} // namespace dawn
+} // namespace wgpu
 
 namespace std {
 // Custom boolean class needs corresponding hash function so that it appears as a transparent bool.

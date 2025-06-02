@@ -4,6 +4,7 @@
 
 import("//pdf/features.gni")
 import("//printing/buildflags/buildflags.gni")
+import("//extensions/buildflags/buildflags.gni")
 
 assert(enable_pdf)
 
@@ -15,6 +16,8 @@ source_set("pdf") {
     "pdf_extension_util.h",
     "pdf_frame_util.cc",
     "pdf_frame_util.h",
+    "pdf_viewer_stream_manager.cc",
+    "pdf_viewer_stream_manager.h",
   ]
   deps = [
     "//base",
@@ -33,9 +36,11 @@ source_set("pdf") {
     "//extensions/browser",
     "//extensions/common:common_constants",
     "//extensions/common/api",
+    "//mojo/public/cpp/bindings",
     "//pdf:buildflags",
     "//pdf:features",
     "//printing/buildflags",
+    "//third_party/blink/public/common:headers",
     "//ui/base",
     "//ui/gfx:color_utils",
     "//url",
@@ -43,6 +48,14 @@ source_set("pdf") {
 
   if (enable_print_preview) {
     deps += [ "//chrome/common" ]
+  }
+
+  if (!enable_extensions) {
+    deps -= [
+      "//extensions/browser",
+      "//extensions/common:common_constants",
+      "//extensions/common/api",
+    ]
   }
 }
 
@@ -61,6 +74,40 @@ source_set("pdf_extension_test_utils") {
   ]
   deps = [
     "//base",
-    "//chrome/test:test_support",
+    "//base/test:test_support",
+    "//chrome/browser/ui",
+    "//chrome/common",
+    "//content/public/browser",
+    "//content/test:test_support",
+    "//extensions/browser",
+    "//pdf:features",
+    "//testing/gtest",
   ]
+
+  if (!enable_extensions) {
+    deps -= [
+      "//extensions/browser",
+    ]
+  }
+}
+
+source_set("pdf_test_utils") {
+  testonly = true
+  sources = [
+    "pdf_test_util.cc",
+    "pdf_test_util.h",
+  ]
+  deps = [
+    "//base",
+    "//extensions/browser",
+    "//net",
+    "//services/network/public/mojom:url_loader_base",
+    "//url",
+  ]
+
+  if (!enable_extensions) {
+    deps -= [
+      "//extensions/browser",
+    ]
+  }
 }

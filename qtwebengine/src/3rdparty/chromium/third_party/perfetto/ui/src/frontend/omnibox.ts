@@ -14,14 +14,14 @@
 
 import m from 'mithril';
 
+import {classNames} from '../base/classnames';
 import {FuzzySegment} from '../base/fuzzy';
+import {isString} from '../base/object_utils';
 import {exists} from '../base/utils';
 import {raf} from '../core/raf_scheduler';
-
-import {classNames} from './classnames';
-import {EmptyState} from './widgets/empty_state';
-import {KeycapGlyph} from './widgets/hotkey_glyphs';
-import {Popup} from './widgets/popup';
+import {EmptyState} from '../widgets/empty_state';
+import {KeycapGlyph} from '../widgets/hotkey_glyphs';
+import {Popup} from '../widgets/popup';
 
 interface OmniboxOptionRowAttrs {
   // Human readable display name for the option.
@@ -39,6 +39,7 @@ interface OmniboxOptionRowAttrs {
   label?: string;
 
   // Additional attrs forwarded to the underlying element.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [htmlAttrs: string]: any;
 }
 
@@ -63,7 +64,7 @@ class OmniboxOptionRow implements m.ClassComponent<OmniboxOptionRowAttrs> {
   }
 
   private renderTitle(title: FuzzySegment[]|string): m.Children {
-    if (typeof title === 'string') {
+    if (isString(title)) {
       return title;
     } else {
       return title.map(({matching, value}) => {
@@ -209,7 +210,13 @@ export class Omnibox implements m.ClassComponent<OmniboxAttrs> {
                       e.preventDefault();
 
                       const option = options[selectedOptionIndex];
+                      // Return values from indexing arrays can be undefined.
+                      // We should enable noUncheckedIndexedAccess in
+                      // tsconfig.json.
+                      /* eslint-disable
+                      @typescript-eslint/strict-boolean-expressions */
                       if (option) {
+                        /* eslint-enable */
                         closeOnSubmit && this.close(attrs);
 
                         const mod = e.metaKey || e.ctrlKey;

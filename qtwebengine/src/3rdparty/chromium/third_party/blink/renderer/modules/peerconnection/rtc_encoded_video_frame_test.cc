@@ -11,6 +11,7 @@
 #include "third_party/blink/renderer/bindings/modules/v8/v8_rtc_codec_specifics_vp_8.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_rtc_encoded_video_frame_metadata.h"
 #include "third_party/blink/renderer/modules/peerconnection/rtc_encoded_video_frame_delegate.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/webrtc/api/test/mock_transformable_video_frame.h"
 
 using testing::_;
@@ -23,7 +24,9 @@ using webrtc::MockTransformableVideoFrame;
 
 namespace blink {
 
-class RTCEncodedVideoFrameTest : public testing::Test {};
+class RTCEncodedVideoFrameTest : public testing::Test {
+  test::TaskEnvironment task_environment_;
+};
 
 webrtc::VideoFrameMetadata MockVP9Metadata(MockTransformableVideoFrame* frame) {
   webrtc::VideoFrameMetadata webrtc_metadata;
@@ -111,24 +114,6 @@ TEST_F(RTCEncodedVideoFrameTest, GetMetadataReturnsMetadata) {
   ASSERT_EQ(1u, retrieved_metadata->contributingSources().size());
   EXPECT_EQ(6u, retrieved_metadata->contributingSources()[0]);
   EXPECT_EQ(17u, retrieved_metadata->rtpTimestamp());
-}
-
-TEST_F(RTCEncodedVideoFrameTest, ClosedFramesFailToClone) {
-  V8TestingScope v8_scope;
-
-  std::unique_ptr<MockTransformableVideoFrame> frame =
-      std::make_unique<MockTransformableVideoFrame>();
-
-  RTCEncodedVideoFrame encoded_frame(std::move(frame));
-
-  // Move the WebRTC frame out, as if the frame had been written into
-  // an encoded insertable stream's WritableStream to be sent on.
-  encoded_frame.PassWebRtcFrame();
-
-  DummyExceptionStateForTesting exception_state;
-  encoded_frame.clone(exception_state);
-
-  EXPECT_TRUE(exception_state.HadException());
 }
 
 TEST_F(RTCEncodedVideoFrameTest, SetMetadataPreservesVP9CodecSpecifics) {

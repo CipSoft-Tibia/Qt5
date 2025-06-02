@@ -21,6 +21,10 @@ Item {
         Scatter3DSeries { id: series1 }
         Scatter3DSeries { id: series2 }
 
+        Custom3DItem { id: customItem1 }
+        Custom3DItem { id: customItem2 }
+        Custom3DItem { id: customItem3 }
+
         function test_1_add_series() {
             series.seriesList = [series1, series2]
             compare(series.seriesList.length, 2)
@@ -46,6 +50,29 @@ Item {
             series.seriesList = [series1]
             compare(series.hasSeries(series1), true)
             compare(series.hasSeries(series2), false)
+        }
+
+        function test_6_add_custom_item() {
+            series.addCustomItem(customItem1)
+            series.addCustomItem(customItem2)
+            series.addCustomItem(customItem3)
+            compare(series.customItemList.length, 3)
+        }
+
+        function test_7_remove_custom_item() {
+            series.releaseCustomItem(customItem1)
+
+            verify(customItem1)
+            // Add item back
+            series.addCustomItem(customItem1)
+
+            // Remove items, this also deletes them.
+            series.removeCustomItem(customItem1)
+            series.removeCustomItems()
+
+            verify(!customItem1)
+            verify(!customItem2)
+            verify(!customItem3)
         }
     }
 }

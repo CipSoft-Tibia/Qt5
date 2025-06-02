@@ -2,87 +2,86 @@
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QImage>
-#include <QBuffer>
-
 #include "chatmessagemodel.h"
+#include "chatmessages.qpb.h"
 
-namespace {
-enum Role {
-    Content = Qt::UserRole + 1,
-    Type,
-    From,
-};
-
-QString getImage(const QByteArray &data)
+ChatMessageModel::ChatMessageModel(QObject *parent) : QAbstractListModel(parent)
 {
-    return QString("data:image/png;base64,") + data.toBase64();
 }
 
-QString getImageScaled(const QByteArray &data)
-{
-    QImage img = QImage::fromData(data, "PNG");
-    img = img.scaled(300, 300, Qt::KeepAspectRatio);
-    QByteArray scaledData;
-    QBuffer buffer(&scaledData);
-    img.save(&buffer, "PNG");
-    return getImage(scaledData);
-}
+ChatMessageModel::~ChatMessageModel() = default;
 
-QString getText(const QByteArray &data)
+int ChatMessageModel::rowCount(const QModelIndex & /*parent*/) const
 {
-    return QString::fromUtf8(data);
-}
-} // namespace
-
-ChatMessageModel::ChatMessageModel(QObject *parent) : QAbstractListModel(parent) { }
-
-QHash<int, QByteArray> ChatMessageModel::roleNames() const
-{
-    static QHash<int, QByteArray> s_roleNames;
-    if (s_roleNames.isEmpty()) {
-        s_roleNames.insert(Content, "content");
-        s_roleNames.insert(Type, "type");
-        s_roleNames.insert(From, "from");
-    }
-    return s_roleNames;
+    return int(m_chatMessages.count());
 }
 
 QVariant ChatMessageModel::data(const QModelIndex &index, int role) const
 {
-    int row = index.row();
-
-    if (row < 0 || row >= m_container.count())
-        return QVariant();
-
-    const auto &data = m_container.at(row);
-
-    switch (role) {
-    case Content:
-        if (data.type() == qtgrpc::examples::chat::ChatMessage::ContentType::Image)
-            return QVariant::fromValue(getImageScaled(data.content()));
-        else
-            return QVariant::fromValue(getText(data.content()));
-    case Type:
-        return QVariant::fromValue(data.type());
-    case From:
-        return QVariant::fromValue(data.from());
+    if (!index.isValid() || index.row() < 0 || index.row() > m_chatMessages.size())
+        return {};
+    const auto msg = m_chatMessages[index.row()];
+    switch (static_cast<Qt::ItemDataRole>(role)) {
+    case Qt::DisplayRole:
+        return QVariant::fromValue(msg);
+    case Qt::WhatsThisRole:
+        switch (msg.contentField()) {
+        case chat::ChatMessage::ContentFields::Text:
+            return "text";
+        case chat::ChatMessage::ContentFields::File:
+            if (msg.file().hasContinuation())
+                return "continuation";
+            else if (msg.file().type() == chat::FileMessage::Type::IMAGE)
+                return "image";
+            else
+                return "file";
+        case chat::ChatMessage::ContentFields::UserStatus:
+            return "userStatus";
+        default:
+            return {};
+        }
+    default:
+        return {};
     }
-
-    return QVariant();
 }
 
-int ChatMessageModel::rowCount(const QModelIndex &) const
+void ChatMessageModel::appendMessage(const chat::ChatMessage &message)
 {
-    return m_container.count();
-}
-
-void ChatMessageModel::append(const qtgrpc::examples::chat::ChatMessageRepeated &messages)
-{
-    if (messages.size() > 0) {
-        beginInsertRows(QModelIndex(), m_container.size(),
-                        m_container.size() + messages.size() - 1);
-        m_container.append(messages);
-        endInsertRows();
+    if (message.hasUserStatus()) {
+        const auto &st = message.userStatus();
+        if (st.fetched() || st.type() == chat::UserStatus::Type::NONE)
+            return;
     }
+
+    if (message.hasFile() && message.file().hasContinuation()) {
+        const auto &msgCont = message.file().continuation();
+        if (msgCont.index() > 0) {
+            for (int i = 0; i < m_chatMessages.length(); ++i) {
+                auto &idx = m_chatMessages[i];
+                if (idx.hasFile() && idx.file().hasContinuation()) {
+                    const auto &idxCont = idx.file().continuation();
+                    if (idxCont.uuid() == msgCont.uuid() && idxCont.index() != msgCont.index()) {
+                        idx = message; // Update the continuation message
+                        if (msgCont.index() == msgCont.count() - 1) { // Last continuation received
+                            auto copy = idx;
+                            beginRemoveRows(QModelIndex(), i, i);
+                            m_chatMessages.remove(i); // Remove the Continuation message
+                            endRemoveRows();
+                            copy.file().clearContinuation(); // Clear the Continuation
+                            appendMessage(copy); // And retrigger this function with a file message
+                            return;
+                        }
+                        emit dataChanged(index(i), index(i));
+                        return;
+                    }
+                }
+            }
+            qWarning("Continuation not found in chat messages");
+            return;
+        }
+    }
+
+    beginInsertRows(QModelIndex(), int(m_chatMessages.size()), int(m_chatMessages.size()));
+    m_chatMessages.append(message);
+    endInsertRows();
 }

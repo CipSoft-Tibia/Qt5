@@ -9,7 +9,7 @@ import re
 import tempfile
 from typing import TYPE_CHECKING, Optional, Tuple
 
-from crossbench import helper
+from crossbench import plt
 from crossbench.browsers.browser import Browser
 from crossbench.browsers.viewport import Viewport
 from crossbench.browsers.webdriver import WebDriverBrowser
@@ -17,15 +17,15 @@ from crossbench.browsers.webdriver import WebDriverBrowser
 if TYPE_CHECKING:
   from crossbench.browsers.splash_screen import SplashScreen
   from crossbench.flags import Flags
-  from crossbench import plt
-  from crossbench.runner.run import Run
+  from crossbench.network.base import Network
+  from crossbench.runner.groups import BrowserSessionRunGroup
 
 
 class Firefox(Browser):
 
   @classmethod
   def default_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Firefox",
         macos=["Firefox.app"],
         linux=["firefox"],
@@ -33,7 +33,7 @@ class Firefox(Browser):
 
   @classmethod
   def developer_edition_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Firefox Developer Edition",
         macos=["Firefox Developer Edition.app"],
         linux=["firefox-developer-edition"],
@@ -41,7 +41,7 @@ class Firefox(Browser):
 
   @classmethod
   def nightly_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Firefox Nightly",
         macos=["Firefox Nightly.app"],
         linux=["firefox-nightly", "firefox-trunk"],
@@ -55,6 +55,7 @@ class Firefox(Browser):
       js_flags: Optional[Flags.InitialDataType] = None,
       cache_dir: Optional[pathlib.Path] = None,
       type: str = "firefox",  # pylint: disable=redefined-builtin
+      network: Optional[Network] = None,
       driver_path: Optional[pathlib.Path] = None,
       viewport: Optional[Viewport] = None,
       splash_screen: Optional[SplashScreen] = None,
@@ -72,6 +73,7 @@ class Firefox(Browser):
         flags,
         js_flags=None,
         type=type,
+        network=network,
         driver_path=driver_path,
         viewport=viewport,
         splash_screen=splash_screen,
@@ -84,9 +86,10 @@ class Firefox(Browser):
     # "Firefox 107.0" => "107.0"
     return str(re.findall(r"[\d\.]+", version_string)[0])
 
-  def _get_browser_flags_for_run(self, run: Run) -> Tuple[str, ...]:
+  def _get_browser_flags_for_session(
+      self, session: BrowserSessionRunGroup) -> Tuple[str, ...]:
     flags_copy = self.flags.copy()
-    flags_copy.update(run.extra_flags)
+    flags_copy.update(session.extra_flags)
     self._handle_viewport_flags(flags_copy)
     if self.cache_dir and self.cache_dir:
       flags_copy["--profile"] = str(self.cache_dir)

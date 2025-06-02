@@ -4,8 +4,9 @@
 /*!
 \page qtqml-tooling-qmlpreview.html
 \title qmlpreview
-\brief Overview of the qmlpreview utility.
+\brief A tool that provides a live updating preview for the QML files.
 \ingroup qtqml-tooling
+\ingroup qtqml-tooling-design
 
 \section1 The Qml Preview
 The QML Preview tool watches QML and JavaScript files on disk and updates

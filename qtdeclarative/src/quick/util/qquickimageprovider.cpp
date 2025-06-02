@@ -259,6 +259,8 @@ void QQuickImageResponse::cancel()
     Note that the example registers the provider via a \l{QQmlEngineExtensionPlugin}{plugin}
     instead of registering it in the application \c main() function as shown above.
 
+    It is possible to provide \l {High Resolution Versions of Images}{"@nx" high DPI syntax}.
+
 
     \section2 Asynchronous Image Loading
 
@@ -476,6 +478,7 @@ public:
     }
 
     QColorSpace targetColorSpace;
+    QRectF sourceClipRect;
     QQuickImageProviderOptions::AutoTransform autoTransform = QQuickImageProviderOptions::UsePluginDefaultTransform;
     bool preserveAspectRatioCrop = false;
     bool preserveAspectRatioFit = false;
@@ -580,6 +583,19 @@ QColorSpace QQuickImageProviderOptions::targetColorSpace() const
 void QQuickImageProviderOptions::setTargetColorSpace(const QColorSpace &colorSpace)
 {
     d->targetColorSpace = colorSpace;
+}
+
+/*!
+    Returns the requested source clip rect.
+*/
+QRectF QQuickImageProviderOptions::sourceClipRect() const
+{
+    return d->sourceClipRect;
+}
+
+void QQuickImageProviderOptions::setSourceClipRect(const QRectF &rect)
+{
+    d->sourceClipRect = rect;
 }
 
 QQuickImageProviderWithOptions::QQuickImageProviderWithOptions(ImageType type, Flags flags)

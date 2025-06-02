@@ -143,6 +143,12 @@ QGeoPositionInfo &QGeoPositionInfo::operator=(const QGeoPositionInfo & other)
 */
 
 /*!
+    \fn void QGeoPositionInfo::swap(QGeoPositionInfo &other)
+    \since 6.2
+    \memberswap{position information}
+*/
+
+/*!
     Returns true if the timestamp() and coordinate() values are both valid.
 
     \sa QGeoCoordinate::isValid(), QDateTime::isValid()

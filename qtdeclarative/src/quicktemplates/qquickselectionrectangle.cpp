@@ -17,7 +17,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype SelectionRectangle
     \inherits Control
-//!     \instantiates QQuickSelectionRectangle
+//!     \nativetype QQuickSelectionRectangle
     \inqmlmodule QtQuick.Controls
     \since 6.2
     \ingroup utilities
@@ -170,15 +170,22 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
         else
             m_selectable->setSelectionEndPos(m_scrollToPoint);
         updateHandles();
-        const QSizeF dist = m_selectable->scrollTowardsSelectionPoint(m_scrollToPoint, m_scrollSpeed);
+        const QSizeF dist = m_selectable->scrollTowardsPoint(m_scrollToPoint, m_scrollSpeed);
         m_scrollToPoint.rx() += dist.width() > 0 ? m_scrollSpeed.width() : -m_scrollSpeed.width();
         m_scrollToPoint.ry() += dist.height() > 0 ? m_scrollSpeed.height() : -m_scrollSpeed.height();
         m_scrollSpeed = QSizeF(qAbs(dist.width() * 0.007), qAbs(dist.height() * 0.007));
     });
 
     QObject::connect(m_tapHandler, &QQuickTapHandler::pressedChanged, [this]() {
-        if (!m_tapHandler->isPressed())
+        Q_Q(QQuickSelectionRectangle);
+
+        if (!m_tapHandler->isPressed()) {
+            // Deactivate the selection rectangle when the tap handler
+            // is released and there's no selection
+            if (q->active() && !m_selectable->hasSelection())
+                updateActiveState(false);
             return;
+        }
         if (m_effectiveSelectionMode != QQuickSelectionRectangle::Drag)
             return;
 
@@ -186,6 +193,11 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
         const auto modifiers = m_tapHandler->point().modifiers();
         if (modifiers & ~(Qt::ControlModifier | Qt::ShiftModifier))
             return;
+
+        // A selection rectangle is not valid when its width or height is 0
+        const auto isSelectionRectValid = [](const QRectF &selectionRect) -> bool {
+            return ((selectionRect.width() != 0) || (selectionRect.height() != 0));
+        };
 
         if (modifiers & Qt::ShiftModifier) {
             // Extend the selection towards the pressed cell. If there is no
@@ -197,6 +209,10 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
                 m_selectable->setSelectionStartPos(QPoint{-1, -1});
             }
             m_selectable->setSelectionEndPos(pos);
+            // Don't update and activate the selection handlers when
+            // the size of m_selectable's selection rectangle is 0.
+            if (!isSelectionRectValid(m_selectable->selectionRectangle()))
+                return;
             updateHandles();
             updateActiveState(true);
         } else if (modifiers & Qt::ControlModifier) {
@@ -213,6 +229,10 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
                 return;
             m_selectable->setSelectionStartPos(pos);
             m_selectable->setSelectionEndPos(pos);
+            // Don't update and activate the selection handlers when
+            // the size of m_selectable's selection rectangle is 0.
+            if (!isSelectionRectValid(m_selectable->selectionRectangle()))
+                return;
             updateHandles();
             updateActiveState(true);
         }
@@ -230,6 +250,11 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
             return;
         }
 
+        // A selection rectangle is not valid when its width or height is 0
+        const auto isSelectionRectValid = [](const QRectF &selectionRect) -> bool {
+            return ((selectionRect.width() != 0) || (selectionRect.height() != 0));
+        };
+
         if (modifiers == Qt::ShiftModifier) {
             // Extend the selection towards the pressed cell. If there is no
             // existing selection, start a new selection from the current item
@@ -240,6 +265,8 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
                 m_selectable->setSelectionStartPos(QPoint{-1, -1});
             }
             m_selectable->setSelectionEndPos(pos);
+            if (!isSelectionRectValid(m_selectable->selectionRectangle()))
+                return;
             updateHandles();
             updateActiveState(true);
         } else {
@@ -249,6 +276,8 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
                 return;
             m_selectable->setSelectionStartPos(pos);
             m_selectable->setSelectionEndPos(pos);
+            if (!isSelectionRectValid(m_selectable->selectionRectangle()))
+                return;
             updateHandles();
             updateActiveState(true);
         }
@@ -262,6 +291,11 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
         if (modifiers & ~(Qt::ControlModifier | Qt::ShiftModifier))
             return;
 
+        // A selection rectangle is not valid when its width or height is 0
+        const auto isSelectionRectValid = [](const QRectF &selectionRect) -> bool {
+            return ((selectionRect.width() != 0) || (selectionRect.height() != 0));
+        };
+
         if (m_dragHandler->active()) {
             // Start a new selection unless there is an active selection
             // already, and one of the relevant modifiers are being held.
@@ -274,6 +308,8 @@ QQuickSelectionRectanglePrivate::QQuickSelectionRectanglePrivate()
             }
             m_selectable->setSelectionEndPos(dragPos);
             m_draggedHandle = nullptr;
+            if (!isSelectionRectValid(m_selectable->selectionRectangle()))
+                return;
             updateHandles();
             updateActiveState(true);
             updateDraggingState(true);
@@ -300,7 +336,7 @@ void QQuickSelectionRectanglePrivate::scrollTowardsPos(const QPointF &pos)
     if (m_scrollTimer.isActive())
         return;
 
-    const QSizeF dist = m_selectable->scrollTowardsSelectionPoint(m_scrollToPoint, m_scrollSpeed);
+    const QSizeF dist = m_selectable->scrollTowardsPoint(m_scrollToPoint, m_scrollSpeed);
     if (!dist.isNull())
         m_scrollTimer.start(1);
 }

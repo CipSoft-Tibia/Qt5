@@ -7,6 +7,9 @@
 
 QT_BEGIN_NAMESPACE
 
+QHttpNetworkHeader::~QHttpNetworkHeader()
+    = default;
+
 QHttpNetworkHeaderPrivate::QHttpNetworkHeaderPrivate(const QUrl &newUrl)
     :url(newUrl)
 {
@@ -53,7 +56,7 @@ void QHttpNetworkHeaderPrivate::prependHeaderField(const QByteArray &name, const
     parser.prependHeaderField(name, data);
 }
 
-QList<QPair<QByteArray, QByteArray> > QHttpNetworkHeaderPrivate::headers() const
+QHttpHeaders QHttpNetworkHeaderPrivate::headers() const
 {
     return parser.headers();
 }

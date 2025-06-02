@@ -26,6 +26,9 @@ Defining of a QML module allows:
 
 \section1 Defining a QML Module
 
+\note Use the \l{Port QML modules to CMake}{CMake API} to define a QML Module.
+Define your QML module manually only if you need to use \c qmake.
+
 A module is defined by a \l{qtqml-modules-qmldir.html}
 {module definition qmldir file}.  Each module has an associated type
 namespace, which is the module's identifier.  A module can provide QML object
@@ -78,4 +81,5 @@ register any types that the plugin provides, but must not do anything else
 
 See \l{qtqml-modules-cppplugins.html}{Creating C++ Plugins For QML} for more information.
 
+\sa {Modern QML modules}, {Port QML modules to CMake}
 */

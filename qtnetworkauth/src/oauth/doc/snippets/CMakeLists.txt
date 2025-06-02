@@ -14,4 +14,3 @@ add_executable(networkauth_cppsnippets
 )
 
 target_link_libraries(networkauth_cppsnippets PRIVATE Qt6::Core Qt6::NetworkAuth Qt6::Gui)
-

@@ -16,7 +16,6 @@
 #include "third_party/blink/renderer/modules/payments/goods/digital_goods_type_converters.h"
 #include "third_party/blink/renderer/platform/bindings/exception_code.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
-#include "third_party/blink/renderer/platform/bindings/to_v8.h"
 #include "third_party/blink/renderer/platform/bindings/v8_throw_exception.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -40,7 +39,10 @@ void OnGetDetailsResponse(
     Vector<payments::mojom::blink::ItemDetailsPtr> item_details_list) {
   if (code != BillingResponseCode::kOk) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
-        DOMExceptionCode::kOperationError, mojo::ConvertTo<String>(code)));
+        DOMExceptionCode::kOperationError,
+        mojo::TypeConverter<
+            String,
+            payments::mojom::blink::BillingResponseCode>::Convert(code)));
     return;
   }
   HeapVector<Member<ItemDetails>> blink_item_details_list;
@@ -61,7 +63,10 @@ void ResolveWithPurchaseReferenceList(
         purchase_reference_list) {
   if (code != BillingResponseCode::kOk) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
-        DOMExceptionCode::kOperationError, mojo::ConvertTo<String>(code)));
+        DOMExceptionCode::kOperationError,
+        mojo::TypeConverter<
+            String,
+            payments::mojom::blink::BillingResponseCode>::Convert(code)));
     return;
   }
   HeapVector<Member<PurchaseDetails>> blink_purchase_details_list;
@@ -80,7 +85,10 @@ void OnConsumeResponse(ScriptPromiseResolver* resolver,
                        BillingResponseCode code) {
   if (code != BillingResponseCode::kOk) {
     resolver->Reject(MakeGarbageCollected<DOMException>(
-        DOMExceptionCode::kOperationError, mojo::ConvertTo<String>(code)));
+        DOMExceptionCode::kOperationError,
+        mojo::TypeConverter<
+            String,
+            payments::mojom::blink::BillingResponseCode>::Convert(code)));
     return;
   }
   resolver->Resolve();

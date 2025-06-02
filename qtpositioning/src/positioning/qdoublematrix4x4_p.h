@@ -29,7 +29,7 @@ QT_BEGIN_NAMESPACE
  * Some methods have been removed.
  */
 
-class Q_POSITIONING_PRIVATE_EXPORT QDoubleMatrix4x4
+class Q_POSITIONING_EXPORT QDoubleMatrix4x4
 {
 public:
     inline QDoubleMatrix4x4() { setToIdentity(); }
@@ -78,7 +78,7 @@ public:
     friend QPointF operator*(const QDoubleMatrix4x4& matrix, const QPointF& point);
     friend QDoubleMatrix4x4 operator*(double factor, const QDoubleMatrix4x4& matrix);
     friend QDoubleMatrix4x4 operator*(const QDoubleMatrix4x4& matrix, double factor);
-    friend Q_POSITIONING_PRIVATE_EXPORT QDoubleMatrix4x4 operator/(const QDoubleMatrix4x4& matrix, double divisor);
+    friend Q_POSITIONING_EXPORT QDoubleMatrix4x4 operator/(const QDoubleMatrix4x4& matrix, double divisor);
 
     friend inline bool qFuzzyCompare(const QDoubleMatrix4x4& m1, const QDoubleMatrix4x4& m2);
 
@@ -124,7 +124,7 @@ public:
     void optimize();
 
 #ifndef QT_NO_DEBUG_STREAM
-    friend Q_POSITIONING_PRIVATE_EXPORT QDebug operator<<(QDebug dbg, const QDoubleMatrix4x4 &m);
+    friend Q_POSITIONING_EXPORT QDebug operator<<(QDebug dbg, const QDoubleMatrix4x4 &m);
 #endif
 
 private:
@@ -179,7 +179,7 @@ inline double& QDoubleMatrix4x4::operator()(int aRow, int aColumn)
     return m[aColumn][aRow];
 }
 
-Q_POSITIONING_PRIVATE_EXPORT QDoubleMatrix4x4 operator/(const QDoubleMatrix4x4& matrix, double divisor);
+Q_POSITIONING_EXPORT QDoubleMatrix4x4 operator/(const QDoubleMatrix4x4& matrix, double divisor);
 
 inline bool QDoubleMatrix4x4::isAffine() const
 {
@@ -896,12 +896,12 @@ inline void QDoubleMatrix4x4::viewport(const QRectF &rect)
 }
 
 #ifndef QT_NO_DEBUG_STREAM
-Q_POSITIONING_PRIVATE_EXPORT QDebug operator<<(QDebug dbg, const QDoubleMatrix4x4 &m);
+Q_POSITIONING_EXPORT QDebug operator<<(QDebug dbg, const QDoubleMatrix4x4 &m);
 #endif
 
 #ifndef QT_NO_DATASTREAM
-Q_POSITIONING_PRIVATE_EXPORT QDataStream &operator<<(QDataStream &, const QDoubleMatrix4x4 &);
-Q_POSITIONING_PRIVATE_EXPORT QDataStream &operator>>(QDataStream &, QDoubleMatrix4x4 &);
+Q_POSITIONING_EXPORT QDataStream &operator<<(QDataStream &, const QDoubleMatrix4x4 &);
+Q_POSITIONING_EXPORT QDataStream &operator>>(QDataStream &, QDoubleMatrix4x4 &);
 #endif
 
 

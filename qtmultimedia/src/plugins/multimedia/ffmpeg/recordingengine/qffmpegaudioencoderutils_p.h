@@ -4,22 +4,30 @@
 #ifndef QFFMPEGAUDIOENCODERUTILS_P_H
 #define QFFMPEGAUDIOENCODERUTILS_P_H
 
-#include "qffmpeg_p.h"
+//
+//  W A R N I N G
+//  -------------
+//
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
+//
+// We mean it.
+//
+
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
+#include <QtCore/qspan.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 
-AVSampleFormat adjustSampleFormat(const AVSampleFormat *supportedFormats, AVSampleFormat requested);
+AVSampleFormat adjustSampleFormat(QSpan<const AVSampleFormat> supportedFormats, AVSampleFormat requested);
 
-int adjustSampleRate(const int *supportedRates, int requested);
+int adjustSampleRate(QSpan<const int> supportedRates, int requested);
 
-#if QT_FFMPEG_OLD_CHANNEL_LAYOUT
-uint64_t adjustChannelLayout(const uint64_t *supportedLayouts, uint64_t requested);
-#else
-AVChannelLayout adjustChannelLayout(const AVChannelLayout *supportedLayouts,
-                                    const AVChannelLayout &requested);
-#endif
+ChannelLayoutT adjustChannelLayout(QSpan<const ChannelLayoutT> supportedLayouts,
+                                   const ChannelLayoutT &requested);
 
 } // namespace QFFmpeg
 

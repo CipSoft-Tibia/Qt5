@@ -35,6 +35,10 @@ class InvalidArgumentException(BidiException):
     error_code = "invalid argument"
 
 
+class InvalidSelectorException(BidiException):
+    error_code = "invalid selector"
+
+
 class InvalidSessionIDError(BidiException):
     error_code = "invalid session id"
 
@@ -63,8 +67,16 @@ class NoSuchHandleException(BidiException):
     error_code = "no such handle"
 
 
+class NoSuchHistoryEntryException(BidiException):
+    error_code = "no such history entry"
+
+
 class NoSuchNodeException(BidiException):
     error_code = "no such node"
+
+
+class NoSuchRequestException(BidiException):
+    error_code = "no such request"
 
 
 class NoSuchScriptException(BidiException):
@@ -73,6 +85,10 @@ class NoSuchScriptException(BidiException):
 
 class UnableToCaptureScreenException(BidiException):
     error_code = "unable to capture screen"
+
+
+class UnableToSetCookieException(BidiException):
+    error_code = "unable to set cookie"
 
 
 class UnknownCommandException(BidiException):

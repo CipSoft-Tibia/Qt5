@@ -26,14 +26,15 @@ using namespace QQmlJS;
 
 Script::Script(ExecutionEngine *v4, QmlContext *qml, const QQmlRefPointer<ExecutableCompilationUnit> &compilationUnit)
     : line(1), column(0), context(v4->rootContext()), strictMode(false), inheritContext(true), parsed(false)
-    , compilationUnit(compilationUnit), vmFunction(nullptr), parseAsBinding(true)
+    , compilationUnit(compilationUnit), parseAsBinding(true)
 {
     if (qml)
         qmlContext.set(v4, *qml);
 
     parsed = true;
 
-    vmFunction = compilationUnit ? compilationUnit->linkToEngine(v4) : nullptr;
+    vmFunction.set(v4,
+                   compilationUnit ? compilationUnit->rootFunction() : nullptr);
 }
 
 Script::~Script()
@@ -50,7 +51,7 @@ void Script::parse()
     ExecutionEngine *v4 = context->engine();
     Scope valueScope(v4);
 
-    QV4::Compiler::Module module(v4->debugger() != nullptr);
+    QV4::Compiler::Module module(sourceFile, sourceFile, v4->debugger() != nullptr);
 
     if (sourceCode.startsWith(QLatin1String("function("))) {
         static const int snippetLength = 70;
@@ -90,12 +91,12 @@ void Script::parse()
         RuntimeCodegen cg(v4, &jsGenerator, strictMode);
         if (inheritContext)
             cg.setUseFastLookups(false);
-        cg.generateFromProgram(sourceFile, sourceFile, sourceCode, program, &module, contextType);
+        cg.generateFromProgram(sourceCode, program, &module, contextType);
         if (v4->hasException)
             return;
 
-        compilationUnit = QV4::ExecutableCompilationUnit::create(cg.generateCompilationUnit());
-        vmFunction = compilationUnit->linkToEngine(v4);
+        compilationUnit = v4->insertCompilationUnit(cg.generateCompilationUnit());
+        vmFunction.set(v4, compilationUnit->rootFunction());
     }
 
     if (!vmFunction) {
@@ -133,9 +134,9 @@ Function *Script::function()
     return vmFunction;
 }
 
-QV4::CompiledData::CompilationUnit Script::precompile(
+QQmlRefPointer<QV4::CompiledData::CompilationUnit> Script::precompile(
         QV4::Compiler::Module *module, QQmlJS::Engine *jsEngine,
-        Compiler::JSUnitGenerator *unitGenerator, const QString &fileName, const QString &finalUrl,
+        Compiler::JSUnitGenerator *unitGenerator, const QString &fileName,
         const QString &source, QList<QQmlError> *reportedErrors,
         QV4::Compiler::ContextType contextType)
 {
@@ -163,7 +164,7 @@ QV4::CompiledData::CompilationUnit Script::precompile(
     }
 
     Codegen cg(unitGenerator, /*strict mode*/false);
-    cg.generateFromProgram(fileName, finalUrl, source, program, module, contextType);
+    cg.generateFromProgram(source, program, module, contextType);
     if (cg.hasError()) {
         if (reportedErrors) {
             const auto v4Error = cg.error();
@@ -197,8 +198,9 @@ Script *Script::createFromFileOrCache(ExecutionEngine *engine, QmlContext *qmlCo
                     &cacheError)
                 : nullptr) {
         QQmlRefPointer<QV4::ExecutableCompilationUnit> jsUnit
-                = QV4::ExecutableCompilationUnit::create(
-                        QV4::CompiledData::CompilationUnit(cachedUnit->qmlData, cachedUnit->aotCompiledFunctions));
+                = engine->insertCompilationUnit(
+                    QQml::makeRefPointer<QV4::CompiledData::CompilationUnit>(
+                        cachedUnit->qmlData, cachedUnit->aotCompiledFunctions));
         return new QV4::Script(engine, qmlContext, jsUnit);
     }
 

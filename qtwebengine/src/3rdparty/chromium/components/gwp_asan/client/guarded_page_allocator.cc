@@ -5,13 +5,14 @@
 #include "components/gwp_asan/client/guarded_page_allocator.h"
 
 #include <algorithm>
+#include <bit>
 #include <memory>
 #include <random>
 #include <utility>
 
 #include "base/allocator/buildflags.h"
-#include "base/allocator/partition_allocator/gwp_asan_support.h"
-#include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/gwp_asan_support.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc_buildflags.h"
 #include "base/bits.h"
 #include "base/logging.h"
 #include "base/memory/page_size.h"
@@ -20,10 +21,10 @@
 #include "base/synchronization/lock.h"
 #include "build/build_config.h"
 #include "components/crash/core/common/crash_key.h"
+#include "components/gwp_asan/client/thread_local_random_bit_generator.h"
 #include "components/gwp_asan/common/allocation_info.h"
 #include "components/gwp_asan/common/allocator_state.h"
 #include "components/gwp_asan/common/crash_key_name.h"
-#include "components/gwp_asan/common/lightweight_detector_state.h"
 #include "components/gwp_asan/common/pack_stack_trace.h"
 #include "third_party/boringssl/src/include/openssl/rand.h"
 
@@ -40,7 +41,7 @@ template <typename T>
 T RandomEviction(std::vector<T>* list) {
   DCHECK(!list->empty());
   std::uniform_int_distribution<uint64_t> distribution(0, list->size() - 1);
-  base::NonAllocatingRandomBitGenerator generator;
+  ThreadLocalRandomBitGenerator generator;
   size_t rand = distribution(generator);
   T out = (*list)[rand];
   (*list)[rand] = list->back();
@@ -150,6 +151,8 @@ void GuardedPageAllocator::Init(size_t max_alloced_pages,
   CHECK_LE(num_metadata, AllocatorState::kMaxMetadata);
   CHECK_LE(num_metadata, total_pages);
   CHECK_LE(total_pages, AllocatorState::kMaxRequestedSlots);
+
+  ThreadLocalRandomBitGenerator::InitIfNeeded();
 
   max_alloced_pages_ = max_alloced_pages;
   state_.num_metadata = num_metadata;
@@ -269,10 +272,9 @@ void* GuardedPageAllocator::Allocate(size_t size,
   // Default alignment is size's next smallest power-of-two, up to
   // kGpaAllocAlignment.
   if (!align) {
-    align =
-        std::min(size_t{1} << base::bits::Log2Floor(size), kGpaAllocAlignment);
+    align = std::min(std::bit_floor(size), kGpaAllocAlignment);
   }
-  CHECK(base::bits::IsPowerOfTwo(align));
+  CHECK(std::has_single_bit(align));
 
   AllocatorState::SlotIdx free_slot;
   AllocatorState::MetadataIdx free_metadata;
@@ -430,7 +432,7 @@ void GuardedPageAllocator::RecordAllocationMetadata(
   metadata_[metadata_idx].alloc_size = size;
   metadata_[metadata_idx].alloc_ptr = reinterpret_cast<uintptr_t>(ptr);
 
-  void* trace[AllocatorState::kMaxStackFrames];
+  const void* trace[AllocatorState::kMaxStackFrames];
   size_t len =
       AllocationInfo::GetStackTrace(trace, AllocatorState::kMaxStackFrames);
   metadata_[metadata_idx].alloc.trace_len =
@@ -448,7 +450,7 @@ void GuardedPageAllocator::RecordAllocationMetadata(
 
 void GuardedPageAllocator::RecordDeallocationMetadata(
     AllocatorState::MetadataIdx metadata_idx) {
-  void* trace[AllocatorState::kMaxStackFrames];
+  const void* trace[AllocatorState::kMaxStackFrames];
   size_t len =
       AllocationInfo::GetStackTrace(trace, AllocatorState::kMaxStackFrames);
   metadata_[metadata_idx].dealloc.trace_len =

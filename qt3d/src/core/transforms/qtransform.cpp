@@ -29,7 +29,7 @@ QTransformPrivate::~QTransformPrivate()
     \qmltype Transform
     \inqmlmodule Qt3D.Core
     \inherits Component3D
-    \instantiates Qt3DCore::QTransform
+    \nativetype Qt3DCore::QTransform
     \since 5.6
     \brief Used to perform transforms on meshes.
 
@@ -322,7 +322,7 @@ QMatrix4x4 QTransform::matrix() const
 }
 
 /*!
-    \property QTransform::worldMatrix
+    \property Qt3DCore::QTransform::worldMatrix
 
     Holds the world transformation matrix for the transform. This assumes the
     QTransform component is being referenced by a QEntity. This makes it more

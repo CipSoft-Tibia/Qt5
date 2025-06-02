@@ -60,9 +60,11 @@ HPack::HttpHeader build_headers(const QHttpNetworkRequest &request, quint32 maxH
     if (size.second > maxHeaderListSize)
         return HttpHeader(); // Bad, we cannot send this request ...
 
-    const auto requestHeader = request.header();
-    for (const auto &field : requestHeader) {
-        const HeaderSize delta = entry_size(field.first, field.second);
+    const QHttpHeaders requestHeader = request.header();
+    for (qsizetype i = 0; i < requestHeader.size(); ++i) {
+        const auto name = requestHeader.nameAt(i);
+        const auto value = requestHeader.valueAt(i);
+        const HeaderSize delta = entry_size(name, value);
         if (!delta.first) // Overflow???
             break;
         if (std::numeric_limits<quint32>::max() - delta.second < size.second)
@@ -71,18 +73,17 @@ HPack::HttpHeader build_headers(const QHttpNetworkRequest &request, quint32 maxH
         if (size.second > maxHeaderListSize)
             break;
 
-        if (field.first.compare("connection", Qt::CaseInsensitive) == 0 ||
-                field.first.compare("host", Qt::CaseInsensitive) == 0 ||
-                field.first.compare("keep-alive", Qt::CaseInsensitive) == 0 ||
-                field.first.compare("proxy-connection", Qt::CaseInsensitive) == 0 ||
-                field.first.compare("transfer-encoding", Qt::CaseInsensitive) == 0)
+        if (name == "connection"_L1 || name == "host"_L1 || name == "keep-alive"_L1
+            || name == "proxy-connection"_L1 || name == "transfer-encoding"_L1) {
             continue; // Those headers are not valid (section 3.2.1) - from QSpdyProtocolHandler
+        }
         // TODO: verify with specs, which fields are valid to send ....
-        // toLower - 8.1.2 .... "header field names MUST be converted to lowercase prior
-        // to their encoding in HTTP/2.
-        // A request or response containing uppercase header field names
-        // MUST be treated as malformed (Section 8.1.2.6)".
-        header.emplace_back(field.first.toLower(), field.second);
+        //
+        // Note: RFC 7450 8.1.2 (HTTP/2) states that header field names must be lower-cased
+        // prior to their encoding in HTTP/2; header name fields in QHttpHeaders are already
+        // lower-cased
+        header.emplace_back(QByteArray{name.data(), name.size()},
+                            QByteArray{value.data(), value.size()});
     }
 
     return header;
@@ -440,6 +441,16 @@ bool QHttp2ProtocolHandler::sendHEADERS(Stream &stream)
 
     // Compress in-place:
     BitOStream outputStream(frameWriter.outboundFrame().buffer);
+
+    // Possibly perform and notify of dynamic table size update:
+    for (auto &maybePendingTableSizeUpdate : pendingTableSizeUpdates) {
+        if (!maybePendingTableSizeUpdate)
+            break; // They are ordered, so if the first one is null, the other one is too.
+        encoder.setMaxDynamicTableSize(*maybePendingTableSizeUpdate);
+        encoder.encodeSizeUpdate(outputStream, *maybePendingTableSizeUpdate);
+        maybePendingTableSizeUpdate.reset();
+    }
+
     if (!encoder.encodeRequest(outputStream, headers))
         return false;
 
@@ -988,7 +999,15 @@ bool QHttp2ProtocolHandler::acceptSetting(Http2::Settings identifier, quint32 ne
             connectionError(PROTOCOL_ERROR, "SETTINGS invalid table size");
             return false;
         }
-        encoder.setMaxDynamicTableSize(newValue);
+        if (!pendingTableSizeUpdates[0] && encoder.dynamicTableCapacity() == newValue)
+            return true; // No change, no need to update.
+
+        if (pendingTableSizeUpdates[0].value_or(std::numeric_limits<quint32>::max()) >= newValue) {
+            pendingTableSizeUpdates[0] = newValue;
+            pendingTableSizeUpdates[1].reset(); // 0 is the latest _and_ smallest, so we don't need 1
+        } else {
+            pendingTableSizeUpdates[1] = newValue; // newValue was larger than 0, so it goes to 1
+        }
     }
 
     if (identifier == Settings::INITIAL_WINDOW_SIZE_ID) {
@@ -1100,6 +1119,13 @@ void QHttp2ProtocolHandler::updateStream(Stream &stream, const HPack::HttpHeader
             const auto binder = name == "set-cookie" ? QByteArrayView("\n") : QByteArrayView(", ");
             httpReply->appendHeaderField(name, QByteArray(pair.value).replace('\0', binder));
         }
+    }
+
+    // Discard all informational (1xx) replies with the exception of 101.
+    // Also see RFC 9110 (Chapter 15.2)
+    if (statusCode == 100 || (102 <= statusCode && statusCode <= 199)) {
+        httpReplyPrivate->clearHttpLayerInformation();
+        return;
     }
 
     if (QHttpNetworkReply::isHttpRedirect(statusCode) && httpRequest.isFollowRedirects()) {

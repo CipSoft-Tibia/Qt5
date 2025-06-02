@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 
+#include "base/i18n/time_formatting.h"
 #include "base/rand_util.h"
 #include "base/ranges/algorithm.h"
 #include "mojo/public/cpp/bindings/remote_set.h"
@@ -226,17 +227,21 @@ void ObliviousHttpRequestHandler::StartRequest(
             // state, which owns the TrustTokenRequestHelperFactory.
             base::BindRepeating(&NetworkContext::client,
                                 base::Unretained(owner_network_context_)),
+            // It's safe to bind to |state| pointer. Callback is owned by the
+            // |state->trust_token_helper_factory|.
             base::BindRepeating(
-                [](NetworkContext* context) {
+                [](NetworkContext* context, RequestState* state) {
                   // Trust tokens will be blocked if the user has either
-                  // disabled the Trust Token Privacy Sandbox setting, or if the
-                  // user has disabled third party cookies.
-                  return !(context->cookie_manager()
-                               ->cookie_settings()
-                               .are_third_party_cookies_blocked() ||
-                           context->are_trust_tokens_blocked());
+                  // disabled the anti-abuse content setting or blocked the
+                  // issuer site from storing data (i.e. the cookie content
+                  // setting for that site is blocked).
+                  bool is_allowed = context->cookie_manager()
+                                        ->cookie_settings()
+                                        .ArePrivateStateTokensAllowed(
+                                            state->request->resource_url);
+                  return (is_allowed && !context->are_trust_tokens_blocked());
                 },
-                base::Unretained(owner_network_context_)));
+                base::Unretained(owner_network_context_), state));
 
     state->trust_token_helper_factory->CreateTrustTokenHelperForRequest(
         url::Origin::Create(state->request->resource_url),
@@ -481,7 +486,7 @@ void ObliviousHttpRequestHandler::OnRequestComplete(
         *headers,
         base::BindOnce(
             &ObliviousHttpRequestHandler::OnDoneFinalizingTrustTokenOperation,
-            base::Unretained(this), id, inner_status_code, std::move(headers),
+            base::Unretained(this), id, inner_status_code, headers,
             std::string(bhttp_response->body())));
     return;
   }

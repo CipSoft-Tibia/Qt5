@@ -26,7 +26,7 @@ class tst_OAuth1 : public QObject
 {
     Q_OBJECT
 
-    using StringPair = QPair<QString, QString>;
+    using StringPair = std::pair<QString, QString>;
 
     QEventLoop *loop = nullptr;
     enum RunSimpleRequestReturn { Timeout = 0, Success, Failure };
@@ -155,6 +155,11 @@ const auto oauthSignature = QStringLiteral("oauth_signature");
 
 bool hostReachable(const QLatin1String &host)
 {
+    // http://term.ie/oauth/example testing backend is no longer available.
+    // For the time being return false, so that tests relying on it skip rather than
+    // fail trying. QTBUG-131869
+    return false;
+
     // check host exists
     QHostInfo hostInfo = QHostInfo::fromName(host);
     if (hostInfo.error() != QHostInfo::NoError)
@@ -222,7 +227,7 @@ void tst_OAuth1::clientIdentifierSignal()
         },
         [](QString *expectedValue, QOAuth1 *object) {
             *expectedValue = "setClientCredentials";
-            object->setClientCredentials(qMakePair(*expectedValue, QString()));
+            object->setClientCredentials(std::make_pair(*expectedValue, QString()));
         }
     };
     PropertyTester::run(&QOAuth1::clientIdentifierChanged, setters);
@@ -238,7 +243,7 @@ void tst_OAuth1::clientSharedSecretSignal()
         },
         [](QString *expectedValue, QOAuth1 *object) {
             *expectedValue = "setClientCredentials";
-            object->setClientCredentials(qMakePair(QString(), *expectedValue));
+            object->setClientCredentials(std::make_pair(QString(), *expectedValue));
         }
     };
     PropertyTester::run(&QOAuth1::clientSharedSecretChanged, setters);
@@ -254,7 +259,7 @@ void tst_OAuth1::tokenSignal()
         },
         [](QString *expectedValue, QOAuth1 *object) {
             *expectedValue = "setTokenCredentials";
-            object->setTokenCredentials(qMakePair(*expectedValue, QString()));
+            object->setTokenCredentials(std::make_pair(*expectedValue, QString()));
         }
     };
     PropertyTester::run(&QOAuth1::tokenChanged, setters);
@@ -270,7 +275,7 @@ void tst_OAuth1::tokenSecretSignal()
         },
         [](QString *expectedValue, QOAuth1 *object) {
             *expectedValue = "setTokenCredentials";
-            object->setTokenCredentials(qMakePair(QString(), *expectedValue));
+            object->setTokenCredentials(std::make_pair(QString(), *expectedValue));
         }
     };
     PropertyTester::run(&QOAuth1::tokenSecretChanged, setters);
@@ -335,58 +340,58 @@ void tst_OAuth1::getToken_data()
 
     const StringPair emptyCredentials;
     QTest::newRow("temporary_get_plainText")
-            << qMakePair(QStringLiteral("key"), QStringLiteral("secret"))
+            << std::make_pair(QStringLiteral("key"), QStringLiteral("secret"))
             << emptyCredentials
-            << qMakePair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
+            << std::make_pair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
             << QOAuth1::SignatureMethod::PlainText
             << QNetworkAccessManager::GetOperation;
 
     QTest::newRow("temporary_get_hmacSha1")
-            << qMakePair(QStringLiteral("key"), QStringLiteral("secret"))
+            << std::make_pair(QStringLiteral("key"), QStringLiteral("secret"))
             << emptyCredentials
-            << qMakePair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
+            << std::make_pair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
             << QOAuth1::SignatureMethod::Hmac_Sha1
             << QNetworkAccessManager::GetOperation;
 
     QTest::newRow("temporary_post_plainText")
-            << qMakePair(QStringLiteral("key"), QStringLiteral("secret"))
+            << std::make_pair(QStringLiteral("key"), QStringLiteral("secret"))
             << emptyCredentials
-            << qMakePair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
+            << std::make_pair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
             << QOAuth1::SignatureMethod::PlainText
             << QNetworkAccessManager::PostOperation;
 
     QTest::newRow("temporary_post_hmacSha1")
-            << qMakePair(QStringLiteral("key"), QStringLiteral("secret"))
+            << std::make_pair(QStringLiteral("key"), QStringLiteral("secret"))
             << emptyCredentials
-            << qMakePair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
+            << std::make_pair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
             << QOAuth1::SignatureMethod::Hmac_Sha1
             << QNetworkAccessManager::PostOperation;
 
     QTest::newRow("token_get_plainText")
-            << qMakePair(QStringLiteral("key"), QStringLiteral("secret"))
-            << qMakePair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
-            << qMakePair(QStringLiteral("accesskey"), QStringLiteral("accesssecret"))
+            << std::make_pair(QStringLiteral("key"), QStringLiteral("secret"))
+            << std::make_pair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
+            << std::make_pair(QStringLiteral("accesskey"), QStringLiteral("accesssecret"))
             << QOAuth1::SignatureMethod::PlainText
             << QNetworkAccessManager::GetOperation;
 
     QTest::newRow("token_get_hmacSha1")
-            << qMakePair(QStringLiteral("key"), QStringLiteral("secret"))
-            << qMakePair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
-            << qMakePair(QStringLiteral("accesskey"), QStringLiteral("accesssecret"))
+            << std::make_pair(QStringLiteral("key"), QStringLiteral("secret"))
+            << std::make_pair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
+            << std::make_pair(QStringLiteral("accesskey"), QStringLiteral("accesssecret"))
             << QOAuth1::SignatureMethod::Hmac_Sha1
             << QNetworkAccessManager::GetOperation;
 
     QTest::newRow("token_post_plainText")
-            << qMakePair(QStringLiteral("key"), QStringLiteral("secret"))
-            << qMakePair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
-            << qMakePair(QStringLiteral("accesskey"), QStringLiteral("accesssecret"))
+            << std::make_pair(QStringLiteral("key"), QStringLiteral("secret"))
+            << std::make_pair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
+            << std::make_pair(QStringLiteral("accesskey"), QStringLiteral("accesssecret"))
             << QOAuth1::SignatureMethod::PlainText
             << QNetworkAccessManager::PostOperation;
 
     QTest::newRow("token_post_hmacSha1")
-            << qMakePair(QStringLiteral("key"), QStringLiteral("secret"))
-            << qMakePair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
-            << qMakePair(QStringLiteral("accesskey"), QStringLiteral("accesssecret"))
+            << std::make_pair(QStringLiteral("key"), QStringLiteral("secret"))
+            << std::make_pair(QStringLiteral("requestkey"), QStringLiteral("requestsecret"))
+            << std::make_pair(QStringLiteral("accesskey"), QStringLiteral("accesssecret"))
             << QOAuth1::SignatureMethod::Hmac_Sha1
             << QNetworkAccessManager::PostOperation;
 }
@@ -405,7 +410,7 @@ void tst_OAuth1::getToken()
     QMultiMap<QString, QVariant> oauthHeaders;
 
     WebServer webServer([&](const WebServer::HttpRequest &request, QTcpSocket *socket) {
-        oauthHeaders = parseAuthorizationString(request.headers["Authorization"]);
+        oauthHeaders = parseAuthorizationString(request.headers["authorization"]);
         const QString format = "oauth_token=%1&oauth_token_secret=%2";
         const QByteArray text = format.arg(expectedToken.first, expectedToken.second).toUtf8();
         const QByteArray replyMessage {
@@ -893,7 +898,7 @@ void tst_OAuth1::secondTemporaryToken()
 {
     QNetworkAccessManager networkAccessManager;
 
-    const StringPair expectedToken(qMakePair(QStringLiteral("temporaryKey"), QStringLiteral("temporaryToken")));
+    const StringPair expectedToken(std::make_pair(QStringLiteral("temporaryKey"), QStringLiteral("temporaryToken")));
     WebServer webServer([&](const WebServer::HttpRequest &request, QTcpSocket *socket) {
         Q_UNUSED(request);
         const QString format = "oauth_token=%1&oauth_token_secret=%2&oauth_callback_confirmed=true";
@@ -909,7 +914,7 @@ void tst_OAuth1::secondTemporaryToken()
 
     QOAuth1 o1(&networkAccessManager);
 
-    StringPair clientCredentials = qMakePair(QStringLiteral("user"), QStringLiteral("passwd"));
+    StringPair clientCredentials = std::make_pair(QStringLiteral("user"), QStringLiteral("passwd"));
     o1.setClientCredentials(clientCredentials);
     o1.setTemporaryCredentialsUrl(webServer.url(QStringLiteral("temporary")));
     o1.setAuthorizationUrl(webServer.url(QStringLiteral("authorization")));

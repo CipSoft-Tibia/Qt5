@@ -44,6 +44,8 @@ Item
                 eulerRotation: Qt.vector3d(-45, 20, 0)
                 visible: true
                 shadowFactor: 100
+                shadowMapFar: 20000
+                shadowBias: 20
             }
 
             PerspectiveCamera

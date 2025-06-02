@@ -1,35 +1,31 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QHEIGHTMAPSURFACEDATAPROXY_H
-#define QHEIGHTMAPSURFACEDATAPROXY_H
+#ifndef QTGRAPHS_QHEIGHTMAPSURFACEDATAPROXY_H
+#define QTGRAPHS_QHEIGHTMAPSURFACEDATAPROXY_H
 
-#if 0
-#  pragma qt_class(QHeightMapSurfaceDataProxy)
-#endif
-
-#include <QtCore/QString>
+#include <QtCore/qstring.h>
 #include <QtGraphs/qsurfacedataproxy.h>
-#include <QtGui/QImage>
+#include <QtGui/qimage.h>
 
 QT_BEGIN_NAMESPACE
 
 class QHeightMapSurfaceDataProxyPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QHeightMapSurfaceDataProxy : public QSurfaceDataProxy
+class Q_GRAPHS_EXPORT QHeightMapSurfaceDataProxy : public QSurfaceDataProxy
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QHeightMapSurfaceDataProxy)
-    Q_PROPERTY(QImage heightMap READ heightMap WRITE setHeightMap NOTIFY heightMapChanged)
-    Q_PROPERTY(
-        QString heightMapFile READ heightMapFile WRITE setHeightMapFile NOTIFY heightMapFileChanged)
-    Q_PROPERTY(float minXValue READ minXValue WRITE setMinXValue NOTIFY minXValueChanged)
-    Q_PROPERTY(float maxXValue READ maxXValue WRITE setMaxXValue NOTIFY maxXValueChanged)
-    Q_PROPERTY(float minZValue READ minZValue WRITE setMinZValue NOTIFY minZValueChanged)
-    Q_PROPERTY(float maxZValue READ maxZValue WRITE setMaxZValue NOTIFY maxZValueChanged)
-    Q_PROPERTY(float minYValue READ minYValue WRITE setMinYValue NOTIFY minYValueChanged)
-    Q_PROPERTY(float maxYValue READ maxYValue WRITE setMaxYValue NOTIFY maxYValueChanged)
-    Q_PROPERTY(bool autoScaleY READ autoScaleY WRITE setAutoScaleY NOTIFY autoScaleYChanged)
+    Q_PROPERTY(QImage heightMap READ heightMap WRITE setHeightMap NOTIFY heightMapChanged FINAL)
+    Q_PROPERTY(QString heightMapFile READ heightMapFile WRITE setHeightMapFile NOTIFY
+                   heightMapFileChanged FINAL)
+    Q_PROPERTY(float minXValue READ minXValue WRITE setMinXValue NOTIFY minXValueChanged FINAL)
+    Q_PROPERTY(float maxXValue READ maxXValue WRITE setMaxXValue NOTIFY maxXValueChanged FINAL)
+    Q_PROPERTY(float minZValue READ minZValue WRITE setMinZValue NOTIFY minZValueChanged FINAL)
+    Q_PROPERTY(float maxZValue READ maxZValue WRITE setMaxZValue NOTIFY maxZValueChanged FINAL)
+    Q_PROPERTY(float minYValue READ minYValue WRITE setMinYValue NOTIFY minYValueChanged FINAL)
+    Q_PROPERTY(float maxYValue READ maxYValue WRITE setMaxYValue NOTIFY maxYValueChanged FINAL)
+    Q_PROPERTY(bool autoScaleY READ autoScaleY WRITE setAutoScaleY NOTIFY autoScaleYChanged FINAL)
 
 public:
     explicit QHeightMapSurfaceDataProxy(QObject *parent = nullptr);

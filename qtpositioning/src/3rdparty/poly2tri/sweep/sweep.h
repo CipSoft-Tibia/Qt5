@@ -33,7 +33,7 @@
  * Zalik, B.(2008)'Sweep-line algorithm for constrained Delaunay triangulation',
  * International Journal of Geographical Information Science
  *
- * "FlipScan" Constrained Edge Algorithm invented by Thomas Åhlén, thahlen@gmail.com
+ * "FlipScan" Constrained Edge Algorithm invented by Thomas Ã…hlÃ©n, thahlen@gmail.com
  */
 
 #ifndef SWEEP_H
@@ -172,6 +172,7 @@ private:
   // Decision-making about when to Fill hole.
   // Contributed by ToolmakerSteve2
   bool LargeHole_DontFill(Node* node);
+  bool AngleIsNegative(Point* origin, Point* pa, Point* pb);
   bool AngleExceeds90Degrees(Point* origin, Point* pa, Point* pb);
   bool AngleExceedsPlus90DegreesOrIsNegative(Point* origin, Point* pa, Point* pb);
   double Angle(Point& origin, Point& pa, Point& pb);

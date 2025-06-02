@@ -1,46 +1,66 @@
-// Copyright 2019 The Dawn Authors
+// Copyright 2019 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_WIRE_CLIENT_BUFFER_H_
 #define SRC_DAWN_WIRE_CLIENT_BUFFER_H_
 
 #include <memory>
+#include <optional>
 
+#include "dawn/common/FutureUtils.h"
+#include "dawn/common/Ref.h"
+#include "dawn/common/RefCounted.h"
 #include "dawn/webgpu.h"
 #include "dawn/wire/WireClient.h"
 #include "dawn/wire/client/ObjectBase.h"
+#include "partition_alloc/pointers/raw_ptr.h"
 
 namespace dawn::wire::client {
 
 class Device;
 
-class Buffer final : public ObjectBase {
+class Buffer final : public ObjectWithEventsBase {
   public:
     static WGPUBuffer Create(Device* device, const WGPUBufferDescriptor* descriptor);
 
-    Buffer(const ObjectBaseParams& params, const WGPUBufferDescriptor* descriptor);
+    Buffer(const ObjectBaseParams& params,
+           const ObjectHandle& eventManagerHandle,
+           const WGPUBufferDescriptor* descriptor);
     ~Buffer() override;
 
-    bool OnMapAsyncCallback(uint64_t requestSerial,
-                            uint32_t status,
-                            uint64_t readDataUpdateInfoLength,
-                            const uint8_t* readDataUpdateInfo);
     void MapAsync(WGPUMapModeFlags mode,
                   size_t offset,
                   size_t size,
                   WGPUBufferMapCallback callback,
                   void* userdata);
+    WGPUFuture MapAsyncF(WGPUMapModeFlags mode,
+                         size_t offset,
+                         size_t size,
+                         const WGPUBufferMapCallbackInfo& callbackInfo);
     void* GetMappedRange(size_t offset, size_t size);
     const void* GetConstMappedRange(size_t offset, size_t size);
     void Unmap();
@@ -54,8 +74,11 @@ class Buffer final : public ObjectBase {
     WGPUBufferMapState GetMapState() const;
 
   private:
-    void CancelCallbacksForDisconnect() override;
-    void InvokeAndClearCallback(WGPUBufferMapAsyncStatus status);
+    friend class Client;
+    class MapAsyncEvent;
+
+    // Prepares the callbacks to be called and potentially calls them
+    void SetFutureStatus(WGPUBufferMapAsyncStatus status);
 
     bool IsMappedForReading() const;
     bool IsMappedForWriting() const;
@@ -63,40 +86,39 @@ class Buffer final : public ObjectBase {
 
     void FreeMappedData();
 
-    enum class MapRequestType { None, Read, Write };
+    const uint64_t mSize = 0;
+    const WGPUBufferUsage mUsage;
+    const bool mDestructWriteHandleOnUnmap;
 
+    std::weak_ptr<bool> mIsDeviceAlive;
+
+    // Mapping members are mutable depending on the current map state.
+    enum class MapRequestType { Read, Write };
+    struct MapRequest {
+        FutureID futureID = kNullFutureID;
+        size_t offset = 0;
+        size_t size = 0;
+        // Because validation for request type is validated via the backend, we use an optional type
+        // here. This is nullopt when an invalid request type is passed to the wire.
+        std::optional<MapRequestType> type;
+    };
     enum class MapState {
         Unmapped,
         MappedForRead,
         MappedForWrite,
         MappedAtCreation,
     };
-
-    // Up to only one request can exist at a single time.
-    // Other requests are rejected.
-    struct MapRequestData {
-        WGPUBufferMapCallback callback = nullptr;
-        void* userdata = nullptr;
-        size_t offset = 0;
-        size_t size = 0;
-        MapRequestType type = MapRequestType::None;
-    };
-    MapRequestData mRequest;
-    bool mPendingMap = false;
-    uint64_t mSerial = 0;
-    uint64_t mSize = 0;
-    WGPUBufferUsage mUsage;
+    std::optional<MapRequest> mPendingMapRequest = std::nullopt;
+    MapState mMappedState = MapState::Unmapped;
+    // TODO(https://crbug.com/dawn/2345): Investigate `DanglingUntriaged` in dawn/wire.
+    raw_ptr<void, DanglingUntriaged> mMappedData = nullptr;
+    size_t mMappedOffset = 0;
+    size_t mMappedSize = 0;
 
     // Only one mapped pointer can be active at a time
     // TODO(enga): Use a tagged pointer to save space.
     std::unique_ptr<MemoryTransferService::ReadHandle> mReadHandle = nullptr;
     std::unique_ptr<MemoryTransferService::WriteHandle> mWriteHandle = nullptr;
-    MapState mMapState = MapState::Unmapped;
-    bool mDestructWriteHandleOnUnmap = false;
-
-    void* mMappedData = nullptr;
-    size_t mMapOffset = 0;
-    size_t mMapSize = 0;
 };
 
 }  // namespace dawn::wire::client

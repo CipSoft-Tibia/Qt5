@@ -5,41 +5,63 @@
  */
 
 import '@material/web/menu/menu.js';
+import '@material/web/focus/md-focus-ring.js';
 
-import {Corner, DefaultFocusState, MdMenu} from '@material/web/menu/menu.js';
+import {Corner, FocusState, MdMenu, Menu as MenuInterface} from '@material/web/menu/menu.js';
 import {css, CSSResultGroup, html, LitElement, PropertyValues} from 'lit';
-
-export {Corner, DefaultFocusState} from '@material/web/menu/menu.js';
 
 /**
  * A chromeOS menu component.
- * See spec
- * https://www.figma.com/file/1XsFoZH868xLcLPfPZRxLh/CrOS-Next---Component-Library-%26-Spec?node-id=2650%3A7994&t=01NOG3FTGuaigSvB-0
  */
-export class Menu extends LitElement {
+export class Menu extends LitElement implements MenuInterface {
   /** @nocollapse */
   static override styles: CSSResultGroup = css`
     :host {
-      display: inline-block;
+      display: flex;
+      /* Do not affect parent width */
+      width: 0px;
       --cros-menu-width: 96px;
     }
     md-menu {
       --md-menu-container-color: var(--cros-bg-color-elevation-3);
       --md-menu-item-container-color: var(--cros-bg-color-elevation-3);
-      --md-list-item-label-text-type: var(--cros-button-2-font);
-      --md-list-item-one-line-container-height: 36px;
+      --md-menu-item-label-text-font: var(--cros-button-2-font-family);
+      --md-menu-item-label-text-size: var(--cros-button-2-font-size);
+      --md-menu-item-label-text-line-height: var(--cros-button-2-line-height);
+      --md-menu-item-label-text-weight: var(--cros-button-2-font-weight);
+      --md-menu-item-one-line-container-height: 36px;
+      --md-menu-item-top-space: 0px;
+      --md-menu-item-bottom-space: 0px;
       --md-menu-container-shape: 8px;
       --md-menu-container-surface-tint-layer-color: white;
       min-width: max(var(--cros-menu-width), 96px);
+      /*
+       * By default menu is display:contents. To make it focusable, it must be
+       * something visible.
+       */
+      display: flex;
+    }
+    md-menu:not([open]) {
+      /*
+       * Makes menu non-tab-focusable when closed. We can do this as long as
+       * there  is no animation set on menu as this might interfere with the
+       * animation.
+       *
+       * Additionally we don't set tabindex on the menu when open as submenus
+       * programmatically call .focus() when this.open still might not reflect
+       * the actual state of the menu being open.
+       */
+      display: none;
+    }
+    md-focus-ring {
+      --md-focus-ring-color: var(--cros-sys-focus_ring);
+      --md-focus-ring-width: 2px;
+      --md-focus-ring-active-width: 2px;
+      --md-focus-ring-shape: 8px;
     }
     md-menu::part(elevation) {
       --md-menu-container-elevation: 0;
       box-shadow: 0px 12px 12px 0px rgba(var(--cros-sys-shadow-rgb), 0.2);
-    }
-    md-menu::part(focus-ring) {
-      --md-focus-ring-color: var(--cros-sys-focus_ring);
-      --md-focus-ring-width: 2px;
-      --md-focus-ring-active-width: 2px;
     }
   `;
   /** @nocollapse */
@@ -52,9 +74,10 @@ export class Menu extends LitElement {
     menuCorner: {type: String, attribute: 'menu-corner'},
     defaultFocus: {type: String, attribute: 'default-focus'},
     skipRestoreFocus: {type: Boolean, attribute: 'skip-restore-focus'},
-    stayOpenOnFocusout: {type: Boolean, attribute: 'stay-open-on-focus-out'},
     stayOpenOnOutsideClick:
         {type: Boolean, attribute: 'stay-open-on-outside-click'},
+    isSubmenu: {type: Boolean, attribute: 'is-submenu'},
+    usePopover: {type: Boolean, attribute: 'use-popover'},
   };
 
   /** @nocollapse */
@@ -63,22 +86,33 @@ export class Menu extends LitElement {
     delegatesFocus: true
   };
 
-  private readonly anchorKeydownListener = (e: KeyboardEvent) => {
+  private readonly anchorKeydownListener = async (e: KeyboardEvent) => {
+    // We need to let this propagate and see if another listener has handled
+    // this event. e.g. in the case of a submenu anchoring to a sub-menu-item
+    // we do not want to open this menu if the user is just pressing down to
+    // navigate past that menu item.
+    await new Promise(resolve => {
+      setTimeout(resolve);
+    });
+
+    // This was handled by another listener e.g. md-menu
+    if (e.defaultPrevented) return;
+
     if (e.key === 'ArrowDown') {
-      this.focusFirstItem();
+      await this.focusFirstItem();
     } else if (e.key === 'ArrowUp') {
-      this.focusLastItem();
+      await this.focusLastItem();
     }
   };
 
   async focusFirstItem() {
-    this.mdMenu.defaultFocus = 'FIRST_ITEM';
+    this.mdMenu.defaultFocus = FocusState.FIRST_ITEM;
     await this.mdMenu.updateComplete;
     this.show();
   }
 
   async focusLastItem() {
-    this.mdMenu.defaultFocus = 'LAST_ITEM';
+    this.mdMenu.defaultFocus = FocusState.LAST_ITEM;
     await this.mdMenu.updateComplete;
     this.show();
   }
@@ -113,7 +147,7 @@ export class Menu extends LitElement {
    * The element that should be focused by default once opened.
    * @export
    */
-  defaultFocus: DefaultFocusState;
+  defaultFocus: FocusState;
   /**
    * After closing, does not restore focus to the last focused element before
    * the menu was opened.
@@ -121,15 +155,20 @@ export class Menu extends LitElement {
    */
   skipRestoreFocus: boolean;
   /**
-   * Keeps the menu open when focus leaves the menu's composed subtree.
-   * @export
+   * Set automatically by `cros-sub-menu-item`. Whether or not this menu is a
+   * submenu and should defer handling left keyboard navigations to the parent
+   * `cros-sub-menu-item`.
    */
-  stayOpenOnFocusout: boolean;
+  isSubmenu: boolean;
   /**
-   * Keeps the menu open even if user clicks outside window.
+   * If cros-menu should use the build-in popover API. If true cros-menu is
+   * rendered in an isolated layer on top of all other contents in the web,
+   * regardless of positioning in the DOM or current stacking context. However
+   * the menu then positions exclusviely using the javascript accessible x and y
+   * position of the provided `anchor`.
    * @export
    */
-  stayOpenOnOutsideClick: boolean;
+  usePopover: boolean;
 
   get mdMenu(): MdMenu {
     return this.renderRoot.querySelector('md-menu') as MdMenu;
@@ -158,15 +197,17 @@ export class Menu extends LitElement {
     super();
     this.anchor = '';
     this.anchorElement = null;
-    this.anchorCorner = 'END_START';
+    this.anchorCorner = Corner.END_START;
     this.hasOverflow = false;
     this.open = false;
-    this.quick = false;
-    this.menuCorner = 'START_START';
-    this.defaultFocus = 'LIST_ROOT';
+    this.quick = true;
+    this.menuCorner = Corner.START_START;
+    // TODO: b/300001060 - confirm whether should change to FIRST_ITEM
+    // NOTE this comment also applies to the tabindex=0 in the template
+    this.defaultFocus = FocusState.LIST_ROOT;
     this.skipRestoreFocus = false;
-    this.stayOpenOnFocusout = false;
-    this.stayOpenOnOutsideClick = false;
+    this.isSubmenu = false;
+    this.usePopover = true;
   }
 
   override firstUpdated() {
@@ -191,7 +232,6 @@ export class Menu extends LitElement {
         anchorElement) {
       anchorElement.addEventListener('keydown', this.anchorKeydownListener);
       anchorElement.setAttribute('aria-expanded', 'false');
-      anchorElement.setAttribute('role', 'button');
       anchorElement.setAttribute('aria-haspopup', 'menu');
     }
   }
@@ -220,6 +260,8 @@ export class Menu extends LitElement {
   override render() {
     return html`
       <md-menu
+          id="menu"
+          tabindex="0"
           .anchorElement=${this.anchorElement}
           .open=${this.open}
           .hasOverflow=${this.hasOverflow}
@@ -228,13 +270,15 @@ export class Menu extends LitElement {
           .quick=${this.quick}
           .defaultFocus=${this.defaultFocus}
           .skipRestoreFocus=${this.skipRestoreFocus}
+          .isSubmenu=${this.isSubmenu}
+          .positioning=${this.usePopover ? 'popover' : 'absolute'}
           @closed=${this.close}
           @opened=${this.show}
           @closing=${this.onClosing}
           @opening=${this.onOpening}
-          .stayOpenOnFocusout=${this.stayOpenOnFocusout}
-          .stayOpenOnOutsideClick=${this.stayOpenOnOutsideClick}>
+        >
         <slot></slot>
+        <md-focus-ring for="menu"></md-focus-ring>
       </md-menu>
     `;
   }
@@ -250,10 +294,10 @@ export class Menu extends LitElement {
   close() {
     this.open = false;
     this.dispatchEvent(new Event('closed'));
-    // Set default focus back to entire menu. Default for keyboard navigation
-    // apart from arrow up/down. We avoid doing this in focusFirstItem() to
+    // Set default focus back correctly (in case keyboard arrow nav has
+    // changed it temporarily). We avoid doing this in focusFirstItem() to
     // avoid race conditions with menu open.
-    this.renderRoot.querySelector('md-menu')!.defaultFocus = 'LIST_ROOT';
+    this.renderRoot.querySelector('md-menu')!.defaultFocus = this.defaultFocus;
     this.anchorElement?.setAttribute('aria-expanded', 'false');
   }
 

@@ -90,9 +90,7 @@ QHttpPart &QHttpPart::operator=(const QHttpPart &other)
 /*!
     \fn void QHttpPart::swap(QHttpPart &other)
     \since 5.0
-
-    Swaps this HTTP part with \a other. This function is very fast and
-    never fails.
+    \memberswap{HTTP part}
 */
 
 /*!
@@ -386,9 +384,12 @@ void QHttpPartPrivate::checkHeaderCreated() const
 {
     if (!headerCreated) {
         // copied from QHttpNetworkRequestPrivate::header() and adapted
-        const auto fields = allRawHeaders();
-        for (const auto &[name, value] : fields)
-            header += name + ": " + value + "\r\n";
+        const auto h = headers();
+        for (qsizetype i = 0; i < h.size(); ++i) {
+            const auto name = h.nameAt(i);
+            header += QByteArrayView(name.data(), name.size()) + ": " + h.valueAt(i) + "\r\n";
+        }
+
         header += "\r\n";
         headerCreated = true;
     }
@@ -518,6 +519,48 @@ qint64 QHttpMultiPartIODevice::writeData(const char *data, qint64 maxSize)
     Q_UNUSED(maxSize);
     return -1;
 }
+
+#ifndef QT_NO_DEBUG_STREAM
+
+/*!
+    \fn QDebug QHttpPart::operator<<(QDebug debug, const QHttpPart &part)
+
+    Writes the \a part into the \a debug object for debugging purposes.
+    Unless a device is set, the size of the body is shown.
+
+    \sa {Debugging Techniques}
+    \since 6.8
+*/
+
+QDebug operator<<(QDebug debug, const QHttpPart &part)
+{
+    const QDebugStateSaver saver(debug);
+    debug.resetFormat().nospace().noquote();
+
+    debug << "QHttpPart(headers = ["
+          << part.d->cookedHeaders
+          << "], http headers = ["
+          << part.d->httpHeaders
+          << "],";
+
+    if (part.d->bodyDevice) {
+        debug << " bodydevice = ["
+              << part.d->bodyDevice
+              << ", is open: "
+              << part.d->bodyDevice->isOpen()
+              << "]";
+    } else {
+        debug << " size of body = "
+              << part.d->body.size()
+              << " bytes";
+    }
+
+    debug << ")";
+
+    return debug;
+}
+
+#endif // QT_NO_DEBUG_STREAM
 
 
 QT_END_NAMESPACE

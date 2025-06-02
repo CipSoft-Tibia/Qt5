@@ -1,16 +1,29 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_METAL_TEXTUREMTL_H_
 #define SRC_DAWN_NATIVE_METAL_TEXTUREMTL_H_
@@ -23,6 +36,7 @@
 
 #include "dawn/common/CoreFoundationRef.h"
 #include "dawn/common/NSRef.h"
+#include "dawn/common/StackContainer.h"
 #include "dawn/native/DawnNative.h"
 #include "dawn/native/MetalBackend.h"
 
@@ -34,28 +48,21 @@ struct MTLSharedEventAndSignalValue;
 class SharedTextureMemory;
 
 MTLPixelFormat MetalPixelFormat(const DeviceBase* device, wgpu::TextureFormat format);
-MaybeError ValidateIOSurfaceCanBeWrapped(const DeviceBase* device,
-                                         const TextureDescriptor* descriptor,
-                                         IOSurfaceRef ioSurface);
 
 class Texture final : public TextureBase {
   public:
-    static ResultOrError<Ref<Texture>> Create(Device* device, const TextureDescriptor* descriptor);
-    static ResultOrError<Ref<Texture>> CreateFromIOSurface(
-        Device* device,
-        const ExternalImageDescriptor* descriptor,
-        IOSurfaceRef ioSurface,
-        std::vector<MTLSharedEventAndSignalValue> waitEvents);
+    static ResultOrError<Ref<Texture>> Create(Device* device,
+                                              const UnpackedPtr<TextureDescriptor>& descriptor);
     static ResultOrError<Ref<Texture>> CreateFromSharedTextureMemory(
         SharedTextureMemory* memory,
-        const TextureDescriptor* descriptor);
+        const UnpackedPtr<TextureDescriptor>& descriptor);
     static Ref<Texture> CreateWrapping(Device* device,
-                                       const TextureDescriptor* descriptor,
+                                       const UnpackedPtr<TextureDescriptor>& descriptor,
                                        NSPRef<id<MTLTexture>> wrapped);
 
-    Texture(DeviceBase* device, const TextureDescriptor* descriptor);
+    Texture(DeviceBase* device, const UnpackedPtr<TextureDescriptor>& descriptor);
 
-    id<MTLTexture> GetMTLTexture() const;
+    id<MTLTexture> GetMTLTexture(Aspect aspect) const;
     IOSurfaceRef GetIOSurface();
     NSPRef<id<MTLTexture>> CreateFormatView(wgpu::TextureFormat format);
 
@@ -74,12 +81,12 @@ class Texture final : public TextureBase {
 
     NSRef<MTLTextureDescriptor> CreateMetalTextureDescriptor() const;
 
-    MaybeError InitializeAsInternalTexture(const TextureDescriptor* descriptor);
-    MaybeError InitializeFromIOSurface(const ExternalImageDescriptor* descriptor,
-                                       const TextureDescriptor* textureDescriptor,
-                                       IOSurfaceRef ioSurface,
-                                       std::vector<MTLSharedEventAndSignalValue> waitEvents);
-    void InitializeAsWrapping(const TextureDescriptor* descriptor, NSPRef<id<MTLTexture>> wrapped);
+    MaybeError InitializeAsInternalTexture(const UnpackedPtr<TextureDescriptor>& descriptor);
+    MaybeError InitializeFromSharedTextureMemory(
+        SharedTextureMemory* memory,
+        const UnpackedPtr<TextureDescriptor>& textureDescriptor);
+    void InitializeAsWrapping(const UnpackedPtr<TextureDescriptor>& descriptor,
+                              NSPRef<id<MTLTexture>> wrapped);
 
     void DestroyImpl() override;
     void SetLabelImpl() override;
@@ -88,7 +95,8 @@ class Texture final : public TextureBase {
                             const SubresourceRange& range,
                             TextureBase::ClearValue clearValue);
 
-    NSPRef<id<MTLTexture>> mMtlTexture;
+    StackVector<NSPRef<id<MTLTexture>>, kMaxPlanesPerFormat> mMtlPlaneTextures;
+    MTLPixelFormat mMtlFormat = MTLPixelFormatInvalid;
 
     MTLTextureUsage mMtlUsage;
     CFRef<IOSurfaceRef> mIOSurface = nullptr;

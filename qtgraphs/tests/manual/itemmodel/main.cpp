@@ -1,13 +1,13 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtGraphs/q3dbars.h>
+#include <QtGraphsWidgets/q3dbarswidgetitem.h>
 #include <QtGraphs/qcategory3daxis.h>
 #include <QtGraphs/qitemmodelbardataproxy.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
 #include <QtGraphs/qbar3dseries.h>
-#include <QtGraphs/q3dtheme.h>
+#include <QtGraphs/qgraphstheme.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QVBoxLayout>
@@ -25,7 +25,7 @@
 class GraphDataGenerator : public QObject
 {
 public:
-    explicit GraphDataGenerator(Q3DBars *bargraph, QTableWidget *tableWidget);
+    explicit GraphDataGenerator(Q3DBarsWidgetItem *bargraph, QTableWidget *tableWidget);
     ~GraphDataGenerator();
 
     void setupModel();
@@ -39,14 +39,14 @@ public:
     void fixTableSize();
 
 private:
-    Q3DBars *m_graph;
+    Q3DBarsWidgetItem *m_graph;
     QTimer *m_dataTimer;
     int m_columnCount;
     int m_rowCount;
     QTableWidget *m_tableWidget; // not owned
 };
 
-GraphDataGenerator::GraphDataGenerator(Q3DBars *bargraph, QTableWidget *tableWidget)
+GraphDataGenerator::GraphDataGenerator(Q3DBarsWidgetItem *bargraph, QTableWidget *tableWidget)
     : m_graph(bargraph),
       m_dataTimer(0),
       m_columnCount(100),
@@ -65,7 +65,7 @@ GraphDataGenerator::GraphDataGenerator(Q3DBars *bargraph, QTableWidget *tableWid
     m_tableWidget->setColumnCount(m_columnCount);
 
     // Set selection mode to full
-    m_graph->setSelectionMode(QAbstract3DGraph::SelectionItemRowAndColumn);
+    m_graph->setSelectionMode(QGraphs3DNamespace::SelectionFlag::ItemRowAndColumn);
 
     // Hide axis labels by explicitly setting one empty string as label list
     m_graph->rowAxis()->setLabels(QStringList(QString()));
@@ -74,19 +74,20 @@ GraphDataGenerator::GraphDataGenerator(Q3DBars *bargraph, QTableWidget *tableWid
     m_graph->seriesList().at(0)->setItemLabelFormat(QStringLiteral("@valueLabel"));
 #else
     // Set selection mode to slice row
-    m_graph->setSelectionMode(QAbstract3DGraph::SelectionItemAndRow | QAbstract3DGraph::SelectionSlice);
+    m_graph->setSelectionMode(QtGraphs3D::SelectionFlag::ItemAndRow
+                              | QtGraphs3D::SelectionFlag::Slice);
 #endif
 
     // Set theme
-    m_graph->activeTheme()->setType(Q3DTheme::Theme::PrimaryColors);
+    m_graph->activeTheme()->setTheme(QGraphsTheme::Theme::QtGreen);
 
     // Set font
     QFont font = QFont("Impact", 20);
     font.setStyleHint(QFont::SansSerif);
-    m_graph->activeTheme()->setFont(font);
+    m_graph->activeTheme()->setLabelFont(font);
 
     // Set preset camera position
-    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
+    m_graph->setCameraPreset(QtGraphs3D::CameraPreset::Front);
 }
 
 GraphDataGenerator::~GraphDataGenerator()
@@ -200,18 +201,20 @@ void GraphDataGenerator::fixTableSize()
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    Q3DBars *graph = new Q3DBars();
-
-    QSize screenSize = graph->screen()->size();
-    graph->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 2));
-    graph->setMaximumSize(screenSize);
-    graph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    graph->setFocusPolicy(Qt::StrongFocus);
+    Q3DBarsWidgetItem *graph = new Q3DBarsWidgetItem();
 
     QWidget widget;
+    QQuickWidget qqwidget;
+    graph->setWidget(&qqwidget);
+    QSize screenSize = graph->widget()->screen()->size();
+    graph->widget()->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 2));
+    graph->widget()->setMaximumSize(screenSize);
+    graph->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    graph->widget()->setFocusPolicy(Qt::StrongFocus);
+
     QVBoxLayout *layout = new QVBoxLayout(&widget);
     QTableWidget *tableWidget = new QTableWidget(&widget);
-    layout->addWidget(graph, 1);
+    layout->addWidget(graph->widget(), 1);
     layout->addWidget(tableWidget, 1, Qt::AlignHCenter);
 
     tableWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);

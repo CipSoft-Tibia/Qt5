@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/resolver.h"
 
@@ -28,7 +41,7 @@ namespace {
 
 using ResolverIndexAccessorTest = ResolverTest;
 
-TEST_F(ResolverIndexAccessorTest, Matrix_Dynamic_F32) {
+TEST_F(ResolverIndexAccessorTest, Matrix_F32) {
     GlobalVar("my_var", ty.mat2x3<f32>(), core::AddressSpace::kPrivate);
     auto* acc = IndexAccessor("my_var", Expr(Source{{12, 34}}, 1_f));
     WrapInFunction(acc);
@@ -69,7 +82,7 @@ TEST_F(ResolverIndexAccessorTest, Matrix_BothDimensions_Dynamic_Ref) {
 TEST_F(ResolverIndexAccessorTest, Matrix_Dynamic) {
     GlobalConst("my_const", ty.mat2x3<f32>(), Call<mat2x3<f32>>());
     auto* idx = Var("idx", ty.i32(), Call<i32>());
-    auto* acc = IndexAccessor("my_const", Expr(Source{{12, 34}}, idx));
+    auto* acc = IndexAccessor("my_const", idx);
     WrapInFunction(Decl(idx), acc);
 
     EXPECT_TRUE(r()->Resolve());
@@ -84,7 +97,7 @@ TEST_F(ResolverIndexAccessorTest, Matrix_Dynamic) {
 TEST_F(ResolverIndexAccessorTest, Matrix_XDimension_Dynamic) {
     GlobalConst("my_const", ty.mat4x4<f32>(), Call<mat4x4<f32>>());
     auto* idx = Var("idx", ty.u32(), Expr(3_u));
-    auto* acc = IndexAccessor("my_const", Expr(Source{{12, 34}}, idx));
+    auto* acc = IndexAccessor("my_const", idx);
     WrapInFunction(Decl(idx), acc);
 
     EXPECT_TRUE(r()->Resolve());
@@ -93,9 +106,10 @@ TEST_F(ResolverIndexAccessorTest, Matrix_XDimension_Dynamic) {
 
 TEST_F(ResolverIndexAccessorTest, Matrix_BothDimension_Dynamic) {
     GlobalConst("my_const", ty.mat4x4<f32>(), Call<mat4x4<f32>>());
-    auto* idx = Var("idy", ty.u32(), Expr(2_u));
-    auto* acc = IndexAccessor(IndexAccessor("my_const", Expr(Source{{12, 34}}, idx)), 1_i);
-    WrapInFunction(Decl(idx), acc);
+    auto* idx = Var("idx", ty.u32(), Expr(3_u));
+    auto* idy = Var("idy", ty.u32(), Expr(2_u));
+    auto* acc = IndexAccessor(IndexAccessor("my_const", idx), idy);
+    WrapInFunction(Decl(idx), Decl(idy), acc);
 
     EXPECT_TRUE(r()->Resolve());
     EXPECT_EQ(r()->error(), "");
@@ -162,16 +176,16 @@ TEST_F(ResolverIndexAccessorTest, Vector_Dynamic_Ref) {
 TEST_F(ResolverIndexAccessorTest, Vector_Dynamic) {
     GlobalConst("my_const", ty.vec3<f32>(), Call<vec3<f32>>());
     auto* idx = Var("idx", ty.i32(), Expr(2_i));
-    auto* acc = IndexAccessor("my_const", Expr(Source{{12, 34}}, idx));
+    auto* acc = IndexAccessor("my_const", idx);
     WrapInFunction(Decl(idx), acc);
 
     EXPECT_TRUE(r()->Resolve());
 }
 
 TEST_F(ResolverIndexAccessorTest, Vector) {
-    GlobalVar("my_var", ty.vec3<f32>(), core::AddressSpace::kPrivate);
+    GlobalConst("my_const", ty.vec3<f32>(), Call<vec3<f32>>());
 
-    auto* acc = IndexAccessor("my_var", 2_i);
+    auto* acc = IndexAccessor("my_const", 2_i);
     WrapInFunction(acc);
 
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -333,6 +347,26 @@ TEST_F(ResolverIndexAccessorTest, Expr_Deref_FuncGoodParent) {
     EXPECT_EQ(idx_sem->Object()->Declaration(), acc->object);
 }
 
+TEST_F(ResolverIndexAccessorTest, Expr_ImplicitDeref_FuncGoodParent) {
+    // fn func(p: ptr<function, vec4<f32>>) -> f32 {
+    //     let idx: u32 = u32();
+    //     let x: f32 = p[idx];
+    //     return x;
+    // }
+    auto* p = Param("p", ty.ptr<function, vec4<f32>>());
+    auto* idx = Let("idx", ty.u32(), Call<u32>());
+    auto* acc = IndexAccessor(Source{{12, 34}}, p, idx);
+    auto* x = Var("x", ty.f32(), acc);
+    Func("func", Vector{p}, ty.f32(), Vector{Decl(idx), Decl(x), Return(x)});
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto idx_sem = Sem().Get(acc)->UnwrapLoad()->As<sem::IndexAccessorExpression>();
+    ASSERT_NE(idx_sem, nullptr);
+    EXPECT_EQ(idx_sem->Index()->Declaration(), acc->index);
+    EXPECT_EQ(idx_sem->Object()->Declaration(), acc->object);
+}
+
 TEST_F(ResolverIndexAccessorTest, Expr_Deref_FuncBadParent) {
     // fn func(p: ptr<function, vec4<f32>>) -> f32 {
     //     let idx: u32 = u32();
@@ -347,11 +381,10 @@ TEST_F(ResolverIndexAccessorTest, Expr_Deref_FuncBadParent) {
     Func("func", Vector{p}, ty.f32(), Vector{Decl(idx), Decl(x), Return(x)});
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              "12:34 error: cannot index type 'ptr<function, vec4<f32>, read_write>'");
+    EXPECT_EQ(r()->error(), "12:34 error: cannot dereference expression of type 'f32'");
 }
 
-TEST_F(ResolverIndexAccessorTest, Exr_Deref_BadParent) {
+TEST_F(ResolverIndexAccessorTest, Expr_Deref_BadParent) {
     // var param: vec4<f32>
     // let x: f32 = *(&param)[0];
     auto* param = Var("param", ty.vec4<f32>());
@@ -363,8 +396,7 @@ TEST_F(ResolverIndexAccessorTest, Exr_Deref_BadParent) {
     WrapInFunction(param, idx, x);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              "12:34 error: cannot index type 'ptr<function, vec4<f32>, read_write>'");
+    EXPECT_EQ(r()->error(), "12:34 error: cannot dereference expression of type 'f32'");
 }
 
 }  // namespace

@@ -10,6 +10,7 @@
 #include "include/core/SkSamplingOptions.h"
 #include "include/core/SkTileMode.h"
 #include "include/gpu/graphite/BackendTexture.h"
+#include "src/core/SkTraceEvent.h"
 #include "src/gpu/graphite/Buffer.h"
 #include "src/gpu/graphite/Caps.h"
 #include "src/gpu/graphite/CommandBuffer.h"
@@ -52,6 +53,7 @@ sk_sp<GraphicsPipeline> ResourceProvider::findOrCreateGraphicsPipeline(
         // threads. If this happens, GlobalCache returns the first-through-gate pipeline and we
         // discard the redundant pipeline. While this is wasted effort in the rare event of a race,
         // it allows pipeline creation to be performed without locking the global cache.
+        TRACE_EVENT0_ALWAYS("skia.shaders", "createGraphicsPipeline");
         pipeline = this->createGraphicsPipeline(runtimeDict, pipelineDesc, renderPassDesc);
         if (pipeline) {
             // TODO: Should we store a null pipeline if we failed to create one so that subsequent
@@ -116,8 +118,9 @@ sk_sp<Texture> ResourceProvider::findOrCreateDiscardableMSAAAttachment(SkISize d
     GraphiteResourceKey key;
     // We always make discardable msaa attachments shareable. Between any render pass we discard
     // the values of the MSAA texture. Thus it is safe to be used by multiple different render
-    // passes without worry of stomping on each other's data. It is the callings code responsiblity
-    // to populate the discardable MSAA texture with data at the start of the render pass.
+    // passes without worry of stomping on each other's data. It is the callings code's
+    // responsibility to populate the discardable MSAA texture with data at the start of the
+    // render pass.
     fSharedContext->caps()->buildKeyForTexture(dimensions, info, kType, Shareable::kYes, &key);
 
     return this->findOrCreateTextureWithKey(dimensions, info, key, skgpu::Budgeted::kYes);
@@ -253,24 +256,54 @@ sk_sp<Buffer> ResourceProvider::findOrCreateBuffer(size_t size,
     return buffer;
 }
 
-BackendTexture ResourceProvider::createBackendTexture(SkISize dimensions, const TextureInfo& info) {
-    const auto maxTextureSize = fSharedContext->caps()->maxTextureSize();
+namespace {
+bool dimensions_are_valid(const int maxTextureSize, const SkISize& dimensions) {
     if (dimensions.isEmpty() ||
         dimensions.width()  > maxTextureSize ||
         dimensions.height() > maxTextureSize) {
-        SKGPU_LOG_W("call to createBackendTexture has requested dimensions (%d, %d) larger than the"
+        SKGPU_LOG_W("Call to createBackendTexture has requested dimensions (%d, %d) larger than the"
                     " supported gpu max texture size: %d. Or the dimensions are empty.",
                     dimensions.fWidth, dimensions.fHeight, maxTextureSize);
+        return false;
+    }
+    return true;
+}
+}
+
+BackendTexture ResourceProvider::createBackendTexture(SkISize dimensions, const TextureInfo& info) {
+    if (!dimensions_are_valid(fSharedContext->caps()->maxTextureSize(), dimensions)) {
         return {};
     }
-
     return this->onCreateBackendTexture(dimensions, info);
 }
 
-void ResourceProvider::deleteBackendTexture(BackendTexture& texture) {
+#ifdef SK_BUILD_FOR_ANDROID
+BackendTexture ResourceProvider::createBackendTexture(AHardwareBuffer* hardwareBuffer,
+                                                      bool isRenderable,
+                                                      bool isProtectedContent,
+                                                      SkISize dimensions,
+                                                      bool fromAndroidWindow) const {
+    if (!dimensions_are_valid(fSharedContext->caps()->maxTextureSize(), dimensions)) {
+        return {};
+    }
+    return this->onCreateBackendTexture(hardwareBuffer,
+                                        isRenderable,
+                                        isProtectedContent,
+                                        dimensions,
+                                        fromAndroidWindow);
+}
+
+BackendTexture ResourceProvider::onCreateBackendTexture(AHardwareBuffer*,
+                                                        bool isRenderable,
+                                                        bool isProtectedContent,
+                                                        SkISize dimensions,
+                                                        bool fromAndroidWindow) const {
+    return {};
+}
+#endif
+
+void ResourceProvider::deleteBackendTexture(const BackendTexture& texture) {
     this->onDeleteBackendTexture(texture);
-    // Invalidate the texture;
-    texture = BackendTexture();
 }
 
 void ResourceProvider::freeGpuResources() {

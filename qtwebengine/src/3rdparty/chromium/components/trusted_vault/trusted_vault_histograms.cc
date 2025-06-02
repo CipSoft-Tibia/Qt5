@@ -27,6 +27,11 @@ std::string GetReasonSuffix(TrustedVaultURLFetchReasonForUMA reason) {
       return "DownloadKeys";
     case TrustedVaultURLFetchReasonForUMA::kDownloadIsRecoverabilityDegraded:
       return "DownloadIsRecoverabilityDegraded";
+    case TrustedVaultURLFetchReasonForUMA::
+        kDownloadAuthenticationFactorsRegistrationState:
+      // TODO(crbug.com/1495928): this isn't recorded until the histogram is
+      // updated to include the name of the security domain.
+      NOTREACHED_NORETURN();
   }
 }
 
@@ -37,7 +42,8 @@ std::string GetReasonSuffix(TrustedVaultURLFetchReasonForUMA reason) {
 enum class SecurityDomainIdOrInvalidForUma {
   kInvalid = 0,
   kChromeSync = 1,
-  kMaxValue = kChromeSync,
+  kPasskeys = 2,
+  kMaxValue = kPasskeys,
 };
 
 SecurityDomainIdOrInvalidForUma GetSecurityDomainIdOrInvalidForUma(
@@ -48,6 +54,8 @@ SecurityDomainIdOrInvalidForUma GetSecurityDomainIdOrInvalidForUma(
   switch (*security_domain) {
     case SecurityDomainId::kChromeSync:
       return SecurityDomainIdOrInvalidForUma::kChromeSync;
+    case SecurityDomainId::kPasskeys:
+      return SecurityDomainIdOrInvalidForUma::kPasskeys;
   }
   NOTREACHED_NORETURN();
 }
@@ -82,6 +90,13 @@ void RecordTrustedVaultURLFetchResponse(
   DCHECK_LE(net_error, 0);
   DCHECK_GE(http_response_code, 0);
 
+  // TODO(crbug.com/1495928): this isn't recorded until the histogram is
+  // updated to include the name of the security domain.
+  if (reason == TrustedVaultURLFetchReasonForUMA::
+                    kDownloadAuthenticationFactorsRegistrationState) {
+    return;
+  }
+
   const int value = http_response_code == 0 ? net_error : http_response_code;
   const std::string suffix = GetReasonSuffix(reason);
 
@@ -101,17 +116,6 @@ void RecordTrustedVaultDownloadKeysStatus(
   if (also_log_with_v1_suffix) {
     base::UmaHistogramEnumeration("Sync.TrustedVaultDownloadKeysStatusV1",
                                   status);
-  }
-}
-
-void RecordVerifyRegistrationStatus(TrustedVaultDownloadKeysStatusForUMA status,
-                                    bool also_log_with_v1_suffix) {
-  base::UmaHistogramEnumeration(
-      "Sync.TrustedVaultVerifyDeviceRegistrationState", status);
-
-  if (also_log_with_v1_suffix) {
-    base::UmaHistogramEnumeration(
-        "Sync.TrustedVaultVerifyDeviceRegistrationStateV1", status);
   }
 }
 

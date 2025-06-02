@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_VIZ_COMMON_SURFACES_SURFACE_RANGE_H_
 #define COMPONENTS_VIZ_COMMON_SURFACES_SURFACE_RANGE_H_
 
+#include <compare>
 #include <string>
 
 #include "components/viz/common/surfaces/surface_id.h"
@@ -33,9 +34,7 @@ class VIZ_COMMON_EXPORT SurfaceRange {
   SurfaceRange& operator=(const SurfaceRange& other);
 
   bool operator==(const SurfaceRange& other) const;
-
   bool operator!=(const SurfaceRange& other) const;
-
   bool operator<(const SurfaceRange& other) const;
 
   // Check if |surface_id| falls within |this| SurfaceRange but is neither the

@@ -21,7 +21,7 @@ public:
     int columnCount(const QModelIndex &parent) const override;
     QVariant headerData(int section, Qt::Orientation orientation, int role) const override;
 
-    void authenticate(const QPair<QString, QString> &clientCredentials);
+    void authenticate(const std::pair<QString, QString> &clientCredentials);
     QAbstractOAuth::Status status() const;
 
 public slots:

@@ -1,6 +1,8 @@
 // Copyright (C) 2020 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "arrays_of_unknown_bounds.h"
+
 #include <QStringView>
 #include <QStringTokenizer>
 #include <QString>
@@ -45,6 +47,9 @@ static_assert(!CanConvert<QByteArray>::value);
 static_assert(!CanConvert<QChar>::value);
 
 static_assert(CanConvert<QChar[123]>::value);
+#ifndef Q_OS_INTEGRITY // ¯\_(ツ)_/¯
+static_assert(CanConvert<QChar[]>::value);
+#endif
 
 static_assert(CanConvert<      QString >::value);
 static_assert(CanConvert<const QString >::value);
@@ -58,6 +63,9 @@ static_assert(CanConvert<const QString&>::value);
 static_assert(!CanConvert<ushort>::value);
 
 static_assert(CanConvert<ushort[123]>::value);
+#ifndef Q_OS_INTEGRITY // ¯\_(ツ)_/¯
+static_assert(CanConvert<ushort[]>::value);
+#endif
 
 static_assert(CanConvert<      ushort*>::value);
 static_assert(CanConvert<const ushort*>::value);
@@ -74,6 +82,11 @@ static_assert(!CanConvert<std::list<ushort>>::value);
 //
 
 static_assert(!CanConvert<char16_t>::value);
+
+static_assert(CanConvert<char16_t[123]>::value);
+#ifndef Q_OS_INTEGRITY // ¯\_(ツ)_/¯
+static_assert(CanConvert<char16_t[]>::value);
+#endif
 
 static_assert(CanConvert<      char16_t*>::value);
 static_assert(CanConvert<const char16_t*>::value);
@@ -110,6 +123,11 @@ constexpr bool CanConvertFromWCharT =
         ;
 
 static_assert(!CanConvert<wchar_t>::value);
+
+static_assert(CanConvert<wchar_t[123]>::value == CanConvertFromWCharT);
+#ifndef Q_OS_INTEGRITY // ¯\_(ツ)_/¯
+static_assert(CanConvert<wchar_t[]>::value    == CanConvertFromWCharT);
+#endif
 
 static_assert(CanConvert<      wchar_t*>::value == CanConvertFromWCharT);
 static_assert(CanConvert<const wchar_t*>::value == CanConvertFromWCharT);
@@ -180,6 +198,16 @@ private Q_SLOTS:
     {
 #ifdef Q_OS_WIN
         fromLiteral(L"Hello, World!");
+#else
+        QSKIP("This is a Windows-only test");
+#endif
+    }
+
+    void fromChar16TArrayWithUnknownSize() { from_u16array_of_unknown_size<QStringView>(); }
+    void fromWCharTArrayWithUnknownSize()
+    {
+#ifdef Q_OS_WIN
+        from_warray_of_unknown_size<QStringView>();
 #else
         QSKIP("This is a Windows-only test");
 #endif
@@ -869,6 +897,11 @@ static void test(QString) = delete;
 static void test(QStringView) {}
 }
 
+extern const QChar qcharArrayOfUnknownSize[];
+extern const char16_t char16ArrayOfUnknownSize[];
+[[maybe_unused]]
+extern const wchar_t wchartArrayOfUnknownSize[];
+
 // Compile-time only test: overload resolution prefers QStringView over QString
 void tst_QStringView::overloadResolution()
 {
@@ -877,6 +910,7 @@ void tst_QStringView::overloadResolution()
         QStringViewOverloadResolution::test(qcharArray);
         QChar *qcharPointer = qcharArray;
         QStringViewOverloadResolution::test(qcharPointer);
+        QStringViewOverloadResolution::test(qcharArrayOfUnknownSize);
     }
 
     {
@@ -891,6 +925,7 @@ void tst_QStringView::overloadResolution()
         wchar_t wchartArray[42] = {};
         QStringViewOverloadResolution::test(wchartArray);
         QStringViewOverloadResolution::test(L"test");
+        QStringViewOverloadResolution::test(wchartArrayOfUnknownSize);
     }
 #endif
 
@@ -899,6 +934,7 @@ void tst_QStringView::overloadResolution()
         QStringViewOverloadResolution::test(char16Array);
         char16_t *char16Pointer = char16Array;
         QStringViewOverloadResolution::test(char16Pointer);
+        QStringViewOverloadResolution::test(char16ArrayOfUnknownSize);
     }
 
     {
@@ -908,6 +944,10 @@ void tst_QStringView::overloadResolution()
         QStringViewOverloadResolution::test(std::move(string));
     }
 }
+
+const QChar qcharArrayOfUnknownSize[] = {u'a', u'b', u'c', u'\0', u'd', u'e', u'f'};
+const char16_t char16ArrayOfUnknownSize[] = u"abc\0def";
+const wchar_t wchartArrayOfUnknownSize[] = L"abc\0def";
 
 void tst_QStringView::std_stringview_conversion()
 {

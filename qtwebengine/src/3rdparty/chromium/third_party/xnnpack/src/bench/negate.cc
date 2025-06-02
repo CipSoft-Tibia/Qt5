@@ -45,24 +45,27 @@ static void xnnpack_negate_f32(benchmark::State& state) {
 
   xnn_operator_t negate_op = nullptr;
   status = xnn_create_negate_nc_f32(
-    1 /* channels */, 1 /* input stride */, 1 /* output stride */,
     0 /* flags */, &negate_op);
   if (status != xnn_status_success || negate_op == nullptr) {
     state.SkipWithError("failed to create Negate operator");
     return;
   }
 
-  status = xnn_setup_negate_nc_f32(
-    negate_op, batch_size,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+  status = xnn_reshape_negate_nc_f32(negate_op, batch_size,
+    /*channels=*/1, /*input_stride=*/1, /*output_stride=*/1, /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape Negate operator");
+    return;
+  }
+
+  status = xnn_setup_negate_nc_f32(negate_op, input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup Negate operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(negate_op, nullptr /* thread pool */);
+    status = xnn_run_operator(negate_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run Negate operator");
       return;

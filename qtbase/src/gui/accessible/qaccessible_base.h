@@ -101,8 +101,11 @@ public:
         HelpChanged          = 0x80A0,
         DefaultActionChanged = 0x80B0,
         AcceleratorChanged   = 0x80C0,
+        Announcement         = 0x80D0,
+        IdentifierChanged    = 0x80E0,
 
-        InvalidEvent
+        // was declared after AcceleratorChanged, without explicit value
+        InvalidEvent                    = AcceleratorChanged + 1,
     };
     Q_ENUM(Event)
 
@@ -323,6 +326,7 @@ public:
         Help,
         Accelerator,
         DebugDescription,
+        Identifier,
         UserText     = 0x0000ffff
     };
 
@@ -349,7 +353,8 @@ public:
         TableInterface,
         TableCellInterface,
         HyperlinkInterface,
-        SelectionInterface
+        SelectionInterface,
+        AttributesInterface,
     };
 
     enum TextBoundaryType {
@@ -360,6 +365,18 @@ public:
         LineBoundary,
         NoBoundary
     };
+
+    enum class Attribute {
+        Custom,
+        Level,
+    };
+    Q_ENUM(Attribute)
+
+    enum class AnnouncementPoliteness {
+        Polite,
+        Assertive,
+    };
+    Q_ENUM(AnnouncementPoliteness)
 
     typedef QAccessibleInterface*(*InterfaceFactory)(const QString &key, QObject*);
     typedef void(*UpdateHandler)(QAccessibleEvent *event);

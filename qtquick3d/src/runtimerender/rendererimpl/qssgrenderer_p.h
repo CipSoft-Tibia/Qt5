@@ -69,10 +69,19 @@ public:
     void setScissorRect(QRect inScissorRect) { m_scissorRect = inScissorRect; }
     QRect scissorRect() const { return m_scissorRect; }
 
+    quint32 frameDepth() const { return m_activeFrameRef; }
+
     const std::unique_ptr<QSSGRhiQuadRenderer> &rhiQuadRenderer() const;
     const std::unique_ptr<QSSGRhiCubeRenderer> &rhiCubeRenderer() const;
 
     QSSGRenderContextInterface *contextInterface() const { return m_contextInterface; }
+
+    // Before we start rendering a sublayer(s), e.g., Item2D with View3Ds,
+    // we need to inform the renderer about it, so we can restore the state as we
+    // return from the sublayer(s) rendering. The state will be saved in the data set
+    // for the layer.
+    void beginSubLayerRender(QSSGLayerRenderData &inLayer);
+    void endSubLayerRender(QSSGLayerRenderData &inLayer);
 
 protected:
     void cleanupResources(QList<QSSGRenderGraphObject*> &resources);
@@ -84,6 +93,7 @@ private:
     friend class QSSGRenderContextInterface;
     friend class QQuick3DSceneRenderer;
     friend class QQuick3DWindowAttachment;
+    friend class QSSGCleanupObject;
 
     QSSGLayerRenderData *getOrCreateLayerRenderData(QSSGRenderLayer &layer);
     void beginLayerRender(QSSGLayerRenderData &inLayer);
@@ -99,7 +109,6 @@ private:
 
     // Temporary information stored only when rendering a particular layer.
     QSSGLayerRenderData *m_currentLayer = nullptr;
-    QByteArray m_generatedShaderString;
 
     QSet<QSSGRenderGraphObject *> m_materialClearDirty;
 
@@ -153,10 +162,15 @@ public:
                                       const QSSGRenderLayer &layer,
                                       const QSSGRenderRay &ray);
 
-    static QSSGRenderPickResult syncPick(const QSSGRenderContextInterface &ctx,
-                                         const QSSGRenderLayer &layer,
+    static PickResultList syncPick(const QSSGRenderContextInterface &ctx,
+                                   const QSSGRenderLayer &layer,
+                                   const QSSGRenderRay &ray,
+                                   QSSGRenderNode *target = nullptr);
+
+    static PickResultList syncPickSubset(const QSSGRenderLayer &layer,
+                                         QSSGBufferManager &bufferManager,
                                          const QSSGRenderRay &ray,
-                                         QSSGRenderNode *target = nullptr);
+                                         QVarLengthArray<QSSGRenderNode *> subset);
 
     // Setting this true enables picking for all the models, regardless of
     // the models pickable property.

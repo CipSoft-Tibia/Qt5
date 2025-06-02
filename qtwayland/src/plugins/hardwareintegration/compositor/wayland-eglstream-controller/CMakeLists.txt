@@ -25,11 +25,13 @@ qt_internal_add_plugin(QWaylandEglStreamClientBufferIntegrationPlugin
         Qt::WaylandCompositorPrivate
         Wayland::Egl
         Wayland::Server
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../../hardwareintegration/compositor/wayland-eglstream-controller/../../../3rdparty/protocol/wl-eglstream
 )
 
 qt6_generate_wayland_protocol_server_sources(QWaylandEglStreamClientBufferIntegrationPlugin
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../hardwareintegration/compositor/wayland-eglstream-controller/../../../3rdparty/protocol/wl-eglstream-controller.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../hardwareintegration/compositor/wayland-eglstream-controller/../../../3rdparty/protocol/wl-eglstream/wl-eglstream-controller.xml
 )
 
 #### Keys ignored in scope 1:.:.:wayland-eglstream-controller.pro:<TRUE>:

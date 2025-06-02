@@ -48,7 +48,7 @@ public:
     uint64_t getRenderPassDescKey(const RenderPassDesc&) const;
 
     bool isMac() const { return fGPUFamily == GPUFamily::kMac; }
-    bool isApple()const  { return fGPUFamily == GPUFamily::kApple; }
+    bool isApple() const { return fGPUFamily == GPUFamily::kApple; }
 
     uint32_t channelMask(const TextureInfo&) const override;
 
@@ -91,12 +91,14 @@ private:
     bool supportsWritePixels(const TextureInfo&) const override;
     bool supportsReadPixels(const TextureInfo&) const override;
 
-    SkColorType supportedWritePixelsColorType(SkColorType dstColorType,
-                                              const TextureInfo& dstTextureInfo,
-                                              SkColorType srcColorType) const override;
-    SkColorType supportedReadPixelsColorType(SkColorType srcColorType,
-                                             const TextureInfo& srcTextureInfo,
-                                             SkColorType dstColorType) const override;
+    std::pair<SkColorType, bool /*isRGBFormat*/> supportedWritePixelsColorType(
+            SkColorType dstColorType,
+            const TextureInfo& dstTextureInfo,
+            SkColorType srcColorType) const override;
+    std::pair<SkColorType, bool /*isRGBFormat*/> supportedReadPixelsColorType(
+            SkColorType srcColorType,
+            const TextureInfo& srcTextureInfo,
+            SkColorType dstColorType) const override;
 
     MTLStorageMode getDefaultMSAAStorageMode(Discardable discardable) const;
 

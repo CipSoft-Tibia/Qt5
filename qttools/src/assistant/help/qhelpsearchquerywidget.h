@@ -7,14 +7,9 @@
 #include <QtHelp/qhelp_global.h>
 #include <QtHelp/qhelpsearchengine.h>
 
-#include <QtCore/QMap>
-#include <QtCore/QString>
-#include <QtCore/QStringList>
-
-#include <QtWidgets/QWidget>
+#include <QtWidgets/qwidget.h>
 
 QT_BEGIN_NAMESPACE
-
 
 class QFocusEvent;
 class QHelpSearchQueryWidgetPrivate;
@@ -39,7 +34,9 @@ public:
     void setSearchInput(const QString &searchInput);
 
     bool isCompactMode() const;
-    Q_SLOT void setCompactMode(bool on);
+
+public Q_SLOTS:
+    void setCompactMode(bool on);
 
 Q_SIGNALS:
     void search();
@@ -54,4 +51,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif  // QHELPSEARCHQUERYWIDGET_H
+#endif // QHELPSEARCHQUERYWIDGET_H

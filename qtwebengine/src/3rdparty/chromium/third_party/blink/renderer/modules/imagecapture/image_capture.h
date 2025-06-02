@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "base/time/time.h"
 #include "media/capture/mojom/image_capture.mojom-blink.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/permissions/permission.mojom-blink.h"
@@ -49,7 +50,8 @@ class MODULES_EXPORT ImageCapture final
   ImageCapture(ExecutionContext*,
                MediaStreamTrack*,
                bool pan_tilt_zoom_allowed,
-               base::OnceClosure initialized_callback);
+               base::OnceClosure initialized_callback,
+               base::TimeDelta grab_frame_timeout = base::Seconds(2));
   ~ImageCapture() override;
 
   // ExecutionContextLifecycleObserver
@@ -128,16 +130,16 @@ class MODULES_EXPORT ImageCapture final
                              bool result);
   void OnMojoTakePhoto(ScriptPromiseResolver*, media::mojom::blink::BlobPtr);
 
-  // If getUserMedia contains either pan, tilt, or zoom constraints, the
+  // If getUserMedia contains Image Capture constraints, the
   // corresponding settings will be set when image capture is created.
-  void SetPanTiltZoomSettingsFromTrack(
+  void SetVideoTrackDeviceSettingsFromTrack(
       base::OnceClosure callback,
       media::mojom::blink::PhotoStatePtr photo_state);
-  // Update local track settings and capabilities once pan, tilt, and zoom
+  // Update local track settings and capabilities once Image Capture
   // settings have been set. |done_callback| will be called when settings and
   // capabilities are retrieved.
-  void OnSetPanTiltZoomSettingsFromTrack(base::OnceClosure done_callback,
-                                         bool result);
+  void OnSetVideoTrackDeviceSettingsFromTrack(base::OnceClosure done_callback,
+                                              bool result);
   // Update local track settings and capabilities and call
   // |initialized_callback| to indicate settings and capabilities have been
   // retrieved.
@@ -191,6 +193,8 @@ class MODULES_EXPORT ImageCapture final
   Member<PhotoCapabilities> photo_capabilities_;
 
   HeapHashSet<Member<ScriptPromiseResolver>> service_requests_;
+
+  const base::TimeDelta grab_frame_timeout_;
 };
 
 }  // namespace blink

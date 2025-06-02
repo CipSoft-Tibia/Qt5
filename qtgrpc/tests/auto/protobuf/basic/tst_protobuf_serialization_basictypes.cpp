@@ -16,48 +16,48 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufTypesSerializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { m_serializer.reset(new QProtobufSerializer); }
 
-    void BoolMessageSerializeTest_data();
-    void BoolMessageSerializeTest();
-    void IntMessageSerializeTest_data();
-    void IntMessageSerializeTest();
-    void UIntMessageSerializeTest_data();
-    void UIntMessageSerializeTest();
-    void SIntMessageSerializeTest_data();
-    void SIntMessageSerializeTest();
-    void Int64MessageSerializeTest_data();
-    void Int64MessageSerializeTest();
-    void UInt64MessageSerializeTest_data();
-    void UInt64MessageSerializeTest();
-    void SInt64MessageSerializeTest_data();
-    void SInt64MessageSerializeTest();
-    void FixedInt32MessageSerializeTest_data();
-    void FixedInt32MessageSerializeTest();
-    void FixedInt64MessageSerializeTest_data();
-    void FixedInt64MessageSerializeTest();
-    void SFixedInt32MessageSerializeTest_data();
-    void SFixedInt32MessageSerializeTest();
-    void SFixedInt64MessageSerializeTest_data();
-    void SFixedInt64MessageSerializeTest();
-    void FloatMessageSerializeTest_data();
-    void FloatMessageSerializeTest();
-    void DoubleMessageSerializeTest_data();
-    void DoubleMessageSerializeTest();
-    void StringMessageSerializeTest();
-    void ComplexTypeSerializeTest_data();
-    void ComplexTypeSerializeTest();
-    void ResetComplexTypeSerializeTest_data();
-    void ResetComplexTypeSerializeTest();
-    void DefaultConstructedComplexTypeSerializeTest();
-    void EmptyBytesMessageTest();
-    void EmptyStringMessageTest();
-    void FieldIndexRangeTest();
-    void OneofMessageEmptyTest();
-    void OneofMessageClearTest();
-    void OneofMessageIntTest();
-    void OneofMessageComplexTest();
+    void boolMessageSerializeTest_data();
+    void boolMessageSerializeTest();
+    void intMessageSerializeTest_data();
+    void intMessageSerializeTest();
+    void uIntMessageSerializeTest_data();
+    void uIntMessageSerializeTest();
+    void sIntMessageSerializeTest_data();
+    void sIntMessageSerializeTest();
+    void int64MessageSerializeTest_data();
+    void int64MessageSerializeTest();
+    void uInt64MessageSerializeTest_data();
+    void uInt64MessageSerializeTest();
+    void sInt64MessageSerializeTest_data();
+    void sInt64MessageSerializeTest();
+    void fixedInt32MessageSerializeTest_data();
+    void fixedInt32MessageSerializeTest();
+    void fixedInt64MessageSerializeTest_data();
+    void fixedInt64MessageSerializeTest();
+    void sFixedInt32MessageSerializeTest_data();
+    void sFixedInt32MessageSerializeTest();
+    void sFixedInt64MessageSerializeTest_data();
+    void sFixedInt64MessageSerializeTest();
+    void floatMessageSerializeTest_data();
+    void floatMessageSerializeTest();
+    void doubleMessageSerializeTest_data();
+    void doubleMessageSerializeTest();
+    void stringMessageSerializeTest();
+    void complexTypeSerializeTest_data();
+    void complexTypeSerializeTest();
+    void resetComplexTypeSerializeTest_data();
+    void resetComplexTypeSerializeTest();
+    void defaultConstructedComplexTypeSerializeTest();
+    void emptyBytesMessageTest();
+    void emptyStringMessageTest();
+    void fieldIndexRangeTest();
+    void oneofMessageEmptyTest();
+    void oneofMessageClearTest();
+    void oneofMessageIntTest();
+    void oneofMessageComplexTest();
 
 private:
     std::unique_ptr<QProtobufSerializer> m_serializer;
@@ -80,7 +80,7 @@ void generateTestData()
     }
 }
 
-void QtProtobufTypesSerializationTest::BoolMessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::boolMessageSerializeTest_data()
 {
     QTest::addColumn<bool>("value");
     QTest::addColumn<qsizetype>("expectedSize");
@@ -90,7 +90,7 @@ void QtProtobufTypesSerializationTest::BoolMessageSerializeTest_data()
     QTest::newRow("False") << false << qsizetype(0) << ""_ba;
 }
 
-void QtProtobufTypesSerializationTest::BoolMessageSerializeTest()
+void QtProtobufTypesSerializationTest::boolMessageSerializeTest()
 {
     QFETCH(const bool, value);
     QFETCH(const qsizetype, expectedSize);
@@ -103,12 +103,12 @@ void QtProtobufTypesSerializationTest::BoolMessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::IntMessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::intMessageSerializeTest_data()
 {
     generateTestData<int32_t, IntTypes::Int>();
 }
 
-void QtProtobufTypesSerializationTest::IntMessageSerializeTest()
+void QtProtobufTypesSerializationTest::intMessageSerializeTest()
 {
     QFETCH(const int32_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -121,12 +121,12 @@ void QtProtobufTypesSerializationTest::IntMessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::UIntMessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::uIntMessageSerializeTest_data()
 {
     generateTestData<uint32_t, IntTypes::UInt>();
 }
 
-void QtProtobufTypesSerializationTest::UIntMessageSerializeTest()
+void QtProtobufTypesSerializationTest::uIntMessageSerializeTest()
 {
     QFETCH(const uint32_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -139,12 +139,12 @@ void QtProtobufTypesSerializationTest::UIntMessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::SIntMessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::sIntMessageSerializeTest_data()
 {
     generateTestData<int32_t, IntTypes::SInt>();
 }
 
-void QtProtobufTypesSerializationTest::SIntMessageSerializeTest()
+void QtProtobufTypesSerializationTest::sIntMessageSerializeTest()
 {
     QFETCH(const int32_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -157,11 +157,11 @@ void QtProtobufTypesSerializationTest::SIntMessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::Int64MessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::int64MessageSerializeTest_data()
 {
     generateTestData<int64_t, IntTypes::Int>();
 }
-void QtProtobufTypesSerializationTest::Int64MessageSerializeTest()
+void QtProtobufTypesSerializationTest::int64MessageSerializeTest()
 {
     QFETCH(const int64_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -174,11 +174,11 @@ void QtProtobufTypesSerializationTest::Int64MessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::UInt64MessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::uInt64MessageSerializeTest_data()
 {
     generateTestData<uint64_t, IntTypes::UInt>();
 }
-void QtProtobufTypesSerializationTest::UInt64MessageSerializeTest()
+void QtProtobufTypesSerializationTest::uInt64MessageSerializeTest()
 {
     QFETCH(const QtProtobuf::uint64, value);
     QFETCH(const qsizetype, expectedSize);
@@ -191,11 +191,11 @@ void QtProtobufTypesSerializationTest::UInt64MessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::SInt64MessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::sInt64MessageSerializeTest_data()
 {
     generateTestData<int64_t, IntTypes::SInt>();
 }
-void QtProtobufTypesSerializationTest::SInt64MessageSerializeTest()
+void QtProtobufTypesSerializationTest::sInt64MessageSerializeTest()
 {
     QFETCH(const int64_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -208,12 +208,12 @@ void QtProtobufTypesSerializationTest::SInt64MessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::FixedInt32MessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::fixedInt32MessageSerializeTest_data()
 {
     generateTestData<uint32_t, IntTypes::Fixed>();
 }
 
-void QtProtobufTypesSerializationTest::FixedInt32MessageSerializeTest()
+void QtProtobufTypesSerializationTest::fixedInt32MessageSerializeTest()
 {
     QFETCH(const uint32_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -226,12 +226,12 @@ void QtProtobufTypesSerializationTest::FixedInt32MessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::FixedInt64MessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::fixedInt64MessageSerializeTest_data()
 {
     generateTestData<uint64_t, IntTypes::Fixed>();
 }
 
-void QtProtobufTypesSerializationTest::FixedInt64MessageSerializeTest()
+void QtProtobufTypesSerializationTest::fixedInt64MessageSerializeTest()
 {
     QFETCH(const uint64_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -244,11 +244,11 @@ void QtProtobufTypesSerializationTest::FixedInt64MessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::SFixedInt32MessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::sFixedInt32MessageSerializeTest_data()
 {
     generateTestData<int32_t, IntTypes::SFixed>();
 }
-void QtProtobufTypesSerializationTest::SFixedInt32MessageSerializeTest()
+void QtProtobufTypesSerializationTest::sFixedInt32MessageSerializeTest()
 {
     QFETCH(const int32_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -261,12 +261,12 @@ void QtProtobufTypesSerializationTest::SFixedInt32MessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::SFixedInt64MessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::sFixedInt64MessageSerializeTest_data()
 {
     generateTestData<int64_t, IntTypes::SFixed>();
 }
 
-void QtProtobufTypesSerializationTest::SFixedInt64MessageSerializeTest()
+void QtProtobufTypesSerializationTest::sFixedInt64MessageSerializeTest()
 {
     QFETCH(const int64_t, value);
     QFETCH(const qsizetype, expectedSize);
@@ -279,7 +279,7 @@ void QtProtobufTypesSerializationTest::SFixedInt64MessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::FloatMessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::floatMessageSerializeTest_data()
 {
     QTest::addColumn<float>("value");
     QTest::addColumn<qsizetype>("expectedSize");
@@ -299,7 +299,7 @@ void QtProtobufTypesSerializationTest::FloatMessageSerializeTest_data()
     QTest::newRow("float_neg_value_0_0") << -0.0f << qsizetype(0) << ""_ba << std::optional<int>();
 }
 
-void QtProtobufTypesSerializationTest::FloatMessageSerializeTest()
+void QtProtobufTypesSerializationTest::floatMessageSerializeTest()
 {
     QFETCH(const float, value);
     QFETCH(const qsizetype, expectedSize);
@@ -315,7 +315,7 @@ void QtProtobufTypesSerializationTest::FloatMessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::DoubleMessageSerializeTest_data()
+void QtProtobufTypesSerializationTest::doubleMessageSerializeTest_data()
 {
     QTest::addColumn<double>("value");
     QTest::addColumn<qsizetype>("expectedSize");
@@ -332,7 +332,7 @@ void QtProtobufTypesSerializationTest::DoubleMessageSerializeTest_data()
     QTest::newRow("double_value_0_0") << 0.0 << qsizetype(0) << ""_ba;
 }
 
-void QtProtobufTypesSerializationTest::DoubleMessageSerializeTest()
+void QtProtobufTypesSerializationTest::doubleMessageSerializeTest()
 {
     QFETCH(const double, value);
     QFETCH(const qsizetype, expectedSize);
@@ -345,7 +345,7 @@ void QtProtobufTypesSerializationTest::DoubleMessageSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::StringMessageSerializeTest()
+void QtProtobufTypesSerializationTest::stringMessageSerializeTest()
 {
     SimpleStringMessage test;
     test.setTestFieldString("qwerty");
@@ -393,7 +393,7 @@ void QtProtobufTypesSerializationTest::StringMessageSerializeTest()
              "73354a47707058785831"_ba);
 }
 
-void QtProtobufTypesSerializationTest::ComplexTypeSerializeTest_data()
+void QtProtobufTypesSerializationTest::complexTypeSerializeTest_data()
 {
     QTest::addColumn<int>("intField");
     QTest::addColumn<QString>("stringField");
@@ -445,7 +445,7 @@ void QtProtobufTypesSerializationTest::ComplexTypeSerializeTest_data()
             << -45 << u"qwerty"_s << "08d3ffffffffffffffff0112083206717765727479"_ba;
 }
 
-void QtProtobufTypesSerializationTest::ComplexTypeSerializeTest()
+void QtProtobufTypesSerializationTest::complexTypeSerializeTest()
 {
     QFETCH(const int, intField);
     QFETCH(const QString, stringField);
@@ -460,7 +460,7 @@ void QtProtobufTypesSerializationTest::ComplexTypeSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::ResetComplexTypeSerializeTest_data()
+void QtProtobufTypesSerializationTest::resetComplexTypeSerializeTest_data()
 {
     QTest::addColumn<int>("intField");
     QTest::addColumn<QString>("stringField");
@@ -472,7 +472,7 @@ void QtProtobufTypesSerializationTest::ResetComplexTypeSerializeTest_data()
     QTest::newRow("int_and_string") << 42 << u"qwerty"_s << "082a"_ba;
 }
 
-void QtProtobufTypesSerializationTest::ResetComplexTypeSerializeTest()
+void QtProtobufTypesSerializationTest::resetComplexTypeSerializeTest()
 {
     QFETCH(const int, intField);
     QFETCH(const QString, stringField);
@@ -490,14 +490,14 @@ void QtProtobufTypesSerializationTest::ResetComplexTypeSerializeTest()
     QCOMPARE(result.toHex(), expectedData);
 }
 
-void QtProtobufTypesSerializationTest::DefaultConstructedComplexTypeSerializeTest()
+void QtProtobufTypesSerializationTest::defaultConstructedComplexTypeSerializeTest()
 {
     ComplexMessage test;
     QByteArray result = test.serialize(m_serializer.get());
     QCOMPARE(result.toHex(), ""_ba);
 }
 
-void QtProtobufTypesSerializationTest::EmptyBytesMessageTest()
+void QtProtobufTypesSerializationTest::emptyBytesMessageTest()
 {
     SimpleBytesMessage msg;
 
@@ -505,7 +505,7 @@ void QtProtobufTypesSerializationTest::EmptyBytesMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufTypesSerializationTest::EmptyStringMessageTest()
+void QtProtobufTypesSerializationTest::emptyStringMessageTest()
 {
     SimpleStringMessage msg;
 
@@ -513,7 +513,7 @@ void QtProtobufTypesSerializationTest::EmptyStringMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufTypesSerializationTest::FieldIndexRangeTest()
+void QtProtobufTypesSerializationTest::fieldIndexRangeTest()
 {
     FieldIndexTest1Message msg1;
     msg1.setTestField(1);
@@ -536,14 +536,14 @@ void QtProtobufTypesSerializationTest::FieldIndexRangeTest()
     QCOMPARE(result.toHex(), "f8ffffff0f02"_ba);
 }
 
-void QtProtobufTypesSerializationTest::OneofMessageEmptyTest()
+void QtProtobufTypesSerializationTest::oneofMessageEmptyTest()
 {
     OneofMessage test;
     QByteArray result = test.serialize(m_serializer.get());
     QCOMPARE(result.toHex(), "");
 }
 
-void QtProtobufTypesSerializationTest::OneofMessageIntTest()
+void QtProtobufTypesSerializationTest::oneofMessageIntTest()
 {
     OneofMessage test;
     test.setTestFieldInt(-45);
@@ -559,7 +559,7 @@ void QtProtobufTypesSerializationTest::OneofMessageIntTest()
     QCOMPARE(result.toHex(), "d00200");
 }
 
-void QtProtobufTypesSerializationTest::OneofMessageClearTest()
+void QtProtobufTypesSerializationTest::oneofMessageClearTest()
 {
     OneofMessage test;
     test.setTestFieldInt(-45);
@@ -570,7 +570,7 @@ void QtProtobufTypesSerializationTest::OneofMessageClearTest()
     QCOMPARE(result.toHex(), "08d3ffffffffffffffff01");
 }
 
-void QtProtobufTypesSerializationTest::OneofMessageComplexTest()
+void QtProtobufTypesSerializationTest::oneofMessageComplexTest()
 {
     ComplexMessage complexField;
     SimpleStringMessage stringField;

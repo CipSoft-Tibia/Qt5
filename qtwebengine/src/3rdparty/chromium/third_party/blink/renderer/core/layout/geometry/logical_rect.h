@@ -12,8 +12,6 @@
 
 namespace blink {
 
-class LayoutRect;
-
 // LogicalRect is the position and size of a rect (typically a fragment)
 // relative to the parent in the logical coordinate system.
 // For more information about physical and logical coordinate systems, see:
@@ -39,12 +37,11 @@ struct CORE_EXPORT LogicalRect {
                         int block_offset,
                         int inline_size,
                         int block_size);
-
-  constexpr explicit LogicalRect(const LayoutRect& source)
+  constexpr explicit LogicalRect(const DeprecatedLayoutRect& source)
       : LogicalRect({source.X(), source.Y()},
                     {source.Width(), source.Height()}) {}
 
-  constexpr LayoutRect ToLayoutRect() const {
+  constexpr DeprecatedLayoutRect ToLayoutRect() const {
     return {offset.inline_offset, offset.block_offset, size.inline_size,
             size.block_size};
   }
@@ -93,6 +90,13 @@ struct CORE_EXPORT LogicalRect {
     offset.block_offset -= block_start;
     size.inline_size += inline_start + inline_end;
     size.block_size += block_start + block_end;
+  }
+
+  void ContractEdges(LayoutUnit block_start,
+                     LayoutUnit inline_end,
+                     LayoutUnit block_end,
+                     LayoutUnit inline_start) {
+    ExpandEdges(-block_start, -inline_end, -block_end, -inline_start);
   }
 
   // Update inline-start offset without changing the inline-end offset.

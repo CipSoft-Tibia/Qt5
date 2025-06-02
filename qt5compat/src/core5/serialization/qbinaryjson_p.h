@@ -216,16 +216,16 @@ public:
 
     QString toString() const
     {
-#if Q_BYTE_ORDER == Q_LITTLE_ENDIAN
-        return QString(reinterpret_cast<const QChar *>(d->utf16), d->length);
-#else
-        const uint l = d->length;
-        QString str(l, Qt::Uninitialized);
-        QChar *ch = str.data();
-        for (uint i = 0; i < l; ++i)
-            ch[i] = QChar(d->utf16[i]);
-        return str;
-#endif
+        if constexpr (Q_BYTE_ORDER == Q_LITTLE_ENDIAN) {
+            return QString(reinterpret_cast<const QChar *>(d->utf16), d->length);
+        } else {
+            const uint l = d->length;
+            QString str(l, Qt::Uninitialized);
+            QChar *ch = str.data();
+            for (uint i = 0; i < l; ++i)
+                ch[i] = char16_t(d->utf16[i]);
+            return str;
+        }
     }
 };
 

@@ -36,14 +36,20 @@ void Caps::finishInitialization(const ContextOptions& options) {
     }
 
 #if defined(GRAPHITE_TEST_UTILS)
-    fMaxTextureSize = std::min(fMaxTextureSize, options.fMaxTextureSizeOverride);
-    fMaxTextureAtlasSize = options.fMaxTextureAtlasSize;
+    if (options.fOptionsPriv) {
+        fMaxTextureSize = std::min(fMaxTextureSize, options.fOptionsPriv->fMaxTextureSizeOverride);
+        fMaxTextureAtlasSize = options.fOptionsPriv->fMaxTextureAtlasSize;
+        fRequestedPathRendererStrategy = options.fOptionsPriv->fPathRendererStrategy;
+    }
 #endif
     fGlyphCacheTextureMaximumBytes = options.fGlyphCacheTextureMaximumBytes;
     fMinDistanceFieldFontSize = options.fMinDistanceFieldFontSize;
     fGlyphsAsPathsFontSize = options.fGlyphsAsPathsFontSize;
     fAllowMultipleGlyphCacheTextures = options.fAllowMultipleGlyphCacheTextures;
     fSupportBilerpFromGlyphAtlas = options.fSupportBilerpFromGlyphAtlas;
+    if (options.fDisableCachedGlyphUploads) {
+        fRequireOrderedRecordings = true;
+    }
 }
 
 sk_sp<SkCapabilities> Caps::capabilities() const { return fCapabilities; }

@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/helpers/append_vector.h"
 #include "src/tint/lang/wgsl/ast/helper_test.h"
@@ -20,7 +33,7 @@
 
 #include "gmock/gmock.h"
 
-namespace tint::writer {
+namespace tint::wgsl {
 namespace {
 
 using namespace tint::core::fluent_types;     // NOLINT
@@ -36,7 +49,7 @@ TEST_F(AppendVectorTest, Vec2i32_i32) {
     auto* vec_12 = Call<vec2<i32>>(scalar_1, scalar_2);
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -77,7 +90,7 @@ TEST_F(AppendVectorTest, Vec2i32_u32) {
     auto* vec_12 = Call<vec2<i32>>(scalar_1, scalar_2);
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -125,7 +138,7 @@ TEST_F(AppendVectorTest, Vec2i32FromVec2u32_u32) {
     auto* vec_12 = Call<vec2<i32>>(uvec_12);
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -174,7 +187,7 @@ TEST_F(AppendVectorTest, Vec2i32_f32) {
     auto* vec_12 = Call<vec2<i32>>(scalar_1, scalar_2);
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -220,7 +233,7 @@ TEST_F(AppendVectorTest, Vec3i32_i32) {
     auto* vec_123 = Call<vec3<i32>>(scalar_1, scalar_2, scalar_3);
     WrapInFunction(vec_123, scalar_4);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -263,7 +276,7 @@ TEST_F(AppendVectorTest, Vec2i32Var_i32) {
     auto* scalar_3 = Expr(3_i);
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -302,7 +315,7 @@ TEST_F(AppendVectorTest, Vec2i32_i32Var) {
     auto* vec_12 = Call<vec2<i32>>(scalar_1, scalar_2);
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -343,7 +356,7 @@ TEST_F(AppendVectorTest, Vec2i32Var_i32Var) {
     auto* scalar_3 = Expr("scalar_3");
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -381,7 +394,7 @@ TEST_F(AppendVectorTest, Vec2i32Var_f32Var) {
     auto* scalar_3 = Expr("scalar_3");
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -423,7 +436,7 @@ TEST_F(AppendVectorTest, Vec2boolVar_boolVar) {
     auto* scalar_3 = Expr("scalar_3");
     WrapInFunction(vec_12, scalar_3);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -459,7 +472,7 @@ TEST_F(AppendVectorTest, ZeroVec3i32_i32) {
     auto* vec000 = Call<vec3<i32>>();
     WrapInFunction(vec000, scalar);
 
-    resolver::Resolver resolver(this);
+    resolver::Resolver resolver{this, wgsl::AllowedFeatures{}};
     EXPECT_TRUE(resolver.Resolve());
     ASSERT_THAT(resolver.Diagnostics(), testing::IsEmpty());
 
@@ -498,4 +511,4 @@ TEST_F(AppendVectorTest, ZeroVec3i32_i32) {
 }
 
 }  // namespace
-}  // namespace tint::writer
+}  // namespace tint::wgsl

@@ -44,6 +44,7 @@
 namespace blink {
 
 class FontPlatformData;
+class OpenTypeVerticalData;
 struct HarfBuzzFontData;
 
 // |HarfBuzzFace| is a thread specific data associated to |FontPlatformData|,
@@ -84,6 +85,8 @@ class HarfBuzzFace final : public RefCounted<HarfBuzzFace> {
 
   bool ShouldSubpixelPosition();
 
+  const OpenTypeVerticalData& VerticalData() const;
+
   static void Init();
 
  private:
@@ -93,6 +96,8 @@ class HarfBuzzFace final : public RefCounted<HarfBuzzFace> {
 
   FontPlatformData* const platform_data_;
   const uint64_t unique_id_;
+  // TODO(crbug.com/1489080): When briefly given MiraclePtr protection,
+  // these members were both found dangling.
   hb_font_t* unscaled_font_;
   HarfBuzzFontData* harfbuzz_font_data_;
 };

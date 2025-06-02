@@ -21,7 +21,7 @@ Q_LOGGING_CATEGORY(lcPinchHandler, "qt.quick.handler.pinch")
 
 /*!
     \qmltype PinchHandler
-    \instantiates QQuickPinchHandler
+    \nativetype QQuickPinchHandler
     \inherits MultiPointHandler
     \inqmlmodule QtQuick
     \ingroup qtquick-input-handlers
@@ -32,7 +32,7 @@ Q_LOGGING_CATEGORY(lcPinchHandler, "qt.quick.handler.pinch")
     by default it is fully functional, and manipulates its \l target,
     which is the Item within which it is declared.
 
-    \snippet pointerHandlers/pinchHandler.qml 0
+    \snippet pointerHandlers/pinchHandlerSimple.qml 0
 
     It has properties to restrict the range of dragging, rotation, and zoom.
 
@@ -141,7 +141,7 @@ void QQuickPinchHandler::setActiveScale(qreal scale)
 
 /*!
     \readonly
-    \qmlproperty QVector2D QtQuick::PinchHandler::scale
+    \qmlproperty vector2d QtQuick::PinchHandler::scale
     \deprecated [6.5] Use persistentScale
 */
 
@@ -220,7 +220,7 @@ void QQuickPinchHandler::setMaximumRotation(qreal maximumRotation)
 
 /*!
     \readonly
-    \qmlproperty QVector2D QtQuick::PinchHandler::rotation
+    \qmlproperty vector2d QtQuick::PinchHandler::rotation
     \deprecated [6.5] Use activeRotation
 */
 
@@ -286,12 +286,12 @@ void QQuickPinchHandler::setPersistentRotation(qreal rot)
 
 /*!
     \readonly
-    \qmlproperty QVector2D QtQuick::PinchHandler::translation
+    \qmlproperty vector2d QtQuick::PinchHandler::translation
     \deprecated [6.5] Use activeTranslation
 */
 /*!
     \readonly
-    \qmlproperty QPointF QtQuick::PinchHandler::activeTranslation
+    \qmlproperty point QtQuick::PinchHandler::activeTranslation
 
     The translation of the cluster of points while the pinch gesture is being
     performed. It is \c {0, 0} when the gesture begins, and increases as the
@@ -304,7 +304,7 @@ void QQuickPinchHandler::setPersistentRotation(qreal rot)
 */
 
 /*!
-    \qmlproperty QPointF QtQuick::PinchHandler::persistentTranslation
+    \qmlproperty point QtQuick::PinchHandler::persistentTranslation
 
     The translation to be applied to the \l target if it is not \c null.
     Otherwise, bindings can be used to do arbitrary things with this value.
@@ -498,7 +498,7 @@ void QQuickPinchHandler::handlePointerEventImpl(QPointerEvent *event)
 {
     QQuickMultiPointHandler::handlePointerEventImpl(event);
     if (Q_UNLIKELY(lcPinchHandler().isDebugEnabled())) {
-        for (const QQuickHandlerPoint &p : currentPoints())
+        for (const QQuickHandlerPoint &p : std::as_const(currentPoints()))
             qCDebug(lcPinchHandler) << Qt::hex << p.id() << p.sceneGrabPosition() << "->" << p.scenePosition();
     }
 
@@ -533,7 +533,7 @@ void QQuickPinchHandler::handlePointerEventImpl(QPointerEvent *event)
     {
         const bool containsReleasedPoints = event->isEndEvent();
         QVector<QEventPoint> chosenPoints;
-        for (const QQuickHandlerPoint &p : currentPoints()) {
+        for (const QQuickHandlerPoint &p : std::as_const(currentPoints())) {
             auto ep = event->pointById(p.id());
             Q_ASSERT(ep);
             chosenPoints << *ep;
@@ -697,9 +697,17 @@ void QQuickPinchHandler::handlePointerEventImpl(QPointerEvent *event)
         m_xAxis.updateValue(activeTranslation.x(), m_xAxis.persistentValue() + delta.x(), delta.x());
         m_yAxis.updateValue(activeTranslation.y(), m_yAxis.persistentValue() + delta.y(), delta.y());
         emit translationChanged(delta);
+        // xAxis or yAxis may be disabled; nevertheless, we use setPosition() to compensate for
+        // other aspects of the transform. So it should not be skipped. Above, we've already
+        // subtracted activeTranslation if necessary.
         t->setPosition(pos);
-        t->setRotation(m_rotationAxis.persistentValue());
-        t->setScale(m_scaleAxis.persistentValue());
+        // Set rotation and scale properties only if the respective axes are enabled.
+        // We've already checked above, so we don't expect activeScale or activeRotation to change
+        // if the axis is disabled; but then don't call the setter at all, to avoid breaking bindings.
+        if (m_rotationAxis.enabled())
+            t->setRotation(m_rotationAxis.persistentValue());
+        if (m_scaleAxis.enabled())
+            t->setScale(m_scaleAxis.persistentValue());
     } else {
         auto activeTranslation = centroid().scenePosition() - centroid().scenePressPosition();
         auto accumulated = QPointF(m_xAxis.m_startValue, m_yAxis.m_startValue) + activeTranslation;

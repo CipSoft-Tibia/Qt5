@@ -16,6 +16,7 @@
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/scheduler/public/task_attribution_info.h"
 #include "third_party/blink/renderer/platform/scheduler/public/task_attribution_tracker.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
 #include "third_party/blink/renderer/platform/scheduler/public/web_scheduling_priority.h"
@@ -36,7 +37,7 @@ class V8IdleTask : public IdleTask {
     ScriptState* script_state = callback_->CallbackRelevantScriptState();
     auto* tracker = ThreadScheduler::Current()->GetTaskAttributionTracker();
     if (tracker && script_state->World().IsMainWorld()) {
-      parent_task_id_ = tracker->RunningTaskAttributionId(script_state);
+      parent_task_ = tracker->RunningTask(script_state);
     }
   }
 
@@ -57,7 +58,7 @@ class V8IdleTask : public IdleTask {
             script_state, WebSchedulingPriority::kBackgroundPriority);
       }
       task_attribution_scope =
-          tracker->CreateTaskScope(script_state, parent_task_id_,
+          tracker->CreateTaskScope(script_state, parent_task_,
                                    scheduler::TaskAttributionTracker::
                                        TaskScopeType::kRequestIdleCallback,
                                    /*abort_source=*/nullptr, signal);
@@ -67,12 +68,13 @@ class V8IdleTask : public IdleTask {
 
   void Trace(Visitor* visitor) const override {
     visitor->Trace(callback_);
+    visitor->Trace(parent_task_);
     IdleTask::Trace(visitor);
   }
 
  private:
   Member<V8IdleRequestCallback> callback_;
-  absl::optional<scheduler::TaskAttributionId> parent_task_id_;
+  Member<scheduler::TaskAttributionInfo> parent_task_;
 };
 
 }  // namespace

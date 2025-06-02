@@ -1,13 +1,17 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qprotobufmessage_p.h"
-#include "qprotobufmessage.h"
+#include <QtProtobuf/qprotobufmessage.h>
 
-#include <QtProtobuf/qtprotobuftypes.h>
+#include <QtProtobuf/private/qprotobufmessage_p.h>
+#include <QtProtobuf/private/qprotobufpropertyorderingbuilder_p.h>
+#include <QtProtobuf/qabstractprotobufserializer.h>
+#include <QtProtobuf/qprotobufpropertyordering.h>
 
 #include <QtCore/qassert.h>
 #include <QtCore/qmetaobject.h>
+
+#include <QtCore/private/qmetaobjectbuilder_p.h>
 
 #include <string>
 
@@ -33,25 +37,37 @@ static std::string nullTerminate(QLatin1StringView l1) noexcept
     Used from generated classes to construct the QProtobufMessage base class.
     Internally the \a metaObject is used to query QMetaProperty
 */
-QProtobufMessage::QProtobufMessage(const QMetaObject *metaObject)
-    : d_ptr(new QProtobufMessagePrivate)
+QProtobufMessage::QProtobufMessage(const QMetaObject *metaObject,
+                                   const QtProtobufPrivate::QProtobufPropertyOrdering *ordering)
+    : d_ptr(new QProtobufMessagePrivate(metaObject, ordering))
 {
-    d_ptr->metaObject = metaObject;
 }
 
 /*!
     \internal
-    The QMetaObject which was passed to the QProtobufMessage constructor.
+    Allows constructing QProtobufMessage using the private message implementation from the
+    derived class.
 */
-const QMetaObject *QProtobufMessage::metaObject() const
+QProtobufMessage::QProtobufMessage(QProtobufMessagePrivate &dd) : d_ptr(&dd)
 {
-    return d_ptr->metaObject;
 }
+
+QT_DEFINE_QESDP_SPECIALIZATION_DTOR(QProtobufMessagePrivate)
+
+QProtobufMessagePrivate::QProtobufMessagePrivate(const QMetaObject *metaObject,
+                                                 const QtProtobufPrivate::QProtobufPropertyOrdering
+                                                     *ordering)
+    : metaObject(metaObject), ordering(ordering)
+{
+}
+
+QProtobufMessagePrivate::~QProtobufMessagePrivate()
+    = default;
 
 /*!
     \internal
 */
-int QProtobufMessagePrivate::getPropertyIndex(QAnyStringView propertyName) const
+int QProtobufMessagePrivate::propertyIndex(QAnyStringView propertyName) const
 {
     return propertyName.visit([this](auto propertyName) {
         if constexpr (std::is_same_v<QStringView, decltype(propertyName)>) {
@@ -65,14 +81,17 @@ int QProtobufMessagePrivate::getPropertyIndex(QAnyStringView propertyName) const
     });
 }
 
-void QProtobufMessagePrivate::storeUnknownEntry(QByteArrayView entry, int fieldNumber)
+void QProtobufMessagePrivate::storeUnknownEntry(QProtobufMessage *message,
+                                                QByteArrayView entry, int fieldNumber)
 {
-    unknownEntries[fieldNumber].append(entry.toByteArray());
+    Q_ASSERT(message);
+    message->d_ptr.detach();
+    message->d_ptr->unknownEntries[fieldNumber].append(entry.toByteArray());
 }
 
 std::optional<QMetaProperty> QProtobufMessagePrivate::metaProperty(QAnyStringView name) const
 {
-    const int index = getPropertyIndex(name);
+    const int index = propertyIndex(name);
     const QMetaProperty property = metaObject->property(index);
     if (property.isValid())
         return property;
@@ -80,9 +99,9 @@ std::optional<QMetaProperty> QProtobufMessagePrivate::metaProperty(QAnyStringVie
 }
 
 std::optional<QMetaProperty>
-QProtobufMessagePrivate::metaProperty(QtProtobufPrivate::QProtobufPropertyOrderingInfo info) const
+QProtobufMessagePrivate::metaProperty(QtProtobufPrivate::QProtobufFieldInfo info) const
 {
-    const int propertyIndex = info.getPropertyIndex() + metaObject->propertyOffset();
+    const int propertyIndex = info.propertyIndex() + metaObject->propertyOffset();
     const QMetaProperty metaProperty = metaObject->property(propertyIndex);
     if (metaProperty.isValid())
         return metaProperty;
@@ -92,10 +111,10 @@ QProtobufMessagePrivate::metaProperty(QtProtobufPrivate::QProtobufPropertyOrderi
 /*!
     Set the property \a propertyName to the value stored in \a value.
 
-    If the \a propertyName isn't a part of the known fields then the value will
-    not be written and the function returns \c false.
+    If the \a propertyName isn't a known fields, then the value is ignored, and
+    the function returns \c false.
 
-    Returns \c false if it failed to store the \a value on the property.
+    Returns \c false if it fails to store the \a value on the property.
     Otherwise \c{true}.
 */
 bool QProtobufMessage::setProperty(QAnyStringView propertyName, const QVariant &value)
@@ -140,41 +159,35 @@ QVariant QProtobufMessage::property(QAnyStringView propertyName) const
     \internal
 */
 QProtobufMessage::QProtobufMessage(const QProtobufMessage &other)
-    : d_ptr(other.d_ptr)
-{
-    d_ptr->ref.ref();
-}
+    = default;
 
 /*!
     \internal
 */
 QProtobufMessage &QProtobufMessage::operator=(const QProtobufMessage &other)
-{
-    if (other.d_ptr == d_ptr)
-        return *this;
+    = default;
 
-    if (d_ptr && !d_ptr->ref.deref())
-        delete d_ptr; // delete d_ptr if it's the last reference
-    d_ptr = other.d_ptr;
-    if (d_ptr)
-        d_ptr->ref.ref();
-
-    return *this;
-}
 
 /*!
     \internal
 */
 QProtobufMessage::~QProtobufMessage()
+    = default;
+
+/*!
+    \since 6.8
+    Returns the pointer to the property ordering of the derived protobuf message.
+*/
+const QtProtobufPrivate::QProtobufPropertyOrdering *QProtobufMessage::propertyOrdering() const
 {
-    if (d_ptr && !d_ptr->ref.deref())
-        delete d_ptr;
+    Q_D(const QProtobufMessage);
+    return d->ordering;
 }
 
 /*!
     \internal
 */
-bool QProtobufMessage::isEqual(const QProtobufMessage &lhs, const QProtobufMessage &rhs) noexcept
+bool comparesEqual(const QProtobufMessage &lhs, const QProtobufMessage &rhs) noexcept
 {
     if (lhs.d_ptr == rhs.d_ptr)
         return true;
@@ -192,10 +205,10 @@ extern QProtobufMessagePointer constructMessageByName(const QString &messageType
     Constructs QProtobufMessage using \a messageType.
     Returns a pointer to the constructed QProtobufMessage.
 
-    This function attempts to create a message whose type matches \a messageType. If \a messageType
-    is unknown, the function returns \nullptr. If the message is not found in the registry, the
-    function returns \nullptr.
-    Ownership of the constructed message is given to the function caller.
+    This function attempts to create a message with a type that matches \a messageType.
+    If \a messageType is unknown, the function returns \nullptr. If the message
+    is not found in the registry, the function returns \nullptr.
+    The function caller is given ownership of the constructed message.
 */
 QProtobufMessagePointer QProtobufMessage::constructByName(const QString &messageType)
 {
@@ -218,8 +231,7 @@ QProtobufMessagePointer QProtobufMessage::constructByName(const QString &message
     \brief Calls the destructor of the child class of a QProtobufMessage.
 
     This class calls the destructor of a protobuf message using the meta-type
-    system. This class is intended to be used with smart pointers, such as
-    std::unique_ptr.
+    system. It is intended to be used with smart pointers, such as std::unique_ptr.
 
     \sa QProtobufMessagePointer
 */
@@ -230,56 +242,13 @@ QProtobufMessagePointer QProtobufMessage::constructByName(const QString &message
 
     \sa QProtobufMessagePointer
 */
-void QProtobufMessageDeleter::operator()(QProtobufMessage *ptr) noexcept
+void QProtobufMessageDeleter::operator()(QProtobufMessage *ptr) const noexcept
 {
     if (!ptr)
         return;
-    const QMetaObject *mobj = ptr->metaObject();
+    const QMetaObject *mobj = ptr->d_ptr->metaObject;
     QMetaType type = mobj->metaType();
     type.destroy(ptr);
-}
-
-QVariant
-QProtobufMessage::property(const QtProtobufPrivate::QProtobufPropertyOrderingInfo &fieldInfo) const
-{
-    int propertyIndex = fieldInfo.getPropertyIndex() + metaObject()->propertyOffset();
-    QMetaProperty metaProperty = metaObject()->property(propertyIndex);
-
-    if (!metaProperty.isValid())
-        return {};
-
-    if (fieldInfo.getFieldFlags() & QtProtobufPrivate::Oneof
-        || fieldInfo.getFieldFlags() & QtProtobufPrivate::Optional) {
-        int hasPropertyIndex = propertyIndex + 1;
-        QMetaProperty hasProperty = metaObject()->property(hasPropertyIndex);
-        Q_ASSERT_X(hasProperty.isValid() && hasProperty.metaType().id() == QMetaType::Bool,
-                   "QProtobufMessage", "The 'oneof' field doesn't have the follow 'has' property.");
-        if (!hasProperty.readOnGadget(this).toBool())
-            return QVariant(metaProperty.metaType());
-    }
-
-    QVariant propertyValue = metaProperty.readOnGadget(this);
-    return propertyValue;
-}
-
-bool QProtobufMessage::setProperty(
-        const QtProtobufPrivate::QProtobufPropertyOrderingInfo &fieldInfo, const QVariant &value)
-{
-    Q_D(QProtobufMessage);
-    const auto mp = d->metaProperty(fieldInfo);
-    if (!mp)
-        return false;
-    return mp->writeOnGadget(this, value);
-}
-
-bool QProtobufMessage::setProperty(const QtProtobufPrivate::QProtobufPropertyOrderingInfo &info,
-                                   QVariant &&value)
-{
-    Q_D(QProtobufMessage);
-    const auto mp = d->metaProperty(info);
-    if (!mp)
-        return false;
-    return mp->writeOnGadget(this, std::move(value));
 }
 
 /*!
@@ -289,7 +258,8 @@ bool QProtobufMessage::setProperty(const QtProtobufPrivate::QProtobufPropertyOrd
  */
 QList<qint32> QProtobufMessage::unknownFieldNumbers() const
 {
-    return d_func()->unknownEntries.keys();
+    Q_D(const QProtobufMessage);
+    return d->unknownEntries.keys();
 }
 
 /*!
@@ -299,17 +269,141 @@ QList<qint32> QProtobufMessage::unknownFieldNumbers() const
 */
 QList<QByteArray> QProtobufMessage::unknownFieldData(qint32 field) const
 {
-    return d_func()->unknownEntries.value(field);
+    Q_D(const QProtobufMessage);
+    return d->unknownEntries.value(field);
 }
 
-void QProtobufMessage::detachPrivate()
+/*!
+    \since 6.8
+    Serializes this protobuf message into a QByteArray using \a serializer.
+
+    \sa deserialize()
+*/
+QByteArray QProtobufMessage::serialize(QAbstractProtobufSerializer *serializer) const
 {
-    if (d_ptr->ref.loadAcquire() == 1)
-        return;
-    QProtobufMessagePrivate *newD = new QProtobufMessagePrivate(*d_ptr);
-    if (!d_ptr->ref.deref())
-        delete d_ptr;
-    d_ptr = newD;
+    return serializer->serialize(this);
+}
+
+/*!
+    \since 6.8
+    Deserializes this protobuf message from a QByteArray \a data using
+    \a serializer.
+    Returns \c true if deserialization was successful, otherwise \c false.
+
+    \sa serialize()
+*/
+bool QProtobufMessage::deserialize(QAbstractProtobufSerializer *serializer, QByteArrayView data)
+{
+    return serializer->deserialize(this, data);
+}
+
+static bool isProtobufMessage(QMetaType type)
+{
+    if (const auto *mo = type.metaObject(); mo && mo->inherits(&QProtobufMessage::staticMetaObject))
+        return true;
+    return false;
+}
+
+using StaticMetaCallFn = void (*)(QObject *, QMetaObject::Call, int, void **);
+QMetaObject *buildMetaObject(QMetaType key, QMetaType value, StaticMetaCallFn metaCall)
+{
+    using namespace Qt::StringLiterals;
+    QMetaObjectBuilder builder;
+    builder.addProperty("key", key.name(), key);
+    if (isProtobufMessage(key)) {
+        auto propBuilder = builder.addProperty("has_key", "bool", QMetaType(QMetaType::Bool));
+        propBuilder.setWritable(false);
+    }
+    builder.addProperty("value", value.name(), value);
+    if (isProtobufMessage(value)) {
+        auto propBuilder = builder.addProperty("has_value", "bool", QMetaType(QMetaType::Bool));
+        propBuilder.setWritable(false);
+    }
+    builder.setClassName("QProtobufMapEntry<"_ba + key.name() + ", " + value.name() + '>');
+    builder.setSuperClass(&QProtobufMapEntryBase::staticMetaObject);
+    builder.setStaticMetacallFunction(metaCall);
+    builder.setFlags(MetaObjectFlag::PropertyAccessInStaticMetaCall);
+    return builder.toMetaObject();
+}
+
+QtProtobufPrivate::FieldFlags getFlagForType(QMetaType type)
+{
+    using FieldFlag = QtProtobufPrivate::FieldFlag;
+    QtProtobufPrivate::FieldFlags flag = {};
+
+    if (isProtobufMessage(type))
+        flag |= FieldFlag::Message | FieldFlag::ExplicitPresence;
+    if (type.flags() & QMetaType::IsEnumeration)
+        flag |= FieldFlag::Enum;
+    if (QByteArrayView(type.name()).startsWith("QList<")) // Surely there's a better way
+        flag |= FieldFlag::Repeated;
+    if (QByteArrayView(type.name()).startsWith("QHash<")) // Surely there's a better way
+        flag |= FieldFlag::Map;
+
+    flag |= FieldFlag::Optional; // Hardcoded for MapEntry uses...
+
+    // Need to get this info::
+    // NonPacked = 0x1,
+    // Oneof = 0x02,
+    // Optional = 0x04,
+    // Repeated = 0x40,
+    // Map = 0x80,
+
+    return flag;
+}
+
+QtProtobufPrivate::QProtobufPropertyOrdering::Data *buildMapEntryOrdering(QMetaType key,
+                                                                          QMetaType value)
+{
+    using namespace QtProtobufPrivate;
+    QProtobufPropertyOrderingBuilder builder("MapEntry");
+
+    const auto keyFlags = getFlagForType(key);
+    builder.addV0Field("key", 1, 0, keyFlags);
+
+    const uint valueIndex = keyFlags.testFlag(FieldFlag::ExplicitPresence) ? 2 : 1;
+    builder.addV0Field("value", 2, valueIndex, getFlagForType(value));
+
+    return builder.build();
+}
+
+class QProtobufMapEntryBasePrivate : public QProtobufMessagePrivate
+{
+    Q_DISABLE_COPY_MOVE(QProtobufMapEntryBasePrivate)
+public:
+    QProtobufMapEntryBasePrivate(QMetaType key, QMetaType value, StaticMetaCallFn metaCall);
+    ~QProtobufMapEntryBasePrivate() override;
+
+    QtProtobufPrivate::QProtobufPropertyOrdering::Data *data = nullptr;
+    QtProtobufPrivate::QProtobufPropertyOrdering mutableOrdering{};
+    QMetaObject *mutableMetaObject = nullptr;
+};
+
+QProtobufMapEntryBase::QProtobufMapEntryBase(QMetaType key, QMetaType value,
+                                             StaticMetaCallFn metaCall)
+    : QProtobufMessage(*new QProtobufMapEntryBasePrivate(key, value, metaCall))
+{
+}
+
+QProtobufMapEntryBasePrivate::QProtobufMapEntryBasePrivate(QMetaType key, QMetaType value,
+                                                           StaticMetaCallFn metaCall)
+    : QProtobufMessagePrivate(),
+      data(buildMapEntryOrdering(key, value)),
+      mutableMetaObject(buildMetaObject(key, value, metaCall))
+{
+    mutableOrdering.data = data;
+    QProtobufMessagePrivate::ordering = &mutableOrdering;
+    QProtobufMessagePrivate::metaObject = mutableMetaObject;
+}
+
+QProtobufMapEntryBase::~QProtobufMapEntryBase()
+    = default;
+
+QProtobufMapEntryBasePrivate::~QProtobufMapEntryBasePrivate()
+{
+    data->~Data();
+    free(data);
+    free(mutableMetaObject);
 }
 
 QT_END_NAMESPACE

@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/preserve_padding.h"
 
@@ -41,7 +54,7 @@ PreservePadding::~PreservePadding() = default;
 struct PreservePadding::State {
     /// Constructor
     /// @param src the source Program
-    explicit State(const Program* src) : ctx{&b, src, /* auto_clone_symbols */ true} {}
+    explicit State(const Program& src) : ctx{&b, &src, /* auto_clone_symbols */ true} {}
 
     /// The main function for the transform.
     /// @returns the ApplyResult
@@ -49,32 +62,25 @@ struct PreservePadding::State {
         // Gather a list of assignments that need to be transformed.
         std::unordered_set<const AssignmentStatement*> assignments_to_transform;
         for (auto* node : ctx.src->ASTNodes().Objects()) {
-            Switch(
-                node,  //
-                [&](const AssignmentStatement* assign) {
-                    auto* ty = sem.GetVal(assign->lhs)->Type();
-                    if (assign->lhs->Is<PhonyExpression>()) {
-                        // Ignore phony assignment.
-                        return;
-                    }
-                    if (ty->As<core::type::Reference>()->AddressSpace() !=
-                        core::AddressSpace::kStorage) {
-                        // We only care about assignments that write to variables in the storage
-                        // address space, as nothing else is host-visible.
-                        return;
-                    }
-                    if (HasPadding(ty->UnwrapRef())) {
-                        // The assigned type has padding bytes, so we need to decompose the writes.
-                        assignments_to_transform.insert(assign);
-                    }
-                },
-                [&](const Enable* enable) {
-                    // Check if the full pointer parameters extension is already enabled.
-                    if (enable->HasExtension(
-                            core::Extension::kChromiumExperimentalFullPtrParameters)) {
-                        ext_enabled = true;
-                    }
-                });
+            Switch(node,  //
+                   [&](const AssignmentStatement* assign) {
+                       auto* ty = sem.GetVal(assign->lhs)->Type();
+                       if (assign->lhs->Is<PhonyExpression>()) {
+                           // Ignore phony assignment.
+                           return;
+                       }
+                       if (ty->As<core::type::Reference>()->AddressSpace() !=
+                           core::AddressSpace::kStorage) {
+                           // We only care about assignments that write to variables in the storage
+                           // address space, as nothing else is host-visible.
+                           return;
+                       }
+                       if (HasPadding(ty->UnwrapRef())) {
+                           // The assigned type has padding bytes, so we need to decompose the
+                           // writes.
+                           assignments_to_transform.insert(assign);
+                       }
+                   });
         }
         if (assignments_to_transform.empty()) {
             return SkipTransform;
@@ -114,13 +120,9 @@ struct PreservePadding::State {
         //   }
         // It will be called by passing a pointer to the original LHS:
         //   assign_helper_T(&lhs, rhs);
-        //
-        // Since this requires passing pointers to the storage address space, this will also enable
-        // the chromium_experimental_full_ptr_parameters extension.
         const char* kDestParamName = "dest";
         const char* kValueParamName = "value";
         auto call_helper = [&](auto&& body) {
-            EnableExtension();
             auto helper = helpers.GetOrCreate(ty, [&] {
                 auto helper_name = b.Symbols().New("assign_and_preserve_padding");
                 tint::Vector<const Parameter*, 2> params = {
@@ -174,11 +176,8 @@ struct PreservePadding::State {
                     }
                     return body;
                 });
-            },
-            [&](Default) {
-                TINT_ICE() << "unhandled type with padding";
-                return nullptr;
-            });
+            },  //
+            TINT_ICE_ON_NO_MATCH);
     }
 
     /// Checks if a type contains padding bytes.
@@ -217,14 +216,6 @@ struct PreservePadding::State {
             [&](Default) { return false; });
     }
 
-    /// Enable the full pointer parameters extension, if we have not already done so.
-    void EnableExtension() {
-        if (!ext_enabled) {
-            b.Enable(core::Extension::kChromiumExperimentalFullPtrParameters);
-            ext_enabled = true;
-        }
-    }
-
   private:
     /// The program builder
     ProgramBuilder b;
@@ -234,13 +225,11 @@ struct PreservePadding::State {
     const sem::Info& sem = ctx.src->Sem();
     /// Alias to the symbols in ctx.src
     const SymbolTable& sym = ctx.src->Symbols();
-    /// Flag to track whether we have already enabled the full pointer parameters extension.
-    bool ext_enabled = false;
     /// Map of semantic types to their assignment helper functions.
     Hashmap<const core::type::Type*, Symbol, 8> helpers;
 };
 
-Transform::ApplyResult PreservePadding::Apply(const Program* program,
+Transform::ApplyResult PreservePadding::Apply(const Program& program,
                                               const DataMap&,
                                               DataMap&) const {
     return State(program).Run();

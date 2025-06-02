@@ -39,4 +39,5 @@ qt_internal_add_module(BodymovinPrivate
         Qt::Core
         Qt::Gui
         Qt::GuiPrivate
+    NO_GENERATE_CPP_EXPORTS
 )

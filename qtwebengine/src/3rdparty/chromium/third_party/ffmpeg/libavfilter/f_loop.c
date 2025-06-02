@@ -21,13 +21,11 @@
 #include "config_components.h"
 
 #include "libavutil/audio_fifo.h"
-#include "libavutil/fifo.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
 #include "filters.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -300,13 +298,6 @@ static const AVFilterPad ainputs[] = {
     },
 };
 
-static const AVFilterPad aoutputs[] = {
-    {
-        .name          = "default",
-        .type          = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_aloop = {
     .name          = "aloop",
     .description   = NULL_IF_CONFIG_SMALL("Loop audio samples."),
@@ -315,7 +306,7 @@ const AVFilter ff_af_aloop = {
     .activate      = aactivate,
     .uninit        = auninit,
     FILTER_INPUTS(ainputs),
-    FILTER_OUTPUTS(aoutputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
 };
 #endif /* CONFIG_ALOOP_FILTER */
 
@@ -477,20 +468,6 @@ static const AVOption loop_options[] = {
 
 AVFILTER_DEFINE_CLASS(loop);
 
-static const AVFilterPad inputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_loop = {
     .name        = "loop",
     .description = NULL_IF_CONFIG_SMALL("Loop video frames."),
@@ -499,7 +476,7 @@ const AVFilter ff_vf_loop = {
     .init        = init,
     .uninit      = uninit,
     .activate    = activate,
-    FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
 };
 #endif /* CONFIG_LOOP_FILTER */

@@ -23,7 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_SVG_PRIVATE_EXPORT QSvgGlyph
+class Q_SVG_EXPORT QSvgGlyph
 {
 public:
     QSvgGlyph(QChar unicode, const QPainterPath &path, qreal horizAdvX);
@@ -35,7 +35,7 @@ public:
 };
 
 
-class Q_SVG_PRIVATE_EXPORT QSvgFont : public QSvgRefCounted
+class Q_SVG_EXPORT QSvgFont : public QSvgRefCounted
 {
 public:
     static constexpr qreal DEFAULT_UNITS_PER_EM = 1000;
@@ -48,12 +48,20 @@ public:
 
     void addGlyph(QChar unicode, const QPainterPath &path, qreal horizAdvX = -1);
 
-    void draw(QPainter *p, const QPointF &point, const QString &str, qreal pixelSize, Qt::Alignment alignment) const;
+    void draw(QPainter *p, const QPointF &point, const QString &str,
+              qreal pixelSize, Qt::Alignment alignment) const;
+    QRectF boundingRect(QPainter *p, const QPointF &point, const QString &str,
+                        qreal pixelSize, Qt::Alignment alignment) const;
+
 public:
     QString m_familyName;
     qreal m_unitsPerEm = DEFAULT_UNITS_PER_EM;
     qreal m_horizAdvX;
     QHash<QChar, QSvgGlyph> m_glyphs;
+
+private:
+    void draw_helper(QPainter *p, const QPointF &point, const QString &str, qreal pixelSize,
+                     Qt::Alignment alignment, QRectF *boundingRect = nullptr) const;
 };
 
 QT_END_NAMESPACE

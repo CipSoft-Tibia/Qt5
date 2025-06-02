@@ -36,21 +36,6 @@
 
 namespace ipcz {
 
-namespace {
-
-template <typename T>
-FragmentRef<T> MaybeAdoptFragmentRef(NodeLinkMemory& memory,
-                                     const FragmentDescriptor& descriptor) {
-  if (descriptor.is_null() || descriptor.size() < sizeof(T) ||
-      descriptor.offset() % 8 != 0) {
-    return {};
-  }
-
-  return memory.AdoptFragmentRef<T>(memory.GetFragment(descriptor));
-}
-
-}  // namespace
-
 // static
 Ref<NodeLink> NodeLink::CreateActive(Ref<Node> node,
                                      LinkSide link_side,
@@ -474,8 +459,12 @@ bool NodeLink::OnAcceptIntroduction(msg::AcceptIntroduction& accept) {
     return false;
   }
 
-  auto transport = MakeRefCounted<DriverTransport>(
-      accept.TakeDriverObject(accept.params().transport));
+  DriverObject transport_object =
+      accept.TakeDriverObject(accept.params().transport);
+  if (!transport_object.is_valid()) {
+    return false;
+  }
+  auto transport = MakeRefCounted<DriverTransport>(std::move(transport_object));
   node()->AcceptIntroduction(
       *this, accept.params().name, accept.params().link_side,
       accept.params().remote_node_type, accept.params().remote_protocol_version,
@@ -702,8 +691,8 @@ bool NodeLink::OnAcceptBypassLink(msg::AcceptBypassLink& accept) {
     return true;
   }
 
-  auto link_state = MaybeAdoptFragmentRef<RouterLinkState>(
-      memory(), accept.params().new_link_state_fragment);
+  auto link_state = memory().AdoptFragmentRefIfValid<RouterLinkState>(
+      accept.params().new_link_state_fragment);
   if (link_state.is_null()) {
     // Bypass links must always come with a valid fragment for their
     // RouterLinkState. If one has not been provided, that's a validation
@@ -745,8 +734,8 @@ bool NodeLink::OnBypassPeerWithLink(msg::BypassPeerWithLink& bypass) {
     return true;
   }
 
-  auto link_state = MaybeAdoptFragmentRef<RouterLinkState>(
-      memory(), bypass.params().new_link_state_fragment);
+  auto link_state = memory().AdoptFragmentRefIfValid<RouterLinkState>(
+      bypass.params().new_link_state_fragment);
   if (link_state.is_null()) {
     return false;
   }

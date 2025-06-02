@@ -10,6 +10,8 @@ AxisTicker::AxisTicker(QQuickItem *parent) :
 {
 }
 
+AxisTicker::~AxisTicker() {}
+
 void AxisTicker::componentComplete()
 {
     QQuickShaderEffect::componentComplete();
@@ -66,17 +68,17 @@ void AxisTicker::setOrigo(int newOrigo)
     emit origoChanged();
 }
 
-bool AxisTicker::minorBarsVisible() const
+bool AxisTicker::subTicksVisible() const
 {
-    return m_minorBarsVisible;
+    return m_subTicksVisible;
 }
 
-void AxisTicker::setMinorBarsVisible(bool newMinorBarsVisible)
+void AxisTicker::setSubTicksVisible(bool newSubTicksVisible)
 {
-    if (m_minorBarsVisible == newMinorBarsVisible)
+    if (m_subTicksVisible == newSubTicksVisible)
         return;
-    m_minorBarsVisible = newMinorBarsVisible;
-    emit minorBarsVisibleChanged();
+    m_subTicksVisible = newSubTicksVisible;
+    emit subTicksVisibleChanged();
 }
 
 qreal AxisTicker::spacing() const
@@ -92,95 +94,95 @@ void AxisTicker::setSpacing(qreal newSpacing)
     emit spacingChanged();
 }
 
-qreal AxisTicker::barsMovement() const
+qreal AxisTicker::displacement() const
 {
-    return m_barsMovement;
+    return m_displacement;
 }
 
-void AxisTicker::setBarsMovement(qreal newBarsMovement)
+void AxisTicker::setDisplacement(qreal newDisplacement)
 {
-    if (qFuzzyCompare(m_barsMovement, newBarsMovement))
+    if (qFuzzyCompare(m_displacement, newDisplacement))
         return;
-    m_barsMovement = newBarsMovement;
-    emit barsMovementChanged();
+    m_displacement = newDisplacement;
+    emit displacementChanged();
 }
 
-QColor AxisTicker::minorColor() const
+QColor AxisTicker::subTickColor() const
 {
-    return m_minorColor;
+    return m_subTickColor;
 }
 
-void AxisTicker::setMinorColor(const QColor &newMinorColor)
+void AxisTicker::setSubTickColor(QColor newSubTickColor)
 {
-    if (m_minorColor == newMinorColor)
+    if (m_subTickColor == newSubTickColor)
         return;
-    m_minorColor = newMinorColor;
-    emit minorColorChanged();
+    m_subTickColor = newSubTickColor;
+    emit subTickColorChanged();
 }
 
-QColor AxisTicker::majorColor() const
+QColor AxisTicker::tickColor() const
 {
-    return m_majorColor;
+    return m_tickColor;
 }
 
-void AxisTicker::setMajorColor(const QColor &newMajorColor)
+void AxisTicker::setTickColor(QColor newTickColor)
 {
-    if (m_majorColor == newMajorColor)
+    if (m_tickColor == newTickColor)
         return;
-    m_majorColor = newMajorColor;
-    emit majorColorChanged();
+    m_tickColor = newTickColor;
+    emit tickColorChanged();
 }
 
-qreal AxisTicker::minorBarWidth() const
+qreal AxisTicker::subTickLineWidth() const
 {
-    return m_minorBarWidth;
+    return m_subTickLineWidth;
 }
 
-void AxisTicker::setMinorBarWidth(qreal newMinorBarWidth)
+void AxisTicker::setSubTickLineWidth(qreal newSubTickLineWidth)
 {
-    if (qFuzzyCompare(m_minorBarWidth, newMinorBarWidth))
+    if (qFuzzyCompare(m_subTickLineWidth, newSubTickLineWidth))
         return;
-    m_minorBarWidth = newMinorBarWidth;
-    emit minorBarWidthChanged();
+    m_subTickLineWidth = newSubTickLineWidth;
+    emit subTickLineWidthChanged();
 }
 
-qreal AxisTicker::majorBarWidth() const
+qreal AxisTicker::tickLineWidth() const
 {
-    return m_majorBarWidth;
+    return m_tickLineWidth;
 }
 
-void AxisTicker::setMajorBarWidth(qreal newMajorBarWidth)
+void AxisTicker::setTickLineWidth(qreal newTickLineWidth)
 {
-    if (qFuzzyCompare(m_majorBarWidth, newMajorBarWidth))
+    if (qFuzzyCompare(m_tickLineWidth, newTickLineWidth))
         return;
-    m_majorBarWidth = newMajorBarWidth;
-    emit majorBarWidthChanged();
+    m_tickLineWidth = newTickLineWidth;
+    emit tickLineWidthChanged();
 }
 
-qreal AxisTicker::minorTickScale() const
+qreal AxisTicker::subTickScale() const
 {
-    return m_minorTickScale;
+    return m_subTickScale;
 }
 
-void AxisTicker::setMinorTickScale(qreal newMinorTickScale)
+void AxisTicker::setSubTickScale(qreal newSubTickScale)
 {
-    if (qFuzzyCompare(m_minorTickScale, newMinorTickScale))
+    if (qFuzzyCompare(m_subTickScale, newSubTickScale))
         return;
-    m_minorTickScale = newMinorTickScale;
-    emit minorTickScaleChanged();
+    m_subTickScale = newSubTickScale;
+    emit subTickScaleChanged();
 }
 
-qreal AxisTicker::minorBarsLength() const
+qreal AxisTicker::subTickLength() const
 {
-    return m_minorBarsLength;
+    return m_subTickLength;
 }
 
-void AxisTicker::setMinorBarsLength(qreal newMinorBarsLength)
+void AxisTicker::setSubTickLength(qreal newSubTickLength)
 {
-    if (qFuzzyCompare(m_minorBarsLength, newMinorBarsLength))
+    if (qFuzzyCompare(m_subTickLength, newSubTickLength))
         return;
-    m_minorBarsLength = newMinorBarsLength;
-    emit minorBarsLengthChanged();
+    m_subTickLength = newSubTickLength;
+    emit subTickLengthChanged();
 }
 
 bool AxisTicker::isHorizontal() const
@@ -195,6 +197,19 @@ void AxisTicker::setIsHorizontal(bool newIsHorizontal)
     m_isHorizontal = newIsHorizontal;
     setupShaders();
     emit isHorizontalChanged();
+}
+
+bool AxisTicker::isFlipped() const
+{
+    return m_flipped;
+}
+
+void AxisTicker::setFlipped(bool newFlipped)
+{
+    if (m_flipped == newFlipped)
+        return;
+    m_flipped = newFlipped;
+    emit flippedChanged();
 }
 
 QT_END_NAMESPACE

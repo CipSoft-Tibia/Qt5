@@ -72,7 +72,8 @@ member class=ui::InputDevice id=1
  name=""
  phys=""
  enabled=1
- suspected_imposter=0
+ suspected_keyboard_imposter=0
+ suspected_mouse_imposter=0
  sys_path=""
  vendor_id=0000
  product_id=0000
@@ -93,7 +94,8 @@ member class=ui::InputDevice id=1
  name="Logitech USB Keyboard"
  phys=""
  enabled=1
- suspected_imposter=0
+ suspected_keyboard_imposter=0
+ suspected_mouse_imposter=0
  sys_path=""
  vendor_id=046D
  product_id=C31C
@@ -114,7 +116,8 @@ member class=ui::InputDevice id=1
  name="PRP0001:00"
  phys=""
  enabled=1
- suspected_imposter=0
+ suspected_keyboard_imposter=0
+ suspected_mouse_imposter=0
  sys_path=""
  vendor_id=0001
  product_id=0001
@@ -135,7 +138,8 @@ member class=ui::InputDevice id=1
  name="ELAN2703:00 04F3:323B Touchpad"
  phys=""
  enabled=1
- suspected_imposter=0
+ suspected_keyboard_imposter=0
+ suspected_mouse_imposter=0
  sys_path=""
  vendor_id=04F3
  product_id=323B
@@ -546,70 +550,6 @@ TEST_F(EventConverterEvdevImplTest, MouseButton) {
   EXPECT_EQ(true, event->IsLeftMouseButton());
 }
 
-// Test that BTN_BACK and BTN_SIDE are treated as the same button.
-TEST_F(EventConverterEvdevImplTest, MouseBackButton) {
-  ui::MockEventConverterEvdevImpl* dev = device();
-
-  struct input_event mock_kernel_queue[] = {
-      {{0, 0}, EV_KEY, BTN_SIDE, 1},
-      {{0, 0}, EV_SYN, SYN_REPORT, 0},
-
-      {{0, 0}, EV_KEY, BTN_BACK, 1},
-      {{0, 0}, EV_SYN, SYN_REPORT, 0},
-
-      {{0, 0}, EV_KEY, BTN_SIDE, 0},
-      {{0, 0}, EV_SYN, SYN_REPORT, 0},
-
-      {{0, 0}, EV_KEY, BTN_BACK, 0},
-      {{0, 0}, EV_SYN, SYN_REPORT, 0}
-  };
-
-  dev->ProcessEvents(mock_kernel_queue, std::size(mock_kernel_queue));
-  EXPECT_EQ(2u, size());
-
-  ui::MouseEvent* event = nullptr;
-
-  event = dispatched_mouse_event(0);
-  EXPECT_EQ(ui::ET_MOUSE_PRESSED, event->type());
-  EXPECT_EQ(ui::EF_BACK_MOUSE_BUTTON, event->changed_button_flags());
-
-  event = dispatched_mouse_event(1);
-  EXPECT_EQ(ui::ET_MOUSE_RELEASED, event->type());
-  EXPECT_EQ(ui::EF_BACK_MOUSE_BUTTON, event->changed_button_flags());
-}
-
-// Test that BTN_FORWARD and BTN_EXTRA are treated as the same button.
-TEST_F(EventConverterEvdevImplTest, MouseForwardButton) {
-  ui::MockEventConverterEvdevImpl* dev = device();
-
-  struct input_event mock_kernel_queue[] = {
-      {{0, 0}, EV_KEY, BTN_FORWARD, 1},
-      {{0, 0}, EV_SYN, SYN_REPORT, 0},
-
-      {{0, 0}, EV_KEY, BTN_EXTRA, 1},
-      {{0, 0}, EV_SYN, SYN_REPORT, 0},
-
-      {{0, 0}, EV_KEY, BTN_EXTRA, 0},
-      {{0, 0}, EV_SYN, SYN_REPORT, 0},
-
-      {{0, 0}, EV_KEY, BTN_FORWARD, 0},
-      {{0, 0}, EV_SYN, SYN_REPORT, 0}
-  };
-
-  dev->ProcessEvents(mock_kernel_queue, std::size(mock_kernel_queue));
-  EXPECT_EQ(2u, size());
-
-  ui::MouseEvent* event = nullptr;
-
-  event = dispatched_mouse_event(0);
-  EXPECT_EQ(ui::ET_MOUSE_PRESSED, event->type());
-  EXPECT_EQ(ui::EF_FORWARD_MOUSE_BUTTON, event->changed_button_flags());
-
-  event = dispatched_mouse_event(1);
-  EXPECT_EQ(ui::ET_MOUSE_RELEASED, event->type());
-  EXPECT_EQ(ui::EF_FORWARD_MOUSE_BUTTON, event->changed_button_flags());
-}
-
 TEST_F(EventConverterEvdevImplTest, MouseMove) {
   ui::MockEventConverterEvdevImpl* dev = device();
 
@@ -991,16 +931,29 @@ TEST_F(EventConverterEvdevImplLogTest, ChangeEnabled) {
   EXPECT_EQ(output.str(), log);
 }
 
-TEST_F(EventConverterEvdevImplLogTest, ChangeImposter) {
+TEST_F(EventConverterEvdevImplLogTest, ChangeKeyboardImposter) {
   ui::EventDeviceInfo devinfo;
   SetUpDevice(devinfo);
 
-  device()->SetSuspectedImposter(true);
+  device()->SetSuspectedKeyboardImposter(true);
+
+  std::stringstream output;
+  device()->DescribeForLog(output);
+  std::string log = LogSubst(kDefaultDeviceLogDescription,
+                             "suspected_keyboard_imposter", "1");
+  EXPECT_EQ(output.str(), log);
+}
+
+TEST_F(EventConverterEvdevImplLogTest, ChangeMouseImposter) {
+  ui::EventDeviceInfo devinfo;
+  SetUpDevice(devinfo);
+
+  device()->SetSuspectedMouseImposter(true);
 
   std::stringstream output;
   device()->DescribeForLog(output);
   std::string log =
-      LogSubst(kDefaultDeviceLogDescription, "suspected_imposter", "1");
+      LogSubst(kDefaultDeviceLogDescription, "suspected_mouse_imposter", "1");
   EXPECT_EQ(output.str(), log);
 }
 

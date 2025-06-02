@@ -7,16 +7,24 @@
 
 #include "quiche/quic/core/quic_generic_session.h"
 
+#include <cstddef>
+#include <cstring>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "quiche/quic/core/crypto/quic_compressed_certs_cache.h"
 #include "quiche/quic/core/crypto/quic_crypto_client_config.h"
 #include "quiche/quic/core/crypto/quic_crypto_server_config.h"
+#include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/quic_connection.h"
+#include "quiche/quic/core/quic_constants.h"
 #include "quiche/quic/core/quic_datagram_queue.h"
 #include "quiche/quic/core/quic_error_codes.h"
 #include "quiche/quic/core/quic_types.h"
+#include "quiche/quic/core/web_transport_interface.h"
 #include "quiche/quic/platform/api/quic_test.h"
 #include "quiche/quic/test_tools/crypto_test_utils.h"
 #include "quiche/quic/test_tools/quic_session_peer.h"
@@ -25,6 +33,8 @@
 #include "quiche/quic/test_tools/simulator/test_harness.h"
 #include "quiche/quic/test_tools/web_transport_test_tools.h"
 #include "quiche/quic/tools/web_transport_test_visitors.h"
+#include "quiche/common/quiche_stream.h"
+#include "quiche/common/test_tools/quiche_test_utils.h"
 #include "quiche/web_transport/web_transport.h"
 
 namespace quic::test {
@@ -41,7 +51,7 @@ using testing::Eq;
 class CountingDatagramObserver : public QuicDatagramQueue::Observer {
  public:
   CountingDatagramObserver(int& total) : total_(total) {}
-  void OnDatagramProcessed(absl::optional<MessageStatus>) { ++total_; }
+  void OnDatagramProcessed(std::optional<MessageStatus>) { ++total_; }
 
  private:
   int& total_;
@@ -61,6 +71,8 @@ class ClientEndpoint : public simulator::QuicEndpointWithConnection {
                      total_datagrams_processed_),
                  &crypto_config_) {
     session_.Initialize();
+    session_.connection()->sent_packet_manager().SetSendAlgorithm(
+        CongestionControlType::kBBRv2);
     EXPECT_CALL(visitor_, OnSessionReady())
         .Times(AtMost(1))
         .WillOnce(Assign(&session_ready_, true));
@@ -106,6 +118,8 @@ class ServerEndpoint : public simulator::QuicEndpointWithConnection {
                  /*datagram_observer=*/nullptr, &crypto_config_,
                  &compressed_certs_cache_) {
     session_.Initialize();
+    session_.connection()->sent_packet_manager().SetSendAlgorithm(
+        CongestionControlType::kBBRv2);
   }
 
   QuicGenericServerSession* session() { return &session_; }
@@ -251,6 +265,76 @@ TEST_F(QuicGenericSessionTest, EchoUnidirectionalStreams) {
   EXPECT_EQ(buffer, "Stream One");
 }
 
+TEST_F(QuicGenericSessionTest, EchoStreamsUsingPeekApi) {
+  CreateDefaultEndpoints(kEchoServer);
+  WireUpEndpoints();
+  RunHandshake();
+
+  // Send two streams, a bidirectional and a unidirectional one, but only send
+  // FIN on the second one.
+  webtransport::Stream* stream1 =
+      client_->session()->OpenOutgoingBidirectionalStream();
+  EXPECT_TRUE(stream1->Write("Stream One"));
+  webtransport::Stream* stream2 =
+      client_->session()->OpenOutgoingUnidirectionalStream();
+  EXPECT_TRUE(stream2->Write("Stream Two"));
+  EXPECT_TRUE(stream2->SendFin());
+
+  // Wait until the unidirectional stream is received back.
+  bool stream_received_unidi = false;
+  EXPECT_CALL(*client_->visitor(), OnIncomingUnidirectionalStreamAvailable())
+      .WillOnce(Assign(&stream_received_unidi, true));
+  ASSERT_TRUE(test_harness_.RunUntilWithDefaultTimeout(
+      [&]() { return stream_received_unidi; }));
+
+  // Receive the unidirectional echo reply.
+  webtransport::Stream* reply =
+      client_->session()->AcceptIncomingUnidirectionalStream();
+  ASSERT_TRUE(reply != nullptr);
+  std::string buffer;
+  quiche::ReadStream::PeekResult peek_result = reply->PeekNextReadableRegion();
+  EXPECT_EQ(peek_result.peeked_data, "Stream Two");
+  EXPECT_EQ(peek_result.fin_next, false);
+  EXPECT_EQ(peek_result.all_data_received, true);
+  bool fin_received =
+      quiche::ProcessAllReadableRegions(*reply, [&](absl::string_view chunk) {
+        buffer.append(chunk.data(), chunk.size());
+        return true;
+      });
+  EXPECT_TRUE(fin_received);
+  EXPECT_EQ(buffer, "Stream Two");
+
+  // Receive the bidirectional stream reply without a FIN.
+  ASSERT_TRUE(test_harness_.RunUntilWithDefaultTimeout(
+      [&]() { return stream1->PeekNextReadableRegion().has_data(); }));
+  peek_result = stream1->PeekNextReadableRegion();
+  EXPECT_EQ(peek_result.peeked_data, "Stream One");
+  EXPECT_EQ(peek_result.fin_next, false);
+  EXPECT_EQ(peek_result.all_data_received, false);
+  fin_received = stream1->SkipBytes(strlen("Stream One"));
+  EXPECT_FALSE(fin_received);
+  peek_result = stream1->PeekNextReadableRegion();
+  EXPECT_EQ(peek_result.peeked_data, "");
+  EXPECT_EQ(peek_result.fin_next, false);
+  EXPECT_EQ(peek_result.all_data_received, false);
+
+  // Send FIN on the first stream, and expect to receive it back.
+  EXPECT_TRUE(stream1->SendFin());
+  ASSERT_TRUE(test_harness_.RunUntilWithDefaultTimeout(
+      [&]() { return stream1->PeekNextReadableRegion().all_data_received; }));
+  peek_result = stream1->PeekNextReadableRegion();
+  EXPECT_EQ(peek_result.peeked_data, "");
+  EXPECT_EQ(peek_result.fin_next, true);
+  EXPECT_EQ(peek_result.all_data_received, true);
+
+  // Read FIN and expect the stream to get garbage collected.
+  webtransport::StreamId id = stream1->GetStreamId();
+  EXPECT_TRUE(client_->session()->GetStreamById(id) != nullptr);
+  fin_received = stream1->SkipBytes(0);
+  EXPECT_TRUE(fin_received);
+  EXPECT_TRUE(client_->session()->GetStreamById(id) == nullptr);
+}
+
 TEST_F(QuicGenericSessionTest, EchoDatagram) {
   CreateDefaultEndpoints(kEchoServer);
   WireUpEndpoints();
@@ -319,6 +403,68 @@ TEST_F(QuicGenericSessionTest, OutgoingStreamFlowControlBlocked) {
   ASSERT_TRUE(test_harness_.RunUntilWithDefaultTimeout(
       [&can_create_new_stream]() { return can_create_new_stream; }));
   EXPECT_TRUE(client_->session()->CanOpenNextOutgoingUnidirectionalStream());
+}
+
+TEST_F(QuicGenericSessionTest, ExpireDatagrams) {
+  CreateDefaultEndpoints(kEchoServer);
+  WireUpEndpoints();
+  RunHandshake();
+
+  // Set the datagrams to expire very soon.
+  client_->session()->SetDatagramMaxTimeInQueue(
+      (0.2 * simulator::TestHarness::kRtt).ToAbsl());
+  for (int i = 0; i < 1000; i++) {
+    client_->session()->SendOrQueueDatagram(std::string(
+        client_->session()->GetGuaranteedLargestMessagePayload(), 'a'));
+  }
+
+  size_t received = 0;
+  EXPECT_CALL(*client_->visitor(), OnDatagramReceived(_))
+      .WillRepeatedly(
+          [&received](absl::string_view /*datagram*/) { received++; });
+  ASSERT_TRUE(test_harness_.simulator().RunUntilOrTimeout(
+      [this]() { return client_->total_datagrams_processed() >= 1000; },
+      3 * simulator::TestHarness::kServerBandwidth.TransferTime(
+              1000 * kMaxOutgoingPacketSize)));
+  // Allow extra round-trips for the final flight of datagrams to arrive back.
+  test_harness_.simulator().RunFor(2 * simulator::TestHarness::kRtt);
+  EXPECT_LT(received, 500);
+  EXPECT_EQ(received + client_->session()->GetDatagramStats().expired_outgoing,
+            1000);
+}
+
+TEST_F(QuicGenericSessionTest, LoseDatagrams) {
+  CreateDefaultEndpoints(kEchoServer);
+  test_harness_.WireUpEndpointsWithLoss(/*lose_every_n=*/4);
+  RunHandshake();
+
+  // Set the datagrams to effectively never expire.
+  client_->session()->SetDatagramMaxTimeInQueue(
+      (10000 * simulator::TestHarness::kRtt).ToAbsl());
+  for (int i = 0; i < 1000; i++) {
+    client_->session()->SendOrQueueDatagram(std::string(
+        client_->session()->GetGuaranteedLargestMessagePayload(), 'a'));
+  }
+
+  size_t received = 0;
+  EXPECT_CALL(*client_->visitor(), OnDatagramReceived(_))
+      .WillRepeatedly(
+          [&received](absl::string_view /*datagram*/) { received++; });
+  ASSERT_TRUE(test_harness_.simulator().RunUntilOrTimeout(
+      [this]() { return client_->total_datagrams_processed() >= 1000; },
+      4 * simulator::TestHarness::kServerBandwidth.TransferTime(
+              1000 * kMaxOutgoingPacketSize)));
+  // Allow extra round-trips for the final flight of datagrams to arrive back.
+  test_harness_.simulator().RunFor(4 * simulator::TestHarness::kRtt);
+
+  QuicPacketCount client_lost =
+      client_->session()->GetDatagramStats().lost_outgoing;
+  QuicPacketCount server_lost =
+      server_->session()->GetDatagramStats().lost_outgoing;
+  EXPECT_LT(received, 800u);
+  EXPECT_GT(client_lost, 100u);
+  EXPECT_GT(server_lost, 100u);
+  EXPECT_EQ(received + client_lost + server_lost, 1000u);
 }
 
 }  // namespace

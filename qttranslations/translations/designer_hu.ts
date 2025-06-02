@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU">
-    <extra-po-header-language>hu</extra-po-header-language>
-    <extra-po-header-language_team>Hungarian &lt;kde-l10n-hu@kde.org&gt;</extra-po-header-language_team>
-    <extra-po-header-last_translator>Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header-last_translator>
-    <extra-po-header-po_revision_date>2024-02-07 22:23+0100</extra-po-header-po_revision_date>
-    <extra-po-header-project_id_version></extra-po-header-project_id_version>
-    <extra-po-header-x_generator>Lokalize 23.08.4</extra-po-header-x_generator>
-    <extra-po-header_comment># SPDX-FileCopyrightText: 2024 Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header_comment>
-    <extra-po-headers>MIME-Version,Content-Type,Content-Transfer-Encoding,Plural-Forms,X-Language,X-Qt-Contexts,Last-Translator,PO-Revision-Date,Project-Id-Version,Language-Team,Language,X-Generator</extra-po-headers>
 <context>
     <name>AbstractFindWidget</name>
     <message>
@@ -633,6 +625,10 @@
 <context>
     <name>Designer</name>
     <message>
+        <source>%1 does not exist.</source>
+        <translation>A(z) %1 nem létezik.</translation>
+    </message>
+    <message>
         <source>Unable to launch %1: %2</source>
         <translation>A(z) %1 nem indítható el: %2</translation>
     </message>
@@ -650,7 +646,11 @@
     </message>
     <message>
         <source>Qt Designer</source>
-        <translation>Qt Tervező</translation>
+        <translation type="vanished">Qt Tervező</translation>
+    </message>
+    <message>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file cannot be read because the extra info extension failed to load.</source>
@@ -1167,8 +1167,12 @@
         <translation>Űrlap</translation>
     </message>
     <message>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
+    </message>
+    <message>
         <source>Qt Designer</source>
-        <translation>Qt Tervező</translation>
+        <translation type="vanished">Qt Tervező</translation>
     </message>
 </context>
 <context>
@@ -1521,8 +1525,16 @@ Ez következetlenséget jelez a felhasználói felület fájlban.</translation>
         <translation>CTRL+M</translation>
     </message>
     <message>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
+    </message>
+    <message>
+        <source>The backup file %1 could not be written: %2</source>
+        <translation>A(z) %1 tartalékfájl írása nem sikerült: %2</translation>
+    </message>
+    <message>
         <source>Qt Designer &amp;Help</source>
-        <translation>Qt Tervező &amp;súgó</translation>
+        <translation type="vanished">Qt Tervező &amp;súgó</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1534,7 +1546,7 @@ Ez következetlenséget jelez a felhasználói felület fájlban.</translation>
     </message>
     <message>
         <source>About Qt Designer</source>
-        <translation>A Qt Tervező névjegye</translation>
+        <translation type="vanished">A Qt Tervező névjegye</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1569,6 +1581,14 @@ Ez következetlenséget jelez a felhasználói felület fájlban.</translation>
         <translation>&amp;Python kód megtekintése…</translation>
     </message>
     <message>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>A Qt Widgets Designer &amp;súgója</translation>
+    </message>
+    <message>
+        <source>About Qt Widgets Designer</source>
+        <translation>A Qt Widgets Designer névjegye</translation>
+    </message>
+    <message>
         <source>Designer</source>
         <translation>Tervező</translation>
     </message>
@@ -1600,7 +1620,7 @@ Frissíteni szeretné a fájl helyét, vagy előállít egy új űrlapot?</trans
     </message>
     <message>
         <source>Qt Designer</source>
-        <translation>Qt Tervező</translation>
+        <translation type="vanished">Qt Tervező</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -1646,7 +1666,7 @@ Ok: %2</translation>
     </message>
     <message>
         <source>The backup file %1 could not be written.</source>
-        <translation>A(z) %1 biztonsági mentés fájlt nem sikerült kiírni.</translation>
+        <translation type="vanished">A(z) %1 biztonsági mentés fájlt nem sikerült kiírni.</translation>
     </message>
     <message>
         <source>The backup directory %1 could not be created.</source>
@@ -1654,7 +1674,7 @@ Ok: %2</translation>
     </message>
     <message>
         <source>The temporary backup directory %1 could not be created.</source>
-        <translation>A(z) %1 átmeneti biztonsági másolat könyvtárat nem sikerült létrehozni.</translation>
+        <translation type="vanished">A(z) %1 átmeneti biztonsági másolat könyvtárat nem sikerült létrehozni.</translation>
     </message>
     <message>
         <source>Preview failed</source>
@@ -3365,16 +3385,28 @@ Szeretné felülírni a sablont?</translation>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;%2. verzió</translation>
     </message>
     <message>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
+    </message>
+    <message>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;A Qt Widgets Designer egy tervező Qt alkalmazások grafikus felhasználói felületeihez.&lt;br/&gt;</translation>
+    </message>
+    <message>
+        <source>%1&lt;br/&gt;Copyright (C) The Qt Company Ltd. and other contributors.</source>
+        <translation>%1&lt;br/&gt;Copyright (C) A The Qt Company Ltd. és más közreműködők.</translation>
+    </message>
+    <message>
         <source>Qt Designer</source>
-        <translation>Qt Tervező</translation>
+        <translation type="vanished">Qt Tervező</translation>
     </message>
     <message>
         <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;A Qt Tervező egy grafikus felhasználói felület tervező a Qt alkalmazásokhoz.&lt;br/&gt;</translation>
+        <translation type="vanished">&lt;br/&gt;A Qt Tervező egy grafikus felhasználói felület tervező a Qt alkalmazásokhoz.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
-        <translation>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</translation>
+        <translation type="vanished">%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</translation>
     </message>
 </context>
 <context>
@@ -3817,7 +3849,7 @@ Szeretné felülírni a sablont?</translation>
     </message>
     <message>
         <source>[Theme] %1</source>
-        <translation>[Téma] %1</translation>
+        <translation type="vanished">[Téma] %1</translation>
     </message>
     <message>
         <source>Horizontal</source>
@@ -3830,6 +3862,10 @@ Szeretné felülírni a sablont?</translation>
     <message>
         <source>Theme</source>
         <translation>Téma</translation>
+    </message>
+    <message>
+        <source>XDG Theme</source>
+        <translation>XDG-téma</translation>
     </message>
     <message>
         <source>Normal Off</source>
@@ -4337,15 +4373,23 @@ Szeretné felülírni a sablont?</translation>
     <name>qdesigner_internal::IconThemeDialog</name>
     <message>
         <source>Set Icon From Theme</source>
-        <translation>Ikon beállítása témából</translation>
+        <translation type="vanished">Ikon beállítása témából</translation>
     </message>
     <message>
         <source>Select icon name from theme:</source>
-        <translation>Ikonnév kiválasztása témából:</translation>
+        <translation type="vanished">Ikonnév kiválasztása témából:</translation>
     </message>
     <message>
         <source>Input icon name from the current theme:</source>
         <translation type="vanished">Adja meg az ikon nevét a jelenlegi témából:</translation>
+    </message>
+    <message>
+        <source>Set Icon From XDG Theme</source>
+        <translation>Ikon beállítása XDG-témából</translation>
+    </message>
+    <message>
+        <source>Select icon name from XDG theme:</source>
+        <translation>Ikonnév kiválasztása XDG-témából:</translation>
     </message>
 </context>
 <context>
@@ -4503,7 +4547,7 @@ Szeretné felülírni a sablont?</translation>
     </message>
     <message>
         <source>Icon th&amp;eme:</source>
-        <translation>Ikon &amp;téma:</translation>
+        <translation type="vanished">Ikon &amp;téma:</translation>
     </message>
     <message>
         <source>&amp;Icon:</source>
@@ -4520,6 +4564,14 @@ Szeretné felülírni a sablont?</translation>
     <message>
         <source>&amp;Menu role:</source>
         <translation>&amp;Menü szerepkör:</translation>
+    </message>
+    <message>
+        <source>Icon &amp;XDG theme:</source>
+        <translation>Ikon &amp;XDG-témája:</translation>
+    </message>
+    <message>
+        <source>Icon &amp;theme:</source>
+        <translation>Ikon&amp;téma:</translation>
     </message>
 </context>
 <context>
@@ -4850,6 +4902,10 @@ Válasszon egy másik nevet.</translation>
         <translation>Ikon beállítása témából…</translation>
     </message>
     <message>
+        <source>Set Icon From XDG Theme...</source>
+        <translation>Ikon beállítása XDG-témából…</translation>
+    </message>
+    <message>
         <source>Copy Path</source>
         <translation>Útvonal másolása</translation>
     </message>
@@ -4864,6 +4920,14 @@ Válasszon egy másik nevet.</translation>
     <message>
         <source>[Theme] %1</source>
         <translation>[Téma] %1</translation>
+    </message>
+    <message>
+        <source>[Theme] %1 (missing)</source>
+        <translation>[Téma] %1 (hiányzik)</translation>
+    </message>
+    <message>
+        <source>%1 (fallback)</source>
+        <translation>%1 tartalék</translation>
     </message>
 </context>
 <context>
@@ -4900,12 +4964,20 @@ Válasszon egy másik nevet.</translation>
         <translation>Hibás bővítmények</translation>
     </message>
     <message>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>A Qt Widgets Designer nem talált egyetlen bővítményt sem</translation>
+    </message>
+    <message>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>A Qt Widgets Designer a következő bővítményeket találta</translation>
+    </message>
+    <message>
         <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>A Qt Tervező nem talált semmilyen bővítményt</translation>
+        <translation type="vanished">A Qt Tervező nem talált semmilyen bővítményt</translation>
     </message>
     <message>
         <source>Qt Designer found the following plugins</source>
-        <translation>A Qt Tervező a következő bővítményeket találta</translation>
+        <translation type="vanished">A Qt Tervező a következő bővítményeket találta</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>
@@ -6154,6 +6226,17 @@ Ez a felhasználói felület fájlban lévő következetlenséget jelzi.</transl
     <message>
         <source>%1 Widget</source>
         <translation type="vanished">%1 felületi elem</translation>
+    </message>
+</context>
+<context>
+    <name>qdesigner_internal::IconThemeEnumDialog</name>
+    <message>
+        <source>Set Icon From Theme</source>
+        <translation>Ikon beállítása témából</translation>
+    </message>
+    <message>
+        <source>Select icon name from theme:</source>
+        <translation>Ikonnév kiválasztása témából:</translation>
     </message>
 </context>
 </TS>

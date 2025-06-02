@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <random>
 #include <vector>
 
@@ -53,18 +54,25 @@ static void xnnpack_softmax_qu8(benchmark::State& state) {
     return;
   }
 
-  status = xnn_setup_softmax_nc_qu8(
+  status = xnn_reshape_softmax_nc_qu8(
     softmax_op,
     batch_size,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+    /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape SoftMax operator");
+    return;
+  }
+
+  status = xnn_setup_softmax_nc_qu8(
+    softmax_op,
+    input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup SoftMax operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(softmax_op, nullptr /* thread pool */);
+    status = xnn_run_operator(softmax_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run SoftMax operator");
       return;
@@ -119,18 +127,25 @@ static void xnnpack_softmax_f32(benchmark::State& state) {
     return;
   }
 
-  status = xnn_setup_softmax_nc_f32(
+  status = xnn_reshape_softmax_nc_f32(
     softmax_op,
     batch_size,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+    /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape SoftMax operator");
+    return;
+  }
+
+  status = xnn_setup_softmax_nc_f32(
+    softmax_op,
+    input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup SoftMax operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(softmax_op, nullptr /* thread pool */);
+    status = xnn_run_operator(softmax_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run SoftMax operator");
       return;

@@ -1,19 +1,34 @@
-// Copyright 2021 The Dawn Authors
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/dawn/node/binding/GPUAdapter.h"
 
+#include <limits>
+#include <memory>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -33,6 +48,7 @@
     X(maxTextureDimension3D)                     \
     X(maxTextureArrayLayers)                     \
     X(maxBindGroups)                             \
+    X(maxBindGroupsPlusVertexBuffers)            \
     X(maxBindingsPerBindGroup)                   \
     X(maxDynamicUniformBuffersPerPipelineLayout) \
     X(maxDynamicStorageBuffersPerPipelineLayout) \
@@ -50,6 +66,7 @@
     X(maxVertexAttributes)                       \
     X(maxVertexBufferArrayStride)                \
     X(maxInterStageShaderComponents)             \
+    X(maxInterStageShaderVariables)              \
     X(maxColorAttachments)                       \
     X(maxColorAttachmentBytesPerSample)          \
     X(maxComputeWorkgroupStorageSize)            \
@@ -109,7 +126,6 @@ interop::Promise<interop::Interface<interop::GPUDevice>> GPUAdapter::requestDevi
     Napi::Env env,
     interop::GPUDeviceDescriptor descriptor) {
     wgpu::DeviceDescriptor desc{};  // TODO(crbug.com/dawn/1133): Fill in.
-    interop::Promise<interop::Interface<interop::GPUDevice>> promise(env, PROMISE_INFO);
 
     Converter conv(env);
     std::vector<wgpu::FeatureName> requiredFeatures;
@@ -119,22 +135,30 @@ interop::Promise<interop::Interface<interop::GPUDevice>> GPUAdapter::requestDevi
         // requiredFeatures is a "sequence<GPUFeatureName>" so a Javascript exception should be
         // thrown if one of the strings isn't one of the known features.
         if (!conv(feature, required)) {
-            Napi::Error::New(env, "invalid value for GPUFeatureName").ThrowAsJavaScriptException();
-            return promise;
+            return {env, interop::kUnusedPromise};
         }
 
         requiredFeatures.emplace_back(feature);
     }
     if (!conv(desc.label, descriptor.label)) {
-        Napi::Error::New(env, "invalid value for label").ThrowAsJavaScriptException();
-        return promise;
+        return {env, interop::kUnusedPromise};
     }
 
+    interop::Promise<interop::Interface<interop::GPUDevice>> promise(env, PROMISE_INFO);
+
     wgpu::RequiredLimits limits;
-#define COPY_LIMIT(LIMIT)                                        \
-    if (descriptor.requiredLimits.count(#LIMIT)) {               \
-        limits.limits.LIMIT = descriptor.requiredLimits[#LIMIT]; \
-        descriptor.requiredLimits.erase(#LIMIT);                 \
+#define COPY_LIMIT(LIMIT)                                                                    \
+    if (descriptor.requiredLimits.count(#LIMIT)) {                                           \
+        using DawnLimitType = decltype(WGPULimits::LIMIT);                                   \
+        DawnLimitType* dawnLimit = &limits.limits.LIMIT;                                     \
+        uint64_t jsLimit = descriptor.requiredLimits[#LIMIT];                                \
+        if (jsLimit > std::numeric_limits<DawnLimitType>::max() - 1) {                       \
+            promise.Reject(                                                                  \
+                binding::Errors::OperationError(env, "Limit \"" #LIMIT "\" out of range.")); \
+            return promise;                                                                  \
+        }                                                                                    \
+        *dawnLimit = jsLimit;                                                                \
+        descriptor.requiredLimits.erase(#LIMIT);                                             \
     }
     FOR_EACH_LIMIT(COPY_LIMIT)
 #undef COPY_LIMIT
@@ -154,17 +178,24 @@ interop::Promise<interop::Interface<interop::GPUDevice>> GPUAdapter::requestDevi
     desc.nextInChain = &deviceTogglesDesc;
 
     auto wgpu_device = adapter_.CreateDevice(&desc);
-    if (wgpu_device) {
-        promise.Resolve(interop::GPUDevice::Create<GPUDevice>(env, env, desc, wgpu_device));
-    } else {
+    if (wgpu_device == nullptr) {
         promise.Reject(binding::Errors::OperationError(env, "failed to create device"));
+        return promise;
     }
+
+    auto gpu_device = std::make_unique<GPUDevice>(env, desc, wgpu_device);
+    if (!valid_) {
+        gpu_device->ForceLoss(interop::GPUDeviceLostReason::kUnknown,
+                              "Device was marked as lost due to a stale adapter.");
+    }
+    valid_ = false;
+
+    promise.Resolve(interop::GPUDevice::Bind(env, std::move(gpu_device)));
     return promise;
 }
 
 interop::Promise<interop::Interface<interop::GPUAdapterInfo>> GPUAdapter::requestAdapterInfo(
-    Napi::Env env,
-    std::vector<std::string> unmaskHints) {
+    Napi::Env env) {
     interop::Promise<interop::Interface<interop::GPUAdapterInfo>> promise(env, PROMISE_INFO);
 
     WGPUAdapterProperties adapterProperties = {};

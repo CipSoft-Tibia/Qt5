@@ -26,6 +26,18 @@ export function assertExists<A>(
 }
 
 /**
+ * Asserts that `condition` is true and throws an error otherwise.
+ *
+ * NOTE: unlike the internal counterpart this ALWAYS throws an error when given
+ * null or undefined. This is not compiled out for prod.
+ */
+export function assert(condition: boolean, msg: string) {
+  if (!condition) {
+    throw new Error(`Assertion Error: ${msg}`);
+  }
+}
+
+/**
  * Asserts that `arg` is not null and returns it. If `arg` is null, throws an
  * error with `msg`.
  *
@@ -72,4 +84,50 @@ export function shouldProcessClick(event: MouseEvent) {
     return false;
   }
   return true;
+}
+
+/**
+ * Returns the chain of active elements. This is the actual activeElement,
+ * preceeded by all the containers with shadowroots.
+ */
+export function shadowPiercingActiveElements(): Element[] {
+  let activeElement = document.activeElement;
+  const activeElements = activeElement ? [activeElement] : [];
+  while (activeElement && activeElement.shadowRoot) {
+    activeElement = activeElement.shadowRoot.activeElement;
+    if (activeElement) activeElements.push(activeElement);
+  }
+  return activeElements;
+}
+
+/**
+ * Returns the innermost activeElement with type `tag`, or null if there is no
+ * activeElement of this type.
+ */
+export function shadowPiercingActiveElement(tag: keyof HTMLElementTagNameMap):
+    HTMLElementTagNameMap[typeof tag]|null {
+  const upperTag = tag.toUpperCase();
+  const chain = shadowPiercingActiveElements();
+  for (const el of chain.reverse()) {
+    if (el.tagName === upperTag) return el as HTMLElementTagNameMap[typeof tag];
+  }
+  return null;
+}
+
+/**
+ * True if the page is read right-to-left. Do not assume this calculation is
+ * cheap.
+ */
+export function isRTL(el: HTMLElement): boolean {
+  // Search for the closest ancestor with a direction.
+  let dirEl: typeof el|null = el;
+  while (dirEl && !dirEl.dir) {
+    dirEl = dirEl.parentElement;
+  }
+
+  if (dirEl && dirEl.dir) {
+    return dirEl.dir === 'rtl';
+  } else {
+    return document.documentElement.dir === 'rtl';
+  }
 }

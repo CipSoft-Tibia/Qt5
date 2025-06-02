@@ -25,93 +25,65 @@ set(API_TYPE "vulkan")
 
 add_subdirectory(scripts)
 
-# User-interface declarations ----------------------------------------------------------------------------------------------------
-# This section contains variables that affect development GUIs (e.g. CMake GUI and IDEs), such as option(), folders, and variables
-# with the CACHE property.
-
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
+set(CMAKE_C_VISIBILITY_PRESET "hidden")
+set(CMAKE_VISIBILITY_INLINES_HIDDEN "YES")
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(BUILD_CUBE "Build cube" ON)
 option(BUILD_VULKANINFO "Build vulkaninfo" ON)
 option(BUILD_ICD "Build icd" ON)
-# Installing the Mock ICD to system directories is probably not desired since this ICD is not a very complete implementation.
-# Require the user to ask that it be installed if they really want it.
-option(INSTALL_ICD "Install icd" OFF)
 
-if (UNIX AND NOT APPLE) # i.e. Linux
-    option(ENABLE_ADDRESS_SANITIZER "Use addres sanitization" OFF)
+option(ENABLE_ADDRESS_SANITIZER "Use address sanitization")
+if (ENABLE_ADDRESS_SANITIZER)
+    add_compile_options(-fsanitize=address)
+    if (NOT MSVC)
+        add_link_options(-fsanitize=address)
+    endif()
 endif()
 
-if(WIN32)
-    # Optional: Allow specify the exact version used in the vulkaninfo executable
-    # Format is major.minor.patch.build
-    set(VULKANINFO_BUILD_DLL_VERSIONINFO "" CACHE STRING "Set the version to be used in the vulkaninfo.rc file. Default value is 1.0.1111.2222")
-endif()
-
-# Enable IDE GUI folders
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-# "Helper" targets that don't have interesting source code should set their FOLDER property to this
-set(TOOLS_HELPER_FOLDER "Helper Targets")
 
-if(APPLE)
-    set(MOLTENVK_REPO_ROOT "MOLTENVK-NOTFOUND" CACHE PATH "Absolute path to a MoltenVK repo directory")
-    if(NOT MOLTENVK_REPO_ROOT AND NOT DEFINED ENV{MOLTENVK_REPO_ROOT})
-        message(FATAL_ERROR "Must define location of MoltenVK repo -- see BUILD.md")
-    endif()
-
-    if(NOT MOLTENVK_REPO_ROOT)
-        set(MOLTENVK_REPO_ROOT $ENV{MOLTENVK_REPO_ROOT})
-    endif()
-    message(STATUS "Using MoltenVK repo location at ${MOLTENVK_REPO_ROOT}")
-endif()
-
-find_package(VulkanHeaders REQUIRED CONFIG)
-
-# Find and create the Vulkan::Vulkan library
-find_library(Vulkan_LIBRARY NAMES vulkan vulkan-1)
-add_library(Vulkan::Vulkan UNKNOWN IMPORTED)
-set_target_properties(Vulkan::Vulkan PROPERTIES
-    IMPORTED_LOCATION ${Vulkan_LIBRARY})
-target_link_libraries(Vulkan::Vulkan INTERFACE Vulkan::Headers)
+find_package(VulkanHeaders QUIET CONFIG)
+find_package(VulkanLoader QUIET CONFIG)
+find_package(volk QUIET CONFIG)
 
 include(GNUInstallDirs)
 
-option(BUILD_WERROR "Treat compiler warnings as errors" ON)
-if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
-    set(COMMON_COMPILE_FLAGS "-Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers")
-    set(COMMON_COMPILE_FLAGS "${COMMON_COMPILE_FLAGS} -fno-strict-aliasing -fno-builtin-memcmp")
+option(BUILD_WERROR "Treat compiler warnings as errors")
+if (BUILD_WERROR)
+    add_compile_options("$<IF:$<CXX_COMPILER_ID:MSVC>,/WX,-Werror>")
+endif()
 
-    if(MAKE_C_COMPILER_ID MATCHES "Clang")
-        set(COMMON_COMPILE_FLAGS "${COMMON_COMPILE_FLAGS} -Wno-sign-conversion -Wno-shorten-64-to-32 -Wno-string-conversion -Wno-implicit-in-conversion -Wno-enum-enum-conversion")
+if (${CMAKE_CXX_COMPILER_ID} MATCHES "(GNU|Clang)")
+    add_compile_options(
+        -Wall
+        -Wextra
+        -Wno-unused-parameter
+        -Wno-missing-field-initializers
+    )
+
+    if (${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
+        add_compile_options(-Wno-stringop-truncation)
     endif()
 
-    if(BUILD_WERROR)
-        if((CMAKE_COMPILER_IS_GNUCXX AND NOT (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 7.3.0)) OR
-          (("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang") AND (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 6.0.0)))
-          set(COMMON_COMPILE_FLAGS "${COMMON_COMPILE_FLAGS} -Werror")
-        endif()
-    endif()
-
-    # For GCC version 7.1 or greater, we need to disable the implicit fallthrough warning since there's no consistent way to satisfy
-    # all compilers until they all accept the C++17 standard
-    if(CMAKE_COMPILER_IS_GNUCC AND NOT (CMAKE_CXX_COMPILER_VERSION LESS 7.1))
-        set(COMMON_COMPILE_FLAGS "${COMMON_COMPILE_FLAGS} -Wimplicit-fallthrough=0")
-    endif()
-
-    if(APPLE)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_COMPILE_FLAGS}")
-    else()
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c99 ${COMMON_COMPILE_FLAGS}")
-    endif()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_COMPILE_FLAGS} -std=c++14 -fno-rtti")
-    if(UNIX)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
+    if (${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
+        add_compile_options(
+            -Wno-sign-conversion
+            -Wno-shorten-64-to-32
+            -Wno-string-conversion
+            -Wno-implicit-int-conversion
+            -Wno-enum-enum-conversion
+        )
     endif()
 elseif(MSVC)
-    if(BUILD_WERROR)
-        add_compile_options("/WX")
-    endif()
+    # TODO: Update to /W4
     add_compile_options("/W3")
     # Warn about nested declarations
     add_compile_options("/w34456")
@@ -132,15 +104,32 @@ if (TOOLS_CODEGEN)
     add_custom_target(tools_codegen
         COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/scripts/generate_source.py
             "${VULKAN_HEADERS_INSTALL_DIR}/${CMAKE_INSTALL_DATADIR}/vulkan/registry"
-            --incremental --api ${API_TYPE}
+            --incremental --generated-version ${VulkanHeaders_VERSION} --api ${API_TYPE}
     )
 endif()
 
 # Default to using the static CRT
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-if(APPLE)
-    include(mac_common.cmake)
+# Find the Git branch & tag info for use in Mock ICD
+find_package (Git)
+if (GIT_FOUND AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/.git/HEAD")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} describe --tags --always
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+        OUTPUT_VARIABLE GIT_TAG_INFO)
+    string(REGEX REPLACE "\n$" "" GIT_TAG_INFO "${GIT_TAG_INFO}")
+
+    file(READ "${CMAKE_CURRENT_LIST_DIR}/.git/HEAD" GIT_HEAD_REF_INFO)
+    if (GIT_HEAD_REF_INFO)
+        string(REGEX MATCH "ref: refs/heads/(.*)" _ ${GIT_HEAD_REF_INFO})
+        if (CMAKE_MATCH_1)
+            set(GIT_BRANCH_NAME ${CMAKE_MATCH_1})
+        else()
+            set(GIT_BRANCH_NAME ${GIT_HEAD_REF_INFO})
+        endif()
+        string(REGEX REPLACE "\n$" "" GIT_BRANCH_NAME "${GIT_BRANCH_NAME}")
+    endif()
 endif()
 
 if(BUILD_CUBE)

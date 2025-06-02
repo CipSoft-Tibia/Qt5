@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/utils/cli/cli.h"
 
@@ -146,14 +159,34 @@ TEST_F(CLITest, ShowHelp_MixedValues) {
 )");
 }
 
+TEST_F(CLITest, UnknownFlag) {
+    OptionSet opts;
+    opts.Add<BoolOption>("my_option", "a boolean value");
+
+    auto res = opts.Parse(Split("--myoption false", " "));
+    ASSERT_NE(res, Success);
+    EXPECT_EQ(res.Failure().reason.str(), R"(error: unknown flag: --myoption
+Did you mean '--my_option'?)");
+}
+
+TEST_F(CLITest, UnknownFlag_Ignored) {
+    OptionSet opts;
+    auto& opt = opts.Add<BoolOption>("my_option", "a boolean value");
+
+    ParseOptions parse_opts;
+    parse_opts.ignore_unknown = true;
+
+    auto res = opts.Parse(Split("--myoption false", " "), parse_opts);
+    ASSERT_EQ(res, Success);
+    EXPECT_EQ(opt.value, std::nullopt);
+}
+
 TEST_F(CLITest, ParseBool_Flag) {
     OptionSet opts;
     auto& opt = opts.Add<BoolOption>("my_option", "a boolean value");
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option unconsumed", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option unconsumed", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre("unconsumed"));
     EXPECT_EQ(opt.value, true);
 }
@@ -162,10 +195,8 @@ TEST_F(CLITest, ParseBool_ExplicitTrue) {
     OptionSet opts;
     auto& opt = opts.Add<BoolOption>("my_option", "a boolean value");
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option true", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option true", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, true);
 }
@@ -174,10 +205,8 @@ TEST_F(CLITest, ParseBool_ExplicitFalse) {
     OptionSet opts;
     auto& opt = opts.Add<BoolOption>("my_option", "a boolean value", Default{true});
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option false", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option false", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, false);
 }
@@ -186,10 +215,8 @@ TEST_F(CLITest, ParseInt) {
     OptionSet opts;
     auto& opt = opts.Add<ValueOption<int>>("my_option", "an integer value");
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option 42", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option 42", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, 42);
 }
@@ -198,10 +225,8 @@ TEST_F(CLITest, ParseUint64) {
     OptionSet opts;
     auto& opt = opts.Add<ValueOption<uint64_t>>("my_option", "a uint64_t value");
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option 1000000", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option 1000000", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, 1000000);
 }
@@ -210,10 +235,8 @@ TEST_F(CLITest, ParseFloat) {
     OptionSet opts;
     auto& opt = opts.Add<ValueOption<float>>("my_option", "a float value");
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option 1.25", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option 1.25", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, 1.25f);
 }
@@ -222,10 +245,8 @@ TEST_F(CLITest, ParseString) {
     OptionSet opts;
     auto& opt = opts.Add<StringOption>("my_option", "a string value");
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option blah", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option blah", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, "blah");
 }
@@ -240,10 +261,8 @@ TEST_F(CLITest, ParseEnum) {
                                             EnumName(E::Y, "Y"),
                                             EnumName(E::Z, "Z"),
                                         });
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option Y", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option Y", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, E::Y);
 }
@@ -252,10 +271,8 @@ TEST_F(CLITest, ParseShortName) {
     OptionSet opts;
     auto& opt = opts.Add<ValueOption<int>>("my_option", "an integer value", ShortName{"o"});
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("-o 42", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("-o 42", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, 42);
 }
@@ -264,10 +281,8 @@ TEST_F(CLITest, ParseUnconsumed) {
     OptionSet opts;
     auto& opt = opts.Add<ValueOption<int32_t>>("my_option", "a int32_t value");
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("abc --my_option -123 def", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("abc --my_option -123 def", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre("abc", "def"));
     EXPECT_EQ(opt.value, -123);
 }
@@ -276,10 +291,8 @@ TEST_F(CLITest, ParseUsingEquals) {
     OptionSet opts;
     auto& opt = opts.Add<ValueOption<int>>("my_option", "an int value");
 
-    std::stringstream err;
-    auto res = opts.Parse(err, Split("--my_option=123", " "));
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(Split("--my_option=123", " "));
+    ASSERT_EQ(res, Success);
     EXPECT_THAT(ToStringList(res.Get()), testing::ElementsAre());
     EXPECT_EQ(opt.value, 123);
 }
@@ -288,10 +301,8 @@ TEST_F(CLITest, SetValueToDefault) {
     OptionSet opts;
     auto& opt = opts.Add<BoolOption>("my_option", "a boolean value", Default{true});
 
-    std::stringstream err;
-    auto res = opts.Parse(err, tint::Empty);
-    ASSERT_TRUE(res) << err.str();
-    EXPECT_TRUE(err.str().empty());
+    auto res = opts.Parse(tint::Empty);
+    ASSERT_EQ(res, Success);
     EXPECT_EQ(opt.value, true);
 }
 

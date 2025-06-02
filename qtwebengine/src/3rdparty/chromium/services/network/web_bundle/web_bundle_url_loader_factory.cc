@@ -6,6 +6,7 @@
 
 #include "base/functional/callback.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/notreached.h"
 #include "base/ranges/algorithm.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
@@ -449,6 +450,10 @@ class WebBundleURLLoaderFactory::BundleDataSource
     std::move(callback).Run(false);
   }
 
+  void Close(CloseCallback callback) override {
+    NOTIMPLEMENTED() << "Close() is not implemented";
+  }
+
   // Implements mojo::DataPipeDrainer::Client.
   void OnDataAvailable(const void* data, size_t num_bytes) override {
     DCHECK(!finished_loading_);
@@ -873,7 +878,7 @@ void WebBundleURLLoaderFactory::SendResponseToLoader(
     return;
   }
 
-  response_head->web_bundle_url = bundle_url_;
+  response_head->is_web_bundle_inner_response = true;
 
   response_head->load_timing = loader->load_timing();
   loader->SetBodyLength(payload_length);

@@ -26,10 +26,9 @@ class AxisLine : public QQuickShaderEffect
     Q_PROPERTY(QColor color READ color WRITE setColor NOTIFY colorChanged FINAL)
     Q_PROPERTY(qreal lineWidth READ lineWidth WRITE setLineWidth NOTIFY lineWidthChanged FINAL)
     Q_PROPERTY(bool isHorizontal READ isHorizontal WRITE setIsHorizontal NOTIFY isHorizontalChanged FINAL)
-    QML_ELEMENT
 public:
     explicit AxisLine(QQuickItem *parent = nullptr);
-
+    ~AxisLine() override;
     void setupShaders();
 
     QVector3D iResolution() const;
@@ -38,7 +37,7 @@ public:
     void setSmoothing(qreal newSmoothing);
 
     QColor color() const;
-    void setColor(const QColor &newColor);
+    void setColor(QColor newColor);
 
     qreal lineWidth() const;
     void setLineWidth(qreal newLineWidth);

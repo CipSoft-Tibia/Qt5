@@ -11,40 +11,20 @@
 QT_BEGIN_NAMESPACE
 
 /*!
-  Returns a list of the kinds of files that the pure doc
-  parser is meant to parse. The elements of the list are
-  file suffixes.
- */
-QStringList PureDocParser::sourceFileNameFilter()
-{
-    return QStringList() << "*.qdoc"
-                         << "*.qtx"
-                         << "*.qtt"
-                         << "*.js";
-}
-
-/*!
   Parses the source file identified by \a filePath and adds its
   parsed contents to the database. The \a location is used for
   reporting errors.
  */
-void PureDocParser::parseSourceFile(const Location &location, const QString &filePath, CppCodeParser& cpp_code_parser)
+std::vector<UntiedDocumentation> PureDocParser::parse_qdoc_file(const QString &filePath)
 {
     QFile in(filePath);
     if (!in.open(QIODevice::ReadOnly)) {
         location.error(
                 QStringLiteral("Can't open source file '%1' (%2)").arg(filePath, strerror(errno)));
-        return;
+        return {};
     }
 
-    /*
-      The set of open namespaces is cleared before parsing
-      each source file. The word "source" here means cpp file.
-     */
-    m_qdb->clearOpenNamespaces();
-
-    processQdocComments(in, cpp_code_parser);
-    in.close();
+    return processQdocComments(in);
 }
 
 /*!
@@ -52,8 +32,10 @@ void PureDocParser::parseSourceFile(const Location &location, const QString &fil
   and tree building. It only processes qdoc comments. It skips
   everything else.
  */
-void PureDocParser::processQdocComments(QFile& input_file, CppCodeParser& cpp_code_parser)
+std::vector<UntiedDocumentation> PureDocParser::processQdocComments(QFile& input_file)
 {
+    std::vector<UntiedDocumentation> untied{};
+
     Tokenizer tokenizer(Location{input_file.fileName()}, input_file);
 
     const QSet<QString> &commands = CppCodeParser::topic_commands + CppCodeParser::meta_commands;
@@ -73,24 +55,20 @@ void PureDocParser::processQdocComments(QFile& input_file, CppCodeParser& cpp_co
 
         // Doc constructor parses the comment.
         Doc doc(start_loc, end_loc, comment, commands, CppCodeParser::topic_commands);
-        const TopicList &topics = doc.topicsUsed();
-        if (topics.isEmpty()) {
+        if (doc.topicsUsed().isEmpty()) {
             doc.location().warning(QStringLiteral("This qdoc comment contains no topic command "
                                                   "(e.g., '\\%1', '\\%2').")
                                            .arg(COMMAND_MODULE, COMMAND_PAGE));
             continue;
         }
 
-        if (cpp_code_parser.hasTooManyTopics(doc))
+        if (hasTooManyTopics(doc))
             continue;
 
-        DocList docs;
-        NodeList nodes;
-        QString topic = topics[0].m_topic;
-
-        cpp_code_parser.processTopicArgs(doc, topic, nodes, docs);
-        cpp_code_parser.processMetaCommands(nodes, docs);
+        untied.emplace_back(UntiedDocumentation{doc, QStringList()});
     }
+
+    return untied;
 }
 
 QT_END_NAMESPACE

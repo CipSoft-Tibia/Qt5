@@ -42,7 +42,8 @@ std::string FormatAsJSON(const base::Value::Dict& value) {
 }
 
 base::Value GetJavascriptTimestamp() {
-  return base::Value(base::Time::Now().ToJsTimeIgnoringNull());
+  return base::Value(
+      base::Time::Now().InMillisecondsFSinceUnixEpochIgnoringNull());
 }
 
 // FireWebUIListener message to notify the JavaScript of HTTP message addition.
@@ -146,7 +147,7 @@ void NearbyInternalsHttpHandler::ListContactPeople(
 }
 
 void NearbyInternalsHttpHandler::OnUpdateDeviceRequest(
-    const nearbyshare::proto::UpdateDeviceRequest& request) {
+    const nearby::sharing::proto::UpdateDeviceRequest& request) {
   FireWebUIListener(
       kHttpMessageAdded,
       HttpMessageToDictionary(UpdateDeviceRequestToReadableDictionary(request),
@@ -154,7 +155,7 @@ void NearbyInternalsHttpHandler::OnUpdateDeviceRequest(
 }
 
 void NearbyInternalsHttpHandler::OnUpdateDeviceResponse(
-    const nearbyshare::proto::UpdateDeviceResponse& response) {
+    const nearby::sharing::proto::UpdateDeviceResponse& response) {
   FireWebUIListener(kHttpMessageAdded,
                     HttpMessageToDictionary(
                         UpdateDeviceResponseToReadableDictionary(response),
@@ -162,7 +163,7 @@ void NearbyInternalsHttpHandler::OnUpdateDeviceResponse(
 }
 
 void NearbyInternalsHttpHandler::OnListContactPeopleRequest(
-    const nearbyshare::proto::ListContactPeopleRequest& request) {
+    const nearby::sharing::proto::ListContactPeopleRequest& request) {
   FireWebUIListener(kHttpMessageAdded,
                     HttpMessageToDictionary(
                         ListContactPeopleRequestToReadableDictionary(request),
@@ -170,7 +171,7 @@ void NearbyInternalsHttpHandler::OnListContactPeopleRequest(
 }
 
 void NearbyInternalsHttpHandler::OnListContactPeopleResponse(
-    const nearbyshare::proto::ListContactPeopleResponse& response) {
+    const nearby::sharing::proto::ListContactPeopleResponse& response) {
   FireWebUIListener(kHttpMessageAdded,
                     HttpMessageToDictionary(
                         ListContactPeopleResponseToReadableDictionary(response),
@@ -178,7 +179,7 @@ void NearbyInternalsHttpHandler::OnListContactPeopleResponse(
 }
 
 void NearbyInternalsHttpHandler::OnListPublicCertificatesRequest(
-    const nearbyshare::proto::ListPublicCertificatesRequest& request) {
+    const nearby::sharing::proto::ListPublicCertificatesRequest& request) {
   FireWebUIListener(
       kHttpMessageAdded,
       HttpMessageToDictionary(
@@ -187,7 +188,7 @@ void NearbyInternalsHttpHandler::OnListPublicCertificatesRequest(
 }
 
 void NearbyInternalsHttpHandler::OnListPublicCertificatesResponse(
-    const nearbyshare::proto::ListPublicCertificatesResponse& response) {
+    const nearby::sharing::proto::ListPublicCertificatesResponse& response) {
   FireWebUIListener(
       kHttpMessageAdded,
       HttpMessageToDictionary(

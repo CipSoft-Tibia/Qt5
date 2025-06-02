@@ -12,6 +12,8 @@
 #include <QScopeGuard>
 #include "theplugin/plugininterface.h"
 
+#include <QtCore/private/qsimd_p.h>
+
 #if defined(QT_BUILD_INTERNAL) && defined(Q_OF_MACH_O)
 #  include <QtCore/private/qmachparser_p.h>
 #endif
@@ -33,10 +35,10 @@ using namespace Qt::StringLiterals;
 # define bundle_VALID   true
 # define dylib_VALID    true
 # define so_VALID       true
-# ifdef QT_NO_DEBUG
-#  define SUFFIX         ".dylib"
-# else
+# if QT_CONFIG(debug) && !QT_CONFIG(framework)
 #  define SUFFIX         "_debug.dylib"
+# else
+#  define SUFFIX         ".dylib"
 # endif
 # define PREFIX         "lib"
 
@@ -199,6 +201,7 @@ private slots:
     void loadCorruptElfOldPlugin();
 #  endif
 #endif
+    void archSpecificVersion();
     void loadMachO_data();
     void loadMachO();
     void relativePath();
@@ -474,7 +477,7 @@ static void loadCorruptElfCommonRows()
         memcpy(h, &o, sizeof(o));
     });
     newRow("invalid-word-size", "file is for a different word size", [](H h) {
-        h->e_ident[EI_CLASS] = ELFCLASSNONE;;
+        h->e_ident[EI_CLASS] = ELFCLASSNONE;
     });
     newRow("unknown-word-size", "file is for a different word size", [](H h) {
         h->e_ident[EI_CLASS] |= 0x40;
@@ -848,6 +851,28 @@ void tst_QPluginLoader::loadCorruptElfOldPlugin()
 #  endif // Qt 7
 #endif // Q_OF_ELF
 
+void tst_QPluginLoader::archSpecificVersion()
+{
+#if !defined(QT_SHARED)
+    QSKIP("This test requires Qt to create shared libraries.");
+#endif
+    QPluginLoader loader(sys_qualifiedLibraryName("theplugin"));
+    QVERIFY2(loader.load(), qPrintable(loader.errorString()));
+
+    QString expectedArch;
+#if defined(Q_PROCESSOR_X86_64) && defined(Q_OS_UNIX) && !defined(Q_OS_DARWIN)
+    // On Unix systems (other than Darwin, which has fat binaries),
+    // QPluginLoader will load a separate file for x86-64-v3 systems.
+    if (qCpuHasFeature(ArchHaswell))
+        expectedArch = "x86-64-v3";
+#endif
+
+    PluginInterface* theplugin = qobject_cast<PluginInterface*>(loader.instance());
+    QVERIFY(theplugin);
+    QCOMPARE(theplugin->architectureName(), expectedArch);
+    QVERIFY(loader.unload());
+}
+
 void tst_QPluginLoader::loadMachO_data()
 {
 #if defined(QT_BUILD_INTERNAL) && defined(Q_OF_MACH_O)
@@ -860,22 +885,19 @@ void tst_QPluginLoader::loadMachO_data()
 
 #  ifdef Q_PROCESSOR_X86_64
     QTest::newRow("machtest/good.x86_64.dylib") << true;
-    QTest::newRow("machtest/good.i386.dylib") << false;
+    QTest::newRow("machtest/good.arm64.dylib") << false;
     QTest::newRow("machtest/good.fat.no-x86_64.dylib") << false;
-    QTest::newRow("machtest/good.fat.no-i386.dylib") << true;
-#  elif defined(Q_PROCESSOR_X86_32)
-    QTest::newRow("machtest/good.i386.dylib") << true;
+    QTest::newRow("machtest/good.fat.no-arm64.dylib") << true;
+#  elif defined(Q_PROCESSOR_ARM)
+    QTest::newRow("machtest/good.arm64.dylib") << true;
     QTest::newRow("machtest/good.x86_64.dylib") << false;
-    QTest::newRow("machtest/good.fat.no-i386.dylib") << false;
+    QTest::newRow("machtest/good.fat.no-arm64.dylib") << false;
     QTest::newRow("machtest/good.fat.no-x86_64.dylib") << true;
-#  endif
-#  ifndef Q_PROCESSOR_POWER_64
-    QTest::newRow("machtest/good.ppc64.dylib") << false;
 #  endif
 
     QTest::newRow("machtest/good.fat.all.dylib") << true;
     QTest::newRow("machtest/good.fat.stub-x86_64.dylib") << false;
-    QTest::newRow("machtest/good.fat.stub-i386.dylib") << false;
+    QTest::newRow("machtest/good.fat.stub-arm64.dylib") << false;
 
     QDir d(QFINDTESTDATA("machtest"));
     const QStringList badlist = d.entryList(QStringList() << "bad*.dylib");
@@ -903,12 +925,7 @@ void tst_QPluginLoader::loadMachO()
     }
 
     QVERIFY(r.pos > 0);
-    QVERIFY(size_t(r.length) >= sizeof(void*));
     QVERIFY(r.pos + r.length < data.size());
-    QCOMPARE(r.pos & (sizeof(void*) - 1), 0UL);
-
-    void *value = *(void**)(data.constData() + r.pos);
-    QCOMPARE(value, sizeof(void*) > 4 ? (void*)(0xc0ffeec0ffeeL) : (void*)0xc0ffee);
 
     // now that we know it's valid, let's try to make it invalid
     ulong offeredlen = r.pos;

@@ -17,7 +17,7 @@
 
 #include <qaudioformat.h>
 #include <QtCore/qt_windows.h>
-#include <private/qcomptr_p.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <mmreg.h>
 
 #include <optional>
@@ -32,12 +32,14 @@ class QWindowsMediaFoundation;
 namespace QWindowsAudioUtils
 {
     bool formatToWaveFormatExtensible(const QAudioFormat &format, WAVEFORMATEXTENSIBLE &wfx);
+    std::optional<WAVEFORMATEXTENSIBLE> toWaveFormatExtensible(const QAudioFormat &format);
+
     QAudioFormat waveFormatExToFormat(const WAVEFORMATEX &in);
     Q_MULTIMEDIA_EXPORT QAudioFormat mediaTypeToFormat(IMFMediaType *mediaType);
     ComPtr<IMFMediaType> formatToMediaType(QWindowsMediaFoundation &, const QAudioFormat &format);
     QAudioFormat::ChannelConfig maskToChannelConfig(UINT32 mask, int count);
-    std::optional<quint32> audioClientFramesInUse(IAudioClient *client);
-    std::optional<quint32> audioClientFramesAllocated(IAudioClient *client);
+    std::optional<quint32> usedFrames(IAudioClient *client);
+    std::optional<quint32> allocatedFrames(IAudioClient *client);
 }
 
 QT_END_NAMESPACE

@@ -23,12 +23,12 @@ Q_LOGGING_CATEGORY(lcQpaInputMethods, "qt.qpa.input.methods");
 
 using namespace QtAndroid;
 
-Q_DECLARE_JNI_CLASS(QtLayout, "org/qtproject/qt/android/QtLayout")
+Q_DECLARE_JNI_CLASS(QtInputInterface, "org/qtproject/qt/android/QtInputInterface")
 
 namespace QtAndroidInput
 {
     static bool m_ignoreMouseEvents = false;
-    static Qt::MouseButtons m_buttons = Qt::NoButton;
+    static Qt::MouseButtons m_lastSeenButtons = Qt::NoButton;
 
     static QRect m_softwareKeyboardRect;
 
@@ -36,110 +36,44 @@ namespace QtAndroidInput
 
     static QPointer<QWindow> m_mouseGrabber;
 
-    GenericMotionEventListener::~GenericMotionEventListener() {}
-    namespace {
-    struct GenericMotionEventListeners {
-        QMutex mutex;
-        QList<QtAndroidInput::GenericMotionEventListener *> listeners;
-    };
-    }
-    Q_GLOBAL_STATIC(GenericMotionEventListeners, g_genericMotionEventListeners)
-
-    static jboolean dispatchGenericMotionEvent(JNIEnv *, jclass, jobject event)
-    {
-        jboolean ret = JNI_FALSE;
-        QMutexLocker locker(&g_genericMotionEventListeners()->mutex);
-        for (auto *listener : std::as_const(g_genericMotionEventListeners()->listeners))
-            ret |= listener->handleGenericMotionEvent(event);
-        return ret;
-    }
-
-    KeyEventListener::~KeyEventListener() {}
-    namespace {
-    struct KeyEventListeners {
-        QMutex mutex;
-        QList<QtAndroidInput::KeyEventListener *> listeners;
-    };
-    }
-    Q_GLOBAL_STATIC(KeyEventListeners, g_keyEventListeners)
-
-    static jboolean dispatchKeyEvent(JNIEnv *, jclass, jobject event)
-    {
-        jboolean ret = JNI_FALSE;
-        QMutexLocker locker(&g_keyEventListeners()->mutex);
-        for (auto *listener : std::as_const(g_keyEventListeners()->listeners))
-            ret |= listener->handleKeyEvent(event);
-        return ret;
-    }
-
-    void registerGenericMotionEventListener(QtAndroidInput::GenericMotionEventListener *listener)
-    {
-        QMutexLocker locker(&g_genericMotionEventListeners()->mutex);
-        g_genericMotionEventListeners()->listeners.push_back(listener);
-    }
-
-    void unregisterGenericMotionEventListener(QtAndroidInput::GenericMotionEventListener *listener)
-    {
-        QMutexLocker locker(&g_genericMotionEventListeners()->mutex);
-        g_genericMotionEventListeners()->listeners.removeOne(listener);
-    }
-
-    void registerKeyEventListener(QtAndroidInput::KeyEventListener *listener)
-    {
-        QMutexLocker locker(&g_keyEventListeners()->mutex);
-        g_keyEventListeners()->listeners.push_back(listener);
-    }
-
-    void unregisterKeyEventListener(QtAndroidInput::KeyEventListener *listener)
-    {
-        QMutexLocker locker(&g_keyEventListeners()->mutex);
-        g_keyEventListeners()->listeners.removeOne(listener);
-    }
-
-    QJniObject qtLayout()
-    {
-        return qtActivityDelegate().callMethod<QtJniTypes::QtLayout>("getQtLayout");
-    }
 
     void updateSelection(int selStart, int selEnd, int candidatesStart, int candidatesEnd)
     {
         qCDebug(lcQpaInputMethods) << ">>> UPDATESELECTION" << selStart << selEnd << candidatesStart << candidatesEnd;
-        qtInputDelegate().callMethod<void>("updateSelection",
-                                           selStart,
-                                           selEnd,
-                                           candidatesStart,
-                                           candidatesEnd);
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        reg->callInterface<QtJniTypes::QtInputInterface, void>("updateSelection", selStart, selEnd,
+                                                               candidatesStart, candidatesEnd);
     }
 
     void showSoftwareKeyboard(int left, int top, int width, int height, int inputHints, int enterKeyType)
     {
-        qtInputDelegate().callMethod<void>("showSoftwareKeyboard",
-                                           QtAndroidPrivate::activity(),
-                                           qtLayout().object<QtJniTypes::QtLayout>(),
-                                           left,
-                                           top,
-                                           width,
-                                           height,
-                                           inputHints,
-                                           enterKeyType);
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        reg->callInterface<QtJniTypes::QtInputInterface, void>(
+                "showSoftwareKeyboard", QtAndroidPrivate::activity(),
+                left, top, width, height, inputHints,
+                enterKeyType);
         qCDebug(lcQpaInputMethods) << "@@@ SHOWSOFTWAREKEYBOARD" << left << top << width << height << inputHints << enterKeyType;
     }
 
     void resetSoftwareKeyboard()
     {
-        qtInputDelegate().callMethod<void>("resetSoftwareKeyboard");
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        reg->callInterface<QtJniTypes::QtInputInterface, void>("resetSoftwareKeyboard");
         qCDebug(lcQpaInputMethods) << "@@@ RESETSOFTWAREKEYBOARD";
     }
 
     void hideSoftwareKeyboard()
     {
-        qtInputDelegate().callMethod<void>("hideSoftwareKeyboard");
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        reg->callInterface<QtJniTypes::QtInputInterface, void>("hideSoftwareKeyboard");
         qCDebug(lcQpaInputMethods) << "@@@ HIDESOFTWAREKEYBOARD";
     }
 
     bool isSoftwareKeyboardVisible()
     {
-        return qtInputDelegate().callMethod<jboolean>("isSoftwareKeyboardVisible");
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        return reg->callInterface<QtJniTypes::QtInputInterface, jboolean>(
+                "isSoftwareKeyboardVisible");
     }
 
     QRect softwareKeyboardRect()
@@ -149,17 +83,16 @@ namespace QtAndroidInput
 
     int getSelectHandleWidth()
     {
-        return qtInputDelegate().callMethod<jint>("getSelectHandleWidth");
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        return reg->callInterface<QtJniTypes::QtInputInterface, jint>("getSelectionHandleWidth");
     }
 
     void updateHandles(int mode, QPoint editMenuPos, uint32_t editButtons, QPoint cursor, QPoint anchor, bool rtl)
     {
-        qtInputDelegate().callMethod<void>("updateHandles",
-                                           QtAndroidPrivate::activity(),
-                                           qtLayout().object<QtJniTypes::QtLayout>(),
-                                           mode, editMenuPos.x(), editMenuPos.y(), editButtons,
-                                           cursor.x(), cursor.y(),
-                                           anchor.x(), anchor.y(), rtl);
+        AndroidBackendRegister *reg = QtAndroid::backendRegister();
+        reg->callInterface<QtJniTypes::QtInputInterface, void>(
+                "updateHandles", mode, editMenuPos.x(), editMenuPos.y(),
+                editButtons, cursor.x(), cursor.y(), anchor.x(), anchor.y(), rtl);
     }
 
     // from https://developer.android.com/reference/android/view/MotionEvent#getButtonState()
@@ -210,19 +143,22 @@ namespace QtAndroidInput
     static void sendMouseButtonEvents(QWindow *topLevel, QPoint localPos, QPoint globalPos,
                                       jint mouseButtonState, QEvent::Type type)
     {
-        const Qt::MouseButtons mouseButtons = toMouseButtons(mouseButtonState);
-        const Qt::MouseButtons changedButtons = mouseButtons & ~m_buttons;
+        const Qt::MouseButtons qtButtons = toMouseButtons(mouseButtonState);
+        const bool mouseReleased = type == QEvent::MouseButtonRelease && qtButtons == Qt::NoButton;
+        const Qt::MouseButtons eventButtons = mouseReleased ? m_lastSeenButtons : qtButtons;
+        m_lastSeenButtons = qtButtons;
 
-        if (changedButtons == Qt::NoButton)
+        static_assert (sizeof(eventButtons) <= sizeof(uint), "Qt::MouseButtons size changed. Adapt code.");
+
+        if (eventButtons == Qt::NoButton) {
+            QWindowSystemInterface::handleMouseEvent(topLevel, localPos, globalPos, qtButtons, Qt::NoButton, type);
             return;
-
-        static_assert (sizeof(changedButtons) <= sizeof(uint), "Qt::MouseButtons size changed. Adapt code.");
-
-        for (uint buttonInt = 0x1; static_cast<uint>(changedButtons) >= buttonInt; buttonInt <<= 1) {
+        }
+        for (uint buttonInt = 0x1; static_cast<uint>(eventButtons) >= buttonInt; buttonInt <<= 1) {
             const auto button = static_cast<Qt::MouseButton>(buttonInt);
-            if (changedButtons.testFlag(button)) {
+            if (eventButtons.testFlag(button)) {
                 QWindowSystemInterface::handleMouseEvent(topLevel, localPos, globalPos,
-                                                         mouseButtons, button, type);
+                                                         qtButtons, button, type);
             }
         }
     }
@@ -255,9 +191,8 @@ namespace QtAndroidInput
         m_mouseGrabber.clear();
     }
 
-    static void mouseMove(JNIEnv */*env*/, jobject /*thiz*/, jint winId, jint x, jint y)
+    static void mouseMove(JNIEnv */*env*/, jobject /*thiz*/, jint winId, jint x, jint y, jint mouseButtonState)
     {
-
         if (m_ignoreMouseEvents)
             return;
 
@@ -267,9 +202,7 @@ namespace QtAndroidInput
             window = windowFromId(winId);
         const QPoint localPos = window && window->handle() ?
                                     window->handle()->mapFromGlobal(globalPos) : globalPos;
-        QWindowSystemInterface::handleMouseEvent(window, localPos, globalPos,
-                                                 Qt::MouseButtons(m_mouseGrabber ? Qt::LeftButton : Qt::NoButton),
-                                                 Qt::NoButton, QEvent::MouseMove);
+        sendMouseButtonEvents(window, localPos, globalPos, mouseButtonState, QEvent::MouseMove);
     }
 
     static void mouseWheel(JNIEnv */*env*/, jobject /*thiz*/, jint winId, jint x, jint y, jfloat hdelta, jfloat vdelta)
@@ -976,7 +909,7 @@ namespace QtAndroidInput
         {"touchCancel", "(I)V", (void *)touchCancel},
         {"mouseDown", "(IIII)V", (void *)mouseDown},
         {"mouseUp", "(IIII)V", (void *)mouseUp},
-        {"mouseMove", "(III)V", (void *)mouseMove},
+        {"mouseMove", "(IIII)V", (void *)mouseMove},
         {"mouseWheel", "(IIIFF)V", (void *)mouseWheel},
         {"longPress", "(III)V", (void *)longPress},
         {"isTabletEventSupported", "()Z", (void *)isTabletEventSupported},
@@ -986,8 +919,6 @@ namespace QtAndroidInput
         {"keyboardVisibilityChanged", "(Z)V", (void *)keyboardVisibilityChanged},
         {"keyboardGeometryChanged", "(IIII)V", (void *)keyboardGeometryChanged},
         {"handleLocationChanged", "(III)V", (void *)handleLocationChanged},
-        {"dispatchGenericMotionEvent", "(Landroid/view/MotionEvent;)Z", reinterpret_cast<void *>(dispatchGenericMotionEvent)},
-        {"dispatchKeyEvent", "(Landroid/view/KeyEvent;)Z", reinterpret_cast<void *>(dispatchKeyEvent)},
     };
 
     bool registerNatives(QJniEnvironment &env)

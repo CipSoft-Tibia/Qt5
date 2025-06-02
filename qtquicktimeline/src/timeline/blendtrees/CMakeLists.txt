@@ -24,6 +24,4 @@ qt_internal_add_qml_module(QuickTimelineBlendTrees
     LIBRARIES
         Qt::QuickPrivate
         Qt::QuickTimelinePrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
 )

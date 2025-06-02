@@ -33,7 +33,7 @@ namespace Qt3DRender {
     \since 5.7
     \inqmlmodule Qt3D.Render
     \inherits RenderState
-    \instantiates Qt3DRender::QDepthTest
+    \nativetype Qt3DRender::QDepthTest
     \ingroup renderstates
 
     A DepthTest type is used to enable depth testing with a given depth test function.
@@ -76,7 +76,7 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property QDepthTest::depthFunction
+    \property Qt3DRender::QDepthTest::depthFunction
     Holds the current function used by depth test. The default is Never.
 */
 

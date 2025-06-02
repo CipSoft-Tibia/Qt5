@@ -16,7 +16,8 @@
 //
 
 #include "qvideoframe.h"
-#include "qabstractvideobuffer_p.h"
+#include "qhwvideobuffer_p.h"
+#include "private/qvideotransformation_p.h"
 
 #include <qmutex.h>
 
@@ -26,9 +27,43 @@ class QVideoFramePrivate : public QSharedData
 {
 public:
     QVideoFramePrivate() = default;
-    QVideoFramePrivate(const QVideoFrameFormat &format) : format(format) { }
+
+    ~QVideoFramePrivate()
+    {
+        if (videoBuffer && mapMode != QVideoFrame::NotMapped)
+            videoBuffer->unmap();
+    }
+
+    template <typename Buffer>
+    static QVideoFrame createFrame(std::unique_ptr<Buffer> buffer, QVideoFrameFormat format)
+    {
+        QVideoFrame result;
+        result.d.reset(new QVideoFramePrivate(std::move(format), std::move(buffer)));
+        return result;
+    }
+
+    template <typename Buffer = QAbstractVideoBuffer>
+    QVideoFramePrivate(QVideoFrameFormat format, std::unique_ptr<Buffer> buffer = nullptr)
+        : format{ std::move(format) }, videoBuffer{ std::move(buffer) }
+    {
+        if constexpr (std::is_base_of_v<QHwVideoBuffer, Buffer>)
+            hwVideoBuffer = static_cast<QHwVideoBuffer *>(videoBuffer.get());
+        else if constexpr (std::is_same_v<QAbstractVideoBuffer, Buffer>)
+            hwVideoBuffer = dynamic_cast<QHwVideoBuffer *>(videoBuffer.get());
+        // else hwVideoBuffer == nullptr
+    }
 
     static QVideoFramePrivate *handle(QVideoFrame &frame) { return frame.d.get(); };
+
+    static QHwVideoBuffer *hwBuffer(const QVideoFrame &frame)
+    {
+        return frame.d ? frame.d->hwVideoBuffer : nullptr;
+    };
+
+    static QAbstractVideoBuffer *buffer(const QVideoFrame &frame)
+    {
+        return frame.d ? frame.d->videoBuffer.get() : nullptr;
+    };
 
     QVideoFrame adoptThisByVideoFrame()
     {
@@ -42,13 +77,14 @@ public:
     QAbstractVideoBuffer::MapData mapData;
     QVideoFrame::MapMode mapMode = QVideoFrame::NotMapped;
     QVideoFrameFormat format;
-    std::unique_ptr<QAbstractVideoBuffer> buffer;
+    std::unique_ptr<QAbstractVideoBuffer> videoBuffer;
+    QHwVideoBuffer *hwVideoBuffer = nullptr;
     int mappedCount = 0;
     QMutex mapMutex;
     QString subtitleText;
-    QtVideo::Rotation rotation = QtVideo::Rotation::None;
     QImage image;
     QMutex imageMutex;
+    VideoTransformation presentationTransformation;
 
 private:
     Q_DISABLE_COPY(QVideoFramePrivate)

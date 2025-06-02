@@ -36,10 +36,9 @@ class ImageView;
 #ifdef __ANDROID__
 struct BackingMemory
 {
-	int stride = 0;
 	bool externalMemory = false;
-	buffer_handle_t nativeHandle = nullptr;
 	VkSwapchainImageUsageFlagsANDROID androidUsage = 0;
+	VkNativeBufferANDROID nativeBufferInfo = {};
 };
 #endif
 
@@ -63,6 +62,10 @@ public:
 	void copyTo(Image *dstImage, const VkImageCopy2KHR &region) const;
 	void copyTo(Buffer *dstBuffer, const VkBufferImageCopy2KHR &region);
 	void copyFrom(Buffer *srcBuffer, const VkBufferImageCopy2KHR &region);
+
+	// VK_EXT_host_image_copy variants of copy
+	void copyToMemory(const VkImageToMemoryCopyEXT &region);
+	void copyFromMemory(const VkMemoryToImageCopyEXT &region);
 
 	void blitTo(Image *dstImage, const VkImageBlit2KHR &region, VkFilter filter) const;
 	void copyTo(uint8_t *dst, unsigned int dstPitch) const;
@@ -120,7 +123,13 @@ public:
 	DeviceMemory *deviceMemory = nullptr;
 
 private:
-	void copy(Buffer *buffer, const VkBufferImageCopy2KHR &region, bool bufferIsSource);
+	void copy(const void *srcCopyMemory,
+		void *dstCopyMemory,
+		uint32_t rowLength,
+		uint32_t imageHeight,
+		const VkImageSubresourceLayers    &imageSubresource,
+		const VkOffset3D                  &imageCopyOffset,
+		const VkExtent3D                  &imageCopyExtent);
 	void copySingleAspectTo(Image *dstImage, const VkImageCopy2KHR &region) const;
 	VkDeviceSize getStorageSize(VkImageAspectFlags flags) const;
 	VkDeviceSize getMultiSampledLevelSize(VkImageAspectFlagBits aspect, uint32_t mipLevel) const;
@@ -131,7 +140,7 @@ private:
 	VkDeviceSize texelOffsetBytesInStorage(const VkOffset3D &offset, const VkImageSubresource &subresource) const;
 	VkExtent3D imageExtentInBlocks(const VkExtent3D &extent, VkImageAspectFlagBits aspect) const;
 	VkOffset3D imageOffsetInBlocks(const VkOffset3D &offset, VkImageAspectFlagBits aspect) const;
-	VkExtent2D bufferExtentInBlocks(const VkExtent2D &extent, const VkBufferImageCopy2KHR &region) const;
+	VkExtent2D bufferExtentInBlocks(const VkExtent2D &extent, uint32_t rowLength, uint32_t imageHeight, const VkImageSubresourceLayers &imageSubresource, const VkOffset3D &imageOffset) const;
 	void clear(const void *pixelData, VkFormat pixelFormat, const vk::Format &viewFormat, const VkImageSubresourceRange &subresourceRange, const VkRect2D *renderArea);
 	int borderSize() const;
 

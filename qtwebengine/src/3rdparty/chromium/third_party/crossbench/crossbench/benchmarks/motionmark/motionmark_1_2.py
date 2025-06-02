@@ -9,7 +9,7 @@ import itertools
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import crossbench.probes.helper as probes_helper
-from crossbench.benchmarks.benchmark import PressBenchmark
+from crossbench.benchmarks.base import PressBenchmark
 from crossbench.probes import metric
 from crossbench.probes.json import JsonResultProbe
 from crossbench.probes.results import ProbeResult

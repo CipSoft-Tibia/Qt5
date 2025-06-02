@@ -1,8 +1,6 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Generated from mockbackend.pro.
-
 #####################################################################
 ## MockMultimediaPlugin Generic Library:
 #####################################################################
@@ -22,12 +20,10 @@ qt_internal_add_plugin(MockMultimediaPlugin
         qmockmediaencoder.h
         qmockmediacapturesession.h
         qmockvideosink.h
-        qmockmediadevices.cpp qmockmediadevices.h
+        qmockaudiodevices.cpp qmockaudiodevices.h
+        qmockvideodevices.cpp qmockvideodevices.h
         qmockintegration.cpp qmockintegration.h
     LIBRARIES
         Qt::MultimediaPrivate
         Qt::CorePrivate
 )
-
-#### Keys ignored in scope 1:.:.:mockbackend.pro:<TRUE>:
-# TEMPLATE = "lib"

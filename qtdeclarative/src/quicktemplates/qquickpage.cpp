@@ -14,7 +14,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype Page
     \inherits Pane
-//!     \instantiates QQuickPage
+//!     \nativetype QQuickPage
     \inqmlmodule QtQuick.Controls
     \since 5.7
     \ingroup qtquickcontrols-containers
@@ -278,6 +278,11 @@ void QQuickPage::setTitle(const QString &title)
     d->title = title;
     maybeSetAccessibleName(title);
     emit titleChanged();
+}
+
+void QQuickPage::resetTitle()
+{
+    setTitle(QString());
 }
 
 /*!

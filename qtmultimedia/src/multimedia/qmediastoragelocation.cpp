@@ -33,17 +33,20 @@ QDir QMediaStorageLocation::defaultDirectory(QStandardPaths::StandardLocation ty
 
 static QString generateFileName(const QDir &dir, const QString &prefix, const QString &extension)
 {
-    auto lastMediaIndex = 0;
-    const auto list = dir.entryList({ QStringLiteral("%1*.%2").arg(prefix, extension) });
-    for (const QString &fileName : list) {
-        auto mediaIndex = QStringView{fileName}.mid(prefix.size(), fileName.size() - prefix.size() - extension.size() - 1).toInt();
+    // The extension may be empty if Qt is built without the MIME type feature.
+    int lastMediaIndex = 0;
+    const QStringView maybeDot = !extension.isEmpty() && !extension.startsWith(u'.') ? u"." : u"";
+    const auto filesList =
+            dir.entryList({ QStringView(u"%1*%2%3").arg(prefix, maybeDot, extension) });
+    for (const QString &fileName : filesList) {
+        const qsizetype mediaIndexSize =
+                fileName.size() - prefix.size() - extension.size() - maybeDot.size();
+        const int mediaIndex = QStringView{ fileName }.mid(prefix.size(), mediaIndexSize).toInt();
         lastMediaIndex = qMax(lastMediaIndex, mediaIndex);
     }
 
-    const QString name = QStringLiteral("%1%2.%3")
-            .arg(prefix)
-            .arg(lastMediaIndex + 1, 4, 10, QLatin1Char('0'))
-            .arg(extension);
+    const QString newMediaIndexStr = QStringLiteral("%1").arg(lastMediaIndex + 1, 4, 10, QLatin1Char(u'0'));
+    const QString name = prefix + newMediaIndexStr + maybeDot + extension;
 
     return dir.absoluteFilePath(name);
 }
@@ -71,15 +74,20 @@ QString QMediaStorageLocation::generateFileName(const QString &requestedName,
 
     QString path = requestedName;
 
-    if (QFileInfo(path).isRelative() && QUrl(path).isRelative())
+    const QFileInfo fileInfo{ path };
+
+    if (fileInfo.isRelative() && QUrl(path).isRelative())
         path = defaultDirectory(type).absoluteFilePath(path);
 
-    if (QFileInfo(path).isDir())
+    if (fileInfo.isDir())
         return generateFileName(QDir(path), prefix, extension);
 
-    if (!path.endsWith(extension))
-        path.append(QStringLiteral(".%1").arg(extension));
-
+    if (fileInfo.suffix().isEmpty() && !extension.isEmpty()) {
+        // File does not have an extension, so add the suggested one
+        if (!path.endsWith(u'.'))
+            path.append(u'.');
+        path.append(extension);
+    }
     return path;
 }
 

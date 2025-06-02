@@ -12,47 +12,47 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufTypesJsonSerializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { m_serializer.reset(new QProtobufJsonSerializer); }
 
-    void BoolMessageSerializeTest_data();
-    void BoolMessageSerializeTest();
-    void IntMessageSerializeTest_data();
-    void IntMessageSerializeTest();
-    void UIntMessageSerializeTest_data();
-    void UIntMessageSerializeTest();
-    void SIntMessageSerializeTest_data();
-    void SIntMessageSerializeTest();
-    void Int64MessageSerializeTest_data();
-    void Int64MessageSerializeTest();
-    void UInt64MessageSerializeTest_data();
-    void UInt64MessageSerializeTest();
-    void SInt64MessageSerializeTest_data();
-    void SInt64MessageSerializeTest();
-    void FixedInt32MessageSerializeTest_data();
-    void FixedInt32MessageSerializeTest();
-    void FixedInt64MessageSerializeTest_data();
-    void FixedInt64MessageSerializeTest();
-    void SFixedInt32MessageSerializeTest_data();
-    void SFixedInt32MessageSerializeTest();
-    void SFixedInt64MessageSerializeTest_data();
-    void SFixedInt64MessageSerializeTest();
-    void FloatMessageSerializeTest_data();
-    void FloatMessageSerializeTest();
-    void DoubleMessageSerializeTest_data();
-    void DoubleMessageSerializeTest();
-    void StringMessageSerializeTest();
-    void ComplexTypeSerializeTest_data();
-    void ComplexTypeSerializeTest();
-    void ResetComplexTypeSerializeTest_data();
-    void ResetComplexTypeSerializeTest();
-    void DefaultConstructedComplexTypeSerializeTest();
-    void EmptyBytesMessageTest();
-    void EmptyStringMessageTest();
-    void OneofMessageEmptyTest();
-    void OneofMessageClearTest();
-    void OneofMessageIntTest();
-    void OneofMessageComplexTest();
+    void boolMessageSerializeTest_data();
+    void boolMessageSerializeTest();
+    void intMessageSerializeTest_data();
+    void intMessageSerializeTest();
+    void uIntMessageSerializeTest_data();
+    void uIntMessageSerializeTest();
+    void sIntMessageSerializeTest_data();
+    void sIntMessageSerializeTest();
+    void int64MessageSerializeTest_data();
+    void int64MessageSerializeTest();
+    void uInt64MessageSerializeTest_data();
+    void uInt64MessageSerializeTest();
+    void sInt64MessageSerializeTest_data();
+    void sInt64MessageSerializeTest();
+    void fixedInt32MessageSerializeTest_data();
+    void fixedInt32MessageSerializeTest();
+    void fixedInt64MessageSerializeTest_data();
+    void fixedInt64MessageSerializeTest();
+    void sFixedInt32MessageSerializeTest_data();
+    void sFixedInt32MessageSerializeTest();
+    void sFixedInt64MessageSerializeTest_data();
+    void sFixedInt64MessageSerializeTest();
+    void floatMessageSerializeTest_data();
+    void floatMessageSerializeTest();
+    void doubleMessageSerializeTest_data();
+    void doubleMessageSerializeTest();
+    void stringMessageSerializeTest();
+    void complexTypeSerializeTest_data();
+    void complexTypeSerializeTest();
+    void resetComplexTypeSerializeTest_data();
+    void resetComplexTypeSerializeTest();
+    void defaultConstructedComplexTypeSerializeTest();
+    void emptyBytesMessageTest();
+    void emptyStringMessageTest();
+    void oneofMessageEmptyTest();
+    void oneofMessageClearTest();
+    void oneofMessageIntTest();
+    void oneofMessageComplexTest();
 
 private:
     std::unique_ptr<QProtobufJsonSerializer> m_serializer;
@@ -60,7 +60,7 @@ private:
 
 using namespace qtprotobufnamespace::tests;
 
-void QtProtobufTypesJsonSerializationTest::BoolMessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::boolMessageSerializeTest_data()
 {
     QTest::addColumn<bool>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -69,7 +69,7 @@ void QtProtobufTypesJsonSerializationTest::BoolMessageSerializeTest_data()
     QTest::newRow("False") << false << "{}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::BoolMessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::boolMessageSerializeTest()
 {
     QFETCH(const bool, value);
     QFETCH(const QByteArray, expectedData);
@@ -81,7 +81,7 @@ void QtProtobufTypesJsonSerializationTest::BoolMessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::IntMessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::intMessageSerializeTest_data()
 {
     QTest::addColumn<int32_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -90,7 +90,7 @@ void QtProtobufTypesJsonSerializationTest::IntMessageSerializeTest_data()
     QTest::newRow("0") << 0 << "{}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::IntMessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::intMessageSerializeTest()
 {
     QFETCH(const int32_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -102,7 +102,7 @@ void QtProtobufTypesJsonSerializationTest::IntMessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::UIntMessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::uIntMessageSerializeTest_data()
 {
     QTest::addColumn<uint32_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -112,7 +112,7 @@ void QtProtobufTypesJsonSerializationTest::UIntMessageSerializeTest_data()
     QTest::newRow("65545") << (uint32_t)65545 << "{\"testFieldInt\":65545}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::UIntMessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::uIntMessageSerializeTest()
 {
     QFETCH(const uint32_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -124,7 +124,7 @@ void QtProtobufTypesJsonSerializationTest::UIntMessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::SIntMessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::sIntMessageSerializeTest_data()
 {
     QTest::addColumn<int32_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -138,7 +138,7 @@ void QtProtobufTypesJsonSerializationTest::SIntMessageSerializeTest_data()
     QTest::newRow("-63585") << (int32_t)-63585 << "{\"testFieldInt\":-63585}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::SIntMessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::sIntMessageSerializeTest()
 {
     QFETCH(const int32_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -150,7 +150,7 @@ void QtProtobufTypesJsonSerializationTest::SIntMessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::Int64MessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::int64MessageSerializeTest_data()
 {
     QTest::addColumn<int64_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -164,7 +164,7 @@ void QtProtobufTypesJsonSerializationTest::Int64MessageSerializeTest_data()
     QTest::newRow("-63585") << (int64_t)-63585 << "{\"testFieldInt\":-63585}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::Int64MessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::int64MessageSerializeTest()
 {
     QFETCH(const int64_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -176,7 +176,7 @@ void QtProtobufTypesJsonSerializationTest::Int64MessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::UInt64MessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::uInt64MessageSerializeTest_data()
 {
     QTest::addColumn<uint64_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -190,7 +190,7 @@ void QtProtobufTypesJsonSerializationTest::UInt64MessageSerializeTest_data()
         << uint64_t(123245324235425234u) << "{\"testFieldInt\":\"123245324235425234\"}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::UInt64MessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::uInt64MessageSerializeTest()
 {
     QFETCH(const QtProtobuf::uint64, value);
     QFETCH(const QByteArray, expectedData);
@@ -202,7 +202,7 @@ void QtProtobufTypesJsonSerializationTest::UInt64MessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::SInt64MessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::sInt64MessageSerializeTest_data()
 {
     QTest::addColumn<int64_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -216,7 +216,7 @@ void QtProtobufTypesJsonSerializationTest::SInt64MessageSerializeTest_data()
     QTest::newRow("-63585") << (int64_t)-63585 << "{\"testFieldInt\":-63585}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::SInt64MessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::sInt64MessageSerializeTest()
 {
     QFETCH(const int64_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -228,7 +228,7 @@ void QtProtobufTypesJsonSerializationTest::SInt64MessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::FixedInt32MessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::fixedInt32MessageSerializeTest_data()
 {
     QTest::addColumn<uint32_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -238,7 +238,7 @@ void QtProtobufTypesJsonSerializationTest::FixedInt32MessageSerializeTest_data()
     QTest::newRow("65545") << (uint32_t)65545 << "{\"testFieldFixedInt32\":65545}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::FixedInt32MessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::fixedInt32MessageSerializeTest()
 {
     QFETCH(const uint32_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -250,7 +250,7 @@ void QtProtobufTypesJsonSerializationTest::FixedInt32MessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::FixedInt64MessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::fixedInt64MessageSerializeTest_data()
 {
     QTest::addColumn<uint64_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -260,7 +260,7 @@ void QtProtobufTypesJsonSerializationTest::FixedInt64MessageSerializeTest_data()
     QTest::newRow("65545") << (uint64_t)65545 << "{\"testFieldFixedInt64\":\"65545\"}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::FixedInt64MessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::fixedInt64MessageSerializeTest()
 {
     QFETCH(const uint64_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -272,7 +272,7 @@ void QtProtobufTypesJsonSerializationTest::FixedInt64MessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::SFixedInt32MessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::sFixedInt32MessageSerializeTest_data()
 {
     QTest::addColumn<int32_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -285,7 +285,7 @@ void QtProtobufTypesJsonSerializationTest::SFixedInt32MessageSerializeTest_data(
     QTest::newRow("-462") << (int32_t)-462 << "{\"testFieldFixedInt32\":-462}"_ba;
     QTest::newRow("-63585") << (int32_t)-63585 << "{\"testFieldFixedInt32\":-63585}"_ba;
 }
-void QtProtobufTypesJsonSerializationTest::SFixedInt32MessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::sFixedInt32MessageSerializeTest()
 {
     QFETCH(const int32_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -297,7 +297,7 @@ void QtProtobufTypesJsonSerializationTest::SFixedInt32MessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::SFixedInt64MessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::sFixedInt64MessageSerializeTest_data()
 {
     QTest::addColumn<int64_t>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -311,7 +311,7 @@ void QtProtobufTypesJsonSerializationTest::SFixedInt64MessageSerializeTest_data(
     QTest::newRow("-63585") << (int64_t)-63585 << "{\"testFieldFixedInt64\":-63585}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::SFixedInt64MessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::sFixedInt64MessageSerializeTest()
 {
     QFETCH(const int64_t, value);
     QFETCH(const QByteArray, expectedData);
@@ -323,7 +323,7 @@ void QtProtobufTypesJsonSerializationTest::SFixedInt64MessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::FloatMessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::floatMessageSerializeTest_data()
 {
     QTest::addColumn<float>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -336,12 +336,12 @@ void QtProtobufTypesJsonSerializationTest::FloatMessageSerializeTest_data()
     QTest::newRow("float_neg_value_4_2") << -4.2f << "{\"testFieldFloat\":-4.199999809265137}"_ba;
     QTest::newRow("float_neg_value_0_0") << (float)-0.0f << "{\"testFieldFloat\":-0}"_ba;
     QTest::newRow("float_value_0_0") << (float)0.0f << "{}"_ba;
-    QTest::newRow("float_nan") << NAN << "{\"testFieldFloat\":\"nan\"}"_ba;
-    QTest::newRow("float_infinity") << INFINITY << "{\"testFieldFloat\":\"infinity\"}"_ba;
-    QTest::newRow("float_neg_infinity") << -INFINITY << "{\"testFieldFloat\":\"-infinity\"}"_ba;
+    QTest::newRow("float_nan") << NAN << "{\"testFieldFloat\":\"NaN\"}"_ba;
+    QTest::newRow("float_infinity") << INFINITY << "{\"testFieldFloat\":\"Infinity\"}"_ba;
+    QTest::newRow("float_neg_infinity") << -INFINITY << "{\"testFieldFloat\":\"-Infinity\"}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::FloatMessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::floatMessageSerializeTest()
 {
     QFETCH(const float, value);
     QFETCH(const QByteArray, expectedData);
@@ -355,7 +355,7 @@ void QtProtobufTypesJsonSerializationTest::FloatMessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::DoubleMessageSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::doubleMessageSerializeTest_data()
 {
     QTest::addColumn<double>("value");
     QTest::addColumn<QByteArray>("expectedData");
@@ -372,13 +372,13 @@ void QtProtobufTypesJsonSerializationTest::DoubleMessageSerializeTest_data()
                                           << "{\"testFieldDouble\":-4.2}"_ba;
     QTest::newRow("double_neg_value_0_0") << -0.0 << "{\"testFieldDouble\":-0}"_ba;
     QTest::newRow("double_value_0_0") << 0.0 << "{}"_ba;
-    QTest::newRow("double_nan") << double(NAN) << "{\"testFieldDouble\":\"nan\"}"_ba;
-    QTest::newRow("double_infinity") << double(INFINITY) << "{\"testFieldDouble\":\"infinity\"}"_ba;
+    QTest::newRow("double_nan") << double(NAN) << "{\"testFieldDouble\":\"NaN\"}"_ba;
+    QTest::newRow("double_infinity") << double(INFINITY) << "{\"testFieldDouble\":\"Infinity\"}"_ba;
     QTest::newRow("double_neg_infinity")
-        << double(-INFINITY) << "{\"testFieldDouble\":\"-infinity\"}"_ba;
+        << double(-INFINITY) << "{\"testFieldDouble\":\"-Infinity\"}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::DoubleMessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::doubleMessageSerializeTest()
 {
     QFETCH(const double, value);
     QFETCH(const QByteArray, expectedData);
@@ -392,7 +392,7 @@ void QtProtobufTypesJsonSerializationTest::DoubleMessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::StringMessageSerializeTest()
+void QtProtobufTypesJsonSerializationTest::stringMessageSerializeTest()
 {
     SimpleStringMessage test;
     test.setTestFieldString("qwerty");
@@ -427,7 +427,7 @@ void QtProtobufTypesJsonSerializationTest::StringMessageSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::ComplexTypeSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::complexTypeSerializeTest_data()
 {
     QTest::addColumn<int>("intField");
     QTest::addColumn<QString>("stringField");
@@ -465,7 +465,7 @@ void QtProtobufTypesJsonSerializationTest::ComplexTypeSerializeTest_data()
         << "{\"testComplexField\":{\"testFieldString\":\"qwerty\"},\"testFieldInt\":-45}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::ComplexTypeSerializeTest()
+void QtProtobufTypesJsonSerializationTest::complexTypeSerializeTest()
 {
     QFETCH(const int, intField);
     QFETCH(const QString, stringField);
@@ -486,7 +486,7 @@ void QtProtobufTypesJsonSerializationTest::ComplexTypeSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::ResetComplexTypeSerializeTest_data()
+void QtProtobufTypesJsonSerializationTest::resetComplexTypeSerializeTest_data()
 {
     QTest::addColumn<int>("intField");
     QTest::addColumn<QString>("stringField");
@@ -498,7 +498,7 @@ void QtProtobufTypesJsonSerializationTest::ResetComplexTypeSerializeTest_data()
     QTest::newRow("int_and_string") << 42 << u"qwerty"_s << "{\"testFieldInt\":42}"_ba;
 }
 
-void QtProtobufTypesJsonSerializationTest::ResetComplexTypeSerializeTest()
+void QtProtobufTypesJsonSerializationTest::resetComplexTypeSerializeTest()
 {
     QFETCH(const int, intField);
     QFETCH(const QString, stringField);
@@ -517,7 +517,7 @@ void QtProtobufTypesJsonSerializationTest::ResetComplexTypeSerializeTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::DefaultConstructedComplexTypeSerializeTest()
+void QtProtobufTypesJsonSerializationTest::defaultConstructedComplexTypeSerializeTest()
 {
     ComplexMessage test;
     QByteArray result = test.serialize(m_serializer.get());
@@ -525,7 +525,7 @@ void QtProtobufTypesJsonSerializationTest::DefaultConstructedComplexTypeSerializ
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::EmptyBytesMessageTest()
+void QtProtobufTypesJsonSerializationTest::emptyBytesMessageTest()
 {
     SimpleBytesMessage msg;
     QByteArray result = msg.serialize(m_serializer.get());
@@ -533,7 +533,7 @@ void QtProtobufTypesJsonSerializationTest::EmptyBytesMessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::EmptyStringMessageTest()
+void QtProtobufTypesJsonSerializationTest::emptyStringMessageTest()
 {
     SimpleStringMessage msg;
     QByteArray result = msg.serialize(m_serializer.get());
@@ -541,14 +541,14 @@ void QtProtobufTypesJsonSerializationTest::EmptyStringMessageTest()
     QVERIFY(!QJsonDocument::fromJson(result).isNull());
 }
 
-void QtProtobufTypesJsonSerializationTest::OneofMessageEmptyTest()
+void QtProtobufTypesJsonSerializationTest::oneofMessageEmptyTest()
 {
     OneofMessage test;
     QByteArray result = test.serialize(m_serializer.get());
     QCOMPARE(result, "{}");
 }
 
-void QtProtobufTypesJsonSerializationTest::OneofMessageIntTest()
+void QtProtobufTypesJsonSerializationTest::oneofMessageIntTest()
 {
     OneofMessage test;
     test.setTestFieldInt(-45);
@@ -562,7 +562,7 @@ void QtProtobufTypesJsonSerializationTest::OneofMessageIntTest()
     QCOMPARE(result, "{\"testOneofFieldInt\":0}");
 }
 
-void QtProtobufTypesJsonSerializationTest::OneofMessageClearTest()
+void QtProtobufTypesJsonSerializationTest::oneofMessageClearTest()
 {
     OneofMessage test;
     test.setTestFieldInt(-45);
@@ -573,7 +573,7 @@ void QtProtobufTypesJsonSerializationTest::OneofMessageClearTest()
     QCOMPARE(result, "{\"testFieldInt\":-45}");
 }
 
-void QtProtobufTypesJsonSerializationTest::OneofMessageComplexTest()
+void QtProtobufTypesJsonSerializationTest::oneofMessageComplexTest()
 {
     ComplexMessage complexField;
     SimpleStringMessage stringField;

@@ -67,6 +67,8 @@
 
 namespace blink {
 
+using mojom::blink::FormControlType;
+
 namespace {
 
 // This function should match to the user-agent stylesheet.
@@ -217,7 +219,8 @@ ControlPart LayoutTheme::AdjustAppearanceWithElementType(
 
     case kTextFieldPart:
       if (const auto* input_element = DynamicTo<HTMLInputElement>(*element);
-          input_element && input_element->type() == input_type_names::kSearch) {
+          input_element &&
+          input_element->FormControlType() == FormControlType::kInputSearch) {
         return part;
       }
       return auto_appearance;
@@ -283,6 +286,9 @@ void LayoutTheme::AdjustStyle(const Element* element,
 }
 
 String LayoutTheme::ExtraDefaultStyleSheet() {
+  if (RuntimeEnabledFeatures::CssDisplayRubyEnabled()) {
+    return "ruby { display: ruby; }\nruby > rt { display: ruby-text; }\n";
+  }
   return g_empty_string;
 }
 
@@ -585,8 +591,11 @@ void LayoutTheme::SystemFont(CSSValueID system_font_id,
   font_description.SetGenericFamily(FontDescription::kNoFamily);
 }
 
+// TODO(crbug.com/1231644): Use color_provider to get the system colors if
+// available.
 Color LayoutTheme::SystemColor(CSSValueID css_value_id,
-                               mojom::blink::ColorScheme color_scheme) const {
+                               mojom::blink::ColorScheme color_scheme,
+                               const ui::ColorProvider* color_provider) const {
   if (!WebTestSupport::IsRunningWebTest() && InForcedColorsMode())
     return SystemColorFromNativeTheme(css_value_id, color_scheme);
   return DefaultSystemColor(css_value_id, color_scheme);
@@ -701,7 +710,8 @@ Color LayoutTheme::DefaultSystemColor(
     default:
       break;
   }
-  NOTREACHED();
+  DUMP_WILL_BE_NOTREACHED_NORETURN()
+      << getValueName(css_value_id) << " is not a recognized system color";
   return Color();
 }
 
@@ -776,20 +786,24 @@ Color LayoutTheme::SystemColorFromNativeTheme(
 
 Color LayoutTheme::PlatformTextSearchHighlightColor(
     bool active_match,
-    mojom::blink::ColorScheme color_scheme) const {
+    mojom::blink::ColorScheme color_scheme,
+    const ui::ColorProvider* color_provider) const {
   if (active_match) {
     if (InForcedColorsMode())
-      return GetTheme().SystemColor(CSSValueID::kHighlight, color_scheme);
+      return GetTheme().SystemColor(CSSValueID::kHighlight, color_scheme,
+                                    color_provider);
     return Color(255, 150, 50);  // Orange.
   }
-  return Color(255, 255, 0);     // Yellow.
+  return Color(255, 255, 0);  // Yellow.
 }
 
 Color LayoutTheme::PlatformTextSearchColor(
     bool active_match,
-    mojom::blink::ColorScheme color_scheme) const {
+    mojom::blink::ColorScheme color_scheme,
+    const ui::ColorProvider* color_provider) const {
   if (InForcedColorsMode() && active_match)
-    return GetTheme().SystemColor(CSSValueID::kHighlighttext, color_scheme);
+    return GetTheme().SystemColor(CSSValueID::kHighlighttext, color_scheme,
+                                  color_provider);
   return Color::kBlack;
 }
 
@@ -798,8 +812,13 @@ Color LayoutTheme::TapHighlightColor() {
 }
 
 void LayoutTheme::SetCustomFocusRingColor(const Color& c) {
+  const bool changed =
+      !has_custom_focus_ring_color_ || custom_focus_ring_color_ != c;
   custom_focus_ring_color_ = c;
   has_custom_focus_ring_color_ = true;
+  if (changed) {
+    Page::PlatformColorsChanged();
+  }
 }
 
 Color LayoutTheme::FocusRingColor(
@@ -820,15 +839,11 @@ String LayoutTheme::DisplayNameForFile(const File& file) const {
   return file.name();
 }
 
-bool LayoutTheme::SupportsCalendarPicker(const AtomicString& type) const {
+bool LayoutTheme::SupportsCalendarPicker(InputType::Type type) const {
   DCHECK(RuntimeEnabledFeatures::InputMultipleFieldsUIEnabled());
-  if (type == input_type_names::kTime)
-    return true;
-
-  return type == input_type_names::kDate ||
-         type == input_type_names::kDatetime ||
-         type == input_type_names::kDatetimeLocal ||
-         type == input_type_names::kMonth || type == input_type_names::kWeek;
+  return type == InputType::Type::kTime || type == InputType::Type::kDate ||
+         type == InputType::Type::kDateTimeLocal ||
+         type == InputType::Type::kMonth || type == InputType::Type::kWeek;
 }
 
 void LayoutTheme::AdjustControlPartStyle(ComputedStyleBuilder& builder) {
@@ -862,6 +877,32 @@ void LayoutTheme::UpdateForcedColorsState() {
   in_forced_colors_mode_ =
       WebThemeEngineHelper::GetNativeThemeEngine()->GetForcedColors() !=
       ForcedColors::kNone;
+}
+
+bool LayoutTheme::IsAccentColorCustomized(
+    mojom::blink::ColorScheme color_scheme) const {
+  if (!RuntimeEnabledFeatures::CSSSystemAccentColorEnabled()) {
+    return false;
+  }
+
+  return WebThemeEngineHelper::GetNativeThemeEngine()
+      ->GetAccentColor()
+      .has_value();
+}
+
+Color LayoutTheme::GetSystemAccentColor(
+    mojom::blink::ColorScheme color_scheme) const {
+  if (!RuntimeEnabledFeatures::CSSSystemAccentColorEnabled()) {
+    return Color();
+  }
+
+  // Currently only plumbed through on ChromeOS.
+  const auto& accent_color =
+      WebThemeEngineHelper::GetNativeThemeEngine()->GetAccentColor();
+  if (!accent_color.has_value()) {
+    return Color();
+  }
+  return Color::FromSkColor(accent_color.value());
 }
 
 Color LayoutTheme::GetAccentColorOrDefault(

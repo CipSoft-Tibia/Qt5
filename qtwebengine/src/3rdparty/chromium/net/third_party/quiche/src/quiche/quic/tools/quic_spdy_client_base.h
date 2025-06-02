@@ -12,7 +12,6 @@
 
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/crypto/crypto_handshake.h"
-#include "quiche/quic/core/http/quic_client_push_promise_index.h"
 #include "quiche/quic/core/http/quic_spdy_client_session.h"
 #include "quiche/quic/core/http/quic_spdy_client_stream.h"
 #include "quiche/quic/core/quic_config.h"
@@ -27,7 +26,6 @@ class QuicServerId;
 class SessionCache;
 
 class QuicSpdyClientBase : public QuicClientBase,
-                           public QuicClientPushPromiseIndex::Delegate,
                            public QuicSpdyStream::Visitor {
  public:
   // A ResponseListener is notified when a complete response is received.
@@ -38,29 +36,6 @@ class QuicSpdyClientBase : public QuicClientBase,
     virtual void OnCompleteResponse(
         QuicStreamId id, const spdy::Http2HeaderBlock& response_headers,
         absl::string_view response_body) = 0;
-  };
-
-  // A piece of data that can be sent multiple times. For example, it can be a
-  // HTTP request that is resent after a connect=>version negotiation=>reconnect
-  // sequence.
-  class QuicDataToResend {
-   public:
-    // |headers| may be null, since it's possible to send data without headers.
-    QuicDataToResend(std::unique_ptr<spdy::Http2HeaderBlock> headers,
-                     absl::string_view body, bool fin);
-    QuicDataToResend(const QuicDataToResend&) = delete;
-    QuicDataToResend& operator=(const QuicDataToResend&) = delete;
-
-    virtual ~QuicDataToResend();
-
-    // Must be overridden by specific classes with the actual method for
-    // re-sending data.
-    virtual void Resend() = 0;
-
-   protected:
-    std::unique_ptr<spdy::Http2HeaderBlock> headers_;
-    absl::string_view body_;
-    bool fin_;
   };
 
   QuicSpdyClientBase(const QuicServerId& server_id,
@@ -103,21 +78,6 @@ class QuicSpdyClientBase : public QuicClientBase,
   QuicSpdyClientSession* client_session();
   const QuicSpdyClientSession* client_session() const;
 
-  QuicClientPushPromiseIndex* push_promise_index() {
-    return &push_promise_index_;
-  }
-
-  bool CheckVary(const spdy::Http2HeaderBlock& client_request,
-                 const spdy::Http2HeaderBlock& promise_request,
-                 const spdy::Http2HeaderBlock& promise_response) override;
-  void OnRendezvousResult(QuicSpdyStream*) override;
-
-  // If the crypto handshake has not yet been confirmed, adds the data to the
-  // queue of data to resend if the client receives a stateless reject.
-  // Otherwise, deletes the data.
-  void MaybeAddQuicDataToResend(
-      std::unique_ptr<QuicDataToResend> data_to_resend);
-
   void set_store_response(bool val) { store_response_ = val; }
 
   int latest_response_code() const;
@@ -154,6 +114,8 @@ class QuicSpdyClientBase : public QuicClientBase,
   bool EarlyDataAccepted() override;
   bool ReceivedInchoateReject() override;
 
+  std::optional<uint64_t> last_received_http3_goaway_id();
+
   void set_max_inbound_header_list_size(size_t size) {
     max_inbound_header_list_size_ = size;
   }
@@ -167,41 +129,15 @@ class QuicSpdyClientBase : public QuicClientBase,
       const quic::ParsedQuicVersionVector& supported_versions,
       QuicConnection* connection) override;
 
-  void ClearDataToResend() override;
+  void ClearDataToResend() override {}
 
-  void ResendSavedData() override;
+  void ResendSavedData() override {}
 
-  void AddPromiseDataToResend(const spdy::Http2HeaderBlock& headers,
-                              absl::string_view body, bool fin);
   bool HasActiveRequests() override;
 
  private:
-  // Specific QuicClient class for storing data to resend.
-  class ClientQuicDataToResend : public QuicDataToResend {
-   public:
-    ClientQuicDataToResend(std::unique_ptr<spdy::Http2HeaderBlock> headers,
-                           absl::string_view body, bool fin,
-                           QuicSpdyClientBase* client)
-        : QuicDataToResend(std::move(headers), body, fin), client_(client) {
-      QUICHE_DCHECK(headers_);
-      QUICHE_DCHECK(client);
-    }
-
-    ClientQuicDataToResend(const ClientQuicDataToResend&) = delete;
-    ClientQuicDataToResend& operator=(const ClientQuicDataToResend&) = delete;
-    ~ClientQuicDataToResend() override {}
-
-    void Resend() override;
-
-   private:
-    QuicSpdyClientBase* client_;
-  };
-
   void SendRequestInternal(spdy::Http2HeaderBlock sanitized_headers,
                            absl::string_view body, bool fin);
-
-  // Index of pending promised streams. Must outlive |session_|.
-  QuicClientPushPromiseIndex push_promise_index_;
 
   // If true, store the latest response code, headers, and body.
   bool store_response_;
@@ -223,12 +159,6 @@ class QuicSpdyClientBase : public QuicClientBase,
 
   // Listens for full responses.
   std::unique_ptr<ResponseListener> response_listener_;
-
-  // Keeps track of any data that must be resent upon a subsequent successful
-  // connection, in case the client receives a stateless reject.
-  std::vector<std::unique_ptr<QuicDataToResend>> data_to_resend_on_connect_;
-
-  std::unique_ptr<ClientQuicDataToResend> push_promise_data_to_resend_;
 
   bool drop_response_body_ = false;
   bool enable_web_transport_ = false;

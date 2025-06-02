@@ -49,7 +49,7 @@ class SubApps : public ScriptWrappable, public Supplement<Navigator> {
  private:
   HeapMojoRemote<mojom::blink::SubAppsService>& GetService();
   void OnConnectionError();
-  bool CheckPreconditionsMaybeThrow(ExceptionState&);
+  bool CheckPreconditionsMaybeThrow(ScriptState*, ExceptionState&);
 
   HeapMojoRemote<mojom::blink::SubAppsService> service_;
 };

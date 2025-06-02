@@ -48,10 +48,6 @@
 
     \sa {ActiveQt Framework}
 
-    Topics:
-
-    \tableofcontents
-
     \section1 Using the Library
 
     To build Qt applications that can host COM objects and ActiveX controls

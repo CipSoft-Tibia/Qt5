@@ -10,6 +10,9 @@ accept_configuration:
 instructions:
   Build:
     - type: EnvironmentVariable
+      variableName: VERIFY_SOURCE_SBOM
+      variableValue: "ON"
+    - type: EnvironmentVariable
       variableName: QT_CI_SKIP_MODULE_BUILD
       variableValue: "1"
       enable_if:

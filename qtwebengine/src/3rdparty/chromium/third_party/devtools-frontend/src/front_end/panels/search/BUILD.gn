@@ -45,19 +45,9 @@ devtools_entrypoint("bundle") {
     "../../../test/unittests/front_end/entrypoints/missing_entrypoints/*",
     "../../../test/unittests/front_end/panels/search/*",
     "../../entrypoints/*",
-
-    # TODO(crbug.com/1202788): Remove invalid dependents
     "../network/*",
     "../sources/*",
   ]
 
   visibility += devtools_panels_visibility
-}
-
-devtools_entrypoint("legacy") {
-  entrypoint = "search-legacy.ts"
-
-  deps = [ ":bundle" ]
-
-  visibility = [ "../..:legacy_entrypoints" ]
 }

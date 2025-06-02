@@ -15,14 +15,6 @@
 // We mean it.
 //
 
-#include <QtCore/QList>
-#include <QtCore/QString>
-#include <QtCore/QObject>
-#include <QtCore/QVariant>
-#include <QtCore/QStringList>
-
-#include <QtSql/QSqlQuery>
-
 #include "qhelpdbreader_p.h"
 #include "qhelplink.h"
 
@@ -32,8 +24,10 @@
 
 QT_BEGIN_NAMESPACE
 
-class QVersionNumber;
 class QHelpFilterData;
+class QSqlQuery;
+class QVariant;
+class QVersionNumber;
 
 class QHelpCollectionHandler : public QObject
 {
@@ -64,11 +58,10 @@ public:
         QList<QByteArray> contentsList;
     };
 
-    explicit QHelpCollectionHandler(const QString &collectionFile,
-        QObject *parent = nullptr);
+    explicit QHelpCollectionHandler(const QString &collectionFile, QObject *parent = nullptr);
     ~QHelpCollectionHandler();
 
-    QString collectionFile() const;
+    QString collectionFile() const { return m_collectionFile; }
 
     bool openCollectionFile();
     bool copyCollectionFile(const QString &fileName);
@@ -83,8 +76,7 @@ public:
     bool removeCustomFilter(const QString &filterName);
 
     // use QHelpFilterEngine::setFilterData() instead
-    bool addCustomFilter(const QString &filterName,
-        const QStringList &attributes);
+    bool addCustomFilter(const QString &filterName, const QStringList &attributes);
 
     // use files(const QString &, const QString &, const QString &) instead
     QStringList files(const QString &namespaceName,
@@ -92,12 +84,10 @@ public:
                       const QString &extensionFilter) const;
 
     // use namespaceForFile(const QUrl &, const QString &) instead
-    QString namespaceForFile(const QUrl &url,
-                             const QStringList &filterAttributes) const;
+    QString namespaceForFile(const QUrl &url, const QStringList &filterAttributes) const;
 
     // use findFile(const QUrl &, const QString &) instead
-    QUrl findFile(const QUrl &url,
-                  const QStringList &filterAttributes) const;
+    QUrl findFile(const QUrl &url, const QStringList &filterAttributes) const;
 
     // use indicesForFilter(const QString &) instead
     QStringList indicesForFilter(const QStringList &filterAttributes) const;
@@ -114,20 +104,6 @@ public:
     // use filterData(const QString &) instead
     QList<QStringList> filterAttributeSets(const QString &namespaceName) const;
 
-    // use linksForIdentifier(const QString &, const QString &) instead
-    QMultiMap<QString, QUrl> linksForIdentifier(const QString &id,
-                                                const QStringList &filterAttributes) const;
-
-    // use linksForKeyword(const QString &, const QString &) instead
-    QMultiMap<QString, QUrl> linksForKeyword(const QString &keyword,
-                                             const QStringList &filterAttributes) const;
-
-    // use documentsForIdentifier instead
-    QMultiMap<QString, QUrl> linksForIdentifier(const QString &id, const QString &filterName) const;
-
-    // use documentsForKeyword instead
-    QMultiMap<QString, QUrl> linksForKeyword(const QString &keyword,
-                                             const QString &filterName) const;
     // *** Legacy block end ***
 
     QStringList filters() const;
@@ -140,23 +116,18 @@ public:
     bool setFilterData(const QString &filterName, const QHelpFilterData &filterData);
     bool removeFilter(const QString &filterName);
 
-
     FileInfo registeredDocumentation(const QString &namespaceName) const;
     FileInfoList registeredDocumentations() const;
     bool registerDocumentation(const QString &fileName);
     bool unregisterDocumentation(const QString &namespaceName);
 
-
     bool fileExists(const QUrl &url) const;
     QStringList files(const QString &namespaceName,
                       const QString &filterName,
                       const QString &extensionFilter) const;
-    QString namespaceForFile(const QUrl &url,
-                             const QString &filterName) const;
-    QUrl findFile(const QUrl &url,
-                  const QString &filterName) const;
+    QString namespaceForFile(const QUrl &url, const QString &filterName) const;
+    QUrl findFile(const QUrl &url, const QString &filterName) const;
     QByteArray fileData(const QUrl &url) const;
-
 
     QStringList indicesForFilter(const QString &filterName) const;
     QList<ContentsData> contentsForFilter(const QString &filterName) const;
@@ -165,16 +136,13 @@ public:
     QVariant customValue(const QString &key, const QVariant &defaultValue) const;
     bool setCustomValue(const QString &key, const QVariant &value);
 
-
     int registerNamespace(const QString &nspace, const QString &fileName);
     int registerVirtualFolder(const QString &folderName, int namespaceId);
     int registerComponent(const QString &componentName, int namespaceId);
     bool registerVersion(const QString &version, int namespaceId);
 
-    QList<QHelpLink> documentsForIdentifier(const QString &id,
-                                            const QString &filterName) const;
-    QList<QHelpLink> documentsForKeyword(const QString &keyword,
-                                         const QString &filterName) const;
+    QList<QHelpLink> documentsForIdentifier(const QString &id, const QString &filterName) const;
+    QList<QHelpLink> documentsForKeyword(const QString &keyword, const QString &filterName) const;
     QList<QHelpLink> documentsForIdentifier(const QString &id,
                                             const QStringList &filterAttributes) const;
     QList<QHelpLink> documentsForKeyword(const QString &keyword,
@@ -182,7 +150,7 @@ public:
 
     QStringList namespacesForFilter(const QString &filterName) const;
 
-    void setReadOnly(bool readOnly);
+    void setReadOnly(bool readOnly) { m_readOnly = readOnly; }
 
     static QUrl buildQUrl(const QString &ns, const QString &folder,
                           const QString &relFileName, const QString &anchor);
@@ -192,9 +160,6 @@ signals:
 
 private:
     // legacy stuff
-    QMultiMap<QString, QUrl> linksForField(const QString &fieldName,
-                                           const QString &fieldValue,
-                                           const QStringList &filterAttributes) const;
     QList<QHelpLink> documentsForField(const QString &fieldName,
                                        const QString &fieldValue,
                                        const QStringList &filterAttributes) const;
@@ -226,11 +191,11 @@ private:
 
     QString m_collectionFile;
     QString m_connectionName;
-    QSqlQuery *m_query = nullptr;
+    std::unique_ptr<QSqlQuery> m_query;
     bool m_vacuumScheduled = false;
     bool m_readOnly = true;
 };
 
 QT_END_NAMESPACE
 
-#endif  //QHELPCOLLECTIONHANDLER_H
+#endif // QHELPCOLLECTIONHANDLER_H

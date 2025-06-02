@@ -172,10 +172,6 @@ class V8_EXPORT V8InspectorSession {
     virtual v8::Local<v8::Value> get(v8::Local<v8::Context>) = 0;
     virtual ~Inspectable() = default;
   };
-  class V8_EXPORT CommandLineAPIScope {
-   public:
-    virtual ~CommandLineAPIScope() = default;
-  };
   virtual void addInspectedObject(std::unique_ptr<Inspectable>) = 0;
 
   // Dispatching protocol messages.
@@ -184,9 +180,6 @@ class V8_EXPORT V8InspectorSession {
   virtual std::vector<uint8_t> state() = 0;
   virtual std::vector<std::unique_ptr<protocol::Schema::API::Domain>>
   supportedDomains() = 0;
-
-  virtual std::unique_ptr<V8InspectorSession::CommandLineAPIScope>
-  initializeCommandLineAPIScope(int executionContextId) = 0;
 
   // Debugger actions.
   virtual void schedulePauseOnNextStatement(StringView breakReason,
@@ -233,17 +226,6 @@ class V8_EXPORT V8InspectorSession {
   virtual void stop() = 0;
 };
 
-// Deprecated.
-// TODO(crbug.com/1420968): remove.
-class V8_EXPORT WebDriverValue {
- public:
-  explicit WebDriverValue(std::unique_ptr<StringBuffer> type,
-                          v8::MaybeLocal<v8::Value> value = {})
-      : type(std::move(type)), value(value) {}
-  std::unique_ptr<StringBuffer> type;
-  v8::MaybeLocal<v8::Value> value;
-};
-
 struct V8_EXPORT DeepSerializedValue {
   explicit DeepSerializedValue(std::unique_ptr<StringBuffer> type,
                                v8::MaybeLocal<v8::Value> value = {})
@@ -282,12 +264,6 @@ class V8_EXPORT V8InspectorClient {
   virtual void beginUserGesture() {}
   virtual void endUserGesture() {}
 
-  // Deprecated. Use `deepSerialize` instead.
-  // TODO(crbug.com/1420968): remove.
-  virtual std::unique_ptr<WebDriverValue> serializeToWebDriverValue(
-      v8::Local<v8::Value> v8Value, int maxDepth) {
-    return nullptr;
-  }
   virtual std::unique_ptr<DeepSerializationResult> deepSerialize(
       v8::Local<v8::Value> v8Value, int maxDepth,
       v8::Local<v8::Object> additionalParameters) {

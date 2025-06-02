@@ -54,15 +54,15 @@ class Downloader(abc.ABC):
     self._platform_name = platform_name
     assert platform_name, "Missing platform_name"
     self._archive_path: pathlib.Path = pathlib.Path()
-    self._out_dir = cache_dir or BROWSERS_CACHE
-    self._archive_dir = self._out_dir / "archive"
+    self._out_dir: pathlib.Path = cache_dir or BROWSERS_CACHE
+    self._archive_dir: pathlib.Path = self._out_dir / "archive"
     self._archive_dir.mkdir(parents=True, exist_ok=True)
-    self._app_path = self._out_dir / self._browser_type
+    self._app_path: pathlib.Path = self._out_dir / self._browser_type
     # TODO replace version* variable with version object
     self._version_identifier: str = ""
     self._requested_version: Tuple[int, ...] = (0, 0, 0, 0)
     self._requested_version_str: str = "0.0.0.0"
-    self._requested_exact_version = False
+    self._requested_exact_version: bool = False
     if self.VERSION_RE.fullmatch(str(archive_path_or_version_identifier)):
       self._version_identifier = str(archive_path_or_version_identifier)
       self._pre_check()
@@ -195,7 +195,7 @@ class Downloader(abc.ABC):
     pass
 
   @abc.abstractmethod
-  def _archive_url(self, folder_url: str, version_str: str) -> str:
+  def _archive_urls(self, folder_url: str, version_str: str) -> Tuple[str, ...]:
     pass
 
   def _version_matches(self, version: Tuple[int, ...]) -> bool:
@@ -237,7 +237,7 @@ class ArchiveHelper(abc.ABC):
     pass
 
 
-class RPMArchiveHelper():
+class RPMArchiveHelper(ArchiveHelper):
 
   @classmethod
   def extract(cls, platform: plt.Platform, archive_path: pathlib.Path,

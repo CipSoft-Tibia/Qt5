@@ -4,7 +4,6 @@
 
 #include "qwaylandinputcontext_p.h"
 
-#include <QLoggingCategory>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QTextCharFormat>
 #include <QtGui/QWindow>
@@ -190,25 +189,30 @@ void QWaylandInputContext::setFocusObject(QObject *object)
 
     QWindow *window = QGuiApplication::focusWindow();
 
-    if (mCurrentWindow && mCurrentWindow->handle()) {
-        if (mCurrentWindow.data() != window || !inputMethodAccepted()) {
-            auto *surface = static_cast<QWaylandWindow *>(mCurrentWindow->handle())->wlSurface();
-            if (surface)
-                inputInterface->disableSurface(surface);
-            mCurrentWindow.clear();
-        }
-    }
-
-    if (window && window->handle() && inputMethodAccepted()) {
+    if (window && window->handle()) {
         if (mCurrentWindow.data() != window) {
-            auto *surface = static_cast<QWaylandWindow *>(window->handle())->wlSurface();
-            if (surface) {
-                inputInterface->enableSurface(surface);
-                mCurrentWindow = window;
+            if (!inputMethodAccepted()) {
+                auto *surface = static_cast<QWaylandWindow *>(window->handle())->wlSurface();
+                if (surface)
+                    inputInterface->disableSurface(surface);
+                mCurrentWindow.clear();
+            } else {
+                auto *surface = static_cast<QWaylandWindow *>(window->handle())->wlSurface();
+                if (surface) {
+                    inputInterface->enableSurface(surface);
+                    mCurrentWindow = window;
+                } else {
+                    mCurrentWindow.clear();
+                }
             }
         }
-        inputInterface->updateState(Qt::ImQueryAll, QWaylandTextInputInterface::update_state_enter);
+        if (mCurrentWindow)
+            inputInterface->updateState(Qt::ImQueryAll, QWaylandTextInputInterface::update_state_enter);
+        return;
     }
+
+    if (mCurrentWindow)
+        mCurrentWindow.clear();
 }
 
 QWaylandTextInputInterface *QWaylandInputContext::textInput() const

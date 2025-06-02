@@ -9,6 +9,7 @@
 
 #include <memory>
 
+#include "base/bit_cast.h"
 #include "base/environment.h"
 #include "base/logging.h"
 #include "base/nix/xdg_util.h"
@@ -268,7 +269,7 @@ void XDGPopupWrapperImpl::Decorate(ui::PlatformWindowShadowType shadow_type) {
 void XDGPopupWrapperImpl::SetScaleFactor(float scale_factor) {
   if (aura_popup_ && zaura_popup_get_version(aura_popup_.get()) >=
                          ZAURA_POPUP_SET_SCALE_FACTOR_SINCE_VERSION) {
-    uint32_t value = *reinterpret_cast<uint32_t*>(&scale_factor);
+    uint32_t value = base::bit_cast<uint32_t>(scale_factor);
     zaura_popup_set_scale_factor(aura_popup_.get(), value);
   }
 }
@@ -290,13 +291,19 @@ wl::Object<xdg_positioner> XDGPopupWrapperImpl::CreatePositioner() {
   FillAnchorData(params_, &anchor_rect, &anchor_position, &anchor_gravity,
                  &constraint_adjustment);
 
-  CHECK(anchor_rect.width() > 0 && anchor_rect.height() > 0)
-      << anchor_rect.ToString();
+  // XDG protocol does not allow empty geometries, but Chrome does. Set a dummy
+  // {1, 1} size to prevent protocol error.
+  if (anchor_rect.IsEmpty()) {
+    anchor_rect.set_size({1, 1});
+  }
   xdg_positioner_set_anchor_rect(positioner.get(), anchor_rect.x(),
                                  anchor_rect.y(), anchor_rect.width(),
                                  anchor_rect.height());
-  CHECK(params_.bounds.width() > 0 && params_.bounds.height() > 0)
-      << params_.bounds.ToString();
+  // XDG protocol does not allow empty geometries, but Chrome does. Set a dummy
+  // {1, 1} size to prevent protocol error.
+  if (params_.bounds.IsEmpty()) {
+    params_.bounds.set_size({1, 1});
+  }
   xdg_positioner_set_size(positioner.get(), params_.bounds.width(),
                           params_.bounds.height());
   xdg_positioner_set_anchor(positioner.get(), TranslateAnchor(anchor_position));

@@ -27,7 +27,6 @@ find_package(Qt6 COMPONENTS NetworkAuth)
 qt_add_executable(redditclient
     main.cpp
     redditmodel.cpp redditmodel.h
-    redditwrapper.cpp redditwrapper.h
 )
 set_target_properties(redditclient PROPERTIES
     WIN32_EXECUTABLE TRUE

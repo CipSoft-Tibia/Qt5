@@ -24,8 +24,7 @@ set(API_TYPE "vulkan")
 
 add_subdirectory(scripts)
 
-set(VVL_CPP_STANDARD 17 CACHE STRING "Set the C++ standard to build against.")
-set(CMAKE_CXX_STANDARD ${VVL_CPP_STANDARD})
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -36,39 +35,68 @@ include(GNUInstallDirs)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON) # Remove when min is 3.26, see CMP0143
 
-find_package(VulkanHeaders REQUIRED CONFIG QUIET)
-
-target_compile_definitions(Vulkan::Headers INTERFACE VK_ENABLE_BETA_EXTENSIONS) # Enable beta Vulkan extensions
+add_compile_definitions(VK_ENABLE_BETA_EXTENSIONS)
 if(WIN32)
-    target_compile_definitions(Vulkan::Headers INTERFACE VK_USE_PLATFORM_WIN32_KHR)
+    add_compile_definitions(VK_USE_PLATFORM_WIN32_KHR)
+
+    # Allow usage of unsafe CRT functions and minimize what Windows.h leaks
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
 elseif(ANDROID)
-    target_compile_definitions(Vulkan::Headers INTERFACE VK_USE_PLATFORM_ANDROID_KHR)
+    add_compile_definitions(VK_USE_PLATFORM_ANDROID_KHR)
 elseif(APPLE)
-    target_compile_definitions(Vulkan::Headers INTERFACE VK_USE_PLATFORM_MACOS_MVK VK_USE_PLATFORM_METAL_EXT)
+    add_compile_definitions(VK_USE_PLATFORM_METAL_EXT)
+    if (IOS)
+        add_compile_definitions(VK_USE_PLATFORM_IOS_MVK)
+    endif()
+    if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        add_compile_definitions(VK_USE_PLATFORM_MACOS_MVK)
+    endif()
 else()
     option(BUILD_WSI_XCB_SUPPORT "Build XCB WSI support" ON)
     option(BUILD_WSI_XLIB_SUPPORT "Build Xlib WSI support" ON)
     option(BUILD_WSI_WAYLAND_SUPPORT "Build Wayland WSI support" ON)
 
-    find_package(PkgConfig REQUIRED QUIET) # Use PkgConfig to find Linux system libraries
+    find_package(PkgConfig REQUIRED QUIET)
 
     if(BUILD_WSI_XCB_SUPPORT)
         pkg_check_modules(XCB REQUIRED QUIET IMPORTED_TARGET xcb)
-        target_compile_definitions(Vulkan::Headers INTERFACE VK_USE_PLATFORM_XCB_KHR)
+        add_compile_definitions(VK_USE_PLATFORM_XCB_KHR)
     endif()
 
     if(BUILD_WSI_XLIB_SUPPORT)
         pkg_check_modules(X11 REQUIRED QUIET IMPORTED_TARGET x11)
-        target_compile_definitions(Vulkan::Headers INTERFACE VK_USE_PLATFORM_XLIB_KHR VK_USE_PLATFORM_XLIB_XRANDR_EXT)
+        add_compile_definitions(VK_USE_PLATFORM_XLIB_KHR VK_USE_PLATFORM_XLIB_XRANDR_EXT)
     endif()
 
     if(BUILD_WSI_WAYLAND_SUPPORT)
         pkg_check_modules(WAYlAND_CLIENT QUIET REQUIRED IMPORTED_TARGET wayland-client)
-        target_compile_definitions(Vulkan::Headers INTERFACE VK_USE_PLATFORM_WAYLAND_KHR)
+        add_compile_definitions(VK_USE_PLATFORM_WAYLAND_KHR)
     endif()
 endif()
 
-find_package(VulkanUtilityLibraries REQUIRED CONFIG QUIET)
+find_package(VulkanHeaders CONFIG QUIET)
+
+find_package(VulkanUtilityLibraries CONFIG QUIET)
+
+find_package(SPIRV-Headers CONFIG QUIET)
+
+find_package(SPIRV-Tools-opt CONFIG QUIET)
+
+find_package(SPIRV-Tools-link CONFIG QUIET)
+
+# NOTE: Our custom code generation target isn't desirable for system package managers or add_subdirectory users.
+# So this target needs to be off by default to avoid obtuse build errors or patches.
+option(VVL_CODEGEN "Enable vulkan validation layer code generation")
+if (VVL_CODEGEN)
+    find_package(Python3 REQUIRED)
+    add_custom_target(vvl_codegen
+        COMMAND Python3::Interpreter "${VVL_SOURCE_DIR}/scripts/generate_source.py"
+            "${VULKAN_HEADERS_INSTALL_DIR}/${CMAKE_INSTALL_DATADIR}/vulkan/registry"
+            "${SPIRV_HEADERS_INSTALL_DIR}/include/spirv/unified1"
+            --incremental --generated-version ${VulkanHeaders_VERSION} --api ${API_TYPE}
+        WORKING_DIRECTORY ${VVL_SOURCE_DIR}/layers/${API_TYPE}/generated
+    )
+endif()
 
 if (ANNOTATED_SPEC_LINK)
     message("ANNOTATED_SPEC_LINK is ${ANNOTATED_SPEC_LINK}")
@@ -82,17 +110,10 @@ endif()
 
 option(VVL_ENABLE_ASAN "Use address sanitization")
 if (VVL_ENABLE_ASAN)
-    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-    add_link_options(-fsanitize=address)
-endif()
-
-option(VVL_CLANG_TIDY "Use clang-tidy")
-if (VVL_CLANG_TIDY)
-    find_program(CLANG_TIDY NAMES clang-tidy)
-    if(NOT CLANG_TIDY)
-        message(FATAL_ERROR "clang-tidy not found!")
+    add_compile_options(-fsanitize=address)
+    if (NOT MSVC)
+        add_link_options(-fsanitize=address)
     endif()
-    set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY}")
 endif()
 
 if(${CMAKE_CXX_COMPILER_ID} MATCHES "(GNU|Clang)")
@@ -116,6 +137,7 @@ elseif(MSVC)
 
     # Enforce stricter ISO C++
     add_compile_options(/permissive-)
+    add_compile_options(/utf-8)
 
     # PDBs aren't generated on Release builds by default.
     add_compile_options("$<$<CONFIG:Release>:/Zi>")
@@ -128,18 +150,10 @@ elseif(MSVC)
     # Merge duplicate data/functions
     add_link_options("$<$<CONFIG:Release>:/OPT:ICF>")
 
-    # Allow usage of unsafe CRT functions and minimize what Windows.h leaks
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
-
     add_compile_options($<$<BOOL:${MSVC_IDE}>:/MP>) # Speed up Visual Studio builds
 endif()
 
-option(BUILD_LAYERS "Build validation layers" ON)
-option(BUILD_LAYER_SUPPORT_FILES "Install VkLayer_utils")
-
-if(BUILD_LAYERS OR BUILD_LAYER_SUPPORT_FILES)
-    add_subdirectory(layers)
-endif()
+add_subdirectory(layers)
 
 option(BUILD_TESTS "Build the tests")
 if(BUILD_TESTS)

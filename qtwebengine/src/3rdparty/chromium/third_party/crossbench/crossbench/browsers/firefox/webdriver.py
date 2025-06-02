@@ -25,11 +25,12 @@ from crossbench.browsers.webdriver import WebDriverBrowser
 from .firefox import Firefox
 
 if TYPE_CHECKING:
+  from crossbench import plt
   from crossbench.browsers.splash_screen import SplashScreen
   from crossbench.browsers.viewport import Viewport
   from crossbench.flags import Flags
-  from crossbench import plt
-  from crossbench.runner.run import Run
+  from crossbench.network.base import Network
+  from crossbench.runner.groups import BrowserSessionRunGroup
 
 
 class FirefoxWebDriver(WebDriverBrowser, Firefox):
@@ -42,18 +43,19 @@ class FirefoxWebDriver(WebDriverBrowser, Firefox):
       js_flags: Optional[Flags.InitialDataType] = None,
       cache_dir: Optional[pathlib.Path] = None,
       type: str = "firefox",  # pylint: disable=redefined-builtin
+      network: Optional[Network] = None,
       driver_path: Optional[pathlib.Path] = None,
       viewport: Optional[Viewport] = None,
       splash_screen: Optional[SplashScreen] = None,
       platform: Optional[plt.Platform] = None):
-    super().__init__(label, path, flags, js_flags, cache_dir, type, driver_path,
-                     viewport, splash_screen, platform)
+    super().__init__(label, path, flags, js_flags, cache_dir, type, network,
+                     driver_path, viewport, splash_screen, platform)
 
   def _find_driver(self) -> pathlib.Path:
     finder = FirefoxDriverFinder(self)
     return finder.download()
 
-  def _start_driver(self, run: Run,
+  def _start_driver(self, session: BrowserSessionRunGroup,
                     driver_path: pathlib.Path) -> webdriver.Firefox:
     assert not self._is_running
     assert self.log_file
@@ -61,18 +63,17 @@ class FirefoxWebDriver(WebDriverBrowser, Firefox):
     options.set_capability("browserVersion", str(self.major_version))
     # Don't wait for document-ready.
     options.set_capability("pageLoadStrategy", "eager")
-    args = self._get_browser_flags_for_run(run)
+    args = self._get_browser_flags_for_session(session)
     for arg in args:
       options.add_argument(arg)
     options.binary_location = str(self.path)
 
-    for probe in run.probe_scopes:
-      probe.setup_selenium_options(options)
+    session.setup_selenium_options(options)
 
     logging.info("STARTING BROWSER: %s", self.path)
     logging.info("STARTING BROWSER: driver: %s", driver_path)
     logging.info("STARTING BROWSER: args: %s", shlex.join(args))
-    # Explicitly copy the env vars for FirefoxBrowserProfilerProbeScope
+    # Explicitly copy the env vars for FirefoxBrowserProfilerProbeContext
     env_copy = dict(self.platform.environ)
     service = FirefoxService(
         executable_path=str(driver_path),

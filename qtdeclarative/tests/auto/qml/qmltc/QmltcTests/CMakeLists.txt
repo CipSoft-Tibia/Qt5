@@ -22,6 +22,9 @@ set(cpp_sources
     cpptypes/singletontype.h cpptypes/singletontype.cpp
     cpptypes/typewithnamespace.h cpptypes/typewithnamespace.cpp
     cpptypes/typewithsignal.h
+    cpptypes/custominitialization.h
+    cpptypes/typewithrequiredproperties.h
+    cpptypes/hpp.hpp
 )
 
 set(qml_sources
@@ -49,6 +52,10 @@ set(qml_sources
     qtbug103956/SubComponent.qml
     qtbug103956/MainComponent.qml
     qtbug103956/qtbug103956_main.qml
+
+    qtbug120700_main.qml
+
+    qtbug123476.qml
 
     signalHandlers.qml
     javaScriptFunctions.qml
@@ -129,6 +136,13 @@ set(qml_sources
     NamespacedTypes.qml
 
     badFile.qml
+
+    requiredProperties.qml
+
+    hpp.qml
+
+    attachedComponentProperty.qml
+    attachedNamespacedProperty.qml
 )
 
 set(js_sources
@@ -191,6 +205,11 @@ qt6_add_qml_module(qmltc_test_module
     LIBRARIES
         qmltc_test_module_translation_by_id
     ENABLE_TYPE_COMPILER
+    NO_GENERATE_EXTRA_QMLDIRS
+)
+
+target_compile_definitions(qmltc_test_module PRIVATE
+    QT_NO_CAST_FROM_ASCII
 )
 
 qt_autogen_tools_initial_setup(qmltc_test_moduleplugin)

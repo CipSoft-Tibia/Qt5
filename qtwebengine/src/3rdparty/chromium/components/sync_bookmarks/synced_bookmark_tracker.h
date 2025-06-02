@@ -24,12 +24,12 @@ class EntitySpecifics;
 }  // namespace sync_pb
 
 namespace bookmarks {
-class BookmarkModel;
 class BookmarkNode;
 }  // namespace bookmarks
 
 namespace sync_bookmarks {
 
+class BookmarkModelView;
 class SyncedBookmarkTrackerEntity;
 
 // This class is responsible for keeping the mapping between bookmark nodes in
@@ -51,7 +51,7 @@ class SyncedBookmarkTracker {
   // null.
   static std::unique_ptr<SyncedBookmarkTracker>
   CreateFromBookmarkModelAndMetadata(
-      const bookmarks::BookmarkModel* model,
+      const BookmarkModelView* model,
       sync_pb::BookmarkModelMetadata model_metadata);
 
   SyncedBookmarkTracker(const SyncedBookmarkTracker&) = delete;
@@ -183,10 +183,9 @@ class SyncedBookmarkTracker {
   // Clears the specifics hash for |entity|, useful for testing.
   void ClearSpecificsHashForTest(const SyncedBookmarkTrackerEntity* entity);
 
-  // Checks whther all nodes in |bookmark_model| that *should* be tracked as per
-  // CanSyncNode() are tracked.
-  void CheckAllNodesTracked(
-      const bookmarks::BookmarkModel* bookmark_model) const;
+  // Checks whether all nodes in |bookmark_model| that *should* be tracked as
+  // per IsNodeSyncable() are tracked.
+  void CheckAllNodesTracked(const BookmarkModelView* bookmark_model) const;
 
   // This method is used to mark all entities except permanent nodes as
   // unsynced. This will cause reuploading of all bookmarks. The reupload
@@ -244,7 +243,7 @@ class SyncedBookmarkTracker {
   // |model_metadata|. Validates the integrity of |*model| and |model_metadata|
   // and returns an enum representing any inconsistency.
   CorruptionReason InitEntitiesFromModelAndMetadata(
-      const bookmarks::BookmarkModel* model,
+      const BookmarkModelView* model,
       sync_pb::BookmarkModelMetadata model_metadata);
 
   // Conceptually, find a tracked entity that matches |entity| and returns a
@@ -287,7 +286,8 @@ class SyncedBookmarkTracker {
   // server in the same order as stored in the list. The same order should also
   // be maintained across browser restarts (i.e. across calls to the ctor() and
   // BuildBookmarkModelMetadata().
-  std::vector<SyncedBookmarkTrackerEntity*> ordered_local_tombstones_;
+  std::vector<raw_ptr<SyncedBookmarkTrackerEntity, VectorExperimental>>
+      ordered_local_tombstones_;
 
   // The model metadata (progress marker, initial sync done, etc).
   sync_pb::ModelTypeState model_type_state_;

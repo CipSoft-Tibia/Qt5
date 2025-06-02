@@ -86,6 +86,13 @@ ApplicationWindow {
         }
     }
 
+    MediaDevices {
+        id: mediaDevices
+        onAudioOutputsChanged: {
+            audio.device = mediaDevices.defaultAudioOutput
+        }
+    }
+
     //! [1]
     MediaPlayer {
         id: mediaPlayer
@@ -107,8 +114,8 @@ ApplicationWindow {
         //! [2]
         //! [4]
         onErrorOccurred: {
-            mediaError.open()
             mediaError.text = mediaPlayer.errorString
+            mediaError.open()
         }
         //! [4]
         onMetaDataChanged: { updateMetadata() }

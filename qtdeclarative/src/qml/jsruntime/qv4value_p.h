@@ -34,16 +34,18 @@ namespace Heap {
     struct Base;
 }
 
-struct Q_QML_PRIVATE_EXPORT Value : public StaticValue
+struct Q_QML_EXPORT Value : public StaticValue
 {
     using ManagedPtr = Managed *;
-
-    Value() = default;
-    constexpr Value(quint64 val) : StaticValue(val) {}
 
     static constexpr Value fromStaticValue(StaticValue staticValue)
     {
         return {staticValue._val};
+    }
+
+    static constexpr Value undefinded()
+    {
+        return fromStaticValue(Encode::undefined());
     }
 
     inline bool isString() const;
@@ -309,7 +311,10 @@ inline bool Value::isObject() const
 inline bool Value::isFunctionObject() const
 {
     HeapBasePtr b = heapObject();
-    return b && b->internalClass->vtable->isFunctionObject;
+    if (!b)
+        return false;
+    const VTable *vtable = b->internalClass->vtable;
+    return vtable->call || vtable->callAsConstructor;
 }
 
 inline bool Value::isPrimitive() const
@@ -411,6 +416,9 @@ struct HeapValue : Value {
     }
     void set(EngineBase *e, HeapBasePtr b) {
         WriteBarrier::write(e, base(), data_ptr(), b->asReturnedValue());
+    }
+    void set(EngineBase *e, ReturnedValue rv) {
+        WriteBarrier::write(e, base(), data_ptr(), rv);
     }
 };
 

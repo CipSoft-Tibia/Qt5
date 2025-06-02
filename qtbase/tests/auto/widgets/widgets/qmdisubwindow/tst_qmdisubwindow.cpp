@@ -384,7 +384,6 @@ void tst_QMdiSubWindow::mainWindowSupport()
     mainWindow.setCentralWidget(workspace);
     mainWindow.show();
     mainWindow.menuBar()->setVisible(true);
-    QApplicationPrivate::setActiveWindow(&mainWindow);
     bool nativeMenuBar = mainWindow.menuBar()->isNativeMenuBar();
 
     // QMainWindow's window title is empty, so on a platform which does NOT have a native menubar,
@@ -510,7 +509,6 @@ void tst_QMdiSubWindow::emittingOfSignals()
     workspace.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     workspace.show();
     QCoreApplication::processEvents();
-    QApplicationPrivate::setActiveWindow(&workspace);
     QMdiSubWindow *window = qobject_cast<QMdiSubWindow *>(workspace.addSubWindow(new QWidget));
     QCoreApplication::processEvents();
     window->show();
@@ -1232,7 +1230,6 @@ void tst_QMdiSubWindow::restoreFocusOverCreation()
     subWidget1->m_lineEdit2->setFocus();
     subWindow1->show();
     mdiArea.show();
-    QApplicationPrivate::setActiveWindow(&mdiArea);
     QVERIFY(QTest::qWaitForWindowActive(&mdiArea));
     QCOMPARE(QApplication::focusWidget(), subWidget1->m_lineEdit2);
 
@@ -1377,7 +1374,7 @@ void tst_QMdiSubWindow::setWindowTitle()
     // other widgets which are not real top-level widgets).
     QCOMPARE(window->windowTitle(), expectedWindowTitle);
 
-    textEdit->setWindowModified(true);;
+    textEdit->setWindowModified(true);
     expectedWindowTitle = QLatin1String("Override child title");
     window->setWindowTitle(expectedWindowTitle);
     QVERIFY(window->isWindowModified());
@@ -1956,7 +1953,6 @@ void tst_QMdiSubWindow::task_182852()
     mainWindow.setCentralWidget(workspace);
     mainWindow.show();
     mainWindow.menuBar()->setVisible(true);
-    QApplicationPrivate::setActiveWindow(&mainWindow);
     if (mainWindow.menuBar()->isNativeMenuBar())
         return; // The main window's title is not overwritten if we have a native menubar (macOS, Unity etc.)
 

@@ -17,13 +17,6 @@
 #include "content/web_test/common/web_test_switches.h"
 #include "net/base/filename_util.h"
 
-#if BUILDFLAG(IS_IOS)
-#include <fstream>
-
-#include "base/files/file_util.h"
-#include "base/threading/platform_thread.h"
-#endif
-
 namespace content {
 
 namespace {
@@ -36,16 +29,23 @@ std::unique_ptr<TestInfo> GetTestInfoFromWebTestName(
   std::string::size_type separator_position = path_or_url.find('\'');
   std::string expected_pixel_hash;
   bool wpt_print_mode = false;
+  std::string trace_file;
   if (separator_position != std::string::npos) {
     expected_pixel_hash = path_or_url.substr(separator_position + 1);
     path_or_url.erase(separator_position);
 
     separator_position = expected_pixel_hash.find('\'');
-
     if (separator_position != std::string::npos) {
-      wpt_print_mode =
-          expected_pixel_hash.substr(separator_position + 1) == "print";
+      trace_file = expected_pixel_hash.substr(separator_position + 1);
       expected_pixel_hash.erase(separator_position);
+      separator_position = trace_file.find('\'');
+      if (separator_position != std::string::npos) {
+        wpt_print_mode = trace_file.substr(0, separator_position) == "print";
+        trace_file = trace_file.substr(separator_position + 1);
+      } else {
+        wpt_print_mode = trace_file.substr(separator_position + 1) == "print";
+        trace_file.clear();
+      }
     }
   }
 
@@ -60,9 +60,10 @@ std::unique_ptr<TestInfo> GetTestInfoFromWebTestName(
 #else
     base::FilePath local_file(path_or_url);
 #endif
-    if (!base::PathExists(local_file)) {
+    if (!base::PathExists(local_file) &&
+        !base::FilePath(local_file).IsAbsolute()) {
       base::FilePath base_path;
-      base::PathService::Get(base::DIR_SOURCE_ROOT, &base_path);
+      base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &base_path);
       local_file = base_path.Append(FILE_PATH_LITERAL("third_party"))
                        .Append(FILE_PATH_LITERAL("blink"))
                        .Append(FILE_PATH_LITERAL("web_tests"))
@@ -73,6 +74,12 @@ std::unique_ptr<TestInfo> GetTestInfoFromWebTestName(
   base::FilePath local_path;
   base::FilePath current_working_directory;
 
+#if BUILDFLAG(IS_WIN)
+  base::FilePath trace_file_path(base::SysNativeMBToWide(trace_file));
+#else
+  base::FilePath trace_file_path(trace_file);
+#endif
+
   // We're outside of the message loop here, and this is a test.
   base::ScopedAllowBlockingForTesting allow_blocking;
   if (net::FileURLToFilePath(test_url, &local_path))
@@ -80,38 +87,25 @@ std::unique_ptr<TestInfo> GetTestInfoFromWebTestName(
   else
     base::GetCurrentDirectory(&current_working_directory);
 
-  return std::make_unique<TestInfo>(test_url, expected_pixel_hash,
-                                    current_working_directory, wpt_print_mode,
-                                    protocol_mode);
+  return std::make_unique<TestInfo>(
+      test_url, expected_pixel_hash, std::move(current_working_directory),
+      wpt_print_mode, protocol_mode, std::move(trace_file_path));
 }
-
-#if BUILDFLAG(IS_IOS)
-std::ifstream GetFileStreamToReadTestFileName() {
-  base::FilePath temp_dir;
-  if (!base::GetTempDir(&temp_dir)) {
-    LOG(ERROR) << "GetTempDir failed.";
-    return std::ifstream();
-  }
-
-  std::string test_input_file_path =
-      temp_dir.AppendASCII("webtest_test_name").value();
-  std::ifstream file_name_input_stream(test_input_file_path);
-  return file_name_input_stream;
-}
-#endif
 
 }  // namespace
 
 TestInfo::TestInfo(const GURL& url,
                    const std::string& expected_pixel_hash,
-                   const base::FilePath& current_working_directory,
+                   base::FilePath current_working_directory,
                    bool wpt_print_mode,
-                   bool protocol_mode)
+                   bool protocol_mode,
+                   base::FilePath trace_file)
     : url(url),
       expected_pixel_hash(expected_pixel_hash),
-      current_working_directory(current_working_directory),
+      current_working_directory(std::move(current_working_directory)),
       wpt_print_mode(wpt_print_mode),
-      protocol_mode(protocol_mode) {}
+      protocol_mode(protocol_mode),
+      trace_file(std::move(trace_file)) {}
 
 TestInfo::~TestInfo() {}
 
@@ -127,31 +121,11 @@ std::unique_ptr<TestInfo> TestInfoExtractor::GetNextTest() {
   std::string test_string;
   bool protocol_mode = false;
   if (cmdline_args_[cmdline_position_] == FILE_PATH_LITERAL("-")) {
-#if BUILDFLAG(IS_IOS)
-    // TODO(crbug.com/1421239): iOS port reads the test file through a file
-    // stream until using sockets for the communication between run_web_tests.py
-    // and content_shell.
-    std::ifstream file_name_input = GetFileStreamToReadTestFileName();
-    if (!file_name_input.is_open()) {
-      return nullptr;
-    }
-    do {
-      // Need to wait for a while to wait until write function of
-      // |server_process.py| writes a test name in the file.
-      base::PlatformThread::Sleep(base::Milliseconds(10));
-      bool success = !!std::getline(file_name_input, test_string, '\n');
-      if (!success) {
-        return nullptr;
-      }
-    } while (test_string.empty());
-    file_name_input.close();
-#else
     do {
       bool success = !!std::getline(std::cin, test_string, '\n');
       if (!success)
         return nullptr;
     } while (test_string.empty());
-#endif  // BUILDFLAG(IS_IOS)
     protocol_mode = true;
   } else {
 #if BUILDFLAG(IS_WIN)

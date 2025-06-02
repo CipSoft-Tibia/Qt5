@@ -7,7 +7,8 @@
 #include "qqnxmediaeventthread_p.h"
 #include "qqnxwindowgrabber_p.h"
 
-#include <private/qabstractvideobuffer_p.h>
+#include <private/qhwvideobuffer_p.h>
+#include <private/qvideoframe_p.h>
 
 #include <QtCore/qabstracteventdispatcher.h>
 #include <QtCore/qcoreapplication.h>
@@ -62,11 +63,11 @@ static std::tuple<int, int, bool> parseBufferLevel(const QString &value)
     return { level, capacity, true };
 }
 
-class QnxTextureBuffer : public QAbstractVideoBuffer
+class QnxTextureBuffer : public QHwVideoBuffer
 {
 public:
     QnxTextureBuffer(QQnxWindowGrabber *QQnxWindowGrabber)
-        : QAbstractVideoBuffer(QVideoFrame::RhiTextureHandle)
+        : QHwVideoBuffer(QVideoFrame::RhiTextureHandle)
     {
         m_windowGrabber = QQnxWindowGrabber;
         m_handle = 0;
@@ -79,13 +80,13 @@ public:
         return {};
     }
 
-    quint64 textureHandle(QRhi *, int plane) const override
+    quint64 textureHandle(QRhi &, int plane) override
     {
         if (plane != 0)
             return 0;
-        if (!m_handle) {
-            const_cast<QnxTextureBuffer*>(this)->m_handle = m_windowGrabber->getNextTextureId();
-        }
+        if (!m_handle)
+            m_handle = m_windowGrabber->getNextTextureId();
+
         return m_handle;
     }
 
@@ -97,11 +98,7 @@ private:
 class QnxRasterBuffer : public QAbstractVideoBuffer
 {
 public:
-    QnxRasterBuffer(QQnxWindowGrabber *windowGrabber)
-        : QAbstractVideoBuffer(QVideoFrame::NoHandle)
-    {
-        m_windowGrabber = windowGrabber;
-    }
+    QnxRasterBuffer(QQnxWindowGrabber *windowGrabber) { m_windowGrabber = windowGrabber; }
 
     MapData map(QVideoFrame::MapMode mode) override
     {
@@ -116,10 +113,10 @@ public:
         buffer = m_windowGrabber->getNextBuffer();
 
         return {
-            .nPlanes = 1,
+            .planeCount = 1,
             .bytesPerLine = { buffer.stride },
             .data = { buffer.data },
-            .size = { buffer.width * buffer.height * buffer.pixelSize }
+            .dataSize = { buffer.width * buffer.height * buffer.pixelSize }
         };
     }
 
@@ -127,6 +124,8 @@ public:
     {
         buffer = {};
     }
+
+    QVideoFrameFormat format() const override { return {}; }
 
 private:
     QQnxWindowGrabber *m_windowGrabber;
@@ -510,12 +509,13 @@ void QQnxMediaPlayer::updateScene(const QSize &size)
     if (!m_platformVideoSink)
         return;
 
-    auto *buffer = m_windowGrabber->isEglImageSupported()
-        ? static_cast<QAbstractVideoBuffer*>(new QnxTextureBuffer(m_windowGrabber))
-        : static_cast<QAbstractVideoBuffer*>(new QnxRasterBuffer(m_windowGrabber));
+    QVideoFrameFormat format(size, QVideoFrameFormat::Format_BGRX8888);
 
-    const QVideoFrame actualFrame(buffer,
-            QVideoFrameFormat(size, QVideoFrameFormat::Format_BGRX8888));
+    const QVideoFrame actualFrame = m_windowGrabber->isEglImageSupported()
+            ? QVideoFramePrivate::createFrame(std::make_unique<QnxTextureBuffer>(m_windowGrabber),
+                                              std::move(format))
+            : QVideoFramePrivate::createFrame(std::make_unique<QnxRasterBuffer>(m_windowGrabber),
+                                              std::move(format));
 
     m_platformVideoSink->setVideoFrame(actualFrame);
 }

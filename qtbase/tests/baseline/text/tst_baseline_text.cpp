@@ -18,6 +18,7 @@ private slots:
     void tst_render_data();
     void tst_render();
     void tst_differentScriptsBackgrounds();
+    void tst_synthesizedObliqueAndRotation();
 
 private:
     QDir htmlDir;
@@ -49,7 +50,7 @@ void tst_Text::loadTestFiles()
     for (const auto &htmlFile : htmlFiles) {
         QFileInfo fileInfo(htmlFile);
         QFile file(htmlFile);
-        file.open(QFile::ReadOnly);
+        QVERIFY(file.open(QFile::ReadOnly));
         QString html = QString::fromUtf8(file.readAll());
         QBaselineTest::newRow(fileInfo.baseName().toUtf8()) << html;
     }
@@ -102,18 +103,30 @@ void tst_Text::tst_differentScriptsBackgrounds()
     QBASELINE_CHECK(image, "tst_differentScriptsBackgrounds");
 }
 
-
-#define main _realmain
-QTEST_MAIN(tst_Text)
-#undef main
-
-int main(int argc, char *argv[])
+void tst_Text::tst_synthesizedObliqueAndRotation()
 {
-    // Avoid rendering variations caused by QHash randomization
-    QHashSeed::setDeterministicGlobalSeed();
+    QFont font(QString::fromLatin1("Abyssinica SIL"));
+    font.setPixelSize(40);
+    font.setItalic(true);
 
-    QBaselineTest::handleCmdLineArgs(&argc, &argv);
-    return _realmain(argc, argv);
+    QImage image(800, 600, QImage::Format_ARGB32);
+    image.fill(Qt::white);
+
+    {
+        QPainter painter(&image);
+        painter.setFont(font);
+
+        painter.save();
+        painter.translate(200, 450);
+        painter.rotate(270);
+        painter.drawText(0, 0, QString::fromLatin1("Foobar"));
+        painter.restore();
+    }
+
+    QBASELINE_CHECK(image, "tst_synthesizedObliqueAndRotation");
 }
+
+
+QBASELINETEST_MAIN(tst_Text)
 
 #include "tst_baseline_text.moc"

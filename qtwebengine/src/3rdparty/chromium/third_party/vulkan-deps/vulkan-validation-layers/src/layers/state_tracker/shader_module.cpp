@@ -1,4 +1,4 @@
-﻿/* Copyright (c) 2021-2023 The Khronos Group Inc.
+﻿/* Copyright (c) 2021-2024 The Khronos Group Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,14 @@
 
 #include <sstream>
 #include <string>
+#include <queue>
 
 #include "state_tracker/pipeline_state.h"
 #include "state_tracker/descriptor_sets.h"
 #include "generated/spirv_grammar_helper.h"
+#include "spirv/1.2/GLSL.std.450.h"
+
+namespace spirv {
 
 void DecorationBase::Add(uint32_t decoration, uint32_t value) {
     switch (decoration) {
@@ -137,6 +141,7 @@ void ExecutionModeSet::Add(const Instruction& insn) {
             break;
         case spv::ExecutionModeIsolines:  // Tessellation
             flags |= iso_lines_bit;
+            tessellation_subdivision = spv::ExecutionModeIsolines;
             primitive_topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
             break;
         case spv::ExecutionModeOutputLineStrip:
@@ -144,10 +149,32 @@ void ExecutionModeSet::Add(const Instruction& insn) {
             primitive_topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
             break;
         case spv::ExecutionModeTriangles:
+            // ExecutionModeTriangles is input if shader is geometry and output if shader is tessellation evaluation
+            // Because we don't know which shader stage is used here we set both, but only set input for geometry shader if it
+            // hasn't been set yet
+            if (input_primitive_topology == VK_PRIMITIVE_TOPOLOGY_MAX_ENUM) {
+                input_primitive_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            }
+            primitive_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+            tessellation_subdivision = spv::ExecutionModeTriangles;
+            break;
         case spv::ExecutionModeQuads:
+            primitive_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+            tessellation_subdivision = spv::ExecutionModeQuads;
+            break;
         case spv::ExecutionModeOutputTriangleStrip:
         case spv::ExecutionModeOutputTrianglesNV:
             primitive_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+            break;
+        case spv::ExecutionModeInputPoints:
+            input_primitive_topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+            break;
+        case spv::ExecutionModeInputLines:
+        case spv::ExecutionModeInputLinesAdjacency:
+            input_primitive_topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+            break;
+        case spv::ExecutionModeInputTrianglesAdjacency:
+            input_primitive_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             break;
         case spv::ExecutionModeLocalSizeId:
             flags |= local_size_id_bit;
@@ -224,6 +251,27 @@ void ExecutionModeSet::Add(const Instruction& insn) {
             break;
         case spv::ExecutionModeSubgroupUniformControlFlowKHR:  // VK_KHR_shader_subgroup_uniform_control_flow
             flags |= subgroup_uniform_control_flow_bit;
+            break;
+        case spv::ExecutionModeSpacingEqual:
+            tessellation_spacing = spv::ExecutionModeSpacingEqual;
+            break;
+        case spv::ExecutionModeSpacingFractionalEven:
+            tessellation_spacing = spv::ExecutionModeSpacingFractionalEven;
+            break;
+        case spv::ExecutionModeSpacingFractionalOdd:
+            tessellation_spacing = spv::ExecutionModeSpacingFractionalOdd;
+            break;
+        case spv::ExecutionModeVertexOrderCw:
+            tessellation_orientation = spv::ExecutionModeVertexOrderCw;
+            break;
+        case spv::ExecutionModeVertexOrderCcw:
+            tessellation_orientation = spv::ExecutionModeVertexOrderCcw;
+            break;
+        case spv::ExecutionModeDepthReplacing:
+            flags |= depth_replacing_bit;
+            break;
+        case spv::ExecutionModeStencilRefReplacingEXT:
+            flags |= stencil_ref_replacing_bit;
             break;
         default:
             break;
@@ -348,7 +396,7 @@ static void FindPointersAndObjects(const Instruction& insn, vvl::unordered_set<u
     }
 }
 
-vvl::unordered_set<uint32_t> EntryPoint::GetAccessibleIds(const SPIRV_MODULE_STATE& module_state, EntryPoint& entrypoint) {
+vvl::unordered_set<uint32_t> EntryPoint::GetAccessibleIds(const Module& module_state, EntryPoint& entrypoint) {
     vvl::unordered_set<uint32_t> result_ids;
 
     // For some analyses, we need to know about all ids referenced by the static call tree of a particular entrypoint.
@@ -396,7 +444,7 @@ vvl::unordered_set<uint32_t> EntryPoint::GetAccessibleIds(const SPIRV_MODULE_STA
     return result_ids;
 }
 
-std::vector<StageInteraceVariable> EntryPoint::GetStageInterfaceVariables(const SPIRV_MODULE_STATE& module_state,
+std::vector<StageInteraceVariable> EntryPoint::GetStageInterfaceVariables(const Module& module_state,
                                                                           const EntryPoint& entrypoint) {
     std::vector<StageInteraceVariable> variables;
 
@@ -427,8 +475,7 @@ std::vector<StageInteraceVariable> EntryPoint::GetStageInterfaceVariables(const 
     return variables;
 }
 
-std::vector<ResourceInterfaceVariable> EntryPoint::GetResourceInterfaceVariables(const SPIRV_MODULE_STATE& module_state,
-                                                                                 EntryPoint& entrypoint,
+std::vector<ResourceInterfaceVariable> EntryPoint::GetResourceInterfaceVariables(const Module& module_state, EntryPoint& entrypoint,
                                                                                  const ImageAccessMap& image_access_map) {
     std::vector<ResourceInterfaceVariable> variables;
 
@@ -456,7 +503,7 @@ static inline bool IsImageOperandsBiasOffset(uint32_t type) {
                     spv::ImageOperandsConstOffsetsMask)) != 0;
 }
 
-ImageAccess::ImageAccess(const SPIRV_MODULE_STATE& module_state, const Instruction& image_insn) : image_insn(image_insn) {
+ImageAccess::ImageAccess(const Module& module_state, const Instruction& image_insn) : image_insn(image_insn) {
     const uint32_t image_opcode = image_insn.Opcode();
 
     // Get properties from each access instruction
@@ -477,11 +524,6 @@ ImageAccess::ImageAccess(const SPIRV_MODULE_STATE& module_state, const Instructi
             is_dref = true;
             is_sampler_implicitLod_dref_proj = true;
             is_sampler_sampled = true;
-
-            const uint32_t image_operand_index = 6;
-            if (image_insn.Length() > image_operand_index && IsImageOperandsBiasOffset(image_insn.Word(image_operand_index))) {
-                is_sampler_bias_offset = true;
-            }
             break;
         }
 
@@ -493,22 +535,12 @@ ImageAccess::ImageAccess(const SPIRV_MODULE_STATE& module_state, const Instructi
         case spv::OpImageSparseSampleProjExplicitLod: {
             is_sampler_implicitLod_dref_proj = true;
             is_sampler_sampled = true;
-
-            const uint32_t image_operand_index = 5;
-            if (image_insn.Length() > image_operand_index && IsImageOperandsBiasOffset(image_insn.Word(image_operand_index))) {
-                is_sampler_bias_offset = true;
-            }
             break;
         }
 
         case spv::OpImageSampleExplicitLod:
         case spv::OpImageSparseSampleExplicitLod: {
             is_sampler_sampled = true;
-
-            const uint32_t image_operand_index = 5;
-            if (image_insn.Length() > image_operand_index && IsImageOperandsBiasOffset(image_insn.Word(image_operand_index))) {
-                is_sampler_bias_offset = true;
-            }
             break;
         }
 
@@ -522,7 +554,7 @@ ImageAccess::ImageAccess(const SPIRV_MODULE_STATE& module_state, const Instructi
             is_read_from = true;
             break;
 
-        // case spv::OpImageTexelPointer: TODO - Atomics not supported in here yet
+        case spv::OpImageTexelPointer:
         case spv::OpImageFetch:
         case spv::OpImageSparseFetch:
         case spv::OpImageGather:
@@ -543,103 +575,132 @@ ImageAccess::ImageAccess(const SPIRV_MODULE_STATE& module_state, const Instructi
             break;
     }
 
-    // First find the OpLoad for the Image (and optional Sampler)
-    const Instruction* image_load = nullptr;
-    const Instruction* sampler_load = nullptr;
-    // sampled image instructions are 2 OpLoad and can be separate image and sampler
-    const uint32_t sampled_image_operand = SampledImageAccessOperandsPosition(image_opcode);
-    if (sampled_image_operand != 0) {
-        const uint32_t sampled_image_id = image_insn.Word(sampled_image_operand);
-        const Instruction* id = module_state.FindDef(sampled_image_id);  // <id> Sampled Image
-        if (id->Opcode() == spv::OpFunctionParameter) {
-            no_function_jump = false;
-            return;  // TODO 5614 - Handle function jumps
-        }
+    is_not_sampler_sampled = !is_sampler_sampled;
 
-        sampler_load = (id->Opcode() == spv::OpSampledImage) ? module_state.FindDef(id->Word(4)) : nullptr;
-        const uint32_t image_operand = (id->Opcode() == spv::OpSampledImage) ? id->Word(3) : sampled_image_id;
+    // Find any optional Image Operands
+    const uint32_t image_operand_position = OpcodeImageOperandsPosition(image_opcode);
+    if (image_insn.Length() > image_operand_position) {
+        const uint32_t image_operand_word = image_insn.Word(image_operand_position);
 
-        image_load = module_state.FindDef(image_operand);
-    } else {
-        const uint32_t image_operand = ImageAccessOperandsPosition(image_opcode);
-        assert(image_operand != 0);
-
-        const uint32_t image_id = image_insn.Word(image_operand);
-        image_load = module_state.FindDef(image_id);
-
-        // OpImageFetch grabs OpImage before OpLoad
-        if (image_load->Opcode() == spv::OpImage) {
-            image_load = module_state.FindDef(image_load->Word(3));
-        }
-    }
-
-    // With the OpLoad find the OpVariable for the Image
-    if (!image_load || image_load->Opcode() != spv::OpLoad) {
-        // TODO - This can be OpUndef, need to get spec clarification how this is handled
-        no_function_jump = false;
-        return;  // TODO 5614 - Handle function jumps
-    }
-
-    const Instruction* image_load_pointer = module_state.FindDef(image_load->Word(3));
-    if (!image_load_pointer) {
-        no_function_jump = false;
-        return;  // TODO 5614 - Figure out why some SPIR-V is hitting a null FindDef from OpLoad
-    }
-
-    if (image_load_pointer->Opcode() == spv::OpVariable) {
-        variable_image_insn = image_load_pointer;
-    } else if (image_load_pointer->Opcode() == spv::OpAccessChain || image_load_pointer->Opcode() == spv::OpInBoundsAccessChain) {
-        // If Image is an array (but not descriptor indexing), then need to get the index
-        // Currently just need to care about the first image_loads because the above loop will have combos to
-        // image-to-samplers for us
-        const Instruction* const_def = module_state.GetConstantDef(image_load_pointer->Word(4));
-        if (const_def) {
-            image_access_chain_index = const_def->GetConstantValue();
-        }
-        variable_image_insn = module_state.FindDef(image_load_pointer->Word(3));
-    } else if (image_load_pointer->Opcode() == spv::OpFunctionParameter) {
-        no_function_jump = false;
-        return;  // TODO 5614 - Handle function jumps
-    } else {
-        no_function_jump = false;
-        return;  // TODO 5614 - Handle other calls like OpCopyObject
-    }
-
-    // If there is a OpSampledImage, take the other OpLoad and find the OpVariable for the Sampler
-    if (sampler_load) {
-        if (sampler_load->Opcode() != spv::OpLoad) {
-            no_function_jump = false;
-            return;  // TODO 5614 - Handle function jumps
-        }
-
-        const Instruction* sampler_load_pointer = module_state.FindDef(sampler_load->Word(3));
-        if (!sampler_load_pointer) {
-            no_function_jump = false;
-            return;  // TODO 5614 - Figure out why some SPIR-V is hitting a null FindDef from OpLoad
-        }
-
-        if (sampler_load_pointer->Opcode() == spv::OpVariable) {
-            variable_sampler_insn = sampler_load_pointer;
-        } else if (sampler_load_pointer->Opcode() == spv::OpAccessChain ||
-                   sampler_load_pointer->Opcode() == spv::OpInBoundsAccessChain) {
-            // Can have descriptor indexing of samplers
-            const Instruction* const_def = module_state.GetConstantDef(sampler_load_pointer->Word(4));
-            if (const_def) {
-                sampler_access_chain_index = const_def->GetConstantValue();
+        if (is_sampler_sampled) {
+            if (IsImageOperandsBiasOffset(image_operand_word)) {
+                is_sampler_bias_offset = true;
             }
-            variable_sampler_insn = module_state.FindDef(sampler_load_pointer->Word(3));
-        } else if (sampler_load_pointer->Opcode() == spv::OpFunctionParameter) {
-            no_function_jump = false;
-            return;  // TODO 5614 - Handle function jumps
-        } else {
-            no_function_jump = false;
-            return;  // TODO 5614 - Handle other calls like OpCopyObject
+            if ((image_operand_word & (spv::ImageOperandsConstOffsetMask | spv::ImageOperandsOffsetMask)) != 0) {
+                is_sampler_offset = true;
+            }
         }
+
+        if ((image_operand_word & spv::ImageOperandsSignExtendMask) != 0) {
+            is_sign_extended = true;
+        } else if ((image_operand_word & spv::ImageOperandsZeroExtendMask) != 0) {
+            is_zero_extended = true;
+        }
+    }
+
+    // Do sampler searching as seperate walk to not have the "visited" loop protection be falsly triggered
+    std::vector<const Instruction*> sampler_insn_to_search;
+
+    auto walk_to_variables = [this, &module_state, &sampler_insn_to_search](const Instruction* insn, bool sampler) {
+        // Protect from loops
+        std::unordered_set<uint32_t> visited;
+
+        // stack of function call sites to search through
+        std::queue<const Instruction*> insn_to_search;
+        insn_to_search.push(insn);
+        bool new_func = false;
+
+        // Keep walking down until get to variables
+        while (!insn_to_search.empty()) {
+            // for debugging, easier if only search one function at a time
+            if (new_func) {
+                // If any function can't resolve to a variable, by design,
+                // it will kill searching other functions and those before it are now invalidated.
+                new_func = false;
+                insn = insn_to_search.front();
+                // spirv-val makes sure functions-to-functions are not recursive
+                visited.clear();
+            }
+
+            const uint32_t current_id = insn->ResultId();
+            const auto visited_iter = visited.find(current_id);
+            if (visited_iter != visited.end()) {
+                valid_access = false;  // Caught in a loop
+                return;
+            }
+            visited.insert(current_id);
+
+            switch (insn->Opcode()) {
+                case spv::OpSampledImage:
+                    // If there is a OpSampledImage we will need to split off and walk down to get the sampler variable
+                    sampler_insn_to_search.push_back(module_state.FindDef(insn->Word(4)));
+                    insn = module_state.FindDef(insn->Word(3));
+                    break;
+                case spv::OpImage:
+                    // OpImageFetch grabs OpImage before OpLoad
+                    insn = module_state.FindDef(insn->Word(3));
+                    break;
+                case spv::Op::OpLoad:
+                    // Follow the pointer being loaded
+                    insn = module_state.FindDef(insn->Word(3));
+                    break;
+                case spv::Op::OpCopyObject:
+                    // Follow the object being copied.
+                    insn = module_state.FindDef(insn->Word(3));
+                    break;
+                case spv::OpAccessChain:
+                case spv::OpInBoundsAccessChain:
+                case spv::OpPtrAccessChain:
+                case spv::OpInBoundsPtrAccessChain: {
+                    // If Image is an array (but not descriptor indexing), then need to get the index.
+                    const Instruction* const_def = module_state.GetConstantDef(insn->Word(4));
+                    if (const_def) {
+                        image_access_chain_index = const_def->GetConstantValue();
+                    }
+                    insn = module_state.FindDef(insn->Word(3));
+                    break;
+                }
+                case spv::Op::OpFunctionParameter: {
+                    // might be dead-end, but end searching in this Function block
+                    insn_to_search.pop();
+                    new_func = true;
+
+                    auto it = module_state.static_data_.func_parameter_map.find(insn->ResultId());
+                    if (it != module_state.static_data_.func_parameter_map.end()) {
+                        for (uint32_t arg : it->second) {
+                            insn_to_search.push(module_state.FindDef(arg));
+                        }
+                    }
+                    break;
+                }
+                case spv::Op::OpVariable: {
+                    if (sampler) {
+                        variable_sampler_insn.push_back(insn);
+                    } else {
+                        variable_image_insn.push_back(insn);
+                    }
+                    insn_to_search.pop();
+                    new_func = true;  // keep searching if more functions
+                    break;
+                }
+                default:
+                    // Hit invalid (or unsupported) opcode
+                    valid_access = false;
+                    return;
+            }
+        }
+    };
+
+    const uint32_t image_operand = OpcodeImageAccessPosition(image_opcode);
+    assert(image_operand != 0);
+    const Instruction* insn = module_state.FindDef(image_insn.Word(image_operand));
+    walk_to_variables(insn, false);
+    for (const auto* sampler_insn : sampler_insn_to_search) {
+        walk_to_variables(sampler_insn, true);
     }
 }
 
-EntryPoint::EntryPoint(const SPIRV_MODULE_STATE& module_state, const Instruction& entrypoint_insn,
-                       const ImageAccessMap& image_access_map)
+EntryPoint::EntryPoint(const Module& module_state, const Instruction& entrypoint_insn, const ImageAccessMap& image_access_map)
     : entrypoint_insn(entrypoint_insn),
       execution_model(spv::ExecutionModel(entrypoint_insn.Word(1))),
       stage(static_cast<VkShaderStageFlagBits>(ExecutionModelToShaderStageFlagBits(execution_model))),
@@ -712,7 +773,7 @@ EntryPoint::EntryPoint(const SPIRV_MODULE_STATE& module_state, const Instruction
     }
 }
 
-std::optional<VkPrimitiveTopology> SPIRV_MODULE_STATE::GetTopology(const EntryPoint& entrypoint) const {
+std::optional<VkPrimitiveTopology> Module::GetTopology(const EntryPoint& entrypoint) const {
     std::optional<VkPrimitiveTopology> result;
 
     // In tessellation shaders, PointMode is separate and trumps the tessellation topology.
@@ -725,7 +786,7 @@ std::optional<VkPrimitiveTopology> SPIRV_MODULE_STATE::GetTopology(const EntryPo
     return result;
 }
 
-SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_state) {
+Module::StaticData::StaticData(const Module& module_state) {
     // Parse the words first so we have instruction class objects to use
     {
         std::vector<uint32_t>::const_iterator it = module_state.words_.cbegin();
@@ -751,6 +812,11 @@ SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_stat
     std::vector<const Instruction*> entry_point_instructions;
     std::vector<const Instruction*> type_struct_instructions;
     std::vector<const Instruction*> image_instructions;
+    std::vector<const Instruction*> func_call_instructions;
+
+    uint32_t last_func_id = 0;
+    // < Function ID, OpFunctionParameter Ids >
+    std::unordered_map<uint32_t, std::vector<uint32_t>> func_parameter_list;
 
     // Loop through once and build up the static data
     // Also process the entry points
@@ -779,7 +845,7 @@ SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_stat
                 if (insn.Word(2) == spv::DecorationBuiltIn) {
                     builtin_decoration_inst.push_back(&insn);
                 } else if (insn.Word(2) == spv::DecorationSpecId) {
-                    spec_const_map[insn.Word(3)] = target_id;
+                    id_to_spec_id[target_id] = insn.Word(3);
                 }
             } break;
             case spv::OpMemberDecorate: {
@@ -794,6 +860,10 @@ SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_stat
 
             case spv::OpCapability:
                 capability_list.push_back(static_cast<spv::Capability>(insn.Word(1)));
+                // Cache frequently checked capabilities
+                if (capability_list.back() == spv::CapabilityRuntimeDescriptorArray) {
+                    has_capability_runtime_descriptor_array = true;
+                }
                 break;
 
             case spv::OpVariable:
@@ -901,6 +971,10 @@ SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_stat
             case spv::OpImageTexelPointer: {
                 // 2: ImageTexelPointer id, 3: object id
                 image_texel_pointer_members.emplace(insn.Word(2), insn.Word(3));
+
+                // All Image atomics go through here.
+                // Currrently only interested if used/accessed
+                image_instructions.push_back(&insn);
                 break;
             }
             case spv::OpTypeStruct: {
@@ -911,6 +985,31 @@ SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_stat
                 read_clock_inst.push_back(&insn);
                 break;
             }
+            case spv::OpTypeCooperativeMatrixNV:
+            case spv::OpCooperativeMatrixMulAddNV:
+            case spv::OpTypeCooperativeMatrixKHR:
+            case spv::OpCooperativeMatrixMulAddKHR: {
+                cooperative_matrix_inst.push_back(&insn);
+                break;
+            }
+            case spv::OpExtInst: {
+                if (insn.Word(4) == GLSLstd450InterpolateAtSample) {
+                    uses_interpolate_at_sample = true;
+                }
+                break;
+            }
+
+            // Build up Function mappings
+            case spv::OpFunction:
+                last_func_id = insn.ResultId();
+                func_parameter_list[last_func_id];  // create empty vector list
+                break;
+            case spv::OpFunctionParameter:
+                func_parameter_list[last_func_id].push_back(insn.ResultId());
+                break;
+            case spv::OpFunctionCall:
+                func_call_instructions.push_back(&insn);
+                break;
 
             default:
                 if (AtomicOperation(insn.Opcode())) {
@@ -927,6 +1026,23 @@ SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_stat
                 }
                 // We don't care about any other defs for now.
                 break;
+        }
+    }
+
+    const uint32_t first_arg_word = 4;
+    for (const auto& func_def : func_parameter_list) {
+        const uint32_t func_id = func_def.first;
+        for (const Instruction* func_call : func_call_instructions) {
+            if (func_call->Word(3) != func_id) {
+                continue;
+            }
+            // guaranteed number of args/params is same
+            const uint32_t arg_count = (func_call->Length() - first_arg_word);
+            for (uint32_t i = 0; i < arg_count; i++) {
+                const uint32_t arg = func_call->Word(first_arg_word + i);
+                const uint32_t param = func_def.second[i];
+                func_parameter_map[param].push_back(arg);
+            }
         }
     }
 
@@ -953,8 +1069,10 @@ SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_stat
 
     for (const auto& insn : image_instructions) {
         auto new_access = image_accesses.emplace_back(std::make_shared<ImageAccess>(module_state, *insn));
-        if (new_access->variable_image_insn && new_access->no_function_jump) {
-            image_access_map[new_access->variable_image_insn->ResultId()].push_back(new_access);
+        if (!new_access->variable_image_insn.empty() && new_access->valid_access) {
+            for (const Instruction* image_insn : new_access->variable_image_insn) {
+                image_access_map[image_insn->ResultId()].push_back(new_access);
+            }
         }
     }
 
@@ -964,7 +1082,7 @@ SPIRV_MODULE_STATE::StaticData::StaticData(const SPIRV_MODULE_STATE& module_stat
     }
 }
 
-void SPIRV_MODULE_STATE::DescribeTypeInner(std::ostringstream& ss, uint32_t type, uint32_t indent) const {
+void Module::DescribeTypeInner(std::ostringstream& ss, uint32_t type, uint32_t indent) const {
     const Instruction* insn = FindDef(type);
     for (uint32_t i = 0; i < indent; i++) {
         ss << "\t";
@@ -1029,18 +1147,18 @@ void SPIRV_MODULE_STATE::DescribeTypeInner(std::ostringstream& ss, uint32_t type
             ss << "accelerationStruture";
             break;
         default:
-            ss << "oddtype";
+            ss << "unknown type";
             break;
     }
 }
 
-std::string SPIRV_MODULE_STATE::DescribeType(uint32_t type) const {
+std::string Module::DescribeType(uint32_t type) const {
     std::ostringstream ss;
     DescribeTypeInner(ss, type, 0);
     return ss.str();
 }
 
-std::shared_ptr<const EntryPoint> SPIRV_MODULE_STATE::FindEntrypoint(char const* name, VkShaderStageFlagBits stageBits) const {
+std::shared_ptr<const EntryPoint> Module::FindEntrypoint(char const* name, VkShaderStageFlagBits stageBits) const {
     for (const auto& entry_point : static_data_.entry_points) {
         if (entry_point->name.compare(name) == 0 && entry_point->stage == stageBits) {
             return entry_point;
@@ -1053,8 +1171,8 @@ std::shared_ptr<const EntryPoint> SPIRV_MODULE_STATE::FindEntrypoint(char const*
 //    OpEntryPoint GLCompute %main "name_a"
 //    OpEntryPoint GLCompute %main "name_b"
 // Assumes shader module contains no spec constants used to set the local size values
-bool SPIRV_MODULE_STATE::FindLocalSize(const EntryPoint& entrypoint, uint32_t& local_size_x, uint32_t& local_size_y,
-                                        uint32_t& local_size_z) const {
+bool Module::FindLocalSize(const EntryPoint& entrypoint, uint32_t& local_size_x, uint32_t& local_size_y,
+                           uint32_t& local_size_z) const {
     // "If an object is decorated with the WorkgroupSize decoration, this takes precedence over any LocalSize or LocalSizeId
     // execution mode."
     if (static_data_.has_builtin_workgroup_size) {
@@ -1084,7 +1202,7 @@ bool SPIRV_MODULE_STATE::FindLocalSize(const EntryPoint& entrypoint, uint32_t& l
     return false;  // not found
 }
 
-uint32_t SPIRV_MODULE_STATE::CalculateWorkgroupSharedMemory() const {
+uint32_t Module::CalculateWorkgroupSharedMemory() const {
     uint32_t total_size = 0;
     // when using WorkgroupMemoryExplicitLayoutKHR
     // either all or none the structs are decorated with Block,
@@ -1102,7 +1220,11 @@ uint32_t SPIRV_MODULE_STATE::CalculateWorkgroupSharedMemory() const {
             const uint32_t result_type_id = insn->Word(1);
             const Instruction* result_type = FindDef(result_type_id);
             const Instruction* type = FindDef(result_type->Word(3));
-            const uint32_t variable_shared_size = GetTypeBytesSize(type);
+
+            // structs might have an offset padding
+            const uint32_t variable_shared_size = (type->Opcode() == spv::OpTypeStruct)
+                                                      ? GetTypeStructInfo(type->Word(1))->GetSize(*this).size
+                                                      : GetTypeBytesSize(type);
 
             if (find_max_block) {
                 total_size = std::max(total_size, variable_shared_size);
@@ -1114,9 +1236,9 @@ uint32_t SPIRV_MODULE_STATE::CalculateWorkgroupSharedMemory() const {
     return total_size;
 }
 
-// If the instruction at |id| is a constant or copy of a constant, returns the instruction
+// If the instruction at |id| is a OpConstant or copy of a constant, returns the instruction
 // Cases such as runtime arrays, will not find a constant and return NULL
-const Instruction* SPIRV_MODULE_STATE::GetConstantDef(uint32_t id) const {
+const Instruction* Module::GetConstantDef(uint32_t id) const {
     const Instruction* value = FindDef(id);
 
     // If id is a copy, see where it was copied from
@@ -1133,7 +1255,7 @@ const Instruction* SPIRV_MODULE_STATE::GetConstantDef(uint32_t id) const {
 
 // Returns the constant value described by the instruction at |id|
 // Caller ensures there can't be a runtime array or specialization constants
-uint32_t SPIRV_MODULE_STATE::GetConstantValueById(uint32_t id) const {
+uint32_t Module::GetConstantValueById(uint32_t id) const {
     const Instruction* value = GetConstantDef(id);
 
     // If this hit, most likley a runtime array (probably from VK_EXT_descriptor_indexing)
@@ -1149,7 +1271,7 @@ uint32_t SPIRV_MODULE_STATE::GetConstantValueById(uint32_t id) const {
 }
 
 // Returns the number of Location slots used for a given ID reference to a OpType*
-uint32_t SPIRV_MODULE_STATE::GetLocationsConsumedByType(uint32_t type) const {
+uint32_t Module::GetLocationsConsumedByType(uint32_t type) const {
     const Instruction* insn = FindDef(type);
 
     switch (insn->Opcode()) {
@@ -1195,7 +1317,7 @@ uint32_t SPIRV_MODULE_STATE::GetLocationsConsumedByType(uint32_t type) const {
 }
 
 // Returns the number of Components slots used for a given ID reference to a OpType*
-uint32_t SPIRV_MODULE_STATE::GetComponentsConsumedByType(uint32_t type) const {
+uint32_t Module::GetComponentsConsumedByType(uint32_t type) const {
     const Instruction* insn = FindDef(type);
 
     switch (insn->Opcode()) {
@@ -1234,7 +1356,7 @@ uint32_t SPIRV_MODULE_STATE::GetComponentsConsumedByType(uint32_t type) const {
 
 // characterizes a SPIR-V type appearing in an interface to a FF stage, for comparison to a VkFormat's characterization above.
 // also used for input attachments, as we statically know their format.
-NumericType SPIRV_MODULE_STATE::GetNumericType(uint32_t type) const {
+NumericType Module::GetNumericType(uint32_t type) const {
     const Instruction* insn = FindDef(type);
 
     switch (insn->Opcode()) {
@@ -1257,7 +1379,7 @@ NumericType SPIRV_MODULE_STATE::GetNumericType(uint32_t type) const {
 
 // For some built-in analysis we need to know if the variable decorated with as the built-in was actually written to.
 // This function examines instructions in the static call tree for a write to this variable.
-bool SPIRV_MODULE_STATE::IsBuiltInWritten(const Instruction* builtin_insn, const EntryPoint& entrypoint) const {
+bool Module::IsBuiltInWritten(const Instruction* builtin_insn, const EntryPoint& entrypoint) const {
     auto type = builtin_insn->Opcode();
     uint32_t target_id = builtin_insn->Word(1);
     bool init_complete = false;
@@ -1359,9 +1481,8 @@ bool SPIRV_MODULE_STATE::IsBuiltInWritten(const Instruction* builtin_insn, const
 // %a == variable_id
 // %c == access_ids
 // %b == return value
-const std::vector<const Instruction*> SPIRV_MODULE_STATE::FindVariableAccesses(uint32_t variable_id,
-                                                                                const std::vector<uint32_t>& access_ids,
-                                                                                bool atomic) const {
+const std::vector<const Instruction*> Module::FindVariableAccesses(uint32_t variable_id, const std::vector<uint32_t>& access_ids,
+                                                                   bool atomic) const {
     std::vector<const Instruction*> accessed_instructions;
     for (auto access_id : access_ids) {
         // The only time a direct access to a OpVariable is possible is in a Workgroup storage class
@@ -1418,10 +1539,10 @@ std::string InterfaceSlot::Describe() const {
 }
 
 uint32_t GetFormatType(VkFormat format) {
-    if (FormatIsSINT(format)) return NumericTypeSint;
-    if (FormatIsUINT(format)) return NumericTypeUint;
+    if (vkuFormatIsSINT(format)) return NumericTypeSint;
+    if (vkuFormatIsUINT(format)) return NumericTypeUint;
     // Formats such as VK_FORMAT_D16_UNORM_S8_UINT are both
-    if (FormatIsDepthAndStencil(format)) return NumericTypeFloat | NumericTypeUint;
+    if (vkuFormatIsDepthAndStencil(format)) return NumericTypeFloat | NumericTypeUint;
     if (format == VK_FORMAT_UNDEFINED) return NumericTypeUnknown;
     // everything else -- UNORM/SNORM/FLOAT/USCALED/SSCALED is all float in the shader.
     return NumericTypeFloat;
@@ -1434,7 +1555,7 @@ char const* string_NumericType(uint32_t type) {
     return "(none)";
 }
 
-VariableBase::VariableBase(const SPIRV_MODULE_STATE& module_state, const Instruction& insn, VkShaderStageFlagBits stage)
+VariableBase::VariableBase(const Module& module_state, const Instruction& insn, VkShaderStageFlagBits stage)
     : id(insn.Word(2)),
       type_id(insn.Word(1)),
       storage_class(static_cast<spv::StorageClass>(insn.Word(3))),
@@ -1473,7 +1594,7 @@ bool StageInteraceVariable::IsArrayInterface(const StageInteraceVariable& variab
     return false;
 }
 
-const Instruction& StageInteraceVariable::FindBaseType(StageInteraceVariable& variable, const SPIRV_MODULE_STATE& module_state) {
+const Instruction& StageInteraceVariable::FindBaseType(StageInteraceVariable& variable, const Module& module_state) {
     // base type is always just grabbing the type of the OpTypePointer tied to the variables
     // This is allowed only here because interface variables are never Phyiscal pointers
     const Instruction* base_type = module_state.FindDef(module_state.FindDef(variable.type_id)->Word(3));
@@ -1493,7 +1614,7 @@ const Instruction& StageInteraceVariable::FindBaseType(StageInteraceVariable& va
     return *base_type;
 }
 
-bool StageInteraceVariable::IsBuiltin(const StageInteraceVariable& variable, const SPIRV_MODULE_STATE& module_state) {
+bool StageInteraceVariable::IsBuiltin(const StageInteraceVariable& variable, const Module& module_state) {
     const auto decoration_set = module_state.GetDecorationSet(variable.id);
     // If OpTypeStruct, will grab it's own decoration set
     return decoration_set.HasBuiltIn() || (variable.type_struct_info && variable.type_struct_info->decorations.HasBuiltIn());
@@ -1501,9 +1622,8 @@ bool StageInteraceVariable::IsBuiltin(const StageInteraceVariable& variable, con
 
 // This logic is based off assumption that the Location are implicit and not member decorations
 // when we have structs-of-structs, only the top struct can have explicit locations given
-static uint32_t GetStructInterfaceSlots(const SPIRV_MODULE_STATE& module_state,
-                                        std::shared_ptr<const TypeStructInfo> type_struct_info, std::vector<InterfaceSlot>& slots,
-                                        uint32_t starting_location) {
+static uint32_t GetStructInterfaceSlots(const Module& module_state, std::shared_ptr<const TypeStructInfo> type_struct_info,
+                                        std::vector<InterfaceSlot>& slots, uint32_t starting_location) {
     uint32_t locations_added = 0;
     for (uint32_t i = 0; i < type_struct_info->length; i++) {
         const auto& member = type_struct_info->members[i];
@@ -1537,8 +1657,7 @@ static uint32_t GetStructInterfaceSlots(const SPIRV_MODULE_STATE& module_state,
     return locations_added;
 }
 
-std::vector<InterfaceSlot> StageInteraceVariable::GetInterfaceSlots(StageInteraceVariable& variable,
-                                                                    const SPIRV_MODULE_STATE& module_state) {
+std::vector<InterfaceSlot> StageInteraceVariable::GetInterfaceSlots(StageInteraceVariable& variable, const Module& module_state) {
     std::vector<InterfaceSlot> slots;
     if (variable.is_builtin || variable.is_per_task_nv) {
         // SPV_NV_mesh_shader has a PerTaskNV which is not a builtin or interface
@@ -1549,7 +1668,7 @@ std::vector<InterfaceSlot> StageInteraceVariable::GetInterfaceSlots(StageInterac
         // Structs has two options being labeled
         // 1. The block is given a Location, need to walk though and add up starting for that value
         // 2. The block is NOT given a Location, each member has dedicated decoration
-        const bool block_decorated_with_location = variable.decorations.location != DecorationSet::kInvalidValue;
+        const bool block_decorated_with_location = variable.decorations.location != kInvalidValue;
         if (block_decorated_with_location) {
             // In case of option 1, need to keep track as we go
             uint32_t base_location = variable.decorations.location;
@@ -1633,8 +1752,7 @@ std::vector<InterfaceSlot> StageInteraceVariable::GetInterfaceSlots(StageInterac
     return slots;
 }
 
-std::vector<uint32_t> StageInteraceVariable::GetBuiltinBlock(const StageInteraceVariable& variable,
-                                                             const SPIRV_MODULE_STATE& module_state) {
+std::vector<uint32_t> StageInteraceVariable::GetBuiltinBlock(const StageInteraceVariable& variable, const Module& module_state) {
     // Built-in Location slot will always be [zero, size]
     std::vector<uint32_t> slots;
     // Only check block built-ins - many builtin are non-block and not used between shaders
@@ -1651,8 +1769,7 @@ std::vector<uint32_t> StageInteraceVariable::GetBuiltinBlock(const StageInterace
     return slots;
 }
 
-uint32_t StageInteraceVariable::GetBuiltinComponents(const StageInteraceVariable& variable,
-                                                     const SPIRV_MODULE_STATE& module_state) {
+uint32_t StageInteraceVariable::GetBuiltinComponents(const StageInteraceVariable& variable, const Module& module_state) {
     uint32_t count = 0;
     if (!variable.is_builtin) {
         return count;
@@ -1668,8 +1785,7 @@ uint32_t StageInteraceVariable::GetBuiltinComponents(const StageInteraceVariable
     return count;
 }
 
-StageInteraceVariable::StageInteraceVariable(const SPIRV_MODULE_STATE& module_state, const Instruction& insn,
-                                             VkShaderStageFlagBits stage)
+StageInteraceVariable::StageInteraceVariable(const Module& module_state, const Instruction& insn, VkShaderStageFlagBits stage)
     : VariableBase(module_state, insn, stage),
       is_patch(decorations.Has(DecorationSet::patch_bit)),
       is_per_vertex(decorations.Has(DecorationSet::per_vertex_bit)),
@@ -1683,8 +1799,7 @@ StageInteraceVariable::StageInteraceVariable(const SPIRV_MODULE_STATE& module_st
       builtin_block(GetBuiltinBlock(*this, module_state)),
       total_builtin_components(GetBuiltinComponents(*this, module_state)) {}
 
-const Instruction& ResourceInterfaceVariable::FindBaseType(ResourceInterfaceVariable& variable,
-                                                           const SPIRV_MODULE_STATE& module_state) {
+const Instruction& ResourceInterfaceVariable::FindBaseType(ResourceInterfaceVariable& variable, const Module& module_state) {
     // Takes a OpVariable and looks at the the descriptor type it uses. This will find things such as if the variable is writable,
     // image atomic operation, matching images to samplers, etc
     const Instruction* type = module_state.FindDef(variable.type_id);
@@ -1711,7 +1826,11 @@ const Instruction& ResourceInterfaceVariable::FindBaseType(ResourceInterfaceVari
     return *type;
 }
 
-NumericType ResourceInterfaceVariable::FindImageFormatType(const SPIRV_MODULE_STATE& module_state, const Instruction& base_type) {
+uint32_t ResourceInterfaceVariable::FindImageSampledTypeWidth(const Module& module_state, const Instruction& base_type) {
+    return (base_type.Opcode() == spv::OpTypeImage) ? module_state.GetTypeBitsSize(&base_type) : 0;
+}
+
+NumericType ResourceInterfaceVariable::FindImageFormatType(const Module& module_state, const Instruction& base_type) {
     return (base_type.Opcode() == spv::OpTypeImage) ? module_state.GetNumericType(base_type.Word(2)) : NumericTypeUnknown;
 }
 
@@ -1725,32 +1844,37 @@ bool ResourceInterfaceVariable::IsStorageBuffer(const ResourceInterfaceVariable&
     return ((uniform && buffer_block) || ((storage_buffer || physical_storage_buffer) && block));
 }
 
-ResourceInterfaceVariable::ResourceInterfaceVariable(const SPIRV_MODULE_STATE& module_state, const EntryPoint& entrypoint,
+bool ResourceInterfaceVariable::IsAtomicOperation(const Module& module_state, const ResourceInterfaceVariable& variable) {
+    return !module_state.FindVariableAccesses(variable.id, module_state.static_data_.atomic_pointer_ids, true).empty();
+}
+
+ResourceInterfaceVariable::ResourceInterfaceVariable(const Module& module_state, const EntryPoint& entrypoint,
                                                      const Instruction& insn, const ImageAccessMap& image_access_map)
     : VariableBase(module_state, insn, entrypoint.stage),
       array_length(0),
       runtime_array(false),
       is_sampled_image(false),
       base_type(FindBaseType(*this, module_state)),
-      image_format_type(FindImageFormatType(module_state, base_type)),
-      image_dim(base_type.FindImageDim()),
-      is_image_array(base_type.IsImageArray()),
-      is_multisampled(base_type.IsImageMultisampled()),
-      image_sampled_type_width(base_type.IsImageMultisampled()),
+      image_sampled_type_width(FindImageSampledTypeWidth(module_state, base_type)),
       is_storage_buffer(IsStorageBuffer(*this)) {
+    // to make sure no padding in-between the struct produce noise and force same data to become a different hash
+    info = {};  // will be cleared with c++11 initialization
+    info.image_format_type = FindImageFormatType(module_state, base_type);
+    info.image_dim = base_type.FindImageDim();
+    info.is_image_array = base_type.IsImageArray();
+    info.is_multisampled = base_type.IsImageMultisampled();
+    info.is_atomic_operation = IsAtomicOperation(module_state, *this);
+
     const auto& static_data_ = module_state.static_data_;
     // Handle anything specific to the base type
     switch (base_type.Opcode()) {
         case spv::OpTypeImage: {
-            image_sampled_type_width = module_state.GetTypeBitsSize(&base_type);
-
             const bool is_sampled_without_sampler = base_type.Word(7) == 2;  // Word(7) == Sampled
-            const spv::Dim image_dim = spv::Dim(base_type.Word(3));
             if (is_sampled_without_sampler) {
-                if (image_dim == spv::DimSubpassData) {
+                if (info.image_dim == spv::DimSubpassData) {
                     is_input_attachment = true;
                     input_attachment_index_read.resize(array_length);  // is zero if runtime array
-                } else if (image_dim == spv::DimBuffer) {
+                } else if (info.image_dim == spv::DimBuffer) {
                     is_storage_texel_buffer = true;
                 } else {
                     is_storage_image = true;
@@ -1763,20 +1887,26 @@ ResourceInterfaceVariable::ResourceInterfaceVariable(const SPIRV_MODULE_STATE& m
             if (access_it == image_access_map.end()) {
                 break;
             }
+
+            info.is_image_accessed = true;
             for (const auto& image_access_ptr : access_it->second) {
                 const auto& image_access = *image_access_ptr;
 
-                is_dref |= image_access.is_dref;
-                is_sampler_implicitLod_dref_proj |= image_access.is_sampler_implicitLod_dref_proj;
-                is_sampler_sampled |= image_access.is_sampler_sampled;
-                is_sampler_bias_offset |= image_access.is_sampler_bias_offset;
+                info.is_dref |= image_access.is_dref;
+                info.is_sampler_implicitLod_dref_proj |= image_access.is_sampler_implicitLod_dref_proj;
+                info.is_sampler_sampled |= image_access.is_sampler_sampled;
+                info.is_not_sampler_sampled |= image_access.is_not_sampler_sampled;
+                info.is_sampler_bias_offset |= image_access.is_sampler_bias_offset;
+                info.is_sampler_offset |= image_access.is_sampler_offset;
+                info.is_sign_extended |= image_access.is_sign_extended;
+                info.is_zero_extended |= image_access.is_zero_extended;
                 is_written_to |= image_access.is_written_to;
                 is_read_from |= image_access.is_read_from;
 
                 if (image_access.is_written_to) {
                     if (is_image_without_format) {
-                        is_write_without_format |= true;
-                        if (image_access.texel_component_count != ImageAccess::kInvalidValue) {
+                        info.is_write_without_format |= true;
+                        if (image_access.texel_component_count != kInvalidValue) {
                             write_without_formats_component_count_list.push_back(image_access.texel_component_count);
                         }
                     }
@@ -1784,12 +1914,12 @@ ResourceInterfaceVariable::ResourceInterfaceVariable(const SPIRV_MODULE_STATE& m
 
                 if (image_access.is_read_from) {
                     if (is_image_without_format) {
-                        is_read_without_format |= true;
+                        info.is_read_without_format |= true;
                     }
 
                     // If accessed in an array, track which indexes were read, if not runtime array
                     if (is_input_attachment && !runtime_array) {
-                        if (image_access.image_access_chain_index != ImageAccess::kInvalidValue) {
+                        if (image_access.image_access_chain_index != kInvalidValue) {
                             input_attachment_index_read[image_access.image_access_chain_index] = true;
                         } else {
                             // if InputAttachment is accessed from load, just a single, non-array, index
@@ -1800,22 +1930,22 @@ ResourceInterfaceVariable::ResourceInterfaceVariable(const SPIRV_MODULE_STATE& m
                 }
 
                 // if not CombinedImageSampler, need to find all Samplers that were accessed with the image
-                if (image_access.variable_sampler_insn && !is_sampled_image) {
+                if (!image_access.variable_sampler_insn.empty() && !is_sampled_image) {
                     // if no AccessChain, it is same conceptually as being zero
-                    const uint32_t image_index = image_access.image_access_chain_index != ImageAccess::kInvalidValue
-                                                     ? image_access.image_access_chain_index
-                                                     : 0;
-                    const uint32_t sampler_index = image_access.sampler_access_chain_index != ImageAccess::kInvalidValue
-                                                       ? image_access.sampler_access_chain_index
-                                                       : 0;
+                    const uint32_t image_index =
+                        image_access.image_access_chain_index != kInvalidValue ? image_access.image_access_chain_index : 0;
+                    const uint32_t sampler_index =
+                        image_access.sampler_access_chain_index != kInvalidValue ? image_access.sampler_access_chain_index : 0;
 
                     if (image_index >= samplers_used_by_image.size()) {
                         samplers_used_by_image.resize(image_index + 1);
                     }
 
-                    const auto& decoration_set = module_state.GetDecorationSet(image_access.variable_sampler_insn->ResultId());
-                    samplers_used_by_image[image_index].emplace(
-                        SamplerUsedByImage{DescriptorSlot{decoration_set.set, decoration_set.binding}, sampler_index});
+                    for (const Instruction* sampler_insn : image_access.variable_sampler_insn) {
+                        const auto& decoration_set = module_state.GetDecorationSet(sampler_insn->ResultId());
+                        samplers_used_by_image[image_index].emplace(
+                            SamplerUsedByImage{DescriptorSlot{decoration_set.set, decoration_set.binding}, sampler_index});
+                    }
                 }
             }
             break;
@@ -1844,50 +1974,22 @@ ResourceInterfaceVariable::ResourceInterfaceVariable(const SPIRV_MODULE_STATE& m
 
     // Type independent checks
     if (!module_state.FindVariableAccesses(id, static_data_.atomic_pointer_ids, true).empty()) {
-        is_atomic_operation = true;
+        info.is_atomic_operation = true;
     }
+
+    descriptor_hash = hash_util::DescriptorVariableHash(&info, sizeof(info));
 }
 
-PushConstantVariable::PushConstantVariable(const SPIRV_MODULE_STATE& module_state, const Instruction& insn,
-                                           VkShaderStageFlagBits stage)
+PushConstantVariable::PushConstantVariable(const Module& module_state, const Instruction& insn, VkShaderStageFlagBits stage)
     : VariableBase(module_state, insn, stage), offset(vvl::kU32Max), size(0) {
     assert(type_struct_info != nullptr);  // Push Constants need to be structs
 
-    // Currently to know the range we only need to know
-    // - The lowest offset element is in root struct
-    // - how large the highest offset element is in root struct
-    //
-    // Note structs don't have to be ordered, the following is legal
-    //    OpMemberDecorate %x 1 Offset 0
-    //    OpMemberDecorate %x 0 Offset 4
-    uint32_t highest_element_index = 0;
-    uint32_t highest_element_offset = 0;
-    for (uint32_t i = 0; i < type_struct_info->members.size(); i++) {
-        const auto& member = type_struct_info->members[i];
-        // all struct elements are required to have offset decorations in Block
-        const uint32_t memeber_offset = member.decorations->offset;
-        offset = std::min(offset, memeber_offset);
-        if (memeber_offset > highest_element_offset) {
-            highest_element_index = i;
-            highest_element_offset = memeber_offset;
-        }
-    }
-    const auto& highest_member = type_struct_info->members[highest_element_index];
-    uint32_t highest_element_size = 0;
-    if (highest_member.insn->Opcode() == spv::OpTypeArray &&
-        module_state.FindDef(highest_member.insn->Word(3))->Opcode() == spv::OpSpecConstant) {
-        // TODO - This is a work-around because currently we only apply SpecConstant for workgroup size
-        // The shader validation needs to be fixed so we handle all cases when spec constant are applied, while still being catious
-        // of the fact that information is not known until pipeline creation (not at shader module creation time)
-        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5911
-        highest_element_size = module_state.FindDef(highest_member.insn->Word(3))->Word(3);
-    } else {
-        highest_element_size = module_state.GetTypeBytesSize(highest_member.insn);
-    }
-    size = (highest_element_size + highest_element_offset) - offset;
+    auto struct_size = type_struct_info->GetSize(module_state);
+    offset = struct_size.offset;
+    size = struct_size.size;
 }
 
-TypeStructInfo::TypeStructInfo(const SPIRV_MODULE_STATE& module_state, const Instruction& struct_insn)
+TypeStructInfo::TypeStructInfo(const Module& module_state, const Instruction& struct_insn)
     : id(struct_insn.Word(1)), length(struct_insn.Length() - 2), decorations(module_state.GetDecorationSet(id)) {
     members.resize(length);
     for (uint32_t i = 0; i < length; i++) {
@@ -1903,7 +2005,58 @@ TypeStructInfo::TypeStructInfo(const SPIRV_MODULE_STATE& module_state, const Ins
     }
 }
 
-uint32_t SPIRV_MODULE_STATE::GetNumComponentsInBaseType(const Instruction* insn) const {
+TypeStructSize TypeStructInfo::GetSize(const Module& module_state) const {
+    uint32_t offset = vvl::kU32Max;
+    uint32_t size = 0;
+
+    // Non-Blocks don't have offset so can get packed size
+    if (!decorations.Has(DecorationSet::block_bit)) {
+        offset = 0;
+        size = module_state.GetTypeBytesSize(module_state.FindDef(id));
+        return {offset, size};
+    }
+
+    // Currently to know the range we only need to know
+    // - The lowest offset element is in root struct
+    // - how large the highest offset element is in root struct
+    //
+    // Note structs don't have to be ordered, the following is legal
+    //    OpMemberDecorate %x 1 Offset 0
+    //    OpMemberDecorate %x 0 Offset 4
+    //
+    // Info at https://gitlab.khronos.org/spirv/SPIR-V/-/issues/763
+    uint32_t highest_element_index = 0;
+    uint32_t highest_element_offset = 0;
+
+    for (uint32_t i = 0; i < members.size(); i++) {
+        const auto& member = members[i];
+        // all struct elements are required to have offset decorations in Block
+        const uint32_t memeber_offset = member.decorations->offset;
+        offset = std::min(offset, memeber_offset);
+        if (memeber_offset > highest_element_offset) {
+            highest_element_index = i;
+            highest_element_offset = memeber_offset;
+        }
+    }
+
+    const auto& highest_member = members[highest_element_index];
+    uint32_t highest_element_size = 0;
+    if (highest_member.insn->Opcode() == spv::OpTypeArray &&
+        module_state.FindDef(highest_member.insn->Word(3))->Opcode() == spv::OpSpecConstant) {
+        // TODO - This is a work-around because currently we only apply SpecConstant for workgroup size
+        // The shader validation needs to be fixed so we handle all cases when spec constant are applied, while still being catious
+        // of the fact that information is not known until pipeline creation (not at shader module creation time)
+        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/5911
+        highest_element_size = module_state.FindDef(highest_member.insn->Word(3))->Word(3);
+    } else {
+        highest_element_size = module_state.GetTypeBytesSize(highest_member.insn);
+    }
+    size = (highest_element_size + highest_element_offset) - offset;
+
+    return {offset, size};
+}
+
+uint32_t Module::GetNumComponentsInBaseType(const Instruction* insn) const {
     const uint32_t opcode = insn->Opcode();
     uint32_t component_count = 0;
     if (opcode == spv::OpTypeFloat || opcode == spv::OpTypeInt) {
@@ -1929,7 +2082,7 @@ uint32_t SPIRV_MODULE_STATE::GetNumComponentsInBaseType(const Instruction* insn)
 }
 
 // Returns the total size in 'bits' of any OpType*
-uint32_t SPIRV_MODULE_STATE::GetTypeBitsSize(const Instruction* insn) const {
+uint32_t Module::GetTypeBitsSize(const Instruction* insn) const {
     const uint32_t opcode = insn->Opcode();
     uint32_t bit_size = 0;
     if (opcode == spv::OpTypeVector) {
@@ -1949,6 +2102,7 @@ uint32_t SPIRV_MODULE_STATE::GetTypeBitsSize(const Instruction* insn) const {
         uint32_t length = length_type->GetConstantValue();
         bit_size = element_width * length;
     } else if (opcode == spv::OpTypeStruct) {
+        // Will not consider any possible Offset, gets size of a packed struct
         for (uint32_t i = 2; i < insn->Length(); ++i) {
             bit_size += GetTypeBitsSize(FindDef(insn->Word(i)));
         }
@@ -1978,11 +2132,11 @@ uint32_t SPIRV_MODULE_STATE::GetTypeBitsSize(const Instruction* insn) const {
 }
 
 // Returns the total size in 'bytes' of any OpType*
-uint32_t SPIRV_MODULE_STATE::GetTypeBytesSize(const Instruction* insn) const { return GetTypeBitsSize(insn) / 8; }
+uint32_t Module::GetTypeBytesSize(const Instruction* insn) const { return GetTypeBitsSize(insn) / 8; }
 
 // Returns the base type (float, int or unsigned int) or struct (can have multiple different base types inside)
 // Will return 0 if it can not be determined
-uint32_t SPIRV_MODULE_STATE::GetBaseType(const Instruction* insn) const {
+uint32_t Module::GetBaseType(const Instruction* insn) const {
     const uint32_t opcode = insn->Opcode();
     if (opcode == spv::OpTypeFloat || opcode == spv::OpTypeInt || opcode == spv::OpTypeBool || opcode == spv::OpTypeStruct) {
         // point to itself as its the base type (or a struct that needs to be traversed still)
@@ -2015,7 +2169,7 @@ uint32_t SPIRV_MODULE_STATE::GetBaseType(const Instruction* insn) const {
     return 0;
 }
 
-const Instruction* SPIRV_MODULE_STATE::GetBaseTypeInstruction(uint32_t type) const {
+const Instruction* Module::GetBaseTypeInstruction(uint32_t type) const {
     const Instruction* insn = FindDef(type);
     const uint32_t base_insn_id = GetBaseType(insn);
     // Will return end() if an invalid/unknown base_insn_id is returned
@@ -2023,13 +2177,13 @@ const Instruction* SPIRV_MODULE_STATE::GetBaseTypeInstruction(uint32_t type) con
 }
 
 // Returns type_id if id has type or zero otherwise
-uint32_t SPIRV_MODULE_STATE::GetTypeId(uint32_t id) const {
+uint32_t Module::GetTypeId(uint32_t id) const {
     const Instruction* type = FindDef(id);
     return type ? type->TypeId() : 0;
 }
 
 // Return zero if nothing is found
-uint32_t SPIRV_MODULE_STATE::GetTexelComponentCount(const Instruction& insn) const {
+uint32_t Module::GetTexelComponentCount(const Instruction& insn) const {
     uint32_t texel_component_count = 0;
     switch (insn.Opcode()) {
         case spv::OpImageWrite: {
@@ -2046,7 +2200,7 @@ uint32_t SPIRV_MODULE_STATE::GetTexelComponentCount(const Instruction& insn) con
 
 // Takes an array like [3][2][4] and returns 24
 // If not an array, returns 1
-uint32_t SPIRV_MODULE_STATE::GetFlattenArraySize(const Instruction& insn) const {
+uint32_t Module::GetFlattenArraySize(const Instruction& insn) const {
     uint32_t array_size = 1;
     if (insn.Opcode() == spv::OpTypeArray) {
         array_size = GetConstantValueById(insn.Word(3));
@@ -2057,3 +2211,24 @@ uint32_t SPIRV_MODULE_STATE::GetFlattenArraySize(const Instruction& insn) const 
     }
     return array_size;
 }
+
+AtomicInstructionInfo Module::GetAtomicInfo(const Instruction& insn) const {
+    AtomicInstructionInfo info;
+
+    // All atomics have a pointer referenced
+    const uint32_t pointer_index = insn.Opcode() == spv::OpAtomicStore ? 1 : 3;
+    const Instruction* access = FindDef(insn.Word(pointer_index));
+
+    // spirv-val will catch if not OpTypePointer
+    const Instruction* pointer = FindDef(access->Word(1));
+    info.storage_class = pointer->Word(2);
+
+    const Instruction* data_type = FindDef(pointer->Word(3));
+    info.type = data_type->Opcode();
+
+    info.bit_width = data_type->GetBitWidth();
+
+    return info;
+}
+
+}  // namespace spirv

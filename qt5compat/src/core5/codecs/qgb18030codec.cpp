@@ -26,7 +26,6 @@ QGb18030Codec::QGb18030Codec()
 {
 }
 
-/*! \reimp */
 QByteArray QGb18030Codec::convertFromUnicode(const QChar *uc, int len, ConverterState *state) const
 {
     char replacement = '?';

@@ -120,21 +120,18 @@ export class ExperimentsSupport {
   #enabledTransiently: Set<string>;
   readonly #enabledByDefault: Set<string>;
   readonly #serverEnabled: Set<string>;
-  // Experiments in this set won't be shown to the user
-  readonly #nonConfigurable: Set<string>;
   constructor() {
     this.#experiments = [];
     this.#experimentNames = new Set();
     this.#enabledTransiently = new Set();
     this.#enabledByDefault = new Set();
     this.#serverEnabled = new Set();
-    this.#nonConfigurable = new Set();
   }
 
   allConfigurableExperiments(): Experiment[] {
     const result = [];
     for (const experiment of this.#experiments) {
-      if (!this.#enabledTransiently.has(experiment.name) && !this.#nonConfigurable.has(experiment.name)) {
+      if (!this.#enabledTransiently.has(experiment.name)) {
         result.push(experiment);
       }
     }
@@ -202,13 +199,6 @@ export class ExperimentsSupport {
     for (const experiment of experimentNames) {
       this.checkExperiment(experiment);
       this.#serverEnabled.add(experiment);
-    }
-  }
-
-  setNonConfigurableExperiments(experimentNames: string[]): void {
-    for (const experiment of experimentNames) {
-      this.checkExperiment(experiment);
-      this.#nonConfigurable.add(experiment);
     }
   }
 
@@ -281,29 +271,20 @@ export class Experiment {
 // This must be constructed after the query parameters have been parsed.
 export const experiments = new ExperimentsSupport();
 
-// TODO(crbug.com/1167717): Make this a const enum again
-// eslint-disable-next-line rulesdir/const_enum
-export enum ExperimentName {
+export const enum ExperimentName {
   CAPTURE_NODE_CREATION_STACKS = 'captureNodeCreationStacks',
   CSS_OVERVIEW = 'cssOverview',
   LIVE_HEAP_PROFILE = 'liveHeapProfile',
-  DEVELOPER_RESOURCES_VIEW = 'developerResourcesView',
-  CSP_VIOLATIONS_VIEW = 'cspViolationsView',
-  WASM_DWARF_DEBUGGING = 'wasmDWARFDebugging',
   ALL = '*',
   PROTOCOL_MONITOR = 'protocolMonitor',
-  WEBAUTHN_PANE = 'webauthnPane',
   FULL_ACCESSIBILITY_TREE = 'fullAccessibilityTree',
-  PRECISE_CHANGES = 'preciseChanges',
   STYLES_PANE_CSS_CHANGES = 'stylesPaneCSSChanges',
   HEADER_OVERRIDES = 'headerOverrides',
-  EYEDROPPER_COLOR_PICKER = 'eyedropperColorPicker',
   INSTRUMENTATION_BREAKPOINTS = 'instrumentationBreakpoints',
   AUTHORED_DEPLOYED_GROUPING = 'authoredDeployedGrouping',
   IMPORTANT_DOM_PROPERTIES = 'importantDOMProperties',
   JUST_MY_CODE = 'justMyCode',
   PRELOADING_STATUS_PANEL = 'preloadingStatusPanel',
-  DISABLE_COLOR_FORMAT_SETTING = 'disableColorFormatSetting',
   TIMELINE_AS_CONSOLE_PROFILE_RESULT_PANEL = 'timelineAsConsoleProfileResultPanel',
   OUTERMOST_TARGET_SELECTOR = 'outermostTargetSelector',
   JS_PROFILER_TEMP_ENABLE = 'jsProfilerTemporarilyEnable',
@@ -312,12 +293,14 @@ export enum ExperimentName {
   SELF_XSS_WARNING = 'selfXssWarning',
   USE_SOURCE_MAP_SCOPES = 'useSourceMapScopes',
   STORAGE_BUCKETS_TREE = 'storageBucketsTree',
-  DELETE_OVERRIDES_TEMP_ENABLE = 'deleteOverridesTemporarilyEnable',
+  NETWORK_PANEL_FILTER_BAR_REDESIGN = 'networkPanelFilterBarRedesign',
+  TRACK_CONTEXT_MENU = 'trackContextMenu',
+  AUTOFILL_VIEW = 'autofillView',
+  INDENTATION_MARKERS_TEMP_DISABLE = 'sourcesFrameIndentationMarkersTemporarilyDisable',
+  CONSOLE_INSIGHTS = 'consoleInsights',
 }
 
-// TODO(crbug.com/1167717): Make this a const enum again
-// eslint-disable-next-line rulesdir/const_enum
-export enum ConditionName {
+export const enum ConditionName {
   CAN_DOCK = 'can_dock',
   NOT_SOURCES_HIDE_ADD_FOLDER = '!sources.hide_add_folder',
 }

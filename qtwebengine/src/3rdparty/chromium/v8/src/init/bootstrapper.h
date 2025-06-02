@@ -37,7 +37,7 @@ class SourceCodeCache final {
 
  private:
   Script::Type type_;
-  FixedArray cache_;
+  Tagged<FixedArray> cache_;
 };
 
 // The Boostrapper is the public interface for creating a JavaScript global
@@ -93,7 +93,7 @@ class Bootstrapper final {
   void FreeThreadResources();
 
   // Used for new context creation.
-  bool InstallExtensions(Handle<Context> native_context,
+  bool InstallExtensions(Handle<NativeContext> native_context,
                          v8::ExtensionConfiguration* extensions);
 
   SourceCodeCache* extensions_cache() { return &extensions_cache_; }

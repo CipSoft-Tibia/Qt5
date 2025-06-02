@@ -7,12 +7,16 @@
 
 #include "src/core/SkColorSpaceXformSteps.h"
 
+#include "include/core/SkAlphaType.h"
 #include "include/core/SkColorSpace.h"
 #include "include/core/SkTypes.h"
 #include "include/private/base/SkFloatingPoint.h"
 #include "modules/skcms/skcms.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "src/core/SkRasterPipeline.h"
+#include "src/core/SkRasterPipelineOpList.h"
+
+#include <cstring>
 
 // See skia.org/user/color  (== site/user/color.md).
 
@@ -134,8 +138,8 @@ void SkColorSpaceXformSteps::apply(float* rgba) const {
 
 void SkColorSpaceXformSteps::apply(SkRasterPipeline* p) const {
     if (flags.unpremul)        { p->append(SkRasterPipelineOp::unpremul); }
-    if (flags.linearize)       { p->append_transfer_function(srcTF); }
+    if (flags.linearize)       { p->appendTransferFunction(srcTF); }
     if (flags.gamut_transform) { p->append(SkRasterPipelineOp::matrix_3x3, &src_to_dst_matrix); }
-    if (flags.encode)          { p->append_transfer_function(dstTFInv); }
+    if (flags.encode)          { p->appendTransferFunction(dstTFInv); }
     if (flags.premul)          { p->append(SkRasterPipelineOp::premul); }
 }

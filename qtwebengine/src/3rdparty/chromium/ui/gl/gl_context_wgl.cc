@@ -20,8 +20,8 @@ GLContextWGL::GLContextWGL(GLShareGroup* share_group)
     : GLContextReal(share_group), context_(nullptr) {
 }
 
-bool GLContextWGL::Initialize(GLSurface* compatible_surface,
-                              const GLContextAttribs& attribs) {
+bool GLContextWGL::InitializeImpl(GLSurface* compatible_surface,
+                                  const GLContextAttribs& attribs) {
   // webgl_compatibility_context and disabling bind_generates_resource are not
   // supported.
   DCHECK(!attribs.webgl_compatibility_context &&
@@ -85,6 +85,7 @@ bool GLContextWGL::Initialize(GLSurface* compatible_surface,
 }
 
 void GLContextWGL::Destroy() {
+  OnContextWillDestroy();
   if (context_) {
     wglDeleteContext(context_);
     context_ = nullptr;

@@ -24,7 +24,7 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-Q_LOGGING_CATEGORY(lcQpaInputDevices, "qt.qpa.input.devices")
+Q_LOGGING_CATEGORY(lcQpaInputDevices, "qt.qpa.input.devices", QtWarningMsg)
 
 Q_CONSTINIT QElapsedTimer QWindowSystemInterfacePrivate::eventTime;
 bool QWindowSystemInterfacePrivate::synchronousWindowSystemEvents = false;
@@ -95,7 +95,7 @@ template<>
 template<typename EventType, typename ...Args>
 bool QWindowSystemHelper<QWindowSystemInterface::SynchronousDelivery>::handleEvent(Args ...args)
 {
-    if (QThread::currentThread() == QGuiApplication::instance()->thread()) {
+    if (QThread::isMainThread()) {
         EventType event(args...);
         // Process the event immediately on the Gui thread and return the accepted state
         if (QWindowSystemInterfacePrivate::eventHandler) {
@@ -576,7 +576,6 @@ bool QWindowSystemInterface::handleWheelEvent(QWindow *window, ulong timestamp, 
 */
 void QWindowSystemInterface::registerInputDevice(const QInputDevice *device)
 {
-    qCDebug(lcQpaInputDevices) << "register" << device;
     QInputDevicePrivate::registerDevice(device);
 }
 
@@ -1028,12 +1027,12 @@ void QWindowSystemInterface::handlePlatformPanelEvent(QWindow *w)
 }
 
 #ifndef QT_NO_CONTEXTMENU
-void QWindowSystemInterface::handleContextMenuEvent(QWindow *window, bool mouseTriggered,
+QT_DEFINE_QPA_EVENT_HANDLER(bool, handleContextMenuEvent, QWindow *window, bool mouseTriggered,
                                                     const QPoint &pos, const QPoint &globalPos,
                                                     Qt::KeyboardModifiers modifiers)
 {
-    handleWindowSystemEvent<QWindowSystemInterfacePrivate::ContextMenuEvent>(window,
-        mouseTriggered, pos, globalPos, modifiers);
+    return handleWindowSystemEvent<QWindowSystemInterfacePrivate::ContextMenuEvent, Delivery>(
+        window, mouseTriggered, pos, globalPos, modifiers);
 }
 #endif
 
@@ -1208,6 +1207,13 @@ Q_GUI_EXPORT bool qt_sendShortcutOverrideEvent(QObject *o, ulong timestamp, int 
     Q_UNUSED(count);
     return false;
 #endif
+}
+
+Q_GUI_EXPORT void qt_handleWheelEvent(QWindow *window, const QPointF &local, const QPointF &global,
+                                      QPoint pixelDelta, QPoint angleDelta, Qt::KeyboardModifiers mods,
+                                      Qt::ScrollPhase phase)
+{
+    QWindowSystemInterface::handleWheelEvent(window, local, global, pixelDelta, angleDelta, mods, phase);
 }
 
 namespace QTest

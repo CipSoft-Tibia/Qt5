@@ -1,5 +1,5 @@
-android|ios|winrt {
-    error( "This example is not supported for android, ios, or winrt." )
+android|winrt {
+    error( "This example is not supported for android or winrt." )
 }
 
 !include( ../examples.pri ) {

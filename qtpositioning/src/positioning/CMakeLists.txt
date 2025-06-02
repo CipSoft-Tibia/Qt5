@@ -45,15 +45,13 @@ qt_internal_add_module(Positioning
         Qt::Core
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
 )
 
 if(ANDROID)
     set_property(TARGET Positioning APPEND PROPERTY QT_ANDROID_BUNDLED_JAR_DEPENDENCIES
-        jar/Qt${QtLocation_VERSION_MAJOR}AndroidPositioning.jar:org.qtproject.qt.android.positioning.QtPositioning # special case
+        jar/Qt${QtLocation_VERSION_MAJOR}AndroidPositioning.jar
     )
     set_property(TARGET Positioning APPEND PROPERTY QT_ANDROID_LIB_DEPENDENCIES
         ${INSTALL_PLUGINSDIR}/position/libplugins_position_qtposition_android.so

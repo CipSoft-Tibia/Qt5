@@ -20,14 +20,14 @@ QT_BEGIN_NAMESPACE
  * \note In scaling, the z-coordinate has no effect. Setting the same x- and
  * y-coordinates retains the original font dimensions.
  *
- * \sa QAbstract3DGraph::addCustomItem()
+ * \sa Q3DGraphsWidgetItem::addCustomItem()
  */
 
 /*!
  * \qmltype Custom3DLabel
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QCustom3DLabel
+ * \nativetype QCustom3DLabel
  * \inherits Custom3DItem
  * \brief Adds a custom label to a graph.
  *
@@ -56,25 +56,25 @@ QT_BEGIN_NAMESPACE
  * The color for the label text. Also affects label border, if enabled. Defaults
  * to \c{"white"}.
  *
- * \sa borderEnabled
+ * \sa borderVisible
  */
 
 /*! \qmlproperty color Custom3DLabel::backgroundColor
  *
  * The color for the label background, if enabled. Defaults to \c{"gray"}.
  *
- * \sa backgroundEnabled
+ * \sa backgroundVisible
  */
 
-/*! \qmlproperty bool Custom3DLabel::backgroundEnabled
+/*! \qmlproperty bool Custom3DLabel::backgroundVisible
  *
- * Defines whether the label background is enabled. If set to \c{false},
+ * Defines whether the label background is visible. If set to \c{false},
  * backgroundColor has no effect. Defaults to \c{true}.
  */
 
-/*! \qmlproperty bool Custom3DLabel::borderEnabled
+/*! \qmlproperty bool Custom3DLabel::borderVisible
  *
- * Defines whether label borders are enabled. Defaults to \c{true}.
+ * Defines whether label borders are visible. Defaults to \c{true}.
  */
 
 /*! \qmlproperty bool Custom3DLabel::facingCamera
@@ -82,6 +82,48 @@ QT_BEGIN_NAMESPACE
  * Defines whether the label will always face the camera. Defaults to \c{false}.
  * If set to \c{true}, \l {QCustom3DItem::}{rotation} has no effect.
  */
+
+/*!
+    \qmlsignal Custom3DLabel::textChanged(string text)
+
+    This signal is emitted when \l text changes to \a text.
+*/
+
+/*!
+    \qmlsignal Custom3DLabel::fontChanged(font font)
+
+    This signal is emitted when \l font changes to \a font.
+*/
+
+/*!
+    \qmlsignal Custom3DLabel::textColorChanged(color color)
+
+    This signal is emitted when textColor changes to \a color.
+*/
+
+/*!
+    \qmlsignal Custom3DLabel::backgroundColorChanged(color color)
+
+    This signal is emitted when backgroundColor changes to \a color.
+*/
+
+/*!
+    \qmlsignal Custom3DLabel::borderEnabledChanged(bool enabled)
+
+    This signal is emitted when borderEnabled changes to \a enabled.
+*/
+
+/*!
+    \qmlsignal Custom3DLabel::backgroundEnabledChanged(bool enabled)
+
+    This signal is emitted when backgroundEnabled changes to \a enabled.
+*/
+
+/*!
+    \qmlsignal Custom3DLabel::facingCameraChanged(bool enabled)
+
+    This signal is emitted when facingCamera changes to \a enabled.
+*/
 
 /*!
  * Constructs a custom 3D label with the given \a parent.
@@ -99,8 +141,8 @@ QCustom3DLabel::QCustom3DLabel(QObject *parent)
  */
 QCustom3DLabel::QCustom3DLabel(const QString &text,
                                const QFont &font,
-                               const QVector3D &position,
-                               const QVector3D &scaling,
+                               QVector3D position,
+                               QVector3D scaling,
                                const QQuaternion &rotation,
                                QObject *parent)
     : QCustom3DItem(*(new QCustom3DLabelPrivate(text, font, position, scaling, rotation)), parent)
@@ -129,7 +171,7 @@ void QCustom3DLabel::setText(const QString &text)
 
 QString QCustom3DLabel::text() const
 {
-    const Q_D(QCustom3DLabel);
+    Q_D(const QCustom3DLabel);
     return d->m_text;
 }
 
@@ -152,7 +194,7 @@ void QCustom3DLabel::setFont(const QFont &font)
 
 QFont QCustom3DLabel::font() const
 {
-    const Q_D(QCustom3DLabel);
+    Q_D(const QCustom3DLabel);
     return d->m_font;
 }
 
@@ -162,9 +204,9 @@ QFont QCustom3DLabel::font() const
  *
  * Also affects the label border, if enabled. Defaults to \c{Qt::white}.
  *
- * \sa borderEnabled
+ * \sa borderVisible
  */
-void QCustom3DLabel::setTextColor(const QColor &color)
+void QCustom3DLabel::setTextColor(QColor color)
 {
     Q_D(QCustom3DLabel);
     if (d->m_txtColor != color) {
@@ -177,7 +219,7 @@ void QCustom3DLabel::setTextColor(const QColor &color)
 
 QColor QCustom3DLabel::textColor() const
 {
-    const Q_D(QCustom3DLabel);
+    Q_D(const QCustom3DLabel);
     return d->m_txtColor;
 }
 
@@ -187,9 +229,9 @@ QColor QCustom3DLabel::textColor() const
  *
  * Defaults to \c{Qt::gray}.
  *
- * \sa backgroundEnabled
+ * \sa backgroundVisible
  */
-void QCustom3DLabel::setBackgroundColor(const QColor &color)
+void QCustom3DLabel::setBackgroundColor(QColor color)
 {
     Q_D(QCustom3DLabel);
     if (d->m_bgrColor != color) {
@@ -202,54 +244,54 @@ void QCustom3DLabel::setBackgroundColor(const QColor &color)
 
 QColor QCustom3DLabel::backgroundColor() const
 {
-    const Q_D(QCustom3DLabel);
+    Q_D(const QCustom3DLabel);
     return d->m_bgrColor;
 }
 
-/*! \property QCustom3DLabel::borderEnabled
+/*! \property QCustom3DLabel::borderVisible
  *
- * \brief Whether label borders are enabled.
+ * \brief Whether label borders are visible.
  *
  * Defaults to \c{true}.
  */
-void QCustom3DLabel::setBorderEnabled(bool enabled)
+void QCustom3DLabel::setBorderVisible(bool visible)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_borders != enabled) {
-        d->m_borders = enabled;
+    if (d->m_borders != visible) {
+        d->m_borders = visible;
         d->m_customVisuals = true;
-        emit borderEnabledChanged(enabled);
+        emit borderVisibleChanged(visible);
         emit needUpdate();
     }
 }
 
-bool QCustom3DLabel::isBorderEnabled() const
+bool QCustom3DLabel::isBorderVisible() const
 {
-    const Q_D(QCustom3DLabel);
+    Q_D(const QCustom3DLabel);
     return d->m_borders;
 }
 
-/*! \property QCustom3DLabel::backgroundEnabled
+/*! \property QCustom3DLabel::backgroundVisible
  *
- * \brief Whether the label background is enabled.
+ * \brief Whether the label background is visible.
  *
  * If set to \c{false}, backgroundColor() has no effect. Defaults
  * to \c{true}.
  */
-void QCustom3DLabel::setBackgroundEnabled(bool enabled)
+void QCustom3DLabel::setBackgroundVisible(bool visible)
 {
     Q_D(QCustom3DLabel);
-    if (d->m_background != enabled) {
-        d->m_background = enabled;
+    if (d->m_background != visible) {
+        d->m_background = visible;
         d->m_customVisuals = true;
-        emit backgroundEnabledChanged(enabled);
+        emit backgroundVisibleChanged(visible);
         emit needUpdate();
     }
 }
 
-bool QCustom3DLabel::isBackgroundEnabled() const
+bool QCustom3DLabel::isBackgroundVisible() const
 {
-    const Q_D(QCustom3DLabel);
+    Q_D(const QCustom3DLabel);
     return d->m_background;
 }
 
@@ -273,7 +315,7 @@ void QCustom3DLabel::setFacingCamera(bool enabled)
 
 bool QCustom3DLabel::isFacingCamera() const
 {
-    const Q_D(QCustom3DLabel);
+    Q_D(const QCustom3DLabel);
     return d->m_facingCamera;
 }
 
@@ -294,8 +336,8 @@ QCustom3DLabelPrivate::QCustom3DLabelPrivate()
 
 QCustom3DLabelPrivate::QCustom3DLabelPrivate(const QString &text,
                                              const QFont &font,
-                                             const QVector3D &position,
-                                             const QVector3D &scaling,
+                                             QVector3D position,
+                                             QVector3D scaling,
                                              const QQuaternion &rotation)
     : QCustom3DItemPrivate(QStringLiteral(":/defaultMeshes/plane"), position, scaling, rotation)
     , m_text(text)

@@ -25,7 +25,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_QUICKTEMPLATES2_PRIVATE_EXPORT QHeaderDataProxyModel : public QAbstractItemModel
+class Q_QUICKTEMPLATES2_EXPORT QHeaderDataProxyModel : public QAbstractItemModel
 {
     Q_OBJECT
     Q_DISABLE_COPY(QHeaderDataProxyModel)
@@ -66,6 +66,7 @@ public:
     QQuickHeaderViewBasePrivate();
     ~QQuickHeaderViewBasePrivate();
 
+    void init();
     Qt::Orientation orientation() const;
     void setOrientation(Qt::Orientation orientation);
     const QPointer<QQuickItem> delegateItemAt(int row, int col) const;
@@ -88,6 +89,11 @@ protected:
     QStack<SectionSize> m_hiddenSectionSizes;
     bool m_modelExplicitlySetByUser = false;
     QString m_textRole;
+
+    int logicalRowIndex(const int visualIndex) const final;
+    int logicalColumnIndex(const int visualIndex) const final;
+    int visualRowIndex(const int logicalIndex) const final;
+    int visualColumnIndex(const int logicalIndex) const final;
 };
 
 class QQuickHorizontalHeaderViewPrivate : public QQuickHeaderViewBasePrivate
@@ -96,6 +102,8 @@ class QQuickHorizontalHeaderViewPrivate : public QQuickHeaderViewBasePrivate
 public:
     QQuickHorizontalHeaderViewPrivate();
     ~QQuickHorizontalHeaderViewPrivate();
+
+    bool m_movableColumns = false;
 };
 
 class QQuickVerticalHeaderViewPrivate : public QQuickHeaderViewBasePrivate
@@ -104,6 +112,8 @@ class QQuickVerticalHeaderViewPrivate : public QQuickHeaderViewBasePrivate
 public:
     QQuickVerticalHeaderViewPrivate();
     ~QQuickVerticalHeaderViewPrivate();
+
+    bool m_movableRows = false;
 };
 
 QT_END_NAMESPACE

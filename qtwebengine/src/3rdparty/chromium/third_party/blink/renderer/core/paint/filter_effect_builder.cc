@@ -125,12 +125,16 @@ Vector<float> SepiaMatrix(double amount) {
 
 FilterEffectBuilder::FilterEffectBuilder(const gfx::RectF& reference_box,
                                          float zoom,
+                                         Color current_color,
+                                         mojom::blink::ColorScheme color_scheme,
                                          const cc::PaintFlags* fill_flags,
                                          const cc::PaintFlags* stroke_flags,
                                          SkTileMode blur_tile_mode)
     : reference_box_(reference_box),
       zoom_(zoom),
       shorthand_scale_(1),
+      current_color_(current_color),
+      color_scheme_(color_scheme),
       fill_flags_(fill_flags),
       stroke_flags_(stroke_flags),
       blur_tile_mode_(blur_tile_mode) {}
@@ -276,11 +280,12 @@ FilterEffect* FilterEffectBuilder::BuildFilterEffect(
         break;
       }
       case FilterOperation::OperationType::kBlur: {
-        float std_deviation = FloatValueForLength(
-            To<BlurFilterOperation>(filter_operation)->StdDeviation(), 0);
-        std_deviation *= shorthand_scale_;
+        const LengthPoint& std_deviation =
+            To<BlurFilterOperation>(filter_operation)->StdDeviationXY();
         effect = MakeGarbageCollected<FEGaussianBlur>(
-            parent_filter, std_deviation, std_deviation);
+            parent_filter,
+            FloatValueForLength(std_deviation.X(), 0) * shorthand_scale_,
+            FloatValueForLength(std_deviation.Y(), 0) * shorthand_scale_);
         break;
       }
       case FilterOperation::OperationType::kDropShadow: {
@@ -291,7 +296,11 @@ FilterEffect* FilterEffectBuilder::BuildFilterEffect(
         gfx::PointF blur = gfx::ScalePoint(shadow.BlurXY(), shorthand_scale_);
         effect = MakeGarbageCollected<FEDropShadow>(
             parent_filter, blur.x(), blur.y(), offset.x(), offset.y(),
-            shadow.GetColor().GetColor(), shadow.Opacity());
+            shadow.GetColor().Resolve(current_color_, color_scheme_),
+            shadow.Opacity());
+        if (shadow.GetColor().IsCurrentColor()) {
+          effect->SetOriginTainted();
+        }
         break;
       }
       case FilterOperation::OperationType::kBoxReflect: {
@@ -459,8 +468,9 @@ CompositorFilterOperations FilterEffectBuilder::BuildFilterOperations(
         const gfx::Vector2d floored_offset = gfx::ToFlooredVector2d(
             gfx::ScaleVector2d(shadow.Offset(), shorthand_scale_));
         float radius = shadow.Blur() * shorthand_scale_;
-        filters.AppendDropShadowFilter(floored_offset, radius,
-                                       shadow.GetColor().GetColor());
+        filters.AppendDropShadowFilter(
+            floored_offset, radius,
+            shadow.GetColor().Resolve(current_color_, color_scheme_));
         break;
       }
       case FilterOperation::OperationType::kBoxReflect: {

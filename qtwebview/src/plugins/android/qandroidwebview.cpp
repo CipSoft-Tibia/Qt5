@@ -137,13 +137,12 @@ void QAndroidWebViewPrivate::setUrl(const QUrl &url)
 void QAndroidWebViewPrivate::loadHtml(const QString &html, const QUrl &baseUrl)
 {
     const QString mimeTypeString = u"text/html;charset=UTF-8"_s;
-
-    baseUrl.isEmpty() ? m_viewController.callMethod<void>("loadData", html, mimeTypeString,
-                                                          jstring(nullptr))
-                      : m_viewController.callMethod<void>("loadDataWithBaseURL",
-                                                          baseUrl.toString(),
-                                                          html, mimeTypeString,
-                                                          jstring(nullptr), jstring(nullptr));
+    const QString encoded = QUrl::toPercentEncoding(html);
+    baseUrl.isEmpty()
+            ? m_viewController.callMethod<void>("loadData", encoded, mimeTypeString,
+                                                jstring(nullptr))
+            : m_viewController.callMethod<void>("loadDataWithBaseURL", baseUrl.toString(), encoded,
+                                                mimeTypeString, jstring(nullptr), jstring(nullptr));
 }
 
 bool QAndroidWebViewPrivate::canGoBack() const
@@ -278,8 +277,6 @@ void QAndroidWebViewPrivate::onApplicationStateChanged(Qt::ApplicationState stat
         m_viewController.callMethod<void>("onPause");
 }
 
-QT_END_NAMESPACE
-
 static void c_onRunJavaScriptResult(JNIEnv *env,
                                     jobject thiz,
                                     jlong id,
@@ -413,7 +410,6 @@ static void c_onReceivedTitle(JNIEnv *env,
     QAndroidWebViewPrivate *wc = reinterpret_cast<QAndroidWebViewPrivate *>(id);
     if (!g_webViews->contains(wc))
         return;
-
     const QString &qTitle = QJniObject(title).toString();
     Q_EMIT wc->titleChanged(qTitle);
 }
@@ -481,6 +477,7 @@ static void c_onCookieRemoved(JNIEnv *env,
         Q_EMIT wc->cookieRemoved(QJniObject(domain).toString(), QJniObject(name).toString());
 }
 Q_DECLARE_JNI_NATIVE_METHOD(c_onCookieRemoved)
+QT_END_NAMESPACE
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* /* vm */, void* /*reserved*/)
 {

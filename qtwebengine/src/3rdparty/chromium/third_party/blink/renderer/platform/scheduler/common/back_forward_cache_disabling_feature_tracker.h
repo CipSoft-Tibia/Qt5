@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/containers/flat_map.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "third_party/blink/renderer/platform/scheduler/common/tracing_helper.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_or_worker_scheduler.h"
@@ -119,7 +120,7 @@ class PLATFORM_EXPORT BackForwardCacheDisablingFeatureTracker {
   BFCacheBlockingFeatureAndLocations sticky_features_and_js_locations_;
 
   base::WeakPtr<FrameOrWorkerScheduler::Delegate> delegate_ = nullptr;
-  ThreadSchedulerBase* scheduler_;
+  raw_ptr<ThreadSchedulerBase, DanglingUntriaged> scheduler_;
 
   base::WeakPtrFactory<BackForwardCacheDisablingFeatureTracker> weak_factory_{
       this};

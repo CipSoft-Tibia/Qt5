@@ -7,6 +7,7 @@
 
 qt_internal_add_module(LanguageServerPrivate
     INTERNAL_MODULE
+    STATIC
     SOURCES
       qlanguageserverprespectypes_p.h
       qlanguageserverspec_p.h

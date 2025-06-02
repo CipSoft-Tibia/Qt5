@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/ir/transform/std140.h"
 
@@ -33,16 +46,16 @@ namespace {
 /// PIMPL state for the transform.
 struct State {
     /// The IR module.
-    Module* ir = nullptr;
+    Module& ir;
 
     /// The IR builder.
-    Builder b{*ir};
+    Builder b{ir};
 
     /// The type manager.
-    core::type::Manager& ty{ir->Types()};
+    core::type::Manager& ty{ir.Types()};
 
     /// The symbol table.
-    SymbolTable& sym{ir->symbols};
+    SymbolTable& sym{ir.symbols};
 
     /// Map from original type to a new type with decomposed matrices.
     Hashmap<const core::type::Type*, const core::type::Type*, 4> rewritten_types{};
@@ -55,18 +68,18 @@ struct State {
 
     /// Process the module.
     void Process() {
-        if (!ir->root_block) {
+        if (ir.root_block->IsEmpty()) {
             return;
         }
 
         // Find uniform buffers that contain matrices that need to be decomposed.
         Vector<Var*, 8> buffer_variables;
-        for (auto inst : *ir->root_block) {
+        for (auto inst : *ir.root_block) {
             auto* var = inst->As<Var>();
             if (!var || !var->Alive()) {
                 continue;
             }
-            auto* ptr = var->Result()->Type()->As<core::type::Pointer>();
+            auto* ptr = var->Result(0)->Type()->As<core::type::Pointer>();
             if (!ptr || ptr->AddressSpace() != core::AddressSpace::kUniform) {
                 continue;
             }
@@ -80,16 +93,16 @@ struct State {
         for (auto* var : buffer_variables) {
             // Create a new variable with the modified store type.
             const auto& bp = var->BindingPoint();
-            auto* store_type = var->Result()->Type()->As<core::type::Pointer>()->StoreType();
+            auto* store_type = var->Result(0)->Type()->As<core::type::Pointer>()->StoreType();
             auto* new_var = b.Var(ty.ptr(uniform, RewriteType(store_type)));
             new_var->SetBindingPoint(bp->group, bp->binding);
-            if (auto name = ir->NameOf(var)) {
-                ir->SetName(new_var->Result(), name);
+            if (auto name = ir.NameOf(var)) {
+                ir.SetName(new_var->Result(0), name);
             }
 
             // Replace every instruction that uses the original variable.
-            var->Result()->ForEachUse(
-                [&](Usage use) { Replace(use.instruction, new_var->Result()); });
+            var->Result(0)->ForEachUse(
+                [&](Usage use) { Replace(use.instruction, new_var->Result(0)); });
 
             // Replace the original variable with the new variable.
             var->ReplaceWith(new_var);
@@ -99,7 +112,14 @@ struct State {
 
     /// @param mat the matrix type to check
     /// @returns true if @p mat needs to be decomposed
-    static bool NeedsDecomposing(const core::type::Matrix* mat) { return mat->ColumnStride() & 15; }
+    static bool NeedsDecomposing(const core::type::Matrix* mat) {
+        // Std140 layout rules only require us to do this transform for matrices whose column
+        // strides are not a multiple of 16 bytes.
+        //
+        // Due to a bug on Qualcomm devices, we also do this when the *size* of the column vector is
+        // not a multiple of 16 bytes (e.g. matCx3 types). See crbug.com/tint/2074.
+        return mat->ColumnType()->Size() & 15;
+    }
 
     /// Rewrite a type if necessary, decomposing contained matrices.
     /// @param type the type to rewrite
@@ -181,9 +201,9 @@ struct State {
         for (uint32_t i = 0; i < mat->columns(); i++) {
             indices.Back() = b.Constant(u32(first_column + i));
             auto* access = b.Access(ty.ptr(uniform, mat->ColumnType()), root, indices);
-            args.Push(b.Load(access->Result())->Result());
+            args.Push(b.Load(access->Result(0))->Result(0));
         }
-        return b.Construct(mat, std::move(args))->Result();
+        return b.Construct(mat, std::move(args))->Result(0);
     }
 
     /// Convert a value that may contain decomposed matrices to a value with the original type.
@@ -214,15 +234,15 @@ struct State {
                                 Vector<Value*, 4> columns;
                                 for (uint32_t i = 0; i < mat->columns(); i++) {
                                     auto* extract = b.Access(mat->ColumnType(), input, u32(index));
-                                    columns.Push(extract->Result());
+                                    columns.Push(extract->Result(0));
                                     index++;
                                 }
-                                args.Push(b.Construct(mat, std::move(columns))->Result());
+                                args.Push(b.Construct(mat, std::move(columns))->Result(0));
                             } else {
                                 // Extract and convert the member.
                                 auto* type = input_str->Element(index);
                                 auto* extract = b.Access(type, input, u32(index));
-                                args.Push(Convert(extract->Result(), member->Type()));
+                                args.Push(Convert(extract->Result(0), member->Type()));
                                 index++;
                             }
                         }
@@ -234,7 +254,7 @@ struct State {
                 });
 
                 // Call the helper function to convert the struct.
-                return b.Call(str, helper, source)->Result();
+                return b.Call(str, helper, source)->Result(0);
             },
             [&](const core::type::Array* arr) -> Value* {
                 // Create a loop that copies and converts each element of the array.
@@ -243,10 +263,10 @@ struct State {
                 b.LoopRange(ty, 0_u, u32(arr->ConstantCount().value()), 1_u, [&](Value* idx) {
                     // Convert arr[idx] and store to new_arr[idx];
                     auto* to = b.Access(ty.ptr(function, arr->ElemType()), new_arr, idx);
-                    auto* from = b.Access(el_ty, source, idx)->Result();
+                    auto* from = b.Access(el_ty, source, idx)->Result(0);
                     b.Store(to, Convert(from, arr->ElemType()));
                 });
-                return b.Load(new_arr)->Result();
+                return b.Load(new_arr)->Result(0);
             },
             [&](Default) { return source; });
     }
@@ -289,37 +309,43 @@ struct State {
                             current_type = ty.ptr(uniform, RewriteType(current_type));
                         }
                         auto* new_access = b.Access(current_type, replacement, std::move(indices));
-                        replacement = new_access->Result();
+                        replacement = new_access->Result(0);
                     }
 
                     // Replace every instruction that uses the original access instruction.
-                    access->Result()->ForEachUse(
+                    access->Result(0)->ForEachUse(
                         [&](Usage use) { Replace(use.instruction, replacement); });
                     access->Destroy();
                 },
                 [&](Load* load) {
                     if (!replacement->Type()->Is<core::type::Pointer>()) {
                         // We have already loaded to a value type, so this load just folds away.
-                        load->Result()->ReplaceAllUsesWith(replacement);
+                        load->Result(0)->ReplaceAllUsesWith(replacement);
                     } else {
                         // Load the decomposed value and then convert it to the original type.
                         auto* decomposed = b.Load(replacement);
-                        auto* converted = Convert(decomposed->Result(), load->Result()->Type());
-                        load->Result()->ReplaceAllUsesWith(converted);
+                        auto* converted = Convert(decomposed->Result(0), load->Result(0)->Type());
+                        load->Result(0)->ReplaceAllUsesWith(converted);
                     }
                     load->Destroy();
                 },
                 [&](LoadVectorElement* load) {
-                    // We should have loaded the decomposed matrix, reconstructed it, so this is now
-                    // extracting from a value type.
-                    TINT_ASSERT(!replacement->Type()->Is<core::type::Pointer>());
-                    auto* access = b.Access(load->Result()->Type(), replacement, load->Index());
-                    load->Result()->ReplaceAllUsesWith(access->Result());
-                    load->Destroy();
+                    if (!replacement->Type()->Is<core::type::Pointer>()) {
+                        // We have loaded a decomposed matrix and reconstructed it, so this is now
+                        // extracting from a value type.
+                        auto* access =
+                            b.Access(load->Result(0)->Type(), replacement, load->Index());
+                        load->Result(0)->ReplaceAllUsesWith(access->Result(0));
+                        load->Destroy();
+                    } else {
+                        // There was no decomposed matrix on the path to this instruction so just
+                        // update the source operand.
+                        load->SetOperand(LoadVectorElement::kFromOperandOffset, replacement);
+                    }
                 },
                 [&](Let* let) {
                     // Let instructions just fold away.
-                    let->Result()->ForEachUse(
+                    let->Result(0)->ForEachUse(
                         [&](Usage use) { Replace(use.instruction, replacement); });
                     let->Destroy();
                 });
@@ -329,9 +355,9 @@ struct State {
 
 }  // namespace
 
-Result<SuccessType, std::string> Std140(Module* ir) {
-    auto result = ValidateAndDumpIfNeeded(*ir, "Std140 transform");
-    if (!result) {
+Result<SuccessType> Std140(Module& ir) {
+    auto result = ValidateAndDumpIfNeeded(ir, "Std140 transform");
+    if (result != Success) {
         return result;
     }
 

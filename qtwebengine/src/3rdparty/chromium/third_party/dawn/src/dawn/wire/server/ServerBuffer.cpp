@@ -1,16 +1,29 @@
-// Copyright 2019 The Dawn Authors
+// Copyright 2019 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <limits>
 #include <memory>
@@ -52,7 +65,8 @@ WireResult Server::PreHandleBufferDestroy(const BufferDestroyCmd& cmd) {
 }
 
 WireResult Server::DoBufferMapAsync(Known<WGPUBuffer> buffer,
-                                    uint64_t requestSerial,
+                                    ObjectHandle eventManager,
+                                    WGPUFuture future,
                                     WGPUMapModeFlags mode,
                                     uint64_t offset64,
                                     uint64_t size64) {
@@ -60,8 +74,9 @@ WireResult Server::DoBufferMapAsync(Known<WGPUBuffer> buffer,
     // client will require in the return command.
     std::unique_ptr<MapUserdata> userdata = MakeUserdata<MapUserdata>();
     userdata->buffer = buffer.AsHandle();
+    userdata->eventManager = eventManager;
     userdata->bufferObj = buffer->handle;
-    userdata->requestSerial = requestSerial;
+    userdata->future = future;
     userdata->mode = mode;
 
     // Make sure that the deserialized offset and size are no larger than
@@ -126,7 +141,7 @@ WireResult Server::DoDeviceCreateBuffer(Known<WGPUDevice> device,
                 &writeHandle)) {
             return WireResult::FatalError;
         }
-        ASSERT(writeHandle != nullptr);
+        DAWN_ASSERT(writeHandle != nullptr);
         buffer->writeHandle.reset(writeHandle);
         writeHandle->SetDataLength(descriptor->size);
 
@@ -139,7 +154,7 @@ WireResult Server::DoDeviceCreateBuffer(Known<WGPUDevice> device,
                 buffer->mapWriteState = BufferMapWriteState::MapError;
                 return WireResult::Success;
             }
-            ASSERT(mapping != nullptr);
+            DAWN_ASSERT(mapping != nullptr);
             writeHandle->SetTarget(mapping);
 
             buffer->mapWriteState = BufferMapWriteState::Mapped;
@@ -154,7 +169,7 @@ WireResult Server::DoDeviceCreateBuffer(Known<WGPUDevice> device,
                 &readHandle)) {
             return WireResult::FatalError;
         }
-        ASSERT(readHandle != nullptr);
+        DAWN_ASSERT(readHandle != nullptr);
 
         buffer->readHandle.reset(readHandle);
     }
@@ -210,8 +225,8 @@ void Server::OnBufferMapAsyncCallback(MapUserdata* data, WGPUBufferMapAsyncStatu
     bool isSuccess = status == WGPUBufferMapAsyncStatus_Success;
 
     ReturnBufferMapAsyncCallbackCmd cmd;
-    cmd.buffer = data->buffer;
-    cmd.requestSerial = data->requestSerial;
+    cmd.eventManager = data->eventManager;
+    cmd.future = data->future;
     cmd.status = status;
     cmd.readDataUpdateInfoLength = 0;
     cmd.readDataUpdateInfo = nullptr;
@@ -226,7 +241,7 @@ void Server::OnBufferMapAsyncCallback(MapUserdata* data, WGPUBufferMapAsyncStatu
                 buffer->readHandle->SizeOfSerializeDataUpdate(data->offset, data->size);
             cmd.readDataUpdateInfoLength = readDataUpdateInfoLength;
         } else {
-            ASSERT(data->mode & WGPUMapMode_Write);
+            DAWN_ASSERT(data->mode & WGPUMapMode_Write);
             // The in-flight map request returned successfully.
             buffer->mapWriteState = BufferMapWriteState::Mapped;
             // Set the target of the WriteHandle to the mapped buffer data.

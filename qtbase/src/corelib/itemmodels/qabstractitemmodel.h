@@ -5,6 +5,7 @@
 #ifndef QABSTRACTITEMMODEL_H
 #define QABSTRACTITEMMODEL_H
 
+#include <QtCore/qcompare.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qobject.h>
@@ -138,19 +139,27 @@ public:
     inline QVariant data(int role = Qt::DisplayRole) const;
     inline void multiData(QModelRoleDataSpan roleDataSpan) const;
     inline Qt::ItemFlags flags() const;
-    constexpr inline const QAbstractItemModel *model() const noexcept { return m; }
+    constexpr inline const QAbstractItemModel *model() const noexcept { return m.get(); }
     constexpr inline bool isValid() const noexcept { return (r >= 0) && (c >= 0) && (m != nullptr); }
-    constexpr inline bool operator==(const QModelIndex &other) const noexcept
-        { return (other.r == r) && (other.i == i) && (other.c == c) && (other.m == m); }
-    constexpr inline bool operator!=(const QModelIndex &other) const noexcept
-        { return !(*this == other); }
-    constexpr inline bool operator<(const QModelIndex &other) const noexcept
-        {
-            return  r <  other.r
-                || (r == other.r && (c <  other.c
-                                 || (c == other.c && (i <  other.i
-                                                  || (i == other.i && std::less<const QAbstractItemModel *>()(m, other.m))))));
-        }
+
+private:
+    friend constexpr bool comparesEqual(const QModelIndex &lhs, const QModelIndex &rhs) noexcept
+    {
+        return lhs.r == rhs.r && lhs.c == rhs.c && lhs.i == rhs.i && lhs.m == rhs.m;
+    }
+    friend constexpr Qt::strong_ordering compareThreeWay(const QModelIndex &lhs, const QModelIndex &rhs) noexcept
+    {
+        if (auto val = Qt::compareThreeWay(lhs.r, rhs.r); !is_eq(val))
+            return val;
+        if (auto val = Qt::compareThreeWay(lhs.c, rhs.c); !is_eq(val))
+            return val;
+        if (auto val = Qt::compareThreeWay(lhs.i, rhs.i); !is_eq(val))
+            return val;
+        if (auto val = Qt::compareThreeWay(lhs.m, rhs.m); !is_eq(val))
+            return val;
+        return Qt::strong_ordering::equivalent;
+    }
+    Q_DECLARE_STRONGLY_ORDERED_LITERAL_TYPE(QModelIndex)
 private:
     inline QModelIndex(int arow, int acolumn, const void *ptr, const QAbstractItemModel *amodel) noexcept
         : r(arow), c(acolumn), i(reinterpret_cast<quintptr>(ptr)), m(amodel) {}
@@ -158,7 +167,7 @@ private:
         : r(arow), c(acolumn), i(id), m(amodel) {}
     int r, c;
     quintptr i;
-    const QAbstractItemModel *m;
+    Qt::totally_ordered_wrapper<const QAbstractItemModel *> m;
 };
 Q_DECLARE_TYPEINFO(QModelIndex, Q_RELOCATABLE_TYPE);
 
@@ -178,17 +187,21 @@ public:
     QPersistentModelIndex(const QModelIndex &index);
     QPersistentModelIndex(const QPersistentModelIndex &other);
     ~QPersistentModelIndex();
+#if QT_CORE_REMOVED_SINCE(6, 8)
     bool operator<(const QPersistentModelIndex &other) const noexcept;
     bool operator==(const QPersistentModelIndex &other) const noexcept;
     inline bool operator!=(const QPersistentModelIndex &other) const noexcept
     { return !operator==(other); }
+#endif
     QPersistentModelIndex &operator=(const QPersistentModelIndex &other);
     inline QPersistentModelIndex(QPersistentModelIndex &&other) noexcept
         : d(std::exchange(other.d, nullptr)) {}
     QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QPersistentModelIndex)
     void swap(QPersistentModelIndex &other) noexcept { qt_ptr_swap(d, other.d); }
+#if QT_CORE_REMOVED_SINCE(6, 8)
     bool operator==(const QModelIndex &other) const noexcept;
     bool operator!=(const QModelIndex &other) const noexcept;
+#endif
     QPersistentModelIndex &operator=(const QModelIndex &other);
     operator QModelIndex() const;
     int row() const;
@@ -208,6 +221,18 @@ private:
     friend size_t qHash(const QPersistentModelIndex &, size_t seed) noexcept;
     friend bool qHashEquals(const QPersistentModelIndex &a, const QPersistentModelIndex &b) noexcept
     { return a.d == b.d; }
+    friend Q_CORE_EXPORT bool
+    comparesEqual(const QPersistentModelIndex &lhs, const QPersistentModelIndex &rhs) noexcept;
+    friend Q_CORE_EXPORT bool
+    comparesEqual(const QPersistentModelIndex &lhs, const QModelIndex &rhs) noexcept;
+    friend Q_CORE_EXPORT Qt::strong_ordering // ### Qt 7: partial_ordering?
+    compareThreeWay(const QPersistentModelIndex &lhs, const QPersistentModelIndex &rhs) noexcept;
+    friend Q_CORE_EXPORT Qt::strong_ordering // ### Qt 7: partial_ordering?
+    compareThreeWay(const QPersistentModelIndex &lhs, const QModelIndex &rhs) noexcept;
+#if !QT_CORE_REMOVED_SINCE(6, 8)
+    Q_DECLARE_STRONGLY_ORDERED(QPersistentModelIndex)
+    Q_DECLARE_STRONGLY_ORDERED(QPersistentModelIndex, QModelIndex)
+#endif
 #ifndef QT_NO_DEBUG_STREAM
     friend Q_CORE_EXPORT QDebug operator<<(QDebug, const QPersistentModelIndex &);
 #endif

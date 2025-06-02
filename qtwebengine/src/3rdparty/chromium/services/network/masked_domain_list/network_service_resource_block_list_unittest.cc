@@ -25,33 +25,7 @@ absl::optional<net::IsolationInfo> CreateIsolationInfo(
 
 }  // namespace
 
-class NetworkServiceResourceBlockListTest : public ::testing::Test {
-  void SetUp() override {
-    scoped_feature_list_.InitWithFeatures(
-        {network::features::kEnableNetworkServiceResourceBlockList,
-         network::features::kMaskedDomainList},
-        {});
-  }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-TEST_F(NetworkServiceResourceBlockListTest, NotEnabled) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndDisableFeature(
-      network::features::kEnableNetworkServiceResourceBlockList);
-  NetworkServiceResourceBlockList blockList;
-  EXPECT_FALSE(blockList.IsEnabled());
-}
-
-TEST_F(NetworkServiceResourceBlockListTest, IsEnabled) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(
-      network::features::kEnableNetworkServiceResourceBlockList);
-  NetworkServiceResourceBlockList blockList;
-  EXPECT_TRUE(blockList.IsEnabled());
-}
+class NetworkServiceResourceBlockListTest : public ::testing::Test {};
 
 TEST_F(NetworkServiceResourceBlockListTest, Matches_IsNotPartOfExperiment) {
   MaskedDomainList mdl;
@@ -81,6 +55,22 @@ TEST_F(NetworkServiceResourceBlockListTest, Matches_ResourceIsInExperiment) {
 
   EXPECT_TRUE(blockList.Matches(GURL("http://example.com"),
                                 CreateIsolationInfo("http://top.com")));
+}
+
+TEST_F(NetworkServiceResourceBlockListTest, Matches_SkipBypassWithOpaqueSite) {
+  MaskedDomainList mdl;
+  auto* resourceOwner = mdl.add_resource_owners();
+  resourceOwner->set_owner_name("foo");
+  auto* resource = resourceOwner->add_owned_resources();
+  resource->set_domain("example.com");
+  resource->add_experiments(
+      masked_domain_list::Resource_Experiment_EXPERIMENT_AFP);
+
+  NetworkServiceResourceBlockList blockList;
+  blockList.UseMaskedDomainList(mdl);
+
+  EXPECT_TRUE(blockList.Matches(GURL("http://example.com"),
+                                net::IsolationInfo::CreateTransient()));
 }
 
 }  // namespace network

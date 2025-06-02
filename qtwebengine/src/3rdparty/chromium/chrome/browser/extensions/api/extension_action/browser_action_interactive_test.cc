@@ -55,9 +55,8 @@
 
 #if !BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/download/bubble/download_bubble_ui_controller.h"
-#include "chrome/browser/download/bubble/download_display.h"
 #include "chrome/browser/download/bubble/download_display_controller.h"
-#include "components/safe_browsing/core/common/features.h"
+#include "chrome/browser/ui/download/download_display.h"
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -69,12 +68,10 @@ namespace {
 
 #if !BUILDFLAG(IS_CHROMEOS)
 bool IsDownloadSurfaceVisible(BrowserWindow* window) {
-  return base::FeatureList::IsEnabled(safe_browsing::kDownloadBubble)
-             ? window->GetDownloadBubbleUIController()
-                   ->GetDownloadDisplayController()
-                   ->download_display_for_testing()
-                   ->IsShowingDetails()
-             : window->IsDownloadShelfVisible();
+  return window->GetDownloadBubbleUIController()
+      ->GetDownloadDisplayController()
+      ->download_display_for_testing()
+      ->IsShowingDetails();
 }
 #endif
 
@@ -275,7 +272,7 @@ IN_PROC_BROWSER_TEST_F(BrowserActionInteractiveTest, DISABLED_TestOpenPopup) {
   {
     content::CreateAndLoadWebContentsObserver frame_observer;
     // Open a new window.
-    new_browser = chrome::FindBrowserWithWebContents(browser()->OpenURL(
+    new_browser = chrome::FindBrowserWithTab(browser()->OpenURL(
         content::OpenURLParams(GURL("about:blank"), content::Referrer(),
                                WindowOpenDisposition::NEW_WINDOW,
                                ui::PAGE_TRANSITION_TYPED, false)));

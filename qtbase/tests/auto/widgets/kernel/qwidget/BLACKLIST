@@ -14,12 +14,12 @@ sles-15
 # QTBUG-87668
 [showMinimizedKeepsFocus]
 android
-macos-13 ci
-macos-14 ci
+macos ci
 [normalGeometry]
 android
 [saveRestoreGeometry]
 android
+xcb ubuntu-24.04 # QTBUG-126495
 [optimizedResizeMove]
 android
 [update]

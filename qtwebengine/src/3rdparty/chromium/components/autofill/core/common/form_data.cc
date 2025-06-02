@@ -82,16 +82,6 @@ FrameTokenWithPredecessor& FrameTokenWithPredecessor::operator=(
     FrameTokenWithPredecessor&&) = default;
 FrameTokenWithPredecessor::~FrameTokenWithPredecessor() = default;
 
-bool operator==(const FrameTokenWithPredecessor& a,
-                const FrameTokenWithPredecessor& b) {
-  return a.token == b.token && a.predecessor == b.predecessor;
-}
-
-bool operator!=(const FrameTokenWithPredecessor& a,
-                const FrameTokenWithPredecessor& b) {
-  return !(a == b);
-}
-
 FormData::FormData() = default;
 
 FormData::FormData(const FormData&) = default;
@@ -112,20 +102,6 @@ bool FormData::SameFormAs(const FormData& form) const {
     return false;
   for (size_t i = 0; i < fields.size(); ++i) {
     if (!fields[i].SameFieldAs(form.fields[i]))
-      return false;
-  }
-  return true;
-}
-
-bool FormData::SimilarFormAs(const FormData& form) const {
-  if (name != form.name || id_attribute != form.id_attribute ||
-      name_attribute != form.name_attribute || url != form.url ||
-      action != form.action || is_action_empty != form.is_action_empty ||
-      is_form_tag != form.is_form_tag || fields.size() != form.fields.size()) {
-    return false;
-  }
-  for (size_t i = 0; i < fields.size(); ++i) {
-    if (!fields[i].SimilarFieldAs(form.fields[i]))
       return false;
   }
   return true;

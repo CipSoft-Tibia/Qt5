@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 
 class QLightSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlLightSensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlLightSensor : public QmlSensor
 {
     Q_OBJECT
     Q_PROPERTY(qreal fieldOfView READ fieldOfView NOTIFY fieldOfViewChanged)
@@ -42,7 +42,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlLightSensorReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlLightSensorReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal illuminance READ illuminance

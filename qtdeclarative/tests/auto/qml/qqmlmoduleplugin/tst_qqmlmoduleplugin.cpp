@@ -17,7 +17,7 @@
 
 #include <QtQuickShapes/private/qquickshapesglobal_p.h>
 
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_DARWIN)
 // For _PC_CASE_SENSITIVE
 #include <unistd.h>
 #endif
@@ -131,7 +131,9 @@ void registerStaticPlugin(const char *uri)
     PluginType::metaData.append(char(QT_VERSION_MAJOR));
     PluginType::metaData.append(char(QT_VERSION_MINOR));
     PluginType::metaData.append(char(qPluginArchRequirements()));
+#if QT_CONFIG(cborstreamwriter)
     PluginType::metaData.append(QCborValue(QCborMap::fromJsonObject(md)).toCbor());
+#endif
 
     auto rawMetaDataFunctor = []() -> QPluginMetaData {
         return {reinterpret_cast<const uchar *>(PluginType::metaData.constData()), size_t(PluginType::metaData.size())};
@@ -240,20 +242,16 @@ void tst_qqmlmoduleplugin::incorrectPluginCase()
 
     QString expectedError = QLatin1String("module \"org.qtproject.WrongCase\" plugin \"PluGin\" not found");
 
-#if defined(Q_OS_MAC) || defined(Q_OS_WIN32)
-    bool caseSensitive = true;
-#if defined(Q_OS_MAC)
-    int res = pathconf(QDir::currentPath().toLatin1().constData(), _PC_CASE_SENSITIVE);
-    if (res == -1)
-        QSKIP("Could not establish case sensitivity of file system");
-    caseSensitive = res != 0 && res != -1;
-#ifdef QT_DEBUG
+#if defined(Q_OS_DARWIN) || defined(Q_OS_WIN32)
+#if defined(Q_OS_DARWIN)
+    bool caseSensitive = pathconf(QDir::currentPath().toLatin1().constData(), _PC_CASE_SENSITIVE) == 1;
+#if QT_CONFIG(debug) && !QT_CONFIG(framework)
     QString libname = "libPluGin_debug.dylib";
 #else
     QString libname = "libPluGin.dylib";
 #endif
 #elif defined(Q_OS_WIN32)
-    caseSensitive = false;
+    bool caseSensitive = false;
     QString libname = "PluGin.dll";
 #endif
     if (!caseSensitive) {

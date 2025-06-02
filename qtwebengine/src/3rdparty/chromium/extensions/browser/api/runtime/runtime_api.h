@@ -6,14 +6,13 @@
 #define EXTENSIONS_BROWSER_API_RUNTIME_RUNTIME_API_H_
 
 #include <memory>
+#include <optional>
 #include <string>
-
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/values.h"
-#include "content/public/browser/notification_registrar.h"
 #include "extensions/browser/api/runtime/runtime_api_delegate.h"
 #include "extensions/browser/browser_context_keyed_api_factory.h"
 #include "extensions/browser/events/lazy_event_dispatch_util.h"
@@ -25,7 +24,6 @@
 #include "extensions/browser/process_manager_observer.h"
 #include "extensions/browser/update_observer.h"
 #include "extensions/common/api/runtime.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace base {
 class Version;
@@ -158,8 +156,6 @@ class RuntimeAPI : public BrowserContextKeyedAPI,
   std::unique_ptr<RuntimeAPIDelegate> delegate_;
 
   raw_ptr<content::BrowserContext> browser_context_;
-
-  content::NotificationRegistrar registrar_;
 
   // Listen to extension notifications.
   base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>
@@ -336,7 +332,7 @@ class RuntimeGetContextsFunction : public ExtensionFunction {
 
   // Returns the context for the extension background service worker, if the
   // worker is active. Otherwise, returns nullopt.
-  absl::optional<api::runtime::ExtensionContext> GetWorkerContext();
+  std::optional<api::runtime::ExtensionContext> GetWorkerContext();
 
   // Returns a collection of all frame-based extension contexts for the
   // extension.

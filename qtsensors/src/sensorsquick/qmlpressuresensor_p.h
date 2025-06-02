@@ -20,7 +20,7 @@ QT_BEGIN_NAMESPACE
 
 class QPressureSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlPressureSensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlPressureSensor : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(PressureSensor)
@@ -37,7 +37,7 @@ private:
     QPressureSensor *m_sensor;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlPressureReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlPressureReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal pressure READ pressure NOTIFY pressureChanged BINDABLE bindablePressure)

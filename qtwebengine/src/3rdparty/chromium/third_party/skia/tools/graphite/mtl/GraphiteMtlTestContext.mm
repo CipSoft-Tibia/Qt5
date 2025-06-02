@@ -11,6 +11,9 @@
 #include "include/gpu/graphite/ContextOptions.h"
 #include "include/gpu/graphite/mtl/MtlGraphiteTypes.h"
 #include "include/gpu/graphite/mtl/MtlGraphiteUtils.h"
+#include "include/private/gpu/graphite/ContextOptionsPriv.h"
+#include "tools/gpu/ContextType.h"
+#include "tools/graphite/TestOptions.h"
 
 #import <Metal/Metal.h>
 
@@ -47,12 +50,21 @@ std::unique_ptr<GraphiteTestContext> MtlTestContext::Make() {
     return std::unique_ptr<GraphiteTestContext>(new MtlTestContext(backendContext));
 }
 
-std::unique_ptr<skgpu::graphite::Context> MtlTestContext::makeContext(
-        const skgpu::graphite::ContextOptions& options) {
-    skgpu::graphite::ContextOptions revisedOptions(options);
-    revisedOptions.fStoreContextRefInRecorder = true; // Needed to make synchronous readPixels work
+skgpu::ContextType MtlTestContext::contextType() {
+    return skgpu::ContextType::kMetal;
+}
 
-    return skgpu::graphite::ContextFactory::MakeMetal(fMtl, revisedOptions);
+std::unique_ptr<skgpu::graphite::Context> MtlTestContext::makeContext(const TestOptions& options) {
+    SkASSERT(!options.fNeverYieldToWebGPU);
+    skgpu::graphite::ContextOptions revisedContextOptions(options.fContextOptions);
+    skgpu::graphite::ContextOptionsPriv contextOptionsPriv;
+    if (!options.fContextOptions.fOptionsPriv) {
+        revisedContextOptions.fOptionsPriv = &contextOptionsPriv;
+    }
+    // Needed to make synchronous readPixels work
+    revisedContextOptions.fOptionsPriv->fStoreContextRefInRecorder = true;
+
+    return skgpu::graphite::ContextFactory::MakeMetal(fMtl, revisedContextOptions);
 }
 
 }  // namespace skiatest::graphite

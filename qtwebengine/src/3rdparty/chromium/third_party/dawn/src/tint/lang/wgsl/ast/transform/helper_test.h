@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_AST_TRANSFORM_HELPER_TEST_H_
 #define SRC_TINT_LANG_WGSL_AST_TRANSFORM_HELPER_TEST_H_
@@ -37,9 +50,9 @@ inline std::string str(const Program& program) {
     }
 
     wgsl::writer::Options options;
-    auto result = wgsl::writer::Generate(&program, options);
-    if (!result) {
-        return "WGSL writer failed:\n" + result.Failure();
+    auto result = wgsl::writer::Generate(program, options);
+    if (result != Success) {
+        return result.Failure().reason.str();
     }
 
     auto res = result->wgsl;
@@ -81,8 +94,10 @@ class TransformTestBase : public BASE {
     /// @return the transformed output
     template <typename... TRANSFORMS>
     Output Run(std::string in, const DataMap& data = {}) {
+        wgsl::reader::Options options;
+        options.allowed_features = wgsl::AllowedFeatures::Everything();
         auto file = std::make_unique<Source::File>("test", in);
-        auto program = wgsl::reader::Parse(file.get());
+        auto program = wgsl::reader::Parse(file.get(), options);
 
         // Keep this pointer alive after Transform() returns
         files_.emplace_back(std::move(file));
@@ -106,7 +121,7 @@ class TransformTestBase : public BASE {
         for (auto* transform_ptr : std::initializer_list<Transform*>{new TRANSFORMS()...}) {
             manager.append(std::unique_ptr<Transform>(transform_ptr));
         }
-        auto result = manager.Run(&program, data, outputs);
+        auto result = manager.Run(program, data, outputs);
         return {std::move(result), std::move(outputs)};
     }
 
@@ -116,21 +131,20 @@ class TransformTestBase : public BASE {
     template <typename TRANSFORM>
     bool ShouldRun(Program&& program, const DataMap& data = {}) {
         if (!program.IsValid()) {
-            ADD_FAILURE() << "ShouldRun() called with invalid program: "
-                          << program.Diagnostics().str();
+            ADD_FAILURE() << "ShouldRun() called with invalid program: " << program.Diagnostics();
             return false;
         }
 
         const Transform& t = TRANSFORM();
 
         DataMap outputs;
-        auto result = t.Apply(&program, data, outputs);
+        auto result = t.Apply(program, data, outputs);
         if (!result) {
             return false;
         }
         if (!result->IsValid()) {
             ADD_FAILURE() << "Apply() called by ShouldRun() returned errors: "
-                          << result->Diagnostics().str();
+                          << result->Diagnostics();
             return true;
         }
         return result.has_value();
@@ -141,8 +155,10 @@ class TransformTestBase : public BASE {
     /// @return true if the transform should be run for the given input.
     template <typename TRANSFORM>
     bool ShouldRun(std::string in, const DataMap& data = {}) {
+        wgsl::reader::Options options;
+        options.allowed_features = wgsl::AllowedFeatures::Everything();
         auto file = std::make_unique<Source::File>("test", in);
-        auto program = wgsl::reader::Parse(file.get());
+        auto program = wgsl::reader::Parse(file.get(), options);
         return ShouldRun<TRANSFORM>(std::move(program), data);
     }
 

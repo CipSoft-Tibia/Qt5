@@ -93,7 +93,7 @@ class CertVerifier;
 class HostPortPair;
 class IsolationInfo;
 class NetworkAnonymizationKey;
-class ReportSender;
+class ProxyDelegate;
 class StaticHttpUserAgentSettings;
 class URLRequestContext;
 class URLRequestContextBuilder;
@@ -101,7 +101,6 @@ class URLRequestContextBuilder;
 
 namespace certificate_transparency {
 class ChromeRequireCTDelegate;
-class ChromeCTPolicyEnforcer;
 }  // namespace certificate_transparency
 
 namespace domain_reliability {
@@ -121,7 +120,6 @@ class MojoBackendFileOperationsFactory;
 class NetworkService;
 class NetworkServiceMemoryCache;
 class NetworkServiceNetworkDelegate;
-class NetworkServiceProxyDelegate;
 class P2PSocketManager;
 class PendingTrustTokenStore;
 class ProxyLookupRequest;
@@ -296,6 +294,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
                       ClearHostCacheCallback callback) override;
   void ClearHttpAuthCache(base::Time start_time,
                           base::Time end_time,
+                          mojom::ClearDataFilterPtr filter,
                           ClearHttpAuthCacheCallback callback) override;
   void ClearReportingCacheReports(
       mojom::ClearDataFilterPtr filter,
@@ -316,10 +315,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
   void SetAcceptLanguage(const std::string& new_accept_language) override;
   void SetUserAgent(const std::string& new_user_agent) override;
   void SetEnableReferrers(bool enable_referrers) override;
-#if BUILDFLAG(IS_CHROMEOS)
-  void UpdateAdditionalCertificates(
-      mojom::AdditionalCertificatesPtr additional_certificates) override;
-#endif
 #if BUILDFLAG(IS_CT_SUPPORTED)
   void SetCTPolicy(mojom::CTPolicyPtr ct_policy) override;
   void MaybeEnqueueSCTReport(
@@ -327,11 +322,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
       const net::X509Certificate* validated_certificate_chain,
       const net::SignedCertificateTimestampAndStatusList&
           signed_certificate_timestamps);
-  void SetCTLogListAlwaysTimelyForTesting() override;
   void SetSCTAuditingMode(mojom::SCTAuditingMode mode) override;
-  void OnCTLogListUpdated(
-      const std::vector<network::mojom::CTLogInfoPtr>& log_list,
-      base::Time update_time);
   SCTAuditingHandler* sct_auditing_handler() {
     return sct_auditing_handler_.get();
   }
@@ -383,6 +374,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
       const GURL& url,
       const std::vector<std::string>& requested_protocols,
       const net::SiteForCookies& site_for_cookies,
+      bool has_storage_access,
       const net::IsolationInfo& isolation_info,
       std::vector<mojom::HttpHeaderPtr> additional_headers,
       int32_t process_id,
@@ -416,7 +408,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
   void VerifyCertForSignedExchange(
       const scoped_refptr<net::X509Certificate>& certificate,
       const GURL& url,
-      const net::NetworkAnonymizationKey& network_anonymization_key,
       const std::string& ocsp_result,
       const std::string& sct_list,
       VerifyCertForSignedExchangeCallback callback) override;
@@ -534,8 +525,8 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
   void FlushCachedClientCertIfNeeded(
       const net::HostPortPair& host,
       const scoped_refptr<net::X509Certificate>& certificate) override;
-  void VerifyIpProtectionConfigGetterForTesting(
-      VerifyIpProtectionConfigGetterForTestingCallback callback) override;
+  void SetCookieDeprecationLabel(
+      const absl::optional<std::string>& label) override;
 
   // Destroys |request| when a proxy lookup completes.
   void OnProxyLookupComplete(ProxyLookupRequest* proxy_lookup_request);
@@ -663,6 +654,11 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
       const std::vector<net::ReportingEndpoint>& endpoints) override;
 #endif  // BUILDFLAG(ENABLE_REPORTING)
 
+  // TODO(crbug.com/1478868): This is an interim method only for AFP block list
+  // experiment. This method should not be used for other use cases. This will
+  // be removed when AFP block list logic is migrated to subresource filter.
+  bool AfpBlockListExperimentEnabled() const;
+
  private:
   class NetworkContextHttpAuthPreferences : public net::HttpAuthPreferences {
    public:
@@ -742,9 +738,8 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
   // TODO(crbug.com/828447): This code is more-or-less duplicated in
   // SSLClientSocket and QUIC. Fold this into some CertVerifier-shaped class
   // in //net.
-  int CheckCTComplianceForSignedExchange(
+  int CheckCTRequirementsForSignedExchange(
       net::CertVerifyResult& cert_verify_result,
-      const net::X509Certificate& certificate,
       const net::HostPortPair& host_port_pair);
 #endif  // BUILDFLAG(IS_CT_SUPPORTED)
 
@@ -763,9 +758,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
 
   bool IsAllowedToUseAllHttpAuthSchemes(
       const url::SchemeHostPort& scheme_host_port);
-
-  void OnIpProtectionConfigAvailableForTesting(
-      VerifyIpProtectionConfigGetterForTestingCallback callback);
 
   const raw_ptr<NetworkService> network_service_;
 
@@ -871,17 +863,9 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
   // Owned by the URLRequestContext
   raw_ptr<net::StaticHttpUserAgentSettings> user_agent_settings_ = nullptr;
 
-  // Pointed to by the TransportSecurityState (owned by the
-  // URLRequestContext), and must be disconnected from it before it's destroyed.
-  std::unique_ptr<net::ReportSender> certificate_report_sender_;
-
 #if BUILDFLAG(IS_CT_SUPPORTED)
   std::unique_ptr<certificate_transparency::ChromeRequireCTDelegate>
       require_ct_delegate_;
-
-  // Owned by the URLRequestContext.
-  raw_ptr<certificate_transparency::ChromeCTPolicyEnforcer>
-      ct_policy_enforcer_ = nullptr;
 
   std::unique_ptr<SCTAuditingHandler> sct_auditing_handler_;
 #endif  // BUILDFLAG(IS_CT_SUPPORTED)
@@ -907,7 +891,8 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
       host_resolvers_;
   std::unique_ptr<net::HostResolver::ProbeRequest> doh_probes_request_;
 
-  raw_ptr<NetworkServiceProxyDelegate> proxy_delegate_ = nullptr;
+  // Owned by URLRequestContext.
+  raw_ptr<net::ProxyDelegate> proxy_delegate_ = nullptr;
 
   // Used for Signed Exchange certificate verification.
   uint64_t next_cert_verify_id_ = 0;
@@ -922,7 +907,6 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkContext
     VerifyCertForSignedExchangeCallback callback;
     scoped_refptr<net::X509Certificate> certificate;
     GURL url;
-    net::NetworkAnonymizationKey network_anonymization_key;
     std::string ocsp_result;
     std::string sct_list;
   };

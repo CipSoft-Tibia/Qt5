@@ -25,7 +25,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_SCXMLQML_PRIVATE_EXPORT QScxmlStateMachineLoader: public QObject
+class Q_SCXMLQML_EXPORT QScxmlStateMachineLoader: public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QUrl source READ source WRITE setSource

@@ -10,7 +10,7 @@
 \nextpage android-services.html
 
 The Android Manifest is an XML file necessary for any Android app. It contains
-app configuration for different settings and features that the app use, as well
+app configuration for different settings and features that the app uses, as well
 as details on the app itself, such as, package name, app name, version, etc.
 Permissions and hardware features can also be set from the manifest.
 
@@ -229,7 +229,7 @@ The main ones are:
 
 Different Qt modules might require some Android permissions or features to
 function properly, for example, Camera permission in \l {QtMultimedia}.
-l{The androiddeployqt Tool} takes care of including such requirements into the
+\l{The androiddeployqt Tool} takes care of including such requirements into the
 Android manifest during the build. Qt defines the following lines into the
 manifest, which they get replaced by
 the actual values:
@@ -245,6 +245,17 @@ the actual values:
 \note If those lines are removed from the project manifest, Qt won't be
 able to include the correct permissions. So some functionalities
 might not work properly.
+
+\section3 Customizing Permissions
+
+Since Qt 6.8.1, it is possible to override the default permissions set
+by Qt modules. This is useful if you need to define the same permissions
+as used by a Qt module, but with additional or different attributes.
+
+To achieve this, you can manually define these permissions in the Android
+manifest file, along with the \c {<!-- %%INSERT_PERMISSIONS -->} placeholder.
+Manually defined permissions take precedence over the same permissions added
+by Qt modules, avoiding duplication.
 
 \section2 Style Extraction
 

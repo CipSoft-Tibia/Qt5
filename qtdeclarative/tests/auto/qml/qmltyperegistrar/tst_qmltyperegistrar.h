@@ -5,7 +5,10 @@
 #define TST_QMLTYPEREGISTRAR_H
 
 #include "foreign.h"
-#include "foreign_p.h"
+#include "private/foreign_p.h"
+#include "inaccessible/base.h"
+#include "inaccessible/property.h"
+#include "inaccessible/invisible.h"
 
 #include <QtQmlTypeRegistrar/private/qqmltyperegistrar_p.h>
 
@@ -17,33 +20,34 @@
 #include <QtQml/qqmlcomponent.h>
 
 #include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qnamespace.h>
 #include <QtCore/qproperty.h>
 #include <QtCore/qrect.h>
 #include <QtCore/qtemporaryfile.h>
 #include <QtCore/qtimeline.h>
 
-class Interface {};
+class Interface1 {};
 class Interface2 {};
 class Interface3 {};
 
 QT_BEGIN_NAMESPACE
-Q_DECLARE_INTERFACE(Interface, "io.qt.bugreports.Interface");
+Q_DECLARE_INTERFACE(Interface1, "io.qt.bugreports.Interface1");
 Q_DECLARE_INTERFACE(Interface2, "io.qt.bugreports.Interface2");
 Q_DECLARE_INTERFACE(Interface3, "io.qt.bugreports.Interface3");
 QT_END_NAMESPACE
 
-class ImplementsInterfaces : public QObject, public Interface
+class ImplementsInterfaces : public QObject, public Interface1
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_IMPLEMENTS_INTERFACES(Interface)
+    QML_IMPLEMENTS_INTERFACES(Interface1)
 };
 
-class ImplementsInterfaces2 : public QObject, public Interface, public Interface2
+class ImplementsInterfaces2 : public QObject, public Interface1, public Interface2
 {
     Q_OBJECT
     QML_ELEMENT
-    QML_IMPLEMENTS_INTERFACES(Interface Interface2)
+    QML_IMPLEMENTS_INTERFACES(Interface1 Interface2)
 };
 
 class ExcessiveVersion : public QObject
@@ -544,6 +548,13 @@ signals:
     void clonedSignal(int i = 7);
 };
 
+class Unconstructible
+{
+    Q_GADGET
+    QML_VALUE_TYPE(unconstructible)
+    int m_i = 11;
+};
+
 class Constructible
 {
     Q_GADGET
@@ -785,6 +796,126 @@ public:
     Q_INVOKABLE const QObject *getObject() { return nullptr; }
 };
 
+using myint = int;
+
+struct IntAlias
+{
+    Q_GADGET
+    QML_FOREIGN(myint)
+    QML_USING(int);
+};
+
+class WithMyInt : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    Q_PROPERTY(myint a READ a CONSTANT)
+public:
+    myint a() const { return 10; }
+};
+
+class UsesQtNamespace : public QObject
+{
+    Q_OBJECT
+    QML_ANONYMOUS
+    Q_PROPERTY(Qt::Key key READ key CONSTANT)
+public:
+    Qt::Key key() const { return Qt::Key_Escape; }
+};
+
+class SlotsBeforeInvokables : public QObject
+{
+    Q_OBJECT
+    QML_ANONYMOUS
+public:
+    Q_INVOKABLE void foo() {}
+public Q_SLOTS:
+    void bar() {}
+public:
+    Q_INVOKABLE void baz() {}
+};
+
+class JavaScriptFunction : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+public:
+    JavaScriptFunction(QObject *parent = nullptr) : QObject(parent) {}
+    Q_INVOKABLE void jsfunc(QQmlV4FunctionPtr) {}
+};
+
+struct UsingVoid {};
+struct UsingVoidForeign
+{
+    Q_GADGET
+    QML_FOREIGN(UsingVoid)
+    QML_USING(void)
+};
+
+class VoidProperties : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(void* void1 READ void1 CONSTANT)
+    Q_PROPERTY(UsingVoid* void2 READ void2 CONSTANT)
+    QML_ELEMENT
+public:
+    VoidProperties(QObject *parent = nullptr) : QObject(parent) {}
+
+    void *void1() const { return nullptr; }
+    UsingVoid *void2() const { return nullptr; }
+};
+
+class AccessibleDerived : public InaccessibleBase
+{
+    Q_OBJECT
+    QML_ELEMENT
+    Q_PROPERTY(InaccessibleProperty *p MEMBER m_p CONSTANT)
+public:
+    AccessibleDerived(QObject *parent = nullptr) : InaccessibleBase(parent) {}
+private:
+    InaccessibleProperty *m_p = nullptr;
+};
+
+class EnumsExplicitlyScoped : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+    Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
+};
+
+class DerivedFromInvisible : public InvisibleBase
+{
+    Q_OBJECT
+    QML_ELEMENT
+    Q_PROPERTY(int b READ b CONSTANT)
+
+public:
+    int b() const { return m_b; }
+
+private:
+    int m_b = 7;
+};
+
+namespace F {
+class ForeignQObject : public QObject {
+    Q_OBJECT
+public:
+    enum class Enum{
+        ValueA,
+        ValueB
+    };
+    Q_ENUM(Enum)
+};
+
+class ForeignQOjbectQml
+{
+    Q_GADGET
+    QML_FOREIGN(ForeignQObject)
+    QML_NAMED_ELEMENT(ForeignQObject)
+    QML_UNCREATABLE("can only be created in C++")
+};
+}
+
 class tst_qmltyperegistrar : public QObject
 {
     Q_OBJECT
@@ -835,6 +966,7 @@ private slots:
     void duplicateExportWarnings();
     void clonedSignal();
     void baseVersionInQmltypes();
+    void unconstructibleValueType();
     void constructibleValueType();
     void structuredValueType();
     void anonymousAndUncreatable();
@@ -852,13 +984,36 @@ private slots:
     void javaScriptExtension();
 
     void consistencyWarnings();
+    void enumWarnings();
+
     void relatedAddedInVersion();
     void longNumberTypes();
     void enumList();
     void constReturnType();
 
+    void usingDeclaration();
+    void enumsRegistered();
+    void doNotDuplicateQtNamespace();
+    void doNotDuplicateQObject();
+    void slotsBeforeInvokables();
+    void allReferencedTypesCollected();
+
+    void omitQQmlV4FunctionPtrArg();
+    void preserveVoidStarPropTypes();
+
+    void inaccessibleBase();
+    void enumsExplicitlyScoped();
+    void namespacedExtracted();
+    void derivedFromInvisible();
+    void foreignNamespacedWithEnum();
+
+#ifdef QT_QMLJSROOTGEN_PRESENT
+    void verifyJsRoot();
+#endif
+
 private:
     QByteArray qmltypesData;
+    QString m_qmljsrootgenPath;
 };
 
 #endif // TST_QMLTYPEREGISTRAR_H

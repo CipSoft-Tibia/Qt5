@@ -68,11 +68,14 @@ public:
     ~tst_Http2();
 public slots:
     void init();
+    void cleanup();
 private slots:
     // Tests:
     void defaultQnamHttp2Configuration();
     void singleRequest_data();
     void singleRequest();
+    void informationalRequest_data();
+    void informationalRequest();
     void multipleRequests();
     void flowControlClientSide();
     void flowControlServerSide();
@@ -108,6 +111,8 @@ private slots:
 
     void abortOnEncrypted();
 
+    void maxHeaderTableSize();
+
 protected slots:
     // Slots to listen to our in-process server:
     void serverStarted(quint16 port);
@@ -124,7 +129,8 @@ protected slots:
     void replyFinishedWithError();
 
 private:
-    [[nodiscard]] auto useTemporaryKeychain()
+    std::function<void()> m_temporaryKeyChainRollback;
+    [[nodiscard]] std::function<void()> useTemporaryKeychain()
     {
 #if QT_CONFIG(securetransport)
         // Normally on macOS we use plain text only for SecureTransport
@@ -134,16 +140,16 @@ private:
         // Our CI has this, but somebody testing locally - will have a problem.
         auto value = qEnvironmentVariable("QT_SSL_USE_TEMPORARY_KEYCHAIN");
         qputenv("QT_SSL_USE_TEMPORARY_KEYCHAIN", "1");
-        auto envRollback = qScopeGuard([value](){
+        auto envRollback = [value](){
             if (value.isEmpty())
                 qunsetenv("QT_SSL_USE_TEMPORARY_KEYCHAIN");
             else
                 qputenv("QT_SSL_USE_TEMPORARY_KEYCHAIN", value.toUtf8());
-        });
+        };
         return envRollback;
 #else
         // avoid maybe-unused warnings from callers
-        return qScopeGuard([]{});
+        return {};
 #endif // QT_CONFIG(securetransport)
     }
 
@@ -239,6 +245,15 @@ tst_Http2::~tst_Http2()
 void tst_Http2::init()
 {
     manager.reset(new QNetworkAccessManager);
+
+    m_temporaryKeyChainRollback = useTemporaryKeychain();
+}
+
+void tst_Http2::cleanup()
+{
+    if (m_temporaryKeyChainRollback)
+        m_temporaryKeyChainRollback();
+    m_temporaryKeyChainRollback = {};
 }
 
 void tst_Http2::defaultQnamHttp2Configuration()
@@ -270,8 +285,6 @@ void tst_Http2::singleRequest_data()
 void tst_Http2::singleRequest()
 {
     clearHTTP2State();
-
-    auto rollback = useTemporaryKeychain();
 
     serverPort = 0;
     nRequests = 1;
@@ -316,6 +329,70 @@ void tst_Http2::singleRequest()
     if (connectionType == H2Type::h2Alpn || connectionType == H2Type::h2Direct)
         QCOMPARE(encSpy.size(), 1);
 #endif // QT_CONFIG(ssl)
+}
+
+void tst_Http2::informationalRequest_data()
+{
+    QTest::addColumn<int>("statusCode");
+
+    // 'Clear text' that should always work, either via the protocol upgrade
+    // or as direct.
+    QTest::addRow("statusCode-100") << 100;
+    QTest::addRow("statusCode-125") << 125;
+    QTest::addRow("statusCode-150") << 150;
+    QTest::addRow("statusCode-175") << 175;
+}
+
+void tst_Http2::informationalRequest()
+{
+    clearHTTP2State();
+
+    serverPort = 0;
+    nRequests = 1;
+
+    ServerPtr srv(newServer(defaultServerSettings, defaultConnectionType()));
+
+    QFETCH(const int, statusCode);
+    srv->setInformationalStatusCode(statusCode);
+
+    QMetaObject::invokeMethod(srv.data(), "startServer", Qt::QueuedConnection);
+    runEventLoop();
+
+    QVERIFY(serverPort != 0);
+
+    auto url = requestUrl(defaultConnectionType());
+    url.setPath("/index.html");
+
+    QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::Http2CleartextAllowedAttribute, true);
+
+    auto reply = manager->get(request);
+
+    connect(reply, &QNetworkReply::finished, this, &tst_Http2::replyFinished);
+    // Since we're using self-signed certificates,
+    // ignore SSL errors:
+    reply->ignoreSslErrors();
+
+    runEventLoop();
+    STOP_ON_FAILURE
+
+    QCOMPARE(nRequests, 0);
+    QVERIFY(prefaceOK);
+    QVERIFY(serverGotSettingsACK);
+
+    QCOMPARE(reply->error(), QNetworkReply::NoError);
+    QVERIFY(reply->isFinished());
+
+    const QVariant code(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute));
+
+    // We are discarding informational headers if the status code is in the range of
+    // 102-199 or if it is 100. As these header fields were part of  the informational
+    // header used for this test case, we should not see them at this point and the
+    // status code should be 200.
+
+    QCOMPARE(code.value<int>(), 200);
+    QVERIFY(!reply->hasRawHeader("a_random_header_field"));
+    QVERIFY(!reply->hasRawHeader("another_random_header_field"));
 }
 
 void tst_Http2::multipleRequests()
@@ -652,8 +729,6 @@ void tst_Http2::connectToHost()
 
 #if QT_CONFIG(ssl)
     Q_ASSERT(!clearTextHTTP2 || connectionType != H2Type::h2Alpn);
-
-    auto rollback = useTemporaryKeychain();
 #else
     Q_ASSERT(connectionType == H2Type::h2c || connectionType == H2Type::h2cDirect);
     Q_ASSERT(targetServer->isClearText());
@@ -739,8 +814,6 @@ void tst_Http2::maxFrameSize()
     // Here we test we send 'MAX_FRAME_SIZE' setting in our
     // 'SETTINGS'. If done properly, our server will not chunk
     // the payload into several DATA frames.
-
-    auto rollback = useTemporaryKeychain();
 
     auto connectionType = H2Type::h2Alpn;
     auto attribute = QNetworkRequest::Http2AllowedAttribute;
@@ -895,8 +968,6 @@ void tst_Http2::moreActivitySignals()
 {
     clearHTTP2State();
 
-    auto rollback = useTemporaryKeychain();
-
     serverPort = 0;
     QFETCH(H2Type, connectionType);
     ServerPtr srv(newServer(defaultServerSettings, connectionType));
@@ -997,8 +1068,6 @@ void tst_Http2::contentEncoding_data()
 void tst_Http2::contentEncoding()
 {
     clearHTTP2State();
-
-    auto rollback = useTemporaryKeychain();
 
     QFETCH(H2Type, connectionType);
 
@@ -1463,8 +1532,6 @@ void tst_Http2::abortOnEncrypted()
     QSKIP("TLS support is needed for this test");
 #else
 
-    auto rollback = useTemporaryKeychain();
-
     clearHTTP2State();
     serverPort = 0;
 
@@ -1500,6 +1567,55 @@ void tst_Http2::abortOnEncrypted()
             500);
     QVERIFY(!res);
 #endif // QT_CONFIG(ssl)
+}
+
+void tst_Http2::maxHeaderTableSize()
+{
+    clearHTTP2State();
+    serverPort = 0;
+
+    H2Type connectionType = H2Type::h2Direct;
+    RawSettings maxHeaderTableSize{ { Http2::Settings::HEADER_TABLE_SIZE_ID, 0 } };
+    ServerPtr targetServer(newServer(maxHeaderTableSize, connectionType));
+
+    QMetaObject::invokeMethod(targetServer.data(), "startServer", Qt::QueuedConnection);
+    runEventLoop();
+
+    QVERIFY(serverPort != 0);
+
+    nRequests = 1;
+
+    const auto url = requestUrl(connectionType);
+    QNetworkRequest request(url);
+    request.setAttribute(QNetworkRequest::Http2DirectAttribute, true);
+
+    constexpr int extraRequests = 5;
+    std::array<std::unique_ptr<QNetworkReply>, extraRequests> replies;
+    for (qint32 i = 0; i < 1 + extraRequests; ++i) {
+        for (qint32 j = 0; j < 100; ++j) {
+            request.setRawHeader("x-test" + QByteArray::number(j),
+                                 "Hello World" + QByteArray::number(i));
+        }
+        std::unique_ptr<QNetworkReply> reply{ manager->get(request) };
+        reply->ignoreSslErrors();
+        connect(reply.get(), &QNetworkReply::finished, this, &tst_Http2::replyFinished);
+
+        if (i == 0) {
+            runEventLoop();
+            STOP_ON_FAILURE
+            QCOMPARE(reply->error(), QNetworkReply::NoError);
+            nRequests = extraRequests;
+        } else {
+            replies[i - 1] = std::move(reply);
+        }
+    }
+
+    runEventLoop();
+    STOP_ON_FAILURE
+
+    QCOMPARE(nRequests, 0);
+    for (const auto &reply : replies)
+        QCOMPARE(reply->error(), QNetworkReply::NoError);
 }
 
 void tst_Http2::serverStarted(quint16 port)

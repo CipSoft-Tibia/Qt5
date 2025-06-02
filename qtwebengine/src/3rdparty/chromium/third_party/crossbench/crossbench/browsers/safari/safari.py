@@ -16,6 +16,7 @@ if TYPE_CHECKING:
   from crossbench.browsers.splash_screen import SplashScreen
   from crossbench.browsers.viewport import Viewport
   from crossbench.flags import Flags
+  from crossbench.network.base import Network
   from crossbench.runner.runner import Runner
 
 
@@ -51,6 +52,7 @@ class Safari(Browser):
       js_flags: Optional[Flags.InitialDataType] = None,
       cache_dir: Optional[pathlib.Path] = None,
       type: str = "safari",  # pylint: disable=redefined-builtin
+      network: Optional[Network] = None,
       driver_path: Optional[pathlib.Path] = None,
       viewport: Optional[Viewport] = None,
       splash_screen: Optional[SplashScreen] = None,
@@ -61,6 +63,7 @@ class Safari(Browser):
         flags,
         js_flags=None,
         type=type,
+        network=network,
         driver_path=driver_path,
         viewport=viewport,
         splash_screen=splash_screen,
@@ -68,7 +71,7 @@ class Safari(Browser):
     assert not js_flags, "Safari doesn't support custom js_flags"
     assert self.platform.is_macos, "Safari only works on MacOS"
     assert self.path
-    self.bundle_name = self.path.stem.replace(" ", "")
+    self.bundle_name: str = self.path.stem.replace(" ", "")
     assert cache_dir is None, "Cannot set custom cache dir for Safari"
     self.cache_dir = pathlib.Path(
         f"~/Library/Containers/com.apple.{self.bundle_name}/Data/Library/Caches"

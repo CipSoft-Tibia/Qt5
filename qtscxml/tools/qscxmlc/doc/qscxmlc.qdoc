@@ -17,7 +17,7 @@
 
     The \c qscxmlc tool is invoked automatically if the project is linked against
     the \c scxml library in the project file, and the \c .scxml file to use is specified
-    using the special build directives \c STATECHARTS or qt6_add_statecharts.
+    using the special build directives \c STATECHARTS or \l{qt_add_statecharts}.
 
     When using cmake:
 

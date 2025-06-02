@@ -189,8 +189,6 @@ interface Internals {
 
     unsigned long numberOfScrollableAreas(Document document);
 
-    boolean isPageBoxVisible(Document document, long pageNumber);
-
     readonly attribute InternalSettings settings;
     readonly attribute InternalRuntimeFlags runtimeFlags;
     readonly attribute unsigned long workerThreadCount;
@@ -218,8 +216,6 @@ interface Internals {
     sequence<DOMString> allIconURLs(Document document);
     [RaisesException] long numberOfPages(optional double pageWidthInPixels = 800, optional double pageHeightInPixels = 600);
     [RaisesException] DOMString pageProperty(DOMString propertyName, unsigned long pageNumber);
-    [RaisesException] DOMString pageSizeAndMarginsInPixels(unsigned long pageIndex, long width, long height, long marginTop, long marginRight, long marginBottom, long marginLeft);
-
     [RaisesException] float pageScaleFactor();
     [RaisesException] void setPageScaleFactor(float scaleFactor);
     [RaisesException] void setPageScaleFactorLimits(float minScaleFactor, float maxScaleFactor);
@@ -264,6 +260,11 @@ interface Internals {
     // Returns a list of draggable/non-draggable regions in the document.
     [RaisesException] DOMRectList draggableRegions(Document document);
     [RaisesException] DOMRectList nonDraggableRegions(Document document);
+
+    // Overrides default behavior to support the app-region CSS property.
+    // Setting to true enables collection of draggable/non-draggable
+    // app regions.
+    void SetSupportsAppRegion(boolean supports_app_regions);
 
     // Returns a string with information about the mouse cursor used at the specified client location.
     DOMString getCurrentCursorInfo();
@@ -321,11 +322,6 @@ interface Internals {
     void setFocused(boolean focused);
     void setInitialFocus(boolean reverse);
 
-    // When the FocuslessSpatialNavigation feature is enabled, spatial
-    // navigation moves "interest" around a page, rather than focus. This
-    // attribute returns the currently interested element on the page.
-    readonly attribute Element? interestedElement;
-
     // Returns true if page associated with current internals object is
     // active.
     boolean isActivated();
@@ -334,6 +330,7 @@ interface Internals {
     unsigned long canvasFontCacheMaxFonts();
     void forceLoseCanvasContext(HTMLCanvasElement canvas, DOMString contextType);
     void forceLoseCanvasContext(OffscreenCanvas offscreencanvas, DOMString context_type);
+    void disableCanvasAcceleration(HTMLCanvasElement canvas);
 
     DictionaryTest dictionaryTest();
     RecordTest recordTest();
@@ -341,7 +338,6 @@ interface Internals {
     UnionTypesTest unionTypesTest();
     InternalsUkmRecorder initializeUKMRecorder();
     CallbackFunctionTest callbackFunctionTest();
-    [RaisesException] void setScrollChain(ScrollState scrollState, sequence<Element> elements);
 
     DOMString selectedHTMLForClipboard();
     DOMString selectedTextForClipboard();
@@ -454,4 +450,9 @@ interface Internals {
     void setBackForwardCacheRestorationBufferSize(long maxSize);
 
     sequence<DOMString> getCreatorScripts(HTMLImageElement img);
+
+    // Wait until predicted LCP is painted. Never called if prediction is
+    // failed. Returns element_locator format string.
+    [CallWith=ScriptState] Promise<DOMString> LCPPrediction(Document document);
+
 };

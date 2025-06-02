@@ -66,7 +66,7 @@ void tst_Stylesheet::loadTestFiles()
     for (const auto &qssFile : qssFiles) {
         QFileInfo fileInfo(qssFile);
         QFile file(qssFile);
-        file.open(QFile::ReadOnly);
+        QVERIFY(file.open(QFile::ReadOnly));
         QString styleSheet = QString::fromUtf8(file.readAll());
         QBaselineTest::newRow(fileInfo.baseName().toUtf8()) << styleSheet;
     }
@@ -206,6 +206,9 @@ void tst_Stylesheet::tst_QTreeView()
 
     tw->topLevelItem(Children)->child(0)->setSelected(true);
     QBASELINE_CHECK_DEFERRED(takeSnapshot(), "itemSelected");
+
+    testWindow()->resize(testWindow()->size() * 2);
+    QBASELINE_CHECK_DEFERRED(takeSnapshot(), "withEmptyArea");
 }
 
 void tst_Stylesheet::tst_QHeaderView_data()
@@ -224,17 +227,6 @@ void tst_Stylesheet::tst_QHeaderView()
     QBASELINE_TEST(takeSnapshot());
 }
 
-#define main _realmain
-QTEST_MAIN(tst_Stylesheet)
-#undef main
-
-int main(int argc, char *argv[])
-{
-    // Avoid rendering variations caused by QHash randomization
-    QHashSeed::setDeterministicGlobalSeed();
-
-    QBaselineTest::handleCmdLineArgs(&argc, &argv);
-    return _realmain(argc, argv);
-}
+QBASELINETEST_MAIN(tst_Stylesheet)
 
 #include "tst_baseline_stylesheet.moc"

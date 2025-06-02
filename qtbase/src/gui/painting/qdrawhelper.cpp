@@ -176,7 +176,7 @@ static void QT_FASTCALL convertRGBA32FPMToRGBA64PM(QRgba64 *buffer, int count)
     }
 }
 
-static Convert64Func convert64ToRGBA64PM[QImage::NImageFormats] = {
+static Convert64Func convert64ToRGBA64PM[] = {
     nullptr,
     nullptr,
     nullptr,
@@ -213,7 +213,10 @@ static Convert64Func convert64ToRGBA64PM[QImage::NImageFormats] = {
     convertRGBA32FPMToRGBA64PM,
     convertRGBA32FToRGBA64PM,
     convertRGBA32FPMToRGBA64PM,
+    nullptr,
 };
+
+static_assert(std::size(convert64ToRGBA64PM) == QImage::NImageFormats);
 #endif
 
 #if QT_CONFIG(raster_fp)
@@ -247,7 +250,7 @@ static void QT_FASTCALL convertRGBA16FToRGBA32F(QRgbaFloat32 *buffer, const quin
     qFloatFromFloat16((float *)buffer, (const qfloat16 *)src, count * 4);
 }
 
-static Convert64ToFPFunc convert64ToRGBA32F[QImage::NImageFormats] = {
+static Convert64ToFPFunc convert64ToRGBA32F[] = {
     nullptr,
     nullptr,
     nullptr,
@@ -284,7 +287,10 @@ static Convert64ToFPFunc convert64ToRGBA32F[QImage::NImageFormats] = {
     nullptr,
     nullptr,
     nullptr,
+    nullptr,
 };
+
+static_assert(std::size(convert64ToRGBA32F) == QImage::NImageFormats);
 
 static void convertRGBA32FToRGBA32FPM(QRgbaFloat32 *buffer, int count)
 {
@@ -353,7 +359,7 @@ static uint *QT_FASTCALL destFetchUndefined(uint *buffer, QRasterBuffer *, int, 
     return buffer;
 }
 
-static DestFetchProc destFetchProc[QImage::NImageFormats] =
+static DestFetchProc destFetchProc[] =
 {
     nullptr,            // Format_Invalid
     destFetchMono,      // Format_Mono,
@@ -391,7 +397,10 @@ static DestFetchProc destFetchProc[QImage::NImageFormats] =
     destFetch,          // Format_RGBX32FPx4
     destFetch,          // Format_RGBA32FPx4
     destFetch,          // Format_RGBA32FPx4_Premultiplied
+    destFetch,          // Format_CMYK8888
 };
+
+static_assert(std::size(destFetchProc) == QImage::NImageFormats);
 
 #if QT_CONFIG(raster_64bit)
 static QRgba64 *QT_FASTCALL destFetch64(QRgba64 *buffer, QRasterBuffer *rasterBuffer, int x, int y, int length)
@@ -410,7 +419,7 @@ static QRgba64 * QT_FASTCALL destFetch64Undefined(QRgba64 *buffer, QRasterBuffer
     return buffer;
 }
 
-static DestFetchProc64 destFetchProc64[QImage::NImageFormats] =
+static DestFetchProc64 destFetchProc64[] =
 {
     nullptr,            // Format_Invalid
     nullptr,            // Format_Mono,
@@ -448,7 +457,10 @@ static DestFetchProc64 destFetchProc64[QImage::NImageFormats] =
     destFetch64,        // Format_RGBX32FPx4
     destFetch64,        // Format_RGBA32FPx4
     destFetch64,        // Format_RGBA32FPx4_Premultiplied
+    destFetch64,        // Format_CMYK8888
 };
+
+static_assert(std::size(destFetchProc64) == QImage::NImageFormats);
 #endif
 
 #if QT_CONFIG(raster_fp)
@@ -466,7 +478,7 @@ static QRgbaFloat32 *QT_FASTCALL destFetchFPUndefined(QRgbaFloat32 *buffer, QRas
 {
     return buffer;
 }
-static DestFetchProcFP destFetchProcFP[QImage::NImageFormats] =
+static DestFetchProcFP destFetchProcFP[] =
 {
     nullptr,            // Format_Invalid
     nullptr,            // Format_Mono,
@@ -504,7 +516,10 @@ static DestFetchProcFP destFetchProcFP[QImage::NImageFormats] =
     destFetchRGBFP,     // Format_RGBX32FPx4
     destFetchFP,        // Format_RGBA32FPx4
     destFetchRGBFP,     // Format_RGBA32FPx4_Premultiplied
+    destFetchFP,        // Format_CMYK8888
 };
+
+static_assert(std::size(destFetchProcFP) == QImage::NImageFormats);
 #endif
 
 /*
@@ -650,14 +665,14 @@ static void QT_FASTCALL destStoreGray16(QRasterBuffer *rasterBuffer, int x, int 
         QColorTransform tf = QColorSpacePrivate::get(fromCS)->transformationToXYZ();
         QColorTransformPrivate *tfd = QColorTransformPrivate::get(tf);
 
-        QRgba64 tmp_line[BufferSize];
+        Q_DECL_UNINITIALIZED QRgba64 tmp_line[BufferSize];
         for (int k = 0; k < length; ++k)
             tmp_line[k] = QRgba64::fromArgb32(buffer[k]);
         tfd->apply(data, tmp_line, length, QColorTransformPrivate::InputPremultiplied);
     }
 }
 
-static DestStoreProc destStoreProc[QImage::NImageFormats] =
+static DestStoreProc destStoreProc[] =
 {
     nullptr,            // Format_Invalid
     destStoreMono,      // Format_Mono,
@@ -695,7 +710,10 @@ static DestStoreProc destStoreProc[QImage::NImageFormats] =
     destStore,          // Format_RGBX32FPx4
     destStore,          // Format_RGBA32FPx4
     destStore,          // Format_RGBA32FPx4_Premultiplied
+    destStore,          // Format_CMYK8888
 };
+
+static_assert(std::size(destStoreProc) == QImage::NImageFormats);
 
 #if QT_CONFIG(raster_64bit)
 static void QT_FASTCALL destStore64(QRasterBuffer *rasterBuffer, int x, int y, const QRgba64 *buffer, int length)
@@ -730,7 +748,7 @@ static void QT_FASTCALL destStore64Gray8(QRasterBuffer *rasterBuffer, int x, int
         QColorTransform tf = QColorSpacePrivate::get(fromCS)->transformationToXYZ();
         QColorTransformPrivate *tfd = QColorTransformPrivate::get(tf);
 
-        quint16 gray_line[BufferSize];
+        Q_DECL_UNINITIALIZED quint16 gray_line[BufferSize];
         tfd->apply(gray_line, buffer, length, QColorTransformPrivate::InputPremultiplied);
         for (int k = 0; k < length; ++k)
             data[k] = qt_div_257(gray_line[k]);
@@ -757,7 +775,7 @@ static void QT_FASTCALL destStore64Gray16(QRasterBuffer *rasterBuffer, int x, in
     }
 }
 
-static DestStoreProc64 destStoreProc64[QImage::NImageFormats] =
+static DestStoreProc64 destStoreProc64[] =
 {
     nullptr,            // Format_Invalid
     nullptr,            // Format_Mono,
@@ -795,7 +813,10 @@ static DestStoreProc64 destStoreProc64[QImage::NImageFormats] =
     destStore64,        // Format_RGBX32FPx4
     destStore64,        // Format_RGBA32FPx4
     destStore64,        // Format_RGBA32FPx4_Premultiplied
+    destStore64,        // Format_CMYK8888
 };
+
+static_assert(std::size(destStoreProc64) == QImage::NImageFormats);
 #endif
 
 #if QT_CONFIG(raster_fp)
@@ -1094,7 +1115,7 @@ static const QRgba64 *QT_FASTCALL fetchTransformed64(QRgba64 *buffer, const Oper
 {
     const QPixelLayout *layout = &qPixelLayouts[data->texture.format];
     if (layout->bpp < QPixelLayout::BPP64) {
-        uint buffer32[BufferSize];
+        Q_DECL_UNINITIALIZED uint buffer32[BufferSize];
         Q_ASSERT(length <= BufferSize);
         if (layout->bpp == QPixelLayout::BPP32)
             fetchTransformed_fetcher<blendType, QPixelLayout::BPP32, uint>(buffer32, data, y, x, length);
@@ -1117,7 +1138,7 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedFP(QRgbaFloat32 *buffer, 
 {
     const QPixelLayout *layout = &qPixelLayouts[data->texture.format];
     if (layout->bpp < QPixelLayout::BPP64) {
-        uint buffer32[BufferSize];
+        Q_DECL_UNINITIALIZED uint buffer32[BufferSize];
         Q_ASSERT(length <= BufferSize);
         if (layout->bpp == QPixelLayout::BPP32)
             fetchTransformed_fetcher<blendType, QPixelLayout::BPP32, uint>(buffer32, data, y, x, length);
@@ -1125,7 +1146,7 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedFP(QRgbaFloat32 *buffer, 
             fetchTransformed_fetcher<blendType, QPixelLayout::BPPNone, uint>(buffer32, data, y, x, length);
         qConvertToRGBA32F[data->texture.format](buffer, buffer32, length, data->texture.colorTable, nullptr);
     } else if (layout->bpp < QPixelLayout::BPP32FPx4) {
-        quint64 buffer64[BufferSize];
+        Q_DECL_UNINITIALIZED quint64 buffer64[BufferSize];
         fetchTransformed_fetcher<blendType, QPixelLayout::BPP64, quint64>(buffer64, data, y, x, length);
         convert64ToRGBA32F[data->texture.format](buffer, buffer64, length);
     } else {
@@ -1314,7 +1335,7 @@ static void QT_FASTCALL fetchTransformedBilinearARGB32PM_simple_scale_helper(uin
     const int offset = (fx + adjust) >> 16;
     int x = offset;
 
-    IntermediateBuffer intermediate;
+    Q_DECL_UNINITIALIZED IntermediateBuffer intermediate;
     // count is the size used in the intermediate.buffer.
     int count = (qint64(length) * qAbs(fdx) + fixed_scale - 1) / fixed_scale + 2;
     // length is supposed to be <= BufferSize either because data->m11 < 1 or
@@ -1560,9 +1581,10 @@ static void QT_FASTCALL fetchTransformedBilinearARGB32PM_downscale_helper(uint *
         const int32x4_t v_ffff_mask = vdupq_n_s32(0x0000ffff);
         const int32x4_t v_fx_r = vdupq_n_s32(0x0800);
 
+         // Pre-initialize to work-around code-analysis warnings/crashes in MSVC:
+        uint32x4x2_t v_top = {};
+        uint32x4x2_t v_bot = {};
         while (b < boundedEnd - 3) {
-            uint32x4x2_t v_top, v_bot;
-
             int x1 = (fx >> 16);
             fx += fdx;
             v_top = vld2q_lane_u32(s1 + x1, v_top, 0);
@@ -1776,9 +1798,10 @@ static void QT_FASTCALL fetchTransformedBilinearARGB32PM_fast_rotate_helper(uint
         const int32x4_t v_ffff_mask = vdupq_n_s32(0x0000ffff);
         const int32x4_t v_round = vdupq_n_s32(0x0800);
 
+         // Pre-initialize to work-around code-analysis warnings/crashes in MSVC:
+        uint32x4x2_t v_top = {};
+        uint32x4x2_t v_bot = {};
         while (b < boundedEnd - 3) {
-            uint32x4x2_t v_top, v_bot;
-
             int x1 = (fx >> 16);
             int y1 = (fy >> 16);
             fx += fdx; fy += fdy;
@@ -2026,7 +2049,7 @@ static void QT_FASTCALL fetchTransformedBilinear_simple_scale_helper(uint *b, ui
     const int offset = (fx + adjust) >> 16;
     int x = offset;
 
-    IntermediateBuffer intermediate;
+    Q_DECL_UNINITIALIZED IntermediateBuffer intermediate;
     uint *buf1 = intermediate.buffer_rb;
     uint *buf2 = intermediate.buffer_ag;
     const uint *ptr1;
@@ -2343,8 +2366,8 @@ static const uint *QT_FASTCALL fetchTransformedBilinear(uint *buffer, const Oper
             } else {
                 const auto fetcher = fetchTransformedBilinear_fetcher<blendType,bpp,uint>;
 
-                uint buf1[BufferSize];
-                uint buf2[BufferSize];
+                Q_DECL_UNINITIALIZED uint buf1[BufferSize];
+                Q_DECL_UNINITIALIZED uint buf2[BufferSize];
                 uint *b = buffer;
                 while (length) {
                     int len = qMin(length, BufferSize / 2);
@@ -2378,8 +2401,8 @@ static const uint *QT_FASTCALL fetchTransformedBilinear(uint *buffer, const Oper
         } else { // rotation or shear
             const auto fetcher = fetchTransformedBilinear_fetcher<blendType,bpp,uint>;
 
-            uint buf1[BufferSize];
-            uint buf2[BufferSize];
+            Q_DECL_UNINITIALIZED uint buf1[BufferSize];
+            Q_DECL_UNINITIALIZED uint buf2[BufferSize];
             uint *b = buffer;
             while (length) {
                 int len = qMin(length, BufferSize / 2);
@@ -2429,12 +2452,12 @@ static const uint *QT_FASTCALL fetchTransformedBilinear(uint *buffer, const Oper
         qreal fy = data->m22 * cy + data->m12 * cx + data->dy;
         qreal fw = data->m23 * cy + data->m13 * cx + data->m33;
 
-        uint buf1[BufferSize];
-        uint buf2[BufferSize];
+        Q_DECL_UNINITIALIZED uint buf1[BufferSize];
+        Q_DECL_UNINITIALIZED uint buf2[BufferSize];
         uint *b = buffer;
 
-        ushort distxs[BufferSize / 2];
-        ushort distys[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distxs[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distys[BufferSize / 2];
 
         while (length) {
             const int len = qMin(length, BufferSize / 2);
@@ -2469,10 +2492,10 @@ static const QRgba64 *QT_FASTCALL fetchTransformedBilinear64_uint32(QRgba64 *buf
     const qreal cx = x + qreal(0.5);
     const qreal cy = y + qreal(0.5);
 
-    uint sbuf1[BufferSize];
-    uint sbuf2[BufferSize];
-    alignas(8) QRgba64 buf1[BufferSize];
-    alignas(8) QRgba64 buf2[BufferSize];
+    Q_DECL_UNINITIALIZED uint sbuf1[BufferSize];
+    Q_DECL_UNINITIALIZED uint sbuf2[BufferSize];
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buf1[BufferSize];
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buf2[BufferSize];
     QRgba64 *b = buffer;
 
     if (canUseFastMatrixPath(cx, cy, length, data)) {
@@ -2565,8 +2588,8 @@ static const QRgba64 *QT_FASTCALL fetchTransformedBilinear64_uint32(QRgba64 *buf
         qreal fy = data->m22 * cy + data->m12 * cx + data->dy;
         qreal fw = data->m23 * cy + data->m13 * cx + data->m33;
 
-        ushort distxs[BufferSize / 2];
-        ushort distys[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distxs[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distys[BufferSize / 2];
 
         while (length) {
             const int len = qMin(length, BufferSize / 2);
@@ -2597,8 +2620,8 @@ static const QRgba64 *QT_FASTCALL fetchTransformedBilinear64_uint64(QRgba64 *buf
     const qreal cx = x + qreal(0.5);
     const qreal cy = y + qreal(0.5);
 
-    alignas(8) QRgba64 buf1[BufferSize];
-    alignas(8) QRgba64 buf2[BufferSize];
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buf1[BufferSize];
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buf2[BufferSize];
     QRgba64 *end = buffer + length;
     QRgba64 *b = buffer;
 
@@ -2685,8 +2708,8 @@ static const QRgba64 *QT_FASTCALL fetchTransformedBilinear64_uint64(QRgba64 *buf
         qreal fy = data->m22 * cy + data->m12 * cx + data->dy;
         qreal fw = data->m23 * cy + data->m13 * cx + data->m33;
 
-        ushort distxs[BufferSize / 2];
-        ushort distys[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distxs[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distys[BufferSize / 2];
 
         while (length) {
             const int len = qMin(length, BufferSize / 2);
@@ -2719,10 +2742,10 @@ static const QRgba64 *QT_FASTCALL fetchTransformedBilinear64_f32x4(QRgba64 *buff
     const qreal cx = x + qreal(0.5);
     const qreal cy = y + qreal(0.5);
 
-    QRgbaFloat32 sbuf1[BufferSize];
-    QRgbaFloat32 sbuf2[BufferSize];
-    alignas(8) QRgba64 buf1[BufferSize];
-    alignas(8) QRgba64 buf2[BufferSize];
+    Q_DECL_UNINITIALIZED QRgbaFloat32 sbuf1[BufferSize];
+    Q_DECL_UNINITIALIZED QRgbaFloat32 sbuf2[BufferSize];
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buf1[BufferSize];
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buf2[BufferSize];
     QRgba64 *b = buffer;
 
     if (canUseFastMatrixPath(cx, cy, length, data)) {
@@ -2770,8 +2793,8 @@ static const QRgba64 *QT_FASTCALL fetchTransformedBilinear64_f32x4(QRgba64 *buff
         qreal fy = data->m22 * cy + data->m12 * cx + data->dy;
         qreal fw = data->m23 * cy + data->m13 * cx + data->m33;
 
-        ushort distxs[BufferSize / 2];
-        ushort distys[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distxs[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distys[BufferSize / 2];
 
         while (length) {
             const int len = qMin(length, BufferSize / 2);
@@ -2845,10 +2868,10 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedBilinearFP_uint32(QRgbaFl
     const qreal cx = x + qreal(0.5);
     const qreal cy = y + qreal(0.5);
 
-    uint sbuf1[BufferSize];
-    uint sbuf2[BufferSize];
-    QRgbaFloat32 buf1[BufferSize];
-    QRgbaFloat32 buf2[BufferSize];
+    Q_DECL_UNINITIALIZED uint sbuf1[BufferSize];
+    Q_DECL_UNINITIALIZED uint sbuf2[BufferSize];
+    Q_DECL_UNINITIALIZED QRgbaFloat32 buf1[BufferSize];
+    Q_DECL_UNINITIALIZED QRgbaFloat32 buf2[BufferSize];
     QRgbaFloat32 *b = buffer;
 
     if (canUseFastMatrixPath(cx, cy, length, data)) {
@@ -2893,8 +2916,8 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedBilinearFP_uint32(QRgbaFl
         qreal fx = data->m21 * cy + data->m11 * cx + data->dx;
         qreal fy = data->m22 * cy + data->m12 * cx + data->dy;
         qreal fw = data->m23 * cy + data->m13 * cx + data->m33;
-        ushort distxs[BufferSize / 2];
-        ushort distys[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distxs[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distys[BufferSize / 2];
 
         while (length) {
             const int len = qMin(length, BufferSize / 2);
@@ -2921,10 +2944,10 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedBilinearFP_uint64(QRgbaFl
     const qreal cx = x + qreal(0.5);
     const qreal cy = y + qreal(0.5);
 
-    quint64 sbuf1[BufferSize];
-    quint64 sbuf2[BufferSize];
-    QRgbaFloat32 buf1[BufferSize];
-    QRgbaFloat32 buf2[BufferSize];
+    Q_DECL_UNINITIALIZED quint64 sbuf1[BufferSize] ;
+    Q_DECL_UNINITIALIZED quint64 sbuf2[BufferSize];
+    Q_DECL_UNINITIALIZED QRgbaFloat32 buf1[BufferSize];
+    Q_DECL_UNINITIALIZED QRgbaFloat32 buf2[BufferSize];
     QRgbaFloat32 *b = buffer;
 
     if (canUseFastMatrixPath(cx, cy, length, data)) {
@@ -2964,8 +2987,8 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedBilinearFP_uint64(QRgbaFl
         qreal fy = data->m22 * cy + data->m12 * cx + data->dy;
         qreal fw = data->m23 * cy + data->m13 * cx + data->m33;
 
-        ushort distxs[BufferSize / 2];
-        ushort distys[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distxs[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distys[BufferSize / 2];
 
         while (length) {
             const int len = qMin(length, BufferSize / 2);
@@ -2993,8 +3016,8 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedBilinearFP(QRgbaFloat32 *
     const qreal cx = x + qreal(0.5);
     const qreal cy = y + qreal(0.5);
 
-    QRgbaFloat32 buf1[BufferSize];
-    QRgbaFloat32 buf2[BufferSize];
+    Q_DECL_UNINITIALIZED QRgbaFloat32 buf1[BufferSize];
+    Q_DECL_UNINITIALIZED QRgbaFloat32 buf2[BufferSize];
     QRgbaFloat32 *b = buffer;
 
     if (canUseFastMatrixPath(cx, cy, length, data)) {
@@ -3034,8 +3057,8 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedBilinearFP(QRgbaFloat32 *
         qreal fy = data->m22 * cy + data->m12 * cx + data->dy;
         qreal fw = data->m23 * cy + data->m13 * cx + data->m33;
 
-        ushort distxs[BufferSize / 2];
-        ushort distys[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distxs[BufferSize / 2];
+        Q_DECL_UNINITIALIZED ushort distys[BufferSize / 2];
 
         while (length) {
             const int len = qMin(length, BufferSize / 2);
@@ -3070,7 +3093,7 @@ static const QRgbaFloat32 *QT_FASTCALL fetchTransformedBilinearFP(QRgbaFloat32 *
 #endif // QT_CONFIG(raster_fp)
 
 // FetchUntransformed can have more specialized methods added depending on SIMD features.
-static SourceFetchProc sourceFetchUntransformed[QImage::NImageFormats] = {
+static SourceFetchProc sourceFetchUntransformed[] = {
     nullptr,                    // Invalid
     fetchUntransformed,         // Mono
     fetchUntransformed,         // MonoLsb
@@ -3107,9 +3130,12 @@ static SourceFetchProc sourceFetchUntransformed[QImage::NImageFormats] = {
     fetchUntransformed,         // RGBX32Px4
     fetchUntransformed,         // RGBA32FPx4
     fetchUntransformed,         // RGBA32FPx4_Premultiplied
+    fetchUntransformed,         // CMYK8888
 };
 
-static const SourceFetchProc sourceFetchGeneric[NBlendTypes] = {
+static_assert(std::size(sourceFetchUntransformed) == QImage::NImageFormats);
+
+static const SourceFetchProc sourceFetchGeneric[] = {
     fetchUntransformed,                                                             // Untransformed
     fetchUntransformed,                                                             // Tiled
     fetchTransformed<BlendTransformed, QPixelLayout::BPPNone>,                      // Transformed
@@ -3118,7 +3144,9 @@ static const SourceFetchProc sourceFetchGeneric[NBlendTypes] = {
     fetchTransformedBilinear<BlendTransformedBilinearTiled, QPixelLayout::BPPNone>  // TransformedBilinearTiled
 };
 
-static SourceFetchProc sourceFetchARGB32PM[NBlendTypes] = {
+static_assert(std::size(sourceFetchGeneric) == NBlendTypes);
+
+static SourceFetchProc sourceFetchARGB32PM[] = {
     fetchUntransformedARGB32PM,                                     // Untransformed
     fetchUntransformedARGB32PM,                                     // Tiled
     fetchTransformed<BlendTransformed, QPixelLayout::BPP32>,        // Transformed
@@ -3127,7 +3155,9 @@ static SourceFetchProc sourceFetchARGB32PM[NBlendTypes] = {
     fetchTransformedBilinearARGB32PM<BlendTransformedBilinearTiled> // BilinearTiled
 };
 
-static SourceFetchProc sourceFetchAny16[NBlendTypes] = {
+static_assert(std::size(sourceFetchARGB32PM) == NBlendTypes);
+
+static SourceFetchProc sourceFetchAny16[] = {
     fetchUntransformed,                                                             // Untransformed
     fetchUntransformed,                                                             // Tiled
     fetchTransformed<BlendTransformed, QPixelLayout::BPP16>,                        // Transformed
@@ -3136,7 +3166,9 @@ static SourceFetchProc sourceFetchAny16[NBlendTypes] = {
     fetchTransformedBilinear<BlendTransformedBilinearTiled, QPixelLayout::BPP16>    // TransformedBilinearTiled
 };
 
-static SourceFetchProc sourceFetchAny32[NBlendTypes] = {
+static_assert(std::size(sourceFetchAny16) == NBlendTypes);
+
+static SourceFetchProc sourceFetchAny32[] = {
     fetchUntransformed,                                                             // Untransformed
     fetchUntransformed,                                                             // Tiled
     fetchTransformed<BlendTransformed, QPixelLayout::BPP32>,                        // Transformed
@@ -3144,6 +3176,8 @@ static SourceFetchProc sourceFetchAny32[NBlendTypes] = {
     fetchTransformedBilinear<BlendTransformedBilinear, QPixelLayout::BPP32>,        // TransformedBilinear
     fetchTransformedBilinear<BlendTransformedBilinearTiled, QPixelLayout::BPP32>    // TransformedBilinearTiled
 };
+
+static_assert(std::size(sourceFetchAny32) == NBlendTypes);
 
 static inline SourceFetchProc getSourceFetch(TextureBlendType blendType, QImage::Format format)
 {
@@ -3159,7 +3193,7 @@ static inline SourceFetchProc getSourceFetch(TextureBlendType blendType, QImage:
 }
 
 #if QT_CONFIG(raster_64bit)
-static const SourceFetchProc64 sourceFetchGeneric64[NBlendTypes] = {
+static const SourceFetchProc64 sourceFetchGeneric64[] = {
     fetchUntransformed64,                                     // Untransformed
     fetchUntransformed64,                                     // Tiled
     fetchTransformed64<BlendTransformed>,                     // Transformed
@@ -3168,7 +3202,9 @@ static const SourceFetchProc64 sourceFetchGeneric64[NBlendTypes] = {
     fetchTransformedBilinear64<BlendTransformedBilinearTiled> // BilinearTiled
 };
 
-static const SourceFetchProc64 sourceFetchRGBA64PM[NBlendTypes] = {
+static_assert(std::size(sourceFetchGeneric64) == NBlendTypes);
+
+static const SourceFetchProc64 sourceFetchRGBA64PM[] = {
     fetchUntransformedRGBA64PM,                               // Untransformed
     fetchUntransformedRGBA64PM,                               // Tiled
     fetchTransformed64<BlendTransformed>,                     // Transformed
@@ -3176,6 +3212,8 @@ static const SourceFetchProc64 sourceFetchRGBA64PM[NBlendTypes] = {
     fetchTransformedBilinear64<BlendTransformedBilinear>,     // Bilinear
     fetchTransformedBilinear64<BlendTransformedBilinearTiled> // BilinearTiled
 };
+
+static_assert(std::size(sourceFetchRGBA64PM) == NBlendTypes);
 
 static inline SourceFetchProc64 getSourceFetch64(TextureBlendType blendType, QImage::Format format)
 {
@@ -3186,7 +3224,7 @@ static inline SourceFetchProc64 getSourceFetch64(TextureBlendType blendType, QIm
 #endif
 
 #if QT_CONFIG(raster_fp)
-static const SourceFetchProcFP sourceFetchGenericFP[NBlendTypes] = {
+static const SourceFetchProcFP sourceFetchGenericFP[] = {
     fetchUntransformedFP,                                     // Untransformed
     fetchUntransformedFP,                                     // Tiled
     fetchTransformedFP<BlendTransformed>,                     // Transformed
@@ -3194,6 +3232,8 @@ static const SourceFetchProcFP sourceFetchGenericFP[NBlendTypes] = {
     fetchTransformedBilinearFP<BlendTransformedBilinear>,     // Bilinear
     fetchTransformedBilinearFP<BlendTransformedBilinearTiled> // BilinearTiled
 };
+
+static_assert(std::size(sourceFetchGenericFP) == NBlendTypes);
 
 static inline SourceFetchProcFP getSourceFetchFP(TextureBlendType blendType, QImage::Format /*format*/)
 {
@@ -3612,7 +3652,6 @@ static inline Operator getOperator(const QSpanData *data, const QT_FT_Span *span
 {
     Operator op;
     bool solidSource = false;
-
     switch(data->type) {
     case QSpanData::Solid:
         solidSource = data->solidColor.alphaF() >= 1.0f;
@@ -3656,7 +3695,7 @@ static inline Operator getOperator(const QSpanData *data, const QT_FT_Span *span
         solidSource = !data->texture.hasAlpha;
         op.srcFetch = getSourceFetch(getBlendType(data), data->texture.format);
 #if QT_CONFIG(raster_64bit)
-        op.srcFetch64 = getSourceFetch64(getBlendType(data), data->texture.format);;
+        op.srcFetch64 = getSourceFetch64(getBlendType(data), data->texture.format);
 #endif
 #if QT_CONFIG(raster_fp)
         op.srcFetchFP = getSourceFetchFP(getBlendType(data), data->texture.format);
@@ -3814,7 +3853,7 @@ static void blend_color_generic(int count, const QT_FT_Span *spans, void *userDa
     const QPixelLayout::BPP bpp = qPixelLayouts[data->rasterBuffer->format].bpp;
 
     auto function = [=] (int cStart, int cEnd) {
-        alignas(16) uint buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED uint buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             int x = spans[c].x;
             int length = spans[c].len;
@@ -3892,7 +3931,7 @@ static void blend_color_generic_rgb64(int count, const QT_FT_Span *spans, void *
 
     auto function = [=, &op] (int cStart, int cEnd)
     {
-        alignas(16) QRgba64 buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgba64 buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             int x = spans[c].x;
             int length = spans[c].len;
@@ -3938,7 +3977,7 @@ static void blend_color_generic_fp(int count, const QT_FT_Span *spans, void *use
 
     auto function = [=, &op] (int cStart, int cEnd)
     {
-        alignas(16) QRgbaFloat32 buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgbaFloat32 buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             int x = spans[c].x;
             int length = spans[c].len;
@@ -3974,7 +4013,7 @@ void handleSpans(int count, const QT_FT_Span *spans, const QSpanData *data, cons
 
     auto function = [=, &op] (int cStart, int cEnd)
     {
-        T handler(data, op);
+        T Q_DECL_UNINITIALIZED handler(data, op);
         int coverage = 0;
         for (int c = cStart; c < cEnd;) {
             if (!spans[c].len) {
@@ -4189,8 +4228,8 @@ static void blend_untransformed_generic(int count, const QT_FT_Span *spans, void
 
     auto function = [=, &op] (int cStart, int cEnd)
     {
-        alignas(16) uint buffer[BufferSize];
-        alignas(16) uint src_buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED uint buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED uint src_buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             if (!spans[c].len)
                 continue;
@@ -4247,8 +4286,8 @@ static void blend_untransformed_generic_rgb64(int count, const QT_FT_Span *spans
 
     auto function = [=, &op] (int cStart, int cEnd)
     {
-        alignas(16) QRgba64 buffer[BufferSize];
-        alignas(16) QRgba64 src_buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgba64 buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgba64 src_buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             if (!spans[c].len)
                 continue;
@@ -4305,8 +4344,8 @@ static void blend_untransformed_generic_fp(int count, const QT_FT_Span *spans, v
 
     auto function = [=, &op] (int cStart, int cEnd)
     {
-        alignas(16) QRgbaFloat32 buffer[BufferSize];
-        alignas(16) QRgbaFloat32 src_buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgbaFloat32 buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgbaFloat32 src_buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             if (!spans[c].len)
                 continue;
@@ -4517,8 +4556,8 @@ static void blend_tiled_generic(int count, const QT_FT_Span *spans, void *userDa
 
     auto function = [=, &op](int cStart, int cEnd)
     {
-        alignas(16) uint buffer[BufferSize];
-        alignas(16) uint src_buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED uint buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED uint src_buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             int x = spans[c].x;
             int length = spans[c].len;
@@ -4574,7 +4613,7 @@ static void blend_tiled_generic_rgb64(int count, const QT_FT_Span *spans, void *
     bool isBpp32 = qPixelLayouts[data->rasterBuffer->format].bpp == QPixelLayout::BPP32;
     bool isBpp64 = qPixelLayouts[data->rasterBuffer->format].bpp == QPixelLayout::BPP64;
     if (op.destFetch64 == destFetch64Undefined && image_width <= BufferSize && (isBpp32 || isBpp64)) {
-        alignas(16) QRgba64 src_buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgba64 src_buffer[BufferSize];
         // If destination isn't blended into the result, we can do the tiling directly on destination pixels.
         while (count--) {
             int x = spans->x;
@@ -4624,8 +4663,8 @@ static void blend_tiled_generic_rgb64(int count, const QT_FT_Span *spans, void *
 
     auto function = [=, &op](int cStart, int cEnd)
     {
-        alignas(16) QRgba64 buffer[BufferSize];
-        alignas(16) QRgba64 src_buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgba64 buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgba64 src_buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             int x = spans[c].x;
             int length = spans[c].len;
@@ -4683,8 +4722,8 @@ static void blend_tiled_generic_fp(int count, const QT_FT_Span *spans, void *use
 
     auto function = [=, &op](int cStart, int cEnd)
     {
-        alignas(16) QRgbaFloat32 buffer[BufferSize];
-        alignas(16) QRgbaFloat32 src_buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgbaFloat32 buffer[BufferSize];
+        alignas(16) Q_DECL_UNINITIALIZED QRgbaFloat32 src_buffer[BufferSize];
         for (int c = cStart; c < cEnd; ++c) {
             int x = spans[c].x;
             int length = spans[c].len;
@@ -5290,6 +5329,15 @@ static inline void alphamapblend_generic(int coverage, QRgba64 *dest, int x, con
     }
 }
 
+static void qt_alphamapblit_generic_oneline(const uchar *map, int len,
+                                            const QRgba64 srcColor, QRgba64 *dest,
+                                            const QRgba64 color,
+                                            const QColorTrcLut *colorProfile)
+{
+    for (int j = 0; j < len; ++j)
+        alphamapblend_generic(map[j], dest, j, srcColor, color, colorProfile);
+}
+
 static void qt_alphamapblit_generic(QRasterBuffer *rasterBuffer,
                                     int x, int y, const QRgba64 &color,
                                     const uchar *map,
@@ -5308,7 +5356,7 @@ static void qt_alphamapblit_generic(QRasterBuffer *rasterBuffer,
     if (colorProfile && color.isOpaque())
         srcColor = colorProfile->toLinear(srcColor);
 
-    alignas(8) QRgba64 buffer[BufferSize];
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buffer[BufferSize];
     const DestFetchProc64 destFetch64 = destFetchProc64[rasterBuffer->format];
     const DestStoreProc64 destStore64 = destStoreProc64[rasterBuffer->format];
 
@@ -5318,11 +5366,11 @@ static void qt_alphamapblit_generic(QRasterBuffer *rasterBuffer,
             int length = mapWidth;
             while (length > 0) {
                 int l = qMin(BufferSize, length);
+
                 QRgba64 *dest = destFetch64(buffer, rasterBuffer, i, y + ly, l);
-                for (int j=0; j < l; ++j) {
-                    const int coverage = map[j + (i - x)];
-                    alphamapblend_generic(coverage, dest, j, srcColor, color, colorProfile);
-                }
+                qt_alphamapblit_generic_oneline(map + i - x, l,
+                                                srcColor, dest, color,
+                                                colorProfile);
                 if (destStore64)
                     destStore64(rasterBuffer, i, y + ly, dest, l);
                 length -= l;
@@ -5349,11 +5397,9 @@ static void qt_alphamapblit_generic(QRasterBuffer *rasterBuffer,
                     continue;
                 Q_ASSERT(end - start <= BufferSize);
                 QRgba64 *dest = destFetch64(buffer, rasterBuffer, start, clip.y, end - start);
-
-                for (int xp=start; xp<end; ++xp) {
-                    const int coverage = map[xp - x];
-                    alphamapblend_generic(coverage, dest, xp - start, srcColor, color, colorProfile);
-                }
+                qt_alphamapblit_generic_oneline(map + start - x, end - start,
+                                                srcColor, dest, color,
+                                                colorProfile);
                 if (destStore64)
                     destStore64(rasterBuffer, start, clip.y, dest, end - start);
             } // for (i -> line.count)
@@ -5496,6 +5542,15 @@ void qt_alphamapblit_quint16(QRasterBuffer *rasterBuffer,
     }
 }
 
+static void qt_alphamapblit_argb32_oneline(const uchar *map,
+                                           int mapWidth, const QRgba64 &srcColor,
+                                           quint32 *dest, const quint32 c,
+                                           const QColorTrcLut *colorProfile)
+{
+    for (int i = 0; i < mapWidth; ++i)
+        alphamapblend_argb32(dest + i, map[i], srcColor, c, colorProfile);
+}
+
 static void qt_alphamapblit_argb32(QRasterBuffer *rasterBuffer,
                                    int x, int y, const QRgba64 &color,
                                    const uchar *map,
@@ -5520,10 +5575,7 @@ static void qt_alphamapblit_argb32(QRasterBuffer *rasterBuffer,
     if (!clip) {
         quint32 *dest = reinterpret_cast<quint32*>(rasterBuffer->scanLine(y)) + x;
         while (--mapHeight >= 0) {
-            for (int i = 0; i < mapWidth; ++i) {
-                const int coverage = map[i];
-                alphamapblend_argb32(dest + i, coverage, srcColor, c, colorProfile);
-            }
+            qt_alphamapblit_argb32_oneline(map, mapWidth, srcColor, dest, c, colorProfile);
             dest += destStride;
             map += mapStride;
         }
@@ -5541,19 +5593,71 @@ static void qt_alphamapblit_argb32(QRasterBuffer *rasterBuffer,
 
             for (int i=0; i<line.count; ++i) {
                 const QT_FT_Span &clip = line.spans[i];
-
                 int start = qMax<int>(x, clip.x);
                 int end = qMin<int>(x + mapWidth, clip.x + clip.len);
-
-                for (int xp=start; xp<end; ++xp) {
-                    const int coverage = map[xp - x];
-                    alphamapblend_argb32(dest + xp, coverage, srcColor, c, colorProfile);
-                } // for (i -> line.count)
+                qt_alphamapblit_argb32_oneline(map + start - x, end - start, srcColor, dest + start, c, colorProfile);
             } // for (yp -> bottom)
             map += mapStride;
         }
     }
 }
+
+#if QT_CONFIG(raster_64bit)
+static void qt_alphamapblit_nonpremul_argb32(QRasterBuffer *rasterBuffer,
+                                             int x, int y, const QRgba64 &color,
+                                             const uchar *map,
+                                             int mapWidth, int mapHeight, int mapStride,
+                                             const QClipData *clip, bool useGammaCorrection)
+{
+    if (clip)
+        return qt_alphamapblit_generic(rasterBuffer, x, y, color, map, mapWidth, mapHeight,
+                                       mapStride, clip, useGammaCorrection);
+
+    if (color.isTransparent())
+        return;
+
+    const QColorTrcLut *colorProfile = nullptr;
+
+    if (useGammaCorrection)
+        colorProfile = QGuiApplicationPrivate::instance()->colorProfileForA8Text();
+
+    const quint32 c = color.toArgb32();
+    QRgba64 srcColor = color;
+    if (colorProfile && color.isOpaque())
+        srcColor = colorProfile->toLinear(srcColor);
+
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buffer[BufferSize];
+    const DestFetchProc64 destFetch64 = destFetchProc64[rasterBuffer->format];
+    const DestStoreProc64 destStore64 = destStoreProc64[rasterBuffer->format];
+
+    for (int ly = 0; ly < mapHeight; ++ly) {
+        bool dstFullyOpaque = true;
+        int i = x;
+        int length = mapWidth;
+        while (length > 0) {
+            int l = qMin(BufferSize, length);
+            quint32 *dest = reinterpret_cast<quint32*>(rasterBuffer->scanLine(y + ly)) + i;
+            for (int j = 0; j < l && dstFullyOpaque; ++j)
+                dstFullyOpaque = (dest[j] & 0xff000000) == 0xff000000;
+            if (dstFullyOpaque) {
+                // Use RGB/ARGB32PM optimized version
+                qt_alphamapblit_argb32_oneline(map + i - x, l, srcColor, dest, c, colorProfile);
+            } else {
+                // Use generic version
+                QRgba64 *dest64 = destFetch64(buffer, rasterBuffer, i, y + ly, l);
+                qt_alphamapblit_generic_oneline(map + i - x, l,
+                                                srcColor, dest64, color,
+                                                colorProfile);
+                if (destStore64)
+                    destStore64(rasterBuffer, i, y + ly, dest64, l);
+            }
+            length -= l;
+            i += l;
+        }
+        map += mapStride;
+    }
+}
+#endif
 
 static inline int qRgbAvg(QRgb rgb)
 {
@@ -5687,7 +5791,7 @@ static void qt_alphargbblit_generic(QRasterBuffer *rasterBuffer,
     if (colorProfile && color.isOpaque())
         srcColor = colorProfile->toLinear(srcColor);
 
-    alignas(8) QRgba64 buffer[BufferSize];
+    alignas(8) Q_DECL_UNINITIALIZED QRgba64 buffer[BufferSize];
     const DestFetchProc64 destFetch64 = destFetchProc64[rasterBuffer->format];
     const DestStoreProc64 destStore64 = destStoreProc64[rasterBuffer->format];
 
@@ -5760,7 +5864,7 @@ static void qt_alphargbblit_generic(QRasterBuffer *rasterBuffer,
     if (colorProfile && color.isOpaque())
         srcColor = colorProfile->toLinear(srcColor);
 
-    quint32 buffer[BufferSize];
+    Q_DECL_UNINITIALIZED quint32 buffer[BufferSize];
     const DestFetchProc destFetch = destFetchProc[rasterBuffer->format];
     const DestStoreProc destStore = destStoreProc[rasterBuffer->format];
 
@@ -5981,7 +6085,7 @@ static void qt_rectfill_fp32x4(QRasterBuffer *rasterBuffer,
 // Map table for destination image format. Contains function pointers
 // for blends of various types unto the destination
 
-DrawHelper qDrawHelper[QImage::NImageFormats] =
+DrawHelper qDrawHelper[] =
 {
     // Format_Invalid,
     { nullptr, nullptr, nullptr, nullptr, nullptr },
@@ -6012,8 +6116,12 @@ DrawHelper qDrawHelper[QImage::NImageFormats] =
     {
         blend_color_generic,
         qt_bitmapblit_argb32,
-        qt_alphamapblit_argb32,
-        qt_alphargbblit_argb32,
+#if QT_CONFIG(raster_64bit)
+        qt_alphamapblit_nonpremul_argb32,
+#else
+        qt_alphamapblit_generic,
+#endif
+        qt_alphargbblit_generic,
         qt_rectfill_nonpremul_argb32
     },
     // Format_ARGB32_Premultiplied
@@ -6257,6 +6365,8 @@ DrawHelper qDrawHelper[QImage::NImageFormats] =
         qt_rectfill_fp32x4
     },
 };
+
+static_assert(std::size(qDrawHelper) == QImage::NImageFormats);
 
 #if !defined(Q_PROCESSOR_X86)
 void qt_memfill64(quint64 *dest, quint64 color, qsizetype count)

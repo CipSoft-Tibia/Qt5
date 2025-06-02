@@ -23,52 +23,107 @@ static Q_LOGGING_CATEGORY(qLcMediaDataHolder, "qt.multimedia.ffmpeg.mediadatahol
 
 namespace QFFmpeg {
 
-static std::optional<qint64> streamDuration(const AVStream &stream)
+static std::optional<TrackDuration> streamDuration(const AVStream &stream)
 {
-    const auto &factor = stream.time_base;
-
-    if (stream.duration > 0 && factor.num > 0 && factor.den > 0) {
-        return qint64(1000000) * stream.duration * factor.num / factor.den;
-    }
+    if (stream.duration > 0)
+        return toTrackDuration(AVStreamDuration(stream.duration), &stream);
 
     // In some cases ffmpeg reports negative duration that is definitely invalid.
     // However, the correct duration may be read from the metadata.
 
-    if (stream.duration < 0) {
+    if (stream.duration < 0 && stream.duration != AV_NOPTS_VALUE) {
         qCWarning(qLcMediaDataHolder) << "AVStream duration" << stream.duration
                                       << "is invalid. Taking it from the metadata";
     }
 
     if (const auto duration = av_dict_get(stream.metadata, "DURATION", nullptr, 0)) {
         const auto time = QTime::fromString(QString::fromUtf8(duration->value));
-        return qint64(1000) * time.msecsSinceStartOfDay();
+        return TrackDuration(qint64(1000) * time.msecsSinceStartOfDay());
     }
 
     return {};
 }
 
-static int streamOrientation(const AVStream *stream)
+static QTransform displayMatrixToTransform(const int32_t *displayMatrix)
+{
+    // displayMatrix is stored as
+    //
+    //  . -- X axis
+    //  |
+    //  |    | a b u |
+    //  Y    | c d v |
+    // axis  | x y w |
+    //
+    // where a, b, c, d, x, y are 16.16 fixed-point values,
+    // and u, v, w are 30.2 point values.
+    // Only a, b, c, d impacts on mirroring and rotation,
+    // so it's enough to propagate them to QTransform.
+    //
+    // If we were interested in getting proper XY scales,
+    // we would divide a,b,c,d by 2^16. The whole scale doesn't
+    // impact mirroring and rotation, so we don't do so.
+
+    auto toRotateMirrorValue = [displayMatrix](int index) {
+        // toRotateScaleValue would be:
+        // return displayMatrix[index] / qreal(1 << 16);
+        return displayMatrix[index];
+    };
+
+    return QTransform(toRotateMirrorValue(0), toRotateMirrorValue(1),
+                      toRotateMirrorValue(3), toRotateMirrorValue(4),
+                      0, 0);
+}
+
+static VideoTransformation streamTransformation(const AVStream *stream)
 {
     Q_ASSERT(stream);
 
     using SideDataSize = decltype(AVPacketSideData::size);
     constexpr SideDataSize displayMatrixSize = sizeof(int32_t) * 9;
-    const auto *sideData = streamSideData(stream, AV_PKT_DATA_DISPLAYMATRIX);
+    const AVPacketSideData *sideData = streamSideData(stream, AV_PKT_DATA_DISPLAYMATRIX);
     if (!sideData || sideData->size < displayMatrixSize)
-        return 0;
+        return {};
 
-    auto displayMatrix = reinterpret_cast<const int32_t *>(sideData->data);
-    auto rotation = static_cast<int>(std::round(av_display_rotation_get(displayMatrix)));
-    // Convert counterclockwise rotation angle to clockwise, restricted to 0, 90, 180 and 270
-    if (rotation % 90 != 0)
-        return 0;
-    return rotation < 0 ? -rotation % 360 : -rotation % 360 + 360;
+    const auto displayMatrix = reinterpret_cast<const int32_t *>(sideData->data);
+    const QTransform transform = displayMatrixToTransform(displayMatrix);
+    const VideoTransformationOpt result = qVideoTransformationFromMatrix(transform);
+    if (!result) {
+        qCWarning(qLcMediaDataHolder)
+                << "Video stream contains malformed display matrix" << transform;
+        return {};
+    }
+    return *result;
 }
 
-QtVideo::Rotation MediaDataHolder::rotation() const
+static bool colorTransferSupportsHdr(const AVStream *stream)
 {
-    int orientation = m_metaData.value(QMediaMetaData::Orientation).toInt();
-    return static_cast<QtVideo::Rotation>(orientation);
+    if (!stream)
+        return false;
+
+    const AVCodecParameters *codecPar = stream->codecpar;
+    if (!codecPar)
+        return false;
+
+    const QVideoFrameFormat::ColorTransfer colorTransfer = fromAvColorTransfer(codecPar->color_trc);
+
+    // Assume that content is using HDR if the color transfer supports high
+    // dynamic range. The video may still not utilize the extended range,
+    // but we can't determine the actual range without decoding frames.
+    return colorTransfer == QVideoFrameFormat::ColorTransfer_ST2084
+            || colorTransfer == QVideoFrameFormat::ColorTransfer_STD_B67;
+}
+
+VideoTransformation MediaDataHolder::transformation() const
+{
+    // TODO: Add QMediaMetaData::Mirrored and take from it and QMediaMetaData::Orientation:
+    // int orientation = m_metaData.value(QMediaMetaData::Orientation).toInt();
+    // return static_cast<QtVideo::Rotation>(orientation);
+
+    const int streamIndex = m_currentAVStreamIndex[QPlatformMediaPlayer::VideoStream];
+    if (streamIndex < 0)
+        return {};
+
+    return streamTransformation(m_context->streams[streamIndex]);
 }
 
 AVFormatContext *MediaDataHolder::avContext()
@@ -96,7 +151,9 @@ static void insertMediaData(QMediaMetaData &metaData, QPlatformMediaPlayer::Trac
         metaData.insert(QMediaMetaData::Resolution, QSize(codecPar->width, codecPar->height));
         metaData.insert(QMediaMetaData::VideoFrameRate,
                         qreal(stream->avg_frame_rate.num) / qreal(stream->avg_frame_rate.den));
-        metaData.insert(QMediaMetaData::Orientation, QVariant::fromValue(streamOrientation(stream)));
+        metaData.insert(QMediaMetaData::Orientation,
+                        QVariant::fromValue(streamTransformation(stream).rotation));
+        metaData.insert(QMediaMetaData::HasHdrContent, colorTransferSupportsHdr(stream));
         break;
     case QPlatformMediaPlayer::AudioStream:
         metaData.insert(QMediaMetaData::AudioBitRate, (int)codecPar->bit_rate);
@@ -138,13 +195,20 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
                     QMediaPlayer::ResourceError, QLatin1String("Could not open source device.")
                 };
         }
-        if (!stream->isSequential())
+
+        auto seek = &seekQIODevice;
+
+        if (!stream->isSequential()) {
             stream->seek(0);
+        } else {
+            context->ctx_flags |= AVFMTCTX_UNSEEKABLE;
+            seek = nullptr;
+        }
 
         constexpr int bufferSize = 32768;
         unsigned char *buffer = (unsigned char *)av_malloc(bufferSize);
         context->pb = avio_alloc_context(buffer, bufferSize, false, stream, &readQIODevice, nullptr,
-                                         &seekQIODevice);
+                                         seek);
     }
 
     AVDictionaryHolder dict;
@@ -177,6 +241,9 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
         else if (ret == AVERROR(EINVAL) || ret == AVERROR_INVALIDDATA)
             code = QMediaPlayer::FormatError;
 
+        qCWarning(qLcMediaDataHolder)
+                << "Could not open media. FFmpeg error description:" << err2str(ret);
+
         return MediaDataHolder::ContextError{ code, QMediaPlayer::tr("Could not open file") };
     }
 
@@ -188,11 +255,13 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
         };
     }
 
-#ifndef QT_NO_DEBUG
-    av_dump_format(context.get(), 0, url.constData(), 0);
-#endif
+    if (qLcMediaDataHolder().isInfoEnabled())
+        av_dump_format(context.get(), 0, url.constData(), 0);
+
+
     return context;
 }
+
 } // namespace
 
 MediaDataHolder::Maybe MediaDataHolder::create(const QUrl &url, QIODevice *stream,
@@ -226,6 +295,13 @@ MediaDataHolder::MediaDataHolder(AVFormatContextUPtr context,
         if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC)
             continue; // Ignore attached picture streams because we treat them as metadata
 
+        if (stream->time_base.num <= 0 || stream->time_base.den <= 0) {
+            // An invalid stream timebase is not expected to be given by FFmpeg
+            qCWarning(qLcMediaDataHolder) << "A stream for the track type" << trackType
+                                          << "has an invalid timebase:" << stream->time_base;
+            continue;
+        }
+
         auto metaData = QFFmpegMetaData::fromAVMetaData(stream->metadata);
         const bool isDefault = stream->disposition & AV_DISPOSITION_DEFAULT;
 
@@ -238,7 +314,7 @@ MediaDataHolder::MediaDataHolder(AVFormatContextUPtr context,
 
         if (auto duration = streamDuration(*stream)) {
             m_duration = qMax(m_duration, *duration);
-            metaData.insert(QMediaMetaData::Duration, *duration / qint64(1000));
+            metaData.insert(QMediaMetaData::Duration, toUserDuration(*duration).get());
         }
 
         m_streamMap[trackType].append({ (int)i, isDefault, metaData });
@@ -246,8 +322,8 @@ MediaDataHolder::MediaDataHolder(AVFormatContextUPtr context,
 
     // With some media files, streams may be lacking duration info. Let's
     // get it from ffmpeg's duration estimation instead.
-    if (m_duration == 0 && m_context->duration > 0ll) {
-        m_duration = m_context->duration;
+    if (m_duration == TrackDuration(0) && m_context->duration > 0ll) {
+        m_duration = toTrackDuration(AVContextDuration(m_context->duration));
     }
 
     for (auto trackType :
@@ -298,7 +374,7 @@ QImage getAttachedPicture(const AVFormatContext *context)
     return {};
 }
 
-}
+} // namespace
 
 void MediaDataHolder::updateMetaData()
 {
@@ -310,8 +386,8 @@ void MediaDataHolder::updateMetaData()
     m_metaData = QFFmpegMetaData::fromAVMetaData(m_context->metadata);
     m_metaData.insert(QMediaMetaData::FileFormat,
                       QVariant::fromValue(QFFmpegMediaFormatInfo::fileFormatForAVInputFormat(
-                              m_context->iformat)));
-    m_metaData.insert(QMediaMetaData::Duration, m_duration / qint64(1000));
+                              *m_context->iformat)));
+    m_metaData.insert(QMediaMetaData::Duration, toUserDuration(m_duration).get());
 
     if (!m_cachedThumbnail.has_value())
         m_cachedThumbnail = getAttachedPicture(m_context.get());

@@ -5,6 +5,7 @@
 #include "device/fido/cable/v2_test_util.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/base64url.h"
@@ -14,7 +15,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_piece.h"
 #include "base/task/sequenced_task_runner.h"
 #include "components/cbor/reader.h"
 #include "components/cbor/values.h"
@@ -52,6 +52,7 @@ class TestNetworkContext : public network::TestNetworkContext {
       const GURL& url,
       const std::vector<std::string>& requested_protocols,
       const net::SiteForCookies& site_for_cookies,
+      bool has_storage_access,
       const net::IsolationInfo& isolation_info,
       std::vector<network::mojom::HttpHeaderPtr> additional_headers,
       int32_t process_id,
@@ -69,7 +70,7 @@ class TestNetworkContext : public network::TestNetworkContext {
       override {
     CHECK(url.has_path());
 
-    base::StringPiece path = url.path_piece();
+    std::string_view path = url.path_piece();
     static const char kNewPrefix[] = "/cable/new/";
     static const char kConnectPrefix[] = "/cable/connect/";
     static const char kContactPrefix[] = "/cable/contact/";
@@ -414,9 +415,6 @@ class TestPlatform : public authenticator::Platform {
             ? false
             : params->authenticator_selection->resident_key ==
                   ResidentKeyRequirement::kRequired;
-    if (params->device_public_key) {
-      request.device_public_key.emplace();
-    }
     request.prf = params->prf_enable;
 
     std::pair<device::CtapRequestCommand, absl::optional<cbor::Value>>
@@ -438,9 +436,6 @@ class TestPlatform : public authenticator::Platform {
     CHECK_EQ(request.client_data_hash.size(), params->challenge.size());
     memcpy(request.client_data_hash.data(), params->challenge.data(),
            params->challenge.size());
-    if (params->extensions && params->extensions->device_public_key) {
-      request.device_public_key.emplace();
-    }
     if (params->extensions) {
       // The PRF inputs are hashed when they are sent over CTAP. So the
       // `prf_inputs_hashed` flag should be set iff `prf_inputs` is non-empty.
@@ -522,7 +517,7 @@ class TestPlatform : public authenticator::Platform {
     if (!result || result->empty()) {
       std::move(callback).Run(
           static_cast<uint32_t>(device::CtapDeviceResponseCode::kCtap2ErrOther),
-          base::span<const uint8_t>(), absl::nullopt, /* prf_enabled= */ false);
+          base::span<const uint8_t>(), /* prf_enabled= */ false);
       return;
     }
     const base::span<const uint8_t> payload = *result;
@@ -531,7 +526,7 @@ class TestPlatform : public authenticator::Platform {
         payload[0] !=
             static_cast<uint8_t>(device::CtapDeviceResponseCode::kSuccess)) {
       std::move(callback).Run(payload[0], base::span<const uint8_t>(),
-                              absl::nullopt, /* prf_enabled= */ false);
+                              /* prf_enabled= */ false);
       return;
     }
 
@@ -544,17 +539,11 @@ class TestPlatform : public authenticator::Platform {
                     in_map.find(cbor::Value(2))->second.GetBytestring());
     out_map.emplace("attStmt", in_map.find(cbor::Value(3))->second.GetMap());
 
-    absl::optional<base::span<const uint8_t>> device_public_key_signature;
     bool prf_enabled = false;
     const auto& unsigned_extension_outputs_it = in_map.find(cbor::Value(6));
     if (unsigned_extension_outputs_it != in_map.end()) {
       const cbor::Value::MapValue& unsigned_extension_outputs =
           unsigned_extension_outputs_it->second.GetMap();
-      const auto dpk_it = unsigned_extension_outputs.find(
-          cbor::Value(kExtensionDevicePublicKey));
-      if (dpk_it != unsigned_extension_outputs.end()) {
-        device_public_key_signature = dpk_it->second.GetBytestring();
-      }
       const auto prf_it =
           unsigned_extension_outputs.find(cbor::Value(kExtensionPRF));
       if (prf_it != unsigned_extension_outputs.end()) {
@@ -569,7 +558,7 @@ class TestPlatform : public authenticator::Platform {
 
     std::move(callback).Run(
         static_cast<uint32_t>(device::CtapDeviceResponseCode::kSuccess),
-        *attestation_obj, device_public_key_signature, prf_enabled);
+        *attestation_obj, prf_enabled);
   }
 
   void OnGetAssertionResult(GetAssertionCallback callback,
@@ -591,6 +580,8 @@ class TestPlatform : public authenticator::Platform {
 
     auto response = blink::mojom::GetAssertionAuthenticatorResponse::New();
     response->info = blink::mojom::CommonCredentialInfo::New();
+    response->extensions =
+        blink::mojom::AuthenticationExtensionsClientOutputs::New();
 
     absl::optional<cbor::Value> v = cbor::Reader::Read(payload.subspan(1));
     const cbor::Value::MapValue& in_map = v->GetMap();
@@ -614,13 +605,6 @@ class TestPlatform : public authenticator::Platform {
     if (unsigned_extension_outputs_it != in_map.end()) {
       const cbor::Value::MapValue& unsigned_extension_outputs =
           unsigned_extension_outputs_it->second.GetMap();
-      const auto dpk_it = unsigned_extension_outputs.find(
-          cbor::Value(kExtensionDevicePublicKey));
-      if (dpk_it != unsigned_extension_outputs.end()) {
-        response->device_public_key =
-            blink::mojom::DevicePublicKeyResponse::New();
-        response->device_public_key->signature = dpk_it->second.GetBytestring();
-      }
       const auto prf_it =
           unsigned_extension_outputs.find(cbor::Value(kExtensionPRF));
       if (prf_it != unsigned_extension_outputs.end()) {
@@ -637,7 +621,7 @@ class TestPlatform : public authenticator::Platform {
         if (second_it != results_from_authenticator.end()) {
           results_for_response->second = second_it->second.GetBytestring();
         }
-        response->prf_results = std::move(results_for_response);
+        response->extensions->prf_results = std::move(results_for_response);
       }
     }
 
@@ -688,8 +672,9 @@ class LateLinkingDevice : public authenticator::Transaction {
 
     network_context_->CreateWebSocket(
         target, {device::kCableWebSocketProtocol}, net::SiteForCookies(),
-        net::IsolationInfo(), /*additional_headers=*/{},
-        network::mojom::kBrowserProcessId, url::Origin::Create(target),
+        /*has_storage_access=*/false, net::IsolationInfo(),
+        /*additional_headers=*/{}, network::mojom::kBrowserProcessId,
+        url::Origin::Create(target),
         network::mojom::kWebSocketOptionBlockAllCookies,
         net::MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS),
         websocket_client_->BindNewHandshakeClientPipe(),
@@ -762,7 +747,6 @@ class LateLinkingDevice : public authenticator::Transaction {
         handshake_hash_ = result->second;
         websocket_client_->Write(response);
         crypter_ = std::move(result->first);
-        crypter_->UseNewConstruction();
 
         cbor::Value::MapValue post_handshake_msg;
         post_handshake_msg.emplace(1, BuildGetInfoResponse());
@@ -907,8 +891,9 @@ class HandshakeErrorDevice : public authenticator::Transaction {
 
     network_context_->CreateWebSocket(
         target, {device::kCableWebSocketProtocol}, net::SiteForCookies(),
-        net::IsolationInfo(), /*additional_headers=*/{},
-        network::mojom::kBrowserProcessId, url::Origin::Create(target),
+        /*has_storage_access=*/false, net::IsolationInfo(),
+        /*additional_headers=*/{}, network::mojom::kBrowserProcessId,
+        url::Origin::Create(target),
         network::mojom::kWebSocketOptionBlockAllCookies,
         net::MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS),
         websocket_client_->BindNewHandshakeClientPipe(),

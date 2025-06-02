@@ -15,6 +15,7 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/theme_source.h"
 #include "chrome/browser/ui/webui/welcome/helpers.h"
+#include "chrome/browser/ui/webui/whats_new/whats_new_util.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/test/base/in_process_browser_test.h"
@@ -22,14 +23,12 @@
 #include "components/enterprise/browser/controller/fake_browser_dm_token_storage.h"
 #include "components/history_clusters/core/features.h"
 #include "components/nacl/common/buildflags.h"
+#include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/password_manager/core/common/password_manager_features.h"
+#include "components/search/ntp_features.h"
 #include "components/user_notes/user_notes_features.h"
 #include "content/public/browser/navigation_details.h"
 #include "content/public/browser/navigation_handle.h"
-#include "content/public/browser/notification_registrar.h"
-#include "content/public/browser/notification_service.h"
-#include "content/public/browser/notification_source.h"
-#include "content/public/browser/notification_types.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
@@ -181,10 +180,13 @@ class ChromeURLDataManagerWebUITrustedTypesTest
  public:
   ChromeURLDataManagerWebUITrustedTypesTest() {
     std::vector<base::test::FeatureRef> enabled_features;
-    enabled_features.push_back(features::kChromeWhatsNewUI);
+    enabled_features.push_back(whats_new::kForceEnabled);
     enabled_features.push_back(history_clusters::kSidePanelJourneys);
     enabled_features.push_back(features::kSupportTool);
     enabled_features.push_back(features::kCustomizeChromeSidePanel);
+    enabled_features.push_back(ntp_features::kCustomizeChromeWallpaperSearch);
+    enabled_features.push_back(
+        optimization_guide::features::kOptimizationGuideModelExecution);
     enabled_features.push_back(features::kReadAnything);
     enabled_features.push_back(user_notes::kUserNotes);
 
@@ -195,13 +197,11 @@ class ChromeURLDataManagerWebUITrustedTypesTest
 #endif
 #if BUILDFLAG(IS_CHROMEOS_ASH)
     enabled_features.push_back(ash::features::kDriveFsMirroring);
-    enabled_features.push_back(ash::features::kShimlessRMADiagnosticPage);
     enabled_features.push_back(ash::features::kShimlessRMAOsUpdate);
     enabled_features.push_back(chromeos::features::kUploadOfficeToCloud);
 #else
     enabled_features.push_back(kForYouFre);
 #endif
-    enabled_features.push_back(media::kUseMediaHistoryStore);
     feature_list_.InitWithFeatures(enabled_features, {});
   }
 
@@ -328,11 +328,9 @@ static constexpr const char* const kChromeUrls[] = {
     "chrome://internals/session-service",
     "chrome://internals/user-education",
     "chrome://interstitials/ssl",
-    "chrome://invalidations",
     "chrome://local-state",
     "chrome://management",
     "chrome://media-engagement",
-    "chrome://media-history",
     "chrome://media-internals",
     "chrome://media-router-internals",
     "chrome://metrics-internals",
@@ -354,7 +352,6 @@ static constexpr const char* const kChromeUrls[] = {
     "chrome://privacy-sandbox-dialog/?debug",
     "chrome://process-internals",
     "chrome://quota-internals",
-    "chrome-untrusted://read-anything-side-panel.top-chrome",
     "chrome://read-later.top-chrome",
     "chrome://reset-password",
     "chrome://safe-browsing",
@@ -414,10 +411,15 @@ static constexpr const char* const kChromeUrls[] = {
     "chrome://assistant-optin/",
     "chrome://bluetooth-pairing",
     "chrome://certificate-manager/",
+
     // Crashes because message handler is not registered outside of the dialog
     // for confirm password change UI.
     // "chrome://confirm-password-change",
+
+    // TODO(b/300875336): Navigating to chrome://cloud-upload causes an
+    // assertion failure because there are no dialog args.
     "chrome://cloud-upload",
+
     "chrome://connectivity-diagnostics",
     "chrome://crostini-installer",
     "chrome://crostini-upgrader",
@@ -427,7 +429,6 @@ static constexpr const char* const kChromeUrls[] = {
     "chrome://emoji-picker",
     "chrome://family-link-user-internals",
     "chrome://file-manager",
-    "chrome://guest-os-installer",
     "chrome://help-app",
     "chrome://linux-proxy-config",
     "chrome://manage-mirrorsync",
@@ -466,7 +467,7 @@ static constexpr const char* const kChromeUrls[] = {
 #endif
 #if !BUILDFLAG(IS_CHROMEOS_ASH)
     // Note: Disabled because a DCHECK fires when directly visiting the URL.
-    // "chrome://enterprise-profile-welcome",
+    // "chrome://managed-user-profile-notice",
     "chrome://intro",
     "chrome://profile-customization/?debug",
     "chrome://signin-email-confirmation",

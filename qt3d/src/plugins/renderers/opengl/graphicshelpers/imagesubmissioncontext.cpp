@@ -222,7 +222,6 @@ void ImageSubmissionContext::deactivateImages()
         if (m_activeImages[u].pinned) {
             m_activeImages[u].pinned = false;
             m_activeImages[u].score = qMax(m_activeImages[u].score - 1, 0);
-            return;
         }
     }
 }

@@ -16,13 +16,16 @@
 //
 
 #include <QtGrpcQuick/qtgrpcquickexports.h>
-#include <QtCore/qobject.h>
-#include <QtGrpc/qgrpcchanneloptions.h>
-#include <QtQml/qqmlregistration.h>
 
+#include <QtGrpc/qgrpcchanneloptions.h>
+#include <QtGrpc/qtgrpcnamespace.h>
+
+#include <QtQmlIntegration/qqmlintegration.h>
 #if QT_CONFIG(ssl)
-#include <QtQmlNetwork/private/qqmlsslconfiguration_p.h>
-#endif // QT_CONFIG(ssl)
+#  include <QtQmlNetwork/private/qqmlsslconfiguration_p.h>
+#endif
+
+#include <QtCore/qobject.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -34,39 +37,49 @@ class Q_GRPCQUICK_EXPORT QQmlGrpcChannelOptions : public QObject
     QML_NAMED_ELEMENT(GrpcChannelOptions)
     QML_ADDED_IN_VERSION(6, 7)
 
-    Q_PROPERTY(QUrl host READ host WRITE setHost NOTIFY hostChanged REQUIRED)
-    Q_PROPERTY(qint64 deadline READ deadline WRITE setDeadline NOTIFY deadlineChanged)
+    Q_PROPERTY(qint64 deadlineTimeout READ deadlineTimeout WRITE setDeadlineTimeout NOTIFY
+                   deadlineTimeoutChanged)
     Q_PROPERTY(QQmlGrpcMetadata *metadata READ metadata WRITE setMetadata NOTIFY metadataChanged)
+    Q_PROPERTY(QtGrpc::SerializationFormat serializationFormat
+                   READ serializationFormat WRITE setSerializationFormat
+                       NOTIFY serializationFormatChanged)
 #if QT_CONFIG(ssl)
     Q_PROPERTY(QQmlSslConfiguration sslConfiguration READ sslConfiguration
                        WRITE setSslConfiguration NOTIFY sslConfigurationChanged)
 #endif // QT_CONFIG(ssl)
 
 public:
-    QQmlGrpcChannelOptions(QObject *parent = nullptr);
+    explicit QQmlGrpcChannelOptions(QObject *parent = nullptr);
+    ~QQmlGrpcChannelOptions() override;
 
-    const QGrpcChannelOptions &options() const;
-    QUrl host() const;
-    void setHost(const QUrl &newUrl);
-    qint64 deadline() const;
-    void setDeadline(qint64 value);
+    const QGrpcChannelOptions &options() const & noexcept;
+    void options() && = delete;
+
+    qint64 deadlineTimeout() const;
+    void setDeadlineTimeout(qint64 value);
+
     QQmlGrpcMetadata *metadata() const;
     void setMetadata(QQmlGrpcMetadata *value);
+
+    QtGrpc::SerializationFormat serializationFormat() const;
+    void setSerializationFormat(QtGrpc::SerializationFormat format);
+
 #if QT_CONFIG(ssl)
     QQmlSslConfiguration sslConfiguration() const;
     void setSslConfiguration(const QQmlSslConfiguration &config);
 #endif // QT_CONFIG(ssl)
 
-signals:
-    void hostChanged();
-    void deadlineChanged();
+Q_SIGNALS:
+    void deadlineTimeoutChanged();
     void metadataChanged();
+    void serializationFormatChanged();
 #if QT_CONFIG(ssl)
     void sslConfigurationChanged();
 #endif // QT_CONFIG(ssl)
 
 private:
     Q_DECLARE_PRIVATE(QQmlGrpcChannelOptions)
+    Q_DISABLE_COPY_MOVE(QQmlGrpcChannelOptions)
 };
 
 QT_END_NAMESPACE

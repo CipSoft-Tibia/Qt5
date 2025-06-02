@@ -8,7 +8,7 @@ project(test_javascript_files)
 
 find_package(Qt6 REQUIRED COMPONENTS Qml)
 
-qt_standard_project_setup(REQUIRES 6.7)
+qt_standard_project_setup(REQUIRES 6.8)
 
 set_source_files_properties(Excluded.js PROPERTIES
     QT_QML_SKIP_QMLDIR_ENTRY TRUE

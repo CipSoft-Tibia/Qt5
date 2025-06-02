@@ -79,10 +79,8 @@ QMediaFormat::VideoCodec QGstreamerFormatInfo::videoCodecForCaps(QGstStructureVi
     if (name == "x-h264"sv)
         return QMediaFormat::VideoCodec::H264;
 
-#if GST_CHECK_VERSION(1, 17, 0) // x265enc seems to be broken on 1.16 at least
     if (name == "x-h265"sv)
         return QMediaFormat::VideoCodec::H265;
-#endif
 
     if (name == "x-vp8"sv)
         return QMediaFormat::VideoCodec::VP8;
@@ -193,7 +191,7 @@ static QPair<QList<QMediaFormat::AudioCodec>, QList<QMediaFormat::VideoCodec>> g
     for (GstElementFactory *factory :
          QGstUtils::GListRangeAdaptor<GstElementFactory *>(elementList)) {
         for (GstStaticPadTemplate *padTemplate :
-             QGstUtils::GListRangeAdaptor<GstStaticPadTemplate *>(
+             QGstUtils::GListConstRangeAdaptor<GstStaticPadTemplate *>(
                      gst_element_factory_get_static_pad_templates(factory))) {
             if (padTemplate->direction == padDirection) {
                 auto caps = QGstCaps(gst_static_caps_get(&padTemplate->static_caps), QGstCaps::HasRef);
@@ -237,7 +235,7 @@ QGstreamerFormatInfo::getCodecMaps(QMediaFormat::ConversionMode conversionMode,
         QList<QMediaFormat::FileFormat> fileFormats;
 
         for (GstStaticPadTemplate *padTemplate :
-             QGstUtils::GListRangeAdaptor<GstStaticPadTemplate *>(
+             QGstUtils::GListConstRangeAdaptor<GstStaticPadTemplate *>(
                      gst_element_factory_get_static_pad_templates(factory))) {
 
             // Check pads on data side for file formats, except for parsers check source side
@@ -262,7 +260,7 @@ QGstreamerFormatInfo::getCodecMaps(QMediaFormat::ConversionMode conversionMode,
         QList<QMediaFormat::VideoCodec> videoCodecs;
 
         for (GstStaticPadTemplate *padTemplate :
-             QGstUtils::GListRangeAdaptor<GstStaticPadTemplate *>(
+             QGstUtils::GListConstRangeAdaptor<GstStaticPadTemplate *>(
                      gst_element_factory_get_static_pad_templates(factory))) {
 
             // check the other side for supported inputs/outputs
@@ -327,7 +325,7 @@ static QList<QImageCapture::FileFormat> getImageFormatList()
          QGstUtils::GListRangeAdaptor<GstElementFactory *>(elementList)) {
 
         for (GstStaticPadTemplate *padTemplate :
-             QGstUtils::GListRangeAdaptor<GstStaticPadTemplate *>(
+             QGstUtils::GListConstRangeAdaptor<GstStaticPadTemplate *>(
                      gst_element_factory_get_static_pad_templates(factory))) {
             if (padTemplate->direction == GST_PAD_SRC) {
                 QGstCaps caps = QGstCaps(gst_static_caps_get(&padTemplate->static_caps), QGstCaps::HasRef);

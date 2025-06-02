@@ -101,7 +101,7 @@ WebrtcDesktopCapturePrivateChooseDesktopMediaFunction::Run() {
     return RespondNow(Error(kTargetNotFoundError));
   }
 
-  GURL origin = rfh->GetLastCommittedURL().DeprecatedGetOriginAsURL();
+  const url::Origin origin = rfh->GetLastCommittedOrigin();
   content::WebContents* web_contents =
       content::WebContents::FromRenderFrameHost(rfh);
   if (!web_contents) {
@@ -125,7 +125,7 @@ WebrtcDesktopCapturePrivateChooseDesktopMediaFunction::Run() {
   extensions::ExtensionHost *host = extensions::ProcessManager::Get(browser_context())->GetBackgroundHostForExtension(extension_id());
   host->RequestMediaAccessPermission(web_contents, request,
                                      base::BindOnce(&WebrtcDesktopCapturePrivateChooseDesktopMediaFunction::ProcessAccessRequestResponse,
-                                                    this, main_frame, origin));
+                                                    this, main_frame, origin.GetURL()));
 
   return RespondLater();
 }

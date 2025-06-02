@@ -16,8 +16,6 @@
 #include "qdocdatabase.h"
 #include "typedefnode.h"
 
-#include <QtCore/qcryptographichash.h>
-#include <QtCore/qdebug.h>
 #include <QtCore/qhash.h>
 
 QT_BEGIN_NAMESPACE
@@ -88,6 +86,8 @@ void HelpProjectWriter::reset(const QString &defaultFileName, Generator *g)
             subproject.m_sortPages = config.get(subprefix + "sortPages").asBool();
             subproject.m_type = config.get(subprefix + "type").asString();
             readSelectors(subproject, config.get(subprefix + "selectors").asStringList());
+            subprefix.chop(1);
+            subproject.m_prefix = subprefix; // Stored for error reporting purposes
             project.m_subprojects.append(subproject);
         }
 
@@ -162,7 +162,7 @@ void HelpProjectWriter::addExtraFile(const QString &file)
 
 Keyword HelpProjectWriter::keywordDetails(const Node *node) const
 {
-    QString ref = m_gen->fullDocumentLocation(node, false);
+    QString ref = m_gen->fullDocumentLocation(node);
 
     if (node->parent() && !node->parent()->name().isEmpty()) {
         QString name = (node->isEnumType() || node->isTypedef())
@@ -202,7 +202,11 @@ bool HelpProjectWriter::generateSection(HelpProject &project, QXmlStreamWriter &
     if (!node->url().isEmpty() && !(project.m_includeIndexNodes && !node->url().startsWith("http")))
         return false;
 
-    if (node->isPrivate() || node->isInternal() || node->isDontDocument())
+    // Process (members of) unseen group nodes, i.e. nodes that use \ingroup <group_name> where
+    // \group group_name itself is not documented.
+    bool unseenGroup{node->isGroup() && !node->wasSeen()};
+
+    if ((node->isPrivate() || node->isInternal() || node->isDontDocument()) && !unseenGroup)
         return false;
 
     if (node->name().isEmpty())
@@ -216,15 +220,14 @@ bool HelpProjectWriter::generateSection(HelpProject &project, QXmlStreamWriter &
     // Only add nodes to the set for each subproject if they match a selector.
     // Those that match will be listed in the table of contents.
 
-    for (int i = 0; i < project.m_subprojects.size(); i++) {
-        SubProject subproject = project.m_subprojects[i];
+    for (auto &subproject : project.m_subprojects) {
         // No selectors: accept all nodes.
         if (subproject.m_selectors.isEmpty()) {
-            project.m_subprojects[i].m_nodes[objName] = node;
+            subproject.m_nodes.insert(objName, node);
         } else if (subproject.m_selectors.contains(node->nodeType())) {
             // Add all group members for '[group|module|qmlmodule]:name' selector
             if (node->isCollectionNode()) {
-                if (project.m_subprojects[i].m_groups.contains(node->name().toLower())) {
+                if (subproject.m_groups.contains(node->name().toLower())) {
                     const auto *cn = static_cast<const CollectionNode *>(node);
                     const auto members = cn->members();
                     for (const Node *m : members) {
@@ -232,19 +235,38 @@ bool HelpProjectWriter::generateSection(HelpProject &project, QXmlStreamWriter &
                             continue;
                         QString memberName =
                                 m->isTextPageNode() ? m->fullTitle() : m->fullDocumentName();
-                        project.m_subprojects[i].m_nodes[memberName] = m;
+                        subproject.m_nodes.insert(memberName, m);
                     }
                     continue;
-                } else if (!project.m_subprojects[i].m_groups.isEmpty()) {
+                } else if (!subproject.m_groups.isEmpty()) {
                     continue; // Node does not represent specified group(s)
                 }
             } else if (node->isTextPageNode()) {
                 if (node->isExternalPage() || node->fullTitle().isEmpty())
                     continue;
             }
-            project.m_subprojects[i].m_nodes[objName] = node;
+            subproject.m_nodes.insert(objName, node);
         }
     }
+
+    auto appendDocKeywords = [&](const Node *n) {
+        for (const auto *kw : n->doc().keywords()) {
+                if (!kw->string().isEmpty()) {
+                    QStringList ref_parts = m_gen->fullDocumentLocation(n).split('#'_L1);
+                    // Use keyword's custom anchor if it has one
+                    if (kw->count() > 1) {
+                        if (ref_parts.count() > 1)
+                            ref_parts.pop_back();
+                        ref_parts << kw->string(1);
+                    }
+                    project.m_keywords.append(Keyword(kw->string(), kw->string(),
+                            ref_parts.join('#'_L1)));
+                }
+            }
+    };
+    // Unseen group nodes require no further processing as they have no documentation
+    if (unseenGroup)
+        return false;
 
     switch (node->nodeType()) {
 
@@ -255,19 +277,7 @@ bool HelpProjectWriter::generateSection(HelpProject &project, QXmlStreamWriter &
         break;
     case Node::QmlType:
     case Node::QmlValueType:
-        if (node->doc().hasKeywords()) {
-            const auto keywords = node->doc().keywords();
-            for (const Atom *keyword : keywords) {
-                if (!keyword->string().isEmpty()) {
-                    project.m_keywords.append(Keyword(keyword->string(), keyword->string(),
-                                                      m_gen->fullDocumentLocation(node, false)));
-                }
-                else
-                    node->doc().location().warning(
-                            QStringLiteral("Bad keyword in %1")
-                                    .arg(m_gen->fullDocumentLocation(node, false)));
-            }
-        }
+        appendDocKeywords(node);
         project.m_keywords.append(keywordDetails(node));
         break;
 
@@ -291,7 +301,7 @@ bool HelpProjectWriter::generateSection(HelpProject &project, QXmlStreamWriter &
                 } else {
                     name = id = item.name();
                 }
-                QString ref = m_gen->fullDocumentLocation(node, false);
+                QString ref = m_gen->fullDocumentLocation(node);
                 project.m_keywords.append(Keyword(name, id, ref));
             }
         }
@@ -300,21 +310,8 @@ bool HelpProjectWriter::generateSection(HelpProject &project, QXmlStreamWriter &
     case Node::Group:
     case Node::Module:
     case Node::QmlModule: {
-        const auto *cn = static_cast<const CollectionNode *>(node);
-        if (!cn->fullTitle().isEmpty()) {
-            if (cn->doc().hasKeywords()) {
-                const auto keywords = cn->doc().keywords();
-                for (const Atom *keyword : keywords) {
-                    if (!keyword->string().isEmpty()) {
-                        project.m_keywords.append(
-                                Keyword(keyword->string(), keyword->string(),
-                                        m_gen->fullDocumentLocation(node, false)));
-                    } else
-                        cn->doc().location().warning(
-                                QStringLiteral("Bad keyword in %1")
-                                        .arg(m_gen->fullDocumentLocation(node, false)));
-                }
-            }
+        if (!node->fullTitle().isEmpty()) {
+            appendDocKeywords(node);
             project.m_keywords.append(keywordDetails(node));
         }
     } break;
@@ -359,7 +356,7 @@ bool HelpProjectWriter::generateSection(HelpProject &project, QXmlStreamWriter &
         // Use the location of any associated enum node in preference
         // to that of the typedef.
         if (enumNode)
-            typedefDetails.m_ref = m_gen->fullDocumentLocation(enumNode, false);
+            typedefDetails.m_ref = m_gen->fullDocumentLocation(enumNode);
 
         project.m_keywords.append(typedefDetails);
     } break;
@@ -371,21 +368,8 @@ bool HelpProjectWriter::generateSection(HelpProject &project, QXmlStreamWriter &
         // Page nodes (such as manual pages) contain subtypes, titles and other
         // attributes.
     case Node::Page: {
-        const auto *pn = static_cast<const PageNode *>(node);
-        if (!pn->fullTitle().isEmpty()) {
-            if (pn->doc().hasKeywords()) {
-                const auto keywords = pn->doc().keywords();
-                for (const Atom *keyword : keywords) {
-                    if (!keyword->string().isEmpty()) {
-                        project.m_keywords.append(
-                                Keyword(keyword->string(), keyword->string(),
-                                        m_gen->fullDocumentLocation(node, false)));
-                    } else {
-                        QString loc = m_gen->fullDocumentLocation(node, false);
-                        pn->doc().location().warning(QStringLiteral("Bad keyword in %1").arg(loc));
-                    }
-                }
-            }
+        if (!node->fullTitle().isEmpty()) {
+            appendDocKeywords(node);
             project.m_keywords.append(keywordDetails(node));
         }
         break;
@@ -430,6 +414,11 @@ void HelpProjectWriter::generateSections(HelpProject &project, QXmlStreamWriter 
             // Skip related non-members adopted by some other aggregate
             if (child->parent() != aggregate)
                 continue;
+            // Process unseen group nodes (even though they're marked internal)
+            if (child->isGroup() && !child->wasSeen()) {
+                childSet << child;
+                continue;
+            }
             if (child->isIndexNode() || child->isPrivate())
                 continue;
             if (child->isTextPageNode()) {
@@ -460,19 +449,6 @@ void HelpProjectWriter::generate()
         generateProject(project);
 }
 
-void HelpProjectWriter::writeHashFile(QFile &file)
-{
-    QCryptographicHash hash(QCryptographicHash::Sha1);
-    hash.addData(&file);
-
-    QFile hashFile(file.fileName() + ".sha1");
-    if (!hashFile.open(QFile::WriteOnly))
-        return;
-
-    hashFile.write(hash.result().toHex());
-    hashFile.close();
-}
-
 void HelpProjectWriter::writeSection(QXmlStreamWriter &writer, const QString &path,
                                      const QString &value)
 {
@@ -487,7 +463,7 @@ void HelpProjectWriter::writeSection(QXmlStreamWriter &writer, const QString &pa
  */
 void HelpProjectWriter::addMembers(HelpProject &project, QXmlStreamWriter &writer, const Node *node)
 {
-    QString href = m_gen->fullDocumentLocation(node, false);
+    QString href = m_gen->fullDocumentLocation(node);
     href = href.left(href.size() - 5);
     if (href.isEmpty())
         return;
@@ -498,7 +474,7 @@ void HelpProjectWriter::addMembers(HelpProject &project, QXmlStreamWriter &write
 
     // Do not generate a 'List of all members' for namespaces or header files,
     // but always generate it for derived classes and QML types (but not QML value types)
-    if (!node->isNamespace() && !node->isHeader() && !node->isQmlBasicType()
+    if (!node->isNamespace() && !node->isHeader() && !node->isQmlBasicType() && !node->isWrapper()
         && (derivedClass || node->isQmlType() || !project.m_memberStatus[node].isEmpty())) {
         QString membersPath = href + QStringLiteral("-members.html");
         writeSection(writer, membersPath, QStringLiteral("List of all members"));
@@ -511,7 +487,7 @@ void HelpProjectWriter::addMembers(HelpProject &project, QXmlStreamWriter &write
 
 void HelpProjectWriter::writeNode(HelpProject &project, QXmlStreamWriter &writer, const Node *node)
 {
-    QString href = m_gen->fullDocumentLocation(node, false);
+    QString href = m_gen->fullDocumentLocation(node);
     QString objName = node->name();
 
     switch (node->nodeType()) {
@@ -538,7 +514,7 @@ void HelpProjectWriter::writeNode(HelpProject &project, QXmlStreamWriter &writer
     } break;
 
     case Node::Namespace:
-        writeSection(writer, href, objName);
+        writeSection(writer, href, "%1 Namespace Reference"_L1.arg(objName));
         break;
 
     case Node::Example:
@@ -625,7 +601,7 @@ void HelpProjectWriter::generateProject(HelpProject &project)
         node = m_qdb->findNodeByNameAndType(QStringList("index.html"), &Node::isPageNode);
     QString indexPath;
     if (node)
-        indexPath = m_gen->fullDocumentLocation(node, false);
+        indexPath = m_gen->fullDocumentLocation(node);
     else
         indexPath = "index.html";
     writer.writeAttribute("ref", indexPath);
@@ -667,7 +643,7 @@ void HelpProjectWriter::generateProject(HelpProject &project)
 
                             const Node *page = m_qdb->findNodeForTarget(atom->string(), nullptr);
                             writer.writeStartElement("section");
-                            QString indexPath = m_gen->fullDocumentLocation(page, false);
+                            QString indexPath = m_gen->fullDocumentLocation(page);
                             writer.writeAttribute("ref", indexPath);
                             writer.writeAttribute("title", atom->linkText());
 
@@ -682,14 +658,17 @@ void HelpProjectWriter::generateProject(HelpProject &project)
                     atom = atom->next();
                 }
             } else
-                rootNode->doc().location().warning(
-                        QStringLiteral("Failed to find index: %1").arg(subproject.m_indexTitle));
+                Config::instance().location().warning(
+                        "Failed to find %1.indexTitle '%2'"_L1.arg(subproject.m_prefix, subproject.m_indexTitle));
 
         } else {
 
             writer.writeStartElement("section");
             QString indexPath = m_gen->fullDocumentLocation(
-                    m_qdb->findNodeForTarget(subproject.m_indexTitle, nullptr), false);
+                    m_qdb->findNodeForTarget(subproject.m_indexTitle, nullptr));
+            if (indexPath.isEmpty() && !subproject.m_indexTitle.isEmpty())
+                Config::instance().location().warning(
+                        "Failed to find %1.indexTitle '%2'"_L1.arg(subproject.m_prefix, subproject.m_indexTitle));
             writer.writeAttribute("ref", indexPath);
             writer.writeAttribute("title", subproject.m_title);
 
@@ -779,10 +758,6 @@ void HelpProjectWriter::generateProject(HelpProject &project)
     writer.writeEndElement(); // QtHelpProject
     writer.writeEndDocument();
     file.close();
-    if (file.open(QFile::ReadOnly)) {
-        writeHashFile(file);
-        file.close();
-    }
 }
 
 QT_END_NAMESPACE

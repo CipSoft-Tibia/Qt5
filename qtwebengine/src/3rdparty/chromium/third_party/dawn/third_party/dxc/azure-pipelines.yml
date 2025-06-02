@@ -1,3 +1,7 @@
+trigger:
+  - main
+  - release*
+  
 resources:
 - repo: self
 
@@ -34,10 +38,6 @@ stages:
         call utils\hct\hctstart.cmd %HLSL_SRC_DIR% %HLSL_BLD_DIR%
         call utils\hct\hcttest.cmd -$(configuration) noexec
       displayName: 'DXIL Tests'
-    - script: |
-        call utils\hct\hctstart.cmd %HLSL_SRC_DIR% %HLSL_BLD_DIR%
-        call utils\hct\hcttest.cmd -$(configuration) spirv_only
-      displayName: 'SPIRV Tests'
 
   - job: Nix
     timeoutInMinutes: 90
@@ -53,14 +53,15 @@ stages:
           configuration: Release
           CC: clang
           CXX: clang++
-          CMAKE_OPTS: -DLLVM_ENABLE_WERROR=On
+          CMAKE_OPTS: -DLLVM_ENABLE_WERROR=On -DLLVM_USE_SANITIZER=Address,Undefined -DLLVM_ENABLE_LIBCXX=On -DLLVM_USE_LINKER=lld
+          CHECK_ALL_ENV: ASAN_OPTIONS=alloc_dealloc_mismatch=0
           OS: Linux
         Linux_Clang_Debug:
           image: ${{ variables.linux }}
           configuration: Debug
           CC: clang
           CXX: clang++
-          CMAKE_OPTS: -DLLVM_ENABLE_WERROR=On
+          CMAKE_OPTS: -DLLVM_ENABLE_WERROR=On -DLLVM_USE_LINKER=lld
         Linux_Gcc_Release:
           image: ${{ variables.linux }}
           configuration: Release
@@ -108,7 +109,7 @@ stages:
       displayName: 'Installing dependencies'
       condition: eq(variables['image'], variables['macOS'])
     - bash: |
-        cmake -B build -G Ninja $BUILD_SOURCESDIRECTORY -DLLVM_LIT_ARGS=--xunit-xml-output=testresults.xunit.xml -C $BUILD_SOURCESDIRECTORY/cmake/caches/PredefinedParams.cmake -DSPIRV_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=$(configuration) -DCMAKE_C_COMPILER=$(CC) -DCMAKE_CXX_COMPILER=$(CXX) $(CMAKE_OPTS)
+        cmake -B build -G Ninja $BUILD_SOURCESDIRECTORY -DLLVM_LIT_ARGS='-v --xunit-xml-output=testresults.xunit.xml' -C $BUILD_SOURCESDIRECTORY/cmake/caches/PredefinedParams.cmake -DSPIRV_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=$(configuration) -DCMAKE_C_COMPILER=$(CC) -DCMAKE_CXX_COMPILER=$(CXX) $(CMAKE_OPTS)
       displayName: 'Running Cmake'
     - bash: |
         ninja -C build test-depends
@@ -120,7 +121,7 @@ stages:
         ls -ld $AGENT_BUILDDIRECTORY
         ls -ld $BUILD_SOURCESDIRECTORY
       displayName: 'Smoke tests'
-    - bash: ninja -C build check-all
+    - bash: $(CHECK_ALL_ENV) ninja -C build check-all
       displayName: 'DXC tests'
     - task: PublishTestResults@2
       inputs:

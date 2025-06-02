@@ -34,9 +34,6 @@ endif()
 
 project(LLVM)
 
-# This requires a more recent version than CMake 3.4 but is a noop in prior versions. # HLSL Change
-set(VS_STARTUP_PROJECT "dndxc" CACHE STRING "VS startup project in solution")         # HLSL Change
-
 # The following only works with the Ninja generator in CMake >= 3.0.
 set(LLVM_PARALLEL_COMPILE_JOBS "" CACHE STRING
   "Define the maximum number of concurrent compilation jobs.")
@@ -119,9 +116,9 @@ add_link_options(/guard:cf)
 endif(WIN32)
 
 # Enable CET Shadow Stack
-if(WIN32 AND NOT (CMAKE_GENERATOR_PLATFORM MATCHES "ARM.*"))
-add_link_options(/CETCOMPAT)
-endif(WIN32 AND NOT (CMAKE_GENERATOR_PLATFORM MATCHES "ARM.*"))
+if(WIN32 AND NOT (CMAKE_C_COMPILER_ARCHITECTURE_ID MATCHES "ARM.*"))
+  add_link_options(/CETCOMPAT)
+endif()
 
 # HLSL Change Ends
 
@@ -591,8 +588,10 @@ set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${LLVM_BINARY_DIR}/lib${LLVM_LIBDIR_SUFFIX} 
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 if (APPLE)
-  set(CMAKE_INSTALL_NAME_DIR "@rpath")
-  set(CMAKE_INSTALL_RPATH "@executable_path/../lib")
+  if(NOT DEFINED CMAKE_INSTALL_RPATH)
+    set(CMAKE_INSTALL_NAME_DIR "@rpath")
+    set(CMAKE_INSTALL_RPATH "@executable_path/../lib")
+    endif(NOT DEFINED CMAKE_INSTALL_RPATH)
 else(UNIX)
   if(NOT DEFINED CMAKE_INSTALL_RPATH)
     set(CMAKE_INSTALL_RPATH "\$ORIGIN/../lib${LLVM_LIBDIR_SUFFIX}")

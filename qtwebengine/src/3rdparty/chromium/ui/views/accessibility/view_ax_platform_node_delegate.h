@@ -17,6 +17,7 @@
 #include "ui/accessibility/ax_enums.mojom-forward.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/accessibility/ax_node_position.h"
+#include "ui/accessibility/platform/ax_platform_node.h"
 #include "ui/accessibility/platform/ax_platform_node_delegate.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/native_widget_types.h"
@@ -29,12 +30,12 @@ namespace ui {
 
 struct AXActionData;
 class AXUniqueId;
-class SingleAXTreeManager;
 
 }  // namespace ui
 
 namespace views {
 
+class AtomicViewAXTreeManager;
 class View;
 
 // Shared base class for platforms that require an implementation of
@@ -61,7 +62,8 @@ class VIEWS_EXPORT ViewAXPlatformNodeDelegate
   gfx::NativeViewAccessible GetNativeObject() const override;
   void NotifyAccessibilityEvent(ax::mojom::Event event_type) override;
 #if BUILDFLAG(IS_MAC)
-  void AnnounceText(const std::u16string& text) override;
+  void AnnounceTextAs(const std::u16string& text,
+                      ui::AXPlatformNode::AnnouncementType announcement_type);
 #endif
 
   // ui::AXPlatformNodeDelegate.
@@ -69,8 +71,14 @@ class VIEWS_EXPORT ViewAXPlatformNodeDelegate
   size_t GetChildCount() const override;
   gfx::NativeViewAccessible ChildAtIndex(size_t index) const override;
   bool HasModalDialog() const override;
+  std::wstring ComputeListItemNameFromContent() const override;
   // Also in |ViewAccessibility|.
   bool IsChildOfLeaf() const override;
+  const ui::AXSelection GetUnignoredSelection() const override;
+  ui::AXNodePosition::AXPositionInstance CreatePositionAt(
+      int offset,
+      ax::mojom::TextAffinity affinity =
+          ax::mojom::TextAffinity::kDownstream) const override;
   ui::AXNodePosition::AXPositionInstance CreateTextPositionAt(
       int offset,
       ax::mojom::TextAffinity affinity) const override;
@@ -85,6 +93,12 @@ class VIEWS_EXPORT ViewAXPlatformNodeDelegate
   bool IsFocused() const override;
   bool IsToplevelBrowserWindow() override;
   gfx::Rect GetBoundsRect(
+      const ui::AXCoordinateSystem coordinate_system,
+      const ui::AXClippingBehavior clipping_behavior,
+      ui::AXOffscreenResult* offscreen_result) const override;
+  gfx::Rect GetInnerTextRangeBoundsRect(
+      const int start_offset,
+      const int end_offset,
       const ui::AXCoordinateSystem coordinate_system,
       const ui::AXClippingBehavior clipping_behavior,
       ui::AXOffscreenResult* offscreen_result) const override;
@@ -116,6 +130,13 @@ class VIEWS_EXPORT ViewAXPlatformNodeDelegate
 
   bool TableHasColumnOrRowHeaderNodeForTesting() const;
 
+  // Return the bounds of inline text in this node's coordinate system.
+  gfx::RectF GetInlineTextRect(const int start_offset,
+                               const int end_offset) const;
+
+  AtomicViewAXTreeManager* GetAtomicViewAXTreeManagerForTesting()
+      const override;
+
  protected:
   explicit ViewAXPlatformNodeDelegate(View* view);
 
@@ -125,18 +146,27 @@ class VIEWS_EXPORT ViewAXPlatformNodeDelegate
   // during the constructor.
   virtual void Init();
 
+  ui::AXNodeData data() { return data_; }
   ui::AXPlatformNode* ax_platform_node() { return ax_platform_node_; }
 
+  // Manager for the accessibility tree for this view. The tree will only have
+  // one node, which contains the AXNodeData for this view. It's a temporary
+  // solution to enable the ITextRangeProvider in Views: crbug.com/1468416.
+  std::unique_ptr<AtomicViewAXTreeManager> atomic_view_ax_tree_manager_;
+
  private:
+  friend class AtomicViewAXTreeManagerTest;
+
   struct ChildWidgetsResult final {
     ChildWidgetsResult();
-    ChildWidgetsResult(std::vector<Widget*> child_widgets,
-                       bool is_tab_modal_showing);
+    ChildWidgetsResult(
+        std::vector<raw_ptr<Widget, VectorExperimental>> child_widgets,
+        bool is_tab_modal_showing);
     ChildWidgetsResult(const ChildWidgetsResult& other);
     virtual ~ChildWidgetsResult();
     ChildWidgetsResult& operator=(const ChildWidgetsResult& other);
 
-    std::vector<Widget*> child_widgets;
+    std::vector<raw_ptr<Widget, VectorExperimental>> child_widgets;
 
     // When the focus is within a child widget, |child_widgets| contains only
     // that widget. Otherwise, |child_widgets| contains all child widgets.
@@ -150,7 +180,8 @@ class VIEWS_EXPORT ViewAXPlatformNodeDelegate
 
   // Uses Views::GetViewsInGroup to find nearby Views in the same group.
   // Searches from the View's parent to include siblings within that group.
-  void GetViewsInGroupForSet(std::vector<View*>* views_in_group) const;
+  void GetViewsInGroupForSet(
+      std::vector<raw_ptr<View, VectorExperimental>>* views_in_group) const;
 
   // If this delegate is attached to the root view, returns all the child
   // widgets of this view's owning widget.
@@ -158,10 +189,6 @@ class VIEWS_EXPORT ViewAXPlatformNodeDelegate
 
   // Gets the real (non-virtual) TableView, otherwise nullptr.
   TableView* GetAncestorTableView() const;
-
-  // A tree manager that is used to hook up `AXPosition` to text fields in
-  // Views.
-  mutable std::unique_ptr<ui::SingleAXTreeManager> single_tree_manager_;
 
   // We own this, but it is reference-counted on some platforms so we can't use
   // a unique_ptr. It is destroyed in the destructor.

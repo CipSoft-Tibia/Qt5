@@ -21,12 +21,16 @@
     \title Squish GUI Test Automation Tool
 */
 /*!
-    \externalpage https://doc.qt.io/GammaRay
+    \externalpage https://docs.kdab.com/gammaray-manual/latest/
     \title GammaRay Manual
 */
 /*!
     \externalpage https://doc.qt.io/QtQmlLive
     \title QmlLive Manual
+*/
+/*!
+    \externalpage https://felgo.com/qml-hot-reload
+    \title Felgo QML Hot Reload Tool
 */
 /*!
     \externalpage https://doc.qt.io/qtcreator/creator-debugging-qml.html
@@ -73,4 +77,19 @@
     \externalpage https://developer.android.com/topic/libraries/view-binding
     \title Android: View binding
 */
-
+/*!
+    \externalpage https://developer.android.com/reference/android/Manifest.permission#SYSTEM_ALERT_WINDOW
+    \title Android: SYSTEM_ALERT_WINDOW
+*/
+/*!
+    \externalpage https://developer.android.com/reference/android/app/Activity
+    \title Android: Activity
+*/
+/*!
+    \externalpage https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/-int/
+    \title Kotlin: Int
+*/
+/*!
+    \externalpage https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/-string/
+    \title Kotlin: String
+*/

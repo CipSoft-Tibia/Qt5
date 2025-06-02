@@ -15,18 +15,18 @@ QT_BEGIN_NAMESPACE
  * A value axis can be given a range of values and segment and subsegment
  * counts to divide the range into.
  *
- * Labels are drawn between each segment. Grid lines are drawn between each
+ * Labels are drawn between each segment, and grid lines are drawn between each
  * segment and each subsegment. \note If visible, there will always be at least
- * two grid lines and labels indicating the minimum and the maximum values of
+ * two grid lines and labels indicating the minimum and maximum values of
  * the range, as there is always at least one segment.
  */
 
 /*!
- * \qmltype ValueAxis3D
+ * \qmltype Value3DAxis
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QValue3DAxis
- * \inherits AbstractAxis3D
+ * \nativetype QValue3DAxis
+ * \inherits Abstract3DAxis
  * \brief Manipulates an axis of a graph.
  *
  * This type provides an axis that can be given a range of values and segment
@@ -34,7 +34,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty int ValueAxis3D::segmentCount
+ * \qmlproperty qsizetype Value3DAxis::segmentCount
  *
  * The number of segments on the axis. This indicates how many labels are drawn.
  * The number of grid lines to be drawn is calculated with the following
@@ -43,7 +43,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty int ValueAxis3D::subSegmentCount
+ * \qmlproperty qsizetype Value3DAxis::subSegmentCount
  *
  * The number of subsegments inside each segment on the axis. Grid lines are
  * drawn between each subsegment, in addition to each segment. The preset
@@ -51,7 +51,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty string ValueAxis3D::labelFormat
+ * \qmlproperty string Value3DAxis::labelFormat
  *
  * The label format to be used for the labels on this axis.
  *
@@ -59,16 +59,16 @@ QT_BEGIN_NAMESPACE
  * modifiers, and flags provided by \c printf() in the standard C++ library:
  * d, i, o, x, X, f, F, e, E, g, G, c.
  *
- * If AbstractGraph3D::locale is anything else than \c{"C"}, the supported
+ * If GraphsItem3D::locale is anything else than \c{"C"}, the supported
  * specifiers are limited to: d, e, E, f, g, G, and i. Also, only the precision
  * modifier is supported. The rest of the formatting comes from the default
  * \l [QML] Locale of the application.
  *
- * \sa AbstractGraph3D::locale
+ * \sa GraphsItem3D::locale
  */
 
 /*!
- * \qmlproperty ValueAxis3DFormatter ValueAxis3D::formatter
+ * \qmlproperty Value3DAxisFormatter Value3DAxis::formatter
  *
  * The axis formatter to be used. Any existing formatter is deleted when a new
  * formatter is set.
@@ -76,12 +76,38 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty bool ValueAxis3D::reversed
+ * \qmlproperty bool Value3DAxis::reversed
  *
  * If \c{true}, the axis will be rendered in reverse. That is, the positions of
  * the minimum and maximum values are swapped when the graph is rendered. This
  * property does not affect the actual minimum and maximum values of the axis.
  */
+
+/*!
+    \qmlsignal Value3DAxis::segmentCountChanged(qsizetype count)
+
+    This signal is emitted when segmentCount changes to \a count.
+*/
+/*!
+    \qmlsignal Value3DAxis::subSegmentCountChanged(qsizetype count)
+
+    This signal is emitted when subSegmentCount changes to \a count.
+*/
+/*!
+    \qmlsignal Value3DAxis::labelFormatChanged(string format)
+
+    This signal is emitted when labelFormat changes to \a format.
+*/
+/*!
+    \qmlsignal Value3DAxis::formatterChanged(Value3DAxisFormatter formatter)
+
+    This signal is emitted when \l formatter changes to \a formatter.
+*/
+/*!
+    \qmlsignal Value3DAxis::reversedChanged(bool enable)
+
+    This signal is emitted when \l reversed changes to \a enable.
+*/
 
 /*!
  * Constructs QValue3DAxis with the given \a parent.
@@ -108,13 +134,14 @@ QValue3DAxis::~QValue3DAxis() {}
  *
  * \sa setSubSegmentCount()
  */
-void QValue3DAxis::setSegmentCount(int count)
+void QValue3DAxis::setSegmentCount(qsizetype count)
 {
     Q_D(QValue3DAxis);
     if (count <= 0) {
-        qWarning() << "Warning: Illegal segment count automatically adjusted to a "
-                      "legal one:"
-                   << count << "-> 1";
+        qWarning(
+            "Warning: Illegal segment count automatically adjusted to a legal one: %" PRIdQSIZETYPE
+            " --> 1",
+            count);
         count = 1;
     }
     if (d->m_segmentCount != count) {
@@ -124,9 +151,9 @@ void QValue3DAxis::setSegmentCount(int count)
     }
 }
 
-int QValue3DAxis::segmentCount() const
+qsizetype QValue3DAxis::segmentCount() const
 {
-    const Q_D(QValue3DAxis);
+    Q_D(const QValue3DAxis);
     return d->m_segmentCount;
 }
 
@@ -141,13 +168,13 @@ int QValue3DAxis::segmentCount() const
  *
  * \sa setSegmentCount()
  */
-void QValue3DAxis::setSubSegmentCount(int count)
+void QValue3DAxis::setSubSegmentCount(qsizetype count)
 {
     Q_D(QValue3DAxis);
     if (count <= 0) {
-        qWarning() << "Warning: Illegal subsegment count automatically adjusted to "
-                      "a legal one:"
-                   << count << "-> 1";
+        qWarning("Warning: Illegal subsegment count automatically adjusted to a legal one: "
+                 "%" PRIdQSIZETYPE " -> 1",
+                 count);
         count = 1;
     }
     if (d->m_subSegmentCount != count) {
@@ -156,9 +183,9 @@ void QValue3DAxis::setSubSegmentCount(int count)
     }
 }
 
-int QValue3DAxis::subSegmentCount() const
+qsizetype QValue3DAxis::subSegmentCount() const
 {
-    const Q_D(QValue3DAxis);
+    Q_D(const QValue3DAxis);
     return d->m_subSegmentCount;
 }
 
@@ -171,7 +198,7 @@ int QValue3DAxis::subSegmentCount() const
  * modifiers, and flags provided by \c printf() in the standard C++ library:
  * d, i, o, x, X, f, F, e, E, g, G, c.
  *
- * If QAbstract3DGraph::locale is anything else than \c{"C"}, the supported
+ * If Q3DGraphsWidgetItem::locale is anything else than \c{"C"}, the supported
  * specifiers are limited to: d, e, E, f, g, G, and i. Also, only the precision
  * modifier is supported. The rest of the formatting comes from the default
  * QLocale of the application.
@@ -180,7 +207,7 @@ int QValue3DAxis::subSegmentCount() const
  *
  * \c {axis->setLabelFormat("%.2f mm");}
  *
- * \sa formatter, QAbstract3DGraph::locale
+ * \sa formatter, Q3DGraphsWidgetItem::locale
  */
 void QValue3DAxis::setLabelFormat(const QString &format)
 {
@@ -194,7 +221,7 @@ void QValue3DAxis::setLabelFormat(const QString &format)
 
 QString QValue3DAxis::labelFormat() const
 {
-    const Q_D(QValue3DAxis);
+    Q_D(const QValue3DAxis);
     return d->m_labelFormat;
 }
 
@@ -223,7 +250,7 @@ void QValue3DAxis::setFormatter(QValue3DAxisFormatter *formatter)
 
 QValue3DAxisFormatter *QValue3DAxis::formatter() const
 {
-    const Q_D(QValue3DAxis);
+    Q_D(const QValue3DAxis);
     return d->m_formatter;
 }
 
@@ -232,8 +259,8 @@ QValue3DAxisFormatter *QValue3DAxis::formatter() const
  *
  * \brief Whether the axis is rendered in reverse.
  *
- * If \c{true}, the axis will be rendered in reverse, i.e. the positions of
- * minimum and maximum values are swapped when the graph is rendered. This
+ * If \c{true}, the axis will be rendered in reverse, which means the positions
+ * of minimum and maximum values are swapped when the graph is rendered. This
  * property doesn't affect the actual minimum and maximum values of the axis.
  */
 void QValue3DAxis::setReversed(bool enable)
@@ -247,7 +274,7 @@ void QValue3DAxis::setReversed(bool enable)
 
 bool QValue3DAxis::reversed() const
 {
-    const Q_D(QValue3DAxis);
+    Q_D(const QValue3DAxis);
     return d->m_reversed;
 }
 
@@ -256,27 +283,27 @@ void QValue3DAxis::recalculate()
     formatter()->d_func()->recalculate();
 }
 
-int QValue3DAxis::gridSize()
+qsizetype QValue3DAxis::gridSize()
 {
     return formatter()->gridPositions().size();
 }
 
-int QValue3DAxis::subGridSize()
+qsizetype QValue3DAxis::subGridSize()
 {
     return formatter()->subGridPositions().size();
 }
 
-float QValue3DAxis::gridPositionAt(int gridLine)
+float QValue3DAxis::gridPositionAt(qsizetype gridLine)
 {
     return formatter()->gridPositions().at(gridLine);
 }
 
-float QValue3DAxis::subGridPositionAt(int gridLine)
+float QValue3DAxis::subGridPositionAt(qsizetype gridLine)
 {
     return formatter()->subGridPositions().at(gridLine);
 }
 
-float QValue3DAxis::labelPositionAt(int index)
+float QValue3DAxis::labelPositionAt(qsizetype index)
 {
     return formatter()->labelPositions().at(index);
 }

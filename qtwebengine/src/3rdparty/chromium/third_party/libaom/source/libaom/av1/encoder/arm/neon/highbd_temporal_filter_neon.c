@@ -114,8 +114,8 @@ static void highbd_apply_temporal_filter(
   vmask2[3] = k1111;
 
   uint32_t row = 0;
-  uint32_t col = 0;
   do {
+    uint32_t col = 0;
     const uint32_t *src = frame_sse + row * frame_sse_stride;
     if (row == 0) {
       vsrc[2][0] = vld1q_u32(src);
@@ -160,7 +160,7 @@ static void highbd_apply_temporal_filter(
     acc_5x5_neon[row][0] = sum_kernel5x5_mask_single(vsrc, k0113);
     acc_5x5_neon[row][1] = sum_kernel5x5_mask_single(vsrc, k1112);
 
-    col = 4;
+    col += 4;
     src += 4;
     // Traverse 4 columns at a time
     do {
@@ -321,8 +321,7 @@ void av1_highbd_apply_temporal_filter_neon(
   double s_decay = pow((double)filter_strength / TF_STRENGTH_THRESHOLD, 2);
   s_decay = CLIP(s_decay, 1e-5, 1);
   double d_factor[4] = { 0 };
-  // Add padding to frame_sse
-  uint32_t frame_sse[(BW + 4) * BH] = { 0 };
+  uint32_t frame_sse[BW * BH] = { 0 };
   uint32_t luma_sse_sum[BW * BH] = { 0 };
   uint16_t *pred = CONVERT_TO_SHORTPTR(pred8);
 
@@ -371,14 +370,14 @@ void av1_highbd_apply_temporal_filter_neon(
             for (int jj = 0; jj < (1 << ss_x_shift); ++jj) {
               const int yy = (i << ss_y_shift) + ii;  // Y-coord on Y-plane.
               const int xx = (j << ss_x_shift) + jj;  // X-coord on Y-plane.
-              luma_sse_sum[i * BW + j] +=
-                  frame_sse[yy * frame_sse_stride + xx + 2];
+              const int ww = frame_sse_stride
+                             << ss_x_shift;  // Width of Y-plane.
+              luma_sse_sum[i * BW + j] += frame_sse[yy * ww + xx];
             }
           }
         }
       }
     }
-
     get_squared_error(ref, frame_stride, pred + plane_offset, plane_w, plane_w,
                       plane_h, frame_sse, frame_sse_stride);
 
@@ -390,4 +389,174 @@ void av1_highbd_apply_temporal_filter_neon(
 
     plane_offset += plane_h * plane_w;
   }
+}
+
+double av1_highbd_estimate_noise_from_single_plane_neon(const uint16_t *src,
+                                                        int height, int width,
+                                                        int stride,
+                                                        int bitdepth,
+                                                        int edge_thresh) {
+  uint16x8_t thresh = vdupq_n_u16(edge_thresh);
+  uint64x2_t acc = vdupq_n_u64(0);
+  // Count is in theory positive as it counts the number of times we're under
+  // the threshold, but it will be counted negatively in order to make best use
+  // of the vclt instruction, which sets every bit of a lane to 1 when the
+  // condition is true.
+  int32x4_t count = vdupq_n_s32(0);
+  int final_count = 0;
+  uint64_t final_acc = 0;
+  const uint16_t *src_start = src + stride + 1;
+  int h = 1;
+
+  do {
+    int w = 1;
+    const uint16_t *src_ptr = src_start;
+
+    while (w <= (width - 1) - 8) {
+      uint16x8_t mat[3][3];
+      mat[0][0] = vld1q_u16(src_ptr - stride - 1);
+      mat[0][1] = vld1q_u16(src_ptr - stride);
+      mat[0][2] = vld1q_u16(src_ptr - stride + 1);
+      mat[1][0] = vld1q_u16(src_ptr - 1);
+      mat[1][1] = vld1q_u16(src_ptr);
+      mat[1][2] = vld1q_u16(src_ptr + 1);
+      mat[2][0] = vld1q_u16(src_ptr + stride - 1);
+      mat[2][1] = vld1q_u16(src_ptr + stride);
+      mat[2][2] = vld1q_u16(src_ptr + stride + 1);
+
+      // Compute Sobel gradients.
+      uint16x8_t gxa = vaddq_u16(mat[0][0], mat[2][0]);
+      uint16x8_t gxb = vaddq_u16(mat[0][2], mat[2][2]);
+      gxa = vaddq_u16(gxa, vaddq_u16(mat[1][0], mat[1][0]));
+      gxb = vaddq_u16(gxb, vaddq_u16(mat[1][2], mat[1][2]));
+
+      uint16x8_t gya = vaddq_u16(mat[0][0], mat[0][2]);
+      uint16x8_t gyb = vaddq_u16(mat[2][0], mat[2][2]);
+      gya = vaddq_u16(gya, vaddq_u16(mat[0][1], mat[0][1]));
+      gyb = vaddq_u16(gyb, vaddq_u16(mat[2][1], mat[2][1]));
+
+      uint16x8_t ga = vabaq_u16(vabdq_u16(gxa, gxb), gya, gyb);
+      ga = vrshlq_u16(ga, vdupq_n_s16(8 - bitdepth));
+
+      // Check which vector elements are under the threshold. The Laplacian is
+      // then unconditionnally computed and we accumulate zeros if we're not
+      // under the threshold. This is much faster than using an if statement.
+      uint16x8_t thresh_u16 = vcltq_u16(ga, thresh);
+
+      uint16x8_t center = vshlq_n_u16(mat[1][1], 2);
+
+      uint16x8_t adj0 = vaddq_u16(mat[0][1], mat[2][1]);
+      uint16x8_t adj1 = vaddq_u16(mat[1][0], mat[1][2]);
+      uint16x8_t adj = vaddq_u16(adj0, adj1);
+      adj = vaddq_u16(adj, adj);
+
+      uint16x8_t diag0 = vaddq_u16(mat[0][0], mat[0][2]);
+      uint16x8_t diag1 = vaddq_u16(mat[2][0], mat[2][2]);
+      uint16x8_t diag = vaddq_u16(diag0, diag1);
+
+      uint16x8_t v = vabdq_u16(vaddq_u16(center, diag), adj);
+      v = vandq_u16(vrshlq_u16(v, vdupq_n_s16(8 - bitdepth)), thresh_u16);
+      uint32x4_t v_u32 = vpaddlq_u16(v);
+
+      acc = vpadalq_u32(acc, v_u32);
+      // Add -1 for each lane where the gradient is under the threshold.
+      count = vpadalq_s16(count, vreinterpretq_s16_u16(thresh_u16));
+
+      w += 8;
+      src_ptr += 8;
+    }
+
+    if (w <= (width - 1) - 4) {
+      uint16x4_t mat[3][3];
+      mat[0][0] = vld1_u16(src_ptr - stride - 1);
+      mat[0][1] = vld1_u16(src_ptr - stride);
+      mat[0][2] = vld1_u16(src_ptr - stride + 1);
+      mat[1][0] = vld1_u16(src_ptr - 1);
+      mat[1][1] = vld1_u16(src_ptr);
+      mat[1][2] = vld1_u16(src_ptr + 1);
+      mat[2][0] = vld1_u16(src_ptr + stride - 1);
+      mat[2][1] = vld1_u16(src_ptr + stride);
+      mat[2][2] = vld1_u16(src_ptr + stride + 1);
+
+      // Compute Sobel gradients.
+      uint16x4_t gxa = vadd_u16(mat[0][0], mat[2][0]);
+      uint16x4_t gxb = vadd_u16(mat[0][2], mat[2][2]);
+      gxa = vadd_u16(gxa, vadd_u16(mat[1][0], mat[1][0]));
+      gxb = vadd_u16(gxb, vadd_u16(mat[1][2], mat[1][2]));
+
+      uint16x4_t gya = vadd_u16(mat[0][0], mat[0][2]);
+      uint16x4_t gyb = vadd_u16(mat[2][0], mat[2][2]);
+      gya = vadd_u16(gya, vadd_u16(mat[0][1], mat[0][1]));
+      gyb = vadd_u16(gyb, vadd_u16(mat[2][1], mat[2][1]));
+
+      uint16x4_t ga = vaba_u16(vabd_u16(gxa, gxb), gya, gyb);
+      ga = vrshl_u16(ga, vdup_n_s16(8 - bitdepth));
+
+      // Check which vector elements are under the threshold. The Laplacian is
+      // then unconditionnally computed and we accumulate zeros if we're not
+      // under the threshold. This is much faster than using an if statement.
+      uint16x4_t thresh_u16 = vclt_u16(ga, vget_low_u16(thresh));
+
+      uint16x4_t center = vshl_n_u16(mat[1][1], 2);
+
+      uint16x4_t adj0 = vadd_u16(mat[0][1], mat[2][1]);
+      uint16x4_t adj1 = vadd_u16(mat[1][0], mat[1][2]);
+      uint16x4_t adj = vadd_u16(adj0, adj1);
+      adj = vadd_u16(adj, adj);
+
+      uint16x4_t diag0 = vadd_u16(mat[0][0], mat[0][2]);
+      uint16x4_t diag1 = vadd_u16(mat[2][0], mat[2][2]);
+      uint16x4_t diag = vadd_u16(diag0, diag1);
+
+      uint16x4_t v = vabd_u16(vadd_u16(center, diag), adj);
+      v = vand_u16(v, thresh_u16);
+      uint32x4_t v_u32 = vmovl_u16(vrshl_u16(v, vdup_n_s16(8 - bitdepth)));
+
+      acc = vpadalq_u32(acc, v_u32);
+      // Add -1 for each lane where the gradient is under the threshold.
+      count = vaddw_s16(count, vreinterpret_s16_u16(thresh_u16));
+
+      w += 4;
+      src_ptr += 4;
+    }
+
+    while (w < width - 1) {
+      int mat[3][3];
+      mat[0][0] = *(src_ptr - stride - 1);
+      mat[0][1] = *(src_ptr - stride);
+      mat[0][2] = *(src_ptr - stride + 1);
+      mat[1][0] = *(src_ptr - 1);
+      mat[1][1] = *(src_ptr);
+      mat[1][2] = *(src_ptr + 1);
+      mat[2][0] = *(src_ptr + stride - 1);
+      mat[2][1] = *(src_ptr + stride);
+      mat[2][2] = *(src_ptr + stride + 1);
+
+      // Compute Sobel gradients.
+      const int gx = (mat[0][0] - mat[0][2]) + (mat[2][0] - mat[2][2]) +
+                     2 * (mat[1][0] - mat[1][2]);
+      const int gy = (mat[0][0] - mat[2][0]) + (mat[0][2] - mat[2][2]) +
+                     2 * (mat[0][1] - mat[2][1]);
+      const int ga = ROUND_POWER_OF_TWO(abs(gx) + abs(gy), bitdepth - 8);
+
+      // Accumulate Laplacian.
+      const int is_under = ga < edge_thresh;
+      const int v = 4 * mat[1][1] -
+                    2 * (mat[0][1] + mat[2][1] + mat[1][0] + mat[1][2]) +
+                    (mat[0][0] + mat[0][2] + mat[2][0] + mat[2][2]);
+      final_acc += ROUND_POWER_OF_TWO(abs(v), bitdepth - 8) * is_under;
+      final_count += is_under;
+
+      src_ptr++;
+      w++;
+    }
+    src_start += stride;
+  } while (++h < height - 1);
+
+  // We counted negatively, so subtract to get the final value.
+  final_count -= horizontal_add_s32x4(count);
+  final_acc += horizontal_add_u64x2(acc);
+  return (final_count < 16)
+             ? -1.0
+             : (double)final_acc / (6 * final_count) * SQRT_PI_BY_2;
 }

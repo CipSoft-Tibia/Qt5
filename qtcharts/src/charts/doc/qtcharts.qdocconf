@@ -23,8 +23,7 @@ sources.fileextensions  = "*.cpp *.qdoc"
 outputsuffixes      = CPP
 outputsuffixes.CPP  = -qtcharts
 
-depends = qtcore qtgui qtwidgets qtqml qtquick qtmultimedia qtdoc qtcmake
-
+depends = qtcore qtgraphs qtgui qtwidgets qtqml qtquick qtmultimedia qtdoc qtcmake
 
 qhp.projects                  = QtCharts
 qhp.QtCharts.file             = qtcharts.qhp

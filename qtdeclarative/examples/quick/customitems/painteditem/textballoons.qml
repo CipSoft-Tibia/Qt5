@@ -25,9 +25,9 @@ Item {
         anchors.bottomMargin: 2
         anchors.top: parent.top
         delegate: TextBalloon {
-            anchors.right: index % 2 != 0 ? parent?.right : undefined
+            anchors.right: index % 2 !== 0 ? parent?.right : undefined
             height: 60
-            rightAligned: index % 2 != 0
+            rightAligned: index % 2 !== 0
             width: balloonWidth
         }
         model: balloonModel

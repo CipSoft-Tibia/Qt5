@@ -8,15 +8,15 @@
 #include <QtNetwork>
 
 Twitter::Twitter(QObject *parent) :
-    Twitter(QString(), qMakePair(QString(), QString()), parent)
+    Twitter(QString(), std::make_pair(QString(), QString()), parent)
 {}
 
-Twitter::Twitter(const QPair<QString, QString> &clientCredentials, QObject *parent) :
+Twitter::Twitter(const std::pair<QString, QString> &clientCredentials, QObject *parent) :
     Twitter(QString(), clientCredentials, parent)
 {}
 
 Twitter::Twitter(const QString &screenName,
-                 const QPair<QString, QString> &clientCredentials,
+                 const std::pair<QString, QString> &clientCredentials,
                  QObject *parent) :
     QOAuth1(clientCredentials.first, clientCredentials.second, nullptr, parent)
 {

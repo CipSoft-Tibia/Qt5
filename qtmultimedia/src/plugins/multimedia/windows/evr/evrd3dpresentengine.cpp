@@ -5,7 +5,8 @@
 
 #include "evrhelpers_p.h"
 
-#include <private/qabstractvideobuffer_p.h>
+#include <private/qhwvideobuffer_p.h>
+#include <private/qvideoframe_p.h>
 #include <qvideoframe.h>
 #include <QDebug>
 #include <qthread.h>
@@ -24,17 +25,17 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcEvrD3DPresentEngine, "qt.multimedia.evrd3dpresentengine")
+static Q_LOGGING_CATEGORY(qLcEvrD3DPresentEngine, "qt.multimedia.evrd3dpresentengine");
 
-class IMFSampleVideoBuffer: public QAbstractVideoBuffer
+class IMFSampleVideoBuffer : public QHwVideoBuffer
 {
 public:
-    IMFSampleVideoBuffer(ComPtr<IDirect3DDevice9Ex> device,
-                         const ComPtr<IMFSample> &sample, QRhi *rhi, QVideoFrame::HandleType type = QVideoFrame::NoHandle)
-        : QAbstractVideoBuffer(type, rhi)
-        , m_device(device)
-        , m_sample(sample)
-        , m_mapMode(QVideoFrame::NotMapped)
+    IMFSampleVideoBuffer(ComPtr<IDirect3DDevice9Ex> device, const ComPtr<IMFSample> &sample,
+                         QRhi *rhi, QVideoFrame::HandleType type = QVideoFrame::NoHandle)
+        : QHwVideoBuffer(type, rhi),
+          m_device(device),
+          m_sample(sample),
+          m_mapMode(QVideoFrame::NotMapped)
     {
     }
 
@@ -84,10 +85,10 @@ public:
         m_mapMode = mode;
 
         MapData mapData;
-        mapData.nPlanes = 1;
+        mapData.planeCount = 1;
         mapData.bytesPerLine[0] = (int)rect.Pitch;
         mapData.data[0] = reinterpret_cast<uchar *>(rect.pBits);
-        mapData.size[0] = (int)(rect.Pitch * desc.Height);
+        mapData.dataSize[0] = (int)(rect.Pitch * desc.Height);
         return mapData;
     }
 
@@ -137,12 +138,12 @@ public:
         , m_sharedHandle(sharedHandle)
     {}
 
-    std::unique_ptr<QVideoFrameTextures> mapTextures(QRhi *rhi) override
+    QVideoFrameTexturesUPtr mapTextures(QRhi &rhi, QVideoFrameTexturesUPtr& /*oldTextures*/) override
     {
-        if (!rhi || rhi->backend() != QRhi::D3D11)
+        if (rhi.backend() != QRhi::D3D11)
             return {};
 
-        auto nh = static_cast<const QRhiD3D11NativeHandles*>(rhi->nativeHandles());
+        auto nh = static_cast<const QRhiD3D11NativeHandles*>(rhi.nativeHandles());
         if (!nh)
             return {};
 
@@ -163,7 +164,7 @@ public:
             else
                 return {};
 
-            std::unique_ptr<QRhiTexture> tex(rhi->newTexture(format, QSize{int(desc.Width), int(desc.Height)}, 1, {}));
+            std::unique_ptr<QRhiTexture> tex(rhi.newTexture(format, QSize{int(desc.Width), int(desc.Height)}, 1, {}));
             tex->createFrom({quint64(d3d11tex.Get()), 0});
             return std::make_unique<QVideoFrameD3D11Textures>(std::move(tex), std::move(d3d11tex));
 
@@ -291,7 +292,7 @@ public:
         , m_wgl(wglNvDxInterop)
     {}
 
-    std::unique_ptr<QVideoFrameTextures> mapTextures(QRhi *rhi) override
+    QVideoFrameTexturesUPtr mapTextures(QRhi &rhi, QVideoFrameTexturesUPtr& /*oldTextures*/) override
     {
         if (!m_texture) {
             ComPtr<IMFMediaBuffer> buffer;
@@ -310,7 +311,7 @@ public:
                 return {};
         }
 
-        return QVideoFrameOpenGlTextures::create(m_wgl, rhi, m_device.Get(), m_texture.Get(), m_sharedHandle);
+        return QVideoFrameOpenGlTextures::create(m_wgl, &rhi, m_device.Get(), m_texture.Get(), m_sharedHandle);
     }
 
 private:
@@ -435,13 +436,13 @@ static bool readWglNvDxInteropProc(WglNvDxInterop &f)
 namespace {
 
 bool hwTextureRenderingEnabled() {
-    // add possibility for an user to opt-out HW video rendering
+    // add possibility for an user to opt-in to HW video rendering
     // using the same env. variable as for FFmpeg backend
     static bool isDisableConversionSet = false;
     static const int disableHwConversion = qEnvironmentVariableIntValue(
             "QT_DISABLE_HW_TEXTURES_CONVERSION", &isDisableConversionSet);
 
-    return !isDisableConversionSet || !disableHwConversion;
+    return isDisableConversionSet && !disableHwConversion;
 }
 
 }
@@ -663,22 +664,23 @@ QVideoFrame D3DPresentEngine::makeVideoFrame(const ComPtr<IMFSample> &sample)
         if (p.first == sample.Get())
             sharedHandle = p.second;
 
-    QAbstractVideoBuffer *vb = nullptr;
+    std::unique_ptr<IMFSampleVideoBuffer> vb;
     QRhi *rhi = m_sink ? m_sink->rhi() : nullptr;
     if (m_useTextureRendering && sharedHandle && rhi) {
         if (rhi->backend() == QRhi::D3D11) {
-            vb = new D3D11TextureVideoBuffer(m_device, sample, sharedHandle, rhi);
+            vb = std::make_unique<D3D11TextureVideoBuffer>(m_device, sample, sharedHandle, rhi);
 #if QT_CONFIG(opengl)
         } else if (rhi->backend() == QRhi::OpenGLES2) {
-            vb = new OpenGlVideoBuffer(m_device, sample, m_wglNvDxInterop, sharedHandle, rhi);
+            vb = std::make_unique<OpenGlVideoBuffer>(m_device, sample, m_wglNvDxInterop,
+                                                     sharedHandle, rhi);
 #endif
         }
     }
 
     if (!vb)
-        vb = new IMFSampleVideoBuffer(m_device, sample, rhi);
+        vb = std::make_unique<IMFSampleVideoBuffer>(m_device, sample, rhi);
 
-    QVideoFrame frame(vb, m_surfaceFormat);
+    QVideoFrame frame = QVideoFramePrivate::createFrame(std::move(vb), m_surfaceFormat);
 
     // WMF uses 100-nanosecond units, Qt uses microseconds
     LONGLONG startTime = 0;

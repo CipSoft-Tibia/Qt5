@@ -7,16 +7,14 @@
 
 #include "src/sksl/codegen/SkSLPipelineStageCodeGenerator.h"
 
-#if defined(SKSL_STANDALONE) || defined(SK_GANESH) || defined(SK_GRAPHITE)
-
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/SkSLDefines.h"
 #include "include/private/base/SkTArray.h"
 #include "src/base/SkEnumBitMask.h"
 #include "src/core/SkTHash.h"
 #include "src/sksl/SkSLBuiltinTypes.h"
 #include "src/sksl/SkSLContext.h"  // IWYU pragma: keep
+#include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLIntrinsicList.h"
 #include "src/sksl/SkSLOperator.h"
 #include "src/sksl/SkSLProgramKind.h"
@@ -491,7 +489,7 @@ void PipelineStageCodeGenerator::writeProgramElementSecondPass(const ProgramElem
 }
 
 std::string PipelineStageCodeGenerator::typeName(const Type& raw) {
-    const Type& type = raw.resolve();
+    const Type& type = raw.resolve().scalarTypeForLiteral();
     if (type.isArray()) {
         // This is necessary so that name mangling on arrays-of-structs works properly.
         std::string arrayName = this->typeName(type.componentType());
@@ -516,6 +514,7 @@ void PipelineStageCodeGenerator::writeExpression(const Expression& expr,
             this->writeBinaryExpression(expr.as<BinaryExpression>(), parentPrecedence);
             break;
         case Expression::Kind::kLiteral:
+        case Expression::Kind::kSetting:
             this->write(expr.description());
             break;
         case Expression::Kind::kChildCall:
@@ -559,7 +558,6 @@ void PipelineStageCodeGenerator::writeExpression(const Expression& expr,
         case Expression::Kind::kIndex:
             this->writeIndexExpression(expr.as<IndexExpression>());
             break;
-        case Expression::Kind::kSetting:
         default:
             SkDEBUGFAILF("unsupported expression: %s", expr.description().c_str());
             break;
@@ -818,5 +816,3 @@ void ConvertProgram(const Program& program,
 
 }  // namespace PipelineStage
 }  // namespace SkSL
-
-#endif

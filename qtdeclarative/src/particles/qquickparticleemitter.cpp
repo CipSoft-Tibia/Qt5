@@ -14,7 +14,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Emitter
-//!    \instantiates QQuickParticleEmitter
+//!    \nativetype QQuickParticleEmitter
     \inqmlmodule QtQuick.Particles
     \brief Emits logical particles.
     \ingroup qtquick-particles
@@ -144,7 +144,7 @@ QT_BEGIN_NAMESPACE
     The starting acceleraton of the particles emitted.
 */
 /*!
-    \qmlproperty qreal QtQuick.Particles::Emitter::velocityFromMovement
+    \qmlproperty real QtQuick.Particles::Emitter::velocityFromMovement
 
     If this value is non-zero, then any movement of the emitter will provide additional
     starting velocity to the particles based on the movement. The additional vector will be the

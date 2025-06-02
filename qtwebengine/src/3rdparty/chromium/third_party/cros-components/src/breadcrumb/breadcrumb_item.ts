@@ -5,7 +5,7 @@
  */
 
 import '@material/web/button/text-button.js';
-import '../icon/icon';
+import '../placeholder_icon/placeholder-icon';
 
 import {css, CSSResultGroup, html, LitElement} from 'lit';
 
@@ -24,15 +24,22 @@ export class BreadcrumbItem extends LitElement {
       --breadcrumb-size: 36px;
       --icon-size: 36px;
       --chevron-size: 20px;
-      --font-type: var(--cros-title-1-font);
+      --font-family: var(--cros-title-1-font-family);
+      --font-size: var(--cros-title-1-font-size);
+      --line-height: var(--cros-title-1-line-height);
+      --font-weight: var(--cros-title-1-font-weight);
       --padding-between: 2px;
     }
     md-text-button {
+      --md-focus-ring-duration: 0s;
       --md-sys-color-primary: var(--cros-sys-on_surface_variant);
       --md-text-button-container-height: var(--breadcrumb-size);
       --md-text-button-hover-state-layer-color: var(--cros-sys-hover_on_subtle);
       --md-text-button-hover-state-layer-opacity: 1;
-      --md-text-button-label-text-type: var(--font-type);
+      --md-text-button-label-text-font: var(--font-family);
+      --md-text-button-label-text-size: var(--font-size);
+      --md-text-button-label-text-line-height: var(--line-height);
+      --md-text-button-label-text-weight: var(--font-weight);
       --md-text-button-pressed-state-layer-color: var(--cros-sys-ripple_neutral_on_subtle);
       --md-text-button-pressed-state-layer-opacity: 1;
     }

@@ -9050,7 +9050,7 @@ static void DiagnoseBadConversion(Sema &S, OverloadCandidate *Cand,
         return;
       }
   }
-  
+
   // Emit the generic diagnostic and, optionally, add the hints to it.
   PartialDiagnostic FDiag = S.PDiag(diag::note_ovl_candidate_bad_conv);
   FDiag << (unsigned) FnKind << FnDesc
@@ -9490,13 +9490,19 @@ static void NoteFunctionCandidate(Sema &S, OverloadCandidate *Cand,
     return S.NoteOverloadCandidate(Fn);
 
   case ovl_fail_bad_conversion: {
-    unsigned I = (Cand->IgnoreObjectArgument ? 1 : 0);
-    for (unsigned N = Cand->NumConversions; I != N; ++I)
-      if (Cand->Conversions[I].isInitialized() && Cand->Conversions[I].isBad()) // HLSL Change: check in and out, check out conversions
-        return DiagnoseBadConversion(S, Cand, I, Cand->Conversions[I], OpLoc); // HLSL Change: add OpLoc
-    if (Cand->OutConversions[I].isInitialized() && Cand->OutConversions[I].isBad()) // HLSL Change: check in and out, check out conversions
-      return DiagnoseBadConversion(S, Cand, I, Cand->OutConversions[I], OpLoc); // HLSL Change: add OpLoc
-
+    for (unsigned I = (Cand->IgnoreObjectArgument ? 1 : 0),
+                  N = Cand->NumConversions;
+         I != N; ++I) {
+      // HLSL Change: check in and out, check out conversions
+      if (Cand->Conversions[I].isInitialized() && Cand->Conversions[I].isBad())
+        return DiagnoseBadConversion(S, Cand, I, Cand->Conversions[I],
+                                     OpLoc); // HLSL Change: add OpLoc
+      // HLSL Change: check in and out, check out conversions
+      if (Cand->OutConversions[I].isInitialized() &&
+          Cand->OutConversions[I].isBad())
+        return DiagnoseBadConversion(S, Cand, I, Cand->OutConversions[I],
+                                     OpLoc); // HLSL Change: add OpLoc
+    }
     // FIXME: this currently happens when we're called from SemaInit
     // when user-conversion overload fails.  Figure out how to handle
     // those conditions and diagnose them well.
@@ -10936,7 +10942,11 @@ bool Sema::buildOverloadedCallSet(Scope *S, Expr *Fn,
     // We don't perform ADL for implicit declarations of builtins.
     // Verify that this was correctly set up.
     FunctionDecl *F;
-    if (ULE->decls_begin() + 1 == ULE->decls_end() &&
+    if (
+        // HLSL change begin
+        (ULE->getNumDecls() > 0) &&
+        // HLSL change end
+        ULE->decls_begin() + 1 == ULE->decls_end() &&
         (F = dyn_cast<FunctionDecl>(*ULE->decls_begin())) &&
         F->getBuiltinID() && F->isImplicit())
       llvm_unreachable("performing ADL for builtin");
@@ -11912,6 +11922,10 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
       if (Method != FoundDecl.getDecl() && 
                       DiagnoseUseOfDecl(Method, UnresExpr->getNameLoc()))
         return ExprError();
+      // HLSL Change Start - Check method constraints
+      if (DiagnoseHLSLMethodCall(Method, MemExprE->getLocStart()))
+        return ExprError();
+      // HLSL Change End
       break;
 
     case OR_No_Viable_Function:

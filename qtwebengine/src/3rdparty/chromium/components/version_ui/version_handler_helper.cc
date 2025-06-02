@@ -12,8 +12,10 @@
 #include "base/metrics/field_trial_list_including_low_anonymity.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/variations/active_field_trials.h"
 #include "components/variations/net/variations_command_line.h"
+#endif
 #include "components/variations/service/safe_seed_manager.h"
 
 namespace version_ui {
@@ -35,6 +37,7 @@ base::Value::List GetVariationsList() {
   base::FieldTrial::ActiveGroups active_groups;
   // Include low anonymity trial groups in the version string, as it is only
   // displayed locally (and is useful for diagnostics purposes).
+#if !BUILDFLAG(IS_QTWEBENGINE)
   base::FieldTrialListIncludingLowAnonymity::GetActiveFieldTrialGroups(
       &active_groups);
 #if !defined(NDEBUG)
@@ -51,7 +54,7 @@ base::Value::List GetVariationsList() {
   variations::GetFieldTrialActiveGroupIdsAsStrings(base::StringPiece(),
                                                    active_groups, &variations);
 #endif
-
+#endif
   base::Value::List variations_list;
   for (std::string& variation : variations)
     variations_list.Append(std::move(variation));
@@ -60,7 +63,12 @@ base::Value::List GetVariationsList() {
 }
 
 base::Value GetVariationsCommandLineAsValue() {
-  return base::Value(variations::GetVariationsCommandLine());
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  return base::Value(
+      variations::VariationsCommandLine::GetForCurrentProcess().ToString());
+#else
+  return base::Value();
+#endif
 }
 
 }  // namespace version_ui

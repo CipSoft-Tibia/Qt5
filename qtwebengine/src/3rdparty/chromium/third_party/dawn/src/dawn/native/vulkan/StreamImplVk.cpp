@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <cstring>
 #include <map>
@@ -20,7 +33,7 @@
 #include "dawn/native/stream/Stream.h"
 #include "dawn/native/vulkan/RenderPassCache.h"
 
-#include "icd/generated/vk_typemap_helper.h"
+#include <vulkan/utility/vk_struct_helper.hpp>  // NOLINT(build/include_order)
 
 namespace dawn::native {
 
@@ -34,7 +47,7 @@ void ValidatePnextImpl(const VkBaseOutStructure* root) {
     while (next != nullptr) {
         // Assert that the type of each pNext struct is exactly one of the specified
         // templates.
-        ASSERT(((LvlTypeMap<VK_STRUCT_TYPES>::kSType == next->sType ? 1 : 0) + ... + 0) == 1);
+        DAWN_ASSERT(((vku::GetSType<VK_STRUCT_TYPES>() == next->sType ? 1 : 0) + ... + 0) == 1);
         next = reinterpret_cast<const VkBaseOutStructure*>(next->pNext);
     }
 }
@@ -44,13 +57,13 @@ void SerializePnextImpl(stream::Sink* sink, const VkBaseOutStructure* root) {
     const VkBaseOutStructure* next = reinterpret_cast<const VkBaseOutStructure*>(root->pNext);
     const VK_STRUCT_TYPE* found = nullptr;
     while (next != nullptr) {
-        if (LvlTypeMap<VK_STRUCT_TYPE>::kSType == next->sType) {
+        if (vku::GetSType<VK_STRUCT_TYPE>() == next->sType) {
             if (found == nullptr) {
                 found = reinterpret_cast<const VK_STRUCT_TYPE*>(next);
             } else {
                 // Fail an assert here since that means that the chain had more than one of
                 // the same typed chained object.
-                ASSERT(false);
+                DAWN_ASSERT(false);
             }
         }
         next = reinterpret_cast<const VkBaseOutStructure*>(next->pNext);
@@ -309,15 +322,15 @@ void stream::Stream<vulkan::RenderPassCacheQuery>::Write(stream::Sink* sink,
     // Manually iterate the color attachment indices and their corresponding format/load/store
     // ops because the data is sparse and may be uninitialized. Since we serialize the colorMask
     // member above, serializing sparse data should be fine here.
-    for (ColorAttachmentIndex i : IterateBitSet(t.colorMask)) {
+    for (auto i : IterateBitSet(t.colorMask)) {
         StreamIn(sink, t.colorFormats[i], t.colorLoadOp[i], t.colorStoreOp[i]);
     }
 
     // Serialize the depth-stencil toggle bit, and the parameters if applicable.
     StreamIn(sink, t.hasDepthStencil);
     if (t.hasDepthStencil) {
-        StreamIn(sink, t.depthStencilFormat, t.depthLoadOp, t.depthStoreOp, t.stencilLoadOp,
-                 t.stencilStoreOp, t.readOnlyDepthStencil);
+        StreamIn(sink, t.depthStencilFormat, t.depthLoadOp, t.depthStoreOp, t.depthReadOnly,
+                 t.stencilLoadOp, t.stencilStoreOp, t.stencilReadOnly);
     }
 }
 

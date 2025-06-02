@@ -142,7 +142,7 @@
     during runtime to the implementation chosen by Qt. Alternatively,
     applications are free to make direct OpenGL function calls if they add
     opengl32.lib to their .pro project files: \e{LIBS += opengl32.lib} (Visual
-    Studio) or \e{LIBS += -lopengl32} (MinGW). The result is, from the
+    Studio) or \e{LIBS += -lopengl32} (Mingw-w64). The result is, from the
     application's perspective, equivalent to the \c{-opengl desktop} build
     configuration of Qt.
 
@@ -635,7 +635,7 @@
     (\c iconengines, \c imageformats).
 
     In addition, the archive must contain the following compiler
-    specific libraries (assuming Visual Studio 16 (2019)):
+    specific libraries (assuming Visual Studio 17 (2022)):
 
     \table 100%
     \header
@@ -645,7 +645,7 @@
         \li {2, 1} \c vcruntime140.dll
     \row
         \li The C++ run-time
-        \li {2, 1} \c msvcp160.dll
+        \li {2, 1} \c msvcp170.dll
     \endtable
 
     If dynamic OpenGL was used, then the archive may additionally contain:
@@ -764,8 +764,8 @@
     \table 100%
         \header
             \li Qt
-            \li Visual Studio 16 (2019)
-            \li MinGW
+            \li Visual Studio 17 (2022)
+            \li Mingw-w64
         \row
         \li \list
                \li QT6CORE.DLL - The QtCore runtime
@@ -955,7 +955,7 @@
      \li Search on the Windows search bar for the VS Native Tools command prompt.
     \endlist
 
-    For MinGW: Add MinGW to \c PATH environment variable:
+    For Mingw-w64: Add Mingw-w64 to \c PATH environment variable:
 
         \badcode
         Set PATH=C:\qt\tools\mingw1120_64\bin;%PATH%
@@ -972,7 +972,8 @@
         C:\dev\Qt\src\configure.bat
         \endcode
 
-        By default, Qt is configured for installation in the \c{C:\Qt\Qt-6.5.3} directory.
+        By default, Qt is configured for installation in the \c{C:\Qt\Qt-major.minor.patch}
+        directory, where the major.minor.patch triplet represents the Qt version being built.
         This can be changed by using the \c -prefix option. See the list of
         \l{Qt Configure Options} to tweak further.
 
@@ -992,7 +993,7 @@
         cmake --install .
         \endcode
 
-    \section1 Step 4: Using Qt
+    \section1 Step 4: Building Your Application
 
         After Qt is installed, you can start building applications with it.
 
@@ -1000,7 +1001,7 @@
         environment variable as follows:
 
         \badcode
-        set PATH=C:\Qt\Qt-6.5.3\bin;%PATH%
+        set PATH=C:\Qt\Qt-major.minor.patch\bin;%PATH%
         \endcode
 
         If you plan to use Qt from an IDE, you need to register the Qt version explicitly

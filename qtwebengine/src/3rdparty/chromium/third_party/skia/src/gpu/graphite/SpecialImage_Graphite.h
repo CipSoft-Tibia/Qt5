@@ -16,7 +16,6 @@
 
 class SkColorInfo;
 class SkImage;
-class SkSpecialSurface;
 class SkSurfaceProps;
 struct SkIRect;
 struct SkImageInfo;
@@ -39,19 +38,11 @@ sk_sp<SkSpecialImage> MakeGraphite(const SkIRect& subset,
                                    const SkColorInfo&,
                                    const SkSurfaceProps&);
 
-// NOTE: Unlike Ganesh's SkSpecialImages::AsView(), this will not automatically upload a
-// raster image to a new texture
 skgpu::graphite::TextureProxyView AsTextureProxyView(const SkSpecialImage*);
 inline skgpu::graphite::TextureProxyView AsTextureProxyView(sk_sp<const SkSpecialImage> img) {
     return AsTextureProxyView(img.get());
 }
 
 }  // namespace SkSpecialImages
-
-namespace SkSpecialSurfaces {
-sk_sp<SkSpecialSurface> MakeGraphite(skgpu::graphite::Recorder*,
-                                     const SkImageInfo&,
-                                     const SkSurfaceProps&);
-}  // namespace SkSpecialSurfaces
 
 #endif

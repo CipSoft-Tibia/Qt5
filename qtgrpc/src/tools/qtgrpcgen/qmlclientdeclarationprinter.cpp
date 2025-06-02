@@ -34,6 +34,18 @@ void QmlClientDeclarationPrinter::printOpenNamespace()
 {
     m_printer->Print({ { "scope_namespaces", m_typeMap["scope_type"] } },
                      CommonTemplates::NamespaceTemplate());
+    m_printer->Print(m_typeMap,
+                     CommonTemplates::ClassMessageForwardDeclarationTemplate());
+}
+
+void QmlClientDeclarationPrinter::printStreamSenders()
+{
+    for (int i = 0; i < m_descriptor->method_count(); ++i) {
+        const MethodDescriptor *method = m_descriptor->method(i);
+        MethodMap parameters = common::produceMethodMap(method, m_typeMap["classname"]);
+        if (method->client_streaming())
+            m_printer->Print(parameters, GrpcTemplates::StreamSenderDeclarationQmlTemplate());
+    }
 }
 
 void QmlClientDeclarationPrinter::printClientClass()
@@ -45,7 +57,7 @@ void QmlClientDeclarationPrinter::printClientClass()
 void QmlClientDeclarationPrinter::printConstructor()
 {
     Indent();
-    m_printer->Print(m_typeMap, CommonTemplates::QObjectConstructorMessageDeclarationTemplate());
+    m_printer->Print(m_typeMap, GrpcTemplates::ClientConstructorDeclarationTemplate());
     Outdent();
 }
 
@@ -55,8 +67,18 @@ void QmlClientDeclarationPrinter::printClientMethodsDeclaration()
     for (int i = 0; i < m_descriptor->method_count(); ++i) {
         const MethodDescriptor *method = m_descriptor->method(i);
         MethodMap parameters = common::produceMethodMap(method, m_typeMap["classname"]);
-        if (!method->server_streaming() && !method->client_streaming())
+        if (method->server_streaming() && method->client_streaming()) {
+            m_printer->Print(parameters,
+                             GrpcTemplates::ClientMethodBidiStreamDeclarationQmlTemplate());
+        } else if (method->server_streaming()) {
+            m_printer->Print(parameters,
+                             GrpcTemplates::ClientMethodServerStreamDeclarationQmlTemplate());
+        } else if (method->client_streaming()) {
+            m_printer->Print(parameters,
+                             GrpcTemplates::ClientMethodClientStreamDeclarationQmlTemplate());
+        } else {
             m_printer->Print(parameters, GrpcTemplates::ClientMethodDeclarationQmlTemplate());
+        }
     }
     Outdent();
 }

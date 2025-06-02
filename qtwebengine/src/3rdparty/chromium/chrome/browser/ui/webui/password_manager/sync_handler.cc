@@ -9,7 +9,7 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/sync/sync_ui_util.h"
-#include "components/password_manager/core/browser/password_manager_features_util.h"
+#include "components/password_manager/core/browser/features/password_manager_features_util.h"
 #include "components/sync/service/sync_service.h"
 #include "components/sync/service/sync_service_utils.h"
 #include "components/sync/service/sync_user_settings.h"
@@ -91,15 +91,14 @@ base::Value::Dict SyncHandler::GetSyncInfo() const {
     return dict;
   }
 
-  PrefService* pref_service = profile_->GetPrefs();
   syncer::UserSelectableTypeSet types =
       sync_service->GetUserSettings()->GetSelectedTypes();
 
   auto* identity_manager = IdentityManagerFactory::GetForProfile(profile_);
   dict.Set("isEligibleForAccountStorage",
            (!identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSync) &&
-            (IsOptedInForAccountStorage(pref_service, sync_service) ||
-             ShouldShowAccountStorageOptIn(pref_service, sync_service))));
+            (IsOptedInForAccountStorage(sync_service) ||
+             ShouldShowAccountStorageOptIn(sync_service))));
   dict.Set("isSyncingPasswords",
            (sync_service->IsSyncFeatureEnabled() &&
             types.Has(syncer::UserSelectableType::kPasswords)));

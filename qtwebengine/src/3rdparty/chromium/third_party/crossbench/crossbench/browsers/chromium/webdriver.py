@@ -33,8 +33,10 @@ from .chromium import Chromium
 if TYPE_CHECKING:
   from crossbench.browsers.splash_screen import SplashScreen
   from crossbench.browsers.viewport import Viewport
+  from crossbench.network.base import Network
   from crossbench.runner.run import Run
   from crossbench.types import JsonDict, JsonList
+  from crossbench.runner.groups import BrowserSessionRunGroup
 
 
 class ChromiumWebDriver(WebDriverBrowser, Chromium, metaclass=abc.ABCMeta):
@@ -50,23 +52,26 @@ class ChromiumWebDriver(WebDriverBrowser, Chromium, metaclass=abc.ABCMeta):
       js_flags: Optional[Flags.InitialDataType] = None,
       cache_dir: Optional[pathlib.Path] = None,
       type: str = "chromium",  # pylint: disable=redefined-builtin
+      network: Optional[Network] = None,
       driver_path: Optional[pathlib.Path] = None,
       viewport: Optional[Viewport] = None,
       splash_screen: Optional[SplashScreen] = None,
       platform: Optional[plt.Platform] = None):
-    super().__init__(label, path, flags, js_flags, cache_dir, type, driver_path,
-                     viewport, splash_screen, platform)
+    super().__init__(label, path, flags, js_flags, cache_dir, type, network,
+                     driver_path, viewport, splash_screen, platform)
 
-  def _use_local_chromedriver(self) -> bool:
-    return self.major_version == 0 or (self.app_path.parent /
-                                       "args.gn").exists()
+  def use_local_chromedriver(self) -> bool:
+    return self.major_version == 0 or self.is_locally_compiled()
+
+  def is_locally_compiled(self) -> bool:
+    return (self.app_path.parent / "args.gn").exists()
 
   def _find_driver(self) -> pathlib.Path:
     if self._driver_path:
       return self._driver_path
     finder = ChromeDriverFinder(self)
     assert self.app_path
-    if self._use_local_chromedriver():
+    if self.use_local_chromedriver():
       return finder.find_local_build()
     try:
       return finder.download()
@@ -82,12 +87,12 @@ class ChromiumWebDriver(WebDriverBrowser, Chromium, metaclass=abc.ABCMeta):
       # to make an old pytype version happy
       return pathlib.Path()
 
-  def _start_driver(self, run: Run,
+  def _start_driver(self, session: BrowserSessionRunGroup,
                     driver_path: pathlib.Path) -> ChromiumDriver:
     assert not self._is_running
     assert self.log_file
-    args = self._get_browser_flags_for_run(run)
-    options = self._create_options(run, args)
+    args = self._get_browser_flags_for_session(session)
+    options = self._create_options(session, args)
     logging.info("STARTING BROWSER: %s", self.path)
     logging.info("STARTING BROWSER: driver: %s", driver_path)
     logging.info("STARTING BROWSER: args: %s", shlex.join(args))
@@ -104,7 +109,8 @@ class ChromiumWebDriver(WebDriverBrowser, Chromium, metaclass=abc.ABCMeta):
     driver.execute_cdp_cmd("Runtime.setMaxCallStackSizeToCapture", {"size": 0})
     return driver
 
-  def _create_options(self, run: Run, args: Sequence[str]) -> ChromiumOptions:
+  def _create_options(self, session: BrowserSessionRunGroup,
+                      args: Sequence[str]) -> ChromiumOptions:
     assert not self._is_running
     options: ChromiumOptions = self.WEB_DRIVER_OPTIONS()
     options.set_capability("browserVersion", str(self.major_version))
@@ -113,10 +119,7 @@ class ChromiumWebDriver(WebDriverBrowser, Chromium, metaclass=abc.ABCMeta):
     for arg in args:
       options.add_argument(arg)
     options.binary_location = str(self.path)
-
-    for probe in run.probe_scopes:
-      probe.setup_selenium_options(options)
-
+    session.setup_selenium_options(options)
     return options
 
   @abc.abstractmethod
@@ -189,8 +192,9 @@ class ChromiumWebDriverAndroid(ChromiumWebDriver):
                     flag_value)
     return chrome_flags
 
-  def _create_options(self, run: Run, args: Sequence[str]) -> ChromiumOptions:
-    options: ChromiumOptions = super()._create_options(run, args)
+  def _create_options(self, session: BrowserSessionRunGroup,
+                      args: Sequence[str]) -> ChromiumOptions:
+    options: ChromiumOptions = super()._create_options(session, args)
     options.binary_location = ""
     package = self.platform.app_path_to_package(self.path)
     options.add_experimental_option("androidPackage", package)
@@ -203,6 +207,11 @@ class DriverNotFoundError(ValueError):
   pass
 
 
+def build_chromedriver_instructions(build_dir: pathlib.Path) -> str:
+  return ("Please build 'chromedriver' manually for local builds.\n"
+          f"autoninja -C {build_dir} chromedriver")
+
+
 class ChromeDriverFinder:
   driver_path: pathlib.Path
 
@@ -210,25 +219,30 @@ class ChromeDriverFinder:
                browser: ChromiumWebDriver,
                cache_dir: pathlib.Path = BROWSERS_CACHE):
     self.browser = browser
-    self.platform = browser.platform
-    self.host_platform = browser.platform.host_platform
+    self.platform: plt.Platform = browser.platform
+    self.host_platform: plt.Platform = browser.platform.host_platform
     assert self.browser.is_local, (
         "Cannot download chromedriver for remote browser yet")
-    extension = ""
+    extension: str = ""
     if self.host_platform.is_win:
       extension = ".exe"
-    self.driver_path = (
+    self.driver_path: pathlib.Path = (
         cache_dir / f"chromedriver-{self.browser.major_version}{extension}")
 
   def find_local_build(self) -> pathlib.Path:
     assert self.browser.app_path
     # assume it's a local build
-    driver_path = self.browser.app_path.parent / "chromedriver"
-    if not driver_path.is_file():
-      raise DriverNotFoundError(
-          f"Driver '{driver_path}' does not exist. "
-          "Please build 'chromedriver' manually for local builds.")
-    return driver_path
+    lookup_dir = self.browser.app_path.parent
+    driver_path = lookup_dir / "chromedriver"
+    is_build_dir = (lookup_dir / "args.gn").exists()
+    if driver_path.is_file():
+      return driver_path
+    error_message: List[str] = [f"Driver '{driver_path}' does not exist."]
+    if is_build_dir:
+      error_message += [build_chromedriver_instructions(lookup_dir)]
+    else:
+      error_message += ["Please manually provide a chromedriver binary."]
+    raise DriverNotFoundError("\n".join(error_message))
 
   def download(self) -> pathlib.Path:
     if not self.driver_path.is_file():
@@ -242,6 +256,7 @@ class ChromeDriverFinder:
     logging.info("CHROMEDRIVER Downloading from %s v%s", self.browser.type,
                  major_version)
     url: Optional[str] = None
+    listing_url: Optional[str] = None
     if major_version >= 115:
       listing_url, url = self._find_chrome_for_testing_url(major_version)
     if not url:

@@ -16,7 +16,6 @@
 #include "core/fpdfapi/parser/cpdf_simple_parser.h"
 #include "core/fxcrt/fx_extension.h"
 #include "core/fxcrt/fx_safe_types.h"
-#include "core/fxge/freetype/fx_freetype.h"
 #include "third_party/base/check.h"
 
 namespace {
@@ -100,10 +99,7 @@ void CPDF_CMapParser::HandleCid(ByteStringView word) {
     StartCID = static_cast<uint16_t>(m_CodePoints[2]);
   }
   if (EndCode < CPDF_CMap::kDirectMapTableSize) {
-    for (uint32_t code = StartCode; code <= EndCode; code++) {
-      m_pCMap->SetDirectCharcodeToCIDTable(
-          code, static_cast<uint16_t>(StartCID + code - StartCode));
-    }
+    m_pCMap->SetDirectCharcodeToCIDTableRange(StartCode, EndCode, StartCID);
   } else {
     m_AdditionalCharcodeToCIDMappings.push_back({StartCode, EndCode, StartCID});
   }

@@ -457,12 +457,19 @@ void Pointer::OnSurfaceDestroying(Surface* surface) {
 void Pointer::OnMouseEvent(ui::MouseEvent* event) {
   if (seat_->was_shutdown() || event->handled())
     return;
-
-  WMHelper* helper = WMHelper::GetInstance();
-  auto* drag_drop_client = helper->GetDragDropClient();
-  if (!static_cast<ash::DragDropController*>(drag_drop_client)
-           ->IsDragDropCompleted()) {
+  // Ask seat instead of ash's DragDropController because it ends
+  // asynchronously.
+  if (seat_->IsDragDropOperationInProgress()) {
     return;
+  } else if (button_flags_on_drag_drop_start_) {
+    // Send release events for buttons that are released during the drag and
+    // drop operation.
+    int released_button_flags =
+        button_flags_on_drag_drop_start_ & ~event->button_flags();
+    delegate_->OnPointerButton(event->time_stamp(), released_button_flags,
+                               false);
+    delegate_->OnPointerFrame();
+    button_flags_on_drag_drop_start_ = 0;
   }
 
   // Nothing to report to a client nor have to update the pointer when capture
@@ -644,13 +651,13 @@ void Pointer::OnMouseEvent(ui::MouseEvent* event) {
                             kForceGranularity)) {
       last_force_ = details.force;
       stylus_delegate_->OnPointerForce(event->time_stamp(), details.force);
-      needs_frame = true;
+      needs_frame |= true;
     }
     if (abs(last_tilt_.x() - details.tilt_x) >= kTiltGranularity ||
         abs(last_tilt_.y() - details.tilt_y) >= kTiltGranularity) {
       last_tilt_ = gfx::Vector2dF(details.tilt_x, details.tilt_y);
       stylus_delegate_->OnPointerTilt(event->time_stamp(), last_tilt_);
-      needs_frame = true;
+      needs_frame |= true;
     }
   }
 
@@ -711,6 +718,9 @@ void Pointer::OnGestureEvent(ui::GestureEvent* event) {
 ////////////////////////////////////////////////////////////////////////////////
 // aura::client::DragDropClientObserver overrides:
 void Pointer::OnDragStarted() {
+  button_flags_on_drag_drop_start_ =
+      aura::Env::GetInstance()->mouse_button_flags();
+
   // Drag 'n drop operations driven by sources different than pointer/mouse
   // should have not effect here.
   WMHelper* helper = WMHelper::GetInstance();

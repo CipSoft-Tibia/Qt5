@@ -1,23 +1,36 @@
-// Copyright 2021 The Tint Authors
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     https://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/utils/socket/socket.h"
 
 #include "src/tint/utils/macros/compiler.h"
 #include "src/tint/utils/socket/rwmutex.h"
 
-#if defined(_WIN32)
+#if TINT_BUILD_IS_WIN
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
@@ -28,9 +41,10 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <cstdio>
 #endif
 
-#if defined(_WIN32)
+#if TINT_BUILD_IS_WIN
 #include <atomic>
 namespace {
 std::atomic<int> wsa_init_count = {0};
@@ -42,10 +56,11 @@ using SOCKET = int;
 }  // anonymous namespace
 #endif
 
+namespace tint::socket {
 namespace {
 constexpr SOCKET InvalidSocket = static_cast<SOCKET>(-1);
 void Init() {
-#if defined(_WIN32)
+#if TINT_BUILD_IS_WIN
     if (wsa_init_count++ == 0) {
         WSADATA winsock_data;
         (void)WSAStartup(MAKEWORD(2, 2), &winsock_data);
@@ -54,7 +69,7 @@ void Init() {
 }
 
 void Term() {
-#if defined(_WIN32)
+#if TINT_BUILD_IS_WIN
     if (--wsa_init_count == 0) {
         WSACleanup();
     }
@@ -62,7 +77,7 @@ void Term() {
 }
 
 bool SetBlocking(SOCKET s, bool blocking) {
-#if defined(_WIN32)
+#if TINT_BUILD_IS_WIN
     u_long mode = blocking ? 0 : 1;
     return ioctlsocket(s, FIONBIO, &mode) == NO_ERROR;
 #else
@@ -98,7 +113,7 @@ class Impl : public Socket {
 
         addrinfo* info = nullptr;
         auto err = getaddrinfo(address, port, &hints, &info);
-#if !defined(_WIN32)
+#if !TINT_BUILD_IS_WIN
         if (err) {
             printf("getaddrinfo(%s, %s) error: %s\n", address, port, gai_strerror(err));
         }
@@ -143,7 +158,7 @@ class Impl : public Socket {
 
         int enable = 1;
 
-#if !defined(_WIN32)
+#if !TINT_BUILD_IS_WIN
         // Prevent sockets lingering after process termination, causing
         // reconnection issues on the same port.
         setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&enable), sizeof(enable));
@@ -153,7 +168,7 @@ class Impl : public Socket {
             int l_linger; /* how many seconds to linger for */
         } linger = {false, 0};
         setsockopt(s, SOL_SOCKET, SO_LINGER, reinterpret_cast<char*>(&linger), sizeof(linger));
-#endif  // !defined(_WIN32)
+#endif  // !TINT_BUILD_IS_WIN
 
         // Enable TCP_NODELAY.
         setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&enable), sizeof(enable));
@@ -175,7 +190,7 @@ class Impl : public Socket {
         {
             RLock l(mutex);
             if (s != InvalidSocket) {
-#if defined(_WIN32)
+#if TINT_BUILD_IS_WIN
                 closesocket(s);
 #else
                 ::shutdown(s, SHUT_RDWR);
@@ -185,7 +200,7 @@ class Impl : public Socket {
 
         WLock l(mutex);
         if (s != InvalidSocket) {
-#if !defined(_WIN32)
+#if !TINT_BUILD_IS_WIN
             ::close(s);
 #endif
             s = InvalidSocket;
@@ -305,7 +320,8 @@ std::shared_ptr<Socket> Socket::Connect(const char* address,
 
             timeval tv;
             tv.tv_sec = timeout_us / 1000000;
-            tv.tv_usec = static_cast<int>(timeout_us - (tv.tv_sec * 1000000));
+            using USEC = decltype(tv.tv_usec);
+            tv.tv_usec = static_cast<USEC>(timeout_us) - (static_cast<USEC>(tv.tv_sec) * 1000000);
             res = select(static_cast<int>(socket + 1), nullptr, &fdset, nullptr, &tv);
             if (res > 0 && !Errored(socket) && SetBlocking(socket, true)) {
                 out = impl;
@@ -319,3 +335,5 @@ std::shared_ptr<Socket> Socket::Connect(const char* address,
 
     return out->IsOpen() ? out : nullptr;
 }
+
+}  // namespace tint::socket

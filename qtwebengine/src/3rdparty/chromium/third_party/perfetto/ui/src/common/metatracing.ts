@@ -12,10 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {PerfettoMetatrace, Trace, TracePacket} from '../core/protos';
-import {perfetto} from '../gen/protos';
-
-import {featureFlags} from './feature_flags';
+import {featureFlags} from '../core/feature_flags';
+import {
+  MetatraceCategories,
+  PerfettoMetatrace,
+  Trace,
+  TracePacket,
+} from '../protos';
 
 const METATRACING_BUFFER_SIZE = 100000;
 
@@ -27,8 +30,6 @@ export enum MetatraceTrackId {
   // in the omnibox.
   kOmniboxStatus = 3,
 }
-
-import MetatraceCategories = perfetto.protos.MetatraceCategories;
 
 const AOMT_FLAG = featureFlags.register({
   id: 'alwaysOnMetatracing',
@@ -47,7 +48,7 @@ const AOMT_DETAILED_FLAG = featureFlags.register({
 function getInitialCategories(): MetatraceCategories|undefined {
   if (!AOMT_FLAG.get()) return undefined;
   if (AOMT_DETAILED_FLAG.get()) return MetatraceCategories.ALL;
-  return MetatraceCategories.TOPLEVEL;
+  return MetatraceCategories.QUERY_TIMELINE | MetatraceCategories.API_TIMELINE;
 }
 
 let enabledCategories: MetatraceCategories|undefined = getInitialCategories();

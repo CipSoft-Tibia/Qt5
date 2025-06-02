@@ -7,16 +7,29 @@
 #include <QNetworkAccessManager>
 #include <QQueue>
 #include <QTimer>
+#include <qcomparehelpers.h>
 
+QT_FORWARD_DECLARE_CLASS(QPoint)
 
-struct OSMTileData{
+struct OSMTileData
+{
     int TileX;
     int TileY;
     int ZoomLevel;
-    bool operator ==(const OSMTileData &other) const{
-        return (TileX == other.TileX && TileY == other.TileY && ZoomLevel == other.ZoomLevel);
+
+    qreal distanceTo(QPoint p) const;
+
+    friend bool comparesEqual(OSMTileData lhs,
+                              OSMTileData rhs) noexcept
+    {
+        return lhs.TileX == rhs.TileX && lhs.TileY == rhs.TileY
+                && lhs.ZoomLevel == rhs.ZoomLevel;
     }
+
+    Q_DECLARE_EQUALITY_COMPARABLE(OSMTileData)
 };
+
+size_t qHash(OSMTileData data, size_t seed = 0) noexcept;
 
 class OSMRequest : public QObject
 {
@@ -50,12 +63,6 @@ private:
     QQueue<OSMTileData> m_mapsQueue;
     QNetworkAccessManager m_networkAccessManager;
     QString m_token;
-
-    //%1 = zoom level(15 the default and only one here that seems working), %2 = x tile number, %3 = y tile number
-    const char *m_uRL_OSMB_JSON = "https://983wdxn2c2.execute-api.eu-north-1.amazonaws.com/production/osmbuildingstile?z=%1&x=%2&y=%3&token=%4";
-
-    //%1 = zoom level(is dynamic), %2 = x tile number, %3 = y tile number
-    const char *m_uRL_OSMB_MAP = "https://tile-a.openstreetmap.fr/hot/%1/%2/%3.png";
 };
 
 

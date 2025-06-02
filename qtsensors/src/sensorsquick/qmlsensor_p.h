@@ -34,7 +34,7 @@ class QSensorReading;
 class QmlSensorReading;
 
 class QmlSensorPrivate;
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlSensor : public QObject, public QQmlParserStatus
+class Q_SENSORSQUICK_EXPORT QmlSensor : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QmlSensor)
@@ -180,7 +180,7 @@ private:
                                          m_reading, nullptr)
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlSensorReading : public QObject
+class Q_SENSORSQUICK_EXPORT QmlSensorReading : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(quint64 timestamp READ timestamp NOTIFY timestampChanged BINDABLE bindableTimestamp)

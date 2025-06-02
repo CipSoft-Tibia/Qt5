@@ -16,19 +16,21 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufMapTypesGenerationTest : public QObject
 {
     Q_OBJECT
-private slots:
-    void SInt32StringMapMessageTest();
-    void StringStringMapMessageTest();
+private Q_SLOTS:
+    void sInt32StringMapMessageTest();
+    void stringStringMapMessageTest();
 
-    void SimpleInt32ComplexMessageMapMessageCompareTest();
+    void simpleInt32ComplexMessageMapMessageCompareTest();
 };
 
 using namespace qtprotobufnamespace::tests;
 
-void QtProtobufMapTypesGenerationTest::SInt32StringMapMessageTest()
+void QtProtobufMapTypesGenerationTest::sInt32StringMapMessageTest()
 {
     const char *propertyName = "mapField";
     qProtobufAssertMessagePropertyRegistered<SimpleSInt32StringMapMessage, SimpleSInt32StringMapMessage::MapFieldEntry>(1, "qtprotobufnamespace::tests::SimpleSInt32StringMapMessage::MapFieldEntry", propertyName);
+    QVERIFY(SimpleSInt32StringMapMessage::staticPropertyOrdering.fieldFlags(0)
+            & QtProtobufPrivate::FieldFlag::Map);
 
     QVERIFY(QMetaType::fromType<SimpleSInt32StringMapMessage::MapFieldEntry>().isRegistered());
 
@@ -37,21 +39,17 @@ void QtProtobufMapTypesGenerationTest::SInt32StringMapMessageTest()
     test.setMapField(testMap);
     QCOMPARE(test.property(propertyName).value<SimpleSInt32StringMapMessage::MapFieldEntry>(), testMap);
     QCOMPARE(test.mapField(), testMap);
-    QCOMPARE(test.mapField()[10], "Some 10"_L1);
-    QCOMPARE(test.mapField()[0], "Some 0"_L1);
-    QCOMPARE(test.mapField()[44], "Some 44"_L1);
-
-    test.mapField()[66] = "Some 66";
-    QCOMPARE(test.mapField()[66], "Some 66"_L1);
-
-    test.mapField()[66] = "Some default";
-    QCOMPARE(test.mapField()[66], "Some default"_L1);
+    QCOMPARE(test.mapField().value(10), "Some 10"_L1);
+    QCOMPARE(test.mapField().value(0), "Some 0"_L1);
+    QCOMPARE(test.mapField().value(44), "Some 44"_L1);
 }
 
-void QtProtobufMapTypesGenerationTest::StringStringMapMessageTest()
+void QtProtobufMapTypesGenerationTest::stringStringMapMessageTest()
 {
     const char *propertyName = "mapField";
     qProtobufAssertMessagePropertyRegistered<SimpleStringStringMapMessage, SimpleStringStringMapMessage::MapFieldEntry>(13, "qtprotobufnamespace::tests::SimpleStringStringMapMessage::MapFieldEntry", propertyName);
+    QVERIFY(SimpleStringStringMapMessage::staticPropertyOrdering.fieldFlags(0)
+            & QtProtobufPrivate::FieldFlag::Map);
 
     QVERIFY(QMetaType::fromType<SimpleStringStringMapMessage::MapFieldEntry>().isRegistered());
 
@@ -60,18 +58,12 @@ void QtProtobufMapTypesGenerationTest::StringStringMapMessageTest()
     test.setMapField(testMap);
     QCOMPARE(test.property(propertyName).value<SimpleStringStringMapMessage::MapFieldEntry>(), testMap);
     QCOMPARE(test.mapField(), testMap);
-    QCOMPARE(test.mapField()["key 10"], "Some 10"_L1);
-    QCOMPARE(test.mapField()["key 0"], "Some 0"_L1);
-    QCOMPARE(test.mapField()["key 44"], "Some 44"_L1);
-
-    test.mapField()["key 66"] = "Some 66";
-    QCOMPARE(test.mapField()["key 66"], "Some 66"_L1);
-
-    test.mapField()["key 66"] = "Some default";
-    QCOMPARE(test.mapField()["key 66"], "Some default"_L1);
+    QCOMPARE(test.mapField().value("key 10"), "Some 10"_L1);
+    QCOMPARE(test.mapField().value("key 0"), "Some 0"_L1);
+    QCOMPARE(test.mapField().value("key 44"), "Some 44"_L1);
 }
 
-void QtProtobufMapTypesGenerationTest::SimpleInt32ComplexMessageMapMessageCompareTest()
+void QtProtobufMapTypesGenerationTest::simpleInt32ComplexMessageMapMessageCompareTest()
 {
     SimpleStringMessage stringMsg;
     ComplexMessage msg1;

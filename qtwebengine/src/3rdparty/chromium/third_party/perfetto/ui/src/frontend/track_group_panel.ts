@@ -15,68 +15,60 @@
 import {hex} from 'color-convert';
 import m from 'mithril';
 
-import {assertExists} from '../base/logging';
+import {Icons} from '../base/semantic_icons';
 import {Actions} from '../common/actions';
 import {
   getContainingTrackId,
-  TrackGroupState,
-  TrackState,
 } from '../common/state';
+import {TrackCacheEntry} from '../common/track_cache';
+import {TrackTags} from '../public';
 
+import {
+  COLLAPSED_BACKGROUND,
+  EXPANDED_BACKGROUND,
+  TRACK_SHELL_WIDTH,
+} from './css_constants';
 import {globals} from './globals';
 import {drawGridLines} from './gridline_helper';
-import {
-  BLANK_CHECKBOX,
-  CHECKBOX,
-  EXPAND_DOWN,
-  EXPAND_UP,
-  INDETERMINATE_CHECKBOX,
-} from './icons';
-import {Panel, PanelSize} from './panel';
-import {Track} from './track';
-import {TrackChips, TrackContent} from './track_panel';
-import {trackRegistry} from './track_registry';
+import {PanelSize} from './panel';
+import {Panel} from './panel_container';
+import {renderChips, TrackContent} from './track_panel';
 import {
   drawVerticalLineAtTime,
 } from './vertical_line_helper';
 
 interface Attrs {
   trackGroupId: string;
-  selectable: boolean;
+  key: string;
+  title: string;
+  collapsed: boolean;
+  trackFSM?: TrackCacheEntry;
+  tags?: TrackTags;
+  labels?: string[];
 }
 
-export class TrackGroupPanel extends Panel<Attrs> {
-  private readonly trackGroupId: string;
-  private shellWidth = 0;
-  private backgroundColor = '#ffffff';  // Updated from CSS later.
-  private summaryTrack: Track|undefined;
+export class TrackGroupPanel implements Panel {
+  readonly kind = 'panel';
+  readonly selectable = true;
+  readonly key: string;
+  readonly trackGroupId: string;
 
-  constructor({attrs}: m.CVnode<Attrs>) {
-    super();
+  constructor(private attrs: Attrs) {
     this.trackGroupId = attrs.trackGroupId;
-    const trackCreator = trackRegistry.get(this.summaryTrackState.kind);
-    const engineId = this.summaryTrackState.engineId;
-    const engine = globals.engines.get(engineId);
-    if (engine !== undefined) {
-      this.summaryTrack = trackCreator.create({
-        trackId: this.summaryTrackState.id,
-        engine: engine.getProxy(`Track; kind: ${
-            this.summaryTrackState.kind}; id: ${this.summaryTrackState.id}`),
-      });
-    }
+    this.key = attrs.key;
   }
 
-  get trackGroupState(): TrackGroupState {
-    return assertExists(globals.state.trackGroups[this.trackGroupId]);
-  }
+  get mithril(): m.Children {
+    const {
+      trackGroupId,
+      title,
+      labels,
+      tags,
+      collapsed,
+      trackFSM,
+    } = this.attrs;
 
-  get summaryTrackState(): TrackState {
-    return assertExists(globals.state.tracks[this.trackGroupState.tracks[0]]);
-  }
-
-  view({attrs}: m.CVnode<Attrs>) {
-    const collapsed = this.trackGroupState.collapsed;
-    let name = this.trackGroupState.name;
+    let name = title;
     if (name[0] === '/') {
       name = StripPathFromExecutable(name);
     }
@@ -86,43 +78,46 @@ export class TrackGroupPanel extends Panel<Attrs> {
     let highlightClass = '';
     const searchIndex = globals.state.searchIndex;
     if (searchIndex !== -1) {
-      const trackId = globals.currentSearchResults.trackIds[searchIndex];
-      const parentTrackId = getContainingTrackId(globals.state, trackId);
-      if (parentTrackId === attrs.trackGroupId) {
+      const trackKey = globals.currentSearchResults.trackKeys[searchIndex];
+      const parentTrackId = getContainingTrackId(globals.state, trackKey);
+      if (parentTrackId === trackGroupId) {
         highlightClass = 'flash';
       }
     }
 
     const selection = globals.state.currentSelection;
 
-    const trackGroup = globals.state.trackGroups[attrs.trackGroupId];
-    let checkBox = BLANK_CHECKBOX;
+    const trackGroup = globals.state.trackGroups[trackGroupId];
+    let checkBox = Icons.BlankCheckbox;
     if (selection !== null && selection.kind === 'AREA') {
       const selectedArea = globals.state.areas[selection.areaId];
-      if (selectedArea.tracks.includes(attrs.trackGroupId) &&
+      if (selectedArea.tracks.includes(trackGroupId) &&
           trackGroup.tracks.every((id) => selectedArea.tracks.includes(id))) {
-        checkBox = CHECKBOX;
+        checkBox = Icons.Checkbox;
       } else if (
-          selectedArea.tracks.includes(attrs.trackGroupId) ||
+          selectedArea.tracks.includes(trackGroupId) ||
           trackGroup.tracks.some((id) => selectedArea.tracks.includes(id))) {
-        checkBox = INDETERMINATE_CHECKBOX;
+        checkBox = Icons.IndeterminateCheckbox;
       }
     }
 
     let child = null;
-    if (this.summaryTrackState.labels &&
-        this.summaryTrackState.labels.length > 0) {
-      child = this.summaryTrackState.labels.join(', ');
+    if (labels && labels.length > 0) {
+      child = labels.join(', ');
     }
 
     return m(
         `.track-group-panel[collapsed=${collapsed}]`,
-        {id: 'track_' + this.trackGroupId},
+        {
+          id: 'track_' + trackGroupId,
+          oncreate: () => this.onupdate(),
+          onupdate: () => this.onupdate(),
+        },
         m(`.shell`,
           {
             onclick: (e: MouseEvent) => {
               globals.dispatch(Actions.toggleTrackGroupCollapsed({
-                trackGroupId: attrs.trackGroupId,
+                trackGroupId,
               })),
                   e.stopPropagation();
             },
@@ -131,67 +126,42 @@ export class TrackGroupPanel extends Panel<Attrs> {
 
           m('.fold-button',
             m('i.material-icons',
-              this.trackGroupState.collapsed ? EXPAND_DOWN : EXPAND_UP)),
+              collapsed ? Icons.ExpandDown : Icons.ExpandUp)),
           m('.title-wrapper',
             m(
                 'h1.track-title',
                 {title: name},
                 name,
-                m(TrackChips, {config: this.summaryTrackState.config}),
+                renderChips(tags),
                 ),
-            (this.trackGroupState.collapsed && child !== null) ?
-                m('h2.track-subtitle', child) :
-                null),
+            (collapsed && child !== null) ? m('h2.track-subtitle', child) :
+                                            null),
           selection && selection.kind === 'AREA' ?
               m('i.material-icons.track-button',
                 {
                   onclick: (e: MouseEvent) => {
                     globals.dispatch(Actions.toggleTrackSelection(
-                        {id: attrs.trackGroupId, isTrackGroup: true}));
+                        {id: trackGroupId, isTrackGroup: true}));
                     e.stopPropagation();
                   },
                 },
                 checkBox) :
               ''),
 
-        this.summaryTrack ?
-            m(TrackContent,
-              {track: this.summaryTrack},
-              (!this.trackGroupState.collapsed && child !== null) ?
-                  m('span', child) :
-                  null) :
-            null);
+        trackFSM ? m(TrackContent,
+                     {track: trackFSM.track},
+                     (!collapsed && child !== null) ? m('span', child) : null) :
+                   null);
   }
 
-  oncreate(vnode: m.CVnodeDOM<Attrs>) {
-    this.onupdate(vnode);
-  }
-
-  onupdate({dom}: m.CVnodeDOM<Attrs>) {
-    const shell = assertExists(dom.querySelector('.shell'));
-    this.shellWidth = shell.getBoundingClientRect().width;
-    // TODO(andrewbb): move this to css_constants
-    if (this.trackGroupState.collapsed) {
-      this.backgroundColor =
-          getComputedStyle(dom).getPropertyValue('--collapsed-background');
-    } else {
-      this.backgroundColor =
-          getComputedStyle(dom).getPropertyValue('--expanded-background');
-    }
-    if (this.summaryTrack !== undefined) {
-      this.summaryTrack.onFullRedraw();
-    }
-  }
-
-  onremove() {
-    if (this.summaryTrack !== undefined) {
-      this.summaryTrack.onDestroy();
-      this.summaryTrack = undefined;
+  private onupdate() {
+    if (this.attrs.trackFSM !== undefined) {
+      this.attrs.trackFSM.track.onFullRedraw?.();
     }
   }
 
   highlightIfTrackSelected(ctx: CanvasRenderingContext2D, size: PanelSize) {
-    const {visibleTimeScale} = globals.frontendLocalState;
+    const {visibleTimeScale} = globals.timeline;
     const selection = globals.state.currentSelection;
     if (!selection || selection.kind !== 'AREA') return;
     const selectedArea = globals.state.areas[selection.areaId];
@@ -199,7 +169,7 @@ export class TrackGroupPanel extends Panel<Attrs> {
     if (selectedArea.tracks.includes(this.trackGroupId)) {
       ctx.fillStyle = 'rgba(131, 152, 230, 0.3)';
       ctx.fillRect(
-          visibleTimeScale.timeToPx(selectedArea.start) + this.shellWidth,
+          visibleTimeScale.timeToPx(selectedArea.start) + TRACK_SHELL_WIDTH,
           0,
           visibleTimeScale.durationToPx(selectedAreaDuration),
           size.height);
@@ -207,9 +177,12 @@ export class TrackGroupPanel extends Panel<Attrs> {
   }
 
   renderCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
-    const collapsed = this.trackGroupState.collapsed;
+    const {
+      collapsed,
+      trackFSM: track,
+    } = this.attrs;
 
-    ctx.fillStyle = this.backgroundColor;
+    ctx.fillStyle = collapsed ? COLLAPSED_BACKGROUND : EXPANDED_BACKGROUND;
     ctx.fillRect(0, 0, size.width, size.height);
 
     if (!collapsed) return;
@@ -222,15 +195,17 @@ export class TrackGroupPanel extends Panel<Attrs> {
         size.height);
 
     ctx.save();
-    ctx.translate(this.shellWidth, 0);
-    if (this.summaryTrack) {
-      this.summaryTrack.render(ctx);
+    ctx.translate(TRACK_SHELL_WIDTH, 0);
+    if (track) {
+      const trackSize = {...size, width: size.width - TRACK_SHELL_WIDTH};
+      track.update();
+      track.track.render(ctx, trackSize);
     }
     ctx.restore();
 
     this.highlightIfTrackSelected(ctx, size);
 
-    const {visibleTimeScale} = globals.frontendLocalState;
+    const {visibleTimeScale} = globals.timeline;
     // Draw vertical line when hovering on the notes panel.
     if (globals.state.hoveredNoteTimestamp !== -1n) {
       drawVerticalLineAtTime(

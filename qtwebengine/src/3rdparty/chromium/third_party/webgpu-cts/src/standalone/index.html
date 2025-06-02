@@ -148,7 +148,7 @@
         width: 100%;
         left: 0;
         top: 0;
-        background-color: #000;
+        background-color: #068;
         color: #fff;
         align-items: center;
       }
@@ -170,6 +170,13 @@
         border-right: 1px solid var(--results-fg-color);
       }
 
+      /* PS: this does not disable using the keyboard to click */
+      #resultsVis.disable-run button.leafrun,
+      #resultsVis.disable-run button.subtreerun {
+         pointer-events: none;
+         opacity: 25%;
+      }
+
       /* tree nodes */
 
       .nodeheader {
@@ -184,7 +191,8 @@
       .leafrun,
       .nodelink,
       .collapsebtn,
-      .testcaselogbtn {
+      .testcaselogbtn,
+      .copybtn {
         display: inline-flex;
         flex-shrink: 0;
         flex-grow: 0;
@@ -202,7 +210,8 @@
       .leafrun::before,
       .nodelink::before,
       .collapsebtn::before,
-      .testcaselogbtn::before {
+      .testcaselogbtn::before,
+      .copybtn::before {
         content: "";
         width: 100%;
         height: 100%;
@@ -215,7 +224,8 @@
         .leafrun,
         .nodelink,
         .collapsebtn,
-        .testcaselogbtn {
+        .testcaselogbtn,
+        .copybtn {
           flex-basis: 24px;
           border-radius: 4px;
           width: 24px;
@@ -227,7 +237,8 @@
         .leafrun,
         .nodelink,
         .collapsebtn,
-        .testcaselogbtn {
+        .testcaselogbtn,
+        .copybtn {
           flex-basis: 36px;
           border-radius: 6px;
           width: 36px;
@@ -242,6 +253,9 @@
       }
       .nodelink::before {
         background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMAQMAAABsu86kAAAABlBMVEUAAAAAAAClZ7nPAAAAAXRSTlMAQObYZgAAACRJREFUCNdjYGBg+P+BoUGAYesFhj4BhvsFDPYNDHwMCMTAAACqJwbp3VgbrAAAAABJRU5ErkJggg==);
+      }
+      .copybtn::before {
+        background-image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMAQMAAABsu86kAAAABlBMVEUAAAAAAAClZ7nPAAAAAXRSTlMAQObYZgAAACVJREFUCNdjYGBgqGdgcGRgcGBg8H/A4KEAQhkKDBxgxP8AKA8AVNUEx41Lj8MAAAAASUVORK5CYII=);
       }
       .nodetitle {
         display: inline;

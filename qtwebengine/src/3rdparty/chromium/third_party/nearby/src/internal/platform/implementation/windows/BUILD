@@ -41,9 +41,13 @@ cc_library(
         "timer.h",
         "utils.h",
     ],
-    copts = ["-Ithird_party/nearby/internal/platform/implementation/windows/generated"],
+    copts = [
+        "-Ithird_party/nearby/internal/platform/implementation/windows/generated",
+        "-Wno-non-virtual-dtor",
+        "-Wno-vla-extension",
+    ],
     defines = ["_SILENCE_CLANG_COROUTINE_MESSAGE"],
-    visibility = ["//third_party/nearby/sharing/internal/impl/windows:__pkg__"],
+    visibility = ["//sharing/internal/impl/windows:__pkg__"],
     deps = [
         ":comm",
         "//base",
@@ -102,8 +106,10 @@ cc_library(
         "wifi.h",
         "wifi_direct.h",
         "wifi_hotspot.h",
+        "wifi_intel.h",
         "wifi_lan.h",
     ],
+    copts = ["-DNO_INTEL_PIE"],
     visibility = ["//visibility:private"],
     deps = [
         "//internal/platform:base",
@@ -179,6 +185,7 @@ cc_library(
         "wifi_hotspot_medium.cc",
         "wifi_hotspot_server_socket.cc",
         "wifi_hotspot_socket.cc",
+        "wifi_intel.cc",
         "wifi_lan_medium.cc",
         "wifi_lan_server_socket.cc",
         "wifi_lan_socket.cc",
@@ -186,14 +193,21 @@ cc_library(
     ],
     # This is the temporary solution to solve compilation error of Win32 WFDxxx() related API.
     # WFD API is only support after _WIN32_WINNT_WIN8, but the current lexan _WIN32_WINNT is set to _WIN32_WINNT_WIN7
-    copts = ["-Ithird_party/nearby/internal/platform/implementation/windows/generated -D_WIN32_WINNT=_WIN32_WINNT_WIN10 -DWINVER=_WIN32_WINNT_WIN10"],
+    copts = [
+        "-DNO_INTEL_PIE",
+        "-Ithird_party/nearby/internal/platform/implementation/windows/generated -D_WIN32_WINNT=_WIN32_WINNT_WIN10 -DWINVER=_WIN32_WINNT_WIN10",
+        "-Wno-non-virtual-dtor",
+        "-Wno-unused-variable",
+        "-Wno-unused-value",
+    ],
     defines = ["_SILENCE_CLANG_COROUTINE_MESSAGE"],
     visibility = [
+        "//chrome/chromeos/assistant/data_migration/lib:__pkg__",
         "//connections:__subpackages__",
         "//fastpair:__subpackages__",
         "//location/nearby:__subpackages__",
         "//presence:__subpackages__",
-        "//third_party/nearby/sharing:__subpackages__",
+        "//sharing:__subpackages__",
     ],
     deps = [
         ":comm",
@@ -274,6 +288,8 @@ cc_test(
         "timer_test.cc",
         "utils_test.cc",
         "webrtc_test.cc",
+        "wifi_hotspot_test.cc",
+        "wifi_medium_test.cc",
     ],
     copts = ["-Ithird_party/nearby/internal/platform/implementation/windows/generated -DCORE_ADAPTER_DLL"],
     tags = ["notap"],

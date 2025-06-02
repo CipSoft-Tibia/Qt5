@@ -43,7 +43,10 @@ MaybeHandle<Object> Runtime::GetObjectProperty(
   if (result.is_null()) {
     return result;
   }
-  if (is_found) *is_found = it.IsFound();
+  if (is_found) {
+    *is_found = it.state() != LookupIterator::INTEGER_INDEXED_EXOTIC &&
+                it.state() != LookupIterator::NOT_FOUND;
+  }
 
   return result;
 }
@@ -187,11 +190,11 @@ RUNTIME_FUNCTION(Runtime_ObjectHasOwnProperty) {
       LookupIterator it(isolate, js_obj, key, js_obj, c);
       Maybe<bool> maybe = JSReceiver::HasProperty(&it);
       if (maybe.IsNothing()) return ReadOnlyRoots(isolate).exception();
-      DCHECK(!isolate->has_pending_exception());
+      DCHECK(!isolate->has_exception());
       if (maybe.FromJust()) return ReadOnlyRoots(isolate).true_value();
     }
 
-    Map map = js_obj->map();
+    Tagged<Map> map = js_obj->map();
     if (!IsJSGlobalProxyMap(map) &&
         (key.is_element() && key.index() <= JSObject::kMaxElementIndex
              ? !map->has_indexed_interceptor()
@@ -203,7 +206,7 @@ RUNTIME_FUNCTION(Runtime_ObjectHasOwnProperty) {
     LookupIterator it(isolate, js_obj, key, js_obj, LookupIterator::OWN);
     Maybe<bool> maybe = JSReceiver::HasProperty(&it);
     if (maybe.IsNothing()) return ReadOnlyRoots(isolate).exception();
-    DCHECK(!isolate->has_pending_exception());
+    DCHECK(!isolate->has_exception());
     return isolate->heap()->ToBoolean(maybe.FromJust());
 
   } else if (IsJSProxy(*object)) {
@@ -632,13 +635,14 @@ RUNTIME_FUNCTION(Runtime_GetProperty) {
       DisallowGarbageCollection no_gc;
       if (IsJSGlobalObject(*lookup_start_object)) {
         // Attempt dictionary lookup.
-        GlobalDictionary dictionary = JSGlobalObject::cast(*lookup_start_object)
-                                          ->global_dictionary(kAcquireLoad);
+        Tagged<GlobalDictionary> dictionary =
+            JSGlobalObject::cast(*lookup_start_object)
+                ->global_dictionary(kAcquireLoad);
         InternalIndex entry = dictionary->FindEntry(isolate, key);
         if (entry.is_found()) {
-          PropertyCell cell = dictionary->CellAt(entry);
+          Tagged<PropertyCell> cell = dictionary->CellAt(entry);
           if (cell->property_details().kind() == PropertyKind::kData) {
-            Object value = cell->value();
+            Tagged<Object> value = cell->value();
             if (!IsPropertyCellHole(value, isolate)) return value;
             // If value is the hole (meaning, absent) do the general lookup.
           }
@@ -646,7 +650,7 @@ RUNTIME_FUNCTION(Runtime_GetProperty) {
       } else if (!lookup_start_object->HasFastProperties()) {
         // Attempt dictionary lookup.
         if (V8_ENABLE_SWISS_NAME_DICTIONARY_BOOL) {
-          SwissNameDictionary dictionary =
+          Tagged<SwissNameDictionary> dictionary =
               lookup_start_object->property_dictionary_swiss();
           InternalIndex entry = dictionary->FindEntry(isolate, *key);
           if (entry.is_found() &&
@@ -654,7 +658,7 @@ RUNTIME_FUNCTION(Runtime_GetProperty) {
             return dictionary->ValueAt(entry);
           }
         } else {
-          NameDictionary dictionary =
+          Tagged<NameDictionary> dictionary =
               lookup_start_object->property_dictionary();
           InternalIndex entry = dictionary->FindEntry(isolate, key);
           if ((entry.is_found()) &&
@@ -741,8 +745,8 @@ RUNTIME_FUNCTION(Runtime_SetNamedProperty) {
 namespace {
 
 // ES6 section 12.5.4.
-Object DeleteProperty(Isolate* isolate, Handle<Object> object,
-                      Handle<Object> key, LanguageMode language_mode) {
+Tagged<Object> DeleteProperty(Isolate* isolate, Handle<Object> object,
+                              Handle<Object> key, LanguageMode language_mode) {
   Handle<JSReceiver> receiver;
   ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, receiver,
                                      Object::ToObject(isolate, object));
@@ -991,7 +995,7 @@ RUNTIME_FUNCTION(Runtime_DefineKeyedOwnPropertyInLiteral) {
       &it, value, PropertyAttributes::NONE, Just(kDontThrow));
   // Cannot fail since this should only be called when
   // creating an object literal.
-  RETURN_FAILURE_IF_SCHEDULED_EXCEPTION(isolate);
+  RETURN_FAILURE_IF_EXCEPTION(isolate);
   DCHECK(result.IsJust());
   USE(result);
 
@@ -1012,7 +1016,7 @@ RUNTIME_FUNCTION(Runtime_HasFastPackedElements) {
 RUNTIME_FUNCTION(Runtime_IsJSReceiver) {
   SealHandleScope shs(isolate);
   DCHECK_EQ(1, args.length());
-  Object obj = args[0];
+  Tagged<Object> obj = args[0];
   return isolate->heap()->ToBoolean(IsJSReceiver(obj));
 }
 
@@ -1422,7 +1426,7 @@ Maybe<bool> FindPrivateMembersFromReceiver(Isolate* isolate,
       CollectPrivateMembersFromReceiver(isolate, receiver, desc, &results),
       Nothing<bool>());
 
-  if (results.size() == 0) {
+  if (results.empty()) {
     THROW_NEW_ERROR_RETURN_VALUE(isolate, NewError(not_found_message, desc),
                                  Nothing<bool>());
   } else if (results.size() > 1) {
@@ -1596,7 +1600,7 @@ RUNTIME_FUNCTION(Runtime_SwissTableFindEntry) {
   HandleScope scope(isolate);
   DisallowGarbageCollection no_gc;
   auto table = SwissNameDictionary::cast(args[0]);
-  Name key = Name::cast(args[1]);
+  Tagged<Name> key = Name::cast(args[1]);
   InternalIndex index = table->FindEntry(isolate, key);
   return Smi::FromInt(index.is_found()
                           ? index.as_int()
@@ -1610,7 +1614,7 @@ RUNTIME_FUNCTION(Runtime_SwissTableUpdate) {
   DisallowGarbageCollection no_gc;
   auto table = SwissNameDictionary::cast(args[0]);
   InternalIndex index(args.smi_value_at(1));
-  Object value = args[2];
+  Tagged<Object> value = args[2];
   table->ValueAtPut(index, value);
 
   PropertyDetails details(Smi::cast(args[3]));

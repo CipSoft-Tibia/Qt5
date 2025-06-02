@@ -30,6 +30,7 @@ class RectF;
 
 namespace gpu {
 struct Capabilities;
+class ClientSharedImage;
 
 namespace gles2 {
 class GLES2Interface;
@@ -119,6 +120,7 @@ class MEDIA_EXPORT PaintCanvasVideoRenderer {
   bool CopyVideoFrameTexturesToGLTexture(
       viz::RasterContextProvider* raster_context_provider,
       gpu::gles2::GLES2Interface* destination_gl,
+      const gpu::Capabilities& destination_gl_capabilities,
       scoped_refptr<VideoFrame> video_frame,
       unsigned int target,
       unsigned int texture,
@@ -128,14 +130,6 @@ class MEDIA_EXPORT PaintCanvasVideoRenderer {
       int level,
       bool premultiply_alpha,
       bool flip_y);
-
-  // TODO(776222): Remove this function from PaintCanvasVideoRenderer.
-  static bool PrepareVideoFrameForWebGL(
-      viz::RasterContextProvider* raster_context_provider,
-      gpu::gles2::GLES2Interface* gl,
-      scoped_refptr<VideoFrame> video_frame,
-      unsigned int target,
-      unsigned int texture);
 
   // Copy the CPU-side YUV contents of |video_frame| to texture |texture| in
   // context |destination_gl|.
@@ -147,6 +141,7 @@ class MEDIA_EXPORT PaintCanvasVideoRenderer {
   bool CopyVideoFrameYUVDataToGLTexture(
       viz::RasterContextProvider* raster_context_provider,
       gpu::gles2::GLES2Interface* destination_gl,
+      const gpu::Capabilities& destination_gl_capabilities,
       scoped_refptr<VideoFrame> video_frame,
       unsigned int target,
       unsigned int texture,
@@ -196,6 +191,15 @@ class MEDIA_EXPORT PaintCanvasVideoRenderer {
                             int yoffset,
                             bool flip_y,
                             bool premultiply_alpha);
+
+  // Copies VideoFrame contents to the `destination` shared image. if
+  // `use_visible_rect` is set to true, only `VideoFrame::visible_rect()`
+  // portion is copied, otherwise copies all underlying buffer.
+  [[nodiscard]] gpu::SyncToken CopyVideoFrameToSharedImage(
+      viz::RasterContextProvider* raster_context_provider,
+      scoped_refptr<VideoFrame> video_frame,
+      const gpu::MailboxHolder& destination,
+      bool use_visible_rect);
 
   // In general, We hold the most recently painted frame to increase the
   // performance for the case that the same frame needs to be painted
@@ -261,6 +265,7 @@ class MEDIA_EXPORT PaintCanvasVideoRenderer {
   bool UploadVideoFrameToGLTexture(
       viz::RasterContextProvider* raster_context_provider,
       gpu::gles2::GLES2Interface* destination_gl,
+      const gpu::Capabilities& destination_gl_capabilities,
       scoped_refptr<VideoFrame> video_frame,
       unsigned int target,
       unsigned int texture,
@@ -293,7 +298,7 @@ class MEDIA_EXPORT PaintCanvasVideoRenderer {
     gfx::Size size;
 
     // The shared image backing the texture.
-    gpu::Mailbox mailbox;
+    scoped_refptr<gpu::ClientSharedImage> shared_image;
 
     // Used to perform YUV->RGB conversion on video frames. Internally caches
     // shared images that are created to upload CPU video frame data to the GPU.

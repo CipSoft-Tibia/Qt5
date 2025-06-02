@@ -29,7 +29,6 @@
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/script/script_type.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/script/script_type.mojom-shared.h"
-#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/platform/loader/fetch/cross_origin_attribute_value.h"
 #include "third_party/blink/renderer/platform/loader/fetch/integrity_metadata.h"
@@ -207,24 +206,18 @@ class PLATFORM_EXPORT FetchParameters {
     render_blocking_behavior_ = render_blocking_behavior;
   }
 
-  void SetDiscoveryTime(base::TimeTicks discovery_time) {
-    discovery_time_ = discovery_time;
-  }
-
-  base::TimeTicks DiscoveryTime() { return discovery_time_; }
-
   void SetIsPotentiallyLCPElement(bool flag) {
     is_potentially_lcp_element_ = flag;
   }
 
-  bool IsPotentiallyLCPElement() const { return is_potentially_lcp_element_; }
-
-  void SetCountORBBlockAs(mojom::blink::WebFeature feature) {
-    count_orb_block_as_ = feature;
+  void SetIsPotentiallyLCPInfluencer(bool flag) {
+    is_potentially_lcp_influencer_ = flag;
   }
 
-  absl::optional<mojom::blink::WebFeature> CountORBBlockAs() {
-    return count_orb_block_as_;
+  bool IsPotentiallyLCPElement() const { return is_potentially_lcp_element_; }
+
+  bool IsPotentiallyLCPInfluencer() const {
+    return is_potentially_lcp_influencer_;
   }
 
  private:
@@ -245,13 +238,8 @@ class PLATFORM_EXPORT FetchParameters {
   bool is_from_origin_dirty_style_sheet_ = false;
   RenderBlockingBehavior render_blocking_behavior_ =
       RenderBlockingBehavior::kUnset;
-  base::TimeTicks discovery_time_;
   bool is_potentially_lcp_element_ = false;
-
-  // Count ORB-blocked responses (optionally), so that we can measure
-  // compatibility impact.
-  // TODO(vogelheim, 1463725): Remove this once the ORB feature launches.
-  absl::optional<mojom::blink::WebFeature> count_orb_block_as_;
+  bool is_potentially_lcp_influencer_ = false;
 };
 
 }  // namespace blink

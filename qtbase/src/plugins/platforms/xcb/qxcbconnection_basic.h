@@ -1,12 +1,11 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-#ifndef QXCBBASICCONNECTION_H
-#define QXCBBASICCONNECTION_H
+
+#pragma once
 
 #include "qxcbatom.h"
 #include "qxcbexport.h"
 
-#include <QtCore/QPair>
 #include <QtCore/QObject>
 #include <QtCore/QByteArray>
 #include <QtCore/QLoggingCategory>
@@ -52,7 +51,7 @@ public:
     bool hasXKB() const { return m_hasXkb; }
     bool hasXRender(int major = -1, int minor = -1) const {
         if (m_hasXRender && major != -1 && minor != -1)
-            return m_xrenderVersion >= qMakePair(major, minor);
+            return m_xrenderVersion >= std::pair(major, minor);
 
         return m_hasXRender;
     }
@@ -105,7 +104,7 @@ private:
     bool m_hasShmFd = false;
     bool m_hasXSync = false;
 
-    QPair<int, int> m_xrenderVersion;
+    std::pair<int, int> m_xrenderVersion;
 
     bool m_xi2Enabled = false;
     int m_xi2Minor = -1;
@@ -138,5 +137,3 @@ struct QStdFreeDeleter {
     )
 
 QT_END_NAMESPACE
-
-#endif // QXCBBASICCONNECTION_H

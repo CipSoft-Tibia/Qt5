@@ -14,6 +14,7 @@
 #include "components/viz/common/gpu/gpu_vsync_callback.h"
 #include "components/viz/common/resources/returned_resource.h"
 #include "components/viz/service/display/pending_swap_params.h"
+#include "components/viz/service/display/render_pass_alpha_type.h"
 #include "components/viz/service/display/software_output_device.h"
 #include "components/viz/service/viz_service_export.h"
 #include "gpu/command_buffer/common/mailbox.h"
@@ -117,9 +118,11 @@ class VIZ_SERVICE_EXPORT OutputSurface {
     int max_render_target_size = 0;
     // The root surface is rendered using vulkan secondary command buffer.
     bool root_is_vulkan_secondary_command_buffer = false;
+    // Maximum number of non-required YUV overlays that will be promoted per
+    // frame. Currently only used with DirectComposition.
     // Some new Intel GPUs support two YUV MPO planes. Promoting two videos
     // to hardware overlays in these platforms will benefit power consumption.
-    bool supports_two_yuv_hardware_overlays = false;
+    int allowed_yuv_overlay_count = 1;
     // True if the OS supports delegated ink trails.
     // This is currently only implemented on Win10 with DirectComposition on the
     // SkiaRenderer.
@@ -215,17 +218,10 @@ class VIZ_SERVICE_EXPORT OutputSurface {
     gfx::ColorSpace color_space;
     // TODO(sunnyps): Change to SkColorType.
     gfx::BufferFormat format = gfx::BufferFormat::RGBA_8888;
-    SkAlphaType alpha_type = kPremul_SkAlphaType;
+    RenderPassAlphaType alpha_type = RenderPassAlphaType::kPremul;
 
-    bool operator==(const ReshapeParams& other) const {
-      return size == other.size &&
-             device_scale_factor == other.device_scale_factor &&
-             color_space == other.color_space && format == other.format &&
-             alpha_type == other.alpha_type;
-    }
-    bool operator!=(const ReshapeParams& other) const {
-      return !(*this == other);
-    }
+    friend bool operator==(const ReshapeParams&,
+                           const ReshapeParams&) = default;
   };
   virtual void Reshape(const ReshapeParams& params) = 0;
 

@@ -32,14 +32,24 @@ QT_BEGIN_NAMESPACE
 class QHttpServerResponderPrivate
 {
 public:
-    QHttpServerResponderPrivate(QHttpServerStream *stream) : stream(stream) { }
+    QHttpServerResponderPrivate(QHttpServerStream *stream);
+    ~QHttpServerResponderPrivate();
+
+    void write(const QByteArray &body, const QHttpHeaders &headers,
+               QHttpServerResponder::StatusCode status);
+    void write(QHttpServerResponder::StatusCode status);
+    void write(QIODevice *data, const QHttpHeaders &headers,
+               QHttpServerResponder::StatusCode status);
+    void writeBeginChunked(const QHttpHeaders &headers, QHttpServerResponder::StatusCode status);
+    void writeChunk(const QByteArray &body);
+    void writeEndChunked(const QByteArray &data, const QHttpHeaders &trailers);
 
 #if defined(QT_DEBUG)
     const QPointer<QHttpServerStream> stream;
 #else
     QHttpServerStream *const stream;
 #endif
-    bool bodyStarted{false};
+    quint32 m_streamId = 0;
 };
 
 QT_END_NAMESPACE

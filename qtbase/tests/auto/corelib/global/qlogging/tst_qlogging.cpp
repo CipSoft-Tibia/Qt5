@@ -955,11 +955,7 @@ void tst_qmessagehandler::formatLogMessage_data()
             << format << "[F] msg"
             << QtFatalMsg << BA("") << 0 << BA("func") << QByteArray() << "msg";
     QTest::newRow("if_cat")
-#ifndef Q_OS_ANDROID
             << format << "[F] cat: msg"
-#else
-            << format << "[F] : msg"
-#endif
             << QtFatalMsg << BA("") << 0 << BA("func") << BA("cat") << "msg";
 }
 
@@ -986,11 +982,9 @@ QString tst_qmessagehandler::backtraceHelperPath()
 #ifdef Q_OS_ANDROID
     QString appExe(QCoreApplication::applicationDirPath()
                    + QLatin1String("/lib" BACKTRACE_HELPER_NAME ".so"));
-#elif defined(Q_OS_WEBOS)
+#else
     QString appExe(QCoreApplication::applicationDirPath()
                    + QLatin1String("/" BACKTRACE_HELPER_NAME));
-#else
-    QString appExe(QLatin1String(HELPER_BINARY));
 #endif
     return appExe;
 }

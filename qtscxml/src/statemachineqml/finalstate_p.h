@@ -27,7 +27,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_STATEMACHINEQML_PRIVATE_EXPORT FinalState : public QFinalState
+class Q_STATEMACHINEQML_EXPORT FinalState : public QFinalState
 {
     Q_OBJECT
     Q_PROPERTY(QQmlListProperty<QObject> children READ children

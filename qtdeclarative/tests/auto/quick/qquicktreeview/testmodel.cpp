@@ -148,7 +148,6 @@ bool TestModel::insertColumns(int position, int cols, const QModelIndex &parent)
     }
 
     beginInsertColumns(parent, position, position + cols - 1);
-    TreeItem *parentItem = treeItem(parent);
 
     TreeItem *item = m_rootItem.data();
 

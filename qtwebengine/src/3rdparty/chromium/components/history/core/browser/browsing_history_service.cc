@@ -25,9 +25,9 @@
 #include "components/history/core/browser/browsing_history_driver.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/keyed_service/core/service_access_type.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/sync/protocol/history_delete_directive_specifics.pb.h"
-#endif // !defined(TOOLKIT_QT)
+#endif // !BUILDFLAG(IS_QTWEBENGINE)
 
 namespace history {
 
@@ -383,7 +383,7 @@ void BrowsingHistoryService::RemoveVisits(
   expire_list.reserve(items.size());
 
   DCHECK(urls_to_be_deleted_.empty());
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   for (const BrowsingHistoryService::HistoryEntry& entry : items) {
     // In order to ensure that visits will be deleted from the server and other
     // clients (even if they are offline), create a sync delete directive for
@@ -423,7 +423,7 @@ void BrowsingHistoryService::RemoveVisits(
     if (web_history && local_history_)
       local_history_->ProcessLocalDeleteDirective(delete_directive);
   }
-#endif // !defined(TOOLKIT_QT)
+#endif // !BUILDFLAG(IS_QTWEBENGINE)
 
   if (local_history_) {
     local_history_->ExpireHistory(

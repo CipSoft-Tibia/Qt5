@@ -28,10 +28,10 @@ class Generator : public MacroAssembler {
 //     size_t mr,                x0
 //     size_t nc,                x1
 //     size_t kc,                x2 / x0
-//     const void*restrict a,    x3
+//     const void* restrict a,    x3
 //     size_t a_stride,          x4
-//     const void*restrict w,    x5
-//     void*restrict c,          x6
+//     const void* restrict w,    x5
+//     void* restrict c,          x6
 //     size_t cm_stride,         x7
 //     size_t cn_stride,         [sp] -> (x0)
 //     const union xnn_f16_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])  [sp + 8] -> (x8)
@@ -63,7 +63,7 @@ class Generator : public MacroAssembler {
 void Generator::generate(size_t max_mr, size_t nc_mod_nr, size_t kc, const jit_gemm_params* jit_gemm_params)
 {
   assert(max_mr <= 6);
-  assert(nc_mod_nr < 16);
+  assert(nc_mod_nr < 16 || nc_mod_nr == SIZE_MAX);
   assert(kc != 0);
   assert(kc % sizeof(uint16_t) == 0);
 

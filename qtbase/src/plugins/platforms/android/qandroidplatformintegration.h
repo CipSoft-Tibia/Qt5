@@ -110,7 +110,7 @@ public:
 
     void flushPendingUpdates();
 
-    static void setColorScheme(Qt::ColorScheme colorScheme);
+    static void updateColorScheme(Qt::ColorScheme colorScheme);
     static Qt::ColorScheme colorScheme() { return m_colorScheme; }
 #if QT_CONFIG(vulkan)
     QPlatformVulkanInstance *createPlatformVulkanInstance(QVulkanInstance *instance) const override;
@@ -136,7 +136,7 @@ private:
 
     QPlatformFontDatabase *m_androidFDB;
     QAndroidPlatformNativeInterface *m_androidPlatformNativeInterface;
-    QAndroidPlatformServices *m_androidPlatformServices;
+    mutable QScopedPointer<QAndroidPlatformServices> m_androidPlatformServices;
 
     // Handling the multiple screens connected. Every display is identified
     // with an unique (autoincremented) displayID. The values of this ID will

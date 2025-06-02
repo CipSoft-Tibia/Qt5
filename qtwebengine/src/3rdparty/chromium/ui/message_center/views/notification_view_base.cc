@@ -191,6 +191,9 @@ void CompactTitleMessageView::set_message(const std::u16string& message) {
   message_->SetText(message);
 }
 
+BEGIN_METADATA(CompactTitleMessageView)
+END_METADATA
+
 // ////////////////////////////////////////////////////////////
 // NotificationViewBase
 // ////////////////////////////////////////////////////////////
@@ -209,6 +212,7 @@ void NotificationViewBase::CreateOrUpdateViews(
   CreateOrUpdateSmallIconView(notification);
   CreateOrUpdateImageView(notification);
   CreateOrUpdateInlineSettingsViews(notification);
+  CreateOrUpdateSnoozeSettingsViews(notification);
   UpdateViewForExpandedState(expanded_);
   // Should be called at the last because SynthesizeMouseMoveEvent() requires
   // everything is in the right location when called.
@@ -400,6 +404,14 @@ NotificationViewBase::CreateInlineSettingsBuilder() {
       .SetVisible(false);
 }
 
+views::Builder<views::BoxLayoutView>
+NotificationViewBase::CreateSnoozeSettingsBuilder() {
+  CHECK(!snooze_row_);
+  return views::Builder<views::BoxLayoutView>()
+      .CopyAddressTo(&snooze_row_)
+      .SetVisible(false);
+}
+
 views::Builder<views::View>
 NotificationViewBase::CreateImageContainerBuilder() {
   DCHECK(!image_container_view_);
@@ -513,9 +525,9 @@ void NotificationViewBase::CreateOrUpdateProgressBarView(
   DCHECK(left_content_);
 
   if (!progress_bar_view_) {
-    auto progress_bar_view =
-        std::make_unique<views::ProgressBar>(kProgressBarHeight,
-                                             /* allow_round_corner */ false);
+    auto progress_bar_view = std::make_unique<views::ProgressBar>();
+    progress_bar_view->SetPreferredHeight(kProgressBarHeight);
+    progress_bar_view->SetPreferredCornerRadii(absl::nullopt);
     progress_bar_view->SetBorder(views::CreateEmptyBorder(
         gfx::Insets::TLBR(kProgressBarTopPadding, 0, 0, 0)));
     progress_bar_view_ = AddViewToLeftContent(std::move(progress_bar_view));
@@ -594,8 +606,9 @@ void NotificationViewBase::CreateOrUpdateProgressViews(
 
 void NotificationViewBase::CreateOrUpdateListItemViews(
     const Notification& notification) {
-  for (auto* item_view : item_views_)
+  for (views::View* item_view : item_views_) {
     delete item_view;
+  }
   item_views_.clear();
 
   const std::vector<NotificationItem>& items = notification.items();
@@ -668,10 +681,16 @@ void NotificationViewBase::CreateOrUpdateActionButtonViews(
   bool new_buttons = action_buttons_.size() != buttons.size();
 
   if (new_buttons || buttons.empty()) {
-    for (auto* item : action_buttons_)
+    for (views::LabelButton* item : action_buttons_) {
       delete item;
+    }
     action_buttons_.clear();
-    actions_row_->SetVisible(expanded_ && !buttons.empty());
+
+    // The `actions_row_` also contains the snooze button in ash.
+    actions_row_->SetVisible(
+        expanded_ &&
+        (!buttons.empty() ||
+         (for_ash_notification_ && notification.should_show_snooze_button())));
   }
 
   // Hide inline reply field if it doesn't exist anymore.
@@ -825,6 +844,24 @@ void NotificationViewBase::ToggleInlineSettings(const ui::Event& event) {
   }
 }
 
+void NotificationViewBase::ToggleSnoozeSettings(const ui::Event& event) {
+  bool snooze_settings_visible = !snooze_row_->GetVisible();
+
+  snooze_row_->SetVisible(snooze_settings_visible);
+
+  SetSettingMode(snooze_settings_visible);
+
+  // Grab a weak pointer before calling SetExpanded() as it might cause |this|
+  // to be deleted.
+  {
+    auto weak_ptr = weak_ptr_factory_.GetWeakPtr();
+    SetExpanded(!snooze_settings_visible);
+    if (!weak_ptr) {
+      return;
+    }
+  }
+}
+
 NotificationControlButtonsView* NotificationViewBase::GetControlButtonsView()
     const {
   return control_buttons_view_;
@@ -863,6 +900,18 @@ void NotificationViewBase::OnSettingsButtonPressed(const ui::Event& event) {
     MessageView::OnSettingsButtonPressed(event);
 }
 
+void NotificationViewBase::OnSnoozeButtonPressed(const ui::Event& event) {
+  for (auto& observer : *observers()) {
+    observer.OnSnoozeButtonPressed(notification_id());
+  }
+
+  if (snooze_settings_enabled_) {
+    ToggleSnoozeSettings(event);
+  } else {
+    MessageView::OnSnoozeButtonPressed(event);
+  }
+}
+
 void NotificationViewBase::Activate() {
   GetWidget()->widget_delegate()->SetCanActivate(true);
   GetWidget()->Activate();
@@ -877,5 +926,8 @@ void NotificationViewBase::InkDropRippleAnimationEnded(
   if (ink_drop_state == views::InkDropState::HIDDEN)
     header_row_->SetSubpixelRenderingEnabled(true);
 }
+
+BEGIN_METADATA(NotificationViewBase, MessageView)
+END_METADATA
 
 }  // namespace message_center

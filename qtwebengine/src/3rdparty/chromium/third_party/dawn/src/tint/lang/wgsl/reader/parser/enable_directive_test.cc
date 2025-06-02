@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/reader/parser/helper_test.h"
 
@@ -35,7 +48,7 @@ TEST_F(EnableDirectiveTest, Single) {
     EXPECT_EQ(enable->source.range.end.line, 1u);
     EXPECT_EQ(enable->source.range.end.column, 12u);
     ASSERT_EQ(enable->extensions.Length(), 1u);
-    EXPECT_EQ(enable->extensions[0]->name, core::Extension::kF16);
+    EXPECT_EQ(enable->extensions[0]->name, wgsl::Extension::kF16);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.line, 1u);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.column, 8u);
     EXPECT_EQ(enable->extensions[0]->source.range.end.line, 1u);
@@ -58,7 +71,7 @@ TEST_F(EnableDirectiveTest, SingleTrailingComma) {
     EXPECT_EQ(enable->source.range.end.line, 1u);
     EXPECT_EQ(enable->source.range.end.column, 14u);
     ASSERT_EQ(enable->extensions.Length(), 1u);
-    EXPECT_EQ(enable->extensions[0]->name, core::Extension::kF16);
+    EXPECT_EQ(enable->extensions[0]->name, wgsl::Extension::kF16);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.line, 1u);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.column, 8u);
     EXPECT_EQ(enable->extensions[0]->source.range.end.line, 1u);
@@ -69,8 +82,8 @@ TEST_F(EnableDirectiveTest, SingleTrailingComma) {
 
 // Test a valid enable directive with multiple extensions.
 TEST_F(EnableDirectiveTest, Multiple) {
-    auto p =
-        parser("enable f16, chromium_disable_uniformity_analysis, chromium_experimental_dp4a;");
+    auto p = parser(
+        "enable f16, chromium_disable_uniformity_analysis, chromium_experimental_subgroups;");
     p->enable_directive();
     EXPECT_FALSE(p->has_error()) << p->error();
     auto program = p->program();
@@ -78,29 +91,29 @@ TEST_F(EnableDirectiveTest, Multiple) {
     ASSERT_EQ(ast.Enables().Length(), 1u);
     auto* enable = ast.Enables()[0];
     ASSERT_EQ(enable->extensions.Length(), 3u);
-    EXPECT_EQ(enable->extensions[0]->name, core::Extension::kF16);
+    EXPECT_EQ(enable->extensions[0]->name, wgsl::Extension::kF16);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.line, 1u);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.column, 8u);
     EXPECT_EQ(enable->extensions[0]->source.range.end.line, 1u);
     EXPECT_EQ(enable->extensions[0]->source.range.end.column, 11u);
-    EXPECT_EQ(enable->extensions[1]->name, core::Extension::kChromiumDisableUniformityAnalysis);
+    EXPECT_EQ(enable->extensions[1]->name, wgsl::Extension::kChromiumDisableUniformityAnalysis);
     EXPECT_EQ(enable->extensions[1]->source.range.begin.line, 1u);
     EXPECT_EQ(enable->extensions[1]->source.range.begin.column, 13u);
     EXPECT_EQ(enable->extensions[1]->source.range.end.line, 1u);
     EXPECT_EQ(enable->extensions[1]->source.range.end.column, 49u);
-    EXPECT_EQ(enable->extensions[2]->name, core::Extension::kChromiumExperimentalDp4A);
+    EXPECT_EQ(enable->extensions[2]->name, wgsl::Extension::kChromiumExperimentalSubgroups);
     EXPECT_EQ(enable->extensions[2]->source.range.begin.line, 1u);
     EXPECT_EQ(enable->extensions[2]->source.range.begin.column, 51u);
     EXPECT_EQ(enable->extensions[2]->source.range.end.line, 1u);
-    EXPECT_EQ(enable->extensions[2]->source.range.end.column, 77u);
+    EXPECT_EQ(enable->extensions[2]->source.range.end.column, 82u);
     ASSERT_EQ(ast.GlobalDeclarations().Length(), 1u);
     EXPECT_EQ(ast.GlobalDeclarations()[0], enable);
 }
 
 // Test a valid enable directive with multiple extensions.
 TEST_F(EnableDirectiveTest, MultipleTrailingComma) {
-    auto p =
-        parser("enable f16, chromium_disable_uniformity_analysis, chromium_experimental_dp4a,;");
+    auto p = parser(
+        "enable f16, chromium_disable_uniformity_analysis, chromium_experimental_subgroups,;");
     p->enable_directive();
     EXPECT_FALSE(p->has_error()) << p->error();
     auto program = p->program();
@@ -108,21 +121,21 @@ TEST_F(EnableDirectiveTest, MultipleTrailingComma) {
     ASSERT_EQ(ast.Enables().Length(), 1u);
     auto* enable = ast.Enables()[0];
     ASSERT_EQ(enable->extensions.Length(), 3u);
-    EXPECT_EQ(enable->extensions[0]->name, core::Extension::kF16);
+    EXPECT_EQ(enable->extensions[0]->name, wgsl::Extension::kF16);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.line, 1u);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.column, 8u);
     EXPECT_EQ(enable->extensions[0]->source.range.end.line, 1u);
     EXPECT_EQ(enable->extensions[0]->source.range.end.column, 11u);
-    EXPECT_EQ(enable->extensions[1]->name, core::Extension::kChromiumDisableUniformityAnalysis);
+    EXPECT_EQ(enable->extensions[1]->name, wgsl::Extension::kChromiumDisableUniformityAnalysis);
     EXPECT_EQ(enable->extensions[1]->source.range.begin.line, 1u);
     EXPECT_EQ(enable->extensions[1]->source.range.begin.column, 13u);
     EXPECT_EQ(enable->extensions[1]->source.range.end.line, 1u);
     EXPECT_EQ(enable->extensions[1]->source.range.end.column, 49u);
-    EXPECT_EQ(enable->extensions[2]->name, core::Extension::kChromiumExperimentalDp4A);
+    EXPECT_EQ(enable->extensions[2]->name, wgsl::Extension::kChromiumExperimentalSubgroups);
     EXPECT_EQ(enable->extensions[2]->source.range.begin.line, 1u);
     EXPECT_EQ(enable->extensions[2]->source.range.begin.column, 51u);
     EXPECT_EQ(enable->extensions[2]->source.range.end.line, 1u);
-    EXPECT_EQ(enable->extensions[2]->source.range.end.column, 77u);
+    EXPECT_EQ(enable->extensions[2]->source.range.end.column, 82u);
     ASSERT_EQ(ast.GlobalDeclarations().Length(), 1u);
     EXPECT_EQ(ast.GlobalDeclarations()[0], enable);
 }
@@ -141,13 +154,13 @@ enable f16;
     auto* enable_a = ast.Enables()[0];
     auto* enable_b = ast.Enables()[1];
     ASSERT_EQ(enable_a->extensions.Length(), 1u);
-    EXPECT_EQ(enable_a->extensions[0]->name, core::Extension::kF16);
+    EXPECT_EQ(enable_a->extensions[0]->name, wgsl::Extension::kF16);
     EXPECT_EQ(enable_a->extensions[0]->source.range.begin.line, 2u);
     EXPECT_EQ(enable_a->extensions[0]->source.range.begin.column, 8u);
     EXPECT_EQ(enable_a->extensions[0]->source.range.end.line, 2u);
     EXPECT_EQ(enable_a->extensions[0]->source.range.end.column, 11u);
     ASSERT_EQ(enable_b->extensions.Length(), 1u);
-    EXPECT_EQ(enable_b->extensions[0]->name, core::Extension::kF16);
+    EXPECT_EQ(enable_b->extensions[0]->name, wgsl::Extension::kF16);
     EXPECT_EQ(enable_b->extensions[0]->source.range.begin.line, 3u);
     EXPECT_EQ(enable_b->extensions[0]->source.range.begin.column, 8u);
     EXPECT_EQ(enable_b->extensions[0]->source.range.end.line, 3u);
@@ -158,27 +171,41 @@ enable f16;
 }
 
 // Test an unknown extension identifier.
-TEST_F(EnableDirectiveTest, InvalidIdentifier) {
+TEST_F(EnableDirectiveTest, InvalidExtension) {
     auto p = parser("enable NotAValidExtensionName;");
     p->enable_directive();
     // Error when unknown extension found
     EXPECT_TRUE(p->has_error());
     EXPECT_EQ(p->error(), R"(1:8: expected extension
-Possible values: 'chromium_disable_uniformity_analysis', 'chromium_experimental_dp4a', 'chromium_experimental_full_ptr_parameters', 'chromium_experimental_push_constant', 'chromium_experimental_read_write_storage_texture', 'chromium_experimental_subgroups', 'chromium_internal_dual_source_blending', 'chromium_internal_relaxed_uniform_layout', 'f16')");
+Possible values: 'f16')");
     auto program = p->program();
     auto& ast = program.AST();
     EXPECT_EQ(ast.Enables().Length(), 0u);
     EXPECT_EQ(ast.GlobalDeclarations().Length(), 0u);
 }
 
-TEST_F(EnableDirectiveTest, InvalidIdentifierSuggest) {
+TEST_F(EnableDirectiveTest, InvalidExtensionSuggest) {
     auto p = parser("enable f15;");
     p->enable_directive();
     // Error when unknown extension found
     EXPECT_TRUE(p->has_error());
     EXPECT_EQ(p->error(), R"(1:8: expected extension
 Did you mean 'f16'?
-Possible values: 'chromium_disable_uniformity_analysis', 'chromium_experimental_dp4a', 'chromium_experimental_full_ptr_parameters', 'chromium_experimental_push_constant', 'chromium_experimental_read_write_storage_texture', 'chromium_experimental_subgroups', 'chromium_internal_dual_source_blending', 'chromium_internal_relaxed_uniform_layout', 'f16')");
+Possible values: 'f16')");
+    auto program = p->program();
+    auto& ast = program.AST();
+    EXPECT_EQ(ast.Enables().Length(), 0u);
+    EXPECT_EQ(ast.GlobalDeclarations().Length(), 0u);
+}
+
+// Test an unknown extension identifier, starting with 'chromium'
+TEST_F(EnableDirectiveTest, InvalidChromiumExtension) {
+    auto p = parser("enable chromium_blah;");
+    p->enable_directive();
+    // Error when unknown extension found
+    EXPECT_TRUE(p->has_error());
+    EXPECT_EQ(p->error(), R"(1:8: expected extension
+Possible values: 'chromium_disable_uniformity_analysis', 'chromium_experimental_framebuffer_fetch', 'chromium_experimental_pixel_local', 'chromium_experimental_push_constant', 'chromium_experimental_subgroups', 'chromium_internal_dual_source_blending', 'chromium_internal_relaxed_uniform_layout', 'f16')");
     auto program = p->program();
     auto& ast = program.AST();
     EXPECT_EQ(ast.Enables().Length(), 0u);
@@ -226,7 +253,7 @@ TEST_F(EnableDirectiveTest, InvalidTokens) {
         p->translation_unit();
         EXPECT_TRUE(p->has_error());
         EXPECT_EQ(p->error(), R"(1:8: expected extension
-Possible values: 'chromium_disable_uniformity_analysis', 'chromium_experimental_dp4a', 'chromium_experimental_full_ptr_parameters', 'chromium_experimental_push_constant', 'chromium_experimental_read_write_storage_texture', 'chromium_experimental_subgroups', 'chromium_internal_dual_source_blending', 'chromium_internal_relaxed_uniform_layout', 'f16')");
+Possible values: 'f16')");
         auto program = p->program();
         auto& ast = program.AST();
         EXPECT_EQ(ast.Enables().Length(), 0u);
@@ -237,7 +264,7 @@ Possible values: 'chromium_disable_uniformity_analysis', 'chromium_experimental_
         p->translation_unit();
         EXPECT_TRUE(p->has_error());
         EXPECT_EQ(p->error(), R"(1:8: expected extension
-Possible values: 'chromium_disable_uniformity_analysis', 'chromium_experimental_dp4a', 'chromium_experimental_full_ptr_parameters', 'chromium_experimental_push_constant', 'chromium_experimental_read_write_storage_texture', 'chromium_experimental_subgroups', 'chromium_internal_dual_source_blending', 'chromium_internal_relaxed_uniform_layout', 'f16')");
+Possible values: 'f16')");
         auto program = p->program();
         auto& ast = program.AST();
         EXPECT_EQ(ast.Enables().Length(), 0u);
@@ -249,7 +276,7 @@ Possible values: 'chromium_disable_uniformity_analysis', 'chromium_experimental_
         EXPECT_TRUE(p->has_error());
         EXPECT_EQ(p->error(), R"(1:8: expected extension
 Did you mean 'f16'?
-Possible values: 'chromium_disable_uniformity_analysis', 'chromium_experimental_dp4a', 'chromium_experimental_full_ptr_parameters', 'chromium_experimental_push_constant', 'chromium_experimental_read_write_storage_texture', 'chromium_experimental_subgroups', 'chromium_internal_dual_source_blending', 'chromium_internal_relaxed_uniform_layout', 'f16')");
+Possible values: 'f16')");
         auto program = p->program();
         auto& ast = program.AST();
         EXPECT_EQ(ast.Enables().Length(), 0u);
@@ -272,7 +299,7 @@ enable f16;
     ASSERT_EQ(ast.Enables().Length(), 1u);
     auto* enable = ast.Enables()[0];
     ASSERT_EQ(enable->extensions.Length(), 1u);
-    EXPECT_EQ(enable->extensions[0]->name, core::Extension::kF16);
+    EXPECT_EQ(enable->extensions[0]->name, wgsl::Extension::kF16);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.line, 3u);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.column, 8u);
     EXPECT_EQ(enable->extensions[0]->source.range.end.line, 3u);
@@ -297,7 +324,7 @@ enable f16;
     ASSERT_EQ(ast.Enables().Length(), 1u);
     auto* enable = ast.Enables()[0];
     ASSERT_EQ(enable->extensions.Length(), 1u);
-    EXPECT_EQ(enable->extensions[0]->name, core::Extension::kF16);
+    EXPECT_EQ(enable->extensions[0]->name, wgsl::Extension::kF16);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.line, 3u);
     EXPECT_EQ(enable->extensions[0]->source.range.begin.column, 8u);
     EXPECT_EQ(enable->extensions[0]->source.range.end.line, 3u);

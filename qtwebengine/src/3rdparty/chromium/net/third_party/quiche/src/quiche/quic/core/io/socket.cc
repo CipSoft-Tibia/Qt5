@@ -4,14 +4,17 @@
 
 #include "quiche/quic/core/io/socket.h"
 
-#include "absl/base/attributes.h"
+#include <cerrno>
+#include <climits>
+#include <cstddef>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "quiche/quic/core/io/socket_internal.h"
 #include "quiche/quic/core/quic_types.h"
-#include "quiche/quic/platform/api/quic_ip_address_family.h"
 #include "quiche/quic/platform/api/quic_socket_address.h"
 #include "quiche/common/platform/api/quiche_logging.h"
 
@@ -44,16 +47,16 @@ absl::StatusOr<AcceptResult> AcceptInternal(SocketFd fd) {
       ValidateAndConvertAddress(peer_addr, peer_addr_len);
 
   if (peer_address.ok()) {
-    return AcceptResult{connection_socket, peer_address.value()};
+    return AcceptResult{connection_socket, *peer_address};
   } else {
     return peer_address.status();
   }
 }
 
-absl::Status SetSockOptInt(SocketFd fd, int option, int value) {
+absl::Status SetSockOptInt(SocketFd fd, int level, int option, int value) {
   QUICHE_DCHECK_NE(fd, kInvalidSocketFd);
 
-  int result = SyscallSetsockopt(fd, SOL_SOCKET, option, &value, sizeof(value));
+  int result = SyscallSetsockopt(fd, level, option, &value, sizeof(value));
 
   if (result >= 0) {
     return absl::OkStatus();
@@ -71,14 +74,14 @@ absl::Status SetReceiveBufferSize(SocketFd fd, QuicByteCount size) {
   QUICHE_DCHECK_NE(fd, kInvalidSocketFd);
   QUICHE_DCHECK_LE(size, QuicByteCount{INT_MAX});
 
-  return SetSockOptInt(fd, SO_RCVBUF, static_cast<int>(size));
+  return SetSockOptInt(fd, SOL_SOCKET, SO_RCVBUF, static_cast<int>(size));
 }
 
 absl::Status SetSendBufferSize(SocketFd fd, QuicByteCount size) {
   QUICHE_DCHECK_NE(fd, kInvalidSocketFd);
   QUICHE_DCHECK_LE(size, QuicByteCount{INT_MAX});
 
-  return SetSockOptInt(fd, SO_SNDBUF, static_cast<int>(size));
+  return SetSockOptInt(fd, SOL_SOCKET, SO_SNDBUF, static_cast<int>(size));
 }
 
 absl::Status Connect(SocketFd fd, const QuicSocketAddress& peer_address) {
@@ -201,13 +204,13 @@ absl::StatusOr<AcceptResult> Accept(SocketFd fd, bool blocking) {
   // If non-blocking could not be set directly on socket acceptance, need to
   // do it now.
   absl::Status set_non_blocking_result =
-      SetSocketBlocking(accept_result.value().fd, /*blocking=*/false);
+      SetSocketBlocking(accept_result->fd, /*blocking=*/false);
   if (!set_non_blocking_result.ok()) {
     QUICHE_LOG_FIRST_N(ERROR, 100)
         << "Failed to set socket " << fd << " as non-blocking on acceptance.";
-    if (!Close(accept_result.value().fd).ok()) {
+    if (!Close(accept_result->fd).ok()) {
       QUICHE_LOG_FIRST_N(ERROR, 100)
-          << "Failed to close socket " << accept_result.value().fd
+          << "Failed to close socket " << accept_result->fd
           << " after error setting non-blocking on acceptance.";
     }
     return set_non_blocking_result;
@@ -258,6 +261,38 @@ absl::StatusOr<absl::string_view> Send(SocketFd fd, absl::string_view buffer) {
   } else {
     absl::Status status = LastSocketOperationError("::send()");
     QUICHE_DVLOG(1) << "Failed to send to socket: " << fd
+                    << " with error: " << status;
+    return status;
+  }
+}
+
+absl::StatusOr<absl::string_view> SendTo(SocketFd fd,
+                                         const QuicSocketAddress& peer_address,
+                                         absl::string_view buffer) {
+  QUICHE_DCHECK_NE(fd, kInvalidSocketFd);
+  QUICHE_DCHECK(peer_address.IsInitialized());
+  QUICHE_DCHECK(!buffer.empty());
+
+  sockaddr_storage addr = peer_address.generic_address();
+  PlatformSocklen addrlen = GetAddrlen(peer_address.host().address_family());
+
+  PlatformSsizeT num_sent =
+      SyscallSendTo(fd, buffer.data(), buffer.size(),
+                    /*flags=*/0, reinterpret_cast<sockaddr*>(&addr), addrlen);
+
+  if (num_sent > 0 && static_cast<size_t>(num_sent) > buffer.size()) {
+    QUICHE_LOG_FIRST_N(WARNING, 100)
+        << "Sent more bytes (" << num_sent << ") to socket " << fd
+        << " to address: " << peer_address.ToString() << " than buffer size ("
+        << buffer.size() << ").";
+    return absl::OutOfRangeError(
+        "::sendto(): Sent more bytes than buffer size.");
+  } else if (num_sent >= 0) {
+    return buffer.substr(num_sent);
+  } else {
+    absl::Status status = LastSocketOperationError("::sendto()");
+    QUICHE_DVLOG(1) << "Failed to send to socket: " << fd
+                    << " to address: " << peer_address.ToString()
                     << " with error: " << status;
     return status;
   }

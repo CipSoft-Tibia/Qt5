@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, cast
 
 from crossbench import helper
 from crossbench.browsers.chromium.chromium import Chromium
-from crossbench.probes.probe import Probe, ProbeScope, ResultLocation
+from crossbench.probes.chromium_probe import ChromiumProbe
+from crossbench.probes.probe import ProbeContext, ResultLocation
 from crossbench.probes.results import BrowserProbeResult, LocalProbeResult, ProbeResult
 
 if TYPE_CHECKING:
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
   from crossbench.runner.run import Run
 
 
-class V8TurbolizerProbe(Probe):
+class V8TurbolizerProbe(ChromiumProbe):
   """
   Chromium-only Probe for extracting detailed turbofan graphs.
   Note: This probe can have significant overhead.
@@ -26,9 +27,6 @@ class V8TurbolizerProbe(Probe):
   NAME = "v8.turbolizer"
   RESULT_LOCATION = ResultLocation.BROWSER
 
-  def is_compatible(self, browser: Browser) -> bool:
-    return isinstance(browser, Chromium)
-
   def attach(self, browser: Browser) -> None:
     super().attach(browser)
     assert isinstance(browser, Chromium)
@@ -36,11 +34,11 @@ class V8TurbolizerProbe(Probe):
     chromium.flags.set("--no-sandbox")
     chromium.js_flags.set("--trace-turbo")
 
-  def get_scope(self, run: Run) -> V8TurbolizerProbeScope:
-    return V8TurbolizerProbeScope(self, run)
+  def get_context(self, run: Run) -> V8TurbolizerProbeContext:
+    return V8TurbolizerProbeContext(self, run)
 
 
-class V8TurbolizerProbeScope(ProbeScope[V8TurbolizerProbe]):
+class V8TurbolizerProbeContext(ProbeContext[V8TurbolizerProbe]):
 
   @property
   def results_dir(self) -> pathlib.Path:
@@ -50,18 +48,18 @@ class V8TurbolizerProbeScope(ProbeScope[V8TurbolizerProbe]):
     turbolizer_log_dir.mkdir(exist_ok=True)
     return turbolizer_log_dir
 
-  def setup(self, run: Run) -> None:
-    run.extra_js_flags["--trace-turbo-path"] = str(self.results_dir)
-    run.extra_js_flags["--trace-turbo-cfg-file"] = str(self.results_dir /
-                                                       "cfg.graph")
+  def setup(self) -> None:
+    js_flags = self.session.extra_js_flags
+    js_flags["--trace-turbo-path"] = str(self.results_dir)
+    js_flags["--trace-turbo-cfg-file"] = str(self.results_dir / "cfg.graph")
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     pass
 
-  def stop(self, run: Run) -> None:
+  def stop(self) -> None:
     pass
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     log_dir = self.result_path.parent
     # Copy the files from a potentially remote browser to a the local result
     # dir.

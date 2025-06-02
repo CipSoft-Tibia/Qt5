@@ -17,7 +17,6 @@
 #include "core/fxcrt/fx_codepage.h"
 #include "core/fxge/freetype/fx_freetype.h"
 #include "core/fxge/fx_font.h"
-#include "third_party/base/numerics/safe_math.h"
 
 namespace {
 
@@ -77,22 +76,22 @@ void CPDF_SimpleFont::LoadCharMetrics(int charcode) {
     }
     return;
   }
-  FXFT_FaceRec* face = m_Font.GetFaceRec();
+  RetainPtr<CFX_Face> face = m_Font.GetFace();
+  if (!face) {
+    return;
+  }
+
+  FXFT_FaceRec* face_rec = face->GetRec();
   int err =
-      FT_Load_Glyph(face, glyph_index,
+      FT_Load_Glyph(face_rec, glyph_index,
                     FT_LOAD_NO_SCALE | FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH);
   if (err)
     return;
 
-  FT_Pos iHoriBearingX = FXFT_Get_Glyph_HoriBearingX(face);
-  FT_Pos iHoriBearingY = FXFT_Get_Glyph_HoriBearingY(face);
-  m_CharBBox[charcode] =
-      FX_RECT(TT2PDF(iHoriBearingX, face), TT2PDF(iHoriBearingY, face),
-              TT2PDF(iHoriBearingX + FXFT_Get_Glyph_Width(face), face),
-              TT2PDF(iHoriBearingY - FXFT_Get_Glyph_Height(face), face));
+  m_CharBBox[charcode] = GetCharBBoxForFace(face);
 
   if (m_bUseFontWidth) {
-    int TT_Width = TT2PDF(FXFT_Get_Glyph_HoriAdvance(face), face);
+    int TT_Width = TT2PDF(FXFT_Get_Glyph_HoriAdvance(face_rec), face);
     if (m_CharWidth[charcode] == 0xffff) {
       m_CharWidth[charcode] = TT_Width;
     } else if (TT_Width && !IsEmbedded()) {
@@ -227,8 +226,9 @@ bool CPDF_SimpleFont::LoadCommon() {
     LoadFontDescriptor(pFontDesc.Get());
   LoadCharWidths(pFontDesc.Get());
   if (m_pFontFile) {
-    if (m_BaseFontName.GetLength() > 8 && m_BaseFontName[7] == '+')
-      m_BaseFontName = m_BaseFontName.Last(m_BaseFontName.GetLength() - 8);
+    if (m_BaseFontName.GetLength() > 7 && m_BaseFontName[6] == '+') {
+      m_BaseFontName = m_BaseFontName.Last(m_BaseFontName.GetLength() - 7);
+    }
   } else {
     LoadSubstFont();
   }
@@ -237,8 +237,9 @@ bool CPDF_SimpleFont::LoadCommon() {
   LoadPDFEncoding(!!m_pFontFile, m_Font.IsTTFont());
   LoadGlyphMap();
   m_CharNames.clear();
-  if (!m_Font.GetFaceRec())
+  if (!HasFace()) {
     return true;
+  }
 
   if (FontStyleIsAllCaps(m_Flags)) {
     static const unsigned char kLowercases[][2] = {

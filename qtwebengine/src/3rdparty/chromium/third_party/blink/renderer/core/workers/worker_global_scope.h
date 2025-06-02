@@ -153,7 +153,7 @@ class CORE_EXPORT WorkerGlobalScope
     return agent_group_scheduler_compositor_task_runner_;
   }
 
-  OffscreenFontSelector* GetFontSelector() { return font_selector_; }
+  OffscreenFontSelector* GetFontSelector() { return font_selector_.Get(); }
 
   CoreProbeSink* GetProbeSink() final;
 
@@ -217,6 +217,9 @@ class CORE_EXPORT WorkerGlobalScope
   WorkerSettings* GetWorkerSettings() const { return worker_settings_.get(); }
 
   void Trace(Visitor*) const override;
+
+  // ActiveScriptWrappable.
+  bool HasPendingActivity() const override;
 
   virtual InstalledScriptsManager* GetInstalledScriptsManager() {
     return nullptr;
@@ -304,7 +307,6 @@ class CORE_EXPORT WorkerGlobalScope
   // Used for importScripts().
   void ImportScriptsInternal(const Vector<String>& urls);
   // ExecutionContext
-  void AddInspectorIssue(mojom::blink::InspectorIssueInfoPtr) final;
   void AddInspectorIssue(AuditsIssue) final;
   EventTarget* ErrorEventTarget() final { return this; }
 

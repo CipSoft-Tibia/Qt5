@@ -214,7 +214,9 @@ public:
     QQmlProperty property(const QString &);
 };
 
-void QQuickPropertyChangesParser::verifyList(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QV4::CompiledData::Binding *binding)
+void QQuickPropertyChangesParser::verifyList(
+        const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &compilationUnit,
+        const QV4::CompiledData::Binding *binding)
 {
     switch (binding->type()) {
     case QV4::CompiledData::Binding::Type_Object:
@@ -333,13 +335,17 @@ void QQuickPropertyChangesPrivate::decodeBinding(const QString &propertyPrefix, 
     properties << qMakePair(propertyName, var);
 }
 
-void QQuickPropertyChangesParser::verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QList<const QV4::CompiledData::Binding *> &props)
+void QQuickPropertyChangesParser::verifyBindings(
+        const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &compilationUnit,
+        const QList<const QV4::CompiledData::Binding *> &props)
 {
     for (int ii = 0; ii < props.size(); ++ii)
         verifyList(compilationUnit, props.at(ii));
 }
 
-void QQuickPropertyChangesParser::applyBindings(QObject *obj, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QList<const QV4::CompiledData::Binding *> &bindings)
+void QQuickPropertyChangesParser::applyBindings(
+        QObject *obj, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+        const QList<const QV4::CompiledData::Binding *> &bindings)
 {
     QQuickPropertyChangesPrivate *p =
         static_cast<QQuickPropertyChangesPrivate *>(QObjectPrivate::get(obj));

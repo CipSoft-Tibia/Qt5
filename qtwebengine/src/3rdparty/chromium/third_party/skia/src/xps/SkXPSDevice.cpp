@@ -41,6 +41,7 @@
 #include "src/base/SkTLazy.h"
 #include "src/base/SkUtils.h"
 #include "src/core/SkDraw.h"
+#include "src/core/SkFontPriv.h"
 #include "src/core/SkGeometry.h"
 #include "src/core/SkImagePriv.h"
 #include "src/core/SkMaskFilterBase.h"
@@ -119,9 +120,9 @@ HRESULT SkXPSDevice::createId(wchar_t* buffer, size_t bufferSize, wchar_t sep) {
 }
 
 SkXPSDevice::SkXPSDevice(SkISize s)
-    : INHERITED(SkImageInfo::MakeUnknown(s.width(), s.height()),
-                SkSurfaceProps(0, kUnknown_SkPixelGeometry))
-    , fCurrentPage(0), fTopTypefaces(&fTypefaces) {}
+        : SkClipStackDevice(SkImageInfo::MakeUnknown(s.width(), s.height()), SkSurfaceProps())
+        , fCurrentPage(0)
+        , fTopTypefaces(&fTypefaces) {}
 
 SkXPSDevice::~SkXPSDevice() {}
 
@@ -341,7 +342,7 @@ static HRESULT subset_typeface(const SkXPSDevice::TypefaceUse& current) {
     unsigned long fontPackageBufferSize;
     unsigned long bytesWritten;
     unsigned long result = CreateFontPackage(
-        (unsigned char *) current.fontData->getMemoryBase(),
+        (const unsigned char *) current.fontData->getMemoryBase(),
         (unsigned long) current.fontData->getLength(),
         &fontPackageBufferRaw,
         &fontPackageBufferSize,
@@ -1166,14 +1167,11 @@ void SkXPSDevice::drawRRect(const SkRRect& rr,
     this->drawPath(path, paint, true);
 }
 
-static SkIRect size(const SkBaseDevice& dev) { return {0, 0, dev.width(), dev.height()}; }
-
 void SkXPSDevice::internalDrawRect(const SkRect& r,
                                    bool transformRect,
                                    const SkPaint& paint) {
     //Exit early if there is nothing to draw.
-    if (this->cs().isEmpty(size(*this)) ||
-        (paint.getAlpha() == 0 && paint.isSrcOver())) {
+    if (this->isClipEmpty() || (paint.getAlpha() == 0 && paint.isSrcOver())) {
         return;
     }
 
@@ -1493,8 +1491,7 @@ void SkXPSDevice::drawPath(const SkPath& platonicPath,
     SkTCopyOnFirstWrite<SkPaint> paint(origPaint);
 
     // nothing to draw
-    if (this->cs().isEmpty(size(*this)) ||
-        (paint->getAlpha() == 0 && paint->isSrcOver())) {
+    if (this->isClipEmpty() || (paint->getAlpha() == 0 && paint->isSrcOver())) {
         return;
     }
 
@@ -1564,7 +1561,7 @@ void SkXPSDevice::drawPath(const SkPath& platonicPath,
         this->convertToPpm(filter,
                            &matrix,
                            &ppuScale,
-                           this->cs().bounds(size(*this)).roundOut(),
+                           this->devClipBounds(),
                            &clipIRect);
 
         //[Fillable-path -> Pixel-path]
@@ -1690,7 +1687,7 @@ HRESULT SkXPSDevice::clip(IXpsOMVisual* xpsVisual) {
         return S_OK;
     }
     SkPath clipPath;
-    // clipPath.addRect(this->cs().bounds(size(*this)));
+    // clipPath.addRect(this->devClipBounds()));
     SkClipStack_AsPath(this->cs(), &clipPath);
     // TODO: handle all the kinds of paths, like drawPath does
     return this->clipToPath(xpsVisual, clipPath, XPS_FILL_RULE_EVENODD);
@@ -1723,7 +1720,7 @@ HRESULT SkXPSDevice::clipToPath(IXpsOMVisual* xpsVisual,
 
 HRESULT SkXPSDevice::CreateTypefaceUse(const SkFont& font,
                                        TypefaceUse** typefaceUse) {
-    SkTypeface* typeface = font.getTypefaceOrDefault();
+    SkTypeface* typeface = font.getTypeface();
 
     //Check cache.
     const SkTypefaceID typefaceID = typeface->uniqueID();
@@ -1768,10 +1765,10 @@ HRESULT SkXPSDevice::CreateTypefaceUse(const SkFont& font,
         "Could not create font resource.");
 
     //TODO: change openStream to return -1 for non-ttc, get rid of this.
-    uint8_t* data = (uint8_t*)fontData->getMemoryBase();
+    const uint8_t* data = (const uint8_t*)fontData->getMemoryBase();
     bool isTTC = (data &&
                   fontData->getLength() >= sizeof(SkTTCFHeader) &&
-                  ((SkTTCFHeader*)data)->ttcTag == SkTTCFHeader::TAG);
+                  ((const SkTTCFHeader*)data)->ttcTag == SkTTCFHeader::TAG);
 
     int glyphCount = typeface->countGlyphs();
 
@@ -1958,7 +1955,7 @@ void SkXPSDevice::onDrawGlyphRunList(SkCanvas*,
     }
 }
 
-void SkXPSDevice::drawDevice(SkBaseDevice* dev, const SkSamplingOptions&, const SkPaint&) {
+void SkXPSDevice::drawDevice(SkDevice* dev, const SkSamplingOptions&, const SkPaint&) {
     SkXPSDevice* that = static_cast<SkXPSDevice*>(dev);
     SkASSERT(that->fTopTypefaces == this->fTopTypefaces);
 
@@ -1976,19 +1973,8 @@ void SkXPSDevice::drawDevice(SkBaseDevice* dev, const SkSamplingOptions&, const 
          "Could not add layer to current visuals.");
 }
 
-SkBaseDevice* SkXPSDevice::onCreateDevice(const CreateInfo& info, const SkPaint*) {
-//Conditional for bug compatibility with PDF device.
-#if 0
-    if (SkBaseDevice::kGeneral_Usage == info.fUsage) {
-        return nullptr;
-        //To what stream do we write?
-        //SkXPSDevice* dev = new SkXPSDevice(this);
-        //SkSize s = SkSize::Make(width, height);
-        //dev->BeginCanvas(s, s, SkMatrix::I());
-        //return dev;
-    }
-#endif
-    SkXPSDevice* dev = new SkXPSDevice(info.fInfo.dimensions());
+sk_sp<SkDevice> SkXPSDevice::createDevice(const CreateInfo& info, const SkPaint*) {
+    sk_sp<SkXPSDevice> dev = sk_make_sp<SkXPSDevice>(info.fInfo.dimensions());
     dev->fXpsFactory.reset(SkRefComPtr(fXpsFactory.get()));
     dev->fCurrentCanvasSize = this->fCurrentCanvasSize;
     dev->fCurrentUnitsPerMeter = this->fCurrentUnitsPerMeter;

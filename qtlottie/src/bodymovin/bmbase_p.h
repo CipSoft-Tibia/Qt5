@@ -53,6 +53,7 @@ public:
 
     const QList<BMBase *> &children() const { return m_children; }
     void prependChild(BMBase *child);
+    void insertChildBeforeLast(BMBase *child);
     void appendChild(BMBase *child);
 
     virtual BMBase *findChild(const QString &childName);

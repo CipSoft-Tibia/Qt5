@@ -90,7 +90,13 @@ void SensorManager::run()
     m_looper = ALooper_prepare(0);
     m_waitForStart.release();
     do {
-        if (ALooper_pollAll(5 /*ms*/, nullptr, nullptr, nullptr) == ALOOPER_POLL_TIMEOUT)
+        // Result can be also ALOOPER_POLL_CALLBACK or identifier, those are ignored.
+        int result = ALooper_pollOnce(5 /*ms*/, nullptr, nullptr, nullptr);
+        if (result == ALOOPER_POLL_TIMEOUT || result == ALOOPER_POLL_WAKE) {
             QThread::yieldCurrentThread();
+        } else if (result == ALOOPER_POLL_ERROR) {
+            qCritical("SensorManager::run() ALooper_pollOnce() returned ALOOPER_POLL_ERROR");
+            break;
+        }
     } while (!m_quit.loadRelaxed());
 }

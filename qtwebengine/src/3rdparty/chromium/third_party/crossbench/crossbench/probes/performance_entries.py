@@ -2,15 +2,17 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 from __future__ import annotations
-import logging
 
+import logging
 from typing import TYPE_CHECKING
 
 from crossbench.probes import metric
 from crossbench.probes.json import JsonResultProbe
+from crossbench.probes.probe import ProbeIncompatibleBrowser
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser
+  from crossbench.env import HostEnvironment
   from crossbench.probes.results import ProbeResult
   from crossbench.runner.actions import Actions
   from crossbench.runner.groups import BrowsersRunGroup, StoriesRunGroup
@@ -26,8 +28,11 @@ class PerformanceEntriesProbe(JsonResultProbe):
   """
   NAME = "performance.entries"
 
-  def is_compatible(self, browser: Browser) -> bool:
-    return hasattr(browser, "js")
+  def validate_browser(self, env: HostEnvironment, browser: Browser) -> None:
+    super().validate_browser(env, browser)
+    if not hasattr(browser, "js"):
+      raise ProbeIncompatibleBrowser(self, browser,
+                                     "Needs browser with JS-execution support")
 
   def to_json(self, actions: Actions) -> JSON:
     return actions.js("""

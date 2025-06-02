@@ -8,26 +8,24 @@
 # The bootstrap library has a few manual tweaks compared to other
 # libraries.
 qt_add_library(Bootstrap STATIC)
+qt_internal_add_sbom(Bootstrap
+    TYPE QT_MODULE
+    NO_INSTALL
+)
 
 qt_internal_add_sync_header_dependencies(Bootstrap Core)
 
 qt_internal_extend_target(Bootstrap
     SOURCES
         ../../corelib/global/qassert.cpp
-        ../../corelib/global/qendian.cpp
         ../../corelib/global/qfloat16.cpp
-        ../../corelib/global/qglobal.cpp
         ../../corelib/global/qlogging.cpp
         ../../corelib/global/qmalloc.cpp
-        ../../corelib/global/qnumeric.cpp
-        ../../corelib/global/qoperatingsystemversion.cpp
-        ../../corelib/global/qrandom.cpp
         ../../corelib/global/qtenvironmentvariables.cpp
         ../../corelib/io/qabstractfileengine.cpp
         ../../corelib/io/qbuffer.cpp
         ../../corelib/io/qdebug.cpp
         ../../corelib/io/qdir.cpp
-        ../../corelib/io/qdiriterator.cpp
         ../../corelib/io/qfile.cpp
         ../../corelib/io/qfiledevice.cpp
         ../../corelib/io/qfileinfo.cpp
@@ -36,23 +34,14 @@ qt_internal_extend_target(Bootstrap
         ../../corelib/io/qfsfileengine.cpp
         ../../corelib/io/qfsfileengine_iterator.cpp
         ../../corelib/io/qiodevice.cpp
-        ../../corelib/io/qloggingcategory.cpp
-        ../../corelib/io/qloggingregistry.cpp
-        ../../corelib/io/qresource.cpp
-        ../../corelib/io/qsavefile.cpp
         ../../corelib/io/qstandardpaths.cpp
-        ../../corelib/io/qtemporaryfile.cpp
         ../../corelib/kernel/qcoreapplication.cpp
-        ../../corelib/kernel/qiterable.cpp
-        ../../corelib/kernel/qmetacontainer.cpp
         ../../corelib/kernel/qmetatype.cpp
         ../../corelib/kernel/qsystemerror.cpp
-        ../../corelib/kernel/qvariant.cpp
         ../../corelib/plugin/quuid.cpp
         ../../corelib/serialization/qcborcommon.cpp
         ../../corelib/serialization/qcborstreamwriter.cpp
         ../../corelib/serialization/qcborvalue.cpp
-        ../../corelib/serialization/qdatastream.cpp
         ../../corelib/serialization/qjsonarray.cpp
         ../../corelib/serialization/qjsoncbor.cpp
         ../../corelib/serialization/qjsondocument.cpp
@@ -72,7 +61,6 @@ qt_internal_extend_target(Bootstrap
         ../../corelib/text/qstringbuilder.cpp
         ../../corelib/text/qstringconverter.cpp
         ../../corelib/text/qstringlist.cpp
-        ../../corelib/text/qvsnprintf.cpp
         ../../corelib/time/qcalendar.cpp
         ../../corelib/time/qdatetime.cpp
         ../../corelib/time/qgregoriancalendar.cpp
@@ -85,7 +73,6 @@ qt_internal_extend_target(Bootstrap
         ../../corelib/tools/qcryptographichash.cpp
         ../../corelib/tools/qhash.cpp
         ../../corelib/tools/qringbuffer.cpp
-        ../../corelib/tools/qversionnumber.cpp
     DEFINES
         HAVE_CONFIG_H
         QT_TYPESAFE_FLAGS
@@ -120,10 +107,15 @@ qt_internal_extend_target(Bootstrap CONDITION UNIX
         ../../corelib/io/qfsfileengine_unix.cpp
         ../../corelib/kernel/qcore_unix.cpp
 )
+if(APPLE)
+    set_source_files_properties(../../corelib/io/qfilesystemengine_unix.cpp PROPERTIES LANGUAGE OBJCXX)
+    qt_internal_extend_target(Bootstrap CONDITION
+        PUBLIC_LIBRARIES ${FWUniformTypeIdentifiers}
+    )
+endif()
 
 qt_internal_extend_target(Bootstrap CONDITION WIN32
     SOURCES
-        ../../corelib/global/qoperatingsystemversion_win.cpp
         ../../corelib/io/qfilesystemengine_win.cpp
         ../../corelib/io/qfilesystemiterator_win.cpp
         ../../corelib/io/qfsfileengine_win.cpp
@@ -142,10 +134,12 @@ qt_internal_extend_target(Bootstrap CONDITION WIN32
 
 qt_internal_extend_target(Bootstrap CONDITION APPLE
     SOURCES
+        ../../corelib/global/qoperatingsystemversion.cpp
         ../../corelib/global/qoperatingsystemversion_darwin.mm
         ../../corelib/kernel/qcore_foundation.mm
         ../../corelib/kernel/qcore_mac.mm
         ../../corelib/kernel/qcoreapplication_mac.cpp
+        ../../corelib/tools/qversionnumber.cpp
     PUBLIC_LIBRARIES
         ${FWFoundation}
 )
@@ -175,6 +169,7 @@ qt_internal_extend_target(Bootstrap CONDITION CMAKE_CROSSCOMPILING OR NOT QT_FEA
         ../../3rdparty/pcre2/src/pcre2_chartables.c
         ../../3rdparty/pcre2/src/pcre2_chkdint.c
         ../../3rdparty/pcre2/src/pcre2_compile.c
+        ../../3rdparty/pcre2/src/pcre2_compile_class.c
         ../../3rdparty/pcre2/src/pcre2_config.c
         ../../3rdparty/pcre2/src/pcre2_context.c
         ../../3rdparty/pcre2/src/pcre2_dfa_match.c
@@ -208,6 +203,8 @@ qt_internal_extend_target(Bootstrap CONDITION CMAKE_CROSSCOMPILING OR NOT QT_FEA
         PCRE2_DISABLE_JIT
     PUBLIC_INCLUDE_DIRECTORIES
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../3rdparty/pcre2/src>
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../3rdparty/pcre2
 )
 
 qt_internal_extend_target(Bootstrap

@@ -15,8 +15,7 @@
 // We mean it.
 //
 
-#include <private/qtmultimediaglobal_p.h>
-#include <private/qabstractvideobuffer_p.h>
+#include <private/qhwvideobuffer_p.h>
 #include <QtCore/qvariant.h>
 
 #include <common/qgst_p.h>
@@ -27,17 +26,17 @@ class QVideoFrameFormat;
 class QGstreamerVideoSink;
 class QOpenGLContext;
 
-class QGstVideoBuffer final : public QAbstractVideoBuffer
+class QGstVideoBuffer final : public QHwVideoBuffer
 {
 public:
     QGstVideoBuffer(QGstBufferHandle buffer, const GstVideoInfo &info, QGstreamerVideoSink *sink,
                     const QVideoFrameFormat &frameFormat, QGstCaps::MemoryFormat format);
-    ~QGstVideoBuffer();
+    ~QGstVideoBuffer() override;
 
     MapData map(QVideoFrame::MapMode mode) override;
     void unmap() override;
 
-    std::unique_ptr<QVideoFrameTextures> mapTextures(QRhi *) override;
+    QVideoFrameTexturesUPtr mapTextures(QRhi &, QVideoFrameTexturesUPtr& /*oldTextures*/) override;
 
 private:
     const QGstCaps::MemoryFormat memoryFormat = QGstCaps::CpuMemory;

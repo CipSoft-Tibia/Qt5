@@ -3,8 +3,20 @@
 #ifndef QFFMPEGVIDEOENCODER_P_H
 #define QFFMPEGVIDEOENCODER_P_H
 
-#include "qffmpegencoderthread_p.h"
-#include "qffmpeg_p.h"
+//
+//  W A R N I N G
+//  -------------
+//
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
+//
+// We mean it.
+//
+
+#include <QtFFmpegMediaPluginImpl/private/qffmpegencoderthread_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegvideoframeencoder_p.h>
 #include <qvideoframe.h>
 #include <queue>
 
@@ -23,32 +35,37 @@ public:
                  const QVideoFrameFormat &format, std::optional<AVPixelFormat> hwFormat);
     ~VideoEncoder() override;
 
-    bool isValid() const;
-
     void addFrame(const QVideoFrame &frame);
 
-    void setPaused(bool b) override
-    {
-        EncoderThread::setPaused(b);
-        if (b)
-            m_baseTime.storeRelease(-1);
-    }
+protected:
+    bool checkIfCanPushFrame() const override;
 
 private:
-    QVideoFrame takeFrame();
+    struct FrameInfo
+    {
+        QVideoFrame frame;
+        bool shouldAdjustTimeBase = false;
+    };
+
+    FrameInfo takeFrame();
     void retrievePackets();
 
-    void init() override;
+    bool init() override;
     void cleanup() override;
     bool hasData() const override;
     void processOne() override;
 
+    std::pair<qint64, qint64> frameTimeStamps(const QVideoFrame &frame) const;
+
 private:
-    std::queue<QVideoFrame> m_videoFrameQueue;
+    QMediaEncoderSettings m_settings;
+    VideoFrameEncoder::SourceParams m_sourceParams;
+    std::queue<FrameInfo> m_videoFrameQueue;
     const size_t m_maxQueueSize = 10; // Arbitrarily chosen to limit memory usage (332 MB @ 4K)
 
-    std::unique_ptr<VideoFrameEncoder> m_frameEncoder;
-    QAtomicInteger<qint64> m_baseTime = std::numeric_limits<qint64>::min();
+    VideoFrameEncoderUPtr m_frameEncoder;
+    qint64 m_baseTime = 0;
+    bool m_shouldAdjustTimeBaseForNextFrame = true;
     qint64 m_lastFrameTime = 0;
 };
 

@@ -17,16 +17,14 @@ Item {
     ScatterSeries {
         id: initialized
 
-        axisX: ValueAxis { max: 4 }
-        axisY: ValueAxis { max: 8 }
-        pointMarker: Rectangle {
+        pointDelegate: Rectangle {
             width: 12
             height: 12
         }
 
         color: "#ff00ff"
         selectedColor: "#00ff00"
-        markerSize: 5.0
+        draggable: true
 
         name: "ScatterSeries"
         visible: false
@@ -37,28 +35,22 @@ Item {
     }
 
     // Values used for changing the properties
-    ValueAxis { id: axisx; max: 10 }
-    ValueAxis { id: axisy; max: 10 }
-
     Component { id: marker; Rectangle { width: 10; height: 10 } }
 
     TestCase {
         name: "ScatterSeries Initial"
 
         function test_1_initial() {
-            compare(initial.axisX, null)
-            compare(initial.axisY, null)
-            compare(initial.pointMarker, null)
+            compare(initial.pointDelegate, null)
         }
 
         function test_2_initial_common() {
             // Properties from QXYSeries
-            compare(initial.color, "#ffffff")
-            compare(initial.selectedColor, "#000000")
-            compare(initial.markerSize, 15.0)
+            compare(initial.color, "#00000000")
+            compare(initial.selectedColor, "#00000000")
+            compare(initial.draggable, false)
 
             // Properties from QAbstractSeries
-            compare(initial.theme, null)
             compare(initial.name, "")
             compare(initial.visible, true)
             compare(initial.selectable, false)
@@ -68,13 +60,11 @@ Item {
         }
 
         function test_3_initial_change() {
-            initial.axisX = axisx
-            initial.axisY = axisy
-            initial.pointMarker = marker
+            initial.pointDelegate = marker
 
             initial.color = "#ff00ff"
             initial.selectedColor = "#00ff00"
-            initial.markerSize = 5.0
+            initial.draggable = true
 
             initial.name = "Scatter"
             initial.visible = false
@@ -83,15 +73,10 @@ Item {
             initial.opacity = 0.5
             initial.valuesMultiplier = 0.5
 
-            compare(initial.axisX, axisx)
-            compare(initial.axisY, axisy)
-            compare(initial.axisX.max, 10)
-            compare(initial.axisY.max, 10)
-            compare(initial.pointMarker, marker)
+            compare(initial.pointDelegate, marker)
 
             compare(initial.color, "#ff00ff")
             compare(initial.selectedColor, "#00ff00")
-            compare(initial.markerSize, 5.0)
 
             compare(initial.name, "Scatter")
             compare(initial.visible, false)
@@ -106,13 +91,11 @@ Item {
         name: "ScatterSeries Initialized"
 
         function test_1_initialized() {
-            compare(initialized.axisX.max, 4)
-            compare(initialized.axisY.max, 8)
-            verify(initialized.pointMarker)
+            verify(initialized.pointDelegate)
 
             compare(initialized.color, "#ff00ff")
             compare(initialized.selectedColor, "#00ff00")
-            compare(initialized.markerSize, 5.0)
+            compare(initialized.draggable, true)
 
             compare(initialized.name, "ScatterSeries")
             compare(initialized.visible, false)
@@ -123,13 +106,11 @@ Item {
         }
 
         function test_2_initialized_change() {
-            initialized.axisX = axisx
-            initialized.axisY = axisy
-            initialized.pointMarker = null
+            initialized.pointDelegate = null
 
             initialized.color = "#0000ff"
             initialized.selectedColor = "#ff0000"
-            initialized.markerSize = 10.0
+            initialized.draggable = false
 
             initialized.name = "Scatter"
             initialized.visible = true
@@ -138,13 +119,11 @@ Item {
             initialized.opacity = 0.5
             initialized.valuesMultiplier = 0.25
 
-            compare(initialized.axisX.max, 10)
-            compare(initialized.axisY.max, 10)
-            verify(!initialized.pointMarker)
+            verify(!initialized.pointDelegate)
 
             compare(initialized.color, "#0000ff")
             compare(initialized.selectedColor, "#ff0000")
-            compare(initialized.markerSize, 10.0)
+            compare(initialized.draggable, false)
 
             compare(initialized.name, "Scatter")
             compare(initialized.visible, true)
@@ -154,21 +133,9 @@ Item {
             compare(initialized.valuesMultiplier, 0.25)
         }
 
-        function test_3_initialized_change_to_null() {
-            initialized.axisX = null
-            initialized.axisY = null
-
-            verify(!initialized.axisX)
-            verify(!initialized.axisY)
-        }
-
-        function test_4_initialized_change_to_invalid() {
-            // initialized.axisX = marker
-            // initialized.axisY = marker
+        function test_3_initialized_change_to_invalid() {
             initialized.valuesMultiplier = 2.0 // range 0...1
 
-            // verify(!initialized.axisX)
-            // verify(!initialized.axisY)
             compare(initialized.valuesMultiplier, 1.0)
 
             initialized.valuesMultiplier = -1.0 // range 0...1

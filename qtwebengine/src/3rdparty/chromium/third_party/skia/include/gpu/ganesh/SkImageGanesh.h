@@ -173,13 +173,14 @@ SK_API sk_sp<SkImage> TextureFromCompressedTexture(GrRecordingContext* context,
     @param isProtected do the contents of 'data' require DRM protection (on Vulkan)?
     @return            created SkImage, or nullptr
 */
-SK_API sk_sp<SkImage> TextureFromCompressedTextureData(GrDirectContext* direct,
-                                                       sk_sp<SkData> data,
-                                                       int width,
-                                                       int height,
-                                                       SkTextureCompressionType type,
-                                                       GrMipmapped mipmapped = GrMipmapped::kNo,
-                                                       GrProtected isProtected = GrProtected::kNo);
+SK_API sk_sp<SkImage> TextureFromCompressedTextureData(
+        GrDirectContext* direct,
+        sk_sp<SkData> data,
+        int width,
+        int height,
+        SkTextureCompressionType type,
+        skgpu::Mipmapped mipmapped = skgpu::Mipmapped::kNo,
+        GrProtected isProtected = GrProtected::kNo);
 
 /** Returns SkImage backed by GPU texture associated with context. Returned SkImage is
     compatible with SkSurface created with dstColorSpace. The returned SkImage respects
@@ -205,7 +206,7 @@ SK_API sk_sp<SkImage> TextureFromImage(GrDirectContext*,
                                        skgpu::Mipmapped = skgpu::Mipmapped::kNo,
                                        skgpu::Budgeted = skgpu::Budgeted::kYes);
 inline sk_sp<SkImage> TextureFromImage(GrDirectContext* ctx,
-                                       sk_sp<const SkImage> img,
+                                       const sk_sp<const SkImage>& img,
                                        skgpu::Mipmapped m = skgpu::Mipmapped::kNo,
                                        skgpu::Budgeted b = skgpu::Budgeted::kYes) {
     return TextureFromImage(ctx, img.get(), m, b);
@@ -231,12 +232,12 @@ inline sk_sp<SkImage> TextureFromImage(GrDirectContext* ctx,
 */
 SK_API sk_sp<SkImage> TextureFromYUVAPixmaps(GrRecordingContext* context,
                                              const SkYUVAPixmaps& pixmaps,
-                                             GrMipmapped buildMips,
+                                             skgpu::Mipmapped buildMips,
                                              bool limitToMaxTextureSize,
                                              sk_sp<SkColorSpace> imageColorSpace);
 SK_API sk_sp<SkImage> TextureFromYUVAPixmaps(GrRecordingContext* context,
                                              const SkYUVAPixmaps& pixmaps,
-                                             GrMipmapped buildMips = GrMipmapped::kNo,
+                                             skgpu::Mipmapped buildMips = skgpu::Mipmapped::kNo,
                                              bool limitToMaxTextureSize = false);
 
 /** Creates a GPU-backed SkImage from YUV[A] planar textures. This requires that the textures
@@ -275,7 +276,7 @@ SK_API bool GetBackendTextureFromImage(const SkImage* img,
                                        GrBackendTexture* outTexture,
                                        bool flushPendingGrContextIO,
                                        GrSurfaceOrigin* origin = nullptr);
-inline bool GetBackendTextureFromImage(sk_sp<const SkImage> img,
+inline bool GetBackendTextureFromImage(const sk_sp<const SkImage>& img,
                                        GrBackendTexture* outTexture,
                                        bool flushPendingGrContextIO,
                                        GrSurfaceOrigin* origin = nullptr) {

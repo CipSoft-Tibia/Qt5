@@ -2,89 +2,63 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpengine.h"
-#include "qhelpengine_p.h"
-#include "qhelpdbreader_p.h"
 #include "qhelpcontentwidget.h"
+#include "qhelpfilterengine.h"
 #include "qhelpindexwidget.h"
 #include "qhelpsearchengine.h"
-#include "qhelpcollectionhandler_p.h"
-#include "qhelpfilterengine.h"
 
-#include <QtCore/QDir>
-#include <QtCore/QFile>
-#include <QtCore/QPluginLoader>
-#include <QtCore/QTimer>
-#include <QtWidgets/QApplication>
-#include <QtSql/QSqlQuery>
+#include <QtCore/qtimer.h>
 
 QT_BEGIN_NAMESPACE
 
-void QHelpEnginePrivate::init(const QString &collectionFile,
-                              QHelpEngineCore *helpEngineCore)
+class QHelpEnginePrivate
 {
-    QHelpEngineCorePrivate::init(collectionFile, helpEngineCore);
+public:
+    QHelpEnginePrivate(QHelpEngineCore *helpEngineCore);
 
+    QHelpContentModel *contentModel = nullptr;
+    QHelpContentWidget *contentWidget = nullptr;
+
+    QHelpIndexModel *indexModel = nullptr;
+    QHelpIndexWidget *indexWidget = nullptr;
+
+    QHelpSearchEngine *searchEngine = nullptr;
+
+    bool m_isApplyCurrentFilterScheduled = false;
+    QHelpEngineCore *m_helpEngineCore = nullptr;
+};
+
+QHelpEnginePrivate::QHelpEnginePrivate(QHelpEngineCore *helpEngineCore)
+    : m_helpEngineCore(helpEngineCore)
+{
     if (!contentModel)
-        contentModel = new QHelpContentModel(this);
+        contentModel = new QHelpContentModel(helpEngineCore);
     if (!indexModel)
-        indexModel = new QHelpIndexModel(this);
+        indexModel = new QHelpIndexModel(m_helpEngineCore);
 
-    connect(helpEngineCore, &QHelpEngineCore::setupFinished,
-            this, &QHelpEnginePrivate::scheduleApplyCurrentFilter);
-    connect(helpEngineCore, &QHelpEngineCore::currentFilterChanged,
-            this, &QHelpEnginePrivate::scheduleApplyCurrentFilter);
-    connect(helpEngineCore->filterEngine(), &QHelpFilterEngine::filterActivated,
-            this, &QHelpEnginePrivate::scheduleApplyCurrentFilter);
-}
+    const auto applyCurrentFilter = [this] {
+        m_isApplyCurrentFilterScheduled = false;
+        contentModel->createContentsForCurrentFilter();
+        indexModel->createIndexForCurrentFilter();
+    };
 
-void QHelpEnginePrivate::scheduleApplyCurrentFilter()
-{
-    if (!error.isEmpty())
-        return;
+    const auto scheduleApplyCurrentFilter = [this, applyCurrentFilter] {
+        if (!m_helpEngineCore->error().isEmpty())
+            return;
 
-    if (m_isApplyCurrentFilterScheduled)
-        return;
+        if (m_isApplyCurrentFilterScheduled)
+            return;
 
-    m_isApplyCurrentFilterScheduled = true;
-    QTimer::singleShot(0, this, &QHelpEnginePrivate::applyCurrentFilter);
-}
+        m_isApplyCurrentFilterScheduled = true;
+        QTimer::singleShot(0, m_helpEngineCore, applyCurrentFilter);
+    };
 
-void QHelpEnginePrivate::applyCurrentFilter()
-{
-    m_isApplyCurrentFilterScheduled = false;
-    const QString filter = usesFilterEngine
-            ? q->filterEngine()->activeFilter()
-            : currentFilter;
-    contentModel->createContents(filter);
-    indexModel->createIndex(filter);
-}
-
-void QHelpEnginePrivate::setContentsWidgetBusy()
-{
-#if QT_CONFIG(cursor)
-    contentWidget->setCursor(Qt::WaitCursor);
-#endif
-}
-
-void QHelpEnginePrivate::unsetContentsWidgetBusy()
-{
-#if QT_CONFIG(cursor)
-    contentWidget->unsetCursor();
-#endif
-}
-
-void QHelpEnginePrivate::setIndexWidgetBusy()
-{
-#if QT_CONFIG(cursor)
-    indexWidget->setCursor(Qt::WaitCursor);
-#endif
-}
-
-void QHelpEnginePrivate::unsetIndexWidgetBusy()
-{
-#if QT_CONFIG(cursor)
-    indexWidget->unsetCursor();
-#endif
+    QObject::connect(m_helpEngineCore, &QHelpEngineCore::setupFinished,
+                     m_helpEngineCore, scheduleApplyCurrentFilter);
+    QObject::connect(m_helpEngineCore, &QHelpEngineCore::currentFilterChanged,
+                     m_helpEngineCore, scheduleApplyCurrentFilter);
+    QObject::connect(m_helpEngineCore->filterEngine(), &QHelpFilterEngine::filterActivated,
+                     m_helpEngineCore, scheduleApplyCurrentFilter);
 }
 
 /*!
@@ -102,16 +76,16 @@ void QHelpEnginePrivate::unsetIndexWidgetBusy()
     it will be created.
 */
 QHelpEngine::QHelpEngine(const QString &collectionFile, QObject *parent)
-    : QHelpEngineCore(d = new QHelpEnginePrivate(), parent)
-{
-    d->init(collectionFile, this);
-}
+    : QHelpEngineCore(collectionFile, parent)
+    , d(new QHelpEnginePrivate(this))
+{}
 
 /*!
     Destroys the help engine object.
 */
 QHelpEngine::~QHelpEngine()
 {
+    delete d;
 }
 
 /*!
@@ -136,12 +110,16 @@ QHelpIndexModel *QHelpEngine::indexModel() const
 QHelpContentWidget *QHelpEngine::contentWidget()
 {
     if (!d->contentWidget) {
-        d->contentWidget = new QHelpContentWidget();
+        d->contentWidget = new QHelpContentWidget;
         d->contentWidget->setModel(d->contentModel);
-        connect(d->contentModel, &QHelpContentModel::contentsCreationStarted,
-                d, &QHelpEnginePrivate::setContentsWidgetBusy);
-        connect(d->contentModel, &QHelpContentModel::contentsCreated,
-                d, &QHelpEnginePrivate::unsetContentsWidgetBusy);
+#if QT_CONFIG(cursor)
+        connect(d->contentModel, &QHelpContentModel::contentsCreationStarted, this, [this] {
+            d->contentWidget->setCursor(Qt::WaitCursor);
+        });
+        connect(d->contentModel, &QHelpContentModel::contentsCreated, this, [this] {
+            d->contentWidget->unsetCursor();
+        });
+#endif
     }
     return d->contentWidget;
 }
@@ -152,12 +130,16 @@ QHelpContentWidget *QHelpEngine::contentWidget()
 QHelpIndexWidget *QHelpEngine::indexWidget()
 {
     if (!d->indexWidget) {
-        d->indexWidget = new QHelpIndexWidget();
+        d->indexWidget = new QHelpIndexWidget;
         d->indexWidget->setModel(d->indexModel);
-        connect(d->indexModel, &QHelpIndexModel::indexCreationStarted,
-                d, &QHelpEnginePrivate::setIndexWidgetBusy);
-        connect(d->indexModel, &QHelpIndexModel::indexCreated,
-                d, &QHelpEnginePrivate::unsetIndexWidgetBusy);
+#if QT_CONFIG(cursor)
+        connect(d->indexModel, &QHelpIndexModel::indexCreationStarted, this, [this] {
+            d->indexWidget->setCursor(Qt::WaitCursor);
+        });
+        connect(d->indexModel, &QHelpIndexModel::indexCreated, this, [this] {
+            d->indexWidget->unsetCursor();
+        });
+#endif
     }
     return d->indexWidget;
 }

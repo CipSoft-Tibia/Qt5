@@ -20,6 +20,7 @@
 #include "qfilesystemmetadata_p.h"
 #include <QtCore/private/qsystemerror_p.h>
 
+#include <memory>
 #include <optional>
 
 QT_BEGIN_NAMESPACE
@@ -54,17 +55,12 @@ inline bool qIsFilenameBroken(const QFileSystemEntry &entry)
             Q_RETURN_ON_INVALID_FILENAME("Broken filename passed to function", (result)); \
     } while (false)
 
+Q_CORE_EXPORT bool qt_isCaseSensitive(const QFileSystemEntry &entry, QFileSystemMetaData &data);
+
 class Q_AUTOTEST_EXPORT QFileSystemEngine
 {
 public:
-    static bool isCaseSensitive()
-    {
-#ifndef Q_OS_WIN
-        return true;
-#else
-        return false;
-#endif
-    }
+    static bool isCaseSensitive(const QFileSystemEntry &entry, QFileSystemMetaData &data);
 
     static QFileSystemEntry getLinkTarget(const QFileSystemEntry &link, QFileSystemMetaData &data);
     static QFileSystemEntry getRawLinkPath(const QFileSystemEntry &link,
@@ -141,8 +137,9 @@ public:
     static bool setCurrentPath(const QFileSystemEntry &entry);
     static QFileSystemEntry currentPath();
 
-    static QAbstractFileEngine *resolveEntryAndCreateLegacyEngine(QFileSystemEntry &entry,
-                                                                  QFileSystemMetaData &data);
+    static std::unique_ptr<QAbstractFileEngine>
+    createLegacyEngine(QFileSystemEntry &entry, QFileSystemMetaData &data);
+
 private:
     static QString slowCanonicalized(const QString &path);
 #if defined(Q_OS_WIN)

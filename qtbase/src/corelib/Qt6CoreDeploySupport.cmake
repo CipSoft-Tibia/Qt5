@@ -205,6 +205,9 @@ function(_qt_internal_generic_deployqt)
     cmake_parse_arguments(PARSE_ARGV 0 arg
         "${no_value_options}" "${single_value_options}" "${multi_value_options}"
     )
+    if(arg_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "Unparsed arguments: ${arg_UNPARSED_ARGUMENTS}")
+    endif()
 
     if(arg_VERBOSE OR __QT_DEPLOY_VERBOSE)
         set(verbose TRUE)
@@ -502,7 +505,6 @@ function(qt6_deploy_runtime_dependencies)
         endif()
 
         _qt_internal_generic_deployqt(
-            EXECUTABLE "${arg_EXECUTABLE}"
             LIB_DIR "${arg_LIB_DIR}"
             PLUGINS_DIR "${arg_PLUGINS_DIR}"
             ${tool_options}
@@ -585,34 +587,7 @@ function(qt6_deploy_translations)
     if(arg_CATALOGS)
         set(catalogs ${arg_CATALOGS})
     else()
-        set(catalogs qtbase)
-
-        # Find the translations that belong to the Qt modules that are used by the project.
-        # "Used by the project" means just all modules that are pulled in via find_package for now.
-        set(modules ${__QT_DEPLOY_ALL_MODULES_FOUND_VIA_FIND_PACKAGE})
-
-        set(module_catalog_mapping
-            "Bluetooth|Nfc" qtconnectivity
-            "Help" qt_help
-            "Multimedia(Widgets|QuickPrivate)?" qtmultimedia
-            "Qml|Quick" qtdeclarative
-            "SerialPort" qtserialport
-            "WebEngine" qtwebengine
-            "WebSockets" qtwebsockets
-        )
-        list(LENGTH module_catalog_mapping max_i)
-        math(EXPR max_i "${max_i} - 1")
-        foreach(module IN LISTS modules)
-            foreach(i RANGE 0 ${max_i} 2)
-                list(GET module_catalog_mapping ${i} module_rex)
-                if(NOT module MATCHES "^${module_rex}")
-                    continue()
-                endif()
-                math(EXPR k "${i} + 1")
-                list(GET module_catalog_mapping ${k} catalog)
-                list(APPEND catalogs ${catalog})
-            endforeach()
-        endforeach()
+        set(catalogs ${__QT_DEPLOY_I18N_CATALOGS})
     endif()
 
     get_filename_component(qt_translations_dir "${__QT_DEPLOY_QT_INSTALL_TRANSLATIONS}" ABSOLUTE

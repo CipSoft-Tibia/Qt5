@@ -5,6 +5,10 @@
 proxy->setItemLabelFormat(QStringLiteral("@valueTitle for (@rowLabel, @colLabel): %.1f"));
 //! [labelformat]
 
+//! [labelformat-scatter]
+proxy->setItemLabelFormat(QStringLiteral("@yTitle for (@xLabel, @zLabel): %.1f"));
+//! [labelformat-scatter]
+
 //! [barmodelproxy]
 // By defining row and column categories, you tell the mapping which row and column each item
 // belongs to. The categories must match the data stored in the model in the roles you define
@@ -51,30 +55,44 @@ QItemModelSurfaceDataProxy *proxy = new QItemModelSurfaceDataProxy(customModel,
 //! [surfacemodelproxy]
 
 //! [proxyexample]
-Q3DBars graph;
-QBar3DSeries *series = new QBar3DSeries;
+QQuickWidget quickWidget;
+Q3DBarsWidgetItem graph;
+graph.setWidget(&quickWidget);
+
+QBar3DSeries series;
 
 for (int i = 0; i < 10; ++i) {
     QBarDataRow dataRow;
     for (int j = 0; j < 5; ++j)
         dataRow.append(myData->getValue(i, j));
-    series->dataProxy()->addRow(dataRow);
+    series.dataProxy()->addRow(dataRow);
 }
 
-graph.addSeries(series);
+graph.addSeries(&series);
 //! [proxyexample]
 
 //! [seriesexample]
-Q3DBars graph;
-QBar3DSeries *series = new QBar3DSeries;
+QQuickWidget quickWidget;
+Q3DBarsWidgetItem graph;
+graph.setWidget(&quickWidget);
+
+QBar3DSeries series;
 
 QLinearGradient barGradient(0, 0, 1, 100);
 barGradient.setColorAt(1.0, Qt::white);
 barGradient.setColorAt(0.0, Qt::black);
 
-series->setBaseGradient(barGradient);
-series->setColorStyle(Q3DTheme::ColorStyle::ObjectGradient);
-series->setMesh(QAbstract3DSeries::Mesh::Cylinder);
+series.setBaseGradient(barGradient);
+series.setColorStyle(QGraphsTheme::ColorStyle::ObjectGradient);
+series.setMesh(QAbstract3DSeries::Mesh::Cylinder);
 
-graph.addSeries(series);
+graph.addSeries(&series);
 //! [seriesexample]
+
+//! [widget in a layout example]
+QQuickWidget *quickWidget = new QQuickWidget();
+Q3DBarsWidgetItem *barGraph = new Q3DBarsWidgetItem();
+barGraph->setWidget(quickWidget);
+
+auto *hLayout = new QHBoxLayout(quickWidget);
+//! [widget in a layout example]

@@ -48,7 +48,7 @@ QAudioFormat::SampleFormat gstSampleFormatToSampleFormat(const char *fmt)
 QAudioFormat QGstUtils::audioFormatForSample(GstSample *sample)
 {
     auto caps = QGstCaps(gst_sample_get_caps(sample), QGstCaps::NeedsRef);
-    if (caps.isNull())
+    if (!caps)
         return {};
     return audioFormatForCaps(caps);
 }
@@ -109,7 +109,7 @@ QList<QAudioFormat::SampleFormat> QGValue::getSampleFormats() const
         auto *name = v.toString();
         QAudioFormat::SampleFormat fmt = gstSampleFormatToSampleFormat(name);
         if (fmt == QAudioFormat::Unknown)
-            continue;;
+            continue;
         formats.append(fmt);
     }
     return formats;
@@ -136,6 +136,11 @@ GList *qt_gst_video_sinks()
     return gst_element_factory_list_get_elements(GST_ELEMENT_FACTORY_TYPE_SINK
                                                          | GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO,
                                                  GST_RANK_MARGINAL);
+}
+
+QLocale::Language QGstUtils::codeToLanguage(const gchar *lang)
+{
+    return QLocale::codeToLanguage(QString::fromUtf8(lang), QLocale::AnyLanguageCode);
 }
 
 QT_END_NAMESPACE

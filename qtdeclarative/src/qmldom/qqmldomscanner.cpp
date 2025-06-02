@@ -295,7 +295,6 @@ bool Token::lexKindIsJSKeyword(int kind)
     case QQmlJSGrammar::T_WITH:
     case QQmlJSGrammar::T_YIELD:
     case QQmlJSGrammar::T_VAR:
-    case QQmlJSGrammar::T_FUNCTION_STAR:
     case QQmlJSGrammar::T_FUNCTION:
         return true;
     default:
@@ -327,6 +326,7 @@ bool Token::lexKindIsIdentifier(int kind)
     case QQmlJSGrammar::T_TRY:
     case QQmlJSGrammar::T_TYPEOF:
     case QQmlJSGrammar::T_WITHOUTAS:
+    case QQmlJSGrammar::T_FROM:
         return true;
     default:
         break;
@@ -375,7 +375,7 @@ bool Token::lexKindIsInvalid(int kind)
     return false;
 }
 
-void Token::dump(Sink s, QStringView line) const
+void Token::dump(const Sink &s, QStringView line) const
 {
     s(u"{");
     sinkInt(s, offset);

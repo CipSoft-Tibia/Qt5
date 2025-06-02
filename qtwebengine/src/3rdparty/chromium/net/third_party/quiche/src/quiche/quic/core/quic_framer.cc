@@ -10,7 +10,9 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include "absl/base/attributes.h"
@@ -22,7 +24,6 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "quiche/quic/core/crypto/crypto_framer.h"
 #include "quiche/quic/core/crypto/crypto_handshake.h"
 #include "quiche/quic/core/crypto/crypto_handshake_message.h"
@@ -2668,6 +2669,7 @@ bool QuicFramer::ProcessFrameData(QuicDataReader* reader,
       case IETF_EXTENSION_MESSAGE_NO_LENGTH:
         ABSL_FALLTHROUGH_INTENDED;
       case IETF_EXTENSION_MESSAGE: {
+        QUIC_CODE_COUNT(quic_legacy_message_frame_codepoint_read);
         QuicMessageFrame message_frame;
         if (!ProcessMessageFrame(reader,
                                  frame_type == IETF_EXTENSION_MESSAGE_NO_LENGTH,
@@ -3480,7 +3482,7 @@ bool QuicFramer::ProcessAckFrame(QuicDataReader* reader, uint8_t frame_type) {
   }
 
   // Done processing the ACK frame.
-  absl::optional<QuicEcnCounts> ecn_counts = absl::nullopt;
+  std::optional<QuicEcnCounts> ecn_counts = std::nullopt;
   if (!visitor_->OnAckFrameEnd(QuicPacketNumber(first_received), ecn_counts)) {
     set_detailed_error(
         "Error occurs when visitor finishes processing the ACK frame.");
@@ -5498,7 +5500,7 @@ int64_t QuicFramer::FrameAckTimestampRanges(
 
   // |effective_prev_time| is the exponent-encoded timestamp of the previous
   // packet.
-  absl::optional<QuicTime> effective_prev_time;
+  std::optional<QuicTime> effective_prev_time;
   for (const AckTimestampRange& range : timestamp_ranges) {
     QUIC_DVLOG(3) << "Range: gap:" << range.gap << ", beg:" << range.range_begin
                   << ", end:" << range.range_end;
@@ -5521,7 +5523,7 @@ int64_t QuicFramer::FrameAckTimestampRanges(
                       << ", effective_prev_time:" << *effective_prev_time
                       << ", recv_time:" << receive_timestamp;
         time_delta = time_delta >> receive_timestamps_exponent_;
-        effective_prev_time = effective_prev_time.value() -
+        effective_prev_time = *effective_prev_time -
                               QuicTime::Delta::FromMicroseconds(
                                   time_delta << receive_timestamps_exponent_);
       } else {
@@ -5804,6 +5806,7 @@ bool QuicFramer::AppendMessageFrameAndTypeByte(const QuicMessageFrame& frame,
     type_byte = last_frame_in_packet ? IETF_EXTENSION_MESSAGE_NO_LENGTH_V99
                                      : IETF_EXTENSION_MESSAGE_V99;
   } else {
+    QUIC_CODE_COUNT(quic_legacy_message_frame_codepoint_write);
     type_byte = last_frame_in_packet ? IETF_EXTENSION_MESSAGE_NO_LENGTH
                                      : IETF_EXTENSION_MESSAGE;
   }
@@ -6340,7 +6343,7 @@ QuicErrorCode QuicFramer::ParsePublicHeaderDispatcher(
     QuicVersionLabel* version_label, ParsedQuicVersion* parsed_version,
     QuicConnectionId* destination_connection_id,
     QuicConnectionId* source_connection_id,
-    absl::optional<absl::string_view>* retry_token,
+    std::optional<absl::string_view>* retry_token,
     std::string* detailed_error) {
   QuicDataReader reader(packet.data(), packet.length());
   if (reader.IsDoneReading()) {
@@ -6392,7 +6395,7 @@ QuicErrorCode QuicFramer::ParsePublicHeaderDispatcherShortHeaderLengthUnknown(
     ParsedQuicVersion* parsed_version,
     QuicConnectionId* destination_connection_id,
     QuicConnectionId* source_connection_id,
-    absl::optional<absl::string_view>* retry_token, std::string* detailed_error,
+    std::optional<absl::string_view>* retry_token, std::string* detailed_error,
     ConnectionIdGeneratorInterface& generator) {
   QuicDataReader reader(packet.data(), packet.length());
   // Get the first two bytes.
@@ -6806,7 +6809,10 @@ void MaybeExtractQuicErrorCode(QuicConnectionCloseFrame* frame) {
   std::vector<absl::string_view> ed = absl::StrSplit(frame->error_details, ':');
   uint64_t extracted_error_code;
   if (ed.size() < 2 || !quiche::QuicheTextUtils::IsAllDigits(ed[0]) ||
-      !absl::SimpleAtoi(ed[0], &extracted_error_code)) {
+      !absl::SimpleAtoi(ed[0], &extracted_error_code) ||
+      extracted_error_code >
+          std::numeric_limits<
+              std::underlying_type<QuicErrorCode>::type>::max()) {
     if (frame->close_type == IETF_QUIC_TRANSPORT_CONNECTION_CLOSE &&
         frame->wire_error_code == NO_IETF_QUIC_ERROR) {
       frame->quic_error_code = QUIC_NO_ERROR;

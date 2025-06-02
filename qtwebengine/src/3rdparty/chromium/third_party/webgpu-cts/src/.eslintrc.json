@@ -52,7 +52,11 @@
     "@typescript-eslint/no-this-alias": "warn",
     "@typescript-eslint/no-unnecessary-type-assertion": "warn",
     "@typescript-eslint/no-unnecessary-type-constraint": "warn",
-    "@typescript-eslint/no-unused-vars": ["warn", { "vars": "all", "args": "none" }],
+    "@typescript-eslint/no-unused-vars": [
+      "warn",
+      // MAINTENANCE_TODO: Enable warnings for args
+      { "vars": "all", "args": "none", "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }
+    ],
     "@typescript-eslint/prefer-as-const": "warn",
     "@typescript-eslint/prefer-for-of": "warn",
     "@typescript-eslint/prefer-namespace-keyword": "warn",

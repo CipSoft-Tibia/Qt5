@@ -37,8 +37,8 @@
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/common/media/display_type.h"
+#include "third_party/blink/public/platform/web_audio_source_provider_impl.h"
 #include "third_party/blink/public/platform/web_media_player_client.h"
-#include "third_party/blink/public/platform/webaudiosourceprovider_impl.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/core/core_export.h"
@@ -98,7 +98,6 @@ class TextTrackList;
 class TimeRanges;
 class VideoTrack;
 class VideoTrackList;
-class WebInbandTextTrack;
 class WebRemotePlaybackClient;
 
 class CORE_EXPORT HTMLMediaElement
@@ -133,8 +132,6 @@ class CORE_EXPORT HTMLMediaElement
   bool IsMediaElement() const override { return true; }
 
   static MIMETypeRegistry::SupportsType GetSupportsType(const ContentType&);
-
-  enum class RecordMetricsBehavior { kDoNotRecord, kDoRecord };
 
   static bool IsHLSURL(const KURL&);
 
@@ -265,8 +262,7 @@ class CORE_EXPORT HTMLMediaElement
   void DurationChanged(double duration, bool request_seek);
 
   // controls
-  bool ShouldShowControls(
-      const RecordMetricsBehavior = RecordMetricsBehavior::kDoNotRecord) const;
+  bool ShouldShowControls() const;
   bool ShouldShowAllControls() const;
   DOMTokenList* controlsList() const;
   HTMLMediaElementControlsList* ControlsListInternal() const;
@@ -346,7 +342,9 @@ class CORE_EXPORT HTMLMediaElement
   // ScriptWrappable functions.
   bool HasPendingActivity() const override;
 
-  AudioSourceProviderClient* AudioSourceNode() { return audio_source_node_; }
+  AudioSourceProviderClient* AudioSourceNode() {
+    return audio_source_node_.Get();
+  }
   void SetAudioSourceNode(AudioSourceProviderClient*);
 
   AudioSourceProvider& GetAudioSourceProvider() {
@@ -414,6 +412,9 @@ class CORE_EXPORT HTMLMediaElement
   // closed can be seamless too, even if the player was recreated for some
   // reason while in picture in picture mode.
   LocalFrame* LocalFrameForPlayer();
+
+  bool HandleInvokeInternal(HTMLElement& invoker,
+                            AtomicString& action) override;
 
  protected:
   // Assert the correct order of the children in shadow dom when DCHECK is on.
@@ -495,9 +496,11 @@ class CORE_EXPORT HTMLMediaElement
   bool AlwaysCreateUserAgentShadowRoot() const final { return true; }
   bool AreAuthorShadowsAllowed() const final { return false; }
 
-  bool SupportsFocus() const final;
-  bool IsFocusable() const final;
-  bool IsKeyboardFocusable() const final;
+  bool SupportsFocus(UpdateBehavior update_behavior =
+                         UpdateBehavior::kStyleAndLayout) const final;
+  bool IsFocusable(UpdateBehavior update_behavior =
+                       UpdateBehavior::kStyleAndLayout) const final;
+  int DefaultTabIndex() const final;
   bool LayoutObjectIsNeeded(const DisplayStyle&) const override;
   LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
   void DidNotifySubtreeInsertionsToDocument() override;
@@ -547,8 +550,6 @@ class CORE_EXPORT HTMLMediaElement
                                         const WebString&,
                                         bool) final;
   void RemoveVideoTrack(WebMediaPlayer::TrackId) final;
-  void AddTextTrack(WebInbandTextTrack*) final;
-  void RemoveTextTrack(WebInbandTextTrack*) final;
   void MediaSourceOpened(WebMediaSource*) final;
   void RemotePlaybackCompatibilityChanged(const WebURL&,
                                           bool is_compatible) final;
@@ -561,7 +562,6 @@ class CORE_EXPORT HTMLMediaElement
   WebRemotePlaybackClient* RemotePlaybackClient() final {
     return remote_playback_client_;
   }
-  Vector<TextTrackMetadata> GetTextTrackMetadata() override;
   gfx::ColorSpace TargetColorSpace() override;
   bool WasAutoplayInitiated() override;
   bool IsInAutoPIP() const override { return false; }
@@ -866,8 +866,8 @@ class CORE_EXPORT HTMLMediaElement
   // Whether the media content is encrypted.
   bool is_encrypted_media_ = false;
   WebString remote_device_friendly_name_;
-  media::AudioCodec audio_codec_ = media::AudioCodec::kUnknown;
-  media::VideoCodec video_codec_ = media::VideoCodec::kUnknown;
+  absl::optional<media::AudioCodec> audio_codec_ = absl::nullopt;
+  absl::optional<media::VideoCodec> video_codec_ = absl::nullopt;
 
   Member<AudioTrackList> audio_tracks_;
   Member<VideoTrackList> video_tracks_;

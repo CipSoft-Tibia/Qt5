@@ -34,7 +34,10 @@ void OnCreateDigitalGoodsResponse(
   if (code != CreateDigitalGoodsResponseCode::kOk) {
     DCHECK(!pending_remote);
     resolver->Reject(MakeGarbageCollected<DOMException>(
-        DOMExceptionCode::kOperationError, mojo::ConvertTo<String>(code)));
+        DOMExceptionCode::kOperationError,
+        mojo::TypeConverter<
+            String, payments::mojom::blink::CreateDigitalGoodsResponseCode>::
+            Convert(code)));
     return;
   }
   DCHECK(pending_remote);

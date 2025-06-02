@@ -29,7 +29,6 @@
     \li \l {e-command} {\\e}
     \li \l {else-command} {\\else}
     \li \l {endif-command} {\\endif}
-    \li \l {footnote-command} {\\footnote}
     \li \l {generatelist-command} {\\generatelist}
     \li \l {header-command} {\\header}
     \li \l {e-command} {\\i} (deprecated, use \\e)
@@ -72,6 +71,7 @@
     \li \l {table-command} {\\table}
     \li \l {tableofcontents-command} {\\tableofcontents}
     \li \l {target-command} {\\target}
+    \li \qdoccmd tm
     \li \l {tt-command} {\\tt}
     \li \l {uicontrol-command} {\\uicontrol}
     \li \l {underline-command} {\\underline}
@@ -320,6 +320,29 @@
 
     See also \l {div-command} {\\div}.
 
+    \target tm-command
+    \section1 \\tm (trademark)
+
+    The \\tm command indicates that its argument is a trademark. QDoc appends
+    a trademark symbol `™` to the first occurrence of the argument when
+    generating a page.
+
+    In the project's configuration, the \c navigation.trademarkspage variable
+    is used for defining a title of a page that contains trademark-related
+    documentation.
+
+    \badcode
+    navigation.trademarkspage = Trademarks
+    \endcode
+
+    If set, each occurrence of the trademark symbol also links to the
+    trademarks page.
+
+    \note In section titles, the \\tm command is ignored and its argument
+          rendered as-is.
+
+    See also \l {sectionOne-command}{\\section1} and \qdocvar {navigation}.
+
     \target tt-command
     \section1 \\tt (teletype font)
 
@@ -566,7 +589,6 @@
     correspond to the traditional section, subsection, etc used in
     outlining.
 
-    \target section-commands
     \section1 Section commands
 
     In general a document structuring command considers everything
@@ -1446,7 +1468,7 @@
             \list
                 \li \c {\l QWidget} - The name of a class documented with the
                     \l {class-command} {\\class} or
-                    \l {qmltype-command}{\qmltype} command.
+                    \l {qmltype-command}{\\qmltype} command.
 
                 \li \c {\l QWidget::sizeHint()} - The signature of a function
                     without parameters. If a matching function without
@@ -1720,7 +1742,9 @@
     \section2 \\target in a \\table
     When you use the \\target command in a table, make sure that the
     \\target command follows a \l {li-command}{\\li}-command (table
-    cell), and that it's either on a separate line, or the last content
+    cell), as some generators only support targets to an individual cell,
+    not to a whole row.
+    Moreover, ensure that it's either on a separate line, or the last content
     that occurs in the line it's in. This is due to how the \\target
     command works; it consumes anything up to the next line break as
     its parameter. In other words, if you have a table and need a
@@ -1744,14 +1768,27 @@
 
     The \\keyword command names a place in the documentation that you
     can link to using the \l {l-command} {\\l (link)} and \l
-    {sa-command} {\\sa (see also)} commands.
+    {sa-command} {\\sa (see also)} commands. It also adds the keyword
+    and the location to generated indices.
 
     The \\keyword command is like the \l {target-command} {\\target}
-    command, except when linking to keyword the link goes to the top of
-    the QDoc comment where the \\keyword appears in. If you want to
-    create a link target to a \c section unit within a \\page, use
-    \\target instead. A keyword can be linked from anywhere using a
-    simple syntax.
+    command, except that when linking to a keyword, by default the link
+    goes to the top of the QDoc comment (topic) the \\keyword appears in.
+
+    If you want to create a keyword for a \c section unit within a
+    topic, add the \\keyword directly above the section title:
+
+    \badcode
+    \keyword debug
+    \section1 Debug command line option (--debug)
+    ...
+    \endcode
+
+    Unlike \\target, keywords are registered in indices of generated
+    offline documentation files (.qch). This allows users to look up the
+    location by keyword, for instance, in
+    \l[QtAssistant]{Searching for Keywords}{Qt Assistant's Index Search},
+    and makes the keyword accessible in \QC's context help.
 
     Keywords must be unique over all the documents processed during
     the QDoc run. The command uses the rest of the line as its
@@ -2327,22 +2364,19 @@
 
     But you can redefine the \b{<blockquote>} tag in your style.css file.
 
-    \target footnote-command
-    \section1 \\footnote
-
-    The \\footnote and \\endfootnote commands delimit a footnote.
-
-    The footnote is rendered at the bottom of the page.
-
-    \warning The \b{\\footnote} and \b{\\endfootnote} commands
-    have not been implemented. The footnote is rendered as a regular
-    HTML paragraph.
 
     \target note-command
     \section1 \\note
 
     The \\note command defines a new paragraph preceded by "Note:"
-    in bold.
+    in bold. The command takes a continuous paragraph as the argument,
+    terminating after the end of the paragraph. The note command is only for
+    shorter statements and not for longer multiline paragraphs.
+
+    Similar to the \l{warning-command}{\\warning} command, the note is for
+    short and important statements. See
+    \l{https://wiki.qt.io/Qt_Writing_Guidelines}{Qt Writing Guidelines} for
+    usage information.
 
     \target tableofcontents-command
     \section1 \\tableofcontents
@@ -2587,6 +2621,11 @@
     \e{draganddrop} group will have \e{\\ingroup draganddrop} in its
     \e{\\class} or \e{\\qmltype} comment.
 
+    The group members are sorted in ascending order, based on
+    user-visible name or title. Since QDoc 6.8, \\annotatedlist
+    and \qdoccmd generatelist support also custom sorting.
+
+    See also \qdoccmd generatelist and \l {Sorting group members}.
 
     \target qtcmakepackage-command
     \section1 \\qtcmakepackage
@@ -2620,6 +2659,19 @@
     \endquotation
 
 
+    \target qtcmaketargetitem-command
+    \section1 \\qtcmaketargetitem
+
+    Use the \\qtcmaketargetitem command to override the \e {item} part of the
+    CMake \c{target_link_libraries} information that's added to classes and
+    namespaces. The command must be used in conjunction with the
+    \l{module-command}{\\module} and \l{qtcmakepackage}{\\qtcmakepackage}}
+    commands.
+
+    \e{See also} \l{module-command}{\\module} and
+    \l{qtcmakepackage}{\\qtcmakepackage}}
+
+
     \target generatelist-command
     \section1 \\generatelist
 
@@ -2647,6 +2699,37 @@
 
     With a group name as the only argument, QDoc lists all entities that
     use the \c {\ingroup <group-name>} command.
+
+    \section3 Sorting group members
+
+    When generating a list of group members, they are sorted in ascending
+    order, based on user-visible name or title. Since QDoc 6.8, the default
+    sort order can be modified:
+
+    \badcode
+        \generatelist [descending] changelogs
+    \endcode
+
+    Assuming the \e changelogs group consists of pages
+    detailing changes in different versions, this generates the
+    list in descending order (newest version first).
+
+    \section4 Sort key
+
+    Since QDoc 6.8, a custom sort key can be assigned to one or
+    more group members using the \qdoccmd meta command:
+
+    \badcode
+        \meta sortkey {sort key}
+    \endcode
+
+    Sorting (ascending or descending) is then done based on
+    these key(s), rather than user-visible titles.
+
+    \note Any group member with a sort key is listed \e before
+    members without a key (in the default ascending order). This
+    allows raising individual group member(s) to the top of the
+    list.
 
     \target table example
     \section2 \c annotatedclasses
@@ -2855,6 +2938,8 @@
     \code
         \ingroup qt-basic-concepts
     \endcode
+
+    See also \qdoccmd {annotatedlist}.
 
     \target if-command
     \section1 \\if

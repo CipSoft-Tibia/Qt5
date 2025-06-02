@@ -4,7 +4,7 @@
 #ifndef DESIGNERPROPERTYMANAGER_H
 #define DESIGNERPROPERTYMANAGER_H
 
-#include "qtvariantproperty.h"
+#include "qtvariantproperty_p.h"
 #include "brushpropertymanager.h"
 #include "fontpropertymanager.h"
 
@@ -30,37 +30,12 @@ class QKeySequenceEdit;
 namespace qdesigner_internal
 {
 
-class ResetWidget;
-
 class TextEditor;
 class PaletteEditorButton;
 class PixmapEditor;
+class ResetDecorator;
 class StringListEditorButton;
 class FormWindowBase;
-
-class ResetDecorator : public QObject
-{
-    Q_OBJECT
-public:
-    explicit ResetDecorator(const QDesignerFormEditorInterface *core, QObject *parent = nullptr);
-    ~ResetDecorator();
-
-    void connectPropertyManager(QtAbstractPropertyManager *manager);
-    QWidget *editor(QWidget *subEditor, bool resettable, QtAbstractPropertyManager *manager, QtProperty *property,
-                QWidget *parent);
-    void disconnectPropertyManager(QtAbstractPropertyManager *manager);
-    void setSpacing(int spacing);
-signals:
-    void resetProperty(QtProperty *property);
-private slots:
-    void slotPropertyChanged(QtProperty *property);
-    void slotEditorDestroyed(QObject *object);
-private:
-    QHash<const QtProperty *, QList<ResetWidget *>> m_createdResetWidgets;
-    QHash<ResetWidget *, QtProperty *> m_resetWidgetToProperty;
-    int m_spacing;
-    const QDesignerFormEditorInterface *m_core;
-};
 
 // Helper for handling sub-properties of properties inheriting PropertySheetTranslatableData
 // (translatable, disambiguation, comment).
@@ -265,11 +240,11 @@ private:
     TextEditor *createTextEditor(QWidget *parent, TextPropertyValidationMode vm, const QString &value);
 
     ResetDecorator *m_resetDecorator;
-    bool m_changingPropertyValue;
+    bool m_changingPropertyValue = false;
     QDesignerFormEditorInterface *m_core;
-    FormWindowBase *m_fwb;
+    FormWindowBase *m_fwb = nullptr;
 
-    int m_spacing;
+    int m_spacing = -1;
 
     QHash<const QtProperty *, QList<TextEditor *>>             m_stringPropertyToEditors;
     QHash<TextEditor *, QtProperty *>                          m_editorToStringProperty;

@@ -21,7 +21,7 @@
 QT_BEGIN_NAMESPACE
 
 class QQuickPropertyChangesPrivate;
-class Q_QUICK_PRIVATE_EXPORT QQuickPropertyChanges : public QQuickStateOperation
+class Q_QUICK_EXPORT QQuickPropertyChanges : public QQuickStateOperation
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickPropertyChanges)
@@ -75,10 +75,16 @@ public:
     QQuickPropertyChangesParser()
     : QQmlCustomParser(AcceptsAttachedProperties) {}
 
-    void verifyList(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QV4::CompiledData::Binding *binding);
+    void verifyList(
+            const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &compilationUnit,
+            const QV4::CompiledData::Binding *binding);
 
-    void verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QList<const QV4::CompiledData::Binding *> &props) override;
-    void applyBindings(QObject *obj, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit, const QList<const QV4::CompiledData::Binding *> &bindings) override;
+    void verifyBindings(
+            const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &compilationUnit,
+            const QList<const QV4::CompiledData::Binding *> &props) override;
+    void applyBindings(
+            QObject *obj, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+            const QList<const QV4::CompiledData::Binding *> &bindings) override;
 };
 
 template<>

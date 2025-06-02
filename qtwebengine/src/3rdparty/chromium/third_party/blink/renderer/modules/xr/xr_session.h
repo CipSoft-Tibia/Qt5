@@ -14,6 +14,7 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
+#include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_xr_light_probe_init.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
@@ -63,6 +64,9 @@ class XRTransientInputHitTestSource;
 class XRViewData;
 class XRWebGLDepthInformation;
 class XRWebGLLayer;
+
+template <typename IDLType>
+class FrozenArray;
 
 using XRSessionFeatureSet = HashSet<device::mojom::XRSessionFeature>;
 
@@ -125,24 +129,26 @@ class XRSession final : public EventTarget,
             device::mojom::blink::XRInteractionMode interaction_mode,
             device::mojom::blink::XRSessionDeviceConfigPtr device_config,
             bool sensorless_session,
-            XRSessionFeatureSet enabled_features);
+            XRSessionFeatureSet enabled_feature_set);
   ~XRSession() override = default;
 
-  XRSystem* xr() const { return xr_; }
+  XRSystem* xr() const { return xr_.Get(); }
   const String& environmentBlendMode() const { return blend_mode_string_; }
   const String& interactionMode() const { return interaction_mode_string_; }
-  XRDOMOverlayState* domOverlayState() const { return dom_overlay_state_; }
+  XRDOMOverlayState* domOverlayState() const {
+    return dom_overlay_state_.Get();
+  }
   const String visibilityState() const;
   absl::optional<float> frameRate() const { return absl::nullopt; }
   DOMFloat32Array* supportedFrameRates() const { return nullptr; }
-  XRRenderState* renderState() const { return render_state_; }
+  XRRenderState* renderState() const { return render_state_.Get(); }
 
   // ARCore by default returns textures in RGBA half-float HDR format and no
   // other runtimes support reflection mapping, so just return this until we
   // have a need to differentiate based on the underlying runtime.
   const String preferredReflectionFormat() const { return "rgba16f"; }
 
-  Vector<String> enabledFeatures() const;
+  const FrozenArray<IDLString>& enabledFeatures() const;
 
   XRSpace* viewerSpace() const;
 
@@ -378,7 +384,7 @@ class XRSession final : public EventTarget,
   // a specific HTMLVideoELement, for the next requestAnimationFrame() call.
   void ScheduleVideoFrameCallbacksExecution(ExecuteVfcCallback);
 
-  HeapVector<Member<XRImageTrackingResult>> ImageTrackingResults(
+  const FrozenArray<XRImageTrackingResult>& ImageTrackingResults(
       ExceptionState&);
 
   const absl::optional<gfx::Size>& CameraImageSize() const {
@@ -451,7 +457,7 @@ class XRSession final : public EventTarget,
 
   void ProcessTrackedImagesData(
       const device::mojom::blink::XRTrackedImagesData*);
-  HeapVector<Member<XRImageTrackingResult>> frame_tracked_images_;
+  Member<FrozenArray<XRImageTrackingResult>> frame_tracked_images_;
   bool tracked_image_scores_available_ = false;
   Vector<String> tracked_image_scores_;
   HeapVector<Member<ScriptPromiseResolver>> image_scores_resolvers_;
@@ -490,7 +496,8 @@ class XRSession final : public EventTarget,
   bool ended_ = false;
   bool waiting_for_shutdown_ = false;
 
-  XRSessionFeatureSet enabled_features_;
+  XRSessionFeatureSet enabled_feature_set_;
+  Member<FrozenArray<IDLString>> enabled_features_;
   std::unique_ptr<MetricsReporter> metrics_reporter_;
 
   // From device's perspective, anchor creation is a multi-step process:

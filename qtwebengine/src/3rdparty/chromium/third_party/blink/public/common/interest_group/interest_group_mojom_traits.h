@@ -24,8 +24,8 @@ namespace mojo {
 template <>
 struct BLINK_COMMON_EXPORT StructTraits<blink::mojom::InterestGroupAdDataView,
                                         blink::InterestGroup::Ad> {
-  static const GURL& render_url(const blink::InterestGroup::Ad& ad) {
-    return ad.render_url;
+  static const std::string& render_url(const blink::InterestGroup::Ad& ad) {
+    return ad.render_url_;
   }
 
   static const absl::optional<std::string>& size_group(
@@ -173,6 +173,17 @@ struct BLINK_COMMON_EXPORT
     return interest_group.trusted_bidding_signals_keys;
   }
 
+  static blink::InterestGroup::TrustedBiddingSignalsSlotSizeMode
+  trusted_bidding_signals_slot_size_mode(
+      const blink::InterestGroup& interest_group) {
+    return interest_group.trusted_bidding_signals_slot_size_mode;
+  }
+
+  static int32_t max_trusted_bidding_signals_url_length(
+      const blink::InterestGroup& interest_group) {
+    return interest_group.max_trusted_bidding_signals_url_length;
+  }
+
   static const absl::optional<std::string>& user_bidding_signals(
       const blink::InterestGroup& interest_group) {
     return interest_group.user_bidding_signals;
@@ -207,6 +218,11 @@ struct BLINK_COMMON_EXPORT
   static const absl::optional<blink::InterestGroup::AdditionalBidKey>&
   additional_bid_key(const blink::InterestGroup& interest_group) {
     return interest_group.additional_bid_key;
+  }
+
+  static const absl::optional<url::Origin>& aggregation_coordinator_origin(
+      const blink::InterestGroup& interest_group) {
+    return interest_group.aggregation_coordinator_origin;
   }
 
   static bool Read(blink::mojom::InterestGroupDataView data,

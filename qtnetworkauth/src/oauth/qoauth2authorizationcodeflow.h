@@ -4,9 +4,10 @@
 #ifndef QOAUTH2AUTHORIZATIONCODEFLOW_H
 #define QOAUTH2AUTHORIZATIONCODEFLOW_H
 
+#include <QtNetworkAuth/qoauthglobal.h>
+
 #ifndef QT_NO_HTTP
 
-#include <QtNetworkAuth/qoauthglobal.h>
 #include <QtNetworkAuth/qabstractoauth2.h>
 
 QT_BEGIN_NAMESPACE
@@ -23,6 +24,7 @@ class Q_OAUTH_EXPORT QOAuth2AuthorizationCodeFlow : public QAbstractOAuth2
                READ accessTokenUrl
                WRITE setAccessTokenUrl
                NOTIFY accessTokenUrlChanged)
+    Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
 
 public:
     explicit QOAuth2AuthorizationCodeFlow(QObject *parent = nullptr);
@@ -48,6 +50,16 @@ public:
 
     QUrl accessTokenUrl() const;
     void setAccessTokenUrl(const QUrl &accessTokenUrl);
+
+    enum class PkceMethod : quint8 {
+        S256,
+        Plain,
+        None = 255,
+    };
+    Q_ENUM(PkceMethod)
+
+    void setPkceMethod(PkceMethod method, qsizetype length = 43) ;
+    PkceMethod pkceMethod() const noexcept;
 
 public Q_SLOTS:
     void grant() override;

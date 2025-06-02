@@ -7,10 +7,12 @@ import("../../../../../third_party/typescript/typescript.gni")
 ts_library("legacy") {
   testonly = true
   sources = [
+    "ContextMenu_test.ts",
     "DockController_test.ts",
     "Infobar_test.ts",
     "SuggestBox_test.ts",
     "Toolbar_test.ts",
+    "Treeoutline_test.ts",
     "UIUtils_test.ts",
     "XLink_test.ts",
   ]

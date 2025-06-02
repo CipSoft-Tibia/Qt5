@@ -1,69 +1,71 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QITEMMODELSURFACEDATAPROXY_H
-#define QITEMMODELSURFACEDATAPROXY_H
+#ifndef QTGRAPHS_QITEMMODELSURFACEDATAPROXY_H
+#define QTGRAPHS_QITEMMODELSURFACEDATAPROXY_H
 
-#if 0
-#  pragma qt_class(QItemModelSurfaceDataProxy)
-#endif
-
-#include <QtCore/QAbstractItemModel>
-#include <QtCore/QRegularExpression>
-#include <QtCore/QStringList>
+#include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qregularexpression.h>
+#include <QtCore/qstringlist.h>
 #include <QtGraphs/qsurfacedataproxy.h>
 
 QT_BEGIN_NAMESPACE
 
 class QItemModelSurfaceDataProxyPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QItemModelSurfaceDataProxy : public QSurfaceDataProxy
+class Q_GRAPHS_EXPORT QItemModelSurfaceDataProxy : public QSurfaceDataProxy
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QItemModelSurfaceDataProxy)
     Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
-    Q_PROPERTY(
-        QAbstractItemModel *itemModel READ itemModel WRITE setItemModel NOTIFY itemModelChanged)
-    Q_PROPERTY(QString rowRole READ rowRole WRITE setRowRole NOTIFY rowRoleChanged)
-    Q_PROPERTY(QString columnRole READ columnRole WRITE setColumnRole NOTIFY columnRoleChanged)
-    Q_PROPERTY(QString xPosRole READ xPosRole WRITE setXPosRole NOTIFY xPosRoleChanged)
-    Q_PROPERTY(QString yPosRole READ yPosRole WRITE setYPosRole NOTIFY yPosRoleChanged)
-    Q_PROPERTY(QString zPosRole READ zPosRole WRITE setZPosRole NOTIFY zPosRoleChanged)
+    Q_PROPERTY(QAbstractItemModel *itemModel READ itemModel WRITE setItemModel NOTIFY
+                   itemModelChanged FINAL)
+    Q_PROPERTY(QString rowRole READ rowRole WRITE setRowRole NOTIFY rowRoleChanged FINAL)
+    Q_PROPERTY(QString columnRole READ columnRole WRITE setColumnRole NOTIFY columnRoleChanged FINAL)
+    Q_PROPERTY(QString xPosRole READ xPosRole WRITE setXPosRole NOTIFY xPosRoleChanged FINAL)
+    Q_PROPERTY(QString yPosRole READ yPosRole WRITE setYPosRole NOTIFY yPosRoleChanged FINAL)
+    Q_PROPERTY(QString zPosRole READ zPosRole WRITE setZPosRole NOTIFY zPosRoleChanged FINAL)
     Q_PROPERTY(QStringList rowCategories READ rowCategories WRITE setRowCategories NOTIFY
-                   rowCategoriesChanged)
+                   rowCategoriesChanged FINAL)
     Q_PROPERTY(QStringList columnCategories READ columnCategories WRITE setColumnCategories NOTIFY
-                   columnCategoriesChanged)
+                   columnCategoriesChanged FINAL)
     Q_PROPERTY(bool useModelCategories READ useModelCategories WRITE setUseModelCategories NOTIFY
-                   useModelCategoriesChanged)
+                   useModelCategoriesChanged FINAL)
     Q_PROPERTY(bool autoRowCategories READ autoRowCategories WRITE setAutoRowCategories NOTIFY
-                   autoRowCategoriesChanged)
+                   autoRowCategoriesChanged FINAL)
     Q_PROPERTY(bool autoColumnCategories READ autoColumnCategories WRITE setAutoColumnCategories
-                   NOTIFY autoColumnCategoriesChanged)
+                   NOTIFY autoColumnCategoriesChanged FINAL)
     Q_PROPERTY(QRegularExpression rowRolePattern READ rowRolePattern WRITE setRowRolePattern NOTIFY
-                   rowRolePatternChanged)
+                   rowRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression columnRolePattern READ columnRolePattern WRITE
-                   setColumnRolePattern NOTIFY columnRolePatternChanged)
+                   setColumnRolePattern NOTIFY columnRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression xPosRolePattern READ xPosRolePattern WRITE setXPosRolePattern
-                   NOTIFY xPosRolePatternChanged)
+                   NOTIFY xPosRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression yPosRolePattern READ yPosRolePattern WRITE setYPosRolePattern
-                   NOTIFY yPosRolePatternChanged)
+                   NOTIFY yPosRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression zPosRolePattern READ zPosRolePattern WRITE setZPosRolePattern
-                   NOTIFY zPosRolePatternChanged)
+                   NOTIFY zPosRolePatternChanged FINAL)
     Q_PROPERTY(QString rowRoleReplace READ rowRoleReplace WRITE setRowRoleReplace NOTIFY
-                   rowRoleReplaceChanged)
+                   rowRoleReplaceChanged FINAL)
     Q_PROPERTY(QString columnRoleReplace READ columnRoleReplace WRITE setColumnRoleReplace NOTIFY
-                   columnRoleReplaceChanged)
+                   columnRoleReplaceChanged FINAL)
     Q_PROPERTY(QString xPosRoleReplace READ xPosRoleReplace WRITE setXPosRoleReplace NOTIFY
-                   xPosRoleReplaceChanged)
+                   xPosRoleReplaceChanged FINAL)
     Q_PROPERTY(QString yPosRoleReplace READ yPosRoleReplace WRITE setYPosRoleReplace NOTIFY
-                   yPosRoleReplaceChanged)
+                   yPosRoleReplaceChanged FINAL)
     Q_PROPERTY(QString zPosRoleReplace READ zPosRoleReplace WRITE setZPosRoleReplace NOTIFY
-                   zPosRoleReplaceChanged)
-    Q_PROPERTY(QItemModelSurfaceDataProxy::MultiMatchBehavior multiMatchBehavior READ
-                   multiMatchBehavior WRITE setMultiMatchBehavior NOTIFY multiMatchBehaviorChanged)
+                   zPosRoleReplaceChanged FINAL)
+    Q_PROPERTY(
+        QItemModelSurfaceDataProxy::MultiMatchBehavior multiMatchBehavior READ multiMatchBehavior
+            WRITE setMultiMatchBehavior NOTIFY multiMatchBehaviorChanged FINAL)
 
 public:
-    enum class MultiMatchBehavior { First, Last, Average, CumulativeY };
+    enum class MultiMatchBehavior {
+        First,
+        Last,
+        Average,
+        CumulativeY,
+    };
     Q_ENUM(MultiMatchBehavior)
 
     explicit QItemModelSurfaceDataProxy(QObject *parent = nullptr);
@@ -135,8 +137,8 @@ public:
                const QStringList &rowCategories,
                const QStringList &columnCategories);
 
-    Q_INVOKABLE int rowCategoryIndex(const QString &category);
-    Q_INVOKABLE int columnCategoryIndex(const QString &category);
+    Q_INVOKABLE qsizetype rowCategoryIndex(const QString &category);
+    Q_INVOKABLE qsizetype columnCategoryIndex(const QString &category);
 
     void setRowRolePattern(const QRegularExpression &pattern);
     QRegularExpression rowRolePattern() const;

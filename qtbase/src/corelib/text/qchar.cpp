@@ -1,14 +1,6 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-// Don't define it while compiling this module, or USERS of Qt will
-// not be able to link.
-#ifdef QT_NO_CAST_FROM_ASCII
-#  undef QT_NO_CAST_FROM_ASCII
-#endif
-#ifdef QT_NO_CAST_TO_ASCII
-#  undef QT_NO_CAST_TO_ASCII
-#endif
 #include "qchar.h"
 
 #include "qdatastream.h"
@@ -62,6 +54,13 @@ QT_BEGIN_NAMESPACE
 
     \ingroup string-processing
     \reentrant
+
+    \compares strong
+    \compareswith strong char16_t QString QStringView QLatin1StringView QUtf8StringView
+    \endcompareswith
+    \compareswith strong {const char *} QByteArray QByteArrayView
+    The contents of the byte array is interpreted as UTF-8.
+    \endcompareswith
 
     In Qt, Unicode characters are 16-bit entities without any markup
     or structure. This class represents such an entity. It is
@@ -124,9 +123,7 @@ QT_BEGIN_NAMESPACE
 
     Starting with Qt 6.0, most QChar constructors are \c explicit. This
     is done to avoid dangerous mistakes when accidentally mixing
-    integral types and strings. You can opt-out (and make these
-    constructors implicit) by defining the macro \c
-    QT_IMPLICIT_QCHAR_CONSTRUCTION.
+    integral types and strings.
 
     For more information see
     \l{https://www.unicode.org/ucd/}{"About the Unicode Character Database"}.
@@ -165,6 +162,8 @@ QT_BEGIN_NAMESPACE
     \value [since 5.15] Unicode_13_0 Version 13.0
     \value [since 6.3] Unicode_14_0 Version 14.0
     \value [since 6.5] Unicode_15_0 Version 15.0
+    \value [since 6.8] Unicode_15_1 Version 15.1
+    \value [since 6.9] Unicode_16_0 Version 16.0
     \value Unicode_Unassigned  The value is not assigned to any character
                                in version 8.0 of Unicode.
 
@@ -302,6 +301,7 @@ QT_BEGIN_NAMESPACE
     \value [since 5.5] Script_Elbasan
     \value [since 5.15] Script_Elymaic
     \value Script_Ethiopic
+    \value [since 6.9] Script_Garay
     \value Script_Georgian
     \value Script_Glagolitic
     \value Script_Gothic
@@ -310,6 +310,7 @@ QT_BEGIN_NAMESPACE
     \value Script_Gujarati
     \value [since 5.15] Script_GunjalaGondi
     \value Script_Gurmukhi
+    \value [since 6.9] Script_GurungKhema
     \value Script_Han
     \value Script_Hangul
     \value [since 5.15] Script_HanifiRohingya
@@ -331,6 +332,7 @@ QT_BEGIN_NAMESPACE
     \value Script_Khmer
     \value [since 5.5] Script_Khojki
     \value [since 5.5] Script_Khudawadi
+    \value [since 6.9] Script_KiratRai
     \value Script_Lao
     \value Script_Latin
     \value Script_Lepcha
@@ -368,6 +370,7 @@ QT_BEGIN_NAMESPACE
     \value [since 5.15] Script_NyiakengPuachueHmong
     \value Script_Ogham
     \value Script_OlChiki
+    \value [since 6.9] Script_OlOnal
     \value [since 5.6] Script_OldHungarian
     \value Script_OldItalic
     \value [since 5.5] Script_OldNorthArabian
@@ -399,6 +402,7 @@ QT_BEGIN_NAMESPACE
     \value Script_SoraSompeng
     \value [since 5.11] Script_Soyombo
     \value Script_Sundanese
+    \value [since 6.9] Script_Sunuwar
     \value Script_SylotiNagri
     \value Script_Syriac
     \value Script_Tagalog
@@ -416,7 +420,9 @@ QT_BEGIN_NAMESPACE
     \value Script_Tibetan
     \value Script_Tifinagh
     \value [since 5.5] Script_Tirhuta
+    \value [since 6.9] Script_Todhri
     \value [since 6.3] Script_Toto
+    \value [since 6.9] Script_TuluTigalari
     \value Script_Ugaritic
     \value Script_Vai
     \value [since 6.3] Script_Vithkuqi
@@ -1757,42 +1763,42 @@ QDataStream &operator>>(QDataStream &in, QChar &chr)
  *****************************************************************************/
 
 /*!
-    \fn bool QChar::operator==(QChar c1, QChar c2)
+    \fn bool QChar::operator==(const QChar &c1, const QChar &c2)
 
     Returns \c true if \a c1 and \a c2 are the same Unicode character;
     otherwise returns \c false.
 */
 
 /*!
-    \fn int QChar::operator!=(QChar c1, QChar c2)
+    \fn bool QChar::operator!=(const QChar &c1, const QChar &c2)
 
     Returns \c true if \a c1 and \a c2 are not the same Unicode
     character; otherwise returns \c false.
 */
 
 /*!
-    \fn int QChar::operator<=(QChar c1, QChar c2)
+    \fn bool QChar::operator<=(const QChar &c1, const QChar &c2)
 
     Returns \c true if the numeric Unicode value of \a c1 is less than
     or equal to that of \a c2; otherwise returns \c false.
 */
 
 /*!
-    \fn int QChar::operator>=(QChar c1, QChar c2)
+    \fn bool QChar::operator>=(const QChar &c1, const QChar &c2)
 
     Returns \c true if the numeric Unicode value of \a c1 is greater than
     or equal to that of \a c2; otherwise returns \c false.
 */
 
 /*!
-    \fn int QChar::operator<(QChar c1, QChar c2)
+    \fn bool QChar::operator<(const QChar &c1, const QChar &c2)
 
     Returns \c true if the numeric Unicode value of \a c1 is less than
     that of \a c2; otherwise returns \c false.
 */
 
 /*!
-    \fn int QChar::operator>(QChar c1, QChar c2)
+    \fn bool QChar::operator>(const QChar &c1, const QChar &c2)
 
     Returns \c true if the numeric Unicode value of \a c1 is greater than
     that of \a c2; otherwise returns \c false.
@@ -2119,52 +2125,5 @@ static bool normalizationQuickCheckHelper(QString *str, QString::NormalizationFo
 
     return true;
 }
-
-/*!
-    \macro QT_IMPLICIT_QCHAR_CONSTRUCTION
-    \since 6.0
-    \relates QChar
-
-    Defining this macro makes certain QChar constructors implicit
-    rather than explicit. This is done to enforce safe conversions:
-
-    \badcode
-
-    QString str = getString();
-    if (str == 123) {
-        // Oops, meant str == "123". By default does not compile,
-        // *unless* this macro is defined, in which case, it's interpreted
-        // as `if (str == QChar(123))`, that is, `if (str == '{')`.
-        // Likely, not what we meant.
-    }
-
-    \endcode
-
-    This macro is provided to keep existing code working; it is
-    recommended to instead use explicit conversions and/or QLatin1Char.
-    For instance:
-
-    \code
-
-    QChar c1 =  'x'; // OK, unless QT_NO_CAST_FROM_ASCII is defined
-    QChar c2 = u'x'; // always OK, recommended
-    QChar c3 = QLatin1Char('x'); // always OK, recommended
-
-    // from int to 1 UTF-16 code unit: must guarantee that the input is <= 0xFFFF
-    QChar c4 = 120;        // compile error, unless QT_IMPLICIT_QCHAR_CONSTRUCTION is defined
-    QChar c5(120);         // OK (direct initialization)
-    auto  c6 = QChar(120); // ditto
-
-    // from int/char32_t to 1/2 UTF-16 code units:
-    // 𝄞 'MUSICAL SYMBOL G CLEF' (U+1D11E)
-    auto c7 = QChar(0x1D11E);           // compiles, but undefined behavior at runtime
-    auto c8 = QChar::fromUcs4(0x1D11E);       // always OK
-    auto c9 = QChar::fromUcs4(U'\U0001D11E'); // always OK
-    // => use c8/c9 as QStringView objects
-
-    \endcode
-
-    \sa QLatin1Char, QChar::fromUcs4, QT_NO_CAST_FROM_ASCII
-*/
 
 QT_END_NAMESPACE

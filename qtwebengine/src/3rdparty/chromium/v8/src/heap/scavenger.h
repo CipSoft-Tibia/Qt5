@@ -29,10 +29,11 @@ enum class CopyAndForwardResult {
   FAILURE
 };
 
-using ObjectAndSize = std::pair<HeapObject, int>;
+using ObjectAndSize = std::pair<Tagged<HeapObject>, int>;
 using SurvivingNewLargeObjectsMap =
-    std::unordered_map<HeapObject, Map, Object::Hasher>;
-using SurvivingNewLargeObjectMapEntry = std::pair<HeapObject, Map>;
+    std::unordered_map<Tagged<HeapObject>, Tagged<Map>, Object::Hasher>;
+using SurvivingNewLargeObjectMapEntry =
+    std::pair<Tagged<HeapObject>, Tagged<Map>>;
 
 class ScavengerCollector;
 
@@ -40,7 +41,7 @@ class Scavenger {
  public:
   struct PromotionListEntry {
     Tagged<HeapObject> heap_object;
-    Map map;
+    Tagged<Map> map;
     int size;
   };
 
@@ -210,7 +211,7 @@ class Scavenger {
   size_t copied_size_;
   size_t promoted_size_;
   EvacuationAllocator allocator_;
-  std::unique_ptr<ConcurrentAllocator> shared_old_allocator_;
+  std::unique_ptr<MainAllocator> shared_old_allocator_;
   SurvivingNewLargeObjectsMap surviving_new_large_objects_;
 
   EphemeronRememberedSet::TableMap ephemeron_remembered_set_;

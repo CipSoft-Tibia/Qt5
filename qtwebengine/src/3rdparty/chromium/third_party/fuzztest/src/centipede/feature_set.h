@@ -15,14 +15,13 @@
 #ifndef THIRD_PARTY_CENTIPEDE_FEATURE_SET_H_
 #define THIRD_PARTY_CENTIPEDE_FEATURE_SET_H_
 
+#include <bitset>
 #include <cstddef>
 #include <cstdint>
+#include <ostream>
 #include <string>
-#include <vector>
 
-#include "absl/container/flat_hash_set.h"
-#include "./centipede/coverage.h"
-#include "./centipede/defs.h"
+#include "./centipede/control_flow.h"
 #include "./centipede/feature.h"
 #include "./centipede/util.h"
 
@@ -34,12 +33,25 @@ namespace centipede {
 // All features must be in [0, feature_domains::kLastDomain.begin()).
 class FeatureSet {
  public:
-  explicit FeatureSet(uint8_t frequency_threshold)
-      : frequency_threshold_(frequency_threshold) {}
+  using FeatureDomainSet = std::bitset<feature_domains::kNumDomains>;
 
-  // Returns the number of features in `features` not present in `this`.
-  // Removes all features from `features` that are too frequent.
-  size_t CountUnseenAndPruneFrequentFeatures(FeatureVec &features) const;
+  explicit FeatureSet(uint8_t frequency_threshold,
+                      FeatureDomainSet should_discard_domain)
+      : frequency_threshold_(frequency_threshold),
+        should_discard_domain_(should_discard_domain) {}
+
+  // Returns true if there are features in `features` not present in `this`.
+  bool HasUnseenFeatures(const FeatureVec &features) const;
+
+  // Removes all features from `features` that are too frequent or are in
+  // discarded domains.
+  // Returns the number of unpruned features in `features` that were not
+  // previously present in `this`.
+  size_t PruneFeaturesAndCountUnseen(FeatureVec &features) const;
+
+  // Prune the features that are in discarded domains.
+  // Effectively a subset of PruneFeaturesAndCountUnseen.
+  void PruneDiscardedDomains(FeatureVec &features) const;
 
   // For every feature in `features` increment its frequency.
   // If a feature wasn't seen before, it is added to `this`.
@@ -52,7 +64,7 @@ class FeatureSet {
   PCIndexVec ToCoveragePCs() const;
 
   // Returns the number of features in `this` from the given feature domain.
-  size_t CountFeatures(feature_domains::Domain domain);
+  size_t CountFeatures(feature_domains::Domain domain) const;
 
   // Returns the frequency associated with `feature`.
   size_t Frequency(feature_t feature) const { return frequencies_[feature]; }
@@ -75,6 +87,14 @@ class FeatureSet {
     return frequency_threshold_;
   }
 
+  // Returns 'true' if we should always filter out this specific feature ID.
+  // This is a configurable policy that does not depend on the frequency of the
+  // feature.
+  bool ShouldDiscardFeature(feature_t feature) const {
+    size_t domain_id = feature_domains::Domain::FeatureToDomainId(feature);
+    return should_discard_domain_.test(domain_id);
+  }
+
   const uint8_t frequency_threshold_;
 
   static constexpr size_t kSize = feature_domains::kLastDomain.begin();
@@ -89,11 +109,13 @@ class FeatureSet {
   size_t num_features_ = 0;
 
   // Counts features in each domain.
-  size_t features_per_domain_[feature_domains::kLastDomain.domain_id()] = {};
+  size_t features_per_domain_[feature_domains::kNumDomains] = {};
 
-  // Maintains the set of PC indices that correspond to added features.
-  absl::flat_hash_set<PCIndex> pc_index_set_;
+  FeatureDomainSet should_discard_domain_;
 };
+
+// Stream out description and count of features in feature set.
+std::ostream &operator<<(std::ostream &out, const FeatureSet &fs);
 
 }  // namespace centipede
 

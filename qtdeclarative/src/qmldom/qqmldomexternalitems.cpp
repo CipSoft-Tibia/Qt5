@@ -16,7 +16,6 @@
 #include <QtCore/QDir>
 #include <QtCore/QScopeGuard>
 #include <QtCore/QFileInfo>
-#include <QtCore/QRegularExpression>
 #include <QtCore/QRegularExpressionMatch>
 
 #include <algorithm>
@@ -215,7 +214,7 @@ void QmldirFile::setAutoExports(const QList<ModuleAutoExport> &autoExport)
     m_autoExports = autoExport;
 }
 
-void QmldirFile::ensureInModuleIndex(const DomItem &self, QString uri) const
+void QmldirFile::ensureInModuleIndex(const DomItem &self, const QString &uri) const
 {
     // ModuleIndex keeps the various sources of types from a given module uri import
     // this method ensures that all major versions that are contained in this qmldir
@@ -231,10 +230,10 @@ void QmldirFile::ensureInModuleIndex(const DomItem &self, QString uri) const
     }
 }
 
-QCborValue pluginData(const QQmlDirParser::Plugin &pl, QStringList cNames)
+QCborValue pluginData(const QQmlDirParser::Plugin &pl, const QStringList &cNames)
 {
     QCborArray names;
-    for (QString n : cNames)
+    for (const QString &n : cNames)
         names.append(n);
     return QCborMap({ { QCborValue(QStringView(Fields::name)), pl.name },
                       { QStringView(Fields::path), pl.path },
@@ -264,7 +263,7 @@ bool QmldirFile::iterateDirectSubpaths(const DomItem &self, DirectVisitor visito
         const QMap<QString, QString> typeFileMap = qmlFiles();
         return self.subMapItem(Map(
                 self.pathFromOwner().field(Fields::qmlFiles),
-                [typeFileMap](const DomItem &map, QString typeV) {
+                [typeFileMap](const DomItem &map, const QString &typeV) {
                     QString path = typeFileMap.value(typeV);
                     if (path.isEmpty())
                         return DomItem();
@@ -294,9 +293,9 @@ QMap<QString, QString> QmldirFile::qmlFiles() const
     return res;
 }
 
-JsFile::JsFile(QString filePath, QString code,
-       QDateTime lastDataUpdateAt,
-       int derivedFrom)
+JsFile::JsFile(
+        const QString &filePath, const QString &code, const QDateTime &lastDataUpdateAt,
+        int derivedFrom)
     : ExternalOwningItem(filePath, lastDataUpdateAt, Paths::qmlFilePath(filePath), derivedFrom,
                          code)
 {
@@ -307,8 +306,11 @@ JsFile::JsFile(QString filePath, QString code,
     QQmlJS::Lexer lexer(m_engine.get());
     lexer.setCode(code, /*lineno = */ 1, /*qmlMode=*/false);
     QQmlJS::Parser parser(m_engine.get());
-    //TODO(QTBUG-117849) add mjs support
-    setIsValid(/*isESModule ? parser.parseModule() :*/ parser.parseProgram());
+
+    bool isESM = filePath.endsWith(u".mjs", Qt::CaseInsensitive);
+    bool isValid = isESM ? parser.parseModule() : parser.parseProgram();
+    setIsValid(isValid);
+
     const auto diagnostics = parser.diagnosticMessages();
     for (const DiagnosticMessage &msg : diagnostics) {
         addErrorLocal(
@@ -316,10 +318,12 @@ JsFile::JsFile(QString filePath, QString code,
     }
 
     auto astComments = std::make_shared<AstComments>(m_engine);
-    AstComments::collectComments(m_engine, parser.rootNode(), astComments, MutableDomItem(),
-                                 nullptr);
+
+    CommentCollector collector;
+    collector.collectComments(m_engine, parser.rootNode(), astComments);
     m_script = std::make_shared<ScriptExpression>(code, m_engine, parser.rootNode(), astComments,
-                                                  ScriptExpression::ExpressionType::Code);
+                                                  isESM ? ScriptExpression::ExpressionType::ESMCode
+                                                        : ScriptExpression::ExpressionType::JSCode);
 }
 
 ErrorGroups JsFile::myParsingErrors()
@@ -369,7 +373,7 @@ void JsFile::addModuleImport(const QString &uri, const QString &version, const Q
 
 void JsFile::LegacyPragmaLibrary::writeOut(OutWriter &lw) const
 {
-    lw.write(u".pragma").space().write(u"library").ensureNewline();
+    lw.write(u".pragma").ensureSpace().write(u"library").ensureNewline();
 }
 
 void JsFile::LegacyImport::writeOut(OutWriter &lw) const
@@ -377,16 +381,16 @@ void JsFile::LegacyImport::writeOut(OutWriter &lw) const
     // either filename or module uri must be present
     Q_ASSERT(!fileName.isEmpty() || !uri.isEmpty());
 
-    lw.write(u".import").space();
+    lw.write(u".import").ensureSpace();
     if (!uri.isEmpty()) {
-        lw.write(uri).space();
+        lw.write(uri).ensureSpace();
         if (!version.isEmpty()) {
-            lw.write(version).space();
+            lw.write(version).ensureSpace();
         }
     } else {
-        lw.write(u"\"").write(fileName).write(u"\"").space();
+        lw.write(u"\"").write(fileName).write(u"\"").ensureSpace();
     }
-    lw.writeRegion(AsTokenRegion).space().write(asIdentifier);
+    lw.writeRegion(AsTokenRegion).ensureSpace().write(asIdentifier);
 
     lw.ensureNewline();
 }
@@ -417,37 +421,37 @@ std::shared_ptr<OwningItem> QmlFile::doCopy(const DomItem &) const
     return res;
 }
 
-QmlFile::QmlFile(const QmlFile &o)
-    : ExternalOwningItem(o),
-      m_engine(o.m_engine),
-      m_ast(o.m_ast),
-      m_astComments(o.m_astComments),
-      m_comments(o.m_comments),
-      m_fileLocationsTree(o.m_fileLocationsTree),
-      m_components(o.m_components),
-      m_pragmas(o.m_pragmas),
-      m_imports(o.m_imports),
-      m_importScope(o.m_importScope)
-{
-    if (m_astComments)
-        m_astComments = std::make_shared<AstComments>(*m_astComments);
-}
+/*!
+    \class QmlFile
+
+   A QmlFile, when loaded in a DomEnvironment that has the DomCreationOption::WithSemanticAnalysis,
+   will be lazily constructed. That means that its member m_lazyMembers is uninitialized, and will
+   only be populated when it is accessed (through a getter, a setter or the DomItem interface).
+
+   The reason for the laziness is that the qqmljsscopes are created lazily and at the same time as
+   the Dom QmlFile representations. So instead of eagerly generating all qqmljsscopes when
+   constructing the Dom, the QmlFile itself becomes lazy and will only be populated on demand at
+   the same time as the corresponding qqmljsscopes.
+
+   The QDeferredFactory<QQmlJSScope> will, when the qqmljsscope is populated, take care of
+   populating all fields of the QmlFile.
+   Therefore, population of the QmlFile is done by populating the qqmljsscope.
+
+*/
 
 QmlFile::QmlFile(
         const QString &filePath, const QString &code, const QDateTime &lastDataUpdateAt,
         int derivedFrom, RecoveryOption option)
     : ExternalOwningItem(filePath, lastDataUpdateAt, Paths::qmlFilePath(filePath), derivedFrom,
                          code),
-      m_engine(new QQmlJS::Engine),
-      m_astComments(new AstComments(m_engine)),
-      m_fileLocationsTree(FileLocations::createTree(canonicalPath()))
+      m_engine(new QQmlJS::Engine)
 {
     QQmlJS::Lexer lexer(m_engine.get());
     lexer.setCode(code, /*lineno = */ 1, /*qmlMode=*/true);
     QQmlJS::Parser parser(m_engine.get());
     if (option == EnableParserRecovery) {
-        parser.enableIdentifierInsertion();
-        parser.enableIncompleteBindings();
+        parser.setIdentifierInsertionEnabled(true);
+        parser.setIncompleteBindingsEnabled(true);
     }
     m_isValid = parser.parse();
     const auto diagnostics = parser.diagnosticMessages();
@@ -467,21 +471,24 @@ ErrorGroups QmlFile::myParsingErrors()
 
 bool QmlFile::iterateDirectSubpaths(const DomItem &self, DirectVisitor visitor) const
 {
+    auto &members = lazyMembers();
     bool cont = ExternalOwningItem::iterateDirectSubpaths(self, visitor);
-    cont = cont && self.dvWrapField(visitor, Fields::components, m_components);
-    cont = cont && self.dvWrapField(visitor, Fields::pragmas, m_pragmas);
-    cont = cont && self.dvWrapField(visitor, Fields::imports, m_imports);
-    cont = cont && self.dvWrapField(visitor, Fields::importScope, m_importScope);
-    cont = cont && self.dvWrapField(visitor, Fields::fileLocationsTree, m_fileLocationsTree);
-    cont = cont && self.dvWrapField(visitor, Fields::comments, m_comments);
-    cont = cont && self.dvWrapField(visitor, Fields::astComments, m_astComments);
+    cont = cont && self.dvWrapField(visitor, Fields::components, members.m_components);
+    cont = cont && self.dvWrapField(visitor, Fields::pragmas, members.m_pragmas);
+    cont = cont && self.dvWrapField(visitor, Fields::imports, members.m_imports);
+    cont = cont && self.dvWrapField(visitor, Fields::importScope, members.m_importScope);
+    cont = cont
+            && self.dvWrapField(visitor, Fields::fileLocationsTree, members.m_fileLocationsTree);
+    cont = cont && self.dvWrapField(visitor, Fields::comments, members.m_comments);
+    cont = cont && self.dvWrapField(visitor, Fields::astComments, members.m_astComments);
     return cont;
 }
 
 DomItem QmlFile::field(const DomItem &self, QStringView name) const
 {
+    ensurePopulated();
     if (name == Fields::components)
-        return self.wrapField(Fields::components, m_components);
+        return self.wrapField(Fields::components, lazyMembers().m_components);
     return DomBase::field(self, name);
 }
 
@@ -492,6 +499,7 @@ void QmlFile::addError(const DomItem &self, ErrorMessage &&msg)
 
 void QmlFile::writeOut(const DomItem &self, OutWriter &ow) const
 {
+    ensurePopulated();
     for (const DomItem &p : self.field(Fields::pragmas).values()) {
         p.writeOut(ow);
     }
@@ -561,7 +569,7 @@ QmlDirectory::QmlDirectory(
     : ExternalOwningItem(filePath, lastDataUpdateAt, Paths::qmlDirectoryPath(filePath), derivedFrom,
                          dirList.join(QLatin1Char('\n')))
 {
-    for (QString f : dirList) {
+    for (const QString &f : dirList) {
         addQmlFilePath(f);
     }
 }
@@ -574,7 +582,7 @@ bool QmlDirectory::iterateDirectSubpaths(const DomItem &self, DirectVisitor visi
         QDir baseDir(canonicalFilePath());
         return self.subMapItem(Map(
                 self.pathFromOwner().field(Fields::qmlFiles),
-                [this, baseDir](const DomItem &map, QString key) -> DomItem {
+                [this, baseDir](const DomItem &map, const QString &key) -> DomItem {
                     QList<Path> res;
                     auto it = m_qmlFiles.find(key);
                     while (it != m_qmlFiles.end() && it.key() == key) {
@@ -593,11 +601,13 @@ bool QmlDirectory::iterateDirectSubpaths(const DomItem &self, DirectVisitor visi
     return cont;
 }
 
-bool QmlDirectory::addQmlFilePath(QString relativePath)
+bool QmlDirectory::addQmlFilePath(const QString &relativePath)
 {
-    QRegularExpression qmlFileRe(QRegularExpression::anchoredPattern(
-            uR"((?<compName>[a-zA-z0-9_]+)\.(?:qml|qmlannotation))"));
-    QRegularExpressionMatch m = qmlFileRe.match(relativePath);
+    static const QRegularExpression qmlFileRegularExpression{
+        QRegularExpression::anchoredPattern(
+                uR"((?<compName>[a-zA-z0-9_]+)\.(?:qml|qmlannotation|ui\.qml))")
+    };
+    QRegularExpressionMatch m = qmlFileRegularExpression.match(relativePath);
     if (m.hasMatch() && !m_qmlFiles.values(m.captured(u"compName")).contains(relativePath)) {
         m_qmlFiles.insert(m.captured(u"compName"), relativePath);
         Export e;

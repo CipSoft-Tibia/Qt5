@@ -28,10 +28,13 @@ QT_BEGIN_NAMESPACE
 class QHttpServerRouterPrivate
 {
 public:
-    QHttpServerRouterPrivate();
+    QHttpServerRouterPrivate(QAbstractHttpServer *server);
 
     QHash<QMetaType, QString> converters;
     std::vector<std::unique_ptr<QHttpServerRouterRule>> rules;
+    QAbstractHttpServer *server;
+
+    bool verifyThreadAffinity(const QObject *contextObject) const;
 };
 
 QT_END_NAMESPACE

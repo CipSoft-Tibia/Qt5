@@ -22,6 +22,7 @@ namespace webrtcDesktopCapturePrivate {
 
   interface Functions {
     // Selects primary screen for share explicitly.
+    [doesNotSupportPromises="Synchronous return and callback crbug.com/1143032"]
     static long chooseDesktopMedia(RequestInfo request,
                                    chooseDesktopMediaCallback callback);
   };

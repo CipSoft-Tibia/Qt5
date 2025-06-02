@@ -10,8 +10,6 @@
 
 \summary {Generates server-side C++ bindings for a Wayland protocol .XML file}
 
-\cmakecommandsince 6.0
-
 The command is defined in the \c WaylandCompositor component of the \c Qt6 package, which
 can be loaded like so:
 
@@ -19,10 +17,13 @@ can be loaded like so:
 find_package(Qt6 REQUIRED COMPONENTS WaylandCompositor)
 \endcode
 
+\cmakecommandsince 6.0
+
 \section1 Synopsis
 
 \badcode
 qt_generate_wayland_protocol_server_sources(target
+                                            [PUBLIC_CODE | PRIVATE_CODE]
                                             FILES file1.xml [file2.xml ...])
 \endcode
 
@@ -34,6 +35,10 @@ qt_generate_wayland_protocol_server_sources() creates the build steps to run \c{
 \c{qtwaylandscanner} on one or more Wayland protocol files. The tools will in turn generate binding
 code in C and C++ for implementing the protocols, and the resulting files will be built as part
 of the \c target.
+
+The options \c{PUBLIC_CODE} and \c{PRIVATE_CODE} (added in Qt 6.8) correspond to the \c{public-code}
+and \c{private-code} options of \c{wayland-scanner}. For backwards compatibility \c{PUBLIC_CODE} is
+the default but generally \c{PRIVATE_CODE} is strongly recommended.
 
 qt_generate_wayland_protocol_server_sources() will trigger generation of the files needed to
 implement the compositor side of the protocol.

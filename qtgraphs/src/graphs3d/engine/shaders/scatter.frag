@@ -12,22 +12,22 @@ void MAIN()
             discard;
     }
 
-    vec3 color;
+    vec4 color;
     vec2 gradientUV;
     switch (colorStyle) {
     case 0: // Uniform
-        color = uColor.rgb;
+        color = uColor.rgba;
         break;
     case 1: // Object gradient
         gradientUV = vec2((pos.y + 1.0) / 2.0, 0.0);
-        color = texture(custex, gradientUV).xyz;
+        color = texture(custex, gradientUV);
         break;
     case 2: //  Range gradient
         vec2 gradientUV = vec2((VAR_WORLD_POSITION.y + 1.0) / 2.0, 0.0);
-        color = texture(custex, gradientUV).xyz;
+        color = texture(custex, gradientUV);
         break;
     }
-    diffuse = vec4(color, 1.0);
+    diffuse = color;
     BASE_COLOR = diffuse;
 }
 

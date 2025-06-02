@@ -24,6 +24,8 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 /*!
   \class Node
   \brief The Node class is the base class for all the nodes in QDoc's parse tree.
@@ -74,10 +76,38 @@ bool Node::nodeNameLessThan(const Node *n1, const Node *n2)
 
     LT_RETURN_IF_NOT_EQUAL(n1->nodeType(), n2->nodeType());
     LT_RETURN_IF_NOT_EQUAL(n1->name(), n2->name());
+    LT_RETURN_IF_NOT_EQUAL(n1->logicalModuleName(), n2->logicalModuleName());
     LT_RETURN_IF_NOT_EQUAL(n1->access(), n2->access());
     LT_RETURN_IF_NOT_EQUAL(n1->location().filePath(), n2->location().filePath());
 
     return false;
+}
+
+
+/*!
+    Returns \c true if node \a n1 is less than node \a n2 when comparing
+    the sort keys, defined with
+
+    \badcode
+    \meta sortkey {<value>}
+    \endcode
+
+    in the respective nodes' documentation. If the two sort keys are equal,
+    falls back to nodeNameLessThan(). If \a n1 defines a sort key and \a n2
+    does not, then n1 < n2.
+
+*/
+bool Node::nodeSortKeyOrNameLessThan(const Node *n1, const Node *n2)
+{
+    const QString default_sortkey{QChar{QChar::LastValidCodePoint}};
+    const auto *n1_metamap{n1->doc().metaTagMap()};
+    const auto *n2_metamap{n2->doc().metaTagMap()};
+    if (auto cmp = QString::compare(
+            n1_metamap ? n1_metamap->value(u"sortkey"_s, default_sortkey) : default_sortkey,
+            n2_metamap ? n2_metamap->value(u"sortkey"_s, default_sortkey) : default_sortkey); cmp != 0) {
+        return cmp < 0;
+    }
+    return nodeNameLessThan(n1, n2);
 }
 
 /*!
@@ -409,10 +439,6 @@ bool Node::nodeNameLessThan(const Node *n1, const Node *n2)
   function will return \e true.
 */
 
-/*! \fn bool Node::isQtQuickNode() const
-  Returns true if this node represents a QML element in the QtQuick module.
-*/
-
 /*! \fn bool Node::isRelatableType() const
   Returns true if this node is something you can relate things to with
   the \e relates command. NamespaceNode, ClassNode, HeaderNode, and
@@ -566,8 +592,6 @@ Node::Node(NodeType type, Aggregate *parent, QString name)
 {
     if (m_parent)
         m_parent->addChild(this);
-
-    m_outSubDir = Generator::outputSubdir();
 
     setGenus(getGenus(type));
 }
@@ -970,14 +994,39 @@ QString Node::fullDocumentName() const
     return pieces.join(concatenator);
 }
 
-void Node::setDeprecatedSince(const QString &sinceVersion)
+/*!
+    Sets the Node status to Node::Deprecated, unless \a sinceVersion represents
+    a future version.
+
+    Stores \a sinceVersion representing the version in which the deprecation
+    took (or will take) place.
+
+    Fetches the current version from the config ('version' variable) as a
+    string, and compared to \a sinceVersion. If both string represent a valid
+    version and \a sinceVersion is greater than the currect version, do not
+    mark the node as deprecated; leave it active.
+*/
+void Node::setDeprecated(const QString &sinceVersion)
 {
+
     if (!m_deprecatedSince.isEmpty())
         qCWarning(lcQdoc) << QStringLiteral(
                                      "Setting deprecated since version for %1 to %2 even though it "
                                      "was already set to %3. This is very unexpected.")
                                      .arg(this->m_name, sinceVersion, this->m_deprecatedSince);
     m_deprecatedSince = sinceVersion;
+
+    if (!sinceVersion.isEmpty()) {
+        QVersionNumber since = QVersionNumber::fromString(sinceVersion).normalized();
+        QVersionNumber current = QVersionNumber::fromString(
+                                    Config::instance().get(CONFIG_VERSION).asString())
+                                    .normalized();
+        if (!current.isNull() && !since.isNull()) {
+            if (current < since)
+                return;
+        }
+    }
+    setStatus(Deprecated);
 }
 
 /*! \fn Node *Node::clone(Aggregate *parent)
@@ -1351,18 +1400,6 @@ void Node::setDeprecatedSince(const QString &sinceVersion)
   If this is a QmlTypeNode, this function sets the C++ class node
   to \a cn. The C++ ClassNode is the C++ implementation of the QML
   type.
- */
-
-/*! \fn const QString &Node::outputSubdirectory() const
-  Returns the node's output subdirector, which is the subdirectory
-  of the output directory where the node's documentation file is
-  written.
- */
-
-/*! \fn void Node::setOutputSubdirectory(const QString &t)
-  Sets the node's output subdirectory to \a t. This is the subdirector
-  of the output directory where the node's documentation file will be
-  written.
  */
 
 /*! \fn NodeType Node::goal(const QString &t)

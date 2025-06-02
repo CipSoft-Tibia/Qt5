@@ -33,7 +33,7 @@ public:
     static const Options &instance();
     static void setFromString(const std::string &options, GeneratorType type = QtProtobufGen);
 
-    bool hasQml() const { return m_qml || !m_qmlUri.empty(); }
+    bool hasQml() const { return m_qml; }
     bool generateComments() const { return m_generateComments; }
     bool isFolder() const { return m_isFolder; }
     bool generateFieldEnum() const { return m_generateFieldEnum; }
@@ -41,7 +41,6 @@ public:
     const std::string &exportMacro() const { return m_exportMacro; }
     const std::string &exportMacroFilename() const { return m_exportMacroFilename; }
     bool generateMacroExportFile() const { return m_generateMacroExportFile; }
-    const std::string &qmlUri() const { return m_qmlUri; }
 
 private:
     bool m_generateComments;
@@ -51,7 +50,6 @@ private:
     std::string m_exportMacro;
     std::string m_exportMacroFilename;
     bool m_generateMacroExportFile;
-    std::string m_qmlUri;
     bool m_qml;
 };
 

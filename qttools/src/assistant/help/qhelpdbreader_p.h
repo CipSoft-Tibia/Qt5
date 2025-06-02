@@ -15,11 +15,9 @@
 // We mean it.
 //
 
-#include <QtCore/QObject>
-#include <QtCore/QStringList>
-#include <QtCore/QUrl>
-#include <QtCore/QByteArray>
-#include <QtCore/QSet>
+#include <QtCore/qbytearray.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qstringlist.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -33,7 +31,6 @@ public:
     class IndexItem
     {
     public:
-        IndexItem() = default;
         QString name;
         QString identifier;
         int fileId = 0;
@@ -44,7 +41,6 @@ public:
     class FileItem
     {
     public:
-        FileItem() = default;
         QString name;
         QString title;
         QStringList filterAttributes;
@@ -53,7 +49,6 @@ public:
     class ContentsItem
     {
     public:
-        ContentsItem() = default;
         QByteArray data;
         QStringList filterAttributes;
     };
@@ -68,8 +63,7 @@ public:
     };
 
     QHelpDBReader(const QString &dbName);
-    QHelpDBReader(const QString &dbName, const QString &uniqueId,
-        QObject *parent);
+    QHelpDBReader(const QString &dbName, const QString &uniqueId, QObject *parent);
     ~QHelpDBReader();
 
     bool init();
@@ -80,12 +74,11 @@ public:
     IndexTable indexTable() const;
     QList<QStringList> filterAttributeSets() const;
     QMultiMap<QString, QByteArray> filesData(const QStringList &filterAttributes,
-                                             const QString &extensionFilter = QString()) const;
-    QByteArray fileData(const QString &virtualFolder,
-        const QString &filePath) const;
+                                             const QString &extensionFilter = {}) const;
+    QByteArray fileData(const QString &virtualFolder, const QString &filePath) const;
 
     QStringList customFilters() const;
-    QStringList filterAttributes(const QString &filterName = QString()) const;
+    QStringList filterAttributes(const QString &filterName = {}) const;
 
     QVariant metaData(const QString &name) const;
 
@@ -98,10 +91,10 @@ private:
     QString m_dbName;
     QString m_uniqueId;
     QString m_error;
-    QSqlQuery *m_query = nullptr;
+    std::unique_ptr<QSqlQuery> m_query;
     mutable QString m_namespace;
 };
 
 QT_END_NAMESPACE
 
-#endif
+#endif // QHELPDBREADER_H

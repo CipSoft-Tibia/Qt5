@@ -24,6 +24,7 @@ std::string GetFrameContent(content::RenderFrameHost* frame);
 // used on page like //chrome/test/data/browsing_data/site_data.html
 void SetStorageForFrame(content::RenderFrameHost* frame,
                         bool include_cookies,
+                        bool expected_to_be_set = true,
                         const base::Location& location = FROM_HERE);
 void SetStorageForWorker(content::RenderFrameHost* frame,
                          const base::Location& location = FROM_HERE);
@@ -50,7 +51,8 @@ bool RequestAndCheckStorageAccessForFrame(content::RenderFrameHost* frame);
 // document.requestStorageAccessFor(origin). Returns true if the promise
 // resolves; false if it rejects.
 bool RequestStorageAccessForOrigin(content::RenderFrameHost* frame,
-                                   const std::string& origin);
+                                   const std::string& origin,
+                                   bool omit_user_gesture = false);
 // Helper to see if a frame currently has storage access using
 // document.hasStorageAccess(). Returns true if the promise resolves with a
 // value of true; false otherwise.

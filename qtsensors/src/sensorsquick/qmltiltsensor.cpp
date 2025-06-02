@@ -9,7 +9,7 @@ QT_END_NAMESPACE
 
 /*!
     \qmltype TiltSensor
-//!    \instantiates QmlTiltSensor
+//!    \nativetype QmlTiltSensor
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -58,7 +58,7 @@ void QmlTiltSensor::calibrate()
 
 /*!
     \qmltype TiltReading
-//!    \instantiates QmlTiltSensorReading
+//!    \nativetype QmlTiltSensorReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -83,7 +83,7 @@ QmlTiltSensorReading::~QmlTiltSensorReading()
 }
 
 /*!
-    \qmlproperty qreal TiltReading::yRotation
+    \qmlproperty real TiltReading::yRotation
     This property holds the amount of tilt on the Y axis.
 
     Please see QTiltReading::yRotation for information about this property.
@@ -100,7 +100,7 @@ QBindable<qreal> QmlTiltSensorReading::bindableYRotation() const
 }
 
 /*!
-    \qmlproperty qreal TiltReading::xRotation
+    \qmlproperty real TiltReading::xRotation
     This property holds the amount of tilt on the X axis.
 
     Please see QTiltReading::xRotation for information about this property.

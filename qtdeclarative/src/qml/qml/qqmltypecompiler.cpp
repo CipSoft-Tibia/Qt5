@@ -24,19 +24,19 @@ DEFINE_BOOL_CONFIG_OPTION(
 
 Q_LOGGING_CATEGORY(lcQmlTypeCompiler, "qt.qml.typecompiler");
 
-QQmlTypeCompiler::QQmlTypeCompiler(QQmlEnginePrivate *engine, QQmlTypeData *typeData,
-                                   QmlIR::Document *parsedQML, const QQmlRefPointer<QQmlTypeNameCache> &typeNameCache,
-                                   QV4::ResolvedTypeReferenceMap *resolvedTypeCache, const QV4::CompiledData::DependentTypesHasher &dependencyHasher)
+QQmlTypeCompiler::QQmlTypeCompiler(
+        QQmlEnginePrivate *engine, QQmlTypeData *typeData, QmlIR::Document *parsedQML,
+        QV4::CompiledData::ResolvedTypeReferenceMap *resolvedTypeCache,
+        const QV4::CompiledData::DependentTypesHasher &dependencyHasher)
     : resolvedTypes(resolvedTypeCache)
     , engine(engine)
     , dependencyHasher(dependencyHasher)
     , document(parsedQML)
-    , typeNameCache(typeNameCache)
     , typeData(typeData)
 {
 }
 
-QQmlRefPointer<QV4::ExecutableCompilationUnit> QQmlTypeCompiler::compile()
+QQmlRefPointer<QV4::CompiledData::CompilationUnit> QQmlTypeCompiler::compile()
 {
     // Build property caches and VME meta object data
 
@@ -112,7 +112,7 @@ QQmlRefPointer<QV4::ExecutableCompilationUnit> QQmlTypeCompiler::compile()
             return nullptr;
     }
 
-    if (!document->javaScriptCompilationUnit.unitData()) {
+    if (!document->javaScriptCompilationUnit || !document->javaScriptCompilationUnit->unitData()) {
         // Compile JS binding expressions and signal handlers if necessary
         {
             // We can compile script strings ahead of time, but they must be compiled
@@ -121,8 +121,8 @@ QQmlRefPointer<QV4::ExecutableCompilationUnit> QQmlTypeCompiler::compile()
             sss.scan();
         }
 
-        document->jsModule.fileName = typeData->urlString();
-        document->jsModule.finalUrl = typeData->finalUrlString();
+        Q_ASSERT(document->jsModule.fileName == typeData->urlString());
+        Q_ASSERT(document->jsModule.finalUrl == typeData->finalUrlString());
         QmlIR::JSCodeGen v4CodeGenerator(document, engine->v4engine()->illegalNames());
         for (QmlIR::Object *object : std::as_const(document->objects)) {
             if (!v4CodeGenerator.generateRuntimeFunctions(object)) {
@@ -142,14 +142,7 @@ QQmlRefPointer<QV4::ExecutableCompilationUnit> QQmlTypeCompiler::compile()
     if (!errors.isEmpty())
         return nullptr;
 
-    QQmlRefPointer<QV4::ExecutableCompilationUnit> compilationUnit
-            = QV4::ExecutableCompilationUnit::create(std::move(
-                    document->javaScriptCompilationUnit));
-    compilationUnit->typeNameCache = typeNameCache;
-    compilationUnit->resolvedTypes = *resolvedTypes;
-    compilationUnit->propertyCaches = std::move(m_propertyCaches);
-    Q_ASSERT(compilationUnit->propertyCaches.count() == static_cast<int>(compilationUnit->objectCount()));
-    return compilationUnit;
+    return std::move(document->javaScriptCompilationUnit);
 }
 
 void QQmlTypeCompiler::recordError(const QV4::CompiledData::Location &location, const QString &description)
@@ -196,7 +189,7 @@ int QQmlTypeCompiler::registerConstant(QV4::ReturnedValue v)
 
 const QV4::CompiledData::Unit *QQmlTypeCompiler::qmlUnit() const
 {
-    return document->javaScriptCompilationUnit.unitData();
+    return document->javaScriptCompilationUnit->unitData();
 }
 
 const QQmlImports *QQmlTypeCompiler::imports() const
@@ -314,8 +307,11 @@ bool SignalHandlerResolver::resolveSignalHandlerExpressions(
             const QmlIR::Object *attachedObj = qmlObjects.at(binding->value.objectIndex);
             auto *typeRef = resolvedType(binding->propertyNameIndex);
             QQmlType type = typeRef ? typeRef->type() : QQmlType();
-            if (!type.isValid())
-                imports->resolveType(bindingPropertyName, &type, nullptr, nullptr, nullptr);
+            if (!type.isValid()) {
+                imports->resolveType(
+                        QQmlTypeLoader::get(enginePrivate), bindingPropertyName, &type, nullptr,
+                        nullptr);
+            }
 
             const QMetaObject *attachedType = type.attachedPropertiesType(enginePrivate);
             if (!attachedType)
@@ -549,7 +545,8 @@ bool QQmlEnumTypeResolver::tryQualifiedEnumAssignment(
         return true;
     }
     QQmlType type;
-    imports->resolveType(typeName, &type, nullptr, nullptr, nullptr);
+    imports->resolveType(
+            QQmlTypeLoader::get(compiler->enginePrivate()), typeName, &type, nullptr, nullptr);
 
     if (!type.isValid() && !isQtObject)
         return true;
@@ -584,10 +581,12 @@ bool QQmlEnumTypeResolver::tryQualifiedEnumAssignment(
     } else {
         // Otherwise we have to search the whole type
         if (type.isValid()) {
-            if (!scopedEnumName.isEmpty())
-                value = type.scopedEnumValue(compiler->enginePrivate(), scopedEnumName, enumValue, &ok);
-            else
-                value = type.enumValue(compiler->enginePrivate(), QHashedStringRef(enumValue), &ok);
+            if (!scopedEnumName.isEmpty()) {
+                value = type.scopedEnumValue(
+                        compiler->typeLoader(), scopedEnumName, enumValue, &ok);
+            } else {
+                value = type.enumValue(compiler->typeLoader(), QHashedStringRef(enumValue), &ok);
+            }
         } else {
             QByteArray enumName = enumValue.toUtf8();
             const QMetaObject *metaObject = &Qt::staticMetaObject;
@@ -611,12 +610,14 @@ int QQmlEnumTypeResolver::evaluateEnum(const QString &scope, QStringView enumNam
 
     if (scope != QLatin1String("Qt")) {
         QQmlType type;
-        imports->resolveType(scope, &type, nullptr, nullptr, nullptr);
+        imports->resolveType(compiler->typeLoader(), scope, &type, nullptr, nullptr);
         if (!type.isValid())
             return -1;
         if (!enumName.isEmpty())
-            return type.scopedEnumValue(compiler->enginePrivate(), enumName, enumValue, ok);
-        return type.enumValue(compiler->enginePrivate(), QHashedStringRef(enumValue.constData(), enumValue.size()), ok);
+            return type.scopedEnumValue(compiler->typeLoader(), enumName, enumValue, ok);
+        return type.enumValue(
+                compiler->typeLoader(),
+                QHashedStringRef(enumValue.constData(), enumValue.size()), ok);
     }
 
     const QMetaObject *mo = &Qt::staticMetaObject;
@@ -844,7 +845,7 @@ QQmlComponentAndAliasResolver<QQmlTypeCompiler>::resolveAliasesInObject(
         if (targetObjectIndex == -1) {
             *error = qQmlCompileError(
                     alias->referenceLocation,
-                    tr("Invalid alias reference. Unable to find id \"%1\"").arg(stringAt(idIndex)));
+                    QQmlComponentAndAliasResolverBase::tr("Invalid alias reference. Unable to find id \"%1\"").arg(stringAt(idIndex)));
             break;
         }
 
@@ -874,7 +875,7 @@ QQmlComponentAndAliasResolver<QQmlTypeCompiler>::resolveAliasesInObject(
             if (!targetCache) {
                 *error = qQmlCompileError(
                         alias->referenceLocation,
-                        tr("Invalid alias target location: %1").arg(property.toString()));
+                        QQmlComponentAndAliasResolverBase::tr("Invalid alias target location: %1").arg(property.toString()));
                 break;
             }
 
@@ -911,7 +912,7 @@ QQmlComponentAndAliasResolver<QQmlTypeCompiler>::resolveAliasesInObject(
             if (!targetProperty || targetProperty->coreIndex() > 0x0000FFFF) {
                 *error = qQmlCompileError(
                         alias->referenceLocation,
-                        tr("Invalid alias target location: %1").arg(property.toString()));
+                        QQmlComponentAndAliasResolverBase::tr("Invalid alias target location: %1").arg(property.toString()));
                 break;
             }
 
@@ -939,7 +940,7 @@ QQmlComponentAndAliasResolver<QQmlTypeCompiler>::resolveAliasesInObject(
                     if (!isDeepAlias) {
                         *error = qQmlCompileError(
                                 alias->referenceLocation,
-                                tr("Invalid alias target location: %1").arg(subProperty.toString()));
+                                QQmlComponentAndAliasResolverBase::tr("Invalid alias target location: %1").arg(subProperty.toString()));
                         break;
                     }
                 } else {
@@ -949,7 +950,7 @@ QQmlComponentAndAliasResolver<QQmlTypeCompiler>::resolveAliasesInObject(
                     if (valueTypeIndex == -1) {
                         *error = qQmlCompileError(
                                 alias->referenceLocation,
-                                tr("Invalid alias target location: %1").arg(subProperty.toString()));
+                                QQmlComponentAndAliasResolverBase::tr("Invalid alias target location: %1").arg(subProperty.toString()));
                         break;
                     }
                     Q_ASSERT(valueTypeIndex <= 0x0000FFFF);

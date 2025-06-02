@@ -26,12 +26,16 @@ using namespace skia_private;
 
 namespace skgpu::graphite {
 
-Recording::Recording(std::unique_ptr<TaskGraph> graph,
+Recording::Recording(uint32_t uniqueID,
+                     uint32_t recorderID,
+                     std::unique_ptr<TaskGraph> graph,
                      std::unordered_set<sk_sp<TextureProxy>, ProxyHash>&& nonVolatileLazyProxies,
                      std::unordered_set<sk_sp<TextureProxy>, ProxyHash>&& volatileLazyProxies,
                      std::unique_ptr<LazyProxyData> targetProxyData,
                      TArray<sk_sp<RefCntedCallback>>&& finishedProcs)
-        : fGraph(std::move(graph))
+        : fUniqueID(uniqueID)
+        , fRecorderID(recorderID)
+        , fGraph(std::move(graph))
         , fNonVolatileLazyProxies(std::move(nonVolatileLazyProxies))
         , fVolatileLazyProxies(std::move(volatileLazyProxies))
         , fTargetProxyData(std::move(targetProxyData))
@@ -72,7 +76,7 @@ bool RecordingPriv::hasNonVolatileLazyProxies() const {
 bool RecordingPriv::instantiateNonVolatileLazyProxies(ResourceProvider* resourceProvider) {
     SkASSERT(this->hasNonVolatileLazyProxies());
 
-    for (auto proxy : fRecording->fNonVolatileLazyProxies) {
+    for (const auto& proxy : fRecording->fNonVolatileLazyProxies) {
         if (!proxy->lazyInstantiate(resourceProvider)) {
             return false;
         }
@@ -91,7 +95,7 @@ bool RecordingPriv::hasVolatileLazyProxies() const {
 bool RecordingPriv::instantiateVolatileLazyProxies(ResourceProvider* resourceProvider) {
     SkASSERT(this->hasVolatileLazyProxies());
 
-    for (auto proxy : fRecording->fVolatileLazyProxies) {
+    for (const auto& proxy : fRecording->fVolatileLazyProxies) {
         if (!proxy->lazyInstantiate(resourceProvider)) {
             return false;
         }
@@ -105,7 +109,7 @@ void RecordingPriv::deinstantiateVolatileLazyProxies() {
         return;
     }
 
-    for (auto proxy : fRecording->fVolatileLazyProxies) {
+    for (const auto& proxy : fRecording->fVolatileLazyProxies) {
         SkASSERT(proxy->isVolatile());
         proxy->deinstantiate();
     }
@@ -169,8 +173,7 @@ void RecordingPriv::addTask(sk_sp<Task> task) {
     fRecording->fGraph->prepend(std::move(task));
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Utility methods for testing only
+#if defined(GRAPHITE_TEST_UTILS)
 bool RecordingPriv::isTargetProxyInstantiated() const {
     return fRecording->fTargetProxyData->lazyProxy()->isInstantiated();
 }
@@ -186,5 +189,6 @@ int RecordingPriv::numNonVolatilePromiseImages() const {
 bool RecordingPriv::hasTasks() const {
     return fRecording->fGraph->hasTasks();
 }
+#endif
 
 } // namespace skgpu::graphite

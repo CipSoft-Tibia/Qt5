@@ -5,6 +5,10 @@
 qt_feature_evaluate_features("${CMAKE_CURRENT_SOURCE_DIR}/protobuf/configure.cmake")
 add_subdirectory(protobuf)
 
+if(QT_FEATURE_protobufquick)
+    add_subdirectory(protobufquick)
+endif()
+
 qt_feature_evaluate_features("${CMAKE_CURRENT_SOURCE_DIR}/grpc/configure.cmake")
 if(QT_FEATURE_grpc)
     add_subdirectory(grpc)

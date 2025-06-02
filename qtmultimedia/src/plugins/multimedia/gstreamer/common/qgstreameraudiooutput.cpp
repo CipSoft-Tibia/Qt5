@@ -10,6 +10,9 @@
 #include <common/qgstpipeline_p.h>
 #include <audio/qgstreameraudiodevice_p.h>
 
+#if QT_CONFIG(pulseaudio)
+#  include <pulse/version.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -28,7 +31,7 @@ constexpr QLatin1String defaultSinkName = [] {
         return "autoaudiosink"_L1;
 }();
 
-bool sinkHasDeviceProperty(const QGstElement &element)
+[[maybe_unused]] bool sinkHasDeviceProperty(const QGstElement &element)
 {
     using namespace Qt::Literals;
     QLatin1String elementType = element.typeName();
@@ -40,6 +43,26 @@ bool sinkHasDeviceProperty(const QGstElement &element)
         return elementType == "GstAlsaSink"_L1;
 
     return false;
+}
+
+void pulseVersionSanityCheck()
+{
+#if QT_CONFIG(pulseaudio)
+    static std::once_flag versionCheckGuard;
+
+    std::call_once(versionCheckGuard, [] {
+        QVersionNumber paVersion = QVersionNumber::fromString(pa_get_library_version());
+        QVersionNumber firstBadVersion(15, 99);
+        QVersionNumber firstGoodVersion(16, 2);
+        if (paVersion >= firstBadVersion && paVersion < firstGoodVersion) {
+            qWarning() << "Pulseaudio v16 detected. It has known issues, that can cause GStreamer "
+                          "to freeze.";
+            // Note: gstreamer requires these two patches to work correctly:
+            // https://gitlab.freedesktop.org/pulseaudio/pulseaudio/-/merge_requests/745
+            // https://gitlab.freedesktop.org/pulseaudio/pulseaudio/-/merge_requests/764
+        }
+    });
+#endif
 }
 
 } // namespace
@@ -78,6 +101,8 @@ QGstreamerAudioOutput::QGstreamerAudioOutput(QAudioOutput *parent)
     qLinkGstElements(m_audioQueue, m_audioConvert, m_audioResample, m_audioVolume, m_audioSink);
 
     m_audioOutputBin.addGhostPad(m_audioQueue, "sink");
+
+    pulseVersionSanityCheck();
 }
 
 QGstElement QGstreamerAudioOutput::createGstElement()
@@ -105,17 +130,12 @@ QGstElement QGstreamerAudioOutput::createGstElement()
                 QGstElement::createFromFactory(defaultSinkName.constData(), "audiosink");
         if (newSink) {
             newSink.set("device", id.constData());
+            if (!m_sinkIsAsync)
+                newSink.set("async", false);
             return newSink;
         }
 
         qWarning() << "Cannot create" << defaultSinkName;
-    } else {
-        auto *deviceInfo = dynamic_cast<const QGStreamerAudioDeviceInfo *>(m_audioDevice.handle());
-        if (deviceInfo && deviceInfo->gstDevice) {
-            QGstElement element = QGstElement::createFromDevice(deviceInfo->gstDevice, "audiosink");
-            if (element)
-                return element;
-        }
     }
     qCWarning(qLcMediaAudioOutput) << "Invalid audio device:" << m_audioDevice.id();
     qCWarning(qLcMediaAudioOutput)
@@ -138,6 +158,13 @@ void QGstreamerAudioOutput::setMuted(bool muted)
     m_audioVolume.set("mute", muted);
 }
 
+void QGstreamerAudioOutput::setAsync(bool isAsync)
+{
+    m_sinkIsAsync = isAsync;
+    if (m_audioSink)
+        m_audioSink.set("async", m_sinkIsAsync);
+}
+
 void QGstreamerAudioOutput::setAudioDevice(const QAudioDevice &device)
 {
     if (device == m_audioDevice)
@@ -146,13 +173,18 @@ void QGstreamerAudioOutput::setAudioDevice(const QAudioDevice &device)
 
     m_audioDevice = device;
 
-    if (sinkHasDeviceProperty(m_audioSink) && !isCustomAudioDevice(m_audioDevice)) {
-        m_audioSink.set("device", m_audioDevice.id().constData());
-        return;
+    // NOTE: ideally we could set the `device` property on the pulsesink. however that seems to
+    // cause the pipeline to stall in rare occassions. so we need to force the creation of a new
+    // sink
+    constexpr bool forceNewSinkCreation = true;
+    if constexpr (!forceNewSinkCreation) {
+        if (sinkHasDeviceProperty(m_audioSink) && !isCustomAudioDevice(m_audioDevice)) {
+            m_audioSink.set("device", m_audioDevice.id().constData());
+            return;
+        }
     }
 
     QGstElement newSink = createGstElement();
-    newSink.set("async", false); // no async state changes
 
     m_audioVolume.src().modifyPipelineInIdleProbe([&] {
         qUnlinkGstElements(m_audioVolume, m_audioSink);

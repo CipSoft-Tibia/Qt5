@@ -5,6 +5,8 @@
 #define QTDEPRECATIONMARKERS_H
 
 #include <QtCore/qtconfigmacros.h>
+#include <QtCore/qtclasshelpermacros.h>
+#include <QtCore/qtdeprecationdefinitions.h>
 #include <QtCore/qtversionchecks.h>
 #include <QtCore/qcompilerdetection.h> // for Q_DECL_DEPRECATED
 
@@ -42,28 +44,6 @@ QT_BEGIN_NAMESPACE
 #  define Q_DECL_ENUMERATOR_DEPRECATED
 #  undef Q_DECL_ENUMERATOR_DEPRECATED_X
 #  define Q_DECL_ENUMERATOR_DEPRECATED_X(ignored)
-#endif
-
-// If the deprecated macro is defined, use its value
-#if !defined(QT_DISABLE_DEPRECATED_UP_TO) && defined(QT_DISABLE_DEPRECATED_BEFORE)
-#  define QT_DISABLE_DEPRECATED_UP_TO QT_DISABLE_DEPRECATED_BEFORE
-#endif
-
-// If the deprecated macro is defined, use its value
-#if !defined(QT_WARN_DEPRECATED_UP_TO) && defined(QT_DEPRECATED_WARNINGS_SINCE)
-#  define QT_WARN_DEPRECATED_UP_TO QT_DEPRECATED_WARNINGS_SINCE
-#endif
-
-#ifndef QT_WARN_DEPRECATED_UP_TO
-# ifdef QT_DISABLE_DEPRECATED_UP_TO
-#  define QT_WARN_DEPRECATED_UP_TO QT_DISABLE_DEPRECATED_UP_TO
-# else
-#  define QT_WARN_DEPRECATED_UP_TO QT_VERSION
-# endif
-#endif
-
-#ifndef QT_DISABLE_DEPRECATED_UP_TO
-#define QT_DISABLE_DEPRECATED_UP_TO QT_VERSION_CHECK(5, 0, 0)
 #endif
 
 /*
@@ -330,8 +310,7 @@ QT_BEGIN_NAMESPACE
 #ifdef __cplusplus
 // A tag to help mark stuff deprecated (cf. QStringViewLiteral)
 namespace QtPrivate {
-enum class Deprecated_t {};
-constexpr inline Deprecated_t Deprecated = {};
+inline QT_DEFINE_TAG(Deprecated);
 }
 #endif
 

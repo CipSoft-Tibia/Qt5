@@ -5,15 +5,16 @@
 #include "components/password_manager/core/browser/ui/saved_passwords_presenter.h"
 
 #include <algorithm>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/barrier_callback.h"
 #include "base/barrier_closure.h"
 #include "base/check.h"
 #include "base/containers/contains.h"
-#include "base/containers/cxx20_erase.h"
 #include "base/containers/fixed_flat_set.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
@@ -23,27 +24,27 @@
 #include "base/ranges/algorithm.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
-#include "components/password_manager/core/browser/form_parsing/form_data_parser.h"
-#include "components/password_manager/core/browser/import/csv_password.h"
 #include "components/password_manager/core/browser/passkey_credential.h"
 #include "components/password_manager/core/browser/password_form.h"
-#include "components/password_manager/core/browser/password_list_sorter.h"
 #include "components/password_manager/core/browser/password_manager_metrics_util.h"
-#include "components/password_manager/core/browser/password_manager_util.h"
 #include "components/password_manager/core/browser/ui/credential_ui_entry.h"
+#include "components/password_manager/core/browser/ui/credential_utils.h"
 #include "components/password_manager/core/browser/ui/password_undo_helper.h"
 #include "components/password_manager/core/browser/ui/passwords_grouper.h"
 #include "components/password_manager/core/common/password_manager_features.h"
 #include "components/sync/base/features.h"
 #include "components/webauthn/core/browser/passkey_model.h"
+#include "components/webauthn/core/browser/passkey_model_change.h"
 #include "url/gurl.h"
 
 namespace {
-using password_manager::metrics_util::IsDisplayNameChanged;
-using password_manager::metrics_util::IsPasswordChanged;
-using password_manager::metrics_util::IsPasswordNoteChanged;
-using password_manager::metrics_util::IsUsernameChanged;
-using password_manager::metrics_util::PasswordNoteAction;
+
+using IsUsernameChanged = base::StrongAlias<class IsUsernameChangedTag, bool>;
+using IsDisplayNameChanged =
+    base::StrongAlias<class IsDisplayNameChangedTag, bool>;
+using IsPasswordChanged = base::StrongAlias<class IsPasswordChangedTag, bool>;
+using IsPasswordNoteChanged =
+    base::StrongAlias<class IsPasswordNoteChangedTag, bool>;
 using PasswordNote = password_manager::PasswordNote;
 using Store = password_manager::PasswordForm::Store;
 using EditResult = password_manager::SavedPasswordsPresenter::EditResult;
@@ -179,8 +180,9 @@ void SavedPasswordsPresenter::UndoLastRemoval() {
 SavedPasswordsPresenter::AddResult
 SavedPasswordsPresenter::GetExpectedAddResult(
     const CredentialUIEntry& credential) const {
-  if (!password_manager_util::IsValidPasswordURL(credential.GetURL()))
+  if (!IsValidPasswordURL(credential.GetURL())) {
     return AddResult::kInvalid;
+  }
   if (credential.password.empty())
     return AddResult::kInvalid;
 
@@ -368,7 +370,7 @@ std::vector<AffiliatedGroup> SavedPasswordsPresenter::GetAffiliatedGroups() {
 std::vector<CredentialUIEntry> SavedPasswordsPresenter::GetSavedPasswords()
     const {
   auto credentials = GetSavedCredentials();
-  base::EraseIf(credentials, [](const auto& credential) {
+  std::erase_if(credentials, [](const auto& credential) {
     return !credential.passkey_credential_id.empty() ||
            credential.blocked_by_user || !credential.federation_origin.opaque();
   });
@@ -451,7 +453,7 @@ void SavedPasswordsPresenter::OnLoginsRetained(
   bool is_using_account_store = store == account_store_.get();
 
   // Remove cached credentials for the current store.
-  base::EraseIf(sort_key_to_password_forms_,
+  std::erase_if(sort_key_to_password_forms_,
                 [is_using_account_store](
                     const DuplicatePasswordsMap::value_type& key_to_form) {
                   return key_to_form.second.IsUsingAccountStore() ==
@@ -465,10 +467,15 @@ void SavedPasswordsPresenter::OnLoginsRetained(
                           PasswordStoreChangeList()));
 }
 
-void SavedPasswordsPresenter::OnPasskeysChanged() {
+void SavedPasswordsPresenter::OnPasskeysChanged(
+    const std::vector<webauthn::PasskeyModelChange>& changes) {
   MaybeGroupCredentials(base::BindOnce(
       &SavedPasswordsPresenter::NotifySavedPasswordsChanged,
       weak_ptr_factory_.GetWeakPtr(), PasswordStoreChangeList()));
+}
+
+void SavedPasswordsPresenter::OnPasskeyModelShuttingDown() {
+  passkey_store_observation_.Reset();
 }
 
 void SavedPasswordsPresenter::OnGetPasswordStoreResults(
@@ -508,7 +515,7 @@ void SavedPasswordsPresenter::RemoveForms(
     // is why |in_store| has to be checked as it's possible to have two
     // PasswordForms with the same unique keys but different passwords if and
     // only if they are from different stores.
-    base::EraseIf(
+    std::erase_if(
         sort_key_to_password_forms_,
         [&form](const DuplicatePasswordsMap::value_type& key_to_form) {
           return ArePasswordFormUniqueKeysEqual(key_to_form.second, form) &&
@@ -523,7 +530,7 @@ void SavedPasswordsPresenter::AddForms(const std::vector<PasswordForm>& forms,
     // TODO(crbug.com/1359392): Consider replacing |sort_key_to_password_forms_|
     // when grouping is launched.
     sort_key_to_password_forms_.insert(
-        std::make_pair(CreateSortKey(form, IgnoreStore(true)), form));
+        std::make_pair(CreateSortKey(CredentialUIEntry(form)), form));
   }
 
 #if BUILDFLAG(IS_ANDROID)
@@ -567,7 +574,7 @@ SavedPasswordsPresenter::EditResult SavedPasswordsPresenter::EditPasskey(
     const CredentialUIEntry& updated_credential) {
   CHECK(!updated_credential.passkey_credential_id.empty());
   CHECK(passkey_store_);
-  absl::optional<PasskeyCredential> original_credential =
+  std::optional<PasskeyCredential> original_credential =
       passwords_grouper_->GetPasskeyFor(updated_credential);
   if (!original_credential) {
     return EditResult::kNotFound;

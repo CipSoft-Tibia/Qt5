@@ -13,6 +13,7 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qvarlengtharray.h>
+#include <QtCore/private/qcomvariant_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -45,7 +46,7 @@ HRESULT QWindowsUiaTextRangeProvider::Clone(ITextRangeProvider **pRetVal)
     if (!pRetVal)
         return E_INVALIDARG;
 
-    *pRetVal = new QWindowsUiaTextRangeProvider(id(), m_startOffset, m_endOffset);
+    *pRetVal = makeComObject<QWindowsUiaTextRangeProvider>(id(), m_startOffset, m_endOffset).Detach();
     return S_OK;
 }
 
@@ -110,7 +111,7 @@ HRESULT QWindowsUiaTextRangeProvider::ExpandToEnclosingUnit(TextUnit unit)
             const int start = m_startOffset >= 0 && m_startOffset < len
                               ? m_startOffset : len - 1;
             for (int t = start; t >= 0; --t) {
-                if (!isTextUnitSeparator(unit, text[t]) && ((t == 0) || isTextUnitSeparator(unit, text[t - 1]))) {
+                if (!text.isEmpty() && !isTextUnitSeparator(unit, text[t]) && ((t == 0) || isTextUnitSeparator(unit, text[t - 1]))) {
                     m_startOffset = t;
                     break;
                 }
@@ -157,15 +158,15 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaTextRangeProvider::GetAttributeValue(TEXTAT
 
     switch (attributeId) {
     case UIA_IsReadOnlyAttributeId:
-        setVariantBool(accessible->state().readOnly, pRetVal);
+        *pRetVal = QComVariant{ accessible->state().readOnly ? true : false }.release();
         break;
     case UIA_CaretPositionAttributeId:
         if (textInterface->cursorPosition() == 0)
-            setVariantI4(CaretPosition_BeginningOfLine, pRetVal);
+            *pRetVal = QComVariant{ static_cast<long>(CaretPosition_BeginningOfLine) }.release();
         else if (textInterface->cursorPosition() == textInterface->characterCount())
-            setVariantI4(CaretPosition_EndOfLine, pRetVal);
+            *pRetVal = QComVariant{ static_cast<long>(CaretPosition_EndOfLine) }.release();
         else
-            setVariantI4(CaretPosition_Unknown, pRetVal);
+            *pRetVal = QComVariant{ static_cast<long>(CaretPosition_Unknown) }.release();
         break;
     case UIA_StrikethroughStyleAttributeId:
     {
@@ -173,7 +174,7 @@ HRESULT STDMETHODCALLTYPE QWindowsUiaTextRangeProvider::GetAttributeValue(TEXTAT
         if (value.isEmpty())
             break;
         const TextDecorationLineStyle uiaLineStyle = uiaLineStyleForIA2LineStyle(value);
-        setVariantI4(uiaLineStyle, pRetVal);
+        *pRetVal = QComVariant{ static_cast<long>(uiaLineStyle) }.release();
         break;
     }
     default:
@@ -265,7 +266,7 @@ HRESULT QWindowsUiaTextRangeProvider::GetEnclosingElement(IRawElementProviderSim
     if (!accessible)
         return UIA_E_ELEMENTNOTAVAILABLE;
 
-    *pRetVal = QWindowsUiaMainProvider::providerForAccessible(accessible);
+    *pRetVal = QWindowsUiaMainProvider::providerForAccessible(accessible).Detach();
     return S_OK;
 }
 
@@ -293,7 +294,7 @@ HRESULT QWindowsUiaTextRangeProvider::GetText(int maxLength, BSTR *pRetVal)
 
     if ((maxLength > -1) && (rangeText.size() > maxLength))
         rangeText.truncate(maxLength);
-    *pRetVal = bStrFromQString(rangeText);
+    *pRetVal = QBStr(rangeText).release();
     return S_OK;
 }
 
@@ -411,7 +412,7 @@ HRESULT QWindowsUiaTextRangeProvider::MoveEndpointByUnit(TextPatternRangeEndpoin
         if (endpoint == TextPatternRangeEndpoint_Start) {
             if (count > 0) {
                 for (int t = m_startOffset; (t < len - 1) && (moved < count); ++t) {
-                    if (isTextUnitSeparator(unit, text[t]) && !isTextUnitSeparator(unit, text[t + 1])) {
+                    if (!text.isEmpty() && isTextUnitSeparator(unit, text[t]) && !isTextUnitSeparator(unit, text[t + 1])) {
                         m_startOffset = t + 1;
                         ++moved;
                     }
@@ -421,7 +422,7 @@ HRESULT QWindowsUiaTextRangeProvider::MoveEndpointByUnit(TextPatternRangeEndpoin
                 const int start = m_startOffset >= 0 && m_startOffset <= len
                                   ? m_startOffset : len;
                 for (int t = start - 1; (t >= 0) && (moved > count); --t) {
-                    if (!isTextUnitSeparator(unit, text[t]) && ((t == 0) || isTextUnitSeparator(unit, text[t - 1]))) {
+                    if (!text.isEmpty() &&!isTextUnitSeparator(unit, text[t]) && ((t == 0) || isTextUnitSeparator(unit, text[t - 1]))) {
                         m_startOffset = t;
                         --moved;
                     }

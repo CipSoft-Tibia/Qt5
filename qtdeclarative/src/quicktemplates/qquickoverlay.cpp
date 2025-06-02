@@ -20,7 +20,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype Overlay
     \inherits Item
-//!     \instantiates QQuickOverlay
+//!     \nativetype QQuickOverlay
     \inqmlmodule QtQuick.Controls
     \since 5.10
     \brief A window overlay for popups.
@@ -103,9 +103,32 @@ bool QQuickOverlayPrivate::startDrag(QEvent *event, const QPointF &pos)
     return false;
 }
 
+static QQuickItem *findRootOfOverlaySubtree(QQuickItem *source, const QQuickOverlay *overlay)
+{
+    QQuickItem *sourceAncestor = source;
+    while (sourceAncestor) {
+        QQuickItem *parentItem = sourceAncestor->parentItem();
+        if (parentItem == overlay)
+            return sourceAncestor;
+        sourceAncestor = parentItem;
+    }
+    // Not an ancestor of the overlay.
+    return nullptr;
+}
+
 bool QQuickOverlayPrivate::handlePress(QQuickItem *source, QEvent *event, QQuickPopup *target)
 {
+    Q_Q(const QQuickOverlay);
     if (target) {
+        // childMouseEventFilter will cause this function to get called for each active popup.
+        // If any of those active popups block inputs, the delivery agent won't send the press event to source.
+        // A popup will block input, if it's modal, and the item isn't an ancestor of the popup's popup item.
+        // If source doesn't belong to a popup, but exists in an overlay subtree, it makes sense to not filter the event.
+        const QList<QQuickItem *> childItems = paintOrderChildItems();
+        if (childItems.indexOf(findRootOfOverlaySubtree(source, q))
+                > childItems.indexOf(QQuickPopupPrivate::get(target)->popupItem))
+            return false;
+
         if (target->overlayEvent(source, event)) {
             setMouseGrabberPopup(target);
             return true;
@@ -149,7 +172,17 @@ bool QQuickOverlayPrivate::handleMove(QQuickItem *source, QEvent *event, QQuickP
 
 bool QQuickOverlayPrivate::handleRelease(QQuickItem *source, QEvent *event, QQuickPopup *target)
 {
+    Q_Q(const QQuickOverlay);
     if (target) {
+        // childMouseEventFilter will cause this function to get called for each active popup.
+        // If any of those active popups block inputs, the delivery agent won't send the press event to source.
+        // A popup will block input, if it's modal, and the item isn't an ancestor of the popup's popup item.
+        // If source doesn't belong to a popup, but exists in an overlay subtree, it makes sense to not filter the event.
+        const QList<QQuickItem *> childItems = paintOrderChildItems();
+        if (childItems.indexOf(findRootOfOverlaySubtree(source, q))
+                > childItems.indexOf(QQuickPopupPrivate::get(target)->popupItem))
+            return false;
+
         setMouseGrabberPopup(nullptr);
         if (target->overlayEvent(source, event)) {
             setMouseGrabberPopup(nullptr);
@@ -520,10 +553,7 @@ bool QQuickOverlay::eventFilter(QObject *object, QEvent *event)
         event->accept();
         // Since we eat the event, QQuickWindow::event never sees it to clean up the
         // grabber states. So we have to do so explicitly.
-        if (QQuickWindow *window = parentItem() ? parentItem()->window() : nullptr) {
-            QQuickWindowPrivate *d = QQuickWindowPrivate::get(window);
-            d->clearGrabbers(static_cast<QPointerEvent *>(event));
-        }
+        d->deliveryAgentPrivate()->clearGrabbers(static_cast<QPointerEvent *>(event));
         return true;
 #endif
 

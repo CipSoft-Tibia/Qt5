@@ -59,7 +59,9 @@ enum {
   //     RelationTag         = 0x00010000,
   //     RelationUp          = 0x00020000,
   kRelationNoOpener = 0x00040000,
-  kRelationOpener = 0x00080000
+  kRelationOpener = 0x00080000,
+  kRelationPrivacyPolicy = 0x00100000,
+  kRelationTermsOfService = 0x00200000,
 };
 
 class CORE_EXPORT HTMLAnchorElement : public HTMLElement, public DOMURLUtils {
@@ -100,8 +102,6 @@ class CORE_EXPORT HTMLAnchorElement : public HTMLElement, public DOMURLUtils {
 
   void SendPings(const KURL& destination_url) const;
 
-  void InitiatePreview(TimerBase*);
-
   // Element overrides:
   void SetHovered(bool hovered) override;
 
@@ -109,13 +109,16 @@ class CORE_EXPORT HTMLAnchorElement : public HTMLElement, public DOMURLUtils {
 
  protected:
   void ParseAttribute(const AttributeModificationParams&) override;
-  bool SupportsFocus() const override;
+  bool SupportsFocus(UpdateBehavior update_behavior =
+                         UpdateBehavior::kStyleAndLayout) const override;
 
  private:
   void AttributeChanged(const AttributeModificationParams&) override;
   bool ShouldHaveFocusAppearance() const final;
-  bool IsFocusable() const override;
-  bool IsKeyboardFocusable() const override;
+  bool IsFocusable(UpdateBehavior update_behavior =
+                       UpdateBehavior::kStyleAndLayout) const override;
+  bool IsKeyboardFocusable(UpdateBehavior update_behavior =
+                               UpdateBehavior::kStyleAndLayout) const override;
   void DefaultEventHandler(Event&) final;
   bool HasActivationBehavior() const override;
   void SetActive(bool active) final;
@@ -137,9 +140,6 @@ class CORE_EXPORT HTMLAnchorElement : public HTMLElement, public DOMURLUtils {
   unsigned link_relations_ : 31;
   mutable LinkHash cached_visited_link_hash_;
   Member<RelList> rel_list_;
-  // TODO(https://b.corp.google.com/issues/296992745): Use
-  // AnchorElementInteractionTracker instead.
-  HeapTaskRunnerTimer<HTMLAnchorElement> hover_timer_;
 };
 
 inline LinkHash HTMLAnchorElement::VisitedLinkHash() const {

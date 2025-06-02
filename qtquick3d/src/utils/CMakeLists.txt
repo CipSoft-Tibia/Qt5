@@ -76,10 +76,11 @@ qt_internal_add_module(Quick3DUtils
         Qt::CorePrivate
         Qt::GuiPrivate
         Qt::QuickPrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
     SSG_HEADER_FILTERS
         "(^|/)qssg.*[^_][^p]\\.h$"
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../3rdparty/xatlas
+        ../3rdparty/meshoptimizer
 )
 
 # Silence warnings in 3rdparty code

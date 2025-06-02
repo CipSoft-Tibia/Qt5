@@ -5,7 +5,7 @@
 import type * as TraceEngine from '../../../models/trace/trace.js';
 
 export interface Breadcrumb {
-  window: TraceEngine.Types.Timing.TraceWindow;
+  window: TraceEngine.Types.Timing.TraceWindowMicroSeconds;
   child: Breadcrumb|null;
 }
 
@@ -26,24 +26,26 @@ export function flattenBreadcrumbs(initialBreadcrumb: Breadcrumb): Breadcrumb[] 
 
 export class Breadcrumbs {
   readonly initialBreadcrumb: Breadcrumb;
-  #lastBreadcrumb: Breadcrumb;
+  lastBreadcrumb: Breadcrumb;
 
-  constructor(initialTraceWindow: TraceEngine.Types.Timing.TraceWindow) {
+  constructor(initialTraceWindow: TraceEngine.Types.Timing.TraceWindowMicroSeconds) {
     this.initialBreadcrumb = {
       window: initialTraceWindow,
       child: null,
     };
-    this.#lastBreadcrumb = this.initialBreadcrumb;
+    this.lastBreadcrumb = this.initialBreadcrumb;
   }
 
-  add(newBreadcrumbTraceWindow: TraceEngine.Types.Timing.TraceWindow): void {
-    if (this.isTraceWindowWithinTraceWindow(newBreadcrumbTraceWindow, this.#lastBreadcrumb.window)) {
+  add(newBreadcrumbTraceWindow: TraceEngine.Types.Timing.TraceWindowMicroSeconds): void {
+    if (this.isTraceWindowWithinTraceWindow(newBreadcrumbTraceWindow, this.lastBreadcrumb.window)) {
       const newBreadcrumb = {
         window: newBreadcrumbTraceWindow,
         child: null,
       };
-      this.#lastBreadcrumb.child = newBreadcrumb;
-      this.#lastBreadcrumb = newBreadcrumb;
+      // To add a new Breadcrumb to the Breadcrumbs Linked List, set the child of last breadcrumb
+      // to the new breadcrumb and update the last Breadcrumb
+      this.lastBreadcrumb.child = newBreadcrumb;
+      this.lastBreadcrumb = this.lastBreadcrumb.child;
     } else {
       throw new Error('Can not add a breadcrumb that is equal to or is outside of the parent breadcrumb TimeWindow');
     }
@@ -51,20 +53,15 @@ export class Breadcrumbs {
 
   // Breadcumb should be within the bounds of the parent and can not have both start and end be equal to the parent
   isTraceWindowWithinTraceWindow(
-      child: TraceEngine.Types.Timing.TraceWindow, parent: TraceEngine.Types.Timing.TraceWindow): boolean {
+      child: TraceEngine.Types.Timing.TraceWindowMicroSeconds,
+      parent: TraceEngine.Types.Timing.TraceWindowMicroSeconds): boolean {
     return (child.min >= parent.min && child.max <= parent.max) &&
         !(child.min === parent.min && child.max === parent.max);
   }
 
   // Make breadcrumb active by removing all of its children and making it the last breadcrumb
-  makeBreadcrumbActive(newLastBreadcrumb: TraceEngine.Types.Timing.TraceWindow): void {
-    let breadcrumbsIter: Breadcrumb = this.initialBreadcrumb;
-
-    while (breadcrumbsIter.window !== newLastBreadcrumb && breadcrumbsIter.child !== null) {
-      breadcrumbsIter = breadcrumbsIter.child;
-    }
-
-    breadcrumbsIter.child = null;
-    this.#lastBreadcrumb = breadcrumbsIter;
+  makeBreadcrumbActive(newLastBreadcrumb: Breadcrumb): void {
+    this.lastBreadcrumb = newLastBreadcrumb;
+    this.lastBreadcrumb.child = null;
   }
 }

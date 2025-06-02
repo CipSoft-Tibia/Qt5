@@ -10,36 +10,36 @@
 class QtProtobufNonPackedRepeatedTypesTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { m_serializer.reset(new QProtobufSerializer); }
-    void RepeatedIntNonPackedMessageSerializerTest();
-    void RepeatedSIntNonPackedMessageSerializerTest();
-    void RepeatedUIntNonPackedMessageSerializerTest();
-    void RepeatedInt64NonPackedMessageSerializerTest();
-    void RepeatedSInt64NonPackedMessageSerializerTest();
-    void RepeatedUInt64NonPackedMessageSerializerTest();
-    void RepeatedFixedIntNonPackedMessageSerializerTest();
-    void RepeatedSFixedIntNonPackedMessageSerializerTest();
-    void RepeatedFixedInt64NonPackedMessageSerializerTest();
-    void RepeatedSFixedInt64NonPackedMessageSerializerTest();
-    void RepeatedFloatNonPackedMessageSerializerTest();
-    void RepeatedDoubleNonPackedMessageSerializerTest();
-    void RepeatedBoolNonPackedMessageSerializerTest();
+    void repeatedIntNonPackedMessageSerializerTest();
+    void repeatedSIntNonPackedMessageSerializerTest();
+    void repeatedUIntNonPackedMessageSerializerTest();
+    void repeatedInt64NonPackedMessageSerializerTest();
+    void repeatedSInt64NonPackedMessageSerializerTest();
+    void repeatedUInt64NonPackedMessageSerializerTest();
+    void repeatedFixedIntNonPackedMessageSerializerTest();
+    void repeatedSFixedIntNonPackedMessageSerializerTest();
+    void repeatedFixedInt64NonPackedMessageSerializerTest();
+    void repeatedSFixedInt64NonPackedMessageSerializerTest();
+    void repeatedFloatNonPackedMessageSerializerTest();
+    void repeatedDoubleNonPackedMessageSerializerTest();
+    void repeatedBoolNonPackedMessageSerializerTest();
 
-    void RepeatedIntNonPackedMessageDeserializerTest();
-    void NonPackedIntWithInterleavedExtra();
-    void RepeatedSIntNonPackedMessageDeserializerTest();
-    void RepeatedUIntNonPackedMessageDeserializerTest();
-    void RepeatedInt64NonPackedMessageDeserializerTest();
-    void RepeatedSInt64NonPackedMessageDeserializerTest();
-    void RepeatedUInt64NonPackedMessageDeserializerTest();
-    void RepeatedFixedIntNonPackedMessageDeserializerTest();
-    void RepeatedSFixedIntNonPackedMessageDeserializerTest();
-    void RepeatedFixedInt64NonPackedMessageDeserializerTest();
-    void RepeatedSFixedInt64NonPackedMessageDeserializerTest();
-    void RepeatedFloatNonPackedMessageDeserializerTest();
-    void RepeatedDoubleNonPackedMessageDeserializerTest();
-    void RepeatedBoolNonPackedMessageDeserializerTest();
+    void repeatedIntNonPackedMessageDeserializerTest();
+    void nonPackedIntWithInterleavedExtra();
+    void repeatedSIntNonPackedMessageDeserializerTest();
+    void repeatedUIntNonPackedMessageDeserializerTest();
+    void repeatedInt64NonPackedMessageDeserializerTest();
+    void repeatedSInt64NonPackedMessageDeserializerTest();
+    void repeatedUInt64NonPackedMessageDeserializerTest();
+    void repeatedFixedIntNonPackedMessageDeserializerTest();
+    void repeatedSFixedIntNonPackedMessageDeserializerTest();
+    void repeatedFixedInt64NonPackedMessageDeserializerTest();
+    void repeatedSFixedInt64NonPackedMessageDeserializerTest();
+    void repeatedFloatNonPackedMessageDeserializerTest();
+    void repeatedDoubleNonPackedMessageDeserializerTest();
+    void repeatedBoolNonPackedMessageDeserializerTest();
 
 private:
     std::unique_ptr<QProtobufSerializer> m_serializer;
@@ -47,7 +47,7 @@ private:
 
 using namespace qtprotobufnamespace::tests;
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedIntNonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedIntNonPackedMessageSerializerTest()
 {
     RepeatedNonPackedIntMessage test;
     test.setTestRepeatedInt({ 0, 1, 0, 321, 0, -65999, 123245, -3, 3, 0,
@@ -63,7 +63,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedIntNonPackedMessageSerializer
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedSIntNonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedSIntNonPackedMessageSerializerTest()
 {
     RepeatedNonPackedSIntMessage test;
     test.setTestRepeatedInt({ 1, 0, 321, 0, -65999, 123245, -3, 3, 0,
@@ -78,7 +78,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedSIntNonPackedMessageSerialize
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedUIntNonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedUIntNonPackedMessageSerializerTest()
 {
     RepeatedNonPackedUIntMessage test;
     test.setTestRepeatedInt({ 1, 0, 321, 0, 123245, 3, 0, std::numeric_limits<uint16_t>::max(),
@@ -91,7 +91,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedUIntNonPackedMessageSerialize
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedInt64NonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedInt64NonPackedMessageSerializerTest()
 {
     RepeatedNonPackedInt64Message test;
     test.setTestRepeatedInt({ 0, 1, 0, 321, 0, -65999, 123245, -3, 3, 0,
@@ -107,7 +107,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedInt64NonPackedMessageSerializ
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedSInt64NonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedSInt64NonPackedMessageSerializerTest()
 {
     RepeatedNonPackedSInt64Message test;
     test.setTestRepeatedInt({ 1, 0, 321, 0, -65999, 123245, -3, 3, 0,
@@ -122,7 +122,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedSInt64NonPackedMessageSeriali
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedUInt64NonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedUInt64NonPackedMessageSerializerTest()
 {
     RepeatedNonPackedUInt64Message test;
     test.setTestRepeatedInt({ 1, 0, 321, 0, 123245, 3, 0, std::numeric_limits<uint16_t>::max(),
@@ -136,7 +136,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedUInt64NonPackedMessageSeriali
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedFixedIntNonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedFixedIntNonPackedMessageSerializerTest()
 {
     RepeatedNonPackedFixedIntMessage test;
     test.setTestRepeatedInt({ 1, 0, 321, 0, 123245, 3, 0, std::numeric_limits<uint16_t>::max(),
@@ -150,7 +150,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedFixedIntNonPackedMessageSeria
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedSFixedIntNonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedSFixedIntNonPackedMessageSerializerTest()
 {
     RepeatedNonPackedSFixedIntMessage test;
     test.setTestRepeatedInt({ 1, 0, 321, 0, -65999, 123245, -3, 3, 0,
@@ -165,7 +165,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedSFixedIntNonPackedMessageSeri
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedFixedInt64NonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedFixedInt64NonPackedMessageSerializerTest()
 {
     RepeatedNonPackedFixedInt64Message test;
     test.setTestRepeatedInt({ 1, 0, 321, 0, 123245, 3, 0, std::numeric_limits<uint16_t>::max(),
@@ -180,7 +180,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedFixedInt64NonPackedMessageSer
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedSFixedInt64NonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedSFixedInt64NonPackedMessageSerializerTest()
 {
     RepeatedNonPackedSFixedInt64Message test;
     test.setTestRepeatedInt({ 1, 0, 321, 0, -65999, 123245, -3, 3, 0,
@@ -197,7 +197,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedSFixedInt64NonPackedMessageSe
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedDoubleNonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedDoubleNonPackedMessageSerializerTest()
 {
     RepeatedNonPackedDoubleMessage test;
     test.setTestRepeatedDouble({ 0.1, 0.2, 0.3, 0.4, 0.5, 0.0 });
@@ -211,7 +211,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedDoubleNonPackedMessageSeriali
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedFloatNonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedFloatNonPackedMessageSerializerTest()
 {
     RepeatedNonPackedFloatMessage test;
     test.setTestRepeatedFloat({ 0.0, 0.4f, 1.2f, 0.5f, 1.4f, 0.6f });
@@ -225,7 +225,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedFloatNonPackedMessageSerializ
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedBoolNonPackedMessageSerializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedBoolNonPackedMessageSerializerTest()
 {
     RepeatedNonPackedBoolMessage boolMsg;
     boolMsg.setTestRepeatedBool({ true, true, true, false, false, true, false, false, false, false,
@@ -235,7 +235,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedBoolNonPackedMessageSerialize
     QCOMPARE(result.toHex(), expectedResult);
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedIntNonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedIntNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedIntMessage test;
     test.deserialize(
@@ -250,7 +250,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedIntNonPackedMessageDeserializ
                                      std::numeric_limits<int32_t>::min() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::NonPackedIntWithInterleavedExtra()
+void QtProtobufNonPackedRepeatedTypesTest::nonPackedIntWithInterleavedExtra()
 {
     NonPackedIntMessageWithExtraMember test;
     // [0, 1], "242", [3] - the two arrays are actually the same,
@@ -262,7 +262,7 @@ void QtProtobufNonPackedRepeatedTypesTest::NonPackedIntWithInterleavedExtra()
     QCOMPARE(test.extra(), "242");
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedSIntNonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedSIntNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedSIntMessage test;
     test.deserialize(m_serializer.get(),
@@ -275,7 +275,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedSIntNonPackedMessageDeseriali
                                       std::numeric_limits<int32_t>::min() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedUIntNonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedUIntNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedUIntMessage test;
     test.deserialize(m_serializer.get(),
@@ -287,7 +287,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedUIntNonPackedMessageDeseriali
                                       std::numeric_limits<uint32_t>::max() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedInt64NonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedInt64NonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedInt64Message test;
     test.deserialize(
@@ -302,7 +302,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedInt64NonPackedMessageDeserial
                                      std::numeric_limits<int64_t>::min() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedSInt64NonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedSInt64NonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedSInt64Message test;
     test.deserialize(m_serializer.get(),
@@ -315,7 +315,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedSInt64NonPackedMessageDeseria
                                       std::numeric_limits<int64_t>::min() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedUInt64NonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedUInt64NonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedUInt64Message test;
     test.deserialize(m_serializer.get(),
@@ -328,7 +328,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedUInt64NonPackedMessageDeseria
                                       std::numeric_limits<uint64_t>::max() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedFixedIntNonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedFixedIntNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedFixedIntMessage test;
     test.deserialize(
@@ -342,7 +342,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedFixedIntNonPackedMessageDeser
                                        std::numeric_limits<uint32_t>::max() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedSFixedIntNonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedSFixedIntNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedSFixedIntMessage test;
     test.deserialize(
@@ -356,7 +356,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedSFixedIntNonPackedMessageDese
                                         std::numeric_limits<int32_t>::min() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedFixedInt64NonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedFixedInt64NonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedFixedInt64Message test;
     test.deserialize(m_serializer.get(),
@@ -371,7 +371,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedFixedInt64NonPackedMessageDes
                                        std::numeric_limits<uint64_t>::max() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedSFixedInt64NonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedSFixedInt64NonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedSFixedInt64Message test;
     test.deserialize(
@@ -387,7 +387,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedSFixedInt64NonPackedMessageDe
                                         std::numeric_limits<int64_t>::min() }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedFloatNonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedFloatNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedFloatMessage test;
     test.deserialize(
@@ -398,7 +398,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedFloatNonPackedMessageDeserial
              QtProtobuf::floatList({ 0.0, 0.4f, 1.2f, 0.5f, 1.4f, 0.6f }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedDoubleNonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedDoubleNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedDoubleMessage test;
     test.deserialize(
@@ -409,7 +409,7 @@ void QtProtobufNonPackedRepeatedTypesTest::RepeatedDoubleNonPackedMessageDeseria
     QCOMPARE(test.testRepeatedDouble(), QtProtobuf::doubleList({ 0.1, 0.2, 0.3, 0.4, 0.5, 0.0 }));
 }
 
-void QtProtobufNonPackedRepeatedTypesTest::RepeatedBoolNonPackedMessageDeserializerTest()
+void QtProtobufNonPackedRepeatedTypesTest::repeatedBoolNonPackedMessageDeserializerTest()
 {
     RepeatedNonPackedBoolMessage test;
     test.deserialize(m_serializer.get(),

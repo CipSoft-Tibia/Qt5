@@ -299,7 +299,7 @@ void QListModel::sort(int column, Qt::SortOrder order)
 
     emit layoutAboutToBeChanged({}, QAbstractItemModel::VerticalSortHint);
 
-    QList<QPair<QListWidgetItem *, int>> sorting(items.size());
+    QList<std::pair<QListWidgetItem *, int>> sorting(items.size());
     for (int i = 0; i < items.size(); ++i) {
         QListWidgetItem *item = items.at(i);
         sorting[i].first = item;
@@ -357,14 +357,14 @@ void QListModel::ensureSorted(int column, Qt::SortOrder order, int start, int en
         sort(column, order);
 }
 
-bool QListModel::itemLessThan(const QPair<QListWidgetItem*,int> &left,
-                              const QPair<QListWidgetItem*,int> &right)
+bool QListModel::itemLessThan(const std::pair<QListWidgetItem*,int> &left,
+                              const std::pair<QListWidgetItem*,int> &right)
 {
     return (*left.first) < (*right.first);
 }
 
-bool QListModel::itemGreaterThan(const QPair<QListWidgetItem*,int> &left,
-                                 const QPair<QListWidgetItem*,int> &right)
+bool QListModel::itemGreaterThan(const std::pair<QListWidgetItem*,int> &left,
+                                 const std::pair<QListWidgetItem*,int> &right)
 {
     return (*right.first) < (*left.first);
 }
@@ -1186,7 +1186,7 @@ void QListWidgetPrivate::dataChanged(const QModelIndex &topLeft,
     \ingroup model-view
     \inmodule QtWidgets
 
-    \image windows-listview.png
+    \image fusion-listview.png
 
     QListWidget is a convenience class that provides a list view similar to the
     one supplied by QListView, but with a classic item-based interface for

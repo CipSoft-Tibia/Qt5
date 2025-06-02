@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_MSL_WRITER_AST_PRINTER_AST_PRINTER_H_
 #define SRC_TINT_LANG_MSL_WRITER_AST_PRINTER_AST_PRINTER_H_
@@ -47,7 +60,7 @@
 #include "src/tint/utils/text/string_stream.h"
 
 namespace tint::sem {
-class Builtin;
+class BuiltinFn;
 class Call;
 class ValueConstructor;
 class ValueConversion;
@@ -74,17 +87,17 @@ struct SanitizedResult {
 };
 
 /// Sanitize a program in preparation for generating MSL.
-/// @program The program to sanitize
+/// @param program The program to sanitize
 /// @param options The MSL generator options.
 /// @returns the sanitized program and any supplementary information
-SanitizedResult Sanitize(const Program* program, const Options& options);
+SanitizedResult Sanitize(const Program& program, const Options& options);
 
 /// Implementation class for MSL generator
 class ASTPrinter : public tint::TextGenerator {
   public:
     /// Constructor
     /// @param program the program to generate
-    explicit ASTPrinter(const Program* program);
+    explicit ASTPrinter(const Program& program);
     ~ASTPrinter() override;
 
     /// @returns true on successful generation; false otherwise
@@ -144,7 +157,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// @param call the call expression
     /// @param builtin the builtin being called
     /// @returns true if the call expression is emitted
-    bool EmitBuiltinCall(StringStream& out, const sem::Call* call, const sem::Builtin* builtin);
+    bool EmitBuiltinCall(StringStream& out, const sem::Call* call, const sem::BuiltinFn* builtin);
     /// Handles generating a value conversion expression
     /// @param out the output of the expression stream
     /// @param call the call expression
@@ -175,14 +188,14 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the call expression is emitted
     bool EmitAtomicCall(StringStream& out,
                         const ast::CallExpression* expr,
-                        const sem::Builtin* builtin);
+                        const sem::BuiltinFn* builtin);
     /// Handles generating a call to a texture function (`textureSample`,
     /// `textureSampleGrad`, etc)
     /// @param out the output of the expression stream
     /// @param call the call expression
     /// @param builtin the semantic information for the texture builtin
     /// @returns true if the call expression is emitted
-    bool EmitTextureCall(StringStream& out, const sem::Call* call, const sem::Builtin* builtin);
+    bool EmitTextureCall(StringStream& out, const sem::Call* call, const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `dot()` builtin
     /// @param out the output of the expression stream
     /// @param expr the call expression
@@ -190,7 +203,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the call expression is emitted
     bool EmitDotCall(StringStream& out,
                      const ast::CallExpression* expr,
-                     const sem::Builtin* builtin);
+                     const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `modf()` builtin
     /// @param out the output of the expression stream
     /// @param expr the call expression
@@ -198,7 +211,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the call expression is emitted
     bool EmitModfCall(StringStream& out,
                       const ast::CallExpression* expr,
-                      const sem::Builtin* builtin);
+                      const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `frexp()` builtin
     /// @param out the output of the expression stream
     /// @param expr the call expression
@@ -206,7 +219,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the call expression is emitted
     bool EmitFrexpCall(StringStream& out,
                        const ast::CallExpression* expr,
-                       const sem::Builtin* builtin);
+                       const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `degrees()` builtin
     /// @param out the output of the expression stream
     /// @param expr the call expression
@@ -214,7 +227,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the call expression is emitted
     bool EmitDegreesCall(StringStream& out,
                          const ast::CallExpression* expr,
-                         const sem::Builtin* builtin);
+                         const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `radians()` builtin
     /// @param out the output of the expression stream
     /// @param expr the call expression
@@ -222,7 +235,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the call expression is emitted
     bool EmitRadiansCall(StringStream& out,
                          const ast::CallExpression* expr,
-                         const sem::Builtin* builtin);
+                         const sem::BuiltinFn* builtin);
     /// Handles a case statement
     /// @param stmt the statement
     /// @returns true if the statement was emitted successfully
@@ -355,7 +368,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the call expression is emitted
     bool EmitDot4I8PackedCall(StringStream& out,
                               const ast::CallExpression* expr,
-                              const sem::Builtin* builtin);
+                              const sem::BuiltinFn* builtin);
     /// Handles generating a call to the `dot4U8Packed()` builtin
     /// @param out the output of the expression stream
     /// @param expr the call expression
@@ -363,12 +376,17 @@ class ASTPrinter : public tint::TextGenerator {
     /// @returns true if the call expression is emitted
     bool EmitDot4U8PackedCall(StringStream& out,
                               const ast::CallExpression* expr,
-                              const sem::Builtin* builtin);
+                              const sem::BuiltinFn* builtin);
+
+    /// Lazilly generates the TINT_ISOLATE_UB macro, used to prevent UB statements from affecting
+    /// later logic.
+    /// @return the MSL to call the TINT_ISOLATE_UB macro.
+    std::string IsolateUB();
 
     /// Handles generating a builtin name
     /// @param builtin the semantic info for the builtin
     /// @returns the name or "" if not valid
-    std::string generate_builtin_name(const sem::Builtin* builtin);
+    std::string generate_builtin_name(const sem::BuiltinFn* builtin);
 
   private:
     /// CallBuiltinHelper will call the builtin helper function, creating it
@@ -387,7 +405,7 @@ class ASTPrinter : public tint::TextGenerator {
     template <typename F>
     bool CallBuiltinHelper(StringStream& out,
                            const ast::CallExpression* call,
-                           const sem::Builtin* builtin,
+                           const sem::BuiltinFn* builtin,
                            F&& build);
 
     /// @returns the name of the templated tint_array helper type, generating it if this is the
@@ -420,6 +438,10 @@ class ASTPrinter : public tint::TextGenerator {
 
     std::function<bool()> emit_continuing_;
 
+    /// The name of the macro used to prevent UB affecting later control flow.
+    /// Do not use this directly, instead call IsolateUB().
+    std::string isolate_ub_macro_name_;
+
     /// Name of atomicCompareExchangeWeak() helper for the given pointer storage
     /// class and struct return type
     using ACEWKeyType =
@@ -442,7 +464,7 @@ class ASTPrinter : public tint::TextGenerator {
     /// should be created for that index.
     std::unordered_map<std::string, std::vector<uint32_t>> workgroup_allocations_;
 
-    std::unordered_map<const sem::Builtin*, std::string> builtins_;
+    std::unordered_map<const sem::BuiltinFn*, std::string> builtins_;
     std::unordered_map<const core::type::Type*, std::string> unary_minus_funcs_;
     std::unordered_map<uint32_t, std::string> int_dot_funcs_;
     std::unordered_set<const core::type::Struct*> emitted_structs_;

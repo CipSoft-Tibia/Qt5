@@ -6,6 +6,7 @@
 #include <CoreVideo/CVMetalTexture.h>
 #include <CoreVideo/CVMetalTextureCache.h>
 #include <QtGui/qopenglcontext.h>
+#include <QtCore/qloggingcategory.h>
 
 #include <private/qvideotexturehelper_p.h>
 #include "qavfhelpers_p.h"
@@ -15,8 +16,11 @@
 
 QT_USE_NAMESPACE
 
+Q_LOGGING_CATEGORY(qLcVideoBuffer, "qt.multimedia.darwin.videobuffer")
+
 AVFVideoBuffer::AVFVideoBuffer(AVFVideoSinkInterface *sink, CVImageBufferRef buffer)
-    : QAbstractVideoBuffer(sink->rhi() ? QVideoFrame::RhiTextureHandle : QVideoFrame::NoHandle, sink->rhi()),
+    : QHwVideoBuffer(sink->rhi() ? QVideoFrame::RhiTextureHandle : QVideoFrame::NoHandle,
+                     sink->rhi()),
       sink(sink),
       m_buffer(buffer)
 {
@@ -25,11 +29,14 @@ AVFVideoBuffer::AVFVideoBuffer(AVFVideoSinkInterface *sink, CVImageBufferRef buf
     CVPixelBufferRetain(m_buffer);
     const bool rhiIsOpenGL = sink && sink->rhi() && sink->rhi()->backend() == QRhi::OpenGLES2;
     m_format = QAVFHelpers::videoFormatForImageBuffer(m_buffer, rhiIsOpenGL);
+
+    if (m_rhi && m_rhi->backend() == QRhi::Metal)
+        metalCache = CVMetalTextureCacheRef(CFRetain(sink->cvMetalTextureCache));
 }
 
 AVFVideoBuffer::~AVFVideoBuffer()
 {
-    AVFVideoBuffer::unmap();
+    Q_ASSERT(m_mode == QVideoFrame::NotMapped);
     for (int i = 0; i < 3; ++i)
         if (cvMetalTexture[i])
             CFRelease(cvMetalTexture[i]);
@@ -54,22 +61,22 @@ AVFVideoBuffer::MapData AVFVideoBuffer::map(QVideoFrame::MapMode mode)
         m_mode = mode;
     }
 
-    mapData.nPlanes = CVPixelBufferGetPlaneCount(m_buffer);
-    Q_ASSERT(mapData.nPlanes <= 3);
+    mapData.planeCount = CVPixelBufferGetPlaneCount(m_buffer);
+    Q_ASSERT(mapData.planeCount <= 3);
 
-    if (!mapData.nPlanes) {
+    if (!mapData.planeCount) {
         // single plane
         mapData.bytesPerLine[0] = CVPixelBufferGetBytesPerRow(m_buffer);
         mapData.data[0] = static_cast<uchar*>(CVPixelBufferGetBaseAddress(m_buffer));
-        mapData.size[0] = CVPixelBufferGetDataSize(m_buffer);
-        mapData.nPlanes = mapData.data[0] ? 1 : 0;
+        mapData.dataSize[0] = CVPixelBufferGetDataSize(m_buffer);
+        mapData.planeCount = mapData.data[0] ? 1 : 0;
         return mapData;
     }
 
     // For a bi-planar or tri-planar format we have to set the parameters correctly:
-    for (int i = 0; i < mapData.nPlanes; ++i) {
+    for (int i = 0; i < mapData.planeCount; ++i) {
         mapData.bytesPerLine[i] = CVPixelBufferGetBytesPerRowOfPlane(m_buffer, i);
-        mapData.size[i] = mapData.bytesPerLine[i]*CVPixelBufferGetHeightOfPlane(m_buffer, i);
+        mapData.dataSize[i] = mapData.bytesPerLine[i]*CVPixelBufferGetHeightOfPlane(m_buffer, i);
         mapData.data[i] = static_cast<uchar*>(CVPixelBufferGetBaseAddressOfPlane(m_buffer, i));
     }
 
@@ -97,6 +104,7 @@ static MTLPixelFormat rhiTextureFormatToMetalFormat(QRhiTexture::Format f)
     case QRhiTexture::BGRA8:
         return MTLPixelFormatBGRA8Unorm;
     case QRhiTexture::R8:
+    case QRhiTexture::RED_OR_ALPHA8:
         return MTLPixelFormatR8Unorm;
     case QRhiTexture::RG8:
         return MTLPixelFormatRG8Unorm;
@@ -104,7 +112,6 @@ static MTLPixelFormat rhiTextureFormatToMetalFormat(QRhiTexture::Format f)
         return MTLPixelFormatR16Unorm;
     case QRhiTexture::RG16:
         return MTLPixelFormatRG16Unorm;
-
     case QRhiTexture::RGBA16F:
         return MTLPixelFormatRGBA16Float;
     case QRhiTexture::RGBA32F:
@@ -117,7 +124,7 @@ static MTLPixelFormat rhiTextureFormatToMetalFormat(QRhiTexture::Format f)
 }
 
 
-quint64 AVFVideoBuffer::textureHandle(QRhi *, int plane) const
+quint64 AVFVideoBuffer::textureHandle(QRhi &, int plane)
 {
     auto *textureDescription = QVideoTextureHelper::textureDescription(m_format.pixelFormat());
     int bufferPlanes = CVPixelBufferGetPlaneCount(m_buffer);
@@ -130,35 +137,35 @@ quint64 AVFVideoBuffer::textureHandle(QRhi *, int plane) const
         if (!cvMetalTexture[plane]) {
             size_t width = CVPixelBufferGetWidth(m_buffer);
             size_t height = CVPixelBufferGetHeight(m_buffer);
-            width = textureDescription->widthForPlane(width, plane);
-            height = textureDescription->heightForPlane(height, plane);
+            QSize planeSize = textureDescription->rhiPlaneSize(QSize(width, height), plane, m_rhi);
 
-            // Create a CoreVideo pixel buffer backed Metal texture image from the texture cache.
-            QMutexLocker locker(sink->textureCacheMutex());
-            if (!metalCache && sink->cvMetalTextureCache)
-                metalCache = CVMetalTextureCacheRef(CFRetain(sink->cvMetalTextureCache));
             if (!metalCache) {
                 qWarning("cannot create texture, Metal texture cache was released?");
                 return {};
             }
-            auto ret = CVMetalTextureCacheCreateTextureFromImage(
-                            kCFAllocatorDefault,
-                            metalCache,
-                            m_buffer, nil,
-                            rhiTextureFormatToMetalFormat(textureDescription->textureFormat[plane]),
-                            width, height,
-                            plane,
-                            &cvMetalTexture[plane]);
 
-            if (ret != kCVReturnSuccess)
-                qWarning() << "texture creation failed" << ret;
-//            auto t = CVMetalTextureGetTexture(cvMetalTexture[plane]);
-//            qDebug() << "    metal texture is" << quint64(cvMetalTexture[plane]) << width << height;
-//            qDebug() << "    " << t.iosurfacePlane << t.pixelFormat << t.width << t.height;
+            // Create a CoreVideo pixel buffer backed Metal texture image from the texture cache.
+            const auto pixelFormat = rhiTextureFormatToMetalFormat(textureDescription->rhiTextureFormat(plane, m_rhi));
+            if (pixelFormat != MTLPixelFormatInvalid) {
+                // Passing invalid pixel format makes Metal API validation
+                // to crash (and also makes no sense at all).
+                auto ret = CVMetalTextureCacheCreateTextureFromImage(
+                                kCFAllocatorDefault,
+                                metalCache,
+                                m_buffer, nil,
+                                pixelFormat,
+                                planeSize.width(), planeSize.height(),
+                                plane,
+                                &cvMetalTexture[plane]);
+
+                if (ret != kCVReturnSuccess)
+                    qCWarning(qLcVideoBuffer) << "texture creation failed" << ret;
+            } else {
+                qCWarning(qLcVideoBuffer) << "requested invalid pixel format:"
+                                          << textureDescription->rhiTextureFormat(plane, m_rhi);
+            }
         }
 
-        // Get a Metal texture using the CoreVideo Metal texture reference.
-//        qDebug() << "    -> " << quint64(CVMetalTextureGetTexture(cvMetalTexture[plane]));
         return cvMetalTexture[plane] ? quint64(CVMetalTextureGetTexture(cvMetalTexture[plane])) : 0;
     } else if (m_rhi->backend() == QRhi::OpenGLES2) {
 #if QT_CONFIG(opengl)

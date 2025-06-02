@@ -20,18 +20,14 @@ qt_internal_add_module(Nfc
         QT_NO_CONTEXTLESS_CONNECT
     PUBLIC_LIBRARIES
         Qt::Core
-    GENERATE_CPP_EXPORTS
 )
-
-#### Keys ignored in scope 1:.:.:nfc.pro:<TRUE>:
-# OTHER_FILES = "doc/src/*.qdoc"
 
 ## Scopes:
 #####################################################################
 
 if(ANDROID AND (ANDROID AND NOT ANDROID_EMBEDDED))
     set_property(TARGET Nfc APPEND PROPERTY QT_ANDROID_BUNDLED_JAR_DEPENDENCIES
-        jar/Qt${QtConnectivity_VERSION_MAJOR}AndroidNfc.jar:org.qtproject.qt.android.nfc.QtNfc
+        jar/Qt${QtConnectivity_VERSION_MAJOR}AndroidNfc.jar
     )
     set_property(TARGET Nfc APPEND PROPERTY QT_ANDROID_PERMISSIONS
         android.permission.NFC
@@ -96,8 +92,28 @@ qt_internal_extend_target(Nfc CONDITION QT_FEATURE_pcsclite
         PkgConfig::PCSCLITE
 )
 
-#### Keys ignored in scope 2:.:.:nfc.pro:ANDROID AND NOT ANDROID_EMBEDDED:
-# NFC_BACKEND_AVAILABLE = "yes"
+if(QT_FEATURE_neard)
+    set(NFC_BACKEND_AVAILABLE ON)
+endif()
+
+qt_internal_extend_target(Nfc CONDITION QT_FEATURE_neard
+    SOURCES
+        qnearfieldmanager_neard.cpp qnearfieldmanager_neard_p.h
+        qnearfieldtarget_neard_p.cpp qnearfieldtarget_neard_p.h
+        neard/neard_helper.cpp neard/neard_helper_p.h
+        neard/neard_dbus_types_p.h
+    DBUS_INTERFACE_SOURCES
+        neard/org.freedesktop.dbus.objectmanager.xml
+        neard/org.freedesktop.dbus.properties.xml
+        neard/org.neard.Adapter.xml
+        neard/org.neard.Tag.xml
+    DBUS_INTERFACE_FLAGS
+        -i neard/neard_dbus_types_p.h
+    DEFINES
+        NEARD_NFC
+    LIBRARIES
+        Qt::DBus
+)
 
 qt_internal_extend_target(Nfc CONDITION NOT NFC_BACKEND_AVAILABLE
     SOURCES
@@ -106,4 +122,3 @@ qt_internal_extend_target(Nfc CONDITION NOT NFC_BACKEND_AVAILABLE
 qt_internal_add_docs(Nfc
     doc/qtnfc.qdocconf
 )
-

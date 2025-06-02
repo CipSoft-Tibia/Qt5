@@ -32,6 +32,8 @@ public:
     };
 
     explicit QAndroidPlatformWindow(QWindow *window);
+    void initialize() override;
+
     ~QAndroidPlatformWindow();
     void lower() override;
     void raise() override;
@@ -55,6 +57,7 @@ public:
     void propagateSizeHints() override;
     void requestActivateWindow() override;
     void updateSystemUiVisibility();
+    void updateFocusedEditText();
     inline bool isRaster() const { return m_isRaster; }
     bool isExposed() const override;
     QtJniTypes::QtWindow nativeWindow() const { return m_nativeQtWindow; }
@@ -65,16 +68,17 @@ public:
     static bool registerNatives(QJniEnvironment &env);
     void onSurfaceChanged(QtJniTypes::Surface surface);
 
-protected:
-    void setGeometry(const QRect &rect) override;
     void lockSurface() { m_surfaceMutex.lock(); }
     void unlockSurface() { m_surfaceMutex.unlock(); }
+
+protected:
+    void setGeometry(const QRect &rect) override;
     void createSurface();
     void destroySurface();
-    void setNativeGeometry(const QRect &geometry);
     void sendExpose() const;
     bool blockedByModal() const;
     bool isEmbeddingContainer() const;
+    virtual void clearSurface() {}
 
     Qt::WindowFlags m_windowFlags;
     Qt::WindowStates m_windowState;
@@ -84,17 +88,24 @@ protected:
     QtJniTypes::QtWindow m_nativeQtWindow;
     SurfaceContainer m_surfaceContainerType = SurfaceContainer::SurfaceView;
     QtJniTypes::QtWindow m_nativeParentQtWindow;
-    // The Android Surface, accessed from multiple threads, guarded by m_surfaceMutex
+    // The Android Surface, accessed from multiple threads, guarded by m_surfaceMutex.
+    // If the window is using QtSurface, which is a SurfaceView subclass, this Surface will be
+    // automatically created by Android when QtSurface is in a layout and visible. If the
+    // QtSurface is detached or hidden (app goes to background), Android will automatically
+    // destroy the Surface.
     QtJniTypes::Surface m_androidSurfaceObject;
     QWaitCondition m_surfaceWaitCondition;
     bool m_surfaceCreated = false;
     QMutex m_surfaceMutex;
+    QMutex m_destructionMutex;
 
 private:
     static void setSurface(JNIEnv *env, jobject obj, jint windowId, QtJniTypes::Surface surface);
     Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(setSurface)
     static void windowFocusChanged(JNIEnv *env, jobject object, jboolean focus, jint windowId);
     Q_DECLARE_JNI_NATIVE_METHOD_IN_CURRENT_SCOPE(windowFocusChanged)
+
+    [[nodiscard]] QMutexLocker<QMutex> destructionGuard();
 };
 
 QT_END_NAMESPACE

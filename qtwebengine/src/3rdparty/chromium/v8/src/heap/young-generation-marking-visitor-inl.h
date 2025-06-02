@@ -180,7 +180,9 @@ V8_INLINE bool YoungGenerationMarkingVisitor<marking_mode>::VisitObjectViaSlot(
     TSlot slot) {
   typename TSlot::TObject target =
       slot.Relaxed_Load(ObjectVisitorWithCageBases::cage_base());
-
+#ifdef V8_ENABLE_DIRECT_LOCAL
+  if (target.ptr() == kTaggedNullAddress) return false;
+#endif
   Tagged<HeapObject> heap_object;
   // Treat weak references as strong.
   if (!target.GetHeapObject(&heap_object)) {
@@ -250,7 +252,7 @@ V8_INLINE bool YoungGenerationMarkingVisitor<marking_mode>::ShortCutStrings(
           heap_object->map(ObjectVisitorWithCageBases::cage_base())
               ->visitor_id();
       if (visitor_id == VisitorId::kVisitShortcutCandidate) {
-        ConsString string = ConsString::cast(*heap_object);
+        Tagged<ConsString> string = ConsString::cast(*heap_object);
         if (static_cast<Tagged_t>(string->second().ptr()) ==
             StaticReadOnlyRoot::kempty_string) {
           *heap_object = string->first();

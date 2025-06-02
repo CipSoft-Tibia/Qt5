@@ -60,6 +60,8 @@ private slots:
 tst_QQuickApplicationWindow::tst_QQuickApplicationWindow()
     : QQmlDataTest(QT_QMLTEST_DATADIR)
 {
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuWindows);
+    QCoreApplication::setAttribute(Qt::AA_DontUseNativeMenuBar);
     QQuickStyle::setStyle("Basic");
 }
 
@@ -261,6 +263,7 @@ void tst_QQuickApplicationWindow::implicitFill()
     QCOMPARE(window->height(), 400);
 
     window->show();
+    window->requestActivate();
     QVERIFY(QTest::qWaitForWindowActive(window));
 
     const QSizeF expectedSize = getExpectedElementSize();
@@ -506,6 +509,7 @@ void tst_QQuickApplicationWindow::font()
     QCOMPARE(window->height(), 400);
 
     window->show();
+    window->requestActivate();
     QVERIFY(QTest::qWaitForWindowActive(window));
 
     QFont font = window->font();
@@ -587,6 +591,7 @@ void tst_QQuickApplicationWindow::locale()
     QCOMPARE(window->height(), 400);
 
     window->show();
+    window->requestActivate();
     QVERIFY(QTest::qWaitForWindowActive(window));
 
     QLocale l = window->locale();
@@ -662,6 +667,7 @@ void tst_QQuickApplicationWindow::activeFocusControl()
     QCOMPARE(window->height(), 400);
 
     window->show();
+    window->requestActivate();
     QVERIFY(QTest::qWaitForWindowActive(window));
 
     QQuickItem *container = window->property(containerName).value<QQuickItem*>();
@@ -990,6 +996,7 @@ void tst_QQuickApplicationWindow::explicitBackgroundSizeBinding()
     QVERIFY2(helper.ready, helper.failureMessage());
     QQuickApplicationWindow *window = helper.appWindow;
     window->show();
+    window->requestActivate();
     QVERIFY(QTest::qWaitForWindowExposed(window));
 
     auto *background = window->background();

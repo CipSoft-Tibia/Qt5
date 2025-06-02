@@ -17,7 +17,8 @@
 #include <xnnpack/maxpool.h>
 #include <xnnpack/microparams.h>
 #include <xnnpack/prelu.h>
-#include <xnnpack/rmax.h>
+#include <xnnpack/reduce.h>
+#include <xnnpack/unaligned.h>
 #include <xnnpack/vbinary.h>
 #include <xnnpack/vcvt.h>
 #include <xnnpack/vunary.h>
@@ -532,7 +533,7 @@ void xnn_f16_avgpool_minmax_ukernel_9x__f16c_c8(
   } while (--output_pixels != 0);
 }
 
-void xnn_f16_f32_vcvt_ukernel__f16c_x16(
+void xnn_f16_f32_vcvt_ukernel__f16c_u16(
     size_t batch,
     const void* input,
     float* output,
@@ -580,6 +581,65 @@ void xnn_f16_f32_vcvt_ukernel__f16c_x16(
       _mm_store_ss(output, vacc_lo);
     }
   }
+}
+
+void xnn_f16_f32acc_rsum_ukernel__f16c_u32_acc4(
+    size_t batch,
+    const void* input,
+    void* output,
+    const union xnn_f16_f32acc_scale_params params[XNN_MIN_ELEMENTS(1)])
+{
+  assert(batch != 0);
+  assert(batch % sizeof(uint16_t) == 0);
+  assert(input != NULL);
+  assert(output != NULL);
+
+  const uint16_t* i = (const uint16_t*) input;
+  __m256 vacc0 = _mm256_setzero_ps();
+  __m256 vacc1 = _mm256_setzero_ps();
+  __m256 vacc2 = _mm256_setzero_ps();
+  __m256 vacc3 = _mm256_setzero_ps();
+  for (; batch >= 32 * sizeof(uint16_t); batch -= 32 * sizeof(uint16_t)) {
+    const __m256 vt0 = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*) i));
+    const __m256 vt1 = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*) (i + 8)));
+    const __m256 vt2 = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*) (i + 16)));
+    const __m256 vt3 = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*) (i + 24)));
+    i += 32;
+
+    vacc0 = _mm256_add_ps(vacc0, vt0);
+    vacc1 = _mm256_add_ps(vacc1, vt1);
+    vacc2 = _mm256_add_ps(vacc2, vt2);
+    vacc3 = _mm256_add_ps(vacc3, vt3);
+  }
+  vacc0 = _mm256_add_ps(vacc0, vacc1);
+  vacc2 = _mm256_add_ps(vacc2, vacc3);
+  vacc0 = _mm256_add_ps(vacc0, vacc2);
+  for (; batch >= 8 * sizeof(uint16_t); batch -= 8 * sizeof(uint16_t)) {
+    const __m256 vt = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*) i));
+    i += 8;
+
+    vacc0 = _mm256_add_ps(vacc0, vt);
+  }
+  if XNN_UNLIKELY(batch != 0) {
+    assert(batch >= 1 * sizeof(uint16_t));
+    assert(batch <= 7 * sizeof(uint16_t));
+    const __m128i vmask = _mm_loadu_si128((const __m128i*) ((uintptr_t) &params->avx.mask_table[7] - batch));
+    const __m128i vh = _mm_castps_si128(_mm_maskload_ps((const float*) i, vmask));
+    const __m256 vt = _mm256_cvtph_ps(vh);
+    vacc0 = _mm256_add_ps(vacc0, vt);
+    i = (const void*) ((uintptr_t) i + batch);
+    if (batch & (1 * sizeof(uint16_t))) {
+      const __m128i vh = _mm_insert_epi16(_mm_setzero_si128(), (int) unaligned_load_u16(i - 1), 0);
+      const __m256 vt = _mm256_zextps128_ps256(_mm_cvtph_ps(vh));
+      vacc0 = _mm256_add_ps(vacc0, vt);
+    }
+  }
+  __m128 vacc = _mm_add_ps(_mm256_castps256_ps128(vacc0), _mm256_extractf128_ps(vacc0, 1));
+  vacc = _mm_add_ps(vacc, _mm_movehl_ps(vacc, vacc));
+  vacc = _mm_add_ss(vacc, _mm_movehdup_ps(vacc));
+  vacc = _mm_mul_ss(vacc, _mm_load_ss(&params->avx.scale));
+  const __m128i vout = _mm_cvtps_ph(vacc, _MM_FROUND_TO_NEAREST_INT);
+  unaligned_store_u16(output, (uint16_t) _mm_extract_epi16(vout, 0));
 }
 
 void xnn_f16_gavgpool_minmax_ukernel_7p7x__f16c_c8(
@@ -1268,10 +1328,11 @@ void xnn_f16_prelu_ukernel__f16c_2x16(
   } while (rows != 0);
 }
 
-void xnn_f16_rmax_ukernel__f16c(
+void xnn_f16_rmax_ukernel__f16c_u32(
     size_t batch,
     const void* input,
-    void* output) XNN_OOB_READS
+    void* output,
+    const union xnn_f16_default_params params[XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
 {
   assert(batch != 0);
   assert(batch % sizeof(uint16_t) == 0);
@@ -1324,7 +1385,7 @@ void xnn_f16_rmax_ukernel__f16c(
   *((uint16_t*) output) = (uint16_t) _mm_extract_epi16(_mm_cvtps_ph(vmax_lo, _MM_FROUND_TO_NEAREST_INT), 0);
 }
 
-void xnn_f16_vadd_minmax_ukernel__f16c_x16(
+void xnn_f16_vadd_minmax_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1406,7 +1467,7 @@ void xnn_f16_vadd_minmax_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vaddc_minmax_ukernel__f16c_x16(
+void xnn_f16_vaddc_minmax_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1483,7 +1544,7 @@ void xnn_f16_vaddc_minmax_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vdiv_minmax_ukernel__f16c_x8(
+void xnn_f16_vdiv_minmax_ukernel__f16c_u8(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1543,7 +1604,7 @@ void xnn_f16_vdiv_minmax_ukernel__f16c_x8(
   }
 }
 
-void xnn_f16_vdivc_minmax_ukernel__f16c_x8(
+void xnn_f16_vdivc_minmax_ukernel__f16c_u8(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1601,7 +1662,7 @@ void xnn_f16_vdivc_minmax_ukernel__f16c_x8(
   }
 }
 
-void xnn_f16_vmax_ukernel__f16c_x16(
+void xnn_f16_vmax_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1672,7 +1733,7 @@ void xnn_f16_vmax_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vmaxc_ukernel__f16c_x16(
+void xnn_f16_vmaxc_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1738,7 +1799,7 @@ void xnn_f16_vmaxc_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vmin_ukernel__f16c_x16(
+void xnn_f16_vmin_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1809,7 +1870,7 @@ void xnn_f16_vmin_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vminc_ukernel__f16c_x16(
+void xnn_f16_vminc_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1875,7 +1936,7 @@ void xnn_f16_vminc_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vmul_minmax_ukernel__f16c_x16(
+void xnn_f16_vmul_minmax_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -1957,7 +2018,7 @@ void xnn_f16_vmul_minmax_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vmulc_minmax_ukernel__f16c_x16(
+void xnn_f16_vmulc_minmax_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -2034,7 +2095,7 @@ void xnn_f16_vmulc_minmax_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vrdivc_minmax_ukernel__f16c_x8(
+void xnn_f16_vrdivc_minmax_ukernel__f16c_u8(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -2092,7 +2153,7 @@ void xnn_f16_vrdivc_minmax_ukernel__f16c_x8(
   }
 }
 
-void xnn_f16_vrsubc_minmax_ukernel__f16c_x16(
+void xnn_f16_vrsubc_minmax_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -2169,7 +2230,7 @@ void xnn_f16_vrsubc_minmax_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vsqrdiff_ukernel__f16c_x16(
+void xnn_f16_vsqrdiff_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -2244,7 +2305,7 @@ void xnn_f16_vsqrdiff_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vsqrdiffc_ukernel__f16c_x16(
+void xnn_f16_vsqrdiffc_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -2314,7 +2375,7 @@ void xnn_f16_vsqrdiffc_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vsub_minmax_ukernel__f16c_x16(
+void xnn_f16_vsub_minmax_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -2396,7 +2457,7 @@ void xnn_f16_vsub_minmax_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vsubc_minmax_ukernel__f16c_x16(
+void xnn_f16_vsubc_minmax_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input_a,
     const void* restrict input_b,
@@ -2473,7 +2534,7 @@ void xnn_f16_vsubc_minmax_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vclamp_ukernel__f16c_x16(
+void xnn_f16_vclamp_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input,
     void* restrict output,
@@ -2535,7 +2596,7 @@ void xnn_f16_vclamp_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vhswish_ukernel__f16c_x16(
+void xnn_f16_vhswish_ukernel__f16c_u16(
     size_t batch,
     const void* restrict input,
     void* restrict output,
@@ -2612,7 +2673,7 @@ void xnn_f16_vhswish_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vlrelu_ukernel__f16c_x16(
+void xnn_f16_vlrelu_ukernel__f16c_u16(
     size_t batch,
     const void* input,
     void* output,
@@ -2674,7 +2735,7 @@ void xnn_f16_vlrelu_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vrndd_ukernel__f16c_x16(
+void xnn_f16_vrndd_ukernel__f16c_u16(
     size_t batch,
     const void* input,
     void* output,
@@ -2730,7 +2791,7 @@ void xnn_f16_vrndd_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vrndne_ukernel__f16c_x16(
+void xnn_f16_vrndne_ukernel__f16c_u16(
     size_t batch,
     const void* input,
     void* output,
@@ -2786,7 +2847,7 @@ void xnn_f16_vrndne_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vrndu_ukernel__f16c_x16(
+void xnn_f16_vrndu_ukernel__f16c_u16(
     size_t batch,
     const void* input,
     void* output,
@@ -2842,7 +2903,7 @@ void xnn_f16_vrndu_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vrndz_ukernel__f16c_x16(
+void xnn_f16_vrndz_ukernel__f16c_u16(
     size_t batch,
     const void* input,
     void* output,
@@ -2898,7 +2959,7 @@ void xnn_f16_vrndz_ukernel__f16c_x16(
   }
 }
 
-void xnn_f16_vsqrt_ukernel__f16c_sqrt_x8(
+void xnn_f16_vsqrt_ukernel__f16c_sqrt_u8(
     size_t batch,
     const void* input,
     void* output,
@@ -2938,7 +2999,7 @@ void xnn_f16_vsqrt_ukernel__f16c_sqrt_x8(
   }
 }
 
-void xnn_f16_vtanh_ukernel__f16c_expm1minus_rr1_p3h2ts_rcp_x72(
+void xnn_f16_vtanh_ukernel__f16c_expm1minus_rr1_p3h2ts_rcp_u72(
     size_t batch,
     const void* input,
     void* output,
@@ -3292,7 +3353,7 @@ void xnn_f16_vtanh_ukernel__f16c_expm1minus_rr1_p3h2ts_rcp_x72(
   }
 }
 
-void xnn_f16_vsqr_ukernel__f16c_x16(
+void xnn_f16_vsqr_ukernel__f16c_u16(
     size_t batch,
     const void* input,
     void* output,
@@ -3344,7 +3405,7 @@ void xnn_f16_vsqr_ukernel__f16c_x16(
   }
 }
 
-void xnn_f32_f16_vcvt_ukernel__f16c_x16(
+void xnn_f32_f16_vcvt_ukernel__f16c_u16(
     size_t batch,
     const float* input,
     void* output,

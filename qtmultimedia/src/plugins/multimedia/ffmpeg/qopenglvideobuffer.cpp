@@ -39,9 +39,8 @@ static bool setCurrentOpenGLContext()
     static thread_local QOffscreenSurface *surface = nullptr;
 
     if (!context) {
-        context = (compositorContext->thread() == QThread::currentThread())
-                ? compositorContext
-                : createContext(compositorContext);
+        context = compositorContext->thread()->isCurrentThread() ? compositorContext
+                                                                 : createContext(compositorContext);
 
         if (!context)
             return false;
@@ -55,12 +54,12 @@ static bool setCurrentOpenGLContext()
 }
 
 QOpenGLVideoBuffer::QOpenGLVideoBuffer(std::unique_ptr<QOpenGLFramebufferObject> fbo)
-    : QAbstractVideoBuffer(QVideoFrame::RhiTextureHandle), m_fbo(std::move(fbo))
+    : QHwVideoBuffer(QVideoFrame::RhiTextureHandle), m_fbo(std::move(fbo))
 {
     Q_ASSERT(m_fbo);
 }
 
-QOpenGLVideoBuffer::~QOpenGLVideoBuffer() { }
+QOpenGLVideoBuffer::~QOpenGLVideoBuffer() = default;
 
 QAbstractVideoBuffer::MapData QOpenGLVideoBuffer::map(QVideoFrame::MapMode mode)
 {
@@ -73,7 +72,7 @@ void QOpenGLVideoBuffer::unmap()
         m_imageBuffer->unmap();
 }
 
-quint64 QOpenGLVideoBuffer::textureHandle(QRhi *, int plane) const
+quint64 QOpenGLVideoBuffer::textureHandle(QRhi &, int plane)
 {
     Q_UNUSED(plane);
     return m_fbo->texture();

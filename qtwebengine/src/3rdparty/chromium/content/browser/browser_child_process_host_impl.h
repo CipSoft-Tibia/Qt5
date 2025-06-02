@@ -21,6 +21,7 @@
 #include "content/browser/child_process_host_impl.h"
 #include "content/browser/child_process_launcher.h"
 #include "content/browser/tracing/tracing_service_controller.h"
+#include "content/common/buildflags.h"
 #include "content/common/child_process.mojom.h"
 #include "content/public/browser/browser_child_process_host.h"
 #include "content/public/browser/child_process_data.h"
@@ -32,6 +33,10 @@
 #if BUILDFLAG(IS_WIN)
 #include "base/win/object_watcher.h"
 #endif
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#include "content/browser/child_thread_type_switcher_linux.h"
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
 namespace base {
 class CommandLine;
@@ -105,8 +110,10 @@ class BrowserChildProcessHostImpl
   // Removes this host from the host list. Calls ChildProcessHost::ForceShutdown
   void ForceShutdown();
 
+#if BUILDFLAG(CONTENT_ENABLE_LEGACY_IPC)
   // Adds an IPC message filter.
   void AddFilter(BrowserMessageFilter* filter);
+#endif
 
   // Same as Launch(), but the process is launched with preloaded files and file
   // descriptors containing in `file_data`.
@@ -256,6 +263,10 @@ class BrowserChildProcessHostImpl
   // For child process to connect to the system tracing service.
   std::unique_ptr<tracing::SystemTracingService> system_tracing_service_;
 #endif
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  ChildThreadTypeSwitcher child_thread_type_switcher_;
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
   base::WeakPtrFactory<BrowserChildProcessHostImpl> weak_factory_{this};
 };

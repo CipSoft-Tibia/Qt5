@@ -17,12 +17,12 @@ public:
     void run()
     {
         printOpenNamespace();
-        printConstructor();
+        printConstructorDestructor();
         printMethods();
         printCloseNamespace();
     }
     void printOpenNamespace();
-    void printConstructor();
+    void printConstructorDestructor();
     void printMethods();
     void printCloseNamespace();
 private:

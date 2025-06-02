@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-import {ElementHandle} from '../api/ElementHandle.js';
-import {Realm} from '../api/Frame.js';
-import {JSHandle} from '../api/JSHandle.js';
+import type {ElementHandle} from '../api/ElementHandle.js';
+import type {JSHandle} from '../api/JSHandle.js';
+import type {Realm} from '../api/Realm.js';
 import type {Poller} from '../injected/Poller.js';
 import {Deferred} from '../util/Deferred.js';
 import {isErrorLike} from '../util/ErrorLike.js';
@@ -24,7 +24,7 @@ import {stringifyFunction} from '../util/Function.js';
 
 import {TimeoutError} from './Errors.js';
 import {LazyArg} from './LazyArg.js';
-import {HandleFor} from './types.js';
+import type {HandleFor} from './types.js';
 
 /**
  * @internal
@@ -221,7 +221,13 @@ export class WaitTask<T = unknown> {
 
       // We could have tried to evaluate in a context which was already
       // destroyed.
-      if (error.message.includes('Cannot find context with specified id')) {
+      if (
+        error.message.includes('Cannot find context with specified id') ||
+        // Firefox BiDi Error, update one https://github.com/w3c/webdriver-bidi/issues/540 is resolved
+        error.message.includes(
+          "destroyed before query 'MessageHandlerFrameParent:sendCommand'"
+        )
+      ) {
         return;
       }
 

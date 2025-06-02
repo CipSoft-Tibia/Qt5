@@ -21,8 +21,7 @@ using namespace Qt::StringLiterals;
     \inqmlmodule QtQuick
     \ingroup qtquick-visual
     \inherits Item
-    \since 6.7
-    \preliminary
+    \since 6.8
 
     \brief Allows embedding arbitrary QWindows into a Qt Quick scene.
 
@@ -40,10 +39,11 @@ using namespace Qt::StringLiterals;
         WindowContainer {
             window: foreignWindow
         }
-        Window {
-            parent: someItem
-            Item {
-                id: siblingItem
+        WindowContainer {
+            window: Window {
+                Item {
+                    id: siblingItem
+                }
             }
         }
     }
@@ -59,26 +59,11 @@ using namespace Qt::StringLiterals;
         WindowContainer {
             id: windowContainer
             window: foreignWindow
-            Window {
-                parent: windowContainer
-                Item {
-                    id: childItem
-                }
-            }
-        }
-    }
-    \endcode
-
-    If positioning and sizing of a Window via anchors is required,
-    the Window can be wrapped in a window container:
-
-    \code
-    Item {
-        id: someItem
-        WindowContainer {
-            anchors.fill: parent
-            window: Window {
-                Item {
+            WindowContainer {
+                window: Window {
+                    Item {
+                        id: childItem
+                    }
                 }
             }
         }
@@ -89,7 +74,7 @@ using namespace Qt::StringLiterals;
     QQuickWindow::setRenderTarget(), QQuickRenderControl, or similar
     functionality.
 
-    \sa {QtQuick::Window::parent}
+    \sa {QQuickWindow::}{parent()}
 */
 
 /*!

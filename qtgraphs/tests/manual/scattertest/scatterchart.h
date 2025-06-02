@@ -4,7 +4,7 @@
 #ifndef SCATTERDATAMODIFIER_H
 #define SCATTERDATAMODIFIER_H
 
-#include <QtGraphs/q3dscatter.h>
+#include <QtGraphsWidgets/q3dscatterwidgetitem.h>
 #include <QtGraphs/qscatter3dseries.h>
 
 #include <QFont>
@@ -16,7 +16,7 @@ class ScatterDataModifier : public QObject
 {
     Q_OBJECT
 public:
-    explicit ScatterDataModifier(Q3DScatter *scatter);
+    explicit ScatterDataModifier(Q3DScatterWidgetItem *scatter);
     ~ScatterDataModifier();
 
     void addData();
@@ -27,8 +27,8 @@ public:
     void changeFont(const QFont &font);
     void changeFontSize(int fontSize);
     void changePointSize(int pointSize);
-    void setBackgroundEnabled(int enabled);
-    void setGridEnabled(int enabled);
+    void setBackgroundVisible(int visible);
+    void setGridVisible(int visible);
     void setMinX(int min);
     void setMinY(int min);
     void setMinZ(int min);
@@ -48,7 +48,7 @@ public:
 
 public Q_SLOTS:
     void changeShadowQuality(int quality);
-    void shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality shadowQuality);
+    void shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality shadowQuality);
     void clear();
     void resetAxes();
     void addOne();
@@ -62,7 +62,7 @@ public Q_SLOTS:
     void timeout();
     void startStopTimer();
     void selectItem();
-    void handleSelectionChange(int index);
+    void handleSelectionChange(qsizetype index);
     void setGradient();
     void clearSeriesData();
     void addSeries();
@@ -74,6 +74,7 @@ public Q_SLOTS:
     void handleAxisZChanged(QValue3DAxis *axis);
     void handleFpsChange(int fps);
     void changeLabelRotation(int rotation);
+    void changeTitleOffset(int offset);
     void changeRadialLabelOffset(int offset);
     void toggleAxisTitleVisibility(int enabled);
     void toggleAxisTitleFixed(int enabled);
@@ -103,11 +104,11 @@ private:
                               float maxValue);
     void deleteAxis(QValue3DAxis *axis);
 
-    Q3DScatter *m_chart;
+    Q3DScatterWidgetItem *m_chart;
     int m_fontSize;
     QTimer m_timer;
     int m_loopCounter;
-    int m_selectedItem;
+    qsizetype m_selectedItem;
     QScatter3DSeries *m_targetSeries;
     QScatterDataArray m_massiveTestCacheArray;
     QLabel *m_fpsLabel;

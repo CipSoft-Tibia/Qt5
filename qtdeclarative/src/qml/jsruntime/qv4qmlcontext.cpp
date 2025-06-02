@@ -197,9 +197,11 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
             return result->asReturnedValue();
     }
 
+    QQmlEnginePrivate *ep = QQmlEnginePrivate::get(v4->qmlEngine());
     if (context->imports() && (name->startsWithUpper() || context->valueTypesAreAddressable())) {
         // Search for attached properties, enums and imported scripts
-        QQmlTypeNameCache::Result r = context->imports()->query<QQmlImport::AllowRecursion>(name);
+        QQmlTypeNameCache::Result r = context->imports()->query<QQmlImport::AllowRecursion>(
+                name, QQmlTypeLoader::get(ep));
 
         if (r.isValid()) {
             if (hasProperty)
@@ -210,7 +212,7 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
                     lookup->qmlContextPropertyGetter = QQmlContextWrapper::lookupScript;
                     return lookup->qmlContextPropertyGetter(lookup, v4, base);
                 }
-                QV4::ScopedObject scripts(scope, context->importedScripts().valueRef());
+                QV4::ScopedObject scripts(scope, context->importedScripts());
                 if (scripts)
                     return scripts->get(r.scriptIndex);
                 return QV4::Encode::null();
@@ -221,10 +223,10 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
                         QQmlEnginePrivate *e = QQmlEnginePrivate::get(v4->qmlEngine());
                         if (r.type.isQObjectSingleton() || r.type.isCompositeSingleton()) {
                             e->singletonInstance<QObject*>(r.type);
-                            lookup->qmlContextSingletonLookup.singletonObject =
+                            lookup->qmlContextSingletonLookup.singletonObject.set(v4,
                                         Value::fromReturnedValue(
                                             QQmlTypeWrapper::create(v4, nullptr, r.type)
-                                        ).heapObject();
+                                        ).heapObject());
                         } else {
                             QJSValue singleton = e->singletonInstance<QJSValue>(r.type);
 
@@ -233,7 +235,7 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
                             Q_ASSERT(!QJSValuePrivate::asQString(&singleton));
 
                             if (QV4::Value *val = QJSValuePrivate::takeManagedValue(&singleton)) {
-                                lookup->qmlContextSingletonLookup.singletonObject = val->heapObject();
+                                lookup->qmlContextSingletonLookup.singletonObject.set(v4, val->heapObject());
                             } else {
                                 lookup->qmlContextSingletonLookup.singletonValue = QJSValuePrivate::asReturnedValue(&singleton);
                                 isValueSingleton = true;
@@ -249,7 +251,7 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
                 result = QQmlTypeWrapper::create(v4, scopeObject, context->imports(), r.importNamespace);
             }
             if (lookup) {
-                lookup->qmlTypeLookup.qmlTypeWrapper = result->heapObject();
+                lookup->qmlTypeLookup.qmlTypeWrapper.set(v4, result->heapObject());
                 lookup->qmlContextPropertyGetter = QQmlContextWrapper::lookupType;
             }
             return result->asReturnedValue();
@@ -258,7 +260,6 @@ ReturnedValue QQmlContextWrapper::getPropertyAndBase(const QQmlContextWrapper *r
         // Fall through
     }
 
-    QQmlEnginePrivate *ep = QQmlEnginePrivate::get(v4->qmlEngine());
     Lookup * const originalLookup = lookup;
 
     decltype(lookup->qmlContextPropertyGetter) contextGetterFunction = QQmlContextWrapper::lookupContextObjectProperty;
@@ -567,7 +568,7 @@ ReturnedValue QQmlContextWrapper::lookupScript(Lookup *l, ExecutionEngine *engin
     if (!context)
         return QV4::Encode::null();
 
-    QV4::ScopedObject scripts(scope, context->importedScripts().valueRef());
+    QV4::ScopedObject scripts(scope, context->importedScripts());
     if (!scripts)
         return QV4::Encode::null();
     return scripts->get(l->qmlContextScriptLookup.scriptIndex);
@@ -814,7 +815,7 @@ ReturnedValue QQmlContextWrapper::lookupType(Lookup *l, ExecutionEngine *engine,
 
     Heap::Base *heapObject = l->qmlTypeLookup.qmlTypeWrapper;
     if (static_cast<Heap::QQmlTypeWrapper *>(heapObject)->object != scopeObject) {
-        l->qmlTypeLookup.qmlTypeWrapper = nullptr;
+        l->qmlTypeLookup.qmlTypeWrapper.clear();
         l->qmlContextPropertyGetter = QQmlContextWrapper::resolveQmlContextPropertyLookupGetter;
         return QQmlContextWrapper::resolveQmlContextPropertyLookupGetter(l, engine, base);
     }

@@ -27,7 +27,7 @@ bool QAbstractClipAnimatorPrivate::canPlay() const
 
 /*!
     \qmltype AbstractClipAnimator
-    \instantiates Qt3DAnimation::QAbstractClipAnimator
+    \nativetype Qt3DAnimation::QAbstractClipAnimator
     \inqmlmodule Qt3D.Animation
     \since 5.9
 
@@ -141,7 +141,7 @@ QChannelMapper *QAbstractClipAnimator::channelMapper() const
     repeat until it is explicitly stopped.
 */
 /*!
-    \enum QAbstractClipAnimator::Loops
+    \enum Qt3DAnimation::QAbstractClipAnimator::Loops
 
     Holds the number of times the animation should play.
 

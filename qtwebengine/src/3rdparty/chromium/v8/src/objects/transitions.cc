@@ -139,7 +139,7 @@ void TransitionsAccessor::Insert(Isolate* isolate, Handle<Map> map,
 
   {
     DisallowGarbageCollection no_gc;
-    TransitionArray array = GetTransitionArray(isolate, map);
+    Tagged<TransitionArray> array = GetTransitionArray(isolate, map);
     number_of_transitions = array->number_of_transitions();
 
     int index =
@@ -171,7 +171,7 @@ void TransitionsAccessor::Insert(Isolate* isolate, Handle<Map> map,
       }
       array->SetKey(insertion_index, *name);
       array->SetRawTarget(insertion_index, HeapObjectReference::Weak(*target));
-      SLOW_DCHECK(array.IsSortedNoDuplicates());
+      SLOW_DCHECK(array->IsSortedNoDuplicates());
       return;
     }
   }
@@ -185,7 +185,7 @@ void TransitionsAccessor::Insert(Isolate* isolate, Handle<Map> map,
   // it was weakly traversed, though it is guaranteed not to disappear. Trim the
   // result copy if needed, and recompute variables.
   DisallowGarbageCollection no_gc;
-  TransitionArray array = GetTransitionArray(isolate, map);
+  Tagged<TransitionArray> array = GetTransitionArray(isolate, map);
   if (array->number_of_transitions() != number_of_transitions) {
     DCHECK_LT(array->number_of_transitions(), number_of_transitions);
 
@@ -292,7 +292,8 @@ void TransitionsAccessor::ForEachTransitionTo(
       Tagged<Map> target =
           Map::cast(raw_transitions_.GetHeapObjectAssumeWeak());
       InternalIndex descriptor = target->LastAdded();
-      DescriptorArray descriptors = target->instance_descriptors(kRelaxedLoad);
+      Tagged<DescriptorArray> descriptors =
+          target->instance_descriptors(kRelaxedLoad);
       Tagged<Name> key = descriptors->GetKey(descriptor);
       if (key == name) {
         callback(target);
@@ -325,7 +326,8 @@ bool TransitionsAccessor::IsMatchingMap(Tagged<Map> target, Tagged<Name> name,
                                         PropertyKind kind,
                                         PropertyAttributes attributes) {
   InternalIndex descriptor = target->LastAdded();
-  DescriptorArray descriptors = target->instance_descriptors(kRelaxedLoad);
+  Tagged<DescriptorArray> descriptors =
+      target->instance_descriptors(kRelaxedLoad);
   Tagged<Name> key = descriptors->GetKey(descriptor);
   if (key != name) return false;
   return descriptors->GetDetails(descriptor)
@@ -343,12 +345,12 @@ bool TransitionArray::CompactPrototypeTransitionArray(
   }
   int new_number_of_transitions = 0;
   for (int i = 0; i < number_of_transitions; i++) {
-    MaybeObject target = array->Get(header + i);
+    MaybeObject target = array->get(header + i);
     DCHECK(target->IsCleared() ||
            (target->IsWeak() && IsMap(target.GetHeapObject())));
     if (!target->IsCleared()) {
       if (new_number_of_transitions != i) {
-        array->Set(header + new_number_of_transitions, target);
+        array->set(header + new_number_of_transitions, target);
       }
       new_number_of_transitions++;
     }
@@ -357,7 +359,7 @@ bool TransitionArray::CompactPrototypeTransitionArray(
   MaybeObject undefined =
       MaybeObject::FromObject(*isolate->factory()->undefined_value());
   for (int i = new_number_of_transitions; i < number_of_transitions; i++) {
-    array->Set(header + i, undefined);
+    array->set(header + i, undefined);
   }
   if (number_of_transitions != new_number_of_transitions) {
     SetNumberOfPrototypeTransitions(array, new_number_of_transitions);
@@ -435,7 +437,7 @@ void TransitionsAccessor::PutPrototypeTransition(Isolate* isolate,
   int last = TransitionArray::NumberOfPrototypeTransitions(*cache);
   int entry = header + last;
 
-  cache->Set(entry, HeapObjectReference::Weak(*target_map));
+  cache->set(entry, HeapObjectReference::Weak(*target_map));
   TransitionArray::SetNumberOfPrototypeTransitions(*cache, last + 1);
 
   transition_array_mutex->UnlockExclusive();
@@ -445,12 +447,12 @@ void TransitionsAccessor::PutPrototypeTransition(Isolate* isolate,
 Handle<Map> TransitionsAccessor::GetPrototypeTransition(
     Isolate* isolate, Handle<Map> map, Handle<Object> prototype_handle) {
   DisallowGarbageCollection no_gc;
-  Object prototype = *prototype_handle;
+  Tagged<Object> prototype = *prototype_handle;
   Tagged<WeakFixedArray> cache = GetPrototypeTransitions(isolate, map);
   int length = TransitionArray::NumberOfPrototypeTransitions(cache);
   for (int i = 0; i < length; i++) {
     MaybeObject target =
-        cache->Get(TransitionArray::kProtoTransitionHeaderSize + i);
+        cache->get(TransitionArray::kProtoTransitionHeaderSize + i);
     DCHECK(target->IsWeakOrCleared());
     Tagged<HeapObject> heap_object;
     if (target.GetHeapObjectIfWeak(&heap_object)) {
@@ -470,7 +472,7 @@ Tagged<WeakFixedArray> TransitionsAccessor::GetPrototypeTransitions(
   if (GetEncoding(isolate, raw_transitions) != kFullTransitionArray) {
     return ReadOnlyRoots(isolate).empty_weak_fixed_array();
   }
-  TransitionArray transition_array =
+  Tagged<TransitionArray> transition_array =
       GetTransitionArray(isolate, raw_transitions);
   if (!transition_array->HasPrototypeTransitions()) {
     return ReadOnlyRoots(isolate).empty_weak_fixed_array();
@@ -482,7 +484,7 @@ Tagged<WeakFixedArray> TransitionsAccessor::GetPrototypeTransitions(
 void TransitionArray::SetNumberOfPrototypeTransitions(
     Tagged<WeakFixedArray> proto_transitions, int value) {
   DCHECK_NE(proto_transitions->length(), 0);
-  proto_transitions->Set(kProtoTransitionNumberOfEntriesOffset,
+  proto_transitions->set(kProtoTransitionNumberOfEntriesOffset,
                          MaybeObject::FromSmi(Smi::FromInt(value)));
 }
 
@@ -579,7 +581,7 @@ void TransitionsAccessor::TraverseTransitionTreeInternal(
   // Mostly arbitrary but more than enough to run the test suite in static
   // memory.
   static constexpr int kStaticStackSize = 16;
-  base::SmallVector<Map, kStaticStackSize> stack;
+  base::SmallVector<Tagged<Map>, kStaticStackSize> stack;
   stack.emplace_back(map_);
 
   // Pre-order iterative depth-first-search.
@@ -604,7 +606,7 @@ void TransitionsAccessor::TraverseTransitionTreeInternal(
         break;
       }
       case kFullTransitionArray: {
-        TransitionArray transitions =
+        Tagged<TransitionArray> transitions =
             TransitionArray::cast(raw_transitions.GetHeapObjectAssumeStrong());
         if (transitions->HasPrototypeTransitions()) {
           Tagged<WeakFixedArray> proto_trans =
@@ -613,7 +615,7 @@ void TransitionsAccessor::TraverseTransitionTreeInternal(
               TransitionArray::NumberOfPrototypeTransitions(proto_trans);
           for (int i = 0; i < length; ++i) {
             int index = TransitionArray::kProtoTransitionHeaderSize + i;
-            MaybeObject target = proto_trans->Get(index);
+            MaybeObject target = proto_trans->get(index);
             Tagged<HeapObject> heap_object;
             if (target.GetHeapObjectIfWeak(&heap_object)) {
               stack.emplace_back(Map::cast(heap_object));
@@ -636,9 +638,9 @@ void TransitionsAccessor::TraverseTransitionTreeInternal(
 void TransitionsAccessor::CheckNewTransitionsAreConsistent(
     Isolate* isolate, Handle<Map> map, Tagged<Object> transitions) {
   // This function only handles full transition arrays.
-  TransitionArray old_transitions = GetTransitionArray(isolate, map);
+  Tagged<TransitionArray> old_transitions = GetTransitionArray(isolate, map);
   DCHECK_EQ(kFullTransitionArray, GetEncoding(isolate, old_transitions));
-  TransitionArray new_transitions = TransitionArray::cast(transitions);
+  Tagged<TransitionArray> new_transitions = TransitionArray::cast(transitions);
   for (int i = 0; i < old_transitions->number_of_transitions(); i++) {
     Tagged<Map> target = old_transitions->GetTarget(i);
     if (target->instance_descriptors(isolate) ==

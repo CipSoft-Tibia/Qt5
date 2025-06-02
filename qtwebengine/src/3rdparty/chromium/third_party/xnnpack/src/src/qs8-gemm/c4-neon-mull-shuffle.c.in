@@ -7,7 +7,8 @@ $ABC = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 $assert NR % 8 == 0
 $assert 8 <= NR <= 16
 $assert REQUANTIZATION in ["FP32", "RNDNU"]
-$assert not CHANNELWISE or REQUANTIZATION == "FP32"
+$assert DATATYPE in ["QC8", "QS8"]
+$assert DATATYPE != "QC8" or REQUANTIZATION == "FP32"
 #include <assert.h>
 
 #include <arm_neon.h>
@@ -18,11 +19,11 @@ $if REQUANTIZATION == "FP32" and ARMV8:
 #include <xnnpack/math.h>
 
 
-$DATATYPE = "qc8" if CHANNELWISE else "qs8"
+$DATATYPE_SPEC = {"QC8": "qs8_qc8w", "QS8": "qs8"}[DATATYPE]
 $PARAMS_STRUCT = REQUANTIZATION.lower() + "_" + ("neonv8" if REQUANTIZATION == "FP32" and ARMV8 else "neon")
-$PARAMS_UNION = "xnn_%s_conv_minmax_params" % DATATYPE.lower()
+$PARAMS_UNION = {"QC8": "xnn_qs8_qc8w_conv_minmax_params", "QS8": "xnn_qs8_conv_minmax_params"}[DATATYPE]
 $ISA = "neonv8" if ARMV8 else "neon"
-void xnn_${DATATYPE}_gemm_minmax_${REQUANTIZATION.lower()}_ukernel_${MR}x${NR}c4s2__${ISA}_${"mlal" if MLA else "mull"}(
+void xnn_${DATATYPE_SPEC}_gemm_minmax_${REQUANTIZATION.lower()}_ukernel_${MR}x${NR}c4s2__${ISA}_${"mlal" if MLA else "mull"}(
     size_t mr,
     size_t nc,
     size_t kc,
@@ -154,7 +155,7 @@ void xnn_${DATATYPE}_gemm_minmax_${REQUANTIZATION.lower()}_ukernel_${MR}x${NR}c4
         $for N in range(0, NR, 4):
           float32x4_t vfpacc${M}x${ABC[N:N+4]} = vcvtq_f32_s32(vacc${M}x${ABC[N:N+4]});
 
-      $if CHANNELWISE:
+      $if DATATYPE == "QC8":
         $for N in range(0, NR, 4):
           const float32x4_t vscale${ABC[N:N+4]} = vld1q_f32(w); w = (const float*) w + 4;
           $for M in range(MR):

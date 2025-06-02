@@ -445,6 +445,8 @@ message UpdateDeviceInfoState {
   repeated string whitelabel_list = 104;
   // List of all valid custom-label-tags for this device.
   repeated string custom_label_list = 106;
+  // List of sku descriptions.
+  repeated string sku_description_list = 107;
 
   // Serial number of device at beginning of RMA finalization.
   string original_serial_number = 201;
@@ -628,7 +630,7 @@ message RecordBrowserActionMetricReply {
 }
 
 // Defined RO verification status for showing in metrics.
-// Keep this in sync with metrics/structured/structured.xml.
+// Keep this in sync with metrics/structured/sync/structured.xml.
 enum RoVerificationStatus {
   RMAD_RO_VERIFICATION_UNKNOWN = 0;
   RMAD_RO_VERIFICATION_PASS = 1;
@@ -640,7 +642,7 @@ enum RoVerificationStatus {
 }
 
 // Defined returning owner for showing in metrics.
-// Keep this in sync with metrics/structured/structured.xml.
+// Keep this in sync with metrics/structured/sync/structured.xml.
 enum ReturningOwner {
   RMAD_RETURNING_OWNER_UNKNOWN = 0;
   RMAD_RETURNING_OWNER_SAME_OWNER = 1;
@@ -648,7 +650,7 @@ enum ReturningOwner {
 }
 
 // Defined mainboard replacement status for showing in metrics.
-// Keep this in sync with metrics/structured/structured.xml.
+// Keep this in sync with metrics/structured/sync/structured.xml.
 enum MainboardReplacement {
   RMAD_MLB_REPLACEMENT_UNKNOWN = 0;
   RMAD_MLB_REPLACEMENT_REPLACED = 1;
@@ -656,7 +658,7 @@ enum MainboardReplacement {
 }
 
 // Defined additional activities for showing in metrics.
-// Keep this in sync with metrics/structured/structured.xml.
+// Keep this in sync with metrics/structured/sync/structured.xml.
 enum AdditionalActivity {
   RMAD_ADDITIONAL_ACTIVITY_NOTHING = 0;
   RMAD_ADDITIONAL_ACTIVITY_SHUTDOWN = 1;
@@ -667,7 +669,7 @@ enum AdditionalActivity {
 }
 
 // Defined write protection methods for showing in metrics.
-// Keep this in sync with metrics/structured/structured.xml.
+// Keep this in sync with metrics/structured/sync/structured.xml.
 enum WpDisableMethod {
   RMAD_WP_DISABLE_METHOD_UNKNOWN = 0;
   RMAD_WP_DISABLE_METHOD_SKIPPED = 1;

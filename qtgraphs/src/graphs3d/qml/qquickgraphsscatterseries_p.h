@@ -14,12 +14,14 @@
 #ifndef QQUICKGRAPHSSCATTERSERIES_P_H
 #define QQUICKGRAPHSSCATTERSERIES_P_H
 
-#include "qquickgraphscolor_p.h"
+#include "common/theme/qquickgraphscolor_p.h"
+#include "gradientholder_p.h"
 #include "qscatter3dseries.h"
 
 #include <QtQml/qqml.h>
 #include <QtQuick/private/qquickrectangle_p.h>
-#include <private/graphsglobal_p.h>
+#include <private/qgraphsglobal_p.h>
+#include <private/qgraphstheme_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -27,14 +29,14 @@ class QQuickGraphsScatter3DSeries : public QScatter3DSeries
 {
     Q_OBJECT
     Q_PROPERTY(QQmlListProperty<QObject> seriesChildren READ seriesChildren CONSTANT)
-    Q_PROPERTY(
-        QJSValue baseGradient READ baseGradient WRITE setBaseGradient NOTIFY baseGradientChanged)
-    Q_PROPERTY(QJSValue singleHighlightGradient READ singleHighlightGradient WRITE
-                   setSingleHighlightGradient NOTIFY singleHighlightGradientChanged)
-    Q_PROPERTY(QJSValue multiHighlightGradient READ multiHighlightGradient WRITE
-                   setMultiHighlightGradient NOTIFY multiHighlightGradientChanged)
+    Q_PROPERTY(QQuickGradient *baseGradient READ baseGradient WRITE setBaseGradient NOTIFY
+                   baseGradientChanged FINAL)
+    Q_PROPERTY(QQuickGradient *singleHighlightGradient READ singleHighlightGradient WRITE
+                   setSingleHighlightGradient NOTIFY singleHighlightGradientChanged FINAL)
+    Q_PROPERTY(QQuickGradient *multiHighlightGradient READ multiHighlightGradient WRITE
+                   setMultiHighlightGradient NOTIFY multiHighlightGradientChanged FINAL)
     // This is static method in parent class, overload as constant property for qml.
-    Q_PROPERTY(int invalidSelectionIndex READ invalidSelectionIndex CONSTANT)
+    Q_PROPERTY(qsizetype invalidSelectionIndex READ invalidSelectionIndex CONSTANT)
     Q_CLASSINFO("DefaultProperty", "seriesChildren")
 
     QML_NAMED_ELEMENT(Scatter3DSeries)
@@ -46,14 +48,14 @@ public:
     QQmlListProperty<QObject> seriesChildren();
     static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
 
-    void setBaseGradient(QJSValue gradient);
-    QJSValue baseGradient() const;
-    void setSingleHighlightGradient(QJSValue gradient);
-    QJSValue singleHighlightGradient() const;
-    void setMultiHighlightGradient(QJSValue gradient);
-    QJSValue multiHighlightGradient() const;
+    void setBaseGradient(QQuickGradient *gradient);
+    QQuickGradient *baseGradient() const;
+    void setSingleHighlightGradient(QQuickGradient *gradient);
+    QQuickGradient *singleHighlightGradient() const;
+    void setMultiHighlightGradient(QQuickGradient *gradient);
+    QQuickGradient *multiHighlightGradient() const;
 
-    int invalidSelectionIndex() const;
+    qsizetype invalidSelectionIndex() const;
 
 public Q_SLOTS:
     void handleBaseGradientUpdate();
@@ -61,14 +63,16 @@ public Q_SLOTS:
     void handleMultiHighlightGradientUpdate();
 
 Q_SIGNALS:
-    void baseGradientChanged(QJSValue gradient);
-    void singleHighlightGradientChanged(QJSValue gradient);
-    void multiHighlightGradientChanged(QJSValue gradient);
+    void baseGradientChanged(QQuickGradient *gradient);
+    void singleHighlightGradientChanged(QQuickGradient *gradient);
+    void multiHighlightGradientChanged(QQuickGradient *gradient);
 
 private:
-    QJSValue m_baseGradient;            // Not owned
-    QJSValue m_singleHighlightGradient; // Not owned
-    QJSValue m_multiHighlightGradient;  // Not owned
+    GradientHolder m_gradients;
+
+    void setGradientHelper(QQuickGradient *newGradient,
+                           QQuickGradient *memberGradient,
+                           GradientType type);
 };
 
 QT_END_NAMESPACE

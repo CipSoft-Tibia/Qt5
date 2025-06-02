@@ -18,9 +18,7 @@ QT_BEGIN_NAMESPACE
     Constructs a video buffer with an image stride of \a bytesPerLine from a byte \a array.
 */
 QMemoryVideoBuffer::QMemoryVideoBuffer(QByteArray data, int bytesPerLine)
-    : QAbstractVideoBuffer(QVideoFrame::NoHandle),
-      m_bytesPerLine(bytesPerLine),
-      m_data(std::move(data))
+    : m_bytesPerLine(bytesPerLine), m_data(std::move(data))
 {
 }
 
@@ -35,29 +33,20 @@ QMemoryVideoBuffer::~QMemoryVideoBuffer() = default;
 QAbstractVideoBuffer::MapData QMemoryVideoBuffer::map(QVideoFrame::MapMode mode)
 {
     MapData mapData;
-    if (m_mapMode == QVideoFrame::NotMapped && m_data.size() && mode != QVideoFrame::NotMapped) {
-        m_mapMode = mode;
 
-        mapData.nPlanes = 1;
+    if (!m_data.isEmpty()) {
+        mapData.planeCount = 1;
         mapData.bytesPerLine[0] = m_bytesPerLine;
         // avoid detaching and extra copying in case the underlyingByteArray is
         // being held by textures or anything else.
         if (mode == QVideoFrame::ReadOnly)
-            mapData.data[0] = reinterpret_cast<uchar *>(const_cast<char*>(m_data.constData()));
+            mapData.data[0] = reinterpret_cast<uchar *>(const_cast<char *>(m_data.constData()));
         else
             mapData.data[0] = reinterpret_cast<uchar *>(m_data.data());
-        mapData.size[0] = m_data.size();
+        mapData.dataSize[0] = m_data.size();
     }
 
     return mapData;
-}
-
-/*!
-    \reimp
-*/
-void QMemoryVideoBuffer::unmap()
-{
-    m_mapMode = QVideoFrame::NotMapped;
 }
 
 QT_END_NAMESPACE

@@ -26,58 +26,85 @@ QSSGMaterialVertexPipeline::QSSGMaterialVertexPipeline(QSSGProgramGenerator &pro
 {
 }
 
-static inline void insertProcessorArgs(QByteArray &snippet, const char *argKey, const char* (*argListFunc)(), bool usesShared = false, bool isSharedInout = false)
+static inline void insertProcessorArgsFragmentMain(QByteArray &snippet, const char *argKey, const char* (*argListFunc)(),
+                                       QSSGShaderMaterialAdapter *materialAdapter = nullptr, bool isSharedInout = false)
 {
     const int argKeyLen = int(strlen(argKey));
     const int argKeyPos = snippet.indexOf(argKey);
     if (argKeyPos >= 0) {
-        if (!usesShared) {
-            snippet = snippet.left(argKeyPos) + argListFunc() + snippet.mid(argKeyPos + argKeyLen);
-        } else {
-            const char *inoutString = isSharedInout ? ", inout " : ", in ";
-            snippet = snippet.left(argKeyPos) + argListFunc() + inoutString + QByteArrayLiteral("QT_SHARED_VARS SHARED") + snippet.mid(argKeyPos + argKeyLen);
+        QByteArray flexArgs;
+        if (materialAdapter) {
+            if (materialAdapter->isClearcoatEnabled()) {
+                flexArgs += QByteArrayLiteral(", inout float CLEARCOAT_AMOUNT, inout float CLEARCOAT_FRESNEL_POWER, inout float CLEARCOAT_ROUGHNESS, inout vec3 CLEARCOAT_NORMAL");
+                if (materialAdapter->isClearcoatFresnelScaleBiasEnabled())
+                    flexArgs += QByteArrayLiteral(", inout float CLEARCOAT_FRESNEL_SCALE, inout float CLEARCOAT_FRESNEL_BIAS");
+            }
+            if (materialAdapter->isFresnelScaleBiasEnabled())
+                flexArgs += QByteArrayLiteral(", inout float FRESNEL_SCALE, inout float FRESNEL_BIAS");
+            if (materialAdapter->isTransmissionEnabled())
+                flexArgs += QByteArrayLiteral(", inout float TRANSMISSION_FACTOR, inout float THICKNESS_FACTOR, inout vec3 ATTENUATION_COLOR, inout float ATTENUATION_DISTANCE");
+            if (materialAdapter->usesSharedVariables()) {
+                const char *inoutString = isSharedInout ? ", inout " : ", in ";
+                flexArgs += inoutString + QByteArrayLiteral("QT_SHARED_VARS SHARED");
+            }
         }
+        snippet = snippet.left(argKeyPos) + argListFunc() + flexArgs + snippet.mid(argKeyPos + argKeyLen);
     }
 }
 
-static inline void insertDirectionalLightProcessorArgs(QByteArray &snippet, bool usesShared)
+static inline void insertProcessorArgs(QByteArray &snippet, const char *argKey, const char* (*argListFunc)(),
+                                    QSSGShaderMaterialAdapter *materialAdapter = nullptr, bool isSharedInout = false)
 {
-    insertProcessorArgs(snippet, "/*%QT_ARGS_DIRECTIONAL_LIGHT%*/", QSSGMaterialShaderGenerator::directionalLightProcessorArgumentList, usesShared, true);
+    const int argKeyLen = int(strlen(argKey));
+    const int argKeyPos = snippet.indexOf(argKey);
+    if (argKeyPos >= 0) {
+        QByteArray flexArgs;
+        if (materialAdapter && materialAdapter->usesSharedVariables()) {
+            const char *inoutString = isSharedInout ? ", inout " : ", in ";
+            flexArgs += inoutString + QByteArrayLiteral("QT_SHARED_VARS SHARED");
+        }
+        snippet = snippet.left(argKeyPos) + argListFunc() + flexArgs + snippet.mid(argKeyPos + argKeyLen);
+    }
 }
 
-static inline void insertPointLightProcessorArgs(QByteArray &snippet, bool usesShared)
+static inline void insertDirectionalLightProcessorArgs(QByteArray &snippet, QSSGShaderMaterialAdapter *materialAdapter)
 {
-    insertProcessorArgs(snippet, "/*%QT_ARGS_POINT_LIGHT%*/", QSSGMaterialShaderGenerator::pointLightProcessorArgumentList, usesShared, true);
+    insertProcessorArgs(snippet, "/*%QT_ARGS_DIRECTIONAL_LIGHT%*/", QSSGMaterialShaderGenerator::directionalLightProcessorArgumentList, materialAdapter, true);
 }
 
-static inline void insertSpotLightProcessorArgs(QByteArray &snippet, bool usesShared)
+static inline void insertPointLightProcessorArgs(QByteArray &snippet, QSSGShaderMaterialAdapter *materialAdapter)
 {
-    insertProcessorArgs(snippet, "/*%QT_ARGS_SPOT_LIGHT%*/", QSSGMaterialShaderGenerator::spotLightProcessorArgumentList, usesShared, true);
+    insertProcessorArgs(snippet, "/*%QT_ARGS_POINT_LIGHT%*/", QSSGMaterialShaderGenerator::pointLightProcessorArgumentList, materialAdapter, true);
 }
 
-static inline void insertAmbientLightProcessorArgs(QByteArray &snippet, bool usesShared)
+static inline void insertSpotLightProcessorArgs(QByteArray &snippet, QSSGShaderMaterialAdapter *materialAdapter)
 {
-    insertProcessorArgs(snippet, "/*%QT_ARGS_AMBIENT_LIGHT%*/", QSSGMaterialShaderGenerator::ambientLightProcessorArgumentList, usesShared, true);
+    insertProcessorArgs(snippet, "/*%QT_ARGS_SPOT_LIGHT%*/", QSSGMaterialShaderGenerator::spotLightProcessorArgumentList, materialAdapter, true);
 }
 
-static inline void insertIblProbeProcessorArgs(QByteArray &snippet, bool usesShared)
+static inline void insertAmbientLightProcessorArgs(QByteArray &snippet, QSSGShaderMaterialAdapter *materialAdapter)
 {
-    insertProcessorArgs(snippet, "/*%QT_ARGS_IBL_PROBE%*/", QSSGMaterialShaderGenerator::iblProbeProcessorArgumentList, usesShared, true);
+    insertProcessorArgs(snippet, "/*%QT_ARGS_AMBIENT_LIGHT%*/", QSSGMaterialShaderGenerator::ambientLightProcessorArgumentList, materialAdapter, true);
 }
 
-static inline void insertSpecularLightProcessorArgs(QByteArray &snippet, bool usesShared)
+static inline void insertIblProbeProcessorArgs(QByteArray &snippet, QSSGShaderMaterialAdapter *materialAdapter)
 {
-    insertProcessorArgs(snippet, "/*%QT_ARGS_SPECULAR_LIGHT%*/", QSSGMaterialShaderGenerator::specularLightProcessorArgumentList, usesShared, true);
+    insertProcessorArgs(snippet, "/*%QT_ARGS_IBL_PROBE%*/", QSSGMaterialShaderGenerator::iblProbeProcessorArgumentList, materialAdapter, true);
 }
 
-static inline void insertFragmentMainArgs(QByteArray &snippet, bool usesShared = false)
+static inline void insertSpecularLightProcessorArgs(QByteArray &snippet, QSSGShaderMaterialAdapter *materialAdapter)
 {
-    insertProcessorArgs(snippet, "/*%QT_ARGS_MAIN%*/", QSSGMaterialShaderGenerator::shadedFragmentMainArgumentList, usesShared, true);
+    insertProcessorArgs(snippet, "/*%QT_ARGS_SPECULAR_LIGHT%*/", QSSGMaterialShaderGenerator::specularLightProcessorArgumentList, materialAdapter, true);
 }
 
-static inline void insertPostProcessorArgs(QByteArray &snippet, bool usesShared)
+static inline void insertFragmentMainArgs(QByteArray &snippet, QSSGShaderMaterialAdapter *materialAdapter)
 {
-    insertProcessorArgs(snippet, "/*%QT_ARGS_POST_PROCESS%*/", QSSGMaterialShaderGenerator::postProcessorArgumentList, usesShared, false);
+    insertProcessorArgsFragmentMain(snippet, "/*%QT_ARGS_MAIN%*/", QSSGMaterialShaderGenerator::shadedFragmentMainArgumentList, materialAdapter, true);
+}
+
+static inline void insertPostProcessorArgs(QByteArray &snippet, QSSGShaderMaterialAdapter *materialAdapter)
+{
+    insertProcessorArgs(snippet, "/*%QT_ARGS_POST_PROCESS%*/", QSSGMaterialShaderGenerator::postProcessorArgumentList, materialAdapter, false);
 }
 
 static inline void insertVertexMainArgs(QByteArray &snippet)
@@ -133,6 +160,9 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
     m_hasSkinning = defaultMaterialShaderKeyProperties.m_boneCount.getValue(inKey) > 0;
     const auto morphSize = defaultMaterialShaderKeyProperties.m_targetCount.getValue(inKey);
     m_hasMorphing = morphSize > 0;
+    m_viewCount = inFeatureSet.isSet(QSSGShaderFeatures::Feature::DisableMultiView)
+        ? 1 : defaultMaterialShaderKeyProperties.m_viewCount.getValue(inKey);
+    const bool usesViewIndex = defaultMaterialShaderKeyProperties.m_usesViewIndex.getValue(inKey);
 
     vertexShader.addIncoming("attr_pos", "vec3");
     if (usesInstancing) {
@@ -171,7 +201,8 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
     const bool hasCustomFragmentShader = materialAdapter->hasCustomShaderSnippet(QSSGShaderCache::ShaderType::Fragment);
     if (hasCustomVertexShader) {
         QByteArray snippet = materialAdapter->customShaderSnippet(QSSGShaderCache::ShaderType::Vertex,
-                                                                  shaderLibraryManager);
+                                                                  shaderLibraryManager,
+                                                                  m_viewCount >= 2);
         if (materialAdapter->hasCustomShaderFunction(QSSGShaderCache::ShaderType::Vertex,
                                                      QByteArrayLiteral("qt_customMain"),
                                                      shaderLibraryManager))
@@ -224,12 +255,18 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
         vertexShader.append("    vec4 qt_vertColor = vec4(1.0);"); // must be 1,1,1,1 to not alter when multiplying with it
 
     if (!usesInstancing) {
-        vertexShader.addUniform("qt_modelViewProjection", "mat4");
+        if (m_viewCount < 2)
+            vertexShader.addUniform("qt_modelViewProjection", "mat4");
+        else
+            vertexShader.addUniformArray("qt_modelViewProjection", "mat4", m_viewCount);
     } else {
         // Must manualy calculate a MVP
         vertexShader.addUniform("qt_modelMatrix", "mat4");
         vertexShader.addUniform("qt_parentMatrix", "mat4");
-        vertexShader.addUniform("qt_viewProjectionMatrix", "mat4");
+        if (m_viewCount < 2)
+            vertexShader.addUniform("qt_viewProjectionMatrix", "mat4");
+        else
+            vertexShader.addUniformArray("qt_viewProjectionMatrix", "mat4", m_viewCount);
     }
 
     // The custom fragment main should be skipped if this is a
@@ -245,17 +282,39 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
         // condition we have to ensure the keywords (VIEW_MATRIX etc.) promised
         // by the documentation are available in *both* the custom vertex and
         // fragment shader snippets, even if only one of them is present.
-        vertexShader.addUniform("qt_viewProjectionMatrix", "mat4");
+        if (m_viewCount < 2) {
+            vertexShader.addUniform("qt_viewProjectionMatrix", "mat4");
+            vertexShader.addUniform("qt_viewMatrix", "mat4");
+            vertexShader.addUniform("qt_cameraPosition", "vec3");
+            vertexShader.addUniform("qt_cameraDirection", "vec3");
+            if (usesProjectionMatrix)
+                vertexShader.addUniform("qt_projectionMatrix", "mat4");
+            if (usesInvProjectionMatrix)
+                vertexShader.addUniform("qt_inverseProjectionMatrix", "mat4");
+        } else {
+            vertexShader.addUniformArray("qt_viewProjectionMatrix", "mat4", m_viewCount);
+            vertexShader.addUniformArray("qt_viewMatrix", "mat4", m_viewCount);
+            vertexShader.addUniformArray("qt_cameraPosition", "vec3", m_viewCount);
+            vertexShader.addUniformArray("qt_cameraDirection", "vec3", m_viewCount);
+            if (usesProjectionMatrix)
+                vertexShader.addUniformArray("qt_projectionMatrix", "mat4", m_viewCount);
+            if (usesInvProjectionMatrix)
+                vertexShader.addUniformArray("qt_inverseProjectionMatrix", "mat4", m_viewCount);
+        }
         vertexShader.addUniform("qt_modelMatrix", "mat4");
-        vertexShader.addUniform("qt_viewMatrix", "mat4");
         vertexShader.addUniform("qt_normalMatrix", "mat3");
-        vertexShader.addUniform("qt_cameraPosition", "vec3");
-        vertexShader.addUniform("qt_cameraDirection", "vec3");
         vertexShader.addUniform("qt_cameraProperties", "vec2");
-        if (usesProjectionMatrix)
-            vertexShader.addUniform("qt_projectionMatrix", "mat4");
-        if (usesInvProjectionMatrix)
-            vertexShader.addUniform("qt_inverseProjectionMatrix", "mat4");
+    }
+
+    // With multiview, qt_viewIndex (aka VIEW_INDEX) is always present.
+    // Otherwise, we still make VIEW_INDEX functional (always 0) in custom
+    // materials, if the keyword is used.
+    if (m_viewCount >= 2) {
+        addFlatParameter("qt_viewIndex", "uint");
+        vertexShader.append("    qt_viewIndex = gl_ViewIndex;");
+    } else if (usesViewIndex) {
+        addFlatParameter("qt_viewIndex", "uint");
+        vertexShader.append("    qt_viewIndex = 0;");
     }
 
     if (meshHasNormals) {
@@ -307,7 +366,10 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
         else
             vertexShader.append("    mat4 qt_instancedModelMatrix =  qt_parentMatrix * transpose(qt_instanceMatrix) * qt_modelMatrix;");
         vertexShader.append("    mat3 qt_instancedNormalMatrix = mat3(transpose(inverse(qt_instancedModelMatrix)));");
-        vertexShader.append("    mat4 qt_instancedMVPMatrix = qt_viewProjectionMatrix * qt_instancedModelMatrix;");
+        if (m_viewCount < 2)
+            vertexShader.append("    mat4 qt_instancedMVPMatrix = qt_viewProjectionMatrix * qt_instancedModelMatrix;");
+        else
+            vertexShader.append("    mat4 qt_instancedMVPMatrix = qt_viewProjectionMatrix[qt_viewIndex] * qt_instancedModelMatrix;");
     }
 
     if (!materialAdapter->isUnshaded() || !hasCustomVertexShader) {
@@ -333,10 +395,14 @@ void QSSGMaterialVertexPipeline::beginVertexGeneration(const QSSGShaderDefaultMa
         }
 
         if (!hasCustomShadedMain || !overridesPosition) {
-            if (!usesInstancing)
-                vertexShader.append("    gl_Position = qt_modelViewProjection * qt_vertPosition;");
-            else
+            if (!usesInstancing) {
+                if (m_viewCount < 2)
+                    vertexShader.append("    gl_Position = qt_modelViewProjection * qt_vertPosition;");
+                else
+                    vertexShader.append("    gl_Position = qt_modelViewProjection[qt_viewIndex] * qt_vertPosition;");
+            } else {
                 vertexShader.append("    gl_Position = qt_instancedMVPMatrix * qt_vertPosition;");
+            }
         }
     }
 
@@ -351,19 +417,25 @@ void QSSGMaterialVertexPipeline::beginFragmentGeneration(QSSGShaderLibraryManage
     fragment().addUniform("qt_material_properties", "vec4");
     fragment().addUniform("qt_rhi_properties", "vec4");
 
+    if (m_viewCount < 2) {
+        fragment().addUniform("qt_viewMatrix", "mat4");
+    } else {
+        fragment().addUniformArray("qt_viewMatrix", "mat4", m_viewCount);
+    }
+
     if (!skipCustomFragmentSnippet && materialAdapter->hasCustomShaderSnippet(QSSGShaderCache::ShaderType::Fragment)) {
         QByteArray snippet = materialAdapter->customShaderSnippet(QSSGShaderCache::ShaderType::Fragment,
-                                                                  shaderLibraryManager);
+                                                                  shaderLibraryManager,
+                                                                  m_viewCount >= 2);
         if (!materialAdapter->isUnshaded()) {
-            const bool usesShared = materialAdapter->usesSharedVariables();
-            insertAmbientLightProcessorArgs(snippet, usesShared);
-            insertIblProbeProcessorArgs(snippet, usesShared);
-            insertSpecularLightProcessorArgs(snippet, usesShared);
-            insertSpotLightProcessorArgs(snippet, usesShared);
-            insertPointLightProcessorArgs(snippet, usesShared);
-            insertDirectionalLightProcessorArgs(snippet, usesShared);
-            insertFragmentMainArgs(snippet, usesShared);
-            insertPostProcessorArgs(snippet, usesShared);
+            insertAmbientLightProcessorArgs(snippet, materialAdapter);
+            insertIblProbeProcessorArgs(snippet, materialAdapter);
+            insertSpecularLightProcessorArgs(snippet, materialAdapter);
+            insertSpotLightProcessorArgs(snippet, materialAdapter);
+            insertPointLightProcessorArgs(snippet, materialAdapter);
+            insertDirectionalLightProcessorArgs(snippet, materialAdapter);
+            insertFragmentMainArgs(snippet, materialAdapter);
+            insertPostProcessorArgs(snippet, materialAdapter);
         }
         fragment() << snippet;
     }
@@ -469,9 +541,14 @@ void QSSGMaterialVertexPipeline::endFragmentGeneration()
 
 void QSSGMaterialVertexPipeline::addInterpolationParameter(const QByteArray &inName, const QByteArray &inType)
 {
-    m_interpolationParameters.insert(inName, inType);
     vertex().addOutgoing(inName, inType);
     fragment().addIncoming(inName, inType);
+}
+
+void QSSGMaterialVertexPipeline::addFlatParameter(const QByteArray &inName, const QByteArray &inType)
+{
+    vertex().addFlatOutgoing(inName, inType);
+    fragment().addFlatIncoming(inName, inType);
 }
 
 QSSGStageGeneratorBase &QSSGMaterialVertexPipeline::activeStage()

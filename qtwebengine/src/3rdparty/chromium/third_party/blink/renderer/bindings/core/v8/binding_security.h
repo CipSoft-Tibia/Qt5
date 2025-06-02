@@ -39,6 +39,7 @@
 namespace blink {
 
 class DOMWindow;
+class ExceptionState;
 class LocalDOMWindow;
 class Location;
 class Node;
@@ -91,23 +92,8 @@ class CORE_EXPORT BindingSecurity {
 
   static void FailedAccessCheckFor(v8::Isolate*,
                                    const WrapperTypeInfo*,
-                                   v8::Local<v8::Object> holder);
-
- private:
-  // Checks if a wrapper creation of the given wrapper type associated with
-  // |creation_context| is allowed in |accessing_context|.
-  static bool ShouldAllowWrapperCreationOrThrowException(
-      v8::Local<v8::Context> accessing_context,
-      v8::MaybeLocal<v8::Context> creation_context,
-      const WrapperTypeInfo* wrapper_type_info);
-
-  // Rethrows a cross context exception, that is possibly cross origin.
-  // A SecurityError may be rethrown instead of the exception if necessary.
-  static void RethrowWrapperCreationException(
-      v8::Local<v8::Context> accessing_context,
-      v8::MaybeLocal<v8::Context> creation_context,
-      const WrapperTypeInfo* wrapper_type_info,
-      v8::Local<v8::Value> cross_context_exception);
+                                   v8::Local<v8::Object> holder,
+                                   ExceptionState&);
 };
 
 }  // namespace blink

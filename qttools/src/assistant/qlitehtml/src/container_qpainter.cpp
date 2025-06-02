@@ -29,9 +29,11 @@ const int kDragDistance = 5;
 using Font = QFont;
 using Context = QPainter;
 
-namespace {
+#ifdef Q_STATIC_LOGGING_CATEGORY
+Q_STATIC_LOGGING_CATEGORY(log, "qlitehtml", QtCriticalMsg)
+#else
 static Q_LOGGING_CATEGORY(log, "qlitehtml", QtCriticalMsg)
-}
+#endif
 
 static QFont toQFont(litehtml::uint_ptr hFont)
 {
@@ -619,12 +621,12 @@ void DocumentContainerPrivate::drawSelection(QPainter *painter, const QRect &cli
     painter->restore();
 }
 
-static QString tagName(const litehtml::element::ptr &e)
+static bool isInBody(const litehtml::element::ptr &e)
 {
     litehtml::element::ptr current = e;
-    while (current && std::strlen(current->get_tagName()) == 0)
+    while (current && QString::fromUtf8(current->get_tagName()).toLower() != "body")
         current = current->parent();
-    return current ? QString::fromUtf8(current->get_tagName()) : QString();
+    return (bool)current;
 }
 
 void DocumentContainerPrivate::buildIndex()
@@ -639,7 +641,7 @@ void DocumentContainerPrivate::buildIndex()
     while (current != m_document->root()) {
         m_index.elementToIndex.insert({current, index});
         if (!inBody)
-            inBody = tagName(current).toLower() == "body";
+            inBody = isInBody(current);
         if (inBody && isVisible(current)) {
             std::string text;
             current->get_text(text);
@@ -683,13 +685,18 @@ void DocumentContainerPrivate::draw_background(litehtml::uint_ptr hdc,
                                                const std::vector<litehtml::background_paint> &bgs)
 {
     auto painter = toQPainter(hdc);
+    const QRegion initialClipRegion = painter->clipRegion();
+    const Qt::ClipOperation initialClipOperation
+        = initialClipRegion.isEmpty() ? Qt::ReplaceClip : Qt::IntersectClip;
     painter->save();
     for (const litehtml::background_paint &bg : bgs) {
         if (bg.is_root) {
             // TODO ?
             break;
         }
-        painter->setClipRect(toQRect(bg.clip_box));
+        if (!initialClipRegion.isEmpty())
+            painter->setClipRegion(initialClipRegion);
+        painter->setClipRect(toQRect(bg.clip_box), initialClipOperation);
         const QRegion horizontalMiddle(QRect(bg.border_box.x,
                                              bg.border_box.y + bg.border_radius.top_left_y,
                                              bg.border_box.width,
@@ -918,8 +925,7 @@ std::shared_ptr<litehtml::element> DocumentContainerPrivate::create_element(
 
 void DocumentContainerPrivate::get_media_features(litehtml::media_features &media) const
 {
-    media.type = litehtml::media_type_screen;
-    // TODO
+    media.type = mediaType;
     qDebug(log) << "get_media_features";
 }
 
@@ -959,6 +965,11 @@ bool DocumentContainer::hasDocument() const
 void DocumentContainer::setBaseUrl(const QString &url)
 {
     d->set_base_url(url.toUtf8().constData());
+}
+
+QString DocumentContainer::baseUrl() const
+{
+    return d->m_baseUrl;
 }
 
 void DocumentContainer::render(int width, int height)
@@ -1003,6 +1014,42 @@ int DocumentContainer::anchorY(const QString &anchorName) const
         element = element->parent();
     }
     return 0;
+}
+
+static litehtml::media_type fromQt(const DocumentContainer::MediaType mt)
+{
+    using MT = DocumentContainer::MediaType;
+    switch (mt)
+    {
+    case MT::None:
+        return litehtml::media_type_none;
+    case MT::All:
+        return litehtml::media_type_all;
+    case MT::Screen:
+        return litehtml::media_type_screen;
+    case MT::Print:
+        return litehtml::media_type_print;
+    case MT::Braille:
+        return litehtml::media_type_braille;
+    case MT::Embossed:
+        return litehtml::media_type_embossed;
+    case MT::Handheld:
+        return litehtml::media_type_handheld;
+    case MT::Projection:
+        return litehtml::media_type_projection;
+    case MT::Speech:
+        return litehtml::media_type_speech;
+    case MT::TTY:
+        return litehtml::media_type_tty;
+    case MT::TV:
+        return litehtml::media_type_tv;
+    }
+    Q_UNREACHABLE();
+}
+
+void DocumentContainer::setMediaType(MediaType mt)
+{
+    d->mediaType = fromQt(mt);
 }
 
 QVector<QRect> DocumentContainer::mousePressEvent(const QPoint &documentPos,
@@ -1291,6 +1338,11 @@ void DocumentContainer::setDataCallback(const DocumentContainer::DataCallback &c
     d->m_dataCallback = callback;
 }
 
+DocumentContainer::DataCallback DocumentContainer::dataCallback() const
+{
+    return d->m_dataCallback;
+}
+
 void DocumentContainer::setCursorCallback(const DocumentContainer::CursorCallback &callback)
 {
     d->m_cursorCallback = callback;
@@ -1304,6 +1356,11 @@ void DocumentContainer::setLinkCallback(const DocumentContainer::LinkCallback &c
 void DocumentContainer::setPaletteCallback(const DocumentContainer::PaletteCallback &callback)
 {
     d->m_paletteCallback = callback;
+}
+
+DocumentContainer::PaletteCallback DocumentContainer::paletteCallback() const
+{
+    return d->m_paletteCallback;
 }
 
 void DocumentContainer::setClipboardCallback(const DocumentContainer::ClipboardCallback &callback)

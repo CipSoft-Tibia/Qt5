@@ -56,6 +56,9 @@ class VIZ_SERVICE_EXPORT OutputSurfaceProviderImpl
       const RendererSettings& renderer_settings,
       const DebugRendererSettings* debug_settings) override;
 
+  gpu::SharedImageManager* GetSharedImageManager() override;
+  gpu::SyncPointManager* GetSyncPointManager() override;
+
  private:
 #if defined(TOOLKIT_QT)
   std::unique_ptr<OutputSurface> CreateSoftwareOutputSurface(const RendererSettings& renderer_settings);

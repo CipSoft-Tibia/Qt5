@@ -29,7 +29,7 @@ class QGstreamerVideoSink : public QPlatformVideoSink
 
 public:
     explicit QGstreamerVideoSink(QVideoSink *parent = nullptr);
-    ~QGstreamerVideoSink();
+    ~QGstreamerVideoSink() override;
 
     void setRhi(QRhi *rhi) override;
     QRhi *rhi() const { return m_rhi; }
@@ -42,6 +42,7 @@ public:
     QFunctionPointer eglImageTargetTexture2D() const { return m_eglImageTargetTexture2D; }
 
     void setActive(bool);
+    void setAsync(bool);
 
 Q_SIGNALS:
     void aboutToBeDestroyed();
@@ -61,6 +62,7 @@ private:
 
     QRhi *m_rhi = nullptr;
     bool m_isActive = true;
+    bool m_sinkIsAsync = true;
 
     Qt::HANDLE m_eglDisplay = nullptr;
     QFunctionPointer m_eglImageTargetTexture2D = nullptr;

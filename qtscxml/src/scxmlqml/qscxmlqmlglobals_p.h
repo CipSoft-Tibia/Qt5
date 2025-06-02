@@ -16,11 +16,11 @@
 //
 
 #include <QtCore/qglobal.h>
-#include <QtScxmlQml/private/qtscxmlqmlexports_p.h>
+#include <QtScxmlQml/qtscxmlqmlexports.h>
 
 QT_BEGIN_NAMESPACE
 
-void Q_SCXMLQML_PRIVATE_EXPORT qml_register_types_QtScxml();
+void Q_SCXMLQML_EXPORT qml_register_types_QtScxml();
 
 QT_END_NAMESPACE
 

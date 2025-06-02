@@ -6,7 +6,7 @@
 
 #include "qstorageinfo_linux_p.h"
 
-#include "qdiriterator.h"
+#include "qdirlisting.h"
 #include <private/qcore_unix_p.h>
 #include <private/qtools_p.h>
 
@@ -137,13 +137,11 @@ static inline quint64 retrieveDeviceId(const QByteArray &device, quint64 deviceI
     return st.st_rdev;
 }
 
-static QDirIterator devicesByLabel()
+static QDirListing devicesByLabel()
 {
     static const char pathDiskByLabel[] = "/dev/disk/by-label";
-    static constexpr auto LabelFileFilter =
-            QDir::AllEntries | QDir::System | QDir::Hidden | QDir::NoDotAndDotDot;
-
-    return QDirIterator(QLatin1StringView(pathDiskByLabel), LabelFileFilter);
+    static constexpr auto LabelFileFilter = QDirListing::IteratorFlag::IncludeHidden;
+    return QDirListing(QLatin1StringView(pathDiskByLabel), LabelFileFilter);
 }
 
 static inline auto retrieveLabels()
@@ -154,13 +152,11 @@ static inline auto retrieveLabels()
     };
     QList<Entry> result;
 
-    QDirIterator it = devicesByLabel();
-    while (it.hasNext()) {
-        QFileInfo fileInfo = it.nextFileInfo();
-        quint64 deviceId = retrieveDeviceId(QFile::encodeName(fileInfo.filePath()));
+    for (const auto &dirEntry : devicesByLabel()) {
+        quint64 deviceId = retrieveDeviceId(QFile::encodeName(dirEntry.filePath()));
         if (!deviceId)
             continue;
-        result.emplaceBack(Entry{ decodeFsEncString(fileInfo.fileName()), deviceId });
+        result.emplaceBack(Entry{ decodeFsEncString(dirEntry.fileName()), deviceId });
     }
     return result;
 }
@@ -189,12 +185,9 @@ static inline QString retrieveLabel(const QStorageInfoPrivate &d, int fd, quint6
     if (!deviceId)
         return QString();
 
-    QDirIterator it = devicesByLabel();
-    while (it.hasNext()) {
-        QFileInfo fileInfo = it.nextFileInfo();
-        QString name = fileInfo.fileName();
-        if (retrieveDeviceId(QFile::encodeName(fileInfo.filePath())) == deviceId)
-            return decodeFsEncString(std::move(name));
+    for (const auto &dirEntry : devicesByLabel()) {
+        if (retrieveDeviceId(QFile::encodeName(dirEntry.filePath())) == deviceId)
+            return decodeFsEncString(dirEntry.fileName());
     }
     return QString();
 }
@@ -204,10 +197,8 @@ void QStorageInfoPrivate::retrieveVolumeInfo()
     struct statfs64 statfs_buf;
     int result;
     QT_EINTR_LOOP(result, statfs64(QFile::encodeName(rootPath).constData(), &statfs_buf));
-    if (result == 0) {
-        valid = true;
-        ready = true;
-
+    valid = ready = (result == 0);
+    if (valid) {
         bytesTotal = statfs_buf.f_blocks * statfs_buf.f_frsize;
         bytesFree = statfs_buf.f_bfree * statfs_buf.f_frsize;
         bytesAvailable = statfs_buf.f_bavail * statfs_buf.f_frsize;

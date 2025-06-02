@@ -31,7 +31,9 @@
 #include "vk_snippets.h"
 #endif
 
-class IMAGE_STATE;
+namespace vvl {
+class Image;
+}  // namespace vvl
 
 namespace subresource_adapter {
 
@@ -356,7 +358,7 @@ class ImageRangeEncoder : public RangeEncoder {
         VkExtent3D extent;
         SubresInfo(const VkSubresourceLayout& layout_, const VkExtent3D& extent_, const VkExtent3D& texel_extent,
                    double texel_size);
-        SubresInfo(const SubresInfo&) = default;
+        SubresInfo(const SubresInfo&);
         SubresInfo() = default;
         VkDeviceSize y_step_pitch;
         VkDeviceSize z_step_pitch;
@@ -366,8 +368,8 @@ class ImageRangeEncoder : public RangeEncoder {
     // The default constructor for default iterators
     ImageRangeEncoder() {}
 
-    ImageRangeEncoder(const IMAGE_STATE& image, const AspectParameters* param);
-    explicit ImageRangeEncoder(const IMAGE_STATE& image);
+    ImageRangeEncoder(const vvl::Image& image, const AspectParameters* param);
+    explicit ImageRangeEncoder(const vvl::Image& image);
     ImageRangeEncoder(const ImageRangeEncoder& from) = default;
 
     inline IndexType Encode2D(const VkSubresourceLayout& layout, uint32_t layer, uint32_t aspect_index,
@@ -381,6 +383,7 @@ class ImageRangeEncoder : public RangeEncoder {
     inline const SubresInfo& GetSubresourceInfo(uint32_t index) const { return subres_info_[index]; }
 
     inline IndexType GetAspectSize(uint32_t aspect_index) const { return aspect_sizes_[aspect_index]; }
+    inline VkExtent2D GetAspectExtentDivisors(uint32_t aspect_index) const { return aspect_extent_divisors_[aspect_index]; }
     inline const double& TexelSize(int aspect_index) const { return texel_sizes_[aspect_index]; }
     inline bool IsLinearImage() const { return linear_image_; }
     inline IndexType TotalSize() const { return total_size_; }
@@ -395,6 +398,7 @@ class ImageRangeEncoder : public RangeEncoder {
     std::vector<double> texel_sizes_;
     SubresInfoVector subres_info_;
     small_vector<IndexType, 4, uint32_t> aspect_sizes_;
+    small_vector<VkExtent2D, 4, uint32_t> aspect_extent_divisors_;
     IndexType total_size_;
     VkExtent3D texel_extent_;
     bool is_3_d_;
@@ -405,9 +409,9 @@ class ImageRangeEncoder : public RangeEncoder {
 
 class ImageRangeGenerator {
   public:
+    using RangeType = IndexRange;
     ImageRangeGenerator(const ImageRangeGenerator&) = default;
     ImageRangeGenerator() : encoder_(nullptr), subres_range_(), offset_(), extent_(), base_address_(), pos_() {}
-    bool operator!=(const ImageRangeGenerator& rhs) { return (pos_ != rhs.pos_) || (&encoder_ != &rhs.encoder_); }
     ImageRangeGenerator(const ImageRangeEncoder& encoder, const VkImageSubresourceRange& subres_range, const VkOffset3D& offset,
                         const VkExtent3D& extent, VkDeviceSize base_address, bool is_depth_sliced);
     void SetInitialPosFullOffset(uint32_t layer, uint32_t aspect_index);
@@ -415,7 +419,6 @@ class ImageRangeGenerator {
     void SetInitialPosFullHeight(uint32_t layer, uint32_t aspect_index);
     void SetInitialPosSomeDepth(uint32_t layer, uint32_t aspect_index);
     void SetInitialPosFullDepth(uint32_t layer, uint32_t aspect_index);
-    void SetInitialPosOneLayer(uint32_t layer, uint32_t aspect_index);
     void SetInitialPosAllLayers(uint32_t layer, uint32_t aspect_index);
     void SetInitialPosOneAspect(uint32_t layer, uint32_t aspect_index);
     void SetInitialPosAllSubres(uint32_t layer, uint32_t aspect_index);
@@ -435,39 +438,43 @@ class ImageRangeGenerator {
     void SetUpIncrementer(bool all_width, bool all_height, bool all_depth);
     typedef void (ImageRangeGenerator::*SetInitialPosFn)(uint32_t, uint32_t);
     inline void SetInitialPos(uint32_t layer, uint32_t aspect_index) { (this->*(set_initial_pos_fn_))(layer, aspect_index); }
+
+    VkOffset3D GetOffset(uint32_t aspect_index) const;
+    VkExtent3D GetExtent(uint32_t aspect_index) const;
+
     const ImageRangeEncoder* encoder_;
     VkImageSubresourceRange subres_range_;
     VkOffset3D offset_;
     VkExtent3D extent_;
     VkDeviceSize base_address_;
 
-    uint32_t mip_index_;
-    uint32_t incr_mip_;
-    uint32_t aspect_index_;
-    uint32_t subres_index_;
-    const ImageRangeEncoder::SubresInfo* subres_info_;
+    uint32_t mip_index_ = 0U;
+    uint32_t incr_mip_ = 0U;
+    uint32_t aspect_index_ = 0U;
+    uint32_t subres_index_ = 0U;
+    const ImageRangeEncoder::SubresInfo* subres_info_ = nullptr;
 
-    SetInitialPosFn set_initial_pos_fn_;
+    SetInitialPosFn set_initial_pos_fn_ = nullptr;
     IndexRange pos_;
 
     struct IncrementerState {
         // These should be invariant across subresources (mip/aspect)
-        uint32_t y_step;
-        uint32_t layer_z_step;
+        uint32_t y_step = 0U;
+        uint32_t layer_z_step = 0U;
 
         // These vary per mip at least...
-        uint32_t y_count;
-        uint32_t layer_z_count;
-        uint32_t y_index;
-        uint32_t layer_z_index;
-        IndexRange y_base;
-        IndexRange layer_z_base;
-        IndexType incr_y;
-        IndexType incr_layer_z;
+        uint32_t y_count = 0U;
+        uint32_t layer_z_count = 0U;
+        uint32_t y_index = 0U;
+        uint32_t layer_z_index = 0U;
+        IndexRange y_base = {0U, 0U};
+        IndexRange layer_z_base = {0U, 0U};
+        IndexType incr_y = 0U;
+        IndexType incr_layer_z = 0U;
         void Set(uint32_t y_count_, uint32_t layer_z_count_, IndexType base, IndexType span, IndexType y_step, IndexType z_step);
     };
     IncrementerState incr_state_;
-    bool single_full_size_range_;
+    bool single_full_size_range_ = true;
     bool is_depth_sliced_ = false;
 };
 

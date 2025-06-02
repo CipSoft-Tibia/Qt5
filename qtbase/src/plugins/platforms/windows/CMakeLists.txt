@@ -8,14 +8,13 @@
 qt_internal_add_plugin(QWindowsIntegrationPlugin
     OUTPUT_NAME qwindows
     PLUGIN_TYPE platforms
-    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES windows
+    DEFAULT_IF "windows" IN_LIST QT_QPA_PLATFORMS
     SOURCES
         main.cpp
         qtwindowsglobal.h
         qwin10helpers.cpp qwin10helpers.h
         qwindowsapplication.cpp qwindowsapplication.h
         qwindowsbackingstore.cpp qwindowsbackingstore.h
-        qwindowscombase.h
         qwindowscontext.cpp qwindowscontext.h
         qwindowscursor.cpp qwindowscursor.h
         qwindowsdialoghelpers.cpp qwindowsdialoghelpers.h
@@ -29,7 +28,6 @@ qt_internal_add_plugin(QWindowsIntegrationPlugin
         qwindowskeymapper.cpp qwindowskeymapper.h
         qwindowsmenu.cpp qwindowsmenu.h
         qwindowsmimeregistry.cpp qwindowsmimeregistry.h
-        qwindowsmousehandler.cpp qwindowsmousehandler.h
         qwindowsnativeinterface.cpp qwindowsnativeinterface.h
         qwindowsole.cpp qwindowsole.h
         qwindowsopengltester.cpp qwindowsopengltester.h
@@ -133,6 +131,8 @@ qt_internal_extend_target(QWindowsIntegrationPlugin CONDITION QT_FEATURE_tablete
         qwindowstabletsupport.cpp qwindowstabletsupport.h
     INCLUDE_DIRECTORIES
         ${QtBase_SOURCE_DIR}/src/3rdparty/wintab
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../3rdparty/wintab
 )
 
 qt_internal_extend_target(QWindowsIntegrationPlugin CONDITION QT_FEATURE_sessionmanager
@@ -176,6 +176,7 @@ endif()
 
 qt_internal_extend_target(QWindowsIntegrationPlugin CONDITION QT_FEATURE_accessibility
     SOURCES
+        uiautomation/qwindowsuiautomation.cpp uiautomation/qwindowsuiautomation.h
         uiautomation/qwindowsuiaaccessibility.cpp uiautomation/qwindowsuiaaccessibility.h
         uiautomation/qwindowsuiabaseprovider.cpp uiautomation/qwindowsuiabaseprovider.h
         uiautomation/qwindowsuiaexpandcollapseprovider.cpp uiautomation/qwindowsuiaexpandcollapseprovider.h
@@ -195,6 +196,12 @@ qt_internal_extend_target(QWindowsIntegrationPlugin CONDITION QT_FEATURE_accessi
         uiautomation/qwindowsuiautils.cpp uiautomation/qwindowsuiautils.h
         uiautomation/qwindowsuiavalueprovider.cpp uiautomation/qwindowsuiavalueprovider.h
         uiautomation/qwindowsuiawindowprovider.cpp uiautomation/qwindowsuiawindowprovider.h
+)
+
+# This is loaded dynamically when using MINGW as its import library is incomplete
+qt_internal_extend_target(QWindowsIntegrationPlugin CONDITION MSVC AND QT_FEATURE_accessibility
+    LIBRARIES
+        uiautomationcore
 )
 
 qt_internal_extend_target(QWindowsIntegrationPlugin CONDITION MINGW AND QT_FEATURE_accessibility

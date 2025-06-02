@@ -641,8 +641,8 @@
         <translation>승격된 위젯</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file cannot be read because the extra info extension failed to load.</source>
@@ -1086,8 +1086,8 @@
         <translation>폼</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1432,8 +1432,8 @@ UI 파일의 일관성이 깨졌을 수도 있습니다.</translation>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>Qt Designer 도움말(&amp;H)</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>Qt Widgets Designer 도움말(&amp;H)</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1444,8 +1444,8 @@ UI 파일의 일관성이 깨졌을 수도 있습니다.</translation>
         <translation>플러그인 정보</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>Qt Designer 정보</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer 정보</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1510,8 +1510,8 @@ Do you want to update the file location or generate a new form?</source>
         <translation>새 폼 만들기(&amp;N)</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -3244,12 +3244,12 @@ Do you want overwrite the template?</source>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;버전 %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer는 Qt 프로그램의 그래픽 사용자 인터페이스 디자이너입니다.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer는 Qt 프로그램의 그래픽 사용자 인터페이스 디자이너입니다.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
@@ -4738,12 +4738,12 @@ Please select another name.</source>
         <translation>실패한 플러그인</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer에서 플러그인을 찾을 수 없습니다</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer에서 플러그인을 찾을 수 없습니다</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer에서 다음 플러그인을 찾았습니다</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer에서 다음 플러그인을 찾았습니다</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

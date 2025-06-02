@@ -10,6 +10,7 @@
 #ifndef EIGEN_SPARSEINVERSE_H
 #define EIGEN_SPARSEINVERSE_H
 
+// IWYU pragma: private
 #include "./InternalHeaderCheck.h"
 
 #include "../../../../Eigen/Sparse"

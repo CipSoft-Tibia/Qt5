@@ -9,8 +9,8 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype CalendarModel
-    \inherits QAbstractListModel
-//! \instantiates QQuickCalendarModel
+//! \inherits AbstractListModel
+//! \nativetype QQuickCalendarModel
     \inqmlmodule QtQuick.Controls
     \brief A calendar model.
 

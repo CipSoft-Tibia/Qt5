@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/promote_side_effects_to_decl.h"
 
@@ -56,20 +69,20 @@ class StateBase {
 // to else {if}s so that the next transform, DecomposeSideEffects, can insert
 // hoisted expressions above their current location.
 struct SimplifySideEffectStatements : Castable<PromoteSideEffectsToDecl, Transform> {
-    ApplyResult Apply(const Program* src, const DataMap& inputs, DataMap& outputs) const override;
+    ApplyResult Apply(const Program& src, const DataMap& inputs, DataMap& outputs) const override;
 };
 
-Transform::ApplyResult SimplifySideEffectStatements::Apply(const Program* src,
+Transform::ApplyResult SimplifySideEffectStatements::Apply(const Program& src,
                                                            const DataMap&,
                                                            DataMap&) const {
     ProgramBuilder b;
-    program::CloneContext ctx{&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx{&b, &src, /* auto_clone_symbols */ true};
 
     bool made_changes = false;
 
     HoistToDeclBefore hoist_to_decl_before(ctx);
     for (auto* node : ctx.src->ASTNodes().Objects()) {
-        if (auto* sem_expr = src->Sem().GetVal(node)) {
+        if (auto* sem_expr = src.Sem().GetVal(node)) {
             if (!sem_expr->HasSideEffects()) {
                 continue;
             }
@@ -93,7 +106,7 @@ Transform::ApplyResult SimplifySideEffectStatements::Apply(const Program* src,
 struct DecomposeSideEffects : Castable<PromoteSideEffectsToDecl, Transform> {
     class CollectHoistsState;
     class DecomposeState;
-    ApplyResult Apply(const Program* src, const DataMap& inputs, DataMap& outputs) const override;
+    ApplyResult Apply(const Program& src, const DataMap& inputs, DataMap& outputs) const override;
 };
 
 // CollectHoistsState traverses the AST top-down, identifying which expressions
@@ -167,11 +180,8 @@ class DecomposeSideEffects::CollectHoistsState : public StateBase {
             [&](const PhonyExpression* e) {
                 no_side_effects.insert(e);
                 return false;
-            },
-            [&](Default) {
-                TINT_ICE() << "Unhandled expression type";
-                return false;
-            });
+            },  //
+            TINT_ICE_ON_NO_MATCH);
     }
 
     // Adds `e` to `to_hoist` for hoisting to a let later on.
@@ -331,11 +341,8 @@ class DecomposeSideEffects::CollectHoistsState : public StateBase {
             [&](const PhonyExpression*) {
                 // Leaf
                 return false;
-            },
-            [&](Default) {
-                TINT_ICE() << "Unhandled expression type";
-                return false;
-            });
+            },  //
+            TINT_ICE_ON_NO_MATCH);
     }
 
     // Starts the recursive processing of a statement's expression(s) to hoist side-effects to lets.
@@ -514,11 +521,8 @@ class DecomposeSideEffects::DecomposeState : public StateBase {
             },
             [&](const PhonyExpression* phony) {
                 return clone_maybe_hoisted(phony);  // Leaf expression, just clone as is
-            },
-            [&](Default) {
-                TINT_ICE() << "unhandled expression type: " << expr->TypeInfo().name;
-                return nullptr;
-            });
+            },                                      //
+            TINT_ICE_ON_NO_MATCH);
     }
 
     // Inserts statements in `stmts` before `stmt`
@@ -648,11 +652,11 @@ class DecomposeSideEffects::DecomposeState : public StateBase {
     }
 };
 
-Transform::ApplyResult DecomposeSideEffects::Apply(const Program* src,
+Transform::ApplyResult DecomposeSideEffects::Apply(const Program& src,
                                                    const DataMap&,
                                                    DataMap&) const {
     ProgramBuilder b;
-    program::CloneContext ctx{&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx{&b, &src, /* auto_clone_symbols */ true};
 
     // First collect side-effecting expressions to hoist
     CollectHoistsState collect_hoists_state{ctx};
@@ -671,7 +675,7 @@ Transform::ApplyResult DecomposeSideEffects::Apply(const Program* src,
 PromoteSideEffectsToDecl::PromoteSideEffectsToDecl() = default;
 PromoteSideEffectsToDecl::~PromoteSideEffectsToDecl() = default;
 
-Transform::ApplyResult PromoteSideEffectsToDecl::Apply(const Program* src,
+Transform::ApplyResult PromoteSideEffectsToDecl::Apply(const Program& src,
                                                        const DataMap& inputs,
                                                        DataMap& outputs) const {
     Manager manager;

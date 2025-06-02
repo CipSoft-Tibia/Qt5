@@ -5,9 +5,10 @@
 #include <QtTest/QtTest>
 
 #include <qtextcodec.h>
-#include <QScopedPointer>
 
 #include "utf8data.h"
+
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 
@@ -160,7 +161,7 @@ void tst_Utf8::charByChar()
 
     {
         // from utf16 to utf8 char by char:
-        const QScopedPointer<QTextEncoder> encoder(codec->makeEncoder());
+        const std::unique_ptr<QTextEncoder> encoder(codec->makeEncoder());
         QByteArray encoded;
 
         for (int i = 0; i < utf16.size(); ++i) {
@@ -174,7 +175,7 @@ void tst_Utf8::charByChar()
     }
     {
         // from utf8 to utf16 char by char:
-        const QScopedPointer<QTextDecoder> decoder(codec->makeDecoder());
+        const std::unique_ptr<QTextDecoder> decoder(codec->makeDecoder());
         QString decoded;
 
         for (int i = 0; i < utf8.size(); ++i) {
@@ -198,7 +199,7 @@ void tst_Utf8::invalidUtf8()
     QFETCH(QByteArray, utf8);
     QFETCH_GLOBAL(bool, useLocale);
 
-    const QScopedPointer<QTextDecoder> decoder(codec->makeDecoder());
+    const std::unique_ptr<QTextDecoder> decoder(codec->makeDecoder());
     decoder->toUnicode(utf8);
 
     // Only enforce correctness on our UTF-8 decoder
@@ -234,7 +235,7 @@ void tst_Utf8::nonCharacters()
     QFETCH(QString, utf16);
     QFETCH_GLOBAL(bool, useLocale);
 
-    const QScopedPointer<QTextDecoder> decoder(codec->makeDecoder());
+    const std::unique_ptr<QTextDecoder> decoder(codec->makeDecoder());
     decoder->toUnicode(utf8);
 
     // Only enforce correctness on our UTF-8 decoder
@@ -243,7 +244,7 @@ void tst_Utf8::nonCharacters()
     else if (decoder->hasFailure())
         qWarning("System codec reports failure when it shouldn't. Should report bug upstream.");
 
-    const QScopedPointer<QTextEncoder> encoder(codec->makeEncoder());
+    const std::unique_ptr<QTextEncoder> encoder(codec->makeEncoder());
     encoder->fromUnicode(utf16);
     if (!useLocale)
         QVERIFY(!encoder->hasFailure());

@@ -12,8 +12,10 @@
 #include <common/qgstreamervideosink_p.h>
 #include <mediacapture/qgstreamercamera_p.h>
 #include <mediacapture/qgstreamerimagecapture_p.h>
-#include <mediacapture/qgstreamermediacapture_p.h>
-#include <mediacapture/qgstreamermediaencoder_p.h>
+#include <mediacapture/qgstreamermediacapturesession_p.h>
+#include <mediacapture/qgstreamermediarecorder_p.h>
+#include <uri_handler/qgstreamer_qiodevice_handler_p.h>
+#include <uri_handler/qgstreamer_qrc_handler_p.h>
 
 #include <QtCore/qloggingcategory.h>
 #include <QtMultimedia/private/qmediaplayer_p.h>
@@ -21,6 +23,8 @@
 #include <QtMultimedia/private/qcameradevice_p.h>
 
 QT_BEGIN_NAMESPACE
+
+static_assert(GST_CHECK_VERSION(1, 20, 0), "Minimum required GStreamer version is 1.20");
 
 static thread_local bool inCustomCameraConstruction = false;
 static thread_local QGstElement pendingCameraElement{};
@@ -94,8 +98,8 @@ QGStreamerPlatformSpecificInterfaceImplementation::gstPipeline(QMediaCaptureSess
     if (!priv)
         return nullptr;
 
-    QGstreamerMediaCapture *gstreamerCapture =
-            dynamic_cast<QGstreamerMediaCapture *>(priv->captureSession.get());
+    QGstreamerMediaCaptureSession *gstreamerCapture =
+            dynamic_cast<QGstreamerMediaCaptureSession *>(priv->captureSession.get());
     return gstreamerCapture ? gstreamerCapture->pipeline().pipeline() : nullptr;
 }
 
@@ -160,6 +164,18 @@ QGstreamerIntegration::QGstreamerIntegration()
         for (const char *name : nvcodecPluginNames)
             rankDownPlugin(reg, name);
     }
+
+    qGstRegisterQRCHandler(nullptr);
+    qGstRegisterQIODeviceHandler(nullptr);
+}
+
+QGstreamerIntegration::~QGstreamerIntegration()
+{
+    // by default we don't deinit, as the application may have initialized gstreamer
+    // (gst_init/deinit is not refcounted).
+    // however it's useful to force deinitialization for leak detection in qt's unit tests.
+    if (qEnvironmentVariableIsSet("QT_GSTREAMER_DEINIT"))
+        gst_deinit();
 }
 
 QPlatformMediaFormatInfo *QGstreamerIntegration::createFormatInfo()
@@ -184,7 +200,7 @@ QMaybe<QPlatformAudioDecoder *> QGstreamerIntegration::createAudioDecoder(QAudio
 
 QMaybe<QPlatformMediaCaptureSession *> QGstreamerIntegration::createCaptureSession()
 {
-    return QGstreamerMediaCapture::create();
+    return QGstreamerMediaCaptureSession::create();
 }
 
 QMaybe<QPlatformMediaPlayer *> QGstreamerIntegration::createPlayer(QMediaPlayer *player)
@@ -205,7 +221,7 @@ QMaybe<QPlatformCamera *> QGstreamerIntegration::createCamera(QCamera *camera)
 
 QMaybe<QPlatformMediaRecorder *> QGstreamerIntegration::createRecorder(QMediaRecorder *recorder)
 {
-    return new QGstreamerMediaEncoder(recorder);
+    return new QGstreamerMediaRecorder(recorder);
 }
 
 QMaybe<QPlatformImageCapture *> QGstreamerIntegration::createImageCapture(QImageCapture *imageCapture)

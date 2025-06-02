@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 
 class QAccelerometer;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlAccelerometer : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlAccelerometer : public QmlSensor
 {
     Q_OBJECT
     Q_PROPERTY(AccelerationMode accelerationMode READ accelerationMode WRITE setAccelerationMode
@@ -53,7 +53,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlAccelerometerReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlAccelerometerReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal x READ x NOTIFY xChanged BINDABLE bindableX)

@@ -30,3 +30,9 @@ message Example {
 message SimpleMessage {
     int32 i = 500000;
 }
+
+message AnyOneOf {
+    oneof data {
+        google.protobuf.Any any = 1;
+    }
+}

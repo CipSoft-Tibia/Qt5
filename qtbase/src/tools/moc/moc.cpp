@@ -78,6 +78,7 @@ bool Moc::parseClassHead(ClassDef *def)
         }
     }
     def->classname = name;
+    def->lineNumber = symbol().lineNum;
 
     if (test(IDENTIFIER)) {
         const QByteArray lex = lexem();
@@ -436,7 +437,7 @@ bool Moc::parseFunction(FunctionDef *def, bool inMacro)
     // note that testFunctionAttribute is handled further below,
     // and revisions and attributes must come first
     while (testForFunctionModifiers(def)) {}
-    Type tempType = parseType();;
+    Type tempType = parseType();
     while (!tempType.name.isEmpty() && lookup() != LPAREN) {
         if (testFunctionAttribute(def->type.firstToken, def))
             ; // fine
@@ -520,7 +521,7 @@ bool Moc::parseFunction(FunctionDef *def, bool inMacro)
 
 bool Moc::testForFunctionModifiers(FunctionDef *def)
 {
-    return test(EXPLICIT) || test(INLINE) ||
+    return test(EXPLICIT) || test(INLINE) || test(CONSTEXPR) ||
             (test(STATIC) && (def->isStatic = true)) ||
             (test(VIRTUAL) && (def->isVirtual = true));
 }
@@ -554,7 +555,7 @@ bool Moc::parseMaybeFunction(const ClassDef *cdef, FunctionDef *def)
         // but otherwise we end up with misparses
         if (def->isSlot || def->isSignal || def->isInvokable)
             while (testForFunctionModifiers(def)) {}
-        Type tempType = parseType();;
+        Type tempType = parseType();
         while (!tempType.name.isEmpty() && lookup() != LPAREN) {
             if (testFunctionAttribute(def->type.firstToken, def))
                 ; // fine
@@ -691,6 +692,7 @@ void Moc::parse()
                     } else if (!test(SEMIC)) {
                         NamespaceDef def;
                         def.classname = nsName;
+                        def.lineNumber = symbol().lineNum;
                         def.doGenerate = currentFilenames.size() <= 1;
 
                         next(LBRACE);
@@ -881,6 +883,7 @@ void Moc::parse()
                     if (test(Q_SIGNALS_TOKEN))
                         error("Signals cannot have access specifier");
                     break;
+                case STRUCT:
                 case CLASS: {
                     ClassDef nestedDef;
                     if (parseClassHead(&nestedDef)) {
@@ -2003,6 +2006,7 @@ QJsonObject ClassDef::toJson() const
     QJsonObject cls;
     cls["className"_L1] = QString::fromUtf8(classname.constData());
     cls["qualifiedClassName"_L1] = QString::fromUtf8(qualified.constData());
+    cls["lineNumber"_L1] = lineNumber;
 
     QJsonArray classInfos;
     for (const auto &info: std::as_const(classInfoList)) {
@@ -2015,20 +2019,26 @@ QJsonObject ClassDef::toJson() const
     if (classInfos.size())
         cls["classInfos"_L1] = classInfos;
 
-    const auto appendFunctions = [&cls](const QString &type, const QList<FunctionDef> &funcs) {
+    int methodIndex = 0;
+    const auto appendFunctions
+            = [&cls, &methodIndex](const QString &type, const QList<FunctionDef> &funcs) {
         QJsonArray jsonFuncs;
 
         for (const FunctionDef &fdef: funcs)
-            jsonFuncs.append(fdef.toJson());
+            jsonFuncs.append(fdef.toJson(methodIndex++));
 
         if (!jsonFuncs.isEmpty())
             cls[type] = jsonFuncs;
     };
 
+    // signals, slots, and methods, in this order, follow the same index
     appendFunctions("signals"_L1, signalList);
     appendFunctions("slots"_L1, slotList);
-    appendFunctions("constructors"_L1, constructorList);
     appendFunctions("methods"_L1, methodList);
+
+    // constructors are indexed separately.
+    methodIndex = 0;
+    appendFunctions("constructors"_L1, constructorList);
 
     QJsonArray props;
 
@@ -2082,10 +2092,11 @@ QJsonObject ClassDef::toJson() const
     return cls;
 }
 
-QJsonObject FunctionDef::toJson() const
+QJsonObject FunctionDef::toJson(int index) const
 {
     QJsonObject fdef;
     fdef["name"_L1] = QString::fromUtf8(name);
+    fdef["index"_L1] = index;
     if (!tag.isEmpty())
         fdef["tag"_L1] = QString::fromUtf8(tag);
     fdef["returnType"_L1] = QString::fromUtf8(normalizedType);

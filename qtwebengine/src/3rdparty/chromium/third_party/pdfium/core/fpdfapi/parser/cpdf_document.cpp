@@ -6,6 +6,8 @@
 
 #include "core/fpdfapi/parser/cpdf_document.h"
 
+#include <algorithm>
+#include <functional>
 #include <utility>
 
 #include "core/fpdfapi/parser/cpdf_array.h"
@@ -25,47 +27,87 @@
 #include "core/fxcrt/stl_util.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/base/check.h"
+#include "third_party/base/check_op.h"
 #include "third_party/base/containers/contains.h"
+#include "third_party/base/containers/span.h"
 
 namespace {
 
 const int kMaxPageLevel = 1024;
 
+enum class NodeType : bool {
+  kBranch,  // /Type /Pages, AKA page tree node.
+  kLeaf,    // /Type /Page, AKA page object.
+};
+
+// Note that this function may modify `kid_dict` to correct PDF spec violations.
+// Same reasoning as CountPages() below.
+NodeType GetNodeType(RetainPtr<CPDF_Dictionary> kid_dict) {
+  const ByteString kid_type_value = kid_dict->GetNameFor("Type");
+  if (kid_type_value == "Pages") {
+    return NodeType::kBranch;
+  }
+  if (kid_type_value == "Page") {
+    return NodeType::kLeaf;
+  }
+
+  // Even though /Type is required for page tree nodes and page objects, PDFs
+  // may not have them or have the wrong type. Tolerate these errors and guess
+  // the type. Then fix the in-memory representation.
+  const bool has_kids = kid_dict->KeyExist("Kids");
+  kid_dict->SetNewFor<CPDF_Name>("Type", has_kids ? "Pages" : "Page");
+  return has_kids ? NodeType::kBranch : NodeType::kLeaf;
+}
+
 // Returns a value in the range [0, `CPDF_Document::kPageMaxNum`), or nullopt on
-// error.
+// error. Note that this function may modify `pages_dict` to correct PDF spec
+// violations. By normalizing the in-memory representation, other code that
+// reads the object do not have to deal with the same spec violations again.
+// If the PDF gets saved, the saved copy will also be more spec-compliant.
 absl::optional<int> CountPages(
-    RetainPtr<CPDF_Dictionary> pPages,
+    RetainPtr<CPDF_Dictionary> pages_dict,
     std::set<RetainPtr<CPDF_Dictionary>>* visited_pages) {
-  int count = pPages->GetIntegerFor("Count");
-  if (count > 0 && count < CPDF_Document::kPageMaxNum)
-    return count;
-  RetainPtr<CPDF_Array> pKidList = pPages->GetMutableArrayFor("Kids");
-  if (!pKidList)
+  // Required. See ISO 32000-1:2008 spec, table 29, but tolerate page tree nodes
+  // that violate the spec.
+  int count_from_dict = pages_dict->GetIntegerFor("Count");
+  if (count_from_dict > 0 && count_from_dict < CPDF_Document::kPageMaxNum) {
+    return count_from_dict;
+  }
+
+  RetainPtr<CPDF_Array> kids_array = pages_dict->GetMutableArrayFor("Kids");
+  if (!kids_array) {
     return 0;
-  count = 0;
-  for (size_t i = 0; i < pKidList->size(); i++) {
-    RetainPtr<CPDF_Dictionary> pKid = pKidList->GetMutableDictAt(i);
-    if (!pKid || pdfium::Contains(*visited_pages, pKid))
+  }
+
+  int count = 0;
+  for (size_t i = 0; i < kids_array->size(); i++) {
+    RetainPtr<CPDF_Dictionary> kid_dict = kids_array->GetMutableDictAt(i);
+    if (!kid_dict || pdfium::Contains(*visited_pages, kid_dict)) {
       continue;
-    if (pKid->KeyExist("Kids")) {
+    }
+
+    NodeType kid_type = GetNodeType(kid_dict);
+    if (kid_type == NodeType::kBranch) {
       // Use |visited_pages| to help detect circular references of pages.
       ScopedSetInsertion<RetainPtr<CPDF_Dictionary>> local_add(visited_pages,
-                                                               pKid);
+                                                               kid_dict);
       absl::optional<int> local_count =
-          CountPages(std::move(pKid), visited_pages);
+          CountPages(std::move(kid_dict), visited_pages);
       if (!local_count.has_value()) {
         return absl::nullopt;  // Propagate error.
       }
       count += local_count.value();
     } else {
-      // This page is a leaf node.
+      CHECK_EQ(kid_type, NodeType::kLeaf);
       count++;
     }
+
     if (count >= CPDF_Document::kPageMaxNum) {
       return absl::nullopt;  // Error: too many pages.
     }
   }
-  pPages->SetNewFor<CPDF_Number>("Count", count);
+  // Fix the in-memory representation for page tree nodes that violate the spec.
+  pages_dict->SetNewFor<CPDF_Number>("Count", count);
   return count;
 }
 
@@ -396,8 +438,8 @@ int CPDF_Document::RetrievePageCount() {
   return CountPages(std::move(pPages), &visited_pages).value_or(0);
 }
 
-uint32_t CPDF_Document::GetUserPermissions() const {
-  return m_pParser ? m_pParser->GetPermissions() : 0;
+uint32_t CPDF_Document::GetUserPermissions(bool get_owner_perms) const {
+  return m_pParser ? m_pParser->GetPermissions(get_owner_perms) : 0;
 }
 
 RetainPtr<CPDF_StreamAcc> CPDF_Document::GetFontFileStreamAcc(
@@ -442,49 +484,54 @@ RetainPtr<CPDF_Dictionary> CPDF_Document::CreateNewPage(int iPage) {
 }
 
 bool CPDF_Document::InsertDeletePDFPage(
-    RetainPtr<CPDF_Dictionary> pPages,
-    int nPagesToGo,
-    RetainPtr<CPDF_Dictionary> pPageDict,
-    bool bInsert,
-    std::set<RetainPtr<CPDF_Dictionary>>* pVisited) {
-  RetainPtr<CPDF_Array> pKidList = pPages->GetMutableArrayFor("Kids");
-  if (!pKidList)
+    RetainPtr<CPDF_Dictionary> pages_dict,
+    int pages_to_go,
+    RetainPtr<CPDF_Dictionary> page_dict,
+    bool is_insert,
+    std::set<RetainPtr<CPDF_Dictionary>>* visited) {
+  RetainPtr<CPDF_Array> kids_list = pages_dict->GetMutableArrayFor("Kids");
+  if (!kids_list) {
     return false;
+  }
 
-  for (size_t i = 0; i < pKidList->size(); i++) {
-    RetainPtr<CPDF_Dictionary> pKid = pKidList->GetMutableDictAt(i);
-    if (pKid->GetNameFor("Type") == "Page") {
-      if (nPagesToGo != 0) {
-        nPagesToGo--;
+  for (size_t i = 0; i < kids_list->size(); i++) {
+    RetainPtr<CPDF_Dictionary> kid_dict = kids_list->GetMutableDictAt(i);
+    NodeType kid_type = GetNodeType(kid_dict);
+    if (kid_type == NodeType::kLeaf) {
+      if (pages_to_go != 0) {
+        pages_to_go--;
         continue;
       }
-      if (bInsert) {
-        pKidList->InsertNewAt<CPDF_Reference>(i, this, pPageDict->GetObjNum());
-        pPageDict->SetNewFor<CPDF_Reference>("Parent", this,
-                                             pPages->GetObjNum());
+      if (is_insert) {
+        kids_list->InsertNewAt<CPDF_Reference>(i, this, page_dict->GetObjNum());
+        page_dict->SetNewFor<CPDF_Reference>("Parent", this,
+                                             pages_dict->GetObjNum());
       } else {
-        pKidList->RemoveAt(i);
+        kids_list->RemoveAt(i);
       }
-      pPages->SetNewFor<CPDF_Number>(
-          "Count", pPages->GetIntegerFor("Count") + (bInsert ? 1 : -1));
+      pages_dict->SetNewFor<CPDF_Number>(
+          "Count", pages_dict->GetIntegerFor("Count") + (is_insert ? 1 : -1));
       ResetTraversal();
       break;
     }
-    int nPages = pKid->GetIntegerFor("Count");
-    if (nPagesToGo >= nPages) {
-      nPagesToGo -= nPages;
+
+    CHECK_EQ(kid_type, NodeType::kBranch);
+    int page_count = kid_dict->GetIntegerFor("Count");
+    if (pages_to_go >= page_count) {
+      pages_to_go -= page_count;
       continue;
     }
-    if (pdfium::Contains(*pVisited, pKid))
-      return false;
-
-    ScopedSetInsertion<RetainPtr<CPDF_Dictionary>> insertion(pVisited, pKid);
-    if (!InsertDeletePDFPage(std::move(pKid), nPagesToGo, pPageDict, bInsert,
-                             pVisited)) {
+    if (pdfium::Contains(*visited, kid_dict)) {
       return false;
     }
-    pPages->SetNewFor<CPDF_Number>(
-        "Count", pPages->GetIntegerFor("Count") + (bInsert ? 1 : -1));
+
+    ScopedSetInsertion<RetainPtr<CPDF_Dictionary>> insertion(visited, kid_dict);
+    if (!InsertDeletePDFPage(std::move(kid_dict), pages_to_go, page_dict,
+                             is_insert, visited)) {
+      return false;
+    }
+    pages_dict->SetNewFor<CPDF_Number>(
+        "Count", pages_dict->GetIntegerFor("Count") + (is_insert ? 1 : -1));
     break;
   }
   return true;
@@ -557,6 +604,82 @@ void CPDF_Document::DeletePage(int iPage) {
 
 void CPDF_Document::SetRootForTesting(RetainPtr<CPDF_Dictionary> root) {
   m_pRootDict = std::move(root);
+}
+
+bool CPDF_Document::MovePages(pdfium::span<const int> page_indices,
+                              int dest_page_index) {
+  const CPDF_Dictionary* pages = GetPagesDict();
+  const int num_pages_signed = pages ? pages->GetIntegerFor("Count") : 0;
+  if (num_pages_signed <= 0) {
+    return false;
+  }
+  const size_t num_pages = num_pages_signed;
+
+  // Check the number of pages is in range.
+  if (page_indices.empty() || page_indices.size() > num_pages) {
+    return false;
+  }
+
+  // Check that destination page index is in range.
+  if (dest_page_index < 0 ||
+      static_cast<size_t>(dest_page_index) > num_pages - page_indices.size()) {
+    return false;
+  }
+
+  // Check for if XFA is enabled.
+  Extension* extension = GetExtension();
+  if (extension && extension->ContainsExtensionForm()) {
+    // Don't manipulate XFA PDFs.
+    return false;
+  }
+
+  // Check for duplicate and out-of-range page indices
+  std::set<int> unique_page_indices;
+  // Store the pages that need to be moved. They'll be deleted then reinserted.
+  std::vector<RetainPtr<CPDF_Dictionary>> pages_to_move;
+  pages_to_move.reserve(page_indices.size());
+  // Store the page indices that will be deleted (and moved).
+  std::vector<int> page_indices_to_delete;
+  page_indices_to_delete.reserve(page_indices.size());
+  for (const int page_index : page_indices) {
+    bool inserted = unique_page_indices.insert(page_index).second;
+    if (!inserted) {
+      // Duplicate page index found
+      return false;
+    }
+    RetainPtr<CPDF_Dictionary> page = GetMutablePageDictionary(page_index);
+    if (!page) {
+      // Page not found, index might be out of range.
+      return false;
+    }
+    pages_to_move.push_back(std::move(page));
+    page_indices_to_delete.push_back(page_index);
+  }
+
+  // Sort the page indices to be deleted in descending order.
+  std::sort(page_indices_to_delete.begin(), page_indices_to_delete.end(),
+            std::greater<int>());
+  // Delete the pages in descending order.
+  if (extension) {
+    for (int page_index : page_indices_to_delete) {
+      extension->DeletePage(page_index);
+    }
+  } else {
+    for (int page_index : page_indices_to_delete) {
+      DeletePage(page_index);
+    }
+  }
+
+  // Insert the deleted pages back into the document at the destination page
+  // index.
+  for (size_t i = 0; i < pages_to_move.size(); ++i) {
+    if (!InsertNewPage(i + dest_page_index, pages_to_move[i])) {
+      // Fail in an indeterminate state.
+      return false;
+    }
+  }
+
+  return true;
 }
 
 void CPDF_Document::ResizePageListForTesting(size_t size) {

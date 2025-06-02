@@ -5,9 +5,10 @@
 #include "extensions/browser/updater/update_service.h"
 
 #include <algorithm>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
-
 #include "base/barrier_closure.h"
 #include "base/feature_list.h"
 #include "base/files/file_util.h"
@@ -31,7 +32,6 @@
 #include "extensions/browser/updater/update_data_provider.h"
 #include "extensions/browser/updater/update_service_factory.h"
 #include "extensions/common/extension_features.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace extensions {
 
@@ -121,8 +121,7 @@ void UpdateService::OnCrxStateChange(UpdateFoundCallback update_found_callback,
     case update_client::ComponentState::kUpdating:
     case update_client::ComponentState::kUpdated:
     case update_client::ComponentState::kUpdateError:
-    case update_client::ComponentState::kUninstalled:
-    case update_client::ComponentState::kRegistration:
+    case update_client::ComponentState::kPingOnly:
     case update_client::ComponentState::kRun:
     case update_client::ComponentState::kLastStatus:
       break;
@@ -199,9 +198,10 @@ void UpdateService::StartUpdateCheck(
       base::BindOnce(&UpdateService::UpdateCheckComplete,
                      weak_ptr_factory_.GetWeakPtr(), std::move(update)));
 
-  base::RepeatingCallback<
-      std::vector<absl::optional<update_client::CrxComponent>>(
-          const std::vector<std::string>&)>
+  base::RepeatingCallback<void(
+      const std::vector<std::string>&,
+      base::OnceCallback<void(
+          const std::vector<std::optional<update_client::CrxComponent>>&)>)>
       get_data = base::BindRepeating(
           &UpdateDataProvider::GetData, update_data_provider_,
           update_params.install_immediately, std::move(update_data));

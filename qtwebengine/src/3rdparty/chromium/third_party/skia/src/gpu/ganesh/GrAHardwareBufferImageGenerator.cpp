@@ -11,6 +11,7 @@
 
 #include "src/gpu/ganesh/GrAHardwareBufferImageGenerator.h"
 
+#include "include/android/AHardwareBufferUtils.h"
 #include "include/android/GrAHardwareBufferUtils.h"
 #include "include/core/SkColorSpace.h"
 #include "include/gpu/GrBackendSurface.h"
@@ -38,7 +39,7 @@ std::unique_ptr<SkImageGenerator> GrAHardwareBufferImageGenerator::Make(
     AHardwareBuffer_describe(graphicBuffer, &bufferDesc);
 
     SkColorType colorType =
-            GrAHardwareBufferUtils::GetSkColorTypeFromBufferFormat(bufferDesc.format);
+            AHardwareBufferUtils::GetSkColorTypeFromBufferFormat(bufferDesc.format);
     SkImageInfo info = SkImageInfo::Make(bufferDesc.width, bufferDesc.height, colorType,
                                          alphaType, std::move(colorSpace));
 
@@ -160,7 +161,7 @@ GrSurfaceProxyView GrAHardwareBufferImageGenerator::makeView(GrRecordingContext*
             },
             backendFormat,
             {width, height},
-            GrMipmapped::kNo,
+            skgpu::Mipmapped::kNo,
             GrMipmapStatus::kNotAllocated,
             GrInternalSurfaceFlags::kReadOnly,
             SkBackingFit::kExact,
@@ -177,16 +178,15 @@ GrSurfaceProxyView GrAHardwareBufferImageGenerator::makeView(GrRecordingContext*
 GrSurfaceProxyView GrAHardwareBufferImageGenerator::onGenerateTexture(
         GrRecordingContext* context,
         const SkImageInfo& info,
-        GrMipmapped mipmapped,
+        skgpu::Mipmapped mipmapped,
         GrImageTexGenPolicy texGenPolicy) {
-
     GrSurfaceProxyView texProxyView = this->makeView(context);
     if (!texProxyView.proxy()) {
         return {};
     }
     SkASSERT(texProxyView.asTextureProxy());
 
-    if (texGenPolicy == GrImageTexGenPolicy::kDraw && mipmapped == GrMipmapped::kNo) {
+    if (texGenPolicy == GrImageTexGenPolicy::kDraw && mipmapped == skgpu::Mipmapped::kNo) {
         // If we have the correct mip support, we're done
         return texProxyView;
     }

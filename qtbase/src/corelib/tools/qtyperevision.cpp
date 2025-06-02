@@ -26,6 +26,7 @@ QT_IMPL_METATYPE_EXTERN(QTypeRevision)
     \brief The QTypeRevision class contains a lightweight representation of
            a version number with two 8-bit segments, major and minor, either
            of which can be unknown.
+    \compares strong
 
     Use this class to describe revisions of a type. Compatible revisions can be
     expressed as increments of the minor version. Breaking changes can be
@@ -202,11 +203,8 @@ QDebug operator<<(QDebug debug, const QTypeRevision &revision)
 #endif
 
 /*!
-    \relates QHash
+    \qhashold{QHash}
     \since 6.0
-
-    Returns the hash value for the \a key, using \a seed to seed the
-    calculation.
 */
 size_t qHash(const QTypeRevision &key, size_t seed)
 {

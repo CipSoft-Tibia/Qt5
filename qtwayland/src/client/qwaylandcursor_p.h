@@ -105,6 +105,7 @@ public:
     void pointerEvent(const QMouseEvent &event) override;
     QPoint pos() const override;
     void setPos(const QPoint &pos) override;
+    void setPosFromEnterEvent(const QPoint &pos);
 
     QSize size() const override;
 

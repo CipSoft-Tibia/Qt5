@@ -6,6 +6,7 @@
 
 #include <QtProtobuf/qprotobufjsonserializer.h>
 #include <QtProtobuf/qprotobufserializer.h>
+#include <QtProtobuf/qprotobufregistration.h>
 
 #include <optional.qpb.h>
 
@@ -19,22 +20,22 @@ class QtProtobufOptionalDeserializationTest : public QObject
 
     enum Format { Protobuf, JSON };
 
-private slots:
+private Q_SLOTS:
     void initTestCase_data();
     void initTestCase() { }
     void init();
 
-    void DeserializeEmptyOptional();
-    void DeserializeOptionalInt_data();
-    void DeserializeOptionalInt();
-    void DeserializeOptionalBool_data();
-    void DeserializeOptionalBool();
-    void DeserializeOptionalString_data();
-    void DeserializeOptionalString();
-    void DeserializeOptionalBytes_data();
-    void DeserializeOptionalBytes();
-    void DeserializeOptionalMessage_data();
-    void DeserializeOptionalMessage();
+    void deserializeEmptyOptional();
+    void deserializeOptionalInt_data();
+    void deserializeOptionalInt();
+    void deserializeOptionalBool_data();
+    void deserializeOptionalBool();
+    void deserializeOptionalString_data();
+    void deserializeOptionalString();
+    void deserializeOptionalBytes_data();
+    void deserializeOptionalBytes();
+    void deserializeOptionalMessage_data();
+    void deserializeOptionalMessage();
 private:
     std::shared_ptr<QAbstractProtobufSerializer> m_serializer;
     Format m_format;
@@ -59,7 +60,7 @@ void QtProtobufOptionalDeserializationTest::init()
     m_serializer = std::move(serializer);
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeEmptyOptional()
+void QtProtobufOptionalDeserializationTest::deserializeEmptyOptional()
 {
     qtprotobufnamespace::optional::tests::OptionalMessage msg;
     msg.deserialize(m_serializer.get(), m_format == Protobuf ? ""_ba : "{}"_ba);
@@ -70,7 +71,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeEmptyOptional()
     QVERIFY(!msg.hasTestFieldStringOpt());
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalInt_data()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalInt_data()
 {
     QTest::addColumn<QtProtobuf::sint32>("expected");
     QTest::addColumn<QByteArray>("data");
@@ -79,7 +80,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalInt_data()
     QTest::newRow("Zero") << 0 << QByteArray::fromHex("1000"_ba) << "{\"testFieldOpt\":0}"_ba;
     QTest::newRow("Valid") << 84 << QByteArray::fromHex("10a801"_ba) << "{\"testFieldOpt\":84}"_ba;
 }
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalInt()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalInt()
 {
     QFETCH(const QtProtobuf::sint32, expected);
     QFETCH(const QByteArray, data);
@@ -91,7 +92,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalInt()
     QCOMPARE(msg.testFieldOpt(), expected);
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalBool_data()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalBool_data()
 {
     QTest::addColumn<bool>("expected");
     QTest::addColumn<QByteArray>("data");
@@ -103,7 +104,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalBool_data()
                           << "{\"testFieldBoolOpt\":true}"_ba;
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalBool()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalBool()
 {
     QFETCH(const bool, expected);
     QFETCH(const QByteArray, data);
@@ -115,7 +116,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalBool()
     QCOMPARE(msg.testFieldBoolOpt(), expected);
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalString_data()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalString_data()
 {
     QTest::addColumn<QString>("expected");
     QTest::addColumn<QByteArray>("data");
@@ -127,7 +128,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalString_data()
                            << "{\"testFieldStringOpt\":\"qwerty\"}"_ba;
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalString()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalString()
 {
     QFETCH(const QString, expected);
     QFETCH(const QByteArray, data);
@@ -139,7 +140,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalString()
     QCOMPARE(msg.testFieldStringOpt(), expected);
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalBytes_data()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalBytes_data()
 {
     QTest::addColumn<QByteArray>("expected");
     QTest::addColumn<QByteArray>("data");
@@ -151,7 +152,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalBytes_data()
                            << "{\"testFieldBytesOpt\":\"cXdlcnR5\"}"_ba;
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalBytes()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalBytes()
 {
     QFETCH(const QByteArray, expected);
     QFETCH(const QByteArray, data);
@@ -163,7 +164,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalBytes()
     QCOMPARE(msg.testFieldBytesOpt(), expected);
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalMessage_data()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalMessage_data()
 {
     QTest::addColumn<qtprotobufnamespace::optional::tests::TestStringMessage>("expected");
     QTest::addColumn<QByteArray>("data");
@@ -174,7 +175,7 @@ void QtProtobufOptionalDeserializationTest::DeserializeOptionalMessage_data()
                                   << "{\"testFieldMessageOpt\":{}}"_ba;
 }
 
-void QtProtobufOptionalDeserializationTest::DeserializeOptionalMessage()
+void QtProtobufOptionalDeserializationTest::deserializeOptionalMessage()
 {
     QFETCH(const qtprotobufnamespace::optional::tests::TestStringMessage, expected);
     QFETCH(const QByteArray, data);

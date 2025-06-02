@@ -39,7 +39,7 @@ Window {
             eulerRotation.y: 45
             castsShadow: true
             brightness: 1
-            shadowFactor: 100
+            shadowFactor: 50
         }
 
         //! [plane]

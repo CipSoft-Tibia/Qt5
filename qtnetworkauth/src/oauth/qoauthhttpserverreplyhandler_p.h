@@ -15,8 +15,6 @@
 #ifndef QOAUTHHTTPSERVERREPLYHANDLER_P_H
 #define QOAUTHHTTPSERVERREPLYHANDLER_P_H
 
-#ifndef QT_NO_HTTP
-
 #include <QtNetworkAuth/qoauthglobal.h>
 #include <QtNetworkAuth/qoauthhttpserverreplyhandler.h>
 
@@ -24,6 +22,8 @@
 
 #include <QtNetwork/qhostaddress.h>
 #include <QtNetwork/qtcpserver.h>
+
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -36,6 +36,7 @@ public:
     ~QOAuthHttpServerReplyHandlerPrivate();
 
     QString callback() const;
+    QString callbackHost() const;
 
     QTcpServer httpServer;
     QString text;
@@ -75,7 +76,7 @@ private:
             Delete,
         } method = Method::Unknown;
         QUrl url;
-        QPair<quint8, quint8> version;
+        std::pair<quint8, quint8> version;
         QMap<QByteArray, QByteArray> headers;
     };
 
@@ -85,7 +86,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_HTTP
 
 #endif // QOAUTHHTTPSERVERREPLYHANDLER_P_H

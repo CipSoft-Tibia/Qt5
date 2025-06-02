@@ -6,7 +6,7 @@ project(calqlatr LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(calqlatrexample WIN32 MACOSX_BUNDLE
     main.cpp
@@ -34,12 +34,26 @@ qt_add_qml_module(calqlatrexample
         "content/images/backspace.svg"
         "content/images/backspace_fill.svg"
 )
+
 if(ANDROID)
-    set_target_properties(calqlatrexample
-                         PROPERTIES
-                            QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
-                            QT_ANDROID_TARGET_SDK_VERSION "33")
+    set_target_properties(calqlatrexample PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
+        QT_ANDROID_PACKAGE_NAME "io.qt.calqlatr"
+        QT_ANDROID_TARGET_SDK_VERSION 34
+        QT_ANDROID_VERSION_CODE 10
+        QT_ANDROID_VERSION_NAME "1.0"
+    )
+
+    qt_import_plugins(calqlatrexample
+        INCLUDE_BY_TYPE imageformats Qt::QSvgPlugin
+        EXCLUDE_BY_TYPE qmltooling
+        EXCLUDE_BY_TYPE iconengines
+        EXCLUDE_BY_TYPE networkinformation
+        EXCLUDE_BY_TYPE tls
+        EXCLUDE_BY_TYPE platforminputcontexts
+    )
 endif()
+
 if(IOS)
     set(asset_catalog_path "ios/Assets.xcassets")
     target_sources(calqlatrexample PRIVATE "${asset_catalog_path}")

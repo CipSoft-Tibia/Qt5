@@ -31,6 +31,7 @@
 
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/distributions.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "./fuzztest/internal/coverage.h"
 #include "./fuzztest/internal/domains/absl_helpers.h"
@@ -350,6 +351,61 @@ class ArbitraryImpl<std::basic_string_view<Char>>
   ArbitraryImpl<std::vector<Char>> inner_;
 };
 
+#ifndef ABSL_USES_STD_STRING_VIEW
+// Arbitrary for absl::string_view when it does not alias to std::string_view.
+//
+// We define a separate container for string_view, to detect out of bounds bugs
+// better. See below.
+template <>
+class ArbitraryImpl<absl::string_view>
+    : public DomainBase<ArbitraryImpl<absl::string_view>, absl::string_view,
+                        // We use a vector to better manage the buffer and help
+                        // ASan find out-of-bounds bugs.
+                        std::vector<char>> {
+ public:
+  using typename ArbitraryImpl::DomainBase::corpus_type;
+  using typename ArbitraryImpl::DomainBase::value_type;
+
+  corpus_type Init(absl::BitGenRef prng) {
+    if (auto seed = this->MaybeGetRandomSeed(prng)) return *seed;
+    return inner_.Init(prng);
+  }
+
+  void Mutate(corpus_type& val, absl::BitGenRef prng, bool only_shrink) {
+    inner_.Mutate(val, prng, only_shrink);
+  }
+
+  void UpdateMemoryDictionary(const corpus_type& val) {
+    inner_.UpdateMemoryDictionary(val);
+  }
+
+  auto GetPrinter() const { return StringPrinter{}; }
+
+  value_type GetValue(const corpus_type& value) const {
+    return value_type(value.data(), value.size());
+  }
+
+  std::optional<corpus_type> FromValue(const value_type& value) const {
+    return corpus_type(value.begin(), value.end());
+  }
+
+  std::optional<corpus_type> ParseCorpus(const IRObject& obj) const {
+    return obj.ToCorpus<corpus_type>();
+  }
+
+  IRObject SerializeCorpus(const corpus_type& v) const {
+    return IRObject::FromCorpus(v);
+  }
+
+  absl::Status ValidateCorpusValue(const corpus_type&) const {
+    return absl::OkStatus();  // Nothing to validate.
+  }
+
+ private:
+  ArbitraryImpl<std::vector<char>> inner_;
+};
+#endif
+
 // Arbitrary for any const T.
 //
 // We capture const types as a workaround in order to enable
@@ -453,19 +509,19 @@ template <>
 class ArbitraryImpl<absl::Duration>
     : public OneOfImpl<
           ElementOfImpl<absl::Duration>,
-          BidiMapImpl<absl::Duration (*)(int64_t, uint32_t),
-                      std::optional<std::tuple<int64_t, uint32_t>> (*)(
-                          absl::Duration),
-                      ArbitraryImpl<int64_t>, InRangeImpl<uint32_t>>> {
+          ReversibleMapImpl<absl::Duration (*)(int64_t, uint32_t),
+                            std::optional<std::tuple<int64_t, uint32_t>> (*)(
+                                absl::Duration),
+                            ArbitraryImpl<int64_t>, InRangeImpl<uint32_t>>> {
  public:
   ArbitraryImpl()
       : OneOfImpl(
             ElementOfImpl<absl::Duration>(
                 {absl::InfiniteDuration(), -absl::InfiniteDuration()}),
-            BidiMapImpl<absl::Duration (*)(int64_t, uint32_t),
-                        std::optional<std::tuple<int64_t, uint32_t>> (*)(
-                            absl::Duration),
-                        ArbitraryImpl<int64_t>, InRangeImpl<uint32_t>>(
+            ReversibleMapImpl<absl::Duration (*)(int64_t, uint32_t),
+                              std::optional<std::tuple<int64_t, uint32_t>> (*)(
+                                  absl::Duration),
+                              ArbitraryImpl<int64_t>, InRangeImpl<uint32_t>>(
                 [](int64_t secs, uint32_t ticks) {
                   return MakeDuration(secs, ticks);
                 },
@@ -481,15 +537,16 @@ class ArbitraryImpl<absl::Duration>
 // Arbitrary for absl::Time.
 template <>
 class ArbitraryImpl<absl::Time>
-    : public BidiMapImpl<absl::Time (*)(absl::Duration),
-                         std::optional<std::tuple<absl::Duration>> (*)(
-                             absl::Time),
-                         ArbitraryImpl<absl::Duration>> {
+    : public ReversibleMapImpl<absl::Time (*)(absl::Duration),
+                               std::optional<std::tuple<absl::Duration>> (*)(
+                                   absl::Time),
+                               ArbitraryImpl<absl::Duration>> {
  public:
   ArbitraryImpl()
-      : BidiMapImpl<absl::Time (*)(absl::Duration),
-                    std::optional<std::tuple<absl::Duration>> (*)(absl::Time),
-                    ArbitraryImpl<absl::Duration>>(
+      : ReversibleMapImpl<absl::Time (*)(absl::Duration),
+                          std::optional<std::tuple<absl::Duration>> (*)(
+                              absl::Time),
+                          ArbitraryImpl<absl::Duration>>(
             [](absl::Duration duration) {
               return absl::UnixEpoch() + duration;
             },

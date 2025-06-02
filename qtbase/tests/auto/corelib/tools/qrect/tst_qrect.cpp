@@ -7,6 +7,8 @@
 #include <limits.h>
 #include <qdebug.h>
 
+#include <private/qcomparisontesthelper_p.h>
+
 #include <array>
 
 class tst_QRect : public QObject
@@ -33,8 +35,14 @@ public:
     static QPoint getQPointCase( QPointCases p );
 
 private slots:
+    void comparisonCompiles();
+    void comparison_data();
+    void comparison();
+    void fuzzyComparison_data();
+    void fuzzyComparison();
     void isNull_data();
     void isNull();
+    void fuzzyIsNull();
     void newIsEmpty_data();
     void newIsEmpty();
     void newIsValid_data();
@@ -154,11 +162,15 @@ private slots:
     void smallRects() const;
     void toRect();
     void span();
+
+    void debug();
 };
 
 // Used to work around some floating point precision problems.
 #define LARGE 1000000000
 static bool isLarge(int x) { return x > LARGE || x < -LARGE; }
+
+static constexpr qreal qreal_min = std::numeric_limits<qreal>::min();
 
 QRect tst_QRect::getQRectCase( QRectCases c )
 {
@@ -242,6 +254,80 @@ QPoint tst_QRect::getQPointCase( QPointCases p )
     }
 }
 
+void tst_QRect::comparisonCompiles()
+{
+    QTestPrivate::testEqualityOperatorsCompile<QRect>();
+    QTestPrivate::testEqualityOperatorsCompile<QRectF>();
+    QTestPrivate::testEqualityOperatorsCompile<QRectF, QRect>();
+}
+
+void tst_QRect::comparison_data()
+{
+    QTest::addColumn<QRectF>("lhsF");
+    QTest::addColumn<QRectF>("rhsF");
+    QTest::addColumn<bool>("result");
+    QTest::addColumn<bool>("floatResult");
+    QTest::addColumn<bool>("mixedResult");
+
+    QTest::newRow("Invalid_vs_Invalid") << getQRectCase(InvalidQRect).toRectF()
+                                        << getQRectCase(InvalidQRect).toRectF()
+                                        << true << true << true;
+
+    QTest::newRow("Null_vs_Null") << getQRectCase(NullQRect).toRectF()
+                                  << getQRectCase(NullQRect).toRectF()
+                                  << true << true << true;
+
+    QTest::newRow("Empty_vs_Empty") << getQRectCase(EmptyQRect).toRectF()
+                                    << getQRectCase(EmptyQRect).toRectF()
+                                    << true << true << true;
+
+    QTest::newRow("NegativeSize_vs_NegativeSize") << getQRectCase(NegativeSizeQRect).toRectF()
+                                                  << getQRectCase(NegativeSizeQRect).toRectF()
+                                                  << true << true << true;
+
+    QTest::newRow("Invalid_vs_Null") << getQRectCase(InvalidQRect).toRectF()
+                                     << getQRectCase(NullQRect).toRectF()
+                                     << false << false << false;
+
+    QTest::newRow("NearlySimilar") << QRectF(QPointF(1.1, 9.9), QPointF(9.9, 1.1))
+                                   << QRectF(QPointF(1., 10.), QPointF(10., 1.))
+                                   << true << false << true;
+
+    QTest::newRow("WithQREAL_MIN") << QRectF(QPointF(0., -10.), QPointF(-1., 0.))
+                                   << QRectF(QPointF(-qreal_min, -10.), QPointF(-1., qreal_min))
+                                   << true << true << true;
+}
+
+void tst_QRect::comparison()
+{
+    QFETCH(const QRectF, lhsF);
+    QFETCH(const QRectF, rhsF);
+    QFETCH(const bool, result);
+    QFETCH(const bool, floatResult);
+    QFETCH(const bool, mixedResult);
+
+    const QRect lhs = lhsF.toRect();
+    const QRect rhs = rhsF.toRect();
+
+    QT_TEST_EQUALITY_OPS(lhs, rhs, result);
+    QT_TEST_EQUALITY_OPS(lhsF, rhsF, floatResult);
+    QT_TEST_EQUALITY_OPS(lhs, rhsF, mixedResult);
+}
+
+void tst_QRect::fuzzyComparison_data()
+{
+    comparison_data();
+}
+
+void tst_QRect::fuzzyComparison()
+{
+    QFETCH(const QRectF, lhsF);
+    QFETCH(const QRectF, rhsF);
+    QFETCH(const bool, floatResult);
+
+    QCOMPARE_EQ(qFuzzyCompare(lhsF, rhsF), floatResult);
+}
+
 void tst_QRect::isNull_data()
 {
     QTest::addColumn<QRect>("r");
@@ -269,6 +355,14 @@ void tst_QRect::isNull()
 
     QVERIFY( r.isNull() == isNull );
     QVERIFY( rf.isNull() == isNull );
+}
+
+void tst_QRect::fuzzyIsNull()
+{
+    QRectF rf(QPointF(-qreal_min, qreal_min), QPointF(qreal_min, -qreal_min));
+
+    QVERIFY(!rf.isNull()); // QRectF::isNull() does strict comparison
+    QVERIFY(qFuzzyIsNull(rf));
 }
 
 void tst_QRect::newIsEmpty_data()
@@ -4405,6 +4499,34 @@ void tst_QRect::span()
     QCOMPARE(QRect::span(QPoint(10,  1), QPoint(0,  9)), QRect(QPoint(0, 1), QPoint(10,  9)));
 
     QCOMPARE(QRect::span(QPoint( 1, 10), QPoint(9,  0)), QRect(QPoint(1, 0), QPoint( 9, 10)));
+}
+
+void tst_QRect::debug()
+{
+    QString str;
+    QDebug debug(&str);
+
+    debug.nospace();
+
+    str.clear();
+    debug << QRect();
+    QCOMPARE(str, "QRect(0,0 0x0)");
+
+    str.clear();
+    debug << QRect(10, 20, 30, 40);
+    QCOMPARE(str, "QRect(10,20 30x40)");
+
+    str.clear();
+    debug << QRect(-10, -20, 30, 40);
+    QCOMPARE(str, "QRect(-10,-20 30x40)");
+
+    str.clear();
+    debug << QRect(-10, -20, -30, -40);
+    QCOMPARE(str, "QRect(-10,-20 -30x-40)");
+
+    str.clear();
+    debug << QRect(QPoint(INT_MIN, INT_MIN), QPoint(INT_MAX, INT_MAX));
+    QCOMPARE(str, "QRect(-2147483648,-2147483648 4294967296x4294967296)");
 }
 
 QTEST_MAIN(tst_QRect)

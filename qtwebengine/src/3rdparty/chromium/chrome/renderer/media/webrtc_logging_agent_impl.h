@@ -7,7 +7,7 @@
 
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/common/media/webrtc_logging.mojom.h"
 #else
 #include "qtwebengine/common/media/webrtc_logging.mojom.h"

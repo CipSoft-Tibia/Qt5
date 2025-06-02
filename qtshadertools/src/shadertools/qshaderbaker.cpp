@@ -581,7 +581,9 @@ QShader QShaderBaker::bake()
 
     QByteArray preamble = d->preamble;
     if (d->multiViewInfo.viewCount >= 2) {
-        preamble += QByteArrayLiteral("\n#extension GL_EXT_multiview : require\n#define QSHADER_VIEW_COUNT ");
+        if (d->stage == QShader::VertexStage)
+            preamble += QByteArrayLiteral("\n#extension GL_EXT_multiview : require\n");
+        preamble += QByteArrayLiteral("\n#define QSHADER_VIEW_COUNT ");
         preamble += QByteArray::number(d->multiViewInfo.viewCount);
         preamble += QByteArrayLiteral("\n");
     }

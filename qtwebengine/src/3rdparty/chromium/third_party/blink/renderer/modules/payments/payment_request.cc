@@ -37,7 +37,6 @@
 #include "third_party/blink/renderer/core/dom/events/event_queue.h"
 #include "third_party/blink/renderer/core/event_type_names.h"
 #include "third_party/blink/renderer/core/frame/csp/content_security_policy.h"
-#include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
 #include "third_party/blink/renderer/core/frame/frame_owner.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
@@ -250,13 +249,15 @@ void ValidateShippingOptionOrPaymentItem(const T* item,
   }
 
   String error_message;
-  if (!PaymentsValidators::IsValidCurrencyCodeFormat(item->amount()->currency(),
-                                                     &error_message)) {
+  if (!PaymentsValidators::IsValidCurrencyCodeFormat(
+          execution_context.GetIsolate(), item->amount()->currency(),
+          &error_message)) {
     exception_state.ThrowRangeError(error_message);
     return;
   }
 
-  if (!PaymentsValidators::IsValidAmountFormat(item->amount()->value(),
+  if (!PaymentsValidators::IsValidAmountFormat(execution_context.GetIsolate(),
+                                               item->amount()->value(),
                                                item_name, &error_message)) {
     exception_state.ThrowTypeError(error_message);
     return;
@@ -511,7 +512,8 @@ void ValidateAndConvertPaymentDetailsModifiers(
       }
     }
 
-    if (!PaymentsValidators::IsValidMethodFormat(modifier->supportedMethod())) {
+    if (!PaymentsValidators::IsValidMethodFormat(execution_context.GetIsolate(),
+                                                 modifier->supportedMethod())) {
       exception_state.ThrowRangeError(
           "Invalid payment method identifier format");
       return;
@@ -684,39 +686,18 @@ void ValidateAndConvertPaymentDetailsUpdate(const PaymentDetailsUpdate* input,
   }
 }
 
-// Checks whether Content Securituy Policy (CSP) allows a connection to the
-// given `url`.
-//
-// If CSP is being enforced, then a CSP violation will be reported in the
+// Checks whether Content Security Policy (CSP) allows a connection to the
+// given `url`. If it does not, then a CSP violation will be reported in the
 // developer console.
-//
-// If CSP is not being enforced, then a CSP violation will be counted, but not
-// reported to the web developer.
 bool CSPAllowsConnectToSource(const KURL& url,
                               const KURL& url_before_redirects,
                               bool did_follow_redirect,
                               ExecutionContext& context) {
-  const bool enforce_csp =
-      !RuntimeEnabledFeatures::IgnoreCSPInWebPaymentAPIEnabled(&context);
-
-  if (context.GetContentSecurityPolicy()->AllowConnectToSource(
-          url, url_before_redirects,
-          did_follow_redirect ? RedirectStatus::kFollowedRedirect
-                              : RedirectStatus::kNoRedirect,
-          enforce_csp ? ReportingDisposition::kReport
-                      : ReportingDisposition::kSuppressReporting)) {
-    return true;  // Allow request.
-  }
-
-  if (enforce_csp) {
-    return false;  // Block request.
-  }
-
-  // CSP has been bypassed, so warn web developers that CSP bypass has been
-  // deprecated and will be removed.
-  Deprecation::CountDeprecation(&context,
-                                WebFeature::kPaymentRequestCSPViolation);
-  return true;  // Allow request.
+  return context.GetContentSecurityPolicy()->AllowConnectToSource(
+      url, url_before_redirects,
+      did_follow_redirect ? RedirectStatus::kFollowedRedirect
+                          : RedirectStatus::kNoRedirect,
+      ReportingDisposition::kReport);
 }
 
 void ValidateAndConvertPaymentMethodData(
@@ -739,6 +720,7 @@ void ValidateAndConvertPaymentMethodData(
 
   for (const PaymentMethodData* payment_method_data : input) {
     if (!PaymentsValidators::IsValidMethodFormat(
+            execution_context.GetIsolate(),
             payment_method_data->supportedMethod())) {
       exception_state.ThrowRangeError(
           "Invalid payment method identifier format");
@@ -1018,8 +1000,8 @@ ScriptPromise PaymentRequest::abort(ScriptState* script_state,
 ScriptPromise PaymentRequest::canMakePayment(ScriptState* script_state,
                                              ExceptionState& exception_state) {
   if (!not_supported_for_invalid_origin_or_ssl_error_.empty()) {
-    return ScriptPromise::Cast(script_state,
-                               ScriptValue::From(script_state, false));
+    return ScriptPromise::Cast(
+        script_state, v8::Boolean::New(script_state->GetIsolate(), false));
   }
 
   if (!payment_provider_.is_bound() || GetPendingAcceptPromiseResolver() ||
@@ -1043,8 +1025,8 @@ ScriptPromise PaymentRequest::hasEnrolledInstrument(
     ScriptState* script_state,
     ExceptionState& exception_state) {
   if (!not_supported_for_invalid_origin_or_ssl_error_.empty()) {
-    return ScriptPromise::Cast(script_state,
-                               ScriptValue::From(script_state, false));
+    return ScriptPromise::Cast(
+        script_state, v8::Boolean::New(script_state->GetIsolate(), false));
   }
 
   if (!payment_provider_.is_bound() || GetPendingAcceptPromiseResolver() ||
@@ -1225,13 +1207,13 @@ void PaymentRequest::OnUpdatePaymentDetails(
 
   update_payment_details_timer_.Stop();
 
-  ExceptionState exception_state(v8::Isolate::GetCurrent(),
-                                 ExceptionState::kConstructionContext,
-                                 "PaymentDetailsUpdate");
+  v8::Isolate* isolate = resolver->GetScriptState()->GetIsolate();
+  ExceptionState exception_state(
+      isolate, ExceptionContextType::kConstructorOperationInvoke,
+      "PaymentDetailsUpdate");
   PaymentDetailsUpdate* details =
       NativeValueTraits<PaymentDetailsUpdate>::NativeValue(
-          resolver->GetScriptState()->GetIsolate(),
-          details_script_value.V8Value(), exception_state);
+          isolate, details_script_value.V8Value(), exception_state);
   if (exception_state.HadException()) {
     resolver->Reject(exception_state.GetException());
     ClearResolversAndCloseMojoConnection();
@@ -1464,9 +1446,10 @@ void PaymentRequest::OnPaymentMethodChange(const String& method_name,
   init->setMethodName(method_name);
 
   if (!stringified_details.empty()) {
-    ExceptionState exception_state(script_state->GetIsolate(),
-                                   ExceptionState::kConstructionContext,
-                                   "PaymentMethodChangeEvent");
+    ExceptionState exception_state(
+        script_state->GetIsolate(),
+        ExceptionContextType::kConstructorOperationInvoke,
+        "PaymentMethodChangeEvent");
     v8::Local<v8::Value> parsed_value =
         FromJSONString(script_state->GetIsolate(), script_state->GetContext(),
                        stringified_details, exception_state);
@@ -1491,7 +1474,9 @@ void PaymentRequest::OnShippingAddressChange(PaymentAddressPtr address) {
   DCHECK(!complete_resolver_);
 
   String error_message;
-  if (!PaymentsValidators::IsValidShippingAddress(address, &error_message)) {
+  if (!PaymentsValidators::IsValidShippingAddress(
+          GetPendingAcceptPromiseResolver()->GetScriptState()->GetIsolate(),
+          address, &error_message)) {
     GetPendingAcceptPromiseResolver()->Reject(
         MakeGarbageCollected<DOMException>(DOMExceptionCode::kSyntaxError,
                                            error_message));
@@ -1548,8 +1533,9 @@ void PaymentRequest::OnPaymentResponse(PaymentResponsePtr response) {
     }
 
     String error_message;
-    if (!PaymentsValidators::IsValidShippingAddress(response->shipping_address,
-                                                    &error_message)) {
+    if (!PaymentsValidators::IsValidShippingAddress(
+            resolver->GetScriptState()->GetIsolate(),
+            response->shipping_address, &error_message)) {
       resolver->Reject(MakeGarbageCollected<DOMException>(
           DOMExceptionCode::kSyntaxError, error_message));
       ClearResolversAndCloseMojoConnection();

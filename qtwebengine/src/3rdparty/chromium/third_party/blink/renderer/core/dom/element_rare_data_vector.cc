@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -9,9 +9,10 @@
 #include "third_party/blink/renderer/core/css/container_query_data.h"
 #include "third_party/blink/renderer/core/css/cssom/inline_style_property_map.h"
 #include "third_party/blink/renderer/core/css/inline_css_style_declaration.h"
+#include "third_party/blink/renderer/core/css/position_fallback_data.h"
+#include "third_party/blink/renderer/core/css/style_scope_data.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_context.h"
 #include "third_party/blink/renderer/core/dom/attr.h"
-#include "third_party/blink/renderer/core/dom/css_toggle_map.h"
 #include "third_party/blink/renderer/core/dom/dataset_dom_string_map.h"
 #include "third_party/blink/renderer/core/dom/dom_token_list.h"
 #include "third_party/blink/renderer/core/dom/has_invalidation_flags.h"
@@ -33,6 +34,8 @@
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
+#include <bit>
+
 namespace blink {
 
 ElementRareDataVector::ElementRareDataVector(NodeData* node_layout_data)
@@ -45,19 +48,14 @@ ElementRareDataVector::~ElementRareDataVector() {
 unsigned ElementRareDataVector::GetFieldIndex(FieldId field_id) const {
   unsigned field_id_int = static_cast<unsigned>(field_id);
   DCHECK(fields_bitfield_ & (static_cast<BitfieldType>(1) << field_id_int));
-#ifdef _MSC_VER
-  return __popcnt(fields_bitfield_ &
-                            ~(~static_cast<BitfieldType>(0) << field_id_int));
-#else
-  return __builtin_popcount(fields_bitfield_ &
-                            ~(~static_cast<BitfieldType>(0) << field_id_int));
-#endif
+  return std::popcount(fields_bitfield_ &
+                       ~(~static_cast<BitfieldType>(0) << field_id_int));
 }
 
 ElementRareDataField* ElementRareDataVector::GetField(FieldId field_id) const {
   if (fields_bitfield_ &
       (static_cast<BitfieldType>(1) << static_cast<unsigned>(field_id)))
-    return fields_[GetFieldIndex(field_id)];
+    return fields_[GetFieldIndex(field_id)].Get();
   return nullptr;
 }
 
@@ -308,6 +306,22 @@ void ElementRareDataVector::ClearContainerQueryData() {
   SetField(FieldId::kContainerQueryData, nullptr);
 }
 
+StyleScopeData& ElementRareDataVector::EnsureStyleScopeData() {
+  return EnsureField<StyleScopeData>(FieldId::kStyleScopeData);
+}
+StyleScopeData* ElementRareDataVector::GetStyleScopeData() const {
+  return static_cast<StyleScopeData*>(GetField(FieldId::kStyleScopeData));
+}
+
+PositionFallbackData& ElementRareDataVector::EnsurePositionFallbackData() {
+  return EnsureField<PositionFallbackData>(FieldId::kPositionFallbackData);
+}
+
+PositionFallbackData* ElementRareDataVector::GetPositionFallbackData() const {
+  return static_cast<PositionFallbackData*>(
+      GetField(FieldId::kPositionFallbackData));
+}
+
 const RegionCaptureCropId* ElementRareDataVector::GetRegionCaptureCropId()
     const {
   auto* value = GetWrappedField<std::unique_ptr<RegionCaptureCropId>>(
@@ -385,14 +399,6 @@ PopoverData& ElementRareDataVector::EnsurePopoverData() {
 }
 void ElementRareDataVector::RemovePopoverData() {
   SetField(FieldId::kPopoverData, nullptr);
-}
-
-CSSToggleMap* ElementRareDataVector::GetToggleMap() const {
-  return static_cast<CSSToggleMap*>(GetField(FieldId::kToggleMap));
-}
-CSSToggleMap& ElementRareDataVector::EnsureToggleMap(Element* owner_element) {
-  DCHECK(!GetToggleMap() || GetToggleMap()->OwnerElement() == owner_element);
-  return EnsureField<CSSToggleMap>(FieldId::kToggleMap, owner_element);
 }
 
 AnchorPositionScrollData* ElementRareDataVector::GetAnchorPositionScrollData()

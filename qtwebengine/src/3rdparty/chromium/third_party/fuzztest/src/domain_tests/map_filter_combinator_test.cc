@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Tests of domains Map, FlatMap, and Filter.
+// Tests of domains Map, ReversibleMap, FlatMap, and Filter.
 
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -24,12 +25,9 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/random/random.h"
-#include "absl/types/span.h"
-#include "./fuzztest/domain.h"
+#include "./fuzztest/domain_core.h"
 #include "./domain_tests/domain_testing.h"
-#include "./fuzztest/internal/type_support.h"
 
 namespace fuzztest {
 namespace {
@@ -101,8 +99,15 @@ TEST(Map, ValidationRejectsInvalidValue) {
           R"(Invalid value for Map\(\)-ed domain >> The value .+ is not InRange\(10, 19\))")));
 }
 
-TEST(BidiMap, WorksWhenMapFunctionHasSameDomainAndRange) {
-  auto domain = internal::BidiMap(
+TEST(Map, MapperWorksWithMoveOnlyTypes) {
+  auto domain =
+      Map([](std::unique_ptr<int> n) -> int { return n == nullptr ? 0 : *n; },
+          UniquePtrOf(Just(1)));
+  EXPECT_THAT(MutateUntilFoundN(domain, /*n=*/2), UnorderedElementsAre(0, 1));
+}
+
+TEST(ReversibleMap, WorksWhenMapFunctionHasSameDomainAndRange) {
+  auto domain = ReversibleMap(
       [](int a) { return ~a; },
       [](int a) { return std::optional(std::tuple(~a)); }, Arbitrary<int>());
   absl::BitGen bitgen;
@@ -110,15 +115,15 @@ TEST(BidiMap, WorksWhenMapFunctionHasSameDomainAndRange) {
   EXPECT_EQ(value.user_value, ~std::get<0>(value.corpus_value));
 }
 
-TEST(BidiMap, ValidationRejectsInvalidValue) {
+TEST(ReversibleMap, ValidationRejectsInvalidValue) {
   absl::BitGen bitgen;
 
-  auto domain_a = internal::BidiMap(
+  auto domain_a = ReversibleMap(
       [](int a) { return ~a; },
       [](int a) { return std::optional(std::tuple(~a)); }, InRange(0, 9));
-  auto domain_b = BidiMap([](int a) { return ~a; },
-                          [](int a) { return std::optional(std::tuple(~a)); },
-                          InRange(10, 19));
+  auto domain_b = ReversibleMap(
+      [](int a) { return ~a; },
+      [](int a) { return std::optional(std::tuple(~a)); }, InRange(10, 19));
 
   Value value_a(domain_a, bitgen);
   Value value_b(domain_b, bitgen);
@@ -129,15 +134,15 @@ TEST(BidiMap, ValidationRejectsInvalidValue) {
   EXPECT_THAT(
       domain_a.ValidateCorpusValue(value_b.corpus_value),
       IsInvalid(testing::MatchesRegex(
-          R"(Invalid value for BidiMap\(\)-ed domain >> The value .+ is not InRange\(0, 9\))")));
+          R"(Invalid value for ReversibleMap\(\)-ed domain >> The value .+ is not InRange\(0, 9\))")));
   EXPECT_THAT(
       domain_b.ValidateCorpusValue(value_a.corpus_value),
       IsInvalid(testing::MatchesRegex(
-          R"(Invalid value for BidiMap\(\)-ed domain >> The value .+ is not InRange\(10, 19\))")));
+          R"(Invalid value for ReversibleMap\(\)-ed domain >> The value .+ is not InRange\(10, 19\))")));
 }
 
-TEST(BidiMap, AcceptsMultipleInnerDomains) {
-  auto domain = internal::BidiMap(
+TEST(ReversibleMap, AcceptsMultipleInnerDomains) {
+  auto domain = ReversibleMap(
       [](int a, char b) {
         std::string s;
         for (; a > 0; --a) s += b;
@@ -154,19 +159,29 @@ TEST(BidiMap, AcceptsMultipleInnerDomains) {
   }
 }
 
-TEST(BidiMap, WorksWithSeeds) {
+TEST(ReversibleMap, WorksWithSeeds) {
   absl::BitGen bitgen;
 
-  auto domain = internal::BidiMap([](int a) { return a * 2; },
-                                  [](int a) -> std::optional<std::tuple<int>> {
-                                    if (a % 2 == 1) return std::nullopt;
-                                    return std::optional(std::tuple(a / 2));
-                                  },
-                                  InRange(0, 1000000))
+  auto domain = ReversibleMap([](int a) { return a * 2; },
+                              [](int a) -> std::optional<std::tuple<int>> {
+                                if (a % 2 == 1) return std::nullopt;
+                                return std::optional(std::tuple(a / 2));
+                              },
+                              InRange(0, 1000000))
                     .WithSeeds({8});
 
   EXPECT_THAT(GenerateInitialValues(domain, 20), Contains(8));
   EXPECT_THAT(domain.FromValue(7), Eq(std::nullopt));
+}
+
+TEST(ReversibleMap, MapperWorksWithMoveOnlyTypes) {
+  auto domain = ReversibleMap(
+      [](std::unique_ptr<int> n) -> int { return n == nullptr ? 0 : *n; },
+      [](int n) -> std::optional<std::tuple<std::unique_ptr<int>>> {
+        return {{std::make_unique<int>(n)}};
+      },
+      UniquePtrOf(Just(1)));
+  EXPECT_THAT(MutateUntilFoundN(domain, /*n=*/2), UnorderedElementsAre(0, 1));
 }
 
 TEST(FlatMap, WorksWithSameCorpusType) {
@@ -287,6 +302,15 @@ TEST(FlatMap, MutationDoesNotAlterInputDomains) {
     EXPECT_THAT(domain.GetValue(mutated).size(), Eq(original_size));
   }
   EXPECT_THAT(domain.GetValue(mutated), Each(Eq(0)));
+}
+
+TEST(FlatMap, FlatMapperWorksWithMoveOnlyTypes) {
+  auto domain = FlatMap(
+      [](std::unique_ptr<int> n) -> Domain<int> {
+        return n == nullptr ? Just(0) : Just(*n);
+      },
+      UniquePtrOf(Just(1)));
+  EXPECT_THAT(MutateUntilFoundN(domain, /*n=*/2), UnorderedElementsAre(0, 1));
 }
 
 TEST(Filter, CanFilterInitCalls) {

@@ -12,8 +12,7 @@ TestCase {
 
     GrpcChannelOptions {
         id: optionsVar
-        host: "http://localhost:50051"
-        deadline: { 1000 }
+        deadlineTimeout: { 1000 }
         metadata:  GrpcMetadata {
             id: grpcData
             data: ({ "user-name": "localhost",
@@ -23,15 +22,16 @@ TestCase {
 
     GrpcHttp2Channel {
         id: channelId
+        hostUri: "http://localhost:50051"
         options: GrpcChannelOptions {
-            host: "http://localhost:50051"
-            deadline: { 1000 }
+            deadlineTimeout: { 1000 }
             metadata: grpcData
         }
     }
 
     GrpcHttp2Channel {
         id: secondChannelId
+        hostUri: "http://localhost:50051"
         options: optionsVar
     }
 
@@ -55,15 +55,15 @@ TestCase {
     function test_3GrpcChannelValues_data() {
         return [
                     { tag: "channelId Host",
-                        field: channelId.options.host, answer: "http://localhost:50051" },
-                    { tag: "channelId deadline",
-                        field: channelId.options.deadline, answer: 1000 },
+                        field: channelId.hostUri, answer: "http://localhost:50051" },
+                    { tag: "channelId deadlineTimeout",
+                        field: channelId.options.deadlineTimeout, answer: 1000 },
                     { tag: "channelId metadata",
                         field: channelId.options.metadata, answer: grpcData },
-                    { tag: "secondChannelId deadline",
-                        field: secondChannelId.options.deadline, answer: 1000 },
+                    { tag: "secondChannelId deadlineTimeout",
+                        field: secondChannelId.options.deadlineTimeout, answer: 1000 },
                     { tag: "secondChannelId Host",
-                        field: secondChannelId.options.host, answer: "http://localhost:50051" },
+                        field: secondChannelId.hostUri, answer: "http://localhost:50051" },
                     { tag: "secondChannelId metadata",
                         field: secondChannelId.options.metadata, answer: grpcData },
                     { tag: "secondChannelId metadata == channelId metadata",

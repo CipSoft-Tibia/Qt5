@@ -16,7 +16,6 @@
 #include "base/android/scoped_java_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/strings/utf_string_conversions.h"
-#include "content/public/common/content_features.h"
 #include "ui/gfx/geometry/size.h"
 
 namespace ui {
@@ -305,8 +304,9 @@ class CONTENT_EXPORT WebContentsAccessibilityAndroid
       JNIEnv* env,
       std::u16string str) {
     // Check if this string has already been added to the cache.
-    if (common_string_cache_.find(str) != common_string_cache_.end()) {
-      return common_string_cache_[str];
+    auto it = common_string_cache_.find(str);
+    if (it != common_string_cache_.end()) {
+      return it->second;
     }
 
     // Otherwise, convert the string and add it to the cache, then return.
@@ -325,12 +325,6 @@ class CONTENT_EXPORT WebContentsAccessibilityAndroid
   // user settings available in Java-side code, passed here through the JNI.
   bool should_allow_image_descriptions() const {
     return allow_image_descriptions_;
-  }
-  bool should_respect_displayed_password_text() const {
-    return should_respect_displayed_password_text_;
-  }
-  bool should_expose_password_text() const {
-    return should_expose_password_text_;
   }
 
   void HandlePageLoaded(int32_t unique_id);
@@ -381,14 +375,6 @@ class CONTENT_EXPORT WebContentsAccessibilityAndroid
   // True if this instance should allow image descriptions, false if the
   // feature should be disabled (dependent on embedder behavior). Default false.
   bool allow_image_descriptions_ = false;
-
-  // True if this instance should respect the displayed password text (available
-  // in the shadow DOM), false if it should return bullets. Default false.
-  bool should_respect_displayed_password_text_ = false;
-
-  // True if this instance should expose password text to AT (e.g. as a user is
-  // typing in a field), false if it should return bullets. Default true.
-  bool should_expose_password_text_ = true;
 
   float page_scale_ = 1.f;
 

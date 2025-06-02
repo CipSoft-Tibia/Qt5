@@ -1,4 +1,4 @@
-// Copyright 2023 The Chromium Authors. All rights reserved.
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -33,9 +33,12 @@ SharedStorageWorkletMessagingProxy::SharedStorageWorkletMessagingProxy(
       worklet_terminated_callback_(std::move(worklet_terminated_callback)) {
   DCHECK(IsMainThread());
 
+  auto thread_startup_data = WorkerBackingThreadStartupData::CreateDefault();
+  thread_startup_data.atomics_wait_mode =
+      WorkerBackingThreadStartupData::AtomicsWaitMode::kAllow;
+
   Initialize(/*worker_clients=*/nullptr, /*module_responses_map=*/nullptr,
-             /*thread_startup_data=*/absl::nullopt,
-             std::move(global_scope_creation_params));
+             thread_startup_data, std::move(global_scope_creation_params));
 
   PostCrossThreadTask(
       *GetWorkerThread()->GetTaskRunner(TaskType::kMiscPlatformAPI), FROM_HERE,

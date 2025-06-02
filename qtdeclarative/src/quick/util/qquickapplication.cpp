@@ -16,7 +16,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Application
-    \instantiates QQuickApplication
+    \nativetype QQuickApplication
     \inqmlmodule QtQuick
     //! once exposed: \inherits CoreApplication?
     //! TODO: \ingroup ?
@@ -62,9 +62,11 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty Qt::ApplicationState Application::state
+    \qmlproperty enumeration Application::state
 
     This property represents the current state of the application.
+
+    See the C++ \l Qt::ApplicationState enum for possible values.
 
     \qml
     Timer {
@@ -76,7 +78,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty Qt::LayoutDirection Application::layoutDirection
+    \qmlproperty enumeration Application::layoutDirection
 
     This read-only property can be used to query the default layout
     direction of the application. On system start-up, the default layout
@@ -85,6 +87,8 @@ QT_BEGIN_NAMESPACE
     are read from right to left, and \c Qt.LeftToRight where the reading
     direction flows from left to right. You can bind to this property to
     customize your application layouts to support both layout directions.
+
+    See the C++ \l Qt::LayoutDirection enum for possible values.
 
     \qml
     RowLayout {
@@ -101,14 +105,13 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
-    \qmlproperty QFont Application::font
+    \qmlproperty font Application::font
     Returns the default application font as returned by
     \l QGuiApplication::font().
 */
 
-
 /*!
-    \qmlproperty QString Application::displayName
+    \qmlproperty string Application::displayName
 
     This property represents the application display name set on the
     QGuiApplication instance. This property can be written to in order to set
@@ -124,7 +127,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty QQmlListProperty<QQuickScreenInfo> Application::screens
+    \qmlproperty list<Screen> Application::screens
 
     An array containing the descriptions of all connected screens. The
     elements of the array are objects with the same properties as the
@@ -142,34 +145,34 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty QStringList Application::arguments
+    \qmlproperty list<string> Application::arguments
 
     This is a string list of the arguments the executable was invoked with.
  */
 
 /*!
-    \qmlproperty QString Application::name
+    \qmlproperty string Application::name
 
     This is the application name set on the QCoreApplication instance. This
     property can be written to in order to set the application name.
  */
 
 /*!
-    \qmlproperty QString Application::version
+    \qmlproperty string Application::version
 
     This is the application version set on the QCoreApplication instance. This
     property can be written to in order to set the application version.
  */
 
 /*!
-    \qmlproperty QString Application::organization
+    \qmlproperty string Application::organization
 
     This is the organization name set on the QCoreApplication instance.
     This property can be written to in order to set the organization name.
  */
 
 /*!
-    \qmlproperty QString Application::domain
+    \qmlproperty string Application::domain
 
     This is the organization domain set on the QCoreApplication instance.
     This property can be written to in order to set the organization domain.

@@ -3,6 +3,8 @@
  * Copyright (c) 2015-2022 The Khronos Group Inc.
  * Copyright (c) 2015-2022 Valve Corporation
  * Copyright (c) 2015-2022 LunarG, Inc.
+ * Copyright (c) 2021-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2023-2023 RasterGrid Kft.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +75,11 @@
 
 #include "stack_allocation.h"
 
-#if defined(BUILD_STATIC_LOADER)
+#if defined(APPLE_STATIC_LOADER) && !defined(__APPLE__)
+#error "APPLE_STATIC_LOADER can only be defined on Apple platforms!"
+#endif
+
+#if defined(APPLE_STATIC_LOADER)
 #define LOADER_EXPORT
 #elif defined(__GNUC__) && __GNUC__ >= 4
 #define LOADER_EXPORT __attribute__((visibility("default")))
@@ -145,7 +151,9 @@
 #define VK_SETTINGS_INFO_REGISTRY_LOC ""
 
 #if defined(__QNX__)
+#ifndef SYSCONFDIR
 #define SYSCONFDIR "/etc"
+#endif
 #endif
 
 // C99:
@@ -180,15 +188,13 @@ typedef pthread_cond_t loader_platform_thread_cond;
 #define VK_ELAYERS_INFO_RELATIVE_DIR ""
 #define VK_ILAYERS_INFO_RELATIVE_DIR ""
 
-#if defined(_WIN64)
-#define HKR_VK_DRIVER_NAME API_NAME "DriverName"
-#else
-#define HKR_VK_DRIVER_NAME API_NAME "DriverNameWow"
-#endif
-#define VK_DRIVERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\" API_NAME "\\Drivers"
-#define VK_ELAYERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\" API_NAME "\\ExplicitLayers"
-#define VK_ILAYERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\" API_NAME "\\ImplicitLayers"
-#define VK_SETTINGS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\" API_NAME "\\LoaderSettings"
+#define VK_VARIANT_REG_STR ""
+#define VK_VARIANT_REG_STR_W L""
+
+#define VK_DRIVERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\Vulkan" VK_VARIANT_REG_STR "\\Drivers"
+#define VK_ELAYERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\Vulkan" VK_VARIANT_REG_STR "\\ExplicitLayers"
+#define VK_ILAYERS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\Vulkan" VK_VARIANT_REG_STR "\\ImplicitLayers"
+#define VK_SETTINGS_INFO_REGISTRY_LOC "SOFTWARE\\Khronos\\Vulkan" VK_VARIANT_REG_STR "\\LoaderSettings"
 
 #define PRINTF_SIZE_T_SPECIFIER "%Iu"
 
@@ -227,7 +233,7 @@ static inline bool loader_platform_is_path(const char *path) { return strchr(pat
 // resources allocated by anything allocated by once init. This isn't a problem for static libraries, but it is for dynamic
 // ones. When building a DLL, we use DllMain() instead to allow properly cleaning up resources.
 
-#if defined(__APPLE__) && defined(BUILD_STATIC_LOADER)
+#if defined(APPLE_STATIC_LOADER)
 static inline void loader_platform_thread_once_fn(pthread_once_t *ctl, void (*func)(void)) {
     assert(func != NULL);
     assert(ctl != NULL);
@@ -275,14 +281,31 @@ static inline char *loader_platform_executable_path(char *buffer, size_t size) {
     return buffer;
 }
 #elif defined(__APPLE__)
+#include <TargetConditionals.h>
+// TARGET_OS_IPHONE isn't just iOS it's also iOS/tvOS/watchOS. See TargetConditionals.h documentation.
+#if TARGET_OS_IPHONE
+static inline char *loader_platform_executable_path(char *buffer, size_t size) {
+    (void)size;
+    buffer[0] = '\0';
+    return buffer;
+}
+#endif
+#if TARGET_OS_OSX
 #include <libproc.h>
 static inline char *loader_platform_executable_path(char *buffer, size_t size) {
+    // proc_pidpath takes a uint32_t for the buffer size
+    if (size > UINT32_MAX) {
+        return NULL;
+    }
     pid_t pid = getpid();
-    int ret = proc_pidpath(pid, buffer, size);
-    if (ret <= 0) return NULL;
+    int ret = proc_pidpath(pid, buffer, (uint32_t)size);
+    if (ret <= 0) {
+        return NULL;
+    }
     buffer[ret] = '\0';
     return buffer;
 }
+#endif
 #elif defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__)
 #include <sys/sysctl.h>
 static inline char *loader_platform_executable_path(char *buffer, size_t size) {
@@ -308,7 +331,9 @@ static inline char *loader_platform_executable_path(char *buffer, size_t size) {
 static inline char *loader_platform_executable_path(char *buffer, size_t size) { return NULL; }
 #elif defined(__QNX__)
 
+#ifndef SYSCONFDIR
 #define SYSCONFDIR "/etc"
+#endif
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -332,7 +357,7 @@ static inline char *loader_platform_executable_path(char *buffer, size_t size) {
 }
 #endif  // defined (__QNX__)
 
-// Compatability with compilers that don't support __has_feature
+// Compatibility with compilers that don't support __has_feature
 #if !defined(__has_feature)
 #define __has_feature(x) 0
 #endif
@@ -410,12 +435,12 @@ static inline char *loader_strncpy(char *dest, size_t dest_sz, const char *src, 
 static inline const char *LoaderPnpDriverRegistry() {
     BOOL is_wow;
     IsWow64Process(GetCurrentProcess(), &is_wow);
-    return is_wow ? "VulkanDriverNameWow" : "VulkanDriverName";
+    return is_wow ? "Vulkan" VK_VARIANT_REG_STR "DriverNameWow" : "Vulkan" VK_VARIANT_REG_STR "DriverName";
 }
 static inline const wchar_t *LoaderPnpDriverRegistryWide() {
     BOOL is_wow;
     IsWow64Process(GetCurrentProcess(), &is_wow);
-    return is_wow ? L"VulkanDriverNameWow" : L"VulkanDriverName";
+    return is_wow ? L"Vulkan" VK_VARIANT_REG_STR_W L"DriverNameWow" : L"Vulkan" VK_VARIANT_REG_STR_W L"DriverName";
 }
 
 // Get the key for the plug 'n play explicit layer registry
@@ -423,12 +448,12 @@ static inline const wchar_t *LoaderPnpDriverRegistryWide() {
 static inline const char *LoaderPnpELayerRegistry() {
     BOOL is_wow;
     IsWow64Process(GetCurrentProcess(), &is_wow);
-    return is_wow ? "VulkanExplicitLayersWow" : "VulkanExplicitLayers";
+    return is_wow ? "Vulkan" VK_VARIANT_REG_STR "ExplicitLayersWow" : "Vulkan" VK_VARIANT_REG_STR "ExplicitLayers";
 }
 static inline const wchar_t *LoaderPnpELayerRegistryWide() {
     BOOL is_wow;
     IsWow64Process(GetCurrentProcess(), &is_wow);
-    return is_wow ? L"VulkanExplicitLayersWow" : L"VulkanExplicitLayers";
+    return is_wow ? L"Vulkan" VK_VARIANT_REG_STR_W L"ExplicitLayersWow" : L"Vulkan" VK_VARIANT_REG_STR_W L"ExplicitLayers";
 }
 
 // Get the key for the plug 'n play implicit layer registry
@@ -436,12 +461,12 @@ static inline const wchar_t *LoaderPnpELayerRegistryWide() {
 static inline const char *LoaderPnpILayerRegistry() {
     BOOL is_wow;
     IsWow64Process(GetCurrentProcess(), &is_wow);
-    return is_wow ? "VulkanImplicitLayersWow" : "VulkanImplicitLayers";
+    return is_wow ? "Vulkan" VK_VARIANT_REG_STR "ImplicitLayersWow" : "Vulkan" VK_VARIANT_REG_STR "ImplicitLayers";
 }
 static inline const wchar_t *LoaderPnpILayerRegistryWide() {
     BOOL is_wow;
     IsWow64Process(GetCurrentProcess(), &is_wow);
-    return is_wow ? L"VulkanImplicitLayersWow" : L"VulkanImplicitLayers";
+    return is_wow ? L"Vulkan" VK_VARIANT_REG_STR_W L"ImplicitLayersWow" : L"Vulkan" VK_VARIANT_REG_STR_W L"ImplicitLayers";
 }
 
 // File IO

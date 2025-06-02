@@ -1,49 +1,45 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QITEMMODELSCATTERDATAPROXY_H
-#define QITEMMODELSCATTERDATAPROXY_H
+#ifndef QTGRAPHS_QITEMMODELSCATTERDATAPROXY_H
+#define QTGRAPHS_QITEMMODELSCATTERDATAPROXY_H
 
-#if 0
-#  pragma qt_class(QItemModelScatterDataProxy)
-#endif
-
-#include <QtCore/QAbstractItemModel>
-#include <QtCore/QRegularExpression>
-#include <QtCore/QString>
+#include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qregularexpression.h>
+#include <QtCore/qstring.h>
 #include <QtGraphs/qscatterdataproxy.h>
 
 QT_BEGIN_NAMESPACE
 
 class QItemModelScatterDataProxyPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QItemModelScatterDataProxy : public QScatterDataProxy
+class Q_GRAPHS_EXPORT QItemModelScatterDataProxy : public QScatterDataProxy
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QItemModelScatterDataProxy)
-    Q_PROPERTY(
-        QAbstractItemModel *itemModel READ itemModel WRITE setItemModel NOTIFY itemModelChanged)
-    Q_PROPERTY(QString xPosRole READ xPosRole WRITE setXPosRole NOTIFY xPosRoleChanged)
-    Q_PROPERTY(QString yPosRole READ yPosRole WRITE setYPosRole NOTIFY yPosRoleChanged)
-    Q_PROPERTY(QString zPosRole READ zPosRole WRITE setZPosRole NOTIFY zPosRoleChanged)
-    Q_PROPERTY(
-        QString rotationRole READ rotationRole WRITE setRotationRole NOTIFY rotationRoleChanged)
+    Q_PROPERTY(QAbstractItemModel *itemModel READ itemModel WRITE setItemModel NOTIFY
+                   itemModelChanged FINAL)
+    Q_PROPERTY(QString xPosRole READ xPosRole WRITE setXPosRole NOTIFY xPosRoleChanged FINAL)
+    Q_PROPERTY(QString yPosRole READ yPosRole WRITE setYPosRole NOTIFY yPosRoleChanged FINAL)
+    Q_PROPERTY(QString zPosRole READ zPosRole WRITE setZPosRole NOTIFY zPosRoleChanged FINAL)
+    Q_PROPERTY(QString rotationRole READ rotationRole WRITE setRotationRole NOTIFY
+                   rotationRoleChanged FINAL)
     Q_PROPERTY(QRegularExpression xPosRolePattern READ xPosRolePattern WRITE setXPosRolePattern
-                   NOTIFY xPosRolePatternChanged)
+                   NOTIFY xPosRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression yPosRolePattern READ yPosRolePattern WRITE setYPosRolePattern
-                   NOTIFY yPosRolePatternChanged)
+                   NOTIFY yPosRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression zPosRolePattern READ zPosRolePattern WRITE setZPosRolePattern
-                   NOTIFY zPosRolePatternChanged)
+                   NOTIFY zPosRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression rotationRolePattern READ rotationRolePattern WRITE
-                   setRotationRolePattern NOTIFY rotationRolePatternChanged)
+                   setRotationRolePattern NOTIFY rotationRolePatternChanged FINAL)
     Q_PROPERTY(QString xPosRoleReplace READ xPosRoleReplace WRITE setXPosRoleReplace NOTIFY
-                   xPosRoleReplaceChanged)
+                   xPosRoleReplaceChanged FINAL)
     Q_PROPERTY(QString yPosRoleReplace READ yPosRoleReplace WRITE setYPosRoleReplace NOTIFY
-                   yPosRoleReplaceChanged)
+                   yPosRoleReplaceChanged FINAL)
     Q_PROPERTY(QString zPosRoleReplace READ zPosRoleReplace WRITE setZPosRoleReplace NOTIFY
-                   zPosRoleReplaceChanged)
+                   zPosRoleReplaceChanged FINAL)
     Q_PROPERTY(QString rotationRoleReplace READ rotationRoleReplace WRITE setRotationRoleReplace
-                   NOTIFY rotationRoleReplaceChanged)
+                   NOTIFY rotationRoleReplaceChanged FINAL)
 
 public:
     explicit QItemModelScatterDataProxy(QObject *parent = nullptr);

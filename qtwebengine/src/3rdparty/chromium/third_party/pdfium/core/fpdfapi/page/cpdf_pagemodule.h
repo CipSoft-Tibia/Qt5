@@ -7,31 +7,12 @@
 #ifndef CORE_FPDFAPI_PAGE_CPDF_PAGEMODULE_H_
 #define CORE_FPDFAPI_PAGE_CPDF_PAGEMODULE_H_
 
-#include "core/fpdfapi/page/cpdf_colorspace.h"
-#include "core/fxcrt/retain_ptr.h"
-
-class CPDF_Document;
-class CPDF_DeviceCS;
-class CPDF_PatternCS;
-
+// TODO(thestig): Replace with class with standalone functions without polluting
+// the global namespace.
 class CPDF_PageModule {
  public:
-  // Per-process singleton managed by callers.
   static void Create();
   static void Destroy();
-  static CPDF_PageModule* GetInstance();
-
-  RetainPtr<CPDF_ColorSpace> GetStockCS(CPDF_ColorSpace::Family family);
-  void ClearStockFont(CPDF_Document* pDoc);
-
- private:
-  CPDF_PageModule();
-  ~CPDF_PageModule();
-
-  RetainPtr<CPDF_DeviceCS> m_StockGrayCS;
-  RetainPtr<CPDF_DeviceCS> m_StockRGBCS;
-  RetainPtr<CPDF_DeviceCS> m_StockCMYKCS;
-  RetainPtr<CPDF_PatternCS> m_StockPatternCS;
 };
 
 #endif  // CORE_FPDFAPI_PAGE_CPDF_PAGEMODULE_H_

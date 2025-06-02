@@ -37,10 +37,7 @@
 
 namespace {
 
-FXDIB_Format XFA_GetDIBFormat(FXCODEC_IMAGE_TYPE type,
-                              int32_t iComponents,
-                              int32_t iBitsPerComponent) {
-  FXDIB_Format dibFormat = FXDIB_Format::kArgb;
+FXDIB_Format XFA_GetDIBFormat(FXCODEC_IMAGE_TYPE type, int32_t bpp) {
   switch (type) {
     case FXCODEC_IMAGE_JPG:
 #ifdef PDF_ENABLE_XFA_BMP
@@ -49,20 +46,13 @@ FXDIB_Format XFA_GetDIBFormat(FXCODEC_IMAGE_TYPE type,
 #ifdef PDF_ENABLE_XFA_TIFF
     case FXCODEC_IMAGE_TIFF:
 #endif  // PDF_ENABLE_XFA_TIFF
-    {
-      dibFormat = FXDIB_Format::kRgb32;
-      int32_t bpp = iComponents * iBitsPerComponent;
-      if (bpp <= 24) {
-        dibFormat = FXDIB_Format::kRgb;
-      }
-    } break;
+      return bpp <= 24 ? FXDIB_Format::kRgb : FXDIB_Format::kRgb32;
 #ifdef PDF_ENABLE_XFA_PNG
     case FXCODEC_IMAGE_PNG:
 #endif  // PDF_ENABLE_XFA_PNG
     default:
-      break;
+      return FXDIB_Format::kArgb;
   }
-  return dibFormat;
 }
 
 }  // namespace
@@ -78,8 +68,10 @@ void XFA_DrawImage(CFGAS_GEGraphics* pGS,
   if (rtImage.IsEmpty())
     return;
 
-  if (!pDIBitmap || pDIBitmap->GetBuffer().empty())
+  CHECK(pDIBitmap);
+  if (pDIBitmap->GetBuffer().empty()) {
     return;
+  }
 
   CFX_RectF rtFit(rtImage.TopLeft(),
                   XFA_UnitPx2Pt(pDIBitmap->GetWidth(), dpi.width),
@@ -176,12 +168,14 @@ RetainPtr<CFX_DIBitmap> XFA_LoadImageFromBuffer(
   }
 
   type = pProgressiveDecoder->GetType();
-  int32_t iComponents = pProgressiveDecoder->GetNumComponents();
-  int32_t iBpc = pProgressiveDecoder->GetBPC();
-  FXDIB_Format dibFormat = XFA_GetDIBFormat(type, iComponents, iBpc);
+  FXDIB_Format format =
+      XFA_GetDIBFormat(type, pProgressiveDecoder->GetBitsPerPixel());
   RetainPtr<CFX_DIBitmap> pBitmap = pdfium::MakeRetain<CFX_DIBitmap>();
-  pBitmap->Create(pProgressiveDecoder->GetWidth(),
-                  pProgressiveDecoder->GetHeight(), dibFormat);
+  if (!pBitmap->Create(pProgressiveDecoder->GetWidth(),
+                       pProgressiveDecoder->GetHeight(), format)) {
+    return nullptr;
+  }
+
   pBitmap->Clear(0xffffffff);
 
   size_t nFrames;
@@ -430,8 +424,7 @@ bool CXFA_FFWidget::OnSetFocus(CXFA_FFWidget* pOldWidget) {
   }
   GetLayoutItem()->SetStatusBits(XFA_WidgetStatus::kFocused);
 
-  CXFA_EventParam eParam;
-  eParam.m_eType = XFA_EVENT_Enter;
+  CXFA_EventParam eParam(XFA_EVENT_Enter);
   m_pNode->ProcessEvent(GetDocView(), XFA_AttributeValue::Enter, &eParam);
   return true;
 }
@@ -645,8 +638,7 @@ void CXFA_FFWidget::EventKillFocus() {
     pItem->ClearStatusBits(XFA_WidgetStatus::kAccess);
     return;
   }
-  CXFA_EventParam eParam;
-  eParam.m_eType = XFA_EVENT_Exit;
+  CXFA_EventParam eParam(XFA_EVENT_Exit);
   m_pNode->ProcessEvent(GetDocView(), XFA_AttributeValue::Exit, &eParam);
 }
 

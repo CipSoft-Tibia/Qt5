@@ -4,10 +4,9 @@
 
 #include "qtemporarydir.h"
 
-#ifndef QT_NO_TEMPORARYFILE
+#if QT_CONFIG(temporaryfile)
 
 #include "qdebug.h"
-#include "qdiriterator.h"
 #include "qplatformdefs.h"
 #include "qrandom.h"
 #include "private/qtemporaryfile_p.h"
@@ -193,10 +192,7 @@ QTemporaryDir::QTemporaryDir(const QString &templatePath)
 
 /*!
     \fn void QTemporaryDir::swap(QTemporaryDir &other)
-
-    Swaps temporary-dir \a other with this temporary-dir. This operation is
-    very fast and never fails.
-
+    \memberswap{temporary-dir}
     \since 6.4
 */
 
@@ -335,4 +331,4 @@ bool QTemporaryDir::remove()
 
 QT_END_NAMESPACE
 
-#endif // QT_NO_TEMPORARYFILE
+#endif // QT_CONFIG(temporaryfile)

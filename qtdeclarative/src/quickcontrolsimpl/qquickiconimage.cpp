@@ -82,7 +82,7 @@ void QQuickIconImagePrivate::updateFillMode()
 
     updatingFillMode = true;
 
-    const QSize pixmapSize = QSize(pix.width(), pix.height()) / calculateDevicePixelRatio();
+    const QSize pixmapSize = QSize(currentPix->width(), currentPix->height()) / calculateDevicePixelRatio();
     if (pixmapSize.width() > q->width() || pixmapSize.height() > q->height())
         q->setFillMode(QQuickImage::PreserveAspectFit);
     else
@@ -154,6 +154,19 @@ void QQuickIconImage::setSource(const QUrl &source)
     emit sourceChanged(source);
 }
 
+void QQuickIconImage::snapPositionTo(QPointF pos)
+{
+    // Ensure that we are placed on an integer position relative to the owning control. We assume
+    // that there is exactly one intermediate parent item between us and the control (in practice,
+    // the contentItem). The idea is to enable the app, by placing the controls at integer
+    // positions, to avoid the image being smoothed over pixel boundaries in the basic, DPR=1 case.
+    QPointF offset;
+    if (parentItem())
+        offset = parentItem()->position();
+    QPointF offsetPos(std::round(offset.x() + pos.x()), std::round(offset.y() + pos.y()));
+    setPosition(offsetPos - offset);
+}
+
 void QQuickIconImage::componentComplete()
 {
     Q_D(QQuickIconImage);
@@ -186,12 +199,12 @@ void QQuickIconImage::pixmapChange()
 
     // Don't apply the color if we're recursing (updateFillMode() can cause us to recurse).
     if (!d->updatingFillMode && d->color.alpha() > 0) {
-        QImage image = d->pix.image();
+        QImage image = d->currentPix->image();
         if (!image.isNull()) {
             QPainter painter(&image);
             painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
             painter.fillRect(image.rect(), d->color);
-            d->pix.setImage(image);
+            d->currentPix->setImage(image);
         }
     }
 }

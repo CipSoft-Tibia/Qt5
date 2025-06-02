@@ -12,7 +12,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
  * \qmltype XdgOutputManagerV1
- * \instantiates QWaylandXdgOutputManagerV1
+ * \nativetype QWaylandXdgOutputManagerV1
  * \inqmlmodule QtWayland.Compositor.XdgShell
  * \since 5.14
  * \brief Provides an extension for describing outputs in a desktop oriented fashion.
@@ -130,13 +130,17 @@ void QWaylandXdgOutputManagerV1Private::registerXdgOutput(QWaylandOutput *output
 {
     if (!xdgOutputs.contains(output)) {
         xdgOutputs[output] = xdgOutput;
-        QWaylandOutputPrivate::get(output)->xdgOutput = xdgOutput;
     }
 }
 
 void QWaylandXdgOutputManagerV1Private::unregisterXdgOutput(QWaylandOutput *output)
 {
     xdgOutputs.remove(output);
+}
+
+QWaylandXdgOutputV1 *QWaylandXdgOutputManagerV1Private::xdgOutput(QWaylandOutput *output) const
+{
+    return xdgOutputs.value(output);
 }
 
 void QWaylandXdgOutputManagerV1Private::zxdg_output_manager_v1_get_xdg_output(Resource *resource,
@@ -454,7 +458,6 @@ void QWaylandXdgOutputV1Private::sendLogicalPosition(const QPoint &position)
     const auto values = resourceMap().values();
     for (auto *resource : values)
         send_logical_position(resource->handle, position.x(), position.y());
-    needToSendDone = true;
 }
 
 void QWaylandXdgOutputV1Private::sendLogicalSize(const QSize &size)
@@ -462,19 +465,17 @@ void QWaylandXdgOutputV1Private::sendLogicalSize(const QSize &size)
     const auto values = resourceMap().values();
     for (auto *resource : values)
         send_logical_size(resource->handle, size.width(), size.height());
-    needToSendDone = true;
 }
 
 void QWaylandXdgOutputV1Private::sendDone()
 {
-    if (needToSendDone) {
-        const auto values = resourceMap().values();
-        for (auto *resource : values) {
-            if (resource->version() < 3)
-                send_done(resource->handle);
-        }
-        needToSendDone = false;
+    const auto values = resourceMap().values();
+    for (auto *resource : values) {
+        if (resource->version() < 3)
+            send_done(resource->handle);
     }
+
+    QWaylandOutputPrivate::get(output)->sendDone();
 }
 
 void QWaylandXdgOutputV1Private::setManager(QWaylandXdgOutputManagerV1 *_manager)

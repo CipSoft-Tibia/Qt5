@@ -38,22 +38,28 @@ enum class PageVisibility {
 };
 
 // Represents the page's state of prerendering.
+// If the page is previewed, the state starts with kInPreview, and may be
+// transitted to kNoPrerendering after its activation and promotion.
+// If the page is prerendereed, the state starts with kInPrerendering, and may
+// be transmitted to kActivatedNoActivationStart, and kActivated.
+// Otherwise, it sticks on kNoPrerendering.
 //
 // TODO(crbug.com/1348097): Remove kActivatedNoActivationStart if possible.
 enum class PrerenderingState {
   // Not prerenedered
-  kNoPrerendering = 0,
+  kNoPrerendering,
+  // Previewed before acitvation and promotion
+  kInPreview,
   // Prerendered before activation
-  kInPrerendering = 1,
+  kInPrerendering,
   // Prerendered and activated, but `PageLoadTiming.activation_start` is not
   // arrived
   //
   // In many cases, PageLoadMetricsObservers can regard this state
   // kInPrerendering.
-  kActivatedNoActivationStart = 2,
+  kActivatedNoActivationStart,
   // Prerendered and activated
-  kActivated = 3,
-  kMaxValue = kActivated,
+  kActivated,
 };
 
 // This class tracks global state for the page load that should be accessible
@@ -90,6 +96,10 @@ class PageLoadMetricsObserverDelegate {
 
   // The time the navigation was initiated.
   virtual base::TimeTicks GetNavigationStart() const = 0;
+
+  // The id of the main navigation associated with this page, which created the
+  // main document. Not updated for same-document navigations.
+  virtual int64_t GetNavigationId() const = 0;
 
   // The duration until the first time that the page was backgrounded since the
   // navigation started. Will be nullopt if the page has never been
@@ -181,14 +191,13 @@ class PageLoadMetricsObserverDelegate {
       BfcacheStrategy bfcache_strategy) const = 0;
   virtual const NormalizedCLSData& GetSoftNavigationIntervalNormalizedCLSData()
       const = 0;
-  // Returns normalized responsiveness metrics data. Currently we normalize
-  // user interaction latencies from all renderer frames in a few different
-  // ways.
-  virtual const NormalizedResponsivenessMetrics&
-  GetNormalizedResponsivenessMetrics() const = 0;
+  // Returns normalized responsiveness metrics data. Normalization explained in
+  // https://web.dev/inp.
+  virtual const ResponsivenessMetricsNormalization&
+  GetResponsivenessMetricsNormalization() const = 0;
 
-  virtual const NormalizedResponsivenessMetrics&
-  GetSoftNavigationIntervalNormalizedResponsivenessMetrics() const = 0;
+  virtual const ResponsivenessMetricsNormalization&
+  GetSoftNavigationIntervalResponsivenessMetricsNormalization() const = 0;
 
   // InputTiming data accumulated across all frames.
   virtual const mojom::InputTiming& GetPageInputTiming() const = 0;
@@ -229,6 +238,20 @@ class PageLoadMetricsObserverDelegate {
   // WebContents. Note that, for newly opened tabs that display the New Tab
   // Page, the New Tab Page is considered the first navigation in that tab.
   virtual bool IsFirstNavigationInWebContents() const = 0;
+
+  // Checks whether the associated page visit is the first visit in its
+  // associated WebContesnts, or navigated from a Chrome UI, such as Omnibox or
+  // Bookmarks.
+  // As we don't identify client redirect cases, if the origin page runs client
+  // redirects, only the redirect initiating page is marked as the origin visit,
+  // and actual landing page is not marked as the origin visit.
+  virtual bool IsOriginVisit() const = 0;
+
+  // Checks whether the associated page visit doesn't see any link navigation.
+  // If the next navigation is initiated from a Chrome UI, the current page will
+  // be marked as a terminal visit unless it made another link navigation and
+  // went back to the page with a back navigation from BFCache.
+  virtual bool IsTerminalVisit() const = 0;
 };
 
 }  // namespace page_load_metrics

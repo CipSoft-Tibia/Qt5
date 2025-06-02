@@ -123,6 +123,26 @@ Page {
             Material.containerStyle: layout.containerStyle
         }
 
+        TextArea {
+            placeholderText: "leftPadding 0"
+            leftPadding: 0
+
+            Material.containerStyle: layout.containerStyle
+        }
+
+        TextArea {
+            placeholderText: "No leftPadding"
+
+            Material.containerStyle: layout.containerStyle
+        }
+
+        TextArea {
+            placeholderText: "leftPadding 50"
+            leftPadding: 50
+
+            Material.containerStyle: layout.containerStyle
+        }
+
         Flickable {
             width: 200
             height: 100

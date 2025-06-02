@@ -85,9 +85,9 @@ class GPU_GLES2_EXPORT DXGISwapChainImageBacking
 
   friend class DXGISwapChainOverlayImageRepresentation;
   bool Present(bool should_synchronize_present_with_vblank);
-  absl::optional<gl::DCLayerOverlayImage> GetDCLayerOverlayImage() {
-    return absl::make_optional<gl::DCLayerOverlayImage>(size(),
-                                                        dxgi_swap_chain_);
+  std::optional<gl::DCLayerOverlayImage> GetDCLayerOverlayImage() {
+    return std::make_optional<gl::DCLayerOverlayImage>(size(),
+                                                       dxgi_swap_chain_);
   }
 
   friend class SkiaGLImageRepresentationDXGISwapChain;
@@ -102,7 +102,7 @@ class GPU_GLES2_EXPORT DXGISwapChainImageBacking
   void EndAccessDawn(const wgpu::Device& device, wgpu::Texture texture);
 #endif
 
-  absl::optional<gfx::Rect> pending_swap_rect_;
+  std::optional<gfx::Rect> pending_swap_rect_;
 
   Microsoft::WRL::ComPtr<ID3D11Device> d3d11_device_;
   Microsoft::WRL::ComPtr<IDXGISwapChain1> dxgi_swap_chain_;

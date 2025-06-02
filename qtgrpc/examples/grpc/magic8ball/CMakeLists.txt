@@ -13,14 +13,13 @@ set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/grpc/magic8ball")
 find_package(Qt6 REQUIRED COMPONENTS
     Core
     Protobuf
+    ProtobufQuick
     Grpc
     GrpcQuick
     Quick
 )
 
 qt_standard_project_setup()
-
-add_subdirectory(grpc_server_example)
 
 qt_add_executable(magic8ball
     main.cpp
@@ -48,11 +47,11 @@ qt_add_qml_module(magic8ball
     VERSION 1.0
     RESOURCE_PREFIX "/qt/qml"
     QML_FILES
-        "WaitingAnimation.qml"
         "AnimatedAnswer.qml"
         "MagicText.qml"
-        "ProgressDot.qml"
+        "MagicBall.qml"
         "Main.qml"
+        "ScaleAnimation.qml"
 )
 
 target_link_libraries(magic8ball PRIVATE
@@ -69,3 +68,8 @@ install(TARGETS magic8ball
     BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
     LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
 )
+
+add_subdirectory(server)
+if(TARGET magic8ball_server)
+    add_dependencies(magic8ball magic8ball_server)
+endif()

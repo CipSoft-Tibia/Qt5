@@ -53,13 +53,13 @@ QLayerPrivate::QLayerPrivate()
     \endcode
 */
 /*!
-    \property QLayer::recursive
+    \property Qt3DRender::QLayer::recursive
     Specifies if the layer is also applied to the entity subtree.
 */
 
 /*!
     \qmltype Layer
-    \instantiates Qt3DRender::QLayer
+    \nativetype Qt3DRender::QLayer
     \inherits Component3D
     \inqmlmodule Qt3D.Render
     \since 5.5

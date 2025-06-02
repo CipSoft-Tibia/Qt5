@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/resolver.h"
 
@@ -372,7 +385,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, UniformBuffer_Vec3F16MemberOffs
     // @group(0) @binding(0)
     // var<uniform> a : ScalarPackedAtEndOfVec3;
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("ScalarPackedAtEndOfVec3", Vector{
                                              Member("v", ty.vec3(ty.f16())),
@@ -569,7 +582,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, PushConstant_UnalignedMember) {
     //     @align(1) b : f32;
     // };
     // var<push_constant> a : S;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     Structure(Source{{12, 34}}, "S",
               Vector{Member("a", ty.f32(), Vector{MemberSize(5_a)}),
                      Member(Source{{34, 56}}, "b", ty.f32(), Vector{MemberAlign(1_i)})});
@@ -595,7 +608,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, PushConstant_Aligned) {
     //     @align(4) b : f32;
     // };
     // var<push_constant> a : S;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     Structure("S", Vector{Member("a", ty.f32(), Vector{MemberSize(5_a)}),
                           Member("b", ty.f32(), Vector{MemberAlign(4_i)})});
     GlobalVar("a", ty("S"), core::AddressSpace::kPushConstant);
@@ -618,7 +631,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, RelaxedUniformLayout_StructMemb
     // @group(0) @binding(0)
     // var<uniform> a : Outer;
 
-    Enable(core::Extension::kChromiumInternalRelaxedUniformLayout);
+    Enable(wgsl::Extension::kChromiumInternalRelaxedUniformLayout);
 
     Structure(Source{{12, 34}}, "Inner",
               Vector{
@@ -650,7 +663,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, RelaxedUniformLayout_StructMemb
     // @group(0) @binding(0)
     // var<uniform> a : Outer;
 
-    Enable(core::Extension::kChromiumInternalRelaxedUniformLayout);
+    Enable(wgsl::Extension::kChromiumInternalRelaxedUniformLayout);
 
     Alias("Inner", ty.array<f32, 10>(Vector{Stride(16)}));
 
@@ -681,7 +694,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, RelaxedUniformLayout_MemberOffs
     // @group(0) @binding(0)
     // var<uniform> a : Outer;
 
-    Enable(core::Extension::kChromiumInternalRelaxedUniformLayout);
+    Enable(wgsl::Extension::kChromiumInternalRelaxedUniformLayout);
 
     Structure(Source{{12, 34}}, "Inner",
               Vector{
@@ -710,7 +723,7 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, RelaxedUniformLayout_ArrayStrid
     // @group(0) @binding(0)
     // var<uniform> a : Outer;
 
-    Enable(core::Extension::kChromiumInternalRelaxedUniformLayout);
+    Enable(wgsl::Extension::kChromiumInternalRelaxedUniformLayout);
 
     Structure(Source{{12, 34}}, "Outer",
               Vector{
@@ -734,8 +747,8 @@ TEST_F(ResolverAddressSpaceLayoutValidationTest, RelaxedUniformLayout_ArrayStrid
     // @group(0) @binding(0)
     // var<uniform> a : Outer;
 
-    Enable(core::Extension::kF16);
-    Enable(core::Extension::kChromiumInternalRelaxedUniformLayout);
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kChromiumInternalRelaxedUniformLayout);
 
     Structure(Source{{12, 34}}, "Outer",
               Vector{

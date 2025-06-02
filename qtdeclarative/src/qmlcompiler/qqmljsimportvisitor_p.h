@@ -14,21 +14,21 @@
 //
 // We mean it.
 
+#include <private/qduplicatetracker_p.h>
+#include <private/qqmljsannotation_p.h>
+#include <private/qqmljsast_p.h>
 #include <private/qqmljscontextualtypes_p.h>
-#include <private/qtqmlcompilerexports_p.h>
+#include <private/qqmljsdiagnosticmessage_p.h>
+#include <private/qqmljsimporter_p.h>
+#include <private/qqmljslogger_p.h>
+#include <private/qqmljsscope_p.h>
+#include <private/qqmljsscopesbyid_p.h>
+#include <private/qv4compileddata_p.h>
 
-#include "qqmljsannotation_p.h"
-#include "qqmljsimporter_p.h"
-#include "qqmljslogger_p.h"
-#include "qqmljsscope_p.h"
-#include "qqmljsscopesbyid_p.h"
+#include <QtQmlCompiler/qtqmlcompilerexports.h>
 
 #include <QtCore/qvariant.h>
 #include <QtCore/qstack.h>
-
-#include <private/qqmljsast_p.h>
-#include <private/qqmljsdiagnosticmessage_p.h>
-#include <private/qv4compileddata_p.h>
 
 #include <functional>
 
@@ -39,7 +39,7 @@ class QQmlDomAstCreatorWithQQmlJSScope;
 }
 
 struct QQmlJSResourceFileMapper;
-class Q_QMLCOMPILER_PRIVATE_EXPORT QQmlJSImportVisitor : public QQmlJS::AST::Visitor
+class Q_QMLCOMPILER_EXPORT QQmlJSImportVisitor : public QQmlJS::AST::Visitor
 {
 public:
     QQmlJSImportVisitor();
@@ -85,6 +85,8 @@ public:
         std::function<QQmlJSMetaPropertyBinding()> create;
         QQmlJSScope::BindingTargetSpecifier specifier = QQmlJSScope::SimplePropertyTarget;
     };
+
+    QStringList seenModuleQualifiers() const { return m_seenModuleQualifiers; }
 
 protected:
     // Linter warnings, we might want to move this at some point
@@ -234,24 +236,32 @@ protected:
 
     // A set of types that have not been resolved but have been used during the
     // AST traversal
-    QSet<QQmlJSScope::ConstPtr> m_unresolvedTypes;
+    QDuplicateTracker<QQmlJSScope::ConstPtr> m_unresolvedTypes;
     template<typename ErrorHandler>
-    bool isTypeResolved(const QQmlJSScope::ConstPtr &type, ErrorHandler handle)
+    bool checkTypeResolved(const QQmlJSScope::ConstPtr &type, ErrorHandler handle)
     {
-        if (type->isFullyResolved())
+        if (type->isFullyResolved() || type->isInCustomParserParent())
             return true;
 
         // Note: ignore duplicates, but only after we are certain that the type
         // is still unresolved
-        if (m_unresolvedTypes.contains(type))
-            return false;
+        if (!m_unresolvedTypes.hasSeen(type))
+            handle(type);
 
-        m_unresolvedTypes.insert(type);
-
-        handle(type);
         return false;
     }
-    bool isTypeResolved(const QQmlJSScope::ConstPtr &type);
+
+    bool checkTypeResolved(const QQmlJSScope::ConstPtr &type)
+    {
+        return checkTypeResolved(type, [&](const QQmlJSScope::ConstPtr &type) {
+            warnUnresolvedType(type);
+        });
+    }
+
+    void warnUnresolvedType(const QQmlJSScope::ConstPtr &type) const;
+    void warnMissingPropertyForBinding(
+            const QString &property, const QQmlJS::SourceLocation &location,
+            const std::optional<QQmlJSFixSuggestion> &fixSuggestion = {});
 
     QVector<QQmlJSAnnotation> parseAnnotations(QQmlJS::AST::UiAnnotationList *list);
     void setAllBindings();
@@ -343,29 +353,32 @@ protected:
     QHash<QQmlJS::SourceLocation, QQmlJSMetaSignalHandler> m_signalHandlers;
     QSet<QQmlJSScope::ConstPtr> m_literalScopesToCheck;
     QQmlJS::SourceLocation m_pendingSignalHandler;
+    QStringList m_seenModuleQualifiers;
 
 private:
     void checkSignal(
             const QQmlJSScope::ConstPtr &signalScope, const QQmlJS::SourceLocation &location,
             const QString &handlerName, const QStringList &handlerParameters);
     void importBaseModules();
-    void resolveAliasesAndIds();
+    void resolveAliases();
+    void resolveGroupProperties();
     void handleIdDeclaration(QQmlJS::AST::UiScriptBinding *scriptBinding);
 
     void visitFunctionExpressionHelper(QQmlJS::AST::FunctionExpression *fexpr);
     void processImportWarnings(
-            const QString &what,
+            const QString &what, const QList<QQmlJS::DiagnosticMessage> &warnings,
             const QQmlJS::SourceLocation &srcLocation = QQmlJS::SourceLocation());
-    void addImportWithLocation(const QString &name, const QQmlJS::SourceLocation &loc);
+    void addImportWithLocation(
+            const QString &name, const QQmlJS::SourceLocation &loc, bool hadWarnings);
     void populateCurrentScope(QQmlJSScope::ScopeType type, const QString &name,
                               const QQmlJS::SourceLocation &location);
     void enterRootScope(QQmlJSScope::ScopeType type, const QString &name,
                            const QQmlJS::SourceLocation &location);
 
-    void importFromHost(const QString &path, const QString &prefix,
-                        const QQmlJS::SourceLocation &location);
-    void importFromQrc(const QString &path, const QString &prefix,
-                       const QQmlJS::SourceLocation &location);
+    QList<QQmlJS::DiagnosticMessage> importFromHost(
+            const QString &path, const QString &prefix, const QQmlJS::SourceLocation &location);
+    QList<QQmlJS::DiagnosticMessage> importFromQrc(
+            const QString &path, const QString &prefix, const QQmlJS::SourceLocation &location);
 
 public:
     friend class QQmlJS::Dom::QQmlDomAstCreatorWithQQmlJSScope;

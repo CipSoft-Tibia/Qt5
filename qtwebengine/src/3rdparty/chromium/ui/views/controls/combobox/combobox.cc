@@ -48,6 +48,7 @@
 #include "ui/views/mouse_constants.h"
 #include "ui/views/style/platform_style.h"
 #include "ui/views/style/typography.h"
+#include "ui/views/style/typography_provider.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
 
@@ -65,11 +66,13 @@ float GetCornerRadius() {
 SkColor GetTextColorForEnableState(const Combobox& combobox, bool enabled) {
   const int style = enabled ? style::STYLE_PRIMARY : style::STYLE_DISABLED;
   return combobox.GetColorProvider()->GetColor(
-      style::GetColorId(style::CONTEXT_TEXTFIELD, style));
+      TypographyProvider::Get().GetColorId(style::CONTEXT_TEXTFIELD, style));
 }
 
 // The transparent button which holds a button state but is not rendered.
 class TransparentButton : public Button {
+  METADATA_HEADER(TransparentButton, Button)
+
  public:
   explicit TransparentButton(PressedCallback callback)
       : Button(std::move(callback)) {
@@ -113,6 +116,9 @@ class TransparentButton : public Button {
     }
   }
 };
+
+BEGIN_METADATA(TransparentButton)
+END_METADATA
 
 }  // namespace
 
@@ -188,7 +194,7 @@ Combobox::~Combobox() {
 }
 
 const gfx::FontList& Combobox::GetFontList() const {
-  return style::GetFont(kContext, kStyle);
+  return TypographyProvider::Get().GetFont(kContext, kStyle);
 }
 
 void Combobox::SetSelectedIndex(absl::optional<size_t> index) {
@@ -528,6 +534,10 @@ bool Combobox::HandleAccessibleAction(const ui::AXActionData& action_data) {
 void Combobox::OnComboboxModelChanged(ui::ComboboxModel* model) {
   DCHECK_EQ(model_, model);
 
+  if (IsMenuRunning()) {
+    menu_runner_.reset();
+  }
+
   // If the selection is no longer valid (or the model is empty), restore the
   // default index.
   if (selected_index_ >= model_->GetItemCount() ||
@@ -537,6 +547,7 @@ void Combobox::OnComboboxModelChanged(ui::ComboboxModel* model) {
   }
 
   OnContentSizeMaybeChanged();
+  SchedulePaint();
 }
 
 void Combobox::OnComboboxModelDestroying(ui::ComboboxModel* model) {
@@ -787,12 +798,12 @@ PrefixSelector* Combobox::GetPrefixSelector() {
 
 const gfx::FontList& Combobox::GetForegroundFontList() const {
   if (foreground_text_style_) {
-    return style::GetFont(kContext, *foreground_text_style_);
+    return TypographyProvider::Get().GetFont(kContext, *foreground_text_style_);
   }
   return GetFontList();
 }
 
-BEGIN_METADATA(Combobox, View)
+BEGIN_METADATA(Combobox)
 ADD_PROPERTY_METADATA(base::RepeatingClosure, Callback)
 ADD_PROPERTY_METADATA(std::unique_ptr<ui::ComboboxModel>, OwnedModel)
 ADD_PROPERTY_METADATA(ui::ComboboxModel*, Model)

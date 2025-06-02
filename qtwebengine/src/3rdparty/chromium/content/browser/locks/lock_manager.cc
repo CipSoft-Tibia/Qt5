@@ -167,7 +167,7 @@ class LockManager::BucketState {
   // queue.
   void BreakFront(std::list<Lock>& request_queue) {
     Lock& broken_lock = request_queue.front();
-    lock_id_to_iterator_.erase(broken_lock.lock_id());
+    lock_id_to_resource_name_.erase(broken_lock.lock_id());
     broken_lock.Break();
     request_queue.pop_front();
   }
@@ -186,11 +186,10 @@ class LockManager::BucketState {
     std::list<Lock>& request_queue = resource_names_to_requests_[name];
     while (!request_queue.empty() && request_queue.front().is_granted())
       BreakFront(request_queue);
-    request_queue.emplace_front(name, mode, lock_id, receiver_state,
+    auto& queued_request = request_queue.emplace_front(name, mode, lock_id, receiver_state,
                                 std::move(request));
-    auto it = request_queue.begin();
-    lock_id_to_iterator_.emplace(it->lock_id(), it);
-    it->Grant(lock_manager_, receiver_state.bucket_id);
+    lock_id_to_resource_name_.emplace(queued_request.lock_id(), queued_request.name());
+    queued_request.Grant(lock_manager_, receiver_state.bucket_id);
   }
 
   void AddRequest(int64_t lock_id,
@@ -211,26 +210,25 @@ class LockManager::BucketState {
       return;
     }
 
-    request_queue.emplace_back(name, mode, lock_id, receiver_state,
+    auto& queued_request = request_queue.emplace_back(name, mode, lock_id, receiver_state,
                                std::move(request));
-    auto it = --(request_queue.end());
-    lock_id_to_iterator_.emplace(it->lock_id(), it);
+    lock_id_to_resource_name_.emplace(queued_request.lock_id(), queued_request.name());
     if (can_grant) {
-      it->Grant(lock_manager_, receiver_state.bucket_id);
+      queued_request.Grant(lock_manager_, receiver_state.bucket_id);
     }
   }
 
   void EraseLock(int64_t lock_id, storage::BucketId bucket_id) {
     // Note - the two lookups here could be replaced with one if the
-    // lock_id_to_iterator_ map also stored a reference to the request queue.
-    auto iterator_it = lock_id_to_iterator_.find(lock_id);
-    if (iterator_it == lock_id_to_iterator_.end())
+    // lock_id_to_resource_name_ map also stored a reference to the request queue.
+    auto iterator_it = lock_id_to_resource_name_.find(lock_id);
+    if (iterator_it == lock_id_to_resource_name_.end())
       return;
 
-    auto lock_it = iterator_it->second;
-    lock_id_to_iterator_.erase(iterator_it);
+    const std::string resource_name = iterator_it->second;
+    lock_id_to_resource_name_.erase(iterator_it);
 
-    auto request_it = resource_names_to_requests_.find(lock_it->name());
+    auto request_it = resource_names_to_requests_.find(resource_name);
     if (request_it == resource_names_to_requests_.end())
       return;
 
@@ -239,14 +237,20 @@ class LockManager::BucketState {
     auto check_it = request_queue.begin();
     bool found = false;
     for (; check_it != request_queue.end(); ++check_it) {
-      found = check_it == lock_it;
+      found = check_it->name() == resource_name;
       if (found)
         break;
     }
     DCHECK(found);
 #endif
 
-    request_queue.erase(lock_it);
+    for (auto queue_it = request_queue.begin(); queue_it != request_queue.end(); ++queue_it) {
+      if (queue_it->lock_id() == lock_id) {
+        request_queue.erase(queue_it);
+        break;
+      }
+    }
+
     if (request_queue.empty()) {
       resource_names_to_requests_.erase(request_it);
       return;
@@ -274,7 +278,7 @@ class LockManager::BucketState {
     }
   }
 
-  bool IsEmpty() const { return lock_id_to_iterator_.empty(); }
+  bool IsEmpty() const { return lock_id_to_resource_name_.empty(); }
 
   std::pair<std::vector<blink::mojom::LockInfoPtr>,
             std::vector<blink::mojom::LockInfoPtr>>
@@ -288,7 +292,7 @@ class LockManager::BucketState {
       for (const auto& lock : request_queue) {
         std::vector<blink::mojom::LockInfoPtr>& target =
             lock.is_granted() ? held : requests;
-        target.emplace_back(absl::in_place, lock.name(), lock.mode(),
+        target.emplace_back(std::in_place, lock.name(), lock.mode(),
                             lock.client_id());
       }
     }
@@ -305,9 +309,9 @@ class LockManager::BucketState {
   // request queue.
   base::flat_map<std::string, std::list<Lock>> resource_names_to_requests_;
 
-  // BucketState::lock_id_to_iterator_ maps a lock's id to the
-  // iterator pointing to its location in its associated request queue.
-  base::flat_map<int64_t, std::list<Lock>::iterator> lock_id_to_iterator_;
+  // BucketState::lock_id_to_resource_name_ maps a lock's id to the
+  // name of the requested resource.
+  base::flat_map<int64_t, std::string> lock_id_to_resource_name_;
 
   // Any OriginState is owned by a LockManager so a raw pointer back to an
   // OriginState's owning LockManager is safe.

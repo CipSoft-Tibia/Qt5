@@ -927,7 +927,6 @@ void tst_QSpinBox::editingFinished()
     layout->addWidget(box2);
 
     testFocusWidget.show();
-    QApplicationPrivate::setActiveWindow(&testFocusWidget);
     QVERIFY(QTest::qWaitForWindowActive(&testFocusWidget));
     box->activateWindow();
     box->setFocus();
@@ -1106,7 +1105,6 @@ void tst_QSpinBox::specialValue()
     spin.setValue(50);
     topWidget.show();
     //make sure we have the focus (even if editingFinished fails)
-    QApplicationPrivate::setActiveWindow(&topWidget);
     topWidget.activateWindow();
     QVERIFY(QTest::qWaitForWindowActive(&topWidget));
     spin.setFocus();
@@ -1210,7 +1208,6 @@ void tst_QSpinBox::taskQTBUG_5008_textFromValueAndValidate()
     spinbox.show();
     spinbox.activateWindow();
     spinbox.setFocus();
-    QApplicationPrivate::setActiveWindow(&spinbox);
     QVERIFY(QTest::qWaitForWindowActive(&spinbox));
     QVERIFY(spinbox.hasFocus());
     QTRY_COMPARE(static_cast<QWidget *>(&spinbox), QApplication::activeWindow());

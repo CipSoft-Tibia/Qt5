@@ -30,18 +30,14 @@ static const char usePhysicalDpiEnvVar[] = "QT_USE_PHYSICAL_DPI";
 
 static std::optional<QString> qEnvironmentVariableOptionalString(const char *name)
 {
-    if (!qEnvironmentVariableIsSet(name))
-        return std::nullopt;
-
-    return std::optional(qEnvironmentVariable(name));
+    QString value = qEnvironmentVariable(name);
+    return value.isNull() ? std::nullopt : std::optional(std::move(value));
 }
 
 static std::optional<QByteArray> qEnvironmentVariableOptionalByteArray(const char *name)
 {
-    if (!qEnvironmentVariableIsSet(name))
-        return std::nullopt;
-
-    return std::optional(qgetenv(name));
+    QByteArray value = qgetenv(name);
+    return value.isNull() ? std::nullopt : std::optional(std::move(value));
 }
 
 static std::optional<int> qEnvironmentVariableOptionalInt(const char *name)
@@ -54,11 +50,12 @@ static std::optional<int> qEnvironmentVariableOptionalInt(const char *name)
 
 static std::optional<qreal> qEnvironmentVariableOptionalReal(const char *name)
 {
-    if (!qEnvironmentVariableIsSet(name))
+    const QByteArray val = qgetenv(name);
+    if (val.isNull())
         return std::nullopt;
 
     bool ok = false;
-    const qreal value = qEnvironmentVariable(name).toDouble(&ok);
+    const qreal value = val.toDouble(&ok);
     return ok ? std::optional(value) : std::nullopt;
 }
 
@@ -690,7 +687,7 @@ QScreen *QHighDpiScaling::screenForPosition(QHighDpiScaling::Point position, QSc
     return nullptr;
 }
 
-QVector<QHighDpiScaling::ScreenFactor> QHighDpiScaling::parseScreenScaleFactorsSpec(const QStringView &screenScaleFactors)
+QList<QHighDpiScaling::ScreenFactor> QHighDpiScaling::parseScreenScaleFactorsSpec(QStringView screenScaleFactors)
 {
     QVector<QHighDpiScaling::ScreenFactor> screenFactors;
 

@@ -27,7 +27,10 @@
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/accessibility/platform/ax_platform_node.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/owned_window_anchor.h"
+#include "ui/base/ozone_buildflags.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/events/event.h"
 #include "ui/events/event_constants.h"
@@ -68,17 +71,10 @@
 #endif
 
 #if BUILDFLAG(IS_OZONE)
-#include "ui/ozone/buildflags.h"
 #include "ui/ozone/public/ozone_platform.h"
-#if BUILDFLAG(OZONE_PLATFORM_WAYLAND)
-#define USE_WAYLAND
-#endif
-#if BUILDFLAG(OZONE_PLATFORM_X11)
-#define USE_OZONE_PLATFORM_X11
-#endif
 #endif
 
-#if defined(USE_OZONE_PLATFORM_X11)
+#if BUILDFLAG(IS_OZONE_X11)
 #include "ui/events/test/events_test_utils_x11.h"
 #endif
 
@@ -270,8 +266,10 @@ bool TestDragDropClient::IsDragDropInProgress() {
 
 // View which cancels the menu it belongs to on mouse press.
 class CancelMenuOnMousePressView : public View {
+  METADATA_HEADER(CancelMenuOnMousePressView, View)
+
  public:
-  explicit CancelMenuOnMousePressView(MenuController* controller)
+  explicit CancelMenuOnMousePressView(base::WeakPtr<MenuController> controller)
       : controller_(controller) {}
 
   // View:
@@ -279,7 +277,7 @@ class CancelMenuOnMousePressView : public View {
   gfx::Size CalculatePreferredSize() const override;
 
  private:
-  raw_ptr<MenuController, DanglingUntriaged> controller_;
+  const base::WeakPtr<MenuController> controller_;
 };
 
 bool CancelMenuOnMousePressView::OnMousePressed(const ui::MouseEvent& event) {
@@ -293,6 +291,9 @@ gfx::Size CancelMenuOnMousePressView::CalculatePreferredSize() const {
   // determines if the menu contains the mouse press location doesn't work.
   return size();
 }
+
+BEGIN_METADATA(CancelMenuOnMousePressView)
+END_METADATA
 
 }  // namespace
 
@@ -507,16 +508,12 @@ class MenuControllerTest : public ViewsTestBase,
   gfx::Insets GetBorderAndShadowInsets(bool is_submenu);
 
  private:
-  // Not owned.
-  raw_ptr<test::ReleaseRefTestViewsDelegate, DanglingUntriaged>
-      test_views_delegate_ = nullptr;
-
   std::unique_ptr<GestureTestWidget> owner_;
   std::unique_ptr<ui::test::EventGenerator> event_generator_;
   std::unique_ptr<MenuItemView> menu_item_;
   std::unique_ptr<TestMenuControllerDelegate> menu_controller_delegate_;
   std::unique_ptr<test::TestMenuDelegate> menu_delegate_;
-  raw_ptr<MenuController, DanglingUntriaged> menu_controller_ = nullptr;
+  raw_ptr<MenuController> menu_controller_ = nullptr;
 };
 
 void MenuControllerTest::SetUp() {
@@ -524,8 +521,7 @@ void MenuControllerTest::SetUp() {
     base::i18n::SetRTLForTesting(GetParam());
   }
 
-  test_views_delegate_ =
-      set_views_delegate(std::make_unique<test::ReleaseRefTestViewsDelegate>());
+  set_views_delegate(std::make_unique<test::ReleaseRefTestViewsDelegate>());
   ViewsTestBase::SetUp();
   ASSERT_TRUE(base::CurrentUIThread::IsSet());
 
@@ -680,8 +676,9 @@ void MenuControllerTest::TestCancelAllDuringDrag() {
 void MenuControllerTest::TestDestroyedDuringViewsRelease() {
   // |test_views_delegate_| is owned by views::ViewsTestBase and not deleted
   // until TearDown. MenuControllerTest outlives it.
-  test_views_delegate_->set_release_ref_callback(base::BindRepeating(
-      &MenuControllerTest::DestroyMenuController, base::Unretained(this)));
+  static_cast<test::ReleaseRefTestViewsDelegate*>(test_views_delegate())
+      ->set_release_ref_callback(base::BindRepeating(
+          &MenuControllerTest::DestroyMenuController, base::Unretained(this)));
   menu_controller_->ExitMenu();
 }
 
@@ -956,8 +953,7 @@ void MenuControllerTest::DestroyMenuController() {
 
   menu_controller_->showing_ = false;
   menu_controller_->owner_ = nullptr;
-  delete menu_controller_;
-  menu_controller_ = nullptr;
+  delete menu_controller_.ExtractAsDangling();
 }
 
 // static
@@ -1015,7 +1011,7 @@ TEST_F(MenuControllerTest, EventTargeter) {
 }
 #endif  // defined(USE_AURA)
 
-#if defined(USE_OZONE_PLATFORM_X11)
+#if BUILDFLAG(IS_OZONE_X11)
 // Tests that touch event ids are released correctly. See crbug.com/439051 for
 // details. When the ids aren't managed correctly, we get stuck down touches.
 TEST_F(MenuControllerTest, TouchIdsReleasedCorrectly) {
@@ -1044,7 +1040,7 @@ TEST_F(MenuControllerTest, TouchIdsReleasedCorrectly) {
 
   GetRootWindow(owner())->RemovePreTargetHandler(&test_event_handler);
 }
-#endif  // defined(USE_OZONE_PLATFORM_X11)
+#endif  // BUILDFLAG(IS_OZONE_X11)
 
 // Tests that initial selected menu items are correct when items are enabled or
 // disabled.
@@ -2378,7 +2374,7 @@ TEST_F(MenuControllerTest, AsynchronousCancelEvent) {
 
 // TODO(pkasting): The test below fails most of the time on Wayland; not clear
 // it's important to support this case.
-#if BUILDFLAG(ENABLE_DESKTOP_AURA) && !defined(USE_WAYLAND)
+#if BUILDFLAG(ENABLE_DESKTOP_AURA) && !BUILDFLAG(IS_OZONE_WAYLAND)
 class DesktopMenuControllerTest : public MenuControllerTest {
  public:
   // MenuControllerTest:
@@ -2396,7 +2392,7 @@ TEST_F(DesktopMenuControllerTest, RunWithoutWidgetDoesntCrash) {
   menu_controller()->Run(nullptr, nullptr, menu_item(), gfx::Rect(),
                          MenuAnchorPosition::kTopLeft, false, false);
 }
-#endif
+#endif  // BUILDFLAG(ENABLE_DESKTOP_AURA) && !BUILDFLAG(IS_OZONE_WAYLAND)
 
 // Tests that if a MenuController is destroying during drag/drop, and another
 // MenuController becomes active, that the exiting of drag does not cause a
@@ -2720,8 +2716,9 @@ TEST_F(MenuControllerTest, NoUseAfterFreeWhenMenuCanceledOnMousePress) {
   item->SetBounds(0, 0, 50, 50);
 
   SubmenuView* const submenu = item->CreateSubmenu();
-  auto* const canceling_view = submenu->AddChildView(
-      std::make_unique<CancelMenuOnMousePressView>(menu_controller()));
+  auto* const canceling_view =
+      submenu->AddChildView(std::make_unique<CancelMenuOnMousePressView>(
+          menu_controller()->AsWeakPtr()));
   canceling_view->SetBoundsRect(item->GetLocalBounds());
 
   menu_controller()->Run(owner(), nullptr, item.get(), item->bounds(),
@@ -3184,6 +3181,15 @@ TEST_F(MenuControllerTest, ChildMenuOpenDirectionStateUpdatesCorrectly) {
             GetChildMenuOpenDirectionAtDepth(4));
   EXPECT_EQ(MenuController::MenuOpenDirection::kLeading,
             GetChildMenuOpenDirectionAtDepth(10));
+}
+
+TEST_F(MenuControllerTest, MenuHostHasCorrectZOrderLevel) {
+  ShowSubmenu();
+  SubmenuView* const submenu = menu_item()->GetSubmenu();
+  MenuHost* const host = menu_host_for_submenu(submenu);
+
+  // Ensure that the menu host has the correct z order level.
+  EXPECT_EQ(ui::ZOrderLevel::kFloatingWindow, host->GetZOrderLevel());
 }
 
 }  // namespace views

@@ -13,7 +13,7 @@
 #define AOM_AOM_DSP_ENTENC_H_
 #include <stddef.h>
 #include "aom_dsp/entcode.h"
-#include "aom_ports/bitops.h"
+#include "aom_util/endian_inl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -74,9 +74,6 @@ OD_WARN_UNUSED_RESULT int od_ec_enc_tell(const od_ec_enc *enc)
 OD_WARN_UNUSED_RESULT uint32_t od_ec_enc_tell_frac(const od_ec_enc *enc)
     OD_ARG_NONNULL(1);
 
-void od_ec_enc_checkpoint(od_ec_enc *dst, const od_ec_enc *src);
-void od_ec_enc_rollback(od_ec_enc *dst, const od_ec_enc *src);
-
 // buf is the frame bitbuffer, offs is where carry to be added
 static AOM_INLINE void propagate_carry_bwd(unsigned char *buf, uint32_t offs) {
   uint16_t sum, carry = 1;
@@ -87,13 +84,14 @@ static AOM_INLINE void propagate_carry_bwd(unsigned char *buf, uint32_t offs) {
   } while (carry);
 }
 
-// Reverse byte order and write data to buffer adding the carry-bit
+// Convert to big-endian byte order and write data to buffer adding the
+// carry-bit
 static AOM_INLINE void write_enc_data_to_out_buf(unsigned char *out,
                                                  uint32_t offs, uint64_t output,
                                                  uint64_t carry,
                                                  uint32_t *enc_offs,
                                                  uint8_t num_bytes_ready) {
-  const uint64_t reg = get_byteswap64(output) >> ((8 - num_bytes_ready) << 3);
+  const uint64_t reg = HToBE64(output << ((8 - num_bytes_ready) << 3));
   memcpy(&out[offs], &reg, 8);
   // Propagate carry backwards if exists
   if (carry) {

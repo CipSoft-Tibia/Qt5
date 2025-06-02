@@ -33,7 +33,7 @@ namespace Qt3DRender {
     \brief The PickingSettings class specifies how entity picking is handled.
     \since 5.7
     \inqmlmodule Qt3D.Render
-    \instantiates Qt3DRender::QPickingSettings
+    \nativetype Qt3DRender::QPickingSettings
 
     The picking settings determine how the entity picking is handled. For more details about
     entity picking, see Qt3D.Render::ObjectPicker or Qt3D.Render::RayCaster component documentation.
@@ -135,7 +135,7 @@ float QPickingSettings::worldSpaceTolerance() const
     \sa Qt3DRender::QPickingSettings::PickMethod
 */
 /*!
-    \property QPickingSettings::pickMethod
+    \property Qt3DRender::QPickingSettings::pickMethod
 
     Holds the current pick method.
 
@@ -184,7 +184,7 @@ void QPickingSettings::setPickMethod(QPickingSettings::PickMethod pickMethod)
     \sa Qt3DRender::QPickingSettings::PickResultMode
 */
 /*!
-    \property QPickingSettings::pickResultMode
+    \property Qt3DRender::QPickingSettings::pickResultMode
 
     Holds the current pick results mode.
 
@@ -232,7 +232,7 @@ void QPickingSettings::setPickResultMode(QPickingSettings::PickResultMode pickRe
     \endlist
 */
 /*!
-    \property QPickingSettings::faceOrientationPickingMode
+    \property Qt3DRender::QPickingSettings::faceOrientationPickingMode
 
     Specifies how face orientation affects triangle picking
 */
@@ -247,12 +247,12 @@ void QPickingSettings::setFaceOrientationPickingMode(QPickingSettings::FaceOrien
 }
 
 /*!
-    \qmlproperty qreal PickingSettings::worldSpaceTolerance
+    \qmlproperty real PickingSettings::worldSpaceTolerance
 
     Holds the threshold, in model space coordinates, used to evaluate line and point picking.
 */
 /*!
-    \property QPickingSettings::worldSpaceTolerance
+    \property Qt3DRender::QPickingSettings::worldSpaceTolerance
 
     Holds the threshold, in model space coordinates, used to evaluate line and point picking.
 */

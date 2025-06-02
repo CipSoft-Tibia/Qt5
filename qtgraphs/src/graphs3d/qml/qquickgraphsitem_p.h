@@ -14,24 +14,25 @@
 //
 // We mean it.
 
-#include "../theme/thememanager_p.h"
+#include <QtGraphs/qgraphs3dnamespace.h>
 #include "qabstract3daxis.h"
-#include "qabstract3dgraph.h"
 #include "qabstract3dseries.h"
 #include "qcategory3daxis.h"
 #include "qvalue3daxis.h"
 
 #include <QtQuick3D/private/qquick3dviewport_p.h>
+Q_MOC_INCLUDE(<QtGraphs / q3dscene.h>)
 
 QT_BEGIN_NAMESPACE
+class Q3DScene;
 
-class Q3DTheme;
 class QAbstract3DAxis;
-class QAbstract3DInputHandler;
 class QAbstract3DSeries;
 class QCustom3DItem;
 class QCustom3DVolume;
 class QCustom3DLabel;
+class QGraphsInputHandler;
+class QGraphsTheme;
 class QQuick3DCustomMaterial;
 class QQuick3DDirectionalLight;
 class QQuick3DPrincipledMaterial;
@@ -81,10 +82,17 @@ struct Abstract3DChangeBitField
     bool axisXTitleVisibilityChanged : 1;
     bool axisYTitleVisibilityChanged : 1;
     bool axisZTitleVisibilityChanged : 1;
+    bool axisXLabelVisibilityChanged : 1;
+    bool axisYLabelVisibilityChanged : 1;
+    bool axisZLabelVisibilityChanged : 1;
     bool axisXTitleFixedChanged : 1;
     bool axisYTitleFixedChanged : 1;
     bool axisZTitleFixedChanged : 1;
+    bool axisXTitleOffsetChanged : 1;
+    bool axisYTitleOffsetChanged : 1;
+    bool axisZTitleOffsetChanged : 1;
     bool polarChanged : 1;
+    bool labelMarginChanged : 1;
     bool radialLabelOffsetChanged : 1;
     bool marginChanged : 1;
 
@@ -129,40 +137,46 @@ struct Abstract3DChangeBitField
         , axisXTitleVisibilityChanged(true)
         , axisYTitleVisibilityChanged(true)
         , axisZTitleVisibilityChanged(true)
+        , axisXLabelVisibilityChanged(true)
+        , axisYLabelVisibilityChanged(true)
+        , axisZLabelVisibilityChanged(true)
         , axisXTitleFixedChanged(true)
         , axisYTitleFixedChanged(true)
         , axisZTitleFixedChanged(true)
+        , axisXTitleOffsetChanged(true)
+        , axisYTitleOffsetChanged(true)
+        , axisZTitleOffsetChanged(true)
         , polarChanged(true)
+        , labelMarginChanged(true)
         , radialLabelOffsetChanged(true)
         , marginChanged(true)
     {}
 };
 
-class QQuickGraphsItem : public QQuick3DViewport
+class Q_GRAPHS_EXPORT QQuickGraphsItem : public QQuick3DViewport
 {
     Q_OBJECT
-    Q_PROPERTY(QAbstract3DGraph::SelectionFlags selectionMode READ selectionMode WRITE
-                   setSelectionMode NOTIFY selectionModeChanged)
-    Q_PROPERTY(QAbstract3DGraph::ShadowQuality shadowQuality READ shadowQuality WRITE
-                   setShadowQuality NOTIFY shadowQualityChanged)
+    Q_PROPERTY(QtGraphs3D::SelectionFlags selectionMode READ selectionMode WRITE setSelectionMode
+                   NOTIFY selectionModeChanged)
+    Q_PROPERTY(QtGraphs3D::ShadowQuality shadowQuality READ shadowQuality WRITE setShadowQuality
+                   NOTIFY shadowQualityChanged)
     Q_PROPERTY(int msaaSamples READ msaaSamples WRITE setMsaaSamples NOTIFY msaaSamplesChanged)
     Q_PROPERTY(Q3DScene *scene READ scene NOTIFY sceneChanged)
-    Q_PROPERTY(QAbstract3DInputHandler *inputHandler READ inputHandler WRITE setInputHandler NOTIFY
-                   inputHandlerChanged)
-    Q_PROPERTY(Q3DTheme *theme READ theme WRITE setTheme NOTIFY themeChanged)
-    Q_PROPERTY(QAbstract3DGraph::RenderingMode renderingMode READ renderingMode WRITE
-                   setRenderingMode NOTIFY renderingModeChanged)
+    Q_PROPERTY(QGraphsTheme *theme READ theme WRITE setTheme NOTIFY themeChanged)
+    Q_PROPERTY(QtGraphs3D::RenderingMode renderingMode READ renderingMode WRITE setRenderingMode
+                   NOTIFY renderingModeChanged)
     Q_PROPERTY(bool measureFps READ measureFps WRITE setMeasureFps NOTIFY measureFpsChanged)
     Q_PROPERTY(int currentFps READ currentFps NOTIFY currentFpsChanged)
     Q_PROPERTY(QQmlListProperty<QCustom3DItem> customItemList READ customItemList CONSTANT)
     Q_PROPERTY(bool orthoProjection READ isOrthoProjection WRITE setOrthoProjection NOTIFY
                    orthoProjectionChanged)
-    Q_PROPERTY(QAbstract3DGraph::ElementType selectedElement READ selectedElement NOTIFY
-                   selectedElementChanged)
+    Q_PROPERTY(
+        QtGraphs3D::ElementType selectedElement READ selectedElement NOTIFY selectedElementChanged)
     Q_PROPERTY(qreal aspectRatio READ aspectRatio WRITE setAspectRatio NOTIFY aspectRatioChanged)
-    Q_PROPERTY(QAbstract3DGraph::OptimizationHint optimizationHint READ optimizationHint WRITE
+    Q_PROPERTY(QtGraphs3D::OptimizationHint optimizationHint READ optimizationHint WRITE
                    setOptimizationHint NOTIFY optimizationHintChanged)
     Q_PROPERTY(bool polar READ isPolar WRITE setPolar NOTIFY polarChanged)
+    Q_PROPERTY(float labelMargin READ labelMargin WRITE setLabelMargin NOTIFY labelMarginChanged)
     Q_PROPERTY(float radialLabelOffset READ radialLabelOffset WRITE setRadialLabelOffset NOTIFY
                    radialLabelOffsetChanged)
     Q_PROPERTY(qreal horizontalAspectRatio READ horizontalAspectRatio WRITE setHorizontalAspectRatio
@@ -177,8 +191,8 @@ class QQuickGraphsItem : public QQuick3DViewport
                    cameraYRotationChanged)
     Q_PROPERTY(float cameraZoomLevel READ cameraZoomLevel WRITE setCameraZoomLevel NOTIFY
                    cameraZoomLevelChanged)
-    Q_PROPERTY(QAbstract3DGraph::CameraPreset cameraPreset READ cameraPreset WRITE setCameraPreset
-                   NOTIFY cameraPresetChanged)
+    Q_PROPERTY(QtGraphs3D::CameraPreset cameraPreset READ cameraPreset WRITE setCameraPreset NOTIFY
+                   cameraPresetChanged)
     Q_PROPERTY(QVector3D cameraTargetPosition READ cameraTargetPosition WRITE
                    setCameraTargetPosition NOTIFY cameraTargetPositionChanged)
     Q_PROPERTY(float minCameraZoomLevel READ minCameraZoomLevel WRITE setMinCameraZoomLevel NOTIFY
@@ -189,9 +203,26 @@ class QQuickGraphsItem : public QQuick3DViewport
                    wrapCameraXRotationChanged)
     Q_PROPERTY(bool wrapCameraYRotation READ wrapCameraYRotation WRITE setWrapCameraYRotation NOTIFY
                    wrapCameraYRotationChanged)
+    Q_PROPERTY(bool rotationEnabled READ rotationEnabled WRITE setRotationEnabled NOTIFY
+                   rotationEnabledChanged)
+    Q_PROPERTY(bool zoomAtTargetEnabled READ zoomAtTargetEnabled WRITE setZoomAtTargetEnabled NOTIFY
+                   zoomAtTargetEnabledChanged)
+    Q_PROPERTY(bool selectionEnabled READ selectionEnabled WRITE setSelectionEnabled NOTIFY
+                   selectionEnabledChanged)
+    Q_PROPERTY(bool zoomEnabled READ zoomEnabled WRITE setZoomEnabled NOTIFY zoomEnabledChanged)
+
+    Q_PROPERTY(QColor lightColor READ lightColor WRITE setLightColor NOTIFY lightColorChanged)
+    Q_PROPERTY(float ambientLightStrength READ ambientLightStrength WRITE setAmbientLightStrength
+                   NOTIFY ambientLightStrengthChanged)
+    Q_PROPERTY(
+        float lightStrength READ lightStrength WRITE setLightStrength NOTIFY lightStrengthChanged)
+    Q_PROPERTY(float shadowStrength READ shadowStrength WRITE setShadowStrength NOTIFY
+                   shadowStrengthChanged)
+    Q_PROPERTY(QtGraphs3D::GridLineType gridLineType READ gridLineType WRITE setGridLineType NOTIFY
+                   gridLineTypeChanged FINAL)
 
     QML_NAMED_ELEMENT(GraphsItem3D)
-    QML_UNCREATABLE("Trying to create uncreatable: GraphsItem3D.")
+    QML_UNCREATABLE("")
 
 public:
     explicit QQuickGraphsItem(QQuickItem *parent = 0);
@@ -202,7 +233,7 @@ public:
     void markSeriesItemLabelsDirty();
     void emitNeedRender();
 
-    void setQueriedGraphPosition(const QVector3D &position) { m_queriedGraphPosition = position; }
+    void setQueriedGraphPosition(QVector3D position) { m_queriedGraphPosition = position; }
 
     virtual void handleAxisTitleChangedBySender(QObject *sender);
     virtual void handleAxisLabelsChangedBySender(QObject *sender);
@@ -217,7 +248,9 @@ public:
     virtual void handleAxisFormatterDirtyBySender(QObject *sender);
     virtual void handleAxisLabelAutoRotationChangedBySender(QObject *sender);
     virtual void handleAxisTitleVisibilityChangedBySender(QObject *sender);
+    virtual void handleAxisLabelVisibilityChangedBySender(QObject *sender);
     virtual void handleAxisTitleFixedChangedBySender(QObject *sender);
+    virtual void handleAxisTitleOffsetChangedBySender(QObject *sender);
     virtual void handleSeriesVisibilityChangedBySender(QObject *sender);
     virtual void adjustAxisRanges() = 0;
 
@@ -227,10 +260,15 @@ public:
         m_graphPositionQueryPending = pending;
     }
 
-    enum SelectionType { SelectionNone = 0, SelectionItem, SelectionRow, SelectionColumn };
+    enum SelectionType {
+        SelectionNone = 0,
+        SelectionItem,
+        SelectionRow,
+        SelectionColumn,
+    };
 
     virtual void addSeriesInternal(QAbstract3DSeries *series);
-    void insertSeries(int index, QAbstract3DSeries *series);
+    void insertSeries(qsizetype index, QAbstract3DSeries *series);
     virtual void removeSeriesInternal(QAbstract3DSeries *series);
     QList<QAbstract3DSeries *> seriesList();
 
@@ -244,29 +282,26 @@ public:
     virtual void releaseAxis(QAbstract3DAxis *axis);
     virtual QList<QAbstract3DAxis *> axes() const; // Omits default axes
 
-    virtual void setRenderingMode(QAbstract3DGraph::RenderingMode mode);
-    virtual QAbstract3DGraph::RenderingMode renderingMode() const;
+    virtual void setRenderingMode(QtGraphs3D::RenderingMode mode);
+    virtual QtGraphs3D::RenderingMode renderingMode() const;
 
-    virtual void setSelectionMode(QAbstract3DGraph::SelectionFlags mode);
-    virtual QAbstract3DGraph::SelectionFlags selectionMode() const;
+    virtual void setSelectionMode(QtGraphs3D::SelectionFlags mode);
+    virtual QtGraphs3D::SelectionFlags selectionMode() const;
 
-    void doSetShadowQuality(QAbstract3DGraph::ShadowQuality quality);
-    virtual void setShadowQuality(QAbstract3DGraph::ShadowQuality quality);
-    virtual QAbstract3DGraph::ShadowQuality shadowQuality() const;
+    void doSetShadowQuality(QtGraphs3D::ShadowQuality quality);
+    virtual void setShadowQuality(QtGraphs3D::ShadowQuality quality);
+    virtual QtGraphs3D::ShadowQuality shadowQuality() const;
 
-    virtual QAbstract3DGraph::ElementType selectedElement() const;
+    virtual QtGraphs3D::ElementType selectedElement() const;
 
     virtual void setMsaaSamples(int samples);
     virtual int msaaSamples() const;
 
-    virtual QAbstract3DInputHandler *inputHandler() const;
-    virtual void setInputHandler(QAbstract3DInputHandler *inputHandler);
-
-    virtual void addTheme(Q3DTheme *theme);
-    virtual void releaseTheme(Q3DTheme *theme);
-    virtual void setTheme(Q3DTheme *theme);
-    virtual Q3DTheme *theme() const;
-    virtual QList<Q3DTheme *> themes() const;
+    void addTheme(QGraphsTheme *theme);
+    void releaseTheme(QGraphsTheme *theme);
+    void setTheme(QGraphsTheme *theme);
+    QGraphsTheme *theme() const;
+    QList<QGraphsTheme *> themes() const;
 
     bool isSlicingActive() const;
     void setSlicingActive(bool isSlicing);
@@ -285,19 +320,19 @@ public:
 
     void deleteCustomItems();
     void deleteCustomItem(QCustom3DItem *item);
-    void deleteCustomItem(const QVector3D &position);
+    void deleteCustomItem(QVector3D position);
     QList<QCustom3DItem *> customItems() const;
 
-    Q_INVOKABLE virtual int addCustomItem(QCustom3DItem *item);
+    Q_INVOKABLE virtual qsizetype addCustomItem(QCustom3DItem *item);
     Q_INVOKABLE virtual void removeCustomItems();
     Q_INVOKABLE virtual void removeCustomItem(QCustom3DItem *item);
-    Q_INVOKABLE virtual void removeCustomItemAt(const QVector3D &position);
+    Q_INVOKABLE virtual void removeCustomItemAt(QVector3D position);
     Q_INVOKABLE virtual void releaseCustomItem(QCustom3DItem *item);
 
     Q_INVOKABLE virtual int selectedLabelIndex() const;
     Q_INVOKABLE virtual QAbstract3DAxis *selectedAxis() const;
 
-    Q_INVOKABLE virtual int selectedCustomItemIndex() const;
+    Q_INVOKABLE virtual qsizetype selectedCustomItemIndex() const;
     Q_INVOKABLE virtual QCustom3DItem *selectedCustomItem() const;
 
     QQmlListProperty<QCustom3DItem> customItemList();
@@ -308,13 +343,13 @@ public:
 
     void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;
 
+    void resizeViewports(QSizeF viewportSize);
+
     void checkWindowList(QQuickWindow *window);
 
     void setMeasureFps(bool enable);
     bool measureFps() const;
     int currentFps() const;
-
-    void createInitialInputHandler();
 
     void setOrthoProjection(bool enable);
     bool isOrthoProjection() const;
@@ -322,11 +357,14 @@ public:
     void setAspectRatio(qreal ratio);
     qreal aspectRatio() const;
 
-    void setOptimizationHint(QAbstract3DGraph::OptimizationHint hint);
-    QAbstract3DGraph::OptimizationHint optimizationHint() const;
+    void setOptimizationHint(QtGraphs3D::OptimizationHint hint);
+    QtGraphs3D::OptimizationHint optimizationHint() const;
 
     void setPolar(bool enable);
     bool isPolar() const;
+
+    void setLabelMargin(float offset);
+    float labelMargin() const;
 
     void setRadialLabelOffset(float offset);
     float radialLabelOffset() const;
@@ -352,7 +390,7 @@ public:
 
     QQuick3DModel *background() const { return m_background; }
     void setBackground(QQuick3DModel *newBackground) { m_background = newBackground; }
-    inline QQuick3DModel *backgroundBB() const { return m_backgroundBB; }
+    QQuick3DModel *backgroundBB() const { return m_backgroundBB; }
 
     QQuick3DDirectionalLight *light() const;
     QQuick3DCustomMaterial *createQmlCustomMaterial(const QString &fileName);
@@ -378,25 +416,24 @@ public:
     bool isZFlipped() const { return m_zFlipped; }
     void setZFlipped(bool zFlipped) { m_zFlipped = zFlipped; }
     QVector3D scaleWithBackground() const { return m_scaleWithBackground; }
-    void setScaleWithBackground(const QVector3D &scale) { m_scaleWithBackground = scale; }
-    void setBackgroundScaleMargin(const QVector3D &margin) { m_backgroundScaleMargin = margin; }
+    QVector3D backgroundScaleMargin() const { return m_backgroundScaleMargin; }
+    void setScaleWithBackground(QVector3D scale) { m_scaleWithBackground = scale; }
+    void setBackgroundScaleMargin(QVector3D margin) { m_backgroundScaleMargin = margin; }
     QVector3D rotation() const { return m_rot; }
-    void setRotation(const QVector3D &rotation) { m_rot = rotation; }
+    void setRotation(QVector3D rotation) { m_rot = rotation; }
     QVector3D scale() const { return m_scale; }
-    void setScale(const QVector3D &scale) { m_scale = scale; }
+    void setScale(QVector3D scale) { m_scale = scale; }
     QVector3D translate() const { return m_translate; }
-    void setTranslate(const QVector3D &translate) { m_translate = translate; }
+    void setTranslate(QVector3D translate) { m_translate = translate; }
 
     float lineLengthScaleFactor() const { return m_lineLengthScaleFactor; }
     void setLineLengthScaleFactor(float scaleFactor) { m_lineLengthScaleFactor = scaleFactor; }
     float lineWidthScaleFactor() const { return m_lineWidthScaleFactor; }
     void setLineWidthScaleFactor(float scaleFactor) { m_lineWidthScaleFactor = scaleFactor; }
     float gridOffset() const { return m_gridOffset; }
-    void setLabelMargin(float margin) { m_labelMargin = margin; }
-    float labelMargin() const { return m_labelMargin; }
 
-    QAbstract3DGraph::CameraPreset cameraPreset() const;
-    void setCameraPreset(QAbstract3DGraph::CameraPreset preset);
+    QtGraphs3D::CameraPreset cameraPreset() const;
+    void setCameraPreset(QtGraphs3D::CameraPreset preset);
 
     float cameraXRotation() const { return m_xRotation; }
     void setCameraXRotation(float rotation);
@@ -413,6 +450,23 @@ public:
     float maxCameraYRotation() const { return m_maxYRotation; }
     void setMaxCameraYRotation(float rotation);
 
+    void setZoomAtTargetEnabled(bool enable);
+    bool zoomAtTargetEnabled();
+    void setZoomEnabled(bool enable);
+    bool zoomEnabled();
+    void setSelectionEnabled(bool enable);
+    bool selectionEnabled();
+    void setRotationEnabled(bool enable);
+    bool rotationEnabled();
+
+    Q_INVOKABLE void setDefaultInputHandler();
+    Q_INVOKABLE void unsetDefaultInputHandler();
+    Q_INVOKABLE void unsetDefaultTapHandler();
+    Q_INVOKABLE void unsetDefaultDragHandler();
+    Q_INVOKABLE void unsetDefaultWheelHandler();
+    Q_INVOKABLE void unsetDefaultPinchHandler();
+    Q_INVOKABLE void setDragButton(Qt::MouseButtons button);
+
     float cameraZoomLevel() const { return m_zoomLevel; }
     void setCameraZoomLevel(float level);
 
@@ -422,7 +476,7 @@ public:
     float maxCameraZoomLevel() const { return m_maxZoomLevel; }
     void setMaxCameraZoomLevel(float level);
 
-    void setCameraTargetPosition(const QVector3D &target);
+    void setCameraTargetPosition(QVector3D target);
     QVector3D cameraTargetPosition() const { return m_requestedTarget; }
 
     bool wrapCameraXRotation() const { return m_wrapXRotation; }
@@ -431,24 +485,38 @@ public:
     bool wrapCameraYRotation() const { return m_wrapYRotation; }
     void setWrapCameraYRotation(bool wrap);
 
+    QVector3D graphPositionAt(QPoint point);
     void setCameraPosition(float horizontal, float vertical, float zoom = 100.0f);
 
-    void changeLabelBackgroundColor(QQuick3DRepeater *repeater, const QColor &color);
-    void changeLabelBackgroundEnabled(QQuick3DRepeater *repeater, const bool &enabled);
-    void changeLabelBorderEnabled(QQuick3DRepeater *repeater, const bool &enabled);
-    void changeLabelTextColor(QQuick3DRepeater *repeater, const QColor &color);
+    void changeLabelBackgroundColor(QQuick3DRepeater *repeater, QColor color);
+    void changeLabelBackgroundVisible(QQuick3DRepeater *repeater, const bool &visible);
+    void changeLabelBorderVisible(QQuick3DRepeater *repeater, const bool &visible);
+    void changeLabelTextColor(QQuick3DRepeater *repeater, QColor color);
     void changeLabelFont(QQuick3DRepeater *repeater, const QFont &font);
-    void changeLabelsEnabled(QQuick3DRepeater *repeater, const bool &enabled);
-    void changeGridLineColor(QQuick3DRepeater *repeater, const QColor &color);
+    void changeLabelsVisible(QQuick3DRepeater *repeater, const bool &visible);
+    void changeGridLineColor(QQuick3DRepeater *repeater, QColor color);
     void updateTitleLabels();
-    virtual void updateSelectionMode(QAbstract3DGraph::SelectionFlags newMode);
+    virtual void updateSelectionMode(QtGraphs3D::SelectionFlags newMode);
 
-    virtual bool doPicking(const QPointF &point);
+    void setSliceActivatedChanged(bool changed) { m_sliceActivatedChanged = changed; }
+
+    Q_INVOKABLE virtual bool doPicking(QPointF point);
 
     void minimizeMainGraph();
 
     int horizontalFlipFactor() const;
     void setHorizontalFlipFactor(int newHorizontalFlipFactor);
+
+    float ambientLightStrength() const;
+    void setAmbientLightStrength(float newAmbientLightStrength);
+    float lightStrength() const;
+    void setLightStrength(float newLightStrength);
+    float shadowStrength() const;
+    void setShadowStrength(float newShadowStrength);
+    QColor lightColor() const;
+    void setLightColor(QColor newLightColor);
+    QtGraphs3D::GridLineType gridLineType() const;
+    void setGridLineType(const QtGraphs3D::GridLineType &gridLineType);
 
 public Q_SLOTS:
     virtual void handleAxisXChanged(QAbstract3DAxis *axis) = 0;
@@ -460,57 +528,58 @@ public Q_SLOTS:
     void handleAxisTitleChanged(const QString &title);
     void handleAxisLabelsChanged();
     void handleAxisRangeChanged(float min, float max);
-    void handleAxisSegmentCountChanged(int count);
-    void handleAxisSubSegmentCountChanged(int count);
+    void handleAxisSegmentCountChanged(qsizetype count);
+    void handleAxisSubSegmentCountChanged(qsizetype count);
     void handleAxisAutoAdjustRangeChanged(bool autoAdjust);
     void handleAxisLabelFormatChanged(const QString &format);
     void handleAxisReversedChanged(bool enable);
     void handleAxisFormatterDirty();
     void handleAxisLabelAutoRotationChanged(float angle);
     void handleAxisTitleVisibilityChanged(bool visible);
+    void handleAxisLabelVisibilityChanged(bool visible);
     void handleAxisTitleFixedChanged(bool fixed);
-    void handleInputViewChanged(QAbstract3DInputHandler::InputView view);
-    void handleInputPositionChanged(const QPoint &position);
+    void handleAxisTitleOffsetChanged(float offset);
+    void handleInputPositionChanged(QPoint position);
     void handleSeriesVisibilityChanged(bool visible);
 
-    void handleThemeColorStyleChanged(Q3DTheme::ColorStyle style);
+    void handleThemeColorStyleChanged(QGraphsTheme::ColorStyle style);
     void handleThemeBaseColorsChanged(const QList<QColor> &color);
     void handleThemeBaseGradientsChanged(const QList<QLinearGradient> &gradient);
-    void handleThemeSingleHighlightColorChanged(const QColor &color);
+    void handleThemeSingleHighlightColorChanged(QColor color);
     void handleThemeSingleHighlightGradientChanged(const QLinearGradient &gradient);
-    void handleThemeMultiHighlightColorChanged(const QColor &color);
+    void handleThemeMultiHighlightColorChanged(QColor color);
     void handleThemeMultiHighlightGradientChanged(const QLinearGradient &gradient);
-    void handleThemeTypeChanged(Q3DTheme::Theme theme);
+    void handleThemeTypeChanged(QGraphsTheme::Theme theme);
 
-    void handleRequestShadowQuality(QAbstract3DGraph::ShadowQuality quality);
+    void handleRequestShadowQuality(QtGraphs3D::ShadowQuality quality);
 
     void updateCustomItem();
 
 Q_SIGNALS:
-    void selectionModeChanged(QAbstract3DGraph::SelectionFlags mode);
-    void shadowQualityChanged(QAbstract3DGraph::ShadowQuality quality);
+    void selectionModeChanged(QtGraphs3D::SelectionFlags mode);
+    void shadowQualityChanged(QtGraphs3D::ShadowQuality quality);
     void shadowsSupportedChanged(bool supported);
     void msaaSamplesChanged(int samples);
-    void inputHandlerChanged(QAbstract3DInputHandler *inputHandler);
-    void themeChanged(Q3DTheme *theme);
-    void renderingModeChanged(QAbstract3DGraph::RenderingMode mode);
+    void themeChanged(QGraphsTheme *theme);
+    void renderingModeChanged(QtGraphs3D::RenderingMode mode);
     void measureFpsChanged(bool enabled);
     void currentFpsChanged(int fps);
-    void selectedElementChanged(QAbstract3DGraph::ElementType type);
+    void selectedElementChanged(QtGraphs3D::ElementType type);
     void orthoProjectionChanged(bool enabled);
     void aspectRatioChanged(qreal ratio);
-    void optimizationHintChanged(QAbstract3DGraph::OptimizationHint hint);
+    void optimizationHintChanged(QtGraphs3D::OptimizationHint hint);
     void polarChanged(bool enabled);
+    void labelMarginChanged(float margin);
     void radialLabelOffsetChanged(float offset);
     void horizontalAspectRatioChanged(qreal ratio);
     void localeChanged(const QLocale &locale);
-    void queriedGraphPositionChanged(const QVector3D &data);
+    void queriedGraphPositionChanged(QVector3D data);
     void marginChanged(qreal margin);
-    void cameraPresetChanged(QAbstract3DGraph::CameraPreset preset);
+    void cameraPresetChanged(QtGraphs3D::CameraPreset preset);
     void cameraXRotationChanged(float rotation);
     void cameraYRotationChanged(float rotation);
     void cameraZoomLevelChanged(float zoomLevel);
-    void cameraTargetPositionChanged(const QVector3D &target);
+    void cameraTargetPositionChanged(QVector3D target);
     void minCameraZoomLevelChanged(float zoomLevel);
     void maxCameraZoomLevelChanged(float zoomLevel);
     void minCameraXRotationChanged(float rotation);
@@ -524,28 +593,38 @@ Q_SIGNALS:
     void axisXChanged(QAbstract3DAxis *axis);
     void axisYChanged(QAbstract3DAxis *axis);
     void axisZChanged(QAbstract3DAxis *axis);
-    void activeThemeChanged(Q3DTheme *activeTheme);
+    void activeThemeChanged(QGraphsTheme *activeTheme);
+
+    void tapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void doubleTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void longPressed();
+    void dragged(QVector2D delta);
+    void wheel(QQuickWheelEvent *event);
+    void pinch(qreal delta);
+    void mouseMove(QPoint mousePos);
+
+    void zoomEnabledChanged(bool enable);
+    void zoomAtTargetEnabledChanged(bool enable);
+    void rotationEnabledChanged(bool enable);
+    void selectionEnabledChanged(bool enable);
+
+    void ambientLightStrengthChanged();
+    void lightStrengthChanged();
+    void shadowStrengthChanged();
+    void lightColorChanged();
+    void gridLineTypeChanged();
 
 protected:
     bool event(QEvent *event) override;
-    void mouseDoubleClickEvent(QMouseEvent *event) override;
-    void touchEvent(QTouchEvent *event) override;
-    void mousePressEvent(QMouseEvent *event) override;
-    void mouseReleaseEvent(QMouseEvent *event) override;
-    void mouseMoveEvent(QMouseEvent *event) override;
-#if QT_CONFIG(wheelevent)
-    void wheelEvent(QWheelEvent *event) override;
-#endif
+
     virtual void handleWindowChanged(/*QQuickWindow *win*/);
     void itemChange(ItemChange change, const ItemChangeData &value) override;
     virtual void updateWindowParameters();
-    virtual void handleSelectionModeChange(QAbstract3DGraph::SelectionFlags mode);
-    virtual void handleShadowQualityChange(QAbstract3DGraph::ShadowQuality quality);
-    virtual void handleSelectedElementChange(QAbstract3DGraph::ElementType type);
-    virtual void handleOptimizationHintChange(QAbstract3DGraph::OptimizationHint hint);
+    virtual void handleSelectionModeChange(QtGraphs3D::SelectionFlags mode);
+    virtual void handleShadowQualityChange(QtGraphs3D::ShadowQuality quality);
+    virtual void handleSelectedElementChange(QtGraphs3D::ElementType type);
+    virtual void handleOptimizationHintChange(QtGraphs3D::OptimizationHint hint);
     void keyPressEvent(QKeyEvent *ev) override;
-    virtual bool handleMousePressedEvent(QMouseEvent *event);
-    virtual bool handleTouchEvent(QTouchEvent *event);
     virtual void handleThemeTypeChange();
     virtual void handleParentWidthChange();
     virtual void handleParentHeightChange();
@@ -554,7 +633,10 @@ protected:
 
     virtual void createSliceView();
 
-    void handleQueryPositionChanged(const QPoint &position);
+    void handleQueryPositionChanged(QPoint position);
+
+    void handlePrimarySubViewportChanged(const QRect rect);
+    void handleSecondarySubViewportChanged(const QRect rect);
 
     QQuick3DNode *graphNode() { return m_graphNode; }
     QQuick3DViewport *sliceView() { return m_sliceView; }
@@ -565,24 +647,24 @@ protected:
     void createItemLabel();
     QAbstract3DSeries::SeriesType m_graphType = QAbstract3DSeries::SeriesType::None;
 
-    void updateXTitle(const QVector3D &labelRotation,
-                      const QVector3D &labelTrans,
+    void updateXTitle(QVector3D labelRotation,
+                      QVector3D labelTrans,
                       const QQuaternion &totalRotation,
                       float labelsMaxWidth,
-                      const QVector3D &scale);
-    void updateYTitle(const QVector3D &sideLabelRotation,
-                      const QVector3D &backLabelRotation,
-                      const QVector3D &sideLabelTrans,
-                      const QVector3D &backLabelTrans,
+                      QVector3D scale);
+    void updateYTitle(QVector3D sideLabelRotation,
+                      QVector3D backLabelRotation,
+                      QVector3D sideLabelTrans,
+                      QVector3D backLabelTrans,
                       const QQuaternion &totalSideRotation,
                       const QQuaternion &totalBackRotation,
                       float labelsMaxWidth,
-                      const QVector3D &scale);
-    void updateZTitle(const QVector3D &labelRotation,
-                      const QVector3D &labelTrans,
+                      QVector3D scale);
+    void updateZTitle(QVector3D labelRotation,
+                      QVector3D labelTrans,
                       const QQuaternion &totalRotation,
                       float labelsMaxWidth,
-                      const QVector3D &scale);
+                      QVector3D scale);
 
     virtual void calculateSceneScalingFactors() = 0;
     void positionAndScaleLine(QQuick3DNode *lineNode, QVector3D scale, QVector3D position);
@@ -598,12 +680,15 @@ protected:
         m_hasVerticalSegmentLine = hasVerticalLine;
     }
     void updateGrid();
+    void updateGridLineType();
     void updateLabels();
     void updateSliceGrid();
     void updateSliceLabels();
-    virtual void updateShadowQuality(QAbstract3DGraph::ShadowQuality quality);
-    void updateItemLabel(const QVector3D &position);
-    virtual void updateSliceItemLabel(QString label, const QVector3D &position);
+    void updateBackgroundColor();
+    void setItemSelected(bool selected);
+    virtual void updateShadowQuality(QtGraphs3D::ShadowQuality quality);
+    void updateItemLabel(QVector3D position);
+    virtual void updateSliceItemLabel(const QString &label, QVector3D position);
 
     struct Volume
     {
@@ -629,8 +714,7 @@ protected:
     bool isSliceEnabled() const { return m_sliceEnabled; }
     void setSliceEnabled(bool enabled) { m_sliceEnabled = enabled; }
     bool isSliceActivatedChanged() const { return m_sliceActivatedChanged; }
-    void setSliceActivatedChanged(bool changed) { m_sliceActivatedChanged = changed; }
-    virtual void updateSliceGraph();
+    virtual void toggleSliceGraph();
     void createSliceCamera();
     bool isSliceOrthoProjection() const { return m_sliceUseOrthoProjection; }
     void setSliceOrthoProjection(bool enable) { m_sliceUseOrthoProjection = enable; }
@@ -640,16 +724,12 @@ protected:
     virtual void updateSingleHighlightColor() {}
     virtual void updateLightStrength() {}
 
-    virtual void handleLabelCountChanged(QQuick3DRepeater *repeater);
+    virtual void handleLabelCountChanged(QQuick3DRepeater *repeater, QColor axisLabelColor);
 
     bool isGridUpdated() { return m_gridUpdated; }
     void setGridUpdated(bool updated) { m_gridUpdated = updated; }
 
-    void addInputHandler(QAbstract3DInputHandler *inputHandler);
-    void releaseInputHandler(QAbstract3DInputHandler *inputHandler);
-    void setActiveInputHandler(QAbstract3DInputHandler *inputHandler);
-    QAbstract3DInputHandler *activeInputHandler() const { return m_activeInputHandler; };
-    QList<QAbstract3DInputHandler *> inputHandlers() const { return m_inputHandlers; };
+    QGraphsInputHandler *graphsInputHandler() const { return m_inputHandler; }
 
     virtual QAbstract3DAxis *createDefaultAxis(QAbstract3DAxis::AxisOrientation orientation);
     QValue3DAxis *createDefaultValueAxis();
@@ -685,9 +765,9 @@ protected:
 
     QList<QCustom3DItem *> m_customItems;
 
-    QAbstract3DGraph::ElementType m_clickedType = QAbstract3DGraph::ElementType::None;
+    QtGraphs3D::ElementType m_clickedType = QtGraphs3D::ElementType::None;
     int m_selectedLabelIndex = -1;
-    int m_selectedCustomItemIndex = -1;
+    qsizetype m_selectedCustomItemIndex = -1;
     qreal m_margin = -1.0;
 
     QMutex m_renderMutex;
@@ -699,16 +779,15 @@ private:
     const float rotationOffset = 90.0f;
 
     QQuick3DModel *m_gridGeometryModel = nullptr;
+    QQuick3DModel *m_subgridGeometryModel = nullptr;
     QQuick3DModel *m_sliceGridGeometryModel = nullptr;
     Abstract3DChangeBitField m_changeTracker;
-    ThemeManager *m_themeManager = nullptr;
-    QAbstract3DGraph::SelectionFlags m_selectionMode = QAbstract3DGraph::SelectionItem;
-    QAbstract3DGraph::ShadowQuality m_shadowQuality = QAbstract3DGraph::ShadowQuality::Medium;
+    QtGraphs3D::SelectionFlags m_selectionMode = QtGraphs3D::SelectionFlag::Item;
+    QtGraphs3D::ShadowQuality m_shadowQuality = QtGraphs3D::ShadowQuality::Medium;
     bool m_useOrthoProjection = false;
     qreal m_aspectRatio = 2.0;
     qreal m_horizontalAspectRatio = 0.0;
-    QAbstract3DGraph::OptimizationHint m_optimizationHint
-        = QAbstract3DGraph::OptimizationHint::Default;
+    QtGraphs3D::OptimizationHint m_optimizationHint = QtGraphs3D::OptimizationHint::Default;
     QLocale m_locale;
     QVector3D m_queriedGraphPosition;
     bool m_graphPositionQueryPending = false;
@@ -747,8 +826,7 @@ private:
     QQuick3DPerspectiveCamera *m_pCamera = nullptr;
     QQuick3DOrthographicCamera *m_oCamera = nullptr;
     QRectF m_cachedGeometry;
-    QAbstract3DGraph::RenderingMode m_renderMode
-        = QAbstract3DGraph::RenderingMode::DirectToBackground;
+    QtGraphs3D::RenderingMode m_renderMode = QtGraphs3D::RenderingMode::DirectToBackground;
     int m_samples = 0;
     int m_windowSamples = 0;
     QSize m_initialisedSize = QSize(0, 0);
@@ -782,20 +860,26 @@ private:
 
     float m_labelMargin = .1f;
 
+    bool m_itemSelected = false;
     bool m_sliceEnabled = false;
     bool m_sliceActivatedChanged = false;
+    QRect m_primarySubView;
+    QRect m_secondarySubView;
 
     bool m_gridUpdated = false;
+
+    QtGraphs3D::GridLineType m_gridLineType = QtGraphs3D::GridLineType::Geometry;
+    bool m_gridLineTypeDirty = false;
 
     bool m_validVolumeSlice = false;
 
     QVector3D m_labelPosition = QVector3D();
     QVector3D m_fontScaled = QVector3D();
+    bool m_labelsNeedupdate = false;
 
     float m_initialZoomLevel = -1.0f;
     void setUpCamera();
     void setUpLight();
-    void graphPositionAt(const QPoint &point);
     void updateCamera();
     void updateRadialLabelOffset();
     QVector3D calculateLabelRotation(float labelAutoAngle);
@@ -803,12 +887,13 @@ private:
     void updateCustomLabelsRotation();
     float fontScaleFactor(float pointSize);
     float labelAdjustment(float width);
-    void gridLineCountHelper(QAbstract3DAxis *axis, int &lineCount, int &sublineCount);
-    QVector3D graphPosToAbsolute(const QVector3D &position);
+    void gridLineCountHelper(QAbstract3DAxis *axis, qsizetype &lineCount, qsizetype &sublineCount);
+    QVector3D graphPosToAbsolute(QVector3D position);
 
     void createVolumeMaterial(QCustom3DVolume *volume, Volume &volumeItem);
     QQuick3DModel *createSliceFrame(Volume &volumeItem);
     void updateSliceFrameMaterials(QCustom3DVolume *volume, Volume &volumeItem);
+    void updateSubViews();
     void updateCustomVolumes();
 
     bool m_sliceUseOrthoProjection = false;
@@ -821,7 +906,7 @@ private:
     int m_currentFps = -1;
     bool m_measureFps = false;
 
-    QAbstract3DGraph::CameraPreset m_activePreset = QAbstract3DGraph::CameraPreset::NoPreset;
+    QtGraphs3D::CameraPreset m_activePreset = QtGraphs3D::CameraPreset::NoPreset;
     float m_xRotation = 0.0f;
     float m_yRotation = 0.0f;
     float m_minXRotation = -180.0f;
@@ -835,14 +920,25 @@ private:
     float m_minZoomLevel = 10.0f;
     float m_maxZoomLevel = 500.0f;
 
+    QColor m_lightColor = QColor(Qt::white);
+    float m_ambientLightStrength = 0.25f;
+    float m_lightStrength = 5.0f;
+    float m_shadowStrength = 25.0f;
+    bool m_lightColorDirty = false;
+    bool m_ambientLightStrengthDirty = false;
+    bool m_lightStrengthDirty = false;
+    bool m_shadowStrengthDirty = false;
+
     bool m_gridUpdate = false;
 
     QVector3D m_requestedTarget = QVector3D();
 
-    QAbstract3DInputHandler *m_activeInputHandler = nullptr;
-    QList<QAbstract3DInputHandler *> m_inputHandlers = {};
+    QGraphsInputHandler *m_inputHandler = nullptr;
 
-    friend class QAbstract3DGraph;
+    QList<QGraphsTheme *> m_themes;
+    QGraphsTheme *m_activeTheme = nullptr;
+
+    friend class Q3DGraphsWidgetItem;
 };
 
 QT_END_NAMESPACE

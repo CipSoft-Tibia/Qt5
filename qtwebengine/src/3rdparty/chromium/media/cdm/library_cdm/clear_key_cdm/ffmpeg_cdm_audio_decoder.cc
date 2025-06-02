@@ -74,7 +74,11 @@ void CdmAudioDecoderConfigToAVCodecContext(
       codec_context->sample_fmt = AV_SAMPLE_FMT_NONE;
   }
 
+#if LIBAVCODEC_VERSION_MAJOR > 60
+  codec_context->ch_layout.nb_channels = config.channel_count;
+#else
   codec_context->channels = config.channel_count;
+#endif
   codec_context->sample_rate = config.samples_per_second;
 
   if (config.extra_data) {
@@ -124,8 +128,13 @@ void CopySamples(cdm::AudioFormat cdm_format,
     case cdm::kAudioFormatPlanarS16:
     case cdm::kAudioFormatPlanarF32: {
       const int decoded_size_per_channel =
+#if LIBAVCODEC_VERSION_MAJOR > 60
+          decoded_audio_size / av_frame.ch_layout.nb_channels;
+      for (int i = 0; i < av_frame.ch_layout.nb_channels; ++i) {
+#else
           decoded_audio_size / av_frame.channels;
       for (int i = 0; i < av_frame.channels; ++i) {
+#endif
         memcpy(output_buffer, av_frame.extended_data[i],
                decoded_size_per_channel);
         output_buffer += decoded_size_per_channel;
@@ -168,7 +177,12 @@ bool FFmpegCdmAudioDecoder::Initialize(
   if (codec_context_->sample_fmt == AV_SAMPLE_FMT_S16P)
     codec_context_->request_sample_fmt = AV_SAMPLE_FMT_S16;
 
+#if BUILDFLAG(IS_QTWEBENGINE) && BUILDFLAG(USE_SYSTEM_FFMPEG)
+  const AVCodec* codec =
+      FindDecoder(codec_context_->codec_id, codec_context_->codec_whitelist);
+#else
   const AVCodec* codec = avcodec_find_decoder(codec_context_->codec_id);
+#endif
   if (!codec || avcodec_open2(codec_context_.get(), codec, NULL) < 0) {
     DLOG(ERROR) << "Could not initialize audio decoder: "
                 << codec_context_->codec_id;
@@ -185,13 +199,22 @@ bool FFmpegCdmAudioDecoder::Initialize(
   // Success!
   decoding_loop_ = std::make_unique<FFmpegDecodingLoop>(codec_context_.get());
   samples_per_second_ = config.samples_per_second;
-  bytes_per_frame_ = codec_context_->channels * config.bits_per_channel / 8;
+  bytes_per_frame_ =
+#if LIBAVCODEC_VERSION_MAJOR > 60
+      codec_context_->ch_layout.nb_channels * config.bits_per_channel / 8;
+#else
+      codec_context_->channels * config.bits_per_channel / 8;
+#endif
   output_timestamp_helper_ =
       std::make_unique<AudioTimestampHelper>(config.samples_per_second);
   is_initialized_ = true;
 
   // Store initial values to guard against midstream configuration changes.
+#if LIBAVCODEC_VERSION_MAJOR > 60
+  channels_ = codec_context_->ch_layout.nb_channels;
+#else
   channels_ = codec_context_->channels;
+#endif
   av_sample_format_ = codec_context_->sample_fmt;
 
   return true;
@@ -291,18 +314,31 @@ cdm::Status FFmpegCdmAudioDecoder::DecodeBuffer(
   for (auto& frame : audio_frames) {
     int decoded_audio_size = 0;
     if (frame->sample_rate != samples_per_second_ ||
-    frame->channels != channels_ || frame->format != av_sample_format_) {
-        DLOG(ERROR) << "Unsupported midstream configuration change!"
+#if LIBAVCODEC_VERSION_MAJOR > 60
+        frame->ch_layout.nb_channels != channels_ ||
+#else
+        frame->channels != channels_ ||
+#endif
+        frame->format != av_sample_format_) {
+      DLOG(ERROR) << "Unsupported midstream configuration change!"
                   << " Sample Rate: " << frame->sample_rate << " vs "
                   << samples_per_second_
+#if LIBAVCODEC_VERSION_MAJOR > 60
                   << ", Channels: " << frame->ch_layout.nb_channels << " vs "
+#else
+                  << ", Channels: " << frame->channels << " vs "
+#endif
                   << channels_ << ", Sample Format: " << frame->format << " vs "
                   << av_sample_format_;
       return cdm::kDecodeError;
     }
 
     decoded_audio_size = av_samples_get_buffer_size(
-        nullptr, codec_context_->channels, frame->nb_samples,
+#if LIBAVCODEC_VERSION_MAJOR > 60
+         nullptr, codec_context_->ch_layout.nb_channels, frame->nb_samples,
+#endif
+         nullptr, codec_context_->channels, frame->nb_samples,
+#else
         codec_context_->sample_fmt, 1);
     if (!decoded_audio_size)
       continue;
@@ -322,7 +358,11 @@ bool FFmpegCdmAudioDecoder::OnNewFrame(
     std::vector<std::unique_ptr<AVFrame, ScopedPtrAVFreeFrame>>* audio_frames,
     AVFrame* frame) {
   *total_size += av_samples_get_buffer_size(
+#if LIBAVCODEC_VERSION_MAJOR > 60
+      nullptr, codec_context_->ch_layout.nb_channels, frame->nb_samples,
+#else
       nullptr, codec_context_->channels, frame->nb_samples,
+#endif
       codec_context_->sample_fmt, 1);
   audio_frames->emplace_back(av_frame_clone(frame));
   return true;

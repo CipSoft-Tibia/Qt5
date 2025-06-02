@@ -70,7 +70,11 @@ QDeclarativeSatelliteSource::QDeclarativeSatelliteSource()
 {
 }
 
-QDeclarativeSatelliteSource::~QDeclarativeSatelliteSource() = default;
+QDeclarativeSatelliteSource::~QDeclarativeSatelliteSource()
+{
+    if (m_source)
+        m_source->disconnect(this);
+}
 
 /*!
     \qmlproperty bool SatelliteSource::active

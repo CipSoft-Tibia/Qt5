@@ -179,6 +179,7 @@ public:
     ~QThreadPrivate();
 
     void setPriority(QThread::Priority prio);
+    Qt::HANDLE threadId() const noexcept;
 
     mutable QMutex mutex;
     QAtomicInt quitLockRef;
@@ -197,17 +198,19 @@ public:
     uint stackSize;
     std::underlying_type_t<QThread::Priority> priority;
 
+    bool wait(QMutexLocker<QMutex> &locker, QDeadlineTimer deadline);
+
 #ifdef Q_OS_UNIX
     QWaitCondition thread_done;
 
     static void *start(void *arg);
-    static void finish(void *);
-
+    void finish();          // happens early (before thread-local dtors)
+    void cleanup();         // happens late (as a thread-local dtor, if possible)
 #endif // Q_OS_UNIX
 
 #ifdef Q_OS_WIN
     static unsigned int __stdcall start(void *) noexcept;
-    static void finish(void *, bool lockAnyway = true) noexcept;
+    void finish(bool lockAnyway = true) noexcept;
 
     Qt::HANDLE handle;
     unsigned int id;
@@ -293,9 +296,21 @@ public:
     static QThreadData *get2(QThread *thread)
     { Q_ASSERT_X(thread != nullptr, "QThread", "internal error"); return thread->d_func()->data; }
 
-
-    void ref();
-    void deref();
+#if QT_CONFIG(thread)
+    void ref()
+    {
+        (void) _ref.ref();
+        Q_ASSERT(_ref.loadRelaxed() != 0);
+    }
+    void deref()
+    {
+        if (!_ref.deref())
+            delete this;
+    }
+#else
+    void ref() {}
+    void deref() {}
+#endif
     inline bool hasEventDispatcher() const
     { return eventDispatcher.loadRelaxed() != nullptr; }
     QAbstractEventDispatcher *createEventDispatcher();

@@ -38,8 +38,8 @@
 #include "components/history/core/browser/keyword_id.h"
 #include "components/history/core/browser/url_row.h"
 #include "components/keyed_service/core/keyed_service.h"
-#if !defined(TOOLKIT_QT)
-#include "components/sync/driver/sync_service.h"
+#if !BUILDFLAG(IS_QTWEBENGINE)
+#include "components/sync/service/sync_service.h"
 #include "components/sync_device_info/device_info.h"
 #include "components/sync_device_info/device_info_tracker.h"
 #include "components/sync_device_info/local_device_info_provider.h"
@@ -94,7 +94,7 @@ class WebHistoryService;
 // The history service records page titles, visit times, and favicons, as well
 // as information about downloads.
 class HistoryService : public KeyedService
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
                      , public syncer::DeviceInfoTracker::Observer
 #endif
 {
@@ -209,7 +209,7 @@ class HistoryService : public KeyedService
   void AddPage(const GURL& url, base::Time time, VisitSource visit_source);
 
   // All AddPage variants end up here.
-  void AddPage(const HistoryAddPageArgs& add_page_args);
+  void AddPage(HistoryAddPageArgs add_page_args);
 
   // Adds an entry for the specified url without creating a visit. This should
   // only be used when bookmarking a page, otherwise the row leaks in the
@@ -601,9 +601,10 @@ class HistoryService : public KeyedService
   //
   // If `compute_redirect_chain_start_properties` is true, the opener and
   // referring visit IDs for the start of the redirect chain will be computed.
+  // Virtual for testing.
   using GetAnnotatedVisitsCallback =
       base::OnceCallback<void(std::vector<AnnotatedVisit>)>;
-  base::CancelableTaskTracker::TaskId GetAnnotatedVisits(
+  virtual base::CancelableTaskTracker::TaskId GetAnnotatedVisits(
       const QueryOptions& options,
       bool compute_redirect_chain_start_properties,
       GetAnnotatedVisitsCallback callback,
@@ -686,7 +687,7 @@ class HistoryService : public KeyedService
 
   // Generic Stuff -------------------------------------------------------------
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Sets the history service's device info tracker and local device info
   // provider.
   void SetDeviceInfoServices(
@@ -701,7 +702,7 @@ class HistoryService : public KeyedService
   void OnDeviceInfoChange() override;
 
   void OnDeviceInfoShutdown() override;
-#endif  // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   // Schedules a HistoryDBTask for running on the history backend. See
   // HistoryDBTask for details on what this does. Takes ownership of `task`.
@@ -767,15 +768,10 @@ class HistoryService : public KeyedService
 
   base::WeakPtr<HistoryService> AsWeakPtr();
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // For sync codebase only: returns the SyncableService API that implements
   // sync datatype HISTORY_DELETE_DIRECTIVES.
   base::WeakPtr<syncer::SyncableService> GetDeleteDirectivesSyncableService();
-
-  // For sync codebase only: instantiates a controller delegate to interact with
-  // TypedURLSyncBridge. Must be called from the UI thread.
-  std::unique_ptr<syncer::ModelTypeControllerDelegate>
-  GetTypedURLSyncControllerDelegate();
 
   // For sync codebase only: instantiates a controller delegate to interact with
   // HistorySyncBridge. Must be called from the UI thread.
@@ -797,7 +793,7 @@ class HistoryService : public KeyedService
   void set_origin_queried_closure_for_testing(base::OnceClosure closure) {
     origin_queried_closure_for_testing_ = std::move(closure);
   }
-#endif  // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
  protected:
   // These are not currently used, hopefully we can do something in the future
@@ -1135,7 +1131,7 @@ class HistoryService : public KeyedService
   base::ObserverList<HistoryServiceObserver>::Unchecked observers_;
   FaviconsChangedCallbackList favicons_changed_callback_list_;
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   std::unique_ptr<DeleteDirectiveHandler> delete_directive_handler_;
 
   base::OnceClosure origin_queried_closure_for_testing_;
@@ -1152,7 +1148,7 @@ class HistoryService : public KeyedService
 
   raw_ptr<syncer::LocalDeviceInfoProvider> local_device_info_provider_ =
       nullptr;
-#endif  // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   // All vended weak pointers are invalidated in Cleanup().
   base::WeakPtrFactory<HistoryService> weak_ptr_factory_{this};

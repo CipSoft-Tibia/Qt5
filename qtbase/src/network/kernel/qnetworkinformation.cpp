@@ -328,7 +328,7 @@ QNetworkInformationBackend::~QNetworkInformationBackend() = default;
 */
 
 /*!
-    \fn void QNetworkInformationBackend::reachabilityChanged()
+    \fn void QNetworkInformationBackend::reachabilityChanged(NetworkInformation::Reachability reachability)
 
     You should not emit this signal manually, call setReachability()
     instead which will emit this signal when the value changes.
@@ -418,6 +418,12 @@ QNetworkInformationBackendFactory::~QNetworkInformationBackendFactory()
     successful load() until destruction of the QCoreApplication object.
     If you destroy and re-create the QCoreApplication object you must call
     load() again.
+
+    \note Because the class is a singleton while also relying on
+    QCoreApplication, QNetworkInformation should always first be loaded
+    in the same thread as the QCoreApplication object. This is because the
+    object will also be destroyed in this thread, and various backend-specific
+    components may rely on being destroyed in the same thread as it is created.
 
     \sa QNetworkInformation::Feature
 */

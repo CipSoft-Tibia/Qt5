@@ -652,16 +652,22 @@ QmlTypeNode *QDocDatabase::findQmlType(const QString &qmid, const QString &name)
  */
 QmlTypeNode *QDocDatabase::findQmlType(const ImportRec &record, const QString &name)
 {
-    if (!record.isEmpty()) {
-        const QString qmName = record.m_importUri.isEmpty() ?
-                record.m_moduleName : record.m_importUri;
-        const QStringList dotSplit{name.split(QLatin1Char('.'))};
-        for (const auto &namePart : dotSplit) {
-            if (auto *qcn = m_forest.lookupQmlType(qmName + u"::"_s + namePart); qcn)
-                return qcn;
-        }
+    if (record.isEmpty())
+        return nullptr;
+
+    QString type{name};
+
+    // If the import is under a namespace (id) and the type name is not prefixed with that id,
+    // then we know the type is not available under this import.
+    if (!record.m_importId.isEmpty()) {
+        const QString namespacePrefix{"%1."_L1.arg(record.m_importId)};
+        if (!type.startsWith(namespacePrefix))
+            return nullptr;
+        type.remove(0, namespacePrefix.size());
     }
-    return nullptr;
+
+    const QString qmName = record.m_importUri.isEmpty() ? record.m_moduleName : record.m_importUri;
+    return m_forest.lookupQmlType(qmName + u"::"_s + type);
 }
 
 /*!
@@ -897,6 +903,7 @@ void QDocDatabase::resolveStuff()
         // order matters
         primaryTree()->resolveBaseClasses(primaryTreeRoot());
         primaryTree()->resolvePropertyOverriddenFromPtrs(primaryTreeRoot());
+        primaryTreeRoot()->resolveRelates();
         primaryTreeRoot()->normalizeOverloads();
         primaryTree()->markDontDocumentNodes();
         primaryTree()->removePrivateAndInternalBases(primaryTreeRoot());
@@ -1190,39 +1197,6 @@ void QDocDatabase::generateIndex(const QString &fileName, const QString &url, co
     primaryTree()->setIndexFileName(t);
     QDocIndexFiles::qdocIndexFiles()->generateIndex(fileName, url, title, g);
     QDocIndexFiles::destroyQDocIndexFiles();
-}
-
-/*!
-  Find a node of the specified \a type that is reached with
-  the specified \a path qualified with the name of one of the
-  open namespaces (might not be any open ones). If the node
-  is found in an open namespace, prefix \a path with the name
-  of the open namespace and "::" and return a pointer to the
-  node. Otherwise return \c nullptr.
-
-  This function only searches in the current primary tree.
- */
-Node *QDocDatabase::findNodeInOpenNamespace(QStringList &path, bool (Node::*isMatch)() const)
-{
-    if (path.isEmpty())
-        return nullptr;
-    Node *n = nullptr;
-    if (!m_openNamespaces.isEmpty()) {
-        const auto &openNamespaces = m_openNamespaces;
-        for (const QString &t : openNamespaces) {
-            QStringList p;
-            if (t != path[0])
-                p = t.split("::") + path;
-            else
-                p = path;
-            n = primaryTree()->findNodeByNameAndType(p, isMatch);
-            if (n) {
-                path = p;
-                break;
-            }
-        }
-    }
-    return n;
 }
 
 /*!

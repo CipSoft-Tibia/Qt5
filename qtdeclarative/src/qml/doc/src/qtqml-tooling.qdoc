@@ -10,39 +10,28 @@ the developer and designer experience and includes some internal tools
 used by Qt. The following sections offer a concise overview of these tools
 and utilities, along with links to additional information about each of them.
 
-\section1 Developer Tools
+\section1 Developer tools
 
-A set of tools provided by the Qt Qml module that aim to facilitate a QML developer's life
-during various phases of development. These tools are:
+A set of tools provided by the Qt Qml module that aim to facilitate a QML
+developer's life during various phases of development. These tools are:
 
-\list
-    \li \l {qmllint Reference}{qmllint}
-    \li \l {qmlformat}
-    \li \l {\QMLLS Reference}{qmlls}
-    \li \l {qmlprofiler}
-\endlist
+\annotatedlist qtqml-tooling-devtools
 
-\section1 Designer Tools
+\section1 Designer tools
 
-The Qt Qml module also provides user facing tools which can increase the productivity
-of designers by helping them with fast prototyping. These tools are:
+The Qt Qml module also provides user facing tools which can increase the
+productivity of designers by helping them with fast prototyping. These tools are:
 
-\list
-    \li \l{qml}
-    \li \l{qmlpreview}
-\endlist
+\annotatedlist qtqml-tooling-design
 
-\section1 Internal Tools
+\section1 Internal tools
 
 Certain utility tools are not intended for direct user interaction.
 Instead, they are all meant to be invoked by the build system,
 augmenting its functionality and capabilities.
 
-\list
-    \li \l {QML type compiler}
-    \li \l {QML script compiler}
-    \li \l {qmltyperegistrar}
-    \li \l {qmlimportscanner}
-\endlist
+\annotatedlist qtqml-tooling-internal
+
+\section1 All Qml tools
 
 */

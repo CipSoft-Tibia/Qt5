@@ -1,5 +1,49 @@
 Revision history for SPIRV-Tools
 
+v2023.6 2023-12-18
+  - General
+    - update_build_version.py produce deterministic header. (#5426)
+    - Support missing git in update_build_version.py (#5473)
+  - Optimizer
+    - Add ComputeDerivativeGroup*NV capabilities to trim capabilities pass. (#5430)
+    - Do not crash when tryingto fold unsupported spec constant (#5496)
+    - instrument: Fix handling of gl_InvocationID (#5493)
+    - Fix nullptr argument in MarkInsertChain (#5465)
+    - opt: support 64-bit OpAccessChain index in FixStorageClass (#5446)
+    - opt: add StorageImageReadWithoutFormat to cap trim (#5475)
+    - opt: add PhysicalStorageBufferAddresses to trim (#5476)
+    - Fix array size calculation (#5463
+  - Validator
+    - spirv-val: Loosen restriction on base type of DebugTypePointer and DebugTypeQualifier (#5479)
+    - spirv-val: Add WorkgroupMemoryExplicitLayoutKHR check for Block (#5461)
+
+v2023.5 2023-10-15
+  - General
+    - Support 2 Intel extensions (#5357)
+    - SPV_QCOM_image_processing support (#5223)
+  - Optimizer
+    - opt: fix StorageInputOutput16 trimming. (#5359)
+    - opt: add StoragePushConstant16 to trim pass (#5366)
+    - opt: enable StorageUniform16 (#5371)
+    - opt: add bitmask support for capability trimming (#5372)
+    - opt: Add SwitchDescriptorSetPass (#5375)
+    - opt: add FragmentShader*InterlockEXT to capability trim pass (#5390)
+    - opt: add Int64 capability to trim pass (#5398)
+    - opt: add Float64 capability to trim pass (#5428)
+    - opt: add raytracing/rayquery to trim pass (#5397)
+    - opt: add ImageMSArray capability to trim pass. (#5395)
+    - Add SPV_KHR_physical_storage_buffer to allowlists (#5402)
+    - Add SPV_EXT_fragment_shader_interlock to allow lists (#5393)
+    - Make sure that fragment shader interlock instructions are not removed by DCE (#5400)
+    - instrument: Use Import linkage for instrumentation functions (#5355)
+    - Add a new legalization pass to dedupe invocation interlock instructions (#5409)
+    - instrument: Ensure linking works even of nothing is changed (#5419)
+  - Validator
+    - Move token version/cap/ext checks from parsing to validation (#5370)
+    - val: re-add ImageMSArray validation (#5394)
+  - Linker
+    - linker: Add --use-highest-version option
+
 v2023.4 2023-07-17
   - General
     - Set cmake_policy CMP0128 (#5341)

@@ -211,8 +211,8 @@ void QImageCapture::addMetaData(const QMediaMetaData &metaData)
 {
     Q_D(QImageCapture);
     auto data = d->metaData;
-    for (auto k : metaData.keys())
-        data.insert(k, metaData.value(k));
+    for (auto &&[key, value] : metaData.asKeyValueRange())
+        data.insert(key, value);
     setMetaData(data);
 }
 
@@ -375,6 +375,10 @@ QImageCapture::FileFormat QImageCapture::fileFormat() const
 
 /*!
     Sets the image \a format.
+
+    Assigning an unsupported \l FileFormat has no effect.
+
+    \sa supportedFormats
 */
 void QImageCapture::setFileFormat(QImageCapture::FileFormat format)
 {
@@ -382,11 +386,14 @@ void QImageCapture::setFileFormat(QImageCapture::FileFormat format)
     if (!d->control)
         return;
     auto fmt = d->control->imageSettings();
-    if (fmt.format() == format)
+    const FileFormat oldFormat = fmt.format();
+    if (oldFormat == format)
         return;
     fmt.setFormat(format);
     d->control->setImageSettings(fmt);
-    emit fileFormatChanged();
+    // Only fire the signal if the format was applied.
+    if (oldFormat != fileFormat())
+        emit fileFormatChanged();
 }
 
 /*!
@@ -531,7 +538,7 @@ void QImageCapture::setQuality(Quality quality)
         return;
     fmt.setQuality(quality);
     d->control->setImageSettings(fmt);
-    emit resolutionChanged();
+    emit qualityChanged();
 }
 
 /*!

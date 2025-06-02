@@ -12,7 +12,19 @@
 #include <qmediarecorder.h>
 #include <qmediaplayer.h>
 
+#include <private/mediabackendutils_p.h>
+
 #include <vector>
+
+#ifdef Q_OS_ANDROID
+#include <QJniEnvironment>
+#include <QJniObject>
+Q_DECLARE_JNI_CLASS(Window, "android/view/Window")
+Q_DECLARE_JNI_CLASS(View, "android/view/View")
+Q_DECLARE_JNI_CLASS(WindowInsets, "android/view/WindowInsets")
+Q_DECLARE_JNI_CLASS(WindowInsetsType, "android/view/WindowInsets$Type")
+Q_DECLARE_JNI_CLASS(Insets, "android/graphics/Insets")
+#endif
 
 QT_USE_NAMESPACE
 
@@ -44,10 +56,22 @@ public:
         widget->setScreen(screen ? screen : QApplication::primaryScreen());
         widget->setWindowFlags(flags);
         widget->setGeometry(geometry);
+#ifdef Q_OS_ANDROID
+    // Android is not a Window System. When calling setGeometry() on the main widget, it will
+    // be displayed at the beginning of the screen. The x,y coordinates are ignored and lost.
+    // To make the test consistent on Android, let's remember the geometry and use
+    // it later in the paintEvent
+        widget->m_paintPosition = geometry;
+#endif
         widget->show();
 
         return widget;
     }
+
+#ifdef Q_OS_ANDROID
+    QRect m_paintPosition;
+    bool m_isBlinkingRectWhite = false;
+#endif
 
     void setColors(QColor firstColor, QColor secondColor)
     {
@@ -61,9 +85,18 @@ protected:
     {
         QPainter p(this);
         p.setPen(Qt::NoPen);
+        auto rect = this->rect();
+
+#ifdef Q_OS_ANDROID
+        // Add a blinking rectangle in the corner to force the Screen Grabber to work
+        m_isBlinkingRectWhite = !m_isBlinkingRectWhite;
+        p.setBrush(m_isBlinkingRectWhite ? Qt::white : Qt::black);
+        p.drawRect(0, 0, 10, 10);
+        // use remembered position
+        rect = m_paintPosition;
+#endif
 
         p.setBrush(m_firstColor);
-        auto rect = this->rect();
         p.drawRect(rect);
 
         if (m_firstColor != m_secondColor) {
@@ -85,6 +118,12 @@ public:
     TestVideoSink()
     {
         connect(this, &QVideoSink::videoFrameChanged, this, &TestVideoSink::videoFrameChangedSync);
+
+#ifdef Q_OS_ANDROID
+        // Repaint to force the Screen Grabber to work
+        connect(this, &QVideoSink::videoFrameChanged, this, []() {
+            for (QWidget* widget : QApplication::topLevelWidgets()) { widget->update(); }});
+#endif
     }
 
     void setStoreImagesEnabled(bool storeImages = true) {
@@ -140,13 +179,6 @@ private slots:
 
 void tst_QScreenCaptureBackend::setActive_startsAndStopsCapture()
 {
-#ifdef Q_OS_ANDROID
-    // Should be removed after fixing QTBUG-112855
-    auto widget = QTestWidget::createAndShow(Qt::Window | Qt::FramelessWindowHint,
-                                             QRect{ 200, 100, 430, 351 });
-    QVERIFY(QTest::qWaitForWindowExposed(widget.get()));
-    QTest::qWait(100);
-#endif
     TestVideoSink sink;
     QScreenCapture sc;
 
@@ -227,11 +259,12 @@ void tst_QScreenCaptureBackend::capture(QTestWidget &widget, const QPoint &drawi
 
     QVERIFY(sc.isActive());
 
+#ifdef Q_OS_LINUX
     // In some cases, on Linux the window seems to be of a wrong color after appearance,
     // the delay helps.
     // TODO: remove the delay
-    QTest::qWait(300);
-
+    QTest::qWait(2000);
+#endif
     // Let's wait for the first frame to address a potential initialization delay.
     // In practice, the delay varies between the platform and may randomly get increased.
     {
@@ -308,14 +341,62 @@ void tst_QScreenCaptureBackend::removeWhileCapture(
     QVERIFY2(framesSpy.empty(), "No frames expected after screen removal");
 }
 
+int getStatusBarHeight([[maybe_unused]] const qreal pixelRatio = 1)
+{
+#ifdef Q_OS_ANDROID
+
+    using namespace QtJniTypes;
+
+    static int statusBarHeight = -1;
+
+    if (statusBarHeight > -1)
+        return statusBarHeight;
+
+    auto activity = QNativeInterface::QAndroidApplication::context();
+    auto window = activity.callMethod<Window>("getWindow");
+    if (window.isValid()) {
+        auto decorView = window.callMethod<View>("getDecorView");
+        if (decorView.isValid()) {
+            auto rootInsets = decorView.callMethod<WindowInsets>("getRootWindowInsets");
+            if (rootInsets.isValid()) {
+                if (QNativeInterface::QAndroidApplication::sdkVersion() >= 30) {
+                    int windowInsetsType = WindowInsetsType::callStaticMethod<jint>("statusBars");
+                    auto insets = rootInsets.callMethod<Insets>(
+                        "getInsetsIgnoringVisibility", windowInsetsType);
+                    if (rootInsets.isValid())
+                        statusBarHeight = insets.getField<jint>("top");
+                } else {
+                    statusBarHeight = rootInsets.callMethod<jint>("getStableInsetTop");
+                }
+            }
+        }
+    }
+
+    if (statusBarHeight == -1) {
+        qWarning() << "Failed to get status bar height, falling back to zero.";
+        return 0;
+    }
+
+    if (pixelRatio != 0)
+        statusBarHeight /= pixelRatio;
+
+    return statusBarHeight;
+#else
+    return 0;
+#endif
+}
+
 void tst_QScreenCaptureBackend::initTestCase()
 {
 #ifdef Q_OS_ANDROID
-    QSKIP("grabWindow() no longer supported on Android adding child windows support: QTBUG-118849");
+    // QTBUG-132249:
+    // Security Popup can be automatically accepted with adb command:
+    // "adb shell appops set org.qtproject.example.tst_qscreencapturebackend PROJECT_MEDIA allow"
+    // Need to find a way to call it by androidtestrunner after installation and before running the test
+    QSKIP("Skip on Android; There is a security popup that need to be accepted");
 #endif
 #if defined(Q_OS_LINUX)
-    if (qEnvironmentVariable("QTEST_ENVIRONMENT").toLower() == "ci" &&
-        qEnvironmentVariable("XDG_SESSION_TYPE").toLower() != "x11")
+    if (isCI() && qEnvironmentVariable("XDG_SESSION_TYPE").toLower() != "x11")
         QSKIP("Skip on wayland; to be fixed");
 #endif
 
@@ -329,36 +410,30 @@ void tst_QScreenCaptureBackend::initTestCase()
 
 void tst_QScreenCaptureBackend::setScreen_selectsScreen_whenCalledWithWidgetsScreen()
 {
-    auto widget = QTestWidget::createAndShow(Qt::Window | Qt::FramelessWindowHint
-                                                     | Qt::WindowStaysOnTopHint
-#ifdef Q_OS_ANDROID
-                                                     | Qt::Popup
-#endif
-                                                     ,
-                                             QRect{ 200, 100, 430, 351 });
+    auto widget = QTestWidget::createAndShow(
+            Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint,
+            QRect{ 200, 100, 430, 351 });
     QVERIFY(QTest::qWaitForWindowExposed(widget.get()));
 
-    capture(*widget, { 200, 100 }, widget->screen()->size(),
+    const QPoint drawingOffset(200, 100 + getStatusBarHeight(widget->devicePixelRatio()));
+    capture(*widget, drawingOffset, widget->screen()->size(),
             [&widget](QScreenCapture &sc) { sc.setScreen(widget->screen()); });
 }
 
 void tst_QScreenCaptureBackend::constructor_selectsPrimaryScreenAsDefault()
 {
-    auto widget = QTestWidget::createAndShow(Qt::Window | Qt::FramelessWindowHint
-                                                     | Qt::WindowStaysOnTopHint
-#ifdef Q_OS_ANDROID
-                                                     | Qt::Popup
-#endif
-                                                     ,
-                                             QRect{ 200, 100, 430, 351 });
+    auto widget = QTestWidget::createAndShow(
+            Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint,
+            QRect{ 200, 100, 430, 351 });
     QVERIFY(QTest::qWaitForWindowExposed(widget.get()));
 
-    capture(*widget, { 200, 100 }, QApplication::primaryScreen()->size(), nullptr);
+    const QPoint drawingOffset(200, 100 + getStatusBarHeight(widget->devicePixelRatio()));
+    capture(*widget, drawingOffset, QApplication::primaryScreen()->size(), nullptr);
 }
 
 void tst_QScreenCaptureBackend::setScreen_selectsSecondaryScreen_whenCalledWithSecondaryScreen()
 {
-    const auto screens = QApplication::screens();
+    auto screens = QApplication::screens();
     if (screens.size() < 2)
         QSKIP("2 or more screens required");
 
@@ -373,26 +448,33 @@ void tst_QScreenCaptureBackend::setScreen_selectsSecondaryScreen_whenCalledWithS
             Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint,
             QRect{ 200, 100, 430, 351 }, screens.front(), QColor(0, 0, 0), QColor(0, 0, 0));
     QVERIFY(QTest::qWaitForWindowExposed(widgetOnPrimaryScreen.get()));
-    capture(*widgetOnSecondaryScreen, { 200, 100 }, screens.back()->size(),
+    const QPoint drawingOffset(200, 100 + getStatusBarHeight(widgetOnSecondaryScreen->devicePixelRatio()));
+    capture(*widgetOnSecondaryScreen, drawingOffset, screens.back()->size(),
             [&screens](QScreenCapture &sc) { sc.setScreen(screens.back()); });
 }
 
 void tst_QScreenCaptureBackend::capture_capturesToFile_whenConnectedToMediaRecorder()
 {
 #ifdef Q_OS_LINUX
-    if (qEnvironmentVariable("QTEST_ENVIRONMENT").toLower() == "ci")
+    if (isCI())
         QSKIP("QTBUG-116671: SKIP on linux CI to avoid crashes in ffmpeg. To be fixed.");
 #endif
 
     // Create widget with blue color
-    auto widget = QTestWidget::createAndShow(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint,
-                                                 QRect{ 200, 100, 430, 351 });
+    auto widget = QTestWidget::createAndShow(
+            Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint,
+            QRect{ 200, 100, 430, 351 });
     widget->setColors(QColor(0, 0, 0xFF), QColor(0, 0, 0xFF));
 
     QScreenCapture sc;
     QSignalSpy errorsSpy(&sc, &QScreenCapture::errorOccurred);
     QMediaCaptureSession session;
     QMediaRecorder recorder;
+#ifdef Q_OS_ANDROID
+    // ADD dummy sink just for trigger repainting (for blinking rectangle)
+    TestVideoSink dummySink;
+    session.setVideoSink(&dummySink);
+#endif
     session.setScreenCapture(&sc);
     session.setRecorder(&recorder);
     auto screen = QApplication::primaryScreen();
@@ -454,9 +536,10 @@ void tst_QScreenCaptureBackend::capture_capturesToFile_whenConnectedToMediaRecor
     QTRY_COMPARE(player.mediaStatus(), QMediaPlayer::EndOfMedia);
     const size_t framesCount = sink.images().size();
 
-    // Find pixel point at center of widget
-    int x = 415 * videoResolution.width() / screenSize.width();
-    int y = 275 * videoResolution.height() / screenSize.height();
+    // Find pixel point at center of widget. Do not allow to get out of the frame size
+    int x = std::min(415 * videoResolution.width() / screenSize.width(), videoResolution.width() - 1);
+    int y = std::min(275 * videoResolution.height() / screenSize.height(), videoResolution.height() - 1);
+
     auto point = QPoint(x, y);
 
     // Verify color of first fourth of the video frames

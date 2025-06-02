@@ -20,15 +20,15 @@
 
     An HTTP server can be created by subclassing the QAbstractHttpServer class and
     overriding the \l{QAbstractHttpServer::}{handleRequest()} function.
-    The QAbstractHttpServer class
-    provides functions for listening to incoming ports or binding to an existing
-    QTcpServer. Dispatching to callables based on incoming URLs can be simplified
-    by using the QHttpServerRouter class.
+    The QAbstractHttpServer class provides functions for binding to an existing
+    QTcpServer, QSslServer, or QLocalServer. Dispatching to callables based on
+    incoming URLs can be simplified by using the QHttpServerRouter class.
 
     This can be simplified even further by using the QHttpServer class.
     The QHttpServer class is a subclass of QAbstractHttpServer and defines an
     overloaded route function to bind callables to different incoming URLs,
-    and an \l{QHttpServer::}{afterRequest()} function to process the response further.
+    and an \l{QHttpServer::}{addAfterRequestHandler()} function to process the response
+    further.
 
     Runtime logging can be configured as described \l{qthttpserver-logging.html}{here}.
 
@@ -43,8 +43,6 @@
     You can add HTTPS support as a basic security measure, though. If Qt is compiled
     with support for TLS, you can bind QAbstractHttpServer and its subclasses to a
     QSslServer object, providing Transport Layer Security handling.
-    This can also be achieved by calling the QAbstractHttpServer::sslSetup()
-    function before calling \l{QAbstractHttpServer::}{listen()}.
 
     \section1 Using the Module
 

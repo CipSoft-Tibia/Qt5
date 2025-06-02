@@ -23,7 +23,7 @@ QT_BEGIN_NAMESPACE
 
 #define QScxmlDataModelPluginInterface_iid "org.qt-project.qt.scxml.datamodel.plugin"
 
-class Q_SCXML_PRIVATE_EXPORT QScxmlDataModelPlugin : public QObject
+class Q_SCXML_EXPORT QScxmlDataModelPlugin : public QObject
 {
     Q_OBJECT
 public:

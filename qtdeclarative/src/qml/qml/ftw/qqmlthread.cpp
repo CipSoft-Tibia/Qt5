@@ -195,6 +195,9 @@ void QQmlThread::shutdown()
 
     d->m_shutdown = true;
 
+    if (d->mainSync)
+        d->wakeOne();
+
     if (QCoreApplication::closingDown())
         d->quit();
     else
@@ -240,7 +243,7 @@ void QQmlThread::wait()
 
 bool QQmlThread::isThisThread() const
 {
-    return QThread::currentThreadId() == static_cast<QThreadPrivate *>(QObjectPrivate::get(d))->threadData.loadRelaxed()->threadId.loadRelaxed();
+    return d->isCurrentThread();
 }
 
 QThread *QQmlThread::thread() const
@@ -396,6 +399,7 @@ void QQmlThread::waitForNextMessage()
     \internal
     \note This method must be called in the main thread
     \warning This method requires that the lock is held!
+
     Clear all pending events, for either thread.
 */
 void QQmlThread::discardMessages()

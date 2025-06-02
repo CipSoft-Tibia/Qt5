@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/type/multisampled_texture.h"
 #include "src/tint/lang/core/type/storage_texture.h"
@@ -579,7 +592,20 @@ TEST_F(ResolverTypeValidationTest, RuntimeArrayInFunction_Fail) {
 56:78 note: while instantiating 'var' a)");
 }
 
-TEST_F(ResolverTypeValidationTest, Struct_Member_VectorNoType) {
+TEST_F(ResolverTypeValidationTest, PtrType_ArrayIncomplete) {
+    // fn f(l: ptr<function, array>) {}
+
+    Func("f",
+         Vector{
+             Param("l", ty.ptr(function, ty(Source{{12, 34}}, "array"))),
+         },
+         ty.void_(), Empty);
+
+    EXPECT_FALSE(r()->Resolve());
+    EXPECT_EQ(r()->error(), "12:34 error: expected '<' for 'array'");
+}
+
+TEST_F(ResolverTypeValidationTest, Struct_Member_VectorIncomplete) {
     // struct S {
     //   a: vec3;
     // };
@@ -592,7 +618,7 @@ TEST_F(ResolverTypeValidationTest, Struct_Member_VectorNoType) {
     EXPECT_EQ(r()->error(), "12:34 error: expected '<' for 'vec3'");
 }
 
-TEST_F(ResolverTypeValidationTest, Struct_Member_MatrixNoType) {
+TEST_F(ResolverTypeValidationTest, Struct_Member_MatrixIncomplete) {
     // struct S {
     //   a: mat3x3;
     // };
@@ -766,6 +792,21 @@ TEST_F(ResolverTypeValidationTest, RuntimeArrayAsParameter_Fail) {
     EXPECT_EQ(r()->error(),
               R"(12:34 error: runtime-sized arrays can only be used in the <storage> address space
 56:78 note: while instantiating parameter a)");
+}
+
+TEST_F(ResolverTypeValidationTest, PtrToPtr_Fail) {
+    // fn func(a : ptr<workgroup, ptr<workgroup, u32>>) {}
+    auto* param = Param("a", ty.ptr(workgroup, ty.ptr<workgroup, u32>(Source{{12, 34}})));
+
+    Func("func", Vector{param}, ty.void_(),
+         Vector{
+             Return(),
+         });
+
+    EXPECT_FALSE(r()->Resolve()) << r()->error();
+    EXPECT_EQ(
+        r()->error(),
+        R"(12:34 error: ptr<workgroup, u32, read_write> cannot be used as the store type of a pointer)");
 }
 
 TEST_F(ResolverTypeValidationTest, PtrToRuntimeArrayAsPointerParameter_Fail) {
@@ -977,7 +1018,7 @@ static constexpr TypeParams type_cases[] = {
 using SampledTextureTypeTest = ResolverTestWithParam<TypeParams>;
 TEST_P(SampledTextureTypeTest, All) {
     auto& params = GetParam();
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     GlobalVar("a",
               ty.sampled_texture(Source{{12, 34}}, core::type::TextureDimension::k2d,
                                  params.type_func(*this)),
@@ -997,7 +1038,7 @@ INSTANTIATE_TEST_SUITE_P(ResolverTypeValidationTest,
 using MultisampledTextureTypeTest = ResolverTestWithParam<TypeParams>;
 TEST_P(MultisampledTextureTypeTest, All) {
     auto& params = GetParam();
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     GlobalVar("a",
               ty.multisampled_texture(Source{{12, 34}}, core::type::TextureDimension::k2d,
                                       params.type_func(*this)),
@@ -1155,7 +1196,7 @@ TEST_F(StorageTextureAccessTest, WriteOnlyAccess_Pass) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 }
 
-TEST_F(StorageTextureAccessTest, ReadOnlyAccess_WithoutExtension_Fail) {
+TEST_F(StorageTextureAccessTest, ReadOnlyAccess_Pass) {
     // @group(0) @binding(0)
     // var a : texture_storage_1d<r32uint, read>;
 
@@ -1164,27 +1205,27 @@ TEST_F(StorageTextureAccessTest, ReadOnlyAccess_WithoutExtension_Fail) {
 
     GlobalVar("a", st, Group(0_a), Binding(0_a));
 
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+}
+
+TEST_F(StorageTextureAccessTest, ReadOnlyAccess_FeatureDisallowed) {
+    // @group(0) @binding(0)
+    // var a : texture_storage_1d<r32uint, read>;
+
+    auto st = ty.storage_texture(Source{{12, 34}}, core::type::TextureDimension::k1d,
+                                 core::TexelFormat::kR32Uint, core::Access::kRead);
+
+    GlobalVar("a", st, Group(0_a), Binding(0_a));
+
+    auto resolver = Resolver{this, wgsl::AllowedFeatures{}};
+    EXPECT_FALSE(resolver.Resolve());
+    EXPECT_EQ(resolver.error(),
               "12:34 error: read-only storage textures require the "
-              "chromium_experimental_read_write_storage_texture extension to be enabled");
+              "readonly_and_readwrite_storage_textures language feature, which is not allowed in "
+              "the current environment");
 }
 
-TEST_F(StorageTextureAccessTest, ReadOnlyAccess_WithExtension_Pass) {
-    // enable chromium_experimental_read_write_storage_texture;
-    // @group(0) @binding(0)
-    // var a : texture_storage_1d<r32uint, read>;
-
-    Enable(core::Extension::kChromiumExperimentalReadWriteStorageTexture);
-    auto st = ty.storage_texture(Source{{12, 34}}, core::type::TextureDimension::k1d,
-                                 core::TexelFormat::kR32Uint, core::Access::kRead);
-
-    GlobalVar("a", st, Group(0_a), Binding(0_a));
-
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
-}
-
-TEST_F(StorageTextureAccessTest, RWAccess_WithoutExtension_Fail) {
+TEST_F(StorageTextureAccessTest, RWAccess_Pass) {
     // @group(0) @binding(0)
     // var a : texture_storage_1d<r32uint, read_write>;
 
@@ -1193,24 +1234,24 @@ TEST_F(StorageTextureAccessTest, RWAccess_WithoutExtension_Fail) {
 
     GlobalVar("a", st, Group(0_a), Binding(0_a));
 
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+}
+
+TEST_F(StorageTextureAccessTest, RWAccess_FeatureDisallowed) {
+    // @group(0) @binding(0)
+    // var a : texture_storage_1d<r32uint, read_write>;
+
+    auto st = ty.storage_texture(Source{{12, 34}}, core::type::TextureDimension::k1d,
+                                 core::TexelFormat::kR32Uint, core::Access::kReadWrite);
+
+    GlobalVar("a", st, Group(0_a), Binding(0_a));
+
+    Resolver resolver{this, wgsl::AllowedFeatures{}};
+    EXPECT_FALSE(resolver.Resolve());
+    EXPECT_EQ(resolver.error(),
               "12:34 error: read-write storage textures require the "
-              "chromium_experimental_read_write_storage_texture extension to be enabled");
-}
-
-TEST_F(StorageTextureAccessTest, RWAccess_WithExtension_Pass) {
-    // enable chromium_experimental_read_write_storage_texture;
-    // @group(0) @binding(0)
-    // var a : texture_storage_1d<r32uint, read_write>;
-
-    Enable(core::Extension::kChromiumExperimentalReadWriteStorageTexture);
-    auto st = ty.storage_texture(Source{{12, 34}}, core::type::TextureDimension::k1d,
-                                 core::TexelFormat::kR32Uint, core::Access::kReadWrite);
-
-    GlobalVar("a", st, Group(0_a), Binding(0_a));
-
-    EXPECT_TRUE(r()->Resolve()) << r()->error();
+              "readonly_and_readwrite_storage_textures language feature, which is not allowed in "
+              "the current environment");
 }
 
 }  // namespace StorageTextureTests
@@ -1233,7 +1274,7 @@ TEST_P(ValidMatrixTypes, Okay) {
     // var a : matNxM<EL_TY>;
     auto& params = GetParam();
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     ast::Type el_ty = params.elem_ty(*this);
 
@@ -1273,7 +1314,7 @@ TEST_P(InvalidMatrixElementTypes, InvalidElementType) {
     // var a : matNxM<EL_TY>;
     auto& params = GetParam();
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     ast::Type el_ty = params.elem_ty(*this);
 
@@ -1318,7 +1359,7 @@ TEST_P(ValidVectorTypes, Okay) {
     // var a : vecN<EL_TY>;
     auto& params = GetParam();
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     GlobalVar("a", ty.vec(params.elem_ty(*this), params.width), core::AddressSpace::kPrivate);
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -1352,7 +1393,7 @@ TEST_P(InvalidVectorElementTypes, InvalidElementType) {
     // var a : vecN<EL_TY>;
     auto& params = GetParam();
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     GlobalVar("a", ty.vec(Source{{12, 34}}, params.elem_ty(*this), params.width),
               core::AddressSpace::kPrivate);
@@ -1390,7 +1431,7 @@ TEST_P(BuiltinTypeAliasTest, CheckEquivalent) {
     // explicit = aliased;
     auto& params = GetParam();
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     WrapInFunction(Decl(Var("aliased", ty(params.alias))),
                    Decl(Var("explicit", params.type(*this))),  //
@@ -1402,7 +1443,7 @@ TEST_P(BuiltinTypeAliasTest, Construct) {
     // var v : vecN<T> = vecTN();
     auto& params = GetParam();
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     WrapInFunction(Decl(Var("v", params.type(*this), Call(params.alias))));
     EXPECT_TRUE(r()->Resolve()) << r()->error();
@@ -1450,7 +1491,7 @@ TEST_P(ResolverUntemplatedTypeUsedWithTemplateArgs, Builtin_UseWithTemplateArgs)
     // enable f16;
     // var<private> v : f32<true>;
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     GlobalVar("v", core::AddressSpace::kPrivate, ty(Source{{12, 34}}, GetParam(), true));
 
     EXPECT_FALSE(r()->Resolve());
@@ -1463,7 +1504,7 @@ TEST_P(ResolverUntemplatedTypeUsedWithTemplateArgs, BuiltinAlias_UseWithTemplate
     // alias A = f32;
     // var<private> v : A<true>;
 
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     Alias(Source{{56, 78}}, "A", ty(GetParam()));
     GlobalVar("v", core::AddressSpace::kPrivate, ty(Source{{12, 34}}, "A", true));
 

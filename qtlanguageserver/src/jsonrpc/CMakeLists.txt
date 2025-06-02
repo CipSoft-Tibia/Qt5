@@ -7,6 +7,7 @@
 
 qt_internal_add_module(JsonRpcPrivate
     INTERNAL_MODULE
+    STATIC
     SOURCES
         qhttpmessagestreamparser_p.h qhttpmessagestreamparser.cpp
         qjsonrpcprotocol.cpp qjsonrpcprotocol_p.h qjsonrpcprotocol_p_p.h

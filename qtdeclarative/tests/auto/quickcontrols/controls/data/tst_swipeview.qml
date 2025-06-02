@@ -4,6 +4,7 @@
 import QtQuick
 import QtTest
 import QtQuick.Controls
+import QtQuick.Layouts
 
 TestCase {
     id: testCase
@@ -759,5 +760,63 @@ TestCase {
         compare(swipeView.currentItem, item2)
         tryCompare(swipeListView, "contentX", swipeListView.width, 1000)
         compare(item2.x, swipeListView.width)
+    }
+
+    Component {
+        id: zeroSizeSwipeViewWithRepeatersComponent
+
+        Item {
+            objectName: "rootItem"
+            anchors.fill: parent
+
+            property alias swipeView: swipeView
+            property int d
+
+            Timer {
+                interval: 2
+                running: true
+                repeat: false
+                onTriggered: d = 2
+            }
+
+            SwipeView {
+                id: swipeView
+                contentItem.objectName: "swipeViewListView"
+
+                Repeater {
+                    objectName: "swipeViewContentItemRepeater"
+                    model: [
+                        {
+                            title: d
+                        }
+                    ]
+
+                    delegate: GridLayout {
+                        objectName: "gridLayoutDelegate"
+
+                        Repeater {
+                            id: repeater
+                            objectName: "delegateRepeater"
+                            model: d
+                            delegate: Item {
+                                objectName: "delegate" + index
+
+                                required property int index
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // QTBUG-129622
+    function test_zeroSizeSwipeViewWithRepeaters() {
+        let root = createTemporaryObject(zeroSizeSwipeViewWithRepeatersComponent, testCase)
+        verify(root)
+
+        let swipeView = root.swipeView
+        tryCompare(root, "d", 2)
+        // Shouldn't crash when the model is changed.
     }
 }

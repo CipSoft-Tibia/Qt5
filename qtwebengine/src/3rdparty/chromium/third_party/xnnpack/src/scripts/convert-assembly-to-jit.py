@@ -197,8 +197,8 @@ def fix_fn_name(name: str) -> str:
 
 
 def remove_prfm_from_fn_name(name: str) -> str:
-  assert ('_prfm_' in name)
-  return name.replace('prfm_', '')
+  assert ('_prfm' in name)
+  return name.replace('_prfm', '')
 
 
 def fix_regs(regs: str) -> str:
@@ -253,7 +253,7 @@ AARCH32_POST_OP = """void Generator::perform_post_operations(
         break;
       }
       default:
-        XNN_UNREACHABLE;
+        XNN_LOG_UNREACHABLE("unsupported post operation: %u", post_operations[i].op_type);
     }
   }
 }"""
@@ -284,7 +284,7 @@ AARCH32_POST_OP_RELOAD = """void Generator::perform_post_operations(
         break;
       }
       default:
-        XNN_UNREACHABLE;
+        XNN_LOG_UNREACHABLE("unsupported post operation: %u", post_operations[i].op_type);
     }
   }
 }"""
@@ -315,7 +315,7 @@ AARCH64_POST_OP = """void Generator::perform_post_operations(
         break;
       }
       default:
-        XNN_UNREACHABLE;
+        XNN_LOG_UNREACHABLE("unsupported post operation: %u", post_operations[i].op_type);
     }
   }
 }"""
@@ -469,6 +469,8 @@ def parse_prologue(input_file: str, lines: List[str], arch: str, minmax: bool,
         prologue.append('#include <xnnpack/gemm.h>')
       else:
         prologue.append('#include <xnnpack/igemm.h>')
+      if post_op:
+        prologue.append('#include <xnnpack/log.h>')
       prologue.append('#include <xnnpack/memory.h>')
       prologue.append('#include <xnnpack/microparams.h>')
       prologue.append('#include <xnnpack/post-operation.h>')
@@ -1265,7 +1267,7 @@ def convert(input_file: str, post_op: bool, reload_params: bool, debug: bool, fo
 
   labels_str = ', '.join(f'l{l}' for l in labels)
   output.append(f'  assert(max_mr <= {mr});')
-  output.append(f'  assert(nc_mod_nr < {nr});')
+  output.append(f'  assert(nc_mod_nr < {nr} || nc_mod_nr == SIZE_MAX);')
   output.append('  assert(kc != 0);')
   output.append(f'  assert(kc % sizeof({ctype}) == 0);')
   if kernel_type == IGEMM:

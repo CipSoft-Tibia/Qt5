@@ -13,12 +13,13 @@ import sys
 import tempfile
 import traceback
 from typing import (TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple,
-                    Type)
+                    Type, Union)
 
 from tabulate import tabulate
 
 import crossbench.benchmarks.all as benchmarks
-from crossbench import cli_helper, helper
+from crossbench import cli_helper, helper, plt
+from crossbench.benchmarks.base import Benchmark
 from crossbench.browsers import splash_screen, viewport
 from crossbench.browsers.browser_helper import BROWSERS_CACHE
 from crossbench.env import (HostEnvironment, HostEnvironmentConfig,
@@ -27,9 +28,7 @@ from crossbench.probes.all import GENERAL_PURPOSE_PROBES, DebuggerProbe
 from crossbench.probes.internal import ErrorsProbe
 from crossbench.runner.runner import Runner
 from crossbench.runner.timing import Timing
-from crossbench.benchmarks.benchmark import Benchmark
-
-from . import cli_config
+from . import config as cli_config
 from .devtools_recorder_proxy import CrossbenchDevToolsRecorderProxy
 
 if TYPE_CHECKING:
@@ -45,9 +44,26 @@ argparse.ArgumentError = cli_helper.CrossBenchArgumentError
 class EnableDebuggingAction(argparse.Action):
   """Custom action to set both --throw and -vvv."""
 
-  def __call__(self, parser, namespace, values, option_string=None):
+  def __call__(self,
+               parser: argparse.ArgumentParser,
+               namespace: argparse.Namespace,
+               values: Union[str, Sequence[Any], None],
+               option_string: Optional[str] = None) -> None:
     setattr(namespace, "throw", True)
     setattr(namespace, "verbosity", 3)
+
+
+class EnableFastAction(argparse.Action):
+  """Custom action to enable fast test runs"""
+
+  def __call__(self,
+               parser: argparse.ArgumentParser,
+               namespace: argparse.Namespace,
+               values: Union[str, Sequence[Any], None],
+               option_string: Optional[str] = None) -> None:
+    setattr(namespace, "cool_down_time", dt.timedelta())
+    setattr(namespace, "splash_screen", splash_screen.SplashScreen.NONE)
+    setattr(namespace, "env_validation", ValidationMode.SKIP)
 
 
 class AppendDebuggerProbeAction(argparse.Action):
@@ -57,13 +73,16 @@ class AppendDebuggerProbeAction(argparse.Action):
     longer time.
   """
 
-  def __call__(self, parser, namespace, values, option_string=None):
-    probes: List[cli_config.SingleProbeConfig] = getattr(
-        namespace, self.dest, [])
+  def __call__(self,
+               parser: argparse.ArgumentParser,
+               namespace: argparse.Namespace,
+               values: Union[str, Sequence[Any], None],
+               option_string: Optional[str] = None) -> None:
+    probes: List[cli_config.ProbeConfig] = getattr(namespace, self.dest, [])
     probe_settings = {"debugger": "gdb"}
     if option_string and "lldb" in option_string:
       probe_settings["debugger"] = "lldb"
-    probes.append(cli_config.SingleProbeConfig(DebuggerProbe, probe_settings))
+    probes.append(cli_config.ProbeConfig(DebuggerProbe, probe_settings))
     if not getattr(namespace, "timeout_unit", None):
       # Set a very large --timeout-unit to allow for very slow debugging without
       # causing timeouts (for instance when waiting on a breakpoint).
@@ -80,6 +99,7 @@ class CrossBenchCLI:
       benchmarks.MotionMark12Benchmark,
       benchmarks.PageLoadBenchmark,
       benchmarks.PowerBenchmark,
+      benchmarks.ManualBenchmark,
   )
 
   RUNNER_CLS: Type[Runner] = Runner
@@ -301,7 +321,7 @@ class CrossBenchCLI:
         type=pathlib.Path,
         default=BROWSERS_CACHE,
         help="Used for caching browser binaries and archives. "
-        "Defaults to .browser_cache")
+        "Defaults to binary_cache")
 
     cooldown_group = runner_group.add_mutually_exclusive_group()
     cooldown_group.add_argument(
@@ -319,6 +339,13 @@ class CrossBenchCLI:
         const=dt.timedelta(seconds=0),
         help="Disable cool-down between runs (might cause CPU throttling), "
         "equivalent to --cool-down=0.")
+    cooldown_group.add_argument(
+        "--fast",
+        action=EnableFastAction,
+        nargs=0,
+        help="Switch to a fast run mode "
+        "which might yield unstable performance results. "
+        "Equivalent to --cool-down=0 --no-splash --env-validation=skip.")
 
     runner_group.add_argument(
         "--time-unit",
@@ -342,6 +369,14 @@ class CrossBenchCLI:
         help="Sets the same timeout per run on all browsers. "
         "Runs will be aborted after the given timeout. "
         f"Format: {cli_helper.Duration.help()}")
+
+    network_group = subparser.add_argument_group("Network Options", "")
+    network_settings_group = network_group.add_mutually_exclusive_group()
+    network_settings_group.add_argument(
+        "--network", "--network-config",
+        type=cli_config.NetworkConfig.parse,
+        default=cli_config.NetworkConfig.default(),
+        help=cli_config.NetworkConfig.help())
 
     env_group = subparser.add_argument_group("Environment Options", "")
     env_settings_group = env_group.add_mutually_exclusive_group()
@@ -383,18 +418,28 @@ class CrossBenchCLI:
         type=cli_config.BrowserConfig.parse,
         action="append",
         default=[],
-        help="Browser binary. Use this to test a simple browser variant. "
-        "Use [chrome, stable, dev, canary, safari] "
-        "for system default browsers or a full path. "
-        "Repeat for adding multiple browsers. "
-        "Defaults to 'chrome-stable'. "
-        "Use --browser=chrome-M107 to download the latest milestone, "
-        "--browser=chrome-100.0.4896.168 to download a specific chrome version "
-        "(macOS and linux for googlers and chrome only). "
-        "Use --browser=path/to/archive.dmg on macOS or "
+        help="Browser binary, defaults to 'chrome-stable'."
+        "Use this to test a simple browser variant. "
+        "Use [chrome, chrome-stable, chrome-dev, chrome-canary, "
+        "safari, safari-tp, "
+        "firefox, firefox-stable, firefox-dev, firefox-nightly, "
+        "edge, edge-stable, edge-beta, edge-dev, edge-canary] "
+        "for system default browsers or a full path. \n"
+        "* Use --browser=chrome-M107 to download the latest version for a "
+        "specific milestone\n"
+        "* Use --browser=chrome-100.0.4896.168 to download a specific chrome version "
+        "(macOS and linux for googlers and chrome only). \n"
+        "* Use --browser=path/to/archive.dmg on macOS or "
         "--browser=path/to/archive.rpm on linux "
-        "for locally cached versions (chrome only)."
-        "Cannot be used with --browser-config")
+        "for locally cached versions (chrome only).\n"
+        "* Use --browser=\"${ADB_SERIAL}:chrome\" "
+        "(e.g. --browser='0a388e93:chrome') for specific "
+        "android devices or --browser='adb:chrome' if only once device is "
+        "attached.\n"
+        "Repeat for adding multiple browsers. "
+        "The browser result dir's name is '${BROWSER}_${PLATFORM}_${INDEX}' "
+        "$INDEX corresponds to the order on the command line."
+        "Cannot be used together with --browser-config")
     browser_config_group.add_argument(
         "--browser-config",
         type=cli_helper.parse_hjson_file_path,
@@ -412,7 +457,7 @@ class CrossBenchCLI:
         "--config",
         type=cli_helper.parse_hjson_file_path,
         help="Specify a common config for "
-        "--probe-config, --browser-config and --env-config.")
+        "--probe-config, --browser-config, --network-config and --env-config.")
 
     splashscreen_group = browser_group.add_mutually_exclusive_group()
     splashscreen_group.add_argument(
@@ -468,12 +513,29 @@ class CrossBenchCLI:
         help="Command-separated list of disabled chrome features. " + doc_str,
         default="")
 
+    field_trial_group = chrome_args.add_mutually_exclusive_group()
+    field_trial_group.add_argument(
+        "--enable-field-trial-config",
+        "--enable-field-trials",
+        default=None,
+        action="store_true",
+        help=("Use chrome's field-trial configs, "
+              "disabled by default by crossbench"))
+    field_trial_group.add_argument(
+        "--disable-field-trial-config",
+        "--disable-field-trials",
+        dest="enable_field_trial_config",
+        action="store_false",
+        help=("Explicitly disable field-trial configs."
+              "Off by default on official builds, "
+              "and disabled by default by crossbench."))
+
     probe_group = subparser.add_argument_group("Probe Options", "")
     probe_config_group = probe_group.add_mutually_exclusive_group()
     probe_config_group.add_argument(
         "--probe",
         action="append",
-        type=cli_config.SingleProbeConfig.parse,
+        type=cli_config.ProbeConfig.parse,
         default=[],
         help="Enable general purpose probes to measure data on all cb.stories. "
         "This argument can be specified multiple times to add more probes. "
@@ -583,10 +645,36 @@ class CrossBenchCLI:
       if args.probe_config:
         raise argparse.ArgumentTypeError(
             "--config cannot be used together with --probe-config")
-      # Propagate the global config file to all sub-configs
-      args.env_config = cli_config.parse_env_config_file(args.config)
-      args.browser_config = args.config
-      args.probe_config = args.config
+
+      config_file = args.config
+      config_data = cli_helper.parse_hjson_file(config_file)
+      found_any_config = False
+
+      if config_data.get("env"):
+        args.env_config = cli_config.parse_env_config_file(config_file)
+        found_any_config = True
+      else:
+        logging.warning("Skipping env config: no 'env' property in %s",
+                        config_file)
+
+      if config_data.get("browsers"):
+        args.browser_config = config_file
+        found_any_config = True
+      else:
+        logging.warning(
+            "Skipping browsers config: No 'browsers' property in %s",
+            config_file)
+
+      if config_data.get("probes"):
+        args.probe_config = config_file
+        found_any_config = True
+      else:
+        logging.warning("Skipping probes config: no 'probes' property in %s",
+                        config_file)
+
+      if not found_any_config:
+        raise argparse.ArgumentTypeError(
+            f"--config: config file has no config properties {config_file}")
 
   def _log_benchmark_subcommand_failure(self, benchmark: Optional[Benchmark],
                                         runner: Optional[Runner],
@@ -659,10 +747,17 @@ class CrossBenchCLI:
       self._log_results(args, runner, is_success=False)
       raise
     finally:
-      if not args.out_dir:
-        self._update_results_symlinks(runner)
+      self._update_symlinks(args, runner)
 
-  def _update_results_symlinks(self, runner: Runner) -> None:
+  def _update_symlinks(self, args: argparse.Namespace, runner: Runner) -> None:
+    if plt.PLATFORM.is_win:
+      logging.debug("Skipping session_dir symlink on windows.")
+      return
+    if not args.out_dir and runner.out_dir.exists():
+      self._update_default_results_symlinks(runner)
+      self._create_runs_results_symlinks(runner)
+
+  def _update_default_results_symlinks(self, runner: Runner) -> None:
     results_root = runner.out_dir.parent
     latest_link = results_root / "latest"
     if latest_link.is_symlink():
@@ -672,12 +767,17 @@ class CrossBenchCLI:
           runner.out_dir.relative_to(results_root), target_is_directory=True)
     else:
       logging.error("Could not create %s", latest_link)
-    if not runner.runs:
+
+  def _create_runs_results_symlinks(self, runner: Runner) -> None:
+    results_root = runner.out_dir.parent
+    runs: Tuple[Run, ...] = runner.runs
+    if not runs:
+      logging.debug("Skip creating result symlinks in '%s': no runs produced.",
+                    results_root)
       return
     out_dir = runner.out_dir
     first_run_dir = out_dir / "first_run"
     last_run_dir = out_dir / "last_run"
-    runs: List[Run] = list(runner.runs)
     if first_run_dir.exists():
       logging.error("Cannot create first_run symlink: %s", first_run_dir)
     else:
@@ -686,6 +786,7 @@ class CrossBenchCLI:
       logging.error("Cannot create last_run symlink: %s", last_run_dir)
     else:
       last_run_dir.symlink_to(runs[-1].out_dir.relative_to(out_dir))
+
     runs_dir = out_dir / "runs"
     runs_dir.mkdir()
     for run in runs:
@@ -693,6 +794,12 @@ class CrossBenchCLI:
         continue
       relative = pathlib.Path("..") / run.out_dir.relative_to(out_dir)
       (runs_dir / str(run.index)).symlink_to(relative)
+
+    sessions_dir = out_dir / "sessions"
+    sessions_dir.mkdir()
+    for session in set(run.browser_session for run in runs):
+      relative = pathlib.Path("..") / session.path.relative_to(out_dir)
+      (sessions_dir / str(session.index)).symlink_to(relative)
 
   def _log_results(self, args: argparse.Namespace, runner: Runner,
                    is_success: bool) -> None:
@@ -719,7 +826,7 @@ class CrossBenchCLI:
     return args.browser_config.variants
 
   def _get_probes(self, args: argparse.Namespace) -> Sequence[Probe]:
-    args.probe_config = cli_config.ProbeConfig.from_cli_args(args)
+    args.probe_config = cli_config.ProbeListConfig.from_cli_args(args)
     return args.probe_config.probes
 
   def _get_benchmark(self, args: argparse.Namespace) -> Benchmark:

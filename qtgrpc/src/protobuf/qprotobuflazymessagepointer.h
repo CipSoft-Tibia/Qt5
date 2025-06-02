@@ -5,15 +5,17 @@
 #ifndef QPROTOBUFLAZYMESSAGEPOINTER_H
 #define QPROTOBUFLAZYMESSAGEPOINTER_H
 
+#include <QtProtobuf/qtprotobufexports.h>
+
 #include <QtProtobuf/qprotobufmessage.h>
-#include <QtProtobuf/qtprotobufglobal.h>
+#include <QtProtobuf/qtprotobuftypes.h>
 
 QT_BEGIN_NAMESPACE
 namespace QtProtobufPrivate {
 class QProtobufLazyMessagePointerBase
 {
     Q_DISABLE_COPY(QProtobufLazyMessagePointerBase)
-    mutable QProtobufMessage *m_ptr = nullptr; // @todo lost QPointer functionality
+    mutable QProtobufMessage *m_ptr = nullptr;
 
 protected:
     QProtobufLazyMessagePointerBase() noexcept = default;
@@ -22,11 +24,7 @@ protected:
         : m_ptr(std::exchange(other.m_ptr, nullptr))
     {
     }
-    QProtobufLazyMessagePointerBase &operator=(QProtobufLazyMessagePointerBase &&other) noexcept
-    {
-        qt_ptr_swap(m_ptr, other.m_ptr);
-        return *this;
-    }
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QProtobufLazyMessagePointerBase)
 
     QProtobufMessage *message() const noexcept { return m_ptr; }
     void setMessage(QProtobufMessage *msg) const noexcept{ m_ptr = msg; }
@@ -37,7 +35,7 @@ protected:
     explicit operator bool() const noexcept { return message() != nullptr; }
 };
 
-template <typename T, std::enable_if_t<std::is_base_of_v<QProtobufMessage, T>, bool> = true>
+template <typename T, QtProtobuf::if_protobuf_message<T> = true>
 class QProtobufLazyMessagePointer : private QProtobufLazyMessagePointerBase
 {
     T *messageAsT() const { return static_cast<T *>(message()); }

@@ -6444,7 +6444,7 @@ void tst_qquicktextinput::setInputMask()
         QVERIFY(QTest::qWaitForWindowActive(&window));
         QVERIFY(textInput->hasActiveFocus());
 
-        QTest::keyClick(&window, Qt::Key_Home);
+        textInput->setCursorPosition(0);
         for (int i = 0; i < input.size(); i++)
             QTest::keyClick(&window, input.at(i).toLatin1());
     }

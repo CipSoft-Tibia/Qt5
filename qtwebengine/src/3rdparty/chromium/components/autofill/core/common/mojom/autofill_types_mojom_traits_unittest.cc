@@ -42,6 +42,7 @@ void CreateTestFieldDataPredictions(const std::string& signature,
   field_predict->signature = signature;
   field_predict->heuristic_type = "TestHeuristicType";
   field_predict->server_type = "TestServerType";
+  field_predict->html_type = "TestHtmlType";
   field_predict->overall_type = "TestOverallType";
   field_predict->parseable_name = "TestParseableName";
   field_predict->section = "TestSection";
@@ -83,7 +84,7 @@ void CreatePasswordGenerationUIData(
   data->generation_element = u"generation_element";
   data->text_direction = base::i18n::RIGHT_TO_LEFT;
   data->is_generation_element_password_type = false;
-  test::CreateTestAddressFormData(&data->form_data);
+  data->form_data = test::CreateTestAddressFormData();
 }
 
 void CheckEqualPasswordFormFillData(const PasswordFormFillData& expected,
@@ -292,9 +293,11 @@ TEST_F(AutofillTypeTraitsTestImpl, PassFormFieldData) {
       "TestLabel", "TestName", "TestValue", kOptions, kOptions);
   // Set other attributes to check if they are passed correctly.
   input.host_frame = test::MakeLocalFrameToken();
-  input.unique_renderer_id = FieldRendererId(1234);
+  input.name = u"name";
   input.id_attribute = u"id";
   input.name_attribute = u"name";
+  input.value = u"value";
+  input.form_control_type = FormControlType::kInputText;
   input.autocomplete_attribute = "on";
   input.parsed_autocomplete =
       AutocompleteParsingResult{.section = "autocomplete_section",
@@ -304,8 +307,11 @@ TEST_F(AutofillTypeTraitsTestImpl, PassFormFieldData) {
   input.css_classes = u"class1";
   input.aria_label = u"aria label";
   input.aria_description = u"aria description";
+  input.unique_renderer_id = FieldRendererId(1234);
+  input.host_form_id = FormRendererId(123);
   input.max_length = 12345;
   input.is_autofilled = true;
+  input.is_user_edited = true;
   input.check_status = FormFieldData::CheckStatus::kChecked;
   input.should_autocomplete = true;
   input.role = FormFieldData::RoleAttribute::kPresentation;
@@ -335,13 +341,14 @@ TEST_F(AutofillTypeTraitsTestImpl, PassDataListFormFieldData) {
   input.id_attribute = u"id";
   input.name_attribute = u"name";
   input.autocomplete_attribute = "on";
-  input.parsed_autocomplete = absl::nullopt;
+  input.parsed_autocomplete = std::nullopt;
   input.placeholder = u"placeholder";
   input.css_classes = u"class1";
   input.aria_label = u"aria label";
   input.aria_description = u"aria description";
   input.max_length = 12345;
   input.is_autofilled = true;
+  input.is_user_edited = true;
   input.check_status = FormFieldData::CheckStatus::kChecked;
   input.should_autocomplete = true;
   input.role = FormFieldData::RoleAttribute::kPresentation;
@@ -359,8 +366,7 @@ TEST_F(AutofillTypeTraitsTestImpl, PassDataListFormFieldData) {
 }
 
 TEST_F(AutofillTypeTraitsTestImpl, PassFormData) {
-  FormData input;
-  test::CreateTestAddressFormData(&input);
+  FormData input = test::CreateTestAddressFormData();
   input.username_predictions = {autofill::FieldRendererId(1),
                                 autofill::FieldRendererId(13),
                                 autofill::FieldRendererId(2)};
@@ -389,7 +395,7 @@ TEST_F(AutofillTypeTraitsTestImpl, PassFormFieldDataPredictions) {
 
 TEST_F(AutofillTypeTraitsTestImpl, PassFormDataPredictions) {
   FormDataPredictions input;
-  test::CreateTestAddressFormData(&input.data);
+  input.data = test::CreateTestAddressFormData();
   input.signature = "TestSignature";
 
   FormFieldDataPredictions field_predict;

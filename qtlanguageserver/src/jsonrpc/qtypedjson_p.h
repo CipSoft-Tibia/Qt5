@@ -555,36 +555,28 @@ private:
     QList<std::variant<QJsonObject, QJsonArray, QJsonValue>> m_values;
 };
 
-template<typename W, typename... Params>
-void doWalkArgs(W &w, Params... params)
+template<typename... Params>
+QJsonValue toJsonValue(Params ...params)
 {
-    if constexpr (sizeof...(Params) == 0) {
-    } else if constexpr (sizeof...(Params) == 1) {
-        doWalk(w, params...);
-    } else {
-        if (!w.startTuple(sizeof...(Params)))
-            return;
+    if constexpr (sizeof...(Params) == 0)
+        return QJsonValue(QJsonValue::Type::Undefined);
+
+    JsonBuilder b;
+    if constexpr (sizeof...(Params) == 1) {
+        doWalk(b, params...);
+    } else if (b.startTuple(sizeof...(Params))) {
         qint32 i = 0;
         bool skipRest = false;
-        std::apply(
-                [&i, &w, &skipRest](auto &el) {
-                    if (skipRest || !w.startElement(i)) {
-                        skipRest = true;
-                    } else {
-                        doWalk(w, el);
-                        w.endElement(i++);
-                    }
-                },
-                params...);
-        w.endTuple(sizeof...(Params));
+        std::apply([&i, &b, &skipRest](auto &el) {
+            if (skipRest || !b.startElement(i)) {
+                skipRest = true;
+            } else {
+                    doWalk(b, el);
+                    b.endElement(i++);
+                }
+            }, params...);
+        b.endTuple(sizeof...(Params));
     }
-}
-
-template<typename... Params>
-QJsonValue toJsonValue(Params... params)
-{
-    JsonBuilder b;
-    doWalkArgs(b, params...);
     return b.popLastValue();
 }
 

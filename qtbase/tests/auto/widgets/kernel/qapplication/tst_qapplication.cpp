@@ -23,6 +23,7 @@
 
 #include <QtGui/QFontDatabase>
 #include <QtGui/QClipboard>
+#include <QtGui/QStyleHints>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMessageBox>
@@ -58,6 +59,7 @@ class tst_QApplication : public QObject
 {
 Q_OBJECT
 
+    void runHelperTest();
 private slots:
     void cleanup();
     void sendEventsOnProcessEvents(); // this must be the first test
@@ -98,6 +100,18 @@ private slots:
     void sendPostedEvents();
 #endif  // ifdef QT_BUILD_INTERNAL
 
+#if QT_CONFIG(process)
+    void exitFromEventLoop() { runHelperTest(); }
+    void exitFromThread() { runHelperTest(); }
+    void exitFromThreadedEventLoop() { runHelperTest(); }
+#  if defined(Q_OS_APPLE)
+    // QGuiApplication in a thread fails inside Apple libs:
+    // *** Assertion failure in -[NSMenu _setMenuName:], NSMenu.m:777
+    // *** Terminating app due to uncaught exception 'NSInternalInconsistencyException', reason: 'API misuse: setting the main menu on a non-main thread. Main menu contents should only be modified from the main thread.'
+#  else
+    void mainAppInAThread() { runHelperTest(); }
+#  endif
+#endif
     void thread();
     void desktopSettingsAware();
 
@@ -119,6 +133,7 @@ private slots:
 
     void style();
     void applicationPalettePolish();
+    void setColorScheme();
 
     void allWidgets();
     void topLevelWidgets();
@@ -311,10 +326,8 @@ void tst_QApplication::alert()
     QApplication::alert(&widget, -1);
     QApplication::alert(&widget, 250);
     widget2.activateWindow();
-    QApplicationPrivate::setActiveWindow(&widget2);
     QApplication::alert(&widget, 0);
     widget.activateWindow();
-    QApplicationPrivate::setActiveWindow(&widget);
     QApplication::alert(&widget, 200);
 }
 
@@ -1191,6 +1204,29 @@ void tst_QApplication::sendPostedEvents()
 }
 #endif
 
+#if QT_CONFIG(process)
+#if defined(Q_OS_WIN)
+#  define EXE ".exe"
+#else
+#  define EXE ""
+#endif
+void tst_QApplication::runHelperTest()
+{
+#  ifdef Q_OS_ANDROID
+    QSKIP("Skipped on Android: helper not present");
+#  endif
+    int argc = 0;
+    QCoreApplication app(argc, nullptr);
+    QProcess process;
+    process.start(QFINDTESTDATA("apphelper" EXE), { QTest::currentTestFunction() });
+    QVERIFY2(process.waitForFinished(5000), qPrintable(process.errorString()));
+    QCOMPARE(process.readAllStandardError(), QString());
+    QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+    QCOMPARE(process.exitCode(), 0);
+}
+#undef EXE
+#endif
+
 void tst_QApplication::thread()
 {
     QThread *currentThread = QThread::currentThread();
@@ -1624,8 +1660,7 @@ void tst_QApplication::focusWidget()
         QTextEdit te;
         te.show();
 
-        QApplicationPrivate::setActiveWindow(&te);
-        QVERIFY(QTest::qWaitForWindowActive(&te));
+        QVERIFY(QTest::qWaitForWindowFocused(&te));
 
         const auto focusWidget = QApplication::focusWidget();
         QVERIFY(focusWidget);
@@ -1640,8 +1675,7 @@ void tst_QApplication::focusWidget()
         QTextEdit te(&w);
         w.show();
 
-        QApplicationPrivate::setActiveWindow(&w);
-        QVERIFY(QTest::qWaitForWindowActive(&w));
+        QVERIFY(QTest::qWaitForWindowFocused(&w));
 
         const auto focusWidget = QApplication::focusWidget();
         QVERIFY(focusWidget);
@@ -2053,6 +2087,122 @@ void tst_QApplication::applicationPalettePolish()
         QCOMPARE(app.palette().color(QPalette::Link), Qt::red);
         QCOMPARE(app.palette().color(QPalette::Highlight), Qt::green);
     }
+}
+
+void tst_QApplication::setColorScheme()
+{
+    int argc = 1;
+    QApplication app(argc, &argv0);
+
+    if (QStringList{"minimal", "offscreen", "wayland", "xcb", "wasm", "webassembly"}
+        .contains(QGuiApplication::platformName(), Qt::CaseInsensitive)) {
+        QSKIP("Setting the colorScheme is not implemented on this platform.");
+    }
+    qDebug() << "Testing setColorScheme on platform" << QGuiApplication::platformName();
+
+    if (QByteArrayView(app.style()->metaObject()->className()) == "QWindowsVistaStyle")
+        QSKIP("Setting the colorScheme is not supported with the Windows Vista style.");
+
+    const Qt::ColorScheme defaultColorScheme = QApplication::styleHints()->colorScheme();
+    // if we implement setColorScheme, then we must be able to read it
+    QVERIFY(defaultColorScheme != Qt::ColorScheme::Unknown);
+    const Qt::ColorScheme newColorScheme = defaultColorScheme == Qt::ColorScheme::Light
+                                         ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
+
+    class TopLevelWidget : public QWidget
+    {
+        QList<QEvent::Type> events;
+    public:
+        TopLevelWidget()
+        {
+            setObjectName("colorScheme TopLevelWidget");
+        }
+
+        void clearEvents()
+        {
+            events.clear();
+        }
+        qsizetype eventCount(QEvent::Type type) const
+        {
+            return events.count(type);
+        }
+    protected:
+        bool event(QEvent *event) override
+        {
+            switch (event->type()) {
+            case QEvent::ApplicationPaletteChange:
+            case QEvent::PaletteChange:
+            case QEvent::ThemeChange:
+                events << event->type();
+                break;
+            default:
+                break;
+            }
+
+            return QWidget::event(event);
+        }
+    } topLevelWidget;
+    topLevelWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&topLevelWidget));
+
+    QSignalSpy colorSchemeChangedSpy(app.styleHints(), &QStyleHints::colorSchemeChanged);
+
+    // always start with a clean list
+    topLevelWidget.clearEvents();
+    const QPalette defaultPalette = topLevelWidget.palette();
+
+    bool oldPaletteWhenSchemeChanged = false;
+    connect(app.styleHints(), &QStyleHints::colorSchemeChanged, this,
+            [defaultPalette, &topLevelWidget, &oldPaletteWhenSchemeChanged]{
+        oldPaletteWhenSchemeChanged = defaultPalette == topLevelWidget.palette();
+    });
+
+    app.styleHints()->setColorScheme(newColorScheme);
+    QTRY_COMPARE(colorSchemeChangedSpy.count(), 1);
+    // We have not yet updated the palette when we emit the colorSchemeChanged
+    // signal, so the toplevel widget should still use the previous palette
+    QVERIFY(oldPaletteWhenSchemeChanged);
+    QCOMPARE(topLevelWidget.eventCount(QEvent::ThemeChange), 1);
+    // We can't guarantee that there is only one ApplicationPaletteChange,
+    // and they might arrive asynchronously in response to ThemeChange
+    QTRY_COMPARE_GE(topLevelWidget.eventCount(QEvent::ApplicationPaletteChange), 1);
+    // But we can guarantee a single PaletteChange event for the widget
+    QCOMPARE(topLevelWidget.eventCount(QEvent::PaletteChange), 1);
+    // The palette should have changed
+    QCOMPARE_NE(topLevelWidget.palette(), defaultPalette);
+
+    topLevelWidget.clearEvents();
+    colorSchemeChangedSpy.clear();
+
+    // verify that a widget shown with a color scheme override in place respect that
+    QWidget newWidget;
+    newWidget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&newWidget));
+    QCOMPARE(newWidget.palette(), topLevelWidget.palette());
+
+    // Setting to Unknown should follow the system preference again
+    app.styleHints()->setColorScheme(Qt::ColorScheme::Unknown);
+    QTRY_COMPARE(colorSchemeChangedSpy.count(), 1);
+    QCOMPARE(app.styleHints()->colorScheme(), defaultColorScheme);
+    QTRY_COMPARE(topLevelWidget.eventCount(QEvent::PaletteChange), 1);
+
+    auto debugPalette = qScopeGuard([defaultPalette, &topLevelWidget]{
+        qDebug() << "Inspecting palettes for differences";
+        const QPalette palette = topLevelWidget.palette();
+        for (int g = 0; g < QPalette::NColorGroups; ++g) {
+            for (int r = 0; r < QPalette::NColorRoles; ++r) {
+                const auto group = static_cast<QPalette::ColorGroup>(g);
+                const auto role = static_cast<QPalette::ColorRole>(r);
+                qDebug() << "...Checking" << group << role;
+                const auto actualBrush = palette.brush(group, role);
+                const auto expectedBrush = defaultPalette.brush(group, role);
+                if (palette.brush(group, role) != defaultPalette.brush(group, role))
+                    qWarning() << "...Difference in" << group << role << actualBrush << expectedBrush;
+            }
+        }
+    });
+    QCOMPARE(topLevelWidget.palette(), defaultPalette);
+    debugPalette.dismiss();
 }
 
 void tst_QApplication::allWidgets()
@@ -2574,7 +2724,6 @@ public:
     explicit ShowCloseShowWidget(bool showAgain, QWidget *parent = nullptr)
         : QWidget(parent), showAgain(showAgain)
     {
-        QTimer::singleShot(0, this, &ShowCloseShowWidget::doClose);
         int timeout = 500;
 #ifdef Q_OS_ANDROID
         // On Android, CI Android emulator is not running HW accelerated graphics and can be slow,
@@ -2582,6 +2731,19 @@ public:
         timeout = 1000;
 #endif
         QTimer::singleShot(timeout, this, [] () { QCoreApplication::exit(1); });
+    }
+
+    bool shown = false;
+
+protected:
+    void showEvent(QShowEvent *) override
+    {
+        QTimer::singleShot(0, this, &ShowCloseShowWidget::doClose);
+        shown = true;
+    }
+    void hideEvent(QHideEvent *) override
+    {
+        shown = false;
     }
 
 private slots:
@@ -2599,14 +2761,20 @@ void tst_QApplication::abortQuitOnShow()
 {
     int argc = 0;
     QApplication app(argc, nullptr);
+
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"), Qt::CaseInsensitive))
+        QSKIP("Wayland: This crash, see QTBUG-123172.");
+
     ShowCloseShowWidget window1(false);
     window1.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     window1.show();
+    QVERIFY(QTest::qWaitFor([&window1](){ return window1.shown; }));
     QCOMPARE(QCoreApplication::exec(), 0);
 
     ShowCloseShowWidget window2(true);
     window2.setWindowTitle(QLatin1String(QTest::currentTestFunction()));
     window2.show();
+    QVERIFY(QTest::qWaitFor([&window2](){ return window2.shown; }));
     QCOMPARE(QCoreApplication::exec(), 1);
 }
 

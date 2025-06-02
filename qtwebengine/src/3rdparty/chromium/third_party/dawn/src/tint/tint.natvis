@@ -1,18 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-/// Copyright 2021 The Tint Authors.
+/// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -->
 
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
@@ -100,11 +113,17 @@
 		<DisplayString Condition="params.size()  > 3">fn {symbol}({*params[0]} {*params[1]} {*params[2]} {params.size()-3} more...) -> {*return_type} {*body}</DisplayString>
 	</Type>
 
-	<Type Name="tint::ast::IdentifierExpression">
-		<!--the ",sb" specifier removes the double quotes on the displayed string -->
+	<Type Name="tint::ast::Identifier">
 		<DisplayString>{symbol}</DisplayString>
 		<Expand>
 			<Item Name="symbol">symbol</Item>
+		</Expand>
+	</Type>
+
+	<Type Name="tint::ast::IdentifierExpression">
+		<DisplayString>{*identifier}</DisplayString>
+		<Expand>
+			<Item Name="identifier">identifier</Item>
 		</Expand>
 	</Type>
 
@@ -117,9 +136,8 @@
 	</Type>
 
 	<Type Name="tint::ast::MemberAccessorExpression">
-		<DisplayString>{*structure}.{*member}</DisplayString>
+		<DisplayString>{*member}</DisplayString>
 		<Expand>
-			<Item Name="structure">*structure</Item>
 			<Item Name="member">*member</Item>
 		</Expand>
 	</Type>
@@ -179,12 +197,12 @@
 	</Type>
 
 	<Type Name="tint::ast::CallExpression">
-		<DisplayString Condition="args.Length() == 0">{target}()</DisplayString>
-		<DisplayString Condition="args.Length() == 1">{target}({*args[0]})</DisplayString>
-		<DisplayString Condition="args.Length() == 2">{target}({*args[0]}, {*args[1]})</DisplayString>
-		<DisplayString Condition="args.Length() == 3">{target}({*args[0]}, {*args[1]}, {*args[2]})</DisplayString>
-		<DisplayString Condition="args.Length() == 4">{target}({*args[0]}, {*args[1]}, {*args[2]}, {*args[3]})</DisplayString>
-		<DisplayString Condition="args.Length()  > 4">{target}({*args[0]}, {*args[1]}, {*args[2]}, {args.Length()-3} more...)</DisplayString>
+		<DisplayString Condition="args.Length() == 0">{*target}()</DisplayString>
+		<DisplayString Condition="args.Length() == 1">{*target}({*args[0]})</DisplayString>
+		<DisplayString Condition="args.Length() == 2">{*target}({*args[0]}, {*args[1]})</DisplayString>
+		<DisplayString Condition="args.Length() == 3">{*target}({*args[0]}, {*args[1]}, {*args[2]})</DisplayString>
+		<DisplayString Condition="args.Length() == 4">{*target}({*args[0]}, {*args[1]}, {*args[2]}, {*args[3]})</DisplayString>
+		<DisplayString Condition="args.Length()  > 4">{*target}({*args[0]}, {*args[1]}, {*args[2]}, {args.Length()-3} more...)</DisplayString>
 		<!-- TODO: add more overloads -->
 	</Type>
 
@@ -211,22 +229,6 @@
 		<DisplayString>{name}</DisplayString>
 	</Type>
 
-	<Type Name="tint::ast::Bool">
-		<DisplayString>bool</DisplayString>
-	</Type>
-
-	<Type Name="tint::ast::I32">
-		<DisplayString>i32</DisplayString>
-	</Type>
-
-	<Type Name="tint::ast::U32">
-		<DisplayString>u32</DisplayString>
-	</Type>
-
-	<Type Name="tint::ast::F32">
-		<DisplayString>f32</DisplayString>
-	</Type>
-
 	<!--=================================================================-->
 	<!-- sem -->
 	<!--=================================================================-->
@@ -247,12 +249,20 @@
 		<DisplayString>f32</DisplayString>
 	</Type>
 
+	<Type Name="tint::core::type::I32">
+		<DisplayString>i32</DisplayString>
+	</Type>
+
+	<Type Name="tint::core::type::U32">
+		<DisplayString>u32</DisplayString>
+	</Type>
+
 	<Type Name="tint::core::type::Vector">
 		<DisplayString>vec{width_}&lt;{*subtype_}&gt;</DisplayString>
 	</Type>
 
-	<Type Name="tint::core::connstant::Value">
-		<DisplayString>Type={*Type()} Value={Value()}</DisplayString>
+	<Type Name="tint::core::constant::Value">
+		<DisplayString>Type={*Type()} Value={InternalValue()}</DisplayString>
 	</Type>
 
 	<Type Name="tint::sem::ValueExpression">

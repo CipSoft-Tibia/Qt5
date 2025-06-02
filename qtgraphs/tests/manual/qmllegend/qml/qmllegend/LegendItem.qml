@@ -8,7 +8,7 @@ import QtGraphs
 
 Rectangle {
     //! [0]
-    property Theme3D theme
+    property GraphsTheme theme
     property Bar3DSeries series
     //! [0]
     property point previousSelection
@@ -55,7 +55,7 @@ Rectangle {
                 verticalAlignment: Text.AlignVCenter
                 clip: true
                 color: theme.labelTextColor
-                font: theme.font
+                font: theme.labelFont
             }
         }
     }

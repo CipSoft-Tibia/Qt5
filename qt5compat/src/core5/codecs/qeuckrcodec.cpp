@@ -40,10 +40,6 @@ unsigned int qt_Ksc5601ToUnicode(unsigned int code);
 
 unsigned int qt_UnicodeToKsc5601(unsigned int unicode);
 
-/*!
-  \reimp
-*/
-
 QByteArray QEucKrCodec::convertFromUnicode(const QChar *uc, int len, ConverterState *state) const
 {
     char replacement = '?';
@@ -3315,9 +3311,6 @@ QList<QByteArray> QCP949Codec::_aliases()
     return aliases;
 }
 
-/*!
-  \reimp
-*/
 QByteArray QCP949Codec::convertFromUnicode(const QChar *uc, int len, ConverterState *state) const
 {
     char replacement = '?';
@@ -3394,9 +3387,6 @@ QByteArray QCP949Codec::convertFromUnicode(const QChar *uc, int len, ConverterSt
     return rstr;
 }
 
-/*!
-  \reimp
-*/
 QString QCP949Codec::convertToUnicode(const char* chars, int len, ConverterState *state) const
 {
     uchar buf[2] = {0, 0};

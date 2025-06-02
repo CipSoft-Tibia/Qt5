@@ -137,13 +137,13 @@ static const struct {
     { "grd3d",                 "graphite", "api=direct3d" },
 #endif
 #ifdef SK_DAWN
-    { "grdawn",                "graphite", "api=dawn,wgsl=true" },
-    { "grdawn_d3d11",          "graphite", "api=dawn_d3d11,wgsl=true" },
-    { "grdawn_d3d12",          "graphite", "api=dawn_d3d12,wgsl=true" },
-    { "grdawn_mtl",            "graphite", "api=dawn_mtl,wgsl=true" },
-    { "grdawn_vk",             "graphite", "api=dawn_vk,wgsl=true" },
-    { "grdawn_gl",             "graphite", "api=dawn_gl,wgsl=true" },
-    { "grdawn_gles",           "graphite", "api=dawn_gles,wgsl=true" },
+    { "grdawn_fakeWGPU",       "graphite", "api=dawn_mtl,fakeWGPU=true" },
+    { "grdawn_d3d11",          "graphite", "api=dawn_d3d11" },
+    { "grdawn_d3d12",          "graphite", "api=dawn_d3d12" },
+    { "grdawn_mtl",            "graphite", "api=dawn_mtl" },
+    { "grdawn_vk",             "graphite", "api=dawn_vk" },
+    { "grdawn_gl",             "graphite", "api=dawn_gl" },
+    { "grdawn_gles",           "graphite", "api=dawn_gles" },
 #endif
 #ifdef SK_METAL
     { "grmtl",                 "graphite", "api=metal" },
@@ -476,10 +476,6 @@ public:
             return false;
         }
 #ifdef SK_DAWN
-        if (optionValue->equals("dawn")) {
-            *outContextType = skgpu::ContextType::kDawn;
-            return true;
-        }
         if (optionValue->equals("dawn_d3d11")) {
             *outContextType = skgpu::ContextType::kDawn_D3D11;
             return true;
@@ -685,7 +681,8 @@ SkCommandLineConfigGraphite* parse_command_line_config_graphite(const SkString& 
     ContextType contextType = skgpu::ContextType::kMetal;
     SkColorType colorType = kRGBA_8888_SkColorType;
     SkAlphaType alphaType = kPremul_SkAlphaType;
-    bool wgsl = false;
+
+    skiatest::graphite::TestOptions testOptions;
 
     bool parseSucceeded = false;
     ExtendedOptions extendedOptions(options, &parseSucceeded);
@@ -693,14 +690,27 @@ SkCommandLineConfigGraphite* parse_command_line_config_graphite(const SkString& 
         return nullptr;
     }
 
+    bool fakeWGPU = false;
     bool validOptions = extendedOptions.get_option_graphite_api("api", &contextType) &&
                         extendedOptions.get_option_gpu_color("color", &colorType, &alphaType) &&
-                        extendedOptions.get_option_bool("wgsl", &wgsl);
+                        extendedOptions.get_option_bool("fakeWGPU", &fakeWGPU);
     if (!validOptions) {
         return nullptr;
     }
 
-    return new SkCommandLineConfigGraphite(tag, vias, contextType, colorType, alphaType, wgsl);
+    auto surfaceType = SkCommandLineConfigGraphite::SurfaceType::kDefault;
+    if (fakeWGPU) {
+        testOptions.fNeverYieldToWebGPU = true;
+        surfaceType = SkCommandLineConfigGraphite::SurfaceType::kWrapTextureView;
+    }
+
+    return new SkCommandLineConfigGraphite(tag,
+                                           vias,
+                                           contextType,
+                                           surfaceType,
+                                           testOptions,
+                                           colorType,
+                                           alphaType);
 }
 
 #endif

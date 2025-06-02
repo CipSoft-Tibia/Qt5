@@ -19,6 +19,7 @@
 #include <QtTest/qtest.h>
 
 using namespace QLspSpecification;
+using namespace Qt::StringLiterals;
 
 class TestRigEventHandler
 {
@@ -42,42 +43,71 @@ private:
     bool m_hasExited = false;
 };
 
+enum class RequestStatus { NoResponse, Success, Failure };
+
+struct State {
+    QIOPipe pipe;
+    QLanguageServer server;
+    TestRigEventHandler handler;
+    QLanguageServerJsonRpcTransport transport;
+    QLanguageServerProtocol protocol;
+    RequestStatus requestStatus = RequestStatus::NoResponse;
+
+    State();
+
+    QLanguageServerProtocol::ResponseErrorHandler getRequestFailureHandler()
+    {
+        return [this](const ResponseError &err) {
+            protocol.defaultResponseErrorHandler(err);
+            requestStatus = RequestStatus::Failure;
+        };
+    }
+};
+
 class tst_LifeCycle : public QObject
 {
     Q_OBJECT
 
+    static QByteArray addHeaderToRequest(const QByteArray &rawRequest)
+    {
+        QByteArray result{ "Content-Length: " };
+        result += QByteArray::number(rawRequest.size());
+        result += "\r\n\r\n";
+        result += rawRequest;
+        return result;
+    }
+
+    const QByteArray shutdownRequest = addHeaderToRequest(
+            "{\"id\":\"{126974d0-927b-402e-8207-c43e6d344536}\",\"jsonrpc\":\"2.0\","
+            "\"method\": \"shutdown\",\"params\":null}");
+    const QByteArray exitNotification =
+            addHeaderToRequest("{\"jsonrpc\":\"2.0\",\"method\":\"exit\",\"params\":null}");
+
 private slots:
     void lifecycle();
+    void separateShutdownAndExit();
+    void joinedShutdownAndExit();
+
 };
 
-void tst_LifeCycle::lifecycle()
+State::State()
+    : server([this](const QByteArray &data) {
+          QMetaObject::invokeMethod(pipe.end1(), [this, data]() { pipe.end1()->write(data); });
+      }),
+      handler(&server, pipe.end1()),
+      protocol([this](const QByteArray &data) { pipe.end2()->write(data); })
 {
-    QIOPipe pipe;
     pipe.open(QIODevice::ReadWrite);
-
-    QLanguageServer server([&pipe](const QByteArray &data) {
-        QMetaObject::invokeMethod(pipe.end1(), [&pipe, data]() { pipe.end1()->write(data); });
-    });
-    TestRigEventHandler handler(&server, pipe.end1());
     QCOMPARE(server.runStatus(), QLanguageServer::RunStatus::DidSetup);
 
-    QLanguageServerJsonRpcTransport transport;
-
-    QLanguageServerProtocol protocol([&pipe](const QByteArray &data) { pipe.end2()->write(data); });
     QObject::connect(pipe.end1(), &QIODevice::readyRead,
-                     [&pipe, &protocol]() { protocol.receiveData(pipe.end2()->readAll()); });
+                     [this]() { protocol.receiveData(pipe.end2()->readAll()); });
     QCOMPARE(server.runStatus(), QLanguageServer::RunStatus::DidSetup);
-
-    enum class RequestStatus {
-        NoResponse,
-        Success,
-        Failure
-    } requestStatus = RequestStatus::NoResponse;
 
     protocol.requestApplyWorkspaceEdit(
             ApplyWorkspaceEditParams(),
-            [&requestStatus](const auto &) { requestStatus = RequestStatus::Success; },
-            [&requestStatus](const ResponseError &err) {
+            [this](const auto &) { requestStatus = RequestStatus::Success; },
+            [this](const ResponseError &err) {
                 QCOMPARE(err.code, int(ErrorCodes::ServerNotInitialized));
                 requestStatus = RequestStatus::Failure;
             });
@@ -88,37 +118,84 @@ void tst_LifeCycle::lifecycle()
     clientInfo.rootUri = nullptr;
     clientInfo.processId = nullptr;
     requestStatus = RequestStatus::NoResponse;
-    auto requestFailureHandler = [&requestStatus, &protocol](const ResponseError &err) {
-        protocol.defaultResponseErrorHandler(err);
-        requestStatus = RequestStatus::Failure;
-    };
     protocol.requestInitialize(
             clientInfo,
-            [&requestStatus](const InitializeResult &serverInfo) {
+            [this](const InitializeResult &serverInfo) {
                 Q_UNUSED(serverInfo);
                 requestStatus = RequestStatus::Success;
             },
-            requestFailureHandler);
+            getRequestFailureHandler());
     QTRY_VERIFY(requestStatus != RequestStatus::NoResponse);
     QCOMPARE(requestStatus, RequestStatus::Success);
     QCOMPARE(server.runStatus(), QLanguageServer::RunStatus::DidInitialize);
 
     protocol.notifyInitialized(InitializedParams());
-
-    requestStatus = RequestStatus::NoResponse;
-    protocol.requestShutdown(
-            nullptr, [&requestStatus]() { requestStatus = RequestStatus::Success; },
-            requestFailureHandler);
-    QTRY_VERIFY(requestStatus != RequestStatus::NoResponse);
-    QCOMPARE(requestStatus, RequestStatus::Success);
-
-    QVERIFY(!handler.hasExited());
-    QCOMPARE(server.runStatus(), QLanguageServer::RunStatus::Stopped);
-
-    protocol.notifyExit(nullptr);
-
-    QTRY_VERIFY(handler.hasExited());
 }
+
+void tst_LifeCycle::lifecycle()
+{
+    State s;
+    s.protocol.requestShutdown(
+            nullptr, [&s]() { s.requestStatus = RequestStatus::Success; },
+            s.getRequestFailureHandler());
+    QTRY_VERIFY(s.requestStatus != RequestStatus::NoResponse);
+    QCOMPARE(s.requestStatus, RequestStatus::Success);
+
+    QVERIFY(!s.handler.hasExited());
+    QCOMPARE(s.server.runStatus(), QLanguageServer::RunStatus::WaitingForExit);
+
+    s.protocol.notifyExit(nullptr);
+
+    QTRY_VERIFY(s.handler.hasExited());
+    QCOMPARE(s.server.runStatus(), QLanguageServer::RunStatus::Stopped);
+}
+
+void tst_LifeCycle::separateShutdownAndExit()
+{
+    State s;
+
+    QSignalSpy didRequestNextMessage(&s.server, &QLanguageServer::readNextMessage);
+    QVERIFY(didRequestNextMessage.isValid());
+
+    s.server.receiveData(shutdownRequest, true);
+
+    QTRY_VERIFY(s.requestStatus != RequestStatus::NoResponse);
+    QCOMPARE(s.requestStatus, RequestStatus::Success);
+
+    QVERIFY(!s.handler.hasExited());
+    QCOMPARE(s.server.runStatus(), QLanguageServer::RunStatus::WaitingForExit);
+    // trigger requestNextMessage() to read the exit notification before actually shutting down
+    QCOMPARE(didRequestNextMessage.size(), 1);
+
+    s.server.receiveData(exitNotification, true);
+
+    QTRY_VERIFY(s.handler.hasExited());
+    QCOMPARE(s.server.runStatus(), QLanguageServer::RunStatus::Stopped);
+
+    // don't read anything anymore after the exit notification
+    QCOMPARE(didRequestNextMessage.size(), 1);
+}
+
+void tst_LifeCycle::joinedShutdownAndExit()
+{
+    State s;
+
+    QSignalSpy didRequestNextMessage(&s.server, &QLanguageServer::readNextMessage);
+    QVERIFY(didRequestNextMessage.isValid());
+
+    s.server.receiveData(shutdownRequest + exitNotification, true);
+
+    QTRY_VERIFY(s.requestStatus != RequestStatus::NoResponse);
+    QCOMPARE(s.requestStatus, RequestStatus::Success);
+
+    // don't trigger requestNextMessage() to read the exit notification before actually shutting down
+    QCOMPARE(didRequestNextMessage.size(), 0);
+
+    QCOMPARE(s.server.runStatus(), QLanguageServer::RunStatus::Stopped);
+    QVERIFY(s.handler.hasExited());
+}
+
+
 
 QTEST_MAIN(tst_LifeCycle)
 #include <tst_lifecycle.moc>

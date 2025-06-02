@@ -22,7 +22,7 @@ using namespace Qt::StringLiterals;
 
 /*!
     \qmltype TextDocument
-    \instantiates QQuickTextDocument
+    \nativetype QQuickTextDocument
     \inqmlmodule QtQuick
     \brief A wrapper around TextEdit's backing QTextDocument.
     \preliminary
@@ -327,13 +327,15 @@ void QQuickTextDocumentPrivate::load()
             setStatus(QQuickTextDocument::Status::Loading, {});
             QByteArray data = file.readAll();
             doc->setBaseUrl(resolvedUrl.adjusted(QUrl::RemoveFilename));
+#if QT_CONFIG(textmarkdownreader) || QT_CONFIG(texthtmlparser)
             const bool plainText = editor->textFormat() == QQuickTextEdit::PlainText;
+#endif
 #if QT_CONFIG(textmarkdownreader)
             if (!plainText && isMarkdown) {
                 doc->setMarkdown(QString::fromUtf8(data));
             } else
 #endif
-#ifndef QT_NO_TEXTHTMLPARSER
+#if QT_CONFIG(texthtmlparser)
             if (!plainText && isHtml) {
                 // If a user loads an HTML file, remember the encoding.
                 // If the user then calls save() later, the same encoding will be used.
@@ -412,7 +414,7 @@ void QQuickTextDocumentPrivate::writeTo(const QUrl &fileUrl)
         raw = doc->toMarkdown().toUtf8();
         break;
 #endif
-#ifndef QT_NO_TEXTHTMLPARSER
+#if QT_CONFIG(texthtmlparser)
     case Qt::RichText:
         if (sameUrl && encoding) {
             QStringEncoder enc(*encoding);
@@ -588,10 +590,24 @@ QSizeF QQuickTextImageHandler::intrinsicSize(
 {
     if (format.isImageFormat()) {
         QTextImageFormat imageFormat = format.toImageFormat();
-        const int width = qRound(imageFormat.width());
+        int width = qRound(imageFormat.width());
         const bool hasWidth = imageFormat.hasProperty(QTextFormat::ImageWidth) && width > 0;
         const int height = qRound(imageFormat.height());
         const bool hasHeight = imageFormat.hasProperty(QTextFormat::ImageHeight) && height > 0;
+        const auto maxWidth = imageFormat.maximumWidth();
+        const bool hasMaxWidth = imageFormat.hasProperty(QTextFormat::ImageMaxWidth) && maxWidth.type() != QTextLength::VariableLength;
+
+        int effectiveMaxWidth = INT_MAX;
+        if (hasMaxWidth) {
+            if (maxWidth.type() == QTextLength::PercentageLength) {
+                effectiveMaxWidth = (doc->pageSize().width() - 2 * doc->documentMargin()) * maxWidth.value(100) / 100;
+            } else {
+                effectiveMaxWidth = maxWidth.rawValue();
+            }
+
+            width = qMin(effectiveMaxWidth, width);
+        }
+
         QSizeF size(width, height);
         if (!hasWidth || !hasHeight) {
             QVariant res = doc->resource(QTextDocument::ImageResource, QUrl(imageFormat.name()));
@@ -606,11 +622,17 @@ QSizeF QQuickTextImageHandler::intrinsicSize(
                 return size;
             }
             QSize imgSize = image.size();
+            if (imgSize.width()  > effectiveMaxWidth) {
+                // image is bigger than effectiveMaxWidth, scale it down
+                imgSize.setHeight(effectiveMaxWidth * imgSize.height() / (qreal) imgSize.width());
+                imgSize.setWidth(effectiveMaxWidth);
+            }
+
             if (!hasWidth) {
                 if (!hasHeight)
                     size.setWidth(imgSize.width());
                 else
-                    size.setWidth(qRound(height * (imgSize.width() / (qreal) imgSize.height())));
+                    size.setWidth(qMin(effectiveMaxWidth, qRound(height * (imgSize.width() / (qreal) imgSize.height()))));
             }
             if (!hasHeight) {
                 if (!hasWidth)

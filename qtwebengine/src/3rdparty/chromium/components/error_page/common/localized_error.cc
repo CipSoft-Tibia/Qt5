@@ -28,7 +28,7 @@
 #include "components/error_page/common/error_page_switches.h"
 #include "components/error_page/common/net_error_info.h"
 #include "components/offline_pages/core/offline_page_feature.h"
-#include "components/strings/grit/components_chromium_strings.h"
+#include "components/strings/grit/components_branded_strings.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/url_formatter/url_formatter.h"
 #include "net/base/net_errors.h"
@@ -69,6 +69,7 @@ enum NAV_SUGGESTIONS {
   SUGGEST_NAVIGATE_TO_ORIGIN = 1 << 12,
   SUGGEST_SECURE_DNS_CONFIG = 1 << 13,
   SUGGEST_CAPTIVE_PORTAL_SIGNIN = 1 << 14,
+  SUGGEST_RELOAD_PRIVATE_NETWORK_ACCESS = 1 << 15,
 };
 
 enum SHOW_BUTTONS {
@@ -289,6 +290,12 @@ const LocalizedErrorMap net_error_options[] = {
    IDS_ERRORPAGES_HEADING_BLOCKED,
    IDS_ERRORPAGES_SUMMARY_BLOCKED_BY_CLIENT,
    SUGGEST_NONE,
+   SHOW_BUTTON_RELOAD,
+  },
+  {net::ERR_BLOCKED_BY_PRIVATE_NETWORK_ACCESS_CHECKS,
+   IDS_ERRORPAGES_HEADING_BLOCKED,
+   IDS_ERRORPAGES_SUMMARY_BLOCKED_BY_PRIVATE_NETWORK_ACCESS_CHECKS,
+   SUGGEST_RELOAD_PRIVATE_NETWORK_ACCESS,
    SHOW_BUTTON_RELOAD,
   },
   {net::ERR_BLOCKED_BY_CSP,
@@ -556,7 +563,7 @@ void AddLinkedSuggestionToList(const int error_code,
     case net::ERR_TOO_MANY_REDIRECTS:
       learn_more_url = GURL(kRedirectLoopLearnMoreUrl);
       suggestion_string = l10n_util::GetStringUTF16(
-          IDS_ERRORPAGES_SUGGESTION_CLEAR_COOKIES_SUMMARY);
+          IDS_ERRORPAGES_SUGGESTION_DELETE_COOKIES_SUMMARY);
       break;
     default:
       NOTREACHED();
@@ -635,6 +642,11 @@ void GetSuggestionsSummaryList(int error_code,
     return;
   }
   DCHECK(!IsSuggested(suggestions, SUGGEST_REPOST_RELOAD));
+
+  if (IsSuggested(suggestions, SUGGEST_RELOAD_PRIVATE_NETWORK_ACCESS)) {
+    suggestions_summary_list.Append(SingleEntryDictionary(
+        "summary", IDS_ERRORPAGES_SUGGESTION_RELOAD_PRIVATE_NETWORK_ACCESS));
+  }
 
   if (IsOnlySuggestion(suggestions, SUGGEST_NAVIGATE_TO_ORIGIN)) {
     DCHECK(suggestions_summary_list.empty());

@@ -15,12 +15,19 @@ QT_BEGIN_NAMESPACE
  * \brief The QSurface3DSeries class represents a data series in a 3D surface
  * graph.
  *
- * This class manages the series specific visual elements, as well as the series
+ * This class manages the series-specific visual elements, as well as the series
  * data (via a data proxy).
+ *
+ * Regarding the proxy-series relationship, it is crucial to highlight
+ * a couple of key points. In this context, data is stored in series and
+ * users can access the dataset through the series. This series is controlled
+ * or represented by a proxy object. Thus, the proxy can be used to manage various
+ * operations on the data and update the actual dataset. However, it is necessary
+ * to create a series associated with this proxy to edit the dataset.
  *
  * If no data proxy is set explicitly for the series, the series creates a
  * default proxy. Setting another proxy will destroy the existing proxy and all
- * data added to it.
+ * data added to the series.
  *
  * The object mesh set via the QAbstract3DSeries::mesh property defines the
  * selection pointer shape in a surface series.
@@ -36,15 +43,15 @@ QT_BEGIN_NAMESPACE
  *   \row
  *     \li @xLabel    \li Item value formatted using the format of the x-axis.
  *                        For more information, see
- *                        \l{QValue3DAxis::setLabelFormat()}.
+ *                        \l{QValue3DAxis::labelFormat}.
  *   \row
  *     \li @yLabel    \li Item value formatted using the format of the y-axis.
  *                        For more information, see
- *                        \l{QValue3DAxis::setLabelFormat()}.
+ *                        \l{QValue3DAxis::labelFormat}.
  *   \row
  *     \li @zLabel    \li Item value formatted using the format of the z-axis.
  *                        For more information, see
- *                        \l{QValue3DAxis::setLabelFormat()}.
+ *                        \l{QValue3DAxis::labelFormat}.
  *   \row
  *     \li @seriesName \li Name of the series
  * \endtable
@@ -59,12 +66,36 @@ QT_BEGIN_NAMESPACE
  * \qmltype Surface3DSeries
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QSurface3DSeries
+ * \nativetype QSurface3DSeries
  * \inherits Abstract3DSeries
  * \brief Represents a data series in a 3D surface graph.
  *
  * This type manages the series specific visual elements, as well as the series
  * data (via a data proxy).
+ *
+ * Surface3DSeries supports the following format tags for itemLabelFormat:
+ * \table
+ *   \row
+ *     \li @xTitle    \li Title from x-axis
+ *   \row
+ *     \li @yTitle    \li Title from y-axis
+ *   \row
+ *     \li @zTitle    \li Title from z-axis
+ *   \row
+ *     \li @xLabel    \li Item value formatted using the format of the x-axis.
+ *                        For more information, see
+ *                        \l{QValue3DAxis::labelFormat}{labelFormat}.
+ *   \row
+ *     \li @yLabel    \li Item value formatted using the format of the y-axis.
+ *                        For more information, see
+ *                        \l{QValue3DAxis::labelFormat}{labelFormat}.
+ *   \row
+ *     \li @zLabel    \li Item value formatted using the format of the z-axis.
+ *                        For more information, see
+ *                        \l{QValue3DAxis::labelFormat}{labelFormat}.
+ *   \row
+ *     \li @seriesName \li Name of the series
+ * \endtable
  *
  * For a more complete description, see QSurface3DSeries.
  *
@@ -86,32 +117,34 @@ QT_BEGIN_NAMESPACE
  * in the data array of the series as selected.
  * Only one point can be selected at a time.
  *
- * To clear selection from this series, invalidSelectionPosition is set as the
+ * To clear the selection from this series, assign invalidSelectionPosition as the
  * position. If this series is added to a graph, the graph can adjust the
  * selection according to user interaction or if it becomes invalid.
  *
- * Removing rows from or inserting rows to the series before the row of the
+ * Removing rows from or inserting rows into the series before the row of the
  * selected point will adjust the selection so that the same point will stay
  * selected.
  *
- * \sa AbstractGraph3D::clearSelection()
+ * \sa GraphsItem3D::clearSelection()
  */
 
 /*!
  * \qmlproperty point Surface3DSeries::invalidSelectionPosition
+ * \readonly
+ *
  * A constant property providing an invalid selection position.
- * This position is set to the selectedPoint property to clear the selection
+ * This position is assigned to the selectedPoint property to clear the selection
  * from this series.
  *
- * \sa AbstractGraph3D::clearSelection()
+ * \sa GraphsItem3D::clearSelection()
  */
 
 /*!
- * \qmlproperty bool Surface3DSeries::flatShadingEnabled
+ * \qmlproperty Shading Surface3DSeries::shading
  *
- * Sets surface flat shading to enabled. It is preset to \c true by default.
+ * Sets surface flat shading to visible. It is preset to \c Surface3DSeries.Shading.Flat by default.
  * When disabled, the normals on the surface are interpolated making the edges
- * look round. When enabled, the normals are kept the same on a triangle making
+ * look round. When visible, the normals are kept the same on a triangle making
  * the color of the triangle solid. This makes the data more readable from the
  * model. \note Flat shaded surfaces require at least GLSL version 1.2 with
  * GL_EXT_gpu_shader4 extension. The value of the flatShadingSupported property
@@ -149,6 +182,59 @@ QT_BEGIN_NAMESPACE
  *
  * The color used to draw the gridlines of the surface wireframe.
  */
+
+/*!
+ * \qmlproperty SurfaceDataArray Surface3DSeries::dataArray
+ *
+ * Holds the reference of the data array.
+ *
+ * dataArrayChanged signal is emitted when data array is set, unless \a newDataArray
+ * is identical to the previous one.
+ *
+ * \note Before doing anything regarding the dataArray, a series must be created for
+ * the relevant proxy.
+ */
+
+/*!
+    \qmlsignal Surface3DSeries::dataProxyChanged(SurfaceDataProxy proxy)
+
+    This signal is emitted when dataProxy changes to \a proxy.
+*/
+/*!
+    \qmlsignal Surface3DSeries::selectedPointChanged(point position)
+
+    This signal is emitted when selectedPoint changes to \a position.
+*/
+/*!
+    \qmlsignal Surface3DSeries::shadingChanged(const Shading shading)
+
+    This signal is emitted when \l shading changes to \a shading.
+*/
+/*!
+    \qmlsignal Surface3DSeries::flatShadingSupportedChanged(bool enable)
+
+    This signal is emitted when flatShadingSupported changes to \a enable.
+*/
+/*!
+    \qmlsignal Surface3DSeries::drawModeChanged(DrawFlag mode)
+
+    This signal is emitted when drawMode changes to \a mode.
+*/
+/*!
+    \qmlsignal Surface3DSeries::textureFileChanged(string filename)
+
+    This signal is emitted when textureFile changes to \a filename.
+*/
+/*!
+    \qmlsignal Surface3DSeries::wireframeColorChanged(color color)
+
+    This signal is emitted when wireframeColor changes to \a color.
+*/
+/*!
+    \qmlsignal Surface3DSeries::dataArrayChanged(SurfaceDataArray array)
+
+    This signal is emitted when dataArray changes to \a array.
+*/
 
 /*!
  * \enum QSurface3DSeries::DrawFlag
@@ -215,7 +301,7 @@ void QSurface3DSeries::setDataProxy(QSurfaceDataProxy *proxy)
 
 QSurfaceDataProxy *QSurface3DSeries::dataProxy() const
 {
-    const Q_D(QSurface3DSeries);
+    Q_D(const QSurface3DSeries);
     return static_cast<QSurfaceDataProxy *>(d->dataProxy());
 }
 
@@ -223,25 +309,23 @@ QSurfaceDataProxy *QSurface3DSeries::dataProxy() const
  * \property QSurface3DSeries::selectedPoint
  *
  * \brief The surface grid point that is selected in the series.
- */
-
-/*!
+ *
  * Selects a surface grid point at the position \a position in the data array of
  * the series specified by a row and a column.
  *
  * Only one point can be selected at a time.
  *
- * To clear selection from this series, invalidSelectionPosition() is set as \a
+ * To clear the selection from this series, invalidSelectionPosition() is set as \a
  * position. If this series is added to a graph, the graph can adjust the
  * selection according to user interaction or if it becomes invalid.
  *
- * Removing rows from or inserting rows to the series before the row of the
+ * Removing rows from or inserting rows into the series before the row of the
  * selected point will adjust the selection so that the same point will stay
  * selected.
  *
- * \sa QAbstract3DGraph::clearSelection()
+ * \sa Q3DGraphsWidgetItem::clearSelection()
  */
-void QSurface3DSeries::setSelectedPoint(const QPoint &position)
+void QSurface3DSeries::setSelectedPoint(QPoint position)
 {
     Q_D(QSurface3DSeries);
     // Don't do this in private to avoid loops, as that is used for callback from
@@ -254,7 +338,7 @@ void QSurface3DSeries::setSelectedPoint(const QPoint &position)
 
 QPoint QSurface3DSeries::selectedPoint() const
 {
-    const Q_D(QSurface3DSeries);
+    Q_D(const QSurface3DSeries);
     return d->m_selectedPoint;
 }
 
@@ -262,7 +346,7 @@ QPoint QSurface3DSeries::selectedPoint() const
  * Returns the QPoint signifying an invalid selection position. This is set to
  * the selectedPoint property to clear the selection from this series.
  *
- * \sa QAbstract3DGraph::clearSelection()
+ * \sa Q3DGraphsWidgetItem::clearSelection()
  */
 QPoint QSurface3DSeries::invalidSelectionPosition()
 {
@@ -270,32 +354,32 @@ QPoint QSurface3DSeries::invalidSelectionPosition()
 }
 
 /*!
- * \property QSurface3DSeries::flatShadingEnabled
+ * \property QSurface3DSeries::shading
  *
  * \brief Whether surface flat shading is enabled.
  *
- * Preset to \c true by default.
+ * Preset to \c QSurface3DSeries::Shading::Flat by default.
  *
  * When disabled, the normals on the surface are interpolated making the edges
- * look round. When enabled, the normals are kept the same on a triangle making
+ * look round. When visible, the normals are kept the same on a triangle making
  * the color of the triangle solid. This makes the data more readable from the
  * model. \note Flat shaded surfaces require at least GLSL version 1.2 with
  * GL_EXT_gpu_shader4 extension. The value of the flatShadingSupported property
  * indicates whether flat shading is supported at runtime.
  */
-void QSurface3DSeries::setFlatShadingEnabled(bool enabled)
+void QSurface3DSeries::setShading(const QSurface3DSeries::Shading shading)
 {
     Q_D(QSurface3DSeries);
-    if (d->m_flatShadingEnabled != enabled) {
-        d->setFlatShadingEnabled(enabled);
-        emit flatShadingEnabledChanged(enabled);
+    if (d->m_shading != shading) {
+        d->setShading(shading);
+        emit shadingChanged(shading);
     }
 }
 
-bool QSurface3DSeries::isFlatShadingEnabled() const
+QSurface3DSeries::Shading QSurface3DSeries::shading() const
 {
-    const Q_D(QSurface3DSeries);
-    return d->m_flatShadingEnabled;
+    Q_D(const QSurface3DSeries);
+    return d->m_shading;
 }
 
 /*!
@@ -310,7 +394,7 @@ bool QSurface3DSeries::isFlatShadingEnabled() const
  */
 bool QSurface3DSeries::isFlatShadingSupported() const
 {
-    const Q_D(QSurface3DSeries);
+    Q_D(const QSurface3DSeries);
     if (d->m_graph)
         return static_cast<QQuickGraphsSurface *>(d->m_graph)->isFlatShadingSupported();
     else
@@ -336,7 +420,7 @@ void QSurface3DSeries::setDrawMode(QSurface3DSeries::DrawFlags mode)
 
 QSurface3DSeries::DrawFlags QSurface3DSeries::drawMode() const
 {
-    const Q_D(QSurface3DSeries);
+    Q_D(const QSurface3DSeries);
     return d->m_drawMode;
 }
 
@@ -360,7 +444,7 @@ void QSurface3DSeries::setTexture(const QImage &texture)
 
 QImage QSurface3DSeries::texture() const
 {
-    const Q_D(QSurface3DSeries);
+    Q_D(const QSurface3DSeries);
     return d->m_texture;
 }
 
@@ -380,7 +464,7 @@ void QSurface3DSeries::setTextureFile(const QString &filename)
         } else {
             QImage image(filename);
             if (image.isNull()) {
-                qWarning() << "Warning: Tried to set invalid image file as surface texture.";
+                qWarning("Warning: Tried to set invalid image file as surface texture.");
                 return;
             }
             setTexture(image);
@@ -393,7 +477,7 @@ void QSurface3DSeries::setTextureFile(const QString &filename)
 
 QString QSurface3DSeries::textureFile() const
 {
-    const Q_D(QSurface3DSeries);
+    Q_D(const QSurface3DSeries);
     return d->m_textureFile;
 }
 
@@ -402,7 +486,7 @@ QString QSurface3DSeries::textureFile() const
  *
  * \brief The color for the surface wireframe.
  */
-void QSurface3DSeries::setWireframeColor(const QColor &color)
+void QSurface3DSeries::setWireframeColor(QColor color)
 {
     Q_D(QSurface3DSeries);
     if (d->m_wireframeColor != color) {
@@ -413,8 +497,64 @@ void QSurface3DSeries::setWireframeColor(const QColor &color)
 
 QColor QSurface3DSeries::wireframeColor() const
 {
-    const Q_D(QSurface3DSeries);
+    Q_D(const QSurface3DSeries);
     return d->m_wireframeColor;
+}
+
+/*!
+ * \property QSurface3DSeries::dataArray
+ *
+ * \brief Data array for the series.
+ *
+ * Holds the reference of the data array.
+ *
+ * dataArrayChanged signal is emitted when data array is set, unless \a newDataArray
+ * is identical to the previous one.
+ *
+ * \note Before doing anything regarding the dataArray, a series must be created for
+ * the relevant proxy.
+ *
+ *\sa clearRow(qsizetype rowIndex)
+ *
+ *\sa clearArray()
+ */
+void QSurface3DSeries::setDataArray(const QSurfaceDataArray &newDataArray)
+{
+    Q_D(QSurface3DSeries);
+    if (d->m_dataArray.data() != newDataArray.data()) {
+        d->setDataArray(newDataArray);
+        emit dataArrayChanged(newDataArray);
+    }
+}
+
+/*!
+ * Clears the existing row in the array according to given \a rowIndex.
+ */
+void QSurface3DSeries::clearRow(qsizetype rowIndex)
+{
+    Q_D(QSurface3DSeries);
+    d->clearRow(rowIndex);
+}
+
+/*!
+ * Clears the existing array.
+ */
+void QSurface3DSeries::clearArray()
+{
+    Q_D(QSurface3DSeries);
+    d->clearArray();
+}
+
+const QSurfaceDataArray &QSurface3DSeries::dataArray() const &
+{
+    Q_D(const QSurface3DSeries);
+    return d->m_dataArray;
+}
+
+QSurfaceDataArray QSurface3DSeries::dataArray() &&
+{
+    Q_D(QSurface3DSeries);
+    return std::move(d->m_dataArray);
 }
 
 // QSurface3DSeriesPrivate
@@ -422,7 +562,7 @@ QColor QSurface3DSeries::wireframeColor() const
 QSurface3DSeriesPrivate::QSurface3DSeriesPrivate()
     : QAbstract3DSeriesPrivate(QAbstract3DSeries::SeriesType::Surface)
     , m_selectedPoint(QQuickGraphsSurface::invalidSelectionPosition())
-    , m_flatShadingEnabled(true)
+    , m_shading(QSurface3DSeries::Shading::Flat)
     , m_drawMode(QSurface3DSeries::DrawSurfaceAndWireframe)
     , m_wireframeColor(Qt::black)
 {
@@ -430,7 +570,10 @@ QSurface3DSeriesPrivate::QSurface3DSeriesPrivate()
     m_mesh = QAbstract3DSeries::Mesh::Sphere;
 }
 
-QSurface3DSeriesPrivate::~QSurface3DSeriesPrivate() {}
+QSurface3DSeriesPrivate::~QSurface3DSeriesPrivate()
+{
+    clearArray();
+}
 
 void QSurface3DSeriesPrivate::setDataProxy(QAbstractDataProxy *proxy)
 {
@@ -499,7 +642,7 @@ void QSurface3DSeriesPrivate::createItemLabel()
     static const QString seriesNameTag(QStringLiteral("@seriesName"));
 
     if (m_selectedPoint == QSurface3DSeries::invalidSelectionPosition()) {
-        m_itemLabel = QString();
+        m_itemLabel = hiddenLabelTag;
         return;
     }
 
@@ -533,7 +676,7 @@ void QSurface3DSeriesPrivate::createItemLabel()
     m_itemLabel.replace(seriesNameTag, m_name);
 }
 
-void QSurface3DSeriesPrivate::setSelectedPoint(const QPoint &position)
+void QSurface3DSeriesPrivate::setSelectedPoint(QPoint position)
 {
     Q_Q(QSurface3DSeries);
     if (position != m_selectedPoint) {
@@ -543,9 +686,9 @@ void QSurface3DSeriesPrivate::setSelectedPoint(const QPoint &position)
     }
 }
 
-void QSurface3DSeriesPrivate::setFlatShadingEnabled(bool enabled)
+void QSurface3DSeriesPrivate::setShading(const QSurface3DSeries::Shading shading)
 {
-    m_flatShadingEnabled = enabled;
+    m_shading = shading;
     if (m_graph)
         m_graph->markSeriesVisualsDirty();
 }
@@ -570,11 +713,26 @@ void QSurface3DSeriesPrivate::setTexture(const QImage &texture)
         static_cast<QQuickGraphsSurface *>(m_graph)->updateSurfaceTexture(q);
 }
 
-void QSurface3DSeriesPrivate::setWireframeColor(const QColor &color)
+void QSurface3DSeriesPrivate::setWireframeColor(QColor color)
 {
     m_wireframeColor = color;
     if (m_graph)
         m_graph->markSeriesVisualsDirty();
+}
+
+void QSurface3DSeriesPrivate::setDataArray(const QSurfaceDataArray &newDataArray)
+{
+    m_dataArray = newDataArray;
+}
+
+void QSurface3DSeriesPrivate::clearRow(qsizetype rowIndex)
+{
+    m_dataArray[rowIndex].clear();
+}
+
+void QSurface3DSeriesPrivate::clearArray()
+{
+    m_dataArray.clear();
 }
 
 QT_END_NAMESPACE

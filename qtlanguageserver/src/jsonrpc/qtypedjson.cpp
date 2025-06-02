@@ -106,8 +106,10 @@ bool Reader::startObjectF(const char *type, ObjectOptions options, quintptr)
 {
     if (m_p->parseStatus != ParseStatus::Normal)
         return false;
-    if (currentValue().isUndefined())
+    if (currentValue().isUndefined()) {
+        m_p->parseStatus = ParseStatus::Failed;
         return false;
+    }
     m_p->objectsStack.append(ObjectStack { type, options, {} });
     return true;
 }

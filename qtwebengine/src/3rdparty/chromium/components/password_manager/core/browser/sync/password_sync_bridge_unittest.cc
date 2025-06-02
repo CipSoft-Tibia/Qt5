@@ -19,10 +19,9 @@
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "components/password_manager/core/browser/features/password_features.h"
-#include "components/password_manager/core/browser/login_database.h"
 #include "components/password_manager/core/browser/password_form.h"
-#include "components/password_manager/core/browser/password_store_sync.h"
 #include "components/password_manager/core/browser/sync/password_proto_utils.h"
+#include "components/password_manager/core/browser/sync/password_store_sync.h"
 #include "components/password_manager/core/common/password_manager_features.h"
 #include "components/sync/base/client_tag_hash.h"
 #include "components/sync/base/features.h"
@@ -461,7 +460,7 @@ class PasswordSyncBridgeTest : public testing::Test {
     return data;
   }
 
-  absl::optional<sync_pb::PasswordSpecifics> GetDataFromBridge(
+  std::optional<sync_pb::PasswordSpecifics> GetDataFromBridge(
       const std::string& storage_key) {
     std::unique_ptr<syncer::DataBatch> batch;
     bridge_->GetData({storage_key},
@@ -471,7 +470,7 @@ class PasswordSyncBridgeTest : public testing::Test {
                          }));
     EXPECT_THAT(batch, NotNull());
     if (!batch || !batch->HasNext()) {
-      return absl::nullopt;
+      return std::nullopt;
     }
     auto [other_storage_key, entity_data] = batch->Next();
     EXPECT_THAT(other_storage_key, Eq(storage_key));
@@ -563,7 +562,7 @@ TEST_F(PasswordSyncBridgeTest,
 }
 
 TEST_F(PasswordSyncBridgeTest, ShouldApplyEmptySyncChangesWithoutError) {
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(
           bridge()->CreateMetadataChangeList(), syncer::EntityChangeList());
   EXPECT_FALSE(error);
@@ -583,7 +582,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldApplyMetadataWithEmptySyncChanges) {
   EXPECT_CALL(*mock_sync_metadata_store_sync(),
               UpdateEntityMetadata(syncer::PASSWORDS, kStorageKey, _));
 
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(std::move(metadata_change_list),
                                             syncer::EntityChangeList());
   EXPECT_FALSE(error);
@@ -614,7 +613,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldApplyRemoteCreation) {
   syncer::EntityChangeList entity_change_list;
   entity_change_list.push_back(syncer::EntityChange::CreateAdd(
       /*storage_key=*/"", SpecificsToEntity(specifics)));
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(
           bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
@@ -635,7 +634,7 @@ TEST_F(PasswordSyncBridgeTest,
   syncer::EntityChangeList entity_change_list;
   entity_change_list.push_back(syncer::EntityChange::CreateAdd(
       /*storage_key=*/"", SpecificsToEntity(specifics)));
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(
           bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
@@ -670,7 +669,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldApplyRemoteUpdate) {
   syncer::EntityChangeList entity_change_list;
   entity_change_list.push_back(syncer::EntityChange::CreateUpdate(
       kStorageKey, SpecificsToEntity(specifics)));
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(
           bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
@@ -697,7 +696,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldApplyRemoteDeletion) {
 
   syncer::EntityChangeList entity_change_list;
   entity_change_list.push_back(syncer::EntityChange::CreateDelete(kStorageKey));
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(
           bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
@@ -714,7 +713,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldGetDataForStorageKey) {
   fake_db()->AddLoginWithPrimaryKey(form1);
   fake_db()->AddLoginWithPrimaryKey(form2);
 
-  absl::optional<sync_pb::PasswordSpecifics> optional_specifics =
+  std::optional<sync_pb::PasswordSpecifics> optional_specifics =
       GetDataFromBridge(/*storage_key=*/kPrimaryKeyStr1);
   ASSERT_TRUE(optional_specifics.has_value());
   EXPECT_EQ(
@@ -730,7 +729,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldGetDataForStorageKey) {
 TEST_F(PasswordSyncBridgeTest, ShouldNotGetDataForNonExistingStorageKey) {
   const std::string kPrimaryKeyStr = "1";
 
-  absl::optional<sync_pb::PasswordSpecifics> optional_specifics =
+  std::optional<sync_pb::PasswordSpecifics> optional_specifics =
       GetDataFromBridge(/*storage_key=*/kPrimaryKeyStr);
   EXPECT_FALSE(optional_specifics.has_value());
 }
@@ -819,7 +818,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldMergeSyncRemoteAndLocalPasswords) {
   entity_change_list.push_back(syncer::EntityChange::CreateAdd(
       /*storage_key=*/"", SpecificsToEntity(specifics3)));
 
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
 }
@@ -873,7 +872,7 @@ TEST_F(PasswordSyncBridgeTest,
       /*storage_key=*/"", SpecificsToEntity(specifics1)));
   entity_change_list.push_back(syncer::EntityChange::CreateAdd(
       /*storage_key=*/"", SpecificsToEntity(specifics2)));
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
 }
@@ -904,7 +903,7 @@ TEST_F(PasswordSyncBridgeTest,
   // Simulate a failed ReadAllCredentials() by returning a kDbError.
   ON_CALL(*mock_password_store_sync(), ReadAllCredentials)
       .WillByDefault(testing::Return(FormRetrievalResult::kDbError));
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->MergeFullSyncData(bridge()->CreateMetadataChangeList(), {});
   EXPECT_TRUE(error);
 }
@@ -1202,7 +1201,7 @@ TEST_F(PasswordSyncBridgeTest,
       SpecificsToEntity(CreateSpecificsWithSignonRealm(kSignonRealm1))));
 
   EXPECT_CALL(*mock_password_store_sync(), RollbackTransaction());
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_TRUE(error);
 }
@@ -1225,7 +1224,7 @@ TEST_F(
   metadata_changes->UpdateModelTypeState(model_type_state);
 
   EXPECT_CALL(*mock_password_store_sync(), RollbackTransaction());
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->MergeFullSyncData(std::move(metadata_changes), {});
   EXPECT_TRUE(error);
 }
@@ -1244,7 +1243,7 @@ TEST_F(PasswordSyncBridgeTest,
   syncer::EntityChangeList entity_change_list;
   entity_change_list.push_back(syncer::EntityChange::CreateAdd(
       /*storage_key=*/"", SpecificsToEntity(specifics)));
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
 }
@@ -1321,7 +1320,7 @@ class PasswordSyncBridgeMergeTest
     EXPECT_CALL(*mock_password_store_sync(), ReadAllCredentials)
         .WillOnce(Return(FormRetrievalResult::kSuccess));
 
-    absl::optional<syncer::ModelError> error =
+    std::optional<syncer::ModelError> error =
         bridge()->MergeFullSyncData(bridge()->CreateMetadataChangeList(), {});
     EXPECT_FALSE(error);
   }
@@ -1365,7 +1364,7 @@ TEST_F(PasswordSyncBridgeAccountStoreTest, ShouldNotifyOnSyncEnable) {
       /*storage_key=*/"",
       SpecificsToEntity(CreateSpecificsWithSignonRealm(kSignonRealm1))));
 
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(initial_entity_data));
   ASSERT_FALSE(error);
 }
@@ -1382,7 +1381,7 @@ TEST_F(PasswordSyncBridgeAccountStoreTest, ShouldNotNotifyOnSyncChange) {
       /*storage_key=*/"",
       SpecificsToEntity(CreateSpecificsWithSignonRealm(kSignonRealm1))));
 
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(
           bridge()->CreateMetadataChangeList(), std::move(entity_changes));
   ASSERT_FALSE(error);
@@ -1532,7 +1531,7 @@ TEST_F(PasswordSyncBridgeAccountStoreTest,
       /*storage_key=*/"", SpecificsToEntity(blocklisted_specifics)));
 
   base::HistogramTester histogram_tester;
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   ASSERT_FALSE(error);
   histogram_tester.ExpectUniqueSample(
@@ -1548,7 +1547,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldReportStoredPasswordsIfProfileStore) {
   fake_db()->AddLoginWithPrimaryKey(MakePasswordForm(kSignonRealm2, 101));
 
   base::HistogramTester histogram_tester;
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), syncer::EntityChangeList());
   ASSERT_FALSE(error);
   histogram_tester.ExpectUniqueSample(
@@ -1576,7 +1575,7 @@ TEST_F(PasswordSyncBridgeTest,
   syncer::EntityChangeList entity_change_list;
   entity_change_list.push_back(syncer::EntityChange::CreateAdd(
       /*storage_key=*/"", SpecificsToEntity(specifics)));
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(
           bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
@@ -1608,9 +1607,9 @@ TEST_F(PasswordSyncBridgeTest,
   entity_change_list.push_back(syncer::EntityChange::CreateAdd(
       /*storage_key=*/"", SpecificsToEntity(specifics)));
 
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
-  EXPECT_EQ(error, absl::nullopt);
+  EXPECT_EQ(error, std::nullopt);
 }
 
 TEST_F(PasswordSyncBridgeTest, ShouldPutSecurityIssuesOnLoginChange) {
@@ -1650,7 +1649,7 @@ TEST_F(PasswordSyncBridgeTest, ShouldAddLocalSecurityIssuesDuringInitialMerge) {
       mock_processor(),
       Put(kPrimaryKeyStr1, EntityDataHasSecurityIssueTypes(kIssuesTypes), _));
 
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->MergeFullSyncData(bridge()->CreateMetadataChangeList(), {});
   EXPECT_FALSE(error);
 }
@@ -1665,7 +1664,7 @@ TEST_F(PasswordSyncBridgeTest, GetDataWithIssuesForStorageKey) {
 
   fake_db()->AddLoginWithPrimaryKey(kForm);
 
-  absl::optional<sync_pb::PasswordSpecifics> optional_specifics =
+  std::optional<sync_pb::PasswordSpecifics> optional_specifics =
       GetDataFromBridge(/*storage_key=*/kPrimaryKeyStr1);
   ASSERT_TRUE(optional_specifics.has_value());
   ASSERT_TRUE(PasswordIssuesHasExpectedInsecureTypes(
@@ -1697,7 +1696,7 @@ TEST_F(PasswordSyncBridgeTest,
   syncer::EntityChangeList entity_change_list;
   entity_change_list.push_back(syncer::EntityChange::CreateUpdate(
       kStorageKey, SpecificsToEntity(specifics)));
-  absl::optional<syncer::ModelError> error =
+  std::optional<syncer::ModelError> error =
       bridge()->ApplyIncrementalSyncChanges(
           bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
@@ -1730,7 +1729,7 @@ TEST_F(PasswordSyncBridgeTest,
       mock_processor(),
       Put(kStorageKey, EntityDataHasSecurityIssueTypes(kLocalIssuesTypes), _));
 
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
 }
@@ -1762,7 +1761,7 @@ TEST_F(PasswordSyncBridgeTest,
   syncer::EntityChangeList entity_change_list;
   entity_change_list.push_back(syncer::EntityChange::CreateAdd(
       kStorageKey, SpecificsToEntity(specifics)));
-  absl::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
+  std::optional<syncer::ModelError> error = bridge()->MergeFullSyncData(
       bridge()->CreateMetadataChangeList(), std::move(entity_change_list));
   EXPECT_FALSE(error);
 }

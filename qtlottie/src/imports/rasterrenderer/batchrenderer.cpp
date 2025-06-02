@@ -266,10 +266,10 @@ int BatchRenderer::parse(BMBase *rootElement, const QByteArray &jsonSource,
         if (layer) {
             layer->setParent(rootElement);
             // Mask layers must be rendered before the layers they affect to
-            // although they appear before in layer hierarchy. For this reason
-            // move a mask after the affected layers, so it will be rendered first
+            // although they appear after in layer hierarchy. For this reason
+            // move a mask in front of the affected layer, so it will be rendered first
             if (layer->isMaskLayer())
-                rootElement->prependChild(layer);
+                rootElement->insertChildBeforeLast(layer);
             else
                 rootElement->appendChild(layer);
         }

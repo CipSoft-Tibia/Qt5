@@ -83,6 +83,8 @@
 
 namespace blink {
 
+using mojom::blink::FormControlType;
+
 namespace {
 
 std::ostream& operator<<(std::ostream& os, PositionMoveType type) {
@@ -511,8 +513,15 @@ PositionTemplate<Strategy> FirstEditablePositionAfterPositionInRootAlgorithm(
     // Make sure not to move out of |highest_root|
     const PositionTemplate<Strategy> boundary =
         PositionTemplate<Strategy>::LastPositionInNode(highest_root);
+    // `NextVisuallyDistinctCandidate` is similar to `NextCandidate`, but
+    // it skips the next visually equivalent of `editable_position`.
+    // `editable_position` is already "visually distinct" relative to
+    // `position`, so use `NextCandidate` here.
+    // See http://crbug.com/1406207 for more details.
     const PositionTemplate<Strategy> next_candidate =
-        NextVisuallyDistinctCandidate(editable_position);
+        RuntimeEnabledFeatures::NextSiblingPositionUseNextCandidateEnabled()
+            ? NextCandidate(editable_position)
+            : NextVisuallyDistinctCandidate(editable_position);
     editable_position = next_candidate.IsNotNull()
                             ? std::min(boundary, next_candidate)
                             : boundary;
@@ -1442,10 +1451,14 @@ bool IsRenderedAsNonInlineTableImageOrHR(const Node* node) {
   if (!node)
     return false;
   LayoutObject* layout_object = node->GetLayoutObject();
-  return layout_object &&
-         ((layout_object->IsTable() && !layout_object->IsInline()) ||
-          (layout_object->IsImage() && !layout_object->IsInline()) ||
-          layout_object->IsHR());
+  if (!layout_object) {
+    return false;
+  }
+  bool is_hr = RuntimeEnabledFeatures::RubyInlinifyEnabled()
+                   ? (layout_object->IsHR() && !layout_object->IsInline())
+                   : layout_object->IsHR();
+  return (layout_object->IsTable() && !layout_object->IsInline()) ||
+         (layout_object->IsImage() && !layout_object->IsInline()) || is_hr;
 }
 
 bool IsNonTableCellHTMLBlockElement(const Node* node) {
@@ -1475,8 +1488,8 @@ bool IsBlockFlowElement(const Node& node) {
 bool IsInPasswordField(const Position& position) {
   TextControlElement* text_control = EnclosingTextControl(position);
   auto* html_input_element = DynamicTo<HTMLInputElement>(text_control);
-  return html_input_element &&
-         html_input_element->type() == input_type_names::kPassword;
+  return html_input_element && html_input_element->FormControlType() ==
+                                   FormControlType::kInputPassword;
 }
 
 // If current position is at grapheme boundary, return 0; otherwise, return the
@@ -1511,17 +1524,6 @@ gfx::QuadF LocalToAbsoluteQuadOf(const LocalCaretRect& caret_rect) {
   return caret_rect.layout_object->LocalRectToAbsoluteQuad(caret_rect.rect);
 }
 
-InputEvent::EventCancelable InputTypeIsCancelable(
-    InputEvent::InputType input_type) {
-  using InputType = InputEvent::InputType;
-  switch (input_type) {
-    case InputType::kInsertCompositionText:
-      return InputEvent::EventCancelable::kNotCancelable;
-    default:
-      return InputEvent::EventCancelable::kIsCancelable;
-  }
-}
-
 const StaticRangeVector* TargetRangesForInputEvent(const Node& node) {
   // TODO(editing-dev): The use of UpdateStyleAndLayout
   // needs to be audited. see http://crbug.com/590369 for more details.
@@ -1548,8 +1550,7 @@ DispatchEventResult DispatchBeforeInputInsertText(
   // TODO(editing-dev): Pass appropriate |ranges| after it's defined on spec.
   // http://w3c.github.io/editing/input-events.html#dom-inputevent-inputtype
   InputEvent* before_input_event = InputEvent::CreateBeforeInput(
-      input_type, data, InputTypeIsCancelable(input_type),
-      InputEvent::EventIsComposing::kNotComposing,
+      input_type, data, InputEvent::EventIsComposing::kNotComposing,
       ranges ? ranges : TargetRangesForInputEvent(*target));
   return target->DispatchEvent(*before_input_event);
 }
@@ -1561,8 +1562,8 @@ DispatchEventResult DispatchBeforeInputEditorCommand(
   if (!target)
     return DispatchEventResult::kNotCanceled;
   InputEvent* before_input_event = InputEvent::CreateBeforeInput(
-      input_type, g_null_atom, InputTypeIsCancelable(input_type),
-      InputEvent::EventIsComposing::kNotComposing, ranges);
+      input_type, g_null_atom, InputEvent::EventIsComposing::kNotComposing,
+      ranges);
   return target->DispatchEvent(*before_input_event);
 }
 
@@ -1583,16 +1584,14 @@ DispatchEventResult DispatchBeforeInputDataTransfer(
 
   if (IsRichlyEditable(*target) || !data_transfer) {
     before_input_event = InputEvent::CreateBeforeInput(
-        input_type, data_transfer, InputTypeIsCancelable(input_type),
-        InputEvent::EventIsComposing::kNotComposing,
+        input_type, data_transfer, InputEvent::EventIsComposing::kNotComposing,
         TargetRangesForInputEvent(*target));
   } else {
     const String& data = data_transfer->getData(kMimeTypeTextPlain);
     // TODO(editing-dev): Pass appropriate |ranges| after it's defined on spec.
     // http://w3c.github.io/editing/input-events.html#dom-inputevent-inputtype
     before_input_event = InputEvent::CreateBeforeInput(
-        input_type, data, InputTypeIsCancelable(input_type),
-        InputEvent::EventIsComposing::kNotComposing,
+        input_type, data, InputEvent::EventIsComposing::kNotComposing,
         TargetRangesForInputEvent(*target));
   }
   return target->DispatchEvent(*before_input_event);
@@ -1644,8 +1643,7 @@ static scoped_refptr<Image> ImageFromNode(const Node& node) {
 
   if (layout_object->IsCanvas()) {
     return To<HTMLCanvasElement>(const_cast<Node&>(node))
-        .Snapshot(CanvasResourceProvider::FlushReason::kClipboard,
-                  kFrontBuffer);
+        .Snapshot(FlushReason::kClipboard, kFrontBuffer);
   }
 
   if (!layout_object->IsImage())

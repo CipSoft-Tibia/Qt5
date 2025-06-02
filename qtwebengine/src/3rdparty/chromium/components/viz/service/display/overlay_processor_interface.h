@@ -34,16 +34,13 @@
 #include "components/viz/service/display/ca_layer_overlay.h"
 #endif
 
-namespace cc {
-class DisplayResourceProvider;
-}
-
 namespace gpu {
 class SharedImageInterface;
 }
 
 namespace viz {
 struct DebugRendererSettings;
+class DisplayResourceProvider;
 class OutputSurface;
 class RendererSettings;
 
@@ -191,9 +188,6 @@ class VIZ_SERVICE_EXPORT OverlayProcessorInterface {
   // Overlay processor uses a frame counter to determine the potential power
   // benefits of individual overlay candidates.
   virtual void SetFrameSequenceNumber(uint64_t frame_sequence_number) {}
-
-  // If true, video capture is enabled for this frame.
-  virtual void SetIsVideoCaptureEnabled(bool enabled) {}
 
   // If true, page fullscreen mode is enabled for this frame.
   virtual void SetIsPageFullscreen(bool enabled) {}

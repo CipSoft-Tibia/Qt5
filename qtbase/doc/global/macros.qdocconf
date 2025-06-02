@@ -27,11 +27,6 @@ macro.ouml.HTML           = "&ouml;"
 macro.ouml.DocBook        = "&#246;"
 macro.nothing             = "\\dontdocument ()"
 macro.nullptr             = "\\c{nullptr}"
-macro.QA                  = "\\e{Qt Assistant}"
-macro.QD                  = "\\e{Qt Designer}"
-macro.QL                  = "\\e{Qt Linguist}"
-macro.Q_OBJECT            = "Q_OBJECT"
-macro.QQV                 = "\\e{Qt QML Viewer}"
 macro.QtVersion           = "$QT_VERSION"
 macro.QtVer               = "$QT_VER"
 macro.param               = "\\e"
@@ -58,19 +53,33 @@ macro.endqdoc.DocBook        = "*/"
 macro.borderedimage       = "\\div {class=\"border\"} \\image \1\n\\enddiv"
 macro.examplecategory     = "\\meta category {\1}\n\\ingroup category \1"
 
+# Macros for product names, sorted in alphabetic order
+
+macro.B2Q                 = "Boot to Qt"
+macro.B2QSS               = "Boot to Qt Software Stack"
+macro.B2QST               = "Boot to Qt Startup Screen"
+macro.IFW                 = "Qt Installer Framework"
+macro.QA                  = "Qt Assistant"
+macro.QB                  = "Qt Bridge"
+macro.QBF                 = "Qt Bridge for Figma"
+macro.QBPS                = "Qt Bridge for Adobe Photoshop"
+macro.QBSK                = "Qt Bridge for Sketch"
+macro.QBXD                = "Qt Bridge for Adobe XD"
+macro.QC                  = "Qt Creator"
+macro.QD                  = "Qt Widgets Designer"
 macro.QDS                 = "Qt Design Studio"
 macro.QDV                 = "Qt Design Viewer"
-macro.QB                  = "Qt Bridge"
-macro.QBPS                = "Qt Bridge for Adobe Photoshop"
-macro.QBXD                = "Qt Bridge for Adobe XD"
-macro.QBSK                = "Qt Bridge for Sketch"
-macro.QBF                 = "Qt Bridge for Figma"
+macro.QfP                 = "Qt for Python"
+macro.QL                  = "Qt Linguist"
 macro.QMCU                = "Qt for MCUs"
-macro.QUL                 = "Qt Quick Ultralite"
-macro.QtAA                = "Qt for Android Automotive"
-macro.QOI                 = "Qt Online Installer"
-macro.QMT                 = "Qt Maintenance Tool"
+macro.QMLP                = "QML Profiler"
 macro.QMLLS               = "QML Language Server"
+macro.QMT                 = "Qt Maintenance Tool"
+macro.QOI                 = "Qt Online Installer"
+macro.QQEM                = "Qt Quick Effect Maker"
+macro.QQV                 = "Qt QML Viewer"
+macro.QtAA                = "Qt for Android Automotive"
+macro.QUL                 = "Qt Quick Ultralite"
 macro.QtTAS               = "Qt Tools for Android Studio"
 
 # The following macros are used for various Android docs. The purpose is to keep
@@ -80,14 +89,14 @@ macro.NdkVer              = "r26b"
 macro.NdkFullVer          = "26.1.10909125"
 macro.NdkCompilerVer      = "Clang 17.0.2"
 macro.JdkVer              = "17"
-macro.AndroidMinApiVer    = "26"
-macro.AndroidMaxApiVer    = "34"
-macro.AndroidMinVer       = "8.0"
-macro.AndroidMaxVer       = "14"
-macro.AndroidPlatformVer  = "34"
-macro.AndroidBuildToolsVer = "34.0.0"
-macro.GradleVer           = "8.3"
-macro.AGPVer              = "7.4.1"
+macro.AndroidMinApiVer    = "28"
+macro.AndroidMaxApiVer    = "35"
+macro.AndroidMinVer       = "9"
+macro.AndroidMaxVer       = "15"
+macro.AndroidPlatformVer  = "35"
+macro.AndroidBuildToolsVer = "35.0.1"
+macro.GradleVer           = "8.10"
+macro.AGPVer              = "8.6.0"
 macro.AAOSVer             = "10 to 13"
 
 macro.beginfloatleft.HTML   = "<div style=\"float: left; margin-right: 2em\">"
@@ -117,8 +126,9 @@ macro.QtMinorVersion.match  = "\\d+\\.(\\d+)"
 # along with the offline docs, you must specify it manually. In .qdocconf, to do it for all formats
 # at once, add:
 #
-# {HTML.extraimages,qhp.QtDoc.extraFiles, DocBook.extraimages} += images/dQw4w9WgXcQ.jpg
+# {HTML.extraimages,qhp.<qhp_project>.extraFiles,DocBook.extraimages} += images/dQw4w9WgXcQ.jpg
 #
+# Where <qhp_project> is a project name listed in `qhp.projects`.
 macro.youtube.HTML = "<div class=\"video\">\n" \
                      "<a href=\"https://www.youtube.com/watch/?v=\1\">\n"\
                      "<img src=\"images/\1.jpg\"" \
@@ -161,3 +171,6 @@ macro.qtpolicydeprecatedbehavior = "\\note The \\c{OLD} behavior of a policy is 
 #group.
 #Must be placed directly under a \brief command
 macro.techpreview = "(Technical preview)\n\n\\meta status {Technical preview}\n\\ingroup tech_preview\n"
+
+include(grid.qdocconf)
+include(cpp-doc-macros.qdocconf)

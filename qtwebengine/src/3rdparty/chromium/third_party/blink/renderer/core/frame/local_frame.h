@@ -49,11 +49,9 @@
 #include "third_party/blink/public/mojom/back_forward_cache_not_restored_reasons.mojom-blink.h"
 #include "third_party/blink/public/mojom/blob/blob_url_store.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/devtools/devtools_agent.mojom-blink-forward.h"
-#include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/frame/back_forward_cache_controller.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/frame/frame_owner_properties.mojom-blink-forward.h"
-#include "third_party/blink/public/mojom/frame/lifecycle.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/frame/media_player_action.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/frame/reporting_observer.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/frame/sudden_termination_disabler_type.mojom-blink-forward.h"
@@ -62,15 +60,17 @@
 #include "third_party/blink/public/mojom/lcp_critical_path_predictor/lcp_critical_path_predictor.mojom-blink.h"
 #include "third_party/blink/public/mojom/link_to_text/link_to_text.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/loader/pause_subresource_loading_handle.mojom-blink-forward.h"
-#include "third_party/blink/public/mojom/loader/resource_cache.mojom-blink-forward.h"
+#include "third_party/blink/public/mojom/navigation/renderer_content_settings.mojom.h"
 #include "third_party/blink/public/mojom/navigation/renderer_eviction_reason.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/reporting/reporting.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/script/script_evaluation_params.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-blink-forward.h"
 #include "third_party/blink/public/platform/task_type.h"
+#include "third_party/blink/public/platform/web_background_resource_fetch_assets.h"
 #include "third_party/blink/public/platform/web_vector.h"
 #include "third_party/blink/public/web/web_script_execution_callback.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/css/document_style_environment_variables.h"
 #include "third_party/blink/renderer/core/dom/weak_identifier_map.h"
 #include "third_party/blink/renderer/core/editing/forward.h"
 #include "third_party/blink/renderer/core/editing/iterators/text_iterator_behavior.h"
@@ -94,6 +94,7 @@
 #include "third_party/blink/renderer/platform/supplementable.h"
 #include "third_party/perfetto/include/perfetto/tracing/traced_value_forward.h"
 #include "ui/gfx/geometry/transform.h"
+#include "ui/gfx/image/image_skia.h"
 
 namespace base {
 class SingleThreadTaskRunner;
@@ -115,6 +116,7 @@ namespace blink {
 class AdTracker;
 class AssociatedInterfaceProvider;
 class AttributionSrcLoader;
+class AuditsIssue;
 class BackgroundColorPaintImageGenerator;
 class BoxShadowPaintImageGenerator;
 class BrowserInterfaceBrokerProxy;
@@ -148,7 +150,6 @@ class NodeTraversal;
 class PerformanceMonitor;
 class PluginData;
 class PolicyContainer;
-class ResourceCacheImpl;
 class ScrollSnapshotClient;
 class SmoothScrollSequencer;
 class SpellChecker;
@@ -164,6 +165,10 @@ class WebPrescientNetworking;
 class URLLoader;
 struct BlinkTransferableMessage;
 struct WebScriptSource;
+
+namespace v8_compile_hints {
+class V8LocalCompileHintsProducer;
+}  // namespace v8_compile_hints
 
 enum class BackForwardCacheAware;
 
@@ -258,7 +263,8 @@ class CORE_EXPORT LocalFrame final
   // BackForwardCacheLoaderHelperImpl::Delegate:
   void EvictFromBackForwardCache(
       mojom::blink::RendererEvictionReason reason) override;
-  void DidBufferLoadWhileInBackForwardCache(size_t num_bytes) override;
+  void DidBufferLoadWhileInBackForwardCache(bool update_process_wide_count,
+                                            size_t num_bytes) override;
 
   void DidChangeThemeColor(bool update_theme_color_cache);
   void DidChangeBackgroundColor(SkColor4f background_color, bool color_adjust);
@@ -283,7 +289,7 @@ class CORE_EXPORT LocalFrame final
   Document* GetDocument() const;
   void SetPagePopupOwner(Element&);
   Element* PagePopupOwner() const { return page_popup_owner_.Get(); }
-  bool HasPagePopupOwner() const { return page_popup_owner_; }
+  bool HasPagePopupOwner() const { return page_popup_owner_ != nullptr; }
 
   // Root of the layout tree for the document contained in this frame.
   LayoutView* ContentLayoutObject() const;
@@ -315,6 +321,13 @@ class CORE_EXPORT LocalFrame final
   // needed.
   ContentCaptureManager* GetOrResetContentCaptureManager();
 
+  class CORE_EXPORT WidgetCreationObserver : public GarbageCollectedMixin {
+   public:
+    virtual void OnLocalRootWidgetCreated() = 0;
+  };
+  void AddWidgetCreationObserver(WidgetCreationObserver* observer);
+  void NotifyFrameWidgetCreated();
+
   // Returns the current state of caret browsing mode.
   bool IsCaretBrowsingEnabled() const;
 
@@ -343,6 +356,10 @@ class CORE_EXPORT LocalFrame final
     return history_user_activation_state_.IsActive();
   }
   void ConsumeHistoryUserActivation();
+
+  // Activates or clears history user activation state and also notifies frame
+  // scheduler of the state change.
+  void SetHadUserInteraction(bool had_user_interaction);
 
   // Registers an observer that will be notified if a VK occludes
   // the content when it raises/dismisses. The observer is a HeapHashSet
@@ -419,7 +436,13 @@ class CORE_EXPORT LocalFrame final
   void WindowSegmentsChanged(const WebVector<gfx::Rect>& window_segments);
   void UpdateViewportSegmentCSSEnvironmentVariables(
       const WebVector<gfx::Rect>& window_segments);
+  void UpdateViewportSegmentCSSEnvironmentVariables(
+      StyleEnvironmentVariables& vars,
+      const WebVector<gfx::Rect>& window_segments);
 
+  void OverrideDevicePostureForEmulation(
+      device::mojom::blink::DevicePostureType device_posture_param);
+  void DisableDevicePostureOverrideForEmulation();
   device::mojom::blink::DevicePostureType GetDevicePosture();
 
   String SelectedText() const;
@@ -496,12 +519,14 @@ class CORE_EXPORT LocalFrame final
 
   PluginData* GetPluginData() const;
 
-  PerformanceMonitor* GetPerformanceMonitor() { return performance_monitor_; }
-  IdlenessDetector* GetIdlenessDetector() { return idleness_detector_; }
-  AdTracker* GetAdTracker() { return ad_tracker_; }
+  PerformanceMonitor* GetPerformanceMonitor() {
+    return performance_monitor_.Get();
+  }
+  IdlenessDetector* GetIdlenessDetector() { return idleness_detector_.Get(); }
+  AdTracker* GetAdTracker() { return ad_tracker_.Get(); }
   void SetAdTrackerForTesting(AdTracker* ad_tracker);
   AttributionSrcLoader* GetAttributionSrcLoader() {
-    return attribution_src_loader_;
+    return attribution_src_loader_.Get();
   }
 
   enum class LazyLoadImageSetting { kDisabled, kEnabledExplicit };
@@ -513,6 +538,9 @@ class CORE_EXPORT LocalFrame final
   // For some tests, we use this method to create a URLLoader instead of using
   // GetURLLoaderFactory().
   std::unique_ptr<URLLoader> CreateURLLoaderForTesting();
+
+  scoped_refptr<WebBackgroundResourceFetchAssets>
+  MaybeGetBackgroundResourceFetchAssets();
 
   bool IsInert() const { return is_inert_; }
 
@@ -616,8 +644,6 @@ class CORE_EXPORT LocalFrame final
 
   void ResumeSubresourceLoading();
 
-  void AnimateSnapFling(base::TimeTicks monotonic_time);
-
   ClientHintsPreferences& GetClientHintsPreferences() {
     return client_hints_preferences_;
   }
@@ -632,6 +658,7 @@ class CORE_EXPORT LocalFrame final
   SmoothScrollSequencer* GetSmoothScrollSequencer() const;
 
   mojom::blink::ReportingServiceProxy* GetReportingService();
+  device::mojom::blink::DevicePostureProvider* GetDevicePostureProvider();
 
   // Returns the frame host ptr. The interface returned is backed by an
   // associated interface with the legacy Chrome IPC channel.
@@ -678,15 +705,6 @@ class CORE_EXPORT LocalFrame final
   // Whether the frame clips its content to the frame's size.
   bool ClipsContent() const;
 
-  // For a navigation initiated from this LocalFrame with user gesture, record
-  // the UseCounter AdClickNavigation if this frame is an adframe.
-  //
-  // TODO(crbug.com/939370): Currently this is called in a couple of sites,
-  // which is fragile and prone to break. If we have the ad status in
-  // RemoteFrame, we could call it at FrameLoader::StartNavigation where all
-  // navigations go through.
-  void MaybeLogAdClickNavigation();
-
   // Triggers a use counter if a feature, which is currently available in all
   // frames, would be blocked by the introduction of permissions policy. This
   // takes two counters (which may be the same). It triggers
@@ -717,6 +735,11 @@ class CORE_EXPORT LocalFrame final
       const gfx::Point& viewport_position,
       const blink::mojom::blink::MediaPlayerActionType type,
       bool enable);
+  void RequestVideoFrameAt(
+      const gfx::Point& viewport_position,
+      const gfx::Size& max_size,
+      int max_area,
+      base::OnceCallback<void(const gfx::ImageSkia&)> callback);
 
   // Handle the request as a download. If the request is for a blob: URL,
   // a BlobURLToken should be provided as |blob_url_token| to ensure the
@@ -731,7 +754,7 @@ class CORE_EXPORT LocalFrame final
 
   void NotifyUserActivation(
       mojom::blink::UserActivationNotificationType notification_type);
-  void AddInspectorIssue(mojom::blink::InspectorIssueInfoPtr);
+  void AddInspectorIssue(AuditsIssue issue);
   void SaveImageAt(const gfx::Point& window_point);
   void AdvanceFocusForIME(mojom::blink::FocusType focus_type);
   void PostMessageEvent(
@@ -811,7 +834,7 @@ class CORE_EXPORT LocalFrame final
   bool ShouldMaintainTrivialSessionHistory() const;
 
   TextFragmentHandler* GetTextFragmentHandler() const {
-    return text_fragment_handler_;
+    return text_fragment_handler_.Get();
   }
 
   void BindTextFragmentReceiver(
@@ -878,20 +901,21 @@ class CORE_EXPORT LocalFrame final
 
   void ScheduleNextServiceForScrollSnapshotClients();
 
-  void CollectAnchorPositionScrollerIds(
-      Vector<cc::ElementId>* scroll_container_ids) const;
-
   using BlockingDetailsList = Vector<mojom::blink::BlockingDetailsPtr>;
   static BlockingDetailsList ConvertFeatureAndLocationToMojomStruct(
       const BFCacheBlockingFeatureAndLocations&,
       const BFCacheBlockingFeatureAndLocations&);
 
-  // Binds a ResourceCache. Creates a new ResourceCache when there is no
-  // existing one.
-  void BindResourceCache(mojo::PendingReceiver<mojom::blink::ResourceCache>);
+  bool IsSameOrigin();
 
-  // Sets a ResourceCache hosted by another frame in a different renderer.
-  void SetResourceCacheRemote(mojo::PendingRemote<mojom::blink::ResourceCache>);
+  v8_compile_hints::V8LocalCompileHintsProducer&
+  GetV8LocalCompileHintsProducer() {
+    return *v8_local_compile_hints_producer_;
+  }
+
+  // Gets the content settings associated with the current navigation commit.
+  // Can only be called while the frame is not detached.
+  const mojom::RendererContentSettingsPtr& GetContentSettings();
 
  private:
   friend class FrameNavigationDisabler;
@@ -912,14 +936,6 @@ class CORE_EXPORT LocalFrame final
   // already LocalFrame.
   bool IsLocalFrame() const override { return true; }
   bool IsRemoteFrame() const override { return false; }
-
-  void ActivateHistoryUserActivationState() override {
-    history_user_activation_state_.Activate();
-  }
-
-  void ClearHistoryUserActivationState() override {
-    history_user_activation_state_.Clear();
-  }
 
   void EnableNavigation() { --navigation_disable_count_; }
   void DisableNavigation() { ++navigation_disable_count_; }
@@ -942,8 +958,7 @@ class CORE_EXPORT LocalFrame final
       BlockingDetails details) override;
   const base::UnguessableToken& GetAgentClusterId() const override;
   void OnTaskCompleted(base::TimeTicks start_time,
-                       base::TimeTicks end_time,
-                       base::TimeTicks desired_execution_time) override;
+                       base::TimeTicks end_time) override;
   void MainFrameInteractive() override;
 
   // Activates the user activation states of this frame and all its ancestors.
@@ -997,6 +1012,8 @@ class CORE_EXPORT LocalFrame final
   // Keeps track of all the registered VK observers.
   HeapHashSet<WeakMember<VirtualKeyboardOverlayChangedObserver>>
       virtual_keyboard_overlay_changed_observers_;
+
+  HeapHashSet<WeakMember<WidgetCreationObserver>> widget_creation_observers_;
 
   mutable FrameLoader loader_;
 
@@ -1064,8 +1081,6 @@ class CORE_EXPORT LocalFrame final
 
   absl::optional<base::UnguessableToken> embedding_token_;
 
-  mojom::FrameLifecycleState lifecycle_state_;
-
   std::unique_ptr<WebPrescientNetworking> prescient_networking_;
 
   Member<LocalFrameMojoHandler> mojo_handler_;
@@ -1104,9 +1119,6 @@ class CORE_EXPORT LocalFrame final
   // ScrollSnapshotClients owned by elements in this frame. The clients must
   // be registered at the actual elements as the references here are weak.
   HeapHashSet<WeakMember<ScrollSnapshotClient>> scroll_snapshot_clients_;
-
-  // Set lazily, when the browser asks to host a resource cache in this frame.
-  Member<ResourceCacheImpl> resource_cache_;
 
   // Manages a transient affordance for this frame to enter fullscreen.
   TransientAllowFullscreen transient_allow_fullscreen_;
@@ -1160,6 +1172,14 @@ class CORE_EXPORT LocalFrame final
 
   // Reduced accept language for top-level frame.
   AtomicString reduced_accept_language_;
+
+  Member<v8_compile_hints::V8LocalCompileHintsProducer>
+      v8_local_compile_hints_producer_;
+
+  // This handle notifies the scheduler of whether the unload handler is used or
+  // not so it can block BFCache.
+  FrameScheduler::SchedulingAffectingFeatureHandle
+      feature_handle_for_scheduler_;
 };
 
 inline FrameLoader& LocalFrame::Loader() const {

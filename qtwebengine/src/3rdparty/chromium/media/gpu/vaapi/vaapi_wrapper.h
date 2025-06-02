@@ -89,6 +89,7 @@ enum class VAImplementation {
   kMesaGallium,
   kIntelI965,
   kIntelIHD,
+  kChromiumFakeDriver,
   kOther,
   kInvalid,
 };
@@ -384,6 +385,9 @@ class MEDIA_GPU_EXPORT VaapiWrapper
   // exists, it will be attached to the newly created |va_context_id_| as well.
   [[nodiscard]] virtual bool CreateContext(const gfx::Size& size);
 
+  // Returns true iff a VAContextID has been created and hasn't been destroyed.
+  bool HasContext() const;
+
   // Destroys the context identified by |va_context_id_|.
   virtual void DestroyContext();
 
@@ -548,6 +552,10 @@ class MEDIA_GPU_EXPORT VaapiWrapper
       bool& packed_sps,
       bool& packed_pps,
       bool& packed_slice);
+
+  // Gets the minimum segment block size supported for AV1 encoding.
+  [[nodiscard]] bool GetMinAV1SegmentSize(VideoCodecProfile profile,
+                                          uint32_t& min_seg_size);
 
   // Blits a VASurface |va_surface_src| into another VASurface
   // |va_surface_dest| applying pixel format conversion, cropping

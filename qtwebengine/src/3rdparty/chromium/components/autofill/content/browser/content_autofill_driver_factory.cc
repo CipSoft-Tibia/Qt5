@@ -11,6 +11,7 @@
 #include "base/feature_list.h"
 #include "components/autofill/content/browser/content_autofill_client.h"
 #include "components/autofill/content/browser/content_autofill_driver.h"
+#include "components/autofill/core/browser/autofill_experiments.h"
 #include "components/autofill/core/browser/browser_autofill_manager.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "content/public/browser/global_routing_id.h"
@@ -64,8 +65,8 @@ ContentAutofillDriverFactory* ContentAutofillDriverFactory::FromWebContents(
 
 // static
 void ContentAutofillDriverFactory::BindAutofillDriver(
-    mojo::PendingAssociatedReceiver<mojom::AutofillDriver> pending_receiver,
-    content::RenderFrameHost* render_frame_host) {
+    content::RenderFrameHost* render_frame_host,
+    mojo::PendingAssociatedReceiver<mojom::AutofillDriver> pending_receiver) {
   DCHECK(render_frame_host);
 
   content::WebContents* web_contents =
@@ -155,17 +156,18 @@ void ContentAutofillDriverFactory::RenderFrameDeleted(
   ContentAutofillDriver* driver = it->second.get();
   DCHECK(driver);
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   if (!render_frame_host->IsInLifecycleState(
           content::RenderFrameHost::LifecycleState::kPrerendering)) {
     driver->GetAutofillManager().ReportAutofillWebOTPMetrics(
         render_frame_host->DocumentUsedWebOTP());
   }
-#endif  // !defined(TOOLKIT_QT)
+#endif
 
   for (Observer& observer : observers_) {
     observer.OnContentAutofillDriverWillBeDeleted(*this, *driver);
   }
+
   driver_map_.erase(it);
 }
 
@@ -190,33 +192,16 @@ void ContentAutofillDriverFactory::DidStartNavigation(
 
 void ContentAutofillDriverFactory::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
-  if (!navigation_handle->HasCommitted()) {
+  if (!navigation_handle->HasCommitted() ||
+      navigation_handle->IsSameDocument()) {
     return;
   }
-  // TODO(crbug.com/1064709): Should we really return early?
-  if (!navigation_handle->IsInMainFrame() &&
-      !navigation_handle->HasSubframeNavigationEntryCommitted()) {
-    return;
-  }
-
   auto* driver = DriverForFrame(navigation_handle->GetRenderFrameHost());
   if (!driver) {
     return;
   }
-  if (!navigation_handle->IsInPrerenderedMainFrame()) {
-    client_->HideAutofillPopup(PopupHidingReason::kNavigation);
-#ifndef TOOLKIT_QT
-    if (client_->IsTouchToFillCreditCardSupported()) {
-      client_->HideTouchToFillCreditCard();
-    }
-#endif
-  }
 
-  if (navigation_handle->IsSameDocument()) {
-    return;
-  }
-
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // If the navigation happened in the main frame and the BrowserAutofillManager
   // exists (not in Android Webview), and the AutofillOfferManager exists (not
   // in Incognito windows), notifies the navigation event.
@@ -233,6 +218,7 @@ void ContentAutofillDriverFactory::DidFinishNavigation(
       navigation_handle->IsPrerenderedPageActivation()) {
     return;
   }
+
   driver->Reset();
 }
 

@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/strings/ascii.h"
 #include "util/logging.h"
 #include "util/utf.h"
 #include "re2/pod_array.h"
@@ -1176,7 +1177,17 @@ void FactorAlternationImpl::Round3(Regexp** sub, int nsub,
           for (CharClass::iterator it = cc->begin(); it != cc->end(); ++it)
             ccb.AddRange(it->lo, it->hi);
         } else if (re->op() == kRegexpLiteral) {
-          ccb.AddRangeFlags(re->rune(), re->rune(), re->parse_flags());
+          if (re->parse_flags() & Regexp::FoldCase) {
+            // AddFoldedRange() can terminate prematurely if the character class
+            // already contains the rune. For example, if it contains 'a' and we
+            // want to add folded 'a', it sees 'a' and stops without adding 'A'.
+            // To avoid that, we use an empty character class and then merge it.
+            CharClassBuilder tmp;
+            tmp.AddRangeFlags(re->rune(), re->rune(), re->parse_flags());
+            ccb.AddCharClass(&tmp);
+          } else {
+            ccb.AddRangeFlags(re->rune(), re->rune(), re->parse_flags());
+          }
         } else {
           LOG(DFATAL) << "RE2: unexpected op: " << re->op() << " "
                       << re->ToString();
@@ -1322,14 +1333,14 @@ bool Regexp::ParseState::MaybeConcatString(int r, ParseFlags flags) {
 // Parses a decimal integer, storing it in *np.
 // Sets *s to span the remainder of the string.
 static bool ParseInteger(absl::string_view* s, int* np) {
-  if (s->empty() || !isdigit((*s)[0] & 0xFF))
+  if (s->empty() || !absl::ascii_isdigit((*s)[0] & 0xFF))
     return false;
   // Disallow leading zeros.
-  if (s->size() >= 2 && (*s)[0] == '0' && isdigit((*s)[1] & 0xFF))
+  if (s->size() >= 2 && (*s)[0] == '0' && absl::ascii_isdigit((*s)[1] & 0xFF))
     return false;
   int n = 0;
   int c;
-  while (!s->empty() && isdigit(c = (*s)[0] & 0xFF)) {
+  while (!s->empty() && absl::ascii_isdigit(c = (*s)[0] & 0xFF)) {
     // Avoid overflow.
     if (n >= 100000000)
       return false;
@@ -1468,7 +1479,7 @@ static bool ParseEscape(absl::string_view* s, Rune* rp,
   int code;
   switch (c) {
     default:
-      if (c < Runeself && !isalpha(c) && !isdigit(c)) {
+      if (c < Runeself && !absl::ascii_isalnum(c)) {
         // Escaped non-word characters are always themselves.
         // PCRE is not quite so rigorous: it accepts things like
         // \q, but we don't.  We once rejected \_, but too many
@@ -2056,6 +2067,17 @@ bool Regexp::ParseState::ParsePerlFlags(absl::string_view* s) {
   if (!(flags_ & PerlX) || t.size() < 2 || t[0] != '(' || t[1] != '?') {
     status_->set_code(kRegexpInternalError);
     LOG(DFATAL) << "Bad call to ParseState::ParsePerlFlags";
+    return false;
+  }
+
+  // Check for look-around assertions. This is NOT because we support them! ;)
+  // As per https://github.com/google/re2/issues/468, we really want to report
+  // kRegexpBadPerlOp (not kRegexpBadNamedCapture) for look-behind assertions.
+  // Additionally, it would be nice to report not "(?<", but "(?<=" or "(?<!".
+  if ((t.size() > 3 && (t[2] == '=' || t[2] == '!')) ||
+      (t.size() > 4 && t[2] == '<' && (t[3] == '=' || t[3] == '!'))) {
+    status_->set_code(kRegexpBadPerlOp);
+    status_->set_error_arg(absl::string_view(t.data(), t[2] == '<' ? 4 : 3));
     return false;
   }
 

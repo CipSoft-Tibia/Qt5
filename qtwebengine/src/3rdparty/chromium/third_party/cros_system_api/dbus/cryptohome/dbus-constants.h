@@ -13,7 +13,6 @@ inline constexpr char kUserDataAuthServicePath[] = "/org/chromium/UserDataAuth";
 
 inline constexpr char kUserDataAuthInterface[] =
     "org.chromium.UserDataAuthInterface";
-inline constexpr char kArcQuotaInterface[] = "org.chromium.ArcQuota";
 inline constexpr char kCryptohomePkcs11Interface[] =
     "org.chromium.CryptohomePkcs11Interface";
 inline constexpr char kInstallAttributesInterface[] =
@@ -27,15 +26,16 @@ inline constexpr int kUserDataAuthServiceTimeoutInMs = 5 * 60 * 1000;
 
 // Methods of the |kUserDataAuthInterface| interface:
 inline constexpr char kIsMounted[] = "IsMounted";
+inline constexpr char kEvictDeviceKey[] = "EvictDeviceKey";
+inline constexpr char kRestoreDeviceKey[] = "RestoreDeviceKey";
 inline constexpr char kUnmount[] = "Unmount";
 inline constexpr char kRemove[] = "Remove";
-inline constexpr char kListKeys[] = "ListKeys";
-inline constexpr char kCheckKey[] = "CheckKey";
 inline constexpr char kStartFingerprintAuthSession[] =
     "StartFingerprintAuthSession";
 inline constexpr char kEndFingerprintAuthSession[] =
     "EndFingerprintAuthSession";
 inline constexpr char kGetWebAuthnSecret[] = "GetWebAuthnSecret";
+inline constexpr char kGetRecoverableKeyStores[] = "GetRecoverableKeyStores";
 inline constexpr char kGetHibernateSecret[] = "GetHibernateSecret";
 inline constexpr char kGetEncryptionInfo[] = "GetEncryptionInfo";
 inline constexpr char kStartMigrateToDircrypto[] = "StartMigrateToDircrypto";
@@ -57,6 +57,7 @@ inline constexpr char kAuthenticateAuthFactor[] = "AuthenticateAuthFactor";
 inline constexpr char kUpdateAuthFactor[] = "UpdateAuthFactor";
 inline constexpr char kUpdateAuthFactorMetadata[] = "UpdateAuthFactorMetadata";
 inline constexpr char kRelabelAuthFactor[] = "RelabelAuthFactor";
+inline constexpr char kReplaceAuthFactor[] = "ReplaceAuthFactor";
 inline constexpr char kRemoveAuthFactor[] = "RemoveAuthFactor";
 inline constexpr char kListAuthFactors[] = "ListAuthFactors";
 inline constexpr char kGetAuthFactorExtendedInfo[] =
@@ -65,14 +66,7 @@ inline constexpr char kGetAuthSessionStatus[] = "GetAuthSessionStatus";
 inline constexpr char kGetRecoveryRequest[] = "GetRecoveryRequest";
 inline constexpr char kModifyAuthFactorIntents[] = "ModifyAuthFactorIntents";
 inline constexpr char kCreateVaultkeyset[] = "CreateVaultKeyset";
-
-// Methods of the |kArcQuotaInterface| interface:
 inline constexpr char kGetArcDiskFeatures[] = "GetArcDiskFeatures";
-inline constexpr char kGetCurrentSpaceForArcUid[] = "GetCurrentSpaceForArcUid";
-inline constexpr char kGetCurrentSpaceForArcGid[] = "GetCurrentSpaceForArcGid";
-inline constexpr char kGetCurrentSpaceForArcProjectId[] =
-    "GetCurrentSpaceForArcProjectId";
-inline constexpr char kSetProjectId[] = "SetProjectId";
 
 // Methods of the |kCryptohomePkcs11Interface| interface:
 inline constexpr char kPkcs11IsTpmTokenReady[] = "Pkcs11IsTpmTokenReady";
@@ -116,6 +110,11 @@ inline constexpr char kPrepareAuthFactorProgressSignal[] =
     "PrepareAuthFactorProgress";
 inline constexpr char kAuthenticateAuthFactorCompletedSignal[] =
     "AuthenticateAuthFactorCompleted";
+inline constexpr char kEvictedKeyRestoredSignal[] = "EvictedKeyRestored";
+inline constexpr char kAuthFactorAddedl[] = "AuthFactorAdded";
+inline constexpr char kAuthFactorRemoved[] = "AuthFactorRemoved";
+inline constexpr char kAuthFactorUpdted[] = "AuthFactorUpdated";
+inline constexpr char kAuthSessionExpiring[] = "AuthSessionExpiring";
 
 }  // namespace user_data_auth
 
@@ -155,6 +154,7 @@ enum MountError {
   // the error should be set to MOUNT_ERROR_TPM_DEFEND_LOCK.
   MOUNT_ERROR_CREDENTIAL_LOCKED = 24,
   MOUNT_ERROR_CREDENTIAL_EXPIRED = 25,
+  MOUNT_ERROR_KEY_RESTORE_FAILED = 26,
   MOUNT_ERROR_USER_DOES_NOT_EXIST = 32,
   MOUNT_ERROR_TPM_NEEDS_REBOOT = 64,
   // Encrypted in old method, need migration before mounting.

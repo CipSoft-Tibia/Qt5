@@ -29,7 +29,7 @@ namespace Qt3DRender {
     \since 5.7
     \ingroup renderstates
     \inqmlmodule Qt3D.Render
-    \instantiates Qt3DRender::QScissorTest
+    \nativetype Qt3DRender::QScissorTest
     \inherits RenderState
 
     A ScissorTest type enables scissor test, which discards fragments outside
@@ -58,22 +58,22 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property QScissorTest::left
+    \property Qt3DRender::QScissorTest::left
     Holds the left coordinate of the scissor box.
 */
 
 /*!
-    \property QScissorTest::bottom
+    \property Qt3DRender::QScissorTest::bottom
     Holds the bottom coordinate of the scissor box.
 */
 
 /*!
-    \property QScissorTest::width
+    \property Qt3DRender::QScissorTest::width
     Holds the width of the scissor box.
 */
 
 /*!
-    \property QScissorTest::height
+    \property Qt3DRender::QScissorTest::height
     Holds the height of the scissor box.
 */
 

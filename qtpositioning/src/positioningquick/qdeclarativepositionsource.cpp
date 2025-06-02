@@ -16,7 +16,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype PositionSource
-    //! \instantiates QDeclarativePositionSource
+    //! \nativetype QDeclarativePositionSource
     \inqmlmodule QtPositioning
     \since 5.2
 

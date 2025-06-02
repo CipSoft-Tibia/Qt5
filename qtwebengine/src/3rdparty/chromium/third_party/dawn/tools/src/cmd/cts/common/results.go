@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 package common
 
@@ -64,7 +77,7 @@ func (r *ResultSource) RegisterFlags(cfg Config) {
 // GetResults loads or fetches the results, based on the values of r.
 // GetResults will update the ResultSource with the inferred patchset, if a file
 // and specific patchset was not specified.
-func (r *ResultSource) GetResults(ctx context.Context, cfg Config, auth auth.Options) (result.List, error) {
+func (r *ResultSource) GetResults(ctx context.Context, cfg Config, auth auth.Options) (result.ResultsByExecutionMode, error) {
 	// Check that File and Patchset weren't both specified
 	ps := &r.Patchset
 	if r.File != "" && ps.Change != 0 {
@@ -100,13 +113,13 @@ func (r *ResultSource) GetResults(ctx context.Context, cfg Config, auth auth.Opt
 			return nil, err
 		}
 		fmt.Printf("scanning for latest patchset of %v...\n", latest.Number)
-		var results result.List
-		results, *ps, err = MostRecentResultsForChange(ctx, cfg, r.CacheDir, gerrit, bb, rdb, latest.Number)
+		var resultsByExecutionMode result.ResultsByExecutionMode
+		resultsByExecutionMode, *ps, err = MostRecentResultsForChange(ctx, cfg, r.CacheDir, gerrit, bb, rdb, latest.Number)
 		if err != nil {
 			return nil, err
 		}
 		fmt.Printf("using results from cl %v ps %v...\n", ps.Change, ps.Patchset)
-		return results, nil
+		return resultsByExecutionMode, nil
 	}
 
 	// If a change, but no patchset was specified, then query the most recent
@@ -126,18 +139,17 @@ func (r *ResultSource) GetResults(ctx context.Context, cfg Config, auth auth.Opt
 
 	// Obtain the patchset's results, kicking a build if there are no results
 	// already available.
-	log.Printf("fetching results from cl %v ps %v...", ps.Change, ps.Patchset)
 	builds, err := GetOrStartBuildsAndWait(ctx, cfg, *ps, bb, "", false)
 	if err != nil {
 		return nil, err
 	}
 
-	results, err := CacheResults(ctx, cfg, *ps, r.CacheDir, rdb, builds)
+	resultsByExecutionMode, err := CacheResults(ctx, cfg, *ps, r.CacheDir, rdb, builds)
 	if err != nil {
 		return nil, err
 	}
 
-	return results, nil
+	return resultsByExecutionMode, nil
 }
 
 // CacheResults looks in the cache at 'cacheDir' for the results for the given
@@ -150,18 +162,20 @@ func CacheResults(
 	ps gerrit.Patchset,
 	cacheDir string,
 	rdb *resultsdb.ResultsDB,
-	builds BuildsByName) (result.List, error) {
+	builds BuildsByName) (result.ResultsByExecutionMode, error) {
 
 	var cachePath string
 	if cacheDir != "" {
 		dir := fileutils.ExpandHome(cacheDir)
 		path := filepath.Join(dir, strconv.Itoa(ps.Change), fmt.Sprintf("ps-%v.txt", ps.Patchset))
 		if _, err := os.Stat(path); err == nil {
+			log.Printf("loading cached results from cl %v ps %v...", ps.Change, ps.Patchset)
 			return result.Load(path)
 		}
 		cachePath = path
 	}
 
+	log.Printf("fetching results from cl %v ps %v...", ps.Change, ps.Patchset)
 	results, err := GetResults(ctx, cfg, rdb, builds)
 	if err != nil {
 		return nil, err
@@ -180,7 +194,7 @@ func GetResults(
 	ctx context.Context,
 	cfg Config,
 	rdb *resultsdb.ResultsDB,
-	builds BuildsByName) (result.List, error) {
+	builds BuildsByName) (result.ResultsByExecutionMode, error) {
 
 	fmt.Printf("fetching results from resultdb...")
 
@@ -203,61 +217,66 @@ func GetResults(
 		}
 	}
 
-	results := result.List{}
+	resultsByExecutionMode := result.ResultsByExecutionMode{}
 	var err error = nil
-	for _, prefix := range cfg.Test.Prefixes {
-		err = rdb.QueryTestResults(ctx, builds.ids(), prefix+".*", func(rpb *rdbpb.TestResult) error {
-			if time.Since(lastPrintedDot) > 5*time.Second {
-				lastPrintedDot = time.Now()
-				fmt.Printf(".")
-			}
+	for _, test := range cfg.Tests {
+		results := result.List{}
+		for _, prefix := range test.Prefixes {
+			err = rdb.QueryTestResults(ctx, builds.ids(), prefix+".*", func(rpb *rdbpb.TestResult) error {
+				if time.Since(lastPrintedDot) > 5*time.Second {
+					lastPrintedDot = time.Now()
+					fmt.Printf(".")
+				}
 
-			if !strings.HasPrefix(rpb.GetTestId(), prefix) {
+				if !strings.HasPrefix(rpb.GetTestId(), prefix) {
+					return nil
+				}
+
+				testName := rpb.GetTestId()[len(prefix):]
+				status := toStatus(rpb.Status)
+				tags := result.NewTags()
+
+				duration := rpb.GetDuration().AsDuration()
+				mayExonerate := false
+
+				for _, sp := range rpb.Tags {
+					if sp.Key == "typ_tag" {
+						tags.Add(sp.Value)
+					}
+					if sp.Key == "javascript_duration" {
+						var err error
+						if duration, err = time.ParseDuration(sp.Value); err != nil {
+							return err
+						}
+					}
+					if sp.Key == "may_exonerate" {
+						var err error
+						if mayExonerate, err = strconv.ParseBool(sp.Value); err != nil {
+							return err
+						}
+					}
+				}
+
+				results = append(results, result.Result{
+					Query:        query.Parse(testName),
+					Status:       status,
+					Tags:         tags,
+					Duration:     duration,
+					MayExonerate: mayExonerate,
+				})
+
 				return nil
-			}
-
-			testName := rpb.GetTestId()[len(prefix):]
-			status := toStatus(rpb.Status)
-			tags := result.NewTags()
-
-			duration := rpb.GetDuration().AsDuration()
-			mayExonerate := false
-
-			for _, sp := range rpb.Tags {
-				if sp.Key == "typ_tag" {
-					tags.Add(sp.Value)
-				}
-				if sp.Key == "javascript_duration" {
-					var err error
-					if duration, err = time.ParseDuration(sp.Value); err != nil {
-						return err
-					}
-				}
-				if sp.Key == "may_exonerate" {
-					var err error
-					if mayExonerate, err = strconv.ParseBool(sp.Value); err != nil {
-						return err
-					}
-				}
-			}
-
-			if status == result.Pass && duration > cfg.Test.SlowThreshold {
-				status = result.Slow
-			}
-
-			results = append(results, result.Result{
-				Query:        query.Parse(testName),
-				Status:       status,
-				Tags:         tags,
-				Duration:     duration,
-				MayExonerate: mayExonerate,
 			})
+			if err != nil {
+				break
+			}
 
-			return nil
-		})
-		if err != nil {
-			break
+			// Expand aliased tags, remove specific tags
+			CleanTags(cfg, &results)
+
+			results.Sort()
 		}
+		resultsByExecutionMode[test.ExecutionMode] = results
 	}
 
 	fmt.Println(" done")
@@ -266,11 +285,7 @@ func GetResults(
 		return nil, err
 	}
 
-	// Expand aliased tags, remove specific tags
-	CleanTags(cfg, &results)
-
-	results.Sort()
-	return results, err
+	return resultsByExecutionMode, err
 }
 
 // LatestCTSRoll returns for the latest merged CTS roll that landed in the past
@@ -313,7 +328,7 @@ func MostRecentResultsForChange(
 	g *gerrit.Gerrit,
 	bb *buildbucket.Buildbucket,
 	rdb *resultsdb.ResultsDB,
-	change int) (result.List, gerrit.Patchset, error) {
+	change int) (result.ResultsByExecutionMode, gerrit.Patchset, error) {
 
 	ps, err := LatestPatchset(g, change)
 	if err != nil {

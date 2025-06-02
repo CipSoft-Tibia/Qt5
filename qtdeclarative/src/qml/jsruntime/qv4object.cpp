@@ -45,7 +45,9 @@ void Object::setInternalClass(Heap::InternalClass *ic)
         for (uint i = 0; i < ic->size; ++i) {
             // Note that some members might have been deleted. The key may be invalid.
             const PropertyKey key = ic->nameMap.at(i);
-            newMembers->set(scope.engine, i, key.isValid() ? get(key) : Encode::undefined());
+            // fromReturnedValue is safe, we directly write it through the WriteBarrier
+            newMembers->set(scope.engine, i,
+                            QV4::Value::fromReturnedValue(key.isValid() ? get(key) : Encode::undefined()));
         }
 
         p->internalClass.set(scope.engine, ic);
@@ -774,7 +776,7 @@ ReturnedValue Object::virtualResolveLookupGetter(const Object *object, Execution
         } else {
             lookup->getter = Lookup::getterAccessor;
         }
-        lookup->objectLookup.ic = obj->internalClass;
+        lookup->objectLookup.ic.set(engine, obj->internalClass.get());
         lookup->objectLookup.offset = index.index;
         return lookup->getter(lookup, engine, *object);
     }
@@ -801,7 +803,7 @@ bool Object::virtualResolveLookupSetter(Object *object, ExecutionEngine *engine,
             lookup->setter = Lookup::arrayLengthSetter;
             return lookup->setter(lookup, engine, *object, value);
         } else if (idx.attrs.isData() && idx.attrs.isWritable()) {
-            lookup->objectLookup.ic = object->internalClass();
+            lookup->objectLookup.ic.set(engine, object->internalClass());
             lookup->objectLookup.index = idx.index;
             const auto nInline = object->d()->vtable()->nInlineProperties;
             if (idx.index < nInline) {
@@ -835,7 +837,7 @@ bool Object::virtualResolveLookupSetter(Object *object, ExecutionEngine *engine,
         lookup->setter = Lookup::setterFallback;
         return false;
     }
-    lookup->insertionLookup.newClass = object->internalClass();
+    lookup->insertionLookup.newClass.set(engine, object->internalClass());
     lookup->insertionLookup.offset = idx.index;
     lookup->setter = Lookup::setterInsert;
     return true;

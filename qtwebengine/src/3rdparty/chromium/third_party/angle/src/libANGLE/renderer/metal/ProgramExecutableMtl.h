@@ -12,6 +12,7 @@
 #include "libANGLE/ProgramExecutable.h"
 #include "libANGLE/renderer/ProgramExecutableImpl.h"
 #include "libANGLE/renderer/metal/mtl_buffer_pool.h"
+#include "libANGLE/renderer/metal/mtl_command_buffer.h"
 #include "libANGLE/renderer/metal/mtl_common.h"
 #include "libANGLE/renderer/metal/mtl_msl_utils.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
@@ -127,12 +128,85 @@ class ProgramExecutableMtl : public ProgramExecutableImpl
     angle::Result load(ContextMtl *contextMtl, gl::BinaryInputStream *stream);
     void save(gl::BinaryOutputStream *stream);
 
+    void setUniform1fv(GLint location, GLsizei count, const GLfloat *v) override;
+    void setUniform2fv(GLint location, GLsizei count, const GLfloat *v) override;
+    void setUniform3fv(GLint location, GLsizei count, const GLfloat *v) override;
+    void setUniform4fv(GLint location, GLsizei count, const GLfloat *v) override;
+    void setUniform1iv(GLint location, GLsizei count, const GLint *v) override;
+    void setUniform2iv(GLint location, GLsizei count, const GLint *v) override;
+    void setUniform3iv(GLint location, GLsizei count, const GLint *v) override;
+    void setUniform4iv(GLint location, GLsizei count, const GLint *v) override;
+    void setUniform1uiv(GLint location, GLsizei count, const GLuint *v) override;
+    void setUniform2uiv(GLint location, GLsizei count, const GLuint *v) override;
+    void setUniform3uiv(GLint location, GLsizei count, const GLuint *v) override;
+    void setUniform4uiv(GLint location, GLsizei count, const GLuint *v) override;
+    void setUniformMatrix2fv(GLint location,
+                             GLsizei count,
+                             GLboolean transpose,
+                             const GLfloat *value) override;
+    void setUniformMatrix3fv(GLint location,
+                             GLsizei count,
+                             GLboolean transpose,
+                             const GLfloat *value) override;
+    void setUniformMatrix4fv(GLint location,
+                             GLsizei count,
+                             GLboolean transpose,
+                             const GLfloat *value) override;
+    void setUniformMatrix2x3fv(GLint location,
+                               GLsizei count,
+                               GLboolean transpose,
+                               const GLfloat *value) override;
+    void setUniformMatrix3x2fv(GLint location,
+                               GLsizei count,
+                               GLboolean transpose,
+                               const GLfloat *value) override;
+    void setUniformMatrix2x4fv(GLint location,
+                               GLsizei count,
+                               GLboolean transpose,
+                               const GLfloat *value) override;
+    void setUniformMatrix4x2fv(GLint location,
+                               GLsizei count,
+                               GLboolean transpose,
+                               const GLfloat *value) override;
+    void setUniformMatrix3x4fv(GLint location,
+                               GLsizei count,
+                               GLboolean transpose,
+                               const GLfloat *value) override;
+    void setUniformMatrix4x3fv(GLint location,
+                               GLsizei count,
+                               GLboolean transpose,
+                               const GLfloat *value) override;
+
+    void getUniformfv(const gl::Context *context, GLint location, GLfloat *params) const override;
+    void getUniformiv(const gl::Context *context, GLint location, GLint *params) const override;
+    void getUniformuiv(const gl::Context *context, GLint location, GLuint *params) const override;
+
     bool hasFlatAttribute() const { return mProgramHasFlatAttributes; }
+
+    // Calls this before drawing, changedPipelineDesc is passed when vertex attributes desc and/or
+    // shader program changed.
+    angle::Result setupDraw(const gl::Context *glContext,
+                            mtl::RenderCommandEncoder *cmdEncoder,
+                            const mtl::RenderPipelineDesc &pipelineDesc,
+                            bool pipelineDescChanged,
+                            bool forceTexturesSetting,
+                            bool uniformBuffersDirty);
 
   private:
     friend class ProgramMtl;
 
     void reset(ContextMtl *context);
+
+    template <int cols, int rows>
+    void setUniformMatrixfv(GLint location,
+                            GLsizei count,
+                            GLboolean transpose,
+                            const GLfloat *value);
+    template <class T>
+    void getUniformImpl(GLint location, T *v, GLenum entryPointType) const;
+
+    template <typename T>
+    void setUniformImpl(GLint location, GLsizei count, const T *v, GLenum entryPointType);
 
     void saveTranslatedShaders(gl::BinaryOutputStream *stream);
     void loadTranslatedShaders(gl::BinaryInputStream *stream);
@@ -155,6 +229,37 @@ class ProgramExecutableMtl : public ProgramExecutableImpl
     angle::Result resizeDefaultUniformBlocksMemory(mtl::Context *context,
                                                    const gl::ShaderMap<size_t> &requiredBufferSize);
     void initUniformBlocksRemapper(const gl::SharedCompiledShaderState &shader);
+
+    mtl::BufferPool *getBufferPool(ContextMtl *context, gl::ShaderType shaderType);
+
+    angle::Result getSpecializedShader(ContextMtl *context,
+                                       gl::ShaderType shaderType,
+                                       const mtl::RenderPipelineDesc &renderPipelineDesc,
+                                       id<MTLFunction> *shaderOut);
+
+    angle::Result commitUniforms(ContextMtl *context, mtl::RenderCommandEncoder *cmdEncoder);
+    angle::Result updateTextures(const gl::Context *glContext,
+                                 mtl::RenderCommandEncoder *cmdEncoder,
+                                 bool forceUpdate);
+
+    angle::Result updateUniformBuffers(ContextMtl *context,
+                                       mtl::RenderCommandEncoder *cmdEncoder,
+                                       const mtl::RenderPipelineDesc &pipelineDesc);
+    angle::Result updateXfbBuffers(ContextMtl *context,
+                                   mtl::RenderCommandEncoder *cmdEncoder,
+                                   const mtl::RenderPipelineDesc &pipelineDesc);
+    angle::Result legalizeUniformBufferOffsets(ContextMtl *context,
+                                               const std::vector<gl::InterfaceBlock> &blocks);
+    angle::Result bindUniformBuffersToDiscreteSlots(ContextMtl *context,
+                                                    mtl::RenderCommandEncoder *cmdEncoder,
+                                                    const std::vector<gl::InterfaceBlock> &blocks,
+                                                    gl::ShaderType shaderType);
+
+    angle::Result encodeUniformBuffersInfoArgumentBuffer(
+        ContextMtl *context,
+        mtl::RenderCommandEncoder *cmdEncoder,
+        const std::vector<gl::InterfaceBlock> &blocks,
+        gl::ShaderType shaderType);
 
     bool mProgramHasFlatAttributes;
 
@@ -182,8 +287,24 @@ class ProgramExecutableMtl : public ProgramExecutableImpl
 
     gl::ShaderBitSet mDefaultUniformBlocksDirty;
     gl::ShaderBitSet mSamplerBindingsDirty;
+
+    // Scratch data:
+    // Legalized buffers and their offsets. For example, uniform buffer's offset=1 is not a valid
+    // offset, it will be converted to legal offset and the result is stored in this array.
+    std::vector<std::pair<mtl::BufferRef, uint32_t>> mLegalizedOffsetedUniformBuffers;
+    // Stores the render stages usage of each uniform buffer. Only used if the buffers are encoded
+    // into an argument buffer.
+    std::vector<uint32_t> mArgumentBufferRenderStageUsages;
+
+    uint32_t mShadowCompareModes[mtl::kMaxShaderSamplers];
+
+    gl::ShaderMap<std::unique_ptr<mtl::BufferPool>> mDefaultUniformBufferPools;
 };
 
+angle::Result CreateMslShaderLib(ContextMtl *context,
+                                 gl::InfoLog &infoLog,
+                                 mtl::TranslatedShaderInfo *translatedMslInfo,
+                                 const std::map<std::string, std::string> &substitutionMacros);
 }  // namespace rx
 
 #endif  // LIBANGLE_RENDERER_MTL_PROGRAMEXECUTABLEMTL_H_

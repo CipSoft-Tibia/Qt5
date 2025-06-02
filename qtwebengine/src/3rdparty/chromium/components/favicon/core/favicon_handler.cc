@@ -226,7 +226,7 @@ void FaviconHandler::FetchFavicon(const GURL& page_url, bool is_same_document) {
   current_candidate_index_ = 0u;
   best_favicon_ = DownloadedFavicon();
 
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
   if (delegate_->IsOffTheRecord()) {
     OnFaviconDataForInitialURLFromFaviconService(std::vector<favicon_base::FaviconRawBitmapResult>());
     return;
@@ -322,12 +322,8 @@ void FaviconHandler::NotifyFaviconUpdated(const GURL& icon_url,
   if (image.IsEmpty())
     return;
 
-  gfx::Image image_with_adjusted_colorspace = image;
-  favicon_base::SetFaviconColorSpace(&image_with_adjusted_colorspace);
-
   delegate_->OnFaviconUpdated(last_page_url_, handler_type_, icon_url,
-                              icon_url != notification_icon_url_,
-                              image_with_adjusted_colorspace);
+                              icon_url != notification_icon_url_, image);
 
   notification_icon_url_ = icon_url;
   notification_icon_type_ = icon_type;
@@ -486,7 +482,7 @@ void FaviconHandler::OnGotInitialHistoryDataAndIconURLCandidates() {
     // The page lists no candidates that match our target |icon_types_|, so
     // check if any existing mappings should be deleted.
     MaybeDeleteFaviconMappings();
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
     delegate_->OnHandlerCompleted(this);
 #endif
     return;
@@ -503,7 +499,7 @@ void FaviconHandler::OnGotInitialHistoryDataAndIconURLCandidates() {
     // TODO: Store all of the icon URLs associated with a page in history so
     // that we can check whether the page's icon URLs match the page's icon URLs
     // at the time that the favicon data was stored to the history database.
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
     delegate_->OnHandlerCompleted(this);
 #endif
     return;
@@ -581,7 +577,7 @@ void FaviconHandler::OnDidDownloadFavicon(
     // Clear download related state.
     current_candidate_index_ = final_candidates_->size();
     best_favicon_ = DownloadedFavicon();
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
     delegate_->OnHandlerCompleted(this);
 #endif
   }
@@ -675,7 +671,7 @@ void FaviconHandler::GetFaviconAndUpdateMappingsUnlessIncognito(
   // favicon for another page that shares the same favicon. Ask for the
   // favicon given the favicon URL.
   if (delegate_->IsOffTheRecord()) {
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
     std::move(callback).Run(std::vector<favicon_base::FaviconRawBitmapResult>());
 #else
     service_->GetFavicon(icon_url, icon_type, preferred_icon_size(),
@@ -718,7 +714,7 @@ void FaviconHandler::OnFaviconData(
     ScheduleImageDownload(current_candidate()->icon_url,
                           current_candidate()->icon_type);
   }
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
   else {
     delegate_->OnHandlerCompleted(this);
   }

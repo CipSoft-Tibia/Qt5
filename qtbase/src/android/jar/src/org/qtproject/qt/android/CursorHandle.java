@@ -33,7 +33,7 @@ class CursorView extends ImageView
     }
 
     // Called when the handle was moved programmatically , with the delta amount in pixels
-    public void adjusted(int dx, int dy) {
+    void adjusted(int dx, int dy) {
         m_offsetX += dx;
         m_offsetY += dy;
     }
@@ -66,9 +66,15 @@ class CursorView extends ImageView
 }
 
 // Helper class that manages a cursor or selection handle
-public class CursorHandle implements ViewTreeObserver.OnPreDrawListener
+class CursorHandle implements ViewTreeObserver.OnPreDrawListener
 {
     private static final String QtTag = "QtCursorHandle";
+
+    // Handle IDs
+    static final int IdCursorHandle = 1;
+    static final int IdLeftHandle = 2;
+    static final int IdRightHandle = 3;
+
     private final View m_layout;
     private CursorView m_cursorView = null;
     private PopupWindow m_popup = null;
@@ -83,7 +89,7 @@ public class CursorHandle implements ViewTreeObserver.OnPreDrawListener
     private final boolean m_rtl;
     int m_yShift;
 
-    public CursorHandle(Activity activity, View layout, int id, int attr, boolean rtl) {
+    CursorHandle(Activity activity, View layout, int id, int attr, boolean rtl) {
         m_activity = activity;
         m_id = id;
         m_attr = attr;
@@ -123,11 +129,19 @@ public class CursorHandle implements ViewTreeObserver.OnPreDrawListener
     }
 
     // Show the handle at a given position (or move it if it is already shown)
-    public void setPosition(final int x, final int y){
+    void setPosition(final int x, final int y){
         initOverlay();
 
         final int[] layoutLocation = new int[2];
-        m_layout.getLocationOnScreen(layoutLocation);
+
+        // m_layout is QtEditText. Since it doesn't match the QtWindow size, we should use its
+        // parent for cursorHandle positioning. However, there may be cases where the parent is
+        // not set. In such cases, we need to use QtEditText instead.
+        View positioningView = (View) m_layout.getParent();
+        if (positioningView == null)
+            positioningView = m_layout;
+
+        positioningView.getLocationOnScreen(layoutLocation);
 
         // These values are used for handling split screen case
         final int[] activityLocation = new int[2];
@@ -138,9 +152,9 @@ public class CursorHandle implements ViewTreeObserver.OnPreDrawListener
         int x2 = x + layoutLocation[0] - activityLocation[0];
         int y2 = y + layoutLocation[1] + m_yShift + (activityLocationInWindow[1] - activityLocation[1]);
 
-        if (m_id == QtInputDelegate.IdCursorHandle) {
+        if (m_id == IdCursorHandle) {
             x2 -= m_popup.getWidth() / 2 ;
-        } else if ((m_id == QtInputDelegate.IdLeftHandle && !m_rtl) || (m_id == QtInputDelegate.IdRightHandle && m_rtl)) {
+        } else if ((m_id == IdLeftHandle && !m_rtl) || (m_id == IdRightHandle && m_rtl)) {
             x2 -= m_popup.getWidth() * 3 / 4;
         } else {
             x2 -= m_popup.getWidth() / 4;
@@ -150,14 +164,14 @@ public class CursorHandle implements ViewTreeObserver.OnPreDrawListener
             m_popup.update(x2, y2, -1, -1);
             m_cursorView.adjusted(x - m_posX, y - m_posY);
         } else {
-            m_popup.showAtLocation(m_layout, 0, x2, y2);
+            m_popup.showAtLocation(positioningView, 0, x2, y2);
         }
 
         m_posX = x;
         m_posY = y;
     }
 
-    public int bottom()
+    int bottom()
     {
         initOverlay();
         final int[] location = new int[2];
@@ -165,19 +179,19 @@ public class CursorHandle implements ViewTreeObserver.OnPreDrawListener
         return location[1] + m_cursorView.getHeight();
     }
 
-    public void hide() {
+    void hide() {
         if (m_popup != null) {
             m_popup.dismiss();
         }
     }
 
-    public int width()
+    int width()
     {
         return m_cursorView.getDrawable().getIntrinsicWidth();
     }
 
     // The handle was dragged by a given relative position
-    public void updatePosition(int x, int y) {
+    void updatePosition(int x, int y) {
         y -= m_yShift;
         if (Math.abs(m_lastX - x) > tolerance || Math.abs(m_lastY - y) > tolerance) {
             QtInputDelegate.handleLocationChanged(m_id, x + m_posX, y + m_posY);

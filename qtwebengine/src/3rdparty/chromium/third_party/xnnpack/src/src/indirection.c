@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <math.h>
 
-#include <fp16.h>
+#include <fp16/fp16.h>
 
 #include <fxdiv.h>
 
@@ -19,34 +19,32 @@
 
 
 void xnn_indirection_init_conv2d(
-  xnn_operator_t op,
   size_t output_tile_size,
-  uint32_t log2_element_size)
+  size_t output_start,
+  size_t output_end,
+  const void** indirection_buffer,
+  const void* input,
+  const void* zero_buffer,
+  size_t input_pixel_stride,
+  size_t input_height,
+  size_t input_width,
+  size_t output_height,
+  size_t output_width,
+  size_t kernel_height,
+  size_t kernel_width,
+  size_t stride_height,
+  size_t stride_width,
+  size_t dilation_height,
+  size_t dilation_width,
+  size_t input_padding_top,
+  size_t input_padding_left)
 {
-  const void** indirection_buffer          = op->indirection_buffer;
-  const void* input                        = op->input;
-  const void* zero                         = op->zero_buffer;
-  const size_t input_pixel_stride          = op->input_pixel_stride << log2_element_size;
-  const size_t input_height                = op->input_height;
-  const size_t input_width                 = op->input_width;
-  const size_t output_height               = op->output_height;
-  const size_t output_width                = op->output_width;
-  const size_t kernel_height               = op->kernel_height;
-  const size_t kernel_width                = op->kernel_width;
-  const size_t stride_height               = op->stride_height;
-  const size_t stride_width                = op->stride_width;
-  const size_t dilation_height             = op->dilation_height;
-  const size_t dilation_width              = op->dilation_width;
-  const size_t input_padding_top           = op->padding_top;
-  const size_t input_padding_left          = op->padding_left;
-
   const size_t output_size = output_height * output_width;
-  const size_t tiled_output_size = round_up(output_size, output_tile_size);
   const size_t kernel_size = kernel_height * kernel_width;
 
   const struct fxdiv_divisor_size_t output_width_divisor = fxdiv_init_size_t(output_width);
 
-  for (size_t output_tile_start = 0; output_tile_start < tiled_output_size; output_tile_start += output_tile_size) {
+  for (size_t output_tile_start = output_start; output_tile_start < output_end; output_tile_start += output_tile_size) {
     for (size_t output_tile_offset = 0; output_tile_offset < output_tile_size; output_tile_offset++) {
       const size_t output_index = min(output_tile_start + output_tile_offset, output_size - 1);
       const struct fxdiv_result_size_t output_y_x = fxdiv_divide_size_t(output_index, output_width_divisor);
@@ -63,14 +61,14 @@ void xnn_indirection_init_conv2d(
               indirection_buffer[index] = (const void*)
                 ((uintptr_t) input + (input_y * input_width + input_x) * input_pixel_stride);
             } else {
-              indirection_buffer[index] = zero;
+              indirection_buffer[index] = zero_buffer;
             }
           }
         } else {
           for (size_t kernel_x = 0; kernel_x < kernel_width; kernel_x++) {
             const size_t kernel_index = kernel_y * kernel_width + kernel_x;
             const size_t index = output_tile_start * kernel_size + kernel_index * output_tile_size + output_tile_offset;
-            indirection_buffer[index] = zero;
+            indirection_buffer[index] = zero_buffer;
           }
         }
       }
@@ -198,43 +196,56 @@ void xnn_indirection_init_subconv2d(
   }
 }
 
-void xnn_indirection_init_dwconv2d(
-  xnn_operator_t op,
+void xnn_indirection_init_dwconv2d_compressed(
+  size_t output_y_start,
+  size_t output_y_end,
+  const void** indirection_buffer,
+  const void* input,
+  size_t input_pixel_stride,
+  const void* zero_buffer,
+  size_t input_height,
+  size_t input_width,
+  size_t output_height,
+  size_t output_width,
+  size_t kernel_height,
+  size_t kernel_width,
+  size_t stride_height,
+  size_t stride_width,
+  size_t dilation_height,
+  size_t dilation_width,
+  size_t input_padding_top,
+  size_t input_padding_left,
   size_t step_height,
   size_t step_width,
-  size_t primary_tile,
-  uint32_t log2_element_size)
+  size_t indirect_top_height,
+  size_t indirect_bot_height,
+  size_t primary_tile)
 {
-  const void** indirection_buffer = op->indirection_buffer;
-  const void* input               = op->input;
-  const size_t input_pixel_stride = op->input_pixel_stride << log2_element_size;
-  const void* zero                = op->zero_buffer;
-  const size_t input_height       = op->input_height;
-  const size_t input_width        = op->input_width;
-  const size_t output_height      = op->output_height;
-  const size_t output_width       = op->output_width;
-  const size_t kernel_height      = op->kernel_height;
-  const size_t kernel_width       = op->kernel_width;
-  const size_t stride_height      = op->stride_height;
-  const size_t stride_width       = op->stride_width;
-  const size_t dilation_height    = op->dilation_height;
-  const size_t dilation_width     = op->dilation_width;
-  const size_t input_padding_top  = op->padding_top;
-  const size_t input_padding_left = op->padding_left;
+  assert(output_y_end <= output_height);
 
-  for (size_t output_y = 0; output_y < output_height; output_y++) {
+  // For the last few rows of indirection buffer, output_y is not the same as indirection_y due to compression of the
+  // middle rows. So we track the y offset of indirection buffer separately.
+  size_t indirection_y = output_y_start;
+
+  // Top and middle section:
+  // - indirect_top_height rows of input pointers
+  // - (optional) 1 row of input pointers (compressed section)
+  // indirect_top_height can be equals output_y_end, in that case we don't want to write any rows here, hence the
+  // additional check that output_y < output_y_end. This allows callers to call this function to write uncompressed
+  // indirection buffers (by passing indirect_top_height == output_y_end && indirect_bot_height == 0).
+  for (size_t output_y = output_y_start; output_y < indirect_top_height + 1 && output_y < output_y_end; output_y++, indirection_y++) {
     for (size_t kernel_y = 0; kernel_y < kernel_height; kernel_y++) {
       const size_t input_y = output_y * stride_height + kernel_y * dilation_height - input_padding_top;
       if (input_y < input_height) {
         for (size_t output_x = 0; output_x < output_width; output_x++) {
           for (size_t kernel_x = 0; kernel_x < kernel_width; kernel_x++) {
             const size_t input_x = output_x * stride_width + kernel_x * dilation_width - input_padding_left;
-            const size_t index = output_y * step_height + output_x * step_width * kernel_height + kernel_x * kernel_height + kernel_y;
+            const size_t index = indirection_y * step_height + output_x * step_width * kernel_height + kernel_x * kernel_height + kernel_y;
             if (input_x < input_width) {
               indirection_buffer[index] =
                 (const void*) ((uintptr_t) input + (input_y * input_width + input_x) * input_pixel_stride);
             } else {
-              indirection_buffer[index] = zero;
+              indirection_buffer[index] = zero_buffer;
             }
           }
         }
@@ -242,18 +253,97 @@ void xnn_indirection_init_dwconv2d(
         for (size_t output_x = 0; output_x < output_width; output_x++) {
           for (size_t kernel_x = 0; kernel_x < kernel_width; kernel_x++) {
             const size_t index = output_y * step_height + output_x * step_width * kernel_height + kernel_x * kernel_height + kernel_y;
-            indirection_buffer[index] = zero;
+            indirection_buffer[index] = zero_buffer;
           }
         }
       }
     }
   }
 
-  const void* last_output_pixel = indirection_buffer[output_height * step_height - 1];
-  const size_t last_kernel_index = output_height * step_height - (kernel_height * kernel_width);
-  for (size_t tile_index = kernel_height * kernel_width; tile_index < primary_tile; tile_index++) {
-    indirection_buffer[last_kernel_index + tile_index] = last_output_pixel;
+  // And output_y starts at the bottom, since the middle section is compressed.
+  for (size_t output_y = output_y_end - indirect_bot_height; output_y < output_y_end; output_y++, indirection_y++) {
+    for (size_t kernel_y = 0; kernel_y < kernel_height; kernel_y++) {
+      const size_t input_y = output_y * stride_height + kernel_y * dilation_height - input_padding_top;
+      if (input_y < input_height) {
+        for (size_t output_x = 0; output_x < output_width; output_x++) {
+          for (size_t kernel_x = 0; kernel_x < kernel_width; kernel_x++) {
+            const size_t input_x = output_x * stride_width + kernel_x * dilation_width - input_padding_left;
+            const size_t index = (indirection_y) * step_height + output_x * step_width * kernel_height + kernel_x * kernel_height + kernel_y;
+            if (input_x < input_width) {
+              indirection_buffer[index] =
+                (const void*) ((uintptr_t) input + (input_y * input_width + input_x) * input_pixel_stride);
+            } else {
+              indirection_buffer[index] = zero_buffer;
+            }
+          }
+        }
+      } else {
+        for (size_t output_x = 0; output_x < output_width; output_x++) {
+          for (size_t kernel_x = 0; kernel_x < kernel_width; kernel_x++) {
+            const size_t index = (indirection_y) * step_height + output_x * step_width * kernel_height + kernel_x * kernel_height + kernel_y;
+            indirection_buffer[index] = zero_buffer;
+          }
+        }
+      }
+    }
   }
+
+  if (output_y_end == output_height) {
+    const void* last_output_pixel = indirection_buffer[(indirection_y) * step_height - 1];
+    const size_t last_kernel_index = (indirection_y) * step_height - (kernel_height * kernel_width);
+    for (size_t tile_index = kernel_height * kernel_width; tile_index < primary_tile; tile_index++) {
+      indirection_buffer[last_kernel_index + tile_index] = last_output_pixel;
+    }
+  }
+}
+
+void xnn_indirection_init_dwconv2d(
+  size_t output_y_start,
+  size_t output_y_end,
+  const void** indirection_buffer,
+  const void* input,
+  size_t input_pixel_stride,
+  const void* zero_buffer,
+  size_t input_height,
+  size_t input_width,
+  size_t output_height,
+  size_t output_width,
+  size_t kernel_height,
+  size_t kernel_width,
+  size_t stride_height,
+  size_t stride_width,
+  size_t dilation_height,
+  size_t dilation_width,
+  size_t input_padding_top,
+  size_t input_padding_left,
+  size_t step_height,
+  size_t step_width,
+  size_t primary_tile)
+{
+  xnn_indirection_init_dwconv2d_compressed(
+    output_y_start,
+    output_y_end,
+    indirection_buffer,
+    input,
+    input_pixel_stride,
+    zero_buffer,
+    input_height,
+    input_width,
+    output_height,
+    output_width,
+    kernel_height,
+    kernel_width,
+    stride_height,
+    stride_width,
+    dilation_height,
+    dilation_width,
+    input_padding_top,
+    input_padding_left,
+    step_height,
+    step_width,
+    /*indirect_top_height=*/output_y_end,
+    /*indirect_bot_height=*/0,
+    primary_tile);
 }
 
 void xnn_indirection_init_maxpool2d(
@@ -335,6 +425,8 @@ void xnn_indirection_init_maxpool2d(
 }
 
 void xnn_indirection_init_resize_bilinear2d_hwc_f16(
+  size_t output_y_start,
+  size_t output_y_end,
   size_t input_pixel_stride,
   size_t input_height,
   size_t input_width,
@@ -363,10 +455,13 @@ void xnn_indirection_init_resize_bilinear2d_hwc_f16(
     (float) ((int32_t) input_height - height_adjustment) / (float) ((int32_t) output_height - height_adjustment);
 
   uint16_t* w = (uint16_t*) packed_weights;
+  indirection_buffer += 4 * output_y_start * output_width;
+  w += 2 * output_y_start * output_width;
+
   const uint32_t input_y_max = (uint32_t) input_height - 1;
   const uint32_t input_x_max = (uint32_t) input_width - 1;
   if (tensorflow_legacy || align_corners) {
-    for (size_t output_y = 0; output_y < output_height; output_y++) {
+    for (size_t output_y = output_y_start; output_y < output_y_end; output_y++) {
       const float input_y = (float) (int32_t) output_y * height_scale;
       assert(input_y >= 0.0f);
       assert(input_y < (float) input_height);
@@ -399,7 +494,7 @@ void xnn_indirection_init_resize_bilinear2d_hwc_f16(
   } else {
     const float height_offset = 0.5f * height_scale - 0.5f;
     const float width_offset = 0.5f * width_scale - 0.5f;
-    for (size_t output_y = 0; output_y < output_height; output_y++) {
+    for (size_t output_y = output_y_start; output_y < output_y_end; output_y++) {
       float input_y = (float) (int32_t) output_y * height_scale + height_offset;
       input_y = math_min_f32(math_max_f32(input_y, 0.0f), (float) input_y_max);
       const uint32_t input_y_top = (uint32_t) (int32_t) input_y;
@@ -431,6 +526,8 @@ void xnn_indirection_init_resize_bilinear2d_hwc_f16(
 }
 
 void xnn_indirection_init_resize_bilinear2d_hwc_f32(
+  size_t output_y_start,
+  size_t output_y_end,
   size_t input_pixel_stride,
   size_t input_height,
   size_t input_width,
@@ -460,8 +557,12 @@ void xnn_indirection_init_resize_bilinear2d_hwc_f32(
 
   const uint32_t input_y_max = (uint32_t) input_height - 1;
   const uint32_t input_x_max = (uint32_t) input_width - 1;
+
+  indirection_buffer += 4 * output_y_start * output_width;
+  packed_weights += 2 * output_y_start * output_width;
+
   if (tensorflow_legacy || align_corners) {
-    for (size_t output_y = 0; output_y < output_height; output_y++) {
+    for (size_t output_y = output_y_start; output_y < output_y_end; output_y++) {
       const float input_y = (float) (int32_t) output_y * height_scale;
       assert(input_y >= 0.0f);
       assert(input_y < (float) input_height);
@@ -494,7 +595,7 @@ void xnn_indirection_init_resize_bilinear2d_hwc_f32(
   } else {
     const float height_offset = 0.5f * height_scale - 0.5f;
     const float width_offset = 0.5f * width_scale - 0.5f;
-    for (size_t output_y = 0; output_y < output_height; output_y++) {
+    for (size_t output_y = output_y_start; output_y < output_y_end; output_y++) {
       float input_y = (float) (int32_t) output_y * height_scale + height_offset;
       input_y = math_min_f32(math_max_f32(input_y, 0.0f), (float) input_y_max);
       const uint32_t input_y_top = (uint32_t) (int32_t) input_y;
@@ -526,6 +627,8 @@ void xnn_indirection_init_resize_bilinear2d_hwc_f32(
 }
 
 void xnn_indirection_init_resize_bilinear2d_hwc_q11(
+  size_t output_y_start,
+  size_t output_y_end,
   size_t input_pixel_stride,
   size_t input_height,
   size_t input_width,
@@ -555,8 +658,12 @@ void xnn_indirection_init_resize_bilinear2d_hwc_q11(
 
   const uint32_t input_y_max = (uint32_t) input_height - 1;
   const uint32_t input_x_max = (uint32_t) input_width - 1;
+
+  indirection_buffer += 4 * output_y_start * output_width;
+  packed_weights += 2 * output_y_start * output_width;
+
   if (tensorflow_legacy || align_corners) {
-    for (size_t output_y = 0; output_y < output_height; output_y++) {
+    for (size_t output_y = output_y_start; output_y < output_y_end; output_y++) {
       const float input_y = (float) (int32_t) output_y * height_scale;
       assert(input_y >= 0.0f);
       assert(input_y < (float) input_height);
@@ -589,7 +696,7 @@ void xnn_indirection_init_resize_bilinear2d_hwc_q11(
   } else {
     const float height_offset = 0.5f * height_scale - 0.5f;
     const float width_offset = 0.5f * width_scale - 0.5f;
-    for (size_t output_y = 0; output_y < output_height; output_y++) {
+    for (size_t output_y = output_y_start; output_y < output_y_end; output_y++) {
       float input_y = (float) (int32_t) output_y * height_scale + height_offset;
       input_y = math_min_f32(math_max_f32(input_y, 0.0f), (float) input_y_max);
       const uint32_t input_y_top = (uint32_t) (int32_t) input_y;

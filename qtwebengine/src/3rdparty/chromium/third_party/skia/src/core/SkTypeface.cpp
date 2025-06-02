@@ -31,7 +31,7 @@
 #include "src/sfnt/SkOTTable_OS_2.h"
 
 #ifdef SK_TYPEFACE_FACTORY_FREETYPE
-#include "src/ports/SkFontHost_FreeType_common.h"
+#include "src/ports/SkTypeface_FreeType.h"
 #endif
 
 #ifdef SK_TYPEFACE_FACTORY_CORETEXT
@@ -49,7 +49,6 @@
 
 #include <cstddef>
 #include <cstring>
-#include <utility>
 #include <vector>
 
 using namespace skia_private;
@@ -65,7 +64,10 @@ namespace {
 
 class SkEmptyTypeface : public SkTypeface {
 public:
-    static sk_sp<SkTypeface> Make() { return sk_sp<SkTypeface>(new SkEmptyTypeface); }
+    static sk_sp<SkTypeface> Make() {
+        static SkNoDestructor<SkEmptyTypeface> instance;
+        return sk_ref_sp(instance.get());
+    }
 
     static constexpr SkTypeface::FactoryId FactoryId = SkSetFourByteTag('e','m','t','y');
     static sk_sp<SkTypeface> MakeFromStream(std::unique_ptr<SkStreamAsset> stream,
@@ -76,6 +78,7 @@ public:
         return nullptr;
     }
 protected:
+    friend SkNoDestructor<SkEmptyTypeface>;
     SkEmptyTypeface() : SkTypeface(SkFontStyle(), true) { }
 
     std::unique_ptr<SkStreamAsset> onOpenStream(int* ttcIndex) const override { return nullptr; }
@@ -103,6 +106,8 @@ protected:
     void getPostScriptGlyphNames(SkString*) const override {}
     void getGlyphToUnicodeMap(SkUnichar*) const override {}
     int onGetUPEM() const override { return 0; }
+    bool onComputeBounds(SkRect* bounds) const override { return false; }
+
     class EmptyLocalizedStrings : public SkTypeface::LocalizedStrings {
     public:
         bool next(SkTypeface::LocalizedString*) override { return false; }
@@ -137,40 +142,18 @@ protected:
 
 }  // namespace
 
-SkFontStyle SkTypeface::FromOldStyle(Style oldStyle) {
-    return SkFontStyle((oldStyle & SkTypeface::kBold) ? SkFontStyle::kBold_Weight
-                                                      : SkFontStyle::kNormal_Weight,
-                       SkFontStyle::kNormal_Width,
-                       (oldStyle & SkTypeface::kItalic) ? SkFontStyle::kItalic_Slant
-                                                        : SkFontStyle::kUpright_Slant);
-}
-
-SkTypeface* SkTypeface::GetDefaultTypeface(Style style) {
-    static SkOnce once[4];
-    static sk_sp<SkTypeface> defaults[4];
-
-    SkASSERT((int)style < 4);
-    once[style]([style] {
-        sk_sp<SkFontMgr> fm(SkFontMgr::RefDefault());
-        auto t = fm->legacyMakeTypeface(nullptr, FromOldStyle(style));
-        defaults[style] = t ? t : SkEmptyTypeface::Make();
-    });
-    return defaults[style].get();
-}
-
-sk_sp<SkTypeface> SkTypeface::MakeDefault() {
-    return sk_ref_sp(GetDefaultTypeface());
-}
-
-uint32_t SkTypeface::UniqueID(const SkTypeface* face) {
-    if (nullptr == face) {
-        face = GetDefaultTypeface();
-    }
-    return face->uniqueID();
+sk_sp<SkTypeface> SkTypeface::MakeEmpty() {
+    return SkEmptyTypeface::Make();
 }
 
 bool SkTypeface::Equal(const SkTypeface* facea, const SkTypeface* faceb) {
-    return facea == faceb || SkTypeface::UniqueID(facea) == SkTypeface::UniqueID(faceb);
+    if (facea == faceb) {
+        return true;
+    }
+    if (!facea || !faceb) {
+        return false;
+    }
+    return facea->uniqueID() == faceb->uniqueID();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -203,50 +186,6 @@ namespace {
     }
 
 }  // namespace
-
-sk_sp<SkTypeface> SkTypeface::MakeFromName(const char name[],
-                                           SkFontStyle fontStyle) {
-    if (nullptr == name && (fontStyle.slant() == SkFontStyle::kItalic_Slant ||
-                            fontStyle.slant() == SkFontStyle::kUpright_Slant) &&
-                           (fontStyle.weight() == SkFontStyle::kBold_Weight ||
-                            fontStyle.weight() == SkFontStyle::kNormal_Weight)) {
-        return sk_ref_sp(GetDefaultTypeface(static_cast<SkTypeface::Style>(
-            (fontStyle.slant() == SkFontStyle::kItalic_Slant ? SkTypeface::kItalic :
-                                                               SkTypeface::kNormal) |
-            (fontStyle.weight() == SkFontStyle::kBold_Weight ? SkTypeface::kBold :
-                                                               SkTypeface::kNormal))));
-    }
-    return SkFontMgr::RefDefault()->legacyMakeTypeface(name, fontStyle);
-}
-
-sk_sp<SkTypeface> SkTypeface::MakeFromStream(std::unique_ptr<SkStreamAsset> stream, int index) {
-    if (!stream) {
-        return nullptr;
-    }
-    // TODO: Enable this while updating tests (FontHostStream), expectations, and nonativeFonts.
-#if 0
-    SkFontArguments args;
-    args.setCollectionIndex(index);
-    for (const DecoderProc& proc : *decoders()) {
-        sk_sp<SkTypeface> typeface = proc.makeFromStream(stream->duplicate(), args);
-        if (typeface) {
-            return typeface;
-        }
-    }
-#endif
-    return SkFontMgr::RefDefault()->makeFromStream(std::move(stream), index);
-}
-
-sk_sp<SkTypeface> SkTypeface::MakeFromData(sk_sp<SkData> data, int index) {
-    if (!data) {
-        return nullptr;
-    }
-    return SkFontMgr::RefDefault()->makeFromData(std::move(data), index);
-}
-
-sk_sp<SkTypeface> SkTypeface::MakeFromFile(const char path[], int index) {
-    return SkFontMgr::RefDefault()->makeFromFile(path, index);
-}
 
 sk_sp<SkTypeface> SkTypeface::makeClone(const SkFontArguments& args) const {
     return this->onMakeClone(args);
@@ -299,7 +238,7 @@ sk_sp<SkData> SkTypeface::serialize(SerializeBehavior behavior) const {
     return stream.detachAsData();
 }
 
-sk_sp<SkTypeface> SkTypeface::MakeDeserialize(SkStream* stream) {
+sk_sp<SkTypeface> SkTypeface::MakeDeserialize(SkStream* stream, sk_sp<SkFontMgr> lastResortMgr) {
     SkFontDescriptor desc;
     if (!SkFontDescriptor::Deserialize(stream, &desc)) {
         return nullptr;
@@ -317,15 +256,25 @@ sk_sp<SkTypeface> SkTypeface::MakeDeserialize(SkStream* stream) {
                  (id >> 24) & 0xFF, (id >> 16) & 0xFF, (id >> 8) & 0xFF, (id >> 0) & 0xFF,
                  desc.getFamilyName());
 
-        sk_sp<SkFontMgr> defaultFm = SkFontMgr::RefDefault();
-        sk_sp<SkTypeface> typeface = defaultFm->makeFromStream(desc.detachStream(),
-                                                               desc.getFontArguments());
-        if (typeface) {
-            return typeface;
+        if (lastResortMgr) {
+            // If we've gotten to here, we will try desperately to find something that might match
+            // as a kind of last ditch effort to make something work (and maybe this SkFontMgr knows
+            // something about the serialization and can look up the right thing by name anyway if
+            // the user provides it).
+            // Any time it is used the user will probably get the wrong glyphs drawn (and if they're
+            // right it is totally by accident). But sometimes drawing something or getting lucky
+            // while debugging is better than drawing nothing at all.
+            sk_sp<SkTypeface> typeface = lastResortMgr->makeFromStream(desc.detachStream(),
+                                                                       desc.getFontArguments());
+            if (typeface) {
+                return typeface;
+            }
         }
     }
-
-    return SkTypeface::MakeFromName(desc.getFamilyName(), desc.getStyle());
+    if (lastResortMgr) {
+        return lastResortMgr->legacyMakeTypeface(desc.getFamilyName(), desc.getStyle());
+    }
+    return SkEmptyTypeface::Make();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

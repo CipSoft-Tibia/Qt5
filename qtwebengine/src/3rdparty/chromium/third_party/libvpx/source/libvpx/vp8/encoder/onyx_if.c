@@ -55,6 +55,7 @@
 #endif
 
 #include <assert.h>
+#include <errno.h>
 #include <math.h>
 #include <stdio.h>
 #include <limits.h>
@@ -267,16 +268,23 @@ static int rescale(int val, int num, int denom) {
   int64_t llden = denom;
   int64_t llval = val;
 
-  return (int)(llval * llnum / llden);
+  int64_t result = (llval * llnum / llden);
+  if (result <= INT_MAX)
+    return (int)result;
+  else
+    return INT_MAX;
 }
 
-void vp8_init_temporal_layer_context(VP8_COMP *cpi, VP8_CONFIG *oxcf,
+void vp8_init_temporal_layer_context(VP8_COMP *cpi, const VP8_CONFIG *oxcf,
                                      const int layer,
                                      double prev_layer_framerate) {
   LAYER_CONTEXT *lc = &cpi->layer_context[layer];
 
   lc->framerate = cpi->output_framerate / cpi->oxcf.rate_decimator[layer];
-  lc->target_bandwidth = cpi->oxcf.target_bitrate[layer] * 1000;
+  if (cpi->oxcf.target_bitrate[layer] > INT_MAX / 1000)
+    lc->target_bandwidth = INT_MAX;
+  else
+    lc->target_bandwidth = cpi->oxcf.target_bitrate[layer] * 1000;
 
   lc->starting_buffer_level_in_ms = oxcf->starting_buffer_level;
   lc->optimal_buffer_level_in_ms = oxcf->optimal_buffer_level;
@@ -328,7 +336,7 @@ void vp8_init_temporal_layer_context(VP8_COMP *cpi, VP8_CONFIG *oxcf,
 // for any "new" layers. For "existing" layers, let them inherit the parameters
 // from the previous layer state (at the same layer #). In future we may want
 // to better map the previous layer state(s) to the "new" ones.
-void vp8_reset_temporal_layer_change(VP8_COMP *cpi, VP8_CONFIG *oxcf,
+void vp8_reset_temporal_layer_change(VP8_COMP *cpi, const VP8_CONFIG *oxcf,
                                      const int prev_num_layers) {
   int i;
   double prev_layer_framerate = 0;
@@ -442,11 +450,6 @@ static void dealloc_compressor_data(VP8_COMP *cpi) {
 
   vpx_free(cpi->mb.pip);
   cpi->mb.pip = 0;
-
-#if CONFIG_MULTITHREAD
-  vpx_free(cpi->mt_current_mb_col);
-  cpi->mt_current_mb_col = NULL;
-#endif
 }
 
 static void enable_segmentation(VP8_COMP *cpi) {
@@ -1224,17 +1227,6 @@ void vp8_alloc_compressor_data(VP8_COMP *cpi) {
   } else {
     cpi->mt_sync_range = 16;
   }
-
-  if (cpi->oxcf.multi_threaded > 1) {
-    int i;
-
-    vpx_free(cpi->mt_current_mb_col);
-    CHECK_MEM_ERROR(&cpi->common.error, cpi->mt_current_mb_col,
-                    vpx_malloc(sizeof(*cpi->mt_current_mb_col) * cm->mb_rows));
-    for (i = 0; i < cm->mb_rows; ++i)
-      vpx_atomic_init(&cpi->mt_current_mb_col[i], 0);
-  }
-
 #endif
 
   vpx_free(cpi->tplist);
@@ -1306,7 +1298,7 @@ void vp8_new_framerate(VP8_COMP *cpi, double framerate) {
   }
 }
 
-static void init_config(VP8_COMP *cpi, VP8_CONFIG *oxcf) {
+static void init_config(VP8_COMP *cpi, const VP8_CONFIG *oxcf) {
   VP8_COMMON *cm = &cpi->common;
 
   cpi->oxcf = *oxcf;
@@ -1397,7 +1389,10 @@ void vp8_update_layer_contexts(VP8_COMP *cpi) {
       LAYER_CONTEXT *lc = &cpi->layer_context[i];
 
       lc->framerate = cpi->ref_framerate / oxcf->rate_decimator[i];
-      lc->target_bandwidth = oxcf->target_bitrate[i] * 1000;
+      if (oxcf->target_bitrate[i] > INT_MAX / 1000)
+        lc->target_bandwidth = INT_MAX;
+      else
+        lc->target_bandwidth = oxcf->target_bitrate[i] * 1000;
 
       lc->starting_buffer_level = rescale(
           (int)oxcf->starting_buffer_level_in_ms, lc->target_bandwidth, 1000);
@@ -1428,11 +1423,11 @@ void vp8_update_layer_contexts(VP8_COMP *cpi) {
   }
 }
 
-void vp8_change_config(VP8_COMP *cpi, VP8_CONFIG *oxcf) {
+void vp8_change_config(VP8_COMP *cpi, const VP8_CONFIG *oxcf) {
   VP8_COMMON *cm = &cpi->common;
   int last_w, last_h;
   unsigned int prev_number_of_layers;
-  unsigned int raw_target_rate;
+  double raw_target_rate;
 
   if (!cpi) return;
 
@@ -1447,11 +1442,6 @@ void vp8_change_config(VP8_COMP *cpi, VP8_CONFIG *oxcf) {
   last_h = cpi->oxcf.Height;
   prev_number_of_layers = cpi->oxcf.number_of_layers;
 
-  if (cpi->initial_width) {
-    // TODO(https://crbug.com/1486441): Allow changing thread counts; the
-    // allocation is done once in vp8_create_compressor().
-    oxcf->multi_threaded = cpi->oxcf.multi_threaded;
-  }
   cpi->oxcf = *oxcf;
 
   switch (cpi->oxcf.Mode) {
@@ -1578,10 +1568,10 @@ void vp8_change_config(VP8_COMP *cpi, VP8_CONFIG *oxcf) {
     cpi->oxcf.maximum_buffer_size_in_ms = 240000;
   }
 
-  raw_target_rate = (unsigned int)((int64_t)cpi->oxcf.Width * cpi->oxcf.Height *
-                                   8 * 3 * cpi->framerate / 1000);
+  raw_target_rate = ((int64_t)cpi->oxcf.Width * cpi->oxcf.Height * 8 * 3 *
+                     cpi->framerate / 1000.0);
   if (cpi->oxcf.target_bandwidth > raw_target_rate)
-    cpi->oxcf.target_bandwidth = raw_target_rate;
+    cpi->oxcf.target_bandwidth = (unsigned int)raw_target_rate;
   /* Convert target bandwidth from Kbit/s to Bit/s */
   cpi->oxcf.target_bandwidth *= 1000;
 
@@ -1760,7 +1750,7 @@ static void cal_mvsadcosts(int *mvsadcost[2]) {
   } while (++i <= mvfp_max);
 }
 
-struct VP8_COMP *vp8_create_compressor(VP8_CONFIG *oxcf) {
+struct VP8_COMP *vp8_create_compressor(const VP8_CONFIG *oxcf) {
   int i;
 
   VP8_COMP *cpi;
@@ -1920,6 +1910,7 @@ struct VP8_COMP *vp8_create_compressor(VP8_CONFIG *oxcf) {
   cpi->force_maxqp = 0;
   cpi->frames_since_last_drop_overshoot = 0;
   cpi->rt_always_update_correction_factor = 0;
+  cpi->rt_drop_recode_on_overshoot = 1;
 
   cpi->b_calculate_psnr = CONFIG_INTERNAL_STATS;
 #if CONFIG_INTERNAL_STATS
@@ -3204,6 +3195,113 @@ void vp8_loopfilter_frame(VP8_COMP *cpi, VP8_COMMON *cm) {
 
   vp8_yv12_extend_frame_borders(cm->frame_to_show);
 }
+// Return 1 if frame is to be dropped. Update frame drop decimation
+// counters.
+int vp8_check_drop_buffer(VP8_COMP *cpi) {
+  VP8_COMMON *cm = &cpi->common;
+  int drop_mark = (int)(cpi->oxcf.drop_frames_water_mark *
+                        cpi->oxcf.optimal_buffer_level / 100);
+  int drop_mark75 = drop_mark * 2 / 3;
+  int drop_mark50 = drop_mark / 4;
+  int drop_mark25 = drop_mark / 8;
+  if (cpi->drop_frames_allowed) {
+    /* The reset to decimation 0 is only done here for one pass.
+     * Once it is set two pass leaves decimation on till the next kf.
+     */
+    if (cpi->buffer_level > drop_mark && cpi->decimation_factor > 0) {
+      cpi->decimation_factor--;
+    }
+
+    if (cpi->buffer_level > drop_mark75 && cpi->decimation_factor > 0) {
+      cpi->decimation_factor = 1;
+
+    } else if (cpi->buffer_level < drop_mark25 &&
+               (cpi->decimation_factor == 2 || cpi->decimation_factor == 3)) {
+      cpi->decimation_factor = 3;
+    } else if (cpi->buffer_level < drop_mark50 &&
+               (cpi->decimation_factor == 1 || cpi->decimation_factor == 2)) {
+      cpi->decimation_factor = 2;
+    } else if (cpi->buffer_level < drop_mark75 &&
+               (cpi->decimation_factor == 0 || cpi->decimation_factor == 1)) {
+      cpi->decimation_factor = 1;
+    }
+  }
+
+  /* The following decimates the frame rate according to a regular
+   * pattern (i.e. to 1/2 or 2/3 frame rate) This can be used to help
+   * prevent buffer under-run in CBR mode. Alternatively it might be
+   * desirable in some situations to drop frame rate but throw more bits
+   * at each frame.
+   *
+   * Note that dropping a key frame can be problematic if spatial
+   * resampling is also active
+   */
+  if (cpi->decimation_factor > 0 && cpi->drop_frames_allowed) {
+    switch (cpi->decimation_factor) {
+      case 1:
+        cpi->per_frame_bandwidth = cpi->per_frame_bandwidth * 3 / 2;
+        break;
+      case 2:
+        cpi->per_frame_bandwidth = cpi->per_frame_bandwidth * 5 / 4;
+        break;
+      case 3:
+        cpi->per_frame_bandwidth = cpi->per_frame_bandwidth * 5 / 4;
+        break;
+    }
+
+    /* Note that we should not throw out a key frame (especially when
+     * spatial resampling is enabled).
+     */
+    if (cm->frame_type == KEY_FRAME) {
+      cpi->decimation_count = cpi->decimation_factor;
+    } else if (cpi->decimation_count > 0) {
+      cpi->decimation_count--;
+
+      cpi->bits_off_target += cpi->av_per_frame_bandwidth;
+      if (cpi->bits_off_target > cpi->oxcf.maximum_buffer_size) {
+        cpi->bits_off_target = cpi->oxcf.maximum_buffer_size;
+      }
+
+#if CONFIG_MULTI_RES_ENCODING
+      vp8_store_drop_frame_info(cpi);
+#endif
+
+      cm->current_video_frame++;
+      cpi->frames_since_key++;
+      cpi->ext_refresh_frame_flags_pending = 0;
+      // We advance the temporal pattern for dropped frames.
+      cpi->temporal_pattern_counter++;
+
+#if CONFIG_INTERNAL_STATS
+      cpi->count++;
+#endif
+
+      cpi->buffer_level = cpi->bits_off_target;
+
+      if (cpi->oxcf.number_of_layers > 1) {
+        unsigned int i;
+
+        /* Propagate bits saved by dropping the frame to higher
+         * layers
+         */
+        for (i = cpi->current_layer + 1; i < cpi->oxcf.number_of_layers; ++i) {
+          LAYER_CONTEXT *lc = &cpi->layer_context[i];
+          lc->bits_off_target += (int)(lc->target_bandwidth / lc->framerate);
+          if (lc->bits_off_target > lc->maximum_buffer_size) {
+            lc->bits_off_target = lc->maximum_buffer_size;
+          }
+          lc->buffer_level = lc->bits_off_target;
+        }
+      }
+      return 1;
+    } else {
+      cpi->decimation_count = cpi->decimation_factor;
+    }
+  } else {
+    cpi->decimation_count = 0;
+  }
+  return 0;
+}
 
 static void encode_frame_to_data_rate(VP8_COMP *cpi, size_t *size,
                                       unsigned char *dest,
@@ -3228,12 +3326,6 @@ static void encode_frame_to_data_rate(VP8_COMP *cpi, size_t *size,
   int overshoot_seen = 0;
   int undershoot_seen = 0;
 #endif
-
-  int drop_mark = (int)(cpi->oxcf.drop_frames_water_mark *
-                        cpi->oxcf.optimal_buffer_level / 100);
-  int drop_mark75 = drop_mark * 2 / 3;
-  int drop_mark50 = drop_mark / 4;
-  int drop_mark25 = drop_mark / 8;
 
   /* Clear down mmx registers to allow floating point in what follows */
   vpx_clear_system_state();
@@ -3448,102 +3540,8 @@ static void encode_frame_to_data_rate(VP8_COMP *cpi, size_t *size,
 
   update_rd_ref_frame_probs(cpi);
 
-  if (cpi->drop_frames_allowed) {
-    /* The reset to decimation 0 is only done here for one pass.
-     * Once it is set two pass leaves decimation on till the next kf.
-     */
-    if ((cpi->buffer_level > drop_mark) && (cpi->decimation_factor > 0)) {
-      cpi->decimation_factor--;
-    }
-
-    if (cpi->buffer_level > drop_mark75 && cpi->decimation_factor > 0) {
-      cpi->decimation_factor = 1;
-
-    } else if (cpi->buffer_level < drop_mark25 &&
-               (cpi->decimation_factor == 2 || cpi->decimation_factor == 3)) {
-      cpi->decimation_factor = 3;
-    } else if (cpi->buffer_level < drop_mark50 &&
-               (cpi->decimation_factor == 1 || cpi->decimation_factor == 2)) {
-      cpi->decimation_factor = 2;
-    } else if (cpi->buffer_level < drop_mark75 &&
-               (cpi->decimation_factor == 0 || cpi->decimation_factor == 1)) {
-      cpi->decimation_factor = 1;
-    }
-  }
-
-  /* The following decimates the frame rate according to a regular
-   * pattern (i.e. to 1/2 or 2/3 frame rate) This can be used to help
-   * prevent buffer under-run in CBR mode. Alternatively it might be
-   * desirable in some situations to drop frame rate but throw more bits
-   * at each frame.
-   *
-   * Note that dropping a key frame can be problematic if spatial
-   * resampling is also active
-   */
-  if (cpi->decimation_factor > 0 && cpi->drop_frames_allowed) {
-    switch (cpi->decimation_factor) {
-      case 1:
-        cpi->per_frame_bandwidth = cpi->per_frame_bandwidth * 3 / 2;
-        break;
-      case 2:
-        cpi->per_frame_bandwidth = cpi->per_frame_bandwidth * 5 / 4;
-        break;
-      case 3:
-        cpi->per_frame_bandwidth = cpi->per_frame_bandwidth * 5 / 4;
-        break;
-    }
-
-    /* Note that we should not throw out a key frame (especially when
-     * spatial resampling is enabled).
-     */
-    if (cm->frame_type == KEY_FRAME) {
-      cpi->decimation_count = cpi->decimation_factor;
-    } else if (cpi->decimation_count > 0) {
-      cpi->decimation_count--;
-
-      cpi->bits_off_target += cpi->av_per_frame_bandwidth;
-      if (cpi->bits_off_target > cpi->oxcf.maximum_buffer_size) {
-        cpi->bits_off_target = cpi->oxcf.maximum_buffer_size;
-      }
-
-#if CONFIG_MULTI_RES_ENCODING
-      vp8_store_drop_frame_info(cpi);
-#endif
-
-      cm->current_video_frame++;
-      cpi->frames_since_key++;
-      cpi->ext_refresh_frame_flags_pending = 0;
-      // We advance the temporal pattern for dropped frames.
-      cpi->temporal_pattern_counter++;
-
-#if CONFIG_INTERNAL_STATS
-      cpi->count++;
-#endif
-
-      cpi->buffer_level = cpi->bits_off_target;
-
-      if (cpi->oxcf.number_of_layers > 1) {
-        unsigned int i;
-
-        /* Propagate bits saved by dropping the frame to higher
-         * layers
-         */
-        for (i = cpi->current_layer + 1; i < cpi->oxcf.number_of_layers; ++i) {
-          LAYER_CONTEXT *lc = &cpi->layer_context[i];
-          lc->bits_off_target += (int)(lc->target_bandwidth / lc->framerate);
-          if (lc->bits_off_target > lc->maximum_buffer_size) {
-            lc->bits_off_target = lc->maximum_buffer_size;
-          }
-          lc->buffer_level = lc->bits_off_target;
-        }
-      }
-
-      return;
-    } else {
-      cpi->decimation_count = cpi->decimation_factor;
-    }
-  } else {
-    cpi->decimation_count = 0;
+  if (vp8_check_drop_buffer(cpi)) {
+    return;
   }
 
   /* Decide how big to make the frame */
@@ -3951,7 +3949,8 @@ static void encode_frame_to_data_rate(VP8_COMP *cpi, size_t *size,
     /* transform / motion compensation build reconstruction frame */
     vp8_encode_frame(cpi);
 
-    if (cpi->pass == 0 && cpi->oxcf.end_usage == USAGE_STREAM_FROM_SERVER) {
+    if (cpi->pass == 0 && cpi->oxcf.end_usage == USAGE_STREAM_FROM_SERVER &&
+        cpi->rt_drop_recode_on_overshoot == 1) {
       if (vp8_drop_encodedframe_overshoot(cpi, Q)) {
         vpx_clear_system_state();
         return;
@@ -4403,7 +4402,9 @@ static void encode_frame_to_data_rate(VP8_COMP *cpi, size_t *size,
     cpi->b_lpf_running = 1;
     /* wait for the filter_level to be picked so that we can continue with
      * stream packing */
-    sem_wait(&cpi->h_event_end_lpf);
+    errno = 0;
+    while (sem_wait(&cpi->h_event_end_lpf) != 0 && errno == EINTR) {
+    }
   } else
 #endif
   {
@@ -5132,6 +5133,16 @@ int vp8_get_compressed_data(VP8_COMP *cpi, unsigned int *frame_flags,
   vpx_usec_timer_mark(&cmptimer);
   cpi->time_compress_data += vpx_usec_timer_elapsed(&cmptimer);
 
+#if CONFIG_MULTITHREAD
+  /* wait for the lpf thread done */
+  if (vpx_atomic_load_acquire(&cpi->b_multi_threaded) && cpi->b_lpf_running) {
+    errno = 0;
+    while (sem_wait(&cpi->h_event_end_lpf) != 0 && errno == EINTR) {
+    }
+    cpi->b_lpf_running = 0;
+  }
+#endif
+
   if (cpi->b_calculate_psnr && cpi->pass != 1 && cm->show_frame) {
     generate_psnr_packet(cpi);
   }
@@ -5260,14 +5271,6 @@ int vp8_get_compressed_data(VP8_COMP *cpi, unsigned int *frame_flags,
 #endif
 
   cpi->common.error.setjmp = 0;
-
-#if CONFIG_MULTITHREAD
-  /* wait for the lpf thread done */
-  if (vpx_atomic_load_acquire(&cpi->b_multi_threaded) && cpi->b_lpf_running) {
-    sem_wait(&cpi->h_event_end_lpf);
-    cpi->b_lpf_running = 0;
-  }
-#endif
 
   return 0;
 }

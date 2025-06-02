@@ -26,10 +26,10 @@ bool BestPractices::PreCallValidateCreateCommandPool(VkDevice device, const VkCo
     bool skip = false;
 
     if (pCreateInfo->flags & VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT) {
-        skip |= LogPerformanceWarning(
-            device, kVUID_BestPractices_CreateCommandPool_CommandBufferReset,
-            "vkCreateCommandPool(): VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire "
-            "pool instead.");
+        skip |= LogPerformanceWarning(kVUID_BestPractices_CreateCommandPool_CommandBufferReset, device,
+                                      error_obj.location.dot(Field::pCreateInfo).dot(Field::flags),
+                                      "VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT is set. Consider resetting entire "
+                                      "pool instead.");
     }
 
     return skip;
@@ -39,15 +39,15 @@ bool BestPractices::PreCallValidateAllocateCommandBuffers(VkDevice device, const
                                                           VkCommandBuffer* pCommandBuffers, const ErrorObject& error_obj) const {
     bool skip = false;
 
-    auto cp_state = Get<COMMAND_POOL_STATE>(pAllocateInfo->commandPool);
+    auto cp_state = Get<vvl::CommandPool>(pAllocateInfo->commandPool);
     if (!cp_state) return false;
 
     const VkQueueFlags queue_flags = physical_device_state->queue_family_properties[cp_state->queueFamilyIndex].queueFlags;
     const VkQueueFlags sec_cmd_buf_queue_flags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
 
     if (pAllocateInfo->level == VK_COMMAND_BUFFER_LEVEL_SECONDARY && (queue_flags & sec_cmd_buf_queue_flags) == 0) {
-        skip |= LogWarning(device, kVUID_BestPractices_AllocateCommandBuffers_UnusableSecondary,
-                           "vkAllocateCommandBuffer(): Allocating secondary level command buffer from command pool "
+        skip |= LogWarning(kVUID_BestPractices_AllocateCommandBuffers_UnusableSecondary, device, error_obj.location,
+                           "Allocating secondary level command buffer from command pool "
                            "created against queue family #%u (queue flags: %s), but vkCmdExecuteCommands() is only "
                            "supported on queue families supporting VK_QUEUE_GRAPHICS_BIT, VK_QUEUE_COMPUTE_BIT, or "
                            "VK_QUEUE_TRANSFER_BIT. The allocated command buffer will not be submittable.",
@@ -57,14 +57,14 @@ bool BestPractices::PreCallValidateAllocateCommandBuffers(VkDevice device, const
     return skip;
 }
 
-void BestPractices::PreCallRecordBeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBeginInfo* pBeginInfo) {
-    StateTracker::PreCallRecordBeginCommandBuffer(commandBuffer, pBeginInfo);
+void BestPractices::PreCallRecordBeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBeginInfo* pBeginInfo,
+                                                    const RecordObject& record_obj) {
+    StateTracker::PreCallRecordBeginCommandBuffer(commandBuffer, pBeginInfo, record_obj);
 
-    auto cb = GetWrite<bp_state::CommandBuffer>(commandBuffer);
-    if (!cb) return;
+    auto cb_state = GetWrite<bp_state::CommandBuffer>(commandBuffer);
+    if (!cb_state) return;
 
-    cb->num_submits = 0;
-    cb->is_one_time_submit = (pBeginInfo->flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) != 0;
+    cb_state->num_submits = 0;
 }
 
 bool BestPractices::PreCallValidateBeginCommandBuffer(VkCommandBuffer commandBuffer, const VkCommandBufferBeginInfo* pBeginInfo,
@@ -72,25 +72,32 @@ bool BestPractices::PreCallValidateBeginCommandBuffer(VkCommandBuffer commandBuf
     bool skip = false;
 
     if (pBeginInfo->flags & VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT) {
-        skip |= LogPerformanceWarning(device, kVUID_BestPractices_BeginCommandBuffer_SimultaneousUse,
-                                      "vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT is set.");
+        skip |= LogPerformanceWarning(kVUID_BestPractices_BeginCommandBuffer_SimultaneousUse, device,
+                                      error_obj.location.dot(Field::pBeginInfo).dot(Field::flags),
+                                      "(%s) has VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT.",
+                                      string_VkCommandBufferUsageFlags(pBeginInfo->flags).c_str());
     }
 
+    const bool is_one_time_submit = (pBeginInfo->flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) != 0;
     if (VendorCheckEnabled(kBPVendorArm)) {
-        if (!(pBeginInfo->flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)) {
-            skip |= LogPerformanceWarning(device, kVUID_BestPractices_BeginCommandBuffer_OneTimeSubmit,
-                                          "%s vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT is not set. "
-                                          "For best performance on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.",
-                                          VendorSpecificTag(kBPVendorArm));
+        if (!is_one_time_submit) {
+            skip |=
+                LogPerformanceWarning(kVUID_BestPractices_BeginCommandBuffer_OneTimeSubmit, device,
+                                      error_obj.location.dot(Field::pBeginInfo).dot(Field::flags),
+                                      "(%s) doesn't have VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT set. %s For best performance "
+                                      "on Mali GPUs, consider setting ONE_TIME_SUBMIT by default.",
+                                      string_VkCommandBufferUsageFlags(pBeginInfo->flags).c_str(), VendorSpecificTag(kBPVendorArm));
         }
     }
     if (VendorCheckEnabled(kBPVendorNVIDIA)) {
-        auto cb = GetRead<bp_state::CommandBuffer>(commandBuffer);
-        if (cb->num_submits == 1 && !cb->is_one_time_submit) {
-            skip |= LogPerformanceWarning(device, kVUID_BestPractices_BeginCommandBuffer_OneTimeSubmit,
-                                          "%s vkBeginCommandBuffer(): VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT was not set "
-                                          "and the command buffer has only been submitted once. "
+        auto cb_state = GetRead<bp_state::CommandBuffer>(commandBuffer);
+        if (cb_state->num_submits == 1 && !is_one_time_submit) {
+            skip |= LogPerformanceWarning(kVUID_BestPractices_BeginCommandBuffer_OneTimeSubmit, device,
+                                          error_obj.location.dot(Field::pBeginInfo).dot(Field::flags),
+                                          "(%s) doesn't have VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT set "
+                                          "and the command buffer has only been submitted once. %s "
                                           "For best performance on NVIDIA GPUs, use ONE_TIME_SUBMIT.",
+                                          string_VkCommandBufferUsageFlags(pBeginInfo->flags).c_str(),
                                           VendorSpecificTag(kBPVendorNVIDIA));
         }
     }
@@ -102,7 +109,7 @@ bool BestPractices::PreCallValidateCmdWriteTimestamp(VkCommandBuffer commandBuff
                                                      VkQueryPool queryPool, uint32_t query, const ErrorObject& error_obj) const {
     bool skip = false;
 
-    skip |= CheckPipelineStageFlags("vkCmdWriteTimestamp", static_cast<VkPipelineStageFlags>(pipelineStage));
+    skip |= CheckPipelineStageFlags(error_obj.location.dot(Field::pipelineStage), static_cast<VkPipelineStageFlags>(pipelineStage));
 
     return skip;
 }
@@ -110,64 +117,70 @@ bool BestPractices::PreCallValidateCmdWriteTimestamp(VkCommandBuffer commandBuff
 bool BestPractices::PreCallValidateCmdWriteTimestamp2KHR(VkCommandBuffer commandBuffer, VkPipelineStageFlags2KHR pipelineStage,
                                                          VkQueryPool queryPool, uint32_t query,
                                                          const ErrorObject& error_obj) const {
-    bool skip = false;
-
-    skip |= CheckPipelineStageFlags("vkCmdWriteTimestamp2KHR", pipelineStage);
-
-    return skip;
+    return PreCallValidateCmdWriteTimestamp2(commandBuffer, pipelineStage, queryPool, query, error_obj);
 }
 
 bool BestPractices::PreCallValidateCmdWriteTimestamp2(VkCommandBuffer commandBuffer, VkPipelineStageFlags2 pipelineStage,
                                                       VkQueryPool queryPool, uint32_t query, const ErrorObject& error_obj) const {
     bool skip = false;
 
-    skip |= CheckPipelineStageFlags("vkCmdWriteTimestamp2", pipelineStage);
+    skip |= CheckPipelineStageFlags(error_obj.location.dot(Field::pipelineStage), pipelineStage);
 
     return skip;
 }
 
-void BestPractices::PreCallRecordCmdSetDepthCompareOp(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp) {
-    StateTracker::PreCallRecordCmdSetDepthCompareOp(commandBuffer, depthCompareOp);
+bool BestPractices::PreCallValidateGetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery,
+                                                       uint32_t queryCount, size_t dataSize, void* pData, VkDeviceSize stride,
+                                                       VkQueryResultFlags flags, const ErrorObject& error_obj) const {
+    bool skip = false;
 
-    auto cb = GetWrite<bp_state::CommandBuffer>(commandBuffer);
-    assert(cb);
+    const auto& query_pool_state = *Get<vvl::QueryPool>(queryPool);
+
+    for (uint32_t i = firstQuery; i < firstQuery + queryCount; ++i) {
+        if (query_pool_state.GetQueryState(i, 0u) == QUERYSTATE_RESET) {
+            const LogObjectList objlist(queryPool);
+            skip |= LogWarning(kVUID_BestPractices_QueryPool_Unavailable, objlist, error_obj.location,
+                               "QueryPool %s and query %" PRIu32 ": vkCmdBeginQuery() was never called.",
+                               FormatHandle(query_pool_state.pool()).c_str(), i);
+            break;
+        }
+    }
+
+    return skip;
+}
+
+void BestPractices::PreCallRecordCmdSetDepthCompareOp(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp,
+                                                      const RecordObject& record_obj) {
+    StateTracker::PreCallRecordCmdSetDepthCompareOp(commandBuffer, depthCompareOp, record_obj);
+
+    auto cb_state = GetWrite<bp_state::CommandBuffer>(commandBuffer);
+    assert(cb_state);
 
     if (VendorCheckEnabled(kBPVendorNVIDIA)) {
-        RecordSetDepthTestState(*cb, depthCompareOp, cb->nv.depth_test_enable);
+        RecordSetDepthTestState(*cb_state, depthCompareOp, cb_state->nv.depth_test_enable);
     }
 }
 
-void BestPractices::PreCallRecordCmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp) {
-    StateTracker::PreCallRecordCmdSetDepthCompareOpEXT(commandBuffer, depthCompareOp);
+void BestPractices::PreCallRecordCmdSetDepthCompareOpEXT(VkCommandBuffer commandBuffer, VkCompareOp depthCompareOp,
+                                                         const RecordObject& record_obj) {
+    PreCallRecordCmdSetDepthCompareOp(commandBuffer, depthCompareOp, record_obj);
+}
 
-    auto cb = GetWrite<bp_state::CommandBuffer>(commandBuffer);
-    assert(cb);
+void BestPractices::PreCallRecordCmdSetDepthTestEnable(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable,
+                                                       const RecordObject& record_obj) {
+    StateTracker::PreCallRecordCmdSetDepthTestEnable(commandBuffer, depthTestEnable, record_obj);
+
+    auto cb_state = GetWrite<bp_state::CommandBuffer>(commandBuffer);
+    assert(cb_state);
 
     if (VendorCheckEnabled(kBPVendorNVIDIA)) {
-        RecordSetDepthTestState(*cb, depthCompareOp, cb->nv.depth_test_enable);
+        RecordSetDepthTestState(*cb_state, cb_state->nv.depth_compare_op, depthTestEnable != VK_FALSE);
     }
 }
 
-void BestPractices::PreCallRecordCmdSetDepthTestEnable(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable) {
-    StateTracker::PreCallRecordCmdSetDepthTestEnable(commandBuffer, depthTestEnable);
-
-    auto cb = GetWrite<bp_state::CommandBuffer>(commandBuffer);
-    assert(cb);
-
-    if (VendorCheckEnabled(kBPVendorNVIDIA)) {
-        RecordSetDepthTestState(*cb, cb->nv.depth_compare_op, depthTestEnable != VK_FALSE);
-    }
-}
-
-void BestPractices::PreCallRecordCmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable) {
-    StateTracker::PreCallRecordCmdSetDepthTestEnableEXT(commandBuffer, depthTestEnable);
-
-    auto cb = GetWrite<bp_state::CommandBuffer>(commandBuffer);
-    assert(cb);
-
-    if (VendorCheckEnabled(kBPVendorNVIDIA)) {
-        RecordSetDepthTestState(*cb, cb->nv.depth_compare_op, depthTestEnable != VK_FALSE);
-    }
+void BestPractices::PreCallRecordCmdSetDepthTestEnableEXT(VkCommandBuffer commandBuffer, VkBool32 depthTestEnable,
+                                                          const RecordObject& record_obj) {
+    PreCallRecordCmdSetDepthTestEnable(commandBuffer, depthTestEnable, record_obj);
 }
 
 bool BestPractices::PreCallValidateCmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCount,
@@ -179,10 +192,12 @@ bool BestPractices::PreCallValidateCmdExecuteCommands(VkCommandBuffer commandBuf
         if (secondary_cb == nullptr) {
             continue;
         }
+        const Location& cb_loc = error_obj.location.dot(Field::pCommandBuffers, i);
         const auto& secondary = secondary_cb->render_pass_state;
         for (auto& clear : secondary.earlyClearAttachments) {
             if (ClearAttachmentsIsFullClear(*primary, uint32_t(clear.rects.size()), clear.rects.data())) {
-                skip |= ValidateClearAttachment(*primary, clear.framebufferAttachment, clear.colorAttachment, clear.aspects, true);
+                skip |=
+                    ValidateClearAttachment(*primary, clear.framebufferAttachment, clear.colorAttachment, clear.aspects, cb_loc);
             }
         }
 
@@ -190,30 +205,29 @@ bool BestPractices::PreCallValidateCmdExecuteCommands(VkCommandBuffer commandBuf
             if (primary->beginInfo.flags & VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT) {
                 // Warn that non-simultaneous secondary cmd buffer renders primary non-simultaneous
                 const LogObjectList objlist(commandBuffer, pCommandBuffers[i]);
-                skip |= LogWarning(objlist, kVUID_BestPractices_DrawState_InvalidCommandBufferSimultaneousUse,
-                                   "vkCmdExecuteCommands(): pCommandBuffers[%" PRIu32
-                                   "] %s does not have "
+                skip |= LogWarning(kVUID_BestPractices_DrawState_InvalidCommandBufferSimultaneousUse, objlist, cb_loc,
+                                   "(%s) does not have "
                                    "VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT set and will cause primary "
-                                   "%s to be treated as if it does not have "
+                                   "(%s) to be treated as if it does not have "
                                    "VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT set, even though it does.",
-                                   i, FormatHandle(pCommandBuffers[i]).c_str(), FormatHandle(commandBuffer).c_str());
+                                   FormatHandle(pCommandBuffers[i]).c_str(), FormatHandle(commandBuffer).c_str());
             }
         }
     }
 
     if (VendorCheckEnabled(kBPVendorAMD)) {
         if (commandBufferCount > 0) {
-            skip |= LogPerformanceWarning(device, kVUID_BestPractices_CmdBuffer_AvoidSecondaryCmdBuffers,
-                                          "%s Performance warning: Use of secondary command buffers is not recommended. ",
-                                          VendorSpecificTag(kBPVendorAMD));
+            skip |=
+                LogPerformanceWarning(kVUID_BestPractices_CmdBuffer_AvoidSecondaryCmdBuffers, device, error_obj.location,
+                                      "%s Use of secondary command buffers is not recommended.", VendorSpecificTag(kBPVendorAMD));
         }
     }
     return skip;
 }
 
 void BestPractices::PreCallRecordCmdExecuteCommands(VkCommandBuffer commandBuffer, uint32_t commandBufferCount,
-                                                    const VkCommandBuffer* pCommandBuffers) {
-    ValidationStateTracker::PreCallRecordCmdExecuteCommands(commandBuffer, commandBufferCount, pCommandBuffers);
+                                                    const VkCommandBuffer* pCommandBuffers, const RecordObject& record_obj) {
+    ValidationStateTracker::PreCallRecordCmdExecuteCommands(commandBuffer, commandBufferCount, pCommandBuffers, record_obj);
 
     auto primary = GetWrite<bp_state::CommandBuffer>(commandBuffer);
     if (!primary) {

@@ -65,7 +65,6 @@ namespace developerPrivate {
     BACKGROUND_CONTENTS,
     COMPONENT,
     EXTENSION_BACKGROUND_PAGE,
-    EXTENSION_DIALOG,
     EXTENSION_GUEST,
     EXTENSION_POPUP,
     EXTENSION_SERVICE_WORKER_BACKGROUND,
@@ -846,6 +845,10 @@ namespace developerPrivate {
     [supportsPromises] static void removeMultipleExtensions(
         DOMString[] extensionIds,
         optional VoidCallback callback);
+
+    // Dismisses the menu notification for the extensions module in Safety Hub
+    // if one is active.
+    static void dismissSafetyHubExtensionsMenuNotification();
 
     [nocompile, deprecated="Use openDevTools"]
         static void inspect(InspectOptions options,

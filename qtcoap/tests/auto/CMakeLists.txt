@@ -1,6 +1,9 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "QNX")    # QTBUG-121487
+    add_subdirectory(cmake)
+endif()
 add_subdirectory(qcoapclient)
 add_subdirectory(qcoapmessage)
 add_subdirectory(qcoapoption)

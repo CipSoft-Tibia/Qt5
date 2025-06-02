@@ -19,7 +19,7 @@ namespace Qt3DRender {
     \qmltype LineWidth
     \since 5.10
     \inherits RenderState
-    \instantiates Qt3DRender::QLineWidth
+    \nativetype Qt3DRender::QLineWidth
     \inqmlmodule Qt3D.Render
 
     \brief Specifies the width of rasterized lines.
@@ -31,7 +31,7 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property  QLineWidth::value
+    \property  Qt3DRender::QLineWidth::value
     Specifies the width value to be used.
 */
 

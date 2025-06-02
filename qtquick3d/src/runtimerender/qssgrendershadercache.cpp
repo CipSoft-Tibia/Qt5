@@ -66,7 +66,7 @@ static constexpr DefineEntry DefineTable[] {
     { "QSSG_ENABLE_SSAO", QSSGShaderFeatures::Feature::Ssao },
     { "QSSG_ENABLE_DEPTH_PASS", QSSGShaderFeatures::Feature::DepthPass },
     { "QSSG_ENABLE_ORTHO_SHADOW_PASS", QSSGShaderFeatures::Feature::OrthoShadowPass },
-    { "QSSG_ENABLE_CUBE_SHADOW_PASS", QSSGShaderFeatures::Feature::CubeShadowPass },
+    { "QSSG_ENABLE_PERSPECTIVE_SHADOW_PASS", QSSGShaderFeatures::Feature::PerspectiveShadowPass },
     { "QSSG_ENABLE_LINEAR_TONEMAPPING", QSSGShaderFeatures::Feature::LinearTonemapping },
     { "QSSG_ENABLE_ACES_TONEMAPPING", QSSGShaderFeatures::Feature::AcesTonemapping },
     { "QSSG_ENABLE_HEJLDAWSON_TONEMAPPING", QSSGShaderFeatures::Feature::HejlDawsonTonemapping },
@@ -75,7 +75,9 @@ static constexpr DefineEntry DefineTable[] {
     { "QSSG_ENABLE_OPAQUE_DEPTH_PRE_PASS", QSSGShaderFeatures::Feature::OpaqueDepthPrePass },
     { "QSSG_ENABLE_REFLECTION_PROBE", QSSGShaderFeatures::Feature::ReflectionProbe },
     { "QSSG_REDUCE_MAX_NUM_LIGHTS", QSSGShaderFeatures::Feature::ReduceMaxNumLights },
-    { "QSSG_ENABLE_LIGHTMAP", QSSGShaderFeatures::Feature::Lightmap }
+    { "QSSG_ENABLE_LIGHTMAP", QSSGShaderFeatures::Feature::Lightmap },
+    { "QSSG_DISABLE_MULTIVIEW", QSSGShaderFeatures::Feature::DisableMultiView },
+    { "QSSG_FORCE_IBL_EXPOSURE", QSSGShaderFeatures::Feature::ForceIblExposure },
 };
 
 static_assert(std::size(DefineTable) == QSSGShaderFeatures::Count, "Missing feature define?");
@@ -97,11 +99,17 @@ static void initBakerForNonPersistentUse(QShaderBaker *baker, QRhi *rhi)
     QVector<QShaderBaker::GeneratedShader> outputs;
     switch (rhi->backend()) {
     case QRhi::D3D11:
-    case QRhi::D3D12:
         outputs.append({ QShader::HlslShader, QShaderVersion(50) }); // Shader Model 5.0
         break;
+    case QRhi::D3D12:
+        outputs.append({ QShader::HlslShader, QShaderVersion(61) }); // Shader Model 6.1 (includes multiview support)
+        break;
     case QRhi::Metal:
+#if defined(Q_OS_VISIONOS)
+        outputs.append({ QShader::MslShader, QShaderVersion(21) }); // Metal 2.1 (multiview support)
+#else
         outputs.append({ QShader::MslShader, QShaderVersion(12) }); // Metal 1.2
+#endif // Q_OS_VISIONOS
         break;
     case QRhi::OpenGLES2:
     {
@@ -159,13 +167,21 @@ static void initBakerForPersistentUse(QShaderBaker *baker, QRhi *)
 {
     QVector<QShaderBaker::GeneratedShader> outputs;
     outputs.reserve(8);
+
+#ifndef Q_OS_WASM
     outputs.append({ QShader::SpirvShader, QShaderVersion(100) });
     outputs.append({ QShader::HlslShader, QShaderVersion(50) }); // Shader Model 5.0
+    outputs.append({ QShader::HlslShader, QShaderVersion(61) }); // Shader Model 6.1 (for multiview on d3d12)
+#if defined(Q_OS_VISIONOS)
+    outputs.append({ QShader::MslShader, QShaderVersion(21) }); // Metal 2.1 (multiview support)
+#else
     outputs.append({ QShader::MslShader, QShaderVersion(12) }); // Metal 1.2
+#endif // Q_OS_VISIONOS
     outputs.append({ QShader::GlslShader, QShaderVersion(330) }); // OpenGL 3.3+
     outputs.append({ QShader::GlslShader, QShaderVersion(140) }); // OpenGL 3.1+
     outputs.append({ QShader::GlslShader, QShaderVersion(130) }); // OpenGL 3.0+
     outputs.append({ QShader::GlslShader, QShaderVersion(100, QShaderVersion::GlslEs) }); // GLES 2.0
+#endif
     outputs.append({ QShader::GlslShader, QShaderVersion(300, QShaderVersion::GlslEs) }); // GLES 3.0+
 
     // If one of the above cannot be generated due to failing at the
@@ -289,6 +305,8 @@ QSSGShaderCache::~QSSGShaderCache()
 
 void QSSGShaderCache::releaseCachedResources()
 {
+    m_builtInShaders.releaseCachedResources();
+
     m_rhiShaders.clear();
 
     // m_persistentShaderBakingCache is not cleared, that is intentional,
@@ -311,7 +329,8 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::tryGetRhiShaderPipeline(const QByteArr
 void QSSGShaderCache::addShaderPreprocessor(QByteArray &str,
                                             const QByteArray &inKey,
                                             ShaderType shaderType,
-                                            const QSSGShaderFeatures &inFeatures)
+                                            const QSSGShaderFeatures &inFeatures,
+                                            int viewCount)
 {
     m_insertStr.clear();
 
@@ -324,6 +343,11 @@ void QSSGShaderCache::addShaderPreprocessor(QByteArray &str,
     }
 
     m_insertStr += "#define texture2D texture\n";
+
+    // match Qt Quick and QSGMaterial(Shader)
+    m_insertStr += "#define QSHADER_VIEW_COUNT ";
+    m_insertStr += QByteArray::number(viewCount);
+    m_insertStr += "\n";
 
     str.insert(0, m_insertStr);
     QString::size_type insertPos = int(m_insertStr.size());
@@ -359,7 +383,9 @@ QByteArray QSSGShaderCache::shaderCollectionFile()
 }
 
 QSSGRhiShaderPipelinePtr QSSGShaderCache::compileForRhi(const QByteArray &inKey, const QByteArray &inVert, const QByteArray &inFrag,
-                                                        const QSSGShaderFeatures &inFeatures, QSSGRhiShaderPipeline::StageFlags stageFlags)
+                                                        const QSSGShaderFeatures &inFeatures, QSSGRhiShaderPipeline::StageFlags stageFlags,
+                                                        int viewCount,
+                                                        bool perTargetCompilation)
 {
 #ifdef QT_QUICK3D_HAS_RUNTIME_SHADERS
     const QSSGRhiShaderPipelinePtr &rhiShaders = tryGetRhiShaderPipeline(inKey, inFeatures);
@@ -374,10 +400,10 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::compileForRhi(const QByteArray &inKey,
     QByteArray fragmentCode = inFrag;
 
     if (!vertexCode.isEmpty())
-        addShaderPreprocessor(vertexCode, inKey, ShaderType::Vertex, inFeatures);
+        addShaderPreprocessor(vertexCode, inKey, ShaderType::Vertex, inFeatures, viewCount);
 
     if (!fragmentCode.isEmpty())
-        addShaderPreprocessor(fragmentCode, inKey, ShaderType::Fragment, inFeatures);
+        addShaderPreprocessor(fragmentCode, inKey, ShaderType::Fragment, inFeatures, viewCount);
 
     // lo and behold the final shader strings are ready
 
@@ -386,6 +412,15 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::compileForRhi(const QByteArray &inKey,
 
     QShaderBaker baker;
     m_initBaker(&baker, m_rhiContext.rhi());
+
+    // If requested, per-target compilation allows doing things like #if
+    // QSHADER_HLSL in the shader code, at the expense of spending more time in
+    // bake())
+    baker.setPerTargetCompilation(perTargetCompilation);
+
+    // This is in the shader key, but cannot query that here anymore now that it's serialized.
+    // So we get it as a dedicated argument.
+    baker.setMultiViewCount(viewCount);
 
     const bool editorMode = QSSGRhiContextPrivate::editorMode();
     // Shader debug is disabled in editor mode
@@ -422,9 +457,9 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::compileForRhi(const QByteArray &inKey,
     if (!vertShaderValid) {
         vertErr = baker.errorMessage();
         if (!editorMode) {
-            qWarning("Failed to compile vertex shader:\n");
+            qWarning("Failed to compile vertex shader: %s\n", qPrintable(vertErr));
             if (!shaderDebug)
-                qWarning() << inKey << '\n' << vertErr;
+                qWarning() << inKey << '\n';
         }
     }
 
@@ -440,9 +475,9 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::compileForRhi(const QByteArray &inKey,
     if (!fragShaderValid) {
         fragErr = baker.errorMessage();
         if (!editorMode) {
-            qWarning("Failed to compile fragment shader \n");
+            qWarning("Failed to compile fragment shader: %s\n", qPrintable(fragErr));
             if (!shaderDebug)
-                qWarning() << inKey << '\n' << fragErr;
+                qWarning() << inKey << '\n';
         }
     }
 
@@ -583,15 +618,11 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::tryNewPipelineFromPersistentCache(cons
     return {};
 }
 
-QSSGRhiShaderPipelinePtr QSSGShaderCache::loadBuiltinForRhi(const QByteArray &inKey)
+QSSGRhiShaderPipelinePtr QSSGShaderCache::loadBuiltinUncached(const QByteArray &inKey, int viewCount)
 {
-    const QSSGRhiShaderPipelinePtr &rhiShaders = tryGetRhiShaderPipeline(inKey, QSSGShaderFeatures());
-    if (rhiShaders)
-        return rhiShaders;
-
     const bool shaderDebug = !QSSGRhiContextPrivate::editorMode() && QSSGRhiContextPrivate::shaderDebuggingEnabled();
     if (shaderDebug)
-        qDebug("Loading builtin rhi shader: %s", inKey.constData());
+        qDebug("Loading builtin rhi shader: %s (view count: %d)", inKey.constData(), viewCount);
 
     Q_TRACE_SCOPE(QSSG_loadShader);
     Q_QUICK3D_PROFILE_START(QQuick3DProfiler::Quick3DLoadShader);
@@ -603,8 +634,15 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::loadBuiltinForRhi(const QByteArray &in
     // look for abc.vert.qsb and abc.frag.qsb.
 
     const QString prefix = QString::fromUtf8(resourceFolder() + inKey);
-    const QString vertexFileName = prefix + QLatin1String(".vert.qsb");
-    const QString fragmentFileName = prefix + QLatin1String(".frag.qsb");
+    QString vertexFileName = prefix + QLatin1String(".vert.qsb");
+    QString fragmentFileName = prefix + QLatin1String(".frag.qsb");
+
+    // This must match QSGMaterial(Shader) in Qt Quick, in particular the
+    // QSGMaterialShader::setShaderFileName() overload taking a viewCount.
+    if (viewCount == 2) {
+        vertexFileName += QLatin1String(".mv2qsb");
+        fragmentFileName += QLatin1String(".mv2qsb");
+    }
 
     QShader vertexShader;
     QShader fragmentShader;
@@ -636,12 +674,7 @@ QSSGRhiShaderPipelinePtr QSSGShaderCache::loadBuiltinForRhi(const QByteArray &in
 
     Q_QUICK3D_PROFILE_END_WITH_STRING(QQuick3DProfiler::Quick3DLoadShader, 0, inKey);
 
-    QSSGShaderCacheKey cacheKey(inKey);
-    cacheKey.m_features = QSSGShaderFeatures();
-    cacheKey.updateHashCode();
-
-    const auto inserted = m_rhiShaders.insert(cacheKey, shaders);
-    return inserted.value();
+    return shaders;
 }
 
 namespace QtQuick3DEditorHelpers {

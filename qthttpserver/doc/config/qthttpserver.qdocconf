@@ -47,3 +47,7 @@ navigation.cppclassespage = "Qt HTTP Server C++ Classes"
 navigation.landingpage = "Qt HTTP Server"
 
 manifestmeta.highlighted.names = "QtHttpServer/Simple HTTP Server"
+
+
+# Enforce zero documentation warnings in CI
+warninglimit = 0

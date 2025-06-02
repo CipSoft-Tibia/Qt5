@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtgradientdialog.h"
+#include "qtgradientdialog_p.h"
 #include "ui_qtgradientdialog.h"
 #include <QtWidgets/QPushButton>
 
@@ -10,7 +10,7 @@ QT_BEGIN_NAMESPACE
 class QtGradientDialogPrivate : public QObject
 {
     Q_OBJECT
-    QtGradientDialog *q_ptr;
+    QtGradientDialog *q_ptr = nullptr;
     Q_DECLARE_PUBLIC(QtGradientDialog)
 public:
     void slotAboutToShowDetails(bool details, int extensionWidthHint);

@@ -17,28 +17,16 @@
 
 namespace mojo {
 
-template <>
-struct TypeConverter<Vector<Vector<uint8_t>>,
-                     blink::HeapVector<blink::Member<
-                         blink::V8UnionArrayBufferOrArrayBufferView>>> {
-  static Vector<Vector<uint8_t>> Convert(
-      const blink::HeapVector<
-          blink::Member<blink::V8UnionArrayBufferOrArrayBufferView>>& input) {
-    Vector<Vector<uint8_t>> result;
-    for (const auto& item : input) {
-      result.push_back(mojo::ConvertTo<Vector<uint8_t>>(item.Get()));
-    }
-    return result;
-  }
-};
-
 payments::mojom::blink::SecurePaymentConfirmationRequestPtr
 TypeConverter<payments::mojom::blink::SecurePaymentConfirmationRequestPtr,
               blink::SecurePaymentConfirmationRequest*>::
     Convert(const blink::SecurePaymentConfirmationRequest* input) {
   auto output = payments::mojom::blink::SecurePaymentConfirmationRequest::New();
-  output->credential_ids =
-      mojo::ConvertTo<Vector<Vector<uint8_t>>>(input->credentialIds());
+  auto in = input->credentialIds();
+  output->credential_ids.reserve(in.size());
+  for (const auto& obj : in) {
+    output->credential_ids.push_back(mojo::ConvertTo<Vector<uint8_t>>(obj));
+  }
   output->challenge = mojo::ConvertTo<Vector<uint8_t>>(input->challenge());
 
   // If a timeout was not specified in JavaScript, then pass a null `timeout`
@@ -61,9 +49,10 @@ TypeConverter<payments::mojom::blink::SecurePaymentConfirmationRequestPtr,
     output->payee_name = input->payeeName();
 
   if (input->hasExtensions()) {
-    output->extensions =
-        ConvertTo<blink::mojom::blink::AuthenticationExtensionsClientInputsPtr>(
-            *input->extensions());
+    output->extensions = mojo::TypeConverter<
+        blink::mojom::blink::AuthenticationExtensionsClientInputsPtr,
+        blink::AuthenticationExtensionsClientInputs>::
+        Convert(*input->extensions());
   }
 
   output->show_opt_out = input->getShowOptOutOr(false);

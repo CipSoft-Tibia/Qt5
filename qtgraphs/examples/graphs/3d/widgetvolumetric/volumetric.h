@@ -5,7 +5,7 @@
 #define VOLUMETRICMODIFIER_H
 
 #include <QtCore/qtimer.h>
-#include <QtGraphs/q3dscatter.h>
+#include <QtGraphsWidgets/q3dscatterwidgetitem.h>
 #include <QtGraphs/qcustom3dvolume.h>
 #include <QtGui/qrgb.h>
 #include <QtWidgets/qlabel.h>
@@ -16,7 +16,7 @@ class VolumetricModifier : public QObject
 {
     Q_OBJECT
 public:
-    explicit VolumetricModifier(Q3DScatter *scatter);
+    explicit VolumetricModifier(Q3DScatterWidgetItem *scatter);
     ~VolumetricModifier();
 
     void setFpsLabel(QLabel *fpsLabel);
@@ -58,7 +58,7 @@ private:
     void excavateMineBlock(int textureSize, int dataIndex, int size, QList<uchar> *textureData);
     void handleSlicingChanges();
 
-    Q3DScatter *m_graph = nullptr;
+    Q3DScatterWidgetItem *m_graph = nullptr;
     QCustom3DVolume *m_volumeItem = nullptr;
     int m_sliceIndexX = 0;
     int m_sliceIndexY = 0;

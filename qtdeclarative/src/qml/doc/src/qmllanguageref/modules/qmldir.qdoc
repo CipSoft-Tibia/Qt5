@@ -19,6 +19,9 @@ module. For more information about the first form of \c qmldir file, see
 
 \section1 Contents of a Module Definition qmldir File
 
+\note Use the CMake API to \l{Port QML modules to CMake}{generate qmldir files}. Write your \c
+qmldir manually only if you need to use \c qmake.
+
 A \c qmldir file is a plain-text file that contains the following commands:
 
 \list

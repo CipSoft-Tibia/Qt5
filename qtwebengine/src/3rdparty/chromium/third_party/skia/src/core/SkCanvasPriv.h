@@ -16,7 +16,7 @@
 
 #include <cstddef>
 
-class SkBaseDevice;
+class SkDevice;
 class SkImageFilter;
 class SkMatrix;
 class SkReadBuffer;
@@ -62,7 +62,7 @@ public:
         canvas->internal_private_resetClip();
     }
 
-    static SkBaseDevice* TopDevice(const SkCanvas* canvas) {
+    static SkDevice* TopDevice(const SkCanvas* canvas) {
         return canvas->topDevice();
     }
 
@@ -80,8 +80,10 @@ public:
                                                       const SkPaint* paint,
                                                       const SkImageFilter* backdrop,
                                                       SkScalar backdropScale,
-                                                      SkCanvas::SaveLayerFlags saveLayerFlags) {
-        return SkCanvas::SaveLayerRec(bounds, paint, backdrop, backdropScale, saveLayerFlags);
+                                                      SkCanvas::SaveLayerFlags saveLayerFlags,
+                                                      SkCanvas::FilterSpan filters = {}) {
+        return SkCanvas::SaveLayerRec(
+                bounds, paint, backdrop, backdropScale, saveLayerFlags, filters);
     }
 
     static SkScalar GetBackdropScaleFactor(const SkCanvas::SaveLayerRec& rec) {
@@ -110,30 +112,31 @@ public:
 constexpr int kMaxPictureOpsToUnrollInsteadOfRef = 1;
 
 /**
- *  We implement ImageFilters for a given draw by creating a layer, then applying the
- *  imagefilter to the pixels of that layer (its backing surface/image), and then
- *  we call restore() to xfer that layer to the main canvas.
+ *  We implement ImageFilters and MaskFilters for a given draw by creating a layer, then applying
+ *  the filter to the pixels of that layer (its backing surface/image), and then we call restore()
+ *  to blend that layer to the main canvas.
  *
- *  1. SaveLayer (with a paint containing the current imagefilter and xfermode)
- *  2. Generate the src pixels:
- *      Remove the imagefilter and the xfermode from the paint that we (AutoDrawLooper)
- *      return (fPaint). We then draw the primitive (using srcover) into a cleared
- *      buffer/surface.
- *  3. Restore the layer created in #1
- *      The imagefilter is passed the buffer/surface from the layer (now filled with the
- *      src pixels of the primitive). It returns a new "filtered" buffer, which we
- *      draw onto the previous layer using the xfermode from the original paint.
+ *  If the paint has neither an image filter nor a mask filter, there will be no layer and paint()
+ *  returns the original without modification.
+ *
+ * NOTE: This works by assuming all sources of color and shading are represented by the SkPaint.
+ * Operations like drawImageRect must convert to an equivalent drawRect call if there's a mask
+ * filter, or otherwise ensure there are no mask filters (e.g. drawAtlas).
  */
 class AutoLayerForImageFilter {
 public:
-    // "rawBounds" is the original bounds of the primitive about to be drawn, unmodified by the
+    // `rawBounds` is the original bounds of the primitive about to be drawn, unmodified by the
     // paint. It's used to determine the size of the offscreen layer for filters.
     // If null, the clip will be used instead.
+    //
+    // If `skipMaskFilterLayer` is true, any SkMaskFilter on `paint` will be left as-is and is
+    // assumed to be handled by the SkDevice that handles the draw.
     //
     // Draw functions should use layer->paint() instead of the passed-in paint.
     AutoLayerForImageFilter(SkCanvas* canvas,
                             const SkPaint& paint,
-                            const SkRect* rawBounds = nullptr);
+                            const SkRect* rawBounds,
+                            bool skipMaskFilterLayer);
 
     AutoLayerForImageFilter(const AutoLayerForImageFilter&) = delete;
     AutoLayerForImageFilter& operator=(const AutoLayerForImageFilter&) = delete;
@@ -145,9 +148,14 @@ public:
     const SkPaint& paint() const { return fPaint; }
 
 private:
+    void addImageFilterLayer(const SkRect* drawBounds);
+    void addMaskFilterLayer(const SkRect* drawBounds);
+
+    void addLayer(const SkPaint& restorePaint, const SkRect* drawBounds, bool coverageOnly);
+
     SkPaint         fPaint;
     SkCanvas*       fCanvas;
-    bool            fTempLayerForImageFilter;
+    int             fTempLayersForFilters;
 
     SkDEBUGCODE(int fSaveCount;)
 };

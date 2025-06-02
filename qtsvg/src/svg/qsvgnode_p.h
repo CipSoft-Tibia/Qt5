@@ -27,7 +27,7 @@ QT_BEGIN_NAMESPACE
 class QPainter;
 class QSvgTinyDocument;
 
-class Q_SVG_PRIVATE_EXPORT QSvgNode
+class Q_SVG_EXPORT QSvgNode
 {
 public:
     enum Type
@@ -112,10 +112,12 @@ public:
 
     virtual Type type() const = 0;
     QString typeName() const;
-    virtual QRectF fastBounds(QPainter *p, QSvgExtraStates &states) const;
-    virtual QRectF bounds(QPainter *p, QSvgExtraStates &states) const;
-    virtual QRectF transformedBounds(QPainter *p, QSvgExtraStates &states) const;
-    QRectF transformedBounds() const;
+    virtual QRectF internalFastBounds(QPainter *p, QSvgExtraStates &states) const;
+    virtual QRectF internalBounds(QPainter *p, QSvgExtraStates &states) const;
+    QRectF bounds(QPainter *p, QSvgExtraStates &states) const;
+    QRectF bounds() const;
+    virtual QRectF decoratedInternalBounds(QPainter *p, QSvgExtraStates &states) const;
+    virtual QRectF decoratedBounds(QPainter *p, QSvgExtraStates &states) const;
 
     void setRequiredFeatures(const QStringList &lst);
     const QStringList & requiredFeatures() const;
@@ -166,13 +168,24 @@ public:
 
     bool hasAnyMarker() const;
 
+    virtual bool requiresGroupRendering() const;
+
     virtual bool shouldDrawNode(QPainter *p, QSvgExtraStates &states) const;
     const QSvgStyle &style() const { return m_style; }
 protected:
     mutable QSvgStyle m_style;
 
+    QRectF filterRegion(QRectF bounds) const;
+
     static qreal strokeWidth(QPainter *p);
     static void initPainter(QPainter *p);
+
+    enum BoundsMode {
+        Simplistic,
+        IncludeMiterLimit
+    };
+    static QRectF boundsOnStroke(QPainter *p, const QPainterPath &path,
+                                 qreal width, BoundsMode mode);
 
 private:
     QSvgNode   *m_parent;

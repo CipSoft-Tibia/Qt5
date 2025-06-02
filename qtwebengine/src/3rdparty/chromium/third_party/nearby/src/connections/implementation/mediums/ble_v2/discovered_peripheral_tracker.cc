@@ -28,6 +28,7 @@
 #include "connections/implementation/mediums/ble_v2/ble_advertisement_header.h"
 #include "connections/implementation/mediums/ble_v2/ble_utils.h"
 #include "connections/implementation/mediums/ble_v2/bloom_filter.h"
+#include "connections/implementation/mediums/ble_v2/discovered_peripheral_callback.h"
 #include "internal/flags/nearby_flags.h"
 #include "internal/platform/ble_v2.h"
 #include "internal/platform/byte_array.h"
@@ -66,7 +67,7 @@ DiscoveredPeripheralTracker::~DiscoveredPeripheralTracker() {
 
 void DiscoveredPeripheralTracker::StartTracking(
     const std::string& service_id,
-    const DiscoveredPeripheralCallback& discovered_peripheral_callback,
+    DiscoveredPeripheralCallback discovered_peripheral_callback,
     const Uuid& fast_advertisement_service_uuid) {
   MutexLock lock(&mutex_);
 
@@ -129,11 +130,9 @@ void DiscoveredPeripheralTracker::ProcessFoundBleAdvertisement(
 void DiscoveredPeripheralTracker::ProcessLostGattAdvertisements() {
   MutexLock lock(&mutex_);
 
-  for (const auto& it : service_id_infos_) {
+  for (auto& it : service_id_infos_) {
     const std::string& service_id = it.first;
-    const ServiceIdInfo& service_id_info = it.second;
-    DiscoveredPeripheralCallback discovered_peripheral_callback =
-        service_id_info.discovered_peripheral_callback;
+    ServiceIdInfo& service_id_info = it.second;
 
     BleAdvertisementSet lost_gatt_advertisements =
         service_id_info.lost_entity_tracker->ComputeLostEntities();
@@ -145,7 +144,7 @@ void DiscoveredPeripheralTracker::ProcessLostGattAdvertisements() {
         BleV2Peripheral lost_peripheral = it->second.peripheral;
         if (lost_peripheral.IsValid()) {
           lost_peripheral.SetId(ByteArray(gatt_advertisement));
-          discovered_peripheral_callback.peripheral_lost_cb(
+          service_id_info.discovered_peripheral_callback.peripheral_lost_cb(
               std::move(lost_peripheral), service_id,
               gatt_advertisement.GetData(),
               gatt_advertisement.IsFastAdvertisement());
@@ -525,7 +524,7 @@ void DiscoveredPeripheralTracker::HandleAdvertisementHeader(
       ByteArray advertisement_data{advertisement_header};
       if (fetching_advertisements_.contains(advertisement_data)) {
         NEARBY_LOGS(VERBOSE) << ": Ignore the advertisement header due to it "
-                              "is already in fetcing.";
+                                "is already in fetching.";
         return;
       }
 
@@ -539,7 +538,7 @@ void DiscoveredPeripheralTracker::HandleAdvertisementHeader(
                           advertisement_fetcher =
                               std::move(advertisement_fetcher),
                           advertisement_data =
-                              std::move(advertisement_data)]() {
+                              std::move(advertisement_data)]() mutable {
         {
           MutexLock lock(&mutex_);
           if (!IsInterestingAdvertisementHeader(advertisement_header)) {
@@ -681,9 +680,9 @@ DiscoveredPeripheralTracker::FetchRawAdvertisements(
   std::transform(service_id_infos_.begin(), service_id_infos_.end(),
                  std::back_inserter(service_ids),
                  [](auto& kv) { return kv.first; });
-  advertisement_fetcher.fetch_advertisements(
-      std::move(peripheral), advertisement_header.GetNumSlots(),
-      advertisement_header.GetPsm(), service_ids, *result);
+  advertisement_fetcher(std::move(peripheral),
+                        advertisement_header.GetNumSlots(),
+                        advertisement_header.GetPsm(), service_ids, *result);
 
   // Take those results and return all the advertisements we were able to
   // read.
@@ -710,9 +709,9 @@ DiscoveredPeripheralTracker::FetchRawAdvertisementsInThread(
                    std::back_inserter(service_ids),
                    [](auto& kv) { return kv.first; });
   }
-  advertisement_fetcher.fetch_advertisements(
-      std::move(peripheral), advertisement_header.GetNumSlots(),
-      advertisement_header.GetPsm(), service_ids, *result);
+  advertisement_fetcher(std::move(peripheral),
+                        advertisement_header.GetNumSlots(),
+                        advertisement_header.GetPsm(), service_ids, *result);
 
   // Take those results and return all the advertisements we were able to
   // read.

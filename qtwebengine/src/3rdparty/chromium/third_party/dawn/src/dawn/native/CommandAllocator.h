@@ -1,16 +1,29 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_COMMANDALLOCATOR_H_
 #define SRC_DAWN_NATIVE_COMMANDALLOCATOR_H_
@@ -107,8 +120,8 @@ class CommandIterator : public NonCopyable {
 
     DAWN_FORCE_INLINE bool NextCommandId(uint32_t* commandId) {
         uint8_t* idPtr = AlignPtr(mCurrentPtr, alignof(uint32_t));
-        ASSERT(idPtr + sizeof(uint32_t) <=
-               mBlocks[mCurrentBlock].block + mBlocks[mCurrentBlock].size);
+        DAWN_ASSERT(idPtr + sizeof(uint32_t) <=
+                    mBlocks[mCurrentBlock].block + mBlocks[mCurrentBlock].size);
 
         uint32_t id = *reinterpret_cast<uint32_t*>(idPtr);
 
@@ -124,8 +137,8 @@ class CommandIterator : public NonCopyable {
 
     DAWN_FORCE_INLINE void* NextCommand(size_t commandSize, size_t commandAlignment) {
         uint8_t* commandPtr = AlignPtr(mCurrentPtr, commandAlignment);
-        ASSERT(commandPtr + sizeof(commandSize) <=
-               mBlocks[mCurrentBlock].block + mBlocks[mCurrentBlock].size);
+        DAWN_ASSERT(commandPtr + sizeof(commandSize) <=
+                    mBlocks[mCurrentBlock].block + mBlocks[mCurrentBlock].size);
 
         mCurrentPtr = commandPtr + commandSize;
         return commandPtr;
@@ -134,8 +147,8 @@ class CommandIterator : public NonCopyable {
     DAWN_FORCE_INLINE void* NextData(size_t dataSize, size_t dataAlignment) {
         uint32_t id;
         bool hasId = NextCommandId(&id);
-        ASSERT(hasId);
-        ASSERT(id == detail::kAdditionalData);
+        DAWN_ASSERT(hasId);
+        DAWN_ASSERT(id == detail::kAdditionalData);
 
         return NextCommand(dataSize, dataAlignment);
     }
@@ -207,14 +220,14 @@ class CommandAllocator : public NonCopyable {
     DAWN_FORCE_INLINE uint8_t* Allocate(uint32_t commandId,
                                         size_t commandSize,
                                         size_t commandAlignment) {
-        ASSERT(mCurrentPtr != nullptr);
-        ASSERT(mEndPtr != nullptr);
-        ASSERT(commandId != detail::kEndOfBlock);
+        DAWN_ASSERT(mCurrentPtr != nullptr);
+        DAWN_ASSERT(mEndPtr != nullptr);
+        DAWN_ASSERT(commandId != detail::kEndOfBlock);
 
         // It should always be possible to allocate one id, for kEndOfBlock tagging,
-        ASSERT(IsPtrAligned(mCurrentPtr, alignof(uint32_t)));
-        ASSERT(mEndPtr >= mCurrentPtr);
-        ASSERT(static_cast<size_t>(mEndPtr - mCurrentPtr) >= sizeof(uint32_t));
+        DAWN_ASSERT(IsPtrAligned(mCurrentPtr, alignof(uint32_t)));
+        DAWN_ASSERT(mEndPtr >= mCurrentPtr);
+        DAWN_ASSERT(static_cast<size_t>(mEndPtr - mCurrentPtr) >= sizeof(uint32_t));
 
         // The memory after the ID will contain the following:
         //   - the current ID

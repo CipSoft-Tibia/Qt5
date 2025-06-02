@@ -4,9 +4,8 @@
 /*!
 \page qmllint-warnings-and-errors-attached-property-reuse.html
 \ingroup qmllint-warnings-and-errors
-
 \title Attached property reuse
-\brief Attached type was initialized multiple times.
+\brief [attached-property-reuse] Attached type was initialized multiple times.
 
 \qmllintwarningcategory attached-property-reuse
 
@@ -14,11 +13,11 @@
 
 \section2 What happened?
 You initialized a propagating
-\l{qtqml-syntax-objectattributes.html#attached-properties-and-attached-signal-handlers}{attached type}
+\l{Attached Properties and Attached Signal Handlers}{attached type}
 multiple times.
 
 \note This mostly happens for attached types that inherit from
-\l{qquickattachedpropertypropagator.html}{QQuickAttachedPropertyPropagator}.
+\l{QQuickAttachedPropertyPropagator}.
 
 \section2 Why is this bad?
 Propagating attached objects consume memory for each instantiation but only need to be initialized once.

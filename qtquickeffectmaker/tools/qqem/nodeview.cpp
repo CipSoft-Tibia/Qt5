@@ -30,9 +30,8 @@ NodeView::NodeView(QQuickItem *parent)
     m_activeArrow.startNodeId = -1;
     m_activeArrow.endNodeId = -1;
 
-    connect(m_nodesModel, &QAbstractItemModel::modelReset, [this]() {
-        updateCodeSelectorModel();
-    });
+    connect(m_nodesModel, &QAbstractItemModel::modelReset,
+            this, &NodeView::updateCodeSelectorModel);
 }
 
 void NodeView::mouseMoveEvent(QMouseEvent *event)

@@ -1,21 +1,5 @@
-/*
-    Copyright (C) 2011 Nokia Corporation and/or its subsidiary(-ies)
-
-    This library is free software; you can redistribute it and/or
-    modify it under the terms of the GNU Library General Public
-    License as published by the Free Software Foundation; either
-    version 2 of the License, or (at your option) any later version.
-
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    Library General Public License for more details.
-
-    You should have received a copy of the GNU Library General Public License
-    along with this library; see the file COPYING.LIB.  If not, write to
-    the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-    Boston, MA 02110-1301, USA.
-*/
+// Copyright (C) 2024 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "testwindow.h"
 #include "util.h"
@@ -338,9 +322,8 @@ void tst_QQuickWebView::titleUpdate()
     // Load page with no title
     webView()->setUrl(getTestFilePath("basic_page2.html"));
     QVERIFY(waitForLoadSucceeded(webView()));
-#ifdef QT_WEBVIEW_WEBENGINE_BACKEND
-    // webengine emits titleChanged even if there is no title
-    // QTBUG-94151
+#if defined(QT_WEBVIEW_WEBENGINE_BACKEND) || defined(Q_OS_ANDROID)
+    // on some platforms if the page has no <title> element, then the URL is used instead
     QCOMPARE(titleSpy.size(), 1);
 #else
     QCOMPARE(titleSpy.size(), 0);
@@ -350,8 +333,12 @@ void tst_QQuickWebView::titleUpdate()
     // No titleChanged signal for failed load
     webView()->setUrl(getTestFilePath("file_that_does_not_exist.html"));
     QVERIFY(waitForLoadFailed(webView()));
+#if defined(Q_OS_ANDROID)
+    // error page with "Webpage not available"
+    QTRY_COMPARE(titleSpy.size(), 1);
+#else
     QCOMPARE(titleSpy.size(), 0);
-
+#endif
 }
 
 void tst_QQuickWebView::changeUserAgent()

@@ -26,7 +26,10 @@ public:
         SRgbLinear,
         AdobeRgb,
         DisplayP3,
-        ProPhotoRgb
+        ProPhotoRgb,
+        Bt2020,
+        Bt2100Pq,
+        Bt2100Hlg,
     };
     Q_ENUM(NamedColorSpace)
     enum class Primaries {
@@ -34,7 +37,8 @@ public:
         SRgb,
         AdobeRgb,
         DciP3D65,
-        ProPhotoRgb
+        ProPhotoRgb,
+        Bt2020,
     };
     Q_ENUM(Primaries)
     enum class TransferFunction {
@@ -42,12 +46,29 @@ public:
         Linear,
         Gamma,
         SRgb,
-        ProPhotoRgb
+        ProPhotoRgb,
+        Bt2020,
+        St2084,
+        Hlg,
     };
     Q_ENUM(TransferFunction)
+    enum class TransformModel : uint8_t {
+        ThreeComponentMatrix = 0,
+        ElementListProcessing,
+    };
+    Q_ENUM(TransformModel)
+    enum class ColorModel : uint8_t {
+        Undefined = 0,
+        Rgb = 1,
+        Gray = 2,
+        Cmyk = 3,
+    };
+    Q_ENUM(ColorModel)
 
     QColorSpace() noexcept = default;
     QColorSpace(NamedColorSpace namedColorSpace);
+    explicit QColorSpace(QPointF whitePoint, TransferFunction transferFunction, float gamma = 0.0f);
+    explicit QColorSpace(QPointF whitePoint, const QList<uint16_t> &transferFunctionTable);
     QColorSpace(Primaries primaries, TransferFunction transferFunction, float gamma = 0.0f);
     QColorSpace(Primaries primaries, float gamma);
     QColorSpace(Primaries primaries, const QList<uint16_t> &transferFunctionTable);
@@ -99,9 +120,14 @@ public:
     void setPrimaries(Primaries primariesId);
     void setPrimaries(const QPointF &whitePoint, const QPointF &redPoint,
                       const QPointF &greenPoint, const QPointF &bluePoint);
+    void setWhitePoint(QPointF whitePoint);
+    QPointF whitePoint() const;
 
+    TransformModel transformModel() const noexcept;
+    ColorModel colorModel() const noexcept;
     void detach();
     bool isValid() const noexcept;
+    bool isValidTarget() const noexcept;
 
     friend inline bool operator==(const QColorSpace &colorSpace1, const QColorSpace &colorSpace2)
     { return colorSpace1.equals(colorSpace2); }

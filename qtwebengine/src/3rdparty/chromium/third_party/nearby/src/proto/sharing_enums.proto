@@ -30,7 +30,7 @@ option objc_class_prefix = "GNSHP";
 // in NearbyClearcutLogger (for android, or clearcut_event_logger as the
 // equivalence for Windows) for all events (may exclude settings), and
 // session_id for a pair of events (start and end of a session).
-// Next id: 65
+// Next id: 67
 enum EventType {
   UNKNOWN_EVENT_TYPE = 0;
 
@@ -237,6 +237,13 @@ enum EventType {
 
   // Decrypt certificate failure
   DECRYPT_CERTIFICATE_FAILURE = 64;
+
+  // Show allow permission auto access UI
+  SHOW_ALLOW_PERMISSION_AUTO_ACCESS = 65;
+
+  // UI events for transferring files with desktop applications. It includes
+  // event types such as DESKTOP_TRANSFER_EVENT_SEND_TYPE_SELECT_A_DEVICE.
+  SEND_DESKTOP_TRANSFER_EVENT = 66;
 
   // LINT.ThenChange(//depot/google3/location/nearby/proto/nearby_event_codes.proto:SharingEventCode)
 }
@@ -448,6 +455,7 @@ enum OSType {
   CHROME_OS = 2;
   IOS = 3;
   WINDOWS = 4;
+  MACOS = 5;
 }
 
 // Relationship of remote device to sender device.
@@ -498,6 +506,9 @@ enum ServerActionName {
   LIST_REACHABLE_PHONE_NUMBERS = 9;
   LIST_MY_DEVICES = 10;
   LIST_CONTACT_PEOPLE = 11;
+
+  // used for analytics logger to record action name.
+  DOWNLOAD_CERTIFICATES_INFO = 12;
 }
 
 // The Fast Share server response state.
@@ -556,6 +567,10 @@ enum SyncPurpose {
   SYNC_PURPOSE_VISIBILITY_SELECTED_CONTACT_CHANGE = 14;
   // When switching account.
   SYNC_PURPOSE_ACCOUNT_CHANGE = 15;
+  // When regenerate certificates
+  SYNC_PURPOSE_REGENERATE_CERTIFICATES = 16;
+  // When Device Contacts consent changes
+  SYNC_PURPOSE_DEVICE_CONTACTS_CONSENT_CHANGE = 17;
 }
 
 // The device role to trigger the server request.
@@ -770,7 +785,7 @@ enum FastInitType {
   FAST_INIT_SILENT_TYPE = 2;
 }
 
-// LINT.IfChanged
+// LINT.IfChange
 /** The type of desktop notification event. */
 enum DesktopNotification {
   DESKTOP_NOTIFICATION_UNKNOWN = 0;

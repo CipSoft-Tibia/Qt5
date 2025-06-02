@@ -92,18 +92,16 @@ ScriptPromise ShapeDetector::detect(ScriptState* script_state,
 
   SourceImageStatus source_image_status = kInvalidSourceImageStatus;
   scoped_refptr<Image> image = canvas_image_source->GetSourceImageForCanvas(
-      CanvasResourceProvider::FlushReason::kShapeDetector, &source_image_status,
-      size);
+      FlushReason::kShapeDetector, &source_image_status, size);
   if (!image || source_image_status != kNormalSourceImageStatus) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
                                       "Invalid element or state.");
     return ScriptPromise();
   }
   if (size.IsEmpty()) {
-    return ScriptPromise::Cast(script_state,
-                               ToV8Traits<IDLSequence<DOMRect>>::ToV8(
-                                   script_state, HeapVector<Member<DOMRect>>())
-                                   .ToLocalChecked());
+    return ScriptPromise::Cast(
+        script_state, ToV8Traits<IDLSequence<DOMRect>>::ToV8(
+                          script_state, HeapVector<Member<DOMRect>>()));
   }
 
   // GetSwSkImage() will make a raster copy of PaintImageForCurrentFrame()
@@ -131,10 +129,9 @@ ScriptPromise ShapeDetector::DetectShapesOnImageData(
     ImageData* image_data,
     ExceptionState& exception_state) {
   if (image_data->Size().IsZero()) {
-    return ScriptPromise::Cast(script_state,
-                               ToV8Traits<IDLSequence<DOMRect>>::ToV8(
-                                   script_state, HeapVector<Member<DOMRect>>())
-                                   .ToLocalChecked());
+    return ScriptPromise::Cast(
+        script_state, ToV8Traits<IDLSequence<DOMRect>>::ToV8(
+                          script_state, HeapVector<Member<DOMRect>>()));
   }
 
   if (image_data->IsBufferBaseDetached()) {
@@ -185,10 +182,9 @@ ScriptPromise ShapeDetector::DetectShapesOnImageElement(
 
   Image* const blink_image = image_content->GetImage();
   if (blink_image->Size().IsZero()) {
-    return ScriptPromise::Cast(script_state,
-                               ToV8Traits<IDLSequence<DOMRect>>::ToV8(
-                                   script_state, HeapVector<Member<DOMRect>>())
-                                   .ToLocalChecked());
+    return ScriptPromise::Cast(
+        script_state, ToV8Traits<IDLSequence<DOMRect>>::ToV8(
+                          script_state, HeapVector<Member<DOMRect>>()));
   }
 
   // The call to asLegacyBitmap() below forces a readback so getting SwSkImage

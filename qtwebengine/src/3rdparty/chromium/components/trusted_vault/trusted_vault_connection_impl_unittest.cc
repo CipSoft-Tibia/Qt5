@@ -12,6 +12,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/test/bind.h"
 #include "base/test/mock_callback.h"
 #include "base/test/task_environment.h"
 #include "base/types/expected.h"
@@ -20,6 +21,7 @@
 #include "components/trusted_vault/proto/vault.pb.h"
 #include "components/trusted_vault/proto_string_bytes_conversion.h"
 #include "components/trusted_vault/securebox.h"
+#include "components/trusted_vault/test/fake_trusted_vault_access_token_fetcher.h"
 #include "components/trusted_vault/trusted_vault_access_token_fetcher.h"
 #include "components/trusted_vault/trusted_vault_crypto.h"
 #include "components/trusted_vault/trusted_vault_server_constants.h"
@@ -60,9 +62,10 @@ std::unique_ptr<SecureBoxKeyPair> MakeTestKeyPair() {
 }
 
 trusted_vault_pb::SecurityDomain MakeSecurityDomainWithDegradedRecoverability(
+    SecurityDomainId security_domain_id,
     bool recoverability_degraded) {
   trusted_vault_pb::SecurityDomain security_domain;
-  security_domain.set_name(kSyncSecurityDomainName);
+  security_domain.set_name(GetSecurityDomainName(security_domain_id));
   security_domain.mutable_security_domain_details()
       ->mutable_sync_details()
       ->set_degraded_recoverability(recoverability_degraded);
@@ -70,12 +73,51 @@ trusted_vault_pb::SecurityDomain MakeSecurityDomainWithDegradedRecoverability(
 }
 
 trusted_vault_pb::JoinSecurityDomainsResponse MakeJoinSecurityDomainsResponse(
+    SecurityDomainId security_domain_id,
     int current_epoch) {
   trusted_vault_pb::JoinSecurityDomainsResponse response;
   trusted_vault_pb::SecurityDomain* security_domain =
       response.mutable_security_domain();
-  security_domain->set_name(kSyncSecurityDomainName);
+  security_domain->set_name(GetSecurityDomainName(security_domain_id));
   security_domain->set_current_epoch(current_epoch);
+  return response;
+}
+
+enum class Member {
+  kPhysical,
+  kOtherSecurityDomain,
+  kUsableVirtual,
+  kUnusableVirtual,
+};
+
+trusted_vault_pb::ListSecurityDomainMembersResponse MakeSecurityDomainMembers(
+    SecurityDomainId security_domain_id,
+    const std::vector<Member>& members,
+    absl::optional<std::string> next_page_token) {
+  trusted_vault_pb::ListSecurityDomainMembersResponse response;
+
+  for (auto member_type : members) {
+    trusted_vault_pb::SecurityDomainMember* member =
+        response.add_security_domain_members();
+    member->set_name("name");
+    member->add_memberships()->set_security_domain("other security domain");
+    if (member_type != Member::kOtherSecurityDomain) {
+      member->add_memberships()->set_security_domain(
+          GetSecurityDomainName(security_domain_id));
+    }
+
+    switch (member_type) {
+      case Member::kPhysical:
+      case Member::kOtherSecurityDomain:
+      case Member::kUnusableVirtual:
+        break;
+      case Member::kUsableVirtual:
+        member->mutable_member_metadata()->set_usable_for_retrieval(true);
+    }
+  }
+  if (next_page_token) {
+    response.set_next_page_token(*next_page_token);
+  }
   return response;
 }
 
@@ -86,35 +128,15 @@ signin::AccessTokenInfo MakeAccessTokenInfo(const std::string& access_token) {
       /*id_token=*/std::string());
 }
 
-class FakeTrustedVaultAccessTokenFetcher
-    : public TrustedVaultAccessTokenFetcher {
- public:
-  explicit FakeTrustedVaultAccessTokenFetcher(
-      const AccessTokenInfoOrError& access_token_info_or_error)
-      : access_token_info_or_error_(access_token_info_or_error) {}
-  ~FakeTrustedVaultAccessTokenFetcher() override = default;
-
-  void FetchAccessToken(const CoreAccountId& account_id,
-                        TokenCallback callback) override {
-    std::move(callback).Run(access_token_info_or_error_);
-  }
-
-  std::unique_ptr<TrustedVaultAccessTokenFetcher> Clone() override {
-    return std::make_unique<FakeTrustedVaultAccessTokenFetcher>(
-        access_token_info_or_error_);
-  }
-
- private:
-  const AccessTokenInfoOrError access_token_info_or_error_;
-};
-
 // TODO(crbug.com/1113598): revisit this tests suite and determine what actually
 // should be tested on the Connection level and what should be done on lower
 // levels (DownloadKeysResponseHandler and RegisterAuthenticationFactorRequest).
-class TrustedVaultConnectionImplTest : public testing::Test {
+class TrustedVaultConnectionImplTest
+    : public testing::TestWithParam<SecurityDomainId> {
  public:
   TrustedVaultConnectionImplTest()
       : connection_(
+            security_domain(),
             kTestURL,
             base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
                 &test_url_loader_factory_)
@@ -124,6 +146,8 @@ class TrustedVaultConnectionImplTest : public testing::Test {
 
   ~TrustedVaultConnectionImplTest() override = default;
 
+  SecurityDomainId security_domain() { return GetParam(); }
+
   TrustedVaultConnectionImpl* connection() { return &connection_; }
 
   // Allows overloading of FakeTrustedVaultAccessTokenFetcher behavior, doesn't
@@ -132,7 +156,7 @@ class TrustedVaultConnectionImplTest : public testing::Test {
   CreateConnectionWithAccessTokenError(
       TrustedVaultAccessTokenFetcher::FetchingError fetching_error) {
     return std::make_unique<TrustedVaultConnectionImpl>(
-        kTestURL,
+        security_domain(), kTestURL,
         base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
             &test_url_loader_factory_)
             ->Clone(),
@@ -152,7 +176,8 @@ class TrustedVaultConnectionImplTest : public testing::Test {
     // Allow request to reach |test_url_loader_factory_|.
     base::RunLoop().RunUntilIdle();
     return test_url_loader_factory_.SimulateResponseForPendingRequest(
-        GetFullJoinSecurityDomainsURLForTesting(kTestURL).spec(),
+        GetFullJoinSecurityDomainsURLForTesting(kTestURL, security_domain())
+            .spec(),
         response_content, response_http_code);
   }
 
@@ -160,7 +185,7 @@ class TrustedVaultConnectionImplTest : public testing::Test {
     // Allow request to reach |test_url_loader_factory_|.
     base::RunLoop().RunUntilIdle();
     return test_url_loader_factory_.SimulateResponseForPendingRequest(
-        GetFullJoinSecurityDomainsURLForTesting(kTestURL),
+        GetFullJoinSecurityDomainsURLForTesting(kTestURL, security_domain()),
         network::URLLoaderCompletionStatus(net::ERR_FAILED),
         /*response_head=*/network::mojom::URLResponseHead::New(),
         /*content=*/std::string());
@@ -182,8 +207,21 @@ class TrustedVaultConnectionImplTest : public testing::Test {
     // Allow request to reach |test_url_loader_factory_|.
     base::RunLoop().RunUntilIdle();
     return test_url_loader_factory_.SimulateResponseForPendingRequest(
-        GetFullGetSecurityDomainURLForTesting(kTestURL).spec(), response_body,
-        response_http_code);
+        GetFullGetSecurityDomainURLForTesting(kTestURL, security_domain())
+            .spec(),
+        response_body, response_http_code);
+  }
+
+  bool RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+      const absl::optional<std::string>& next_page_token,
+      net::HttpStatusCode response_http_code,
+      const std::string& response_body) {
+    // Allow request to reach |test_url_loader_factory_|.
+    base::RunLoop().RunUntilIdle();
+    return test_url_loader_factory_.SimulateResponseForPendingRequest(
+        GetGetSecurityDomainMembersURLForTesting(next_page_token, kTestURL)
+            .spec(),
+        response_body, response_http_code);
   }
 
   base::test::SingleThreadTaskEnvironment& task_environment() {
@@ -203,7 +241,12 @@ class TrustedVaultConnectionImplTest : public testing::Test {
   TrustedVaultConnectionImpl connection_;
 };
 
-TEST_F(TrustedVaultConnectionImplTest,
+INSTANTIATE_TEST_SUITE_P(ForSecurityDomain,
+                         TrustedVaultConnectionImplTest,
+                         testing::ValuesIn(kAllSecurityDomainIdValues.begin(),
+                                           kAllSecurityDomainIdValues.end()));
+
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldSendJoinSecurityDomainsRequestWithoutKeys) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -219,14 +262,14 @@ TEST_F(TrustedVaultConnectionImplTest,
   ASSERT_THAT(pending_request, NotNull());
   const network::ResourceRequest& resource_request = pending_request->request;
   EXPECT_THAT(resource_request.method, Eq("POST"));
-  EXPECT_THAT(resource_request.url,
-              Eq(GetFullJoinSecurityDomainsURLForTesting(kTestURL)));
+  EXPECT_THAT(resource_request.url, Eq(GetFullJoinSecurityDomainsURLForTesting(
+                                        kTestURL, security_domain())));
 
   trusted_vault_pb::JoinSecurityDomainsRequest deserialized_body;
   EXPECT_TRUE(deserialized_body.ParseFromString(
       network::GetUploadData(resource_request)));
   EXPECT_THAT(deserialized_body.security_domain().name(),
-              Eq(kSyncSecurityDomainName));
+              Eq(GetSecurityDomainName(security_domain())));
 
   std::string public_key_string;
   AssignBytesToProtoString(key_pair->public_key().ExportToBytes(),
@@ -261,7 +304,7 @@ TEST_F(TrustedVaultConnectionImplTest,
                                 ProtoStringToBytes(shared_key.member_proof())));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldSendJoinSecurityDomainsRequestWithKeys) {
   const std::vector<std::vector<uint8_t>> kTrustedVaultKeys = {{1, 2},
                                                                {1, 2, 3, 4}};
@@ -283,14 +326,14 @@ TEST_F(TrustedVaultConnectionImplTest,
   ASSERT_THAT(pending_request, NotNull());
   const network::ResourceRequest& resource_request = pending_request->request;
   EXPECT_THAT(resource_request.method, Eq("POST"));
-  EXPECT_THAT(resource_request.url,
-              Eq(GetFullJoinSecurityDomainsURLForTesting(kTestURL)));
+  EXPECT_THAT(resource_request.url, Eq(GetFullJoinSecurityDomainsURLForTesting(
+                                        kTestURL, security_domain())));
 
   trusted_vault_pb::JoinSecurityDomainsRequest deserialized_body;
   EXPECT_TRUE(deserialized_body.ParseFromString(
       network::GetUploadData(resource_request)));
   EXPECT_THAT(deserialized_body.security_domain().name(),
-              Eq(kSyncSecurityDomainName));
+              Eq(GetSecurityDomainName(security_domain())));
 
   std::string public_key_string;
   AssignBytesToProtoString(key_pair->public_key().ExportToBytes(),
@@ -337,7 +380,7 @@ TEST_F(TrustedVaultConnectionImplTest,
                         ProtoStringToBytes(shared_key_2.member_proof())));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldSendJoinSecurityDomainsRequestTypeHint) {
   const int kTypeHint = 19;
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
@@ -357,8 +400,8 @@ TEST_F(TrustedVaultConnectionImplTest,
   ASSERT_THAT(pending_request, NotNull());
   const network::ResourceRequest& resource_request = pending_request->request;
   EXPECT_THAT(resource_request.method, Eq("POST"));
-  EXPECT_THAT(resource_request.url,
-              Eq(GetFullJoinSecurityDomainsURLForTesting(kTestURL)));
+  EXPECT_THAT(resource_request.url, Eq(GetFullJoinSecurityDomainsURLForTesting(
+                                        kTestURL, security_domain())));
 
   trusted_vault_pb::JoinSecurityDomainsRequest deserialized_body;
   ASSERT_TRUE(deserialized_body.ParseFromString(
@@ -366,7 +409,7 @@ TEST_F(TrustedVaultConnectionImplTest,
   EXPECT_THAT(deserialized_body.member_type_hint(), Eq(kTypeHint));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleSuccessfulJoinSecurityDomainsRequest) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -385,11 +428,12 @@ TEST_F(TrustedVaultConnectionImplTest,
 
   EXPECT_CALL(callback, Run(Eq(TrustedVaultRegistrationStatus::kSuccess)));
   EXPECT_TRUE(RespondToJoinSecurityDomainsRequest(
-      net::HTTP_OK, MakeJoinSecurityDomainsResponse(/*current_epoch=*/1)
+      net::HTTP_OK, MakeJoinSecurityDomainsResponse(security_domain(),
+                                                    /*current_epoch=*/1)
                         .SerializeAsString()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldPopulateConstantKeyAndVersionWhenJoinSecurityDomain) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -410,11 +454,12 @@ TEST_F(TrustedVaultConnectionImplTest,
                                               kServerConstantKeyVersion)));
   EXPECT_TRUE(RespondToJoinSecurityDomainsRequest(
       net::HTTP_OK, MakeJoinSecurityDomainsResponse(
+                        security_domain(),
                         /*current_epoch=*/kServerConstantKeyVersion)
                         .SerializeAsString()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleJoinSecurityDomainsResponseWithConflictError) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -437,6 +482,7 @@ TEST_F(TrustedVaultConnectionImplTest,
   trusted_vault_pb::JoinSecurityDomainsErrorDetail error_detail;
   *error_detail.mutable_already_exists_response() =
       MakeJoinSecurityDomainsResponse(
+          security_domain(),
           /*current_epoch=*/kServerConstantKeyVersion);
 
   trusted_vault_pb::RPCStatus response;
@@ -448,7 +494,7 @@ TEST_F(TrustedVaultConnectionImplTest,
       net::HTTP_CONFLICT, response.SerializeAsString()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleJoinSecurityDomainsRequestWithEmptyResponse) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -471,7 +517,7 @@ TEST_F(TrustedVaultConnectionImplTest,
                                           /*response_content=*/std::string()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleJoinSecurityDomainsRequestWithCorruptedResponse) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -494,7 +540,7 @@ TEST_F(TrustedVaultConnectionImplTest,
       /*response_content=*/"corrupted_proto"));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleFailedJoinSecurityDomainsRequestWithHttpError) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -517,7 +563,7 @@ TEST_F(TrustedVaultConnectionImplTest,
                                           /*response_content=*/std::string()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleFailedJoinSecurityDomainsRequestWithNetworkError) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -541,7 +587,7 @@ TEST_F(TrustedVaultConnectionImplTest,
   EXPECT_TRUE(RespondToJoinSecurityDomainsRequestWithNetworkError());
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleFailedJoinSecurityDomainsRequestWithNotFoundStatus) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -566,7 +612,7 @@ TEST_F(TrustedVaultConnectionImplTest,
                                           /*response_content=*/std::string()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleFailedJoinSecurityDomainsRequestWithBadRequestStatus) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
@@ -593,7 +639,7 @@ TEST_F(TrustedVaultConnectionImplTest,
                                           /*response_content=*/std::string()));
 }
 
-TEST_F(
+TEST_P(
     TrustedVaultConnectionImplTest,
     ShouldHandleAccessTokenFetchingFailureWhenRegisteringAuthenticationFactor) {
   std::unique_ptr<TrustedVaultConnectionImpl> connection =
@@ -625,7 +671,7 @@ TEST_F(
   EXPECT_THAT(GetPendingHTTPRequest(), IsNull());
 }
 
-TEST_F(TrustedVaultConnectionImplTest, ShouldCancelJoinSecurityDomainsRequest) {
+TEST_P(TrustedVaultConnectionImplTest, ShouldCancelJoinSecurityDomainsRequest) {
   std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
   ASSERT_THAT(key_pair, NotNull());
 
@@ -649,7 +695,7 @@ TEST_F(TrustedVaultConnectionImplTest, ShouldCancelJoinSecurityDomainsRequest) {
                                       /*response_content=*/std::string());
 }
 
-TEST_F(TrustedVaultConnectionImplTest, ShouldSendGetSecurityDomainsRequest) {
+TEST_P(TrustedVaultConnectionImplTest, ShouldSendGetSecurityDomainsRequest) {
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->DownloadNewKeys(
           /*account_info=*/CoreAccountInfo(),
@@ -673,7 +719,7 @@ TEST_F(TrustedVaultConnectionImplTest, ShouldSendGetSecurityDomainsRequest) {
 // TODO(crbug.com/1113598): add coverage for at least one successful case
 // (need to share some helper functions with
 // download_keys_response_handler_unittest.cc).
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleFailedGetSecurityDomainMemberRequest) {
   base::MockCallback<TrustedVaultConnection::DownloadNewKeysCallback> callback;
 
@@ -691,7 +737,7 @@ TEST_F(TrustedVaultConnectionImplTest,
       RespondToGetSecurityDomainMemberRequest(net::HTTP_INTERNAL_SERVER_ERROR));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleAccessTokenFetchingFailureWhenDownloadingKeys) {
   std::unique_ptr<TrustedVaultConnectionImpl> connection =
       CreateConnectionWithAccessTokenError(
@@ -718,7 +764,7 @@ TEST_F(TrustedVaultConnectionImplTest,
   EXPECT_THAT(GetPendingHTTPRequest(), IsNull());
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldCancelGetSecurityDomainMemberRequest) {
   base::MockCallback<TrustedVaultConnection::DownloadNewKeysCallback> callback;
 
@@ -738,7 +784,7 @@ TEST_F(TrustedVaultConnectionImplTest,
   RespondToGetSecurityDomainMemberRequest(net::HTTP_OK);
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldSendGetSecurityDomainRequestWhenRetrievingRecoverability) {
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->DownloadIsRecoverabilityDegraded(
@@ -753,11 +799,11 @@ TEST_F(TrustedVaultConnectionImplTest,
   const network::ResourceRequest& resource_request =
       pending_http_request->request;
   EXPECT_THAT(resource_request.method, Eq("GET"));
-  EXPECT_THAT(resource_request.url,
-              Eq(GetFullGetSecurityDomainURLForTesting(kTestURL)));
+  EXPECT_THAT(resource_request.url, Eq(GetFullGetSecurityDomainURLForTesting(
+                                        kTestURL, security_domain())));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleValidResponseWhenRetrievingRecoverability) {
   base::MockCallback<TrustedVaultConnection::IsRecoverabilityDegradedCallback>
       callback;
@@ -771,6 +817,7 @@ TEST_F(TrustedVaultConnectionImplTest,
   EXPECT_TRUE(RespondToGetSecurityDomainRequest(
       net::HTTP_OK,
       /*response_body=*/MakeSecurityDomainWithDegradedRecoverability(
+          security_domain(),
           /*recoverability_degraded=*/false)
           .SerializeAsString()));
   testing::Mock::VerifyAndClearExpectations(&callback);
@@ -783,11 +830,12 @@ TEST_F(TrustedVaultConnectionImplTest,
   EXPECT_TRUE(RespondToGetSecurityDomainRequest(
       net::HTTP_OK,
       /*response_body=*/MakeSecurityDomainWithDegradedRecoverability(
+          security_domain(),
           /*recoverability_degraded=*/true)
           .SerializeAsString()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleFailedRequestWhenRetrievingRecoverability) {
   base::MockCallback<TrustedVaultConnection::IsRecoverabilityDegradedCallback>
       callback;
@@ -801,11 +849,12 @@ TEST_F(TrustedVaultConnectionImplTest,
   EXPECT_TRUE(RespondToGetSecurityDomainRequest(
       net::HTTP_INTERNAL_SERVER_ERROR,
       /*response_body=*/MakeSecurityDomainWithDegradedRecoverability(
+          security_domain(),
           /*recoverability_degraded=*/false)
           .SerializeAsString()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldHandleCorruptedResponseWhenRetrievingRecoverability) {
   base::MockCallback<TrustedVaultConnection::IsRecoverabilityDegradedCallback>
       callback;
@@ -833,7 +882,7 @@ TEST_F(TrustedVaultConnectionImplTest,
           .SerializeAsString()));
 }
 
-TEST_F(TrustedVaultConnectionImplTest,
+TEST_P(TrustedVaultConnectionImplTest,
        ShouldCancelRequestWhenRetrievingRecoverability) {
   base::MockCallback<TrustedVaultConnection::IsRecoverabilityDegradedCallback>
       callback;
@@ -850,8 +899,185 @@ TEST_F(TrustedVaultConnectionImplTest,
   RespondToGetSecurityDomainRequest(
       net::HTTP_OK,
       /*response_body=*/MakeSecurityDomainWithDegradedRecoverability(
+          security_domain(),
           /*recoverability_degraded=*/false)
           .SerializeAsString());
+}
+
+TEST_P(TrustedVaultConnectionImplTest,
+       DownloadAuthenticationFactorsRegistrationState_Basic) {
+  base::MockCallback<TrustedVaultConnection::
+                         DownloadAuthenticationFactorsRegistrationStateCallback>
+      callback;
+
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->DownloadAuthenticationFactorsRegistrationState(
+          /*account_info=*/CoreAccountInfo(), callback.Get());
+  ASSERT_THAT(request, NotNull());
+
+  EXPECT_CALL(
+      callback,
+      Run(DownloadAuthenticationFactorsRegistrationStateResult::kRecoverable));
+
+  ASSERT_TRUE(RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+      /*next_page_token=*/absl::nullopt, net::HTTP_OK,
+      /*response_body=*/
+      MakeSecurityDomainMembers(
+          security_domain(),
+          {Member::kPhysical, Member::kOtherSecurityDomain,
+           Member::kUsableVirtual},
+          /*next_page_token=*/absl::nullopt)
+          .SerializeAsString()));
+}
+
+TEST_P(TrustedVaultConnectionImplTest,
+       DownloadAuthenticationFactorsRegistrationState_Cases) {
+  const struct TestCase {
+    // responses contains the set of security domain members included in each
+    // page of results from the "server".
+    std::vector<std::vector<Member>> responses;
+    DownloadAuthenticationFactorsRegistrationStateResult expected_result;
+    // The enumeration can finish before downloading all the pages of results
+    // if it has seen enough to determine the result. This value specifies the
+    // number of pages that should be downloaded.
+    int expected_num_pages_downloaded;
+  } kTestCases[] = {
+      {
+          {{}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kEmpty,
+          1,
+      },
+      {
+          {{}, {}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kEmpty,
+          2,
+      },
+      {
+          {{Member::kOtherSecurityDomain}, {Member::kOtherSecurityDomain}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kEmpty,
+          2,
+      },
+      {
+          {{Member::kPhysical}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kIrrecoverable,
+          1,
+      },
+      {
+          {{Member::kPhysical, Member::kUsableVirtual}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kRecoverable,
+          1,
+      },
+      {
+          {{Member::kPhysical, Member::kUnusableVirtual}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kIrrecoverable,
+          1,
+      },
+      {
+          {{Member::kPhysical}, {}, {Member::kUsableVirtual}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kRecoverable,
+          3,
+      },
+      {
+          {{Member::kUsableVirtual}, {}, {Member::kPhysical}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kRecoverable,
+          1,
+      },
+      {
+          {{Member::kPhysical}, {}, {Member::kUnusableVirtual}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kIrrecoverable,
+          3,
+      },
+      {
+          {{Member::kPhysical}, {}, {Member::kOtherSecurityDomain}},
+          DownloadAuthenticationFactorsRegistrationStateResult::kIrrecoverable,
+          3,
+      },
+  };
+
+  int test_case = 0;
+  for (const auto& test : kTestCases) {
+    SCOPED_TRACE(test_case);
+    test_case++;
+
+    absl::optional<DownloadAuthenticationFactorsRegistrationStateResult> result;
+    auto callback = base::BindLambdaForTesting(
+        [&result](
+            DownloadAuthenticationFactorsRegistrationStateResult in_result) {
+          result = in_result;
+        });
+
+    std::unique_ptr<TrustedVaultConnection::Request> request =
+        connection()->DownloadAuthenticationFactorsRegistrationState(
+            /*account_info=*/CoreAccountInfo(), std::move(callback));
+    ASSERT_THAT(request, NotNull());
+
+    absl::optional<std::string> prev_next_page_token;
+    int num_pages_downloaded = 0;
+    for (size_t i = 0; i < test.responses.size(); i++) {
+      if (result.has_value()) {
+        // The process stopped early. (This is valid if enough members have been
+        // seen to determine the result.)
+        break;
+      }
+
+      absl::optional<std::string> next_page_token;
+      if (i < test.responses.size() - 1) {
+        next_page_token = base::NumberToString(i);
+      }
+      ASSERT_TRUE(
+          RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+              prev_next_page_token, net::HTTP_OK,
+              /*response_body=*/
+              MakeSecurityDomainMembers(security_domain(), test.responses[i],
+                                        next_page_token)
+                  .SerializeAsString()));
+      num_pages_downloaded++;
+      prev_next_page_token = std::move(next_page_token);
+    }
+
+    EXPECT_EQ(num_pages_downloaded, test.expected_num_pages_downloaded);
+    EXPECT_EQ(result.value(), test.expected_result);
+  }
+}
+
+TEST_P(TrustedVaultConnectionImplTest,
+       DownloadAuthenticationFactorsRegistrationState_Error) {
+  base::MockCallback<TrustedVaultConnection::
+                         DownloadAuthenticationFactorsRegistrationStateCallback>
+      callback;
+
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->DownloadAuthenticationFactorsRegistrationState(
+          /*account_info=*/CoreAccountInfo(), callback.Get());
+  ASSERT_THAT(request, NotNull());
+
+  EXPECT_CALL(
+      callback,
+      Run(DownloadAuthenticationFactorsRegistrationStateResult::kError));
+
+  ASSERT_TRUE(RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+      /*next_page_token=*/absl::nullopt, net::HTTP_INTERNAL_SERVER_ERROR,
+      /*response_body=*/""));
+}
+
+TEST_P(TrustedVaultConnectionImplTest,
+       DownloadAuthenticationFactorsRegistrationState_InvalidResponse) {
+  base::MockCallback<TrustedVaultConnection::
+                         DownloadAuthenticationFactorsRegistrationStateCallback>
+      callback;
+
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->DownloadAuthenticationFactorsRegistrationState(
+          /*account_info=*/CoreAccountInfo(), callback.Get());
+  ASSERT_THAT(request, NotNull());
+
+  EXPECT_CALL(
+      callback,
+      Run(DownloadAuthenticationFactorsRegistrationStateResult::kError));
+
+  ASSERT_TRUE(RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+      /*next_page_token=*/absl::nullopt, net::HTTP_OK,
+      /*response_body=*/"not a valid protobuf"));
 }
 
 }  // namespace

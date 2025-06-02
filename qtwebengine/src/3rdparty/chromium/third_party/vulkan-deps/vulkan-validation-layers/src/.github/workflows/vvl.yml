@@ -30,104 +30,114 @@ on:
 
 env:
   CMAKE_GENERATOR: Ninja
-  CMAKE_C_COMPILER_LAUNCHER: ccache
-  CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
 permissions:
   contents: read
 
 jobs:
+  # Ensure we can build on an older Ubuntu distro with an older version of CMake.
+  linux_back_compat:
+    runs-on: ubuntu-20.04
+    name: "Ubuntu Backcompat"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test Minimum CMake Version
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: 3.17.2
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: linux_back_compat
+      - run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
+      - run: cmake -S . -B build/ -D UPDATE_DEPS=ON -D CMAKE_BUILD_TYPE=Debug
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          # Linker warnings as errors
+          LDFLAGS: -Wl,--fatal-warnings
+      - run: cmake --build build
+      - run: cmake --install build --prefix /tmp
+
   linux:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
+    name: "linux (${{matrix.sanitize}} sanitizer, ${{matrix.config}}, robinhood ${{matrix.robin_hood}} )"
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04]
-        compiler: [{cc: gcc, cxx: g++}]
-        flags: [{c: "-fsanitize=address", ld: "-fsanitize=address"}, {c: "-fsanitize=thread", ld: "-fsanitize=thread"}]
+        sanitize: [ address, thread ]
         config: [debug, release]
-        cpp_std: [17]
-        robin_hood: ["ON"]
+        robin_hood: [ "ON" ]
         include:
-          # Test Ubuntu-20.04 release build works.
-          - os: ubuntu-20.04
-            compiler: {cc: gcc, cxx: g++}
-            config: release
-            cpp_std: 17
-            robin_hood: "ON"
-          # Test C++ 20 support
-          - os: ubuntu-22.04
-            compiler: {cc: gcc, cxx: g++}
-            config: release
-            cpp_std: 20
-            robin_hood: "ON"
-          # Test clang support
-          - os: ubuntu-22.04
-            compiler: {cc: clang, cxx: clang++}
-            config: release
-            cpp_std: 17
-            robin_hood: "ON"
           # Test with Robin Hood disabled
           # Chromium build, and some package managers don't use it.
-          - os: ubuntu-22.04
-            compiler: {cc: clang, cxx: clang++}
-            config: release
-            cpp_std: 17
+          - config: release
             robin_hood: "OFF"
-            flags: [{c: "-fsanitize=address", ld: "-fsanitize=address"}]
-
+            sanitize: address
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: lukka/get-cmake@latest
+      - uses: hendrikmuhs/ccache-action@v1.2
         with:
-          cmakeVersion: 3.17.2
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: ${{ matrix.os }}-${{ matrix.config }}-${{ matrix.compiler.cc }}-${{ matrix.compiler.cxx }}-${{ matrix.cpp_std }}-${{ matrix.flags.c }}-${{ matrix.flags.ld }}-${{matrix.robin_hood}}
-      - name: Install python dependencies
-        run: python3 -m pip install jsonschema pyparsing
-      - name: Install WSI dependencies
-        run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
-      - name: Build
-        run: python scripts/tests.py --build --config ${{ matrix.config }} --cmake='-DVVL_CPP_STANDARD=${{ matrix.cpp_std }} -DUSE_ROBIN_HOOD_HASHING=${{matrix.robin_hood}}'
+          key: ${{ matrix.config }}-${{ matrix.sanitize }}-${{matrix.robin_hood}}
+      - run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
+      - run: python scripts/tests.py --build --config ${{ matrix.config }} --cmake='-DUSE_ROBIN_HOOD_HASHING=${{matrix.robin_hood}}'
         env:
-          CC: ${{ matrix.compiler.cc }}
-          CXX: ${{ matrix.compiler.cxx }}
-          CFLAGS: ${{ matrix.flags.c }}
-          CXXFLAGS: ${{ matrix.flags.c }}
-          LDFLAGS: ${{ matrix.flags.ld }}
+          CFLAGS: -fsanitize=${{ matrix.sanitize }}
+          CXXFLAGS: -fsanitize=${{ matrix.sanitize }}
+          LDFLAGS: -fsanitize=${{ matrix.sanitize }}
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
       - name: Test Max Profile
         run: python scripts/tests.py --test
         env:
           VK_KHRONOS_PROFILES_PROFILE_FILE: ${{ github.workspace }}/tests/device_profiles/max_profile.json
-      - name: Test Pixel 6 Adreno profile
+      - name: Test Max Core
         run: python scripts/tests.py --test
         env:
-          VK_KHRONOS_PROFILES_PROFILE_FILE: ${{ github.workspace }}/tests/device_profiles/pixel_6_adreno.json
+          VK_KHRONOS_PROFILES_PROFILE_FILE: ${{ github.workspace }}/tests/device_profiles/max_core.json
+      - name: Test Min Core
+        run: python scripts/tests.py --test
+        env:
+          VK_KHRONOS_PROFILES_PROFILE_FILE: ${{ github.workspace }}/tests/device_profiles/min_core.json
+
+  androidOnLinux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/get-cmake@latest
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: androidOnLinux-ccache
+      - run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
+      - name: Build
+        run: python scripts/tests.py --build --mockAndroid --config release
+        env:
+          CC: clang
+          CXX: clang++
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      - name: Test Max Profile
+        run: python scripts/tests.py --test --mockAndroid
+        env:
+          VK_KHRONOS_PROFILES_PROFILE_FILE: ${{ github.workspace }}/tests/device_profiles/max_profile.json
 
   windows:
     runs-on: windows-2022
     strategy:
-      fail-fast: false
       matrix:
         arch: [ amd64, amd64_x86 ]
-        config: [ debug, release ]
-
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
-      - name: Install build dependencies
-        run: python3 -m pip install jsonschema pyparsing
-      - name: Cache dependent components
+      - name: Cache known_good.json installations
         id: cache-deps
         uses: actions/cache@v3
         with:
@@ -139,9 +149,10 @@ jobs:
             build-ci/external/SPIRV-Headers/build/install
             build-ci/external/SPIRV-Tools/build/install
             build-ci/external/Vulkan-Headers/build/install
-          key: windows-dependencies-${{ matrix.arch }}-${{ matrix.config }}-${{ hashfiles('scripts/known_good.json') }}
+            build-ci/external/Vulkan-Utility-Libraries/build/install
+          key: windows-dependencies-${{ matrix.arch }}-${{ hashfiles('scripts/known_good.json') }}
       - name: Build
-        run: python3 scripts/tests.py --build --config ${{ matrix.config }} --cmake='-DUPDATE_DEPS_SKIP_EXISTING_INSTALL=ON'
+        run: python3 scripts/tests.py --build --config debug --cmake='-DUPDATE_DEPS_SKIP_EXISTING_INSTALL=ON'
       - name: Test Max Profile
         run: python scripts/tests.py --test
 
@@ -158,7 +169,7 @@ jobs:
             stl_type: c++_static
 
       steps:
-        - uses: actions/checkout@v3
+        - uses: actions/checkout@v4
         - uses: lukka/get-cmake@latest
         - name: Setup ccache
           uses: hendrikmuhs/ccache-action@v1.2
@@ -175,29 +186,43 @@ jobs:
             -D BUILD_TESTS=${{ matrix.build_tests }} \
             -D UPDATE_DEPS=ON \
             -D BUILD_WERROR=ON
-        - name: Build
-          run: cmake --build build/
-        - name: Test
-          working-directory: ./build
-          run: ctest --output-on-failure -C Debug
+          env:
+            CMAKE_C_COMPILER_LAUNCHER: ccache
+            CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        - run: cmake --build build/
+        - run: cmake --install build/ --prefix /tmp
+        - run: ctest --output-on-failure -C Debug --test-dir build/
 
-  macos:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        macos_version: ["min","latest"]
+  iOS:
+    runs-on: macos-12
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - uses: lukka/get-cmake@latest
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: macos-${{ matrix.macos_version }}
-      - name: Build
-        run: python3 scripts/macos.py --config release --osx ${{ matrix.macos_version }}
+          key: iOS-cache
+      - uses: lukka/get-cmake@latest
+      - name: Configure for iOS
+        run: |
+          cmake -S . -B build/ \
+          -D CMAKE_SYSTEM_NAME=iOS \
+          -D CMAKE_OSX_ARCHITECTURES=arm64 \
+          -D BUILD_WERROR=ON \
+          -D UPDATE_DEPS=ON \
+          -D CMAKE_BUILD_TYPE=Debug
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          LDFLAGS: -Wl,-fatal_warnings
+      - run: cmake --build build
+      - run: cmake --install build --prefix /tmp
+      # Helps verify install location and prints the exported symbols.
+      - run: nm -gU /tmp/lib/libVkLayer_khronos_validation.dylib
+      # Helps verify useful details about the dylib (platform, minos, sdk)
+      - run: vtool -show-build /tmp/lib/libVkLayer_khronos_validation.dylib
 
   mingw:
     runs-on: windows-latest
@@ -205,46 +230,42 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: mingw-ccache
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
       - uses: lukka/get-cmake@latest
-      - name: GCC Version
-        run: gcc --version # If this fails MINGW is not setup correctly
-      - name: Configure
-        run: cmake -S. -B build -D BUILD_WERROR=ON -D UPDATE_DEPS=ON -D CMAKE_BUILD_TYPE=Release
+      - run: |
+          cmake -S. -B build \
+          -D BUILD_WERROR=ON \
+          -D UPDATE_DEPS=ON \
+          -D CMAKE_BUILD_TYPE=Release
         env:
           LDFLAGS: -fuse-ld=lld # MINGW linking is very slow. Use llvm linker instead.
-      - name: Build
-        run: cmake --build build -- --quiet
-      - name: Install
-        run: cmake --install build --prefix build/install
-      - name: MinGW ccache stats # The Post Setup ccache doesn't work right on MinGW
-        run: ccache --show-stats
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      - run: cmake --build build
+      - run: cmake --install build --prefix /tmp
 
-  # Test to ensure we don't accidentally break the SDK, LunarG/VulkanTools, or the Chromium build.
-  integration_test:
-    runs-on: ubuntu-22.04
+  chromium:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
+      - run: python scripts/gn/gn.py
+
+  check_vvl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - uses: lukka/get-cmake@latest
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: integration_test_ccache
-      - name: Install WSI dependencies
-        run: sudo apt-get -qq update && sudo apt-get install -y libwayland-dev xorg-dev
-      - name: Configure SDK Integration Test
-        run: cmake -S tests/integration -B tests/integration/build
-      - name: Build SDK Integration Test
-        run: cmake --build tests/integration/build
-      - name: Test chromium build
-        run: python scripts/gn.py
+      - run: python3 -m pip install pyparsing
+      - run: scripts/update_deps.py --dir ext --no-build
+      - run: scripts/generate_source.py --verify ext/Vulkan-Headers/registry/ ext/SPIRV-Headers/include/spirv/unified1/
+      - run: scripts/vk_validation_stats.py ext/Vulkan-Headers/registry/validusage.json -summary -c

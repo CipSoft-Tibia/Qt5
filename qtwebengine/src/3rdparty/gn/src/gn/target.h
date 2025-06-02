@@ -14,7 +14,6 @@
 #include "gn/action_values.h"
 #include "gn/bundle_data.h"
 #include "gn/config_values.h"
-#include "gn/inherited_libraries.h"
 #include "gn/item.h"
 #include "gn/label_pattern.h"
 #include "gn/label_ptr.h"
@@ -99,6 +98,9 @@ class Target : public Item {
   // propagated. Treating these as data only decreases superfluous rebuilds and
   // increases parallelism.
   bool IsDataOnly() const;
+
+  // Return true if this target should be generated in the final build graph.
+  bool ShouldGenerate() const;
 
   // Will be the empty string to use the target label as the output name.
   // See GetComputedOutputName().
@@ -302,10 +304,6 @@ class Target : public Item {
   const LabelPtrPair<Pool>& pool() const { return pool_; }
   void set_pool(LabelPtrPair<Pool> pool) { pool_ = std::move(pool); }
 
-  const InheritedLibraries& inherited_libraries() const {
-    return inherited_libraries_;
-  }
-
   // This config represents the configuration set directly on this target.
   ConfigValues& config_values();
   const ConfigValues& config_values() const;
@@ -321,36 +319,12 @@ class Target : public Item {
 
   // Return true if this targets builds a SwiftModule
   bool builds_swift_module() const {
-    return IsBinary() && has_swift_values() &&
-           source_types_used().SwiftSourceUsed();
+    return IsBinary() && source_types_used().SwiftSourceUsed();
   }
 
   RustValues& rust_values();
   const RustValues& rust_values() const;
   bool has_rust_values() const { return rust_values_.get(); }
-
-  // Transitive closure of libraries that are depended on by this target
-  const InheritedLibraries& rust_transitive_inherited_libs() const {
-    return rust_transitive_inherited_libs_;
-  }
-  const InheritedLibraries& rust_transitive_inheritable_libs() const {
-    return rust_transitive_inheritable_libs_;
-  }
-
-  const UniqueVector<SourceDir>& all_lib_dirs() const { return all_lib_dirs_; }
-  const UniqueVector<LibFile>& all_libs() const { return all_libs_; }
-
-  const UniqueVector<SourceDir>& all_framework_dirs() const {
-    return all_framework_dirs_;
-  }
-  const UniqueVector<std::string>& all_frameworks() const {
-    return all_frameworks_;
-  }
-  const UniqueVector<std::string>& all_weak_frameworks() const {
-    return all_weak_frameworks_;
-  }
-
-  const TargetSet& recursive_hard_deps() const { return recursive_hard_deps_; }
 
   std::vector<LabelPattern>& friends() { return friends_; }
   const std::vector<LabelPattern>& friends() const { return friends_; }
@@ -505,25 +479,6 @@ class Target : public Item {
 
   LabelPtrPair<Pool> pool_;
 
-  // Static libraries, shared libraries, and source sets from transitive deps
-  // that need to be linked.
-  InheritedLibraries inherited_libraries_;
-
-  // These libs and dirs are inherited from statically linked deps and all
-  // configs applying to this target.
-  UniqueVector<SourceDir> all_lib_dirs_;
-  UniqueVector<LibFile> all_libs_;
-
-  // These frameworks and dirs are inherited from statically linked deps and
-  // all configs applying to this target.
-  UniqueVector<SourceDir> all_framework_dirs_;
-  UniqueVector<std::string> all_frameworks_;
-  UniqueVector<std::string> all_weak_frameworks_;
-
-  // All hard deps from this target and all dependencies. Filled in when this
-  // target is marked resolved. This will not include the current target.
-  TargetSet recursive_hard_deps_;
-
   std::vector<LabelPattern> friends_;
   std::vector<LabelPattern> assert_no_deps_;
 
@@ -537,19 +492,6 @@ class Target : public Item {
 
   // Used for Rust targets.
   std::unique_ptr<RustValues> rust_values_;
-
-  // Used by all targets, only useful to generate Rust targets though. These
-  // present 2 different views of the public flags:
-  //
-  // Lists all transitive libraries, and for each one the public bit says if
-  // there is a public chain such that this target can make direct use of the
-  // lib. For each library marked public: "I have access to these targets."
-  InheritedLibraries rust_transitive_inherited_libs_;
-  // Lists all transitive libraries, and for each one the public bit says if a
-  // target depending on this target would inherit the libraries as public too.
-  // For each library marked public: "If you depend on me, you get access to
-  // these targets."
-  InheritedLibraries rust_transitive_inheritable_libs_;
 
   // User for Swift targets.
   std::unique_ptr<SwiftValues> swift_values_;

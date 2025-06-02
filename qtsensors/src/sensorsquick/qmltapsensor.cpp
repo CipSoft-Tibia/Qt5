@@ -6,7 +6,7 @@
 
 /*!
     \qmltype TapSensor
-//!    \instantiates QmlTapSensor
+//!    \nativetype QmlTapSensor
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -65,7 +65,7 @@ void QmlTapSensor::setReturnDoubleTapEvents(bool ret)
 
 /*!
     \qmltype TapReading
-//!    \instantiates QmlTapSensorReading
+//!    \nativetype QmlTapSensorReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.0

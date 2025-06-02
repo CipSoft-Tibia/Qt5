@@ -109,7 +109,7 @@ void RunWithGaneshTestContexts(GrContextTestFn* testFn, ContextTypeFilterFn* fil
             // calling flush.
             ctxInfo.testContext()->makeCurrent();
             // Sync so any release/finished procs get called.
-            ctxInfo.directContext()->flushAndSubmit(/*sync*/true);
+            ctxInfo.directContext()->flushAndSubmit(GrSyncCpu::kYes);
         }
     }
 }
@@ -121,21 +121,21 @@ namespace graphite {
 void RunWithGraphiteTestContexts(GraphiteTestFn* test,
                                  ContextTypeFilterFn* filter,
                                  Reporter* reporter,
-                                 const skgpu::graphite::ContextOptions& ctxOptions) {
-    ContextFactory factory(ctxOptions);
+                                 const skiatest::graphite::TestOptions& options) {
+    ContextFactory factory(options);
     for (int typeInt = 0; typeInt < skgpu::kContextTypeCount; ++typeInt) {
         skgpu::ContextType contextType = static_cast<skgpu::ContextType>(typeInt);
         if (filter && !(*filter)(contextType)) {
             continue;
         }
 
-        auto [_, context] = factory.getContextInfo(contextType);
-        if (!context) {
+        skiatest::graphite::ContextInfo ctxInfo = factory.getContextInfo(contextType);
+        if (!ctxInfo.fContext) {
             continue;
         }
 
         ReporterContext ctx(reporter, SkString(skgpu::ContextTypeName(contextType)));
-        (*test)(reporter, context);
+        (*test)(reporter, ctxInfo.fContext, ctxInfo.fTestContext);
     }
 }
 

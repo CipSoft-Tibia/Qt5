@@ -89,7 +89,7 @@ Q_SIGNALS:
 } // QScxmlInternal namespace
 
 class QScxmlInvokableService;
-class Q_SCXML_PRIVATE_EXPORT QScxmlStateMachinePrivate: public QObjectPrivate
+class Q_SCXML_EXPORT QScxmlStateMachinePrivate: public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QScxmlStateMachine)
 
@@ -391,6 +391,7 @@ private:
     }
 
     bool isPaused() const { return m_runningState == Paused; }
+    bool isFinished() const { return m_runningState == Finished; }
 
     QScxmlInternal::StateMachineInfoProxy *m_infoSignalProxy;
 

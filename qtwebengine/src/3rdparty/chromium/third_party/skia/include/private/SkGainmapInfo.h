@@ -9,6 +9,7 @@
 #define SkGainmapInfo_DEFINED
 
 #include "include/core/SkColor.h"
+#include "include/core/SkColorSpace.h"
 
 /**
  *  Gainmap rendering parameters. Suppose our display has HDR to SDR ratio of H and we wish to
@@ -71,29 +72,29 @@ struct SkGainmapInfo {
     };
     BaseImageType fBaseImageType = BaseImageType::kSDR;
 
-    inline bool operator==(const SkGainmapInfo& other) {
+    /**
+     * If specified, color space to apply the gainmap in, otherwise the base image's color space
+     * is used. Only the color primaries are used, the transfer function is irrelevant.
+     */
+    sk_sp<SkColorSpace> fGainmapMathColorSpace = nullptr;
+
+    inline bool operator==(const SkGainmapInfo& other) const {
         return fGainmapRatioMin == other.fGainmapRatioMin &&
                fGainmapRatioMax == other.fGainmapRatioMax && fGainmapGamma == other.fGainmapGamma &&
                fEpsilonSdr == other.fEpsilonSdr && fEpsilonHdr == other.fEpsilonHdr &&
                fDisplayRatioSdr == other.fDisplayRatioSdr &&
-               fDisplayRatioHdr == other.fDisplayRatioHdr && fBaseImageType == other.fBaseImageType;
+               fDisplayRatioHdr == other.fDisplayRatioHdr &&
+               fBaseImageType == other.fBaseImageType &&
+               SkColorSpace::Equals(fGainmapMathColorSpace.get(),
+                                    other.fGainmapMathColorSpace.get());
     }
-    inline bool operator!=(const SkGainmapInfo& other) { return !(*this == other); }
+    inline bool operator!=(const SkGainmapInfo& other) const { return !(*this == other); }
 
     // TODO(ccameron): Remove these parameters once we are certain they are not used in Android.
     enum class Type {
-        kUnknown,
-        kMultiPicture,
-        kJpegR_Linear,
-        kJpegR_HLG,
-        kJpegR_PQ,
-        kHDRGM,
+        kDefault,
     };
-    SkColor4f fLogRatioMin = {0.f, 0.f, 0.f, 1.0};
-    SkColor4f fLogRatioMax = {1.f, 1.f, 1.f, 1.0};
-    float fHdrRatioMin = 1.f;
-    float fHdrRatioMax = 50.f;
-    Type fType = Type::kUnknown;
+    Type fType = Type::kDefault;
 };
 
 #endif

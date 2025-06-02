@@ -39,6 +39,11 @@ bool CompletionRequest::fillFrom(QmlLsp::OpenDocument doc, const Parameters &par
     return true;
 }
 
+QmlCompletionSupport::QmlCompletionSupport(QmlLsp::QQmlCodeModel *codeModel)
+    : BaseT(codeModel), m_completionEngine(codeModel->pluginLoader())
+{
+}
+
 void QmlCompletionSupport::registerHandlers(QLanguageServer *, QLanguageServerProtocol *protocol)
 {
     protocol->registerCompletionRequestHandler(getRequestHandler());
@@ -68,7 +73,7 @@ void QmlCompletionSupport::process(RequestPointerArgument req)
 {
     QmlLsp::OpenDocumentSnapshot doc =
             m_codeModel->snapshotByUrl(req->m_parameters.textDocument.uri);
-    req->sendCompletions(doc);
+    req->sendCompletions(req->completions(doc, m_completionEngine));
 }
 
 QString CompletionRequest::urlAndPos() const
@@ -78,10 +83,9 @@ QString CompletionRequest::urlAndPos() const
             + QString::number(m_parameters.position.character);
 }
 
-void CompletionRequest::sendCompletions(QmlLsp::OpenDocumentSnapshot &doc)
+void CompletionRequest::sendCompletions(const QList<CompletionItem> &completions)
 {
-    QList<CompletionItem> res = completions(doc);
-    m_response.sendResponse(res);
+    m_response.sendResponse(completions);
 }
 
 static bool positionIsFollowedBySpaces(qsizetype position, const QString &code)
@@ -124,17 +128,13 @@ DomItem CompletionRequest::patchInvalidFileForParser(const DomItem &file, qsizet
         DomItem newCurrent = file.environment().makeCopy(DomItem::CopyOption::EnvConnected).item();
 
         DomItem result;
-        DomCreationOptions options;
-        options.setFlag(DomCreationOption::WithScriptExpressions);
-        options.setFlag(DomCreationOption::WithSemanticAnalysis);
-        options.setFlag(DomCreationOption::WithRecovery);
-        newCurrent.loadFile(FileToLoad::fromMemory(newCurrent.ownerAs<DomEnvironment>(),
-                                                   file.canonicalFilePath(), patchedCode, options),
-                            [&result](Path, const DomItem &, const DomItem &newValue) {
-                                result = newValue.fileObject();
-                            },
-                            {});
-        newCurrent.loadPendingDependencies();
+        auto newCurrentPtr = newCurrent.ownerAs<DomEnvironment>();
+        newCurrentPtr->loadFile(
+                FileToLoad::fromMemory(newCurrentPtr, file.canonicalFilePath(), patchedCode),
+                [&result](Path, const DomItem &, const DomItem &newValue) {
+                    result = newValue.fileObject();
+                });
+        newCurrentPtr->loadPendingDependencies();
         return result;
     }
 
@@ -144,7 +144,8 @@ DomItem CompletionRequest::patchInvalidFileForParser(const DomItem &file, qsizet
     return file;
 }
 
-QList<CompletionItem> CompletionRequest::completions(QmlLsp::OpenDocumentSnapshot &doc) const
+QList<CompletionItem> CompletionRequest::completions(QmlLsp::OpenDocumentSnapshot &doc,
+                                                     const QQmlLSCompletion &completionEngine) const
 {
     QList<CompletionItem> res;
 
@@ -168,6 +169,11 @@ QList<CompletionItem> CompletionRequest::completions(QmlLsp::OpenDocumentSnapsho
     auto itemsFound = QQmlLSUtils::itemsFromTextLocation(file, m_parameters.position.line,
                                                          m_parameters.position.character
                                                                  - ctx.filterChars().size());
+    if (itemsFound.isEmpty()) {
+        qCDebug(QQmlLSCompletionLog) << "No items found for completions at" << urlAndPos();
+        return {};
+    }
+
     if (itemsFound.size() > 1) {
         QStringList paths;
         for (auto &it : itemsFound)
@@ -175,11 +181,7 @@ QList<CompletionItem> CompletionRequest::completions(QmlLsp::OpenDocumentSnapsho
         qCWarning(QQmlLSCompletionLog) << "Multiple elements of " << urlAndPos()
                                        << " at the same depth:" << paths << "(using first)";
     }
-    DomItem currentItem;
-    if (!itemsFound.isEmpty())
-        currentItem = itemsFound.first().domItem;
-    else
-        qCDebug(QQmlLSCompletionLog) << "No items found for completions at" << urlAndPos();
+    const DomItem currentItem = itemsFound.first().domItem;
     qCDebug(QQmlLSCompletionLog) << "Completion at " << urlAndPos() << " "
                                  << m_parameters.position.line << ":"
                                  << m_parameters.position.character << "offset:" << pos
@@ -188,7 +190,7 @@ QList<CompletionItem> CompletionRequest::completions(QmlLsp::OpenDocumentSnapsho
                                  << "validVersion:"
                                  << (doc.validDocVersion ? (*doc.validDocVersion) : -1) << "in"
                                  << currentItem.internalKindStr() << currentItem.canonicalPath();
-    auto result = QQmlLSUtils::completions(currentItem, ctx);
+    auto result = completionEngine.completions(currentItem, ctx);
     return result;
 }
 QT_END_NAMESPACE

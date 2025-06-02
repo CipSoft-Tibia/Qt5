@@ -10,11 +10,14 @@ qt_internal_add_test(tst_qwindowcapturebackend
         grabber.cpp
         fixture.h
         fixture.cpp
+
     LIBRARIES
         Qt::Multimedia
+        Qt::MultimediaPrivate
         Qt::Gui
         Qt::Widgets
         Qt::MultimediaWidgets
+        Qt::MultimediaTestLibPrivate
 )
 
 

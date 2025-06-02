@@ -1,5 +1,5 @@
 // Copyright (C) 2022 David Edmundson <davidedmundson@kde.org>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "viewport.h"
 
@@ -16,7 +16,7 @@ void Viewporter::wp_viewporter_get_viewport(Resource *resource, uint32_t id, wl_
     auto *viewport = new Viewport(s, resource->client(), id, resource->version());
     connect(viewport, &QObject::destroyed, this, [this, viewport]() {
         m_viewports.removeOne(viewport);
-    });
+    }, Qt::DirectConnection);
     m_viewports << viewport;
 }
 

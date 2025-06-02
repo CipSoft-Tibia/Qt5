@@ -78,7 +78,7 @@ ColorSpaceCoeff getColorSpaceCoef(QVideoFrameFormat::ColorSpace colorSpace,
     if (it != colorSpaces.end())
         return it->coefficients;
 
-    Q_ASSERT(false);
+    QTEST_ASSERT(false);
 
     return {};
 }
@@ -231,7 +231,7 @@ private slots:
 
         // Act
         QByteArray data;
-        QVideoTextureHelper::updateUniformData(&data, format, {}, {}, 0.0);
+        QVideoTextureHelper::updateUniformData(&data, nullptr, format, {}, {}, 0.0);
         const QMatrix4x4 actual = getColorMatrix(data);
 
         // Assert

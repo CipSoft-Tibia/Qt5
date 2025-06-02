@@ -14,7 +14,7 @@
 #include "third_party/blink/renderer/core/layout/layout_view.h"
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_root.h"
 #include "third_party/blink/renderer/core/mobile_metrics/mobile_friendliness_checker.h"
-#include "third_party/blink/renderer/core/paint/background_image_geometry.h"
+#include "third_party/blink/renderer/core/paint/box_background_paint_context.h"
 #include "third_party/blink/renderer/core/paint/box_decoration_data.h"
 #include "third_party/blink/renderer/core/paint/box_model_object_painter.h"
 #include "third_party/blink/renderer/core/paint/box_painter.h"
@@ -124,7 +124,10 @@ void ReplacedPainter::Paint(const PaintInfo& paint_info) {
 
   if (ShouldPaintBoxDecorationBackground(local_paint_info)) {
     bool should_paint_background = false;
-    if (RuntimeEnabledFeatures::HitTestOpaquenessEnabled()) {
+    if (RuntimeEnabledFeatures::HitTestOpaquenessEnabled() &&
+        // TODO(crbug.com/1477914): Without this condition, scaled canvas
+        // would become pixelated on Linux.
+        !layout_replaced_.IsCanvas()) {
       should_paint_background = true;
     } else if (layout_replaced_.HasBoxDecorationBackground()) {
       should_paint_background = true;
@@ -258,7 +261,7 @@ bool ReplacedPainter::ShouldPaint(const ScopedPaintState& paint_state) const {
       layout_replaced_.StyleRef().Visibility() != EVisibility::kVisible)
     return false;
 
-  PhysicalRect local_rect = layout_replaced_.PhysicalVisualOverflowRect();
+  PhysicalRect local_rect = layout_replaced_.VisualOverflowRect();
   local_rect.Unite(layout_replaced_.LocalSelectionVisualRect());
   if (!paint_state.LocalRectIntersectsCullRect(local_rect))
     return false;
@@ -273,7 +276,7 @@ void ReplacedPainter::MeasureOverflowMetrics() const {
     return;
   }
 
-  auto overflow_size = layout_replaced_.PhysicalVisualOverflowRect().size;
+  auto overflow_size = layout_replaced_.VisualOverflowRect().size;
   auto overflow_area = overflow_size.width * overflow_size.height;
 
   auto content_size = layout_replaced_.Size();
@@ -317,8 +320,9 @@ void ReplacedPainter::PaintBoxDecorationBackground(
   if (painting_background_in_contents_space) {
     // For the case where we are painting the background in the contents space,
     // we need to include the entire overflow rect.
-    paint_rect = layout_replaced_.PhysicalLayoutOverflowRect();
-    contents_paint_state.emplace(paint_info, paint_offset, layout_replaced_);
+    paint_rect = layout_replaced_.ScrollableOverflowRect();
+    contents_paint_state.emplace(paint_info, paint_offset, layout_replaced_,
+                                 paint_info.FragmentDataOverride());
     paint_rect.Move(contents_paint_state->PaintOffset());
 
     // The background painting code assumes that the borders are part of the
@@ -357,7 +361,8 @@ void ReplacedPainter::PaintBoxDecorationBackground(
   // if this were immediately before the non-scrolling background.
   if (!painting_background_in_contents_space) {
     BoxPainter(layout_replaced_)
-        .RecordScrollHitTestData(paint_info, *background_client);
+        .RecordScrollHitTestData(paint_info, *background_client,
+                                 paint_info.FragmentDataOverride());
   }
 }
 
@@ -473,12 +478,12 @@ void ReplacedPainter::PaintBackground(
   if (layout_replaced_.BackgroundIsKnownToBeObscured()) {
     return;
   }
-  BackgroundImageGeometry geometry(layout_replaced_);
   BoxModelObjectPainter box_model_painter(layout_replaced_);
+  BoxBackgroundPaintContext bg_paint_context(layout_replaced_);
   box_model_painter.PaintFillLayers(
       paint_info, background_color,
-      layout_replaced_.StyleRef().BackgroundLayers(), paint_rect, geometry,
-      bleed_avoidance);
+      layout_replaced_.StyleRef().BackgroundLayers(), paint_rect,
+      bg_paint_context, bleed_avoidance);
 }
 
 void ReplacedPainter::PaintMask(const PaintInfo& paint_info,
@@ -506,10 +511,10 @@ void ReplacedPainter::PaintMaskImages(const PaintInfo& paint_info,
   // For mask images legacy layout painting handles multi-line boxes by giving
   // the full width of the element, not the current line box, thereby clipping
   // the offending edges.
-  BackgroundImageGeometry geometry(layout_replaced_);
   BoxModelObjectPainter painter(layout_replaced_);
-  painter.PaintMaskImages(paint_info, paint_rect, layout_replaced_, geometry,
-                          PhysicalBoxSides());
+  BoxBackgroundPaintContext bg_paint_context(layout_replaced_);
+  painter.PaintMaskImages(paint_info, paint_rect, layout_replaced_,
+                          bg_paint_context, PhysicalBoxSides());
 }
 
 }  // namespace blink

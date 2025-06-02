@@ -277,8 +277,9 @@ void WebViewGuest::CleanUp(content::BrowserContext* browser_context,
   }
 
   // Clean up web request event listeners for the WebView.
-  ExtensionWebRequestEventRouter::GetInstance()->RemoveWebViewEventListeners(
-      browser_context, embedder_process_id, view_instance_id);
+  WebRequestEventRouter::Get(browser_context)
+      ->RemoveWebViewEventListeners(browser_context, embedder_process_id,
+                                    view_instance_id);
 
   // Clean up content scripts for the WebView.
   auto* csm = WebViewContentScriptManager::Get(browser_context);
@@ -332,8 +333,7 @@ int WebViewGuest::GetOrGenerateRulesRegistryID(int embedder_process_id,
 void WebViewGuest::CreateWebContents(std::unique_ptr<GuestViewBase> owned_this,
                                      const base::Value::Dict& create_params,
                                      WebContentsCreatedCallback callback) {
-  RenderFrameHost* owner_render_frame_host =
-      owner_web_contents()->GetPrimaryMainFrame();
+  RenderFrameHost* owner_render_frame_host = owner_rfh();
   RenderProcessHost* owner_render_process_host =
       owner_render_frame_host->GetProcess();
   DCHECK_EQ(browser_context(), owner_render_process_host->GetBrowserContext());
@@ -364,7 +364,7 @@ void WebViewGuest::CreateWebContentsWithStoragePartition(
     std::unique_ptr<GuestViewBase> owned_this,
     const base::Value::Dict& create_params,
     WebContentsCreatedCallback callback,
-    absl::optional<content::StoragePartitionConfig> partition_config) {
+    std::optional<content::StoragePartitionConfig> partition_config) {
   if (!partition_config.has_value()) {
     std::move(callback).Run(std::move(owned_this), nullptr);
     return;
@@ -441,11 +441,7 @@ void WebViewGuest::MaybeRecreateGuestContents(
         blink::mojom::ConsoleMessageLevel::kWarning,
         "A <webview> is being attached to a window other than the window of "
         "its opener <webview>. The window reference the opener <webview> "
-        "obtained from window.open will be invalidated. To debug whether this "
-        "is causing breakage, see "
-        "chrome://flags/#enable-webview-tag-mparch-behavior. The "
-        "ChromeAppsWebViewPermissiveBehaviorAllowed enterprise policy may be "
-        "used to temporarily revert this behavior.");
+        "obtained from window.open will be invalidated.");
   }
 
   ClearOwnedGuestContents();
@@ -833,10 +829,10 @@ void WebViewGuest::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
   if (navigation_handle->IsErrorPage() || !navigation_handle->HasCommitted()) {
     // Suppress loadabort for "mailto" URLs.
-    // Also during destruction, owner_web_contents() is null so there's no point
+    // Also during destruction, the owner is null so there's no point
     // trying to send the event.
     if (!navigation_handle->GetURL().SchemeIs(url::kMailToScheme) &&
-        owner_web_contents()) {
+        owner_rfh()) {
       // If a load is blocked, either by WebRequest or security checks, the
       // navigation may or may not have committed. So if we don't see an error
       // code, mark it as blocked.
@@ -987,7 +983,7 @@ void WebViewGuest::OnDidAddMessageToConsole(
     const std::u16string& message,
     int32_t line_no,
     const std::u16string& source_id,
-    const absl::optional<std::u16string>& untrusted_stack_trace) {
+    const std::optional<std::u16string>& untrusted_stack_trace) {
   base::Value::Dict args;
   // Log levels are from base/logging.h: LogSeverity.
   args.Set(webview::kLevel, blink::ConsoleMessageLevelToLogSeverity(log_level));
@@ -1011,8 +1007,8 @@ void WebViewGuest::RenderFrameCreated(
 
   if (!render_frame_host->GetParentOrOuterDocument()) {
     ExtensionWebContentsObserver::GetForWebContents(web_contents())
-        ->GetLocalFrame(render_frame_host)
-        ->SetFrameName(name_);
+        ->GetLocalFrameChecked(render_frame_host)
+        .SetFrameName(name_);
     SetTransparency(render_frame_host);
   }
 }
@@ -1093,7 +1089,7 @@ void WebViewGuest::RequestMediaAccessPermission(
 
 bool WebViewGuest::CheckMediaAccessPermission(
     content::RenderFrameHost* render_frame_host,
-    const GURL& security_origin,
+    const url::Origin& security_origin,
     blink::mojom::MediaStreamType type) {
   return web_view_permission_helper_->CheckMediaAccessPermission(
       render_frame_host, security_origin, type);
@@ -1252,7 +1248,7 @@ void WebViewGuest::ApplyAttributes(const base::Value::Dict& params) {
       params.FindString(kParameterUserAgentOverride);
   SetUserAgentOverride(user_agent_override ? *user_agent_override : "");
 
-  absl::optional<bool> allow_transparency =
+  std::optional<bool> allow_transparency =
       params.FindBool(kAttributeAllowTransparency);
   if (allow_transparency) {
     // We need to set the background opaque flag after navigation to ensure that
@@ -1260,7 +1256,7 @@ void WebViewGuest::ApplyAttributes(const base::Value::Dict& params) {
     SetAllowTransparency(*allow_transparency);
   }
 
-  absl::optional<bool> allow_scaling = params.FindBool(kAttributeAllowScaling);
+  std::optional<bool> allow_scaling = params.FindBool(kAttributeAllowScaling);
   if (allow_scaling) {
     SetAllowScaling(*allow_scaling);
   }
@@ -1317,8 +1313,8 @@ void WebViewGuest::SetName(const std::string& name) {
     return;
   }
   ExtensionWebContentsObserver::GetForWebContents(web_contents())
-      ->GetLocalFrame(GetGuestMainFrame())
-      ->SetFrameName(name_);
+      ->GetLocalFrameChecked(GetGuestMainFrame())
+      .SetFrameName(name_);
 }
 
 void WebViewGuest::SetSpatialNavigationEnabled(bool enabled) {
@@ -1326,8 +1322,8 @@ void WebViewGuest::SetSpatialNavigationEnabled(bool enabled) {
     return;
   is_spatial_navigation_enabled_ = enabled;
   ExtensionWebContentsObserver::GetForWebContents(web_contents())
-      ->GetLocalFrame(web_contents()->GetPrimaryMainFrame())
-      ->SetSpatialNavigationEnabled(enabled);
+      ->GetLocalFrameChecked(web_contents()->GetPrimaryMainFrame())
+      .SetSpatialNavigationEnabled(enabled);
 }
 
 bool WebViewGuest::IsSpatialNavigationEnabled() const {
@@ -1370,6 +1366,13 @@ void WebViewGuest::SetTransparency(
 
 void WebViewGuest::SetAllowScaling(bool allow) {
   allow_scaling_ = allow;
+}
+
+bool WebViewGuest::ShouldResumeRequestsForCreatedWindow() {
+  // Delay so that the embedder page has a chance to call APIs such as
+  // webRequest in time to be applied to the initial navigation in the new guest
+  // contents. We resume during AttachToOuterWebContentsFrame.
+  return false;
 }
 
 void WebViewGuest::AddNewContents(

@@ -21,7 +21,7 @@ namespace Qt3DRender {
 /*!
     \qmltype ClearBuffers
     \inqmlmodule Qt3D.Render
-    \instantiates Qt3DRender::QClearBuffers
+    \nativetype Qt3DRender::QClearBuffers
     \inherits FrameGraphNode
     \since 5.7
     \brief Class to clear buffers.
@@ -31,7 +31,7 @@ namespace Qt3DRender {
 */
 
 /*!
-    \enum QClearBuffers::BufferType
+    \enum Qt3DRender::QClearBuffers::BufferType
 
     This enum type describes types of buffer to be cleared.
     \value None No buffers will be cleared

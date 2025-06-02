@@ -64,7 +64,7 @@ private slots:
         auto translationIssues = getTranslationIssues();
 
         QCOMPARE(translationIssues.size(), getTranslatableTextOccurrences().size());
-        QCOMPARE(translationIssues.at(0).language, "ru-Cyrl-RU ru-RU ru");
+        QCOMPARE(translationIssues.at(0).language, "ru-Cyrl-RU ru-RU ru-Cyrl ru");
     }
 
     void verifyCorrectNumberOfMissingTranslations()
@@ -74,7 +74,7 @@ private slots:
         auto translationIssues = getTranslationIssues();
 
         QCOMPARE(translationIssues.size(), 3);
-        QCOMPARE(translationIssues.at(0).language, "fr-Latn-FR fr-FR fr");
+        QCOMPARE(translationIssues.at(0).language, "fr-Latn-FR fr-FR fr-Latn fr");
     }
 
     void verifyCorrectNumberOfTranslatableTextOccurrences()

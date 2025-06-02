@@ -756,7 +756,7 @@ private:
     { return comparesEqual(lhs, StringWrapper(QString::number(rhs))); }
     friend Qt::weak_ordering compareThreeWay(const StringWrapper &lhs, int rhs)
     { return compareHelper(lhs.m_val, QString::number(rhs)); }
-    Q_DECLARE_WEAKLY_ORDERED(StringWrapper, int)
+    Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(StringWrapper, int)
 
     QString m_val;
 };
@@ -786,9 +786,10 @@ void tst_QCompare::compareThreeWay()
     static_assert(noexcept(qCompareThreeWay(std::declval<TestEnum>(), std::declval<TestEnum>())));
 
     // pointers
-    static_assert(noexcept(qCompareThreeWay(std::declval<StringWrapper *>(),
-                                            std::declval<StringWrapper *>())));
-    static_assert(noexcept(qCompareThreeWay(std::declval<StringWrapper *>(), nullptr)));
+    using StringWrapperPtr = Qt::totally_ordered_wrapper<StringWrapper *>;
+    static_assert(noexcept(qCompareThreeWay(std::declval<StringWrapperPtr>(),
+                                            std::declval<StringWrapperPtr>())));
+    static_assert(noexcept(qCompareThreeWay(std::declval<StringWrapperPtr>(), nullptr)));
 
     // Test some actual comparison results
 
@@ -833,8 +834,17 @@ void tst_QCompare::compareThreeWay()
 
     // pointers
     std::array<int, 2> arr{1, 0};
+#if QT_DEPRECATED_SINCE(6, 8)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
     QCOMPARE_EQ(qCompareThreeWay(&arr[1], &arr[0]), Qt::strong_ordering::greater);
     QCOMPARE_EQ(qCompareThreeWay(arr.data(), &arr[0]), Qt::strong_ordering::equivalent);
+QT_WARNING_POP
+#endif // QT_DEPRECATED_SINCE(6, 8)
+    const auto a0 = Qt::totally_ordered_wrapper(&arr[0]);
+    const auto a1 = Qt::totally_ordered_wrapper(&arr[1]);
+    QCOMPARE_EQ(qCompareThreeWay(a1, a0), Qt::strong_ordering::greater);
+    QCOMPARE_EQ(qCompareThreeWay(arr.data(), a0), Qt::strong_ordering::equivalent);
 }
 
 void tst_QCompare::unorderedNeqLiteralZero()

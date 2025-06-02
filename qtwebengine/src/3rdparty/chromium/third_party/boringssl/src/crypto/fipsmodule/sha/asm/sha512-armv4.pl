@@ -159,7 +159,7 @@ $code.=<<___;
 	teq	$t0,#$magic
 
 	ldr	$t3,[sp,#$Coff+0]	@ c.lo
-#if __ARM_ARCH__>=7
+#if __ARM_ARCH>=7
 	it	eq			@ Thumb2 thing, sanity check in ARM
 #endif
 	orreq	$Ktbl,$Ktbl,#1
@@ -204,7 +204,6 @@ $code=<<___;
 # define VFP_ABI_PUSH	vstmdb	sp!,{d8-d15}
 # define VFP_ABI_POP	vldmia	sp!,{d8-d15}
 #else
-# define __ARM_ARCH__ __LINUX_ARM_ARCH__
 # define __ARM_MAX_ARCH__ 7
 # define VFP_ABI_PUSH
 # define VFP_ABI_POP
@@ -289,11 +288,7 @@ WORD64(0x5fcb6fab,0x3ad6faec, 0x6c44198c,0x4a475817)
 .type	sha512_block_data_order,%function
 sha512_block_data_order:
 .Lsha512_block_data_order:
-#if __ARM_ARCH__<7 && !defined(__thumb2__)
-	sub	r3,pc,#8		@ sha512_block_data_order
-#else
 	adr	r3,.Lsha512_block_data_order
-#endif
 #if __ARM_MAX_ARCH__>=7 && !defined(__KERNEL__)
 	ldr	r12,.LOPENSSL_armcap
 	ldr	r12,[r3,r12]		@ OPENSSL_armcap_P
@@ -305,6 +300,8 @@ sha512_block_data_order:
 #endif
 	add	$len,$inp,$len,lsl#7	@ len to point at the end of inp
 	stmdb	sp!,{r4-r12,lr}
+	@ TODO(davidben): When the OPENSSL_armcap logic above is removed,
+	@ replace this with a simple ADR.
 	sub	$Ktbl,r3,#672		@ K512
 	sub	sp,sp,#9*8
 
@@ -339,7 +336,7 @@ sha512_block_data_order:
 	str	$Thi,[sp,#$Foff+4]
 
 .L00_15:
-#if __ARM_ARCH__<7
+#if __ARM_ARCH<7
 	ldrb	$Tlo,[$inp,#7]
 	ldrb	$t0, [$inp,#6]
 	ldrb	$t1, [$inp,#5]
@@ -417,7 +414,7 @@ $code.=<<___;
 ___
 	&BODY_00_15(0x17);
 $code.=<<___;
-#if __ARM_ARCH__>=7
+#if __ARM_ARCH>=7
 	ittt	eq			@ Thumb2 thing, sanity check in ARM
 #endif
 	ldreq	$t0,[sp,#`$Xoff+8*(16-1)`+0]
@@ -496,7 +493,7 @@ $code.=<<___;
 	bne	.Loop
 
 	add	sp,sp,#8*9		@ destroy frame
-#if __ARM_ARCH__>=5
+#if __ARM_ARCH>=5
 	ldmia	sp!,{r4-r12,pc}
 #else
 	ldmia	sp!,{r4-r12,lr}

@@ -16,14 +16,14 @@ import m from 'mithril';
 import {v4 as uuidv4} from 'uuid';
 
 import {stringifyJsonWithBigints} from '../base/json_utils';
+import {exists} from '../base/utils';
 import {Actions} from '../common/actions';
-import {EngineProxy} from '../common/engine';
 import {traceEvent} from '../common/metatracing';
 import {Registry} from '../common/registry';
 import {raf} from '../core/raf_scheduler';
+import {EngineProxy} from '../trace_processor/engine';
 
 import {globals} from './globals';
-import {Panel, PanelSize, PanelVNode} from './panel';
 
 export interface NewBottomTabArgs {
   engine: EngineProxy;
@@ -89,7 +89,7 @@ export abstract class BottomTabBase<Config = {}> {
   abstract getTitle(): string;
 
   // Generate a mithril node for this component.
-  abstract createPanelVnode(): PanelVNode;
+  abstract renderPanel(): m.Children;
 
   // API for the tab to notify the TabList that it's still preparing the data.
   // If true, adding a new tab will be delayed for a short while (~50ms) to
@@ -114,18 +114,13 @@ export abstract class BottomTab<Config = {}> extends BottomTabBase<Config> {
     super(args);
   }
 
-  // These methods are direct counterparts to renderCanvas and view with
-  // slightly changes names to prevent cases when `BottomTab` will
-  // be accidentally used a mithril component.
-  abstract renderTabCanvas(ctx: CanvasRenderingContext2D, size: PanelSize):
-      void;
   abstract viewTab(): void|m.Children;
 
   close(): void {
     closeTab(this.uuid);
   }
 
-  createPanelVnode(): m.Vnode<any, any> {
+  renderPanel(): m.Children {
     return m(
         BottomTabAdapter,
         {key: this.uuid, panel: this} as BottomTabAdapterAttrs);
@@ -136,13 +131,7 @@ interface BottomTabAdapterAttrs {
   panel: BottomTab;
 }
 
-class BottomTabAdapter extends Panel<BottomTabAdapterAttrs> {
-  renderCanvas(
-      ctx: CanvasRenderingContext2D, size: PanelSize,
-      vnode: PanelVNode<BottomTabAdapterAttrs>): void {
-    vnode.attrs.panel.renderTabCanvas(ctx, size);
-  }
-
+class BottomTabAdapter implements m.ClassComponent<BottomTabAdapterAttrs> {
   view(vnode: m.CVnode<BottomTabAdapterAttrs>): void|m.Children {
     return vnode.attrs.panel.viewTab();
   }
@@ -341,7 +330,7 @@ export class BottomTabList {
   }
 
   private schedulePendingTabsFlush(waitTimeMs: number) {
-    if (this.scheduledFlushSetTimeoutId) {
+    if (exists(this.scheduledFlushSetTimeoutId)) {
       // The flush is already pending, no action is required.
       return;
     }

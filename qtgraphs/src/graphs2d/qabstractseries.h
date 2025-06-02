@@ -1,71 +1,73 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QABSTRACTSERIES_H
-#define QABSTRACTSERIES_H
+#ifndef QTGRAPHS_QABSTRACTSERIES_H
+#define QTGRAPHS_QABSTRACTSERIES_H
 
-#if 0
-#  pragma qt_class(QAbstractSeries)
-#endif
-
-#include <QtCore/QObject>
+#include <QtCore/qobject.h>
 #include <QtGraphs/qabstractaxis.h>
 #include <QtGraphs/qgraphsglobal.h>
-#include <QtGraphs/qseriestheme.h>
-#include <QtGui/QPen>
-#include <QtQml/QQmlListProperty>
-#include <QtQml/QQmlParserStatus>
+#include <QtGui/qpen.h>
+#include <QtQml/qqmllist.h>
+#include <QtQml/qqmlparserstatus.h>
 
 QT_BEGIN_NAMESPACE
 
 class QAbstractSeriesPrivate;
 class QGraphsView;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QAbstractSeries : public QObject, public QQmlParserStatus
+struct Q_GRAPHS_EXPORT QLegendData
+{
+    Q_GADGET
+    Q_PROPERTY(QColor color MEMBER color FINAL)
+    Q_PROPERTY(QColor borderColor MEMBER borderColor FINAL)
+    Q_PROPERTY(QString label MEMBER label FINAL)
+
+public:
+    QColor color;
+    QColor borderColor;
+    QString label;
+};
+
+class Q_GRAPHS_EXPORT QAbstractSeries : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
+    Q_DECLARE_PRIVATE(QAbstractSeries)
+    Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
     Q_INTERFACES(QQmlParserStatus)
-    Q_PROPERTY(QSeriesTheme *theme READ theme WRITE setTheme NOTIFY themeChanged)
-    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged)
-    Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged)
-    Q_PROPERTY(bool selectable READ selectable WRITE setSelectable NOTIFY selectableChanged)
-    Q_PROPERTY(bool hoverable READ hoverable WRITE setHoverable NOTIFY hoverableChanged)
-    Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity NOTIFY opacityChanged)
-    Q_PROPERTY(qreal valuesMultiplier READ valuesMultiplier WRITE setValuesMultiplier NOTIFY valuesMultiplierChanged)
-    Q_PROPERTY(SeriesType type READ type CONSTANT)
-    Q_PROPERTY(QQmlListProperty<QObject> seriesChildren READ seriesChildren CONSTANT)
+    Q_PROPERTY(QString name READ name WRITE setName NOTIFY nameChanged FINAL)
+    Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged FINAL)
+    Q_PROPERTY(bool selectable READ isSelectable WRITE setSelectable NOTIFY selectableChanged FINAL)
+    Q_PROPERTY(bool hoverable READ isHoverable WRITE setHoverable NOTIFY hoverableChanged FINAL)
+    Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity NOTIFY opacityChanged FINAL)
+    Q_PROPERTY(qreal valuesMultiplier READ valuesMultiplier WRITE setValuesMultiplier NOTIFY
+                   valuesMultiplierChanged FINAL)
+    Q_PROPERTY(SeriesType type READ type CONSTANT FINAL)
+    Q_PROPERTY(QQmlListProperty<QObject> seriesChildren READ seriesChildren CONSTANT FINAL)
+    Q_PROPERTY(QList<QLegendData> legendData READ legendData NOTIFY legendDataChanged FINAL)
     Q_CLASSINFO("DefaultProperty", "seriesChildren")
 
 public:
-    enum SeriesType {
-        SeriesTypeLine,
-        //SeriesTypeArea,
-        SeriesTypeBar,
-        //SeriesTypeStackedBar,
-        //SeriesTypePercentBar,
-        //SeriesTypePie,
-        SeriesTypeScatter,
-        //SeriesTypeSpline,
-        //SeriesTypeHorizontalBar,
-        //SeriesTypeHorizontalStackedBar,
-        //SeriesTypeHorizontalPercentBar,
-        //SeriesTypeBoxPlot,
+    enum class SeriesType {
+        Line,
+        Area,
+        Bar,
+        Pie,
+        Scatter,
+        Spline,
     };
     Q_ENUM(SeriesType)
 
 protected:
-    QAbstractSeries(QAbstractSeriesPrivate &d, QObject *parent = nullptr);
+    explicit QAbstractSeries(QAbstractSeriesPrivate &dd, QObject *parent = nullptr);
 
     // from QDeclarativeParserStatus
     void classBegin() override;
     void componentComplete() override;
 
 public:
-    ~QAbstractSeries();
+    ~QAbstractSeries() override;
     virtual SeriesType type() const = 0;
-
-    QSeriesTheme *theme() const;
-    void setTheme(QSeriesTheme *newTheme);
 
     QString name() const;
     void setName(const QString &name);
@@ -73,7 +75,7 @@ public:
     bool isVisible() const;
     void setVisible(bool visible = true);
 
-    bool selectable() const;
+    bool isSelectable() const;
     void setSelectable(bool selectable);
 
     qreal opacity() const;
@@ -85,38 +87,40 @@ public:
     QGraphsView *graph() const;
     void setGraph(QGraphsView *graph);
 
-    bool attachAxis(QAbstractAxis *axis);
-    bool detachAxis(QAbstractAxis *axis);
-    QList<QAbstractAxis*> attachedAxes();
+    const QList<QLegendData> legendData() const;
 
     void show();
     void hide();
 
     QQmlListProperty<QObject> seriesChildren();
 
-    bool hoverable() const;
+    bool isHoverable() const;
     void setHoverable(bool newHoverable);
 
-public Q_SLOTS:
-    static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
+    bool hasLoaded() const;
 
 Q_SIGNALS:
     void update();
-    void themeChanged();
     void nameChanged();
     void visibleChanged();
     void selectableChanged();
     void hoverableChanged();
     void opacityChanged();
     void valuesMultiplierChanged();
-    void hoverEnter(QString seriesName, QPointF position, QPointF value);
-    void hoverExit(QString seriesName, QPointF position);
-    void hover(QString seriesName, QPointF position, QPointF value);
+    void legendDataChanged();
+    void hoverEnter(const QString &seriesName, QPointF position, QPointF value);
+    void hoverExit(const QString &seriesName, QPointF position);
+    void hover(const QString &seriesName, QPointF position, QPointF value);
 
 protected:
-    QScopedPointer<QAbstractSeriesPrivate> d_ptr;
+    friend class BarsRenderer;
+    friend class PointRenderer;
+    friend class PieRenderer;
+    friend class AreaRenderer;
 };
 
 QT_END_NAMESPACE
 
-#endif // QABSTRACTSERIES_H
+Q_DECLARE_METATYPE(QLegendData)
+
+#endif // QTGRAPHS_QABSTRACTSERIES_H

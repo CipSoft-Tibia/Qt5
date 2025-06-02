@@ -5,12 +5,10 @@ TARGET = redditclient
 
 # Input
 SOURCES += main.cpp \
-    redditmodel.cpp \
-    redditwrapper.cpp
+    redditmodel.cpp
 
 HEADERS += \
-    redditmodel.h \
-    redditwrapper.h
+    redditmodel.h
 
 # install
 target.path = $$[QT_INSTALL_EXAMPLES]/oauth/redditclient

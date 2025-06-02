@@ -79,6 +79,10 @@ IN_PROC_BROWSER_TEST_P(ExtensionContextMenuApiLazyTest, ContextMenus) {
   ASSERT_TRUE(RunExtensionTest("context_menus/event_page")) << message_;
 }
 
+IN_PROC_BROWSER_TEST_P(ExtensionContextMenuApiTestWithContextType, Count) {
+  ASSERT_TRUE(RunExtensionTest("context_menus/count")) << message_;
+}
+
 // crbug.com/51436 -- creating context menus from multiple script contexts
 // should work.
 IN_PROC_BROWSER_TEST_P(ExtensionContextMenuApiTestWithContextType,

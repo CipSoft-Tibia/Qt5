@@ -6,9 +6,10 @@
 
 #include <rhi/qrhi.h>
 #include <QtGui/private/qopenglextensions_p.h>
-#include <private/qabstractvideobuffer_p.h>
+#include <private/qhwvideobuffer_p.h>
 #include <private/qvideoframeconverter_p.h>
 #include <private/qplatformvideosink_p.h>
+#include <private/qvideoframe_p.h>
 #include <qvideosink.h>
 #include <qopenglcontext.h>
 #include <qopenglfunctions.h>
@@ -49,17 +50,16 @@ private:
     std::shared_ptr<AndroidTextureThread> m_thread;
 };
 
-
-class AndroidTextureVideoBuffer : public QRhiWithThreadGuard, public QAbstractVideoBuffer
+class AndroidTextureVideoBuffer : public QRhiWithThreadGuard, public QHwVideoBuffer
 {
 public:
-    AndroidTextureVideoBuffer(
-            std::shared_ptr<QRhi> rhi, std::shared_ptr<AndroidTextureThread> thread,
-            std::unique_ptr<QRhiTexture> tex, const QSize &size)
-        : QRhiWithThreadGuard(std::move(rhi), std::move(thread))
-          , QAbstractVideoBuffer(QVideoFrame::RhiTextureHandle, m_guardRhi.get())
-          , m_size(size)
-          , m_tex(std::move(tex))
+    AndroidTextureVideoBuffer(std::shared_ptr<QRhi> rhi,
+                              std::shared_ptr<AndroidTextureThread> thread,
+                              std::unique_ptr<QRhiTexture> tex, const QSize &size)
+        : QRhiWithThreadGuard(std::move(rhi), std::move(thread)),
+          QHwVideoBuffer(QVideoFrame::RhiTextureHandle, m_guardRhi.get()),
+          m_size(size),
+          m_tex(std::move(tex))
     {}
 
     MapData map(QVideoFrame::MapMode mode) override;
@@ -70,9 +70,9 @@ public:
         m_mapMode = QVideoFrame::NotMapped;
     }
 
-    std::unique_ptr<QVideoFrameTextures> mapTextures(QRhi *rhi) override
+    QVideoFrameTexturesUPtr mapTextures(QRhi &rhi, QVideoFrameTexturesUPtr& /*oldTextures*/) override
     {
-        return std::make_unique<QAndroidVideoFrameTextures>(rhi, m_size, m_tex->nativeTexture().object);
+        return std::make_unique<QAndroidVideoFrameTextures>(&rhi, m_size, m_tex->nativeTexture().object);
     }
 
 private:
@@ -82,16 +82,15 @@ private:
     QVideoFrame::MapMode m_mapMode = QVideoFrame::NotMapped;
 };
 
-class ImageFromVideoFrameHelper : public QAbstractVideoBuffer
+class ImageFromVideoFrameHelper : public QHwVideoBuffer
 {
 public:
     ImageFromVideoFrameHelper(AndroidTextureVideoBuffer &atvb)
-        : QAbstractVideoBuffer(QVideoFrame::RhiTextureHandle, atvb.rhi())
-          , m_atvb(atvb)
+        : QHwVideoBuffer(QVideoFrame::RhiTextureHandle, atvb.rhi()), m_atvb(atvb)
     {}
-    std::unique_ptr<QVideoFrameTextures> mapTextures(QRhi *rhi) override
+    QVideoFrameTexturesUPtr mapTextures(QRhi &rhi, QVideoFrameTexturesUPtr& oldTextures) override
     {
-        return m_atvb.mapTextures(rhi);
+        return m_atvb.mapTextures(rhi, oldTextures);
     }
 
     MapData map(QVideoFrame::MapMode) override { return {}; }
@@ -107,11 +106,12 @@ QAbstractVideoBuffer::MapData AndroidTextureVideoBuffer::map(QVideoFrame::MapMod
 
     if (m_mapMode == QVideoFrame::NotMapped && mode == QVideoFrame::ReadOnly) {
         m_mapMode = QVideoFrame::ReadOnly;
-        m_image = qImageFromVideoFrame(QVideoFrame(new ImageFromVideoFrameHelper(*this),
-                                                   QVideoFrameFormat(m_size, QVideoFrameFormat::Format_RGBA8888)));
-        mapData.nPlanes = 1;
+        m_image = qImageFromVideoFrame(QVideoFramePrivate::createFrame(
+                std::make_unique<ImageFromVideoFrameHelper>(*this),
+                QVideoFrameFormat(m_size, QVideoFrameFormat::Format_RGBA8888)));
+        mapData.planeCount = 1;
         mapData.bytesPerLine[0] = m_image.bytesPerLine();
-        mapData.size[0] = static_cast<int>(m_image.sizeInBytes());
+        mapData.dataSize[0] = static_cast<int>(m_image.sizeInBytes());
         mapData.data[0] = m_image.bits();
     }
 

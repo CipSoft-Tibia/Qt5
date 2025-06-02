@@ -44,12 +44,14 @@
 #ifndef COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_AFFILIATION_AFFILIATION_UTILS_H_
 #define COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_AFFILIATION_AFFILIATION_UTILS_H_
 
+#include <compare>
 #include <cstddef>
 #include <iosfwd>
 #include <string>
 #include <vector>
 
 #include "base/check.h"
+#include "base/containers/flat_set.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "url/gurl.h"
@@ -71,12 +73,6 @@ namespace password_manager {
 // parsing, everything ends up in the path component, which is not too helpful.
 class FacetURI {
  public:
-  FacetURI();
-
-  // As a light-weight std::string wrapper, allow copy and assign.
-  FacetURI(const FacetURI&) = default;
-  FacetURI& operator=(const FacetURI&) = default;
-
   // Constructs an instance to encapsulate the canonical form of |spec|.
   // If |spec| is not a valid facet URI, then an invalid instance is returned,
   // which then should be discarded.
@@ -87,13 +83,20 @@ class FacetURI {
   // the URI is valid and in canonical form.
   static FacetURI FromCanonicalSpec(const std::string& canonical_spec);
 
-  // Comparison operators so that FacetURI can be used in std::equal.
-  bool operator==(const FacetURI& other) const;
-  bool operator!=(const FacetURI& other) const;
+  FacetURI();
 
-  // Relational operators so that FacetURI can be used in sorted containers.
-  bool operator<(const FacetURI& other) const;
-  bool operator>(const FacetURI& other) const;
+  // As a light-weight std::string wrapper, allow copy and assign.
+  FacetURI(const FacetURI&) = default;
+  FacetURI& operator=(const FacetURI&) = default;
+
+  friend std::weak_ordering operator<=>(const FacetURI& lhs,
+                                        const FacetURI& rhs) {
+    return lhs.canonical_spec_ <=> rhs.canonical_spec_;
+  }
+
+  friend bool operator==(const FacetURI& lhs, const FacetURI& rhs) {
+    return lhs.canonical_spec_ == rhs.canonical_spec_;
+  }
 
   // Returns whether or not this instance represents a valid facet identifier
   // referring to a Web application.
@@ -102,6 +105,9 @@ class FacetURI {
   // Returns whether or not this instance represents a valid facet identifier
   // referring to an Android application.
   bool IsValidAndroidFacetURI() const;
+
+  // Returns android_package_name() which can be displayed in the UI.
+  std::string GetAndroidPackageDisplayName() const;
 
   // Returns whether or not this instance represents a valid facet identifier
   // referring to either a Web or an Android application. The empty identfier is
@@ -206,6 +212,13 @@ struct GroupedFacets {
   FacetBrandingInfo branding_info;
 };
 
+// This functions merges groups together if one of the following applies:
+// * the same facet is present in both groups.
+// * eTLD+1 of a facet in one group matches eTLD+1 of a facet in another group.
+std::vector<GroupedFacets> MergeRelatedGroups(
+    const base::flat_set<std::string>& psl_extensions,
+    const std::vector<GroupedFacets>& groups);
+
 // A collection of facets affiliated with each other, i.e. an equivalence class,
 // plus a timestamp that indicates the last time the data was updated from an
 // authoritative source.
@@ -233,6 +246,16 @@ bool AreEquivalenceClassesEqual(const AffiliatedFacets& a,
 
 // A shorter way to spell FacetURI::IsValidAndroidFacetURI().
 bool IsValidAndroidFacetURI(const std::string& uri);
+
+// Retrieves the extended top level domain for a given |url|
+// ("https://www.facebook.com/" => "facebook.com"). If the calculated top
+// private domain matches an entry from the |psl_extensions| (e.g. "app.link"),
+// the domain is extended by one level ("https://facebook.app.link/" =>
+// "facebook.app.link"). If the |url| is not a valid URI or has an unsupported
+// schema (e.g. "android://"), empty string is returned.
+std::string GetExtendedTopLevelDomain(
+    const GURL& url,
+    const base::flat_set<std::string>& psl_extensions);
 
 // For logging use only.
 std::ostream& operator<<(std::ostream& os, const FacetURI& facet_uri);

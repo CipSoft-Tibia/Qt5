@@ -36,7 +36,7 @@ QT_BEGIN_NAMESPACE
 */
 
 class QClipperUtilsPrivate;
-class Q_POSITIONING_PRIVATE_EXPORT QClipperUtils
+class Q_POSITIONING_EXPORT QClipperUtils
 {
 public:
     QClipperUtils();

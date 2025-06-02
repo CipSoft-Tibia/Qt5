@@ -459,12 +459,9 @@ TEST(FilesystemUtils, RebasePath) {
             RebasePath("//a/b/foo/bar", SourceDir("//a/b/"), source_root));
   EXPECT_EQ("foo/bar/",
             RebasePath("//a/b/foo/bar/", SourceDir("//a/b/"), source_root));
-  EXPECT_EQ(".",
-            RebasePath("//foo/bar", SourceDir("//foo/bar/"), source_root));
-  EXPECT_EQ("..",
-            RebasePath("//foo", SourceDir("//foo/bar/"), source_root));
-  EXPECT_EQ("../",
-            RebasePath("//foo/", SourceDir("//foo/bar/"), source_root));
+  EXPECT_EQ(".", RebasePath("//foo/bar", SourceDir("//foo/bar/"), source_root));
+  EXPECT_EQ("..", RebasePath("//foo", SourceDir("//foo/bar/"), source_root));
+  EXPECT_EQ("../", RebasePath("//foo/", SourceDir("//foo/bar/"), source_root));
 
   // Check when only |input| is system-absolute
   EXPECT_EQ("foo", RebasePath("/source/root/foo", SourceDir("//"),
@@ -546,6 +543,24 @@ TEST(FilesystemUtils, RebasePath) {
   EXPECT_EQ("../../../../path/to/foo",
             RebasePath("/c:/path/to/foo", SourceDir("//a/b"),
                        std::string_view("C:/source/root")));
+
+  // Should be absolute path of destination if the drive letters are
+  // different between two paths.
+  EXPECT_EQ("C:/path/to/foo",
+            RebasePath("C:/path/to/foo", SourceDir("//a/b"),
+                       std::string_view("D:/source/root")));
+  EXPECT_EQ("D:/path/to/foo",
+            RebasePath("D:/path/to/foo", SourceDir("//a/b"),
+                       std::string_view("C:/source/root")));
+  EXPECT_EQ("E:/path/to/foo",
+            RebasePath("/E:/path/to/foo", SourceDir("//a/b"),
+                       std::string_view("/c:/source/root")));
+  EXPECT_EQ("E:/path/to/foo",
+            RebasePath("/e:/path/to/foo", SourceDir("//a/b"),
+                       std::string_view("c:/source/root")));
+  EXPECT_EQ("C:/path/to/foo",
+            RebasePath("/c:/path/to/foo", SourceDir("//a/b"),
+                       std::string_view("D:/source/root")));
 #endif
 }
 

@@ -1,30 +1,30 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QSCATTERDATAITEM_H
-#define QSCATTERDATAITEM_H
+#ifndef QTGRAPHS_QSCATTERDATAITEM_H
+#define QTGRAPHS_QSCATTERDATAITEM_H
 
 #include <QtGraphs/qgraphsglobal.h>
-#include <QtGui/QQuaternion>
+#include <QtGui/qquaternion.h>
 
 QT_BEGIN_NAMESPACE
 
 class QScatterDataItem
 {
 public:
-    QScatterDataItem() = default;
-    explicit QScatterDataItem(const QVector3D &position) noexcept
+    QScatterDataItem() noexcept = default;
+    explicit QScatterDataItem(QVector3D position) noexcept
         : m_position(position)
     {}
     explicit QScatterDataItem(float x, float y, float z) noexcept
         : m_position(QVector3D(x, y, z))
     {}
-    explicit QScatterDataItem(const QVector3D &position, const QQuaternion &rotation) noexcept
+    explicit QScatterDataItem(QVector3D position, const QQuaternion &rotation) noexcept
         : m_position(position)
         , m_rotation(rotation)
     {}
 
-    void setPosition(const QVector3D &pos) noexcept { m_position = pos; }
+    void setPosition(QVector3D pos) noexcept { m_position = pos; }
     QVector3D position() const noexcept { return m_position; }
     void setRotation(const QQuaternion &rot) noexcept { m_rotation = rot; }
     QQuaternion rotation() const { return m_rotation; }

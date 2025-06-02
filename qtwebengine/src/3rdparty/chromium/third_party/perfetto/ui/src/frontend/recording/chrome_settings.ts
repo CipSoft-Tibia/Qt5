@@ -18,6 +18,12 @@ import m from 'mithril';
 import {Actions} from '../../common/actions';
 import {DataSource} from '../../common/recordingV2/recording_interfaces_v2';
 import {getBuiltinChromeCategoryList, isChromeTarget} from '../../common/state';
+import {
+  MultiSelect,
+  MultiSelectDiff,
+  Option as MultiSelectOption,
+} from '../../widgets/multiselect';
+import {Section} from '../../widgets/section';
 import {globals} from '../globals';
 import {
   CategoryGetter,
@@ -25,12 +31,6 @@ import {
   Toggle,
   ToggleAttrs,
 } from '../record_widgets';
-import {
-  MultiSelect,
-  MultiSelectDiff,
-  Option as MultiSelectOption,
-} from '../widgets/multiselect';
-import {Section} from '../widgets/section';
 
 import {RecordingSectionAttrs} from './recording_sections';
 
@@ -211,6 +211,16 @@ export class ChromeSettings implements m.ClassComponent<RecordingSectionAttrs> {
           title: 'Chrome Logs',
           setEnabled: (cfg, val) => cfg.chromeLogs = val,
           isEnabled: (cfg) => cfg.chromeLogs,
+        }),
+        CompactProbe({
+          title: 'Audio',
+          setEnabled: (cfg, val) => cfg.audio = val,
+          isEnabled: (cfg) => cfg.audio,
+        }),
+        CompactProbe({
+          title: 'Video',
+          setEnabled: (cfg, val) => cfg.video = val,
+          isEnabled: (cfg) => cfg.video,
         }),
         m(Toggle, {
           title: 'Remove untyped and sensitive data like URLs from the trace',

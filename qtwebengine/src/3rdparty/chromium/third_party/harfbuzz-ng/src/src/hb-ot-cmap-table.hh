@@ -277,10 +277,10 @@ struct CmapSubtableFormat4
       }
     } writer(c);
 
-    writer.end_code_ = c->allocate_size<HBUINT16> (HBUINT16::static_size * segcount);
+    writer.end_code_ = c->allocate_size<HBUINT16> (HBUINT16::static_size * segcount, false);
     (void) c->allocate_size<HBUINT16> (2); // padding
-    writer.start_code_ = c->allocate_size<HBUINT16> (HBUINT16::static_size * segcount);
-    writer.id_delta_ = c->allocate_size<HBINT16> (HBINT16::static_size * segcount);
+    writer.start_code_ = c->allocate_size<HBUINT16> (HBUINT16::static_size * segcount, false);
+    writer.id_delta_ = c->allocate_size<HBINT16> (HBINT16::static_size * segcount, false);
 
     if (unlikely (!writer.end_code_ || !writer.start_code_ || !writer.id_delta_)) return false;
 
@@ -556,6 +556,7 @@ struct CmapSubtableFormat4
     TRACE_SANITIZE (this);
     if (unlikely (!c->check_struct (this)))
       return_trace (false);
+    hb_barrier ();
 
     if (unlikely (!c->check_range (this, length)))
     {
@@ -742,10 +743,11 @@ struct CmapSubtableLongSegmented
 			unsigned num_glyphs) const
   {
     hb_codepoint_t last_end = 0;
-    for (unsigned i = 0; i < this->groups.len; i++)
+    unsigned count = this->groups.len;
+    for (unsigned i = 0; i < count; i++)
     {
-      hb_codepoint_t start = this->groups[i].startCharCode;
-      hb_codepoint_t end = hb_min ((hb_codepoint_t) this->groups[i].endCharCode,
+      hb_codepoint_t start = this->groups.arrayZ[i].startCharCode;
+      hb_codepoint_t end = hb_min ((hb_codepoint_t) this->groups.arrayZ[i].endCharCode,
 				   (hb_codepoint_t) HB_UNICODE_MAX);
       if (unlikely (start > end || start < last_end)) {
         // Range is not in order and is invalid, skip it.
@@ -754,7 +756,7 @@ struct CmapSubtableLongSegmented
       last_end = end;
 
 
-      hb_codepoint_t gid = this->groups[i].glyphID;
+      hb_codepoint_t gid = this->groups.arrayZ[i].glyphID;
       if (!gid)
       {
         if (T::formatNumber == 13) continue;
@@ -765,11 +767,11 @@ struct CmapSubtableLongSegmented
       if (unlikely ((unsigned int) (gid + end - start) >= num_glyphs))
 	end = start + (hb_codepoint_t) num_glyphs - gid;
 
-      mapping->resize (mapping->get_population () + end - start + 1);
+      mapping->alloc (mapping->get_population () + end - start + 1);
 
+      unicodes->add_range (start, end);
       for (unsigned cp = start; cp <= end; cp++)
       {
-	unicodes->add (cp);
 	mapping->set (cp, gid);
         gid += T::increment;
       }
@@ -1427,6 +1429,7 @@ struct CmapSubtable
   {
     TRACE_SANITIZE (this);
     if (!u.format.sanitize (c)) return_trace (false);
+    hb_barrier ();
     switch (u.format) {
     case  0: return_trace (u.format0 .sanitize (c));
     case  4: return_trace (u.format4 .sanitize (c));
@@ -2032,34 +2035,13 @@ struct cmap
     return &(this+result.subtable);
   }
 
-  const EncodingRecord *find_encodingrec (unsigned int platform_id,
-					  unsigned int encoding_id) const
-  {
-    EncodingRecord key;
-    key.platformID = platform_id;
-    key.encodingID = encoding_id;
-
-    return encodingRecord.as_array ().bsearch (key);
-  }
-
-  bool find_subtable (unsigned format) const
-  {
-    auto it =
-    + hb_iter (encodingRecord)
-    | hb_map (&EncodingRecord::subtable)
-    | hb_map (hb_add (this))
-    | hb_filter ([&] (const CmapSubtable& _) { return _.u.format == format; })
-    ;
-
-    return it.len ();
-  }
-
   public:
 
   bool sanitize (hb_sanitize_context_t *c) const
   {
     TRACE_SANITIZE (this);
     return_trace (c->check_struct (this) &&
+		  hb_barrier () &&
 		  likely (version == 0) &&
 		  encodingRecord.sanitize (c, this));
   }

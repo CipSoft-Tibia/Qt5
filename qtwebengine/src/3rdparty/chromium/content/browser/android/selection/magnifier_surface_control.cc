@@ -122,6 +122,8 @@ MagnifierSurfaceControl::MagnifierSurfaceControl(
       gfx::Rect(surface_size_), device_scale,
       local_surface_id_allocator_.GetCurrentLocalSurfaceId());
 
+  GetHostFrameSinkManager()->RegisterFrameSinkId(
+      frame_sink_id_, this, viz::ReportFirstSurfaceActivation::kNo);
   CreateDisplayAndFrameSink();
   surface_layer_->SetIsDrawable(true);
   root_layer_->SetBounds(surface_size_);
@@ -187,15 +189,12 @@ MagnifierSurfaceControl::MagnifierSurfaceControl(
   layer_tree_->SetRoot(root_layer_);
   rounded_corner_layer_->AddChild(zoom_layer_);
   zoom_layer_->AddChild(surface_layer_);
-
-  GetHostFrameSinkManager()->RegisterFrameSinkId(
-      frame_sink_id_, this, viz::ReportFirstSurfaceActivation::kNo);
 }
 
 MagnifierSurfaceControl::~MagnifierSurfaceControl() {
   display_private_.reset();
   if (frame_sink_id_.is_valid()) {
-    GetHostFrameSinkManager()->InvalidateFrameSinkId(frame_sink_id_);
+    GetHostFrameSinkManager()->InvalidateFrameSinkId(frame_sink_id_, this);
   }
   gpu::GpuSurfaceTracker::Get()->RemoveSurface(surface_handle_);
 }
@@ -208,7 +207,10 @@ void MagnifierSurfaceControl::SetReadbackOrigin(JNIEnv* env,
   }
   readback_origin_x_ = x;
   readback_origin_y_ = y;
+  UpdateLayers();
+}
 
+void MagnifierSurfaceControl::UpdateLayers() {
   RenderWidgetHostViewAndroid* rwhva =
       static_cast<RenderWidgetHostViewAndroid*>(
           web_contents_->GetRenderWidgetHostView());
@@ -220,18 +222,22 @@ void MagnifierSurfaceControl::SetReadbackOrigin(JNIEnv* env,
     return;
   }
 
-  absl::optional<SkColor> background_color = rwhva->GetBackgroundColor();
+  std::optional<SkColor> background_color = rwhva->GetBackgroundColor();
   rounded_corner_layer_->SetBackgroundColor(
       background_color ? SkColor4f::FromColor(background_color.value())
                        : SkColors::kWhite);
   surface_layer_->SetBounds(surface_layer->bounds());
   surface_layer_->SetOldestAcceptableFallback(
       surface_layer->oldest_acceptable_fallback().value_or(viz::SurfaceId()));
-  surface_layer_->SetSurfaceId(surface_layer->surface_id(),
+  surface_layer_->SetSurfaceId(rwhva->GetCurrentSurfaceId(),
                                cc::DeadlinePolicy::UseExistingDeadline());
 
   surface_layer_->SetPosition(
       gfx::PointF(-readback_origin_x_, -readback_origin_y_));
+}
+
+void MagnifierSurfaceControl::ChildLocalSurfaceIdChanged(JNIEnv* env) {
+  UpdateLayers();
 }
 
 void MagnifierSurfaceControl::CreateDisplayAndFrameSink() {

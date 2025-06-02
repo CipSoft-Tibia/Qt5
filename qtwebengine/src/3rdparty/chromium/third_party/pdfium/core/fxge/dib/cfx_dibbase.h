@@ -15,7 +15,7 @@
 #include "core/fxge/dib/fx_dib.h"
 #include "third_party/base/containers/span.h"
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
 #include "third_party/skia/include/core/SkRefCnt.h"  // nogncheck
 #endif
 
@@ -25,9 +25,9 @@ class CFX_Matrix;
 class PauseIndicatorIface;
 struct FX_RECT;
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
 class SkImage;
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
 
 // Base class for all Device-Independent Bitmaps.
 class CFX_DIBBase : public Retainable {
@@ -41,10 +41,13 @@ class CFX_DIBBase : public Retainable {
 
   static constexpr uint32_t kPaletteSize = 256;
 
-  virtual pdfium::span<const uint8_t> GetBuffer() const;
   virtual pdfium::span<const uint8_t> GetScanline(int line) const = 0;
   virtual bool SkipToScanline(int line, PauseIndicatorIface* pPause) const;
   virtual size_t GetEstimatedImageMemoryBurden() const;
+#if BUILDFLAG(IS_WIN) || defined(PDF_USE_SKIA)
+  // Calls Realize() if needed. Otherwise, return `this`.
+  virtual RetainPtr<const CFX_DIBitmap> RealizeIfNeeded() const;
+#endif
 
   int GetWidth() const { return m_Width; }
   int GetHeight() const { return m_Height; }
@@ -65,10 +68,8 @@ class CFX_DIBBase : public Retainable {
   // Copies into internally-owned palette.
   void SetPalette(pdfium::span<const uint32_t> src_palette);
 
-#if BUILDFLAG(IS_WIN)
-  // Calls Realize() if needed. Otherwise, return `this`.
-  RetainPtr<const CFX_DIBBase> RealizeIfNeeded() const;
-#endif
+  // Moves palette into internally-owned palette.
+  void TakePalette(DataVector<uint32_t> src_palette);
 
   RetainPtr<CFX_DIBitmap> Realize() const;
   RetainPtr<CFX_DIBitmap> ClipTo(const FX_RECT& rect) const;
@@ -95,32 +96,33 @@ class CFX_DIBBase : public Retainable {
                       int& src_top,
                       const CFX_ClipRgn* pClipRgn) const;
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
   // Realizes an `SkImage` from this DIB.
   //
   // This may share the underlying pixels, in which case, this DIB should not be
   // modified during the lifetime of the `SkImage`.
   virtual sk_sp<SkImage> RealizeSkImage() const;
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
 
  protected:
   CFX_DIBBase();
   ~CFX_DIBBase() override;
 
-  static bool ConvertBuffer(FXDIB_Format dest_format,
-                            pdfium::span<uint8_t> dest_buf,
-                            int dest_pitch,
-                            int width,
-                            int height,
-                            const RetainPtr<const CFX_DIBBase>& pSrcBitmap,
-                            int src_left,
-                            int src_top,
-                            DataVector<uint32_t>* pal);
+  // Returns the color palette, or an empty vector if there is no palette.
+  static DataVector<uint32_t> ConvertBuffer(
+      FXDIB_Format dest_format,
+      pdfium::span<uint8_t> dest_buf,
+      int dest_pitch,
+      int width,
+      int height,
+      const RetainPtr<const CFX_DIBBase>& pSrcBitmap,
+      int src_left,
+      int src_top);
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
   // Whether alpha is premultiplied (if `IsAlphaFormat()`).
   virtual bool IsPremultiplied() const;
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
 
   RetainPtr<CFX_DIBitmap> ClipToInternal(const FX_RECT* pClip) const;
   void BuildPalette();

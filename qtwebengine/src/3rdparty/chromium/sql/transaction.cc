@@ -23,8 +23,9 @@ Transaction::~Transaction() {
       << "Begin() not called immediately after Transaction creation";
 #endif  // DCHECK_IS_ON()
 
-  if (is_active_ && database_ && database_->is_open())
+  if (is_active_ && database_ && database_->is_open()) {
     database_->RollbackTransaction();
+  }
 }
 
 bool Transaction::Begin() {

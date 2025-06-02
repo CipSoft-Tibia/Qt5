@@ -14,9 +14,10 @@
 // We mean it.
 //
 
-#include "playbackengine/qffmpegplaybackenginedefs_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackenginedefs_p.h>
 #include "qthread.h"
 #include "qatomic.h"
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
@@ -34,7 +35,7 @@ public:
 
     PlaybackEngineObject();
 
-    ~PlaybackEngineObject();
+    ~PlaybackEngineObject() override;
 
     bool isPaused() const;
 
@@ -60,7 +61,7 @@ protected:
 
     virtual bool canDoNextStep() const;
 
-    virtual int timerInterval() const;
+    virtual std::chrono::milliseconds timerInterval() const;
 
     void setAtEnd(bool isAtEnd);
 

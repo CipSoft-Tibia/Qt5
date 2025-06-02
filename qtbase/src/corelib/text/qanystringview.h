@@ -4,13 +4,12 @@
 #ifndef QANYSTRINGVIEW_H
 #define QANYSTRINGVIEW_H
 
+#include <QtCore/qcompare.h>
+#include <QtCore/qcontainerfwd.h>
 #include <QtCore/qlatin1stringview.h>
 #include <QtCore/qstringview.h>
 #include <QtCore/qutf8stringview.h>
 
-#ifdef __cpp_impl_three_way_comparison
-#include <compare>
-#endif
 #include <QtCore/q20type_traits.h>
 #include <limits>
 
@@ -177,10 +176,13 @@ public:
     template <typename Char>
     constexpr QAnyStringView(const Char *str) noexcept;
 #else
-
     template <typename Pointer, if_compatible_pointer<Pointer> = true>
     constexpr QAnyStringView(const Pointer &str) noexcept
         : QAnyStringView{str, str ? lengthHelperPointer(str) : 0} {}
+
+    template <typename Char, if_compatible_char<Char> = true>
+    constexpr QAnyStringView(const Char (&str)[]) noexcept
+        : QAnyStringView{&*str} {} // decay to pointer
 #endif
 
     // defined in qstring.h
@@ -201,13 +203,13 @@ public:
     constexpr QAnyStringView(Container &&c, QtPrivate::wrapped_t<Container, QByteArray> &&capacity = {})
             //noexcept(std::is_nothrow_constructible_v<QByteArray, Container>)
         : QAnyStringView(capacity = std::forward<Container>(c)) {}
+
     template <typename Char, if_compatible_char<Char> = true>
     constexpr QAnyStringView(const Char &c) noexcept
         : QAnyStringView{&c, 1} {}
     template <typename Char, if_convertible_to<QChar, Char> = true>
     constexpr QAnyStringView(Char ch, QCharContainer &&capacity = QCharContainer()) noexcept
         : QAnyStringView{&(capacity.ch = ch), 1} {}
-
     template <typename Char, typename Container = decltype(QChar::fromUcs4(U'x')),
               std::enable_if_t<std::is_same_v<Char, char32_t>, bool> = true>
     constexpr QAnyStringView(Char c, Container &&capacity = {}) noexcept
@@ -261,6 +263,11 @@ public:
     [[nodiscard]] constexpr QAnyStringView chopped(qsizetype n) const
     { verify(0, n); return sliced(0, size() - n); }
 
+    constexpr QAnyStringView &slice(qsizetype pos)
+    { *this = sliced(pos); return *this; }
+    constexpr QAnyStringView &slice(qsizetype pos, qsizetype n)
+    { *this = sliced(pos, n); return *this; }
+
     constexpr void truncate(qsizetype n)
     { verify(0, n); setSize(n); }
     constexpr void chop(qsizetype n)
@@ -293,6 +300,12 @@ public:
     [[nodiscard]] constexpr qsizetype size_bytes() const noexcept
     { return size() * charSize(); }
 
+    [[nodiscard]] constexpr qsizetype max_size() const noexcept
+    {
+        // -1 to deal with the pointer one-past-the-end;
+        return QtPrivate::MaxAllocSize / charSize() - 1;
+    }
+
     //
     // Qt compatibility API:
     //
@@ -302,24 +315,15 @@ public:
     { return size(); }
 
 private:
-    [[nodiscard]] friend inline bool operator==(QAnyStringView lhs, QAnyStringView rhs) noexcept
+    friend bool comparesEqual(const QAnyStringView &lhs, const QAnyStringView &rhs) noexcept
     { return QAnyStringView::equal(lhs, rhs); }
-    [[nodiscard]] friend inline bool operator!=(QAnyStringView lhs, QAnyStringView rhs) noexcept
-    { return !QAnyStringView::equal(lhs, rhs); }
-
-#if defined(__cpp_impl_three_way_comparison) && !defined(Q_QDOC)
-    [[nodiscard]] friend inline auto operator<=>(QAnyStringView lhs, QAnyStringView rhs) noexcept
-    { return QAnyStringView::compare(lhs, rhs) <=> 0; }
-#else
-    [[nodiscard]] friend inline bool operator<=(QAnyStringView lhs, QAnyStringView rhs) noexcept
-    { return QAnyStringView::compare(lhs, rhs) <= 0; }
-    [[nodiscard]] friend inline bool operator>=(QAnyStringView lhs, QAnyStringView rhs) noexcept
-    { return QAnyStringView::compare(lhs, rhs) >= 0; }
-    [[nodiscard]] friend inline bool operator<(QAnyStringView lhs, QAnyStringView rhs) noexcept
-    { return QAnyStringView::compare(lhs, rhs) < 0; }
-    [[nodiscard]] friend inline bool operator>(QAnyStringView lhs, QAnyStringView rhs) noexcept
-    { return QAnyStringView::compare(lhs, rhs) > 0; }
-#endif
+    friend Qt::strong_ordering
+    compareThreeWay(const QAnyStringView &lhs, const QAnyStringView &rhs) noexcept
+    {
+        const int res = QAnyStringView::compare(lhs, rhs);
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QAnyStringView)
 
 #ifndef QT_NO_DEBUG_STREAM
     Q_CORE_EXPORT friend QDebug operator<<(QDebug d, QAnyStringView s);
@@ -361,7 +365,7 @@ template <typename QStringLike, std::enable_if_t<std::disjunction_v<
         std::is_same<QStringLike, QByteArray>
     >, bool> = true>
 [[nodiscard]] inline QAnyStringView qToAnyStringViewIgnoringNull(const QStringLike &s) noexcept
-{ return QAnyStringView(s.data(), s.size()); }
+{ return QAnyStringView(s.begin(), s.size()); }
 
 QT_END_NAMESPACE
 

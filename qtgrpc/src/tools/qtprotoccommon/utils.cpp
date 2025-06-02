@@ -4,7 +4,6 @@
 
 #include "utils.h"
 
-#include <sstream>
 #include <string_view>
 
 #include <cctype>
@@ -20,6 +19,11 @@ namespace qtprotoccommon::utils {
 bool isAsciiAlpha(char c)
 {
     return (unsigned char)c <= 127 && ::isalpha(c);
+}
+
+bool isAsciiAlnum(char c)
+{
+    return (unsigned char)c <= 127 && std::isalnum(c);
 }
 
 std::vector<std::string> split(std::string_view s, std::string_view c, bool keepEmpty)
@@ -69,6 +73,11 @@ void asciiToLower(std::string &str)
     std::transform(std::begin(str), std::end(str), std::begin(str), toLower);
 }
 
+void asciiToUpper(std::string &str)
+{
+    std::transform(std::begin(str), std::end(str), std::begin(str), utils::toAsciiUpper);
+}
+
 std::string removeFileSuffix(std::string fileName)
 {
     size_t dot = fileName.rfind('.'), slash = fileName.rfind('/');
@@ -85,6 +94,25 @@ std::string extractFileBasename(std::string fileName)
     return slash != std::string::npos ? fileName.substr(slash + 1) : fileName;
 }
 
+std::string toValidIdentifier(std::string_view name)
+{
+    assert(!name.empty() && "empty names are not supported as identifier");
+    std::string out;
+    out.reserve(name.size() + 1);
+
+    if (!isAsciiAlpha(name[0]) && name[0] != '_') // omitted Unicode with XID_Start
+        out += '_';
+
+    for (const auto c : name) {
+        if (isAsciiAlnum(c) || c == '_') // omitted Unicode with XID_Continue
+            out += c;
+        else
+            out += '_'; // TODO: a deterministic hex - ASCII mapping algorithm would be better
+    }
+
+    return out;
+}
+
 std::string capitalizeAsciiName(std::string name)
 {
     if (name.empty() || !isAsciiAlpha(name[0]))
@@ -99,13 +127,6 @@ std::string deCapitalizeAsciiName(std::string name)
         return name;
     name[0] |= char(0x20);
     return name;
-}
-
-std::string escapedQmlUri(const std::string &uri)
-{
-    assert(!uri.empty());
-    static std::regex uriExceptionsRegex("[^a-zA-Z0-9]");
-    return std::regex_replace(uri, uriExceptionsRegex, "_");
 }
 
 std::string &rtrim(std::string &s)
@@ -135,6 +156,21 @@ std::string &trim(std::string &s)
     s = s.substr(firstKept, lastKept + 1 - firstKept);
     return s;
 }
+
+bool HeaderComparator::operator()(const std::string &lhs, const std::string &rhs) const
+{
+    static constexpr std::string_view qtCorePrefix = "QtCore/";
+
+    bool lhsStartsWithQtCore = utils::startsWith(lhs, qtCorePrefix);
+    bool rhsStartsWithQtCore = utils::startsWith(rhs, qtCorePrefix);
+    if (lhsStartsWithQtCore && !rhsStartsWithQtCore)
+        return false;
+    if (!lhsStartsWithQtCore && rhsStartsWithQtCore)
+        return true;
+
+    return lhs < rhs;
+}
+
 
 // TODO C++20: use the std::string(_view) methods directly
 template<typename T>

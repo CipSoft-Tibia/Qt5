@@ -5,24 +5,16 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-Item {
-    id: root
 
-    // It's important that this item has a zero size. Otherwise, if the parent of the
-    // targetItem is e.g a layout, we will change the layout if we parent this item inside it.
-    width: 0
-    height: 0
-    // Stack on top of all siblings of the targetItem
-    z: 100
+Rectangle {
+    id: root
 
     function moveToItem(item, margins, radius) {
         if (!item) {
             targetItem = null;
             parent = null;
-            visible = false;
             return;
         }
-        visible = true
         parent = item.parent
         targetItem = item
         leftOffset = margins.left
@@ -45,20 +37,19 @@ Item {
     // systemFrameColor is set to NSColor.keyboardFocusIndicatorColor from cpp
     property color systemFrameColor
 
-    Rectangle {
-        id: focusFrame
-        z: 10
-        x: targetItem ? targetItem.x + leftOffset - frameSize - root.x : 0
-        y: targetItem ? targetItem.y + topOffset - frameSize - root.y : 0
-        width: targetItem ? targetItem.width - leftOffset - rightOffset + (frameSize * 2) : 0
-        height: targetItem ? targetItem.height - topOffset - bottomOffset + (frameSize * 2) : 0
-        radius: frameRadius + frameSize
-        visible: targetItem && targetItem.visible
-        color: "transparent"
+    x: targetItem ? targetItem.x + leftOffset - frameSize : 0
+    y: targetItem ? targetItem.y + topOffset - frameSize : 0
+    // Stack on top of all siblings of the targetItem
+    z: 100
 
-        border.color: systemFrameColor
-        border.width: frameSize
-    }
+    width: targetItem ? targetItem.width - leftOffset - rightOffset + (frameSize * 2) : 0
+    height: targetItem ? targetItem.height - topOffset - bottomOffset + (frameSize * 2) : 0
+    radius: frameRadius + frameSize
+    visible: targetItem && targetItem.visible
+    color: "transparent"
+
+    border.color: systemFrameColor
+    border.width: frameSize
 
     ParallelAnimation {
         id: animation
@@ -71,7 +62,7 @@ Item {
             easing.type: Easing.OutCubic
         }
         NumberAnimation {
-            target: focusFrame
+            target: root
             property: "opacity"
             duration: 300
             from: 0
@@ -80,3 +71,4 @@ Item {
         }
     }
 }
+

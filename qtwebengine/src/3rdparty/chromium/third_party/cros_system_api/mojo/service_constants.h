@@ -13,8 +13,10 @@ constexpr char kChromiumCrosHealthdDataCollector[] =
 constexpr char kChromiumNetworkDiagnosticsRoutines[] =
     "ChromiumNetworkDiagnosticsRoutines";
 constexpr char kChromiumNetworkHealth[] = "ChromiumNetworkHealth";
+constexpr char kCrosCameraAppDeviceBridge[] = "CrosCameraAppDeviceBridge";
 constexpr char kCrosCameraDiagnostics[] = "CrosCameraDiagnostics";
 constexpr char kCrosCameraHalDispatcher[] = "CrosCameraHalDispatcher";
+constexpr char kCrosCameraService[] = "CrosCameraService";
 constexpr char kCrosDcadService[] = "CrosDcadService";
 constexpr char kCrosHealthdAshEventReporter[] = "CrosHealthdAshEventReporter";
 constexpr char kCrosHealthdDiagnostics[] = "CrosHealthdDiagnostics";
@@ -24,6 +26,9 @@ constexpr char kCrosHealthdRoutines[] = "CrosHealthdRoutines";
 constexpr char kCrosHealthdSystem[] = "CrosHealthdSystem";
 constexpr char kCrosJpegAccelerator[] = "CrosJpegAccelerator";
 constexpr char kCrosPasspointService[] = "CrosPasspointService";
+constexpr char kCrosSystemEventMonitor[] = "CrosSystemEventMonitor";
+constexpr char kHeartdControl[] = "HeartdControl";
+constexpr char kHeartdHeartbeatService[] = "HeartdHeartbeatService";
 constexpr char kIioSensor[] = "IioSensor";
 
 }  // namespace chromeos::mojo_services

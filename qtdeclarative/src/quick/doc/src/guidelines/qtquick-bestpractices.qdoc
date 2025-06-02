@@ -181,6 +181,12 @@ to a \e {.qml} file.
     \li \l{Qt Design Studio: UI Files}
 \endlist
 
+\section1 Using Qt Quick Views
+
+\section2 Store State in Models
+
+See \l {Avoid Storing State in Delegates}.
+
 \section1 Using Qt Quick Layouts
 
 Qt offers Qt Quick Layouts to arrange Qt Quick items visually in a layout.
@@ -252,6 +258,41 @@ property int size
 property MyMenu optionsMenu
 \endcode
 
+\section1 Property change signals
+
+Prefer using the explicit interaction signals over the value changed signals to
+avoid subtle bugs.
+
+Using \c {valueChanged} can lead to event cascades where the value is constantly
+changed because it is somehow rounded or normalized.
+
+Using explicit interaction signals alone avoids this whole class of issues.
+
+For example, \l Slider has these similar signals: \l {Slider::}{moved} and
+\c {valueChanged}.
+
+\qml
+Slider {
+    value: someValueFromBackend
+
+    onValueChanged: pushToBackend(value)
+    // or
+    onMoved: pushToBackend(value)
+}
+\endqml
+
+Both cases look similar, and you may want to use \c {valueChanged}.
+
+Developers often overlook the fact that the \l Slider can automatically change
+its value, for example, because of clamping to minimum/maximum values or
+rounding. In this case, the \c {valueChanged} signal is emitted. If you use the
+\c {valueChanged} signal, you may notice it is emitted at unexpected moments.
+
+To avoid possible issues, use an interaction signal: the signal that is emitted
+when user interacts with the control. In this example, if you use the
+\l {Slider::}{moved} signal, the slot will only be triggered if the user
+changes the control.
+
 \section1 Performance
 
 For information on performance in QML and Qt Quick,
@@ -293,6 +334,83 @@ Rectangle {
     color: "red"
 }
 \endcode
+
+\section1 Don't store state in delegates
+
+Don't store a state in a delegate. The issue here is that the delegate is
+created and destroyed multiple times, so the saved state will be lost.
+
+\qml
+// Wrong approach:
+ListView {
+    // ...
+
+    delegate: Button {
+        // ...
+        property bool someStateProperty
+        onClicked: someStateProperty = true
+    }
+}
+\endqml
+
+Instead, store the state outside of the delegate. For example, in a model.
+When the delegate is destroyed, the saved state is not lost.
+
+\qml
+// Right approach:
+ListView {
+    // ...
+
+    delegate: Button {
+        // ...
+        onClicked: model.someStateProperty = true
+    }
+}
+\endqml
+
+\section1 Make user-facing strings translatable
+
+It is recommended to make user-facing strings translatable from the beginning.
+See \l {Writing Source Code for Translation}.
+
+\qml
+ToolButton {
+    id: selectionToolButton
+    // ...
+    icon.source: "qrc:/images/selection.png"
+
+    Tooltip.Text: qsTr("Select pixels within an area and move them")
+
+    onClicked: canvas.tool = ImageCanvas.SelectionTool
+}
+\endqml
+
+\section1 Do not customize native styles
+
+Native styles (Windows and macOS styles) don't support customization.
+Ensure you don't customize a native style.
+
+\qml *
+// Wrong approach:
+import QtQuick.Controls.Windows
+
+// Don't customize a native style
+Button {
+    background: Rectangle { /\1...\1/ }
+}
+\endqml
+
+\include customizing-native-styles.qdocinc
+
+\qml *
+// Right approach:
+import QtQuick.Controls.Basic
+
+// You can customize a commonly available style
+Button {
+    background: Rectangle { /\1...\1/ }
+}
+\endqml
 
 \section1 Tools and Utilities
 

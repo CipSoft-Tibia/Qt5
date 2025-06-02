@@ -1,10 +1,13 @@
+load("@skia_user_config//:copts.bzl", "DEFAULT_COPTS")
 load("//bazel:macros.bzl", "bool_flag", "exports_files_legacy", "skia_filegroup", "wasm_cc_binary")
 load("//bazel/karma:karma_test.bzl", "karma_test")
-load("@skia_user_config//:copts.bzl", "DEFAULT_COPTS")
 
 licenses(["notice"])
 
-exports_files_legacy()
+exports_files_legacy(
+    label_list = ["npm_build/types/index.d.ts"],
+    visibility = ["//infra:__subpackages__"],
+)
 
 BASE_LINKOPTS = [
     #"-flto",  # https://github.com/emscripten-core/emsdk/issues/807
@@ -57,7 +60,7 @@ genrule(
           # in the fonts/ subdirectory as if it had been there all along.
           "--output=$@ " +
           "--align=4",
-    exec_tools = ["//tools:embed_resources"],
+    tools = ["//tools:embed_resources"],
 )
 
 # Note: These are defines that only impact the _bindings.cpp files in this folder.
@@ -68,6 +71,9 @@ CK_DEFINES = [
 ] + select({
     ":enable_fonts_true": ["CK_INCLUDE_PARAGRAPH"],
     ":enable_fonts_false": ["CK_NO_FONTS"],
+}) + select({
+    ":include_embedded_font_true": ["CK_EMBED_FONT"],
+    ":include_embedded_font_false": [],
 }) + select({
     ":enable_skp_serialization_true": ["CK_SERIALIZE_SKP=1"],
     ":enable_skp_serialization_false": [],
@@ -274,13 +280,13 @@ cc_binary(
         "//:skia_public",
     ] + select({
         ":enable_fonts_true": [
-            "//modules/skparagraph",
-            "//modules/skunicode",
+            "//modules/skparagraph:legacy_skparagraph",
+            "//modules/skunicode:legacy_skunicode",
         ],
         ":enable_fonts_false": [],
     }) + select({
         ":enable_skottie_true": [
-            "//modules/skottie",
+            "//modules/skottie:legacy_skottie",
             "//modules/skottie:utils",
         ],
         ":enable_skottie_false": [],

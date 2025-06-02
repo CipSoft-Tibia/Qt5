@@ -39,7 +39,9 @@ private slots:
 #elif defined(Q_OS_QNX)
         backends << "qnx";
 #else
-        backends << "ffmpeg" << "gstreamer";
+        backends << "ffmpeg";
+        if constexpr (QT_CONFIG(gstreamer))
+            backends << "gstreamer";
 #endif
 
         QTest::addRow("backends") << backends;

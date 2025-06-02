@@ -675,6 +675,10 @@ bool TestLogger::shouldIgnoreTest(const QString &test) const
 
     if (test == "benchlibcallgrind") {
 #if defined(__GNUC__) && (defined(__i386) || defined(__x86_64)) && defined(Q_OS_LINUX)
+#  ifdef __AVX512F__
+        WARN("Valgrind does not support AVX512/AVX10 as of the time of this writing");
+        return true;
+#  endif
         // Check that it's actually available
         QProcess checkProcess;
         QStringList args{u"--version"_s};
@@ -931,6 +935,7 @@ static QProcessEnvironment testEnvironment()
         const auto envKeys = systemEnvironment.keys();
         for (const QString &key : envKeys) {
             const bool useVariable = key == "PATH" || key == "QT_QPA_PLATFORM"
+                || key == "QTEST_THROW_ON_FAIL"_L1 || key == "QTEST_THROW_ON_SKIP"_L1
                 || key == "ASAN_OPTIONS"
 #if defined(Q_OS_QNX)
                 || key == "GRAPHICS_ROOT" || key == "TZ"
@@ -957,6 +962,13 @@ static QProcessEnvironment testEnvironment()
 #if defined(Q_OS_UNIX)
         // Avoid the warning from QCoreApplication
         environment.insert("LC_ALL", "en_US.UTF-8");
+#endif
+
+#if defined(Q_OS_MACOS)
+        // Work around system framework spamming logs with
+        // "+[IMKClient subclass]: chose IMKClient_Legacy"
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::MacOSSequoia)
+            environment.insert("CFLOG_FORCE_DISABLE_STDERR", "1");
 #endif
     }
     return environment;

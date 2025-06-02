@@ -31,6 +31,8 @@ class Q_QUICK3D_EXPORT QQuick3DPrincipledMaterial : public QQuick3DMaterial
 
     Q_PROPERTY(QColor baseColor READ baseColor WRITE setBaseColor NOTIFY baseColorChanged)
     Q_PROPERTY(QQuick3DTexture *baseColorMap READ baseColorMap WRITE setBaseColorMap NOTIFY baseColorMapChanged)
+    Q_PROPERTY(bool baseColorSingleChannelEnabled READ baseColorSingleChannelEnabled WRITE setBaseColorSingleChannelEnabled NOTIFY baseColorSingleChannelEnabledChanged REVISION(6, 8))
+    Q_PROPERTY(QQuick3DMaterial::TextureChannelMapping baseColorChannel READ baseColorChannel WRITE setBaseColorChannel NOTIFY baseColorChannelChanged REVISION(6, 8))
 
     Q_PROPERTY(float metalness READ metalness WRITE setMetalness NOTIFY metalnessChanged)
     Q_PROPERTY(QQuick3DTexture *metalnessMap READ metalnessMap WRITE setMetalnessMap NOTIFY metalnessMapChanged)
@@ -39,6 +41,8 @@ class Q_QUICK3D_EXPORT QQuick3DPrincipledMaterial : public QQuick3DMaterial
     Q_PROPERTY(float specularAmount READ specularAmount WRITE setSpecularAmount NOTIFY specularAmountChanged)
     Q_PROPERTY(QQuick3DTexture *specularMap READ specularMap WRITE setSpecularMap NOTIFY specularMapChanged)
     Q_PROPERTY(float specularTint READ specularTint WRITE setSpecularTint NOTIFY specularTintChanged)
+    Q_PROPERTY(bool specularSingleChannelEnabled READ specularSingleChannelEnabled WRITE setSpecularSingleChannelEnabled NOTIFY specularSingleChannelEnabledChanged REVISION(6, 8))
+    Q_PROPERTY(QQuick3DMaterial::TextureChannelMapping specularChannel READ specularChannel WRITE setSpecularChannel NOTIFY specularChannelChanged REVISION(6, 8))
 
     Q_PROPERTY(float roughness READ roughness WRITE setRoughness NOTIFY roughnessChanged)
     Q_PROPERTY(QQuick3DTexture *roughnessMap READ roughnessMap WRITE setRoughnessMap NOTIFY roughnessMapChanged)
@@ -46,7 +50,10 @@ class Q_QUICK3D_EXPORT QQuick3DPrincipledMaterial : public QQuick3DMaterial
 
     Q_PROPERTY(QVector3D emissiveFactor READ emissiveFactor WRITE setEmissiveFactor NOTIFY emissiveFactorChanged)
     Q_PROPERTY(QQuick3DTexture *emissiveMap READ emissiveMap WRITE setEmissiveMap NOTIFY emissiveMapChanged)
+    Q_PROPERTY(bool emissiveSingleChannelEnabled READ emissiveSingleChannelEnabled WRITE setEmissiveSingleChannelEnabled NOTIFY emissiveSingleChannelEnabledChanged REVISION(6, 8))
+    Q_PROPERTY(QQuick3DMaterial::TextureChannelMapping emissiveChannel READ emissiveChannel WRITE setEmissiveChannel NOTIFY emissiveChannelChanged REVISION(6, 8))
 
+    Q_PROPERTY(bool invertOpacityMapValue READ invertOpacityMapValue WRITE setInvertOpacityMapValue NOTIFY invertOpacityMapValueChanged REVISION(6, 8))
     Q_PROPERTY(float opacity READ opacity WRITE setOpacity NOTIFY opacityChanged)
     Q_PROPERTY(QQuick3DTexture *opacityMap READ opacityMap WRITE setOpacityMap NOTIFY opacityMapChanged)
     Q_PROPERTY(QQuick3DMaterial::TextureChannelMapping opacityChannel READ opacityChannel WRITE setOpacityChannel NOTIFY opacityChannelChanged)
@@ -84,6 +91,7 @@ class Q_QUICK3D_EXPORT QQuick3DPrincipledMaterial : public QQuick3DMaterial
                        clearcoatRoughnessMapChanged REVISION(6, 3))
     Q_PROPERTY(QQuick3DTexture *clearcoatNormalMap READ clearcoatNormalMap WRITE setClearcoatNormalMap NOTIFY
                        clearcoatNormalMapChanged REVISION(6, 3))
+    Q_PROPERTY(float clearcoatNormalStrength READ clearcoatNormalStrength WRITE setClearcoatNormalStrength NOTIFY clearcoatNormalStrengthChanged REVISION(6, 8))
 
     Q_PROPERTY(float transmissionFactor READ transmissionFactor WRITE setTransmissionFactor NOTIFY transmissionFactorChanged)
     Q_PROPERTY(QQuick3DTexture * transmissionMap READ transmissionMap WRITE setTransmissionMap NOTIFY transmissionMapChanged)
@@ -99,6 +107,22 @@ class Q_QUICK3D_EXPORT QQuick3DPrincipledMaterial : public QQuick3DMaterial
     Q_PROPERTY(float indexOfRefraction READ indexOfRefraction WRITE setIndexOfRefraction NOTIFY indexOfRefractionChanged REVISION(6, 3))
 
     Q_PROPERTY(bool vertexColorsEnabled READ vertexColorsEnabled WRITE setVertexColorsEnabled NOTIFY vertexColorsEnabledChanged REVISION(6, 5))
+
+    Q_PROPERTY(bool fresnelScaleBiasEnabled READ fresnelScaleBiasEnabled WRITE setFresnelScaleBiasEnabled NOTIFY fresnelScaleBiasEnabledChanged REVISION(6, 8))
+    Q_PROPERTY(float fresnelScale READ fresnelScale WRITE setFresnelScale NOTIFY fresnelScaleChanged REVISION(6, 8))
+    Q_PROPERTY(float fresnelBias READ fresnelBias WRITE setFresnelBias NOTIFY fresnelBiasChanged REVISION(6, 8))
+    Q_PROPERTY(float fresnelPower READ fresnelPower WRITE setFresnelPower NOTIFY fresnelPowerChanged REVISION(6, 8))
+
+    Q_PROPERTY(bool clearcoatFresnelScaleBiasEnabled READ clearcoatFresnelScaleBiasEnabled WRITE setClearcoatFresnelScaleBiasEnabled NOTIFY clearcoatFresnelScaleBiasEnabledChanged REVISION(6, 8))
+    Q_PROPERTY(float clearcoatFresnelScale READ clearcoatFresnelScale WRITE setClearcoatFresnelScale NOTIFY clearcoatFresnelScaleChanged REVISION(6, 8))
+    Q_PROPERTY(float clearcoatFresnelBias READ clearcoatFresnelBias WRITE setClearcoatFresnelBias NOTIFY clearcoatFresnelBiasChanged REVISION(6, 8))
+    Q_PROPERTY(float clearcoatFresnelPower READ clearcoatFresnelPower WRITE setClearcoatFresnelPower NOTIFY clearcoatFresnelPowerChanged REVISION(6, 8))
+
+    Q_PROPERTY(bool vertexColorsMaskEnabled READ vertexColorsMaskEnabled WRITE setVertexColorsMaskEnabled NOTIFY vertexColorsMaskEnabledChanged REVISION(6, 8))
+    Q_PROPERTY(VertexColorMaskFlags vertexColorRedMask READ vertexColorRedMask WRITE setVertexColorRedMask NOTIFY vertexColorRedMaskChanged REVISION(6, 8))
+    Q_PROPERTY(VertexColorMaskFlags vertexColorGreenMask READ vertexColorGreenMask WRITE setVertexColorGreenMask NOTIFY vertexColorGreenMaskChanged REVISION(6, 8))
+    Q_PROPERTY(VertexColorMaskFlags vertexColorBlueMask READ vertexColorBlueMask WRITE setVertexColorBlueMask NOTIFY vertexColorBlueMaskChanged REVISION(6, 8))
+    Q_PROPERTY(VertexColorMaskFlags vertexColorAlphaMask READ vertexColorAlphaMask WRITE setVertexColorAlphaMask NOTIFY vertexColorAlphaMaskChanged REVISION(6, 8))
 
     QML_NAMED_ELEMENT(PrincipledMaterial)
 
@@ -124,6 +148,24 @@ public:
     };
     Q_ENUM(AlphaMode)
 
+    enum VertexColorMask {
+        NoMask = QQuick3DMaterial::NoMask,
+        RoughnessMask = QQuick3DMaterial::RoughnessMask,
+        NormalStrengthMask = QQuick3DMaterial::NormalStrengthMask,
+        SpecularAmountMask = QQuick3DMaterial::SpecularAmountMask,
+        ClearcoatAmountMask = QQuick3DMaterial::ClearcoatAmountMask,
+        ClearcoatRoughnessAmountMask = QQuick3DMaterial::ClearcoatRoughnessAmountMask,
+        ClearcoatNormalStrengthMask = QQuick3DMaterial::ClearcoatNormalStrengthMask,
+        HeightAmountMask = QQuick3DMaterial::HeightAmountMask,
+        MetalnessMask = QQuick3DMaterial::MetalnessMask,
+        OcclusionAmountMask = QQuick3DMaterial::OcclusionAmountMask,
+        ThicknessFactorMask = QQuick3DMaterial::ThicknessFactorMask,
+        TransmissionFactorMask = QQuick3DMaterial::TransmissionFactorMask
+    };
+    Q_ENUM(VertexColorMask)
+    Q_DECLARE_FLAGS(VertexColorMaskFlags, VertexColorMask)
+    Q_FLAG(VertexColorMaskFlags)
+
     explicit QQuick3DPrincipledMaterial(QQuick3DObject *parent = nullptr);
     ~QQuick3DPrincipledMaterial() override;
 
@@ -131,6 +173,12 @@ public:
     BlendMode blendMode() const;
     QColor baseColor() const;
     QQuick3DTexture *baseColorMap() const;
+    Q_REVISION(6, 8) bool baseColorSingleChannelEnabled() const;
+    Q_REVISION(6, 8) TextureChannelMapping baseColorChannel() const;
+    Q_REVISION(6, 8) bool specularSingleChannelEnabled() const;
+    Q_REVISION(6, 8) TextureChannelMapping specularChannel() const;
+    Q_REVISION(6, 8) bool emissiveSingleChannelEnabled() const;
+    Q_REVISION(6, 8) TextureChannelMapping emissiveChannel() const;
     QQuick3DTexture *emissiveMap() const;
     QVector3D emissiveFactor() const;
     QQuick3DTexture *specularReflectionMap() const;
@@ -139,6 +187,7 @@ public:
     float specularAmount() const;
     float roughness() const;
     QQuick3DTexture *roughnessMap() const;
+    Q_REVISION(6, 8) bool invertOpacityMapValue() const;
     float opacity() const;
     QQuick3DTexture *opacityMap() const;
     QQuick3DTexture *normalMap() const;
@@ -168,6 +217,7 @@ public:
     Q_REVISION(6, 3) TextureChannelMapping clearcoatRoughnessChannel() const;
     Q_REVISION(6, 3) QQuick3DTexture *clearcoatRoughnessMap() const;
     Q_REVISION(6, 3) QQuick3DTexture *clearcoatNormalMap() const;
+    Q_REVISION(6, 8) float clearcoatNormalStrength() const;
 
     Q_REVISION(6, 3) float transmissionFactor() const;
     Q_REVISION(6, 3) QQuick3DTexture *transmissionMap() const;
@@ -180,14 +230,36 @@ public:
     Q_REVISION(6, 3) const QColor &attenuationColor() const;
 
     Q_REVISION(6, 3) float indexOfRefraction() const;
+    Q_REVISION(6, 8) bool fresnelScaleBiasEnabled() const;
+    Q_REVISION(6, 8) float fresnelScale() const;
+    Q_REVISION(6, 8) float fresnelBias() const;
+    Q_REVISION(6, 8) float fresnelPower() const;
+
+    Q_REVISION(6, 8) bool clearcoatFresnelScaleBiasEnabled() const;
+    Q_REVISION(6, 8) float clearcoatFresnelScale() const;
+    Q_REVISION(6, 8) float clearcoatFresnelBias() const;
+    Q_REVISION(6, 8) float clearcoatFresnelPower() const;
 
     Q_REVISION(6, 5) bool vertexColorsEnabled() const;
+
+    Q_REVISION(6, 8) bool vertexColorsMaskEnabled() const;
+
+    Q_REVISION(6, 8) VertexColorMaskFlags vertexColorRedMask() const;
+    Q_REVISION(6, 8) VertexColorMaskFlags vertexColorGreenMask() const;
+    Q_REVISION(6, 8) VertexColorMaskFlags vertexColorBlueMask() const;
+    Q_REVISION(6, 8) VertexColorMaskFlags vertexColorAlphaMask() const;
 
 public Q_SLOTS:
     void setLighting(QQuick3DPrincipledMaterial::Lighting lighting);
     void setBlendMode(QQuick3DPrincipledMaterial::BlendMode blendMode);
     void setBaseColor(QColor baseColor);
     void setBaseColorMap(QQuick3DTexture *baseColorMap);
+    Q_REVISION(6, 8) void setBaseColorSingleChannelEnabled(bool baseColorSingleChannelEnabled);
+    Q_REVISION(6, 8) void setBaseColorChannel(QQuick3DMaterial::TextureChannelMapping channel);
+    Q_REVISION(6, 8) void setSpecularSingleChannelEnabled(bool specularSingleChannelEnabled);
+    Q_REVISION(6, 8) void setSpecularChannel(QQuick3DMaterial::TextureChannelMapping channel);
+    Q_REVISION(6, 8) void setEmissiveSingleChannelEnabled(bool emissiveSingleChannelEnabled);
+    Q_REVISION(6, 8) void setEmissiveChannel(QQuick3DMaterial::TextureChannelMapping channel);
     void setEmissiveMap(QQuick3DTexture *emissiveMap);
     void setEmissiveFactor(QVector3D emissiveFactor);
     void setSpecularReflectionMap(QQuick3DTexture *specularReflectionMap);
@@ -196,11 +268,12 @@ public Q_SLOTS:
     void setSpecularAmount(float specularAmount);
     void setRoughness(float roughness);
     void setRoughnessMap(QQuick3DTexture *roughnessMap);
+    Q_REVISION(6, 8) void setInvertOpacityMapValue(bool invertOpacityMapValue);
     void setOpacity(float opacity);
     void setOpacityMap(QQuick3DTexture *opacityMap);
     void setNormalMap(QQuick3DTexture *normalMap);
     void setMetalness(float metalnessAmount);
-    void setMetalnessMap(QQuick3DTexture * metalnessMap);
+    void setMetalnessMap(QQuick3DTexture *metalnessMap);
     void setNormalStrength(float normalStrength);
     void setOcclusionMap(QQuick3DTexture *occlusionMap);
     void setOcclusionAmount(float occlusionAmount);
@@ -225,6 +298,7 @@ public Q_SLOTS:
     Q_REVISION(6, 3) void setClearcoatRoughnessChannel(QQuick3DMaterial::TextureChannelMapping newClearcoatRoughnessChannel);
     Q_REVISION(6, 3) void setClearcoatRoughnessMap(QQuick3DTexture *newClearcoatRoughnessMap);
     Q_REVISION(6, 3) void setClearcoatNormalMap(QQuick3DTexture *newClearcoatNormalMap);
+    Q_REVISION(6, 8) void setClearcoatNormalStrength(float clearcoatNormalStrength);
 
     Q_REVISION(6, 3) void setTransmissionFactor(float newTransmissionFactor);
     Q_REVISION(6, 3) void setTransmissionMap(QQuick3DTexture *newTransmissionMap);
@@ -237,14 +311,35 @@ public Q_SLOTS:
     Q_REVISION(6, 3) void setAttenuationColor(const QColor &newAttenuationColor);
 
     Q_REVISION(6, 3) void setIndexOfRefraction(float indexOfRefraction);
+    Q_REVISION(6, 8) void setFresnelScaleBiasEnabled(bool fresnelScaleBias);
+    Q_REVISION(6, 8) void setFresnelScale(float fresnelScale);
+    Q_REVISION(6, 8) void setFresnelBias(float fresnelBias);
+    Q_REVISION(6, 8) void setFresnelPower(float fresnelPower);
+
+    Q_REVISION(6, 8) void setClearcoatFresnelScaleBiasEnabled(bool clearcoatFresnelScaleBias);
+    Q_REVISION(6, 8) void setClearcoatFresnelScale(float clearcoatFresnelScale);
+    Q_REVISION(6, 8) void setClearcoatFresnelBias(float clearcoatFresnelBias);
+    Q_REVISION(6, 8) void setClearcoatFresnelPower(float clearcoatFresnelPower);
 
     Q_REVISION(6, 5) void setVertexColorsEnabled(bool vertexColorsEnabled);
+
+    Q_REVISION(6, 8) void setVertexColorsMaskEnabled(bool vertexColorsMaskEnabled);
+    Q_REVISION(6, 8) void setVertexColorRedMask(VertexColorMaskFlags vertexColorRedMask);
+    Q_REVISION(6, 8) void setVertexColorGreenMask(VertexColorMaskFlags vertexColorGreenMask);
+    Q_REVISION(6, 8) void setVertexColorBlueMask(VertexColorMaskFlags vertexColorBlueMask);
+    Q_REVISION(6, 8) void setVertexColorAlphaMask(VertexColorMaskFlags vertexColorAlphaMask);
 
 Q_SIGNALS:
     void lightingChanged(QQuick3DPrincipledMaterial::Lighting lighting);
     void blendModeChanged(QQuick3DPrincipledMaterial::BlendMode blendMode);
     void baseColorChanged(QColor baseColor);
     void baseColorMapChanged(QQuick3DTexture *baseColorMap);
+    Q_REVISION(6, 8) void baseColorSingleChannelEnabledChanged(bool baseColorSingleChannelEnabled);
+    Q_REVISION(6, 8) void baseColorChannelChanged(QQuick3DMaterial::TextureChannelMapping channel);
+    Q_REVISION(6, 8) void specularSingleChannelEnabledChanged(bool specularColorSingleChannelEnabled);
+    Q_REVISION(6, 8) void specularChannelChanged(QQuick3DMaterial::TextureChannelMapping channel);
+    Q_REVISION(6, 8) void emissiveSingleChannelEnabledChanged(bool emissiveColorSingleChannelEnabled);
+    Q_REVISION(6, 8) void emissiveChannelChanged(QQuick3DMaterial::TextureChannelMapping channel);
     void emissiveMapChanged(QQuick3DTexture *emissiveMap);
     void emissiveFactorChanged(QVector3D emissiveFactor);
     void specularReflectionMapChanged(QQuick3DTexture *specularReflectionMap);
@@ -253,11 +348,12 @@ Q_SIGNALS:
     void specularAmountChanged(float specularAmount);
     void roughnessChanged(float roughness);
     void roughnessMapChanged(QQuick3DTexture *roughnessMap);
+    Q_REVISION(6, 8) void invertOpacityMapValueChanged(bool invertOpacityMapValue);
     void opacityChanged(float opacity);
     void opacityMapChanged(QQuick3DTexture *opacityMap);
     void normalMapChanged(QQuick3DTexture *normalMap);
     void metalnessChanged(float metalness);
-    void metalnessMapChanged(QQuick3DTexture * metalnessMap);
+    void metalnessMapChanged(QQuick3DTexture *metalnessMap);
     void normalStrengthChanged(float normalStrength);
     void occlusionMapChanged(QQuick3DTexture *occlusionMap);
     void occlusionAmountChanged(float occlusionAmount);
@@ -282,6 +378,7 @@ Q_SIGNALS:
     Q_REVISION(6, 3) void clearcoatRoughnessChannelChanged(QQuick3DMaterial::TextureChannelMapping channel);
     Q_REVISION(6, 3) void clearcoatRoughnessMapChanged(QQuick3DTexture *texture);
     Q_REVISION(6, 3) void clearcoatNormalMapChanged(QQuick3DTexture *texture);
+    Q_REVISION(6, 8) void clearcoatNormalStrengthChanged(float clearcoatNormalStrength);
 
     Q_REVISION(6, 3) void transmissionFactorChanged(float amount);
     Q_REVISION(6, 3) void transmissionMapChanged(QQuick3DTexture *texture);
@@ -294,8 +391,23 @@ Q_SIGNALS:
     Q_REVISION(6, 3) void attenuationColorChanged(QColor color);
 
     Q_REVISION(6, 3) void indexOfRefractionChanged(float indexOfRefraction);
+    Q_REVISION(6, 8) void fresnelScaleBiasEnabledChanged(bool fresnelScaleBiasEnabled);
+    Q_REVISION(6, 8) void fresnelScaleChanged(float fresnelScale);
+    Q_REVISION(6, 8) void fresnelBiasChanged(float fresnelBias);
+    Q_REVISION(6, 8) void fresnelPowerChanged(float fresnelPower);
+
+    Q_REVISION(6, 8) void clearcoatFresnelScaleBiasEnabledChanged(bool clearcoatFresnelScaleBiasEnabled);
+    Q_REVISION(6, 8) void clearcoatFresnelScaleChanged(float clearcoatFresnelScale);
+    Q_REVISION(6, 8) void clearcoatFresnelBiasChanged(float clearcoatFresnelBias);
+    Q_REVISION(6, 8) void clearcoatFresnelPowerChanged(float clearcoatFresnelPower);
 
     Q_REVISION(6, 5) void vertexColorsEnabledChanged(bool vertexColorsEnabled);
+
+    Q_REVISION(6, 8) void vertexColorsMaskEnabledChanged();
+    Q_REVISION(6, 8) void vertexColorRedMaskChanged();
+    Q_REVISION(6, 8) void vertexColorGreenMaskChanged();
+    Q_REVISION(6, 8) void vertexColorBlueMaskChanged();
+    Q_REVISION(6, 8) void vertexColorAlphaMaskChanged();
 
 protected:
     QSSGRenderGraphObject *updateSpatialNode(QSSGRenderGraphObject *node) override;
@@ -336,6 +448,12 @@ private:
     AlphaMode m_alphaMode = Default;
     QColor m_baseColor = Qt::white;
     QQuick3DTexture *m_baseColorMap = nullptr;
+    bool m_baseColorSingleChannelEnabled = false;
+    TextureChannelMapping m_baseColorChannel = QQuick3DMaterial::R;
+    bool m_specularSingleChannelEnabled = false;
+    TextureChannelMapping m_specularChannel = QQuick3DMaterial::R;
+    TextureChannelMapping m_emissiveChannel = QQuick3DMaterial::R;
+    bool m_emissiveSingleChannelEnabled = false;
     QVector3D m_emissiveFactor;
     QQuick3DTexture *m_emissiveMap = nullptr;
 
@@ -349,6 +467,7 @@ private:
     float m_specularTint = 0.0f;
     float m_specularAmount = 1.0f;
     float m_roughness = 0.0f;
+    bool m_invertOpacityMapValue = false;
     float m_opacity = 1.0f;
     float m_metalnessAmount = 0.0f;
     float m_normalStrength = 1.0f;
@@ -369,6 +488,7 @@ private:
     QQuick3DTexture *m_clearcoatMap = nullptr;
     TextureChannelMapping m_clearcoatChannel = QQuick3DMaterial::R;
     float m_clearcoatRoughnessAmount = 0.0f;
+    float m_clearcoatNormalStrength = 1.0f;
     TextureChannelMapping m_clearcoatRoughnessChannel = QQuick3DMaterial::G;
     QQuick3DTexture *m_clearcoatRoughnessMap = nullptr;
     QQuick3DTexture *m_clearcoatNormalMap = nullptr;
@@ -381,7 +501,21 @@ private:
     float m_attenuationDistance = std::numeric_limits<float>::infinity();
     QColor m_attenuationColor = Qt::white;
     float m_indexOfRefraction = 1.5f;
+    bool m_fresnelScaleBiasEnabled = false;
+    float m_fresnelScale = 1.0f;
+    float m_fresnelBias = 0.0f;
+    float m_fresnelPower = 5.0f;
+    bool m_clearcoatFresnelScaleBiasEnabled = false;
+    float m_clearcoatFresnelScale = 1.0f;
+    float m_clearcoatFresnelBias = 0.0f;
+    float m_clearcoatFresnelPower = 5.0f;
     bool m_vertexColorsEnabled = true;
+
+    bool m_vertexColorsMaskEnabled = false;
+    VertexColorMaskFlags m_vertexColorRedMask = NoMask;
+    VertexColorMaskFlags m_vertexColorGreenMask = NoMask;
+    VertexColorMaskFlags m_vertexColorBlueMask = NoMask;
+    VertexColorMaskFlags m_vertexColorAlphaMask = NoMask;
 
     quint32 m_dirtyAttributes = 0xffffffff; // all dirty by default
     void markDirty(DirtyType type);

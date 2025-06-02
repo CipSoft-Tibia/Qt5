@@ -29,7 +29,7 @@ QT_BEGIN_NAMESPACE
 class QFile;
 class QTcpSocket;
 
-class Q_POSITIONINGQUICK_PRIVATE_EXPORT QDeclarativePositionSource : public QObject, public QQmlParserStatus
+class Q_POSITIONINGQUICK_EXPORT QDeclarativePositionSource : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(PositionSource)

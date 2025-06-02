@@ -306,7 +306,7 @@ class Q_CORE_EXPORT QDateTime
         quintptr status : 8;
 #  endif
 #endif
-        friend constexpr bool operator==(const ShortData &lhs, const ShortData &rhs)
+        friend constexpr bool operator==(ShortData lhs, ShortData rhs)
         { return lhs.status == rhs.status && lhs.msecs == rhs.msecs; }
     };
 
@@ -538,10 +538,9 @@ public:
                 >;
             }
     {
-        const auto sysTime = std::chrono::clock_cast<std::chrono::system_clock>(time);
-        // clock_cast can change the duration, so convert it again to milliseconds
-        const auto timeInMSec = std::chrono::time_point_cast<std::chrono::milliseconds>(sysTime);
-        return fromStdTimePoint(timeInMSec);
+        using namespace std::chrono;
+        const sys_time<milliseconds> sysTime = clock_cast<system_clock>(time);
+        return fromStdTimePoint(sysTime);
     }
 #endif // __cpp_concepts
 
@@ -632,7 +631,7 @@ private:
     { return lhs.equals(rhs); }
     friend Q_CORE_EXPORT Qt::weak_ordering
     compareThreeWay(const QDateTime &lhs, const QDateTime &rhs);
-    Q_DECLARE_WEAKLY_ORDERED(QDateTime)
+    Q_DECLARE_WEAKLY_ORDERED_NON_NOEXCEPT(QDateTime)
 
 #ifndef QT_NO_DATASTREAM
     friend Q_CORE_EXPORT QDataStream &operator<<(QDataStream &, const QDateTime &);

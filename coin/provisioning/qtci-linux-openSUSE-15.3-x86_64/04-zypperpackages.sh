@@ -66,6 +66,9 @@ sudo zypper -nq install make
 # Tools to build Git
 sudo zypper -nq install autoconf libcurl-devel libexpat-devel
 
+# Java
+sudo zypper -nq install java-17-openjdk
+
 gccVersion="$(gcc --version |grep gcc |cut -b 17-23)"
 echo "GCC = $gccVersion" >> versions.txt
 

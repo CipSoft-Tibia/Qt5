@@ -20,6 +20,7 @@ private Q_SLOTS:
     void deltaFunction();
     void keyframeUpdate();
     void easingcurveInterpolation();
+    void restoreBindingTest();
 };
 
 inline QUrl testFileUrl(const QString &fileName)
@@ -393,6 +394,57 @@ void Tst_QtQuickTimeline::easingcurveInterpolation()
     QCOMPARE(rectangle->property("y").toReal(), final);
 }
 
+void Tst_QtQuickTimeline::restoreBindingTest()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine);
+    component.loadUrl(testFileUrl("restorebindingtest.qml"));
+
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY2(!object.isNull(), qPrintable(component.errorString()));
+
+    auto *rectangle = object->findChild<QObject *>("rectangle");
+    QVERIFY(rectangle);
+
+    QCOMPARE(rectangle->property("offset").toInt(), 0);
+    QCOMPARE(rectangle->property("x").toInt(), 0);
+    QCOMPARE(rectangle->property("y").toInt(), 0);
+
+    auto *timeline = object->findChild<QObject *>("timeline");
+    QVERIFY(timeline);
+
+    QCOMPARE(timeline->property("enabled").toBool(), false);
+    QCOMPARE(timeline->property("startFrame").toInt(), 0);
+    QCOMPARE(timeline->property("endFrame").toInt(), 100);
+    QCOMPARE(timeline->property("currentFrame").toInt(), 50);
+
+    // currentFrame == 50
+    timeline->setProperty("enabled", true);
+    QCOMPARE(rectangle->property("x").toInt(), 70);
+    QCOMPARE(rectangle->property("y").toInt(), 70);
+
+    timeline->setProperty("currentFrame", 0);
+    QCOMPARE(rectangle->property("x").toInt(), 140);
+    QCOMPARE(rectangle->property("y").toInt(), 0);
+
+    timeline->setProperty("currentFrame", 100);
+    QCOMPARE(rectangle->property("x").toInt(), 0);
+    QCOMPARE(rectangle->property("y").toInt(), 140);
+
+
+    timeline->setProperty("enabled", false);
+    // check restoring of the original binding
+    QCOMPARE(rectangle->property("x").toInt(), 0);
+    QCOMPARE(rectangle->property("y").toInt(), 0);
+    rectangle->setProperty("offset", 50);
+    QCOMPARE(rectangle->property("x").toInt(), 50);
+    QCOMPARE(rectangle->property("y").toInt(), 50);
+
+    timeline->setProperty("enabled", true);
+    // currentFrame == 100, offset == 50
+    QCOMPARE(rectangle->property("x").toInt(), 50);
+    QCOMPARE(rectangle->property("y").toInt(), 140);
+}
 QTEST_MAIN(Tst_QtQuickTimeline)
 
 #include "tst_qtquicktimeline.moc"

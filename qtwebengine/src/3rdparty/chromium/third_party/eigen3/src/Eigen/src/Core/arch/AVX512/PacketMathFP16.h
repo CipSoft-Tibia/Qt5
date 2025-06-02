@@ -10,6 +10,7 @@
 #ifndef EIGEN_PACKET_MATH_FP16_AVX512_H
 #define EIGEN_PACKET_MATH_FP16_AVX512_H
 
+// IWYU pragma: private
 #include "../../InternalHeaderCheck.h"
 
 namespace Eigen {

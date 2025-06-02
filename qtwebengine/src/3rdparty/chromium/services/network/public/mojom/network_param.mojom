@@ -47,7 +47,6 @@ struct HostPortPair {
 // Mirror of net::ProxyServer::Scheme.
 enum ProxyScheme {
   kInvalid,
-  kDirect,
   kHttp,
   kSocks4,
   kSocks5,
@@ -61,6 +60,15 @@ struct ProxyServer {
 
   // |host_and_port| field is set iff |scheme| is not INVALID or DIRECT.
   HostPortPair? host_and_port;
+};
+
+// Mirror of net::ProxyChain.
+struct ProxyChain {
+  // The sequence of servers in this chain, or if nullopt, an invalid chain.
+  array<ProxyServer>? proxy_servers;
+
+  // Whether this chain corresponds to one used for IP Protection.
+  bool is_for_ip_protection;
 };
 
 // Host resolution error info.

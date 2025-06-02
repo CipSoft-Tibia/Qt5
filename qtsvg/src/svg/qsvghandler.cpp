@@ -1231,10 +1231,24 @@ static void parsePen(QSvgNode *node,
                 QString dashArray  = attributes.strokeDashArray.toString();
                 const QChar *s = dashArray.constData();
                 QList<qreal> dashes = parseNumbersList(s);
-                // if the dash count is odd the dashes should be duplicated
-                if ((dashes.size() & 1) != 0)
-                    dashes << QList<qreal>(dashes);
-                prop->setDashArray(dashes);
+                bool allZeroes = true;
+                for (qreal dash : dashes) {
+                    if (dash != 0.0) {
+                        allZeroes = false;
+                        break;
+                    }
+                }
+
+                // if the stroke dash array contains only zeros,
+                // force drawing of solid line.
+                if (allZeroes == false) {
+                    // if the dash count is odd the dashes should be duplicated
+                    if ((dashes.size() & 1) != 0)
+                        dashes << QList<qreal>(dashes);
+                    prop->setDashArray(dashes);
+                } else {
+                    prop->setDashArrayNone();
+                }
             }
         }
 
@@ -1333,9 +1347,9 @@ static void parseFont(QSvgNode *node,
         attributes.fontWeight.isEmpty() && attributes.fontVariant.isEmpty() && attributes.textAnchor.isEmpty())
         return;
 
-    QSvgTinyDocument *doc = node->document();
     QSvgFontStyle *fontStyle = nullptr;
     if (!attributes.fontFamily.isEmpty()) {
+        QSvgTinyDocument *doc = node->document();
         if (doc) {
             QSvgFont *svgFont = doc->svgFont(attributes.fontFamily.toString());
             if (svgFont)
@@ -2076,8 +2090,7 @@ QtSvg::Options QSvgHandler::options() const
 
 bool QSvgHandler::trustedSourceMode() const
 {
-    static const bool envAssumeTrusted = qEnvironmentVariableIsSet("QT_SVG_ASSUME_TRUSTED_SOURCE");
-    return envAssumeTrusted;
+    return m_options.testFlag(QtSvg::AssumeTrustedSource);
 }
 
 static inline QStringList stringToList(const QString &str)
@@ -2454,6 +2467,39 @@ static int parseClockValue(QStringView str, bool *ok)
     return res;
 }
 
+static bool parseBaseAnimate(QSvgNode *parent,
+                             const QXmlStreamAttributes &attributes,
+                             QSvgAnimate *anim,
+                             QSvgHandler *handler)
+{
+    QString beginStr   = attributes.value(QLatin1String("begin")).toString();
+    QString durStr     = attributes.value(QLatin1String("dur")).toString();
+    QString endStr = attributes.value(QLatin1String("end")).toString();
+    QString repeatStr  = attributes.value(QLatin1String("repeatCount")).toString();
+
+    bool ok = true;
+    int begin = parseClockValue(beginStr, &ok);
+    if (!ok)
+        return false;
+    int dur = parseClockValue(durStr, &ok);
+    if (!ok)
+        return false;
+    int end = parseClockValue(endStr, &ok);
+    if (!ok)
+        return false;
+    qreal repeatCount = (repeatStr == QLatin1String("indefinite")) ? -1 :
+                            qMax(1.0, toDouble(repeatStr));
+
+    anim->setRunningTime(begin, dur, end, 0);
+    anim->setRepeatCount(repeatCount);
+
+    parent->appendStyleProperty(anim, QString());
+    parent->document()->setAnimated(true);
+
+    handler->setAnimPeriod(begin, end);
+    return true;
+}
+
 static bool parseAnimateColorNode(QSvgNode *parent,
                                   const QXmlStreamAttributes &attributes,
                                   QSvgHandler *handler)
@@ -2461,11 +2507,11 @@ static bool parseAnimateColorNode(QSvgNode *parent,
     QStringView fromStr    = attributes.value(QLatin1String("from"));
     QStringView toStr      = attributes.value(QLatin1String("to"));
     QString valuesStr  = attributes.value(QLatin1String("values")).toString();
-    QString beginStr   = attributes.value(QLatin1String("begin")).toString();
-    QString durStr     = attributes.value(QLatin1String("dur")).toString();
     QString targetStr  = attributes.value(QLatin1String("attributeName")).toString();
-    QString repeatStr  = attributes.value(QLatin1String("repeatCount")).toString();
     QString fillStr    = attributes.value(QLatin1String("fill")).toString();
+
+    if (targetStr != QLatin1String("fill") && targetStr != QLatin1String("stroke"))
+        return false;
 
     QList<QColor> colors;
     if (valuesStr.isEmpty()) {
@@ -2486,24 +2532,12 @@ static bool parseAnimateColorNode(QSvgNode *parent,
         }
     }
 
-    bool ok = true;
-    int begin = parseClockValue(beginStr, &ok);
-    if (!ok)
-        return false;
-    int end = begin + parseClockValue(durStr, &ok);
-    if (!ok || end <= begin)
-        return false;
+    QSvgAnimateColor *anim = new QSvgAnimateColor();
+    parseBaseAnimate(parent, attributes, anim, handler);
 
-    QSvgAnimateColor *anim = new QSvgAnimateColor(begin, end, 0);
     anim->setArgs((targetStr == QLatin1String("fill")), colors);
     anim->setFreeze(fillStr == QLatin1String("freeze"));
-    anim->setRepeatCount(
-        (repeatStr == QLatin1String("indefinite")) ? -1 :
-            (repeatStr == QLatin1String("")) ? 1 : toDouble(repeatStr));
 
-    parent->appendStyleProperty(anim, someId(attributes));
-    parent->document()->setAnimated(true);
-    handler->setAnimPeriod(begin, end);
     return true;
 }
 
@@ -2529,9 +2563,6 @@ static bool parseAnimateTransformNode(QSvgNode *parent,
 {
     QString typeStr    = attributes.value(QLatin1String("type")).toString();
     QString values     = attributes.value(QLatin1String("values")).toString();
-    QString beginStr   = attributes.value(QLatin1String("begin")).toString();
-    QString durStr     = attributes.value(QLatin1String("dur")).toString();
-    QString repeatStr  = attributes.value(QLatin1String("repeatCount")).toString();
     QString fillStr    = attributes.value(QLatin1String("fill")).toString();
     QString fromStr    = attributes.value(QLatin1String("from")).toString();
     QString toStr      = attributes.value(QLatin1String("to")).toString();
@@ -2584,14 +2615,6 @@ static bool parseAnimateTransformNode(QSvgNode *parent,
     if (vals.size() % 3 != 0)
         return false;
 
-    bool ok = true;
-    int begin = parseClockValue(beginStr, &ok);
-    if (!ok)
-        return false;
-    int end = begin + parseClockValue(durStr, &ok);
-    if (!ok || end <= begin)
-        return false;
-
     QSvgAnimateTransform::TransformType type = QSvgAnimateTransform::Empty;
     if (typeStr == QLatin1String("translate")) {
         type = QSvgAnimateTransform::Translate;
@@ -2607,16 +2630,12 @@ static bool parseAnimateTransformNode(QSvgNode *parent,
         return false;
     }
 
-    QSvgAnimateTransform *anim = new QSvgAnimateTransform(begin, end, 0);
+    QSvgAnimateTransform *anim = new QSvgAnimateTransform();
+    parseBaseAnimate(parent, attributes, anim, handler);
+
     anim->setArgs(type, additive, vals);
     anim->setFreeze(fillStr == QLatin1String("freeze"));
-    anim->setRepeatCount(
-            (repeatStr == QLatin1String("indefinite"))? -1 :
-            (repeatStr == QLatin1String(""))? 1 : toDouble(repeatStr));
 
-    parent->appendStyleProperty(anim, someId(attributes));
-    parent->document()->setAnimated(true);
-    handler->setAnimPeriod(begin, end);
     return true;
 }
 
@@ -2859,6 +2878,12 @@ static QSvgNode *createImageNode(QSvgNode *parent,
     }
 
     QImage image;
+    enum {
+        NotLoaded,
+        LoadedFromData,
+        LoadedFromFile
+    } filenameType = NotLoaded;
+
     if (filename.startsWith(QLatin1String("data"))) {
         int idx = filename.lastIndexOf(QLatin1String("base64,"));
         if (idx != -1) {
@@ -2866,10 +2891,11 @@ static QSvgNode *createImageNode(QSvgNode *parent,
             const QString dataStr = filename.mid(idx);
             QByteArray data = QByteArray::fromBase64(dataStr.toLatin1());
             image = QImage::fromData(data);
-        } else {
-            qCDebug(lcSvgHandler) << "QSvgHandler::createImageNode: Unrecognized inline image format!";
+            filenameType = LoadedFromData;
         }
-    } else {
+    }
+
+    if (image.isNull()) {
         const auto *file = qobject_cast<QFile *>(handler->device());
         if (file) {
             QUrl url(filename);
@@ -2879,8 +2905,10 @@ static QSvgNode *createImageNode(QSvgNode *parent,
             }
         }
 
-        if (handler->trustedSourceMode() || !QImageReader::imageFormat(filename).startsWith("svg"))
+        if (handler->trustedSourceMode() || !QImageReader::imageFormat(filename).startsWith("svg")) {
             image = QImage(filename);
+            filenameType = LoadedFromFile;
+        }
     }
 
     if (image.isNull()) {
@@ -2893,6 +2921,7 @@ static QSvgNode *createImageNode(QSvgNode *parent,
 
     QSvgNode *img = new QSvgImage(parent,
                                   image,
+                                  filenameType == LoadedFromFile ? filename : QString{},
                                   QRectF(nx,
                                          ny,
                                          nwidth,
@@ -3150,61 +3179,57 @@ static void parseFilterBounds(QSvgNode *, const QXmlStreamAttributes &attributes
     if (!xStr.isEmpty()) {
         QSvgHandler::LengthType type;
         x = parseLength(xStr.toString(), &type, handler);
-        if (type != QSvgHandler::LT_PT)
+        if (type != QSvgHandler::LT_PT) {
             x = convertToPixels(x, true, type);
+            rect->setUnitX(QtSvg::UnitTypes::userSpaceOnUse);
+        }
         if (type == QSvgHandler::LT_PERCENT) {
             x /= 100.;
             rect->setUnitX(QtSvg::UnitTypes::objectBoundingBox);
         }
         rect->setX(x);
-    } else {
-        rect->setX(-0.1);
-        rect->setUnitX(QtSvg::UnitTypes::objectBoundingBox);
     }
     qreal y = 0;
     if (!yStr.isEmpty()) {
         QSvgHandler::LengthType type;
         y = parseLength(yStr.toString(), &type, handler);
-        if (type != QSvgHandler::LT_PT)
+        if (type != QSvgHandler::LT_PT) {
             y = convertToPixels(y, false, type);
+            rect->setUnitY(QtSvg::UnitTypes::userSpaceOnUse);
+        }
         if (type == QSvgHandler::LT_PERCENT) {
             y /= 100.;
             rect->setUnitX(QtSvg::UnitTypes::objectBoundingBox);
         }
         rect->setY(y);
-    } else {
-        rect->setY(-0.1);
-        rect->setUnitY(QtSvg::UnitTypes::objectBoundingBox);
     }
     qreal width = 0;
     if (!widthStr.isEmpty()) {
         QSvgHandler::LengthType type;
         width = parseLength(widthStr.toString(), &type, handler);
-        if (type != QSvgHandler::LT_PT)
+        if (type != QSvgHandler::LT_PT) {
             width = convertToPixels(width, true, type);
+            rect->setUnitW(QtSvg::UnitTypes::userSpaceOnUse);
+        }
         if (type == QSvgHandler::LT_PERCENT) {
             width /= 100.;
             rect->setUnitX(QtSvg::UnitTypes::objectBoundingBox);
         }
         rect->setWidth(width);
-    } else {
-        rect->setWidth(1.2);
-        rect->setUnitW(QtSvg::UnitTypes::objectBoundingBox);
     }
     qreal height = 0;
     if (!heightStr.isEmpty()) {
         QSvgHandler::LengthType type;
         height = parseLength(heightStr.toString(), &type, handler);
-        if (type != QSvgHandler::LT_PT)
+        if (type != QSvgHandler::LT_PT) {
             height = convertToPixels(height, false, type);
+            rect->setUnitH(QtSvg::UnitTypes::userSpaceOnUse);
+        }
         if (type == QSvgHandler::LT_PERCENT) {
             height /= 100.;
             rect->setUnitX(QtSvg::UnitTypes::objectBoundingBox);
         }
         rect->setHeight(height);
-    } else {
-        rect->setHeight(1.2);
-        rect->setUnitH(QtSvg::UnitTypes::objectBoundingBox);
     }
 }
 
@@ -3221,7 +3246,22 @@ static QSvgNode *createFilterNode(QSvgNode *parent,
     QtSvg::UnitTypes primitiveUnits = pU.contains(QLatin1String("objectBoundingBox")) ?
                 QtSvg::UnitTypes::objectBoundingBox : QtSvg::UnitTypes::userSpaceOnUse;
 
+    // https://www.w3.org/TR/SVG11/filters.html#FilterEffectsRegion
+    // If ‘x’ or ‘y’ is not specified, the effect is as if a value of -10% were specified.
+    // If ‘width’ or ‘height’ is not specified, the effect is as if a value of 120% were specified.
     QSvgRectF rect;
+    if (filterUnits == QtSvg::UnitTypes::userSpaceOnUse) {
+        qreal width = parent->document()->viewBox().width();
+        qreal height = parent->document()->viewBox().height();
+        rect = QSvgRectF(QRectF(-0.1 * width, -0.1 * height, 1.2 * width, 1.2 * height),
+                         QtSvg::UnitTypes::userSpaceOnUse, QtSvg::UnitTypes::userSpaceOnUse,
+                         QtSvg::UnitTypes::userSpaceOnUse, QtSvg::UnitTypes::userSpaceOnUse);
+    } else {
+        rect = QSvgRectF(QRectF(-0.1, -0.1, 1.2, 1.2),
+                         QtSvg::UnitTypes::objectBoundingBox, QtSvg::UnitTypes::objectBoundingBox,
+                         QtSvg::UnitTypes::objectBoundingBox, QtSvg::UnitTypes::objectBoundingBox);
+    }
+
     parseFilterBounds(parent, attributes, handler, &rect);
 
     QSvgNode *filter = new QSvgFilterContainer(parent, rect, filterUnits, primitiveUnits);
@@ -3234,6 +3274,16 @@ static void parseFilterAttributes(QSvgNode *parent, const QXmlStreamAttributes &
 {
     *inString = attributes.value(QLatin1String("in")).toString();
     *outString = attributes.value(QLatin1String("result")).toString();
+
+    // https://www.w3.org/TR/SVG11/filters.html#FilterPrimitiveSubRegion
+    // the default subregion is 0%,0%,100%,100%, where as a special-case the percentages are
+    // relative to the dimensions of the filter region, thus making the the default filter primitive
+    // subregion equal to the filter region.
+    *rect = QSvgRectF(QRectF(0, 0, 1.0, 1.0),
+                      QtSvg::UnitTypes::unknown, QtSvg::UnitTypes::unknown,
+                      QtSvg::UnitTypes::unknown, QtSvg::UnitTypes::unknown);
+    // if we recognize unit == unknown we use the filter as a reference instead of the item, see
+    // QSvgFeFilterPrimitive::localSubRegion
 
     parseFilterBounds(parent, attributes, handler, rect);
 }
@@ -3711,6 +3761,9 @@ static QSvgNode *createPolygonNode(QSvgNode *parent,
     const QChar *s = pointsStr.constData();
     QList<qreal> points = parseNumbersList(s);
     QPolygonF poly(points.size()/2);
+    if (poly.size() < 2)
+        return nullptr;
+
     for (int i = 0; i < poly.size(); ++i)
         poly[i] = QPointF(points.at(2 * i), points.at(2 * i + 1));
     QSvgNode *polygon = new QSvgPolygon(parent, poly);
@@ -3727,6 +3780,9 @@ static QSvgNode *createPolylineNode(QSvgNode *parent,
     const QChar *s = pointsStr.constData();
     QList<qreal> points = parseNumbersList(s);
     QPolygonF poly(points.size()/2);
+    if (poly.size() < 2)
+        return nullptr;
+
     for (int i = 0; i < poly.size(); ++i)
         poly[i] = QPointF(points.at(2 * i), points.at(2 * i + 1));
 
@@ -4574,6 +4630,13 @@ static bool detectCycles(const QSvgNode *node, QList<const QSvgNode *> active = 
     return false;
 }
 
+static bool detectCyclesAndWarn(const QSvgNode *node) {
+    const bool cycleFound = detectCycles(node);
+    if (cycleFound)
+        qCWarning(lcSvgHandler, "Cycles detected in SVG, document discarded.");
+    return cycleFound;
+}
+
 // Having too many unfinished elements will cause a stack overflow
 // in the dtor of QSvgTinyDocument, see oss-fuzz issue 24000.
 static const int unfinishedElementsLimit = 2048;
@@ -4599,7 +4662,8 @@ void QSvgHandler::parse()
             // this point is to do what everyone else seems to do and
             // ignore the reported namespaceUri completely.
             if (remainingUnfinishedElements
-                    && startElement(xml->name().toString(), xml->attributes())) {
+                    && startElement(xml->name().toString(), xml->attributes())
+                    && !detectCyclesAndWarn(m_doc)) {
                 --remainingUnfinishedElements;
             } else {
                 delete m_doc;
@@ -4623,8 +4687,7 @@ void QSvgHandler::parse()
     }
     resolvePaintServers(m_doc);
     resolveNodes();
-    if (detectCycles(m_doc)) {
-        qCWarning(lcSvgHandler, "Cycles detected in SVG, document discarded.");
+    if (detectCyclesAndWarn(m_doc)) {
         delete m_doc;
         m_doc = nullptr;
     }

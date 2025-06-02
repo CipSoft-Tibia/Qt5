@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/builtin_polyfill.h"
 
@@ -24,7 +37,7 @@
 #include "src/tint/lang/wgsl/program/clone_context.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/resolve.h"
-#include "src/tint/lang/wgsl/sem/builtin.h"
+#include "src/tint/lang/wgsl/sem/builtin_fn.h"
 #include "src/tint/lang/wgsl/sem/call.h"
 #include "src/tint/lang/wgsl/sem/type_expression.h"
 #include "src/tint/lang/wgsl/sem/value_conversion.h"
@@ -48,25 +61,17 @@ struct BuiltinPolyfill::State {
     /// Constructor
     /// @param program the source program
     /// @param config the transform config
-    State(const Program* program, const Config& config) : src(program), cfg(config) {
-        has_full_ptr_params = false;
-        for (auto* enable : src->AST().Enables()) {
-            if (enable->HasExtension(core::Extension::kChromiumExperimentalFullPtrParameters)) {
-                has_full_ptr_params = true;
-                break;
-            }
-        }
-    }
+    State(const Program& program, const Config& config) : src(program), cfg(config) {}
 
     /// Runs the transform
     /// @returns the new program or SkipTransform if the transform is not required
     Transform::ApplyResult Run() {
-        for (auto* node : src->ASTNodes().Objects()) {
+        for (auto* node : src.ASTNodes().Objects()) {
             Switch(
                 node,  //
                 [&](const CallExpression* expr) { Call(expr); },
                 [&](const BinaryExpression* bin_op) {
-                    if (auto* s = src->Sem().Get(bin_op);
+                    if (auto* s = src.Sem().Get(bin_op);
                         !s || s->Stage() == core::EvaluationStage::kConstant ||
                         s->Stage() == core::EvaluationStage::kNotEvaluated) {
                         return;  // Don't polyfill @const expressions
@@ -83,7 +88,7 @@ struct BuiltinPolyfill::State {
                         }
                         case core::BinaryOp::kDivide: {
                             if (cfg.builtins.int_div_mod) {
-                                auto* lhs_ty = src->TypeOf(bin_op->lhs)->UnwrapRef();
+                                auto* lhs_ty = src.TypeOf(bin_op->lhs)->UnwrapRef();
                                 if (lhs_ty->is_integer_scalar_or_vector()) {
                                     ctx.Replace(bin_op,
                                                 [this, bin_op] { return IntDivMod(bin_op); });
@@ -94,7 +99,7 @@ struct BuiltinPolyfill::State {
                         }
                         case core::BinaryOp::kModulo: {
                             if (cfg.builtins.int_div_mod) {
-                                auto* lhs_ty = src->TypeOf(bin_op->lhs)->UnwrapRef();
+                                auto* lhs_ty = src.TypeOf(bin_op->lhs)->UnwrapRef();
                                 if (lhs_ty->is_integer_scalar_or_vector()) {
                                     ctx.Replace(bin_op,
                                                 [this, bin_op] { return IntDivMod(bin_op); });
@@ -102,7 +107,7 @@ struct BuiltinPolyfill::State {
                                 }
                             }
                             if (cfg.builtins.precise_float_mod) {
-                                auto* lhs_ty = src->TypeOf(bin_op->lhs)->UnwrapRef();
+                                auto* lhs_ty = src.TypeOf(bin_op->lhs)->UnwrapRef();
                                 if (lhs_ty->is_float_scalar_or_vector()) {
                                     ctx.Replace(bin_op,
                                                 [this, bin_op] { return PreciseFloatMod(bin_op); });
@@ -117,7 +122,7 @@ struct BuiltinPolyfill::State {
                 },
                 [&](const Expression* expr) {
                     if (cfg.builtins.bgra8unorm) {
-                        if (auto* ty_expr = src->Sem().Get<sem::TypeExpression>(expr)) {
+                        if (auto* ty_expr = src.Sem().Get<sem::TypeExpression>(expr)) {
                             if (auto* tex = ty_expr->Type()->As<core::type::StorageTexture>()) {
                                 if (tex->texel_format() == core::TexelFormat::kBgra8Unorm) {
                                     ctx.Replace(expr, [this, tex] {
@@ -143,23 +148,21 @@ struct BuiltinPolyfill::State {
 
   private:
     /// The source program
-    Program const* const src;
+    const Program& src;
     /// The transform config
     const Config& cfg;
     /// The destination program builder
     ProgramBuilder b;
     /// The clone context
-    program::CloneContext ctx{&b, src};
+    program::CloneContext ctx{&b, &src};
     /// The source clone context
-    const sem::Info& sem = src->Sem();
+    const sem::Info& sem = src.Sem();
     /// Polyfill functions for binary operators.
     Hashmap<BinaryOpSignature, Symbol, 8> binary_op_polyfills;
     /// Polyfill builtins.
-    Hashmap<const sem::Builtin*, Symbol, 8> builtin_polyfills;
+    Hashmap<const sem::BuiltinFn*, Symbol, 8> builtin_polyfills;
     /// Polyfill f32 conversion to i32 or u32 (or vectors of)
     Hashmap<const core::type::Type*, Symbol, 2> f32_conv_polyfills;
-    // Tracks whether the chromium_experimental_full_ptr_parameters extension has been enabled.
-    bool has_full_ptr_params = false;
     /// True if the transform has made changes (i.e. the program needs cloning)
     bool made_changes = false;
 
@@ -810,10 +813,6 @@ struct BuiltinPolyfill::State {
     /// @param type the type being loaded
     /// @return the polyfill function name
     Symbol workgroupUniformLoad(const core::type::Type* type) {
-        if (!has_full_ptr_params) {
-            b.Enable(core::Extension::kChromiumExperimentalFullPtrParameters);
-            has_full_ptr_params = true;
-        }
         auto name = b.Symbols().New("tint_workgroupUniformLoad");
         b.Func(name,
                tint::Vector{
@@ -858,13 +857,13 @@ struct BuiltinPolyfill::State {
         const uint32_t width = WidthOf(target);
 
         // select(target(v), low_limit, v < low_condition)
-        auto* select_low = b.Call(core::Function::kSelect,                  //
+        auto* select_low = b.Call(wgsl::BuiltinFn::kSelect,                 //
                                   b.Call(T(target), "v"),                   //
                                   ScalarOrVector(width, limits.low_limit),  //
                                   b.LessThan("v", ScalarOrVector(width, limits.low_condition)));
 
         // select(high_limit, select_low, v < high_condition)
-        auto* select_high = b.Call(core::Function::kSelect,                   //
+        auto* select_high = b.Call(wgsl::BuiltinFn::kSelect,                  //
                                    ScalarOrVector(width, limits.high_limit),  //
                                    select_low,                                //
                                    b.LessThan("v", ScalarOrVector(width, limits.high_condition)));
@@ -872,6 +871,220 @@ struct BuiltinPolyfill::State {
         auto name = b.Symbols().New(is_signed ? "tint_ftoi" : "tint_ftou");
         b.Func(name, tint::Vector{b.Param("v", T(source))}, T(target),
                tint::Vector{b.Return(select_high)});
+        return name;
+    }
+
+    /// Builds the polyfill function for the `dot4I8Packed` builtin
+    /// @return the polyfill function name
+    Symbol Dot4I8Packed() {
+        using vec4i = vec4<i32>;
+        using vec4u = vec4<u32>;
+
+        auto name = b.Symbols().New("tint_dot4_i8_packed");
+
+        auto body = tint::Vector{
+            // const n = vec4u(24, 16, 8, 0);
+            // let a_i8 = bitcast<vec4i>(vec4u(a) << n) >> vec4u(24);
+            // let b_i8 = bitcast<vec4i>(vec4u(b) << n) >> vec4u(24);
+            // return dot(a_i8, b_i8);
+            b.Decl(b.Const("n", b.Call<vec4u>(24_a, 16_a, 8_a, 0_a))),
+            b.Decl(b.Let("a_i8", b.Shr(b.Bitcast<vec4i>(b.Shl(b.Call<vec4u>("a"), "n")),
+                                       b.Call<vec4u>(24_a)))),
+            b.Decl(b.Let("b_i8", b.Shr(b.Bitcast<vec4i>(b.Shl(b.Call<vec4u>("b"), "n")),
+                                       b.Call<vec4u>(24_a)))),
+            b.Return(b.Call("dot", "a_i8", "b_i8")),
+        };
+        b.Func(name,
+               tint::Vector{
+                   b.Param("a", b.ty.u32()),
+                   b.Param("b", b.ty.u32()),
+               },
+               b.ty.i32(), body);
+
+        return name;
+    }
+
+    /// Builds the polyfill function for the `dot4U8Packed` builtin
+    /// @return the polyfill function name
+    Symbol Dot4U8Packed() {
+        using vec4u = vec4<u32>;
+        auto name = b.Symbols().New("tint_dot4_u8_packed");
+
+        auto body = tint::Vector{
+            // const n = vec4u(24, 16, 8, 0);
+            // let a_u8 = (vec4u(a) >> n) & vec4u(0xff);
+            // let b_u8 = (vec4u(b) >> n) & vec4u(0xff);
+            // return dot(a_u8, b_u8);
+            b.Decl(b.Const("n", b.Call<vec4u>(24_a, 16_a, 8_a, 0_a))),
+            b.Decl(b.Let("a_u8", b.And(b.Shr(b.Call<vec4u>("a"), "n"), b.Call<vec4u>(0xff_a)))),
+            b.Decl(b.Let("b_u8", b.And(b.Shr(b.Call<vec4u>("b"), "n"), b.Call<vec4u>(0xff_a)))),
+            b.Return(b.Call("dot", "a_u8", "b_u8")),
+        };
+        b.Func(name,
+               tint::Vector{
+                   b.Param("a", b.ty.u32()),
+                   b.Param("b", b.ty.u32()),
+               },
+               b.ty.u32(), body);
+
+        return name;
+    }
+
+    /// Builds the polyfill function for the `pack4xI8` builtin
+    /// @return the polyfill function name
+    Symbol Pack4xI8() {
+        using vec4u = vec4<u32>;
+
+        auto name = b.Symbols().New("tint_pack_4xi8");
+
+        auto body = tint::Vector{
+            // const n = vec4u(0, 8, 16, 24);
+            // let a_u32 = bitcast<vec4u>(a);
+            // let a_u8 = (a_u32 & vec4u(0xff)) << n;
+            // return dot(a_u8, vec4u(1));
+            b.Decl(b.Const("n", b.Call<vec4u>(0_a, 8_a, 16_a, 24_a))),
+            b.Decl(b.Let("a_u32", b.Bitcast<vec4u>("a"))),
+            b.Decl(b.Let("a_u8", b.Shl(b.And("a_u32", b.Call<vec4u>(0xff_a)), "n"))),
+            b.Return(b.Call("dot", "a_u8", b.Call<vec4u>(1_a))),
+        };
+        b.Func(name,
+               tint::Vector{
+                   b.Param("a", b.ty.vec4<i32>()),
+               },
+               b.ty.u32(), body);
+
+        return name;
+    }
+
+    /// Builds the polyfill function for the `pack4xU8` builtin
+    /// @return the polyfill function name
+    Symbol Pack4xU8() {
+        using vec4u = vec4<u32>;
+
+        auto name = b.Symbols().New("tint_pack_4xu8");
+
+        auto body = tint::Vector{
+            // const n = vec4u(0, 8, 16, 24);
+            // let a_u8 = (a & vec4u(0xff)) << n;
+            // return dot(a_u8, vec4u(1));
+            b.Decl(b.Const("n", b.Call<vec4u>(0_a, 8_a, 16_a, 24_a))),
+            b.Decl(b.Let("a_u8", b.Shl(b.And("a", b.Call<vec4u>(0xff_a)), "n"))),
+            b.Return(b.Call("dot", "a_u8", b.Call<vec4u>(1_a))),
+        };
+        b.Func(name,
+               tint::Vector{
+                   b.Param("a", b.ty.vec4<u32>()),
+               },
+               b.ty.u32(), body);
+
+        return name;
+    }
+
+    /// Builds the polyfill function for the `pack4xI8Clamp` builtin
+    /// @return the polyfill function name
+    Symbol Pack4xI8Clamp() {
+        using vec4i = vec4<i32>;
+        using vec4u = vec4<u32>;
+
+        auto name = b.Symbols().New("tint_pack_4xi8_clamp");
+
+        auto body = tint::Vector{
+            // const n = vec4u(0, 8, 16, 24);
+            // let a_clamp = clamp(a, vec4i(-128), vec4i(127));
+            // let a_u32 = bitcast<vec4u>(a_clamp);
+            // let a_u8 = (a_u32 & vec4u(0xff)) << n;
+            // return dot(a_u8, vec4u(1));
+            b.Decl(b.Const("n", b.Call<vec4u>(0_a, 8_a, 16_a, 24_a))),
+            b.Decl(b.Let("a_clamp",
+                         b.Call("clamp", "a", b.Call<vec4i>(-128_a), b.Call<vec4i>(127_a)))),
+            b.Decl(b.Let("a_u32", b.Bitcast<vec4u>("a_clamp"))),
+            b.Decl(b.Let("a_u8", b.Shl(b.And("a_u32", b.Call<vec4u>(0xff_a)), "n"))),
+            b.Return(b.Call("dot", "a_u8", b.Call<vec4u>(1_a))),
+        };
+        b.Func(name,
+               tint::Vector{
+                   b.Param("a", b.ty.vec4<i32>()),
+               },
+               b.ty.u32(), body);
+
+        return name;
+    }
+
+    /// Builds the polyfill function for the `pack4xU8Clamp` builtin
+    /// @return the polyfill function name
+    Symbol Pack4xU8Clamp() {
+        using vec4u = vec4<u32>;
+
+        auto name = b.Symbols().New("tint_pack_4xu8_clamp");
+
+        auto body = tint::Vector{
+            // const n = vec4u(0, 8, 16, 24);
+            // let a_clamp = clamp(a, vec4u(0), vec4u(255));
+            // let a_u8 = a_clamp << n;
+            // return dot(a_u8, vec4u(1));
+            b.Decl(b.Const("n", b.Call<vec4u>(0_a, 8_a, 16_a, 24_a))),
+            b.Decl(
+                b.Let("a_clamp", b.Call("clamp", "a", b.Call<vec4u>(0_a), b.Call<vec4u>(255_a)))),
+            b.Decl(b.Let("a_u8", b.Call<vec4u>(b.Shl("a_clamp", "n")))),
+            b.Return(b.Call("dot", "a_u8", b.Call<vec4u>(1_a))),
+        };
+        b.Func(name,
+               tint::Vector{
+                   b.Param("a", b.ty.vec4<u32>()),
+               },
+               b.ty.u32(), body);
+
+        return name;
+    }
+
+    /// Builds the polyfill function for the `unpack4xI8` builtin
+    /// @return the polyfill function name
+    Symbol Unpack4xI8() {
+        using vec4i = vec4<i32>;
+        using vec4u = vec4<u32>;
+
+        auto name = b.Symbols().New("tint_unpack_4xi8");
+
+        auto body = tint::Vector{
+            // const n = vec4u(24, 16, 8, 0);
+            // let a_vec4u = vec4u(a);
+            // let a_vec4i = bitcast<vec4i>(a_vec4u << n);
+            // return a_vec4i >> vec4u(24);
+            b.Decl(b.Const("n", b.Call<vec4u>(24_a, 16_a, 8_a, 0_a))),
+            b.Decl(b.Let("a_vec4u", b.Call<vec4u>("a"))),
+            b.Decl(b.Let("a_vec4i", b.Bitcast<vec4i>(b.Shl("a_vec4u", "n")))),
+            b.Return(b.Shr("a_vec4i", b.Call<vec4u>(24_a))),
+        };
+        b.Func(name,
+               tint::Vector{
+                   b.Param("a", b.ty.u32()),
+               },
+               b.ty.vec4<i32>(), body);
+
+        return name;
+    }
+
+    /// Builds the polyfill function for the `unpack4xU8` builtin
+    /// @return the polyfill function name
+    Symbol Unpack4xU8() {
+        using vec4u = vec4<u32>;
+
+        auto name = b.Symbols().New("tint_unpack_4xu8");
+
+        auto body = tint::Vector{
+            // const n = vec4u(0, 8, 16, 24);
+            // const a_vec4u = vec4u(a) >> n;
+            // return a_vec4u & vec4u(0xff);
+            b.Decl(b.Const("n", b.Call<vec4u>(0_a, 8_a, 16_a, 24_a))),
+            b.Decl(b.Let("a_vec4u", b.Shr(b.Call<vec4u>("a"), "n"))),
+            b.Return(b.And("a_vec4u", b.Call<vec4u>(0xff_a))),
+        };
+        b.Func(name,
+               tint::Vector{
+                   b.Param("a", b.ty.u32()),
+               },
+               b.ty.vec4<u32>(), body);
+
         return name;
     }
 
@@ -884,8 +1097,8 @@ struct BuiltinPolyfill::State {
     /// @param bin_op the original BinaryExpression
     /// @return the polyfill value for bitshift operation
     const Expression* BitshiftModulo(const BinaryExpression* bin_op) {
-        auto* lhs_ty = src->TypeOf(bin_op->lhs)->UnwrapRef();
-        auto* rhs_ty = src->TypeOf(bin_op->rhs)->UnwrapRef();
+        auto* lhs_ty = src.TypeOf(bin_op->lhs)->UnwrapRef();
+        auto* rhs_ty = src.TypeOf(bin_op->rhs)->UnwrapRef();
         auto* lhs_el_ty = lhs_ty->DeepestElement();
         const Expression* mask = b.Expr(AInt(lhs_el_ty->Size() * 8 - 1));
         if (rhs_ty->Is<core::type::Vector>()) {
@@ -901,8 +1114,8 @@ struct BuiltinPolyfill::State {
     /// @param bin_op the original BinaryExpression
     /// @return the polyfill divide or modulo
     const Expression* IntDivMod(const BinaryExpression* bin_op) {
-        auto* lhs_ty = src->TypeOf(bin_op->lhs)->UnwrapRef();
-        auto* rhs_ty = src->TypeOf(bin_op->rhs)->UnwrapRef();
+        auto* lhs_ty = src.TypeOf(bin_op->lhs)->UnwrapRef();
+        auto* rhs_ty = src.TypeOf(bin_op->rhs)->UnwrapRef();
         BinaryOpSignature sig{bin_op->op, lhs_ty, rhs_ty};
         auto fn = binary_op_polyfills.GetOrCreate(sig, [&] {
             const bool is_div = bin_op->op == core::BinaryOp::kDivide;
@@ -994,8 +1207,8 @@ struct BuiltinPolyfill::State {
     /// @param bin_op the original BinaryExpression
     /// @return the polyfill divide or modulo
     const Expression* PreciseFloatMod(const BinaryExpression* bin_op) {
-        auto* lhs_ty = src->TypeOf(bin_op->lhs)->UnwrapRef();
-        auto* rhs_ty = src->TypeOf(bin_op->rhs)->UnwrapRef();
+        auto* lhs_ty = src.TypeOf(bin_op->lhs)->UnwrapRef();
+        auto* rhs_ty = src.TypeOf(bin_op->rhs)->UnwrapRef();
         BinaryOpSignature sig{bin_op->op, lhs_ty, rhs_ty};
         auto fn = binary_op_polyfills.GetOrCreate(sig, [&] {
             const auto [lhs_el_ty, lhs_width] = lhs_ty->Elements(lhs_ty, 1);
@@ -1071,37 +1284,37 @@ struct BuiltinPolyfill::State {
 
     /// Examines the call expression @p expr, applying any necessary polyfill transforms
     void Call(const CallExpression* expr) {
-        auto* call = src->Sem().Get(expr)->UnwrapMaterialize()->As<sem::Call>();
+        auto* call = src.Sem().Get(expr)->UnwrapMaterialize()->As<sem::Call>();
         if (!call || call->Stage() == core::EvaluationStage::kConstant ||
             call->Stage() == core::EvaluationStage::kNotEvaluated) {
             return;  // Don't polyfill @const expressions
         }
         Symbol fn = Switch(
             call->Target(),  //
-            [&](const sem::Builtin* builtin) {
-                switch (builtin->Type()) {
-                    case core::Function::kAcosh:
+            [&](const sem::BuiltinFn* builtin) {
+                switch (builtin->Fn()) {
+                    case wgsl::BuiltinFn::kAcosh:
                         if (cfg.builtins.acosh != Level::kNone) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return acosh(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kAsinh:
+                    case wgsl::BuiltinFn::kAsinh:
                         if (cfg.builtins.asinh) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return asinh(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kAtanh:
+                    case wgsl::BuiltinFn::kAtanh:
                         if (cfg.builtins.atanh != Level::kNone) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return atanh(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kClamp:
+                    case wgsl::BuiltinFn::kClamp:
                         if (cfg.builtins.clamp_int) {
                             auto& sig = builtin->Signature();
                             if (sig.parameters[0]->Type()->is_integer_scalar_or_vector()) {
@@ -1111,49 +1324,49 @@ struct BuiltinPolyfill::State {
                         }
                         return Symbol{};
 
-                    case core::Function::kCountLeadingZeros:
+                    case wgsl::BuiltinFn::kCountLeadingZeros:
                         if (cfg.builtins.count_leading_zeros) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return countLeadingZeros(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kCountTrailingZeros:
+                    case wgsl::BuiltinFn::kCountTrailingZeros:
                         if (cfg.builtins.count_trailing_zeros) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return countTrailingZeros(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kExtractBits:
+                    case wgsl::BuiltinFn::kExtractBits:
                         if (cfg.builtins.extract_bits != Level::kNone) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return extractBits(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kFirstLeadingBit:
+                    case wgsl::BuiltinFn::kFirstLeadingBit:
                         if (cfg.builtins.first_leading_bit) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return firstLeadingBit(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kFirstTrailingBit:
+                    case wgsl::BuiltinFn::kFirstTrailingBit:
                         if (cfg.builtins.first_trailing_bit) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return firstTrailingBit(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kInsertBits:
+                    case wgsl::BuiltinFn::kInsertBits:
                         if (cfg.builtins.insert_bits != Level::kNone) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return insertBits(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kReflect:
+                    case wgsl::BuiltinFn::kReflect:
                         // Only polyfill for vec2<f32>. See https://crbug.com/tint/1798 for
                         // more details.
                         if (cfg.builtins.reflect_vec2_f32) {
@@ -1166,14 +1379,14 @@ struct BuiltinPolyfill::State {
                         }
                         return Symbol{};
 
-                    case core::Function::kSaturate:
+                    case wgsl::BuiltinFn::kSaturate:
                         if (cfg.builtins.saturate) {
                             return builtin_polyfills.GetOrCreate(
                                 builtin, [&] { return saturate(builtin->ReturnType()); });
                         }
                         return Symbol{};
 
-                    case core::Function::kSign:
+                    case wgsl::BuiltinFn::kSign:
                         if (cfg.builtins.sign_int) {
                             auto* ty = builtin->ReturnType();
                             if (ty->is_signed_integer_scalar_or_vector()) {
@@ -1183,7 +1396,23 @@ struct BuiltinPolyfill::State {
                         }
                         return Symbol{};
 
-                    case core::Function::kTextureSampleBaseClampToEdge:
+                    case wgsl::BuiltinFn::kTextureLoad:
+                        if (cfg.builtins.bgra8unorm) {
+                            auto& sig = builtin->Signature();
+                            auto* tex = sig.Parameter(core::ParameterUsage::kTexture);
+                            if (auto* stex = tex->Type()->As<core::type::StorageTexture>()) {
+                                if (stex->texel_format() == core::TexelFormat::kBgra8Unorm) {
+                                    ctx.Replace(expr, [this, expr] {
+                                        return ctx.dst->MemberAccessor(
+                                            ctx.CloneWithoutTransform(expr), "bgra");
+                                    });
+                                    made_changes = true;
+                                }
+                            }
+                        }
+                        return Symbol{};
+
+                    case wgsl::BuiltinFn::kTextureSampleBaseClampToEdge:
                         if (cfg.builtins.texture_sample_base_clamp_to_edge_2d_f32) {
                             auto& sig = builtin->Signature();
                             auto* tex = sig.Parameter(core::ParameterUsage::kTexture);
@@ -1197,7 +1426,7 @@ struct BuiltinPolyfill::State {
                         }
                         return Symbol{};
 
-                    case core::Function::kTextureStore:
+                    case wgsl::BuiltinFn::kTextureStore:
                         if (cfg.builtins.bgra8unorm) {
                             auto& sig = builtin->Signature();
                             auto* tex = sig.Parameter(core::ParameterUsage::kTexture);
@@ -1215,7 +1444,7 @@ struct BuiltinPolyfill::State {
                                             args.Push(arg);
                                         }
                                         return ctx.dst->Call(
-                                            tint::ToString(core::Function::kTextureStore),
+                                            tint::ToString(wgsl::BuiltinFn::kTextureStore),
                                             std::move(args));
                                     });
                                     made_changes = true;
@@ -1224,7 +1453,7 @@ struct BuiltinPolyfill::State {
                         }
                         return Symbol{};
 
-                    case core::Function::kQuantizeToF16:
+                    case wgsl::BuiltinFn::kQuantizeToF16:
                         if (cfg.builtins.quantize_to_vec_f16) {
                             if (auto* vec = builtin->ReturnType()->As<core::type::Vector>()) {
                                 return builtin_polyfills.GetOrCreate(
@@ -1233,13 +1462,77 @@ struct BuiltinPolyfill::State {
                         }
                         return Symbol{};
 
-                    case core::Function::kWorkgroupUniformLoad:
+                    case wgsl::BuiltinFn::kWorkgroupUniformLoad:
                         if (cfg.builtins.workgroup_uniform_load) {
                             return builtin_polyfills.GetOrCreate(builtin, [&] {
                                 return workgroupUniformLoad(builtin->ReturnType());
                             });
                         }
                         return Symbol{};
+
+                    case wgsl::BuiltinFn::kDot4I8Packed: {
+                        if (cfg.builtins.dot_4x8_packed) {
+                            return builtin_polyfills.GetOrCreate(builtin,
+                                                                 [&] { return Dot4I8Packed(); });
+                        }
+                        return Symbol{};
+                    }
+
+                    case wgsl::BuiltinFn::kDot4U8Packed: {
+                        if (cfg.builtins.dot_4x8_packed) {
+                            return builtin_polyfills.GetOrCreate(builtin,
+                                                                 [&] { return Dot4U8Packed(); });
+                        }
+                        return Symbol{};
+                    }
+
+                    case wgsl::BuiltinFn::kPack4XI8: {
+                        if (cfg.builtins.pack_unpack_4x8) {
+                            return builtin_polyfills.GetOrCreate(builtin,
+                                                                 [&] { return Pack4xI8(); });
+                        }
+                        return Symbol{};
+                    }
+
+                    case wgsl::BuiltinFn::kPack4XU8: {
+                        if (cfg.builtins.pack_unpack_4x8) {
+                            return builtin_polyfills.GetOrCreate(builtin,
+                                                                 [&] { return Pack4xU8(); });
+                        }
+                        return Symbol{};
+                    }
+
+                    case wgsl::BuiltinFn::kPack4XI8Clamp: {
+                        if (cfg.builtins.pack_unpack_4x8) {
+                            return builtin_polyfills.GetOrCreate(builtin,
+                                                                 [&] { return Pack4xI8Clamp(); });
+                        }
+                        return Symbol{};
+                    }
+
+                    case wgsl::BuiltinFn::kPack4XU8Clamp: {
+                        if (cfg.builtins.pack_4xu8_clamp) {
+                            return builtin_polyfills.GetOrCreate(builtin,
+                                                                 [&] { return Pack4xU8Clamp(); });
+                        }
+                        return Symbol{};
+                    }
+
+                    case wgsl::BuiltinFn::kUnpack4XI8: {
+                        if (cfg.builtins.pack_unpack_4x8) {
+                            return builtin_polyfills.GetOrCreate(builtin,
+                                                                 [&] { return Unpack4xI8(); });
+                        }
+                        return Symbol{};
+                    }
+
+                    case wgsl::BuiltinFn::kUnpack4XU8: {
+                        if (cfg.builtins.pack_unpack_4x8) {
+                            return builtin_polyfills.GetOrCreate(builtin,
+                                                                 [&] { return Unpack4xU8(); });
+                        }
+                        return Symbol{};
+                    }
 
                     default:
                         return Symbol{};
@@ -1273,7 +1566,7 @@ BuiltinPolyfill::BuiltinPolyfill() = default;
 
 BuiltinPolyfill::~BuiltinPolyfill() = default;
 
-Transform::ApplyResult BuiltinPolyfill::Apply(const Program* src,
+Transform::ApplyResult BuiltinPolyfill::Apply(const Program& src,
                                               const DataMap& data,
                                               DataMap&) const {
     auto* cfg = data.Get<Config>();

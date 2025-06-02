@@ -6,7 +6,6 @@ qt_internal_add_protobuf_module(ProtobufQtGuiTypes
         qtprotobufqtguitypes.cpp
         qtprotobufqtguitypes.h
         qtprotobufqtguitypesglobal.h
-    GENERATE_CPP_EXPORTS
     LIBRARIES
         Qt::Core
         Qt::Gui

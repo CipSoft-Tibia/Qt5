@@ -11,7 +11,7 @@ const float packingFactor = 11983.f;
 TopographicSeries::TopographicSeries()
 {
     setDrawMode(QSurface3DSeries::DrawSurface);
-    setFlatShadingEnabled(true);
+    setShading(QSurface3DSeries::Shading::Flat);
     setBaseColor(Qt::white);
 }
 

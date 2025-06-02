@@ -5,6 +5,7 @@
 
 #include "qwindowswindow.h"
 #include "qwindowscontext.h"
+#include "qwindowstheme.h"
 #if QT_CONFIG(draganddrop)
 #  include "qwindowsdrag.h"
 #endif
@@ -850,7 +851,8 @@ static inline bool shouldApplyDarkFrame(const QWindow *w)
 {
     if (!w->isTopLevel() || w->flags().testFlag(Qt::FramelessWindowHint))
         return false;
-    // the application has explicitly opted out of dark frames
+
+    // the user of the application has explicitly opted out of dark frames
     if (!QWindowsIntegration::instance()->darkModeHandling().testFlag(QWindowsApplication::DarkModeWindowFrames))
         return false;
 
@@ -930,7 +932,7 @@ QWindowsWindowData
         return result;
     }
 
-    if (QWindowsContext::isDarkMode() && shouldApplyDarkFrame(w))
+    if (QWindowsTheme::instance()->colorScheme() == Qt::ColorScheme::Dark && shouldApplyDarkFrame(w))
         QWindowsWindow::setDarkBorderToWindow(result.hwnd, true);
 
     if (mirrorParentWidth != 0) {
@@ -1362,16 +1364,24 @@ QWindowsForeignWindow::QWindowsForeignWindow(QWindow *window, HWND hwnd)
         setParent(QPlatformWindow::parent());
 }
 
+QWindowsForeignWindow::~QWindowsForeignWindow()
+{
+    if (QPlatformWindow::parent())
+        setParent(nullptr);
+}
+
 void QWindowsForeignWindow::setParent(const QPlatformWindow *newParentWindow)
 {
     const bool wasTopLevel = isTopLevel_sys();
     const HWND newParent = newParentWindow ? reinterpret_cast<HWND>(newParentWindow->winId()) : HWND(nullptr);
     const bool isTopLevel = !newParent;
     const DWORD oldStyle = style();
+
     qCDebug(lcQpaWindow) << __FUNCTION__ << window() << "newParent="
         << newParentWindow << newParent << "oldStyle=" << debugWinStyle(oldStyle);
-    SetParent(m_hwnd, newParent);
-    if (wasTopLevel != isTopLevel) { // Top level window flags need to be set/cleared manually.
+
+    auto updateWindowFlags = [&] {
+        // Top level window flags need to be set/cleared manually.
         DWORD newStyle = oldStyle;
         if (isTopLevel) {
             newStyle = m_topLevelStyle;
@@ -1381,6 +1391,20 @@ void QWindowsForeignWindow::setParent(const QPlatformWindow *newParentWindow)
             newStyle |= WS_CHILD;
         }
         SetWindowLongPtr(m_hwnd, GWL_STYLE, newStyle);
+    };
+
+    if (wasTopLevel && !isTopLevel) {
+        // Becoming a child window requires the style
+        // flags to be updated before reparenting.
+        updateWindowFlags();
+    }
+
+    SetParent(m_hwnd, newParent);
+
+    if (!wasTopLevel && isTopLevel) {
+        // Becoming a top level window requires the style
+        // flags to be updated after reparenting.
+        updateWindowFlags();
     }
 }
 
@@ -2461,12 +2485,6 @@ QWindowsWindowData QWindowsWindow::setWindowFlags_sys(Qt::WindowFlags wt,
     return result;
 }
 
-inline bool QWindowsBaseWindow::hasMaximumSize() const
-{
-    const auto maximumSize = window()->maximumSize();
-    return maximumSize.width() != QWINDOWSIZE_MAX || maximumSize.height() != QWINDOWSIZE_MAX;
-}
-
 void QWindowsWindow::handleWindowStateChange(Qt::WindowStates state)
 {
     qCDebug(lcQpaWindow) << __FUNCTION__ << this << window()
@@ -2483,20 +2501,7 @@ void QWindowsWindow::handleWindowStateChange(Qt::WindowStates state)
             GetWindowPlacement(m_data.hwnd, &windowPlacement);
             const RECT geometry = RECTfromQRect(m_data.restoreGeometry);
             windowPlacement.rcNormalPosition = geometry;
-
-            // A bug in windows 10 grows
-            // - ptMaxPosition.x by the task bar's width, if it's on the left
-            // - ptMaxPosition.y by the task bar's height, if it's on the top
-            // each time GetWindowPlacement() is called.
-            // The offset of the screen's left edge (as per frameMargins_sys().left()) is ignored.
-            // => Check for windows 10 and correct.
-            static const auto windows11 = QOperatingSystemVersion::Windows11_21H2;
-            static const bool isWindows10 = QOperatingSystemVersion::current() < windows11;
-            if (isWindows10 && hasMaximumSize()) {
-                const QMargins margins = frameMargins_sys();
-                const QPoint topLeft = window()->screen()->geometry().topLeft();
-                windowPlacement.ptMaxPosition = POINT{ topLeft.x() - margins.left(), topLeft.y() };
-            }
+            correctWindowPlacement(windowPlacement);
 
             // Even if the window is hidden, windowPlacement's showCmd is not SW_HIDE, so change it
             // manually to avoid unhiding a hidden window with the subsequent call to
@@ -2525,6 +2530,65 @@ void QWindowsWindow::handleWindowStateChange(Qt::WindowStates state)
         }
         if (exposeEventsSent && !QWindowsContext::instance()->asyncExpose())
             QWindowSystemInterface::flushWindowSystemEvents(QEventLoop::ExcludeUserInputEvents);
+    }
+}
+
+// Apply corrections to window placement in Windows 10
+// Related to task bar on top or left.
+
+inline bool QWindowsBaseWindow::hasMaximumHeight() const
+{
+    return window()->maximumHeight() != QWINDOWSIZE_MAX;
+}
+
+inline bool QWindowsBaseWindow::hasMaximumWidth() const
+{
+    return window()->maximumWidth() != QWINDOWSIZE_MAX;
+}
+
+inline bool QWindowsBaseWindow::hasMaximumSize() const
+{
+    return hasMaximumHeight() || hasMaximumWidth();
+}
+
+void QWindowsWindow::correctWindowPlacement(WINDOWPLACEMENT &windowPlacement)
+{
+    static const auto windows11 = QOperatingSystemVersion::Windows11_21H2;
+    static const bool isWindows10 = QOperatingSystemVersion::current() < windows11;
+    if (!isWindows10)
+        return;
+
+    // Correct normal position by placement offset on Windows 10
+    // (where task bar can be on any side of the screen)
+    const QPoint offset = windowPlacementOffset(m_data.hwnd, m_data.restoreGeometry.topLeft());
+    windowPlacement.rcNormalPosition = RECTfromQRect(m_data.restoreGeometry.translated(-offset));
+    qCDebug(lcQpaWindow) << "Corrected normal position by" << -offset;
+
+    // A bug in windows 10 grows
+    // - ptMaxPosition.x by the task bar's width, if it's on the left
+    // - ptMaxPosition.y by the task bar's height, if it's on the top
+    // each time GetWindowPlacement() is called.
+    // The offset of the screen's left edge (as per frameMargins_sys().left()) is ignored.
+    // => Check for windows 10 and correct.
+    if (hasMaximumSize()) {
+        const QMargins margins = frameMargins_sys();
+        const QPoint topLeft = window()->screen()->geometry().topLeft();
+        windowPlacement.ptMaxPosition = POINT{ topLeft.x() - margins.left(), topLeft.y() };
+        qCDebug(lcQpaWindow) << "Window has maximum size. Corrected topLeft by"
+                             << -margins.left();
+
+        // If there is a placement offset correct width/height unless restricted,
+        // in order to fit window onto the screen.
+        if (offset.x() > 0 && !hasMaximumWidth()) {
+            const int adjust = offset.x() / window()->devicePixelRatio();
+            window()->setWidth(window()->width() - adjust);
+            qCDebug(lcQpaWindow) << "Width shortened by" << adjust << "logical pixels.";
+        }
+        if (offset.y() > 0 && !hasMaximumHeight()) {
+            const int adjust = offset.y() / window()->devicePixelRatio();
+            window()->setHeight(window()->height() - adjust);
+            qCDebug(lcQpaWindow) << "Height shortened by" << adjust << "logical pixels.";
+        }
     }
 }
 
@@ -2672,8 +2736,24 @@ void QWindowsWindow::setWindowState_sys(Qt::WindowStates newState)
             setFlag(WithinMaximize);
             if (newState & Qt::WindowFullScreen)
                 setFlag(MaximizeToFullScreen);
-            ShowWindow(m_data.hwnd,
-                       (newState & Qt::WindowMaximized) ? SW_MAXIMIZE : SW_SHOWNOACTIVATE);
+            if (m_data.flags & Qt::FramelessWindowHint) {
+                if (newState == Qt::WindowNoState) {
+                    const QRect &rect = m_savedFrameGeometry;
+                    MoveWindow(m_data.hwnd, rect.x(), rect.y(), rect.width(), rect.height(), true);
+                } else {
+                    HMONITOR monitor = MonitorFromWindow(m_data.hwnd, MONITOR_DEFAULTTONEAREST);
+                    MONITORINFO monitorInfo = {};
+                    monitorInfo.cbSize = sizeof(MONITORINFO);
+                    GetMonitorInfo(monitor, &monitorInfo);
+                    const RECT &rect = monitorInfo.rcWork;
+                    m_savedFrameGeometry = geometry();
+                    MoveWindow(m_data.hwnd, rect.left, rect.top,
+                               rect.right - rect.left, rect.bottom - rect.top, true);
+                }
+            } else {
+                ShowWindow(m_data.hwnd,
+                           (newState & Qt::WindowMaximized) ? SW_MAXIMIZE : SW_SHOWNOACTIVATE);
+            }
             clearFlag(WithinMaximize);
             clearFlag(MaximizeToFullScreen);
         } else if (visible && (oldState & newState & Qt::WindowMinimized)) {
@@ -2712,7 +2792,7 @@ bool QWindowsWindow::windowEvent(QEvent *event)
 {
     switch (event->type()) {
     case QEvent::ApplicationPaletteChange:
-        setDarkBorder(QWindowsContext::isDarkMode());
+        setDarkBorder(QWindowsTheme::instance()->colorScheme() == Qt::ColorScheme::Dark);
         break;
     case QEvent::WindowBlocked: // Blocked by another modal window.
         setEnabled(false);
@@ -3308,17 +3388,6 @@ enum : WORD {
     DwmwaUseImmersiveDarkModeBefore20h1 = 19
 };
 
-static bool queryDarkBorder(HWND hwnd)
-{
-    BOOL result = FALSE;
-    const bool ok =
-        SUCCEEDED(DwmGetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, &result, sizeof(result)))
-        || SUCCEEDED(DwmGetWindowAttribute(hwnd, DwmwaUseImmersiveDarkModeBefore20h1, &result, sizeof(result)));
-    if (!ok)
-        qCWarning(lcQpaWindow, "%s: Unable to retrieve dark window border setting.", __FUNCTION__);
-    return result == TRUE;
-}
-
 bool QWindowsWindow::setDarkBorderToWindow(HWND hwnd, bool d)
 {
     const BOOL darkBorder = d ? TRUE : FALSE;
@@ -3334,8 +3403,6 @@ void QWindowsWindow::setDarkBorder(bool d)
 {
     // respect explicit opt-out and incompatible palettes or styles
     d = d && shouldApplyDarkFrame(window());
-    if (queryDarkBorder(m_data.hwnd) == d)
-        return;
 
     setDarkBorderToWindow(m_data.hwnd, d);
 }

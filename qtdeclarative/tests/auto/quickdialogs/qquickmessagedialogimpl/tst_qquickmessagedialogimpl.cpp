@@ -61,6 +61,7 @@ void tst_QQuickMessageDialogImpl::changeText_data()
 
 void tst_QQuickMessageDialogImpl::changeText()
 {
+    QTest::failOnWarning(QRegularExpression(".*"));
     QFETCH(QString, testString1);
     QFETCH(QString, testString2);
     DialogTestHelper<QQuickMessageDialog, QQuickMessageDialogImpl> dialogHelper(
@@ -281,14 +282,14 @@ void tst_QQuickMessageDialogImpl::resultReflectsLastStandardButtonPressed()
     QVERIFY(dialogHelper.openDialog());
     QTRY_VERIFY(dialogHelper.isQuickDialogOpen());
 
+    QVERIFY(dialogHelper.waitForPopupWindowActiveAndPolished());
+
     QSignalSpy acceptedSpy(dialogHelper.dialog, SIGNAL(accepted()));
     QSignalSpy rejectedSpy(dialogHelper.dialog, SIGNAL(rejected()));
     QSignalSpy resultChangedSpy(dialogHelper.dialog, SIGNAL(resultChanged()));
 
     auto buttonBox = dialogHelper.quickDialog->findChild<QQuickDialogButtonBox *>("buttonBox");
     QVERIFY(buttonBox);
-
-    QQuickTest::qWaitForPolish(dialogHelper.window());
 
     bool yesFound = false;
     bool noFound = false;
@@ -308,7 +309,7 @@ void tst_QQuickMessageDialogImpl::resultReflectsLastStandardButtonPressed()
             yesFound = true;
             expectedNumberOfAcceptedSignals++;
 
-            QTest::mouseClick(dialogHelper.window(), Qt::LeftButton, Qt::NoModifier, button->mapToScene({ button->width() / 2, button->height() / 2 }).toPoint());
+            QTest::mouseClick(dialogHelper.popupWindow(), Qt::LeftButton, Qt::NoModifier, button->mapToScene({ button->width() / 2, button->height() / 2 }).toPoint());
             QTRY_VERIFY(!dialogHelper.isQuickDialogOpen());
 
             QCOMPARE(dialogHelper.dialog->result(), QPlatformDialogHelper::StandardButton::Yes);
@@ -321,7 +322,7 @@ void tst_QQuickMessageDialogImpl::resultReflectsLastStandardButtonPressed()
             noFound = true;
             expectedNumberOfRejectedSignals++;
 
-            QTest::mouseClick(dialogHelper.window(), Qt::LeftButton, Qt::NoModifier, button->mapToScene({ button->width() / 2, button->height() / 2 }).toPoint());
+            QTest::mouseClick(dialogHelper.popupWindow(), Qt::LeftButton, Qt::NoModifier, button->mapToScene({ button->width() / 2, button->height() / 2 }).toPoint());
             QTRY_VERIFY(!dialogHelper.isQuickDialogOpen());
 
             QCOMPARE(dialogHelper.dialog->result(), QPlatformDialogHelper::StandardButton::No);
@@ -333,7 +334,7 @@ void tst_QQuickMessageDialogImpl::resultReflectsLastStandardButtonPressed()
         case QPlatformDialogHelper::DestructiveRole:
             discardFound = true;
 
-            QTest::mouseClick(dialogHelper.window(), Qt::LeftButton, Qt::NoModifier, button->mapToScene({ button->width() / 2, button->height() / 2 }).toPoint());
+            QTest::mouseClick(dialogHelper.popupWindow(), Qt::LeftButton, Qt::NoModifier, button->mapToScene({ button->width() / 2, button->height() / 2 }).toPoint());
             QTRY_VERIFY(!dialogHelper.isQuickDialogOpen());
 
             QCOMPARE(dialogHelper.dialog->result(), QPlatformDialogHelper::StandardButton::Discard);
@@ -345,7 +346,7 @@ void tst_QQuickMessageDialogImpl::resultReflectsLastStandardButtonPressed()
         case QPlatformDialogHelper::ApplyRole:
             applyFound = true;
 
-            QTest::mouseClick(dialogHelper.window(), Qt::LeftButton, Qt::NoModifier, button->mapToScene({ button->width() / 2, button->height() / 2 }).toPoint());
+            QTest::mouseClick(dialogHelper.popupWindow(), Qt::LeftButton, Qt::NoModifier, button->mapToScene({ button->width() / 2, button->height() / 2 }).toPoint());
             QTRY_VERIFY(!dialogHelper.isQuickDialogOpen());
 
             QCOMPARE(dialogHelper.dialog->result(), QPlatformDialogHelper::StandardButton::Apply);

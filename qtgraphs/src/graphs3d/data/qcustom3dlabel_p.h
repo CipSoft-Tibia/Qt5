@@ -27,8 +27,8 @@ public:
     QCustom3DLabelPrivate();
     QCustom3DLabelPrivate(const QString &text,
                           const QFont &font,
-                          const QVector3D &position,
-                          const QVector3D &scaling,
+                          QVector3D position,
+                          QVector3D scaling,
                           const QQuaternion &rotation);
     ~QCustom3DLabelPrivate() override;
 

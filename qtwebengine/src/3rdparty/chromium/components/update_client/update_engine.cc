@@ -75,9 +75,6 @@ UpdateEngine::UpdateEngine(
     : config_(config),
       update_checker_factory_(update_checker_factory),
       ping_manager_(ping_manager),
-      metadata_(
-          std::make_unique<PersistedData>(config->GetPrefService(),
-                                          config->GetActivityDataService())),
       notify_observers_callback_(notify_observers_callback) {
   absl::optional<base::FilePath> crx_cache_path = config->GetCrxCachePath();
   if (base::FeatureList::IsEnabled(features::kPuffinPatches) &&
@@ -140,25 +137,44 @@ base::RepeatingClosure UpdateEngine::InvokeOperation(
     return base::DoNothing();
   }
 
-  // Calls out to get the corresponding CrxComponent data for the components.
-  const std::vector<absl::optional<CrxComponent>> crx_components =
-      std::move(crx_data_callback).Run(ids);
-  if (crx_components.size() < ids.size()) {
-    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE,
-        base::BindOnce(std::move(callback), Error::BAD_CRX_DATA_CALLBACK));
-    return base::DoNothing();
-  }
-
-  const auto update_context = base::MakeRefCounted<UpdateContext>(
-      config_, crx_cache_, is_foreground, is_install, ids,
-      crx_state_change_callback, notify_observers_callback_,
-      std::move(callback), metadata_.get(), is_update_check_only);
+  scoped_refptr<UpdateContext> update_context =
+      base::MakeRefCounted<UpdateContext>(
+          config_, crx_cache_, is_foreground, is_install, ids,
+          crx_state_change_callback, notify_observers_callback_,
+          std::move(callback), config_->GetPersistedData(),
+          is_update_check_only);
   CHECK(!update_context->session_id.empty());
 
   const auto result = update_contexts_.insert(
       std::make_pair(update_context->session_id, update_context));
   CHECK(result.second);
+
+  // Calls out to get the corresponding CrxComponent data for the components.
+  std::move(crx_data_callback)
+      .Run(ids,
+           base::BindOnce(&UpdateEngine::StartOperation, this, update_context));
+  return is_update_check_only
+             ? base::DoNothing()
+             : base::BindRepeating(
+                   [](scoped_refptr<UpdateContext> context) {
+                     context->is_cancelled = true;
+                     for (const auto& entry : context->components) {
+                       entry.second->Cancel();
+                     }
+                   },
+                   update_context);
+}
+
+void UpdateEngine::StartOperation(
+    scoped_refptr<UpdateContext> update_context,
+    const std::vector<absl::optional<CrxComponent>>& crx_components) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (crx_components.size() != update_context->ids.size()) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(update_context->callback),
+                                  Error::BAD_CRX_DATA_CALLBACK));
+    return;
+  }
 
   for (size_t i = 0; i != update_context->ids.size(); ++i) {
     const auto& id = update_context->ids[i];
@@ -187,12 +203,6 @@ base::RepeatingClosure UpdateEngine::InvokeOperation(
                          ? &UpdateEngine::HandleComponent
                          : &UpdateEngine::DoUpdateCheck,
                      this, update_context));
-  return is_update_check_only ? base::DoNothing()
-                              : base::BindRepeating(
-                                    [](scoped_refptr<UpdateContext> context) {
-                                      context->is_cancelled = true;
-                                    },
-                                    update_context);
 }
 
 void UpdateEngine::DoUpdateCheck(scoped_refptr<UpdateContext> update_context) {
@@ -200,11 +210,12 @@ void UpdateEngine::DoUpdateCheck(scoped_refptr<UpdateContext> update_context) {
   CHECK(update_context);
 
   // Make the components transition from |kNew| to |kChecking| state.
-  for (const auto& id : update_context->components_to_check_for_updates)
+  for (const auto& id : update_context->components_to_check_for_updates) {
     update_context->components[id]->Handle(base::DoNothing());
+  }
 
   update_context->update_checker =
-      update_checker_factory_.Run(config_, metadata_.get());
+      update_checker_factory_.Run(config_, config_->GetPersistedData());
 
   update_context->update_checker->CheckForUpdates(
       update_context, config_->ExtraRequestParams(),
@@ -230,10 +241,9 @@ void UpdateEngine::UpdateCheckResultsAvailable(
   const int throttle_sec =
       std::min(update_context->retry_after_sec, kMaxRetryAfterSec);
   if (throttle_sec >= 0) {
-    PersistedData(config_->GetPrefService(), nullptr)
-        .SetThrottleUpdatesUntil(throttle_sec ? base::Time::Now() +
-                                                    base::Seconds(throttle_sec)
-                                              : base::Time());
+    config_->GetPersistedData()->SetThrottleUpdatesUntil(
+        throttle_sec ? base::Time::Now() + base::Seconds(throttle_sec)
+                     : base::Time());
   }
 
   update_context->update_check_error = error;
@@ -256,8 +266,9 @@ void UpdateEngine::UpdateCheckResultsAvailable(
   CHECK_EQ(0, error);
 
   std::map<std::string, ProtocolParser::Result> id_to_result;
-  for (const auto& result : results->list)
+  for (const auto& result : results->list) {
     id_to_result[result.extension_id] = result;
+  }
 
   for (const auto& id : update_context->components_to_check_for_updates) {
     CHECK_EQ(1u, update_context->components.count(id));
@@ -268,15 +279,38 @@ void UpdateEngine::UpdateCheckResultsAvailable(
       const auto pair = [](const std::string& status) {
         // First, handle app status literals which can be folded down as an
         // updatecheck status
-        if (status == "error-unknownApplication")
+        if (status == "error-unknownApplication") {
           return std::make_pair(ErrorCategory::kUpdateCheck,
                                 ProtocolError::UNKNOWN_APPLICATION);
-        if (status == "restricted")
+        }
+        if (status == "restricted") {
           return std::make_pair(ErrorCategory::kUpdateCheck,
                                 ProtocolError::RESTRICTED_APPLICATION);
-        if (status == "error-invalidAppId")
+        }
+        if (status == "error-invalidAppId") {
           return std::make_pair(ErrorCategory::kUpdateCheck,
                                 ProtocolError::INVALID_APPID);
+        }
+        if (status == "error-osnotsupported") {
+          return std::make_pair(ErrorCategory::kUpdateCheck,
+                                ProtocolError::OS_NOT_SUPPORTED);
+        }
+        if (status == "error-hwnotsupported") {
+          return std::make_pair(ErrorCategory::kUpdateCheck,
+                                ProtocolError::HW_NOT_SUPPORTED);
+        }
+        if (status == "error-hash") {
+          return std::make_pair(ErrorCategory::kUpdateCheck,
+                                ProtocolError::NO_HASH);
+        }
+        if (status == "error-unsupportedprotocol") {
+          return std::make_pair(ErrorCategory::kUpdateCheck,
+                                ProtocolError::UNSUPPORTED_PROTOCOL);
+        }
+        if (status == "error-internal") {
+          return std::make_pair(ErrorCategory::kUpdateCheck,
+                                ProtocolError::INTERNAL);
+        }
         // If the parser has return a valid result and the status is not one of
         // the literals above, then this must be a success an not a parse error.
         return std::make_pair(ErrorCategory::kNone, ProtocolError::NONE);
@@ -374,7 +408,7 @@ void UpdateEngine::HandleComponentComplete(
     queue.pop();
     if (!component->events().empty()) {
       ping_manager_->SendPing(
-          *component, *metadata_,
+          *component, *config_->GetPersistedData(),
           base::BindOnce([](base::OnceClosure callback, int,
                             const std::string&) { std::move(callback).Run(); },
                          std::move(callback)));
@@ -416,8 +450,7 @@ bool UpdateEngine::IsThrottled(bool is_foreground) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   base::Time throttle_updates_until =
-      PersistedData(config_->GetPrefService(), nullptr)
-          .GetThrottleUpdatesUntil();
+      config_->GetPersistedData()->GetThrottleUpdatesUntil();
 
   if (is_foreground || throttle_updates_until.is_null()) {
     return false;
@@ -431,9 +464,12 @@ bool UpdateEngine::IsThrottled(bool is_foreground) const {
          now < throttle_updates_until;
 }
 
-void UpdateEngine::SendUninstallPing(const CrxComponent& crx_component,
-                                     int reason,
-                                     Callback callback) {
+void UpdateEngine::SendPing(const CrxComponent& crx_component,
+                            int event_type,
+                            int result_code,
+                            int error_code,
+                            int extra_code1,
+                            Callback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   const std::string& id = crx_component.app_id;
@@ -442,7 +478,7 @@ void UpdateEngine::SendUninstallPing(const CrxComponent& crx_component,
       config_, crx_cache_, false, false, std::vector<std::string>{id},
       UpdateClient::CrxStateChangeCallback(),
       UpdateEngine::NotifyObserversCallback(), std::move(callback),
-      metadata_.get(), /*is_update_check_only=*/false);
+      config_->GetPersistedData(), /*is_update_check_only=*/false);
   CHECK(!update_context->session_id.empty());
 
   const auto result = update_contexts_.insert(
@@ -454,7 +490,8 @@ void UpdateEngine::SendUninstallPing(const CrxComponent& crx_component,
   CHECK_EQ(1u, update_context->components.count(id));
   const auto& component = update_context->components.at(id);
 
-  component->Uninstall(crx_component, reason);
+  component->PingOnly(crx_component, event_type, result_code, error_code,
+                      extra_code1);
 
   update_context->component_queue.push(id);
 

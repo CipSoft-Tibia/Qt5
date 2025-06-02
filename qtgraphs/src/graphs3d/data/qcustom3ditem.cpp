@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtCore/qfileinfo.h>
 #include "qcustom3ditem_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -14,14 +15,14 @@ QT_BEGIN_NAMESPACE
  * A custom item has a custom mesh, position, scaling, rotation, and an optional
  * texture.
  *
- * \sa QAbstract3DGraph::addCustomItem()
+ * \sa Q3DGraphsWidgetItem::addCustomItem()
  */
 
 /*!
  * \qmltype Custom3DItem
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QCustom3DItem
+ * \nativetype QCustom3DItem
  * \brief Adds a custom item to a graph.
  *
  * A custom item has a custom mesh, position, scaling, rotation, and an optional
@@ -97,7 +98,7 @@ QT_BEGIN_NAMESPACE
  * calculated on the unrotated item.
  *
  * \note Only absolute scaling is supported for Custom3DLabel items or for
- * custom items used in \l{AbstractGraph3D::polar}{polar} graphs.
+ * custom items used in \l{GraphsItem3D::polar}{polar} graphs.
  *
  * \note The custom item's mesh must be normalized to the range \c{[-1 ,1]}, or
  * the data scaling will not be accurate.
@@ -120,7 +121,7 @@ QT_BEGIN_NAMESPACE
  *
  * Defines whether shadow casting for the item is enabled. Defaults to \c{true}.
  * If \c{false}, the item does not cast shadows regardless of
- * \l{QAbstract3DGraph::ShadowQuality}{ShadowQuality}.
+ * \l{QtGraphs3D::ShadowQuality}{ShadowQuality}.
  */
 
 /*!
@@ -132,6 +133,52 @@ QT_BEGIN_NAMESPACE
  *
  * \sa rotation
  */
+
+/*!
+    \qmlsignal Custom3DItem::meshFileChanged(string meshFile)
+
+    This signal is emitted when meshFile changes to \a meshFile.
+*/
+/*!
+    \qmlsignal Custom3DItem::textureFileChanged(string textureFile)
+
+    This signal is emitted when textureFile changes to \a textureFile.
+*/
+/*!
+    \qmlsignal Custom3DItem::positionChanged(vector3d position)
+
+    This signal is emitted when item \l position changes to \a position.
+*/
+/*!
+    \qmlsignal Custom3DItem::positionAbsoluteChanged(bool positionAbsolute)
+
+    This signal is emitted when positionAbsolute changes to \a positionAbsolute.
+*/
+/*!
+    \qmlsignal Custom3DItem::scalingChanged(vector3d scaling)
+
+    This signal is emitted when \l scaling changes to \a scaling.
+*/
+/*!
+    \qmlsignal Custom3DItem::rotationChanged(quaternion rotation)
+
+    This signal is emitted when \l rotation changes to \a rotation.
+*/
+/*!
+    \qmlsignal Custom3DItem::visibleChanged(bool visible)
+
+    This signal is emitted when \l visible changes to \a visible.
+*/
+/*!
+    \qmlsignal Custom3DItem::shadowCastingChanged(bool shadowCasting)
+
+    This signal is emitted when shadowCasting changes to \a shadowCasting.
+*/
+/*!
+    \qmlsignal Custom3DItem::scalingAbsoluteChanged(bool scalingAbsolute)
+
+    This signal is emitted when scalingAbsolute changes to \a scalingAbsolute.
+*/
 
 /*!
  * Constructs a custom 3D item with the specified \a parent.
@@ -156,8 +203,8 @@ QCustom3DItem::QCustom3DItem(QCustom3DItemPrivate &d, QObject *parent)
  * scaling, \a rotation, \a texture image, and optional \a parent.
  */
 QCustom3DItem::QCustom3DItem(const QString &meshFile,
-                             const QVector3D &position,
-                             const QVector3D &scaling,
+                             QVector3D position,
+                             QVector3D scaling,
                              const QQuaternion &rotation,
                              const QImage &texture,
                              QObject *parent)
@@ -183,6 +230,11 @@ QCustom3DItem::~QCustom3DItem() {}
 void QCustom3DItem::setMeshFile(const QString &meshFile)
 {
     Q_D(QCustom3DItem);
+    QFileInfo validfile(meshFile);
+    if (!validfile.exists() || !validfile.isFile()) {
+        qWarning("Mesh file %ls does not exist.", qUtf16Printable(meshFile));
+        return;
+    }
     if (d->m_meshFile != meshFile) {
         d->m_meshFile = meshFile;
         d->m_dirtyBits.meshDirty = true;
@@ -193,7 +245,7 @@ void QCustom3DItem::setMeshFile(const QString &meshFile)
 
 QString QCustom3DItem::meshFile() const
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_meshFile;
 }
 
@@ -215,7 +267,7 @@ QString QCustom3DItem::meshFile() const
  *
  * \sa positionAbsolute
  */
-void QCustom3DItem::setPosition(const QVector3D &position)
+void QCustom3DItem::setPosition(QVector3D position)
 {
     Q_D(QCustom3DItem);
     if (d->m_position != position) {
@@ -228,7 +280,7 @@ void QCustom3DItem::setPosition(const QVector3D &position)
 
 QVector3D QCustom3DItem::position() const
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_position;
 }
 
@@ -256,7 +308,7 @@ void QCustom3DItem::setPositionAbsolute(bool positionAbsolute)
 
 bool QCustom3DItem::isPositionAbsolute() const
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_positionAbsolute;
 }
 
@@ -274,7 +326,7 @@ bool QCustom3DItem::isPositionAbsolute() const
  *
  * \sa scalingAbsolute
  */
-void QCustom3DItem::setScaling(const QVector3D &scaling)
+void QCustom3DItem::setScaling(QVector3D scaling)
 {
     Q_D(QCustom3DItem);
     if (d->m_scaling != scaling) {
@@ -287,7 +339,7 @@ void QCustom3DItem::setScaling(const QVector3D &scaling)
 
 QVector3D QCustom3DItem::scaling() const
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_scaling;
 }
 
@@ -307,7 +359,7 @@ QVector3D QCustom3DItem::scaling() const
  * unrotated item.
  *
  * \note Only absolute scaling is supported for QCustom3DLabel items or for
- * custom items used in \l{QAbstract3DGraph::polar}{polar} graphs.
+ * custom items used in \l{Q3DGraphsWidgetItem::polar}{polar} graphs.
  *
  * \note The custom item's mesh must be normalized to the range \c{[-1 ,1]}, or
  * the data scaling will not be accurate.
@@ -318,7 +370,8 @@ void QCustom3DItem::setScalingAbsolute(bool scalingAbsolute)
 {
     Q_D(QCustom3DItem);
     if (d->m_isLabelItem && !scalingAbsolute) {
-        qWarning() << __FUNCTION__ << "Data bounds are not supported for label items.";
+        qWarning("%ls Data bounds are not supported for label items.",
+                 qUtf16Printable(QString::fromUtf8(__func__)));
     } else if (d->m_scalingAbsolute != scalingAbsolute) {
         d->m_scalingAbsolute = scalingAbsolute;
         d->m_dirtyBits.scalingDirty = true;
@@ -329,7 +382,7 @@ void QCustom3DItem::setScalingAbsolute(bool scalingAbsolute)
 
 bool QCustom3DItem::isScalingAbsolute() const
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_scalingAbsolute;
 }
 
@@ -352,7 +405,7 @@ void QCustom3DItem::setRotation(const QQuaternion &rotation)
 
 QQuaternion QCustom3DItem::rotation()
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_rotation;
 }
 
@@ -375,7 +428,7 @@ void QCustom3DItem::setVisible(bool visible)
 
 bool QCustom3DItem::isVisible() const
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_visible;
 }
 
@@ -385,7 +438,7 @@ bool QCustom3DItem::isVisible() const
  *
  * Defaults to \c{true}.
  * If \c{false}, the item does not cast shadows regardless of
- * QAbstract3DGraph::ShadowQuality.
+ * Q3DGraphsWidgetItem::ShadowQuality.
  */
 void QCustom3DItem::setShadowCasting(bool enabled)
 {
@@ -400,7 +453,7 @@ void QCustom3DItem::setShadowCasting(bool enabled)
 
 bool QCustom3DItem::isShadowCasting() const
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_shadowCasting;
 }
 
@@ -410,7 +463,7 @@ bool QCustom3DItem::isShadowCasting() const
  *
  * \sa rotation
  */
-void QCustom3DItem::setRotationAxisAndAngle(const QVector3D &axis, float angle)
+void QCustom3DItem::setRotationAxisAndAngle(QVector3D axis, float angle)
 {
     setRotation(QQuaternion::fromAxisAndAngle(axis, angle));
 }
@@ -472,7 +525,7 @@ void QCustom3DItem::setTextureFile(const QString &textureFile)
 
 QString QCustom3DItem::textureFile() const
 {
-    const Q_D(QCustom3DItem);
+    Q_D(const QCustom3DItem);
     return d->m_textureFile;
 }
 
@@ -490,8 +543,8 @@ QCustom3DItemPrivate::QCustom3DItemPrivate()
 {}
 
 QCustom3DItemPrivate::QCustom3DItemPrivate(const QString &meshFile,
-                                           const QVector3D &position,
-                                           const QVector3D &scaling,
+                                           QVector3D position,
+                                           QVector3D scaling,
                                            const QQuaternion &rotation)
     : m_textureImage(QImage(1, 1, QImage::Format_ARGB32))
     , m_meshFile(meshFile)

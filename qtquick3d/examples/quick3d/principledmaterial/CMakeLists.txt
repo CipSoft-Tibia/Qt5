@@ -37,6 +37,8 @@ qt_add_qml_module(principledmaterial
         ClearcoatPane.qml
         RefractionPane.qml
         SpecialPane.qml
+        VertexColorPane.qml
+        VertexColorMaskFlagsControl.qml
         VerticalSectionSeparator.qml
         main.qml
     RESOURCES

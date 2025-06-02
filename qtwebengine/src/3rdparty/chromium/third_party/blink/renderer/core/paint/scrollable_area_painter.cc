@@ -152,7 +152,12 @@ void ScrollableAreaPainter::DrawPlatformResizerImage(
 
 bool ScrollableAreaPainter::PaintOverflowControls(
     const PaintInfo& paint_info,
-    const gfx::Vector2d& paint_offset) {
+    const gfx::Vector2d& paint_offset,
+    const FragmentData* fragment) {
+  if (!fragment) {
+    return false;
+  }
+
   // Don't do anything if we have no overflow.
   const auto& box = *GetScrollableArea().GetLayoutBox();
   if (!box.IsScrollContainer() ||
@@ -179,9 +184,6 @@ bool ScrollableAreaPainter::PaintOverflowControls(
   }
 
   GraphicsContext& context = paint_info.context;
-  const auto* fragment = paint_info.FragmentToPaint(box);
-  if (!fragment)
-    return false;
 
   const ClipPaintPropertyNode* clip = nullptr;
   const auto* properties = fragment->PaintProperties();
@@ -299,7 +301,7 @@ void ScrollableAreaPainter::PaintNativeScrollbar(GraphicsContext& context,
   CHECK(properties);
 
   const TransformPaintPropertyNode* scroll_translation = nullptr;
-  if (scrollable_area_->ShouldDirectlyCompositeScrollbar(scrollbar)) {
+  if (scrollable_area_->MayCompositeScrollbar(scrollbar)) {
     scroll_translation = properties->ScrollTranslation();
     CHECK(scroll_translation);
     CHECK(scroll_translation->ScrollNode());
@@ -349,9 +351,12 @@ void ScrollableAreaPainter::PaintScrollCorner(GraphicsContext& context,
                              DisplayItem::kScrollCorner);
   }
 
+  mojom::blink::ColorScheme color_scheme =
+      GetScrollableArea().UsedColorSchemeScrollbars();
+  const ui::ColorProvider* color_provider =
+      GetScrollableArea().GetColorProvider(color_scheme);
   theme->PaintScrollCorner(context, GetScrollableArea().VerticalScrollbar(),
-                           client, visual_rect,
-                           GetScrollableArea().UsedColorSchemeScrollbars());
+                           client, visual_rect, color_scheme, color_provider);
 }
 
 PaintLayerScrollableArea& ScrollableAreaPainter::GetScrollableArea() const {

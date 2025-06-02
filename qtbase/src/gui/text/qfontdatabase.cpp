@@ -556,7 +556,8 @@ void qt_registerFont(const QString &familyName, const QString &stylename,
     }
 
     QtFontFoundry *foundry = f->foundry(foundryname, true);
-    QtFontStyle *fontStyle = foundry->style(styleKey, stylename, true);
+    QtFontStyle *fontStyle = foundry->style(styleKey, QString{}, true);
+    fontStyle->styleName = stylename;
     fontStyle->smoothScalable = scalable;
     fontStyle->antialiased = antialiased;
     QtFontSize *size = fontStyle->pixelSize(pixelSize ? pixelSize : SMOOTH_SCALABLE, true);
@@ -670,7 +671,8 @@ static QStringList fallbacksForFamily(const QString &family, QFont::Style style,
         return *fallbacks;
 
     // make sure that the db has all fallback families
-    QStringList retList = QGuiApplicationPrivate::platformIntegration()->fontDatabase()->fallbacksForFamily(family,style,styleHint,script);
+    QStringList userFallbacks = db->applicationFallbackFontFamilies.value(script == QChar::Script_Latin ? QChar::Script_Common : script);
+    QStringList retList = userFallbacks + QGuiApplicationPrivate::platformIntegration()->fontDatabase()->fallbacksForFamily(family,style,styleHint,script);
 
     QStringList::iterator i;
     for (i = retList.begin(); i != retList.end(); ++i) {
@@ -732,8 +734,8 @@ QFontEngine *QFontDatabasePrivate::loadSingleEngine(int script,
             if (engine) {
                 // Also check for OpenType tables when using complex scripts
                 if (Q_UNLIKELY(!engine->supportsScript(QChar::Script(script)))) {
-                    qWarning("  OpenType support missing for \"%s\", script %d",
-                             qPrintable(def.families.constFirst()), script);
+                    qCInfo(lcFontDb, "OpenType support missing for \"%ls\", script %d",
+                           qUtf16Printable(def.families.constFirst()), script);
                     return nullptr;
                 }
 
@@ -757,8 +759,8 @@ QFontEngine *QFontDatabasePrivate::loadSingleEngine(int script,
         if (engine) {
             // Also check for OpenType tables when using complex scripts
             if (!engine->supportsScript(QChar::Script(script))) {
-                qWarning("  OpenType support missing for \"%s\", script %d",
-                         +qPrintable(def.families.constFirst()), script);
+                qCInfo(lcFontDb, "OpenType support missing for \"%ls\", script %d",
+                       qUtf16Printable(def.families.constFirst()), script);
                 if (engine->ref.loadRelaxed() == 0)
                     delete engine;
                 return nullptr;
@@ -2186,6 +2188,8 @@ int QFontDatabasePrivate::addAppFont(const QByteArray &fontData, const QString &
     // loaded, so it has to be flushed.
     QFontCache::instance()->clear();
 
+    fallbacksCache.clear();
+
     emit qApp->fontDatabaseChanged();
 
     return i;
@@ -2360,6 +2364,149 @@ bool QFontDatabase::removeAllApplicationFonts()
 }
 
 /*!
+    \since 6.8
+
+    Adds \a familyName as an application-defined fallback font for \a script.
+
+    When Qt encounters characters that are not supported by the selected font, it will search
+    through a list of fallback fonts to find a match for them. This ensures that combining multiple
+    scripts in a single string is possible, even if the main font does not support them.
+
+    The list of fallback fonts is selected based on the script of the string as well as other
+    conditions, such as system language.
+
+    While the system fallback list is usually sufficient, there are cases where it is useful
+    to override the default behavior. One such case is for using application fonts as fallback to
+    ensure cross-platform consistency.
+
+    In another case the application may be written in a script with regional differences and want
+    to run it untranslated in multiple regions. In this case, it might be useful to override the
+    local region's fallback with one that matches the language of the application.
+
+    By passing \a familyName to addApplicationFallbackFontFamily(), this will become the preferred
+    family when matching missing characters from \a script. The \a script must be a valid script
+    (\c QChar::Script_Latin or higher). When adding multiple fonts for the same script, they will
+    be prioritized in reverse order, so that the last family added will be checked first and so
+    on.
+
+    \note Qt's font matching algorithm considers \c{QChar::Script_Common} (undetermined script)
+    and \c{QChar::Script_Latin} the same. Adding a fallback for either of these will also apply
+    to the other.
+
+    \sa setApplicationFallbackFontFamilies(), removeApplicationFallbackFontFamily(), applicationFallbackFontFamilies()
+*/
+void QFontDatabase::addApplicationFallbackFontFamily(QChar::Script script, const QString &familyName)
+{
+    QMutexLocker locker(fontDatabaseMutex());
+
+    if (script < QChar::Script_Common) {
+        qCWarning(lcFontDb) << "Invalid script passed to addApplicationFallbackFontFamily:" << script;
+        return;
+    }
+
+    if (script == QChar::Script_Latin)
+        script = QChar::Script_Common;
+
+    auto *db = QFontDatabasePrivate::instance();
+    auto it = db->applicationFallbackFontFamilies.find(script);
+    if (it == db->applicationFallbackFontFamilies.end())
+        it = db->applicationFallbackFontFamilies.insert(script, QStringList{});
+
+    it->prepend(familyName);
+
+    QFontCache::instance()->clear();
+    db->fallbacksCache.clear();
+}
+
+/*!
+    \since 6.8
+
+    Removes \a familyName from the list of application-defined fallback fonts for \a script,
+    provided that it has previously been added with \l{addApplicationFallbackFontFamily()}.
+
+    Returns true if the family name was in the list and false if it was not.
+
+    \sa addApplicationFallbackFontFamily(), setApplicationFallbackFontFamilies(), applicationFallbackFontFamilies()
+*/
+bool QFontDatabase::removeApplicationFallbackFontFamily(QChar::Script script, const QString &familyName)
+{
+    QMutexLocker locker(fontDatabaseMutex());
+
+    if (script < QChar::Script_Common) {
+        qCWarning(lcFontDb) << "Invalid script passed to removeApplicationFallbackFontFamily:" << script;
+        return false;
+    }
+
+    if (script == QChar::Script_Latin)
+        script = QChar::Script_Common;
+
+    auto *db = QFontDatabasePrivate::instance();
+    auto it = db->applicationFallbackFontFamilies.find(script);
+    if (it != db->applicationFallbackFontFamilies.end()) {
+        if (it->removeAll(familyName) > 0) {
+            if (it->isEmpty())
+                it = db->applicationFallbackFontFamilies.erase(it);
+            QFontCache::instance()->clear();
+            db->fallbacksCache.clear();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/*!
+    \since 6.8
+
+    Sets the list of application-defined fallback fonts for \a script to \a familyNames.
+
+    When Qt encounters a character in \a script which is not supported by the current font, it will
+    check the families in \a familyNames, in order from first to last, until it finds a match. See
+    \l{addApplicationFallbackFontFamily()} for more details.
+
+    This function overwrites the current list of application-defined fallback fonts for \a script.
+
+    \sa addApplicationFallbackFontFamily(), removeApplicationFallbackFontFamily(), applicationFallbackFontFamilies()
+*/
+void QFontDatabase::setApplicationFallbackFontFamilies(QChar::Script script, const QStringList &familyNames)
+{
+    QMutexLocker locker(fontDatabaseMutex());
+
+    if (script < QChar::Script_Common) {
+        qCWarning(lcFontDb) << "Invalid script passed to setApplicationFallbackFontFamilies:" << script;
+        return;
+    }
+
+    if (script == QChar::Script_Latin)
+        script = QChar::Script_Common;
+
+    auto *db = QFontDatabasePrivate::instance();
+    db->applicationFallbackFontFamilies[script] = familyNames;
+
+    QFontCache::instance()->clear();
+    db->fallbacksCache.clear();
+}
+
+/*!
+    \since 6.8
+
+    Returns the list of application-defined fallback font families previously added for \a script
+    by the \l{addApplicationFallbackFontFamily()} function.
+
+    \sa setApplicationFallbackFontFamilies(), addApplicationFallbackFontFamily(), removeApplicationFallbackFontFamily()
+*/
+QStringList QFontDatabase::applicationFallbackFontFamilies(QChar::Script script)
+{
+    QMutexLocker locker(fontDatabaseMutex());
+
+    if (script == QChar::Script_Latin)
+        script = QChar::Script_Common;
+
+    auto *db = QFontDatabasePrivate::instance();
+    return db->applicationFallbackFontFamilies.value(script);
+}
+
+/*!
     \internal
 */
 QFontEngine *QFontDatabasePrivate::findFont(const QFontDef &req,
@@ -2498,7 +2645,8 @@ void QFontDatabasePrivate::load(const QFontPrivate *d, int script)
         req.pixelSize = std::floor(((req.pointSize * d->dpi) / 72) * 100 + 0.5) / 100;
         req.pixelSize = qRound(req.pixelSize);
     }
-    if (req.pointSize < 0)
+
+    if (req.pointSize < 0 && d->dpi > 0)
         req.pointSize = req.pixelSize*72.0/d->dpi;
 
     // respect the fallback families that might be passed through the request

@@ -112,6 +112,11 @@ class PLATFORM_EXPORT GraphicsContextState final {
   }
   void SetInterpolationQuality(InterpolationQuality);
 
+  DynamicRangeLimit GetDynamicRangeLimit() const {
+    return dynamic_range_limit_;
+  }
+  void SetDynamicRangeLimit(DynamicRangeLimit limit);
+
   bool ShouldAntialias() const { return should_antialias_; }
   void SetShouldAntialias(bool);
 
@@ -126,13 +131,15 @@ class PLATFORM_EXPORT GraphicsContextState final {
 
   StrokeData stroke_data_;
 
-  TextDrawingModeFlags text_drawing_mode_;
+  TextDrawingModeFlags text_drawing_mode_ = kTextModeFill;
 
-  InterpolationQuality interpolation_quality_;
+  InterpolationQuality interpolation_quality_ = kInterpolationDefault;
+  DynamicRangeLimit dynamic_range_limit_{
+      cc::PaintFlags::DynamicRangeLimit::kHigh};
 
-  uint16_t save_count_;
+  uint16_t save_count_ = 0;
 
-  bool should_antialias_ : 1;
+  bool should_antialias_ : 1 = true;
 };
 
 }  // namespace blink

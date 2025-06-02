@@ -300,7 +300,7 @@ void QQuickMaterialTextContainer::paint(QPainter *painter)
     pen.setWidthF(penWidth);
     painter->setPen(pen);
     if (m_filled)
-        painter->setBrush(QBrush(m_fillColor));
+        painter->setBrush(m_fillColor);
 
     // Fill or stroke the container's shape.
     // If not filling, the default brush will be used, which is Qt::NoBrush.

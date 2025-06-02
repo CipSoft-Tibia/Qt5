@@ -103,12 +103,10 @@ int main(int argc, char *argv[])
     for (const QString &fn : args) {
         QV4::ScopedValue result(scope);
         if (runAsModule) {
-            auto module = vm.loadModule(QUrl::fromLocalFile(QFileInfo(fn).absoluteFilePath()));
-            if (module.compiled) {
-                if (module.compiled->instantiate(&vm))
-                    module.compiled->evaluate();
-            } else if (module.native) {
-                // Nothing to do. Native modules have no global code.
+            if (auto module
+                    = vm.loadModule(QUrl::fromLocalFile(QFileInfo(fn).absoluteFilePath()))) {
+                if (module->instantiate())
+                    module->evaluate();
             } else {
                 vm.throwError(QStringLiteral("Could not load module file"));
             }
@@ -120,11 +118,11 @@ int main(int argc, char *argv[])
             }
             QScopedPointer<QV4::Script> script;
             if (useCache && QFile::exists(fn + QLatin1Char('c'))) {
-                QQmlRefPointer<QV4::ExecutableCompilationUnit> unit
-                        = QV4::ExecutableCompilationUnit::create();
+                auto unit = QQml::makeRefPointer<QV4::CompiledData::CompilationUnit>();
                 QString error;
                 if (unit->loadFromDisk(QUrl::fromLocalFile(fn), QFileInfo(fn).lastModified(), &error)) {
-                    script.reset(new QV4::Script(&vm, nullptr, unit));
+                    script.reset(new QV4::Script(
+                            &vm, nullptr, vm.insertCompilationUnit(std::move(unit))));
                 } else {
                     std::cout << "Error loading" << qPrintable(fn) << "from disk cache:" << qPrintable(error) << std::endl;
                 }
@@ -145,7 +143,8 @@ int main(int argc, char *argv[])
                         const_cast<QV4::CompiledData::Unit*>(unit->unitData())->sourceTimeStamp = QFileInfo(fn).lastModified().toMSecsSinceEpoch();
                     }
                     QString saveError;
-                    if (!unit->saveToDisk(QUrl::fromLocalFile(fn), &saveError)) {
+                    if (!unit->baseCompilationUnit()->saveToDisk(
+                                QUrl::fromLocalFile(fn), &saveError)) {
                         std::cout << "Error saving JS cache file: " << qPrintable(saveError) << std::endl;
                     }
                 }

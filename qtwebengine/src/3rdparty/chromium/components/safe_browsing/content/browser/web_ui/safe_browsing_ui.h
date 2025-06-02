@@ -33,11 +33,6 @@
 #include "components/enterprise/common/proto/connectors.pb.h"
 #endif
 
-namespace base {
-template <typename T>
-struct DefaultSingletonTraits;
-}  // namespace base
-
 namespace safe_browsing {
 class WebUIInfoSingleton;
 class ReferrerChainProvider;
@@ -51,6 +46,7 @@ struct DeepScanDebugData {
   base::Time request_time;
   absl::optional<enterprise_connectors::ContentAnalysisRequest> request;
   bool per_profile_request;
+  std::string access_token_truncated;
 
   base::Time response_time;
   std::string response_status;
@@ -333,7 +329,7 @@ class SafeBrowsingUI : public content::WebUIController {
   ~SafeBrowsingUI() override;
 };
 
-class WebUIInfoSingleton : public UrlRealTimeMechanism::WebUIDelegate,
+class WebUIInfoSingleton : public RealTimeUrlLookupServiceBase::WebUIDelegate,
                            public PingManager::WebUIDelegate,
                            public HashRealTimeService::WebUIDelegate {
  public:
@@ -479,6 +475,7 @@ class WebUIInfoSingleton : public UrlRealTimeMechanism::WebUIDelegate,
   // and response.
   void AddToDeepScanRequests(
       bool per_profile_request,
+      const std::string& access_token,
       const enterprise_connectors::ContentAnalysisRequest& request);
 
   // Add the new response to |deep_scan_requests_| and send it to all the open
@@ -548,7 +545,8 @@ class WebUIInfoSingleton : public UrlRealTimeMechanism::WebUIDelegate,
   }
 
   // Get the list of WebUI listener objects.
-  const std::vector<SafeBrowsingUIHandler*>& webui_instances() const {
+  const std::vector<raw_ptr<SafeBrowsingUIHandler, VectorExperimental>>&
+  webui_instances() const {
     return webui_instances_;
   }
 
@@ -640,8 +638,6 @@ class WebUIInfoSingleton : public UrlRealTimeMechanism::WebUIDelegate,
  private:
   void MaybeClearData();
 
-  friend struct base::DefaultSingletonTraits<WebUIInfoSingleton>;
-
   // List of download URLs checked since the oldest currently open
   // chrome://safe-browsing tab was opened.
   std::vector<std::pair<std::vector<GURL>, DownloadCheckResult>>
@@ -727,7 +723,8 @@ class WebUIInfoSingleton : public UrlRealTimeMechanism::WebUIDelegate,
   // List of WebUI listener objects. "SafeBrowsingUIHandler*" cannot be const,
   // due to being used by functions that call AllowJavascript(), which is not
   // marked const.
-  std::vector<SafeBrowsingUIHandler*> webui_instances_;
+  std::vector<raw_ptr<SafeBrowsingUIHandler, VectorExperimental>>
+      webui_instances_;
 
   // List of messages logged since the oldest currently open
   // chrome://safe-browsing tab was opened.

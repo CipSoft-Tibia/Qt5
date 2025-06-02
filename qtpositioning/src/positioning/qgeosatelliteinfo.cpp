@@ -134,6 +134,12 @@ QGeoSatelliteInfo &QGeoSatelliteInfo::operator=(const QGeoSatelliteInfo & other)
 */
 
 /*!
+    \fn void QGeoSatelliteInfo::swap(QGeoSatelliteInfo &other)
+    \since 6.2
+    \memberswap{satellite information}
+*/
+
+/*!
     Sets the Satellite System (GPS, GLONASS, ...) to \a system.
 */
 void QGeoSatelliteInfo::setSatelliteSystem(SatelliteSystem system)

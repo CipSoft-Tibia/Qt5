@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_AST_BUILDER_H_
 #define SRC_TINT_LANG_WGSL_AST_BUILDER_H_
@@ -22,7 +35,6 @@
 #include "src/tint/api/common/override_id.h"
 
 #include "src/tint/lang/core/constant/manager.h"
-#include "src/tint/lang/core/extension.h"
 #include "src/tint/lang/core/fluent_types.h"
 #include "src/tint/lang/core/interpolation_sampling.h"
 #include "src/tint/lang/core/interpolation_type.h"
@@ -55,6 +67,7 @@
 #include "src/tint/lang/wgsl/ast/call_expression.h"
 #include "src/tint/lang/wgsl/ast/call_statement.h"
 #include "src/tint/lang/wgsl/ast/case_statement.h"
+#include "src/tint/lang/wgsl/ast/color_attribute.h"
 #include "src/tint/lang/wgsl/ast/compound_assignment_statement.h"
 #include "src/tint/lang/wgsl/ast/const.h"
 #include "src/tint/lang/wgsl/ast/const_assert.h"
@@ -85,6 +98,7 @@
 #include "src/tint/lang/wgsl/ast/override.h"
 #include "src/tint/lang/wgsl/ast/parameter.h"
 #include "src/tint/lang/wgsl/ast/phony_expression.h"
+#include "src/tint/lang/wgsl/ast/requires.h"
 #include "src/tint/lang/wgsl/ast/return_statement.h"
 #include "src/tint/lang/wgsl/ast/stage_attribute.h"
 #include "src/tint/lang/wgsl/ast/stride_attribute.h"
@@ -100,6 +114,7 @@
 #include "src/tint/lang/wgsl/ast/variable_decl_statement.h"
 #include "src/tint/lang/wgsl/ast/while_statement.h"
 #include "src/tint/lang/wgsl/ast/workgroup_attribute.h"
+#include "src/tint/lang/wgsl/extension.h"
 #include "src/tint/utils/id/generation_id.h"
 #include "src/tint/utils/text/string.h"
 
@@ -1586,7 +1601,7 @@ class Builder {
     /// Adds the extension to the list of enable directives at the top of the module.
     /// @param extension the extension to enable
     /// @return an `ast::Enable` enabling the given extension.
-    const ast::Enable* Enable(core::Extension extension) {
+    const ast::Enable* Enable(wgsl::Extension extension) {
         auto* ext = create<ast::Extension>(extension);
         auto* enable = create<ast::Enable>(Vector{ext});
         AST().AddEnable(enable);
@@ -1597,11 +1612,30 @@ class Builder {
     /// @param source the enable source
     /// @param extension the extension to enable
     /// @return an `ast::Enable` enabling the given extension.
-    const ast::Enable* Enable(const Source& source, core::Extension extension) {
+    const ast::Enable* Enable(const Source& source, wgsl::Extension extension) {
         auto* ext = create<ast::Extension>(source, extension);
         auto* enable = create<ast::Enable>(source, Vector{ext});
         AST().AddEnable(enable);
         return enable;
+    }
+
+    /// Adds the language feature to the list of requires directives at the top of the module.
+    /// @param feature the feature to require
+    /// @return a `ast::Requires` requiring the given language feature.
+    const ast::Requires* Require(wgsl::LanguageFeature feature) {
+        auto* req = create<ast::Requires>(Requires::LanguageFeatures({feature}));
+        AST().AddRequires(req);
+        return req;
+    }
+
+    /// Adds the language feature to the list of requires directives at the top of the module.
+    /// @param source the requires source
+    /// @param feature the feature to require
+    /// @return a `ast::Requires` requiring the given language feature.
+    const ast::Requires* Require(const Source& source, wgsl::LanguageFeature feature) {
+        auto* req = create<ast::Requires>(source, Requires::LanguageFeatures({feature}));
+        AST().AddRequires(req);
+        return req;
     }
 
     /// @param name the variable name
@@ -1727,8 +1761,8 @@ class Builder {
     /// @param options the extra options passed to the ast::Var initializer
     /// Can be any of the following, in any order:
     ///   * ast::Type           - specifies the variable's type
-    ///   * core::AddressSpace   - specifies the variable address space
-    ///   * core::Access         - specifies the variable's access control
+    ///   * core::AddressSpace  - specifies the variable address space
+    ///   * core::Access        - specifies the variable's access control
     ///   * ast::Expression*    - specifies the variable's initializer expression
     ///   * ast::Attribute*     - specifies the variable's attributes (repeatable, or vector)
     /// Note that non-repeatable arguments of the same type will use the last argument's value.
@@ -1744,10 +1778,10 @@ class Builder {
     /// @param options the extra options passed to the ast::Var initializer
     /// Can be any of the following, in any order:
     ///   * ast::Type           - specifies the variable's type
-    ///   * core::AddressSpace   - specifies the variable address space
-    ///   * core::Access         - specifies the variable's access control
+    ///   * core::AddressSpace  - specifies the variable address space
+    ///   * core::Access        - specifies the variable's access control
     ///   * ast::Expression*    - specifies the variable's initializer expression
-    ///   * ast::Attribute*    - specifies the variable's attributes (repeatable, or vector)
+    ///   * ast::Attribute*     - specifies the variable's attributes (repeatable, or vector)
     /// Note that non-repeatable arguments of the same type will use the last argument's value.
     /// @returns a new `ast::Var`, which is automatically registered as a global variable with the
     /// ast::Module.
@@ -3134,6 +3168,23 @@ class Builder {
         return create<ast::LocationAttribute>(source, Expr(std::forward<EXPR>(location)));
     }
 
+    /// Creates an ast::ColorAttribute
+    /// @param index the index value expression
+    /// @returns the index attribute pointer
+    template <typename EXPR>
+    const ast::ColorAttribute* Color(EXPR&& index) {
+        return create<ast::ColorAttribute>(source_, Expr(std::forward<EXPR>(index)));
+    }
+
+    /// Creates an ast::ColorAttribute
+    /// @param source the source information
+    /// @param index the index value expression
+    /// @returns the index attribute pointer
+    template <typename EXPR>
+    const ast::ColorAttribute* Color(const Source& source, EXPR&& index) {
+        return create<ast::ColorAttribute>(source, Expr(std::forward<EXPR>(index)));
+    }
+
     /// Creates an ast::LocationAttribute
     /// @param location the location value expression
     /// @returns the location attribute pointer
@@ -3350,7 +3401,7 @@ class Builder {
     /// @returns the diagnostic attribute pointer
     template <typename... RULE_ARGS>
     const ast::DiagnosticAttribute* DiagnosticAttribute(const Source& source,
-                                                        core::DiagnosticSeverity severity,
+                                                        wgsl::DiagnosticSeverity severity,
                                                         RULE_ARGS&&... rule_args) {
         return create<ast::DiagnosticAttribute>(
             source, ast::DiagnosticControl(
@@ -3362,7 +3413,7 @@ class Builder {
     /// @param rule_args the arguments used to construct the rule name
     /// @returns the diagnostic attribute pointer
     template <typename... RULE_ARGS>
-    const ast::DiagnosticAttribute* DiagnosticAttribute(core::DiagnosticSeverity severity,
+    const ast::DiagnosticAttribute* DiagnosticAttribute(wgsl::DiagnosticSeverity severity,
                                                         RULE_ARGS&&... rule_args) {
         return create<ast::DiagnosticAttribute>(
             source_, ast::DiagnosticControl(
@@ -3376,7 +3427,7 @@ class Builder {
     /// @returns the diagnostic directive pointer
     template <typename... RULE_ARGS>
     const ast::DiagnosticDirective* DiagnosticDirective(const Source& source,
-                                                        core::DiagnosticSeverity severity,
+                                                        wgsl::DiagnosticSeverity severity,
                                                         RULE_ARGS&&... rule_args) {
         auto* rule = DiagnosticRuleName(std::forward<RULE_ARGS>(rule_args)...);
         auto* directive =
@@ -3390,7 +3441,7 @@ class Builder {
     /// @param rule_args the arguments used to construct the rule name
     /// @returns the diagnostic directive pointer
     template <typename... RULE_ARGS>
-    const ast::DiagnosticDirective* DiagnosticDirective(core::DiagnosticSeverity severity,
+    const ast::DiagnosticDirective* DiagnosticDirective(wgsl::DiagnosticSeverity severity,
                                                         RULE_ARGS&&... rule_args) {
         auto* rule = DiagnosticRuleName(std::forward<RULE_ARGS>(rule_args)...);
         auto* directive =

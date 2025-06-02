@@ -43,7 +43,7 @@
 #include "base/test/scoped_path_override.h"
 #endif  // BUILDFLAG(IS_WIN)
 
-using web_app::AppId;
+using webapps::AppId;
 using GetAppsCallback =
     base::OnceCallback<void(std::vector<app_home::mojom::AppInfoPtr>)>;
 
@@ -110,12 +110,12 @@ class TestAppHomePageHandler : public AppHomePageHandler {
   }
 
  private:
-  void OnWebAppInstalled(const web_app::AppId& app_id) override {
+  void OnWebAppInstalled(const webapps::AppId& app_id) override {
     run_loop_->Quit();
     AppHomePageHandler::OnWebAppInstalled(app_id);
   }
 
-  void OnWebAppWillBeUninstalled(const web_app::AppId& app_id) override {
+  void OnWebAppWillBeUninstalled(const webapps::AppId& app_id) override {
     run_loop_->Quit();
     AppHomePageHandler::OnWebAppWillBeUninstalled(app_id);
   }
@@ -135,7 +135,7 @@ class TestAppHomePageHandler : public AppHomePageHandler {
   }
 
   void OnWebAppRunOnOsLoginModeChanged(
-      const web_app::AppId& app_id,
+      const webapps::AppId& app_id,
       web_app::RunOnOsLoginMode run_on_os_login_mode) override {
     std::move(run_on_os_login_mode_changed_handle_).Run();
     AppHomePageHandler::OnWebAppRunOnOsLoginModeChanged(app_id,
@@ -195,10 +195,11 @@ class AppHomePageHandlerTest : public InProcessBrowserTest {
     return extensions::ExtensionSystem::Get(profile())->extension_service();
   }
 
-  AppId InstallTestWebApp(WebappInstallSource install_source =
-                              WebappInstallSource::OMNIBOX_INSTALL_ICON,
-                          std::string test_app_name = kTestAppName) {
-    AppId installed_app_id = web_app::test::InstallWebApp(
+  webapps::AppId InstallTestWebApp(
+      WebappInstallSource install_source =
+          WebappInstallSource::OMNIBOX_INSTALL_ICON,
+      std::string test_app_name = kTestAppName) {
+    webapps::AppId installed_app_id = web_app::test::InstallWebApp(
         profile(), BuildWebAppInfo(test_app_name),
         /*overwrite_existing_manifest_fields=*/false, install_source);
 
@@ -207,7 +208,7 @@ class AppHomePageHandlerTest : public InProcessBrowserTest {
 
   Profile* profile() { return browser()->profile(); }
 
-  void UninstallTestWebApp(const web_app::AppId& app_id) {
+  void UninstallTestWebApp(const webapps::AppId& app_id) {
     web_app::test::UninstallWebApp(profile(), app_id);
   }
 
@@ -253,16 +254,6 @@ class AppHomePageHandlerTest : public InProcessBrowserTest {
     run_loop.Run();
   }
 
-  extensions::ExtensionService* CreateTestExtensionService() {
-    auto* extension_system = static_cast<extensions::TestExtensionSystem*>(
-        extensions::ExtensionSystem::Get(profile()));
-    extensions::ExtensionService* ext_service =
-        extension_system->CreateExtensionService(
-            base::CommandLine::ForCurrentProcess(), base::FilePath(), false);
-    ext_service->Init();
-    return ext_service;
-  }
-
   content::TestWebUI test_web_ui_;
   testing::StrictMock<MockAppHomePage> page_;
 
@@ -271,8 +262,10 @@ class AppHomePageHandlerTest : public InProcessBrowserTest {
 
 #if BUILDFLAG(IS_WIN)
   // This is used as a fallback to prevent creating shortcuts in the startup
-  // dir if tasks are still running when `override_registration_` is reset.
-  base::ScopedPathOverride override_start_dir_{base::DIR_USER_STARTUP};
+  // dir or start menu if tasks are still running when `override_registration_`
+  // is reset.
+  base::ScopedPathOverride override_start_menu_dir_{base::DIR_START_MENU};
+  base::ScopedPathOverride override_startup_dir_{base::DIR_USER_STARTUP};
 #endif  // BUILDFLAG(IS_WIN)
 };
 
@@ -291,7 +284,7 @@ MATCHER_P(MatchAppId, expected_app_id, "") {
 }
 
 IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, GetApps) {
-  AppId installed_app_id = InstallTestWebApp();
+  webapps::AppId installed_app_id = InstallTestWebApp();
 
   std::unique_ptr<TestAppHomePageHandler> page_handler =
       GetAppHomePageHandler();
@@ -306,7 +299,7 @@ IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, GetApps) {
 }
 
 IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, ForceInstalledApp) {
-  AppId installed_app_id =
+  webapps::AppId installed_app_id =
       InstallTestWebApp(WebappInstallSource::EXTERNAL_POLICY);
 
   std::unique_ptr<TestAppHomePageHandler> page_handler =
@@ -323,7 +316,7 @@ IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, OnWebAppInstalled) {
   std::unique_ptr<TestAppHomePageHandler> page_handler =
       GetAppHomePageHandler();
   EXPECT_CALL(page_, AddApp(MatchAppName(kTestAppName)));
-  AppId installed_app_id = InstallTestWebApp();
+  webapps::AppId installed_app_id = InstallTestWebApp();
   page_handler->Wait();
 }
 
@@ -343,7 +336,7 @@ IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, OnWebAppUninstall) {
 
   // First, install a web app for test.
   EXPECT_CALL(page_, AddApp(MatchAppName(kTestAppName)));
-  AppId installed_app_id = InstallTestWebApp();
+  webapps::AppId installed_app_id = InstallTestWebApp();
   page_handler->Wait();
 
   // Check uninstall previous web app will call `RemoveApp` API.
@@ -376,7 +369,7 @@ IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, UninstallWebApp) {
 
   // First, install a test web app for test.
   EXPECT_CALL(page_, AddApp(MatchAppName(kTestAppName)));
-  AppId installed_app_id = InstallTestWebApp();
+  webapps::AppId installed_app_id = InstallTestWebApp();
   page_handler->Wait();
 
   // Then, check uninstalling previous web app via using
@@ -415,7 +408,7 @@ IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, ShowWebAppSettings) {
 
   // First, install a test web app for test.
   EXPECT_CALL(page_, AddApp(MatchAppName(kTestAppName)));
-  AppId installed_app_id = InstallTestWebApp();
+  webapps::AppId installed_app_id = InstallTestWebApp();
   page_handler->Wait();
 
   content::WebContentsAddedObserver nav_observer;
@@ -432,7 +425,7 @@ IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, CreateWebAppShortcut) {
 
   // First, install a test web app for test.
   EXPECT_CALL(page_, AddApp(MatchAppName(kTestAppName)));
-  AppId installed_app_id = InstallTestWebApp();
+  webapps::AppId installed_app_id = InstallTestWebApp();
   page_handler->Wait();
 
 #if BUILDFLAG(IS_MAC)
@@ -487,7 +480,7 @@ IN_PROC_BROWSER_TEST_F(AppHomePageHandlerTest, SetRunOnOsLoginMode) {
       GetAppHomePageHandler();
   EXPECT_CALL(page_, AddApp(MatchAppName(kTestAppName)))
       .Times(testing::AtLeast(1));
-  AppId installed_app_id = InstallTestWebApp();
+  webapps::AppId installed_app_id = InstallTestWebApp();
   page_handler->Wait();
 
   page_handler->SetRunOnOsLoginMode(installed_app_id,

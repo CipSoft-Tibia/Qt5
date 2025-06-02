@@ -9,6 +9,9 @@
 #include <private/qplatformmediaintegration_p.h>
 #include <QtCore/qset.h>
 #include <QtCore/qsystemdetection.h>
+#include <QMetaEnum>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qpermissions.h>
 
 QT_USE_NAMESPACE
 
@@ -94,15 +97,13 @@ bool qt_convert_exposure_mode(AVCaptureDevice *captureDevice, QCamera::ExposureM
 #endif // defined(Q_OS_IOS)
 
 // Helper function to translate AVCaptureDevicePosition enum to QCameraDevice::Position enum.
-QCameraDevice::Position qt_AVCaptureDevicePosition_to_QCameraDevicePosition(AVCaptureDevicePosition input)
+[[nodiscard]] QCameraDevice::Position qAvfToQCameraDevicePosition(AVCaptureDevicePosition input)
 {
     switch (input) {
         case AVCaptureDevicePositionFront:
             return QCameraDevice::Position::FrontFace;
         case AVCaptureDevicePositionBack:
             return QCameraDevice::Position::BackFace;
-        case AVCaptureDevicePositionUnspecified:
-            return QCameraDevice::Position::UnspecifiedPosition;
         default:
             return QCameraDevice::Position::UnspecifiedPosition;
     }
@@ -112,8 +113,11 @@ QCameraDevice::Position qt_AVCaptureDevicePosition_to_QCameraDevicePosition(AVCa
 
 
 
-QAVFVideoDevices::QAVFVideoDevices(QPlatformMediaIntegration *integration)
-    : QPlatformVideoDevices(integration)
+QAVFVideoDevices::QAVFVideoDevices(
+    QPlatformMediaIntegration *integration,
+    std::function<bool(uint32_t)> &&isCvPixelFormatSupportedDelegate)
+    : QPlatformVideoDevices(integration),
+      m_isCvPixelFormatSupportedDelegate(std::move(isCvPixelFormatSupportedDelegate))
 {
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
     m_deviceConnectedObserver = [notificationCenter addObserverForName:AVCaptureDeviceWasConnectedNotification
@@ -139,18 +143,24 @@ QAVFVideoDevices::~QAVFVideoDevices()
     [notificationCenter removeObserver:(id)m_deviceDisconnectedObserver];
 }
 
-QList<QCameraDevice> QAVFVideoDevices::videoDevices() const
+QList<QCameraDevice> QAVFVideoDevices::findVideoInputs() const
 {
     return m_cameraDevices;
 }
 
+bool QAVFVideoDevices::isCvPixelFormatSupported(uint32_t cvPixelFormat) const
+{
+    return !m_isCvPixelFormatSupportedDelegate || m_isCvPixelFormatSupportedDelegate(cvPixelFormat);
+}
+
 void QAVFVideoDevices::updateCameraDevices()
 {
-#ifdef Q_OS_IOS
-    // Cameras can't change dynamically on iOS. Update only once.
-    if (!m_cameraDevices.isEmpty())
-        return;
-#endif
+    if (@available(iOS 17, *)) {
+    } else {
+        // Cameras can't change dynamically on iOS 16 and older. Update only once.
+        if (!m_cameraDevices.isEmpty())
+            return;
+    }
 
     QList<QCameraDevice> cameras;
 
@@ -208,7 +218,7 @@ void QAVFVideoDevices::updateCameraDevices()
             info->isDefault = true;
         info->id = QByteArray([[device uniqueID] UTF8String]);
         info->description = QString::fromNSString([device localizedName]);
-        info->position = qt_AVCaptureDevicePosition_to_QCameraDevicePosition([device position]);
+        info->position = qAvfToQCameraDevicePosition([device position]);
 
         qCDebug(qLcCamera) << "Handling camera info" << info->description
                            << (info->isDefault ? "(default)" : "");
@@ -220,24 +230,35 @@ void QAVFVideoDevices::updateCameraDevices()
             if (![format.mediaType isEqualToString:AVMediaTypeVideo])
                 continue;
 
-            auto dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+            const CMVideoDimensions dimensions =
+                CMVideoFormatDescriptionGetDimensions(format.formatDescription);
             QSize resolution(dimensions.width, dimensions.height);
             photoResolutions.insert(resolution);
 
             float maxFrameRate = 0;
             float minFrameRate = 1.e6;
 
-            auto encoding = CMVideoFormatDescriptionGetCodecType(format.formatDescription);
-            auto pixelFormat = QAVFHelpers::fromCVPixelFormat(encoding);
-            auto colorRange = QAVFHelpers::colorRangeForCVPixelFormat(encoding);
+            const CvPixelFormat cvPixelFormat =
+                CMVideoFormatDescriptionGetCodecType(format.formatDescription);
+
+            // Don't expose formats if the media backend says we can't start a capture session
+            // with it.
+            if (!isCvPixelFormatSupported(cvPixelFormat))
+                continue;
+
+            const QVideoFrameFormat::PixelFormat pixelFormat =
+                QAVFHelpers::fromCVPixelFormat(cvPixelFormat);
+            const QVideoFrameFormat::ColorRange colorRange =
+                QAVFHelpers::colorRangeForCVPixelFormat(cvPixelFormat);
+
             // Ignore pixel formats we can't handle
             if (pixelFormat == QVideoFrameFormat::Format_Invalid) {
-                qCDebug(qLcCamera) << "ignore camera CV format" << encoding
+                qCDebug(qLcCamera) << "ignore camera CV format" << cvPixelFormat
                                    << "as no matching video format found";
                 continue;
             }
 
-            for (AVFrameRateRange *frameRateRange in format.videoSupportedFrameRateRanges) {
+            for (const AVFrameRateRange *frameRateRange in format.videoSupportedFrameRateRanges) {
                 if (frameRateRange.minFrameRate < minFrameRate)
                     minFrameRate = frameRateRange.minFrameRate;
                 if (frameRateRange.maxFrameRate > maxFrameRate)
@@ -256,7 +277,7 @@ void QAVFVideoDevices::updateCameraDevices()
 #endif
 
             qCDebug(qLcCamera) << "Add camera format. pixelFormat:" << pixelFormat
-                               << "colorRange:" << colorRange << "cvPixelFormat" << encoding
+                               << "colorRange:" << colorRange << "cvPixelFormat" << cvPixelFormat
                                << "resolution:" << resolution << "frameRate: [" << minFrameRate
                                << maxFrameRate << "]";
 
@@ -278,7 +299,7 @@ void QAVFVideoDevices::updateCameraDevices()
 
     if (cameras != m_cameraDevices) {
         m_cameraDevices = cameras;
-        emit videoInputsChanged();
+        onVideoInputsChanged();
     }
 }
 
@@ -304,12 +325,14 @@ void QAVFCameraBase::setActive(bool active)
         return;
     if (m_cameraDevice.isNull() && active)
         return;
+    if (!checkCameraPermission())
+        return;
 
     m_active = active;
 
-    if (active)
-        updateCameraConfiguration();
-    Q_EMIT activeChanged(m_active);
+    onActiveChanged(active);
+
+    emit activeChanged(m_active);
 }
 
 void QAVFCameraBase::setCamera(const QCameraDevice &camera)
@@ -317,15 +340,32 @@ void QAVFCameraBase::setCamera(const QCameraDevice &camera)
     if (m_cameraDevice == camera)
         return;
     m_cameraDevice = camera;
+
+    onCameraDeviceChanged(camera);
+
+    // Setting camera format and properties must happen after the
+    // backend applies backend specific device changes.
     setCameraFormat({});
+    updateSupportedFeatures();
+    updateCameraConfiguration();
 }
 
-bool QAVFCameraBase::setCameraFormat(const QCameraFormat &format)
+bool QAVFCameraBase::setCameraFormat(const QCameraFormat &newFormat)
 {
-    if (!format.isNull() && !m_cameraDevice.videoFormats().contains(format))
+    if (!newFormat.isNull() && !m_cameraDevice.videoFormats().contains(newFormat))
         return false;
 
-    m_cameraFormat = format.isNull() ? findBestCameraFormat(m_cameraDevice) : format;
+    const QCameraFormat resolvedFormat = newFormat.isNull() ? findBestCameraFormat(m_cameraDevice) : newFormat;
+    // If we still couldn't find a suitable default format (such as when none are available)
+    // we don't accept the value.
+    if (resolvedFormat.isNull())
+        return false;
+
+    const bool applySuccess = tryApplyCameraFormat(resolvedFormat);
+    if (!applySuccess)
+        return false;
+
+    m_cameraFormat = resolvedFormat;
 
     return true;
 }
@@ -342,41 +382,36 @@ AVCaptureDevice *QAVFCameraBase::device() const
     return device;
 }
 
-#ifdef Q_OS_IOS
 namespace
 {
 
+// Only used for setting focus-mode when we have no device attached
+// to this QCamera.
 bool qt_focus_mode_supported(QCamera::FocusMode mode)
 {
-    // Check if QCamera::FocusMode has counterpart in AVFoundation.
-
-    // AVFoundation has 'Manual', 'Auto' and 'Continuous',
-    // where 'Manual' is actually 'Locked' + writable property 'lensPosition'.
-    return mode == QCamera::FocusModeAuto
-           || mode == QCamera::FocusModeManual;
-}
-
-AVCaptureFocusMode avf_focus_mode(QCamera::FocusMode requestedMode)
-{
-    switch (requestedMode) {
-        case QCamera::FocusModeHyperfocal:
-        case QCamera::FocusModeInfinity:
-        case QCamera::FocusModeManual:
-            return AVCaptureFocusModeLocked;
-        default:
-            return AVCaptureFocusModeContinuousAutoFocus;
-    }
-
+    return mode == QCamera::FocusModeAuto;
 }
 
 }
-#endif
 
 void QAVFCameraBase::setFocusMode(QCamera::FocusMode mode)
 {
-#ifdef Q_OS_IOS
-    if (focusMode() == mode)
+    if (mode == focusMode())
         return;
+    forceSetFocusMode(mode);
+}
+
+// Does not check if new QCamera::FocusMode is same as old one.
+void QAVFCameraBase::forceSetFocusMode(QCamera::FocusMode mode)
+{
+    if (!isFocusModeSupported(mode)) {
+        qCDebug(qLcCamera)
+                << Q_FUNC_INFO
+                << QString(u"attempted to set focus-mode '%1' on camera where it is unsupported.")
+                           .arg(QString::fromLatin1(
+                                   QMetaEnum::fromType<QCamera::FocusMode>().valueToKey(mode)));
+        return;
+    }
 
     AVCaptureDevice *captureDevice = device();
     if (!captureDevice) {
@@ -389,47 +424,56 @@ void QAVFCameraBase::setFocusMode(QCamera::FocusMode mode)
         return;
     }
 
-    if (isFocusModeSupported(mode)) {
+    if (mode == QCamera::FocusModeManual) {
+        // If we the new focus-mode is 'Manual', then we need to lock
+        // lens focus position according to focusDistance().
+        //
+        // At this point, all relevant settings should have valid values
+        // by handling input in setFocusDistance.
+        applyFocusDistanceToAVCaptureDevice(focusDistance());
+    } else {
+        // Apply the focus mode to the AVCaptureDevice.
         const AVFConfigurationLock lock(captureDevice);
         if (!lock) {
-            qCDebug(qLcCamera) << Q_FUNC_INFO
-                           << "failed to lock for configuration";
+            qCDebug(qLcCamera) <<
+                Q_FUNC_INFO <<
+                "failed to lock for configuration";
             return;
         }
-
-        captureDevice.focusMode = avf_focus_mode(mode);
-    } else {
-        qCDebug(qLcCamera) << Q_FUNC_INFO << "focus mode not supported";
-        return;
+        // Note: We have to set the focus-mode even if capture-device reports
+        // the existing value as being the same. For example, this is the case
+        // when using the 'setFocusModeLockedWithLensPosition' functionality.
+        captureDevice.focusMode = AVCaptureFocusModeContinuousAutoFocus;
     }
 
-    Q_EMIT focusModeChanged(mode);
-#else
-    Q_UNUSED(mode);
-#endif
+    focusModeChanged(mode);
 }
 
 bool QAVFCameraBase::isFocusModeSupported(QCamera::FocusMode mode) const
 {
-#ifdef Q_OS_IOS
     AVCaptureDevice *captureDevice = device();
     if (captureDevice) {
-        AVCaptureFocusMode avMode = avf_focus_mode(mode);
         switch (mode) {
-            case QCamera::FocusModeAuto:
-            case QCamera::FocusModeHyperfocal:
-            case QCamera::FocusModeInfinity:
-            case QCamera::FocusModeManual:
-                return [captureDevice isFocusModeSupported:avMode];
+        case QCamera::FocusModeAuto:
+            return [captureDevice isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus];
+#ifdef Q_OS_IOS
+        case QCamera::FocusModeManual:
+            return captureDevice.lockingFocusWithCustomLensPositionSupported;
+#endif // Q_OS_IOS
         case QCamera::FocusModeAutoNear:
             Q_FALLTHROUGH();
         case QCamera::FocusModeAutoFar:
+#ifdef Q_OS_IOS
             return captureDevice.autoFocusRangeRestrictionSupported
-                && [captureDevice isFocusModeSupported:avMode];
+                && [captureDevice isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus];
+#else
+            break;
+#endif // Q_OS_IOS
+        default:
+            break;
         }
     }
-#endif
-    return mode == QCamera::FocusModeAuto; // stupid builtin webcam doesn't do any focus handling, but hey it's usually focused :)
+    return mode == QCamera::FocusModeAuto;
 }
 
 void QAVFCameraBase::setCustomFocusPoint(const QPointF &point)
@@ -463,39 +507,134 @@ void QAVFCameraBase::setCustomFocusPoint(const QPointF &point)
     }
 }
 
-void QAVFCameraBase::setFocusDistance(float d)
+void QAVFCameraBase::applyFocusDistanceToAVCaptureDevice(float distance)
 {
 #ifdef Q_OS_IOS
     AVCaptureDevice *captureDevice = device();
     if (!captureDevice)
         return;
 
-    if (captureDevice.lockingFocusWithCustomLensPositionSupported) {
-        qCDebug(qLcCamera) << Q_FUNC_INFO << "Setting custom focus distance not supported\n";
+    // This should generally always return true assuming the check
+    // for supportedFeatures succeeds, but the consequence of it not being
+    // the case is a thrown exception that we don't handle.
+    // So it can be useful to keep it here just in case.
+    if (!captureDevice.lockingFocusWithCustomLensPositionSupported) {
+        qCDebug(qLcCamera) << Q_FUNC_INFO << "failed to apply focusDistance to AVCaptureDevice.";
         return;
     }
 
     {
         AVFConfigurationLock lock(captureDevice);
         if (!lock) {
-            qCDebug(qLcCamera) << Q_FUNC_INFO << "failed to lock for configuration";
+            qCDebug(qLcCamera) << Q_FUNC_INFO << "failed to lock camera for configuration";
             return;
         }
-        [captureDevice setFocusModeLockedWithLensPosition:d completionHandler:nil];
+        [captureDevice setFocusModeLockedWithLensPosition:distance completionHandler:nil];
     }
-    focusDistanceChanged(d);
 #else
-    Q_UNUSED(d);
+    Q_UNUSED(distance);
 #endif
+}
+
+void QAVFCameraBase::setFocusDistance(float distance)
+{
+    if (qFuzzyCompare(focusDistance(), distance))
+        return;
+
+    if (!(supportedFeatures() & QCamera::Feature::FocusDistance)) {
+        qCWarning(qLcCamera) <<
+            Q_FUNC_INFO <<
+            "attmpted to set focus-distance on camera without support for FocusDistance feature";
+        return;
+    }
+
+    if (distance < 0 || distance > 1) {
+        qCWarning(qLcCamera) <<
+            Q_FUNC_INFO <<
+            "attempted to set camera focus-distance with out-of-bounds value";
+        return;
+    }
+
+    // If we are not currently in FocusModeManual, just accept the
+    // value and apply it sometime later during setFocusMode(Manual).
+    if (focusMode() == QCamera::FocusModeManual) {
+        applyFocusDistanceToAVCaptureDevice(distance);
+    }
+
+    focusDistanceChanged(distance);
 }
 
 void QAVFCameraBase::updateCameraConfiguration()
 {
     AVCaptureDevice *captureDevice = device();
     if (!captureDevice) {
-        qCDebug(qLcCamera) << Q_FUNC_INFO << "capture device is nil in 'active' state";
+        qCDebug(qLcCamera) << Q_FUNC_INFO << "capture device is nil when trying to update QAVFCamera";
         return;
     }
+
+    // We require an active format to update several of the valid ranges. I.e max zoom factor.
+    AVCaptureDeviceFormat *activeFormat = captureDevice.activeFormat;
+    if (!activeFormat) {
+        qCDebug(qLcCamera) << Q_FUNC_INFO << "capture device has no active format when trying to update QAVFCamera";
+        return;
+    }
+
+    // First we gather new capabilities
+
+    // Handle flash/torch capabilities.
+    isFlashSupported = isFlashAutoSupported = false;
+    isTorchSupported = isTorchAutoSupported = false;
+    if (captureDevice.hasFlash) {
+        if ([captureDevice isFlashModeSupported:AVCaptureFlashModeOn])
+            isFlashSupported = true;
+        if ([captureDevice isFlashModeSupported:AVCaptureFlashModeAuto])
+            isFlashAutoSupported = true;
+    }
+    if (captureDevice.hasTorch) {
+        if ([captureDevice isTorchModeSupported:AVCaptureTorchModeOn])
+            isTorchSupported = true;
+        if ([captureDevice isTorchModeSupported:AVCaptureTorchModeAuto])
+            isTorchAutoSupported = true;
+    }
+
+    flashReadyChanged(isFlashSupported);
+#ifdef Q_OS_IOS
+    minimumZoomFactorChanged(captureDevice.minAvailableVideoZoomFactor);
+    maximumZoomFactorChanged(activeFormat.videoMaxZoomFactor);
+#endif // Q_OS_IOS
+
+
+    // The we apply properties to the camera if they are supported.
+
+    if (minZoomFactor() < maxZoomFactor()) {
+        // Zoom is supported, clamp it and apply it.
+        //
+        // TODO: zoom has no public API to allow instant zooming, only smooth transitions
+        // but the Darwin implementation of zoomTo uses rate < 0 to allow this.
+        forceZoomTo(qBound(zoomFactor(), minZoomFactor(), maxZoomFactor()), -1);
+    }
+    applyFlashSettings();
+
+    // Focus mode properties
+    // This will also take care of applying FocusDistance if applicable.
+    if (isFocusModeSupported(focusMode()))
+        forceSetFocusMode(focusMode());
+
+
+    // Reset properties that are not supported on the new camera device.
+
+    if (minZoomFactor() >= maxZoomFactor())
+        zoomFactorChanged(defaultZoomFactor());
+
+    if (!(supportedFeatures() & QCamera::Feature::FocusDistance))
+        focusDistanceChanged(defaultFocusDistance());
+
+    if (!isFocusModeSupported(focusMode()))
+        focusModeChanged(defaultFocusMode());
+
+    // TODO: Several of the following features have inconsistent behavior
+    // and currently do not have any Android implementation. These features
+    // should be revised.
 
     const AVFConfigurationLock lock(captureDevice);
     if (!lock) {
@@ -510,27 +649,6 @@ void QAVFCameraBase::updateCameraConfiguration()
     }
 
 #ifdef Q_OS_IOS
-    if (focusMode() != QCamera::FocusModeAuto) {
-        const AVCaptureFocusMode avMode = avf_focus_mode(focusMode());
-        if (captureDevice.focusMode != avMode) {
-            if ([captureDevice isFocusModeSupported:avMode]) {
-                [captureDevice setFocusMode:avMode];
-            } else {
-                qCDebug(qLcCamera) << Q_FUNC_INFO << "focus mode not supported";
-            }
-        }
-    }
-
-    if (!captureDevice.activeFormat) {
-        qCDebug(qLcCamera) << Q_FUNC_INFO << "camera state is active, but active format is nil";
-        return;
-    }
-
-    minimumZoomFactorChanged(captureDevice.minAvailableVideoZoomFactor);
-    maximumZoomFactorChanged(captureDevice.activeFormat.videoMaxZoomFactor);
-
-    captureDevice.videoZoomFactor = zoomFactor();
-
     CMTime newDuration = AVCaptureExposureDurationCurrent;
     bool setCustomMode = false;
 
@@ -586,57 +704,66 @@ void QAVFCameraBase::updateCameraConfiguration()
     }
 
     captureDevice.exposureMode = avMode;
-#endif
-
-    isFlashSupported = isFlashAutoSupported = false;
-    isTorchSupported = isTorchAutoSupported = false;
-
-    if (captureDevice.hasFlash) {
-        if ([captureDevice isFlashModeSupported:AVCaptureFlashModeOn])
-            isFlashSupported = true;
-        if ([captureDevice isFlashModeSupported:AVCaptureFlashModeAuto])
-            isFlashAutoSupported = true;
-    }
-
-    if (captureDevice.hasTorch) {
-        if ([captureDevice isTorchModeSupported:AVCaptureTorchModeOn])
-            isTorchSupported = true;
-        if ([captureDevice isTorchModeSupported:AVCaptureTorchModeAuto])
-            isTorchAutoSupported = true;
-    }
-
-    applyFlashSettings();
-    flashReadyChanged(isFlashSupported);
+#endif // Q_OS_IOS
 }
 
-void QAVFCameraBase::updateCameraProperties()
+// Updates the supportedFeatures() flags based on the current
+// AVCaptureDevice.
+void QAVFCameraBase::updateSupportedFeatures()
 {
     QCamera::Features features;
     AVCaptureDevice *captureDevice = device();
 
+    if (captureDevice) {
+        if ([captureDevice isFocusPointOfInterestSupported])
+            features |= QCamera::Feature::CustomFocusPoint;
+
 #ifdef Q_OS_IOS
-    features = QCamera::Feature::ColorTemperature | QCamera::Feature::ExposureCompensation |
-                          QCamera::Feature::IsoSensitivity | QCamera::Feature::ManualExposureTime;
+        AVCaptureDeviceFormat *activeFormat = captureDevice.activeFormat;
 
-    if (captureDevice && [captureDevice isLockingFocusWithCustomLensPositionSupported])
-        features |= QCamera::Feature::FocusDistance;
+        // IsoSensitivity
+        if ([captureDevice isExposureModeSupported:AVCaptureExposureModeCustom] &&
+            activeFormat.minISO < activeFormat.maxISO)
+            features |= QCamera::Feature::IsoSensitivity;
+
+        // ColorTemperature
+        if (captureDevice.lockingWhiteBalanceWithCustomDeviceGainsSupported)
+            features |= QCamera::Feature::ColorTemperature;
+
+        // Exposure compensation
+        if ([captureDevice isExposureModeSupported:AVCaptureExposureModeCustom] &&
+            captureDevice.minExposureTargetBias < captureDevice.maxExposureTargetBias)
+            features |= QCamera::Feature::ExposureCompensation;
+
+        // Manual exposure time
+        if ([captureDevice isExposureModeSupported:AVCaptureExposureModeCustom] &&
+            CMTimeCompare(activeFormat.minExposureDuration, activeFormat.maxExposureDuration) == -1)
+            features |= QCamera::Feature::ManualExposureTime;
+
+        // No point in reporting the feature as supported if we don't also
+        // report the corresponding focus-mode as supported.
+        if (isFocusModeSupported(QCamera::FocusModeManual) &&
+            [captureDevice isLockingFocusWithCustomLensPositionSupported])
+            features |= QCamera::Feature::FocusDistance;
 #endif
-
-    if (captureDevice && [captureDevice isFocusPointOfInterestSupported])
-        features |= QCamera::Feature::CustomFocusPoint;
+    }
 
     supportedFeaturesChanged(features);
 }
 
 void QAVFCameraBase::zoomTo(float factor, float rate)
 {
-    Q_UNUSED(factor);
-    Q_UNUSED(rate);
-
-#ifdef Q_OS_IOS
     if (zoomFactor() == factor)
         return;
+    forceZoomTo(factor, rate);
+}
 
+// Internal function that gives us the option to run zoomTo
+// without skipping early return when factor == QCamera::zoomFactor()
+// Useful when switching camera-device.
+void QAVFCameraBase::forceZoomTo(float factor, float rate)
+{
+#ifdef Q_OS_IOS
     AVCaptureDevice *captureDevice = device();
     if (!captureDevice || !captureDevice.activeFormat)
         return;
@@ -657,6 +784,9 @@ void QAVFCameraBase::zoomTo(float factor, float rate)
             [captureDevice rampToVideoZoomFactor:factor withRate:rate];
     }
     zoomFactorChanged(factor);
+#else
+    Q_UNUSED(rate);
+    Q_UNUSED(factor);
 #endif
 }
 
@@ -778,18 +908,12 @@ bool QAVFCameraBase::isExposureModeSupported(QCamera::ExposureMode mode) const
     if (mode != QCamera::ExposureManual)
         return false;
 
-    if (@available(macOS 10.15, *)) {
-        AVCaptureDevice *captureDevice = device();
-        return captureDevice && [captureDevice isExposureModeSupported:AVCaptureExposureModeCustom];
-    }
-
-    return false;
+    AVCaptureDevice *captureDevice = device();
+    return captureDevice && [captureDevice isExposureModeSupported:AVCaptureExposureModeCustom];
 }
 
 void QAVFCameraBase::applyFlashSettings()
 {
-    Q_ASSERT(isActive());
-
     AVCaptureDevice *captureDevice = device();
     if (!captureDevice) {
         qCDebug(qLcCamera) << Q_FUNC_INFO << "no capture device found";
@@ -1098,6 +1222,17 @@ void QAVFCameraBase::setManualIsoSensitivity(int value)
 int QAVFCameraBase::isoSensitivity() const
 {
     return manualIsoSensitivity();
+}
+
+// Returns true if the application currently has camera permissions.
+bool QAVFCameraBase::checkCameraPermission()
+{
+    const QCameraPermission permission;
+    const bool granted = qApp->checkPermission(permission) == Qt::PermissionStatus::Granted;
+    if (!granted)
+        qWarning() << "Access to camera not granted";
+
+    return granted;
 }
 
 

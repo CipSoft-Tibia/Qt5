@@ -8,6 +8,8 @@
 #include <cfloat>
 #include <cmath>
 #include <functional>
+#include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -88,7 +90,7 @@ void xnnpack_deconvolution_qu8(benchmark::State& state, const char* net) {
         kernel.data(), bias.data(),
         127, 0.5f, 0, 255,
         0 /* flags */,
-        nullptr,
+        nullptr, nullptr,
         &deconvolution_op);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to create QINT8 Deconvolution operator");
@@ -97,12 +99,22 @@ void xnnpack_deconvolution_qu8(benchmark::State& state, const char* net) {
   }
 
   for (size_t i = 0; i < deconvolution_operators.size(); i++) {
-    status = xnn_setup_deconvolution2d_nhwc_qu8(
+    status = xnn_reshape_deconvolution2d_nhwc_qu8(
         deconvolution_operators[i],
         batch_size, input_height, input_width,
         0 /* height adjustment */, 0 /* width adjustment */,
-        input.data(), output.data() + i * output_elements,
-        nullptr /* thread pool */);
+	/*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+        /*threadpool=*/nullptr);
+    if (status != xnn_status_success) {
+      state.SkipWithError("failed to setup QINT8 Deconvolution operator");
+      return;
+    }
+  }
+
+  for (size_t i = 0; i < deconvolution_operators.size(); i++) {
+    status = xnn_setup_deconvolution2d_nhwc_qu8(
+        deconvolution_operators[i],
+        input.data(), output.data() + i * output_elements);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to setup QINT8 Deconvolution operator");
       return;
@@ -116,7 +128,7 @@ void xnnpack_deconvolution_qu8(benchmark::State& state, const char* net) {
     buffer_index = (buffer_index + 1) % num_buffers;
     state.ResumeTiming();
 
-    status = xnn_run_operator(deconvolution_operators[buffer_index], nullptr /* thread pool */);
+    status = xnn_run_operator(deconvolution_operators[buffer_index], /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run QINT8 Deconvolution operator");
       return;
@@ -206,6 +218,7 @@ void xnnpack_deconvolution_f32(benchmark::State& state, const char* net) {
         -std::numeric_limits<float>::infinity(), +std::numeric_limits<float>::infinity(),
         0 /* flags */,
         nullptr,
+        nullptr,
         &deconvolution_op);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to create FP32 Deconvolution operator");
@@ -214,12 +227,22 @@ void xnnpack_deconvolution_f32(benchmark::State& state, const char* net) {
   }
 
   for (size_t i = 0; i < deconvolution_operators.size(); i++) {
-    status = xnn_setup_deconvolution2d_nhwc_f32(
+    status = xnn_reshape_deconvolution2d_nhwc_f32(
         deconvolution_operators[i],
         batch_size, input_height, input_width,
         0 /* height adjustment */, 0 /* width adjustment */,
-        input.data(), output.data() + i * output_elements,
-        nullptr /* thread pool */);
+	/*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+        /*threadpool=*/nullptr);
+    if (status != xnn_status_success) {
+      state.SkipWithError("failed to setup QINT8 Deconvolution operator");
+      return;
+    }
+  }
+
+  for (size_t i = 0; i < deconvolution_operators.size(); i++) {
+    status = xnn_setup_deconvolution2d_nhwc_f32(
+        deconvolution_operators[i],
+        input.data(), output.data() + i * output_elements);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to setup QINT8 Deconvolution operator");
       return;
@@ -233,7 +256,7 @@ void xnnpack_deconvolution_f32(benchmark::State& state, const char* net) {
     buffer_index = (buffer_index + 1) % num_buffers;
     state.ResumeTiming();
 
-    status = xnn_run_operator(deconvolution_operators[buffer_index], nullptr /* thread pool */);
+    status = xnn_run_operator(deconvolution_operators[buffer_index], /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run FP32 Deconvolution operator");
       return;

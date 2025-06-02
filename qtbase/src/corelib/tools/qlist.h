@@ -10,6 +10,8 @@
 #include <QtCore/qhashfunctions.h>
 #include <QtCore/qiterator.h>
 #include <QtCore/qcontainertools_impl.h>
+#include <QtCore/qnamespace.h>
+#include <QtCore/qttypetraits.h>
 
 #include <functional>
 #include <limits>
@@ -28,7 +30,8 @@ namespace QtPrivate {
 template <typename T> struct QListSpecialMethodsBase
 {
 protected:
-    ~QListSpecialMethodsBase() = default;
+    QListSpecialMethodsBase() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QListSpecialMethodsBase)
 
     using Self = QList<T>;
     Self *self() { return static_cast<Self *>(this); }
@@ -49,7 +52,9 @@ public:
 template <typename T> struct QListSpecialMethods : QListSpecialMethodsBase<T>
 {
 protected:
-    ~QListSpecialMethods() = default;
+    QListSpecialMethods() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QListSpecialMethods)
+
 public:
     using QListSpecialMethodsBase<T>::indexOf;
     using QListSpecialMethodsBase<T>::lastIndexOf;
@@ -118,8 +123,8 @@ public:
         using value_type = T;
 #ifdef QT_COMPILER_HAS_LWG3346
         using iterator_concept = std::contiguous_iterator_tag;
-        using element_type = value_type;
 #endif
+        using element_type = value_type;
         using iterator_category = std::random_access_iterator_tag;
         using pointer = T *;
         using reference = T &;
@@ -188,8 +193,8 @@ public:
         using value_type = T;
 #ifdef QT_COMPILER_HAS_LWG3346
         using iterator_concept = std::contiguous_iterator_tag;
-        using element_type = const value_type;
 #endif
+        using element_type = const value_type;
         using iterator_category = std::random_access_iterator_tag;
         using pointer = const T *;
         using reference = const T &;
@@ -324,6 +329,13 @@ public:
     inline explicit QList(const String &str)
     { append(str); }
 
+    QList(qsizetype size, Qt::Initialization)
+        : d(size)
+    {
+        if (size)
+            d->appendUninitialized(size);
+    }
+
     // compiler-generated special member functions are fine!
 
     void swap(QList &other) noexcept { d.swap(other.d); }
@@ -338,7 +350,7 @@ public:
             return true;
 
         // do element-by-element comparison
-        return d->compare(data(), other.data(), size());
+        return std::equal(begin(), end(), other.begin(), other.end());
     }
     template <typename U = T>
     QTypeTraits::compare_eq_result_container<QList, U> operator!=(const QList &other) const
@@ -386,6 +398,7 @@ public:
     bool operator>=(const QList &other) const;
 #endif // Q_QDOC
 
+    static constexpr qsizetype maxSize() { return Data::maxSize(); }
     qsizetype size() const noexcept { return d->size; }
     qsizetype count() const noexcept { return size(); }
     qsizetype length() const noexcept { return size(); }
@@ -403,6 +416,12 @@ public:
         resize_internal(size);
         if (size > this->size())
             d->copyAppend(size - this->size(), c);
+    }
+    void resizeForOverwrite(qsizetype size)
+    {
+        resize_internal(size);
+        if (size > this->size())
+            d->appendUninitialized(size);
     }
 
     inline qsizetype capacity() const { return qsizetype(d->constAllocatedCapacity()); }
@@ -675,6 +694,10 @@ public:
     inline reference back() { return last(); }
     inline const_reference back() const noexcept { return last(); }
     void shrink_to_fit() { squeeze(); }
+    constexpr qsizetype max_size() const noexcept
+    {
+        return maxSize();
+    }
 
     // comfort
     QList<T> &operator+=(const QList<T> &l) { append(l); return *this; }

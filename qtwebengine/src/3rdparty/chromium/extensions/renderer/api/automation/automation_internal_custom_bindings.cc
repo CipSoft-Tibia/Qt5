@@ -19,6 +19,7 @@
 #include "base/values.h"
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_thread.h"
+#include "content/public/renderer/worker_thread.h"
 #include "extensions/common/api/automation.h"
 #include "extensions/common/extension.h"
 #include "extensions/common/extension_messages.h"
@@ -94,7 +95,7 @@ void AutomationInternalCustomBindings::IsInteractPermitted(
   CHECK(extension);
   const AutomationInfo* automation_info = AutomationInfo::Get(extension);
   CHECK(automation_info);
-  args.GetReturnValue().Set(automation_info->interact);
+  args.GetReturnValue().Set(automation_info->desktop);
 }
 
 void AutomationInternalCustomBindings::StartCachingAccessibilityTrees() {
@@ -221,13 +222,22 @@ std::string AutomationInternalCustomBindings::GetEventTypeString(
 }
 
 void AutomationInternalCustomBindings::NotifyTreeEventListenersChanged() {
-  scoped_refptr<base::SingleThreadTaskRunner> task_runner =
-      context()->web_frame()->GetTaskRunner(blink::TaskType::kInternalDefault);
-  task_runner->PostTask(
-      FROM_HERE,
+  // This task is posted because we need to wait for any pending mutations
+  // to be processed before sending the event.
+  auto callback =
       base::BindOnce(&AutomationInternalCustomBindings::
                          MaybeSendOnAllAutomationEventListenersRemoved,
-                     weak_ptr_factory_.GetWeakPtr()));
+                     weak_ptr_factory_.GetWeakPtr());
+
+  if (context()->IsForServiceWorker()) {
+    content::WorkerThread::PostTask(content::WorkerThread::GetCurrentId(),
+                                    std::move(callback));
+  } else {
+    context()
+        ->web_frame()
+        ->GetTaskRunner(blink::TaskType::kInternalDefault)
+        ->PostTask(FROM_HERE, std::move(callback));
+  }
 }
 
 }  // namespace extensions

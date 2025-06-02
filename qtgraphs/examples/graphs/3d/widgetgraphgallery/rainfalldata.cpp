@@ -5,7 +5,7 @@
 #include <QtCore/qfile.h>
 #include <QtCore/qtextstream.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dtheme.h>
+#include <QtGraphs/qgraphstheme.h>
 #include <QtGraphs/qbar3dseries.h>
 
 using namespace Qt::StringLiterals;

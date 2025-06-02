@@ -4,9 +4,11 @@
 
 package org.qtproject.qt.android;
 
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.os.Build;
 import android.util.Log;
+import android.view.inputmethod.TextAttribute;
 import android.view.WindowMetrics;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.CompletionInfo;
@@ -20,12 +22,12 @@ import android.util.DisplayMetrics;
 
 class QtExtractedText
 {
-    public int partialEndOffset;
-    public int partialStartOffset;
-    public int selectionEnd;
-    public int selectionStart;
-    public int startOffset;
-    public String text;
+    int partialEndOffset;
+    int partialStartOffset;
+    int selectionEnd;
+    int selectionStart;
+    int startOffset;
+    String text;
 }
 
 class QtNativeInputConnection
@@ -41,6 +43,7 @@ class QtNativeInputConnection
     static native String getSelectedText(int flags);
     static native String getTextAfterCursor(int length, int flags);
     static native String getTextBeforeCursor(int length, int flags);
+    static native boolean replaceText(int start, int end, String text, int newCursorPosition);
     static native boolean setComposingText(String text, int newCursorPosition);
     static native boolean setComposingRegion(int start, int end);
     static native boolean setSelection(int start, int end);
@@ -54,7 +57,7 @@ class QtNativeInputConnection
     static native boolean fullscreenMode();
 }
 
-public class QtInputConnection extends BaseInputConnection
+class QtInputConnection extends BaseInputConnection
 {
     private static final int ID_SELECT_ALL = android.R.id.selectAll;
     private static final int ID_CUT = android.R.id.cut;
@@ -63,43 +66,42 @@ public class QtInputConnection extends BaseInputConnection
     private static final int ID_COPY_URL = android.R.id.copyUrl;
     private static final int ID_SWITCH_INPUT_METHOD = android.R.id.switchInputMethod;
     private static final int ID_ADD_TO_DICTIONARY = android.R.id.addToDictionary;
+    private static final int KEYBOARD_CHECK_DELAY_MS = 100;
 
     private static final String QtTAG = "QtInputConnection";
 
     private final QtInputConnectionListener m_qtInputConnectionListener;
 
     class HideKeyboardRunnable implements Runnable {
+        private int m_numberOfAttempts = 10;
+
         @Override
         public void run() {
             // Check that the keyboard is really no longer there.
-            Activity activity = QtNative.activity();
-            if (activity == null) {
-                Log.w(QtTAG, "HideKeyboardRunnable: The activity reference is null");
+            if (m_qtInputConnectionListener == null) {
+                Log.w(QtTAG, "HideKeyboardRunnable: QtInputConnectionListener is null");
                 return;
             }
 
-            Rect r = new Rect();
-            activity.getWindow().getDecorView().getWindowVisibleDisplayFrame(r);
-
-            int screenHeight;
-            if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                DisplayMetrics metrics = new DisplayMetrics();
-                activity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
-                screenHeight = metrics.heightPixels;
-            } else {
-                final WindowMetrics maximumWindowMetrics = activity.getWindowManager().getMaximumWindowMetrics();
-                screenHeight = maximumWindowMetrics.getBounds().height();
+            if (m_qtInputConnectionListener.keyboardTransitionInProgress()
+                    && m_numberOfAttempts > 0) {
+                --m_numberOfAttempts;
+                m_view.postDelayed(this, KEYBOARD_CHECK_DELAY_MS);
+                return;
             }
-            final int kbHeight = screenHeight - r.bottom;
-            if (kbHeight < 100)
+
+            if (m_qtInputConnectionListener.isKeyboardHidden())
                 m_qtInputConnectionListener.onHideKeyboardRunnableDone(false, System.nanoTime());
         }
     }
 
-    public interface QtInputConnectionListener {
+    interface QtInputConnectionListener {
         void onSetClosing(boolean closing);
         void onHideKeyboardRunnableDone(boolean visibility, long hideTimeStamp);
         void onSendKeyEventDefaultCase();
+        void onEditTextChanged(QtEditText editText);
+        boolean keyboardTransitionInProgress();
+        boolean isKeyboardHidden();
     }
 
     private final QtEditText m_view;
@@ -108,12 +110,12 @@ public class QtInputConnection extends BaseInputConnection
     private void setClosing(boolean closing)
     {
         if (closing)
-            m_view.postDelayed(new HideKeyboardRunnable(), 100);
-        else
+            m_view.postDelayed(new HideKeyboardRunnable(), KEYBOARD_CHECK_DELAY_MS);
+        else if (m_qtInputConnectionListener != null)
             m_qtInputConnectionListener.onSetClosing(false);
     }
 
-    public QtInputConnection(QtEditText targetView, QtInputConnectionListener listener)
+    QtInputConnection(QtEditText targetView, QtInputConnectionListener listener)
     {
         super(targetView, true);
         m_view = targetView;
@@ -122,7 +124,7 @@ public class QtInputConnection extends BaseInputConnection
         m_qtInputConnectionListener = listener;
     }
 
-    public void restartImmInput()
+    void restartImmInput()
     {
         if (QtNativeInputConnection.fullscreenMode()) {
             if (m_imm != null)
@@ -297,7 +299,8 @@ public class QtInputConnection extends BaseInputConnection
                     restartImmInput();
                     break;
                 default:
-                    m_qtInputConnectionListener.onSendKeyEventDefaultCase();
+                    if (m_qtInputConnectionListener != null)
+                        m_qtInputConnectionListener.onSendKeyEventDefaultCase();
                     break;
             }
         }
@@ -309,6 +312,35 @@ public class QtInputConnection extends BaseInputConnection
     {
         setClosing(false);
         return QtNativeInputConnection.setComposingText(text.toString(), newCursorPosition);
+    }
+
+    @TargetApi(33)
+    @Override
+    public boolean setComposingText(CharSequence text, int newCursorPosition, TextAttribute textAttribute)
+    {
+        return setComposingText(text, newCursorPosition);
+    }
+
+    @TargetApi(33)
+    @Override
+    public boolean setComposingRegion(int start, int end, TextAttribute textAttribute)
+    {
+        return setComposingRegion(start, end);
+    }
+
+    @TargetApi(33)
+    @Override
+    public boolean commitText(CharSequence text, int newCursorPosition, TextAttribute textAttribute)
+    {
+        return commitText(text, newCursorPosition);
+    }
+
+    @TargetApi(34)
+    @Override
+    public boolean replaceText(int start, int end, CharSequence text, int newCursorPosition, TextAttribute textAttribute)
+    {
+        setClosing(false);
+        return QtNativeInputConnection.replaceText(start, end, text.toString(), newCursorPosition);
     }
 
     @Override

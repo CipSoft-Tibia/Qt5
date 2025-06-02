@@ -22,7 +22,7 @@
 QT_BEGIN_NAMESPACE
 
 #ifndef QT_NO_DEBUG
-Q_QUICK_PRIVATE_EXPORT bool qsg_test_and_clear_material_failure();
+Q_QUICK_EXPORT bool qsg_test_and_clear_material_failure();
 #endif
 
 int qt_sg_envInt(const char *name, int defaultValue);
@@ -39,6 +39,7 @@ DECLARE_DEBUG_VAR(change)
 DECLARE_DEBUG_VAR(upload)
 DECLARE_DEBUG_VAR(roots)
 DECLARE_DEBUG_VAR(dump)
+DECLARE_DEBUG_VAR(pools)
 DECLARE_DEBUG_VAR(noalpha)
 DECLARE_DEBUG_VAR(noopaque)
 DECLARE_DEBUG_VAR(noclip)
@@ -86,6 +87,8 @@ const int ZORDER_BUFFER_BINDING = VERTEX_BUFFER_BINDING + 1;
 
 const float VIEWPORT_MIN_DEPTH = 0.0f;
 const float VIEWPORT_MAX_DEPTH = 1.0f;
+
+const quint32 DEFAULT_BUFFER_POOL_SIZE_LIMIT = 2 * 1024 * 1024; // 2 MB for m_vboPool and m_iboPool each
 
 template <class Int>
 inline Int aligned(Int v, Int byteAlign)
@@ -201,13 +204,22 @@ QRhiGraphicsPipeline::Topology qsg_topology(int geomDrawMode)
     return topology;
 }
 
+void qsg_setMultiViewFlagsOnMaterial(QSGMaterial *material, int multiViewCount)
+{
+    material->setFlag(QSGMaterial::MultiView2, multiViewCount == 2);
+    material->setFlag(QSGMaterial::MultiView3, multiViewCount == 3);
+    material->setFlag(QSGMaterial::MultiView4, multiViewCount == 4);
+}
+
 ShaderManager::Shader *ShaderManager::prepareMaterial(QSGMaterial *material,
                                                       const QSGGeometry *geometry,
-                                                      QSGRendererInterface::RenderMode renderMode)
+                                                      QSGRendererInterface::RenderMode renderMode,
+                                                      int multiViewCount)
 {
-    QSGMaterialType *type = material->type();
+    qsg_setMultiViewFlagsOnMaterial(material, multiViewCount);
 
-    ShaderKey key = qMakePair(type, renderMode);
+    QSGMaterialType *type = material->type();
+    ShaderKey key = { type, renderMode, multiViewCount };
     Shader *shader = rewrittenShaders.value(key, nullptr);
     if (shader)
         return shader;
@@ -231,11 +243,13 @@ ShaderManager::Shader *ShaderManager::prepareMaterial(QSGMaterial *material,
 
 ShaderManager::Shader *ShaderManager::prepareMaterialNoRewrite(QSGMaterial *material,
                                                                const QSGGeometry *geometry,
-                                                               QSGRendererInterface::RenderMode renderMode)
+                                                               QSGRendererInterface::RenderMode renderMode,
+                                                               int multiViewCount)
 {
-    QSGMaterialType *type = material->type();
+    qsg_setMultiViewFlagsOnMaterial(material, multiViewCount);
 
-    ShaderKey key = qMakePair(type, renderMode);
+    QSGMaterialType *type = material->type();
+    ShaderKey key = { type, renderMode, multiViewCount };
     Shader *shader = stockShaders.value(key, nullptr);
     if (shader)
         return shader;
@@ -696,7 +710,7 @@ BatchCompatibility Batch::isMaterialCompatible(Element *e) const
 
     QSGMaterial *m = e->node->activeMaterial();
     QSGMaterial *nm = n->node->activeMaterial();
-    return (nm->type() == m->type() && nm->compare(m) == 0)
+    return (nm->type() == m->type() && nm->viewCount() == m->viewCount() && nm->compare(m) == 0)
             ? BatchIsCompatible
             : BatchBreaksOnCompare;
 }
@@ -841,6 +855,8 @@ Renderer::Renderer(QSGDefaultRenderContext *ctx, QSGRendererInterface::RenderMod
     , m_tmpOpaqueElements(16)
     , m_vboPool(16)
     , m_iboPool(16)
+    , m_vboPoolCost(0)
+    , m_iboPoolCost(0)
     , m_rebuild(FullRebuild)
     , m_zRange(0)
 #if defined(QSGBATCHRENDERER_INVALIDATE_WEDGED_NODES)
@@ -879,10 +895,11 @@ Renderer::Renderer(QSGDefaultRenderContext *ctx, QSGRendererInterface::RenderMod
     m_batchNodeThreshold = qt_sg_envInt("QSG_RENDERER_BATCH_NODE_THRESHOLD", 64);
     m_batchVertexThreshold = qt_sg_envInt("QSG_RENDERER_BATCH_VERTEX_THRESHOLD", 1024);
     m_srbPoolThreshold = qt_sg_envInt("QSG_RENDERER_SRB_POOL_THRESHOLD", 1024);
+    m_bufferPoolSizeLimit = qt_sg_envInt("QSG_RENDERER_BUFFER_POOL_LIMIT", DEFAULT_BUFFER_POOL_SIZE_LIMIT);
 
-    if (Q_UNLIKELY(debug_build() || debug_render())) {
-        qDebug("Batch thresholds: nodes: %d vertices: %d Srb pool threshold: %d",
-               m_batchNodeThreshold, m_batchVertexThreshold, m_srbPoolThreshold);
+    if (Q_UNLIKELY(debug_build() || debug_render() || debug_pools())) {
+        qDebug("Batch thresholds: nodes: %d vertices: %d srb pool: %d buffer pool: %d",
+               m_batchNodeThreshold, m_batchVertexThreshold, m_srbPoolThreshold, m_bufferPoolSizeLimit);
     }
 }
 
@@ -981,18 +998,28 @@ void Renderer::releaseCachedResources()
     for (int i = 0; i < m_vboPool.size(); ++i)
         delete m_vboPool.at(i);
     m_vboPool.reset();
+    m_vboPoolCost = 0;
 
     for (int i = 0; i < m_iboPool.size(); ++i)
         delete m_iboPool.at(i);
     m_iboPool.reset();
+    m_iboPoolCost = 0;
 }
 
 void Renderer::invalidateAndRecycleBatch(Batch *b)
 {
-    if (b->vbo.buf != nullptr)
+    if (b->vbo.buf != nullptr && m_vboPoolCost + b->vbo.buf->size() <= quint32(m_bufferPoolSizeLimit)) {
         m_vboPool.add(b->vbo.buf);
-    if (b->ibo.buf != nullptr)
+        m_vboPoolCost += b->vbo.buf->size();
+    } else {
+        delete b->vbo.buf;
+    }
+    if (b->ibo.buf != nullptr && m_iboPoolCost + b->ibo.buf->size() <= quint32(m_bufferPoolSizeLimit)) {
         m_iboPool.add(b->ibo.buf);
+        m_iboPoolCost += b->ibo.buf->size();
+    } else {
+        delete b->ibo.buf;
+    }
     b->vbo.buf = nullptr;
     b->ibo.buf = nullptr;
     b->invalidate();
@@ -1050,10 +1077,15 @@ void Renderer::unmap(Buffer *buffer, bool isIndexBuf)
                 }
             }
 
-            if (foundBufferIndex < bufferPool->size() - 1) {
+            const qsizetype lastBufferIndex = bufferPool->size() - 1;
+            if (foundBufferIndex < lastBufferIndex) {
                 qSwap(bufferPool->data()[foundBufferIndex],
-                      bufferPool->data()[bufferPool->size() - 1]);
+                      bufferPool->data()[lastBufferIndex]);
             }
+            if (isIndexBuf)
+                m_iboPoolCost -= bufferPool->data()[lastBufferIndex]->size();
+            else
+                m_vboPoolCost -= bufferPool->data()[lastBufferIndex]->size();
             bufferPool->pop_back();
         }
 
@@ -1079,12 +1111,13 @@ void Renderer::unmap(Buffer *buffer, bool isIndexBuf)
     }
     if (buffer->buf) {
         if (buffer->buf->type() != QRhiBuffer::Dynamic) {
-            m_resourceUpdates->uploadStaticBuffer(buffer->buf,
-                                                 0, buffer->size, buffer->data);
+            m_resourceUpdates->uploadStaticBuffer(buffer->buf, 0, buffer->size, buffer->data);
             buffer->nonDynamicChangeCount += 1;
         } else {
-            m_resourceUpdates->updateDynamicBuffer(buffer->buf, 0, buffer->size,
-                                                   buffer->data);
+            if (m_rhi->resourceLimit(QRhi::FramesInFlight) == 1)
+                buffer->buf->fullDynamicBufferUpdateForCurrentFrame(buffer->data, buffer->size);
+            else
+                m_resourceUpdates->updateDynamicBuffer(buffer->buf, 0, buffer->size, buffer->data);
         }
     }
     if (m_visualizer->mode() == Visualizer::VisualizeNothing)
@@ -1742,6 +1775,7 @@ void Renderer::prepareOpaqueBatches()
                     && gniGeometry->indexType() == gnjGeometry->indexType()
                     && gni->inheritedOpacity() == gnj->inheritedOpacity()
                     && gniMaterial->type() == gnjMaterial->type()
+                    && gniMaterial->viewCount() == gnjMaterial->viewCount()
                     && gniMaterial->compare(gnjMaterial) == 0)
             {
                 ej->batch = batch;
@@ -1859,6 +1893,7 @@ void Renderer::prepareAlphaBatches()
                     && gniGeometry->indexType() == gnjGeometry->indexType()
                     && gni->inheritedOpacity() == gnj->inheritedOpacity()
                     && gniMaterial->type() == gnjMaterial->type()
+                    && gniMaterial->viewCount() == gnjMaterial->viewCount()
                     && gniMaterial->compare(gnjMaterial) == 0)
             {
                 if (!overlapBounds.intersects(ej->bounds) || !checkOverlap(i+1, j - 1, ej->bounds)) {
@@ -2274,7 +2309,8 @@ void Renderer::uploadBatch(Batch *b)
     unmap(&b->vbo);
     unmap(&b->ibo, true);
 
-    if (Q_UNLIKELY(debug_upload())) qDebug() << "  --- vertex/index buffers unmapped, batch upload completed...";
+    if (Q_UNLIKELY(debug_upload() || debug_pools()))
+        qDebug() << "  --- vertex/index buffers unmapped, batch upload completed... vbo pool size" << m_vboPoolCost << "ibo pool size" << m_iboPoolCost;
 
     b->needsUpload = false;
 
@@ -2313,6 +2349,8 @@ QRhiGraphicsPipeline *Renderer::buildStencilPipeline(const Batch *batch, bool fi
     ps->setStencilBack(stencilOp);
 
     ps->setTopology(m_stencilClipCommon.topology);
+
+    ps->setMultiViewCount(renderTarget().multiViewCount);
 
     ps->setShaderStages({ QRhiShaderStage(QRhiShaderStage::Vertex, m_stencilClipCommon.vs),
                           QRhiShaderStage(QRhiShaderStage::Fragment, m_stencilClipCommon.fs) });
@@ -2362,7 +2400,7 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
     const quint32 StencilClipUbufSize = 64;
 
     while (clip) {
-        QMatrix4x4 m = m_current_projection_matrix_native_ndc;
+        QMatrix4x4 m = m_current_projection_matrix_native_ndc[0]; // never hit for 3D and so multiview
         if (clip->matrix())
             m *= *clip->matrix();
 
@@ -2533,7 +2571,7 @@ void Renderer::updateClipState(const QSGClipNode *clipList, Batch *batch)
             drawCall.ubufOffset = aligned(uOffset, m_ubufAlignment);
             uOffset = drawCall.ubufOffset + StencilClipUbufSize;
 
-            QMatrix4x4 matrixYUpNDC = m_current_projection_matrix;
+            QMatrix4x4 matrixYUpNDC = m_current_projection_matrix[0];
             if (clip->matrix())
                 matrixYUpNDC *= *clip->matrix();
 
@@ -2707,6 +2745,7 @@ bool Renderer::ensurePipelineState(Element *e, const ShaderManager::Shader *sms,
     ps->setTopology(qsg_topology(m_gstate.drawMode));
     ps->setCullMode(m_gstate.cullMode);
     ps->setPolygonMode(m_gstate.polygonMode);
+    ps->setMultiViewCount(m_gstate.multiViewCount);
 
     QRhiGraphicsPipeline::TargetBlend blend;
     blend.colorWrite = m_gstate.colorWrite;
@@ -2715,6 +2754,8 @@ bool Renderer::ensurePipelineState(Element *e, const ShaderManager::Shader *sms,
     blend.dstColor = m_gstate.dstColor;
     blend.srcAlpha = m_gstate.srcAlpha;
     blend.dstAlpha = m_gstate.dstAlpha;
+    blend.opColor = m_gstate.opColor;
+    blend.opAlpha = m_gstate.opAlpha;
     ps->setTargetBlends({ blend });
 
     ps->setDepthTest(m_gstate.depthTest);
@@ -2846,6 +2887,7 @@ static void rendererToMaterialGraphicsState(QSGMaterialShader::GraphicsPipelineS
 
     // the enum values should match, sanity check it
     Q_ASSERT(int(QSGMaterialShader::GraphicsPipelineState::OneMinusSrc1Alpha) == int(QRhiGraphicsPipeline::OneMinusSrc1Alpha));
+    Q_ASSERT(int(QSGMaterialShader::GraphicsPipelineState::BlendOp::Max) == int(QRhiGraphicsPipeline::Max));
     Q_ASSERT(int(QSGMaterialShader::GraphicsPipelineState::A) == int(QRhiGraphicsPipeline::A));
     Q_ASSERT(int(QSGMaterialShader::GraphicsPipelineState::CullBack) == int(QRhiGraphicsPipeline::Back));
     Q_ASSERT(int(QSGMaterialShader::GraphicsPipelineState::Line) == int(QRhiGraphicsPipeline::Line));
@@ -2862,6 +2904,9 @@ static void rendererToMaterialGraphicsState(QSGMaterialShader::GraphicsPipelineS
 
     dst->srcAlpha = QSGMaterialShader::GraphicsPipelineState::BlendFactor(src->srcAlpha);
     dst->dstAlpha = QSGMaterialShader::GraphicsPipelineState::BlendFactor(src->dstAlpha);
+
+    dst->opColor = QSGMaterialShader::GraphicsPipelineState::BlendOp(src->opColor);
+    dst->opAlpha = QSGMaterialShader::GraphicsPipelineState::BlendOp(src->opAlpha);
 
     dst->colorWrite = QSGMaterialShader::GraphicsPipelineState::ColorMask(int(src->colorWrite));
 
@@ -2882,6 +2927,8 @@ static void materialToRendererGraphicsState(GraphicsState *dst,
         dst->srcAlpha = dst->srcColor;
         dst->dstAlpha = dst->dstColor;
     }
+    dst->opColor = QRhiGraphicsPipeline::BlendOp(src->opColor);
+    dst->opAlpha = QRhiGraphicsPipeline::BlendOp(src->opAlpha);
     dst->colorWrite = QRhiGraphicsPipeline::ColorMask(int(src->colorWrite));
     dst->cullMode = QRhiGraphicsPipeline::CullMode(src->cullMode);
     dst->polygonMode = QRhiGraphicsPipeline::PolygonMode(src->polygonMode);
@@ -3155,16 +3202,24 @@ bool Renderer::prepareRenderMergedBatch(Batch *batch, PreparedRenderBatch *rende
     else
         m_current_model_view_matrix.setToIdentity();
     m_current_determinant = m_current_model_view_matrix.determinant();
-    m_current_projection_matrix = projectionMatrix();
-    m_current_projection_matrix_native_ndc = projectionMatrixWithNativeNDC();
+
+    const int viewCount = projectionMatrixCount();
+    m_current_projection_matrix.resize(viewCount);
+    for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
+        m_current_projection_matrix[viewIndex] = projectionMatrix(viewIndex);
+
+    m_current_projection_matrix_native_ndc.resize(projectionMatrixWithNativeNDCCount());
+    for (int viewIndex = 0; viewIndex < projectionMatrixWithNativeNDCCount(); ++viewIndex)
+        m_current_projection_matrix_native_ndc[viewIndex] = projectionMatrixWithNativeNDC(viewIndex);
 
     QSGMaterial *material = gn->activeMaterial();
     if (m_renderMode != QSGRendererInterface::RenderMode3D)
         updateClipState(gn->clipList(), batch);
 
     const QSGGeometry *g = gn->geometry();
-    ShaderManager::Shader *sms = useDepthBuffer() ? m_shaderManager->prepareMaterial(material, g, m_renderMode)
-                                                  : m_shaderManager->prepareMaterialNoRewrite(material, g, m_renderMode);
+    const int multiViewCount = renderTarget().multiViewCount;
+    ShaderManager::Shader *sms = useDepthBuffer() ? m_shaderManager->prepareMaterial(material, g, m_renderMode, multiViewCount)
+                                                  : m_shaderManager->prepareMaterialNoRewrite(material, g, m_renderMode, multiViewCount);
     if (!sms)
         return false;
 
@@ -3335,8 +3390,14 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
         batch->uploadedThisFrame = false;
     }
 
-    m_current_projection_matrix = projectionMatrix();
-    m_current_projection_matrix_native_ndc = projectionMatrixWithNativeNDC();
+    const int viewCount = projectionMatrixCount();
+    m_current_projection_matrix.resize(viewCount);
+    for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
+        m_current_projection_matrix[viewIndex] = projectionMatrix(viewIndex);
+
+    m_current_projection_matrix_native_ndc.resize(projectionMatrixWithNativeNDCCount());
+    for (int viewIndex = 0; viewIndex < projectionMatrixWithNativeNDCCount(); ++viewIndex)
+        m_current_projection_matrix_native_ndc[viewIndex] = projectionMatrixWithNativeNDC(viewIndex);
 
     QSGGeometryNode *gn = e->node;
     if (m_renderMode != QSGRendererInterface::RenderMode3D)
@@ -3349,7 +3410,7 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
     // unmerged batch since the material (and so the shaders) is the same.
     QSGGeometry *g = gn->geometry();
     QSGMaterial *material = gn->activeMaterial();
-    ShaderManager::Shader *sms = m_shaderManager->prepareMaterialNoRewrite(material, g, m_renderMode);
+    ShaderManager::Shader *sms = m_shaderManager->prepareMaterialNoRewrite(material, g, m_renderMode, renderTarget().multiViewCount);
     if (!sms)
         return false;
 
@@ -3414,11 +3475,19 @@ bool Renderer::prepareRenderUnmergedBatch(Batch *batch, PreparedRenderBatch *ren
         m_current_model_view_matrix = rootMatrix * *gn->matrix();
         m_current_determinant = m_current_model_view_matrix.determinant();
 
-        m_current_projection_matrix = projectionMatrix();
-        m_current_projection_matrix_native_ndc = projectionMatrixWithNativeNDC();
+        const int viewCount = projectionMatrixCount();
+        m_current_projection_matrix.resize(viewCount);
+        for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
+            m_current_projection_matrix[viewIndex] = projectionMatrix(viewIndex);
+
+        m_current_projection_matrix_native_ndc.resize(projectionMatrixWithNativeNDCCount());
+        for (int viewIndex = 0; viewIndex < projectionMatrixWithNativeNDCCount(); ++viewIndex)
+            m_current_projection_matrix_native_ndc[viewIndex] = projectionMatrixWithNativeNDC(viewIndex);
+
         if (useDepthBuffer()) {
-            m_current_projection_matrix(2, 2) = m_zRange;
-            m_current_projection_matrix(2, 3) = calculateElementZOrder(e, m_zRange);
+            // this cannot be multiview
+            m_current_projection_matrix[0](2, 2) = m_zRange;
+            m_current_projection_matrix[0](2, 3) = calculateElementZOrder(e, m_zRange);
         }
 
         QSGMaterialShader::RenderState renderState = state(QSGMaterialShader::RenderState::DirtyStates(int(dirty)));
@@ -3814,6 +3883,7 @@ void Renderer::prepareRenderPass(RenderPassContext *ctx)
     m_gstate.stencilTest = false;
 
     m_gstate.sampleCount = renderTarget().rt->sampleCount();
+    m_gstate.multiViewCount = renderTarget().multiViewCount;
 
     ctx->opaqueRenderBatches.clear();
     if (Q_LIKELY(renderOpaque)) {
@@ -4052,10 +4122,15 @@ bool Renderer::prepareRhiRenderNode(Batch *batch, PreparedRenderBatch *renderBat
 
     rd->m_rt = renderTarget();
 
-    rd->m_projectionMatrix = projectionMatrix();
+    const int viewCount = projectionMatrixCount();
+    rd->m_projectionMatrix.resize(viewCount);
+    for (int viewIndex = 0; viewIndex < viewCount; ++viewIndex)
+        rd->m_projectionMatrix[viewIndex] = projectionMatrix(viewIndex);
+
     if (useDepthBuffer()) {
-        rd->m_projectionMatrix(2, 2) = m_zRange;
-        rd->m_projectionMatrix(2, 3) = calculateElementZOrder(e, m_zRange);
+        // this cannot be multiview
+        rd->m_projectionMatrix[0](2, 2) = m_zRange;
+        rd->m_projectionMatrix[0](2, 3) = calculateElementZOrder(e, m_zRange);
     }
 
     e->renderNode->prepare();
@@ -4075,7 +4150,9 @@ void Renderer::renderRhiRenderNode(const Batch *batch)
     QSGRenderNodePrivate *rd = QSGRenderNodePrivate::get(e->renderNode);
 
     RenderNodeState state;
-    state.m_projectionMatrix = &rd->m_projectionMatrix;
+    // Expose only the first matrix through the state object, the rest are
+    // queriable through the QSGRenderNode getters anyway.
+    state.m_projectionMatrix = &rd->m_projectionMatrix[0];
     const std::array<int, 4> scissor = batch->clipState.scissor.scissor();
     state.m_scissorRect = QRect(scissor[0], scissor[1], scissor[2], scissor[3]);
     state.m_stencilValue = batch->clipState.stencilRef;
@@ -4139,6 +4216,8 @@ bool operator==(const GraphicsState &a, const GraphicsState &b) noexcept
             && a.dstColor == b.dstColor
             && a.srcAlpha == b.srcAlpha
             && a.dstAlpha == b.dstAlpha
+            && a.opColor == b.opColor
+            && a.opAlpha == b.opAlpha
             && a.colorWrite == b.colorWrite
             && a.cullMode == b.cullMode
             && a.usesScissor == b.usesScissor
@@ -4146,7 +4225,8 @@ bool operator==(const GraphicsState &a, const GraphicsState &b) noexcept
             && a.sampleCount == b.sampleCount
             && a.drawMode == b.drawMode
             && a.lineWidth == b.lineWidth
-            && a.polygonMode == b.polygonMode;
+            && a.polygonMode == b.polygonMode
+            && a.multiViewCount == b.multiViewCount;
 }
 
 bool operator!=(const GraphicsState &a, const GraphicsState &b) noexcept
@@ -4166,7 +4246,8 @@ size_t qHash(const GraphicsState &s, size_t seed) noexcept
             + s.cullMode
             + s.usesScissor
             + s.stencilTest
-            + s.sampleCount;
+            + s.sampleCount
+            + s.multiViewCount;
 }
 
 bool operator==(const GraphicsPipelineStateKey &a, const GraphicsPipelineStateKey &b) noexcept
@@ -4188,6 +4269,23 @@ size_t qHash(const GraphicsPipelineStateKey &k, size_t seed) noexcept
         ^ qHash(k.sms->materialShader)
         ^ k.extra.renderTargetDescriptionHash
         ^ k.extra.srbLayoutDescriptionHash;
+}
+
+bool operator==(const ShaderKey &a, const ShaderKey &b) noexcept
+{
+    return a.type == b.type
+           && a.renderMode == b.renderMode
+           && a.multiViewCount == b.multiViewCount;
+}
+
+bool operator!=(const ShaderKey &a, const ShaderKey &b) noexcept
+{
+    return !(a == b);
+}
+
+size_t qHash(const ShaderKey &k, size_t seed) noexcept
+{
+    return qHash(k.type, seed) ^ int(k.renderMode) ^ k.multiViewCount;
 }
 
 Visualizer::Visualizer(Renderer *renderer)

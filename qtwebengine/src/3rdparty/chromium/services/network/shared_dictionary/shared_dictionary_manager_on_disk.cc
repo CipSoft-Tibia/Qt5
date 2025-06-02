@@ -15,26 +15,10 @@
 #include "base/unguessable_token.h"
 #include "net/base/net_errors.h"
 #include "net/disk_cache/disk_cache.h"
-#include "services/network/public/cpp/features.h"
 #include "services/network/shared_dictionary/shared_dictionary_storage_on_disk.h"
 
 namespace network {
 namespace {
-
-const char kTaskPriorityOptionBestEffort[] = "best_effort";
-const char kTaskPriorityOptionUserVisible[] = "user_visible";
-const char kTaskPriorityOptionUserBlocking[] = "user_blocking";
-const char kTaskPriorityOptionName[] = "task_priority";
-
-const base::FeatureParam<base::TaskPriority>::Option kTaskPriorityOptions[] = {
-    {base::TaskPriority::BEST_EFFORT, kTaskPriorityOptionBestEffort},
-    {base::TaskPriority::USER_VISIBLE, kTaskPriorityOptionUserVisible},
-    {base::TaskPriority::USER_BLOCKING, kTaskPriorityOptionUserBlocking}};
-const base::FeatureParam<base::TaskPriority>
-    kCompressionDictionaryTransportStoreTaskPriority{
-        &features::kCompressionDictionaryTransportBackend,
-        kTaskPriorityOptionName, base::TaskPriority::USER_BLOCKING,
-        &kTaskPriorityOptions};
 
 absl::optional<base::UnguessableToken> DeserializeToUnguessableToken(
     const std::string& token_string) {
@@ -365,6 +349,23 @@ class SharedDictionaryManagerOnDisk::CacheEvictionTask
     if (result.has_value()) {
       manager_->OnDictionaryDeleted(result.value(),
                                     /*need_to_doom_disk_cache_entries=*/true);
+    } else if (result.error() == net::SQLitePersistentSharedDictionaryStore::
+                                     Error::kFailedToGetTotalDictSize) {
+      // Assume the database gets corrupted for some reason, so call
+      // ClearAllDictionaries() to reset the database.
+      manager_->metadata_store().ClearAllDictionaries(
+          base::BindOnce(&CacheEvictionTask::OnClearAllDictionariesFinished,
+                         weak_factory_.GetWeakPtr()));
+      return;
+    }
+    manager_->OnFinishSerializedTask();
+  }
+  void OnClearAllDictionariesFinished(
+      net::SQLitePersistentSharedDictionaryStore::UnguessableTokenSetOrError
+          result) {
+    if (result.has_value()) {
+      manager_->OnDictionaryDeleted(result.value(),
+                                    /*need_to_doom_disk_cache_entries=*/true);
     }
     manager_->OnFinishSerializedTask();
   }
@@ -458,24 +459,22 @@ SharedDictionaryManagerOnDisk::SharedDictionaryManagerOnDisk(
     uint64_t cache_max_size,
     uint64_t cache_max_count,
 #if BUILDFLAG(IS_ANDROID)
-    base::android::ApplicationStatusListener* app_status_listener,
+    disk_cache::ApplicationStatusListenerGetter app_status_listener_getter,
 #endif  // BUILDFLAG(IS_ANDROID)
     scoped_refptr<disk_cache::BackendFileOperationsFactory>
         file_operations_factory)
     : cache_max_size_(cache_max_size),
       cache_max_count_(cache_max_count),
-      metadata_store_(
-          database_path,
-          /*client_task_runner=*/
-          base::SingleThreadTaskRunner::GetCurrentDefault(),
-          /*background_task_runner=*/
-          base::ThreadPool::CreateSequencedTaskRunner(
-              {base::MayBlock(),
-               kCompressionDictionaryTransportStoreTaskPriority.Get(),
-               base::TaskShutdownBehavior::BLOCK_SHUTDOWN})) {
+      metadata_store_(database_path,
+                      /*client_task_runner=*/
+                      base::SingleThreadTaskRunner::GetCurrentDefault(),
+                      /*background_task_runner=*/
+                      base::ThreadPool::CreateSequencedTaskRunner(
+                          {base::MayBlock(), base::TaskPriority::USER_BLOCKING,
+                           base::TaskShutdownBehavior::BLOCK_SHUTDOWN})) {
   disk_cache_.Initialize(cache_directory_path,
 #if BUILDFLAG(IS_ANDROID)
-                         app_status_listener,
+                         app_status_listener_getter,
 #endif  // BUILDFLAG(IS_ANDROID)
                          std::move(file_operations_factory));
   MaybePostExpiredDictionaryDeletionTask();

@@ -210,6 +210,8 @@ FeatureInfo::FeatureInfo(
 #elif BUILDFLAG(IS_MAC)
   feature_flags_.chromium_image_ycbcr_p010 =
       base::mac::MacOSMajorVersion() >= 11;
+#elif BUILDFLAG(IS_IOS)
+  feature_flags_.chromium_image_ycbcr_p010 = true;
 #endif
 }
 
@@ -1143,13 +1145,6 @@ void FeatureInfo::InitializeFeatures() {
     validators_.g_l_state.AddValue(GL_FRAGMENT_SHADER_DERIVATIVE_HINT_OES);
   }
 
-  if (gfx::HasExtension(extensions, "GL_CHROMIUM_texture_filtering_hint")) {
-    AddExtensionString("GL_CHROMIUM_texture_filtering_hint");
-    feature_flags_.chromium_texture_filtering_hint = true;
-    validators_.hint_target.AddValue(GL_TEXTURE_FILTERING_HINT_CHROMIUM);
-    validators_.g_l_state.AddValue(GL_TEXTURE_FILTERING_HINT_CHROMIUM);
-  }
-
   if (gfx::HasExtension(extensions, "GL_OES_EGL_image_external")) {
     AddExtensionString("GL_OES_EGL_image_external");
     feature_flags_.oes_egl_image_external = true;
@@ -1295,6 +1290,7 @@ void FeatureInfo::InitializeFeatures() {
   }
 
 #if BUILDFLAG(IS_MAC)
+  feature_flags_.gpu_memory_buffer_formats.Put(gfx::BufferFormat::RGBA_F16);
   if (base::mac::MacOSMajorVersion() >= 11) {
     feature_flags_.gpu_memory_buffer_formats.Put(
         gfx::BufferFormat::YUVA_420_TRIPLANAR);
@@ -1349,7 +1345,6 @@ void FeatureInfo::InitializeFeatures() {
   bool is_webgl_compatibility_context =
       gfx::HasExtension(extensions, "GL_ANGLE_webgl_compatibility");
   bool have_es2_draw_buffers =
-      !workarounds_.disable_ext_draw_buffers &&
       (have_es2_draw_buffers_vendor_agnostic ||
        can_emulate_es2_draw_buffers_on_es3_nv) &&
       (context_type_ == CONTEXT_TYPE_OPENGLES2 ||
@@ -1511,11 +1506,17 @@ void FeatureInfo::InitializeFeatures() {
     feature_flags_.gpu_memory_buffer_formats.Put(gfx::BufferFormat::RG_88);
   }
 
-  if (IsWebGL2OrES3OrHigherContext() &&
+  const bool is_texture_norm16_supported_for_webgl2_or_es3 =
+      IsWebGL2OrES3OrHigherContext() &&
       (gl_version_info_->is_desktop_core_profile ||
        (gl_version_info_->IsAtLeastGL(2, 1) &&
         gfx::HasExtension(extensions, "GL_ARB_texture_rg")) ||
-       gfx::HasExtension(extensions, "GL_EXT_texture_norm16"))) {
+       gfx::HasExtension(extensions, "GL_EXT_texture_norm16"));
+  const bool is_texture_norm16_supported_for_angle_es2 =
+      is_passthrough_cmd_decoder_ && context_type_ == CONTEXT_TYPE_OPENGLES2 &&
+      gfx::HasExtension(extensions, "GL_EXT_texture_norm16");
+  if (is_texture_norm16_supported_for_webgl2_or_es3 ||
+      is_texture_norm16_supported_for_angle_es2) {
     AddExtensionString("GL_EXT_texture_norm16");
     feature_flags_.ext_texture_norm16 = true;
 
@@ -1581,7 +1582,7 @@ void FeatureInfo::InitializeFeatures() {
       gl_version_info_->IsAtLeastGL(3, 3) ||
       (gl_version_info_->IsAtLeastGL(3, 2) &&
        gfx::HasExtension(extensions, "GL_ARB_blend_func_extended"));
-  if (!disable_shader_translator_ && !workarounds_.get_frag_data_info_bug &&
+  if (!disable_shader_translator_ &&
       ((gl_version_info_->IsAtLeastGL(3, 2) &&
         has_opengl_dual_source_blending) ||
        (gl_version_info_->IsAtLeastGLES(3, 0) &&
@@ -1777,6 +1778,12 @@ void FeatureInfo::InitializeFeatures() {
   }
 
   if (is_passthrough_cmd_decoder_ &&
+      gfx::HasExtension(extensions, "GL_EXT_blend_func_extended")) {
+    feature_flags_.ext_blend_func_extended = true;
+    AddExtensionString("GL_EXT_blend_func_extended");
+  }
+
+  if (is_passthrough_cmd_decoder_ &&
       gfx::HasExtension(extensions, "GL_EXT_clip_control")) {
     feature_flags_.ext_clip_control = true;
     AddExtensionString("GL_EXT_clip_control");
@@ -1904,6 +1911,7 @@ void FeatureInfo::InitializeFloatAndHalfFloatFeatures(
   }
 
   if (enable_texture_half_float) {
+    oes_texture_float_available_ = true;
     validators_.pixel_type.AddValue(GL_HALF_FLOAT_OES);
     validators_.read_pixel_type.AddValue(GL_HALF_FLOAT_OES);
     AddExtensionString("GL_OES_texture_half_float");

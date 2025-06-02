@@ -306,7 +306,7 @@ static bool IntersectsAllowingEmpty(const gfx::RectF& r1,
 // canvas.  Specifically: circle, ellipse, image, line, path, polygon, polyline,
 // rect, text and use.
 static bool IsIntersectionOrEnclosureTarget(LayoutObject* layout_object) {
-  return layout_object->IsSVGShape() || layout_object->IsNGSVGText() ||
+  return layout_object->IsSVGShape() || layout_object->IsSVGText() ||
          layout_object->IsSVGImage() ||
          IsA<SVGUseElement>(*layout_object->GetNode());
 }
@@ -517,11 +517,8 @@ bool SVGSVGElement::LayoutObjectIsNeeded(const DisplayStyle& style) const {
 void SVGSVGElement::AttachLayoutTree(AttachContext& context) {
   SVGGraphicsElement::AttachLayoutTree(context);
 
-  if (GetLayoutObject()) {
-    time_container_->DidAttachLayoutObject();
-    if (GetLayoutObject()->IsSVGRoot()) {
-      To<LayoutSVGRoot>(GetLayoutObject())->IntrinsicSizingInfoChanged();
-    }
+  if (GetLayoutObject() && GetLayoutObject()->IsSVGRoot()) {
+    To<LayoutSVGRoot>(GetLayoutObject())->IntrinsicSizingInfoChanged();
   }
 }
 

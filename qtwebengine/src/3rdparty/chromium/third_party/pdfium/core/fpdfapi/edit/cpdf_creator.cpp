@@ -107,7 +107,7 @@ ByteString GenerateFileID(uint32_t dwSeed1, uint32_t dwSeed2) {
   buffer[3] = FX_Random_MT_Generate(pContext2);
   FX_Random_MT_Close(pContext1);
   FX_Random_MT_Close(pContext2);
-  return ByteString(pdfium::as_bytes<uint32_t>(buffer));
+  return ByteString(ByteStringView(pdfium::as_byte_span(buffer)));
 }
 
 bool OutputIndex(IFX_ArchiveStream* archive, FX_FILESIZE offset) {

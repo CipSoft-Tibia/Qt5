@@ -116,6 +116,7 @@ private slots:
     void isClassAvailable();
     void fromLocalRef();
     void largeObjectArray();
+    void arrayLifetime();
 
     void callback_data();
     void callback();
@@ -327,6 +328,11 @@ void tst_QJniObject::compareOperatorTests()
     QVERIFY(jstrobj != stringObject);
     QVERIFY(stringObject != jstrobj);
     QVERIFY(!invalidStringObject.isValid());
+
+    QJniObject movedTo(std::move(stringObject3));
+    QVERIFY(!stringObject3.isValid());
+    QCOMPARE_NE(movedTo, stringObject3);
+    QCOMPARE(invalidStringObject, stringObject3);
 }
 
 void tst_QJniObject::className()
@@ -1562,6 +1568,26 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(QJniObject::fromLocalRef(reverse.at(2)).toString(), u"one"_s);
     }
 
+    // jstringArray ------------------------------------------------------------------------------
+    {
+        const QStringList strings{"First", "Second", "Third"};
+        const auto array = TestClass::callStaticMethod<QJniArray<QtJniTypes::String>>("staticStringArrayMethod");
+        QVERIFY(array.isValid());
+        QCOMPARE(array.size(), 3);
+        QCOMPARE(array.at(0).toString(), strings.first());
+        QCOMPARE(array.toContainer<QStringList>(), strings);
+    }
+
+    // jstringArray via implicit QString support -------------------------------------------------
+    {
+        const QStringList strings{"First", "Second", "Third"};
+        const auto array = TestClass::callStaticMethod<QJniArray<QString>>("staticStringArrayMethod");
+        QVERIFY(array.isValid());
+        QCOMPARE(array.size(), 3);
+        QCOMPARE(array.at(0), strings.first());
+        QCOMPARE(array.toContainer(), strings);
+    }
+
     // jbooleanArray ------------------------------------------------------------------------------
     {
         QJniObject res = QJniObject::callStaticObjectMethod<jbooleanArray>(testClassName,
@@ -1627,7 +1653,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), "abc");
 
-        QJniArray<jbyte> newArray = QJniArrayBase::fromContainer(QByteArray{"cba"});
+        QJniArray newArray = QJniArray(QByteArray{"cba"});
         QVERIFY(newArray.isValid());
         const auto reverse = testClass.callMethod<jbyte[]>("reverseByteArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1645,7 +1671,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jchar>{u'a', u'b', u'c'}));
 
-        QJniArray<jchar> newArray(QList<jchar>{u'c', u'b', u'a'});
+        QJniArray<jchar> newArray = {u'c', u'b', u'a'};
         QVERIFY(newArray.isValid());
         const auto reverse = TestClass::callStaticMethod<jchar[]>("staticReverseCharArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1665,7 +1691,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jchar>{u'a', u'b', u'c'}));
 
-        QJniArray<jchar> newArray = QJniArrayBase::fromContainer(QList<jchar>{u'c', u'b', u'a'});
+        QJniArray<jchar> newArray = {u'c', u'b', u'a'};
         QVERIFY(newArray.isValid());
         const auto reverse = testClass.callMethod<jchar[]>("reverseCharArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1683,7 +1709,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jshort>{3, 2, 1}));
 
-        QJniArray<jshort> newArray(QList<jshort>{3, 2, 1});
+        QJniArray<jshort> newArray = {3, 2, 1};
         QVERIFY(newArray.isValid());
         const auto reverse = TestClass::callStaticMethod<jshort[]>("staticReverseShortArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1703,7 +1729,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jshort>{3, 2, 1}));
 
-        QJniArray<jshort> newArray = QJniArrayBase::fromContainer(QList<jshort>{3, 2, 1});
+        QJniArray<jshort> newArray = {3, 2, 1};
         static_assert(std::is_same_v<decltype(newArray)::Type, jshort>);
         QVERIFY(newArray.isValid());
         const auto reverse = testClass.callMethod<jshort[]>("reverseShortArray", newArray);
@@ -1722,7 +1748,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jint>{3, 2, 1}));
 
-        QJniArray<jint> newArray(QList<jint>{3, 2, 1});
+        QJniArray<jint> newArray = {3, 2, 1};
         QVERIFY(newArray.isValid());
         const auto reverse = TestClass::callStaticMethod<jint[]>("staticReverseIntArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1738,7 +1764,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jint>{3, 2, 1}));
 
-        QJniArray<jint> newArray = QJniArrayBase::fromContainer(QList<jint>{3, 2, 1});
+        QJniArray<jint> newArray = {3, 2, 1};
         QVERIFY(newArray.isValid());
         const auto reverse = testClass.callMethod<jint[]>("reverseIntArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1756,7 +1782,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jlong>{3, 2, 1}));
 
-        QJniArray<jlong> newArray(QList<jlong>{3, 2, 1});
+        QJniArray<jlong> newArray = {3, 2, 1};
         QVERIFY(newArray.isValid());
         const auto reverse = TestClass::callStaticMethod<jlong[]>("staticReverseLongArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1772,7 +1798,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jlong>{3, 2, 1}));
 
-        QJniArray<jlong> newArray = QJniArrayBase::fromContainer(QList<jlong>{3, 2, 1});
+        QJniArray<jlong> newArray = {3, 2, 1};
         QVERIFY(newArray.isValid());
         const auto reverse = testClass.callMethod<jlong[]>("reverseLongArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1790,7 +1816,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jfloat>{1.0f, 2.0f, 3.0f}));
 
-        QJniArray<jfloat> newArray(QList<jfloat>{3.0f, 2.0f, 1.0f});
+        QJniArray<jfloat> newArray = {3.0f, 2.0f, 1.0f};
         QVERIFY(newArray.isValid());
         const auto reverse = TestClass::callStaticMethod<jfloat[]>("staticReverseFloatArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1806,7 +1832,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jfloat>{1.0f, 2.0f, 3.0f}));
 
-        QJniArray<jfloat> newArray = QJniArrayBase::fromContainer(QList<jfloat>{3.0f, 2.0f, 1.0f});
+        QJniArray<jfloat> newArray = {3.0f, 2.0f, 1.0f};
         QVERIFY(newArray.isValid());
         const auto reverse = testClass.callMethod<jfloat[]>("reverseFloatArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1824,7 +1850,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jdouble>{3.0, 2.0, 1.0}));
 
-        QJniArray<jdouble> newArray(QList<jdouble>{3.0, 2.0, 1.0});
+        QJniArray<jdouble> newArray = {3.0, 2.0, 1.0};
         QVERIFY(newArray.isValid());
         const auto reverse = TestClass::callStaticMethod<jdouble[]>("staticReverseDoubleArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1840,7 +1866,7 @@ void tst_QJniObject::templateApiCheck()
         QCOMPARE(array.size(), 3);
         QCOMPARE(array.toContainer(), (QList<jdouble>{3.0, 2.0, 1.0}));
 
-        QJniArray<jdouble> newArray = QJniArrayBase::fromContainer(QList<jdouble>{3.0, 2.0, 1.0});
+        QJniArray<jdouble> newArray = {3.0, 2.0, 1.0};
         QVERIFY(newArray.isValid());
         const auto reverse = testClass.callMethod<jdouble[]>("reverseDoubleArray", newArray);
         QVERIFY(reverse.isValid());
@@ -1884,6 +1910,42 @@ void tst_QJniObject::largeObjectArray()
     }
 }
 
+void tst_QJniObject::arrayLifetime()
+{
+    const auto stringData = A_STRING_OBJECT();
+
+    QJniArray oldChars = TestClass::callStaticMethod<jchar[]>("getStaticCharArray");
+    QVERIFY(oldChars.isValid());
+    QCOMPARE(oldChars.size(), stringData.size());
+    QCOMPARE(QChar(oldChars.toContainer().at(0)), stringData.at(0));
+
+    QJniArray<jchar> newChars{'a', 'b', 'c'};
+    // replace the first three characters in the array
+    TestClass::callStaticMethod<void>("mutateStaticCharArray", newChars);
+    // the old jcharArray is still valid and the size is unchanged
+    QVERIFY(oldChars.isValid());
+    QCOMPARE(oldChars.size(), A_STRING_OBJECT().size());
+    QCOMPARE(oldChars.toContainer().at(0), jchar('a'));
+
+    // get a second reference to the Java array
+    QJniArray updatedChars = TestClass::getStaticField<jchar[]>("S_CHAR_ARRAY");
+    // the two QJniArrays reference the same jobject
+    QCOMPARE(updatedChars.size(), oldChars.size());
+    QCOMPARE(updatedChars, oldChars);
+
+    // replace the Java array; the old jcharArray is still valid and unchanged
+    TestClass::callStaticMethod<void>("replaceStaticCharArray", newChars);
+    // the old jcharArray is still valid and unchanged
+    QVERIFY(oldChars.isValid());
+    QCOMPARE(oldChars.size(), stringData.size());
+    QCOMPARE(oldChars, updatedChars);
+
+    // we get the same object that we set
+    updatedChars = TestClass::getStaticField<jchar[]>("S_CHAR_ARRAY");
+    QCOMPARE(updatedChars, newChars);
+    QCOMPARE_NE(updatedChars, oldChars);
+}
+
 enum class CallbackParameterType
 {
     Object,
@@ -1892,7 +1954,14 @@ enum class CallbackParameterType
     Byte,
     Boolean,
     Int,
-    Double
+    Double,
+    Float,
+    JniArray,
+    RawArray,
+    QList,
+    QStringList,
+    Null,
+    Many,
 };
 
 static std::optional<TestClass> calledWithObject;
@@ -1949,6 +2018,89 @@ static int callbackWithDouble(JNIEnv *, jobject, double value)
 }
 Q_DECLARE_JNI_NATIVE_METHOD(callbackWithDouble)
 
+static std::optional<float> calledWithFloat;
+static int callbackWithFloat(JNIEnv *, jobject, float value)
+{
+    calledWithFloat.emplace(value);
+    return int(CallbackParameterType::Float);
+}
+Q_DECLARE_JNI_NATIVE_METHOD(callbackWithFloat)
+
+static std::optional<float> calledWithFloatStatic;
+static int callbackWithFloatStatic(JNIEnv *, jclass, float value)
+{
+    calledWithFloatStatic.emplace(value);
+    return int(CallbackParameterType::Float);
+}
+Q_DECLARE_JNI_NATIVE_METHOD(callbackWithFloatStatic)
+
+static std::optional<QJniArray<jdouble>> calledWithJniArray;
+static int callbackWithJniArray(JNIEnv *, jobject, const QJniArray<jdouble> &value)
+{
+    calledWithJniArray.emplace(value);
+    return int(CallbackParameterType::JniArray);
+}
+Q_DECLARE_JNI_NATIVE_METHOD(callbackWithJniArray)
+
+static std::optional<QJniObject> calledWithRawArray;
+static int callbackWithRawArray(JNIEnv *, jobject, jobjectArray value)
+{
+    calledWithRawArray.emplace(QJniObject(value));
+    return int(CallbackParameterType::RawArray);
+}
+Q_DECLARE_JNI_NATIVE_METHOD(callbackWithRawArray)
+
+static std::optional<QList<double>> calledWithQList;
+static int callbackWithQList(JNIEnv *, jobject, const QList<double> &value)
+{
+    calledWithQList.emplace(value);
+    return int(CallbackParameterType::QList);
+}
+Q_DECLARE_JNI_NATIVE_METHOD(callbackWithQList)
+
+static std::optional<QStringList> calledWithStringList;
+static int callbackWithStringList(JNIEnv *, jobject, const QStringList &value)
+{
+    calledWithStringList.emplace(value);
+    return int(CallbackParameterType::QStringList);
+}
+Q_DECLARE_JNI_NATIVE_METHOD(callbackWithStringList)
+
+static std::optional<QString> calledWithNull;
+static int callbackWithNull(JNIEnv *, jobject, const QString &str)
+{
+    calledWithNull.emplace(str);
+    return int(CallbackParameterType::Null);
+}
+Q_DECLARE_JNI_NATIVE_METHOD(callbackWithNull)
+
+static std::optional<bool> calledWithMany;
+static int callbackWithMany(JNIEnv *, jobject, jbyte byte_val, short short_val, int int_val,
+                            jlong long_val, float float_val, double double_val, bool bool_val,
+                            jchar char_val, QString string_val)
+{
+    auto diagnose = qScopeGuard([=]{
+        qCritical() << "Received values: "
+                    << byte_val << short_val << int_val << long_val
+                    << float_val << double_val << bool_val
+                    << char_val << string_val;
+    });
+    calledWithMany.emplace(TestClass::getStaticField<jbyte>("A_BYTE_VALUE") == byte_val
+                        && TestClass::getStaticField<short>("A_SHORT_VALUE") == short_val
+                        && TestClass::getStaticField<int>("A_INT_VALUE") == int_val
+                        && TestClass::getStaticField<jlong>("A_LONG_VALUE") == long_val
+                        && TestClass::getStaticField<float>("A_FLOAT_VALUE") == float_val
+                        && TestClass::getStaticField<double>("A_DOUBLE_VALUE") == double_val
+                        && TestClass::getStaticField<bool>("A_BOOLEAN_VALUE") == bool_val
+                        && TestClass::getStaticField<jchar>("A_CHAR_VALUE") == char_val
+                        && TestClass::getStaticField<QString>("A_STRING_OBJECT") == string_val
+    );
+    if (*calledWithMany)
+        diagnose.dismiss();
+    return int(CallbackParameterType::Many);
+}
+Q_DECLARE_JNI_NATIVE_METHOD(callbackWithMany)
+
 void tst_QJniObject::callback_data()
 {
     QTest::addColumn<CallbackParameterType>("parameterType");
@@ -1960,6 +2112,13 @@ void tst_QJniObject::callback_data()
     QTest::addRow("Boolean")    << CallbackParameterType::Boolean;
     QTest::addRow("Int")        << CallbackParameterType::Int;
     QTest::addRow("Double")     << CallbackParameterType::Double;
+    QTest::addRow("Float")      << CallbackParameterType::Float;
+    QTest::addRow("JniArray")   << CallbackParameterType::JniArray;
+    QTest::addRow("RawArray")   << CallbackParameterType::RawArray;
+    QTest::addRow("QList")      << CallbackParameterType::QList;
+    QTest::addRow("QStringList") << CallbackParameterType::QStringList;
+    QTest::addRow("Null")       << CallbackParameterType::Null;
+    QTest::addRow("More than 8") << CallbackParameterType::Many;
 }
 
 void tst_QJniObject::callback()
@@ -2026,6 +2185,79 @@ void tst_QJniObject::callback()
         QVERIFY(calledWithDouble);
         QCOMPARE(calledWithDouble.value(), 1.2345);
         break;
+    case CallbackParameterType::Float:
+        QVERIFY(TestClass::registerNativeMethods({
+            Q_JNI_NATIVE_METHOD(callbackWithFloat),
+            Q_JNI_NATIVE_METHOD(callbackWithFloatStatic),
+        }));
+        result = testObject.callMethod<int>("callMeBackWithFloat", 1.2345f);
+        QVERIFY(calledWithFloat);
+        QCOMPARE(calledWithFloat.value(), 1.2345f);
+        result = testObject.callMethod<int>("callMeBackWithFloatStatic", 1.2345f);
+        QVERIFY(calledWithFloatStatic);
+        QCOMPARE(calledWithFloatStatic.value(), 1.2345f);
+        break;
+    case CallbackParameterType::JniArray: {
+        QVERIFY(TestClass::registerNativeMethods({
+            Q_JNI_NATIVE_METHOD(callbackWithJniArray)
+        }));
+        const QJniArray<double> doubles = { 1.2, 3.4, 5.6 };
+        result = testObject.callMethod<int>("callMeBackWithJniArray", doubles);
+        QVERIFY(calledWithJniArray);
+        QCOMPARE(calledWithJniArray, doubles);
+        break;
+    }
+    case CallbackParameterType::RawArray: {
+        QVERIFY(TestClass::registerNativeMethods({
+            Q_JNI_NATIVE_METHOD(callbackWithRawArray)
+        }));
+        const QStringList strings{"a", "b", "c"};
+        const QJniArray stringArray(strings);
+        result = testObject.callMethod<int>("callMeBackWithRawArray",
+                                            stringArray.object<jobjectArray>());
+        QVERIFY(calledWithRawArray);
+        const auto stringsReceived = QJniArray<QString>(*calledWithRawArray).toContainer();
+        QCOMPARE(stringsReceived, strings);
+        break;
+    }
+    case CallbackParameterType::QList: {
+        QVERIFY(TestClass::registerNativeMethods({
+            Q_JNI_NATIVE_METHOD(callbackWithQList)
+        }));
+        const QList<double> doubles = { 1.2, 3.4, 5.6 };
+        result = testObject.callMethod<int>("callMeBackWithQList", doubles);
+        QVERIFY(calledWithQList);
+        QCOMPARE(calledWithQList.value(), doubles);
+        break;
+    }
+    case CallbackParameterType::QStringList: {
+        QVERIFY(TestClass::registerNativeMethods({
+            Q_JNI_NATIVE_METHOD(callbackWithStringList)
+        }));
+        const QStringList strings = { "one", "two" };
+        result = testObject.callMethod<int>("callMeBackWithStringList", strings);
+        QVERIFY(calledWithStringList);
+        QCOMPARE(calledWithStringList.value(), strings);
+        break;
+    }
+    case CallbackParameterType::Null: {
+        QVERIFY(TestClass::registerNativeMethods({
+            Q_JNI_NATIVE_METHOD(callbackWithNull)
+        }));
+        result = testObject.callMethod<int>("callMeBackWithNull");
+        QVERIFY(calledWithNull);
+        QCOMPARE(calledWithNull.value(), QString());
+        break;
+    }
+    case CallbackParameterType::Many: {
+        QVERIFY(TestClass::registerNativeMethods({
+            Q_JNI_NATIVE_METHOD(callbackWithMany)
+        }));
+        result = testObject.callMethod<int>("callMeBackWithMany");
+        QVERIFY(calledWithMany);
+        QVERIFY(calledWithMany.value());
+        break;
+    }
     }
     QCOMPARE(result, int(parameterType));
 }

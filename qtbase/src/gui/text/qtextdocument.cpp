@@ -53,6 +53,9 @@ namespace {
     QTextDocument::ResourceProvider qt_defaultResourceProvider;
 };
 
+QAbstractUndoItem::~QAbstractUndoItem()
+    = default;
+
 /*!
     \fn bool Qt::mightBeRichText(QAnyStringView text)
 
@@ -1159,6 +1162,8 @@ QString QTextDocument::metaInformation(MetaInformation info) const
         return d->url;
     case CssMedia:
         return d->cssMedia;
+    case FrontMatter:
+        return d->frontMatter;
     }
     return QString();
 }
@@ -1181,6 +1186,9 @@ void QTextDocument::setMetaInformation(MetaInformation info, const QString &stri
         break;
     case CssMedia:
         d->cssMedia = string;
+        break;
+    case FrontMatter:
+        d->frontMatter = string;
         break;
     }
 }
@@ -1329,6 +1337,10 @@ void QTextDocument::setHtml(const QString &html)
     \value CssMedia         This value is used to select the corresponding '@media'
                             rule, if any, from a specified CSS stylesheet when setHtml()
                             is called. This enum value has been introduced in Qt 6.3.
+    \value FrontMatter      This value is used to select header material, if any was
+                            extracted during parsing of the source file (currently
+                            only from Markdown format). This enum value has been
+                            introduced in Qt 6.8.
 
     \sa metaInformation(), setMetaInformation(), setHtml()
 */
@@ -2321,7 +2333,7 @@ QVariant QTextDocument::loadResource(int type, const QUrl &name)
 
     if (!r.isNull()) {
         if (type == ImageResource && r.userType() == QMetaType::QByteArray) {
-            if (qApp->thread() != QThread::currentThread()) {
+            if (!QThread::isMainThread()) {
                 // must use images in non-GUI threads
                 QImage image;
                 image.loadFromData(r.toByteArray());
@@ -2556,7 +2568,9 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
             html += u';';
             attributesEmitted = true;
         }
-    } else if (format.hasProperty(QTextFormat::FontPixelSize)) {
+    } else if (format.hasProperty(QTextFormat::FontPixelSize)
+               && format.property(QTextFormat::FontPixelSize)
+                       != defaultCharFormat.property(QTextFormat::FontPixelSize)) {
         html += " font-size:"_L1;
         html += QString::number(format.intProperty(QTextFormat::FontPixelSize));
         html += "px;"_L1;
@@ -2635,6 +2649,53 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
             html += " -qt-fg-texture-cachekey:"_L1;
             html += QString::number(cacheKey);
             html += ";"_L1;
+        } else if (brush.style() == Qt::LinearGradientPattern
+                   || brush.style() == Qt::RadialGradientPattern
+                   || brush.style() == Qt::ConicalGradientPattern) {
+            const QGradient *gradient = brush.gradient();
+            if (gradient->type() == QGradient::LinearGradient) {
+                const QLinearGradient *linearGradient = static_cast<const QLinearGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qlineargradient("_L1;
+                html += "x1:"_L1 + QString::number(linearGradient->start().x()) + u',';
+                html += "y1:"_L1 + QString::number(linearGradient->start().y()) + u',';
+                html += "x2:"_L1 + QString::number(linearGradient->finalStop().x()) + u',';
+                html += "y2:"_L1 + QString::number(linearGradient->finalStop().y()) + u',';
+            } else if (gradient->type() == QGradient::RadialGradient) {
+                const QRadialGradient *radialGradient = static_cast<const QRadialGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qradialgradient("_L1;
+                html += "cx:"_L1 + QString::number(radialGradient->center().x()) + u',';
+                html += "cy:"_L1 + QString::number(radialGradient->center().y()) + u',';
+                html += "fx:"_L1 + QString::number(radialGradient->focalPoint().x()) + u',';
+                html += "fy:"_L1 + QString::number(radialGradient->focalPoint().y()) + u',';
+                html += "radius:"_L1 + QString::number(radialGradient->radius()) + u',';
+            } else {
+                const QConicalGradient *conicalGradient = static_cast<const QConicalGradient *>(brush.gradient());
+
+                html += " -qt-foreground: qconicalgradient("_L1;
+                html += "cx:"_L1 + QString::number(conicalGradient->center().x()) + u',';
+                html += "cy:"_L1 + QString::number(conicalGradient->center().y()) + u',';
+                html += "angle:"_L1 + QString::number(conicalGradient->angle()) + u',';
+            }
+
+            const QStringList coordinateModes = { "logical"_L1, "stretchtodevice"_L1, "objectbounding"_L1, "object"_L1 };
+            html += "coordinatemode:"_L1;
+            html += coordinateModes.at(int(gradient->coordinateMode()));
+            html += u',';
+
+            const QStringList spreads = { "pad"_L1, "reflect"_L1, "repeat"_L1 };
+            html += "spread:"_L1;
+            html += spreads.at(int(gradient->spread()));
+
+            for (const QGradientStop &stop : gradient->stops()) {
+                html += ",stop:"_L1;
+                html += QString::number(stop.first);
+                html += u' ';
+                html += colorValue(stop.second);
+            }
+
+            html += ");"_L1;
         } else {
             html += " color:"_L1;
             html += colorValue(brush.color());
@@ -2687,6 +2748,63 @@ bool QTextHtmlExporter::emitCharFormatStyle(const QTextCharFormat &format)
         html += " word-spacing:"_L1;
         html += QString::number(format.fontWordSpacing());
         html += "px;"_L1;
+        attributesEmitted = true;
+    }
+
+    if (format.hasProperty(QTextFormat::TextOutline)) {
+        QPen outlinePen = format.textOutline();
+        html += " -qt-stroke-color:"_L1;
+        html += colorValue(outlinePen.color());
+        html += u';';
+
+        html += " -qt-stroke-width:"_L1;
+        html += QString::number(outlinePen.widthF());
+        html += "px;"_L1;
+
+        html += " -qt-stroke-linecap:"_L1;
+        if (outlinePen.capStyle() == Qt::SquareCap)
+            html += "squarecap;"_L1;
+        else if (outlinePen.capStyle() == Qt::FlatCap)
+            html += "flatcap;"_L1;
+        else if (outlinePen.capStyle() == Qt::RoundCap)
+            html += "roundcap;"_L1;
+
+        html += " -qt-stroke-linejoin:"_L1;
+        if (outlinePen.joinStyle() == Qt::MiterJoin)
+            html += "miterjoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::SvgMiterJoin)
+            html += "svgmiterjoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::BevelJoin)
+            html += "beveljoin;"_L1;
+        else if (outlinePen.joinStyle() == Qt::RoundJoin)
+            html += "roundjoin;"_L1;
+
+        if (outlinePen.joinStyle() == Qt::MiterJoin ||
+            outlinePen.joinStyle() == Qt::SvgMiterJoin) {
+            html += " -qt-stroke-miterlimit:"_L1;
+            html += QString::number(outlinePen.miterLimit());
+            html += u';';
+        }
+
+        if (outlinePen.style() == Qt::CustomDashLine && !outlinePen.dashPattern().empty()) {
+            html += " -qt-stroke-dasharray:"_L1;
+            QString dashArrayString;
+            QList<qreal> dashes = outlinePen.dashPattern();
+
+            for (int i = 0; i < dashes.length() - 1; i++) {
+                qreal dash = dashes[i];
+                dashArrayString += QString::number(dash) + u',';
+            }
+
+            dashArrayString += QString::number(dashes.last());
+            html += dashArrayString;
+            html += u';';
+
+            html += " -qt-stroke-dashoffset:"_L1;
+            html += QString::number(outlinePen.dashOffset());
+            html += u';';
+        }
+
         attributesEmitted = true;
     }
 
@@ -2874,6 +2992,17 @@ void QTextHtmlExporter::emitFragment(const QTextFragment &fragment)
 
             html += "<img"_L1;
 
+            QString maxWidthCss;
+
+            if (imgFmt.hasProperty(QTextFormat::ImageMaxWidth)) {
+                auto length = imgFmt.lengthProperty(QTextFormat::ImageMaxWidth);
+                maxWidthCss += "max-width:"_L1;
+                if (length.type() == QTextLength::PercentageLength)
+                    maxWidthCss += QString::number(length.rawValue()) + "%;"_L1;
+                else if (length.type() == QTextLength::FixedLength)
+                    maxWidthCss += QString::number(length.rawValue()) + "px;"_L1;
+            }
+
             if (imgFmt.hasProperty(QTextFormat::ImageName))
                 emitAttribute("src", imgFmt.name());
 
@@ -2890,9 +3019,11 @@ void QTextHtmlExporter::emitFragment(const QTextFragment &fragment)
                 emitAttribute("height", QString::number(imgFmt.height()));
 
             if (imgFmt.verticalAlignment() == QTextCharFormat::AlignMiddle)
-                html += " style=\"vertical-align: middle;\""_L1;
+                html += " style=\"vertical-align: middle;"_L1 + maxWidthCss + u'\"';
             else if (imgFmt.verticalAlignment() == QTextCharFormat::AlignTop)
-                html += " style=\"vertical-align: top;\""_L1;
+                html += " style=\"vertical-align: top;"_L1 + maxWidthCss + u'\"';
+            else if (!maxWidthCss.isEmpty())
+                html += " style=\""_L1 + maxWidthCss + u'\"';
 
             if (QTextFrame *imageFrame = qobject_cast<QTextFrame *>(doc->objectForFormat(imgFmt)))
                 emitFloatStyle(imageFrame->frameFormat().position());

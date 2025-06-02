@@ -1,9 +1,12 @@
+# Copyright (C) 2024 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 #####################################################################
 ## skipblacklisted Binary:
 #####################################################################
 
 qt_internal_add_executable(skipblacklisted
     NO_INSTALL
+    EXCEPTIONS
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     SOURCES
         tst_skipblacklisted.cpp

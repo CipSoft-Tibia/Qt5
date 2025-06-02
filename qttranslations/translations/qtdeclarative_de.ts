@@ -707,6 +707,10 @@
         <translation>Oktale Escape-Sequenzen sind nicht zulässig</translation>
     </message>
     <message>
+        <source>A trailing numeric separator is not allowed in numeric literals</source>
+        <translation>Numerische Literale dürfen nicht mit einem numerischen Trennzeichen enden</translation>
+    </message>
+    <message>
         <source>At least one octal digit is required after &apos;0%1&apos;</source>
         <translation>Auf &apos;0%1&apos; muss mindestens eine oktale Ziffer folgen</translation>
     </message>
@@ -721,6 +725,10 @@
     <message>
         <source>At least one hexadecimal digit is required after &apos;0%1&apos;</source>
         <translation>Auf &apos;0%1&apos; muss mindestens eine hexadezimale Ziffer folgen</translation>
+    </message>
+    <message>
+        <source>There can be at most one numeric separator between digits</source>
+        <translation>Es darf höchstens ein numerisches Trennzeichen zwischen Ziffern vorkommen</translation>
     </message>
     <message>
         <source>Unterminated regular expression backslash sequence</source>
@@ -932,10 +940,6 @@
         <translation>Falscher Zugriff auf gruppierte Eigenschaft &quot;%1&quot; des primitiven Typs &quot;%2&quot;.</translation>
     </message>
     <message>
-        <source>Invalid grouped property access: Property &quot;%1&quot; with type &quot;%2&quot;, which is not a value type</source>
-        <translation>Falscher Zugriff auf gruppierte Eigenschaft &quot;%1&quot; des Typs &quot;%2&quot;, der kein Wert-Typ ist</translation>
-    </message>
-    <message>
         <source>Cannot assign to non-existent default property</source>
         <translation>Es kann keine Zuweisung an eine nicht existierende Vorgabe-Eigenschaft erfolgen</translation>
     </message>
@@ -1074,6 +1078,14 @@
     <message>
         <source>%1 properties cannot be used here</source>
         <translation>%1-Eigenschaften können hier nicht verwendet werden</translation>
+    </message>
+    <message>
+        <source>Invalid grouped property access: Property &quot;%1&quot; with type &quot;%2&quot;, which is neither a value nor an object type</source>
+        <translation>Falscher Zugriff auf gruppierte Eigenschaft &quot;%1&quot; des Typs &quot;%2&quot;, der weder ein Wert-Typ noch ein Objekttyp ist</translation>
+    </message>
+    <message>
+        <source>Unsupported grouped property access: Property &quot;%1&quot; with type &quot;%2&quot; has a dynamic meta-object.</source>
+        <translation>Falscher Zugriff auf gruppierte Eigenschaft &quot;%1&quot; des Typs &quot;%2&quot;, der ein dynamisches Meta-Objekt hat.</translation>
     </message>
     <message>
         <source>Invalid property assignment: %1 expected</source>
@@ -1269,8 +1281,8 @@
 <context>
     <name>QQuickLayoutMirroringAttached</name>
     <message>
-        <source>LayoutDirection attached property only works with Items and Windows</source>
-        <translation>Die Eigenschaft LayoutDirection des Typs &apos;attached&apos; funktioniert nur mit Objekten des Typs Item oder Window</translation>
+        <source>LayoutMirroring attached property only works with Items and Windows</source>
+        <translation>Die Eigenschaft LayoutMirroring des Typs &apos;attached&apos; funktioniert nur mit Objekten des Typs Item oder Window</translation>
     </message>
 </context>
 <context>
@@ -1467,20 +1479,12 @@
         <translation>Unbekannte Zugriffssemantik &quot;%1&quot;.</translation>
     </message>
     <message>
-        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
-        <translation>Es werden nur name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames und immediateNames in Script-Bindings erwartet, nicht jedoch &quot;%1&quot;.</translation>
-    </message>
-    <message>
         <source>Expected only script bindings and object definitions.</source>
         <translation>Es werden Script-Bindings oder Objektdefinitionen erwartet.</translation>
     </message>
     <message>
         <source>Component definition is missing a name binding.</source>
         <translation>Bei der Komponentendefinition fehlt ein name binding.</translation>
-    </message>
-    <message>
-        <source>Expected only name, type, revision, isPointer, isList, isCloned, isConstructor, and isJavaScriptFunction in script bindings.</source>
-        <translation>Es werden nur name, type, revision, isPointer, isList, isCloned, isConstructor und isJavaScriptFunction in Script-Bindings erwartet.</translation>
     </message>
     <message>
         <source>Method or signal is missing a name script binding.</source>
@@ -1491,6 +1495,14 @@
         <translation>Es werden nur Parameter in Objektdefinitionen erwartet.</translation>
     </message>
     <message>
+        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, aliases, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
+        <translation>Es werden nur name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, aliases, exportMetaObjectRevisions, deferredNames und immediateNames in Script-Bindings erwartet, nicht jedoch &quot;%1&quot;.</translation>
+    </message>
+    <message>
+        <source>Expected only name, type, revision, isPointer, isConstant, isList, isCloned, isConstructor, and isJavaScriptFunction in script bindings.</source>
+        <translation>Es werden nur name, type, revision, isPointer, isConstant, isList, isCloned, isConstructor und isJavaScriptFunction in Script-Bindings erwartet.</translation>
+    </message>
+    <message>
         <source>Expected script binding.</source>
         <translation>Es wird script binding erwartet.</translation>
     </message>
@@ -1499,8 +1511,8 @@
         <translation>Es werden nur type, name, revision, isPointer, isReadonly, isRequired, isFinal, isList, bindable, read, write, reset, notify, index, und  privateClass und Script-Bindings erwartet.</translation>
     </message>
     <message>
-        <source>Expected only name, alias, isFlag, values, scoped, or type.</source>
-        <translation>Es werden nur name, alias, isFlag, values, scoped oder type erwartet.</translation>
+        <source>Expected only name, alias, isFlag, values, isScoped, or type.</source>
+        <translation>Es werden nur name, alias, isFlag, values, isScoped oder type erwartet.</translation>
     </message>
     <message>
         <source>Expected only name, type, isPointer, isConstant, isReadonly, or IsList script bindings.</source>
@@ -1647,22 +1659,6 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
         <translation>In visitScopeChain wurde ein unerwartetes Objekt %1 (%2) außerhalb des Gültigkeitsbereiches erreicht</translation>
     </message>
     <message>
-        <source>loadFile called without DomEnvironment or DomUniverse.</source>
-        <translation>loadFile wurde ohne DomEnvironment oder DomUniverse aufgerufen.</translation>
-    </message>
-    <message>
-        <source>loadModuleDependency called without DomEnvironment.</source>
-        <translation>loadModuleDependency wurde ohne DomEnvironment aufgerufen.</translation>
-    </message>
-    <message>
-        <source>Cannot load builtins without DomEnvironment</source>
-        <translation>Builtins können nicht ohne DomEnvironment geladen werden</translation>
-    </message>
-    <message>
-        <source>Called loadPendingDependencies without environment</source>
-        <translation>loadPendingDependencies wurde ohne Umgebung aufgerufen</translation>
-    </message>
-    <message>
         <source>Circular reference:</source>
         <translation>Zirkuläre Referenz:</translation>
     </message>
@@ -1731,10 +1727,6 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
     <message>
         <source>Ignoring request to load file %1 of unexpected type %2, calling callback immediately</source>
         <translation>Die Anforderung zum Laden der Datei %1 des unerwarteten Typs %2 wird ignoriert; callback wird direkt aufgerufen</translation>
-    </message>
-    <message>
-        <source>Ignoring callback for loading of %1: universe is not valid anymore</source>
-        <translation>Der Callback für das Laden von %1 wird ignoriert: Universum ist nicht mehr gültig</translation>
     </message>
     <message>
         <source>Non existing path %1</source>
@@ -1911,10 +1903,6 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
     <message>
         <source>Uninitialized LoadInfo %1</source>
         <translation>LoadInfo %1 wurde bereinigt</translation>
-    </message>
-    <message>
-        <source>Ignoring dependencies for non resolved path import %1</source>
-        <translation>Ignoriere Abhängigkeiten für nicht aufgelösten Pfadimport %1</translation>
     </message>
     <message>
         <source>Ignoring dependencies for empty (invalid) type %1</source>
@@ -2117,14 +2105,14 @@ Revision %1 entspricht Version %2.%3; sie sollte %4.%5 sein.</translation>
 <context>
     <name>FileDialog</name>
     <message>
-        <source>“%1” already exists. Do you want to replace it?</source>
-        <translation>Die Datei “%1“ existiert bereits. Soll sie überschrieben werden?</translation>
+        <source>Overwrite file?</source>
+        <translation>Datei überschreiben?</translation>
     </message>
     <message>
-        <source>A file with the same name already exists in %1.
-Replacing it will overwrite its current contents.</source>
-        <translation>Eine Datei gleichen Names existiert bereits in %1.
-Sie zu ersetzen, wird den gegenwärtigen Inhalt überschreiben.</translation>
+        <source>“%1” already exists.
+Do you want to replace it?</source>
+        <translation>“%1“ existiert bereits.
+Soll sie überschrieben werden?</translation>
     </message>
     <message>
         <source>File name</source>
@@ -2187,8 +2175,16 @@ Sie zu ersetzen, wird den gegenwärtigen Inhalt überschreiben.</translation>
 <context>
     <name>QQuickTextDocument</name>
     <message>
-        <source>Cannot load: %1</source>
-        <translation>Fehler beim Laden: %1</translation>
+        <source>Null document object: cannot load</source>
+        <translation>Kein Dokumentobjekt: Laden nicht möglich</translation>
+    </message>
+    <message>
+        <source>Failed to read: %1</source>
+        <translation>Lesen schlug fehl: %1</translation>
+    </message>
+    <message>
+        <source>%1 does not exist</source>
+        <translation>%1 existiert nicht</translation>
     </message>
     <message>
         <source>Cannot save: %1</source>
@@ -2197,6 +2193,61 @@ Sie zu ersetzen, wird den gegenwärtigen Inhalt überschreiben.</translation>
     <message>
         <source>Can only save to local files</source>
         <translation>Es kann nur in lokale Dateien gespeichert werden</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlComponentAndAliasResolverBase</name>
+    <message>
+        <source>Cannot wrap implicit component</source>
+        <translation>Eine implizite Komponente kann nicht eingebunden werden</translation>
+    </message>
+    <message>
+        <source>Cannot mark object as component</source>
+        <translation>Ein Objekt kann nicht als Komponente gekennzeichnet werden</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new functions.</source>
+        <translation>Komponentenobjekte können keine neuen Funktionen deklarieren.</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new properties.</source>
+        <translation>Komponentenobjekte können keine neuen Eigenschaften deklarieren.</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new signals.</source>
+        <translation>Komponentenobjekte können keine neuen Signale deklarieren.</translation>
+    </message>
+    <message>
+        <source>Cannot create empty component specification</source>
+        <translation>Es kann keine leere Komponenten-Spezifikation erstellt werden</translation>
+    </message>
+    <message>
+        <source>Component elements may not contain properties other than id</source>
+        <translation>Komponenten-Elemente können außer id keine Eigenschaften enthalten</translation>
+    </message>
+    <message>
+        <source>Invalid component body specification</source>
+        <translation>Ungültige Spezifikation des Rumpfes der Komponente</translation>
+    </message>
+    <message>
+        <source>id is not unique</source>
+        <translation>Mehrdeutige Id</translation>
+    </message>
+    <message>
+        <source>Circular alias reference detected</source>
+        <translation>Zirkuläre Alias-Referenz festgestellt</translation>
+    </message>
+    <message>
+        <source>Invalid alias reference. Unable to find id &quot;%1&quot;</source>
+        <translation>Ungültige Alias-Referenz. Die Id &quot;%1&quot; kann nicht gefunden werden</translation>
+    </message>
+    <message>
+        <source>Invalid alias target location: %1</source>
+        <translation>Ungültiges Alias-Ziel: %1</translation>
+    </message>
+    <message>
+        <source>Unresolved alias found</source>
+        <translation>Unaufgelöster Alias gefunden</translation>
     </message>
 </context>
 </TS>

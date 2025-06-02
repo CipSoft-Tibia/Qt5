@@ -110,7 +110,6 @@ being used, and is possible that they will do nothing at all.`
         }
 
         ColumnLayout {
-            visible: !rootView.specularGlossyMode
             VerticalSectionSeparator {}
 
             MarkdownLabel {
@@ -122,6 +121,7 @@ for artistic or stylistic reasons.`
             }
 
             MarkdownLabel {
+                visible: !rootView.specularGlossyMode
                 text: `### Specular Amount
 This Specular Amount property controls the strength of specularity (highlights
 and reflections) of a dielectric material (non-metallic). Normally this should
@@ -129,6 +129,7 @@ be left at 1.0, but can be adjusted to reduce the specularity. Adjusting this
 property will not affect reflections caused by Image Based Lighting.`
             }
             RowLayout {
+                visible: !rootView.specularGlossyMode
                 Label {
                     text: "Specular Amount  (" + rootView.targetMaterial.specularAmount.toFixed(2) + ")"
                     Layout.fillWidth: true
@@ -142,6 +143,88 @@ property will not affect reflections caused by Image Based Lighting.`
             }
 
             MarkdownLabel {
+                text: `### Fresnel Power
+This property decreases head-on reflections (looking directly at the
+surface) while maintaining reflections seen at grazing angles.`
+            }
+            RowLayout {
+                Label {
+                    text: "Fresnel Power  (" + (rootView.targetMaterial.fresnelPower !== undefined ? rootView.targetMaterial.fresnelPower.toFixed(2) : 5.0) + ")"
+                    Layout.fillWidth: true
+                }
+                Slider {
+                    from: 0.0
+                    to: 10.0
+                    value: (rootView.targetMaterial.fresnelPower !== undefined ? rootView.targetMaterial.fresnelPower : 5.0)
+                    onValueChanged: rootView.targetMaterial.fresnelPower = value
+                }
+            }
+
+            MarkdownLabel {
+                text: `## Enable Fresnel ScaleBias
+The material will take Fresnel Scale and Fresnel Bias into account.`
+            }
+            RowLayout {
+                Label {
+                    text: "Enable fresnel ScaleBias"
+                }
+                Switch {
+                    checked: rootView.targetMaterial.fresnelScaleBiasEnabled
+                    onCheckedChanged: {
+                        fresnelScaleLabel.enabled = checked
+                        fresnelScale.enabled = checked
+                        fresnelBiasLabel.enabled = checked
+                        fresnelBias.enabled = checked
+                        rootView.targetMaterial.fresnelScaleBiasEnabled = checked
+                    }
+                }
+            }
+
+            MarkdownLabel {
+                id: fresnelScaleLabel
+                enabled: false
+                text: `### Fresnel Scale
+This property scale head-on reflections (looking directly at the
+surface) while maintaining reflections seen at grazing angles.`
+            }
+            RowLayout {
+                id: fresnelScale
+                enabled: false
+                Label {
+                    text: "Fresnel scale  (" + (rootView.targetMaterial.fresnelScale !== undefined ? rootView.targetMaterial.fresnelScale.toFixed(2) : 1.0) + ")"
+                    Layout.fillWidth: true
+                }
+                Slider {
+                    from: 0.0
+                    to: 10.0
+                    value: (rootView.targetMaterial.fresnelScale !== undefined ? rootView.targetMaterial.fresnelScale : 1.0)
+                    onValueChanged: rootView.targetMaterial.fresnelScale = value
+                }
+            }
+
+            MarkdownLabel {
+                id: fresnelBiasLabel
+                enabled: false
+                text: `### Fresnel Bias
+This property push forward head-on reflections (looking directly at the
+surface) while maintaining reflections seen at grazing angles.`
+            }
+            RowLayout {
+                id: fresnelBias
+                enabled: false
+                Label {
+                    text: "Fresnel Bias  (" + (rootView.targetMaterial.fresnelBias !== undefined ? rootView.targetMaterial.fresnelBias.toFixed(2) : 0.0) + ")"
+                    Layout.fillWidth: true
+                }
+                Slider {
+                    from: -1.0
+                    to: 1.0
+                    value: (rootView.targetMaterial.fresnelBias !== undefined ? rootView.targetMaterial.fresnelBias : 0.0)
+                    onValueChanged: rootView.targetMaterial.fresnelBias = value
+                }
+            }
+            MarkdownLabel {
+                visible: !rootView.specularGlossyMode
                 text: `### Specular Tint
 The Specular Tint property defines how much of the Base Color of the material
 contributes to specular reflections.  This property only has an affect with
@@ -151,6 +234,7 @@ the Base Color to also tint the specular reflections for dielectrics as well for
 artistic reasons.`
             }
             RowLayout {
+                visible: !rootView.specularGlossyMode
                 Label {
                     text: "Specular Tint (" + rootView.targetMaterial.specularTint.toFixed(2) + ")"
                     Layout.fillWidth: true
@@ -164,14 +248,44 @@ artistic reasons.`
             }
 
             MarkdownLabel {
+                visible: !rootView.specularGlossyMode
                 text: `### Specular Map
 The Specular Map property defines color (RGB) texture to modulate the amount
 and the color of specularity across the surface of the material. These values
 are multiplied by the Specular Amount property. This property will only have
 an affect if the material is a dielectric (non-metallic).`
             }
-
+            RowLayout {
+                visible: !rootView.specularGlossyMode
+                Label {
+                    text: "Enable specular single channel Map
+The material will use the single value of the specularChannel from
+the specularMap as RGB value."
+                }
+                Switch {
+                    checked: rootView.targetMaterial.specularSingleChannelEnabled
+                    onCheckedChanged: {
+                        rootView.targetMaterial.specularSingleChannelEnabled = checked
+                    }
+                }
+            }
+            ComboBox {
+                visible: !rootView.specularGlossyMode
+                enabled: rootView.targetMaterial.specularSingleChannelEnabled
+                textRole: "text"
+                valueRole: "value"
+                implicitContentWidthPolicy: ComboBox.WidestText
+                onActivated: rootView.targetMaterial.specularChannel = currentValue
+                Component.onCompleted: currentIndex = indexOfValue(rootView.targetMaterial.specularChannel)
+                model: [
+                    { value: PrincipledMaterial.R, text: "Red Channel"},
+                    { value: PrincipledMaterial.G, text: "Green Channel"},
+                    { value: PrincipledMaterial.B, text: "Blue Channel"},
+                    { value: PrincipledMaterial.A, text: "Alpha Channel"}
+                ]
+            }
             TextureSourceControl {
+                visible: !rootView.specularGlossyMode
                 defaultClearColor: "black"
                 defaultTexture: "maps/metallic/metallic.jpg"
                 onTargetTextureChanged: {
@@ -180,6 +294,7 @@ an affect if the material is a dielectric (non-metallic).`
             }
 
             MarkdownLabel {
+                visible: !rootView.specularGlossyMode
                 text: `### Specular Reflection Map
 The Specular Reflection Map property is for providing a static environment map
 for cheap reflection calculations.  Unlike most properties which take textures
@@ -190,6 +305,7 @@ to using Imaged Based Lighting via lightProbes to get static reflections.`
             }
 
             TextureSourceControl {
+                visible: !rootView.specularGlossyMode
                 defaultClearColor: "black"
                 defaultTexture: "maps/small_envmap.jpg"
                 envMapMode: true

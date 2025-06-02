@@ -8,25 +8,45 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
+#include <QPoint>
+#include <QtMath>
+
+using namespace Qt::StringLiterals;
+
+qreal OSMTileData::distanceTo(QPoint p) const
+{
+    const qreal deltaX = p.x() - TileX;
+    const qreal deltaY = p.y() - TileY;
+    return qSqrt(deltaX * deltaX + deltaY * deltaY);
+}
+
+//%1 = zoom level(15 the default and only one here that seems working), %2 = x tile number, %3 = y tile number
+static constexpr auto URL_OSMB_JSON = "https://983wdxn2c2.execute-api.eu-north-1.amazonaws.com/production/osmbuildingstile?z=%1&x=%2&y=%3&token=%4"_L1;
+
+//%1 = zoom level(is dynamic), %2 = x tile number, %3 = y tile number
+static constexpr auto URL_OSMB_MAP = "https://tile-a.openstreetmap.fr/hot/%1/%2/%3.png"_L1;
+
+size_t qHash(OSMTileData data, size_t seed) noexcept
+{
+    return qHashMulti(seed, data.TileX, data.TileY, data.ZoomLevel);
+}
+
+static QString tileKey(const OSMTileData &tile)
+{
+    return QString::number(tile.ZoomLevel) + u',' + QString::number(tile.TileX)
+           + u',' + QString::number(tile.TileY);
+}
 
 QGeoCoordinate importPosition(const QVariant &position)
 {
     QGeoCoordinate returnedCoordinates;
-    const QVariantList positionList = position.value<QVariantList>();
-    for (qsizetype i  = 0; i < positionList.size(); ++i) { // Iterating Point coordinates arrays
-        double value = positionList.at(i).toDouble();
-        switch (i) {
-        case 0:
-            returnedCoordinates.setLongitude(value);
-            break;
-        case 1:
-            returnedCoordinates.setLatitude(value);
-            break;
-        case 2:
-            returnedCoordinates.setAltitude(value);
-            break;
-        default:
-            break;
+    const auto positionList = position.value<QVariantList>();
+    if (!positionList.isEmpty()) {
+        returnedCoordinates.setLongitude(positionList.constFirst().toDouble());
+        if (positionList.size() > 1) {
+            returnedCoordinates.setLatitude(positionList.at(1).toDouble());
+            if (positionList.size() > 2)
+                returnedCoordinates.setAltitude(positionList.at(2).toDouble());
         }
     }
     return returnedCoordinates;
@@ -35,9 +55,8 @@ QGeoCoordinate importPosition(const QVariant &position)
 QList<QGeoCoordinate> importArrayOfPositions(const QVariant &arrayOfPositions)
 {
     QList<QGeoCoordinate> returnedCoordinates;
-    const QVariantList positionsList = arrayOfPositions.value<QVariantList>();
-    for (const auto &position : positionsList) // Iterating the LineString coordinates nested arrays
-    {
+    const auto positionsList = arrayOfPositions.value<QVariantList>();
+    for (const auto &position : positionsList) { // Iterating the LineString coordinates nested arrays
         QGeoCoordinate coordinate = importPosition(position);
         if ( coordinate.isValid() )
             returnedCoordinates.append(coordinate); // Populating the QList of coordinates
@@ -48,7 +67,7 @@ QList<QGeoCoordinate> importArrayOfPositions(const QVariant &arrayOfPositions)
 QList<QList<QGeoCoordinate>> importArrayOfArrayOfPositions(const QVariant &arrayOfArrayofPositions)
 {
     QList<QList<QGeoCoordinate>> returnedCoordinates;
-    const QVariantList positionsList = arrayOfArrayofPositions.value<QVariantList>();
+    const auto positionsList = arrayOfArrayofPositions.value<QVariantList>();
     for (const QVariant &position : positionsList) // Iterating the Polygon coordinates nested arrays
         returnedCoordinates << importArrayOfPositions(position);
     return returnedCoordinates;
@@ -58,7 +77,7 @@ QList<QList<QGeoCoordinate>> importArrayOfArrayOfPositions(const QVariant &array
 QGeoPolygon importPolygon(const QVariantMap &inputMap)
 {
     QGeoPolygon returnedObject;
-    const QVariant valueCoordinates = inputMap.value(QStringLiteral("coordinates"));
+    const QVariant valueCoordinates = inputMap.value("coordinates"_L1);
     const QList<QList<QGeoCoordinate>> perimeters = importArrayOfArrayOfPositions(valueCoordinates);
     for (qsizetype i  = 0; i < perimeters.size(); ++i) { // Import an array of QList<QGeocoordinates>
         if (i == 0)
@@ -75,17 +94,17 @@ QVariantMap importGeometry(const QVariantMap &inputMap)
 
     const int geometryTypesLen = 1;
     QString geometryTypes[] = {
-        QStringLiteral("Polygon"),
+        "Polygon"_L1,
     };
     enum geoTypeSwitch {
         Polygon,
     };
     for (int i = 0; i < geometryTypesLen; ++i) {
-    if (inputMap.value(QStringLiteral("type")).value<QString>() == geometryTypes[i]) {
+    if (inputMap.value("type"_L1).value<QString>() == geometryTypes[i]) {
         switch (i) {
         case Polygon: {
-            returnedObject.insert(QStringLiteral("type"), QStringLiteral("Polygon"));
-            returnedObject.insert(QStringLiteral("data"), QVariant::fromValue(importPolygon(inputMap)));
+            returnedObject.insert("type"_L1, "Polygon"_L1);
+            returnedObject.insert("data"_L1, QVariant::fromValue(importPolygon(inputMap)));
             break;
         }
         default:
@@ -99,15 +118,16 @@ QVariantMap importGeometry(const QVariantMap &inputMap)
 static QVariantList importFeatureCollection(const QVariantMap &inputMap)
 {
     QVariantList returnedObject;
-    const QVariantList featuresList = inputMap.value(QStringLiteral("features")).value<QVariantList>();
+    const auto featuresList = inputMap.value("features"_L1).value<QVariantList>();
     for (const QVariant &inputfeature : featuresList) {
-        QVariantMap inputFeatureMap = inputfeature.value<QVariantMap>();
-        QVariantMap singleFeatureMap = importGeometry(inputFeatureMap.value(QStringLiteral("geometry")).value<QVariantMap>());
-        const QVariantMap importedProperties = inputFeatureMap.value(QStringLiteral("properties")).value<QVariantMap>();
-        singleFeatureMap.insert(QStringLiteral("properties"), importedProperties);
-        if (inputFeatureMap.contains(QStringLiteral("id"))) {
-            QVariant importedId = inputFeatureMap.value(QStringLiteral("id")).value<QVariant>();
-            singleFeatureMap.insert(QStringLiteral("id"), importedId);
+        auto inputFeatureMap = inputfeature.value<QVariantMap>();
+        auto singleFeatureMap = importGeometry(inputFeatureMap.value("geometry"_L1).value<QVariantMap>());
+        const auto importedProperties = inputFeatureMap.value("properties"_L1).value<QVariantMap>();
+        singleFeatureMap.insert("properties"_L1, importedProperties);
+        const auto it = inputFeatureMap.constFind("id"_L1);
+        if (it != inputFeatureMap.cend()) {
+            auto importedId = it.value().value<QVariant>();
+            singleFeatureMap.insert("id"_L1, importedId);
         }
         returnedObject.append(singleFeatureMap);
     }
@@ -122,9 +142,9 @@ static QVariantList importGeoJson(const QJsonDocument &geoJson)
 
     const int geometryTypesLen = 3;
     QString geoType[] = {
-        QStringLiteral("Polygon"),
-        QStringLiteral("Feature"),
-        QStringLiteral("FeatureCollection")
+        "Polygon"_L1,
+        "Feature"_L1,
+        "FeatureCollection"_L1
     };
     enum geoTypeSwitch {
         Polygon,
@@ -134,8 +154,8 @@ static QVariantList importGeoJson(const QJsonDocument &geoJson)
     QVariantMap parsedGeoJsonMap;
 
     // Checking whether the JSON object has a "type" member
-    const QVariant keyVariant = rootGeoJsonObject.value(QStringLiteral("type"));
-    QString valueType = keyVariant.value<QString>();
+    const QVariant keyVariant = rootGeoJsonObject.value("type"_L1);
+    auto valueType = keyVariant.value<QString>();
 
     // Checking whether the "type" member has a GeoJSON admitted value
     for (int i = 0; i < geometryTypesLen; ++i) {
@@ -144,18 +164,19 @@ static QVariantList importGeoJson(const QJsonDocument &geoJson)
             case Polygon: {
                 QGeoPolygon poly = importPolygon(rootGeoJsonObject);
                 QVariant dataNodeValue = QVariant::fromValue(poly);
-                parsedGeoJsonMap.insert(QStringLiteral("type"), QStringLiteral("Polygon"));
-                parsedGeoJsonMap.insert(QStringLiteral("data"), dataNodeValue);
+                parsedGeoJsonMap.insert("type"_L1, "Polygon"_L1);
+                parsedGeoJsonMap.insert("data"_L1, dataNodeValue);
                 break;
             }
             // Single GeoJson geometry object with properties
             case Feature: {
-                parsedGeoJsonMap = importGeometry(rootGeoJsonObject.value(QStringLiteral("geometry")).value<QVariantMap>());
-                QVariantMap importedProperties = rootGeoJsonObject.value(QStringLiteral("properties")).value<QVariantMap>();
-                parsedGeoJsonMap.insert(QStringLiteral("properties"), importedProperties);
-                if (rootGeoJsonObject.contains(QStringLiteral("id"))){
-                    QVariant importedId = rootGeoJsonObject.value(QStringLiteral("id")).value<QVariant>();
-                    parsedGeoJsonMap.insert(QStringLiteral("id"), importedId);
+                parsedGeoJsonMap = importGeometry(rootGeoJsonObject.value("geometry"_L1).value<QVariantMap>());
+                auto importedProperties = rootGeoJsonObject.value("properties"_L1).value<QVariantMap>();
+                parsedGeoJsonMap.insert("properties"_L1, importedProperties);
+                const auto it = rootGeoJsonObject.constFind("id"_L1);
+                if (it != rootGeoJsonObject.cend()){
+                    auto importedId = it.value().value<QVariant>();
+                    parsedGeoJsonMap.insert("id"_L1, importedId);
                 }
                 break;
             }
@@ -163,16 +184,16 @@ static QVariantList importGeoJson(const QJsonDocument &geoJson)
             case FeatureCollection: {
                 QVariantList featCollection = importFeatureCollection(rootGeoJsonObject);
                 QVariant dataNodeValue = QVariant::fromValue(featCollection);
-                parsedGeoJsonMap.insert(QStringLiteral("type"), QStringLiteral("FeatureCollection"));
-                parsedGeoJsonMap.insert(QStringLiteral("data"), dataNodeValue);
+                parsedGeoJsonMap.insert("type"_L1, "FeatureCollection"_L1);
+                parsedGeoJsonMap.insert("data"_L1, dataNodeValue);
                 break;
             }
             default:
                 break;
             }
-            QVariant bboxNodeValue = rootGeoJsonObject.value(QStringLiteral("bbox"));
+            QVariant bboxNodeValue = rootGeoJsonObject.value("bbox"_L1);
             if (bboxNodeValue.isValid()) {
-                parsedGeoJsonMap.insert(QStringLiteral("bbox"), bboxNodeValue);
+                parsedGeoJsonMap.insert("bbox"_L1, bboxNodeValue);
             }
             returnedList.append(parsedGeoJsonMap);
         } else if (i >= 9) {
@@ -198,14 +219,12 @@ OSMRequest::OSMRequest(QObject *parent)
 #else
             const int numConcurrentRequests = 6;
 #endif
-            if ( !m_buildingsQueue.isEmpty() && m_buildingsNumberOfRequestsInFlight < numConcurrentRequests )
-            {
+            if ( !m_buildingsQueue.isEmpty() && m_buildingsNumberOfRequestsInFlight < numConcurrentRequests ) {
                 getBuildingsDataRequest(m_buildingsQueue.dequeue());
                 ++m_buildingsNumberOfRequestsInFlight;
             }
 
-            if ( !m_mapsQueue.isEmpty() && m_mapsNumberOfRequestsInFlight < numConcurrentRequests )
-            {
+            if ( !m_mapsQueue.isEmpty() && m_mapsNumberOfRequestsInFlight < numConcurrentRequests ) {
                 getMapsDataRequest(m_mapsQueue.dequeue());
                 ++m_mapsNumberOfRequestsInFlight;
             }
@@ -216,7 +235,7 @@ OSMRequest::OSMRequest(QObject *parent)
 
 bool OSMRequest::isDemoToken() const
 {
-    return "" == m_token;
+    return m_token.isEmpty();
 }
 
 QString OSMRequest::token() const
@@ -240,11 +259,9 @@ void OSMRequest::getBuildingsData(const QQueue<OSMTileData> &buildingsQueue) {
 
 void OSMRequest::getBuildingsDataRequest(const OSMTileData &tile)
 {
-    QString fileName = "data/" + QString::number(tile.ZoomLevel) + "," + QString::number(tile.TileX) + ","
-                       + QString::number(tile.TileY) + ".json";
+    const QString fileName = "data/"_L1 + tileKey(tile) + ".json"_L1;
     QFileInfo file(fileName);
-    if ( file.size() )
-    {
+    if ( file.size() > 0 ) {
         QFile file(fileName);
         if (file.open(QFile::ReadOnly)){
             QByteArray data = file.readAll();
@@ -255,18 +272,24 @@ void OSMRequest::getBuildingsDataRequest(const OSMTileData &tile)
         }
     }
 
-    QUrl url = QUrl(tr(m_uRL_OSMB_JSON).arg(QString::number(tile.ZoomLevel),
-                                            QString::number(tile.TileX),
-                                            QString::number(tile.TileY),
-                                            m_token));
+    QUrl url = QUrl(QString(URL_OSMB_JSON).arg(QString::number(tile.ZoomLevel),
+                                               QString::number(tile.TileX),
+                                               QString::number(tile.TileY),
+                                               m_token));
     QNetworkReply * reply = m_networkAccessManager.get( QNetworkRequest(url));
-    connect( reply, &QNetworkReply::finished, this, [this, reply, tile, url](){
+    connect( reply, &QNetworkReply::finished, this, [this, reply, tile](){
         reply->deleteLater();
         if ( reply->error() == QNetworkReply::NoError ) {
             QByteArray data = reply->readAll();
             emit buildingsDataReady( importGeoJson(QJsonDocument::fromJson( data )), tile.TileX, tile.TileY, tile.ZoomLevel );
-        }else {
-            qWarning() << "OSMRequest::getBuildingsData" << reply->error() << url << reply->readAll();
+        } else {
+            const QByteArray message = reply->readAll();
+            static QByteArray lastMessage;
+            if (message != lastMessage) {
+                lastMessage = message;
+                qWarning().noquote() << "OSMRequest::getBuildingsData " << reply->error()
+                                     << reply->url() << message;
+            }
         }
         --m_buildingsNumberOfRequestsInFlight;
     } );
@@ -283,11 +306,9 @@ void OSMRequest::getMapsData(const QQueue<OSMTileData> &mapsQueue) {
 
 void OSMRequest::getMapsDataRequest(const OSMTileData &tile)
 {
-    QString fileName = "data/" + QString::number(tile.ZoomLevel) + "," + QString::number(tile.TileX)
-                       + "," + QString::number(tile.TileY) + ".png";
+    const QString fileName = "data/"_L1 + tileKey(tile) + ".png"_L1;
     QFileInfo file(fileName);
-    if ( file.size() )
-    {
+    if ( file.size() > 0) {
         QFile file(fileName);
         if (file.open(QFile::ReadOnly)){
             QByteArray data = file.readAll();
@@ -298,17 +319,23 @@ void OSMRequest::getMapsDataRequest(const OSMTileData &tile)
         }
     }
 
-    QUrl url = QUrl(tr(m_uRL_OSMB_MAP).arg(QString::number(tile.ZoomLevel),
-                                           QString::number(tile.TileX),
-                                           QString::number(tile.TileY)));
+    QUrl url = QUrl(QString(URL_OSMB_MAP).arg(QString::number(tile.ZoomLevel),
+                                              QString::number(tile.TileX),
+                                              QString::number(tile.TileY)));
     QNetworkReply * reply = m_networkAccessManager.get( QNetworkRequest(url));
-    connect( reply, &QNetworkReply::finished, this, [this, reply, tile, url](){
+    connect( reply, &QNetworkReply::finished, this, [this, reply, tile](){
         reply->deleteLater();
         if ( reply->error() == QNetworkReply::NoError ) {
             QByteArray data = reply->readAll();
             emit mapsDataReady( data, tile.TileX, tile.TileY, tile.ZoomLevel );
-        }else {
-            qWarning() << "OSMRequest::getMapsDataRequest" << reply->error() << url << reply->readAll();
+        } else {
+            const QByteArray message = reply->readAll();
+            static QByteArray lastMessage;
+            if (message != lastMessage) {
+                lastMessage = message;
+                qWarning().noquote() << "OSMRequest::getMapsDataRequest" << reply->error()
+                                     << reply->url() << message;
+            }
         }
         --m_mapsNumberOfRequestsInFlight;
     } );

@@ -21,7 +21,7 @@
 #import <QuartzCore/CAEAGLLayer.h>
 #endif
 
-#ifdef Q_OS_IOS
+#if QT_CONFIG(metal)
 #import <QuartzCore/CAMetalLayer.h>
 #endif
 
@@ -41,7 +41,7 @@ QIOSWindow::QIOSWindow(QWindow *window, WId nativeHandle)
         m_view = reinterpret_cast<UIView *>(nativeHandle);
         [m_view retain];
     } else {
-#ifdef Q_OS_IOS
+#if QT_CONFIG(metal)
         if (window->surfaceType() == QSurface::RasterSurface)
             window->setSurfaceType(QSurface::MetalSurface);
 
@@ -258,16 +258,39 @@ void QIOSWindow::setWindowState(Qt::WindowStates state)
             // it to clamp the window geometry. Instead just use the UIWindow
             // directly, which represents our "screen".
             applyGeometry(uiWindowBounds);
+        } else if (isRunningOnVisionOS()) {
+            // On visionOS there is no concept of a screen, and hence no concept of
+            // screen-relative system UI that we should keep top level windows away
+            // from, so don't apply the UIWindow safe area insets to the screen.
+            applyGeometry(uiWindowBounds);
         } else {
-            // When an application is in split-view mode, the UIScreen still has the
-            // same geometry, but the UIWindow is resized to the area reserved for the
-            // application. We use this to constrain the geometry used when applying the
-            // fullscreen or maximized window states. Note that we do not do this
-            // in applyGeometry(), as we don't want to artificially limit window
-            // placement "outside" of the screen bounds if that's what the user wants.
-            QRect fullscreenGeometry = screen()->geometry().intersected(uiWindowBounds);
-            QRect maximizedGeometry = window()->flags() & Qt::MaximizeUsingFullscreenGeometryHint ?
-                fullscreenGeometry : screen()->availableGeometry().intersected(uiWindowBounds);
+            QRect fullscreenGeometry = screen()->geometry();
+            QRect maximizedGeometry = fullscreenGeometry;
+
+#if !defined(Q_OS_VISIONOS)
+            if (!(window()->flags() & Qt::MaximizeUsingFullscreenGeometryHint)) {
+                // If the safe area margins reflect the screen's outer edges,
+                // then reduce the maximized geometry accordingly. Otherwise
+                // leave it as is, and assume the client will take the safe
+                // are margins into account explicitly.
+                UIScreen *uiScreen = m_view.window.windowScene.screen;
+                UIEdgeInsets safeAreaInsets = m_view.window.safeAreaInsets;
+                if (m_view.window.bounds.size.width == uiScreen.bounds.size.width)
+                    maximizedGeometry.adjust(safeAreaInsets.left, 0, -safeAreaInsets.right, 0);
+                if (m_view.window.bounds.size.height == uiScreen.bounds.size.height)
+                    maximizedGeometry.adjust(0, safeAreaInsets.top, 0, -safeAreaInsets.bottom);
+            }
+#endif
+
+            if (m_view.window) {
+                // On application startup, during main(), we don't have a UIWindow yet (because
+                // the UIWindowScene has not been connected yet), but once the scene has been
+                // connected and we have a UIWindow we can adjust the maximized/fullscreen size
+                // to account for split-view or floating window mode, where the UIWindow is
+                // smaller than the screen.
+                fullscreenGeometry = fullscreenGeometry.intersected(uiWindowBounds);
+                maximizedGeometry = maximizedGeometry.intersected(uiWindowBounds);
+            }
 
             if (state & Qt::WindowFullScreen)
                 applyGeometry(fullscreenGeometry);
@@ -281,14 +304,14 @@ void QIOSWindow::setWindowState(Qt::WindowStates state)
 
 void QIOSWindow::setParent(const QPlatformWindow *parentWindow)
 {
-    UIView *parentView = parentWindow ?
-        reinterpret_cast<UIView *>(parentWindow->winId())
-        : isQtApplication() && !isForeignWindow() ?
-            static_cast<QIOSScreen *>(screen())->uiWindow().rootViewController.view
-            : nullptr;
+    UIView *superview = nullptr;
+    if (parentWindow)
+        superview = reinterpret_cast<UIView *>(parentWindow->winId());
+    else if (isQtApplication() && !isForeignWindow())
+        superview = rootViewForScreen(window()->screen()->handle());
 
-    if (parentView)
-        [parentView addSubview:m_view];
+    if (superview)
+        [superview addSubview:m_view];
     else if (quiview_cast(m_view.superview))
         [m_view removeFromSuperview];
 }
@@ -301,7 +324,6 @@ void QIOSWindow::requestActivateWindow()
     if (blockedByModal())
         return;
 
-    Q_ASSERT(m_view.window);
     [m_view.window makeKeyWindow];
     [m_view becomeFirstResponder];
 
@@ -369,16 +391,6 @@ int QIOSWindow::windowLevel() const
         level = qMax(transientParentWindow->windowLevel(), level);
 
     return level;
-}
-
-void QIOSWindow::handleContentOrientationChange(Qt::ScreenOrientation orientation)
-{
-    // Update the QWindow representation straight away, so that
-    // we can update the statusbar orientation based on the new
-    // content orientation.
-    qt_window_private(window())->contentOrientation = orientation;
-
-    [m_view.qtViewController updateProperties];
 }
 
 void QIOSWindow::applicationStateChanged(Qt::ApplicationState)

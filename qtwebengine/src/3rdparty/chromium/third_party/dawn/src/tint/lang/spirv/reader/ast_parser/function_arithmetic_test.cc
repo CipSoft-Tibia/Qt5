@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
 #include "src/tint/lang/spirv/reader/ast_parser/function.h"
@@ -588,9 +601,15 @@ INSTANTIATE_TEST_SUITE_P(SpirvASTParserTest_UMod,
                              BinaryData{"v2uint", "v2uint_10_20", "OpUMod", "v2uint_20_10", "vec2u",
                                         AstFor("v2uint_10_20"), "%", AstFor("v2uint_20_10")}));
 
-// Currently WGSL is missing a mapping for OpSRem
-// https://github.com/gpuweb/gpuweb/issues/702
+// For non-exceptional cases SPIR-V says:
+//   Sign of result of OpSRem matches the sign of the *first* operand.
+//        This is like WGSL % operator.
+//   Sign of result of OpSMod matches the sign of the *second* operand.
+//
+// But then Vulkan says behaviour is undefined if either operand is negative.
+// You may as well use OpUMod.
 
+// Test OpSMod
 INSTANTIATE_TEST_SUITE_P(SpirvASTParserTest_SMod,
                          SpvBinaryArithTest,
                          ::testing::Values(
@@ -645,6 +664,73 @@ TEST_F(SpvBinaryArithTestBasic, SMod_Vector_UnsignedResult) {
      %100 = OpFunction %void None %voidfn
      %entry = OpLabel
      %1 = OpSMod %v2uint %v2int_30_40 %v2int_40_30
+     OpReturn
+     OpFunctionEnd
+  )";
+    auto p = parser(test::Assemble(assembly));
+    ASSERT_TRUE(p->BuildAndParseInternalModuleExceptFunctions()) << p->error() << "\n" << assembly;
+    auto fe = p->function_emitter(100);
+    EXPECT_TRUE(fe.EmitBody()) << p->error();
+    auto ast_body = fe.ast_body();
+    EXPECT_THAT(test::ToString(p->program(), ast_body),
+                HasSubstr(R"(let x_1 = bitcast<vec2u>((vec2i(30i, 40i) % vec2i(40i, 30i)));)"));
+}
+
+// Test OpSRem
+INSTANTIATE_TEST_SUITE_P(SpirvASTParserTest_SRem,
+                         SpvBinaryArithTest,
+                         ::testing::Values(
+                             // Both int
+                             BinaryData{"int", "int_30", "OpSRem", "int_40", "i32", "30i", "%",
+                                        "40i"},  // Both v2int
+                             BinaryData{"v2int", "v2int_30_40", "OpSRem", "v2int_40_30", "vec2i",
+                                        AstFor("v2int_30_40"), "%", AstFor("v2int_40_30")}));
+
+INSTANTIATE_TEST_SUITE_P(
+    SpirvASTParserTest_SRem_MixedSignednessOperands,
+    SpvBinaryArithTest,
+    ::testing::Values(
+        // Mixed, returning int, second arg uint
+        BinaryData{"int", "int_30", "OpSRem", "uint_10", "i32", "30i", "%", "bitcast<i32>(10u)"},
+        // Mixed, returning int, first arg uint
+        BinaryData{"int", "uint_10", "OpSRem", "int_30", "i32", "bitcast<i32>(10u)", "%",
+                   "30i"},  // Mixed, returning v2int, first arg v2uint
+        BinaryData{"v2int", "v2uint_10_20", "OpSRem", "v2int_30_40", "vec2i",
+                   AstFor("cast_int_v2uint_10_20"), "%", AstFor("v2int_30_40")},
+        // Mixed, returning v2int, second arg v2uint
+        BinaryData{"v2int", "v2int_30_40", "OpSRem", "v2uint_10_20", "vec2i", AstFor("v2int_30_40"),
+                   "%", AstFor("cast_int_v2uint_10_20")}));
+
+TEST_F(SpvBinaryArithTestBasic, SRem_Scalar_UnsignedResult) {
+    // The WGSL signed modulus operator expects both operands to be signed
+    // and the result is signed as well.
+    // In this test SPIR-V demands an unsigned result, so we have to
+    // wrap the result with an as-cast.
+    const auto assembly = Preamble() + R"(
+     %100 = OpFunction %void None %voidfn
+     %entry = OpLabel
+     %1 = OpSRem %uint %int_30 %int_40
+     OpReturn
+     OpFunctionEnd
+  )";
+    auto p = parser(test::Assemble(assembly));
+    ASSERT_TRUE(p->BuildAndParseInternalModuleExceptFunctions()) << p->error() << "\n" << assembly;
+    auto fe = p->function_emitter(100);
+    EXPECT_TRUE(fe.EmitBody()) << p->error();
+    auto ast_body = fe.ast_body();
+    EXPECT_THAT(test::ToString(p->program(), ast_body),
+                HasSubstr("let x_1 = bitcast<u32>((30i % 40i));"));
+}
+
+TEST_F(SpvBinaryArithTestBasic, SRem_Vector_UnsignedResult) {
+    // The WGSL signed modulus operator expects both operands to be signed
+    // and the result is signed as well.
+    // In this test SPIR-V demands an unsigned result, so we have to
+    // wrap the result with an as-cast.
+    const auto assembly = Preamble() + R"(
+     %100 = OpFunction %void None %voidfn
+     %entry = OpLabel
+     %1 = OpSRem %v2uint %v2int_30_40 %v2int_40_30
      OpReturn
      OpFunctionEnd
   )";

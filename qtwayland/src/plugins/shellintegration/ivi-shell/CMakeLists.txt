@@ -20,12 +20,15 @@ qt_internal_add_plugin(QWaylandIviShellIntegrationPlugin
         Qt::GuiPrivate
         Qt::WaylandClientPrivate
         Wayland::Client
+    QT_LICENSE_ID QT_COMMERCIAL_OR_LGPL3
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../3rdparty/protocol/ivi
 )
 
 qt6_generate_wayland_protocol_client_sources(QWaylandIviShellIntegrationPlugin
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/ivi-application.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/ivi-controller.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/ivi/ivi-application.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/ivi/ivi-controller.xml
 )
 
 #### Keys ignored in scope 1:.:.:ivi-shell.pro:<TRUE>:

@@ -39,7 +39,7 @@ export function rtlKnob(): Knob<boolean, 'rtl'> {
  * A knobUI that allows the user to upload a local file. The file is converted
  * to a base64 data url for use by the current story.
  */
-export function fileInput(): KnobUi<string> {
+export function fileInput(accept = '.svg'): KnobUi<string> {
   return {
     render(knob: Knob<string>, onChange: (val: string) => void) {
       const valueChanged = (e: Event) => {
@@ -57,7 +57,7 @@ export function fileInput(): KnobUi<string> {
       return html`
         <div>
           <mwc-formfield .label="${knob.name}">
-            <input @change=${valueChanged} type="file" accept=".svg"/>
+            <input @change=${valueChanged} type="file" accept=${accept} />
           </mwc-formfield>
         </div>
       `;

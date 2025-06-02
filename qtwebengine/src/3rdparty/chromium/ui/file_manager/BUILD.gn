@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 import("//chrome/common/features.gni")
-import("//third_party/closure_compiler/compile_js.gni")
 import(
     "//tools/code_coverage/js_source_maps/create_js_source_maps/create_js_source_maps.gni")
 import(
@@ -39,38 +38,6 @@ component("file_manager") {
   defines = [ "FILE_MANAGER_IMPLEMENTATION" ]
 }
 
-group("closure_compile") {
-  # Subfolders' closure_compile groups bundle the non-test "module" type-check
-  # groups as well as unittests and test_support.
-  testonly = true
-
-  deps = [
-    "file_manager/background/js:closure_compile",
-    "file_manager/common/js:closure_compile",
-    "file_manager/foreground/elements:closure_compile",
-    "file_manager/foreground/js:closure_compile",
-    "file_manager/foreground/js/metadata:closure_compile",
-    "file_manager/foreground/js/ui:closure_compile",
-    "image_loader:closure_compile",
-    "integration_tests:closure_compile",
-    "integration_tests/file_manager:closure_compile",
-    "integration_tests/file_manager/page_objects:closure_compile",
-  ]
-}
-
-group("unit_test_data") {
-  testonly = true
-  deps = [
-    "file_manager/background/js:js_test_type_check",
-    "file_manager/common/js:js_test_type_check",
-    "file_manager/foreground/elements:js_test_type_check",
-    "file_manager/foreground/js:js_test_type_check",
-    "file_manager/foreground/js/metadata:js_test_type_check",
-    "file_manager/foreground/js/ui:js_test_type_check",
-    "image_loader:js_test_type_check",
-  ]
-}
-
 preprocess_folder = "$target_gen_dir/preprocessed"
 
 # Move files to the preprocessed folder to combine all resources in the same
@@ -86,15 +53,7 @@ preprocess_if_expr("preprocess_static") {
     out_folder = preprocess_folder
   }
 
-  in_files = static_js_files
-
-  deps = [
-    "//ui/file_manager/file_manager/background/js:js_modules",
-    "//ui/file_manager/file_manager/common/js:js_modules",
-    "//ui/file_manager/file_manager/foreground/elements:web_components",
-    "//ui/file_manager/file_manager/foreground/js:deferred_elements",
-    "//ui/file_manager/file_manager/foreground/js:main",
-  ]
+  in_files = static_js_files + unittest_files
 }
 
 if (enable_webui_inline_sourcemaps) {
@@ -126,11 +85,6 @@ preprocess_if_expr("preprocess_static_image_loader") {
   }
 
   in_files = image_loader_static_js_files
-
-  deps = [
-    "//ui/file_manager/image_loader:background",
-    "//ui/file_manager/image_loader:js_modules",
-  ]
 }
 
 if (enable_webui_inline_sourcemaps) {
@@ -163,11 +117,22 @@ preprocess_if_expr("preprocess_generated") {
   deps = [
     ":html_wrapper_files",
     "//ui/file_manager/base/gn:file_types_data_gen_js",
-    "//ui/file_manager/file_manager/foreground/elements:elements",
     "//ui/file_manager/file_manager/foreground/elements:polymer_elements",
-    "//ui/file_manager/file_manager/foreground/elements:web_components",
   ]
 }
+
+common_path_mappings = [
+  "chrome-extension://pmfjbimdmchhbnneeidfognadeopoehp/*|preprocessed/image_loader/*",
+  "tslib|" + rebase_path(
+          "//third_party/material_web_components/components-chromium/node_modules/tslib/tslib.d.ts",
+          target_gen_dir),
+  "chrome://resources/mwc/*|" + rebase_path(
+          "//third_party/material_web_components/components-chromium/node_modules/*",
+          target_gen_dir),
+  "chrome://resources/cr_components/color_change_listener/*|" + rebase_path(
+          "$root_gen_dir/ui/webui/resources/tsc/cr_components/color_change_listener/*",
+          target_gen_dir),
+]
 
 ts_library("build_ts") {
   root_dir = preprocess_folder
@@ -179,14 +144,7 @@ ts_library("build_ts") {
   tsconfig_base = "tsconfig_base.json"
   composite = true
 
-  path_mappings = [
-    "tslib|" + rebase_path(
-            "//third_party/material_web_components/components-chromium/node_modules/tslib/tslib.d.ts",
-            target_gen_dir),
-    "chrome://resources/mwc/*|" + rebase_path(
-            "//third_party/material_web_components/components-chromium/node_modules/*",
-            target_gen_dir),
-  ]
+  path_mappings = common_path_mappings
 
   extra_deps = [
     ":copy_definitions_to_gen",
@@ -228,11 +186,7 @@ ts_library("build_ts") {
 
   manifest_excludes = [ "file_manager/externs/file_manager_private.js" ]
 
-  definitions = [
-    "//tools/typescript/definitions/chrome_event.d.ts",
-    "//tools/typescript/definitions/runtime.d.ts",
-    "//tools/typescript/definitions/tabs.d.ts",
-  ]
+  definitions = other_dts_files
   foreach(_file, generate_definitions_js_files) {
     definitions +=
         [ "$target_gen_dir/" + string_replace(_file, ".js", ".d.ts") ]
@@ -268,26 +222,23 @@ ts_library("test_build_ts") {
   tsconfig_base = "tsconfig_base.json"
   enable_source_maps = false
 
-  in_files =
-      ts_test_files + [ "file_manager/externs/test/file_manager_private.js" ]
+  in_files = unittest_files + ts_test_files +
+             [ "file_manager/externs/test/file_manager_private.js" ]
 
   manifest_excludes = [ "file_manager/externs/test/file_manager_private.js" ]
 
-  path_mappings = [
-    # for chai_assert.js.
-    "chrome://webui-test/chromeos/*|" +
-        rebase_path("$root_gen_dir/chrome/test/data/webui/chromeos/tsc/*",
-                    target_gen_dir),
-    "chrome://webui-test/*|" +
-        rebase_path("$root_gen_dir/chrome/test/data/webui/tsc/*",
-                    target_gen_dir),
-  ]
+  path_mappings =
+      common_path_mappings + [
+        # for chai_assert.js.
+        "chrome://webui-test/chromeos/*|" +
+            rebase_path("$root_gen_dir/chrome/test/data/webui/chromeos/tsc/*",
+                        target_gen_dir),
+        "chrome://webui-test/*|" +
+            rebase_path("$root_gen_dir/chrome/test/data/webui/tsc/*",
+                        target_gen_dir),
+      ]
 
-  definitions = []
-  foreach(_file, generate_definitions_js_files) {
-    definitions +=
-        [ "$target_gen_dir/" + string_replace(_file, ".js", ".d.ts") ]
-  }
+  definitions = other_dts_files
   foreach(_file, checked_in_dts_files) {
     definitions += [ "$preprocess_folder/$_file" ]
   }
@@ -297,6 +248,11 @@ ts_library("test_build_ts") {
     "//ash/webui/common/resources:build_ts",
     "//chrome/test/data/webui:build_ts",
     "//chrome/test/data/webui/chromeos:build_ts",
+    "//third_party/cros-components:cros_components_ts",
+    "//third_party/material_web_components:bundle_lit_ts",
+    "//third_party/material_web_components:library",
+    "//third_party/polymer/v3_0:library",
+    "//ui/webui/resources/cr_components/color_change_listener:build_ts",
     "//ui/webui/resources/cr_elements:build_ts",
     "//ui/webui/resources/js:build_ts",
   ]
@@ -304,12 +260,17 @@ ts_library("test_build_ts") {
     ":copy_definitions_to_gen",
     ":copy_definitions_to_preprocess",
     ":copy_fmp_test",
-    ":generate_definitions",
   ]
   if (enable_webui_inline_sourcemaps) {
-    extra_deps += [ ":create_source_maps_copy_ts" ]
+    extra_deps += [
+      ":create_source_maps_copy_ts",
+      ":create_source_maps_static",
+    ]
   } else {
-    extra_deps += [ ":copy_ts" ]
+    extra_deps += [
+      ":copy_ts",
+      ":preprocess_static",
+    ]
   }
 }
 
@@ -383,7 +344,7 @@ copy("copy_fmp_test") {
 copy("for_image_loader") {
   sources = [
     "$target_gen_dir/tsc/file_manager/common/js/file_types_base.js",
-    "file_manager/common/js/test_error_reporting.js",
+    "$target_gen_dir/tsc/file_manager/common/js/lru_cache.js",
   ]
   outputs = [ "$target_gen_dir/file_manager/common/js/{{source_file_part}}" ]
   if (enable_webui_inline_sourcemaps) {
@@ -391,20 +352,6 @@ copy("for_image_loader") {
   } else {
     deps = [ ":build_ts" ]
   }
-}
-
-js_library("js_from_ts") {
-  sources = []
-  foreach(_t, ts_files) {
-    sources += [ "$target_gen_dir/tsc/" + string_replace(_t, ".ts", ".js") ]
-  }
-  if (enable_webui_inline_sourcemaps) {
-    extra_deps = [ ":merge_source_maps" ]
-  } else {
-    extra_deps = [ ":build_ts" ]
-  }
-  externs_list =
-      [ "//ui/file_manager/file_manager/externs/app_window_common.js" ]
 }
 
 grd_prefix = "file_manager_gen"
@@ -428,6 +375,7 @@ generate_grd("build_grd") {
 
   if (optimize_webui) {
     input_files += [
+      "file_manager/background/js/runtime_loaded_test_util.rollup.js",
       "file_manager/foreground/js/deferred_elements.rollup.js",
       "file_manager/foreground/js/main.rollup.js",
       "file_manager/foreground/js/metadata/metadata_dispatcher.rollup.js",
@@ -436,10 +384,11 @@ generate_grd("build_grd") {
       # For Image Loader unittests:
       "file_manager/common/js/file_types_base.js",
       "file_manager/common/js/file_types_data.js",
-      "file_manager/common/js/test_error_reporting.js",
+      "file_manager/common/js/lru_cache.js",
     ]
 
     resource_path_rewrites += [
+      "file_manager/background/js/runtime_loaded_test_util.rollup.js|file_manager/background/js/runtime_loaded_test_util.js",
       "file_manager/foreground/js/deferred_elements.rollup.js|file_manager/foreground/js/deferred_elements.js",
       "file_manager/foreground/js/main.rollup.js|file_manager/foreground/js/main.js",
       "file_manager/foreground/js/metadata/metadata_dispatcher.rollup.js|file_manager/foreground/js/metadata/metadata_dispatcher.js",
@@ -447,7 +396,7 @@ generate_grd("build_grd") {
 
     deps += [
       ":for_image_loader",
-      "//ui/file_manager/file_manager/foreground/elements:elements",
+      "//ui/file_manager/file_manager/background/js:build",
       "//ui/file_manager/file_manager/foreground/js:build",
       "//ui/file_manager/file_manager/foreground/js:build_worker",
     ]
@@ -495,7 +444,7 @@ generate_grd("build_tests_grdp") {
   out_grd = "$target_gen_dir/tests_resources.grdp"
 
   input_files_base_dir = rebase_path(".", "//")
-  input_files = unittest_files
+  input_files = unittest_harness
 }
 
 # GRD for the actual application files that are processed by TS compiler.

@@ -9,6 +9,7 @@ qt_internal_add_test(tst_qwebenginepage
         tst_qwebenginepage.cpp
     LIBRARIES
         Qt::CorePrivate
+        Qt::GuiPrivate
         Qt::NetworkPrivate
         Qt::WebEngineCorePrivate
         Qt::WebEngineWidgets
@@ -24,10 +25,13 @@ set(tst_qwebenginepage_resource_files
     "resources/content.html"
     "resources/dynamicFrame.html"
     "resources/foo.txt"
+    "resources/fontaccess.html"
     "resources/frame_a.html"
     "resources/frame_c.html"
     "resources/framedindex.html"
     "resources/fullscreen.html"
+    "resources/hello.js"
+    "resources/hi.js"
     "resources/iframe.html"
     "resources/iframe2.html"
     "resources/iframe3.html"
@@ -38,6 +42,7 @@ set(tst_qwebenginepage_resource_files
     "resources/path with spaces.txt"
     "resources/reload.html"
     "resources/script.html"
+    "resources/script2.html"
     "resources/style.css"
     "resources/test1.html"
     "resources/test2.html"

@@ -14,38 +14,40 @@
 
 import m from 'mithril';
 
+import {classNames} from '../base/classnames';
 import {Hotkey, Platform} from '../base/hotkeys';
+import {isString} from '../base/object_utils';
+import {Icons} from '../base/semantic_icons';
 import {raf} from '../core/raf_scheduler';
-
-import {Anchor} from './anchor';
-import {classNames} from './classnames';
-import {LIBRARY_ADD_CHECK} from './icons';
-import {createPage} from './pages';
-import {PopupMenuButton} from './popup_menu';
-import {Icons} from './semantic_icons';
-import {TableShowcase} from './tables/table_showcase';
-import {Button} from './widgets/button';
-import {Callout} from './widgets/callout';
-import {Checkbox} from './widgets/checkbox';
-import {Editor} from './widgets/editor';
-import {EmptyState} from './widgets/empty_state';
-import {Form, FormLabel} from './widgets/form';
-import {HotkeyGlyphs} from './widgets/hotkey_glyphs';
-import {Icon} from './widgets/icon';
-import {Menu, MenuDivider, MenuItem, PopupMenu2} from './widgets/menu';
+import {Anchor} from '../widgets/anchor';
+import {Button} from '../widgets/button';
+import {Callout} from '../widgets/callout';
+import {Checkbox} from '../widgets/checkbox';
+import {Editor} from '../widgets/editor';
+import {EmptyState} from '../widgets/empty_state';
+import {Form, FormLabel} from '../widgets/form';
+import {HotkeyGlyphs} from '../widgets/hotkey_glyphs';
+import {Icon} from '../widgets/icon';
+import {Menu, MenuDivider, MenuItem, PopupMenu2} from '../widgets/menu';
+import {showModal} from '../widgets/modal';
 import {
   MultiSelect,
   MultiSelectDiff,
   PopupMultiSelect,
-} from './widgets/multiselect';
-import {Popup, PopupPosition} from './widgets/popup';
-import {Portal} from './widgets/portal';
-import {FilterableSelect, Select} from './widgets/select';
-import {Spinner} from './widgets/spinner';
-import {Switch} from './widgets/switch';
-import {TextInput} from './widgets/text_input';
-import {LazyTreeNode, Tree, TreeNode} from './widgets/tree';
-import {VegaView} from './widgets/vega_view';
+} from '../widgets/multiselect';
+import {Popup, PopupPosition} from '../widgets/popup';
+import {Portal} from '../widgets/portal';
+import {FilterableSelect, Select} from '../widgets/select';
+import {Spinner} from '../widgets/spinner';
+import {Switch} from '../widgets/switch';
+import {TextInput} from '../widgets/text_input';
+import {MultiParagraphText, TextParagraph} from '../widgets/text_paragraph';
+import {LazyTreeNode, Tree, TreeNode} from '../widgets/tree';
+import {VegaView} from '../widgets/vega_view';
+
+import {createPage} from './pages';
+import {PopupMenuButton} from './popup_menu';
+import {TableShowcase} from './tables/table_showcase';
 
 const DATA_ENGLISH_LETTER_FREQUENCY = {
   table: [
@@ -256,6 +258,7 @@ function PortalButton() {
   let portalOpen = false;
 
   return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     view: function({attrs}: any) {
       const {
         zIndex = true,
@@ -350,12 +353,14 @@ interface WidgetShowcaseAttrs {
   label: string;
   description?: string;
   initialOpts?: Options;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   renderWidget: (options: any) => any;
   wide?: boolean;
 }
 
 // A little helper class to render any vnode with a dynamic set of options
 class WidgetShowcase implements m.ClassComponent<WidgetShowcaseAttrs> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private optValues: any = {};
   private opts?: Options;
 
@@ -381,7 +386,7 @@ class WidgetShowcase implements m.ClassComponent<WidgetShowcaseAttrs> {
             this.optValues[key] = option.initial;
           } else if (typeof option === 'boolean') {
             this.optValues[key] = option;
-          } else if (typeof option === 'string') {
+          } else if (isString(option)) {
             this.optValues[key] = option;
           }
         }
@@ -428,7 +433,7 @@ class WidgetShowcase implements m.ClassComponent<WidgetShowcaseAttrs> {
       return this.renderEnumOption(key, value);
     } else if (typeof value === 'boolean') {
       return this.renderBooleanOption(key);
-    } else if (typeof value === 'string') {
+    } else if (isString(value)) {
       return this.renderStringOption(key);
     } else {
       return null;
@@ -507,6 +512,7 @@ export const WidgetsPage = createPage({
         }),
         m(WidgetShowcase, {
           label: 'Switch',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           renderWidget: ({label, ...rest}: any) =>
               m(Switch, {label: label ? 'Switch' : undefined, ...rest}),
           initialOpts: {
@@ -666,7 +672,7 @@ export const WidgetsPage = createPage({
             }),
             popupPosition: PopupPosition.Top,
             label: 'Multi Select',
-            icon: icon ? LIBRARY_ADD_CHECK : undefined,
+            icon: icon ? Icons.LibraryAddCheck : undefined,
             onChange: (diffs: MultiSelectDiff[]) => {
               diffs.forEach(({id, checked}) => {
                 options[id] = checked;
@@ -970,9 +976,142 @@ export const WidgetsPage = createPage({
                 platform: new EnumOption('auto', ['auto', 'Mac', 'PC']),
               },
             }),
+          m(
+            WidgetShowcase, {
+              label: 'Text Paragraph',
+              description: `A basic formatted text paragraph with wrapping. If
+              it is desirable to preserve the original text format/line breaks,
+              set the compressSpace attribute to false.`,
+              renderWidget: (opts) => {
+                return m(TextParagraph, {
+                  text: `Lorem ipsum dolor sit amet, consectetur adipiscing
+                         elit. Nulla rhoncus tempor neque, sed malesuada eros
+                         dapibus vel. Aliquam in ligula vitae tortor porttitor
+                         laoreet iaculis finibus est.`,
+                  compressSpace: opts.compressSpace,
+                });
+              },
+              initialOpts: {
+                compressSpace: true,
+              },
+            }),
+          m(
+            WidgetShowcase, {
+              label: 'Multi Paragraph Text',
+              description: `A wrapper for multiple paragraph widgets.`,
+              renderWidget: () => {
+                return m(MultiParagraphText,
+                 m(TextParagraph, {
+                  text: `Lorem ipsum dolor sit amet, consectetur adipiscing
+                         elit. Nulla rhoncus tempor neque, sed malesuada eros
+                         dapibus vel. Aliquam in ligula vitae tortor porttitor
+                         laoreet iaculis finibus est.`,
+                  compressSpace: true,
+                }), m(TextParagraph, {
+                  text: `Sed ut perspiciatis unde omnis iste natus error sit
+                         voluptatem accusantium doloremque laudantium, totam rem
+                         aperiam, eaque ipsa quae ab illo inventore veritatis et
+                         quasi architecto beatae vitae dicta sunt explicabo.
+                         Nemo enim ipsam voluptatem quia voluptas sit aspernatur
+                         aut odit aut fugit, sed quia consequuntur magni dolores
+                         eos qui ratione voluptatem sequi nesciunt.`,
+                  compressSpace: true,
+                }),
+                );
+              },
+            }),
+            m(
+              WidgetShowcase, {
+                label: 'Modal',
+                description: `A helper for modal dialog.`,
+                renderWidget: () => m(ModalShowcase),
+              }),
     );
   },
 });
+
+class ModalShowcase implements m.ClassComponent {
+  private static counter = 0;
+
+  private static log(txt: string) {
+    const mwlogs = document.getElementById('mwlogs');
+    if (!mwlogs || !(mwlogs instanceof HTMLTextAreaElement)) return;
+    const time = new Date().toLocaleTimeString();
+    mwlogs.value += `[${time}] ${txt}\n`;
+    mwlogs.scrollTop = mwlogs.scrollHeight;
+  }
+
+  private static showModalDialog(staticContent = false) {
+    const id = `N=${++ModalShowcase.counter}`;
+    ModalShowcase.log(`Open ${id}`);
+    const logOnClose = () => ModalShowcase.log(`Close ${id}`);
+
+    let content;
+    if (staticContent) {
+      content = m('.modal-pre', 'Content of the modal dialog.\nEnd of content');
+    } else {
+      const component = {
+        oninit: function(vnode: m.Vnode<{}, {progress: number}>) {
+          vnode.state.progress = (vnode.state.progress as number || 0) + 1;
+        },
+        view: function(vnode: m.Vnode<{}, {progress: number}>) {
+          vnode.state.progress = (vnode.state.progress + 1) % 100;
+          raf.scheduleFullRedraw();
+          return m(
+              'div',
+              m('div', 'You should see an animating progress bar'),
+              m('progress', {value: vnode.state.progress, max: 100}),
+          );
+        },
+      } as m.Component<{}, {progress: number}>;
+      content = () => m(component);
+    }
+    const closePromise = showModal({
+      title: `Modal dialog ${id}`,
+      buttons: [
+        {text: 'OK', action: () => ModalShowcase.log(`OK ${id}`)},
+        {text: 'Cancel', action: () => ModalShowcase.log(`Cancel ${id}`)},
+        {
+          text: 'Show another now',
+          action: () => ModalShowcase.showModalDialog(),
+        },
+        {
+          text: 'Show another in 2s',
+          action: () => setTimeout(() => ModalShowcase.showModalDialog(), 2000),
+        },
+      ],
+      content,
+    });
+    closePromise.then(logOnClose);
+  }
+
+  view() {
+    return m(
+        'div',
+        {
+          style: {
+            'display': 'flex',
+            'flex-direction': 'column',
+            'width': '100%',
+          },
+        },
+        m('textarea', {
+          id: 'mwlogs',
+          readonly: 'readonly',
+          rows: '8',
+          placeholder: 'Logs will appear here',
+        }),
+        m('input[type=button]', {
+          value: 'Show modal (static)',
+          onclick: () => ModalShowcase.showModalDialog(true),
+        }),
+        m('input[type=button]', {
+          value: 'Show modal (dynamic)',
+          onclick: () => ModalShowcase.showModalDialog(false),
+        }),
+    );
+  }
+}  // class ModalShowcase
 
 function renderForm(id: string) {
   return m(

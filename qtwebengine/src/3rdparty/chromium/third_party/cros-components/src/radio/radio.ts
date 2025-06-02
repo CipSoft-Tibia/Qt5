@@ -7,12 +7,10 @@
 import '@material/web/radio/radio.js';
 
 import {MdRadio} from '@material/web/radio/radio.js';
-import {css, CSSResultGroup, html, LitElement} from 'lit';
+import {css, CSSResultGroup, html, LitElement, PropertyValues} from 'lit';
 
 /**
- * A chromeOS compliant radio button.
- * See spec
- * https://www.figma.com/file/1XsFoZH868xLcLPfPZRxLh/CrOS-Next---Component-Library-%26-Spec?node-id=2673%3A11119
+ * A ChromeOS compliant radio button.
  */
 export class Radio extends LitElement {
   /** @nocollapse */
@@ -21,6 +19,7 @@ export class Radio extends LitElement {
       display: inline-block;
     }
     md-radio {
+      --md-focus-ring-duration: 0s;
       --md-radio-icon-size: 16px;
       --md-radio-icon-color: var(--cros-sys-on_surface);
       --md-radio-pressed-state-layer-color: var(--cros-sys-ripple_primary);
@@ -71,6 +70,13 @@ export class Radio extends LitElement {
       <md-radio ?disabled=${this.disabled} ?checked=${
         this.checkedInternal} touch-target="wrapper"></md-radio>
     `;
+  }
+
+  override updated(changedProperties: PropertyValues<this>) {
+    if (changedProperties.has('disabled')) {
+      // Work around for b/315384008.
+      this.renderRoot.querySelector('md-radio')?.requestUpdate();
+    }
   }
 }
 

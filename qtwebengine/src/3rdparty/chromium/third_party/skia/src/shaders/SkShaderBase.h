@@ -174,7 +174,8 @@ private:
     M(Picture)            \
     M(Runtime)            \
     M(Transform)          \
-    M(TriColor)
+    M(TriColor)           \
+    M(WorkingColorSpace)
 
 #define SK_ALL_GRADIENTS(M) \
     M(Conical)              \
@@ -269,7 +270,7 @@ public:
                    const SkShaders::MatrixRec& matrixRec,
                    SkColorType dstColorType,
                    SkColorSpace* dstColorSpace,
-                   SkSurfaceProps props)
+                   const SkSurfaceProps& props)
                 : fMatrixRec(matrixRec)
                 , fDstColorType(dstColorType)
                 , fDstColorSpace(dstColorSpace)
@@ -426,5 +427,6 @@ void SkRegisterColorShaderFlattenable();
 void SkRegisterCoordClampShaderFlattenable();
 void SkRegisterEmptyShaderFlattenable();
 void SkRegisterPerlinNoiseShaderFlattenable();
+void SkRegisterWorkingColorSpaceShaderFlattenable();
 
 #endif // SkShaderBase_DEFINED

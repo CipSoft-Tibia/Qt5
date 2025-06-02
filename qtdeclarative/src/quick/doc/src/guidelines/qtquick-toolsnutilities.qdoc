@@ -58,6 +58,15 @@ capable of rendering changes to the code in realtime. It avoids the need to
 rebuild the application after every code change and install it on the target
 device. You can also extend it to build a custom runtime that suits your needs.
 
+\section1 Felgo QML Hot Reload
+
+\l{Felgo QML Hot Reload Tool}{Felgo QML Hot Reload} is a third-party tool that
+updates QML and JavaScript code in your running application without recompiling
+and redeploying after each change. Unlike Live Reload, it preserves the
+application's current state after a reload and can run on multiple devices
+simultaneously to test and iterate code. Felgo Hot Reload supports all Qt
+target platforms and architectures.
+
 \section1 GammaRay
 
 \l{GammaRay Manual}{GammaRay} is a useful utility that provides diagnostic
@@ -73,32 +82,17 @@ handy, especially while debugging QML applications.
 automates UI testing by recording your actions or running scripts. Once the
 tests are setup, UI tests are a lot easier to run.
 
-\section1 qmllint
+\section1 The qmllint tool
 
-\l{qmllint Reference}{qmllint} is a tool shipped with Qt, that verifies
-the syntatic validity of QML files. It also warns about some QML anti-patterns.
+\l{qmllint} is a tool shipped with Qt that verifies
+the syntactic validity of QML files. It also warns about some QML anti-patterns.
 If you want to disable a specific warning type, you can find the appropriate
 flag for doing so by passing \c{--help} on the command line.
 
 \section1 qmlformat
 
-\e qmlformat is a tool that automatically formats QML files in accordance
+\l [QtQml] {qmlformat} is a tool that automatically formats QML files in accordance
 with the \l{QML Coding Conventions}.
-
-If you pass the \c{-n} or \c{--normalize} flag, \e qmlformat groups all
-properties, functions, and signals together, instead of retaining the order you
-specified.
-
-By default, qmlformat writes the formatted version of the file to stdout.
-If you wish to have your file updated in-place specify the \c{-i} flag.
-
-You may also change tab widths and line ending types among other settings,
-either via command line options or by using a settings file called
-\c{.qmlformat.ini}. A default settings file can be obtained by passing the
-\c{--write-defaults} flag.
-
-As with all tools, the \c{-h} or \c{--help} flag will print some information on
-all the available options.
 
 \section1 Qt Quick Compiler
 
@@ -108,9 +102,9 @@ The Qt Quick Compiler consist of two components:
     \li \l {QML script compiler}
 \endlist
 
-\section1 QML Language Server
+\section1 The \QMLLS tool
 
-\l{\QMLLS Reference}{\QMLLS} is a tool shipped with Qt that helps you edit
+\l{\QMLLS} is a tool shipped with Qt that helps you edit
 QML code in your favorite (LSP-compatible) editor.
 
 \section1 SVG to QML converter [tech preview]

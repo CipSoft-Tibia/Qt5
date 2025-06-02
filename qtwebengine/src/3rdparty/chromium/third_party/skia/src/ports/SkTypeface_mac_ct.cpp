@@ -734,9 +734,8 @@ std::unique_ptr<SkStreamAsset> SkTypeface_Mac::onOpenStream(int* ttcIndex) const
     }
 
     // reserve memory for stream, and zero it (tables must be zero padded)
-    fStream = std::make_unique<SkMemoryStream>(totalSize);
-    char* dataStart = (char*)fStream->getMemoryBase();
-    sk_bzero(dataStart, totalSize);
+    sk_sp<SkData> streamData = SkData::MakeZeroInitialized(totalSize);
+    char* dataStart = (char*)streamData->writable_data();
     char* dataPtr = dataStart;
 
     // compute font header entries
@@ -773,6 +772,7 @@ std::unique_ptr<SkStreamAsset> SkTypeface_Mac::onOpenStream(int* ttcIndex) const
         dataPtr += (tableSize + 3) & ~3;
         ++entry;
     }
+    fStream = std::make_unique<SkMemoryStream>(std::move(streamData));
     });
     return fStream->duplicate();
 }
@@ -1353,7 +1353,7 @@ sk_sp<SkTypeface> SkTypeface_Mac::MakeFromStream(std::unique_ptr<SkStreamAsset> 
     SkUniqueCFRef<CTFontRef> ctVariant;
     CTFontVariation ctVariation;
     if (args.getVariationDesignPosition().coordinateCount == 0) {
-        ctVariant.reset(ct.release());
+        ctVariant = std::move(ct);
     } else {
         SkUniqueCFRef<CFArrayRef> axes(CTFontCopyVariationAxes(ct.get()));
         ctVariation = ctvariation_from_SkFontArguments(ct.get(), axes.get(), args);
@@ -1369,7 +1369,7 @@ sk_sp<SkTypeface> SkTypeface_Mac::MakeFromStream(std::unique_ptr<SkStreamAsset> 
                     CTFontDescriptorCreateWithAttributes(attributes.get()));
             ctVariant.reset(CTFontCreateCopyWithAttributes(ct.get(), 0, nullptr, varDesc.get()));
         } else {
-            ctVariant.reset(ct.release());
+            ctVariant = std::move(ct);
         }
     }
     if (!ctVariant) {

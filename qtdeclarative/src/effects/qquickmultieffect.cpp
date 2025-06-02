@@ -26,7 +26,7 @@ Q_LOGGING_CATEGORY(lcQuickEffect, "qt.quick.effects")
 
 /*!
     \qmltype MultiEffect
-    \instantiates QQuickMultiEffect
+    \nativetype QQuickMultiEffect
     \inqmlmodule QtQuick.Effects
     \inherits Item
     \ingroup qtquick-effects
@@ -192,6 +192,8 @@ Q_LOGGING_CATEGORY(lcQuickEffect, "qt.quick.effects")
         the GPU. When applying the blur effect to the whole background, remember to set
         \l autoPaddingEnabled false or the effect grows "outside" the window / screen.
     \endlist
+
+    \include notes.qdocinc shadereffectsource and multieffect
 */
 
 /*!
@@ -1462,9 +1464,9 @@ void QQuickMultiEffectPrivate::initialize()
         return;
 
     m_shaderEffect = new QQuickShaderEffect(q);
-    m_shaderSource = new QGfxSourceProxy(q);
-    QObject::connect(m_shaderSource, &QGfxSourceProxy::outputChanged, q, [this] { proxyOutputChanged(); });
-    QObject::connect(m_shaderSource, &QGfxSourceProxy::activeChanged, q, &QQuickMultiEffect::hasProxySourceChanged);
+    m_shaderSource = new QGfxSourceProxyME(q);
+    QObject::connect(m_shaderSource, &QGfxSourceProxyME::outputChanged, q, [this] { proxyOutputChanged(); });
+    QObject::connect(m_shaderSource, &QGfxSourceProxyME::activeChanged, q, &QQuickMultiEffect::hasProxySourceChanged);
 
     m_shaderEffect->setParentItem(q);
     m_shaderEffect->setSize(q->size());
@@ -1560,12 +1562,12 @@ void QQuickMultiEffectPrivate::updateShadowColor()
     if (!m_shaderEffect)
         return;
 
-    float alpha = std::clamp(float(m_shadowColor.alphaF() * m_shadowOpacity), 0.0f, 1.0f);
-    QVector4D shadowColor(m_shadowColor.redF(),
-                          m_shadowColor.greenF(),
-                          m_shadowColor.blueF(),
-                          alpha);
-
+    // Shader shadowColor has premultiplied alpha
+    float alpha = std::clamp(float(m_shadowOpacity), 0.0f, 1.0f);
+    QVector4D shadowColor(m_shadowColor.redF() * alpha,
+                          m_shadowColor.greenF() * alpha,
+                          m_shadowColor.blueF() * alpha,
+                          m_shadowColor.alphaF() * alpha);
     m_shaderEffect->setProperty("shadowColor", shadowColor);
 }
 

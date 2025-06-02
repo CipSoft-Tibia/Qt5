@@ -6,8 +6,8 @@
 #define GPU_COMMAND_BUFFER_COMMON_SYNC_TOKEN_H_
 
 #include <stdint.h>
-#include <string.h>
 
+#include <string>
 #include <tuple>
 #include <vector>
 
@@ -85,7 +85,6 @@ struct GPU_EXPORT SyncToken {
   }
 
   bool operator!=(const SyncToken& other) const { return !(*this == other); }
-
   std::string ToDebugString() const;
 
  private:

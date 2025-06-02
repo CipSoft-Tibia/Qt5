@@ -115,16 +115,18 @@ String PermissionNameToString(PermissionName name) {
     case PermissionName::STORAGE_ACCESS:
       return "storage-access";
     case PermissionName::WINDOW_MANAGEMENT:
-      if (RuntimeEnabledFeatures::WindowManagementPermissionAliasEnabled()) {
-        return "window-management";
+      if (RuntimeEnabledFeatures::WindowPlacementPermissionAliasEnabled()) {
+        return "window_placement";
       }
-      return "window_placement";
+      return "window-management";
     case PermissionName::LOCAL_FONTS:
       return "local_fonts";
     case PermissionName::DISPLAY_CAPTURE:
       return "display_capture";
     case PermissionName::TOP_LEVEL_STORAGE_ACCESS:
       return "top-level-storage-access";
+    case PermissionName::CAPTURED_SURFACE_CONTROL:
+      return "captured-surface-control";
   }
   NOTREACHED();
   return "unknown";
@@ -323,19 +325,9 @@ PermissionDescriptorPtr ParsePermissionDescriptor(
     return CreatePermissionDescriptor(PermissionName::NFC);
   }
   if (name == V8PermissionName::Enum::kStorageAccess) {
-    if (!RuntimeEnabledFeatures::StorageAccessAPIEnabled()) {
-      exception_state.ThrowTypeError("The Storage Access API is not enabled.");
-      return nullptr;
-    }
     return CreatePermissionDescriptor(PermissionName::STORAGE_ACCESS);
   }
   if (name == V8PermissionName::Enum::kTopLevelStorageAccess) {
-    if (!RuntimeEnabledFeatures::StorageAccessAPIEnabled() ||
-        !RuntimeEnabledFeatures::StorageAccessAPIForOriginExtensionEnabled()) {
-      exception_state.ThrowTypeError(
-          "The requestStorageAccessFor API is not enabled.");
-      return nullptr;
-    }
     TopLevelStorageAccessPermissionDescriptor*
         top_level_storage_access_permission =
             NativeValueTraits<TopLevelStorageAccessPermissionDescriptor>::
@@ -355,14 +347,14 @@ PermissionDescriptorPtr ParsePermissionDescriptor(
   if (name == V8PermissionName::Enum::kWindowManagement) {
     UseCounter::Count(CurrentExecutionContext(script_state->GetIsolate()),
                       WebFeature::kWindowManagementPermissionDescriptorUsed);
-    if (!RuntimeEnabledFeatures::WindowManagementPermissionAliasEnabled()) {
-      exception_state.ThrowTypeError(
-          "The Window Management alias is not enabled.");
-      return nullptr;
-    }
     return CreatePermissionDescriptor(PermissionName::WINDOW_MANAGEMENT);
   }
   if (name == V8PermissionName::Enum::kWindowPlacement) {
+    if (!RuntimeEnabledFeatures::WindowPlacementPermissionAliasEnabled()) {
+      exception_state.ThrowTypeError(
+          "The Window Placement alias is not enabled.");
+      return nullptr;
+    }
     Deprecation::CountDeprecation(
         CurrentExecutionContext(script_state->GetIsolate()),
         WebFeature::kWindowPlacementPermissionDescriptorUsed);
@@ -378,6 +370,15 @@ PermissionDescriptorPtr ParsePermissionDescriptor(
   }
   if (name == V8PermissionName::Enum::kDisplayCapture) {
     return CreatePermissionDescriptor(PermissionName::DISPLAY_CAPTURE);
+  }
+  if (name == V8PermissionName::Enum::kCapturedSurfaceControl) {
+    if (!RuntimeEnabledFeatures::CapturedSurfaceControlEnabled(
+            ExecutionContext::From(script_state))) {
+      exception_state.ThrowTypeError(
+          "The Captured Surface Control API is not enabled.");
+      return nullptr;
+    }
+    return CreatePermissionDescriptor(PermissionName::CAPTURED_SURFACE_CONTROL);
   }
   return nullptr;
 }

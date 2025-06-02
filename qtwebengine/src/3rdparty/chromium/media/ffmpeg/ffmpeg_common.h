@@ -13,6 +13,7 @@
 
 #include "base/compiler_specific.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
 #include "media/base/audio_codecs.h"
 #include "media/base/channel_layout.h"
 #include "media/base/encryption_scheme.h"
@@ -30,6 +31,9 @@ extern "C" {
 #include <libavformat/avio.h>
 #include <libavutil/avutil.h>
 #include <libavutil/channel_layout.h>
+#if BUILDFLAG(ENABLE_PLATFORM_DOLBY_VISION)
+#include <libavutil/dovi_meta.h>
+#endif  // BUILDFLAG(ENABLE_PLATFORM_DOLBY_VISION)
 #include <libavutil/imgutils.h>
 #include <libavutil/log.h>
 #include <libavutil/mastering_display_metadata.h>
@@ -40,6 +44,14 @@ extern "C" {
 namespace media {
 
 constexpr int64_t kNoFFmpegTimestamp = static_cast<int64_t>(AV_NOPTS_VALUE);
+
+// Alignment requirement by FFmpeg for input and output buffers. This need to
+// be updated to match FFmpeg when it changes.
+#if defined(ARCH_CPU_ARM_FAMILY)
+constexpr inline int kFFmpegBufferAddressAlignment = 16;
+#else
+constexpr inline int kFFmpegBufferAddressAlignment = 32;
+#endif
 
 class AudioDecoderConfig;
 class VideoDecoderConfig;
@@ -66,6 +78,12 @@ inline void ScopedPtrAVFreeFrame::operator()(void* x) const {
   AVFrame* frame = static_cast<AVFrame*>(x);
   av_frame_free(&frame);
 }
+
+#if BUILDFLAG(IS_QTWEBENGINE) && BUILDFLAG(USE_SYSTEM_FFMPEG)
+// Systemlib friendly version of avcodec_find_decoder that respects the
+// whitelisted codecs.
+MEDIA_EXPORT const AVCodec* FindDecoder(AVCodecID id, const char* whitelist);
+#endif
 
 // Converts an int64_t timestamp in |time_base| units to a base::TimeDelta.
 // For example if |timestamp| equals 11025 and |time_base| equals {1, 44100}
@@ -138,6 +156,9 @@ std::string AVErrorToString(int errnum);
 // Returns a 32-bit hash for the given codec name.  See the VerifyUmaCodecHashes
 // unit test for more information and code for generating the histogram XML.
 MEDIA_EXPORT int32_t HashCodecName(const char* codec_name);
+
+// Returns the list of allowed decoders for audio.
+MEDIA_EXPORT const char* GetAllowedAudioDecoders();
 
 }  // namespace media
 

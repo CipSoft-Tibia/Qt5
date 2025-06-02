@@ -14,11 +14,11 @@
 
 #include "build/build_config.h"
 #include "constants/font_encodings.h"
+#include "core/fpdfapi/font/cpdf_fontglobals.h"
 #include "core/fpdfapi/font/cpdf_type1font.h"
 #include "core/fpdfapi/page/cpdf_form.h"
 #include "core/fpdfapi/page/cpdf_iccprofile.h"
 #include "core/fpdfapi/page/cpdf_image.h"
-#include "core/fpdfapi/page/cpdf_pagemodule.h"
 #include "core/fpdfapi/page/cpdf_pattern.h"
 #include "core/fpdfapi/page/cpdf_shadingpattern.h"
 #include "core/fpdfapi/page/cpdf_tilingpattern.h"
@@ -30,6 +30,7 @@
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/cpdf_stream_acc.h"
 #include "core/fpdfapi/parser/cpdf_string.h"
+#include "core/fxcodec/icc/icc_transform.h"
 #include "core/fxcrt/fx_codepage.h"
 #include "core/fxcrt/fx_memory.h"
 #include "core/fxcrt/fx_safe_types.h"
@@ -173,8 +174,22 @@ CPDF_DocPageData::~CPDF_DocPageData() {
   }
 }
 
+CPDF_DocPageData::HashIccProfileKey::HashIccProfileKey(ByteString digest,
+                                                       uint32_t components)
+    : digest(std::move(digest)), components(components) {}
+
+CPDF_DocPageData::HashIccProfileKey::~HashIccProfileKey() = default;
+
+bool CPDF_DocPageData::HashIccProfileKey::operator<(
+    const HashIccProfileKey& other) const {
+  if (components == other.components) {
+    return digest < other.digest;
+  }
+  return components < other.components;
+}
+
 void CPDF_DocPageData::ClearStockFont() {
-  CPDF_PageModule::GetInstance()->ClearStockFont(GetDocument());
+  CPDF_FontGlobals::GetInstance()->Clear(GetDocument());
 }
 
 RetainPtr<CPDF_Font> CPDF_DocPageData::GetFont(
@@ -394,8 +409,7 @@ void CPDF_DocPageData::MaybePurgeImage(uint32_t dwStreamObjNum) {
 
 RetainPtr<CPDF_IccProfile> CPDF_DocPageData::GetIccProfile(
     RetainPtr<const CPDF_Stream> pProfileStream) {
-  if (!pProfileStream)
-    return nullptr;
+  CHECK(pProfileStream);
 
   auto it = m_IccProfileMap.find(pProfileStream);
   if (it != m_IccProfileMap.end() && it->second)
@@ -404,17 +418,25 @@ RetainPtr<CPDF_IccProfile> CPDF_DocPageData::GetIccProfile(
   auto pAccessor = pdfium::MakeRetain<CPDF_StreamAcc>(pProfileStream);
   pAccessor->LoadAllDataFiltered();
 
-  ByteString bsDigest = pAccessor->ComputeDigest();
-  auto hash_it = m_HashProfileMap.find(bsDigest);
-  if (hash_it != m_HashProfileMap.end()) {
+  // This should not fail, as the caller should have checked this already.
+  const int expected_components = pProfileStream->GetDict()->GetIntegerFor("N");
+  CHECK(fxcodec::IccTransform::IsValidIccComponents(expected_components));
+
+  // Since CPDF_IccProfile can behave differently depending on
+  // `expected_components`, `hash_profile_key` needs to take that into
+  // consideration, in addition to the digest value.
+  const HashIccProfileKey hash_profile_key(pAccessor->ComputeDigest(),
+                                           expected_components);
+  auto hash_it = m_HashIccProfileMap.find(hash_profile_key);
+  if (hash_it != m_HashIccProfileMap.end()) {
     auto it_copied_stream = m_IccProfileMap.find(hash_it->second);
     if (it_copied_stream != m_IccProfileMap.end() && it_copied_stream->second)
       return pdfium::WrapRetain(it_copied_stream->second.Get());
   }
-  auto pProfile =
-      pdfium::MakeRetain<CPDF_IccProfile>(pProfileStream, pAccessor->GetSpan());
+  auto pProfile = pdfium::MakeRetain<CPDF_IccProfile>(
+      pProfileStream, pAccessor->GetSpan(), expected_components);
   m_IccProfileMap[pProfileStream].Reset(pProfile.Get());
-  m_HashProfileMap[bsDigest] = std::move(pProfileStream);
+  m_HashIccProfileMap[hash_profile_key] = std::move(pProfileStream);
   return pProfile;
 }
 

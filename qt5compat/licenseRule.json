@@ -9,7 +9,10 @@
                   "unless they are examples",
                   "Files with other endings can also be build system files"
                  ],
-        "file_pattern_ending" : ["CMakeLists.txt", ".cmake", ".pro", "configure"],
+        "file_pattern_ending" : ["CMakeLists.txt", ".cmake", ".pro", "configure",
+                                 ".cmake.conf", ".gitattributes", ".gitignore",
+                                 ".tag", "ci_config_linux.json", ".yaml", ".qrc",
+                                 ".gitreview"],
         "location" : {
             "" : {
                 "comment" : "File with other endings also belong to the build system file type",
@@ -43,8 +46,8 @@
     },
     {
         "comment" : "Files with the following endings are Documentation licensed.",
-        "file_pattern_ending" : [".qdoc", ".qdocinc" , ".qdocconf", ".txt", ".qdoc.sample", "README.md",
-                                 "README", "qt_attribution.json"],
+        "file_pattern_ending" : [".qdoc", ".qdocinc" , ".qdocconf", ".qdoc.sample", "README.md",
+                                 "README", "qt_attribution.json", "REUSE.toml", "licenseRule.json"],
         "location" :{
             "" : {
                 "comment" : "",
@@ -64,6 +67,11 @@
                 "file type" : "module and plugin",
                 "spdx"      : ["LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"]
             },
+            "dist/" : {
+                "comment" : "Default",
+                "file type" : "documentation",
+                "spdx"      : ["LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only"]
+            },
             "src/" : {
                 "comment" : "",
                 "file type" : "module and plugin",
@@ -79,10 +87,21 @@
                 "file type" : "examples and snippets",
                 "spdx" : ["LicenseRef-Qt-Commercial OR BSD-3-Clause"]
             },
+            "(.*|examples).*doc/images/" : {
+                "comment" : "Default",
+                "file type" : "documentation",
+                "spdx" : ["LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only"]
+            },
             "util/" : {
                 "comment" : "Default",
                 "file type" : "util",
                 "spdx" : ["LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0"]
+            },
+            "src/core5/codecs/(qbig5codec|qeucjpcodec|qeuckrcodec|qgb18030codec|qjiscodec|qsjiscodec|qtsciicodec).cpp" : {
+                "comment" : "license from REUSE.toml not visible when checking the headers",
+                "file type" : "3rd party mix",
+                "spdx" : ["LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only AND BSD-2-Clause",
+                          "LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"]
             }
         }
     }

@@ -143,3 +143,34 @@ qt6_add_shaders(tst_buildtimeqsb "shaders_tessellation_part2"
         "tess.tesc@hlsl,50,tess_hull.hlsl"
         "tess.tese@hlsl,50,tess_domain.hlsl"
 )
+
+qt6_add_shaders(tst_buildtimeqsb "shaders_multiview"
+    PREFIX
+        "/test"
+    GLSL
+        "330,300es"
+    HLSL
+        61
+    MSL
+        12
+    VIEW_COUNT
+        2
+    FILES
+        "color_multiview.vert"
+        "color.frag"
+    OUTPUTS
+        "color_multiview.vert.qsb"
+        "color_multiview.frag.qsb"
+)
+
+qt6_add_shaders(tst_buildtimeqsb "shaders_multiview_auto"
+    PREFIX
+        "/test"
+    MULTIVIEW
+    FILES
+        "color_multiview_def.vert"
+        "color.frag"
+    OUTPUTS
+        "color_multiview_def.vert.qsb"
+        "color_multiview_def.frag.qsb"
+)

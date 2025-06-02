@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "baritemmodelhandler_p.h"
+#include "qbar3dseries_p.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -106,9 +107,11 @@ void BarItemModelHandler::resolveModel()
     int columnCount = m_itemModel->columnCount();
 
     if (m_proxy->useModelCategories()) {
+        if (!m_proxy->series())
+            return;
         // If dimensions have changed, recreate the array
-        if (m_proxyArray.data() != m_proxy->array().data() || columnCount != m_columnCount
-            || rowCount != m_proxyArray.size()) {
+        if (m_proxyArray.data() != m_proxy->series()->dataArray().data()
+            || columnCount != m_columnCount || rowCount != m_proxyArray.size()) {
             m_proxyArray.reserve(rowCount);
             for (int i = 0; i < rowCount; i++)
                 m_proxyArray.append(QBarDataRow(columnCount));
@@ -242,8 +245,8 @@ void BarItemModelHandler::resolveModel()
             columnList = m_proxy->columnCategories();
 
         // If dimensions have changed, recreate the array
-        if (m_proxyArray.data() != m_proxy->array().data() || columnList.size() != m_columnCount
-            || rowList.size() != m_proxyArray.size()) {
+        if (m_proxyArray.data() != m_proxy->series()->dataArray().data()
+            || columnList.size() != m_columnCount || rowList.size() != m_proxyArray.size()) {
             m_proxyArray.clear();
             m_proxyArray.reserve(rowList.size());
             for (int i = 0; i < rowList.size(); i++)
@@ -267,8 +270,15 @@ void BarItemModelHandler::resolveModel()
             }
         }
 
-        rowLabels = rowList;
-        columnLabels = columnList;
+        if (!m_proxy->series()->rowLabels().isEmpty())
+            rowLabels = m_proxy->series()->rowLabels();
+        else
+            rowLabels = rowList;
+        if (!m_proxy->series()->columnLabels().isEmpty())
+            columnLabels = m_proxy->series()->columnLabels();
+        else
+            columnLabels = columnList;
+
         m_columnCount = columnList.size();
 
         delete matchCountMap;

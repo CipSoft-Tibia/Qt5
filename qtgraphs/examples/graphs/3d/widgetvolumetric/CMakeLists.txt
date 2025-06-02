@@ -1,6 +1,10 @@
 # Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
+if(ANDROID OR WINRT)
+    message( FATAL_ERROR "This example is not supported for android or winrt. CMake will exit." )
+endif()
+
 cmake_minimum_required(VERSION 3.16)
 project(widgetvolumetric LANGUAGES CXX)
 
@@ -20,6 +24,7 @@ find_package(Qt6 COMPONENTS Core)
 find_package(Qt6 COMPONENTS Gui)
 find_package(Qt6 COMPONENTS Widgets)
 find_package(Qt6 COMPONENTS Graphs)
+find_package(Qt6 COMPONENTS GraphsWidgets)
 
 qt_add_executable(widgetvolumetric
     main.cpp
@@ -34,7 +39,15 @@ target_link_libraries(widgetvolumetric PUBLIC
     Qt::Gui
     Qt::Widgets
     Qt::Graphs
+    Qt::GraphsWidgets
 )
+
+if (EMSCRIPTEN)
+target_link_options(widgetvolumetric PRIVATE
+    -sFULL_ES3=1
+    -sNO_DISABLE_EXCEPTION_CATCHING
+)
+endif()
 
 set(widgetvolumetric_resource_files
     "layer_ground.png"

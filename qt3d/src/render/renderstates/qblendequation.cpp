@@ -17,7 +17,7 @@
 
 /*!
     \qmltype BlendEquation
-    \instantiates Qt3DRender::QBlendEquation
+    \nativetype Qt3DRender::QBlendEquation
     \inherits RenderState
     \inqmlmodule Qt3D.Render
     \since 5.5
@@ -65,7 +65,7 @@ QBlendEquation::~QBlendEquation()
  */
 
 /*!
-    \property QBlendEquation::blendFunction
+    \property Qt3DRender::QBlendEquation::blendFunction
 
     Holds the blend function, which determines how source and destination colors are combined.
  */

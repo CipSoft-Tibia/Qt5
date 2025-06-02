@@ -16,12 +16,12 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/message_loop/message_pump.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/strings/string_util.h"
 #include "base/system/sys_info.h"
 #include "base/task/scoped_set_task_priority_for_current_thread.h"
-#include "base/task/task_features.h"
 #include "base/task/thread_pool/pooled_parallel_task_runner.h"
 #include "base/task/thread_pool/pooled_sequenced_task_runner.h"
 #include "base/task/thread_pool/task.h"
@@ -150,8 +150,7 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
                   "."),
         kUtilityPoolEnvironmentParams.name_suffix,
         kUtilityPoolEnvironmentParams.thread_type_hint,
-        task_tracker_->GetTrackedRef(), tracked_ref_factory_.GetTrackedRef(),
-        foreground_thread_group_.get());
+        task_tracker_->GetTrackedRef(), tracked_ref_factory_.GetTrackedRef());
     foreground_thread_group_
         ->HandoffNonUserBlockingTaskSourcesToOtherThreadGroup(
             utility_thread_group_.get());
@@ -181,23 +180,6 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
 
   size_t foreground_threads = init_params.max_num_foreground_threads;
   size_t utility_threads = init_params.max_num_utility_threads;
-
-  if (base::FeatureList::IsEnabled(kThreadPoolCap2)) {
-    // Set the size of each ThreadGroup to a initial fixed size which can grow
-    // beyond the value set here when tasks enter ScopedBlockingCall and
-    // set a minimum amount of workers per pool.
-    const int max_allowed_workers_per_pool =
-        std::max(2, kThreadPoolCapRestrictedCount.Get());
-    foreground_threads =
-        std::min(init_params.max_num_foreground_threads,
-                 static_cast<size_t>(max_allowed_workers_per_pool));
-    utility_threads =
-        std::min(init_params.max_num_utility_threads,
-                 static_cast<size_t>(max_allowed_workers_per_pool));
-    max_best_effort_tasks =
-        std::min(max_best_effort_tasks,
-                 static_cast<size_t>(max_allowed_workers_per_pool));
-  }
 
   // On platforms that can't use the background thread priority, best-effort
   // tasks run in foreground pools. A cap is set on the number of best-effort
@@ -245,7 +227,7 @@ bool ThreadPoolImpl::PostDelayedTask(const Location& from_here,
   // Post |task| as part of a one-off single-task Sequence.
   return PostTaskWithSequence(
       Task(from_here, std::move(task), TimeTicks::Now(), delay,
-           GetDefaultTaskLeeway()),
+           MessagePump::GetLeewayIgnoringThreadOverride()),
       MakeRefCounted<Sequence>(traits, nullptr,
                                TaskSourceExecutionMode::kParallel));
 }
@@ -463,12 +445,12 @@ bool ThreadPoolImpl::PostTaskWithSequence(Task task,
         std::move(task),
         BindOnce(
             [](scoped_refptr<Sequence> sequence,
-               ThreadPoolImpl* thread_pool_impl, Task task) {
+               ThreadPoolImpl* thread_pool_impl, scoped_refptr<TaskRunner>,
+               Task task) {
               thread_pool_impl->PostTaskWithSequenceNow(std::move(task),
                                                         std::move(sequence));
             },
-            std::move(sequence), Unretained(this)),
-        std::move(task_runner));
+            std::move(sequence), Unretained(this), std::move(task_runner)));
   }
 
   return true;
@@ -492,6 +474,8 @@ bool ThreadPoolImpl::EnqueueJobTaskSource(
       task_tracker_->RegisterTaskSource(std::move(task_source));
   if (!registered_task_source)
     return false;
+  task_tracker_->WillEnqueueJob(
+      static_cast<JobTaskSource*>(registered_task_source.get()));
   auto transaction = registered_task_source->BeginTransaction();
   const TaskTraits traits = transaction.traits();
   GetThreadGroupForTraits(traits)->PushTaskSourceAndWakeUpWorkers(

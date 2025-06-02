@@ -145,6 +145,8 @@ const SelectionInDOMTree& FrameSelection::GetSelectionInDOMTree() const {
 Element* FrameSelection::RootEditableElementOrDocumentElement() const {
   Element* selection_root =
       ComputeVisibleSelectionInDOMTreeDeprecated().RootEditableElement();
+  // Note that RootEditableElementOrDocumentElement can return null if the
+  // documentElement is null.
   return selection_root ? selection_root : GetDocument().documentElement();
 }
 
@@ -154,7 +156,9 @@ wtf_size_t FrameSelection::CharacterIndexForPoint(
   if (range.IsNull())
     return kNotFound;
   Element* const editable = RootEditableElementOrDocumentElement();
-  DCHECK(editable);
+  if (!editable) {
+    return kNotFound;
+  }
   PlainTextRange plain_text_range = PlainTextRange::Create(*editable, range);
   if (plain_text_range.IsNull())
     return kNotFound;
@@ -268,7 +272,7 @@ bool FrameSelection::SetSelectionDeprecated(
   is_directional_ = options.IsDirectional();
   should_shrink_next_tap_ = options.ShouldShrinkNextTap();
   is_handle_visible_ = should_show_handle;
-  ScheduleVisualUpdateForPaintInvalidationIfNeeded();
+  ScheduleVisualUpdateForVisualOverflowIfNeeded();
 
   frame_->GetEditor().RespondToChangedSelection();
   DCHECK_EQ(current_document, GetDocument());
@@ -476,7 +480,7 @@ bool FrameSelection::Modify(SelectionModifyAlteration alter,
   if (set_selection_by == SetSelectionBy::kUser)
     granularity_ = TextGranularity::kCharacter;
 
-  ScheduleVisualUpdateForPaintInvalidationIfNeeded();
+  ScheduleVisualUpdateForVisualOverflowIfNeeded();
 
   return true;
 }
@@ -581,6 +585,10 @@ void FrameSelection::InvalidatePaint(const LayoutBlock& block,
   frame_caret_->InvalidatePaint(block, context);
 }
 
+void FrameSelection::EnsureInvalidationOfPreviousLayoutBlock() {
+  frame_caret_->EnsureInvalidationOfPreviousLayoutBlock();
+}
+
 bool FrameSelection::ShouldPaintCaret(const LayoutBlock& block) const {
   DCHECK_GE(GetDocument().Lifecycle().GetState(),
             DocumentLifecycle::kLayoutClean);
@@ -593,7 +601,7 @@ bool FrameSelection::ShouldPaintCaret(const LayoutBlock& block) const {
 }
 
 bool FrameSelection::ShouldPaintCaret(
-    const NGPhysicalBoxFragment& box_fragment) const {
+    const PhysicalBoxFragment& box_fragment) const {
   DCHECK_GE(GetDocument().Lifecycle().GetState(),
             DocumentLifecycle::kLayoutClean);
   bool result = frame_caret_->ShouldPaintCaret(box_fragment);
@@ -902,17 +910,12 @@ void FrameSelection::FocusedOrActiveStateChanged() {
     element->FocusStateChanged();
   }
 
-  if (!GetDocument().HaveRenderBlockingStylesheetsLoaded()) {
-    return;
+  // Selection style may depend on the active state of the document, so style
+  // and paint must be invalidated when active status changes.
+  if (GetDocument().GetLayoutView()) {
+    layout_selection_->InvalidateStyleAndPaintForSelection();
   }
   GetDocument().UpdateStyleAndLayoutTree();
-
-  // Because LayoutObject::selectionBackgroundColor() and
-  // LayoutObject::selectionForegroundColor() check if the frame is active,
-  // we have to update places those colors were painted.
-  if (LayoutView* view = GetDocument().GetLayoutView()) {
-    layout_selection_->InvalidatePaintForSelection();
-  }
 
   // Caret appears in the active frame.
   if (active_and_focused) {
@@ -976,8 +979,7 @@ static bool IsFrameElement(const Node* n) {
 
 void FrameSelection::SetFocusedNodeIfNeeded() {
   if (ComputeVisibleSelectionInDOMTreeDeprecated().IsNone() ||
-      !FrameIsFocused() ||
-      !GetDocument().HaveRenderBlockingStylesheetsLoaded()) {
+      !FrameIsFocused()) {
     return;
   }
 
@@ -1166,9 +1168,9 @@ void FrameSelection::ScheduleVisualUpdate() const {
     page->Animator().ScheduleVisualUpdate(&frame_->LocalFrameRoot());
 }
 
-void FrameSelection::ScheduleVisualUpdateForPaintInvalidationIfNeeded() const {
+void FrameSelection::ScheduleVisualUpdateForVisualOverflowIfNeeded() const {
   if (LocalFrameView* frame_view = frame_->View())
-    frame_view->ScheduleVisualUpdateForPaintInvalidationIfNeeded();
+    frame_view->ScheduleVisualUpdateForVisualOverflowIfNeeded();
 }
 
 bool FrameSelection::SelectWordAroundCaret() {
@@ -1331,12 +1333,12 @@ void FrameSelection::ClearDocumentCachedRange() {
 }
 
 LayoutSelectionStatus FrameSelection::ComputeLayoutSelectionStatus(
-    const NGInlineCursor& cursor) const {
+    const InlineCursor& cursor) const {
   return layout_selection_->ComputeSelectionStatus(cursor);
 }
 
 SelectionState FrameSelection::ComputePaintingSelectionStateForCursor(
-    const NGInlineCursorPosition& position) const {
+    const InlineCursorPosition& position) const {
   return layout_selection_->ComputePaintingSelectionStateForCursor(position);
 }
 

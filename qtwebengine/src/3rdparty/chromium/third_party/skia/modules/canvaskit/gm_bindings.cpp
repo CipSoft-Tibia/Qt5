@@ -21,17 +21,17 @@
 #include "include/gpu/GrContextOptions.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
+#include "include/gpu/ganesh/gl/GrGLDirectContext.h"
 #include "include/gpu/gl/GrGLInterface.h"
 #include "include/gpu/gl/GrGLTypes.h"
 #include "modules/canvaskit/WasmCommon.h"
-#include "src/core/SkFontMgrPriv.h"
 #include "src/core/SkMD5.h"
 #include "tests/Test.h"
 #include "tests/TestHarness.h"
 #include "tools/HashAndEncode.h"
 #include "tools/ResourceFactory.h"
 #include "tools/flags/CommandLineFlags.h"
-#include "tools/fonts/TestFontMgr.h"
+#include "tools/fonts/FontToolUtils.h"
 #include "tools/gpu/ContextType.h"
 
 using namespace emscripten;
@@ -76,7 +76,7 @@ static sk_sp<GrDirectContext> MakeGrContext(EMSCRIPTEN_WEBGL_CONTEXT_HANDLE cont
     // setup GrDirectContext
     auto interface = GrGLMakeNativeInterface();
     // setup contexts
-    sk_sp<GrDirectContext> dContext((GrDirectContext::MakeGL(interface)));
+    sk_sp<GrDirectContext> dContext((GrDirectContexts::MakeGL(interface)));
     return dContext;
 }
 
@@ -152,7 +152,7 @@ static JSObject RunGM(sk_sp<GrDirectContext> ctx, std::string name) {
     } else if (drawResult == skiagm::DrawResult::kSkip) {
         return result;
     }
-    ctx->flushAndSubmit(surface, true);
+    ctx->flushAndSubmit(surface.get(), GrSyncCpu::kYes);
 
     // Based on GPUSink::readBack
     SkBitmap bitmap;
@@ -301,7 +301,7 @@ void RunWithGaneshTestContexts(GrContextTestFn* testFn, ContextTypeFilterFn* fil
         // From DMGpuTestProcs.cpp
         (*testFn)(reporter, ctxInfo);
         // Sync so any release/finished procs get called.
-        ctxInfo.directContext()->flushAndSubmit(/*sync*/true);
+        ctxInfo.directContext()->flushAndSubmit(GrSyncCpu::kYes);
     }
 }
 } // namespace skiatest
@@ -343,10 +343,7 @@ GLTestContext *CreatePlatformGLTestContext(GrGLStandard forcedGpuAPI,
 }
 } // namespace sk_gpu_test
 
-void Init() {
-    // Use the portable fonts.
-    gSkFontMgr_DefaultFactory = &ToolUtils::MakePortableFontMgr;
-}
+void Init() { ToolUtils::UsePortableFontMgr(); }
 
 TestHarness CurrentTestHarness() {
     return TestHarness::kWasmGMTests;

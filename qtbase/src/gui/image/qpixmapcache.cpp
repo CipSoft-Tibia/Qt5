@@ -70,7 +70,7 @@ static inline qsizetype cost(const QPixmap &pixmap)
 
 static inline bool qt_pixmapcache_thread_test()
 {
-    if (Q_LIKELY(QCoreApplication::instance() && QThread::currentThread() == QCoreApplication::instance()->thread()))
+    if (Q_LIKELY(QThread::isMainThread()))
         return true;
 
     return false;
@@ -81,7 +81,6 @@ static inline bool qt_pixmapcache_thread_test()
     \brief The QPixmapCache::Key class can be used for efficient access
     to the QPixmapCache.
     \inmodule QtGui
-    \since 4.6
 
     Use QPixmapCache::insert() to receive an instance of Key generated
     by the pixmap cache. You can store the key in your own objects for
@@ -145,8 +144,8 @@ bool QPixmapCache::Key::operator ==(const Key &key) const
 
 /*!
     \fn void QPixmapCache::Key::swap(Key &)
-    \internal
     \since 5.6
+    \memberswap{key}
 */
 
 /*!
@@ -219,10 +218,9 @@ QT_BEGIN_INCLUDE_NAMESPACE
 QT_END_INCLUDE_NAMESPACE
 
 /*!
-    size_t QPixmapCache::qHash(const Key &key, size_t seed = 0);
+    \fn size_t QPixmapCache::Key::qHash(const Key &key, size_t seed)
     \since 6.6
-
-    Returns the hash value for the \a key, using \a seed to seed the calculation.
+    \qhash{QPixmapCache::Key}
 */
 size_t QPixmapCache::Key::hash(size_t seed) const noexcept
 {
@@ -421,8 +419,6 @@ QPixmapCacheEntry::~QPixmapCacheEntry()
     If the pixmap is found, the function sets \a pixmap to that pixmap and
     returns \c true; otherwise it leaves \a pixmap alone and returns \c false.
 
-    \since 4.6
-
     Example:
     \snippet code/src_gui_image_qpixmapcache.cpp 1
 */
@@ -443,8 +439,6 @@ bool QPixmapCache::find(const QString &key, QPixmap *pixmap)
     returns \c true; otherwise it leaves \a pixmap alone and returns \c false. If
     the pixmap is not found, it means that the \a key is no longer valid,
     so it will be released for the next insertion.
-
-    \since 4.6
 */
 bool QPixmapCache::find(const Key &key, QPixmap *pixmap)
 {
@@ -498,8 +492,6 @@ bool QPixmapCache::insert(const QString &key, const QPixmap &pixmap)
     deleted when more space is needed.
 
     \sa setCacheLimit(), replace()
-
-    \since 4.6
 */
 QPixmapCache::Key QPixmapCache::insert(const QPixmap &pixmap)
 {
@@ -523,8 +515,6 @@ QPixmapCache::Key QPixmapCache::insert(const QPixmap &pixmap)
     the cache by this function.
 
     \sa setCacheLimit(), insert()
-
-    \since 4.6
 */
 #endif // QT_DEPRECATED_SINCE(6, 6)
 
@@ -571,8 +561,6 @@ void QPixmapCache::remove(const QString &key)
 /*!
   Removes the pixmap associated with \a key from the cache and releases
   the key for a future insertion.
-
-  \since 4.6
 */
 void QPixmapCache::remove(const Key &key)
 {

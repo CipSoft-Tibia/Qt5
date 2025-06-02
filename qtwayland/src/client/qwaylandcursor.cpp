@@ -339,6 +339,11 @@ void QWaylandCursor::setPos(const QPoint &pos)
     qCWarning(lcQpaWayland) << "Setting cursor position is not possible on wayland";
 }
 
+void QWaylandCursor::setPosFromEnterEvent(const QPoint &pos)
+{
+    mLastPos = pos;
+}
+
 QSize QWaylandCursor::size() const
 {
     if (const QPlatformTheme *theme = QGuiApplicationPrivate::platformTheme())

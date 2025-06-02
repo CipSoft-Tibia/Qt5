@@ -12,13 +12,12 @@ build_webui("build") {
 
   web_component_files = [
     "sp_empty_state.ts",
-    "sp_filter_chip.ts",
     "sp_footer.ts",
     "sp_heading.ts",
     "sp_list_item_badge.ts",
   ]
 
-  non_web_component_files = [ "commerce/shopping_list_api_proxy.ts" ]
+  non_web_component_files = [ "commerce/shopping_service_api_proxy.ts" ]
 
   css_files = [
     "sp_shared_vars.css",

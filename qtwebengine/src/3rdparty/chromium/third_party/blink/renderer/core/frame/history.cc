@@ -27,6 +27,7 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
+#include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/history_util.h"
@@ -41,9 +42,9 @@
 #include "third_party/blink/renderer/core/timing/soft_navigation_heuristics.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
-#include "third_party/blink/renderer/platform/bindings/to_v8.h"
 #include "third_party/blink/renderer/platform/bindings/v8_private_property.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/scheduler/public/task_attribution_info.h"
 #include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
@@ -90,7 +91,9 @@ ScriptValue History::state(ScriptState* script_state,
   static const V8PrivateProperty::SymbolKey kHistoryStatePrivateProperty;
   auto private_prop =
       V8PrivateProperty::GetSymbol(isolate, kHistoryStatePrivateProperty);
-  v8::Local<v8::Object> v8_history = ToV8(this, script_state).As<v8::Object>();
+  v8::Local<v8::Object> v8_history =
+      ToV8Traits<History>::ToV8(script_state, this)
+          .As<v8::Object>();
   v8::Local<v8::Value> v8_state;
 
   // Returns the same V8 value unless the history gets updated.  This
@@ -224,12 +227,17 @@ void History::go(ScriptState* script_state,
     // Pass the current task ID so it'd be set as the parent task for the future
     // popstate event.
     auto* tracker = ThreadScheduler::Current()->GetTaskAttributionTracker();
-    absl::optional<scheduler::TaskAttributionId> task_id;
-    if (tracker && script_state->World().IsMainWorld()) {
-      task_id = tracker->RunningTaskAttributionId(script_state);
+    scheduler::TaskAttributionInfo* task = nullptr;
+    if (tracker && script_state->World().IsMainWorld() &&
+        frame->IsOutermostMainFrame()) {
+      task = tracker->RunningTask(script_state);
+      tracker->AddSameDocumentNavigationTask(task);
     }
     DCHECK(frame->Client());
-    if (frame->Client()->NavigateBackForward(delta, task_id)) {
+    if (frame->Client()->NavigateBackForward(
+            delta,
+            task ? absl::optional<scheduler::TaskAttributionId>(task->Id())
+                 : absl::nullopt)) {
       if (Page* page = frame->GetPage())
         page->HistoryNavigationVirtualTimePauser().PauseVirtualTime();
     }

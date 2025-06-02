@@ -1083,9 +1083,7 @@ QTextCursor &QTextCursor::operator=(const QTextCursor &cursor)
 /*!
     \fn void QTextCursor::swap(QTextCursor &other)
     \since 5.0
-
-    Swaps this text cursor instance with \a other. This function is
-    very fast and never fails.
+    \memberswap{text cursor instance}
 */
 
 /*!
@@ -1679,7 +1677,7 @@ static void getText(QString &text, QTextDocumentPrivate *priv, const QString &do
         const int offsetInFragment = qMax(0, pos - fragIt.position());
         const int len = qMin(int(frag->size_array[0] - offsetInFragment), end - pos);
 
-        text += QString(docText.constData() + frag->stringPosition + offsetInFragment, len);
+        text += QStringView(docText.constData() + frag->stringPosition + offsetInFragment, len);
         pos += len;
     }
 }

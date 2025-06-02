@@ -40,6 +40,8 @@ struct wp_viewport;
 
 QT_BEGIN_NAMESPACE
 
+#define WAYLAND_IM_KEY "wayland"
+
 class QAbstractEventDispatcher;
 class QSocketNotifier;
 class QPlatformScreen;
@@ -131,8 +133,10 @@ public:
     }
     struct ::wl_registry *wl_registry() { return object(); }
 
-    const struct wl_compositor *wl_compositor() const { return mCompositor.object(); }
-    QtWayland::wl_compositor *compositor() { return &mCompositor; }
+    QtWayland::wl_compositor *compositor()
+    {
+        return mGlobals.compositor.get();
+    }
 
     QList<QWaylandInputDevice *> inputDevices() const { return mInputDevices; }
     QWaylandInputDevice *defaultInputDevice() const;
@@ -228,7 +232,10 @@ public:
     void addRegistryListener(RegistryListener listener, void *data);
     void removeListener(RegistryListener listener, void *data);
 
-    QWaylandShm *shm() const { return mShm.data(); }
+    QWaylandShm *shm() const
+    {
+        return mGlobals.shm.get();
+    }
 
     void forceRoundTrip();
 
@@ -248,7 +255,7 @@ public:
     wl_event_queue *frameEventQueue() { return m_frameEventQueue; };
 
     bool isKeyboardAvailable() const;
-    bool isClientSideInputContextRequested() const;
+    bool isWaylandInputContextRequested() const;
 
     void initEventThread();
 
@@ -283,8 +290,6 @@ private:
     std::unique_ptr<EventThread> m_eventThread;
     wl_event_queue *m_frameEventQueue = nullptr;
     QScopedPointer<EventThread> m_frameEventQueueThread;
-    QtWayland::wl_compositor mCompositor;
-    QScopedPointer<QWaylandShm> mShm;
     QList<QWaylandScreen *> mWaitingScreens;
     QList<QWaylandScreen *> mScreens;
     QPlatformPlaceholderScreen *mPlaceholderScreen = nullptr;
@@ -311,10 +316,10 @@ private:
     QScopedPointer<QWaylandCursor> mCursor;
 #endif
 
-    QScopedPointer<QWaylandWindowManagerIntegration> mWindowManagerIntegration;
-
     struct GlobalHolder
     {
+        std::unique_ptr<QtWayland::wl_compositor> compositor;
+        std::unique_ptr<QWaylandShm> shm;
 #if QT_CONFIG(wayland_datadevice)
         std::unique_ptr<QWaylandDataDeviceManager> dndSelectionHandler;
 #endif
@@ -339,6 +344,7 @@ private:
         std::unique_ptr<QtWayland::wp_fractional_scale_manager_v1> fractionalScaleManager;
         std::unique_ptr<QtWayland::wp_cursor_shape_manager_v1> cursorShapeManager;
         std::unique_ptr<QtWayland::xdg_toplevel_drag_manager_v1> xdgToplevelDragManager;
+        std::unique_ptr<QWaylandWindowManagerIntegration> windowManagerIntegration;
     } mGlobals;
     int mFd = -1;
     int mWritableNotificationFd = -1;
@@ -352,9 +358,9 @@ private:
     static const wl_callback_listener syncCallbackListener;
     bool mWaylandTryReconnect = false;
 
-    bool mClientSideInputContextRequested = [] () {
-        const QString& requested = QPlatformInputContextFactory::requested();
-        return !requested.isEmpty() && requested != QLatin1String("wayland");
+    bool mWaylandInputContextRequested = [] () {
+        const auto requested = QPlatformInputContextFactory::requested();
+        return requested.isEmpty() || requested.contains(QLatin1String(WAYLAND_IM_KEY));
     }();
     QStringList mTextInputManagerList;
     int mTextInputManagerIndex = INT_MAX;

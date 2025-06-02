@@ -319,6 +319,10 @@ const DevToolsAPIImpl = class {
     this._dispatchOnInspectorFrontendAPI('searchCompleted', [requestId, fileSystemPath, files]);
   }
 
+  colorThemeChanged() {
+    this._dispatchOnInspectorFrontendAPI('colorThemeChanged', []);
+  }
+
   /**
    * @param {string} tabId
    */
@@ -419,11 +423,13 @@ const EnumeratedHistogram = {
   KeyboardShortcutFired: 'DevTools.KeyboardShortcutFired',
   Language: 'DevTools.Language',
   LighthouseModeRun: 'DevTools.LighthouseModeRun',
+  LighthouseCategoryUsed: 'DevTools.LighthouseCategoryUsed',
   LinearMemoryInspectorRevealedFrom: 'DevTools.LinearMemoryInspector.RevealedFrom',
   LinearMemoryInspectorTarget: 'DevTools.LinearMemoryInspector.Target',
   ManifestSectionSelected: 'DevTools.ManifestSectionSelected',
   PanelClosed: 'DevTools.PanelClosed',
   PanelShown: 'DevTools.PanelShown',
+  PanelShownInLocation: 'DevTools.PanelShownInLocation',
   RecordingAssertion: 'DevTools.RecordingAssertion',
   RecordingCodeToggled: 'DevTools.RecordingCodeToggled',
   RecordingCopiedToClipboard: 'DevTools.RecordingCopiedToClipboard',
@@ -450,6 +456,12 @@ const EnumeratedHistogram = {
   BadgeActivated: 'DevTools.BadgeActivated',
   AnimationPlaybackRateChanged: 'DevTools.AnimationPlaybackRateChanged',
   AnimationPointDragged: 'DevTools.AnimationPointDragged',
+  LegacyResourceTypeFilterNumberOfSelectedChanged: 'DevTools.LegacyResourceTypeFilterNumberOfSelectedChanged',
+  LegacyResourceTypeFilterItemSelected: 'DevTools.LegacyResourceTypeFilterItemSelected',
+  ResourceTypeFilterNumberOfSelectedChanged: 'DevTools.ResourceTypeFilterNumberOfSelectedChanged',
+  ResourceTypeFilterItemSelected: 'DevTools.ResourceTypeFilterItemSelected',
+  NetworkPanelMoreFiltersNumberOfSelectedChanged: 'DevTools.NetworkPanelMoreFiltersNumberOfSelectedChanged',
+  NetworkPanelMoreFiltersItemSelected: 'DevTools.NetworkPanelMoreFiltersItemSelected',
 };
 
 /**
@@ -981,6 +993,54 @@ const InspectorFrontendHostImpl = class {
     DevToolsAPI.setAddExtensionCallback(callback);
   }
 
+  /**
+   * @override
+   * @param {InspectorFrontendHostAPI.ImpressionEvent} impressionEvent
+   */
+  recordImpression(impressionEvent) {
+    DevToolsAPI.sendMessageToEmbedder('recordImpression', [impressionEvent], null);
+  }
+
+  /**
+   * @override
+   * @param {InspectorFrontendHostAPI.ClickEvent} clickEvent
+   */
+  recordClick(clickEvent) {
+    DevToolsAPI.sendMessageToEmbedder('recordClick', [clickEvent], null);
+  }
+
+  /**
+   * @override
+   * @param {InspectorFrontendHostAPI.HoverEvent} hoverEvent
+   */
+  recordHover(hoverEvent) {
+    DevToolsAPI.sendMessageToEmbedder('recordHover', [hoverEvent], null);
+  }
+
+  /**
+   * @override
+   * @param {InspectorFrontendHostAPI.DragEvent} dragEvent
+   */
+  recordDrag(dragEvent) {
+    DevToolsAPI.sendMessageToEmbedder('recordDrag', [dragEvent], null);
+  }
+
+  /**
+   * @override
+   * @param {InspectorFrontendHostAPI.ChangeEvent} changeEvent
+   */
+  recordChange(changeEvent) {
+    DevToolsAPI.sendMessageToEmbedder('recordChange', [changeEvent], null);
+  }
+
+  /**
+   * @override
+   * @param {InspectorFrontendHostAPI.KeyDownEvent} keyDownEvent
+   */
+  recordKeyDown(keyDownEvent) {
+    DevToolsAPI.sendMessageToEmbedder('recordKeyDown', [keyDownEvent], null);
+  }
+
   // Backward-compatible methods below this line --------------------------------------------
 
   /**
@@ -1201,7 +1261,6 @@ function installObjectObserve() {
     'showHeaSnapshotObjectsHiddenProperties',
     'showInheritedComputedStyleProperties',
     'showMediaQueryInspector',
-    'showNativeFunctionsInJSProfile',
     'showUAShadowDOM',
     'showWhitespacesInEditor',
     'sidebarPosition',

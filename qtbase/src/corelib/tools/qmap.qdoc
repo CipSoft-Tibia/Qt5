@@ -171,9 +171,7 @@
 
 /*! \fn template <class Key, class T> void QMap<Key, T>::swap(QMap<Key, T> &other) noexcept
     \since 4.8
-
-    Swaps map \a other with this map. This operation is very
-    fast and never fails.
+    \memberswap{map}
 */
 
 /*! \fn template <class Key, class T> QMap<Key, T>::QMap(std::initializer_list<std::pair<Key,T> > list)
@@ -1388,4 +1386,10 @@
     \c{std::pair<const Key &, T &>}.
 
     Returns the number of elements removed, if any.
+*/
+
+/*!
+    \fn template <class Key, class T> size_t QMap<Key, T>::qHash(const QMap &key, size_t seed) noexcept
+    \since 6.8
+    \qhashTS{QMap}{Key}{T}
 */

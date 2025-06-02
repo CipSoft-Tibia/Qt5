@@ -25,30 +25,25 @@
     storage.
 
     \section2 Which problems do protocol buffers solve?
-    Protocol buffers provide a serialization format for packets of typed and
-    structured data that are up to a few megabytes in size. Moreover, it can
-    be extended with new information without invalidating existing data or
-    requiring code to be updated. For more information, see
+    Protocol buffers provide a serialization format for typed and structured data
+    packets up to a few megabytes in size. It allows for the extension with new
+    information without invalidating existing data or requiring code to be updated.
+    For more information, see
     \l {https://protobuf.dev/}{Protocol Buffers Overview}.
 
-    \section2 What are the benefits of using Qt Protobuf?
+    \section2 Benefits of using Qt Protobuf
     You can use a Protocol buffers mechanism in any Qt-based project:
     \list
-        \li No need to call a protocol buffer compiler explicitly.
-        \li No need to integrate generated code into project tree manually.
-        \li Convenient serialization and deserialization API.
-        \li Integrated properties mechanism for generated protobuf messages.
-        \li Integrated gRPC-client support (see \l {Qt GRPC}{Qt GRPC module}).
-        \li Integrated QML-types support for generated protobuf messages.
-            See \l{Qt Protobuf QML Types}
-        \li Enabled using Qt Core and Qt GUI types as a part of *.proto schema.
-            See \l {Protobuf Qt Core Types Module} and
-            \l {Protobuf Qt GUI types module}.
-    \endlist
-
-    \section2 Incoming features
-    \list
-        \li Enabling gRPC-server support.
+        \li Without the need to call a protocol buffer compiler explicitly.
+        \li Without manually integrating generated code into the project tree.
+        \li To access the serialization and deserialization API.
+        \li For integrated properties mechanism for generated protobuf messages.
+        \li For integrated gRPC-client support, see \l {Qt GRPC}{Qt GRPC module}.
+        \li For integrated \l{Qt Protobuf QML Types} {QML-types} support for
+            generated protobuf messages.
+        \li For using enabled \l {Protobuf Qt Core Types Module} {Qt Core} and
+            \l {Protobuf Qt GUI types module} {Qt GUI} types as a part
+            of *.proto schema.
     \endlist
 
     \section1 Using the Module
@@ -122,7 +117,6 @@
 
 /*!
     \module QtProtobuf
-    \modulestate Technical Preview
     \title Qt Protobuf C++ Classes
     \qtcmakepackage Protobuf
     \since 6.5
@@ -141,11 +135,11 @@
 /*!
     \page qtprotobuf-installation-windows-vcpkg.html
     \title Example of installation for Windows using vcpkg
-    \brief Installing instructions for Protobuf and gRPC on Windows.
+    \brief Installing instructions for Protobuf and \gRPC on Windows.
 
-    You can install \c Protobuf and \c gRPC packages on Windows using
+    You can install \c Protobuf and \c \gRPC packages on Windows using
     \e vcpkg.
-    \note As an alternative solution, you can build \c Protobuf and \c gRPC
+    \note As an alternative solution, you can build \c Protobuf and \c \gRPC
     packages manually. Build instructions can be found for
     \l {https://github.com/protocolbuffers/protobuf/blob/main/cmake/README.md#windows-builds}{Protobuf}
     and \l{https://github.com/grpc/grpc/blob/v1.60.0/BUILDING.md#windows}{gRPC}
@@ -163,15 +157,18 @@
     \endlist
 
     The \c vcpkg is a cross-platform C/C++ package manager.
-    You can use the \c vcpkg for \c Protobuf, \c gRPC and its dependencies
+    You can use the \c vcpkg for \c Protobuf, \c \gRPC and its dependencies
     installation:
     \badcode
         .\vcpkg.exe install protobuf protobuf:x64-windows
         .\vcpkg.exe install grpc:x64-windows
     \endcode
+    \note We recommend using Manifest mode. This mode uses declarative JSON files
+    to describe metadata about the project. Manifest files are required to have
+    the vcpkg.json name.
 
     Finally, you can build and execute Qt-based projects with
-    \c Protobuf and \c gRPC support.
+    \c Protobuf and \c \gRPC support.
     For instance, run \l {Magic 8 Ball} from your installed version
     of Qt.
     The example requires both packages to be installed, since \c {Magic 8 Ball}
@@ -184,7 +181,7 @@
         \li Choose MSVC-based building kit from Qt-creator configuration
             settings:
             \image msvc-kit.webp
-        \li Add the paths to the installed \c Protobuf and \c gRPC packages
+        \li Add the paths to the installed \c Protobuf and \c \gRPC packages
             to the \c CMAKE_PREFIX_PATH environment variable inside
             \c {Initial Configuration} settings block:
             \image path-env-variable.webp
@@ -430,6 +427,69 @@
     \endcode
     \note The usage of duplicates will trigger a warning at compilation time.
 
+    \section1 QML types duplicates
+    If your application uses protobuf messages with names that
+    are already reserved in QML as QML types, then the correct behavior
+    cannot be guaranteed, and \c {Element is not creatable} error
+    would be triggered. To prevent an overlapping of QML Types,
+    use a <Qualifier> for QML module import, see
+    \l{Module (Namespace) Imports}.
+    For example, the following protobuf messages would be clashing
+    with the \l Text and \l Item QML types when imported into the
+    global namespace:
+    \badcode
+        syntax = "proto3";
+        package test.example;
+
+        message Text {
+            string text = 1;
+        }
+
+        message Item {
+            sint32 width = 1;
+            sint32 height = 2;
+        }
+    \endcode
+    Use the \l qt_add_protobuf macro with the \c QML option to
+    enable QML types generation from the above protobuf messages.
+    See the example below:
+    \badcode
+        qt_add_protobuf(example
+            PROTO_FILES
+                test.proto
+            QML
+            QML_URI
+                test.example
+        )
+    \endcode
+    Clashes with the QML types will be triggered if protobuf
+    messages are imported into a global namespace after the QtQuick
+    import. See the example below:
+    \badcode
+        import QtQuick
+        import test.example
+
+        Item {
+           id: root
+           ...
+           property ProtobufMessages.item itemData
+       }
+    \endcode
+    To avoid clashes with the QML types, use a \c <Qualifier>
+    to import the generated QML module into a local namespace.
+    See the example below:
+    \badcode
+        // No qualifier - global namespace
+        import QtQuick
+        // ProtobufMessages - a qualifier of local namespace.
+        import test.example as ProtobufMessages
+
+        Item {
+            id: root
+            ...
+            property ProtobufMessages.item itemData
+        }
+    \endcode
     \section2 QML keywords handling
     Pay attention to the keywords that are reserved in QML or
     JavaScript context, but not reserved in *.proto context.

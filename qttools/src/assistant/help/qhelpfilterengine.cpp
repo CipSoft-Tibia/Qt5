@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpfilterengine.h"
+#include "qhelpcollectionhandler_p.h"
 #include "qhelpenginecore.h"
 #include "qhelpfilterdata.h"
-#include "qhelpdbreader_p.h"
-#include "qhelpcollectionhandler_p.h"
 
-#include <QtCore/QThread>
-#include <QtCore/QVersionNumber>
+#include <QtCore/qthread.h>
+#include <QtCore/qversionnumber.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -45,7 +44,7 @@ bool QHelpFilterEnginePrivate::setup()
     }
 
     const QString filter = m_collectionHandler->customValue(
-                QLatin1String(ActiveFilter), QString()).toString();
+                QLatin1StringView(ActiveFilter), QString()).toString();
     if (!filter.isEmpty() && m_collectionHandler->filters().contains(filter))
         m_currentFilter = filter;
 
@@ -124,7 +123,7 @@ QHelpFilterEngine::~QHelpFilterEngine()
 void QHelpFilterEngine::setCollectionHandler(QHelpCollectionHandler *collectionHandler)
 {
     d->m_collectionHandler = collectionHandler;
-    d->m_currentFilter = QString();
+    d->m_currentFilter.clear();
     d->m_needsSetup = true;
 }
 
@@ -135,7 +134,7 @@ void QHelpFilterEngine::setCollectionHandler(QHelpCollectionHandler *collectionH
 QMap<QString, QString> QHelpFilterEngine::namespaceToComponent() const
 {
     if (!d->setup())
-        return QMap<QString, QString>();
+        return {};
     return d->m_collectionHandler->namespaceToComponent();
 }
 
@@ -146,8 +145,7 @@ QMap<QString, QString> QHelpFilterEngine::namespaceToComponent() const
 QMap<QString, QVersionNumber> QHelpFilterEngine::namespaceToVersion() const
 {
     if (!d->setup())
-        return QMap<QString, QVersionNumber>();
-
+        return {};
     return d->m_collectionHandler->namespaceToVersion();
 }
 
@@ -157,7 +155,7 @@ QMap<QString, QVersionNumber> QHelpFilterEngine::namespaceToVersion() const
 QStringList QHelpFilterEngine::filters() const
 {
     if (!d->setup())
-        return QStringList();
+        return {};
     return d->m_collectionHandler->filters();
 }
 
@@ -168,7 +166,7 @@ QStringList QHelpFilterEngine::filters() const
 QStringList QHelpFilterEngine::availableComponents() const
 {
     if (!d->setup())
-        return QStringList();
+        return {};
     return d->m_collectionHandler->availableComponents();
 }
 
@@ -181,7 +179,7 @@ QStringList QHelpFilterEngine::availableComponents() const
 QList<QVersionNumber> QHelpFilterEngine::availableVersions() const
 {
     if (!d->setup())
-        return QList<QVersionNumber>();
+        return {};
     return d->m_collectionHandler->availableVersions();
 }
 
@@ -191,7 +189,7 @@ QList<QVersionNumber> QHelpFilterEngine::availableVersions() const
 QHelpFilterData QHelpFilterEngine::filterData(const QString &filterName) const
 {
     if (!d->setup())
-        return QHelpFilterData();
+        return {};
     return d->m_collectionHandler->filterData(filterName);
 }
 
@@ -228,7 +226,7 @@ bool QHelpFilterEngine::removeFilter(const QString &filterName)
 QString QHelpFilterEngine::activeFilter() const
 {
     if (!d->setup())
-        return QString();
+        return {};
     return d->m_currentFilter;
 }
 
@@ -250,11 +248,8 @@ bool QHelpFilterEngine::setActiveFilter(const QString &filterName)
         return false;
 
     d->m_currentFilter = filterName;
-    d->m_collectionHandler->setCustomValue(QLatin1String(ActiveFilter),
-            d->m_currentFilter);
-
+    d->m_collectionHandler->setCustomValue(QLatin1StringView(ActiveFilter), d->m_currentFilter);
     emit filterActivated(d->m_currentFilter);
-
     return true;
 }
 
@@ -265,7 +260,7 @@ bool QHelpFilterEngine::setActiveFilter(const QString &filterName)
 QStringList QHelpFilterEngine::namespacesForFilter(const QString &filterName) const
 {
     if (!d->setup())
-        return QStringList();
+        return {};
     return  d->m_collectionHandler->namespacesForFilter(filterName);
 }
 
@@ -293,7 +288,7 @@ QStringList QHelpFilterEngine::indices() const
 QStringList QHelpFilterEngine::indices(const QString &filterName) const
 {
     if (!d->setup())
-        return QStringList();
+        return {};
     return d->m_collectionHandler->indicesForFilter(filterName);
 }
 

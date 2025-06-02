@@ -29,7 +29,7 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/layout/hit_test_cache.h"
 #include "third_party/blink/renderer/core/layout/hit_test_result.h"
-#include "third_party/blink/renderer/core/layout/layout_block_flow.h"
+#include "third_party/blink/renderer/core/layout/layout_ng_block_flow.h"
 #include "third_party/blink/renderer/core/layout/layout_quote.h"
 #include "third_party/blink/renderer/core/scroll/scrollable_area.h"
 #include "third_party/blink/renderer/platform/graphics/overlay_scrollbar_clip_behavior.h"
@@ -41,7 +41,6 @@ namespace blink {
 
 class LayoutViewTransitionRoot;
 class LocalFrameView;
-class ViewFragmentationContext;
 
 // LayoutView is the root of the layout tree and the Document's LayoutObject.
 //
@@ -59,7 +58,7 @@ class ViewFragmentationContext;
 // Because there is one LayoutView per rooted layout tree (or Frame), this class
 // is used to add members shared by this tree (e.g. m_layoutState or
 // m_layoutQuoteHead).
-class CORE_EXPORT LayoutView : public LayoutBlockFlow {
+class CORE_EXPORT LayoutView : public LayoutNGBlockFlow {
  public:
   explicit LayoutView(ContainerNode* document);
   ~LayoutView() override;
@@ -90,9 +89,9 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
     return "LayoutView";
   }
 
-  bool IsOfType(LayoutObjectType type) const override {
+  bool IsLayoutView() const final {
     NOT_DESTROYED();
-    return type == kLayoutObjectView || LayoutBlockFlow::IsOfType(type);
+    return true;
   }
 
   PaintLayerType LayerTypeRequired() const override {
@@ -105,10 +104,8 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
 
   bool IsChildAllowed(LayoutObject*, const ComputedStyle&) const override;
 
-  void UpdateLayout() override {
-    NOT_DESTROYED();
-    NOTREACHED_NORETURN();
-  }
+  void InvalidateSvgRootsWithRelativeLengthDescendents();
+  void UpdateLayout() final;
   LayoutUnit ComputeMinimumWidth();
 
   // Based on LocalFrameView::LayoutSize, but:
@@ -135,7 +132,7 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
 
   LocalFrameView* GetFrameView() const {
     NOT_DESTROYED();
-    return frame_view_;
+    return frame_view_.Get();
   }
   const LayoutBox& RootBox() const;
 
@@ -151,8 +148,6 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
       VisualRectFlags = kDefaultVisualRectFlags) const override;
 
   PhysicalOffset OffsetForFixedPosition() const;
-
-  void Paint(const PaintInfo&) const override;
 
   void CommitPendingSelection();
 
@@ -188,10 +183,7 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
   void UpdateHitTestResult(HitTestResult&,
                            const PhysicalOffset&) const override;
 
-  ViewFragmentationContext* FragmentationContext() const {
-    NOT_DESTROYED();
-    return fragmentation_context_;
-  }
+  bool IsFragmentationContextRoot() const override;
 
   void SetDefaultPageDescription(const WebPrintPageDescription& description) {
     NOT_DESTROYED();
@@ -225,8 +217,7 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
   PhysicalSize PageAreaSize(wtf_size_t page_index,
                             const AtomicString& page_name) const;
 
-  // TODO(1229581): Make non-virtual.
-  virtual AtomicString NamedPageAtIndex(wtf_size_t page_index) const = 0;
+  AtomicString NamedPageAtIndex(wtf_size_t page_index) const;
 
   PhysicalRect DocumentRect() const;
 
@@ -272,7 +263,7 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
   // Return true if re-laying out the specified node (as a cached layout result)
   // with a new initial containing block size. Subsequent calls for the same
   // node within the same lifecycle update will return false.
-  bool AffectedByResizedInitialContainingBlock(const NGLayoutResult&);
+  bool AffectedByResizedInitialContainingBlock(const LayoutResult&);
 
   // Update generated markers and counters after style and layout tree update.
   // container - The container for container queries, otherwise nullptr.
@@ -311,8 +302,6 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
   // from DocumentMarkerController.
   Vector<gfx::Rect> GetTickmarks() const;
   bool HasTickmarks() const;
-
-  RecalcLayoutOverflowResult RecalcLayoutOverflow() override;
 
   // The visible background area, in the local coordinates. The view background
   // will be painted in this rect. It's also the positioning area of fixed-
@@ -356,7 +345,7 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
 
   LayoutViewTransitionRoot* GetViewTransitionRoot() const;
 
- protected:
+ private:
   void StyleDidChange(StyleDifference, const ComputedStyle* old_style) override;
   int ViewLogicalWidthForBoxSizing() const {
     NOT_DESTROYED();
@@ -372,7 +361,6 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
   Member<HeapHashSet<Member<const LayoutObject>>>
       initial_containing_block_resize_handled_list_;
 
- private:
   bool CanHaveChildren() const override;
   void UpdateFromStyle() override;
 
@@ -383,7 +371,6 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
     return false;
   }
 
- protected:
   // Default page description (size and margins):
   WebPrintPageDescription default_page_description_;
 
@@ -401,17 +388,14 @@ class CORE_EXPORT LayoutView : public LayoutBlockFlow {
   // inline overflow.
   float page_scale_factor_ = 1.0;
 
-  Member<ViewFragmentationContext> fragmentation_context_;
-
- private:
   Member<LocalFrameView> frame_view_;
   unsigned layout_counter_count_ = 0;
   unsigned layout_list_item_count_ = 0;
   bool needs_marker_counter_update_ = false;
 
   // This map keeps track of SVG <text> descendants.
-  // LayoutNGSVGText needs to do re-layout on transform changes of any ancestor
-  // because LayoutNGSVGText's layout result depends on scaling factors
+  // LayoutSVGText needs to do re-layout on transform changes of any ancestor
+  // because LayoutSVGText's layout result depends on scaling factors
   // computed with ancestor transforms.
   Member<TrackedDescendantsMap> svg_text_descendants_;
 

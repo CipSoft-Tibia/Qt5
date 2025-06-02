@@ -10,6 +10,7 @@
 #include <ostream>
 #include <string>
 
+#include "base/files/scoped_file.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -133,30 +134,39 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   void OnDragOffer(std::unique_ptr<WaylandDataOffer> offer) override;
   void OnDragEnter(WaylandWindow* window,
                    const gfx::PointF& location,
+                   base::TimeTicks timestamp,
                    uint32_t serial) override;
-  void OnDragMotion(const gfx::PointF& location) override;
-  void OnDragLeave() override;
-  void OnDragDrop() override;
+  void OnDragMotion(const gfx::PointF& location,
+                    base::TimeTicks timestamp) override;
+  void OnDragLeave(base::TimeTicks timestamp) override;
+  void OnDragDrop(base::TimeTicks timestamp) override;
   const WaylandWindow* GetDragTarget() const override;
 
   // WaylandDataSource::Delegate:
-  void OnDataSourceFinish(bool completed) override;
-  void OnDataSourceSend(const std::string& mime_type,
+  void OnDataSourceFinish(WaylandDataSource* source,
+                          base::TimeTicks timestamp,
+                          bool completed) override;
+  void OnDataSourceSend(WaylandDataSource* source,
+                        const std::string& mime_type,
                         std::string* contents) override;
 
   // WaylandWindowObserver:
   void OnWindowRemoved(WaylandWindow* window) override;
 
-  void HandleUnprocessedMimeTypes(base::TimeTicks start_time);
-  void OnMimeTypeDataTransferred(base::TimeTicks start_time,
-                                 PlatformClipboard::Data contents);
+  // Starts the process of fetching data offered by an external client (ie:
+  // incoming drag session). The actual I/O is performed in a separate thread
+  // using ThreadPool infra. Once data for all supported mime types is fetched,
+  // the OnDataTransferFinished callback is fired.
+  void PostDataTransferTask(const gfx::PointF& location,
+                            base::TimeTicks start_time);
+
   void OnDataTransferFinished(
       base::TimeTicks start_time,
       std::unique_ptr<ui::OSExchangeData> received_data);
-  std::string GetNextUnprocessedMimeType();
   // Calls the window's OnDragEnter with the given location and data,
   // then immediately calls OnDragMotion to get the actual operation.
   void PropagateOnDragEnter(const gfx::PointF& location,
+                            base::TimeTicks timestamp,
                             std::unique_ptr<OSExchangeData> data);
 
   absl::optional<wl::Serial> GetAndValidateSerialForDrag(
@@ -177,7 +187,7 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   // Sends an ET_MOUSE_RELEASED event to the window that currently has capture.
   // Must only be called if |pointer_grabber_for_window_drag_| is valid. This
   // resets |pointer_grabber_for_window_drag_|.
-  void DispatchPointerRelease();
+  void DispatchPointerRelease(base::TimeTicks timestamp);
 
   // PlatformEventDispatcher:
   bool CanDispatchEvent(const PlatformEvent& event) override;
@@ -214,9 +224,6 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
   // dnd session running or Chromium is the data source.
   std::unique_ptr<WaylandDataOffer> data_offer_;
 
-  // Mime types to be handled.
-  std::list<std::string> unprocessed_mime_types_;
-
   // The window that initiated the drag session. Can be null when the session
   // has been started by an external Wayland client.
   raw_ptr<WaylandWindow> origin_window_ = nullptr;
@@ -226,12 +233,6 @@ class WaylandDataDragController : public WaylandDataDevice::DragDelegate,
 
   // The most recent location received while dragging the data.
   gfx::PointF last_drag_location_;
-
-  // The provider for the dnd data received from another Wayland client.
-  std::unique_ptr<WaylandExchangeDataProvider> received_exchange_data_provider_;
-
-  // Set when 'leave' event is fired while data is being transferred.
-  bool is_leave_pending_ = false;
 
   // Drag icon related variables.
   std::unique_ptr<WaylandSurface> icon_surface_;

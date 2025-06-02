@@ -3,7 +3,7 @@
 
 #include <QtTest/QtTest>
 
-#include <QtGraphs/Q3DTheme>
+#include <QtGraphs/QGraphsTheme>
 
 class tst_theme: public QObject
 {
@@ -19,10 +19,10 @@ private slots:
 
     void initialProperties();
     void initializeProperties();
-    void invalidProperties();
+    void initializeGraphsLine();
 
 private:
-    Q3DTheme *m_theme;
+    QGraphsTheme *m_theme;
 };
 
 void tst_theme::initTestCase()
@@ -35,7 +35,8 @@ void tst_theme::cleanupTestCase()
 
 void tst_theme::init()
 {
-    m_theme = new Q3DTheme();
+    m_theme = new QGraphsTheme();
+    m_theme->setColorScheme(QGraphsTheme::ColorScheme::Light);
 }
 
 void tst_theme::cleanup()
@@ -45,38 +46,40 @@ void tst_theme::cleanup()
 
 void tst_theme::construct()
 {
-    Q3DTheme *theme = new Q3DTheme();
+    QGraphsTheme *theme = new QGraphsTheme();
     QVERIFY(theme);
     delete theme;
 
-    theme = new Q3DTheme(Q3DTheme::Theme::Ebony);
+    theme = new QGraphsTheme();
+    theme->setTheme(QGraphsTheme::Theme::MixSeries);
+    theme->setColorScheme(QGraphsTheme::ColorScheme::Light);
     QVERIFY(theme);
-    QCOMPARE(theme->ambientLightStrength(), 0.5f);
-    QCOMPARE(theme->backgroundColor(), QColor(Qt::black));
-    QCOMPARE(theme->isBackgroundEnabled(), true);
-    QCOMPARE(theme->baseColors().size(), 5);
-    QCOMPARE(theme->baseColors().at(0), QColor(Qt::white));
-    QCOMPARE(theme->baseColors().at(4), QColor(QRgb(0x6b6b6b)));
-    QCOMPARE(theme->baseGradients().size(), 5);
-    QCOMPARE(theme->baseGradients().at(0).stops().at(1).second, QColor(Qt::white));
-    QCOMPARE(theme->baseGradients().at(4).stops().at(1).second, QColor(QRgb(0x6b6b6b)));
-    QCOMPARE(theme->colorStyle(), Q3DTheme::ColorStyle::Uniform);
-    QCOMPARE(theme->font(), QFont("Arial"));
-    QCOMPARE(theme->isGridEnabled(), true);
-    QCOMPARE(theme->gridLineColor(), QColor(QRgb(0x35322f)));
-    QCOMPARE(theme->labelBackgroundColor(), QColor(0x00, 0x00, 0x00, 0xcd));
-    QCOMPARE(theme->isLabelBackgroundEnabled(), true);
-    QCOMPARE(theme->isLabelBorderEnabled(), false);
-    QCOMPARE(theme->labelTextColor(), QColor(QRgb(0xaeadac)));
-    QCOMPARE(theme->lightColor(), QColor(Qt::white));
-    QCOMPARE(theme->lightStrength(), 5.0f);
-    QCOMPARE(theme->multiHighlightColor(), QColor(QRgb(0xd72222)));
-    QCOMPARE(theme->multiHighlightGradient().stops().at(1).second, QColor(QRgb(0xd72222)));
-    QCOMPARE(theme->shadowStrength(), 25.0f);
-    QCOMPARE(theme->singleHighlightColor(), QColor(QRgb(0xf5dc0d)));
-    QCOMPARE(theme->singleHighlightGradient().stops().at(1).second, QColor(QRgb(0xf5dc0d)));
-    QCOMPARE(theme->type(), Q3DTheme::Theme::Ebony);
-    QCOMPARE(theme->windowColor(), QColor(Qt::black));
+    QCOMPARE(theme->plotAreaBackgroundColor(), QColor(QRgb(0xFCFCFC)));
+    QCOMPARE(theme->isPlotAreaBackgroundVisible(), true);
+    QCOMPARE(theme->seriesColors().size(), 5);
+    QCOMPARE(theme->seriesColors().at(0), QColor(QRgb(0xFFA615)));
+    QCOMPARE(theme->seriesColors().at(4), QColor(QRgb(0x0128F8)));
+    QCOMPARE(theme->seriesGradients().size(), 5);
+    QCOMPARE(theme->seriesGradients().at(0).stops().at(1).second, QColor(QRgb(0xFFA615)));
+    QCOMPARE(theme->seriesGradients().at(4).stops().at(1).second, QColor(QRgb(0x0128F8)));
+    QCOMPARE(theme->colorStyle(), QGraphsTheme::ColorStyle::Uniform);
+    QCOMPARE(theme->labelFont(), QFont("Arial"));
+    QCOMPARE(theme->isGridVisible(), true);
+    QCOMPARE(theme->grid().mainColor(), QColor(QRgb(0x545151)));
+    QCOMPARE(theme->grid().subColor(), QColor(QRgb(0xAFAFAF)));
+    QCOMPARE(theme->grid().mainWidth(), 2.0f);
+    QCOMPARE(theme->grid().subWidth(), 1.0f);
+    QCOMPARE(theme->labelBackgroundColor(), QColor(QRgb(0xE7E7E7)));
+    QCOMPARE(theme->isLabelBackgroundVisible(), true);
+    QCOMPARE(theme->isLabelBorderVisible(), true);
+    QCOMPARE(theme->labelTextColor(), QColor(QRgb(0x6A6A6A)));
+    QCOMPARE(theme->multiHighlightColor(), QColor(QRgb(0x22D47B)));
+    QCOMPARE(theme->multiHighlightGradient().stops().at(1).second, QColor(QRgb(0x22D47B)));
+    QCOMPARE(theme->singleHighlightColor(), QColor(QRgb(0xCCDC00)));
+    QCOMPARE(theme->singleHighlightGradient().stops().at(1).second, QColor(QRgb(0xCCDC00)));
+    QCOMPARE(theme->theme(), QGraphsTheme::Theme::MixSeries);
+    QCOMPARE(theme->backgroundColor(), QColor(QRgb(0xF2F2F2)));
+    QCOMPARE(theme->isBackgroundVisible(), true);
     delete theme;
 }
 
@@ -84,41 +87,76 @@ void tst_theme::initialProperties()
 {
     QVERIFY(m_theme);
 
-    QCOMPARE(m_theme->ambientLightStrength(), 0.25f);
-    QCOMPARE(m_theme->backgroundColor(), QColor(Qt::black));
-    QCOMPARE(m_theme->isBackgroundEnabled(), true);
-    QCOMPARE(m_theme->baseColors().size(), 1);
-    QCOMPARE(m_theme->baseColors().at(0), QColor(Qt::black));
-    QCOMPARE(m_theme->baseGradients().size(), 1);
-    QCOMPARE(m_theme->baseGradients().at(0).stops().at(0).second, QColor(Qt::black));
-    QCOMPARE(m_theme->baseGradients().at(0).stops().at(1).second, QColor(Qt::white));
-    QCOMPARE(m_theme->colorStyle(), Q3DTheme::ColorStyle::Uniform);
-    QCOMPARE(m_theme->font(), QFont());
-    QCOMPARE(m_theme->isGridEnabled(), true);
-    QCOMPARE(m_theme->gridLineColor(), QColor(Qt::white));
-    QCOMPARE(m_theme->labelBackgroundColor(), QColor(Qt::gray));
-    QCOMPARE(m_theme->isLabelBackgroundEnabled(), true);
-    QCOMPARE(m_theme->isLabelBorderEnabled(), true);
-    QCOMPARE(m_theme->labelTextColor(), QColor(Qt::white));
-    QCOMPARE(m_theme->lightColor(), QColor(Qt::white));
-    QCOMPARE(m_theme->lightStrength(), 5.0f);
-    QCOMPARE(m_theme->multiHighlightColor(), QColor(Qt::blue));
-    QCOMPARE(m_theme->multiHighlightGradient().stops(), QLinearGradient().stops());
-    QCOMPARE(m_theme->shadowStrength(), 25.0f);
-    QCOMPARE(m_theme->singleHighlightColor(), QColor(Qt::red));
-    QCOMPARE(m_theme->singleHighlightGradient().stops(), QLinearGradient().stops());
-    QCOMPARE(m_theme->type(), Q3DTheme::Theme::UserDefined);
-    QCOMPARE(m_theme->windowColor(), QColor(Qt::black));
+    QCOMPARE(m_theme->plotAreaBackgroundColor(), QColor(QRgb(0xFCFCFC)));
+    QCOMPARE(m_theme->isPlotAreaBackgroundVisible(), true);
+    QCOMPARE(m_theme->seriesColors().size(), 5);
+    QCOMPARE(m_theme->seriesColors().at(0), QColor(QRgb(0xD5F8E7)));
+    QCOMPARE(m_theme->seriesGradients().size(), 5);
+    QCOMPARE(m_theme->seriesGradients().at(0).stops().at(0).second, QColor(QRgb(0x6A7C73)));
+    QCOMPARE(m_theme->seriesGradients().at(0).stops().at(1).second, QColor(QRgb(0xD5F8E7)));
+    QCOMPARE(m_theme->labelFont(), QFont(QLatin1String("Arial")));
+    QCOMPARE(m_theme->isGridVisible(), true);
+    QCOMPARE(m_theme->grid().mainColor(), QColor(QRgb(0x545151)));
+    QCOMPARE(m_theme->grid().subColor(), QColor(QRgb(0xAFAFAF)));
+    QCOMPARE(m_theme->grid().mainWidth(), 2.0f);
+    QCOMPARE(m_theme->grid().subWidth(), 1.0f);
+    QCOMPARE(m_theme->labelBackgroundColor(), QColor(QRgb(0xE7E7E7)));
+    QCOMPARE(m_theme->isLabelBackgroundVisible(), true);
+    QCOMPARE(m_theme->isLabelBorderVisible(), true);
+    QCOMPARE(m_theme->labelTextColor(), QColor(QRgb(0x6A6A6A)));
+    QCOMPARE(m_theme->multiHighlightColor(), QColor(QRgb(0x22D47B)));
+    QCOMPARE(m_theme->multiHighlightGradient().stops().at(1).second, QColor(QRgb(0x22D47B)));
+    QCOMPARE(m_theme->singleHighlightColor(), QColor(QRgb(0xCCDC00)));
+    QCOMPARE(m_theme->singleHighlightGradient().stops().at(1).second, QColor(QRgb(0xCCDC00)));
+    QCOMPARE(m_theme->theme(), QGraphsTheme::Theme::QtGreen);
+    QCOMPARE(m_theme->backgroundColor(), QColor(QRgb(0xF2F2F2)));
+    QCOMPARE(m_theme->isBackgroundVisible(), true);
 }
 
 void tst_theme::initializeProperties()
 {
     QVERIFY(m_theme);
 
+    QSignalSpy colorSchemeSpy(m_theme, &QGraphsTheme::colorSchemeChanged);
+    QSignalSpy themeSpy(m_theme, &QGraphsTheme::themeChanged);
+    QSignalSpy colorStyleSpy(m_theme, &QGraphsTheme::colorStyleChanged);
+    QSignalSpy backgroundColorSpy(m_theme, &QGraphsTheme::backgroundColorChanged);
+    QSignalSpy backgroundVisibleSpy(m_theme, &QGraphsTheme::backgroundVisibleChanged);
+    QSignalSpy plotAreaBackgroundColorSpy(m_theme, &QGraphsTheme::plotAreaBackgroundColorChanged);
+    QSignalSpy plotAreaBackgroundVisibleSpy(m_theme, &QGraphsTheme::plotAreaBackgroundVisibleChanged);
+    QSignalSpy gridVisibleSpy(m_theme, &QGraphsTheme::gridVisibleChanged);
+
+    QSignalSpy axisXLabelFontSpy(m_theme, &QGraphsTheme::axisXLabelFontChanged);
+    QSignalSpy axisYLabelFontSpy(m_theme, &QGraphsTheme::axisYLabelFontChanged);
+    QSignalSpy axisZLabelFontSpy(m_theme, &QGraphsTheme::axisZLabelFontChanged);
+
+    QSignalSpy gridSpy(m_theme, &QGraphsTheme::gridChanged);
+    QSignalSpy axisXSpy(m_theme, &QGraphsTheme::axisXChanged);
+    QSignalSpy axisYSpy(m_theme, &QGraphsTheme::axisYChanged);
+    QSignalSpy axisZSpy(m_theme, &QGraphsTheme::axisZChanged);
+
+    QSignalSpy labelFontSpy(m_theme, &QGraphsTheme::labelFontChanged);
+    QSignalSpy labelsVisibleSpy(m_theme, &QGraphsTheme::labelsVisibleChanged);
+    QSignalSpy labelBackgroundColorSpy(m_theme, &QGraphsTheme::labelBackgroundColorChanged);
+    QSignalSpy labelTextColorSpy(m_theme, &QGraphsTheme::labelTextColorChanged);
+    QSignalSpy labelBackgroundVisibleSpy(m_theme, &QGraphsTheme::labelBackgroundVisibleChanged);
+    QSignalSpy labelBorderVisibleSpy(m_theme, &QGraphsTheme::labelBorderVisibleChanged);
+
+    QSignalSpy seriesGradientsSpy(m_theme, &QGraphsTheme::seriesGradientsChanged);
+    QSignalSpy seriesColorsSpy(m_theme, &QGraphsTheme::seriesColorsChanged);
+    QSignalSpy borderColorsSpy(m_theme, &QGraphsTheme::borderColorsChanged);
+    QSignalSpy borderWidthSpy(m_theme, &QGraphsTheme::borderWidthChanged);
+
+    QSignalSpy singleHighlightColorSpy(m_theme, &QGraphsTheme::singleHighlightColorChanged);
+    QSignalSpy multiHighlightColorSpy(m_theme, &QGraphsTheme::multiHighlightColorChanged);
+    QSignalSpy singleHighlightGradientSpy(m_theme, &QGraphsTheme::singleHighlightGradientChanged);
+    QSignalSpy multiHighlightGradientSpy(m_theme, &QGraphsTheme::multiHighlightGradientChanged);
+
+
     QLinearGradient gradient1;
     QLinearGradient gradient2;
-    QLinearGradient gradient3;
-    QLinearGradient gradient4;
+    QLinearGradient gradient3(QPoint(0.0f, 0.0f), QPoint(10.0f, 10.0f));
+    QLinearGradient gradient4(QPoint(0.0f, 0.0f), QPoint(10.0f, 10.0f));
 
     QList<QColor> basecolors;
     basecolors << QColor(Qt::red) << QColor(Qt::blue);
@@ -126,73 +164,169 @@ void tst_theme::initializeProperties()
     QList<QLinearGradient> basegradients;
     basegradients << gradient1 << gradient2;
 
-    m_theme->setType(Q3DTheme::Theme::Qt); // We'll override default values with the following setters
-    m_theme->setAmbientLightStrength(0.3f);
-    m_theme->setBackgroundColor(QColor(Qt::red));
-    m_theme->setBackgroundEnabled(false);
-    m_theme->setBaseColors(basecolors);
-    m_theme->setBaseGradients(basegradients);
-    m_theme->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
-    m_theme->setFont(QFont("Arial"));
-    m_theme->setGridEnabled(false);
-    m_theme->setGridLineColor(QColor(Qt::green));
+    m_theme->setTheme(QGraphsTheme::Theme::OrangeSeries); // We'll override default values with the following setters
+    m_theme->setColorScheme(QGraphsTheme::ColorScheme::Dark);
+    m_theme->setPlotAreaBackgroundColor(QColor(Qt::red));
+    m_theme->setPlotAreaBackgroundVisible(false);
+    m_theme->setSeriesColors(basecolors);
+    m_theme->setSeriesGradients(basegradients);
+    m_theme->setColorStyle(QGraphsTheme::ColorStyle::RangeGradient);
+    m_theme->setLabelFont(QFont("Times"));
+    m_theme->setGridVisible(false);
+    QGraphsLine grid = m_theme->grid();
+    grid.setMainColor(QColor(Qt::green));
+    grid.setSubColor(QColor(Qt::red));
+    grid.setMainWidth(0.8f);
+    grid.setSubWidth(0.5f);
+    m_theme->setGrid(grid);
     m_theme->setLabelBackgroundColor(QColor(Qt::gray));
-    m_theme->setLabelBackgroundEnabled(false);
-    m_theme->setLabelBorderEnabled(false);
+    m_theme->setLabelBackgroundVisible(false);
+    m_theme->setLabelBorderVisible(false);
     m_theme->setLabelTextColor(QColor(Qt::cyan));
-    m_theme->setLightColor(QColor(Qt::yellow));
-    m_theme->setLightStrength(2.5f);
     m_theme->setMultiHighlightColor(QColor(Qt::darkBlue));
     m_theme->setMultiHighlightGradient(gradient3);
-    m_theme->setShadowStrength(50.f);
     m_theme->setSingleHighlightColor(QColor(Qt::darkRed));
     m_theme->setSingleHighlightGradient(gradient4);
-    m_theme->setWindowColor(QColor(Qt::darkYellow));
+    m_theme->setBackgroundColor(QColor(Qt::darkYellow));
+    m_theme->setBackgroundVisible(false);
+    m_theme->setAxisXLabelFont(QFont("helvetica"));
+    m_theme->setAxisYLabelFont(QFont("helvetica"));
+    m_theme->setAxisZLabelFont(QFont("Helvetica"));
+    m_theme->setLabelsVisible(false);
+    m_theme->setBorderColors(basecolors);
+    m_theme->setBorderWidth(10.0f);
 
-    QCOMPARE(m_theme->ambientLightStrength(), 0.3f);
-    QCOMPARE(m_theme->backgroundColor(), QColor(Qt::red));
-    QCOMPARE(m_theme->isBackgroundEnabled(), false);
-    QCOMPARE(m_theme->baseColors().size(), 2);
-    QCOMPARE(m_theme->baseColors().at(0), QColor(Qt::red));
-    QCOMPARE(m_theme->baseColors().at(1), QColor(Qt::blue));
-    QCOMPARE(m_theme->baseGradients().size(), 2);
-    QCOMPARE(m_theme->baseGradients().at(0), gradient1);
-    QCOMPARE(m_theme->baseGradients().at(0), gradient2);
-    QCOMPARE(m_theme->colorStyle(), Q3DTheme::ColorStyle::RangeGradient);
-    QCOMPARE(m_theme->font(), QFont("Arial"));
-    QCOMPARE(m_theme->isGridEnabled(), false);
-    QCOMPARE(m_theme->gridLineColor(), QColor(Qt::green));
+    QCOMPARE(m_theme->plotAreaBackgroundColor(), QColor(Qt::red));
+    QCOMPARE(m_theme->isPlotAreaBackgroundVisible(), false);
+    QCOMPARE(m_theme->seriesColors().size(), 2);
+    QCOMPARE(m_theme->seriesColors().at(0), QColor(Qt::red));
+    QCOMPARE(m_theme->seriesColors().at(1), QColor(Qt::blue));
+    QCOMPARE(m_theme->seriesGradients().size(), 2);
+    QCOMPARE(m_theme->seriesGradients().at(0), gradient1);
+    QCOMPARE(m_theme->seriesGradients().at(0), gradient2);
+    QCOMPARE(m_theme->colorStyle(), QGraphsTheme::ColorStyle::RangeGradient);
+    QCOMPARE(m_theme->labelFont(), QFont("Times"));
+    QCOMPARE(m_theme->isGridVisible(), false);
+    QCOMPARE(m_theme->grid().mainColor(), QColor(Qt::green));
+    QCOMPARE(m_theme->grid().subColor(), QColor(Qt::red));
+    QCOMPARE(m_theme->grid().mainWidth(), 0.8f);
+    QCOMPARE(m_theme->grid().subWidth(), 0.5f);
     QCOMPARE(m_theme->labelBackgroundColor(), QColor(Qt::gray));
-    QCOMPARE(m_theme->isLabelBackgroundEnabled(), false);
-    QCOMPARE(m_theme->isLabelBorderEnabled(), false);
+    QCOMPARE(m_theme->isLabelBackgroundVisible(), false);
+    QCOMPARE(m_theme->isLabelBorderVisible(), false);
     QCOMPARE(m_theme->labelTextColor(), QColor(Qt::cyan));
-    QCOMPARE(m_theme->lightColor(), QColor(Qt::yellow));
-    QCOMPARE(m_theme->lightStrength(), 2.5f);
     QCOMPARE(m_theme->multiHighlightColor(), QColor(Qt::darkBlue));
     QCOMPARE(m_theme->multiHighlightGradient(), gradient3);
-    QCOMPARE(m_theme->shadowStrength(), 50.0f);
     QCOMPARE(m_theme->singleHighlightColor(), QColor(Qt::darkRed));
     QCOMPARE(m_theme->singleHighlightGradient(), gradient4);
-    QCOMPARE(m_theme->type(), Q3DTheme::Theme::Qt);
-    QCOMPARE(m_theme->windowColor(), QColor(Qt::darkYellow));
+    QCOMPARE(m_theme->theme(), QGraphsTheme::Theme::OrangeSeries);
+    QCOMPARE(m_theme->backgroundColor(), QColor(Qt::darkYellow));
+    QCOMPARE(m_theme->isBackgroundVisible(), false);
+
+    QCOMPARE(colorSchemeSpy.size(), 1);
+    QCOMPARE(themeSpy.size(), 1);
+    QCOMPARE(colorStyleSpy.size(), 1);
+    QCOMPARE(backgroundColorSpy.size(), 1);
+    QCOMPARE(backgroundVisibleSpy.size(), 1);
+    QCOMPARE(plotAreaBackgroundColorSpy.size(), 1);
+    QCOMPARE(plotAreaBackgroundVisibleSpy.size(), 1);
+    QCOMPARE(gridVisibleSpy.size(), 1);
+
+    QCOMPARE(colorSchemeSpy.size(), 1);
+    QCOMPARE(themeSpy.size(), 1);
+    QCOMPARE(colorStyleSpy.size(), 1);
+    QCOMPARE(backgroundColorSpy.size(), 1);
+    QCOMPARE(backgroundVisibleSpy.size(), 1);
+    QCOMPARE(plotAreaBackgroundColorSpy.size(), 1);
+    QCOMPARE(plotAreaBackgroundVisibleSpy.size(), 1);
+    QCOMPARE(gridVisibleSpy.size(), 1);
+
+    QCOMPARE(axisXLabelFontSpy.size(), 1);
+    QCOMPARE(axisYLabelFontSpy.size(), 1);
+    QCOMPARE(axisZLabelFontSpy.size(), 1);
+
+    QCOMPARE(gridSpy.size(), 2);
+    QCOMPARE(axisXSpy.size(), 1);
+    QCOMPARE(axisYSpy.size(), 1);
+    QCOMPARE(axisZSpy.size(), 1);
+
+    QCOMPARE(labelFontSpy.size(), 1);
+    QCOMPARE(labelsVisibleSpy.size(), 1);
+    QCOMPARE(labelBackgroundColorSpy.size(), 1);
+    QCOMPARE(labelTextColorSpy.size(), 1);
+    QCOMPARE(labelBackgroundVisibleSpy.size(), 1);
+    QCOMPARE(labelBorderVisibleSpy.size(), 1);
+
+    QCOMPARE(seriesGradientsSpy.size(), 1);
+    QCOMPARE(seriesColorsSpy.size(), 1);
+    QCOMPARE(borderColorsSpy.size(), 1);
+    QCOMPARE(borderWidthSpy.size(), 1);
+
+    QCOMPARE(singleHighlightColorSpy.size(), 1);
+    QCOMPARE(multiHighlightColorSpy.size(), 1);
+    QCOMPARE(singleHighlightGradientSpy.size(), 1);
+    QCOMPARE(multiHighlightGradientSpy.size(), 1);
 }
 
-void tst_theme::invalidProperties()
+void tst_theme::initializeGraphsLine()
 {
-    m_theme->setAmbientLightStrength(-1.0f);
-    QCOMPARE(m_theme->ambientLightStrength(), 0.25f);
-    m_theme->setAmbientLightStrength(1.1f);
-    QCOMPARE(m_theme->ambientLightStrength(), 0.25f);
+    QGraphsLine line;
 
-    m_theme->setLightStrength(-1.0f);
-    QCOMPARE(m_theme->lightStrength(), 5.0f);
-    m_theme->setLightStrength(10.1f);
-    QCOMPARE(m_theme->lightStrength(), 5.0f);
+    QCOMPARE(line.mainColor(), QColor());
+    QCOMPARE(line.subColor(), QColor());
+    QCOMPARE(line.labelTextColor(), QColor());
+    QCOMPARE(line.mainWidth(), 2.0f);
+    QCOMPARE(line.subWidth(), 1.0f);
 
-    m_theme->setShadowStrength(-1.0f);
-    QCOMPARE(m_theme->shadowStrength(), 25.0f);
-    m_theme->setShadowStrength(100.1f);
-    QCOMPARE(m_theme->shadowStrength(), 25.0f);
+    line.setMainColor(Qt::red);
+    line.setSubColor(Qt::green);
+    line.setLabelTextColor(Qt::gray);
+    line.setMainWidth(25);
+    line.setSubWidth(10);
+
+    QCOMPARE(line.mainColor(), Qt::red);
+    QCOMPARE(line.subColor(), Qt::green);
+    QCOMPARE(line.labelTextColor(), Qt::gray);
+    QCOMPARE(line.mainWidth(), 25);
+    QCOMPARE(line.subWidth(), 10);
+
+    QGraphsLine line2;
+
+    line2.setMainColor(Qt::green);
+    line2.setSubColor(Qt::red);
+    line2.setLabelTextColor(Qt::darkGray);
+    line2.setMainWidth(30);
+    line2.setSubWidth(5);
+
+    line = line2;
+
+    QCOMPARE(line.mainColor(), line2.mainColor());
+    QCOMPARE(line.subColor(), line2.subColor());
+    QCOMPARE(line.labelTextColor(), line2.labelTextColor());
+    QCOMPARE(line.mainWidth(), line2.mainWidth());
+    QCOMPARE(line.subWidth(), line2.subWidth());
+
+    QGraphsLine swapLine;
+
+    swapLine.setMainColor(Qt::darkRed);
+    swapLine.setSubColor(Qt::darkGreen);
+    swapLine.setLabelTextColor(Qt::darkYellow);
+    swapLine.setMainWidth(5);
+    swapLine.setSubWidth(2);
+
+    line.swap(swapLine);
+
+    QCOMPARE(line.mainColor(), Qt::darkRed);
+    QCOMPARE(line.subColor(), Qt::darkGreen);
+    QCOMPARE(line.labelTextColor(), Qt::darkYellow);
+    QCOMPARE(line.mainWidth(), 5);
+    QCOMPARE(line.subWidth(), 2);
+
+    QCOMPARE(swapLine.mainColor(), line2.mainColor());
+    QCOMPARE(swapLine.subColor(), line2.subColor());
+    QCOMPARE(swapLine.labelTextColor(), line2.labelTextColor());
+    QCOMPARE(swapLine.mainWidth(), line2.mainWidth());
+    QCOMPARE(swapLine.subWidth(), line2.subWidth());
 }
 
 QTEST_MAIN(tst_theme)

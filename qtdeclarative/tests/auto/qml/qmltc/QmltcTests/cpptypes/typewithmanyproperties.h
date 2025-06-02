@@ -80,7 +80,7 @@ public:
     QString hasAllAttributes2() { return u"Some Constant string"_s; }
     QString hasAllAttributes() { return m_hasAllAttributes; }
     void setHasAllAttributes(const QString &s) { m_hasAllAttributes = s; }
-    void resetHasAllAttributes() { m_hasAllAttributes = "This value has been reset."; }
+    void resetHasAllAttributes() { m_hasAllAttributes = u"This value has been reset."_s; }
 
 signals:
     void notifiableChanged(const QString &newValue);

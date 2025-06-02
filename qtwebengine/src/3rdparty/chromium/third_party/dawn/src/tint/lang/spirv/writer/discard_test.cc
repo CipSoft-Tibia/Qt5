@@ -1,18 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// GEN_BUILD:CONDITION(tint_build_ir)
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/spirv/writer/common/helper_test.h"
 
@@ -25,10 +36,10 @@ using namespace tint::core::number_suffixes;  // NOLINT
 TEST_F(SpirvWriterTest, Discard) {
     auto* buffer = b.Var("buffer", ty.ptr<storage, i32>());
     buffer->SetBindingPoint(0, 0);
-    b.RootBlock()->Append(buffer);
+    mod.root_block->Append(buffer);
 
     auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
-    front_facing->SetBuiltin(core::ir::FunctionParam::Builtin::kFrontFacing);
+    front_facing->SetBuiltin(core::BuiltinValue::kFrontFacing);
     auto* ep = b.Function("ep", ty.f32(), core::ir::Function::PipelineStage::kFragment);
     ep->SetParams({front_facing});
     ep->SetReturnLocation(0_u, {});
@@ -45,30 +56,86 @@ TEST_F(SpirvWriterTest, Discard) {
 
     ASSERT_TRUE(Generate()) << Error() << output_;
     EXPECT_INST(R"(
-   %ep_inner = OpFunction %float None %18
+   %ep_inner = OpFunction %float None %16
 %front_facing = OpFunctionParameter %bool
+         %17 = OpLabel
+               OpSelectionMerge %18 None
+               OpBranchConditional %front_facing %19 %18
          %19 = OpLabel
-               OpSelectionMerge %20 None
-               OpBranchConditional %front_facing %21 %20
-         %21 = OpLabel
                OpStore %continue_execution %false
-               OpBranch %20
-         %20 = OpLabel
-         %23 = OpAccessChain %_ptr_StorageBuffer_int %1 %uint_0
-         %27 = OpLoad %bool %continue_execution
-               OpSelectionMerge %28 None
-               OpBranchConditional %27 %29 %28
-         %29 = OpLabel
-               OpStore %23 %int_42
-               OpBranch %28
-         %28 = OpLabel
-         %31 = OpLoad %bool %continue_execution
-         %32 = OpLogicalEqual %bool %31 %false
-               OpSelectionMerge %33 None
-               OpBranchConditional %32 %34 %33
-         %34 = OpLabel
+               OpBranch %18
+         %18 = OpLabel
+         %21 = OpAccessChain %_ptr_StorageBuffer_int %1 %uint_0
+         %25 = OpLoad %bool %continue_execution
+               OpSelectionMerge %26 None
+               OpBranchConditional %25 %27 %26
+         %27 = OpLabel
+               OpStore %21 %int_42
+               OpBranch %26
+         %26 = OpLabel
+         %29 = OpLoad %bool %continue_execution
+         %30 = OpLogicalEqual %bool %29 %false
+               OpSelectionMerge %31 None
+               OpBranchConditional %30 %32 %31
+         %32 = OpLabel
                OpKill
-         %33 = OpLabel
+         %31 = OpLabel
+               OpReturnValue %float_0_5
+               OpFunctionEnd
+)");
+}
+
+TEST_F(SpirvWriterTest, DiscardBeforeAtomic) {
+    auto* buffer = b.Var("buffer", ty.ptr(storage, ty.atomic<i32>()));
+    buffer->SetBindingPoint(0, 0);
+    mod.root_block->Append(buffer);
+
+    auto* front_facing = b.FunctionParam("front_facing", ty.bool_());
+    front_facing->SetBuiltin(core::BuiltinValue::kFrontFacing);
+    auto* ep = b.Function("ep", ty.f32(), core::ir::Function::PipelineStage::kFragment);
+    ep->SetParams({front_facing});
+    ep->SetReturnLocation(0_u, {});
+
+    b.Append(ep->Block(), [&] {
+        auto* ifelse = b.If(front_facing);
+        b.Append(ifelse->True(), [&] {  //
+            b.Discard();
+            b.ExitIf(ifelse);
+        });
+        b.Call(ty.i32(), core::BuiltinFn::kAtomicAdd, buffer, 1_i);
+        b.Return(ep, 0.5_f);
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST(R"(
+               ; Function ep_inner
+   %ep_inner = OpFunction %float None %16
+%front_facing = OpFunctionParameter %bool
+         %17 = OpLabel
+               OpSelectionMerge %18 None
+               OpBranchConditional %front_facing %19 %18
+         %19 = OpLabel
+               OpStore %continue_execution %false
+               OpBranch %18
+         %18 = OpLabel
+         %21 = OpAccessChain %_ptr_StorageBuffer_int %1 %uint_0
+         %25 = OpLoad %bool %continue_execution
+               OpSelectionMerge %26 None
+               OpBranchConditional %25 %27 %28
+         %27 = OpLabel
+         %29 = OpAtomicIAdd %int %21 %uint_1 %uint_0 %int_1
+               OpBranch %26
+         %28 = OpLabel
+               OpBranch %26
+         %26 = OpLabel
+         %32 = OpPhi %int %29 %27 %33 %28
+         %34 = OpLoad %bool %continue_execution
+         %35 = OpLogicalEqual %bool %34 %false
+               OpSelectionMerge %36 None
+               OpBranchConditional %35 %37 %36
+         %37 = OpLabel
+               OpKill
+         %36 = OpLabel
                OpReturnValue %float_0_5
                OpFunctionEnd
 )");

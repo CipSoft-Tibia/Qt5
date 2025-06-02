@@ -17,14 +17,14 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/supports_user_data.h"
 #include "build/chromeos_buildflags.h"
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/enterprise/profile_management/profile_management_features.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
 #include "chrome/browser/policy/cloud/user_policy_signin_service_internal.h"
 #endif
 #include "chrome/browser/profiles/profile.h"
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/profiles/profiles_state.h"
 #endif
 #include "chrome/common/pref_names.h"
@@ -34,6 +34,7 @@
 #include "components/policy/core/browser/signin/profile_separation_policies.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
+#include "components/signin/public/identity_manager/account_managed_status_finder.h"
 #include "content/public/browser/storage_partition.h"
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "net/cookies/canonical_cookie.h"
@@ -78,7 +79,7 @@ CookiesMover::CookiesMover(base::WeakPtr<Profile> source_profile,
 CookiesMover::~CookiesMover() = default;
 
 void CookiesMover::StartMovingCookies() {
-#if (BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)) && !defined(TOOLKIT_QT)
+#if (BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)) && !BUILDFLAG(IS_QTWEBENGINE)
   bool allow_cookies_to_be_moved = base::FeatureList::IsEnabled(
       profile_management::features::kThirdPartyProfileManagement);
 #else
@@ -134,7 +135,7 @@ void CookiesMover::OnCookiesMoved() {
 
 bool IsForceSigninEnabled() {
   if (g_is_force_signin_enabled_cache == NOT_CACHED) {
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
     PrefService* prefs = g_browser_process->local_state();
 #else
     PrefService* prefs = nullptr;
@@ -165,11 +166,18 @@ bool IsProfileDeletionAllowed(Profile* profile) {
 #endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
 }
 
-#if !BUILDFLAG(IS_ANDROID) && !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_QTWEBENGINE)
 #if !BUILDFLAG(IS_CHROMEOS)
 // Returns true if managed accounts signin are required to create a new profile
 // by policies set in `profile`.
-bool IsProfileSeparationEnforcedByProfile(Profile* profile) {
+bool IsProfileSeparationEnforcedByProfile(
+    Profile* profile,
+    const std::string& intercepted_account_email) {
+  if (!intercepted_account_email.empty() &&
+      !IsAccountExemptedFromEnterpriseProfileSeparation(
+          profile, intercepted_account_email)) {
+    return true;
+  }
   std::string legacy_policy_for_current_profile =
       profile->GetPrefs()->GetString(prefs::kManagedAccountsSigninRestriction);
   bool enforced_by_existing_profile = base::StartsWith(
@@ -186,6 +194,12 @@ bool IsProfileSeparationEnforcedByProfile(Profile* profile) {
 bool IsProfileSeparationEnforcedByPolicies(
     const policy::ProfileSeparationPolicies&
         intercepted_account_separation_policies) {
+  if (intercepted_account_separation_policies.profile_separation_settings()
+          .value_or(policy::ProfileSeparationSettings::SUGGESTED) ==
+      policy::ProfileSeparationSettings::ENFORCED) {
+    return true;
+  }
+
   std::string legacy_policy_for_intercepted_profile =
       intercepted_account_separation_policies
           .managed_accounts_signin_restrictions()
@@ -214,11 +228,31 @@ bool ProfileSeparationAllowsKeepingUnmanagedBrowsingDataInManagedProfile(
       legacy_policy_for_current_profile == "none" ||
       base::EndsWith(legacy_policy_for_current_profile, "keep_existing_data");
   bool allowed_by_intercepted_account =
-      legacy_policy_for_intercepted_profile.empty() ||
-      legacy_policy_for_intercepted_profile == "none" ||
-      base::EndsWith(legacy_policy_for_intercepted_profile,
-                     "keep_existing_data");
+      intercepted_account_separation_policies
+              .profile_separation_data_migration_settings()
+              .value_or(policy::ProfileSeparationDataMigrationSettings::
+                            USER_OPT_IN) !=
+          policy::ProfileSeparationDataMigrationSettings::ALWAYS_SEPARATE &&
+      (legacy_policy_for_intercepted_profile.empty() ||
+       legacy_policy_for_intercepted_profile == "none" ||
+       base::EndsWith(legacy_policy_for_intercepted_profile,
+                      "keep_existing_data"));
   return allowed_by_existing_profile && allowed_by_intercepted_account;
+}
+
+bool IsAccountExemptedFromEnterpriseProfileSeparation(
+    Profile* profile,
+    const std::string& email) {
+  if (profile->GetPrefs()
+          ->FindPreference(prefs::kProfileSeparationDomainExceptionList)
+          ->IsDefaultValue()) {
+    return true;
+  }
+
+  const std::string domain = gaia::ExtractDomainName(email);
+  const auto& allowed_domains = profile->GetPrefs()->GetList(
+      prefs::kProfileSeparationDomainExceptionList);
+  return base::Contains(allowed_domains, base::Value(domain));
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
@@ -231,6 +265,6 @@ void RecordEnterpriseProfileCreationUserChoice(bool enforced_by_policy,
       created);
 }
 
-#endif  // !BUILDFLAG(IS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_QTWEBENGINE)
 
 }  // namespace signin_util

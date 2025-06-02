@@ -20,6 +20,7 @@
 #include <QtGui/QMatrix4x4>
 #include <QtGui/QVector3D>
 #include <QtQuick3DUtils/private/qssgrenderbasetypes_p.h>
+#include <QtQuick3DRuntimeRender/private/qssgrenderableobjects_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -41,43 +42,34 @@ struct QSSGShadowMapEntry
 {
     QSSGShadowMapEntry();
 
-    static QSSGShadowMapEntry withRhiDepthMap(quint32 lightIdx,
-                                              ShadowMapModes mode,
-                                              QRhiTexture *depthMap,
-                                              QRhiTexture *depthCopy,
-                                              QRhiRenderBuffer *depthStencil);
+    static QSSGShadowMapEntry withRhiDepthMap(quint32 lightIdx, ShadowMapModes mode, QRhiTexture *textureArray);
 
-    static QSSGShadowMapEntry withRhiDepthCubeMap(quint32 lightIdx,
-                                                  ShadowMapModes mode,
-                                                  QRhiTexture *depthCube,
-                                                  QRhiTexture *cubeCopy,
-                                                  QRhiRenderBuffer *depthStencil);
-
+    static QSSGShadowMapEntry withRhiDepthCubeMap(quint32 lightIdx, ShadowMapModes mode, QRhiTexture *depthCube, QRhiRenderBuffer *depthStencil);
+    bool isCompatible(QSize mapSize, quint32 layerIndex, quint32 csmNumSplits, ShadowMapModes mapMode);
     void destroyRhiResources();
 
     quint32 m_lightIndex; ///< the light index it belongs to
     ShadowMapModes m_shadowMapMode; ///< shadow map method
+    quint32 m_depthArrayIndex; ///< shadow map texture array index
 
     // RHI resources
-    QRhiTexture *m_rhiDepthMap = nullptr; // shadow map (VSM)
-    QRhiTexture *m_rhiDepthCopy = nullptr; // for blur pass (VSM)
+    QRhiTexture *m_rhiDepthTextureArray = nullptr; // for shadow map (VSM) (not owned)
     QRhiTexture *m_rhiDepthCube = nullptr; // shadow cube map (CUBE)
-    QRhiTexture *m_rhiCubeCopy = nullptr; // for blur pass (CUBE)
-    QRhiRenderBuffer *m_rhiDepthStencil = nullptr; // depth/stencil
-    QVarLengthArray<QRhiTextureRenderTarget *, 6> m_rhiRenderTargets; // texture RT
-    QRhiRenderPassDescriptor *m_rhiRenderPassDesc = nullptr; // texture RT renderpass descriptor
-    QRhiTextureRenderTarget *m_rhiBlurRenderTarget0 = nullptr; // texture RT for blur X (targets depthCopy or cubeCopy)
-    QRhiTextureRenderTarget *m_rhiBlurRenderTarget1 = nullptr; // texture RT for blur Y (targets depthMap or depthCube)
-    QRhiRenderPassDescriptor *m_rhiBlurRenderPassDesc = nullptr; // blur needs its own because no depth/stencil
+    std::array<QRhiRenderBuffer *, 4> m_rhiDepthStencil = {}; // depth/stencil
+    std::array<QRhiTextureRenderTarget *, 6> m_rhiRenderTargets = {}; // texture RT
+    std::array<QRhiRenderPassDescriptor *, 4> m_rhiRenderPassDesc = {}; // texture RT renderpass descriptor
 
-    QMatrix4x4 m_lightVP; ///< light view projection matrix
+    QMatrix4x4 m_lightViewProjection[4]; ///< light view projection matrix
     QMatrix4x4 m_lightCubeView[6]; ///< light cubemap view matrices
     QMatrix4x4 m_lightView; ///< light view transform
+    quint32 m_csmNumSplits = 0;
+    float m_csmSplits[4] = {};
+    float m_csmActive[4] = {};
+    float m_shadowMapFar = 0.f;
 };
 
 class Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderShadowMap
 {
-    typedef QVector<QSSGShadowMapEntry> TShadowMapEntryList;
     Q_DISABLE_COPY(QSSGRenderShadowMap)
 
 public:
@@ -86,19 +78,18 @@ public:
     explicit QSSGRenderShadowMap(const QSSGRenderContextInterface &inContext);
     ~QSSGRenderShadowMap();
     void releaseCachedResources();
-
-    void addShadowMapEntry(qint32 lightIdx,
-                           qint32 width,
-                           qint32 height,
-                           ShadowMapModes mode,
-                           const QString &renderNodeObjName);
+    void addShadowMaps(const QSSGShaderLightList &renderableLights);
 
     QSSGShadowMapEntry *shadowMapEntry(int lightIdx);
 
-    qint32 shadowMapEntryCount() { return m_shadowMapList.size(); }
+    qsizetype shadowMapEntryCount() { return m_shadowMapList.size(); }
 
 private:
-    TShadowMapEntryList m_shadowMapList;
+    QSSGShadowMapEntry *addDirectionalShadowMap(qint32 lightIdx, QSize size, quint32 layerStartIndex, quint32 csmNumSplits, const QString &renderNodeObjName);
+    QSSGShadowMapEntry *addCubeShadowMap(qint32 lightIdx, QSize size, const QString &renderNodeObjName);
+
+    QVector<QSSGShadowMapEntry> m_shadowMapList;
+    QHash<QSize, QRhiTexture *> m_depthTextureArrays;
 };
 
 using QSSGRenderShadowMapPtr = std::shared_ptr<QSSGRenderShadowMap>;

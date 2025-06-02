@@ -1,20 +1,35 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/fluent_types.h"
 #include "src/tint/lang/msl/writer/ast_printer/helper_test.h"
 #include "src/tint/utils/text/string_stream.h"
+
+// All ported to IR.
 
 using namespace tint::core::fluent_types;  // NOLINT
 
@@ -31,6 +46,8 @@ inline std::ostream& operator<<(std::ostream& out, BinaryData data) {
     out << str.str();
     return out;
 }
+
+// MSLPrinterBinaryTest.Emit
 using MslBinaryTest = TestParamHelper<BinaryData>;
 TEST_P(MslBinaryTest, Emit) {
     auto params = GetParam();
@@ -76,6 +93,7 @@ INSTANTIATE_TEST_SUITE_P(
                     BinaryData{"(left / right)", core::BinaryOp::kDivide},
                     BinaryData{"(left % right)", core::BinaryOp::kModulo}));
 
+// MSLPrinterBinaryTest_SignedOverflowDefinedBehaviour.Emit
 using MslBinaryTest_SignedOverflowDefinedBehaviour = TestParamHelper<BinaryData>;
 TEST_P(MslBinaryTest_SignedOverflowDefinedBehaviour, Emit) {
     auto params = GetParam();
@@ -109,6 +127,7 @@ INSTANTIATE_TEST_SUITE_P(MslASTPrinterTest,
                          MslBinaryTest_SignedOverflowDefinedBehaviour,
                          testing::ValuesIn(signed_overflow_defined_behaviour_cases));
 
+// MSLPrinterBinaryTest_ShiftSignedOverflowDefinedBehaviour_Chained.Emit
 using MslBinaryTest_SignedOverflowDefinedBehaviour_Chained = TestParamHelper<BinaryData>;
 TEST_P(MslBinaryTest_SignedOverflowDefinedBehaviour_Chained, Emit) {
     auto params = GetParam();
@@ -147,6 +166,7 @@ INSTANTIATE_TEST_SUITE_P(MslASTPrinterTest,
                          MslBinaryTest_SignedOverflowDefinedBehaviour_Chained,
                          testing::ValuesIn(signed_overflow_defined_behaviour_chained_cases));
 
+// MslPrinterTest.BinaryModF32
 TEST_F(MslBinaryTest, ModF32) {
     auto* left = Var("left", ty.f32());
     auto* right = Var("right", ty.f32());
@@ -160,8 +180,9 @@ TEST_F(MslBinaryTest, ModF32) {
     EXPECT_EQ(out.str(), "fmod(left, right)");
 }
 
+// MslPrinterTest.BinaryModF16
 TEST_F(MslBinaryTest, ModF16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* left = Var("left", ty.f16());
     auto* right = Var("right", ty.f16());
@@ -175,6 +196,7 @@ TEST_F(MslBinaryTest, ModF16) {
     EXPECT_EQ(out.str(), "fmod(left, right)");
 }
 
+// MslBinaryTest.BinaryModVecF32
 TEST_F(MslBinaryTest, ModVec3F32) {
     auto* left = Var("left", ty.vec3<f32>());
     auto* right = Var("right", ty.vec3<f32>());
@@ -188,8 +210,9 @@ TEST_F(MslBinaryTest, ModVec3F32) {
     EXPECT_EQ(out.str(), "fmod(left, right)");
 }
 
+// MslPrinterTest.BinaryModVec3F16
 TEST_F(MslBinaryTest, ModVec3F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* left = Var("left", ty.vec3<f16>());
     auto* right = Var("right", ty.vec3<f16>());
@@ -203,6 +226,7 @@ TEST_F(MslBinaryTest, ModVec3F16) {
     EXPECT_EQ(out.str(), "fmod(left, right)");
 }
 
+// MslPrinterTest.BinaryBoolAnd
 TEST_F(MslBinaryTest, BoolAnd) {
     auto* left = Var("left", Expr(true));
     auto* right = Var("right", Expr(false));
@@ -216,6 +240,7 @@ TEST_F(MslBinaryTest, BoolAnd) {
     EXPECT_EQ(out.str(), "bool(left & right)");
 }
 
+// MslPrinterTest.BinaryBoolOr
 TEST_F(MslBinaryTest, BoolOr) {
     auto* left = Var("left", Expr(true));
     auto* right = Var("right", Expr(false));

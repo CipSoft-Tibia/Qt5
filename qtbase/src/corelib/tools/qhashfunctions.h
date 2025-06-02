@@ -1,5 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // Copyright (C) 2015 Klarälvdalens Datakonsult AB, a KDAB Group company, info@kdab.com, author Marc Mutz <marc.mutz@kdab.com>
+// Copyright (C) 2024 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #ifndef QHASHFUNCTIONS_H
@@ -44,6 +45,21 @@ struct QHashSeed
 private:
     size_t data;
 };
+
+// Whether, ∀ t of type T && ∀ seed, qHash(Key(t), seed) == qHash(t, seed)
+template <typename Key, typename T> struct QHashHeterogeneousSearch : std::false_type {};
+
+// Specializations
+template <> struct QHashHeterogeneousSearch<QString, QStringView> : std::true_type {};
+template <> struct QHashHeterogeneousSearch<QStringView, QString> : std::true_type {};
+template <> struct QHashHeterogeneousSearch<QByteArray, QByteArrayView> : std::true_type {};
+template <> struct QHashHeterogeneousSearch<QByteArrayView, QByteArray> : std::true_type {};
+#ifndef Q_PROCESSOR_ARM
+template <> struct QHashHeterogeneousSearch<QString, QLatin1StringView> : std::true_type {};
+template <> struct QHashHeterogeneousSearch<QStringView, QLatin1StringView> : std::true_type {};
+template <> struct QHashHeterogeneousSearch<QLatin1StringView, QString> : std::true_type {};
+template <> struct QHashHeterogeneousSearch<QLatin1StringView, QStringView> : std::true_type {};
+#endif
 
 namespace QHashPrivate {
 
@@ -102,7 +118,39 @@ Q_DECL_CONST_FUNCTION constexpr inline size_t qHash(quint64 key, size_t seed = 0
         key ^= (key >> 32);
     return QHashPrivate::hash(size_t(key), seed);
 }
-Q_DECL_CONST_FUNCTION constexpr inline size_t qHash(qint64 key, size_t seed = 0) noexcept { return qHash(quint64(key), seed); }
+Q_DECL_CONST_FUNCTION constexpr inline size_t qHash(qint64 key, size_t seed = 0) noexcept
+{
+    if constexpr (sizeof(qint64) > sizeof(size_t)) {
+        // Avoid QTBUG-116080: we XOR the top half with its own sign bit:
+        // - if the qint64 is in range of qint32, then signmask ^ high == 0
+        //   (for Qt 7 only)
+        // - if the qint64 is in range of quint32, then signmask == 0 and we
+        //   do the same as the quint64 overload above
+        quint32 high = quint32(quint64(key) >> 32);
+        quint32 low = quint32(quint64(key));
+        quint32 signmask = qint32(high) >> 31;  // all zeroes or all ones
+        signmask = QT_VERSION_MAJOR > 6 ? signmask : 0;
+        low ^= signmask ^ high;
+        return qHash(low, seed);
+    }
+    return qHash(quint64(key), seed);
+}
+#ifdef QT_SUPPORTS_INT128
+constexpr size_t qHash(quint128 key, size_t seed = 0) noexcept
+{
+    return qHash(quint64(key + (key >> 64)), seed);
+}
+constexpr size_t qHash(qint128 key, size_t seed = 0) noexcept
+{
+    // Avoid QTBUG-116080: same as above, but with double the sizes and without
+    // the need for compatibility
+    quint64 high = quint64(quint128(key) >> 64);
+    quint64 low = quint64(quint128(key));
+    quint64 signmask = qint64(high) >> 63; // all zeroes or all ones
+    low += signmask ^ high;
+    return qHash(low, seed);
+}
+#endif // QT_SUPPORTS_INT128
 Q_DECL_CONST_FUNCTION inline size_t qHash(float key, size_t seed = 0) noexcept
 {
     // ensure -0 gets mapped to 0
@@ -179,13 +227,62 @@ constexpr inline bool HasQHashSingleArgOverload<T, std::enable_if_t<
 >> = true;
 }
 
-template <typename T, std::enable_if_t<QHashPrivate::HasQHashSingleArgOverload<T> && !std::is_enum_v<T>, bool> = true>
-size_t qHash(const T &t, size_t seed) noexcept(noexcept(qHash(t)))
+// Add Args... to make this overload consistently a worse match than
+// original 2-arg qHash overloads (QTBUG-126659)
+template <typename T, typename...Args, std::enable_if_t<QHashPrivate::HasQHashSingleArgOverload<T> && sizeof...(Args) == 0 && !std::is_enum_v<T>, bool> = true>
+size_t qHash(const T &t, size_t seed, Args&&...) noexcept(noexcept(qHash(t)))
 { return qHash(t) ^ seed; }
 #endif // < Qt 7
 
+namespace QHashPrivate {
+
+namespace detail {
+// approximates std::equality_comparable_with
+template <typename T, typename U, typename = void>
+struct is_equality_comparable_with : std::false_type {};
+
+template <typename T, typename U>
+struct is_equality_comparable_with<T, U,
+    std::void_t<
+        decltype(bool(std::declval<T>() == std::declval<U>())),
+        decltype(bool(std::declval<U>() == std::declval<T>())),
+        decltype(bool(std::declval<T>() != std::declval<U>())),
+        decltype(bool(std::declval<U>() != std::declval<T>()))
+    >>
+    : std::true_type {};
+}
+
+template <typename Key, typename T> struct HeterogeneouslySearchableWithHelper
+    : std::conjunction<
+        // if Key and T are not the same (member already exists)
+        std::negation<std::is_same<Key, T>>,
+        // but are comparable amongst each other
+        detail::is_equality_comparable_with<Key, T>,
+        // and supports heteregenous hashing
+        QHashHeterogeneousSearch<Key, T>
+    > {};
+
+template <typename Key, typename T>
+using HeterogeneouslySearchableWith = HeterogeneouslySearchableWithHelper<
+        q20::remove_cvref_t<Key>,
+        q20::remove_cvref_t<T>
+>;
+
+template <typename Key, typename K>
+using if_heterogeneously_searchable_with = std::enable_if_t<
+        QHashPrivate::HeterogeneouslySearchableWith<Key, K>::value,
+    bool>;
+
+}
+
 template<typename T>
 bool qHashEquals(const T &a, const T &b)
+{
+    return a == b;
+}
+
+template <typename T1, typename T2, QHashPrivate::if_heterogeneously_searchable_with<T1, T2> = true>
+bool qHashEquals(const T1 &a, const T2 &b)
 {
     return a == b;
 }

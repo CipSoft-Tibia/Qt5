@@ -176,6 +176,7 @@ static INLINE unsigned int masked_sad_16xh_large_neon(
   return horizontal_add_u32x4(sad_u32);
 }
 
+#if !CONFIG_REALTIME_ONLY
 static INLINE unsigned int masked_sad_8xh_large_neon(
     const uint8_t *src8, int src_stride, const uint8_t *a8, int a_stride,
     const uint8_t *b8, int b_stride, const uint8_t *m, int m_stride,
@@ -203,6 +204,7 @@ static INLINE unsigned int masked_sad_8xh_large_neon(
 
   return horizontal_add_u32x4(sad_u32);
 }
+#endif  // !CONFIG_REALTIME_ONLY
 
 static INLINE unsigned int masked_sad_16xh_small_neon(
     const uint8_t *src8, int src_stride, const uint8_t *a8, int a_stride,

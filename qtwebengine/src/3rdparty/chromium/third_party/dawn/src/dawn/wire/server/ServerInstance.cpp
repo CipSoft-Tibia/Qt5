@@ -1,16 +1,29 @@
-// Copyright 2021 The Dawn Authors
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <algorithm>
 #include <vector>
@@ -21,15 +34,16 @@
 namespace dawn::wire::server {
 
 WireResult Server::DoInstanceRequestAdapter(Known<WGPUInstance> instance,
-                                            uint64_t requestSerial,
+                                            ObjectHandle eventManager,
+                                            WGPUFuture future,
                                             ObjectHandle adapterHandle,
                                             const WGPURequestAdapterOptions* options) {
     Known<WGPUAdapter> adapter;
     WIRE_TRY(AdapterObjects().Allocate(&adapter, adapterHandle, AllocationState::Reserved));
 
     auto userdata = MakeUserdata<RequestAdapterUserdata>();
-    userdata->instance = instance.AsHandle();
-    userdata->requestSerial = requestSerial;
+    userdata->eventManager = eventManager;
+    userdata->future = future;
     userdata->adapterObjectId = adapter.id;
 
     mProcs.instanceRequestAdapter(instance->handle, options,
@@ -43,25 +57,24 @@ void Server::OnRequestAdapterCallback(RequestAdapterUserdata* data,
                                       WGPUAdapter adapter,
                                       const char* message) {
     ReturnInstanceRequestAdapterCallbackCmd cmd = {};
-    cmd.instance = data->instance;
-    cmd.requestSerial = data->requestSerial;
+    cmd.eventManager = data->eventManager;
+    cmd.future = data->future;
     cmd.status = status;
     cmd.message = message;
 
     if (status != WGPURequestAdapterStatus_Success) {
         // Free the ObjectId which will make it unusable.
         AdapterObjects().Free(data->adapterObjectId);
-        ASSERT(adapter == nullptr);
+        DAWN_ASSERT(adapter == nullptr);
         SerializeCommand(cmd);
         return;
     }
 
-    WGPUAdapterProperties properties = {};
-    WGPUSupportedLimits limits = {};
-    std::vector<WGPUFeatureName> features;
-
     // Assign the handle and allocated status if the adapter is created successfully.
     AdapterObjects().FillReservation(data->adapterObjectId, adapter);
+
+    // Query and report the adapter supported features.
+    std::vector<WGPUFeatureName> features;
 
     size_t featuresCount = mProcs.adapterEnumerateFeatures(adapter, nullptr);
     features.resize(featuresCount);
@@ -73,13 +86,42 @@ void Server::OnRequestAdapterCallback(RequestAdapterUserdata* data,
     cmd.featuresCount = std::distance(features.begin(), it);
     cmd.features = features.data();
 
+    // Query and report the adapter properties.
+    WGPUAdapterProperties properties = {};
+    WGPUChainedStructOut** propertiesChain = &properties.nextInChain;
+
+    // Query AdapterPropertiesMemoryHeaps if the feature is supported.
+    WGPUAdapterPropertiesMemoryHeaps memoryHeapProperties = {};
+    memoryHeapProperties.chain.sType = WGPUSType_AdapterPropertiesMemoryHeaps;
+    if (mProcs.adapterHasFeature(adapter, WGPUFeatureName_AdapterPropertiesMemoryHeaps)) {
+        *propertiesChain = &memoryHeapProperties.chain;
+        propertiesChain = &(*propertiesChain)->next;
+    }
+
+    // Query AdapterPropertiesD3D if the feature is supported.
+    WGPUAdapterPropertiesD3D d3dProperties = {};
+    d3dProperties.chain.sType = WGPUSType_AdapterPropertiesD3D;
+    if (mProcs.adapterHasFeature(adapter, WGPUFeatureName_AdapterPropertiesD3D)) {
+        *propertiesChain = &d3dProperties.chain;
+        propertiesChain = &(*propertiesChain)->next;
+    }
+
     mProcs.adapterGetProperties(adapter, &properties);
-    mProcs.adapterGetLimits(adapter, &limits);
     cmd.properties = &properties;
+
+    // Query and report the adapter limits, including DawnExperimentalSubgroupLimits.
+    WGPUSupportedLimits limits = {};
+
+    WGPUDawnExperimentalSubgroupLimits experimentalSubgroupLimits = {};
+    experimentalSubgroupLimits.chain.sType = WGPUSType_DawnExperimentalSubgroupLimits;
+    limits.nextInChain = &experimentalSubgroupLimits.chain;
+
+    mProcs.adapterGetLimits(adapter, &limits);
     cmd.limits = &limits;
 
     SerializeCommand(cmd);
     mProcs.adapterPropertiesFreeMembers(properties);
+    mProcs.adapterPropertiesMemoryHeapsFreeMembers(memoryHeapProperties);
 }
 
 }  // namespace dawn::wire::server

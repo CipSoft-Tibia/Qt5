@@ -16,35 +16,28 @@ import m from 'mithril';
 
 import {findRef} from '../base/dom_utils';
 import {assertExists, assertTrue} from '../base/logging';
+import {Time} from '../base/time';
 import {Actions} from '../common/actions';
-import {
-  ALLOC_SPACE_MEMORY_ALLOCATED_KEY,
-  OBJECTS_ALLOCATED_KEY,
-  OBJECTS_ALLOCATED_NOT_FREED_KEY,
-  PERF_SAMPLES_KEY,
-  SPACE_MEMORY_ALLOCATED_NOT_FREED_KEY,
-} from '../common/flamegraph_util';
+import {viewingOptions} from '../common/flamegraph_util';
 import {
   CallsiteInfo,
   FlamegraphStateViewingOption,
   ProfileType,
 } from '../common/state';
-import {Time} from '../common/time';
 import {profileType} from '../controller/flamegraph_controller';
 import {raf} from '../core/raf_scheduler';
+import {Button} from '../widgets/button';
+import {Icon} from '../widgets/icon';
+import {Modal, ModalAttrs} from '../widgets/modal';
+import {Popup} from '../widgets/popup';
 
 import {Flamegraph, NodeRendering} from './flamegraph';
 import {globals} from './globals';
-import {Modal, ModalDefinition} from './modal';
-import {Panel, PanelSize} from './panel';
 import {debounce} from './rate_limiters';
 import {Router} from './router';
 import {getCurrentTrace} from './sidebar';
 import {convertTraceToPprofAndDownload} from './trace_converter';
-import {Button} from './widgets/button';
 import {DurationWidget} from './widgets/duration';
-
-interface FlamegraphDetailsPanelAttrs {}
 
 const HEADER_HEIGHT = 30;
 
@@ -64,7 +57,7 @@ const RENDER_OBJ_COUNT: NodeRendering = {
   totalSize: 'Subtree objects',
 };
 
-export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
+export class FlamegraphDetailsPanel implements m.ClassComponent {
   private profileType?: ProfileType = undefined;
   private ts = Time.ZERO;
   private pids: number[] = [];
@@ -77,7 +70,7 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
 
   view() {
     const flamegraphDetails = globals.flamegraphDetails;
-    if (flamegraphDetails && flamegraphDetails.type !== undefined &&
+    if (flamegraphDetails.type !== undefined &&
         flamegraphDetails.start !== undefined &&
         flamegraphDetails.dur !== undefined &&
         flamegraphDetails.pids !== undefined &&
@@ -100,7 +93,17 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
             [
               m('div.options',
                 [
-                  m('div.title', this.getTitle()),
+                  m('div.title',
+                    this.getTitle(),
+                    (this.profileType === ProfileType.MIXED_HEAP_PROFILE) &&
+                        m(Popup,
+                          {
+                            trigger: m(Icon, {icon: 'warning'}),
+                          },
+                          m('',
+                            {style: {width: '300px'}},
+                            'This is a mixed java/native heap profile, free()s are not visualized. To visualize free()s, remove "all_heaps: true" from the config.')),
+                    ':'),
                   this.getViewingOptionButtons(),
                 ]),
               m('div.details',
@@ -161,8 +164,8 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
     return m(Modal, {
       title: 'The flamegraph is incomplete',
       vAlign: 'TOP',
-      content: m('div',
-          'The current trace does not have a fully formed flamegraph'),
+      content:
+          m('div', 'The current trace does not have a fully formed flamegraph'),
       buttons: [
         {
           text: 'Show the errors',
@@ -177,21 +180,24 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
           },
         },
       ],
-    } as ModalDefinition);
+    } as ModalAttrs);
   }
 
   private getTitle(): string {
-    switch (this.profileType!) {
+    const profileType = this.profileType!;
+    switch (profileType) {
+      case ProfileType.MIXED_HEAP_PROFILE:
+        return 'Mixed heap profile';
       case ProfileType.HEAP_PROFILE:
-        return 'Heap profile:';
+        return 'Heap profile';
       case ProfileType.NATIVE_HEAP_PROFILE:
-        return 'Native heap profile:';
+        return 'Native heap profile';
       case ProfileType.JAVA_HEAP_SAMPLES:
-        return 'Java heap samples:';
+        return 'Java heap samples';
       case ProfileType.JAVA_HEAP_GRAPH:
-        return 'Java heap graph:';
+        return 'Java heap graph';
       case ProfileType.PERF_SAMPLE:
-        return 'Profile:';
+        return 'Profile';
       default:
         throw new Error('unknown type');
     }
@@ -201,21 +207,26 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
     if (this.profileType === undefined) {
       return {};
     }
-    const viewingOption = globals.state.currentFlamegraphState!.viewingOption;
-    switch (this.profileType) {
+    const profileType = this.profileType;
+    const viewingOption: FlamegraphStateViewingOption =
+        globals.state.currentFlamegraphState!.viewingOption;
+    switch (profileType) {
       case ProfileType.JAVA_HEAP_GRAPH:
-        if (viewingOption === OBJECTS_ALLOCATED_NOT_FREED_KEY) {
+        if (viewingOption ===
+            FlamegraphStateViewingOption.OBJECTS_ALLOCATED_NOT_FREED_KEY) {
           return RENDER_OBJ_COUNT;
         } else {
           return RENDER_SELF_AND_TOTAL;
         }
+      case ProfileType.MIXED_HEAP_PROFILE:
       case ProfileType.HEAP_PROFILE:
       case ProfileType.NATIVE_HEAP_PROFILE:
       case ProfileType.JAVA_HEAP_SAMPLES:
       case ProfileType.PERF_SAMPLE:
         return RENDER_SELF_AND_TOTAL;
       default:
-        throw new Error('unknown type');
+        const exhaustiveCheck: never = profileType;
+        throw new Error(`Unhandled case: ${exhaustiveCheck}`);
     }
   }
 
@@ -254,7 +265,7 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
         this.nodeRendering(), flamegraphData, data.expandedCallsite);
   }
 
-  oncreate({dom}: m.CVnodeDOM<FlamegraphDetailsPanelAttrs>) {
+  oncreate({dom}: m.CVnodeDOM) {
     this.canvas = FlamegraphDetailsPanel.findCanvasElement(dom);
     // TODO(stevegolton): If we truely want to be standalone, then we shouldn't
     // rely on someone else calling the rafScheduler when the window is resized,
@@ -262,11 +273,11 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
     raf.addRedrawCallback(this.rafRedrawCallback);
   }
 
-  onupdate({dom}: m.CVnodeDOM<FlamegraphDetailsPanelAttrs>) {
+  onupdate({dom}: m.CVnodeDOM) {
     this.canvas = FlamegraphDetailsPanel.findCanvasElement(dom);
   }
 
-  onremove(_vnode: m.CVnodeDOM<FlamegraphDetailsPanelAttrs>) {
+  onremove(_vnode: m.CVnodeDOM) {
     raf.removeRedrawCallback(this.rafRedrawCallback);
   }
 
@@ -290,26 +301,25 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
         ctx.save();
         ctx.scale(devicePixelRatio, devicePixelRatio);
         const {offsetWidth: width, offsetHeight: height} = canvas;
-        this.renderLocalCanvas(ctx, {width, height});
+        this.renderLocalCanvas(ctx, width, height);
         ctx.restore();
       }
     }
   };
 
-  renderCanvas() {
-    // No-op
-  }
-
-  private renderLocalCanvas(ctx: CanvasRenderingContext2D, size: PanelSize) {
+  private renderLocalCanvas(
+      ctx: CanvasRenderingContext2D, width: number, height: number) {
     this.changeFlamegraphData();
     const current = globals.state.currentFlamegraphState;
     if (current === null) return;
-    const unit =
-        current.viewingOption === SPACE_MEMORY_ALLOCATED_NOT_FREED_KEY ||
-            current.viewingOption === ALLOC_SPACE_MEMORY_ALLOCATED_KEY ?
+    const unit = current.viewingOption ===
+                FlamegraphStateViewingOption
+                    .SPACE_MEMORY_ALLOCATED_NOT_FREED_KEY ||
+            current.viewingOption ===
+                FlamegraphStateViewingOption.ALLOC_SPACE_MEMORY_ALLOCATED_KEY ?
         'B' :
         '';
-    this.flamegraph.draw(ctx, size.width, size.height, 0, 0, unit);
+    this.flamegraph.draw(ctx, width, height, 0, 0, unit);
   }
 
   private onMouseClick({x, y}: {x: number, y: number}): boolean {
@@ -330,46 +340,11 @@ export class FlamegraphDetailsPanel extends Panel<FlamegraphDetailsPanelAttrs> {
   }
 
   private static selectViewingOptions(profileType: ProfileType) {
-    switch (profileType) {
-      case ProfileType.PERF_SAMPLE:
-        return [this.buildButtonComponent(PERF_SAMPLES_KEY, 'Samples')];
-      case ProfileType.JAVA_HEAP_GRAPH:
-        return [
-          this.buildButtonComponent(
-              SPACE_MEMORY_ALLOCATED_NOT_FREED_KEY, 'Size'),
-          this.buildButtonComponent(OBJECTS_ALLOCATED_NOT_FREED_KEY, 'Objects'),
-        ];
-      case ProfileType.HEAP_PROFILE:
-        return [
-          this.buildButtonComponent(
-              SPACE_MEMORY_ALLOCATED_NOT_FREED_KEY, 'Unreleased size'),
-          this.buildButtonComponent(
-              OBJECTS_ALLOCATED_NOT_FREED_KEY, 'Unreleased count'),
-          this.buildButtonComponent(
-              ALLOC_SPACE_MEMORY_ALLOCATED_KEY, 'Total size'),
-          this.buildButtonComponent(OBJECTS_ALLOCATED_KEY, 'Total count'),
-        ];
-      case ProfileType.NATIVE_HEAP_PROFILE:
-        return [
-          this.buildButtonComponent(
-              SPACE_MEMORY_ALLOCATED_NOT_FREED_KEY, 'Unreleased malloc size'),
-          this.buildButtonComponent(
-              OBJECTS_ALLOCATED_NOT_FREED_KEY, 'Unreleased malloc count'),
-          this.buildButtonComponent(
-              ALLOC_SPACE_MEMORY_ALLOCATED_KEY, 'Total malloc size'),
-          this.buildButtonComponent(
-              OBJECTS_ALLOCATED_KEY, 'Total malloc count'),
-        ];
-      case ProfileType.JAVA_HEAP_SAMPLES:
-        return [
-          this.buildButtonComponent(
-              ALLOC_SPACE_MEMORY_ALLOCATED_KEY, 'Total allocation size'),
-          this.buildButtonComponent(
-              OBJECTS_ALLOCATED_KEY, 'Total allocation count'),
-        ];
-      default:
-        throw new Error(`Unexpected profile type ${profileType}`);
+    const ret = [];
+    for (const {option, name} of viewingOptions(profileType)) {
+      ret.push(this.buildButtonComponent(option, name));
     }
+    return ret;
   }
 
   private static buildButtonComponent(

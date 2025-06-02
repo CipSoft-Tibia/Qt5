@@ -3,7 +3,10 @@
 
 #include "qmediadevices.h"
 #include "private/qplatformmediaintegration_p.h"
-#include "private/qplatformmediadevices_p.h"
+#include "private/qplatformaudiodevices_p.h"
+#include "private/qplatformvideodevices_p.h"
+
+#include <QtCore/qmetaobject.h>
 
 #include <qaudiodevice.h>
 #include <qcameradevice.h>
@@ -60,7 +63,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype MediaDevices
     \since 6.2
-    \instantiates QMediaDevices
+    \nativetype QMediaDevices
     \brief MediaDevices provides information about available
     multimedia input and output devices.
     \inqmlmodule QtMultimedia
@@ -126,7 +129,7 @@ QT_BEGIN_NAMESPACE
 */
 QList<QAudioDevice> QMediaDevices::audioInputs()
 {
-    return QPlatformMediaIntegration::instance()->mediaDevices()->audioInputs();
+    return QPlatformMediaIntegration::instance()->audioDevices()->audioInputs();
 }
 
 /*!
@@ -147,7 +150,7 @@ QList<QAudioDevice> QMediaDevices::audioInputs()
 */
 QList<QAudioDevice> QMediaDevices::audioOutputs()
 {
-    return QPlatformMediaIntegration::instance()->mediaDevices()->audioOutputs();
+    return QPlatformMediaIntegration::instance()->audioDevices()->audioOutputs();
 }
 
 /*!
@@ -162,8 +165,8 @@ QList<QAudioDevice> QMediaDevices::audioOutputs()
 */
 QList<QCameraDevice> QMediaDevices::videoInputs()
 {
-    QPlatformMediaIntegration::instance()->mediaDevices()->initVideoDevicesConnection();
-    return QPlatformMediaIntegration::instance()->videoInputs();
+    QPlatformVideoDevices *videoDevices = QPlatformMediaIntegration::instance()->videoDevices();
+    return videoDevices ? videoDevices->videoInputs() : QList<QCameraDevice>{};
 }
 
 /*!
@@ -258,17 +261,7 @@ QCameraDevice QMediaDevices::defaultVideoInput()
 /*!
     \internal
 */
-QMediaDevices::QMediaDevices(QObject *parent)
-    : QObject(parent)
-{
-    auto platformDevices = QPlatformMediaIntegration::instance()->mediaDevices();
-    connect(platformDevices, &QPlatformMediaDevices::videoInputsChanged, this,
-            &QMediaDevices::videoInputsChanged);
-    connect(platformDevices, &QPlatformMediaDevices::audioInputsChanged, this,
-            &QMediaDevices::audioInputsChanged);
-    connect(platformDevices, &QPlatformMediaDevices::audioOutputsChanged, this,
-            &QMediaDevices::audioOutputsChanged);
-}
+QMediaDevices::QMediaDevices(QObject *parent) : QObject(parent) { }
 
 /*!
     \internal
@@ -277,8 +270,32 @@ QMediaDevices::~QMediaDevices() = default;
 
 void QMediaDevices::connectNotify(const QMetaMethod &signal)
 {
-    if (signal == QMetaMethod::fromSignal(&QMediaDevices::videoInputsChanged))
-        QPlatformMediaIntegration::instance()->mediaDevices()->initVideoDevicesConnection();
+    // we don't connect in the constructor in order to not initialize
+    // the cameras tracking pipeline or audio tracking pipeline if cameras or audio devices
+    // are not requested. The instance of device provider is lazily created upon the first
+    // connection or the first devices request.
+
+    auto ensureConnection = [&](auto devicesMethod, auto platformDevicesSignal, auto targetSignal) {
+        if (signal == QMetaMethod::fromSignal(targetSignal))
+            if (auto devices = (QPlatformMediaIntegration::instance()->*devicesMethod)()) {
+                connect(devices, platformDevicesSignal, this, targetSignal, Qt::UniqueConnection);
+                return true;
+            }
+
+        return false;
+    };
+
+    // clang-format off
+    ensureConnection(&QPlatformMediaIntegration::videoDevices,
+                     &QPlatformVideoDevices::videoInputsChanged,
+                     &QMediaDevices::videoInputsChanged) ||
+    ensureConnection(&QPlatformMediaIntegration::audioDevices,
+                     &QPlatformAudioDevices::audioInputsChanged,
+                     &QMediaDevices::audioInputsChanged) ||
+    ensureConnection(&QPlatformMediaIntegration::audioDevices,
+                     &QPlatformAudioDevices::audioOutputsChanged,
+                     &QMediaDevices::audioOutputsChanged);
+    // clang-format on
 
     QObject::connectNotify(signal);
 }

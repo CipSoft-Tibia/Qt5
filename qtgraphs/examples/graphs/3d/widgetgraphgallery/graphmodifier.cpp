@@ -6,7 +6,7 @@
 
 #include <QtCore/qmath.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dtheme.h>
+#include <QtGraphs/qgraphstheme.h>
 #include <QtGraphs/qbar3dseries.h>
 #include <QtGraphs/qbardataproxy.h>
 #include <QtGraphs/qcategory3daxis.h>
@@ -17,28 +17,28 @@ using namespace Qt::StringLiterals;
 
 // TODO: Many of the values do not affect custom proxy series now - should be fixed
 
-//! [0]
-GraphModifier::GraphModifier(Q3DBars *bargraph, QObject *parent)
+//! [set up the graph]
+GraphModifier::GraphModifier(Q3DBarsWidgetItem *bargraph, QObject *parent)
     : QObject(parent)
     , m_graph(bargraph)
-    ,
-    //! [0]
-    //! [1]
-    m_temperatureAxis(new QValue3DAxis)
+    //! [set up the graph]
+    //! [set up axes]
+    , m_temperatureAxis(new QValue3DAxis)
     , m_yearAxis(new QCategory3DAxis)
     , m_monthAxis(new QCategory3DAxis)
     , m_primarySeries(new QBar3DSeries)
     , m_secondarySeries(new QBar3DSeries)
+    //! [set up axes]
     , m_celsiusString(u"°C"_s)
-//! [1]
 {
-    //! [2]
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftMedium);
-    m_graph->activeTheme()->setBackgroundEnabled(false);
-    m_graph->activeTheme()->setFont(QFont("Times New Roman", m_fontSize));
-    m_graph->activeTheme()->setLabelBackgroundEnabled(true);
+    //! [adjust visuals]
+    m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::SoftMedium);
     m_graph->setMultiSeriesUniform(true);
-    //! [2]
+    // These are set through the active theme
+    m_graph->activeTheme()->setPlotAreaBackgroundVisible(false);
+    m_graph->activeTheme()->setLabelFont(QFont("Times New Roman", m_fontSize));
+    m_graph->activeTheme()->setLabelBackgroundVisible(true);
+    //! [adjust visuals]
 
     m_months = {"January",
                 "February",
@@ -54,28 +54,31 @@ GraphModifier::GraphModifier(Q3DBars *bargraph, QObject *parent)
                 "December"};
     m_years = {"2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022"};
 
-    //! [3]
+    //! [activate axes]
     m_temperatureAxis->setTitle("Average temperature");
     m_temperatureAxis->setSegmentCount(m_segments);
     m_temperatureAxis->setSubSegmentCount(m_subSegments);
     m_temperatureAxis->setRange(m_minval, m_maxval);
     m_temperatureAxis->setLabelFormat(u"%.1f "_s + m_celsiusString);
-    m_temperatureAxis->setLabelAutoRotation(30.0f);
+    m_temperatureAxis->setLabelAutoAngle(30.0f);
     m_temperatureAxis->setTitleVisible(true);
 
     m_yearAxis->setTitle("Year");
-    m_yearAxis->setLabelAutoRotation(30.0f);
+    //! [auto angle]
+    m_yearAxis->setLabelAutoAngle(30.0f);
+    //! [auto angle]
     m_yearAxis->setTitleVisible(true);
+
     m_monthAxis->setTitle("Month");
-    m_monthAxis->setLabelAutoRotation(30.0f);
+    m_monthAxis->setLabelAutoAngle(30.0f);
     m_monthAxis->setTitleVisible(true);
 
     m_graph->setValueAxis(m_temperatureAxis);
     m_graph->setRowAxis(m_yearAxis);
     m_graph->setColumnAxis(m_monthAxis);
-    //! [3]
+    //! [activate axes]
 
-    //! [4]
+    //! [initialize series visuals]
     m_primarySeries->setItemLabelFormat(u"Oulu - @colLabel @rowLabel: @valueLabel"_s);
     m_primarySeries->setMesh(QAbstract3DSeries::Mesh::BevelBar);
     m_primarySeries->setMeshSmooth(false);
@@ -84,23 +87,23 @@ GraphModifier::GraphModifier(Q3DBars *bargraph, QObject *parent)
     m_secondarySeries->setMesh(QAbstract3DSeries::Mesh::BevelBar);
     m_secondarySeries->setMeshSmooth(false);
     m_secondarySeries->setVisible(false);
-    //! [4]
+    //! [initialize series visuals]
 
-    //! [5]
+    //! [add series]
     m_graph->addSeries(m_primarySeries);
     m_graph->addSeries(m_secondarySeries);
-    //! [5]
+    //! [add series]
 
-    //! [6]
+    //! [invoke camera preset]
     changePresetCamera();
-    //! [6]
+    //! [invoke camera preset]
 
-    //! [8]
+    //! [invoke data reset]
     resetTemperatureData();
-    //! [8]
+    //! [invoke data reset]
 
     // Set up property animations for zooming to the selected bar
-    //! [11]
+    //! [animation setup]
     m_defaultAngleX = m_graph->cameraXRotation();
     m_defaultAngleY = m_graph->cameraYRotation();
     m_defaultZoom = m_graph->cameraZoomLevel();
@@ -129,7 +132,7 @@ GraphModifier::GraphModifier(Q3DBars *bargraph, QObject *parent)
     m_animationCameraZoom.setKeyValueAt(zoomOutFraction, QVariant::fromValue(50.0f));
     m_animationCameraTarget.setKeyValueAt(zoomOutFraction,
                                           QVariant::fromValue(QVector3D(0.0f, 0.0f, 0.0f)));
-    //! [11]
+    //! [animation setup]
 
     m_customData = new RainfallData();
 }
@@ -141,12 +144,12 @@ GraphModifier::~GraphModifier()
 
 void GraphModifier::resetTemperatureData()
 {
-    //! [9a]
+    //! [set up data]
     // Set up data
     static const float tempOulu[8][12] = {
         {-7.4f, -2.4f, 0.0f, 3.0f, 8.2f, 11.6f, 14.7f, 15.4f, 11.4f, 4.2f, 2.1f, -2.3f},     // 2015
         {-13.4f, -3.9f, -1.8f, 3.1f, 10.6f, 13.7f, 17.8f, 13.6f, 10.7f, 3.5f, -3.1f, -4.2f}, // 2016
-        //! [9a]
+        //! [set up data]
         {-5.7f, -6.7f, -3.0f, -0.1f, 4.7f, 12.4f, 16.1f, 14.1f, 9.4f, 3.0f, -0.3f, -3.2f},  // 2017
         {-6.4f, -11.9f, -7.4f, 1.9f, 11.4f, 12.4f, 21.5f, 16.1f, 11.0f, 4.4f, 2.1f, -4.1f}, // 2018
         {-11.7f, -6.1f, -2.4f, 3.9f, 7.2f, 14.5f, 15.6f, 14.4f, 8.5f, 2.0f, -3.0f, -1.5f},  // 2019
@@ -167,7 +170,7 @@ void GraphModifier::resetTemperatureData()
     };
 
     // Create data arrays
-    //! [9b]
+    //! [populate series vie proxies]
     QBarDataArray dataSet;
     QBarDataArray dataSet2;
 
@@ -189,7 +192,7 @@ void GraphModifier::resetTemperatureData()
     // Add data to the data proxy (the data proxy assumes ownership of it)
     m_primarySeries->dataProxy()->resetArray(dataSet, m_years, m_months);
     m_secondarySeries->dataProxy()->resetArray(dataSet2, m_years, m_months);
-    //! [9b]
+    //! [populate series vie proxies]
 }
 
 void GraphModifier::changeRange(int range)
@@ -226,30 +229,30 @@ void GraphModifier::changePresetCamera()
     // Restore camera target in case animation has changed it
     m_graph->setCameraTargetPosition(QVector3D(0.0f, 0.0f, 0.0f));
 
-    //! [7]
-    static int preset = int(QAbstract3DGraph::CameraPreset::Front);
+    //! [change the preset]
+    static int preset = int(QtGraphs3D::CameraPreset::Front);
 
-    m_graph->setCameraPreset((QAbstract3DGraph::CameraPreset) preset);
+    m_graph->setCameraPreset((QtGraphs3D::CameraPreset) preset);
 
-    if (++preset > int(QAbstract3DGraph::CameraPreset::DirectlyBelow))
-        preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
-    //! [7]
+    if (++preset > int(QtGraphs3D::CameraPreset::DirectlyBelow))
+        preset = int(QtGraphs3D::CameraPreset::FrontLow);
+    //! [change the preset]
 }
 
 void GraphModifier::changeTheme(int theme)
 {
-    Q3DTheme *currentTheme = m_graph->activeTheme();
-    currentTheme->setType(Q3DTheme::Theme(theme));
-    emit backgroundEnabledChanged(currentTheme->isBackgroundEnabled());
-    emit gridEnabledChanged(currentTheme->isGridEnabled());
-    emit fontChanged(currentTheme->font());
-    emit fontSizeChanged(currentTheme->font().pointSize());
+    QGraphsTheme *currentTheme = m_graph->activeTheme();
+    currentTheme->setTheme(QGraphsTheme::Theme(theme));
+    emit backgroundVisibleChanged(currentTheme->isPlotAreaBackgroundVisible());
+    emit gridVisibleChanged(currentTheme->isGridVisible());
+    emit fontChanged(currentTheme->labelFont());
+    emit fontSizeChanged(currentTheme->labelFont().pointSize());
 }
 
 void GraphModifier::changeLabelBackground()
 {
-    m_graph->activeTheme()->setLabelBackgroundEnabled(
-        !m_graph->activeTheme()->isLabelBackgroundEnabled());
+    m_graph->activeTheme()->setLabelBackgroundVisible(
+        !m_graph->activeTheme()->isLabelBackgroundVisible());
 }
 
 void GraphModifier::changeSelectionMode(int selectionMode)
@@ -257,25 +260,25 @@ void GraphModifier::changeSelectionMode(int selectionMode)
     QComboBox *comboBox = qobject_cast<QComboBox *>(sender());
     if (comboBox) {
         int flags = comboBox->itemData(selectionMode).toInt();
-        m_graph->setSelectionMode(QAbstract3DGraph::SelectionFlags(flags));
+        m_graph->setSelectionMode(QtGraphs3D::SelectionFlags(flags));
     }
 }
 
 void GraphModifier::changeFont(const QFont &font)
 {
     QFont newFont = font;
-    m_graph->activeTheme()->setFont(newFont);
+    m_graph->activeTheme()->setLabelFont(newFont);
 }
 
 void GraphModifier::changeFontSize(int fontsize)
 {
     m_fontSize = fontsize;
-    QFont font = m_graph->activeTheme()->font();
+    QFont font = m_graph->activeTheme()->labelFont();
     font.setPointSize(m_fontSize);
-    m_graph->activeTheme()->setFont(font);
+    m_graph->activeTheme()->setLabelFont(font);
 }
 
-void GraphModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality sq)
+void GraphModifier::shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality sq)
 {
     int quality = int(sq);
     // Updates the UI component to show correct shadow quality
@@ -284,16 +287,16 @@ void GraphModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality
 
 void GraphModifier::changeLabelRotation(int rotation)
 {
-    m_temperatureAxis->setLabelAutoRotation(float(rotation));
-    m_monthAxis->setLabelAutoRotation(float(rotation));
-    m_yearAxis->setLabelAutoRotation(float(rotation));
+    m_temperatureAxis->setLabelAutoAngle(float(rotation));
+    m_monthAxis->setLabelAutoAngle(float(rotation));
+    m_yearAxis->setLabelAutoAngle(float(rotation));
 }
 
-void GraphModifier::setAxisTitleVisibility(bool enabled)
+void GraphModifier::setAxisTitleVisibility(bool visible)
 {
-    m_temperatureAxis->setTitleVisible(enabled);
-    m_monthAxis->setTitleVisible(enabled);
-    m_yearAxis->setTitleVisible(enabled);
+    m_temperatureAxis->setTitleVisible(visible);
+    m_monthAxis->setTitleVisible(visible);
+    m_yearAxis->setTitleVisible(visible);
 }
 
 void GraphModifier::setAxisTitleFixed(bool enabled)
@@ -325,7 +328,7 @@ void GraphModifier::zoomToSelectedBar()
 
     if (selectedBar != QBar3DSeries::invalidSelectionPosition()) {
         // Normalize selected bar position within axis range to determine target coordinates
-        //! [12]
+        //! [calculate target]
         QVector3D endTarget;
         float xMin = m_graph->columnAxis()->min();
         float xRange = m_graph->columnAxis()->max() - xMin;
@@ -333,10 +336,10 @@ void GraphModifier::zoomToSelectedBar()
         float zRange = m_graph->rowAxis()->max() - zMin;
         endTarget.setX((selectedBar.y() - xMin) / xRange * 2.0f - 1.0f);
         endTarget.setZ((selectedBar.x() - zMin) / zRange * 2.0f - 1.0f);
-        //! [12]
+        //! [calculate target]
 
         // Rotate the camera so that it always points approximately to the graph center
-        //! [14]
+        //! [center camera]
         qreal endAngleX = 90.0 - qRadiansToDegrees(qAtan(qreal(endTarget.z() / endTarget.x())));
         if (endTarget.x() > 0.0f)
             endAngleX -= 180.0f;
@@ -347,14 +350,14 @@ void GraphModifier::zoomToSelectedBar()
         float endAngleY = barValue >= 0.0f ? 30.0f : -30.0f;
         if (m_graph->valueAxis()->reversed())
             endAngleY *= -1.0f;
-        //! [14]
+        //! [center camera]
 
         m_animationCameraX.setEndValue(QVariant::fromValue(float(endAngleX)));
         m_animationCameraY.setEndValue(QVariant::fromValue(endAngleY));
         m_animationCameraZoom.setEndValue(QVariant::fromValue(100));
-        //! [13]
+        //! [set target]
         m_animationCameraTarget.setEndValue(QVariant::fromValue(endTarget));
-        //! [13]
+        //! [set target]
     } else {
         // No selected bar, so return to the default view
         m_animationCameraX.setEndValue(QVariant::fromValue(m_defaultAngleX));
@@ -383,33 +386,33 @@ void GraphModifier::setDataModeToCustom(bool enabled)
 
 void GraphModifier::changeShadowQuality(int quality)
 {
-    QAbstract3DGraph::ShadowQuality sq = QAbstract3DGraph::ShadowQuality(quality);
+    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
     emit shadowQualityChanged(quality);
 }
 
-//! [10]
-void GraphModifier::rotateX(int rotation)
+//! [rotate camera]
+void GraphModifier::rotateX(int angle)
 {
-    m_xRotation = rotation;
+    m_xRotation = angle;
     m_graph->setCameraPosition(m_xRotation, m_yRotation);
 }
-//! [10]
+//! [rotate camera]
 
-void GraphModifier::rotateY(int rotation)
+void GraphModifier::rotateY(int angle)
 {
-    m_yRotation = rotation;
+    m_yRotation = angle;
     m_graph->setCameraPosition(m_xRotation, m_yRotation);
 }
 
-void GraphModifier::setBackgroundEnabled(int enabled)
+void GraphModifier::setBackgroundVisible(int visible)
 {
-    m_graph->activeTheme()->setBackgroundEnabled(bool(enabled));
+    m_graph->activeTheme()->setPlotAreaBackgroundVisible(bool(visible));
 }
 
-void GraphModifier::setGridEnabled(int enabled)
+void GraphModifier::setGridVisible(int visible)
 {
-    m_graph->activeTheme()->setGridEnabled(bool(enabled));
+    m_graph->activeTheme()->setGridVisible(bool(visible));
 }
 
 void GraphModifier::setSmoothBars(int smooth)
@@ -420,9 +423,9 @@ void GraphModifier::setSmoothBars(int smooth)
     m_customData->customSeries()->setMeshSmooth(m_smooth);
 }
 
-void GraphModifier::setSeriesVisibility(int enabled)
+void GraphModifier::setSeriesVisibility(int visible)
 {
-    m_secondarySeries->setVisible(bool(enabled));
+    m_secondarySeries->setVisible(bool(visible));
 }
 
 void GraphModifier::setReverseValueAxis(int enabled)

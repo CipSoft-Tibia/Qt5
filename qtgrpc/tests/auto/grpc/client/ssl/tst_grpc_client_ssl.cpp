@@ -23,19 +23,18 @@ public:
         : GrpcClientTestBase(Channels(GrpcClientTestBase::Channel::SslNoCredentials))
     {
     }
-private slots:
-    void IncorrectSecureCredentialsTest();
+private Q_SLOTS:
+    void incorrectSecureCredentialsTest();
 };
 
-void QtGrpcSslClientTest::IncorrectSecureCredentialsTest()
+void QtGrpcSslClientTest::incorrectSecureCredentialsTest()
 {
     SimpleStringMessage req;
     req.setTestFieldString("Hello Qt!");
 
-    QSignalSpy errorSpy(client().get(), &TestService::Client::errorOccurred);
-    client()->testMethod(req);
-
-    QTRY_COMPARE_EQ_WITH_TIMEOUT(errorSpy.count(), 1, MessageLatencyWithThreshold);
+    auto reply = client()->testMethod(req);
+    QSignalSpy finishedSpy(reply.get(), &QGrpcCallReply::finished);
+    QTRY_COMPARE_EQ_WITH_TIMEOUT(finishedSpy.count(), 1, MessageLatencyWithThreshold);
 }
 
 QTEST_MAIN(QtGrpcSslClientTest)

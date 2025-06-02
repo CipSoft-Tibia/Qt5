@@ -85,7 +85,9 @@ Window {
                 eulerRotation: Qt.vector3d(-45, 25, 0)
                 castsShadow: true
                 brightness: 1
-                shadowMapQuality: Light.ShadowMapQualityVeryHigh
+                shadowMapQuality: Light.ShadowMapQualityHigh
+                pcfFactor: 0.1
+                shadowBias: 1
             }
             //! [scene]
 
@@ -212,6 +214,7 @@ Window {
                     Model {
                         id: thisModel
                         source: diceShape.source
+                        receivesShadows: false
                         materials: PrincipledMaterial {
                             metalness: 1.0
                             roughness: randomInRange(0.2, 0.6)

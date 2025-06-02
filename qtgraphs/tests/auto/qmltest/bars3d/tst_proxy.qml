@@ -10,38 +10,43 @@ Item {
     height: 150
     width: 150
 
-    ItemModelBarDataProxy {
-        id: initial
+    Bar3DSeries {
+        dataProxy: ItemModelBarDataProxy {
+            id: initial
+        }
     }
 
-    ItemModelBarDataProxy {
-        id: initialized
-
-        autoColumnCategories: false
-        autoRowCategories: false
-        columnCategories: ["colcat1", "colcat2"]
-        columnRole: "col"
-        columnRolePattern: /^.*-(\d\d)$/
-        columnRoleReplace: "\\1"
-        itemModel: ListModel { objectName: "model1" }
-        multiMatchBehavior: ItemModelBarDataProxy.MultiMatchBehavior.Average
-        rotationRole: "rot"
-        rotationRolePattern: /-/
-        rotationRoleReplace: "\\1"
-        rowCategories: ["rowcat1", "rowcat2"]
-        rowRole: "row"
-        rowRolePattern: /^(\d\d\d\d).*$/
-        rowRoleReplace: "\\1"
-        valueRole: "val"
-        valueRolePattern: /-/
-        valueRoleReplace: "\\1"
-
+    Bar3DSeries {
         columnLabels: ["col1", "col2"]
         rowLabels: ["row1", "row2"]
+        dataProxy: ItemModelBarDataProxy {
+            id: initialized
+
+            autoColumnCategories: false
+            autoRowCategories: false
+            columnCategories: ["colcat1", "colcat2"]
+            columnRole: "col"
+            columnRolePattern: /^.*-(\d\d)$/
+            columnRoleReplace: "\\1"
+            itemModel: ListModel { objectName: "model1" }
+            multiMatchBehavior: ItemModelBarDataProxy.MultiMatchBehavior.Average
+            rotationRole: "rot"
+            rotationRolePattern: /-/
+            rotationRoleReplace: "\\1"
+            rowCategories: ["rowcat1", "rowcat2"]
+            rowRole: "row"
+            rowRolePattern: /^(\d\d\d\d).*$/
+            rowRoleReplace: "\\1"
+            valueRole: "val"
+            valueRolePattern: /-/
+            valueRoleReplace: "\\1"
+        }
     }
 
-    ItemModelBarDataProxy {
-        id: change
+    Bar3DSeries {
+        dataProxy: ItemModelBarDataProxy {
+            id: change
+        }
     }
 
     TestCase {
@@ -68,10 +73,10 @@ Item {
             verify(initial.valueRolePattern)
             compare(initial.valueRoleReplace, "")
 
-            compare(initial.columnLabels.length, 0)
+            compare(initial.series.columnLabels.length, 0)
             compare(initial.rowCount, 0)
-            compare(initial.rowLabels.length, 0)
-            verify(!initial.series)
+            compare(initial.series.rowLabels.length, 0)
+            verify(initial.series)
 
             compare(initial.type, AbstractDataProxy.DataType.Bar)
         }
@@ -104,9 +109,9 @@ Item {
             compare(initialized.valueRolePattern, /-/)
             compare(initialized.valueRoleReplace, "\\1")
 
-            compare(initialized.columnLabels.length, 2)
+            compare(initialized.series.columnLabels.length, 2)
             compare(initialized.rowCount, 2)
-            compare(initialized.rowLabels.length, 2)
+            compare(initialized.series.rowLabels.length, 2)
         }
     }
 
@@ -136,8 +141,8 @@ Item {
             change.valueRolePattern = /-/
             change.valueRoleReplace = "\\1"
 
-            change.columnLabels = ["col1", "col2"]
-            change.rowLabels = ["row1", "row2"]
+            change.series.columnLabels = ["col1", "col2"]
+            change.series.rowLabels = ["row1", "row2"]
         }
 
         function test_2_test_change() {
@@ -166,9 +171,41 @@ Item {
             compare(change.valueRolePattern, /-/)
             compare(change.valueRoleReplace, "\\1")
 
-            compare(change.columnLabels.length, 1)
+            compare(change.series.columnLabels.length, 1)
             compare(change.rowCount, 0)
-            compare(change.rowLabels.length, 0)
+            compare(change.series.rowLabels.length, 0)
+
+            // signals
+            compare(autoColumnCategoriesSpy.count, 1)
+            compare(autoRowCategoriesSpy.count, 1)
+            compare(columnCategoriesSpy.count, 1)
+            compare(rowCategoriesSpy.count, 1)
+            compare(columnRoleSpy.count, 1)
+            compare(columnPatternSpy.count, 1)
+            compare(columnReplaceSpy.count, 1)
+            compare(rowRoleSpy.count, 1)
+            compare(rowPatternSpy.count, 1)
+            compare(rowReplaceSpy.count, 1)
+            compare(valueRoleSpy.count, 1)
+            compare(valuePatternSpy.count, 1)
+            compare(valueReplaceSpy.count, 1)
+            compare(rotationRoleSpy.count, 1)
+            compare(rotationPatternSpy.count, 1)
+            compare(rotationReplaceSpy.count, 1)
+            compare(itemModelSpy.count, 1)
+            compare(multiMatchSpy.count, 1)
+        }
+
+        function test_3_test_categoryIndex() {
+            let rowIndex = change.rowCategoryIndex("rowcat1")
+            let columnIndex = change.columnCategoryIndex("colcat2")
+            compare(rowIndex, 0)
+            compare(columnIndex, 1)
+
+            rowIndex = change.rowCategoryIndex("rowcat2")
+            columnIndex = change.columnCategoryIndex("colcat1")
+            compare(rowIndex, 1)
+            compare(columnIndex, 0)
         }
     }
 
@@ -234,5 +271,119 @@ Item {
         function test_9_test_multimatch() {
             compare(bars1.valueAxis.max, 20)
         }
+    }
+
+    SignalSpy {
+        id: autoColumnCategoriesSpy
+        target: change
+        signalName: "autoColumnCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: autoRowCategoriesSpy
+        target: change
+        signalName: "autoRowCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: columnCategoriesSpy
+        target: change
+        signalName: "columnCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: rowCategoriesSpy
+        target: change
+        signalName: "rowCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: itemModelSpy
+        target: change
+        signalName: "itemModelChanged"
+    }
+
+    SignalSpy {
+        id: rowRoleSpy
+        target: change
+        signalName: "rowRoleChanged"
+    }
+
+    SignalSpy {
+        id: columnRoleSpy
+        target: change
+        signalName: "columnRoleChanged"
+    }
+
+    SignalSpy {
+        id: valueRoleSpy
+        target: change
+        signalName: "valueRoleChanged"
+    }
+
+    SignalSpy {
+        id: rotationRoleSpy
+        target: change
+        signalName: "rotationRoleChanged"
+    }
+
+    SignalSpy {
+        id: useModelCategoriesSpy
+        target: change
+        signalName: "useModelCategoriesChanged"
+    }
+
+    SignalSpy {
+        id: rowPatternSpy
+        target: change
+        signalName: "rowRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: columnPatternSpy
+        target: change
+        signalName: "columnRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: valuePatternSpy
+        target: change
+        signalName: "valueRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: rotationPatternSpy
+        target: change
+        signalName: "rotationRolePatternChanged"
+    }
+
+    SignalSpy {
+        id: rowReplaceSpy
+        target: change
+        signalName: "rowRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: columnReplaceSpy
+        target: change
+        signalName: "columnRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: valueReplaceSpy
+        target: change
+        signalName: "valueRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: rotationReplaceSpy
+        target: change
+        signalName: "rotationRoleReplaceChanged"
+    }
+
+    SignalSpy {
+        id: multiMatchSpy
+        target: change
+        signalName: "multiMatchBehaviorChanged"
     }
 }

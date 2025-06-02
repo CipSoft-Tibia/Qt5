@@ -295,10 +295,9 @@ DCompSurfaceImageBacking::ProduceSkiaGraphite(
           manager, this, tracker, device, wgpu::BackendType::D3D11);
   return SkiaGraphiteDawnImageRepresentation::Create(
       std::move(dawn_representation), context_state,
-      context_state->gpu_main_graphite_recorder(), manager, this, tracker,
-      /*plane_index=*/0, /*is_yuv_plane=*/false);
+      context_state->gpu_main_graphite_recorder(), manager, this, tracker);
 #else
-    NOTREACHED_NORETURN();
+  NOTREACHED_NORETURN();
 #endif  // BUILDFLAG(SKIA_USE_DAWN)
 }
 

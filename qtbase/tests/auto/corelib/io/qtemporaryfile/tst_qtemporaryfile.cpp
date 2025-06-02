@@ -180,6 +180,7 @@ void tst_QTemporaryFile::fileTemplate_data()
     QTest::newRow("constructor with XXXXX prefix") << "qt_XXXXX" << "qt_XXXXX." << "" << "";
     QTest::newRow("constructor with XXXX  prefix and suffix") << "qt_XXXX_XXXXXX_XXXX" << "qt_XXXX_" << "_XXXX" << "";
     QTest::newRow("constructor with XXXXX prefix and suffix") << "qt_XXXXX_XXXXXX_XXXXX" << "qt_XXXXX_" << "_XXXXX" << "";
+    QTest::newRow("constructor with two placeholders") << "qt_XXXXXX_XXXXXX_" << "qt_XXXXXX_" << "_" << "";
 
     QTest::newRow("set template, no suffix") << "" << "foo" << "" << "foo";
     QTest::newRow("set template, with lowercase XXXXXX") << "" << "qt_" << "xxxxxx" << "qt_XXXXXXxxxxxx";
@@ -254,7 +255,7 @@ void tst_QTemporaryFile::fileName()
     QString absoluteTempPath = QDir(tempPath).absolutePath();
     QTemporaryFile file;
     file.setAutoRemove(true);
-    file.open();
+    QVERIFY(file.open());
     QString fileName = file.fileName();
     QVERIFY2(fileName.contains("/tst_qtemporaryfile."), qPrintable(fileName));
     QVERIFY(QFile::exists(fileName));
@@ -426,7 +427,7 @@ void tst_QTemporaryFile::io()
 
     file.reset();
     QFile compare(file.fileName());
-    compare.open(QIODevice::ReadOnly);
+    QVERIFY(compare.open(QIODevice::ReadOnly));
     QCOMPARE(compare.readAll() , data);
     QCOMPARE(compare.fileTime(QFile::FileModificationTime), mtime);
 }
@@ -460,7 +461,7 @@ void tst_QTemporaryFile::removeAndReOpen()
     QString fileName;
     {
         QTemporaryFile file;
-        file.open();
+        QVERIFY(file.open());
         fileName = file.fileName();     // materializes any unnamed file
         QVERIFY(QFile::exists(fileName));
 
@@ -480,7 +481,7 @@ void tst_QTemporaryFile::removeAndReOpen()
 void tst_QTemporaryFile::removeUnnamed()
 {
     QTemporaryFile file;
-    file.open();
+    QVERIFY(file.open());
 
     // we did not call fileName(), so the file name may not have a name
     QVERIFY(file.remove());
@@ -592,7 +593,9 @@ void tst_QTemporaryFile::rename()
 void tst_QTemporaryFile::renameFdLeak()
 {
 #if defined(Q_OS_UNIX) && !defined(Q_OS_ANDROID)
-    const QByteArray sourceFile = QFile::encodeName(QFINDTESTDATA("CMakeLists.txt"));
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    const QByteArray sourceFile = QFile::encodeName(file.fileName());
     QVERIFY(!sourceFile.isEmpty());
     // Test this on Unix only
 
@@ -870,7 +873,7 @@ void tst_QTemporaryFile::createNativeFile()
 
     QFile f(filePath);
     if (currentPos != -1) {
-        f.open(QIODevice::ReadOnly);
+        QVERIFY(f.open(QIODevice::ReadOnly));
         f.seek(currentPos);
     }
     QTemporaryFile *tempFile = QTemporaryFile::createNativeFile(f);
@@ -1015,7 +1018,7 @@ void tst_QTemporaryFile::guaranteeUnique()
     // First pass. See which filename QTemporaryFile will try first.
     {
         QTemporaryFile tmpFile("testFile1.XXXXXX");
-        tmpFile.open();
+        QVERIFY(tmpFile.open());
         takenFileName = tmpFile.fileName();
         QVERIFY(QFile::exists(takenFileName));
     }

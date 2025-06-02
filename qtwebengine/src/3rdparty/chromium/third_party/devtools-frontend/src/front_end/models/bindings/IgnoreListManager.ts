@@ -41,6 +41,7 @@ let ignoreListManagerInstance: IgnoreListManager|undefined;
 export type IgnoreListGeneralRules = {
   isContentScript?: boolean,
   isKnownThirdParty?: boolean,
+  isCurrentlyIgnoreListed?: boolean,
 };
 
 export class IgnoreListManager implements SDK.TargetManager.SDKModelObserver<SDK.DebuggerModel.DebuggerModel> {
@@ -433,12 +434,12 @@ export class IgnoreListManager implements SDK.TargetManager.SDKModelObserver<SDK
   }
 
   getIgnoreListURLContextMenuItems(uiSourceCode: Workspace.UISourceCode.UISourceCode):
-      Array<{text: string, callback: () => void}> {
+      Array<{text: string, callback: () => void, jslogContext: string}> {
     if (uiSourceCode.project().type() === Workspace.Workspace.projectTypes.FileSystem) {
       return [];
     }
 
-    const menuItems: Array<{text: string, callback: () => void}> = [];
+    const menuItems: Array<{text: string, callback: () => void, jslogContext: string}> = [];
     const canIgnoreList = this.canIgnoreListUISourceCode(uiSourceCode);
     const isIgnoreListed = this.isUserOrSourceMapIgnoreListedUISourceCode(uiSourceCode);
     const {isContentScript, isKnownThirdParty} = this.getGeneralRulesForUISourceCode(uiSourceCode);
@@ -448,6 +449,7 @@ export class IgnoreListManager implements SDK.TargetManager.SDKModelObserver<SDK
         menuItems.push({
           text: i18nString(UIStrings.removeFromIgnoreList),
           callback: this.unIgnoreListUISourceCode.bind(this, uiSourceCode),
+          jslogContext: 'remove-script-from-ignorelist',
         });
       }
     } else {
@@ -455,6 +457,7 @@ export class IgnoreListManager implements SDK.TargetManager.SDKModelObserver<SDK
         menuItems.push({
           text: i18nString(UIStrings.addScriptToIgnoreList),
           callback: this.ignoreListUISourceCode.bind(this, uiSourceCode),
+          jslogContext: 'add-script-to-ignorelist',
         });
       }
       menuItems.push(...this.getIgnoreListGeneralContextMenuItems({isContentScript, isKnownThirdParty}));
@@ -464,18 +467,20 @@ export class IgnoreListManager implements SDK.TargetManager.SDKModelObserver<SDK
   }
 
   private getIgnoreListGeneralContextMenuItems(options?: IgnoreListGeneralRules):
-      Array<{text: string, callback: () => void}> {
-    const menuItems: Array<{text: string, callback: () => void}> = [];
+      Array<{text: string, callback: () => void, jslogContext: string}> {
+    const menuItems: Array<{text: string, callback: () => void, jslogContext: string}> = [];
     if (options?.isContentScript) {
       menuItems.push({
         text: i18nString(UIStrings.addAllContentScriptsToIgnoreList),
         callback: this.ignoreListContentScripts.bind(this),
+        jslogContext: 'add-content-scripts-to-ignorelist',
       });
     }
     if (options?.isKnownThirdParty) {
       menuItems.push({
         text: i18nString(UIStrings.addAllThirdPartyScriptsToIgnoreList),
         callback: this.ignoreListThirdParty.bind(this),
+        jslogContext: 'add-3p-scripts-to-ignorelist',
       });
     }
     return menuItems;
@@ -497,7 +502,9 @@ export class IgnoreListManager implements SDK.TargetManager.SDKModelObserver<SDK
         text: i18nString(UIStrings.removeFromIgnoreList),
         callback: this.unIgnoreListURL.bind(this, url, options),
       });
-    } else {
+    } else if (!options?.isCurrentlyIgnoreListed) {
+      // Provide options to add to ignore list, unless folder currently displays
+      // as entirely ignored.
       menuItems.push({
         text: i18nString(UIStrings.addDirectoryToIgnoreList),
         callback: this.ignoreListRegex.bind(this, regexValue),

@@ -5,6 +5,8 @@
 # special case begin
 qt_find_package(WaylandScanner PROVIDED_TARGETS Wayland::Scanner)
 
+set(QT_SBOM_DEFAULT_QT_LICENSE_ID_LIBRARIES "QT_COMMERCIAL_OR_GPL3")
+
 set(wayland_libs
     Wayland::Client
     Wayland::Server
@@ -29,7 +31,11 @@ configure the module on targets that are missing dependencies.")
 endif()
 
 # See global/README for a description of the following module.
-qt_internal_add_module(WaylandGlobalPrivate INTERNAL_MODULE HEADER_MODULE)
+qt_internal_add_module(WaylandGlobalPrivate
+    INTERNAL_MODULE
+    HEADER_MODULE
+    NO_GENERATE_CPP_EXPORTS
+)
 
 # Work around 115101.
 # If nothing depends on the WaylandGlobalPrivate target it doesn't run custom commands that the

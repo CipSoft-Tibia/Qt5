@@ -15,21 +15,22 @@
 //
 
 #include "qaudiobuffer.h"
-#include "qffmpeg_p.h"
-#include "private/qplatformaudioresampler_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
+#include <QtMultimedia/private/qplatformaudioresampler_p.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg
 {
-class Codec;
-}
+class CodecContext;
+} // namespace QFFmpeg
 
 class QFFmpegResampler : public QPlatformAudioResampler
 {
 public:
     QFFmpegResampler(const QAudioFormat &inputFormat, const QAudioFormat &outputFormat);
-    QFFmpegResampler(const QFFmpeg::Codec* codec, const QAudioFormat &outputFormat);
+    QFFmpegResampler(const QFFmpeg::CodecContext *codecContext, const QAudioFormat &outputFormat,
+                     qint64 startTime = 0);
 
     ~QFFmpegResampler() override;
 
@@ -49,6 +50,7 @@ private:
 private:
     QAudioFormat m_inputFormat;
     QAudioFormat m_outputFormat;
+    qint64 m_startTime = 0;
     QFFmpeg::SwrContextUPtr m_resampler;
     qint64 m_samplesProcessed = 0;
     qint64 m_endCompensationSample = std::numeric_limits<qint64>::min();

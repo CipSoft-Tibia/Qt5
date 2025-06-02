@@ -27,7 +27,7 @@ parser.set_defaults(defines=list())
 
 
 def split_ukernel_name(name):
-  match = re.fullmatch(r"xnn_(s8|u8|f16|f32|u32|u64)(_(s8|u8|f16|f32|u32|u64))*_v(abs|clamp|elu|hswish|lrelu|neg|relu|rndd|rndne|rndu|rndz|sigmoid|sqr|sqrt|sqrtshift|tanh)_(fact_)?ukernel__(.+)_x(\d+)(v)?", name)
+  match = re.fullmatch(r"(?:xnn_|xnn_generate_)(s8|u8|f16|f32|u32|u64)(_(s8|u8|f16|f32|u32|u64))*_v(abs|clamp|elu|hswish|lrelu|neg|relu|rndd|rndne|rndu|rndz|sigmoid|sqr|sqrt|sqrtshift|tanh)_(fact_)?ukernel__(.+)_u(\d+)(v)?", name)
   if match is None:
     raise ValueError("Unexpected microkernel name: " + name)
   op_type = {
@@ -112,7 +112,7 @@ $if OP_TYPE == "Clamp":
     $if ISA_CHECK:
       ${ISA_CHECK};
     for (uint8_t qmin = 1; qmin < 255; qmin++) {
-      for (size_t batch_size = 1; batch_size <= ${BATCH_TILE*5}${BATCH_SCALE}; batch_size += ${max(1, BATCH_TILE-1)}) {
+      for (size_t batch_size = 1; batch_size <= ${BATCH_TILE*5}${BATCH_SCALE}; batch_size += ${max(1, BATCH_TILE-1 if BATCH_SCALE == "" else (BATCH_TILE * 10 - 1))}) {
         VUnaryMicrokernelTester()
           .batch_size(batch_size)
           .qmin(qmin)
@@ -125,7 +125,7 @@ $if OP_TYPE == "Clamp":
     $if ISA_CHECK:
       ${ISA_CHECK};
     for (uint8_t qmax = 1; qmax < 255; qmax++) {
-      for (size_t batch_size = 1; batch_size <= ${BATCH_TILE*5}${BATCH_SCALE}; batch_size += ${max(1, BATCH_TILE-1)}) {
+      for (size_t batch_size = 1; batch_size <= ${BATCH_TILE*5}${BATCH_SCALE}; batch_size += ${max(1, BATCH_TILE-1 if BATCH_SCALE == "" else (BATCH_TILE * 10 - 1))}) {
         VUnaryMicrokernelTester()
           .batch_size(batch_size)
           .qmax(qmax)
@@ -263,12 +263,14 @@ def main(args):
 //   Generator: {generator}
 
 
+#include <vector>
+
 #include <gtest/gtest.h>
 
 #include <xnnpack/common.h>
 #include <xnnpack/isa-checks.h>
-
 #include <xnnpack/vunary.h>
+
 #include "vunary-microkernel-tester.h"
 """.format(specification=options.spec, generator=sys.argv[0])
 
@@ -281,14 +283,7 @@ def main(args):
         name, op_type, init_fn, batch_tile, vector_tile, isa)
       tests += "\n\n" + xnncommon.postprocess_test_case(test_case, arch, isa)
 
-    txt_changed = True
-    if os.path.exists(options.output):
-      with codecs.open(options.output, "r", encoding="utf-8") as output_file:
-        txt_changed = output_file.read() != tests
-
-    if txt_changed:
-      with codecs.open(options.output, "w", encoding="utf-8") as output_file:
-        output_file.write(tests)
+    xnncommon.overwrite_if_changed(options.output, tests)
 
 
 if __name__ == "__main__":

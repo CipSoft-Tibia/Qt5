@@ -827,7 +827,6 @@ void tst_QDateTimeEdit::selectAndScrollWithKeys()
     return;
 #endif
 
-    QApplicationPrivate::setActiveWindow(testWidget);
     testWidget->setDate(QDate(2004, 05, 11));
     testWidget->setDisplayFormat("dd/MM/yyyy");
     testWidget->show();
@@ -929,7 +928,6 @@ void tst_QDateTimeEdit::selectAndScrollWithKeys()
 
 void tst_QDateTimeEdit::backspaceKey()
 {
-    QApplicationPrivate::setActiveWindow(testWidget);
     testWidget->setDate(QDate(2004, 05, 11));
     testWidget->setDisplayFormat("d/MM/yyyy");
     testWidget->show();
@@ -995,7 +993,6 @@ void tst_QDateTimeEdit::backspaceKey()
 
 void tst_QDateTimeEdit::deleteKey()
 {
-    QApplicationPrivate::setActiveWindow(testWidget);
     testWidget->setDate(QDate(2004, 05, 11));
     testWidget->setDisplayFormat("d/MM/yyyy");
 #ifdef Q_OS_MAC
@@ -1014,7 +1011,6 @@ void tst_QDateTimeEdit::deleteKey()
 
 void tst_QDateTimeEdit::tabKeyNavigation()
 {
-    QApplicationPrivate::setActiveWindow(testWidget);
     testWidget->setDate(QDate(2004, 05, 11));
     testWidget->setDisplayFormat("dd/MM/yyyy");
     testWidget->show();
@@ -1032,7 +1028,6 @@ void tst_QDateTimeEdit::tabKeyNavigation()
 
 void tst_QDateTimeEdit::tabKeyNavigationWithPrefix()
 {
-    QApplicationPrivate::setActiveWindow(testWidget);
     testWidget->setDate(QDate(2004, 05, 11));
     testWidget->setDisplayFormat("prefix dd/MM/yyyy");
 
@@ -1050,7 +1045,6 @@ void tst_QDateTimeEdit::tabKeyNavigationWithPrefix()
 
 void tst_QDateTimeEdit::tabKeyNavigationWithSuffix()
 {
-    QApplicationPrivate::setActiveWindow(testWidget);
     testWidget->setDate(QDate(2004, 05, 11));
     testWidget->setDisplayFormat("dd/MM/yyyy 'suffix'");
 
@@ -1066,7 +1060,6 @@ void tst_QDateTimeEdit::tabKeyNavigationWithSuffix()
 
 void tst_QDateTimeEdit::enterKey()
 {
-    QApplicationPrivate::setActiveWindow(testWidget);
     testWidget->setDate(QDate(2004, 5, 11));
     testWidget->setDisplayFormat("prefix d/MM/yyyy 'suffix'");
     testWidget->lineEdit()->setFocus();
@@ -1354,9 +1347,7 @@ void tst_QDateTimeEdit::editingRanged()
     });
 
     edit->show();
-    QApplicationPrivate::setActiveWindow(edit.get());
-    if (!QTest::qWaitForWindowActive(edit.get()))
-        QSKIP("Failed to make window active, aborting");
+    QVERIFY(QTest::qWaitForWindowFocused(edit.get()));
     edit->setFocus();
 
     // with keyboard tracking, never get a signal with an out-of-range value
@@ -3801,7 +3792,7 @@ void tst_QDateTimeEdit::deleteCalendarWidget()
         QVERIFY(!edit.calendarWidget());
         edit.setCalendarPopup(true);
         QVERIFY(edit.calendarWidget());
-        edit.calendarWidget()->setObjectName("cw1");;
+        edit.calendarWidget()->setObjectName("cw1");
 
         // delete
         delete edit.calendarWidget();

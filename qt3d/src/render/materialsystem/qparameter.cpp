@@ -10,7 +10,7 @@
 
 /*!
     \qmltype Parameter
-    \instantiates Qt3DRender::QParameter
+    \nativetype Qt3DRender::QParameter
     \inqmlmodule Qt3D.Render
     \brief Provides storage for a name and value pair. This maps to a shader uniform.
 
@@ -219,7 +219,7 @@ QParameter::~QParameter()
 }
 
 /*!
-  \qmlproperty QString Qt3D.Render::Parameter::name
+  \qmlproperty string Qt3D.Render::Parameter::name
     Specifies the name of the parameter
 */
 

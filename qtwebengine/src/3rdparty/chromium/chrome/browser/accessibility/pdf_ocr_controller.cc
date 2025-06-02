@@ -9,6 +9,7 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/metrics_hashes.h"
 #include "base/strings/string_split.h"
+#include "chrome/browser/accessibility/accessibility_state_utils.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/screen_ai/screen_ai_service_router.h"
@@ -25,6 +26,7 @@
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_iterator.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/accessibility/accessibility_features.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/views/accessibility/view_accessibility.h"
 
@@ -81,6 +83,10 @@ std::vector<content::WebContents*> GetPdfHtmlWebContentses(Profile* profile) {
 
 // Invoke screen reader alert to notify the user of the state.
 void AnnounceToScreenReader(const int message_id) {
+// TODO(crbug.com/1442928): Sending announcements results in a failure in
+// `AuraLinuxAccessibilityInProcessBrowserTest::IndexInParentWithModal` and
+// flaky fail when running Chrome.
+#if !BUILDFLAG(IS_LINUX)
   const Browser* browser = BrowserList::GetInstance()->GetLastActive();
   if (!browser) {
     VLOG(2) << "Browser is not ready to announce";
@@ -94,6 +100,7 @@ void AnnounceToScreenReader(const int message_id) {
 
   browser_view->GetViewAccessibility().AnnounceText(
       l10n_util::GetStringUTF16(message_id));
+#endif
 }
 
 void RecordAcceptLanguages(const std::string& accept_languages) {
@@ -103,7 +110,7 @@ void RecordAcceptLanguages(const std::string& accept_languages) {
     // Convert to a Chrome language code synonym. This language synonym is then
     // converted into a `LocaleCodeISO639` enum value for a UMA histogram.
     language::ToChromeLanguageSynonym(&language);
-    // TODO(crbug.com/1443345): Add a browser test to validate this UMA metric.
+    // TODO(crbug.com/1443346): Add a browser test to validate this UMA metric.
     base::UmaHistogramSparse("Accessibility.PdfOcr.UserAcceptLanguage",
                              base::HashMetricName(language));
   }
@@ -123,9 +130,13 @@ PdfOcrController::PdfOcrController(Profile* profile) : profile_(profile) {
       base::BindRepeating(&PdfOcrController::OnPdfOcrAlwaysActiveChanged,
                           weak_ptr_factory_.GetWeakPtr()));
 
-  // Trigger if the preference is already set.
+  // Trigger if the preference is already set, and a screen reader or Select-to-
+  // Speak on ChromeOS is enabled.
   if (profile_->GetPrefs()->GetBoolean(
-          prefs::kAccessibilityPdfOcrAlwaysActive)) {
+          prefs::kAccessibilityPdfOcrAlwaysActive) &&
+      (accessibility_state_utils::IsScreenReaderEnabled() ||
+       (features::IsAccessibilityPdfOcrForSelectToSpeakEnabled() &&
+        accessibility_state_utils::IsSelectToSpeakEnabled()))) {
     OnPdfOcrAlwaysActiveChanged();
   }
 }
@@ -136,29 +147,6 @@ PdfOcrController::~PdfOcrController() = default;
 std::vector<content::WebContents*>
 PdfOcrController::GetAllPdfWebContentsesForTesting(Profile* profile) {
   return GetPdfHtmlWebContentses(profile);
-}
-
-void PdfOcrController::RunPdfOcrOnlyOnce(content::WebContents* web_contents) {
-  if (!web_contents) {
-    CHECK_IS_TEST();
-    return;
-  }
-
-  if (MaybeScheduleRequest(web_contents)) {
-    // The request will be handled when the library is ready or discarded if it
-    // fails to load.
-    return;
-  }
-
-  // `web_contents` should be a PDF Viewer Mimehandler.
-  DCHECK_EQ(web_contents->GetContentsMimeType(), kHtmlMimeType);
-
-  ui::AXMode ax_mode = web_contents->GetAccessibilityMode();
-  ax_mode.set_mode(ui::AXMode::kPDFOcr, true);
-  web_contents->SetAccessibilityMode(ax_mode);
-
-  RecordAcceptLanguages(
-      profile_->GetPrefs()->GetString(language::prefs::kAcceptLanguages));
 }
 
 bool PdfOcrController::IsEnabled() const {
@@ -191,7 +179,7 @@ void PdfOcrController::OnPdfOcrAlwaysActiveChanged() {
   if (is_always_active) {
     RecordAcceptLanguages(
         profile_->GetPrefs()->GetString(language::prefs::kAcceptLanguages));
-    if (MaybeScheduleRequest(/*web_contents_for_only_once_request=*/nullptr)) {
+    if (MaybeScheduleRequest()) {
       // The request will be handled when the library is ready or discarded if
       // it fails to load.
       return;
@@ -209,6 +197,11 @@ void PdfOcrController::OnPdfOcrAlwaysActiveChanged() {
 }
 
 void PdfOcrController::SendPdfOcrAlwaysActiveToAll(bool is_always_active) {
+  if (is_always_active) {
+    CHECK_EQ(ScreenAIInstallState::GetInstance()->get_state(),
+             ScreenAIInstallState::State::kReady);
+  }
+
   std::vector<content::WebContents*> html_web_contents_vector =
       GetPdfHtmlWebContentses(profile_);
   // Iterate over all WebContentses associated with PDF Viewer Mimehandlers and
@@ -220,8 +213,7 @@ void PdfOcrController::SendPdfOcrAlwaysActiveToAll(bool is_always_active) {
   }
 }
 
-bool PdfOcrController::MaybeScheduleRequest(
-    content::WebContents* web_contents_for_only_once_request) {
+bool PdfOcrController::MaybeScheduleRequest() {
   ScreenAIInstallState::State current_install_state =
       ScreenAIInstallState::GetInstance()->get_state();
 
@@ -231,15 +223,7 @@ bool PdfOcrController::MaybeScheduleRequest(
   }
 
   // Keep the request until the library is ready.
-  if (web_contents_for_only_once_request) {
-    // PDF OCR once request. Keep its weak pointer of the web contents
-    // requested for this. We only keep this request for one PDF (the last one).
-    last_webcontents_requested_for_run_once_ =
-        web_contents_for_only_once_request->GetWeakPtr();
-  } else {
-    // PDF OCR always request.
-    send_always_active_state_when_service_is_ready_ = true;
-  }
+  send_always_active_state_when_service_is_ready_ = true;
 
   // TODO(crbug.com/127829): Make sure requesting to repeat a failed download
   // will trigger a new one.
@@ -267,15 +251,12 @@ void PdfOcrController::StateChanged(ScreenAIInstallState::State state) {
 
     case ScreenAIInstallState::State::kFailed:
       AnnounceToScreenReader(IDS_SETTINGS_PDF_OCR_DOWNLOAD_ERROR);
-      if (last_webcontents_requested_for_run_once_) {
-        last_webcontents_requested_for_run_once_.reset();
-      }
       if (send_always_active_state_when_service_is_ready_) {
-        // Update the PDF OCR pref to be false to toggle off the button.
-        profile_->GetPrefs()->SetBoolean(
-            prefs::kAccessibilityPdfOcrAlwaysActive, false);
         send_always_active_state_when_service_is_ready_ = false;
       }
+      // Update the PDF OCR pref to be false to toggle off the button.
+      profile_->GetPrefs()->SetBoolean(prefs::kAccessibilityPdfOcrAlwaysActive,
+                                       false);
       break;
 
     case ScreenAIInstallState::State::kDownloaded:
@@ -285,10 +266,6 @@ void PdfOcrController::StateChanged(ScreenAIInstallState::State state) {
       break;
 
     case ScreenAIInstallState::State::kReady:
-      if (last_webcontents_requested_for_run_once_) {
-        RunPdfOcrOnlyOnce(last_webcontents_requested_for_run_once_.get());
-        last_webcontents_requested_for_run_once_.reset();
-      }
       if (send_always_active_state_when_service_is_ready_) {
         send_always_active_state_when_service_is_ready_ = false;
         SendPdfOcrAlwaysActiveToAll(true);

@@ -8,7 +8,6 @@
 #include "base/containers/cxx20_erase.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
-#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/ranges/algorithm.h"
@@ -18,9 +17,6 @@
 #include "base/time/default_tick_clock.h"
 #include "components/password_manager/core/browser/affiliation/affiliation_backend.h"
 #include "components/password_manager/core/browser/affiliation/affiliation_fetcher_interface.h"
-#include "components/password_manager/core/browser/password_store_factory_util.h"
-#include "components/password_manager/core/common/password_manager_pref_names.h"
-#include "components/prefs/pref_service.h"
 #include "services/network/public/cpp/network_connection_tracker.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "url/gurl.h"
@@ -30,7 +26,7 @@ namespace password_manager {
 
 namespace {
 
-void LogFetchResult(metrics_util::GetChangePasswordUrlMetric result) {
+void LogFetchResult(GetChangePasswordUrlMetric result) {
   base::UmaHistogramEnumeration(kGetChangePasswordURLMetricName, result);
 }
 
@@ -145,8 +141,7 @@ void AffiliationServiceImpl::PrefetchChangePasswordURLs(
   }
   if (!facets.empty()) {
     auto fetcher = fetcher_factory_->CreateInstance(url_loader_factory_, this);
-    fetcher->StartRequest(facets,
-                          /*request_info=*/{.change_password_info = true});
+    fetcher->StartRequest(facets, kChangePasswordUrlRequestInfo);
     pending_fetches_.emplace_back(std::move(fetcher), tuple_origins,
                                   std::move(callback));
   }
@@ -161,11 +156,9 @@ GURL AffiliationServiceImpl::GetChangePasswordURL(const GURL& url) const {
   auto it = change_password_urls_.find(url::SchemeHostPort(url));
   if (it != change_password_urls_.end()) {
     if (it->second.group_url_override) {
-      LogFetchResult(
-          metrics_util::GetChangePasswordUrlMetric::kGroupUrlOverrideUsed);
+      LogFetchResult(GetChangePasswordUrlMetric::kGroupUrlOverrideUsed);
     } else {
-      LogFetchResult(
-          metrics_util::GetChangePasswordUrlMetric::kUrlOverrideUsed);
+      LogFetchResult(GetChangePasswordUrlMetric::kUrlOverrideUsed);
     }
     return it->second.change_password_url;
   }
@@ -174,10 +167,9 @@ GURL AffiliationServiceImpl::GetChangePasswordURL(const GURL& url) const {
   if (base::ranges::any_of(pending_fetches_, [&tuple](const auto& info) {
         return base::Contains(info.requested_tuple_origins, tuple);
       })) {
-    LogFetchResult(metrics_util::GetChangePasswordUrlMetric::kNotFetchedYet);
+    LogFetchResult(GetChangePasswordUrlMetric::kNotFetchedYet);
   } else {
-    LogFetchResult(
-        metrics_util::GetChangePasswordUrlMetric::kNoUrlOverrideAvailable);
+    LogFetchResult(GetChangePasswordUrlMetric::kNoUrlOverrideAvailable);
   }
   return GURL();
 }
@@ -256,7 +248,10 @@ void AffiliationServiceImpl::TrimUnusedCache(std::vector<FacetURI> facet_uris) {
 void AffiliationServiceImpl::GetGroupingInfo(std::vector<FacetURI> facet_uris,
                                              GroupsCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(backend_);
+  // If `backend` is destroyed there is nothing to do.
+  if (!backend_) {
+    return;
+  }
 
   backend_task_runner_->PostTaskAndReplyWithResult(
       FROM_HERE,
@@ -268,12 +263,32 @@ void AffiliationServiceImpl::GetGroupingInfo(std::vector<FacetURI> facet_uris,
 void AffiliationServiceImpl::GetPSLExtensions(
     base::OnceCallback<void(std::vector<std::string>)> callback) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(backend_);
+  // If `backend` is destroyed there is nothing to do.
+  if (!backend_) {
+    return;
+  }
+
   backend_task_runner_->PostTaskAndReplyWithResult(
       FROM_HERE,
       base::BindOnce(&AffiliationBackend::GetPSLExtensions,
                      base::Unretained(backend_.get())),
       std::move(callback));
+}
+
+void AffiliationServiceImpl::UpdateAffiliationsAndBranding(
+    const std::vector<FacetURI>& facets,
+    base::OnceClosure callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(backend_);
+  auto callback_in_main_sequence =
+      base::BindOnce(base::IgnoreResult(&base::TaskRunner::PostTask),
+                     base::SequencedTaskRunner::GetCurrentDefault(), FROM_HERE,
+                     std::move(callback));
+  backend_task_runner_->PostTask(
+      FROM_HERE,
+      base::BindOnce(&AffiliationBackend::UpdateAffiliationsAndBranding,
+                     base::Unretained(backend_.get()), facets,
+                     std::move(callback_in_main_sequence)));
 }
 
 }  // namespace password_manager

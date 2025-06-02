@@ -21,7 +21,8 @@ static enum xnn_status create_resize_bilinear_operator(
   const struct xnn_value* values,
   size_t num_values,
   struct xnn_operator_data* opdata,
-  const struct xnn_caches* caches)
+  struct xnn_code_cache* code_cache,
+  struct xnn_weights_cache* weights_cache)
 {
   assert(node->num_inputs == 1);
   const uint32_t input_id = node->inputs[0];
@@ -32,9 +33,10 @@ static enum xnn_status create_resize_bilinear_operator(
   const uint32_t output_id = node->outputs[0];
   assert(output_id != XNN_INVALID_VALUE_ID);
   assert(output_id < num_values);
+  (void) output_id;  // Silence unused warning, only use in asserts.
 
   const size_t channel_dim = values[input_id].shape.dim[3];
-  assert(channel_dim == values[output_id].shape.dim[3]);
+  assert(channel_dim == values[node->outputs[0]].shape.dim[3]);
 
   enum xnn_status status;
   if (values[input_id].layout == xnn_layout_type_nchw) {
@@ -86,112 +88,160 @@ static enum xnn_status create_resize_bilinear_operator(
         XNN_UNREACHABLE;
     }
   }
-  if (status == xnn_status_success) {
-    opdata->batch_size = values[input_id].shape.dim[0];
-    opdata->input_height = values[input_id].shape.dim[1];
-    opdata->input_width = values[input_id].shape.dim[2];
-    opdata->output_height = values[output_id].shape.dim[1];
-    opdata->output_width = values[output_id].shape.dim[2];
-    opdata->inputs[0] = input_id;
-    opdata->outputs[0] = output_id;
-  }
   return status;
+}
+
+static enum xnn_status reshape_resize_bilinear_operator(
+  struct xnn_operator_data* opdata,
+  struct xnn_value* values,
+  size_t num_values,
+  pthreadpool_t threadpool)
+{
+  const uint32_t input_id = opdata->inputs[0];
+  assert(input_id < num_values);
+  const uint32_t output_id = opdata->outputs[0];
+  assert(output_id < num_values);
+  const size_t batch_size = values[input_id].shape.dim[0];
+  const size_t input_height = values[input_id].shape.dim[1];
+  const size_t input_width = values[input_id].shape.dim[2];
+  const size_t output_height = values[output_id].shape.dim[1];
+  const size_t output_width = values[output_id].shape.dim[2];
+  switch (opdata->operator_objects[0]->type) {
+    case xnn_operator_type_resize_bilinear_nchw_f16:
+      return xnn_reshape_resize_bilinear2d_nchw_f16(
+        opdata->operator_objects[0],
+        batch_size,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        threadpool);
+      break;
+    case xnn_operator_type_resize_bilinear_nchw_f32:
+      return xnn_reshape_resize_bilinear2d_nchw_f32(
+        opdata->operator_objects[0],
+        batch_size,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        threadpool);
+      break;
+    case xnn_operator_type_resize_bilinear_nhwc_f16:
+      return xnn_reshape_resize_bilinear2d_nhwc_f16(
+        opdata->operator_objects[0],
+        batch_size,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        &opdata->workspace_size,
+        &opdata->workspace_alignment,
+        threadpool);
+      break;
+    case xnn_operator_type_resize_bilinear_nhwc_f32:
+      return xnn_reshape_resize_bilinear2d_nhwc_f32(
+        opdata->operator_objects[0],
+        batch_size,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        &opdata->workspace_size,
+        &opdata->workspace_alignment,
+        threadpool);
+      break;
+    case xnn_operator_type_resize_bilinear_nhwc_s8:
+      return xnn_reshape_resize_bilinear2d_nhwc_s8(
+        opdata->operator_objects[0],
+        batch_size,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        &opdata->workspace_size,
+        &opdata->workspace_alignment,
+        threadpool);
+      break;
+    case xnn_operator_type_resize_bilinear_nhwc_u8:
+      return xnn_reshape_resize_bilinear2d_nhwc_u8(
+        opdata->operator_objects[0],
+        batch_size,
+        input_height,
+        input_width,
+        output_height,
+        output_width,
+        &opdata->workspace_size,
+        &opdata->workspace_alignment,
+        threadpool);
+      break;
+    default:
+      XNN_UNREACHABLE;
+  }
 }
 
 static enum xnn_status setup_resize_bilinear_operator(
   const struct xnn_operator_data* opdata,
-  const struct xnn_blob* blobs,
-  size_t num_blobs,
+  const struct xnn_value* values,
+  size_t num_values,
   pthreadpool_t threadpool)
 {
   const uint32_t input_id = opdata->inputs[0];
   assert(input_id != XNN_INVALID_VALUE_ID);
-  assert(input_id < num_blobs);
+  assert(input_id < num_values);
 
   const uint32_t output_id = opdata->outputs[0];
   assert(output_id != XNN_INVALID_VALUE_ID);
-  assert(output_id < num_blobs);
+  assert(output_id < num_values);
 
-  const struct xnn_blob* input_blob = blobs + input_id;
-  const void* input_data = input_blob->data;
+  const struct xnn_value* input_value = values + input_id;
+  const void* input_data = input_value->data;
   assert(input_data != NULL);
 
-  const struct xnn_blob* output_blob = blobs + output_id;
-  void* output_data = output_blob->data;
+  const struct xnn_value* output_value = values + output_id;
+  void* output_data = output_value->data;
   assert(output_data != NULL);
 
   switch (opdata->operator_objects[0]->type) {
     case xnn_operator_type_resize_bilinear_nchw_f16:
       return xnn_setup_resize_bilinear2d_nchw_f16(
         opdata->operator_objects[0],
-        opdata->batch_size,
-        opdata->input_height,
-        opdata->input_width,
-        opdata->output_height,
-        opdata->output_width,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     case xnn_operator_type_resize_bilinear_nchw_f32:
       return xnn_setup_resize_bilinear2d_nchw_f32(
         opdata->operator_objects[0],
-        opdata->batch_size,
-        opdata->input_height,
-        opdata->input_width,
-        opdata->output_height,
-        opdata->output_width,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     case xnn_operator_type_resize_bilinear_nhwc_f16:
       return xnn_setup_resize_bilinear2d_nhwc_f16(
         opdata->operator_objects[0],
-        opdata->batch_size,
-        opdata->input_height,
-        opdata->input_width,
-        opdata->output_height,
-        opdata->output_width,
+        opdata->workspace,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     case xnn_operator_type_resize_bilinear_nhwc_f32:
       return xnn_setup_resize_bilinear2d_nhwc_f32(
         opdata->operator_objects[0],
-        opdata->batch_size,
-        opdata->input_height,
-        opdata->input_width,
-        opdata->output_height,
-        opdata->output_width,
+        opdata->workspace,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     case xnn_operator_type_resize_bilinear_nhwc_s8:
       return xnn_setup_resize_bilinear2d_nhwc_s8(
         opdata->operator_objects[0],
-        opdata->batch_size,
-        opdata->input_height,
-        opdata->input_width,
-        opdata->output_height,
-        opdata->output_width,
+        opdata->workspace,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     case xnn_operator_type_resize_bilinear_nhwc_u8:
       return xnn_setup_resize_bilinear2d_nhwc_u8(
         opdata->operator_objects[0],
-        opdata->batch_size,
-        opdata->input_height,
-        opdata->input_width,
-        opdata->output_height,
-        opdata->output_width,
+        opdata->workspace,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     default:
       XNN_UNREACHABLE;
@@ -225,7 +275,9 @@ enum xnn_status xnn_define_static_resize_bilinear_2d(
     return xnn_status_unsupported_parameter;
   }
 
-  const uint32_t supported_flags = XNN_FLAG_TENSORFLOW_LEGACY_MODE | XNN_FLAG_ALIGN_CORNERS;
+  const uint32_t supported_flags = XNN_FLAG_TENSORFLOW_LEGACY_MODE |
+                                   XNN_FLAG_ALIGN_CORNERS |
+                                   XNN_FLAG_TRANSIENT_INDIRECTION_BUFFER;
   const uint32_t invalid_flags = flags & ~supported_flags;
   if (invalid_flags != 0) {
     xnn_log_error(
@@ -320,6 +372,7 @@ enum xnn_status xnn_define_static_resize_bilinear_2d(
   node->flags = flags;
 
   node->create = create_resize_bilinear_operator;
+  node->reshape = reshape_resize_bilinear_operator;
   node->setup = setup_resize_bilinear_operator;
 
   return xnn_status_success;

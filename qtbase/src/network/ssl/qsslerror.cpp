@@ -158,9 +158,7 @@ QSslError &QSslError::operator=(const QSslError &other)
 /*!
     \fn void QSslError::swap(QSslError &other)
     \since 5.0
-
-    Swaps this error instance with \a other. This function is very
-    fast and never fails.
+    \memberswap{error instance}
 */
 
 /*!
@@ -329,9 +327,8 @@ QSslCertificate QSslError::certificate() const
 }
 
 /*!
-    Returns the hash value for the \a key, using \a seed to seed the calculation.
     \since 5.4
-    \relates QHash
+    \qhashold{QHash}
 */
 size_t qHash(const QSslError &key, size_t seed) noexcept
 {
@@ -348,7 +345,8 @@ QDebug operator<<(QDebug debug, const QSslError &error)
     debug << error.errorString();
     return debug;
 }
-QDebug operator<<(QDebug debug, const QSslError::SslError &error)
+
+QDebug print(QDebug debug, QSslError::SslError error)
 {
     debug << QSslError(error).errorString();
     return debug;

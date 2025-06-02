@@ -10,6 +10,7 @@
 #endif
 
 #include <private/qglobal_p.h> // for the icu feature test
+#include <QtTest/private/qcomparisontesthelper_p.h>
 #include <QTest>
 #include <QString>
 #include <QStringBuilder>
@@ -668,8 +669,11 @@ private slots:
     void isNan_data();
     void isNan();
     void nanAndInf();
+    void comparisonCompiles();
     void compare_data();
     void compare();
+    void comparisonMacros_data();
+    void comparisonMacros();
     void resize();
     void resizeAfterFromRawData();
     void resizeAfterReserve();
@@ -710,6 +714,7 @@ private slots:
     void first();
     void last();
     void sliced();
+    void slice();
     void chopped();
     void removeIf();
 
@@ -1289,7 +1294,7 @@ void tst_QString::constructor()
 {
     // String literal with explicit \0 character
     static constexpr char16_t utf16[] = u"String DX\u0000";
-    const int size_minus_null_terminator = std::size(utf16) - 1;
+    const size_t size_minus_null_terminator = std::size(utf16) - 1;
     const auto *qchar = reinterpret_cast<const QChar *>(utf16);
 
     // Up to but not including the explicit \0 in utf16[]
@@ -1647,12 +1652,16 @@ void tst_QString::asprintfS()
     // Check utf8 conversion for %s
     QCOMPARE(QString::asprintf("%s", "\303\266\303\244\303\274\303\226\303\204\303\234\303\270\303\246\303\245\303\230\303\206\303\205"), QString::fromLatin1("\366\344\374\326\304\334\370\346\345\330\306\305"));
 
+QT_WARNING_PUSH
+// Android clang emits warning: '%n' specifier not supported on this platform
+QT_WARNING_DISABLE_CLANG("-Wformat")
     int n1;
     QCOMPARE(QString::asprintf("%s%n%s", "hello", &n1, "goodbye"), u"hellogoodbye");
     QCOMPARE(n1, 5);
     qlonglong n2;
     QCOMPARE(QString::asprintf("%s%s%lln%s", "foo", "bar", &n2, "whiz"), u"foobarwhiz");
     QCOMPARE((int)n2, 6);
+QT_WARNING_POP
 
     { // %ls
 
@@ -1676,7 +1685,11 @@ void tst_QString::asprintfS()
                  QLatin1String("\366\344\374\326\304\334\370\346\345\330\306\305"));
 
         int n;
+QT_WARNING_PUSH
+// Android clang emits warning: '%n' specifier not supported on this platform
+QT_WARNING_DISABLE_CLANG("-Wformat")
         QCOMPARE(QString::asprintf("%ls%n%s", qUtf16Printable(u"hello"_s), &n, "goodbye"), "hellogoodbye"_L1);
+QT_WARNING_POP
         QCOMPARE(n, 5);
     }
 }
@@ -3481,7 +3494,7 @@ void tst_QString::append_special_cases()
 {
     {
         static constexpr char16_t utf16[] = u"Hello, World!";
-        constexpr int len = std::char_traits<char16_t>::length(utf16);
+        constexpr size_t len = std::char_traits<char16_t>::length(utf16);
         const auto *unicode = reinterpret_cast<const QChar *>(utf16);
         QString a;
         a.append(unicode, len);
@@ -5970,7 +5983,7 @@ void tst_QString::toStdString()
     // For now, most QString constructors are also broken with respect
     // to embedded null characters, had to find one that works...
     const char16_t utf16[] = u"Embedded\0null\0character!";
-    const int size = std::size(utf16) - 1; // - 1, null terminator of the string literal
+    const size_t size = std::size(utf16) - 1; // - 1, null terminator of the string literal
     QString qtnull(reinterpret_cast<const QChar *>(utf16), size);
 
     std::string stdnull = qtnull.toStdString();
@@ -6671,6 +6684,17 @@ void tst_QString::arg()
              QLatin1String("[9223372036854775807]") );
     QCOMPARE( s4.arg(Q_UINT64_C(9223372036854775808)), // LLONG_MAX + 1
              QLatin1String("[9223372036854775808]") );
+
+    // (unscoped) enums
+    enum Enum {
+        Foo1, Foo2,           // reproducer for QTBUG-131906,
+        RangeExtended = -667, // but w/o the UB of out-of-range values
+    };
+    QCOMPARE(s4.arg(Enum(-666)), QLatin1String("[-666]"));
+    enum : int { FooS = -1 };
+    enum : uint { FooU = 1 };
+    QCOMPARE(s4.arg(FooS), QLatin1String("[-1]"));
+    QCOMPARE(s4.arg(FooU), QLatin1String("[1]"));
 
     // FP overloads
     QCOMPARE(s4.arg(2.25), QLatin1String("[2.25]"));
@@ -8087,6 +8111,25 @@ void tst_QString::arg_fillChar()
     QCOMPARE(actual, expected);
 }
 
+void tst_QString::comparisonCompiles()
+{
+    QTestPrivate::testAllComparisonOperatorsCompile<QString>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, std::nullptr_t>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, QChar>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, QLatin1StringView>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, const char16_t *>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, QStringView>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, QUtf8StringView>();
+#if !defined(QT_RESTRICTED_CAST_FROM_ASCII) && !defined(QT_NO_CAST_FROM_ASCII)
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, QByteArrayView>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, QByteArray>();
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, const char *>();
+#endif
+#ifdef __cpp_char8_t
+    QTestPrivate::testAllComparisonOperatorsCompile<QString, const char8_t *>();
+#endif
+}
+
 void tst_QString::compare_data()
 {
     QTest::addColumn<QString>("s1");
@@ -8274,6 +8317,69 @@ void tst_QString::compare()
         QCOMPARE(l1s1 < l1s2, csr < 0);
         QCOMPARE(l1s1 > l1s2, csr > 0);
     }
+}
+
+void tst_QString::comparisonMacros_data()
+{
+    compare_data();
+}
+
+void tst_QString::comparisonMacros()
+{
+    QFETCH(const QString, s1);
+    QFETCH(const QString, s2);
+    QFETCH(int, csr);
+
+    const Qt::strong_ordering expectedOrdering = [&csr] {
+        if (csr > 0)
+            return Qt::strong_ordering::greater;
+        else if (csr < 0)
+            return Qt::strong_ordering::less;
+        return Qt::strong_ordering::equal;
+    }();
+
+    QT_TEST_ALL_COMPARISON_OPS(s1, s2, expectedOrdering);
+
+    const QStringView s2sv(s2);
+    QT_TEST_ALL_COMPARISON_OPS(s1, s2sv, expectedOrdering);
+
+    if (!s2.contains(QChar(u'\0'))) {
+        const char16_t *utfData = reinterpret_cast<const char16_t*>(s2.constData());
+        QT_TEST_ALL_COMPARISON_OPS(s1, utfData, expectedOrdering);
+    }
+
+    if (s2.size() == 1) {
+        const QChar ch = s2.front();
+        QT_TEST_ALL_COMPARISON_OPS(s1, ch, expectedOrdering);
+    }
+
+    if (isLatin(s2)) {
+        QByteArray ba = s2.toLatin1();
+        const QLatin1StringView l1s2{ba};
+        QT_TEST_ALL_COMPARISON_OPS(s1, l1s2, expectedOrdering);
+    }
+
+    const QByteArray u8s2 = s2.toUtf8();
+
+    const QUtf8StringView u8s2sv(u8s2.data(), u8s2.size());
+    QT_TEST_ALL_COMPARISON_OPS(s1, u8s2sv, expectedOrdering);
+
+#ifdef __cpp_char8_t
+    if (!s2.contains(QChar(u'\0'))) {
+        const char8_t *char8data = reinterpret_cast<const char8_t*>(u8s2.constData());
+        QT_TEST_ALL_COMPARISON_OPS(s1, char8data, expectedOrdering);
+    }
+#endif // __cpp_char8_t
+
+#if !defined(QT_RESTRICTED_CAST_FROM_ASCII) && !defined(QT_NO_CAST_FROM_ASCII)
+    QT_TEST_ALL_COMPARISON_OPS(s1, u8s2, expectedOrdering);
+    const QByteArrayView u8s2view{u8s2.begin(), u8s2.size()};
+    QT_TEST_ALL_COMPARISON_OPS(s1, u8s2view, expectedOrdering);
+    if (!s2.contains(QChar(u'\0'))) {
+        const char *u8data = u8s2.constData();
+        QT_TEST_ALL_COMPARISON_OPS(s1, u8data, expectedOrdering);
+    }
+#endif // !defined(QT_RESTRICTED_CAST_FROM_ASCII) && !defined(QT_NO_CAST_FROM_ASCII)
 }
 
 void tst_QString::resize()
@@ -9199,6 +9305,29 @@ void tst_QString::sliced()
     QCOMPARE(detached(a).sliced(5), u"FGHIEfGEFG");
     QCOMPARE(detached(a).sliced(5, 3), u"FGH");
     QCOMPARE(a, u"ABCDEFGHIEfGEFG");
+}
+
+void tst_QString::slice()
+{
+    QString a;
+
+    a.slice(0);
+    QVERIFY(a.isEmpty());
+    QVERIFY(a.isNull());
+    a.slice(0, 0);
+    QVERIFY(a.isEmpty());
+    QVERIFY(a.isNull());
+
+    a = u"Five pineapples"_s;
+
+    a.slice(5);
+    QCOMPARE_EQ(a, u"pineapples");
+
+    a.slice(4, 3);
+    QCOMPARE_EQ(a, u"app");
+
+    a.slice(a.size());
+    QVERIFY(a.isEmpty());
 }
 
 void tst_QString::chopped()

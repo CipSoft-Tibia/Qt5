@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <fp16.h>
+#include <fp16/fp16.h>
 
 #include <xnnpack.h>
 #include <xnnpack/log.h>
@@ -25,7 +25,8 @@ static enum xnn_status create_constant_pad_operator(
   const struct xnn_value* values,
   size_t num_values,
   struct xnn_operator_data* opdata,
-  const struct xnn_caches* caches)
+  struct xnn_code_cache* code_cache,
+  struct xnn_weights_cache* weights_cache)
 {
   assert(node->num_inputs == 1);
   const uint32_t input_id = node->inputs[0];
@@ -33,9 +34,6 @@ static enum xnn_status create_constant_pad_operator(
   assert(input_id < num_values);
 
   assert(node->num_outputs == 1);
-  const uint32_t output_id = node->outputs[0];
-  assert(output_id != XNN_INVALID_VALUE_ID);
-  assert(output_id < num_values);
 
   enum xnn_status status;
   switch (node->compute_type) {
@@ -65,67 +63,89 @@ static enum xnn_status create_constant_pad_operator(
     opdata->shape1 = values[input_id].shape;
     memcpy(opdata->pre_paddings, node->params.static_pad.pre_paddings, sizeof(size_t) * XNN_MAX_TENSOR_DIMS);
     memcpy(opdata->post_paddings, node->params.static_pad.post_paddings, sizeof(size_t) * XNN_MAX_TENSOR_DIMS);
-    opdata->inputs[0] = input_id;
-    opdata->outputs[0] = output_id;
   }
   return status;
 }
 
+static enum xnn_status reshape_constant_pad_operator(
+  struct xnn_operator_data* opdata,
+  struct xnn_value* values,
+  size_t num_values,
+  pthreadpool_t threadpool)
+{
+  switch (opdata->operator_objects[0]->type) {
+    case xnn_operator_type_constant_pad_nd_x8:
+      return xnn_reshape_constant_pad_nd_x8(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->pre_paddings,
+        opdata->post_paddings,
+        threadpool);
+      break;
+    case xnn_operator_type_constant_pad_nd_x16:
+      return xnn_reshape_constant_pad_nd_x16(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->pre_paddings,
+        opdata->post_paddings,
+        threadpool);
+      break;
+    case xnn_operator_type_constant_pad_nd_x32:
+      return xnn_reshape_constant_pad_nd_x32(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->pre_paddings,
+        opdata->post_paddings,
+        threadpool);
+      break;
+    default:
+      XNN_UNREACHABLE;
+  }
+}
+
 static enum xnn_status setup_constant_pad_operator(
   const struct xnn_operator_data* opdata,
-  const struct xnn_blob* blobs,
-  size_t num_blobs,
+  const struct xnn_value* values,
+  size_t num_values,
   pthreadpool_t threadpool)
 {
   const uint32_t input_id = opdata->inputs[0];
   assert(input_id != XNN_INVALID_VALUE_ID);
-  assert(input_id < num_blobs);
+  assert(input_id < num_values);
 
   const uint32_t output_id = opdata->outputs[0];
   assert(output_id != XNN_INVALID_VALUE_ID);
-  assert(output_id < num_blobs);
+  assert(output_id < num_values);
 
-  const struct xnn_blob* input_blob = blobs + input_id;
-  const void* input_data = input_blob->data;
+  const struct xnn_value* input_value = values + input_id;
+  const void* input_data = input_value->data;
   assert(input_data != NULL);
 
-  const struct xnn_blob* output_blob = blobs + output_id;
-  void* output_data = output_blob->data;
+  const struct xnn_value* output_value = values + output_id;
+  void* output_data = output_value->data;
   assert(output_data != NULL);
 
   switch (opdata->operator_objects[0]->type) {
     case xnn_operator_type_constant_pad_nd_x8:
       return xnn_setup_constant_pad_nd_x8(
         opdata->operator_objects[0],
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->pre_paddings,
-        opdata->post_paddings,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     case xnn_operator_type_constant_pad_nd_x16:
       return xnn_setup_constant_pad_nd_x16(
         opdata->operator_objects[0],
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->pre_paddings,
-        opdata->post_paddings,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     case xnn_operator_type_constant_pad_nd_x32:
       return xnn_setup_constant_pad_nd_x32(
         opdata->operator_objects[0],
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->pre_paddings,
-        opdata->post_paddings,
         input_data,
-        output_data,
-        threadpool);
+        output_data);
       break;
     default:
       XNN_UNREACHABLE;
@@ -253,6 +273,7 @@ enum xnn_status xnn_define_static_constant_pad(
   node->flags = flags;
 
   node->create = create_constant_pad_operator;
+  node->reshape = reshape_constant_pad_operator;
   node->setup = setup_constant_pad_operator;
 
   return xnn_status_success;

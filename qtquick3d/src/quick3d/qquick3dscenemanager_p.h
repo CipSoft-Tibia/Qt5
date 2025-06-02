@@ -33,16 +33,25 @@ class QQuickWindow;
 class QSSGBufferManager;
 class QSSGRenderContextInterface;
 
-class Q_QUICK3D_PRIVATE_EXPORT QQuick3DWindowAttachment : public QObject
+class Q_QUICK3D_EXPORT QQuick3DWindowAttachment : public QObject
 {
     Q_OBJECT
 public:
+    enum SyncResultFlag : quint32
+    {
+        None,
+        SharedResourcesDirty = 0x1,
+        ExtensionsDiry = 0x2,
+    };
+
+    using SyncResult = std::underlying_type_t<SyncResultFlag>;
+
     explicit QQuick3DWindowAttachment(QQuickWindow *window);
     ~QQuick3DWindowAttachment() override;
 
     Q_INVOKABLE void preSync();
     Q_INVOKABLE void cleanupResources();
-    Q_INVOKABLE bool synchronize(QSet<QSSGRenderGraphObject *> &resourceLoaders);
+    Q_INVOKABLE SyncResult synchronize(QSet<QSSGRenderGraphObject *> &resourceLoaders);
     Q_INVOKABLE void requestUpdate();
     Q_INVOKABLE void evaluateEol();
 
@@ -73,10 +82,13 @@ private:
     QSet<QSSGRenderGraphObject *> resourceCleanupQueue;
 };
 
-class Q_QUICK3D_PRIVATE_EXPORT QQuick3DSceneManager : public QObject
+class Q_QUICK3D_EXPORT QQuick3DSceneManager : public QObject
 {
     Q_OBJECT
 public:
+    using SyncResultFlag = QQuick3DWindowAttachment::SyncResultFlag;
+    using SyncResult = QQuick3DWindowAttachment::SyncResult;
+
     explicit QQuick3DSceneManager(QObject *parent = nullptr);
     ~QQuick3DSceneManager() override;
 
@@ -92,11 +104,11 @@ public:
     void sync();
     void preSync();
 
-    bool cleanupNodes();
-    bool updateDirtyResourceNodes();
+    SyncResult cleanupNodes();
+    SyncResult updateDirtyResourceNodes();
     void updateDirtySpatialNodes();
-    void updateDiryExtensions();
-    bool updateDirtyResourceSecondPass();
+    SyncResult updateDiryExtensions();
+    SyncResult updateDirtyResourceSecondPass();
 
     void updateDirtyResource(QQuick3DObject *resourceObject);
     void updateDirtySpatialNode(QQuick3DNode *spatialNode);
@@ -177,9 +189,27 @@ Q_SIGNALS:
     void windowChanged();
 
 private Q_SLOTS:
-    bool updateResources(QQuick3DObject **listHead);
+    SyncResult updateResources(QQuick3DObject **listHead);
     void updateNodes(QQuick3DObject **listHead);
-    void updateExtensions(QQuick3DObject **listHead);
+    SyncResult updateExtensions(QQuick3DObject **listHead);
+};
+
+class QSSGCleanupObject : public QObject
+{
+    Q_OBJECT
+public:
+    QSSGCleanupObject(std::shared_ptr<QSSGRenderContextInterface> rci,
+                      QList<QSSGRenderGraphObject *> resourceCleanupQueue,
+                      QQuickWindow *window);
+
+    ~QSSGCleanupObject() override;
+
+    Q_INVOKABLE void cleanupResources();
+
+private:
+    std::shared_ptr<QSSGRenderContextInterface> m_rci;
+    QPointer<QQuickWindow> m_window;
+    QList<QSSGRenderGraphObject *> m_resourceCleanupQueue;
 };
 
 QT_END_NAMESPACE

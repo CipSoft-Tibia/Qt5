@@ -1,16 +1,29 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_VULKAN_RENDERPASSCACHE_H_
 #define SRC_DAWN_NATIVE_VULKAN_RENDERPASSCACHE_H_
@@ -18,8 +31,8 @@
 #include <array>
 #include <bitset>
 #include <mutex>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "dawn/common/Constants.h"
 #include "dawn/common/ityp_array.h"
 #include "dawn/common/ityp_bitset.h"
@@ -46,24 +59,26 @@ struct RenderPassCacheQuery {
     void SetDepthStencil(wgpu::TextureFormat format,
                          wgpu::LoadOp depthLoadOp,
                          wgpu::StoreOp depthStoreOp,
+                         bool depthReadOnly,
                          wgpu::LoadOp stencilLoadOp,
                          wgpu::StoreOp stencilStoreOp,
-                         bool readOnly);
+                         bool stencilRendOnly);
     void SetSampleCount(uint32_t sampleCount);
 
-    ityp::bitset<ColorAttachmentIndex, kMaxColorAttachments> colorMask;
-    ityp::bitset<ColorAttachmentIndex, kMaxColorAttachments> resolveTargetMask;
-    ityp::array<ColorAttachmentIndex, wgpu::TextureFormat, kMaxColorAttachments> colorFormats;
-    ityp::array<ColorAttachmentIndex, wgpu::LoadOp, kMaxColorAttachments> colorLoadOp;
-    ityp::array<ColorAttachmentIndex, wgpu::StoreOp, kMaxColorAttachments> colorStoreOp;
+    ColorAttachmentMask colorMask;
+    ColorAttachmentMask resolveTargetMask;
+    PerColorAttachment<wgpu::TextureFormat> colorFormats;
+    PerColorAttachment<wgpu::LoadOp> colorLoadOp;
+    PerColorAttachment<wgpu::StoreOp> colorStoreOp;
 
     bool hasDepthStencil = false;
     wgpu::TextureFormat depthStencilFormat;
     wgpu::LoadOp depthLoadOp;
     wgpu::StoreOp depthStoreOp;
+    bool depthReadOnly;
     wgpu::LoadOp stencilLoadOp;
     wgpu::StoreOp stencilStoreOp;
-    bool readOnlyDepthStencil;
+    bool stencilReadOnly;
 
     uint32_t sampleCount;
 };
@@ -85,13 +100,13 @@ class RenderPassCache {
     // Does the actual VkRenderPass creation on a cache miss.
     ResultOrError<VkRenderPass> CreateRenderPassForQuery(const RenderPassCacheQuery& query) const;
 
-    // Implements the functors necessary for to use RenderPassCacheQueries as unordered_map
+    // Implements the functors necessary for to use RenderPassCacheQueries as absl::flat_hash_map
     // keys.
     struct CacheFuncs {
         size_t operator()(const RenderPassCacheQuery& query) const;
         bool operator()(const RenderPassCacheQuery& a, const RenderPassCacheQuery& b) const;
     };
-    using Cache = std::unordered_map<RenderPassCacheQuery, VkRenderPass, CacheFuncs, CacheFuncs>;
+    using Cache = absl::flat_hash_map<RenderPassCacheQuery, VkRenderPass, CacheFuncs, CacheFuncs>;
 
     Device* mDevice = nullptr;
 

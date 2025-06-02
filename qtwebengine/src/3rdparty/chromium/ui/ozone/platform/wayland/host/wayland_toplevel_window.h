@@ -27,6 +27,10 @@ namespace views::corewm {
 enum class TooltipTrigger;
 }  // namespace views::corewm
 
+namespace gfx {
+class RoundedCornersF;
+}  // namespace gfx
+
 namespace ui {
 
 class GtkSurface1;
@@ -88,6 +92,7 @@ class WaylandToplevelWindow : public WaylandWindow,
   void SetWindowGeometry(gfx::Size size_dip) override;
   bool IsScreenCoordinatesEnabled() const override;
   bool SupportsConfigureMinimizedState() const override;
+  bool SupportsConfigurePinnedState() const override;
   void ShowTooltip(const std::u16string& text,
                    const gfx::Point& position,
                    const PlatformWindowTooltipTrigger trigger,
@@ -96,10 +101,7 @@ class WaylandToplevelWindow : public WaylandWindow,
   void HideTooltip() override;
   void PropagateBufferScale(float new_scale) override;
   void OnRotateFocus(uint32_t serial, uint32_t direction, bool restart);
-
-#if BUILDFLAG(IS_CHROMEOS_LACROS)
-  void OnOverviewModeChanged(bool in_overview);
-#endif
+  void OnOverviewChange(uint32_t in_overview_as_int);
 
   // WmDragHandler:
   bool ShouldReleaseCaptureForDrag(ui::OSExchangeData* data) const override;
@@ -155,7 +157,9 @@ class WaylandToplevelWindow : public WaylandWindow,
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   void SetImmersiveFullscreenStatus(bool status) override;
   void SetTopInset(int height) override;
-#endif
+  gfx::RoundedCornersF GetWindowCornersRadii() override;
+  void SetShadowCornersRadii(const gfx::RoundedCornersF& radii) override;
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS)
   void ShowSnapPreview(WaylandWindowSnapDirection snap,
                        bool allow_haptic_feedback) override;
   void CommitSnap(WaylandWindowSnapDirection snap, float snap_ratio) override;
@@ -166,7 +170,9 @@ class WaylandToplevelWindow : public WaylandWindow,
   void Lock(WaylandOrientationLockType lock_Type) override;
   void Unlock() override;
   bool GetTabletMode() override;
-  void SetFloat(bool value) override;
+  void SetFloatToLocation(
+      WaylandFloatStartLocation float_start_location) override;
+  void UnSetFloat() override;
 
   // DeskExtension:
   int GetNumberOfDesks() const override;
@@ -199,7 +205,15 @@ class WaylandToplevelWindow : public WaylandWindow,
   void UpdateSystemModal();
 
   void TriggerStateChanges();
-  void SetWindowState(PlatformWindowState state);
+
+  // Sets the new window `state` to the window. `target_display_id` gets ignored
+  // unless the state is `PlatformWindowState::kFullscreen`.
+  void SetWindowState(PlatformWindowState state, int64_t target_display_id);
+
+  bool ShouldTriggerStateChange(PlatformWindowState state,
+                                int64_t target_display_id) const;
+
+  WaylandOutput* GetWaylandOutputForDisplayId(int64_t display_id);
 
   // Creates a surface window, which is visible as a main window.
   bool CreateShellToplevel();
@@ -232,7 +246,7 @@ class WaylandToplevelWindow : public WaylandWindow,
   // all desks state.
   void OnDeskChanged(int state);
 
-  // Sets |workspace_| to |aura_surface_|.
+  // Sets `workspace_` to `aura_surface_`.
   // This must be called in SetUpShellIntegration().
   void SetInitialWorkspace();
 
@@ -243,8 +257,10 @@ class WaylandToplevelWindow : public WaylandWindow,
   PlatformWindowState state_ = PlatformWindowState::kUnknown;
   // Contains the previous state of the window.
   PlatformWindowState previous_state_ = PlatformWindowState::kUnknown;
+  // The display ID to switch to in case the state is `kFullscreen`.
+  int64_t fullscreen_display_id_ = display::kInvalidDisplayId;
 
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
+#if BUILDFLAG(IS_LINUX)
   // Contains the current state of the tiled edges.
   WindowTiledEdges tiled_state_;
 #endif
@@ -252,11 +268,15 @@ class WaylandToplevelWindow : public WaylandWindow,
   bool is_active_ = false;
 
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-  bool is_immersive_fullscreen_ = false;
+  // This is used to detect fullscreen type changes from the Aura side
+  // to inform Lacros clients from the asynchronous task completion.
+  PlatformFullscreenType fullscreen_type_ = PlatformFullscreenType::kNone;
 
   // Unique ID for this window. May be shared over non-Wayland IPC transports
   // (e.g. mojo) to identify the window.
   std::string window_unique_id_;
+
+  int64_t initial_display_id_ = display::kInvalidDisplayId;
 #else
   // Id of the chromium app passed through
   // PlatformWindowInitProperties::wm_class_name. This is used by Wayland

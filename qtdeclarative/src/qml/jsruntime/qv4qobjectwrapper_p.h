@@ -33,6 +33,7 @@ class QObject;
 class QQmlData;
 class QQmlPropertyCache;
 class QQmlPropertyData;
+class QQmlObjectOrGadget;
 
 namespace QV4 {
 struct QObjectSlotDispatcher;
@@ -71,7 +72,7 @@ DECLARE_EXPORTED_HEAP_OBJECT(QObjectMethod, FunctionObject) {
     int methodCount;
     int index;
 
-    void init(QV4::ExecutionContext *scope, Object *wrapper, int index);
+    void init(QV4::ExecutionEngine *engine, Object *wrapper, int index);
     void destroy()
     {
         if (methods != reinterpret_cast<const QQmlPropertyData *>(&_singleMethod))
@@ -95,16 +96,6 @@ DECLARE_EXPORTED_HEAP_OBJECT(QObjectMethod, FunctionObject) {
     };
 
     QV4::Heap::QObjectMethod::ThisObjectMode checkThisObject(const QMetaObject *thisMeta) const;
-};
-
-struct QMetaObjectWrapper : FunctionObject {
-    const QMetaObject* metaObject;
-    QQmlPropertyData *constructors;
-    int constructorCount;
-
-    void init(const QMetaObject* metaObject);
-    void destroy();
-    void ensureConstructorsCache();
 };
 
 struct QmlSignalHandler : Object {
@@ -163,8 +154,11 @@ struct Q_QML_EXPORT QObjectWrapper : public Object
             ExecutionEngine *engine, const QQmlRefPointer<QQmlContextData> &qmlContext,
             QObject *object, String *name, Flags flags, const Value &value);
 
+    Q_NODISCARD_X("Use ensureWrapper if you don't need the return value")
     static ReturnedValue wrap(ExecutionEngine *engine, QObject *object);
+    Q_NODISCARD_X("Throwing the const wrapper away can cause it to be garbage collected")
     static ReturnedValue wrapConst(ExecutionEngine *engine, QObject *object);
+    static void ensureWrapper(ExecutionEngine *engine, QObject *object);
     static void markWrapper(QObject *object, MarkStack *markStack);
 
     using Object::get;
@@ -228,6 +222,19 @@ private:
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QObjectWrapper::Flags)
 
+// We generally musn't pass ReturnedValue as arguments to other functions.
+// In this case, we do it solely for marking purposes so it's fine.
+inline void markIfPastMarkWeakValues(ExecutionEngine *engine, ReturnedValue rv)
+{
+    const auto gcState = engine->memoryManager->gcStateMachine->state;
+    if (gcState != GCStateMachine::Invalid && gcState >= GCState::MarkWeakValues) {
+        QV4::WriteBarrier::markCustom(engine, [rv](QV4::MarkStack *ms) {
+            auto *m = StaticValue::fromReturnedValue(rv).m();
+            m->mark(ms);
+        });
+    }
+}
+
 inline ReturnedValue QObjectWrapper::wrap(ExecutionEngine *engine, QObject *object)
 {
     if (Q_UNLIKELY(QQmlData::wasDeleted(object)))
@@ -239,7 +246,9 @@ inline ReturnedValue QObjectWrapper::wrap(ExecutionEngine *engine, QObject *obje
         return ddata->jsWrapper.value();
     }
 
-    return wrap_slowPath(engine, object);
+    const auto rv = wrap_slowPath(engine, object);
+    markIfPastMarkWeakValues(engine, rv);
+    return rv;
 }
 
 // Unfortunately we still need a non-const QObject* here because QQmlData needs to register itself in QObjectPrivate.
@@ -248,7 +257,9 @@ inline ReturnedValue QObjectWrapper::wrapConst(ExecutionEngine *engine, QObject 
     if (Q_UNLIKELY(QQmlData::wasDeleted(object)))
         return QV4::Encode::null();
 
-    return wrapConst_slowPath(engine, object);
+    const auto rv = wrapConst_slowPath(engine, object);
+    markIfPastMarkWeakValues(engine, rv);
+    return rv;
 }
 
 inline bool canConvert(const QQmlPropertyCache *fromMo, const QQmlPropertyCache *toMo)
@@ -341,7 +352,7 @@ inline ReturnedValue QObjectWrapper::lookupMethodGetterImpl(
     if (!v->as<QObjectMethod>())
         return revertLookup();
 
-    lookup->qobjectMethodLookup.method = static_cast<Heap::QObjectMethod *>(v->heapObject());
+    lookup->qobjectMethodLookup.method.set(engine, static_cast<Heap::QObjectMethod *>(v->heapObject()));
     return v->asReturnedValue();
 }
 
@@ -354,10 +365,11 @@ struct Q_QML_EXPORT QObjectMethod : public QV4::FunctionObject
 
     enum { DestroyMethod = -1, ToStringMethod = -2 };
 
-    static ReturnedValue create(QV4::ExecutionContext *scope, Heap::Object *wrapper, int index);
+    static ReturnedValue create(ExecutionEngine *engine, Heap::Object *wrapper, int index);
     static ReturnedValue create(
-            QV4::ExecutionContext *scope, Heap::QQmlValueTypeWrapper *valueType, int index);
-    static ReturnedValue create(QV4::ExecutionEngine *engine, Heap::QObjectMethod *cloneFrom,
+            ExecutionEngine *engine, Heap::QQmlValueTypeWrapper *valueType, int index);
+    static ReturnedValue create(
+            ExecutionEngine *engine, Heap::QObjectMethod *cloneFrom,
             Heap::Object *wrapper, Heap::Object *object);
 
     int methodIndex() const { return d()->index; }
@@ -382,24 +394,25 @@ struct Q_QML_EXPORT QObjectMethod : public QV4::FunctionObject
             QObject *thisObject, void **argv, const QMetaType *types, int argc) const;
 
     static QPair<QObject *, int> extractQtMethod(const QV4::FunctionObject *function);
-};
 
-
-struct Q_QML_EXPORT QMetaObjectWrapper : public QV4::FunctionObject
-{
-    V4_OBJECT2(QMetaObjectWrapper, QV4::FunctionObject)
-    V4_NEEDS_DESTROY
-
-    static ReturnedValue create(ExecutionEngine *engine, const QMetaObject* metaObject);
-    const QMetaObject *metaObject() const { return d()->metaObject; }
-
-protected:
-    static ReturnedValue virtualCallAsConstructor(const FunctionObject *, const Value *argv, int argc, const Value *);
-    static bool virtualIsEqualTo(Managed *a, Managed *b);
+    static bool isExactMatch(
+            const QMetaMethod &method, void **argv, int argc, const QMetaType *types);
 
 private:
-    void init(ExecutionEngine *engine);
-    ReturnedValue constructInternal(const Value *argv, int argc) const;
+    friend struct QMetaObjectWrapper;
+
+    static const QQmlPropertyData *resolveOverloaded(
+            const QQmlObjectOrGadget &object, const QQmlPropertyData *methods, int methodCount,
+            ExecutionEngine *engine, CallData *callArgs);
+
+    static const QQmlPropertyData *resolveOverloaded(
+            const QQmlPropertyData *methods, int methodCount,
+            void **argv, int argc, const QMetaType *types);
+
+    static ReturnedValue callPrecise(
+            const QQmlObjectOrGadget &object, const QQmlPropertyData &data,
+            ExecutionEngine *engine, CallData *callArgs,
+            QMetaObject::Call callType = QMetaObject::InvokeMetaMethod);
 };
 
 struct Q_QML_EXPORT QmlSignalHandler : public QV4::Object

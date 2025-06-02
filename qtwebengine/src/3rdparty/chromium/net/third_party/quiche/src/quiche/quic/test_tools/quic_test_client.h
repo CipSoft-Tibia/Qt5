@@ -85,8 +85,7 @@ class MockableQuicClient : public QuicDefaultClient {
 };
 
 // A toy QUIC client used for testing.
-class QuicTestClient : public QuicSpdyStream::Visitor,
-                       public QuicClientPushPromiseIndex::Delegate {
+class QuicTestClient : public QuicSpdyStream::Visitor {
  public:
   QuicTestClient(QuicSocketAddress server_address,
                  const std::string& server_hostname,
@@ -162,7 +161,7 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
   QuicSocketAddress local_address() const;
   void ClearPerRequestState();
   bool WaitUntil(int timeout_ms,
-                 absl::optional<quiche::UnretainedCallback<bool()>> trigger);
+                 std::optional<quiche::UnretainedCallback<bool()>> trigger);
   int64_t Send(absl::string_view data);
   bool connected() const;
   bool buffer_body() const;
@@ -211,6 +210,13 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
     }
   }
 
+  // Returns once a goaway a connection close has been
+  // received from the server, or once the timeout expires.
+  // Passing in a timeout value of -1 disables the timeout.
+  void WaitForGoAway(int timeout_ms) {
+    WaitUntil(timeout_ms, [this]() { return client()->goaway_received(); });
+  }
+
   // Returns once some data is received on any open streams or at least one
   // complete response is received from the server, or once the timeout
   // expires. -1 means no timeout.
@@ -231,12 +237,6 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
 
   // From QuicSpdyStream::Visitor
   void OnClose(QuicSpdyStream* stream) override;
-
-  // From QuicClientPushPromiseIndex::Delegate
-  bool CheckVary(const spdy::Http2HeaderBlock& client_request,
-                 const spdy::Http2HeaderBlock& promise_request,
-                 const spdy::Http2HeaderBlock& promise_response) override;
-  void OnRendezvousResult(QuicSpdyStream*) override;
 
   // Configures client_ to take ownership of and use the writer.
   // Must be called before initial connect.
@@ -311,7 +311,9 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
 
   void Initialize();
 
-  void set_client(MockableQuicClient* client) { client_.reset(client); }
+  void set_client(std::unique_ptr<MockableQuicClient> client) {
+    client_ = std::move(client);
+  }
 
   // Given |uri|, populates the fields in |headers| for a simple GET
   // request. If |uri| is a relative URL, the QuicServerId will be
@@ -335,24 +337,6 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
   QuicTestClient& operator=(const QuicTestClient&&) = delete;
 
  private:
-  class TestClientDataToResend : public QuicDefaultClient::QuicDataToResend {
-   public:
-    TestClientDataToResend(
-        std::unique_ptr<spdy::Http2HeaderBlock> headers, absl::string_view body,
-        bool fin, QuicTestClient* test_client,
-        quiche::QuicheReferenceCountedPointer<QuicAckListenerInterface>
-            ack_listener);
-
-    ~TestClientDataToResend() override;
-
-    void Resend() override;
-
-   protected:
-    QuicTestClient* test_client_;
-    quiche::QuicheReferenceCountedPointer<QuicAckListenerInterface>
-        ack_listener_;
-  };
-
   // PerStreamState of a stream is updated when it is closed.
   struct PerStreamState {
     PerStreamState(const PerStreamState& other);
@@ -422,9 +406,6 @@ class QuicTestClient : public QuicSpdyStream::Visitor,
   bool auto_reconnect_;
   // Should we buffer the response body? Defaults to true.
   bool buffer_body_;
-  // For async push promise rendezvous, validation may fail in which
-  // case the request should be retried.
-  std::unique_ptr<TestClientDataToResend> push_promise_data_to_resend_;
   // Number of requests/responses this client has sent/received.
   size_t num_requests_;
   size_t num_responses_;

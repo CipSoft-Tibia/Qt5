@@ -10,6 +10,7 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "components/content_settings/core/common/content_settings_types.h"
+#include "components/favicon/core/favicon_service.h"
 #include "components/permissions/origin_keyed_permission_action_service.h"
 #include "components/permissions/permission_prompt.h"
 #include "components/permissions/permission_ui_selector.h"
@@ -36,6 +37,10 @@ class WebContents;
 namespace content_settings {
 class CookieSettings;
 }
+
+namespace privacy_sandbox {
+class TrackingProtectionSettings;
+}  // namespace privacy_sandbox
 
 namespace infobars {
 class InfoBar;
@@ -77,6 +82,10 @@ class PermissionsClient {
   virtual scoped_refptr<content_settings::CookieSettings> GetCookieSettings(
       content::BrowserContext* browser_context) = 0;
 
+  // Retrieves the TrackingProtectionSettings for this context.
+  virtual privacy_sandbox::TrackingProtectionSettings*
+  GetTrackingProtectionSettings(content::BrowserContext* browser_context) = 0;
+
   // Retrieves the subresource filter activation from browser website settings.
   virtual bool IsSubresourceFilterActivated(
       content::BrowserContext* browser_context,
@@ -115,7 +124,6 @@ class PermissionsClient {
       content::BrowserContext* browser_context,
       std::vector<std::pair<url::Origin, bool>>* origins);
 
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS_ASH)
   // Returns whether cookie deletion is allowed for |browser_context| and
   // |origin|.
   // TODO(crbug.com/1081944): Remove this method and all code depending on it
@@ -123,7 +131,6 @@ class PermissionsClient {
   virtual bool IsCookieDeletionDisabled(
       content::BrowserContext* browser_context,
       const GURL& origin);
-#endif
 
   // Retrieves the ukm::SourceId (if any) associated with this |browser_context|
   // and |web_contents|. |web_contents| may be null. |callback| will be called
@@ -152,9 +159,8 @@ class PermissionsClient {
 
   using QuietUiReason = PermissionUiSelector::QuietUiReason;
 
-#if !BUILDFLAG(IS_ANDROID)
   virtual void TriggerPromptHatsSurveyIfEnabled(
-      content::BrowserContext* context,
+      content::WebContents* web_contents,
       permissions::RequestType request_type,
       absl::optional<permissions::PermissionAction> action,
       permissions::PermissionPromptDisposition prompt_disposition,
@@ -164,7 +170,6 @@ class PermissionsClient {
       bool is_post_prompt,
       const GURL& gurl,
       base::OnceCallback<void()> hats_shown_callback_);
-#endif
 
   // Called for each request type when a permission prompt is resolved.
   virtual void OnPromptResolved(
@@ -276,6 +281,20 @@ class PermissionsClient {
       content::WebContents* web_contents,
       PermissionPrompt::Delegate* delegate);
 #endif
+
+  // Returns true if the browser has the necessary permission(s) from the
+  // platform to provide a particular permission-gated capability to sites. This
+  // can include both app-specific permissions relevant to the browser and
+  // device-wide permissions.
+  virtual bool HasDevicePermission(ContentSettingsType type) const;
+
+  // Returns true if the browser is able to request from the platform the
+  // necessary permission(s) needed to provide a particular permission-gated
+  // capability to sites.
+  virtual bool CanRequestDevicePermission(ContentSettingsType type) const;
+
+  virtual favicon::FaviconService* GetFaviconService(
+      content::BrowserContext* browser_context);
 };
 
 }  // namespace permissions

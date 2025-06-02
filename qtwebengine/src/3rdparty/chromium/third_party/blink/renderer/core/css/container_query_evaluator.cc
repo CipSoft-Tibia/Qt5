@@ -70,6 +70,9 @@ bool NameMatches(const ComputedStyle& style,
 
 bool TypeMatches(const ComputedStyle& style,
                  const ContainerSelector& container_selector) {
+  DCHECK(
+      !container_selector.HasUnknownFeature() ||
+      !RuntimeEnabledFeatures::CSSUnknownContainerQueriesNoSelectionEnabled());
   unsigned type = container_selector.Type(style.GetWritingMode());
   return !type || ((style.ContainerType() & type) == type);
 }
@@ -89,7 +92,7 @@ Element* CachedContainer(Element* starting_element,
       container_selector_cache.Find<ScopedContainerSelectorHashTranslator>(
           ScopedContainerSelector(container_selector, selector_tree_scope));
   if (it != container_selector_cache.end()) {
-    return it->value;
+    return it->value.Get();
   }
   Element* container = ContainerQueryEvaluator::FindContainer(
       starting_element, container_selector, selector_tree_scope);
@@ -136,6 +139,10 @@ bool ContainerQueryEvaluator::EvalAndAdd(
     ContainerSelectorCache& container_selector_cache,
     MatchResult& match_result) {
   const ContainerSelector& selector = query.Selector();
+  if (selector.HasUnknownFeature() &&
+      RuntimeEnabledFeatures::CSSUnknownContainerQueriesNoSelectionEnabled()) {
+    return false;
+  }
   bool selects_size = selector.SelectsSizeContainers();
   bool selects_style = selector.SelectsStyleContainers();
   bool selects_state = selector.SelectsStateContainers();

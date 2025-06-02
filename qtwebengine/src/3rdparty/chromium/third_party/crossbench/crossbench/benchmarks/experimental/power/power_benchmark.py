@@ -9,17 +9,17 @@ import datetime as dt
 import logging
 import pathlib
 import time
-from threading import Timer
 from typing import TYPE_CHECKING, Sequence, Tuple
 
 from selenium import webdriver
 from selenium.common.exceptions import (ElementNotInteractableException,
-                                        TimeoutException)
+                                        TimeoutException, WebDriverException)
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions
 from selenium.webdriver.support.ui import WebDriverWait
 
-from crossbench.benchmarks.benchmark import StoryFilter, SubStoryBenchmark
+from crossbench import helper
+from crossbench.benchmarks.base import StoryFilter, SubStoryBenchmark
 from crossbench.browsers.webdriver import WebDriverBrowser
 from crossbench.stories.story import Story
 
@@ -71,21 +71,14 @@ class PowerBenchmarkStoryFilter(StoryFilter[PowerBenchmarkStory]):
 
   def create_stories(self, separate: bool) -> Sequence[PowerBenchmarkStory]:
     stories = []
-    duration = dt.timedelta(15 * 60)
+    duration = dt.timedelta(minutes=15)
     for story_name in self.story_names:
       stories.append(globals()[story_name + "Story"](duration))
     return stories
 
-
-class RepeatTimer(Timer):
-  def run(self):
-    while not self.finished.wait(self.interval):
-      self.function(*self.args, **self.kwargs)
-
-
 class BrowsingStory(PowerBenchmarkStory):
 
-  def __init__(self, duration: dt.timedelta = dt.timedelta(15 * 60)):
+  def __init__(self, duration: dt.timedelta = dt.timedelta(minutes=15)):
     super().__init__("Browsing", duration)
     self._url_file = pathlib.Path(__file__).parent.absolute() / "browsing_urls.txt"
     self._urls = self.get_urls()
@@ -97,19 +90,22 @@ class BrowsingStory(PowerBenchmarkStory):
       for line in f:
         url = line.strip()
         if url:
-            urls.append(url)
+          urls.append(url)
     return urls
 
   def browser_url(self) -> None:
     url = self._urls[self._idx]
-    self._driver.get(url)
     self._idx += 1
     self._idx %= len(self._urls)
+    try:
+      self._driver.get(url)
+    except WebDriverException as e:
+      logging.info("Error while loading {}, error: {}".format(url, e))
 
   def run(self, run: Run) -> None:
     self.get_driver(run)
 
-    timer = RepeatTimer(15, self.browser_url)
+    timer = helper.RepeatTimer(15, self.browser_url)
     timer.start()
     time.sleep(self.duration.total_seconds())
     timer.cancel()
@@ -117,7 +113,7 @@ class BrowsingStory(PowerBenchmarkStory):
 
 class ZoomMeetingStory(PowerBenchmarkStory):
 
-  def __init__(self, duration: dt.timedelta = dt.timedelta(15 * 60)):
+  def __init__(self, duration: dt.timedelta = dt.timedelta(minutes=15)):
     super().__init__("ZoomMeeting", duration)
 
   def run(self, run: Run) -> None:
@@ -140,12 +136,13 @@ class ZoomMeetingStory(PowerBenchmarkStory):
 
       # Input name
       name = WebDriverWait(self._driver, 10).until(
-          expected_conditions.element_to_be_clickable((By.ID, "inputname")))
+          expected_conditions.element_to_be_clickable((By.ID, "input-for-name")))
       name.send_keys("CBB Zoom Test")
 
       # Click the "Join" button
       btn = WebDriverWait(self._driver, 10).until(
-          expected_conditions.element_to_be_clickable((By.ID, "joinBtn")))
+          expected_conditions.element_to_be_clickable(
+            (By.XPATH, "//*[@id='root']/div/div[1]/div/div[2]/button")))
       btn.click()
 
       # Wait for 10 seconds to make sure to finish joining the meeting
@@ -160,7 +157,6 @@ class ZoomMeetingStory(PowerBenchmarkStory):
         btn.click()
       except (TimeoutException, ElementNotInteractableException):
         logging.info("Join audio by computer button is not present.")
-        pass
 
       # Start a new test meeting every 1 minute to avoid the meeting to be
       # ended by the Zoom host.
@@ -169,7 +165,7 @@ class ZoomMeetingStory(PowerBenchmarkStory):
 
 class YoutubeFullscreenStory(PowerBenchmarkStory):
 
-  def __init__(self, duration: dt.timedelta = dt.timedelta(15 * 60)):
+  def __init__(self, duration: dt.timedelta = dt.timedelta(minutes=15)):
     super().__init__("YoutubeFullscreen", duration)
 
   def click_button_by_xpath(self, xpath: str):

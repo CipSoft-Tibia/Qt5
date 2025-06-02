@@ -14,7 +14,7 @@
 
 \warning Context properties are invisible to any tooling that processes QML code ahead of time,
          before you load it into the QML engine. The \l{Qt Quick Compiler},
-         \l{qmllint Reference}{qmllint}, and the \l{\QMLLS Reference}{\QMLLS} do
+         \l{qmllint}, and the \l{\QMLLS} do
          not know anything about your context properties and will consider any access to context
          properties as an \e{unqualified access}.
 

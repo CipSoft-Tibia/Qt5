@@ -103,7 +103,7 @@ public:
 
 #if QT_CONFIG(quick_shadereffect)
 
-class Q_QUICK_PRIVATE_EXPORT QQuickItemLayer : public QObject, public QQuickItemChangeListener
+class Q_QUICK_EXPORT QQuickItemLayer : public QObject, public QQuickItemChangeListener
 {
     Q_OBJECT
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY enabledChanged FINAL)
@@ -220,7 +220,7 @@ private:
 
 #endif
 
-class Q_QUICK_PRIVATE_EXPORT QQuickItemPrivate
+class Q_QUICK_EXPORT QQuickItemPrivate
     : public QObjectPrivate
     , public QQuickPaletteProviderPrivateBase<QQuickItem, QQuickItemPrivate>
 {
@@ -295,7 +295,7 @@ public:
     static void transform_clear(QQmlListProperty<QQuickTransform> *list);
 
     void _q_resourceObjectDeleted(QObject *);
-    quint64 _q_createJSWrapper(QV4::ExecutionEngine *engine);
+    quint64 _q_createJSWrapper(QQmlV4ExecutionEnginePtr engine);
 
     enum ChangeType {
         Geometry = 0x01,
@@ -569,27 +569,25 @@ public:
     QTransform windowToItemTransform() const;
     QTransform itemToWindowTransform() const;
     void itemToParentTransform(QTransform *) const;
-    QTransform globalToWindowTransform() const;
-    QTransform windowToGlobalTransform() const;
 
     static bool focusNextPrev(QQuickItem *item, bool forward);
     static QQuickItem *nextTabChildItem(const QQuickItem *item, int start);
     static QQuickItem *prevTabChildItem(const QQuickItem *item, int start);
-    static QQuickItem *nextPrevItemInTabFocusChain(QQuickItem *item, bool forward);
+    static QQuickItem *nextPrevItemInTabFocusChain(QQuickItem *item, bool forward, bool wrap = true);
 
     static bool canAcceptTabFocus(QQuickItem *item);
 
     void setX(qreal x) {q_func()->setX(x);}
-    void xChanged() {q_func()->xChanged();}
+    void xChanged() { Q_EMIT q_func()->xChanged(); }
     Q_OBJECT_COMPAT_PROPERTY(QQuickItemPrivate, qreal, x, &QQuickItemPrivate::setX, &QQuickItemPrivate::xChanged);
     void setY(qreal y) {q_func()->setY(y);}
-    void yChanged() {q_func()->yChanged();}
+    void yChanged() { Q_EMIT q_func()->yChanged(); }
     Q_OBJECT_COMPAT_PROPERTY(QQuickItemPrivate, qreal, y, &QQuickItemPrivate::setY, &QQuickItemPrivate::yChanged);
     void setWidth(qreal width) {q_func()->setWidth(width);}
-    void widthChanged() {q_func()->widthChanged();}
+    void widthChanged() { Q_EMIT q_func()->widthChanged(); }
     Q_OBJECT_COMPAT_PROPERTY(QQuickItemPrivate, qreal, width, &QQuickItemPrivate::setWidth, &QQuickItemPrivate::widthChanged);
     void setHeight(qreal height) {q_func()->setHeight(height);}
-    void heightChanged() {q_func()->heightChanged();}
+    void heightChanged() { Q_EMIT q_func()->heightChanged(); }
     Q_OBJECT_COMPAT_PROPERTY(QQuickItemPrivate, qreal, height, &QQuickItemPrivate::setHeight, &QQuickItemPrivate::heightChanged);
     qreal implicitWidth;
     qreal implicitHeight;
@@ -766,7 +764,7 @@ public:
     bool backtabSet : 1;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickKeyNavigationAttached : public QObject, public QQuickItemKeyFilter
+class Q_QUICK_EXPORT QQuickKeyNavigationAttached : public QObject, public QQuickItemKeyFilter
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickKeyNavigationAttached)
@@ -899,7 +897,7 @@ public:
     QQuickKeyEvent theKeyEvent;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickKeysAttached : public QObject, public QQuickItemKeyFilter
+class Q_QUICK_EXPORT QQuickKeysAttached : public QObject, public QQuickItemKeyFilter
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QQuickKeysAttached)

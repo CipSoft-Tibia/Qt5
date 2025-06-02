@@ -135,7 +135,7 @@
 #endif
 
 #ifndef XNN_PLATFORM_JIT
-  #if (XNN_ARCH_ARM || XNN_ARCH_ARM64) && !XNN_PLATFORM_IOS && !XNN_PLATFORM_FUCHSIA
+  #if (XNN_ARCH_ARM || XNN_ARCH_ARM64) && !XNN_PLATFORM_IOS && !XNN_PLATFORM_FUCHSIA || XNN_PLATFORM_WEB
     #define XNN_PLATFORM_JIT 1
   #else
     #define XNN_PLATFORM_JIT 0
@@ -240,6 +240,12 @@
   #define XNN_MIN_ELEMENTS(count) static count
 #endif
 
+#if defined(__cplusplus) || XNN_COMPILER_MSVC
+  #define XNN_RESTRICT
+#else
+  #define XNN_RESTRICT restrict
+#endif
+
 #if defined(__GNUC__)
   #define XNN_LIKELY(condition) (__builtin_expect(!!(condition), 1))
   #define XNN_UNLIKELY(condition) (__builtin_expect(!!(condition), 0))
@@ -334,15 +340,19 @@
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
   // For AVX512.
   #define XNN_MAX_SIMD_SIZE 64
-#elif XNN_ARCH_RISCV || XNN_ARCH_WASM
-  // Scalable vectors, assume masked loads and stores.
-  // Wasm without SIMD.
-  #define XNN_MAX_SIMD_SIZE 0
 #elif XNN_ARCH_HEXAGON
   #define XNN_MAX_SIMD_SIZE 128
 #else
-  // XNN_ARCH_ARM, XNN_ARCH_ARM64, XNN_ARCH_WASMSIMD, XNN_ARCH_WASMRELAXEDSIMD.
+  // XNN_ARCH_ARM, XNN_ARCH_ARM64, XNN_ARCH_WASM, XNN_ARCH_WASMSIMD, XNN_ARCH_WASMRELAXEDSIMD, XNN_ARCH_RISVC.
+  // Wasm/Scalar gavgpool microkernels can over-read by 4 buffers.
   #define XNN_MAX_SIMD_SIZE 16
+#endif
+
+// Use constant here to avoid dependency on xnnpack.h
+#if XNN_MAX_SIMD_SIZE >= 16
+  #define XNN_MULTIPASS_EXTRA_BYTES XNN_MAX_SIMD_SIZE
+#else
+  #define XNN_MULTIPASS_EXTRA_BYTES 16
 #endif
 
 

@@ -12,7 +12,6 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/url_constants.h"
-#include "extensions/browser/content_script_tracker.h"
 #include "extensions/browser/extension_api_frame_id_map.h"
 #include "extensions/browser/extension_frame_host.h"
 #include "extensions/browser/extension_prefs.h"
@@ -22,6 +21,7 @@
 #include "extensions/browser/kiosk/kiosk_delegate.h"
 #include "extensions/browser/process_manager.h"
 #include "extensions/browser/renderer_startup_helper.h"
+#include "extensions/browser/script_injection_tracker.h"
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
@@ -65,7 +65,7 @@ ExtensionWebContentsObserver::CreateExtensionFrameHost(
 
 void ExtensionWebContentsObserver::ListenToWindowIdChangesFrom(
     sessions::SessionTabHelper* helper) {
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   if (!window_id_subscription_) {
     // We use an unretained receiver here: the callback is inside the
     // subscription, which is a member of |this|, so it can't be run after the
@@ -74,7 +74,7 @@ void ExtensionWebContentsObserver::ListenToWindowIdChangesFrom(
         base::BindRepeating(&ExtensionWebContentsObserver::OnWindowIdChanged,
                             base::Unretained(this)));
   }
-#endif //  !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 void ExtensionWebContentsObserver::Initialize() {
@@ -87,20 +87,26 @@ void ExtensionWebContentsObserver::Initialize() {
 
   web_contents()->ForEachRenderFrameHost(
       [this](content::RenderFrameHost* render_frame_host) {
+        // ForEachRenderFrameHost descends into inner WebContents, so make sure
+        // the RenderFrameHost is actually one bound to this object.
+        if (content::WebContents::FromRenderFrameHost(render_frame_host) !=
+            web_contents()) {
+          return;
+        }
         // We only initialize the frame if the renderer counterpart is live;
         // otherwise we wait for the RenderFrameCreated notification.
         if (render_frame_host->IsRenderFrameLive())
           InitializeRenderFrame(render_frame_host);
       });
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // It would be ideal if SessionTabHelper was created before this object,
   // because then we could start observing it here instead of needing to be
   // externally notified when it is created, but it isn't. If that ordering ever
   // changes, this code can be restructured and ListenToWindowIdChangesFrom()
   // can become private.
   DCHECK(!sessions::SessionTabHelper::FromWebContents(web_contents()));
-#endif //  !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 ExtensionWebContentsObserver::ExtensionWebContentsObserver(
@@ -139,8 +145,8 @@ void ExtensionWebContentsObserver::InitializeRenderFrame(
   security_policy->GrantRequestOrigin(process_id, frame_extension->origin());
 
   // Notify the render frame of the view type.
-  GetLocalFrame(render_frame_host)
-      ->NotifyRenderViewType(GetViewType(web_contents()));
+  GetLocalFrameChecked(render_frame_host)
+      .NotifyRenderViewType(GetViewType(web_contents()));
 
   ProcessManager::Get(browser_context_)
       ->RegisterRenderFrameHost(web_contents(), render_frame_host,
@@ -157,7 +163,6 @@ void ExtensionWebContentsObserver::RenderFrameCreated(
     content::RenderFrameHost* render_frame_host) {
   DCHECK(initialized_);
   InitializeRenderFrame(render_frame_host);
-  ContentScriptTracker::RenderFrameCreated(PassKey(), render_frame_host);
 
   const Extension* extension = GetExtensionFromFrame(render_frame_host, false);
   if (!extension)
@@ -201,13 +206,13 @@ void ExtensionWebContentsObserver::RenderFrameDeleted(
   ProcessManager::Get(browser_context_)
       ->UnregisterRenderFrameHost(render_frame_host);
   ExtensionApiFrameIdMap::Get()->OnRenderFrameDeleted(render_frame_host);
-  ContentScriptTracker::RenderFrameDeleted(PassKey(), render_frame_host);
 }
 
 void ExtensionWebContentsObserver::ReadyToCommitNavigation(
     content::NavigationHandle* navigation_handle) {
-  ContentScriptTracker::ReadyToCommitNavigation(PassKey(), navigation_handle);
+  ScriptInjectionTracker::ReadyToCommitNavigation(PassKey(), navigation_handle);
 
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // We don't force autoplay to allow while prerendering.
   if (navigation_handle->GetRenderFrameHost()->GetLifecycleState() ==
           content::RenderFrameHost::LifecycleState::kPrerendering &&
@@ -221,7 +226,6 @@ void ExtensionWebContentsObserver::ReadyToCommitNavigation(
   content::RenderFrameHost* parent_or_outerdoc =
       navigation_handle->GetParentFrameOrOuterDocument();
 
-#ifndef TOOLKIT_QT
   content::RenderFrameHost* outermost_main_render_frame_host =
       parent_or_outerdoc ? parent_or_outerdoc->GetOutermostMainFrame()
                          : navigation_handle->GetRenderFrameHost();
@@ -233,9 +237,6 @@ void ExtensionWebContentsObserver::ReadyToCommitNavigation(
   DCHECK(kiosk_delegate);
   bool is_kiosk =
       extension && kiosk_delegate && kiosk_delegate->IsAutoLaunchedKioskApp(extension->id());
-#else
-  bool is_kiosk = false;
-#endif
 
   // If the top most frame is an extension, packaged app, hosted app, etc. then
   // the main frame and all iframes should be able to autoplay without
@@ -252,6 +253,7 @@ void ExtensionWebContentsObserver::ReadyToCommitNavigation(
     client->AddAutoplayFlags(url::Origin::Create(navigation_handle->GetURL()),
                              blink::mojom::kAutoplayFlagForceAllow);
   }
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 void ExtensionWebContentsObserver::DidFinishNavigation(
@@ -276,7 +278,7 @@ void ExtensionWebContentsObserver::DidFinishNavigation(
                                 frame_extension);
   }
 
-  ContentScriptTracker::DidFinishNavigation(PassKey(), navigation_handle);
+  ScriptInjectionTracker::DidFinishNavigation(PassKey(), navigation_handle);
 }
 
 void ExtensionWebContentsObserver::MediaPictureInPictureChanged(
@@ -367,6 +369,14 @@ mojom::LocalFrame* ExtensionWebContentsObserver::GetLocalFrame(
   if (!render_frame_host->IsRenderFrameLive())
     return nullptr;
 
+  // Do not return a LocalFrame object for frames that do not immediately belong
+  // to this WebContents. For example frames belonging to inner WebContents will
+  // have their own ExtensionWebContentsObserver.
+  if (content::WebContents::FromRenderFrameHost(render_frame_host) !=
+      web_contents()) {
+    return nullptr;
+  }
+
   mojo::AssociatedRemote<mojom::LocalFrame>& remote =
       local_frame_map_[render_frame_host];
   if (!remote.is_bound()) {
@@ -374,6 +384,13 @@ mojom::LocalFrame* ExtensionWebContentsObserver::GetLocalFrame(
         remote.BindNewEndpointAndPassReceiver());
   }
   return remote.get();
+}
+
+mojom::LocalFrame& ExtensionWebContentsObserver::GetLocalFrameChecked(
+    content::RenderFrameHost* render_frame_host) {
+  auto* local_frame = GetLocalFrame(render_frame_host);
+  CHECK(local_frame);
+  return *local_frame;
 }
 
 void ExtensionWebContentsObserver::OnWindowIdChanged(SessionID id) {

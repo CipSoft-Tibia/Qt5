@@ -249,6 +249,7 @@ FT_BEGIN_HEADER
   /* structure type used to model object fields */
   typedef struct  T1_FieldRec_
   {
+    FT_UInt             len;          /* field identifier length        */
     const char*         ident;        /* field identifier               */
     T1_FieldLocation    location;
     T1_FieldType        type;         /* type of field                  */
@@ -273,8 +274,9 @@ FT_BEGIN_HEADER
 
 #define T1_NEW_SIMPLE_FIELD( _ident, _type, _fname, _dict ) \
           {                                                 \
+            sizeof ( _ident ) - 1,                          \
             _ident, T1CODE, _type,                          \
-            0,                                              \
+            NULL,                                           \
             FT_FIELD_OFFSET( _fname ),                      \
             FT_FIELD_SIZE( _fname ),                        \
             0, 0,                                           \
@@ -283,6 +285,7 @@ FT_BEGIN_HEADER
 
 #define T1_NEW_CALLBACK_FIELD( _ident, _reader, _dict ) \
           {                                             \
+            sizeof ( _ident ) - 1,                      \
             _ident, T1CODE, T1_FIELD_TYPE_CALLBACK,     \
             (T1_Field_ParseFunc)_reader,                \
             0, 0,                                       \
@@ -292,8 +295,9 @@ FT_BEGIN_HEADER
 
 #define T1_NEW_TABLE_FIELD( _ident, _type, _fname, _max, _dict ) \
           {                                                      \
+            sizeof ( _ident ) - 1,                               \
             _ident, T1CODE, _type,                               \
-            0,                                                   \
+            NULL,                                                \
             FT_FIELD_OFFSET( _fname ),                           \
             FT_FIELD_SIZE_DELTA( _fname ),                       \
             _max,                                                \
@@ -303,8 +307,9 @@ FT_BEGIN_HEADER
 
 #define T1_NEW_TABLE_FIELD2( _ident, _type, _fname, _max, _dict ) \
           {                                                       \
+            sizeof ( _ident ) - 1,                                \
             _ident, T1CODE, _type,                                \
-            0,                                                    \
+            NULL,                                                 \
             FT_FIELD_OFFSET( _fname ),                            \
             FT_FIELD_SIZE_DELTA( _fname ),                        \
             _max, 0,                                              \
@@ -353,6 +358,8 @@ FT_BEGIN_HEADER
 
 #define T1_FIELD_CALLBACK( _ident, _name, _dict )       \
           T1_NEW_CALLBACK_FIELD( _ident, _name, _dict )
+
+#define T1_FIELD_ZERO  { 0, NULL, 0, 0, NULL, 0, 0, 0, 0, 0 }
 
 
   /*************************************************************************/

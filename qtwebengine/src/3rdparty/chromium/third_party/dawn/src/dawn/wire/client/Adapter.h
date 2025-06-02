@@ -1,33 +1,48 @@
-// Copyright 2021 The Dawn Authors
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_WIRE_CLIENT_ADAPTER_H_
 #define SRC_DAWN_WIRE_CLIENT_ADAPTER_H_
 
-#include "dawn/webgpu.h"
+#include <vector>
 
+#include "dawn/webgpu.h"
 #include "dawn/wire/WireClient.h"
 #include "dawn/wire/WireCmd_autogen.h"
 #include "dawn/wire/client/LimitsAndFeatures.h"
 #include "dawn/wire/client/ObjectBase.h"
 #include "dawn/wire/client/RequestTracker.h"
+#include "partition_alloc/pointers/raw_ptr.h"
 
 namespace dawn::wire::client {
 
-class Adapter final : public ObjectBase {
+class Adapter final : public ObjectWithEventsBase {
   public:
-    using ObjectBase::ObjectBase;
+    using ObjectWithEventsBase::ObjectWithEventsBase;
     ~Adapter() override;
 
     void CancelCallbacksForDisconnect() override;
@@ -42,13 +57,8 @@ class Adapter final : public ObjectBase {
     void RequestDevice(const WGPUDeviceDescriptor* descriptor,
                        WGPURequestDeviceCallback callback,
                        void* userdata);
-
-    bool OnRequestDeviceCallback(uint64_t requestSerial,
-                                 WGPURequestDeviceStatus status,
-                                 const char* message,
-                                 const WGPUSupportedLimits* limits,
-                                 uint32_t featuresCount,
-                                 const WGPUFeatureName* features);
+    WGPUFuture RequestDeviceF(const WGPUDeviceDescriptor* descriptor,
+                              const WGPURequestDeviceCallbackInfo& callbackInfo);
 
     // Unimplementable. Only availale in dawn_native.
     WGPUInstance GetInstance() const;
@@ -57,16 +67,20 @@ class Adapter final : public ObjectBase {
   private:
     LimitsAndFeatures mLimitsAndFeatures;
     WGPUAdapterProperties mProperties;
+    std::vector<WGPUMemoryHeapInfo> mMemoryHeapInfo;
+    WGPUAdapterPropertiesD3D mD3DProperties;
 
     struct RequestDeviceData {
         WGPURequestDeviceCallback callback = nullptr;
         ObjectId deviceObjectId;
-        void* userdata = nullptr;
+        // TODO(https://crbug.com/dawn/2345): Investigate `DanglingUntriaged` in dawn/wire.
+        raw_ptr<void, DanglingUntriaged> userdata = nullptr;
     };
     RequestTracker<RequestDeviceData> mRequestDeviceRequests;
 };
 
 void ClientAdapterPropertiesFreeMembers(WGPUAdapterProperties);
+void ClientAdapterPropertiesMemoryHeapsFreeMembers(WGPUAdapterPropertiesMemoryHeaps);
 
 }  // namespace dawn::wire::client
 

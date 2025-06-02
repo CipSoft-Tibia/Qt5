@@ -4,7 +4,6 @@
 
 #include "third_party/blink/renderer/core/loader/resource_load_observer_for_frame.h"
 
-#include "base/metrics/histogram_macros.h"
 #include "base/types/optional_util.h"
 #include "services/network/public/cpp/cors/cors_error_status.h"
 #include "services/network/public/mojom/cors.mojom-forward.h"
@@ -13,6 +12,7 @@
 #include "third_party/blink/public/mojom/frame/frame.mojom-blink.h"
 #include "third_party/blink/renderer/core/core_probes_inl.h"
 #include "third_party/blink/renderer/core/dom/events/event_target.h"
+#include "third_party/blink/renderer/core/execution_context/agent.h"
 #include "third_party/blink/renderer/core/frame/attribution_src_loader.h"
 #include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
 #include "third_party/blink/renderer/core/frame/frame_console.h"
@@ -30,7 +30,6 @@
 #include "third_party/blink/renderer/core/loader/mixed_content_checker.h"
 #include "third_party/blink/renderer/core/loader/preload_helper.h"
 #include "third_party/blink/renderer/core/loader/progress_tracker.h"
-#include "third_party/blink/renderer/core/loader/subresource_filter.h"
 #include "third_party/blink/renderer/platform/bindings/v8_dom_activity_logger.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_client_settings_object.h"
@@ -119,17 +118,19 @@ void ResourceLoadObserverForFrame::DidStartRequest(
       !params.IsSpeculativePreload()) {
     V8DOMActivityLogger* activity_logger = nullptr;
     const AtomicString& initiator_name = params.Options().initiator_info.name;
+    v8::Isolate* isolate = document_->GetAgent().isolate();
     if (initiator_name == fetch_initiator_type_names::kXmlhttprequest) {
-      activity_logger = V8DOMActivityLogger::CurrentActivityLogger();
+      activity_logger = V8DOMActivityLogger::CurrentActivityLogger(isolate);
     } else {
       activity_logger =
-          V8DOMActivityLogger::CurrentActivityLoggerIfIsolatedWorld();
+          V8DOMActivityLogger::CurrentActivityLoggerIfIsolatedWorld(isolate);
     }
     if (activity_logger) {
       Vector<String> argv = {
           Resource::ResourceTypeToString(resource_type, initiator_name),
           params.Url()};
-      activity_logger->LogEvent("blinkRequestResource", argv.size(),
+      activity_logger->LogEvent(document_->GetExecutionContext(),
+                                "blinkRequestResource", argv.size(),
                                 argv.data());
     }
   }
@@ -151,17 +152,11 @@ void ResourceLoadObserverForFrame::WillSendRequest(
                                                 request.Priority());
   }
 
-  if (!redirect_response.IsNull() &&
-      !redirect_response.HttpHeaderField(http_names::kExpectCT).empty()) {
-    Deprecation::CountDeprecation(frame->DomWindow(),
-                                  mojom::blink::WebFeature::kExpectCTHeader);
-  }
-
   frame->GetAttributionSrcLoader()->MaybeRegisterAttributionHeaders(
       request, redirect_response, resource);
 
   probe::WillSendRequest(
-      GetProbe(), document_loader_,
+      document_->domWindow(), document_loader_,
       fetcher_properties_->GetFetchClientSettingsObject().GlobalObjectUrl(),
       request, redirect_response, options, resource_type,
       render_blocking_behavior, base::TimeTicks::Now());
@@ -182,50 +177,6 @@ void ResourceLoadObserverForFrame::DidChangePriority(
                                    identifier, priority);
 }
 
-namespace {
-
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-//
-// Must remain in sync with LinkPrefetchMimeType in
-// tools/metrics/histograms/enums.xml.
-enum class LinkPrefetchMimeType {
-  kUnknown = 0,
-  kHtml = 1,
-  kScript = 2,
-  kStyle = 3,
-  kFont = 4,
-  kImage = 5,
-  kMedia = 6,
-  kMaxValue = kMedia,
-};
-
-void LogLinkPrefetchMimeTypeHistogram(const AtomicString& mime) {
-  // Loosely based on https://mimesniff.spec.whatwg.org/#mime-type-groups.
-  // This could be done properly if needed, but this is just to gather
-  // approximate data.
-  LinkPrefetchMimeType type = LinkPrefetchMimeType::kUnknown;
-  if (mime == "text/html" || mime == "application/xhtml+xml") {
-    type = LinkPrefetchMimeType::kHtml;
-  } else if (mime == "application/javascript" || mime == "text/javascript") {
-    type = LinkPrefetchMimeType::kScript;
-  } else if (mime == "text/css") {
-    type = LinkPrefetchMimeType::kStyle;
-  } else if (mime.StartsWith("font/") || mime.StartsWith("application/font-") ||
-             mime == "application/vnd.ms-fontobject" ||
-             mime == "application/vnd.ms-opentype") {
-    type = LinkPrefetchMimeType::kFont;
-  } else if (mime.StartsWith("image/")) {
-    type = LinkPrefetchMimeType::kImage;
-  } else if (mime.StartsWith("audio/") || mime.StartsWith("video/") ||
-             mime == "application/ogg") {
-    type = LinkPrefetchMimeType::kMedia;
-  }
-  UMA_HISTOGRAM_ENUMERATION("Blink.Prefetch.LinkPrefetchMimeType", type);
-}
-
-}  // namespace
-
 void ResourceLoadObserverForFrame::DidReceiveResponse(
     uint64_t identifier,
     const ResourceRequest& request,
@@ -235,10 +186,6 @@ void ResourceLoadObserverForFrame::DidReceiveResponse(
   LocalFrame* frame = document_->GetFrame();
   DCHECK(frame);
   LocalFrameClient* frame_client = frame->Client();
-  SubresourceFilter* subresource_filter =
-      document_loader_->GetSubresourceFilter();
-  if (subresource_filter && resource->GetResourceRequest().IsAdResource())
-    subresource_filter->ReportAdRequestId(response.RequestId());
 
   DCHECK(frame_client);
   if (response_source == ResponseSource::kFromMemoryCache) {
@@ -262,11 +209,6 @@ void ResourceLoadObserverForFrame::DidReceiveResponse(
   }
 
   RecordAddressSpaceFeature(frame, response);
-
-  if (!response.HttpHeaderField(http_names::kExpectCT).empty()) {
-    Deprecation::CountDeprecation(frame->DomWindow(),
-                                  mojom::blink::WebFeature::kExpectCTHeader);
-  }
 
   document_->Loader()->MaybeRecordServiceWorkerFallbackMainResource(
       response.WasFetchedViaServiceWorker());
@@ -295,9 +237,6 @@ void ResourceLoadObserverForFrame::DidReceiveResponse(
       request.Url().ProtocolIsInHTTPFamily() && response.IsAttachment()) {
     CountUsage(WebFeature::kContentDispositionInSvgUse);
   }
-
-  if (resource->GetType() == ResourceType::kLinkPrefetch)
-    LogLinkPrefetchMimeTypeHistogram(response.MimeType());
 
   PreloadHelper::LoadLinksFromHeader(
       response.HttpHeaderField(http_names::kLink), response.CurrentRequestUrl(),

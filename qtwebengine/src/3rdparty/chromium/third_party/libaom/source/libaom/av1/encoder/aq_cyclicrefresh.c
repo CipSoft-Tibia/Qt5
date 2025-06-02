@@ -48,7 +48,8 @@ void av1_cyclic_refresh_free(CYCLIC_REFRESH *cr) {
 // mode, and rate/distortion.
 static int candidate_refresh_aq(const CYCLIC_REFRESH *cr,
                                 const MB_MODE_INFO *mbmi, int64_t rate,
-                                int64_t dist, int bsize, int noise_level) {
+                                int64_t dist, BLOCK_SIZE bsize,
+                                int noise_level) {
   MV mv = mbmi->mv[0].as_mv;
   int is_compound = has_second_ref(mbmi);
   // Reject the block for lower-qp coding for non-compound mode if

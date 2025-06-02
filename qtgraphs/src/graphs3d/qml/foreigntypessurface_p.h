@@ -32,7 +32,7 @@ QT_BEGIN_NAMESPACE
     struct type##GraphsForeign \
     { \
         DEFINE_FOREIGN_BASE_ATTRIBUTES(type, name, 6) \
-        QML_UNCREATABLE("Trying to create uncreatable: " #name ".") \
+        QML_UNCREATABLE("") \
     };
 
 #define DEFINE_FOREIGN_CREATABLE_TYPE(type, name, minor) \

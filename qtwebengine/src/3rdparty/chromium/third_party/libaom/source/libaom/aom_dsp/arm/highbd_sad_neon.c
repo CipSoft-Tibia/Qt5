@@ -61,6 +61,7 @@ static INLINE uint32_t highbd_sad8xh_small_neon(const uint8_t *src_ptr,
   return horizontal_add_u16x8(sum);
 }
 
+#if !CONFIG_REALTIME_ONLY
 static INLINE uint32_t highbd_sad8xh_large_neon(const uint8_t *src_ptr,
                                                 int src_stride,
                                                 const uint8_t *ref_ptr,
@@ -82,6 +83,7 @@ static INLINE uint32_t highbd_sad8xh_large_neon(const uint8_t *src_ptr,
 
   return horizontal_add_u32x4(sum_u32);
 }
+#endif  // !CONFIG_REALTIME_ONLY
 
 static INLINE uint32_t highbd_sad16xh_large_neon(const uint8_t *src_ptr,
                                                  int src_stride,

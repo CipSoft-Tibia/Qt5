@@ -1,16 +1,29 @@
-// Copyright 2023 The Dawn Authors
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d11/RenderPipelineD3D11.h"
 
@@ -18,8 +31,10 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "dawn/common/Range.h"
 #include "dawn/native/CreatePipelineAsyncTask.h"
 #include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d/ShaderUtils.h"
@@ -39,8 +54,10 @@ D3D11_INPUT_CLASSIFICATION VertexStepModeFunction(wgpu::VertexStepMode mode) {
         case wgpu::VertexStepMode::Instance:
             return D3D11_INPUT_PER_INSTANCE_DATA;
         case wgpu::VertexStepMode::VertexBufferNotUsed:
-            UNREACHABLE();
+        case wgpu::VertexStepMode::Undefined:
+            break;
     }
+    DAWN_UNREACHABLE();
 }
 
 D3D_PRIMITIVE_TOPOLOGY D3DPrimitiveTopology(wgpu::PrimitiveTopology topology) {
@@ -55,9 +72,10 @@ D3D_PRIMITIVE_TOPOLOGY D3DPrimitiveTopology(wgpu::PrimitiveTopology topology) {
             return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
         case wgpu::PrimitiveTopology::TriangleStrip:
             return D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
-        default:
-            UNREACHABLE();
+        case wgpu::PrimitiveTopology::Undefined:
+            break;
     }
+    DAWN_UNREACHABLE();
 }
 
 D3D11_CULL_MODE D3DCullMode(wgpu::CullMode cullMode) {
@@ -68,9 +86,10 @@ D3D11_CULL_MODE D3DCullMode(wgpu::CullMode cullMode) {
             return D3D11_CULL_FRONT;
         case wgpu::CullMode::Back:
             return D3D11_CULL_BACK;
-        default:
-            UNREACHABLE();
+        case wgpu::CullMode::Undefined:
+            break;
     }
+    DAWN_UNREACHABLE();
 }
 
 D3D11_BLEND D3DBlendFactor(wgpu::BlendFactor blendFactor) {
@@ -109,9 +128,10 @@ D3D11_BLEND D3DBlendFactor(wgpu::BlendFactor blendFactor) {
             return D3D11_BLEND_SRC1_ALPHA;
         case wgpu::BlendFactor::OneMinusSrc1Alpha:
             return D3D11_BLEND_INV_SRC1_ALPHA;
-        default:
-            UNREACHABLE();
+        case wgpu::BlendFactor::Undefined:
+            break;
     }
+    DAWN_UNREACHABLE();
 }
 
 // When a blend factor is defined for the alpha channel, any of the factors that don't
@@ -150,9 +170,10 @@ D3D11_BLEND_OP D3DBlendOperation(wgpu::BlendOperation blendOperation) {
             return D3D11_BLEND_OP_MIN;
         case wgpu::BlendOperation::Max:
             return D3D11_BLEND_OP_MAX;
-        default:
-            UNREACHABLE();
+        case wgpu::BlendOperation::Undefined:
+            break;
     }
+    DAWN_UNREACHABLE();
 }
 
 UINT D3DColorWriteMask(wgpu::ColorWriteMask colorWriteMask) {
@@ -182,7 +203,10 @@ D3D11_STENCIL_OP StencilOp(wgpu::StencilOperation op) {
             return D3D11_STENCIL_OP_INCR;
         case wgpu::StencilOperation::DecrementWrap:
             return D3D11_STENCIL_OP_DECR;
+        case wgpu::StencilOperation::Undefined:
+            break;
     }
+    DAWN_UNREACHABLE();
 }
 
 D3D11_DEPTH_STENCILOP_DESC StencilOpDesc(const StencilFaceState& descriptor) {
@@ -201,11 +225,12 @@ D3D11_DEPTH_STENCILOP_DESC StencilOpDesc(const StencilFaceState& descriptor) {
 // static
 Ref<RenderPipeline> RenderPipeline::CreateUninitialized(
     Device* device,
-    const RenderPipelineDescriptor* descriptor) {
+    const UnpackedPtr<RenderPipelineDescriptor>& descriptor) {
     return AcquireRef(new RenderPipeline(device, descriptor));
 }
 
-RenderPipeline::RenderPipeline(Device* device, const RenderPipelineDescriptor* descriptor)
+RenderPipeline::RenderPipeline(Device* device,
+                               const UnpackedPtr<RenderPipelineDescriptor>& descriptor)
     : RenderPipelineBase(device, descriptor),
       mD3DPrimitiveTopology(D3DPrimitiveTopology(GetPrimitiveTopology())) {}
 
@@ -234,32 +259,33 @@ MaybeError RenderPipeline::Initialize() {
 
 RenderPipeline::~RenderPipeline() = default;
 
-void RenderPipeline::ApplyNow(CommandRecordingContext* commandContext,
+void RenderPipeline::ApplyNow(const ScopedSwapStateCommandRecordingContext* commandContext,
                               const std::array<float, 4>& blendColor,
                               uint32_t stencilReference) {
-    ID3D11DeviceContext1* d3dDeviceContext1 = commandContext->GetD3D11DeviceContext1();
-    d3dDeviceContext1->IASetPrimitiveTopology(mD3DPrimitiveTopology);
+    auto* d3d11DeviceContext = commandContext->GetD3D11DeviceContext4();
+    d3d11DeviceContext->IASetPrimitiveTopology(mD3DPrimitiveTopology);
     // TODO(dawn:1753): deduplicate these objects in the backend eventually, and to avoid redundant
     // state setting.
-    d3dDeviceContext1->IASetInputLayout(mInputLayout.Get());
-    d3dDeviceContext1->RSSetState(mRasterizerState.Get());
-    d3dDeviceContext1->VSSetShader(mVertexShader.Get(), nullptr, 0);
-    d3dDeviceContext1->PSSetShader(mPixelShader.Get(), nullptr, 0);
+    d3d11DeviceContext->IASetInputLayout(mInputLayout.Get());
+    d3d11DeviceContext->RSSetState(mRasterizerState.Get());
+    d3d11DeviceContext->VSSetShader(mVertexShader.Get(), nullptr, 0);
+    d3d11DeviceContext->PSSetShader(mPixelShader.Get(), nullptr, 0);
 
     ApplyBlendState(commandContext, blendColor);
     ApplyDepthStencilState(commandContext, stencilReference);
 }
 
-void RenderPipeline::ApplyBlendState(CommandRecordingContext* commandContext,
+void RenderPipeline::ApplyBlendState(const ScopedSwapStateCommandRecordingContext* commandContext,
                                      const std::array<float, 4>& blendColor) {
-    ID3D11DeviceContext1* d3dDeviceContext1 = commandContext->GetD3D11DeviceContext1();
-    d3dDeviceContext1->OMSetBlendState(mBlendState.Get(), blendColor.data(), GetSampleMask());
+    auto* d3d11DeviceContext = commandContext->GetD3D11DeviceContext4();
+    d3d11DeviceContext->OMSetBlendState(mBlendState.Get(), blendColor.data(), GetSampleMask());
 }
 
-void RenderPipeline::ApplyDepthStencilState(CommandRecordingContext* commandContext,
-                                            uint32_t stencilReference) {
-    ID3D11DeviceContext1* d3dDeviceContext1 = commandContext->GetD3D11DeviceContext1();
-    d3dDeviceContext1->OMSetDepthStencilState(mDepthStencilState.Get(), stencilReference);
+void RenderPipeline::ApplyDepthStencilState(
+    const ScopedSwapStateCommandRecordingContext* commandContext,
+    uint32_t stencilReference) {
+    auto* d3d11DeviceContext = commandContext->GetD3D11DeviceContext4();
+    d3d11DeviceContext->OMSetDepthStencilState(mDepthStencilState.Get(), stencilReference);
 }
 
 void RenderPipeline::SetLabelImpl() {
@@ -342,10 +368,10 @@ MaybeError RenderPipeline::InitializeBlendState() {
     blendDesc.IndependentBlendEnable = TRUE;
 
     static_assert(kMaxColorAttachments == std::size(blendDesc.RenderTarget));
-    for (ColorAttachmentIndex i(0Ui8); i < ColorAttachmentIndex(kMaxColorAttachments); ++i) {
+    for (auto i : Range(kMaxColorAttachmentsTyped)) {
         D3D11_RENDER_TARGET_BLEND_DESC& rtBlendDesc =
             blendDesc.RenderTarget[static_cast<uint8_t>(i)];
-        const ColorTargetState* descriptor = GetColorTargetState(ColorAttachmentIndex(i));
+        const ColorTargetState* descriptor = GetColorTargetState(i);
         rtBlendDesc.BlendEnable = descriptor->blend != nullptr;
         if (rtBlendDesc.BlendEnable) {
             rtBlendDesc.SrcBlend = D3DBlendFactor(descriptor->blend->color.srcFactor);
@@ -415,19 +441,20 @@ MaybeError RenderPipeline::InitializeShaders() {
     // Tint does matrix multiplication expecting row major matrices
     compileFlags |= D3DCOMPILE_PACK_MATRIX_ROW_MAJOR;
 
-    // FXC can miscompile code that depends on special float values (NaN, INF, etc) when IEEE
-    // strictness is not enabled. See crbug.com/tint/976.
-    compileFlags |= D3DCOMPILE_IEEE_STRICTNESS;
+    if (!device->IsToggleEnabled(Toggle::D3DDisableIEEEStrictness)) {
+        compileFlags |= D3DCOMPILE_IEEE_STRICTNESS;
+    }
 
     PerStage<d3d::CompiledShader> compiledShader;
 
-    std::bitset<kMaxInterStageShaderVariables>* usedInterstageVariables = nullptr;
+    std::optional<dawn::native::d3d::InterStageShaderVariablesMask> usedInterstageVariables;
     dawn::native::EntryPointMetadata fragmentEntryPoint;
     if (GetStageMask() & wgpu::ShaderStage::Fragment) {
         // Now that only fragment shader can have inter-stage inputs.
         const ProgrammableStage& programmableStage = GetStage(SingleShaderStage::Fragment);
         fragmentEntryPoint = programmableStage.module->GetEntryPoint(programmableStage.entryPoint);
-        usedInterstageVariables = &fragmentEntryPoint.usedInterStageVariables;
+        usedInterstageVariables = dawn::native::d3d::ToInterStageShaderVariablesMask(
+            fragmentEntryPoint.usedInterStageVariables);
     }
 
     if (GetStageMask() & wgpu::ShaderStage::Vertex) {
@@ -446,13 +473,57 @@ MaybeError RenderPipeline::InitializeShaders() {
         mUsesInstanceIndex = compiledShader[SingleShaderStage::Vertex].usesInstanceIndex;
     }
 
+    std::optional<tint::PixelLocalOptions> pixelLocalOptions;
     if (GetStageMask() & wgpu::ShaderStage::Fragment) {
+        pixelLocalOptions = tint::PixelLocalOptions();
+        // HLSL SM5.0 doesn't support groups, so we set group index to 0.
+        pixelLocalOptions->pixel_local_group_index = 0;
+
+        if (GetAttachmentState()->HasPixelLocalStorage()) {
+            const std::vector<wgpu::TextureFormat>& storageAttachmentSlots =
+                GetAttachmentState()->GetStorageAttachmentSlots();
+            DAWN_ASSERT(ToBackend(GetLayout())->GetTotalUAVBindingCount() >
+                        storageAttachmentSlots.size());
+            // Currently all the pixel local storage UAVs are allocated at the last several UAV
+            // slots. For example, when there are 4 pixel local storage attachments, we will
+            // allocate register u60 to u63 for them.
+            uint32_t basePixelLocalAttachmentIndex =
+                ToBackend(GetLayout())->GetTotalUAVBindingCount() -
+                static_cast<uint32_t>(storageAttachmentSlots.size());
+            for (size_t i = 0; i < storageAttachmentSlots.size(); i++) {
+                pixelLocalOptions->attachments[i] = basePixelLocalAttachmentIndex + i;
+
+                static_assert(
+                    RenderPipelineBase::kImplicitPLSSlotFormat == wgpu::TextureFormat::R32Uint,
+                    "The implicit Pixel Local Storage format should be R32Uint.");
+                switch (storageAttachmentSlots[i]) {
+                        // We use R32Uint as default pixel local storage attachment format
+                    case wgpu::TextureFormat::Undefined:
+                    case wgpu::TextureFormat::R32Uint:
+                        pixelLocalOptions->attachment_formats[i] =
+                            tint::PixelLocalOptions::TexelFormat::kR32Uint;
+                        break;
+                    case wgpu::TextureFormat::R32Sint:
+                        pixelLocalOptions->attachment_formats[i] =
+                            tint::PixelLocalOptions::TexelFormat::kR32Sint;
+                        break;
+                    case wgpu::TextureFormat::R32Float:
+                        pixelLocalOptions->attachment_formats[i] =
+                            tint::PixelLocalOptions::TexelFormat::kR32Float;
+                        break;
+                    default:
+                        DAWN_UNREACHABLE();
+                        break;
+                }
+            }
+        }
+
         const ProgrammableStage& programmableStage = GetStage(SingleShaderStage::Fragment);
         DAWN_TRY_ASSIGN(
             compiledShader[SingleShaderStage::Fragment],
             ToBackend(programmableStage.module)
                 ->Compile(programmableStage, SingleShaderStage::Fragment, ToBackend(GetLayout()),
-                          compileFlags, usedInterstageVariables));
+                          compileFlags, usedInterstageVariables, pixelLocalOptions));
         DAWN_TRY(CheckHRESULT(device->GetD3D11Device()->CreatePixelShader(
                                   compiledShader[SingleShaderStage::Fragment].shaderBlob.Data(),
                                   compiledShader[SingleShaderStage::Fragment].shaderBlob.Size(),

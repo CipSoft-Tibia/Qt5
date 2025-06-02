@@ -4,11 +4,12 @@
 #ifndef QABSTRACTOAUTH2_H
 #define QABSTRACTOAUTH2_H
 
+#include <QtNetworkAuth/qoauthglobal.h>
+
 #ifndef QT_NO_HTTP
 
 #include <QtCore/qdatetime.h>
 
-#include <QtNetworkAuth/qoauthglobal.h>
 #include <QtNetworkAuth/qabstractoauth.h>
 
 QT_BEGIN_NAMESPACE
@@ -39,18 +40,45 @@ public:
 
     Q_INVOKABLE virtual QUrl createAuthenticatedUrl(const QUrl &url,
                                                     const QVariantMap &parameters = QVariantMap());
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE QNetworkReply *head(const QUrl &url,
                                     const QVariantMap &parameters = QVariantMap()) override;
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE QNetworkReply *get(const QUrl &url,
                                    const QVariantMap &parameters = QVariantMap()) override;
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE QNetworkReply *post(const QUrl &url,
                                     const QVariantMap &parameters = QVariantMap()) override;
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE virtual QNetworkReply *post(const QUrl &url, const QByteArray &data);
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE virtual QNetworkReply *post(const QUrl &url, QHttpMultiPart *multiPart);
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE QNetworkReply *put(const QUrl &url,
                                    const QVariantMap &parameters = QVariantMap()) override;
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE virtual QNetworkReply *put(const QUrl &url, const QByteArray &data);
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE virtual QNetworkReply *put(const QUrl &url, QHttpMultiPart *multiPart);
+
+    QT_DEPRECATED_VERSION_X_6_11("Use QtNetwork classes instead."
+                                 "See https://doc.qt.io/qt-6/oauth-http-method-alternatives.html")
     Q_INVOKABLE QNetworkReply *deleteResource(const QUrl &url,
                                               const QVariantMap &parameters = QVariantMap()) override;
 

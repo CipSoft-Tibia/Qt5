@@ -127,6 +127,16 @@ cmake ... -D UPDATE_DEPS=ON -D BUILD_TESTS=ON ...
 ```
 This will ensure googletest and detours is downloaded and the appropriate version is used.
 
+### Warnings as errors off by default!
+
+By default `BUILD_WERROR` is `OFF`. The idiom for open source projects is to NOT enable warnings as errors.
+
+System/language package managers have to build on multiple different platforms and compilers.
+
+By defaulting to `ON` we cause issues for package managers since there is no standard way to disable warnings.
+
+Add `-D BUILD_WERROR=ON` to your workflow
+
 ### Build and Install Directory Locations
 
 A common convention is to place the `build` directory in the top directory of
@@ -232,7 +242,6 @@ The following is a table of all on/off options currently supported by this repos
 | ENABLE_WIN10_ONECORE            | Windows       | `OFF`   | Link the loader to the [OneCore](https://msdn.microsoft.com/en-us/library/windows/desktop/mt654039.aspx) umbrella library, instead of the standard Win32 ones.                    |
 | USE_GAS                         | Linux         | `ON`    | Controls whether to build assembly files with the GNU assembler, else fallback to C code.                                                                                         |
 | USE_MASM                        | Windows       | `ON`    | Controls whether to build assembly files with MS assembler, else fallback to C code                                                                                               |
-| BUILD_STATIC_LOADER             | macOS         | `OFF`   | This allows the loader to be built as a static library on macOS. Not tested, use at your own risk.                                                                                |
 | LOADER_ENABLE_ADDRESS_SANITIZER | Linux & macOS | `OFF`   | Enables Address Sanitizer in the loader and tests.                                                                                                                                |
 | LOADER_ENABLE_THREAD_SANITIZER  | Linux & macOS | `OFF`   | Enables Thread Sanitizer in the loader and tests.                                                                                                                                 |
 | LOADER_USE_UNSAFE_FILE_SEARCH   | All           | `OFF`   | Disables security policies that prevent unsecure locations from being used when running with elevated permissions.                                                                |
@@ -534,10 +543,6 @@ regularly as a part of CI.
 
 ### MacOS Development Environment Requirements
 
-Tested on OSX version 10.12
-
-NOTE: To force the OSX version set the environment variable [MACOSX_DEPLOYMENT_TARGET](https://cmake.org/cmake/help/latest/envvar/MACOSX_DEPLOYMENT_TARGET.html) when building.
-
 Setup Homebrew and components
 
 - Ensure Homebrew is at the beginning of your PATH:
@@ -607,7 +612,7 @@ QNX is using its own build system. The proper build environment must be set
 under the QNX host development system (Linux, Win64, MacOS) by invoking
 the shell/batch script provided with QNX installation.
 
-Then change working directory to the "build-qnx" in this project and type "make".
+Then change working directory to the "scripts/qnx" in this project and type "make".
 It will build the ICD loader for all CPU targets supported by QNX.
 
 ## Cross Compilation

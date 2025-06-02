@@ -60,7 +60,7 @@ void BMRound::updateProperties(int frame)
     m_path.arcTo(QRectF(center,
                         QSizeF(m_radius.value(), m_radius.value())), 90, -360);
 
-    if (m_direction)
+    if (hasReversedDirection())
         m_path = m_path.toReversed();
 }
 

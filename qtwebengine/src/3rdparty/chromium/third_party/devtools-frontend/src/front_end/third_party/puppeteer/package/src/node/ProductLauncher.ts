@@ -1,17 +1,7 @@
 /**
- * Copyright 2017 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2017 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 import {existsSync} from 'fs';
 import {tmpdir} from 'os';
@@ -26,22 +16,22 @@ import {
   computeExecutablePath,
 } from '@puppeteer/browsers';
 
-import {Browser, BrowserCloseCallback} from '../api/Browser.js';
-import {CDPBrowser} from '../common/Browser.js';
-import {Connection} from '../common/Connection.js';
+import type {Browser, BrowserCloseCallback} from '../api/Browser.js';
+import {CdpBrowser} from '../cdp/Browser.js';
+import {Connection} from '../cdp/Connection.js';
 import {TimeoutError} from '../common/Errors.js';
-import {NodeWebSocketTransport as WebSocketTransport} from '../common/NodeWebSocketTransport.js';
-import {Product} from '../common/Product.js';
-import {Viewport} from '../common/PuppeteerViewport.js';
-import {debugError} from '../common/util.js';
+import type {Product} from '../common/Product.js';
+import {debugError, DEFAULT_VIEWPORT} from '../common/util.js';
+import type {Viewport} from '../common/Viewport.js';
 
-import {
+import type {
   BrowserLaunchArgumentOptions,
   ChromeReleaseChannel,
   PuppeteerNodeLaunchOptions,
 } from './LaunchOptions.js';
+import {NodeWebSocketTransport as WebSocketTransport} from './NodeWebSocketTransport.js';
 import {PipeTransport} from './PipeTransport.js';
-import {PuppeteerNode} from './PuppeteerNode.js';
+import type {PuppeteerNode} from './PuppeteerNode.js';
 
 /**
  * @internal
@@ -58,7 +48,7 @@ export interface ResolvedLaunchArgs {
  *
  * @public
  */
-export class ProductLauncher {
+export abstract class ProductLauncher {
   #product: Product;
 
   /**
@@ -91,12 +81,12 @@ export class ProductLauncher {
       handleSIGTERM = true,
       handleSIGHUP = true,
       ignoreHTTPSErrors = false,
-      defaultViewport = {width: 800, height: 600},
+      defaultViewport = DEFAULT_VIEWPORT,
       slowMo = 0,
       timeout = 30000,
       waitForInitialPage = true,
-      protocol,
       protocolTimeout,
+      protocol,
     } = options;
 
     const launchArgs = await this.computeLaunchArguments(options);
@@ -122,15 +112,15 @@ export class ProductLauncher {
     });
 
     let browser: Browser;
-    let connection: Connection;
+    let cdpConnection: Connection;
     let closing = false;
 
-    const browserCloseCallback = async () => {
+    const browserCloseCallback: BrowserCloseCallback = async () => {
       if (closing) {
         return;
       }
       closing = true;
-      await this.closeBrowser(browserProcess, connection);
+      await this.closeBrowser(browserProcess, cdpConnection);
     };
 
     try {
@@ -148,22 +138,22 @@ export class ProductLauncher {
         );
       } else {
         if (usePipe) {
-          connection = await this.createCDPPipeConnection(browserProcess, {
+          cdpConnection = await this.createCdpPipeConnection(browserProcess, {
             timeout,
             protocolTimeout,
             slowMo,
           });
         } else {
-          connection = await this.createCDPSocketConnection(browserProcess, {
+          cdpConnection = await this.createCdpSocketConnection(browserProcess, {
             timeout,
             protocolTimeout,
             slowMo,
           });
         }
         if (protocol === 'webDriverBiDi') {
-          browser = await this.createBiDiOverCDPBrowser(
+          browser = await this.createBiDiOverCdpBrowser(
             browserProcess,
-            connection,
+            cdpConnection,
             browserCloseCallback,
             {
               timeout,
@@ -174,9 +164,9 @@ export class ProductLauncher {
             }
           );
         } else {
-          browser = await CDPBrowser._create(
+          browser = await CdpBrowser._create(
             this.product,
-            connection,
+            cdpConnection,
             [],
             ignoreHTTPSErrors,
             defaultViewport,
@@ -201,15 +191,9 @@ export class ProductLauncher {
     return browser;
   }
 
-  executablePath(channel?: ChromeReleaseChannel): string;
-  executablePath(): string {
-    throw new Error('Not implemented');
-  }
+  abstract executablePath(channel?: ChromeReleaseChannel): string;
 
-  defaultArgs(object: BrowserLaunchArgumentOptions): string[];
-  defaultArgs(): string[] {
-    throw new Error('Not implemented');
-  }
+  abstract defaultArgs(object: BrowserLaunchArgumentOptions): string[];
 
   /**
    * Set only for Firefox, after the launcher resolves the `latest` revision to
@@ -223,35 +207,29 @@ export class ProductLauncher {
   /**
    * @internal
    */
-  protected async computeLaunchArguments(
+  protected abstract computeLaunchArguments(
     options: PuppeteerNodeLaunchOptions
   ): Promise<ResolvedLaunchArgs>;
-  protected async computeLaunchArguments(): Promise<ResolvedLaunchArgs> {
-    throw new Error('Not implemented');
-  }
 
   /**
    * @internal
    */
-  protected async cleanUserDataDir(
+  protected abstract cleanUserDataDir(
     path: string,
     opts: {isTemp: boolean}
   ): Promise<void>;
-  protected async cleanUserDataDir(): Promise<void> {
-    throw new Error('Not implemented');
-  }
 
   /**
    * @internal
    */
   protected async closeBrowser(
     browserProcess: ReturnType<typeof launch>,
-    connection?: Connection
+    cdpConnection?: Connection
   ): Promise<void> {
-    if (connection) {
+    if (cdpConnection) {
       // Attempt to close the browser gracefully
       try {
-        await connection.closeBrowser();
+        await cdpConnection.closeBrowser();
         await browserProcess.hasClosed();
       } catch (error) {
         debugError(error);
@@ -285,7 +263,7 @@ export class ProductLauncher {
   /**
    * @internal
    */
-  protected async createCDPSocketConnection(
+  protected async createCdpSocketConnection(
     browserProcess: ReturnType<typeof launch>,
     opts: {timeout: number; protocolTimeout: number | undefined; slowMo: number}
   ): Promise<Connection> {
@@ -305,7 +283,7 @@ export class ProductLauncher {
   /**
    * @internal
    */
-  protected async createCDPPipeConnection(
+  protected async createCdpPipeConnection(
     browserProcess: ReturnType<typeof launch>,
     opts: {timeout: number; protocolTimeout: number | undefined; slowMo: number}
   ): Promise<Connection> {
@@ -322,7 +300,7 @@ export class ProductLauncher {
   /**
    * @internal
    */
-  protected async createBiDiOverCDPBrowser(
+  protected async createBiDiOverCdpBrowser(
     browserProcess: ReturnType<typeof launch>,
     connection: Connection,
     closeCallback: BrowserCloseCallback,
@@ -335,11 +313,11 @@ export class ProductLauncher {
     }
   ): Promise<Browser> {
     // TODO: use other options too.
-    const BiDi = await import(
-      /* webpackIgnore: true */ '../common/bidi/bidi.js'
-    );
-    const bidiConnection = await BiDi.connectBidiOverCDP(connection);
-    return await BiDi.Browser.create({
+    const BiDi = await import(/* webpackIgnore: true */ '../bidi/bidi.js');
+    const bidiConnection = await BiDi.connectBidiOverCdp(connection, {
+      acceptInsecureCerts: opts.ignoreHTTPSErrors ?? false,
+    });
+    return await BiDi.BidiBrowser.create({
       connection: bidiConnection,
       closeCallback,
       process: browserProcess.nodeProcess,
@@ -368,17 +346,15 @@ export class ProductLauncher {
         opts.timeout
       )) + '/session';
     const transport = await WebSocketTransport.create(browserWSEndpoint);
-    const BiDi = await import(
-      /* webpackIgnore: true */ '../common/bidi/bidi.js'
-    );
-    const bidiConnection = new BiDi.Connection(
+    const BiDi = await import(/* webpackIgnore: true */ '../bidi/bidi.js');
+    const bidiConnection = new BiDi.BidiConnection(
       browserWSEndpoint,
       transport,
       opts.slowMo,
       opts.protocolTimeout
     );
     // TODO: use other options too.
-    return await BiDi.Browser.create({
+    return await BiDi.BidiBrowser.create({
       connection: bidiConnection,
       closeCallback,
       process: browserProcess.nodeProcess,
@@ -437,14 +413,14 @@ export class ProductLauncher {
         case 'chrome':
           throw new Error(
             `Could not find Chrome (ver. ${this.puppeteer.browserRevision}). This can occur if either\n` +
-              ' 1. you did not perform an installation before running the script (e.g. `npm install`) or\n' +
+              ' 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or\n' +
               ` 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).\n` +
               'For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.'
           );
         case 'firefox':
           throw new Error(
             `Could not find Firefox (rev. ${this.puppeteer.browserRevision}). This can occur if either\n` +
-              ' 1. you did not perform an installation for Firefox before running the script (e.g. `PUPPETEER_PRODUCT=firefox npm install`) or\n' +
+              ' 1. you did not perform an installation for Firefox before running the script (e.g. `npx puppeteer browsers install firefox`) or\n' +
               ` 2. your cache path is incorrectly configured (which is: ${this.puppeteer.configuration.cacheDirectory}).\n` +
               'For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.'
           );

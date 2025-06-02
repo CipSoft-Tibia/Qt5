@@ -7,11 +7,11 @@ from __future__ import annotations
 import argparse
 import logging
 import pathlib
-from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Type
+from typing import TYPE_CHECKING, Any, Dict, Optional, Sequence, Tuple, Type
 from urllib.parse import urlparse
 from crossbench import cli_helper
 
-from crossbench.benchmarks.benchmark import StoryFilter, SubStoryBenchmark
+from crossbench.benchmarks.base import StoryFilter, SubStoryBenchmark
 
 from . import page_config
 from .page import (PAGE_LIST, PAGE_LIST_SMALL, PAGES, CombinedPage, LivePage,
@@ -191,6 +191,10 @@ class PageLoadBenchmark(SubStoryBenchmark):
       return (CombinedPage(args.stories, "Page Scenarios - Combined",
                            args.playback),)
     return super().stories_from_cli_args(args)
+
+  @classmethod
+  def aliases(cls) -> Tuple[str, ...]:
+    return ("load", "ld")
 
   def __init__(self, stories: Sequence[Page]) -> None:
     for story in stories:

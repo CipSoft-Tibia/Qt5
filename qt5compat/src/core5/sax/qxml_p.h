@@ -120,7 +120,7 @@ private:
     bool skipped_entity_in_content;
 
     // helper classes
-    QScopedPointer<QXmlLocator> locator;
+    std::unique_ptr<QXmlLocator> locator;
     QXmlNamespaceSupport namespaceSupport;
 
     // error string

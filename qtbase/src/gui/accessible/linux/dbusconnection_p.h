@@ -23,16 +23,19 @@
 #include <QtCore/private/qglobal_p.h>
 Q_MOC_INCLUDE(<QtDBus/QDBusError>)
 
+#include "bus_interface.h"
+#include "properties_interface.h"
+
 QT_BEGIN_NAMESPACE
 
 class QDBusServiceWatcher;
 
-class DBusConnection : public QObject
+class QAtSpiDBusConnection : public QObject
 {
     Q_OBJECT
 
 public:
-    DBusConnection(QObject *parent = nullptr);
+    QAtSpiDBusConnection(QObject *parent = nullptr);
     QDBusConnection connection() const;
     bool isEnabled() const { return m_enabled; }
 
@@ -42,7 +45,7 @@ Q_SIGNALS:
 
 private Q_SLOTS:
     QString getAddressFromXCB();
-    void serviceRegistered();
+    void checkEnabledState();
     void serviceUnregistered();
     void connectA11yBus(const QString &address);
 
@@ -52,6 +55,8 @@ private:
     QString getAccessibilityBusAddress() const;
 
     QDBusServiceWatcher *dbusWatcher;
+    OrgFreedesktopDBusPropertiesInterface *m_dbusProperties;
+    OrgA11yStatusInterface *m_a11yStatus;
     QDBusConnection m_a11yConnection;
     bool m_enabled;
 };

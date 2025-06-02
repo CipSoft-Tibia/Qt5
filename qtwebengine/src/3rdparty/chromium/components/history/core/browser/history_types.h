@@ -17,7 +17,6 @@
 #include "base/containers/flat_map.h"
 #include "base/functional/callback_forward.h"
 #include "base/time/time.h"
-#include "base/uuid.h"
 #include "components/favicon_base/favicon_types.h"
 #include "components/history/core/browser/history_context.h"
 #include "components/history/core/browser/keyword_search_term.h"
@@ -25,7 +24,7 @@
 #include "components/query_parser/query_parser.h"
 #include "components/query_parser/snippet.h"
 #include "components/sessions/core/session_id.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/sync_device_info/device_info.h"
 #endif
 #include "third_party/abseil-cpp/absl/container/inlined_vector.h"
@@ -184,7 +183,10 @@ class VisitRow {
   // many-to-one relationship with the VisitedLinkDatabase. As such, more than
   // one visit may correspond to the same VisitedLinkID.
   VisitedLinkID visited_link_id = kInvalidVisitedLinkID;
-
+  // The package name of the app if this visit takes place in Custom Tab opened
+  // by an app. This is set only on Android if the Custom Tab knows which app
+  // launched it; otherwise remains null.
+  absl::optional<std::string> app_id = absl::nullopt;
   // We allow the implicit copy constructor and operator=.
 };
 
@@ -402,6 +404,9 @@ struct QueryOptions {
   // reached. Will affect visit order as well.
   VisitOrder visit_order = RECENT_FIRST;
 
+  // If nullopt, search doesn't take app_id into consideration.
+  absl::optional<std::string> app_id = absl::nullopt;
+
   // Helpers to get the effective parameters values, since a value of 0 means
   // "unspecified".
   int EffectiveMaxCount() const;
@@ -445,9 +450,7 @@ struct VisibleVisitCountToHostResult {
 // Holds the information for a Most Visited page.
 struct MostVisitedURL {
   MostVisitedURL();
-  MostVisitedURL(const GURL& url,
-                 const std::u16string& title,
-                 double score = 0.0);
+  MostVisitedURL(const GURL& url, const std::u16string& title);
   MostVisitedURL(const MostVisitedURL& other);
   MostVisitedURL(MostVisitedURL&& other) noexcept;
   ~MostVisitedURL();
@@ -458,9 +461,11 @@ struct MostVisitedURL {
     return url == other.url;
   }
 
-  GURL url;              // The URL of the page.
-  std::u16string title;  // The title of the page.
-  double score{0.0};     // The frecency score of the page.
+  GURL url;                    // The URL of the page.
+  std::u16string title;        // The title of the page.
+  int visit_count{0};          // The page visit count.
+  base::Time last_visit_time;  // The time of the last visit to the page.
+  double score{0.0};           // The frecency score of the page.
 };
 
 // FilteredURL -----------------------------------------------------------------
@@ -554,7 +559,7 @@ typedef std::map<GURL, std::pair<int, base::Time>> OriginCountAndLastVisitMap;
 
 // Segments -------------------------------------------------------------------
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 // Contains device information (i.e. OS Type, Form Factor) for all syncing
 // devices (including the local device). Devices are identified by their
 // Originator Cache GUID. Has the following shape:
@@ -1198,7 +1203,7 @@ struct HistoryAddPageArgs {
   //       RedirectList(), ui::PAGE_TRANSITION_LINK,
   //       false, SOURCE_BROWSED, false, true,
   //       absl::nullopt, absl::nullopt, absl::nullopt, absl::nullopt,
-  //       absl::nullopt)
+  //       absl::nullopt, absl::nullopt)
   HistoryAddPageArgs();
   HistoryAddPageArgs(const GURL& url,
                      base::Time time,
@@ -1215,7 +1220,8 @@ struct HistoryAddPageArgs {
                      absl::optional<std::u16string> title = absl::nullopt,
                      absl::optional<GURL> top_level_url = absl::nullopt,
                      absl::optional<Opener> opener = absl::nullopt,
-                     absl::optional<base::Uuid> bookmark_id = absl::nullopt,
+                     absl::optional<int64_t> bookmark_id = absl::nullopt,
+                     absl::optional<std::string> app_id = absl::nullopt,
                      absl::optional<VisitContextAnnotations::OnVisitFields>
                          context_annotations = absl::nullopt);
   HistoryAddPageArgs(const HistoryAddPageArgs& other);
@@ -1242,7 +1248,8 @@ struct HistoryAddPageArgs {
   // navigation originated from.
   absl::optional<GURL> top_level_url;
   absl::optional<Opener> opener;
-  absl::optional<base::Uuid> bookmark_id;
+  absl::optional<int64_t> bookmark_id;
+  absl::optional<std::string> app_id;
   absl::optional<VisitContextAnnotations::OnVisitFields> context_annotations;
 };
 

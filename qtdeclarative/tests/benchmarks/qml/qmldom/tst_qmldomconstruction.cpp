@@ -23,30 +23,25 @@ void tst_qmldomconstruction::domConstructionTime_data()
 
     const auto baseDir = QLatin1String(SRCDIR) + QLatin1String("/data");
     QTest::addColumn<QString>("fileName");
-    QTest::addColumn<DomCreationOptions>("withScope");
+    QTest::addColumn<DomCreationOption>("creationOption");
 
-    DomCreationOptions withScope = DomCreationOption::WithSemanticAnalysis;
-    DomCreationOptions noScope = DomCreationOption::None;
-    DomCreationOptions withScopeAndScriptExpressions;
-    withScopeAndScriptExpressions.setFlag(DomCreationOption::WithSemanticAnalysis);
-    withScopeAndScriptExpressions.setFlag(DomCreationOption::WithScriptExpressions);
+    QTest::addRow("default-tiger.qml")
+            << baseDir + u"/longQmlFile.qml"_s << DomCreationOption::Default;
+    QTest::addRow("default-deeplyNested.qml")
+            << baseDir + u"/deeplyNested.qml"_s << DomCreationOption::Default;
 
-    QTest::addRow("tiger.qml") << baseDir + u"/longQmlFile.qml"_s << noScope;
-    QTest::addRow("tiger.qml-with-scope") << baseDir + u"/longQmlFile.qml"_s << withScope;
-    QTest::addRow("tiger.qml-with-scope-and-scriptexpressions")
-            << baseDir + u"/longQmlFile.qml"_s << withScopeAndScriptExpressions;
+    QTest::addRow("extended-tiger.qml") << baseDir + u"/longQmlFile.qml"_s << Extended;
+    QTest::addRow("extended-deeplyNested.qml") << baseDir + u"/deeplyNested.qml"_s << Extended;
 
-    QTest::addRow("deeplyNested.qml") << baseDir + u"/deeplyNested.qml"_s << noScope;
-    QTest::addRow("deeplyNested.qml-with-scope") << baseDir + u"/deeplyNested.qml"_s << withScope;
-    QTest::addRow("deeplyNested.qml-with-scope-and-scriptexpressions")
-            << baseDir + u"/deeplyNested.qml"_s << withScopeAndScriptExpressions;
+    QTest::addRow("minimal-tiger.qml") << baseDir + u"/longQmlFile.qml"_s << Minimal;
+    QTest::addRow("minimal-deeplyNested.qml") << baseDir + u"/deeplyNested.qml"_s << Minimal;
 }
 
 void tst_qmldomconstruction::domConstructionTime()
 {
     using namespace QQmlJS::Dom;
     QFETCH(QString, fileName);
-    QFETCH(DomCreationOptions, withScope);
+    QFETCH(DomCreationOption, creationOption);
 
     const QStringList importPaths = {
         QLibraryInfo::path(QLibraryInfo::QmlImportsPath),
@@ -54,16 +49,20 @@ void tst_qmldomconstruction::domConstructionTime()
 
     DomItem tFile;
     QBENCHMARK {
-        DomItem env = DomEnvironment::create(
+        auto envPtr = DomEnvironment::create(
                 importPaths,
                 QQmlJS::Dom::DomEnvironment::Option::SingleThreaded
-                        | QQmlJS::Dom::DomEnvironment::Option::NoDependencies);
+                        | QQmlJS::Dom::DomEnvironment::Option::NoDependencies,
+                creationOption);
 
-        env.loadFile(
-                FileToLoad::fromFileSystem(env.ownerAs<DomEnvironment>(), fileName, withScope),
-                [&tFile](Path, const DomItem &, const DomItem &newIt) { tFile = newIt.fileObject(); },
-                LoadOption::DefaultLoad);
-        env.loadPendingDependencies();
+        envPtr->loadFile(FileToLoad::fromFileSystem(envPtr, fileName),
+                         [&tFile](Path, const DomItem &, const DomItem &newIt) {
+                             tFile = newIt.fileObject();
+                         });
+        envPtr->loadPendingDependencies();
+
+        // make sure the file was loaded
+        QCOMPARE(tFile.field(Fields::components).size(), 1);
     }
 }
 

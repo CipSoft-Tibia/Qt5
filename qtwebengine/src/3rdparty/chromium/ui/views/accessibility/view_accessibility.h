@@ -29,6 +29,7 @@ class AXPlatformNodeDelegate;
 
 namespace views {
 
+class AtomicViewAXTreeManager;
 class View;
 class ViewsAXTreeManager;
 class Widget;
@@ -59,6 +60,11 @@ class VIEWS_EXPORT ViewAccessibility {
   // associated View, taking any custom overrides into account
   // (see OverrideFocus, OverrideRole, etc. below).
   virtual void GetAccessibleNodeData(ui::AXNodeData* node_data) const;
+
+  // Made to be overridden on platforms that need the temporary
+  // `AtomicViewAXTreeManager` to enable more accessibility functionalities for
+  // Views. See crbug.com/1468416 for more info.
+  virtual void EnsureAtomicViewAXTreeManager() {}
 
   //
   // The following methods get or set accessibility attributes (in the owning
@@ -204,6 +210,9 @@ class VIEWS_EXPORT ViewAccessibility {
   void OverridePosInSet(int pos_in_set, int set_size);
   void ClearPosInSetOverride();
 
+  // Overrides the `ax::mojom::BoolAttribute::kSelected` attribute.
+  void OverrideIsSelected(bool selected);
+
   // Override the next or previous focused widget. Some assistive technologies,
   // such as screen readers, may utilize this information to transition focus
   // from the beginning or end of one widget to another when navigating by its
@@ -217,13 +226,28 @@ class VIEWS_EXPORT ViewAccessibility {
   void OverrideChildTreeID(ui::AXTreeID tree_id);
   ui::AXTreeID GetChildTreeID() const;
 
+  void OverrideCharacterOffsets(const std::vector<int32_t>& offsets);
+  void OverrideWordStarts(const std::vector<int32_t>& offsets);
+  void OverrideWordEnds(const std::vector<int32_t>& offsets);
+
+  void ClearTextOffsets();
+
   // Returns the accessibility object that represents the View whose
   // accessibility is managed by this instance. This may be an AXPlatformNode or
   // it may be a native accessible object implemented by another class.
   virtual gfx::NativeViewAccessible GetNativeObject() const;
 
   // Causes the screen reader to announce |text|. If the current user is not
-  // using a screen reader, has no effect.
+  // using a screen reader, has no effect. AnnouncePolitely() will speak
+  // the given string. AnnounceAlert() may make a stronger attempt to be
+  // noticeable; the screen reader may say something like "Alert: hello"
+  // instead of just "hello", and may interrupt any existing text being spoken.
+  // However, the screen reader may also treat the two calls the same.
+  // AnnounceText() is a deprecated alias for AnnounceAlert().
+  // TODO(crbug.com/1499368) - Migrate all callers of AnnounceText() to
+  // one of the other two methods.
+  virtual void AnnounceAlert(const std::u16string& text);
+  virtual void AnnouncePolitely(const std::u16string& text);
   virtual void AnnounceText(const std::u16string& text);
 
   virtual const ui::AXUniqueId& GetUniqueId() const;
@@ -231,6 +255,8 @@ class VIEWS_EXPORT ViewAccessibility {
   View* view() const { return view_; }
   AXVirtualView* FocusedVirtualChild() const { return focused_virtual_child_; }
   ViewsAXTreeManager* AXTreeManager() const;
+
+  virtual AtomicViewAXTreeManager* GetAtomicViewAXTreeManagerForTesting() const;
 
   //
   // Methods for managing virtual views.
@@ -276,6 +302,11 @@ class VIEWS_EXPORT ViewAccessibility {
   }
 
   bool propagate_focus_to_ancestor() { return propagate_focus_to_ancestor_; }
+
+  // If true, ensures an AtomicViewAXTreeManager is created for this view.
+  void set_needs_ax_tree_manager(bool value) { needs_ax_tree_manager_ = value; }
+
+  bool needs_ax_tree_manager() { return needs_ax_tree_manager_; }
 
   // Used for testing. Allows a test to watch accessibility events.
   const AccessibilityEventsCallback& accessibility_events_callback() const;
@@ -339,6 +370,10 @@ class VIEWS_EXPORT ViewAccessibility {
 
   // Whether to move accessibility focus to an ancestor.
   bool propagate_focus_to_ancestor_ = false;
+
+  // Whether we need to ensure an AtomicViewAXTreeManager is created for this
+  // View.
+  bool needs_ax_tree_manager_ = false;
 
 #if defined(USE_AURA) && !BUILDFLAG(IS_CHROMEOS_ASH)
   // Each instance of ViewAccessibility that's associated with a root View

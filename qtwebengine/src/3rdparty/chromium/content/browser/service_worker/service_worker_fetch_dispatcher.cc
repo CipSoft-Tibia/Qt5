@@ -23,7 +23,6 @@
 #include "content/browser/loader/navigation_url_loader_impl.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
 #include "content/browser/renderer_host/navigation_request.h"
-#include "content/browser/service_worker/embedded_worker_status.h"
 #include "content/browser/service_worker/service_worker_context_core.h"
 #include "content/browser/service_worker/service_worker_context_wrapper.h"
 #include "content/browser/service_worker/service_worker_metrics.h"
@@ -49,6 +48,7 @@
 #include "services/network/public/cpp/single_request_url_loader_factory.h"
 #include "services/network/public/cpp/wrapper_shared_url_loader_factory.h"
 #include "services/network/public/mojom/early_hints.mojom.h"
+#include "third_party/blink/public/common/service_worker/embedded_worker_status.h"
 #include "third_party/blink/public/common/service_worker/service_worker_status_code.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
 
@@ -60,7 +60,9 @@ namespace {
 // ServiceWorkerFetchDispatcher::ResponseCallback in a high priority task queue.
 BASE_FEATURE(kServiceWorkerFetchResponseCallbackUseHighPriority,
              "ServiceWorkerFetchResponseCallbackUseHighPriority",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+bool g_force_disable_high_priority_fetch_response_callback = false;
 
 void NotifyNavigationPreloadRequestSent(const network::ResourceRequest& request,
                                         const std::pair<int, int>& worker_id,
@@ -149,7 +151,7 @@ class DelegatingURLLoaderClient final : public network::mojom::URLLoaderClient {
   void OnReceiveResponse(
       network::mojom::URLResponseHeadPtr head,
       mojo::ScopedDataPipeConsumerHandle body,
-      absl::optional<mojo_base::BigBuffer> cached_metadata) override {
+      std::optional<mojo_base::BigBuffer> cached_metadata) override {
     if (devtools_enabled_) {
       // Make a deep copy of URLResponseHead before posting it to a task.
       auto deep_copied_response = head.Clone();
@@ -229,7 +231,7 @@ class DelegatingURLLoaderClient final : public network::mojom::URLLoaderClient {
   const GURL url_;
   const bool devtools_enabled_;
 
-  absl::optional<std::pair<int, int>> worker_id_;
+  std::optional<std::pair<int, int>> worker_id_;
   std::string devtools_request_id_;
   base::queue<base::OnceCallback<void(const WorkerId&, const std::string&)>>
       devtools_callbacks;
@@ -373,8 +375,9 @@ class ServiceWorkerFetchDispatcher::ResponseCallback
       : receiver_(
             this,
             std::move(receiver),
-            (base::FeatureList::IsEnabled(
-                 kServiceWorkerFetchResponseCallbackUseHighPriority)
+            (!g_force_disable_high_priority_fetch_response_callback &&
+                     base::FeatureList::IsEnabled(
+                         kServiceWorkerFetchResponseCallbackUseHighPriority)
                  ? GetUIThreadTaskRunner(
                        {BrowserTaskType::kServiceWorkerStorageControlResponse})
                  : base::SequencedTaskRunner::GetCurrentDefault())),
@@ -420,7 +423,7 @@ class ServiceWorkerFetchDispatcher::ResponseCallback
                    FetchEventResult::kGotResponse, std::move(timing));
   }
   void OnFallback(
-      absl::optional<network::DataElementChunkedDataPipe> request_body,
+      std::optional<network::DataElementChunkedDataPipe> request_body,
       blink::mojom::ServiceWorkerFetchEventTimingPtr timing) override {
     HandleResponse(fetch_dispatcher_, version_, fetch_event_id_,
                    blink::mojom::FetchAPIResponse::New(),
@@ -434,7 +437,7 @@ class ServiceWorkerFetchDispatcher::ResponseCallback
   static void HandleResponse(
       base::WeakPtr<ServiceWorkerFetchDispatcher> fetch_dispatcher,
       ServiceWorkerVersion* version,
-      absl::optional<int> fetch_event_id,
+      std::optional<int> fetch_event_id,
       blink::mojom::FetchAPIResponsePtr response,
       blink::mojom::ServiceWorkerStreamHandlePtr body_as_stream,
       FetchEventResult fetch_result,
@@ -457,7 +460,7 @@ class ServiceWorkerFetchDispatcher::ResponseCallback
   // Must be set to a non-nullopt value before the corresponding mojo
   // handle is passed to the other end (i.e. before any of OnResponse*
   // is called).
-  absl::optional<int> fetch_event_id_;
+  std::optional<int> fetch_event_id_;
 };
 
 // This class keeps the URL loader related assets alive while the FetchEvent is
@@ -578,7 +581,7 @@ void ServiceWorkerFetchDispatcher::StartWorker() {
     return;
   }
 
-  if (version_->running_status() == EmbeddedWorkerStatus::RUNNING) {
+  if (version_->running_status() == blink::EmbeddedWorkerStatus::kRunning) {
     DispatchFetchEvent();
     return;
   }
@@ -615,8 +618,8 @@ void ServiceWorkerFetchDispatcher::DidStartWorker(
 
 void ServiceWorkerFetchDispatcher::DispatchFetchEvent() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(EmbeddedWorkerStatus::STARTING == version_->running_status() ||
-         EmbeddedWorkerStatus::RUNNING == version_->running_status())
+  DCHECK(blink::EmbeddedWorkerStatus::kStarting == version_->running_status() ||
+         blink::EmbeddedWorkerStatus::kRunning == version_->running_status())
       << "Worker stopped too soon after it was started.";
   TRACE_EVENT_WITH_FLOW0("ServiceWorker",
                          "ServiceWorkerFetchDispatcher::DispatchFetchEvent",
@@ -895,6 +898,13 @@ void ServiceWorkerFetchDispatcher::OnFetchEventFinished(
   version->FinishRequest(
       event_finish_id,
       status != blink::mojom::ServiceWorkerEventStatus::ABORTED);
+}
+
+// static
+void ServiceWorkerFetchDispatcher::
+    ForceDisableHighPriorityFetchResponseCallbackForTesting(
+        bool force_disable) {
+  g_force_disable_high_priority_fetch_response_callback = force_disable;
 }
 
 }  // namespace content

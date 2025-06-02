@@ -38,22 +38,22 @@
     \dots
 
     The data is attached to the \c itemModel property of the ItemModelBarDataProxy inside the
-    series. For \c{valueRole}, specify the \c income field, as it contains the value you
-    want. Getting the years and months is a bit more complicated, since they are both found
-    in the same field. To extract those values, specify the \c timestamp field for both
-    \c rowRole and \c columnRole, and additionally specify a search pattern and a replace rule
+    series. For the \c{valueRole}, specify the \c income field as it contains the desired value.
+    Getting the years and months is a bit more complicated since they are both found
+    in the same field. To extract these values, specify the \c timestamp field for both
+    \c rowRole and \c columnRole. Additionally, specify a search pattern and a replace rule
     for those roles to extract the correct portion of the field contents for each role.
-    The search pattern is a normal JavaScript regular expression and the replace rule specifies
+    The search pattern is a normal JavaScript regular expression, and the replace rule specifies
     what the field content that matches the regular expression is replaced with.
     In this case, replace the entire field content with just the year or the month,
     which is the first captured substring for both rows and columns.
-    For more information about the replace functionality with regular expression, see
-    QString::replace(const QRegExp &rx, const QString &after) function documentation.
+    For more information about the replace functionality with regular expressions, see
+    the QString::replace(const QRegExp &rx, const QString &after) function documentation.
 
     The \c multiMatchBehavior property specifies what to do in case multiple item model items match
     the same row/column combination. In this case, add their values together.
     This property has no effect when showing values for each month, as there are no
-    duplicate months in our item model, but it becomes relevant later when you want to show
+    duplicate months in our item model. However, it becomes relevant later when you want to show
     the yearly totals.
 
     Then, add another series for the expenses:
@@ -61,10 +61,9 @@
     \snippet 3d/bars/qml/bars/main.qml 4
     \dots
 
-    The model contains expenses as negative values, but you want to show them as positive bars, so
-    that they can be easily compared to income bars. Use the \c valueRolePattern to remove the minus
-    sign to achieve this. No replacement string needs to be specified as the default replacement
-    is an empty string.
+    The model contains expenses as negative values, but they could be shown as positive bars for
+    easy comparison to income bars. Use the \c valueRolePattern to remove the minus sign, and no
+    replacement string needs to be specified as the default replacement is an empty string.
 
     Use the \c visible property of the series to hide the second series for now.
 
@@ -94,8 +93,8 @@
     \snippet 3d/bars/qml/bars/main.qml 1
 
     To show the yearly totals, combine the twelve months of each year into a single bar.
-    This is achieved by specifying a \c columnRolePattern that matches all model items. That way,
-    the data proxy will only have a single column. The cumulative \c multiMatchBehavior
+    This is achieved by specifying a \c columnRolePattern that matches all model items. In this way,
+    the series will only have a single column. The cumulative \c multiMatchBehavior
     specified earlier for the proxy becomes relevant now, causing the values of all twelve months
     of each year to be added up into a single bar.
 

@@ -4,6 +4,7 @@
 
 #include <surface-augmenter-client-protocol.h>
 #include <xdg-shell-client-protocol.h>
+#include "build/build_config.h"
 
 #include "base/memory/raw_ptr.h"
 #include "components/exo/shell_surface_util.h"
@@ -35,10 +36,9 @@ class ClientData : public test::TestClient::CustomData {
   std::unique_ptr<wl_surface> child_wl_surface;
   std::unique_ptr<wl_subsurface> child_wl_subsurface;
 
-  raw_ptr<augmented_surface, DanglingUntriaged | ExperimentalAsh>
-      augmented_surface = nullptr;
-  raw_ptr<augmented_sub_surface, DanglingUntriaged | ExperimentalAsh>
-      augmented_sub_surface = nullptr;
+  raw_ptr<augmented_surface, DanglingUntriaged> augmented_surface = nullptr;
+  raw_ptr<augmented_sub_surface, DanglingUntriaged> augmented_sub_surface =
+      nullptr;
 };
 
 using SurfaceAugmenterTest = test::WaylandServerTest;
@@ -145,8 +145,16 @@ class ShellClientData : public ClientData {
   std::unique_ptr<zaura_toplevel> aura_toplevel_;
 };
 
+// Flaky on Linux & ChromeOS MSan: https://crbug.com/1491391.
+#if (BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && defined(MEMORY_SANITIZER)
+#define MAYBE_SubSurfacesOfAugmentedSurfacesAreNotAttachedToLayerTree \
+  DISABLED_SubSurfacesOfAugmentedSurfacesAreNotAttachedToLayerTree
+#else
+#define MAYBE_SubSurfacesOfAugmentedSurfacesAreNotAttachedToLayerTree \
+  SubSurfacesOfAugmentedSurfacesAreNotAttachedToLayerTree
+#endif
 TEST_F(SurfaceAugmenterTest,
-       SubSurfacesOfAugmentedSurfacesAreNotAttachedToLayerTree) {
+       MAYBE_SubSurfacesOfAugmentedSurfacesAreNotAttachedToLayerTree) {
   //----------------------------------------------------------------
   //  Create a surface (top level).
   //----------------------------------------------------------------

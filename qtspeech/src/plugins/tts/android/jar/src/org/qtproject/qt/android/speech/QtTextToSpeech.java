@@ -22,19 +22,19 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Set;
 
-public class QtTextToSpeech
+class QtTextToSpeech
 {
     private static final String UTTERANCE_ID = "UtteranceId";
     private static final String SYNTHESIZE_ID = "SynthesizeId";
 
     // Native callback functions
-    native public void notifyError(long id, long reason);
-    native public void notifyReady(long id);
-    native public void notifySpeaking(long id);
-    native public void notifyRangeStart(long id, int start, int end, int frame);
-    native public void notifyBeginSynthesis(long id, int sampleRateInHz, int audioFormat, int channelCount);
-    native public void notifyAudioAvailable(long id, byte[] bytes);
-    native public void notifyEndSynthesis(long id);
+    native void notifyError(long id, long reason);
+    native void notifyReady(long id);
+    native void notifySpeaking(long id);
+    native void notifyRangeStart(long id, int start, int end, int frame);
+    native void notifyBeginSynthesis(long id, int sampleRateInHz, int audioFormat, int channelCount);
+    native void notifyAudioAvailable(long id, byte[] bytes);
+    native void notifyEndSynthesis(long id);
 
     private TextToSpeech mTts;
     private final long mId;
@@ -163,7 +163,7 @@ public class QtTextToSpeech
         }
     }
 
-    public void say(String text)
+    void say(String text)
     {
         Log.d(TAG, "TTS say(): " + text);
         int result = -1;
@@ -177,7 +177,7 @@ public class QtTextToSpeech
             notifyError(mId, 3); // QTextToSpeech::ErrorReason::Input
     }
 
-    public int synthesize(String text)
+    int synthesize(String text)
     {
         Log.d(TAG, "TTS synthesize(): " + text);
         int result = -1;
@@ -193,18 +193,18 @@ public class QtTextToSpeech
         return -1;
     }
 
-    public void stop()
+    void stop()
     {
         Log.d(TAG, "Stopping TTS");
         mTts.stop();
     }
 
-    public float pitch()
+    float pitch()
     {
         return mPitch;
     }
 
-    public int setPitch(float pitch)
+    int setPitch(float pitch)
     {
         if (Float.compare(pitch, mPitch) == 0)
             return TextToSpeech.ERROR;
@@ -218,12 +218,12 @@ public class QtTextToSpeech
         return success;
     }
 
-    public float rate()
+    float rate()
     {
         return mRate;
     }
 
-    public int setRate(float rate)
+    int setRate(float rate)
     {
         if (Float.compare(rate, mRate) == 0)
             return TextToSpeech.ERROR;
@@ -237,17 +237,17 @@ public class QtTextToSpeech
         return success;
     }
 
-    public void shutdown()
+    void shutdown()
     {
         mTts.shutdown();
     }
 
-    public float volume()
+    float volume()
     {
         return mVolume;
     }
 
-    public int setVolume(float volume)
+    int setVolume(float volume)
     {
         if (Float.compare(volume, mVolume) == 0)
             return TextToSpeech.ERROR;
@@ -256,13 +256,13 @@ public class QtTextToSpeech
         return TextToSpeech.SUCCESS;
     }
 
-    public boolean setLocale(Locale locale)
+    boolean setLocale(Locale locale)
     {
         int result = mTts.setLanguage(locale);
         return (result != TextToSpeech.LANG_NOT_SUPPORTED) && (result != TextToSpeech.LANG_MISSING_DATA);
     }
 
-    public List<Object> getAvailableVoices()
+    List<Object> getAvailableVoices()
     {
         if (mInitialized && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             //Log.d(TAG, "Voices: " + mTts.getVoices());
@@ -271,7 +271,7 @@ public class QtTextToSpeech
         return new ArrayList<Object>();
     }
 
-    public List<Locale> getAvailableLocales()
+    List<Locale> getAvailableLocales()
     {
         if (mInitialized && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             //Log.d(TAG, "Locales: " + mTts.getAvailableLanguages());
@@ -295,7 +295,7 @@ public class QtTextToSpeech
         return new ArrayList<Locale>();
     }
 
-    public Locale getLocale()
+    Locale getLocale()
     {
         //Log.d(TAG, "getLocale: " + mLocale);
         final Locale language = mTts.getLanguage();
@@ -312,7 +312,7 @@ public class QtTextToSpeech
         return new Locale(languageCode, countryCode);
     }
 
-    public Object getVoice()
+    Object getVoice()
     {
         if (mInitialized && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             return mTts.getVoice();
@@ -320,7 +320,7 @@ public class QtTextToSpeech
         return null;
     }
 
-    public boolean setVoice(String voiceName)
+    boolean setVoice(String voiceName)
     {
         if (!mInitialized)
             return false;

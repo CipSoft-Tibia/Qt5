@@ -36,7 +36,7 @@ class QPointerEvent;
 class QMouseEvent;
 class QQuickPointerHandler;
 
-class Q_QUICK_PRIVATE_EXPORT QQuickKeyEvent : public QObject
+class Q_QUICK_EXPORT QQuickKeyEvent : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(int key READ key CONSTANT FINAL)
@@ -48,7 +48,7 @@ class Q_QUICK_PRIVATE_EXPORT QQuickKeyEvent : public QObject
     Q_PROPERTY(bool accepted READ isAccepted WRITE setAccepted FINAL)
     QML_NAMED_ELEMENT(KeyEvent)
     QML_UNCREATABLE("Should only be used by signal handlers in the Keys attached property")
-    QML_ADDED_IN_VERSION(6, 7)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickKeyEvent()
@@ -103,7 +103,7 @@ private:
     bool m_autoRepeat = false;
 };
 
-class Q_QUICK_PRIVATE_EXPORT QQuickMouseEvent : public QObject
+class Q_QUICK_EXPORT QQuickMouseEvent : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(qreal x READ x CONSTANT FINAL)
@@ -120,7 +120,7 @@ class Q_QUICK_PRIVATE_EXPORT QQuickMouseEvent : public QObject
     Q_PROPERTY(int flags READ flags CONSTANT REVISION(2, 11) FINAL)
     QML_NAMED_ELEMENT(MouseEvent)
     QML_UNCREATABLE("Should only be used by mouse event signal handlers, for example in MouseArea")
-    QML_ADDED_IN_VERSION(6, 7)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickMouseEvent()
@@ -179,7 +179,7 @@ private:
 };
 
 #if QT_CONFIG(wheelevent)
-class Q_QUICK_PRIVATE_EXPORT QQuickWheelEvent : public QObject
+class Q_QUICK_EXPORT QQuickWheelEvent : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(const QPointingDevice *device READ pointingDevice CONSTANT FINAL)
@@ -194,7 +194,7 @@ class Q_QUICK_PRIVATE_EXPORT QQuickWheelEvent : public QObject
     Q_PROPERTY(bool accepted READ isAccepted WRITE setAccepted FINAL)
     QML_NAMED_ELEMENT(WheelEvent)
     QML_UNCREATABLE("Should only be used by wheel event signal handlers, for example in MouseArea")
-    QML_ADDED_IN_VERSION(6, 7)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickWheelEvent() = default;
@@ -239,13 +239,13 @@ private:
 };
 #endif
 
-class Q_QUICK_PRIVATE_EXPORT QQuickCloseEvent : public QObject
+class Q_QUICK_EXPORT QQuickCloseEvent : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool accepted READ isAccepted WRITE setAccepted FINAL)
     QML_NAMED_ELEMENT(CloseEvent)
     QML_UNCREATABLE("Should only be used by Window's closing signal")
-    QML_ADDED_IN_VERSION(6, 7)
+    QML_ADDED_IN_VERSION(2, 0)
 
 public:
     QQuickCloseEvent() {}

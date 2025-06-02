@@ -17,20 +17,29 @@ qt_internal_add_plugin(QWaylandXdgShellIntegrationPlugin
         qwaylandxdgshell.cpp qwaylandxdgshell_p.h
         qwaylandxdgshellintegration.cpp qwaylandxdgshellintegration_p.h
         qwaylandxdgexporterv2.cpp qwaylandxdgexporterv2_p.h
+        qwaylandxdgdialogv1.cpp qwaylandxdgdialogv1_p.h
     LIBRARIES
         Qt::Core
         Qt::Gui
         Qt::GuiPrivate
         Qt::WaylandClientPrivate
         Wayland::Client
+    QT_LICENSE_ID QT_COMMERCIAL_OR_LGPL3
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../3rdparty/protocol/xdg-decoration
+        ../../../3rdparty/protocol/xdg-shell
+        ../../../3rdparty/protocol/xdg-activation
+        ../../../3rdparty/protocol/xdg-foreign
+        ../../../3rdparty/protocol/xdg-dialog
 )
 
 qt6_generate_wayland_protocol_client_sources(QWaylandXdgShellIntegrationPlugin
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-decoration-unstable-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-shell.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-activation-v1.xml
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-foreign-unstable-v2.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-decoration/xdg-decoration-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-shell/xdg-shell.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-activation/xdg-activation-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-foreign/xdg-foreign-unstable-v2.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/xdg-dialog/xdg-dialog-v1.xml
 )
 
 #### Keys ignored in scope 1:.:.:xdg-shell.pro:<TRUE>:

@@ -31,7 +31,6 @@ qt_internal_add_module(Coap
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
         Qt::Network
-    GENERATE_CPP_EXPORTS
 )
 qt_internal_add_docs(Coap
     doc/qtcoap.qdocconf

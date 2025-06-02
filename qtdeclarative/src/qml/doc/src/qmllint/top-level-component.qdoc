@@ -6,14 +6,14 @@
 \ingroup qmllint-warnings-and-errors
 
 \title Top level component
-\brief Root QML type is a component
+\brief [top-level-component] Root QML type is a component
 
 \qmllintwarningcategory top-level-component
 
 \section1 QML top level type can't be \e Component
 
 \section2 What happened?
-You used the \l{qml-qtqml-component.html}{Component} type as top level type for your
+You used the \l [QML] {Component} type as top level type for your
 QML file.
 
 \section2 Why is this bad?

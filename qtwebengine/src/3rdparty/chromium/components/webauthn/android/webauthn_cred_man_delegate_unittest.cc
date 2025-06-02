@@ -30,13 +30,15 @@ TEST_F(WebAuthnCredManDelegateTest, ShowCredManUiCallbackNotRunAfterCleanup) {
   delegate()->OnCredManConditionalRequestPending(true, closure.Get());
 
   EXPECT_CALL(closure, Run(false)).Times(1);
-  delegate()->TriggerCredManUi();
+  delegate()->TriggerCredManUi(
+      WebAuthnCredManDelegate::RequestPasswords(false));
 
   EXPECT_CALL(closure, Run(false)).Times(0);
   delegate()->CleanUpConditionalRequest();
 
   EXPECT_CALL(closure, Run(false)).Times(0);
-  delegate()->TriggerCredManUi();
+  delegate()->TriggerCredManUi(
+      WebAuthnCredManDelegate::RequestPasswords(false));
 }
 
 TEST_F(WebAuthnCredManDelegateTest, RequestCompletionCallbackRun) {
@@ -55,6 +57,16 @@ TEST_F(WebAuthnCredManDelegateTest, RequestCompletionCallbackRun) {
   delegate()->CleanUpConditionalRequest();
   delegate()->OnCredManConditionalRequestPending(true, mock_full_request.Get());
   delegate()->OnCredManUiClosed(true);
+}
+
+TEST_F(WebAuthnCredManDelegateTest,
+       IfNoFillingCallbackDoesNotRequestPasswords) {
+  base::MockCallback<base::RepeatingCallback<void(bool)>> mock_cred_man_request;
+  delegate()->OnCredManConditionalRequestPending(true,
+                                                 mock_cred_man_request.Get());
+
+  EXPECT_CALL(mock_cred_man_request, Run(false)).Times(1);
+  delegate()->TriggerCredManUi(WebAuthnCredManDelegate::RequestPasswords(true));
 }
 
 }  // namespace webauthn

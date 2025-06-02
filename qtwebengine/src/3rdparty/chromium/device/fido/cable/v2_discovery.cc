@@ -19,8 +19,7 @@
 #include "device/fido/fido_parsing_utils.h"
 #include "third_party/boringssl/src/include/openssl/aes.h"
 
-namespace device {
-namespace cablev2 {
+namespace device::cablev2 {
 
 namespace {
 
@@ -117,9 +116,9 @@ void Discovery::OnBLEAdvertSeen(base::span<const uint8_t, kAdvertSize> advert) {
     return;
   }
 
-  if (base::FeatureList::IsEnabled(device::kWebAuthnNewHybridUI) &&
-      device_committed_) {
+  if (device_committed_) {
     // A device has already been accepted. Ignore other adverts.
+    return;
   }
 
   if (base::Contains(observed_adverts_, advert_array)) {
@@ -249,5 +248,4 @@ std::vector<Discovery::UnpairedKeys> Discovery::KeysFromExtension(
   return ret;
 }
 
-}  // namespace cablev2
-}  // namespace device
+}  // namespace device::cablev2

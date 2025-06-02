@@ -10,13 +10,14 @@
 qt_internal_add_plugin(QWaylandIntegrationPlugin
     OUTPUT_NAME qwayland-generic
     PLUGIN_TYPE platforms
-    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES wayland # special case
+    DEFAULT_IF "wayland" IN_LIST QT_QPA_PLATFORMS
     SOURCES
         main.cpp
     LIBRARIES
         Qt::Core
         Qt::Gui
         Qt::WaylandClientPrivate
+    QT_LICENSE_ID QT_COMMERCIAL_OR_LGPL3
 )
 
 #### Keys ignored in scope 1:.:.:qwayland-generic.pro:<TRUE>:

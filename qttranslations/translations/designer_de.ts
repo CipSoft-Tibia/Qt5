@@ -632,8 +632,12 @@
 <context>
     <name>Designer</name>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
+    </message>
+    <message>
+        <source>%1 does not exist.</source>
+        <translation>%1 existiert nicht.</translation>
     </message>
     <message>
         <source>Unable to launch %1: %2</source>
@@ -1162,8 +1166,8 @@
         <translation>Formular</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1463,8 +1467,8 @@ This indicates an inconsistency in the ui-file.</source>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>&amp;Hilfe zum Qt Designer</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>&amp;Hilfe zum Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1475,8 +1479,8 @@ This indicates an inconsistency in the ui-file.</source>
         <translation>Plugins</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>Über Qt Designer</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>Über Qt Widgets Designer</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1533,8 +1537,8 @@ Möchten Sie einen anderen Namen eingeben oder ein neues Formular erzeugen?</tra
         <translation>&amp;Neues Formular</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -1549,16 +1553,8 @@ Möchten Sie einen anderen Namen eingeben oder ein neues Formular erzeugen?</tra
         <translation>Formular speichern</translation>
     </message>
     <message>
-        <source>The backup file %1 could not be written.</source>
-        <translation>Hintergrundsicherung: Die Datei %1 konnte nicht geschrieben werden.</translation>
-    </message>
-    <message>
         <source>The backup directory %1 could not be created.</source>
         <translation>Hintergrundsicherung: Das Verzeichnis %1 konnte nicht angelegt werden.</translation>
-    </message>
-    <message>
-        <source>The temporary backup directory %1 could not be created.</source>
-        <translation>Hintergrundsicherung: Das temporäre Verzeichnis %1 konnte nicht angelegt werden.</translation>
     </message>
     <message>
         <source>Please close all forms to enable the loading of additional fonts.</source>
@@ -1601,6 +1597,10 @@ Möchten Sie es noch einmal versuchen oder eine andere Datei auswählen?</transl
 Reason: %2</source>
         <translation>Die Datei %1 konnte nicht geschrieben werden.
 Grund: %2</translation>
+    </message>
+    <message>
+        <source>The backup file %1 could not be written: %2</source>
+        <translation>Die Backup-Datei %1 konnte nicht geschrieben werden: %2</translation>
     </message>
     <message>
         <source>Image files (*.%1)</source>
@@ -3333,16 +3333,16 @@ Möchten Sie sie überschreiben?</translation>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Version %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</translation>
     </message>
     <message>
-        <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
-        <translation>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</translation>
+        <source>%1&lt;br/&gt;Copyright (C) The Qt Company Ltd. and other contributors.</source>
+        <translation>%1&lt;br/&gt;Copyright (C) The Qt Company Ltd. and other contributors.</translation>
     </message>
 </context>
 <context>
@@ -4856,12 +4856,12 @@ Please select another name.</source>
         <translation>Fehlgeschlagene Plugins</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer kann keine Plugins finden</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer kann keine Plugins finden</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer hat die folgenden Plugins gefunden</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer hat die folgenden Plugins gefunden</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

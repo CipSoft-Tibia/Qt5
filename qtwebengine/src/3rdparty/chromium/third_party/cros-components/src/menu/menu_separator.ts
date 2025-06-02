@@ -10,6 +10,7 @@ import {css, CSSResultGroup, html, LitElement} from 'lit';
  * A cros compliant separator component for use in cros-menu.
  */
 export class MenuSeparator extends LitElement {
+  /** @nocollapse */
   static override styles: CSSResultGroup = css`
     hr {
       background-color: var(--cros-sys-separator);
@@ -17,9 +18,10 @@ export class MenuSeparator extends LitElement {
       border: 0;
     }
   `;
+
   override render() {
     return html`
-      <hr role="separator"></hr>
+      <hr role="separator"/>
     `;
   }
 }

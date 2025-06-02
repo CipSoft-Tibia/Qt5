@@ -65,12 +65,23 @@
 
 .issue.selected,
 .issue.expanded.selected {
-  background-color: var(--sys-color-neutral-container);
+  background-color: var(--sys-color-surface2);
+
+  &:focus {
+    background-color: var(--sys-color-tonal-container);
+  }
 }
 
-.issue.selected:focus,
-.issue.expanded.selected:focus {
-  background-color: var(--sys-color-tonal-container);
+.tree-outline li:not(.selected):hover .selection {
+  background-color: unset;
+}
+
+.tree-outline li.issue:not(.expanded):not(.selected):hover .selection {
+  background-color: var(--sys-color-state-hover-on-subtle);
+}
+
+.tree-outline li.issue.expanded:not(.selected):hover {
+  background-color: var(--sys-color-state-hover-on-subtle);
 }
 
 .unhide-all-issues-button {
@@ -104,7 +115,8 @@ p {
   visibility: hidden;
 }
 
-.header:hover devtools-hide-issues-menu {
+.header:hover devtools-hide-issues-menu,
+.issue.selected devtools-hide-issues-menu {
   visibility: visible;
 }
 
@@ -114,8 +126,8 @@ p {
 
 .title {
   flex: 1;
-  font-size: 14px;
-  color: var(--color-text-primary);
+  font-size: 12px;
+  color: var(--sys-color-on-surface);
   font-weight: normal;
   user-select: text;
   padding-top: 2px;
@@ -126,7 +138,7 @@ p {
 }
 
 .body.children {
-  border-bottom: 1px solid var(--color-details-hairline-light);
+  border-bottom: 1px solid var(--sys-color-divider);
   padding: 6px 0;
   position: relative;
   padding-left: calc(var(--issue-indent) + 43px);
@@ -169,9 +181,9 @@ devtools-icon.leading-issue-icon {
 }
 
 .message {
-  line-height: 20px;
-  font-size: 14px;
-  color: var(--color-text-secondary);
+  line-height: 18px;
+  font-size: 12px;
+  color: var(--sys-color-token-subtle);
   margin-bottom: 4px;
   user-select: text;
 }
@@ -185,11 +197,12 @@ devtools-icon.leading-issue-icon {
 }
 
 .message code {
-  color: var(--color-text-primary);
+  color: var(--sys-color-on-surface);
+  padding: 0 2px;
   font-size: 12px;
   user-select: text;
   cursor: text;
-  background: var(--color-background-elevation-1);
+  background: var(--sys-color-surface2);
 }
 
 .separator::before {
@@ -199,8 +212,8 @@ devtools-icon.leading-issue-icon {
 }
 
 .link {
-  font-size: 14px;
-  color: var(--color-link);
+  font-size: 12px;
+  color: var(--sys-color-primary);
 }
 
 .link-wrapper {
@@ -215,7 +228,7 @@ devtools-icon.leading-issue-icon {
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--color-text-primary);
+  color: var(--sys-color-on-surface);
   display: inline-block;
 }
 
@@ -234,12 +247,12 @@ devtools-icon.leading-issue-icon {
 /* We inherit all the styles from treeoutline, but these are simple text <li>, so we override some styles */
 .link-list li::before {
   content: none;
-  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .resolutions-list li::before {
   content: "→";
-  -webkit-mask-image: none;
+  mask-image: none;
   padding-right: 5px;
   position: relative;
   top: -1px;
@@ -269,61 +282,61 @@ ul > li.plain-enum::before {
 }
 
 .affected-resource-label {
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--color-text-primary);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--sys-color-on-surface);
   position: relative;
   cursor: pointer;
 }
 
 .affected-resource-cookie {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   border: 0;
   border-collapse: collapse;
 }
 
 .affected-resource-element {
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--color-link);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--sys-color-primary);
   border: 0;
   border-collapse: collapse;
 }
 
 .affected-resource-row {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   border: 0;
   border-collapse: collapse;
   vertical-align: top;
 }
 
 .affected-resource-mixed-content {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   border: 0;
   border-collapse: collapse;
 }
 
 .affected-resource-heavy-ad {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   border: 0;
   border-collapse: collapse;
 }
 
 .affected-resource-request {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   border: 0;
   border-collapse: collapse;
 }
 
 .affected-resource-source {
-  font-size: 14px;
-  line-height: 20px;
-  color: var(--color-link);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--sys-color-primary);
   border: 0;
   border-collapse: collapse;
 }
@@ -335,7 +348,7 @@ ul > li.plain-enum::before {
 
 .affected-resource-header {
   font-size: 12px;
-  color: var(--color-text-primary);
+  color: var(--sys-color-on-surface);
   padding-left: 2px;
 }
 
@@ -353,7 +366,7 @@ ul > li.plain-enum::before {
 }
 
 .affected-resource-cookie-info {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   padding: 2px;
   text-align: right;
 }
@@ -363,29 +376,29 @@ ul > li.plain-enum::before {
 }
 
 .affected-resource-mixed-content-info {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   padding: 2px;
 }
 
 .affected-resource-heavy-ad-info {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   padding: 2px;
 }
 
 .affected-resource-heavy-ad-info-frame {
   display: flex;
   align-items: center;
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   padding: 2px;
 }
 
 .affected-resource-cell {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   padding: 2px;
 }
 
 .affected-resource-cell.link {
-  color: var(--color-link);
+  color: var(--sys-color-primary);
 }
 
 .affected-resource-cell span.icon {
@@ -417,14 +430,14 @@ ul > li.plain-enum::before {
 }
 
 .affected-resource-directive {
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
   border: 0;
   border-collapse: collapse;
 }
 
 .affected-resource-directive-info {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   padding: 2px;
   text-align: left;
 }

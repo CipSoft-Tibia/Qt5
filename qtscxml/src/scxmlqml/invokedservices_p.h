@@ -26,7 +26,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_SCXMLQML_PRIVATE_EXPORT QScxmlInvokedServices : public QObject, public QQmlParserStatus
+class Q_SCXMLQML_EXPORT QScxmlInvokedServices : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     Q_PROPERTY(QScxmlStateMachine *stateMachine READ stateMachine WRITE setStateMachine

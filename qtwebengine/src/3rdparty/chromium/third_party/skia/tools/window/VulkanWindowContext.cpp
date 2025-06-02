@@ -12,9 +12,12 @@
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/GrDirectContext.h"
 #include "include/gpu/ganesh/SkSurfaceGanesh.h"
+#include "include/gpu/ganesh/vk/GrVkBackendSemaphore.h"
 #include "include/gpu/ganesh/vk/GrVkBackendSurface.h"
+#include "include/gpu/ganesh/vk/GrVkDirectContext.h"
 #include "include/gpu/vk/GrVkTypes.h"
 #include "include/gpu/vk/VulkanExtensions.h"
+#include "include/gpu/vk/VulkanMutableTextureState.h"
 #include "src/base/SkAutoMalloc.h"
 #include "src/gpu/ganesh/vk/GrVkImage.h"
 #include "src/gpu/ganesh/vk/GrVkUtil.h"
@@ -37,8 +40,8 @@ VulkanWindowContext::VulkanWindowContext(const DisplayParams& params,
                                          CanPresentFn canPresent,
                                          PFN_vkGetInstanceProcAddr instProc)
     : WindowContext(params)
-    , fCreateVkSurfaceFn(createVkSurface)
-    , fCanPresentFn(canPresent)
+    , fCreateVkSurfaceFn(std::move(createVkSurface))
+    , fCanPresentFn(std::move(canPresent))
     , fSurface(VK_NULL_HANDLE)
     , fSwapchain(VK_NULL_HANDLE)
     , fImages(nullptr)
@@ -113,7 +116,7 @@ void VulkanWindowContext::initializeContext() {
     GET_DEV_PROC(QueuePresentKHR);
     GET_DEV_PROC(GetDeviceQueue);
 
-    fContext = GrDirectContext::MakeVulkan(backendContext, fDisplayParams.fGrContextOptions);
+    fContext = GrDirectContexts::MakeVulkan(backendContext, fDisplayParams.fGrContextOptions);
 
     fSurface = fCreateVkSurfaceFn(fInstance);
     if (VK_NULL_HANDLE == fSurface) {
@@ -536,8 +539,7 @@ sk_sp<SkSurface> VulkanWindowContext::getBackbufferSurface() {
 
     SkSurface* surface = fSurfaces[backbuffer->fImageIndex].get();
 
-    GrBackendSemaphore beSemaphore;
-    beSemaphore.initVulkan(semaphore);
+    GrBackendSemaphore beSemaphore = GrBackendSemaphores::MakeVk(semaphore);
 
     surface->wait(1, &beSemaphore);
 
@@ -549,13 +551,13 @@ void VulkanWindowContext::onSwapBuffers() {
     BackbufferInfo* backbuffer = fBackbuffers + fCurrentBackbufferIndex;
     SkSurface* surface = fSurfaces[backbuffer->fImageIndex].get();
 
-    GrBackendSemaphore beSemaphore;
-    beSemaphore.initVulkan(backbuffer->fRenderSemaphore);
+    GrBackendSemaphore beSemaphore = GrBackendSemaphores::MakeVk(backbuffer->fRenderSemaphore);
 
     GrFlushInfo info;
     info.fNumSemaphores = 1;
     info.fSignalSemaphores = &beSemaphore;
-    skgpu::MutableTextureState presentState(VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, fPresentQueueIndex);
+    skgpu::MutableTextureState presentState = skgpu::MutableTextureStates::MakeVulkan(
+            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, fPresentQueueIndex);
     auto dContext = surface->recordingContext()->asDirectContext();
     dContext->flush(surface, info, &presentState);
     dContext->submit();

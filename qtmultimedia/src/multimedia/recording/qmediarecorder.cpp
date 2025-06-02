@@ -34,14 +34,35 @@ QT_BEGIN_NAMESPACE
 
     \brief The QMediaRecorder class is used for encoding and recording a capture session.
 
-    The QMediaRecorder class is a class for encoding and recording media generated in a
-    QMediaCaptureSession.
+    Use the QMediaRecorder class to encode and record media generated in
+    \l QMediaCaptureSession. You can generate:
+    \list
+        \li Audio. Use \l QAudioInput or \l QAudioBufferInput.
+        \li Video. Use \l QCamera, \l QScreenCapture, \l QWindowCapture, or \l QVideoFrameInput.
+    \endlist
+
+    To record media, connect a generator to a corresponding media capture session.
+
+    Performance of video encoding and recording is limited by the hardware,
+    the operating system, the installed graphic drivers, and the input video format.
+    If \c QCamera, \c QScreenCapture, or \c QWindowCapture produces video frames
+    faster than \c QMediaRecorder can encode and record them, the recorder
+    may drop some frames. This is likely to occur if the input frame resolution
+    is high, 4K for example, and hardware-accelerated encoding is unavailable.
+    If you generate input video via \c QVideoFrameInput, the method
+    \c QVideoFrameInput::sendVideoFrame will do nothing and return \c false
+    whenever this limitation is reached and the internal frame queue is full.
+    Rely on the signal \c QVideoFrameInput::readyToSendVideoFrame to know
+    when the recorder is ready to receive new frames again.
+    If you cannot change the rate of video frame generation and dropping frames
+    is undesirable, we recommend implementing your own frame queue on top of
+    \c QVideoFrameInput, considering the memory limitations of the hardware.
 
     \snippet multimedia-snippets/media.cpp Media recorder
 */
 /*!
     \qmltype MediaRecorder
-    \instantiates QMediaRecorder
+    \nativetype QMediaRecorder
     \brief For encoding and recording media generated in a CaptureSession.
 
     \inqmlmodule QtMultimedia
@@ -49,8 +70,18 @@ QT_BEGIN_NAMESPACE
     \ingroup multimedia_audio_qml
     \ingroup multimedia_video_qml
 
-    The MediaRecorder element can be used within a CaptureSession to record and encode audio and
-    video captured from a microphone and camera
+    Use the MediaRecorder element within a CaptureSession to encode and record:
+    \list
+        \li Audio captured from an audio interface (like microphone or line input).
+        \li Video captured from camera, screen, or an application window.
+    \endlist
+
+    Performance of video encoding and recording is limited by the hardware,
+    the operating system, the installed graphic drivers, and the input video format.
+    If \c Camera, \c ScreenCapture, or \c WindowCapture produces video frames
+    faster than \c MediaRecorder can encode and record them, the recorder
+    may drop some frames. This is likely to occur if the input frame resolution
+    is high, 4K for example, and hardware-accelerated encoding is unavailable.
 
     \since 6.2
     The code below shows a simple capture session containing a MediaRecorder using the default
@@ -86,7 +117,7 @@ QT_BEGIN_NAMESPACE
     }
 \endqml
 
-    \sa CaptureSession, Camera, AudioInput, ImageCapture
+    \sa CaptureSession, Camera, ScreenCapture, WindowCapture, AudioInput, ImageCapture
 */
 QMediaRecorderPrivate::QMediaRecorderPrivate()
 {
@@ -101,7 +132,7 @@ QString QMediaRecorderPrivate::msgFailedStartRecording()
 }
 
 /*!
-    Constructs a media recorder which records the media produced by a microphone and camera.
+    Constructs a media recorder.
     The media recorder is a child of \a{parent}.
 */
 
@@ -157,45 +188,83 @@ void QMediaRecorder::setCaptureSession(QMediaCaptureSession *session)
     d->captureSession = session;
 }
 /*!
-    \qmlproperty QUrl QtMultimedia::MediaRecorder::outputLocation
+    \qmlproperty url QtMultimedia::MediaRecorder::outputLocation
     \brief The destination location of media content.
 
     Setting the location can fail, for example when the service supports only
     local file system locations but a network URL was passed. If the operation
-    fails an errorOccured() signal is emitted.
+    fails an \l errorOccured() signal is emitted.
 
-    The location can be relative or empty. If empty the recorder uses the
-    system specific place and file naming scheme.
+    The output location can be empty, a directory, or a file. The path to a
+    directory or file can be relative or absolute. The \l record() method
+    generates the actual location according to the specified output location and
+    system-specific settings. Refer to the \l actualLocation property description
+    for details.
 
-   \sa errorOccurred()
+   \sa actualLocation, errorOccurred()
 */
 
 /*!
     \property QMediaRecorder::outputLocation
-    \brief the destination location of media content.
+    \brief The destination location of media content.
 
     Setting the location can fail, for example when the service supports only
     local file system locations but a network URL was passed. If the operation
-    fails an errorOccured() signal is emitted.
+    fails, the \l errorOccured() signal is emitted.
 
-    The output location can be relative or empty; in the latter case the recorder
-    uses the system specific place and file naming scheme.
+    The output location is ignored if a writable \l outputDevice
+    has been assigned to the recorder.
+    This behavior may change in the future, so we recommend setting only one output,
+    either \c outputLocation or \c outputDevice.
+
+    The output location can be empty, a directory, or a file. The path to a
+    directory or file can be relative or absolute. The \l record() method
+    generates the actual location according to the specified output location and
+    system-specific settings. Refer to the \l actualLocation property description
+    for details.
+
+    \sa actualLocation, outputDevice()
 */
 
 /*!
-    \qmlproperty QUrl QtMultimedia::MediaRecorder::actualLocation
+    \qmlproperty url QtMultimedia::MediaRecorder::actualLocation
     \brief The actual location of the last media content.
 
-    The actual location is usually available after recording starts,
-    and reset when new location is set or new recording starts.
+    The actual location is reset when a new \l outputLocation is assigned.
+    When \l record() is invoked, the recorder generates the actual location
+    basing on the following rules.
+    \list
+        \li If \c outputLocation is empty, a directory, or a file
+            without an extension, the recorder generates the appropriate extension
+            based on the selected media format and system MIME types.
+        \li If \c outputLocation is a directory, the recorder generates a new file
+            name within it.
+        \li If \c outputLocation is empty, the recorder generates a new file name in
+            the system-specific directory for audio or video.
+        \li The recorder generates the actual location before
+            emitting \c recorderStateChanged(RecordingState).
+    \endlist
 */
 
 /*!
     \property QMediaRecorder::actualLocation
     \brief The actual location of the last media content.
 
-    The actual location is usually available after recording starts,
-    and reset when new location is set or new recording starts.
+    The actual location is reset when a new \l outputLocation
+    or a non-null \l outputDevice is assigned.
+    When \l record() is invoked and \c outputDevice is \c null or not writable,
+    the recorder generates the actual location basing on the following rules.
+    \list
+        \li If \c outputLocation is empty, a directory, or a file
+            without an extension, the recorder generates the appropriate extension
+            based on the selected media format and system MIME types.
+        \li If \c outputLocation is a directory, the recorder generates a new file
+            name within it.
+        \li If \c outputLocation is empty, the recorder generates a new file name in
+            the system-specific directory for audio or video.
+        \li The recorder generates the actual location before
+            emitting \c recorderStateChanged(RecordingState).
+    \endlist
 */
 
 /*!
@@ -221,7 +290,55 @@ void QMediaRecorder::setOutputLocation(const QUrl &location)
     d->control->setOutputLocation(location);
     d->control->clearActualLocation();
     if (!location.isEmpty() && !d->control->isLocationWritable(location))
-            emit errorOccurred(QMediaRecorder::LocationNotWritable, tr("Output location not writable"));
+        emit errorOccurred(QMediaRecorder::LocationNotWritable,
+                           QStringLiteral("Output location not writable"));
+}
+
+/*!
+    Set the output IO device for media content.
+
+    The \a device must have been opened in the \l{QIODevice::WriteOnly}{WriteOnly} or
+    \l{QIODevice::ReadWrite}{ReadWrite} modes before the recording starts.
+
+    The media recorder doesn't take ownership of the specified \a device.
+    If the recording has been started, the device must be kept alive and open until
+    the signal \c recorderStateChanged(StoppedState) is emitted.
+
+    This method resets \l actualLocation immediately unless
+    the specified \a device is \c null.
+
+    If a writable output device is assigned to the recorder, \l outputLocation
+    is ignored, and \l actualLocation is not generated when recording starts.
+    This behavior may change in the future, so we recommend setting only
+    one output, either \c outputLocation or \c outputDevice.
+
+    \c QMediaRecorder::setOutputDevice is only supported with the FFmpeg backend.
+
+    \sa outputDevice(), outputLocation
+*/
+void QMediaRecorder::setOutputDevice(QIODevice *device)
+{
+    Q_D(QMediaRecorder);
+    if (!d->control) {
+        emit errorOccurred(QMediaRecorder::ResourceError, d->initErrorMessage);
+        return;
+    }
+
+    d->control->setOutputDevice(device);
+
+    if (device)
+        d->control->clearActualLocation();
+}
+
+/*!
+    Returns the output IO device for media content.
+
+    \sa setOutputDevice()
+*/
+QIODevice *QMediaRecorder::outputDevice() const
+{
+    Q_D(const QMediaRecorder);
+    return d->control ? d->control->outputDevice() : nullptr;
 }
 
 QUrl QMediaRecorder::actualLocation() const
@@ -291,11 +408,15 @@ qint64 QMediaRecorder::duration() const
 {
     return d_func()->control ? d_func()->control->duration() : 0;
 }
+
+#if QT_DEPRECATED_SINCE(6, 9)
 /*!
     \fn void QMediaRecorder::encoderSettingsChanged()
 
     Signals when the encoder settings change.
 */
+#endif
+
 /*!
     \qmlmethod QtMultimedia::MediaRecorder::record()
     \brief Starts recording.
@@ -306,6 +427,8 @@ qint64 QMediaRecorder::duration() const
     If recording fails, the error() signal is emitted with recorder state being
     reset back to \c{QMediaRecorder.StoppedState}.
 
+    This method updates \l actualLocation according to its generation rules.
+
     \note On mobile devices, recording will happen in the orientation the
     device had when calling record and is locked for the duration of the recording.
     To avoid artifacts on the user interface, we recommend to keep the user interface
@@ -314,13 +437,15 @@ qint64 QMediaRecorder::duration() const
     is finished.
 */
 /*!
-    Start recording.
+    Starts recording.
 
     While the recorder state is changed immediately to
     c\{QMediaRecorder::RecordingState}, recording may start asynchronously.
 
     If recording fails error() signal is emitted with recorder state being
     reset back to \c{QMediaRecorder::StoppedState}.
+
+    This method updates \l actualLocation according to its generation rules.
 
     \note On mobile devices, recording will happen in the orientation the
     device had when calling record and is locked for the duration of the recording.
@@ -352,11 +477,40 @@ void QMediaRecorder::record()
         auto settings = d->encoderSettings;
         d->control->record(d->encoderSettings);
 
+#if QT_DEPRECATED_SINCE(6, 9)
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_DEPRECATED
         if (settings != d->encoderSettings)
             emit encoderSettingsChanged();
+QT_WARNING_POP
+#endif
 
         if (oldMediaFormat != d->encoderSettings.mediaFormat())
             emit mediaFormatChanged();
+
+        if (settings.encodingMode() != d->encoderSettings.encodingMode())
+            emit encodingModeChanged();
+
+        if (settings.quality() != d->encoderSettings.quality())
+            emit qualityChanged();
+
+        if (settings.videoResolution() != d->encoderSettings.videoResolution())
+            emit videoResolutionChanged();
+
+        if (!qFuzzyCompare(settings.videoFrameRate(), d->encoderSettings.videoFrameRate()))
+            emit videoFrameRateChanged();
+
+        if (settings.videoBitRate() != d->encoderSettings.videoBitRate())
+            emit videoBitRateChanged();
+
+        if (settings.audioBitRate() != d->encoderSettings.audioBitRate())
+            emit audioBitRateChanged();
+
+        if (settings.audioChannelCount() != d->encoderSettings.audioChannelCount())
+            emit audioChannelCountChanged();
+
+        if (settings.audioSampleRate() != d->encoderSettings.audioSampleRate())
+            emit audioSampleRateChanged();
     }
 }
 /*!
@@ -544,10 +698,52 @@ void QMediaRecorder::addMetaData(const QMediaMetaData &metaData)
 {
     auto data = this->metaData();
     // merge data
-    for (const auto &k : metaData.keys())
-        data.insert(k, metaData.value(k));
+    for (auto &&[key, value] : metaData.asKeyValueRange())
+        data.insert(key, value);
     setMetaData(data);
 }
+
+/*!
+    \property QMediaRecorder::autoStop
+
+    This property controls whether the media recorder stops automatically when
+    all media inputs have reported the end of the stream or have been deactivated.
+
+    The end of the stream is reported by sending an empty media frame,
+    which you can send explicitly via \l QVideoFrameInput or \l QAudioBufferInput.
+
+    Video inputs, specificly, \l QCamera, \l QScreenCapture and \l QWindowCapture,
+    can be deactivated via the function \c setActive.
+
+    Defaults to \c false.
+
+    QMediaRecorder::autoStop is only supported with the FFmpeg backend.
+
+    \sa QCamera, QScreenCapture, QWindowCapture
+*/
+
+bool QMediaRecorder::autoStop() const
+{
+    Q_D(const QMediaRecorder);
+
+    return d->autoStop;
+}
+
+void QMediaRecorder::setAutoStop(bool autoStop)
+{
+    Q_D(QMediaRecorder);
+
+    if (d->autoStop == autoStop)
+        return;
+
+    d->autoStop = autoStop;
+
+    if (d->control)
+        d->control->updateAutoStop();
+
+    emit autoStopChanged();
+}
+
 /*!
     \qmlsignal QtMultimedia::MediaRecorder::metaDataChanged()
 
@@ -619,7 +815,48 @@ QMediaCaptureSession *QMediaRecorder::captureSession() const
 /*!
     \property QMediaRecorder::mediaFormat
 
-    Returns the recording media format.
+    \brief This property holds the current \l QMediaFormat of the recorder.
+
+    The value of this property may change when invoking \l record(). If this happens, the
+    \l mediaFormatChanged signal will be emitted. This will always happen if the
+    \l QMediaFormat::audioCodec or \l QMediaFormat::fileFormat properties are set to unspecified.
+    If a video source (\l QCamera, \l QScreenCapture, or \l QVideoFrameInput) is connected to the
+    \l QMediaCaptureSession, \l QMediaFormat::videoCodec must also be specified.
+    The \l QMediaFormat::audioCodec and \l QMediaFormat::videoCodec property values may also change
+    if the media backend does not support the selected file format or codec.
+
+    The \l QMediaFormat::fileFormat property value may also change to an \c audio only format if a
+    video format was requested, but \l QMediaCaptureSession does not have a video source connected.
+    For example, if \l QMediaFormat::fileFormat is set to \l QMediaFormat::FileFormat::MPEG4, it may
+    be changed to \l QMediaFormat::FileFormat::Mpeg4Audio.
+
+    Applications can determine if \l mediaFormat will change before recording starts by calling the
+    \l QMediaFormat::isSupported() function. When recording without any video inputs,
+    \l record() will not be changed the \l QMediaFormat if the following is true:
+    \list
+        \li \l QMediaFormat::fileFormat is specified
+        \li \l QMediaFormat::audioCodec is specified
+        \li \l QMediaFormat::videoCodec is \b{unspecified}
+        \li \l QMediaFormat::isSupported returns \c true
+    \endlist
+    When recording with video input, \l mediaFormat will not be changed if the following is true:
+    \list
+        \li \l QMediaFormat::fileFormat is specified
+        \li \l QMediaFormat::audioCodec is specified
+        \li \l QMediaFormat::videoCodec is specified
+        \li \l QMediaFormat::isSupported returns \c true
+    \endlist
+
+    \note The \l QMediaRecorder does not take the file name extension from the \l outputLocation
+    property into account when determining the \l QMediaFormat::fileFormat, and will not adjust the
+    extension of the \l outputLocation \l QUrl to match the selected file format if an extension is
+    specified. Applications should therefore make sure to set the
+    \l QMediaRecorder::mediaFormat::fileFormat to match the file extension, or not specify a file
+    extension. If no file extension is specified, the \l actualLocation file extension will be
+    updated to match the file format used for recording.
+
+    \sa QMediaFormat::isSupported()
+    \sa QMediaRecorder::actualLocation
 */
 QMediaFormat QMediaRecorder::mediaFormat() const
 {

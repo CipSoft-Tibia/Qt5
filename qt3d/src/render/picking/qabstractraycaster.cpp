@@ -104,7 +104,7 @@ void QAbstractRayCasterPrivate::dispatchHits(const QAbstractRayCaster::Hits &hit
     \brief An abstract base class for ray casting in 3d scenes.
     \inqmlmodule Qt3D.Render
     \since 5.11
-    \instantiates Qt3DRender::QAbstractRayCaster
+    \nativetype Qt3DRender::QAbstractRayCaster
 
     AbstractRayCaster is an abstract base class for casting rays into a 3d scene.
     AbstractRayCaster can not be directly instantiated, but rather
@@ -133,14 +133,14 @@ void QAbstractRayCasterPrivate::dispatchHits(const QAbstractRayCaster::Hits &hit
 */
 
 /*!
-    \enum QAbstractRayCaster::RunMode
+    \enum Qt3DRender::QAbstractRayCaster::RunMode
 
     This enumeration specifies how often ray casting is performed
     \value Continuous Ray casting is performed at every frame as long as the component is enabled.
     \value SingleShot Ray casting is done once then the component disables itself. This is the default
 */
 /*!
-    \enum QAbstractRayCaster::FilterMode
+    \enum Qt3DRender::QAbstractRayCaster::FilterMode
 
     Specifies the rules for selecting entities to test for raycasting.
 

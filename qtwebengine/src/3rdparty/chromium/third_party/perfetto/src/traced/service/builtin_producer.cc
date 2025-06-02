@@ -25,6 +25,7 @@
 #include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/base/weak_ptr.h"
 #include "perfetto/ext/tracing/core/basic_types.h"
+#include "perfetto/ext/tracing/core/client_identity.h"
 #include "perfetto/ext/tracing/core/trace_writer.h"
 #include "perfetto/ext/tracing/core/tracing_service.h"
 #include "perfetto/tracing/core/data_source_config.h"
@@ -57,16 +58,16 @@ constexpr char kJavaHprofOomActivePropertyName[] = "traced.oome_heap_session.cou
 constexpr char kAndroidSdkSyspropGuardDataSourceName[] =
     "android.sdk_sysprop_guard";
 constexpr char kPerfettoSdkSyspropGuardGenerationPropertyName[] =
-    "debug.perfetto.sdk_sysprop_guard_generation";
+    "debug.tracing.ctl.perfetto.sdk_sysprop_guard_generation";
 constexpr char kHwuiSkiaBroadTracingPropertyName[] =
-    "debug.hwui.skia_tracing_enabled";
+    "debug.tracing.ctl.hwui.skia_tracing_enabled";
 constexpr char kHwuiSkiaUsePerfettoPropertyName[] =
-    "debug.hwui.skia_use_perfetto_track_events";
+    "debug.tracing.ctl.hwui.skia_use_perfetto_track_events";
 constexpr char kHwuiSkiaPropertyPackageSeparator[] = ".";
 constexpr char kSurfaceFlingerSkiaBroadTracingPropertyName[] =
-    "debug.renderengine.skia_tracing_enabled";
+    "debug.tracing.ctl.renderengine.skia_tracing_enabled";
 constexpr char kSurfaceFlingerSkiaUsePerfettoPropertyName[] =
-    "debug.renderengine.skia_use_perfetto_track_events";
+    "debug.tracing.ctl.renderengine.skia_use_perfetto_track_events";
 
 }  // namespace
 
@@ -96,7 +97,7 @@ void BuiltinProducer::ConnectInProcess(TracingService* svc) {
   const pid_t cur_proc_id = base::GetProcessId();
 #endif
   endpoint_ = svc->ConnectProducer(
-      this, base::GetCurrentUserId(), cur_proc_id, "traced",
+      this, ClientIdentity(base::GetCurrentUserId(), cur_proc_id), "traced",
       /*shared_memory_size_hint_bytes=*/16 * 1024, /*in_process=*/true,
       TracingService::ProducerSMBScrapingMode::kDisabled,
       /*shared_memory_page_size_hint_bytes=*/4096);

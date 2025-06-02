@@ -18,6 +18,8 @@
 #include <QtCore/qurl.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qmimetype.h>
+#include <QtCore/qpointer.h>
+#include <QtCore/qiodevice.h>
 
 #include <QtMultimedia/qmediarecorder.h>
 #include <QtMultimedia/qmediametadata.h>
@@ -56,6 +58,7 @@ public:
     QMediaFormat::VideoCodec videoCodec() const { return mediaFormat().videoCodec(); }
     QMediaFormat::AudioCodec audioCodec() const { return mediaFormat().audioCodec(); }
     QMimeType mimeType() const { return mediaFormat().mimeType(); }
+    QString preferredSuffix() const { return mimeType().preferredSuffix(); }
 
     QMediaRecorder::EncodingMode encodingMode() const { return m_encodingMode; }
     void setEncodingMode(QMediaRecorder::EncodingMode mode) { m_encodingMode = mode; }
@@ -125,6 +128,11 @@ public:
     void clearActualLocation() { m_actualLocation.clear(); }
     void clearError() { updateError(QMediaRecorder::NoError, QString()); }
 
+    QIODevice *outputDevice() const { return m_outputDevice; }
+    void setOutputDevice(QIODevice *device) { m_outputDevice = device; }
+
+    virtual void updateAutoStop() { }
+
 protected:
     explicit QPlatformMediaRecorder(QMediaRecorder *parent);
 
@@ -143,6 +151,7 @@ private:
     QErrorInfo<QMediaRecorder::Error> m_error;
     QUrl m_actualLocation;
     QUrl m_outputLocation;
+    QPointer<QIODevice> m_outputDevice;
     qint64 m_duration = 0;
 
     QMediaRecorder::RecorderState m_state = QMediaRecorder::StoppedState;

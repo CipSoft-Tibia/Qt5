@@ -19,7 +19,7 @@ import '//resources/cr_elements/chromeos/cros_color_overrides.css.js';
 
 // </if>
 
-import {assert} from '//resources/js/assert_ts.js';
+import {assert} from '//resources/js/assert.js';
 import {microTask, PolymerElement} from '//resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 import {prefToString, stringToPrefValue} from 'chrome://resources/cr_components/settings_prefs/pref_util.js';
 
@@ -28,12 +28,14 @@ import {PrefControlMixin} from './pref_control_mixin.js';
 import {getTemplate} from './settings_dropdown_menu.html.js';
 
 /**
- * The |name| is shown in the gui.  The |value| us use to set or compare with
- * the preference value.
+ * |name| is shown in the UI. |value| is used to set or compare with the
+ * preference value. |hidden| specifies whether to hide this option from the
+ * user.
  */
 interface DropdownMenuOption {
   name: string;
   value: number|string;
+  hidden?: boolean;
 }
 
 export type DropdownMenuOptionList = DropdownMenuOption[];

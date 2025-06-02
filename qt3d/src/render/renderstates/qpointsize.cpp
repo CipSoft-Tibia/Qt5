@@ -25,7 +25,7 @@ namespace Qt3DRender {
     \qmltype PointSize
     \since 5.7
     \inherits RenderState
-    \instantiates Qt3DRender::QPointSize
+    \nativetype Qt3DRender::QPointSize
     \inqmlmodule Qt3D.Render
 
     \brief Specifies the size of rasterized points. May either be set statically
@@ -55,12 +55,12 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property  QPointSize::value
+    \property  Qt3DRender::QPointSize::value
     Specifies the point size value to be used.
 */
 
 /*!
-    \property QPointSize::sizeMode
+    \property Qt3DRender::QPointSize::sizeMode
     Specifies the sizeMode to be used.
 */
 

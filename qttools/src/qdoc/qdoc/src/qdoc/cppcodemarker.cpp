@@ -101,7 +101,7 @@ QString CppCodeMarker::markedUpSynopsis(const Node *node, const Node * /* relati
                 synopsis = protect((*templateDecl).to_qstring()) + QLatin1Char(' ');
         }
         if (style != Section::AllMembers && !func->returnType().isEmpty())
-            synopsis += typified(func->returnType(), true);
+            synopsis += typified(func->returnTypeString(), true);
         synopsis += name;
         if (!func->isMacroWithoutParams()) {
             synopsis += QLatin1Char('(');
@@ -141,7 +141,7 @@ QString CppCodeMarker::markedUpSynopsis(const Node *node, const Node * /* relati
                 synopsis.append(" &&");
         } else if (style == Section::AllMembers) {
             if (!func->returnType().isEmpty() && func->returnType() != "void")
-                synopsis += " : " + typified(func->returnType());
+                synopsis += " : " + typified(func->returnTypeString());
         } else {
             if (func->isRef())
                 synopsis.append(" &");
@@ -247,7 +247,7 @@ QString CppCodeMarker::markedUpQmlItem(const Node *node, bool summary)
     } else if (node->isFunction(Node::QML)) {
         const auto *func = static_cast<const FunctionNode *>(node);
         if (!func->returnType().isEmpty())
-            synopsis = typified(func->returnType(), true) + name;
+            synopsis = typified(func->returnTypeString(), true) + name;
         else
             synopsis = name;
         synopsis += QLatin1Char('(');
@@ -292,10 +292,18 @@ QString CppCodeMarker::markedUpName(const Node *node)
 
 QString CppCodeMarker::markedUpEnumValue(const QString &enumValue, const Node *relative)
 {
-    if (!relative->isEnumType())
-        return enumValue;
+    const auto *node = relative->parent();
 
-    const Node *node = relative->parent();
+    if (relative->isQmlProperty()) {
+        const auto *qpn = static_cast<const QmlPropertyNode*>(relative);
+        if (qpn->enumNode() && !enumValue.startsWith("%1."_L1.arg(qpn->enumPrefix())))
+            return "%1<@op>.</@op>%2"_L1.arg(qpn->enumPrefix(), enumValue);
+    }
+
+    if (!relative->isEnumType()) {
+        return enumValue;
+    }
+
     QStringList parts;
     while (!node->isHeader() && node->parent()) {
         parts.prepend(markedUpName(node));
@@ -309,24 +317,6 @@ QString CppCodeMarker::markedUpEnumValue(const QString &enumValue, const Node *r
     parts.append(enumValue);
     return parts.join(QLatin1String("<@op>::</@op>"));
 }
-
-QString CppCodeMarker::markedUpInclude(const QString &include)
-{
-    return "<@preprocessor>#include &lt;<@headerfile>" + include + "</@headerfile>&gt;</@preprocessor>";
-}
-
-/*
-    @char
-    @class
-    @comment
-    @function
-    @keyword
-    @number
-    @op
-    @preprocessor
-    @string
-    @type
-*/
 
 QString CppCodeMarker::addMarkUp(const QString &in, const Node * /* relative */,
                                  const Location & /* location */)

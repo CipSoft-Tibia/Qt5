@@ -1,50 +1,47 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QBARCATEGORYAXIS_H
-#define QBARCATEGORYAXIS_H
-
-#if 0
-#  pragma qt_class(QBarCategoryAxis)
-#endif
+#ifndef QTGRAPHS_QBARCATEGORYAXIS_H
+#define QTGRAPHS_QBARCATEGORYAXIS_H
 
 #include <QtGraphs/qabstractaxis.h>
 #include <QtGraphs/qgraphsglobal.h>
-#include <QtQml/QQmlEngine>
+#include <QtQml/qqmlengine.h>
 
 QT_BEGIN_NAMESPACE
 
 class QBarCategoryAxisPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QBarCategoryAxis : public QAbstractAxis
+class Q_GRAPHS_EXPORT QBarCategoryAxis : public QAbstractAxis
 {
     Q_OBJECT
-    Q_PROPERTY(QStringList categories READ categories WRITE setCategories NOTIFY categoriesChanged)
-    Q_PROPERTY(QString min READ min WRITE setMin NOTIFY minChanged)
-    Q_PROPERTY(QString max READ max WRITE setMax NOTIFY maxChanged)
-    Q_PROPERTY(int count READ count NOTIFY countChanged)
+    Q_PROPERTY(
+        QStringList categories READ categories WRITE setCategories NOTIFY categoriesChanged FINAL)
+    Q_PROPERTY(QString min READ min WRITE setMin NOTIFY minChanged FINAL)
+    Q_PROPERTY(QString max READ max WRITE setMax NOTIFY maxChanged FINAL)
+    Q_PROPERTY(qsizetype count READ count NOTIFY countChanged FINAL)
     QML_NAMED_ELEMENT(BarCategoryAxis)
 
 public:
     explicit QBarCategoryAxis(QObject *parent = nullptr);
-    ~QBarCategoryAxis();
+    ~QBarCategoryAxis() override;
 
 protected:
-    QBarCategoryAxis(QBarCategoryAxisPrivate &d, QObject *parent = nullptr);
+    QBarCategoryAxis(QBarCategoryAxisPrivate &dd, QObject *parent = nullptr);
 
 public:
-    // TODO: Consider making these slots, available from QML.
     AxisType type() const override;
-    void append(const QStringList &categories);
-    void append(const QString &category);
-    void remove(const QString &category);
-    void insert(int index, const QString &category);
-    void replace(const QString &oldCategory, const QString &newCategory);
+    Q_INVOKABLE void append(const QStringList &categories);
+    Q_INVOKABLE void append(const QString &category);
+    Q_INVOKABLE void remove(const QString &category);
+    Q_INVOKABLE void remove(qsizetype index);
+    Q_INVOKABLE void insert(qsizetype index, const QString &category);
+    Q_INVOKABLE void replace(const QString &oldCategory, const QString &newCategory);
     Q_INVOKABLE void clear();
+    Q_INVOKABLE QString at(qsizetype index) const;
     void setCategories(const QStringList &categories);
     QStringList categories();
-    int count() const;
-    QString at(int index) const;
+    qsizetype count() const;
 
     //range handling
     void setMin(const QString &minCategory);
@@ -57,7 +54,7 @@ Q_SIGNALS:
     void categoriesChanged();
     void minChanged(const QString &min);
     void maxChanged(const QString &max);
-    void rangeChanged(const QString &min, const QString &max);
+    void categoryRangeChanged(const QString &min, const QString &max);
     void countChanged();
 
 private:
@@ -67,4 +64,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QBARCATEGORYAXIS_H
+#endif // QTGRAPHS_QBARCATEGORYAXIS_H

@@ -13,15 +13,16 @@
 #include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_piece.h"
+#include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/unguessable_token.h"
 #include "build/chromeos_buildflags.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/policy/profile_policy_connector.h"
 #endif
 #include "chrome/browser/profiles/profile.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/policy/core/common/policy_service.h"
 #endif
 #include "content/public/browser/browser_context.h"
@@ -111,7 +112,7 @@ constexpr size_t kWebAppIdLength = 2;
 class Budget {
  public:
   // If !max.has_value(), the budget is unlimited.
-  explicit Budget(absl::optional<size_t> max) : max_(max), current_(0) {}
+  explicit Budget(std::optional<size_t> max) : max_(max), current_(0) {}
 
   // Check whether the budget allows consuming an additional |consumed| of
   // the resource.
@@ -143,7 +144,7 @@ class Budget {
   }
 
  private:
-  const absl::optional<size_t> max_;
+  const std::optional<size_t> max_;
   size_t current_;
 };
 
@@ -153,7 +154,7 @@ class BaseLogFileWriter : public LogFileWriter {
   // If !max_file_size_bytes.has_value(), an unlimited writer is created.
   // If it has a value, it must be at least MinFileSizeBytes().
   BaseLogFileWriter(const base::FilePath& path,
-                    absl::optional<size_t> max_file_size_bytes);
+                    std::optional<size_t> max_file_size_bytes);
 
   ~BaseLogFileWriter() override;
 
@@ -213,7 +214,7 @@ class BaseLogFileWriter : public LogFileWriter {
 };
 
 BaseLogFileWriter::BaseLogFileWriter(const base::FilePath& path,
-                                     absl::optional<size_t> max_file_size_bytes)
+                                     std::optional<size_t> max_file_size_bytes)
     : task_runner_(base::SequencedTaskRunner::GetCurrentDefault()),
       path_(path),
       state_(State::PRE_INIT),
@@ -371,7 +372,7 @@ bool BaseLogFileWriter::Finalize() {
 class GzippedLogFileWriter : public BaseLogFileWriter {
  public:
   GzippedLogFileWriter(const base::FilePath& path,
-                       absl::optional<size_t> max_file_size_bytes,
+                       std::optional<size_t> max_file_size_bytes,
                        std::unique_ptr<LogCompressor> compressor);
 
   ~GzippedLogFileWriter() override = default;
@@ -391,7 +392,7 @@ class GzippedLogFileWriter : public BaseLogFileWriter {
 
 GzippedLogFileWriter::GzippedLogFileWriter(
     const base::FilePath& path,
-    absl::optional<size_t> max_file_size_bytes,
+    std::optional<size_t> max_file_size_bytes,
     std::unique_ptr<LogCompressor> compressor)
     : BaseLogFileWriter(path, max_file_size_bytes),
       compressor_(std::move(compressor)) {
@@ -484,7 +485,7 @@ bool GzippedLogFileWriter::Finalize() {
 class GzipLogCompressor : public LogCompressor {
  public:
   GzipLogCompressor(
-      absl::optional<size_t> max_size_bytes,
+      std::optional<size_t> max_size_bytes,
       std::unique_ptr<CompressedSizeEstimator> compressed_size_estimator);
 
   ~GzipLogCompressor() override;
@@ -510,8 +511,8 @@ class GzipLogCompressor : public LogCompressor {
   // Returns the budget left after reserving the GZIP overhead.
   // Optionals without a value, both in the parameters as well as in the
   // return value of the function, signal an unlimited amount.
-  static absl::optional<size_t> SizeAfterOverheadReservation(
-      absl::optional<size_t> max_size_bytes);
+  static std::optional<size_t> SizeAfterOverheadReservation(
+      std::optional<size_t> max_size_bytes);
 
   // Compresses |input| into |output|, while observing the budget (unless
   // !budgeted). If |last|, also closes the stream.
@@ -530,7 +531,7 @@ class GzipLogCompressor : public LogCompressor {
 };
 
 GzipLogCompressor::GzipLogCompressor(
-    absl::optional<size_t> max_size_bytes,
+    std::optional<size_t> max_size_bytes,
     std::unique_ptr<CompressedSizeEstimator> compressed_size_estimator)
     : state_(State::PRE_HEADER),
       budget_(SizeAfterOverheadReservation(max_size_bytes)),
@@ -615,10 +616,10 @@ bool GzipLogCompressor::CreateFooter(std::string* output) {
   return true;
 }
 
-absl::optional<size_t> GzipLogCompressor::SizeAfterOverheadReservation(
-    absl::optional<size_t> max_size_bytes) {
+std::optional<size_t> GzipLogCompressor::SizeAfterOverheadReservation(
+    std::optional<size_t> max_size_bytes) {
   if (!max_size_bytes.has_value()) {
-    return absl::optional<size_t>();
+    return std::optional<size_t>();
   } else {
     DCHECK_GE(max_size_bytes.value(), kGzipHeaderBytes + kGzipFooterBytes);
     return max_size_bytes.value() - (kGzipHeaderBytes + kGzipFooterBytes);
@@ -779,7 +780,7 @@ base::FilePath::StringPieceType BaseLogFileWriterFactory::Extension() const {
 
 std::unique_ptr<LogFileWriter> BaseLogFileWriterFactory::Create(
     const base::FilePath& path,
-    absl::optional<size_t> max_file_size_bytes) const {
+    std::optional<size_t> max_file_size_bytes) const {
   if (max_file_size_bytes.has_value() &&
       max_file_size_bytes.value() < MinFileSizeBytes()) {
     LOG(WARNING) << "Max size (" << max_file_size_bytes.value()
@@ -822,7 +823,7 @@ size_t GzipLogCompressorFactory::MinSizeBytes() const {
 }
 
 std::unique_ptr<LogCompressor> GzipLogCompressorFactory::Create(
-    absl::optional<size_t> max_size_bytes) const {
+    std::optional<size_t> max_size_bytes) const {
   if (max_size_bytes.has_value() && max_size_bytes.value() < MinSizeBytes()) {
     LOG(WARNING) << "Max size (" << max_size_bytes.value()
                  << ") below minimum size (" << MinSizeBytes() << ").";
@@ -849,7 +850,7 @@ base::FilePath::StringPieceType GzippedLogFileWriterFactory::Extension() const {
 
 std::unique_ptr<LogFileWriter> GzippedLogFileWriterFactory::Create(
     const base::FilePath& path,
-    absl::optional<size_t> max_file_size_bytes) const {
+    std::optional<size_t> max_file_size_bytes) const {
   if (max_file_size_bytes.has_value() &&
       max_file_size_bytes.value() < MinFileSizeBytes()) {
     LOG(WARNING) << "Size below allowed minimum.";
@@ -971,12 +972,7 @@ bool IsValidRemoteBoundLogFilename(const std::string& filename) {
   // Expect log ID.
   const std::string log_id = filename.substr(index);
   DCHECK_EQ(log_id.length(), kWebRtcEventLogIdLength);
-  const char* const log_id_chars = "0123456789ABCDEF";
-  if (filename.find_first_not_of(log_id_chars, index) != std::string::npos) {
-    return false;
-  }
-
-  return true;
+  return base::ContainsOnlyChars(log_id, "0123456789ABCDEF");
 }
 
 bool IsValidRemoteBoundLogFilePath(const base::FilePath& path) {
@@ -1040,7 +1036,7 @@ bool DoesProfileDefaultToLoggingEnabled(const Profile* const profile) {
   }
 #endif
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // We only want a default of true for regular (i.e. logged-in) profiles
   // receiving cloud-based user-level enterprise policies. Supervised (child)
   // profiles are considered regular and can also receive cloud policies in some

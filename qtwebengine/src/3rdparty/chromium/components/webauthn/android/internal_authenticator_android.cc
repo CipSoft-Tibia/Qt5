@@ -18,6 +18,7 @@
 
 using base::android::AttachCurrentThread;
 using base::android::ConvertUTF8ToJavaString;
+using base::android::JavaArrayOfByteArrayToBytesVector;
 using base::android::JavaRef;
 using base::android::ScopedJavaLocalRef;
 using base::android::ToJavaArrayOfByteArray;
@@ -47,7 +48,7 @@ void InternalAuthenticatorAndroid::SetEffectiveOrigin(
   DCHECK(!obj.is_null());
 
   Java_InternalAuthenticator_setEffectiveOrigin(env, obj,
-                                                origin.CreateJavaObject());
+                                                origin.ToJavaObject());
 }
 
 void InternalAuthenticatorAndroid::SetPaymentOptions(

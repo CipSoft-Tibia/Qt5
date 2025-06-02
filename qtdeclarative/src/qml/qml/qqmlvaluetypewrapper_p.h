@@ -19,14 +19,6 @@
 #include <private/qtqmlglobal_p.h>
 
 #include <private/qv4referenceobject_p.h>
-#include <private/qqmlpropertycache_p.h>
-#include <private/qqmltype_p_p.h>
-#include <private/qqmltypewrapper_p.h>
-#include <private/qv4object_p.h>
-#include <private/qv4qobjectwrapper_p.h>
-#include <private/qv4sequenceobject_p.h>
-#include <private/qv4value_p.h>
-#include <private/qv4referenceobject_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -151,8 +143,12 @@ public:
     static ReturnedValue virtualResolveLookupGetter(const Object *object, ExecutionEngine *engine, Lookup *lookup);
     static bool virtualResolveLookupSetter(Object *object, ExecutionEngine *engine, Lookup *lookup, const Value &value);
     static ReturnedValue lookupGetter(Lookup *lookup, ExecutionEngine *engine, const Value &object);
-    static bool lookupSetter(QV4::Lookup *l, QV4::ExecutionEngine *engine,
-                             QV4::Value &object, const QV4::Value &value);
+    static bool lookupSetter(
+            QV4::Lookup *l, QV4::ExecutionEngine *engine, QV4::Value &object,
+            const QV4::Value &value);
+    static bool lookupSetterAsVariant(
+            QV4::Lookup *l, QV4::ExecutionEngine *engine, QV4::Value &object,
+            const QV4::Value &value);
 
     static void initProto(ExecutionEngine *v4);
     static int virtualMetacall(Object *object, QMetaObject::Call call, int index, void **a);

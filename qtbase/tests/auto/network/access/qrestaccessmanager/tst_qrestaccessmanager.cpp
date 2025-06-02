@@ -3,7 +3,9 @@
 
 #include "httptestserver_p.h"
 
+#if QT_CONFIG(http)
 #include <QtNetwork/qhttpmultipart.h>
+#endif
 #include <QtNetwork/qrestaccessmanager.h>
 #include <QtNetwork/qauthenticator.h>
 #include <QtNetwork/qnetworkreply.h>
@@ -23,6 +25,8 @@
 using namespace Qt::StringLiterals;
 using namespace std::chrono_literals;
 
+using Header = QHttpHeaders::WellKnownHeader;
+
 class tst_QRestAccessManager : public QObject
 {
     Q_OBJECT
@@ -31,7 +35,9 @@ private slots:
     void initialization();
     void destruction();
     void callbacks();
+#if QT_CONFIG(http)
     void requests();
+#endif
     void reply();
     void errors();
     void body();
@@ -88,6 +94,7 @@ void tst_QRestAccessManager::reply()
     networkReply = nullptr;                     \
 }
 
+#if QT_CONFIG(http)
 void tst_QRestAccessManager::requests()
 {
     // A basic test for each HTTP method against the local testserver.
@@ -266,6 +273,7 @@ void tst_QRestAccessManager::requests()
     //manager.sendCustomRequest(request, this, [](){}); // No verb && no data
     //manager.sendCustomRequest(request, "FOOBAR", this, [](){}); // No verb || no data
 }
+#endif
 
 void tst_QRestAccessManager::memberHandler(QRestReply &reply)
 {
@@ -723,55 +731,64 @@ void tst_QRestAccessManager::text()
     // QString from text() should match with the original (UTF-16) QString.
 
     // Successful UTF-8 (explicit)
-    serverSideResponse.headers.insert("Content-Type:"_ba, "text/plain; charset=UTF-8"_ba);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=UTF-8"_ba);
     serverSideResponse.body = encUTF8(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     // Successful UTF-8 (obfuscated)
-    serverSideResponse.headers["Content-Type:"_ba] = "text/plain; charset=\"UT\\F-8\""_ba;
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=\"UT\\F-8\""_ba);
     serverSideResponse.body = encUTF8(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     // Successful UTF-8 (empty charset)
-    serverSideResponse.headers["Content-Type:"_ba] = "text/plain; charset=\"\""_ba;
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=\"\""_ba);
     serverSideResponse.body = encUTF8(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     // Successful UTF-8 (implicit)
-    serverSideResponse.headers["Content-Type:"_ba] = "text/plain"_ba;
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain"_ba);
     serverSideResponse.body = encUTF8(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     // Successful UTF-16
-    serverSideResponse.headers.insert("Content-Type:"_ba, "text/plain; charset=UTF-16"_ba);
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=UTF-16"_ba);
     serverSideResponse.body = encUTF16(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     // Successful UTF-16, parameter case insensitivity
-    serverSideResponse.headers.insert("Content-Type:"_ba, "text/plain; chARset=uTf-16"_ba);
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; chARset=uTf-16"_ba);
     serverSideResponse.body = encUTF16(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     // Successful UTF-32
-    serverSideResponse.headers.insert("Content-Type:"_ba, "text/plain; charset=UTF-32"_ba);
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=UTF-32"_ba);
     serverSideResponse.body = encUTF32(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     // Successful UTF-32 with spec-wise allowed extra trailing content in the Content-Type header value
-    serverSideResponse.headers.insert("Content-Type:"_ba,
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType,
                                       "text(this is a \\)comment)/ (this (too)) plain; charset = \"UTF-32\";extraparameter=bar"_ba);
     serverSideResponse.body = encUTF32(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     // Successful UTF-32 with spec-wise allowed extra leading content in the Content-Type header value
-    serverSideResponse.headers.insert("Content-Type:"_ba,
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType,
                                       "text/plain; extraparameter=bar;charset    =     \"UT\\F-32\""_ba);
     serverSideResponse.body = encUTF32(sourceString);
     VERIFY_TEXT_REPLY_OK;
 
     {
         // Unsuccessful UTF-32, wrong encoding indicated (indicated UTF-32 but data is UTF-8)
-        serverSideResponse.headers.insert("Content-Type:"_ba, "text/plain; charset=UTF-32"_ba);
+        serverSideResponse.headers.removeAll(Header::ContentType);
+        serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=UTF-32"_ba);
         serverSideResponse.body = encUTF8(sourceString);
         manager.get(request, this, [&](QRestReply &reply) { networkReply = reply.networkReply(); });
         QTRY_VERIFY(networkReply);
@@ -783,12 +800,14 @@ void tst_QRestAccessManager::text()
     }
 
     // Unsupported encoding
-    serverSideResponse.headers.insert("Content-Type:"_ba, "text/plain; charset=foo"_ba);
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=foo"_ba);
     serverSideResponse.body = encUTF8(sourceString);
     VERIFY_TEXT_REPLY_ERROR("readText(): Charset \"foo\" is not supported")
 
     // Broken UTF-8
-    serverSideResponse.headers.insert("Content-Type:"_ba, "text/plain; charset=UTF-8"_ba);
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=UTF-8"_ba);
     serverSideResponse.body = "\xF0\x28\x8C\x28\xA0\xB0\xC0\xD0"; // invalid characters
     VERIFY_TEXT_REPLY_ERROR("readText(): Decoding error occurred");
 }
@@ -809,7 +828,8 @@ void tst_QRestAccessManager::textStreaming()
     ResponseControl *responseControl = nullptr;
 
     HttpData serverSideResponse; // The response data the server responds with
-    serverSideResponse.headers.insert("Content-Type:"_ba, "text/plain; charset=UTF-8"_ba);
+    serverSideResponse.headers.removeAll(Header::ContentType);
+    serverSideResponse.headers.append(Header::ContentType, "text/plain; charset=UTF-8"_ba);
     serverSideResponse.body = encUTF8(expectedData);
     serverSideResponse.status = 200;
 

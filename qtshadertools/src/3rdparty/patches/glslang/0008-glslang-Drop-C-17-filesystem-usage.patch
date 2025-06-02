@@ -1,0 +1,64 @@
+From 4d7c280081cc50b20aba848fbe6055ce075e74bc Mon Sep 17 00:00:00 2001
+From: Laszlo Agocs <laszlo.agocs@qt.io>
+Date: Wed, 5 Jun 2024 14:55:18 +0200
+Subject: [PATCH] glslang: Drop C++17 filesystem usage
+
+...does not work on QNX at least.
+
+Restore the code from 13.something (the version we had
+before upgrading to 14.2.0). Not sure what we lose but
+probably not very relevant for Qt.
+
+Change-Id: I40e44d8323b628392a90bef173c8d9ae6895830d
+---
+ .../glslang/glslang/Include/InfoSink.h        | 27 +++++++++++--------
+ 1 file changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/src/3rdparty/glslang/glslang/Include/InfoSink.h b/src/3rdparty/glslang/glslang/Include/InfoSink.h
+index b3f37c7..cebe88b 100644
+--- a/src/3rdparty/glslang/glslang/Include/InfoSink.h
++++ b/src/3rdparty/glslang/glslang/Include/InfoSink.h
+@@ -36,7 +36,10 @@
+ #define _INFOSINK_INCLUDED_
+ 
+ #include "../Include/Common.h"
+-#include <filesystem>
++
++// QNX says no
++//#include <filesystem>
++
+ #include <cmath>
+ 
+ namespace QtShaderTools {
+@@ -101,16 +104,18 @@ public:
+         char locText[maxSize];
+         snprintf(locText, maxSize, ":%d", loc.line);
+ 
+-        if(loc.getFilename() == nullptr && shaderFileName != nullptr && absolute) {
+-            append(std::filesystem::absolute(shaderFileName).string());
+-        } else {
+-            std::string location = loc.getStringNameOrNum(false);
+-            if (absolute) {
+-                append(std::filesystem::absolute(location).string());
+-            } else {
+-                append(location);
+-            }
+-        }
++        append(loc.getStringNameOrNum(false).c_str());
++
++        // if(loc.getFilename() == nullptr && shaderFileName != nullptr && absolute) {
++        //     append(std::filesystem::absolute(shaderFileName).string());
++        // } else {
++        //     std::string location = loc.getStringNameOrNum(false);
++        //     if (absolute) {
++        //         append(std::filesystem::absolute(location).string());
++        //     } else {
++        //         append(location);
++        //     }
++        // }
+ 
+         append(locText);
+         append(": ");
+-- 
+2.36.1.windows.1
+

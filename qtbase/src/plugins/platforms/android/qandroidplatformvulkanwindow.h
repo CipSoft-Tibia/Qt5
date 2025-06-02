@@ -31,13 +31,14 @@ public:
 
     VkSurfaceKHR *vkSurface();
 
+protected:
+    void clearSurface() override;
+
 private:
-    void clearSurface();
     void destroyAndClearSurface();
 
     ANativeWindow *m_nativeWindow;
     QSurfaceFormat m_format;
-    QRect m_oldGeometry;
     VkSurfaceKHR m_vkSurface;
     PFN_vkCreateAndroidSurfaceKHR m_createVkSurface;
     PFN_vkDestroySurfaceKHR m_destroyVkSurface;

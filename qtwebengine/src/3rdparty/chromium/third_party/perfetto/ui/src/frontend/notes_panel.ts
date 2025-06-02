@@ -14,11 +14,14 @@
 
 import m from 'mithril';
 
+import {currentTargetOffset} from '../base/dom_utils';
+import {Icons} from '../base/semantic_icons';
+import {Time} from '../base/time';
 import {Actions} from '../common/actions';
 import {randomColor} from '../common/colorizer';
 import {AreaNote, Note} from '../common/state';
-import {Time} from '../common/time';
 import {raf} from '../core/raf_scheduler';
+import {Button} from '../widgets/button';
 
 import {
   BottomTab,
@@ -26,7 +29,6 @@ import {
   NewBottomTabArgs,
 } from './bottom_tab';
 import {TRACK_SHELL_WIDTH} from './css_constants';
-import {PerfettoMouseEvent} from './events';
 import {globals} from './globals';
 import {
   getMaxMajorTicks,
@@ -34,10 +36,9 @@ import {
   TickType,
   timeScaleForVisibleWindow,
 } from './gridline_helper';
-import {Panel, PanelSize} from './panel';
-import {Icons} from './semantic_icons';
+import {PanelSize} from './panel';
+import {Panel} from './panel_container';
 import {isTraceLoaded} from './sidebar';
-import {Button} from './widgets/button';
 import {Timestamp} from './widgets/timestamp';
 
 const FLAG_WIDTH = 16;
@@ -57,34 +58,39 @@ function getStartTimestamp(note: Note|AreaNote) {
   }
 }
 
-export class NotesPanel extends Panel {
+export class NotesPanel implements Panel {
+  readonly kind = 'panel';
+  readonly selectable = false;
+  readonly trackKey = undefined;
+
   hoveredX: null|number = null;
 
-  oncreate({dom}: m.CVnodeDOM) {
-    dom.addEventListener('mousemove', (e: Event) => {
-      this.hoveredX = (e as PerfettoMouseEvent).layerX - TRACK_SHELL_WIDTH;
-      raf.scheduleRedraw();
-    }, {passive: true});
-    dom.addEventListener('mouseenter', (e: Event) => {
-      this.hoveredX = (e as PerfettoMouseEvent).layerX - TRACK_SHELL_WIDTH;
-      raf.scheduleRedraw();
-    });
-    dom.addEventListener('mouseout', () => {
-      this.hoveredX = null;
-      globals.dispatch(Actions.setHoveredNoteTimestamp({ts: Time.INVALID}));
-    }, {passive: true});
-  }
+  constructor(readonly key: string) {}
 
-  view() {
+  get mithril(): m.Children {
     const allCollapsed = Object.values(globals.state.trackGroups)
                              .every((group) => group.collapsed);
 
     return m(
         '.notes-panel',
         {
-          onclick: (e: PerfettoMouseEvent) => {
-            this.onClick(e.layerX - TRACK_SHELL_WIDTH, e.layerY);
+          onclick: (e: MouseEvent) => {
+            const {x, y} = currentTargetOffset(e);
+            this.onClick(x - TRACK_SHELL_WIDTH, y);
             e.stopPropagation();
+          },
+          onmousemove: (e: MouseEvent) => {
+            this.hoveredX = currentTargetOffset(e).x - TRACK_SHELL_WIDTH;
+            raf.scheduleRedraw();
+          },
+          mouseenter: (e: MouseEvent) => {
+            this.hoveredX = currentTargetOffset(e).x - TRACK_SHELL_WIDTH;
+            raf.scheduleRedraw();
+          },
+          onmouseout: () => {
+            this.hoveredX = null;
+            globals.dispatch(
+                Actions.setHoveredNoteTimestamp({ts: Time.INVALID}));
           },
         },
         isTraceLoaded() ?
@@ -125,8 +131,8 @@ export class NotesPanel extends Panel {
     ctx.rect(TRACK_SHELL_WIDTH, 0, size.width - TRACK_SHELL_WIDTH, size.height);
     ctx.clip();
 
-    const span = globals.frontendLocalState.visibleTimeSpan;
-    const {visibleTimeScale} = globals.frontendLocalState;
+    const span = globals.timeline.visibleTimeSpan;
+    const {visibleTimeScale} = globals.timeline;
     if (size.width > TRACK_SHELL_WIDTH && span.duration > 0n) {
       const maxMajorTicks = getMaxMajorTicks(size.width - TRACK_SHELL_WIDTH);
       const map = timeScaleForVisibleWindow(TRACK_SHELL_WIDTH, size.width);
@@ -154,7 +160,7 @@ export class NotesPanel extends Panel {
         continue;
       }
       const currentIsHovered =
-          this.hoveredX && this.mouseOverNote(this.hoveredX, note);
+          this.hoveredX !== null && this.mouseOverNote(this.hoveredX, note);
       if (currentIsHovered) aNoteIsHovered = true;
 
       const selection = globals.state.currentSelection;
@@ -216,7 +222,7 @@ export class NotesPanel extends Panel {
     ctx.strokeStyle = color;
     const topOffset = 10;
     // Don't draw in the track shell section.
-    if (x >= globals.frontendLocalState.windowSpan.start + TRACK_SHELL_WIDTH) {
+    if (x >= TRACK_SHELL_WIDTH) {
       // Draw left triangle.
       ctx.beginPath();
       ctx.moveTo(x, topOffset);
@@ -236,8 +242,7 @@ export class NotesPanel extends Panel {
     ctx.stroke();
 
     // Start line after track shell section, join triangles.
-    const startDraw = Math.max(
-        x, globals.frontendLocalState.windowSpan.start + TRACK_SHELL_WIDTH);
+    const startDraw = Math.max(x, TRACK_SHELL_WIDTH);
     ctx.beginPath();
     ctx.moveTo(startDraw, topOffset);
     ctx.lineTo(xEnd, topOffset);
@@ -269,10 +274,10 @@ export class NotesPanel extends Panel {
 
   private onClick(x: number, _: number) {
     if (x < 0) return;
-    const {visibleTimeScale} = globals.frontendLocalState;
+    const {visibleTimeScale} = globals.timeline;
     const timestamp = visibleTimeScale.pxToHpTime(x).toTime();
     for (const note of Object.values(globals.state.notes)) {
-      if (this.hoveredX && this.mouseOverNote(this.hoveredX, note)) {
+      if (this.hoveredX !== null && this.mouseOverNote(this.hoveredX, note)) {
         if (note.noteType === 'AREA') {
           globals.makeSelection(
               Actions.reSelectArea({areaId: note.areaId, noteId: note.id}));
@@ -287,7 +292,7 @@ export class NotesPanel extends Panel {
   }
 
   private mouseOverNote(x: number, note: AreaNote|Note): boolean {
-    const timeScale = globals.frontendLocalState.visibleTimeScale;
+    const timeScale = globals.timeline.visibleTimeScale;
     const noteX = timeScale.timeToPx(getStartTimestamp(note));
     if (note.noteType === 'AREA') {
       const noteArea = globals.state.areas[note.areaId];
@@ -315,8 +320,6 @@ export class NotesEditorTab extends BottomTab<NotesEditorTabConfig> {
   constructor(args: NewBottomTabArgs) {
     super(args);
   }
-
-  renderTabCanvas() {}
 
   getTitle() {
     return 'Current Selection';

@@ -65,7 +65,16 @@ jumbo_component("shell_dialogs") {
         "select_file_dialog_linux_portal.cc",
         "select_file_dialog_linux_portal.h",
       ]
-      deps += [ "//dbus" ]
+      deps += [
+        "//dbus",
+        "//ui/views",
+      ]
+
+      if (is_qtwebengine) {
+        deps -= [
+          "//ui/views",
+        ]
+      }
     }
   }
 
@@ -85,6 +94,8 @@ jumbo_component("shell_dialogs") {
 
   if (is_win) {
     sources += [
+      "auto_close_dialog_event_handler_win.cc",
+      "auto_close_dialog_event_handler_win.h",
       "base_shell_dialog_win.cc",
       "base_shell_dialog_win.h",
       "execute_select_file_win.cc",

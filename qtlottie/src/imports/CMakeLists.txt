@@ -19,6 +19,7 @@ qt_internal_add_qml_module(lottieqtplugin
         Qt::Qml
         Qt::Quick
         Qt::BodymovinPrivate
+    NO_GENERATE_CPP_EXPORTS
 )
 
 qt_internal_add_docs(lottieqtplugin

@@ -7,7 +7,9 @@ import * as TraceEngine from '../../models/trace/trace.js';
 import {RecordType, TimelineModelImpl} from './TimelineModel.js';
 
 export abstract class TimelineModelFilter {
-  abstract accept(_event: TraceEngine.Legacy.CompatibleTraceEvent): boolean;
+  abstract accept(
+      _event: TraceEngine.Legacy.CompatibleTraceEvent,
+      traceParsedData?: TraceEngine.Handlers.Types.TraceParseData): boolean;
 }
 
 export class TimelineVisibleEventsFilter extends TimelineModelFilter {
@@ -27,6 +29,12 @@ export class TimelineVisibleEventsFilter extends TimelineModelFilter {
     }
     if (TraceEngine.Legacy.eventHasCategory(event, TimelineModelImpl.Category.UserTiming)) {
       return RecordType.UserTiming;
+    }
+    if (TraceEngine.Legacy.eventIsFromNewEngine(event) && TraceEngine.Types.TraceEvents.isProfileCall(event)) {
+      // ProfileCalls from the new engine are broadly equivalent to JSFrames in
+      // the old engine, so map them as such, as we do not have a RecordType to
+      // represent ProfileCalls.
+      return RecordType.JSFrame;
     }
     return event.name as RecordType;
   }

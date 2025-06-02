@@ -554,9 +554,6 @@ void tst_QDate::startOfDay_endOfDay_data()
         const QTime end;
         const BackendKludges msOpt;
     } transitions[] = {
-        // The western Mexico time-zones skipped the first hour of 1970.
-        { "BajaMexico", "America/Hermosillo", QDate(1970, 1, 1), QTime(1, 0), late, MsNoStart },
-
         // Compare tst_QDateTime::fromStringDateFormat(ISO 24:00 in DST).
         { "Brazil", "America/Sao_Paulo", QDate(2008, 10, 19), QTime(1, 0), late, Clean },
 
@@ -1179,7 +1176,7 @@ void tst_QDate::operator_insert_extract()
     QCOMPARE(deserialised, date);
 }
 
-#if QT_CONFIG(datetimeparser)
+#if QT_CONFIG(datestring)
 void tst_QDate::fromStringDateFormat_data()
 {
     QTest::addColumn<QString>("dateStr");
@@ -1303,6 +1300,7 @@ void tst_QDate::fromStringDateFormat()
     QCOMPARE(QDate::fromString(dateStr, dateFormat), expectedDate);
 }
 
+# if QT_CONFIG(datetimeparser)
 void tst_QDate::fromStringFormat_data()
 {
     QTest::addColumn<QString>("string");
@@ -1463,6 +1461,8 @@ void tst_QDate::fromStringFormat_data()
             << u"05-00206-21"_s << u"MM-yyyy-dd"_s << 1900 << QDate();
     QTest::newRow("5digit year, back")
             << u"05-21-00206"_s << u"MM-dd-yyyy"_s << 1900 << QDate();
+    QTest::newRow("non-leap-feb-29") // QTBUG-132115: should fail but not assert
+            << u"290215"_s << u"ddMMyy"_s << 1900 << QDate();
 
     QTest::newRow("dash separator, no year at end")
             << u"05-21-"_s << u"dd-MM-yyyy"_s << 1900 << QDate();
@@ -1490,7 +1490,6 @@ void tst_QDate::fromStringFormat()
 }
 #endif // datetimeparser
 
-#if QT_CONFIG(datestring)
 void tst_QDate::toStringFormat_data()
 {
     QTest::addColumn<QDate>("t");

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include <qv4engine_p.h>
 
-#include <private/qv4compileddata_p.h>
-#include <private/qv4codegen_p.h>
 #include <private/qqmljsdiagnosticmessage_p.h>
+#include <private/qv4codegen_p.h>
+#include <private/qv4compileddata_p.h>
+#include <private/qv4module_p.h>
 
 #include <QtCore/QTextStream>
 #include <QDateTime>
@@ -61,6 +62,7 @@
 #include "qv4variantobject_p.h"
 #include "qv4sequenceobject_p.h"
 #include "qv4qobjectwrapper_p.h"
+#include "qv4qmetaobjectwrapper_p.h"
 #include "qv4memberdata_p.h"
 #include "qv4arraybuffer_p.h"
 #include "qv4dataview_p.h"
@@ -105,7 +107,8 @@ using namespace QV4;
 // odd while the statics are being initialized, and stays even afterwards.
 // Any further engines created while the statics are being initialized busy-wait until engineSerial
 // is even.
-static QBasicAtomicInt engineSerial = Q_BASIC_ATOMIC_INITIALIZER(1);
+Q_CONSTINIT static QBasicAtomicInt engineSerial = Q_BASIC_ATOMIC_INITIALIZER(1);
+Q_CONSTINIT static QBasicAtomicInt hasPreview = Q_BASIC_ATOMIC_INITIALIZER(0);
 int ExecutionEngine::s_maxCallDepth = -1;
 int ExecutionEngine::s_jitCallCountThreshold = 3;
 int ExecutionEngine::s_maxJSStackSize = 4 * 1024 * 1024;
@@ -370,6 +373,8 @@ ExecutionEngine::ExecutionEngine(QJSEngine *jsEngine)
     const size_t guardPages = 2 * WTF::pageSize();
 
     memoryManager = new QV4::MemoryManager(this);
+    // we don't want to run the gc while the initial setup is not done; not even in aggressive mode
+    GCCriticalSection gcCriticalSection(this);
     // reserve space for the JS stack
     // we allow it to grow to a bit more than m_maxJSStackSize, as we can overshoot due to ScopedValues
     // allocated outside of JIT'ed methods.
@@ -624,25 +629,23 @@ ExecutionEngine::ExecutionEngine(QJSEngine *jsEngine)
     ic = newInternalClass(SequencePrototype::staticVTable(), SequencePrototype::defaultPrototype(this));
     jsObjects[SequenceProto] = ScopedValue(scope, memoryManager->allocObject<SequencePrototype>(ic->d()));
 
-    ExecutionContext *global = rootContext();
-
-    jsObjects[Object_Ctor] = memoryManager->allocate<ObjectCtor>(global);
-    jsObjects[String_Ctor] = memoryManager->allocate<StringCtor>(global);
-    jsObjects[Symbol_Ctor] = memoryManager->allocate<SymbolCtor>(global);
-    jsObjects[Number_Ctor] = memoryManager->allocate<NumberCtor>(global);
-    jsObjects[Boolean_Ctor] = memoryManager->allocate<BooleanCtor>(global);
-    jsObjects[Array_Ctor] = memoryManager->allocate<ArrayCtor>(global);
-    jsObjects[Function_Ctor] = memoryManager->allocate<FunctionCtor>(global);
-    jsObjects[GeneratorFunction_Ctor] = memoryManager->allocate<GeneratorFunctionCtor>(global);
-    jsObjects[Date_Ctor] = memoryManager->allocate<DateCtor>(global);
-    jsObjects[RegExp_Ctor] = memoryManager->allocate<RegExpCtor>(global);
-    jsObjects[Error_Ctor] = memoryManager->allocate<ErrorCtor>(global);
-    jsObjects[EvalError_Ctor] = memoryManager->allocate<EvalErrorCtor>(global);
-    jsObjects[RangeError_Ctor] = memoryManager->allocate<RangeErrorCtor>(global);
-    jsObjects[ReferenceError_Ctor] = memoryManager->allocate<ReferenceErrorCtor>(global);
-    jsObjects[SyntaxError_Ctor] = memoryManager->allocate<SyntaxErrorCtor>(global);
-    jsObjects[TypeError_Ctor] = memoryManager->allocate<TypeErrorCtor>(global);
-    jsObjects[URIError_Ctor] = memoryManager->allocate<URIErrorCtor>(global);
+    jsObjects[Object_Ctor] = memoryManager->allocate<ObjectCtor>(this);
+    jsObjects[String_Ctor] = memoryManager->allocate<StringCtor>(this);
+    jsObjects[Symbol_Ctor] = memoryManager->allocate<SymbolCtor>(this);
+    jsObjects[Number_Ctor] = memoryManager->allocate<NumberCtor>(this);
+    jsObjects[Boolean_Ctor] = memoryManager->allocate<BooleanCtor>(this);
+    jsObjects[Array_Ctor] = memoryManager->allocate<ArrayCtor>(this);
+    jsObjects[Function_Ctor] = memoryManager->allocate<FunctionCtor>(this);
+    jsObjects[GeneratorFunction_Ctor] = memoryManager->allocate<GeneratorFunctionCtor>(this);
+    jsObjects[Date_Ctor] = memoryManager->allocate<DateCtor>(this);
+    jsObjects[RegExp_Ctor] = memoryManager->allocate<RegExpCtor>(this);
+    jsObjects[Error_Ctor] = memoryManager->allocate<ErrorCtor>(this);
+    jsObjects[EvalError_Ctor] = memoryManager->allocate<EvalErrorCtor>(this);
+    jsObjects[RangeError_Ctor] = memoryManager->allocate<RangeErrorCtor>(this);
+    jsObjects[ReferenceError_Ctor] = memoryManager->allocate<ReferenceErrorCtor>(this);
+    jsObjects[SyntaxError_Ctor] = memoryManager->allocate<SyntaxErrorCtor>(this);
+    jsObjects[TypeError_Ctor] = memoryManager->allocate<TypeErrorCtor>(this);
+    jsObjects[URIError_Ctor] = memoryManager->allocate<URIErrorCtor>(this);
     jsObjects[IteratorProto] = memoryManager->allocate<IteratorPrototype>();
 
     ic = newInternalClass(ForInIteratorPrototype::staticVTable(), iteratorPrototype());
@@ -660,9 +663,9 @@ ExecutionEngine::ExecutionEngine(QJSEngine *jsEngine)
     // url
     //
 
-    jsObjects[Url_Ctor] = memoryManager->allocate<UrlCtor>(global);
+    jsObjects[Url_Ctor] = memoryManager->allocate<UrlCtor>(this);
     jsObjects[UrlProto] = memoryManager->allocate<UrlPrototype>();
-    jsObjects[UrlSearchParams_Ctor] = memoryManager->allocate<UrlSearchParamsCtor>(global);
+    jsObjects[UrlSearchParams_Ctor] = memoryManager->allocate<UrlSearchParamsCtor>(this);
     jsObjects[UrlSearchParamsProto] = memoryManager->allocate<UrlSearchParamsPrototype>();
 
     str = newString(QStringLiteral("get [Symbol.species]"));
@@ -700,19 +703,19 @@ ExecutionEngine::ExecutionEngine(QJSEngine *jsEngine)
 
     sequencePrototype()->cast<SequencePrototype>()->init();
 
-    jsObjects[WeakMap_Ctor] = memoryManager->allocate<WeakMapCtor>(global);
+    jsObjects[WeakMap_Ctor] = memoryManager->allocate<WeakMapCtor>(this);
     jsObjects[WeakMapProto] = memoryManager->allocate<WeakMapPrototype>();
     static_cast<WeakMapPrototype *>(weakMapPrototype())->init(this, weakMapCtor());
 
-    jsObjects[Map_Ctor] = memoryManager->allocate<MapCtor>(global);
+    jsObjects[Map_Ctor] = memoryManager->allocate<MapCtor>(this);
     jsObjects[MapProto] = memoryManager->allocate<MapPrototype>();
     static_cast<MapPrototype *>(mapPrototype())->init(this, mapCtor());
 
-    jsObjects[WeakSet_Ctor] = memoryManager->allocate<WeakSetCtor>(global);
+    jsObjects[WeakSet_Ctor] = memoryManager->allocate<WeakSetCtor>(this);
     jsObjects[WeakSetProto] = memoryManager->allocate<WeakSetPrototype>();
     static_cast<WeakSetPrototype *>(weakSetPrototype())->init(this, weakSetCtor());
 
-    jsObjects[Set_Ctor] = memoryManager->allocate<SetCtor>(global);
+    jsObjects[Set_Ctor] = memoryManager->allocate<SetCtor>(this);
     jsObjects[SetProto] = memoryManager->allocate<SetPrototype>();
     static_cast<SetPrototype *>(setPrototype())->init(this, setCtor());
 
@@ -720,33 +723,34 @@ ExecutionEngine::ExecutionEngine(QJSEngine *jsEngine)
     // promises
     //
 
-    jsObjects[Promise_Ctor] = memoryManager->allocate<PromiseCtor>(global);
+    jsObjects[Promise_Ctor] = memoryManager->allocate<PromiseCtor>(this);
     jsObjects[PromiseProto] = memoryManager->allocate<PromisePrototype>();
     static_cast<PromisePrototype *>(promisePrototype())->init(this, promiseCtor());
 
     // typed arrays
 
-    jsObjects[SharedArrayBuffer_Ctor] = memoryManager->allocate<SharedArrayBufferCtor>(global);
+    jsObjects[SharedArrayBuffer_Ctor] = memoryManager->allocate<SharedArrayBufferCtor>(this);
     jsObjects[SharedArrayBufferProto] = memoryManager->allocate<SharedArrayBufferPrototype>();
     static_cast<SharedArrayBufferPrototype *>(sharedArrayBufferPrototype())->init(this, sharedArrayBufferCtor());
 
-    jsObjects[ArrayBuffer_Ctor] = memoryManager->allocate<ArrayBufferCtor>(global);
+    jsObjects[ArrayBuffer_Ctor] = memoryManager->allocate<ArrayBufferCtor>(this);
     jsObjects[ArrayBufferProto] = memoryManager->allocate<ArrayBufferPrototype>();
     static_cast<ArrayBufferPrototype *>(arrayBufferPrototype())->init(this, arrayBufferCtor());
 
-    jsObjects[DataView_Ctor] = memoryManager->allocate<DataViewCtor>(global);
+    jsObjects[DataView_Ctor] = memoryManager->allocate<DataViewCtor>(this);
     jsObjects[DataViewProto] = memoryManager->allocate<DataViewPrototype>();
     static_cast<DataViewPrototype *>(dataViewPrototype())->init(this, dataViewCtor());
     jsObjects[ValueTypeProto] = (Heap::Base *) nullptr;
     jsObjects[SignalHandlerProto] = (Heap::Base *) nullptr;
+    jsObjects[TypeWrapperProto] = (Heap::Base *) nullptr;
 
-    jsObjects[IntrinsicTypedArray_Ctor] = memoryManager->allocate<IntrinsicTypedArrayCtor>(global);
+    jsObjects[IntrinsicTypedArray_Ctor] = memoryManager->allocate<IntrinsicTypedArrayCtor>(this);
     jsObjects[IntrinsicTypedArrayProto] = memoryManager->allocate<IntrinsicTypedArrayPrototype>();
     static_cast<IntrinsicTypedArrayPrototype *>(intrinsicTypedArrayPrototype())
             ->init(this, static_cast<IntrinsicTypedArrayCtor *>(intrinsicTypedArrayCtor()));
 
     for (int i = 0; i < NTypedArrayTypes; ++i) {
-        static_cast<Value &>(typedArrayCtors[i]) = memoryManager->allocate<TypedArrayCtor>(global, Heap::TypedArray::Type(i));
+        static_cast<Value &>(typedArrayCtors[i]) = memoryManager->allocate<TypedArrayCtor>(this, Heap::TypedArray::Type(i));
         static_cast<Value &>(typedArrayPrototype[i]) = memoryManager->allocate<TypedArrayPrototype>(Heap::TypedArray::Type(i));
         typedArrayPrototype[i].as<TypedArrayPrototype>()->init(this, static_cast<TypedArrayCtor *>(typedArrayCtors[i].as<Object>()));
     }
@@ -793,14 +797,14 @@ ExecutionEngine::ExecutionEngine(QJSEngine *jsEngine)
     globalObject->defineDefaultProperty(QStringLiteral("Math"), (o = memoryManager->allocate<MathObject>()));
     globalObject->defineDefaultProperty(QStringLiteral("JSON"), (o = memoryManager->allocate<JsonObject>()));
     globalObject->defineDefaultProperty(QStringLiteral("Reflect"), (o = memoryManager->allocate<Reflect>()));
-    globalObject->defineDefaultProperty(QStringLiteral("Proxy"), (o = memoryManager->allocate<Proxy>(rootContext())));
+    globalObject->defineDefaultProperty(QStringLiteral("Proxy"), (o = memoryManager->allocate<Proxy>(this)));
 
     globalObject->defineReadonlyProperty(QStringLiteral("undefined"), Value::undefinedValue());
     globalObject->defineReadonlyProperty(QStringLiteral("NaN"), Value::fromDouble(std::numeric_limits<double>::quiet_NaN()));
     globalObject->defineReadonlyProperty(QStringLiteral("Infinity"), Value::fromDouble(Q_INFINITY));
 
 
-    jsObjects[Eval_Function] = memoryManager->allocate<EvalFunction>(global);
+    jsObjects[Eval_Function] = memoryManager->allocate<EvalFunction>(this);
     globalObject->defineDefaultProperty(QStringLiteral("eval"), *evalFunction());
 
     // ES6: 20.1.2.12 &  20.1.2.13:
@@ -829,7 +833,9 @@ ExecutionEngine::ExecutionEngine(QJSEngine *jsEngine)
     globalObject->defineDefaultProperty(QStringLiteral("escape"), GlobalFunctions::method_escape, 1);
     globalObject->defineDefaultProperty(QStringLiteral("unescape"), GlobalFunctions::method_unescape, 1);
 
-    ScopedFunctionObject t(scope, memoryManager->allocate<FunctionObject>(rootContext(), nullptr, ::throwTypeError));
+    ScopedFunctionObject t(
+            scope,
+            memoryManager->allocate<DynamicFunctionObject>(this, nullptr, ::throwTypeError));
     t->defineReadonlyProperty(id_length(), Value::fromInt32(0));
     t->setInternalClass(t->internalClass()->cryopreserved());
     jsObjects[ThrowerObject] = t;
@@ -848,20 +854,18 @@ ExecutionEngine::ExecutionEngine(QJSEngine *jsEngine)
 
 ExecutionEngine::~ExecutionEngine()
 {
-    modules.clear();
-    for (auto val : nativeModules) {
-        PersistentValueStorage::free(val);
-    }
-    nativeModules.clear();
     qDeleteAll(m_extensionData);
     delete m_multiplyWrappedQObjects;
     m_multiplyWrappedQObjects = nullptr;
     delete identifierTable;
     delete memoryManager;
 
-    // Take a temporary reference to the CU so that it doesn't disappear during unlinking.
-    while (!compilationUnits.isEmpty())
-        QQmlRefPointer<ExecutableCompilationUnit>(*compilationUnits.begin())->unlink();
+    for (const auto &cu : std::as_const(m_compilationUnits)) {
+        Q_ASSERT(cu->engine == this);
+        cu->clear();
+        cu->engine = nullptr;
+    }
+    m_compilationUnits.clear();
 
     delete bumperPointerAllocator;
     delete regExpCache;
@@ -890,6 +894,12 @@ void ExecutionEngine::setProfiler(Profiling::Profiler *profiler)
     Q_ASSERT(!m_profiler);
     m_profiler.reset(profiler);
 }
+
+void ExecutionEngine::setPreviewing(bool enabled)
+{
+    hasPreview.storeRelease(enabled);
+}
+
 #endif // QT_CONFIG(qml_debug)
 
 void ExecutionEngine::initRootContext()
@@ -1226,8 +1236,6 @@ QQmlRefPointer<QQmlContextData> ExecutionEngine::callingQmlContext() const
 
 StackTrace ExecutionEngine::stackTrace(int frameLimit) const
 {
-    Scope scope(const_cast<ExecutionEngine *>(this));
-    ScopedString name(scope);
     StackTrace stack;
 
     CppStackFrame *f = currentStackFrame;
@@ -1236,7 +1244,7 @@ StackTrace ExecutionEngine::stackTrace(int frameLimit) const
         frame.source = f->source();
         frame.function = f->function();
         frame.line = f->lineNumber();
-        frame.column = -1;
+
         stack.append(frame);
         if (f->isJSTypesFrame()) {
             if (static_cast<JSTypesStackFrame *>(f)->isTailCalling()) {
@@ -1325,7 +1333,7 @@ void ExecutionEngine::markObjects(MarkStack *markStack)
 
     identifierTable->markObjects(markStack);
 
-    for (auto compilationUnit: compilationUnits)
+    for (const auto &compilationUnit : std::as_const(m_compilationUnits))
         compilationUnit->markObjects(markStack);
 }
 
@@ -1533,6 +1541,16 @@ static QVariant toVariant(const QV4::Value &value, QMetaType metaType, JSToQVari
         } else if (QV4::QmlListWrapper *l = object->as<QV4::QmlListWrapper>()) {
             return l->toVariant();
         } else if (QV4::Sequence *s = object->as<QV4::Sequence>()) {
+            if (metaType.isValid()
+                    && metaType != QMetaType::fromType<QVariant>()
+                    && metaType != s->d()->listType()) {
+                // If we can, produce an accurate result.
+                const QVariant result = QV4::SequencePrototype::toVariant(value, metaType);
+                if (result.isValid())
+                    return result;
+            }
+
+            // Otherwise produce the "natural" type of the sequence.
             return QV4::SequencePrototype::toVariant(s);
         }
     }
@@ -1561,57 +1579,6 @@ static QVariant toVariant(const QV4::Value &value, QMetaType metaType, JSToQVari
         QVariant retn = QV4::SequencePrototype::toVariant(value, metaType);
         if (retn.isValid())
             return retn;
-
-        if (metaType.isValid()) {
-            retn = QVariant(metaType, nullptr);
-            auto retnAsIterable = retn.value<QSequentialIterable>();
-            if (retnAsIterable.metaContainer().canAddValue()) {
-                QMetaType valueMetaType = retnAsIterable.metaContainer().valueMetaType();
-                auto const length = a->getLength();
-                QV4::ScopedValue arrayValue(scope);
-                for (qint64 i = 0; i < length; ++i) {
-                    arrayValue = a->get(i);
-                    QVariant asVariant = QQmlValueTypeProvider::createValueType(
-                                arrayValue, valueMetaType);
-                    if (asVariant.isValid()) {
-                        retnAsIterable.metaContainer().addValue(retn.data(), asVariant.constData());
-                        continue;
-                    }
-
-                    if (QMetaType::canConvert(QMetaType::fromType<QJSValue>(), valueMetaType)) {
-                        // before attempting a conversion from the concrete types,
-                        // check if there exists a conversion from QJSValue -> out type
-                        // prefer that one for compatibility reasons
-                        asVariant = QVariant::fromValue(QJSValuePrivate::fromReturnedValue(
-                                                            arrayValue->asReturnedValue()));
-                        if (asVariant.convert(valueMetaType)) {
-                            retnAsIterable.metaContainer().addValue(retn.data(), asVariant.constData());
-                            continue;
-                        }
-                    }
-
-                    asVariant = toVariant(arrayValue, valueMetaType, JSToQVariantConversionBehavior::Never, visitedObjects);
-                    if (valueMetaType == QMetaType::fromType<QVariant>()) {
-                        retnAsIterable.metaContainer().addValue(retn.data(), &asVariant);
-                    } else {
-                        auto originalType = asVariant.metaType();
-                        bool couldConvert = asVariant.convert(valueMetaType);
-                        if (!couldConvert && originalType.isValid()) {
-                            // If the original type was void, we're converting a "hole" in a sparse
-                            // array. There is no point in warning about that.
-                            qWarning().noquote()
-                                    << QLatin1String("Could not convert array value "
-                                                     "at position %1 from %2 to %3")
-                                       .arg(QString::number(i),
-                                            QString::fromUtf8(originalType.name()),
-                                            QString::fromUtf8(valueMetaType.name()));
-                        }
-                        retnAsIterable.metaContainer().addValue(retn.data(), asVariant.constData());
-                    }
-                }
-                return retn;
-            }
-        }
     }
 
     if (value.isUndefined())
@@ -1667,7 +1634,8 @@ static QVariant toVariant(const QV4::Value &value, QMetaType metaType, JSToQVari
 #endif
 
     if (metaType.isValid() && !(metaType.flags() & QMetaType::PointerToQObject)) {
-        const QVariant result = QQmlValueTypeProvider::createValueType(value, metaType);
+        const QVariant result
+                = QQmlValueTypeProvider::createValueType(value, metaType, scope.engine);
         if (result.isValid())
             return result;
     }
@@ -1951,8 +1919,11 @@ QV4::ReturnedValue ExecutionEngine::fromData(
         // and build a JS array from them.
         if (sequence.hasConstIterator() && sequence.canGetValueAtConstIterator()) {
             QV4::ScopedArrayObject a(scope, newArrayObject());
-            for (auto it = iterable.constBegin(), end = iterable.constEnd(); it != end; ++it)
-                a->push_back(fromVariant(*it));
+            QV4::ScopedValue v(scope);
+            for (auto it = iterable.constBegin(), end = iterable.constEnd(); it != end; ++it) {
+                v = fromVariant(*it);
+                a->push_back(v);
+            }
             return a.asReturnedValue();
         }
     }
@@ -2066,10 +2037,10 @@ QQmlRefPointer<ExecutableCompilationUnit> ExecutionEngine::compileModule(const Q
                     : QQmlMetaType::RequireFullyTyped,
                 &cacheError)
             : nullptr) {
-        return ExecutableCompilationUnit::create(
-                    QV4::CompiledData::CompilationUnit(
-                        cachedUnit->qmlData, cachedUnit->aotCompiledFunctions,
-                        url.fileName(), url.toString()));
+        return executableCompilationUnit(
+                QQml::makeRefPointer<QV4::CompiledData::CompilationUnit>(
+                        cachedUnit->qmlData, cachedUnit->aotCompiledFunctions, url.fileName(),
+                        url.toString()));
     }
 
     QFile f(QQmlFile::urlToLocalFileOrQrc(url));
@@ -2103,70 +2074,145 @@ QQmlRefPointer<ExecutableCompilationUnit> ExecutionEngine::compileModule(
         }
     }
 
-    return ExecutableCompilationUnit::create(std::move(unit));
+    return insertCompilationUnit(std::move(unit));
 }
 
-void ExecutionEngine::injectCompiledModule(const QQmlRefPointer<ExecutableCompilationUnit> &moduleUnit)
+QQmlRefPointer<ExecutableCompilationUnit> ExecutionEngine::compilationUnitForUrl(const QUrl &url) const
 {
-    // Injection can happen from the QML type loader thread for example, but instantiation and
-    // evaluation must be limited to the ExecutionEngine's thread.
-    QMutexLocker moduleGuard(&moduleMutex);
-    modules.insert(moduleUnit->finalUrl(), moduleUnit);
+    // Gives the _most recently inserted_ CU of that URL. That's what we want.
+    return m_compilationUnits.value(url);
+}
+
+QQmlRefPointer<ExecutableCompilationUnit> ExecutionEngine::executableCompilationUnit(
+        QQmlRefPointer<CompiledData::CompilationUnit> &&unit)
+{
+    const QUrl url = unit->finalUrl();
+    auto [begin, end] = std::as_const(m_compilationUnits).equal_range(url);
+
+    for (auto it = begin; it != end; ++it) {
+        if ((*it)->baseCompilationUnit() == unit)
+            return *it;
+    }
+
+    auto executableUnit =  m_compilationUnits.insert(
+            url, ExecutableCompilationUnit::create(std::move(unit), this));
+    // runtime data should not be initialized yet, so we don't need to mark the CU
+    Q_ASSERT(!(*executableUnit)->runtimeStrings);
+    return *executableUnit;
+}
+
+QQmlRefPointer<ExecutableCompilationUnit> ExecutionEngine::insertCompilationUnit(QQmlRefPointer<CompiledData::CompilationUnit> &&unit) {
+    QUrl url = unit->finalUrl();
+    auto executableUnit = ExecutableCompilationUnit::create(std::move(unit), this);
+    /* Compilation Units stored in the engine are part of the gc roots,
+      so we don't trigger any write-barrier when they are added. Use
+      markCustom to make sure they are still marked when we insert them */
+    QV4::WriteBarrier::markCustom(this, [&executableUnit](QV4::MarkStack *ms) {
+        executableUnit->markObjects(ms);
+    });
+    return *m_compilationUnits.insert(std::move(url), std::move(executableUnit));
+}
+
+void ExecutionEngine::trimCompilationUnits()
+{
+    for (auto it = m_compilationUnits.begin(); it != m_compilationUnits.end();) {
+        if ((*it)->count() == 1)
+            it = m_compilationUnits.erase(it);
+        else
+            ++it;
+    }
+}
+
+template<typename NotFound>
+ExecutionEngine::Module doFindModule(
+        const QMultiHash<QUrl, QQmlRefPointer<ExecutableCompilationUnit>> &compilationUnits,
+        const QUrl &url, const ExecutableCompilationUnit *referrer, NotFound &&notFound)
+{
+    const QUrl resolved = referrer
+            ? referrer->finalUrl().resolved(QQmlTypeLoader::normalize(url))
+            : QQmlTypeLoader::normalize(url);
+    auto existingModule = compilationUnits.constFind(resolved);
+    if (existingModule != compilationUnits.constEnd())
+        return *existingModule;
+
+    if (resolved != url) {
+        // Also try with the relative url, to support native modules.
+        existingModule = compilationUnits.constFind(url);
+        if (existingModule != compilationUnits.constEnd())
+            return *existingModule;
+    }
+
+    return notFound(resolved);
 }
 
 ExecutionEngine::Module ExecutionEngine::moduleForUrl(
         const QUrl &url, const ExecutableCompilationUnit *referrer) const
 {
-    QMutexLocker moduleGuard(&moduleMutex);
-    const auto nativeModule = nativeModules.find(url);
-    if (nativeModule != nativeModules.end())
-        return Module { nullptr, *nativeModule };
-
-    const QUrl resolved = referrer
-            ? referrer->finalUrl().resolved(QQmlTypeLoader::normalize(url))
-            : QQmlTypeLoader::normalize(url);
-    auto existingModule = modules.find(resolved);
-    if (existingModule == modules.end())
-        return Module { nullptr, nullptr };
-    return Module { *existingModule, nullptr };
+    return doFindModule(m_compilationUnits, url, referrer, [](const QUrl &) {
+        return Module();
+    });
 }
 
-ExecutionEngine::Module ExecutionEngine::loadModule(const QUrl &url, const ExecutableCompilationUnit *referrer)
+ExecutionEngine::Module ExecutionEngine::loadModule(
+        const QUrl &url, const ExecutableCompilationUnit *referrer)
 {
-    QMutexLocker moduleGuard(&moduleMutex);
-    const auto nativeModule = nativeModules.find(url);
-    if (nativeModule != nativeModules.end())
-        return Module { nullptr, *nativeModule };
+    return doFindModule(m_compilationUnits, url, referrer, [this](const QUrl &resolved) {
+        if (auto cu = QQmlMetaType::obtainCompilationUnit(resolved))
+            return executableCompilationUnit(std::move(cu));
+        return compileModule(resolved);
+    });
+}
 
-    const QUrl resolved = referrer
-            ? referrer->finalUrl().resolved(QQmlTypeLoader::normalize(url))
-            : QQmlTypeLoader::normalize(url);
-    auto existingModule = modules.find(resolved);
-    if (existingModule != modules.end())
-        return Module { *existingModule, nullptr };
+ExecutionEngine::Module ExecutionEngine::registerNativeModule(
+        const QUrl &url, const QV4::Value &value)
+{
+    Q_ASSERT(!m_compilationUnits.contains(url));
 
-    moduleGuard.unlock();
+    const QV4::CompiledData::Unit *unit = Compiler::Codegen::generateNativeModuleUnitData(
+            /*debugMode*/debugger() != nullptr, url.toString(), value);
+    if (!unit)
+        return Module();
 
-    auto newModule = compileModule(resolved);
-    if (newModule) {
-        moduleGuard.relock();
-        modules.insert(resolved, newModule);
+    QQmlRefPointer<CompiledData::CompilationUnit> cu;
+    if (m_qmlEngine) {
+        // Make sure the type loader doesn't try to resolve the script anymore.
+        cu = QQmlEnginePrivate::get(m_qmlEngine)->typeLoader.injectScript(url, unit);
+    } else {
+        cu = QQml::makeRefPointer<CompiledData::CompilationUnit>(unit);
     }
 
-    return Module { newModule, nullptr };
-}
+    QQmlRefPointer<ExecutableCompilationUnit> newModule = insertCompilationUnit(std::move(cu));
 
-QV4::Value *ExecutionEngine::registerNativeModule(const QUrl &url, const QV4::Value &module)
-{
-    QMutexLocker moduleGuard(&moduleMutex);
-    const auto existingModule = nativeModules.find(url);
-    if (existingModule != nativeModules.end())
-        return nullptr;
+    Q_ASSERT(m_compilationUnits.contains(url, newModule));
 
-    QV4::Value *val = this->memoryManager->m_persistentValues->allocate();
-    *val = module.asReturnedValue();
-    nativeModules.insert(url, val);
-    return val;
+    Scope scope(this);
+    Scoped<QV4::Module> instance(scope, newModule->instantiate());
+    Scoped<CallContext> context(scope, instance->d()->scope);
+
+    const CompiledData::Unit *unitData = newModule->baseCompilationUnit()->data;
+    const CompiledData::ExportEntry *exportEntries = unitData->localExportEntryTable();
+
+    ScopedObject object(scope, value);
+    for (uint i = 0, end = unitData->localExportEntryTableSize; i < end; ++i) {
+        const CompiledData::ExportEntry *localExport = exportEntries + i;
+        ScopedString localName(scope, newModule->runtimeStrings[localExport->localName]);
+        const uint index
+                = context->internalClass()->indexOfValueOrGetter(localName->toPropertyKey());
+        QV4::Heap::CallContext *cc = context->d();
+        Q_ASSERT(index < cc->locals.size);
+        if (localName->toQString() == QLatin1String("default")) {
+            cc->locals.set(this, index, value);
+            continue;
+        }
+
+        Q_ASSERT(object);
+
+        ScopedValue localValue(scope, object->get(localName));
+        cc->locals.set(this, index, localValue);
+    }
+
+    instance->d()->evaluated = true;
+    return newModule;
 }
 
 static ExecutionEngine::DiskCacheOptions transFormDiskCache(const char *v)
@@ -2206,7 +2252,9 @@ ExecutionEngine::DiskCacheOptions ExecutionEngine::diskCacheOptions() const
         return DiskCache::Disabled;
     static const DiskCacheOptions options = qmlGetConfigOption<
             DiskCacheOptions, transFormDiskCache>("QML_DISK_CACHE");
-    return options;
+    return hasPreview.loadAcquire()
+            ? (options & ~DiskCacheOptions(DiskCache::Aot)) // Disable AOT if preview enabled
+            : options;
 }
 
 void ExecutionEngine::callInContext(QV4::Function *function, QObject *self,
@@ -2440,9 +2488,12 @@ bool convertToIterable(QMetaType metaType, void *data, Source *sequence)
         return false;
 
     const QMetaType elementMetaType = iterable.valueMetaType();
+    QV4::Scope scope(sequence->engine());
+    QV4::ScopedValue v(scope);
     for (qsizetype i = 0, end = sequence->getLength(); i < end; ++i) {
         QVariant element(elementMetaType);
-        ExecutionEngine::metaTypeFromJS(sequence->get(i), elementMetaType, element.data());
+        v = sequence->get(i);
+        ExecutionEngine::metaTypeFromJS(v, elementMetaType, element.data());
         iterable.addValue(element, QSequentialIterable::AtEnd);
     }
     return true;
@@ -2502,9 +2553,12 @@ bool ExecutionEngine::metaTypeFromJS(const Value &value, QMetaType metaType, voi
             QByteArray result;
             const qint64 length = ao->getLength();
             result.reserve(length);
+            QV4::Scope scope(ao->engine());
+            QV4::ScopedValue v(scope);
             for (qint64 i = 0; i < length; ++i) {
                 char value = 0;
-                ExecutionEngine::metaTypeFromJS(ao->get(i), QMetaType::fromType<char>(), &value);
+                v = ao->get(i);
+                ExecutionEngine::metaTypeFromJS(v, QMetaType::fromType<char>(), &value);
                 result.push_back(value);
             }
             *reinterpret_cast<QByteArray*>(data) = std::move(result);
@@ -2660,10 +2714,20 @@ bool ExecutionEngine::metaTypeFromJS(const Value &value, QMetaType metaType, voi
         }
 
         const auto wrapperPrivate = wrapper->d();
-        if (wrapperPrivate->propertyType() == metaType) {
+        if (metaType == QMetaType::fromType<QQmlListProperty<QObject> *>()
+                || metaType == wrapperPrivate->propertyType()) {
             *reinterpret_cast<QQmlListProperty<QObject> *>(data) = *wrapperPrivate->property();
             return true;
         }
+
+        if (metaType == QMetaType::fromType<QObjectList>()) {
+            *reinterpret_cast<QObjectList *>(data)
+                    = wrapperPrivate->property()->toList<QObjectList>();
+            return true;
+        }
+
+        if (convertToIterable(metaType, data, wrapper))
+            return true;
     }
 
     if (const QQmlValueTypeWrapper *vtw = value.as<QQmlValueTypeWrapper>()) {
@@ -2676,14 +2740,18 @@ bool ExecutionEngine::metaTypeFromJS(const Value &value, QMetaType metaType, voi
             d->readReference();
 
         if (void *gadgetPtr = d->gadgetPtr()) {
-            if (QQmlValueTypeProvider::populateValueType(metaType, data, valueType, gadgetPtr))
+            if (QQmlValueTypeProvider::populateValueType(
+                        metaType, data, valueType, gadgetPtr, vtw->engine())) {
                 return true;
+            }
             if (QMetaType::canConvert(valueType, metaType))
                 return QMetaType::convert(valueType, gadgetPtr, metaType, data);
         } else {
             QVariant empty(valueType);
-            if (QQmlValueTypeProvider::populateValueType(metaType, data, valueType, empty.data()))
+            if (QQmlValueTypeProvider::populateValueType(
+                        metaType, data, valueType, empty.data(), vtw->engine())) {
                 return true;
+            }
             if (QMetaType::canConvert(valueType, metaType))
                 return QMetaType::convert(valueType, empty.data(), metaType, data);
         }
@@ -2749,21 +2817,24 @@ bool ExecutionEngine::metaTypeFromJS(const Value &value, QMetaType metaType, voi
                 }
             }
         } else if (QQmlValueTypeProvider::populateValueType(
-                           metaType, data, var.metaType(), var.data())) {
+                           metaType, data, var.metaType(), var.data(), variantObject->engine())) {
             return true;
         }
     } else if (value.isNull() && isPointer) {
         *reinterpret_cast<void* *>(data) = nullptr;
         return true;
     } else if (metaType == QMetaType::fromType<QJSValue>()) {
-        QJSValuePrivate::setValue(reinterpret_cast<QJSValue*>(data), value.asReturnedValue());
+        QJSValuePrivate::setValue(reinterpret_cast<QJSValue*>(data), value);
         return true;
     } else if (metaType == QMetaType::fromType<QJSPrimitiveValue>()) {
         *reinterpret_cast<QJSPrimitiveValue *>(data) = createPrimitive(&value);
         return true;
     } else if (!isPointer) {
-        if (QQmlValueTypeProvider::populateValueType(metaType, data, value))
+        const QV4::Managed *managed = value.as<QV4::Managed>();
+        if (QQmlValueTypeProvider::populateValueType(
+                    metaType, data, value, managed ? managed->engine() : nullptr)) {
             return true;
+        }
     }
 
     if (const QV4::Sequence *sequence = value.as<Sequence>()) {

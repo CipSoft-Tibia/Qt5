@@ -155,7 +155,15 @@ struct Dummy
     bool operator<(const Dummy &) const { return false; }
 };
 
-struct RecursiveList : public QList<RecursiveList> {};
+struct RecursiveList : public QList<RecursiveList>
+{
+    friend bool operator<(const RecursiveList &lhs, const RecursiveList &rhs)
+    {
+        using Base = QList<RecursiveList>;
+        // compare some non-QList members here
+        return static_cast<const Base &>(lhs) < static_cast<const Base &>(rhs);
+    }
+};
 struct RecursiveSet : public QSet<RecursiveSet> {};
 struct RecursiveMapV : public QMap<Dummy, RecursiveMapV> {};
 struct RecursiveMapK : public QMap<RecursiveMapK, Dummy> {};
@@ -178,8 +186,8 @@ struct NoCmpParamRecursiveMultiHashK : public QMultiHash<NoCmpParamRecursiveMult
 
 struct NoCmpRecursiveList : public QList<NoCmpRecursiveList>
 {
-    bool operator==(const RecursiveList &) const = delete;
-    bool operator<(const RecursiveList &) const = delete;
+    bool operator==(const NoCmpRecursiveList &) const = delete;
+    bool operator<(const NoCmpRecursiveList &) const = delete;
 };
 struct NoCmpRecursiveSet : public QSet<NoCmpRecursiveSet>
 {
@@ -530,7 +538,7 @@ void tst_Collections::list()
             list << "one" << "two" << "one" << "two";
             QVERIFY(!list.removeOne("three"));
             QVERIFY(list.removeOne("two"));
-            QCOMPARE(list, QList<QString>() << "one" << "one" << "two");;
+            QCOMPARE(list, QList<QString>() << "one" << "one" << "two");
             QVERIFY(list.removeOne("two"));
             QCOMPARE(list, QList<QString>() << "one" << "one");
             QVERIFY(!list.removeOne("two"));
@@ -2823,8 +2831,8 @@ void instantiateContainer()
     container.clear();
     container.contains(value);
     container.size();
-    container.empty();
-    container.isEmpty();
+    Q_UNUSED(container.empty());
+    Q_UNUSED(container.isEmpty());
     container.size();
 
     Q_UNUSED((container != constContainer));

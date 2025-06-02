@@ -11,6 +11,10 @@
 #include <QScrollBar>
 #include <QStyle>
 
+#if QLITEHTML_HAS_QPRINTER
+#include <QtPrintSupport/qprinter.h>
+#endif
+
 const int kScrollBarStep = 40;
 
 // copied from include/litehtml/master_css.h
@@ -554,6 +558,47 @@ void QLiteHtmlWidget::setResourceHandler(const QLiteHtmlWidget::ResourceHandler 
 QString QLiteHtmlWidget::selectedText() const
 {
     return d->documentContainer.selectedText();
+}
+
+void QLiteHtmlWidget::print(QPrinter *printer)
+{
+#if QLITEHTML_HAS_QPRINTER
+    QPainter painter;
+    if (!painter.begin(printer))
+        return;
+
+    DocumentContainer dc;
+    dc.setDataCallback(d->documentContainer.dataCallback());
+    dc.setPaletteCallback(d->documentContainer.paletteCallback());
+    dc.setDefaultFont(d->documentContainer.defaultFont());
+    dc.setPaintDevice(printer);
+    dc.setBaseUrl(d->documentContainer.baseUrl());
+    dc.setMediaType(DocumentContainer::MediaType::Print);
+    dc.setDocument(d->html.toUtf8(), &d->context);
+
+    const QRect pageRect = printer->pageRect(QPrinter::DevicePixel).toRect();
+    dc.render(pageRect.width(), pageRect.height());
+
+    QRect drawRect = pageRect;
+    drawRect.moveTo(0, 0);
+    painter.setClipping(true);
+    painter.setClipRect(drawRect);
+
+    QPoint scrollPosition(0, 0);
+    while (true) {
+        dc.setScrollPosition(scrollPosition);
+        dc.draw(&painter, drawRect);
+        scrollPosition.ry() += drawRect.height();
+        if (scrollPosition.y() < dc.documentHeight())
+            printer->newPage();
+        else
+            break;
+    }
+
+    painter.end();
+#else
+    Q_UNUSED(printer);
+#endif
 }
 
 void QLiteHtmlWidget::paintEvent(QPaintEvent *event)

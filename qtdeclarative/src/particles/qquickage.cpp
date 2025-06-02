@@ -6,9 +6,9 @@
 QT_BEGIN_NAMESPACE
 /*!
     \qmltype Age
-    \instantiates QQuickAgeAffector
+    \nativetype QQuickAgeAffector
     \inqmlmodule QtQuick.Particles
-    \inherits Affector
+    \inherits ParticleAffector
     \brief For altering particle ages.
     \ingroup qtquick-particles
 

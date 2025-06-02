@@ -13,7 +13,6 @@
 
 #include "core/fxcrt/fx_system.h"
 #include "third_party/base/check_op.h"
-#include "third_party/base/numerics/safe_math.h"
 
 namespace {
 
@@ -362,7 +361,7 @@ CFX_FloatRect CFX_Path::GetBoundingBoxForStrokePath(float line_width,
         rect.UpdateRect(m_Points[iPoint + 1].m_Point);
         iPoint += 2;
       }
-      if (iPoint == m_Points.size() - 1 ||
+      if (iPoint + 1 == m_Points.size() ||
           m_Points[iPoint + 1].m_Type == CFX_Path::Point::Type::kMove) {
         iStartPoint = iPoint - 1;
         iEndPoint = iPoint;

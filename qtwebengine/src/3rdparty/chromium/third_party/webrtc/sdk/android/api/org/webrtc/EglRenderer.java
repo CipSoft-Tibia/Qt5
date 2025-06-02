@@ -273,6 +273,8 @@ public class EglRenderer implements VideoSink {
         bitmapTextureFramebuffer.release();
 
         if (eglBase != null) {
+          logD("eglBase detach and release.");
+          eglBase.detachCurrent();
           eglBase.release();
           eglBase = null;
         }
@@ -330,7 +332,6 @@ public class EglRenderer implements VideoSink {
    * Set if the video stream should be mirrored horizontally or not.
    */
   public void setMirror(final boolean mirror) {
-    logD("setMirrorHorizontally: " + mirror);
     synchronized (layoutLock) {
       this.mirrorHorizontally = mirror;
     }
@@ -340,7 +341,6 @@ public class EglRenderer implements VideoSink {
    * Set if the video stream should be mirrored vertically or not.
    */
   public void setMirrorVertically(final boolean mirrorVertically) {
-    logD("setMirrorVertically: " + mirrorVertically);
     synchronized (layoutLock) {
       this.mirrorVertically = mirrorVertically;
     }
@@ -351,7 +351,6 @@ public class EglRenderer implements VideoSink {
    * Set this to 0 to disable cropping.
    */
   public void setLayoutAspectRatio(float layoutAspectRatio) {
-    logD("setLayoutAspectRatio: " + layoutAspectRatio);
     synchronized (layoutLock) {
       this.layoutAspectRatio = layoutAspectRatio;
     }
@@ -364,7 +363,6 @@ public class EglRenderer implements VideoSink {
    *            reduction.
    */
   public void setFpsReduction(float fps) {
-    logD("setFpsReduction: " + fps);
     synchronized (fpsReductionLock) {
       final long previousRenderPeriodNs = minRenderPeriodNs;
       if (fps <= 0) {
@@ -509,6 +507,7 @@ public class EglRenderer implements VideoSink {
         eglThread.getHandler().removeCallbacks(eglSurfaceCreationRunnable);
         eglThread.getHandler().postAtFrontOfQueue(() -> {
           if (eglBase != null) {
+            eglBase.detachCurrent();
             eglBase.releaseSurface();
           }
           completionCallback.run();
@@ -556,6 +555,32 @@ public class EglRenderer implements VideoSink {
         return;
       }
       eglThread.getHandler().postAtFrontOfQueue(() -> clearSurfaceOnRenderThread(r, g, b, a));
+    }
+  }
+
+  private void swapBuffersOnRenderThread(final VideoFrame frame, long swapBuffersStartTimeNs) {
+    synchronized (threadLock) {
+      if (eglThread != null) {
+        eglThread.scheduleRenderUpdate(
+            runsInline -> {
+              if (!runsInline) {
+                if (eglBase == null || !eglBase.hasSurface()) {
+                  return;
+                }
+                eglBase.makeCurrent();
+              }
+
+              if (usePresentationTimeStamp) {
+                eglBase.swapBuffers(frame.getTimestampNs());
+              } else {
+                eglBase.swapBuffers();
+              }
+
+              synchronized (statisticsLock) {
+                renderSwapBufferTimeNs += (System.nanoTime() - swapBuffersStartTimeNs);
+              }
+            });
+      }
     }
   }
 
@@ -635,17 +660,11 @@ public class EglRenderer implements VideoSink {
             eglBase.surfaceWidth(), eglBase.surfaceHeight());
 
         final long swapBuffersStartTimeNs = System.nanoTime();
-        if (usePresentationTimeStamp) {
-          eglBase.swapBuffers(frame.getTimestampNs());
-        } else {
-          eglBase.swapBuffers();
-        }
+        swapBuffersOnRenderThread(frame, swapBuffersStartTimeNs);
 
-        final long currentTimeNs = System.nanoTime();
         synchronized (statisticsLock) {
           ++framesRendered;
-          renderTimeNs += (currentTimeNs - startTimeNs);
-          renderSwapBufferTimeNs += (currentTimeNs - swapBuffersStartTimeNs);
+          renderTimeNs += (swapBuffersStartTimeNs - startTimeNs);
         }
       }
 
@@ -660,8 +679,8 @@ public class EglRenderer implements VideoSink {
       drawer.release();
       frameDrawer.release();
       bitmapTextureFramebuffer.release();
-      // Continue here on purpose and retry again for next frame. In worst case, this is a continous
-      // problem and no more frames will be drawn.
+      // Continue here on purpose and retry again for next frame. In worst case, this is a
+      // continuous problem and no more frames will be drawn.
     } finally {
       frame.release();
     }

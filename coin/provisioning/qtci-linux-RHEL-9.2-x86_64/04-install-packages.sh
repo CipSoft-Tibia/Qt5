@@ -63,6 +63,9 @@ installPackages+=(dbus-devel)
 installPackages+=(gstreamer1-plugins-bad-free)
 installPackages+=(gstreamer1-devel)
 installPackages+=(gstreamer1-plugins-base-devel)
+installPackages+=(gstreamer1-plugin-openh264)
+# pipewire for QtMultimedia
+installPackages+=(pipewire-devel)
 # yasm for QtMultimedia
 installPackages+=(yasm)
 # gtk3 style for QtGui/QStyle
@@ -146,6 +149,7 @@ installPackages+=(perl-Data-Dumper)
 installPackages+=(gcc)
 installPackages+=(gcc-c++)
 installPackages+=(make)
+installPackages+=(gcc-toolset-12)
 # Open source VMware Tools
 installPackages+=(open-vm-tools)
 # nfs-utils is needed to make mount work with ci-files01
@@ -153,6 +157,14 @@ installPackages+=(nfs-utils)
 # cifs-utils, for mounting smb drive
 installPackages+=(keyutils)
 installPackages+=(cifs-utils)
+# used for reading vcpkg packages version, from vcpkg.json
+installPackages+=(jq)
+# zip, needed for vcpkg caching
+installPackages+=(zip)
+# OpenSSL requirement, built by vcpkg
+installPackages+=(perl-IPC-Cmd)
+# password management support for Qt Creator
+installPackages+=(libsecret-devel)
 
 sudo yum -y install "${installPackages[@]}"
 
@@ -170,8 +182,16 @@ sudo pip config --user set global.extra-index-url https://pypi.org/simple/
 sudo pip3 install virtualenv wheel
 # Just make sure we have virtualenv to run with python3.8 -m virtualenv
 sudo python -m pip install virtualenv wheel
+sudo python -m pip install -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
 
 sudo /usr/bin/pip3 install wheel
+sudo /usr/bin/pip3 install -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
+
+# Provisioning during installation says:
+# 'The script sbom2doc is installed in '/usr/local/bin' which is not on PATH.'
+# hence the explicit assignment to SBOM_PYTHON_APPS_PATH.
+source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
+SetEnvVar "SBOM_PYTHON_APPS_PATH" "/usr/local/bin"
 
 # Make FindPython3.cmake to find python3
 sudo ln -s /usr/bin/python3 /usr/local/bin/python3

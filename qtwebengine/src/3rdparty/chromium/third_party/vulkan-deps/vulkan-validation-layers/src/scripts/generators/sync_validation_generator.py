@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -i
 #
-# Copyright (c) 2023 The Khronos Group Inc.
-# Copyright (c) 2023 LunarG, Inc.
+# Copyright (c) 2023-2024 The Khronos Group Inc.
+# Copyright (c) 2023-2024 LunarG, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 
 import sys
 import os
-from generators.vulkan_object import (Flag)
+from generators.vulkan_object import Flag
 from generators.base_generator import BaseGenerator
 
 separator = ' |\n        '
@@ -76,25 +76,25 @@ class SyncValidationOutputGenerator(BaseGenerator):
 
     def generate(self):
         self.write(f'''// *** THIS FILE IS GENERATED - DO NOT EDIT ***
-// See {os.path.basename(__file__)} for modifications
+            // See {os.path.basename(__file__)} for modifications
 
-/***************************************************************************
- *
- * Copyright (c) 2015-2023 Valve Corporation
- * Copyright (c) 2015-2023 LunarG, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- ****************************************************************************/\n''')
+            /***************************************************************************
+            *
+            * Copyright (c) 2015-2024 Valve Corporation
+            * Copyright (c) 2015-2024 LunarG, Inc.
+            *
+            * Licensed under the Apache License, Version 2.0 (the "License");
+            * you may not use this file except in compliance with the License.
+            * You may obtain a copy of the License at
+            *
+            *     http://www.apache.org/licenses/LICENSE-2.0
+            *
+            * Unless required by applicable law or agreed to in writing, software
+            * distributed under the License is distributed on an "AS IS" BASIS,
+            * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            * See the License for the specific language governing permissions and
+            * limitations under the License.
+            ****************************************************************************/\n''')
         self.write('// NOLINTBEGIN') # Wrap for clang-tidy to ignore
 
         # Set value to be at end of bitmask
@@ -146,15 +146,16 @@ class SyncValidationOutputGenerator(BaseGenerator):
     def generateHeader(self):
         out = []
         out.append('''
-#pragma once
+            #pragma once
 
-#include <array>
-#include <bitset>
-#include <map>
-#include <stdint.h>
-#include <vulkan/vulkan.h>
-#include "containers/custom_containers.h"
-''')
+            #include <array>
+            #include <bitset>
+            #include <map>
+            #include <stdint.h>
+            #include <vulkan/vulkan.h>
+            #include "containers/custom_containers.h"
+            ''')
+        out.append('// clang-format off\n')
         out.append(f'''
 // Fake stages and accesses for acquire present support
 static const VkPipelineStageFlagBits2 VK_PIPELINE_STAGE_2_PRESENT_ENGINE_BIT_SYNCVAL = 0x{(1 << self.pipelineStagePresentEngine.value):016X}ULL;
@@ -228,14 +229,17 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyEarli
 const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLaterStages();
 ''')
 
+        out.append('// clang-format on\n')
         self.write("".join(out))
 
     def generateSource(self):
         out = []
         out.append('''
-#include "sync_validation_types.h"
-''')
+            #include "sync_validation_types.h"
+            ''')
 
+        # syncStageAccessInfoByStageAccessIndex
+        out.append('// clang-format off\n')
         out.append(f'const std::array<SyncStageAccessInfoType, {len(self.stageAccessCombo)}>& syncStageAccessInfoByStageAccessIndex() {{\n')
         out.append(f'static const std::array<SyncStageAccessInfoType, {len(self.stageAccessCombo)}> variable = {{ {{\n')
         for stageAccess in self.stageAccessCombo:
@@ -251,6 +255,7 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('return variable;\n')
         out.append('}\n')
 
+        # syncStageAccessMaskByStageBit
         out.append('const std::map<VkPipelineStageFlags2, SyncStageAccessFlags>& syncStageAccessMaskByStageBit() {\n')
         out.append('    static const std::map<VkPipelineStageFlags2, SyncStageAccessFlags> variable = {\n')
         stage_to_stageAccess = {}
@@ -266,6 +271,7 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('    return variable;\n')
         out.append('}\n\n')
 
+        # syncStageAccessMaskByAccessBit
         out.append('const std::map<VkAccessFlags2, SyncStageAccessFlags>& syncStageAccessMaskByAccessBit() {\n')
         out.append('    static const std::map<VkAccessFlags2, SyncStageAccessFlags> variable = {\n')
         access_to_stageAccess = {}
@@ -284,6 +290,7 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('    return variable;\n')
         out.append('}\n\n')
 
+        # syncDirectStageToAccessMask
         out.append('const std::map<VkPipelineStageFlags2, VkAccessFlags2>& syncDirectStageToAccessMask() {\n')
         out.append('    static const std::map<VkPipelineStageFlags2, VkAccessFlags2> variable = {\n')
         stage_to_access = {}
@@ -299,6 +306,7 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('    return variable;\n')
         out.append('}\n\n')
 
+        # syncAllCommandStagesByQueueFlags
         out.append('const std::map<VkQueueFlagBits, VkPipelineStageFlags2>& syncAllCommandStagesByQueueFlags() {\n')
         out.append('    static const std::map<VkQueueFlagBits, VkPipelineStageFlags2> variable = {\n')
         ignoreQueueFlag = [
@@ -315,6 +323,7 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('    return variable;\n')
         out.append('}\n\n')
 
+        # syncLogicallyEarlierStages
         out.append('const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyEarlierStages() {\n')
         out.append('    static const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2> variable = {\n')
         earlier_stages = {}
@@ -342,6 +351,7 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('    return variable;\n')
         out.append('}\n\n')
 
+        # syncLogicallyLaterStages
         out.append('const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLaterStages() {\n')
         out.append('    static const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2> variable = {\n')
         later_stages = {}
@@ -368,6 +378,7 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
         out.append('    };\n')
         out.append('    return variable;\n')
         out.append('}\n\n')
+        out.append('// clang-format on\n')
 
         self.write("".join(out))
 
@@ -464,6 +475,22 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
                     stageToAccessMap[flag.name] = []
                 stageToAccessMap[flag.name].append(access.flag.name)
 
+        # ACCELERATION_STRUCTURE_BUILD accesses input geometry buffers using SHADER_READ access.
+        # The core of validation logic works with expanded stages and SHADER_STORAGE_READ was
+        # choosen to represent SHADER_READ access. Then SHADER_READ itself is handled correctly:
+        # validation logic automatically includes SHADER_READ when its sub-access is used.
+        #
+        # This new stage-access pair should be added manually because vk.xml does not define
+        # ACCELERATION_STRUCTURE_BUILD for SHADER_READ's sub-accesses.
+        #
+        # TODO: with this change SHADER_STORAGE_READ also passes validation (in addition to SHADER_READ),
+        # but other sub-accesses are not allowed. Update this logic if there is a confirmation
+        # how ACCELERATION_STRUCTURE_BUILD should work with sub-components of SHADER_READ:
+        # https://gitlab.khronos.org/vulkan/vulkan/-/issues/3640#note_434212
+        stageToAccessMap['VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR'].append('VK_ACCESS_2_SHADER_STORAGE_READ_BIT')
+        # Micro map, like AS Build, is a non *_STAGE_BIT that can have SHADER_READ
+        stageToAccessMap['VK_PIPELINE_STAGE_2_MICROMAP_BUILD_BIT_EXT'].append('VK_ACCESS_2_SHADER_STORAGE_READ_BIT')
+
         for stage in [x for x in self.stages if x in stageToAccessMap]:
             mini_stage = stage.lstrip()
             if mini_stage.startswith(enum_prefix):
@@ -475,7 +502,7 @@ const std::map<VkPipelineStageFlags2, VkPipelineStageFlags2>& syncLogicallyLater
 
             # Because access_stage_table's elements order might be different sometimes.
             # It causes the generator creates different code. It needs to be sorted.
-            stageToAccessMap[stage].sort();
+            stageToAccessMap[stage].sort()
             for access in stageToAccessMap[stage]:
                 mini_access = access.replace('VK_ACCESS_2_', '').replace('_BIT_KHR', '')
                 mini_access = mini_access.replace('_BIT', '')

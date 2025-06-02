@@ -14,13 +14,13 @@
         //   hours:        ["h", "hrs", "hour", "hours"]
 
         Google: [
-            { action: "get", url: "https://www.google.com", duration: "15s"},
+            { action: "get", url: "https://www.google.com", duration: "5s"},
             { action: "scroll", value: "down", duration: "3s"},
         ],
         Amazon: [
             { action: "get", url: "https://www.amazon.com"},
-            { action: "wait", duration: "5s"},
-            { action: "scroll", value: "down", duration: "10s"},
+            { action: "wait", duration: "500ms"},
+            { action: "scroll", value: "down", duration: "1.5s"},
         ],
         Youtube: [
             {
@@ -29,7 +29,7 @@
                 timeout: "20s",
                 ready-state: "interactive"
             },
-            { action: "scroll", value: "down", duration: "8s"},
+            { action: "scroll", value: "down", duration: "1s"},
         ],
     },
 }

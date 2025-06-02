@@ -62,11 +62,6 @@ group("jpeg") {
   }
 }
 
-buildflag_header("freetype_buildflags") {
-  header = "freetype_buildflags.h"
-  flags = [ "USE_SYSTEM_FREETYPE=$use_system_freetype" ]
-}
-
 # This is a meta target that forwards include paths only to the system's
 # libjpeg, third_party/libjpeg, or third_party/libjpeg_turbo depending on the
 # build args declared in this file. This is needed, rarely, for targets that
@@ -101,4 +96,9 @@ component("freetype_harfbuzz") {
   } else {
     public_deps += [ "//third_party/harfbuzz-ng:harfbuzz_source" ]
   }
+}
+
+buildflag_header("freetype_buildflags") {
+  header = "freetype_buildflags.h"
+  flags = [ "USE_SYSTEM_FREETYPE=$use_system_freetype" ]
 }

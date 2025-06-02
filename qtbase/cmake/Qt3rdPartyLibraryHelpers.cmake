@@ -135,18 +135,22 @@ endfunction()
 #
 function(qt_internal_add_3rdparty_library target)
     qt_internal_get_add_library_option_args(library_option_args)
+
     set(option_args
         EXCEPTIONS
         INSTALL
         SKIP_AUTOMOC
-        )
+        ${__qt_internal_sbom_optional_args}
+    )
     set(single_args
         OUTPUT_DIRECTORY
         QMAKE_LIB_NAME
+        ${__qt_internal_sbom_single_args}
     )
     set(multi_args
         ${__default_private_args}
         ${__default_public_args}
+        ${__qt_internal_sbom_multi_args}
     )
 
     cmake_parse_arguments(PARSE_ARGV 1 arg
@@ -193,7 +197,6 @@ function(qt_internal_add_3rdparty_library target)
 
     qt_internal_add_qt_repo_known_module(${target})
     qt_internal_add_target_aliases(${target})
-    _qt_internal_apply_strict_cpp(${target})
 
     qt_skip_warnings_are_errors_when_repo_unclean("${target}")
 
@@ -253,6 +256,12 @@ function(qt_internal_add_3rdparty_library target)
     )
 
     if(NOT BUILD_SHARED_LIBS OR arg_INSTALL)
+        set(will_install TRUE)
+    else()
+        set(will_install FALSE)
+    endif()
+
+    if(will_install)
         qt_generate_3rdparty_lib_pri_file("${target}" "${arg_QMAKE_LIB_NAME}" pri_file)
         if(pri_file)
             qt_install(FILES "${pri_file}" DESTINATION "${INSTALL_MKSPECSDIR}/modules")
@@ -310,6 +319,7 @@ function(qt_internal_add_3rdparty_library target)
         qt_internal_export_modern_cmake_config_targets_file(
             TARGETS ${target}
             EXPORT_NAME_PREFIX ${INSTALL_CMAKE_NAMESPACE}${target}
+            CONFIG_BUILD_DIR "${config_build_dir}"
             CONFIG_INSTALL_DIR "${config_install_dir}"
         )
 
@@ -326,6 +336,57 @@ function(qt_internal_add_3rdparty_library target)
             INTERPROCEDURAL_OPTIMIZATION OFF
         )
     endif()
+
+    if(QT_GENERATE_SBOM)
+        set(sbom_args "")
+        list(APPEND sbom_args TYPE QT_THIRD_PARTY_MODULE)
+
+        if(NOT will_install)
+            list(APPEND sbom_args NO_INSTALL)
+        endif()
+
+        qt_get_cmake_configurations(configs)
+        foreach(config IN LISTS configs)
+            _qt_internal_sbom_append_multi_config_aware_single_arg_option(
+                RUNTIME_PATH
+                "${INSTALL_BINDIR}"
+                "${config}"
+                sbom_args
+            )
+            _qt_internal_sbom_append_multi_config_aware_single_arg_option(
+                LIBRARY_PATH
+                "${INSTALL_LIBDIR}"
+                "${config}"
+                sbom_args
+            )
+            _qt_internal_sbom_append_multi_config_aware_single_arg_option(
+                ARCHIVE_PATH
+                "${INSTALL_LIBDIR}"
+                "${config}"
+                sbom_args
+            )
+        endforeach()
+
+        _qt_internal_forward_function_args(
+            FORWARD_APPEND
+            FORWARD_PREFIX arg
+            FORWARD_OUT_VAR sbom_args
+            FORWARD_OPTIONS
+                ${__qt_internal_sbom_optional_args}
+            FORWARD_SINGLE
+                ${__qt_internal_sbom_single_args}
+            FORWARD_MULTI
+                ${__qt_internal_sbom_multi_args}
+        )
+
+        qt_internal_extend_qt_entity_sbom(${target} ${sbom_args})
+    endif()
+
+    qt_add_list_file_finalizer(qt_internal_finalize_3rdparty_library ${target})
+endfunction()
+
+function(qt_internal_finalize_3rdparty_library target)
+    _qt_internal_finalize_sbom(${target})
 endfunction()
 
 function(qt_install_3rdparty_library_wrap_config_extra_file target)
@@ -366,12 +427,21 @@ function(qt_internal_add_3rdparty_header_module target)
     )
     _qt_internal_validate_all_args_are_parsed(arg)
 
+    _qt_internal_forward_function_args(
+        FORWARD_PREFIX arg
+        FORWARD_OUT_VAR add_module_args
+        FORWARD_SINGLE
+            EXTERNAL_HEADERS
+            EXTERNAL_HEADERS_DIR
+    )
+
     qt_internal_add_module(${target}
+        IS_QT_3RD_PARTY_HEADER_MODULE
         INTERNAL_MODULE
         HEADER_MODULE
         NO_CONFIG_HEADER_FILE
-        EXTERNAL_HEADERS ${arg_EXTERNAL_HEADERS}
-        EXTERNAL_HEADERS_DIR ${arg_EXTERNAL_HEADERS_DIR}
+        NO_GENERATE_CPP_EXPORTS
+        ${add_module_args}
     )
 
     set_target_properties(${target} PROPERTIES

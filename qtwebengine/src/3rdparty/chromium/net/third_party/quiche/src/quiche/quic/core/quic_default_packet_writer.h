@@ -17,7 +17,7 @@ namespace quic {
 struct WriteResult;
 
 // Default packet writer which wraps QuicSocketUtils WritePacket.
-class QUIC_EXPORT_PRIVATE QuicDefaultPacketWriter : public QuicPacketWriter {
+class QUICHE_EXPORT QuicDefaultPacketWriter : public QuicPacketWriter {
  public:
   explicit QuicDefaultPacketWriter(SocketFd fd);
   QuicDefaultPacketWriter(const QuicDefaultPacketWriter&) = delete;
@@ -32,7 +32,7 @@ class QUIC_EXPORT_PRIVATE QuicDefaultPacketWriter : public QuicPacketWriter {
                           const QuicPacketWriterParams& params) override;
   bool IsWriteBlocked() const override;
   void SetWritable() override;
-  absl::optional<int> MessageTooBigErrorCode() const override;
+  std::optional<int> MessageTooBigErrorCode() const override;
   QuicByteCount GetMaxPacketSize(
       const QuicSocketAddress& peer_address) const override;
   bool SupportsReleaseTime() const override;

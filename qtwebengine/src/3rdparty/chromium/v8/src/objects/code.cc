@@ -24,9 +24,15 @@ Tagged<ByteArray> Code::raw_position_table() const {
   return TaggedField<ByteArray, kPositionTableOffset>::load(*this);
 }
 
-Tagged<HeapObject> Code::raw_deoptimization_data_or_interpreter_data() const {
-  return TaggedField<HeapObject,
-                     kDeoptimizationDataOrInterpreterDataOffset>::load(*this);
+Tagged<HeapObject> Code::raw_deoptimization_data_or_interpreter_data(
+    IsolateForSandbox isolate) const {
+  Tagged<HeapObject> value =
+      TaggedField<HeapObject, kDeoptimizationDataOrInterpreterDataOffset>::load(
+          *this);
+  if (IsBytecodeWrapper(value)) {
+    return BytecodeWrapper::cast(value)->bytecode(isolate);
+  }
+  return value;
 }
 
 void Code::ClearEmbeddedObjects(Heap* heap) {
@@ -35,8 +41,12 @@ void Code::ClearEmbeddedObjects(Heap* heap) {
   Tagged<InstructionStream> istream = unchecked_instruction_stream();
   int mode_mask = RelocInfo::EmbeddedObjectModeMask();
   {
-    CodePageMemoryModificationScope memory_modification_scope(istream);
-    for (RelocIterator it(*this, mode_mask); !it.done(); it.next()) {
+    WritableJitAllocation jit_allocation = ThreadIsolation::LookupJitAllocation(
+        istream->address(), istream->Size(),
+        ThreadIsolation::JitAllocationType::kInstructionStream);
+    for (WritableRelocIterator it(jit_allocation, istream, constant_pool(),
+                                  mode_mask);
+         !it.done(); it.next()) {
       DCHECK(RelocInfo::IsEmbeddedObjectMode(it.rinfo()->rmode()));
       it.rinfo()->set_target_object(istream, undefined, SKIP_WRITE_BARRIER);
     }

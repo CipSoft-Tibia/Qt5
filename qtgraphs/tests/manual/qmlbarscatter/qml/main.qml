@@ -76,11 +76,19 @@ Item {
             id: graph
 
             anchors.margins: 10
-            backgroundColor: "#202020"
-            theme: GraphTheme {
+            theme: GraphsTheme {
                 id: myTheme
-                colorTheme: GraphTheme.ColorThemeDark
-                axisXLabelsFont.pixelSize: 20
+                theme: GraphsTheme.QtGreenNeon
+                axisXLabelFont.pixelSize: 20
+                backgroundColor: "#202020"
+            }
+
+            axisX: BarCategoryAxis {
+                categories: ["Reading 1", "Reading 2", "Reading 3", "Reading 4", "Reading 5"]
+            }
+
+            axisY: ValueAxis {
+                max: 100
             }
 
             CustomBar {
@@ -92,25 +100,25 @@ Item {
             id: graph2
 
             anchors.margins: 10
-            backgroundColor: "#202020"
-            theme: GraphTheme {
+            theme: GraphsTheme {
                 id: myTheme2
-                colorTheme: GraphTheme.ColorThemeDark
-                axisXLabelsFont.pixelSize: 20
+                theme: GraphsTheme.QtGreen
+                axisXLabelFont.pixelSize: 20
+                backgroundColor: "#202020"
+            }
+
+            axisX: ValueAxis {
+                id: xAxis
+                max: 5
+            }
+
+            axisY: ValueAxis {
+                id: yAxis
+                max: 100
             }
 
             CustomScatter {
                 id: scatterSeries
-
-                axisX: ValueAxis {
-                    id: xAxis
-                    max: 5
-                }
-
-                axisY: ValueAxis {
-                    id: yAxis
-                    max: 100
-                }
 
                 pointMarker: Image {
                     property bool selected: false

@@ -6,6 +6,7 @@
 #define THIRD_PARTY_BASE_CONTAINERS_SPAN_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include <algorithm>
 #include <array>
@@ -13,9 +14,12 @@
 #include <type_traits>
 #include <utility>
 
-#include "core/fxcrt/unowned_ptr.h"
 #include "third_party/base/check.h"
 #include "third_party/base/compiler_specific.h"
+
+#if defined(PDF_USE_PARTITION_ALLOC)
+#include "partition_alloc/pointers/raw_ptr.h"
+#endif
 
 namespace pdfium {
 
@@ -173,6 +177,10 @@ using EnableIfConstSpanCompatibleContainer =
 // Differences from [span.elem]:
 // - no operator ()()
 // - using size_t instead of ptrdiff_t for indexing
+//
+// Additions beyond the C++ standard draft
+// - as_byte_span() function.
+// - span_from_ref() function.
 
 // [span], class template span
 template <typename T>
@@ -187,7 +195,7 @@ class TRIVIAL_ABI GSL_POINTER span {
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
   // [span.cons], span constructors, copy, assignment, and destructor
-  constexpr span() noexcept : data_(nullptr), size_(0) {}
+  constexpr span() noexcept = default;
   constexpr span(T* data, size_t size) noexcept : data_(data), size_(size) {
     DCHECK(data_ || size_ == 0);
   }
@@ -202,8 +210,8 @@ class TRIVIAL_ABI GSL_POINTER span {
   // Conversion from a container that provides |T* data()| and |integral_type
   // size()|. Note that |data()| may not return nullptr for some empty
   // containers, which can lead to container overflow errors when probing
-  // unowned ptrs.
-#if defined(ADDRESS_SANITIZER) && defined(UNOWNED_PTR_IS_BASE_RAW_PTR)
+  // raw ptrs.
+#if defined(ADDRESS_SANITIZER) && defined(PDF_USE_PARTITION_ALLOC)
   template <typename Container,
             typename = internal::EnableIfSpanCompatibleContainer<Container, T>>
   constexpr span(Container& container)
@@ -228,13 +236,12 @@ class TRIVIAL_ABI GSL_POINTER span {
   constexpr span(const span<U>& other) : span(other.data(), other.size()) {}
   span& operator=(const span& other) noexcept {
     if (this != &other) {
-      ReleaseEmptySpan();
       data_ = other.data_;
       size_ = other.size_;
     }
     return *this;
   }
-  ~span() noexcept { ReleaseEmptySpan(); }
+  ~span() noexcept = default;
 
   // [span.sub], span subviews
   const span first(size_t count) const {
@@ -299,56 +306,13 @@ class TRIVIAL_ABI GSL_POINTER span {
   }
 
  private:
-  void ReleaseEmptySpan() noexcept {
-#if defined(ADDRESS_SANITIZER) && !defined(UNOWNED_PTR_IS_BASE_RAW_PTR)
-    // Empty spans might point to byte N+1 of a N-byte object, legal for
-    // C pointers but not UnownedPtrs.
-    if (!size_)
-      data_.ReleaseBadPointer();
-#endif
-  }
-
-#if defined(UNOWNED_PTR_IS_BASE_RAW_PTR)
+#if defined(PDF_USE_PARTITION_ALLOC)
   raw_ptr<T, AllowPtrArithmetic> data_ = nullptr;
 #else
-  UnownedPtr<T> data_;
+  T* data_ = nullptr;
 #endif
-  size_t size_;
+  size_t size_ = 0;
 };
-
-// [span.comparison], span comparison operators
-// Relational operators. Equality is a element-wise comparison.
-template <typename T>
-constexpr bool operator==(span<T> lhs, span<T> rhs) noexcept {
-  return lhs.size() == rhs.size() &&
-         std::equal(lhs.cbegin(), lhs.cend(), rhs.cbegin());
-}
-
-template <typename T>
-constexpr bool operator!=(span<T> lhs, span<T> rhs) noexcept {
-  return !(lhs == rhs);
-}
-
-template <typename T>
-constexpr bool operator<(span<T> lhs, span<T> rhs) noexcept {
-  return std::lexicographical_compare(lhs.cbegin(), lhs.cend(), rhs.cbegin(),
-                                      rhs.cend());
-}
-
-template <typename T>
-constexpr bool operator<=(span<T> lhs, span<T> rhs) noexcept {
-  return !(rhs < lhs);
-}
-
-template <typename T>
-constexpr bool operator>(span<T> lhs, span<T> rhs) noexcept {
-  return rhs < lhs;
-}
-
-template <typename T>
-constexpr bool operator>=(span<T> lhs, span<T> rhs) noexcept {
-  return !(lhs < rhs);
-}
 
 // [span.objectrep], views of object representation
 template <typename T>
@@ -391,6 +355,24 @@ template <
     typename = internal::EnableIfConstSpanCompatibleContainer<Container, T>>
 constexpr span<T> make_span(const Container& container) {
   return span<T>(container);
+}
+
+// `span_from_ref` converts a reference to T into a span of length 1.  This is a
+// non-std helper that is inspired by the `std::slice::from_ref()` function from
+// Rust.
+template <typename T>
+static constexpr span<T> span_from_ref(T& single_object) noexcept {
+  return span<T>(&single_object, 1u);
+}
+
+// Convenience function for converting an object which is itself convertible
+// to span into a span of bytes (i.e. span of const uint8_t). Typically used
+// to convert std::string or string-objects holding chars, or std::vector
+// or vector-like objects holding other scalar types, prior to passing them
+// into an API that requires byte spans.
+template <typename T>
+span<const uint8_t> as_byte_span(const T& arg) {
+  return as_bytes(make_span(arg));
 }
 
 }  // namespace pdfium

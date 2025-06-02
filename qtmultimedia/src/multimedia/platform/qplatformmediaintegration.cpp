@@ -16,7 +16,7 @@
 #include <QtCore/qapplicationstatic.h>
 
 #include "qplatformcapturablewindows_p.h"
-#include "qplatformmediadevices_p.h"
+#include "qplatformaudiodevices_p.h"
 #include <QtCore/private/qfactoryloader_p.h>
 #include <QtCore/private/qcoreapplication_p.h>
 #include <private/qplatformmediaformatinfo_p.h>
@@ -67,11 +67,16 @@ struct InstanceHolder
 {
     InstanceHolder()
     {
+        init();
+    }
+
+    void init()
+    {
         if (!QCoreApplication::instance())
             qCCritical(qLcMediaPlugin()) << "Qt Multimedia requires a QCoreApplication instance";
 
         const QStringList backends = QPlatformMediaIntegration::availableBackends();
-        QString backend = QString::fromUtf8(qgetenv("QT_MEDIA_BACKEND"));
+        QString backend = QString::fromUtf8(qgetenv("QT_MEDIA_BACKEND")).toLower();
         if (backend.isEmpty() && !backends.isEmpty())
             backend = defaultBackend(backends);
 
@@ -91,48 +96,10 @@ struct InstanceHolder
         qCDebug(qLcMediaPlugin) << "Released media backend";
     }
 
-    // Play nice with QtGlobalStatic::ApplicationHolder
-    using QAS_Type = InstanceHolder;
-    static void innerFunction(void *pointer)
-    {
-        new (pointer) InstanceHolder();
-    }
-
     std::unique_ptr<QPlatformMediaIntegration> instance;
 };
 
-// Specialized implementation of Q_APPLICATION_STATIC which behaves as
-// an application static if a Qt application is present, otherwise as a Q_GLOBAL_STATIC.
-// By doing this, and we have a Qt application, all system resources allocated by the
-// backend is released when application lifetime ends. This is important on Windows,
-// where Windows Media Foundation instances should not be released during static destruction.
-//
-// If we don't have a Qt application available when instantiating the instance holder,
-// it will be created once, and not destroyed until static destruction. This can cause
-// abrupt termination of Windows applications during static destruction. This is not a
-// supported use case, but we keep this as a fallback to keep old applications functional.
-// See also QTBUG-120198
-struct ApplicationHolder : QtGlobalStatic::ApplicationHolder<InstanceHolder>
-{
-    // Replace QtGlobalStatic::ApplicationHolder::pointer to prevent crash if
-    // no application is present
-    static InstanceHolder* pointer()
-    {
-        if (guard.loadAcquire() == QtGlobalStatic::Initialized)
-            return realPointer();
-
-        QMutexLocker locker(&mutex);
-        if (guard.loadRelaxed() == QtGlobalStatic::Uninitialized) {
-            InstanceHolder::innerFunction(&storage);
-
-            if (const QCoreApplication *app = QCoreApplication::instance())
-                QObject::connect(app, &QObject::destroyed, app, reset, Qt::DirectConnection);
-
-            guard.storeRelease(QtGlobalStatic::Initialized);
-        }
-        return realPointer();
-    }
-};
+Q_APPLICATION_STATIC(InstanceHolder, s_instanceHolder);
 
 } // namespace
 
@@ -140,14 +107,12 @@ QT_BEGIN_NAMESPACE
 
 QPlatformMediaIntegration *QPlatformMediaIntegration::instance()
 {
-    static QGlobalStatic<ApplicationHolder> s_instanceHolder;
     return s_instanceHolder->instance.get();
 }
 
-QList<QCameraDevice> QPlatformMediaIntegration::videoInputs()
+void QPlatformMediaIntegration::resetInstance()
 {
-    auto devices = videoDevices();
-    return devices ? devices->videoDevices() : QList<QCameraDevice>{};
+    s_instanceHolder->init(); // tests only
 }
 
 QMaybe<std::unique_ptr<QPlatformAudioResampler>>
@@ -192,9 +157,9 @@ QPlatformMediaFormatInfo *QPlatformMediaIntegration::createFormatInfo()
     return new QPlatformMediaFormatInfo;
 }
 
-std::unique_ptr<QPlatformMediaDevices> QPlatformMediaIntegration::createMediaDevices()
+std::unique_ptr<QPlatformAudioDevices> QPlatformMediaIntegration::createAudioDevices()
 {
-    return QPlatformMediaDevices::create();
+    return QPlatformAudioDevices::create();
 }
 
 // clang-format off
@@ -216,12 +181,12 @@ QPlatformCapturableWindows *QPlatformMediaIntegration::capturableWindows()
     return m_capturableWindows.get();
 }
 
-QPlatformMediaDevices *QPlatformMediaIntegration::mediaDevices()
+QPlatformAudioDevices *QPlatformMediaIntegration::audioDevices()
 {
-    std::call_once(m_mediaDevicesOnceFlag, [this] {
-        m_mediaDevices = createMediaDevices();
+    std::call_once(m_audioDevicesOnceFlag, [this] {
+        m_audioDevices = createAudioDevices();
     });
-    return m_mediaDevices.get();
+    return m_audioDevices.get();
 }
 
 // clang-format on
@@ -250,6 +215,11 @@ QVideoFrame QPlatformMediaIntegration::convertVideoFrame(QVideoFrame &,
                                                          const QVideoFrameFormat &)
 {
     return {};
+}
+
+QLatin1String QPlatformMediaIntegration::audioBackendName()
+{
+    return QPlatformMediaIntegration::instance()->audioDevices()->backendName();
 }
 
 QPlatformMediaIntegration::QPlatformMediaIntegration(QLatin1String name) : m_backendName(name) { }

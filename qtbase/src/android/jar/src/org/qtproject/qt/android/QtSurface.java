@@ -12,11 +12,11 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 @SuppressLint("ViewConstructor")
-public class QtSurface extends SurfaceView implements SurfaceHolder.Callback
+class QtSurface extends SurfaceView implements SurfaceHolder.Callback
 {
-    private QtSurfaceInterface m_surfaceCallback;
+    private final QtSurfaceInterface m_surfaceCallback;
 
-    public QtSurface(Context context, QtSurfaceInterface surfaceCallback, boolean onTop, int imageDepth)
+    QtSurface(Context context, QtSurfaceInterface surfaceCallback, boolean onTop, int imageDepth)
     {
         super(context);
         setFocusable(false);
@@ -47,6 +47,8 @@ public class QtSurface extends SurfaceView implements SurfaceHolder.Callback
     @Override
     public void surfaceDestroyed(SurfaceHolder holder)
     {
+        // Once we return from this function, the Surface will be destroyed,
+        // so everything holding a reference to it needs to clean it up before we do that
         if (m_surfaceCallback != null)
             m_surfaceCallback.onSurfaceChanged(null);
     }

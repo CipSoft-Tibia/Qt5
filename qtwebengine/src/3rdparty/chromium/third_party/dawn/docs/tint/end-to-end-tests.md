@@ -1,6 +1,6 @@
 # Tint end-to-end tests
 
-This repo contains a large number of end-to-end tests at `<tint>/test`.
+This repo contains a large number of end-to-end tests at `<dawn>/test/tint`.
 
 ## Test files
 
@@ -16,14 +16,18 @@ If the first line of the expectation file starts `SKIP`, then the test will be s
 
 ## Running
 
-To run the end-to-end tests use the `<tint>/test/test-all.sh` script, passing the path to the tint executable as the first command line argument.
+To run the end-to-end tests use the `./tools/run tests` script, passing the path to the tint executable with the `--tint` (defaulting to `./out/active/tint`):
+
+    ./tools/run tests
+
+You can pass a list of globs, directories or file paths as extra arguments to specify what tests you
+want to run.
 
 You can pass `--help` to see the full list of command line flags.\
 The most commonly used flags are:
 
 | flag                 | description |
 |----------------------|-------------|
-|`--filter`            | Filters the testing to subset of the tests. The filter argument is a glob pattern that can include `*` for any substring of a file or directory, and `**` for any number of directories.<br>Example: `--filter 'expressions/**/i32.wgsl'` will test all the `i32.wgsl` expression tests.
 |`--format`            | Filters the tests to the particular backend.<br>Example: `--format hlsl` will just test the HLSL backend.
 |`--generate-expected` | Generate expectation files for the tests that previously had no expectation file, or were marked as `SKIP` but now pass.
 |`--generate-skip`     | Generate `SKIP` expectation files for tests that are not currently passing.
@@ -32,4 +36,4 @@ The most commonly used flags are:
 
 Each test should be as small as possible, and focused on the particular feature being tested.
 
-Use sub-directories whenever possible to group similar tests, and try to keep the pattern of directories as consistent as possible between different tests. This helps filter tests using the `--filter` glob patterns.
+Use sub-directories whenever possible to group similar tests, and try to keep the pattern of directories as consistent as possible between different tests. This helps filter tests with glob patterns.

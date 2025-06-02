@@ -24,9 +24,9 @@ QTechniquePrivate::~QTechniquePrivate()
 
 /*!
     \qmltype Technique
-    \instantiates Qt3DRender::QTechnique
+    \nativetype Qt3DRender::QTechnique
     \inqmlmodule Qt3D.Render
-    \inherits Qt3DCore::QNode
+    \inherits Qt3D.Core::Node
     \since 5.7
     \brief Encapsulates a Technique.
 

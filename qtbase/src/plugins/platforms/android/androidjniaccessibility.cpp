@@ -82,7 +82,7 @@ namespace QtAndroidAccessibility
 
     void initialize()
     {
-        QtAndroid::qtActivityDelegate().callMethod<void>("initializeAccessibility");
+        QtAndroid::initializeAccessibility();
     }
 
     bool isActive()
@@ -470,6 +470,7 @@ namespace QtAndroidAccessibility
         QAccessible::Role role;
         QStringList actions;
         QString description;
+        QString identifier;
         bool hasTextSelection = false;
         int selectionStart = 0;
         int selectionEnd = 0;
@@ -485,6 +486,7 @@ namespace QtAndroidAccessibility
             info.role = iface->role();
             info.actions = QAccessibleBridgeUtils::effectiveActionNames(iface);
             info.description = descriptionForInterface(iface);
+            info.identifier = QAccessibleBridgeUtils::accessibleId(iface);
             QAccessibleTextInterface *textIface = iface->textInterface();
             if (textIface && (textIface->selectionCount() > 0)) {
                 info.hasTextSelection = true;
@@ -550,6 +552,8 @@ namespace QtAndroidAccessibility
         //CALL_METHOD(node, "setText", "(Ljava/lang/CharSequence;)V", jdesc)
         env->CallVoidMethod(node, m_setContentDescriptionMethodID, jdesc);
 
+        QJniObject(node).callMethod<void>("setViewIdResourceName", info.identifier);
+
         return true;
     }
 
@@ -575,7 +579,7 @@ namespace QtAndroidAccessibility
 
     bool registerNatives(QJniEnvironment &env)
     {
-        if (!env.registerNativeMethods("org/qtproject/qt/android/accessibility/QtNativeAccessibility",
+        if (!env.registerNativeMethods("org/qtproject/qt/android/QtNativeAccessibility",
                                       methods, sizeof(methods) / sizeof(methods[0]))) {
             __android_log_print(ANDROID_LOG_FATAL,"Qt A11y", "RegisterNatives failed");
             return false;

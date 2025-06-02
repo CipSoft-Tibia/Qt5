@@ -7,7 +7,7 @@
         "QtUsage": "Compile GLSL to SPIR-V.",
 
         "Homepage": "https://github.com/KhronosGroup/glslang",
-        "Version": "13.0.0",
+        "Version": "14.2.0",
         "License": "BSD 3-Clause \"New\" or \"Revised\" License, and MIT Khronos - old variant, and Apache License 2.0, and GNU General Public License v3.0 or later with Bison exception 2.2, and AML glslang variant License",
         "LicenseId": "BSD-3-Clause AND LicenseRef-MIT-Khronos-old AND Apache-2.0 AND GPL-3.0-or-later WITH Bison-exception-2.2 AND AML-glslang",
         "LicenseFile": "LICENSE.txt",

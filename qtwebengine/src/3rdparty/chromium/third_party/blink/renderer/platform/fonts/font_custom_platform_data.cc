@@ -143,15 +143,14 @@ FontPlatformData FontCustomPlatformData::GetFontPlatformData(
     absl::optional<SkFontParameters::Variation::Axis> wght_parameters =
         RetrieveVariationDesignParametersByTag(base_typeface_, kWghtTag);
     if (selection_capabilities.weight.IsRangeSetFromAuto() && wght_parameters) {
-      DCHECK(RuntimeEnabledFeatures::CSSFontFaceAutoVariableRangeEnabled());
       FontSelectionRange wght_range = {
           FontSelectionValue(wght_parameters->min),
           FontSelectionValue(wght_parameters->max)};
       weight_coordinate = {
           kWghtTag,
           SkFloatToScalar(wght_range.clampToRange(selection_request.weight))};
-      synthetic_bold = bold && wght_range.maximum < BoldThreshold() &&
-                       selection_request.weight >= BoldThreshold();
+      synthetic_bold = bold && wght_range.maximum < kBoldThreshold &&
+                       selection_request.weight >= kBoldThreshold;
     }
 
     SkFontArguments::VariationPosition::Coordinate width_coordinate = {
@@ -160,7 +159,6 @@ FontPlatformData FontCustomPlatformData::GetFontPlatformData(
     absl::optional<SkFontParameters::Variation::Axis> wdth_parameters =
         RetrieveVariationDesignParametersByTag(base_typeface_, kWdthTag);
     if (selection_capabilities.width.IsRangeSetFromAuto() && wdth_parameters) {
-      DCHECK(RuntimeEnabledFeatures::CSSFontFaceAutoVariableRangeEnabled());
       FontSelectionRange wdth_range = {
           FontSelectionValue(wdth_parameters->min),
           FontSelectionValue(wdth_parameters->max)};
@@ -179,15 +177,14 @@ FontPlatformData FontCustomPlatformData::GetFontPlatformData(
     absl::optional<SkFontParameters::Variation::Axis> slnt_parameters =
         RetrieveVariationDesignParametersByTag(base_typeface_, kSlntTag);
     if (selection_capabilities.slope.IsRangeSetFromAuto() && slnt_parameters) {
-      DCHECK(RuntimeEnabledFeatures::CSSFontFaceAutoVariableRangeEnabled());
       FontSelectionRange slnt_range = {
           FontSelectionValue(slnt_parameters->min),
           FontSelectionValue(slnt_parameters->max)};
       slant_coordinate = {
           kSlntTag,
           SkFloatToScalar(slnt_range.clampToRange(-selection_request.slope))};
-      synthetic_italic = italic && slnt_range.maximum < ItalicSlopeValue() &&
-                         selection_request.slope >= ItalicSlopeValue();
+      synthetic_italic = italic && slnt_range.maximum < kItalicSlopeValue &&
+                         selection_request.slope >= kItalicSlopeValue;
     }
 
     variation.push_back(weight_coordinate);

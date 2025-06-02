@@ -57,9 +57,7 @@ void QQuickVisualTestUtils::moveMouseAway(QQuickWindow *window)
 
 void QQuickVisualTestUtils::centerOnScreen(QQuickWindow *window)
 {
-    const QRect screenGeometry = window->screen()->availableGeometry();
-    const QPoint offset = QPoint(window->width() / 2, window->height() / 2);
-    window->setFramePosition(screenGeometry.center() - offset);
+    QQuickViewTestUtils::centerOnScreen(window);
 }
 
 QPoint QQuickVisualTestUtils::lerpPoints(const QPoint &point1, const QPoint &point2, qreal t)
@@ -145,6 +143,10 @@ bool QQuickVisualTestUtils::compareImages(const QImage &ia, const QImage &ib, QS
         QDebug(errorMessage) << "Images are of different formats:" << ia.format() << ib.format();
         return false;
     }
+    if (ia.depth() != 32) {
+        QDebug(errorMessage) << "This function only supports bit depths of 32 - depth of images is:" << ia.depth();
+        return false;
+    }
 
     int w = ia.width();
     int h = ia.height();
@@ -159,8 +161,8 @@ bool QQuickVisualTestUtils::compareImages(const QImage &ia, const QImage &ib, QS
             // No tolerance for error in the alpha.
             if ((a & 0xff000000) != (b & 0xff000000)
                 || qAbs(qRed(a) - qRed(b)) > tolerance
-                || qAbs(qRed(a) - qRed(b)) > tolerance
-                || qAbs(qRed(a) - qRed(b)) > tolerance) {
+                || qAbs(qGreen(a) - qGreen(b)) > tolerance
+                || qAbs(qBlue(a) - qBlue(b)) > tolerance) {
                 QDebug(errorMessage) << "Mismatch at:" << x << y << ':'
                     << Qt::hex << Qt::showbase << a << b;
                 return false;

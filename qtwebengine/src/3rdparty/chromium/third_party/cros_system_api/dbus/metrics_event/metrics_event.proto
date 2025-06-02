@@ -17,7 +17,7 @@ message Event {
   // Event types.
   enum Type {
     TAB_DISCARD = 0;
-    OOM_KILL = 1;   // obsolete---use OOM_KILL_BROWSER instead
+    OOM_KILL = 1;  // obsolete---use OOM_KILL_BROWSER instead
     TAB_SWITCH = 2;
     OOM_KILL_BROWSER = 3;
     OOM_KILL_KERNEL = 4;

@@ -31,7 +31,7 @@ Vector<FontPalette::FontPaletteOverride> PaletteInterpolation::MixColorRecords(
         color_interpolation_space, hue_interpolation_method, start_color,
         end_color, percentage, alpha_multiplier);
 
-    FontPalette::FontPaletteOverride result_color_record{(int)i, result_color};
+    FontPalette::FontPaletteOverride result_color_record{static_cast<uint16_t>(i), result_color};
     result_color_records.push_back(result_color_record);
   }
   return result_color_records;
@@ -91,8 +91,9 @@ PaletteInterpolation::RetrieveColorRecords(const FontPalette* palette,
     }
   }
   Vector<FontPalette::FontPaletteOverride> color_records(colors_size);
+  DCHECK_LT(colors_size, std::numeric_limits<std::uint16_t>::max());
   for (wtf_size_t i = 0; i < colors_size; i++) {
-    color_records[i] = {static_cast<int>(i), colors[i]};
+    color_records[i] = {static_cast<uint16_t>(i), colors[i]};
   }
   return color_records;
 }

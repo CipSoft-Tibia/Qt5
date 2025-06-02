@@ -40,9 +40,9 @@ class LinkFragment;
 // whitespace is respected, provided not only whitespace fits in the first line.
 // In this case, leading whitespace is ignored.
 class VIEWS_EXPORT StyledLabel : public View {
- public:
-  METADATA_HEADER(StyledLabel);
+  METADATA_HEADER(StyledLabel, View)
 
+ public:
   // Parameters that define label style for a styled label's text range.
   struct VIEWS_EXPORT RangeStyleInfo {
     RangeStyleInfo();
@@ -80,7 +80,7 @@ class VIEWS_EXPORT StyledLabel : public View {
 
     // A custom view shown instead of the underlying text. Ownership of custom
     // views must be passed to StyledLabel via AddCustomView().
-    raw_ptr<View, DanglingUntriaged> custom_view = nullptr;
+    raw_ptr<View> custom_view = nullptr;
   };
 
   // Sizing information for laying out the label based on a particular width.
@@ -141,6 +141,10 @@ class VIEWS_EXPORT StyledLabel : public View {
   int GetDefaultTextStyle() const;
   void SetDefaultTextStyle(int text_style);
 
+  // Set the default enabled color id.
+  absl::optional<ui::ColorId> GetDefaultEnabledColorId() const;
+  void SetDefaultEnabledColorId(absl::optional<ui::ColorId> enabled_color_id);
+
   // Get or set the distance in pixels between baselines of multi-line text.
   // Default is 0, indicating the distance between lines should be the standard
   // one for the label's text, font list, and platform.
@@ -189,7 +193,7 @@ class VIEWS_EXPORT StyledLabel : public View {
   // one such child exists.
   void ClickFirstLinkForTesting();
 
-  // Get the first child that is a link.
+  // Gets the first child that is a link. Returns nullptr if there isn't any.
   views::Link* GetFirstLinkForTesting();
 
  private:
@@ -240,16 +244,17 @@ class VIEWS_EXPORT StyledLabel : public View {
 
   int text_context_ = style::CONTEXT_LABEL;
   int default_text_style_ = style::STYLE_PRIMARY;
+  absl::optional<ui::ColorId> default_enabled_color_id_;
 
   absl::optional<int> line_height_;
-
-  // The ranges that should be linkified, sorted by start position.
-  StyleRanges style_ranges_;
 
   // Temporarily owns the custom views until they've been been placed into the
   // StyledLabel's child list. This list also holds the custom views during
   // layout.
   std::list<std::unique_ptr<View>> custom_views_;
+
+  // The ranges that should be linkified, sorted by start position.
+  StyleRanges style_ranges_;
 
   // Saves the effects of the last CalculateLayout() call to avoid repeated
   // calculation.  |layout_size_info_| can then be cached until the next
@@ -281,6 +286,7 @@ VIEW_BUILDER_PROPERTY(int, LineHeight)
 VIEW_BUILDER_PROPERTY(StyledLabel::ColorVariant, DisplayedOnBackgroundColor)
 VIEW_BUILDER_PROPERTY(bool, AutoColorReadabilityEnabled)
 VIEW_BUILDER_PROPERTY(gfx::HorizontalAlignment, HorizontalAlignment)
+VIEW_BUILDER_PROPERTY(absl::optional<ui::ColorId>, DefaultEnabledColorId)
 VIEW_BUILDER_METHOD(SizeToFit, int)
 VIEW_BUILDER_METHOD(AddStyleRange, gfx::Range, StyledLabel::RangeStyleInfo)
 END_VIEW_BUILDER

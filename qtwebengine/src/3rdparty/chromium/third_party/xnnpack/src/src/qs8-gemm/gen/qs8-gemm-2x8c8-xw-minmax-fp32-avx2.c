@@ -67,13 +67,14 @@ void xnn_qs8_gemm_xw_minmax_fp32_ukernel_2x8c8__avx2(
     __m256i vacc1x67 = vacc0x67;
     w = (const int32_t*) w + 8;
 
-    size_t k = 0;
-    while (k < kc) {
-      const __m128i va0 = _mm_broadcastq_epi64(_mm_loadl_epi64((const __m128i*) a0));
-      const __m256i vxa0 = _mm256_cvtepi8_epi16(va0);
+    size_t k = kc;
+
+    while (k >= 8 * sizeof(int8_t)) {
+      const __m128i va0 = _mm_cvtepi8_epi16(_mm_loadl_epi64((const __m128i*) a0));
+      const __m256i vxa0 = _mm256_inserti128_si256(_mm256_castsi128_si256(va0), va0, 1);
       a0 += 8;
-      const __m128i va1 = _mm_broadcastq_epi64(_mm_loadl_epi64((const __m128i*) a1));
-      const __m256i vxa1 = _mm256_cvtepi8_epi16(va1);
+      const __m128i va1 = _mm_cvtepi8_epi16(_mm_loadl_epi64((const __m128i*) a1));
+      const __m256i vxa1 = _mm256_inserti128_si256(_mm256_castsi128_si256(va1), va1, 1);
       a1 += 8;
 
       const __m256i vxb01 = _mm256_load_si256((const __m256i*) w);
@@ -93,8 +94,8 @@ void xnn_qs8_gemm_xw_minmax_fp32_ukernel_2x8c8__avx2(
       vacc0x67 = _mm256_add_epi32(vacc0x67, _mm256_madd_epi16(vxa0, vxb67));
       vacc1x67 = _mm256_add_epi32(vacc1x67, _mm256_madd_epi16(vxa1, vxb67));
 
-      w = (const void*) ((const int16_t*) w + 64);
-      k += 8 * sizeof(int8_t);
+      w = (const int16_t*) w + 64;
+      k -= 8 * sizeof(int8_t);
     }
 
     const __m256i vacc0x0213 = _mm256_hadd_epi32(vacc0x01, vacc0x23);
@@ -109,19 +110,19 @@ void xnn_qs8_gemm_xw_minmax_fp32_ukernel_2x8c8__avx2(
     __m256i vacc0x01234567 = _mm256_permutevar8x32_epi32(vacc0x02461357, vpermute_mask);
     __m256i vacc1x01234567 = _mm256_permutevar8x32_epi32(vacc1x02461357, vpermute_mask);
 
-    __m256 vscaled0x01234567 = _mm256_cvtepi32_ps(vacc0x01234567);
-    __m256 vscaled1x01234567 = _mm256_cvtepi32_ps(vacc1x01234567);
+    __m256 vfpacc0x01234567 = _mm256_cvtepi32_ps(vacc0x01234567);
+    __m256 vfpacc1x01234567 = _mm256_cvtepi32_ps(vacc1x01234567);
 
     const __m256 vscale = _mm256_load_ps(params->fp32_avx2.scale);
-    vscaled0x01234567 = _mm256_mul_ps(vscaled0x01234567, vscale);
-    vscaled1x01234567 = _mm256_mul_ps(vscaled1x01234567, vscale);
+    vfpacc0x01234567 = _mm256_mul_ps(vfpacc0x01234567, vscale);
+    vfpacc1x01234567 = _mm256_mul_ps(vfpacc1x01234567, vscale);
 
     const __m256 voutput_max_less_zero_point = _mm256_load_ps(params->fp32_avx2.output_max_less_zero_point);
-    vscaled0x01234567 = _mm256_min_ps(vscaled0x01234567, voutput_max_less_zero_point);
-    vscaled1x01234567 = _mm256_min_ps(vscaled1x01234567, voutput_max_less_zero_point);
+    vfpacc0x01234567 = _mm256_min_ps(vfpacc0x01234567, voutput_max_less_zero_point);
+    vfpacc1x01234567 = _mm256_min_ps(vfpacc1x01234567, voutput_max_less_zero_point);
 
-    vacc0x01234567 = _mm256_cvtps_epi32(vscaled0x01234567);
-    vacc1x01234567 = _mm256_cvtps_epi32(vscaled1x01234567);
+    vacc0x01234567 = _mm256_cvtps_epi32(vfpacc0x01234567);
+    vacc1x01234567 = _mm256_cvtps_epi32(vfpacc1x01234567);
 
     const __m256i voutput_zero_point = _mm256_load_si256((const __m256i*) params->fp32_avx2.output_zero_point);
     __m256i vacc01x01234567 = _mm256_adds_epi16(_mm256_packs_epi32(vacc0x01234567, vacc1x01234567), voutput_zero_point);

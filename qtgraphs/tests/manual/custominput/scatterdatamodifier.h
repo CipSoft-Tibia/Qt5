@@ -4,20 +4,18 @@
 #ifndef SCATTERDATAMODIFIER_H
 #define SCATTERDATAMODIFIER_H
 
-#include "custominputhandler.h"
-
+#include <QtGraphsWidgets/q3dscatterwidgetitem.h>
+#include <QtGui/QFont>
+#include <QtCore/QTimer>
 #include <QtCore/QPropertyAnimation>
 #include <QtCore/QSequentialAnimationGroup>
-#include <QtCore/QTimer>
-#include <QtGraphs/q3dscatter.h>
-#include <QtGui/QFont>
 #include <QtGui/QVector3D>
 
 class ScatterDataModifier : public QObject
 {
     Q_OBJECT
 public:
-    explicit ScatterDataModifier(Q3DScatter *scatter);
+    explicit ScatterDataModifier(Q3DScatterWidgetItem *scatter);
     ~ScatterDataModifier();
 
     void addData();
@@ -26,18 +24,20 @@ public:
 
 public Q_SLOTS:
     void changeShadowQuality(int quality);
-    void shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality shadowQuality);
-    void triggerSelection();
+    void shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality shadowQuality);
+    void onWheel(QWheelEvent *event);
+    void onMouseMove(QPoint mousePos);
+    void onTapped(QEventPoint eventPoint, Qt::MouseButton button);
+    void onPositionQueryChanged(const QVector3D &position);
 
 Q_SIGNALS:
     void shadowQualityChanged(int quality);
 
 private:
-    Q3DScatter *m_graph;
+    QPoint m_mousePos;
+    Q3DScatterWidgetItem *m_graph;
     QPropertyAnimation *m_animationCameraX;
     QSequentialAnimationGroup *m_animationCameraY;
-    CustomInputHandler *m_inputHandler;
-    QTimer *m_selectionTimer;
 };
 
 #endif

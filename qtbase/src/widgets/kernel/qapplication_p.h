@@ -107,10 +107,10 @@ public:
     static void setActiveWindow(QWidget* act);
 
     static bool inPopupMode();
-    bool popupActive() override { return inPopupMode(); }
-    bool closeAllPopups() override;
     void closePopup(QWidget *popup);
     void openPopup(QWidget *popup);
+    static bool replayMousePress;
+
     static void setFocusWidget(QWidget *focus, Qt::FocusReason reason);
     static QWidget *focusNextPrevChild_helper(QWidget *toplevel, bool next,
                                               bool *wrappingOccurred = nullptr);
@@ -170,7 +170,7 @@ public:
     static QString styleSheet;
 #endif
     static QPointer<QWidget> leaveAfterRelease;
-    static QWidget *pickMouseReceiver(QWidget *candidate, const QPoint &windowPos, QPoint *pos,
+    static QWidget *pickMouseReceiver(QWidget *candidate, const QPointF &windowPos, QPointF *pos,
                                       QEvent::Type type, Qt::MouseButtons buttons,
                                       QWidget *buttonDown, QWidget *alienWidget);
     static bool sendMouseEvent(QWidget *receiver, QMouseEvent *event, QWidget *alienWidget,

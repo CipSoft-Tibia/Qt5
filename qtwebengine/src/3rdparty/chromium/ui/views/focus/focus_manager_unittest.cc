@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "base/command_line.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/strings/utf_string_conversions.h"
@@ -18,6 +19,8 @@
 #include "build/build_config.h"
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/accelerators/test_accelerator_target.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/accessible_pane_view.h"
@@ -59,6 +62,8 @@ class FocusTestEventList : public base::RefCounted<FocusTestEventList> {
 };
 
 class SimpleTestView : public View {
+  METADATA_HEADER(SimpleTestView, View)
+
  public:
   SimpleTestView(scoped_refptr<FocusTestEventList> event_list, int view_id)
       : event_list_(std::move(event_list)) {
@@ -89,6 +94,9 @@ class SimpleTestView : public View {
  private:
   const scoped_refptr<FocusTestEventList> event_list_;
 };
+
+BEGIN_METADATA(SimpleTestView)
+END_METADATA
 
 // Tests that the appropriate Focus related methods are called when a View
 // gets/loses focus.
@@ -452,6 +460,8 @@ TEST_F(FocusManagerTest, SuspendAccelerators) {
 namespace {
 
 class FocusInAboutToRequestFocusFromTabTraversalView : public View {
+  METADATA_HEADER(FocusInAboutToRequestFocusFromTabTraversalView, View)
+
  public:
   FocusInAboutToRequestFocusFromTabTraversalView() = default;
 
@@ -467,15 +477,18 @@ class FocusInAboutToRequestFocusFromTabTraversalView : public View {
   }
 
  private:
-  raw_ptr<views::View, AcrossTasksDanglingUntriaged> view_to_focus_ = nullptr;
+  raw_ptr<views::View> view_to_focus_ = nullptr;
 };
+
+BEGIN_METADATA(FocusInAboutToRequestFocusFromTabTraversalView)
+END_METADATA
+
 }  // namespace
 
 // Verifies a focus change done during a call to
 // AboutToRequestFocusFromTabTraversal() is honored.
 TEST_F(FocusManagerTest, FocusInAboutToRequestFocusFromTabTraversal) {
-  // Create 3 views focuses the 3 and advances to the second. The 2nd views
-  // implementation of AboutToRequestFocusFromTabTraversal() focuses the first.
+  // Create 3 views.
   views::View* v1 = new View;
   v1->SetFocusBehavior(View::FocusBehavior::ALWAYS);
   GetContentsView()->AddChildView(v1);
@@ -490,9 +503,13 @@ TEST_F(FocusManagerTest, FocusInAboutToRequestFocusFromTabTraversal) {
   v3->SetFocusBehavior(View::FocusBehavior::ALWAYS);
   GetContentsView()->AddChildView(v3);
 
+  // Focus the third view and advances to the second. The second view's
+  // implementation of AboutToRequestFocusFromTabTraversal() focuses the first.
   v3->RequestFocus();
   GetWidget()->GetFocusManager()->AdvanceFocus(true);
   EXPECT_TRUE(v1->HasFocus());
+
+  v2->set_view_to_focus(nullptr);
 }
 
 TEST_F(FocusManagerTest, RotateFocus) {
@@ -518,7 +535,7 @@ TEST_F(FocusManagerTest, RotateFocus) {
   v4->SetFocusBehavior(View::FocusBehavior::ALWAYS);
   pane2->AddChildView(v4);
 
-  std::vector<views::View*> panes;
+  std::vector<raw_ptr<views::View, VectorExperimental>> panes;
   panes.push_back(pane1);
   panes.push_back(pane2);
   SetAccessiblePanes(panes);
@@ -912,9 +929,9 @@ TEST_F(FocusManagerTest, AdvanceFocusStaysInWidget) {
   UniqueWidgetPtr child_widget = std::make_unique<Widget>();
   std::unique_ptr<AdvanceFocusWidgetDelegate> delegate_owned =
       std::make_unique<AdvanceFocusWidgetDelegate>(child_widget.get());
-  AdvanceFocusWidgetDelegate* delegate = delegate_owned.get();
-  params.delegate = delegate_owned.release();
-  delegate->SetOwnedByWidget(true);
+  params.delegate = delegate_owned.get();
+  params.delegate->RegisterDeleteDelegateCallback(
+      base::DoNothingWithBoundArgs(std::move(delegate_owned)));
   child_widget->Init(std::move(params));
 
   View* view1 = new View;
@@ -1203,18 +1220,17 @@ class RedirectToParentFocusManagerTest : public FocusManagerTest {
   }
 
   void TearDown() override {
+    parent_focus_manager_ = nullptr;
+    bubble_focus_manager_ = nullptr;
+    bubble_ = nullptr;
     FocusManagerFactory::Install(nullptr);
     FocusManagerTest::TearDown();
   }
 
  protected:
-  raw_ptr<FocusManager, AcrossTasksDanglingUntriaged> parent_focus_manager_ =
-      nullptr;
-  raw_ptr<FocusManager, AcrossTasksDanglingUntriaged> bubble_focus_manager_ =
-      nullptr;
-
-  raw_ptr<BubbleDialogDelegateView, AcrossTasksDanglingUntriaged> bubble_ =
-      nullptr;
+  raw_ptr<FocusManager> parent_focus_manager_ = nullptr;
+  raw_ptr<FocusManager> bubble_focus_manager_ = nullptr;
+  raw_ptr<BubbleDialogDelegateView> bubble_ = nullptr;
 };
 
 // Test that when an accelerator is sent to a bubble that isn't registered,

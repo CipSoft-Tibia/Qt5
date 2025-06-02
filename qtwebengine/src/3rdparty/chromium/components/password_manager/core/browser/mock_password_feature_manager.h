@@ -30,7 +30,7 @@ class MockPasswordFeatureManager : public PasswordFeatureManager {
               (override, const));
   MOCK_METHOD(bool, IsDefaultPasswordStoreSet, (), (override, const));
 
-  MOCK_METHOD(metrics_util::PasswordAccountStorageUsageLevel,
+  MOCK_METHOD(features_util::PasswordAccountStorageUsageLevel,
               ComputePasswordAccountStorageUsageLevel,
               (),
               (override, const));
@@ -50,8 +50,6 @@ class MockPasswordFeatureManager : public PasswordFeatureManager {
               SetDefaultPasswordStore,
               (const PasswordForm::Store& store),
               (override));
-  MOCK_METHOD(void, RecordMoveOfferedToNonOptedInUser, (), (override));
-  MOCK_METHOD(int, GetMoveOfferedToNonOptedInUserCount, (), (override, const));
 #endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 };
 

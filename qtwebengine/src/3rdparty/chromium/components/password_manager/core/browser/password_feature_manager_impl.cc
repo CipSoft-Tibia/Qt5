@@ -7,8 +7,9 @@
 #include "base/feature_list.h"
 #include "build/build_config.h"
 #include "components/password_manager/core/browser/features/password_features.h"
-#include "components/password_manager/core/browser/password_manager_features_util.h"
-#include "components/password_manager/core/browser/password_manager_util.h"
+#include "components/password_manager/core/browser/features/password_manager_features_util.h"
+#include "components/password_manager/core/browser/password_manager_client.h"
+#include "components/password_manager/core/browser/password_sync_util.h"
 #include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/sync/service/sync_service.h"
@@ -18,13 +19,13 @@ namespace password_manager {
 PasswordFeatureManagerImpl::PasswordFeatureManagerImpl(
     PrefService* pref_service,
     PrefService* local_state,
-    const syncer::SyncService* sync_service)
+    syncer::SyncService* sync_service)
     : pref_service_(pref_service),
       local_state_(local_state),
       sync_service_(sync_service) {}
 
 bool PasswordFeatureManagerImpl::IsGenerationEnabled() const {
-  switch (password_manager_util::GetPasswordSyncState(sync_service_)) {
+  switch (password_manager::sync_util::GetPasswordSyncState(sync_service_)) {
     case SyncState::kNotSyncing:
       return ShouldShowAccountStorageOptIn();
     case SyncState::kSyncingWithCustomPassphrase:
@@ -48,8 +49,6 @@ bool PasswordFeatureManagerImpl::IsBiometricAuthenticationBeforeFillingEnabled()
   return local_state_ &&
          local_state_->GetBoolean(
              password_manager::prefs::kHadBiometricsAvailable) &&
-         base::FeatureList::IsEnabled(
-             password_manager::features::kBiometricAuthenticationForFilling) &&
          pref_service_ &&
          pref_service_->GetBoolean(
              password_manager::prefs::kBiometricAuthenticationBeforeFilling);
@@ -59,19 +58,17 @@ bool PasswordFeatureManagerImpl::IsBiometricAuthenticationBeforeFillingEnabled()
 }
 
 bool PasswordFeatureManagerImpl::IsOptedInForAccountStorage() const {
-  return features_util::IsOptedInForAccountStorage(pref_service_,
-                                                   sync_service_);
+  return features_util::IsOptedInForAccountStorage(sync_service_);
 }
 
 bool PasswordFeatureManagerImpl::ShouldShowAccountStorageOptIn() const {
-  return features_util::ShouldShowAccountStorageOptIn(pref_service_,
-                                                      sync_service_);
+  return features_util::ShouldShowAccountStorageOptIn(sync_service_);
 }
 
 bool PasswordFeatureManagerImpl::ShouldShowAccountStorageReSignin(
     const GURL& current_page_url) const {
-  return features_util::ShouldShowAccountStorageReSignin(
-      pref_service_, sync_service_, current_page_url);
+  return features_util::ShouldShowAccountStorageReSignin(sync_service_,
+                                                         current_page_url);
 }
 
 bool PasswordFeatureManagerImpl::ShouldShowAccountStorageBubbleUi() const {
@@ -89,7 +86,7 @@ bool PasswordFeatureManagerImpl::IsDefaultPasswordStoreSet() const {
   return features_util::IsDefaultPasswordStoreSet(pref_service_, sync_service_);
 }
 
-metrics_util::PasswordAccountStorageUsageLevel
+features_util::PasswordAccountStorageUsageLevel
 PasswordFeatureManagerImpl::ComputePasswordAccountStorageUsageLevel() const {
   return features_util::ComputePasswordAccountStorageUsageLevel(pref_service_,
                                                                 sync_service_);
@@ -115,15 +112,6 @@ bool PasswordFeatureManagerImpl::
   return ShouldShowAccountStorageOptIn() && !IsDefaultPasswordStoreSet();
 }
 
-void PasswordFeatureManagerImpl::RecordMoveOfferedToNonOptedInUser() {
-  features_util::RecordMoveOfferedToNonOptedInUser(pref_service_,
-                                                   sync_service_);
-}
-
-int PasswordFeatureManagerImpl::GetMoveOfferedToNonOptedInUserCount() const {
-  return features_util::GetMoveOfferedToNonOptedInUserCount(pref_service_,
-                                                            sync_service_);
-}
 #endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 
 }  // namespace password_manager

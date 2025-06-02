@@ -7,12 +7,15 @@ from __future__ import annotations
 import abc
 import logging
 import pathlib
-import re
 import shutil
-from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, Tuple
 
-from crossbench.flags import Flags
+from ordered_set import OrderedSet
+
 from crossbench import plt
+from crossbench.flags import Flags
+from crossbench.network.base import Network
+from crossbench.network.live import LiveNetwork
 
 from .splash_screen import SplashScreen
 from .viewport import Viewport
@@ -24,6 +27,7 @@ if TYPE_CHECKING:
   from crossbench.runner.run import Run
   from crossbench.runner.runner import Runner
   from crossbench.types import JsonDict
+  from crossbench.runner.groups import BrowserSessionRunGroup
 
 
 class Browser(abc.ABC):
@@ -40,6 +44,7 @@ class Browser(abc.ABC):
       js_flags: Optional[Flags.InitialDataType] = None,
       cache_dir: Optional[pathlib.Path] = None,
       type: Optional[str] = None,  # pylint: disable=redefined-builtin
+      network: Optional[Network] = None,
       driver_path: Optional[pathlib.Path] = None,
       viewport: Optional[Viewport] = None,
       splash_screen: Optional[SplashScreen] = None,
@@ -68,13 +73,14 @@ class Browser(abc.ABC):
       # binary path.
       self.path = pathlib.Path()
       self.unique_name = f"{self.type}_{self.label}".lower()
-    self._viewport = viewport or Viewport.DEFAULT
-    self._splash_screen = splash_screen or SplashScreen.DEFAULT
+    self._network: Network = network or LiveNetwork()
+    self._viewport: Viewport = viewport or Viewport.DEFAULT
+    self._splash_screen: SplashScreen = splash_screen or SplashScreen.DEFAULT
     self._is_running: bool = False
     self.cache_dir: Optional[pathlib.Path] = cache_dir
     self.clear_cache_dir: bool = True
     self._pid: Optional[int] = None
-    self._probes: Set[Probe] = set()
+    self._probes: OrderedSet[Probe] = OrderedSet()
     self._flags: Flags = self.default_flags(flags)
     assert not js_flags, "Base Browser doesn't support js_flags directly"
     self.log_file: Optional[pathlib.Path] = None
@@ -91,7 +97,11 @@ class Browser(abc.ABC):
   def unique_name(self, name: str) -> None:
     assert name
     # Replace any potentially unsafe chars in the name
-    self._unique_name = re.sub(r"[^\w\d\-\.]", "_", name).lower()
+    self._unique_name = plt.safe_filename(name).lower()
+
+  @property
+  def network(self) -> Network:
+    return self._network
 
   @property
   def splash_screen(self) -> SplashScreen:
@@ -128,7 +138,11 @@ class Browser(abc.ABC):
     info = self.platform.process_info(self.pid)
     if info is None:
       return None
-    return info["status"] == "running" or info["status"] == "sleeping"
+    if status := info.get("status"):
+      return status in ("running", "sleeping")
+    # TODO(cbruni): fix posix process_info for remote platforms where
+    # we don't get the status back.
+    return False
 
   @property
   def is_local(self) -> bool:
@@ -160,6 +174,8 @@ class Browser(abc.ABC):
     return candidate
 
   def attach_probe(self, probe: Probe) -> None:
+    if probe in self._probes:
+      raise ValueError(f"Cannot attach same probe twice: {probe}")
     self._probes.add(probe)
     probe.attach(self)
 
@@ -181,14 +197,12 @@ class Browser(abc.ABC):
   def setup_binary(self, runner: Runner) -> None:
     pass
 
-  def setup(self, run: Run) -> None:
+  def setup(self, session: BrowserSessionRunGroup) -> None:
     assert not self._is_running
-    runner = run.runner
+    runner = session.runner
     self.clear_cache(runner)
-    self.start(run)
+    self.start(session)
     assert self._is_running
-    self._prepare_temperature(run)
-    self.splash_screen.run(run)
 
   @abc.abstractmethod
   def _extract_version(self) -> str:
@@ -200,23 +214,13 @@ class Browser(abc.ABC):
       shutil.rmtree(self.cache_dir)
 
   @abc.abstractmethod
-  def start(self, run: Run) -> None:
+  def start(self, session: BrowserSessionRunGroup) -> None:
     pass
 
-  def _prepare_temperature(self, run: Run) -> None:
-    """Warms up the browser by loading the page 3 times."""
-    runner = run.runner
-    if run.temperature != "cold" and run.temperature:
-      for _ in range(3):
-        # TODO(cbruni): add no_collect argument
-        run.story.run(run)
-        runner.wait(run.story.duration / 2)
-        self.show_url(runner, "about:blank")
-        runner.wait(1)
-
-  def _get_browser_flags_for_run(self, run: Run) -> Tuple[str, ...]:
+  def _get_browser_flags_for_session(
+      self, session: BrowserSessionRunGroup) -> Tuple[str, ...]:
     flags_copy: Flags = self.flags.copy()
-    flags_copy.update(run.extra_flags)
+    flags_copy.update(session.extra_flags)
     flags_copy = self._filter_flags_for_run(flags_copy)
     return tuple(flags_copy.get_list())
 
@@ -254,7 +258,10 @@ class Browser(abc.ABC):
     pass
 
   @abc.abstractmethod
-  def show_url(self, runner: Runner, url: str) -> None:
+  def show_url(self,
+               runner: Runner,
+               url: str,
+               target: Optional[str] = None) -> None:
     pass
 
   def _sync_viewport_flag(self, flags: Flags, flag: str,
@@ -274,3 +281,10 @@ class Browser(abc.ABC):
     if self.platform.is_remote:
       platform_prefix = str(self.platform)
     return f"{platform_prefix}{self.type.capitalize()}:{self.label}"
+
+  def __hash__(self) -> int:
+    # Poor-man's hash, browsers should be unique.
+    return hash(id(self))
+
+  def performance_mark(self, runner: Runner, name: str):
+    self.js(runner, "performance.mark(arguments[0]);", arguments=[name])

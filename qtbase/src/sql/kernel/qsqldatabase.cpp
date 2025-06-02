@@ -3,10 +3,11 @@
 
 #include "qsqldatabase.h"
 #include "qsqlquery.h"
-#include "qdebug.h"
+#include "qloggingcategory.h"
 #include "qcoreapplication.h"
 #include "qreadwritelock.h"
 #include "qsqldriver.h"
+#include "qsqldriver_p.h"
 #include "qsqldriverplugin.h"
 #include "qsqlindex.h"
 #include "QtCore/qapplicationstatic.h"
@@ -17,16 +18,18 @@
 
 QT_BEGIN_NAMESPACE
 
+static Q_LOGGING_CATEGORY(lcSqlDb, "qt.sql.qsqldatabase")
+
 using namespace Qt::StringLiterals;
 
 #define CHECK_QCOREAPPLICATION \
     if (Q_UNLIKELY(!QCoreApplication::instance())) { \
-        qWarning("QSqlDatabase requires a QCoreApplication"); \
+        qCWarning(lcSqlDb, "QSqlDatabase requires a QCoreApplication"); \
         return; \
     }
 #define CHECK_QCOREAPPLICATION_RETVAL \
     if (Q_UNLIKELY(!QCoreApplication::instance())) { \
-        qWarning("QSqlDatabase requires a QCoreApplication"); \
+        qCWarning(lcSqlDb, "QSqlDatabase requires a QCoreApplication"); \
         return {}; \
     }
 
@@ -120,7 +123,7 @@ QSqlDatabasePrivate::~QSqlDatabasePrivate()
 QtSqlGlobals::~QtSqlGlobals()
 {
     qDeleteAll(registeredDrivers);
-    for (const auto &[k, v] : connections.asKeyValueRange())
+    for (const auto &[k, v] : std::as_const(connections).asKeyValueRange())
         QSqlDatabasePrivate::invalidateDb(v, k, false);
 }
 
@@ -134,8 +137,8 @@ QSqlDatabasePrivate *QSqlDatabasePrivate::shared_null()
 void QSqlDatabasePrivate::invalidateDb(const QSqlDatabase &db, const QString &name, bool doWarn)
 {
     if (db.d->ref.loadRelaxed() != 1 && doWarn) {
-        qWarning("QSqlDatabasePrivate::removeDatabase: connection '%s' is still in use, "
-                 "all queries will cease to work.", name.toLocal8Bit().constData());
+        qCWarning(lcSqlDb, "QSqlDatabasePrivate::removeDatabase: connection '%ls' is still in use, "
+                 "all queries will cease to work.", qUtf16Printable(name));
         db.d->disable();
         db.d->connName.clear();
     }
@@ -161,8 +164,8 @@ void QSqlDatabasePrivate::addDatabase(const QSqlDatabase &db, const QString &nam
 
     if (sqlGlobals->connections.contains(name)) {
         invalidateDb(sqlGlobals->connections.take(name), name);
-        qWarning("QSqlDatabasePrivate::addDatabase: duplicate connection name '%s', old "
-                 "connection removed.", name.toLocal8Bit().data());
+        qCWarning(lcSqlDb, "QSqlDatabasePrivate::addDatabase: duplicate connection name '%ls', old "
+                 "connection removed.", qUtf16Printable(name));
     }
     sqlGlobals->connections.insert(name, db);
     db.d->connName = name;
@@ -177,13 +180,13 @@ QSqlDatabase QSqlDatabasePrivate::database(const QString& name, bool open)
     if (!db.isValid())
         return db;
     if (db.driver()->thread() != QThread::currentThread()) {
-        qWarning("QSqlDatabasePrivate::database: requested database does not belong to the calling thread.");
+        qCWarning(lcSqlDb, "QSqlDatabasePrivate::database: requested database does not belong to the calling thread.");
         return QSqlDatabase();
     }
 
     if (open && !db.isOpen()) {
         if (!db.open())
-            qWarning() << "QSqlDatabasePrivate::database: unable to open database:" << db.lastError().text();
+            qCWarning(lcSqlDb) << "QSqlDatabasePrivate::database: unable to open database:" << db.lastError().text();
 
     }
     return db;
@@ -236,6 +239,8 @@ void QSqlDatabasePrivate::disable()
 
     Destroys the SQL driver creator object.
 */
+QSqlDriverCreatorBase::~QSqlDriverCreatorBase()
+    = default;
 
 /*!
     \fn QSqlDriver *QSqlDriverCreatorBase::createObject() const
@@ -280,6 +285,10 @@ void QSqlDatabasePrivate::disable()
     QSqlDriver.  Alternatively, you can subclass your own database
     driver from QSqlDriver. See \l{How to Write Your Own Database
     Driver} for more information.
+    A QSqlDatabase instance must only be accessed by the thread it
+    was created in. Therefore you have to make sure to create them
+    in the correct context. Alternatively you can change the context
+    with QSqlDatabase::moveToThread().
 
     Create a connection (i.e., an instance of QSqlDatabase) by calling
     one of the static addDatabase() functions, where you specify
@@ -646,11 +655,11 @@ void QSqlDatabasePrivate::init(const QString &type)
         driver = qLoadPlugin<QSqlDriver, QSqlDriverPlugin>(loader(), type);
 
     if (!driver) {
-        qWarning("QSqlDatabase: %s driver not loaded", type.toLatin1().data());
-        qWarning("QSqlDatabase: available drivers: %s",
-                        QSqlDatabase::drivers().join(u' ').toLatin1().data());
+        qCWarning(lcSqlDb, "QSqlDatabase: %ls driver not loaded", qUtf16Printable(type));
+        qCWarning(lcSqlDb, "QSqlDatabase: available drivers: %ls",
+                  qUtf16Printable(QSqlDatabase::drivers().join(u' ')));
         if (QCoreApplication::instance() == nullptr)
-            qWarning("QSqlDatabase: an instance of QCoreApplication is required for loading driver plugins");
+            qCWarning(lcSqlDb, "QSqlDatabase: an instance of QCoreApplication is required for loading driver plugins");
         driver = shared_null()->driver;
     }
 }
@@ -1127,6 +1136,7 @@ bool QSqlDatabase::isDriverAvailable(const QString& name)
 }
 
 /*! \fn QSqlDatabase QSqlDatabase::addDatabase(QSqlDriver* driver, const QString& connectionName)
+    \overload
 
     This overload is useful when you want to create a database
     connection with a \l{QSqlDriver} {driver} you instantiated
@@ -1281,8 +1291,6 @@ QSqlDatabase QSqlDatabase::cloneDatabase(const QString &other, const QString &co
 }
 
 /*!
-    \since 4.4
-
     Returns the connection name, which may be empty.  \note The
     connection name is not the \l{databaseName()} {database name}.
 
@@ -1294,10 +1302,11 @@ QString QSqlDatabase::connectionName() const
 }
 
 /*!
-    \since 4.6
+    \property QSqlDatabase::numericalPrecisionPolicy
+    \since 6.8
 
-    Sets the default numerical precision policy used by queries created
-    on this database connection to \a precisionPolicy.
+    This property holds the default numerical precision policy used by
+    queries created on this database connection.
 
     Note: Drivers that don't support fetching numerical values with low
     precision will ignore the precision policy. You can use
@@ -1307,9 +1316,12 @@ QString QSqlDatabase::connectionName() const
     Note: Setting the default precision policy to \a precisionPolicy
     doesn't affect any currently active queries.
 
-    \sa QSql::NumericalPrecisionPolicy, numericalPrecisionPolicy(),
-        QSqlQuery::setNumericalPrecisionPolicy(), QSqlQuery::numericalPrecisionPolicy()
+    \sa QSql::NumericalPrecisionPolicy, QSqlQuery::numericalPrecisionPolicy,
+        QSqlDriver::numericalPrecisionPolicy
 */
+/*!
+    Sets \l numericalPrecisionPolicy to \a precisionPolicy.
+ */
 void QSqlDatabase::setNumericalPrecisionPolicy(QSql::NumericalPrecisionPolicy precisionPolicy)
 {
     if (driver())
@@ -1318,12 +1330,7 @@ void QSqlDatabase::setNumericalPrecisionPolicy(QSql::NumericalPrecisionPolicy pr
 }
 
 /*!
-    \since 4.6
-
-    Returns the current default precision policy for the database connection.
-
-    \sa QSql::NumericalPrecisionPolicy, setNumericalPrecisionPolicy(),
-        QSqlQuery::numericalPrecisionPolicy(), QSqlQuery::setNumericalPrecisionPolicy()
+    Returns the \l numericalPrecisionPolicy.
 */
 QSql::NumericalPrecisionPolicy QSqlDatabase::numericalPrecisionPolicy() const
 {
@@ -1331,6 +1338,50 @@ QSql::NumericalPrecisionPolicy QSqlDatabase::numericalPrecisionPolicy() const
         return driver()->numericalPrecisionPolicy();
     else
         return d->precisionPolicy;
+}
+
+/*!
+    \since 6.8
+
+    Changes the thread affinity for QSqlDatabase and its associated driver.
+    This function returns \c true when the function succeeds. Event processing
+    will continue in the \a targetThread.
+
+    During this operation you have to make sure that there is no QSqlQuery
+    bound to this instance otherwise the QSqlDatabase will not be moved to
+    the given thread and the function returns \c false.
+
+    Since the associated driver is derived from QObject, all constraints for
+    moving a QObject to another thread also apply to this function.
+
+    \sa QObject::moveToThread(), {Threads and the SQL Module}
+*/
+bool QSqlDatabase::moveToThread(QThread *targetThread)
+{
+    if (auto drv = driver()) {
+        if (drv != QSqlDatabasePrivate::shared_null()->driver) {
+            // two instances are alive - the one here and the one in dbDict()
+            if (d->ref.loadRelaxed() > 2) {
+                qWarning("QSqlDatabasePrivate::moveToThread: connection '%ls' is still in use "
+                         "in the current thread.", qUtf16Printable(d->connName));
+                return false;
+            }
+            return drv->moveToThread(targetThread);
+        }
+    }
+    return false;
+}
+
+/*!
+    \since 6.8
+
+    Returns a pointer to the associated QThread instance.
+*/
+QThread *QSqlDatabase::thread() const
+{
+    if (auto drv = driver())
+        return drv->thread();
+    return nullptr;
 }
 
 

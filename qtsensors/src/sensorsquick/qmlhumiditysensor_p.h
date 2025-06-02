@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 
 class QHumiditySensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlHumiditySensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlHumiditySensor : public QmlSensor
 {
     Q_OBJECT
 
@@ -39,7 +39,7 @@ private:
     QHumiditySensor *m_sensor;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlHumidityReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlHumidityReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal relativeHumidity READ relativeHumidity

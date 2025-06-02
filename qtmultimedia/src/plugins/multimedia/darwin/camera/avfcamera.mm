@@ -21,42 +21,27 @@ AVFCamera::~AVFCamera()
 {
 }
 
-void AVFCamera::setActive(bool active)
+void AVFCamera::onActiveChanged(bool active)
 {
-    if (m_active == active)
-        return;
-    if (m_cameraDevice.isNull() && active)
-        return;
-
-    m_active = active;
     if (m_session)
         m_session->setActive(active);
-
-    if (active)
-        updateCameraConfiguration();
-    Q_EMIT activeChanged(m_active);
 }
 
-void AVFCamera::setCamera(const QCameraDevice &camera)
+void AVFCamera::onCameraDeviceChanged(const QCameraDevice &device)
 {
-    if (m_cameraDevice == camera)
+    if (device.isNull() || !checkCameraPermission())
         return;
-    m_cameraDevice = camera;
+
     if (m_session)
-        m_session->setActiveCamera(camera);
-    setCameraFormat({});
+        m_session->setActiveCamera(m_cameraDevice);
 }
 
-bool AVFCamera::setCameraFormat(const QCameraFormat &format)
+bool AVFCamera::tryApplyCameraFormat(const QCameraFormat &newFormat)
 {
-    if (!format.isNull() && !m_cameraDevice.videoFormats().contains(format))
-        return false;
-
-    m_cameraFormat = format.isNull() ? findBestCameraFormat(m_cameraDevice) : format;
-
+    // TODO: In the future, we should be able to return false if we failed
+    // to apply the format.
     if (m_session)
-        m_session->setCameraFormat(m_cameraFormat);
-
+        m_session->setCameraFormat(newFormat);
     return true;
 }
 

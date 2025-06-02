@@ -18,6 +18,7 @@
 #include <QtQuick3D/qquick3dobject.h>
 #include <QtQuick3D/QQuick3DTextureData>
 #include <QtQuick/private/qquickitemchangelistener_p.h>
+#include <QtQuick/private/qsgadaptationlayer_p.h>
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QSGNode>
 #include <QtCore/QUrl>
@@ -114,6 +115,11 @@ public:
     Q_REVISION(6, 7) void setTextureProvider(QQuick3DRenderExtension *newRenderTexture);
 
     bool extensionDirty() const { return m_dirtyFlags.testFlag(DirtyFlag::ExtensionDirty); }
+
+    bool hasSourceData() const
+    {
+        return !m_source.isEmpty() || m_sourceItem || m_textureData;
+    }
 
 public Q_SLOTS:
     void setSource(const QUrl &source);

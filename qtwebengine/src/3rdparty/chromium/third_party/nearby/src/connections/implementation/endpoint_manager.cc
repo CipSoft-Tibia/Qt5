@@ -1,4 +1,4 @@
-// Copyright 2021 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@
 #include "connections/implementation/service_id_constants.h"
 #include "internal/platform/count_down_latch.h"
 #include "internal/platform/exception.h"
+#include "internal/platform/feature_flags.h"
 #include "internal/platform/logging.h"
 #include "internal/platform/mutex.h"
 #include "internal/platform/mutex_lock.h"
@@ -46,6 +47,8 @@ using ::location::nearby::analytics::proto::ConnectionsLog;
 using ::location::nearby::connections::OfflineFrame;
 using ::location::nearby::connections::V1Frame;
 using ::nearby::analytics::PacketMetaData;
+using DisconnectionReason =
+    ::location::nearby::proto::connections::DisconnectionReason;
 
 // We set this to 11s to provide sufficient time for an in-progress WebRTC
 // bandwidth upgrade to resolve. This is chosen to be slightly longer than the
@@ -203,7 +206,7 @@ ExceptionOr<OfflineFrame> EndpointManager::TryDecryptFrame(
     }
     auto elapsed = SystemClock::ElapsedRealtime() - start_time;
     if (elapsed > kDecryptRetryTimeout) {
-      NEARBY_LOGS(WARNING) << "Can't decrypt the mesage. Timeout after "
+      NEARBY_LOGS(WARNING) << "Can't decrypt the message. Timeout after "
                            << elapsed;
       return Exception::kTimeout;
     }
@@ -780,11 +783,17 @@ bool EndpointManager::ApplySafeToDisconnect(const std::string& endpoint_id,
                                             DisconnectionReason reason) {
   NEARBY_LOGS(INFO) << "[safe-to-disconnect] ApplySafeToDisconnect reason: "
                     << reason;
+  // TODO(b/303544913): clean up the safe-to-disconnect logic
   bool is_safe_disconnection = false;
   bool send_disconnection_frame = true;
+  absl::Duration timeout_millis = FeatureFlags::GetInstance()
+                               .GetFlags()
+                               .safe_to_disconnect_ack_delay_millis;
+  bool is_wait_for_ack = true;
   switch (reason) {
     case DisconnectionReason::UPGRADED:
     case DisconnectionReason::SHUTDOWN:
+    case DisconnectionReason::PREV_CHANNEL_DISCONNECTION_IN_RECONNECT:
     case DisconnectionReason::UNFINISHED:
       return true;  // safe disconnection
     case DisconnectionReason::IO_ERROR:
@@ -796,6 +805,11 @@ bool EndpointManager::ApplySafeToDisconnect(const std::string& endpoint_id,
     case DisconnectionReason::REMOTE_DISCONNECTION:
       is_safe_disconnection = true;
       send_disconnection_frame = false;
+      timeout_millis =
+          FeatureFlags::GetInstance()
+              .GetFlags()
+              .safe_to_disconnect_remote_disc_delay_millis;
+      is_wait_for_ack = false;
       break;
     default:
       is_safe_disconnection = false;
@@ -820,8 +834,11 @@ bool EndpointManager::ApplySafeToDisconnect(const std::string& endpoint_id,
     }
   }
 
-  bool state =
-      channel_manager_->CreateNewTimeoutDisconnectedState(endpoint_id);
+  NEARBY_LOGS(WARNING) << "[safe-to-disconnect] Wait for "
+                       << (is_wait_for_ack ? "ack" : "disconnection")
+                       << ", timeout in " << timeout_millis;
+  bool state = channel_manager_->CreateNewTimeoutDisconnectedState(
+      endpoint_id, timeout_millis);
   if (!state) return is_safe_disconnection;
 
   return is_safe_disconnection ||

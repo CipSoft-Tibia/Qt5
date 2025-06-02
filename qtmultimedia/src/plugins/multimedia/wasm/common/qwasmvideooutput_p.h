@@ -36,10 +36,12 @@ class QWasmVideoOutput : public QObject
 {
     Q_OBJECT
 public:
+    using MediaStatus = QMediaPlayer::MediaStatus;
     enum WasmVideoMode { VideoOutput, Camera };
     Q_ENUM(WasmVideoMode)
 
     explicit QWasmVideoOutput(QObject *parent = nullptr);
+    ~QWasmVideoOutput();
 
     void setVideoSize(const QSize &);
     void start();
@@ -88,7 +90,9 @@ public:
     // mediacapturesession has the videosink
     QVideoSink *m_wasmSink = nullptr;
 
-    emscripten::val currentVideoElement() { return m_video; }
+    emscripten::val currentVideoElement() { return (
+        m_video.isNull() || m_video.isUndefined() ? emscripten::val::null()
+                                                  : m_video) ; }
 
     std::string m_videoSurfaceId;
 

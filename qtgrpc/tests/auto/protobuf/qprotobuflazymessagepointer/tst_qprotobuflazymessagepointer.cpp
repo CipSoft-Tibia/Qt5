@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtProtobuf/qprotobuflazymessagepointer.h>
+#include <QtProtobuf/qprotobufobject.h>
 
 #include <QtTest/qtest.h>
 
@@ -9,7 +10,7 @@
 class tst_QProtobufLazyMessagePointer : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void ctor();
     void reset();
     void get();
@@ -19,16 +20,18 @@ private slots:
 class TestStruct : public QProtobufMessage
 {
 private:
-    Q_GADGET
+    Q_PROTOBUF_OBJECT
     Q_PROPERTY(QString name READ name WRITE setName)
 public:
-    TestStruct() : QProtobufMessage(&staticMetaObject) {}
+    TestStruct() : QProtobufMessage(&staticMetaObject, nullptr) { }
 
     QString name() const { return m_name; }
     void setName(const QString &name) { m_name = name; }
 
     QString m_name;
 };
+
+const QtProtobufPrivate::QProtobufPropertyOrdering TestStruct::staticPropertyOrdering = {};
 
 void tst_QProtobufLazyMessagePointer::ctor()
 {

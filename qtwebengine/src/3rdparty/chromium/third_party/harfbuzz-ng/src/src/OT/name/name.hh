@@ -242,7 +242,9 @@ struct NameRecord
   bool sanitize (hb_sanitize_context_t *c, const void *base) const
   {
     TRACE_SANITIZE (this);
-    return_trace (c->check_struct (this) && offset.sanitize (c, base, length));
+    return_trace (c->check_struct (this) &&
+		  hb_barrier () &&
+		  offset.sanitize (c, base, length));
   }
 
   HBUINT16	platformID;	/* Platform ID. */
@@ -359,7 +361,7 @@ struct name
       record.nameID = ids.name_id;
       record.length = 0; // handled in NameRecord copy()
       record.offset = 0;
-      memcpy (name_records, &record, NameRecord::static_size);
+      hb_memcpy (name_records, &record, NameRecord::static_size);
       name_records++;
     }
 #endif
@@ -465,6 +467,7 @@ struct name
   {
     TRACE_SANITIZE (this);
     return_trace (c->check_struct (this) &&
+		  hb_barrier () &&
 		  likely (format == 0 || format == 1) &&
 		  c->check_array (nameRecordZ.arrayZ, count) &&
 		  c->check_range (this, stringOffset) &&

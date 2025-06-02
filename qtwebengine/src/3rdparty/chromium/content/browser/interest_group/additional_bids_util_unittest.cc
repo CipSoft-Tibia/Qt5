@@ -8,20 +8,25 @@
 
 #include <array>
 #include <limits>
+#include <optional>
 #include <string>
 
 #include "base/base64.h"
 #include "base/containers/flat_set.h"
 #include "base/strings/strcat.h"
 #include "base/strings/stringprintf.h"
+#include "base/test/task_environment.h"
 #include "base/types/expected.h"
 #include "base/types/optional_ref.h"
 #include "base/uuid.h"
 #include "base/values.h"
+#include "components/ukm/test_ukm_recorder.h"
+#include "content/browser/interest_group/auction_metrics_recorder.h"
 #include "crypto/openssl_util.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
 #include "testing/gmock/include/gmock/gmock-matchers.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/interest_group/ad_auction_constants.h"
 #include "third_party/blink/public/common/interest_group/ad_display_size.h"
 #include "third_party/boringssl/src/include/openssl/curve25519.h"
@@ -99,6 +104,11 @@ const uint8_t kSig2[] =
 const char kSig2Base64[] =
     "kSz0go9iax9KNBuMTLjWoUHQvcxnus8I5DIJXZcGCUH66hKOSQVz4qRXe6U7AK4jr2HpX6Q5vQ"
     "ebt0kxUt1p3Q==";
+
+// Version that requires forgiving decoder to accept.
+const char kSig2Base64Sloppy[] =
+    " kSz0go9iax9KNBuMTLjWoUHQvcxnus8I5DIJXZcGCUH66hKOSQVz4qRXe6U7AK4jr2HpX6Q5v"
+    "Qebt0kxUt1p3Q";
 
 const char kPretendBid[] = "Hi, I am a JSON bid.";
 
@@ -185,7 +195,7 @@ TEST_F(AdditionalBidsUtilTest, FailNotDict) {
 
   auto result = DecodeAdditionalBid(/*auction=*/nullptr, input, kAuctionNonce,
                                     kInterestGroupBuyers, kSeller,
-                                    /*top_level_seller=*/absl::nullopt);
+                                    /*top_level_seller=*/std::nullopt);
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' is not a "
@@ -200,7 +210,7 @@ TEST_F(AdditionalBidsUtilTest, FailNoNonce) {
 
   auto result = DecodeAdditionalBid(/*auction=*/nullptr, input, kAuctionNonce,
                                     kInterestGroupBuyers, kSeller,
-                                    /*top_level_seller=*/absl::nullopt);
+                                    /*top_level_seller=*/std::nullopt);
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
@@ -215,7 +225,7 @@ TEST_F(AdditionalBidsUtilTest, FailInvalidNonce) {
 
   auto result = DecodeAdditionalBid(/*auction=*/nullptr, input, kAuctionNonce,
                                     kInterestGroupBuyers, kSeller,
-                                    /*top_level_seller=*/absl::nullopt);
+                                    /*top_level_seller=*/std::nullopt);
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
@@ -230,7 +240,7 @@ TEST_F(AdditionalBidsUtilTest, FailMissingSeller) {
 
   auto result = DecodeAdditionalBid(/*auction=*/nullptr, input, kAuctionNonce,
                                     kInterestGroupBuyers, kSeller,
-                                    /*top_level_seller=*/absl::nullopt);
+                                    /*top_level_seller=*/std::nullopt);
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
@@ -245,7 +255,7 @@ TEST_F(AdditionalBidsUtilTest, FailInvalidSeller) {
 
   auto result = DecodeAdditionalBid(/*auction=*/nullptr, input, kAuctionNonce,
                                     kInterestGroupBuyers, kSeller,
-                                    /*top_level_seller=*/absl::nullopt);
+                                    /*top_level_seller=*/std::nullopt);
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
@@ -258,7 +268,7 @@ TEST_F(AdditionalBidsUtilTest, FailInvalidTopLevelSeller) {
   base::Value input(MakeMinimalValid());
   auto result = DecodeAdditionalBid(/*auction=*/nullptr, input, kAuctionNonce,
                                     kInterestGroupBuyers, kSeller,
-                                    /*top_level_seller=*/absl::nullopt);
+                                    /*top_level_seller=*/std::nullopt);
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
@@ -311,12 +321,11 @@ TEST_F(AdditionalBidsUtilTest, FailNoIGDictionary) {
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
-      "due to missing or invalid interest group info.",
+      "due to missing interest group name.",
       result.error());
 }
 
-// Missing IG name.
-TEST_F(AdditionalBidsUtilTest, FailInvalidIG) {
+TEST_F(AdditionalBidsUtilTest, FailMissingInterestGroupName) {
   base::Value::Dict additional_bid_dict = MakeMinimalValid();
   additional_bid_dict.RemoveByDottedPath("interestGroup.name");
   base::Value input(std::move(additional_bid_dict));
@@ -327,12 +336,11 @@ TEST_F(AdditionalBidsUtilTest, FailInvalidIG) {
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
-      "due to missing or invalid interest group info.",
+      "due to missing interest group name.",
       result.error());
 }
 
-// Missing IG bidding script.
-TEST_F(AdditionalBidsUtilTest, FailInvalidIG2) {
+TEST_F(AdditionalBidsUtilTest, FailMissingInterestGroupBiddingScript) {
   base::Value::Dict additional_bid_dict = MakeMinimalValid();
   additional_bid_dict.RemoveByDottedPath("interestGroup.biddingLogicURL");
   base::Value input(std::move(additional_bid_dict));
@@ -343,12 +351,11 @@ TEST_F(AdditionalBidsUtilTest, FailInvalidIG2) {
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
-      "due to missing or invalid interest group info.",
+      "due to missing interest group bidding URL.",
       result.error());
 }
 
-// Missing IG owner.
-TEST_F(AdditionalBidsUtilTest, FailInvalidIG3) {
+TEST_F(AdditionalBidsUtilTest, FailMissingInterestGroupOwner) {
   base::Value::Dict additional_bid_dict = MakeMinimalValid();
   additional_bid_dict.RemoveByDottedPath("interestGroup.owner");
   base::Value input(std::move(additional_bid_dict));
@@ -359,12 +366,11 @@ TEST_F(AdditionalBidsUtilTest, FailInvalidIG3) {
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
-      "due to missing or invalid interest group info.",
+      "due to missing interest group owner.",
       result.error());
 }
 
-// Non-https IG owner.
-TEST_F(AdditionalBidsUtilTest, FailInvalidIG4) {
+TEST_F(AdditionalBidsUtilTest, FailNonHttpsInterestGroupOwner) {
   base::Value::Dict additional_bid_dict = MakeMinimalValid();
   additional_bid_dict.SetByDottedPath("interestGroup.owner",
                                       "http://rollingstock.test/");
@@ -376,12 +382,11 @@ TEST_F(AdditionalBidsUtilTest, FailInvalidIG4) {
   ASSERT_FALSE(result.has_value());
   EXPECT_EQ(
       "Additional bid on auction with seller 'https://seller.test' rejected "
-      "due to missing or invalid interest group info.",
+      "due to non-https interest group owner URL.",
       result.error());
 }
 
-// Domain mismatch between owner and bidding script.
-TEST_F(AdditionalBidsUtilTest, FailInvalidIG5) {
+TEST_F(AdditionalBidsUtilTest, FailDomainMismatchBetweenOwnerAndBiddingScript) {
   base::Value::Dict additional_bid_dict = MakeMinimalValid();
   additional_bid_dict.SetByDottedPath("interestGroup.owner",
                                       "https://trainstuff.test/");
@@ -489,7 +494,6 @@ TEST_F(AdditionalBidsUtilTest, MinimalValid) {
   const InterestGroupAuction::Bid* bid = result->bid.get();
 
   EXPECT_TRUE(bid_state->made_bid);
-  ASSERT_TRUE(bid_state->bidder);
   EXPECT_EQ("trainfans", bid_state->bidder->interest_group.name);
   ASSERT_TRUE(bid_state->additional_bid_buyer.has_value());
   EXPECT_EQ(bid_state->bidder->interest_group.owner,
@@ -503,17 +507,17 @@ TEST_F(AdditionalBidsUtilTest, MinimalValid) {
   ASSERT_TRUE(bid_state->bidder->interest_group.ads.has_value());
   ASSERT_EQ(1u, bid_state->bidder->interest_group.ads->size());
   EXPECT_EQ("https://en.wikipedia.test/wiki/Train",
-            bid_state->bidder->interest_group.ads.value()[0].render_url.spec());
+            bid_state->bidder->interest_group.ads.value()[0].render_url());
 
   EXPECT_EQ(InterestGroupAuction::Bid::BidRole::kBothKAnonModes, bid->bid_role);
   EXPECT_EQ("null", bid->ad_metadata);
   EXPECT_EQ(10.0, bid->bid);
-  EXPECT_EQ(absl::nullopt, bid->bid_currency);
-  EXPECT_EQ(absl::nullopt, bid->ad_cost);
+  EXPECT_EQ(std::nullopt, bid->bid_currency);
+  EXPECT_EQ(std::nullopt, bid->ad_cost);
   EXPECT_EQ(blink::AdDescriptor(GURL("https://en.wikipedia.test/wiki/Train")),
             bid->ad_descriptor);
   EXPECT_EQ(0u, bid->ad_component_descriptors.size());
-  EXPECT_EQ(absl::nullopt, bid->modeling_signals);
+  EXPECT_EQ(std::nullopt, bid->modeling_signals);
   EXPECT_EQ(&bid_state->bidder->interest_group, bid->interest_group);
   EXPECT_EQ(&bid_state->bidder->interest_group.ads.value()[0], bid->bid_ad);
   EXPECT_EQ(bid_state, bid->bid_state);
@@ -714,7 +718,8 @@ TEST_F(AdditionalBidsUtilTest, InvalidAdComponentsEntry) {
 TEST_F(AdditionalBidsUtilTest, TooManyAdComponents) {
   base::Value::Dict additional_bid_dict = MakeMinimalValid();
   base::Value::List ad_components_list;
-  for (size_t i = 0; i < blink::kMaxAdAuctionAdComponents + 1; ++i) {
+  const size_t kMaxAdAuctionAdComponents = blink::MaxAdAuctionAdComponents();
+  for (size_t i = 0; i < kMaxAdAuctionAdComponents + 1; ++i) {
     ad_components_list.Append("https://en.wikipedia.test/wiki/Locomotive");
   }
   additional_bid_dict.SetByDottedPath("bid.adComponents",
@@ -762,10 +767,10 @@ TEST_F(AdditionalBidsUtilTest, ValidAdComponents) {
             result->bid_state->bidder->interest_group.ad_components->size());
   EXPECT_EQ("https://en.wikipedia.test/wiki/Locomotive",
             result->bid_state->bidder->interest_group.ad_components.value()[0]
-                .render_url.spec());
+                .render_url());
   EXPECT_EQ("https://en.wikipedia.test/wiki/High-speed_rail",
             result->bid_state->bidder->interest_group.ad_components.value()[1]
-                .render_url.spec());
+                .render_url());
 }
 
 TEST_F(AdditionalBidsUtilTest, ValidAdComponentsEmpty) {
@@ -984,25 +989,32 @@ TEST_F(AdditionalBidsUtilTest, InvalidMultipleNegativeIG7) {
 }
 
 TEST_F(AdditionalBidsUtilTest, DecodeBasicSignedBid) {
-  base::Value::Dict signed_bid_dict = MakeValidSignedBid();
-  auto result =
-      DecodeSignedAdditionalBid(base::Value(std::move(signed_bid_dict)));
-  ASSERT_TRUE(result.has_value()) << result.error();
-  EXPECT_EQ(kPretendBid, result->additional_bid_json);
-  ASSERT_EQ(2u, result->signatures.size());
-  ASSERT_EQ(sizeof(kKey1) - 1, result->signatures[0].key.size());
-  ASSERT_EQ(sizeof(kSig1) - 1, result->signatures[0].signature.size());
-  EXPECT_EQ(0,
-            memcmp(kKey1, result->signatures[0].key.data(), sizeof(kKey1) - 1));
-  EXPECT_EQ(0, memcmp(kSig1, result->signatures[0].signature.data(),
-                      sizeof(kSig1) - 1));
+  for (bool require_forgiving_base64 : {false, true}) {
+    SCOPED_TRACE(require_forgiving_base64);
+    base::Value::Dict signed_bid_dict = MakeValidSignedBid();
+    if (require_forgiving_base64) {
+      *((*signed_bid_dict.FindList("signatures"))[1].GetDict().FindString(
+          "signature")) = kSig2Base64Sloppy;
+    }
+    auto result =
+        DecodeSignedAdditionalBid(base::Value(std::move(signed_bid_dict)));
+    ASSERT_TRUE(result.has_value()) << result.error();
+    EXPECT_EQ(kPretendBid, result->additional_bid_json);
+    ASSERT_EQ(2u, result->signatures.size());
+    ASSERT_EQ(sizeof(kKey1) - 1, result->signatures[0].key.size());
+    ASSERT_EQ(sizeof(kSig1) - 1, result->signatures[0].signature.size());
+    EXPECT_EQ(
+        0, memcmp(kKey1, result->signatures[0].key.data(), sizeof(kKey1) - 1));
+    EXPECT_EQ(0, memcmp(kSig1, result->signatures[0].signature.data(),
+                        sizeof(kSig1) - 1));
 
-  ASSERT_EQ(sizeof(kKey2) - 1, result->signatures[1].key.size());
-  ASSERT_EQ(sizeof(kSig2) - 1, result->signatures[1].signature.size());
-  EXPECT_EQ(0,
-            memcmp(kKey2, result->signatures[1].key.data(), sizeof(kKey2) - 1));
-  EXPECT_EQ(0, memcmp(kSig2, result->signatures[1].signature.data(),
-                      sizeof(kSig2) - 1));
+    ASSERT_EQ(sizeof(kKey2) - 1, result->signatures[1].key.size());
+    ASSERT_EQ(sizeof(kSig2) - 1, result->signatures[1].signature.size());
+    EXPECT_EQ(
+        0, memcmp(kKey2, result->signatures[1].key.data(), sizeof(kKey2) - 1));
+    EXPECT_EQ(0, memcmp(kSig2, result->signatures[1].signature.data(),
+                        sizeof(kSig2) - 1));
+  }
 }
 
 TEST_F(AdditionalBidsUtilTest, SignedNotDict) {
@@ -1148,7 +1160,8 @@ TEST_F(AdditionalBidsUtilTest, VerifySignature) {
   EXPECT_THAT(data.VerifySignatures(), UnorderedElementsAre());
 }
 
-TEST_F(AdditionalBidsUtilTest, NegativeTarget) {
+class AdditionalBidsUtilNegativeTargetingTest : public AdditionalBidsUtilTest {
+ public:
   const url::Origin kBuyer = url::Origin::Create(GURL("https://buyer.test"));
   const url::Origin kOtherBuyer =
       url::Origin::Create(GURL("https://other.test"));
@@ -1157,167 +1170,239 @@ TEST_F(AdditionalBidsUtilTest, NegativeTarget) {
   const url::Origin kOtherJoin =
       url::Origin::Create(GURL("https://wagons.test"));
 
-  AdAuctionNegativeTargeter negative_targeter;
+  static constexpr size_t kNumNegativeInterestGroups = 4;
 
-  negative_targeter.AddInterestGroupInfo(kBuyer, "a", kJoin,
-                                         KeyFromLiteral(kKey1));
-  negative_targeter.AddInterestGroupInfo(kBuyer, "b", kJoin,
-                                         KeyFromLiteral(kKey2));
-  negative_targeter.AddInterestGroupInfo(kOtherBuyer, "c", kJoin,
-                                         KeyFromLiteral(kKey1));
-  negative_targeter.AddInterestGroupInfo(kBuyer, "z", kOtherJoin,
-                                         KeyFromLiteral(kKey1));
-
-  {
-    // Negative targets a, key1 matches that.
-    std::vector<std::string> errors_out;
-    EXPECT_TRUE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/absl::nullopt,
-        /*negative_target_interest_group_names=*/{"a"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
-        /*valid_signatures=*/{0, 1}, kSeller, errors_out));
-    EXPECT_THAT(errors_out, UnorderedElementsAre());
+  AdditionalBidsUtilNegativeTargetingTest()
+      : source_id_(ukm::AssignNewSourceId()), recorder_(source_id_) {
+    negative_targeter_.AddInterestGroupInfo(kBuyer, "a", kJoin,
+                                            KeyFromLiteral(kKey1));
+    negative_targeter_.AddInterestGroupInfo(kBuyer, "b", kJoin,
+                                            KeyFromLiteral(kKey2));
+    negative_targeter_.AddInterestGroupInfo(kOtherBuyer, "c", kJoin,
+                                            KeyFromLiteral(kKey1));
+    negative_targeter_.AddInterestGroupInfo(kBuyer, "z", kOtherJoin,
+                                            KeyFromLiteral(kKey1));
   }
 
-  {
-    // Negative targets c, which isn't under kBuyer.
-    std::vector<std::string> errors_out;
-    EXPECT_FALSE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/absl::nullopt,
-        /*negative_target_interest_group_names=*/{"c"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey1)},
-        /*valid_signatures=*/{0}, kSeller, errors_out));
-    EXPECT_THAT(errors_out, UnorderedElementsAre());
+  void VerifyMetricValue(std::string metric_name, int64_t expected_value) {
+    std::vector<ukm::TestUkmRecorder::HumanReadableUkmEntry> entries =
+        ukm_recorder_.GetEntries(
+            ukm::builders::AdsInterestGroup_AuctionLatency_V2::kEntryName,
+            {metric_name});
+    ASSERT_THAT(entries, testing::SizeIs(1));
+    ASSERT_EQ(entries.at(0).source_id, source_id_);
+    ASSERT_TRUE(entries.at(0).metrics.contains(metric_name))
+        << "Missing expected metric, " << metric_name;
+    EXPECT_EQ(entries.at(0).metrics[metric_name], expected_value)
+        << "Unexpected value for " << metric_name << " metric";
   }
 
-  {
-    // Negative targets a, key1 matches that, but one of the keys is wrong.
-    std::vector<std::string> errors_out;
-    EXPECT_TRUE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/absl::nullopt,
-        /*negative_target_interest_group_names=*/{"a"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
-        /*valid_signatures=*/{0}, kSeller, errors_out));
-    EXPECT_THAT(
-        errors_out,
-        UnorderedElementsAre("Warning: Some signatures on an additional bid "
-                             "from 'https://buyer.test' on auction with seller "
-                             "'https://seller.test' failed to verify."));
+  void VerifyMetrics(int64_t invalid_signatures,
+                     int64_t joining_origin_mismatches) {
+    recorder_.OnAuctionEnd(AuctionResult::kSuccess);
+    VerifyMetricValue(
+        ukm::builders::AdsInterestGroup_AuctionLatency_V2::
+            kNumNegativeInterestGroupsIgnoredDueToInvalidSignatureName,
+        invalid_signatures);
+    VerifyMetricValue(
+        ukm::builders::AdsInterestGroup_AuctionLatency_V2::
+            kNumNegativeInterestGroupsIgnoredDueToJoiningOriginMismatchName,
+        joining_origin_mismatches);
   }
 
-  {
-    // Negative targets b, key does not match that.
-    std::vector<std::string> errors_out;
-    EXPECT_FALSE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/absl::nullopt,
-        /*negative_target_interest_group_names=*/{"b"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey1)},
-        /*valid_signatures=*/{0}, kSeller, errors_out));
-    EXPECT_THAT(errors_out,
-                UnorderedElementsAre(
-                    "Warning: Ignoring negative targeting group 'b' on an "
-                    "additional bid from 'https://buyer.test' on auction with "
-                    "seller 'https://seller.test' since its key does not "
-                    "correspond to a valid signature."));
-  }
+ protected:
+  base::test::SingleThreadTaskEnvironment task_environment_;
+  ukm::TestAutoSetUkmRecorder ukm_recorder_;
+  ukm::SourceId source_id_;
+  AuctionMetricsRecorder recorder_;
+  AdAuctionNegativeTargeter negative_targeter_;
+};
 
-  {
-    // Negative targets a with invalid key, non-existent c and d, then b with
-    // valid key.
-    std::vector<std::string> errors_out;
-    EXPECT_TRUE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/absl::nullopt,
-        /*negative_target_interest_group_names=*/{"a", "c", "d", "b"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey2)},
-        /*valid_signatures=*/{0}, kSeller, errors_out));
-    EXPECT_THAT(errors_out,
-                UnorderedElementsAre(
-                    "Warning: Ignoring negative targeting group 'a' on an "
-                    "additional bid from 'https://buyer.test' on auction with "
-                    "seller 'https://seller.test' since its key does not "
-                    "correspond to a valid signature."));
-  }
+TEST_F(AdditionalBidsUtilNegativeTargetingTest, GetNumNegativeInterestGroups) {
+  EXPECT_EQ(negative_targeter_.GetNumNegativeInterestGroups(),
+            kNumNegativeInterestGroups);
+}
 
-  {
-    // Negative targets a with valid key, non-existent c and d, then b with
-    // invalid key. We don't get far enough to warn about b.
-    std::vector<std::string> errors_out;
-    EXPECT_TRUE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/absl::nullopt,
-        /*negative_target_interest_group_names=*/{"a", "c", "d", "b"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey1)},
-        /*valid_signatures=*/{0}, kSeller, errors_out));
-    EXPECT_THAT(errors_out, UnorderedElementsAre());
-  }
+TEST_F(AdditionalBidsUtilNegativeTargetingTest, SuccessfullyNegativeTargets) {
+  // Negative targets a, key1 matches that.
+  std::vector<std::string> errors_out;
+  EXPECT_TRUE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/std::nullopt,
+      /*negative_target_interest_group_names=*/{"a"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
+      /*valid_signatures=*/{0, 1}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(errors_out, UnorderedElementsAre());
+  VerifyMetrics(
+      /*invalid_signatures=*/0,
+      /*joining_origin_mismatches=*/0);
+}
 
-  {
-    // Negative targets a, b with valid keys, but none of the joins match.
-    std::vector<std::string> errors_out;
-    EXPECT_FALSE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/kOtherJoin,
-        /*negative_target_interest_group_names=*/{"a", "b"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
-        /*valid_signatures=*/{0, 1}, kSeller, errors_out));
-    EXPECT_THAT(errors_out,
-                UnorderedElementsAre(
-                    "Warning: Ignoring negative targeting group 'a' on an "
-                    "additional bid from 'https://buyer.test' on auction with "
-                    "seller 'https://seller.test' since it does not have the "
-                    "expected joining origin.",
-                    "Warning: Ignoring negative targeting group 'b' on an "
-                    "additional bid from 'https://buyer.test' on auction with "
-                    "seller 'https://seller.test' since it does not have the "
-                    "expected joining origin."));
-  }
+TEST_F(AdditionalBidsUtilNegativeTargetingTest, WrongBuyer) {
+  // Negative targets c, which isn't under kBuyer.
+  std::vector<std::string> errors_out;
+  EXPECT_FALSE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/std::nullopt,
+      /*negative_target_interest_group_names=*/{"c"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey1)},
+      /*valid_signatures=*/{0}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(errors_out, UnorderedElementsAre());
+  VerifyMetrics(
+      /*invalid_signatures=*/0,
+      /*joining_origin_mismatches=*/0);
+}
 
-  {
-    // Negative targets a, b with valid keys; all of the joins match.
-    std::vector<std::string> errors_out;
-    EXPECT_TRUE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/kJoin,
-        /*negative_target_interest_group_names=*/{"a", "b"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
-        /*valid_signatures=*/{0, 1}, kSeller, errors_out));
-    EXPECT_THAT(errors_out, UnorderedElementsAre());
-  }
+TEST_F(AdditionalBidsUtilNegativeTargetingTest,
+       SuccessfulDespiteUnusedBadSignature) {
+  // Negative targets a, key1 matches that, but one of the keys is wrong.
+  std::vector<std::string> errors_out;
+  EXPECT_TRUE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/std::nullopt,
+      /*negative_target_interest_group_names=*/{"a"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
+      /*valid_signatures=*/{0}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(
+      errors_out,
+      UnorderedElementsAre("Warning: Some signatures on an additional bid "
+                           "from 'https://buyer.test' on auction with seller "
+                           "'https://seller.test' failed to verify."));
+  VerifyMetrics(
+      /*invalid_signatures=*/0,
+      /*joining_origin_mismatches=*/0);
+}
 
-  {
-    // Negative targets a, b,z with valid keys; only the join on z matches.
-    std::vector<std::string> errors_out;
-    EXPECT_TRUE(negative_targeter.ShouldDropDueToNegativeTargeting(
-        kBuyer,
-        /*negative_target_joining_origin=*/kOtherJoin,
-        /*negative_target_interest_group_names=*/{"a", "b", "z"},
-        /*signatures=*/
-        {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
-        /*valid_signatures=*/{0, 1}, kSeller, errors_out));
-    EXPECT_THAT(errors_out,
-                UnorderedElementsAre(
-                    "Warning: Ignoring negative targeting group 'a' on an "
-                    "additional bid from 'https://buyer.test' on auction with "
-                    "seller 'https://seller.test' since it does not have the "
-                    "expected joining origin.",
-                    "Warning: Ignoring negative targeting group 'b' on an "
-                    "additional bid from 'https://buyer.test' on auction with "
-                    "seller 'https://seller.test' since it does not have the "
-                    "expected joining origin."));
-  }
+TEST_F(AdditionalBidsUtilNegativeTargetingTest, NoMatchingKey) {
+  // Negative targets b, key does not match that.
+  std::vector<std::string> errors_out;
+  EXPECT_FALSE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/std::nullopt,
+      /*negative_target_interest_group_names=*/{"b"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey1)},
+      /*valid_signatures=*/{0}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(errors_out,
+              UnorderedElementsAre(
+                  "Warning: Ignoring negative targeting group 'b' on an "
+                  "additional bid from 'https://buyer.test' on auction with "
+                  "seller 'https://seller.test' since its key does not "
+                  "correspond to a valid signature."));
+  VerifyMetrics(
+      /*invalid_signatures=*/1,
+      /*joining_origin_mismatches=*/0);
+}
+
+TEST_F(AdditionalBidsUtilNegativeTargetingTest, SuccessfulDespiteMissingKey) {
+  // Negative targets a with invalid key, non-existent c and d,
+  // then b with valid key.
+  std::vector<std::string> errors_out;
+  EXPECT_TRUE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/std::nullopt,
+      /*negative_target_interest_group_names=*/{"a", "c", "d", "b"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey2)},
+      /*valid_signatures=*/{0}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(errors_out,
+              UnorderedElementsAre(
+                  "Warning: Ignoring negative targeting group 'a' on an "
+                  "additional bid from 'https://buyer.test' on auction with "
+                  "seller 'https://seller.test' since its key does not "
+                  "correspond to a valid signature."));
+  VerifyMetrics(
+      /*invalid_signatures=*/1,
+      /*joining_origin_mismatches=*/0);
+}
+
+TEST_F(AdditionalBidsUtilNegativeTargetingTest,
+       SuccessfulSoDoesNotEvenSeeMissingKey) {
+  // Negative targets a with valid key, non-existent c and d,
+  // then b with invalid key. We don't get far enough to warn about b.
+  std::vector<std::string> errors_out;
+  EXPECT_TRUE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/std::nullopt,
+      /*negative_target_interest_group_names=*/{"a", "c", "d", "b"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey1)},
+      /*valid_signatures=*/{0}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(errors_out, UnorderedElementsAre());
+  VerifyMetrics(
+      /*invalid_signatures=*/0,
+      /*joining_origin_mismatches=*/0);
+}
+
+TEST_F(AdditionalBidsUtilNegativeTargetingTest, JoiningOriginMismatch) {
+  // Negative targets a, b with valid keys, but none of the joins match.
+  std::vector<std::string> errors_out;
+  EXPECT_FALSE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/kOtherJoin,
+      /*negative_target_interest_group_names=*/{"a", "b"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
+      /*valid_signatures=*/{0, 1}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(errors_out,
+              UnorderedElementsAre(
+                  "Warning: Ignoring negative targeting group 'a' on an "
+                  "additional bid from 'https://buyer.test' on auction with "
+                  "seller 'https://seller.test' since it does not have the "
+                  "expected joining origin.",
+                  "Warning: Ignoring negative targeting group 'b' on an "
+                  "additional bid from 'https://buyer.test' on auction with "
+                  "seller 'https://seller.test' since it does not have the "
+                  "expected joining origin."));
+  VerifyMetrics(
+      /*invalid_signatures=*/0,
+      /*joining_origin_mismatches=*/2);
+}
+
+TEST_F(AdditionalBidsUtilNegativeTargetingTest,
+       SuccessfulWithMultipleNegativeInterestGroups) {
+  // Negative targets a, b with valid keys; all of the joins match.
+  std::vector<std::string> errors_out;
+  EXPECT_TRUE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/kJoin,
+      /*negative_target_interest_group_names=*/{"a", "b"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
+      /*valid_signatures=*/{0, 1}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(errors_out, UnorderedElementsAre());
+  VerifyMetrics(
+      /*invalid_signatures=*/0,
+      /*joining_origin_mismatches=*/0);
+}
+
+TEST_F(AdditionalBidsUtilNegativeTargetingTest,
+       SuccessfulDespiteTwoJoiningOriginMismatches) {
+  // Negative targets a, b,z with valid keys; only the join on z matches.
+  std::vector<std::string> errors_out;
+  EXPECT_TRUE(negative_targeter_.ShouldDropDueToNegativeTargeting(
+      kBuyer,
+      /*negative_target_joining_origin=*/kOtherJoin,
+      /*negative_target_interest_group_names=*/{"a", "b", "z"},
+      /*signatures=*/
+      {SignatureWithLiteralKey(kKey1), SignatureWithLiteralKey(kKey2)},
+      /*valid_signatures=*/{0, 1}, kSeller, recorder_, errors_out));
+  EXPECT_THAT(errors_out,
+              UnorderedElementsAre(
+                  "Warning: Ignoring negative targeting group 'a' on an "
+                  "additional bid from 'https://buyer.test' on auction with "
+                  "seller 'https://seller.test' since it does not have the "
+                  "expected joining origin.",
+                  "Warning: Ignoring negative targeting group 'b' on an "
+                  "additional bid from 'https://buyer.test' on auction with "
+                  "seller 'https://seller.test' since it does not have the "
+                  "expected joining origin."));
+  VerifyMetrics(
+      /*invalid_signatures=*/0,
+      /*joining_origin_mismatches=*/2);
 }
 
 }  // namespace

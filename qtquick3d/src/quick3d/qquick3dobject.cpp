@@ -23,7 +23,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype Object3D
     \inqmlmodule QtQuick3D
-    \instantiates QQuick3DObject
+    \nativetype QQuick3DObject
     \inherits QtObject
     \brief Abstract base type of all 3D nodes and resources.
 
@@ -1101,7 +1101,7 @@ void QV4::Heap::QSSGItemWrapper::markObjects(QV4::Heap::Base *that, QV4::MarkSta
     QObjectWrapper::markObjects(that, markStack);
 }
 
-quint64 QQuick3DObjectPrivate::_q_createJSWrapper(QV4::ExecutionEngine *engine)
+quint64 QQuick3DObjectPrivate::_q_createJSWrapper(QQmlV4ExecutionEnginePtr engine)
 {
     return (engine->memoryManager->allocate<QSSGItemWrapper>(q_func()))->asReturnedValue();
 }

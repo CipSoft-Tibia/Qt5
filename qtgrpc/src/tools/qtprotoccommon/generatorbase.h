@@ -7,9 +7,10 @@
 
 #include <google/protobuf/compiler/code_generator.h>
 #include "qtprotocdefs.h"
+#include "utils.h"
 
+#include <map>
 #include <string>
-#include <functional>
 
 namespace google::protobuf {
 class FileDescriptor;
@@ -51,14 +52,14 @@ public:
 #endif
 
     static void printDisclaimer(::google::protobuf::io::Printer *printer);
+    static void printIncludes(google::protobuf::io::Printer *printer,
+                              const std::set<std::string> &internal,
+                              const utils::ExternalIncludesOrderedSet &external,
+                              const std::set<std::string> &system);
     void OpenFileNamespaces(const ::google::protobuf::FileDescriptor *file,
                             google::protobuf::io::Printer *printer) const;
     void CloseFileNamespaces(const ::google::protobuf::FileDescriptor *file,
                              google::protobuf::io::Printer *printer) const;
-
-protected:
-    static std::string generateBaseName(const ::google::protobuf::FileDescriptor *file,
-                                        const std::string &name);
 };
 } // namespace qtprotoccommon
 

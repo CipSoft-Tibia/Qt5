@@ -98,6 +98,8 @@ static void initResources()
 
 QT_BEGIN_NAMESPACE
 
+Q_LOGGING_CATEGORY(lcWidgetPopup, "qt.widgets.popup");
+
 using namespace Qt::StringLiterals;
 
 Q_TRACE_PREFIX(qtwidgets,
@@ -121,6 +123,8 @@ Q_GUI_EXPORT bool qt_sendShortcutOverrideEvent(QObject *o, ulong timestamp, int 
 QApplicationPrivate *QApplicationPrivate::self = nullptr;
 
 bool QApplicationPrivate::autoSipEnabled = true;
+
+bool QApplicationPrivate::replayMousePress = false;
 
 QApplicationPrivate::QApplicationPrivate(int &argc, char **argv)
     : QGuiApplicationPrivate(argc, argv)
@@ -351,8 +355,6 @@ bool Q_WIDGETS_EXPORT qt_tab_all_widgets()
 Q_GLOBAL_STATIC(FontHash, app_fonts)
 // Exported accessor for use outside of this file
 FontHash *qt_app_fonts_hash() { return app_fonts(); }
-
-QWidgetList *QApplicationPrivate::popupWidgets = nullptr;        // has keyboard input focus
 
 QWidget *qt_desktopWidget = nullptr;                // root window widgets
 
@@ -627,8 +629,8 @@ void QApplicationPrivate::initializeWidgetFontHash()
 
 QWidget *QApplication::activePopupWidget()
 {
-    return QApplicationPrivate::popupWidgets && !QApplicationPrivate::popupWidgets->isEmpty() ?
-        QApplicationPrivate::popupWidgets->constLast() : nullptr;
+    auto *win = qobject_cast<QWidgetWindow *>(QGuiApplicationPrivate::activePopupWindow());
+    return win ? win->widget() : nullptr;
 }
 
 
@@ -1093,6 +1095,12 @@ QPalette QApplicationPrivate::basePalette() const
     // is to set it explicitly using QApplication::setPalette().
     if (const QPalette *themePalette = platformTheme() ? platformTheme()->palette() : nullptr)
         palette = themePalette->resolve(palette);
+
+    // This palette now is Qt-generated, so reset the resolve mask. This allows
+    // QStyle::polish implementations to respect palettes that are user provided,
+    // by checking if the palette has a brush set for a color that the style might
+    // otherwise overwrite.
+    palette.setResolveMask(0);
 
     // Finish off by letting the application style polish the palette. This will
     // not result in the polished palette becoming a user-set palette, as the
@@ -1869,7 +1877,7 @@ void QApplicationPrivate::setActiveWindow(QWidget* act)
         QApplication::sendSpontaneousEvent(w, &activationChange);
     }
 
-    if (QApplicationPrivate::popupWidgets == nullptr) { // !inPopupMode()
+    if (!inPopupMode()) {
         // then focus events
         if (!QApplicationPrivate::active_window && QApplicationPrivate::focus_widget) {
             QApplicationPrivate::setFocusWidget(nullptr, Qt::ActiveWindowFocusReason);
@@ -1969,7 +1977,7 @@ QWidget *QApplicationPrivate::focusNextPrevChild_helper(QWidget *toplevel, bool 
         f = toplevel;
 
     QWidget *w = f;
-    QWidget *test = f->d_func()->focus_next;
+    QWidget *test = f->nextInFocusChain();
     bool seenWindow = false;
     bool focusWidgetAfterWindow = false;
     while (test && test != f) {
@@ -2000,7 +2008,7 @@ QWidget *QApplicationPrivate::focusNextPrevChild_helper(QWidget *toplevel, bool 
             if (next)
                 break;
         }
-        test = test->d_func()->focus_next;
+        test = test->nextInFocusChain();
     }
 
     if (wrappingOccurred != nullptr)
@@ -2247,8 +2255,8 @@ bool QApplicationPrivate::modalState()
 /*
    \internal
 */
-QWidget *QApplicationPrivate::pickMouseReceiver(QWidget *candidate, const QPoint &windowPos,
-                                                QPoint *pos, QEvent::Type type,
+QWidget *QApplicationPrivate::pickMouseReceiver(QWidget *candidate, const QPointF &windowPos,
+                                                QPointF *pos, QEvent::Type type,
                                                 Qt::MouseButtons buttons, QWidget *buttonDown,
                                                 QWidget *alienWidget)
 {
@@ -2535,8 +2543,9 @@ int QApplication::startDragDistance()
     exec(), because modal widgets call exec() to start a local event loop.
 
     To make your application perform idle processing, i.e., executing a special
-    function whenever there are no pending events, use a QTimer with 0 timeout.
-    More advanced idle processing schemes can be achieved using processEvents().
+    function whenever there are no pending events, use a QChronoTimer with 0ns
+    timeout. More advanced idle processing schemes can be achieved using
+    processEvents().
 
     We recommend that you connect clean-up code to the
     \l{QCoreApplication::}{aboutToQuit()} signal, instead of putting it in your
@@ -2753,7 +2762,7 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
                                mouse->pointingDevice());
                 me.m_spont = mouse->spontaneous();
                 me.setTimestamp(mouse->timestamp());
-                QMutableSinglePointEvent::from(me).setDoubleClick(QMutableSinglePointEvent::from(mouse)->isDoubleClick());
+                QMutableSinglePointEvent::setDoubleClick(&me, QMutableSinglePointEvent::isDoubleClick(mouse));
                 // throw away any mouse-tracking-only mouse events
                 if (!w->hasMouseTracking()
                     && mouse->type() == QEvent::MouseMove && mouse->buttons() == 0) {
@@ -3058,7 +3067,7 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
 #endif // QT_CONFIG(draganddrop)
         case QEvent::TouchBegin: {
             // Note: TouchUpdate and TouchEnd events are never propagated
-            QMutableTouchEvent *touchEvent = QMutableTouchEvent::from(static_cast<QTouchEvent *>(e));
+            QTouchEvent *touchEvent = static_cast<QTouchEvent *>(e);
             bool eventAccepted = touchEvent->isAccepted();
             bool acceptTouchEvents = w->testAttribute(Qt::WA_AcceptTouchEvents);
 
@@ -3075,7 +3084,7 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
             while (w) {
                 // first, try to deliver the touch event
                 acceptTouchEvents = w->testAttribute(Qt::WA_AcceptTouchEvents);
-                touchEvent->setTarget(w);
+                QMutableTouchEvent::setTarget(touchEvent, w);
                 touchEvent->setAccepted(acceptTouchEvents);
                 QPointer<QWidget> p = w;
                 res = acceptTouchEvents && d->notify_helper(w, touchEvent);
@@ -3101,7 +3110,7 @@ bool QApplication::notify(QObject *receiver, QEvent *e)
 
                 const QPoint offset = w->pos();
                 w = w->parentWidget();
-                touchEvent->setTarget(w);
+                QMutableTouchEvent::setTarget(touchEvent, w);
                 for (int i = 0; i < touchEvent->pointCount(); ++i) {
                     auto &pt = touchEvent->point(i);
                     QMutableEventPoint::setPosition(pt, pt.position() + offset);
@@ -3292,11 +3301,12 @@ bool QApplicationPrivate::notify_helper(QObject *receiver, QEvent * e)
 
 bool QApplicationPrivate::inPopupMode()
 {
-    return QApplicationPrivate::popupWidgets != nullptr;
+    return QGuiApplicationPrivate::activePopupWindow() != nullptr;
 }
 
 static void ungrabKeyboardForPopup(QWidget *popup)
 {
+    qCDebug(lcWidgetPopup) << "ungrab keyboard for" << popup;
     if (QWidget::keyboardGrabber())
         qt_widget_private(QWidget::keyboardGrabber())->stealKeyboardGrab(true);
     else
@@ -3305,6 +3315,7 @@ static void ungrabKeyboardForPopup(QWidget *popup)
 
 static void ungrabMouseForPopup(QWidget *popup)
 {
+    qCDebug(lcWidgetPopup) << "ungrab mouse for" << popup;
     if (QWidget::mouseGrabber())
         qt_widget_private(QWidget::mouseGrabber())->stealMouseGrab(true);
     else
@@ -3324,52 +3335,27 @@ static void grabForPopup(QWidget *popup)
             ungrabKeyboardForPopup(popup);
         }
     }
-}
-
-extern QWidget *qt_popup_down;
-extern bool qt_replay_popup_mouse_event;
-extern bool qt_popup_down_closed;
-
-bool QApplicationPrivate::closeAllPopups()
-{
-    // Close all popups: In case some popup refuses to close,
-    // we give up after 1024 attempts (to avoid an infinite loop).
-    int maxiter = 1024;
-    QWidget *popup;
-    while ((popup = QApplication::activePopupWidget()) && maxiter--)
-        popup->close(); // this will call QApplicationPrivate::closePopup
-    return true;
+    qCDebug(lcWidgetPopup) << "grabbed mouse and keyboard?" << popupGrabOk << "for popup" << popup;
 }
 
 void QApplicationPrivate::closePopup(QWidget *popup)
 {
-    if (!popupWidgets)
+    QWindow *win = popup->windowHandle();
+    if (!win)
         return;
-    popupWidgets->removeAll(popup);
+    if (!QGuiApplicationPrivate::closePopup(win))
+        return;
 
-     if (popup == qt_popup_down) {
-         qt_button_down = nullptr;
-         qt_popup_down_closed = true;
-         qt_popup_down = nullptr;
-     }
-
-    if (QApplicationPrivate::popupWidgets->size() == 0) { // this was the last popup
-        delete QApplicationPrivate::popupWidgets;
-        QApplicationPrivate::popupWidgets = nullptr;
-        qt_popup_down_closed = false;
+    const QWindow *nextRemainingPopup = QGuiApplicationPrivate::activePopupWindow();
+    if (!nextRemainingPopup) { // this was the last popup
 
         if (popupGrabOk) {
             popupGrabOk = false;
 
-            // TODO on multi-seat window systems, we have to know which mouse
-            auto devPriv = QPointingDevicePrivate::get(QPointingDevice::primaryPointingDevice());
-            auto mousePressPos = devPriv->pointById(0)->eventPoint.globalPressPosition();
-            if (popup->geometry().contains(mousePressPos.toPoint())
-                || popup->testAttribute(Qt::WA_NoMouseReplay)) {
-                // mouse release event or inside
-                qt_replay_popup_mouse_event = false;
-            } else { // mouse press event
-                qt_replay_popup_mouse_event = true;
+            if (active_window && active_window->windowHandle()
+                && !popup->geometry().contains(QGuiApplicationPrivate::lastCursorPosition.toPoint())
+                && !popup->testAttribute(Qt::WA_NoMouseReplay)) {
+                QApplicationPrivate::replayMousePress = true;
             }
 
             // transfer grab back to mouse grabber if any, otherwise release the grab
@@ -3390,30 +3376,23 @@ void QApplicationPrivate::closePopup(QWidget *popup)
             }
         }
 
-    } else {
+    } else if (const auto *popupWin = qobject_cast<const QWidgetWindow *>(nextRemainingPopup)) {
         // A popup was closed, so the previous popup gets the focus.
-        QWidget* aw = QApplicationPrivate::popupWidgets->constLast();
-        if (QWidget *fw = aw->focusWidget())
+        if (QWidget *fw = popupWin->widget()->focusWidget())
             fw->setFocus(Qt::PopupFocusReason);
 
         // can become nullptr due to setFocus() above
-        if (QApplicationPrivate::popupWidgets &&
-            QApplicationPrivate::popupWidgets->size() == 1) // grab mouse/keyboard
-            grabForPopup(aw);
+        if (QGuiApplicationPrivate::popupCount() == 1) // grab mouse/keyboard
+            grabForPopup(popupWin->widget());
     }
 
 }
 
-int openPopupCount = 0;
-
 void QApplicationPrivate::openPopup(QWidget *popup)
 {
-    openPopupCount++;
-    if (!popupWidgets) // create list
-        popupWidgets = new QWidgetList;
-    popupWidgets->append(popup); // add to end of list
+    QGuiApplicationPrivate::activatePopup(popup->windowHandle());
 
-    if (QApplicationPrivate::popupWidgets->size() == 1) // grab mouse/keyboard
+    if (QGuiApplicationPrivate::popupCount() == 1) // grab mouse/keyboard
         grabForPopup(popup);
 
     // popups are not focus-handled by the window system (the first
@@ -3421,7 +3400,7 @@ void QApplicationPrivate::openPopup(QWidget *popup)
     // new popup gets the focus
     if (popup->focusWidget()) {
         popup->focusWidget()->setFocus(Qt::PopupFocusReason);
-    } else if (popupWidgets->size() == 1) { // this was the first popup
+    } else if (QGuiApplicationPrivate::popupCount() == 1) { // this was the first popup
         if (QWidget *fw = QApplication::focusWidget()) {
             QFocusEvent e(QEvent::FocusOut, Qt::PopupFocusReason);
             QCoreApplication::sendEvent(fw, &e);
@@ -3823,8 +3802,8 @@ void QApplicationPrivate::activateImplicitTouchGrab(QWidget *widget, QTouchEvent
 bool QApplicationPrivate::translateRawTouchEvent(QWidget *window, const QTouchEvent *te)
 {
     QApplicationPrivate *d = self;
-    // TODO get rid of this QPair
-    typedef QPair<QEventPoint::State, QList<QEventPoint> > StatesAndTouchPoints;
+    // TODO get rid of this std::pair
+    typedef std::pair<QEventPoint::State, QList<QEventPoint> > StatesAndTouchPoints;
     QHash<QWidget *, StatesAndTouchPoints> widgetsNeedingEvents;
 
     const auto *device = te->pointingDevice();

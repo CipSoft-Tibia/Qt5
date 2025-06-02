@@ -95,5 +95,11 @@ eu. Quisque vitae accumsan lectus."
 
             text: reference.text
         }
+        Text {
+            id: defaultWidthNoWrapNoElide
+            objectName: "defaultWidthNoWrapNoElide"
+
+            text: reference.text
+        }
     }
 }

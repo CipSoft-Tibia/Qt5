@@ -492,14 +492,7 @@ TEST_F(TimeFormatTest, SimpleAndDetailedStringFallback) {
 }
 
 // crbug.com/159388: This test fails when daylight savings time ends.
-// crbug.com/1488458#c21: Fails after the time on android emulator
-// is sync to current.
-#if BUILDFLAG(IS_ANDROID)
-#define MAYBE_RelativeDate DISABLED_RelativeDate
-#else
-#define MAYBE_RelativeDate RelativeDate
-#endif  // BUILDFLAG(IS_ANDROID)
-TEST_F(TimeFormatTest, MAYBE_RelativeDate) {
+TEST_F(TimeFormatTest, RelativeDate) {
   base::Time now = base::Time::Now();
   std::u16string today_str = TimeFormat::RelativeDate(now, NULL);
   EXPECT_EQ(u"Today", today_str);

@@ -9,6 +9,7 @@
 #include "components/profile_metrics/browser_profile_type.h"
 
 #if BUILDFLAG(IS_CHROMEOS_ASH)
+#include "chrome/browser/profiles/profile_types_ash.h"
 #include "chrome/common/chrome_constants.h"
 #endif  // BUILDFLAG(IS_CHROMEOS_ASH)
 
@@ -101,7 +102,7 @@ ProfileSelections ProfileSelections::BuildRedirectedInIncognito() {
 }
 
 Profile* ProfileSelections::ApplyProfileSelection(Profile* profile) const {
-  DCHECK(profile);
+  CHECK(profile);
 
   ProfileSelection selection = GetProfileSelection(profile);
   switch (selection) {

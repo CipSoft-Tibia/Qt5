@@ -131,12 +131,11 @@ set_target_properties(linguist PROPERTIES
 )
 
 file(GLOB phrasebooks_files "${CMAKE_CURRENT_SOURCE_DIR}/../phrasebooks/*")
-qt_install(FILES ${phrasebooks_files} DESTINATION "${INSTALL_DATADIR}/phrasebooks")
-
-qt_internal_extend_target(linguist CONDITION QT_PRODUCT___contains___OpenSource._x_
-    DEFINES
-        QT_OPENSOURCE
-)
+set(phrasebooks_install_dir "${INSTALL_DATADIR}/phrasebooks")
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.31")
+    cmake_path(SET phrasebooks_install_dir NORMALIZE "${phrasebooks_install_dir}")
+endif()
+qt_install(FILES ${phrasebooks_files} DESTINATION "${phrasebooks_install_dir}")
 
 if(WIN32)
     set_target_properties(linguist PROPERTIES

@@ -15,11 +15,13 @@ set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/multimedia/video/mediaplayer")
 
 find_package(Qt6 REQUIRED COMPONENTS Multimedia Core Quick QuickControls2 Svg)
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(mediaplayerexample
     main.cpp
 )
+
+qt_add_ios_ffmpeg_libraries(mediaplayerexample)
 
 set_target_properties(mediaplayerexample PROPERTIES
     MACOSX_BUNDLE TRUE

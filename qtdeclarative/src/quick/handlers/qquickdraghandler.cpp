@@ -14,7 +14,7 @@ Q_LOGGING_CATEGORY(lcDragHandler, "qt.quick.handler.drag")
 
 /*!
     \qmltype DragHandler
-    \instantiates QQuickDragHandler
+    \nativetype QQuickDragHandler
     \inherits MultiPointHandler
     \inqmlmodule QtQuick
     \ingroup qtquick-input-handlers
@@ -168,7 +168,7 @@ void QQuickDragHandler::handlePointerEventImpl(QPointerEvent *event)
         return; // see QQuickDragHandler::wantsPointerEvent; we don't want to handle those events
 
     QQuickMultiPointHandler::handlePointerEventImpl(event);
-    event->setAccepted(true);
+    event->accept(); // just the event, not the points
 
     if (active()) {
         // Calculate drag delta, taking into account the axis enabled constraint
@@ -185,13 +185,15 @@ void QQuickDragHandler::handlePointerEventImpl(QPointerEvent *event)
         // and in approximately the same direction
         qreal minAngle =  361;
         qreal maxAngle = -361;
-        bool allOverThreshold = !event->isEndEvent();
+        bool allOverThreshold = QQuickDeliveryAgentPrivate::isTouchEvent(event) ?
+                static_cast<QTouchEvent *>(event)->touchPointStates() != QEventPoint::Released :
+                !event->isEndEvent();
         QVector<QEventPoint> chosenPoints;
 
         if (event->isBeginEvent())
             m_pressedInsideTarget = target() && currentPoints().size() > 0;
 
-        for (const QQuickHandlerPoint &p : currentPoints()) {
+        for (const QQuickHandlerPoint &p : std::as_const(currentPoints())) {
             if (!allOverThreshold)
                 break;
             auto point = event->pointById(p.id());
@@ -234,10 +236,11 @@ void QQuickDragHandler::handlePointerEventImpl(QPointerEvent *event)
                     m_pressTargetPos = targetCentroidPosition();
                 }
                 // QQuickDeliveryAgentPrivate::deliverToPassiveGrabbers() skips subsequent delivery if the event is filtered.
-                // (That affects behavior for mouse but not for touch, because Flickable only handles mouse.)
+                // That affects behavior for mouse but not for touch, because Flickable behaves differently in the mouse case.
                 // So we have to compensate by accepting the event here to avoid any parent Flickable from
                 // getting the event via direct delivery and grabbing too soon.
-                point->setAccepted(QQuickDeliveryAgentPrivate::isMouseEvent(event)); // stop propagation iff it's a mouse event
+                if (QQuickDeliveryAgentPrivate::isMouseEvent(event))
+                    point->setAccepted(true); // stop propagation iff it's a mouse event
             }
         }
         if (allOverThreshold) {
@@ -343,12 +346,12 @@ void QQuickDragHandler::setActiveTranslation(const QVector2D &trans)
 
 /*!
     \readonly
-    \qmlproperty QVector2D QtQuick::DragHandler::translation
+    \qmlproperty vector2d QtQuick::DragHandler::translation
     \deprecated [6.2] Use activeTranslation
 */
 
 /*!
-    \qmlproperty QVector2D QtQuick::DragHandler::persistentTranslation
+    \qmlproperty vector2d QtQuick::DragHandler::persistentTranslation
 
     The translation to be applied to the \l target if it is not \c null.
     Otherwise, bindings can be used to do arbitrary things with this value.
@@ -358,7 +361,7 @@ void QQuickDragHandler::setActiveTranslation(const QVector2D &trans)
 
 /*!
     \readonly
-    \qmlproperty QVector2D QtQuick::DragHandler::activeTranslation
+    \qmlproperty vector2d QtQuick::DragHandler::activeTranslation
 
     The translation while the drag gesture is being performed.
     It is \c {0, 0} when the gesture begins, and increases as the event

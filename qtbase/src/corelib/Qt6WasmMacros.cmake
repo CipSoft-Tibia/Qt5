@@ -126,6 +126,7 @@ endfunction()
 
 function(_qt_internal_set_wasm_export_name target)
     _qt_internal_wasm_export_name_for_target(export_name ${target})
+    target_link_options("${target}" PRIVATE "SHELL:-s MODULARIZE=1")
     target_link_options("${target}" PRIVATE "SHELL:-s EXPORT_NAME=${export_name}")
 endfunction()
 
@@ -134,7 +135,32 @@ function(_qt_internal_wasm_export_name_for_target out target)
     if(export_name)
         set(${out} "${export_name}" PARENT_SCOPE)
     else()
-        string(REGEX REPLACE "[^a-zA-Z0-9_]" "_" target "${target}")
-        set(${out} "${target}_entry" PARENT_SCOPE)
+        # Modify target name to remove characters which are not valid in
+        # JavaScript identifiers.
+
+        # Prefix leading digit with '_' (2dpaint -> _2dpaint)
+        if("${target}" MATCHES "^[0-9]")
+            set(targ "_${target}")
+        else()
+            set(targ "${target}")
+        endif()
+
+        # Replace remaining non-legal chars with '_' (target-foo -> target_foo)
+        string(REGEX REPLACE "[^a-zA-Z0-9_]" "_" targ "${targ}")
+
+        # Append "_entry" and return
+        set(${out} "${targ}_entry" PARENT_SCOPE)
     endif()
 endfunction()
+
+function(_qt_internal_set_wasm_embind_option target)
+    target_link_libraries("${target}" PRIVATE embind)
+endfunction()
+
+function(_qt_internal_finalize_wasm_app target)
+    _qt_internal_set_wasm_export_name("${target}")
+    _qt_internal_add_wasm_extra_exported_methods("${target}")
+    _qt_internal_wasm_add_target_helpers("${target}")
+    _qt_internal_set_wasm_embind_option("${target}")
+endfunction()
+

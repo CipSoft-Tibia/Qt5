@@ -5,7 +5,7 @@ syntax = "proto3";
 package qtgrpc.examples;
 
 message AnswerRequest {
-    string message = 1;
+    string question = 1;
 }
 
 message AnswerResponse {

@@ -23,11 +23,9 @@
 
 #include <stdint.h>
 
-#include "libavcodec/codec_desc.h"
 #include "libavcodec/packet_internal.h"
 
 #include "avformat.h"
-#include "os_support.h"
 
 #define MAX_URL_SIZE 4096
 
@@ -149,14 +147,18 @@ typedef struct FFFormatContext {
     int missing_ts_warning;
 #endif
 
+#if FF_API_AVSTREAM_SIDE_DATA
     int inject_global_side_data;
+#endif
 
     int avoid_negative_ts_use_pts;
 
+#if FF_API_LAVF_SHORTEST
     /**
      * Timestamp of the end of the shortest stream.
      */
     int64_t shortest_end;
+#endif
 
     /**
      * Whether or not avformat_init_output has already been called
@@ -356,10 +358,12 @@ typedef struct FFStream {
     uint8_t dts_ordered;
     uint8_t dts_misordered;
 
+#if FF_API_AVSTREAM_SIDE_DATA
     /**
      * Internal data to inject global side data
      */
     int inject_global_side_data;
+#endif
 
     /**
      * display aspect ratio (0 if unknown)
@@ -410,7 +414,7 @@ typedef struct FFStream {
     int64_t first_dts;
     int64_t cur_dts;
 
-    const AVCodecDescriptor *codec_desc;
+    const struct AVCodecDescriptor *codec_desc;
 } FFStream;
 
 static av_always_inline FFStream *ffstream(AVStream *st)
@@ -420,7 +424,7 @@ static av_always_inline FFStream *ffstream(AVStream *st)
 
 static av_always_inline const FFStream *cffstream(const AVStream *st)
 {
-    return (FFStream*)st;
+    return (const FFStream*)st;
 }
 
 #ifdef __GNUC__
@@ -568,8 +572,8 @@ void ff_parse_key_value(const char *str, ff_parse_key_val_cb callback_get_buf,
 
 enum AVCodecID ff_guess_image2_codec(const char *filename);
 
-const AVCodec *ff_find_decoder(AVFormatContext *s, const AVStream *st,
-                               enum AVCodecID codec_id);
+const struct AVCodec *ff_find_decoder(AVFormatContext *s, const AVStream *st,
+                                      enum AVCodecID codec_id);
 
 /**
  * Set the time base and wrapping info for a given stream. This will be used

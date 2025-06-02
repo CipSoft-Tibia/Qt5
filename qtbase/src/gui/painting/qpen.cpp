@@ -56,8 +56,6 @@ QT_BEGIN_NAMESPACE
     For more information about painting in general, see the \l{Paint
     System} documentation.
 
-    \tableofcontents
-
     \section1 Pen Style
 
     Qt provides several built-in styles represented by the
@@ -343,9 +341,7 @@ QPen &QPen::operator=(const QPen &p) noexcept
 /*!
     \fn void QPen::swap(QPen &other)
     \since 4.8
-
-    Swaps pen \a other with this pen. This operation is very
-    fast and never fails.
+    \memberswap{pen}
 */
 
 /*!

@@ -35,11 +35,6 @@ constexpr size_t kDescriptorWriteInfosInitialSize =
     kDescriptorBufferInfosInitialSize + kDescriptorImageInfosInitialSize;
 constexpr size_t kDescriptorBufferViewsInitialSize = 0;
 
-#if ANGLE_VMA_VERSION < 3000000
-constexpr VkDeviceSize kMaxStaticBufferSizeToUseBuddyAlgorithm  = 256;
-constexpr VkDeviceSize kMaxDynamicBufferSizeToUseBuddyAlgorithm = 4096;
-#endif
-
 // How often monolithic pipelines should be created, if preferMonolithicPipelinesOverLibraries is
 // enabled.  Pipeline creation is typically O(hundreds of microseconds).  A value of 2ms is chosen
 // arbitrarily; it ensures that there is always at most a single pipeline job in progress, while
@@ -70,7 +65,7 @@ bool ValidateIdenticalPriority(const egl::ContextMap &contexts, egl::ContextPrio
 }  // namespace
 
 // Set to true will log bufferpool stats into INFO stream
-#define ANGLE_ENABLE_BUFFER_POOL_STATS_LOGGING 0
+#define ANGLE_ENABLE_BUFFER_POOL_STATS_LOGGING false
 
 ShareGroupVk::ShareGroupVk(const egl::ShareGroupState &state)
     : ShareGroupImpl(state),
@@ -79,12 +74,6 @@ ShareGroupVk::ShareGroupVk(const egl::ShareGroupState &state)
       mLastMonolithicPipelineJobTime(0)
 {
     mLastPruneTime = angle::GetCurrentSystemTime();
-
-#if ANGLE_VMA_VERSION < 3000000
-    mSizeLimitForBuddyAlgorithm[BufferUsageType::Dynamic] =
-        kMaxDynamicBufferSizeToUseBuddyAlgorithm;
-    mSizeLimitForBuddyAlgorithm[BufferUsageType::Static] = kMaxStaticBufferSizeToUseBuddyAlgorithm;
-#endif
 }
 
 void ShareGroupVk::onContextAdd()
@@ -177,17 +166,14 @@ void ShareGroupVk::onDestroy(const egl::Display *display)
 {
     RendererVk *renderer = vk::GetImpl(display)->getRenderer();
 
-    for (vk::BufferPoolPointerArray &array : mDefaultBufferPools)
+    for (std::unique_ptr<vk::BufferPool> &pool : mDefaultBufferPools)
     {
-        for (std::unique_ptr<vk::BufferPool> &pool : array)
+        if (pool)
         {
-            if (pool)
-            {
-                // If any context uses display texture share group, it is expected that a
-                // BufferBlock may still in used by textures that outlived ShareGroup.  The
-                // non-empty BufferBlock will be put into RendererVk's orphan list instead.
-                pool->destroy(renderer, mState.hasAnyContextWithDisplayTextureShareGroup());
-            }
+            // If any context uses display texture share group, it is expected that a
+            // BufferBlock may still in used by textures that outlived ShareGroup.  The
+            // non-empty BufferBlock will be put into RendererVk's orphan list instead.
+            pool->destroy(renderer, mState.hasAnyContextWithDisplayTextureShareGroup());
         }
     }
 
@@ -263,11 +249,13 @@ angle::Result TextureUpload::onMutableTextureUpload(ContextVk *contextVk, Textur
 {
     // This feature is currently disabled in the case of display-level texture sharing.
     ASSERT(!contextVk->hasDisplayTextureShareGroup());
+    ASSERT(!newTexture->isImmutable());
+    ASSERT(mPrevUploadedMutableTexture == nullptr || !mPrevUploadedMutableTexture->isImmutable());
 
     // If the previous texture is null, it should be set to the current texture. We also have to
     // make sure that the previous texture pointer is still a mutable texture. Otherwise, we skip
     // the optimization.
-    if (mPrevUploadedMutableTexture == nullptr || mPrevUploadedMutableTexture->isImmutable())
+    if (mPrevUploadedMutableTexture == nullptr)
     {
         mPrevUploadedMutableTexture = newTexture;
         return angle::Result::Continue;
@@ -283,7 +271,7 @@ angle::Result TextureUpload::onMutableTextureUpload(ContextVk *contextVk, Textur
     if (mPrevUploadedMutableTexture->isMutableTextureConsistentlySpecifiedForFlush())
     {
         ANGLE_TRY(mPrevUploadedMutableTexture->ensureImageInitialized(
-            contextVk, ImageMipLevels::FullMipChain));
+            contextVk, ImageMipLevels::EnabledLevels));
         contextVk->getPerfCounters().mutableTexturesUploaded++;
     }
 
@@ -403,24 +391,7 @@ vk::BufferPool *ShareGroupVk::getDefaultBufferPool(RendererVk *renderer,
                                                    uint32_t memoryTypeIndex,
                                                    BufferUsageType usageType)
 {
-#if ANGLE_VMA_VERSION < 3000000
-    // First pick allocation algorithm. Buddy algorithm is faster, but waste more memory
-    // due to power of two alignment. For smaller size allocation we always use buddy algorithm
-    // since align to power of two does not waste too much memory. For dynamic usage, the size
-    // threshold for buddy algorithm is relaxed since the performance is more important.
-    SuballocationAlgorithm algorithm      = size <= mSizeLimitForBuddyAlgorithm[usageType]
-                                                ? SuballocationAlgorithm::Buddy
-                                                : SuballocationAlgorithm::General;
-    vma::VirtualBlockCreateFlags vmaFlags = algorithm == SuballocationAlgorithm::Buddy
-                                                ? vma::VirtualBlockCreateFlagBits::BUDDY
-                                                : vma::VirtualBlockCreateFlagBits::GENERAL;
-#else
-    // For VMA 3.0, the general allocation algorithm is used.
-    SuballocationAlgorithm algorithm      = SuballocationAlgorithm::General;
-    vma::VirtualBlockCreateFlags vmaFlags = vma::VirtualBlockCreateFlagBits::GENERAL;
-#endif  // ANGLE_VMA_VERSION < 3000000
-
-    if (!mDefaultBufferPools[algorithm][memoryTypeIndex])
+    if (!mDefaultBufferPools[memoryTypeIndex])
     {
         const vk::Allocator &allocator = renderer->getAllocator();
         VkBufferUsageFlags usageFlags  = GetDefaultBufferUsageFlags(renderer);
@@ -428,13 +399,14 @@ vk::BufferPool *ShareGroupVk::getDefaultBufferPool(RendererVk *renderer,
         VkMemoryPropertyFlags memoryPropertyFlags;
         allocator.getMemoryTypeProperties(memoryTypeIndex, &memoryPropertyFlags);
 
-        std::unique_ptr<vk::BufferPool> pool = std::make_unique<vk::BufferPool>();
+        std::unique_ptr<vk::BufferPool> pool  = std::make_unique<vk::BufferPool>();
+        vma::VirtualBlockCreateFlags vmaFlags = vma::VirtualBlockCreateFlagBits::GENERAL;
         pool->initWithFlags(renderer, vmaFlags, usageFlags, 0, memoryTypeIndex,
                             memoryPropertyFlags);
-        mDefaultBufferPools[algorithm][memoryTypeIndex] = std::move(pool);
+        mDefaultBufferPools[memoryTypeIndex] = std::move(pool);
     }
 
-    return mDefaultBufferPools[algorithm][memoryTypeIndex].get();
+    return mDefaultBufferPools[memoryTypeIndex].get();
 }
 
 void ShareGroupVk::pruneDefaultBufferPools(RendererVk *renderer)
@@ -447,14 +419,11 @@ void ShareGroupVk::pruneDefaultBufferPools(RendererVk *renderer)
         return;
     }
 
-    for (vk::BufferPoolPointerArray &array : mDefaultBufferPools)
+    for (std::unique_ptr<vk::BufferPool> &pool : mDefaultBufferPools)
     {
-        for (std::unique_ptr<vk::BufferPool> &pool : array)
+        if (pool)
         {
-            if (pool)
-            {
-                pool->pruneEmptyBuffers(renderer);
-            }
+            pool->pruneEmptyBuffers(renderer);
         }
     }
 
@@ -488,37 +457,26 @@ void ShareGroupVk::calculateTotalBufferCount(size_t *bufferCount, VkDeviceSize *
 {
     *bufferCount = 0;
     *totalSize   = 0;
-    for (const vk::BufferPoolPointerArray &array : mDefaultBufferPools)
+    for (const std::unique_ptr<vk::BufferPool> &pool : mDefaultBufferPools)
     {
-        for (const std::unique_ptr<vk::BufferPool> &pool : array)
+        if (pool)
         {
-            if (pool)
-            {
-                *bufferCount += pool->getBufferCount();
-                *totalSize += pool->getMemorySize();
-            }
+            *bufferCount += pool->getBufferCount();
+            *totalSize += pool->getMemorySize();
         }
     }
 }
 
 void ShareGroupVk::logBufferPools() const
 {
-    size_t totalBufferCount;
-    VkDeviceSize totalMemorySize;
-    calculateTotalBufferCount(&totalBufferCount, &totalMemorySize);
-
-    INFO() << "BufferBlocks count:" << totalBufferCount << " memorySize:" << totalMemorySize / 1024
-           << " UnusedBytes/memorySize (KBs):";
-    for (const vk::BufferPoolPointerArray &array : mDefaultBufferPools)
+    for (size_t i = 0; i < mDefaultBufferPools.size(); i++)
     {
-        for (const std::unique_ptr<vk::BufferPool> &pool : array)
+        const std::unique_ptr<vk::BufferPool> &pool = mDefaultBufferPools[i];
+        if (pool && pool->getBufferCount() > 0)
         {
-            if (pool && pool->getBufferCount() > 0)
-            {
-                std::ostringstream log;
-                pool->addStats(&log);
-                INFO() << "\t" << log.str();
-            }
+            std::ostringstream log;
+            pool->addStats(&log);
+            INFO() << "Pool[" << i << "]:" << log.str();
         }
     }
 }

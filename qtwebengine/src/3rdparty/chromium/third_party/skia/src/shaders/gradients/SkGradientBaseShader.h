@@ -62,8 +62,8 @@ public:
         bool unflatten(SkReadBuffer&, SkMatrix* legacyLocalMatrix);
 
     private:
-        skia_private::STArray<16, SkColor4f, true> fColorStorage;
-        skia_private::STArray<16, SkScalar, true> fPositionStorage;
+        skia_private::STArray<16, SkColor4f> fColorStorage;
+        skia_private::STArray<16, SkScalar> fPositionStorage;
     };
 
     SkGradientBaseShader(const Descriptor& desc, const SkMatrix& ptsToUnit);
@@ -92,17 +92,6 @@ public:
                                                   int colorCount,
                                                   sk_sp<SkColorSpace> colorSpace,
                                                   SkTileMode mode);
-
-    struct ColorStopOptimizer {
-        ColorStopOptimizer(const SkColor4f* colors,
-                           const SkScalar* pos,
-                           int count,
-                           SkTileMode mode);
-
-        const SkColor4f* fColors;
-        const SkScalar* fPos;
-        int fCount;
-    };
 
     // The default SkScalarNearlyZero threshold of .0024 is too big and causes regressions for svg
     // gradients defined in the wild.
@@ -182,16 +171,23 @@ private:
 ///////////////////////////////////////////////////////////////////////////////
 
 struct SkColor4fXformer {
-    SkColor4fXformer(const SkGradientBaseShader* shader, SkColorSpace* dst);
+    SkColor4fXformer(const SkGradientBaseShader* shader,
+                     SkColorSpace* dst,
+                     bool forceExplicitPositions = false);
 
-    skia_private::STArray<4, SkPMColor4f, true> fColors;
+    using ColorStorage = skia_private::STArray<4, SkPMColor4f>;
+    using PositionStorage = skia_private::STArray<4, float>;
+
+    ColorStorage fColors;
+    PositionStorage fPositionStorage;
+    float* fPositions;
     sk_sp<SkColorSpace> fIntermediateColorSpace;
 };
 
 struct SkColorConverter {
     SkColorConverter(const SkColor* colors, int count);
 
-    skia_private::STArray<2, SkColor4f, true> fColors4f;
+    skia_private::STArray<2, SkColor4f> fColors4f;
 };
 
 void SkRegisterConicalGradientShaderFlattenable();

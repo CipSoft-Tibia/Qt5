@@ -12,12 +12,13 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "quiche/quic/core/connection_id_generator.h"
 #include "quiche/quic/core/crypto/quic_compressed_certs_cache.h"
 #include "quiche/quic/core/frames/quic_rst_stream_frame.h"
@@ -52,7 +53,7 @@ class QuicDispatcherPeer;
 class QuicConfig;
 class QuicCryptoServerConfig;
 
-class QUIC_NO_EXPORT QuicDispatcher
+class QUICHE_EXPORT QuicDispatcher
     : public QuicTimeWaitListManager::Visitor,
       public ProcessPacketInterface,
       public QuicBufferedPacketStore::VisitorInterface {
@@ -300,7 +301,11 @@ class QUIC_NO_EXPORT QuicDispatcher
   // 1) send connection close with |error_code| and |error_details| and add
   // connection to time wait list or 2) directly add connection to time wait
   // list with |action|.
+  // |self_address| and |peer_address| are passed to
+  // |OnStatelessConnectionCloseSent| when a connection close is sent.
   void StatelesslyTerminateConnection(
+      const QuicSocketAddress& self_address,
+      const QuicSocketAddress& peer_address,
       QuicConnectionId server_connection_id, PacketHeaderFormat format,
       bool version_flag, bool use_length_prefix, ParsedQuicVersion version,
       QuicErrorCode error_code, const std::string& error_details,
@@ -330,6 +335,14 @@ class QUIC_NO_EXPORT QuicDispatcher
   // Called if a packet from an unseen connection is reset or rejected.
   virtual void OnNewConnectionRejected() {}
 
+  // Called by |StatelesslyTerminateConnection| when a connection close packet
+  // is generated.
+  virtual void OnStatelessConnectionCloseGenerated(
+      const QuicSocketAddress& /*self_address*/,
+      const QuicSocketAddress& /*peer_address*/,
+      QuicConnectionId /*connection_id*/, ParsedQuicVersion /*version*/,
+      QuicErrorCode /*error_code*/, const std::string& /*error_details*/) {}
+
   // Selects the preferred ALPN from a vector of ALPNs.
   // This runs through the list of ALPNs provided by the client and picks the
   // first one it supports. If no supported versions are found, the first
@@ -358,10 +371,10 @@ class QUIC_NO_EXPORT QuicDispatcher
 
   struct ExtractChloResult {
     // If set, a full client hello has been successfully parsed.
-    absl::optional<ParsedClientHello> parsed_chlo;
+    std::optional<ParsedClientHello> parsed_chlo;
     // If set, the TLS alert that will cause a connection close.
     // Always empty for Google QUIC.
-    absl::optional<uint8_t> tls_alert;
+    std::optional<uint8_t> tls_alert;
   };
 
   // Try to extract information(sni, alpns, ...) if the full Client Hello has
@@ -394,7 +407,8 @@ class QUIC_NO_EXPORT QuicDispatcher
   std::shared_ptr<QuicSession> CreateSessionFromChlo(
       QuicConnectionId original_connection_id,
       const ParsedClientHello& parsed_chlo, ParsedQuicVersion version,
-      QuicSocketAddress self_address, QuicSocketAddress peer_address);
+      QuicSocketAddress self_address, QuicSocketAddress peer_address,
+      ConnectionIdGeneratorInterface* connection_id_generator);
 
   const QuicConfig* config_;
 

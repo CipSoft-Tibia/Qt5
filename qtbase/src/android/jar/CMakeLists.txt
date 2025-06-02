@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 set(java_sources
-    src/org/qtproject/qt/android/accessibility/QtAccessibilityDelegate.java
-    src/org/qtproject/qt/android/accessibility/QtNativeAccessibility.java
+    src/org/qtproject/qt/android/QtAccessibilityDelegate.java
+    src/org/qtproject/qt/android/QtNativeAccessibility.java
     src/org/qtproject/qt/android/CursorHandle.java
     src/org/qtproject/qt/android/EditContextView.java
     src/org/qtproject/qt/android/EditPopupMenu.java
@@ -35,9 +35,21 @@ set(java_sources
     src/org/qtproject/qt/android/QtWindow.java
     src/org/qtproject/qt/android/QtActivityDelegateBase.java
     src/org/qtproject/qt/android/QtEmbeddedDelegate.java
-    src/org/qtproject/qt/android/QtEmbeddedDelegateFactory.java
+    src/org/qtproject/qt/android/QtEmbeddedViewInterfaceFactory.java
     src/org/qtproject/qt/android/QtEmbeddedLoader.java
     src/org/qtproject/qt/android/QtView.java
+    src/org/qtproject/qt/android/QtEmbeddedViewInterface.java
+    src/org/qtproject/qt/android/QtServiceEmbeddedDelegate.java
+    src/org/qtproject/qt/android/BackendRegister.java
+    src/org/qtproject/qt/android/QtWindowInterface.java
+    src/org/qtproject/qt/android/QtAccessibilityInterface.java
+    src/org/qtproject/qt/android/QtMenuInterface.java
+    src/org/qtproject/qt/android/QtInputInterface.java
+    src/org/qtproject/qt/android/QtAbstractItemModel.java
+    src/org/qtproject/qt/android/QtAbstractItemModelProxy.java
+    src/org/qtproject/qt/android/QtModelIndex.java
+    src/org/qtproject/qt/android/QtAbstractListModel.java
+    src/org/qtproject/qt/android/QtSignalListener.java
 )
 
 qt_internal_add_jar(Qt${QtBase_VERSION_MAJOR}Android

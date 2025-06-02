@@ -6,7 +6,7 @@ file(GLOB_RECURSE test_data_glob
     *)
 list(APPEND test_data ${test_data_glob})
 
-qt_internal_add_test(tst_qml2dtest
+qt_internal_add_test(tst_qgqml2dtest
     QMLTEST
     SOURCES
         tst_qml2dtest.cpp

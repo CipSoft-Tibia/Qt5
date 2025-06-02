@@ -80,7 +80,7 @@ export function handleKey(e: KeyboardEvent, down: boolean): boolean {
     return true;
   }
   if (down && 'escape' === key) {
-    globals.frontendLocalState.deselectArea();
+    globals.timeline.deselectArea();
     globals.makeSelection(Actions.deselect({}));
     globals.dispatch(Actions.removeNote({id: '0'}));
     return true;
@@ -172,12 +172,11 @@ function moveByFocusedFlow(direction: Direction): void {
   for (const flow of globals.connectedFlows) {
     if (flow.id === flowId) {
       const flowPoint = (direction === 'Backward' ? flow.begin : flow.end);
-      const uiTrackId =
-          globals.state.uiTrackIdByTraceTrackId[flowPoint.trackId];
-      if (uiTrackId) {
+      const trackKey = globals.state.trackKeyByTrackId[flowPoint.trackId];
+      if (trackKey) {
         globals.makeSelection(Actions.selectChromeSlice({
           id: flowPoint.sliceId,
-          trackId: uiTrackId,
+          trackKey,
           table: 'slice',
           scroll: true,
         }));
@@ -190,8 +189,8 @@ function lockSliceSpan(persistent = false) {
   const range = globals.findTimeRangeOfSelection();
   if (range.start !== -1n && range.end !== -1n &&
       globals.state.currentSelection !== null) {
-    const tracks = globals.state.currentSelection.trackId ?
-        [globals.state.currentSelection.trackId] :
+    const tracks = globals.state.currentSelection.trackKey ?
+        [globals.state.currentSelection.trackKey] :
         [];
     const area: Area = {start: range.start, end: range.end, tracks};
     globals.dispatch(Actions.markArea({area, persistent}));
@@ -207,7 +206,7 @@ export function findCurrentSelection() {
     focusHorizontalRange(range.start, range.end);
   }
 
-  if (selection.trackId) {
-    verticalScrollToTrack(selection.trackId, true);
+  if (selection.trackKey) {
+    verticalScrollToTrack(selection.trackKey, true);
   }
 }

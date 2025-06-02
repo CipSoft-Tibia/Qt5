@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 #include "surfacegraphmodifier.h"
-#include "custominputhandler.h"
 #include "highlightseries.h"
 #include "topographicseries.h"
 
 #include <QtCore/qmath.h>
-#include <QtGraphs/q3dtheme.h>
+#include <QtGraphs/qgraphstheme.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGui/qimage.h>
 
@@ -25,14 +24,16 @@ const float areaHeight = 8000.f;
 const float aspectRatio = 0.1389f;
 const float minRange = areaWidth * 0.49f;
 
-SurfaceGraphModifier::SurfaceGraphModifier(Q3DSurface *surface, QLabel *label, QObject *parent)
+SurfaceGraphModifier::SurfaceGraphModifier(Q3DSurfaceWidgetItem *surface, QLabel *label, QObject *parent)
     : QObject(parent)
     , m_graph(surface)
     , m_textField(label)
 {
     m_graph->setCameraZoomLevel(85.f);
-    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::IsometricRight);
-    m_graph->activeTheme()->setType(Q3DTheme::Theme::Retro);
+    m_graph->setCameraPreset(QtGraphs3D::CameraPreset::IsometricRight);
+    m_graph->activeTheme()->setTheme(QGraphsTheme::Theme::MixSeries);
+    m_graph->activeTheme()->setLabelBackgroundVisible(false);
+    m_graph->activeTheme()->setLabelBorderVisible(false);
 
     m_graph->setAxisX(new QValue3DAxis);
     m_graph->setAxisY(new QValue3DAxis);
@@ -84,23 +85,23 @@ SurfaceGraphModifier::SurfaceGraphModifier(Q3DSurface *surface, QLabel *label, Q
     grOne.setColorAt(0.5, Qt::darkGray);
     grOne.setColorAt(1., Qt::gray);
     m_heightMapSeriesOne->setBaseGradient(grOne);
-    m_heightMapSeriesOne->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
+    m_heightMapSeriesOne->setColorStyle(QGraphsTheme::ColorStyle::RangeGradient);
 
     QLinearGradient grTwo;
     grTwo.setColorAt(0.39, Qt::blue);
     grTwo.setColorAt(0.4, Qt::white);
     m_heightMapSeriesTwo->setBaseGradient(grTwo);
-    m_heightMapSeriesTwo->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
+    m_heightMapSeriesTwo->setColorStyle(QGraphsTheme::ColorStyle::RangeGradient);
 
     QLinearGradient grThree;
     grThree.setColorAt(0., Qt::white);
     grThree.setColorAt(0.05, Qt::black);
     m_heightMapSeriesThree->setBaseGradient(grThree);
-    m_heightMapSeriesThree->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
+    m_heightMapSeriesThree->setColorStyle(QGraphsTheme::ColorStyle::RangeGradient);
 
     // Custom items and label
     connect(m_graph,
-            &QAbstract3DGraph::selectedElementChanged,
+            &Q3DGraphsWidgetItem::selectedElementChanged,
             this,
             &SurfaceGraphModifier::handleElementSelected);
 
@@ -144,11 +145,22 @@ SurfaceGraphModifier::SurfaceGraphModifier(Q3DSurface *surface, QLabel *label, Q
                      &HighlightSeries::handleGradientChange);
     //! [16]
 
-    m_customInputHandler = new CustomInputHandler(m_graph);
-    m_customInputHandler->setHighlightSeries(m_highlight);
-    m_customInputHandler->setAxes(m_graph->axisX(), m_graph->axisY(), m_graph->axisZ());
-    m_customInputHandler->setLimits(0.f, areaWidth, minRange);
-    m_customInputHandler->setAspectRatio(aspectRatio);
+    m_areaMinValue = 0.f;
+    m_areaMaxValue = areaWidth;
+    m_axisXMinValue = m_areaMinValue;
+    m_axisXMaxValue = m_areaMaxValue;
+    m_axisZMinValue = m_areaMinValue;
+    m_axisZMaxValue = m_areaMaxValue;
+    m_axisXMinRange = minRange;
+    m_axisZMinRange = minRange;
+    m_aspectRatio = aspectRatio;
+
+    QObject::connect(m_graph,
+                     &Q3DGraphsWidgetItem::dragged,
+                     this,
+                     &SurfaceGraphModifier::handleAxisDragging);
+
+    QObject::connect(m_graph, &Q3DGraphsWidgetItem::wheel, this, &SurfaceGraphModifier::onWheel);
 }
 
 SurfaceGraphModifier::~SurfaceGraphModifier() {}
@@ -185,16 +197,16 @@ void SurfaceGraphModifier::enableSqrtSinModel(bool enable)
     if (enable) {
         //! [3]
         m_sqrtSinSeries->setDrawMode(QSurface3DSeries::DrawSurfaceAndWireframe);
-        m_sqrtSinSeries->setFlatShadingEnabled(true);
+        m_sqrtSinSeries->setShading(QSurface3DSeries::Shading::Flat);
 
         m_graph->axisX()->setLabelFormat("%.2f");
         m_graph->axisZ()->setLabelFormat("%.2f");
         m_graph->axisX()->setRange(sampleMin, sampleMax);
         m_graph->axisY()->setRange(0.f, 2.f);
         m_graph->axisZ()->setRange(sampleMin, sampleMax);
-        m_graph->axisX()->setLabelAutoRotation(30.f);
-        m_graph->axisY()->setLabelAutoRotation(90.f);
-        m_graph->axisZ()->setLabelAutoRotation(30.f);
+        m_graph->axisX()->setLabelAutoAngle(30.f);
+        m_graph->axisY()->setLabelAutoAngle(90.f);
+        m_graph->axisZ()->setLabelAutoAngle(30.f);
 
         m_graph->removeSeries(m_heightMapSeriesOne);
         m_graph->removeSeries(m_heightMapSeriesTwo);
@@ -214,7 +226,17 @@ void SurfaceGraphModifier::enableSqrtSinModel(bool enable)
         m_graph->axisY()->setTitle({});
         m_graph->axisZ()->setTitle({});
 
-        m_graph->setActiveInputHandler(m_defaultInputHandler);
+        QObject::disconnect(m_graph,
+                            &Q3DGraphsWidgetItem::dragged,
+                            this,
+                            &SurfaceGraphModifier::handleAxisDragging);
+
+        QObject::disconnect(m_graph,
+                            &Q3DGraphsWidgetItem::wheel,
+                            this,
+                            &SurfaceGraphModifier::onWheel);
+        m_graph->setDefaultInputHandler();
+        m_graph->setZoomEnabled(true);
 
         //! [6]
         // Reset range sliders for Sqrt & Sin
@@ -242,11 +264,11 @@ void SurfaceGraphModifier::enableHeightMapModel(bool enable)
 {
     if (enable) {
         m_heightMapSeriesOne->setDrawMode(QSurface3DSeries::DrawSurface);
-        m_heightMapSeriesOne->setFlatShadingEnabled(false);
+        m_heightMapSeriesOne->setShading(QSurface3DSeries::Shading::Smooth);
         m_heightMapSeriesTwo->setDrawMode(QSurface3DSeries::DrawSurface);
-        m_heightMapSeriesTwo->setFlatShadingEnabled(false);
+        m_heightMapSeriesTwo->setShading(QSurface3DSeries::Shading::Smooth);
         m_heightMapSeriesThree->setDrawMode(QSurface3DSeries::DrawSurface);
-        m_heightMapSeriesThree->setFlatShadingEnabled(false);
+        m_heightMapSeriesThree->setShading(QSurface3DSeries::Shading::Smooth);
 
         m_graph->axisX()->setLabelFormat("%.1f N");
         m_graph->axisZ()->setLabelFormat("%.1f E");
@@ -267,7 +289,17 @@ void SurfaceGraphModifier::enableHeightMapModel(bool enable)
         m_graph->addSeries(m_heightMapSeriesTwo);
         m_graph->addSeries(m_heightMapSeriesThree);
 
-        m_graph->setActiveInputHandler(m_defaultInputHandler);
+        QObject::disconnect(m_graph,
+                            &Q3DGraphsWidgetItem::dragged,
+                            this,
+                            &SurfaceGraphModifier::handleAxisDragging);
+
+        QObject::disconnect(m_graph,
+                            &Q3DGraphsWidgetItem::wheel,
+                            this,
+                            &SurfaceGraphModifier::onWheel);
+        m_graph->setDefaultInputHandler();
+        m_graph->setZoomEnabled(true);
 
         m_titleLabel->setVisible(true);
         m_graph->axisX()->setTitleVisible(true);
@@ -304,9 +336,9 @@ void SurfaceGraphModifier::enableTopographyModel(bool enable)
         m_graph->axisX()->setRange(0.f, areaWidth);
         m_graph->axisY()->setRange(100.f, areaWidth * aspectRatio);
         m_graph->axisZ()->setRange(0.f, areaHeight);
-        m_graph->axisX()->setLabelAutoRotation(30.f);
-        m_graph->axisY()->setLabelAutoRotation(90.f);
-        m_graph->axisZ()->setLabelAutoRotation(30.f);
+        m_graph->axisX()->setLabelAutoAngle(30.f);
+        m_graph->axisY()->setLabelAutoAngle(90.f);
+        m_graph->axisZ()->setLabelAutoAngle(30.f);
 
         m_graph->removeSeries(m_sqrtSinSeries);
         m_graph->removeSeries(m_heightMapSeriesOne);
@@ -325,7 +357,17 @@ void SurfaceGraphModifier::enableTopographyModel(bool enable)
         m_graph->axisZ()->setTitle({});
 
         //! [5]
-        m_graph->setActiveInputHandler(m_customInputHandler);
+        m_graph->setDragButton(Qt::LeftButton);
+        QObject::connect(m_graph,
+                         &Q3DGraphsWidgetItem::dragged,
+                         this,
+                         &SurfaceGraphModifier::handleAxisDragging);
+
+        QObject::connect(m_graph,
+                         &Q3DGraphsWidgetItem::wheel,
+                         this,
+                         &SurfaceGraphModifier::onWheel);
+        m_graph->setZoomEnabled(false);
         //! [5]
 
         // Reset range sliders for topography map
@@ -426,7 +468,7 @@ void SurfaceGraphModifier::setBlackToYellowGradient()
     gr.setColorAt(1.f, Qt::yellow);
 
     m_sqrtSinSeries->setBaseGradient(gr);
-    m_sqrtSinSeries->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
+    m_sqrtSinSeries->setColorStyle(QGraphsTheme::ColorStyle::RangeGradient);
     //! [8]
 }
 
@@ -439,7 +481,7 @@ void SurfaceGraphModifier::setGreenToRedGradient()
     gr.setColorAt(1.f, Qt::darkRed);
 
     m_sqrtSinSeries->setBaseGradient(gr);
-    m_sqrtSinSeries->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
+    m_sqrtSinSeries->setColorStyle(QGraphsTheme::ColorStyle::RangeGradient);
 }
 
 void SurfaceGraphModifier::toggleItemOne(bool show)
@@ -581,9 +623,9 @@ void SurfaceGraphModifier::toggleOilHighlight(bool highlight)
 void SurfaceGraphModifier::toggleShadows(bool shadows)
 {
     if (shadows)
-        m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::Medium);
+        m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::Medium);
     else
-        m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::None);
+        m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::None);
 }
 
 //! [15]
@@ -596,10 +638,10 @@ void SurfaceGraphModifier::toggleSurfaceTexture(bool enable)
 }
 //! [15]
 
-void SurfaceGraphModifier::handleElementSelected(QAbstract3DGraph::ElementType type)
+void SurfaceGraphModifier::handleElementSelected(QtGraphs3D::ElementType type)
 {
     resetSelection();
-    if (type == QAbstract3DGraph::ElementType::CustomItem) {
+    if (type == QtGraphs3D::ElementType::CustomItem) {
         QCustom3DItem *item = m_graph->selectedCustomItem();
         QString text;
         if (qobject_cast<QCustom3DLabel *>(item) != 0) {
@@ -618,7 +660,7 @@ void SurfaceGraphModifier::handleElementSelected(QAbstract3DGraph::ElementType t
         m_selectionAnimation->setStartValue(item->scaling());
         m_selectionAnimation->setEndValue(item->scaling() * 1.5f);
         m_selectionAnimation->start();
-    } else if (type == QAbstract3DGraph::ElementType::Series) {
+    } else if (type == QtGraphs3D::ElementType::Series) {
         QString text = "Surface (";
         QSurface3DSeries *series = m_graph->selectedSeries();
         if (series) {
@@ -632,20 +674,25 @@ void SurfaceGraphModifier::handleElementSelected(QAbstract3DGraph::ElementType t
         }
         text.append(")");
         m_textField->setText(text);
-    } else if (type > QAbstract3DGraph::ElementType::Series
-               && type < QAbstract3DGraph::ElementType::CustomItem) {
+    } else if (type > QtGraphs3D::ElementType::Series
+               && type < QtGraphs3D::ElementType::CustomItem) {
         int index = m_graph->selectedLabelIndex();
         QString text;
-        if (type == QAbstract3DGraph::ElementType::AxisXLabel)
+        if (type == QtGraphs3D::ElementType::AxisXLabel) {
             text.append("Axis X label: ");
-        else if (type == QAbstract3DGraph::ElementType::AxisYLabel)
+            m_state = StateDraggingX;
+        } else if (type == QtGraphs3D::ElementType::AxisYLabel) {
             text.append("Axis Y label: ");
-        else
+            m_state = StateDraggingY;
+        } else {
             text.append("Axis Z label: ");
+            m_state = StateDraggingZ;
+        }
         text.append(QString::number(index));
         m_textField->setText(text);
     } else {
         m_textField->setText("Nothing");
+        m_state = StateNormal;
     }
 }
 
@@ -656,3 +703,106 @@ void SurfaceGraphModifier::resetSelection()
         m_previouslyAnimatedItem->setScaling(m_previousScaling);
     m_previouslyAnimatedItem = nullptr;
 }
+
+void SurfaceGraphModifier::checkConstraints()
+{
+    //! [19]
+    if (m_axisXMinValue < m_areaMinValue)
+        m_axisXMinValue = m_areaMinValue;
+    if (m_axisXMaxValue > m_areaMaxValue)
+        m_axisXMaxValue = m_areaMaxValue;
+    // Don't allow too much zoom in
+    if ((m_axisXMaxValue - m_axisXMinValue) < m_axisXMinRange) {
+        float adjust = (m_axisXMinRange - (m_axisXMaxValue - m_axisXMinValue)) / 2.f;
+        m_axisXMinValue -= adjust;
+        m_axisXMaxValue += adjust;
+    }
+    //! [19]
+
+    if (m_axisZMinValue < m_areaMinValue)
+        m_axisZMinValue = m_areaMinValue;
+    if (m_axisZMaxValue > m_areaMaxValue)
+        m_axisZMaxValue = m_areaMaxValue;
+    // Don't allow too much zoom in
+    if ((m_axisZMaxValue - m_axisZMinValue) < m_axisZMinRange) {
+        float adjust = (m_axisZMinRange - (m_axisZMaxValue - m_axisZMinValue)) / 2.f;
+        m_axisZMinValue -= adjust;
+        m_axisZMaxValue += adjust;
+    }
+}
+
+void SurfaceGraphModifier::handleAxisDragging(QVector2D delta)
+{
+    float distance = 0.f;
+
+    // Get scene orientation from active camera
+    float xRotation = m_graph->cameraXRotation();
+
+    // Calculate directional drag multipliers based on rotation
+    float xMulX = qCos(qDegreesToRadians(xRotation));
+    float xMulY = qSin(qDegreesToRadians(xRotation));
+    float zMulX = qSin(qDegreesToRadians(xRotation));
+    float zMulY = qCos(qDegreesToRadians(xRotation));
+
+    // Get the drag amount
+    QPoint move = delta.toPoint();
+
+    // Adjust axes
+    switch (m_state) {
+    //! [17]
+    case StateDraggingX:
+        distance = (move.x() * xMulX - move.y() * xMulY) * m_speedModifier;
+        m_axisXMinValue -= distance;
+        m_axisXMaxValue -= distance;
+        if (m_axisXMinValue < m_areaMinValue) {
+            float dist = m_axisXMaxValue - m_axisXMinValue;
+            m_axisXMinValue = m_areaMinValue;
+            m_axisXMaxValue = m_axisXMinValue + dist;
+        }
+        if (m_axisXMaxValue > m_areaMaxValue) {
+            float dist = m_axisXMaxValue - m_axisXMinValue;
+            m_axisXMaxValue = m_areaMaxValue;
+            m_axisXMinValue = m_axisXMaxValue - dist;
+        }
+        m_graph->axisX()->setRange(m_axisXMinValue, m_axisXMaxValue);
+        break;
+        //! [17]
+    case StateDraggingZ:
+        distance = (move.x() * zMulX + move.y() * zMulY) * m_speedModifier;
+        m_axisZMinValue += distance;
+        m_axisZMaxValue += distance;
+        if (m_axisZMinValue < m_areaMinValue) {
+            float dist = m_axisZMaxValue - m_axisZMinValue;
+            m_axisZMinValue = m_areaMinValue;
+            m_axisZMaxValue = m_axisZMinValue + dist;
+        }
+        if (m_axisZMaxValue > m_areaMaxValue) {
+            float dist = m_axisZMaxValue - m_axisZMinValue;
+            m_axisZMaxValue = m_areaMaxValue;
+            m_axisZMinValue = m_axisZMaxValue - dist;
+        }
+        m_graph->axisZ()->setRange(m_axisZMinValue, m_axisZMaxValue);
+        break;
+    default:
+        break;
+    }
+}
+
+//! [18]
+void SurfaceGraphModifier::onWheel(QWheelEvent *event)
+{
+    float delta = float(event->angleDelta().y());
+
+    m_axisXMinValue += delta;
+    m_axisXMaxValue -= delta;
+    m_axisZMinValue += delta;
+    m_axisZMaxValue -= delta;
+    checkConstraints();
+
+    float y = (m_axisXMaxValue - m_axisXMinValue) * m_aspectRatio;
+
+    m_graph->axisX()->setRange(m_axisXMinValue, m_axisXMaxValue);
+    m_graph->axisY()->setRange(100.f, y);
+    m_graph->axisZ()->setRange(m_axisZMinValue, m_axisZMaxValue);
+}
+//! [18]

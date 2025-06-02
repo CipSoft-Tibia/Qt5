@@ -9,7 +9,6 @@
 #include "include/core/SkAlphaType.h"
 #include "include/core/SkBitmap.h"
 #include "include/core/SkBlendMode.h"
-#include "include/core/SkBlender.h"
 #include "include/core/SkCanvas.h"
 #include "include/core/SkClipOp.h"
 #include "include/core/SkColor.h"
@@ -33,10 +32,12 @@
 #include "include/core/SkRegion.h"
 #include "include/core/SkScalar.h"
 #include "include/core/SkSize.h"
+#include "include/core/SkSpan.h"
 #include "include/core/SkStrokeRec.h"
 #include "include/core/SkSurface.h"
 #include "include/core/SkSurfaceProps.h"
 #include "include/core/SkVertices.h"
+#include "include/effects/SkRuntimeEffect.h"
 #include "include/gpu/GpuTypes.h"
 #include "include/gpu/GrBackendSurface.h"
 #include "include/gpu/GrContextOptions.h"
@@ -46,14 +47,14 @@
 #include "include/private/SkColorData.h"
 #include "include/private/base/SingleOwner.h"
 #include "include/private/base/SkAssert.h"
+#include "include/private/base/SkTArray.h"
 #include "include/private/base/SkTo.h"
 #include "include/private/chromium/Slug.h"  // IWYU pragma: keep
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
 #include "src/base/SkTLazy.h"
 #include "src/core/SkDevice.h"
 #include "src/core/SkDrawBase.h"
-#include "src/core/SkImageFilterCache.h"
-#include "src/core/SkImageFilterTypes.h"
+#include "src/core/SkImageFilterTypes.h"  // IWYU pragma: keep
 #include "src/core/SkImageInfoPriv.h"
 #include "src/core/SkLatticeIter.h"
 #include "src/core/SkMeshPriv.h"
@@ -71,6 +72,7 @@
 #include "src/gpu/ganesh/GrCaps.h"
 #include "src/gpu/ganesh/GrColorInfo.h"
 #include "src/gpu/ganesh/GrColorSpaceXform.h"
+#include "src/gpu/ganesh/GrFPArgs.h"
 #include "src/gpu/ganesh/GrFragmentProcessor.h"
 #include "src/gpu/ganesh/GrFragmentProcessors.h"
 #include "src/gpu/ganesh/GrImageInfo.h"
@@ -100,7 +102,6 @@
 #include "src/text/gpu/SlugImpl.h"
 #include "src/text/gpu/SubRunContainer.h"
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -111,6 +112,8 @@
 class GrBackendSemaphore;
 struct GrShaderCaps;
 struct SkDrawShadowRec;
+
+using namespace skia_private;
 
 #define ASSERT_SINGLE_OWNER SKGPU_ASSERT_SINGLE_OWNER(fContext->priv().singleOwner())
 
@@ -152,7 +155,7 @@ bool init_vertices_paint(GrRecordingContext* rContext,
                          const GrColorInfo& colorInfo,
                          const SkPaint& skPaint,
                          const SkMatrix& ctm,
-                         sk_sp<SkBlender> blender,
+                         SkBlender* blender,
                          bool hasColors,
                          const SkSurfaceProps& props,
                          GrPaint* grPaint) {
@@ -161,12 +164,32 @@ bool init_vertices_paint(GrRecordingContext* rContext,
                                          colorInfo,
                                          skPaint,
                                          ctm,
-                                         blender.get(),
+                                         blender,
                                          props,
                                          grPaint);
     } else {
         return SkPaintToGrPaint(rContext, colorInfo, skPaint, ctm, props, grPaint);
     }
+}
+
+bool init_mesh_child_effects(GrRecordingContext* rContext,
+                             const GrColorInfo& colorInfo,
+                             const SkSurfaceProps& surfaceProps,
+                             const SkMesh& mesh,
+                             TArray<std::unique_ptr<GrFragmentProcessor>>* meshChildFPs) {
+    // We use `Scope::kRuntimeEffect` here to ensure that mesh shaders get the same "raw" sampling
+    // behavior from alpha-only image shaders as a Runtime Effect would, rather than the unexpected
+    // tinting-by-input-color.
+    GrFPArgs fpArgs(rContext, &colorInfo, surfaceProps, GrFPArgs::Scope::kRuntimeEffect);
+
+    for (const SkRuntimeEffect::ChildPtr& child : mesh.children()) {
+        auto [success, childFP] = GrFragmentProcessors::MakeChildFP(child, fpArgs);
+        if (!success) {
+            return false;
+        }
+        meshChildFPs->push_back(std::move(childFP));
+    }
+    return true;
 }
 
 } // anonymous namespace
@@ -247,7 +270,7 @@ sk_sp<Device> Device::Make(GrRecordingContext* rContext,
                            const SkImageInfo& ii,
                            SkBackingFit fit,
                            int sampleCount,
-                           GrMipmapped mipmapped,
+                           skgpu::Mipmapped mipmapped,
                            GrProtected isProtected,
                            GrSurfaceOrigin origin,
                            const SkSurfaceProps& props,
@@ -273,7 +296,7 @@ sk_sp<Device> Device::Make(GrRecordingContext* rContext,
 }
 
 Device::Device(std::unique_ptr<SurfaceDrawContext> sdc, DeviceFlags flags)
-        : SkBaseDevice(MakeInfo(sdc.get(), flags), sdc->surfaceProps())
+        : SkDevice(MakeInfo(sdc.get(), flags), sdc->surfaceProps())
         , fContext(sk_ref_sp(sdc->recordingContext()))
         , fSDFTControl(sdc->recordingContext()->priv().getSDFTControl(
                        sdc->surfaceProps().isUseDeviceIndependentFonts()))
@@ -344,10 +367,10 @@ void Device::clearAll() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void Device::onClipPath(const SkPath& path, SkClipOp op, bool aa) {
+void Device::clipPath(const SkPath& path, SkClipOp op, bool aa) {
 #if defined(GR_TEST_UTILS)
     if (fContext->priv().options().fAllPathsVolatile && !path.isVolatile()) {
-        this->onClipPath(SkPath(path).setIsVolatile(true), op, aa);
+        this->clipPath(SkPath(path).setIsVolatile(true), op, aa);
         return;
     }
 #endif
@@ -355,7 +378,7 @@ void Device::onClipPath(const SkPath& path, SkClipOp op, bool aa) {
     fClip.clipPath(this->localToDevice(), path, GrAA(aa), op);
 }
 
-void Device::onClipRegion(const SkRegion& globalRgn, SkClipOp op) {
+void Device::clipRegion(const SkRegion& globalRgn, SkClipOp op) {
     SkASSERT(op == SkClipOp::kIntersect || op == SkClipOp::kDifference);
 
     // Regions don't actually need AA, but in DMSAA mode every clip element is antialiased.
@@ -372,7 +395,7 @@ void Device::onClipRegion(const SkRegion& globalRgn, SkClipOp op) {
     }
 }
 
-void Device::onAsRgnClip(SkRegion* region) const {
+void Device::android_utils_clipAsRgn(SkRegion* region) const {
     SkIRect bounds = fClip.getConservativeBounds();
     // Assume wide open and then perform intersect/difference operations reducing the region
     region->setRect(bounds);
@@ -392,7 +415,7 @@ void Device::onAsRgnClip(SkRegion* region) const {
     }
 }
 
-bool Device::onClipIsAA() const {
+bool Device::isClipAntiAliased() const {
     for (const ClipStack::Element& e : fClip) {
         if (e.fAA == GrAA::kYes) {
             return true;
@@ -400,18 +423,6 @@ bool Device::onClipIsAA() const {
         SkASSERT(!fSurfaceDrawContext->alwaysAntialias());
     }
     return false;
-}
-
-SkBaseDevice::ClipType Device::onGetClipType() const {
-    ClipStack::ClipState state = fClip.clipState();
-    if (state == ClipStack::ClipState::kEmpty) {
-        return ClipType::kEmpty;
-    } else if (state == ClipStack::ClipState::kDeviceRect ||
-               state == ClipStack::ClipState::kWideOpen) {
-        return ClipType::kRect;
-    } else {
-        return ClipType::kComplex;
-    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -756,7 +767,7 @@ void Device::drawArc(const SkRect& oval,
     ASSERT_SINGLE_OWNER
     GR_CREATE_TRACE_MARKER_CONTEXT("skgpu::ganesh::Device", "drawArc", fContext.get());
     if (paint.getMaskFilter()) {
-        this->SkBaseDevice::drawArc(oval, startAngle, sweepAngle, useCenter, paint);
+        this->SkDevice::drawArc(oval, startAngle, sweepAngle, useCenter, paint);
         return;
     }
     GrPaint grPaint;
@@ -808,8 +819,10 @@ void Device::drawPath(const SkPath& origSrcPath, const SkPaint& paint, bool path
                                          paint, this->localToDevice(), shape);
 }
 
-skif::Context Device::createContext(const skif::ContextInfo& ctxInfo) const {
-    return skif::MakeGaneshContext(fContext.get(), fSurfaceDrawContext->origin(), ctxInfo);
+sk_sp<skif::Backend> Device::createImageFilteringBackend(const SkSurfaceProps& surfaceProps,
+                                                         SkColorType colorType) const {
+    return skif::MakeGaneshBackend(
+            fContext, fSurfaceDrawContext->origin(), surfaceProps, colorType);
 }
 
 sk_sp<SkSpecialImage> Device::makeSpecial(const SkBitmap& bitmap) {
@@ -842,7 +855,8 @@ sk_sp<SkSpecialImage> Device::makeSpecial(const SkImage* image) {
 
     SkPixmap pm;
     if (image->isTextureBacked()) {
-        auto [view, ct] = skgpu::ganesh::AsView(this->recordingContext(), image, GrMipmapped::kNo);
+        auto [view, ct] =
+                skgpu::ganesh::AsView(this->recordingContext(), image, skgpu::Mipmapped::kNo);
         SkASSERT(view);
 
         return SkSpecialImages::MakeDeferredFromGpu(
@@ -884,7 +898,7 @@ sk_sp<SkSpecialImage> Device::snapSpecial(const SkIRect& subset, bool forceCopy)
         // texture that matches the device contents
         view = GrSurfaceProxyView::Copy(fContext.get(),
                                         std::move(view),
-                                        GrMipmapped::kNo,  // Don't auto generate mips
+                                        skgpu::Mipmapped::kNo,  // Don't auto generate mips
                                         subset,
                                         SkBackingFit::kApprox,
                                         skgpu::Budgeted::kYes,
@@ -937,13 +951,13 @@ sk_sp<SkSpecialImage> Device::snapSpecialScaled(const SkIRect& subset, const SkI
                                                 this->surfaceProps());
 }
 
-void Device::drawDevice(SkBaseDevice* device,
+void Device::drawDevice(SkDevice* device,
                         const SkSamplingOptions& sampling,
                         const SkPaint& paint) {
     ASSERT_SINGLE_OWNER
     // clear of the source device must occur before CHECK_SHOULD_DRAW
     GR_CREATE_TRACE_MARKER_CONTEXT("skgpu::ganesh::Device", "drawDevice", fContext.get());
-    this->SkBaseDevice::drawDevice(device, sampling, paint);
+    this->SkDevice::drawDevice(device, sampling, paint);
 }
 
 void Device::drawImageRect(const SkImage* image,
@@ -1038,7 +1052,7 @@ void Device::drawImageLattice(const SkImage* image,
     ASSERT_SINGLE_OWNER
     auto iter = std::make_unique<SkLatticeIter>(lattice, dst);
 
-    auto [view, ct] = skgpu::ganesh::AsView(this->recordingContext(), image, GrMipmapped::kNo);
+    auto [view, ct] = skgpu::ganesh::AsView(this->recordingContext(), image, skgpu::Mipmapped::kNo);
     if (view) {
         GrColorInfo colorInfo(ct, image->alphaType(), image->refColorSpace());
         this->drawViewLattice(std::move(view),
@@ -1071,7 +1085,7 @@ void Device::drawVertices(const SkVertices* vertices,
                              fSurfaceDrawContext->colorInfo(),
                              paint,
                              this->localToDevice(),
-                             std::move(blender),
+                             blender.get(),
                              info.hasColors(),
                              fSurfaceDrawContext->surfaceProps(),
                              &grPaint)) {
@@ -1097,13 +1111,23 @@ void Device::drawMesh(const SkMesh& mesh, sk_sp<SkBlender> blender, const SkPain
                              fSurfaceDrawContext->colorInfo(),
                              paint,
                              this->localToDevice(),
-                             std::move(blender),
+                             blender.get(),
                              SkMeshSpecificationPriv::HasColors(*mesh.spec()),
                              fSurfaceDrawContext->surfaceProps(),
                              &grPaint)) {
         return;
     }
-    fSurfaceDrawContext->drawMesh(this->clip(), std::move(grPaint), this->localToDevice(), mesh);
+
+    TArray<std::unique_ptr<GrFragmentProcessor>> meshChildFPs;
+    if (!init_mesh_child_effects(fContext.get(),
+                                 fSurfaceDrawContext->colorInfo(),
+                                 fSurfaceDrawContext->surfaceProps(),
+                                 mesh,
+                                 &meshChildFPs)) {
+        return;
+    }
+    fSurfaceDrawContext->drawMesh(this->clip(), std::move(grPaint), this->localToDevice(), mesh,
+                                  std::move(meshChildFPs));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1121,7 +1145,7 @@ void Device::drawShadow(const SkPath& path, const SkDrawShadowRec& rec) {
 
     if (!fSurfaceDrawContext->drawFastShadow(this->clip(), this->localToDevice(), path, rec)) {
         // failed to find an accelerated case
-        this->SkBaseDevice::drawShadow(path, rec);
+        this->SkDevice::drawShadow(path, rec);
     }
 }
 #endif  // SK_ENABLE_OPTIMIZE_SIZE
@@ -1208,7 +1232,7 @@ void Device::drawDrawable(SkCanvas* canvas, SkDrawable* drawable, const SkMatrix
             return;
         }
     }
-    this->SkBaseDevice::drawDrawable(canvas, drawable, matrix);
+    this->SkDevice::drawDrawable(canvas, drawable, matrix);
 }
 
 
@@ -1349,15 +1373,10 @@ void Device::asyncRescaleAndReadPixelsYUV420(SkYUVColorSpace yuvColorSpace,
 
 ///////////////////////////////////////////////////////////////////////////////
 
-SkBaseDevice* Device::onCreateDevice(const CreateInfo& cinfo, const SkPaint*) {
+sk_sp<SkDevice> Device::createDevice(const CreateInfo& cinfo, const SkPaint*) {
     ASSERT_SINGLE_OWNER
 
     SkSurfaceProps props(this->surfaceProps().flags(), cinfo.fPixelGeometry);
-
-    // layers are never drawn in repeat modes, so we can request an approx
-    // match and ignore any padding.
-    SkBackingFit fit = kNever_TileUsage == cinfo.fTileUsage ? SkBackingFit::kApprox
-                                                            : SkBackingFit::kExact;
 
     SkASSERT(cinfo.fInfo.colorType() != kRGBA_1010102_SkColorType);
 
@@ -1365,11 +1384,11 @@ SkBaseDevice* Device::onCreateDevice(const CreateInfo& cinfo, const SkPaint*) {
             fContext.get(),
             SkColorTypeToGrColorType(cinfo.fInfo.colorType()),
             fSurfaceDrawContext->colorInfo().refColorSpace(),
-            fit,
+            SkBackingFit::kApprox,
             cinfo.fInfo.dimensions(),
             props,
             fSurfaceDrawContext->numSamples(),
-            GrMipmapped::kNo,
+            skgpu::Mipmapped::kNo,
             fSurfaceDrawContext->asSurfaceProxy()->isProtected(),
             fSurfaceDrawContext->origin(),
             skgpu::Budgeted::kYes);
@@ -1380,7 +1399,7 @@ SkBaseDevice* Device::onCreateDevice(const CreateInfo& cinfo, const SkPaint*) {
     // Skia's convention is to only clear a device if it is non-opaque.
     InitContents init = cinfo.fInfo.isOpaque() ? InitContents::kUninit : InitContents::kClear;
 
-    return Device::Make(std::move(sdc), cinfo.fInfo.alphaType(), init).release();
+    return Device::Make(std::move(sdc), cinfo.fInfo.alphaType(), init);
 }
 
 sk_sp<SkSurface> Device::makeSurface(const SkImageInfo& info, const SkSurfaceProps& props) {
@@ -1398,18 +1417,11 @@ sk_sp<SkSurface> Device::makeSurface(const SkImageInfo& info, const SkSurfacePro
                                     isProtected);
 }
 
-SkImageFilterCache* Device::getImageFilterCache() {
-    ASSERT_SINGLE_OWNER
-    // We always return a transient cache, so it is freed after each
-    // filter traversal.
-    return SkImageFilterCache::Create(SkImageFilterCache::kDefaultTransientSize);
-}
-
 ////////////////////////////////////////////////////////////////////////////////////
 
 bool Device::android_utils_clipWithStencil() {
     SkRegion clipRegion;
-    this->onAsRgnClip(&clipRegion);
+    this->android_utils_clipAsRgn(&clipRegion);
     if (clipRegion.isEmpty()) {
         return false;
     }

@@ -5,8 +5,9 @@
 import("//media/media_options.gni")
 
 config("avif_config") {
+  defines = [ "AVIF_ENABLE_EXPERIMENTAL_GAIN_MAP" ]
   if (is_component_build) {
-    defines = [ "AVIF_DLL" ]
+    defines += [ "AVIF_DLL" ]
   }
 }
 
@@ -20,6 +21,7 @@ component("libavif") {
     "src/src/avif.c",
     "src/src/colr.c",
     "src/src/diag.c",
+    "src/src/exif.c",
     "src/src/io.c",
     "src/src/mem.c",
     "src/src/obu.c",

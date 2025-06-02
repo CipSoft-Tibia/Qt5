@@ -5,12 +5,15 @@
 
 #include "classnode.h"
 #include "propertynode.h"
+#include "enumnode.h"
 
 #include <utility>
 #include "qdocdatabase.h"
 #include "utilities.h"
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 /*!
   Constructor for the QML property node.
@@ -28,11 +31,77 @@ QmlPropertyNode::QmlPropertyNode(Aggregate *parent, const QString &name, QString
 }
 
 /*!
+    Sets the data type of this property to \a dataType,
+    preserving the list property modifier if one is set
+    already.
+*/
+void QmlPropertyNode::setDataType(const QString &dataType)
+{
+    m_type = dataType;
+    // Re-apply list modifier if needed
+    if (auto is_list = m_isList; is_list == FlagValueTrue) {
+        m_isList = FlagValueDefault;
+        setIsList(true);
+    }
+}
+
+/*!
   \fn bool QmlPropertyNode::isReadOnly() const
 
   Returns \c true if this QML property node is marked as a
   read-only property.
 */
+
+/*!
+    \fn const EnumNode *QmlPropertyNode::enumNode() const
+
+    Returns the node representing the C++ enumeration associated
+    with this property, or \nullptr.
+*/
+
+/*!
+    Returns the prefix to use for documentated enumerators from
+    the associated C++ enum for this property.
+*/
+const QString &QmlPropertyNode::enumPrefix() const
+{
+    return !m_enumNode.second.isEmpty() ?
+            m_enumNode.second : parent()->name();
+}
+
+/*!
+    Locates the node specified by \a path and sets it as the C++ enumeration
+    associated with this property.
+
+    \a registeredQmlName is used as the prefix in the generated enum value
+    documentation.
+
+    \note The target EnumNode is searched under the primary tree only.
+
+    Returns \c true on success.
+*/
+bool QmlPropertyNode::setEnumNode(const QString &path, const QString &registeredQmlName)
+{
+    m_enumNode.first = static_cast<EnumNode*>(
+        QDocDatabase::qdocDB()->primaryTree()->findNodeByNameAndType(path.split("::"), &Node::isEnumType)
+    );
+    m_enumNode.second = registeredQmlName;
+    return m_enumNode.first != nullptr;
+}
+
+/*!
+    Marks this property as a list if \a isList is \c true.
+    The \c m_type member of a list property is wrapped with
+    \c {list<>}.
+*/
+void QmlPropertyNode::setIsList(bool isList)
+{
+    if (m_isList != FlagValueDefault)
+        return;
+
+    if ((m_isList = toFlagValue(isList)))
+        m_type = "list<%1>"_L1.arg(m_type);
+}
 
 /*!
   Returns \c true if this QML property or attached property is
@@ -132,6 +201,72 @@ PropertyNode *QmlPropertyNode::findCorrespondingCppProperty()
         }
     }
     return nullptr;
+}
+
+// Only define a mapping between C++ and QML value types with different names.
+QSet<QString> QmlPropertyNode::cppQmlValueTypes = {
+    "float",
+    "QColor",
+    "QDateTime",
+    "QFont",
+    "QMatrix4x4",
+    "QPoint",
+    "QPointF",
+    "QQuaternion",
+    "qreal",
+    "QRect",
+    "QRectF",
+    "QSize",
+    "QSizeF",
+    "QString",
+    "QUrl",
+    "QVector2D",
+    "QVector3D",
+    "QVector4D",
+    "unsigned int",
+};
+
+QRegularExpression QmlPropertyNode::qmlBasicList("^list<([^>]+)>$");
+QRegularExpression QmlPropertyNode::cppBasicList("^(Q[A-Za-z0-9]+)List$");
+
+/*!
+    Validates a QML property type for the property, returning true if the type
+    is a QML type or QML list type, returning false if the type is a Qt value
+    type or Qt list type.
+
+    Specifically, if the type name matches a known value or object type in
+    qdoc's database, true is returned immediately.
+
+    If the type name matches the syntax for a non-nested QML list of types,
+    true is returned if the item type of the list is valid; otherwise false is
+    returned.
+
+    If the type name is a C or C++ type with a corresponding QML type, or if it
+    matches the syntax of a Qt list type, such as QStringList, false is
+    returned.
+
+    If none of the above applied, the type name is assumed to be valid and true
+    is returned.
+*/
+bool QmlPropertyNode::validateDataType(const QString &type) const
+{
+    QString qmlType = type;
+    if (qmlType.isNull())
+        qmlType = dataType();
+
+    if (QDocDatabase::qdocDB()->getQmlValueTypes().contains(qmlType) ||
+        QDocDatabase::qdocDB()->findQmlType(qmlType))
+        return true;
+
+    auto match = qmlBasicList.match(qmlType);
+    if (match.hasMatch())
+        return validateDataType(match.captured(1));
+
+    if (cppQmlValueTypes.contains(qmlType) ||
+        cppBasicList.match(qmlType).hasMatch())
+        return false;
+
+    return true;
 }
 
 QT_END_NAMESPACE

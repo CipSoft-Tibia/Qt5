@@ -5,22 +5,22 @@
 #ifndef CHROME_BROWSER_SIGNIN_BOUND_SESSION_CREDENTIALS_BOUND_SESSION_COOKIE_REFRESH_SERVICE_IMPL_H_
 #define CHROME_BROWSER_SIGNIN_BOUND_SESSION_CREDENTIALS_BOUND_SESSION_COOKIE_REFRESH_SERVICE_IMPL_H_
 
-#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service.h"
-
 #include <memory>
+#include <optional>
 
+#include "base/containers/flat_set.h"
 #include "base/containers/span.h"
 #include "base/functional/callback_forward.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_controller.h"
+#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service.h"
 #include "chrome/browser/signin/bound_session_credentials/bound_session_params.pb.h"
 #include "chrome/browser/signin/bound_session_credentials/bound_session_registration_fetcher.h"
 #include "chrome/browser/signin/bound_session_credentials/bound_session_registration_fetcher_param.h"
 #include "content/public/browser/storage_partition.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
 #include "services/network/public/cpp/network_connection_tracker.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace unexportable_keys {
 class UnexportableKeyService;
@@ -37,7 +37,17 @@ class BoundSessionCookieRefreshServiceImpl
       public BoundSessionCookieController::Delegate,
       public content::StoragePartition::DataRemovalObserver {
  public:
-  explicit BoundSessionCookieRefreshServiceImpl(
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  enum class SessionTerminationTrigger {
+    kCookieRotationPersistentError = 0,
+    kCookiesCleared = 1,
+    kSessionTerminationHeader = 2,
+    kSessionOverride = 3,
+    kMaxValue = kSessionOverride,
+  };
+
+  BoundSessionCookieRefreshServiceImpl(
       unexportable_keys::UnexportableKeyService& key_service,
       std::unique_ptr<BoundSessionParamsStorage> session_params_storage,
       content::StoragePartition* storage_partition,
@@ -47,27 +57,27 @@ class BoundSessionCookieRefreshServiceImpl
 
   // BoundSessionCookieRefreshService:
   void Initialize() override;
-  // Can be called iff the kBoundSessionExplicitRegistration feature is enabled.
   void RegisterNewBoundSession(
       const bound_session_credentials::BoundSessionParams& params) override;
   void MaybeTerminateSession(const net::HttpResponseHeaders* headers) override;
   chrome::mojom::BoundSessionThrottlerParamsPtr GetBoundSessionThrottlerParams()
       const override;
-  void AddBoundSessionRequestThrottledListenerReceiver(
-      mojo::PendingReceiver<chrome::mojom::BoundSessionRequestThrottledListener>
+  void AddBoundSessionRequestThrottledHandlerReceiver(
+      mojo::PendingReceiver<chrome::mojom::BoundSessionRequestThrottledHandler>
           receiver) override;
-
-  // chrome::mojom::BoundSessionRequestThrottledListener:
-  void OnRequestBlockedOnCookie(
-      OnRequestBlockedOnCookieCallback resume_blocked_request) override;
-
   void CreateRegistrationRequest(
       BoundSessionRegistrationFetcherParam registration_params) override;
-
   base::WeakPtr<BoundSessionCookieRefreshService> GetWeakPtr() override;
+  void AddObserver(
+      BoundSessionCookieRefreshService::Observer* observer) override;
+  void RemoveObserver(
+      BoundSessionCookieRefreshService::Observer* observer) override;
+
+  // chrome::mojom::BoundSessionRequestThrottledHandler:
+  void HandleRequestBlockedOnCookie(
+      HandleRequestBlockedOnCookieCallback resume_blocked_request) override;
 
  private:
-  class BoundSessionStateTracker;
   friend class BoundSessionCookieRefreshServiceImplTest;
 
   // Used by tests to provide their own implementation of the
@@ -76,13 +86,14 @@ class BoundSessionCookieRefreshServiceImpl
       base::RepeatingCallback<std::unique_ptr<BoundSessionCookieController>(
           const bound_session_credentials::BoundSessionParams&
               bound_session_params,
-          const base::flat_set<std::string>& cookie_names,
           Delegate* delegate)>;
 
   // BoundSessionCookieRefreshService:
   void SetRendererBoundSessionThrottlerParamsUpdaterDelegate(
       RendererBoundSessionThrottlerParamsUpdaterDelegate renderer_updater)
       override;
+  void SetBoundSessionParamsUpdatedCallbackForTesting(
+      base::RepeatingClosure updated_callback) override;
 
   void set_controller_factory_for_testing(
       const BoundSessionCookieControllerFactoryForTesting&
@@ -91,12 +102,12 @@ class BoundSessionCookieRefreshServiceImpl
   }
 
   void OnRegistrationRequestComplete(
-      absl::optional<bound_session_credentials::BoundSessionParams>
+      std::optional<bound_session_credentials::BoundSessionParams>
           bound_session_params);
 
   // BoundSessionCookieController::Delegate
   void OnBoundSessionThrottlerParamsChanged() override;
-  void TerminateSession() override;
+  void OnPersistentErrorEncountered() override;
 
   // StoragePartition::DataRemovalObserver:
   void OnStorageKeyDataCleared(
@@ -107,13 +118,21 @@ class BoundSessionCookieRefreshServiceImpl
 
   std::unique_ptr<BoundSessionCookieController>
   CreateBoundSessionCookieController(
-      const bound_session_credentials::BoundSessionParams& bound_session_params,
-      const base::flat_set<std::string>& cookie_names);
+      const bound_session_credentials::BoundSessionParams&
+          bound_session_params);
   void InitializeBoundSession(
       const bound_session_credentials::BoundSessionParams&
           bound_session_params);
 
   void UpdateAllRenderers();
+
+  // Terminates ongoing device bound session, clears the session params from
+  // storage and updates all renderers.
+  void TerminateSession(SessionTerminationTrigger trigger);
+  void RecordSessionTerminationTrigger(SessionTerminationTrigger trigger);
+  void NotifyBoundSessionTerminated(
+      const GURL& site,
+      const base::flat_set<std::string>& bound_cookie_names);
 
   const raw_ref<unexportable_keys::UnexportableKeyService> key_service_;
   // Never null. Stored as `std::unique_ptr` for polymorphism.
@@ -122,6 +141,7 @@ class BoundSessionCookieRefreshServiceImpl
   const raw_ptr<network::NetworkConnectionTracker> network_connection_tracker_;
   BoundSessionCookieControllerFactoryForTesting controller_factory_for_testing_;
   RendererBoundSessionThrottlerParamsUpdaterDelegate renderer_updater_;
+  base::RepeatingClosure session_updated_callback_for_testing_;
 
   base::ScopedObservation<content::StoragePartition,
                           content::StoragePartition::DataRemovalObserver>
@@ -129,11 +149,13 @@ class BoundSessionCookieRefreshServiceImpl
 
   std::unique_ptr<BoundSessionCookieController> cookie_controller_;
 
-  mojo::ReceiverSet<chrome::mojom::BoundSessionRequestThrottledListener>
-      renderer_request_throttled_listener_;
+  mojo::ReceiverSet<chrome::mojom::BoundSessionRequestThrottledHandler>
+      renderer_request_throttled_handler_;
 
   // There is only one active session registration at a time.
   std::unique_ptr<BoundSessionRegistrationFetcher> active_registration_request_;
+
+  base::ObserverList<BoundSessionCookieRefreshService::Observer> observers_;
 
   base::WeakPtrFactory<BoundSessionCookieRefreshService> weak_ptr_factory_{
       this};

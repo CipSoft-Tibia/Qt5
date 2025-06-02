@@ -12,6 +12,7 @@
 #include <stdlib.h>
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "common_video/h265/h265_common.h"
@@ -129,6 +130,8 @@ H265BitstreamParser::Result H265BitstreamParser::ParseNonParameterSetNalu(
 
     uint32_t slice_segment_address_bits =
         H265::Log2Ceiling(pic_height_in_ctbs_y * pic_width_in_ctbs_y);
+    TRUE_OR_RETURN(slice_segment_address_bits !=
+                   std::numeric_limits<uint32_t>::max());
     slice_reader.ConsumeBits(slice_segment_address_bits);
   }
 
@@ -138,8 +141,7 @@ H265BitstreamParser::Result H265BitstreamParser::ParseNonParameterSetNalu(
       slice_reader.ConsumeBits(1);
     }
     // slice_type: ue(v)
-    uint32_t slice_type = 0;
-    slice_type = slice_reader.ReadExponentialGolomb();
+    uint32_t slice_type = slice_reader.ReadExponentialGolomb();
     IN_RANGE_OR_RETURN(slice_type, 0, 2);
     if (pps->output_flag_present_flag) {
       // pic_output_flag: u(1)
@@ -274,7 +276,7 @@ H265BitstreamParser::Result H265BitstreamParser::ParseNonParameterSetNalu(
       }
 
       uint32_t num_pic_total_curr = 0;
-      uint32_t curr_sps_idx;
+      uint32_t curr_sps_idx = 0;
       if (short_term_ref_pic_set_sps_flag) {
         curr_sps_idx = short_term_ref_pic_set_idx;
       } else {
@@ -476,8 +478,8 @@ void H265BitstreamParser::ParseSlice(const uint8_t* slice, size_t length) {
     case H265::NaluType::kAud:
     case H265::NaluType::kPrefixSei:
     case H265::NaluType::kSuffixSei:
-    case H265::NaluType::kAP:
-    case H265::NaluType::kFU:
+    case H265::NaluType::kAp:
+    case H265::NaluType::kFu:
       break;
     default:
       Result res = ParseNonParameterSetNalu(slice, length, nalu_type);

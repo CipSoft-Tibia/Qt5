@@ -7,13 +7,14 @@ from __future__ import annotations
 import logging
 import pathlib
 import re
+import shlex
 import subprocess
 from typing import (TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple,
                     Union)
 
-from crossbench import helper
 
 from .arch import MachineArch
+from .base import SubprocessError
 from .posix import PosixPlatform
 
 if TYPE_CHECKING:
@@ -22,12 +23,11 @@ if TYPE_CHECKING:
 
 
 def _find_adb_bin(platform: Platform) -> pathlib.Path:
-  adb_bin = helper.search_binary(
+  adb_bin = platform.search_platform_binary(
       name="adb",
       macos=["adb", "~/Library/Android/sdk/platform-tools/adb"],
       linux=["adb"],
-      win=["adb.exe", "Android/sdk/platform-tools/adb.exe"],
-      platform=platform)
+      win=["adb.exe", "Android/sdk/platform-tools/adb.exe"])
   if adb_bin:
     return adb_bin
   raise ValueError(
@@ -102,6 +102,9 @@ class Adb:
   def __str__(self) -> str:
     return f"adb(serial={self._serial_id}, info='{self._device_info}')"
 
+  def has_root(self) -> bool:
+    return self.shell_stdout('id').startswith('uid=0(root)')
+
   @property
   def serial_id(self) -> str:
     return self._serial_id
@@ -109,6 +112,24 @@ class Adb:
   @property
   def device_info(self) -> Dict[str, str]:
     return self._device_info
+
+  def popen(self,
+            *args: Union[str, pathlib.Path],
+            shell: bool = False,
+            stdout=None,
+            stderr=None,
+            stdin=None,
+            env: Optional[Mapping[str, str]] = None,
+            quiet: bool = False) -> subprocess.Popen:
+    del shell
+    assert not env, "ADB does not support setting env vars."
+    if not quiet:
+      logging.debug("SHELL: %s", shlex.join(map(str, args)))
+    adb_cmd: List[Union[str, pathlib.Path]] = []
+    adb_cmd = [self._adb_bin, "-s", self._serial_id, "shell"]
+    adb_cmd.extend(args)
+    return self._host_platform.popen(
+        *adb_cmd, stdout=stdout, stderr=stderr, stdin=stdin)
 
   def _adb(self,
            *args: Union[str, pathlib.Path],
@@ -121,6 +142,7 @@ class Adb:
            quiet: bool = False,
            check: bool = True,
            use_serial_id: bool = True) -> subprocess.CompletedProcess:
+    del shell
     adb_cmd: List[Union[str, pathlib.Path]] = []
     if use_serial_id:
       adb_cmd = [self._adb_bin, "-s", self._serial_id]
@@ -129,7 +151,6 @@ class Adb:
     adb_cmd.extend(args)
     return self._host_platform.sh(
         *adb_cmd,
-        shell=shell,
         capture_output=capture_output,
         stdout=stdout,
         stderr=stderr,
@@ -208,6 +229,10 @@ class Adb:
            local_dest_path: pathlib.Path) -> None:
     self._adb("pull", device_src_path, local_dest_path)
 
+  def push(self, local_src_path: pathlib.Path,
+           device_dest_path: pathlib.Path) -> None:
+    self._adb("push", local_src_path, device_dest_path)
+
   def cmd(self,
           *args: str,
           quiet: bool = False,
@@ -254,6 +279,8 @@ class AndroidAdbPlatform(PosixPlatform):
                adb: Optional[Adb] = None) -> None:
     super().__init__()
     self._machine: Optional[MachineArch] = None
+    self._system_details: Optional[Dict[str, Any]] = None
+    self._cpu_details: Optional[Dict[str, Any]] = None
     self._host_platform = host_platform
     assert not host_platform.is_remote, (
         "adb on remote platform is not supported yet")
@@ -367,17 +394,6 @@ class AndroidAdbPlatform(PosixPlatform):
     # TODO figure out
     return 1.0
 
-  _GETPROP_RE = re.compile(r"^\[(?P<key>[^\]]+)\]: \[(?P<value>[^\]]+)\]$")
-
-  def system_details(self) -> Dict[str, Any]:
-    details = super().system_details()
-    properties: Dict[str, str] = {}
-    for line in self.adb.shell_stdout("getprop").strip().splitlines():
-      result = self._GETPROP_RE.fullmatch(line)
-      if result:
-        properties[result.group("key")] = result.group("value")
-    details["android"] = properties
-    return details
 
   def python_details(self) -> JsonDict:
     # Python is not available on android.
@@ -386,10 +402,6 @@ class AndroidAdbPlatform(PosixPlatform):
   def os_details(self) -> JsonDict:
     # TODO: add more info
     return {"version": self.version}
-
-  def cpu_details(self) -> JsonDict:
-    # TODO: add more info
-    return {"info": self.cpu}
 
   def check_autobrightness(self) -> bool:
     # adb shell dumpsys display
@@ -443,6 +455,23 @@ class AndroidAdbPlatform(PosixPlatform):
     return self.adb.shell_stdout(
         *args, env=env, quiet=quiet, encoding=encoding, check=check)
 
+  def popen(self,
+            *args: Union[str, pathlib.Path],
+            shell: bool = False,
+            stdout=None,
+            stderr=None,
+            stdin=None,
+            env: Optional[Mapping[str, str]] = None,
+            quiet: bool = False) -> subprocess.Popen:
+    return self.adb.popen(
+        *args,
+        shell=shell,
+        stdout=stdout,
+        stderr=stderr,
+        stdin=stdin,
+        env=env,
+        quiet=quiet)
+
   def rsync(self, from_path: pathlib.Path,
             to_path: pathlib.Path) -> pathlib.Path:
     assert self.exists(from_path), (
@@ -450,3 +479,72 @@ class AndroidAdbPlatform(PosixPlatform):
     to_path.parent.mkdir(parents=True, exist_ok=True)
     self.adb.pull(from_path, to_path)
     return to_path
+
+  def push(self, from_path: pathlib.Path,
+              to_path: pathlib.Path) -> pathlib.Path:
+    self.adb.push(from_path, to_path)
+    return to_path
+
+  def processes(self,
+                attrs: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    lines = self.sh_stdout("ps", "-A", "-o", "PID,NAME").splitlines()
+    if len(lines) == 1:
+      return []
+
+    res = []
+    for line in lines[1:]:
+      tokens = line.split()
+      assert len(tokens) == 2
+      res.append({"pid": int(tokens[0]), "name": tokens[1]})
+    return res
+
+  def cpu_details(self) -> Dict[str, Any]:
+    if self._cpu_details:
+      return self._cpu_details
+    # TODO: Implement properly (i.e. remove all n/a values)
+    self._cpu_details = {
+        "info": self.cpu,
+        "physical cores": "n/a",
+        "logical cores": "n/a",
+        "usage": "n/a",
+        "total usage": "n/a",
+        "system load": "n/a",
+        "max frequency": "n/a",
+        "min frequency": "n/a",
+        "current frequency": "n/a",
+    }
+    return self._cpu_details
+
+  _GETPROP_RE = re.compile(r"^\[(?P<key>[^\]]+)\]: \[(?P<value>[^\]]+)\]$")
+
+  def _getprop_system_details(self) -> Dict[str, Any]:
+    details = super().system_details()
+    properties: Dict[str, str] = {}
+    for line in self.adb.shell_stdout("getprop").strip().splitlines():
+      result = self._GETPROP_RE.fullmatch(line)
+      if result:
+        properties[result.group("key")] = result.group("value")
+    details["android"] = properties
+    return details
+
+  def system_details(self) -> Dict[str, Any]:
+    if self._system_details:
+      return self._system_details
+
+    # TODO: Implement properly (i.e. remove all n/a values)
+    self._system_details = {
+        "machine": self.sh_stdout("uname", "-m").split()[0],
+        "os": {
+            "system": self.sh_stdout("uname", "-s").split()[0],
+            "release": self.sh_stdout("uname", "-r").split()[0],
+            "version": self.sh_stdout("uname", "-v").split()[0],
+            "platform": "n/a",
+        },
+        "python": {
+            "version": "n/a",
+            "bits": "n/a",
+        },
+        "CPU": self.cpu_details(),
+        "Adnroid": self._getprop_system_details(),
+    }
+    return self._system_details

@@ -23,7 +23,7 @@ QT_BEGIN_NAMESPACE
 class QGeoCoordinate;
 class QDoubleVector2D;
 
-class Q_POSITIONING_PRIVATE_EXPORT QWebMercator
+class Q_POSITIONING_EXPORT QWebMercator
 {
 public:
     static QDoubleVector2D coordToMercator(const QGeoCoordinate &coord);

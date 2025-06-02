@@ -15,6 +15,7 @@
 #include "base/synchronization/atomic_flag.h"
 #include "base/task/common/checked_lock.h"
 #include "base/task/delay_policy.h"
+#include "base/task/task_features.h"
 #include "base/task/thread_pool/task.h"
 #include "base/thread_annotations.h"
 #include "base/time/default_tick_clock.h"
@@ -49,11 +50,8 @@ class BASE_EXPORT DelayedTaskManager {
   void Start(scoped_refptr<SequencedTaskRunner> service_thread_task_runner);
 
   // Schedules a call to |post_task_now_callback| with |task| as argument when
-  // |task| is ripe for execution. |task_runner| is passed to retain a
-  // reference until |task| is ripe.
-  void AddDelayedTask(Task task,
-                      PostTaskNowCallback post_task_now_callback,
-                      scoped_refptr<TaskRunner> task_runner);
+  // |task| is ripe for execution.
+  void AddDelayedTask(Task task, PostTaskNowCallback post_task_now_callback);
 
   // Pop and post all the ripe tasks in the delayed task queue.
   void ProcessRipeTasks();
@@ -72,9 +70,7 @@ class BASE_EXPORT DelayedTaskManager {
  private:
   struct DelayedTask {
     DelayedTask();
-    DelayedTask(Task task,
-                PostTaskNowCallback callback,
-                scoped_refptr<TaskRunner> task_runner);
+    DelayedTask(Task task, PostTaskNowCallback callback);
     DelayedTask(DelayedTask&& other);
     DelayedTask(const DelayedTask&) = delete;
     DelayedTask& operator=(const DelayedTask&) = delete;
@@ -88,7 +84,6 @@ class BASE_EXPORT DelayedTaskManager {
 
     Task task;
     PostTaskNowCallback callback;
-    scoped_refptr<TaskRunner> task_runner;
 
     // Mark the delayed task as scheduled. Since the sort key is
     // |task.delayed_run_time|, it does not alter sort order when it is called.
@@ -134,7 +129,8 @@ class BASE_EXPORT DelayedTaskManager {
   IntrusiveHeap<DelayedTask, std::greater<>> delayed_task_queue_
       GUARDED_BY(queue_lock_);
 
-  bool align_wake_ups_ GUARDED_BY(queue_lock_) = false;
+  base::TimeDelta max_precise_delay GUARDED_BY(queue_lock_) =
+      kDefaultMaxPreciseDelay;
 
   SEQUENCE_CHECKER(sequence_checker_);
 };

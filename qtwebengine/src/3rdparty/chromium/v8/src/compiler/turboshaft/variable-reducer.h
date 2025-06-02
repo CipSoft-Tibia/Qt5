@@ -49,7 +49,7 @@ namespace v8::internal::compiler::turboshaft {
 //
 // Note that the VariableAssembler does not do "old-OpIndex => Variable"
 // book-keeping: the users of the Variable should do that themselves (which
-// is what OptimizationPhase does for instance).
+// is what CopyingPhase does for instance).
 
 template <class Next>
 class VariableReducer : public Next {
@@ -97,11 +97,10 @@ class VariableReducer : public Next {
   void Bind(Block* new_block) {
     Next::Bind(new_block);
 
-    SealAndSave();
+    SealAndSaveVariableSnapshot();
 
     predecessors_.clear();
-    for (const Block* pred = new_block->LastPredecessor(); pred != nullptr;
-         pred = pred->NeighboringPredecessor()) {
+    for (const Block* pred : new_block->PredecessorsIterable()) {
       base::Optional<Snapshot> pred_snapshot =
           block_to_snapshot_mapping_[pred->index()];
       DCHECK(pred_snapshot.has_value());
@@ -116,6 +115,12 @@ class VariableReducer : public Next {
           // If any of the predecessors' value is Invalid, then we shouldn't
           // merge {var}.
           return OpIndex::Invalid();
+        } else if (__ output_graph()
+                       .Get(idx)
+                       .template Is<LoadRootRegisterOp>()) {
+          // Variables that once contain the root register never contain another
+          // value.
+          return __ LoadRootRegister();
         }
       }
       return MergeOpIndices(predecessors, var.data().rep);
@@ -137,13 +142,25 @@ class VariableReducer : public Next {
     }
   }
 
-  OpIndex REDUCE(Goto)(Block* destination) {
-    OpIndex result = Next::ReduceGoto(destination);
+  void RestoreTemporaryVariableSnapshotAfter(Block* block) {
+    DCHECK(table_.IsSealed());
+    DCHECK(block_to_snapshot_mapping_[block->index()].has_value());
+    table_.StartNewSnapshot(*block_to_snapshot_mapping_[block->index()]);
+    is_temporary_ = true;
+  }
+  void CloseTemporaryVariableSnapshot() {
+    DCHECK(is_temporary_);
+    table_.Seal();
+    is_temporary_ = false;
+  }
+
+  OpIndex REDUCE(Goto)(Block* destination, bool is_backedge) {
+    OpIndex result = Next::ReduceGoto(destination, is_backedge);
     if (!destination->IsBound()) {
       return result;
     }
     DCHECK(destination->IsLoop());
-    DCHECK(destination->HasExactlyNPredecessors(2));
+    DCHECK(destination->PredecessorCount() == 2);
     Snapshot loop_header_snapshot =
         *block_to_snapshot_mapping_
             [destination->LastPredecessor()->NeighboringPredecessor()->index()];
@@ -184,27 +201,30 @@ class VariableReducer : public Next {
   }
 
   void SetVariable(Variable var, OpIndex new_index) {
+    DCHECK(!is_temporary_);
     if (V8_UNLIKELY(__ generating_unreachable_operations())) return;
     table_.Set(var, new_index);
   }
   template <typename Rep>
   void Set(Variable var, V<Rep> value) {
+    DCHECK(!is_temporary_);
     if (V8_UNLIKELY(__ generating_unreachable_operations())) return;
     DCHECK(Rep::allows_representation(RegisterRepresentation(var.data().rep)));
     table_.Set(var, value);
   }
 
   Variable NewLoopInvariantVariable(MaybeRegisterRepresentation rep) {
+    DCHECK(!is_temporary_);
     return table_.NewKey(VariableData{rep, true}, OpIndex::Invalid());
   }
   Variable NewVariable(MaybeRegisterRepresentation rep) {
+    DCHECK(!is_temporary_);
     return table_.NewKey(VariableData{rep, false}, OpIndex::Invalid());
   }
 
- private:
-  // SealAndSave seals the current snapshot, and stores it in
+  // SealAndSaveVariableSnapshot seals the current snapshot, and stores it in
   // {block_to_snapshot_mapping_}, so that it can be used for later merging.
-  void SealAndSave() {
+  void SealAndSaveVariableSnapshot() {
     if (table_.IsSealed()) {
       DCHECK_EQ(current_block_, nullptr);
       return;
@@ -215,6 +235,7 @@ class VariableReducer : public Next {
     current_block_ = nullptr;
   }
 
+ private:
   OpIndex MergeOpIndices(base::Vector<const OpIndex> inputs,
                          MaybeRegisterRepresentation maybe_rep) {
     if (maybe_rep != MaybeRegisterRepresentation::None()) {
@@ -300,6 +321,7 @@ class VariableReducer : public Next {
   const Block* current_block_ = nullptr;
   GrowingBlockSidetable<base::Optional<Snapshot>> block_to_snapshot_mapping_{
       __ input_graph().block_count(), base::nullopt, __ phase_zone()};
+  bool is_temporary_ = false;
 
   // {predecessors_} is used during merging, but we use an instance variable for
   // it, in order to save memory and not reallocate it for each merge.

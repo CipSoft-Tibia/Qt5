@@ -35,7 +35,7 @@ QT_BEGIN_NAMESPACE
     \ingroup advanced
     \inmodule QtWidgets
 
-    \image windows-treeview.png
+    \image fusion-treeview.png
 
     A QTreeView implements a tree representation of items from a
     model. This class is used to provide standard hierarchical lists that
@@ -309,7 +309,7 @@ void QTreeView::setHeader(QHeaderView *header)
   \since 4.3
 
   This property holds the amount of time in milliseconds that the user must wait over
-  a node before that node will automatically open or close.  If the time is
+  a node before that node will automatically open.  If the time is
   set to less then 0 then it will not be activated.
 
   By default, this property has a value of -1, meaning that auto-expansion is disabled.
@@ -1278,7 +1278,7 @@ void QTreeView::timerEvent(QTimerEvent *event)
         if (state() == QAbstractItemView::DraggingState
             && d->viewport->rect().contains(pos)) {
             QModelIndex index = indexAt(pos);
-            setExpanded(index, !isExpanded(index));
+            expand(index);
         }
         d->openTimer.stop();
     }
@@ -1412,13 +1412,50 @@ QRect QTreeViewPrivate::intersectedRect(const QRect rect, const QModelIndex &top
     const auto parentIdx = topLeft.parent();
     executePostedLayout();
     QRect updateRect;
-    for (int r = topLeft.row(); r <= bottomRight.row(); ++r) {
-        if (isRowHidden(model->index(r, 0, parentIdx)))
+    int left = std::numeric_limits<int>::max();
+    int right = std::numeric_limits<int>::min();
+    for (int row = topLeft.row(); row <= bottomRight.row(); ++row) {
+        const auto idxCol0 = model->index(row, 0, parentIdx);
+        if (isRowHidden(idxCol0))
             continue;
-        for (int c = topLeft.column(); c <= bottomRight.column(); ++c) {
-            const QModelIndex idx(model->index(r, c, parentIdx));
-            updateRect |= visualRect(idx, SingleSection);
+        QRect rowRect;
+        if (left != std::numeric_limits<int>::max()) {
+            // we already know left and right boundary of the rect to update
+            rowRect = visualRect(idxCol0, FullRow);
+            if (!rowRect.intersects(rect))
+                continue;
+            rowRect = QRect(left, rowRect.top(), right, rowRect.bottom());
+        } else if (!spanningIndexes.isEmpty() && spanningIndexes.contains(idxCol0)) {
+            // isFirstColumnSpanned re-creates the child index so take a shortcut here
+            // spans the whole row, therefore ask for FullRow instead for every cell
+            rowRect = visualRect(idxCol0, FullRow);
+            if (!rowRect.intersects(rect))
+                continue;
+        } else {
+            for (int col = topLeft.column(); col <= bottomRight.column(); ++col) {
+                if (header->isSectionHidden(col))
+                    continue;
+                const QModelIndex idx(model->index(row, col, parentIdx));
+                const QRect idxRect = visualRect(idx, SingleSection);
+                if (idxRect.isNull())
+                    continue;
+                // early exit when complete row is out of viewport
+                if (idxRect.top() > rect.bottom() || idxRect.bottom() < rect.top())
+                    break;
+                if (!idxRect.intersects(rect))
+                    continue;
+                rowRect = rowRect.united(idxRect);
+                if (rowRect.left() < rect.left() && rowRect.right() > rect.right())
+                    break;
+            }
+            if (rowRect.isValid()) {
+                left = std::min(left, rowRect.left());
+                right = std::max(right, rowRect.right());
+            }
         }
+        updateRect = updateRect.united(rowRect);
+        if (updateRect.contains(rect))  // already full rect covered?
+            break;
     }
     return rect.intersected(updateRect);
 }
@@ -2741,10 +2778,10 @@ void QTreeView::expandRecursively(const QModelIndex &index, int depth)
     expand(index);
     if (depth == 0)
         return;
-    QStack<QPair<QModelIndex, int>> parents;
+    QStack<std::pair<QModelIndex, int>> parents;
     parents.push({index, 0});
     while (!parents.isEmpty()) {
-        const QPair<QModelIndex, int> elem = parents.pop();
+        const std::pair<QModelIndex, int> elem = parents.pop();
         const QModelIndex &parent = elem.first;
         const int curDepth = elem.second;
         const int rowCount = d->model->rowCount(parent);
@@ -3896,8 +3933,8 @@ QRect QTreeViewPrivate::itemDecorationRect(const QModelIndex &index) const
     return q->style()->subElementRect(QStyle::SE_TreeViewDisclosureItem, &opt, q);
 }
 
-QList<QPair<int, int>> QTreeViewPrivate::columnRanges(const QModelIndex &topIndex,
-                                                      const QModelIndex &bottomIndex) const
+QList<std::pair<int, int>> QTreeViewPrivate::columnRanges(const QModelIndex &topIndex,
+                                                          const QModelIndex &bottomIndex) const
 {
     const int topVisual = header->visualIndex(topIndex.column()),
         bottomVisual = header->visualIndex(bottomIndex.column());
@@ -3917,8 +3954,8 @@ QList<QPair<int, int>> QTreeViewPrivate::columnRanges(const QModelIndex &topInde
     //let's sort the list
     std::sort(logicalIndexes.begin(), logicalIndexes.end());
 
-    QList<QPair<int, int>> ret;
-    QPair<int, int> current;
+    QList<std::pair<int, int>> ret;
+    std::pair<int, int> current;
     current.first = -2; // -1 is not enough because -1+1 = 0
     current.second = -2;
     for(int i = 0; i < logicalIndexes.size(); ++i) {
@@ -3951,8 +3988,8 @@ void QTreeViewPrivate::select(const QModelIndex &topIndex, const QModelIndex &bo
     const int top = viewIndex(topIndex),
         bottom = viewIndex(bottomIndex);
 
-    const QList<QPair<int, int>> colRanges = columnRanges(topIndex, bottomIndex);
-    QList<QPair<int, int>>::const_iterator it;
+    const QList<std::pair<int, int>> colRanges = columnRanges(topIndex, bottomIndex);
+    QList<std::pair<int, int>>::const_iterator it;
     for (it = colRanges.begin(); it != colRanges.end(); ++it) {
         const int left = (*it).first,
             right = (*it).second;
@@ -4003,7 +4040,7 @@ void QTreeViewPrivate::select(const QModelIndex &topIndex, const QModelIndex &bo
     q->selectionModel()->select(selection, command);
 }
 
-QPair<int,int> QTreeViewPrivate::startAndEndColumns(const QRect &rect) const
+std::pair<int,int> QTreeViewPrivate::startAndEndColumns(const QRect &rect) const
 {
     Q_Q(const QTreeView);
     int start = header->visualIndexAt(rect.left());
@@ -4015,7 +4052,7 @@ QPair<int,int> QTreeViewPrivate::startAndEndColumns(const QRect &rect) const
         start = (start == -1 ? 0 : start);
         end = (end == -1 ? header->count() - 1 : end);
     }
-    return qMakePair(qMin(start, end), qMax(start, end));
+    return std::pair(qMin(start, end), qMax(start, end));
 }
 
 bool QTreeViewPrivate::hasVisibleChildren(const QModelIndex& parent) const

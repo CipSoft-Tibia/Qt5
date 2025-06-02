@@ -37,8 +37,50 @@ bool Qt::mightBeRichText(const QString& text)
     return Qt::mightBeRichText(qToStringViewIgnoringNull(text));
 }
 
+#endif // QT_GUI_REMOVED_SINCE(6, 7)
+
+#if QT_GUI_REMOVED_SINCE(6, 8)
+
+#include "qpagelayout.h"
+
+bool QPageLayout::setMargins(const QMarginsF &margins)
+{
+    return setMargins(margins, OutOfBoundsPolicy::Reject);
+}
+
+bool QPageLayout::setLeftMargin(qreal leftMargin)
+{
+    return setLeftMargin(leftMargin, OutOfBoundsPolicy::Reject);
+}
+
+bool QPageLayout::setRightMargin(qreal rightMargin)
+{
+    return setRightMargin(rightMargin, OutOfBoundsPolicy::Reject);
+}
+
+bool QPageLayout::setTopMargin(qreal topMargin)
+{
+    return setTopMargin(topMargin, OutOfBoundsPolicy::Reject);
+}
+
+bool QPageLayout::setBottomMargin(qreal bottomMargin)
+{
+    return setBottomMargin(bottomMargin, OutOfBoundsPolicy::Reject);
+}
+
+#ifndef QT_NO_CONTEXTMENU
+#include <qpa/qwindowsysteminterface.h>
+void QWindowSystemInterface::handleContextMenuEvent(QWindow *window, bool mouseTriggered,
+                                                    const QPoint &pos, const QPoint &globalPos,
+                                                    Qt::KeyboardModifiers modifiers)
+{
+    handleContextMenuEvent<QWindowSystemInterface::DefaultDelivery>(
+        window, mouseTriggered, pos, globalPos, modifiers);
+}
+#endif // QT_NO_CONTEXTMENU
+
 // #include "qotherheader.h"
 // // implement removed functions from qotherheader.h
 // order sections alphabetically
 
-#endif // QT_GUI_REMOVED_SINCE(6, 7)
+#endif // QT_GUI_REMOVED_SINCE(6, 8)

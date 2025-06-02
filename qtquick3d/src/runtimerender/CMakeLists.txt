@@ -45,7 +45,6 @@ qt_internal_add_module(Quick3DRuntimeRender
         qssgrenderdefaultmaterialshadergenerator.cpp qssgrenderdefaultmaterialshadergenerator_p.h
         qssgrendererutil_p.h
         qssgrenderimagetexture_p.h
-        qssgrendermaterialshadergenerator_p.h
         qssgrendermesh_p.h
         qssgrenderray.cpp qssgrenderray_p.h
         qssgrendershadercache.cpp qssgrendershadercache_p.h
@@ -75,6 +74,7 @@ qt_internal_add_module(Quick3DRuntimeRender
         rendererimpl/qssgvertexpipelineimpl.cpp rendererimpl/qssgvertexpipelineimpl_p.h
         rendererimpl/qssgrenderpass_p.h rendererimpl/qssgrenderpass.cpp
         rendererimpl/qssgrenderhelpers_p.h rendererimpl/qssgrenderhelpers.cpp
+        rendererimpl/qssgshadowmaphelpers_p.h rendererimpl/qssgshadowmaphelpers.cpp
         resourcemanager/qssgrenderbuffermanager.cpp resourcemanager/qssgrenderbuffermanager_p.h
         resourcemanager/qssgrenderloadedtexture.cpp resourcemanager/qssgrenderloadedtexture_p.h
         resourcemanager/qssgrendershaderlibrarymanager.cpp resourcemanager/qssgrendershaderlibrarymanager_p.h
@@ -99,8 +99,6 @@ qt_internal_add_module(Quick3DRuntimeRender
     PRIVATE_MODULE_INTERFACE
         Qt::Quick3DUtilsPrivate
         Qt::QuickPrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
     SSG_HEADER_FILTERS
         "(^|/)qssg.*[^_][^p]\\.h$"
 )
@@ -113,6 +111,10 @@ qt_internal_extend_target(Quick3DRuntimeRender CONDITION TARGET Qt::ShaderTools
     DEFINES
         QT_QUICK3D_HAS_RUNTIME_SHADERS
 )
+
+if(QT_QUICK3D_HAS_EMBREE)
+    find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS Concurrent)
+endif()
 
 qt_internal_extend_target(Quick3DRuntimeRender CONDITION QT_QUICK3D_HAS_EMBREE
     PUBLIC_LIBRARIES
@@ -148,12 +150,12 @@ set(res_resource_files
     "res/effectlib/ssao.glsllib"
     "res/effectlib/tonemapping.glsllib"
     "res/effectlib/transmission.glsllib"
-    "res/effectlib/viewProperties.glsllib"
     "res/effectlib/morphanim.glsllib"
     "res/effectlib/morphanim_custom.glsllib"
     "res/effectlib/parallaxMapping.glsllib"
     "res/effectlib/particles.glsllib"
     "res/effectlib/fog.glsllib"
+    "res/effectlib/texturesample.glsllib"
     "res/primitives/Cone.mesh"
     "res/primitives/Cube.mesh"
     "res/primitives/Cylinder.mesh"
@@ -186,6 +188,9 @@ qt_internal_extend_target(Quick3DRuntimeRender
         ../3rdparty/embree/include/embree3/rtcore_quaternion.h
         ../3rdparty/embree/include/embree3/rtcore_ray.h
         ../3rdparty/embree/include/embree3/rtcore_scene.h
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../3rdparty/tinyexr
+        ../3rdparty/embree
 )
 
 qt_internal_extend_target(Quick3DRuntimeRender CONDITION QT_FEATURE_system_zlib
@@ -211,15 +216,10 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     PREFIX
         "/"
     FILES
-        res/rhishaders/orthoshadowblurx.vert
-        res/rhishaders/orthoshadowblurx.frag
-        res/rhishaders/orthoshadowblury.vert
-        res/rhishaders/orthoshadowblury.frag
-        res/rhishaders/texturedquad.vert
-        res/rhishaders/texturedquad.frag
         res/rhishaders/environmentmap.vert
         res/rhishaders/environmentmap.frag
         res/rhishaders/debugobject.vert
@@ -229,6 +229,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_pertarget"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     PERTARGETCOMPILE
     PREFIX
         "/"
@@ -240,23 +241,11 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_pertarget"
         res/rhishaders/simplequad.vert
         res/rhishaders/simplequad.frag
 )
-qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_es3"
-    SILENT
-    PRECOMPILE
-    OPTIMIZED
-    GLSL "300es,120,330"
-    PREFIX
-        "/"
-    FILES
-        res/rhishaders/cubeshadowblurx.vert
-        res/rhishaders/cubeshadowblurx.frag
-        res/rhishaders/cubeshadowblury.vert
-        res/rhishaders/cubeshadowblury.frag
-)
 qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_es3_pertarget"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     PERTARGETCOMPILE
     GLSL "300es,120,150"
     PREFIX
@@ -269,6 +258,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_es3_gl3"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -290,6 +280,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_lightprobe_rgbe"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -306,6 +297,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_hdr_none"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -320,6 +312,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_rgbe_none"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -332,10 +325,46 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_rgbe_none"
     DEFINES
         QSSG_ENABLE_RGBE_LIGHT_PROBE=1
 )
+qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_hdr_custom"
+    SILENT
+    PRECOMPILE
+    OPTIMIZED
+    MULTIVIEW
+    GLSL "300es,150"
+    PREFIX
+        "/"
+    FILES
+        res/rhishaders/skybox.vert
+        res/rhishaders/skybox.frag
+    OUTPUTS
+        res/rhishaders/skybox_hdr_custom.vert.qsb
+        res/rhishaders/skybox_hdr_custom.frag.qsb
+    DEFINES
+        QSSG_FORCE_IBL_EXPOSURE=1
+)
+qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_rgbe_custom"
+    SILENT
+    PRECOMPILE
+    OPTIMIZED
+    MULTIVIEW
+    GLSL "300es,150"
+    PREFIX
+        "/"
+    FILES
+        res/rhishaders/skybox.vert
+        res/rhishaders/skybox.frag
+    OUTPUTS
+        res/rhishaders/skybox_rgbe_custom.vert.qsb
+        res/rhishaders/skybox_rgbe_custom.frag.qsb
+    DEFINES
+        QSSG_ENABLE_RGBE_LIGHT_PROBE=1
+        QSSG_FORCE_IBL_EXPOSURE=1
+)
 qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_hdr_linear"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -352,6 +381,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_rgbe_linear"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -369,6 +399,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_hdr_aces"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -385,6 +416,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_rgbe_aces"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -402,6 +434,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_hdr_hejldawson"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -418,6 +451,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_rgbe_hejldawson
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -435,6 +469,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_hdr_filmic"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -451,6 +486,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_skybox_rgbe_filmic"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -469,6 +505,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_particles_nolight"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -483,6 +520,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_particles_nolight_mapp
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -499,6 +537,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_particles_nolight_anim
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -517,6 +556,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_particles_vlight"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -533,6 +573,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_particles_vlight_mappe
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -550,6 +591,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_particles_vlight_anima
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -568,6 +610,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_lightmapuvraster_default"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,120,330"
     PREFIX
         "/"
@@ -582,6 +625,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_lightmapuvraster_uv"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,120,330"
     PREFIX
         "/"
@@ -598,6 +642,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_lightmapuvraster_uv_tangent"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,120,330"
     PREFIX
         "/"
@@ -614,6 +659,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_line_particles"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -628,6 +674,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_line_particles_mapped"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -644,6 +691,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_line_particles_animate
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -661,6 +709,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_line_particles_vlight"
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -677,6 +726,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_line_particles_vlight_
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"
@@ -694,6 +744,7 @@ qt_internal_add_shaders(Quick3DRuntimeRender "res_shaders_line_particles_vlight_
     SILENT
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     GLSL "300es,150"
     PREFIX
         "/"

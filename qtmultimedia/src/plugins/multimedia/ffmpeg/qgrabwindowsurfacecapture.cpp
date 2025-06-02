@@ -8,6 +8,7 @@
 
 #include "private/qimagevideobuffer_p.h"
 #include "private/qcapturablewindow_p.h"
+#include "private/qvideoframe_p.h"
 
 #include "qscreen.h"
 #include "qmutex.h"
@@ -20,6 +21,8 @@
 #include <QtCore/qloggingcategory.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 namespace {
 
@@ -118,13 +121,15 @@ private:
     QVideoFrame grabFrame() override
     {
         setScreenRemovingLocked(true);
-        auto screenGuard = qScopeGuard(std::bind(&Grabber::setScreenRemovingLocked, this, false));
+        auto screenGuard = qScopeGuard([this] {
+            setScreenRemovingLocked(false);
+        });
 
         WId wid = m_window ? m_window->winId() : 0;
         QScreen *screen = m_window ? m_window->screen() : m_screen ? m_screen.data() : nullptr;
 
         if (!screen) {
-            updateError(QPlatformSurfaceCapture::CaptureFailed, "Screen not found");
+            updateError(QPlatformSurfaceCapture::CaptureFailed, u"Screen not found"_s);
             return {};
         }
 
@@ -136,16 +141,16 @@ private:
 
         QVideoFrameFormat format(img.size(),
                                  QVideoFrameFormat::pixelFormatFromImageFormat(img.format()));
-        format.setFrameRate(screen->refreshRate());
+        format.setStreamFrameRate(screen->refreshRate());
         updateFormat(format);
 
         if (!format.isValid()) {
             updateError(QPlatformSurfaceCapture::CaptureFailed,
-                        "Failed to grab the screen content");
+                        u"Failed to grab the screen content"_s);
             return {};
         }
 
-        return QVideoFrame(buffer.release(), format);
+        return QVideoFramePrivate::createFrame(std::move(buffer), std::move(format));
     }
 
 private:
@@ -206,14 +211,14 @@ void QGrabWindowSurfaceCapture::activate(WindowSource window)
     if (auto wnd = WindowUPtr(QWindow::fromWinId(wid))) {
         if (!wnd->screen()) {
             updateError(InternalError,
-                        "Window " + QString::number(wid) + " doesn't belong to any screen");
+                        u"Window " + QString::number(wid) + u" doesn't belong to any screen");
         } else {
             m_grabber = std::make_unique<Grabber>(*this, std::move(wnd));
             m_grabber->start();
         }
     } else {
         updateError(NotFound,
-                    "Window " + QString::number(wid) + "doesn't exist or permissions denied");
+                    u"Window " + QString::number(wid) + u"doesn't exist or permissions denied");
     }
 }
 

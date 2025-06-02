@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium Authors. All rights reserved.
+// Copyright 2022 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -115,6 +115,7 @@ namespace autofill {
 //   ------------------------------------------------------+-------------------
 void AssignSections(base::span<const std::unique_ptr<AutofillField>> fields);
 
+#if !BUILDFLAG(IS_QTWEBENGINE)
 // Logs UMA and UKM metrics about the `fields`' sections.
 // UKM metrics are only logged if `form_interactions_ukm_logger` is available.
 void LogSectioningMetrics(
@@ -127,6 +128,7 @@ void LogSectioningMetrics(
 // sectioning algorithms produce different results.
 uint32_t ComputeSectioningSignature(
     base::span<const std::unique_ptr<AutofillField>> fields);
+#endif
 
 }  // namespace autofill
 

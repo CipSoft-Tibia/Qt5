@@ -21,7 +21,7 @@ namespace Qt3DInput {
 /*!
     \qmltype Axis
     \inqmlmodule Qt3D.Input
-    \instantiates Qt3DInput::QAxis
+    \nativetype Qt3DInput::QAxis
     \brief QML frontend for the Qt3DInput::QAxis C++ class.
 
     Links a set of AbstractAxisInputs that trigger the same event.
@@ -82,7 +82,7 @@ void QAxis::addInput(QAbstractAxisInput *input)
 }
 
 /*!
-    \qmlproperty QVariantList Qt3D.Input::Axis::buttons
+    \qmlproperty list<var> Qt3D.Input::Axis::buttons
 
     The Buttons that can trigger this Action
 */
@@ -120,7 +120,7 @@ QList<QAbstractAxisInput *> QAxis::inputs() const
 }
 
 /*!
-  \property QAxis::value
+  \property Qt3DInput::QAxis::value
 
   The value of the axis.
  */

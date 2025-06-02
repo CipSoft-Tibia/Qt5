@@ -41,13 +41,68 @@ NinjaTargetWriter::NinjaTargetWriter(const Target* target, std::ostream& out)
                    settings_->build_settings()->root_path_utf8(),
                    ESCAPE_NINJA) {}
 
+void NinjaTargetWriter::SetResolvedTargetData(ResolvedTargetData* resolved) {
+  if (resolved) {
+    resolved_owned_.reset();
+    resolved_ptr_ = resolved;
+  }
+}
+
+void NinjaTargetWriter::SetNinjaOutputs(
+    std::vector<OutputFile>* ninja_outputs) {
+  ninja_outputs_ = ninja_outputs;
+}
+
+ResolvedTargetData* NinjaTargetWriter::GetResolvedTargetData() {
+  return const_cast<ResolvedTargetData*>(&resolved());
+}
+
+const ResolvedTargetData& NinjaTargetWriter::resolved() const {
+  if (!resolved_ptr_) {
+    resolved_owned_ = std::make_unique<ResolvedTargetData>();
+    resolved_ptr_ = resolved_owned_.get();
+  }
+  return *resolved_ptr_;
+}
+
 NinjaTargetWriter::~NinjaTargetWriter() = default;
 
+void NinjaTargetWriter::WriteOutput(const OutputFile& output) const {
+  path_output_.WriteFile(out_, output);
+  if (ninja_outputs_)
+    ninja_outputs_->push_back(output);
+}
+
+void NinjaTargetWriter::WriteOutput(OutputFile&& output) const {
+  path_output_.WriteFile(out_, output);
+  if (ninja_outputs_)
+    ninja_outputs_->push_back(std::move(output));
+}
+
+void NinjaTargetWriter::WriteOutputs(
+    const std::vector<OutputFile>& outputs) const {
+  path_output_.WriteFiles(out_, outputs);
+  if (ninja_outputs_)
+    ninja_outputs_->insert(ninja_outputs_->end(), outputs.begin(),
+                           outputs.end());
+}
+
+void NinjaTargetWriter::WriteOutputs(std::vector<OutputFile>&& outputs) const {
+  path_output_.WriteFiles(out_, outputs);
+  if (ninja_outputs_) {
+    for (auto& output : outputs)
+      ninja_outputs_->push_back(std::move(output));
+  }
+}
+
 // static
-std::string NinjaTargetWriter::RunAndWriteFile(const Target* target) {
+std::string NinjaTargetWriter::RunAndWriteFile(
+    const Target* target,
+    ResolvedTargetData* resolved,
+    std::vector<OutputFile>* ninja_outputs) {
   const Settings* settings = target->settings();
 
-  ScopedTrace trace(TraceItem::TRACE_FILE_WRITE,
+  ScopedTrace trace(TraceItem::TRACE_FILE_WRITE_NINJA,
                     target->label().GetUserVisibleName(false));
   trace.SetToolchain(settings->toolchain_label());
 
@@ -77,26 +132,40 @@ std::string NinjaTargetWriter::RunAndWriteFile(const Target* target) {
   bool needs_file_write = false;
   if (target->output_type() == Target::BUNDLE_DATA) {
     NinjaBundleDataTargetWriter writer(target, rules);
+    writer.SetResolvedTargetData(resolved);
+    writer.SetNinjaOutputs(ninja_outputs);
     writer.Run();
   } else if (target->output_type() == Target::CREATE_BUNDLE) {
     NinjaCreateBundleTargetWriter writer(target, rules);
+    writer.SetResolvedTargetData(resolved);
+    writer.SetNinjaOutputs(ninja_outputs);
     writer.Run();
   } else if (target->output_type() == Target::COPY_FILES) {
     NinjaCopyTargetWriter writer(target, rules);
+    writer.SetResolvedTargetData(resolved);
+    writer.SetNinjaOutputs(ninja_outputs);
     writer.Run();
   } else if (target->output_type() == Target::ACTION ||
              target->output_type() == Target::ACTION_FOREACH) {
     NinjaActionTargetWriter writer(target, rules);
+    writer.SetResolvedTargetData(resolved);
+    writer.SetNinjaOutputs(ninja_outputs);
     writer.Run();
   } else if (target->output_type() == Target::GROUP) {
     NinjaGroupTargetWriter writer(target, rules);
+    writer.SetResolvedTargetData(resolved);
+    writer.SetNinjaOutputs(ninja_outputs);
     writer.Run();
   } else if (target->output_type() == Target::GENERATED_FILE) {
     NinjaGeneratedFileTargetWriter writer(target, rules);
+    writer.SetResolvedTargetData(resolved);
+    writer.SetNinjaOutputs(ninja_outputs);
     writer.Run();
   } else if (target->IsBinary()) {
     needs_file_write = true;
     NinjaBinaryTargetWriter writer(target, rules);
+    writer.SetResolvedTargetData(resolved);
+    writer.SetNinjaOutputs(ninja_outputs);
     writer.Run();
   } else {
     CHECK(0) << "Output type of target not handled.";
@@ -320,7 +389,7 @@ void NinjaTargetWriter::WriteCCompilerVars(const SubstitutionBits& bits,
       // Uniquify the list of swiftmodule dirs (in case multiple swiftmodules
       // are generated in the same directory).
       UniqueVector<SourceDir> swiftmodule_dirs;
-      for (const Target* dep : target_->swift_values().modules())
+      for (const Target* dep : resolved().GetSwiftModuleDependencies(target_))
         swiftmodule_dirs.push_back(dep->swift_values().module_output_dir());
 
       if (indent)
@@ -408,7 +477,7 @@ std::vector<OutputFile> NinjaTargetWriter::WriteInputDepsStampAndGetDep(
 
   // Hard dependencies that are direct or indirect dependencies.
   // These are large (up to 100s), hence why we check other
-  const TargetSet& hard_deps(target_->recursive_hard_deps());
+  const TargetSet& hard_deps = resolved().GetHardDeps(target_);
   for (const Target* target : hard_deps) {
     // BUNDLE_DATA should normally be treated as a data-only dependency
     // (see Target::IsDataOnly()). Only the CREATE_BUNDLE target, that actually
@@ -482,7 +551,8 @@ std::vector<OutputFile> NinjaTargetWriter::WriteInputDepsStampAndGetDep(
   input_stamp_file.value().append(".inputdeps.stamp");
 
   out_ << "build ";
-  path_output_.WriteFile(out_, input_stamp_file);
+  WriteOutput(input_stamp_file);
+
   out_ << ": " << GetNinjaRulePrefixForToolchain(settings_)
        << GeneralTool::kGeneralToolStamp;
   path_output_.WriteFiles(out_, outs);
@@ -498,13 +568,12 @@ void NinjaTargetWriter::WriteStampForTarget(
 
   // First validate that the target's dependency is a stamp file. Otherwise,
   // we shouldn't have gotten here!
-  CHECK(base::EndsWith(stamp_file.value(), ".stamp",
-                       base::CompareCase::INSENSITIVE_ASCII))
+  CHECK(base::EndsWithCaseInsensitiveASCII(stamp_file.value(), ".stamp"))
       << "Output should end in \".stamp\" for stamp file output. Instead got: "
       << "\"" << stamp_file.value() << "\"";
 
   out_ << "build ";
-  path_output_.WriteFile(out_, stamp_file);
+  WriteOutput(std::move(stamp_file));
 
   out_ << ": " << GetNinjaRulePrefixForToolchain(settings_)
        << GeneralTool::kGeneralToolStamp;

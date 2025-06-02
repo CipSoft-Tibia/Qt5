@@ -27,6 +27,8 @@
 #include "components/media_device_salt/media_device_salt_service.h"
 #include "components/permissions/permission_request_manager.h"
 #include "components/permissions/test/permission_request_observer.h"
+#include "components/prefs/pref_service.h"
+#include "components/privacy_sandbox/tracking_protection_prefs.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browsing_data_remover.h"
 #include "content/public/common/content_features.h"
@@ -328,6 +330,8 @@ IN_PROC_BROWSER_TEST_P(WebRtcMediaDevicesInteractiveUITest,
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), url));
   CookieSettingsFactory::GetForProfile(browser()->profile())
       ->SetDefaultCookieSetting(CONTENT_SETTING_BLOCK);
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kBlockAll3pcToggleEnabled,
+                                               true);
   content::WebContents* tab1 =
       browser()->tab_strip_model()->GetActiveWebContents();
 
@@ -357,6 +361,8 @@ IN_PROC_BROWSER_TEST_P(WebRtcMediaDevicesInteractiveUITest,
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), url));
   CookieSettingsFactory::GetForProfile(browser()->profile())
       ->SetDefaultCookieSetting(CONTENT_SETTING_BLOCK);
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kBlockAll3pcToggleEnabled,
+                                               true);
   content::WebContents* tab =
       browser()->tab_strip_model()->GetActiveWebContents();
 
@@ -447,6 +453,30 @@ IN_PROC_BROWSER_TEST_P(WebRtcMediaDevicesInteractiveUITest,
   if (!IsMediaDeviceIdRandomSaltsPerStorageKeyEnabled()) {
     return;
   }
+  media_device_salt::MediaDeviceSaltService* salt_service =
+      MediaDeviceSaltServiceFactory::GetForBrowserContext(browser()->profile());
+  base::test::TestFuture<std::vector<blink::StorageKey>> keys_future;
+  salt_service->GetAllStorageKeys(keys_future.GetCallback());
+  EXPECT_TRUE(keys_future.Get().empty());
+}
+
+IN_PROC_BROWSER_TEST_P(WebRtcMediaDevicesInteractiveUITest,
+                       NoPersistentSaltStoredWithCookiesDisabled) {
+  if (!IsMediaDeviceIdRandomSaltsPerStorageKeyEnabled()) {
+    return;
+  }
+  ASSERT_TRUE(embedded_test_server()->Start());
+  GURL url(embedded_test_server()->GetURL(kMainWebrtcTestHtmlPage));
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), url));
+  CookieSettingsFactory::GetForProfile(browser()->profile())
+      ->SetDefaultCookieSetting(CONTENT_SETTING_BLOCK);
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kBlockAll3pcToggleEnabled,
+                                               true);
+  content::WebContents* tab =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  std::vector<MediaDeviceInfo> devices;
+  EnumerateDevices(tab, &devices);
+
   media_device_salt::MediaDeviceSaltService* salt_service =
       MediaDeviceSaltServiceFactory::GetForBrowserContext(browser()->profile());
   base::test::TestFuture<std::vector<blink::StorageKey>> keys_future;

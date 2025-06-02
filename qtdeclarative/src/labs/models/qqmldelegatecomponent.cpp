@@ -8,7 +8,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype DelegateChoice
-//!    \instantiates QQmlDelegateChoice
+//!    \nativetype QQmlDelegateChoice
     \inqmlmodule Qt.labs.qmlmodels
     \brief Encapsulates a delegate and when to use it.
 
@@ -137,7 +137,7 @@ bool QQmlDelegateChoice::match(int row, int column, const QVariant &value) const
 
 /*!
     \qmltype DelegateChooser
-//!    \instantiates QQmlDelegateChooser
+//!    \nativetype QQmlDelegateChooser
     \inqmlmodule Qt.labs.qmlmodels
     \brief Allows a view to use different delegates for different types of items in the model.
 
@@ -237,7 +237,7 @@ void QQmlDelegateChooser::choices_append(QQmlListProperty<QQmlDelegateChoice> *p
     QQmlDelegateChooser *q = static_cast<QQmlDelegateChooser *>(prop->object);
     q->m_choices.append(choice);
     connect(choice, &QQmlDelegateChoice::changed, q, &QQmlAbstractDelegateComponent::delegateChanged);
-    q->delegateChanged();
+    emit q->delegateChanged();
 }
 
 qsizetype QQmlDelegateChooser::choices_count(QQmlListProperty<QQmlDelegateChoice> *prop)
@@ -258,7 +258,7 @@ void QQmlDelegateChooser::choices_clear(QQmlListProperty<QQmlDelegateChoice> *pr
     for (QQmlDelegateChoice *choice : q->m_choices)
         disconnect(choice, &QQmlDelegateChoice::changed, q, &QQmlAbstractDelegateComponent::delegateChanged);
     q->m_choices.clear();
-    q->delegateChanged();
+    emit q->delegateChanged();
 }
 
 void QQmlDelegateChooser::choices_replace(QQmlListProperty<QQmlDelegateChoice> *prop,
@@ -270,7 +270,7 @@ void QQmlDelegateChooser::choices_replace(QQmlListProperty<QQmlDelegateChoice> *
     q->m_choices[index] = choice;
     connect(choice, &QQmlDelegateChoice::changed, q,
             &QQmlAbstractDelegateComponent::delegateChanged);
-    q->delegateChanged();
+    emit q->delegateChanged();
 }
 
 void QQmlDelegateChooser::choices_removeLast(QQmlListProperty<QQmlDelegateChoice> *prop)
@@ -278,7 +278,7 @@ void QQmlDelegateChooser::choices_removeLast(QQmlListProperty<QQmlDelegateChoice
     QQmlDelegateChooser *q = static_cast<QQmlDelegateChooser *>(prop->object);
     disconnect(q->m_choices.takeLast(), &QQmlDelegateChoice::changed,
                q, &QQmlAbstractDelegateComponent::delegateChanged);
-    q->delegateChanged();
+    emit q->delegateChanged();
 }
 
 QQmlComponent *QQmlDelegateChooser::delegate(QQmlAdaptorModel *adaptorModel, int row, int column) const

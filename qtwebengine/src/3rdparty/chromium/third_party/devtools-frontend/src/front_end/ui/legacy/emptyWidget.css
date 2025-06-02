@@ -12,7 +12,7 @@
 }
 
 .empty-view {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   padding: 30px;
   text-align: center;
   min-width: 70px;
@@ -21,6 +21,12 @@
 .empty-view-scroller {
   justify-content: center;
   overflow: auto;
+}
+
+.empty-view-scroller .warning {
+  position: absolute;
+  top: 0;
+  width: 100%;
 }
 
 .empty-view p {

@@ -18,9 +18,11 @@ import m from 'mithril';
 import {Disposable} from '../base/disposable';
 import {SimpleResizeObserver} from '../base/resize_observer';
 import {undoCommonChatAppReplacements} from '../base/string_utils';
-import {EngineProxy} from '../common/engine';
 import {QueryResponse, runQuery} from '../common/queries';
 import {raf} from '../core/raf_scheduler';
+import {EngineProxy} from '../trace_processor/engine';
+import {Callout} from '../widgets/callout';
+import {Editor} from '../widgets/editor';
 
 import {addTab} from './bottom_tab';
 import {globals} from './globals';
@@ -28,19 +30,19 @@ import {createPage} from './pages';
 import {QueryHistoryComponent, queryHistoryStorage} from './query_history';
 import {QueryResultTab} from './query_result_tab';
 import {QueryTable} from './query_table';
-import {Callout} from './widgets/callout';
-import {Editor} from './widgets/editor';
 
 interface QueryPageState {
   enteredText: string;
   executedQuery?: string;
   queryResult?: QueryResponse;
   heightPx: string;
+  generation: number;
 }
 
 const state: QueryPageState = {
   enteredText: '',
   heightPx: '100px',
+  generation: 0,
 };
 
 function runManualQuery(query: string) {
@@ -99,6 +101,7 @@ class QueryInput implements m.ClassComponent {
 
   view() {
     return m(Editor, {
+      generation: state.generation,
       initialText: state.enteredText,
 
       onExecute: (text: string) => {
@@ -112,6 +115,7 @@ class QueryInput implements m.ClassComponent {
       onUpdate: (text: string) => {
         state.enteredText = text;
       },
+
     });
   }
 }
@@ -134,6 +138,11 @@ export const QueryPage = createPage({
         }),
         m(QueryHistoryComponent, {
           runQuery: runManualQuery,
+          setQuery: (q: string) => {
+            state.enteredText = q;
+            state.generation++;
+            raf.scheduleFullRedraw();
+          },
         }));
   },
 });

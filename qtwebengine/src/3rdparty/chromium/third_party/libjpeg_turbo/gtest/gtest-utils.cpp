@@ -40,7 +40,7 @@ std::string GetTargetDirectory() {
 #endif
 
 void GetTestFilePath(base::FilePath* path, const std::string filename) {
-  ASSERT_TRUE(base::PathService::Get(base::DIR_SOURCE_ROOT, path));
+  ASSERT_TRUE(base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, path));
   *path = path->AppendASCII("third_party");
   *path = path->AppendASCII("libjpeg_turbo");
   *path = path->AppendASCII("testimages");

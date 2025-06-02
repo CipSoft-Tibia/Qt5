@@ -67,8 +67,11 @@ public:
 
     GrInternalSurfaceFlags flags() const { return fSurfaceFlags; }
 
-    static size_t ComputeSize(const GrBackendFormat&, SkISize dimensions, int colorSamplesPerPixel,
-                              GrMipmapped, bool binSize = false);
+    static size_t ComputeSize(const GrBackendFormat&,
+                              SkISize dimensions,
+                              int colorSamplesPerPixel,
+                              skgpu::Mipmapped,
+                              bool binSize = false);
 
     /**
      * The pixel values of this surface cannot be modified (e.g. doesn't support write pixels or
@@ -156,6 +159,8 @@ private:
 
     // Unmanaged backends (e.g. Vulkan) may want to specially handle the release proc in order to
     // ensure it isn't called until GPU work related to the resource is completed.
+
+    // NOLINTNEXTLINE(performance-unnecessary-value-param)
     virtual void onSetRelease(sk_sp<RefCntedReleaseProc>) {}
 
     void invokeReleaseProc() {

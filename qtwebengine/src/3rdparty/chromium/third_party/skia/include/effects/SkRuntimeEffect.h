@@ -59,7 +59,7 @@ class Program;
 class SK_API SkRuntimeEffect : public SkRefCnt {
 public:
     // Reflected description of a uniform variable in the effect's SkSL
-    struct Uniform {
+    struct SK_API Uniform {
         enum class Type {
             kFloat,
             kFloat2,
@@ -180,7 +180,7 @@ public:
     }
 
     // Object that allows passing a SkShader, SkColorFilter or SkBlender as a child
-    class ChildPtr {
+    class SK_API ChildPtr {
     public:
         ChildPtr() = default;
         ChildPtr(sk_sp<SkShader> s) : fChild(std::move(s)) {}
@@ -305,11 +305,7 @@ private:
 
     const SkSL::RP::Program* getRPProgram(SkSL::DebugTracePriv* debugTrace) const;
 
-#if defined(SK_GANESH)
-    friend class GrSkSLFP;             // fBaseProgram, fSampleUsages
-    friend class GrGLSLSkSLFP;         //
-#endif
-
+    friend class GrSkSLFP;              // usesColorTransform
     friend class SkRuntimeShader;       // fBaseProgram, fMain, fSampleUsages, getRPProgram()
     friend class SkRuntimeBlender;      //
     friend class SkRuntimeColorFilter;  //

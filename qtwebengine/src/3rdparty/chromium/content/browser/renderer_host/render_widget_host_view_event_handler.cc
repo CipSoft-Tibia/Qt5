@@ -19,9 +19,9 @@
 #include "content/browser/renderer_host/render_widget_host_view_base.h"
 #include "content/browser/renderer_host/text_input_manager.h"
 #include "content/common/content_switches_internal.h"
+#include "content/common/features.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host.h"
-#include "content/public/common/content_features.h"
 #include "ui/aura/client/cursor_client.h"
 #include "ui/aura/client/focus_client.h"
 #include "ui/aura/scoped_keyboard_hook.h"
@@ -217,7 +217,7 @@ void RenderWidgetHostViewEventHandler::UnlockMouse() {
 }
 
 bool RenderWidgetHostViewEventHandler::LockKeyboard(
-    absl::optional<base::flat_set<ui::DomCode>> codes) {
+    std::optional<base::flat_set<ui::DomCode>> codes) {
   aura::Window* root_window = window_->GetRootWindow();
   if (!root_window)
     return false;
@@ -410,7 +410,7 @@ void RenderWidgetHostViewEventHandler::OnScrollEvent(ui::ScrollEvent* event) {
     mouse_wheel_phase_handler_.AddPhaseIfNeededAndScheduleEndEvent(
         mouse_wheel_event, should_route_event);
 
-    absl::optional<blink::WebGestureEvent> maybe_synthetic_fling_cancel;
+    std::optional<blink::WebGestureEvent> maybe_synthetic_fling_cancel;
     if (mouse_wheel_event.phase == blink::WebMouseWheelEvent::kPhaseBegan) {
       maybe_synthetic_fling_cancel =
           ui::MakeWebGestureEventFlingCancel(mouse_wheel_event);
@@ -536,6 +536,8 @@ void RenderWidgetHostViewEventHandler::OnGestureEvent(ui::GestureEvent* event) {
     blink::WebGestureEvent fling_cancel = gesture;
     fling_cancel.SetType(blink::WebInputEvent::Type::kGestureFlingCancel);
     fling_cancel.SetSourceDevice(blink::WebGestureDevice::kTouchscreen);
+    fling_cancel.data.fling_cancel.prevent_boosting = false;
+    fling_cancel.data.fling_cancel.target_viewport = false;
     if (ShouldRouteEvents()) {
       host_->delegate()->GetInputEventRouter()->RouteGestureEvent(
           host_view_, &fling_cancel,

@@ -3,6 +3,11 @@
 
 #include "qbytearraymatcher.h"
 
+#include <qtconfiginclude.h>
+#ifndef QT_BOOTSTRAPPED
+#  include <private/qtcore-config_p.h>
+#endif
+
 #include <limits.h>
 
 QT_BEGIN_NAMESPACE
@@ -212,26 +217,10 @@ qsizetype QByteArrayMatcher::indexIn(QByteArrayView data, qsizetype from) const
     \sa setPattern()
 */
 
-
-static qsizetype findChar(const char *str, qsizetype len, char ch, qsizetype from)
-{
-    const uchar *s = (const uchar *)str;
-    uchar c = (uchar)ch;
-    if (from < 0)
-        from = qMax(from + len, qsizetype(0));
-    if (from < len) {
-        const uchar *n = s + from - 1;
-        const uchar *e = s + len;
-        while (++n != e)
-            if (*n == c)
-                return  n - s;
-    }
-    return -1;
-}
-
 /*!
     \internal
  */
+Q_NEVER_INLINE
 static qsizetype qFindByteArrayBoyerMoore(
     const char *haystack, qsizetype haystackLen, qsizetype haystackOffset,
     const char *needle, qsizetype needleLen)
@@ -244,20 +233,21 @@ static qsizetype qFindByteArrayBoyerMoore(
                    (const uchar *)needle, needleLen, skiptable);
 }
 
-#define REHASH(a) \
-    if (sl_minus_1 < sizeof(std::size_t) * CHAR_BIT) \
-        hashHaystack -= std::size_t(a) << sl_minus_1; \
-    hashHaystack <<= 1
-
 /*!
     \internal
  */
-qsizetype qFindByteArray(
-    const char *haystack0, qsizetype haystackLen, qsizetype from,
-    const char *needle, qsizetype needleLen)
+static qsizetype qFindByteArray(const char *haystack0, qsizetype l, qsizetype from,
+                                const char *needle, qsizetype sl);
+qsizetype QtPrivate::findByteArray(QByteArrayView haystack, qsizetype from, QByteArrayView needle) noexcept
 {
-    const auto l = haystackLen;
-    const auto sl = needleLen;
+    const auto haystack0 = haystack.data();
+    const auto l = haystack.size();
+    const auto sl = needle.size();
+#if !QT_CONFIG(memmem)
+    if (sl == 1)
+        return findByteArray(haystack, from, needle.front());
+#endif
+
     if (from < 0)
         from += l;
     if (std::size_t(sl + from) > std::size_t(l))
@@ -267,8 +257,10 @@ qsizetype qFindByteArray(
     if (!l)
         return -1;
 
-    if (sl == 1)
-        return findChar(haystack0, haystackLen, needle[0], from);
+#if QT_CONFIG(memmem)
+    auto where = memmem(haystack0 + from, l - from, needle.data(), sl);
+    return where ? static_cast<const char *>(where) - haystack0 : -1;
+#endif
 
     /*
       We use the Boyer-Moore algorithm in cases where the overhead
@@ -276,18 +268,22 @@ qsizetype qFindByteArray(
       hash function.
     */
     if (l > 500 && sl > 5)
-        return qFindByteArrayBoyerMoore(haystack0, haystackLen, from,
-                                        needle, needleLen);
+        return qFindByteArrayBoyerMoore(haystack0, l, from, needle.data(), sl);
+    return qFindByteArray(haystack0, l, from, needle.data(), sl);
+}
 
+qsizetype qFindByteArray(const char *haystack0, qsizetype l, qsizetype from,
+                         const char *needle, qsizetype sl)
+{
     /*
       We use some hashing for efficiency's sake. Instead of
       comparing strings, we compare the hash value of str with that
-      of a part of this QString. Only if that matches, we call memcmp().
+      of a part of this QByteArray. Only if that matches, we call memcmp().
     */
     const char *haystack = haystack0 + from;
     const char *end = haystack0 + (l - sl);
-    const auto sl_minus_1 = std::size_t(sl - 1);
-    std::size_t hashNeedle = 0, hashHaystack = 0;
+    const qregisteruint sl_minus_1 = sl - 1;
+    qregisteruint hashNeedle = 0, hashHaystack = 0;
     qsizetype idx;
     for (idx = 0; idx < sl; ++idx) {
         hashNeedle = ((hashNeedle<<1) + needle[idx]);
@@ -301,7 +297,9 @@ qsizetype qFindByteArray(
              && memcmp(needle, haystack, sl) == 0)
             return haystack - haystack0;
 
-        REHASH(*haystack);
+        if (sl_minus_1 < sizeof(sl_minus_1) * CHAR_BIT)
+            hashHaystack -= qregisteruint(*haystack) << sl_minus_1;
+        hashHaystack <<= 1;
         ++haystack;
     }
     return -1;
@@ -409,7 +407,4 @@ qsizetype QStaticByteArrayMatcherBase::indexOfIn(const char *needle, size_t nlen
     \snippet code/src_corelib_text_qbytearraymatcher.cpp 1
 */
 
-
 QT_END_NAMESPACE
-
-#undef REHASH

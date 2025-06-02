@@ -10,7 +10,8 @@ qtHaveModule(quick) {
                qmlbarsrowcolors \
                qmlcustominput \
                qmllegend \
-               qmlsurfacelayers
+               qmlsurfacelayers \
+               qmltestbed
 }
 
 !android:!ios:!winrt {

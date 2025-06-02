@@ -8,6 +8,7 @@
 
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/task/bind_post_task.h"
 #include "base/time/time.h"
@@ -26,6 +27,7 @@
 #include "third_party/blink/renderer/platform/mediastream/media_stream_source.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
 #include "third_party/blink/renderer/platform/testing/io_task_runner_testing_platform_support.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/video_capture/video_capturer_source.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_copier_media.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
@@ -63,7 +65,6 @@ class FakeMediaStreamVideoSink : public MediaStreamVideoSink {
   void DisconnectFromTrack() { MediaStreamVideoSink::DisconnectFromTrack(); }
 
   void OnVideoFrame(scoped_refptr<media::VideoFrame> frame,
-                    std::vector<scoped_refptr<media::VideoFrame>> scaled_frames,
                     base::TimeTicks capture_time) {
     *capture_time_ = capture_time;
     *metadata_ = frame->metadata();
@@ -71,8 +72,8 @@ class FakeMediaStreamVideoSink : public MediaStreamVideoSink {
   }
 
  private:
-  base::TimeTicks* const capture_time_;
-  media::VideoFrameMetadata* const metadata_;
+  const raw_ptr<base::TimeTicks, ExperimentalRenderer> capture_time_;
+  const raw_ptr<media::VideoFrameMetadata, ExperimentalRenderer> metadata_;
   base::OnceClosure got_frame_cb_;
 };
 
@@ -121,8 +122,7 @@ class MediaStreamVideoCapturerSourceTest : public testing::Test {
     // CreateVideoTrack will trigger StartDone.
     return MediaStreamVideoTrack::CreateVideoTrack(
         video_capturer_source_, adapter_settings, noise_reduction,
-        is_screencast, min_frame_rate, absl::nullopt, absl::nullopt,
-        absl::nullopt, false,
+        is_screencast, min_frame_rate, nullptr, false,
         WTF::BindOnce(&MediaStreamVideoCapturerSourceTest::StartDone,
                       base::Unretained(this)),
         enabled);
@@ -162,13 +162,15 @@ class MediaStreamVideoCapturerSourceTest : public testing::Test {
     start_result_ = result;
   }
 
+  test::TaskEnvironment task_environment_;
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform_;
 
   Persistent<MediaStreamSource> stream_source_;
   MockMojoMediaStreamDispatcherHost mock_dispatcher_host_;
-  MediaStreamVideoCapturerSource*
-      video_capturer_source_;          // owned by |stream_source_|.
-  MockVideoCapturerSource* delegate_;  // owned by |source_|.
+  raw_ptr<MediaStreamVideoCapturerSource, DanglingUntriaged>
+      video_capturer_source_;  // owned by |stream_source_|.
+  raw_ptr<MockVideoCapturerSource, DanglingUntriaged>
+      delegate_;  // owned by |source_|.
   String stream_source_id_;
   bool source_stopped_;
   bool stop_capture_flag_ = false;
@@ -234,9 +236,7 @@ TEST_F(MediaStreamVideoCapturerSourceTest, CaptureTimeAndMetadataPlumbing) {
   frame->metadata().frame_rate = 30.0;
   PostCrossThreadTask(
       *Platform::Current()->GetIOTaskRunner(), FROM_HERE,
-      CrossThreadBindOnce(deliver_frame_cb, frame,
-                          std::vector<scoped_refptr<media::VideoFrame>>(),
-                          reference_capture_time));
+      CrossThreadBindOnce(deliver_frame_cb, frame, reference_capture_time));
   run_loop.Run();
   fake_sink.DisconnectFromTrack();
   EXPECT_EQ(reference_capture_time, capture_time);

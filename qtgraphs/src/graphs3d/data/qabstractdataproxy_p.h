@@ -29,7 +29,7 @@ public:
     QAbstractDataProxyPrivate(QAbstractDataProxy::DataType type);
     ~QAbstractDataProxyPrivate() override;
 
-    inline QAbstract3DSeries *series() const { return m_series; }
+    QAbstract3DSeries *series() const { return m_series; }
     virtual void setSeries(QAbstract3DSeries *series);
 
 protected:

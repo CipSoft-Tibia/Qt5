@@ -12,7 +12,7 @@
 class tst_protobuf_any : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void defaultConstructed();
     void simpleMessage();
     void anyMessage_data();
@@ -58,7 +58,7 @@ void tst_protobuf_any::simpleMessage()
     AnyMessage message2;
     message2.deserialize(&serializer, serialized);
 
-    auto result = message2.field().as<SimpleMessage>(&serializer);
+    auto result = message2.field().unpack<SimpleMessage>(&serializer);
     QVERIFY(result.has_value());
     QCOMPARE_EQ(result.value(), payload);
 }
@@ -95,9 +95,9 @@ void tst_protobuf_any::anyMessage()
 
     AnyMessage message;
     message.deserialize(&serializer, input);
-    QCOMPARE_EQ(serializer.deserializationError(), QAbstractProtobufSerializer::NoError);
+    QCOMPARE_EQ(serializer.lastError(), QAbstractProtobufSerializer::Error::None);
 
-    std::optional<Example> opt = message.field().as<Example>(&serializer);
+    std::optional<Example> opt = message.field().unpack<Example>(&serializer);
     QVERIFY(opt.has_value());
     Example ex = std::move(opt).value();
     QTEST(ex.str(), "str");
@@ -124,7 +124,7 @@ void tst_protobuf_any::repeatedAnyMessage()
 
     QCOMPARE_EQ(message.anys().size(), 3);
     for (const QtProtobuf::Any &any : message.anys()) {
-        std::optional<Example> opt = any.as<Example>(&serializer);
+        std::optional<Example> opt = any.unpack<Example>(&serializer);
         QVERIFY(opt.has_value());
         Example ex = std::move(opt).value();
         QCOMPARE_EQ(ex.str(), "Hello");
@@ -140,12 +140,15 @@ void tst_protobuf_any::repeatedAnyMessage()
     // let's try to deserialize it again
     RepeatedAnyMessage message2;
     message2.deserialize(&serializer, input);
-    if (serializer.deserializationError() != QAbstractProtobufSerializer::NoError)
-        QFAIL(qPrintable(serializer.deserializationErrorString()));
+    if (serializer.lastError() != QAbstractProtobufSerializer::Error::None)
+        QFAIL(qPrintable(serializer.lastErrorString()));
     QCOMPARE_EQ(message2.anys().size(), message.anys().size());
-    for (int i = 0; i < message2.anys().size(); ++i) {
-        const QtProtobuf::Any &lhs = message2.anys()[i];
-        const QtProtobuf::Any &rhs = message.anys()[i];
+
+    const auto anys = message.anys();
+    const auto anys2 = message2.anys();
+    for (int i = 0; i < anys2.size(); ++i) {
+        QtProtobuf::Any lhs = anys2.at(i);
+        QtProtobuf::Any rhs = anys.at(i);
 
         QCOMPARE_EQ(lhs, rhs);
     }
@@ -177,7 +180,7 @@ void tst_protobuf_any::twoAnyMessage()
     TwoAnyMessage message;
     message.deserialize(&serializer, serializedData);
 
-    std::optional<Example> opt = message.two().as<Example>(&serializer);
+    std::optional<Example> opt = message.two().unpack<Example>(&serializer);
     QVERIFY(opt);
     const Example &ex = opt.value();
     QCOMPARE_EQ(ex.str(), "Hello");
@@ -188,12 +191,13 @@ void tst_protobuf_any::twoAnyMessage()
 
     if (nested) {
         // The Any-message contains another Any inside:
-        std::optional<QtProtobuf::Any> anyOpt = message.one().as<QtProtobuf::Any>(&serializer);
+        std::optional<QtProtobuf::Any> anyOpt = message.one().unpack<QtProtobuf::Any>(&serializer);
         QVERIFY(anyOpt);
         // But the nested Any-message is empty:
         QCOMPARE_EQ(anyOpt->value(), QByteArray());
     } else {
-        std::optional<QtProtobuf::Any> nestedAny = message.one().as<QtProtobuf::Any>(&serializer);
+        std::optional<QtProtobuf::Any> nestedAny = message.one()
+                                                       .unpack<QtProtobuf::Any>(&serializer);
         QVERIFY(!nestedAny); // not nested
         // and the value of the field is empty:
         QCOMPARE_EQ(message.one().value(), QByteArray());
@@ -207,7 +211,7 @@ void tst_protobuf_any::fromMessage()
     ex.setH(242);
     AnyMessage message;
     message.setField(QtProtobuf::Any::fromMessage(&serializer, ex));
-    std::optional<Example> exop = message.field().as<Example>(&serializer);
+    std::optional<Example> exop = message.field().unpack<Example>(&serializer);
     QVERIFY(exop.has_value());
     QCOMPARE(exop->h(), 242);
     QCOMPARE(*exop, ex);

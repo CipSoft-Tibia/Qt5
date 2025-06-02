@@ -75,7 +75,7 @@ if(UNIX AND NOT APPLE AND NOT WIN32 AND CMAKE_CROSSCOMPILING AND NOT QT_ENABLE_C
     return()
 endif()
 
-set(required_packages Core Network Xml Sql Test)
+set(required_packages Core Network Xml Sql Test TestInternalsPrivate)
 set(optional_packages DBus Gui Widgets PrintSupport OpenGL Concurrent)
 
 # Setup the test when called as a completely standalone project.
@@ -108,6 +108,9 @@ if(NOT TARGET Qt::DBus)
 endif()
 if(NOT TARGET Qt::Widgets)
     set(NO_WIDGETS TRUE)
+endif()
+if(NOT TARGET Qt::OpenGL)
+    set(NO_OPENGL TRUE)
 endif()
 
 include("${_Qt6CTestMacros}")
@@ -146,6 +149,21 @@ if(QT_BUILD_MINIMAL_ANDROID_MULTI_ABI_TESTS AND NOT NO_GUI)
             "-DTEST_ESCAPING_VALUE_ARG=${escaping_value}"
             "-DTEST_SPACES_VALUE_ARG=${spaces_value}"
     )
+
+    #Run test_android_aar only if the host is Unix and zipinfo is available
+    find_program(ZIPINFO_EXECUTABLE zipinfo)
+    if(CMAKE_HOST_UNIX AND ZIPINFO_EXECUTABLE)
+        _qt_internal_test_expect_pass(test_android_aar
+            BUILD_OPTIONS
+                ${multi_abi_vars}
+                --build-target verify_aar
+        )
+    else()
+        message(WARNING
+            "Skipping test_android_aar CMake build test because \
+            the host is not Unix or zipinfo is not found")
+    endif()
+
     return()
 endif()
 
@@ -197,6 +215,8 @@ endif()
 _qt_internal_test_expect_pass(test_add_resource_prefix BINARY test_add_resource_prefix)
 _qt_internal_test_expect_build_fail(test_add_resource_options)
 _qt_internal_test_expect_build_fail(test_wrap_cpp_options)
+_qt_internal_test_expect_pass(test_wrap_cpp_moc)
+_qt_internal_test_expect_pass(test_wrap_cpp_moc_target)
 _qt_internal_test_expect_pass(test_platform_defs_include)
 _qt_internal_test_expect_pass(test_qtmainwin_library)
 
@@ -265,8 +285,13 @@ endif()
 if (NOT NO_WIDGETS)
   list(APPEND qt_module_includes
     Widgets QWidget
-    OpenGL QOpenGLBuffer
     PrintSupport QPrinter
+  )
+endif()
+
+if (NOT NO_OPENGL)
+  list(APPEND qt_module_includes
+    OpenGL QOpenGLBuffer
   )
 endif()
 
@@ -281,7 +306,7 @@ _qt_internal_test_module_includes(
 )
 _qt_internal_test_expect_pass(test_concurrent_module)
 
-if(NOT NO_GUI)
+if(NOT NO_GUI AND NOT NO_OPENGL)
     _qt_internal_test_expect_pass(test_opengl_lib)
 endif()
 
@@ -398,6 +423,47 @@ endif()
 
 _qt_internal_test_expect_pass(test_config_expressions)
 _qt_internal_test_expect_pass(test_QTP0003)
+
 if(NOT NO_GUI)
     _qt_internal_test_expect_pass(test_collecting_plugins)
 endif()
+
+_qt_internal_test_expect_pass(test_qt_manual_moc)
+
+# check if the os is opensuse. If it is, we need to skip tests due to CI problems
+set(is_opensuse FALSE)
+if(UNIX)
+    if(EXISTS "/etc/os-release")
+        file(STRINGS "/etc/os-release" os_release_content)
+        foreach(line IN LISTS os_release_content)
+            if(line MATCHES "openSUSE" OR line MATCHES "opensuse")
+                set(is_opensuse TRUE)
+                break()
+            endif()
+        endforeach()
+    endif()
+endif()
+
+if(NOT QNX AND NOT WASM AND NOT (WIN32 AND QT_BUILD_MINIMAL_STATIC_TESTS)
+    AND NOT is_opensuse)
+    # Since our CI machines are slow, ctest --build-and-test buffers the output
+    # of the configure step of a test, and the fact that we run all the test
+    # logic in the configure step, we need to divide the tests into smaller
+    # chunks to avoid CI stdout timeout errors.
+    # See https://gitlab.kitware.com/cmake/cmake/-/issues/25790
+    _qt_internal_test_expect_pass(test_qt_add_ui_common)
+    _qt_internal_test_expect_pass(test_qt_add_ui_1)
+    _qt_internal_test_expect_pass(test_qt_add_ui_2)
+    _qt_internal_test_expect_pass(test_qt_add_ui_3)
+    _qt_internal_test_expect_pass(test_qt_add_ui_4)
+    _qt_internal_test_expect_pass(test_qt_add_ui_5)
+    _qt_internal_test_expect_pass(test_qt_add_ui_6)
+    _qt_internal_test_expect_pass(test_qt_add_ui_7)
+    _qt_internal_test_expect_pass(test_qt_add_ui_8)
+    _qt_internal_test_expect_pass(test_qt_add_ui_9)
+    _qt_internal_test_expect_pass(test_qt_add_ui_10)
+    _qt_internal_test_expect_pass(test_qt_add_ui_11)
+endif()
+
+# Add all tests using CMake's RunCMake test module
+add_subdirectory(RunCMake)

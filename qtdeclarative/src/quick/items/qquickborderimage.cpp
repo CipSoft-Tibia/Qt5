@@ -22,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype BorderImage
-    \instantiates QQuickBorderImage
+    \nativetype QQuickBorderImage
     \inqmlmodule QtQuick
     \brief Paints a border based on an image.
     \inherits Item
@@ -233,7 +233,7 @@ QQuickBorderImage::~QQuickBorderImage()
 */
 
 /*!
-    \qmlproperty QSize QtQuick::BorderImage::sourceSize
+    \qmlproperty size QtQuick::BorderImage::sourceSize
 
     This property holds the actual width and height of the loaded image.
 
@@ -276,8 +276,10 @@ void QQuickBorderImage::load()
                                                                : d->url);
             if (!lf.isEmpty()) {
                 QFile file(lf);
-                file.open(QIODevice::ReadOnly);
-                setGridScaledImage(QQuickGridScaledImage(&file));
+                if (!file.open(QIODevice::ReadOnly))
+                    d->setStatus(Error);
+                else
+                    setGridScaledImage(QQuickGridScaledImage(&file));
             } else {
 #if QT_CONFIG(qml_network)
                 d->setProgress(0);
@@ -398,11 +400,16 @@ void QQuickBorderImage::requestFinished()
 {
     Q_D(QQuickBorderImage);
 
-    const QSize impsize = d->pix.implicitSize();
+    if (d->pendingPix != d->currentPix) {
+        std::swap(d->pendingPix, d->currentPix);
+        d->pendingPix->clear(this); // Clear the old image
+    }
+
+    const QSize impsize = d->currentPix->implicitSize();
     setImplicitSize(impsize.width() / d->devicePixelRatio, impsize.height() / d->devicePixelRatio);
 
-    if (d->pix.isError()) {
-        qmlWarning(this) << d->pix.error();
+    if (d->currentPix->isError()) {
+        qmlWarning(this) << d->currentPix->error();
         d->setStatus(Error);
         d->setProgress(0);
     } else {
@@ -414,8 +421,8 @@ void QQuickBorderImage::requestFinished()
         d->oldSourceSize = sourceSize();
         emit sourceSizeChanged();
     }
-    if (d->frameCount != d->pix.frameCount()) {
-        d->frameCount = d->pix.frameCount();
+    if (d->frameCount != d->currentPix->frameCount()) {
+        d->frameCount = d->currentPix->frameCount();
         emit frameCountChanged();
     }
 
@@ -505,7 +512,7 @@ QSGNode *QQuickBorderImage::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeDat
 {
     Q_D(QQuickBorderImage);
 
-    QSGTexture *texture = d->sceneGraphRenderContext()->textureForFactory(d->pix.textureFactory(), window());
+    QSGTexture *texture = d->sceneGraphRenderContext()->textureForFactory(d->currentPix->textureFactory(), window());
 
     if (!texture || width() <= 0 || height() <= 0) {
         delete oldNode;
@@ -530,7 +537,7 @@ QSGNode *QQuickBorderImage::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeDat
     QRectF innerSourceRect;
     QRectF subSourceRect;
     d->calculateRects(d->border,
-                      QSize(d->pix.width(), d->pix.height()), QSizeF(width(), height()),
+                      QSize(d->currentPix->width(), d->currentPix->height()), QSizeF(width(), height()),
                       d->horizontalTileMode, d->verticalTileMode, d->devicePixelRatio,
                       &targetRect, &innerTargetRect,
                       &innerSourceRect, &subSourceRect);
@@ -574,6 +581,13 @@ void QQuickBorderImage::pixmapChange()
 
     frameCount is the number of frames in the image. Most images have only one frame.
 */
+
+/*!
+    \qmlproperty bool QtQuick::BorderImage::retainWhileLoading
+    \since 6.8
+
+    \include qquickimage.cpp qml-image-retainwhileloading
+ */
 
 QT_END_NAMESPACE
 

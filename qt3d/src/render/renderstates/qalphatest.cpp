@@ -27,7 +27,7 @@ namespace Qt3DRender {
     \since 5.7
     \inqmlmodule Qt3D.Render
     \inherits RenderState
-    \instantiates Qt3DRender::QAlphaTest
+    \nativetype Qt3DRender::QAlphaTest
     \ingroup renderstates
 
     As the OpenGL documentation explains; The alpha test discards a fragment
@@ -72,12 +72,12 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property QAlphaTest::alphaFunction
+    \property Qt3DRender::QAlphaTest::alphaFunction
     Holds the alpha function used by the alpha test. Default is Never.
 */
 
 /*!
-    \property QAlphaTest::referenceValue
+    \property Qt3DRender::QAlphaTest::referenceValue
     Holds the reference value used by the alpha test. Default is 0.0.
     When set, the value is clamped between 0 and 1.
 */

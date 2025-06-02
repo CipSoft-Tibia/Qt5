@@ -13,6 +13,7 @@
 // limitations under the License.
 
 // A fuzz target used for testing Centipede.
+#include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -47,12 +48,19 @@ __attribute__((noinline)) extern "C" void IndirectCallFunc(uint8_t input) {
     funcs[input % 4]();
 }
 
+__attribute__((noinline)) extern "C" void CallThisRecursively(int times) {
+    static volatile int sink;
+    [[maybe_unused]] volatile char stack_usage[1024] = {};
+    if (times > 0) CallThisRecursively(times - 1);
+    sink = 0;
+}
+
 // Used to test data flow instrumentation.
 static int non_cost_global[10];
 static const int const_global[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
 // See https://llvm.org/docs/LibFuzzer.html#fuzz-target.
-// coverage_test.cc and centipede_test.sh verify the exact line where
+// control_flow_test.cc and centipede_main_test.sh verify the exact line where
 // LLVMFuzzerTestOneInput is declared.
 // So if you move the declaration to another line, update these tests.
 //
@@ -94,6 +102,49 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   // Sleep for 10 seconds if the input is 'slo'.
   if (size == 3 && data[0] == 's' && data[1] == 'l' && data[2] == 'o') {
     sleep(10);
+  }
+
+  // Deep recursion for stack overflow
+  if (size == 3 && data[0] == 's' && data[1] == 't' && data[2] == 'k') {
+    CallThisRecursively(100);
+  }
+
+  // Set up and trigger a signal handler with a separate stack and recursive
+  // calls.
+  if (size == 6 && data[0] == 's' && data[1] == 'i' && data[2] == 'g' &&
+      data[3] == 's' && data[4] == 't' && data[5] == 'k') {
+    static volatile bool signal_handler_called = false;
+    const auto signal_handler = +[](int sig_num) {
+      CallThisRecursively(100);
+      signal_handler_called = true;
+    };
+    struct sigaction act = {};
+    act.sa_handler = signal_handler;
+    act.sa_flags = SA_ONSTACK;
+    if (sigaction(SIGUSR1, &act, nullptr) != 0) {
+      printf("failed to set up the signal handler for SIGUSR1\n");
+      abort();
+    }
+    stack_t sigstk = {};
+    sigstk.ss_size = 1 << 20;
+    sigstk.ss_sp = malloc(sigstk.ss_size);
+    if (sigaltstack(&sigstk, nullptr) != 0) {
+      printf("failed to set up the signal stack\n");
+      abort();
+    }
+    raise(SIGUSR1);
+    if (!signal_handler_called) {
+      printf("signal handler was not called!\n");
+      abort();
+    }
+    // Disable and free the previous signal stack.
+    stack_t disabled_sigstk = {};
+    disabled_sigstk.ss_flags = SS_DISABLE;
+    if (sigaltstack(&disabled_sigstk, nullptr) != 0) {
+      printf("failed to disable the signal stack\n");
+      abort();
+    }
+    free(sigstk.ss_sp);
   }
 
   // Call SingleEdgeFunc() if input is "func1".

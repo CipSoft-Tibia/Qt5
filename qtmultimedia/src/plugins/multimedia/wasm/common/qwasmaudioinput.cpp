@@ -89,9 +89,11 @@ void QWasmAudioInput::setDeviceSourceStream(const std::string &id)
 
     emscripten::val constraints = emscripten::val::object();
     constraints.set("audio", true);
-    if (!id.empty())
-        constraints.set("deviceId", id);
-
+    if (!id.empty()) {
+        emscripten::val exactDeviceId = emscripten::val::object();
+        exactDeviceId.set("exact", id);
+        constraints.set("deviceId", exactDeviceId);
+    }
     // we do it this way as this prompts user for mic permissions
     qstdweb::Promise::make(mediaDevices, QStringLiteral("getUserMedia"),
                            std::move(getUserMediaCallback), constraints);

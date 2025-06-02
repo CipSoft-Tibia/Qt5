@@ -19,7 +19,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class QAndroidMediaDevices;
+class QAndroidAudioDevices;
 
 class QAndroidIntegration : public QPlatformMediaIntegration
 {
@@ -37,9 +37,9 @@ public:
     QMaybe<QPlatformAudioInput *> createAudioInput(QAudioInput *audioInput) override;
 
     QMaybe<QPlatformVideoSink *> createVideoSink(QVideoSink *) override;
-    QList<QCameraDevice> videoInputs() override;
 
 protected:
+    QPlatformVideoDevices *createVideoDevices() override;
     QPlatformMediaFormatInfo *createFormatInfo() override;
 };
 

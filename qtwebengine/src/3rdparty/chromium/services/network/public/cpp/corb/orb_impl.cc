@@ -9,7 +9,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "net/base/mime_sniffer.h"
 #include "net/http/http_util.h"
@@ -25,7 +24,7 @@ namespace network::corb {
 
 namespace {
 
-bool IsNonSniffableImageMimeType(base::StringPiece mime_type) {
+bool IsNonSniffableImageMimeType(std::string_view mime_type) {
   // TODO(lukasza): Once full Javascript sniffing is implemented, we may start
   // to undesirably block future (=unsniffable) image formats.  We should
   // explicitly recognize MIME types of such image formats below.  See also
@@ -36,7 +35,7 @@ bool IsNonSniffableImageMimeType(base::StringPiece mime_type) {
   return base::EqualsCaseInsensitiveASCII(mime_type, "image/svg+xml");
 }
 
-bool IsAudioOrVideoMimeType(base::StringPiece mime_type) {
+bool IsAudioOrVideoMimeType(std::string_view mime_type) {
   // TODO(lukasza): Restrict this to only known, non-sniffable audio/video types
   // (hopefully we can reach agreement on this approach + document this in ORB
   // spec).  See also https://github.com/annevk/orb/issues/3.  Notes:
@@ -82,13 +81,13 @@ bool IsAudioOrVideoMimeType(base::StringPiece mime_type) {
   return false;
 }
 
-bool IsTextCssMimeType(base::StringPiece mime_type) {
+bool IsTextCssMimeType(std::string_view mime_type) {
   return base::EqualsCaseInsensitiveASCII(mime_type, "text/css");
 }
 
 // ORB spec says that "An opaque-safelisted MIME type" is a JavaScript MIME type
 // or a MIME type whose essence is "text/css" or "image/svg+xml".
-bool IsOpaqueSafelistedMimeType(base::StringPiece mime_type) {
+bool IsOpaqueSafelistedMimeType(std::string_view mime_type) {
   // Based on the spec: Is it a MIME type whose essence is text/css [...] ?
   if (IsTextCssMimeType(mime_type))
     return true;
@@ -112,7 +111,7 @@ bool IsOpaqueSafelistedMimeType(base::StringPiece mime_type) {
 // ORB spec defines "an opaque-safelisted MIME type". Until we have full ORB
 // compliance, we'll need to handle some MIME types differently and run the
 // JavaScript-parser-breaker sniffer from CORB on these resources.
-bool IsOpaqueSafelistedMimeTypeThatWeSniffAnyway(base::StringPiece mime_type) {
+bool IsOpaqueSafelistedMimeTypeThatWeSniffAnyway(std::string_view mime_type) {
   // Based on the spec, but handled in HandleEndOfSniffableResponseBody:
   // Is it a JavaScript MIME type?
   if (CrossOriginReadBlocking::IsJavascriptMimeType(mime_type))
@@ -204,15 +203,12 @@ bool IsOpaqueResponse(const absl::optional<url::Origin>& request_initiator,
 }  // namespace
 
 OpaqueResponseBlockingAnalyzer::OpaqueResponseBlockingAnalyzer(
-    PerFactoryState *state)
+    PerFactoryState* state)
     : per_factory_state_(*state) {
   CHECK(state);
 }
 
 OpaqueResponseBlockingAnalyzer::~OpaqueResponseBlockingAnalyzer() {
-  base::UmaHistogramEnumeration("SiteIsolation.ORB.BlockingReason",
-                                blocking_decision_reason_);
-
   // TODO(https://crbug.com/1178928): Add UMA tracking the size of ORB state
   // from `per_factory_state_`.
 }
@@ -345,7 +341,7 @@ Decision OpaqueResponseBlockingAnalyzer::Init(
   return Decision::kSniffMore;
 }
 
-Decision OpaqueResponseBlockingAnalyzer::Sniff(base::StringPiece data) {
+Decision OpaqueResponseBlockingAnalyzer::Sniff(std::string_view data) {
   std::string sniffed_mime_type;
   net::SniffMimeTypeFromLocalData(data, &sniffed_mime_type);
 
@@ -483,15 +479,6 @@ OpaqueResponseBlockingAnalyzer::ShouldHandleBlockedResponseAs() const {
   }
 
   return BlockedResponseHandling::kEmptyResponse;
-}
-
-void OpaqueResponseBlockingAnalyzer::ReportOrbBlockedAndCorbDidnt() const {
-  // We encountered a scenario where ORB may block more than CORB and therefore
-  // let's log some extra data that may help us understand the kind of
-  // backcompatiblity risk that this scenario represents.
-  base::UmaHistogramEnumeration(
-      "SiteIsolation.ORB.CorbVsOrb.OrbBlockedAndCorbDidnt.Reason",
-      blocking_decision_reason_);
 }
 
 void OpaqueResponseBlockingAnalyzer::StoreAllowedAudioVideoRequest(

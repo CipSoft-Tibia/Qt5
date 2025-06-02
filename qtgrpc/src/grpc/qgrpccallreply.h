@@ -5,13 +5,14 @@
 #ifndef QGRPCCALLREPLY_H
 #define QGRPCCALLREPLY_H
 
-#include <QtCore/qobject.h>
 #include <QtGrpc/qgrpcoperation.h>
+#include <QtGrpc/qgrpcoperationcontext.h>
+#include <QtGrpc/qgrpcstatus.h>
 #include <QtGrpc/qtgrpcglobal.h>
-#include <QtGrpc/qgrpcchanneloperation.h>
+
+#include <QtCore/qobject.h>
 
 #include <memory>
-#include <utility>
 
 QT_BEGIN_NAMESPACE
 
@@ -20,30 +21,14 @@ class Q_GRPC_EXPORT QGrpcCallReply final : public QGrpcOperation
     Q_OBJECT
 
 public:
-    explicit QGrpcCallReply(std::shared_ptr<QGrpcChannelOperation> channelOperation);
+    explicit QGrpcCallReply(std::shared_ptr<QGrpcOperationContext> operationContext);
     ~QGrpcCallReply() override;
 
-    template<typename Func1, typename Func2>
-    void subscribe(QObject *receiver, Func1 &&finishCallback, Func2 &&errorCallback,
-                   Qt::ConnectionType type = Qt::AutoConnection)
-    {
-        QObject::connect(this, &QGrpcCallReply::finished, receiver,
-                         std::forward<Func1>(finishCallback), type);
-        QObject::connect(this, &QGrpcCallReply::errorOccurred, receiver,
-                         std::forward<Func2>(errorCallback), type);
-    }
-
-    template<typename Func1>
-    void subscribe(QObject *receiver, Func1 &&finishCallback,
-                   Qt::ConnectionType type = Qt::AutoConnection)
-    {
-        QObject::connect(this, &QGrpcCallReply::finished, receiver,
-                         std::forward<Func1>(finishCallback), type);
-    }
-
 private:
-    QGrpcCallReply();
     Q_DISABLE_COPY_MOVE(QGrpcCallReply)
+
+public:
+    bool event(QEvent *event) override;
 };
 
 QT_END_NAMESPACE

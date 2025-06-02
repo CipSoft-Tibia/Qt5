@@ -163,9 +163,9 @@ String FetchResponseData::MimeType() const {
 
 BodyStreamBuffer* FetchResponseData::InternalBuffer() const {
   if (internal_response_) {
-    return internal_response_->buffer_;
+    return internal_response_->buffer_.Get();
   }
-  return buffer_;
+  return buffer_.Get();
 }
 
 String FetchResponseData::InternalMIMEType() const {
@@ -396,7 +396,6 @@ FetchResponseData::FetchResponseData(Type type,
       status_message_(status_message),
       header_list_(MakeGarbageCollected<FetchHeaderList>()),
       response_time_(base::Time::Now()),
-      connection_info_(net::HttpResponseInfo::CONNECTION_INFO_UNKNOWN),
       alpn_negotiated_protocol_("unknown"),
       was_fetched_via_spdy_(false),
       has_range_requested_(false),

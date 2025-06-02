@@ -77,7 +77,7 @@ StagingBuffer::StagingBuffer(const gfx::Size& size,
     : size(size), format(format) {}
 
 StagingBuffer::~StagingBuffer() {
-  DCHECK(mailbox.IsZero());
+  DCHECK(!client_shared_image);
   DCHECK_EQ(query_id, 0u);
 }
 
@@ -87,9 +87,8 @@ void StagingBuffer::DestroyGLResources(gpu::raster::RasterInterface* ri,
     ri->DeleteQueriesEXT(1, &query_id);
     query_id = 0;
   }
-  if (!mailbox.IsZero()) {
-    sii->DestroySharedImage(sync_token, mailbox);
-    mailbox.SetZero();
+  if (client_shared_image) {
+    sii->DestroySharedImage(sync_token, std::move(client_shared_image));
   }
 }
 
@@ -178,7 +177,7 @@ bool StagingBufferPool::OnMemoryDump(
     base::trace_event::ProcessMemoryDump* pmd) {
   base::AutoLock lock(lock_);
 
-  if (args.level_of_detail == MemoryDumpLevelOfDetail::BACKGROUND) {
+  if (args.level_of_detail == MemoryDumpLevelOfDetail::kBackground) {
     std::string dump_name("cc/one_copy/staging_memory");
     MemoryAllocatorDump* dump = pmd->CreateAllocatorDump(dump_name);
     dump->AddScalar(MemoryAllocatorDump::kNameSize,

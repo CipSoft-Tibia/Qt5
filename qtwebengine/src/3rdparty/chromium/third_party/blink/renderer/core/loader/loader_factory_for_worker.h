@@ -25,12 +25,15 @@ class LoaderFactoryForWorker : public ResourceFetcher::LoaderFactory {
 
   // LoaderFactory implementations
   std::unique_ptr<URLLoader> CreateURLLoader(
-      const ResourceRequest& request,
+      const network::ResourceRequest& request,
       const ResourceLoaderOptions& options,
       scoped_refptr<base::SingleThreadTaskRunner> freezable_task_runner,
       scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
-      BackForwardCacheLoaderHelper*) override;
-  std::unique_ptr<WebCodeCacheLoader> CreateCodeCacheLoader() override;
+      BackForwardCacheLoaderHelper*,
+      const absl::optional<base::UnguessableToken>&
+          service_worker_race_network_request_token,
+      bool is_from_origin_dirty_style_sheet) override;
+  CodeCacheHost* GetCodeCacheHost() override;
 
  private:
   const Member<WorkerOrWorkletGlobalScope> global_scope_;

@@ -30,6 +30,7 @@
 
 #include "base/containers/contains.h"
 #include "base/feature_list.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/numerics/checked_math.h"
 #include "base/synchronization/lock.h"
 #include "base/task/single_thread_task_runner.h"
@@ -37,6 +38,7 @@
 #include "gpu/GLES2/gl2extchromium.h"
 #include "gpu/command_buffer/client/gles2_interface.h"
 #include "gpu/command_buffer/common/capabilities.h"
+#include "gpu/command_buffer/common/shared_image_capabilities.h"
 #include "gpu/config/gpu_driver_bug_workaround_type.h"
 #include "gpu/config/gpu_feature_info.h"
 #include "media/base/video_frame.h"
@@ -48,6 +50,7 @@
 #include "third_party/blink/public/mojom/gpu/gpu.mojom-blink.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/task_type.h"
+#include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_union_htmlcanvaselement_offscreencanvas.h"
 #include "third_party/blink/renderer/bindings/modules/v8/webgl_any.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
@@ -111,8 +114,6 @@
 #include "third_party/blink/renderer/modules/webgl/webgl_uniform_location.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_vertex_array_object.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_vertex_array_object_oes.h"
-#include "third_party/blink/renderer/modules/webgl/webgl_video_texture.h"
-#include "third_party/blink/renderer/modules/webgl/webgl_video_texture_enum.h"
 #include "third_party/blink/renderer/modules/xr/xr_system.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/bindings/script_state.h"
@@ -170,6 +171,43 @@ unsigned WebGLRenderingContextBase::max_active_webgl_contexts_on_worker_ = 0;
 
 namespace {
 
+enum class WebGLANGLEImplementation {
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+
+  // vWebGL = 0 (for WebGL1) or 2 (for WebGL2).
+  // vWebGLANGLEImplementation = vWebGL * 10 + vANGLEImplementation
+  // where vANGLEImplementation is aligned with ANGLEImplementation enum
+  // values defined in ui/gl/gl_implementation.h.
+
+  kWebGL1_None = 0,
+  kWebGL1_D3D9 = 1,
+  kWebGL1_D3D11 = 2,
+  kWebGL1_OpenGL = 3,
+  kWebGL1_OpenGLES = 4,
+  kWebGL1_Null = 5,
+  kWebGL1_Vulkan = 6,
+  kWebGL1_SwiftShader = 7,
+  kWebGL1_Metal = 8,
+  kWebGL1_Default = 9,
+
+  // Leave some space between WebGL1 and WebGL2 enums in case ANGLE has
+  // new implementations, say ANGLE/Dawn.
+
+  kWebGL2_None = 20,
+  kWebGL2_D3D9 = 21,  // Should never happen
+  kWebGL2_D3D11 = 22,
+  kWebGL2_OpenGL = 23,
+  kWebGL2_OpenGLES = 24,
+  kWebGL2_Null = 25,
+  kWebGL2_Vulkan = 26,
+  kWebGL2_SwiftShader = 27,
+  kWebGL2_Metal = 28,
+  kWebGL2_Default = 29,
+
+  kMaxValue = kWebGL2_Default,
+};
+
 constexpr base::TimeDelta kDurationBetweenRestoreAttempts = base::Seconds(1);
 const int kMaxGLErrorsAllowedToConsole = 256;
 
@@ -208,6 +246,30 @@ WebGLRenderingContextBaseMap& ForciblyEvictedContexts() {
     LEAK_SANITIZER_IGNORE_OBJECT(&forcibly_evicted_contexts_persistent);
   }
   return *forcibly_evicted_contexts_persistent;
+}
+
+WebGLVideoFrameUploadMetadata CreateVideoFrameUploadMetadata(
+    const media::VideoFrame* frame,
+    media::VideoFrame::ID already_uploaded_id) {
+  DCHECK(frame);
+  WebGLVideoFrameUploadMetadata metadata = {};
+  if (!RuntimeEnabledFeatures::ExtraWebGLVideoTextureMetadataEnabled()) {
+    return metadata;
+  }
+
+  metadata.frame_id = frame->unique_id();
+  metadata.visible_rect = frame->visible_rect();
+  metadata.timestamp = frame->timestamp();
+  if (frame->metadata().frame_duration.has_value()) {
+    metadata.expected_timestamp =
+        frame->timestamp() + *frame->metadata().frame_duration;
+  };
+
+  // Skip uploading frames which have already been uploaded.
+  if (already_uploaded_id == frame->unique_id()) {
+    metadata.skipped = true;
+  }
+  return metadata;
 }
 
 }  // namespace
@@ -675,15 +737,17 @@ void WebGLRenderingContextBase::drawingBufferStorage(GLenum sizedformat,
                       "height > MAX_RENDERBUFFER_SIZE");
     return;
   }
+  if (!attrs.alpha) {
+    SynthesizeGLError(GL_INVALID_OPERATION, function_name,
+                      "alpha is required for drawingBufferStorage");
+    return;
+  }
 
   // Ensure that the format is supported, and set the corresponding alpha
   // type.
   SkAlphaType alpha_type =
       attrs.premultiplied_alpha ? kPremul_SkAlphaType : kUnpremul_SkAlphaType;
   switch (sizedformat) {
-    case GL_RGB8:
-      alpha_type = kOpaque_SkAlphaType;
-      break;
     case GL_RGBA8:
       break;
     case GL_SRGB8_ALPHA8:
@@ -751,16 +815,16 @@ void WebGLRenderingContextBase::commit() {
 
   if (PaintRenderingResultsToCanvas(kBackBuffer)) {
     if (Host()->GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU)) {
-      Host()->Commit(Host()->ResourceProvider()->ProduceCanvasResource(
-                         CanvasResourceProvider::FlushReason::kNone),
-                     SkIRect::MakeWH(width, height));
+      Host()->Commit(
+          Host()->ResourceProvider()->ProduceCanvasResource(FlushReason::kNone),
+          SkIRect::MakeWH(width, height));
     }
   }
   MarkLayerComposited();
 }
 
 scoped_refptr<StaticBitmapImage> WebGLRenderingContextBase::GetImage(
-    CanvasResourceProvider::FlushReason reason) {
+    FlushReason reason) {
   if (!GetDrawingBuffer())
     return nullptr;
 
@@ -802,8 +866,9 @@ scoped_refptr<StaticBitmapImage> WebGLRenderingContextBase::GetImage(
 
   if (!CopyRenderingResultsFromDrawingBuffer(resource_provider.get(),
                                              kBackBuffer)) {
-    // CopyRenderingResultsFromDrawingBuffer will handle both CPU and GPU cases.
-    NOTREACHED();
+    // CopyRenderingResultsFromDrawingBuffer handles both the
+    // hardware-accelerated and software cases, so there is no
+    // possible additional fallback for failures seen at this point.
     return nullptr;
   }
   return resource_provider->Snapshot(reason);
@@ -1248,9 +1313,10 @@ scoped_refptr<DrawingBuffer> WebGLRenderingContextBase::CreateDrawingBuffer(
       Host()->IsOffscreenCanvas() ? DrawingBuffer::kDisallowChromiumImage
                                   : DrawingBuffer::kAllowChromiumImage;
 
-  bool using_swap_chain =
-      context_provider->GetCapabilities().shared_image_swap_chain &&
-      desynchronized;
+  bool using_swap_chain = context_provider->SharedImageInterface()
+                              ->GetCapabilities()
+                              .shared_image_swap_chain &&
+                          desynchronized;
 
   ScopedPixelLocalStorageInterrupt scoped_pls_interrupt(this);
   return DrawingBuffer::Create(
@@ -1366,12 +1432,6 @@ void WebGLRenderingContextBase::InitializeNewContext() {
                             ->ContextProvider()
                             ->GetCapabilities()
                             .mesa_framebuffer_flip_y;
-
-  // If WebGL 2, the PRIMITIVE_RESTART_FIXED_INDEX should be always enabled.
-  // See the section <Primitive Restart is Always Enabled> in WebGL 2 spec:
-  // https://www.khronos.org/registry/webgl/specs/latest/2.0/#4.1.4
-  if (IsWebGL2())
-    ContextGL()->Enable(GL_PRIMITIVE_RESTART_FIXED_INDEX);
 
   // This ensures that the context has a valid "lastFlushID" and won't be
   // mistakenly identified as the "least recently used" context.
@@ -1588,18 +1648,17 @@ bool WebGLRenderingContextBase::PushFrameWithCopy() {
     if (Host()->GetOrCreateCanvasResourceProvider(RasterModeHint::kPreferGPU)) {
       const int width = GetDrawingBuffer()->Size().width();
       const int height = GetDrawingBuffer()->Size().height();
-      submitted_frame = Host()->PushFrame(
-          Host()->ResourceProvider()->ProduceCanvasResource(
-              CanvasResourceProvider::FlushReason::kNon2DCanvas),
-          SkIRect::MakeWH(width, height));
+      submitted_frame =
+          Host()->PushFrame(Host()->ResourceProvider()->ProduceCanvasResource(
+                                FlushReason::kNon2DCanvas),
+                            SkIRect::MakeWH(width, height));
     }
   }
   MarkLayerComposited();
   return submitted_frame;
 }
 
-void WebGLRenderingContextBase::FinalizeFrame(
-    CanvasResourceProvider::FlushReason) {
+void WebGLRenderingContextBase::FinalizeFrame(FlushReason) {
   if (Host()->LowLatencyEnabled()) {
     // PaintRenderingResultsToCanvas will export drawing buffer if the resource
     // provider is single buffered.  Otherwise it will copy the drawing buffer.
@@ -1746,9 +1805,9 @@ bool WebGLRenderingContextBase::IsOriginTopLeft() const {
   return is_origin_top_left_;
 }
 
-void WebGLRenderingContextBase::SetIsInHiddenPage(bool hidden) {
+void WebGLRenderingContextBase::PageVisibilityChanged() {
   if (GetDrawingBuffer())
-    GetDrawingBuffer()->SetIsInHiddenPage(hidden);
+    GetDrawingBuffer()->SetIsInHiddenPage(!Host()->IsPageVisible());
 }
 
 bool WebGLRenderingContextBase::PaintRenderingResultsToCanvas(
@@ -2150,14 +2209,6 @@ void WebGLRenderingContextBase::bindTexture(GLenum target,
     texture_units_[active_texture_unit_].texture2d_array_binding_ = texture;
   } else if (IsWebGL2() && target == GL_TEXTURE_3D) {
     texture_units_[active_texture_unit_].texture3d_binding_ = texture;
-  } else if (target == GL_TEXTURE_VIDEO_IMAGE_WEBGL) {
-    if (!ExtensionEnabled(kWebGLVideoTextureName)) {
-      SynthesizeGLError(
-          GL_INVALID_VALUE, "bindTexture",
-          "unhandled type, WEBGL_video_texture extension not enabled");
-      return;
-    }
-    texture_units_[active_texture_unit_].texture_video_image_binding_ = texture;
   } else if (target == GL_TEXTURE_EXTERNAL_OES) {
     SynthesizeGLError(GL_INVALID_ENUM, "bindTexture",
                       "GL_TEXTURE_EXTERNAL_OES textures not supported");
@@ -2171,29 +2222,7 @@ void WebGLRenderingContextBase::bindTexture(GLenum target,
     return;
   }
 
-  // We use TEXTURE_EXTERNAL_OES to implement video texture on Android platform
-  if (target == GL_TEXTURE_VIDEO_IMAGE_WEBGL) {
-#if BUILDFLAG(IS_ANDROID)
-    // TODO(crbug.com/776222): Support extension on Android
-    NOTIMPLEMENTED();
-    return;
-#else
-    // TODO(crbug.com/776222): Using GL_TEXTURE_VIDEO_IMAGE_WEBGL in blink
-    ContextGL()->BindTexture(GL_TEXTURE_2D, ObjectOrZero(texture));
-    if (texture && !texture->GetTarget()) {
-      ContextGL()->TexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
-                                 GL_LINEAR);
-      ContextGL()->TexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                                 GL_LINEAR);
-      ContextGL()->TexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
-                                 GL_CLAMP_TO_EDGE);
-      ContextGL()->TexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
-                                 GL_CLAMP_TO_EDGE);
-    }
-#endif  // BUILDFLAG(IS_ANDROID)
-  } else {
-    ContextGL()->BindTexture(target, ObjectOrZero(texture));
-  }
+  ContextGL()->BindTexture(target, ObjectOrZero(texture));
   if (texture) {
     texture->SetTarget(target);
     one_plus_max_non_default_texture_unit_ =
@@ -2255,6 +2284,12 @@ void WebGLRenderingContextBase::blendFuncSeparate(GLenum src_rgb,
   if (isContextLost() ||
       !ValidateBlendFuncFactors("blendFuncSeparate", src_rgb, dst_rgb))
     return;
+
+  if (!ValidateBlendFuncExtendedFactors("blendFuncSeparate", src_alpha,
+                                        dst_alpha)) {
+    return;
+  }
+
   ContextGL()->BlendFuncSeparate(src_rgb, dst_rgb, src_alpha, dst_alpha);
 }
 
@@ -3398,12 +3433,9 @@ ScriptValue WebGLRenderingContextBase::getExtension(ScriptState* script_state,
   }
 
   WebGLExtension* extension = EnableExtensionIfSupported(name);
-
-  v8::Local<v8::Value> wrapped_extension =
-      ToV8(extension, script_state->GetContext()->Global(),
-           script_state->GetIsolate());
-
-  return ScriptValue(script_state->GetIsolate(), wrapped_extension);
+  return ScriptValue(
+      script_state->GetIsolate(),
+      ToV8Traits<IDLNullable<WebGLExtension>>::ToV8(script_state, extension));
 }
 
 ScriptValue WebGLRenderingContextBase::getFramebufferAttachmentParameter(
@@ -3579,11 +3611,19 @@ void WebGLRenderingContextBase::RecordShaderPrecisionFormatForStudy(
       .Record(ukm_params.ukm_recorder);
 }
 
-void WebGLRenderingContextBase::RecordUKMCanvasDrawnToAtFirstDrawCall() {
-  if (!has_been_drawn_to_) {
-    has_been_drawn_to_ = true;
-    RecordUKMCanvasDrawnToRenderingAPI();
-  }
+void WebGLRenderingContextBase::RecordANGLEImplementation() {
+  DCHECK(drawing_buffer_.get());
+  const Platform::GraphicsInfo& graphics_info =
+      drawing_buffer_->GetGraphicsInfo();
+  // For mapping mathematics, see WebGLANGLEImplementation definition above.
+  int webgl_version_multiplier =
+      (context_type_ == Platform::kWebGL2ContextType ? 2 : 0);
+  WebGLANGLEImplementation webgl_angle_implementation =
+      static_cast<WebGLANGLEImplementation>(
+          webgl_version_multiplier * 10 +
+          static_cast<int>(graphics_info.angle_implementation));
+  UMA_HISTOGRAM_ENUMERATION("Blink.Canvas.WebGLANGLEImplementation",
+                            webgl_angle_implementation);
 }
 
 ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
@@ -3895,6 +3935,14 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
       }
       SynthesizeGLError(GL_INVALID_ENUM, "getParameter",
                         "invalid parameter name, EXT_clip_control not enabled");
+      return ScriptValue::CreateNull(script_state->GetIsolate());
+    case GL_MAX_DUAL_SOURCE_DRAW_BUFFERS_EXT:  // WEBGL_blend_func_extended
+      if (ExtensionEnabled(kWebGLBlendFuncExtendedName)) {
+        return GetUnsignedIntParameter(script_state, pname);
+      }
+      SynthesizeGLError(
+          GL_INVALID_ENUM, "getParameter",
+          "invalid parameter name, WEBGL_blend_func_extended not enabled");
       return ScriptValue::CreateNull(script_state->GetIsolate());
     case GL_MAX_COLOR_ATTACHMENTS_EXT:  // EXT_draw_buffers BEGIN
       if (ExtensionEnabled(kWebGLDrawBuffersName) || IsWebGL2())
@@ -4325,16 +4373,6 @@ ScriptValue WebGLRenderingContextBase::getUniform(
             break;
           case GL_SAMPLER_2D:
           case GL_SAMPLER_CUBE:
-            base_type = GL_INT;
-            length = 1;
-            break;
-          case GL_SAMPLER_VIDEO_IMAGE_WEBGL:
-            if (!ExtensionEnabled(kWebGLVideoTextureName)) {
-              SynthesizeGLError(
-                  GL_INVALID_VALUE, "getUniform",
-                  "unhandled type, WEBGL_video_texture extension not enabled");
-              return ScriptValue::CreateNull(script_state->GetIsolate());
-            }
             base_type = GL_INT;
             length = 1;
             break;
@@ -5552,8 +5590,7 @@ scoped_refptr<Image> WebGLRenderingContextBase::DrawImageIntoBufferForTexImage(
   draw_options.clamping_mode = Image::kDoNotClampImageToSourceRect;
   image->Draw(resource_provider->Canvas(), flags, gfx::RectF(dest_rect),
               gfx::RectF(src_rect), draw_options);
-  return resource_provider->Snapshot(
-      CanvasResourceProvider::FlushReason::kWebGLTexImage);
+  return resource_provider->Snapshot(FlushReason::kWebGLTexImage);
 }
 
 WebGLTexture* WebGLRenderingContextBase::ValidateTexImageBinding(
@@ -6047,7 +6084,7 @@ void WebGLRenderingContextBase::TexImageHelperCanvasRenderingContextHost(
 
   SourceImageStatus source_image_status = kInvalidSourceImageStatus;
   scoped_refptr<Image> image = context_host->GetSourceImageForCanvas(
-      CanvasResourceProvider::FlushReason::kWebGLTexImage, &source_image_status,
+      FlushReason::kWebGLTexImage, &source_image_status,
       gfx::SizeF(*params.width, *params.height));
   if (source_image_status != kNormalSourceImageStatus)
     return;
@@ -6157,7 +6194,7 @@ void WebGLRenderingContextBase::TexImageHelperVideoFrame(
   if (auto sk_img = local_handle->sk_image()) {
     DCHECK(!sk_img->isTextureBacked());
     // For WebGL last-uploaded-frame-metadata API. https://crbug.com/639174
-    auto metadata = WebGLVideoTexture::CreateVideoFrameUploadMetadata(
+    auto metadata = CreateVideoFrameUploadMetadata(
         local_handle->frame().get(), texture->GetLastUploadedVideoFrameId());
     if (metadata.skipped) {
       texture->UpdateLastUploadedFrame(metadata);
@@ -6184,7 +6221,7 @@ void WebGLRenderingContextBase::TexImageHelperMediaVideoFrame(
   DCHECK(texture);
   DCHECK(media_video_frame);
 
-  auto metadata = WebGLVideoTexture::CreateVideoFrameUploadMetadata(
+  auto metadata = CreateVideoFrameUploadMetadata(
       media_video_frame.get(), texture->GetLastUploadedVideoFrameId());
   if (metadata.skipped) {
     texture->UpdateLastUploadedFrame(metadata);
@@ -6251,10 +6288,10 @@ void WebGLRenderingContextBase::TexImageHelperMediaVideoFrame(
 
     if (media_video_frame->HasTextures() &&
         video_renderer->CopyVideoFrameTexturesToGLTexture(
-            raster_context_provider, ContextGL(), media_video_frame,
-            params.target, texture->Object(), adjusted_internalformat,
-            params.format, params.type, params.level, unpack_premultiply_alpha_,
-            unpack_flip_y_)) {
+            raster_context_provider, ContextGL(), ContextGLCapabilities(),
+            media_video_frame, params.target, texture->Object(),
+            adjusted_internalformat, params.format, params.type, params.level,
+            unpack_premultiply_alpha_, unpack_flip_y_)) {
       texture->UpdateLastUploadedFrame(metadata);
       return;
     }
@@ -6268,10 +6305,10 @@ void WebGLRenderingContextBase::TexImageHelperMediaVideoFrame(
     if (!media_video_frame->HasTextures() &&
         media::IsOpaque(media_video_frame->format()) &&
         video_renderer->CopyVideoFrameYUVDataToGLTexture(
-            raster_context_provider, ContextGL(), media_video_frame,
-            params.target, texture->Object(), adjusted_internalformat,
-            params.format, params.type, params.level, unpack_premultiply_alpha_,
-            unpack_flip_y_)) {
+            raster_context_provider, ContextGL(), ContextGLCapabilities(),
+            media_video_frame, params.target, texture->Object(),
+            adjusted_internalformat, params.format, params.type, params.level,
+            unpack_premultiply_alpha_, unpack_flip_y_)) {
       texture->UpdateLastUploadedFrame(metadata);
       return;
     }
@@ -6480,14 +6517,6 @@ void WebGLRenderingContextBase::TexParameter(GLenum target,
     return;
   switch (pname) {
     case GL_TEXTURE_MIN_FILTER:
-      if (target == GL_TEXTURE_VIDEO_IMAGE_WEBGL) {
-        if ((is_float && paramf != GL_NEAREST && paramf != GL_LINEAR) ||
-            (!is_float && parami != GL_NEAREST && parami != GL_LINEAR)) {
-          SynthesizeGLError(GL_INVALID_ENUM, "texParameter",
-                            "invalid parameter name");
-          return;
-        }
-      }
       break;
     case GL_TEXTURE_MAG_FILTER:
       break;
@@ -6516,15 +6545,6 @@ void WebGLRenderingContextBase::TexParameter(GLenum target,
            parami != GL_MIRRORED_REPEAT && parami != GL_REPEAT)) {
         SynthesizeGLError(GL_INVALID_ENUM, "texParameter", "invalid parameter");
         return;
-      }
-
-      if (target == GL_TEXTURE_VIDEO_IMAGE_WEBGL) {
-        if ((is_float && paramf != GL_CLAMP_TO_EDGE) ||
-            (!is_float && parami != GL_CLAMP_TO_EDGE)) {
-          SynthesizeGLError(GL_INVALID_ENUM, "texParameter",
-                            "invalid parameter");
-          return;
-        }
       }
       break;
     case GL_TEXTURE_MAX_ANISOTROPY_EXT:  // EXT_texture_filter_anisotropic
@@ -7783,15 +7803,6 @@ WebGLTexture* WebGLRenderingContextBase::ValidateTextureBinding(
       }
       tex = texture_units_[active_texture_unit_].texture2d_array_binding_.Get();
       break;
-    case GL_TEXTURE_VIDEO_IMAGE_WEBGL:
-      if (!ExtensionEnabled(kWebGLVideoTextureName)) {
-        SynthesizeGLError(GL_INVALID_ENUM, function_name,
-                          "invalid texture target");
-        return nullptr;
-      }
-      tex = texture_units_[active_texture_unit_]
-                .texture_video_image_binding_.Get();
-      break;
     default:
       SynthesizeGLError(GL_INVALID_ENUM, function_name,
                         "invalid texture target");
@@ -8042,8 +8053,6 @@ GLint WebGLRenderingContextBase::GetMaxTextureLevelForTarget(GLenum target) {
     case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
     case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
       return max_cube_map_texture_level_;
-    case GL_TEXTURE_VIDEO_IMAGE_WEBGL:
-      return 1;
   }
   return 0;
 }
@@ -8081,7 +8090,6 @@ bool WebGLRenderingContextBase::ValidateTexFuncDimensions(
 
   switch (target) {
     case GL_TEXTURE_2D:
-    case GL_TEXTURE_VIDEO_IMAGE_WEBGL:
       if (width > (max_texture_size_ >> level) ||
           height > (max_texture_size_ >> level)) {
         SynthesizeGLError(GL_INVALID_VALUE, function_name,
@@ -8463,6 +8471,31 @@ bool WebGLRenderingContextBase::ValidateBlendFuncFactors(
                       "incompatible src and dst");
     return false;
   }
+
+  return ValidateBlendFuncExtendedFactors(function_name, src, dst);
+}
+
+bool WebGLRenderingContextBase::ValidateBlendFuncExtendedFactors(
+    const char* function_name,
+    GLenum src,
+    GLenum dst) {
+  // TODO(crbug.com/882580): this validation is done in the
+  // passthrough command decoder; this helper can be removed once the
+  // validating command decoder is completely unshipped.
+  if (src == GL_SRC1_COLOR_EXT || dst == GL_SRC1_COLOR_EXT ||
+      src == GL_SRC1_ALPHA_EXT || dst == GL_SRC1_ALPHA_EXT ||
+      src == GL_ONE_MINUS_SRC1_COLOR_EXT ||
+      dst == GL_ONE_MINUS_SRC1_COLOR_EXT ||
+      src == GL_ONE_MINUS_SRC1_ALPHA_EXT ||
+      dst == GL_ONE_MINUS_SRC1_ALPHA_EXT ||
+      (dst == GL_SRC_ALPHA_SATURATE && !IsWebGL2())) {
+    if (!ExtensionEnabled(kWebGLBlendFuncExtendedName)) {
+      SynthesizeGLError(GL_INVALID_ENUM, function_name,
+                        "invalid value, WEBGL_blend_func_extended not enabled");
+      return false;
+    }
+  }
+
   return true;
 }
 

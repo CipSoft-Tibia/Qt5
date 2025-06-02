@@ -4,20 +4,19 @@
 qt_internal_add_module(Grpc
     SOURCES
         qgrpcoperation.h qgrpcoperation.cpp
-        qgrpcchanneloperation.h qgrpcchanneloperation.cpp
+        qgrpcoperationcontext.h qgrpcoperationcontext.cpp
         qgrpccallreply.h qgrpccallreply.cpp
         qgrpcstream.h qgrpcstream.cpp
         qgrpcstatus.h qgrpcstatus.cpp
         qabstractgrpcchannel.h qabstractgrpcchannel_p.h qabstractgrpcchannel.cpp
         qgrpchttp2channel.h qgrpchttp2channel.cpp
-        qabstractgrpcclient.h qabstractgrpcclient.cpp
+        qgrpcclientbase.h qgrpcclientbase.cpp
         qgrpccalloptions.h qgrpccalloptions.cpp
         qgrpcchanneloptions.h qgrpcchanneloptions.cpp
-        qgrpcclientinterceptor.h qgrpcclientinterceptor.cpp
-        qgrpcclientinterceptormanager.h qgrpcclientinterceptormanager_p.h qgrpcclientinterceptormanager.cpp
-        qgrpcmetadata.h
-        qtgrpcglobal.h qtgrpcglobal_p.h  qtgrpcglobal.cpp
-    GENERATE_CPP_EXPORTS
+        qtgrpcglobal.h
+        qtgrpclogging_p.h qtgrpclogging.cpp
+        qtgrpcnamespace.h
+        qgrpcserializationformat.h qgrpcserializationformat.cpp
     LIBRARIES
         Qt::CorePrivate
         Qt::NetworkPrivate
@@ -25,6 +24,7 @@ qt_internal_add_module(Grpc
         Qt::Core
         Qt::Protobuf
         Qt::Network
+    QT_LICENSE_ID QT_COMMERCIAL_OR_GPL3
 )
 
 qt_internal_add_docs(Grpc

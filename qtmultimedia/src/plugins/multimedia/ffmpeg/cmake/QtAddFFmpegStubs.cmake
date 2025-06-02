@@ -72,7 +72,14 @@ macro(qt_internal_multimedia_find_openssl_soversion)
         endif()
 
         get_filename_component(ssl_lib_realpath "${OPENSSL_SSL_LIBRARY}" REALPATH)
-        string(REGEX MATCH "[0-9]+(\\.[0-9]+)*$" ssl_soversion "${ssl_lib_realpath}")
+
+        string(REGEX MATCH "[0-9]+(\\.[0-9]+)*[a-z]?$" ssl_soversion "${ssl_lib_realpath}")
+
+        # 1.0.xx => ABI 1.0.0
+        # 1.1.xx => ABI 1.1
+        # 3.x.xx => ABI 3
+        string(REGEX REPLACE "^1\\.1(\\..*|$)" "1.1" ssl_soversion "${ssl_soversion}")
+        string(REGEX REPLACE "^1\\.0(\\..*|$)" "1.0.0" ssl_soversion "${ssl_soversion}")
         string(REGEX REPLACE "^3(\\..*|$)" "3" ssl_soversion "${ssl_soversion}")
     endif()
 
@@ -139,7 +146,7 @@ function(qt_internal_multimedia_set_stub_libraries stub stub_target)
     qt_internal_extend_target(${stub_target} LIBRARIES Qt::Core Qt::MultimediaPrivate)
 
     if (LINK_STUBS_TO_FFMPEG_PLUGIN AND ${stub} STREQUAL "va")
-        qt_internal_extend_target(QFFmpegMediaPlugin LIBRARIES ${stub_target})
+        qt_internal_extend_target(FFmpegMediaPluginImplPrivate LIBRARIES ${stub_target})
     endif()
 endfunction()
 
@@ -167,9 +174,9 @@ function(qt_internal_multimedia_add_shared_stub stub)
 endfunction()
 
 function(qt_internal_multimedia_add_private_stub_to_plugin stub)
-    qt_internal_multimedia_set_stub_include_directories(${stub} QFFmpegMediaPlugin)
-    qt_internal_multimedia_define_stub_needed_version(${stub} QFFmpegMediaPlugin)
-    qt_internal_extend_target(QFFmpegMediaPlugin SOURCES "symbolstubs/qffmpegsymbols-${stub}.cpp")
+    qt_internal_multimedia_set_stub_include_directories(${stub} FFmpegMediaPluginImplPrivate)
+    qt_internal_multimedia_define_stub_needed_version(${stub} FFmpegMediaPluginImplPrivate)
+    qt_internal_extend_target(FFmpegMediaPluginImplPrivate SOURCES "symbolstubs/qffmpegsymbols-${stub}.cpp")
 endfunction()
 
 # Main function

@@ -326,13 +326,6 @@ static const AVFilterPad avfilter_vf_setpts_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_vf_setpts_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_setpts = {
     .name            = "setpts",
     .description     = NULL_IF_CONFIG_SMALL("Set PTS for the output video frame."),
@@ -346,7 +339,7 @@ const AVFilter ff_vf_setpts = {
     .priv_class = &setpts_class,
 
     FILTER_INPUTS(avfilter_vf_setpts_inputs),
-    FILTER_OUTPUTS(avfilter_vf_setpts_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
 };
 #endif /* CONFIG_SETPTS_FILTER */
 
@@ -366,13 +359,6 @@ static const AVFilterPad asetpts_inputs[] = {
     },
 };
 
-static const AVFilterPad asetpts_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_asetpts = {
     .name            = "asetpts",
     .description     = NULL_IF_CONFIG_SMALL("Set PTS for the output audio frame."),
@@ -384,6 +370,6 @@ const AVFilter ff_af_asetpts = {
     .priv_class      = &asetpts_class,
     .flags           = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(asetpts_inputs),
-    FILTER_OUTPUTS(asetpts_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
 };
 #endif /* CONFIG_ASETPTS_FILTER */

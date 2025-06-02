@@ -6,14 +6,17 @@
 #define DEVICE_FIDO_ENCLAVE_ENCLAVE_DISCOVERY_H_
 
 #include <memory>
+#include <vector>
 
 #include "base/component_export.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "crypto/ec_private_key.h"
+#include "device/fido/enclave/types.h"
 #include "device/fido/fido_discovery_base.h"
-
-namespace sync_pb {
-class WebauthnCredentialSpecifics;
-}
+#include "services/network/public/mojom/network_context.mojom.h"
+#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace device::enclave {
 
@@ -24,18 +27,31 @@ class EnclaveAuthenticator;
 class COMPONENT_EXPORT(DEVICE_FIDO) EnclaveAuthenticatorDiscovery
     : public FidoDiscoveryBase {
  public:
-  explicit EnclaveAuthenticatorDiscovery(
-      std::vector<sync_pb::WebauthnCredentialSpecifics> passkeys);
+  using NetworkContextFactory =
+      base::RepeatingCallback<network::mojom::NetworkContext*()>;
+  EnclaveAuthenticatorDiscovery(
+      base::RepeatingCallback<void(sync_pb::WebauthnCredentialSpecifics)>
+          save_passkey_callback,
+      std::unique_ptr<EventStream<std::unique_ptr<CredentialRequest>>>
+          ui_request_stream,
+      NetworkContextFactory network_context_factory);
   ~EnclaveAuthenticatorDiscovery() override;
 
   // FidoDiscoveryBase:
   void Start() override;
 
  private:
-  void AddAuthenticator();
+  void StartDiscovery();
+  void OnUIRequest(std::unique_ptr<CredentialRequest>);
 
-  std::unique_ptr<EnclaveAuthenticator> authenticator_;
-  std::vector<sync_pb::WebauthnCredentialSpecifics> passkeys_;
+  std::vector<std::unique_ptr<EnclaveAuthenticator>> authenticators_;
+  std::unique_ptr<EventStream<std::unique_ptr<CredentialRequest>>>
+      ui_request_stream_;
+  base::RepeatingCallback<void(sync_pb::WebauthnCredentialSpecifics)>
+      save_passkey_callback_;
+  NetworkContextFactory network_context_factory_;
+  std::unique_ptr<EventStream<absl::optional<std::string_view>>>
+      oauth_token_provider_;
 
   base::WeakPtrFactory<EnclaveAuthenticatorDiscovery> weak_factory_{this};
 };

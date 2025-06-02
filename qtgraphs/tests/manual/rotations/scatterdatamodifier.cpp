@@ -6,7 +6,6 @@
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
 #include <QtGraphs/qscatter3dseries.h>
-#include <QtGraphs/q3dtheme.h>
 #include <QtGraphs/QCustom3DItem>
 #include <QtCore/qmath.h>
 
@@ -18,7 +17,7 @@ static const float doublePi = float(M_PI) * 2.0f;
 static const float radiansToDegrees = 360.0f / doublePi;
 static const float animationFrames = 30.0f;
 
-ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
+ScatterDataModifier::ScatterDataModifier(Q3DScatterWidgetItem *scatter)
     : m_graph(scatter),
       m_fieldLines(12),
       m_arrowsPerLine(16),
@@ -27,8 +26,8 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
       m_angleOffset(0.0f),
       m_angleStep(doublePi / m_arrowsPerLine / animationFrames)
 {
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::None);
-    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
+    m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::None);
+    m_graph->setCameraPreset(QtGraphs3D::CameraPreset::Front);
 
     // Magnetic field lines use custom narrow arrow
     m_magneticField->setItemSize(0.2f);
@@ -41,7 +40,7 @@ ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
     fieldGradient.setColorAt(0.0, Qt::black);
     fieldGradient.setColorAt(1.0, Qt::white);
     m_magneticField->setBaseGradient(fieldGradient);
-    m_magneticField->setColorStyle(Q3DTheme::ColorStyle::RangeGradient);
+    m_magneticField->setColorStyle(QGraphsTheme::ColorStyle::RangeGradient);
     //! [4]
 
     // For 'sun' we use a custom large sphere

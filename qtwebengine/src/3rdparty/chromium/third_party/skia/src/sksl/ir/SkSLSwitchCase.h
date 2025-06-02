@@ -8,8 +8,8 @@
 #ifndef SKSL_SWITCHCASE
 #define SKSL_SWITCHCASE
 
-#include "include/private/SkSLDefines.h"
 #include "include/private/base/SkAssert.h"
+#include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLPosition.h"
 #include "src/sksl/ir/SkSLIRNode.h"
 #include "src/sksl/ir/SkSLStatement.h"
@@ -50,8 +50,6 @@ public:
     const std::unique_ptr<Statement>& statement() const {
         return fStatement;
     }
-
-    std::unique_ptr<Statement> clone() const override;
 
     std::string description() const override;
 

@@ -38,7 +38,7 @@ public:
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-lcdnumber.png
+    \image fusion-lcdnumber.png
 
     It can display a number in just about any size. It can display
     decimal, hexadecimal, octal or binary numbers. It is easy to
@@ -1123,7 +1123,7 @@ void QLCDNumberPrivate::drawSegment(const QPoint &pos, char segmentNo, QPainter 
 
 /*!
     \property QLCDNumber::segmentStyle
-    \brief the style of the LCDNumber
+    \brief the style of the LCDNumber.
 
     \table
     \header \li Style \li Result

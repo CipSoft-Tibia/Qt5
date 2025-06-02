@@ -637,8 +637,8 @@
         <translation>格上げされたウィジェット</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file cannot be read because the extra info extension failed to load.</source>
@@ -999,8 +999,8 @@
         <translation>フォーム</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1354,8 +1354,8 @@ Do you want to replace it?</source>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>Qt Designer ヘルプ(&amp;H)</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>Qt Widgets Designer ヘルプ(&amp;H)</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1366,8 +1366,8 @@ Do you want to replace it?</source>
         <translation>プラグインについて</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>Qt Designer について</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer について</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1424,8 +1424,8 @@ Do you want to update the file location or generate a new form?</source>
         <translation>新しいフォーム(&amp;N)</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -3150,12 +3150,12 @@ Do you want overwrite the template?</source>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;バージョン %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer は、Qt アプリケーションをデザインするための GUI ツールです。&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer は、Qt アプリケーションをデザインするための GUI ツールです。&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>

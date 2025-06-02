@@ -11,6 +11,7 @@
 #include <QtCore/private/qlogging_p.h>
 
 #include <array>
+#include <cstdio>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,7 +68,7 @@ template <int N> struct FixedBufString
     template <typename... Args> void appendf(const char *format, Args... args)
     {
         // vsnprintf includes the terminating null
-        used += qsnprintf(buf.data() + used, MaxSize - used + 1, format,
+        used += std::snprintf(buf.data() + used, MaxSize - used + 1, format,
                               args...);
     }
 
@@ -78,7 +79,7 @@ template <int N> struct FixedBufString
         qint64 ratio;
         if (v < 1 && Power == 1000) {
             const char *prefixes = submultiplePrefixes;
-            ratio = qreal(std::atto::num) / std::atto::den;
+            ratio = qreal(std::atto::num) / qreal(std::atto::den);
             while (value * ratio > 1000 && *prefixes) {
                 ++prefixes;
                 ratio *= 1000;
@@ -300,8 +301,15 @@ void QPlainTestLogger::printBenchmarkResultsHeader(const QBenchmarkResult &resul
     buf.appendf("%s: %s::%s", QTest::benchmarkResult2String(),
                 QTestResult::currentTestObjectName(), result.context.slotName.toLatin1().data());
 
-    if (QByteArray tag = result.context.tag.toLocal8Bit(); !tag.isEmpty())
-        buf.appendf(":\"%s\":\n", tag.data());
+    QByteArray tag = QTestResult::currentDataTag();
+    QByteArray gtag = QTestResult::currentGlobalDataTag();
+
+    if (!gtag.isEmpty() && !tag.isEmpty())
+        buf.appendf(":\"%s:%s\":\n", gtag.constData(), tag.constData());
+    else if (!gtag.isEmpty())
+        buf.appendf(":\"%s\":\n", gtag.constData());
+    else if (!tag.isEmpty())
+        buf.appendf(":\"%s\":\n", tag.constData());
     else
         buf.append(":\n");
     outputMessage(buf);
@@ -413,13 +421,13 @@ void QPlainTestLogger::startLogging()
 
     char buf[1024];
     if (QTestLog::verboseLevel() < 0) {
-        qsnprintf(buf, sizeof(buf), "Testing %s\n", QTestResult::currentTestObjectName());
+        std::snprintf(buf, sizeof(buf), "Testing %s\n", QTestResult::currentTestObjectName());
     } else {
-        qsnprintf(buf, sizeof(buf),
-                  "********* Start testing of %s *********\n"
-                  "Config: Using QtTest library " QTEST_VERSION_STR
-                  ", %s, %s %s\n", QTestResult::currentTestObjectName(), QLibraryInfo::build(),
-                  qPrintable(QSysInfo::productType()), qPrintable(QSysInfo::productVersion()));
+        std::snprintf(buf, sizeof(buf),
+                      "********* Start testing of %s *********\n"
+                      "Config: Using QtTest library " QTEST_VERSION_STR
+                      ", %s, %s %s\n", QTestResult::currentTestObjectName(), QLibraryInfo::build(),
+                      qPrintable(QSysInfo::productType()), qPrintable(QSysInfo::productVersion()));
     }
     outputMessage(buf);
 }
@@ -429,16 +437,17 @@ void QPlainTestLogger::stopLogging()
     char buf[1024];
     const int timeMs = qRound(QTestLog::msecsTotalTime());
     if (QTestLog::verboseLevel() < 0) {
-        qsnprintf(buf, sizeof(buf), "Totals: %d passed, %d failed, %d skipped, %d blacklisted, %dms\n",
-                  QTestLog::passCount(), QTestLog::failCount(),
-                  QTestLog::skipCount(), QTestLog::blacklistCount(), timeMs);
+        std::snprintf(buf, sizeof(buf),
+                      "Totals: %d passed, %d failed, %d skipped, %d blacklisted, %dms\n",
+                      QTestLog::passCount(), QTestLog::failCount(),
+                      QTestLog::skipCount(), QTestLog::blacklistCount(), timeMs);
     } else {
-        qsnprintf(buf, sizeof(buf),
-                  "Totals: %d passed, %d failed, %d skipped, %d blacklisted, %dms\n"
-                  "********* Finished testing of %s *********\n",
-                  QTestLog::passCount(), QTestLog::failCount(),
-                  QTestLog::skipCount(), QTestLog::blacklistCount(), timeMs,
-                  QTestResult::currentTestObjectName());
+        std::snprintf(buf, sizeof(buf),
+                      "Totals: %d passed, %d failed, %d skipped, %d blacklisted, %dms\n"
+                      "********* Finished testing of %s *********\n",
+                      QTestLog::passCount(), QTestLog::failCount(),
+                      QTestLog::skipCount(), QTestLog::blacklistCount(), timeMs,
+                      QTestResult::currentTestObjectName());
     }
     outputMessage(buf);
 

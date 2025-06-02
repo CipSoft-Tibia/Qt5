@@ -27,9 +27,7 @@ qt_internal_add_qml_module(QuickShapesPrivate
         Qt::GuiPrivate
         Qt::Qml
         Qt::QuickPrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
-)
+    )
 
 # We need to do additional initialization, so we have to provide our own
 # plugin class rather than using the generated one
@@ -43,6 +41,7 @@ qt_internal_add_shaders(QuickShapesPrivate "qtquickshapes_shaders"
     BATCHABLE
     PRECOMPILE
     OPTIMIZED
+    MULTIVIEW
     PREFIX
         "/qt-project.org/shapes"
     FILES
@@ -52,6 +51,8 @@ qt_internal_add_shaders(QuickShapesPrivate "qtquickshapes_shaders"
         "shaders_ng/radialgradient.frag"
         "shaders_ng/conicalgradient.vert"
         "shaders_ng/conicalgradient.frag"
+        "shaders_ng/texturefill.vert"
+        "shaders_ng/texturefill.frag"
         "shaders_ng/wireframe.frag"
         "shaders_ng/wireframe.vert"
 )

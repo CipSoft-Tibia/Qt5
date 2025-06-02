@@ -110,6 +110,7 @@ private slots:
     void baseDestroyed();
     void pointerConnect();
     void pointerDisconnect();
+    void mixedConnectDisconnect();
     void emitInDefinedOrderPointer();
     void customTypesPointer();
     void connectCxx0x();
@@ -154,6 +155,7 @@ private slots:
     void emitToDestroyedClass();
     void declarativeData();
     void asyncCallbackHelper();
+    void disconnectQueuedConnection_pendingEventsAreDelivered();
 };
 
 struct QObjectCreatedOnShutdown
@@ -4852,6 +4854,125 @@ void tst_QObject::pointerDisconnect()
     QVERIFY(!r2.called(2));
 }
 
+struct MixingFunctor
+{
+    int index;
+    void operator()() { s_called[index] = true; }
+    bool called() const { return s_called[index]; }
+    void reset() { s_called[index] = false; }
+
+private:
+    static inline bool s_called[5] = {};
+};
+
+void tst_QObject::mixedConnectDisconnect()
+{
+    SenderObject s;
+    ReceiverObject pmf;
+    ReceiverObject named;
+
+    MixingFunctor functor1{1};
+    MixingFunctor functor2{2};
+    MixingFunctor functor3{3};
+    MixingFunctor functor4{4};
+
+    auto makePMFConnections = [sender = &s](const ReceiverObject *receiver){
+        QObject::connect(sender, &SenderObject::signal1, receiver, &ReceiverObject::slot1);
+        QObject::connect(sender, &SenderObject::signal2, receiver, &ReceiverObject::slot2);
+        QObject::connect(sender, &SenderObject::signal3, receiver, &ReceiverObject::slot3);
+        QObject::connect(sender, &SenderObject::signal4, receiver, &ReceiverObject::slot4);
+    };
+    auto makeNamedConnections = [sender = &s](const ReceiverObject *receiver){
+        QObject::connect(sender, SIGNAL(signal1()), receiver, SLOT(slot1()));
+        QObject::connect(sender, SIGNAL(signal2()), receiver, SLOT(slot2()));
+        QObject::connect(sender, SIGNAL(signal3()), receiver, SLOT(slot3()));
+        QObject::connect(sender, SIGNAL(signal4()), receiver, SLOT(slot4()));
+    };
+
+    makePMFConnections(&pmf);
+    makeNamedConnections(&named);
+    QObject::connect(&s, &SenderObject::signal1, &named, functor1);
+    QObject::connect(&s, &SenderObject::signal2, &named, functor2);
+    QObject::connect(&s, &SenderObject::signal3, &named, functor3);
+    QObject::connect(&s, &SenderObject::signal4, &named, functor4);
+
+    // sanity check
+    s.emitSignal1();
+    QVERIFY(pmf.called(1));
+    QVERIFY(named.called(1));
+    QVERIFY(functor1.called());
+    pmf.reset();
+    named.reset();
+    functor1.reset();
+
+    // disconnecting a string-based connection with PMF-based disconnect doesn't work
+    bool ret = false;
+    ret = QObject::disconnect(&s, &SenderObject::signal1, &pmf, &ReceiverObject::slot1);
+    QVERIFY(ret);
+    ret = QObject::disconnect(&s, &SenderObject::signal1, &named, &ReceiverObject::slot1);
+    QEXPECT_FAIL("", "Mixing PMF connect with string-based disconnect doesn't work", Continue);
+    QVERIFY(ret);
+
+    s.emitSignal1();
+    QVERIFY(!pmf.called(1));
+    QEXPECT_FAIL("", "Mixing PMF connect with string-based disconnect doesn't work", Continue);
+    QVERIFY(!named.called(1));
+    // cannot disconnect a specific functor (or lambda)
+    QVERIFY(functor1.called());
+    pmf.reset();
+    named.reset();
+    functor1.reset();
+
+    // wildcard disconnect works even in mixed cases and for functor objects
+    ret = QObject::disconnect(&s, SIGNAL(signal2()), &pmf, nullptr);
+    QVERIFY(ret);
+    ret = QObject::disconnect(&s, &SenderObject::signal2, &named, nullptr);
+    QVERIFY(ret);
+
+    s.emitSignal2();
+    QVERIFY(!pmf.called(2));
+    QVERIFY(!named.called(2));
+    QVERIFY(!functor2.called());
+    pmf.reset();
+    named.reset();
+    functor2.reset();
+
+    ret = QObject::disconnect(&s, &SenderObject::signal3, nullptr, nullptr);
+    QVERIFY(ret);
+
+    s.emitSignal3();
+    QVERIFY(!pmf.called(3));
+    QVERIFY(!named.called(3));
+    QVERIFY(!functor3.called());
+    pmf.reset();
+    named.reset();
+    functor3.reset();
+
+    // disconnect() member function is only available for string-based syntax
+    // and doesn't disconnect PMF-based connections
+    ret = s.disconnect(&pmf, SLOT(slot4()));
+    QEXPECT_FAIL("", "Mixing PMF connect with string-based disconnect doesn't work", Continue);
+    QVERIFY(ret);
+    s.emitSignal4();
+    QEXPECT_FAIL("", "Mixing PMF connect with string-based disconnect doesn't work", Continue);
+    QVERIFY(!pmf.called(4));
+    // the functor gets of course still called
+    QVERIFY(functor4.called());
+
+    pmf.reset();
+    named.reset();
+    functor4.reset();
+
+    ret = s.disconnect(&named, nullptr);
+    QVERIFY(ret);
+
+    s.emitSignal4();
+    QVERIFY(!named.called(4));
+    QVERIFY(!functor4.called());
+    named.reset();
+    functor4.reset();
+}
+
 
 void tst_QObject::emitInDefinedOrderPointer()
 {
@@ -8525,25 +8646,25 @@ signals:
     correctly guarded. QTBUG-105286
 */
 namespace QtDeclarative {
-static QAbstractDeclarativeData *theData;
+static std::unique_ptr<QAbstractDeclarativeData> theData;
 
 static void destroyed(QAbstractDeclarativeData *data, QObject *)
 {
-    QCOMPARE(data, theData);
+    QCOMPARE(data, theData.get());
 }
 static void signalEmitted(QAbstractDeclarativeData *data, QObject *, int, void **)
 {
-    QCOMPARE(data, theData);
+    QCOMPARE(data, theData.get());
 }
 // we can't use QCOMPARE in the next two functions, as they don't return void
 static int receivers(QAbstractDeclarativeData *data, const QObject *, int)
 {
-    QTest::qCompare(data, theData, "data", "theData", __FILE__, __LINE__);
+    QTest::qCompare(data, theData.get(), "data", "theData", __FILE__, __LINE__);
     return 0;
 }
 static bool isSignalConnected(QAbstractDeclarativeData *data, const QObject *, int)
 {
-    QTest::qCompare(data, theData, "data", "theData", __FILE__, __LINE__);
+    QTest::qCompare(data, theData.get(), "data", "theData", __FILE__, __LINE__);
     return true;
 }
 
@@ -8584,7 +8705,8 @@ void tst_QObject::declarativeData()
 
     QtDeclarative::Object p;
     QObjectPrivate *priv = QObjectPrivate::get(&p);
-    priv->declarativeData = QtDeclarative::theData = new QAbstractDeclarativeData;
+    priv->declarativeData = new QAbstractDeclarativeData;
+    QtDeclarative::theData.reset(priv->declarativeData);
 
     connect(&p, &QtDeclarative::Object::theSignal, &p, []{
     });
@@ -8827,6 +8949,22 @@ void tst_QObject::asyncCallbackHelper()
         });
         QCOMPARE(called, 3);
     }
+}
+
+void tst_QObject::disconnectQueuedConnection_pendingEventsAreDelivered()
+{
+    SenderObject sender;
+    ReceiverObject receiver;
+
+    receiver.count_slot1 = 0;
+    QObject::connect(&sender, &SenderObject::signal1, &receiver, &ReceiverObject::slot1,
+                     Qt::QueuedConnection);
+    sender.emitSignal1();
+    QCOMPARE(receiver.count_slot1, 0);
+
+    QObject::disconnect(&sender, &SenderObject::signal1, &receiver, &ReceiverObject::slot1);
+    QCOMPARE(receiver.count_slot1, 0);
+    QTRY_COMPARE(receiver.count_slot1, 1);
 }
 
 QTEST_MAIN(tst_QObject)

@@ -21,7 +21,6 @@
 #ifndef AVCODEC_DECODE_H
 #define AVCODEC_DECODE_H
 
-#include "libavutil/buffer.h"
 #include "libavutil/frame.h"
 #include "libavutil/hwcontext.h"
 
@@ -140,14 +139,20 @@ int ff_side_data_update_matrix_encoding(AVFrame *frame,
                                         enum AVMatrixEncoding matrix_encoding);
 
 /**
- * Allocate a hwaccel frame private data and create an AVBufferRef
- * from it.
+ * Allocate a hwaccel frame private data if the provided avctx
+ * uses a hwaccel method that needs it. The returned data is
+ * a RefStruct reference (if allocated).
  *
- * @param     avctx   The codec context which to attach as an opaque value
- * @param     hwaccel The hwaccel for which to allocate
- * @return            The allocated buffer
+ * @param  avctx                   The codec context
+ * @param  hwaccel_picture_private Pointer to return hwaccel_picture_private
+ * @return 0 on success, < 0 on error
  */
-AVBufferRef *ff_hwaccel_frame_priv_alloc(AVCodecContext *avctx,
-                                         const AVHWAccel *hwaccel);
+int ff_hwaccel_frame_priv_alloc(AVCodecContext *avctx, void **hwaccel_picture_private);
+
+/**
+ * Get side data of the given type from a decoding context.
+ */
+const AVPacketSideData *ff_get_coded_side_data(const AVCodecContext *avctx,
+                                               enum AVPacketSideDataType type);
 
 #endif /* AVCODEC_DECODE_H */

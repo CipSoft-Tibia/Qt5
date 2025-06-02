@@ -155,7 +155,7 @@ static sk_sp<SkImage> make_compressed_image(GrDirectContext* dContext,
                                                            dimensions.width(),
                                                            dimensions.height(),
                                                            compression,
-                                                           GrMipmapped::kYes);
+                                                           skgpu::Mipmapped::kYes);
     } else {
         image = SkImages::RasterFromCompressedTextureData(
                 std::move(tmp), dimensions.width(), dimensions.height(), compression);
@@ -217,7 +217,7 @@ protected:
         return SkISize::Make(2*kCellWidth + 3*kPad, 2*kBaseTexHeight + 3*kPad);
     }
 
-    DrawResult onGpuSetup(SkCanvas* canvas, SkString* errorMsg) override {
+    DrawResult onGpuSetup(SkCanvas* canvas, SkString* errorMsg, GraphiteTestContext*) override {
         auto dContext = GrAsDirectContext(canvas->recordingContext());
         if (dContext && dContext->abandoned()) {
             // This isn't a GpuGM so a null 'context' is okay but an abandoned context

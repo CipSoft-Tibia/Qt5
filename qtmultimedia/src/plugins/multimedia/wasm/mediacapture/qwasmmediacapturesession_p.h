@@ -22,6 +22,7 @@
 #include "qwasmmediarecorder_p.h"
 #include <QScopedPointer>
 #include <QtCore/qloggingcategory.h>
+#include <common/qwasmvideooutput_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -52,6 +53,7 @@ public:
 
     bool hasAudio();
     QVideoSink *videoSink() { return m_wasmSink; }
+    void setReadyForCapture(bool ready);
 
 private:
     QWasmMediaRecorder *m_mediaRecorder = nullptr;

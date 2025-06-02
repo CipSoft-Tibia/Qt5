@@ -180,13 +180,11 @@ class DumpAccessibilityScriptTest : public DumpAccessibilityTestBase {
   }
 };
 
-typedef std::pair<ui::AXApiType::Type, bool> TestParamType;
-
 // Parameterize the tests so that each test-pass is run independently.
 struct TestPassToString {
   std::string operator()(
-      const ::testing::TestParamInfo<TestParamType>& i) const {
-    return std::string(i.param.first) + (i.param.second ? "1" : "0");
+      const ::testing::TestParamInfo<ui::AXApiType::Type>& i) const {
+    return std::string(i.param);
   }
 };
 
@@ -196,12 +194,10 @@ struct TestPassToString {
 
 #if BUILDFLAG(IS_MAC)
 
-INSTANTIATE_TEST_SUITE_P(
-    All,
-    DumpAccessibilityScriptTest,
-    ::testing::Values(TestParamType(ui::AXApiType::kMac, true),
-                      TestParamType(ui::AXApiType::kMac, false)),
-    TestPassToString());
+INSTANTIATE_TEST_SUITE_P(All,
+                         DumpAccessibilityScriptTest,
+                         ::testing::Values(ui::AXApiType::kMac),
+                         TestPassToString());
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AXAccessKey) {
   RunTypedTest<kMacAttributes>("ax-access-key.html");
@@ -311,8 +307,14 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AXHighestEditableAncestor) {
   RunTypedTest<kMacAttributes>("ax-highest-editable-ancestor.html");
 }
 
+// TODO(crbug.com/1480429): Flaky
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_AXInsertionPointLineNumber DISABLED_AXInsertionPointLineNumber
+#else
+#define MAYBE_AXInsertionPointLineNumber AXInsertionPointLineNumber
+#endif
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest,
-                       AXInsertionPointLineNumber) {
+                       MAYBE_AXInsertionPointLineNumber) {
   RunTypedTest<kMacAttributes>("ax-insertion-point-line-number.html");
 }
 
@@ -608,12 +610,10 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityScriptTest, AXStringForRange) {
 
 #if BUILDFLAG(IS_WIN)
 
-INSTANTIATE_TEST_SUITE_P(
-    All,
-    DumpAccessibilityScriptTest,
-    ::testing::Values(TestParamType(ui::AXApiType::kWinIA2, true),
-                      TestParamType(ui::AXApiType::kWinIA2, false)),
-    TestPassToString());
+INSTANTIATE_TEST_SUITE_P(All,
+                         DumpAccessibilityScriptTest,
+                         ::testing::Values(ui::AXApiType::kWinIA2),
+                         TestPassToString());
 
 // IAccessible
 

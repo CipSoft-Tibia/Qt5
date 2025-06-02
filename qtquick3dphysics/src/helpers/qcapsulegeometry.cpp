@@ -10,6 +10,58 @@
 
 QT_BEGIN_NAMESPACE
 
+/*!
+    \qmltype CapsuleGeometry
+    \inqmlmodule QtQuick3D.Physics.Helpers
+    \inherits Geometry
+    \since 6.4
+    \brief A geometry for generating a capsule model.
+
+    A geometry for generating a capsule model.
+*/
+
+/*! \qmlproperty bool CapsuleGeometry::enableNormals
+    \default true
+
+    Generate mesh face normals.
+*/
+
+/*! \qmlproperty bool CapsuleGeometry::enableUV
+    \default false
+
+    Generate mesh uv coordinates.
+*/
+
+/*! \qmlproperty int CapsuleGeometry::longitudes
+    \default 32
+
+    Number of longitudes, or meridians, distributed by azimuth.
+*/
+
+/*! \qmlproperty int CapsuleGeometry::latitudes
+    \default 16
+
+    Number of latitudes, distributed by inclination. Must be even.
+*/
+
+/*! \qmlproperty int CapsuleGeometry::rings
+    \default 1
+
+    Number of sections in cylinder between hemispheres.
+*/
+
+/*! \qmlproperty real CapsuleGeometry::height
+    \default 100
+
+    Height of the middle cylinder on the y axis, excluding the hemispheres.
+*/
+
+/*! \qmlproperty real CapsuleGeometry::diameter
+    \default 100
+
+    Diameter on the xz plane.
+*/
+
 CapsuleGeometry::CapsuleGeometry()
 {
     updateData();

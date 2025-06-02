@@ -29,8 +29,6 @@ Q_DECLARE_LOGGING_CATEGORY(lcQrest)
     \ingroup network
     \inmodule QtNetwork
 
-    \preliminary
-
     QRestReply wraps a QNetworkReply and provides convenience methods for data
     and status handling. The methods provide convenience for typical RESTful
     client applications.
@@ -179,7 +177,7 @@ QString QRestReply::readText()
 
     if (!d->decoder) {
         const QByteArray charset = QRestReplyPrivate::contentCharset(wrapped);
-        d->decoder.emplace(charset);
+        d->decoder.emplace(charset.constData());
         if (!d->decoder->isValid()) { // the decoder may not support the mimetype's charset
             qCWarning(lcQrest, "readText(): Charset \"%s\" is not supported", charset.constData());
             return result;
@@ -335,7 +333,7 @@ QDebug operator<<(QDebug debug, const QRestReply &reply)
           << ", bytesAvailable = " << reply.networkReply()->bytesAvailable()
           << ", url " << reply.networkReply()->url()
           << ", operation = " << operationName(reply.networkReply()->operation())
-          << ", reply headers = " << reply.networkReply()->rawHeaderPairs()
+          << ", reply headers = " << reply.networkReply()->headers()
           << ")";
     return debug;
 }
@@ -361,7 +359,7 @@ static constexpr void eat_OWS(QByteArrayView &data) noexcept
     data = parse_OWS(data).tail;
 }
 
-static auto parse_quoted_string(QByteArrayView data, qxp::function_ref<void(char) const> yield)
+static constexpr auto parse_quoted_string(QByteArrayView data, qxp::function_ref<void(char) const> yield)
 {
     struct R {
         QByteArrayView quotedString, tail;
@@ -420,7 +418,7 @@ static constexpr bool is_tchar(char ch) noexcept
     }
 }
 
-static auto parse_comment(QByteArrayView data) noexcept
+static constexpr auto parse_comment(QByteArrayView data) noexcept
 {
     struct R {
         QByteArrayView comment, tail;
@@ -459,7 +457,7 @@ static auto parse_comment(QByteArrayView data) noexcept
     return invalid; // premature end / unbalanced nesting levels
 }
 
-static void eat_CWS(QByteArrayView &data) noexcept
+static constexpr void eat_CWS(QByteArrayView &data) noexcept
 {
     eat_OWS(data);
     while (const auto comment = parse_comment(data)) {
@@ -482,7 +480,7 @@ static constexpr auto parse_token(QByteArrayView data) noexcept
     return R{data.first(i), data.sliced(i)};
 }
 
-static auto parse_parameter(QByteArrayView data, qxp::function_ref<void(char) const> yield)
+static constexpr auto parse_parameter(QByteArrayView data, qxp::function_ref<void(char) const> yield)
 {
     struct R {
         QLatin1StringView name; QByteArrayView value; QByteArrayView tail;
@@ -596,7 +594,7 @@ QByteArray QRestReplyPrivate::contentCharset(const QNetworkReply* reply)
     // text/plain; charset ="utf-8"
 
     const QByteArray contentTypeValue =
-            reply->header(QNetworkRequest::KnownHeaders::ContentTypeHeader).toByteArray();
+            reply->headers().value(QHttpHeaders::WellKnownHeader::ContentType).toByteArray();
 
     const auto r = parse_content_type(contentTypeValue);
     if (r && !r.charset.empty())

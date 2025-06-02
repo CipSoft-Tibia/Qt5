@@ -6,7 +6,7 @@
 \ingroup qmllint-warnings-and-errors
 
 \title Incompatible type
-\brief An object, value, or expression is used on an incompatible type.
+\brief [incompatible-type] An object, value, or expression is used on an incompatible type.
 
 \qmllintwarningcategory incompatible-type
 
@@ -91,6 +91,35 @@ Item {
 
     // Alternative: use a valid property modifier type
     NumberAnimation on xxx { ... }
+}
+
+\endqml
+
+\section1 Construction from string is deprecated; Use structured value type construction instead
+
+\section2 What happened?
+You constructed a QML_STRUCTURED_VALUE using a string.
+
+\section2 Why is this bad?
+This is deprecated and prone to typos.
+
+\section2 Example
+\qml
+import QtQuick
+
+Item {
+    property point p: "5, 6"
+}
+
+\endqml
+To fix this warning, populate the structured value type as explained in the
+QML_STRUCTURED_VALUE description instead of binding a string to the property:
+
+\qml
+import QtQuick
+
+Item {
+    property point p: ({ x: 5, y: 6 })
 }
 
 \endqml

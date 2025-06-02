@@ -10,10 +10,9 @@
 
 QT_BEGIN_NAMESPACE
 
-class QVersionNumber;
-
 class QHelpFilterEngine;
 class QHelpFilterSettingsWidgetPrivate;
+class QVersionNumber;
 
 class QHELP_EXPORT QHelpFilterSettingsWidget : public QWidget
 {

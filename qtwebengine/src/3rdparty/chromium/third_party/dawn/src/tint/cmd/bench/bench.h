@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_CMD_BENCH_BENCH_H_
 #define SRC_TINT_CMD_BENCH_BENCH_H_
@@ -21,15 +34,11 @@
 
 #include "benchmark/benchmark.h"
 #include "src/tint/lang/wgsl/program/program.h"
+#include "src/tint/utils/macros/compiler.h"
 #include "src/tint/utils/macros/concat.h"
+#include "src/tint/utils/result/result.h"
 
 namespace tint::bench {
-
-/// Error indicates an operation did not complete successfully.
-struct Error {
-    /// The error message.
-    std::string msg;
-};
 
 /// ProgramAndFile holds a Program and a Source::File.
 struct ProgramAndFile {
@@ -39,18 +48,23 @@ struct ProgramAndFile {
     std::unique_ptr<Source::File> file;
 };
 
+/// Initializes the internal state for benchmarking.
+/// Must be called once by the benchmark executable entry point.
+/// @returns true on success, false of failure
+bool Initialize();
+
 /// LoadInputFile attempts to load a benchmark input file with the given file
 /// name. Accepts files with the .wgsl and .spv extension.
 /// SPIR-V files are automatically converted to WGSL.
 /// @param name the file name
-/// @returns either the loaded Source::File or an Error
-std::variant<Source::File, Error> LoadInputFile(std::string name);
+/// @returns the loaded Source::File
+Result<Source::File> LoadInputFile(std::string name);
 
 /// LoadInputFile attempts to load a benchmark input program with the given file
 /// name.
 /// @param name the file name
-/// @returns either the loaded Program or an Error
-std::variant<ProgramAndFile, Error> LoadProgram(std::string name);
+/// @returns the loaded Program
+Result<ProgramAndFile> LoadProgram(std::string name);
 
 // If TINT_BENCHMARK_EXTERNAL_SHADERS_HEADER is defined, include that to
 // declare the TINT_BENCHMARK_EXTERNAL_WGSL_PROGRAMS() and TINT_BENCHMARK_EXTERNAL_SPV_PROGRAMS()
@@ -64,7 +78,7 @@ std::variant<ProgramAndFile, Error> LoadProgram(std::string name);
 #endif
 
 /// Declares a benchmark with the given function and WGSL file name
-#define TINT_BENCHMARK_WGSL_PROGRAM(FUNC, WGSL_NAME) BENCHMARK_CAPTURE(FUNC, WGSL_NAME, WGSL_NAME);
+#define TINT_BENCHMARK_WGSL_PROGRAM(FUNC, WGSL_NAME) BENCHMARK_CAPTURE(FUNC, WGSL_NAME, WGSL_NAME)
 
 /// Declares a set of benchmarks for the given function using a list of WGSL files.
 #define TINT_BENCHMARK_WGSL_PROGRAMS(FUNC)                                   \
@@ -83,7 +97,8 @@ std::variant<ProgramAndFile, Error> LoadProgram(std::string name);
 /// Declares a set of benchmarks for the given function using a list of WGSL and SPIR-V files.
 #define TINT_BENCHMARK_PROGRAMS(FUNC)  \
     TINT_BENCHMARK_WGSL_PROGRAMS(FUNC) \
-    TINT_BENCHMARK_SPV_PROGRAMS(FUNC)
+    TINT_BENCHMARK_SPV_PROGRAMS(FUNC)  \
+    TINT_REQUIRE_SEMICOLON
 
 }  // namespace tint::bench
 

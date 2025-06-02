@@ -161,12 +161,21 @@
     },
     {
       name: "CSSValueAppearanceNonStandard",
-      message: "CSS appearance values  `inner-spin-button`, `media-slider`, `media-sliderthumb`, `media-volume-slider`, `media-volume-sliderthumb`, `push-button`, `searchfield-cancel-button`, `slider-horizontal`, `sliderthumb-horizontal`, `sliderthumb-vertical`, `square-button` are not standardized and will no longer be supported.",
+      message: "CSS appearance values  `inner-spin-button`, `media-slider`, `media-sliderthumb`, `media-volume-slider`, `media-volume-sliderthumb`, `push-button`, `searchfield-cancel-button`, `slider-horizontal`, `sliderthumb-horizontal`, `sliderthumb-vertical`, `square-button` are not standardized and will be removed.",
       translation_note: "Warning displayed to developers to let them know the CSS appearance property values they used are deprecated and will be removed.",
       web_features: [
         "kCSSValueAppearanceNonStandard",
       ],
       chrome_status_feature: 5066630972833792,
+    },
+    {
+      name: "CSSValueAppearanceSliderVertical",
+      message: "CSS appearance value `slider-vertical` is not standardized and will be removed.",
+      translation_note: "Warning displayed to developers to let them know the CSS appearance property value they used is not standard and will be removed.",
+      web_features: [
+        "kCSSValueAppearanceSliderVertical",
+      ],
+      chrome_status_feature: 6001359429566464,
     },
     {
       name: "DataUrlInSvgUse",
@@ -212,16 +221,6 @@
       chrome_status_feature: 5726124632965120,
       milestone: 109,
       obsolete_to_be_removed_after_milestone: 127,
-    },
-    {
-      name: "ExpectCTHeader",
-      message: "The `Expect-CT` header is deprecated and will be removed. Chrome requires Certificate Transparency for all publicly trusted certificates issued after April 30, 2018.",
-      translation_note: "This message is shown when the deprecated Expect-CT header is present.",
-      web_features: [
-        "kExpectCTHeader",
-      ],
-      chrome_status_feature: 6244547273687040,
-      milestone: 107,
     },
     {
       name: "GeolocationInsecureOrigin",
@@ -323,6 +322,7 @@
       ],
       chrome_status_feature: 6239658726391808,
       milestone: 119,
+      obsolete_to_be_removed_after_milestone: 132,
     },
     {
       name: "NoSysexWebMIDIWithoutPermission",
@@ -562,6 +562,33 @@
       ],
       chrome_status_feature: 5687444770914304,
       milestone: 71,
+    },
+    {
+      name: "ThirdPartyCookieAccessError",
+      message: "Cookies marked with `SameSite=None; Secure` and not `Partitioned` are blocked in cross-site contexts.",
+      translation_note: "This error occurs when the website attempts to access third-party cookies and the browser blocks them.",
+      web_features: [
+        // This deprecation is used for Legacy Technology Report generation only.
+      ],
+      chrome_status_feature: 5133113939722240,
+    },
+    {
+      name: "ThirdPartyCookieAccessWarning",
+      message: "In a future version of the browser, cookies marked with `SameSite=None; Secure` and not `Partitioned` will be blocked in cross-site context.",
+      translation_note: "This warning occurs when the website attempts to access third-party cookies but the browser does not block them yet.",
+      web_features: [
+        // This deprecation is used for Legacy Technology Report generation only.
+      ],
+      chrome_status_feature: 5133113939722240,
+    },
+    {
+      name: "UnloadHandler",
+      message: "Unload event listeners are deprecated and will be removed.",
+      translation_note: "A deprecation warning shown in the DevTools Issues tab. It's shown when a listener for the `unload` event is added.",
+      web_features: [
+        "kDocumentUnloadRegistered",
+      ],
+      chrome_status_feature: 5579556305502208,
     },
     {
       name: "V8SharedArrayBufferConstructedInExtensionWithoutIsolation",

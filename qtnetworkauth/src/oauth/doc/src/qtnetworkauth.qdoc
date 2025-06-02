@@ -61,6 +61,12 @@
     suspicious applications. Instead, the credentials are entered in a known
     and trusted web interface.
 
+    \section1 Articles and Guides
+
+    \list
+        \li \l {Qt OAuth2 Overview}
+    \endlist
+
     \section1 Licenses
 
     Qt Network Authorization is available under commercial licenses from

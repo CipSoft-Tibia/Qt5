@@ -15,17 +15,18 @@
 import m from 'mithril';
 
 import {CallsiteInfo} from '../common/state';
+
 import {globals} from './globals';
-import {Panel} from './panel';
 
 interface CpuProfileDetailsPanelAttrs {}
 
-export class CpuProfileDetailsPanel extends Panel<CpuProfileDetailsPanelAttrs> {
+export class CpuProfileDetailsPanel implements
+    m.ClassComponent<CpuProfileDetailsPanelAttrs> {
   view() {
     const sampleDetails = globals.cpuProfileDetails;
     const header =
         m('.details-panel-heading', m('h2', `CPU Profile Sample Details`));
-    if (!sampleDetails || sampleDetails.id === undefined) {
+    if (sampleDetails.id === undefined) {
       return m('.details-panel', header);
     }
 
@@ -45,6 +46,4 @@ export class CpuProfileDetailsPanel extends Panel<CpuProfileDetailsPanelAttrs> {
 
     return result;
   }
-
-  renderCanvas() {}
 }

@@ -15,7 +15,7 @@ namespace extensions {
 // static
 bool RendererContextData::IsIsolatedWebAppContextAndEnabled() {
   return base::CommandLine::ForCurrentProcess()->HasSwitch(
-             switches::kEnableIsolatedWebAppsInRenderer) &&
+             ::switches::kEnableIsolatedWebAppsInRenderer) &&
          blink::IsIsolatedContext();
 }
 

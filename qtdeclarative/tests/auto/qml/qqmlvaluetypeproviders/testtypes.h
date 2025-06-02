@@ -3,24 +3,24 @@
 #ifndef TESTTYPES_H
 #define TESTTYPES_H
 
-#include <QObject>
-#include <QPoint>
-#include <QPointF>
-#include <QSize>
-#include <QSizeF>
-#include <QRect>
-#include <QRectF>
-#include <QVector2D>
-#include <QVector3D>
-#include <QVector4D>
-#include <QQuaternion>
-#include <QMatrix4x4>
-#include <QFont>
-#include <QColor>
-#include <QDateTime>
-#include <QDate>
-#include <QTime>
-#include <qqml.h>
+#include <QtGui/qcolor.h>
+#include <QtGui/qfont.h>
+#include <QtGui/qmatrix4x4.h>
+#include <QtGui/qquaternion.h>
+#include <QtGui/qvector2d.h>
+#include <QtGui/qvector3d.h>
+#include <QtGui/qvector4d.h>
+
+#include <QtQml/qjsmanagedvalue.h>
+#include <QtQml/qjsprimitivevalue.h>
+#include <QtQml/qjsvalue.h>
+#include <QtQml/qqml.h>
+
+#include <QtCore/qdatetime.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qpoint.h>
+#include <QtCore/qrect.h>
+#include <QtCore/qsize.h>
 
 struct ConstructibleValueType
 {
@@ -33,8 +33,10 @@ struct ConstructibleValueType
 public:
     ConstructibleValueType() = default;
     Q_INVOKABLE ConstructibleValueType(int foo) : m_foo(foo) {}
+    Q_INVOKABLE ConstructibleValueType(double foo) : m_foo(foo * 4.0) {}
     Q_INVOKABLE ConstructibleValueType(QObject *) : m_foo(67) {}
     Q_INVOKABLE ConstructibleValueType(const QUrl &) : m_foo(68) {}
+    Q_INVOKABLE ConstructibleValueType(const QString &) : m_foo(69) {}
 
     int foo() const { return m_foo; }
 
@@ -539,6 +541,71 @@ signals:
 
 private:
     Padding m_padding{ 17, 17 };
+};
+
+class FromJSValue
+{
+    Q_GADGET
+    QML_VALUE_TYPE(fromJSValue)
+    QML_CONSTRUCTIBLE_VALUE
+    Q_PROPERTY(QVariant value READ value CONSTANT)
+public:
+    static int constructorCalls;
+    explicit FromJSValue() {}
+    Q_INVOKABLE explicit FromJSValue(const QJSValue &value) : m_value(value.toVariant())
+    {
+        ++constructorCalls;
+    }
+    Q_INVOKABLE QString toString() const { return m_value.toString(); }
+
+    QVariant value() const { return m_value; }
+
+private:
+    QVariant m_value;
+};
+
+class FromJSPrimitive
+{
+    Q_GADGET
+    QML_VALUE_TYPE(fromJSPrimitive)
+    QML_CONSTRUCTIBLE_VALUE
+    Q_PROPERTY(QVariant value READ value CONSTANT)
+public:
+    static int constructorCalls;
+    explicit FromJSPrimitive() {}
+    Q_INVOKABLE explicit FromJSPrimitive(const QJSPrimitiveValue &value)
+        : m_value(value.toVariant())
+    {
+        ++constructorCalls;
+    }
+    Q_INVOKABLE QString toString() const { return m_value.toString(); }
+
+    QVariant value() const { return m_value; }
+
+private:
+    QVariant m_value;
+};
+
+class FromJSManaged
+{
+    Q_GADGET
+    QML_VALUE_TYPE(fromJSManaged)
+    QML_CONSTRUCTIBLE_VALUE
+    Q_PROPERTY(QVariant value READ value CONSTANT)
+public:
+    static int constructorCalls;
+    explicit FromJSManaged() {}
+    Q_INVOKABLE explicit FromJSManaged(const QJSManagedValue &value)
+        : m_value(value.toVariant())
+    {
+        ++constructorCalls;
+    }
+    Q_INVOKABLE QString toString() const { return m_value.toString(); }
+
+    QVariant value() const { return m_value; }
+
+private:
+    QVariant m_value;
 };
 
 void registerTypes();

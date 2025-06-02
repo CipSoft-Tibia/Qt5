@@ -12,7 +12,7 @@
 
 /*!
     \qmltype Layout
-    //! \instantiates QQuickLayoutAttached
+    //! \nativetype QQuickLayoutAttached
     \inqmlmodule QtQuick.Layouts
     \ingroup layouts
     \brief Provides attached properties for items pushed onto a \l GridLayout,
@@ -80,6 +80,8 @@ QQuickLayoutAttached::QQuickLayoutAttached(QObject *parent)
       m_fillHeight(false),
       m_isFillWidthSet(false),
       m_isFillHeightSet(false),
+      m_isUseDefaultSizePolicySet(false),
+      m_useDefaultSizePolicy(QQuickLayout::SizePolicyExplicit),
       m_isMinimumWidthSet(false),
       m_isMinimumHeightSet(false),
       m_isMaximumWidthSet(false),
@@ -336,6 +338,30 @@ void QQuickLayoutAttached::setFillHeight(bool fill)
     if (oldFillHeight != fill) {
         invalidateItem();
         emit fillHeightChanged();
+    }
+}
+
+/*!
+    \qmlattachedproperty enumeration Layout::useDefaultSizePolicy
+    \since 6.8
+
+    This property allows the user to configure the layout size policy at the component
+    level.
+
+    The default value will be inherited by querying the application attribute
+    \l Qt::AA_QtQuickUseDefaultSizePolicy. You can use this property to override that value.
+
+    \value Layout.SizePolicyImplicit
+        The item in the layout uses implicit or built-in size policy
+    \value Layout.SizePolicyExplicit
+        The item in the layout doesn't use implicit size policies.
+*/
+void QQuickLayoutAttached::setUseDefaultSizePolicy(QQuickLayout::SizePolicy sizePolicy)
+{
+    m_isUseDefaultSizePolicySet = true;
+    if (m_useDefaultSizePolicy != sizePolicy) {
+        m_useDefaultSizePolicy = sizePolicy;
+        emit useDefaultSizePolicyChanged();
     }
 }
 
@@ -1254,29 +1280,33 @@ void QQuickLayout::effectiveSizeHints_helper(QQuickItem *item, QSizeF *cachedSiz
  */
 QLayoutPolicy::Policy QQuickLayout::effectiveSizePolicy_helper(QQuickItem *item, Qt::Orientation orientation, QQuickLayoutAttached *info)
 {
-    bool fillExtent([&]{
-        QLayoutPolicy::Policy policy{QLayoutPolicy::Fixed};
-        if (item && QGuiApplication::testAttribute(Qt::AA_QtQuickUseDefaultSizePolicy)) {
-            QLayoutPolicy sizePolicy = QQuickItemPrivate::get(item)->sizePolicy();
-            policy = (orientation == Qt::Horizontal) ? sizePolicy.horizontalPolicy() : sizePolicy.verticalPolicy();
-        }
-        return (policy == QLayoutPolicy::Preferred);
-    }());
-
+    QLayoutPolicy::Policy pol{QLayoutPolicy::Fixed};
     bool isSet = false;
     if (info) {
         if (orientation == Qt::Horizontal) {
             isSet = info->isFillWidthSet();
-            if (isSet) fillExtent = info->fillWidth();
+            if (isSet && info->fillWidth())
+                pol = QLayoutPolicy::Preferred;
         } else {
             isSet = info->isFillHeightSet();
-            if (isSet) fillExtent = info->fillHeight();
+            if (isSet && info->fillHeight())
+                pol = QLayoutPolicy::Preferred;
         }
     }
-    if (!isSet && qobject_cast<QQuickLayout*>(item))
-        fillExtent = true;
+    if (!isSet && item) {
+        auto effectiveUseDefaultSizePolicy = [info]() {
+            return info ? info->useDefaultSizePolicy() == QQuickLayout::SizePolicyImplicit
+                        : QGuiApplication::testAttribute(Qt::AA_QtQuickUseDefaultSizePolicy);
+        };
+        if (qobject_cast<QQuickLayout*>(item)) {
+            pol = QLayoutPolicy::Preferred;
+        } else if (effectiveUseDefaultSizePolicy()) {
+            QLayoutPolicy sizePolicy = QQuickItemPrivate::get(item)->sizePolicy();
+            pol = (orientation == Qt::Horizontal) ? sizePolicy.horizontalPolicy() : sizePolicy.verticalPolicy();
+        }
+    }
 
-    return fillExtent ? QLayoutPolicy::Preferred : QLayoutPolicy::Fixed;
+    return pol;
 }
 
 void QQuickLayout::_q_dumpLayoutTree() const

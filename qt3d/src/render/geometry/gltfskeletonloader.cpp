@@ -539,7 +539,8 @@ QByteArray GLTFSkeletonLoader::resolveLocalData(const QString &path) const
 
     QString absPath = d.absoluteFilePath(path);
     QFile f(absPath);
-    f.open(QIODevice::ReadOnly);
+    if (!f.open(QIODevice::ReadOnly))
+        return QByteArray();
     return f.readAll();
 }
 

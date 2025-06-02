@@ -39,7 +39,7 @@ class QPulseAudioSink : public QPlatformAudioSink
 
 public:
     QPulseAudioSink(const QByteArray &device, QObject *parent);
-    ~QPulseAudioSink();
+    ~QPulseAudioSink() override;
 
     void start(QIODevice *device) override;
     QIODevice *start() override;
@@ -53,7 +53,7 @@ public:
     qint64 processedUSecs() const override;
     QAudio::Error error() const override;
     QAudio::State state() const override;
-    void setFormat(const QAudioFormat &format) override;
+    void setFormat(const QAudioFormat &format);
     QAudioFormat format() const override;
 
     void setVolume(qreal volume) override;
@@ -77,9 +77,11 @@ private Q_SLOTS:
     void userFeed();
     void onPulseContextFailed();
 
-    PAOperationUPtr exchangeDrainOperation(pa_operation *newOperation);
-
 private:
+    using PAOperationHandle = QPulseAudioInternal::PAOperationHandle;
+    using PAStreamHandle = QPulseAudioInternal::PAStreamHandle;
+    PAOperationHandle exchangeDrainOperation(pa_operation *newOperation);
+
     qsizetype defaultBufferSize() const;
 
     pa_sample_spec m_spec = {};
@@ -94,7 +96,7 @@ private:
     QBasicTimer m_tickTimer;
 
     QIODevice *m_audioSource = nullptr;
-    pa_stream *m_stream = nullptr;
+    PAStreamHandle m_stream;
     std::vector<char> m_audioBuffer;
 
     qint64 m_totalTimeValue = 0;
@@ -121,7 +123,7 @@ class PulseOutputPrivate : public QIODevice
 
 public:
     PulseOutputPrivate(QPulseAudioSink *audio);
-    virtual ~PulseOutputPrivate() {}
+    ~PulseOutputPrivate() override = default;
 
 protected:
     qint64 readData(char *data, qint64 len) override;

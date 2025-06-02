@@ -102,7 +102,8 @@ ImageData* ImageData::ValidateAndCreate(
       }
     }
     if (!size_in_elements_checked.IsValid() ||
-        size_in_elements_checked.ValueOrDie() > v8::TypedArray::kMaxLength) {
+        size_in_elements_checked.ValueOrDie() >
+            v8::TypedArray::kMaxByteLength) {
       exception_state.ThrowRangeError("Out of memory at ImageData creation.");
       return nullptr;
     }
@@ -264,8 +265,9 @@ ImageData* ImageData::CreateForTest(const gfx::Size& size) {
   data_size *= size.width();
   data_size *= size.height();
   if (!data_size.IsValid() ||
-      data_size.ValueOrDie() > v8::TypedArray::kMaxLength)
+      data_size.ValueOrDie() > v8::TypedArray::kMaxByteLength) {
     return nullptr;
+  }
 
   NotShared<DOMUint8ClampedArray> byte_array(
       DOMUint8ClampedArray::CreateOrNull(data_size.ValueOrDie()));
@@ -378,13 +380,10 @@ v8::Local<v8::Object> ImageData::AssociateWithWrapper(
     //
     // This is a perf hack breaking the web interop.
 
-    v8::Local<v8::Value> v8_data;
     ScriptState* script_state =
         ScriptState::From(wrapper->GetCreationContextChecked());
-    if (!ToV8Traits<V8ImageDataArray>::ToV8(script_state, data_)
-             .ToLocal(&v8_data)) {
-      return wrapper;
-    }
+    v8::Local<v8::Value> v8_data =
+        ToV8Traits<V8ImageDataArray>::ToV8(script_state, data_);
     bool defined_property;
     if (!wrapper
              ->DefineOwnProperty(isolate->GetCurrentContext(),

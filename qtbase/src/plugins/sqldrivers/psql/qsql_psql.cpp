@@ -6,6 +6,7 @@
 #include <qcoreapplication.h>
 #include <qvariant.h>
 #include <qdatetime.h>
+#include <qloggingcategory.h>
 #include <qregularexpression.h>
 #include <qsqlerror.h>
 #include <qsqlfield.h>
@@ -64,6 +65,8 @@ Q_DECLARE_OPAQUE_POINTER(PGresult*)
 Q_DECLARE_METATYPE(PGresult*)
 
 QT_BEGIN_NAMESPACE
+
+static Q_LOGGING_CATEGORY(lcPsql, "qt.sql.postgresql")
 
 using namespace Qt::StringLiterals;
 
@@ -140,6 +143,7 @@ public:
     bool setEncodingUtf8();
     void setDatestyle();
     void setByteaOutput();
+    void setUtcTimeZone();
     void detectBackslashEscape();
     mutable QHash<int, QString> oidToTable;
 };
@@ -207,8 +211,8 @@ PGresult *QPSQLDriverPrivate::getResult(StatementId stmtId) const
     if (stmtId != currentStmtId) {
         // If you change the following warning, remember to update it
         // on sql-driver.html page too.
-        qWarning("QPSQLDriver::getResult: Query results lost - "
-                 "probably discarded on executing another SQL query.");
+        qCWarning(lcPsql, "QPSQLDriver::getResult: Query results lost - "
+                          "probably discarded on executing another SQL query.");
         return nullptr;
     }
     PGresult *result = PQgetResult(connection);
@@ -382,7 +386,7 @@ void QPSQLResultPrivate::deallocatePreparedStmt()
 
         if (PQresultStatus(result) != PGRES_COMMAND_OK) {
             const QString msg = QString::fromUtf8(PQerrorMessage(drv_d_func()->connection));
-            qWarning("Unable to free statement: %ls", qUtf16Printable(msg));
+            qCWarning(lcPsql, "Unable to free statement: %ls.", qUtf16Printable(msg));
         }
         PQclear(result);
     }
@@ -593,7 +597,7 @@ QVariant QPSQLResult::data(int i)
 {
     Q_D(const QPSQLResult);
     if (i >= PQnfields(d->result)) {
-        qWarning("QPSQLResult::data: column %d out of range", i);
+        qCWarning(lcPsql, "QPSQLResult::data: column %d out of range.", i);
         return QVariant();
     }
     const int currentRow = isForwardOnly() ? 0 : at();
@@ -646,9 +650,14 @@ QVariant QPSQLResult::data(int i)
         return QVariant(QDate::fromString(QString::fromLatin1(val), Qt::ISODate));
     case QMetaType::QTime:
         return QVariant(QTime::fromString(QString::fromLatin1(val), Qt::ISODate));
-    case QMetaType::QDateTime:
-        return QVariant(QDateTime::fromString(QString::fromLatin1(val),
-                                              Qt::ISODate).toLocalTime());
+    case QMetaType::QDateTime: {
+        const QLatin1StringView tzString(val);
+        const auto timeString(tzString.sliced(11));
+        if (timeString.contains(u'-') || timeString.contains(u'+') || timeString.endsWith(u'Z'))
+            return QDateTime::fromString(tzString, Qt::ISODate);
+        const auto utc = tzString.toString() + u'Z';
+        return QVariant(QDateTime::fromString(utc, Qt::ISODate));
+    }
 #else
     case QMetaType::QDate:
     case QMetaType::QTime:
@@ -663,7 +672,7 @@ QVariant QPSQLResult::data(int i)
         return QVariant(ba);
     }
     default:
-        qWarning("QPSQLResult::data: unknown data type");
+        qCWarning(lcPsql, "QPSQLResult::data: unhandled data type %d.", type.id());
     }
     return QVariant();
 }
@@ -793,7 +802,6 @@ QSqlRecord QPSQLResult::record() const
 
         f.setLength(len);
         f.setPrecision(precision);
-        f.setSqlType(ptype);
         info.append(f);
     }
     return info;
@@ -910,7 +918,7 @@ void QPSQLDriverPrivate::setDatestyle()
     PGresult *result = exec("SET DATESTYLE TO 'ISO'");
     int status =  PQresultStatus(result);
     if (status != PGRES_COMMAND_OK)
-        qWarning() << QString::fromUtf8(PQerrorMessage(connection));
+        qCWarning(lcPsql) << QString::fromUtf8(PQerrorMessage(connection));
     PQclear(result);
 }
 
@@ -923,9 +931,18 @@ void QPSQLDriverPrivate::setByteaOutput()
         PGresult *result = exec("SET bytea_output TO escape");
         int status = PQresultStatus(result);
         if (status != PGRES_COMMAND_OK)
-            qWarning() << QString::fromUtf8(PQerrorMessage(connection));
+            qCWarning(lcPsql) << QString::fromUtf8(PQerrorMessage(connection));
         PQclear(result);
     }
+}
+
+void QPSQLDriverPrivate::setUtcTimeZone()
+{
+    PGresult *result = exec("SET TIME ZONE 'UTC'");
+    int status = PQresultStatus(result);
+    if (status != PGRES_COMMAND_OK)
+        qCWarning(lcPsql) << QString::fromUtf8(PQerrorMessage(connection));
+    PQclear(result);
 }
 
 void QPSQLDriverPrivate::detectBackslashEscape()
@@ -1061,16 +1078,16 @@ QPSQLDriver::Protocol QPSQLDriverPrivate::getPSQLVersion()
     if (serverVersion == QPSQLDriver::VersionUnknown) {
         serverVersion = clientVersion;
         if (serverVersion != QPSQLDriver::VersionUnknown)
-            qWarning("The server version of this PostgreSQL is unknown, falling back to the client version.");
+            qCWarning(lcPsql,  "The server version of this PostgreSQL is unknown, "
+                               "falling back to the client version.");
     }
 
     // Keep the old behavior unchanged
     if (serverVersion == QPSQLDriver::VersionUnknown)
         serverVersion = QPSQLDriver::Version6;
 
-    if (serverVersion < QPSQLDriver::Version7_3) {
-        qWarning("This version of PostgreSQL is not supported and may not work.");
-    }
+    if (serverVersion < QPSQLDriver::Version7_3)
+        qCWarning(lcPsql, "This version of PostgreSQL is not supported and may not work.");
 
     return serverVersion;
 }
@@ -1193,6 +1210,7 @@ bool QPSQLDriver::open(const QString &db,
     }
     d->setDatestyle();
     d->setByteaOutput();
+    d->setUtcTimeZone();
 
     setOpen(true);
     setOpenError(false);
@@ -1225,7 +1243,7 @@ bool QPSQLDriver::beginTransaction()
 {
     Q_D(QPSQLDriver);
     if (!isOpen()) {
-        qWarning("QPSQLDriver::beginTransaction: Database not open");
+        qCWarning(lcPsql, "QPSQLDriver::beginTransaction: Database not open.");
         return false;
     }
     PGresult *res = d->exec("BEGIN");
@@ -1243,7 +1261,7 @@ bool QPSQLDriver::commitTransaction()
 {
     Q_D(QPSQLDriver);
     if (!isOpen()) {
-        qWarning("QPSQLDriver::commitTransaction: Database not open");
+        qCWarning(lcPsql, "QPSQLDriver::commitTransaction: Database not open.");
         return false;
     }
     PGresult *res = d->exec("COMMIT");
@@ -1272,7 +1290,7 @@ bool QPSQLDriver::rollbackTransaction()
 {
     Q_D(QPSQLDriver);
     if (!isOpen()) {
-        qWarning("QPSQLDriver::rollbackTransaction: Database not open");
+        qCWarning(lcPsql, "QPSQLDriver::rollbackTransaction: Database not open.");
         return false;
     }
     PGresult *res = d->exec("ROLLBACK");
@@ -1409,7 +1427,6 @@ QSqlRecord QPSQLDriver::record(const QString &tablename) const
         f.setLength(len);
         f.setPrecision(precision);
         f.setDefaultValue(defVal);
-        f.setSqlType(query.value(1).toInt());
         info.append(f);
     }
 
@@ -1437,12 +1454,11 @@ QString QPSQLDriver::formatValue(const QSqlField &field, bool trimStrings) const
         case QMetaType::QDateTime: {
             const auto dt = field.value().toDateTime();
             if (dt.isValid()) {
-                // we force the value to be considered with a timezone information, and we force it to be UTC
-                // this is safe since postgresql stores only the UTC value and not the timezone offset (only used
-                // while parsing), so we have correct behavior in both case of with timezone and without tz
+                // even though the documentation (https://www.postgresql.org/docs/current/datatype-datetime.html)
+                // states that any time zone indication for 'timestamp without tz' columns will be ignored,
+                // it is stored as the correct utc timestamp - so we can pass the utc offset here
                 r = QStringLiteral("TIMESTAMP WITH TIME ZONE ") + u'\'' +
-                        QLocale::c().toString(dt.toUTC(), u"yyyy-MM-ddThh:mm:ss.zzz") +
-                        u'Z' + u'\'';
+                        dt.toOffsetFromUtc(dt.offsetFromUtc()).toString(Qt::ISODateWithMs) + u'\'';
             } else {
                 r = nullStr();
             }
@@ -1529,7 +1545,7 @@ bool QPSQLDriver::subscribeToNotification(const QString &name)
 {
     Q_D(QPSQLDriver);
     if (!isOpen()) {
-        qWarning("QPSQLDriver::subscribeToNotificationImplementation: database not open.");
+        qCWarning(lcPsql, "QPSQLDriver::subscribeToNotification: Database not open.");
         return false;
     }
 
@@ -1558,7 +1574,8 @@ bool QPSQLDriver::subscribeToNotification(const QString &name)
             connect(d->sn, &QSocketNotifier::activated, this, &QPSQLDriver::_q_handleNotification);
         }
     } else {
-        qWarning("QPSQLDriver::subscribeToNotificationImplementation: PQsocket didn't return a valid socket to listen on");
+        qCWarning(lcPsql, "QPSQLDriver::subscribeToNotificationImplementation: "
+                          "PQsocket didn't return a valid socket to listen on.");
         return false;
     }
 
@@ -1569,13 +1586,13 @@ bool QPSQLDriver::unsubscribeFromNotification(const QString &name)
 {
     Q_D(QPSQLDriver);
     if (!isOpen()) {
-        qWarning("QPSQLDriver::unsubscribeFromNotificationImplementation: database not open.");
+        qCWarning(lcPsql, "QPSQLDriver::unsubscribeFromNotification: Database not open.");
         return false;
     }
 
     if (!d->seid.contains(name)) {
-        qWarning("QPSQLDriver::unsubscribeFromNotificationImplementation: not subscribed to '%ls'.",
-            qUtf16Printable(name));
+        qCWarning(lcPsql, "QPSQLDriver::unsubscribeFromNotification: not subscribed to '%ls'.",
+                  qUtf16Printable(name));
         return false;
     }
 
@@ -1624,8 +1641,8 @@ void QPSQLDriver::_q_handleNotification()
             emit notification(name, source, payload);
         }
         else
-            qWarning("QPSQLDriver: received notification for '%ls' which isn't subscribed to.",
-                    qUtf16Printable(name));
+            qCWarning(lcPsql, "QPSQLDriver: received notification for '%ls' which isn't subscribed to.",
+                      qUtf16Printable(name));
 
         qPQfreemem(notify);
     }

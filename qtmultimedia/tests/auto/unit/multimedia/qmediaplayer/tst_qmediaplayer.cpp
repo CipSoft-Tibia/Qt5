@@ -53,6 +53,9 @@ public slots:
     void cleanup();
 
 private slots:
+    void play_doesNotResetError();
+    void setSource_resetsError();
+    void setSourceDevice_resetsError();
     void testValid();
     void testMedia_data();
     void testMedia();
@@ -189,15 +192,56 @@ void tst_QMediaPlayer::init()
 {
     player = new QMediaPlayer;
     mockPlayer = QMockIntegration::instance()->lastPlayer();
-    Q_ASSERT(mockPlayer);
+    QTEST_ASSERT(mockPlayer);
     audioOutput = new QAudioOutput;
     player->setAudioOutput(audioOutput);
-    Q_ASSERT(mockPlayer->m_audioOutput != nullptr);
+    QTEST_ASSERT(mockPlayer->m_audioOutput != nullptr);
 }
 
 void tst_QMediaPlayer::cleanup()
 {
     delete player;
+}
+
+void tst_QMediaPlayer::play_doesNotResetError()
+{
+    player->setSource({ "https://dummy/dummy.mp3" });
+
+    mockPlayer->setError(QMediaPlayer::AccessDeniedError);
+    mockPlayer->setErrorString(QStringLiteral(u"Error"));
+    QSignalSpy errorSpy{ player, &QMediaPlayer::errorChanged };
+
+    player->play();
+
+    QCOMPARE_EQ(player->error(), QMediaPlayer::AccessDeniedError);
+    QCOMPARE_EQ(player->errorString(), QStringLiteral(u"Error"));
+    QCOMPARE_EQ(errorSpy.size(), 0);
+}
+
+void tst_QMediaPlayer::setSource_resetsError()
+{
+    mockPlayer->setError(QMediaPlayer::AccessDeniedError);
+    mockPlayer->setErrorString(QStringLiteral(u"Error"));
+    QSignalSpy errorSpy{ player, &QMediaPlayer::errorChanged };
+
+    player->setSource({ "https://dummy/dummy.mp3" });
+
+    QCOMPARE_EQ(player->error(), QMediaPlayer::NoError);
+    QVERIFY(player->errorString().isEmpty());
+    QCOMPARE_EQ(errorSpy.size(), 1);
+}
+
+void tst_QMediaPlayer::setSourceDevice_resetsError()
+{
+    mockPlayer->setError(QMediaPlayer::AccessDeniedError);
+    mockPlayer->setErrorString(QStringLiteral(u"Error"));
+    QSignalSpy errorSpy{ player, &QMediaPlayer::errorChanged };
+
+    player->setSourceDevice(nullptr, { "https://dummy/dummy.mp3" });
+
+    QCOMPARE_EQ(player->error(), QMediaPlayer::NoError);
+    QVERIFY(player->errorString().isEmpty());
+    QCOMPARE_EQ(errorSpy.size(), 1);
 }
 
 void tst_QMediaPlayer::testValid()

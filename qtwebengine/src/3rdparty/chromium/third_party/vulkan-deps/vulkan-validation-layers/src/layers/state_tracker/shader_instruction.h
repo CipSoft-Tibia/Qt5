@@ -24,13 +24,7 @@
 #include "containers/custom_containers.h"
 #include <spirv/unified1/spirv.hpp>
 
-struct SPIRV_MODULE_STATE;
-
-struct AtomicInstructionInfo {
-    uint32_t storage_class;
-    uint32_t bit_width;
-    uint32_t type;  // ex. OpTypeInt
-};
+namespace spirv {
 
 // Holds information about a single SPIR-V instruction
 // Provides easy access to len, opcode, and content words without the caller needing to care too much about the physical SPIRV
@@ -69,7 +63,6 @@ class Instruction {
     uint32_t GetConstantValue() const;
     uint32_t GetBitWidth() const;
     uint32_t GetByteWidth() const { return (GetBitWidth() + 31) / 32; }
-    AtomicInstructionInfo GetAtomicInfo(const SPIRV_MODULE_STATE& module_state) const;
     spv::BuiltIn GetBuiltIn() const;
 
     bool IsArray() const;
@@ -96,4 +89,16 @@ class Instruction {
     small_vector<uint32_t, word_vector_length, uint32_t> words_;
     uint32_t result_id_index_ = 0;
     uint32_t type_id_index_ = 0;
+
+#ifndef NDEBUG
+    // Helping values to make debugging what is happening in a instruction easier
+    std::string d_opcode_;
+    uint32_t d_length_;
+    uint32_t d_result_id_;
+    uint32_t d_type_id_;
+    // helps people new to using SPIR-V spec to understand Word()
+    uint32_t d_words_[12];
+#endif
 };
+
+}  // namespace spirv

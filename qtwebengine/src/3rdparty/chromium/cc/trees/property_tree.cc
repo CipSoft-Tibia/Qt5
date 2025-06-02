@@ -48,7 +48,9 @@ AnchorPositionScrollersData::AnchorPositionScrollersData(
 bool AnchorPositionScrollersData::operator==(
     const AnchorPositionScrollersData& other) const {
   return accumulated_scroll_origin == other.accumulated_scroll_origin &&
-         scroll_container_ids == other.scroll_container_ids;
+         scroll_container_ids == other.scroll_container_ids &&
+         needs_scroll_adjustment_in_x == other.needs_scroll_adjustment_in_x &&
+         needs_scroll_adjustment_in_y == other.needs_scroll_adjustment_in_y;
 }
 
 bool AnchorPositionScrollersData::operator!=(
@@ -514,7 +516,15 @@ gfx::Vector2dF TransformTree::AnchorPositionScrollOffset(TransformNode* node) {
     accumulated_scroll_offset +=
         transform_node->scroll_offset.OffsetFromOrigin();
   }
-  return data->accumulated_scroll_origin - accumulated_scroll_offset;
+  gfx::Vector2dF result =
+      data->accumulated_scroll_origin - accumulated_scroll_offset;
+  if (!data->needs_scroll_adjustment_in_x) {
+    result.set_x(0);
+  }
+  if (!data->needs_scroll_adjustment_in_y) {
+    result.set_y(0);
+  }
+  return result;
 }
 
 void TransformTree::UndoOverscroll(
@@ -1430,6 +1440,10 @@ bool ScrollTree::CanRealizeScrollsOnCompositor(const ScrollNode& node) const {
 uint32_t ScrollTree::GetMainThreadRepaintReasons(const ScrollNode& node) const {
   uint32_t reasons = node.main_thread_scrolling_reasons;
   if (!reasons && !node.is_composited) {
+    // `reasons` can contain kPopupNoThreadedInput which is not a repaint
+    // reason, but the flag should be set only when there is no threaded input
+    // handler and this function should not be called.
+    CHECK(MainThreadScrollingReason::AreRepaintReasons(reasons));
     return MainThreadScrollingReason::kNoScrollingLayer;
   }
   return reasons;
@@ -1601,7 +1615,6 @@ gfx::PointF ScrollTree::GetScrollOffsetForScrollTimeline(
     const ScrollNode& scroll_node) const {
   gfx::PointF offset = current_scroll_offset(scroll_node.element_id);
   if (!property_trees()->is_main_thread() &&
-      base::FeatureList::IsEnabled(features::kScrollUnification) &&
       !CanRealizeScrollsOnCompositor(scroll_node)) {
     // Ignore impl-thread scroll delta if the scroll can't be realized on
     // compositor because the main thread is the source of truth in the case.
@@ -1699,7 +1712,7 @@ void ScrollTree::CollectScrollDeltas(
 
     ElementId id = map_entry.first;
 
-    absl::optional<TargetSnapAreaElementIds> snap_target_ids;
+    std::optional<TargetSnapAreaElementIds> snap_target_ids;
     if (snapped_elements.contains(id))
       snap_target_ids = snapped_elements.at(id);
 
@@ -1943,7 +1956,7 @@ void ScrollTree::SetScrollCallbacks(base::WeakPtr<ScrollCallbacks> callbacks) {
 void ScrollTree::NotifyDidCompositorScroll(
     ElementId scroll_element_id,
     const gfx::PointF& scroll_offset,
-    const absl::optional<TargetSnapAreaElementIds>& snap_target_ids) {
+    const std::optional<TargetSnapAreaElementIds>& snap_target_ids) {
   DCHECK(property_trees()->is_main_thread());
   if (callbacks_) {
     callbacks_->DidCompositorScroll(scroll_element_id, scroll_offset,
@@ -2128,9 +2141,9 @@ bool PropertyTrees::ElementIsAnimatingChanged(
             effect_tree_mutable().set_needs_update(true);
           }
         } else {
-          DCHECK_NODE_EXISTENCE(check_node_existence, state, property,
-                                needs_rebuild())
-              << "Attempting to animate opacity on non existent effect node";
+          // DCHECK_NODE_EXISTENCE(check_node_existence, state, property,
+          //                       needs_rebuild())
+          //     << "Attempting to animate opacity on non existent effect node";
         }
         break;
       case TargetProperty::FILTER:
@@ -2145,9 +2158,9 @@ bool PropertyTrees::ElementIsAnimatingChanged(
           // Filter animation changes only the node, and the subtree does not
           // care, thus there is no need to request property tree update.
         } else {
-          DCHECK_NODE_EXISTENCE(check_node_existence, state, property,
-                                needs_rebuild())
-              << "Attempting to animate filter on non existent effect node";
+          // DCHECK_NODE_EXISTENCE(check_node_existence, state, property,
+          //                       needs_rebuild())
+          //     << "Attempting to animate filter on non existent effect node";
         }
         break;
       case TargetProperty::BACKDROP_FILTER:
@@ -2163,9 +2176,9 @@ bool PropertyTrees::ElementIsAnimatingChanged(
           // does not care, thus there is no need to request property tree
           // update.
         } else {
-          DCHECK_NODE_EXISTENCE(check_node_existence, state, property,
-                                needs_rebuild())
-              << "Attempting to animate filter on non existent effect node";
+          // DCHECK_NODE_EXISTENCE(check_node_existence, state, property,
+          //                       needs_rebuild())
+          //     << "Attempting to animate filter on non existent effect node";
         }
         break;
       default:

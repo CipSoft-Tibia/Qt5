@@ -26,6 +26,8 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmlproperty bool CollisionShape::enableDebugDraw
     This property enables drawing the shape's debug view.
+
+    Default value: \c{false}
 */
 
 QAbstractCollisionShape::QAbstractCollisionShape(QQuick3DNode *parent) : QQuick3DNode(parent)

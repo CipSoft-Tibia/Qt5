@@ -16,9 +16,9 @@
 // We mean it.
 //
 
-#include <QtCore/qnumeric.h>
-#include <QtProtobuf/qtprotobufglobal.h>
+#include <QtProtobuf/qtprotobufexports.h>
 
+#include <QtCore/qnumeric.h>
 #include <QtCore/qbytearray.h>
 
 #include <iterator>

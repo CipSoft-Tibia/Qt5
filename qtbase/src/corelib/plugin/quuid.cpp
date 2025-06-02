@@ -33,6 +33,9 @@ void _q_toHex(char *&dst, Integral value)
     }
 }
 
+#if QT_VERSION_MAJOR == 7
+#  warning Consider storing the UUID as simple bytes, not as {uint, ushort, short, array}
+#endif
 template <class Integral>
 bool _q_fromHex(const char *&src, Integral &value)
 {
@@ -116,12 +119,12 @@ static QUuid _q_uuidFromHex(const char *src)
     return QUuid();
 }
 
-static QUuid createFromName(const QUuid &ns, const QByteArray &baseData, QCryptographicHash::Algorithm algorithm, int version)
+static QUuid createFromName(QUuid ns, QByteArrayView baseData, QCryptographicHash::Algorithm algorithm, int version) noexcept
 {
-    QCryptographicHash hash(algorithm);
-    hash.addData(QByteArrayView{ns.toBytes()});
-    hash.addData(baseData);
-    QByteArrayView hashResult = hash.resultView();
+    std::byte buffer[20];
+    Q_ASSERT(sizeof buffer >= size_t(QCryptographicHash::hashLength(algorithm)));
+    QByteArrayView hashResult
+        = QCryptographicHash::hashInto(buffer, {QByteArrayView{ns.toBytes()}, baseData}, algorithm);
     Q_ASSERT(hashResult.size() >= 16);
     hashResult.truncate(16); // Sha1 will be too long
 
@@ -141,6 +144,11 @@ static QUuid createFromName(const QUuid &ns, const QByteArray &baseData, QCrypto
     \brief The QUuid class stores a Universally Unique Identifier (UUID).
 
     \reentrant
+
+    \compares strong
+    \compareswith strong GUID
+    \note Comparison with GUID is Windows-only.
+    \endcompareswith
 
     Using \e{U}niversally \e{U}nique \e{ID}entifiers (UUID) is a
     standard way to uniquely identify entities in a distributed
@@ -527,10 +535,13 @@ QUuid QUuid::fromString(QAnyStringView text) noexcept
 
 /*!
   \since 5.0
-  \fn QUuid QUuid::createUuidV3(const QUuid &ns, const QByteArray &baseData);
+  \fn QUuid QUuid::createUuidV3(QUuid ns, QByteArrayView baseData);
 
   This function returns a new UUID with variant QUuid::DCE and version QUuid::Md5.
   \a ns is the namespace and \a baseData is the basic data as described by RFC 4122.
+
+  \note In Qt versions prior to 6.8, this function took QByteArray, not
+  QByteArrayView.
 
   \sa variant(), version(), createUuidV5()
 */
@@ -547,10 +558,13 @@ QUuid QUuid::fromString(QAnyStringView text) noexcept
 
 /*!
   \since 5.0
-  \fn QUuid QUuid::createUuidV5(const QUuid &ns, const QByteArray &baseData);
+  \fn QUuid QUuid::createUuidV5(QUuid ns, QByteArrayView baseData);
 
   This function returns a new UUID with variant QUuid::DCE and version QUuid::Sha1.
   \a ns is the namespace and \a baseData is the basic data as described by RFC 4122.
+
+  \note In Qt versions prior to 6.8, this function took QByteArray, not
+  QByteArrayView.
 
   \sa variant(), version(), createUuidV3()
 */
@@ -565,13 +579,13 @@ QUuid QUuid::fromString(QAnyStringView text) noexcept
   \sa variant(), version(), createUuidV3()
 */
 #ifndef QT_BOOTSTRAPPED
-QUuid QUuid::createUuidV3(const QUuid &ns, const QByteArray &baseData)
+QUuid QUuid::createUuidV3(QUuid ns, QByteArrayView baseData) noexcept
 {
     return createFromName(ns, baseData, QCryptographicHash::Md5, 3);
 }
 #endif
 
-QUuid QUuid::createUuidV5(const QUuid &ns, const QByteArray &baseData)
+QUuid QUuid::createUuidV5(QUuid ns, QByteArrayView baseData) noexcept
 {
     return createFromName(ns, baseData, QCryptographicHash::Sha1, 5);
 }
@@ -600,16 +614,16 @@ QUuid QUuid::fromRfc4122(QByteArrayView bytes) noexcept
 }
 
 /*!
-    \fn bool QUuid::operator==(const QUuid &other) const
+    \fn bool QUuid::operator==(const QUuid &lhs, const QUuid &rhs)
 
-    Returns \c true if this QUuid and the \a other QUuid are identical;
+    Returns \c true if \a lhs QUuid and the \a rhs QUuid are identical;
     otherwise returns \c false.
 */
 
 /*!
-    \fn bool QUuid::operator!=(const QUuid &other) const
+    \fn bool QUuid::operator!=(const QUuid &lhs, const QUuid &rhs)
 
-    Returns \c true if this QUuid and the \a other QUuid are different;
+    Returns \c true if \a lhs QUuid and the \a rhs QUuid are different;
     otherwise returns \c false.
 */
 
@@ -898,72 +912,18 @@ QUuid::Version QUuid::version() const noexcept
 }
 
 /*!
-    \fn bool QUuid::operator<(const QUuid &other) const
-
-    Returns \c true if this QUuid has the same \l{Variant field}
-    {variant field} as the \a other QUuid and is lexicographically
-    \e{before} the \a other QUuid. If the \a other QUuid has a
-    different variant field, the return value is determined by
-    comparing the two \l{QUuid::Variant} {variants}.
-
-    \sa variant()
-*/
-bool QUuid::operator<(const QUuid &other) const noexcept
-{
-    if (variant() != other.variant())
-        return variant() < other.variant();
-
-#define ISLESS(f1, f2) if (f1!=f2) return (f1<f2);
-    ISLESS(data1, other.data1);
-    ISLESS(data2, other.data2);
-    ISLESS(data3, other.data3);
-    for (int n = 0; n < 8; n++) {
-        ISLESS(data4[n], other.data4[n]);
-    }
-#undef ISLESS
-    return false;
-}
-
-/*!
-    \fn bool QUuid::operator>(const QUuid &other) const
-
-    Returns \c true if this QUuid has the same \l{Variant field}
-    {variant field} as the \a other QUuid and is lexicographically
-    \e{after} the \a other QUuid. If the \a other QUuid has a
-    different variant field, the return value is determined by
-    comparing the two \l{QUuid::Variant} {variants}.
-
-    \sa variant()
-*/
-bool QUuid::operator>(const QUuid &other) const noexcept
-{
-    return other < *this;
-}
-
-/*!
-    \fn bool operator<=(const QUuid &lhs, const QUuid &rhs)
-    \relates QUuid
+    \fn bool QUuid::operator<(const QUuid &lhs, const QUuid &rhs)
+    \fn bool QUuid::operator>(const QUuid &lhs, const QUuid &rhs)
+    \fn bool QUuid::operator<=(const QUuid &lhs, const QUuid &rhs)
+    \fn bool QUuid::operator>=(const QUuid &lhs, const QUuid &rhs)
     \since 5.5
 
-    Returns \c true if \a lhs has the same \l{Variant field}
-    {variant field} as \a rhs and is lexicographically
-    \e{not after} \a rhs. If \a rhs has a
-    different variant field, the return value is determined by
-    comparing the two \l{QUuid::Variant} {variants}.
-
-    \sa {QUuid::}{variant()}
-*/
-
-/*!
-    \fn bool operator>=(const QUuid &lhs, const QUuid &rhs)
-    \relates QUuid
-    \since 5.5
-
-    Returns \c true if \a lhs has the same \l{Variant field}
-    {variant field} as \a rhs and is lexicographically
-    \e{not before} \a rhs. If \a rhs has a
-    different variant field, the return value is determined by
-    comparing the two \l{QUuid::Variant} {variants}.
+    Performs a comparison of \a lhs against \a rhs and returns \c true if the
+    relative sorting of \a lhs and \a rhs is correct for the operation in
+    question, \c false otherwise. Note that the sorting performed by this
+    functions may not be equal to the sorting of the strings created by
+    toString(), nor the integers toId128(), or the byte array returned by
+    toBytes() and toRfc4122().
 
     \sa {QUuid::}{variant()}
 */
@@ -992,7 +952,7 @@ QUuid QUuid::createUuid()
     return result;
 }
 
-#else // Q_OS_WIN
+#elif !defined(QT_BOOTSTRAPPED)
 
 QUuid QUuid::createUuid()
 {
@@ -1006,20 +966,20 @@ QUuid QUuid::createUuid()
 
     return result;
 }
-#endif // !Q_OS_WIN
+#endif // !Q_OS_WIN && !QT_BOOTSTRAPPED
 
 /*!
-    \fn bool QUuid::operator==(const GUID &guid) const
+    \fn bool QUuid::operator==(const QUuid &lhs, const GUID &rhs)
 
-    Returns \c true if this UUID is equal to the Windows GUID \a guid;
+    Returns \c true if \a lhs UUID is equal to the Windows GUID \a rhs;
     otherwise returns \c false.
 */
 
 /*!
-    \fn bool QUuid::operator!=(const GUID &guid) const
+    \fn bool QUuid::operator!=(const QUuid &lhs, const GUID &rhs)
 
-    Returns \c true if this UUID is not equal to the Windows GUID \a
-    guid; otherwise returns \c false.
+    Returns \c true if \a lhs UUID is not equal to the Windows GUID \a rhs;
+    otherwise returns \c false.
 */
 
 #ifndef QT_NO_DEBUG_STREAM
@@ -1036,9 +996,9 @@ QDebug operator<<(QDebug dbg, const QUuid &id)
 #endif
 
 /*!
+    \fn size_t qHash(const QUuid &key, size_t seed)
     \since 5.0
-    \relates QUuid
-    Returns a hash of the UUID \a uuid, using \a seed to seed the calculation.
+    \qhashold{QUuid}
 */
 size_t qHash(const QUuid &uuid, size_t seed) noexcept
 {

@@ -13,9 +13,9 @@ DEFINE_OBJECT_VTABLE(GeneratorFunctionCtor);
 DEFINE_OBJECT_VTABLE(GeneratorFunction);
 DEFINE_OBJECT_VTABLE(GeneratorObject);
 
-void Heap::GeneratorFunctionCtor::init(QV4::ExecutionContext *scope)
+void Heap::GeneratorFunctionCtor::init(QV4::ExecutionEngine *engine)
 {
-    Heap::FunctionObject::init(scope, QStringLiteral("GeneratorFunction"));
+    Heap::FunctionObject::init(engine, QStringLiteral("GeneratorFunction"));
 }
 
 ReturnedValue GeneratorFunctionCtor::virtualCallAsConstructor(const FunctionObject *f, const Value *argv, int argc, const Value *newTarget)
@@ -26,7 +26,7 @@ ReturnedValue GeneratorFunctionCtor::virtualCallAsConstructor(const FunctionObje
     if (engine->hasException)
         return Encode::undefined();
 
-    Function *vmf = compilationUnit->linkToEngine(engine);
+    Function *vmf = compilationUnit->rootFunction();
     ExecutionContext *global = engine->scriptContext();
     ReturnedValue o = Encode(GeneratorFunction::create(global, vmf));
 
@@ -52,7 +52,6 @@ Heap::FunctionObject *GeneratorFunction::create(ExecutionContext *context, Funct
     proto->setPrototypeOf(scope.engine->generatorPrototype());
     g->defineDefaultProperty(scope.engine->id_prototype(), proto, Attr_NotConfigurable|Attr_NotEnumerable);
     g->setPrototypeOf(ScopedObject(scope, scope.engine->generatorFunctionCtor()->get(scope.engine->id_prototype())));
-    g->d()->canBeTailCalled = false;
     return g->d();
 }
 
@@ -225,7 +224,6 @@ Heap::FunctionObject *MemberGeneratorFunction::create(ExecutionContext *context,
     proto->setPrototypeOf(scope.engine->generatorPrototype());
     g->defineDefaultProperty(scope.engine->id_prototype(), proto, Attr_NotConfigurable|Attr_NotEnumerable);
     g->setPrototypeOf(ScopedObject(scope, scope.engine->generatorFunctionCtor()->get(scope.engine->id_prototype())));
-    g->d()->canBeTailCalled = false;
     return g->d();
 }
 

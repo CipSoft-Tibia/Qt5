@@ -40,7 +40,7 @@ QT_BEGIN_NAMESPACE
 using namespace Qt::StringLiterals;
 
 static constexpr auto designerApplicationName = "Designer"_L1;
-static constexpr auto designerDisplayName = "Qt Designer"_L1;
+static constexpr auto designerDisplayName = "Qt Widgets Designer"_L1;
 static constexpr auto designerWarningPrefix = "Designer: "_L1;
 static QtMessageHandler previousMessageHandler = nullptr;
 
@@ -152,7 +152,7 @@ static inline QDesigner::ParseArgumentsResult
     parseDesignerCommandLineArguments(QCommandLineParser &parser, Options *options,
                                       QString *errorMessage)
 {
-    parser.setApplicationDescription(u"Qt Designer " QT_VERSION_STR "\n\nUI designer for QWidget-based applications."_s);
+    parser.setApplicationDescription(u"Qt Widgets Designer " QT_VERSION_STR "\n\nUI designer for QWidget-based applications."_s);
     const QCommandLineOption helpOption = parser.addHelpOption();
     parser.setSingleDashWordOptionMode(QCommandLineParser::ParseAsLongOptions);
     const QCommandLineOption serverOption(u"server"_s,
@@ -275,7 +275,7 @@ QDesigner::ParseArgumentsResult QDesigner::parseCommandLineArguments()
 
     // Show up error box with parent now if something went wrong
     if (m_initializationErrors.isEmpty()) {
-        if (!suppressNewFormShow)
+        if (!isServerOrClientEnabled() && !suppressNewFormShow)
             m_workbench->showNewForm();
     } else {
         showErrorMessageBox(m_initializationErrors);
@@ -284,12 +284,18 @@ QDesigner::ParseArgumentsResult QDesigner::parseCommandLineArguments()
     return result;
 }
 
+bool QDesigner::isServerOrClientEnabled() const
+{
+    return m_server || m_client;
+}
+
 bool QDesigner::event(QEvent *ev)
 {
     bool eaten;
     switch (ev->type()) {
     case QEvent::FileOpen:
         m_workbench->readInForm(static_cast<QFileOpenEvent *>(ev)->file());
+        m_workbench->requestActivate();
         eaten = true;
         break;
     case QEvent::Close: {

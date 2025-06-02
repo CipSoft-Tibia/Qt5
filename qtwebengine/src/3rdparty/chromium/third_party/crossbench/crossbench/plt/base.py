@@ -20,8 +20,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import (TYPE_CHECKING, Any, Dict, Iterable, Iterator, List, Mapping,
-                    Optional, Tuple, Union)
+from typing import (TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator,
+                    List, Mapping, Optional, Sequence, Tuple, Union)
 
 import psutil
 
@@ -67,7 +67,7 @@ class SubprocessError(subprocess.CalledProcessError):
   def __str__(self) -> str:
     super_str = super().__str__()
     if not self.stderr:
-      return super_str
+      return f"{self.platform}: {super_str}"
     return f"{self.platform}: {super_str}\nstderr:{self.stderr.decode()}"
 
 
@@ -106,6 +106,10 @@ class Platform(abc.ABC):
     return False
 
   @property
+  def is_local(self) -> bool:
+    return not self.is_remote
+
+  @property
   def host_platform(self) -> Platform:
     return self
 
@@ -123,7 +127,7 @@ class Platform(abc.ABC):
     raise NotImplementedError(f"Unsupported machine type: {raw}")
 
   def _raw_machine_arch(self) -> str:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return py_platform.machine()
 
   @property
@@ -164,18 +168,60 @@ class Platform(abc.ABC):
 
   @property
   def environ(self) -> Environ:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return LocalEnviron()
 
   @property
   def is_battery_powered(self) -> bool:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     if not psutil.sensors_battery:
       return False
     status = psutil.sensors_battery()
     if not status:
       return False
     return not status.power_plugged
+
+  def _search_executable(
+      self,
+      name: str,
+      macos: Sequence[str],
+      win: Sequence[str],
+      linux: Sequence[str],
+      lookup_callable: Callable[[pathlib.Path], Optional[pathlib.Path]],
+  ) -> pathlib.Path:
+    executables: Sequence[str] = []
+    if self.is_macos:
+      executables = macos
+    elif self.is_win:
+      executables = win
+    elif self.is_linux:
+      executables = linux
+    if not executables:
+      raise ValueError(f"Executable {name} not supported on {self}")
+    for name_or_path in executables:
+      path = pathlib.Path(name_or_path).expanduser()
+      binary = lookup_callable(path)
+      if binary and binary.exists():
+        return binary
+    raise ValueError(f"Executable {name} not found on {self}")
+
+  def search_app_or_executable(
+      self,
+      name: str,
+      macos: Sequence[str] = (),
+      win: Sequence[str] = (),
+      linux: Sequence[str] = ()
+  ) -> pathlib.Path:
+    return self._search_executable(name, macos, win, linux, self.search_app)
+
+  def search_platform_binary(
+      self,
+      name: str,
+      macos: Sequence[str] = (),
+      win: Sequence[str] = (),
+      linux: Sequence[str] = ()
+  ) -> pathlib.Path:
+    return self._search_executable(name, macos, win, linux, self.search_binary)
 
   def search_app(self, app_or_bin: pathlib.Path) -> Optional[pathlib.Path]:
     """Look up a application bundle (macos) or binary (all other platforms) in 
@@ -211,7 +257,7 @@ class Platform(abc.ABC):
   def which(self, binary_name: str) -> Optional[pathlib.Path]:
     if not binary_name:
       raise ValueError("Got empty path")
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     result = shutil.which(binary_name)
     if not result:
       return None
@@ -220,14 +266,14 @@ class Platform(abc.ABC):
   def processes(self,
                 attrs: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     # TODO(cbruni): support remote platforms
-    assert not self.is_remote, "Only local platform supported"
+    assert self.is_local, "Only local platform supported"
     return [
         p.info  # pytype: disable=attribute-error
         for p in psutil.process_iter(attrs=attrs)
     ]
 
   def process_running(self, process_name_list: List[str]) -> Optional[str]:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     # TODO(cbruni): support remote platforms
     for proc in psutil.process_iter():
       try:
@@ -240,7 +286,7 @@ class Platform(abc.ABC):
   def process_children(self,
                        parent_pid: int,
                        recursive: bool = False) -> List[Dict[str, Any]]:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     # TODO(cbruni): support remote platforms
     try:
       process = psutil.Process(parent_pid)
@@ -249,7 +295,7 @@ class Platform(abc.ABC):
     return [p.as_dict() for p in process.children(recursive=recursive)]
 
   def process_info(self, pid: int) -> Optional[Dict[str, Any]]:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     # TODO(cbruni): support remote platforms
     try:
       return psutil.Process(pid).as_dict()
@@ -260,7 +306,7 @@ class Platform(abc.ABC):
     return None
 
   def terminate(self, proc_pid: int) -> None:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     # TODO(cbruni): support remote platforms
     process = psutil.Process(proc_pid)
     for proc in process.children(recursive=True):
@@ -269,19 +315,25 @@ class Platform(abc.ABC):
 
   @property
   def default_tmp_dir(self) -> pathlib.Path:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return pathlib.Path(tempfile.gettempdir())
 
   def cat(self, file: Union[str, pathlib.Path], encoding: str = "utf-8") -> str:
     """Meow! I return the file contents as a str."""
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     with pathlib.Path(file).open(encoding=encoding) as f:
       return f.read()
+
+  def set_filecontents(self, file: Union[str, pathlib.Path],
+                       data: str, encoding: str = "utf-8") -> None:
+    assert not self.is_remote, "Unsupported operation on remote platform"
+    with pathlib.Path(file).open("w", encoding=encoding) as f:
+      f.write(data)
 
   def rsync(self, from_path: pathlib.Path,
             to_path: pathlib.Path) -> pathlib.Path:
     """ Convenience implementation that works for copying local dirs """
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     if not from_path.exists():
       raise ValueError(f"Cannot copy non-existing source path: {from_path}")
     to_path.parent.mkdir(parents=True, exist_ok=True)
@@ -290,40 +342,53 @@ class Platform(abc.ABC):
 
   def rm(self, path: Union[str, pathlib.Path], dir: bool = False) -> None:
     """Remove a single file on this platform."""
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     if dir:
       shutil.rmtree(path)
     else:
       pathlib.Path(path).unlink()
 
+  def symlink_or_copy(self, src: pathlib.Path,
+                      dst: pathlib.Path) -> pathlib.Path:
+    """Windows does not support symlinking without admin support.
+    Copy files on windows but symlink everywhere else."""
+    assert self.is_local, "Unsupported operation on remote platform"
+    assert not self.is_win, "Unsupported operation on windows"
+    dst.symlink_to(src)
+    return dst
+
+  def touch(self, path: Union[str, pathlib.Path]) -> None:
+    assert self.is_local, "Unsupported operation on remote platform"
+    pathlib.Path(path).touch(exist_ok=True)
+
   def mkdir(self, path: Union[str, pathlib.Path]) -> None:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     pathlib.Path(path).mkdir(parents=True, exist_ok=True)
 
   def mkdtemp(self,
               prefix: Optional[str] = None,
               dir: Optional[Union[str, pathlib.Path]] = None) -> pathlib.Path:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return pathlib.Path(tempfile.mkdtemp(prefix=prefix, dir=dir))
 
   def mktemp(self,
              prefix: Optional[str] = None,
              dir: Optional[Union[str, pathlib.Path]] = None) -> pathlib.Path:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     fd, name = tempfile.mkstemp(prefix=prefix, dir=dir)
     os.close(fd)
     return pathlib.Path(name)
 
   def exists(self, path: pathlib.Path) -> bool:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return path.exists()
 
   def is_file(self, path: pathlib.Path) -> bool:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return path.is_file()
 
   def is_dir(self, path: pathlib.Path) -> bool:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return path.is_dir()
 
   def sh_stdout(self,
@@ -350,7 +415,7 @@ class Platform(abc.ABC):
             stdin=None,
             env: Optional[Mapping[str, str]] = None,
             quiet: bool = False) -> subprocess.Popen:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     if not quiet:
       logging.debug("SHELL: %s", shlex.join(map(str, args)))
       logging.debug("CWD: %s", os.getcwd())
@@ -372,7 +437,7 @@ class Platform(abc.ABC):
          env: Optional[Mapping[str, str]] = None,
          quiet: bool = False,
          check: bool = True) -> subprocess.CompletedProcess:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     if not quiet:
       logging.debug("SHELL: %s", shlex.join(map(str, args)))
       logging.debug("CWD: %s", os.getcwd())
@@ -417,15 +482,15 @@ class Platform(abc.ABC):
     return self.get_relative_cpu_speed() < 1
 
   def disk_usage(self, path: pathlib.Path) -> psutil._common.sdiskusage:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return psutil.disk_usage(str(path))
 
   def cpu_usage(self) -> float:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return 1 - psutil.cpu_times_percent().idle / 100
 
   def cpu_details(self) -> Dict[str, Any]:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     details = {
         "physical cores":
             psutil.cpu_count(logical=False),
@@ -462,7 +527,7 @@ class Platform(abc.ABC):
     }
 
   def os_details(self) -> JsonDict:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return {
         "system": py_platform.system(),
         "release": py_platform.release(),
@@ -471,14 +536,14 @@ class Platform(abc.ABC):
     }
 
   def python_details(self) -> JsonDict:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     return {
         "version": py_platform.python_version(),
         "bits": 64 if sys.maxsize > 2**32 else 32,
     }
 
   def download_to(self, url: str, path: pathlib.Path) -> pathlib.Path:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     logging.debug("DOWNLOAD: %s\n       TO: %s", url, path)
     assert not path.exists(), f"Download destination {path} exists already."
     try:
@@ -491,7 +556,7 @@ class Platform(abc.ABC):
 
   def concat_files(self, inputs: Iterable[pathlib.Path],
                    output: pathlib.Path) -> pathlib.Path:
-    assert not self.is_remote, "Unsupported operation on remote platform"
+    assert self.is_local, "Unsupported operation on remote platform"
     with output.open("w", encoding="utf-8") as output_f:
       for input_file in inputs:
         assert input_file.is_file()

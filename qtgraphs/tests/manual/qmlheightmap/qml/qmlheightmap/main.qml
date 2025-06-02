@@ -30,10 +30,10 @@ Item {
             GradientStop { position: 1.0; color: "red" }
         }
 
-        Theme3D {
+        GraphsTheme {
             id: mainTheme
-            type: Theme3D.Theme.StoneMoss
-            colorStyle: Theme3D.ColorStyle.RangeGradient
+            theme: GraphsTheme.Theme.OrangeSeries
+            colorStyle: GraphsTheme.ColorStyle.RangeGradient
             baseGradients: [surfaceGradient]
         }
 
@@ -42,9 +42,9 @@ Item {
             width: surfaceview.width
             height: surfaceview.height
             theme: mainTheme
-            shadowQuality: AbstractGraph3D.ShadowQuality.Medium
-            selectionMode: AbstractGraph3D.SelectionSlice | AbstractGraph3D.SelectionItemAndRow
-            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
+            shadowQuality: Graphs3D.ShadowQuality.Medium
+            selectionMode: Graphs3D.SelectionFlag.Slice | Graphs3D.SelectionFlag.ItemAndRow
+            cameraPreset: Graphs3D.CameraPreset.IsometricLeft
             axisY.min: 0.0
             axisY.max: 500.0
             axisX.segmentCount: 10
@@ -64,7 +64,7 @@ Item {
                 id: heightSeriesRGB8
                 drawMode: Surface3DSeries.DrawSurface
                 visible: true
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
 
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/mapRGB8"
@@ -77,7 +77,7 @@ Item {
                 id: heightSeriesRGB16
                 drawMode: Surface3DSeries.DrawSurface
                 visible: false
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
 
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/mapRGB16"
@@ -90,7 +90,7 @@ Item {
                 id: heightSeriesGRAY8
                 drawMode: Surface3DSeries.DrawSurface
                 visible: false
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
 
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/mapGRAY8"
@@ -103,7 +103,7 @@ Item {
                 id: heightSeriesGRAY16
                 drawMode: Surface3DSeries.DrawSurface
                 visible: false
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
 
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/mapGRAY16"

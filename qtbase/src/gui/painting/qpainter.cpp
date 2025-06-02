@@ -954,8 +954,6 @@ void QPainterPrivate::updateState(QPainterState *newState)
     used inside a paintEvent() function or in a function called by
     paintEvent().
 
-    \tableofcontents
-
     \section1 Settings
 
     There are several settings that you can customize to make QPainter
@@ -1765,9 +1763,12 @@ bool QPainter::begin(QPaintDevice *pd)
                 qWarning("QPainter::begin: Cannot paint on a null image");
                 qt_cleanup_painter_state(d);
                 return false;
-            } else if (img->format() == QImage::Format_Indexed8) {
-                // Painting on indexed8 images is not supported.
-                qWarning("QPainter::begin: Cannot paint on an image with the QImage::Format_Indexed8 format");
+            } else if (img->format() == QImage::Format_Indexed8 ||
+                       img->format() == QImage::Format_CMYK8888) {
+                // Painting on these formats is not supported.
+                qWarning() << "QPainter::begin: Cannot paint on an image with the"
+                           << img->format()
+                           << "format";
                 qt_cleanup_painter_state(d);
                 return false;
             }
@@ -5594,7 +5595,7 @@ void QPainter::drawText(const QPointF &p, const QString &str, int tf, int justif
     if (!d->engine || str.isEmpty() || pen().style() == Qt::NoPen)
         return;
 
-    QStackTextEngine engine(str, d->state->font);
+    Q_DECL_UNINITIALIZED QStackTextEngine engine(str, d->state->font);
     engine.option.setTextDirection(d->state->layoutDirection);
     if (tf & (Qt::TextForceLeftToRight|Qt::TextForceRightToLeft)) {
         engine.ignoreBidi = true;
@@ -7099,6 +7100,13 @@ void qt_format_text(const QFont &fnt, const QRectF &_r,
 
     Q_ASSERT( !((tf & ~Qt::TextDontPrint)!=0 && option!=nullptr) ); // we either have an option or flags
 
+    if (_r.isEmpty() && !(tf & Qt::TextDontClip)) {
+        if (!brect)
+            return;
+        else
+            tf |= Qt::TextDontPrint;
+    }
+
     if (option) {
         tf |= option->alignment();
         if (option->wrapMode() != QTextOption::NoWrap)
@@ -7219,7 +7227,7 @@ start_lengthVariant:
     qreal width = 0;
 
     QString finalText = text.mid(old_offset, length);
-    QStackTextEngine engine(finalText, fnt);
+    Q_DECL_UNINITIALIZED QStackTextEngine engine(finalText, fnt);
     if (option) {
         engine.option = *option;
     }

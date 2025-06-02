@@ -32,13 +32,22 @@ class QHttpServerPrivate: public QAbstractHttpServerPrivate
     Q_DECLARE_PUBLIC(QHttpServer)
 
 public:
-    QHttpServerPrivate() = default;
+    QHttpServerPrivate(QHttpServer *p);
 
     QHttpServerRouter router;
-    std::vector<QHttpServer::AfterRequestHandler> afterRequestHandlers;
-    QHttpServer::MissingHandler missingHandler;
+    struct AfterRequestHandler
+    {
+        QPointer<const QObject> context;
+        QtPrivate::SlotObjUniquePtr slotObject;
+    };
+    std::vector<AfterRequestHandler> afterRequestHandlers;
+    struct MissingHandler
+    {
+        QPointer<const QObject> context = nullptr;
+        QtPrivate::SlotObjUniquePtr slotObject;
+    } missingHandler;
 
-    void callMissingHandler(const QHttpServerRequest &request, QHttpServerResponder &&responder);
+    void callMissingHandler(const QHttpServerRequest &request, QHttpServerResponder &responder);
 };
 
 QT_END_NAMESPACE

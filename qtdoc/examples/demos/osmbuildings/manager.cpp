@@ -5,18 +5,16 @@
 
 #include <QImage>
 #include <QRgb>
-#include <QtMath>
+
+#include <algorithm>
 
 OSMManager::OSMManager(QObject *parent)
-    : QObject{parent}
+    : QObject{parent},
+      m_request(new OSMRequest(this))
 {
-    m_request = new OSMRequest(this);
     connect(m_request, &OSMRequest::buildingsDataReady, this, [this](const QList<QVariant> &geoVariantsList
                                                                      , int tileX, int tileY, int zoomLevel){
-        m_buildingsHash[QString::number(tileX) + ","
-                        + QString::number(tileY)
-                        + ","
-                        + QString::number(zoomLevel)] = true;
+        m_buildingsHash.insert(OSMTileData{tileX, tileY, zoomLevel}, true);
         emit buildingsDataReady(geoVariantsList, tileX - m_startBuildingTileX,
                                 tileY - m_startBuildingTileY,
                                 zoomLevel);
@@ -31,38 +29,36 @@ OSMManager::OSMManager(QObject *parent)
 }
 
 void OSMManager::setCameraProperties(const QVector3D &position, const QVector3D &right,
-                                    float cameraZoom, float minimunZoom, float maximumZoom,
-                                    float cameraTilt, float minimumTilt, float maxmumTilt)
+                                    float cameraZoom, float minimumZoom, float maximumZoom,
+                                    float cameraTilt, float minimumTilt, float maximumTilt)
 {
 
-    float tiltFactor = (cameraTilt - minimumTilt) / qMax(maxmumTilt - minimumTilt, 1.0);
-    float zoomFactor = (cameraZoom - minimunZoom) / qMax(maximumZoom - minimunZoom, 1.0);
+    float tiltFactor = (cameraTilt - minimumTilt) / qMax(maximumTilt - minimumTilt, 1.0);
+    float zoomFactor = (cameraZoom - minimumZoom) / qMax(maximumZoom - minimumZoom, 1.0);
 
+    // Forward vector align to the XY plane
     QVector3D forwardVector = QVector3D::crossProduct(right,
-                                                      QVector3D(0.0, 0.0, -1.0)).normalized(); //Forward vector align to the XY plane
+                                                      QVector3D(0.0, 0.0, -1.0)).normalized();
     QVector3D projectionOfForwardOnXY = position
             + forwardVector * tiltFactor * zoomFactor * 50.0;
 
     QQueue<OSMTileData> queue;
-    for ( int fowardIndex = -20; fowardIndex <= 20; ++fowardIndex ){
+    for ( int forwardIndex = -20; forwardIndex <= 20; ++forwardIndex ){
         for ( int sidewardIndex = -20; sidewardIndex <= 20; ++sidewardIndex ){
-            QVector3D transferedPosition = projectionOfForwardOnXY + QVector3D(float(m_tileSizeX * sidewardIndex)
-                                                                               , float(m_tileSizeY * fowardIndex), 0.0);
-            addBuildingRequestToQueue(queue, m_startBuildingTileX + int(transferedPosition.x() / m_tileSizeX),
-                                m_startBuildingTileY - int(transferedPosition.y() / m_tileSizeY));
+            QVector3D transferredPosition = projectionOfForwardOnXY
+                      + QVector3D(float(m_tileSizeX * sidewardIndex), float(m_tileSizeY * forwardIndex), 0.0);
+            addBuildingRequestToQueue(queue, m_startBuildingTileX + int(transferredPosition.x() / m_tileSizeX),
+                                m_startBuildingTileY - int(transferredPosition.y() / m_tileSizeY));
         }
     }
 
-    int projectedTileX = m_startBuildingTileX + int(projectionOfForwardOnXY.x() / m_tileSizeX);
-    int projectedTileY = m_startBuildingTileY - int(projectionOfForwardOnXY.y() / m_tileSizeY);
+    const QPoint projectedTile{m_startBuildingTileX + int(projectionOfForwardOnXY.x() / m_tileSizeX),
+                               m_startBuildingTileY - int(projectionOfForwardOnXY.y() / m_tileSizeY)};
 
-    std::sort(queue.begin(), queue.end(), [projectedTileX, projectedTileY](const OSMTileData &v1, const OSMTileData &v2)->bool{
-        return qSqrt(qPow(v1.TileX - projectedTileX, 2)
-                     + qPow(v1.TileY - projectedTileY, 2))
-               <
-              qSqrt(qPow(v2.TileX - projectedTileX, 2)
-                        + qPow(v2.TileY - projectedTileY, 2));
-    });
+    auto closer = [projectedTile](const OSMTileData &v1, const OSMTileData &v2) -> bool {
+        return v1.distanceTo(projectedTile) < v2.distanceTo(projectedTile);
+    };
+    std::sort(queue.begin(), queue.end(), closer);
 
     m_request->getBuildingsData( queue );
     m_request->getMapsData( queue );
@@ -71,16 +67,9 @@ void OSMManager::setCameraProperties(const QVector3D &position, const QVector3D 
 
 void OSMManager::addBuildingRequestToQueue(QQueue<OSMTileData> &queue, int tileX, int tileY, int zoomLevel)
 {
-    QString key = QString::number(tileX) + "," + QString::number(tileY) + "," + QString::number(zoomLevel);
-    if ( m_buildingsHash.contains( key ) )
-        return;
-
-    OSMTileData tile;
-    tile.ZoomLevel = zoomLevel;
-    tile.TileX = tileX;
-    tile.TileY = tileY;
-    queue.append( tile );
-
+    OSMTileData data{tileX, tileY, zoomLevel};
+    if ( !m_buildingsHash.contains(data) )
+        queue.append(data);
 }
 
 int OSMManager::tileSizeX() const
@@ -98,7 +87,7 @@ bool OSMManager::isDemoToken() const
     return m_request->isDemoToken();
 }
 
-void OSMManager::setToken(QString token)
+void OSMManager::setToken(const QString &token)
 {
     m_request->setToken(token);
 }

@@ -1,23 +1,37 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/Pipeline.h"
 
 #include <algorithm>
-#include <unordered_set>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "dawn/common/Enumerator.h"
 #include "dawn/native/BindGroupLayout.h"
 #include "dawn/native/Device.h"
 #include "dawn/native/ObjectBase.h"
@@ -34,33 +48,47 @@ bool IsDoubleValueRepresentableAsF16(double value) {
 }  // namespace
 
 namespace dawn::native {
-MaybeError ValidateProgrammableStage(DeviceBase* device,
-                                     const ShaderModuleBase* module,
-                                     const std::string& entryPoint,
-                                     uint32_t constantCount,
-                                     const ConstantEntry* constants,
-                                     const PipelineLayoutBase* layout,
-                                     SingleShaderStage stage) {
+ResultOrError<ShaderModuleEntryPoint> ValidateProgrammableStage(DeviceBase* device,
+                                                                const ShaderModuleBase* module,
+                                                                const char* entryPointName,
+                                                                uint32_t constantCount,
+                                                                const ConstantEntry* constants,
+                                                                const PipelineLayoutBase* layout,
+                                                                SingleShaderStage stage) {
     DAWN_TRY(device->ValidateObject(module));
 
-    DAWN_INVALID_IF(!module->HasEntryPoint(entryPoint),
-                    "Entry point \"%s\" doesn't exist in the shader module %s.", entryPoint,
-                    module);
+    if (entryPointName) {
+        DAWN_INVALID_IF(!module->HasEntryPoint(entryPointName),
+                        "Entry point \"%s\" doesn't exist in the shader module %s.", entryPointName,
+                        module);
+    } else {
+        size_t entryPointCount = module->GetEntryPointCount(stage);
+        if (entryPointCount == 0) {
+            return DAWN_VALIDATION_ERROR(
+                "Compatible entry point for stage (%s) doesn't exist in the shader module %s.",
+                stage, module);
+        } else if (entryPointCount > 1) {
+            return DAWN_VALIDATION_ERROR(
+                "The entry-point is defaulted but multiple entry points for stage (%s) exist in "
+                "the shader module %s.",
+                stage, module);
+        }
+    }
 
-    const EntryPointMetadata& metadata = module->GetEntryPoint(entryPoint);
+    ShaderModuleEntryPoint entryPoint = module->ReifyEntryPointName(entryPointName, stage);
+    const EntryPointMetadata& metadata = module->GetEntryPoint(entryPoint.name);
 
     if (!metadata.infringedLimitErrors.empty()) {
         std::ostringstream limitList;
         for (const std::string& limit : metadata.infringedLimitErrors) {
             limitList << " - " << limit << "\n";
         }
-        return DAWN_VALIDATION_ERROR("Entry point \"%s\" infringes limits:\n%s", entryPoint,
-                                     limitList.str());
+        return DAWN_VALIDATION_ERROR("%s infringes limits:\n%s", &entryPoint, limitList.str());
     }
 
     DAWN_INVALID_IF(metadata.stage != stage,
                     "The stage (%s) of the entry point \"%s\" isn't the expected one (%s).",
-                    metadata.stage, entryPoint, stage);
+                    metadata.stage, entryPoint.name, stage);
 
     if (layout != nullptr) {
         DAWN_TRY(ValidateCompatibilityWithPipelineLayout(device, metadata, layout));
@@ -70,7 +98,7 @@ MaybeError ValidateProgrammableStage(DeviceBase* device,
     // pipelineBase is not yet constructed at this moment so iterate constants from descriptor
     size_t numUninitializedConstants = metadata.uninitializedOverrides.size();
     // Keep an initialized constants sets to handle duplicate initialization cases
-    std::unordered_set<std::string> stageInitializedConstantIdentifiers;
+    absl::flat_hash_set<std::string> stageInitializedConstantIdentifiers;
     for (uint32_t i = 0; i < constantCount; i++) {
         DAWN_INVALID_IF(metadata.overrides.count(constants[i].key) == 0,
                         "Pipeline overridable constant \"%s\" not found in %s.", constants[i].key,
@@ -112,11 +140,11 @@ MaybeError ValidateProgrammableStage(DeviceBase* device,
                 // https://webidl.spec.whatwg.org/#es-boolean
                 break;
             default:
-                UNREACHABLE();
+                DAWN_UNREACHABLE();
         }
 
-        if (stageInitializedConstantIdentifiers.count(constants[i].key) == 0) {
-            if (metadata.uninitializedOverrides.count(constants[i].key) > 0) {
+        if (!stageInitializedConstantIdentifiers.contains(constants[i].key)) {
+            if (metadata.uninitializedOverrides.contains(constants[i].key)) {
                 numUninitializedConstants--;
             }
             stageInitializedConstantIdentifiers.insert(constants[i].key);
@@ -132,7 +160,7 @@ MaybeError ValidateProgrammableStage(DeviceBase* device,
         std::string uninitializedConstantsArray;
         bool isFirst = true;
         for (std::string identifier : metadata.uninitializedOverrides) {
-            if (stageInitializedConstantIdentifiers.count(identifier) > 0) {
+            if (stageInitializedConstantIdentifiers.contains(identifier)) {
                 continue;
             }
 
@@ -150,7 +178,7 @@ MaybeError ValidateProgrammableStage(DeviceBase* device,
             uninitializedConstantsArray);
     }
 
-    return {};
+    return entryPoint;
 }
 
 WGPUCreatePipelineAsyncStatus CreatePipelineAsyncStatusFromErrorType(InternalErrorType error) {
@@ -165,7 +193,7 @@ WGPUCreatePipelineAsyncStatus CreatePipelineAsyncStatusFromErrorType(InternalErr
         case InternalErrorType::OutOfMemory:
             return WGPUCreatePipelineAsyncStatus_InternalError;
         default:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
             return WGPUCreatePipelineAsyncStatus_Unknown;
     }
 }
@@ -177,7 +205,7 @@ PipelineBase::PipelineBase(DeviceBase* device,
                            const char* label,
                            std::vector<StageAndDescriptor> stages)
     : ApiObjectBase(device, label), mLayout(layout) {
-    ASSERT(!stages.empty());
+    DAWN_ASSERT(!stages.empty());
 
     for (const StageAndDescriptor& stage : stages) {
         // Extract argument for this stage.
@@ -186,7 +214,7 @@ PipelineBase::PipelineBase(DeviceBase* device,
         const char* entryPointName = stage.entryPoint.c_str();
 
         const EntryPointMetadata& metadata = module->GetEntryPoint(entryPointName);
-        ASSERT(metadata.stage == shaderStage);
+        DAWN_ASSERT(metadata.stage == shaderStage);
 
         // Record them internally.
         bool isFirstStage = mStageMask == wgpu::ShaderStage::None;
@@ -204,12 +232,11 @@ PipelineBase::PipelineBase(DeviceBase* device,
         if (isFirstStage) {
             mMinBufferSizes = std::move(stageMinBufferSizes);
         } else {
-            for (BindGroupIndex group(0); group < mMinBufferSizes.size(); ++group) {
-                ASSERT(stageMinBufferSizes[group].size() == mMinBufferSizes[group].size());
+            for (auto [group, minBufferSize] : Enumerate(mMinBufferSizes)) {
+                DAWN_ASSERT(stageMinBufferSizes[group].size() == minBufferSize.size());
 
                 for (size_t i = 0; i < stageMinBufferSizes[group].size(); ++i) {
-                    mMinBufferSizes[group][i] =
-                        std::max(mMinBufferSizes[group][i], stageMinBufferSizes[group][i]);
+                    minBufferSize[i] = std::max(minBufferSize[i], stageMinBufferSizes[group][i]);
                 }
             }
         }
@@ -222,22 +249,22 @@ PipelineBase::PipelineBase(DeviceBase* device, ObjectBase::ErrorTag tag, const c
 PipelineBase::~PipelineBase() = default;
 
 PipelineLayoutBase* PipelineBase::GetLayout() {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
     return mLayout.Get();
 }
 
 const PipelineLayoutBase* PipelineBase::GetLayout() const {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
     return mLayout.Get();
 }
 
 const RequiredBufferSizes& PipelineBase::GetMinBufferSizes() const {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
     return mMinBufferSizes;
 }
 
 const ProgrammableStage& PipelineBase::GetStage(SingleShaderStage stage) const {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
     return mStages[stage];
 }
 
@@ -259,11 +286,11 @@ MaybeError PipelineBase::ValidateGetBindGroupLayout(BindGroupIndex groupIndex) {
     DAWN_TRY(GetDevice()->ValidateObject(mLayout.Get()));
     DAWN_INVALID_IF(groupIndex >= kMaxBindGroupsTyped,
                     "Bind group layout index (%u) exceeds the maximum number of bind groups (%u).",
-                    static_cast<uint32_t>(groupIndex), kMaxBindGroups);
+                    groupIndex, kMaxBindGroups);
     DAWN_INVALID_IF(
         !mLayout->GetBindGroupLayoutsMask()[groupIndex],
         "Bind group layout index (%u) doesn't correspond to a bind group for this pipeline.",
-        static_cast<uint32_t>(groupIndex));
+        groupIndex);
     return {};
 }
 
@@ -279,9 +306,9 @@ BindGroupLayoutBase* PipelineBase::APIGetBindGroupLayout(uint32_t groupIndexIn) 
     if (GetDevice()->ConsumedError(GetBindGroupLayout(groupIndexIn), &result,
                                    "Validating GetBindGroupLayout (%u) on %s", groupIndexIn,
                                    this)) {
-        return BindGroupLayoutBase::MakeError(GetDevice());
+        result = BindGroupLayoutBase::MakeError(GetDevice());
     }
-    return result.Detach();
+    return ReturnToAPI(std::move(result));
 }
 
 size_t PipelineBase::ComputeContentHash() {

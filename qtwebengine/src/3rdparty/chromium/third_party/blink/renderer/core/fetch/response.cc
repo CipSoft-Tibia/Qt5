@@ -388,7 +388,8 @@ Response* Response::staticJson(ScriptState* script_state,
     return nullptr;
   }
 
-  String string = ToBlinkString<String>(v8_string, kDoNotExternalize);
+  String string = ToBlinkString<String>(script_state->GetIsolate(), v8_string,
+                                        kDoNotExternalize);
 
   // JSON.stringify can fail to produce a string value in one of two ways: it
   // can throw an exception (as with unserializable objects), or it can return
@@ -513,7 +514,7 @@ String Response::statusText() const {
 
 Headers* Response::headers() const {
   // "The headers attribute's getter must return the associated Headers object."
-  return headers_;
+  return headers_.Get();
 }
 
 Response* Response::clone(ScriptState* script_state,

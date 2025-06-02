@@ -3,8 +3,10 @@
 
 /*!
 \page qtqml-tooling-qmllint.html
-\title qmllint Reference
+\title qmllint
+\keyword qmllint Reference
 \ingroup qtqml-tooling
+\ingroup qtqml-tooling-devtools
 \brief A tool for verifying the syntax of QML files and warning about
 anti-patterns.
 
@@ -14,10 +16,11 @@ It also warns about some QML anti-patterns. If you want to disable a specific
 warning type, you can find the appropriate flag for doing so by passing
 \c{--help} on the command line.
 
-By default, some issues will result in warnings that will be printed and result
-in a non-zero exit code.
+By default, some issues will result in warnings that will be printed. If there
+are more warnings than a limit which can be configured with \c{--max-warnings},
+the exit code will be non-zero.
 Minor issues however (such as unused imports) are just informational messages
-by default and will not affect the exit code.
+by default and will never affect the exit code.
 qmllint is very configurable and allows for disabling warnings or changing how
 they are treated.
 Users may freely turn any issue into a warning, informational message, or
@@ -33,6 +36,8 @@ qmllint warns about:
   \li Deprecated components and properties
   \li And many other things
 \endlist
+
+See \l{QML Lint Warning and Errors} on how to fix qmllint warnings and errors.
 
 \note In order for qmllint to work properly, it requires type information.
 That information is provided by QML modules in the import paths.

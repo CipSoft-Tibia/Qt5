@@ -16,10 +16,12 @@ const char kAddGroupPermissionMesaMethod[] = "AddGroupPermissionMesa";
 const char kAdjustVmMethod[] = "AdjustVm";
 const char kAggressiveBalloonMethod[] = "AggressiveBalloon";
 const char kArcVmCompleteBootMethod[] = "ArcVmCompleteBoot";
+const char kAttachNetDeviceMethod[] = "AttachNetDevice";
 const char kAttachUsbDeviceMethod[] = "AttachUsbDevice";
 const char kCancelDiskImageMethod[] = "CancelDiskImageOperation";
 const char kCreateDiskImageMethod[] = "CreateDiskImage";
 const char kDestroyDiskImageMethod[] = "DestroyDiskImage";
+const char kDetachNetDeviceMethod[] = "DetachNetDevice";
 const char kDetachUsbDeviceMethod[] = "DetachUsbDevice";
 const char kDiskImageStatusMethod[] = "DiskImageStatus";
 const char kExportDiskImageMethod[] = "ExportDiskImage";
@@ -31,6 +33,8 @@ const char kGetVmGpuCachePathMethod[] = "GetVmGpuCachePath";
 const char kGetVmInfoMethod[] = "GetVmInfo";
 const char kGetVmLaunchAllowedMethod[] = "GetVmLaunchAllowed";
 const char kGetVmLogsMethod[] = "GetVmLogs";
+const char kGetVmMemoryManagementKillsConnectionMethod[] =
+    "GetVmMemoryManagementKillsConnection";
 const char kImportDiskImageMethod[] = "ImportDiskImage";
 const char kInstallPflashMethod[] = "InstallPflash";
 const char kListUsbDeviceMethod[] = "ListUsbDevices";
@@ -46,6 +50,7 @@ const char kStartPluginVmMethod[] = "StartPluginVm";
 const char kStartVmMethod[] = "StartVm";
 const char kStopAllVmsMethod[] = "StopAllVms";
 const char kStopVmMethod[] = "StopVm";
+const char kStopVmWithoutOwnerIdMethod[] = "StopVmWithoutOwnerId";
 const char kSuspendVmMethod[] = "SuspendVm";
 const char kSwapVmMethod[] = "SwapVm";
 const char kSyncVmTimesMethod[] = "SyncVmTimes";
@@ -58,6 +63,8 @@ const char kVmStartingUpSignal[] = "VmStartingUpSignal";
 const char kVmStoppedSignal[] = "VmStoppedSignal";
 const char kVmStoppingSignal[] = "VmStoppingSignal";
 const char kVmSwappingSignal[] = "VmSwappingSignal";
+
+const char kArcVmName[] = "arcvm";
 
 }  // namespace concierge
 }  // namespace vm_tools

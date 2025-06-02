@@ -38,15 +38,23 @@
             reports, rather than what was asked for.
     \endlist
 
-    \section2 Qt Graphs Module
+    \section2 Qt D-Bus Module
     \list
-        \li Data API for 3D graphs does not require creating every data item into heap memory.
-        \li Render to image functionality added for Bars3D, Scatter3D, and Surface3D graphs.
-        \li Some redundant classes were removed and the necessary functionality moved elsewhere.
-        \li Enums were made scoped.
-        \li A number of other architectural and functional changes.
-        \li Performance and visual quality improvements.
-        \li Technology Preview added for 2D graphs, which contains initial support for bar, line and scatter graphs.
+        \li The deprecated <qdbusmacros.h> header got removed. Use <qtdbusglobal.h> instead.
+        \li The new function \l{QDBusAbstractInterface::setInteractiveAuthorizationAllowed()}
+            allows to set the \c ALLOW_INTERACTIVE_AUTHORIZATION flag for asynchronous calls.
+    \endlist
+
+    \section2 Qt Graphs Module
+    \section3 Qt Graphs3D
+    \list
+        \li Data api doesn't require creating every data item into heap memory.
+        \li Added render to image functionality.
+    \endlist
+    \section3 Qt Graphs2D
+    \list
+        \li Technology Preview of 2D graphs.
+        \li Contains initial support for bar, line and scatter graphs.
     \endlist
 
     \section2 Qt GRPC Module
@@ -331,7 +339,7 @@
 
     \section1 Tools
 
-    \section2 Qt Designer
+    \section2 Qt Widgets Designer
     \list
         \li \QD now writes fully qualified enumeration values to the
             \c .ui files in order to support scoped enumerations and Qt for
@@ -470,7 +478,7 @@
 /*!
     \page newclasses67.html
     \title New Classes and Functions in Qt 6.7
-    \ingroup whatsnewqt6
+    \ingroup whatsnewqt6-api
     \brief A list of new APIs in Qt 6.7.
 
     This page contains a comprehensive list of all new classes and functions

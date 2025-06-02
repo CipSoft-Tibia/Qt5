@@ -32,13 +32,14 @@
 #include "include/core/SkStream.h"
 #include "include/core/SkTypeface.h"
 #include "include/encode/SkPngEncoder.h"
-#include "include/private/SkShadowFlags.h"
 #include "include/private/base/SkDebug.h"
 #include "include/private/base/SkMalloc.h"
 #include "include/private/base/SkTo.h"
 #include "include/private/gpu/ganesh/GrImageContext.h"
+#include "include/utils/SkShadowUtils.h"
 #include "src/base/SkAutoMalloc.h"
 #include "src/core/SkCanvasPriv.h"
+#include "src/core/SkFontPriv.h"
 #include "src/core/SkMaskFilterBase.h"
 #include "src/core/SkPaintDefaults.h"
 #include "src/core/SkRectPriv.h"
@@ -629,7 +630,7 @@ static SkString encode_data(const void*     bytes,
 void DrawCommand::flatten(const SkFlattenable* flattenable,
                           SkJSONWriter&        writer,
                           UrlDataManager&      urlDataManager) {
-    SkBinaryWriteBuffer buffer;
+    SkBinaryWriteBuffer buffer({});  // TODO(kjlubick, bungeman) feed SkSerialProcs through API
     flattenable->flatten(buffer);
     void* data = sk_malloc_throw(buffer.bytesWritten());
     buffer.writeToMemory(data);
@@ -646,7 +647,7 @@ void DrawCommand::flatten(const SkFlattenable* flattenable,
     sk_free(data);
 }
 
-void DrawCommand::WritePNG(SkBitmap bitmap, SkWStream& out) {
+void DrawCommand::WritePNG(const SkBitmap& bitmap, SkWStream& out) {
     SkPixmap pm;
     SkAssertResult(bitmap.peekPixels(&pm));
 
@@ -898,7 +899,7 @@ static void apply_paint_patheffect(const SkPaint&  paint,
 static void apply_font_typeface(const SkFont&   font,
                                 SkJSONWriter&   writer,
                                 UrlDataManager& urlDataManager) {
-    SkTypeface* typeface = font.getTypefaceOrDefault();
+    SkTypeface* typeface = font.getTypeface();
     if (typeface != nullptr) {
         writer.beginObject(DEBUGCANVAS_ATTRIBUTE_TYPEFACE);
         SkDynamicMemoryWStream buffer;
@@ -1092,7 +1093,7 @@ void ClipRRectCommand::toJSON(SkJSONWriter& writer, UrlDataManager& urlDataManag
 
 ClipShaderCommand::ClipShaderCommand(sk_sp<SkShader> cs, SkClipOp op)
         : INHERITED(kClipShader_OpType) {
-    fShader = cs;
+    fShader = std::move(cs);
     fOp     = op;
 }
 

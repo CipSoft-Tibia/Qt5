@@ -7,7 +7,6 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qsize.h>
 #include <QtMultimedia/qtmultimediaglobal.h>
-#include <QtMultimedia/qmediaenumdebug.h>
 #include <QtMultimedia/qmediametadata.h>
 
 #include <QtCore/qpair.h>
@@ -15,12 +14,7 @@
 QT_BEGIN_NAMESPACE
 
 class QUrl;
-class QSize;
-class QAudioFormat;
-class QCamera;
-class QCameraDevice;
 class QMediaFormat;
-class QAudioDevice;
 class QMediaCaptureSession;
 class QPlatformMediaRecorder;
 
@@ -44,6 +38,7 @@ class Q_MULTIMEDIA_EXPORT QMediaRecorder : public QObject
     Q_PROPERTY(int audioBitRate READ audioBitRate WRITE setAudioBitRate NOTIFY audioBitRateChanged)
     Q_PROPERTY(int audioChannelCount READ audioChannelCount WRITE setAudioChannelCount NOTIFY audioChannelCountChanged)
     Q_PROPERTY(int audioSampleRate READ audioSampleRate WRITE setAudioSampleRate NOTIFY audioSampleRateChanged)
+    Q_PROPERTY(bool autoStop READ autoStop WRITE setAutoStop NOTIFY autoStopChanged REVISION(6, 8))
 public:
     enum Quality
     {
@@ -83,12 +78,15 @@ public:
     Q_ENUM(Error)
 
     QMediaRecorder(QObject *parent = nullptr);
-    ~QMediaRecorder();
+    ~QMediaRecorder() override;
 
     bool isAvailable() const;
 
     QUrl outputLocation() const;
     void setOutputLocation(const QUrl &location);
+
+    void setOutputDevice(QIODevice *device);
+    QIODevice *outputDevice() const;
 
     QUrl actualLocation() const;
 
@@ -131,6 +129,9 @@ public:
     void setMetaData(const QMediaMetaData &metaData);
     void addMetaData(const QMediaMetaData &metaData);
 
+    bool autoStop() const;
+    void setAutoStop(bool autoStop);
+
     QMediaCaptureSession *captureSession() const;
     QPlatformMediaRecorder *platformRecoder() const;
 
@@ -143,7 +144,11 @@ Q_SIGNALS:
     void recorderStateChanged(RecorderState state);
     void durationChanged(qint64 duration);
     void actualLocationChanged(const QUrl &location);
+
+#if QT_DEPRECATED_SINCE(6, 9)
+    QT_DEPRECATED_VERSION_X_6_9("Use specific signals instead")
     void encoderSettingsChanged();
+#endif
 
     void errorOccurred(Error error, const QString &errorString);
     void errorChanged();
@@ -159,6 +164,7 @@ Q_SIGNALS:
     void audioBitRateChanged();
     void audioChannelCountChanged();
     void audioSampleRateChanged();
+    Q_REVISION(6, 8) void autoStopChanged();
 
 private:
     QMediaRecorderPrivate *d_ptr;
@@ -169,8 +175,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-Q_MEDIA_ENUM_DEBUG(QMediaRecorder, RecorderState)
-Q_MEDIA_ENUM_DEBUG(QMediaRecorder, Error)
 
 #endif  // QMediaRecorder_H

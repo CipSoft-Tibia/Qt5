@@ -6,12 +6,12 @@
 
 import {css, CSSResultGroup, html, LitElement, PropertyValues} from 'lit';
 
-// TODO(b/295990177): Make these absolute.
+// TODO: b/295990177 - Make these absolute.
 import {waitForEvent} from '../async_helpers/async_helpers';
 import {assertExists, hexToRgb} from '../helpers/helpers';
 
 import {addColorSchemeChangeListener, removeColorSchemeChangeListener} from './event_binders';
-import {getWorker} from './worker';
+import {defaultGetWorker} from './worker';
 
 /**
  * The list of tokens that are used to identify shapes and colors in Lottie
@@ -52,34 +52,79 @@ const CROS_TOKENS = new Set<string>([
   'cros.sys.illo.card.on_color1',
 ]);
 
-interface MessageData {
+declare interface MessageData {
   animationData: JSON;
   drawSize: {width: number, height: number};
   params: {loop: boolean, autoplay: boolean};
   canvas?: OffscreenCanvas;
 }
 
+/** String variant of the name field used for comparison during parsing. */
+const LOTTIE_GRADIENT_FILL_TYPE = 'gf';
+
+/**
+ * A structure in the JSON data that should correspond to something that needs
+ * to be dynamically colored.
+ */
+declare interface DynamicallyColoredObject {
+  /**
+   * The name of a shape. For Material3 compliant animations, this will be the
+   * token name of the color to apply, and we use this field to detect which
+   * parts of the JSON data correspond to colored structures.
+   */
+  nm: string;
+  /**
+   * Optional type of the structure. This field will be set to the value of
+   * `LOTTIE_GRADIENT_FILL_TYPE` if it is a gradient fill structure. If not, we
+   * assume that it is a regular shape (like a stroke or fill).
+   */
+  ty?: string;
+}
+
 /**
  * This definition of this type is taken from
  * https://lottiefiles.github.io/lottie-docs/concepts/#colors
  */
-interface LottieShape {
-  /**
-   * The name of a shape. For Material3 compliant animations, this will be the
-   * token name of the color to apply.
-   */
-  nm: string;
-  /**
-   * Colors can be represented in one of two ways. The first and most often used
-   * is as an array of four floats between 0 and 1 for RGB components and alpha.
-   * The second and much more rarely used is with a hex string.
-   */
+declare interface LottieShape extends DynamicallyColoredObject {
+  /** If the color is represented as an array of four floats: [r, g, b, a]. */
   c?: {k: number[]};
+  /** If the color is represented as a hex string (less common than `c`). */
   sc?: string;
 }
 
-/** String variant of the name field used for comparison during parsing. */
-const LOTTIE_NAME_KEY = 'nm';
+
+/**
+ * This definition of this type is taken from
+ * https://lottiefiles.github.io/lottie-docs/shapes/#gradients
+ */
+declare interface LottieGradientFill extends DynamicallyColoredObject {
+  /** Gradient color type. */
+  g: {
+    /** The number of colors in this gradient. */
+    p: number,
+    /** Animated Gradient Colors. */
+    k: {
+      /**
+       * Whether the property is animated, should be 0 for this fill type which
+       * means the following `k` type is an array of values rather than
+       * keyframes.
+       */
+      a: 0,
+      /**
+       * Gradient values over time.
+       * Values are grouped in contiguous sub-arrays like [t, r, g, b], where
+       * [r,g,b] is a decimal representation of color channel values at time
+       * `t`. There should be `p` number of sub arrays. If alpha values are
+       * included, they are at the end of the array, grouped as [t, a], where a
+       * is the alpha value to apply at time `t`. If alpha values are not
+       * included, the k.length will be p*4, with alpha values it is p*6. The
+       * relationship between the location of a set of [t, r, g, b] values and
+       * an alpha value, is described by a_n = 4p + 2i + 1.
+       */
+      k: number[]
+    }
+  };
+}
 
 /**
  * A type for storing a css variable and a list of known shapes within the
@@ -87,17 +132,34 @@ const LOTTIE_NAME_KEY = 'nm';
  * will be one of these structures per token in CROS_TOKENS that appears in the
  * animation data.
  */
-interface TokenColor {
+declare interface TokenColor {
   cssVar: string;
-  locations: LottieShape[];
+  shapes: LottieShape[];
+  gradients: LottieGradientFill[];
 }
 
 /** The CustomEvent names that LottieRenderer can fire. */
 export enum CrosLottieEvent {
+  /**
+   * Fired when the animation has been loaded on the worker thread and is
+   * ready to play.
+   */
   INITIALIZED = `cros-lottie-initialized`,
+  /**
+   * Fired when the animation has been paused on the worker thread.
+   */
   PAUSED = `cros-lottie-paused`,
+  /**
+   * Fired when the animation has begun playing on the worker thread.
+   */
   PLAYING = `cros-lottie-playing`,
+  /**
+   * Fired when the animation has been resized on the worker thread.
+   */
   RESIZED = `cros-lottie-resized`,
+  /**
+   * Fired when the animation has begun playing on the worker thread.
+   */
   STOPPED = `cros-lottie-stopped`,
 }
 
@@ -107,13 +169,18 @@ interface ResizeDetail {
 }
 
 /**
- * Helper function for converting between the hexadecimal string we get from the
- * computed style to the format that lottie expects, which is an array of four
- * floats. Since these come directly from the computed style and color pipeline,
- * we can be confident that we are only going to be parsing 8 digit hexadecimal
- * strings.
+ * A fixed length array type for encoding Lottie colors. The format is [r, g, b,
+ * alpha], where each entry is a value between [0-1].
  */
-function convertHexToLottieRGBA(hexString: string): number[] {
+declare type LottieRGBAArray = [number, number, number, number];
+
+/**
+ * Helper function for converting between the hexadecimal string we get from the
+ * computed style to LottieRGBAArray type. Since these come directly
+ * from the computed style and color pipeline, we can be confident that we are
+ * only going to be parsing 8 digit hexadecimal strings.
+ */
+function convertHexToLottieRGBA(hexString: string): LottieRGBAArray {
   let r;
   let g;
   let b;
@@ -141,30 +208,50 @@ function convertTokenToCssVariable(token: string) {
   return `--${(token).replaceAll('.', '-')}`;
 }
 
+function getOrCreateTokenColor(
+    colors: Map<string, TokenColor>, tokenName: string) {
+  if (!colors.has(tokenName)) {
+    colors.set(tokenName, {
+      cssVar: convertTokenToCssVariable(tokenName),
+      shapes: [],
+      gradients: []
+    });
+  }
+  return (colors.get(tokenName) as TokenColor);
+}
+
 /**
  * Traverses through a jsonObject, looking for known keys and tokens, and
- * saving them in the `shapes` map.
+ * saving them in the `shapes` and `gradients` map.
  */
-function traverse(jsonObj: object, shapes: Map<string, TokenColor>) {
+function traverse(jsonObj: object, colors: Map<string, TokenColor>) {
   if (jsonObj === null || typeof jsonObj !== 'object') return;
 
-  for (const [key, value] of Object.entries(jsonObj)) {
-    // If we are looking at something that contains a "nm" field that is set to
-    // one of the known illustration tokens, this is a LottieShape that needs to
-    // have its color value set.
-    if (key === LOTTIE_NAME_KEY && CROS_TOKENS.has(value)) {
-      const tokenName = value as string;
-      if (!shapes.has(tokenName)) {
-        shapes.set(
-            tokenName,
-            {cssVar: convertTokenToCssVariable(tokenName), locations: []});
+  for (const value of Object.values(jsonObj)) {
+    const tokenName = (jsonObj as DynamicallyColoredObject).nm || null;
+    let tokenColor = null;
+    let gradient = null;
+    let shape = null;
+    if (tokenName && CROS_TOKENS.has(tokenName)) {
+      tokenColor = getOrCreateTokenColor(colors, tokenName);
+      const gradientObj = jsonObj as LottieGradientFill;
+
+      // Attempt to parse the object as a gradient, otherwise we assume it is a
+      // regular shape. If more complex animation types get added, this logic
+      // will need to be updated along with the types.
+      if (gradientObj.ty === LOTTIE_GRADIENT_FILL_TYPE) {
+        gradient = gradientObj;
+      } else {
+        shape = jsonObj as LottieShape;
       }
-      const color = shapes.get(tokenName) as TokenColor;
-      const shape = jsonObj as LottieShape;
-      color.locations.push(shape);
     }
 
-    traverse(value, shapes);
+    traverse(value, colors);
+
+    if (tokenColor) {
+      if (gradient) tokenColor.gradients.push(gradient);
+      if (shape) tokenColor.shapes.push(shape);
+    }
   }
 }
 
@@ -201,17 +288,26 @@ export class LottieRenderer extends LitElement {
    */
   dynamic: boolean;
 
+  /**
+   * Function which returns a web worker loaded up with lottie worker js.
+   * If unspecified in chromium defaults to a standard web worker pulling from
+   * "chrome://resources/cros_components/lottie_renderer/lottie_worker.js". If
+   * unspecified in google3 defaults to a standard web worker pulling from
+   * "/js/lottie_worker.js".
+   * Must be set before attaching lottieRenderer to the DOM:
+   *   const renderer = new LottieRenderer();
+   *   renderer.getWorker = myCustomGetWorker();
+   *   document.body.append(renderer);
+   * @export
+   */
+  getWorker: () => Worker = defaultGetWorker;
+
   /** The onscreen canvas controlled by lottie_worker.js. */
   get onscreenCanvas(): HTMLCanvasElement|null {
     return this.renderRoot.querySelector('#onscreen-canvas');
   }
 
-  /**
-   * Temporary public API to ensure component color resolution works.
-   * TODO(b/290864323): Remove legacy usages of this function and then make
-   * private.
-   */
-  onColorSchemeChanged = () => {
+  private readonly onColorSchemeChanged = () => {
     if (!this.dynamic) return;
     this.refreshAnimationColors();
   };
@@ -268,6 +364,11 @@ export class LottieRenderer extends LitElement {
     dynamic: {type: Boolean, attribute: true},
   };
 
+  /** @nocollapse */
+  static events = {
+    ...CrosLottieEvent,
+  } as const;
+
   constructor() {
     super();
     this.assetUrl = '';
@@ -296,7 +397,7 @@ export class LottieRenderer extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     if (!this.worker) {
-      this.worker = getWorker();
+      this.worker = this.getWorker();
       this.worker.onmessage = (e) => void this.onMessage(e);
     }
 
@@ -329,7 +430,7 @@ export class LottieRenderer extends LitElement {
   override updated(changedProperties: PropertyValues<LottieRenderer>) {
     super.updated(changedProperties);
     const prop = changedProperties.get('assetUrl');
-    if (prop && prop !== undefined && this.worker) {
+    if (this.assetUrl && prop !== undefined && this.worker) {
       this.assetUrlChanged();
     }
   }
@@ -372,7 +473,7 @@ export class LottieRenderer extends LitElement {
   private async refreshAnimationColors() {
     // We must await update here to ensure the computed style will be up to date
     // with the new color scheme.
-    // TODO(b/276079531): Investigate if this can be removed when using events.
+    // TODO: b/274998765 - Investigate if this can be removed when using events.
     this.requestUpdate();
     await this.updateComplete;
     if (!this.animationData) {
@@ -406,8 +507,6 @@ export class LottieRenderer extends LitElement {
     // once, when we first initialize an animation. On subsequent
     // initializations (such as when the asset URL has changed), we avoid
     // re-transferring the canvas and just send across the animation data.
-    // TODO(b/268419751): Add hooks for updating when the animation URL has
-    // changed.
     if (this.hasTransferredCanvas) {
       this.worker.postMessage(animationConfig);
       return;
@@ -487,7 +586,7 @@ export class LottieRenderer extends LitElement {
     for (const color of this.colors.values()) {
       const computedColor = computedStyle.getPropertyValue(color.cssVar).trim();
       const colorArray = convertHexToLottieRGBA(computedColor);
-      for (const location of color.locations) {
+      for (const location of color.shapes) {
         if (location.c) {
           location.c.k = colorArray;
         } else if (location.sc) {
@@ -495,6 +594,15 @@ export class LottieRenderer extends LitElement {
         } else {
           console.info(
               `Unable to assign color to shape: ${JSON.stringify(location)}`);
+        }
+      }
+      for (const location of color.gradients) {
+        const numOfPoints = location.g.p;
+        for (let i = 0; i < numOfPoints; i++) {
+          const gradientFillPoints = location.g.k.k;
+          gradientFillPoints[(4 * i) + 1] = colorArray[0];
+          gradientFillPoints[(4 * i) + 2] = colorArray[1];
+          gradientFillPoints[(4 * i) + 3] = colorArray[2];
         }
       }
     }
@@ -608,6 +716,14 @@ export class LottieRenderer extends LitElement {
 customElements.define('cros-lottie-renderer', LottieRenderer);
 
 declare global {
+  interface HTMLElementEventMap {
+    [LottieRenderer.events.INITIALIZED]: Event;
+    [LottieRenderer.events.PAUSED]: Event;
+    [LottieRenderer.events.PLAYING]: Event;
+    [LottieRenderer.events.RESIZED]: Event;
+    [LottieRenderer.events.STOPPED]: Event;
+  }
+
   interface HTMLElementTagNameMap {
     'cros-lottie-renderer': LottieRenderer;
   }

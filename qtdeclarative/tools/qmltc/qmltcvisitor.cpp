@@ -49,7 +49,7 @@ static bool isImplicitComponent(const QQmlJSScope::ConstPtr &type)
         return false;
     const auto cppBase = QQmlJSScope::nonCompositeBaseType(type);
     const bool isComponentBased = (cppBase && cppBase->internalName() == u"QQmlComponent");
-    return type->isComponentRootElement() && !isComponentBased;
+    return type->componentRootStatus() != QQmlJSScope::IsComponentRoot::No && !isComponentBased;
 }
 
 /*! \internal
@@ -74,7 +74,7 @@ QmltcVisitor::QmltcVisitor(const QQmlJSScope::Ptr &target, QQmlJSImporter *impor
                            const QStringList &qmldirFiles)
     : QQmlJSImportVisitor(target, importer, logger, implicitImportDirectory, qmldirFiles)
 {
-    m_qmlTypeNames.append(QFileInfo(logger->fileName()).baseName()); // put document root
+    m_qmlTypeNames.append(QFileInfo(logger->filePath()).baseName()); // put document root
 }
 
 void QmltcVisitor::findCppIncludes()
@@ -89,7 +89,7 @@ void QmltcVisitor::findCppIncludes()
         return false;
     };
     const auto addCppInclude = [this](const QQmlJSScope::ConstPtr &type) {
-        if (QString includeFile = type->filePath(); includeFile.endsWith(u".h"))
+        if (QString includeFile = filePath(type); !includeFile.isEmpty())
             m_cppIncludes.insert(std::move(includeFile));
     };
 
@@ -101,6 +101,9 @@ void QmltcVisitor::findCppIncludes()
 
         // look in type
         addCppInclude(type);
+
+        if (type->isListProperty())
+            addCppInclude(type->valueType());
 
         // look in type's base type
         auto base = type->baseType();
@@ -148,8 +151,8 @@ void QmltcVisitor::findCppIncludes()
             for (const QQmlJSMetaProperty &p : properties) {
                 findInType(p.type());
 
-                if (p.isPrivate() && t->filePath().endsWith(u".h")) {
-                    const QString ownersInclude = t->filePath();
+                if (p.isPrivate()) {
+                    const QString ownersInclude = filePath(t);
                     QString privateInclude = constructPrivateInclude(ownersInclude);
                     if (!privateInclude.isEmpty())
                         m_cppIncludes.insert(std::move(privateInclude));
@@ -171,7 +174,7 @@ void QmltcVisitor::findCppIncludes()
     }
 
     // remove own include
-    m_cppIncludes.remove(m_exportedRootScope->filePath());
+    m_cppIncludes.remove(filePath(m_exportedRootScope));
 }
 
 static void addCleanQmlTypeName(QStringList *names, const QQmlJSScope::ConstPtr &scope)
@@ -188,15 +191,8 @@ static void addCleanQmlTypeName(QStringList *names, const QQmlJSScope::ConstPtr 
 
 bool QmltcVisitor::visit(QQmlJS::AST::UiObjectDefinition *object)
 {
-    const bool processingRoot = !rootScopeIsValid();
-
     if (!QQmlJSImportVisitor::visit(object))
         return false;
-
-    if (processingRoot || m_currentScope->isInlineComponent()) {
-        Q_ASSERT(rootScopeIsValid());
-        setRootFilePath();
-    }
 
     // we're not interested in non-QML scopes
     if (m_currentScope->scopeType() != QQmlSA::ScopeType::QMLScope)
@@ -322,11 +318,11 @@ void QmltcVisitor::endVisit(QQmlJS::AST::UiProgram *program)
         return;
 
     QHash<QQmlJSScope::ConstPtr, QList<QQmlJSMetaPropertyBinding>> bindings;
-    for (const QQmlJSScope::ConstPtr &type : std::as_const(m_qmlTypes)) {
-        if (isOrUnderComponent(type))
-            continue;
+
+    // Yes, we want absolutely all bindings in the document.
+    // Not only the ones immediately assigned to QML types.
+    for (const QQmlJSScope::ConstPtr &type : std::as_const(m_scopesByIrLocation))
         bindings.insert(type, type->ownPropertyBindingsInQmlIROrder());
-    }
 
     postVisitResolve(bindings);
     setupAliases();
@@ -350,8 +346,10 @@ QQmlJSScope::ConstPtr fetchType(const QQmlJSMetaPropertyBinding &binding)
         return binding.interceptorType();
     case QQmlSA::BindingType::ValueSource:
         return binding.valueSourceType();
-    // TODO: AttachedProperty and GroupProperty are not supported yet,
-    // but have to also be acknowledged here
+    case QQmlSA::BindingType::AttachedProperty:
+        return binding.attachingType();
+    case QQmlSA::BindingType::GroupProperty:
+        return binding.groupType();
     default:
         return {};
     }
@@ -592,7 +590,7 @@ void QmltcVisitor::postVisitResolve(
     const auto setRuntimeId = [&](const QQmlJSScope::ConstPtr &type) {
         // any type wrapped in an implicit component shouldn't be processed
         // here. even if it has id, it doesn't need to be set by qmltc
-        if (type->isComponentRootElement()) {
+        if (type->componentRootStatus() != QQmlJSScope::IsComponentRoot::No) {
             return true;
         }
 
@@ -828,14 +826,14 @@ void QmltcVisitor::checkNamesAndTypes(const QQmlJSScope::ConstPtr &type)
 }
 
 /*! \internal
- *  Sets the file paths for the document and the inline components roots.
+ *  Returns the file path for the C++ header of \a scope or the header created
+ *  by qmltc for it and its inline components.
  */
-void QmltcVisitor::setRootFilePath()
+QString QmltcVisitor::filePath(const QQmlJSScope::ConstPtr &scope) const
 {
-    const QString filePath = m_currentScope->filePath();
-    if (filePath.endsWith(u".h")) // assume the correct path is set
-        return;
-    Q_ASSERT(filePath.endsWith(u".qml"_s));
+    const QString filePath = scope->filePath();
+    if (!filePath.endsWith(u".qml")) // assume the correct path is set
+        return scope->filePath();
 
     const QString correctedFilePath = sourceDirectoryPath(filePath);
     const QStringList paths = m_importer->resourceFileMapper()->resourcePaths(
@@ -847,13 +845,13 @@ void QmltcVisitor::setRootFilePath()
         qCDebug(lcQmltcCompiler,
                 "Failed to find a header file name for path %s. Paths checked:\n%s",
                 correctedFilePath.toUtf8().constData(), matchedPaths.toUtf8().constData());
-        return;
+        return QString();
     }
     // NB: get the file name to avoid prefixes
-    m_currentScope->setFilePath(QFileInfo(*firstHeader).fileName());
+    return QFileInfo(*firstHeader).fileName();
 }
 
-QString QmltcVisitor::sourceDirectoryPath(const QString &path)
+QString QmltcVisitor::sourceDirectoryPath(const QString &path) const
 {
     auto result = QQmlJSUtils::sourceDirectoryPath(m_importer, path);
     if (const QString *srcDirPath = std::get_if<QString>(&result))

@@ -5,6 +5,7 @@
 #include "content/browser/media/media_license_manager.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -28,7 +29,6 @@
 #include "media/cdm/cdm_type.h"
 #include "sql/database.h"
 #include "sql/sqlite_result_code.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/quota/quota_types.mojom-shared.h"
 #include "url/origin.h"
@@ -41,7 +41,7 @@ using MediaLicenseStorageHostOpenError =
 namespace {
 
 // Creates a task runner suitable for running SQLite database operations.
-scoped_refptr<base::SequencedTaskRunner> CreateDatabaseTaskRunner() {
+scoped_refptr<base::SequencedTaskRunner> CreateDatabaseTaskRunner_MLM() {
   // We use a SequencedTaskRunner so that there is a global ordering to a
   // storage key's directory operations.
   return base::ThreadPool::CreateSequencedTaskRunner({
@@ -64,7 +64,7 @@ MediaLicenseManager::MediaLicenseManager(
     bool in_memory,
     scoped_refptr<storage::SpecialStoragePolicy> special_storage_policy,
     scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy)
-    : db_runner_(CreateDatabaseTaskRunner()),
+    : db_runner_(CreateDatabaseTaskRunner_MLM()),
       in_memory_(in_memory),
       special_storage_policy_(std::move(special_storage_policy)),
       quota_manager_proxy_(std::move(quota_manager_proxy)),

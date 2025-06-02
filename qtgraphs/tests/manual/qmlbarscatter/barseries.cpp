@@ -5,23 +5,13 @@
 
 #include <QtGraphs/QBarSet>
 
-BarSeries::BarSeries(QObject *series)
-    : QBarSeries(series)
+BarSeries::BarSeries(QObject *parent)
+    : QBarSeries(parent)
     , m_cpuUpdater(this)
-    , m_axis1(this)
-    , m_axis2(this)
     , m_counter(0)
 {
     connect(&m_timer, &QTimer::timeout, this, &BarSeries::frameUpdate);
     m_timer.start(100);
-
-    m_axis1.setCategories({"Reading 1", "Reading 2", "Reading 3", "Reading 4", "Reading 5"});
-
-    m_axis2.setMin(0);
-    m_axis2.setMax(100);
-
-    setAxisX(&m_axis1);
-    setAxisY(&m_axis2);
 
     m_barList = new QBarSet(this);
 

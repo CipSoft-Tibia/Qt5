@@ -1385,9 +1385,7 @@ QKeySequence &QKeySequence::operator=(const QKeySequence &other)
 /*!
     \fn void QKeySequence::swap(QKeySequence &other)
     \since 4.8
-
-    Swaps key sequence \a other with this key sequence. This operation is very
-    fast and never fails.
+    \memberswap{key sequence}
 */
 
 /*!
@@ -1412,10 +1410,7 @@ bool QKeySequence::operator==(const QKeySequence &other) const
 
 /*!
     \since 5.6
-    \relates QKeySequence
-
-    Calculates the hash value of \a key, using
-    \a seed to seed the calculation.
+    \qhashold{QKeySequence}
 */
 size_t qHash(const QKeySequence &key, size_t seed) noexcept
 {

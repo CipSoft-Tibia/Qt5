@@ -105,7 +105,7 @@ void tst_QWebView::runJavaScript()
     QQmlEngine::setContextForObject(&view, rootContext);
 
     QCOMPARE(view.loadProgress(), 0);
-    view.loadHtml(QString("<html><head><title>%1</title></head><body /></html>").arg(title));
+    view.loadHtml(QString("<html><head><title>%1</title></head><body/></html>").arg(title));
     QTRY_COMPARE(view.loadProgress(), 100);
     QTRY_VERIFY(!view.isLoading());
     QCOMPARE(view.title(), title);
@@ -130,10 +130,23 @@ void tst_QWebView::loadHtml()
     QWebView view;
 #endif
     QCOMPARE(view.loadProgress(), 0);
-    view.loadHtml(QString("<html><head><title>WebViewTitle</title></head><body />"));
+    QSignalSpy loadChangedSingalSpy(&view, SIGNAL(loadingChanged(const QWebViewLoadRequestPrivate &)));
+    const QByteArray content(
+            QByteArrayLiteral("<html><title>WebViewTitle</title>"
+                              "<body><span style=\"color:#ff0000\">Hello</span></body></html>"));
+    view.loadHtml(content);
     QTRY_COMPARE(view.loadProgress(), 100);
     QTRY_VERIFY(!view.isLoading());
     QCOMPARE(view.title(), QStringLiteral("WebViewTitle"));
+    QTRY_COMPARE(loadChangedSingalSpy.size(), 2);
+    // take load finished
+    const QWebViewLoadRequestPrivate &lr = loadChangedSingalSpy.at(1).at(0).value<QWebViewLoadRequestPrivate>();
+    QCOMPARE(lr.m_status, QWebView::LoadSucceededStatus);
+
+    QByteArray encoded("data:text/html;charset=UTF-8,");
+    encoded.append(content.toPercentEncoding());
+    QVERIFY(view.url().isValid());
+    QCOMPARE(QUrl(encoded), view.url());
 }
 
 void tst_QWebView::loadRequest()
@@ -144,7 +157,7 @@ void tst_QWebView::loadRequest()
         QVERIFY2(file.open(),
                  qPrintable(QStringLiteral("Cannot create temporary file:") + file.errorString()));
 
-        file.write("<html><head><title>FooBar</title></head><body />");
+        file.write("<html><head><title>FooBar</title></head><body/></html>");
         const QString fileName = file.fileName();
         file.close();
 #ifdef QT_WEBVIEW_WEBENGINE_BACKEND

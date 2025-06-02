@@ -164,10 +164,12 @@ FlossAdvertiserClient::~FlossAdvertiserClient() {
 void FlossAdvertiserClient::Init(dbus::Bus* bus,
                                  const std::string& service_name,
                                  const int adapter_index,
+                                 base::Version version,
                                  base::OnceClosure on_ready) {
   bus_ = bus;
   service_name_ = service_name;
   gatt_adapter_path_ = GenerateGattPath(adapter_index);
+  version_ = version;
 
   dbus::ObjectProxy* object_proxy =
       bus_->GetObjectProxy(service_name_, gatt_adapter_path_);
@@ -330,7 +332,7 @@ void FlossAdvertiserClient::CompleteRegisterCallback(
 
 void FlossAdvertiserClient::CompleteUnregisterCallback(DBusResult<bool> ret) {
   if (!ret.has_value() || *ret == false) {
-    LOG(WARNING) << __func__ << "Failed to unregister callback";
+    LOG(WARNING) << __func__ << ": Failed to unregister callback";
   }
 }
 

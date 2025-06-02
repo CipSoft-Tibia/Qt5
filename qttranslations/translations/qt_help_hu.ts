@@ -442,7 +442,7 @@
     <name>fulltextsearch::qt::QHelpSearchIndexWriter</name>
     <message>
         <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
-        <translation>Nem lehet megnyitni a(z) „%1” adatbázist a(z) „%2” kapcsolat használatával: %3</translation>
+        <translation type="vanished">Nem lehet megnyitni a(z) „%1” adatbázist a(z) „%2” kapcsolat használatával: %3</translation>
     </message>
 </context>
 <context>
@@ -477,6 +477,13 @@
     <message>
         <source>Invalid Option</source>
         <translation>Érvénytelen beállítás</translation>
+    </message>
+</context>
+<context>
+    <name>fulltextsearch::QHelpSearchIndexWriter</name>
+    <message>
+        <source>Cannot open database &quot;%1&quot; using connection &quot;%2&quot;: %3</source>
+        <translation>Nem lehet megnyitni a(z) „%1” adatbázist a(z) „%2” kapcsolat használatával: %3</translation>
     </message>
 </context>
 </TS>

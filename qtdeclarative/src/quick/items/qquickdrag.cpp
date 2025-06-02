@@ -30,7 +30,7 @@ using namespace Qt::StringLiterals;
 
 /*!
     \qmltype Drag
-    \instantiates QQuickDrag
+    \nativetype QQuickDrag
     \inqmlmodule QtQuick
     \ingroup qtquick-input
     \brief For specifying drag and drop events for moved Items.
@@ -296,7 +296,7 @@ QObject *QQuickDragAttached::target() const
 }
 
 /*!
-    \qmlattachedproperty QPointF QtQuick::Drag::hotSpot
+    \qmlattachedproperty point QtQuick::Drag::hotSpot
 
     This property holds the drag position relative to the top left of the item.
 
@@ -325,7 +325,7 @@ void QQuickDragAttached::setHotSpot(const QPointF &hotSpot)
 }
 
 /*!
-    \qmlattachedproperty QUrl QtQuick::Drag::imageSource
+    \qmlattachedproperty url QtQuick::Drag::imageSource
     \since 5.8
 
     This property holds the URL of the image which will be used to represent
@@ -354,10 +354,63 @@ void QQuickDragAttached::setImageSource(const QUrl &url)
         if (url.isEmpty()) {
             d->pixmapLoader.clear();
         } else {
-            d->pixmapLoader.load(qmlEngine(parent()), url);
+            d->loadPixmap();
         }
 
         Q_EMIT imageSourceChanged();
+    }
+}
+
+/*!
+    \qmlattachedproperty size QtQuick::Drag::imageSourceSize
+    \since 6.8
+
+    This property holds the size of the image that will be used to represent
+    the data during the drag and drop operation. Changing this property after
+    the drag operation has started will have no effect.
+
+    This property sets the maximum number of pixels stored for the loaded
+    image so that large images do not use more memory than necessary.
+    See \l {QtQuick::Image::sourceSize}{Image.sourceSize} for more details.
+
+    The example below shows an SVG image rendered at one size, and re-renders
+    it at a different size for the drag image:
+
+    \snippet qml/externalDragScaledImage.qml 0
+
+    \sa imageSource, Item::grabToImage()
+*/
+
+QSize QQuickDragAttached::imageSourceSize() const
+{
+    Q_D(const QQuickDragAttached);
+    int width = d->imageSourceSize.width();
+    int height = d->imageSourceSize.height();
+    // If width or height is invalid, check whether the size is valid from the loaded image.
+    // If it ends up 0x0 though, leave it as an invalid QSize instead (-1 x -1).
+    if (width == -1) {
+        width = d->pixmapLoader.width();
+        if (!width)
+            width = -1;
+    }
+    if (height == -1) {
+        height = d->pixmapLoader.height();
+        if (!height)
+            height = -1;
+    }
+    return QSize(width, height);
+}
+
+void QQuickDragAttached::setImageSourceSize(const QSize &size)
+{
+    Q_D(QQuickDragAttached);
+    if (d->imageSourceSize != size) {
+        d->imageSourceSize = size;
+
+        if (!d->imageSource.isEmpty())
+            d->loadPixmap();
+
+        Q_EMIT imageSourceSizeChanged();
     }
 }
 
@@ -538,7 +591,7 @@ void QQuickDragAttachedPrivate::start(Qt::DropActions supportedActions)
     property for the started sequence.
 */
 
-void QQuickDragAttached::start(QQmlV4Function *args)
+void QQuickDragAttached::start(QQmlV4FunctionPtr args)
 {
     Q_D(QQuickDragAttached);
     if (d->inEvent) {
@@ -767,6 +820,17 @@ QMimeData *QQuickDragAttachedPrivate::createMimeData() const
     return mimeData;
 }
 
+void QQuickDragAttachedPrivate::loadPixmap()
+{
+    Q_Q(QQuickDragAttached);
+
+    QUrl loadUrl = imageSource;
+    const QQmlContext *context = qmlContext(q->parent());
+    if (context)
+        loadUrl = context->resolvedUrl(imageSource);
+    pixmapLoader.load(context ? context->engine() : nullptr, loadUrl, QRect(), q->imageSourceSize());
+}
+
 Qt::DropAction QQuickDragAttachedPrivate::startDrag(Qt::DropActions supportedActions)
 {
     Q_Q(QQuickDragAttached);
@@ -810,7 +874,7 @@ Qt::DropAction QQuickDragAttachedPrivate::startDrag(Qt::DropActions supportedAct
     property for the started sequence.
 */
 
-void QQuickDragAttached::startDrag(QQmlV4Function *args)
+void QQuickDragAttached::startDrag(QQmlV4FunctionPtr args)
 {
     Q_D(QQuickDragAttached);
 

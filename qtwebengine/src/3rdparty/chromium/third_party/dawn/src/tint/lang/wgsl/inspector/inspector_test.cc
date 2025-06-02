@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gmock/gmock.h"
 
@@ -64,7 +77,6 @@ class InspectorGetEntryPointInterpolateTest
       public testing::TestWithParam<InspectorGetEntryPointInterpolateTestParams> {};
 class InspectorGetOverrideDefaultValuesTest : public InspectorBuilder, public testing::Test {};
 class InspectorGetConstantNameToIdMapTest : public InspectorBuilder, public testing::Test {};
-class InspectorGetStorageSizeTest : public InspectorBuilder, public testing::Test {};
 class InspectorGetResourceBindingsTest : public InspectorBuilder, public testing::Test {};
 class InspectorGetUniformBufferResourceBindingsTest : public InspectorBuilder,
                                                       public testing::Test {};
@@ -126,8 +138,6 @@ class InspectorGetExternalTextureResourceBindingsTest : public InspectorBuilder,
                                                         public testing::Test {};
 
 class InspectorGetSamplerTextureUsesTest : public InspectorRunner, public testing::Test {};
-
-class InspectorGetWorkgroupStorageSizeTest : public InspectorBuilder, public testing::Test {};
 
 class InspectorGetUsedExtensionNamesTest : public InspectorRunner, public testing::Test {};
 
@@ -267,6 +277,119 @@ TEST_F(InspectorGetEntryPointTest, NonDefaultWorkgroupSize) {
     EXPECT_EQ(1u, workgroup_size->z);
 }
 
+TEST_F(InspectorGetEntryPointTest, WorkgroupStorageSizeEmpty) {
+    MakeEmptyBodyFunction("ep_func", Vector{
+                                         Stage(ast::PipelineStage::kCompute),
+                                         WorkgroupSize(1_i),
+                                     });
+    Inspector& inspector = Build();
+    auto result = inspector.GetEntryPoints();
+    ASSERT_FALSE(inspector.has_error()) << inspector.error();
+
+    ASSERT_EQ(1u, result.size());
+    EXPECT_EQ(0u, result[0].workgroup_storage_size);
+}
+
+TEST_F(InspectorGetEntryPointTest, WorkgroupStorageSizeSimple) {
+    AddWorkgroupStorage("wg_f32", ty.f32());
+    MakePlainGlobalReferenceBodyFunction("f32_func", "wg_f32", ty.f32(), tint::Empty);
+
+    MakeCallerBodyFunction("ep_func", Vector{std::string("f32_func")},
+                           Vector{
+                               Stage(ast::PipelineStage::kCompute),
+                               WorkgroupSize(1_i),
+                           });
+
+    Inspector& inspector = Build();
+    auto result = inspector.GetEntryPoints();
+    ASSERT_FALSE(inspector.has_error()) << inspector.error();
+
+    ASSERT_EQ(1u, result.size());
+    EXPECT_EQ(4u, result[0].workgroup_storage_size);
+}
+
+TEST_F(InspectorGetEntryPointTest, WorkgroupStorageSizeCompoundTypes) {
+    // This struct should occupy 68 bytes. 4 from the i32 field, and another 64
+    // from the 4-element array with 16-byte stride.
+    auto* wg_struct_type = MakeStructType("WgStruct", Vector{
+                                                          ty.i32(),
+                                                          ty.array<i32, 4>(Vector{
+                                                              Stride(16),
+                                                          }),
+                                                      });
+    AddWorkgroupStorage("wg_struct_var", ty.Of(wg_struct_type));
+    MakeStructVariableReferenceBodyFunction("wg_struct_func", "wg_struct_var",
+                                            Vector{
+                                                MemberInfo{0, ty.i32()},
+                                            });
+
+    // Plus another 4 bytes from this other workgroup-class f32.
+    AddWorkgroupStorage("wg_f32", ty.f32());
+    MakePlainGlobalReferenceBodyFunction("f32_func", "wg_f32", ty.f32(), tint::Empty);
+
+    MakeCallerBodyFunction("ep_func", Vector{std::string("wg_struct_func"), "f32_func"},
+                           Vector{
+                               Stage(ast::PipelineStage::kCompute),
+                               WorkgroupSize(1_i),
+                           });
+
+    Inspector& inspector = Build();
+    auto result = inspector.GetEntryPoints();
+    ASSERT_FALSE(inspector.has_error()) << inspector.error();
+
+    ASSERT_EQ(1u, result.size());
+    EXPECT_EQ(72u, result[0].workgroup_storage_size);
+}
+
+TEST_F(InspectorGetEntryPointTest, WorkgroupStorageSizeAlignmentPadding) {
+    // vec3<f32> has an alignment of 16 but a size of 12. We leverage this to test
+    // that our padded size calculation for workgroup storage is accurate.
+    AddWorkgroupStorage("wg_vec3", ty.vec3<f32>());
+    MakePlainGlobalReferenceBodyFunction("wg_func", "wg_vec3", ty.vec3<f32>(), tint::Empty);
+
+    MakeCallerBodyFunction("ep_func", Vector{std::string("wg_func")},
+                           Vector{
+                               Stage(ast::PipelineStage::kCompute),
+                               WorkgroupSize(1_i),
+                           });
+
+    Inspector& inspector = Build();
+    auto result = inspector.GetEntryPoints();
+    ASSERT_FALSE(inspector.has_error()) << inspector.error();
+
+    ASSERT_EQ(1u, result.size());
+    EXPECT_EQ(16u, result[0].workgroup_storage_size);
+}
+
+TEST_F(InspectorGetEntryPointTest, WorkgroupStorageSizeStructAlignment) {
+    // Per WGSL spec, a struct's size is the offset its last member plus the size
+    // of its last member, rounded up to the alignment of its largest member. So
+    // here the struct is expected to occupy 1024 bytes of workgroup storage.
+    const auto* wg_struct_type = MakeStructTypeFromMembers(
+        "WgStruct", Vector{
+                        MakeStructMember(0, ty.f32(), Vector{MemberAlign(1024_i)}),
+                    });
+
+    AddWorkgroupStorage("wg_struct_var", ty.Of(wg_struct_type));
+    MakeStructVariableReferenceBodyFunction("wg_struct_func", "wg_struct_var",
+                                            Vector{
+                                                MemberInfo{0, ty.f32()},
+                                            });
+
+    MakeCallerBodyFunction("ep_func", Vector{std::string("wg_struct_func")},
+                           Vector{
+                               Stage(ast::PipelineStage::kCompute),
+                               WorkgroupSize(1_i),
+                           });
+
+    Inspector& inspector = Build();
+    auto result = inspector.GetEntryPoints();
+    ASSERT_FALSE(inspector.has_error()) << inspector.error();
+
+    ASSERT_EQ(1u, result.size());
+    EXPECT_EQ(1024u, result[0].workgroup_storage_size);
+}
+
 TEST_F(InspectorGetEntryPointTest, NoInOutVariables) {
     MakeEmptyBodyFunction("func", tint::Empty);
 
@@ -292,7 +415,7 @@ TEST_P(InspectorGetEntryPointComponentAndCompositionTest, Test) {
     std::function<ast::Type()> tint_type = GetTypeFunction(component, composition);
 
     if (component == ComponentType::kF16) {
-        Enable(core::Extension::kF16);
+        Enable(wgsl::Extension::kF16);
     }
 
     auto* in_var = Param("in_var", tint_type(),
@@ -319,14 +442,14 @@ TEST_P(InspectorGetEntryPointComponentAndCompositionTest, Test) {
 
     ASSERT_EQ(1u, result[0].input_variables.size());
     EXPECT_EQ("in_var", result[0].input_variables[0].name);
-    EXPECT_TRUE(result[0].input_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].input_variables[0].location_attribute);
+    EXPECT_EQ("in_var", result[0].input_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].input_variables[0].attributes.location);
     EXPECT_EQ(component, result[0].input_variables[0].component_type);
 
     ASSERT_EQ(1u, result[0].output_variables.size());
     EXPECT_EQ("<retval>", result[0].output_variables[0].name);
-    EXPECT_TRUE(result[0].output_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].output_variables[0].location_attribute);
+    EXPECT_EQ("", result[0].output_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].output_variables[0].attributes.location);
     EXPECT_EQ(component, result[0].output_variables[0].component_type);
 }
 INSTANTIATE_TEST_SUITE_P(InspectorGetEntryPointTest,
@@ -341,6 +464,8 @@ INSTANTIATE_TEST_SUITE_P(InspectorGetEntryPointTest,
                                                           CompositionType::kVec4)));
 
 TEST_F(InspectorGetEntryPointTest, MultipleInOutVariables) {
+    Enable(wgsl::Extension::kChromiumExperimentalFramebufferFetch);
+
     auto* in_var0 = Param("in_var0", ty.u32(),
                           Vector{
                               Location(0_u),
@@ -353,8 +478,7 @@ TEST_F(InspectorGetEntryPointTest, MultipleInOutVariables) {
                           });
     auto* in_var4 = Param("in_var4", ty.u32(),
                           Vector{
-                              Location(4_u),
-                              Flat(),
+                              Color(2_u),
                           });
     Func("foo", Vector{in_var0, in_var1, in_var4}, ty.u32(),
          Vector{
@@ -375,25 +499,29 @@ TEST_F(InspectorGetEntryPointTest, MultipleInOutVariables) {
 
     ASSERT_EQ(3u, result[0].input_variables.size());
     EXPECT_EQ("in_var0", result[0].input_variables[0].name);
-    EXPECT_TRUE(result[0].input_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].input_variables[0].location_attribute);
+    EXPECT_EQ("in_var0", result[0].input_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].input_variables[0].attributes.location);
+    EXPECT_EQ(std::nullopt, result[0].input_variables[0].attributes.color);
     EXPECT_EQ(InterpolationType::kFlat, result[0].input_variables[0].interpolation_type);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[0].component_type);
     EXPECT_EQ("in_var1", result[0].input_variables[1].name);
-    EXPECT_TRUE(result[0].input_variables[1].has_location_attribute);
-    EXPECT_EQ(1u, result[0].input_variables[1].location_attribute);
+    EXPECT_EQ("in_var1", result[0].input_variables[1].variable_name);
+    EXPECT_EQ(1u, result[0].input_variables[1].attributes.location);
+    EXPECT_EQ(std::nullopt, result[0].input_variables[1].attributes.color);
     EXPECT_EQ(InterpolationType::kFlat, result[0].input_variables[1].interpolation_type);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[1].component_type);
     EXPECT_EQ("in_var4", result[0].input_variables[2].name);
-    EXPECT_TRUE(result[0].input_variables[2].has_location_attribute);
-    EXPECT_EQ(4u, result[0].input_variables[2].location_attribute);
+    EXPECT_EQ("in_var4", result[0].input_variables[2].variable_name);
+    EXPECT_EQ(std::nullopt, result[0].input_variables[2].attributes.location);
+    EXPECT_EQ(2u, result[0].input_variables[2].attributes.color);
     EXPECT_EQ(InterpolationType::kFlat, result[0].input_variables[2].interpolation_type);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[2].component_type);
 
     ASSERT_EQ(1u, result[0].output_variables.size());
     EXPECT_EQ("<retval>", result[0].output_variables[0].name);
-    EXPECT_TRUE(result[0].output_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].output_variables[0].location_attribute);
+    EXPECT_EQ("", result[0].output_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].output_variables[0].attributes.location);
+    EXPECT_EQ(std::nullopt, result[0].output_variables[0].attributes.color);
     EXPECT_EQ(ComponentType::kU32, result[0].output_variables[0].component_type);
 }
 
@@ -439,28 +567,28 @@ TEST_F(InspectorGetEntryPointTest, MultipleEntryPointsInOutVariables) {
 
     ASSERT_EQ(1u, result[0].input_variables.size());
     EXPECT_EQ("in_var_foo", result[0].input_variables[0].name);
-    EXPECT_TRUE(result[0].input_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].input_variables[0].location_attribute);
+    EXPECT_EQ("in_var_foo", result[0].input_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].input_variables[0].attributes.location);
     EXPECT_EQ(InterpolationType::kFlat, result[0].input_variables[0].interpolation_type);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[0].component_type);
 
     ASSERT_EQ(1u, result[0].output_variables.size());
     EXPECT_EQ("<retval>", result[0].output_variables[0].name);
-    EXPECT_TRUE(result[0].output_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].output_variables[0].location_attribute);
+    EXPECT_EQ("", result[0].output_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].output_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].output_variables[0].component_type);
 
     ASSERT_EQ(1u, result[1].input_variables.size());
     EXPECT_EQ("in_var_bar", result[1].input_variables[0].name);
-    EXPECT_TRUE(result[1].input_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[1].input_variables[0].location_attribute);
+    EXPECT_EQ("in_var_bar", result[1].input_variables[0].variable_name);
+    EXPECT_EQ(0u, result[1].input_variables[0].attributes.location);
     EXPECT_EQ(InterpolationType::kFlat, result[1].input_variables[0].interpolation_type);
     EXPECT_EQ(ComponentType::kU32, result[1].input_variables[0].component_type);
 
     ASSERT_EQ(1u, result[1].output_variables.size());
     EXPECT_EQ("<retval>", result[1].output_variables[0].name);
-    EXPECT_TRUE(result[1].output_variables[0].has_location_attribute);
-    EXPECT_EQ(1u, result[1].output_variables[0].location_attribute);
+    EXPECT_EQ("", result[1].output_variables[0].variable_name);
+    EXPECT_EQ(1u, result[1].output_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[1].output_variables[0].component_type);
 }
 
@@ -492,8 +620,8 @@ TEST_F(InspectorGetEntryPointTest, BuiltInsNotStageVariables) {
 
     ASSERT_EQ(1u, result[0].input_variables.size());
     EXPECT_EQ("in_var1", result[0].input_variables[0].name);
-    EXPECT_TRUE(result[0].input_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].input_variables[0].location_attribute);
+    EXPECT_EQ("in_var1", result[0].input_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].input_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kF32, result[0].input_variables[0].component_type);
 
     ASSERT_EQ(0u, result[0].output_variables.size());
@@ -524,22 +652,22 @@ TEST_F(InspectorGetEntryPointTest, InOutStruct) {
 
     ASSERT_EQ(2u, result[0].input_variables.size());
     EXPECT_EQ("param.a", result[0].input_variables[0].name);
-    EXPECT_TRUE(result[0].input_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].input_variables[0].location_attribute);
+    EXPECT_EQ("a", result[0].input_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].input_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[0].component_type);
     EXPECT_EQ("param.b", result[0].input_variables[1].name);
-    EXPECT_TRUE(result[0].input_variables[1].has_location_attribute);
-    EXPECT_EQ(1u, result[0].input_variables[1].location_attribute);
+    EXPECT_EQ("b", result[0].input_variables[1].variable_name);
+    EXPECT_EQ(1u, result[0].input_variables[1].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[1].component_type);
 
     ASSERT_EQ(2u, result[0].output_variables.size());
     EXPECT_EQ("<retval>.a", result[0].output_variables[0].name);
-    EXPECT_TRUE(result[0].output_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].output_variables[0].location_attribute);
+    EXPECT_EQ("a", result[0].output_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].output_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].output_variables[0].component_type);
     EXPECT_EQ("<retval>.b", result[0].output_variables[1].name);
-    EXPECT_TRUE(result[0].output_variables[1].has_location_attribute);
-    EXPECT_EQ(1u, result[0].output_variables[1].location_attribute);
+    EXPECT_EQ("b", result[0].output_variables[1].variable_name);
+    EXPECT_EQ(1u, result[0].output_variables[1].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].output_variables[1].component_type);
 }
 
@@ -570,22 +698,22 @@ TEST_F(InspectorGetEntryPointTest, MultipleEntryPointsInOutSharedStruct) {
 
     ASSERT_EQ(2u, result[0].output_variables.size());
     EXPECT_EQ("<retval>.a", result[0].output_variables[0].name);
-    EXPECT_TRUE(result[0].output_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].output_variables[0].location_attribute);
+    EXPECT_EQ("a", result[0].output_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].output_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].output_variables[0].component_type);
     EXPECT_EQ("<retval>.b", result[0].output_variables[1].name);
-    EXPECT_TRUE(result[0].output_variables[1].has_location_attribute);
-    EXPECT_EQ(1u, result[0].output_variables[1].location_attribute);
+    EXPECT_EQ("b", result[0].output_variables[1].variable_name);
+    EXPECT_EQ(1u, result[0].output_variables[1].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].output_variables[1].component_type);
 
     ASSERT_EQ(2u, result[1].input_variables.size());
     EXPECT_EQ("param.a", result[1].input_variables[0].name);
-    EXPECT_TRUE(result[1].input_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[1].input_variables[0].location_attribute);
+    EXPECT_EQ("a", result[1].input_variables[0].variable_name);
+    EXPECT_EQ(0u, result[1].input_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[1].input_variables[0].component_type);
     EXPECT_EQ("param.b", result[1].input_variables[1].name);
-    EXPECT_TRUE(result[1].input_variables[1].has_location_attribute);
-    EXPECT_EQ(1u, result[1].input_variables[1].location_attribute);
+    EXPECT_EQ("b", result[1].input_variables[1].variable_name);
+    EXPECT_EQ(1u, result[1].input_variables[1].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[1].input_variables[1].component_type);
 
     ASSERT_EQ(0u, result[1].output_variables.size());
@@ -622,34 +750,34 @@ TEST_F(InspectorGetEntryPointTest, MixInOutVariablesAndStruct) {
 
     ASSERT_EQ(5u, result[0].input_variables.size());
     EXPECT_EQ("param_a.a", result[0].input_variables[0].name);
-    EXPECT_TRUE(result[0].input_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].input_variables[0].location_attribute);
+    EXPECT_EQ("a", result[0].input_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].input_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[0].component_type);
     EXPECT_EQ("param_a.b", result[0].input_variables[1].name);
-    EXPECT_TRUE(result[0].input_variables[1].has_location_attribute);
-    EXPECT_EQ(1u, result[0].input_variables[1].location_attribute);
+    EXPECT_EQ("b", result[0].input_variables[1].variable_name);
+    EXPECT_EQ(1u, result[0].input_variables[1].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[1].component_type);
     EXPECT_EQ("param_b.a", result[0].input_variables[2].name);
-    EXPECT_TRUE(result[0].input_variables[2].has_location_attribute);
-    EXPECT_EQ(2u, result[0].input_variables[2].location_attribute);
+    EXPECT_EQ("a", result[0].input_variables[2].variable_name);
+    EXPECT_EQ(2u, result[0].input_variables[2].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].input_variables[2].component_type);
     EXPECT_EQ("param_c", result[0].input_variables[3].name);
-    EXPECT_TRUE(result[0].input_variables[3].has_location_attribute);
-    EXPECT_EQ(3u, result[0].input_variables[3].location_attribute);
+    EXPECT_EQ("param_c", result[0].input_variables[3].variable_name);
+    EXPECT_EQ(3u, result[0].input_variables[3].attributes.location);
     EXPECT_EQ(ComponentType::kF32, result[0].input_variables[3].component_type);
     EXPECT_EQ("param_d", result[0].input_variables[4].name);
-    EXPECT_TRUE(result[0].input_variables[4].has_location_attribute);
-    EXPECT_EQ(4u, result[0].input_variables[4].location_attribute);
+    EXPECT_EQ("param_d", result[0].input_variables[4].variable_name);
+    EXPECT_EQ(4u, result[0].input_variables[4].attributes.location);
     EXPECT_EQ(ComponentType::kF32, result[0].input_variables[4].component_type);
 
     ASSERT_EQ(2u, result[0].output_variables.size());
     EXPECT_EQ("<retval>.a", result[0].output_variables[0].name);
-    EXPECT_TRUE(result[0].output_variables[0].has_location_attribute);
-    EXPECT_EQ(0u, result[0].output_variables[0].location_attribute);
+    EXPECT_EQ("a", result[0].output_variables[0].variable_name);
+    EXPECT_EQ(0u, result[0].output_variables[0].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].output_variables[0].component_type);
     EXPECT_EQ("<retval>.b", result[0].output_variables[1].name);
-    EXPECT_TRUE(result[0].output_variables[1].has_location_attribute);
-    EXPECT_EQ(1u, result[0].output_variables[1].location_attribute);
+    EXPECT_EQ("b", result[0].output_variables[1].variable_name);
+    EXPECT_EQ(1u, result[0].output_variables[1].attributes.location);
     EXPECT_EQ(ComponentType::kU32, result[0].output_variables[1].component_type);
 }
 
@@ -911,7 +1039,7 @@ TEST_F(InspectorGetEntryPointTest, OverrideReferencedByArraySizeViaAlias) {
 }
 
 TEST_F(InspectorGetEntryPointTest, OverrideTypes) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Override("bool_var", ty.bool_());
     Override("float_var", ty.f32());
@@ -1405,6 +1533,59 @@ TEST_F(InspectorGetEntryPointTest, ImplicitInterpolate) {
     EXPECT_EQ(InterpolationSampling::kCenter, result[0].input_variables[0].interpolation_sampling);
 }
 
+TEST_F(InspectorGetEntryPointTest, PixelLocalMemberDefault) {
+    // @fragment fn foo() {}
+    MakeEmptyBodyFunction("foo", Vector{
+                                     Stage(ast::PipelineStage::kFragment),
+                                 });
+
+    Inspector& inspector = Build();
+    auto result = inspector.GetEntryPoints();
+    ASSERT_FALSE(inspector.has_error()) << inspector.error();
+
+    ASSERT_EQ(1u, result.size());
+    EXPECT_EQ(0u, result[0].pixel_local_members.size());
+}
+
+TEST_F(InspectorGetEntryPointTest, PixelLocalMemberTypes) {
+    // enable chromium_experimental_pixel_local;
+    // struct Ure {
+    //   toto : u32;
+    //   titi : f32;
+    //   tata: i32;
+    //   tonton : u32; // Check having the same type multiple times
+    // }
+    // var<pixel_local> pls : Ure;
+    // @fragment fn foo() {  _ = pls; }
+
+    Enable(wgsl::Extension::kChromiumExperimentalPixelLocal);
+    Structure("Ure", Vector{
+                         Member("toto", ty.u32()),
+                         Member("titi", ty.f32()),
+                         Member("tata", ty.i32()),
+                         Member("tonton", ty.u32()),
+                     });
+    GlobalVar("pls", core::AddressSpace::kPixelLocal, ty("Ure"));
+    Func("foo", tint::Empty, ty.void_(),
+         Vector{
+             Assign(Phony(), "pls"),
+         },
+         Vector{
+             Stage(ast::PipelineStage::kFragment),
+         });
+
+    Inspector& inspector = Build();
+    auto result = inspector.GetEntryPoints();
+    ASSERT_FALSE(inspector.has_error()) << inspector.error();
+
+    ASSERT_EQ(1u, result.size());
+    ASSERT_EQ(4u, result[0].pixel_local_members.size());
+    ASSERT_EQ(PixelLocalMemberType::kU32, result[0].pixel_local_members[0]);
+    ASSERT_EQ(PixelLocalMemberType::kF32, result[0].pixel_local_members[1]);
+    ASSERT_EQ(PixelLocalMemberType::kI32, result[0].pixel_local_members[2]);
+    ASSERT_EQ(PixelLocalMemberType::kU32, result[0].pixel_local_members[3]);
+}
+
 TEST_P(InspectorGetEntryPointInterpolateTest, Test) {
     auto& params = GetParam();
     Structure("in_struct",
@@ -1614,7 +1795,7 @@ TEST_F(InspectorGetOverrideDefaultValuesTest, F32) {
 }
 
 TEST_F(InspectorGetOverrideDefaultValuesTest, F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Override("a", ty.f16(), Id(1_a));
     Override("b", ty.f16(), Expr(0_h), Id(20_a));
@@ -1677,119 +1858,15 @@ TEST_F(InspectorGetConstantNameToIdMapTest, WithAndWithoutIds) {
 
     ASSERT_TRUE(result.count("a"));
     ASSERT_TRUE(program_->Sem().Get(a));
-    EXPECT_EQ(result["a"], program_->Sem().Get(a)->OverrideId());
+    EXPECT_EQ(result["a"], program_->Sem().Get(a)->Attributes().override_id);
 
     ASSERT_TRUE(result.count("b"));
     ASSERT_TRUE(program_->Sem().Get(b));
-    EXPECT_EQ(result["b"], program_->Sem().Get(b)->OverrideId());
+    EXPECT_EQ(result["b"], program_->Sem().Get(b)->Attributes().override_id);
 
     ASSERT_TRUE(result.count("c"));
     ASSERT_TRUE(program_->Sem().Get(c));
-    EXPECT_EQ(result["c"], program_->Sem().Get(c)->OverrideId());
-}
-
-TEST_F(InspectorGetStorageSizeTest, Empty) {
-    MakeEmptyBodyFunction("ep_func", Vector{
-                                         Stage(ast::PipelineStage::kCompute),
-                                         WorkgroupSize(1_i),
-                                     });
-    Inspector& inspector = Build();
-    EXPECT_EQ(0u, inspector.GetStorageSize("ep_func"));
-}
-
-TEST_F(InspectorGetStorageSizeTest, Simple_NonStruct) {
-    AddUniformBuffer("ub_var", ty.i32(), 0, 0);
-    AddStorageBuffer("sb_var", ty.i32(), core::Access::kReadWrite, 1, 0);
-    AddStorageBuffer("rosb_var", ty.i32(), core::Access::kRead, 1, 1);
-    Func("ep_func", tint::Empty, ty.void_(),
-         Vector{
-             Decl(Let("ub", Expr("ub_var"))),
-             Decl(Let("sb", Expr("sb_var"))),
-             Decl(Let("rosb", Expr("rosb_var"))),
-         },
-         Vector{
-             Stage(ast::PipelineStage::kCompute),
-             WorkgroupSize(1_i),
-         });
-
-    Inspector& inspector = Build();
-
-    EXPECT_EQ(12u, inspector.GetStorageSize("ep_func"));
-}
-
-TEST_F(InspectorGetStorageSizeTest, Simple_Struct) {
-    auto* ub_struct_type = MakeUniformBufferType("ub_type", Vector{
-                                                                ty.i32(),
-                                                                ty.i32(),
-                                                            });
-    AddUniformBuffer("ub_var", ty.Of(ub_struct_type), 0, 0);
-    MakeStructVariableReferenceBodyFunction("ub_func", "ub_var",
-                                            Vector{
-                                                MemberInfo{0, ty.i32()},
-                                            });
-
-    auto sb = MakeStorageBufferTypes("sb_type", Vector{
-                                                    ty.i32(),
-                                                });
-    AddStorageBuffer("sb_var", sb(), core::Access::kReadWrite, 1, 0);
-    MakeStructVariableReferenceBodyFunction("sb_func", "sb_var",
-                                            Vector{
-                                                MemberInfo{0, ty.i32()},
-                                            });
-
-    auto ro_sb = MakeStorageBufferTypes("rosb_type", Vector{
-                                                         ty.i32(),
-                                                     });
-    AddStorageBuffer("rosb_var", ro_sb(), core::Access::kRead, 1, 1);
-    MakeStructVariableReferenceBodyFunction("rosb_func", "rosb_var",
-                                            Vector{
-                                                MemberInfo{0, ty.i32()},
-                                            });
-
-    MakeCallerBodyFunction("ep_func", Vector{std::string("ub_func"), "sb_func", "rosb_func"},
-                           Vector{
-                               Stage(ast::PipelineStage::kCompute),
-                               WorkgroupSize(1_i),
-                           });
-
-    Inspector& inspector = Build();
-
-    EXPECT_EQ(16u, inspector.GetStorageSize("ep_func"));
-}
-
-TEST_F(InspectorGetStorageSizeTest, NonStructVec3) {
-    AddUniformBuffer("ub_var", ty.vec3<f32>(), 0, 0);
-    Func("ep_func", tint::Empty, ty.void_(),
-         Vector{
-             Decl(Let("ub", Expr("ub_var"))),
-         },
-         Vector{
-             Stage(ast::PipelineStage::kCompute),
-             WorkgroupSize(1_i),
-         });
-
-    Inspector& inspector = Build();
-
-    EXPECT_EQ(12u, inspector.GetStorageSize("ep_func"));
-}
-
-TEST_F(InspectorGetStorageSizeTest, StructVec3) {
-    auto* ub_struct_type = MakeUniformBufferType("ub_type", Vector{
-                                                                ty.vec3<f32>(),
-                                                            });
-    AddUniformBuffer("ub_var", ty.Of(ub_struct_type), 0, 0);
-    Func("ep_func", tint::Empty, ty.void_(),
-         Vector{
-             Decl(Let("ub", Expr("ub_var"))),
-         },
-         Vector{
-             Stage(ast::PipelineStage::kCompute),
-             WorkgroupSize(1_i),
-         });
-
-    Inspector& inspector = Build();
-
-    EXPECT_EQ(16u, inspector.GetStorageSize("ep_func"));
+    EXPECT_EQ(result["c"], program_->Sem().Get(c)->Attributes().override_id);
 }
 
 TEST_F(InspectorGetResourceBindingsTest, Empty) {
@@ -3028,11 +3105,9 @@ TEST_P(InspectorGetStorageTextureResourceBindingsTestWithParam, Simple) {
             expectedResourceType = ResourceBinding::ResourceType::kWriteOnlyStorageTexture;
             break;
         case core::Access::kRead:
-            Enable(core::Extension::kChromiumExperimentalReadWriteStorageTexture);
             expectedResourceType = ResourceBinding::ResourceType::kReadOnlyStorageTexture;
             break;
         case core::Access::kReadWrite:
-            Enable(core::Extension::kChromiumExperimentalReadWriteStorageTexture);
             expectedResourceType = ResourceBinding::ResourceType::kReadWriteStorageTexture;
             break;
         case core::Access::kUndefined:
@@ -3485,99 +3560,6 @@ fn direct(@location(0) fragUV: vec2<f32>,
         EXPECT_EQ(0u, result[0].texture_binding_point.group);
         EXPECT_EQ(2u, result[0].texture_binding_point.binding);
     }
-}
-
-TEST_F(InspectorGetWorkgroupStorageSizeTest, Empty) {
-    MakeEmptyBodyFunction("ep_func", Vector{
-                                         Stage(ast::PipelineStage::kCompute),
-                                         WorkgroupSize(1_i),
-                                     });
-    Inspector& inspector = Build();
-    EXPECT_EQ(0u, inspector.GetWorkgroupStorageSize("ep_func"));
-}
-
-TEST_F(InspectorGetWorkgroupStorageSizeTest, Simple) {
-    AddWorkgroupStorage("wg_f32", ty.f32());
-    MakePlainGlobalReferenceBodyFunction("f32_func", "wg_f32", ty.f32(), tint::Empty);
-
-    MakeCallerBodyFunction("ep_func", Vector{std::string("f32_func")},
-                           Vector{
-                               Stage(ast::PipelineStage::kCompute),
-                               WorkgroupSize(1_i),
-                           });
-
-    Inspector& inspector = Build();
-    EXPECT_EQ(4u, inspector.GetWorkgroupStorageSize("ep_func"));
-}
-
-TEST_F(InspectorGetWorkgroupStorageSizeTest, CompoundTypes) {
-    // This struct should occupy 68 bytes. 4 from the i32 field, and another 64
-    // from the 4-element array with 16-byte stride.
-    auto* wg_struct_type = MakeStructType("WgStruct", Vector{
-                                                          ty.i32(),
-                                                          ty.array<i32, 4>(Vector{
-                                                              Stride(16),
-                                                          }),
-                                                      });
-    AddWorkgroupStorage("wg_struct_var", ty.Of(wg_struct_type));
-    MakeStructVariableReferenceBodyFunction("wg_struct_func", "wg_struct_var",
-                                            Vector{
-                                                MemberInfo{0, ty.i32()},
-                                            });
-
-    // Plus another 4 bytes from this other workgroup-class f32.
-    AddWorkgroupStorage("wg_f32", ty.f32());
-    MakePlainGlobalReferenceBodyFunction("f32_func", "wg_f32", ty.f32(), tint::Empty);
-
-    MakeCallerBodyFunction("ep_func", Vector{std::string("wg_struct_func"), "f32_func"},
-                           Vector{
-                               Stage(ast::PipelineStage::kCompute),
-                               WorkgroupSize(1_i),
-                           });
-
-    Inspector& inspector = Build();
-    EXPECT_EQ(72u, inspector.GetWorkgroupStorageSize("ep_func"));
-}
-
-TEST_F(InspectorGetWorkgroupStorageSizeTest, AlignmentPadding) {
-    // vec3<f32> has an alignment of 16 but a size of 12. We leverage this to test
-    // that our padded size calculation for workgroup storage is accurate.
-    AddWorkgroupStorage("wg_vec3", ty.vec3<f32>());
-    MakePlainGlobalReferenceBodyFunction("wg_func", "wg_vec3", ty.vec3<f32>(), tint::Empty);
-
-    MakeCallerBodyFunction("ep_func", Vector{std::string("wg_func")},
-                           Vector{
-                               Stage(ast::PipelineStage::kCompute),
-                               WorkgroupSize(1_i),
-                           });
-
-    Inspector& inspector = Build();
-    EXPECT_EQ(16u, inspector.GetWorkgroupStorageSize("ep_func"));
-}
-
-TEST_F(InspectorGetWorkgroupStorageSizeTest, StructAlignment) {
-    // Per WGSL spec, a struct's size is the offset its last member plus the size
-    // of its last member, rounded up to the alignment of its largest member. So
-    // here the struct is expected to occupy 1024 bytes of workgroup storage.
-    const auto* wg_struct_type = MakeStructTypeFromMembers(
-        "WgStruct", Vector{
-                        MakeStructMember(0, ty.f32(), Vector{MemberAlign(1024_i)}),
-                    });
-
-    AddWorkgroupStorage("wg_struct_var", ty.Of(wg_struct_type));
-    MakeStructVariableReferenceBodyFunction("wg_struct_func", "wg_struct_var",
-                                            Vector{
-                                                MemberInfo{0, ty.f32()},
-                                            });
-
-    MakeCallerBodyFunction("ep_func", Vector{std::string("wg_struct_func")},
-                           Vector{
-                               Stage(ast::PipelineStage::kCompute),
-                               WorkgroupSize(1_i),
-                           });
-
-    Inspector& inspector = Build();
-    EXPECT_EQ(1024u, inspector.GetWorkgroupStorageSize("ep_func"));
 }
 
 // Test calling GetUsedExtensionNames on a empty shader.

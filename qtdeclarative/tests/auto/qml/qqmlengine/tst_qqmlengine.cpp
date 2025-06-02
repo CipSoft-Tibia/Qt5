@@ -36,8 +36,10 @@ public:
 private slots:
     void initTestCase() override;
     void rootContext();
+#if QT_CONFIG(qml_network)
     void networkAccessManager();
     void synchronousNetworkAccessManager();
+#endif
     void baseUrl();
     void contextForObject();
     void offlineStoragePath();
@@ -82,6 +84,8 @@ private slots:
     void bindingInstallUseAfterFree();
     void objectListArgumentMethod();
     void variantListQJsonConversion();
+    void attachedObjectOfUnregistered();
+    void multiLoadedJavaScriptModule();
 
 public slots:
     QObject *createAQObjectForOwnershipTest ()
@@ -154,6 +158,7 @@ void tst_qqmlengine::rootContext()
     QVERIFY(!engine.rootContext()->parentContext());
 }
 
+#if QT_CONFIG(qml_network)
 class NetworkAccessManagerFactory : public QQmlNetworkAccessManagerFactory
 {
 public:
@@ -229,7 +234,7 @@ void tst_qqmlengine::synchronousNetworkAccessManager()
     // reply is finished, so should not be in loading state.
     QVERIFY(!c.isLoading());
 }
-
+#endif
 
 void tst_qqmlengine::baseUrl()
 {
@@ -405,12 +410,21 @@ void tst_qqmlengine::clearComponentCache()
     // Clear cache
     engine.clearComponentCache();
 
+    // Nothing holds on to any CU anymore. They should all be gone.
+    QVERIFY(QQmlEnginePrivate::get(&engine)->v4engine()->compilationUnits().isEmpty());
+
     // Test cache refresh
     {
         QQmlComponent component(&engine, fileUrl);
         std::unique_ptr<QObject> obj { component.create() };
         QVERIFY(obj.get() != nullptr);
         QCOMPARE(obj->property("test").toInt(), 11);
+
+        engine.clearComponentCache();
+
+        // The CU we are holding on to is still alive.
+        // Otherwise we cannot mark its objects for GC anymore.
+        QVERIFY(!QQmlEnginePrivate::get(&engine)->v4engine()->compilationUnits().isEmpty());
     }
 
     // Regular Synchronous loading will leave us with an event posted
@@ -1610,8 +1624,10 @@ void tst_qqmlengine::stringToColor()
 
     const QMetaType metaType(QMetaType::QColor);
     QVariant color(metaType);
+    QV4::Scope scope(engine.handle());
+    QV4::ScopedValue colorString(scope, engine.handle()->newString(QStringLiteral("#abcdef")));
     QVERIFY(QV4::ExecutionEngine::metaTypeFromJS(
-                engine.handle()->newString(QStringLiteral("#abcdef"))->asReturnedValue(),
+                colorString,
                 metaType, color.data()));
     QVERIFY(color.isValid());
     QCOMPARE(color.metaType(), metaType);
@@ -1762,6 +1778,56 @@ void tst_qqmlengine::variantListQJsonConversion()
 
     QScopedPointer<QObject> o(c.create());
     QVERIFY(o);
+}
+
+class UnregisteredAttached : public QObject
+{
+    Q_OBJECT
+public:
+    UnregisteredAttached(QObject *parent = nullptr) : QObject(parent) {}
+};
+
+class Unregistered : public QObject
+{
+    Q_OBJECT
+    QML_ATTACHED(UnregisteredAttached)
+public:
+    static UnregisteredAttached *qmlAttachedProperties(QObject *obj)
+    {
+        return new UnregisteredAttached(obj);
+    }
+};
+
+void tst_qqmlengine::attachedObjectOfUnregistered()
+{
+    QObject o;
+
+    QObject *a = qmlAttachedPropertiesObject<Unregistered>(&o);
+    QVERIFY(a);
+    QVERIFY(qobject_cast<UnregisteredAttached *>(a));
+
+    QObject *b = qmlAttachedPropertiesObject<Unregistered>(&o);
+    QCOMPARE(a, b);
+
+    QObject o2;
+    QObject *c = qmlAttachedPropertiesObject<Unregistered>(&o2);
+    QVERIFY(c);
+    QVERIFY(qobject_cast<UnregisteredAttached *>(c));
+    QVERIFY(c != a);
+}
+
+void tst_qqmlengine::multiLoadedJavaScriptModule()
+{
+    QQmlEngine e;
+    QQmlComponent c(&e, testFileUrl("multiLoaded.qml"));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+
+    QTest::ignoreMessage(QtCriticalMsg, "In a1 - DATA_IN_A1");
+    QTest::ignoreMessage(QtCriticalMsg, "In B1 DATA_IN_A1");
+    QTest::ignoreMessage(QtCriticalMsg, "In B1 DATA_IN_A1");
+
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
 }
 
 QTEST_MAIN(tst_qqmlengine)

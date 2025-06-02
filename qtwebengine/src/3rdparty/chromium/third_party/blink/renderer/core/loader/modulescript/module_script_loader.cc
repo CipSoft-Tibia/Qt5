@@ -97,6 +97,42 @@ void ModuleScriptLoader::Fetch(
                         level, custom_fetch_type);
 }
 
+// <specdef
+// href="https://html.spec.whatwg.org/C/#fetch-destination-from-module-type">
+void SetFetchDestinationFromModuleType(
+    ResourceRequest& resource_request,
+    const ModuleScriptFetchRequest& module_request) {
+  if (!base::FeatureList::IsEnabled(
+          features::kFetchDestinationJsonCssModules)) {
+    resource_request.SetRequestContext(module_request.ContextType());
+    resource_request.SetRequestDestination(module_request.Destination());
+    return;
+  }
+
+  switch (module_request.GetExpectedModuleType()) {
+    case ModuleType::kCSS:
+      resource_request.SetRequestContext(
+          mojom::blink::RequestContextType::STYLE);
+      resource_request.SetRequestDestination(
+          network::mojom::RequestDestination::kStyle);
+      break;
+    case ModuleType::kJSON:
+      resource_request.SetRequestContext(
+          mojom::blink::RequestContextType::JSON);
+      resource_request.SetRequestDestination(
+          network::mojom::RequestDestination::kJson);
+      break;
+    case ModuleType::kJavaScript:
+      resource_request.SetRequestContext(module_request.ContextType());
+      resource_request.SetRequestDestination(module_request.Destination());
+      break;
+    case ModuleType::kInvalid:
+      // ModuleTreeLinker checks that the module type is valid
+      // before creating ModuleScriptFetchRequest objects.
+      NOTREACHED_NORETURN();
+  }
+}
+
 // <specdef href="https://html.spec.whatwg.org/C/#fetch-a-single-module-script">
 void ModuleScriptLoader::FetchInternal(
     const ModuleScriptFetchRequest& module_request,
@@ -107,22 +143,30 @@ void ModuleScriptLoader::FetchInternal(
       fetch_client_settings_object_fetcher->GetProperties()
           .GetFetchClientSettingsObject();
 
-  // <spec step="4">Set moduleMap[url] to "fetching".</spec>
+  // <spec step="7">Set moduleMap[(url, moduleType)] to "fetching".</spec>
   AdvanceState(State::kFetching);
 
-  // <spec step="5">Let request be a new request whose url is url, ...</spec>
+  // <spec step="8">Let request be a new request whose url is url, ...</spec>
   ResourceRequest resource_request(module_request.Url());
 #if DCHECK_IS_ON()
   url_ = module_request.Url();
 #endif
 
-  // <spec step="5">... destination is destination, ...</spec>
-  resource_request.SetRequestContext(module_request.ContextType());
-  resource_request.SetRequestDestination(module_request.Destination());
+  DOMWrapperWorld& request_world = modulator_->GetScriptState()->World();
+  // Prevents web service workers from intercepting isolated world dynamic
+  // script imports requests and responding with different contents.
+  // TODO(crbug.com/1296102): Link to documentation that describes the criteria
+  // where module imports are handled by service worker fetch handler.
+  resource_request.SetSkipServiceWorker(request_world.IsIsolatedWorld());
 
-  ResourceLoaderOptions options(&modulator_->GetScriptState()->World());
+  // <spec step="9">Set request 's destination to the result of running the
+  // fetch destination from module type steps given destination and
+  // moduleType.</spec>
+  SetFetchDestinationFromModuleType(resource_request, module_request);
 
-  // <spec step="7">Set up the module script request given request and
+  ResourceLoaderOptions options(&request_world);
+
+  // <spec step="12">Set up the module script request given request and
   // options.</spec>
   //
   // <specdef label="SMSR"

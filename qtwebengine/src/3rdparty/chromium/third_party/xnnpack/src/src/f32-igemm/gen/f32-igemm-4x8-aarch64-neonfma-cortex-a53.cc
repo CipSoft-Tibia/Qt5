@@ -10,6 +10,7 @@
 #include <xnnpack.h>
 #include <xnnpack/aarch64-assembler.h>
 #include <xnnpack/igemm.h>
+#include <xnnpack/log.h>
 #include <xnnpack/memory.h>
 #include <xnnpack/microparams.h>
 #include <xnnpack/post-operation.h>
@@ -25,14 +26,14 @@ class Generator : public MacroAssembler {
   void perform_post_operations(size_t max_mr, size_t num_post_operations, const xnn_post_operation* post_operations);
 };
 
-// void xnn_f32_igemm_minmax_ukernel_4x8__asm_aarch64_neonfma_prfm_cortex_a53(
+// void xnn_f32_igemm_minmax_ukernel_4x8__asm_aarch64_neonfma_cortex_a53_prfm(
 //     size_t mr,                         x0
 //     size_t nc,                         x1
 //     size_t kc,                         x2 / x0
 //     size_t ks,                         x3 / x9
-//     const float**restrict a,           x4
-//     const void*restrict w,             x5
-//     uint8_t*restrict c,                x6
+//     const float** restrict a,           x4
+//     const void* restrict w,             x5
+//     uint8_t* restrict c,                x6
 //     size_t cm_stride,                  x7
 //     size_t cn_stride,                  [sp] -> x10
 //     size_t a_offset,                   [sp + 8] -> x11
@@ -65,11 +66,11 @@ class Generator : public MacroAssembler {
 // C   v28 v29
 // C   v30 v31
 
-// Converted from: src/f32-igemm/gen/f32-igemm-4x8-minmax-asm-aarch64-neonfma-prfm-cortex-a53.S
+// Converted from: src/f32-igemm/gen/f32-igemm-4x8-minmax-asm-aarch64-neonfma-cortex-a53-prfm.S
 void Generator::generate(bool prefetch, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const jit_gemm_params* jit_gemm_params)
 {
   assert(max_mr <= 4);
-  assert(nc_mod_nr < 8);
+  assert(nc_mod_nr < 8 || nc_mod_nr == SIZE_MAX);
   assert(kc != 0);
   assert(kc % sizeof(float) == 0);
   assert(ks != 0);
@@ -811,7 +812,7 @@ void Generator::perform_post_operations(
         break;
       }
       default:
-        XNN_UNREACHABLE;
+        XNN_LOG_UNREACHABLE("unsupported post operation: %u", post_operations[i].op_type);
     }
   }
 }
@@ -832,7 +833,7 @@ xnn_status_t xnn_generate_f32_igemm_ukernel_4x8__aarch64_neonfma_cortex_a53(xnn_
   return xnn_status_success;
 }
 
-xnn_status_t xnn_generate_f32_igemm_ukernel_4x8__aarch64_neonfma_prfm_cortex_a53(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const void* params) {
+xnn_status_t xnn_generate_f32_igemm_ukernel_4x8__aarch64_neonfma_cortex_a53_prfm(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const void* params) {
   using namespace xnnpack::aarch64;
   Generator g(code);
   assert(params != nullptr);

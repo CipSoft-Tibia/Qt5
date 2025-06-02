@@ -15,6 +15,7 @@ qt_internal_add_test(tst_qhttpserver
         tst_qhttpserver.cpp
     LIBRARIES
         Qt::HttpServer
+        Qt::TestPrivate
     TESTDATA ${test_data}
 )
 

@@ -15,7 +15,7 @@
 // We mean it.
 //
 
-#include <private/qtqmlcompilerexports_p.h>
+#include <qtqmlcompilerexports.h>
 
 #include "qcoloroutput_p.h"
 #include "qqmljsloggingutils_p.h"
@@ -37,7 +37,7 @@ QT_BEGIN_NAMESPACE
     \internal
     Used to print the line containing the location of a certain error
  */
-class Q_QMLCOMPILER_PRIVATE_EXPORT IssueLocationWithContext
+class Q_QMLCOMPILER_EXPORT IssueLocationWithContext
 {
 public:
     /*!
@@ -71,7 +71,7 @@ private:
     QStringView m_afterText;
 };
 
-class Q_QMLCOMPILER_PRIVATE_EXPORT QQmlJSFixSuggestion
+class Q_QMLCOMPILER_EXPORT QQmlJSFixSuggestion
 {
 public:
     QQmlJSFixSuggestion() = default;
@@ -111,7 +111,7 @@ struct Message : public QQmlJS::DiagnosticMessage
     std::optional<QQmlJSFixSuggestion> fixSuggestion;
 };
 
-class Q_QMLCOMPILER_PRIVATE_EXPORT QQmlJSLogger
+class Q_QMLCOMPILER_EXPORT QQmlJSLogger
 {
     Q_DISABLE_COPY_MOVE(QQmlJSLogger)
 public:
@@ -182,7 +182,8 @@ public:
     }
 
     void processMessages(const QList<QQmlJS::DiagnosticMessage> &messages,
-                         const QQmlJS::LoggerWarningId id);
+                         const QQmlJS::LoggerWarningId id,
+                         const QQmlJS::SourceLocation &sourceLocation = QQmlJS::SourceLocation{});
 
     void ignoreWarnings(uint32_t line, const QSet<QString> &categories)
     {
@@ -195,8 +196,8 @@ public:
     void setCode(const QString &code) { m_code = code; }
     QString code() const { return m_code; }
 
-    void setFileName(const QString &fileName) { m_fileName =  fileName; }
-    QString fileName() const { return m_fileName; }
+    void setFilePath(const QString &filePath) { m_filePath =  filePath; }
+    QString filePath() const { return m_filePath; }
 
 private:
     QMap<QString, QQmlJS::LoggerCategory> m_categories;
@@ -209,7 +210,7 @@ private:
              bool showFileName, const std::optional<QQmlJSFixSuggestion> &suggestion,
              const QString overrideFileName);
 
-    QString m_fileName;
+    QString m_filePath;
     QString m_code;
 
     QColorOutput m_output;

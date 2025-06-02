@@ -8,14 +8,10 @@
 using namespace QV4;
 using namespace QQmlJS;
 
-void RuntimeCodegen::generateFromFunctionExpression(const QString &fileName,
-                                                    const QString &sourceCode,
-                                                    AST::FunctionExpression *ast,
-                                                    Compiler::Module *module)
+void RuntimeCodegen::generateFromFunctionExpression(
+        const QString &sourceCode, AST::FunctionExpression *ast, Compiler::Module *module)
 {
     _module = module;
-    _module->fileName = fileName;
-    _module->finalUrl = fileName;
     _context = nullptr;
 
     Compiler::ScanFunctions scan(this, sourceCode, Compiler::ContextType::Global);

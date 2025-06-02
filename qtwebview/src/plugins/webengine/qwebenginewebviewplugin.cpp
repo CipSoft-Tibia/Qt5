@@ -19,7 +19,9 @@ public:
 
     void prepare() const override
     {
+#if !defined(Q_OS_WIN) || defined(QT_STATIC)
         QtWebEngineQuick::initialize();
+#endif
     }
 };
 

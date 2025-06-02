@@ -108,7 +108,7 @@ static void write_features_to_file(const char *const path,
                                    const bool is_test_mode,
                                    const float *features,
                                    const int feature_size, const int id,
-                                   const int bsize, const int mi_row,
+                                   const BLOCK_SIZE bsize, const int mi_row,
                                    const int mi_col) {
   if (!WRITE_FEATURE_TO_FILE && !is_test_mode) return;
 
@@ -118,7 +118,8 @@ static void write_features_to_file(const char *const path,
   FILE *pfile = fopen(filename, "a");
   if (pfile == NULL) return;
   if (!is_test_mode) {
-    fprintf(pfile, "%d,%d,%d,%d,%d\n", id, bsize, mi_row, mi_col, feature_size);
+    fprintf(pfile, "%d,%d,%d,%d,%d\n", id, (int)bsize, mi_row, mi_col,
+            feature_size);
   }
   for (int i = 0; i < feature_size; ++i) {
     fprintf(pfile, "%.6f", features[i]);
@@ -203,7 +204,7 @@ void av1_intra_mode_cnn_partition(const AV1_COMMON *const cm, MACROBLOCK *x,
       if (!av1_cnn_predict_img_multi_out_highbd(image, width, height, stride,
                                                 cnn_config, &thread_data,
                                                 bit_depth, &output)) {
-        aom_internal_error(cm->error, AOM_CODEC_MEM_ERROR,
+        aom_internal_error(xd->error_info, AOM_CODEC_MEM_ERROR,
                            "Error allocating CNN data");
         return;
       }
@@ -212,7 +213,7 @@ void av1_intra_mode_cnn_partition(const AV1_COMMON *const cm, MACROBLOCK *x,
 
       if (!av1_cnn_predict_img_multi_out(image, width, height, stride,
                                          cnn_config, &thread_data, &output)) {
-        aom_internal_error(cm->error, AOM_CODEC_MEM_ERROR,
+        aom_internal_error(xd->error_info, AOM_CODEC_MEM_ERROR,
                            "Error allocating CNN data");
         return;
       }
@@ -1212,7 +1213,7 @@ void av1_ml_prune_ab_partition(AV1_COMP *const cpi, int part_ctx, int var_ctx,
   const PartitionBlkParams blk_params = part_state->part_blk_params;
   const int mi_row = blk_params.mi_row;
   const int mi_col = blk_params.mi_col;
-  const int bsize = blk_params.bsize;
+  const BLOCK_SIZE bsize = blk_params.bsize;
 
   if (bsize < BLOCK_8X8 || best_rd >= 1000000000) return;
   const NN_CONFIG *nn_config = NULL;
@@ -1315,7 +1316,7 @@ void av1_ml_prune_4_partition(AV1_COMP *const cpi, MACROBLOCK *const x,
   const PartitionBlkParams blk_params = part_state->part_blk_params;
   const int mi_row = blk_params.mi_row;
   const int mi_col = blk_params.mi_col;
-  const int bsize = blk_params.bsize;
+  const BLOCK_SIZE bsize = blk_params.bsize;
 
   int64_t(*rect_part_rd)[SUB_PARTITIONS_RECT] = part_state->rect_part_rd;
   int64_t *split_rd = part_state->split_rd;
@@ -1329,6 +1330,7 @@ void av1_ml_prune_4_partition(AV1_COMP *const cpi, MACROBLOCK *const x,
   int64_t *horz_rd = rect_part_rd[HORZ4];
   int64_t *vert_rd = rect_part_rd[VERT4];
   const NN_CONFIG *nn_config = NULL;
+  // 4-way partitions are only allowed for these three square block sizes.
   switch (bsize) {
     case BLOCK_16X16: nn_config = &av1_4_partition_nnconfig_16; break;
     case BLOCK_32X32: nn_config = &av1_4_partition_nnconfig_32; break;
@@ -1375,6 +1377,10 @@ void av1_ml_prune_4_partition(AV1_COMP *const cpi, MACROBLOCK *const x,
   {
     BLOCK_SIZE horz_4_bs = get_partition_subsize(bsize, PARTITION_HORZ_4);
     BLOCK_SIZE vert_4_bs = get_partition_subsize(bsize, PARTITION_VERT_4);
+
+    assert(horz_4_bs != BLOCK_INVALID);
+    assert(vert_4_bs != BLOCK_INVALID);
+
     av1_setup_src_planes(x, cpi->source, mi_row, mi_col,
                          av1_num_planes(&cpi->common), bsize);
     const int src_stride = x->plane[0].src.stride;
@@ -1648,19 +1654,15 @@ void av1_prune_partitions_before_search(AV1_COMP *const cpi,
 
   if (cpi->sf.part_sf.prune_sub_8x8_partition_level && (bsize == BLOCK_8X8)) {
     const MACROBLOCKD *const xd = &x->e_mbd;
-    int prune_sub_8x8 = 1;
-    if (cpi->sf.part_sf.prune_sub_8x8_partition_level == 1) {
-      int num_neighbors_lt_8x8 = 0;
-      if (xd->left_available)
-        num_neighbors_lt_8x8 += (xd->left_mbmi->bsize <= BLOCK_8X8);
-      if (xd->up_available)
-        num_neighbors_lt_8x8 += (xd->above_mbmi->bsize <= BLOCK_8X8);
-      // Avoid pruning if either of the neighbors is not available or if both
-      // the available neighbors are of size <= BLOCK_8X8.
-      if (!xd->left_available || !xd->up_available ||
-          num_neighbors_lt_8x8 == 2) {
-        prune_sub_8x8 = 0;
-      }
+    int prune_sub_8x8;
+    if (cpi->sf.part_sf.prune_sub_8x8_partition_level == 2) {
+      prune_sub_8x8 = 1;
+    } else {
+      assert(cpi->sf.part_sf.prune_sub_8x8_partition_level == 1);
+      // Prune if both neighbors are available and either is > BLOCK_8X8
+      prune_sub_8x8 = xd->left_available && xd->up_available &&
+                      (xd->left_mbmi->bsize > BLOCK_8X8 ||
+                       xd->above_mbmi->bsize > BLOCK_8X8);
     }
     if (prune_sub_8x8) {
       av1_disable_all_splits(part_state);
@@ -1962,12 +1964,19 @@ static void prepare_features_after_part_ab(
     features->after_part_ab.f[feature_index++] = rd_ratio;
   }
 
+  // 4-way partitions are only allowed for these three square block sizes.
+  assert(bsize == BLOCK_16X16 || bsize == BLOCK_32X32 || bsize == BLOCK_64X64);
+
   // Get variance of the 1:4 and 4:1 sub-blocks.
   unsigned int horz_4_source_var[SUB_PARTITIONS_PART4] = { 0 };
   unsigned int vert_4_source_var[SUB_PARTITIONS_PART4] = { 0 };
   {
     BLOCK_SIZE horz_4_bs = get_partition_subsize(bsize, PARTITION_HORZ_4);
     BLOCK_SIZE vert_4_bs = get_partition_subsize(bsize, PARTITION_VERT_4);
+
+    assert(horz_4_bs != BLOCK_INVALID);
+    assert(vert_4_bs != BLOCK_INVALID);
+
     av1_setup_src_planes(x, cpi->source, mi_row, mi_col,
                          av1_num_planes(&cpi->common), bsize);
     const int src_stride = x->plane[0].src.stride;

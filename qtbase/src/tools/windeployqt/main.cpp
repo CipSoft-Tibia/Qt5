@@ -200,6 +200,7 @@ struct Options {
     QStringList languages;
     QString libraryDirectory;
     QString pluginDirectory;
+    QString openSslRootDirectory;
     QString qmlDirectory;
     QStringList binaries;
     JsonOutput *json = nullptr;
@@ -210,6 +211,7 @@ struct Options {
     bool patchQt = true;
     bool ignoreLibraryErrors = false;
     bool deployInsightTrackerPlugin = false;
+    bool forceOpenSslPlugin = false;
 };
 
 // Return binary to be deployed from folder, ignore pre-existing web engine process.
@@ -485,6 +487,15 @@ static inline int parseArguments(const QStringList &arguments, QCommandLineParse
                                       QStringLiteral("Do not deploy the FFmpeg libraries."));
     parser->addOption(noFFmpegOption);
 
+    QCommandLineOption forceOpenSslOption(QStringLiteral("force-openssl"),
+                                      QStringLiteral("Deploy openssl plugin but ignore openssl library dependency"));
+    parser->addOption(forceOpenSslOption);
+
+    QCommandLineOption openSslRootOption(QStringLiteral("openssl-root"),
+                                 QStringLiteral("Directory containing openSSL libraries."),
+                                 QStringLiteral("directory"));
+    parser->addOption(openSslRootOption);
+
 
     QCommandLineOption listOption(QStringLiteral("list"),
                                                 "Print only the names of the files copied.\n"
@@ -609,6 +620,17 @@ static inline int parseArguments(const QStringList &arguments, QCommandLineParse
 
     if (parser->isSet(noFFmpegOption))
         options->ffmpeg = false;
+
+    if (parser->isSet(forceOpenSslOption))
+        options->forceOpenSslPlugin = true;
+
+    if (parser->isSet(openSslRootOption))
+        options->openSslRootDirectory = parser->value(openSslRootOption);
+
+    if (options->forceOpenSslPlugin && !options->openSslRootDirectory.isEmpty()) {
+        *errorMessage = QStringLiteral("force-openssl and openssl-root are mutually exclusive");
+        return CommandLineParseError;
+    }
 
     if (parser->isSet(forceOption))
         options->updateFileFlags |= ForceUpdateFile;
@@ -948,7 +970,7 @@ static QString deployPlugin(const QString &plugin, const QDir &subDir, const boo
                             const ModuleBitset &disabledQtModules,
                             const PluginSelections &pluginSelections, const QString &libraryLocation,
                             const QString &infix, Platform platform,
-                            bool deployInsightTrackerPlugin)
+                            bool deployInsightTrackerPlugin, bool deployOpenSslPlugin)
 {
     const QString subDirName = subDir.dirName();
     // Filter out disabled plugins
@@ -960,6 +982,12 @@ static QString deployPlugin(const QString &plugin, const QDir &subDir, const boo
         && !deployInsightTrackerPlugin) {
         std::wcout << "Skipping plugin " << plugin
                    << ". Use -deploy-insighttracker if you want to use it.\n";
+        return {};
+    }
+    if (optVerboseLevel && subDirName == u"tls" && plugin.contains(u"qopensslbackend")
+        && !deployOpenSslPlugin) {
+        std::wcout << "Skipping plugin " << plugin
+                   << ". Use -force-openssl or specify -openssl-root if you want to use it.\n";
         return {};
     }
 
@@ -1042,7 +1070,8 @@ QStringList findQtPlugins(ModuleBitset *usedQtModules, const ModuleBitset &disab
                           const PluginInformation &pluginInfo, const PluginSelections &pluginSelections,
                           const QString &qtPluginsDirName, const QString &libraryLocation,
                           const QString &infix, DebugMatchMode debugMatchModeIn, Platform platform,
-                          QString *platformPlugin, bool deployInsightTrackerPlugin)
+                          QString *platformPlugin, bool deployInsightTrackerPlugin,
+                          bool deployOpenSslPlugin)
 {
     if (qtPluginsDirName.isEmpty())
         return QStringList();
@@ -1076,7 +1105,7 @@ QStringList findQtPlugins(ModuleBitset *usedQtModules, const ModuleBitset &disab
                 const QString pluginPath =
                         deployPlugin(plugin, subDir, dueToModule, debugMatchMode, &pluginNeededQtModules,
                                      disabledQtModules, pluginSelections, libraryLocation, infix,
-                                     platform, deployInsightTrackerPlugin);
+                                     platform, deployInsightTrackerPlugin, deployOpenSslPlugin);
                 if (!pluginPath.isEmpty()) {
                     if (isPlatformPlugin && plugin.startsWith(u"qwindows"))
                         *platformPlugin = subDir.absoluteFilePath(plugin);
@@ -1105,7 +1134,7 @@ QStringList findQtPlugins(ModuleBitset *usedQtModules, const ModuleBitset &disab
         }
         return findQtPlugins(usedQtModules, disabledQtModules, pluginInfo, pluginSelections, qtPluginsDirName,
                              libraryLocation, infix, debugMatchModeIn, platform, platformPlugin,
-                             deployInsightTrackerPlugin);
+                             deployInsightTrackerPlugin, deployOpenSslPlugin);
     }
 
     return result;
@@ -1207,6 +1236,35 @@ static QStringList findFFmpegLibs(const QString &qtBinDir, Platform platform)
 
     return ffmpegLibs;
 }
+
+// Find the openssl libraries Qt executables depend on.
+static QStringList findOpenSslLibraries(const QString &openSslRootDir, Platform platform)
+{
+    const std::vector<QLatin1StringView> libHints = { "libcrypto"_L1, "libssl"_L1 };
+    const QChar slash(u'/');
+    const QString openSslBinDir = openSslRootDir + slash + "bin"_L1;
+    const QStringList openSslRootLibs =
+            findSharedLibraries(openSslBinDir, platform, MatchDebugOrRelease, {});
+
+    QStringList result;
+    for (const QLatin1StringView &libHint : libHints) {
+        const QStringList lib = openSslRootLibs.filter(libHint, Qt::CaseInsensitive);
+
+        if (lib.empty()) {
+            std::wcerr << "Warning: Cannot find openssl libraries.\n";
+            return {};
+        } else if (lib.size() != 1u) {
+            std::wcerr << "Warning: Multiple versions of openssl libraries found.\n";
+            return {};
+        }
+
+        QFileInfo libPath{ openSslBinDir + slash + lib.front() };
+        result.append(libPath.absoluteFilePath());
+    }
+
+    return result;
+}
+
 
 struct DeployResult
 {
@@ -1495,7 +1553,7 @@ static DeployResult deploy(const Options &options, const QMap<QString, QString> 
                     if (optVerboseLevel > 1)
                         std::wcout << "Adding ICU version " << icuVersion << '\n';
                     QString icuLib = QStringLiteral("icudt") + icuVersion
-                            + QLatin1StringView(windowsSharedLibrarySuffix);;
+                            + QLatin1StringView(windowsSharedLibrarySuffix);
                     // Some packages contain debug dlls of ICU libraries even though it's a C
                     // library and the official packages do not differentiate (QTBUG-87677)
                     if (result.isDebug) {
@@ -1581,6 +1639,20 @@ static DeployResult deploy(const Options &options, const QMap<QString, QString> 
         disabled[QtQmlModuleId] = 1;
         disabled[QtQuickModuleId] = 1;
     }
+
+    QStringList openSslLibs;
+    if (!options.openSslRootDirectory.isEmpty()) {
+        openSslLibs = findOpenSslLibraries(options.openSslRootDirectory, options.platform);
+        if (openSslLibs.isEmpty()) {
+            *errorMessage = QStringLiteral("Unable to find openSSL libraries in ")
+                    + options.openSslRootDirectory;
+            return result;
+        }
+
+        deployedQtLibraries.append(openSslLibs);
+    }
+    const bool deployOpenSslPlugin = options.forceOpenSslPlugin || !openSslLibs.isEmpty();
+
     const QStringList plugins = findQtPlugins(
             &result.deployedQtLibraries,
             // For non-QML applications, disable QML to prevent it from being pulled in by the
@@ -1588,7 +1660,7 @@ static DeployResult deploy(const Options &options, const QMap<QString, QString> 
             disabled, pluginInfo,
             options.pluginSelections, qtpathsVariables.value(QStringLiteral("QT_INSTALL_PLUGINS")),
             libraryLocation, infix, debugMatchMode, options.platform, &platformPlugin,
-            options.deployInsightTrackerPlugin);
+            options.deployInsightTrackerPlugin, deployOpenSslPlugin);
 
     // Apply options flags and re-add library names.
     QString qtGuiLibrary;

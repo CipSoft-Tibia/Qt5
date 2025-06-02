@@ -36,6 +36,13 @@ class QLanguageServerPrivate : public QObjectPrivate
 {
 public:
     QLanguageServerPrivate(const QJsonRpcTransport::DataHandler &h);
+
+    // The order of the class members matters here. ShutdownResponse holds and uses a pointer to
+    // protocol in its destructor, so shutdownResponse has to be destroyed after protocol in
+    // ~QLanguageServerPrivate(). This happens only when protocol is defined above/before
+    // shutdownResponse.
+    QLanguageServerProtocol protocol;
+
     mutable QMutex mutex;
     // mutex gated, monotonically increasing
     QLanguageServer::RunStatus runStatus = QLanguageServer::RunStatus::NotSetup;
@@ -45,7 +52,6 @@ public:
     QLspSpecification::InitializeResult serverInfo; // immutable after runStatus > DidInitialize
     QLspSpecification::Responses::ShutdownResponseType shutdownResponse;
     QHash<QString, QLanguageServerModule *> modules;
-    QLanguageServerProtocol protocol;
     QLspNotifySignals notifySignals;
 };
 

@@ -25,8 +25,14 @@ bool startsWith(QByteArrayView haystack, QByteArrayView needle) noexcept;
 [[nodiscard]] Q_CORE_EXPORT Q_DECL_PURE_FUNCTION
 bool endsWith(QByteArrayView haystack, QByteArrayView needle) noexcept;
 
+[[nodiscard]] inline // defined in qbytearrayview.h
+qsizetype findByteArray(QByteArrayView haystack, qsizetype from, char needle) noexcept;
+
 [[nodiscard]] Q_CORE_EXPORT Q_DECL_PURE_FUNCTION
 qsizetype findByteArray(QByteArrayView haystack, qsizetype from, QByteArrayView needle) noexcept;
+
+[[nodiscard]] inline // defined in qbytearrayview.h
+qsizetype lastIndexOf(QByteArrayView haystack, qsizetype from, uchar needle) noexcept;
 
 [[nodiscard]] Q_CORE_EXPORT Q_DECL_PURE_FUNCTION
 qsizetype lastIndexOf(QByteArrayView haystack, qsizetype from, QByteArrayView needle) noexcept;
@@ -93,6 +99,8 @@ static inline T toIntegral(ByteArrayView data, bool *ok, int base)
   Safe and portable C string functions; extensions to standard string.h
  *****************************************************************************/
 
+[[nodiscard]] Q_DECL_PURE_FUNCTION Q_CORE_EXPORT
+const void *qmemrchr(const void *s, int needle, size_t n) noexcept;
 Q_CORE_EXPORT char *qstrdup(const char *);
 
 inline size_t qstrlen(const char *str)
@@ -130,11 +138,13 @@ Q_CORE_EXPORT int qstricmp(const char *, const char *);
 Q_CORE_EXPORT int qstrnicmp(const char *, const char *, size_t len);
 Q_CORE_EXPORT int qstrnicmp(const char *, qsizetype, const char *, qsizetype = -1);
 
+#ifndef QT_NO_QSNPRINTF // use std::(v)snprintf() from <cstdio> instead
 // implemented in qvsnprintf.cpp
 Q_CORE_EXPORT int qvsnprintf(char *str, size_t n, const char *fmt, va_list ap)
     Q_ATTRIBUTE_FORMAT_PRINTF(3, 0);
 Q_CORE_EXPORT int qsnprintf(char *str, size_t n, const char *fmt, ...)
     Q_ATTRIBUTE_FORMAT_PRINTF(3, 4);
+#endif // QT_NO_QSNPRINTF
 
 // qChecksum: Internet checksum
 Q_CORE_EXPORT quint16 qChecksum(QByteArrayView data, Qt::ChecksumType standard = Qt::ChecksumIso3309);

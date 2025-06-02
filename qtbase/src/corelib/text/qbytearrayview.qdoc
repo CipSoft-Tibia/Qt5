@@ -14,6 +14,15 @@
 
     \reentrant
 
+    \compares strong
+    \compareswith strong QByteArray {const char *}
+    \endcompareswith
+    \compareswith strong QString QStringView QUtf8StringView QLatin1StringView \
+                  QChar char16_t
+    When comparing with string and Unicode character types, the content is
+    interpreted as UTF-8.
+    \endcompareswith
+
     A QByteArrayView references a contiguous portion of raw bytes it does
     not own. It acts as an interface type to all kinds of byte-array-like data,
     without the need to construct a QByteArray first.
@@ -332,12 +341,12 @@
 */
 
 /*! //! friend
-    \fn int QByteArrayView::operator==(QByteArrayView lhs, QByteArrayView rhs)
-    \fn int QByteArrayView::operator!=(QByteArrayView lhs, QByteArrayView rhs)
-    \fn int QByteArrayView::operator< (QByteArrayView lhs, QByteArrayView rhs)
-    \fn int QByteArrayView::operator<=(QByteArrayView lhs, QByteArrayView rhs)
-    \fn int QByteArrayView::operator> (QByteArrayView lhs, QByteArrayView rhs)
-    \fn int QByteArrayView::operator>=(QByteArrayView lhs, QByteArrayView rhs)
+    \fn int QByteArrayView::operator==(const QByteArrayView &lhs, const QByteArrayView &rhs)
+    \fn int QByteArrayView::operator!=(const QByteArrayView &lhs, const QByteArrayView &rhs)
+    \fn int QByteArrayView::operator< (const QByteArrayView &lhs, const QByteArrayView &rhs)
+    \fn int QByteArrayView::operator<=(const QByteArrayView &lhs, const QByteArrayView &rhs)
+    \fn int QByteArrayView::operator> (const QByteArrayView &lhs, const QByteArrayView &rhs)
+    \fn int QByteArrayView::operator>=(const QByteArrayView &lhs, const QByteArrayView &rhs)
 
     Comparison operators for QByteArrayView.
 */
@@ -542,7 +551,7 @@
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa last(), startsWith(), chopped(), chop(), truncate()
+    \sa last(), startsWith(), chopped(), chop(), truncate(), sliced(), slice()
 */
 
 /*!
@@ -553,7 +562,7 @@
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa first(), endsWith(), chopped(), chop(), truncate()
+    \sa first(), endsWith(), chopped(), chop(), truncate(), sliced(), slice()
 */
 
 /*!
@@ -567,7 +576,7 @@
     or \a pos + \a n > size().
 //! [UB-sliced-index-length]
 
-    \sa first(), last(), chopped(), chop(), truncate()
+    \sa first(), last(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -580,7 +589,32 @@
     \note The behavior is undefined when \a pos < 0 or \a pos > size().
 //! [UB-sliced-index-only]
 
-    \sa first(), last(), chopped(), chop(), truncate()
+    \sa first(), last(), chopped(), chop(), truncate(), slice()
+*/
+
+/*!
+    \fn QByteArrayView &QByteArrayView::slice(qsizetype pos, qsizetype n)
+    \since 6.8
+
+    Modifies this byte array view to start at position \a pos, extending for
+    \a n bytes.
+
+    \include qbytearrayview.qdoc UB-sliced-index-length
+
+    \sa sliced(), first(), last(), chopped(), chop(), truncate()
+*/
+
+/*!
+    \fn QByteArrayView &QByteArrayView::slice(qsizetype pos)
+    \since 6.8
+    \overload
+
+    Modifies this byte array view to start at position \a pos, extending
+    to its end.
+
+    \include qbytearrayview.qdoc UB-sliced-index-only
+
+    \sa sliced(), first(), last(), chopped(), chop(), truncate()
 */
 
 /*!
@@ -594,7 +628,7 @@
 
     \note The behavior is undefined when \a length < 0 or \a length > size().
 
-    \sa first(), last(), sliced(), chop(), truncate()
+    \sa first(), last(), sliced(), chop(), truncate(), slice()
 */
 
 /*!
@@ -618,7 +652,7 @@
 
     \note The behavior is undefined when \a length < 0 or \a length > size().
 
-    \sa sliced(), first(), last(), chopped(), truncate()
+    \sa sliced(), first(), last(), chopped(), truncate(), slice()
 */
 
 /*!
@@ -636,7 +670,7 @@
     \a length is negative (default), the function returns all characters that
     are available from \a start.
 
-    \sa first(), last(), sliced(), chopped(), chop(), truncate()
+    \sa first(), last(), sliced(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -651,7 +685,7 @@
     The entire byte array view is returned if \a length is greater than or equal
     to size(), or less than zero.
 
-    \sa first(), last(), sliced(), startsWith(), chopped(), chop(), truncate()
+    \sa first(), last(), sliced(), startsWith(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -666,7 +700,7 @@
     The entire byte array view is returned if \a length is greater than or equal
     to size(), or less than zero.
 
-    \sa first(), last(), sliced(), endsWith(), chopped(), chop(), truncate()
+    \sa first(), last(), sliced(), endsWith(), chopped(), chop(), truncate(), slice()
 */
 
 /*!
@@ -1044,4 +1078,22 @@
     Converts this QByteArrayView object to a \c{std::string_view} object.
     The returned view will have the same data pointer and length of
     this view.
+*/
+
+/*!
+    \fn QByteArrayView::maxSize()
+    \since 6.8
+
+    It returns the maximum number of elements that the view can
+    theoretically represent. In practice, the number can be much smaller,
+    limited by the amount of memory available to the system.
+*/
+
+/*!
+    \fn QByteArrayView::max_size() const
+    \since 6.8
+
+    This function is provided for STL compatibility.
+
+    Returns maxSize().
 */

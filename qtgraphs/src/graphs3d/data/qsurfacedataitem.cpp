@@ -21,7 +21,7 @@
  */
 
 /*!
- * \fn explicit constexpr QSurfaceDataItem::QSurfaceDataItem(const QVector3D &position) noexcept
+ * \fn explicit constexpr QSurfaceDataItem::QSurfaceDataItem(QVector3D position) noexcept
  * Constructs a surface data item at the position \a position.
  */
 
@@ -31,7 +31,7 @@
  */
 
 /*!
- * \fn void QSurfaceDataItem::setPosition(const QVector3D &pos)
+ * \fn void QSurfaceDataItem::setPosition(QVector3D pos)
  * Sets the position \a pos to this data item.
  */
 

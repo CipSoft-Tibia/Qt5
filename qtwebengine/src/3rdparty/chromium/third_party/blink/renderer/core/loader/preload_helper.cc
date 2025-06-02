@@ -4,6 +4,8 @@
 
 #include "third_party/blink/renderer/core/loader/preload_helper.h"
 
+#include "base/metrics/histogram_functions.h"
+#include "base/timer/elapsed_timer.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/platform/platform.h"
@@ -41,6 +43,7 @@
 #include "third_party/blink/renderer/core/loader/resource/link_prefetch_resource.h"
 #include "third_party/blink/renderer/core/loader/resource/script_resource.h"
 #include "third_party/blink/renderer/core/loader/subresource_integrity_helper.h"
+#include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/page/viewport_description.h"
 #include "third_party/blink/renderer/core/script/modulator.h"
 #include "third_party/blink/renderer/core/script/script_loader.h"
@@ -161,7 +164,7 @@ KURL GetBestFitImageURL(const Document& document,
                         const String& image_sizes) {
   float source_size = SizesAttributeParser(media_values, image_sizes,
                                            document.GetExecutionContext())
-                          .length();
+                          .Size();
   ImageCandidate candidate = BestFitSourceForImageAttributes(
       media_values->DevicePixelRatio(), source_size, href, image_srcset);
   return base_url.IsNull() ? document.CompleteURL(candidate.ToString())
@@ -908,18 +911,34 @@ void PreloadHelper::FetchDictionaryIfNeeded(
 Resource* PreloadHelper::StartPreload(ResourceType type,
                                       FetchParameters& params,
                                       Document& document) {
+  base::ElapsedTimer timer;
+
   ResourceFetcher* resource_fetcher = document.Fetcher();
   Resource* resource = nullptr;
   switch (type) {
     case ResourceType::kImage:
       resource = ImageResource::Fetch(params, resource_fetcher);
       break;
-    case ResourceType::kScript:
+    case ResourceType::kScript: {
+      Page* page = document.GetPage();
+      v8_compile_hints::V8CrowdsourcedCompileHintsProducer*
+          v8_compile_hints_producer = nullptr;
+      v8_compile_hints::V8CrowdsourcedCompileHintsConsumer*
+          v8_compile_hints_consumer = nullptr;
+      if (page->MainFrame()->IsLocalFrame()) {
+        v8_compile_hints_producer =
+            &page->GetV8CrowdsourcedCompileHintsProducer();
+        v8_compile_hints_consumer =
+            &page->GetV8CrowdsourcedCompileHintsConsumer();
+      }
+
       params.SetRequestContext(mojom::blink::RequestContextType::SCRIPT);
       params.SetRequestDestination(network::mojom::RequestDestination::kScript);
-      resource = ScriptResource::Fetch(params, resource_fetcher, nullptr,
-                                       ScriptResource::kAllowStreaming);
+      resource = ScriptResource::Fetch(
+          params, resource_fetcher, nullptr, ScriptResource::kAllowStreaming,
+          v8_compile_hints_producer, v8_compile_hints_consumer);
       break;
+    }
     case ResourceType::kCSSStyleSheet:
       resource =
           CSSStyleSheetResource::Fetch(params, resource_fetcher, nullptr);
@@ -951,6 +970,9 @@ Resource* PreloadHelper::StartPreload(ResourceType type,
     default:
       NOTREACHED();
   }
+
+  base::UmaHistogramMicrosecondsTimes("Blink.PreloadRequestStartDuration",
+                                      timer.Elapsed());
 
   return resource;
 }

@@ -4,23 +4,24 @@
 #ifndef SCATTERDATAMODIFIER_H
 #define SCATTERDATAMODIFIER_H
 
-#include "axesinputhandler.h"
-
-#include <QtGraphs/q3dscatter.h>
 #include <QtGraphs/qabstract3dseries.h>
+#include <QtGraphsWidgets/q3dscatterwidgetitem.h>
 
 class ScatterDataModifier : public QObject
 {
     Q_OBJECT
+
+    enum InputState { StateNormal = 0, StateDraggingX, StateDraggingZ, StateDraggingY };
+
 public:
-    explicit ScatterDataModifier(Q3DScatter *scatter, QObject *parent);
+    explicit ScatterDataModifier(Q3DScatterWidgetItem *scatter, QObject *parent);
     ~ScatterDataModifier();
 
     void addData();
 
 public Q_SLOTS:
-    void setBackgroundEnabled(int enabled);
-    void setGridEnabled(int enabled);
+    void setBackgroundVisible(int visible);
+    void setGridVisible(int visible);
     void setSmoothDots(int smooth);
     void changePresetCamera();
     void toggleItemCount();
@@ -30,23 +31,27 @@ public Q_SLOTS:
     void changeStyle(int style);
     void changeTheme(int theme);
     void changeShadowQuality(int quality);
-    void shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality shadowQuality);
+    void shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality shadowQuality);
+    void handleElementSelected(QtGraphs3D::ElementType type);
+    void handleAxisDragging(QVector2D delta);
 
 Q_SIGNALS:
-    void backgroundEnabledChanged(bool enabled);
-    void gridEnabledChanged(bool enabled);
+    void backgroundVisibleChanged(bool visible);
+    void gridVisibleChanged(bool visible);
     void shadowQualityChanged(int quality);
 
 private:
     QVector3D randVector();
-    Q3DScatter *m_graph = nullptr;
+    Q3DScatterWidgetItem *m_graph = nullptr;
     QAbstract3DSeries::Mesh m_style = QAbstract3DSeries::Mesh::Sphere;
     bool m_smooth = true;
     int m_itemCount;
     float m_curveDivider;
 
-    AxesInputHandler *m_inputHandler;
     bool m_autoAdjust = true;
+
+    InputState m_state = StateNormal;
+    float m_dragSpeedModifier = 15.f;
 };
 
 #endif

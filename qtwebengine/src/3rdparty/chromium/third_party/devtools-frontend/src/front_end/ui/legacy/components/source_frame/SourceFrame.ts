@@ -29,6 +29,7 @@
  */
 
 import * as Common from '../../../../core/common/common.js';
+import * as Host from '../../../../core/host/host.js';
 import * as i18n from '../../../../core/i18n/i18n.js';
 import * as Platform from '../../../../core/platform/platform.js';
 import * as Root from '../../../../core/root/root.js';
@@ -109,7 +110,7 @@ const UIStrings = {
    *@description Input box placeholder which instructs the user to type 'allow pasing' into the input box.
    *@example {allow pasting} PH1
    */
-  typeAllowPasting: 'Type  \'\'{PH1}\'\'',
+  typeAllowPasting: 'Type \'\'{PH1}\'\'',
 };
 const str_ = i18n.i18n.registerUIStrings('ui/legacy/components/source_frame/SourceFrame.ts', UIStrings);
 const i18nString = i18n.i18n.getLocalizedString.bind(undefined, str_);
@@ -292,6 +293,16 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
       this.wasmDisassemblyInternal ? markNonBreakableLines(this.wasmDisassemblyInternal) : nonBreakableLines,
       this.options.lineWrapping ? CodeMirror.EditorView.lineWrapping : [],
       this.options.lineNumbers !== false ? CodeMirror.lineNumbers() : [],
+      Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.INDENTATION_MARKERS_TEMP_DISABLE) ?
+          [] :
+          CodeMirror.indentationMarkers({
+            colors: {
+              light: 'var(--sys-color-divider)',
+              activeLight: 'var(--sys-color-divider-prominent)',
+              dark: 'var(--sys-color-divider)',
+              activeDark: 'var(--sys-color-divider-prominent)',
+            },
+          }),
     ];
   }
 
@@ -304,7 +315,7 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
 
   protected onPaste(): boolean {
     if (Root.Runtime.experiments.isEnabled(Root.Runtime.ExperimentName.SELF_XSS_WARNING) &&
-        !this.selfXssWarningDisabledSetting.get()) {
+        !Root.Runtime.Runtime.queryParam('isChromeForTesting') && !this.selfXssWarningDisabledSetting.get()) {
       void this.showSelfXssWarning();
       return true;
     }
@@ -319,6 +330,7 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
     const allowPasting = await SelfXssWarningDialog.show();
     if (allowPasting) {
       this.selfXssWarningDisabledSetting.set(true);
+      Host.userMetrics.actionTaken(Host.UserMetrics.Action.SelfXssAllowPastingInDialog);
     }
   }
 
@@ -414,7 +426,7 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
     if (this.options.lineNumbers === false) {
       return [];
     }
-    let formatNumber = null;
+    let formatNumber = undefined;
     if (this.wasmDisassemblyInternal) {
       const disassembly = this.wasmDisassemblyInternal;
       const lastBytecodeOffset = disassembly.lineNumberToBytecodeOffset(disassembly.lineNumbers - 1);
@@ -425,13 +437,16 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
         return `0x${bytecodeOffset.toString(16).padStart(bytecodeOffsetDigits, '0')}`;
       };
     } else if (this.prettyInternal) {
-      formatNumber = (lineNumber: number): string => {
-        const line = this.prettyToRawLocation(lineNumber - 1, 0)[0] + 1;
-        if (lineNumber === 1) {
-          return String(line);
+      formatNumber = (lineNumber: number, state: CodeMirror.EditorState): string => {
+        // @codemirror/view passes a high number here to estimate the
+        // maximum width to allocate for the line number gutter.
+        if (lineNumber < 2 || lineNumber > state.doc.lines) {
+          return String(lineNumber);
         }
-        if (line !== this.prettyToRawLocation(lineNumber - 2, 0)[0] + 1) {
-          return String(line);
+        const [currLine] = this.prettyToRawLocation(lineNumber - 1);
+        const [prevLine] = this.prettyToRawLocation(lineNumber - 2);
+        if (currLine !== prevLine) {
+          return String(currLine + 1);
         }
         return '-';
       };
@@ -1005,7 +1020,7 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
 
   onContextMenu(event: MouseEvent): boolean {
     event.consume(true);  // Consume event now to prevent document from handling the async menu
-    const contextMenu = new UI.ContextMenu.ContextMenu(event);
+    const contextMenu = new UI.ContextMenu.ContextMenu(event, {jsLogContext: 'sources-text-area'});
     const {state} = this.textEditor;
     const pos = state.selection.main.from, line = state.doc.lineAt(pos);
     this.populateTextAreaContextMenu(contextMenu, line.number - 1, pos - line.from);
@@ -1020,7 +1035,7 @@ export class SourceFrameImpl extends Common.ObjectWrapper.eventMixin<EventTypes,
 
   onLineGutterContextMenu(position: number, event: MouseEvent): boolean {
     event.consume(true);  // Consume event now to prevent document from handling the async menu
-    const contextMenu = new UI.ContextMenu.ContextMenu(event);
+    const contextMenu = new UI.ContextMenu.ContextMenu(event, {jsLogContext: 'sources-line-gutter'});
     const lineNumber = this.textEditor.state.doc.lineAt(position).number - 1;
     this.populateLineGutterContextMenu(contextMenu, lineNumber);
     contextMenu.appendApplicableItems(this);
@@ -1069,10 +1084,12 @@ export class SelfXssWarningDialog {
     const result = await new Promise<boolean>(resolve => {
       const closeButton =
           content.createChild('div', 'dialog-close-button', 'dt-close-button') as UI.UIUtils.DevToolsCloseButton;
-      closeButton.addEventListener('click', () => {
+      closeButton.setTabbable(true);
+      self.onInvokeElement(closeButton, event => {
         dialog.hide();
+        event.consume(true);
         resolve(false);
-      }, false);
+      });
 
       content.createChild('div', 'title').textContent = i18nString(UIStrings.doYouTrustThisCode);
       content.createChild('div', 'message').textContent =
@@ -1083,24 +1100,27 @@ export class SelfXssWarningDialog {
       content.appendChild(input);
 
       const buttonsBar = content.createChild('div', 'button');
-      const cancelButton = UI.UIUtils.createTextButton(i18nString(UIStrings.cancel), () => resolve(false));
+      const cancelButton =
+          UI.UIUtils.createTextButton(i18nString(UIStrings.cancel), () => resolve(false), {jslogContext: 'cancel'});
       buttonsBar.appendChild(cancelButton);
       const allowButton = UI.UIUtils.createTextButton(i18nString(UIStrings.allow), () => {
         resolve(input.value === i18nString(UIStrings.allowPasting));
-      }, '', true);
+      }, {jslogContext: 'confirm', primary: true});
       allowButton.disabled = true;
       buttonsBar.appendChild(allowButton);
 
       input.addEventListener('input', () => {
         allowButton.disabled = !Boolean(input.value);
       }, false);
+      input.addEventListener('paste', e => e.preventDefault());
+      input.addEventListener('drop', e => e.preventDefault());
 
       dialog.setOutsideClickCallback(event => {
         event.consume();
         resolve(false);
       });
       dialog.show();
-      input.focus();
+      Host.userMetrics.actionTaken(Host.UserMetrics.Action.SelfXssWarningDialogShown);
     });
     dialog.hide();
     return result;
@@ -1123,9 +1143,7 @@ export interface Transformer {
   };
 }
 
-// TODO(crbug.com/1167717): Make this a const enum again
-// eslint-disable-next-line rulesdir/const_enum
-export enum DecoratorType {
+export const enum DecoratorType {
   PERFORMANCE = 'performance',
   MEMORY = 'memory',
   COVERAGE = 'coverage',
@@ -1175,7 +1193,8 @@ const searchMatchDeco = CodeMirror.Decoration.mark({class: 'cm-searchMatch'});
 const currentSearchMatchDeco = CodeMirror.Decoration.mark({class: 'cm-searchMatch cm-searchMatch-selected'});
 
 const searchHighlighter = CodeMirror.ViewPlugin.fromClass(class {
-  decorations: CodeMirror.DecorationSet;
+decorations:
+  CodeMirror.DecorationSet;
 
   constructor(view: CodeMirror.EditorView) {
     this.decorations = this.computeDecorations(view);
@@ -1274,22 +1293,22 @@ function markNonBreakableLines(disassembly: Common.WasmDisassembly.WasmDisassemb
 const sourceFrameTheme = CodeMirror.EditorView.theme({
   '&.cm-editor': {height: '100%'},
   '.cm-scroller': {overflow: 'auto'},
-  '.cm-lineNumbers .cm-gutterElement.cm-nonBreakableLine': {color: 'var(--color-non-breakable-line) !important'},
+  '.cm-lineNumbers .cm-gutterElement.cm-nonBreakableLine': {color: 'var(--sys-color-state-disabled) !important'},
   '.cm-searchMatch': {
-    border: '1px solid var(--color-search-match-border)',
+    border: '1px solid var(--sys-color-outline)',
     borderRadius: '3px',
     margin: '0 -1px',
     '&.cm-searchMatch-selected': {
       borderRadius: '1px',
-      backgroundColor: 'var(--color-selected-search-match-background)',
-      borderColor: 'var(--color-selected-search-match-background)',
+      backgroundColor: 'var(--sys-color-yellow-container)',
+      borderColor: 'var(--sys-color-yellow-outline)',
       '&, & *': {
-        color: 'var(--color-selected-search-match) !important',
+        color: 'var(--sys-color-on-surface) !important',
       },
     },
   },
   ':host-context(.pretty-printed) & .cm-lineNumbers .cm-gutterElement': {
-    color: 'var(--color-primary-old)',
+    color: 'var(--sys-color-primary)',
   },
 });
 

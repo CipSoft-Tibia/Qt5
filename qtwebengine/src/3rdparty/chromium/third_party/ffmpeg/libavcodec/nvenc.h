@@ -168,6 +168,12 @@ enum {
     ANY_DEVICE,
 };
 
+enum {
+    NVENC_RGB_MODE_DISABLED,
+    NVENC_RGB_MODE_420,
+    NVENC_RGB_MODE_444,
+};
+
 typedef struct NvencContext
 {
     AVClass *avclass;
@@ -262,6 +268,8 @@ typedef struct NvencContext
     int udu_sei;
     int timing_info;
     int highbitdepth;
+    int max_slice_size;
+    int rgb_mode;
 } NvencContext;
 
 int ff_nvenc_encode_init(AVCodecContext *avctx);

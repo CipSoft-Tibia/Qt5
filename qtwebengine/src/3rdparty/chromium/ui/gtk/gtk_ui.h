@@ -7,12 +7,13 @@
 
 #include <map>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "base/containers/fixed_flat_map.h"
 #include "base/memory/raw_ptr.h"
 #include "printing/buildflags/buildflags.h"
-#include "ui/base/glib/glib_signal.h"
+#include "ui/base/glib/scoped_gsignal.h"
 #include "ui/gfx/color_utils.h"
 #include "ui/gfx/font_render_params.h"
 #include "ui/gtk/gtk_ui_platform.h"
@@ -80,6 +81,7 @@ class GtkUi : public ui::LinuxUiAndTheme {
       ui::LinuxInputMethodContextDelegate* delegate) const override;
   bool GetTextEditCommandsForEvent(
       const ui::Event& event,
+      int text_flags,
       std::vector<ui::TextEditCommandAuraLinux>* commands) override;
   gfx::FontRenderParams GetDefaultFontRenderParams() const override;
   void GetDefaultFontDescription(
@@ -108,40 +110,34 @@ class GtkUi : public ui::LinuxUiAndTheme {
   bool PreferDarkTheme() const override;
   void SetDarkTheme(bool dark) override;
   std::unique_ptr<ui::NavButtonProvider> CreateNavButtonProvider() override;
-  ui::WindowFrameProvider* GetWindowFrameProvider(bool solid_frame) override;
+  ui::WindowFrameProvider* GetWindowFrameProvider(bool solid_frame,
+                                                  bool tiled) override;
 
  private:
   using TintMap = std::map<int, color_utils::HSL>;
 
-  CHROMEG_CALLBACK_1(GtkUi, void, OnThemeChanged, GtkSettings*, GtkParamSpec*);
+  void OnThemeChanged(GtkSettings* settings, GtkParamSpec* param);
 
-  CHROMEG_CALLBACK_1(GtkUi,
-                     void,
-                     OnCursorThemeNameChanged,
-                     GtkSettings*,
-                     GtkParamSpec*);
+  void OnCursorThemeNameChanged(GtkSettings* settings, GtkParamSpec* param);
 
-  CHROMEG_CALLBACK_1(GtkUi,
-                     void,
-                     OnCursorThemeSizeChanged,
-                     GtkSettings*,
-                     GtkParamSpec*);
+  void OnCursorThemeSizeChanged(GtkSettings* settings, GtkParamSpec* param);
 
-  CHROMEG_CALLBACK_1(GtkUi,
-                     void,
-                     OnDeviceScaleFactorMaybeChanged,
-                     void*,
-                     GParamSpec*);
+  void OnEnableAnimationsChanged(GtkSettings* settings, GtkParamSpec* param);
 
-  CHROMEG_CALLBACK_1(GtkUi, void, OnMonitorAdded, GdkDisplay*, GdkMonitor*);
+  void OnGtkXftDpiChanged(GtkSettings* settings, GParamSpec* param);
 
-  CHROMEG_CALLBACK_3(GtkUi,
-                     void,
-                     OnMonitorsChanged,
-                     GListModel*,
-                     guint,
-                     guint,
-                     guint);
+  void OnScreenResolutionChanged(GdkScreen* screen, GParamSpec* param);
+
+  void OnMonitorChanged(GdkMonitor* monitor, GParamSpec* param);
+
+  void OnMonitorAdded(GdkDisplay* display, GdkMonitor* monitor);
+
+  void OnMonitorRemoved(GdkDisplay* display, GdkMonitor* monitor);
+
+  void OnMonitorsChanged(GListModel* list,
+                         guint position,
+                         guint removed,
+                         guint added);
 
   // Loads all GTK-provided settings.
   void LoadGtkValues();
@@ -205,13 +201,19 @@ class GtkUi : public ui::LinuxUiAndTheme {
 
   // Paints a native window frame.  Typically only one of these will be
   // non-null.  The exception is when the user starts or stops their compositor
-  // while Chrome is running.
-  std::unique_ptr<ui::WindowFrameProvider> solid_frame_provider_;
-  std::unique_ptr<ui::WindowFrameProvider> transparent_frame_provider_;
+  // while Chrome is running.  This 2D array is indexed first by whether the
+  // frame is translucent (0) or solid(1), then by whether the frame is normal
+  // (0) or tiled (1).
+  std::unique_ptr<ui::WindowFrameProvider> frame_providers_[2][2];
 
   // Objects to notify when the window frame button order changes.
   base::ObserverList<ui::WindowButtonOrderObserver>::Unchecked
       window_button_order_observer_list_;
+
+  std::vector<ScopedGSignal> signals_;
+  // Two signals are registered for each monitor, so keep them in a pair.
+  std::unordered_map<GdkMonitor*, std::pair<ScopedGSignal, ScopedGSignal>>
+      monitor_signals_;
 };
 
 }  // namespace gtk

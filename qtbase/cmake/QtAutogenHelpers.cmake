@@ -78,14 +78,23 @@ endfunction()
 
 # Complete manual moc invocation with full control.
 # Use AUTOMOC whenever possible.
-# INCLUDE_DIRECTORIES specifies a list of include directories used by 'moc'.
-# INCLUDE_DIRECTORY_TARGETS specifies a list of targets to extract the INTERFACE_INCLUDE_DIRECTORIES
-# property and use it as the 'moc' include directories.
+# Multi-value Arguments:
+#     INCLUDE_DIRECTORIES
+#         Specifies a list of include directories used by 'moc'.
+#     INCLUDE_DIRECTORY_TARGETS
+#         Specifies a list of targets to extract the INTERFACE_INCLUDE_DIRECTORIES
+#         property and use it as the 'moc' include directories.(Deprecated use TARGETS instead)
+#     DEFINITIONS
+#         List of the definitions that should be added to the moc command line arguments.
+#         Supports the syntax both with and without the prepending '-D'.
+#     TARGETS
+#         The list of targets that will be used to collect the INTERFACE_INCLUDE_DIRECTORIES,
+#         INCLUDE_DIRECTORIES, and COMPILE_DEFINITIONS properties.
 function(qt_manual_moc result)
     cmake_parse_arguments(arg
                           ""
                           "OUTPUT_MOC_JSON_FILES"
-                          "FLAGS;INCLUDE_DIRECTORIES;INCLUDE_DIRECTORY_TARGETS"
+                          "FLAGS;INCLUDE_DIRECTORIES;INCLUDE_DIRECTORY_TARGETS;DEFINITIONS;TARGETS"
                           ${ARGN})
     set(moc_files)
     set(metatypes_json_list)
@@ -102,7 +111,7 @@ function(qt_manual_moc result)
                 "-I\n${dir}")
         endforeach()
 
-        foreach(dep IN ITEMS ${arg_INCLUDE_DIRECTORY_TARGETS})
+        foreach(dep IN LISTS arg_INCLUDE_DIRECTORY_TARGETS arg_TARGETS)
             set(include_expr "$<TARGET_PROPERTY:${dep},INTERFACE_INCLUDE_DIRECTORIES>")
             list(APPEND moc_parameters
                 "$<$<BOOL:${include_expr}>:-I\n$<JOIN:${include_expr},\n-I\n>>")
@@ -125,6 +134,30 @@ function(qt_manual_moc result)
                 if(loc)
                     list(APPEND moc_parameters "\n-F\n${loc}\n")
                 endif()
+            endif()
+        endforeach()
+
+        foreach(dep IN LISTS arg_TARGETS)
+            set(include_property_expr
+                "$<TARGET_GENEX_EVAL:${dep},$<TARGET_PROPERTY:${dep},INCLUDE_DIRECTORIES>>")
+            list(APPEND moc_parameters
+                "$<$<BOOL:${include_property_expr}>:-I\n$<JOIN:${include_property_expr},\n-I\n>>")
+
+            set(defines_property_expr
+                "$<TARGET_GENEX_EVAL:${dep},$<TARGET_PROPERTY:${dep},COMPILE_DEFINITIONS>>")
+            set(defines_with_d "$<FILTER:${defines_property_expr},INCLUDE,^-D>")
+            set(defines_without_d "$<FILTER:${defines_property_expr},EXCLUDE,^-D>")
+            list(APPEND moc_parameters
+                "$<$<BOOL:${defines_with_d}>:$<JOIN:${defines_with_d},\n>>")
+            list(APPEND moc_parameters
+                "$<$<BOOL:${defines_without_d}>:-D\n$<JOIN:${defines_without_d},\n-D\n>>")
+        endforeach()
+
+        foreach(def IN LISTS arg_DEFINITIONS)
+            if(NOT def MATCHES "^-D")
+                list(APPEND moc_parameters "-D\n${def}")
+            else()
+                list(APPEND moc_parameters "${def}")
             endif()
         endforeach()
 
@@ -180,4 +213,59 @@ function(qt_make_output_file infile prefix suffix source_dir binary_dir result)
 
     file(MAKE_DIRECTORY "${outpath}")
     set("${result}" "${outpath}/${prefix}${outfilename}${suffix}" PARENT_SCOPE)
+endfunction()
+
+# Work around AUTOGEN issue when a library is added as a dependency more than once, and the autogen
+# library dependency results in being discarded. To mitigate that, add all autogen dependencies
+# manually, based on the passed in dependencies.
+# CMake 4.0+ has a fix, so we don't need the extra logic.
+# See https://gitlab.kitware.com/cmake/cmake/-/issues/26700
+function(qt_internal_work_around_autogen_discarded_dependencies target)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL 4.0
+            OR QT_NO_AUTOGEN_DISCARDED_DEPENDENCIES_WORKAROUND)
+        return()
+    endif()
+
+    get_target_property(type "${target}" TYPE)
+    if(type STREQUAL "INTERFACE_LIBRARY")
+        return()
+    endif()
+
+    set(libraries ${ARGN})
+    set(final_libraries "")
+
+    foreach(lib IN LISTS libraries)
+        # Skip non-target dependencies.
+        if(NOT TARGET "${lib}")
+            continue()
+        endif()
+
+        # Resolve alias targets, because AUTOGEN_TARGET_DEPENDS doesn't seem to handle them.
+        get_target_property(aliased_target "${lib}" ALIASED_TARGET)
+        if(aliased_target)
+            set(lib "${aliased_target}")
+        endif()
+
+        # Skip imported targets, they don't have sync_headers targets.
+        get_target_property(imported "${lib}" IMPORTED)
+        if(imported)
+            continue()
+        endif()
+
+        # Resolve Qt private modules to their public counterparts.
+        get_target_property(is_private_module "${lib}" _qt_is_private_module)
+        get_target_property(public_module_target "${lib}" _qt_public_module_target_name)
+
+        if(is_private_module AND public_module_target)
+            set(lib "${public_module_target}")
+        endif()
+
+        # Another TARGET check, just in case.
+        if(TARGET "${lib}")
+            list(APPEND final_libraries "${lib}")
+        endif()
+    endforeach()
+    if(final_libraries)
+        set_property(TARGET ${target} APPEND PROPERTY AUTOGEN_TARGET_DEPENDS "${final_libraries}")
+    endif()
 endfunction()

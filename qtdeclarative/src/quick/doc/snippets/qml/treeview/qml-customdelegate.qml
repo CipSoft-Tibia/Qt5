@@ -32,7 +32,7 @@ ApplicationWindow {
             required property TreeView treeView
             required property bool isTreeNode
             required property bool expanded
-            required property int hasChildren
+            required property bool hasChildren
             required property int depth
             required property int row
             required property int column

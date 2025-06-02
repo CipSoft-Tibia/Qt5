@@ -13,10 +13,13 @@
 #include "include/core/SkPaint.h"
 #include "include/core/SkSurface.h"
 #include "include/effects/SkRuntimeEffect.h"
+#include "src/core/SkBlurEngine.h"
+#include "src/core/SkDevice.h"
+#include "src/core/SkImageFilterCache.h"
 #include "src/core/SkImageFilterTypes.h"
 #include "src/core/SkMipmap.h"
 #include "src/core/SkSamplingPriv.h"
-#include "src/core/SkSpecialSurface.h"
+#include "src/core/SkTraceEvent.h"
 #include "src/image/SkImage_Base.h"
 
 #include "include/gpu/graphite/Context.h"
@@ -26,10 +29,12 @@
 #include "include/gpu/graphite/Recording.h"
 #include "include/gpu/graphite/Surface.h"
 #include "src/gpu/BlurUtils.h"
+#include "src/gpu/SkBackingFit.h"
 #include "src/gpu/graphite/Buffer.h"
 #include "src/gpu/graphite/Caps.h"
 #include "src/gpu/graphite/CommandBuffer.h"
 #include "src/gpu/graphite/CopyTask.h"
+#include "src/gpu/graphite/Device.h"
 #include "src/gpu/graphite/Image_Graphite.h"
 #include "src/gpu/graphite/Log.h"
 #include "src/gpu/graphite/RecorderPriv.h"
@@ -86,24 +91,35 @@ sk_sp<SkSpecialImage> eval_blur(skgpu::graphite::Recorder* recorder,
                                 sk_sp<SkShader> blurEffect,
                                 const SkIRect& dstRect,
                                 SkColorType colorType,
-                                SkAlphaType alphaType,
                                 sk_sp<SkColorSpace> outCS,
                                 const SkSurfaceProps& outProps) {
     SkImageInfo outII = SkImageInfo::Make({dstRect.width(), dstRect.height()},
-                                          colorType, alphaType, std::move(outCS));
-    auto surface = SkSpecialSurfaces::MakeGraphite(recorder, outII, outProps);
-    if (!surface) {
+                                          colorType, kPremul_SkAlphaType, std::move(outCS));
+    // Protected-ness is pulled off of the recorder
+    auto device = skgpu::graphite::Device::Make(recorder,
+                                                outII,
+                                                skgpu::Budgeted::kYes,
+                                                skgpu::Mipmapped::kNo,
+#if defined(GRAPHITE_USE_APPROX_FIT_FOR_FILTERS)
+                                                SkBackingFit::kApprox,
+#else
+                                                SkBackingFit::kExact,
+#endif
+                                                outProps,
+                                                /*addInitialClear=*/false);
+    if (!device) {
         return nullptr;
     }
 
     // TODO(b/294102201): This is very much like AutoSurface in SkImageFilterTypes.cpp
-    SkCanvas* canvas = surface->getCanvas();
-    canvas->translate(-dstRect.left(), -dstRect.top());
+    SkIRect subset = SkIRect::MakeSize(dstRect.size());
+    device->clipRect(SkRect::Make(subset), SkClipOp::kIntersect, /*aa=*/false);
+    device->setLocalToDevice(SkM44::Translate(-dstRect.left(), -dstRect.top()));
     SkPaint paint;
     paint.setBlendMode(SkBlendMode::kSrc);
     paint.setShader(std::move(blurEffect));
-    canvas->drawPaint(paint);
-    return surface->makeImageSnapshot();
+    device->drawPaint(paint);
+    return device->snapSpecial(subset);
 }
 
 sk_sp<SkSpecialImage> blur_2d(skgpu::graphite::Recorder* recorder,
@@ -111,23 +127,26 @@ sk_sp<SkSpecialImage> blur_2d(skgpu::graphite::Recorder* recorder,
                               SkISize radii,
                               sk_sp<SkSpecialImage> input,
                               const SkIRect& srcRect,
+                              SkTileMode tileMode,
                               const SkIRect& dstRect,
                               sk_sp<SkColorSpace> outCS,
                               const SkSurfaceProps& outProps) {
     std::array<SkV4, skgpu::kMaxBlurSamples/4> kernel;
+    std::array<SkV4, skgpu::kMaxBlurSamples/2> offsets;
     skgpu::Compute2DBlurKernel(sigma, radii, kernel);
+    skgpu::Compute2DBlurOffsets(radii, offsets);
 
     SkRuntimeShaderBuilder builder{sk_ref_sp(skgpu::GetBlur2DEffect(radii))};
     builder.uniform("kernel") = kernel;
-    builder.uniform("radii") = radii;
+    builder.uniform("offsets") = offsets;
     // TODO(b/294102201): This is very much like FilterResult::asShader()...
     builder.child("child") =
-            input->makeSubset(srcRect)->asShader(SkTileMode::kDecal,
+            input->makeSubset(srcRect)->asShader(tileMode,
                                                  SkFilterMode::kNearest,
                                                  SkMatrix::Translate(srcRect.left(),srcRect.top()));
 
     return eval_blur(recorder, builder.makeShader(), dstRect,
-                     input->colorType(), input->alphaType(), std::move(outCS), outProps);
+                     input->colorType(), std::move(outCS), outProps);
 }
 
 sk_sp<SkSpecialImage> blur_1d(skgpu::graphite::Recorder* recorder,
@@ -136,6 +155,7 @@ sk_sp<SkSpecialImage> blur_1d(skgpu::graphite::Recorder* recorder,
                               SkV2 dir,
                               sk_sp<SkSpecialImage> input,
                               SkIRect srcRect,
+                              SkTileMode tileMode,
                               SkIRect dstRect,
                               sk_sp<SkColorSpace> outCS,
                               const SkSurfaceProps& outProps) {
@@ -147,21 +167,22 @@ sk_sp<SkSpecialImage> blur_1d(skgpu::graphite::Recorder* recorder,
     builder.uniform("dir") = dir;
     // TODO(b/294102201): This is very much like FilterResult::asShader()...
     builder.child("child") =
-            input->makeSubset(srcRect)->asShader(SkTileMode::kDecal,
+            input->makeSubset(srcRect)->asShader(tileMode,
                                                  SkFilterMode::kLinear,
                                                  SkMatrix::Translate(srcRect.left(),srcRect.top()));
 
     return eval_blur(recorder, builder.makeShader(), dstRect,
-                     input->colorType(), input->alphaType(), std::move(outCS), outProps);
+                     input->colorType(), std::move(outCS), outProps);
 }
 
-sk_sp<SkSpecialImage> blur(skgpu::graphite::Recorder* recorder,
-                           SkSize sigma,
-                           sk_sp<SkSpecialImage> input,
-                           SkIRect srcRect,
-                           SkIRect dstRect,
-                           sk_sp<SkColorSpace> outCS,
-                           const SkSurfaceProps& outProps) {
+sk_sp<SkSpecialImage> blur_impl(skgpu::graphite::Recorder* recorder,
+                                SkSize sigma,
+                                sk_sp<SkSpecialImage> input,
+                                SkIRect srcRect,
+                                SkTileMode tileMode,
+                                SkIRect dstRect,
+                                sk_sp<SkColorSpace> outCS,
+                                const SkSurfaceProps& outProps) {
     // See if we can do a blur on the original resolution image
     if (sigma.width() <= skgpu::kMaxLinearBlurSigma &&
         sigma.height() <= skgpu::kMaxLinearBlurSigma) {
@@ -170,8 +191,8 @@ sk_sp<SkSpecialImage> blur(skgpu::graphite::Recorder* recorder,
         const int kernelArea = skgpu::BlurKernelWidth(radiusX) * skgpu::BlurKernelWidth(radiusY);
         if (kernelArea <= skgpu::kMaxBlurSamples && radiusX > 0 && radiusY > 0) {
             // Use a single-pass 2D kernel if it fits and isn't just 1D already
-            return blur_2d(recorder, sigma, {radiusX, radiusY}, std::move(input), srcRect, dstRect,
-                           std::move(outCS), outProps);
+            return blur_2d(recorder, sigma, {radiusX, radiusY}, std::move(input), srcRect, tileMode,
+                           dstRect, std::move(outCS), outProps);
         } else {
             // Use two passes of a 1D kernel (one per axis).
             if (radiusX > 0) {
@@ -185,7 +206,8 @@ sk_sp<SkSpecialImage> blur(skgpu::graphite::Recorder* recorder,
                 }
 
                 input = blur_1d(recorder, sigma.width(), radiusX, {1.f, 0.f},
-                                std::move(input), srcRect, intermediateDstRect, outCS, outProps);
+                                std::move(input), srcRect, tileMode, intermediateDstRect,
+                                outCS, outProps);
                 if (!input) {
                     return nullptr;
                 }
@@ -195,7 +217,7 @@ sk_sp<SkSpecialImage> blur(skgpu::graphite::Recorder* recorder,
 
             if (radiusY > 0) {
                 input = blur_1d(recorder, sigma.height(), radiusY, {0.f, 1.f},
-                                std::move(input), srcRect, dstRect, outCS, outProps);
+                                std::move(input), srcRect, tileMode, dstRect, outCS, outProps);
             }
 
             return input;
@@ -237,7 +259,7 @@ sk_sp<SkSpecialImage> blur(skgpu::graphite::Recorder* recorder,
         // not scaled so we can use the original. If it was greater than the max, the scale factor
         // should have taken it the max supported sigma (ignoring the effect of rounding out the
         // source bounds).
-        auto scaledOutput = blur(
+        auto scaledOutput = blur_impl(
                 recorder,
                 {std::min(sigma.width(), skgpu::kMaxLinearBlurSigma),
                  std::min(sigma.height(), skgpu::kMaxLinearBlurSigma)},
@@ -246,6 +268,7 @@ sk_sp<SkSpecialImage> blur(skgpu::graphite::Recorder* recorder,
                                               std::move(scaledInput),
                                               outProps),
                 targetSrcRect,
+                tileMode,
                 targetDstRect,
                 outCS,
                 outProps);
@@ -291,11 +314,12 @@ std::tuple<TextureProxyView, SkColorType> MakeBitmapProxyView(Recorder* recorder
         mipmapped = Mipmapped::kNo;
     }
 
-    auto textureInfo = caps->getDefaultSampledTextureInfo(ct, mipmapped, Protected::kNo,
+    Protected isProtected = recorder->priv().isProtected();
+    auto textureInfo = caps->getDefaultSampledTextureInfo(ct, mipmapped, isProtected,
                                                           Renderable::kNo);
     if (!textureInfo.isValid()) {
         ct = kRGBA_8888_SkColorType;
-        textureInfo = caps->getDefaultSampledTextureInfo(ct, mipmapped, Protected::kNo,
+        textureInfo = caps->getDefaultSampledTextureInfo(ct, mipmapped, isProtected,
                                                          Renderable::kNo);
     }
     SkASSERT(textureInfo.isValid());
@@ -328,8 +352,9 @@ std::tuple<TextureProxyView, SkColorType> MakeBitmapProxyView(Recorder* recorder
         texels[0].fPixels = bmpToUpload.getPixels();
         texels[0].fRowBytes = bmpToUpload.rowBytes();
     } else {
-        mipmaps = SkToBool(mipmapsIn) ? mipmapsIn
-                                      : sk_ref_sp(SkMipmap::Build(bmpToUpload.pixmap(), nullptr));
+        mipmaps = SkToBool(mipmapsIn)
+                          ? mipmapsIn
+                          : sk_sp<SkMipmap>(SkMipmap::Build(bmpToUpload.pixmap(), nullptr));
         if (!mipmaps) {
             return {};
         }
@@ -421,6 +446,12 @@ sk_sp<SkImage> RescaleImage(Recorder* recorder,
                             const SkImageInfo& dstInfo,
                             SkImage::RescaleGamma rescaleGamma,
                             SkImage::RescaleMode rescaleMode) {
+    TRACE_EVENT0("skia.gpu", TRACE_FUNC);
+    TRACE_EVENT_INSTANT2("skia.gpu", "RescaleImage Src", TRACE_EVENT_SCOPE_THREAD,
+                         "width", srcIRect.width(), "height", srcIRect.height());
+    TRACE_EVENT_INSTANT2("skia.gpu", "RescaleImage Dst", TRACE_EVENT_SCOPE_THREAD,
+                         "width", dstInfo.width(), "height", dstInfo.height());
+
     // make a Surface matching dstInfo to rescale into
     SkSurfaceProps surfaceProps = {};
     sk_sp<SkSurface> dst = make_surface_with_fallback(recorder,
@@ -551,46 +582,51 @@ bool GenerateMipmaps(Recorder* recorder,
 
     SkASSERT(texture->mipmapped() == Mipmapped::kYes);
 
-    // Within a rescaling pass tempInput is read from and tempOutput is written to.
-    // At the end of the pass tempOutput's texture is wrapped and assigned to tempInput.
-    sk_sp<SkImage> tempInput(new Image(kNeedNewImageUniqueID,
-                                       TextureProxyView(texture),
-                                       colorInfo));
-    sk_sp<SkSurface> tempOutput;
+    // Within a rescaling pass scratchImg is read from and a scratch surface is written to.
+    // At the end of the pass the scratch surface's texture is wrapped and assigned to scratchImg.
+    sk_sp<SkImage> scratchImg(
+            new Image(kNeedNewImageUniqueID, TextureProxyView(texture), colorInfo));
 
     SkISize srcSize = texture->dimensions();
     const SkColorInfo outColorInfo = colorInfo.makeAlphaType(kPremul_SkAlphaType);
 
-    for (int mipLevel = 1; srcSize.width() > 1 || srcSize.height() > 1; ++mipLevel) {
-        SkISize stepSize = SkISize::Make(1, 1);
-        if (srcSize.width() > 1) {
-            stepSize.fWidth = srcSize.width() / 2;
-        }
-        if (srcSize.height() > 1) {
-            stepSize.fHeight = srcSize.height() / 2;
-        }
-
-        tempOutput = make_surface_with_fallback(recorder,
-                                                SkImageInfo::Make(stepSize, outColorInfo),
-                                                Mipmapped::kNo,
-                                                nullptr);
-        if (!tempOutput) {
+    // Alternate between two scratch surfaces to avoid reading from and writing to a texture in the
+    // same pass. The dimensions of the first usages of the two scratch textures will be 1/2 and 1/4
+    // those of the original texture, respectively.
+    sk_sp<SkSurface> scratchSurfaces[2];
+    for (int i = 0; i < 2; ++i) {
+        scratchSurfaces[i] = make_surface_with_fallback(
+                recorder,
+                SkImageInfo::Make(SkISize::Make(std::max(1, srcSize.width() >> (i + 1)),
+                                                std::max(1, srcSize.height() >> (i + 1))),
+                                  outColorInfo),
+                Mipmapped::kNo,
+                nullptr);
+        if (!scratchSurfaces[i]) {
             return false;
         }
-        SkCanvas* stepDst = tempOutput->getCanvas();
-        SkRect stepDstRect = SkRect::Make(stepSize);
+    }
+
+    for (int mipLevel = 1; srcSize.width() > 1 || srcSize.height() > 1; ++mipLevel) {
+        const SkISize dstSize = SkISize::Make(std::max(srcSize.width() >> 1, 1),
+                                              std::max(srcSize.height() >> 1, 1));
+
+        SkSurface* scratchSurface = scratchSurfaces[(mipLevel - 1) & 1].get();
 
         SkPaint paint;
-        stepDst->drawImageRect(tempInput, SkRect::Make(srcSize), stepDstRect, kSamplingOptions,
-                               &paint, SkCanvas::kStrict_SrcRectConstraint);
+        scratchSurface->getCanvas()->drawImageRect(scratchImg,
+                                                   SkRect::Make(srcSize),
+                                                   SkRect::Make(dstSize),
+                                                   kSamplingOptions,
+                                                   &paint,
+                                                   SkCanvas::kStrict_SrcRectConstraint);
 
         // Make sure the rescaling draw finishes before copying the results.
-        sk_sp<SkSurface> stepDstSurface = sk_ref_sp(stepDst->getSurface());
-        skgpu::graphite::Flush(stepDstSurface);
+        skgpu::graphite::Flush(scratchSurface);
 
         sk_sp<CopyTextureToTextureTask> copyTask = CopyTextureToTextureTask::Make(
-                static_cast<const Surface*>(stepDstSurface.get())->readSurfaceView().refProxy(),
-                SkIRect::MakeSize(stepSize),
+                static_cast<const Surface*>(scratchSurface)->readSurfaceView().refProxy(),
+                SkIRect::MakeSize(dstSize),
                 texture,
                 {0, 0},
                 mipLevel);
@@ -599,8 +635,8 @@ bool GenerateMipmaps(Recorder* recorder,
         }
         recorder->priv().add(std::move(copyTask));
 
-        tempInput = SkSurfaces::AsImage(tempOutput);
-        srcSize = stepSize;
+        scratchImg = static_cast<const Surface*>(scratchSurface)->asImage();
+        srcSize = dstSize;
     }
 
     return true;
@@ -677,57 +713,119 @@ std::tuple<skgpu::graphite::TextureProxyView, SkColorType> AsView(Recorder* reco
     return {gi->textureProxyView(), ct};
 }
 
+SkColorType ComputeShaderCoverageMaskTargetFormat(const Caps* caps) {
+    // GPU compute coverage mask renderers need to bind the mask texture as a storage binding, which
+    // support a limited set of color formats. In general, we use RGBA8 if Alpha8 can't be
+    // supported.
+    // TODO(chromium:1856): In particular, WebGPU does not support the "storage binding" usage for
+    // the R8Unorm texture format.
+    if (caps->isStorage(caps->getDefaultStorageTextureInfo(kAlpha_8_SkColorType))) {
+        return kAlpha_8_SkColorType;
+    }
+    return kRGBA_8888_SkColorType;
+}
+
 } // namespace skgpu::graphite
 
 namespace skif {
 
-Functors MakeGraphiteFunctors(skgpu::graphite::Recorder* recorder) {
-    SkASSERT(recorder);
+namespace {
 
-    auto makeSurfaceFunctor = [recorder](const SkImageInfo& imageInfo,
-                                         const SkSurfaceProps* props) {
-        return SkSpecialSurfaces::MakeGraphite(recorder, imageInfo, *props);
-    };
-    auto makeImageFunctor = [recorder](const SkIRect& subset,
-                                       sk_sp<SkImage> image,
-                                       const SkSurfaceProps& props) {
-        // This just makes a raster image, but it could maybe call MakeFromGraphite
-        return SkSpecialImages::MakeGraphite(recorder, subset, image, props);
-    };
-    auto makeCachedBitmapFunctor = [recorder](const SkBitmap& data) -> sk_sp<SkImage> {
-        auto proxy = skgpu::graphite::RecorderPriv::CreateCachedProxy(recorder, data);
+// TODO(michaelludwig): The skgpu::BlurUtils effects will be migrated to src/core to implement a
+// shader BlurEngine that can be shared by rastr, Ganesh, and Graphite. This is blocked by having
+// skif::FilterResult handle the resizing to the max supported sigma.
+class GraphiteBackend : public Backend, private SkBlurEngine, private SkBlurEngine::Algorithm {
+public:
+
+    GraphiteBackend(skgpu::graphite::Recorder* recorder,
+                    const SkSurfaceProps& surfaceProps,
+                    SkColorType colorType)
+            : Backend(SkImageFilterCache::Create(SkImageFilterCache::kDefaultTransientSize),
+                      surfaceProps, colorType)
+            , fRecorder(recorder) {}
+
+    // Backend
+    sk_sp<SkDevice> makeDevice(SkISize size,
+                               sk_sp<SkColorSpace> colorSpace,
+                               const SkSurfaceProps* props) const override {
+        SkImageInfo imageInfo = SkImageInfo::Make(size,
+                                                  this->colorType(),
+                                                  kPremul_SkAlphaType,
+                                                  std::move(colorSpace));
+        return skgpu::graphite::Device::Make(fRecorder,
+                                             imageInfo,
+                                             skgpu::Budgeted::kYes,
+                                             skgpu::Mipmapped::kNo,
+#if defined(GRAPHITE_USE_APPROX_FIT_FOR_FILTERS)
+                                             SkBackingFit::kApprox,
+#else
+                                             SkBackingFit::kExact,
+#endif
+                                             props ? *props : this->surfaceProps(),
+                                             /*addInitialClear=*/false);
+    }
+
+    sk_sp<SkSpecialImage> makeImage(const SkIRect& subset, sk_sp<SkImage> image) const override {
+        return SkSpecialImages::MakeGraphite(fRecorder, subset, image, this->surfaceProps());
+    }
+
+    sk_sp<SkImage> getCachedBitmap(const SkBitmap& data) const override {
+        auto proxy = skgpu::graphite::RecorderPriv::CreateCachedProxy(fRecorder, data);
         if (!proxy) {
             return nullptr;
         }
 
         const SkColorInfo& colorInfo = data.info().colorInfo();
-        skgpu::Swizzle swizzle = recorder->priv().caps()->getReadSwizzle(colorInfo.colorType(),
-                                                                         proxy->textureInfo());
+        skgpu::Swizzle swizzle = fRecorder->priv().caps()->getReadSwizzle(colorInfo.colorType(),
+                                                                          proxy->textureInfo());
         return sk_make_sp<skgpu::graphite::Image>(
                 data.getGenerationID(),
                 skgpu::graphite::TextureProxyView(std::move(proxy), swizzle),
                 colorInfo);
-    };
-    auto blurImageFunctor = [recorder](SkSize sigma,
-                                       sk_sp<SkSpecialImage> input,
-                                       SkIRect srcRect,
-                                       SkIRect dstRect,
-                                       sk_sp<SkColorSpace> outCS,
-                                       const SkSurfaceProps& outProps) {
-        return blur(recorder, sigma, std::move(input), srcRect, dstRect,
-                    std::move(outCS), outProps);
-    };
+    }
 
-    return Functors(makeSurfaceFunctor, makeImageFunctor, makeCachedBitmapFunctor,
-                    blurImageFunctor);
-}
+    const SkBlurEngine* getBlurEngine() const override { return this; }
 
-Context MakeGraphiteContext(skgpu::graphite::Recorder* recorder,
-                            const ContextInfo& info) {
+    // SkBlurEngine
+    const SkBlurEngine::Algorithm* findAlgorithm(SkSize sigma,
+                                                 SkColorType colorType) const override {
+        // The runtime effect blurs handle all tilemodes and color types
+        return this;
+    }
+
+    // SkBlurEngine::Algorithm
+    float maxSigma() const override {
+        // TODO: When FilterResult handles rescaling externally, change this to
+        // skgpu::kMaxLinearBlurSigma.
+        return SK_ScalarInfinity;
+    }
+
+    bool supportsOnlyDecalTiling() const override { return false; }
+
+    sk_sp<SkSpecialImage> blur(SkSize sigma,
+                               sk_sp<SkSpecialImage> src,
+                               const SkIRect& srcRect,
+                               SkTileMode tileMode,
+                               const SkIRect& dstRect) const override {
+        TRACE_EVENT_INSTANT2("skia.gpu", "GaussianBlur", TRACE_EVENT_SCOPE_THREAD,
+                             "sigmaX", sigma.width(), "sigmaY", sigma.height());
+
+        SkColorSpace* cs = src->getColorSpace();
+        return blur_impl(fRecorder, sigma, std::move(src), srcRect, tileMode, dstRect,
+                         sk_ref_sp(cs), this->surfaceProps());
+    }
+
+private:
+    skgpu::graphite::Recorder* fRecorder;
+};
+
+} // anonymous namespace
+
+sk_sp<Backend> MakeGraphiteBackend(skgpu::graphite::Recorder* recorder,
+                                   const SkSurfaceProps& surfaceProps,
+                                   SkColorType colorType) {
     SkASSERT(recorder);
-    SkASSERT(!info.fSource.image() || info.fSource.image()->isGraphiteBacked());
-
-    return Context(info, MakeGraphiteFunctors(recorder));
+    return sk_make_sp<GraphiteBackend>(recorder, surfaceProps, colorType);
 }
 
 }  // namespace skif

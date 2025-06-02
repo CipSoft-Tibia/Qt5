@@ -189,6 +189,14 @@ struct loader_device {
 
     VkAllocationCallbacks alloc_callbacks;
 
+    // List of activated device extensions that layers support (but not necessarily the driver which have functions that require
+    // trampolines to work correctly. EX - vkDebugMarkerSetObjectNameEXT can name wrapped handles like instance, physical device,
+    // or surface
+    struct {
+        bool ext_debug_marker_enabled;
+        bool ext_debug_utils_enabled;
+    } layer_extensions;
+
     // List of activated device extensions that have terminators implemented in the loader
     struct {
         bool khr_swapchain_enabled;
@@ -197,7 +205,7 @@ struct loader_device {
         bool ext_debug_marker_enabled;
         bool ext_debug_utils_enabled;
         bool ext_full_screen_exclusive_enabled;
-    } extensions;
+    } driver_extensions;
 
     struct loader_device *next;
 
@@ -299,13 +307,9 @@ struct loader_instance {
     struct loader_extension_list ext_list;  // icds and loaders extensions
     struct loader_instance_extension_enables enabled_known_extensions;
 
-    // Stores debug callbacks - used in the log
-    VkLayerDbgFunctionNode *DbgFunctionHead;
-
-    // Stores the debug callbacks set during instance creation
-    // These are kept separate because they aren't to be used outside of instance creation and destruction
-    // So they are swapped out at the end of instance creation and swapped in at instance destruction
-    VkLayerDbgFunctionNode *InstanceCreationDeletionDebugFunctionHead;
+    // Stores debug callbacks - used in the log.
+    VkLayerDbgFunctionNode *current_dbg_function_head;        // Current head
+    VkLayerDbgFunctionNode *instance_only_dbg_function_head;  // Only used for instance create/destroy
 
     VkAllocationCallbacks alloc_callbacks;
 
@@ -398,8 +402,8 @@ struct loader_physical_device_term {
 };
 
 #if defined(LOADER_ENABLE_LINUX_SORT)
-// Structure for storing the relevent device information for selecting a device.
-// NOTE: Needs to be defined here so we can store this content in the term structrue
+// Structure for storing the relevant device information for selecting a device.
+// NOTE: Needs to be defined here so we can store this content in the term structure
 //       for quicker sorting.
 struct LinuxSortedDeviceInfo {
     // Associated Vulkan Physical Device
@@ -460,11 +464,14 @@ enum loader_data_files_type {
     LOADER_DATA_FILE_NUM_TYPES  // Not a real field, used for possible loop terminator
 };
 
-struct loader_phys_dev_per_icd {
+struct loader_icd_physical_devices {
     uint32_t device_count;
     VkPhysicalDevice *physical_devices;
     uint32_t icd_index;
     struct loader_icd_term *icd_term;
+#if defined(WIN32)
+    LUID windows_adapter_luid;
+#endif
 };
 
 struct loader_msg_callback_map_entry {

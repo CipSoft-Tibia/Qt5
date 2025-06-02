@@ -4,6 +4,8 @@
 
 #include "extensions/common/manifest_handlers/web_file_handlers_info.h"
 
+#include <string_view>
+
 #include "base/strings/string_split.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/chromeos_buildflags.h"
@@ -22,6 +24,11 @@ namespace {
 
 using FileHandlersManifestKeys = api::file_handlers::ManifestKeys;
 
+bool IsInAllowlist(const Extension& extension) {
+  const Feature* feature = FeatureProvider::GetManifestFeature("file_handlers");
+  return feature->IsIdInAllowlist(extension.hashed_id());
+}
+
 // Verifies manifest input. Disambiguates `file_extensions` on `accept` into a
 // list, which could otherwise have also been a string. `icon.sizes` remains as
 // is because the generated data type only accepts a string. This string can be
@@ -35,7 +42,7 @@ std::unique_ptr<WebFileHandlers> ParseFromList(const Extension& extension,
     return nullptr;
   }
 
-  auto get_error = [](size_t i, base::StringPiece message) {
+  auto get_error = [](size_t i, std::string_view message) {
     return ErrorUtils::FormatErrorMessageUTF16(
         manifest_errors::kInvalidWebFileHandlers, base::NumberToString(i),
         message);
@@ -127,8 +134,13 @@ std::unique_ptr<WebFileHandlers> ParseFromList(const Extension& extension,
     }
 
     // Make the temporary `accept` permanent by assigning to `file_handler`.
-    api::file_handlers::FileHandler::Accept::Populate(
-        accept, web_file_handler.file_handler.accept, *error);
+    if (auto result =
+            api::file_handlers::FileHandler::Accept::FromValue(accept);
+        result.has_value()) {
+      web_file_handler.file_handler.accept = std::move(result).value();
+    } else {
+      *error = result.error();
+    }
 
     // `icon` is an optional array of dictionaries.
     if (manifest_file_handler.icons.has_value()) {
@@ -262,26 +274,20 @@ bool WebFileHandlersParser::Validate(
   return true;
 }
 
+// static
 bool WebFileHandlers::SupportsWebFileHandlers(const Extension& extension) {
-  // MV3+ is required.
-  if (extension.manifest_version() < 3) {
+  // An MV3+ extension is required.
+  if (extension.manifest_version() < 3 || !extension.is_extension()) {
     return false;
   }
 
-  // Use of the extension feature is supported.
-  if (base::FeatureList::IsEnabled(
-          extensions_features::kExtensionWebFileHandlers)) {
-    return true;
-  }
+  return base::FeatureList::IsEnabled(
+      extensions_features::kExtensionWebFileHandlers);
+}
 
-#if !BUILDFLAG(IS_CHROMEOS_ASH)
-  return false;
-#else
-  // An extension in the allowlist running on Ash is supported.
-  const Feature* feature = FeatureProvider::GetManifestFeature("file_handlers");
-  bool is_id_in_allowlist = feature->IsIdInAllowlist(extension.hashed_id());
-  return is_id_in_allowlist;
-#endif
+// static
+bool WebFileHandlers::CanBypassPermissionDialog(const Extension& extension) {
+  return IsInAllowlist(extension) || extension.was_installed_by_default();
 }
 
 }  // namespace extensions

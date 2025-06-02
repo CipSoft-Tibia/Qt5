@@ -5,15 +5,29 @@
 
 # This script installs 7-Zip
 
-$version = "23.01"
-$nonDottedVersion = "2301"
+$version = "24.09"
+$nonDottedVersion = "2409"
 
-if (Is64BitWinHost) {
-    $arch = "-x64"
-    $sha1 = "7DF28D340D7084647921CC25A8C2068BB192BDBB"
-} else {
-    $arch = ""
-    $sha1 = "D5D00E6EA8B8E68CE7A704FD478DC950E543C25C"
+$cpu_arch = Get-CpuArchitecture
+switch ($cpu_arch) {
+    arm64 {
+        $arch = "-arm64"
+        $sha1 = "2f5aaa22a4a591b01a1b06c17565233f0cd70429"
+        Break
+    }
+    x64 {
+        $arch = "-x64"
+        $sha1 = "28b53835fe92c3fa6e0c422fc3b17c6bc1cb27e0"
+        Break
+    }
+    x86 {
+        $arch = ""
+        $sha1 = "2135a90a9f6c3202c32a87b1c5cf805ce294a497"
+        Break
+    }
+    default {
+        throw "Unknown architecture $cpu_arch"
+    }
 }
 
 $url_cache = "https://ci-files01-hki.ci.qt.io/input/windows/7z" + $nonDottedVersion + $arch + ".exe"

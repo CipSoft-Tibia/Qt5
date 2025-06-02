@@ -101,7 +101,7 @@ enum ClearMode {
   CLEAR_ONLY_MANAGED_ACCOUNTS = 3;
 }
 
-// Message sent to Chrome by authpolicyd as a response to a successful
+// Message sent to Chrome by kerberosd as a response to a successful
 // GetUserKerberosFiles call.
 message KerberosFiles {
   // Kerberos credential cache.
@@ -128,7 +128,7 @@ message Account {
   optional bool is_managed = 5;
   // Whether there's a password stored on disk for this account.
   optional bool password_was_remembered = 6;
-  // Whether the account uses the Chrome OS login password for authentication.
+  // Whether the account uses the ChromeOS login password for authentication.
   optional bool use_login_password = 7;
 }
 
@@ -219,7 +219,7 @@ message AcquireKerberosTgtRequest {
   // Whether the daemon should remember the password (passed separately in a
   // file descriptor).
   optional bool remember_password = 2;
-  // Whether to use the Chrome OS login password for authentication. The
+  // Whether to use the ChromeOS login password for authentication. The
   // password file descriptor (passed as D-Bus param) is ignored in this case.
   optional bool use_login_password = 3;
 }

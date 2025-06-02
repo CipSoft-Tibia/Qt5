@@ -91,7 +91,7 @@ void tst_QQuick3DPointLight::testProperties()
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityHigh,
         QQuick3DAbstractLight::QSSGShadowMapQuality::ShadowMapQualityVeryHigh
     };
-    const unsigned int mappedResolutions[] = {8, 9, 10, 11};
+    const unsigned int mappedResolutions[] = {256, 512, 1024, 2048};
 
     for (int i = 0; i < 4; ++i) {
         const auto shadowMapQuality = qualities[i];
@@ -101,6 +101,16 @@ void tst_QQuick3DPointLight::testProperties()
         QCOMPARE(mappedResolution, node->m_shadowMapRes);
         QCOMPARE(light.shadowMapQuality(), shadowMapQuality);
     }
+
+    const QQuick3DAbstractLight::QSSGSoftShadowQuality ssq = QQuick3DAbstractLight::QSSGSoftShadowQuality::PCF16;
+    light.setSoftShadowQuality(ssq);
+    node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
+    QCOMPARE(light.softShadowQuality(), ssq);
+
+    const float pcfFactor = 5.0f;
+    light.setPcfFactor(pcfFactor);
+    node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));
+    QCOMPARE(light.pcfFactor(), pcfFactor);
 
     light.setCastsShadow(true);
     node = static_cast<QSSGRenderLight *>(light.updateSpatialNode(node));

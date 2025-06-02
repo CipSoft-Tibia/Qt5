@@ -1,26 +1,39 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_DEVICE_H_
 #define SRC_DAWN_NATIVE_DEVICE_H_
 
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "dawn/common/ContentLessObjectCache.h"
 #include "dawn/common/Mutex.h"
 #include "dawn/native/CacheKey.h"
@@ -59,13 +72,12 @@ class OwnedCompilationMessages;
 struct CallbackTask;
 struct InternalPipelineStore;
 struct ShaderModuleParseResult;
-
-using WGSLExtensionSet = std::unordered_set<std::string>;
+struct TrackedFutureWaitInfo;
 
 class DeviceBase : public RefCountedWithExternalCount {
   public:
     DeviceBase(AdapterBase* adapter,
-               const DeviceDescriptor* descriptor,
+               const UnpackedPtr<DeviceDescriptor>& descriptor,
                const TogglesState& deviceToggles);
     ~DeviceBase() override;
 
@@ -91,20 +103,6 @@ class DeviceBase : public RefCountedWithExternalCount {
         }
         return false;
     }
-
-    template <typename T>
-    [[nodiscard]] bool ConsumedError(
-        ResultOrError<T> resultOrError,
-        T* result,
-        InternalErrorType additionalAllowedErrors = InternalErrorType::None) {
-        if (DAWN_UNLIKELY(resultOrError.IsError())) {
-            ConsumeError(resultOrError.AcquireError(), additionalAllowedErrors);
-            return true;
-        }
-        *result = resultOrError.AcquireSuccess();
-        return false;
-    }
-
     template <typename... Args>
     [[nodiscard]] bool ConsumedError(MaybeError maybeError,
                                      InternalErrorType additionalAllowedErrors,
@@ -120,7 +118,6 @@ class DeviceBase : public RefCountedWithExternalCount {
         }
         return false;
     }
-
     template <typename... Args>
     [[nodiscard]] bool ConsumedError(MaybeError maybeError,
                                      const char* formatStr,
@@ -128,6 +125,18 @@ class DeviceBase : public RefCountedWithExternalCount {
         return ConsumedError(std::move(maybeError), InternalErrorType::None, formatStr, args...);
     }
 
+    template <typename T>
+    [[nodiscard]] bool ConsumedError(
+        ResultOrError<T> resultOrError,
+        T* result,
+        InternalErrorType additionalAllowedErrors = InternalErrorType::None) {
+        if (DAWN_UNLIKELY(resultOrError.IsError())) {
+            ConsumeError(resultOrError.AcquireError(), additionalAllowedErrors);
+            return true;
+        }
+        *result = resultOrError.AcquireSuccess();
+        return false;
+    }
     template <typename T, typename... Args>
     [[nodiscard]] bool ConsumedError(ResultOrError<T> resultOrError,
                                      T* result,
@@ -145,7 +154,6 @@ class DeviceBase : public RefCountedWithExternalCount {
         *result = resultOrError.AcquireSuccess();
         return false;
     }
-
     template <typename T, typename... Args>
     [[nodiscard]] bool ConsumedError(ResultOrError<T> resultOrError,
                                      T* result,
@@ -157,6 +165,7 @@ class DeviceBase : public RefCountedWithExternalCount {
 
     MaybeError ValidateObject(const ApiObjectBase* object) const;
 
+    InstanceBase* GetInstance() const;
     AdapterBase* GetAdapter() const;
     PhysicalDeviceBase* GetPhysicalDevice() const;
     virtual dawn::platform::Platform* GetPlatform() const;
@@ -171,6 +180,9 @@ class DeviceBase : public RefCountedWithExternalCount {
     // The reference returned has the same lifetime as the device.
     const Format& GetValidInternalFormat(wgpu::TextureFormat format) const;
     const Format& GetValidInternalFormat(FormatIndex formatIndex) const;
+    // Get compatible view formats. The returned span contains all compatible formats not equal to
+    // `format`.
+    std::vector<const Format*> GetCompatibleViewFormats(const Format& format) const;
 
     virtual ResultOrError<Ref<CommandBufferBase>> CreateCommandBuffer(
         CommandEncoder* encoder,
@@ -198,26 +210,29 @@ class DeviceBase : public RefCountedWithExternalCount {
     PipelineLayoutBase* GetEmptyPipelineLayout();
 
     ResultOrError<Ref<TextureViewBase>> CreateImplicitMSAARenderTextureViewFor(
-        const TextureBase* singleSampledTexture,
+        const TextureViewBase* singleSampledTexture,
         uint32_t sampleCount);
 
     ResultOrError<Ref<TextureViewBase>> GetOrCreatePlaceholderTextureViewForExternalTexture();
 
     ResultOrError<Ref<PipelineLayoutBase>> GetOrCreatePipelineLayout(
-        const PipelineLayoutDescriptor* descriptor);
+        const UnpackedPtr<PipelineLayoutDescriptor>& descriptor);
 
     ResultOrError<Ref<SamplerBase>> GetOrCreateSampler(const SamplerDescriptor* descriptor);
 
     ResultOrError<Ref<ShaderModuleBase>> GetOrCreateShaderModule(
-        const ShaderModuleDescriptor* descriptor,
+        const UnpackedPtr<ShaderModuleDescriptor>& descriptor,
         ShaderModuleParseResult* parseResult,
         OwnedCompilationMessages* compilationMessages);
 
     Ref<AttachmentState> GetOrCreateAttachmentState(AttachmentState* blueprint);
     Ref<AttachmentState> GetOrCreateAttachmentState(
         const RenderBundleEncoderDescriptor* descriptor);
-    Ref<AttachmentState> GetOrCreateAttachmentState(const RenderPipelineDescriptor* descriptor);
-    Ref<AttachmentState> GetOrCreateAttachmentState(const RenderPassDescriptor* descriptor);
+    Ref<AttachmentState> GetOrCreateAttachmentState(
+        const UnpackedPtr<RenderPipelineDescriptor>& descriptor,
+        const PipelineLayoutBase* layout);
+    Ref<AttachmentState> GetOrCreateAttachmentState(
+        const UnpackedPtr<RenderPassDescriptor>& descriptor);
 
     Ref<PipelineCacheBase> GetOrCreatePipelineCache(const CacheKey& key);
 
@@ -228,7 +243,7 @@ class DeviceBase : public RefCountedWithExternalCount {
     ResultOrError<Ref<BindGroupLayoutBase>> CreateBindGroupLayout(
         const BindGroupLayoutDescriptor* descriptor,
         bool allowInternalBinding = false);
-    ResultOrError<Ref<BufferBase>> CreateBuffer(const BufferDescriptor* descriptor);
+    ResultOrError<Ref<BufferBase>> CreateBuffer(const BufferDescriptor* rawDescriptor);
     ResultOrError<Ref<CommandEncoder>> CreateCommandEncoder(
         const CommandEncoderDescriptor* descriptor = nullptr);
     ResultOrError<Ref<ComputePipelineBase>> CreateComputePipeline(
@@ -236,7 +251,7 @@ class DeviceBase : public RefCountedWithExternalCount {
     ResultOrError<Ref<ComputePipelineBase>> CreateUninitializedComputePipeline(
         const ComputePipelineDescriptor* descriptor);
     ResultOrError<Ref<PipelineLayoutBase>> CreatePipelineLayout(
-        const PipelineLayoutDescriptor* descriptor);
+        const PipelineLayoutDescriptor* rawDescriptor);
     ResultOrError<Ref<QuerySetBase>> CreateQuerySet(const QuerySetDescriptor* descriptor);
     ResultOrError<Ref<RenderBundleEncoder>> CreateRenderBundleEncoder(
         const RenderBundleEncoderDescriptor* descriptor);
@@ -250,7 +265,7 @@ class DeviceBase : public RefCountedWithExternalCount {
         OwnedCompilationMessages* compilationMessages = nullptr);
     ResultOrError<Ref<SwapChainBase>> CreateSwapChain(Surface* surface,
                                                       const SwapChainDescriptor* descriptor);
-    ResultOrError<Ref<TextureBase>> CreateTexture(const TextureDescriptor* descriptor);
+    ResultOrError<Ref<TextureBase>> CreateTexture(const TextureDescriptor* rawDescriptor);
     ResultOrError<Ref<TextureViewBase>> CreateTextureView(TextureBase* texture,
                                                           const TextureViewDescriptor* descriptor);
 
@@ -352,7 +367,7 @@ class DeviceBase : public RefCountedWithExternalCount {
     ApiObjectList* GetObjectTrackingList(ObjectType type);
 
     std::vector<const char*> GetTogglesUsed() const;
-    WGSLExtensionSet GetWGSLExtensionAllowList() const;
+    const tint::wgsl::AllowedFeatures& GetWGSLAllowedFeatures() const;
     bool IsToggleEnabled(Toggle toggle) const;
     bool IsValidationEnabled() const;
     bool IsRobustnessEnabled() const;
@@ -428,6 +443,7 @@ class DeviceBase : public RefCountedWithExternalCount {
     void APIDestroy();
 
     virtual void AppendDebugLayerMessages(ErrorData* error) {}
+    virtual void AppendDeviceLostMessage(ErrorData* error) {}
 
     // It is guaranteed that the wrapped mutex will outlive the Device (if the Device is deleted
     // before the AutoLockAndHoldRef).
@@ -438,16 +454,9 @@ class DeviceBase : public RefCountedWithExternalCount {
 
     // This method returns true if Feature::ImplicitDeviceSynchronization is turned on and the
     // device is locked by current thread. This method is only enabled when DAWN_ENABLE_ASSERTS is
-    // turned on. Thus it should only be wrapped inside ASSERT() macro. i.e.
-    // ASSERT(device.IsLockedByCurrentThread())
+    // turned on. Thus it should only be wrapped inside DAWN_ASSERT() macro. i.e.
+    // DAWN_ASSERT(device.IsLockedByCurrentThread())
     bool IsLockedByCurrentThreadIfNeeded() const;
-
-    // TODO(dawn:XXX): remove this enum forwarding once no longer necessary.
-    using SubmitMode = ExecutionQueueBase::SubmitMode;
-
-    // TODO(dawn:1413): Remove this proxy methods in favor of using the ExecutionQueue directly.
-    ExecutionSerial GetLastSubmittedCommandSerial() const;
-    ExecutionSerial GetPendingCommandSerial() const;
 
   protected:
     // Constructor used only for mocking and testing.
@@ -466,17 +475,18 @@ class DeviceBase : public RefCountedWithExternalCount {
         const BindGroupDescriptor* descriptor) = 0;
     virtual ResultOrError<Ref<BindGroupLayoutInternalBase>> CreateBindGroupLayoutImpl(
         const BindGroupLayoutDescriptor* descriptor) = 0;
-    virtual ResultOrError<Ref<BufferBase>> CreateBufferImpl(const BufferDescriptor* descriptor) = 0;
+    virtual ResultOrError<Ref<BufferBase>> CreateBufferImpl(
+        const UnpackedPtr<BufferDescriptor>& descriptor) = 0;
     virtual ResultOrError<Ref<ExternalTextureBase>> CreateExternalTextureImpl(
         const ExternalTextureDescriptor* descriptor);
     virtual ResultOrError<Ref<PipelineLayoutBase>> CreatePipelineLayoutImpl(
-        const PipelineLayoutDescriptor* descriptor) = 0;
+        const UnpackedPtr<PipelineLayoutDescriptor>& descriptor) = 0;
     virtual ResultOrError<Ref<QuerySetBase>> CreateQuerySetImpl(
         const QuerySetDescriptor* descriptor) = 0;
     virtual ResultOrError<Ref<SamplerBase>> CreateSamplerImpl(
         const SamplerDescriptor* descriptor) = 0;
     virtual ResultOrError<Ref<ShaderModuleBase>> CreateShaderModuleImpl(
-        const ShaderModuleDescriptor* descriptor,
+        const UnpackedPtr<ShaderModuleDescriptor>& descriptor,
         ShaderModuleParseResult* parseResult,
         OwnedCompilationMessages* compilationMessages) = 0;
     // Note that previousSwapChain may be nullptr, or come from a different backend.
@@ -485,14 +495,14 @@ class DeviceBase : public RefCountedWithExternalCount {
         SwapChainBase* previousSwapChain,
         const SwapChainDescriptor* descriptor) = 0;
     virtual ResultOrError<Ref<TextureBase>> CreateTextureImpl(
-        const TextureDescriptor* descriptor) = 0;
+        const UnpackedPtr<TextureDescriptor>& descriptor) = 0;
     virtual ResultOrError<Ref<TextureViewBase>> CreateTextureViewImpl(
         TextureBase* texture,
         const TextureViewDescriptor* descriptor) = 0;
     virtual Ref<ComputePipelineBase> CreateUninitializedComputePipelineImpl(
-        const ComputePipelineDescriptor* descriptor) = 0;
+        const UnpackedPtr<ComputePipelineDescriptor>& descriptor) = 0;
     virtual Ref<RenderPipelineBase> CreateUninitializedRenderPipelineImpl(
-        const RenderPipelineDescriptor* descriptor) = 0;
+        const UnpackedPtr<RenderPipelineDescriptor>& descriptor) = 0;
     virtual ResultOrError<Ref<SharedTextureMemoryBase>> ImportSharedTextureMemoryImpl(
         const SharedTextureMemoryDescriptor* descriptor);
     virtual ResultOrError<Ref<SharedFenceBase>> ImportSharedFenceImpl(
@@ -523,7 +533,7 @@ class DeviceBase : public RefCountedWithExternalCount {
                                                    WGPUCreateRenderPipelineAsyncCallback callback,
                                                    void* userdata);
 
-    void ApplyFeatures(const DeviceDescriptor* deviceDescriptor);
+    void ApplyFeatures(const UnpackedPtr<DeviceDescriptor>& deviceDescriptor);
 
     void SetWGSLExtensionAllowList();
 
@@ -577,7 +587,7 @@ class DeviceBase : public RefCountedWithExternalCount {
     struct DeprecationWarnings;
     std::unique_ptr<DeprecationWarnings> mDeprecationWarnings;
 
-    std::unordered_set<std::string> mWarnings;
+    absl::flat_hash_set<std::string> mWarnings;
 
     State mState = State::BeingCreated;
 
@@ -592,7 +602,7 @@ class DeviceBase : public RefCountedWithExternalCount {
 
     CombinedLimits mLimits;
     FeaturesSet mEnabledFeatures;
-    WGSLExtensionSet mWGSLExtensionAllowList;
+    tint::wgsl::AllowedFeatures mWGSLAllowedFeatures;
 
     std::unique_ptr<InternalPipelineStore> mInternalPipelineStore;
 

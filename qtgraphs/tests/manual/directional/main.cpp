@@ -18,31 +18,35 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    Q3DScatter *graph = new Q3DScatter();
+    QQuickWidget *quickWidget = new QQuickWidget;
+    Q3DScatterWidgetItem *graph = new Q3DScatterWidgetItem();
+    graph->setWidget(quickWidget);
     graph->setMeasureFps(true);
 
-    QSize screenSize = graph->screen()->size();
-    graph->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 1.5));
-    graph->setMaximumSize(screenSize);
-    graph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    graph->setFocusPolicy(Qt::StrongFocus);
+    QSize screenSize = graph->widget()->screen()->size();
+    graph->widget()->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 1.5));
+    graph->widget()->setMaximumSize(screenSize);
+    graph->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    graph->widget()->setFocusPolicy(Qt::StrongFocus);
 
     QWidget *widget = new QWidget;
     QHBoxLayout *hLayout = new QHBoxLayout(widget);
     QVBoxLayout *vLayout = new QVBoxLayout();
-    hLayout->addWidget(graph, 1);
+    hLayout->addWidget(graph->widget(), 1);
     hLayout->addLayout(vLayout);
 
     widget->setWindowTitle(QStringLiteral("Directional scatter"));
 
     QComboBox *themeList = new QComboBox(widget);
-    themeList->addItem(QStringLiteral("Qt"));
-    themeList->addItem(QStringLiteral("Primary Colors"));
-    themeList->addItem(QStringLiteral("Stone Moss"));
-    themeList->addItem(QStringLiteral("Army Blue"));
-    themeList->addItem(QStringLiteral("Retro"));
-    themeList->addItem(QStringLiteral("Ebony"));
-    themeList->addItem(QStringLiteral("Isabelle"));
+    themeList->addItem(QStringLiteral("QtGreen"));
+    themeList->addItem(QStringLiteral("QtGreenNeon"));
+    themeList->addItem(QStringLiteral("MixSeries"));
+    themeList->addItem(QStringLiteral("OrangeSeries"));
+    themeList->addItem(QStringLiteral("YellowSeries"));
+    themeList->addItem(QStringLiteral("BlueSeries"));
+    themeList->addItem(QStringLiteral("PurpleSeries"));
+    themeList->addItem(QStringLiteral("GreySeries"));
+    themeList->addItem(QStringLiteral("UserDefined"));
     themeList->setCurrentIndex(6);
 
     QPushButton *labelButton = new QPushButton(widget);
@@ -101,7 +105,7 @@ int main(int argc, char **argv)
 
     ScatterDataModifier *modifier = new ScatterDataModifier(graph);
 
-    QObject::connect(graph, &QAbstract3DGraph::currentFpsChanged, modifier,
+    QObject::connect(graph, &Q3DGraphsWidgetItem::currentFpsChanged, modifier,
                      &ScatterDataModifier::fpsChanged);
 
     QObject::connect(cameraButton, &QPushButton::clicked, modifier,
@@ -111,29 +115,30 @@ int main(int argc, char **argv)
     QObject::connect(labelButton, &QPushButton::clicked, modifier,
                      &ScatterDataModifier::changeLabelStyle);
 
-    QObject::connect(backgroundCheckBox, &QCheckBox::stateChanged, modifier,
-                     &ScatterDataModifier::setBackgroundEnabled);
-    QObject::connect(gridCheckBox, &QCheckBox::stateChanged, modifier,
-                     &ScatterDataModifier::setGridEnabled);
+    QObject::connect(backgroundCheckBox, &QCheckBox::checkStateChanged, modifier,
+                     &ScatterDataModifier::setBackgroundVisible);
+    QObject::connect(gridCheckBox, &QCheckBox::checkStateChanged, modifier,
+                     &ScatterDataModifier::setGridVisible);
 
-    QObject::connect(modifier, &ScatterDataModifier::backgroundEnabledChanged,
+    QObject::connect(modifier, &ScatterDataModifier::backgroundVisibleChanged,
                      backgroundCheckBox, &QCheckBox::setChecked);
-    QObject::connect(optimizationCheckBox, &QCheckBox::stateChanged,
+    QObject::connect(optimizationCheckBox, &QCheckBox::checkStateChanged,
                      modifier, &ScatterDataModifier::enableOptimization);
-    QObject::connect(modifier, &ScatterDataModifier::gridEnabledChanged,
+    QObject::connect(modifier, &ScatterDataModifier::gridVisibleChanged,
                      gridCheckBox, &QCheckBox::setChecked);
     QObject::connect(itemStyleList, SIGNAL(currentIndexChanged(int)), modifier,
                      SLOT(changeStyle(int)));
 
     QObject::connect(themeList, SIGNAL(currentIndexChanged(int)), modifier,
                      SLOT(changeTheme(int)));
+    modifier->changeTheme(themeList->currentIndex());
 
     QObject::connect(shadowQuality, SIGNAL(currentIndexChanged(int)), modifier,
                      SLOT(changeShadowQuality(int)));
 
     QObject::connect(modifier, &ScatterDataModifier::shadowQualityChanged, shadowQuality,
                      &QComboBox::setCurrentIndex);
-    QObject::connect(graph, &Q3DScatter::shadowQualityChanged, modifier,
+    QObject::connect(graph, &Q3DScatterWidgetItem::shadowQualityChanged, modifier,
                      &ScatterDataModifier::shadowQualityUpdatedByVisual);
 
     QObject::connect(fontList, &QFontComboBox::currentFontChanged, modifier,

@@ -4,9 +4,10 @@
 
 #include "content/browser/child_process_launcher_helper.h"
 
+#include <optional>
+
 #include "base/command_line.h"
 #include "base/functional/bind.h"
-#include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/no_destructor.h"
 #include "base/process/launch.h"
@@ -17,13 +18,14 @@
 #include "base/task/single_thread_task_runner_thread_mode.h"
 #include "base/task/task_traits.h"
 #include "build/build_config.h"
+#include "components/variations/active_field_trials.h"
 #include "content/browser/child_process_launcher.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_launcher_utils.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/sandboxed_process_launcher_delegate.h"
+#include "mojo/core/configuration.h"
 #include "mojo/public/cpp/platform/platform_channel.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "content/browser/android/launcher_thread.h"
@@ -96,6 +98,10 @@ ChildProcessLauncherHelper::ChildProcessLauncherHelper(
       can_use_warm_up_connection_(can_use_warm_up_connection)
 #endif
 {
+  if (!mojo::core::GetConfiguration().is_broker_process &&
+      !command_line_->HasSwitch(switches::kDisableMojoBroker)) {
+    command_line_->AppendSwitch(switches::kDisableMojoBroker);
+  }
   // command_line_ is always accessed from the launcher thread, so detach it
   // from the client thread here.
   command_line_->DetachFromCurrentSequence();
@@ -139,7 +145,7 @@ void ChildProcessLauncherHelper::LaunchOnLauncherThread() {
 
   bool is_synchronous_launch = true;
   int launch_result = LAUNCH_RESULT_FAILURE;
-  absl::optional<base::LaunchOptions> options;
+  std::optional<base::LaunchOptions> options;
   base::LaunchOptions* options_ptr = nullptr;
   if (IsUsingLaunchOptions()) {
     options.emplace();
@@ -148,8 +154,8 @@ void ChildProcessLauncherHelper::LaunchOnLauncherThread() {
 
   Process process;
   if (BeforeLaunchOnLauncherThread(*files_to_register, options_ptr)) {
-    base::FieldTrialList::PopulateLaunchOptionsWithFieldTrialState(
-        command_line(), options_ptr);
+    variations::PopulateLaunchOptionsWithVariationsInfo(command_line(),
+                                                        options_ptr);
     process =
         LaunchProcessOnLauncherThread(options_ptr, std::move(files_to_register),
 #if BUILDFLAG(IS_ANDROID)
@@ -195,6 +201,10 @@ void ChildProcessLauncherHelper::PostLaunchOnLauncherThread(
     invitation.set_extra_flags(MOJO_SEND_INVITATION_FLAG_UNTRUSTED_PROCESS);
   }
 #endif
+
+  if (!mojo::core::GetConfiguration().is_broker_process) {
+    invitation.set_extra_flags(MOJO_SEND_INVITATION_FLAG_SHARE_BROKER);
+  }
 
   if (process.process.IsValid()) {
 #if !BUILDFLAG(IS_FUCHSIA)

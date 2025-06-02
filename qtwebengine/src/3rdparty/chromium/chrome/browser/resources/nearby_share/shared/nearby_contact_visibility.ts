@@ -23,7 +23,7 @@ import 'chrome://resources/cr_elements/chromeos/cros_color_overrides.css.js';
 // </if>
 
 import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
-import {assert, assertNotReached} from 'chrome://resources/js/assert_ts.js';
+import {assert, assertNotReached} from 'chrome://resources/js/assert.js';
 import {sendWithPromise} from 'chrome://resources/js/cr.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {sanitizeInnerHtml} from 'chrome://resources/js/parse_html_subset.js';
@@ -639,7 +639,8 @@ export class NearbyContactVisibilityElement extends
         this.numUnreachable_)
         .then((labelTemplate) => {
           this.numUnreachableMessage_ = loadTimeData.substituteString(
-              labelTemplate, this.numUnreachable_);
+              labelTemplate, this.numUnreachable_,
+              this.i18n('nearbyShareFeatureName'));
         });
   }
 

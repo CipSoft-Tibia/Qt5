@@ -22,7 +22,7 @@ class QGeoPositionInfoSourceAndroid : public QGeoPositionInfoSource
 {
     Q_OBJECT
 public:
-    QGeoPositionInfoSourceAndroid(QObject *parent = 0);
+    QGeoPositionInfoSourceAndroid(const QVariantMap &parameters, QObject *parent = 0);
     ~QGeoPositionInfoSourceAndroid();
 
     // From QGeoPositionInfoSource
@@ -32,6 +32,8 @@ public:
     void setPreferredPositioningMethods(PositioningMethods methods) override;
     int minimumUpdateInterval() const override;
     Error error() const override;
+
+    bool useAltitudeConverter() const;
 
 public Q_SLOTS:
     virtual void startUpdates() override;
@@ -51,6 +53,7 @@ private Q_SLOTS:
 private:
     void reconfigureRunningSystem();
     void setError(Error error);
+    void parseParameters(const QVariantMap &parameters);
 
     bool updatesRunning = false;
     int androidClassKeyForUpdate;
@@ -61,6 +64,7 @@ private:
     QTimer m_regularUpdatesTimer;
     qint64 m_lastUpdateTime = 0;
     bool m_regularUpdatesErrorRaised = false;
+    bool m_useAltitudeConverter = false;
 };
 
 #endif // QGEOPOSITIONINFOSOURCE_ANDROID_P_H

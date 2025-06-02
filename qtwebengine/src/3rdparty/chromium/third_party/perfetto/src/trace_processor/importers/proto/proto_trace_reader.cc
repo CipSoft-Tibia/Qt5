@@ -403,7 +403,8 @@ util::Status ProtoTraceReader::ParseClockSnapshot(ConstBytes blob,
     tables::ClockSnapshotTable::Row row;
     row.ts = *opt_trace_ts;
     row.clock_id = static_cast<int64_t>(clock_timestamp.clock.id);
-    row.clock_value = clock_timestamp.timestamp;
+    row.clock_value =
+        clock_timestamp.timestamp * clock_timestamp.clock.unit_multiplier_ns;
     row.clock_name = GetBuiltinClockNameOrNull(clock_timestamp.clock.id);
     row.snapshot_id = *snapshot_id;
 
@@ -447,6 +448,8 @@ util::Status ProtoTraceReader::ParseServiceEvent(int64_t ts, ConstBytes blob) {
         metadata::all_data_source_started_ns, Variadic::Integer(ts));
   }
   if (tse.all_data_sources_flushed()) {
+    context_->metadata_tracker->AppendMetadata(
+        metadata::all_data_source_flushed_ns, Variadic::Integer(ts));
     context_->sorter->NotifyFlushEvent();
   }
   if (tse.read_tracing_buffers_completed()) {

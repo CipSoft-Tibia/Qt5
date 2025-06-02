@@ -18,13 +18,16 @@
 #include <cstddef>
 #include <cstdint>
 #include <sstream>
-#include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "./centipede/binary_info.h"
+#include "./centipede/call_graph.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/defs.h"
 #include "./centipede/feature.h"
+#include "./centipede/feature_set.h"
+#include "./centipede/pc_info.h"
 
 namespace centipede {
 namespace {
@@ -34,7 +37,7 @@ TEST(Corpus, GetCmpData) {
   CFTable cf_table(100);
   BinaryInfo bin_info{pc_table, {}, cf_table, {}, {}, {}};
   CoverageFrontier coverage_frontier(bin_info);
-  FeatureSet fs(3);
+  FeatureSet fs(3, {});
   Corpus corpus;
   ByteArray cmp_data{2, 0, 1, 2, 3};
   FeatureVec features1 = {10, 20, 30};
@@ -50,7 +53,7 @@ TEST(Corpus, PrintStats) {
   CFTable cf_table(100);
   BinaryInfo bin_info{pc_table, {}, cf_table, {}, {}, {}};
   CoverageFrontier coverage_frontier(bin_info);
-  FeatureSet fs(3);
+  FeatureSet fs(3, {});
   Corpus corpus;
   FeatureVec features1 = {10, 20, 30};
   FeatureVec features2 = {20, 40};
@@ -77,7 +80,7 @@ TEST(Corpus, Prune) {
   CFTable cf_table(100);
   BinaryInfo bin_info{pc_table, {}, cf_table, {}, {}, {}};
   CoverageFrontier coverage_frontier(bin_info);
-  FeatureSet fs(3);
+  FeatureSet fs(3, {});
   Corpus corpus;
   Rng rng(0);
   size_t max_corpus_size = 1000;
@@ -136,7 +139,7 @@ TEST(Corpus, PruneRegressionTest1) {
   CFTable cf_table(100);
   BinaryInfo bin_info{pc_table, {}, cf_table, {}, {}, {}};
   CoverageFrontier coverage_frontier(bin_info);
-  FeatureSet fs(2);
+  FeatureSet fs(2, {});
   Corpus corpus;
   Rng rng(0);
   size_t max_corpus_size = 1000;
@@ -311,7 +314,7 @@ TEST(CoverageFrontier, Compute) {
     pcs[i] = feature_domains::kPCs.ConvertToMe(i);
   }
 
-  FeatureSet fs(100);
+  FeatureSet fs(100, {});
   Corpus corpus;
 
   auto Add = [&](feature_t feature) {

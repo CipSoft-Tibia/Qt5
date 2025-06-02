@@ -35,9 +35,9 @@ const int kInputCallbackStartTimeoutInSeconds = 8;
 }  // namespace
 
 PCMQueueInAudioInputStream::PCMQueueInAudioInputStream(
-    AudioIOStreamClient* client,
+    AudioManagerApple* manager,
     const AudioParameters& params)
-    : client_(client),
+    : manager_(manager),
       callback_(nullptr),
       audio_queue_(NULL),
       buffer_size_bytes_(0),
@@ -45,7 +45,7 @@ PCMQueueInAudioInputStream::PCMQueueInAudioInputStream(
       input_callback_is_active_(false),
       audio_bus_(media::AudioBus::Create(params)) {
   // We must have a manager.
-  DCHECK(client_);
+  DCHECK(manager_);
 
   const SampleFormat kSampleFormat = kSampleFormatS16;
 
@@ -95,13 +95,13 @@ void PCMQueueInAudioInputStream::Start(AudioInputCallback* callback) {
 
 #if BUILDFLAG(IS_MAC)
   // Check if we should defer Start() for http://crbug.com/160920.
-  base::TimeDelta defer_start = client_->GetDeferStreamStartTimeout();
+  base::TimeDelta defer_start = manager_->GetDeferStreamStartTimeout();
   if (!defer_start.is_zero()) {
     // Use a cancellable closure so that if Stop() is called before Start()
     // actually runs, we can cancel the pending start.
     deferred_start_cb_.Reset(base::BindOnce(&PCMQueueInAudioInputStream::Start,
                                             base::Unretained(this), callback));
-    client_->GetTaskRunner()->PostDelayedTask(
+    manager_->GetTaskRunner()->PostDelayedTask(
         FROM_HERE, deferred_start_cb_.callback(), defer_start);
     return;
   }
@@ -158,7 +158,7 @@ void PCMQueueInAudioInputStream::Close() {
       HandleError(err);
   }
 
-  client_->ReleaseInputStreamUsingRealDevice(this);
+  manager_->ReleaseInputStream(this);
   // CARE: This object may now be destroyed.
 }
 
@@ -168,17 +168,29 @@ double PCMQueueInAudioInputStream::GetMaxVolume() {
 }
 
 void PCMQueueInAudioInputStream::SetVolume(double volume) {
+#if BUILDFLAG(IS_MAC)
   NOTIMPLEMENTED();
+#else
+  manager_->SetInputVolume(kAudioObjectUnknown, volume);
+#endif
 }
 
 double PCMQueueInAudioInputStream::GetVolume() {
+#if BUILDFLAG(IS_MAC)
   NOTIMPLEMENTED();
   return 1.0;
+#else
+  return manager_->GetInputVolume(kAudioObjectUnknown);
+#endif
 }
 
 bool PCMQueueInAudioInputStream::IsMuted() {
+#if BUILDFLAG(IS_MAC)
   NOTIMPLEMENTED();
   return false;
+#else
+  return manager_->IsInputMuted(kAudioObjectUnknown);
+#endif
 }
 
 bool PCMQueueInAudioInputStream::SetAutomaticGainControl(bool enabled) {

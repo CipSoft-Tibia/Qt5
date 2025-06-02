@@ -34,6 +34,42 @@ union xnn_f32_relu_params {
 };
 
 
+// Scale: used by RSUM microkernels
+
+union xnn_f16_scale_params {
+  char _; // Dummy member variable to comply with the C standard
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+  struct {
+    uint16_t scale;
+  } fp16arith;
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
+};
+
+union xnn_f16_f32acc_scale_params {
+  struct {
+    float scale;
+  } scalar;
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  struct {
+    int16_t mask_table[14];
+    float scale;
+  } avx;
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+};
+
+union xnn_f32_scale_params {
+  struct {
+    float scale;
+  } scalar;
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  struct {
+    int32_t mask_table[14];
+    float scale;
+  } avx;
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+};
+
+
 // Scale+Min+Max: used by AVGPOOL/GAVGPOOL microkernels.
 
 union xnn_f16_scaleminmax_params {
@@ -110,11 +146,93 @@ union xnn_f32_minmax_params {
     XNN_ALIGN(32) float max[8];
     int32_t mask_table[14];
   } avx;
+  struct {
+    float min;
+    float max;
+    int8_t sign_mask;
+  } avx512vnni;
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 #if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
   struct {
     XNN_ALIGN(8) float min[2];
     XNN_ALIGN(8) float max[2];
+  } wasmsimd;
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+};
+
+union xnn_f16_qc4w_minmax_params {
+  struct {
+    uint16_t min;
+    uint16_t max;
+    int32_t minus_kernel_zero_point;
+  } fp16arith;
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  struct {
+    XNN_ALIGN(32) float min[8];
+    XNN_ALIGN(32) float max[8];
+    XNN_ALIGN(32) uint8_t mask[16];
+  } avx;
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+};
+
+union xnn_f32_qc4w_minmax_params {
+  struct {
+    float min;
+    float max;
+    int32_t minus_kernel_zero_point;
+    uint8_t mask;  // 0xF0
+  } scalar;
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  struct {
+    XNN_ALIGN(16) float min[4];
+    XNN_ALIGN(16) float max[4];
+    XNN_ALIGN(16) uint32_t magic_bias_c0[4];
+    XNN_ALIGN(16) uint32_t magic_bias_c1[4];
+    XNN_ALIGN(16) float magic_bias_plus_kernel_zero_point_c0[4];
+    XNN_ALIGN(16) float magic_bias_plus_kernel_zero_point_c1[4];
+    XNN_ALIGN(16) uint8_t mask[16];
+  } sse;
+  // XOP is same as SSE with shift added
+  struct {
+    XNN_ALIGN(16) float min[4];
+    XNN_ALIGN(16) float max[4];
+    XNN_ALIGN(16) uint32_t magic_bias_c0[4];
+    XNN_ALIGN(16) uint32_t magic_bias_c1[4];
+    XNN_ALIGN(16) float magic_bias_plus_kernel_zero_point_c0[4];
+    XNN_ALIGN(16) float magic_bias_plus_kernel_zero_point_c1[4];
+    XNN_ALIGN(16) uint8_t mask[16];
+    XNN_ALIGN(16) uint8_t shift[16];
+  } xop;
+  struct {
+    XNN_ALIGN(32) float min[8];
+    XNN_ALIGN(32) float max[8];
+    XNN_ALIGN(32) uint32_t magic_bias_c0[8];
+    XNN_ALIGN(32) uint32_t magic_bias_c1[8];
+    XNN_ALIGN(32) float magic_bias_plus_kernel_zero_point_c0[8];
+    XNN_ALIGN(32) float magic_bias_plus_kernel_zero_point_c1[8];
+    XNN_ALIGN(32) uint8_t mask[16];
+  } avx;
+  struct {
+    float min;
+    float max;
+    uint32_t magic_bias_c0;
+    uint32_t magic_bias_c1;
+    float magic_bias_plus_kernel_zero_point_c0;
+    float magic_bias_plus_kernel_zero_point_c1;
+  } avx512;
+  struct {
+    float min;
+    float max;
+    int8_t sign_mask;  // 0x80
+    int8_t mask;  // 0xF0
+  } avx512vnni;
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  struct {
+    XNN_ALIGN(8) float min[2];
+    XNN_ALIGN(8) float max[2];
+    XNN_ALIGN(8) int32_t minus_kernel_zero_point[2];
+    XNN_ALIGN(8) uint8_t mask[8];
   } wasmsimd;
 #endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 };
@@ -176,76 +294,9 @@ union xnn_u8_minmax_params {
 
 
 // Conv w. Min+Max: used by quantized GEMM/IGEMM/DWCONV microkernels with MINMAX activation.
-
-union xnn_qc8_conv_minmax_params {
-  struct {
-    float magic_bias;
-    int32_t magic_min;
-    int32_t magic_max;
-    int32_t magic_bias_less_zero_point;
-  } fp32_scalar_imagic;
-  struct {
-    float output_min_less_zero_point;
-    float output_max_less_zero_point;
-    float magic_bias;
-    int32_t magic_bias_less_output_zero_point;
-  } fp32_scalar_fmagic;
-  struct {
-    float output_min_less_zero_point;
-    float output_max_less_zero_point;
-    int32_t output_zero_point;
-  } fp32_scalar_lrintf;
-#if XNN_ARCH_ARM
-  struct {
-    float magic_bias;
-    int32_t magic_bias_less_zero_point;
-    uint32_t output_min;
-    uint32_t output_max;
-  } fp32_armsimd32;
-#endif  // XNN_ARCH_ARM
-#if XNN_ARCH_ARM || XNN_ARCH_ARM64
-  struct {
-    float magic_bias;
-    int32_t magic_bias_less_output_zero_point;
-    int8_t output_min;
-    int8_t output_max;
-  } fp32_neon;
-  struct {
-    int16_t output_zero_point;
-    uint8_t output_min;
-    uint8_t output_max;
-  } fp32_neonv8;
-#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
-#if XNN_ARCH_X86 || XNN_ARCH_X86_64
-  struct {
-    XNN_ALIGN(16) float output_max_less_zero_point[4];
-    XNN_ALIGN(16) int16_t output_zero_point[8];
-    XNN_ALIGN(16) int16_t output_min[8];
-  } fp32_sse2;
-  struct {
-    XNN_ALIGN(16) float output_max_less_zero_point[4];
-    XNN_ALIGN(16) int16_t output_zero_point[8];
-    XNN_ALIGN(16) int8_t output_min[16];
-  } fp32_sse4;
-  struct {
-    XNN_ALIGN(32) float output_max_less_zero_point[8];
-    XNN_ALIGN(32) int16_t output_zero_point[16];
-    XNN_ALIGN(32) int8_t output_min[32];
-  } fp32_avx2;
-  struct {
-    XNN_ALIGN(64) float output_max_less_zero_point[16];
-    XNN_ALIGN(64) int16_t output_zero_point[32];
-    XNN_ALIGN(64) int8_t output_min[64];
-  } fp32_avx512;
-#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
-#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
-  struct {
-    XNN_ALIGN(8) float magic_bias[2];
-    XNN_ALIGN(8) int32_t magic_min[2];
-    XNN_ALIGN(8) int32_t magic_bias_less_output_zero_point[2];
-    XNN_ALIGN(8) int8_t output_max[8];
-  } fp32_wasmsimd;
-#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+struct xnn_qd8_quantization_params {
+  int32_t zero_point;
+  float inv_scale;
 };
 
 union xnn_qs8_conv_minmax_params {
@@ -334,10 +385,97 @@ union xnn_qs8_conv_minmax_params {
     XNN_ALIGN(64) int16_t output_zero_point[32];
     XNN_ALIGN(64) int8_t output_min[64];
   } fp32_avx512;
+  struct {
+    int8_t sign_mask;
+    int8_t mask;
+    XNN_ALIGN(64) float scale[16];
+    XNN_ALIGN(64) float output_max_less_zero_point[16];
+    XNN_ALIGN(64) int16_t output_zero_point[16];
+    XNN_ALIGN(16) int8_t shuffle_control_mask[16];
+    XNN_ALIGN(16) int8_t output_min[16];
+  } fp32_avx512vnni;
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 #if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
   struct {
     XNN_ALIGN(8) float scale[2];
+    XNN_ALIGN(8) float magic_bias[2];
+    XNN_ALIGN(8) int32_t magic_min[2];
+    XNN_ALIGN(8) int32_t magic_bias_less_output_zero_point[2];
+    XNN_ALIGN(8) int8_t output_max[8];
+  } fp32_wasmsimd;
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+};
+
+union xnn_qs8_qc8w_conv_minmax_params {
+  struct {
+    float magic_bias;
+    int32_t magic_min;
+    int32_t magic_max;
+    int32_t magic_bias_less_zero_point;
+  } fp32_scalar_imagic;
+  struct {
+    float output_min_less_zero_point;
+    float output_max_less_zero_point;
+    float magic_bias;
+    int32_t magic_bias_less_output_zero_point;
+  } fp32_scalar_fmagic;
+  struct {
+    float output_min_less_zero_point;
+    float output_max_less_zero_point;
+    int32_t output_zero_point;
+  } fp32_scalar_lrintf;
+#if XNN_ARCH_ARM
+  struct {
+    float magic_bias;
+    int32_t magic_bias_less_zero_point;
+    uint32_t output_min;
+    uint32_t output_max;
+  } fp32_armsimd32;
+#endif  // XNN_ARCH_ARM
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+  struct {
+    float magic_bias;
+    int32_t magic_bias_less_output_zero_point;
+    int8_t output_min;
+    int8_t output_max;
+  } fp32_neon;
+  struct {
+    int16_t output_zero_point;
+    uint8_t output_min;
+    uint8_t output_max;
+  } fp32_neonv8;
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  struct {
+    XNN_ALIGN(16) float output_max_less_zero_point[4];
+    XNN_ALIGN(16) int16_t output_zero_point[8];
+    XNN_ALIGN(16) int16_t output_min[8];
+  } fp32_sse2;
+  struct {
+    XNN_ALIGN(16) float output_max_less_zero_point[4];
+    XNN_ALIGN(16) int16_t output_zero_point[8];
+    XNN_ALIGN(16) int8_t output_min[16];
+  } fp32_sse4;
+  struct {
+    XNN_ALIGN(32) float output_max_less_zero_point[8];
+    XNN_ALIGN(32) int16_t output_zero_point[16];
+    XNN_ALIGN(32) int8_t output_min[32];
+  } fp32_avx2;
+  struct {
+    XNN_ALIGN(64) float output_max_less_zero_point[16];
+    XNN_ALIGN(64) int16_t output_zero_point[32];
+    XNN_ALIGN(64) int8_t output_min[64];
+  } fp32_avx512;
+  struct {
+    int8_t sign_mask;
+    XNN_ALIGN(64) float output_max_less_zero_point[16];
+    XNN_ALIGN(64) int16_t output_zero_point[32];
+    XNN_ALIGN(16) int8_t shuffle_control_mask[16];
+    XNN_ALIGN(64) int8_t output_min[64];
+  } fp32_avx512vnni;
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  struct {
     XNN_ALIGN(8) float magic_bias[2];
     XNN_ALIGN(8) int32_t magic_min[2];
     XNN_ALIGN(8) int32_t magic_bias_less_output_zero_point[2];
@@ -1058,6 +1196,31 @@ union xnn_f32_f16_cvt_params {
 #endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 };
 
+union xnn_f16_qs8_cvt_params {
+  struct {
+    float scale;
+    float output_min_less_zero_point;
+    float output_max_less_zero_point;
+    float magic_bias;
+    int32_t magic_bias_less_zero_point;
+  } scalar_fmagic;
+  struct {
+    float scale;
+    float magic_bias;
+    int32_t magic_min;
+    int32_t magic_max;
+    int32_t magic_bias_less_zero_point;
+  } scalar_imagic;
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+  struct {
+    uint16_t scale;
+    int16_t output_zero_point;
+    int8_t output_min;
+    int8_t output_max;
+  } neonfp16arith;
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
+};
+
 union xnn_f32_qs8_cvt_params {
   struct {
     float scale;
@@ -1315,6 +1478,22 @@ union xnn_qs16_qs8_cvt_params {
     XNN_ALIGN(8) int64_t bias;  // Rounding + output_zero_point.
   } wasmsimd;
 #endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+};
+
+union xnn_qs8_f16_cvt_params {
+  char _; // Dummy member variable to comply with the C standard
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+  struct {
+    int16_t minus_zero_point;
+    uint16_t scale;
+  } neon;
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  struct {
+    XNN_ALIGN(32) int32_t minus_zero_point[8];
+    XNN_ALIGN(32) float scale[8];
+  } avx;
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 };
 
 union xnn_qs8_f32_cvt_params {
@@ -1896,6 +2075,7 @@ union xnn_f32_expminus_params {
 // HSwish: used by VHSWISH microkernels.
 
 union xnn_f16_hswish_params {
+  char _; // Dummy member variable to comply with the C standard
 #if XNN_ARCH_ARM || XNN_ARCH_ARM64
   struct {
     uint16_t sixth;
@@ -1946,10 +2126,97 @@ union xnn_f32_hswish_params {
 #endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
 };
 
+union xnn_qs8_hswish_params {
+  struct {
+    uint32_t input_zero_point;
+    int32_t output_zero_point;
+    int32_t input_scale_div_mantissa;
+    int32_t input_scale_div_exp;
+    int32_t scale_ratio;
+} scalar;
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+  struct {
+    int16_t input_zero_point;
+    int16_t output_zero_point;
+    int16_t input_scale_div_mantissa;
+    int16_t input_scale_div_exp;
+    int16_t scale_ratio;
+  } neon;
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  struct {
+    XNN_ALIGN(16) int16_t input_zero_point[8];
+    XNN_ALIGN(16) int16_t output_zero_point[8];
+    XNN_ALIGN(16) int16_t input_scale_div[8];
+    XNN_ALIGN(16) int16_t scale_ratio[8];
+    XNN_ALIGN(32) int32_t half[4];
+  } sse2;
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  struct {
+    XNN_ALIGN(8) int16_t input_zero_point[4];
+    XNN_ALIGN(8) int16_t output_zero_point[4];
+    XNN_ALIGN(8) int16_t input_scale_div_mantissa[4];
+    XNN_ALIGN(8) int16_t scale_ratio[4];
+    XNN_ALIGN(8) int16_t shift_max[4];
+    XNN_ALIGN(8) int16_t shift_min[4];
+    XNN_ALIGN(8) int16_t max_val[4];
+    XNN_ALIGN(8) int16_t min_val[4];
+    XNN_ALIGN(8) int16_t half[4];
+    XNN_ALIGN(8) int16_t zero[4];
+    uint32_t input_scale_div_exp;
+  } wasmsimd;
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+};
+
+union xnn_qu8_hswish_params {
+struct {
+    uint32_t input_zero_point;
+    int32_t output_zero_point;
+    int32_t input_scale_div_mantissa;
+    int32_t input_scale_div_exp;
+    int32_t scale_ratio;
+  } scalar;
+#if XNN_ARCH_ARM || XNN_ARCH_ARM64
+  struct {
+    int16_t input_zero_point;
+    int16_t output_zero_point;
+    int16_t input_scale_div_mantissa;
+    int16_t input_scale_div_exp;
+    int16_t scale_ratio;
+  } neon;
+#endif  // XNN_ARCH_ARM || XNN_ARCH_ARM64
+#if XNN_ARCH_X86 || XNN_ARCH_X86_64
+  struct {
+    XNN_ALIGN(16) int16_t input_zero_point[8];
+    XNN_ALIGN(16) int16_t output_zero_point[8];
+    XNN_ALIGN(16) int16_t input_scale_div[8];
+    XNN_ALIGN(16) int16_t scale_ratio[8];
+    XNN_ALIGN(32) int32_t half[4];
+  } sse2;
+#endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
+#if XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+  struct {
+    XNN_ALIGN(8) int16_t input_zero_point[4];
+    XNN_ALIGN(8) int16_t output_zero_point[4];
+    XNN_ALIGN(8) int16_t input_scale_div_mantissa[4];
+    XNN_ALIGN(8) int16_t scale_ratio[4];
+    XNN_ALIGN(8) int16_t shift_max[4];
+    XNN_ALIGN(8) int16_t shift_min[4];
+    XNN_ALIGN(8) int16_t max_val[4];
+    XNN_ALIGN(8) int16_t min_val[4];
+    XNN_ALIGN(8) int16_t half[4];
+    XNN_ALIGN(8) int16_t zero[4];
+    uint32_t input_scale_div_exp;
+  } wasmsimd;
+#endif  // XNN_ARCH_WASMSIMD || XNN_ARCH_WASMRELAXEDSIMD
+};
+
 
 // LReLU (Leaky ReLU): used by VLRELU microkernels.
 
 union xnn_f16_lrelu_params {
+  char _; // Dummy member variable to comply with the C standard
 #if XNN_ARCH_ARM || XNN_ARCH_ARM64
   struct {
     uint16_t slope;

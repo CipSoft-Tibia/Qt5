@@ -24,13 +24,20 @@
 #include <vector>
 
 #include "state_tracker/shader_instruction.h"
-#include "state_tracker/base_node.h"
+#include "state_tracker/state_object.h"
 #include "state_tracker/sampler_state.h"
 #include <spirv/unified1/spirv.hpp>
 #include "spirv-tools/optimizer.hpp"
 
-class PIPELINE_STATE;
+namespace vvl {
+class Pipeline;
+}  // namespace vvl
+
+namespace spirv {
 struct EntryPoint;
+struct Module;
+
+static constexpr uint32_t kInvalidValue = std::numeric_limits<uint32_t>::max();
 
 // This is the common info for both OpDecorate and OpMemberDecorate
 // Used to keep track of all decorations applied to any instruction
@@ -48,7 +55,6 @@ struct DecorationBase {
         per_task_nv = 1 << 9,
         per_primitive_ext = 1 << 10,
     };
-    static constexpr uint32_t kInvalidValue = std::numeric_limits<uint32_t>::max();
 
     // bits to know if things have been set or not by a Decoration
     uint32_t flags = 0;
@@ -114,12 +120,15 @@ struct ExecutionModeSet {
         rounding_mode_rtz_width_16 = 1 << 21,
         rounding_mode_rtz_width_32 = 1 << 22,
         rounding_mode_rtz_width_64 = 1 << 23,
+
+        depth_replacing_bit = 1 << 24,
+        stencil_ref_replacing_bit = 1 << 25,
     };
-    static constexpr uint32_t kInvalidValue = std::numeric_limits<uint32_t>::max();
 
     // bits to know if things have been set or not by a Decoration
     uint32_t flags = 0;
 
+    VkPrimitiveTopology input_primitive_topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
     VkPrimitiveTopology primitive_topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 
     // SPIR-V spec says only LocalSize or LocalSizeId can be used, so can share
@@ -127,12 +136,32 @@ struct ExecutionModeSet {
     uint32_t local_size_y = kInvalidValue;
     uint32_t local_size_z = kInvalidValue;
 
-    uint32_t output_vertices = 0;
+    uint32_t output_vertices = vvl::kU32Max;
     uint32_t output_primitives = 0;
     uint32_t invocations = 0;
 
+    uint32_t tessellation_subdivision = 0;
+    uint32_t tessellation_orientation = 0;
+    uint32_t tessellation_spacing = 0;
+
     void Add(const Instruction &insn);
     bool Has(FlagBit flag_bit) const { return (flags & flag_bit) != 0; }
+};
+
+struct AtomicInstructionInfo {
+    uint32_t storage_class;
+    uint32_t bit_width;
+    uint32_t type;  // ex. OpTypeInt
+};
+
+// This info *could* be found/saved in TypeStructInfo, but since
+//  - Only a few places (Push Constants, workgroup size) use this
+//  - It is only good when you know there are no nested strcuts
+// we only get this info when needed, not for every struct
+struct TypeStructSize {
+    uint32_t offset;  // where first member is
+    // This is the "padded" size, if you wanted the packed size, use GetTypeBytesSize(struct_type)
+    uint32_t size;  // total size of block
 };
 
 // Contains all the details for a OpTypeStruct
@@ -150,31 +179,37 @@ struct TypeStructInfo {
     };
     std::vector<Member> members;
 
-    TypeStructInfo(const SPIRV_MODULE_STATE &module_state, const Instruction &struct_insn);
+    TypeStructInfo(const Module &module_state, const Instruction &struct_insn);
+
+    TypeStructSize GetSize(const Module &module_state) const;
 };
 
 // Represents the OpImage* instructions and how it maps to the variable
-// This is created in the SPIRV_MODULE_STATE but then used with VariableBase objects
+// This is created in the Module but then used with VariableBase objects
 struct ImageAccess {
     const Instruction &image_insn;  // OpImage*
-    const Instruction *variable_image_insn = nullptr;
+    std::vector<const Instruction *> variable_image_insn;
     // If there is a OpSampledImage there will also be a sampler variable
-    const Instruction *variable_sampler_insn = nullptr;
-    bool no_function_jump = true;  // TODO 5614 - Handle function jumps
+    std::vector<const Instruction *> variable_sampler_insn;
+    // incase uncaught set of SPIR-V instruction is found, skips validating instead of crashing
+    bool valid_access = true;
 
     bool is_dref = false;
     bool is_sampler_implicitLod_dref_proj = false;
-    bool is_sampler_sampled = false;
+    bool is_sampler_sampled = false;  // OpImageSample* or OpImageSparseSample*
+    bool is_not_sampler_sampled = false;
     bool is_sampler_bias_offset = false;
+    bool is_sampler_offset = false;  // ConstOffset or Offset (not ConstOffsets)
     bool is_written_to = false;
     bool is_read_from = false;
+    bool is_sign_extended = false;
+    bool is_zero_extended = false;
 
-    static constexpr uint32_t kInvalidValue = std::numeric_limits<uint32_t>::max();
     uint32_t image_access_chain_index = kInvalidValue;    // OpAccessChain's Index 0
     uint32_t sampler_access_chain_index = kInvalidValue;  // OpAccessChain's Index 0
     uint32_t texel_component_count = kInvalidValue;
 
-    ImageAccess(const SPIRV_MODULE_STATE &module_state, const Instruction &image_insn);
+    ImageAccess(const Module &module_state, const Instruction &image_insn);
 };
 
 // <Image OpVariable Result ID, [ImageAccess, ImageAccess, etc] > - used for faster lookup
@@ -234,7 +269,7 @@ struct VariableBase {
     // If variable is accessed from mulitple entrypoint, create a seperate VariableBase object as info about it being access will be
     // different
     const VkShaderStageFlagBits stage;
-    VariableBase(const SPIRV_MODULE_STATE &module_state, const Instruction &insn, VkShaderStageFlagBits stage);
+    VariableBase(const Module &module_state, const Instruction &insn, VkShaderStageFlagBits stage);
 };
 
 // These are Input/Output OpVariable that go in-between stages
@@ -261,16 +296,16 @@ struct StageInteraceVariable : public VariableBase {
     const std::vector<uint32_t> builtin_block;
     uint32_t total_builtin_components = 0;
 
-    StageInteraceVariable(const SPIRV_MODULE_STATE &module_state, const Instruction &insn, VkShaderStageFlagBits stage);
+    StageInteraceVariable(const Module &module_state, const Instruction &insn, VkShaderStageFlagBits stage);
 
   protected:
     static bool IsPerTaskNV(const StageInteraceVariable &variable);
     static bool IsArrayInterface(const StageInteraceVariable &variable);
-    static const Instruction &FindBaseType(StageInteraceVariable &variable, const SPIRV_MODULE_STATE &module_state);
-    static bool IsBuiltin(const StageInteraceVariable &variable, const SPIRV_MODULE_STATE &module_state);
-    static std::vector<InterfaceSlot> GetInterfaceSlots(StageInteraceVariable &variable, const SPIRV_MODULE_STATE &module_state);
-    static std::vector<uint32_t> GetBuiltinBlock(const StageInteraceVariable &variable, const SPIRV_MODULE_STATE &module_state);
-    static uint32_t GetBuiltinComponents(const StageInteraceVariable &variable, const SPIRV_MODULE_STATE &module_state);
+    static const Instruction &FindBaseType(StageInteraceVariable &variable, const Module &module_state);
+    static bool IsBuiltin(const StageInteraceVariable &variable, const Module &module_state);
+    static std::vector<InterfaceSlot> GetInterfaceSlots(StageInteraceVariable &variable, const Module &module_state);
+    static std::vector<uint32_t> GetBuiltinBlock(const StageInteraceVariable &variable, const Module &module_state);
+    static uint32_t GetBuiltinComponents(const StageInteraceVariable &variable, const Module &module_state);
 };
 
 // vkspec.html#interfaces-resources describes 'Shader Resource Interface'
@@ -301,13 +336,40 @@ struct ResourceInterfaceVariable : public VariableBase {
     // most likly will be OpTypeImage, OpTypeStruct, OpTypeSampler, or OpTypeAccelerationStructureKHR
     const Instruction &base_type;
 
-    const NumericType image_format_type;
-    bool IsImage() const { return image_format_type != NumericTypeUnknown; }
-    const spv::Dim image_dim;
-    const bool is_image_array;
-    const bool is_multisampled;
     // Sampled Type width of the OpTypeImage the variable points to, 0 if doesn't use the image
-    uint32_t image_sampled_type_width = 0;
+    const uint32_t image_sampled_type_width;
+
+    // All info regarding what will be validated from requirements imposed by the pipeline on a descriptor. These
+    // can't be checked at pipeline creation time as they depend on the Image or ImageView bound.
+    // That is perf-critical code and hashing if 2 variables have same info provides a 20% perf bonus
+    struct Info {
+        NumericType image_format_type;
+        spv::Dim image_dim;
+        bool is_image_array;
+        bool is_multisampled;
+        bool is_atomic_operation;
+
+        bool is_sampler_sampled{false};  // OpImageSample* or OpImageSparseSample*
+        bool is_not_sampler_sampled{false};
+        bool is_sampler_implicitLod_dref_proj{false};
+        bool is_sampler_bias_offset{false};
+        bool is_sampler_offset{false};        // ConstOffset or Offset (not ConstOffsets)
+        bool is_read_without_format{false};   // For storage images
+        bool is_write_without_format{false};  // For storage images
+        bool is_dref{false};
+
+        // vkspec.html#spirvenv-image-signedness describes how SignExtend/ZeroExtend can be used per-access to adjust the Signedness
+        // Only need to check if one access has explicit signedness, mixing should be caught in spirv-val
+        bool is_sign_extended{false};  // if at least one access has SignExtended
+        bool is_zero_extended{false};  // if at least one access has ZeroExtended
+
+        // If a variable is used as a function arguement, but never actually used, it will be found in EntryPoint::accessible_ids so
+        // we need to have a dedicated mark if it was accessed
+        // TODO - merge with is_read_from and is_written_to
+        bool is_image_accessed{false};
+    } info;
+    uint64_t descriptor_hash = 0;
+    bool IsImage() const { return info.image_format_type != NumericTypeUnknown; }
 
     bool is_read_from{false};   // has operation to reads from the variable
     bool is_written_to{false};  // has operation to writes to the variable
@@ -318,21 +380,15 @@ struct ResourceInterfaceVariable : public VariableBase {
     const bool is_storage_buffer;
     bool is_input_attachment{false};
 
-    bool is_atomic_operation{false};
-    bool is_sampler_sampled{false};
-    bool is_sampler_implicitLod_dref_proj{false};
-    bool is_sampler_bias_offset{false};
-    bool is_read_without_format{false};   // For storage images
-    bool is_write_without_format{false};  // For storage images
-    bool is_dref{false};
-
-    ResourceInterfaceVariable(const SPIRV_MODULE_STATE &module_state, const EntryPoint &entrypoint, const Instruction &insn,
+    ResourceInterfaceVariable(const Module &module_state, const EntryPoint &entrypoint, const Instruction &insn,
                               const ImageAccessMap &image_access_map);
 
   protected:
-    static const Instruction &FindBaseType(ResourceInterfaceVariable &variable, const SPIRV_MODULE_STATE &module_state);
-    static NumericType FindImageFormatType(const SPIRV_MODULE_STATE &module_state, const Instruction &base_type);
+    static const Instruction &FindBaseType(ResourceInterfaceVariable &variable, const Module &module_state);
+    static uint32_t FindImageSampledTypeWidth(const Module &module_state, const Instruction &base_type);
+    static NumericType FindImageFormatType(const Module &module_state, const Instruction &base_type);
     static bool IsStorageBuffer(const ResourceInterfaceVariable &variable);
+    static bool IsAtomicOperation(const Module &module_state, const ResourceInterfaceVariable &variable);
 };
 
 // Used to help detect if different variable is being used
@@ -348,7 +404,7 @@ struct PushConstantVariable : public VariableBase {
     uint32_t offset;  // where first member is
     uint32_t size;    // total size of block
 
-    PushConstantVariable(const SPIRV_MODULE_STATE &module_state, const Instruction &insn, VkShaderStageFlagBits stage);
+    PushConstantVariable(const Module &module_state, const Instruction &insn, VkShaderStageFlagBits stage);
 };
 
 // Represents a single Entrypoint into a Shader Module
@@ -367,6 +423,7 @@ struct EntryPoint {
     bool emit_vertex_geometry;
 
     // All ids that can be accessed from the entry point
+    // being accessed doesn't guarantee it is statically used
     const vvl::unordered_set<uint32_t> accessible_ids;
 
     // only one Push Constant block is allowed per entry point
@@ -400,25 +457,23 @@ struct EntryPoint {
     bool has_passthrough{false};
     bool has_alpha_to_coverage_variable{false};  // only for Fragment shaders
 
-    EntryPoint(const SPIRV_MODULE_STATE &module_state, const Instruction &entrypoint_insn, const ImageAccessMap &image_access_map);
+    EntryPoint(const Module &module_state, const Instruction &entrypoint_insn, const ImageAccessMap &image_access_map);
 
   protected:
-    static vvl::unordered_set<uint32_t> GetAccessibleIds(const SPIRV_MODULE_STATE &module_state, EntryPoint &entrypoint);
-    static std::vector<StageInteraceVariable> GetStageInterfaceVariables(const SPIRV_MODULE_STATE &module_state,
-                                                                         const EntryPoint &entrypoint);
-    static std::vector<ResourceInterfaceVariable> GetResourceInterfaceVariables(const SPIRV_MODULE_STATE &module_state,
-                                                                                EntryPoint &entrypoint,
+    static vvl::unordered_set<uint32_t> GetAccessibleIds(const Module &module_state, EntryPoint &entrypoint);
+    static std::vector<StageInteraceVariable> GetStageInterfaceVariables(const Module &module_state, const EntryPoint &entrypoint);
+    static std::vector<ResourceInterfaceVariable> GetResourceInterfaceVariables(const Module &module_state, EntryPoint &entrypoint,
                                                                                 const ImageAccessMap &image_access_map);
 };
 
 // Represents a SPIR-V Module
 // This holds the SPIR-V source and parse it
-struct SPIRV_MODULE_STATE {
+struct Module {
     // Static/const data extracted from a SPIRV module at initialization time
     // The goal of this struct is to move everything that is ready only into here
     struct StaticData {
         StaticData() = default;
-        StaticData(const SPIRV_MODULE_STATE &module_state);
+        StaticData(const Module &module_state);
         StaticData &operator=(StaticData &&) = default;
         StaticData(StaticData &&) = default;
 
@@ -437,8 +492,8 @@ struct SPIRV_MODULE_STATE {
         vvl::unordered_map<uint32_t, ExecutionModeSet> execution_modes;
         ExecutionModeSet empty_execution_mode;  // all zero values, allows use to return a reference and not a copy each time
 
-        // <Specialization constant ID -> target ID> mapping
-        vvl::unordered_map<uint32_t, uint32_t> spec_const_map;
+        // [OpSpecConstant Result ID -> OpDecorate SpecID value] mapping
+        vvl::unordered_map<uint32_t, uint32_t> id_to_spec_id;
         // Find all decoration instructions to prevent relooping module later - many checks need this info
         std::vector<const Instruction *> decoration_inst;
         std::vector<const Instruction *> member_decoration_inst;
@@ -463,10 +518,15 @@ struct SPIRV_MODULE_STATE {
         std::vector<const Instruction *> atomic_inst;
         std::vector<const Instruction *> group_inst;
         std::vector<const Instruction *> read_clock_inst;
+        std::vector<const Instruction *> cooperative_matrix_inst;
+
         std::vector<spv::Capability> capability_list;
+        // Code on the hot path can cache capabilities for fast access.
+        bool has_capability_runtime_descriptor_array{false};
 
         bool has_specialization_constants{false};
         bool has_invocation_repack_instruction{false};
+        bool uses_interpolate_at_sample{false};
 
         // EntryPoint has pointer references inside it that need to be preserved
         std::vector<std::shared_ptr<EntryPoint>> entry_points;
@@ -486,6 +546,15 @@ struct SPIRV_MODULE_STATE {
         vvl::unordered_map<uint32_t, uint32_t> load_members;                              // <result id, pointer>
         vvl::unordered_map<uint32_t, std::pair<uint32_t, uint32_t>> accesschain_members;  // <result id, <base,index[0]>>
         vvl::unordered_map<uint32_t, uint32_t> image_texel_pointer_members;               // <result id, image>
+
+        // Track all paths from %param to %arg so can walk back functions
+        //
+        // %arg   = OpVariable
+        // %call  = OpFunctionCall %result %func %arg
+        // %param = OpFunctionParameter
+        //
+        // < %param, vector<%arg> >
+        vvl::unordered_map<uint32_t, std::vector<uint32_t>> func_parameter_map;
     };
 
     // This is the SPIR-V module data content
@@ -498,10 +567,9 @@ struct SPIRV_MODULE_STATE {
     VulkanTypedHandle handle() const { return handle_; }  // matches normal convention to get handle
 
     // Used for when modifying the SPIR-V (spirv-opt, GPU-AV instrumentation, etc) and need reparse it for VVL validaiton
-    SPIRV_MODULE_STATE(vvl::span<const uint32_t> code) : words_(code.begin(), code.end()), static_data_(*this) {}
+    Module(vvl::span<const uint32_t> code) : words_(code.begin(), code.end()), static_data_(*this) {}
 
-    SPIRV_MODULE_STATE(size_t codeSize, const uint32_t *pCode)
-        : words_(pCode, pCode + codeSize / sizeof(uint32_t)), static_data_(*this) {}
+    Module(size_t codeSize, const uint32_t *pCode) : words_(pCode, pCode + codeSize / sizeof(uint32_t)), static_data_(*this) {}
 
     const Instruction *FindDef(uint32_t id) const {
         auto it = static_data_.definitions.find(id);
@@ -576,6 +644,7 @@ struct SPIRV_MODULE_STATE {
     uint32_t GetTypeId(uint32_t id) const;
     uint32_t GetTexelComponentCount(const Instruction &insn) const;
     uint32_t GetFlattenArraySize(const Instruction &insn) const;
+    AtomicInstructionInfo GetAtomicInfo(const Instruction &insn) const;
 
     bool HasCapability(spv::Capability find_capability) const {
         return std::any_of(static_data_.capability_list.begin(), static_data_.capability_list.end(),
@@ -583,21 +652,27 @@ struct SPIRV_MODULE_STATE {
     }
 };
 
+}  // namespace spirv
+
 // Represents a VkShaderModule handle
-struct SHADER_MODULE_STATE : public BASE_NODE {
-    SHADER_MODULE_STATE(VkShaderModule shader_module, std::shared_ptr<SPIRV_MODULE_STATE> &spirv_module, uint32_t unique_shader_id)
-        : BASE_NODE(shader_module, kVulkanObjectTypeShaderModule), spirv(spirv_module), gpu_validation_shader_id(unique_shader_id) {
+namespace vvl {
+struct ShaderModule : public StateObject {
+    ShaderModule(VkShaderModule shader_module, std::shared_ptr<spirv::Module> &spirv_module, uint32_t unique_shader_id)
+        : StateObject(shader_module, kVulkanObjectTypeShaderModule), spirv(spirv_module), gpu_validation_shader_id(unique_shader_id) {
         spirv->handle_ = handle_;
     }
 
     // For when we need to create a module with no SPIR-V backing it
-    SHADER_MODULE_STATE(uint32_t unique_shader_id)
-        : BASE_NODE(static_cast<VkShaderModule>(VK_NULL_HANDLE), kVulkanObjectTypeShaderModule),
+    ShaderModule(uint32_t unique_shader_id)
+        : StateObject(static_cast<VkShaderModule>(VK_NULL_HANDLE), kVulkanObjectTypeShaderModule),
           gpu_validation_shader_id(unique_shader_id) {}
 
     // If null, means this is a empty object and no shader backing it
-    std::shared_ptr<SPIRV_MODULE_STATE> spirv;
+    // TODO - This (and vvl::ShaderObject) could be unique, but need handle multiple ValidationObjects
+    // https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/6265/files
+    std::shared_ptr<spirv::Module> spirv;
 
     // Used as way to match instrumented GPU-AV shader to a VkShaderModule handle
     uint32_t gpu_validation_shader_id = 0;
 };
+}  // namespace vvl

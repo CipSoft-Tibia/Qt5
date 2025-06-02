@@ -5,40 +5,15 @@
 #define QHELPCONTENTWIDGET_H
 
 #include <QtHelp/qhelp_global.h>
-
-#include <QtCore/QQueue>
-#include <QtCore/QString>
-#include <QtWidgets/QTreeView>
+#include <QtHelp/qhelpcontentitem.h>
+#include <QtWidgets/qtreeview.h>
 
 QT_BEGIN_NAMESPACE
 
-
-class QHelpEnginePrivate;
-class QHelpContentItemPrivate;
 class QHelpContentModelPrivate;
 class QHelpEngine;
-class QHelpContentProvider;
-
-class QHELP_EXPORT QHelpContentItem
-{
-public:
-    ~QHelpContentItem();
-
-    QHelpContentItem *child(int row) const;
-    int childCount() const;
-    QString title() const;
-    QUrl url() const;
-    int row() const;
-    QHelpContentItem *parent() const;
-    int childPosition(QHelpContentItem *child) const;
-
-private:
-    QHelpContentItem(const QString &name, const QUrl &link,
-                     QHelpContentItem *parent = nullptr);
-
-    QHelpContentItemPrivate *d;
-    friend class QHelpContentProvider;
-};
+class QHelpEngineCore;
+class QUrl;
 
 class QHELP_EXPORT QHelpContentModel : public QAbstractItemModel
 {
@@ -47,15 +22,15 @@ class QHELP_EXPORT QHelpContentModel : public QAbstractItemModel
 public:
     ~QHelpContentModel() override;
 
+    void createContentsForCurrentFilter();
     void createContents(const QString &customFilterName);
     QHelpContentItem *contentItemAt(const QModelIndex &index) const;
 
     QVariant data(const QModelIndex &index, int role) const override;
-    QModelIndex index(int row, int column,
-        const QModelIndex &parent = QModelIndex()) const override;
+    QModelIndex index(int row, int column, const QModelIndex &parent = {}) const override;
     QModelIndex parent(const QModelIndex &index) const override;
-    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    int columnCount(const QModelIndex &parent = QModelIndex()) const override;
+    int rowCount(const QModelIndex &parent = {}) const override;
+    int columnCount(const QModelIndex &parent = {}) const override;
     bool isCreatingContents() const;
 
 Q_SIGNALS:
@@ -66,9 +41,10 @@ private Q_SLOTS:
     void insertContents();
 
 private:
-    QHelpContentModel(QHelpEnginePrivate *helpEngine);
+    QHelpContentModel(QHelpEngineCore *helpEngine);
     QHelpContentModelPrivate *d;
     friend class QHelpEnginePrivate;
+    friend class QHelpContentModelPrivate;
 };
 
 class QHELP_EXPORT QHelpContentWidget : public QTreeView
@@ -85,8 +61,8 @@ private Q_SLOTS:
     void showLink(const QModelIndex &index);
 
 private:
-    bool searchContentItem(QHelpContentModel *model,
-        const QModelIndex &parent, const QString &path);
+    bool searchContentItem(QHelpContentModel *model, const QModelIndex &parent,
+                           const QString &path);
     QModelIndex m_syncIndex;
 
 private:
@@ -96,5 +72,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif
-
+#endif // QHELPCONTENTWIDGET_H

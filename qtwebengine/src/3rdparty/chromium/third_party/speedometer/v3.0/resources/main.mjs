@@ -1,5 +1,4 @@
 import { BenchmarkRunner } from "./benchmark-runner.mjs";
-import "./benchmark-report.mjs";
 import * as Statistics from "./statistics.mjs";
 import { Suites } from "./tests.mjs";
 import { renderMetricView } from "./metric-ui.mjs";
@@ -24,7 +23,12 @@ class MainBenchmarkClient {
         this._showSection(window.location.hash);
     }
 
-    startBenchmark() {
+    start() {
+        if (this._startBenchmark())
+            this._showSection("#running");
+    }
+
+    _startBenchmark() {
         if (this._isRunning)
             return false;
 
@@ -65,6 +69,10 @@ class MainBenchmarkClient {
         const runner = new BenchmarkRunner(Suites, this);
         runner.runMultipleIterations(params.iterationCount);
         return true;
+    }
+
+    get metrics() {
+        return this._metrics;
     }
 
     willAddTestFrame(frame) {
@@ -250,7 +258,7 @@ class MainBenchmarkClient {
         }
 
         if (params.startAutomatically)
-            this._startBenchmarkHandler();
+            this.start();
     }
 
     _hashChangeHandler() {
@@ -268,8 +276,7 @@ class MainBenchmarkClient {
     }
 
     _startBenchmarkHandler() {
-        if (this.startBenchmark())
-            this._showSection("#running");
+        this.start();
     }
 
     _logoClickHandler(event) {

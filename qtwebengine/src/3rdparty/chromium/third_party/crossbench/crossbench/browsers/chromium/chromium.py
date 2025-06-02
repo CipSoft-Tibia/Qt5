@@ -11,7 +11,7 @@ import re
 import tempfile
 from typing import TYPE_CHECKING, Optional, Tuple, cast
 
-from crossbench import helper
+from crossbench import plt
 from crossbench.browsers.browser import Browser
 from crossbench.browsers.browser_helper import convert_flags_to_label
 from crossbench.browsers.viewport import Viewport
@@ -19,11 +19,11 @@ from crossbench.flags import ChromeFeatures, ChromeFlags, Flags, JSFlags
 from crossbench.types import JsonDict
 
 if TYPE_CHECKING:
-  from crossbench.browsers.splash_screen import SplashScreen
   from crossbench import plt
-  from crossbench.runner.run import Run
+  from crossbench.browsers.splash_screen import SplashScreen
+  from crossbench.network.base import Network
+  from crossbench.runner.groups import BrowserSessionRunGroup
   from crossbench.runner.runner import Runner
-
 
 
 class Chromium(Browser):
@@ -56,7 +56,7 @@ class Chromium(Browser):
 
   @classmethod
   def default_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Chromium",
         macos=["Chromium.app"],
         linux=["google-chromium", "chromium"],
@@ -75,6 +75,7 @@ class Chromium(Browser):
       js_flags: Optional[Flags.InitialDataType] = None,
       cache_dir: Optional[pathlib.Path] = None,
       type: str = "chromium",  # pylint: disable=redefined-builtin
+      network: Optional[Network] = None,
       driver_path: Optional[pathlib.Path] = None,
       viewport: Optional[Viewport] = None,
       splash_screen: Optional[SplashScreen] = None,
@@ -84,6 +85,7 @@ class Chromium(Browser):
         path,
         flags=None,
         type=type,
+        network=network,
         driver_path=driver_path,
         viewport=viewport,
         splash_screen=splash_screen,
@@ -194,12 +196,13 @@ class Chromium(Browser):
     details["js_flags"] = tuple(self.js_flags.get_list())
     return details
 
-  def _get_browser_flags_for_run(self, run: Run) -> Tuple[str, ...]:
+  def _get_browser_flags_for_session(
+      self, session: BrowserSessionRunGroup) -> Tuple[str, ...]:
     js_flags_copy = self.js_flags.copy()
-    js_flags_copy.update(run.extra_js_flags)
+    js_flags_copy.update(session.extra_js_flags)
 
     flags_copy = self.flags.copy()
-    flags_copy.update(run.extra_flags)
+    flags_copy.update(session.extra_flags)
     self._handle_viewport_flags(flags_copy)
 
     if len(js_flags_copy):

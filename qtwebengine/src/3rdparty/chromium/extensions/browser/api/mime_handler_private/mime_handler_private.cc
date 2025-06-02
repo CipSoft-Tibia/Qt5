@@ -70,7 +70,8 @@ void MimeHandlerServiceImpl::GetStreamInfo(GetStreamInfoCallback callback) {
     return;
   }
   std::move(callback).Run(
-      mojo::ConvertTo<mime_handler::StreamInfoPtr>(*stream_));
+      mojo::TypeConverter<mime_handler::StreamInfoPtr,
+                          extensions::StreamContainer>::Convert(*stream_));
 }
 
 void MimeHandlerServiceImpl::SetPdfPluginAttributes(

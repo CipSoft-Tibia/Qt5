@@ -24,6 +24,7 @@
 #include "ui/base/ui_base_types.h"
 #include "ui/color/color_provider_key.h"
 #include "ui/color/color_provider_source.h"
+#include "ui/color/color_provider_utils.h"
 #include "ui/display/types/display_constants.h"
 #include "ui/events/event_source.h"
 #include "ui/gfx/geometry/rect.h"
@@ -253,6 +254,11 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
     // taking into account special levels due to |type|.
     ui::ZOrderLevel EffectiveZOrderLevel() const;
 
+    // Returns whether the widget should be initialized as headless by checking
+    // if |headless_mode| or the associated top level widget's |is_headless_|
+    // are set.
+    bool ShouldInitAsHeadless() const;
+
     Type type = TYPE_WINDOW;
 
     // If null, a default implementation will be constructed. The default
@@ -273,8 +279,7 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
     // If kOpaque, we can perform optimizations based on the widget being fully
     // opaque. Default is based on ViewsDelegate::GetOpacityForInitParams().
     // Defaults to kOpaque for non-window widgets. Translucent windows may not
-    // always be supported. Use IsTranslucentWindowOpacitySupported() to
-    // determine whether they are.
+    // always be supported.
     WindowOpacity opacity = WindowOpacity::kInferred;
 
     bool accept_events = true;
@@ -356,6 +361,13 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
     // |bounds| is in the parent's coordinate system. If the parent is not
     // specified, it's in screen's global coordinate system.
     gfx::Rect bounds;
+
+#if BUILDFLAG(IS_CHROMEOS)
+    // If specified and the `bounds` is inside the specified display, the widget
+    // will be created on this display. Otherwise, the display matching the
+    // `bounds` will be used.
+    absl::optional<int64_t> display_id;
+#endif
 
     // The initial workspace of the Widget. Default is "", which means the
     // current workspace.
@@ -545,6 +557,8 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // Returns true if the specified type requires a NonClientView.
   static bool RequiresNonClientView(InitParams::Type type);
 
+  static bool IsWindowCompositingSupported();
+
   // Initializes the widget, and in turn, the native widget. |params| should be
   // moved to Init() by the caller.
   void Init(InitParams params);
@@ -645,6 +659,9 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // Sizes and/or places the widget to the specified bounds, size or position.
   void SetBounds(const gfx::Rect& bounds);
   void SetSize(const gfx::Size& size);
+
+  // Retrieves the restored size for the window.
+  gfx::Size GetSize() const;
 
   // Sizes the window to the specified size and centers it.
   void CenterWindow(const gfx::Size& size);
@@ -1029,6 +1046,9 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // with it. TYPE_CONTROL and TYPE_TOOLTIP is not considered top level.
   bool is_top_level() const { return is_top_level_; }
 
+  // True if widget was created in headless mode.
+  bool is_headless() const { return is_headless_; }
+
   // True when window movement via mouse interaction with the frame is disabled.
   bool movement_disabled() const { return movement_disabled_; }
   void set_movement_disabled(bool disabled) { movement_disabled_ = disabled; }
@@ -1039,9 +1059,6 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // Creates and dispatches synthesized mouse move event using the current
   // mouse location to refresh hovering status in the widget.
   void SynthesizeMouseMoveEvent();
-
-  // Whether the widget supports translucency.
-  bool IsTranslucentWindowOpacitySupported() const;
 
   // Returns the gesture recognizer which can handle touch/gesture events on
   // this.
@@ -1151,6 +1168,9 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
 
   // ui::ColorProviderSource:
   const ui::ColorProvider* GetColorProvider() const override;
+  const ui::RendererColorMap GetRendererColorMap(
+      ui::ColorProviderKey::ColorMode color_mode,
+      ui::ColorProviderKey::ForcedColors forced_colors) const override;
 
   // Set the native theme from which this widget gets color from for testing.
   void SetNativeThemeForTest(ui::NativeTheme* native_theme) {
@@ -1159,6 +1179,13 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   }
 
   ui::ColorProviderKey GetColorProviderKeyForTesting() const;
+
+  // Causes IsFullscreen() to also check parent state, since this widget is
+  // logically part of the same window as the parent.
+  void SetCheckParentForFullscreen();
+
+  // Returns the current ownership model of the widget.
+  InitParams::Ownership ownership() const { return ownership_; }
 
  protected:
   // Creates the RootView to be used within this Widget. Subclasses may override
@@ -1214,9 +1241,6 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   friend class TextfieldTest;
   friend class ViewAuraTest;
   friend class ui_devtools::PageAgentViews;
-  // TODO (kylixrd): Remove this after Widget no longer can "own" the
-  // WidgetDelegate.
-  friend class WidgetDelegate;
   friend void DisableActivationChangeHandlingForTests();
 
   // Sets/gets the type of disabling widget activation change handling.
@@ -1281,15 +1305,6 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // Weak pointer to the Widget's delegate. If a NULL delegate is supplied
   // to Init() a default WidgetDelegate is created.
   base::WeakPtr<WidgetDelegate> widget_delegate_;
-
-  // TODO(kylixrd): Rename this once the transition requiring the client to own
-  // the delegate is finished.
-  // [Owned Widget delegate if the DefaultWidgetDelegate is used. This
-  // ties the lifetime of the default delegate to the Widget.]
-  //
-  // This will "own" the delegate when WidgetDelegate::owned_by_widget() is
-  // true.
-  std::unique_ptr<WidgetDelegate> owned_widget_delegate_;
 
   // The parent of this widget. This is the widget that associates with
   // the |params.parent| supplied to Init(). If no parent is given or the native
@@ -1390,6 +1405,9 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // If true, the mouse is currently down.
   bool is_mouse_button_pressed_ = false;
 
+  // If set, the widget was created in headless mode.
+  bool is_headless_ = false;
+
   // True if capture losses should be ignored.
   bool ignore_capture_loss_ = false;
 
@@ -1425,6 +1443,12 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // `native_theme_`. This is necessary during testing as theme updates may
   // trigger a reset of the explicitly set test theme.
   bool native_theme_set_for_testing_ = false;
+
+  // By default, widgets are assumed to correspond to windows. If a parent
+  // widget is fullscreen, then the child widget is a popup which is not
+  // fullscreen. However, on macOS some child widgets logically correspond to
+  // the same window. Their fullscreen state should inherit from their parents.
+  bool check_parent_for_fullscreen_ = false;
 
   base::ScopedObservation<ui::NativeTheme, ui::NativeThemeObserver>
       native_theme_observation_{this};

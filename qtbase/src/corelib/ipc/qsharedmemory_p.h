@@ -105,7 +105,7 @@ public:
     { return quint16(type) <= 0xff; }
     static bool runtimeSupportCheck();
 
-#if QT_CONFIG(sysv_sem)
+#if QT_CONFIG(sysv_shm)
     key_t handle(QSharedMemoryPrivate *self);
     bool cleanHandle(QSharedMemoryPrivate *self);
     bool create(QSharedMemoryPrivate *self, qsizetype size);
@@ -189,9 +189,9 @@ public:
     {
         return visit([&](auto p) { return p->cleanHandle(this); });
     }
-    bool create(qsizetype size)
+    bool create(qsizetype sz)
     {
-        return visit([&](auto p) { return p->create(this, size); });
+        return visit([&](auto p) { return p->create(this, sz); });
     }
     bool attach(QSharedMemory::AccessMode mode)
     {

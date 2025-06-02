@@ -37,8 +37,6 @@ class Bindings;
 class GenericPassPrivate;
 class PassManager;
 
-enum class AccessSemantics { Reference, Value, None, Sequence };
-
 enum class Flag {
     Creatable = 0x1,
     Composite = 0x2,
@@ -121,6 +119,7 @@ public:
     MethodPrivate(Method *, const MethodPrivate &);
 
     QString methodName() const;
+    QQmlSA::SourceLocation sourceLocation() const;
     MethodType methodType() const;
 
     static QQmlSA::Method createMethod(const QQmlJSMetaMethod &);

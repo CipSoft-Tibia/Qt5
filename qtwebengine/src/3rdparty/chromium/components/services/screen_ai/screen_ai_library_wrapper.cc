@@ -14,15 +14,15 @@ namespace {
 #if BUILDFLAG(IS_CHROMEOS_ASH)
 void HandleLibraryLogging(int severity, const char* message) {
   switch (severity) {
-    case logging::LOG_VERBOSE:
-    case logging::LOG_INFO:
+    case logging::LOGGING_VERBOSE:
+    case logging::LOGGING_INFO:
       VLOG(2) << message;
       break;
-    case logging::LOG_WARNING:
+    case logging::LOGGING_WARNING:
       VLOG(1) << message;
       break;
-    case logging::LOG_ERROR:
-    case logging::LOG_FATAL:
+    case logging::LOGGING_ERROR:
+    case logging::LOGGING_FATAL:
       VLOG(0) << message;
       break;
   }
@@ -83,6 +83,7 @@ bool ScreenAILibraryWrapper::Load(const base::FilePath& library_path) {
   if (!LoadFunction(get_library_version_, "GetLibraryVersion") ||
       !LoadFunction(get_library_version_, "GetLibraryVersion") ||
       !LoadFunction(enable_debug_mode_, "EnableDebugMode") ||
+      !LoadFunction(set_file_content_functions_, "SetFileContentFunctions") ||
       !LoadFunction(free_library_allocated_int32_array_,
                     "FreeLibraryAllocatedInt32Array") ||
       !LoadFunction(free_library_allocated_char_array_,
@@ -98,16 +99,14 @@ bool ScreenAILibraryWrapper::Load(const base::FilePath& library_path) {
     }
   }
 
-#if !BUILDFLAG(IS_WIN)
-  if (!LoadFunction(init_ocr_, "InitOCR") ||
+  if (!LoadFunction(init_ocr_, "InitOCRUsingCallback") ||
       !LoadFunction(perform_ocr_, "PerformOCR")) {
     return false;
   }
-#endif
 
   // Main Content Extraction functions.
   if (!LoadFunction(init_main_content_extraction_,
-                    "InitMainContentExtraction") ||
+                    "InitMainContentExtractionUsingCallback") ||
       !LoadFunction(extract_main_content_, "ExtractMainContent")) {
     return false;
   }
@@ -131,6 +130,16 @@ void ScreenAILibraryWrapper::GetLibraryVersion(uint32_t& major,
 }
 
 NO_SANITIZE("cfi-icall")
+void ScreenAILibraryWrapper::SetFileContentFunctions(
+    uint32_t (*get_file_content_size)(const char* /*relative_file_path*/),
+    void (*get_file_content)(const char* /*relative_file_path*/,
+                             uint32_t /*buffer_size*/,
+                             char* /*buffer*/)) {
+  CHECK(set_file_content_functions_);
+  set_file_content_functions_(get_file_content_size, get_file_content);
+}
+
+NO_SANITIZE("cfi-icall")
 void ScreenAILibraryWrapper::EnableDebugMode() {
   CHECK(enable_debug_mode_);
   enable_debug_mode_();
@@ -143,23 +152,15 @@ bool ScreenAILibraryWrapper::InitLayoutExtraction() {
 }
 
 NO_SANITIZE("cfi-icall")
-bool ScreenAILibraryWrapper::InitOCR(const base::FilePath& models_folder) {
+bool ScreenAILibraryWrapper::InitOCR() {
   CHECK(init_ocr_);
-  return init_ocr_(models_folder.MaybeAsASCII().c_str());
+  return init_ocr_();
 }
 
 NO_SANITIZE("cfi-icall")
-bool ScreenAILibraryWrapper::InitMainContentExtraction(
-    const MainContentExtractionModelData& model_data) {
+bool ScreenAILibraryWrapper::InitMainContentExtraction() {
   CHECK(init_main_content_extraction_);
-
-  if (model_data.config.empty() || model_data.tflite.empty()) {
-    return false;
-  }
-
-  return init_main_content_extraction_(
-      model_data.config.data(), model_data.config.size(),
-      model_data.tflite.data(), model_data.tflite.size());
+  return init_main_content_extraction_();
 }
 
 NO_SANITIZE("cfi-icall")
@@ -171,9 +172,11 @@ ScreenAILibraryWrapper::PerformOcr(const SkBitmap& image) {
   absl::optional<chrome_screen_ai::VisualAnnotation> annotation_proto;
 
   uint32_t annotation_proto_length = 0;
-  std::unique_ptr<char, decltype(free_library_allocated_char_array_)>
-      library_buffer(perform_ocr_(image, annotation_proto_length),
-                     free_library_allocated_char_array_);
+  // Memory allocated in `library_buffer` should be release only using
+  // `free_library_allocated_char_array_` function. Using unique_ptr custom
+  // deleter results in crash on Linux official build.
+  std::unique_ptr<char> library_buffer(
+      perform_ocr_(image, annotation_proto_length));
 
   if (!library_buffer) {
     return annotation_proto;
@@ -185,12 +188,7 @@ ScreenAILibraryWrapper::PerformOcr(const SkBitmap& image) {
     annotation_proto.reset();
   }
 
-  // TODO(crbug.com/1443341): Remove this after fixing the crash issue on Linux
-  // official.
-#if BUILDFLAG(IS_LINUX)
   free_library_allocated_char_array_(library_buffer.release());
-#endif
-
   return annotation_proto;
 }
 
@@ -203,9 +201,10 @@ ScreenAILibraryWrapper::ExtractLayout(const SkBitmap& image) {
   absl::optional<chrome_screen_ai::VisualAnnotation> annotation_proto;
 
   uint32_t annotation_proto_length = 0;
-  std::unique_ptr<char, decltype(free_library_allocated_char_array_)>
-      library_buffer(extract_layout_(image, annotation_proto_length),
-                     free_library_allocated_char_array_);
+  // Memory allocated in `library_buffer` should be release only using
+  // `free_library_allocated_char_array_` function.
+  std::unique_ptr<char> library_buffer(
+      extract_layout_(image, annotation_proto_length));
 
   if (!library_buffer) {
     return annotation_proto;
@@ -217,12 +216,7 @@ ScreenAILibraryWrapper::ExtractLayout(const SkBitmap& image) {
     annotation_proto.reset();
   }
 
-  // TODO(crbug.com/1443341): Remove this after fixing the crash issue on Linux
-  // official.
-#if BUILDFLAG(IS_LINUX)
   free_library_allocated_char_array_(library_buffer.release());
-#endif
-
   return annotation_proto;
 }
 
@@ -235,11 +229,11 @@ absl::optional<std::vector<int32_t>> ScreenAILibraryWrapper::ExtractMainContent(
   absl::optional<std::vector<int32_t>> node_ids;
 
   uint32_t nodes_count = 0;
-  std::unique_ptr<int32_t, decltype(free_library_allocated_int32_array_)>
-      library_buffer(extract_main_content_(serialized_view_hierarchy.data(),
-                                           serialized_view_hierarchy.length(),
-                                           nodes_count),
-                     free_library_allocated_int32_array_);
+  // Memory allocated in `library_buffer` should be release only using
+  // `free_library_allocated_int32_array_` function.
+  std::unique_ptr<int32_t> library_buffer(
+      extract_main_content_(serialized_view_hierarchy.data(),
+                            serialized_view_hierarchy.length(), nodes_count));
 
   if (!library_buffer) {
     return node_ids;
@@ -251,12 +245,7 @@ absl::optional<std::vector<int32_t>> ScreenAILibraryWrapper::ExtractMainContent(
            nodes_count * sizeof(int32_t));
   }
 
-  // TODO(crbug.com/1443341): Remove this after fixing the crash issue on Linux
-  // official.
-#if BUILDFLAG(IS_LINUX)
   free_library_allocated_int32_array_(library_buffer.release());
-#endif
-
   return node_ids;
 }
 

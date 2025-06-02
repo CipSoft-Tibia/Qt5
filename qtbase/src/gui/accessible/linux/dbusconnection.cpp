@@ -10,7 +10,6 @@
 #include <qdebug.h>
 
 #include <QDBusConnectionInterface>
-#include "bus_interface.h"
 
 #include <QtGui/qguiapplication.h>
 #include <qpa/qplatformnativeinterface.h>
@@ -26,13 +25,13 @@ using namespace Qt::StringLiterals;
 #define A11Y_PATH "/org/a11y/bus"_L1
 
 /*!
-    \class DBusConnection
+    \class QAtSpiDBusConnection
     \internal
     \brief Connects to the accessibility dbus.
 
     This is usually a different bus from the session bus.
 */
-DBusConnection::DBusConnection(QObject *parent)
+QAtSpiDBusConnection::QAtSpiDBusConnection(QObject *parent)
     : QObject(parent), m_a11yConnection(QString()), m_enabled(false)
 {
     // If the bus is explicitly set via env var it overrides everything else.
@@ -49,12 +48,23 @@ DBusConnection::DBusConnection(QObject *parent)
         return;
     }
 
+    m_a11yStatus = new OrgA11yStatusInterface(A11Y_SERVICE, A11Y_PATH, c, this);
+    m_dbusProperties = new OrgFreedesktopDBusPropertiesInterface(A11Y_SERVICE, A11Y_PATH, c, this);
+
     dbusWatcher = new QDBusServiceWatcher(A11Y_SERVICE, c, QDBusServiceWatcher::WatchForRegistration, this);
-    connect(dbusWatcher, SIGNAL(serviceRegistered(QString)), this, SLOT(serviceRegistered()));
+    connect(dbusWatcher, &QDBusServiceWatcher::serviceRegistered,
+            this, &QAtSpiDBusConnection::checkEnabledState);
 
     // If it is registered already, setup a11y right away
     if (c.interface()->isServiceRegistered(A11Y_SERVICE))
-        serviceRegistered();
+        checkEnabledState();
+
+    // Subscribe to updates about a11y enabled state.
+    connect(m_dbusProperties, &OrgFreedesktopDBusPropertiesInterface::PropertiesChanged,
+            this, [this](const QString &interface_name) {
+        if (interface_name == QLatin1StringView(OrgA11yStatusInterface::staticInterfaceName()))
+            checkEnabledState();
+    });
 
     if (QGuiApplication::platformName().startsWith("xcb"_L1)) {
         // In addition try if there is an xatom exposing the bus address, this allows applications run as root to work
@@ -66,7 +76,7 @@ DBusConnection::DBusConnection(QObject *parent)
     }
 }
 
-QString DBusConnection::getAddressFromXCB()
+QString QAtSpiDBusConnection::getAddressFromXCB()
 {
     QGuiApplication *app = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
     if (!app)
@@ -82,21 +92,14 @@ QString DBusConnection::getAddressFromXCB()
     return QString();
 }
 
-// We have the a11y registry on the session bus.
-// Subscribe to updates about a11y enabled state.
-// Find out the bus address
-void DBusConnection::serviceRegistered()
+void QAtSpiDBusConnection::checkEnabledState()
 {
-    // listen to enabled changes
-    QDBusConnection c = QDBusConnection::sessionBus();
-    OrgA11yStatusInterface *a11yStatus = new OrgA11yStatusInterface(A11Y_SERVICE, A11Y_PATH, c, this);
-
     //The variable was introduced because on some embedded platforms there are custom accessibility
     //clients which don't set Status.ScreenReaderEnabled to true. The variable is also useful for
     //debugging.
     static const bool a11yAlwaysOn = qEnvironmentVariableIsSet("QT_LINUX_ACCESSIBILITY_ALWAYS_ON");
 
-    bool enabled = a11yAlwaysOn || a11yStatus->screenReaderEnabled() || a11yStatus->isEnabled();
+    bool enabled = a11yAlwaysOn || m_a11yStatus->screenReaderEnabled() || m_a11yStatus->isEnabled();
 
     if (enabled != m_enabled) {
         m_enabled = enabled;
@@ -109,16 +112,14 @@ void DBusConnection::serviceRegistered()
             c.callWithCallback(m, this, SLOT(connectA11yBus(QString)), SLOT(dbusError(QDBusError)));
         }
     }
-
-    //    connect(a11yStatus, ); QtDbus doesn't support notifications for property changes yet
 }
 
-void DBusConnection::serviceUnregistered()
+void QAtSpiDBusConnection::serviceUnregistered()
 {
     emit enabledChanged(false);
 }
 
-void DBusConnection::connectA11yBus(const QString &address)
+void QAtSpiDBusConnection::connectA11yBus(const QString &address)
 {
     if (address.isEmpty()) {
         qWarning("Could not find Accessibility DBus address.");
@@ -130,7 +131,7 @@ void DBusConnection::connectA11yBus(const QString &address)
         emit enabledChanged(true);
 }
 
-void DBusConnection::dbusError(const QDBusError &error)
+void QAtSpiDBusConnection::dbusError(const QDBusError &error)
 {
     qWarning() << "Accessibility encountered a DBus error:" << error;
 }
@@ -139,7 +140,7 @@ void DBusConnection::dbusError(const QDBusError &error)
   Returns the DBus connection that got established.
   Or an invalid connection if not yet connected.
 */
-QDBusConnection DBusConnection::connection() const
+QDBusConnection QAtSpiDBusConnection::connection() const
 {
     return m_a11yConnection;
 }

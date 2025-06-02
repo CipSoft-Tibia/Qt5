@@ -26,10 +26,10 @@ struct RouterViewTraitsHelper : ViewTraits<ViewHandler, DisableStaticAssert> {
                       "ViewHandler arguments error: "
                       "QHttpServerRequest can only be passed as a const reference");
 
-        using IsResponder = typename VTraits::template Special<I, QHttpServerResponder &&>;
+        using IsResponder = typename VTraits::template Special<I, QHttpServerResponder &>;
         static_assert(IsResponder::AssertCondition,
                       "ViewHandler arguments error: "
-                      "QHttpServerResponder can only be passed as an rvalue reference");
+                      "QHttpServerResponder can only be passed as a reference");
 
         using IsSpecial = CheckAny<IsRequest, IsResponder>;
 

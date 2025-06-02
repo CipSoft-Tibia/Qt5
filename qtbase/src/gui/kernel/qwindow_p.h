@@ -76,6 +76,16 @@ public:
     void setTransientParent(QWindow *parent);
 
     virtual void clearFocusObject();
+
+    enum class FocusTarget {
+        First,
+        Last,
+        Current,
+        Next,
+        Prev
+    };
+    virtual void setFocusToTarget(FocusTarget, Qt::FocusReason) {}
+
     virtual QRectF closestAcceptableGeometry(const QRectF &rect) const;
 
     void setMinOrMaxSize(QSize *oldSizeMember, const QSize &size,
@@ -86,6 +96,8 @@ public:
 
     virtual bool participatesInLastWindowClosed() const;
     virtual bool treatAsVisible() const;
+
+    const QWindow *forwardToPopup(QEvent *event, const QWindow *activePopupOnPress);
 
     bool isPopup() const { return (windowFlags & Qt::WindowType_Mask) == Qt::Popup; }
     void setAutomaticPositionAndResizeEnabled(bool a)

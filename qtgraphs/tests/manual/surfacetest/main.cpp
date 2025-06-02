@@ -4,7 +4,7 @@
 #include "graphmodifier.h"
 #include "buttonwrapper.h"
 #include "checkboxwrapper.h"
-#include <QtGraphs/q3dtheme.h>
+#include <QtGraphs/qgraphstheme.h>
 
 #include <QApplication>
 #include <QWidget>
@@ -36,21 +36,23 @@ int main(int argc, char *argv[])
     vLayout2->setAlignment(Qt::AlignTop);
     vLayout3->setAlignment(Qt::AlignTop);
 
-    Q3DSurface *surfaceGraph = new Q3DSurface();
-    QSize screenSize = surfaceGraph->screen()->size();
+    auto quickWidget = new QQuickWidget;
+    Q3DSurfaceWidgetItem *surfaceGraph = new Q3DSurfaceWidgetItem();
+    surfaceGraph->setWidget(quickWidget);
+    QSize screenSize = surfaceGraph->widget()->screen()->size();
 
     // Set to default, should be same as the initial on themeList
-    surfaceGraph->activeTheme()->setType(Q3DTheme::Theme(initialTheme));
+    surfaceGraph->activeTheme()->setTheme(QGraphsTheme::Theme(initialTheme));
 
-    surfaceGraph->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 4));
-    surfaceGraph->setMaximumSize(screenSize);
-    surfaceGraph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    surfaceGraph->setFocusPolicy(Qt::StrongFocus);
-    surfaceGraph->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    surfaceGraph->widget()->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 4));
+    surfaceGraph->widget()->setMaximumSize(screenSize);
+    surfaceGraph->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    surfaceGraph->widget()->setFocusPolicy(Qt::StrongFocus);
+    surfaceGraph->widget()->setResizeMode(QQuickWidget::SizeRootObjectToView);
 
     widget->setWindowTitle(QStringLiteral("Surface tester"));
 
-    hLayout->addWidget(surfaceGraph, 1);
+    hLayout->addWidget(surfaceGraph->widget(), 1);
     hLayout->addLayout(vLayout);
     hLayout->addLayout(vLayout2);
     hLayout->addLayout(vLayout3);
@@ -239,14 +241,20 @@ int main(int argc, char *argv[])
     QPushButton *meshButton = new QPushButton(widget);
     meshButton->setText(QStringLiteral("Change pointer mesh"));
 
+    QComboBox *colorSchemeList = new QComboBox(widget);
+    colorSchemeList->addItem(QStringLiteral("Light"));
+    colorSchemeList->addItem(QStringLiteral("Dark"));
+    colorSchemeList->setCurrentIndex(0);
+
     QComboBox *themeList = new QComboBox(widget);
-    themeList->addItem(QStringLiteral("Qt"));
-    themeList->addItem(QStringLiteral("Primary Colors"));
-    themeList->addItem(QStringLiteral("Stone Moss"));
-    themeList->addItem(QStringLiteral("Army Blue"));
-    themeList->addItem(QStringLiteral("Retro"));
-    themeList->addItem(QStringLiteral("Ebony"));
-    themeList->addItem(QStringLiteral("Isabelle"));
+    themeList->addItem(QStringLiteral("QtGreen"));
+    themeList->addItem(QStringLiteral("QtGreenNeon"));
+    themeList->addItem(QStringLiteral("MixSeries"));
+    themeList->addItem(QStringLiteral("OrangeSeries"));
+    themeList->addItem(QStringLiteral("YellowSeries"));
+    themeList->addItem(QStringLiteral("BlueSeries"));
+    themeList->addItem(QStringLiteral("PurpleSeries"));
+    themeList->addItem(QStringLiteral("GreySeries"));
     themeList->setCurrentIndex(initialTheme);
 
     QComboBox *shadowQuality = new QComboBox(widget);
@@ -260,40 +268,43 @@ int main(int argc, char *argv[])
     shadowQuality->setCurrentIndex(3);
 
     QComboBox *selectionMode = new QComboBox(widget);
-    selectionMode->addItem(QStringLiteral("None"),
-                               int(QAbstract3DGraph::SelectionNone));
-    selectionMode->addItem(QStringLiteral("Item"),
-                               int(QAbstract3DGraph::SelectionItem));
+    selectionMode->addItem(QStringLiteral("None"), int(QtGraphs3D::SelectionFlag::None));
+    selectionMode->addItem(QStringLiteral("Item"), int(QtGraphs3D::SelectionFlag::Item));
     selectionMode->addItem(QStringLiteral("Multi: Item"),
-                               int(QAbstract3DGraph::SelectionItem | QAbstract3DGraph::SelectionMultiSeries));
-    selectionMode->addItem(QStringLiteral("Row"),
-                               int(QAbstract3DGraph::SelectionRow));
+                           int(QtGraphs3D::SelectionFlag::Item
+                               | QtGraphs3D::SelectionFlag::MultiSeries));
+    selectionMode->addItem(QStringLiteral("Row"), int(QtGraphs3D::SelectionFlag::Row));
     selectionMode->addItem(QStringLiteral("Item and Row"),
-                               int(QAbstract3DGraph::SelectionItemAndRow));
-    selectionMode->addItem(QStringLiteral("Column"),
-                               int(QAbstract3DGraph::SelectionColumn));
+                           int(QtGraphs3D::SelectionFlag::ItemAndRow));
+    selectionMode->addItem(QStringLiteral("Column"), int(QtGraphs3D::SelectionFlag::Column));
     selectionMode->addItem(QStringLiteral("Item and Column"),
-                               int(QAbstract3DGraph::SelectionItemAndColumn));
+                           int(QtGraphs3D::SelectionFlag::ItemAndColumn));
     selectionMode->addItem(QStringLiteral("Row and Column"),
-                               int(QAbstract3DGraph::SelectionRowAndColumn));
+                           int(QtGraphs3D::SelectionFlag::RowAndColumn));
     selectionMode->addItem(QStringLiteral("Item, Row and Column"),
-                               int(QAbstract3DGraph::SelectionItemRowAndColumn));
+                           int(QtGraphs3D::SelectionFlag::ItemRowAndColumn));
     selectionMode->addItem(QStringLiteral("Multi: Item, Row and Column"),
-                               int(QAbstract3DGraph::SelectionItemRowAndColumn | QAbstract3DGraph::SelectionMultiSeries));
+                           int(QtGraphs3D::SelectionFlag::ItemRowAndColumn
+                               | QtGraphs3D::SelectionFlag::MultiSeries));
     selectionMode->addItem(QStringLiteral("Slice into Row"),
-                               int(QAbstract3DGraph::SelectionSlice | QAbstract3DGraph::SelectionRow));
+                           int(QtGraphs3D::SelectionFlag::Slice | QtGraphs3D::SelectionFlag::Row));
     selectionMode->addItem(QStringLiteral("Slice into Row and Item"),
-                               int(QAbstract3DGraph::SelectionSlice | QAbstract3DGraph::SelectionItemAndRow));
+                           int(QtGraphs3D::SelectionFlag::Slice
+                               | QtGraphs3D::SelectionFlag::ItemAndRow));
     selectionMode->addItem(QStringLiteral("Multi: Slice, Row & Item"),
-                               int(QAbstract3DGraph::SelectionSlice | QAbstract3DGraph::SelectionItemAndRow
-                                   | QAbstract3DGraph::SelectionMultiSeries));
+                           int(QtGraphs3D::SelectionFlag::Slice
+                               | QtGraphs3D::SelectionFlag::ItemAndRow
+                               | QtGraphs3D::SelectionFlag::MultiSeries));
     selectionMode->addItem(QStringLiteral("Slice into Column"),
-                               int(QAbstract3DGraph::SelectionSlice | QAbstract3DGraph::SelectionColumn));
+                           int(QtGraphs3D::SelectionFlag::Slice
+                               | QtGraphs3D::SelectionFlag::Column));
     selectionMode->addItem(QStringLiteral("Slice into Column and Item"),
-                               int(QAbstract3DGraph::SelectionSlice | QAbstract3DGraph::SelectionItemAndColumn));
+                           int(QtGraphs3D::SelectionFlag::Slice
+                               | QtGraphs3D::SelectionFlag::ItemAndColumn));
     selectionMode->addItem(QStringLiteral("Multi: Slice, Column & Item"),
-                               int(QAbstract3DGraph::SelectionSlice | QAbstract3DGraph::SelectionItemAndColumn
-                                   | QAbstract3DGraph::SelectionMultiSeries));
+                           int(QtGraphs3D::SelectionFlag::Slice
+                               | QtGraphs3D::SelectionFlag::ItemAndColumn
+                               | QtGraphs3D::SelectionFlag::MultiSeries));
 
 #ifndef MULTI_SERIES
     QPushButton *selectButton = new QPushButton(widget);
@@ -305,6 +316,8 @@ int main(int argc, char *argv[])
     QLabel *selectionInfoLabel = new QLabel(widget);
 #endif
 
+    QPushButton *changeSubViews = new QPushButton(widget);
+    changeSubViews->setText(QStringLiteral("Change subview"));
     QPushButton *changeRowButton = new QPushButton(widget);
     changeRowButton->setText(QStringLiteral("Change a row"));
 
@@ -366,6 +379,18 @@ int main(int argc, char *argv[])
     axisTitlesVisibleCB->setText(QStringLiteral("Axis titles visible"));
     axisTitlesVisibleCB->setChecked(false);
 
+    QCheckBox *xAxisLabelsVisibleCB = new QCheckBox(widget);
+    xAxisLabelsVisibleCB->setText(QStringLiteral("X-Axis labels visible"));
+    xAxisLabelsVisibleCB->setChecked(true);
+
+    QCheckBox *yAxisLabelsVisibleCB = new QCheckBox(widget);
+    yAxisLabelsVisibleCB->setText(QStringLiteral("Y-Axis labels visible"));
+    yAxisLabelsVisibleCB->setChecked(true);
+
+    QCheckBox *zAxisLabelsVisibleCB = new QCheckBox(widget);
+    zAxisLabelsVisibleCB->setText(QStringLiteral("Z-Axis labels visible"));
+    zAxisLabelsVisibleCB->setChecked(true);
+
     QCheckBox *axisTitlesFixedCB = new QCheckBox(widget);
     axisTitlesFixedCB->setText(QStringLiteral("Axis titles fixed"));
     axisTitlesFixedCB->setChecked(true);
@@ -413,6 +438,11 @@ int main(int argc, char *argv[])
     marginSlider->setMinimum(-1);
     marginSlider->setValue(-1);
     marginSlider->setMaximum(100);
+
+    QSlider *labelMarginSlider = new QSlider(Qt::Horizontal, widget);
+    labelMarginSlider->setMinimum(-200);
+    labelMarginSlider->setValue(100);
+    labelMarginSlider->setMaximum(200);
 
     QSlider *xSegmentSlider = new QSlider(Qt::Horizontal, widget);
     xSegmentSlider->setMinimum(1);
@@ -497,6 +527,8 @@ int main(int argc, char *argv[])
     vLayout2->addWidget(polarCB);
     vLayout2->addWidget(new QLabel(QStringLiteral("Change font")));
     vLayout2->addWidget(fontList);
+    vLayout2->addWidget(new QLabel(QStringLiteral("Change Color Mode")));
+    vLayout2->addWidget(colorSchemeList);
     vLayout2->addWidget(new QLabel(QStringLiteral("Change theme")));
     vLayout2->addWidget(themeList);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust shadow quality")));
@@ -508,7 +540,9 @@ int main(int argc, char *argv[])
     vLayout2->addWidget(cameraTargetSliderY);
     vLayout2->addWidget(cameraTargetSliderZ);
     vLayout2->addWidget(new QLabel(QStringLiteral("Adjust margin")), 0, Qt::AlignTop);
-    vLayout2->addWidget(marginSlider, 1, Qt::AlignTop);
+    vLayout2->addWidget(marginSlider);
+    vLayout2->addWidget(new QLabel(QStringLiteral("Adjust label offset")), 0, Qt::AlignTop);
+    vLayout2->addWidget(labelMarginSlider, 1, Qt::AlignTop);
 
     vLayout3->addWidget(labelButton);
     vLayout3->addWidget(meshButton);
@@ -519,6 +553,7 @@ int main(int argc, char *argv[])
 #endif
 
     vLayout3->addWidget(colorPB);
+    vLayout3->addWidget(changeSubViews);
     vLayout3->addWidget(changeRowButton);
     vLayout3->addWidget(changeRowsButton);
     vLayout3->addWidget(changeMultipleRowsButton);
@@ -535,6 +570,9 @@ int main(int argc, char *argv[])
     vLayout3->addWidget(testReverseButton);
     vLayout3->addWidget(testDataOrderingButton);
     vLayout3->addWidget(axisTitlesVisibleCB);
+    vLayout3->addWidget(xAxisLabelsVisibleCB);
+    vLayout3->addWidget(yAxisLabelsVisibleCB);
+    vLayout3->addWidget(zAxisLabelsVisibleCB);
     vLayout3->addWidget(axisTitlesFixedCB);
     vLayout3->addWidget(new QLabel(QStringLiteral("Axis label rotation")));
     vLayout3->addWidget(axisLabelRotationSlider, 1);
@@ -553,55 +591,55 @@ int main(int argc, char *argv[])
     GraphModifier *modifier = new GraphModifier(surfaceGraph);
 
     // Connect controls to slots on modifier
-    QObject::connect(smoothCB, &QCheckBox::stateChanged,
+    QObject::connect(smoothCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSmooth);
-    QObject::connect(surfaceGridCB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceGridCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSurfaceGrid);
-    QObject::connect(surfaceCB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSurface);
-    QObject::connect(seriesVisibleCB, &QCheckBox::stateChanged,
+    QObject::connect(seriesVisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeriesVisible);
 #ifdef MULTI_SERIES
-    QObject::connect(smoothS2CB, &QCheckBox::stateChanged,
+    QObject::connect(smoothS2CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSmoothS2);
-    QObject::connect(surfaceGridS2CB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceGridS2CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSurfaceGridS2);
-    QObject::connect(surfaceS2CB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceS2CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSurfaceS2);
-    QObject::connect(series2VisibleCB, &QCheckBox::stateChanged,
+    QObject::connect(series2VisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries2Visible);
 
-    QObject::connect(smoothS3CB, &QCheckBox::stateChanged,
+    QObject::connect(smoothS3CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSmoothS3);
-    QObject::connect(surfaceGridS3CB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceGridS3CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSurfaceGridS3);
-    QObject::connect(surfaceS3CB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceS3CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSurfaceS3);
-    QObject::connect(series3VisibleCB, &QCheckBox::stateChanged,
+    QObject::connect(series3VisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries3Visible);
 
-    QObject::connect(smoothS4CB, &QCheckBox::stateChanged,
+    QObject::connect(smoothS4CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSmoothS4);
-    QObject::connect(surfaceGridS4CB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceGridS4CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSurfaceGridS4);
-    QObject::connect(surfaceS4CB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceS4CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSurfaceS4);
-    QObject::connect(series4VisibleCB, &QCheckBox::stateChanged,
+    QObject::connect(series4VisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries4Visible);
 
     CheckBoxWrapper *series1SmoothCBWrapper = new CheckBoxWrapper(smoothCB);
     CheckBoxWrapper *series1SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridCB);
     CheckBoxWrapper *series1surfaceCBWrapper = new CheckBoxWrapper(surfaceCB);
     CheckBoxWrapper *series1VisibleCBWrapper = new CheckBoxWrapper(seriesVisibleCB);
-    QObject::connect(series1CB, &QCheckBox::stateChanged,
+    QObject::connect(series1CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries1);
-    QObject::connect(series1CB, &QCheckBox::stateChanged,
+    QObject::connect(series1CB, &QCheckBox::checkStateChanged,
                      series1SmoothCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series1CB, &QCheckBox::stateChanged,
+    QObject::connect(series1CB, &QCheckBox::checkStateChanged,
                      series1SurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series1CB, &QCheckBox::stateChanged,
+    QObject::connect(series1CB, &QCheckBox::checkStateChanged,
                      series1surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series1CB, &QCheckBox::stateChanged,
+    QObject::connect(series1CB, &QCheckBox::checkStateChanged,
                      series1VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
 
 
@@ -609,45 +647,45 @@ int main(int argc, char *argv[])
     CheckBoxWrapper *series2SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridS2CB);
     CheckBoxWrapper *series2surfaceCBWrapper = new CheckBoxWrapper(surfaceS2CB);
     CheckBoxWrapper *series2VisibleCBWrapper = new CheckBoxWrapper(series2VisibleCB);
-    QObject::connect(series2CB, &QCheckBox::stateChanged,
+    QObject::connect(series2CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries2);
-    QObject::connect(series2CB, &QCheckBox::stateChanged,
+    QObject::connect(series2CB, &QCheckBox::checkStateChanged,
                      series2SmoothCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series2CB, &QCheckBox::stateChanged,
+    QObject::connect(series2CB, &QCheckBox::checkStateChanged,
                      series2SurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series2CB, &QCheckBox::stateChanged,
+    QObject::connect(series2CB, &QCheckBox::checkStateChanged,
                      series2surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series2CB, &QCheckBox::stateChanged,
+    QObject::connect(series2CB, &QCheckBox::checkStateChanged,
                      series2VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
 
     CheckBoxWrapper *series3SmoothCBWrapper = new CheckBoxWrapper(smoothS3CB);
     CheckBoxWrapper *series3SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridS3CB);
     CheckBoxWrapper *series3surfaceCBWrapper = new CheckBoxWrapper(surfaceS3CB);
     CheckBoxWrapper *series3VisibleCBWrapper = new CheckBoxWrapper(series3VisibleCB);
-    QObject::connect(series3CB, &QCheckBox::stateChanged,
+    QObject::connect(series3CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries3);
-    QObject::connect(series3CB, &QCheckBox::stateChanged,
+    QObject::connect(series3CB, &QCheckBox::checkStateChanged,
                      series3SmoothCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series3CB, &QCheckBox::stateChanged,
+    QObject::connect(series3CB, &QCheckBox::checkStateChanged,
                      series3SurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series3CB, &QCheckBox::stateChanged,
+    QObject::connect(series3CB, &QCheckBox::checkStateChanged,
                      series3surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series3CB, &QCheckBox::stateChanged,
+    QObject::connect(series3CB, &QCheckBox::checkStateChanged,
                      series3VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
 
     CheckBoxWrapper *series4SmoothCBWrapper = new CheckBoxWrapper(smoothS4CB);
     CheckBoxWrapper *series4SurfaceGridCBWrapper = new CheckBoxWrapper(surfaceGridS4CB);
     CheckBoxWrapper *series4surfaceCBWrapper = new CheckBoxWrapper(surfaceS4CB);
     CheckBoxWrapper *series4VisibleCBWrapper = new CheckBoxWrapper(series4VisibleCB);
-    QObject::connect(series4CB, &QCheckBox::stateChanged,
+    QObject::connect(series4CB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleSeries4);
-    QObject::connect(series4CB, &QCheckBox::stateChanged,
+    QObject::connect(series4CB, &QCheckBox::checkStateChanged,
                      series4SmoothCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series4CB, &QCheckBox::stateChanged,
+    QObject::connect(series4CB, &QCheckBox::checkStateChanged,
                      series4SurfaceGridCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series4CB, &QCheckBox::stateChanged,
+    QObject::connect(series4CB, &QCheckBox::checkStateChanged,
                      series4surfaceCBWrapper, &CheckBoxWrapper::setEnabled);
-    QObject::connect(series4CB, &QCheckBox::stateChanged,
+    QObject::connect(series4CB, &QCheckBox::checkStateChanged,
                      series4VisibleCBWrapper, &CheckBoxWrapper::setEnabled);
 #else
     QObject::connect(sqrtSinCB, &QRadioButton::toggled,
@@ -656,7 +694,7 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::togglePlane);
     QObject::connect(heightMapCB, &QCheckBox::toggled,
                      modifier, &GraphModifier::setHeightMapData);
-    QObject::connect(gridSlidersLockCB, &QCheckBox::stateChanged,
+    QObject::connect(gridSlidersLockCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleGridSliderLock);
     QObject::connect(gridSliderX, &QSlider::valueChanged,
                      modifier, &GraphModifier::adjustXCount);
@@ -683,6 +721,8 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::changeStyle);
     QObject::connect(meshButton, &QPushButton::clicked,
                      modifier, &GraphModifier::changeMesh);
+    QObject::connect(colorSchemeList, SIGNAL(currentIndexChanged(int)),
+                     modifier, SLOT(changeColorScheme(int)));
     QObject::connect(themeList, SIGNAL(currentIndexChanged(int)),
                      modifier, SLOT(changeTheme(int)));
     QObject::connect(shadowQuality, SIGNAL(currentIndexChanged(int)),
@@ -695,8 +735,8 @@ int main(int argc, char *argv[])
     QObject::connect(flipViewsButton, &QPushButton::clicked,
                      modifier, &GraphModifier::flipViews);
 #endif
-    QObject::connect(changeRowButton,&QPushButton::clicked,
-                     modifier, &GraphModifier::changeRow);
+    QObject::connect(changeSubViews, &QPushButton::clicked, modifier, &GraphModifier::changeSubView);
+    QObject::connect(changeRowButton, &QPushButton::clicked, modifier, &GraphModifier::changeRow);
     QObject::connect(changeRowsButton,&QPushButton::clicked,
                      modifier, &GraphModifier::changeRows);
     QObject::connect(changeItemButton,&QPushButton::clicked,
@@ -725,24 +765,38 @@ int main(int argc, char *argv[])
                      modifier, &GraphModifier::testAxisReverse);
     QObject::connect(testDataOrderingButton, &QPushButton::clicked,
                      modifier, &GraphModifier::testDataOrdering);
-    QObject::connect(axisTitlesVisibleCB, &QCheckBox::stateChanged,
+    QObject::connect(axisTitlesVisibleCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleAxisTitleVisibility);
-    QObject::connect(axisTitlesFixedCB, &QCheckBox::stateChanged,
-                     modifier, &GraphModifier::toggleAxisTitleFixed);
+    QObject::connect(xAxisLabelsVisibleCB,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::toggleXAxisLabelsVisibility);
+    QObject::connect(yAxisLabelsVisibleCB,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::toggleYAxisLabelsVisibility);
+    QObject::connect(zAxisLabelsVisibleCB,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::toggleZAxisLabelsVisibility);
+    QObject::connect(axisTitlesFixedCB,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::toggleAxisTitleFixed);
     QObject::connect(axisLabelRotationSlider, &QSlider::valueChanged, modifier,
                      &GraphModifier::changeLabelRotation);
-    QObject::connect(xAscendingCB, &QCheckBox::stateChanged,
+    QObject::connect(xAscendingCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleXAscending);
-    QObject::connect(zAscendingCB, &QCheckBox::stateChanged,
+    QObject::connect(zAscendingCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::toggleZAscending);
-    QObject::connect(polarCB, &QCheckBox::stateChanged,
+    QObject::connect(polarCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::togglePolar);
 
     QObject::connect(aspectRatioSlider, &QSlider::valueChanged,
                      modifier, &GraphModifier::setAspectRatio);
     QObject::connect(horizontalAspectRatioSlider, &QSlider::valueChanged,
                      modifier, &GraphModifier::setHorizontalAspectRatio);
-    QObject::connect(surfaceTextureCB, &QCheckBox::stateChanged,
+    QObject::connect(surfaceTextureCB, &QCheckBox::checkStateChanged,
                      modifier, &GraphModifier::setSurfaceTexture);
     QObject::connect(cameraTargetSliderX, &QSlider::valueChanged, modifier,
                      &GraphModifier::setCameraTargetX);
@@ -752,6 +806,10 @@ int main(int argc, char *argv[])
                      &GraphModifier::setCameraTargetZ);
     QObject::connect(marginSlider, &QSlider::valueChanged, modifier,
                      &GraphModifier::setGraphMargin);
+    QObject::connect(labelMarginSlider,
+                     &QSlider::valueChanged,
+                     modifier,
+                     &GraphModifier::setLabelMargin);
 
     QObject::connect(xSegmentSlider,
                      &QSlider::valueChanged,
@@ -801,6 +859,8 @@ int main(int argc, char *argv[])
     sqrtSinCB->setChecked(true);
 #endif
     shadowQuality->setCurrentIndex(3);
-
-    return app.exec();
+    int retVal = app.exec();
+    delete modifier;
+    delete quickWidget;
+    return retVal;
 }

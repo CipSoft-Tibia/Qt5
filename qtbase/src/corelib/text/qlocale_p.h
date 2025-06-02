@@ -18,10 +18,10 @@
 
 #include "qlocale.h"
 
-#include <QtCore/private/qglobal_p.h>
 #include <QtCore/qcalendar.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qnumeric.h>
+#include <QtCore/private/qnumeric_p.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qvarlengtharray.h>
@@ -189,34 +189,34 @@ namespace QIcu {
 struct QLocaleId
 {
     [[nodiscard]] Q_AUTOTEST_EXPORT static QLocaleId fromName(QStringView name);
-    [[nodiscard]] inline bool operator==(QLocaleId other) const
+    [[nodiscard]] inline bool operator==(QLocaleId other) const noexcept
     { return language_id == other.language_id && script_id == other.script_id && territory_id == other.territory_id; }
-    [[nodiscard]] inline bool operator!=(QLocaleId other) const
+    [[nodiscard]] inline bool operator!=(QLocaleId other) const noexcept
     { return !operator==(other); }
-    [[nodiscard]] inline bool isValid() const
+    [[nodiscard]] inline bool isValid() const noexcept
     {
         return language_id <= QLocale::LastLanguage && script_id <= QLocale::LastScript
                 && territory_id <= QLocale::LastTerritory;
     }
-    [[nodiscard]] inline bool matchesAll() const
+    [[nodiscard]] inline bool matchesAll() const noexcept
     {
         return !language_id && !script_id && !territory_id;
     }
     // Use as: filter.accept...(candidate)
-    [[nodiscard]] inline bool acceptLanguage(quint16 lang) const
+    [[nodiscard]] inline bool acceptLanguage(quint16 lang) const noexcept
     {
         // Always reject AnyLanguage (only used for last entry in locale_data array).
         // So, when searching for AnyLanguage, accept everything *but* AnyLanguage.
         return language_id ? lang == language_id : lang;
     }
-    [[nodiscard]] inline bool acceptScriptTerritory(QLocaleId other) const
+    [[nodiscard]] inline bool acceptScriptTerritory(QLocaleId other) const noexcept
     {
         return (!territory_id || other.territory_id == territory_id)
                 && (!script_id || other.script_id == script_id);
     }
 
-    [[nodiscard]] QLocaleId withLikelySubtagsAdded() const;
-    [[nodiscard]] QLocaleId withLikelySubtagsRemoved() const;
+    [[nodiscard]] QLocaleId withLikelySubtagsAdded() const noexcept;
+    [[nodiscard]] QLocaleId withLikelySubtagsRemoved() const noexcept;
 
     [[nodiscard]] QByteArray name(char separator = '-') const;
 
@@ -244,8 +244,10 @@ struct QLocaleData
 public:
     // Having an index for each locale enables us to have diverse sources of
     // data, e.g. calendar locales, as well as the main CLDR-derived data.
-    [[nodiscard]] static qsizetype findLocaleIndex(QLocaleId localeId);
-    [[nodiscard]] static const QLocaleData *c();
+    [[nodiscard]] static qsizetype findLocaleIndex(QLocaleId localeId) noexcept;
+    [[nodiscard]] static const QLocaleData *c() noexcept;
+    [[nodiscard]] Q_AUTOTEST_EXPORT
+    static bool allLocaleDataRows(bool (*check)(qsizetype, const QLocaleData &));
 
     enum DoubleForm {
         DFExponent = 0,
@@ -305,23 +307,14 @@ public:
                                               unsigned flags = NoFlags) const;
 
     // this function is meant to be called with the result of stringToDouble or bytearrayToDouble
+    // so *ok must have been properly set (if not null)
     [[nodiscard]] static float convertDoubleToFloat(double d, bool *ok)
     {
-        if (qIsInf(d))
-            return float(d);
-        if (std::fabs(d) > (std::numeric_limits<float>::max)()) {
-            if (ok)
-                *ok = false;
-            const float huge = std::numeric_limits<float>::infinity();
-            return d < 0 ? -huge : huge;
-        }
-        if (d != 0 && float(d) == 0) {
-            // Values that underflow double already failed. Match them:
-            if (ok)
-                *ok = false;
-            return 0;
-        }
-        return float(d);
+        float result;
+        bool b = convertDoubleTo<float>(d, &result);
+        if (ok && *ok)
+            *ok = b;
+        return result;
     }
 
     [[nodiscard]] double stringToDouble(QStringView str, bool *ok,

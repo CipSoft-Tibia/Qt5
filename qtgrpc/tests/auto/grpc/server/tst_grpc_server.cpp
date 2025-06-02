@@ -7,11 +7,11 @@
 class QtGrpcServerTest : public QObject
 {
     Q_OBJECT
-private slots:
-    void TrueTest();
+private Q_SLOTS:
+    void trueTest();
 };
 
-void QtGrpcServerTest::TrueTest()
+void QtGrpcServerTest::trueTest()
 {
     QVERIFY(true);
 }

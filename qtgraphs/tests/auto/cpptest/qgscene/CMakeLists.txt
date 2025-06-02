@@ -10,4 +10,5 @@ qt_internal_add_test(tst_qgscene
         Qt::Gui
         Qt::GuiPrivate
         Qt::Graphs
+        Qt::GraphsWidgets
 )

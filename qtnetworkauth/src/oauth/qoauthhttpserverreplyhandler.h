@@ -4,9 +4,10 @@
 #ifndef QOAUTHHTTPSERVERREPLYHANDLER_H
 #define QOAUTHHTTPSERVERREPLYHANDLER_H
 
+#include <QtNetworkAuth/qoauthglobal.h>
+
 #ifndef QT_NO_HTTP
 
-#include <QtNetworkAuth/qoauthglobal.h>
 #include <QtNetworkAuth/qoauthoobreplyhandler.h>
 
 #include <QtNetwork/qhostaddress.h>

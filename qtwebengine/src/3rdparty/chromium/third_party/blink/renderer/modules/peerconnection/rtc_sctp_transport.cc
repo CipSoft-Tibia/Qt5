@@ -116,7 +116,7 @@ absl::optional<int16_t> RTCSctpTransport::maxChannels() const {
 }
 
 RTCDtlsTransport* RTCSctpTransport::transport() const {
-  return dtls_transport_;
+  return dtls_transport_.Get();
 }
 
 rtc::scoped_refptr<webrtc::SctpTransportInterface>

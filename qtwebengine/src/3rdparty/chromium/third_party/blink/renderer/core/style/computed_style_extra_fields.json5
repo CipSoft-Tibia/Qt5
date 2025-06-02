@@ -50,8 +50,9 @@
         "table-caption", "-webkit-box", "-webkit-inline-box", "flex",
         "inline-flex", "grid", "inline-grid", "contents", "flow-root", "none",
         "layout-custom", "inline-layout-custom", "math", "block math",
-        // Available only if CSSDisplayMultipleValues is enabled:
-        "inline list-item", "flow-root list-item", "inline flow-root list-item"
+        "inline list-item", "flow-root list-item", "inline flow-root list-item",
+        // Available only if CssDisplayRuby is enabled:
+        "ruby", "block ruby", "ruby-text"
       ],
       default_value: "inline",
     },
@@ -72,20 +73,10 @@
       default_value: "g_null_atom",
     },
     {
-      name: "OriginalDisplay",
-      field_template: "keyword",
-      type_name: "EDisplay",
-      keywords: [
-        "inline", "block", "list-item", "inline-block", "table", "inline-table",
-        "table-row-group", "table-header-group", "table-footer-group",
-        "table-row", "table-column-group", "table-column", "table-cell",
-        "table-caption", "-webkit-box", "-webkit-inline-box", "flex",
-        "inline-flex", "grid", "inline-grid", "contents", "flow-root", "none",
-        "layout-custom", "inline-layout-custom", "math", "block math",
-        // Available only if CSSDisplayMultipleValues is enabled:
-        "inline list-item", "flow-root list-item", "inline flow-root list-item"
-      ],
-      default_value: "inline",
+      name: "IsOriginalDisplayInlineType",
+      field_template: "primitive",
+      type_name: "bool",
+      default_value: "true",
     },
     {
       name: "InsideLink",
@@ -218,6 +209,12 @@
       default_value: "false",
       custom_compare: true,
     },
+    {
+      name: "HasLogicalDirectionRelativeUnits",
+      field_template: "monotonic_flag",
+      default_value: "false",
+      custom_compare: true,
+    },
     // True if this ComputedStyle is the result of CustomStyleForLayoutObject()
     // that uses font metrics in its calculation.
     {
@@ -263,6 +260,17 @@
     // needs to be restored *non-monotonically* in ApplyMatchedCache.
     {
       name: "HasNonUaHighlightPseudoStyles",
+      field_template: "primitive",
+      field_group: "*",
+      default_value: "false",
+      type_name: "bool",
+      reset_on_new_style: true,
+      custom_compare: true,
+    },
+    // Whether any highlight pseudo selectors were found within container
+    // query blocks.
+    {
+      name: "HighlightsDependOnSizeContainerQueries",
       field_template: "primitive",
       field_group: "*",
       default_value: "false",
@@ -357,7 +365,7 @@
       field_template: "external",
       include_paths: ["third_party/blink/renderer/platform/fonts/font.h"],
       type_name: "Font",
-      field_group: "inherited->font",
+      field_group: "font",
       inherited: true,
       default_value: "Font()",
     },
@@ -901,6 +909,14 @@
       inherited: true,
     },
     {
+      name: "ColorSchemeFlagsIsNormal",
+      field_template: "primitive",
+      type_name: "bool",
+      default_value: "false",
+      custom_compare: true,
+      inherited: true,
+    },
+    {
       name: "ColorSchemeForced",
       field_template: "primitive",
       type_name: "bool",
@@ -910,6 +926,12 @@
     },
     {
       name: "IsInBlockifyingDisplay",
+      field_template: "monotonic_flag",
+      default_value: "false",
+      custom_compare: true,
+    },
+    {
+      name: "IsInInlinifyingDisplay",
       field_template: "monotonic_flag",
       default_value: "false",
       custom_compare: true,
@@ -1086,7 +1108,7 @@
     {
       name: "BaseData",
       inherited: false,
-      field_template: "external",
+      field_template: "pointer",
       type_name: "StyleBaseData",
       include_paths: ["third_party/blink/renderer/core/style/style_base_data.h"],
       default_value: "nullptr",
@@ -1097,7 +1119,8 @@
     {
       // https://drafts.csswg.org/css-contain-2/#skips-its-contents
       name: "SkipsContents",
-      field_template: "monotonic_flag",
+      field_template: "primitive",
+      type_name: "bool",
       default_value: "false",
     },
     {

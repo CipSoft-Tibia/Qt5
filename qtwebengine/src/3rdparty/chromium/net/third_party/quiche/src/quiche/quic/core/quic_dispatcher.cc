@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -21,7 +22,6 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "quiche/quic/core/chlo_extractor.h"
 #include "quiche/quic/core/connection_id_generator.h"
 #include "quiche/quic/core/crypto/crypto_handshake_message.h"
@@ -141,9 +141,11 @@ class PacketCollector : public QuicPacketCreator::DelegateInterface,
     return true;
   }
 
-  const QuicFrames MaybeBundleOpportunistically() override {
+  void MaybeBundleOpportunistically() override { QUICHE_DCHECK(false); }
+
+  QuicByteCount GetFlowControlSendWindowSize(QuicStreamId /*id*/) override {
     QUICHE_DCHECK(false);
-    return {};
+    return std::numeric_limits<QuicByteCount>::max();
   }
 
   SerializedPacketFate GetSerializedPacketFate(
@@ -547,6 +549,7 @@ bool QuicDispatcher::MaybeDispatchPacket(
     // By adding the connection to time wait list, following packets on this
     // connection will not reach ShouldAcceptNewConnections().
     StatelesslyTerminateConnection(
+        packet_info.self_address, packet_info.peer_address,
         packet_info.destination_connection_id, packet_info.form,
         packet_info.version_flag, packet_info.use_length_prefix,
         packet_info.version, QUIC_HANDSHAKE_FAILED,
@@ -650,6 +653,7 @@ void QuicDispatcher::ProcessHeader(ReceivedPacketInfo* packet_info) {
           tls_alert_error_detail.empty() ? "Reject connection"
                                          : tls_alert_error_detail;
       StatelesslyTerminateConnection(
+          packet_info->self_address, packet_info->peer_address,
           server_connection_id, packet_info->form, packet_info->version_flag,
           packet_info->use_length_prefix, packet_info->version,
           connection_close_error_code, connection_close_error_detail,
@@ -676,6 +680,7 @@ QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
   if (packet_info.version.UsesTls()) {
     bool has_full_tls_chlo = false;
     std::string sni;
+    std::vector<uint16_t> supported_groups;
     std::vector<std::string> alpns;
     bool resumption_attempted = false, early_data_attempted = false;
     if (buffered_packets_.HasBufferedPackets(
@@ -684,8 +689,8 @@ QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
       // use the associated TlsChloExtractor to parse this packet.
       has_full_tls_chlo = buffered_packets_.IngestPacketForTlsChloExtraction(
           packet_info.destination_connection_id, packet_info.version,
-          packet_info.packet, &alpns, &sni, &resumption_attempted,
-          &early_data_attempted, &result.tls_alert);
+          packet_info.packet, &supported_groups, &alpns, &sni,
+          &resumption_attempted, &early_data_attempted, &result.tls_alert);
     } else {
       // If we do not have a BufferedPacketList for this connection ID,
       // create a single-use one to check whether this packet contains a
@@ -695,6 +700,7 @@ QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
       if (tls_chlo_extractor.HasParsedFullChlo()) {
         // This packet contains a full single-packet CHLO.
         has_full_tls_chlo = true;
+        supported_groups = tls_chlo_extractor.supported_groups();
         alpns = tls_chlo_extractor.alpns();
         sni = tls_chlo_extractor.server_name();
         resumption_attempted = tls_chlo_extractor.resumption_attempted();
@@ -721,6 +727,7 @@ QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
 
     ParsedClientHello& parsed_chlo = result.parsed_chlo.emplace();
     parsed_chlo.sni = std::move(sni);
+    parsed_chlo.supported_groups = std::move(supported_groups);
     parsed_chlo.alpns = std::move(alpns);
     if (packet_info.retry_token.has_value()) {
       parsed_chlo.retry_token = std::string(*packet_info.retry_token);
@@ -1038,6 +1045,8 @@ void QuicDispatcher::OnConnectionAddedToTimeWaitList(
 }
 
 void QuicDispatcher::StatelesslyTerminateConnection(
+    const QuicSocketAddress& self_address,
+    const QuicSocketAddress& peer_address,
     QuicConnectionId server_connection_id, PacketHeaderFormat format,
     bool version_flag, bool use_length_prefix, ParsedQuicVersion version,
     QuicErrorCode error_code, const std::string& error_details,
@@ -1071,6 +1080,9 @@ void QuicDispatcher::StatelesslyTerminateConnection(
     QUIC_CODE_COUNT(quic_dispatcher_generated_connection_close);
     QuicSession::RecordConnectionCloseAtServer(
         error_code, ConnectionCloseSource::FROM_SELF);
+    OnStatelessConnectionCloseGenerated(self_address, peer_address,
+                                        server_connection_id, version,
+                                        error_code, error_details);
     return;
   }
 
@@ -1108,8 +1120,13 @@ void QuicDispatcher::OnExpiredPackets(
         quic_new_error_code_when_packets_buffered_too_long);
     error_code = QUIC_HANDSHAKE_FAILED_PACKETS_BUFFERED_TOO_LONG;
   }
+  QuicSocketAddress self_address, peer_address;
+  if (!early_arrived_packets.buffered_packets.empty()) {
+    self_address = early_arrived_packets.buffered_packets.front().self_address;
+    peer_address = early_arrived_packets.buffered_packets.front().peer_address;
+  }
   StatelesslyTerminateConnection(
-      server_connection_id,
+      self_address, peer_address, server_connection_id,
       early_arrived_packets.ietf_quic ? IETF_QUIC_LONG_HEADER_PACKET
                                       : GOOGLE_QUIC_PACKET,
       /*version_flag=*/true,
@@ -1138,9 +1155,10 @@ void QuicDispatcher::ProcessBufferedChlos(size_t max_connections_to_create) {
           << server_connection_id;
       continue;
     }
-    auto session_ptr = QuicDispatcher::CreateSessionFromChlo(
+    auto session_ptr = CreateSessionFromChlo(
         server_connection_id, *packet_list.parsed_chlo, packet_list.version,
-        packets.front().self_address, packets.front().peer_address);
+        packets.front().self_address, packets.front().peer_address,
+        packet_list.connection_id_generator);
     if (session_ptr != nullptr) {
       DeliverPacketsToSession(packets, session_ptr.get());
     }
@@ -1168,11 +1186,13 @@ QuicTimeWaitListManager* QuicDispatcher::CreateQuicTimeWaitListManager() {
 }
 
 void QuicDispatcher::BufferEarlyPacket(const ReceivedPacketInfo& packet_info) {
+  // The connection ID generator will only be set for CHLOs, not for early
+  // packets.
   EnqueuePacketResult rs = buffered_packets_.EnqueuePacket(
       packet_info.destination_connection_id,
       packet_info.form != GOOGLE_QUIC_PACKET, packet_info.packet,
       packet_info.self_address, packet_info.peer_address, packet_info.version,
-      /*parsed_chlo=*/absl::nullopt);
+      /*parsed_chlo=*/std::nullopt, /*connection_id_generator=*/nullptr);
   if (rs != EnqueuePacketResult::SUCCESS) {
     OnBufferPacketFailure(rs, packet_info.destination_connection_id);
   }
@@ -1189,16 +1209,17 @@ void QuicDispatcher::ProcessChlo(ParsedClientHello parsed_chlo,
         packet_info->destination_connection_id,
         packet_info->form != GOOGLE_QUIC_PACKET, packet_info->packet,
         packet_info->self_address, packet_info->peer_address,
-        packet_info->version, std::move(parsed_chlo));
+        packet_info->version, std::move(parsed_chlo), &ConnectionIdGenerator());
     if (rs != EnqueuePacketResult::SUCCESS) {
       OnBufferPacketFailure(rs, packet_info->destination_connection_id);
     }
     return;
   }
 
-  auto session_ptr = QuicDispatcher::CreateSessionFromChlo(
+  auto session_ptr = CreateSessionFromChlo(
       packet_info->destination_connection_id, parsed_chlo, packet_info->version,
-      packet_info->self_address, packet_info->peer_address);
+      packet_info->self_address, packet_info->peer_address,
+      &ConnectionIdGenerator());
   if (session_ptr == nullptr) {
     return;
   }
@@ -1270,23 +1291,42 @@ bool QuicDispatcher::IsServerConnectionIdTooShort(
 std::shared_ptr<QuicSession> QuicDispatcher::CreateSessionFromChlo(
     const QuicConnectionId original_connection_id,
     const ParsedClientHello& parsed_chlo, const ParsedQuicVersion version,
-    const QuicSocketAddress self_address,
-    const QuicSocketAddress peer_address) {
-  absl::optional<QuicConnectionId> server_connection_id =
-      connection_id_generator_.MaybeReplaceConnectionId(original_connection_id,
+    const QuicSocketAddress self_address, const QuicSocketAddress peer_address,
+    ConnectionIdGeneratorInterface* connection_id_generator) {
+  if (connection_id_generator == nullptr) {
+    connection_id_generator = &ConnectionIdGenerator();
+  }
+  std::optional<QuicConnectionId> server_connection_id =
+      connection_id_generator->MaybeReplaceConnectionId(original_connection_id,
                                                         version);
   const bool replaced_connection_id = server_connection_id.has_value();
   if (!replaced_connection_id) {
     server_connection_id = original_connection_id;
   }
+  QUIC_CODE_COUNT(quic_connection_id_chosen);
   if (reference_counted_session_map_.count(*server_connection_id) > 0) {
     // The new connection ID is owned by another session. Avoid creating one
     // altogether, as this connection attempt cannot possibly succeed.
+    QUIC_CODE_COUNT(quic_connection_id_collision);
+    QuicConnection* other_connection =
+        reference_counted_session_map_[*server_connection_id]->connection();
+    if (other_connection != nullptr) {  // Just make sure there is no crash.
+      QUIC_LOG_EVERY_N_SEC(ERROR, 10)
+          << "QUIC Connection ID collision. original_connection_id:"
+          << original_connection_id.ToString()
+          << " server_connection_id:" << server_connection_id->ToString()
+          << ", version:" << version << ", self_address:" << self_address
+          << ", peer_address:" << peer_address
+          << ", parsed_chlo:" << parsed_chlo
+          << ", other peer address: " << other_connection->peer_address();
+    }
     if (replaced_connection_id) {
+      QUIC_CODE_COUNT(quic_replaced_connection_id_collision);
       // The original connection ID does not correspond to an existing
       // session. It is safe to send CONNECTION_CLOSE and add to TIME_WAIT.
       StatelesslyTerminateConnection(
-          original_connection_id, IETF_QUIC_LONG_HEADER_PACKET,
+          self_address, peer_address, original_connection_id,
+          IETF_QUIC_LONG_HEADER_PACKET,
           /*version_flag=*/true, version.HasLengthPrefixedConnectionIds(),
           version, QUIC_HANDSHAKE_FAILED,
           "Connection ID collision, please retry",
@@ -1298,7 +1338,7 @@ std::shared_ptr<QuicSession> QuicDispatcher::CreateSessionFromChlo(
   std::string alpn = SelectAlpn(parsed_chlo.alpns);
   std::unique_ptr<QuicSession> session =
       CreateQuicSession(*server_connection_id, self_address, peer_address, alpn,
-                        version, parsed_chlo, ConnectionIdGenerator());
+                        version, parsed_chlo, *connection_id_generator);
   if (ABSL_PREDICT_FALSE(session == nullptr)) {
     QUIC_BUG(quic_bug_10287_8)
         << "CreateQuicSession returned nullptr for " << *server_connection_id

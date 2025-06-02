@@ -107,7 +107,7 @@ class CORE_EXPORT HTMLFencedFrameElement : public HTMLFrameOwnerElement {
   // while keeping the inner frame size unchanged.
   HTMLIFrameElement* InnerIFrameElement() const;
 
-  FencedFrameConfig* config() const { return config_; }
+  FencedFrameConfig* config() const { return config_.Get(); }
 
   // Sets the FencedFrameConfig that this FencedFrame uses, and navigates the
   // frame to the config's URL. If `config` is null, navigates to about:blank.
@@ -154,7 +154,8 @@ class CORE_EXPORT HTMLFencedFrameElement : public HTMLFrameOwnerElement {
   bool LayoutObjectIsNeeded(const DisplayStyle&) const override;
   LayoutObject* CreateLayoutObject(const ComputedStyle&) override;
   void AttachLayoutTree(AttachContext& context) override;
-  bool SupportsFocus() const override;
+  bool SupportsFocus(UpdateBehavior update_behavior =
+                         UpdateBehavior::kStyleAndLayout) const override;
 
   // Set the size of the fenced frame outer container. Used for container size
   // specified by FencedFrameConfig.

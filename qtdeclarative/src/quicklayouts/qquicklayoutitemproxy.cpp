@@ -5,7 +5,7 @@
 
 /*!
     \qmltype LayoutItemProxy
-    \instantiates QQuickLayoutItemProxy
+    \nativetype QQuickLayoutItemProxy
     \inherits Item
     \inqmlmodule QtQuick.Layouts
     \ingroup layouts
@@ -20,9 +20,6 @@
     \l{target} item itself can be defined anywhere in the QML hierarchy. This
     allows declaration of multiple layouts with the same content items. The
     layouts can be shown and hidden to switch between them.
-
-    \note This API is considered tech preview and may change or be removed in
-    future versions of Qt.
 
     The LayoutItemProxy will try to take control of the \l{target} item if it
     is \l [QML] {Item::}{visible}. Taking control will position and resize the
@@ -229,6 +226,10 @@ void QQuickLayoutItemProxy::setTarget(QQuickItem *newTarget)
     if (newTarget == d->target)
         return;
 
+    if (d->target && d->target->property("QQuickLayoutItemProxyAttachedData").isValid()) {
+        QQuickLayoutItemProxyAttachedData *attachedData = d->target->property("QQuickLayoutItemProxyAttachedData").value<QQuickLayoutItemProxyAttachedData*>();
+        attachedData->releaseProxy(this);
+    }
     d->target = newTarget;
 
     if (newTarget) {
@@ -411,6 +412,9 @@ QQuickLayoutItemProxyAttachedData::QQuickLayoutItemProxyAttachedData(QObject *pa
 
 QQuickLayoutItemProxyAttachedData::~QQuickLayoutItemProxyAttachedData()
 {
+    if (QObject *par = parent())
+        par->setProperty("QQuickLayoutItemProxyAttachedData", QVariant());
+
     // If this is destroyed, so is the target. Clear the target from the
     // proxies so they do not try to access a destroyed object
     for (auto &proxy: std::as_const(proxies))
@@ -513,9 +517,16 @@ QQuickLayoutItemProxy *QQuickLayoutItemProxyAttachedData::getControllingProxy() 
     \brief QQuickLayoutItemProxyAttachedData::getProxies
     \return a list of all proxies that target the item this data is attached to.
 */
-const QList<QQuickLayoutItemProxy*> &QQuickLayoutItemProxyAttachedData::getProxies() const
+QQmlListProperty<QQuickLayoutItemProxy> QQuickLayoutItemProxyAttachedData::getProxies()
 {
-    return proxies;
+    using Type = QQuickLayoutItemProxy;
+    using Property = QQmlListProperty<Type>;
+
+    return Property(
+        this, &proxies,
+        [](Property *p) { return static_cast<QList<Type *> *>(p->data)->size(); },
+        [](Property *p, qsizetype i) { return static_cast<QList<Type *> *>(p->data)->at(i); }
+    );
 }
 
 /*! \internal

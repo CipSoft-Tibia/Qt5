@@ -6,9 +6,9 @@
 #include <qcryptographichash.h>
 #include <qmessageauthenticationcode.h>
 
+#include <QtCore/private/qsmallbytearray_p.h>
 #include <qiodevice.h>
 #include <qmutex.h>
-#include <qvarlengtharray.h>
 #include <private/qlocking_p.h>
 
 #include <array>
@@ -111,8 +111,13 @@ static inline int SHA384_512AddLength(SHA512Context *context, unsigned int lengt
 #if QT_CONFIG(system_libb2)
 #include <blake2.h>
 #else
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_CLANG("-Wunused-function")
+QT_WARNING_DISABLE_GCC("-Wunused-function")
+QT_WARNING_DISABLE_MSVC(4505)
 #include "../../3rdparty/blake2/src/blake2b-ref.c"
 #include "../../3rdparty/blake2/src/blake2s-ref.c"
+QT_WARNING_POP
 #endif
 #endif // QT_CRYPTOGRAPHICHASH_ONLY_SHA1
 
@@ -123,75 +128,6 @@ static inline int SHA384_512AddLength(SHA512Context *context, unsigned int lengt
 #endif
 
 QT_BEGIN_NAMESPACE
-
-template <size_t N>
-class QSmallByteArray
-{
-    std::array<quint8, N> m_data;
-    static_assert(N <= std::numeric_limits<std::uint8_t>::max());
-    quint8 m_size = 0;
-public:
-    QSmallByteArray() = default;
-    // all compiler-generated SMFs are ok!
-    template <std::size_t M, std::enable_if_t<M < N, bool> = true> // M == N is for copy ctor!
-    constexpr QSmallByteArray(const QSmallByteArray<M> &other) noexcept
-    {
-        assign(other);
-    }
-    template <std::size_t M, std::enable_if_t<M < N, bool> = true> // M == N is for copy-assignment op!
-    constexpr QSmallByteArray &operator=(const QSmallByteArray<M> &other) noexcept
-    {
-        assign(other);
-        return *this;
-    }
-
-    template <typename Container> // ### underconstrained
-    constexpr void assign(const Container &c)
-    {
-        const size_t otherSize = size_t(std::size(c));
-        Q_ASSERT(otherSize < N);
-        memcpy(data(), std::data(c), otherSize);
-        m_size = quint8(otherSize);
-    }
-
-    constexpr quint8 *data() noexcept { return m_data.data(); }
-    constexpr const quint8 *data() const noexcept { return m_data.data(); }
-    constexpr qsizetype size() const noexcept { return qsizetype{m_size}; }
-    constexpr quint8 &operator[](qsizetype n)
-    {
-        Q_ASSERT(n < size());
-        return data()[n];
-    }
-    constexpr const quint8 &operator[](qsizetype n) const
-    {
-        Q_ASSERT(n < size());
-        return data()[n];
-    }
-    constexpr bool isEmpty() const noexcept { return size() == 0; }
-    constexpr void clear() noexcept { m_size = 0; }
-    constexpr void resizeForOverwrite(qsizetype s)
-    {
-        Q_ASSERT(s >= 0);
-        Q_ASSERT(size_t(s) <= N);
-        m_size = std::uint8_t(s);
-    }
-    constexpr void resize(qsizetype s, quint8 v)
-    {
-        const auto oldSize = size();
-        resizeForOverwrite(s);
-        if (s > oldSize)
-            memset(data() + oldSize, v, size() - oldSize);
-    }
-    constexpr QByteArrayView toByteArrayView() const noexcept
-    { return *this; }
-
-    constexpr auto begin() noexcept { return data(); }
-    constexpr auto begin() const noexcept { return data(); }
-    constexpr auto cbegin() const noexcept { return begin(); }
-    constexpr auto end() noexcept { return data() + size(); }
-    constexpr auto end() const noexcept { return data() + size(); }
-    constexpr auto cend() const noexcept { return end(); }
-};
 
 static constexpr int hashLengthInternal(QCryptographicHash::Algorithm method) noexcept
 {
@@ -536,10 +472,7 @@ QCryptographicHash::~QCryptographicHash()
 
 /*!
     \fn void QCryptographicHash::swap(QCryptographicHash &other)
-
-    Swaps cryptographic hash \a other with this cryptographic hash. This
-    operation is very fast and never fails.
-
+    \memberswap{cryptographic hash}
     \since 6.5
 */
 
@@ -1166,13 +1099,51 @@ void QCryptographicHashPrivate::State::finalizeUnchecked(QCryptographicHash::Alg
 
   \note In Qt versions prior to 6.3, this function took QByteArray,
   not QByteArrayView.
+
+  \sa hashInto()
 */
 QByteArray QCryptographicHash::hash(QByteArrayView data, Algorithm method)
 {
+    QByteArray ba(hashLengthInternal(method), Qt::Uninitialized);
+    [[maybe_unused]] const auto r = hashInto(ba, data, method);
+    Q_ASSERT(r.size() == ba.size());
+    return ba;
+}
+
+/*!
+    \since 6.8
+    \fn QCryptographicHash::hashInto(QSpan<char> buffer, QSpan<const QByteArrayView> data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<uchar> buffer, QSpan<const QByteArrayView> data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<std::byte> buffer, QSpan<const QByteArrayView> data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<char> buffer, QByteArrayView data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<uchar> buffer, QByteArrayView data, Algorithm method);
+    \fn QCryptographicHash::hashInto(QSpan<std::byte> buffer, QByteArrayView data, Algorithm method);
+
+    Returns the hash of \a data using \a method, using \a buffer to store the result.
+
+    If \a data is a span, adds all the byte array views to the hash, in the order given.
+
+    The return value will be a sub-span of \a buffer, unless \a buffer is of
+    insufficient size, in which case a null QByteArrayView is returned.
+
+    \sa hash()
+*/
+QByteArrayView QCryptographicHash::hashInto(QSpan<std::byte> buffer,
+                                            QSpan<const QByteArrayView> data,
+                                            Algorithm method) noexcept
+{
+    if (buffer.size() < hashLengthInternal(method))
+        return {}; // buffer too small
+
     QCryptographicHashPrivate hash(method);
-    hash.addData(data);
+    for (QByteArrayView part : data)
+        hash.addData(part);
     hash.finalizeUnchecked(); // no mutex needed: no-one but us has access to 'hash'
-    return hash.resultView().toByteArray();
+    auto result = hash.resultView();
+    Q_ASSERT(buffer.size() >= result.size());
+    // ### optimize: have the method directly write into `buffer`
+    memcpy(buffer.data(), result.data(), result.size());
+    return buffer.first(result.size());
 }
 
 /*!
@@ -1512,10 +1483,7 @@ QMessageAuthenticationCode::~QMessageAuthenticationCode()
 
 /*!
     \fn void QMessageAuthenticationCode::swap(QMessageAuthenticationCode &other)
-
-    Swaps message authentication code \a other with this message authentication
-    code. This operation is very fast and never fails.
-
+    \memberswap{message authentication code}
     \since 6.6
 */
 
@@ -1648,15 +1616,52 @@ void QMessageAuthenticationCodePrivate::finalizeUnchecked() noexcept
     the key \a key and the method \a method.
 
     \include qcryptographichash.cpp {qba-to-qbav-6.6}
+
+    \sa hashInto()
 */
 QByteArray QMessageAuthenticationCode::hash(QByteArrayView message, QByteArrayView key,
                                             QCryptographicHash::Algorithm method)
 {
+    QByteArray ba(hashLengthInternal(method), Qt::Uninitialized);
+    [[maybe_unused]] const auto r = hashInto(ba, message, key, method);
+    Q_ASSERT(r.size() == ba.size());
+    return ba;
+}
+
+/*!
+    \since 6.8
+    \fn QMessageAuthenticationCode::hashInto(QSpan<char> buffer, QSpan<const QByteArrayView> messageParts, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<uchar> buffer, QSpan<const QByteArrayView> messageParts, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<std::byte> buffer, QSpan<const QByteArrayView> messageParts, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<char> buffer, QByteArrayView message, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<uchar> buffer, QByteArrayView message, QByteArrayView key, QCryptographicHash::Algorithm method);
+    \fn QMessageAuthenticationCode::hashInto(QSpan<std::byte> buffer, QByteArrayView message, QByteArrayView key, QCryptographicHash::Algorithm method);
+
+    Returns the authentication code for the message (\a message or, for the
+    QSpan overloads, the concatenation of \a messageParts) using the key \a key
+    and the method \a method.
+
+    The return value will be a sub-span of \a buffer, unless \a buffer is of
+    insufficient size, in which case a null QByteArrayView is returned.
+
+    \sa hash()
+*/
+QByteArrayView QMessageAuthenticationCode::hashInto(QSpan<std::byte> buffer,
+                                                    QSpan<const QByteArrayView> messageParts,
+                                                    QByteArrayView key,
+                                                    QCryptographicHash::Algorithm method) noexcept
+{
     QMessageAuthenticationCodePrivate mac(method);
     mac.setKey(key);
-    mac.messageHash.addData(message);
+    for (QByteArrayView part : messageParts)
+        mac.messageHash.addData(part);
     mac.finalizeUnchecked();
-    return mac.messageHash.resultView().toByteArray();
+    auto result = mac.messageHash.resultView();
+    if (buffer.size() < result.size())
+        return {}; // buffer too small
+    // ### optimize: have the method directly write into `buffer`
+    memcpy(buffer.data(), result.data(), result.size());
+    return buffer.first(result.size());
 }
 
 QT_END_NAMESPACE

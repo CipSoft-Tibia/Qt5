@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 class QScatterSeriesPrivate : public QXYSeriesPrivate
 {
 public:
-    QScatterSeriesPrivate(QScatterSeries *q);
+    QScatterSeriesPrivate();
 
 private:
     Q_DECLARE_PUBLIC(QScatterSeries)

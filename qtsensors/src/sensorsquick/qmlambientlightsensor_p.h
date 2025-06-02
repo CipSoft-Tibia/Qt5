@@ -22,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 class QAmbientLightSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlAmbientLightSensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlAmbientLightSensor : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(AmbientLightSensor)
@@ -39,7 +39,7 @@ private:
 
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlAmbientLightSensorReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlAmbientLightSensorReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(QAmbientLightReading::LightLevel lightLevel READ lightLevel

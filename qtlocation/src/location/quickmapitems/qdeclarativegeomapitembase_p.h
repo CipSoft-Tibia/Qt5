@@ -28,9 +28,11 @@
 #include <QScopedPointer>
 #include <QtQuickShapes/private/qquickshape_p.h>
 
+#include <QtCore/qpointer.h>
+
 QT_BEGIN_NAMESPACE
 
-struct Q_LOCATION_PRIVATE_EXPORT QGeoMapViewportChangeEvent
+struct Q_LOCATION_EXPORT QGeoMapViewportChangeEvent
 {
     QGeoCameraData cameraData;
     QSizeF mapSize;
@@ -43,7 +45,7 @@ struct Q_LOCATION_PRIVATE_EXPORT QGeoMapViewportChangeEvent
     bool rollChanged = false;
 };
 
-class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoMapItemBase : public QQuickItem
+class Q_LOCATION_EXPORT QDeclarativeGeoMapItemBase : public QQuickItem
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(GeoMapItemBase)
@@ -106,8 +108,8 @@ public:
 
 Q_SIGNALS:
     void mapItemOpacityChanged();
-    Q_REVISION(12) void addTransitionFinished();
-    Q_REVISION(12) void removeTransitionFinished();
+    Q_REVISION(5, 12) void addTransitionFinished();
+    Q_REVISION(5, 12) void removeTransitionFinished();
     void referenceSurfaceChanged();
     void lodThresholdChanged();
 

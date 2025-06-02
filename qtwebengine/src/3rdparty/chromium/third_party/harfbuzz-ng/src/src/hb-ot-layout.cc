@@ -1241,7 +1241,7 @@ script_collect_features (hb_collect_features_context_t *c,
  *   terminated by %HB_TAG_NONE
  * @features: (nullable) (array zero-terminated=1): The array of features to collect,
  *   terminated by %HB_TAG_NONE
- * @feature_indexes: (out): The array of feature indexes found for the query
+ * @feature_indexes: (out): The set of feature indexes found for the query
  *
  * Fetches a list of all feature indexes in the specified face's GSUB table
  * or GPOS table, underneath the specified scripts, languages, and features.
@@ -1279,6 +1279,49 @@ hb_ot_layout_collect_features (hb_face_t      *face,
 				 c.g.get_script (script_index),
 				 languages);
     }
+  }
+}
+
+/**
+ * hb_ot_layout_collect_features_map:
+ * @face: #hb_face_t to work upon
+ * @table_tag: #HB_OT_TAG_GSUB or #HB_OT_TAG_GPOS
+ * @script_index: The index of the requested script tag
+ * @language_index: The index of the requested language tag
+ * @feature_map: (out): The map of feature tag to feature index.
+ *
+ * Fetches the mapping from feature tags to feature indexes for
+ * the specified script and language.
+ *
+ * Since: 8.1.0
+ **/
+void
+hb_ot_layout_collect_features_map (hb_face_t      *face,
+				   hb_tag_t        table_tag,
+				   unsigned        script_index,
+				   unsigned        language_index,
+				   hb_map_t       *feature_map /* OUT */)
+{
+  const OT::GSUBGPOS &g = get_gsubgpos_table (face, table_tag);
+  const OT::LangSys &l = g.get_script (script_index).get_lang_sys (language_index);
+
+  unsigned int count = l.get_feature_indexes (0, nullptr, nullptr);
+  feature_map->alloc (count);
+
+  /* Loop in reverse, such that earlier entries win. That emulates
+   * a linear search, which seems to be what other implementations do.
+   * We found that with arialuni_t.ttf, the "ur" language system has
+   * duplicate features, and the earlier ones work but not later ones.
+   */
+  for (unsigned int i = count; i; i--)
+  {
+    unsigned feature_index = 0;
+    unsigned feature_count = 1;
+    l.get_feature_indexes (i - 1, &feature_count, &feature_index);
+    if (!feature_count)
+      break;
+    hb_tag_t feature_tag = g.get_feature_tag (feature_index);
+    feature_map->set (feature_tag, feature_index);
   }
 }
 
@@ -1952,7 +1995,7 @@ inline void hb_ot_map_t::apply (const Proxy &proxy,
 {
   const unsigned int table_index = proxy.table_index;
   unsigned int i = 0;
-  OT::hb_ot_apply_context_t c (table_index, font, buffer);
+  OT::hb_ot_apply_context_t c (table_index, font, buffer, proxy.accel.get_blob ());
   c.set_recurse_func (Proxy::Lookup::template dispatch_recurse_func<OT::hb_ot_apply_context_t>);
 
   for (unsigned int stage_index = 0; stage_index < stages[table_index].length; stage_index++)
@@ -2010,20 +2053,20 @@ void hb_ot_map_t::substitute (const hb_ot_shape_plan_t *plan, hb_font_t *font, h
 {
   GSUBProxy proxy (font->face);
   if (buffer->messaging () &&
-      !buffer->message (font, "start table GSUB")) return;
+      !buffer->message (font, "start table GSUB script tag '%c%c%c%c'", HB_UNTAG (chosen_script[0]))) return;
   apply (proxy, plan, font, buffer);
   if (buffer->messaging ())
-    (void) buffer->message (font, "end table GSUB");
+    (void) buffer->message (font, "end table GSUB script tag '%c%c%c%c'", HB_UNTAG (chosen_script[0]));
 }
 
 void hb_ot_map_t::position (const hb_ot_shape_plan_t *plan, hb_font_t *font, hb_buffer_t *buffer) const
 {
   GPOSProxy proxy (font->face);
   if (buffer->messaging () &&
-      !buffer->message (font, "start table GPOS")) return;
+      !buffer->message (font, "start table GPOS script tag '%c%c%c%c'", HB_UNTAG (chosen_script[1]))) return;
   apply (proxy, plan, font, buffer);
   if (buffer->messaging ())
-    (void) buffer->message (font, "end table GPOS");
+    (void) buffer->message (font, "end table GPOS script tag '%c%c%c%c'", HB_UNTAG (chosen_script[1]));
 }
 
 void
@@ -2075,7 +2118,7 @@ choose_base_tags (hb_script_t    script,
  *
  * Return value: `true` if found script/language-specific font extents.
  *
- * XSince: REPLACEME
+ * Since: 8.0.0
  **/
 hb_bool_t
 hb_ot_layout_get_font_extents (hb_font_t         *font,
@@ -2084,7 +2127,7 @@ hb_ot_layout_get_font_extents (hb_font_t         *font,
 			       hb_tag_t           language_tag,
 			       hb_font_extents_t *extents)
 {
-  hb_position_t min, max;
+  hb_position_t min = 0, max = 0;
   if (font->face->table.BASE->get_min_max (font, direction, script_tag, language_tag, HB_TAG_NONE,
 					   &min, &max))
   {
@@ -2123,7 +2166,7 @@ hb_ot_layout_get_font_extents (hb_font_t         *font,
  *
  * Return value: `true` if found script/language-specific font extents.
  *
- * XSince: REPLACEME
+ * Since: 8.0.0
  **/
 hb_bool_t
 hb_ot_layout_get_font_extents2 (hb_font_t         *font,
@@ -2254,7 +2297,7 @@ hb_ot_layout_get_baseline (hb_font_t                   *font,
  *
  * Return value: `true` if found baseline value in the font.
  *
- * XSince: REPLACEME
+ * Since: 8.0.0
  **/
 hb_bool_t
 hb_ot_layout_get_baseline2 (hb_font_t                   *font,
@@ -2511,7 +2554,7 @@ hb_ot_layout_get_baseline_with_fallback (hb_font_t                   *font,
  * This function is like hb_ot_layout_get_baseline_with_fallback() but takes
  * #hb_script_t and #hb_language_t instead of OpenType #hb_tag_t.
  *
- * XSince: REPLACEME
+ * Since: 8.0.0
  **/
 void
 hb_ot_layout_get_baseline_with_fallback2 (hb_font_t                   *font,
@@ -2627,9 +2670,10 @@ hb_ot_layout_lookup_get_optical_bound (hb_font_t      *font,
 				       hb_codepoint_t  glyph)
 {
   const OT::PosLookup &lookup = font->face->table.GPOS->table->get_lookup (lookup_index);
+  hb_blob_t *blob = font->face->table.GPOS->get_blob ();
   hb_glyph_position_t pos = {0};
   hb_position_single_dispatch_t c;
-  lookup.dispatch (&c, font, direction, glyph, pos);
+  lookup.dispatch (&c, font, blob, direction, glyph, pos);
   hb_position_t ret = 0;
   switch (direction)
   {

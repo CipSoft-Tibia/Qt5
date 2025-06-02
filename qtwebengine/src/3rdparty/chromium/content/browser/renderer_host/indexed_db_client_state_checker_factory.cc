@@ -11,8 +11,8 @@
 #include "content/public/browser/disallow_activation_reason.h"
 #include "content/public/browser/document_user_data.h"
 #include "content/public/browser/render_frame_host.h"
-#include "mojo/public/cpp/bindings/associated_receiver_set.h"
-#include "mojo/public/cpp/bindings/self_owned_associated_receiver.h"
+#include "mojo/public/cpp/bindings/receiver_set.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "third_party/blink/public/common/scheduler/web_scheduler_tracked_feature.h"
 
 namespace content {
@@ -57,6 +57,14 @@ class NoDocumentIndexedDBClientStateChecker
       DisallowInactiveClientCallback callback) override {
     std::move(callback).Run(/*was_active=*/true);
   }
+  void MakeClone(
+      mojo::PendingReceiver<storage::mojom::IndexedDBClientStateChecker>
+          receiver) override {
+    receivers_.Add(this, std::move(receiver));
+  }
+
+ private:
+  mojo::ReceiverSet<storage::mojom::IndexedDBClientStateChecker> receivers_;
 };
 
 // This class should be used when the client has a RenderFrameHost associated so
@@ -71,8 +79,8 @@ class DocumentIndexedDBClientStateChecker final
  public:
   ~DocumentIndexedDBClientStateChecker() final = default;
 
-  void Bind(mojo::PendingAssociatedReceiver<
-            storage::mojom::IndexedDBClientStateChecker> receiver) {
+  void Bind(mojo::PendingReceiver<storage::mojom::IndexedDBClientStateChecker>
+                receiver) {
     receivers_.Add(this, std::move(receiver));
   }
 
@@ -127,6 +135,12 @@ class DocumentIndexedDBClientStateChecker final
     std::move(callback).Run(was_active);
   }
 
+  void MakeClone(
+      mojo::PendingReceiver<storage::mojom::IndexedDBClientStateChecker>
+          receiver) override {
+    Bind(std::move(receiver));
+  }
+
  private:
   // Keep the association between the receiver and the feature handle it
   // registered.
@@ -151,8 +165,7 @@ class DocumentIndexedDBClientStateChecker final
   friend DocumentUserData;
   DOCUMENT_USER_DATA_KEY_DECL();
 
-  mojo::AssociatedReceiverSet<storage::mojom::IndexedDBClientStateChecker>
-      receivers_;
+  mojo::ReceiverSet<storage::mojom::IndexedDBClientStateChecker> receivers_;
   mojo::ReceiverSet<storage::mojom::IndexedDBClientKeepActive,
                     KeepActiveReceiverContext>
       keep_active_receivers_;
@@ -163,23 +176,22 @@ class DocumentIndexedDBClientStateChecker final
 DOCUMENT_USER_DATA_KEY_IMPL(DocumentIndexedDBClientStateChecker);
 
 // static
-mojo::PendingAssociatedRemote<storage::mojom::IndexedDBClientStateChecker>
-IndexedDBClientStateCheckerFactory::InitializePendingAssociatedRemote(
+mojo::PendingRemote<storage::mojom::IndexedDBClientStateChecker>
+IndexedDBClientStateCheckerFactory::InitializePendingRemote(
     const GlobalRenderFrameHostId& rfh_id) {
-  mojo::PendingAssociatedRemote<storage::mojom::IndexedDBClientStateChecker>
+  mojo::PendingRemote<storage::mojom::IndexedDBClientStateChecker>
       client_state_checker_remote;
   if (RenderFrameHost* rfh = RenderFrameHost::FromID(rfh_id)) {
     DocumentIndexedDBClientStateChecker::GetOrCreateForCurrentDocument(rfh)
-        ->Bind(
-            client_state_checker_remote.InitWithNewEndpointAndPassReceiver());
+        ->Bind(client_state_checker_remote.InitWithNewPipeAndPassReceiver());
   } else {
     // If the `rfh` is null, it means there is actually no valid
     // `RenderFrameHost` associated with the client. We should use a default
     // checker instance for it.
     // See comments from `NoDocumentIndexedDBClientStateChecker`.
-    mojo::MakeSelfOwnedAssociatedReceiver(
+    mojo::MakeSelfOwnedReceiver(
         std::make_unique<NoDocumentIndexedDBClientStateChecker>(),
-        client_state_checker_remote.InitWithNewEndpointAndPassReceiver());
+        client_state_checker_remote.InitWithNewPipeAndPassReceiver());
   }
 
   return client_state_checker_remote;

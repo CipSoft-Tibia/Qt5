@@ -4,13 +4,15 @@
 #ifndef REDDITMODEL_H
 #define REDDITMODEL_H
 
-#include "redditwrapper.h"
+#include <QtNetworkAuth/qoauth2authorizationcodeflow.h>
+
+#include <QtNetwork/qnetworkrequestfactory.h>
 
 #include <QtCore/qabstractitemmodel.h>
 #include <QtCore/qjsonobject.h>
 #include <QtCore/qpointer.h>
 
-QT_FORWARD_DECLARE_CLASS(QNetworkReply)
+QT_FORWARD_DECLARE_CLASS(QRestAccessManager)
 
 class RedditModel : public QAbstractTableModel
 {
@@ -24,17 +26,15 @@ public:
     int columnCount(const QModelIndex &parent) const override;
     QVariant data(const QModelIndex &index, int role) const override;
 
-    void grant();
-
 signals:
     void error(const QString &errorString);
 
-private slots:
-    void update();
-
 private:
-    RedditWrapper redditWrapper;
-    QPointer<QNetworkReply> liveThreadReply;
+    void updateHotThreads();
+
+    QNetworkRequestFactory redditApi;
+    QRestAccessManager *network = nullptr;
+    QOAuth2AuthorizationCodeFlow oauth2;
     QList<QJsonObject> threads;
 };
 

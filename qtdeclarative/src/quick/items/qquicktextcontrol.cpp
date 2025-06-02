@@ -269,7 +269,7 @@ void QQuickTextControlPrivate::setContent(Qt::TextFormat format, const QString &
     const int oldCursorPos = cursor.position();
 
     // avoid multiple textChanged() signals being emitted
-    qmlobject_disconnect(doc, QTextDocument, SIGNAL(contentsChanged()), q, QQuickTextControl, SIGNAL(textChanged()));
+    QObject::disconnect(doc, &QTextDocument::contentsChanged, q, &QQuickTextControl::textChanged);
 
     if (!text.isEmpty()) {
         // clear 'our' cursor for insertion to prevent
@@ -309,7 +309,7 @@ void QQuickTextControlPrivate::setContent(Qt::TextFormat format, const QString &
     }
     cursor.setCharFormat(charFormatForInsertion);
 
-    qmlobject_connect(doc, QTextDocument, SIGNAL(contentsChanged()), q, QQuickTextControl, SIGNAL(textChanged()));
+    QObject::connect(doc, &QTextDocument::contentsChanged, q, &QQuickTextControl::textChanged);
     emit q->textChanged();
     doc->setUndoRedoEnabled(previousUndoRedoState);
     _q_updateCurrentCharFormatAndSelection();
@@ -603,21 +603,24 @@ void QQuickTextControl::setDocument(QTextDocument *doc)
     if (!doc || d->doc == doc)
         return;
 
+    if (d->doc) {
+        QAbstractTextDocumentLayout *oldLayout = d->doc->documentLayout();
+        disconnect(oldLayout, nullptr, this, nullptr);
+        disconnect(d->doc, nullptr, this, nullptr);
+    }
+
     d->doc = doc;
     d->cursor = QTextCursor(doc);
     d->lastCharFormat = d->cursor.charFormat();
-    doc->setPageSize(QSizeF(0, 0));
-    doc->setModified(false);
-    doc->setUndoRedoEnabled(true);
 
     QAbstractTextDocumentLayout *layout = doc->documentLayout();
     connect(layout, &QAbstractTextDocumentLayout::update, this, &QQuickTextControl::updateRequest);
     connect(layout, &QAbstractTextDocumentLayout::updateBlock, this, &QQuickTextControl::updateRequest);
-    connect(doc, &QTextDocument::contentsChanged, doc, [d, this]() {
+    connect(doc, &QTextDocument::contentsChanged, this, [d]() {
         d->_q_updateCurrentCharFormatAndSelection();
-        emit textChanged();
     });
-    connect(doc, &QTextDocument::cursorPositionChanged, doc, [d](const QTextCursor &cursor) {
+    connect(doc, &QTextDocument::contentsChanged, this, &QQuickTextControl::textChanged);
+    connect(doc, &QTextDocument::cursorPositionChanged, this, [d](const QTextCursor &cursor) {
         d->_q_updateCursorPosChanged(cursor);
     });
     connect(doc, &QTextDocument::contentsChange, this, &QQuickTextControl::contentsChange);

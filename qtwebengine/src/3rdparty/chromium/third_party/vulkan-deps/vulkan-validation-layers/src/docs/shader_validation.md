@@ -24,10 +24,8 @@ Currently these are
   - Some checks require the runtime spec constant values
 - Flatten OpGroupDecorations
   - Detects if group decorations were used; however, group decorations were [deprecated](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html#OpGroupDecorate) early on in the development of the SPIR-v specification.
-- Debug Printf
-  - instruments the shaders - see [GPU-Assisted Validation](gpu_validation.md).
-- GPU-VA
-  - instruments the shaders - see [GPU-Assisted Validation](gpu_validation.md).
+- GPU-AV and Debug Printf
+  - instruments the shaders - see [GPU-Assisted Validation](gpu_validation.md) and [GPU-AV Shader Instrumentation](gpu_av_shader_instrumentation.md).
 
 ## Different sections
 
@@ -172,6 +170,8 @@ This is handled by having the `Resource Interface` variable track if it has a `O
 - If it has a `OpTypeImage` or `OpTypeSampler`, we need to know if they are **accessed together**
     - This means the the `ValidateDescriptor` logic needs to know every `OpTypeSampler` variable accessed together with a `OpTypeImage` variable
     - There is no case where only a `OpTypeSampler` variable can be used by itself, so no need to track it the other way
+
+If the Image Access is in a function, it might point to multiple `OpVariable`
 
 ### Atomics
 

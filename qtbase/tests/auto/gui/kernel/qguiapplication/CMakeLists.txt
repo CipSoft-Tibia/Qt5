@@ -46,3 +46,27 @@ if (APPLE)
     set_property(TARGET tst_qguiapplication PROPERTY MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist")
     set_property(TARGET tst_qguiapplication PROPERTY PROPERTY MACOSX_BUNDLE TRUE)
 endif()
+
+qt_internal_add_test(tst_static_qguiapplication
+    SOURCES
+        ../../../corelib/kernel/qcoreapplication/tst_static_qcoreapplication.cpp
+        ../../../corelib/kernel/qcoreapplication/maybeshow.h
+    LIBRARIES
+        Qt::CorePrivate
+        Qt::Gui
+)
+
+qt_internal_add_executable(apphelper_gui
+    OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/"
+    SOURCES
+        ../../../corelib/kernel/qcoreapplication/apphelper.cpp
+        ../../../corelib/kernel/qcoreapplication/maybeshow.h
+    LIBRARIES
+        Qt::CorePrivate
+        Qt::Gui
+)
+set_target_properties(apphelper_gui PROPERTIES OUTPUT_NAME apphelper)
+
+add_dependencies(tst_qguiapplication
+    apphelper_gui
+)

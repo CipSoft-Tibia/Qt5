@@ -42,10 +42,6 @@ static_assert(std::is_same<uint64_t, DISTINCT_NONDISPATCHABLE_PHONY_HANDLE>::val
               "Mismatched non-dispatchable handle handle, expected uint64_t.");
 #endif
 
-[[maybe_unused]] static const char *kVUID_Threading_Info = "UNASSIGNED-Threading-Info";
-[[maybe_unused]] static const char *kVUID_Threading_MultipleThreads = "UNASSIGNED-Threading-MultipleThreads";
-[[maybe_unused]] static const char *kVUID_Threading_SingleThreadReuse = "UNASSIGNED-Threading-SingleThreadReuse";
-
 // Modern CPUs have 64 or 128-byte cache line sizes (Apple M1 has 128-byte cache line size).
 // Use alignment of 64 bytes (instead of 128) to prioritize using less memory and decrease
 // cache pressure.
@@ -75,10 +71,12 @@ class alignas(kObjectUserDataAlignment) ObjectUseData {
     }
     WriteReadCount RemoveWriter() {
         int64_t prev = writer_reader_count.fetch_add(-(1LL << 32));
+        assert(prev > 0);
         return WriteReadCount(prev);
     }
     WriteReadCount RemoveReader() {
         int64_t prev = writer_reader_count.fetch_add(-1LL);
+        assert(prev > 0);
         return WriteReadCount(prev);
     }
     WriteReadCount GetCount() { return WriteReadCount(writer_reader_count); }
@@ -113,13 +111,13 @@ class counter {
         }
     }
 
-    std::shared_ptr<ObjectUseData> FindObject(T object) {
+    std::shared_ptr<ObjectUseData> FindObject(T object, const Location& loc) {
         assert(object_table.contains(object));
         auto iter = object_table.find(object);
         if (iter != object_table.end()) {
             return iter->second;
         } else {
-            object_data->LogError(object, kVUID_Threading_Info,
+            object_data->LogError("UNASSIGNED-Threading-Info", object, loc,
                                   "Couldn't find %s Object 0x%" PRIxLEAST64
                                   ". This should not happen and may indicate a bug in the application.",
                                   object_string[object_type], (uint64_t)(object));
@@ -127,131 +125,131 @@ class counter {
         }
     }
 
-    void StartWrite(T object, vvl::Func command) {
+    void StartWrite(T object, const Location& loc) {
         if (object == VK_NULL_HANDLE) {
             return;
         }
-        bool skip = false;
-        std::thread::id tid = std::this_thread::get_id();
-
-        auto use_data = FindObject(object);
+        auto use_data = FindObject(object, loc);
         if (!use_data) {
             return;
         }
-        const ObjectUseData::WriteReadCount prevCount = use_data->AddWriter();
 
-        if (prevCount.GetReadCount() == 0 && prevCount.GetWriteCount() == 0) {
-            // There is no current use of the object.  Record writer thread.
+        const std::thread::id tid = std::this_thread::get_id();
+        const ObjectUseData::WriteReadCount prev_count = use_data->AddWriter();
+        const bool prev_read = prev_count.GetReadCount() != 0;
+        const bool prev_write = prev_count.GetWriteCount() != 0;
+
+        if (!prev_read && !prev_write) {
+            // There is no current use of the object. Record writer thread.
             use_data->thread = tid;
-        } else {
-            if (prevCount.GetReadCount() == 0) {
-                assert(prevCount.GetWriteCount() != 0);
-                // There are no readers.  Two writers just collided.
-                if (use_data->thread != tid) {
-                    std::stringstream err_str;
-                    err_str << "THREADING ERROR : " << vvl::String(command) << "(): object of type " << object_string[object_type]
-                            << " is simultaneously used in thread " << use_data->thread.load(std::memory_order_relaxed)
-                            << " and thread " << tid;
-                    skip |= object_data->LogError(object, kVUID_Threading_MultipleThreads, "%s", err_str.str().c_str());
-                    if (skip) {
-                        // Wait for thread-safe access to object instead of skipping call.
-                        use_data->WaitForObjectIdle(true);
-                        // There is now no current use of the object.  Record writer thread.
-                        use_data->thread = tid;
-                    } else {
-                        // There is now no current use of the object.  Record writer thread.
-                        use_data->thread = tid;
-                    }
-                } else {
-                    // This is either safe multiple use in one call, or recursive use.
-                    // There is no way to make recursion safe.  Just forge ahead.
-                }
+        } else if (!prev_read) {
+            assert(prev_write);
+            // There are no other readers but there is another writer. Two writers just collided.
+            if (use_data->thread != tid) {
+                HandleErrorOnWrite(use_data, object, loc);
             } else {
-                // There are readers.  This writer collided with them.
-                if (use_data->thread != tid) {
-                    std::stringstream err_str;
-                    err_str << "THREADING ERROR : " << vvl::String(command) << "(): object of type " << object_string[object_type]
-                            << " is simultaneously used in thread " << use_data->thread.load(std::memory_order_relaxed)
-                            << " and thread " << tid;
-                    skip |= object_data->LogError(object, kVUID_Threading_MultipleThreads, "%s", err_str.str().c_str());
-                    if (skip) {
-                        // Wait for thread-safe access to object instead of skipping call.
-                        use_data->WaitForObjectIdle(true);
-                        // There is now no current use of the object.  Record writer thread.
-                        use_data->thread = tid;
-                    } else {
-                        // Continue with an unsafe use of the object.
-                        use_data->thread = tid;
-                    }
-                } else {
-                    // This is either safe multiple use in one call, or recursive use.
-                    // There is no way to make recursion safe.  Just forge ahead.
-                }
+                // This is either safe multiple use in one call, or recursive use.
+                // There is no way to make recursion safe. Just forge ahead.
+            }
+        } else {
+            assert(prev_read);
+            // There are other readers. This writer collided with them.
+            if (use_data->thread != tid) {
+                HandleErrorOnWrite(use_data, object, loc);
+            } else {
+                // This is either safe multiple use in one call, or recursive use.
+                // There is no way to make recursion safe. Just forge ahead.
             }
         }
     }
 
-    void FinishWrite(T object, vvl::Func command) {
+    void FinishWrite(T object, const Location& loc) {
         if (object == VK_NULL_HANDLE) {
             return;
         }
-        // Object is no longer in use
-        auto use_data = FindObject(object);
+        auto use_data = FindObject(object, loc);
         if (!use_data) {
             return;
         }
         use_data->RemoveWriter();
     }
 
-    void StartRead(T object, vvl::Func command) {
+    void StartRead(T object, const Location& loc) {
         if (object == VK_NULL_HANDLE) {
             return;
         }
-        bool skip = false;
-        std::thread::id tid = std::this_thread::get_id();
-
-        auto use_data = FindObject(object);
+        auto use_data = FindObject(object, loc);
         if (!use_data) {
             return;
         }
-        const ObjectUseData::WriteReadCount prevCount = use_data->AddReader();
 
-        if (prevCount.GetReadCount() == 0 && prevCount.GetWriteCount() == 0) {
-            // There is no current use of the object.
+        const std::thread::id tid = std::this_thread::get_id();
+        const ObjectUseData::WriteReadCount prev_count = use_data->AddReader();
+        const bool prev_read = prev_count.GetReadCount() != 0;
+        const bool prev_write = prev_count.GetWriteCount() != 0;
+
+        if (!prev_read && !prev_write) {
+            // There is no current use of the object. Record reader thread.
             use_data->thread = tid;
-        } else if (prevCount.GetWriteCount() > 0 && use_data->thread != tid) {
-            // There is a writer of the object.
-            std::stringstream err_str;
-            err_str << "THREADING ERROR : " << vvl::String(command) << "(): object of type " << object_string[object_type]
-                    << " is simultaneously used in thread " << use_data->thread.load(std::memory_order_relaxed) << " and thread "
-                    << tid;
-            skip |= object_data->LogError(object, kVUID_Threading_MultipleThreads, "%s", err_str.str().c_str());
-            if (skip) {
-                // Wait for thread-safe access to object instead of skipping call.
-                use_data->WaitForObjectIdle(false);
-                use_data->thread = tid;
-            }
+        } else if (prev_write && use_data->thread != tid) {
+            HandleErrorOnRead(use_data, object, loc);
         } else {
             // There are other readers of the object.
         }
     }
-    void FinishRead(T object, vvl::Func command) {
+
+    void FinishRead(T object, const Location& loc) {
         if (object == VK_NULL_HANDLE) {
             return;
         }
-
-        auto use_data = FindObject(object);
+        auto use_data = FindObject(object, loc);
         if (!use_data) {
             return;
         }
         use_data->RemoveReader();
     }
+
     counter(VulkanObjectType type = kVulkanObjectTypeUnknown, ValidationObject *val_obj = nullptr) {
         object_type = type;
         object_data = val_obj;
     }
 
   private:
+    std::string GetErrorMessage(std::thread::id tid, std::thread::id other_tid) const {
+        std::stringstream err_str;
+        err_str << "THREADING ERROR : object of type " << object_string[object_type]
+                << " is simultaneously used in current thread " << tid << " and thread " << other_tid;
+        return err_str.str();
+    }
+
+    void HandleErrorOnWrite(const std::shared_ptr<ObjectUseData> &use_data, T object, const Location& loc) {
+        const std::thread::id tid = std::this_thread::get_id();
+        const std::string error_message = GetErrorMessage(tid, use_data->thread.load(std::memory_order_relaxed));
+        const bool skip =
+            object_data->LogError("UNASSIGNED-Threading-MultipleThreads-Write", object, loc, "%s", error_message.c_str());
+        if (skip) {
+            // Wait for thread-safe access to object instead of skipping call.
+            use_data->WaitForObjectIdle(true);
+            // There is now no current use of the object. Record writer thread.
+            use_data->thread = tid;
+        } else {
+            // There is now no current use of the object. Record writer thread.
+            use_data->thread = tid;
+        }
+    }
+
+    void HandleErrorOnRead(const std::shared_ptr<ObjectUseData> &use_data, T object, const Location& loc) {
+        const std::thread::id tid = std::this_thread::get_id();
+        // There is a writer of the object.
+        const auto error_message = GetErrorMessage(tid, use_data->thread.load(std::memory_order_relaxed));
+        const bool skip =
+            object_data->LogError("UNASSIGNED-Threading-MultipleThreads-Read", object, loc, "%s", error_message.c_str());
+        if (skip) {
+            // Wait for thread-safe access to object instead of skipping call.
+            use_data->WaitForObjectIdle(false);
+            use_data->thread = tid;
+        }
+    }
 };
 
 class ThreadSafety : public ValidationObject {
@@ -322,28 +320,25 @@ class ThreadSafety : public ValidationObject {
     };
 
 #define WRAPPER(type)                                                                                 \
-    void StartWriteObject(type object, vvl::Func command) { c_##type.StartWrite(object, command); }   \
-    void FinishWriteObject(type object, vvl::Func command) { c_##type.FinishWrite(object, command); } \
-    void StartReadObject(type object, vvl::Func command) { c_##type.StartRead(object, command); }     \
-    void FinishReadObject(type object, vvl::Func command) { c_##type.FinishRead(object, command); }   \
+    void StartWriteObject(type object, const Location& loc) { c_##type.StartWrite(object, loc); }   \
+    void FinishWriteObject(type object, const Location& loc) { c_##type.FinishWrite(object, loc); } \
+    void StartReadObject(type object, const Location& loc) { c_##type.StartRead(object, loc); }     \
+    void FinishReadObject(type object, const Location& loc) { c_##type.FinishRead(object, loc); }   \
     void CreateObject(type object) { c_##type.CreateObject(object); }                                 \
-    void DestroyObject(type object) {                                                                 \
-        c_##type.DestroyObject(object);                                                               \
-        c_##type.DestroyObject(object);                                                               \
-    }
+    void DestroyObject(type object) { c_##type.DestroyObject(object); }
 
 #define WRAPPER_PARENT_INSTANCE(type)                                                                                           \
-    void StartWriteObjectParentInstance(type object, vvl::Func command) {                                                       \
-        (parent_instance ? parent_instance : this)->c_##type.StartWrite(object, command);                                       \
+    void StartWriteObjectParentInstance(type object, const Location& loc) {                                                       \
+        (parent_instance ? parent_instance : this)->c_##type.StartWrite(object, loc);                                       \
     }                                                                                                                           \
-    void FinishWriteObjectParentInstance(type object, vvl::Func command) {                                                      \
-        (parent_instance ? parent_instance : this)->c_##type.FinishWrite(object, command);                                      \
+    void FinishWriteObjectParentInstance(type object, const Location& loc) {                                                      \
+        (parent_instance ? parent_instance : this)->c_##type.FinishWrite(object, loc);                                      \
     }                                                                                                                           \
-    void StartReadObjectParentInstance(type object, vvl::Func command) {                                                        \
-        (parent_instance ? parent_instance : this)->c_##type.StartRead(object, command);                                        \
+    void StartReadObjectParentInstance(type object, const Location& loc) {                                                        \
+        (parent_instance ? parent_instance : this)->c_##type.StartRead(object, loc);                                        \
     }                                                                                                                           \
-    void FinishReadObjectParentInstance(type object, vvl::Func command) {                                                       \
-        (parent_instance ? parent_instance : this)->c_##type.FinishRead(object, command);                                       \
+    void FinishReadObjectParentInstance(type object, const Location& loc) {                                                       \
+        (parent_instance ? parent_instance : this)->c_##type.FinishRead(object, loc);                                       \
     }                                                                                                                           \
     void CreateObjectParentInstance(type object) { (parent_instance ? parent_instance : this)->c_##type.CreateObject(object); } \
     void DestroyObjectParentInstance(type object) { (parent_instance ? parent_instance : this)->c_##type.DestroyObject(object); }
@@ -362,43 +357,43 @@ class ThreadSafety : public ValidationObject {
     void DestroyObject(VkCommandBuffer object) { c_VkCommandBuffer.DestroyObject(object); }
 
     // VkCommandBuffer needs check for implicit use of command pool
-    void StartWriteObject(VkCommandBuffer object, vvl::Func command, bool lockPool = true) {
+    void StartWriteObject(VkCommandBuffer object, const Location& loc, bool lockPool = true) {
         if (lockPool) {
             auto iter = command_pool_map.find(object);
             if (iter != command_pool_map.end()) {
                 VkCommandPool pool = iter->second;
-                StartWriteObject(pool, command);
+                StartWriteObject(pool, loc);
             }
         }
-        c_VkCommandBuffer.StartWrite(object, command);
+        c_VkCommandBuffer.StartWrite(object, loc);
     }
-    void FinishWriteObject(VkCommandBuffer object, vvl::Func command, bool lockPool = true) {
-        c_VkCommandBuffer.FinishWrite(object, command);
+    void FinishWriteObject(VkCommandBuffer object, const Location& loc, bool lockPool = true) {
+        c_VkCommandBuffer.FinishWrite(object, loc);
         if (lockPool) {
             auto iter = command_pool_map.find(object);
             if (iter != command_pool_map.end()) {
                 VkCommandPool pool = iter->second;
-                FinishWriteObject(pool, command);
+                FinishWriteObject(pool, loc);
             }
         }
     }
-    void StartReadObject(VkCommandBuffer object, vvl::Func command) {
+    void StartReadObject(VkCommandBuffer object, const Location& loc) {
         auto iter = command_pool_map.find(object);
         if (iter != command_pool_map.end()) {
             VkCommandPool pool = iter->second;
             // We set up a read guard against the "Contents" counter to catch conflict vs. vkResetCommandPool and
             // vkDestroyCommandPool while *not* establishing a read guard against the command pool counter itself to avoid false
             // positive for non-externally sync'd command buffers
-            c_VkCommandPoolContents.StartRead(pool, command);
+            c_VkCommandPoolContents.StartRead(pool, loc);
         }
-        c_VkCommandBuffer.StartRead(object, command);
+        c_VkCommandBuffer.StartRead(object, loc);
     }
-    void FinishReadObject(VkCommandBuffer object, vvl::Func command) {
-        c_VkCommandBuffer.FinishRead(object, command);
+    void FinishReadObject(VkCommandBuffer object, const Location& loc) {
+        c_VkCommandBuffer.FinishRead(object, loc);
         auto iter = command_pool_map.find(object);
         if (iter != command_pool_map.end()) {
             VkCommandPool pool = iter->second;
-            c_VkCommandPoolContents.FinishRead(pool, command);
+            c_VkCommandPoolContents.FinishRead(pool, loc);
         }
     }
 
@@ -420,7 +415,8 @@ class ThreadSafety : public ValidationObject {
 
     void PreCallRecordGetDisplayPlaneCapabilities2KHR(VkPhysicalDevice physicalDevice,
                                                       const VkDisplayPlaneInfo2KHR *pDisplayPlaneInfo,
-                                                      VkDisplayPlaneCapabilities2KHR *pCapabilities) override;
+                                                      VkDisplayPlaneCapabilities2KHR *pCapabilities,
+                                                      const RecordObject &record_obj) override;
 
     void PostCallRecordGetDisplayPlaneCapabilities2KHR(VkPhysicalDevice physicalDevice,
                                                        const VkDisplayPlaneInfo2KHR *pDisplayPlaneInfo,

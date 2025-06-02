@@ -32,6 +32,7 @@
 #include "third_party/blink/renderer/core/css/css_property_value_set.h"
 #include "third_party/blink/renderer/core/css/css_selector_list.h"
 #include "third_party/blink/renderer/core/css/media_list.h"
+#include "third_party/blink/renderer/core/css/parser/css_at_rule_id.h"
 #include "third_party/blink/renderer/core/css/parser/css_nesting_type.h"
 #include "third_party/blink/renderer/core/css/style_scope.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
@@ -57,6 +58,7 @@ class CORE_EXPORT StyleRuleBase : public GarbageCollected<StyleRuleBase> {
     kFontFeatureValues,
     kFontFeature,
     kPage,
+    kPageMargin,
     kProperty,
     kKeyframes,
     kKeyframe,
@@ -70,7 +72,7 @@ class CORE_EXPORT StyleRuleBase : public GarbageCollected<StyleRuleBase> {
     kPositionFallback,
     kTry,
     kStartingStyle,
-    kViewTransitions,
+    kViewTransition,
   };
 
   // Name of a cascade layer as given by an @layer rule, split at '.' into a
@@ -99,6 +101,7 @@ class CORE_EXPORT StyleRuleBase : public GarbageCollected<StyleRuleBase> {
   bool IsNamespaceRule() const { return GetType() == kNamespace; }
   bool IsMediaRule() const { return GetType() == kMedia; }
   bool IsPageRule() const { return GetType() == kPage; }
+  bool IsPageRuleMargin() const { return GetType() == kPageMargin; }
   bool IsPropertyRule() const { return GetType() == kProperty; }
   bool IsStyleRule() const { return GetType() == kStyle; }
   bool IsScopeRule() const { return GetType() == kScope; }
@@ -107,7 +110,7 @@ class CORE_EXPORT StyleRuleBase : public GarbageCollected<StyleRuleBase> {
   bool IsPositionFallbackRule() const { return GetType() == kPositionFallback; }
   bool IsTryRule() const { return GetType() == kTry; }
   bool IsStartingStyleRule() const { return GetType() == kStartingStyle; }
-  bool IsViewTransitionsRule() const { return GetType() == kViewTransitions; }
+  bool IsViewTransitionRule() const { return GetType() == kViewTransition; }
   bool IsConditionRule() const {
     return GetType() == kContainer || GetType() == kMedia ||
            GetType() == kSupports || GetType() == kStartingStyle;
@@ -220,7 +223,7 @@ class CORE_EXPORT StyleRule : public StyleRuleBase {
   ~StyleRule();
 
   void SetProperties(CSSPropertyValueSet* properties) {
-    DCHECK_EQ(properties_, nullptr);
+    DCHECK_EQ(properties_.Get(), nullptr);
     properties_ = properties;
   }
 
@@ -320,7 +323,7 @@ class CORE_EXPORT StyleRuleFontFace : public StyleRuleBase {
   }
 
   void SetCascadeLayer(const CascadeLayer* layer) { layer_ = layer; }
-  const CascadeLayer* GetCascadeLayer() const { return layer_; }
+  const CascadeLayer* GetCascadeLayer() const { return layer_.Get(); }
 
   void TraceAfterDispatch(blink::Visitor*) const;
 
@@ -329,9 +332,14 @@ class CORE_EXPORT StyleRuleFontFace : public StyleRuleBase {
   Member<const CascadeLayer> layer_;
 };
 
+// TODO(sesse): When we get CSSOM support for page margin rules, consider
+// whether this should be a StyleRuleGroup or not. (The page margin rules
+// are not strictly selectors, though.)
 class StyleRulePage : public StyleRuleBase {
  public:
-  StyleRulePage(CSSSelectorList*, CSSPropertyValueSet*);
+  StyleRulePage(CSSSelectorList* selector_list,
+                CSSPropertyValueSet* properties,
+                HeapVector<Member<StyleRuleBase>> child_rules);
   StyleRulePage(const StyleRulePage&);
 
   const CSSSelector* Selector() const { return selector_list_->First(); }
@@ -347,7 +355,12 @@ class StyleRulePage : public StyleRuleBase {
   }
 
   void SetCascadeLayer(const CascadeLayer* layer) { layer_ = layer; }
-  const CascadeLayer* GetCascadeLayer() const { return layer_; }
+  const CascadeLayer* GetCascadeLayer() const { return layer_.Get(); }
+
+  const HeapVector<Member<StyleRuleBase>, 4>& ChildRules() const {
+    return child_rules_;
+  }
+  HeapVector<Member<StyleRuleBase>, 4>& ChildRules() { return child_rules_; }
 
   void TraceAfterDispatch(blink::Visitor*) const;
 
@@ -355,6 +368,29 @@ class StyleRulePage : public StyleRuleBase {
   Member<CSSPropertyValueSet> properties_;  // Cannot be null.
   Member<const CascadeLayer> layer_;
   Member<CSSSelectorList> selector_list_;
+
+  // Page margin rules (e.g. @top-left).
+  HeapVector<Member<StyleRuleBase>, 4> child_rules_;
+};
+
+class StyleRulePageMargin : public StyleRuleBase {
+ public:
+  StyleRulePageMargin(CSSAtRuleID id, CSSPropertyValueSet* properties);
+  StyleRulePageMargin(const StyleRulePageMargin&);
+
+  const CSSPropertyValueSet& Properties() const { return *properties_; }
+  MutableCSSPropertyValueSet& MutableProperties();
+  CSSAtRuleID ID() const { return id_; }
+
+  StyleRulePageMargin* Copy() const {
+    return MakeGarbageCollected<StyleRulePageMargin>(*this);
+  }
+
+  void TraceAfterDispatch(blink::Visitor*) const;
+
+ private:
+  CSSAtRuleID id_;                          // What margin, e.g. @top-right.
+  Member<CSSPropertyValueSet> properties_;  // Cannot be null.
 };
 
 class CORE_EXPORT StyleRuleProperty : public StyleRuleBase {
@@ -369,8 +405,11 @@ class CORE_EXPORT StyleRuleProperty : public StyleRuleBase {
   const CSSValue* Inherits() const;
   const CSSValue* GetInitialValue() const;
 
+  bool SetNameText(const ExecutionContext* execution_context,
+                   const String& name_text);
+
   void SetCascadeLayer(const CascadeLayer* layer) { layer_ = layer; }
-  const CascadeLayer* GetCascadeLayer() const { return layer_; }
+  const CascadeLayer* GetCascadeLayer() const { return layer_.Get(); }
 
   StyleRuleProperty* Copy() const {
     return MakeGarbageCollected<StyleRuleProperty>(*this);
@@ -391,8 +430,8 @@ class CORE_EXPORT StyleRuleGroup : public StyleRuleBase {
   }
   HeapVector<Member<StyleRuleBase>>& ChildRules() { return child_rules_; }
 
-  void WrapperInsertRule(unsigned, StyleRuleBase*);
-  void WrapperRemoveRule(unsigned);
+  void WrapperInsertRule(CSSStyleSheet*, unsigned, StyleRuleBase*);
+  void WrapperRemoveRule(CSSStyleSheet*, unsigned);
 
   void TraceAfterDispatch(blink::Visitor*) const;
 
@@ -421,6 +460,7 @@ class CORE_EXPORT StyleRuleScope : public StyleRuleGroup {
                       String,
                       CSSNestingType,
                       StyleRule* parent_rule_for_nesting,
+                      bool is_within_scope,
                       StyleSheetContents* style_sheet);
 
  private:
@@ -547,18 +587,17 @@ class CORE_EXPORT StyleRuleContainer : public StyleRuleCondition {
   Member<ContainerQuery> container_query_;
 };
 
-class StyleRuleStartingStyle : public StyleRuleCondition {
+class StyleRuleStartingStyle : public StyleRuleGroup {
  public:
   explicit StyleRuleStartingStyle(HeapVector<Member<StyleRuleBase>> rules);
   StyleRuleStartingStyle(const StyleRuleStartingStyle&) = default;
 
-  bool ConditionIsSupported() const { return true; }
   StyleRuleStartingStyle* Copy() const {
     return MakeGarbageCollected<StyleRuleStartingStyle>(*this);
   }
 
   void TraceAfterDispatch(blink::Visitor* visitor) const {
-    StyleRuleCondition::TraceAfterDispatch(visitor);
+    StyleRuleGroup::TraceAfterDispatch(visitor);
   }
 };
 
@@ -593,6 +632,13 @@ struct DowncastTraits<StyleRulePage> {
 };
 
 template <>
+struct DowncastTraits<StyleRulePageMargin> {
+  static bool AllowFrom(const StyleRuleBase& rule) {
+    return rule.IsPageRuleMargin();
+  }
+};
+
+template <>
 struct DowncastTraits<StyleRuleProperty> {
   static bool AllowFrom(const StyleRuleBase& rule) {
     return rule.IsPropertyRule();
@@ -611,7 +657,8 @@ struct DowncastTraits<StyleRuleGroup> {
   static bool AllowFrom(const StyleRuleBase& rule) {
     return rule.IsMediaRule() || rule.IsSupportsRule() ||
            rule.IsContainerRule() || rule.IsLayerBlockRule() ||
-           rule.IsScopeRule() || rule.IsPositionFallbackRule();
+           rule.IsScopeRule() || rule.IsPositionFallbackRule() ||
+           rule.IsStartingStyleRule();
   }
 };
 

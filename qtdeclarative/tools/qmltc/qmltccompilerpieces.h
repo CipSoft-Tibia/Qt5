@@ -152,14 +152,17 @@ struct QmltcCodeGenerator
 /*!
     \internal
 
-    Generates \a{current.init}'s code. The init method sets up a QQmlContext for
-    the object and (in case \a type is a document root) calls other object
-    creation methods in a well-defined order:
+    Generates \a{current.init}'s code. The init method sets up a
+    QQmlContext for the object and (in case \a type is a document
+    root) calls other object creation methods, and a user-provided
+    initialization callback, in a well-defined order:
     1. current.beginClass
     2. current.endInit
-    3. current.completeComponent
-    4. current.finalizeComponent
-    5. current.handleOnCompleted
+    3. user-provided initialization function
+    4. current.setComplexBindings
+    5. current.completeComponent
+    6. current.finalizeComponent
+    7. current.handleOnCompleted
 
     This function returns a QScopeGuard with the final instructions that have to
     be generated at a later point, once everything else is compiled.
@@ -294,8 +297,14 @@ inline decltype(auto) QmltcCodeGenerator::generate_initCode(QmltcType &current,
                                          .arg(current.beginClass.name);
             current.init.body << QStringLiteral("    %1(creator, engine);")
                                          .arg(current.endInit.name);
-            current.init.body << QStringLiteral("    %1(creator, engine);")
-                                         .arg(current.setComplexBindings.name);
+
+            current.init.body << QStringLiteral("    {");
+            current.init.body << QStringLiteral("        PropertyInitializer propertyInitializer(*this);");
+            current.init.body << QStringLiteral("        initializer(propertyInitializer);");
+            current.init.body << QStringLiteral("        %1(creator, engine, propertyInitializer.initializedCache);").arg(current.setComplexBindings.name);
+            current.init.body << QStringLiteral("    }");
+
+
             current.init.body << QStringLiteral("    %1(creator, /* finalize */ true);")
                                          .arg(current.completeComponent.name);
             current.init.body << QStringLiteral("    %1(creator, /* finalize */ true);")
@@ -402,7 +411,7 @@ inline void QmltcCodeGenerator::generate_qmltcInstructionCallCode(
     function->body << u"// call children's methods"_s;
     for (qsizetype i = 1; i < types.size(); ++i) {
         const auto &type = types[i];
-        Q_ASSERT(!type->isComponentRootElement());
+        Q_ASSERT(type->componentRootStatus() == QQmlJSScope::IsComponentRoot::No);
         function->body << u"creator->get<%1>(%2)->%3(%4);"_s.arg(
                 type->internalName(), QString::number(i), function->name, childInstructionArgs);
     }
@@ -431,15 +440,21 @@ inline void QmltcCodeGenerator::generate_endInitCode(QmltcType &current,
     generate_qmltcInstructionCallCode(&current.endInit, type, u"engine"_s, u"creator, engine"_s);
 
     if (visitor->hasDeferredBindings(type)) {
+        QString icName;
+        if (auto potentialICName = type->enclosingInlineComponentName();
+            std::holds_alternative<QQmlJSScope::InlineComponentNameType>(potentialICName))
+            icName =get<QQmlJSScope::InlineComponentNameType>(potentialICName);
+        else
+            icName = u"{}"_s;
         current.endInit.body << u"{ // defer bindings"_s;
         current.endInit.body << u"auto ddata = QQmlData::get(this);"_s;
         current.endInit.body << u"auto thisContext = ddata->outerContext;"_s;
         current.endInit.body << u"Q_ASSERT(thisContext);"_s;
         current.endInit.body << QStringLiteral("ddata->deferData(%1, "
                                                "QQmlEnginePrivate::get(engine)->"
-                                               "compilationUnitFromUrl(%2()), thisContext);")
+                                               "compilationUnitFromUrl(%2()), thisContext, %3);")
                                         .arg(QString::number(visitor->qmlIrObjectIndex(type)),
-                                             QmltcCodeGenerator::urlMethodName());
+                                             QmltcCodeGenerator::urlMethodName(), icName);
         current.endInit.body << u"}"_s;
     }
 }
@@ -517,7 +532,7 @@ inline void QmltcCodeGenerator::generate_interfaceCallCode(QmltcMethod *function
     function->body << u"// call children's methods"_s;
     for (qsizetype i = 1; i < types.size(); ++i) {
         const auto &type = types[i];
-        Q_ASSERT(!type->isComponentRootElement());
+        Q_ASSERT(type->componentRootStatus() == QQmlJSScope::IsComponentRoot::No);
         function->body << u"{"_s;
         function->body << u"auto child = creator->get<%1>(%2);"_s.arg(type->internalName(),
                                                                       QString::number(i));

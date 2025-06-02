@@ -9,8 +9,6 @@
 The Qt Sensors backend connects the Qt Sensors API to the platform services or
 hardware sensors.
 
-\tableofcontents
-
 \section1 Overview
 
 QSensor instances talk to a backend object. Backends are usually supplied

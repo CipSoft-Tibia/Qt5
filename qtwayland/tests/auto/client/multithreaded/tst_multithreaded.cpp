@@ -1,6 +1,6 @@
 // Copyright (C) 2018 The Qt Company Ltd.
 // Copyright (C) 2020 UBports Foundataion.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <unistd.h>
 #include <poll.h>
@@ -83,8 +83,7 @@ protected:
 
             if (fds[1].revents & POLLIN) {
                 char pipeIn;
-                read(m_pipefd[0], &pipeIn, 1);
-                if (pipeIn == 'q')
+                if (read(m_pipefd[0], &pipeIn, 1) == 1 && pipeIn == 'q')
                     break;
             }
         }

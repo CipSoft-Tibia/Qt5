@@ -13,19 +13,20 @@
 #  include "qwindowssystemtrayicon.h"
 #endif
 #include "qwindowsscreen.h"
+#include "qwindowswindow.h"
 #include <commctrl.h>
 #include <objbase.h>
-#ifndef Q_CC_MINGW
-#  include <commoncontrols.h>
-#endif
+#include <commoncontrols.h>
 #include <shellapi.h>
 
+#include <QtCore/qapplicationstatic.h>
 #include <QtCore/qvariant.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qsysinfo.h>
 #include <QtCore/qcache.h>
 #include <QtCore/qthread.h>
+#include <QtCore/qqueue.h>
 #include <QtCore/qmutex.h>
 #include <QtCore/qwaitcondition.h>
 #include <QtCore/qoperatingsystemversion.h>
@@ -49,10 +50,6 @@
 
 #   include <winrt/Windows.UI.ViewManagement.h>
 #endif // QT_CONFIG(cpp_winrt)
-
-#if defined(__IImageList_INTERFACE_DEFINED__) && defined(__IID_DEFINED__)
-#  define USE_IIMAGELIST
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -83,7 +80,11 @@ static inline QColor mixColors(const QColor &c1, const QColor &c2)
 
 enum AccentColorLevel {
     AccentColorDarkest,
+    AccentColorDarker,
+    AccentColorDark,
     AccentColorNormal,
+    AccentColorLight,
+    AccentColorLighter,
     AccentColorLightest
 };
 
@@ -101,6 +102,10 @@ static constexpr QColor getSysColor(winrt::Windows::UI::Color &&color)
     const auto settings = UISettings();
     const QColor accent = getSysColor(settings.GetColorValue(UIColorType::Accent));
     const QColor accentLight = getSysColor(settings.GetColorValue(UIColorType::AccentLight1));
+    const QColor accentLighter = getSysColor(settings.GetColorValue(UIColorType::AccentLight2));
+    const QColor accentLightest = getSysColor(settings.GetColorValue(UIColorType::AccentLight3));
+    const QColor accentDark = getSysColor(settings.GetColorValue(UIColorType::AccentDark1));
+    const QColor accentDarker = getSysColor(settings.GetColorValue(UIColorType::AccentDark2));
     const QColor accentDarkest = getSysColor(settings.GetColorValue(UIColorType::AccentDark3));
 #else
     const QWinRegistryKey registry(HKEY_CURRENT_USER, LR"(Software\Microsoft\Windows\DWM)");
@@ -116,13 +121,28 @@ static constexpr QColor getSysColor(winrt::Windows::UI::Color &&color)
         return {};
     const QColor accent = QColor::fromRgb(abgr.blue(), abgr.green(), abgr.red(), abgr.alpha());
     const QColor accentLight = accent.lighter(120);
-    const QColor accentDarkest = accent.darker(120 * 120 * 120);
+    const QColor accentLighter = accentLight.lighter(120);
+    const QColor accentLightest = accentLighter.lighter(120);
+    const QColor accentDark = accent.darker(120);
+    const QColor accentDarker = accentDark.darker(120);
+    const QColor accentDarkest = accentDarker.darker(120);
 #endif
-    if (level == AccentColorDarkest)
+    switch (level) {
+    case AccentColorDarkest:
         return accentDarkest;
-    else if (level == AccentColorLightest)
+    case AccentColorDarker:
+        return accentDarker;
+    case AccentColorDark:
+        return accentDark;
+    case AccentColorLight:
         return accentLight;
-    return accent;
+    case AccentColorLighter:
+        return accentLighter;
+    case AccentColorLightest:
+        return accentLightest;
+    default:
+        return accent;
+    }
 }
 
 static inline QColor getSysColor(int index)
@@ -134,108 +154,106 @@ static inline QColor getSysColor(int index)
 // QTBUG-48823/Windows 10: SHGetFileInfo() (as called by item views on file system
 // models has been observed to trigger a WM_PAINT on the mainwindow. Suppress the
 // behavior by running it in a thread.
-
-struct QShGetFileInfoParams
-{
-    QShGetFileInfoParams(const QString &fn, DWORD a, SHFILEINFO *i, UINT f, bool *r)
-        : fileName(fn), attributes(a), flags(f), info(i), result(r)
-    { }
-
-    const QString &fileName;
-    const DWORD attributes;
-    const UINT flags;
-    SHFILEINFO *const info;
-    bool *const result;
-};
-
 class QShGetFileInfoThread : public QThread
 {
 public:
-    explicit QShGetFileInfoThread()
-        : QThread(), m_params(nullptr)
+    struct Task
     {
-        connect(this, &QThread::finished, this, &QObject::deleteLater);
+        Task(const QString &fn, DWORD a, UINT f)
+            : fileName(fn), attributes(a), flags(f)
+        {}
+        Q_DISABLE_COPY(Task)
+        ~Task()
+        {
+            DestroyIcon(hIcon);
+            hIcon = 0;
+        }
+        // Request
+        const QString fileName;
+        const DWORD attributes;
+        const UINT flags;
+        // Result
+        HICON hIcon = 0;
+        int iIcon = -1;
+        bool finished = false;
+        bool resultValid() const { return hIcon != 0 && iIcon >= 0 && finished; }
+    };
+
+    QShGetFileInfoThread()
+        : QThread()
+    {
+        start();
+    }
+
+    ~QShGetFileInfoThread()
+    {
+        cancel();
+        wait();
+    }
+
+    QSharedPointer<Task> getNextTask()
+    {
+        QMutexLocker l(&m_waitForTaskMutex);
+        while (!isInterruptionRequested()) {
+            if (!m_taskQueue.isEmpty())
+                return m_taskQueue.dequeue();
+            m_waitForTaskCondition.wait(&m_waitForTaskMutex);
+        }
+        return nullptr;
     }
 
     void run() override
     {
         QComHelper comHelper(COINIT_MULTITHREADED);
 
-        QMutexLocker readyLocker(&m_readyMutex);
-        while (!m_cancelled.loadRelaxed()) {
-            if (!m_params && !m_cancelled.loadRelaxed()
-                && !m_readyCondition.wait(&m_readyMutex, QDeadlineTimer(1000ll)))
-                continue;
-
-            if (m_params) {
-                const QString fileName = m_params->fileName;
+        while (!isInterruptionRequested()) {
+            auto task = getNextTask();
+            if (task) {
                 SHFILEINFO info;
-                const bool result = SHGetFileInfo(reinterpret_cast<const wchar_t *>(fileName.utf16()),
-                                                  m_params->attributes, &info, sizeof(SHFILEINFO),
-                                                  m_params->flags);
-                m_doneMutex.lock();
-                if (!m_cancelled.loadRelaxed()) {
-                    *m_params->result = result;
-                    memcpy(m_params->info, &info, sizeof(SHFILEINFO));
+                const bool result = SHGetFileInfo(reinterpret_cast<const wchar_t *>(task->fileName.utf16()),
+                                                  task->attributes, &info, sizeof(SHFILEINFO),
+                                                  task->flags);
+                if (result) {
+                    task->hIcon = info.hIcon;
+                    task->iIcon = info.iIcon;
                 }
-                m_params = nullptr;
-
+                task->finished = true;
                 m_doneCondition.wakeAll();
-                m_doneMutex.unlock();
             }
         }
     }
 
-    bool runWithParams(QShGetFileInfoParams *params, qint64 timeOutMSecs)
+    void runWithParams(const QSharedPointer<Task> &task,
+                       std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
     {
+        {
+            QMutexLocker l(&m_waitForTaskMutex);
+            m_taskQueue.enqueue(task);
+            m_waitForTaskCondition.wakeAll();
+        }
+
         QMutexLocker doneLocker(&m_doneMutex);
-
-        m_readyMutex.lock();
-        m_params = params;
-        m_readyCondition.wakeAll();
-        m_readyMutex.unlock();
-
-        return m_doneCondition.wait(&m_doneMutex, QDeadlineTimer(timeOutMSecs));
+        while (!task->finished && !isInterruptionRequested()) {
+            if (!m_doneCondition.wait(&m_doneMutex, QDeadlineTimer(timeout)))
+                return;
+        }
     }
 
     void cancel()
     {
-        QMutexLocker doneLocker(&m_doneMutex);
-        m_cancelled.storeRelaxed(1);
-        m_readyCondition.wakeAll();
+        requestInterruption();
+        m_doneCondition.wakeAll();
+        m_waitForTaskCondition.wakeAll();
     }
 
 private:
-    QShGetFileInfoParams *m_params;
-    QAtomicInt m_cancelled;
-    QWaitCondition m_readyCondition;
+    QQueue<QSharedPointer<Task>> m_taskQueue;
     QWaitCondition m_doneCondition;
-    QMutex m_readyMutex;
+    QWaitCondition m_waitForTaskCondition;
     QMutex m_doneMutex;
+    QMutex m_waitForTaskMutex;
 };
-
-static bool shGetFileInfoBackground(const QString &fileName, DWORD attributes,
-                                    SHFILEINFO *info, UINT flags,
-                                    qint64 timeOutMSecs = 5000)
-{
-    static QShGetFileInfoThread *getFileInfoThread = nullptr;
-    if (!getFileInfoThread) {
-        getFileInfoThread = new QShGetFileInfoThread;
-        getFileInfoThread->start();
-    }
-
-    bool result = false;
-    QShGetFileInfoParams params(fileName, attributes, info, flags, &result);
-    if (!getFileInfoThread->runWithParams(&params, timeOutMSecs)) {
-        // Cancel and reset getFileInfoThread. It'll
-        // be reinitialized the next time we get called.
-        getFileInfoThread->cancel();
-        getFileInfoThread = nullptr;
-        qWarning().noquote() << "SHGetFileInfo() timed out for " << fileName;
-        return false;
-    }
-    return result;
-}
+Q_APPLICATION_STATIC(QShGetFileInfoThread, s_shGetFileInfoThread)
 
 // from QStyle::standardPalette
 static inline QPalette standardPalette()
@@ -264,19 +282,21 @@ static QColor placeHolderColor(QColor textColor)
     This is used when the theme is light mode, and when the theme is dark but the
     application doesn't support dark mode. In the latter case, we need to check.
 */
-static void populateLightSystemBasePalette(QPalette &result)
+void QWindowsTheme::populateLightSystemBasePalette(QPalette &result)
 {
     const QColor background = getSysColor(COLOR_BTNFACE);
     const QColor textColor = getSysColor(COLOR_WINDOWTEXT);
 
     const QColor accent = qt_accentColor(AccentColorNormal);
+    const QColor accentDark = qt_accentColor(AccentColorDark);
+    const QColor accentDarker = qt_accentColor(AccentColorDarker);
     const QColor accentDarkest = qt_accentColor(AccentColorDarkest);
 
-    const QColor linkColor = accent;
+    const QColor linkColor = accentDarker;
     const QColor btnFace = background;
     const QColor btnHighlight = getSysColor(COLOR_BTNHIGHLIGHT);
 
-    result.setColor(QPalette::Highlight, getSysColor(COLOR_HIGHLIGHT));
+    result.setColor(QPalette::Highlight, accent);
     result.setColor(QPalette::WindowText, getSysColor(COLOR_WINDOWTEXT));
     result.setColor(QPalette::Button, btnFace);
     result.setColor(QPalette::Light, btnHighlight);
@@ -291,7 +311,7 @@ static void populateLightSystemBasePalette(QPalette &result)
     result.setColor(QPalette::Midlight, getSysColor(COLOR_3DLIGHT));
     result.setColor(QPalette::Shadow, getSysColor(COLOR_3DDKSHADOW));
     result.setColor(QPalette::HighlightedText, getSysColor(COLOR_HIGHLIGHTTEXT));
-    result.setColor(QPalette::Accent, accent);
+    result.setColor(QPalette::Accent, accentDark); // default accent color for controls on Light mode is AccentDark1
 
     result.setColor(QPalette::Link, linkColor);
     result.setColor(QPalette::LinkVisited, accentDarkest);
@@ -304,8 +324,11 @@ static void populateLightSystemBasePalette(QPalette &result)
         result.setColor(QPalette::Midlight, result.button().color().lighter(110));
 }
 
-static void populateDarkSystemBasePalette(QPalette &result)
+void QWindowsTheme::populateDarkSystemBasePalette(QPalette &result)
 {
+    QColor foreground, background,
+           accent, accentDark, accentDarker, accentDarkest,
+           accentLight, accentLighter, accentLightest;
 #if QT_CONFIG(cpp_winrt)
     using namespace winrt::Windows::UI::ViewManagement;
     const auto settings = UISettings();
@@ -313,33 +336,37 @@ static void populateDarkSystemBasePalette(QPalette &result)
     // We have to craft a palette from these colors. The settings.UIElementColor(UIElementType) API
     // returns the old system colors, not the dark mode colors. If the background is black (which it
     // usually), then override it with a dark gray instead so that we can go up and down the lightness.
-    const QColor foreground = getSysColor(settings.GetColorValue(UIColorType::Foreground));
-    const QColor background = [&settings]() -> QColor {
-        auto systemBackground = getSysColor(settings.GetColorValue(UIColorType::Background));
-        if (systemBackground == Qt::black)
-            systemBackground = QColor(0x1E, 0x1E, 0x1E);
-        return systemBackground;
-    }();
-
-    const QColor accent = getSysColor(settings.GetColorValue(UIColorType::Accent));
-    const QColor accentDark = getSysColor(settings.GetColorValue(UIColorType::AccentDark1));
-    const QColor accentDarker = getSysColor(settings.GetColorValue(UIColorType::AccentDark2));
-    const QColor accentDarkest = getSysColor(settings.GetColorValue(UIColorType::AccentDark3));
-    const QColor accentLight = getSysColor(settings.GetColorValue(UIColorType::AccentLight1));
-    const QColor accentLighter = getSysColor(settings.GetColorValue(UIColorType::AccentLight2));
-    const QColor accentLightest = getSysColor(settings.GetColorValue(UIColorType::AccentLight3));
-#else
-    const QColor foreground = Qt::white;
-    const QColor background = QColor(0x1E, 0x1E, 0x1E);
-    const QColor accent = qt_accentColor(AccentColorNormal);
-    const QColor accentDark = accent.darker(120);
-    const QColor accentDarker = accentDark.darker(120);
-    const QColor accentDarkest = accentDarker.darker(120);
-    const QColor accentLight = accent.lighter(120);
-    const QColor accentLighter = accentLight.lighter(120);
-    const QColor accentLightest = accentLighter.lighter(120);
+    if (QWindowsTheme::queryColorScheme() == Qt::ColorScheme::Dark) {
+        // the system is actually running in dark mode, so UISettings will give us dark colors
+        foreground = getSysColor(settings.GetColorValue(UIColorType::Foreground));
+        background = [&settings]() -> QColor {
+            auto systemBackground = getSysColor(settings.GetColorValue(UIColorType::Background));
+            if (systemBackground == Qt::black)
+                systemBackground = QColor(0x1E, 0x1E, 0x1E);
+            return systemBackground;
+        }();
+        accent = qt_accentColor(AccentColorNormal);
+        accentDark = qt_accentColor(AccentColorDark);
+        accentDarker = qt_accentColor(AccentColorDarker);
+        accentDarkest = qt_accentColor(AccentColorDarkest);
+        accentLight = qt_accentColor(AccentColorLight);
+        accentLighter = qt_accentColor(AccentColorLighter);
+        accentLightest = qt_accentColor(AccentColorLightest);
+    } else
 #endif
-    const QColor linkColor = accent;
+    {
+        // If the system is running in light mode, then we need to make up our own dark palette
+        foreground = Qt::white;
+        background = QColor(0x1E, 0x1E, 0x1E);
+        accent = qt_accentColor(AccentColorNormal);
+        accentDark = accent.darker(120);
+        accentDarker = accentDark.darker(120);
+        accentDarkest = accentDarker.darker(120);
+        accentLight = accent.lighter(120);
+        accentLighter = accentLight.lighter(120);
+        accentLightest = accentLighter.lighter(120);
+    }
+    const QColor linkColor = accentLightest;
     const QColor buttonColor = background.lighter(200);
 
     result.setColor(QPalette::All, QPalette::WindowText, foreground);
@@ -360,12 +387,12 @@ static void populateDarkSystemBasePalette(QPalette &result)
     result.setColor(QPalette::All, QPalette::Highlight, accent);
     result.setColor(QPalette::All, QPalette::HighlightedText, accent.lightness() > 128 ? Qt::black : Qt::white);
     result.setColor(QPalette::All, QPalette::Link, linkColor);
-    result.setColor(QPalette::All, QPalette::LinkVisited, accentDarkest);
+    result.setColor(QPalette::All, QPalette::LinkVisited, accentLighter);
     result.setColor(QPalette::All, QPalette::AlternateBase, accentDarkest);
     result.setColor(QPalette::All, QPalette::ToolTipBase, buttonColor);
     result.setColor(QPalette::All, QPalette::ToolTipText, foreground.darker(120));
     result.setColor(QPalette::All, QPalette::PlaceholderText, placeHolderColor(foreground));
-    result.setColor(QPalette::All, QPalette::Accent, accent);
+    result.setColor(QPalette::All, QPalette::Accent, accentLighter);
 }
 
 static inline QPalette toolTipPalette(const QPalette &systemPalette, bool light)
@@ -457,6 +484,8 @@ QWindowsTheme *QWindowsTheme::m_instance = nullptr;
 QWindowsTheme::QWindowsTheme()
 {
     m_instance = this;
+    s_colorScheme = Qt::ColorScheme::Unknown; // Used inside QWindowsTheme::effectiveColorScheme();
+    s_colorScheme = QWindowsTheme::effectiveColorScheme();
     std::fill(m_fonts, m_fonts + NFonts, nullptr);
     std::fill(m_palettes, m_palettes + NPalettes, nullptr);
     refresh();
@@ -546,9 +575,46 @@ QVariant QWindowsTheme::themeHint(ThemeHint hint) const
 
 Qt::ColorScheme QWindowsTheme::colorScheme() const
 {
+    return QWindowsTheme::effectiveColorScheme();
+}
+
+Qt::ColorScheme QWindowsTheme::effectiveColorScheme()
+{
+    auto integration = QWindowsIntegration::instance();
     if (queryHighContrast())
         return Qt::ColorScheme::Unknown;
-    return QWindowsContext::isDarkMode() ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
+    if (s_colorSchemeOverride != Qt::ColorScheme::Unknown)
+        return s_colorSchemeOverride;
+    if (s_colorScheme != Qt::ColorScheme::Unknown)
+        return s_colorScheme;
+    if (!integration->darkModeHandling().testFlag(QWindowsApplication::DarkModeStyle))
+        return Qt::ColorScheme::Light;
+    return queryColorScheme();
+}
+
+void QWindowsTheme::requestColorScheme(Qt::ColorScheme scheme)
+{
+    s_colorSchemeOverride = scheme;
+    handleSettingsChanged();
+}
+
+void QWindowsTheme::handleSettingsChanged()
+{
+    const auto oldColorScheme = s_colorScheme;
+    s_colorScheme = Qt::ColorScheme::Unknown; // make effectiveColorScheme() query registry
+    const auto newColorScheme = effectiveColorScheme();
+    const bool colorSchemeChanged = newColorScheme != oldColorScheme;
+    s_colorScheme = newColorScheme;
+    auto integration = QWindowsIntegration::instance();
+    integration->updateApplicationBadge();
+    if (integration->darkModeHandling().testFlag(QWindowsApplication::DarkModeStyle)) {
+        QWindowsTheme::instance()->refresh();
+        QWindowSystemInterface::handleThemeChange<QWindowSystemInterface::SynchronousDelivery>();
+    }
+    if (colorSchemeChanged) {
+        for (QWindowsWindow *w : std::as_const(QWindowsContext::instance()->windows()))
+            w->setDarkBorder(s_colorScheme == Qt::ColorScheme::Dark);
+    }
 }
 
 void QWindowsTheme::clearPalettes()
@@ -562,17 +628,17 @@ void QWindowsTheme::refreshPalettes()
     if (!QGuiApplication::desktopSettingsAware())
         return;
     const bool light =
-        !QWindowsContext::isDarkMode()
+        effectiveColorScheme() != Qt::ColorScheme::Dark
         || !QWindowsIntegration::instance()->darkModeHandling().testFlag(QWindowsApplication::DarkModeStyle);
     clearPalettes();
-    m_palettes[SystemPalette] = new QPalette(QWindowsTheme::systemPalette(light ? Qt::ColorScheme::Light : Qt::ColorScheme::Dark));
+    m_palettes[SystemPalette] = new QPalette(QWindowsTheme::systemPalette(s_colorScheme));
     m_palettes[ToolTipPalette] = new QPalette(toolTipPalette(*m_palettes[SystemPalette], light));
     m_palettes[MenuPalette] = new QPalette(menuPalette(*m_palettes[SystemPalette], light));
     m_palettes[MenuBarPalette] = menuBarPalette(*m_palettes[MenuPalette], light);
     if (!light) {
         m_palettes[CheckBoxPalette] = new QPalette(*m_palettes[SystemPalette]);
         m_palettes[CheckBoxPalette]->setColor(QPalette::Active, QPalette::Base, qt_accentColor(AccentColorNormal));
-        m_palettes[CheckBoxPalette]->setColor(QPalette::Active, QPalette::Button, qt_accentColor(AccentColorLightest));
+        m_palettes[CheckBoxPalette]->setColor(QPalette::Active, QPalette::Button, qt_accentColor(AccentColorLighter));
         m_palettes[CheckBoxPalette]->setColor(QPalette::Inactive, QPalette::Base, qt_accentColor(AccentColorDarkest));
         m_palettes[RadioButtonPalette] = new QPalette(*m_palettes[CheckBoxPalette]);
     }
@@ -583,14 +649,14 @@ QPalette QWindowsTheme::systemPalette(Qt::ColorScheme colorScheme)
     QPalette result = standardPalette();
 
     switch (colorScheme) {
+    case Qt::ColorScheme::Unknown:
+        // when a high-contrast theme is active or when we fail to read, assume light
+        Q_FALLTHROUGH();
     case Qt::ColorScheme::Light:
         populateLightSystemBasePalette(result);
         break;
     case Qt::ColorScheme::Dark:
         populateDarkSystemBasePalette(result);
-        break;
-    default:
-        qFatal("Unknown color scheme");
         break;
     }
 
@@ -730,11 +796,7 @@ void QWindowsTheme::refreshIconPixmapSizes()
         fileIconSizes[LargeFileIcon] + fileIconSizes[LargeFileIcon] / 2;
     fileIconSizes[JumboFileIcon] = 8 * fileIconSizes[LargeFileIcon]; // empirical, has not been observed to work
 
-#ifdef USE_IIMAGELIST
     int *availEnd = fileIconSizes + JumboFileIcon + 1;
-#else
-    int *availEnd = fileIconSizes + LargeFileIcon + 1;
-#endif // USE_IIMAGELIST
     m_fileIconSizes = QAbstractFileIconEngine::toSizeList(fileIconSizes, availEnd);
     qCDebug(lcQpaWindow) << __FUNCTION__ << m_fileIconSizes;
 }
@@ -761,7 +823,6 @@ QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &pixmapSiz
 {
     int resourceId = -1;
     SHSTOCKICONID stockId = SIID_INVALID;
-    UINT stockFlags = 0;
     LPCTSTR iconName = nullptr;
     switch (sp) {
     case DriveCDIcon:
@@ -785,14 +846,12 @@ QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &pixmapSiz
         resourceId = 7;
         break;
     case FileLinkIcon:
-        stockFlags = SHGSI_LINKOVERLAY;
         Q_FALLTHROUGH();
     case FileIcon:
         stockId = SIID_DOCNOASSOC;
         resourceId = 1;
         break;
     case DirLinkIcon:
-        stockFlags = SHGSI_LINKOVERLAY;
         Q_FALLTHROUGH();
     case DirClosedIcon:
     case DirIcon:
@@ -806,7 +865,6 @@ QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &pixmapSiz
         resourceId = 16;
         break;
     case DirLinkOpenIcon:
-        stockFlags = SHGSI_LINKOVERLAY;
         Q_FALLTHROUGH();
     case DirOpenIcon:
         stockId = SIID_FOLDEROPEN;
@@ -846,18 +904,34 @@ QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &pixmapSiz
         break;
     }
 
+    // Even with SHGSI_LINKOVERLAY flag set, loaded Icon with SHDefExtractIcon doesn't have
+    // any overlay, so we avoid SHGSI_LINKOVERLAY flag and draw it manually (QTBUG-131843)
+    const auto drawLinkOverlayIconIfNeeded = [](StandardPixmap sp, QPixmap &pixmap, QSizeF pixmapSize) {
+        if (sp == FileLinkIcon || sp == DirLinkIcon || sp == DirLinkOpenIcon) {
+            QPainter painter(&pixmap);
+            const QSizeF linkSize = pixmapSize / (pixmapSize.height() >= 48 ? 3 : 2);
+            static constexpr auto LinkOverlayIconId = 16769;
+            const QPixmap link = loadIconFromShell32(LinkOverlayIconId, linkSize.toSize());
+            const int yPos = pixmap.height() - link.size().height();
+            painter.drawPixmap(0, yPos, int(linkSize.width()), int(linkSize.height()), link);
+        }
+    };
+
     if (stockId != SIID_INVALID) {
         SHSTOCKICONINFO iconInfo;
         memset(&iconInfo, 0, sizeof(iconInfo));
         iconInfo.cbSize = sizeof(iconInfo);
-        stockFlags |= SHGSI_ICONLOCATION;
+        constexpr UINT stockFlags = SHGSI_ICONLOCATION;
         if (SHGetStockIconInfo(stockId, stockFlags, &iconInfo) == S_OK) {
             const auto iconSize = pixmapSize.width();
             HICON icon;
             if (SHDefExtractIcon(iconInfo.szPath, iconInfo.iIcon, 0, &icon, nullptr, iconSize) == S_OK) {
                 QPixmap pixmap = qt_pixmapFromWinHICON(icon);
                 DestroyIcon(icon);
-                return pixmap;
+                if (!pixmap.isNull()) {
+                    drawLinkOverlayIconIfNeeded(sp, pixmap, pixmap.size());
+                    return pixmap;
+                }
             }
         }
     }
@@ -865,11 +939,7 @@ QPixmap QWindowsTheme::standardPixmap(StandardPixmap sp, const QSizeF &pixmapSiz
     if (resourceId != -1) {
         QPixmap pixmap = loadIconFromShell32(resourceId, pixmapSize);
         if (!pixmap.isNull()) {
-            if (sp == FileLinkIcon || sp == DirLinkIcon || sp == DirLinkOpenIcon) {
-                QPainter painter(&pixmap);
-                QPixmap link = loadIconFromShell32(30, pixmapSize);
-                painter.drawPixmap(0, 0, int(pixmapSize.width()), int(pixmapSize.height()), link);
-            }
+            drawLinkOverlayIconIfNeeded(sp, pixmap, pixmapSize);
             return pixmap;
         }
     }
@@ -928,10 +998,9 @@ public:
 
 // Shell image list helper functions.
 
-static QPixmap pixmapFromShellImageList(int iImageList, const SHFILEINFO &info)
+static QPixmap pixmapFromShellImageList(int iImageList, int iIcon)
 {
     QPixmap result;
-#ifdef USE_IIMAGELIST
     // For MinGW:
     static const IID iID_IImageList = {0x46eb5926, 0x582e, 0x4017, {0x9f, 0xdf, 0xe8, 0x99, 0x8d, 0xaa, 0x9, 0x50}};
 
@@ -940,16 +1009,12 @@ static QPixmap pixmapFromShellImageList(int iImageList, const SHFILEINFO &info)
     if (hr != S_OK)
         return result;
     HICON hIcon;
-    hr = imageList->GetIcon(info.iIcon, ILD_TRANSPARENT, &hIcon);
+    hr = imageList->GetIcon(iIcon, ILD_TRANSPARENT, &hIcon);
     if (hr == S_OK) {
         result = qt_pixmapFromWinHICON(hIcon);
         DestroyIcon(hIcon);
     }
     imageList->Release();
-#else
-    Q_UNUSED(iImageList);
-    Q_UNUSED(info);
-#endif // USE_IIMAGELIST
     return result;
 }
 
@@ -1001,13 +1066,9 @@ QPixmap QWindowsFileIconEngine::filePixmap(const QSize &size, QIcon::Mode, QIcon
     const int width = int(size.width());
     const int iconSize = width > fileIconSizes[SmallFileIcon] ? SHGFI_LARGEICON : SHGFI_SMALLICON;
     const int requestedImageListSize =
-#ifdef USE_IIMAGELIST
         width > fileIconSizes[ExtraLargeFileIcon]
             ? sHIL_JUMBO
             : (width > fileIconSizes[LargeFileIcon] ? sHIL_EXTRALARGE : 0);
-#else
-        0;
-#endif // !USE_IIMAGELIST
     bool cacheableDirIcon = fileInfo().isDir() && !fileInfo().isRoot();
     if (cacheableDirIcon) {
         QMutexLocker locker(&mx);
@@ -1023,7 +1084,6 @@ QPixmap QWindowsFileIconEngine::filePixmap(const QSize &size, QIcon::Mode, QIcon
         }
     }
 
-    SHFILEINFO info;
     unsigned int flags = SHGFI_ICON | iconSize | SHGFI_SYSICONINDEX | SHGFI_ADDOVERLAYS | SHGFI_OVERLAYINDEX;
     DWORD attributes = 0;
     QString path = filePath;
@@ -1035,43 +1095,43 @@ QPixmap QWindowsFileIconEngine::filePixmap(const QSize &size, QIcon::Mode, QIcon
         flags |= SHGFI_USEFILEATTRIBUTES;
         attributes |= FILE_ATTRIBUTE_NORMAL;
     }
-    const bool val = shGetFileInfoBackground(path, attributes, &info, flags);
-
+    auto task = QSharedPointer<QShGetFileInfoThread::Task>(
+            new QShGetFileInfoThread::Task(path, attributes, flags));
+    s_shGetFileInfoThread()->runWithParams(task);
     // Even if GetFileInfo returns a valid result, hIcon can be empty in some cases
-    if (val && info.hIcon) {
+    if (task->resultValid()) {
         QString key;
         if (cacheableDirIcon) {
             if (useDefaultFolderIcon && defaultFolderIIcon < 0)
-                defaultFolderIIcon = info.iIcon;
+                defaultFolderIIcon = task->iIcon;
 
             //using the unique icon index provided by windows save us from duplicate keys
-            key = dirIconPixmapCacheKey(info.iIcon, iconSize, requestedImageListSize);
+            key = dirIconPixmapCacheKey(task->iIcon, iconSize, requestedImageListSize);
             QPixmapCache::find(key, &pixmap);
             if (!pixmap.isNull()) {
                 QMutexLocker locker(&mx);
-                dirIconEntryCache.insert(filePath, FakePointer<int>::create(info.iIcon));
+                dirIconEntryCache.insert(filePath, FakePointer<int>::create(task->iIcon));
             }
         }
 
         if (pixmap.isNull()) {
             if (requestedImageListSize) {
-                pixmap = pixmapFromShellImageList(requestedImageListSize, info);
+                pixmap = pixmapFromShellImageList(requestedImageListSize, task->iIcon);
                 if (pixmap.isNull() && requestedImageListSize == sHIL_JUMBO)
-                    pixmap = pixmapFromShellImageList(sHIL_EXTRALARGE, info);
+                    pixmap = pixmapFromShellImageList(sHIL_EXTRALARGE, task->iIcon);
             }
             if (pixmap.isNull())
-                pixmap = qt_pixmapFromWinHICON(info.hIcon);
+                pixmap = qt_pixmapFromWinHICON(task->hIcon);
             if (!pixmap.isNull()) {
                 if (cacheableDirIcon) {
                     QMutexLocker locker(&mx);
                     QPixmapCache::insert(key, pixmap);
-                    dirIconEntryCache.insert(filePath, FakePointer<int>::create(info.iIcon));
+                    dirIconEntryCache.insert(filePath, FakePointer<int>::create(task->iIcon));
                 }
             } else {
                 qWarning("QWindowsTheme::fileIconPixmap() no icon found");
             }
         }
-        DestroyIcon(info.hIcon);
     }
 
     return pixmap;
@@ -1111,14 +1171,16 @@ bool QWindowsTheme::useNativeMenus()
     return result;
 }
 
-bool QWindowsTheme::queryDarkMode()
+Qt::ColorScheme QWindowsTheme::queryColorScheme()
 {
-    if (queryHighContrast()) {
-        return false;
-    }
-    const auto setting = QWinRegistryKey(HKEY_CURRENT_USER, LR"(Software\Microsoft\Windows\CurrentVersion\Themes\Personalize)")
-                         .dwordValue(L"AppsUseLightTheme");
-    return setting.second && setting.first == 0;
+    if (queryHighContrast())
+        return Qt::ColorScheme::Unknown;
+
+    QWinRegistryKey personalizeKey{
+        HKEY_CURRENT_USER, LR"(Software\Microsoft\Windows\CurrentVersion\Themes\Personalize)"
+    };
+    const bool useDarkTheme = personalizeKey.value<DWORD>(L"AppsUseLightTheme") == 0;
+    return useDarkTheme ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
 }
 
 bool QWindowsTheme::queryHighContrast()

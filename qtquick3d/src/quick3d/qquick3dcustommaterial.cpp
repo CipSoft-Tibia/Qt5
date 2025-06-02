@@ -433,6 +433,10 @@ QT_BEGIN_NAMESPACE
 
     \endlist
 
+    \note To pass data without interpolation from the vertex to the fragment
+    stage, add the \c flat keyword before the type in the \c VARYING
+    declarations.
+
     \section2 Fragment shader snippets in a shaded custom material
 
     The following functions can be implemented in a fragment shader snippet:
@@ -441,7 +445,10 @@ QT_BEGIN_NAMESPACE
 
     \li \c{void MAIN()} When present, this function is called to set the values
     of the special writable variables \c BASE_COLOR, \c METALNESS, \c ROUGHNESS, \c
-    SPECULAR_AMOUNT, NORMAL, and \c FRESNEL_POWER.
+    SPECULAR_AMOUNT, NORMAL, CLEARCOAT_FRESNEL_POWER, CLEARCOAT_FRESNEL_SCALE,
+    CLEARCOAT_FRESNEL_BIAS, CLEARCOAT_AMOUNT, CLEARCOAT_ROUGHNESS, CLEARCOAT_NORMAL,
+    FRESNEL_BIAS, FRESNEL_SCALE, FRESNEL_POWER, IOR, \c TRANSMISSION_FACTOR,
+    THICKNESS_FACTOR, ATTENUATION_COLOR, ATTENUATION_DISTANCE and \c OCCLUSION_AMOUNT.
 
     One common use case is to set the value of \c BASE_COLOR based on sampling
     a texture, be it a base color map, \c SCREEN_TEXTURE, or some other kind of
@@ -492,17 +499,61 @@ QT_BEGIN_NAMESPACE
     properties in QML, be aware that it is up to the shader to perform the sRGB
     to linear conversion, if needed.
 
+    \li float \c IOR Specifies the index of refraction of the material. A typical value,
+    and also the default, is \c{1.5} as that is what a PrincipledMaterial would use.
+
+    \li float \c TRANSMISSION_FACTOR Specifies the amount of the translucency. A typical value,
+    would be \c{1.0} and also the default, is \c{0.0} as that is what a PrincipledMaterial would use.
+
+    \li float \c THICKNESS_FACTOR Specifies the amount of the translucent material thickness. A typical value,
+    would be \c{10.0} and also the default, is \c{0.0} as that is what a PrincipledMaterial would use.
+
+    \li vec3 \c ATTENUATION_COLOR Specifies the color shift of the translucent material by distance. A typical value,
+    would be \c{vec3(1.0, 0.0, 0.0)} and also the default, is \c{vec3(1.0)} as that is what a PrincipledMaterial would use.
+
+    \li float \c ATTENUATION_DISTANCE Specifies the distance attenuation of color shift of the translucent material. A typical value,
+    would be \c{100.0} and also the default, is \c{0.0} as that is what a PrincipledMaterial would use.
+
     \li float \c METALNESS Metalness amount in range 0.0 - 1.0. The default
     value is 0. Must be set to a non-zero value to have effect.
 
     \li float \c ROUGHNESS Roughness value in range 0.0 - 1.0. The default value is 0.
 
+    \li float \c CLEARCOAT_FRESNEL_POWER Specifies the fresnel power of the clearcoat layer. A typical value,
+    and also the default, is \c{5.0} as that is what a PrincipledMaterial would use.
+
+    \li float \c CLEARCOAT_FRESNEL_SCALE Specifies the fresnel scale of the clearcoat layer. A typical value,
+    and also the default, is \c{1.0} as that is what a PrincipledMaterial would use.
+
+    \li float \c CLEARCOAT_FRESNEL_BIAS Specifies the fresnel bias of the clearcoat layer. A typical value,
+    and also the default, is \c{0.0} as that is what a PrincipledMaterial would use.
+
+    \li float \c CLEARCOAT_AMOUNT Specifies the amount of the clearcoat layer on top of the material. A typical value,
+    would be \c{1.0} and also the default, is \c{0.0} as that is what a PrincipledMaterial would use.
+
+    \li float \c CLEARCOAT_ROUGHNESS Specifies the roughness of the clearcoat layer. A typical value,
+    would be \c{1.0} for fully blurred clearcoat layer and also the default, is \c{0.0} as that is
+    what a PrincipledMaterial would use.
+
+    \li vec3 \c CLEARCOAT_NORMAL - The clearcoat layer normal that comes from the vertex shader in world
+    space. While this property has the same initial value as \c VAR_WORLD_NORMAL,
+    only changing the value of \c CLEARCOAT_NORMAL will have an effect on clearcoat layer normal.
+
     \li float \c FRESNEL_POWER Specifies the fresnel power. A typical value,
     and also the default, is \c{5.0} as that is what a PrincipledMaterial would use.
+
+    \li float \c FRESNEL_SCALE Specifies the fresnel scale. A typical value,
+    and also the default, is \c{1.0} as that is what a PrincipledMaterial would use.
+
+    \li float \c FRESNEL_BIAS Specifies the fresnel bias. A typical value,
+    and also the default, is \c{0.0} as that is what a PrincipledMaterial would use.
 
     \li float \c SPECULAR_AMOUNT Specular amount in range 0.0 - 1.0. The
     default value is \c{0.5}, matching \l{PrincipledMaterial::specularAmount}. Must
     be set to a non-zero value to have effect.
+
+    \li float \c OCCLUSION_AMOUNT Specifies the AO factor. A typical value,
+    and also the default, is \c{1.0} as that is what a PrincipledMaterial would use.
 
     \li vec3 \c NORMAL - The normal that comes from the vertex shader in world
     space. While this property has the same initial value as \c VAR_WORLD_NORMAL,
@@ -1060,14 +1111,15 @@ QT_BEGIN_NAMESPACE
 
     \list
 
-    \li \c SCREEN_TEXTURE - When present, a texture (sampler2D) with the color
-    buffer from a rendering pass containing the contents of the scene excluding
-    any transparent materials or any materials also using the SCREEN_TEXTURE is
-    exposed to the shader under this name. The texture can be used for techniques
-    that require the contents of the framebuffer they are being rendered to. The
-    SCREEN_TEXTURE texture uses the same clear mode as the View3D. The size of
-    these textures matches the size of the View3D in pixels. For example, a
-    fragment shader could contain the following:
+    \li \c SCREEN_TEXTURE - When present, a texture (\c sampler2D or \c
+    sampler2DArray) with the color buffer from a rendering pass containing the
+    contents of the scene excluding any transparent materials or any materials
+    also using the SCREEN_TEXTURE is exposed to the shader under this name. The
+    texture can be used for techniques that require the contents of the
+    framebuffer they are being rendered to. The SCREEN_TEXTURE texture uses the
+    same clear mode as the View3D. The size of these textures matches the size
+    of the View3D in pixels. For example, a fragment shader could contain the
+    following:
     \badcode
         vec2 uv = FRAGCOORD.xy / vec2(textureSize(SCREEN_TEXTURE, 0));
         vec2 displace = vec2(0.1);
@@ -1098,6 +1150,17 @@ QT_BEGIN_NAMESPACE
             BASE_COLOR = vec4(vec3(c), alpha);
         }
     \endcode
+    With \l{Multiview Rendering}{multiview rendering}, \c SCREEN_TEXTURE is a \c
+    sampler2DArray. Use \c VIEW_INDEX to select the layer to use. For VR/AR
+    applications that wish to support both types of rendering, the portable
+    approach is the following:
+    \badcode
+        #if QSHADER_VIEW_COUNT >= 2
+            vec4 c = texture(SCREEN_TEXTURE, vec3(uv, VIEW_INDEX));
+        #else
+            vec4 c = texture(SCREEN_TEXTURE, uv);
+        #endif
+    \endcode
 
     \li \c SCREEN_MIP_TEXTURE - Identical to \c SCREEN_TEXTURE in most ways,
     the difference being that this texture has mipmaps generated. This can be
@@ -1107,9 +1170,9 @@ QT_BEGIN_NAMESPACE
     relying on the texture mip levels (e.g. using \c textureLod in the shader)
     is implemented by the custom material.
 
-    \li \c DEPTH_TEXTURE - When present, a texture (sampler2D) with the
-    (non-linearized) depth buffer contents is exposed to the shader under this
-    name. Only opaque objects are included.
+    \li \c DEPTH_TEXTURE - When present, a texture (\c sampler2D or \c
+    sampler2DArray) with the (non-linearized) depth buffer contents is exposed
+    to the shader under this name. Only opaque objects are included.
     For example, a fragment shader could contain the following: \badcode
         ivec2 dtSize = textureSize(DEPTH_TEXTURE, 0);
         vec2 dtUV = (FRAGCOORD.xy) / vec2(dtSize);
@@ -1121,18 +1184,44 @@ QT_BEGIN_NAMESPACE
         float d = 2.0 * zNear * zFar / (zFar + zNear - z_n * zRange);
         d /= zFar;
     \endcode
+    With \l{Multiview Rendering}{multiview rendering}, \c DEPTH_TEXTURE is a \c
+    sampler2DArray. Use \c VIEW_INDEX to select the layer to use. For VR/AR
+    applications that wish to support both types of rendering, the portable
+    approach is the following:
+    \badcode
+        #if QSHADER_VIEW_COUNT >= 2
+            vec4 depthSample = texture(DEPTH_TEXTURE, vec3(uv, VIEW_INDEX));
+        #else
+            vec4 depthSample = texture(DEPTH_TEXTURE, uv);
+        #endif
+    \endcode
 
     \li \c AO_TEXTURE - When present and screen space ambient occlusion is
     enabled (meaning when the AO strength and distance are both non-zero) in
-    SceneEnvironment, the SSAO texture (sampler2D) is exposed to the shader
-    under this name. Sampling this texture can be useful in unshaded materials.
-    Shaded materials have ambient occlusion support built in. This means that
-    the ambient occlusion factor is taken into account automatically. Whereas in a
-    fragment shader for an unshaded material one could write the following
-    to achieve the same: \badcode
+    SceneEnvironment, the SSAO texture (\c sampler2D or \c sampler2DArray) is
+    exposed to the shader under this name. Sampling this texture can be useful
+    in unshaded materials. Shaded materials have ambient occlusion support built
+    in. This means that the ambient occlusion factor is taken into account
+    automatically. Whereas in a fragment shader for an unshaded material one
+    could write the following to achieve the same: \badcode
         ivec2 aoSize = textureSize(AO_TEXTURE, 0);
         vec2 aoUV = (FRAGCOORD.xy) / vec2(aoSize);
         float aoFactor = texture(AO_TEXTURE, aoUV).x;
+    \endcode
+    With \l{Multiview Rendering}{multiview rendering}, \c AO_TEXTURE is a \c
+    sampler2DArray. Use \c VIEW_INDEX to select the layer to use. For VR/AR
+    applications that wish to support both types of rendering, the portable
+    approach is the following:
+    \badcode
+        #if QSHADER_VIEW_COUNT >= 2
+            ivec2 aoSize = textureSize(AO_TEXTURE, 0).xy;
+            vec2 aoUV = (FRAGCOORD.xy) / vec2(aoSize);
+            float aoFactor = texture(AO_TEXTURE, vec3(aoUV, VIEW_INDEX)).x;
+        #else
+            ivec2 aoSize = textureSize(AO_TEXTURE, 0);
+            vec2 aoUV = (FRAGCOORD.xy) / vec2(aoSize);
+            float aoFactor = texture(AO_TEXTURE, aoUV).x;
+        #endif
     \endcode
 
     \li \c IBL_TEXTURE - It will not enable any special rendering pass, but it can
@@ -1145,6 +1234,13 @@ QT_BEGIN_NAMESPACE
             DIFFUSE += AO_FACTOR * BASE_COLOR.rgb * textureLod(IBL_TEXTURE, NORMAL, IBL_MAXMIPMAP).rgb;
         }
     \endcode
+
+    \li \c VIEW_INDEX - When used in the custom shader code, this is a
+    (non-interpolated) uint variable. When \l{Multiview Rendering}{multiview
+    rendering} is not used, the value is always 0. With multiview rendering, the
+    value is the current view index (e.g., gl_ViewIndex). Useful in particular
+    in combination with \c DEPTH_TEXTURE and similar when multiview rendering is
+    enabled.
 
     \endlist
 
@@ -1483,6 +1579,37 @@ void QQuick3DCustomMaterial::setFragmentShader(const QUrl &url)
     emit fragmentShaderChanged();
 }
 
+
+QString QQuick3DCustomMaterial::vertexShaderCode() const
+{
+    return m_vertexShaderCode;
+}
+
+void QQuick3DCustomMaterial::setVertexShaderCode(const QString &code)
+{
+    if (m_vertexShaderCode == code)
+        return;
+
+    m_vertexShaderCode = code;
+    markDirty(*this, Dirty::ShaderSettingsDirty);
+    emit vertexShaderCodeChanged();
+}
+
+QString QQuick3DCustomMaterial::fragmentShaderCode() const
+{
+    return m_fragmentShaderCode;
+}
+
+void QQuick3DCustomMaterial::setFragmentShaderCode(const QString &code)
+{
+    if (m_fragmentShaderCode == code)
+        return;
+
+    m_fragmentShaderCode = code;
+    markDirty(*this, Dirty::ShaderSettingsDirty);
+    emit fragmentShaderCodeChanged();
+}
+
 float QQuick3DCustomMaterial::lineWidth() const
 {
     return m_lineWidth;
@@ -1550,6 +1677,53 @@ static void setCustomMaterialFlagsFromShader(QSSGRenderCustomMaterial *material,
         material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::Skinning, true);
     if (meta.flags.testFlag(QSSGCustomShaderMetaData::UsesMorphing))
         material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::Morphing, true);
+    if (meta.flags.testFlag(QSSGCustomShaderMetaData::UsesViewIndex))
+        material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::ViewIndex, true);
+    if (meta.flags.testFlag(QSSGCustomShaderMetaData::UsesClearcoat))
+        material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::Clearcoat, true);
+    if (meta.flags.testFlag(QSSGCustomShaderMetaData::UsesClearcoatFresnelScaleBias))
+        material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::ClearcoatFresnelScaleBias, true);
+    if (meta.flags.testFlag(QSSGCustomShaderMetaData::UsesFresnelScaleBias))
+        material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::FresnelScaleBias, true);
+    if (meta.flags.testFlag(QSSGCustomShaderMetaData::UsesTransmission)) {
+        material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::Transmission, true);
+        material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::ScreenTexture, true);
+        material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::ScreenMipTexture, true);
+    }
+
+    // vertex only
+    if (meta.flags.testFlag(QSSGCustomShaderMetaData::OverridesPosition))
+        material->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::OverridesPosition, true);
+
+    // fragment only
+    if (meta.flags.testFlag(QSSGCustomShaderMetaData::UsesSharedVars))
+        material->m_usesSharedVariables = true;
+}
+
+static QByteArray prepareCustomShader(QSSGRenderCustomMaterial *customMaterial,
+                                      const QSSGShaderCustomMaterialAdapter::StringPairList &uniforms,
+                                      const QByteArray &snippet,
+                                      QSSGShaderCache::ShaderType shaderType,
+                                      QSSGCustomShaderMetaData &meta,
+                                      bool multiViewCompatible)
+{
+    if (snippet.isEmpty())
+        return QByteArray();
+
+    QByteArray sourceCode = snippet;
+    QByteArray buf;
+    auto result = QSSGShaderCustomMaterialAdapter::prepareCustomShader(buf,
+                                                                        sourceCode,
+                                                                        shaderType,
+                                                                        uniforms,
+                                                                        {},
+                                                                        {},
+                                                                        multiViewCompatible);
+    sourceCode = result.first;
+    sourceCode.append(buf);
+    meta = result.second;
+    setCustomMaterialFlagsFromShader(customMaterial, meta);
+    return sourceCode;
 }
 
 QSSGRenderGraphObject *QQuick3DCustomMaterial::updateSpatialNode(QSSGRenderGraphObject *node)
@@ -1699,45 +1873,40 @@ QSSGRenderGraphObject *QQuick3DCustomMaterial::updateSpatialNode(QSSGRenderGraph
         }
 
         const QQmlContext *context = qmlContext(this);
-        QByteArray vertex, fragment;
-        QSSGCustomShaderMetaData vertexMeta, fragmentMeta;
+        QByteArray vertex;
+        QByteArray fragment;
+        QByteArray vertexProcessed[2];
+        QSSGCustomShaderMetaData vertexMeta;
+        QByteArray fragmentProcessed[2];
+        QSSGCustomShaderMetaData fragmentMeta;
         QByteArray shaderPathKey("custom material --");
 
         customMaterial->m_renderFlags = {};
 
-        if (!m_vertexShader.isEmpty()) {
+        if (!m_vertexShader.isEmpty())
             vertex = QSSGShaderUtils::resolveShader(m_vertexShader, context, shaderPathKey);
-            QByteArray shaderCodeMeta;
-            auto result = QSSGShaderCustomMaterialAdapter::prepareCustomShader(shaderCodeMeta,
-                                                                               vertex,
-                                                                               QSSGShaderCache::ShaderType::Vertex,
-                                                                               uniforms);
-            vertex = result.first;
-            vertex.append(shaderCodeMeta);
-            vertexMeta = result.second;
+        else if (!m_vertexShaderCode.isEmpty())
+            vertex = m_vertexShaderCode.toLatin1();
 
-            setCustomMaterialFlagsFromShader(customMaterial, vertexMeta);
-
-            if (vertexMeta.flags.testFlag(QSSGCustomShaderMetaData::OverridesPosition))
-                customMaterial->m_renderFlags.setFlag(QSSGRenderCustomMaterial::RenderFlag::OverridesPosition, true);
-        }
-
-        if (!m_fragmentShader.isEmpty()) {
+        if (!m_fragmentShader.isEmpty())
             fragment = QSSGShaderUtils::resolveShader(m_fragmentShader, context, shaderPathKey);
-            QByteArray shaderCodeMeta;
-            auto result = QSSGShaderCustomMaterialAdapter::prepareCustomShader(shaderCodeMeta,
-                                                                               fragment,
-                                                                               QSSGShaderCache::ShaderType::Fragment,
-                                                                               uniforms);
-            fragment = result.first;
-            fragment.append(shaderCodeMeta);
-            fragmentMeta = result.second;
+        else if (!m_fragmentShaderCode.isEmpty())
+            fragment = m_fragmentShaderCode.toLatin1();
 
-            setCustomMaterialFlagsFromShader(customMaterial, fragmentMeta);
+        // Multiview is a problem, because we will get a dedicated snippet after
+        // preparation (the one that has [qt_viewIndex] added where it matters).
+        // But at least the view count plays no role here on this level. So one
+        // normal and one multiview "variant" is good enough.
 
-            if (fragmentMeta.flags.testFlag(QSSGCustomShaderMetaData::UsesSharedVars))
-                customMaterial->m_usesSharedVariables = true;
-        }
+        vertexProcessed[QSSGRenderCustomMaterial::RegularShaderPathKeyIndex] =
+            prepareCustomShader(customMaterial, uniforms, vertex, QSSGShaderCache::ShaderType::Vertex, vertexMeta, false);
+        fragmentProcessed[QSSGRenderCustomMaterial::RegularShaderPathKeyIndex] =
+            prepareCustomShader(customMaterial, uniforms, fragment, QSSGShaderCache::ShaderType::Fragment, fragmentMeta, false);
+
+        vertexProcessed[QSSGRenderCustomMaterial::MultiViewShaderPathKeyIndex] =
+            prepareCustomShader(customMaterial, uniforms, vertex, QSSGShaderCache::ShaderType::Vertex, vertexMeta, true);
+        fragmentProcessed[QSSGRenderCustomMaterial::MultiViewShaderPathKeyIndex] =
+            prepareCustomShader(customMaterial, uniforms, fragment, QSSGShaderCache::ShaderType::Fragment, fragmentMeta, true);
 
         // At this point we have snippets that look like this:
         //   - the original code, with VARYING ... lines removed
@@ -1745,17 +1914,20 @@ QSSGRenderGraphObject *QQuick3DCustomMaterial::updateSpatialNode(QSSGRenderGraph
         //   - followed by QQ3D_SHADER_META block for inputs/outputs
 
         customMaterial->m_customShaderPresence = {};
-        if (!vertex.isEmpty() || !fragment.isEmpty()) {
-            customMaterial->m_shaderPathKey = shaderPathKey.append(':' + QCryptographicHash::hash(QByteArray(vertex + fragment), QCryptographicHash::Algorithm::Sha1).toHex());
+        for (int i : { QSSGRenderCustomMaterial::RegularShaderPathKeyIndex, QSSGRenderCustomMaterial::MultiViewShaderPathKeyIndex }) {
+            if (vertexProcessed[i].isEmpty() && fragmentProcessed[i].isEmpty())
+                continue;
 
-            if (!vertex.isEmpty()) {
+            const QByteArray key = shaderPathKey + ':' + QCryptographicHash::hash(QByteArray(vertexProcessed[i] + fragmentProcessed[i]), QCryptographicHash::Algorithm::Sha1).toHex();
+            // the processed snippet code is different for regular and multiview, so 'key' reflects that already
+            customMaterial->m_shaderPathKey[i] = key;
+            if (!vertexProcessed[i].isEmpty()) {
                 customMaterial->m_customShaderPresence.setFlag(QSSGRenderCustomMaterial::CustomShaderPresenceFlag::Vertex);
-                renderContext->shaderLibraryManager()->setShaderSource(shaderPathKey, QSSGShaderCache::ShaderType::Vertex, vertex, vertexMeta);
+                renderContext->shaderLibraryManager()->setShaderSource(key, QSSGShaderCache::ShaderType::Vertex, vertexProcessed[i], vertexMeta);
             }
-
-            if (!fragment.isEmpty()) {
+            if (!fragmentProcessed[i].isEmpty()) {
                 customMaterial->m_customShaderPresence.setFlag(QSSGRenderCustomMaterial::CustomShaderPresenceFlag::Fragment);
-                renderContext->shaderLibraryManager()->setShaderSource(shaderPathKey, QSSGShaderCache::ShaderType::Fragment, fragment, fragmentMeta);
+                renderContext->shaderLibraryManager()->setShaderSource(key, QSSGShaderCache::ShaderType::Fragment, fragmentProcessed[i], fragmentMeta);
             }
         }
     }

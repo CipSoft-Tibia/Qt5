@@ -25,30 +25,32 @@ std::string GetPersonalizableDeviceNameInternal() {
       SCDynamicStoreCreate(kCFAllocatorDefault, CFSTR("chrome_sync"),
                            /*callout=*/nullptr, &context));
   base::apple::ScopedCFTypeRef<CFStringRef> machine_name(
-      SCDynamicStoreCopyLocalHostName(store));
+      SCDynamicStoreCopyLocalHostName(store.get()));
   if (machine_name) {
-    return base::SysCFStringRefToUTF8(machine_name);
+    return base::SysCFStringRefToUTF8(machine_name.get());
   }
 
   // Fall back to get computer name.
   base::apple::ScopedCFTypeRef<CFStringRef> computer_name(
-      SCDynamicStoreCopyComputerName(store, /*nameEncoding=*/nullptr));
+      SCDynamicStoreCopyComputerName(store.get(), /*nameEncoding=*/nullptr));
   if (computer_name) {
-    return base::SysCFStringRefToUTF8(computer_name);
+    return base::SysCFStringRefToUTF8(computer_name.get());
   }
 
-  // If all else fails, return to using a slightly nicer version of the
-  // hardware model.
+  // If all else fails, return to using a slightly nicer version of the hardware
+  // model. Warning: This will soon return just a useless "Mac" string.
   std::string model = base::SysInfo::HardwareModelName();
-  if (model.empty()) {
-    return "Unknown";
-  }
-  for (size_t i = 0; i < model.size(); i++) {
-    if (base::IsAsciiDigit(model[i])) {
-      return model.substr(0, i);
+  absl::optional<base::SysInfo::HardwareModelNameSplit> split =
+      base::SysInfo::SplitHardwareModelNameDoNotUse(model);
+
+  if (!split) {
+    if (model.empty()) {
+      return "Unknown";
     }
+    return model;
   }
-  return model;
+
+  return split.value().category;
 }
 
 }  // namespace syncer

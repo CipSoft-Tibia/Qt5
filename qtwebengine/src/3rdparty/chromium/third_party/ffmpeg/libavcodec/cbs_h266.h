@@ -666,6 +666,9 @@ typedef struct H266RawPredWeightTable {
     int8_t   luma_offset_l1[15];
     int8_t   delta_chroma_weight_l1[15][2];
     int16_t  delta_chroma_offset_l1[15][2];
+
+    uint8_t num_weights_l0;         ///< NumWeightsL0
+    uint8_t num_weights_l1;         ///< NumWeightsL1
 } H266RawPredWeightTable;
 
 typedef struct  H266RawPictureHeader {
@@ -828,6 +831,11 @@ typedef struct  H266RawSliceHeader {
     uint8_t  sh_entry_offset_len_minus1;
     uint32_t sh_entry_point_offset_minus1[VVC_MAX_ENTRY_POINTS];
 
+    // derived values
+    uint16_t curr_subpic_idx;               ///< CurrSubpicIdx
+    uint32_t num_entry_points;              ///< NumEntryPoints
+    uint8_t  num_ref_idx_active[2];         ///< NumRefIdxActive[]
+
 } H266RawSliceHeader;
 
 typedef struct H266RawSlice {
@@ -860,14 +868,11 @@ typedef struct CodedBitstreamH266Context {
 
     // All currently available parameter sets.  These are updated when
     // any parameter set NAL unit is read/written with this context.
-    AVBufferRef *vps_ref[VVC_MAX_VPS_COUNT];
-    AVBufferRef *sps_ref[VVC_MAX_SPS_COUNT];
-    AVBufferRef *pps_ref[VVC_MAX_PPS_COUNT];
-    AVBufferRef *ph_ref;
-    H266RawVPS  *vps[VVC_MAX_VPS_COUNT];
-    H266RawSPS  *sps[VVC_MAX_SPS_COUNT];
-    H266RawPPS  *pps[VVC_MAX_PPS_COUNT];
+    H266RawVPS  *vps[VVC_MAX_VPS_COUNT]; ///< RefStruct references
+    H266RawSPS  *sps[VVC_MAX_SPS_COUNT]; ///< RefStruct references
+    H266RawPPS  *pps[VVC_MAX_PPS_COUNT]; ///< RefStruct references
     H266RawPictureHeader *ph;
+    void *ph_ref; ///< RefStruct reference backing ph above
 } CodedBitstreamH266Context;
 
 #endif /* AVCODEC_CBS_H266_H */

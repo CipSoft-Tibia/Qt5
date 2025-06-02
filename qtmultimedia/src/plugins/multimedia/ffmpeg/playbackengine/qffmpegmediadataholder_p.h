@@ -16,10 +16,11 @@
 //
 
 #include "qmediametadata.h"
-#include "private/qplatformmediaplayer_p.h"
-#include "qffmpeg_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegtime_p.h>
+#include <QtMultimedia/private/qplatformmediaplayer_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
 #include "qvideoframe.h"
-#include <private/qmultimediautils_p.h>
+#include <QtMultimedia/private/qmultimediautils_p.h>
 
 #include <array>
 #include <optional>
@@ -64,13 +65,13 @@ public:
 
     const QList<StreamInfo> &streamInfo(QPlatformMediaPlayer::TrackType trackType) const;
 
-    qint64 duration() const { return m_duration; }
+    TrackDuration duration() const { return m_duration; }
 
     const QMediaMetaData &metaData() const { return m_metaData; }
 
     bool isSeekable() const { return m_isSeekable; }
 
-    QtVideo::Rotation rotation() const;
+    VideoTransformation transformation() const;
 
     AVFormatContext *avContext();
 
@@ -95,7 +96,7 @@ private:
     StreamIndexes m_currentAVStreamIndex = { -1, -1, -1 };
     StreamsMap m_streamMap;
     StreamIndexes m_requestedStreams = { -1, -1, -1 };
-    qint64 m_duration = 0;
+    TrackDuration m_duration = TrackDuration(0);
     QMediaMetaData m_metaData;
     std::optional<QImage> m_cachedThumbnail;
 };

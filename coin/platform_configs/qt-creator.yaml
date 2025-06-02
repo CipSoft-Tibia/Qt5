@@ -2,31 +2,59 @@ Version: 2
 Module only: True
 Configurations:
 -
-    Template: 'qtci-windows-10_22H2-x86_64-52'
-    Compiler: 'MSVC2019'
-    Features: ['Packaging', 'Sccache', 'DebugAndRelease']
+    Template: 'qtci-windows-11_23H2-x86_64-53'
+    Compiler: 'MSVC2022'
+    Features: ['Sccache', 'DebugAndRelease']
     Configure arguments: ''
     Environment variables: []
-    Environment script: ['%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat', 'amd64']
+    Environment script: ['%ProgramFiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat', 'amd64']
 -
-    Template: 'qtci-windows-10_22H2-x86_64-52'
-    Compiler: 'MSVC2019'
-    Features: ['Packaging', 'Sccache', 'DebugAndRelease', 'DisableTests']
-    Configure arguments: ''
-    Environment variables: []
-    Environment script: ['%ProgramFiles(x86)%\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat', 'amd64']
--
-    Template: 'qtci-linux-RHEL-8.8-x86_64-50'
+    Template: 'qtci-linux-RHEL-8.10-x86_64-51'
     Compiler: 'GCC'
-    Features: ['Packaging', 'Sccache', 'DebugAndRelease']
+    Features: ['Sccache', 'DebugAndRelease']
+    Configure arguments: ''
+    Environment variables: []
+-
+    Template: 'qtci-linux-Ubuntu-24.04-aarch64-50'
+    Compiler: 'GCC'
+    Features: ['Sccache', 'DebugAndRelease']
     Configure arguments: ''
     Environment variables: []
 -
     Template: 'qtci-macos-14-arm-106'
     Compiler: 'Clang'
-    Features: ['Packaging', 'Sccache', 'DebugAndRelease']
+    Features: ['Sccache', 'DebugAndRelease']
     Configure arguments: ''
     Environment variables: []
+# without tests
+-
+    Template: 'qtci-windows-11_23H2-x86_64-53'
+    Compiler: 'MSVC2022'
+    Features: ['Sccache', 'DebugAndRelease', 'DisableTests']
+    Configure arguments: ''
+    Environment variables: []
+    Environment script: ['%ProgramFiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat', 'amd64']
+# oldest Qt version
+-
+    Template: 'qtci-windows-11_23H2-x86_64-53'
+    Compiler: 'MSVC2022'
+    Features: ['Sccache', 'DebugAndRelease', 'OldestQt']
+    Configure arguments: ''
+    Environment variables: []
+    Environment script: ['%ProgramFiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat', 'amd64']
+-
+    Template: 'qtci-linux-RHEL-8.10-x86_64-51'
+    Compiler: 'GCC'
+    Features: ['Sccache', 'DebugAndRelease', 'OldestQt']
+    Configure arguments: ''
+    Environment variables: []
+-
+    Template: 'qtci-macos-14-arm-106'
+    Compiler: 'Clang'
+    Features: ['Sccache', 'DebugAndRelease', 'OldestQt']
+    Configure arguments: ''
+    Environment variables: []
+# license check
 -
     Template: 'qtci-linux-Ubuntu-22.04-x86_64-51'
     Compiler: 'GCC'

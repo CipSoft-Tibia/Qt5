@@ -25,12 +25,14 @@ namespace Constants {
 namespace DotQmltypes {
 static constexpr QLatin1StringView S_ACCESS_SEMANTICS             { "accessSemantics" };
 static constexpr QLatin1StringView S_ALIAS                        { "alias" };
+static constexpr QLatin1StringView S_ALIASES                      { "aliases" };
 static constexpr QLatin1StringView S_ARGUMENTS                    { "arguments" };
 static constexpr QLatin1StringView S_ATTACHED_TYPE                { "attachedType" };
 static constexpr QLatin1StringView S_BINDABLE                     { "bindable" };
 static constexpr QLatin1StringView S_COMPONENT                    { "Component" };
 static constexpr QLatin1StringView S_DEFAULT_PROPERTY             { "defaultProperty" };
 static constexpr QLatin1StringView S_DEFERRED_NAMES               { "deferredNames" };
+static constexpr QLatin1StringView S_ENFORCES_SCOPED_ENUMS        { "enforcesScopedEnums" };
 static constexpr QLatin1StringView S_ENUM                         { "Enum" };
 static constexpr QLatin1StringView S_EXPORTS                      { "exports" };
 static constexpr QLatin1StringView S_EXPORT_META_OBJECT_REVISIONS { "exportMetaObjectRevisions" };
@@ -49,12 +51,14 @@ static constexpr QLatin1StringView S_IS_CREATABLE                 { "isCreatable
 static constexpr QLatin1StringView S_IS_FINAL                     { "isFinal" };
 static constexpr QLatin1StringView S_IS_FLAG                      { "isFlag" };
 static constexpr QLatin1StringView S_IS_JAVASCRIPT_FUNCTION       { "isJavaScriptFunction" };
+static constexpr QLatin1StringView S_IS_JAVASCRIPT_BUILTIN        { "isJavaScriptBuiltin" };
 static constexpr QLatin1StringView S_IS_LIST                      { "isList" };
 static constexpr QLatin1StringView S_IS_POINTER                   { "isPointer" };
 static constexpr QLatin1StringView S_IS_READONLY                  { "isReadonly" };
 static constexpr QLatin1StringView S_IS_REQUIRED                  { "isRequired" };
 static constexpr QLatin1StringView S_IS_SCOPED                    { "isScoped" };
 static constexpr QLatin1StringView S_IS_SINGLETON                 { "isSingleton" };
+static constexpr QLatin1StringView S_IS_STRUCTURED                { "isStructured" };
 static constexpr QLatin1StringView S_METHOD                       { "Method" };
 static constexpr QLatin1StringView S_MODULE                       { "Module" };
 static constexpr QLatin1StringView S_NAME                         { "name" };
@@ -107,6 +111,7 @@ static constexpr QLatin1StringView S_IS_CLONED                    { "isCloned" }
 static constexpr QLatin1StringView S_IS_CONSTRUCTOR               { "isConstructor" };
 static constexpr QLatin1StringView S_IS_FLAG                      { "isFlag" };
 static constexpr QLatin1StringView S_IS_JAVASCRIPT_FUNCTION       { "isJavaScriptFunction" };
+static constexpr QLatin1StringView S_LINENUMBER                   { "lineNumber" };
 static constexpr QLatin1StringView S_MEMBER                       { "member" };
 static constexpr QLatin1StringView S_METHOD                       { "method" };
 static constexpr QLatin1StringView S_METHODS                      { "methods" };
@@ -115,9 +120,11 @@ static constexpr QLatin1StringView S_NAMESPACE                    { "namespace" 
 static constexpr QLatin1StringView S_NOTIFY                       { "notify" };
 static constexpr QLatin1StringView S_OBJECT                       { "object" };
 static constexpr QLatin1StringView S_PARENT_PROPERTY              { "ParentProperty" };
+static constexpr QLatin1StringView S_PRIVATE                      { "private" };
 static constexpr QLatin1StringView S_PRIVATE_CLASS                { "privateClass" };
 static constexpr QLatin1StringView S_PROPERTIES                   { "properties" };
 static constexpr QLatin1StringView S_PROPERTY                     { "property" };
+static constexpr QLatin1StringView S_PROTECTED                    { "protected" };
 static constexpr QLatin1StringView S_PUBLIC                       { "public" };
 static constexpr QLatin1StringView S_QUALIFIED_CLASS_NAME         { "qualifiedClassName" };
 static constexpr QLatin1StringView S_READ                         { "read" };
@@ -153,11 +160,13 @@ static constexpr QLatin1StringView S_EXTENSION_IS_NAMESPACE       { "QML.Extensi
 static constexpr QLatin1StringView S_FOREIGN                      { "QML.Foreign" };
 static constexpr QLatin1StringView S_FOREIGN_IS_NAMESPACE         { "QML.ForeignIsNamespace" };
 static constexpr QLatin1StringView S_HAS_CUSTOM_PARSER            { "QML.HasCustomParser" };
+static constexpr QLatin1StringView S_PRIMITIVE_ALIAS              { "QML.PrimitiveAlias" };
 static constexpr QLatin1StringView S_REMOVED_IN_VERSION           { "QML.RemovedInVersion" };
 static constexpr QLatin1StringView S_ROOT                         { "QML.Root" };
 static constexpr QLatin1StringView S_SEQUENCE                     { "QML.Sequence" };
 static constexpr QLatin1StringView S_SINGLETON                    { "QML.Singleton" };
 static constexpr QLatin1StringView S_UNCREATABLE_REASON           { "QML.UncreatableReason" };
+static constexpr QLatin1StringView S_USING                        { "QML.Using" };
 } // namespace Qml
 
 } // namespace MetatypesJson

@@ -995,6 +995,7 @@ public:
     Type type = Literal;
     TypeAnnotation *typeAnnotation = nullptr;
     // when used in a VariableDeclarationList
+    SourceLocation declarationKindToken;
     VariableScope scope = VariableScope::NoScope;
     bool isForDeclaration = false;
     bool isInjectedSignalParameter = false;
@@ -1206,6 +1207,7 @@ public:
 // attributes
     ExpressionNode *base;
     ExpressionNode *expression;
+    SourceLocation optionalToken;
     SourceLocation lbracketToken;
     SourceLocation rbracketToken;
     bool isOptional = false;
@@ -1324,6 +1326,7 @@ public:
 // attributes
     ExpressionNode *base;
     ArgumentList *arguments;
+    SourceLocation optionalToken;
     SourceLocation lparenToken;
     SourceLocation rparenToken;
     bool isOptional = false;
@@ -2415,6 +2418,8 @@ public:
     StatementList *body;
     TypeAnnotation *typeAnnotation;
     SourceLocation functionToken;
+    // for generators:
+    SourceLocation starToken;
     SourceLocation identifierToken;
     SourceLocation lparenToken;
     SourceLocation rparenToken;
@@ -3199,6 +3204,7 @@ public:
     QStringView name;
     UiPragmaValueList *values;
     SourceLocation pragmaToken;
+    SourceLocation pragmaIdToken;
     SourceLocation colonToken;
     SourceLocation semicolonToken;
 };

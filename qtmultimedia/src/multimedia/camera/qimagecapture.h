@@ -7,8 +7,6 @@
 #include <QtCore/qobject.h>
 #include <QtMultimedia/qvideoframe.h>
 
-#include <QtMultimedia/qmediaenumdebug.h>
-
 QT_BEGIN_NAMESPACE
 
 class QSize;
@@ -29,8 +27,8 @@ class Q_MULTIMEDIA_EXPORT QImageCapture : public QObject
     Q_PROPERTY(QMediaMetaData metaData READ metaData WRITE setMetaData NOTIFY metaDataChanged)
     Q_PROPERTY(Error error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString errorString READ errorString NOTIFY errorChanged)
-    Q_PROPERTY(FileFormat fileFormat READ fileFormat NOTIFY setFileFormat NOTIFY fileFormatChanged)
-    Q_PROPERTY(Quality quality READ quality NOTIFY setQuality NOTIFY qualityChanged)
+    Q_PROPERTY(FileFormat fileFormat READ fileFormat WRITE setFileFormat NOTIFY fileFormatChanged)
+    Q_PROPERTY(Quality quality READ quality WRITE setQuality NOTIFY qualityChanged)
 public:
     enum Error
     {
@@ -64,7 +62,7 @@ public:
     Q_ENUM(FileFormat)
 
     explicit QImageCapture(QObject *parent = nullptr);
-    ~QImageCapture();
+    ~QImageCapture() override;
 
     bool isAvailable() const;
 
@@ -128,8 +126,6 @@ private:
 };
 
 QT_END_NAMESPACE
-
-Q_MEDIA_ENUM_DEBUG(QImageCapture, Error)
 
 #endif
 

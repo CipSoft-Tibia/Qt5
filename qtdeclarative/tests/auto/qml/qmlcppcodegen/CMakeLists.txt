@@ -14,9 +14,18 @@ qt_internal_add_test(tst_qmlcppcodegen
         tst_qmlcppcodegen.cpp
     LIBRARIES
         Qt::QmlPrivate
+        Qt::QmlMetaPrivate
         Qt::GuiPrivate
         codegen_test_module
         codegen_test_moduleplugin
+        codegen_test_hidden
+        codegen_test_hiddenplugin
+        codegen_test_stringbuilder
+        codegen_test_stringbuilderplugin
+        confused_test_module
+        confused_test_moduleplugin
+        with_subdir_test_module
+        with_subdir_test_moduleplugin
 )
 
 qt_internal_add_test(tst_qmlcppcodegen_interpreted
@@ -24,9 +33,18 @@ qt_internal_add_test(tst_qmlcppcodegen_interpreted
         tst_qmlcppcodegen.cpp
     LIBRARIES
         Qt::QmlPrivate
+        Qt::QmlMetaPrivate
         Qt::GuiPrivate
         codegen_test_module
         codegen_test_moduleplugin
+        codegen_test_hidden
+        codegen_test_hiddenplugin
+        codegen_test_stringbuilder
+        codegen_test_stringbuilderplugin
+        confused_test_module
+        confused_test_moduleplugin
+        with_subdir_test_module
+        with_subdir_test_moduleplugin
     DEFINES
         QT_TEST_FORCE_INTERPRETER
 )

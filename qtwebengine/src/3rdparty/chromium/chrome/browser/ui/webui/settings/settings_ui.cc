@@ -17,13 +17,19 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/commerce/shopping_service_factory.h"
+#include "chrome/browser/companion/core/features.h"
 #include "chrome/browser/download/bubble/download_bubble_prefs.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_performance_tuning_manager.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_tuning_utils.h"
 #include "chrome/browser/preloading/preloading_features.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service_factory.h"
+#include "chrome/browser/privacy_sandbox/tracking_protection_onboarding_factory.h"
+#include "chrome/browser/privacy_sandbox/tracking_protection_settings_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/search_engine_choice/search_engine_choice_service_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_features.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -38,6 +44,7 @@
 #include "chrome/browser/ui/webui/managed_ui_handler.h"
 #include "chrome/browser/ui/webui/metrics_handler.h"
 #include "chrome/browser/ui/webui/plural_string_handler.h"
+#include "chrome/browser/ui/webui/search_engine_choice/icon_utils.h"
 #include "chrome/browser/ui/webui/settings/about_handler.h"
 #include "chrome/browser/ui/webui/settings/accessibility_main_handler.h"
 #include "chrome/browser/ui/webui/settings/appearance_handler.h"
@@ -72,13 +79,14 @@
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
-#include "chrome/grit/chromium_strings.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/settings_resources.h"
 #include "chrome/grit/settings_resources_map.h"
 #include "components/account_manager_core/account_manager_facade.h"
 #include "components/commerce/core/commerce_feature_list.h"
 #include "components/commerce/core/shopping_service.h"
+#include "components/compose/buildflags.h"
 #include "components/content_settings/core/common/features.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/password_manager/core/common/password_manager_features.h"
@@ -87,8 +95,11 @@
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_service.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
+#include "components/privacy_sandbox/tracking_protection_settings.h"
 #include "components/safe_browsing/core/browser/hashprefix_realtime/hash_realtime_utils.h"
 #include "components/safe_browsing/core/common/features.h"
+#include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
+#include "components/search_engines/search_engine_choice_utils.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/sync/base/features.h"
 #include "content/public/browser/url_data_source.h"
@@ -126,17 +137,14 @@
 #include "chrome/browser/ash/account_manager/account_apps_availability.h"
 #include "chrome/browser/ash/account_manager/account_apps_availability_factory.h"
 #include "chrome/browser/ash/account_manager/account_manager_util.h"
-#include "chrome/browser/ash/android_sms/android_sms_app_manager.h"
-#include "chrome/browser/ash/android_sms/android_sms_service_factory.h"
 #include "chrome/browser/ash/eche_app/eche_app_manager_factory.h"
 #include "chrome/browser/ash/multidevice_setup/multidevice_setup_client_factory.h"
 #include "chrome/browser/ash/phonehub/phone_hub_manager_factory.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
-#include "chrome/browser/ui/webui/settings/ash/account_manager_ui_handler.h"
-#include "chrome/browser/ui/webui/settings/ash/android_apps_handler.h"
-#include "chrome/browser/ui/webui/settings/ash/multidevice_handler.h"
+#include "chrome/browser/ui/webui/ash/settings/pages/multidevice/multidevice_handler.h"
+#include "chrome/browser/ui/webui/ash/settings/pages/people/account_manager_ui_handler.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/grit/browser_resources.h"
 #include "chromeos/ash/components/account_manager/account_manager_factory.h"
@@ -177,6 +185,10 @@
 
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/ui/webui/settings/mac_system_settings_handler.h"
+#endif
+
+#if BUILDFLAG(ENABLE_COMPOSE)
+#include "chrome/browser/compose/compose_enabling.h"
 #endif
 
 namespace settings {
@@ -310,6 +322,20 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
         ->FetchPriceEmailPref();
   }
 
+  const bool is_search_engine_choice_settings_ui =
+      search_engines::IsChoiceScreenFlagEnabled(
+          search_engines::ChoicePromo::kAny);
+  html_source->AddBoolean("searchEngineChoiceSettingsUi",
+                          is_search_engine_choice_settings_ui);
+
+  search_engines::SearchEngineChoiceService*
+      search_engine_choice_dialog_service =
+          search_engines::SearchEngineChoiceServiceFactory::GetForProfile(
+              profile);
+  const bool is_eea_country = search_engines::IsEeaChoiceCountry(
+      search_engine_choice_dialog_service->GetCountryId());
+  html_source->AddBoolean("useLargeSearchEngineIcons", is_eea_country);
+
 #if BUILDFLAG(IS_CHROMEOS_ASH)
   html_source->AddBoolean(
       "userCannotManuallyEnterPassword",
@@ -343,16 +369,12 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
           base::FeatureList::IsEnabled(features::kPrivacyGuide3));
 
   html_source->AddBoolean(
-      "enableExtendedSettingsDescriptions",
-      base::FeatureList::IsEnabled(features::kExtendedSettingsDescriptions));
-
-  html_source->AddBoolean("esbSettingsImprovementsEnabled",
-                          base::FeatureList::IsEnabled(
-                              safe_browsing::kEsbIphBubbleAndCollapseSettings));
+      "enableCbdTimeframeRequired",
+      base::FeatureList::IsEnabled(features::kCbdTimeframeRequired));
 
   html_source->AddBoolean(
-      "enableEsbCollapse",
-      safe_browsing::kEsbIphBubbleAndCollapseSettingsEnableCollapse.Get());
+      "enableExtendedSettingsDescriptions",
+      base::FeatureList::IsEnabled(features::kExtendedSettingsDescriptions));
 
   html_source->AddBoolean(
       "enableFriendlierSafeBrowsingSettings",
@@ -367,12 +389,18 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
                               IsHashRealTimeLookupEligibleInSession());
 
   html_source->AddBoolean(
+      "enableHttpsFirstModeNewSettings",
+      base::FeatureList::IsEnabled(features::kHttpsFirstModeIncognito));
+
+  html_source->AddBoolean(
       "enablePageContentSetting",
-      base::FeatureList::IsEnabled(features::kPageContentOptIn));
+      base::FeatureList::IsEnabled(features::kPageContentOptIn) ||
+          base::FeatureList::IsEnabled(
+              companion::features::kCompanionEnablePageContent));
 
   html_source->AddBoolean(
       "downloadBubblePartialViewControlledByPref",
-      download::IsDownloadBubbleEnabled(profile) &&
+      download::IsDownloadBubbleEnabled() &&
           download::IsDownloadBubblePartialViewControlledByPref());
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
@@ -423,6 +451,12 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   plural_string_handler->AddLocalizedString(
       "safetyCheckUnusedSitePermissionsToastBulkLabel",
       IDS_SETTINGS_SAFETY_CHECK_UNUSED_SITE_PERMISSIONS_TOAST_BULK_LABEL);
+  plural_string_handler->AddLocalizedString(
+      "safetyHubNotificationPermissionsPrimaryLabel",
+      IDS_SETTINGS_SAFETY_HUB_NOTIFICATION_PERMISSIONS_PRIMARY_LABEL);
+  plural_string_handler->AddLocalizedString(
+      "safetyHubNotificationPermissionsSecondaryLabel",
+      IDS_SETTINGS_SAFETY_HUB_NOTIFICATION_PERMISSIONS_SECONDARY_LABEL);
   web_ui->AddMessageHandler(std::move(plural_string_handler));
 
   // Add the metrics handler to write uma stats.
@@ -451,20 +485,12 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       PrivacySandboxServiceFactory::GetForProfile(profile);
   bool is_privacy_sandbox_restricted =
       privacy_sandbox_service->IsPrivacySandboxRestricted();
-  bool is_privacy_sandbox_settings_4 =
-      base::FeatureList::IsEnabled(privacy_sandbox::kPrivacySandboxSettings4);
   bool is_restricted_notice_enabled =
       privacy_sandbox_service->IsRestrictedNoticeEnabled();
   html_source->AddBoolean("isPrivacySandboxRestricted",
                           is_privacy_sandbox_restricted);
-  html_source->AddBoolean("isPrivacySandboxSettings4",
-                          is_privacy_sandbox_settings_4);
   html_source->AddBoolean("isPrivacySandboxRestrictedNoticeEnabled",
                           is_restricted_notice_enabled);
-  if (!is_privacy_sandbox_restricted && !is_privacy_sandbox_settings_4) {
-    html_source->AddResourcePath(
-        "privacySandbox", IDR_SETTINGS_PRIVACY_SANDBOX_PRIVACY_SANDBOX_HTML);
-  }
 
   html_source->AddBoolean(
       "privateStateTokensEnabled",
@@ -479,31 +505,44 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       base::FeatureList::IsEnabled(
           content_settings::features::kSafetyCheckUnusedSitePermissions));
 
+#if BUILDFLAG(ENABLE_EXTENSIONS)
   html_source->AddBoolean(
       "safetyCheckExtensionsReviewEnabled",
       base::FeatureList::IsEnabled(features::kSafetyCheckExtensions));
+#endif
 
   html_source->AddBoolean("enableSafetyHub",
                           base::FeatureList::IsEnabled(features::kSafetyHub));
 
-  html_source->AddBoolean("is3pcdCookieSettingsRedesignEnabled",
-                          base::FeatureList::IsEnabled(
-                              content_settings::features::
-                                  kThirdPartyCookieDeprecationCookieSettings));
+  html_source->AddBoolean(
+      "is3pcdCookieSettingsRedesignEnabled",
+      TrackingProtectionSettingsFactory::GetForProfile(profile)
+          ->IsTrackingProtection3pcdEnabled());
+  auto* onboarding_service =
+      TrackingProtectionOnboardingFactory::GetForProfile(profile);
+  html_source->AddBoolean(
+      "showTrackingProtectionSettingsRollbackNotice",
+      onboarding_service && onboarding_service->IsOffboarded() &&
+          base::FeatureList::IsEnabled(
+              privacy_sandbox::kTrackingProtectionSettingsPageRollbackNotice));
+  html_source->AddBoolean(
+      "isProactiveTopicsBlockingEnabled",
+      base::FeatureList::IsEnabled(
+          privacy_sandbox::kPrivacySandboxProactiveTopicsBlocking));
 
   // Performance
   AddSettingsPageUIHandler(std::make_unique<PerformanceHandler>());
   html_source->AddBoolean(
-      "isHighEfficiencyMultistateModeEnabled",
+      "isMemorySaverMultistateModeEnabled",
       base::FeatureList::IsEnabled(
-          performance_manager::features::kHighEfficiencyMultistateMode));
+          performance_manager::features::kMemorySaverMultistateMode));
   html_source->AddBoolean(
       "isDiscardExceptionsImprovementsEnabled",
       base::FeatureList::IsEnabled(
           performance_manager::features::kDiscardExceptionsImprovements));
-  html_source->AddBoolean("isPerformanceSettingsPreloadingSubpageEnabled",
-                          base::FeatureList::IsEnabled(
-                              features::kPerformanceSettingsPreloadingSubpage));
+  html_source->AddBoolean(
+      "isPerformanceSettingsPreloadingSubpageV2Enabled",
+      features::kPerformanceSettingsPreloadingSubpageV2.Get());
   html_source->AddBoolean(
       "isBatterySaverModeManagedByOS",
       performance_manager::user_tuning::IsBatterySaverModeManagedByOS());
@@ -517,6 +556,41 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       "autoPictureInPictureEnabled",
       base::FeatureList::IsEnabled(
           blink::features::kMediaSessionEnterPictureInPicture));
+
+  // AI
+  optimization_guide::proto::ModelExecutionFeature
+      optimization_guide_features[3] = {
+          optimization_guide::proto::ModelExecutionFeature::
+              MODEL_EXECUTION_FEATURE_COMPOSE,
+          optimization_guide::proto::ModelExecutionFeature::
+              MODEL_EXECUTION_FEATURE_TAB_ORGANIZATION,
+          optimization_guide::proto::ModelExecutionFeature::
+              MODEL_EXECUTION_FEATURE_WALLPAPER_SEARCH,
+      };
+
+  auto* optimization_guide_service =
+      OptimizationGuideKeyedServiceFactory::GetForProfile(profile);
+  bool optimization_guide_feature_visible[4] = {false, false, false, false};
+
+  for (size_t i = 0; i < 3; i++) {
+    const bool visible = optimization_guide_service &&
+                         optimization_guide_service->IsSettingVisible(
+                             optimization_guide_features[i]);
+    optimization_guide_feature_visible[i + 1] = visible;
+
+    // The main toggle is visible only if at least one of the sub toggles is
+    // visible.
+    optimization_guide_feature_visible[0] |= visible;
+  }
+
+  html_source->AddBoolean("showAdvancedFeaturesMainControl",
+                          optimization_guide_feature_visible[0]);
+  html_source->AddBoolean("showComposeControl",
+                          optimization_guide_feature_visible[1]);
+  html_source->AddBoolean("showTabOrganizationControl",
+                          optimization_guide_feature_visible[2]);
+  html_source->AddBoolean("showWallpaperSearchControl",
+                          optimization_guide_feature_visible[3]);
 
   TryShowHatsSurveyWithTimeout();
 }
@@ -546,13 +620,7 @@ void SettingsUI::InitBrowserSettingsWebUIHandlers() {
             ash::AccountAppsAvailabilityFactory::GetForProfile(profile)));
   }
 
-  // MultideviceHandler is required in browser settings to show a special note
-  // under the notification permission that is auto-granted for Android Messages
-  // integration in ChromeOS.
   if (!profile->IsGuestSession()) {
-    auto* android_sms_service =
-        ash::android_sms::AndroidSmsServiceFactory::GetForBrowserContext(
-            profile);
     ash::phonehub::PhoneHubManager* phone_hub_manager =
         ash::phonehub::PhoneHubManagerFactory::GetForProfile(profile);
     ash::eche_app::EcheAppManager* eche_app_manager =
@@ -566,11 +634,6 @@ void SettingsUI::InitBrowserSettingsWebUIHandlers() {
         phone_hub_manager
             ? phone_hub_manager->GetMultideviceFeatureAccessManager()
             : nullptr,
-        android_sms_service
-            ? android_sms_service->android_sms_pairing_state_tracker()
-            : nullptr,
-        android_sms_service ? android_sms_service->android_sms_app_manager()
-                            : nullptr,
         eche_app_manager ? eche_app_manager->GetAppsAccessManager() : nullptr,
         phone_hub_manager ? phone_hub_manager->GetCameraRollManager() : nullptr,
         phone_hub_manager ? phone_hub_manager->GetBrowserTabsModelProvider()
@@ -654,7 +717,10 @@ void SettingsUI::CreateHelpBubbleHandler(
     mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandler> handler) {
   help_bubble_handler_ = std::make_unique<user_education::HelpBubbleHandler>(
       std::move(handler), std::move(client), this,
-      std::vector<ui::ElementIdentifier>{kEnhancedProtectionSettingElementId});
+      std::vector<ui::ElementIdentifier>{
+          kEnhancedProtectionSettingElementId,
+          kAnonymizedUrlCollectionPersonalizationSettingId,
+      });
 }
 
 void SettingsUI::CreateCustomizeColorSchemeModeHandler(

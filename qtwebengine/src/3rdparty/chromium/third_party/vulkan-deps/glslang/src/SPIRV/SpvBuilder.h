@@ -185,7 +185,7 @@ public:
 
     // For creating new types (will return old type if the requested one was already made).
     Id makeVoidType();
-    Id makeBoolType(bool const compilerGenerated = true);
+    Id makeBoolType();
     Id makePointer(StorageClass, Id pointee);
     Id makeForwardPointer(StorageClass);
     Id makePointerFromForwardPointer(StorageClass, Id forwardPointerType, Id pointee);
@@ -226,17 +226,21 @@ public:
     Id makeMemberDebugType(Id const memberType, DebugTypeLoc const& debugTypeLoc);
     Id makeCompositeDebugType(std::vector<Id> const& memberTypes, char const*const name,
         NonSemanticShaderDebugInfo100DebugCompositeType const tag, bool const isOpaqueType = false);
+    Id makePointerDebugType(StorageClass storageClass, Id const baseType);
     Id makeDebugSource(const Id fileName);
     Id makeDebugCompilationUnit();
     Id createDebugGlobalVariable(Id const type, char const*const name, Id const variable);
     Id createDebugLocalVariable(Id type, char const*const name, size_t const argNumber = 0);
     Id makeDebugExpression();
-    Id makeDebugDeclare(Id const debugLocalVariable, Id const localVariable);
+    Id makeDebugDeclare(Id const debugLocalVariable, Id const pointer);
     Id makeDebugValue(Id const debugLocalVariable, Id const value);
     Id makeDebugFunctionType(Id returnType, const std::vector<Id>& paramTypes);
     Id makeDebugFunction(Function* function, Id nameId, Id funcTypeId);
     Id makeDebugLexicalBlock(uint32_t line);
     std::string unmangleFunctionName(std::string const& name) const;
+    void setupDebugFunctionEntry(Function* function, const char* name, int line, 
+                                 const std::vector<Id>& paramTypes,
+                                 const std::vector<char const*>& paramNames);
 
     // accelerationStructureNV type
     Id makeAccelerationStructureType();
@@ -393,6 +397,7 @@ public:
     void addDecoration(Id, Decoration, const char*);
     void addDecoration(Id, Decoration, const std::vector<unsigned>& literals);
     void addDecoration(Id, Decoration, const std::vector<const char*>& strings);
+    void addLinkageDecoration(Id id, const char* name, spv::LinkageType linkType);
     void addDecorationId(Id id, Decoration, Id idDecoration);
     void addDecorationId(Id id, Decoration, const std::vector<Id>& operandIds);
     void addMemberDecoration(Id, unsigned int member, Decoration, int num = -1);
@@ -416,9 +421,9 @@ public:
     // Make a shader-style function, and create its entry block if entry is non-zero.
     // Return the function, pass back the entry.
     // The returned pointer is only valid for the lifetime of this builder.
-    Function* makeFunctionEntry(Decoration precision, Id returnType, const char* name,
-        const std::vector<Id>& paramTypes, const std::vector<char const*>& paramNames,
-        const std::vector<std::vector<Decoration>>& precisions, Block **entry = nullptr);
+    Function* makeFunctionEntry(Decoration precision, Id returnType, const char* name, LinkageType linkType,
+                                const std::vector<Id>& paramTypes,
+                                const std::vector<std::vector<Decoration>>& precisions, Block** entry = nullptr);
 
     // Create a return. An 'implicit' return is one not appearing in the source
     // code.  In the case of an implicit return, no post-return block is inserted.
@@ -828,7 +833,7 @@ public:
 
     // Add capabilities, extensions, remove unneeded decorations, etc.,
     // based on the resulting SPIR-V.
-    void postProcess();
+    void postProcess(bool compileOnly);
 
     // Prune unreachable blocks in the CFG and remove unneeded decorations.
     void postProcessCFG();

@@ -45,6 +45,13 @@ The following table describes the mapping of configure options to CMake argument
 | -device-option <key=value>            | -DQT_QMAKE_DEVICE_OPTIONS=key1=value1;key2=value2 | Only used for generation qmake-compatibility files.             |
 |                                       |                                                   | The device options are written into mkspecs/qdevice.pri.        |
 | -appstore-compliant                   | -DFEATURE_appstore_compliant=ON                   |                                                                 |
+| -sbom                                 | -DQT_GENERATE_SBOM=ON                             | Enables generation and installation of a SPDX SBOM documents    |
+| -sbom-json                            | -DQT_SBOM_GENERATE_JSON=ON                        | Enables generation of SPDX SBOM in JSON format                  |
+| -sbom-json-required                   | -DQT_SBOM_REQUIRE_GENERATE_JSON=ON                | Fails the build if Python deps are not found                    |
+| -sbom-verify                          | -DQT_SBOM_VERIFY=ON                               | Enables verification of generated SBOMs                         |
+| -sbom-verify-required                 | -DQT_SBOM_REQUIRE_VERIFY=ON                       | Fails the build if Python deps are not found                    |
+| -sbomdir <dir>                        | -DINSTALL_SBOMDIR=<dir>                           | Installation location of SBOM files.                            |
+| -qtinlinenamespace                    | -DQT_INLINE_NAMESPACE=ON                          | Make the namespace specified by -qtnamespace an inline one.     |
 | -qtnamespace <name>                   | -DQT_NAMESPACE=<name>                             |                                                                 |
 | -qtlibinfix <infix>                   | -DQT_LIBINFIX=<infix>                             |                                                                 |
 | -coverage <tool>                      | -DINPUT_coverage=<tool>                           | Enables code coverage using the specified tool.                 |
@@ -83,12 +90,12 @@ The following table describes the mapping of configure options to CMake argument
 | -I <string>                           | -DQT_EXTRA_INCLUDEPATHS=<string1>;<string2>       |                                                                 |
 | -L <string>                           | -DQT_EXTRA_LIBDIRS=<string1>;<string2>            |                                                                 |
 | -F <string>                           | -DQT_EXTRA_FRAMEWORKPATHS=<string1>;<string2>     |                                                                 |
-| -sdk <sdk>                            | -DQT_UIKIT_SDK=<value>                            | Should be provided a value like 'iphoneos' or 'iphonesimulator' |
+| -sdk <sdk>                            | -DQT_APPLE_SDK=<value>                            | Should be provided a value like 'iphoneos' or 'iphonesimulator' |
 |                                       |                                                   | If no value is provided, a simulator_and_device build is        |
 |                                       |                                                   | assumed.                                                        |
 | -android-sdk <path>                   | -DANDROID_SDK_ROOT=<path>                         |                                                                 |
 | -android-ndk <path>                   | -DCMAKE_TOOLCHAIN_FILE=<toolchain file in NDK>    |                                                                 |
-| -android-ndk-platform android-23      | -DANDROID_PLATFORM=android-23                     |                                                                 |
+| -android-ndk-platform android-28      | -DANDROID_PLATFORM=android-28                     |                                                                 |
 | -android-abis <abi_1>,...,<abi_n>     | -DANDROID_ABI=<abi_1>                             | only one ABI can be specified                                   |
 | -android-style-assets                 | -DFEATURE_android_style_assets=ON                 |                                                                 |
 | -android-javac-source                 | -DQT_ANDROID_JAVAC_SOURCE=7                       | Set the javac build source version.                             |
@@ -96,7 +103,7 @@ The following table describes the mapping of configure options to CMake argument
 | -skip <repo>,...,<repo_n>             | -DBUILD_<repo>=OFF                                |                                                                 |
 | -skip-tests <repo>,...,<repo_n>       | -DQT_BUILD_TESTS_PROJECT_<repo>=OFF               |                                                                 |
 | -skip-examples <repo>,...,<repo_n>    | -DQT_BUILD_EXAMPLES_PROJECT_<repo>=OFF            |                                                                 |
-| -submodules <repo>,...,<repo_n>       | -DQT_BUILD_SUBMODULES=<repo>;...;<repo>            |                                                                 |
+| -submodules <repo>,...,<repo_n>       | -DQT_BUILD_SUBMODULES=<repo>;...;<repo>           |                                                                 |
 | -make <part>                          | -DQT_BUILD_TESTS=ON                               | A way to turn on tools explicitly is missing. If tests/examples |
 |                                       | -DQT_BUILD_EXAMPLES=ON                            | are enabled, you can disable their building as part of the      |
 |                                       |                                                   | 'all' target by also passing -DQT_BUILD_TESTS_BY_DEFAULT=OFF or |
@@ -144,7 +151,8 @@ The following table describes the mapping of configure options to CMake argument
 | -opengl <api>                         | -DINPUT_opengl=<api>                              |                                                                 |
 | -opengles3                            | -DFEATURE_opengles3=ON                            |                                                                 |
 | -egl                                  | -DFEATURE_egl=ON                                  |                                                                 |
-| -qpa <name>                           | -DQT_QPA_DEFAULT_PLATFORM=<name>                  |                                                                 |
+| -qpa <name>;...;<name_n>              | -DQT_QPA_PLATFORMS=<name>;...;<name_n>            |                                                                 |
+| -default-qpa <name>                   | -DQT_QPA_DEFAULT_PLATFORM=<name>                  |                                                                 |
 | -xcb-xlib                             | -DFEATURE_xcb_xlib=ON                             |                                                                 |
 | -direct2d                             | -DFEATURE_direct2d=ON                             |                                                                 |
 | -directfb                             | -DFEATURE_directfb=ON                             |                                                                 |

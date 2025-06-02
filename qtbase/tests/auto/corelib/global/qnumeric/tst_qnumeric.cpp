@@ -9,6 +9,9 @@
 
 #include <math.h>
 #include <float.h>
+#include <limits.h>
+
+#include <QtCore/q26numeric.h>
 
 namespace {
     template <typename F> struct Fuzzy {};
@@ -91,7 +94,7 @@ void tst_QNumeric::fuzzyCompare_data()
     QTest::addColumn<bool>("isEqual");
     const F zero(0), one(1), ten(10);
     const F huge = Fuzzy<F>::scale, tiny = one / huge;
-    const F deci(.1), giga(1e9), nano(1e-9), big(1e7), small(1e-10);
+    const F deci(.1f), giga(1e9f), nano(1e-9f), big(1e7f), small(1e-10f);
 
     QTest::newRow("zero") << zero << zero << true;
     QTest::newRow("ten") << ten << ten << true;
@@ -321,8 +324,11 @@ void tst_QNumeric::classifyfp()
 
     QCOMPARE(qFpClassify(inf), FP_INFINITE);
     QCOMPARE(qFpClassify(-inf), FP_INFINITE);
+    QT_WARNING_PUSH;
+    QT_WARNING_DISABLE_MSVC(4056);
     QCOMPARE(qFpClassify(huge * two), FP_INFINITE);
     QCOMPARE(qFpClassify(huge * -two), FP_INFINITE);
+    QT_WARNING_POP;
 
     QCOMPARE(qFpClassify(one), FP_NORMAL);
     QCOMPARE(qFpClassify(huge), FP_NORMAL);
@@ -748,6 +754,86 @@ void tst_QNumeric::signedOverflow()
     QCOMPARE(qMulOverflow(maxInt, int(2), &r), true);
     QCOMPARE(qMulOverflow(maxInt, maxInt, &r), true);
 }
+
+namespace SaturateCastTest {
+
+template <typename T> static constexpr T max = std::numeric_limits<T>::max();
+template <typename T> static constexpr T min = std::numeric_limits<T>::min();
+
+static_assert(q26::saturate_cast<short>(max<unsigned>) == max<short>);
+static_assert(q26::saturate_cast<int>(max<unsigned>) == max<int>);
+static_assert(q26::saturate_cast<qint64>(max<unsigned>) == qint64(max<unsigned>));
+
+static_assert(q26::saturate_cast<short>(max<int>) == max<short>);
+static_assert(q26::saturate_cast<unsigned>(max<int>) == unsigned(max<int>));
+static_assert(q26::saturate_cast<qint64>(max<int>) == qint64(max<int>));
+
+static_assert(q26::saturate_cast<short>(max<qint64>) == max<short>);
+static_assert(q26::saturate_cast<int>(max<qint64>) == max<int>);
+static_assert(q26::saturate_cast<unsigned>(max<qint64>) == max<unsigned>);
+static_assert(q26::saturate_cast<quint64>(max<qint64>) == quint64(max<qint64>));
+
+static_assert(q26::saturate_cast<short>(max<quint64>) == max<short>);
+static_assert(q26::saturate_cast<int>(max<quint64>) == max<int>);
+static_assert(q26::saturate_cast<unsigned>(max<quint64>) == max<unsigned>);
+static_assert(q26::saturate_cast<qint64>(max<quint64>) == max<qint64>);
+
+static_assert(q26::saturate_cast<short>(min<int>) == min<short>);
+static_assert(q26::saturate_cast<qint64>(min<int>) == qint64(min<int>));
+static_assert(q26::saturate_cast<unsigned>(min<int>) == 0);
+static_assert(q26::saturate_cast<quint64>(min<int>) == 0);
+
+static_assert(q26::saturate_cast<short>(min<qint64>) == min<short>);
+static_assert(q26::saturate_cast<int>(min<qint64>) == min<int>);
+static_assert(q26::saturate_cast<unsigned>(min<qint64>) == 0);
+static_assert(q26::saturate_cast<quint64>(min<qint64>) == 0);
+
+} // namespace SaturateCastTest
+
+namespace UnsignedAbsTest {
+using QtPrivate::qUnsignedAbs;
+
+static_assert(std::is_same_v<decltype(qUnsignedAbs((char)0)), unsigned char>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((signed char)0)), unsigned char>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((unsigned char)0)), unsigned char>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((short)0)), unsigned short>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((unsigned short)0)), unsigned short>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((int)0)), unsigned int>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((unsigned int)0)), unsigned int>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((long)0)), unsigned long>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((unsigned long)0)), unsigned long>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((long long)0)), unsigned long long>);
+static_assert(std::is_same_v<decltype(qUnsignedAbs((unsigned long long)0)), unsigned long long>);
+
+template <typename T> constexpr bool isEqual(T a, T b) { return a == b; }
+
+#define TEST_TYPE(type, utype, minimal, maximal) \
+    static_assert(isEqual(qUnsignedAbs(type(minimal)), (utype)((utype)(maximal) + (utype)1))); \
+    static_assert(isEqual(qUnsignedAbs(type(0)), (utype)(0))); \
+    static_assert(isEqual(qUnsignedAbs(type(1)), (utype)(1))); \
+    static_assert(isEqual(qUnsignedAbs(type(-1)), (utype)(1))); \
+    static_assert(isEqual(qUnsignedAbs(type(10)), (utype)(10))); \
+    static_assert(isEqual(qUnsignedAbs(type(-10)), (utype)(10))); \
+    static_assert(isEqual(qUnsignedAbs(type(maximal)), (utype)(maximal))); \
+
+using schar = signed char;
+using uchar = unsigned char;
+using ushort = unsigned short;
+using uint = unsigned int;
+using ulong = unsigned long;
+
+#if CHAR_MAX == 127
+// char is signed
+TEST_TYPE(char, uchar, CHAR_MIN, CHAR_MAX)
+#endif
+TEST_TYPE(schar, uchar, SCHAR_MIN, SCHAR_MAX)
+TEST_TYPE(short, ushort, SHRT_MIN, SHRT_MAX)
+TEST_TYPE(int, uint, INT_MIN, INT_MAX)
+TEST_TYPE(long, ulong, LONG_MIN, LONG_MAX)
+TEST_TYPE(qlonglong, qulonglong, LLONG_MIN, LLONG_MAX)
+
+#undef TEST_TYPE
+} // namespace UnsignedAbsTest
 
 QTEST_APPLESS_MAIN(tst_QNumeric)
 #include "tst_qnumeric.moc"

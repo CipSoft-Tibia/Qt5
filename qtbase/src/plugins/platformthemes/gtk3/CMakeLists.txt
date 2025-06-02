@@ -15,6 +15,7 @@ qt_internal_add_plugin(QGtk3ThemePlugin
     OUTPUT_NAME qgtk3
     PLUGIN_TYPE platformthemes
     DEFAULT_IF FALSE
+    NO_UNITY_BUILD
     SOURCES
         main.cpp
         qgtk3dialoghelpers.cpp qgtk3dialoghelpers.h
@@ -33,6 +34,13 @@ qt_internal_add_plugin(QGtk3ThemePlugin
         Qt::CorePrivate
         Qt::Gui
         Qt::GuiPrivate
+)
+
+qt_internal_extend_target(QGtk3ThemePlugin CONDITION QT_FEATURE_dbus
+    SOURCES
+        qgtk3portalinterface.cpp
+    LIBRARIES
+        Qt::DBus
 )
 
 qt_internal_extend_target(QGtk3ThemePlugin CONDITION QT_FEATURE_xlib

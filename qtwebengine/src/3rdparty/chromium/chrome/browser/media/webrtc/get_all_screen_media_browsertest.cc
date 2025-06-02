@@ -81,11 +81,11 @@ bool RunGetAllScreensMediaAndGetIds(content::WebContents* tab,
 
 bool CheckScreenDetailedExists(content::WebContents* tab,
                                const std::string& track_id) {
-  const char* video_track_contains_screen_details_call =
+  static constexpr char kVideoTrackContainsScreenDetailsCall[] =
       R"JS(videoTrackContainsScreenDetailed("%s"))JS";
   return content::EvalJs(
              tab->GetPrimaryMainFrame(),
-             base::StringPrintf(video_track_contains_screen_details_call,
+             base::StringPrintf(kVideoTrackContainsScreenDetailsCall,
                                 track_id.c_str()))
              .ExtractString() == "success-screen-detailed";
 }
@@ -148,13 +148,12 @@ class GetAllScreensMediaBrowserTest : public WebRtcTestBase {
   }
 
  protected:
-  raw_ptr<content::WebContents, DanglingUntriaged | ExperimentalAsh> contents_ =
-      nullptr;
+  raw_ptr<content::WebContents, DanglingUntriaged> contents_ = nullptr;
   std::unique_ptr<ContentBrowserClientMock> browser_client_;
 
  private:
   base::test::ScopedFeatureList scoped_feature_list_;
-  std::vector<aura::Window*> windows_;
+  std::vector<raw_ptr<aura::Window, VectorExperimental>> windows_;
 };
 
 IN_PROC_BROWSER_TEST_F(GetAllScreensMediaBrowserTest,

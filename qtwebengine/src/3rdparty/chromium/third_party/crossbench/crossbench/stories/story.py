@@ -6,10 +6,13 @@ from __future__ import annotations
 
 import abc
 import datetime as dt
+import logging
 from typing import TYPE_CHECKING, Sequence, Tuple, Type
 
+from crossbench import plt
+
 if TYPE_CHECKING:
-  from crossbench.probes import Probe
+  from crossbench.probes.probe import Probe
   from crossbench.runner.run import Run
   from crossbench.types import JsonDict
 
@@ -26,7 +29,7 @@ class Story(abc.ABC):
                name: str,
                duration: dt.timedelta = dt.timedelta(seconds=15)):
     assert name, "Invalid page name"
-    self._name = name
+    self._name = plt.safe_filename(name)
     self._duration = duration
     assert self._duration.total_seconds() > 0, (
         f"Duration must be non-empty, but got: {duration}")
@@ -41,6 +44,13 @@ class Story(abc.ABC):
 
   def details_json(self) -> JsonDict:
     return {"name": self.name, "duration": self.duration.total_seconds()}
+
+  def log_run_details(self, run: Run) -> None:
+    logging.info("STORY: %s", self)
+    timing = run.timing
+    logging.info("STORY DURATION: expected=%s timeout=%s",
+                 timing.timedelta(self.duration),
+                 timing.timeout_timedelta(self.duration))
 
   def setup(self, run: Run) -> None:
     """Setup work for a story that is not part of the main workload should

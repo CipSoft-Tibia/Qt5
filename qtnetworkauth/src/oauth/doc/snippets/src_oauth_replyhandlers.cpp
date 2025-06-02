@@ -3,11 +3,12 @@
 
 #include <QtNetworkAuth/qoauth2authorizationcodeflow.h>
 #include <QtNetworkAuth/qoauthhttpserverreplyhandler.h>
+#include <QtNetworkAuth/qoauthurischemereplyhandler.h>
+
+#include <QtNetwork/qnetworkrequestfactory.h>
 
 #include <QtGui/qdesktopservices.h>
 #include <QtGui/qguiapplication.h>
-
-#include <QtNetwork/qnetworkrequestfactory.h>
 
 #include <QtCore/qobject.h>
 #include <QtCore/qurl.h>
@@ -55,12 +56,56 @@ private:
     QNetworkRequestFactory m_api;
 };
 
+class UriSchemeExample : public QObject
+{
+    Q_OBJECT
+public:
+
+    void setup()
+    {
+        //! [uri-oauth-setup]
+        m_oauth.setAuthorizationUrl(QUrl("https://some.authorization.service/v3/authorize"_L1));
+        m_oauth.setAccessTokenUrl(QUrl("https://some.authorization.service/v3/access_token"_L1));
+        m_oauth.setClientIdentifier("a_client_id"_L1);
+        m_oauth.setScope("read"_L1);
+
+        connect(&m_oauth, &QAbstractOAuth::authorizeWithBrowser, this, &QDesktopServices::openUrl);
+        connect(&m_oauth, &QAbstractOAuth::granted, this, [this]() {
+            // Here we use QNetworkRequestFactory to store the access token
+            m_api.setBearerToken(m_oauth.token().toLatin1());
+            m_handler.close();
+        });
+        //! [uri-oauth-setup]
+
+        //! [uri-handler-setup]
+        m_handler.setRedirectUrl(QUrl{"com.my.app:/oauth2redirect"_L1});
+        m_oauth.setReplyHandler(&m_handler);
+
+        // Initiate the authorization
+        if (m_handler.listen()) {
+            m_oauth.grant();
+        }
+        //! [uri-handler-setup]
+    }
+
+private:
+
+    //! [uri-variables]
+    QOAuth2AuthorizationCodeFlow m_oauth;
+    QOAuthUriSchemeReplyHandler m_handler;
+    //! [uri-variables]
+    QNetworkRequestFactory m_api;
+};
+
 int main(int argc, char *argv[])
 {
     QGuiApplication a(argc, argv);
 
     HttpServerExample httpServer;
     httpServer.setup();
+
+    UriSchemeExample uriScheme;
+    uriScheme.setup();
 
     return a.exec();
 }

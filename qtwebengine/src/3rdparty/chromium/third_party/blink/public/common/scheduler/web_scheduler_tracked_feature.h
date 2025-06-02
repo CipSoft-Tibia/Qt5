@@ -147,11 +147,20 @@ enum class WebSchedulerTrackedFeature : uint32_t {
   // See comments for `kWebTransportSticky`.
   kWebSocketSticky = 63,
   kWebRTCSticky = 64,
+  kSmartCard = 65,
+  // There is a "live" MediaStreamTrack.
+  kLiveMediaStreamTrack = 66,
+
+  // Originally kUnloadHandlerExistsInMain/SubFrame were not blocklisted
+  // features but captured in the browser side. By making them blocklisted
+  // features, the source location of the unload handlers will be captured. See
+  // https://crbug.com/1513120 for details.
+  kUnloadHandler = 67,
 
   // Please keep in sync with WebSchedulerTrackedFeature in
   // tools/metrics/histograms/enums.xml. These values should not be renumbered.
 
-  kMaxValue = kWebRTCSticky,
+  kMaxValue = kUnloadHandler,
 };
 
 using WebSchedulerTrackedFeatures =
@@ -183,6 +192,11 @@ BLINK_COMMON_EXPORT WebSchedulerTrackedFeatures StickyFeatures();
 // [<bit mask for 0-63>, <bit mask for 64-127>, ...]
 BLINK_COMMON_EXPORT std::vector<uint64_t> ToEnumBitMasks(
     WebSchedulerTrackedFeatures features);
+
+// Disables wake up alignment permanently for the process. This is called when a
+// feature that is incompatible with wake up alignment is used. Thread-safe.
+BLINK_COMMON_EXPORT void DisableAlignWakeUpsForProcess();
+BLINK_COMMON_EXPORT bool IsAlignWakeUpsDisabledForProcess();
 
 }  // namespace scheduler
 }  // namespace blink

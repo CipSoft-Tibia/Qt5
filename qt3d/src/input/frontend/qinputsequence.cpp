@@ -30,8 +30,7 @@ QInputSequencePrivate::QInputSequencePrivate()
 /*!
     \qmltype InputSequence
     \inqmlmodule Qt3D.Input
-    \inherits QAbstractAggregateActionInput
-    \instantiates Qt3DInput::QInputSequence
+    \nativetype Qt3DInput::QInputSequence
     \brief QML frontend for the Qt3DInput::QInputSequence C++ class.
 
     Represents a set of QAbstractActionInput's that must be triggerd one after the other.
@@ -124,7 +123,7 @@ int QInputSequence::buttonInterval() const
 }
 
 /*!
-    \property QInputSequence::timeout
+    \property Qt3DInput::QInputSequence::timeout
 
     The time in which all QAbstractActionInput's in the input sequence must triggered within.
     The time is in milliseconds.
@@ -139,7 +138,7 @@ void QInputSequence::setTimeout(int timeout)
 }
 
 /*!
-    \property QInputSequence::buttonInterval
+    \property Qt3DInput::QInputSequence::buttonInterval
 
     The maximum time in between consecutive QAbstractActionInput's in the input sequence.
     The time is in milliseconds.

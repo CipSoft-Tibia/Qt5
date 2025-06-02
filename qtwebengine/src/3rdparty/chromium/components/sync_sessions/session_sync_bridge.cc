@@ -310,12 +310,14 @@ void SessionSyncBridge::ApplyDisableSyncChanges(
   sessions_client_->ClearAllOnDemandFavicons();
 
   syncing_.reset();
+  notify_foreign_session_updated_cb_.Run();
 }
 
 void SessionSyncBridge::OnSyncPaused() {
   DCHECK(store_);
   local_session_event_router_->Stop();
   syncing_.reset();
+  notify_foreign_session_updated_cb_.Run();
 }
 
 std::unique_ptr<LocalSessionEventHandlerImpl::WriteBatch>
@@ -413,7 +415,7 @@ void SessionSyncBridge::DoGarbageCollection(SessionStore::WriteBatch* batch) {
 
   // Iterate through all the sessions and delete any with age older than
   // |kStaleSessionThreshold|.
-  for (const auto* session :
+  for (const sync_sessions::SyncedSession* session :
        store_->tracker()->LookupAllForeignSessions(SyncedSessionTracker::RAW)) {
     const base::TimeDelta session_age =
         base::Time::Now() - session->GetModifiedTime();

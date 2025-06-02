@@ -24,12 +24,7 @@ unsigned long WideStringToBuffer(const WideString& str,
   if (str.IsEmpty())
     return 0;
 
-  ByteString encodedStr = str.ToUTF16LE();
-  const unsigned long len =
-      pdfium::base::checked_cast<unsigned long>(encodedStr.GetLength());
-  if (buffer && len <= buflen)
-    memcpy(buffer, encodedStr.c_str(), len);
-  return len;
+  return Utf16EncodeMaybeCopyAndReturnLength(str, buffer, buflen);
 }
 
 int GetMcidFromDict(const CPDF_Dictionary* dict) {
@@ -268,6 +263,18 @@ FPDF_StructElement_GetChildAtIndex(FPDF_STRUCTELEMENT struct_element,
     return nullptr;
 
   return FPDFStructElementFromCPDFStructElement(elem->GetKidIfElement(index));
+}
+
+FPDF_EXPORT int FPDF_CALLCONV
+FPDF_StructElement_GetChildMarkedContentID(FPDF_STRUCTELEMENT struct_element,
+                                           int index) {
+  CPDF_StructElement* elem =
+      CPDFStructElementFromFPDFStructElement(struct_element);
+  if (!elem || index < 0 || static_cast<size_t>(index) >= elem->CountKids()) {
+    return -1;
+  }
+
+  return elem->GetKidContentId(index);
 }
 
 FPDF_EXPORT FPDF_STRUCTELEMENT FPDF_CALLCONV

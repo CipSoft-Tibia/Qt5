@@ -55,13 +55,12 @@
 #include "components/history/core/browser/keyword_search_term.h"
 #include "components/history/core/browser/keyword_search_term_util.h"
 #include "components/history/core/browser/page_usage_data.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/history/core/browser/sync/history_sync_bridge.h"
-#include "components/history/core/browser/sync/typed_url_sync_bridge.h"
 #endif
 #include "components/history/core/browser/url_row.h"
 #include "components/history/core/browser/url_utils.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/sync/base/features.h"
 #include "components/sync/base/report_unrecoverable_error.h"
 #include "components/sync/model/client_tag_based_model_type_processor.h"
@@ -88,7 +87,7 @@ using favicon::FaviconBitmapID;
 using favicon::FaviconBitmapIDSize;
 using favicon::FaviconBitmapType;
 using favicon::IconMapping;
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 using syncer::ClientTagBasedModelTypeProcessor;
 #endif
 
@@ -108,7 +107,7 @@ namespace history {
 
 namespace {
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 using OsType = syncer::DeviceInfo::OsType;
 using FormFactor = syncer::DeviceInfo::FormFactor;
 #endif
@@ -173,7 +172,7 @@ const int kMaxRedirectCount = 32;
 
 // The number of days old a history entry can be before it is considered "old"
 // and is deleted.
-const int kExpireDaysThreshold = 90;
+constexpr int kExpireDaysThreshold = 90;
 
 // The maximum number of days for which domain visit metrics are computed
 // each time HistoryBackend::GetDomainDiversity() is called.
@@ -187,6 +186,11 @@ constexpr int kDomainDiversityMaxBacktrackedDays = 7;
 // accommodate larger DST shifts that have been used historically and to
 // avoid other potential issues.
 constexpr int kDSTRoundingOffsetHours = 4;
+
+// When batch-deleting foreign visits (i.e. visits coming from other devices),
+// this specifies how many visits to delete in a single HistoryDBTask. This
+// usually happens when history sync was turned off.
+constexpr int kSyncHistoryForeignVisitsToDeletePerBatch = 100;
 
 // Merges `update` into `existing` by overwriting fields in `existing` that are
 // not the default value in `update`.
@@ -212,25 +216,13 @@ void MergeUpdateIntoExistingModelAnnotations(
   }
 }
 
-// Killswitch for the logic to start deleting foreign history on startup (if a
-// previous foreign-history-deletion operation didn't finish before browser
-// shutdown).
-BASE_FEATURE(kDeleteForeignVisitsOnStartup,
-             "DeleteForeignVisitsOnStartup",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-#if !defined(TOOLKIT_QT)
-int GetForeignVisitsToDeletePerBatch() {
-  return syncer::kSyncHistoryForeignVisitsToDeletePerBatch.Get();
-}
-
 class DeleteForeignVisitsDBTask : public HistoryDBTask {
  public:
   ~DeleteForeignVisitsDBTask() override = default;
 
   bool RunOnDBThread(HistoryBackend* backend, HistoryDatabase* db) override {
     VisitID max_visit_id = db->GetDeleteForeignVisitsUntilId();
-    int max_count = GetForeignVisitsToDeletePerBatch();
+    int max_count = kSyncHistoryForeignVisitsToDeletePerBatch;
 
     VisitVector visits;
     if (!db->GetSomeForeignVisits(max_visit_id, max_count, &visits)) {
@@ -254,6 +246,7 @@ class DeleteForeignVisitsDBTask : public HistoryDBTask {
   void DoneRunOnMainThread() override {}
 };
 
+#if !BUILDFLAG(IS_QTWEBENGINE)
 // On iOS devices, Returns true if the device that created the foreign visit is
 // an Android or iOS device, and has a mobile form factor.
 //
@@ -296,7 +289,7 @@ bool CanAddForeignVisitToSegments(
   return false;
 #endif
 }
-#endif  // !defined(TOOLKIT_QT)
+#endif // !BUILDFLAG(IS_QTWEBENGINE)
 
 // Returns whether a page visit has a ui::PageTransition type that allows us
 // to construct a triple partition key for the VisitedLinkDatabase.
@@ -380,9 +373,9 @@ HistoryBackend::HistoryBackend(
     std::unique_ptr<HistoryBackendClient> backend_client,
     scoped_refptr<base::SequencedTaskRunner> task_runner)
     : delegate_(std::move(delegate)),
-      expirer_(this, backend_client.get(), task_runner),
       recent_redirects_(kMaxRedirectCount),
       backend_client_(std::move(backend_client)),
+      expirer_(this, backend_client_.get(), task_runner),
       task_runner_(task_runner) {
   DCHECK(delegate_);
 }
@@ -429,37 +422,20 @@ void HistoryBackend::Init(
     InitImpl(history_database_params);
   delegate_->DBLoaded();
 
-#if !defined(TOOLKIT_QT)
-  typed_url_sync_bridge_ = std::make_unique<TypedURLSyncBridge>(
-      this, db_ ? db_->GetTypedURLMetadataDB() : nullptr,
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  history_sync_bridge_ = std::make_unique<HistorySyncBridge>(
+      this, db_ ? db_->GetHistoryMetadataDB() : nullptr,
       std::make_unique<ClientTagBasedModelTypeProcessor>(
-          syncer::TYPED_URLS,
+          syncer::HISTORY,
           base::BindRepeating(&syncer::ReportUnrecoverableError,
                               history_database_params.channel)));
-  typed_url_sync_bridge_->Init();
 
-  if (base::FeatureList::IsEnabled(syncer::kSyncEnableHistoryDataType)) {
-    history_sync_bridge_ = std::make_unique<HistorySyncBridge>(
-        this, db_ ? db_->GetHistoryMetadataDB() : nullptr,
-        std::make_unique<ClientTagBasedModelTypeProcessor>(
-            syncer::HISTORY,
-            base::BindRepeating(&syncer::ReportUnrecoverableError,
-                                history_database_params.channel)));
+  if (db_ && db_->GetDeleteForeignVisitsUntilId() != kInvalidVisitID) {
+    // A deletion of foreign visits was still ongoing during the previous
+    // browser shutdown. Continue it.
+    StartDeletingForeignVisits();
   }
-
-  if (base::FeatureList::IsEnabled(kDeleteForeignVisitsOnStartup) && db_) {
-    if (!base::FeatureList::IsEnabled(syncer::kSyncEnableHistoryDataType) &&
-        db_->MayContainForeignVisits()) {
-      // If the History Sync data type is disabled, but there are foreign visits
-      // left (because it was previously enabled), then clean them up now.
-      DeleteAllForeignVisitsAndResetIsKnownToSync();
-    } else if (db_->GetDeleteForeignVisitsUntilId() != kInvalidVisitID) {
-      // A deletion of foreign visits was still ongoing during the previous
-      // browser shutdown. Continue it.
-      StartDeletingForeignVisits();
-    }
-  }
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   memory_pressure_listener_ = std::make_unique<base::MemoryPressureListener>(
       FROM_HERE, base::BindRepeating(&HistoryBackend::OnMemoryPressure,
@@ -624,7 +600,7 @@ SegmentID HistoryBackend::CalculateSegmentID(
 }
 
 void HistoryBackend::UpdateSegmentForExistingForeignVisit(VisitRow& visit_row) {
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   CHECK(can_add_foreign_visits_to_segments_);
   CHECK(!visit_row.originator_cache_guid.empty());
 
@@ -668,7 +644,7 @@ void HistoryBackend::UpdateSegmentForExistingForeignVisit(VisitRow& visit_row) {
   visit_row.segment_id = new_segment_id;
 
   db_->SetSegmentID(visit_row.visit_id, new_segment_id);
-#endif  // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 void HistoryBackend::UpdateWithPageEndTime(ContextID context_id,
@@ -982,6 +958,7 @@ OriginCountAndLastVisitMap HistoryBackend::GetCountsAndLastVisitForOrigins(
 
 void HistoryBackend::AddPage(const HistoryAddPageArgs& request) {
   TRACE_EVENT0("browser", "HistoryBackend::AddPage");
+  DCHECK(request.url.is_valid());
 
   if (!db_)
     return;
@@ -1059,7 +1036,7 @@ void HistoryBackend::AddPage(const HistoryAddPageArgs& request) {
                      request.visit_source, IsTypedIncrement(t), opener_visit,
                      request.consider_for_ntp_most_visited,
                      request.local_navigation_id, request.title, top_level_url,
-                     frame_url)
+                     frame_url, request.app_id)
             .second;
 
     // Update the segment for this visit. KEYWORD_GENERATED visits should not
@@ -1107,7 +1084,8 @@ void HistoryBackend::AddPage(const HistoryAddPageArgs& request) {
       // case we don't need to reconnect the new redirect with the existing
       // chain.
       if (request.referrer.is_valid()) {
-        DCHECK_EQ(request.referrer, redirects[0]);
+        // redirects.begin() should equal request.referrer, but sometimes it
+        // doesn't for an unknown reason. See crbug.com/1502514.
         redirects.erase(redirects.begin());
 
         // If the navigation entry for this visit has replaced that for the
@@ -1154,6 +1132,8 @@ void HistoryBackend::AddPage(const HistoryAddPageArgs& request) {
 
     for (size_t redirect_index = 0; redirect_index < redirects.size();
          redirect_index++) {
+      DCHECK(redirects[redirect_index].is_valid());
+
       constexpr int kRedirectQualifiers = ui::PAGE_TRANSITION_CHAIN_START |
                                           ui::PAGE_TRANSITION_CHAIN_END |
                                           ui::PAGE_TRANSITION_IS_REDIRECT_MASK;
@@ -1188,7 +1168,7 @@ void HistoryBackend::AddPage(const HistoryAddPageArgs& request) {
                        redirect_index == 0 ? opener_visit : 0,
                        request.consider_for_ntp_most_visited,
                        request.local_navigation_id, request.title,
-                       top_level_url, frame_url)
+                       top_level_url, frame_url, request.app_id)
               .second;
 
       if (t & ui::PAGE_TRANSITION_CHAIN_START) {
@@ -1368,6 +1348,11 @@ void HistoryBackend::OnMemoryPressure(
 }
 
 void HistoryBackend::CloseAllDatabases() {
+  // Reset to avoid dangling pointers to the database.
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  history_sync_bridge_.reset();
+#endif
+  expirer_.SetDatabases(/*main_db=*/nullptr, /*favicon_db=*/nullptr);
   if (db_) {
     CommitSingletonTransactionIfItExists();
     db_.reset();
@@ -1392,12 +1377,14 @@ std::pair<URLID, VisitID> HistoryBackend::AddPageVisit(
     absl::optional<std::u16string> title,
     absl::optional<GURL> top_level_url,
     absl::optional<GURL> frame_url,
+    absl::optional<std::string> app_id,
     absl::optional<base::TimeDelta> visit_duration,
     absl::optional<std::string> originator_cache_guid,
     absl::optional<VisitID> originator_visit_id,
     absl::optional<VisitID> originator_referring_visit,
     absl::optional<VisitID> originator_opener_visit,
     bool is_known_to_sync) {
+  DCHECK(url.is_valid());
   // See if this URL is already in the DB.
   URLRow url_info(url);
   URLID url_id = db_->GetRowForURL(url, &url_info);
@@ -1495,6 +1482,7 @@ std::pair<URLID, VisitID> HistoryBackend::AddPageVisit(
 
   visit_info.is_known_to_sync = is_known_to_sync;
   visit_info.consider_for_ntp_most_visited = consider_for_ntp_most_visited;
+  visit_info.app_id = app_id;
   visit_info.visit_id = db_->AddVisit(&visit_info, visit_source);
 
   if (visit_info.visit_time < first_recorded_time_)
@@ -1571,23 +1559,16 @@ void HistoryBackend::AddPagesWithDetails(const URLRows& urls,
   ScheduleCommit();
 }
 
-#if !defined(TOOLKIT_QT)
-void HistoryBackend::SetTypedURLSyncBridgeForTest(
-    std::unique_ptr<TypedURLSyncBridge> bridge) {
-  typed_url_sync_bridge_ = std::move(bridge);
-}
-#endif // !defined(TOOLKIT_QT)
-
 bool HistoryBackend::IsExpiredVisitTime(const base::Time& time) const {
   return time < expirer_.GetCurrentExpirationTime();
 }
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 // static
 int HistoryBackend::GetForeignVisitsToDeletePerBatchForTest() {
-  return GetForeignVisitsToDeletePerBatch();
+  return kSyncHistoryForeignVisitsToDeletePerBatch;
 }
-#endif // !defined(TOOLKIT_QT)
+#endif // !BUILDFLAG(IS_QTWEBENGINE)
 
 sql::Database& HistoryBackend::GetDBForTesting() {
   return db_->GetDBForTesting();  // IN-TEST
@@ -1641,6 +1622,7 @@ void HistoryBackend::SetPageTitle(const GURL& url,
 void HistoryBackend::AddPageNoVisitForBookmark(const GURL& url,
                                                const std::u16string& title) {
   TRACE_EVENT0("browser", "HistoryBackend::AddPageNoVisitForBookmark");
+  DCHECK(url.is_valid());
 
   if (!db_)
     return;
@@ -1706,49 +1688,6 @@ bool HistoryBackend::GetMostRecentVisitsForURL(URLID id,
   return false;
 }
 
-size_t HistoryBackend::UpdateURLs(const URLRows& urls) {
-  if (!db_)
-    return 0;
-
-  URLRows changed_urls;
-  for (auto it = urls.begin(); it != urls.end(); ++it) {
-    DCHECK(it->id());
-    if (db_->UpdateURLRow(it->id(), *it))
-      changed_urls.push_back(*it);
-  }
-
-  // Broadcast notifications for any URLs that have actually been changed. This
-  // will update the in-memory database and the InMemoryURLIndex.
-  size_t num_updated_records = changed_urls.size();
-  if (num_updated_records) {
-    NotifyURLsModified(changed_urls, /*is_from_expiration=*/false);
-    ScheduleCommit();
-  }
-  return num_updated_records;
-}
-
-bool HistoryBackend::AddVisits(const GURL& url,
-                               const std::vector<VisitInfo>& visits,
-                               VisitSource visit_source) {
-  if (db_) {
-    for (const auto& visit : visits) {
-      if (!AddPageVisit(url, visit.first, /*referring_visit=*/0,
-                        /*external_referrer_url=*/GURL(), visit.second,
-                        /*hidden=*/!ui::PageTransitionIsMainFrame(visit.second),
-                        visit_source, IsTypedIncrement(visit.second),
-                        /*opener_visit=*/0,
-                        /*consider_for_ntp_most_visited=*/true,
-                        /*local_navigation_id=*/absl::nullopt)
-               .first) {
-        return false;
-      }
-    }
-    ScheduleCommit();
-    return true;
-  }
-  return false;
-}
-
 bool HistoryBackend::GetForeignVisit(const std::string& originator_cache_guid,
                                      VisitID originator_visit_id,
                                      VisitRow* visit_row) {
@@ -1780,6 +1719,8 @@ VisitID HistoryBackend::AddSyncedVisit(
     return kInvalidVisitID;
   }
 
+  DCHECK(url.is_valid());
+
   auto [url_id, visit_id] = AddPageVisit(
       url, visit.visit_time, visit.referring_visit, visit.external_referrer_url,
       visit.transition, hidden, VisitSource::SOURCE_SYNCED,
@@ -1787,7 +1728,7 @@ VisitID HistoryBackend::AddSyncedVisit(
       visit.consider_for_ntp_most_visited,
       /*local_navigation_id=*/absl::nullopt, title,
       /*top_level_url=*/absl::nullopt, /*frame_url=*/absl::nullopt,
-      visit.visit_duration, visit.originator_cache_guid,
+      visit.app_id, visit.visit_duration, visit.originator_cache_guid,
       visit.originator_visit_id, visit.originator_referring_visit,
       visit.originator_opener_visit, visit.is_known_to_sync);
 
@@ -1808,7 +1749,7 @@ VisitID HistoryBackend::AddSyncedVisit(
 
   db_->SetMayContainForeignVisits(true);
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   if (can_add_foreign_visits_to_segments_ &&
       CanAddForeignVisitToSegments(visit, local_device_originator_cache_guid_,
                                    sync_device_info_)) {
@@ -1893,7 +1834,7 @@ VisitID HistoryBackend::UpdateSyncedVisit(
     return kInvalidVisitID;
   }
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   if (can_add_foreign_visits_to_segments_) {
     UpdateSegmentForExistingForeignVisit(updated_row);
   }
@@ -2055,25 +1996,22 @@ QueryURLResult HistoryBackend::QueryURL(const GURL& url, bool want_visits) {
   return result;
 }
 
-#if !defined(TOOLKIT_QT)
-base::WeakPtr<syncer::ModelTypeControllerDelegate>
-HistoryBackend::GetTypedURLSyncControllerDelegate() {
-  DCHECK(typed_url_sync_bridge_);
-  return typed_url_sync_bridge_->change_processor()->GetControllerDelegate();
-}
-
+#if !BUILDFLAG(IS_QTWEBENGINE)
 base::WeakPtr<syncer::ModelTypeControllerDelegate>
 HistoryBackend::GetHistorySyncControllerDelegate() {
-  DCHECK(history_sync_bridge_);
-  return history_sync_bridge_->change_processor()->GetControllerDelegate();
+  if (history_sync_bridge_) {
+    return history_sync_bridge_->change_processor()->GetControllerDelegate();
+  }
+  return nullptr;
 }
 
 void HistoryBackend::SetSyncTransportState(
     syncer::SyncService::TransportState state) {
-  DCHECK(history_sync_bridge_);
-  history_sync_bridge_->SetSyncTransportState(state);
+  if (history_sync_bridge_) {
+    history_sync_bridge_->SetSyncTransportState(state);
+  }
 }
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
 // Statistics ------------------------------------------------------------------
 
@@ -2103,7 +2041,6 @@ HistoryBackend::GetDomainDiversity(
       std::min(number_of_days_to_report, kDomainDiversityMaxBacktrackedDays);
 
   base::Time current_midnight = report_time.LocalMidnight();
-  SCOPED_UMA_HISTOGRAM_TIMER("History.DomainCountQueryTime_V3");
 
   for (int days_back = 0; days_back < number_of_days_to_report; ++days_back) {
     DomainMetricSet local_metric_set;
@@ -2898,8 +2835,6 @@ MostVisitedURLList HistoryBackend::QueryMostVisitedURLs(int result_count) {
   if (!db_)
     return {};
 
-  base::TimeTicks begin_time = base::TimeTicks::Now();
-
   auto url_filter =
       backend_client_
           ? base::BindRepeating(&HistoryBackendClient::IsWebSafe,
@@ -2909,13 +2844,12 @@ MostVisitedURLList HistoryBackend::QueryMostVisitedURLs(int result_count) {
       db_->QuerySegmentUsage(result_count, url_filter);
 
   MostVisitedURLList result;
-  for (const std::unique_ptr<PageUsageData>& current_data : data)
-    result.emplace_back(current_data->GetURL(), current_data->GetTitle(),
-                        current_data->GetScore());
-
-  UMA_HISTOGRAM_TIMES("History.QueryMostVisitedURLsTime",
-                      base::TimeTicks::Now() - begin_time);
-
+  for (const std::unique_ptr<PageUsageData>& current_data : data) {
+    result.emplace_back(current_data->GetURL(), current_data->GetTitle());
+    result.back().visit_count = current_data->GetVisitCount();
+    result.back().last_visit_time = current_data->GetLastVisitTimeslot();
+    result.back().score = current_data->GetScore();
+  }
   return result;
 }
 
@@ -3199,6 +3133,7 @@ void HistoryBackend::SetImportedFavicons(
         // url is bookmarked. The same is applicable to the saved credential's
         // URLs.
         if (backend_client_ && backend_client_->IsPinnedURL(url)) {
+          DCHECK(url.is_valid());
           URLRow url_info(url);
           url_info.set_visit_count(0);
           url_info.set_typed_count(0);
@@ -3342,7 +3277,6 @@ void HistoryBackend::BeginSingletonTransaction() {
   singleton_transaction_ = db_->CreateTransaction();
 
   bool success = singleton_transaction_->Begin();
-  UMA_HISTOGRAM_BOOLEAN("History.Backend.TransactionBeginSuccess", success);
   if (success) {
     DCHECK_EQ(db_->transaction_nesting(), 1);
   } else {
@@ -3356,8 +3290,6 @@ void HistoryBackend::BeginSingletonTransaction() {
     // start another transaction again at the next commit interval. Clear out
     // the `singleton_transaction_` pointer, because it's only kept around if
     // it was successfully begun.
-    sql::UmaHistogramSqliteResult("History.Backend.TransactionBeginError",
-                                  diagnostics_.reported_sqlite_error_code);
     singleton_transaction_.reset();
   }
 }
@@ -3595,14 +3527,12 @@ void HistoryBackend::KillHistoryDatabase() {
   if (!db_)
     return;
 
-#if !defined(TOOLKIT_QT)
-  // Notify the sync bridges about storage error. They'll report failures to the
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  // Notify the sync bridge about storage error. It'll report failures to the
   // sync engine and stop accepting remote updates.
-  if (typed_url_sync_bridge_)
-    typed_url_sync_bridge_->OnDatabaseError();
   if (history_sync_bridge_)
     history_sync_bridge_->OnDatabaseError();
-#endif // !defined(TOOLKIT_QT)
+#endif // !BUILDFLAG(IS_QTWEBENGINE)
 
   // Rollback transaction because Raze() cannot be called from within a
   // transaction. Deleting the object causes the rollback in the destructor.
@@ -3618,7 +3548,7 @@ void HistoryBackend::KillHistoryDatabase() {
   CloseAllDatabases();
 }
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 void HistoryBackend::SetSyncDeviceInfo(SyncDeviceInfoMap sync_device_info) {
   sync_device_info_ = std::move(sync_device_info);
 }
@@ -3830,7 +3760,7 @@ bool HistoryBackend::ProcessSetFaviconsResult(
 }
 
 void HistoryBackend::StartDeletingForeignVisits() {
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   ProcessDBTask(std::make_unique<DeleteForeignVisitsDBTask>(), task_runner_,
                 /*is_canceled=*/base::BindRepeating([]() { return false; }));
 #endif

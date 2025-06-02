@@ -28,13 +28,14 @@ QT_BEGIN_NAMESPACE
 namespace QV4 {
 
 struct Sequence;
-struct Q_QML_PRIVATE_EXPORT SequencePrototype : public QV4::Object
+struct Q_QML_EXPORT SequencePrototype : public QV4::Object
 {
     V4_PROTOTYPE(arrayPrototype)
     void init();
 
     static ReturnedValue method_valueOf(const FunctionObject *, const Value *thisObject, const Value *argv, int argc);
     static ReturnedValue method_sort(const FunctionObject *, const Value *thisObject, const Value *argv, int argc);
+    static ReturnedValue method_shift(const FunctionObject *b, const Value *thisObject, const Value *, int);
 
     static ReturnedValue newSequence(
         QV4::ExecutionEngine *engine, QMetaType type, QMetaSequence metaSequence, const void *data,
@@ -45,7 +46,7 @@ struct Q_QML_PRIVATE_EXPORT SequencePrototype : public QV4::Object
 
     static QMetaType metaTypeForSequence(const Sequence *object);
     static QVariant toVariant(const Sequence *object);
-    static QVariant toVariant(const Value &array, QMetaType typeHint);
+    static QVariant toVariant(const Value &array, QMetaType targetType);
     static void *getRawContainerPtr(const Sequence *object, QMetaType typeHint);
 };
 
@@ -83,7 +84,7 @@ private:
 
 }
 
-struct Q_QML_PRIVATE_EXPORT Sequence : public QV4::ReferenceObject
+struct Q_QML_EXPORT Sequence : public QV4::ReferenceObject
 {
     V4_OBJECT2(Sequence, QV4::ReferenceObject)
     Q_MANAGED_TYPE(V4Sequence)
@@ -101,6 +102,7 @@ public:
 
     qsizetype size() const;
     QVariant at(qsizetype index) const;
+    QVariant shift();
     void append(const QVariant &item);
     void append(qsizetype num, const QVariant &item);
     void replace(qsizetype index, const QVariant &item);

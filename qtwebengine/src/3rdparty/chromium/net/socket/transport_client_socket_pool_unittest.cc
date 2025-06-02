@@ -23,12 +23,13 @@
 #include "net/base/load_timing_info.h"
 #include "net/base/load_timing_info_test_util.h"
 #include "net/base/net_errors.h"
+#include "net/base/network_anonymization_key.h"
 #include "net/base/privacy_mode.h"
+#include "net/base/proxy_chain.h"
 #include "net/base/proxy_server.h"
 #include "net/base/proxy_string_util.h"
 #include "net/base/schemeful_site.h"
 #include "net/base/test_completion_callback.h"
-#include "net/cert/ct_policy_enforcer.h"
 #include "net/cert/mock_cert_verifier.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/dns/public/secure_dns_policy.h"
@@ -117,7 +118,8 @@ class TransportClientSocketPoolTest : public ::testing::Test,
         group_id_(url::SchemeHostPort(url::kHttpScheme, "www.google.com", 80),
                   PrivacyMode::PRIVACY_MODE_DISABLED,
                   NetworkAnonymizationKey(),
-                  SecureDnsPolicy::kAllow),
+                  SecureDnsPolicy::kAllow,
+                  /*disable_cert_network_fetches=*/false),
         params_(ClientSocketPool::SocketParams::CreateForHttpForTesting()),
         client_socket_factory_(NetLog::Get()) {
     std::unique_ptr<MockCertVerifier> cert_verifier =
@@ -133,7 +135,7 @@ class TransportClientSocketPoolTest : public ::testing::Test,
     common_connect_job_params_->client_socket_factory = &client_socket_factory_;
     pool_ = std::make_unique<TransportClientSocketPool>(
         kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-        ProxyServer::Direct(), false /* is_for_websockets */,
+        ProxyChain::Direct(), /*is_for_websockets=*/false,
         common_connect_job_params_.get());
 
     tagging_common_connect_job_params_ =
@@ -143,7 +145,7 @@ class TransportClientSocketPoolTest : public ::testing::Test,
         &tagging_client_socket_factory_;
     tagging_pool_ = std::make_unique<TransportClientSocketPool>(
         kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-        ProxyServer::Direct(), false /* is_for_websockets */,
+        ProxyChain::Direct(), /*is_for_websockets=*/false,
         tagging_common_connect_job_params_.get());
 
     common_connect_job_params_for_real_sockets_ =
@@ -153,7 +155,7 @@ class TransportClientSocketPoolTest : public ::testing::Test,
         ClientSocketFactory::GetDefaultFactory();
     pool_for_real_sockets_ = std::make_unique<TransportClientSocketPool>(
         kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-        ProxyServer::Direct(), false /* is_for_websockets */,
+        ProxyChain::Direct(), /*is_for_websockets=*/false,
         common_connect_job_params_for_real_sockets_.get());
   }
 
@@ -166,7 +168,7 @@ class TransportClientSocketPoolTest : public ::testing::Test,
     ClientSocketPool::GroupId group_id(
         url::SchemeHostPort(url::kHttpScheme, host_name, 80),
         PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-        SecureDnsPolicy::kAllow);
+        SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
     return test_base_.StartRequestUsingPool(
         pool_.get(), group_id, priority,
         ClientSocketPool::RespectLimits::ENABLED,
@@ -269,7 +271,7 @@ TEST_F(TransportClientSocketPoolTest, SetSecureDnsPolicy) {
     ClientSocketPool::GroupId group_id(
         url::SchemeHostPort(url::kHttpScheme, "www.google.com", 80),
         PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-        secure_dns_policy);
+        secure_dns_policy, /*disable_cert_network_fetches=*/false);
     EXPECT_EQ(
         ERR_IO_PENDING,
         handle.Init(group_id, params_, absl::nullopt /* proxy_annotation_tag */,
@@ -531,8 +533,8 @@ TEST_F(TransportClientSocketPoolTest, ReprioritizeRequests) {
 
 TEST_F(TransportClientSocketPoolTest, RequestIgnoringLimitsIsReprioritized) {
   TransportClientSocketPool pool(
-      kMaxSockets, 1, kUnusedIdleSocketTimeout, ProxyServer::Direct(),
-      false /* is_for_websockets */, common_connect_job_params_.get());
+      kMaxSockets, 1, kUnusedIdleSocketTimeout, ProxyChain::Direct(),
+      /*is_for_websockets=*/false, common_connect_job_params_.get());
 
   // Creates a job which ignores limits whose priority is MAXIMUM_PRIORITY.
   TestCompletionCallback callback1;
@@ -1056,13 +1058,13 @@ TEST(TransportClientSocketPoolStandaloneTest, DontCleanupOnIPAddressChange) {
       ClientSocketPool::SocketParams::CreateForHttpForTesting());
   auto pool = std::make_unique<TransportClientSocketPool>(
       kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-      ProxyServer::Direct(), false /* is_for_websockets */,
+      ProxyChain::Direct(), /*is_for_websockets=*/false,
       common_connect_job_params.get(),
-      false /* cleanup_on_ip_address_change */);
+      /*cleanup_on_ip_address_change=*/false);
   const ClientSocketPool::GroupId group_id(
       url::SchemeHostPort(url::kHttpScheme, "www.google.com", 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   TestCompletionCallback callback;
   ClientSocketHandle handle;
   int rv =
@@ -1104,15 +1106,15 @@ TEST_F(TransportClientSocketPoolTest, SSLCertError) {
 
   scoped_refptr<ClientSocketPool::SocketParams> socket_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          std::move(ssl_config_for_origin),
-          /*ssl_config_for_proxy=*/nullptr);
+          std::move(ssl_config_for_origin));
 
   ClientSocketHandle handle;
   TestCompletionCallback callback;
   int rv =
       handle.Init(ClientSocketPool::GroupId(
                       kEndpoint, PrivacyMode::PRIVACY_MODE_DISABLED,
-                      NetworkAnonymizationKey(), SecureDnsPolicy::kAllow),
+                      NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+                      /*disable_cert_network_fetches=*/false),
                   socket_params, absl::nullopt /* proxy_annotation_tag */,
                   MEDIUM, SocketTag(), ClientSocketPool::RespectLimits::ENABLED,
                   callback.callback(), ClientSocketPool::ProxyAuthCallback(),
@@ -1202,7 +1204,7 @@ TEST_P(TransportClientSocketPoolSSLConfigChangeTest, GracefulConfigChange) {
     ClientSocketPool::GroupId group_id2(
         url::SchemeHostPort(url::kHttpScheme, "bar.example.com", 80),
         PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-        SecureDnsPolicy::kAllow);
+        SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
     TestCompletionCallback callback;
     int rv =
         handle2.Init(group_id2, params_, /*proxy_annotation_tag=*/absl::nullopt,
@@ -1227,7 +1229,7 @@ TEST_P(TransportClientSocketPoolSSLConfigChangeTest, GracefulConfigChange) {
   ClientSocketPool::GroupId group_id3(
       url::SchemeHostPort(url::kHttpScheme, "foo.example.com", 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   TestCompletionCallback callback3;
   ClientSocketHandle handle3;
   int rv =
@@ -1507,15 +1509,14 @@ TEST_F(TransportClientSocketPoolTest, SOCKS) {
 
   TransportClientSocketPool proxy_pool(
       kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-      ProxyUriToProxyServer("socks5://foopy",
-                            ProxyServer::SCHEME_HTTP /* default_scheme */),
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      ProxyUriToProxyChain("socks5://foopy",
+                           /*default_scheme=*/ProxyServer::SCHEME_HTTP),
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   for (IoMode socket_io_mode : {SYNCHRONOUS, ASYNC}) {
     scoped_refptr<ClientSocketPool::SocketParams> socket_params =
         base::MakeRefCounted<ClientSocketPool::SocketParams>(
-            nullptr /* ssl_config_for_origin */,
-            nullptr /* ssl_config_for_proxy */);
+            /*ssl_config_for_origin=*/nullptr);
 
     SOCKS5MockData data(socket_io_mode);
     data.data_provider()->set_connect_data(MockConnect(socket_io_mode, OK));
@@ -1525,7 +1526,8 @@ TEST_F(TransportClientSocketPoolTest, SOCKS) {
     int rv = handle.Init(
         ClientSocketPool::GroupId(
             kDestination, PrivacyMode::PRIVACY_MODE_DISABLED,
-            NetworkAnonymizationKey(), SecureDnsPolicy::kAllow),
+            NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+            /*disable_cert_network_fetches=*/false),
         socket_params, TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
         ClientSocketPool::RespectLimits::ENABLED, callback.callback(),
         ClientSocketPool::ProxyAuthCallback(), &proxy_pool, NetLogWithSource());
@@ -1551,9 +1553,9 @@ TEST_F(TransportClientSocketPoolTest, SpdyOneConnectJobTwoRequestsError) {
   // Create a socket pool which only allows a single connection at a time.
   TransportClientSocketPool pool(
       1, 1, kUnusedIdleSocketTimeout,
-      ProxyUriToProxyServer("https://unresolvable.proxy.name",
-                            ProxyServer::SCHEME_HTTP /* default_scheme */),
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      ProxyUriToProxyChain("https://unresolvable.proxy.name",
+                           /*default_scheme=*/ProxyServer::SCHEME_HTTP),
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   // First connection attempt will get an error after creating the SpdyStream.
 
@@ -1588,12 +1590,11 @@ TEST_F(TransportClientSocketPoolTest, SpdyOneConnectJobTwoRequestsError) {
 
   scoped_refptr<ClientSocketPool::SocketParams> socket_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          std::make_unique<SSLConfig>() /* ssl_config_for_origin */,
-          std::make_unique<SSLConfig>() /* ssl_config_for_proxy */);
+          /*ssl_config_for_origin=*/std::make_unique<SSLConfig>());
 
   ClientSocketPool::GroupId group_id(
       kEndpoint, PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
 
   // Start the first connection attempt.
   TestCompletionCallback callback1;
@@ -1643,9 +1644,9 @@ TEST_F(TransportClientSocketPoolTest, SpdyAuthOneConnectJobTwoRequests) {
   // Create a socket pool which only allows a single connection at a time.
   TransportClientSocketPool pool(
       1, 1, kUnusedIdleSocketTimeout,
-      ProxyUriToProxyServer("https://unresolvable.proxy.name",
-                            ProxyServer::SCHEME_HTTP /* default_scheme */),
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      ProxyUriToProxyChain("https://unresolvable.proxy.name",
+                           /*default_scheme=*/ProxyServer::SCHEME_HTTP),
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   SpdyTestUtil spdy_util;
   spdy::SpdySerializedFrame connect(spdy_util.ConstructSpdyConnect(
@@ -1693,12 +1694,11 @@ TEST_F(TransportClientSocketPoolTest, SpdyAuthOneConnectJobTwoRequests) {
 
   scoped_refptr<ClientSocketPool::SocketParams> socket_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          std::make_unique<SSLConfig>() /* ssl_config_for_origin */,
-          std::make_unique<SSLConfig>() /* ssl_config_for_proxy */);
+          /*ssl_config_for_origin=*/std::make_unique<SSLConfig>());
 
   ClientSocketPool::GroupId group_id(
       kEndpoint, PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
 
   // Start the first connection attempt.
   TestCompletionCallback callback1;
@@ -1763,10 +1763,10 @@ TEST_F(TransportClientSocketPoolTest, HttpTunnelSetupRedirect) {
 
       TransportClientSocketPool proxy_pool(
           kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-          ProxyUriToProxyServer(
+          ProxyUriToProxyChain(
               use_https_proxy ? "https://proxy.test" : "http://proxy.test",
-              ProxyServer::SCHEME_HTTP /* default_scheme */),
-          false /* is_for_websockets */,
+              /*default_scheme=*/ProxyServer::SCHEME_HTTP),
+          /*is_for_websockets=*/false,
           tagging_common_connect_job_params_.get());
 
       MockWrite writes[] = {
@@ -1789,13 +1789,13 @@ TEST_F(TransportClientSocketPoolTest, HttpTunnelSetupRedirect) {
 
       scoped_refptr<ClientSocketPool::SocketParams> socket_params =
           base::MakeRefCounted<ClientSocketPool::SocketParams>(
-              std::make_unique<SSLConfig>() /* ssl_config_for_origin */,
-              std::make_unique<SSLConfig>() /* ssl_config_for_proxy */);
+              /*ssl_config_for_origin=*/std::make_unique<SSLConfig>());
 
       int rv = handle.Init(
           ClientSocketPool::GroupId(
               kEndpoint, PrivacyMode::PRIVACY_MODE_DISABLED,
-              NetworkAnonymizationKey(), SecureDnsPolicy::kAllow),
+              NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+              /*disable_cert_network_fetches=*/false),
           socket_params, TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
           ClientSocketPool::RespectLimits::ENABLED, callback.callback(),
           ClientSocketPool::ProxyAuthCallback(), &proxy_pool,
@@ -1828,14 +1828,13 @@ TEST_F(TransportClientSocketPoolTest, NetworkAnonymizationKey) {
   TransportClientSocketPool::GroupId group_id(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle;
   TestCompletionCallback callback;
   EXPECT_THAT(
       handle.Init(group_id,
                   base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                      nullptr /* ssl_config_for_origin */,
-                      nullptr /* ssl_config_for_proxy */),
+                      /*ssl_config_for_origin=*/nullptr),
                   TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
                   ClientSocketPool::RespectLimits::ENABLED, callback.callback(),
                   ClientSocketPool::ProxyAuthCallback(), pool_.get(),
@@ -1848,7 +1847,7 @@ TEST_F(TransportClientSocketPoolTest, NetworkAnonymizationKey) {
             session_deps_.host_resolver->request_network_anonymization_key(1));
 }
 
-TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySsl) {
+TEST_F(TransportClientSocketPoolTest, NetworkAnonymizationKeySsl) {
   const SchemefulSite kSite(GURL("https://foo.test/"));
   const auto kNetworkAnonymizationKey =
       NetworkAnonymizationKey::CreateSameSite(kSite);
@@ -1867,7 +1866,7 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySsl) {
   TransportClientSocketPool::GroupId group_id(
       url::SchemeHostPort(url::kHttpsScheme, kHost, 443),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   auto ssl_config_for_origin = std::make_unique<SSLConfig>();
   ssl_config_for_origin->alpn_protos = {kProtoHTTP2, kProtoHTTP11};
   ClientSocketHandle handle;
@@ -1875,8 +1874,7 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySsl) {
   EXPECT_THAT(
       handle.Init(group_id,
                   base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                      std::move(ssl_config_for_origin),
-                      /*ssl_config_for_proxy=*/nullptr),
+                      std::move(ssl_config_for_origin)),
                   TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
                   ClientSocketPool::RespectLimits::ENABLED, callback.callback(),
                   ClientSocketPool::ProxyAuthCallback(), pool_.get(),
@@ -1891,8 +1889,8 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySsl) {
 
 // Test that, in the case of an HTTP proxy, the same transient
 // NetworkAnonymizationKey is reused for resolving the proxy's host, regardless
-// of input NIK.
-TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpProxy) {
+// of input NAK.
+TEST_F(TransportClientSocketPoolTest, NetworkAnonymizationKeyHttpProxy) {
   const SchemefulSite kSite1(GURL("https://foo.test/"));
   const auto kNetworkAnonymizationKey1 =
       NetworkAnonymizationKey::CreateSameSite(kSite1);
@@ -1900,8 +1898,8 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpProxy) {
   const auto kNetworkAnonymizationKey2 =
       NetworkAnonymizationKey::CreateSameSite(kSite2);
   const char kHost[] = "bar.test";
-  const ProxyServer kProxyServer = ProxyUriToProxyServer(
-      "http://proxy.test", ProxyServer::SCHEME_HTTP /* default_scheme */);
+  const ProxyChain kProxyChain = ProxyUriToProxyChain(
+      "http://proxy.test", /*default_scheme=*/ProxyServer::SCHEME_HTTP);
 
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitWithFeatures(
@@ -1914,20 +1912,19 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpProxy) {
   session_deps_.host_resolver->set_ondemand_mode(true);
 
   TransportClientSocketPool proxy_pool(
-      kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout, kProxyServer,
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout, kProxyChain,
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   TransportClientSocketPool::GroupId group_id1(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey1,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle1;
   TestCompletionCallback callback1;
   EXPECT_THAT(
       handle1.Init(group_id1,
                    base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                       nullptr /* ssl_config_for_origin */,
-                       nullptr /* ssl_config_for_proxy */),
+                       /*ssl_config_for_origin=*/nullptr),
                    TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
                    ClientSocketPool::RespectLimits::ENABLED,
                    callback1.callback(), ClientSocketPool::ProxyAuthCallback(),
@@ -1937,14 +1934,13 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpProxy) {
   TransportClientSocketPool::GroupId group_id2(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey2,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle2;
   TestCompletionCallback callback2;
   EXPECT_THAT(
       handle2.Init(group_id2,
                    base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                       nullptr /* ssl_config_for_origin */,
-                       nullptr /* ssl_config_for_proxy */),
+                       /*ssl_config_for_origin=*/nullptr),
                    TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
                    ClientSocketPool::RespectLimits::ENABLED,
                    callback1.callback(), ClientSocketPool::ProxyAuthCallback(),
@@ -1952,10 +1948,12 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpProxy) {
       IsError(ERR_IO_PENDING));
 
   ASSERT_EQ(2u, session_deps_.host_resolver->last_id());
-  EXPECT_EQ(kProxyServer.host_port_pair().host(),
-            session_deps_.host_resolver->request_host(1));
-  EXPECT_EQ(kProxyServer.host_port_pair().host(),
-            session_deps_.host_resolver->request_host(2));
+  EXPECT_EQ(
+      kProxyChain.GetProxyServer(/*server_index=*/0).host_port_pair().host(),
+      session_deps_.host_resolver->request_host(1));
+  EXPECT_EQ(
+      kProxyChain.GetProxyServer(/*server_index=*/0).host_port_pair().host(),
+      session_deps_.host_resolver->request_host(2));
   EXPECT_TRUE(session_deps_.host_resolver->request_network_anonymization_key(1)
                   .IsTransient());
   EXPECT_EQ(session_deps_.host_resolver->request_network_anonymization_key(1),
@@ -1964,8 +1962,8 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpProxy) {
 
 // Test that, in the case of an HTTPS proxy, the same transient
 // NetworkAnonymizationKey is reused for resolving the proxy's host, regardless
-// of input NIK.
-TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpsProxy) {
+// of input NAK.
+TEST_F(TransportClientSocketPoolTest, NetworkAnonymizationKeyHttpsProxy) {
   const SchemefulSite kSite1(GURL("https://foo.test/"));
   const auto kNetworkAnonymizationKey1 =
       NetworkAnonymizationKey::CreateSameSite(kSite1);
@@ -1973,8 +1971,8 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpsProxy) {
   const auto kNetworkAnonymizationKey2 =
       NetworkAnonymizationKey::CreateSameSite(kSite2);
   const char kHost[] = "bar.test";
-  const ProxyServer kProxyServer = ProxyUriToProxyServer(
-      "https://proxy.test", ProxyServer::SCHEME_HTTP /* default_scheme */);
+  const ProxyChain kProxyChain = ProxyUriToProxyChain(
+      "https://proxy.test", /*default_scheme=*/ProxyServer::SCHEME_HTTP);
 
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitWithFeatures(
@@ -1987,48 +1985,48 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpsProxy) {
   session_deps_.host_resolver->set_ondemand_mode(true);
 
   TransportClientSocketPool proxy_pool(
-      kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout, kProxyServer,
+      kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout, kProxyChain,
       false /* is_for_websockets */, tagging_common_connect_job_params_.get());
 
   TransportClientSocketPool::GroupId group_id1(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey1,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle1;
   TestCompletionCallback callback1;
-  EXPECT_THAT(handle1.Init(
-                  group_id1,
-                  base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                      nullptr /* ssl_config_for_origin */,
-                      std::make_unique<SSLConfig>() /* ssl_config_for_proxy */),
-                  TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
-                  ClientSocketPool::RespectLimits::ENABLED,
-                  callback1.callback(), ClientSocketPool::ProxyAuthCallback(),
-                  &proxy_pool, NetLogWithSource()),
-              IsError(ERR_IO_PENDING));
+  EXPECT_THAT(
+      handle1.Init(group_id1,
+                   base::MakeRefCounted<ClientSocketPool::SocketParams>(
+                       /*ssl_config_for_origin=*/nullptr),
+                   TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
+                   ClientSocketPool::RespectLimits::ENABLED,
+                   callback1.callback(), ClientSocketPool::ProxyAuthCallback(),
+                   &proxy_pool, NetLogWithSource()),
+      IsError(ERR_IO_PENDING));
 
   TransportClientSocketPool::GroupId group_id2(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey2,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle2;
   TestCompletionCallback callback2;
-  EXPECT_THAT(handle2.Init(
-                  group_id2,
-                  base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                      nullptr /* ssl_config_for_origin */,
-                      std::make_unique<SSLConfig>() /* ssl_config_for_proxy */),
-                  TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
-                  ClientSocketPool::RespectLimits::ENABLED,
-                  callback2.callback(), ClientSocketPool::ProxyAuthCallback(),
-                  &proxy_pool, NetLogWithSource()),
-              IsError(ERR_IO_PENDING));
+  EXPECT_THAT(
+      handle2.Init(group_id2,
+                   base::MakeRefCounted<ClientSocketPool::SocketParams>(
+                       /*ssl_config_for_origin=*/nullptr),
+                   TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
+                   ClientSocketPool::RespectLimits::ENABLED,
+                   callback2.callback(), ClientSocketPool::ProxyAuthCallback(),
+                   &proxy_pool, NetLogWithSource()),
+      IsError(ERR_IO_PENDING));
 
   ASSERT_EQ(2u, session_deps_.host_resolver->last_id());
-  EXPECT_EQ(kProxyServer.host_port_pair().host(),
-            session_deps_.host_resolver->request_host(1));
-  EXPECT_EQ(kProxyServer.host_port_pair().host(),
-            session_deps_.host_resolver->request_host(2));
+  EXPECT_EQ(
+      kProxyChain.GetProxyServer(/*server_index=*/0).host_port_pair().host(),
+      session_deps_.host_resolver->request_host(1));
+  EXPECT_EQ(
+      kProxyChain.GetProxyServer(/*server_index=*/0).host_port_pair().host(),
+      session_deps_.host_resolver->request_host(2));
   EXPECT_TRUE(session_deps_.host_resolver->request_network_anonymization_key(1)
                   .IsTransient());
   EXPECT_EQ(session_deps_.host_resolver->request_network_anonymization_key(1),
@@ -2038,8 +2036,8 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeyHttpsProxy) {
 // Test that, in the case of a SOCKS5 proxy, the passed in
 // NetworkAnonymizationKey is used for the destination DNS lookup, and the same
 // transient NetworkAnonymizationKey is reused for resolving the proxy's host,
-// regardless of input NIK.
-TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks4Proxy) {
+// regardless of input NAK.
+TEST_F(TransportClientSocketPoolTest, NetworkAnonymizationKeySocks4Proxy) {
   const SchemefulSite kSite1(GURL("https://foo.test/"));
   const auto kNetworkAnonymizationKey1 =
       NetworkAnonymizationKey::CreateSameSite(kSite1);
@@ -2047,8 +2045,8 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks4Proxy) {
   const auto kNetworkAnonymizationKey2 =
       NetworkAnonymizationKey::CreateSameSite(kSite2);
   const char kHost[] = "bar.test";
-  const ProxyServer kProxyServer = ProxyUriToProxyServer(
-      "socks4://proxy.test", ProxyServer::SCHEME_HTTP /* default_scheme */);
+  const ProxyChain kProxyChain = ProxyUriToProxyChain(
+      "socks4://proxy.test", /*default_scheme=*/ProxyServer::SCHEME_HTTP);
 
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitWithFeatures(
@@ -2070,20 +2068,19 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks4Proxy) {
   tagging_client_socket_factory_.AddSocketDataProvider(&data2);
 
   TransportClientSocketPool proxy_pool(
-      kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout, kProxyServer,
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout, kProxyChain,
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   TransportClientSocketPool::GroupId group_id1(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey1,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle1;
   TestCompletionCallback callback1;
   EXPECT_THAT(
       handle1.Init(group_id1,
                    base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                       nullptr /* ssl_config_for_origin */,
-                       nullptr /* ssl_config_for_proxy */),
+                       /*ssl_config_for_origin=*/nullptr),
                    TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
                    ClientSocketPool::RespectLimits::ENABLED,
                    callback1.callback(), ClientSocketPool::ProxyAuthCallback(),
@@ -2093,14 +2090,13 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks4Proxy) {
   TransportClientSocketPool::GroupId group_id2(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey2,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle2;
   TestCompletionCallback callback2;
   EXPECT_THAT(
       handle2.Init(group_id2,
                    base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                       nullptr /* ssl_config_for_origin */,
-                       nullptr /* ssl_config_for_proxy */),
+                       /*ssl_config_for_origin=*/nullptr),
                    TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
                    ClientSocketPool::RespectLimits::ENABLED,
                    callback2.callback(), ClientSocketPool::ProxyAuthCallback(),
@@ -2108,19 +2104,21 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks4Proxy) {
       IsError(ERR_IO_PENDING));
 
   // First two lookups are for the proxy's hostname, and should use the same
-  // transient NIK.
+  // transient NAK.
   ASSERT_EQ(2u, session_deps_.host_resolver->last_id());
-  EXPECT_EQ(kProxyServer.host_port_pair().host(),
-            session_deps_.host_resolver->request_host(1));
-  EXPECT_EQ(kProxyServer.host_port_pair().host(),
-            session_deps_.host_resolver->request_host(2));
+  EXPECT_EQ(
+      kProxyChain.GetProxyServer(/*server_index=*/0).host_port_pair().host(),
+      session_deps_.host_resolver->request_host(1));
+  EXPECT_EQ(
+      kProxyChain.GetProxyServer(/*server_index=*/0).host_port_pair().host(),
+      session_deps_.host_resolver->request_host(2));
   EXPECT_TRUE(session_deps_.host_resolver->request_network_anonymization_key(1)
                   .IsTransient());
   EXPECT_EQ(session_deps_.host_resolver->request_network_anonymization_key(1),
             session_deps_.host_resolver->request_network_anonymization_key(2));
 
   // First two lookups completes, starting the next two, which should be for the
-  // destination's hostname, and should use the passed in NIKs.
+  // destination's hostname, and should use the passed in NAKs.
   session_deps_.host_resolver->ResolveNow(1);
   session_deps_.host_resolver->ResolveNow(2);
   ASSERT_EQ(4u, session_deps_.host_resolver->last_id());
@@ -2134,8 +2132,8 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks4Proxy) {
 
 // Test that, in the case of a SOCKS5 proxy, the same transient
 // NetworkAnonymizationKey is reused for resolving the proxy's host, regardless
-// of input NIK.
-TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks5Proxy) {
+// of input NAK.
+TEST_F(TransportClientSocketPoolTest, NetworkAnonymizationKeySocks5Proxy) {
   const SchemefulSite kSite1(GURL("https://foo.test/"));
   const auto kNetworkAnonymizationKey1 =
       NetworkAnonymizationKey::CreateSameSite(kSite1);
@@ -2143,8 +2141,8 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks5Proxy) {
   const auto kNetworkAnonymizationKey2 =
       NetworkAnonymizationKey::CreateSameSite(kSite2);
   const char kHost[] = "bar.test";
-  const ProxyServer kProxyServer = ProxyUriToProxyServer(
-      "socks5://proxy.test", ProxyServer::SCHEME_HTTP /* default_scheme */);
+  const ProxyChain kProxyChain = ProxyUriToProxyChain(
+      "socks5://proxy.test", /*default_scheme=*/ProxyServer::SCHEME_HTTP);
 
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitWithFeatures(
@@ -2157,20 +2155,19 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks5Proxy) {
   session_deps_.host_resolver->set_ondemand_mode(true);
 
   TransportClientSocketPool proxy_pool(
-      kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout, kProxyServer,
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout, kProxyChain,
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   TransportClientSocketPool::GroupId group_id1(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey1,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle1;
   TestCompletionCallback callback1;
   EXPECT_THAT(
       handle1.Init(group_id1,
                    base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                       nullptr /* ssl_config_for_origin */,
-                       nullptr /* ssl_config_for_proxy */),
+                       /*ssl_config_for_origin=*/nullptr),
                    TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
                    ClientSocketPool::RespectLimits::ENABLED,
                    callback1.callback(), ClientSocketPool::ProxyAuthCallback(),
@@ -2180,14 +2177,13 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks5Proxy) {
   TransportClientSocketPool::GroupId group_id2(
       url::SchemeHostPort(url::kHttpScheme, kHost, 80),
       PrivacyMode::PRIVACY_MODE_DISABLED, kNetworkAnonymizationKey2,
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketHandle handle2;
   TestCompletionCallback callback2;
   EXPECT_THAT(
       handle2.Init(group_id2,
                    base::MakeRefCounted<ClientSocketPool::SocketParams>(
-                       nullptr /* ssl_config_for_origin */,
-                       nullptr /* ssl_config_for_proxy */),
+                       /*ssl_config_for_origin=*/nullptr),
                    TRAFFIC_ANNOTATION_FOR_TESTS, LOW, SocketTag(),
                    ClientSocketPool::RespectLimits::ENABLED,
                    callback2.callback(), ClientSocketPool::ProxyAuthCallback(),
@@ -2195,10 +2191,12 @@ TEST_F(TransportClientSocketPoolTest, NetworkIsolationKeySocks5Proxy) {
       IsError(ERR_IO_PENDING));
 
   ASSERT_EQ(2u, session_deps_.host_resolver->last_id());
-  EXPECT_EQ(kProxyServer.host_port_pair().host(),
-            session_deps_.host_resolver->request_host(1));
-  EXPECT_EQ(kProxyServer.host_port_pair().host(),
-            session_deps_.host_resolver->request_host(2));
+  EXPECT_EQ(
+      kProxyChain.GetProxyServer(/*server_index=*/0).host_port_pair().host(),
+      session_deps_.host_resolver->request_host(1));
+  EXPECT_EQ(
+      kProxyChain.GetProxyServer(/*server_index=*/0).host_port_pair().host(),
+      session_deps_.host_resolver->request_host(2));
   EXPECT_TRUE(session_deps_.host_resolver->request_network_anonymization_key(1)
                   .IsTransient());
   EXPECT_EQ(session_deps_.host_resolver->request_network_anonymization_key(1),
@@ -2212,10 +2210,10 @@ TEST_F(TransportClientSocketPoolTest, HasActiveSocket) {
   ClientSocketHandle handle;
   ClientSocketPool::GroupId group_id1(
       kEndpoint1, PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   ClientSocketPool::GroupId group_id2(
       kEndpoint2, PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
 
   // HasActiveSocket() must return false before creating a socket.
   EXPECT_FALSE(pool_->HasActiveSocket(group_id1));
@@ -2297,7 +2295,7 @@ TEST_F(TransportClientSocketPoolTest, Tag) {
   const ClientSocketPool::GroupId kGroupId(
       url::SchemeHostPort(test_server.base_url()),
       PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   scoped_refptr<ClientSocketPool::SocketParams> params =
       ClientSocketPool::SocketParams::CreateForHttpForTesting();
   TestCompletionCallback callback;
@@ -2414,20 +2412,20 @@ TEST_F(TransportClientSocketPoolTest, TagSOCKSProxy) {
 
   TransportClientSocketPool proxy_pool(
       kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-      ProxyUriToProxyServer("socks5://proxy",
-                            ProxyServer::SCHEME_HTTP /* default_scheme */),
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      ProxyUriToProxyChain("socks5://proxy",
+                           /*default_scheme=*/ProxyServer::SCHEME_HTTP),
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   SocketTag tag1(SocketTag::UNSET_UID, 0x12345678);
   SocketTag tag2(getuid(), 0x87654321);
   const url::SchemeHostPort kDestination(url::kHttpScheme, "host", 80);
   const ClientSocketPool::GroupId kGroupId(
       kDestination, PrivacyMode::PRIVACY_MODE_DISABLED,
-      NetworkAnonymizationKey(), SecureDnsPolicy::kAllow);
+      NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+      /*disable_cert_network_fetches=*/false);
   scoped_refptr<ClientSocketPool::SocketParams> socks_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          nullptr /* ssl_config_for_origin */,
-          nullptr /* ssl_config_for_proxy */);
+          /*ssl_config_for_origin=*/nullptr);
 
   // Test socket is tagged when created synchronously.
   SOCKS5MockData data_sync(SYNCHRONOUS);
@@ -2517,14 +2515,13 @@ TEST_F(TransportClientSocketPoolTest, TagSSLDirect) {
   const ClientSocketPool::GroupId kGroupId(
       url::SchemeHostPort(test_server.base_url()),
       PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
 
   auto ssl_config_for_origin = std::make_unique<SSLConfig>();
   ssl_config_for_origin->alpn_protos = {kProtoHTTP2, kProtoHTTP11};
   scoped_refptr<ClientSocketPool::SocketParams> socket_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          std::move(ssl_config_for_origin),
-          /*ssl_config_for_proxy=*/nullptr);
+          std::move(ssl_config_for_origin));
 
   // Test socket is tagged before connected.
   uint64_t old_traffic = GetTaggedBytes(tag_val1);
@@ -2590,13 +2587,12 @@ TEST_F(TransportClientSocketPoolTest, TagSSLDirectTwoSockets) {
   const ClientSocketPool::GroupId kGroupId(
       url::SchemeHostPort(test_server.base_url()),
       PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   auto ssl_config_for_origin = std::make_unique<SSLConfig>();
   ssl_config_for_origin->alpn_protos = {kProtoHTTP2, kProtoHTTP11};
   scoped_refptr<ClientSocketPool::SocketParams> socket_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          std::move(ssl_config_for_origin),
-          /*ssl_config_for_proxy=*/nullptr);
+          std::move(ssl_config_for_origin));
 
   // Test connect jobs that are orphaned and then adopted, appropriately apply
   // new tag. Request socket with |tag1|.
@@ -2656,13 +2652,12 @@ TEST_F(TransportClientSocketPoolTest, TagSSLDirectTwoSocketsFullPool) {
   const ClientSocketPool::GroupId kGroupId(
       url::SchemeHostPort(test_server.base_url()),
       PrivacyMode::PRIVACY_MODE_DISABLED, NetworkAnonymizationKey(),
-      SecureDnsPolicy::kAllow);
+      SecureDnsPolicy::kAllow, /*disable_cert_network_fetches=*/false);
   auto ssl_config_for_origin = std::make_unique<SSLConfig>();
   ssl_config_for_origin->alpn_protos = {kProtoHTTP2, kProtoHTTP11};
   scoped_refptr<ClientSocketPool::SocketParams> socket_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          std::move(ssl_config_for_origin),
-          /*ssl_config_for_proxy=*/nullptr);
+          std::move(ssl_config_for_origin));
 
   // Test that sockets paused by a full underlying socket pool are properly
   // connected and tagged when underlying pool is freed up.
@@ -2725,9 +2720,9 @@ TEST_F(TransportClientSocketPoolTest, TagHttpProxyNoTunnel) {
 
   TransportClientSocketPool proxy_pool(
       kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-      ProxyUriToProxyServer("http://proxy",
-                            ProxyServer::SCHEME_HTTP /* default_scheme */),
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      ProxyUriToProxyChain("http://proxy",
+                           /*default_scheme=*/ProxyServer::SCHEME_HTTP),
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   session_deps_.host_resolver->set_synchronous_mode(true);
   SequencedSocketData socket_data;
@@ -2738,11 +2733,11 @@ TEST_F(TransportClientSocketPoolTest, TagHttpProxyNoTunnel) {
                                          80);
   const ClientSocketPool::GroupId kGroupId(
       kDestination, PrivacyMode::PRIVACY_MODE_DISABLED,
-      NetworkAnonymizationKey(), SecureDnsPolicy::kAllow);
+      NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+      /*disable_cert_network_fetches=*/false);
   scoped_refptr<ClientSocketPool::SocketParams> socket_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          nullptr /* ssl_config_for_origin */,
-          nullptr /* ssl_config_for_proxy */);
+          /*ssl_config_for_origin=*/nullptr);
 
   // Verify requested socket is tagged properly.
   ClientSocketHandle handle;
@@ -2785,9 +2780,9 @@ TEST_F(TransportClientSocketPoolTest, TagHttpProxyTunnel) {
 
   TransportClientSocketPool proxy_pool(
       kMaxSockets, kMaxSocketsPerGroup, kUnusedIdleSocketTimeout,
-      ProxyUriToProxyServer("http://proxy",
-                            ProxyServer::SCHEME_HTTP /* default_scheme */),
-      false /* is_for_websockets */, tagging_common_connect_job_params_.get());
+      ProxyUriToProxyChain("http://proxy",
+                           /*default_scheme=*/ProxyServer::SCHEME_HTTP),
+      /*is_for_websockets=*/false, tagging_common_connect_job_params_.get());
 
   session_deps_.host_resolver->set_synchronous_mode(true);
 
@@ -2811,14 +2806,14 @@ TEST_F(TransportClientSocketPoolTest, TagHttpProxyTunnel) {
                                          443);
   const ClientSocketPool::GroupId kGroupId(
       kDestination, PrivacyMode::PRIVACY_MODE_DISABLED,
-      NetworkAnonymizationKey(), SecureDnsPolicy::kAllow);
+      NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+      /*disable_cert_network_fetches=*/false);
 
   auto ssl_config_for_origin = std::make_unique<SSLConfig>();
   ssl_config_for_origin->alpn_protos = {kProtoHTTP2, kProtoHTTP11};
   scoped_refptr<ClientSocketPool::SocketParams> socket_params =
       base::MakeRefCounted<ClientSocketPool::SocketParams>(
-          std::move(ssl_config_for_origin),
-          /*ssl_config_for_proxy=*/nullptr);
+          std::move(ssl_config_for_origin));
 
   // Verify requested socket is tagged properly.
   ClientSocketHandle handle;
@@ -2929,21 +2924,21 @@ TEST_F(TransportClientSocketPoolMockNowSourceTest, IdleUnusedSocketTimeout) {
       // Create 1 socket.
       scoped_refptr<ClientSocketPool::SocketParams> socket_params =
           base::MakeRefCounted<ClientSocketPool::SocketParams>(
-              nullptr /* ssl_config_for_origin */,
-              nullptr /* ssl_config_for_proxy */);
+              /*ssl_config_for_origin=*/nullptr);
       session_deps.socket_factory->AddSocketDataProvider(&provider_socket_1);
       ClientSocketHandle connection;
       TestCompletionCallback callback;
       int rv = connection.Init(
           ClientSocketPool::GroupId(
               kSchemeHostPort1, PrivacyMode::PRIVACY_MODE_DISABLED,
-              NetworkAnonymizationKey(), SecureDnsPolicy::kAllow),
+              NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+              /*disable_cert_network_fetches=*/false),
           ClientSocketPool::SocketParams::CreateForHttpForTesting(),
-          absl::nullopt /* proxy_annotation_tag */, MEDIUM, SocketTag(),
+          /*proxy_annotation_tag=*/absl::nullopt, MEDIUM, SocketTag(),
           ClientSocketPool::RespectLimits::ENABLED, callback.callback(),
           ClientSocketPool::ProxyAuthCallback(),
           session->GetSocketPool(HttpNetworkSession::NORMAL_SOCKET_POOL,
-                                 ProxyServer::Direct()),
+                                 ProxyChain::Direct()),
           NetLogWithSource());
       EXPECT_THAT(callback.GetResult(rv), IsOk());
       EXPECT_FALSE(connection.socket()->WasEverUsed());
@@ -2964,7 +2959,7 @@ TEST_F(TransportClientSocketPoolMockNowSourceTest, IdleUnusedSocketTimeout) {
 
     EXPECT_EQ(1, session
                      ->GetSocketPool(HttpNetworkSession::NORMAL_SOCKET_POOL,
-                                     ProxyServer::Direct())
+                                     ProxyChain::Direct())
                      ->IdleSocketCount());
 
     // Moving the clock forward may cause the idle socket to be timedout.
@@ -2974,8 +2969,7 @@ TEST_F(TransportClientSocketPoolMockNowSourceTest, IdleUnusedSocketTimeout) {
       // Request a new socket to trigger cleanup of idle timedout sockets.
       scoped_refptr<ClientSocketPool::SocketParams> socket_params =
           base::MakeRefCounted<ClientSocketPool::SocketParams>(
-              nullptr /* ssl_config_for_origin */,
-              nullptr /* ssl_config_for_proxy */);
+              /*ssl_config_for_origin=*/nullptr);
       SequencedSocketData provider_socket_2(MockConnect(ASYNC, OK),
                                             base::span<MockRead>(),
                                             base::span<MockWrite>());
@@ -2985,12 +2979,13 @@ TEST_F(TransportClientSocketPoolMockNowSourceTest, IdleUnusedSocketTimeout) {
       int rv = connection.Init(
           ClientSocketPool::GroupId(
               kSchemeHostPort2, PrivacyMode::PRIVACY_MODE_DISABLED,
-              NetworkAnonymizationKey(), SecureDnsPolicy::kAllow),
-          socket_params, absl::nullopt /* proxy_annotation_tag */, MEDIUM,
+              NetworkAnonymizationKey(), SecureDnsPolicy::kAllow,
+              /*disable_cert_network_fetches=*/false),
+          socket_params, /*proxy_annotation_tag=*/absl::nullopt, MEDIUM,
           SocketTag(), ClientSocketPool::RespectLimits::ENABLED,
           callback.callback(), ClientSocketPool::ProxyAuthCallback(),
           session->GetSocketPool(HttpNetworkSession::NORMAL_SOCKET_POOL,
-                                 ProxyServer::Direct()),
+                                 ProxyChain::Direct()),
           NetLogWithSource());
       EXPECT_THAT(callback.GetResult(rv), IsOk());
       connection.socket()->Disconnect();
@@ -2999,7 +2994,7 @@ TEST_F(TransportClientSocketPoolMockNowSourceTest, IdleUnusedSocketTimeout) {
     EXPECT_EQ(test.expect_idle_socket ? 1 : 0,
               session
                   ->GetSocketPool(HttpNetworkSession::NORMAL_SOCKET_POOL,
-                                  ProxyServer::Direct())
+                                  ProxyChain::Direct())
                   ->IdleSocketCount());
   }
 }

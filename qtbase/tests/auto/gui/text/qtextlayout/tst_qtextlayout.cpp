@@ -128,6 +128,8 @@ private slots:
     void min_maximumWidth_data();
     void min_maximumWidth();
     void negativeLineWidth();
+    void embeddedImageLineHeight();
+    void maximumLayoutWidthInWrappedLayout();
 
 private:
     QFont testFont;
@@ -1816,6 +1818,8 @@ void tst_QTextLayout::testTabDPIScale()
                 return 72;
             case QPaintDevice::PdmDevicePixelRatio:
             case QPaintDevice::PdmDevicePixelRatioScaled:
+            case QPaintDevice::PdmDevicePixelRatioF_EncodedA:
+            case QPaintDevice::PdmDevicePixelRatioF_EncodedB:
                 ; // fall through
             }
             return 0;
@@ -2757,6 +2761,92 @@ void tst_QTextLayout::negativeLineWidth()
         QVERIFY(line.textLength() > 0);
         layout.endLayout();
     }
+}
+
+void tst_QTextLayout::embeddedImageLineHeight()
+{
+    QString s1 = QStringLiteral("Foobar Foobar Foobar Foobar");
+    QString s2 = QStringLiteral("<img height=\"80\" width=\"80\" />Foobar Foobar Foobar Foobar");
+
+    qreal s1Width;
+    qreal s1Height;
+    {
+        QTextDocument document;
+        document.setHtml(s1);
+        QCOMPARE(document.blockCount(), 1);
+
+        // Trigger layout
+        {
+            QImage img(1, 1, QImage::Format_ARGB32_Premultiplied);
+            QPainter p(&img);
+            document.drawContents(&p);
+        }
+
+        QTextLayout *layout = document.firstBlock().layout();
+        QVERIFY(layout != nullptr);
+        QCOMPARE(layout->lineCount(), 1);
+        QTextLine line = layout->lineAt(0);
+        s1Width = document.idealWidth();
+        s1Height = line.ascent() + line.descent();
+    }
+
+    {
+        QTextDocument document;
+        document.setHtml(s1 + s2);
+        document.setTextWidth(std::ceil(s1Width));
+        QCOMPARE(document.blockCount(), 1);
+
+        // Trigger layout
+        {
+            QImage img(1, 1, QImage::Format_ARGB32_Premultiplied);
+            QPainter p(&img);
+            document.drawContents(&p);
+        }
+
+        QTextLayout *layout = document.firstBlock().layout();
+        QVERIFY(layout != nullptr);
+        QVERIFY(layout->lineCount() > 1);
+        QTextLine line = layout->lineAt(0);
+        QCOMPARE(line.ascent() + line.descent(), s1Height);
+    }
+}
+
+void tst_QTextLayout::maximumLayoutWidthInWrappedLayout()
+{
+    QString s = QString::fromUtf8("Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n"
+                "Integer at ante dui Curabitur ante est, pulvinar quis adipiscing a, iaculis id ipsum. Nunc blandit\n"
+                "condimentum odio vel egestas. in ipsum lacinia sit amet\n"
+                "mattis orci interdum. Quisque vitae accumsan lectus. Ut nisi turpis,\n"
+                "sollicitudin ut dignissim id, fermentum ac est. Maecenas nec libero leo. Sed ac\n"
+                "mattis orci interdum. Quisque vitae accumsan lectus. Ut nisi turpis,\n"
+                "sollicitudin ut dignissim id, fermentum ac est. Maecenas nec libero leo. Sed ac\n"
+                "leo eget ipsum ultricies viverra sit amet eu orci. Praesent et tortor risus,\n"
+                "viverra accumsan sapien. Sed faucibus eleifend lectus, sed euismod urna porta\n"
+                "eu. Quisque vitae accumsan lectus.");
+    s.replace(QChar::LineFeed, QChar::LineSeparator);
+
+    QTextLayout reference;
+    reference.setText(s);
+    reference.beginLayout();
+    forever {
+        QTextLine line = reference.createLine();
+        if (!line.isValid())
+            break;
+    }
+    reference.endLayout();
+
+    QTextLayout breakByWidth;
+    breakByWidth.setText(s);
+    breakByWidth.beginLayout();
+    forever {
+        QTextLine line = breakByWidth.createLine();
+        if (!line.isValid())
+            break;
+        line.setLineWidth(100);
+    }
+    breakByWidth.endLayout();
+
+    QCOMPARE(reference.maximumWidth(), breakByWidth.maximumWidth());
 }
 
 QTEST_MAIN(tst_QTextLayout)

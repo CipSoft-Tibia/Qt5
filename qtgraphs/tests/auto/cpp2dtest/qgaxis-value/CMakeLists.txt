@@ -10,4 +10,5 @@ qt_internal_add_test(tst_qgvalueaxis2d
         Qt::Gui
         Qt::GuiPrivate
         Qt::Graphs
+        Qt::GraphsPrivate
 )

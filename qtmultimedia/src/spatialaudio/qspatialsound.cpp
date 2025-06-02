@@ -61,7 +61,6 @@ void QSpatialSound::setPosition(QVector3D pos)
     d->pos = pos;
     if (ep)
         ep->resonanceAudio->api->SetSourcePosition(d->sourceId, pos.x(), pos.y(), pos.z());
-    d->updateRoomEffects();
     emit positionChanged();
 }
 
@@ -173,6 +172,8 @@ void QSpatialSoundPrivate::updateRoomEffects()
     if (!ep->currentRoom)
         return;
     auto *rp = QAudioRoomPrivate::get(ep->currentRoom);
+    if (!rp)
+        return;
 
     QVector3D roomDim2 = ep->currentRoom->dimensions()/2.;
     QVector3D roomPos = ep->currentRoom->position();

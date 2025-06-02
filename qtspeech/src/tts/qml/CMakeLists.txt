@@ -11,4 +11,5 @@ qt_internal_add_qml_module(TextToSpeechQml
         qvoiceselectorattached.cpp qvoiceselectorattached_p.h
     LIBRARIES
         Qt::TextToSpeech
+    NO_GENERATE_CPP_EXPORTS
 )

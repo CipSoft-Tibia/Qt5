@@ -24,28 +24,21 @@ DownloadAndExtract () {
 
 
 # Axivion Bauhaus Suite
-sourceFile="http://ci-files01-hki.ci.qt.io/input/axivion/bauhaus-suite-7_6_2-x86_64-gnu_linux.tar.gz"
-targetFile="bauhaus-suite-7_6_2-x86_64-gnu_linux.tar.gz"
-sha1="a47891ec1a258240b72b1b5410413da900b30b14"
-cd $HOME
+sourceFile="http://ci-files01-hki.ci.qt.io/input/axivion/bauhaus-suite-7_7_4-x86_64-gnu_linux.tar.gz"
+targetFile="bauhaus-suite-7_7_4-x86_64-gnu_linux.tar.gz"
+sha1="df17ac0521864a7f1c0b5b3bfded1817cbf47bae"
+cd "$HOME"
 DownloadAndExtract "$sourceFile" "$sha1" "$targetFile" "$HOME"
 
-# Temporary patch for fixing qt rules
-cd $HOME/bauhaus-suite/lib/scripts/bauhaus/rfg/dynamic
-rm qt_support.py
-wget http://ci-files01-hki.ci.qt.io/input/axivion/qt_support.py
-cd $HOME
-# Temporary patch ends
-
-mkdir $HOME/.bauhaus
+mkdir "$HOME/.bauhaus"
 cd "$HOME/.bauhaus"
-wget http://ci-files01-hki.ci.qt.io/input/axivion/Qt_Evaluation_20231231.key
+wget http://ci-files01-hki.ci.qt.io/input/axivion/Qt_Evaluation_QSR_INTERN_20250118.key
 cd "$HOME"
 
 #Axivion configuration
-configurationFile="http://ci-files01-hki.ci.qt.io/input/axivion/axivion_config_762.tar.gz"
+configurationFile="http://ci-files01-hki.ci.qt.io/input/axivion/axivion_config_771_new.tar.gz"
 configurationTargetFile="axivion_config.tar.gz"
-configSha1="2c5ce2ed2f1a2e8fd8a6a2a07a12c9c7d9e90413"
+configSha1="db77f376e0b3ee0f7a74701790d1c8abe792bebe"
 DownloadAndExtract "$configurationFile" "$configSha1" "$configurationTargetFile" "$HOME"
 
-echo "Axivion Bauhaus Suite = 7.6.2" >> ~/versions.txt
+echo "Axivion Bauhaus Suite = 7.7.4" >> ~/versions.txt

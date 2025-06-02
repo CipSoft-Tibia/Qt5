@@ -53,7 +53,7 @@ Item {
                 appendRow()
                 appendRow()
                 if (graphModel.count > 5000) {
-                    scatterGraph.theme.type = Theme3D.Theme.Isabelle;
+                    scatterGraph.theme.theme = GraphsTheme.Theme.QtGreenNeon;
                     isIncreasing = false;
                 }
             } else {
@@ -68,7 +68,7 @@ Item {
                 graphModel.remove(Math.random() * (graphModel.count - 1));
                 graphModel.remove(Math.random() * (graphModel.count - 1));
                 if (graphModel.count === 2) {
-                    scatterGraph.theme.type = Theme3D.Theme.PrimaryColors;
+                    scatterGraph.theme.theme = GraphsTheme.Theme.YellowSeries;
                     isIncreasing = true;
                 }
             }
@@ -95,13 +95,12 @@ Item {
             id: scatterGraph
             width: dataView.width
             height: dataView.height
-            theme: Theme3D {
-                type: Theme3D.Theme.Qt
+            theme: GraphsTheme {
+                theme: GraphsTheme.Theme.QtGreen
                 baseColors: [dynamicColor]
             }
-            shadowQuality: AbstractGraph3D.ShadowQuality.SoftMedium
-            scene.activeCamera.yRotation: 30.0
-            inputHandler: null
+            shadowQuality: Graphs3D.ShadowQuality.SoftMedium
+            cameraYRotation: 30.0
             axisX.min: 0
             axisY.min: 0
             axisZ.min: 0
@@ -122,6 +121,10 @@ Item {
                     rotationRole: "rotation"
                 }
             }
+
+            Component.onCompleted: {
+                scatterGraph.unsetDefaultInputHandler();
+            }
         }
 
         MouseArea {
@@ -132,7 +135,7 @@ Item {
 
             onWheel: (wheel)=> {
                 // Adjust zoom level based on what zoom range we're in.
-                var zoomLevel = scatterGraph.zoomLevel;
+                var zoomLevel = scatterGraph.cameraZoomLevel;
                 if (zoomLevel > 100)
                     zoomLevel += wheel.angleDelta.y / 12.0;
                 else if (zoomLevel > 50)
@@ -144,7 +147,7 @@ Item {
                 else if (zoomLevel < 10)
                     zoomLevel = 10;
 
-                scatterGraph.zoomLevel = zoomLevel;
+                scatterGraph.cameraZoomLevel = zoomLevel;
             }
         }
 
@@ -203,11 +206,11 @@ Item {
         anchors.left: parent.left
 
         onClicked: {
-            if (scatterGraph.shadowQuality === AbstractGraph3D.ShadowQuality.None) {
-                scatterGraph.shadowQuality = AbstractGraph3D.ShadowQuality.SoftMedium;
+            if (scatterGraph.shadowQuality === Graphs3D.ShadowQuality.None) {
+                scatterGraph.shadowQuality = Graphs3D.ShadowQuality.SoftMedium;
                 text = "Hide Shadows";
             } else {
-                scatterGraph.shadowQuality = AbstractGraph3D.ShadowQuality.None;
+                scatterGraph.shadowQuality = Graphs3D.ShadowQuality.None;
                 text = "Show Shadows";
             }
         }

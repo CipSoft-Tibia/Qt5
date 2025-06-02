@@ -31,6 +31,7 @@ public:
     QItemSelectionModelPrivate()
       : currentCommand(QItemSelectionModel::NoUpdate),
         tableSelected(false), tableColCount(0), tableRowCount(0) {}
+    ~QItemSelectionModelPrivate() override;
 
     QItemSelection expandSelection(const QItemSelection &selection,
                                    QItemSelectionModel::SelectionFlags command) const;
@@ -71,7 +72,7 @@ public:
 
     void setModel(QAbstractItemModel *mod) { q_func()->setModel(mod); }
     void disconnectModel();
-    void modelChanged(QAbstractItemModel *mod) { emit q_func()->modelChanged(mod); }
+    void modelChanged(QAbstractItemModel *mod) { Q_EMIT q_func()->modelChanged(mod); }
     Q_OBJECT_COMPAT_PROPERTY_WITH_ARGS(QItemSelectionModelPrivate, QAbstractItemModel *, model,
                                        &QItemSelectionModelPrivate::setModel,
                                        &QItemSelectionModelPrivate::modelChanged, nullptr)

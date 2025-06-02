@@ -131,9 +131,9 @@ PropertyAttributes StringObject::virtualGetOwnProperty(const Managed *m, Propert
 
 DEFINE_OBJECT_VTABLE(StringCtor);
 
-void Heap::StringCtor::init(QV4::ExecutionContext *scope)
+void Heap::StringCtor::init(QV4::ExecutionEngine *engine)
 {
-    Heap::FunctionObject::init(scope, QStringLiteral("String"));
+    Heap::FunctionObject::init(engine, QStringLiteral("String"));
 }
 
 ReturnedValue StringCtor::virtualCallAsConstructor(const FunctionObject *f, const Value *argv, int argc, const Value *newTarget)
@@ -778,7 +778,14 @@ ReturnedValue StringPrototype::method_replace(const FunctionObject *b, const Val
             nMatchOffsets += re->captureCount() * 2;
             if (!regExp->global())
                 break;
-            offset = qMax(offset + 1, matchOffsets[oldSize + 1]);
+
+            const uint matchBegin = matchOffsets[oldSize];
+            const uint matchEnd = matchOffsets[oldSize + 1];
+
+            // If we have a zero-sized match, don't match at the same place again.
+            const uint matchOffset = (matchBegin == matchEnd) ? matchEnd + 1 : matchEnd;
+
+            offset = std::max(offset + 1, matchOffset);
         }
         if (regExp->global()) {
             regExp->setLastIndex(0);
@@ -1011,6 +1018,11 @@ ReturnedValue StringPrototype::method_startsWith(const FunctionObject *b, const 
     double pos = 0;
     if (argc > 1)
         pos = argv[1].toInteger();
+
+    pos = std::clamp(
+        pos,
+        0.0,
+        double(value.size()));
 
     if (pos == 0)
         return Encode(value.startsWith(searchString));

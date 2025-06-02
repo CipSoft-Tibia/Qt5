@@ -1,34 +1,67 @@
-// Copyright 2023 The Dawn Authors
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_D3D11_QUEUED3D11_H_
 #define SRC_DAWN_NATIVE_D3D11_QUEUED3D11_H_
 
-#include "dawn/native/Queue.h"
+#include "dawn/common/MutexProtected.h"
+#include "dawn/common/SerialMap.h"
+#include "dawn/native/SystemEvent.h"
+#include "dawn/native/d3d/QueueD3D.h"
+
+#include "dawn/native/d3d11/CommandRecordingContextD3D11.h"
+#include "dawn/native/d3d11/Forward.h"
 
 namespace dawn::native::d3d11 {
 
 class Device;
+class SharedFence;
 
-class Queue final : public QueueBase {
+class Queue final : public d3d::Queue {
   public:
-    static Ref<Queue> Create(Device* device, const QueueDescriptor* descriptor);
+    static ResultOrError<Ref<Queue>> Create(Device* device, const QueueDescriptor* descriptor);
+
+    ScopedCommandRecordingContext GetScopedPendingCommandContext(SubmitMode submitMode);
+    ScopedSwapStateCommandRecordingContext GetScopedSwapStatePendingCommandContext(
+        SubmitMode submitMode);
+    MaybeError SubmitPendingCommands();
+    MaybeError NextSerial();
+    MaybeError WaitForSerial(ExecutionSerial serial);
+
+    // Separated from creation because it creates resources, which is not valid before the
+    // DeviceBase is fully created.
+    MaybeError InitializePendingContext();
 
   private:
-    using QueueBase::QueueBase;
+    using d3d::Queue::Queue;
 
     ~Queue() override = default;
+
+    MaybeError Initialize();
 
     MaybeError SubmitImpl(uint32_t commandCount, CommandBufferBase* const* commands) override;
     MaybeError WriteBufferImpl(BufferBase* buffer,
@@ -40,10 +73,19 @@ class Queue final : public QueueBase {
                                 const TextureDataLayout& dataLayout,
                                 const Extent3D& writeSizePixel) override;
 
+    void DestroyImpl() override;
     bool HasPendingCommands() const override;
     ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;
     void ForceEventualFlushOfCommands() override;
     MaybeError WaitForIdleForDestruction() override;
+
+    ResultOrError<Ref<d3d::SharedFence>> GetOrCreateSharedFence() override;
+    void SetEventOnCompletion(ExecutionSerial serial, HANDLE event) override;
+
+    ComPtr<ID3D11Fence> mFence;
+    HANDLE mFenceEvent = nullptr;
+    Ref<SharedFence> mSharedFence;
+    CommandRecordingContext mPendingCommands;
 };
 
 }  // namespace dawn::native::d3d11

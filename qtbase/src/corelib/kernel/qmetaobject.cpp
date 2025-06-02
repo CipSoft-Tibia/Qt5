@@ -127,7 +127,7 @@ static inline const char *rawStringData(const QMetaObject *mo, int index)
     return reinterpret_cast<const char *>(mo->d.stringdata) + offset;
 }
 
-static inline QLatin1StringView stringDataView(const QMetaObject *mo, int index)
+static inline QByteArrayView stringDataView(const QMetaObject *mo, int index)
 {
     Q_ASSERT(priv(mo->d.data)->revision >= 7);
     uint offset = mo->d.stringdata[2*index];
@@ -163,6 +163,8 @@ static auto parse_scope(QByteArrayView qualifiedKey) noexcept
         std::optional<QByteArrayView> scope;
         QByteArrayView key;
     };
+    if (qualifiedKey.startsWith("QFlags<") && qualifiedKey.endsWith('>'))
+        qualifiedKey.slice(7, qualifiedKey.length() - 8);
     const auto scopePos = qualifiedKey.lastIndexOf("::"_L1);
     if (scopePos < 0)
         return R{std::nullopt, qualifiedKey};
@@ -458,7 +460,7 @@ QMetaType QMetaObject::metaType() const
 
     The offset is the sum of all the methods in the class's
     superclasses (which is always positive since QObject has the
-    deleteLater() slot and a destroyed() signal).
+    \l{QObject::}{deleteLater()} slot and a \l{QObject::}{destroyed()} signal).
 
     \sa method(), methodCount(), indexOfMethod()
 */
@@ -501,7 +503,7 @@ int QMetaObject::enumeratorOffset() const
 
     The offset is the sum of all the properties in the class's
     superclasses (which is always positive since QObject has the
-    name() property).
+    \l{QObject::}{objectName} property).
 
     \sa property(), propertyCount(), indexOfProperty()
 */
@@ -1081,7 +1083,7 @@ int QMetaObjectPrivate::indexOfEnumerator(const QMetaObject *m, QByteArrayView n
         for (int i = 0; i < d->enumeratorCount; ++i) {
             const QMetaEnum e(m, i);
             const quint32 id = which == Which::Name ? e.data.name() : e.data.alias();
-            QLatin1StringView prop = stringDataView(m, id);
+            QByteArrayView prop = stringDataView(m, id);
             if (name == prop) {
                 i += m->enumeratorOffset();
                 return i;
@@ -1392,7 +1394,7 @@ QByteArray QMetaObject::normalizedSignature(const char *method)
 }
 
 Q_DECL_COLD_FUNCTION static inline bool
-printMethodNotFoundWarning(const QMetaObject *meta, QLatin1StringView name, qsizetype paramCount,
+printMethodNotFoundWarning(const QMetaObject *meta, QByteArrayView name, qsizetype paramCount,
                            const char *const *names,
                            const QtPrivate::QMetaTypeInterface * const *metaTypes)
 {
@@ -1400,7 +1402,7 @@ printMethodNotFoundWarning(const QMetaObject *meta, QLatin1StringView name, qsiz
     QByteArray candidateMessage;
     for (int i = 0; i < meta->methodCount(); ++i) {
         const QMetaMethod method = meta->method(i);
-        if (method.name() == QByteArrayView(name))
+        if (method.name() == name)
             candidateMessage += "    " + method.methodSignature() + '\n';
     }
     if (!candidateMessage.isEmpty()) {
@@ -1586,7 +1588,7 @@ bool QMetaObject::invokeMethodImpl(QObject *obj, const char *member, Qt::Connect
     Q_ASSERT(typeNames);
 
     // find the method
-    QLatin1StringView name(member);
+    QByteArrayView name(member);
     if (name.isEmpty())
         return false;
 
@@ -1785,9 +1787,7 @@ bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *
 /*!
     \fn QMetaObject::Connection::swap(Connection &other)
     \since 5.15
-
-    Swaps this Connection instance with \a other. This operation is very fast
-    and never fails.
+    \memberswap{Connection instance}
 */
 
 /*!
@@ -1798,6 +1798,7 @@ bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *
     function.
 
     \ingroup objectmodel
+    \compares equality
 
     A QMetaMethod has a methodType(), a methodSignature(), a list of
     parameterTypes() and parameterNames(), a return typeName(), a
@@ -1825,19 +1826,19 @@ bool QMetaObject::invokeMethodImpl(QObject *object, QtPrivate::QSlotObjectBase *
     invoked), otherwise returns \c false.
 */
 
-/*! \fn bool QMetaMethod::operator==(const QMetaMethod &m1, const QMetaMethod &m2)
+/*! \fn bool QMetaMethod::operator==(const QMetaMethod &lhs, const QMetaMethod &rhs)
     \since 5.0
     \overload
 
-    Returns \c true if method \a m1 is equal to method \a m2,
+    Returns \c true if method \a lhs is equal to method \a rhs,
     otherwise returns \c false.
 */
 
-/*! \fn bool QMetaMethod::operator!=(const QMetaMethod &m1, const QMetaMethod &m2)
+/*! \fn bool QMetaMethod::operator!=(const QMetaMethod &lhs, const QMetaMethod &rhs)
     \since 5.0
     \overload
 
-    Returns \c true if method \a m1 is not equal to method \a m2,
+    Returns \c true if method \a lhs is not equal to method \a rhs,
     otherwise returns \c false.
 */
 
@@ -2323,8 +2324,9 @@ int QMetaMethod::relativeMethodIndex() const
 // This method has been around for a while, but the documentation was marked \internal until 5.1
 /*!
     \since 5.1
-    Returns the method revision if one was
-    specified by Q_REVISION, otherwise returns 0.
+    Returns the method revision if one was specified by Q_REVISION, otherwise
+    returns 0. Since Qt 6.0, non-zero values are encoded and can be decoded
+    using QTypeRevision::fromEncodedVersion().
  */
 int QMetaMethod::revision() const
 {
@@ -2635,7 +2637,7 @@ auto QMetaMethodInvoker::invokeImpl(QMetaMethod self, void *target,
     // 0 is the return type, 1 is the first formal parameter
     auto checkTypesAreCompatible = [=](int idx) {
         uint typeInfo = priv->parameterTypeInfo(idx - 1);
-        QLatin1StringView userTypeName(typeNames[idx] ? typeNames[idx] : metaTypes[idx]->name);
+        QByteArrayView userTypeName(typeNames[idx] ? typeNames[idx] : metaTypes[idx]->name);
 
         if ((typeInfo & IsUnresolvedType) == 0) {
             // this is a built-in type
@@ -2644,7 +2646,7 @@ auto QMetaMethodInvoker::invokeImpl(QMetaMethod self, void *target,
             return int(typeInfo) == metaTypes[idx]->typeId;
         }
 
-        QLatin1StringView methodTypeName = stringDataView(priv->mobj, typeInfo & TypeNameIndexMask);
+        QByteArrayView methodTypeName = stringDataView(priv->mobj, typeInfo & TypeNameIndexMask);
         if ((MetaTypesAreOptional && !metaTypes) || !metaTypes[idx]) {
             // compatibility call, compare strings
             if (methodTypeName == userTypeName)
@@ -2652,7 +2654,7 @@ auto QMetaMethodInvoker::invokeImpl(QMetaMethod self, void *target,
 
             // maybe the user type needs normalization
             QByteArray normalized = normalizeTypeInternal(userTypeName.begin(), userTypeName.end());
-            return methodTypeName == QLatin1StringView(normalized);
+            return methodTypeName == normalized;
         }
 
         QMetaType userType(metaTypes[idx]);
@@ -3387,7 +3389,7 @@ QByteArray QMetaEnum::valueToKeys(int value) const
     QByteArray keys;
     if (!mobj)
         return keys;
-    QVarLengthArray<QLatin1StringView, sizeof(int) * CHAR_BIT> parts;
+    QVarLengthArray<QByteArrayView, sizeof(int) * CHAR_BIT> parts;
     int v = value;
     // reverse iterate to ensure values like Qt::Dialog=0x2|Qt::Window are processed first.
     for (int i = data.keyCount() - 1; i >= 0; --i) {
@@ -3436,7 +3438,7 @@ int QMetaEnum::Data::index(const QMetaObject *mobj) const
 
     \section1 Property Meta-Data
 
-    A property has a name() and a type(), as well as various
+    A property has a name() and a metaType(), as well as various
     attributes that specify its behavior: isReadable(), isWritable(),
     isDesignable(), isScriptable(), revision(), and isStored().
 
@@ -3655,8 +3657,8 @@ QMetaProperty::QMetaProperty(const QMetaObject *mobj, int index)
       data(getMetaPropertyData(mobj, index))
 {
     Q_ASSERT(index >= 0 && index < priv(mobj->d.data)->propertyCount);
-
-    if (!(data.flags() & EnumOrFlag))
+    // The code below here just resolves menum if the property is an enum type:
+    if (!(data.flags() & EnumOrFlag) || !metaType().flags().testFlag(QMetaType::IsEnumeration))
         return;
     QByteArrayView enum_name = typeNameFromTypeInfo(mobj, data.type());
     menum = mobj->enumerator(QMetaObjectPrivate::indexOfEnumerator(mobj, enum_name));
@@ -3774,8 +3776,10 @@ bool QMetaProperty::write(QObject *object, QVariant &&v) const
         return false;
     QMetaType t(mobj->d.metaTypes[data.index(mobj)]);
     if (t != QMetaType::fromType<QVariant>() && t != v.metaType()) {
-        if (isEnumType() && !t.metaObject() && v.metaType().id() == QMetaType::QString) {
+        if (isEnumType() && !t.metaObject() && v.metaType() == QMetaType::fromType<QString>()) {
             // Assigning a string to a property of type Q_ENUMS (instead of Q_ENUM)
+            // means the QMetaType has no associated QMetaObject, so it can't
+            // do the conversion (see qmetatype.cpp:convertToEnum()).
             bool ok;
             if (isFlagType())
                 v = QVariant(menum.keysToValue(v.toByteArray(), &ok));
@@ -3783,7 +3787,8 @@ bool QMetaProperty::write(QObject *object, QVariant &&v) const
                 v = QVariant(menum.keyToValue(v.toByteArray(), &ok));
             if (!ok)
                 return false;
-        } else if (!v.isValid()) {
+        }
+        if (!v.isValid()) {
             if (isResettable())
                 return reset(object);
             v = QVariant(t, nullptr);
@@ -3994,8 +3999,9 @@ int QMetaProperty::notifySignalIndex() const
 /*!
     \since 5.1
 
-    Returns the property revision if one was
-    specified by REVISION, otherwise returns 0.
+    Returns the property revision if one was specified by Q_REVISION, otherwise
+    returns 0. Since Qt 6.0, non-zero values are encoded and can be decoded
+    using QTypeRevision::fromEncodedVersion().
  */
 int QMetaProperty::revision() const
 {

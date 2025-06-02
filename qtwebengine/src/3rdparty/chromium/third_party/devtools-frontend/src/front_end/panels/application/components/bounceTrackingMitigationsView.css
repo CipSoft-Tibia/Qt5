@@ -10,8 +10,16 @@ devtools-data-grid-controller {
 
 .link,
 .devtools-link {
-  color: var(--color-link);
+  color: var(--sys-color-primary);
   text-decoration: underline;
   cursor: pointer;
   outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .link,
+  .devtools-link {
+    color: linktext;
+    text-decoration-color: linktext;
+  }
 }

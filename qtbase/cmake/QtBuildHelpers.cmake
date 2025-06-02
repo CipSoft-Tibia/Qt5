@@ -136,6 +136,10 @@ macro(qt_internal_set_apple_archiver_flags)
     endif()
 endmacro()
 
+macro(qt_internal_set_apple_privacy_manifest target manifest_file)
+    set_target_properties(${target} PROPERTIES _qt_privacy_manifest "${manifest_file}")
+endmacro()
+
 macro(qt_internal_set_debug_extend_target)
     option(QT_CMAKE_DEBUG_EXTEND_TARGET "Debug extend_target calls in Qt's build system" OFF)
 endmacro()
@@ -197,6 +201,7 @@ function(qt_internal_get_qt_build_private_helpers out_var)
         QtResourceHelpers
         QtRpathHelpers
         QtSanitizerHelpers
+        QtSbomHelpers
         QtScopeFinalizerHelpers
         QtSeparateDebugInfo
         QtSimdHelpers
@@ -208,6 +213,7 @@ function(qt_internal_get_qt_build_private_helpers out_var)
         QtToolchainHelpers
         QtUnityBuildHelpers
         QtWasmHelpers
+        QtWindowsHelpers
         QtWrapperScriptHelpers
         PARENT_SCOPE
     )
@@ -224,6 +230,7 @@ function(qt_internal_get_qt_build_private_files_to_install out_var)
         QtBaseTopLevelHelpers.cmake
         QtBuild.cmake
         QtBuildHelpers.cmake
+        QtBuildStaticDocToolsScript.cmake
         QtCMakePackageVersionFile.cmake.in
         QtCompilerFlags.cmake
         QtCompilerOptimization.cmake
@@ -254,9 +261,10 @@ function(qt_internal_get_qt_build_private_files_to_install out_var)
         QtSeparateDebugInfo.Info.plist.in
         QtSetup.cmake
         QtStandaloneTestsConfig.cmake.in
+        QtVersionlessAliasTargets.cmake.in
+        QtVersionlessTargets.cmake.in
         QtWriteArgsFile.cmake
         modulecppexports.h.in
-        modulecppexports_p.h.in
         qbatchedtestrunner.in.cpp
         PARENT_SCOPE
     )
@@ -278,7 +286,20 @@ function(qt_internal_get_qt_build_public_helpers out_var)
         QtPublicExternalProjectHelpers
         QtPublicFinalizerHelpers
         QtPublicFindPackageHelpers
+        QtPublicGitHelpers
         QtPublicPluginHelpers
+        QtPublicSbomAttributionHelpers
+        QtPublicSbomCpeHelpers
+        QtPublicSbomDepHelpers
+        QtPublicSbomFileHelpers
+        QtPublicSbomGenerationHelpers
+        QtPublicSbomHelpers
+        QtPublicSbomLicenseHelpers
+        QtPublicSbomOpsHelpers
+        QtPublicSbomPurlHelpers
+        QtPublicSbomPythonHelpers
+        QtPublicSbomQtEntityHelpers
+        QtPublicSbomSystemDepHelpers
         QtPublicTargetHelpers
         QtPublicTestHelpers
         QtPublicToolHelpers
@@ -385,11 +406,7 @@ endmacro()
 macro(qt_internal_setup_build_and_global_variables)
     qt_internal_validate_cmake_generator()
     qt_internal_set_qt_building_qt()
-    qt_internal_compute_features_from_possible_inputs()
-
-    # Depends on qt_internal_compute_features_from_possible_inputs
     qt_internal_set_cmake_build_type()
-
     qt_internal_set_message_log_level(CMAKE_MESSAGE_LOG_LEVEL)
     qt_internal_unset_extra_build_internals_vars()
     qt_internal_get_generator_is_multi_config()
@@ -399,32 +416,29 @@ macro(qt_internal_setup_build_and_global_variables)
 
     qt_internal_setup_position_independent_code()
     qt_internal_set_link_depends_no_shared()
-
-    # Depends on qt_internal_compute_features_from_possible_inputs
     qt_internal_setup_default_install_prefix()
-
     qt_internal_set_qt_source_tree_var()
     qt_internal_set_export_compile_commands()
     qt_internal_set_configure_from_ide()
 
-    # Depends on qt_internal_compute_features_from_possible_inputs
     # Depends on qt_internal_set_configure_from_ide
     qt_internal_set_sync_headers_at_configure_time()
 
-    # Depends on qt_internal_compute_features_from_possible_inputs
-
     qt_internal_setup_build_benchmarks()
 
-    # Depends on qt_internal_compute_features_from_possible_inputs
     # Depends on qt_internal_setup_build_benchmarks
     qt_internal_setup_build_tests()
 
     qt_internal_setup_build_tools()
 
+    qt_internal_setup_sbom()
+
     # Depends on qt_internal_setup_default_install_prefix
     qt_internal_setup_build_examples()
 
     qt_internal_set_qt_host_path()
+
+    qt_internal_setup_build_docs()
 
     qt_internal_include_qt_platform_android()
 
@@ -441,6 +455,7 @@ macro(qt_internal_setup_build_and_global_variables)
 
     qt_internal_check_macos_host_version()
     _qt_internal_check_apple_sdk_and_xcode_versions()
+    qt_internal_check_msvc_versions()
     qt_internal_check_host_path_set_for_cross_compiling()
     qt_internal_setup_android_platform_specifics()
     qt_internal_setup_find_host_info_package()

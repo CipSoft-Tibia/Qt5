@@ -146,7 +146,7 @@ public:
     virtual ImageMaterialData *state() = 0;
 };
 
-class Q_QUICKPARTICLES_PRIVATE_EXPORT QQuickImageParticle : public QQuickParticlePainter
+class Q_QUICKPARTICLES_EXPORT QQuickImageParticle : public QQuickParticlePainter
 {
     Q_OBJECT
     Q_PROPERTY(QUrl source READ image WRITE setImage NOTIFY imageChanged)
@@ -358,7 +358,6 @@ private Q_SLOTS:
     void spriteAdvance(int spriteIndex);
     void spritesUpdate(qreal time = 0 );
     void mainThreadFetchImageData();
-    void finishBuildParticleNodes(QSGNode **n);
     void invalidateSceneGraph();
 
 private:
@@ -372,6 +371,7 @@ private:
     QScopedPointer<ImageData> m_opacityTable;
     bool loadingSomething();
 
+    void finishBuildParticleNodes(QSGNode **n);
 
     QColor m_color;
     qreal m_color_variation;

@@ -17,6 +17,12 @@ QT_BEGIN_NAMESPACE
     \ingroup tools
     \ingroup string-processing
 
+    \compares strong
+    \compareswith strong char16_t QChar {const char16_t *} {const char *} \
+                  QByteArray QByteArrayView QString QStringView QUtf8StringView \
+                  QLatin1StringView
+    \endcompareswith
+
     A QAnyStringView references a contiguous portion of a string it does
     not own. It acts as an interface type to all kinds of strings,
     without the need to construct a QString first.
@@ -377,7 +383,7 @@ QT_BEGIN_NAMESPACE
     \a n is negative (default), the function returns all code points that
     are available from \a pos.
 
-    \sa first(), last(), sliced(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
+    \sa first(), last(), sliced(), chopped(), chop(), truncate(), slice(), {Sizes and Sub-Strings}
 */
 
 /*!
@@ -392,7 +398,7 @@ QT_BEGIN_NAMESPACE
     The entire string view is returned if \a n is greater than or equal
     to size(), or less than zero.
 
-    \sa first(), last(), sliced(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
+    \sa first(), last(), sliced(), chopped(), chop(), truncate(), slice(), {Sizes and Sub-Strings}
 */
 
 /*!
@@ -407,7 +413,7 @@ QT_BEGIN_NAMESPACE
     The entire string view is returned if \a n is greater than or equal
     to size(), or less than zero.
 
-    \sa first(), last(), sliced(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
+    \sa first(), last(), sliced(), chopped(), chop(), truncate(), slice(), {Sizes and Sub-Strings}
 */
 
 /*!
@@ -419,7 +425,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa last(), sliced(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
+    \sa last(), sliced(), chopped(), chop(), truncate(), slice(), {Sizes and Sub-Strings}
 */
 
 /*!
@@ -430,7 +436,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa first(), sliced(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
+    \sa first(), sliced(), chopped(), chop(), truncate(), slice(), {Sizes and Sub-Strings}
 */
 
 /*!
@@ -445,7 +451,7 @@ QT_BEGIN_NAMESPACE
     or \a pos + \a n > size().
 //! [UB-sliced-index-length]
 
-    \sa first(), last(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
+    \sa first(), last(), chopped(), chop(), truncate(), slice(), {Sizes and Sub-Strings}
 */
 
 /*!
@@ -459,7 +465,32 @@ QT_BEGIN_NAMESPACE
     \note The behavior is undefined when \a pos < 0 or \a pos > size().
 //! [UB-sliced-index-only]
 
-    \sa first(), last(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
+    \sa first(), last(), chopped(), chop(), truncate(), slice(), {Sizes and Sub-Strings}
+*/
+
+/*!
+    \fn QAnyStringView &QAnyStringView::slice(qsizetype pos, qsizetype n)
+    \since 6.8
+
+    Modifies this string view to start at position \a pos, extending for
+    \a n code points.
+
+    \include qanystringview.cpp UB-sliced-index-length
+
+    \sa sliced(), first(), last(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
+*/
+
+/*!
+    \fn QAnyStringView &QAnyStringView::slice(qsizetype pos)
+    \since 6.8
+    \overload
+
+    Modifies this string view to start at position \a pos, extending to
+    its end.
+
+    \include qanystringview.cpp UB-sliced-index-only
+
+    \sa sliced(), first(), last(), chopped(), chop(), truncate(), {Sizes and Sub-Strings}
 */
 
 /*!
@@ -473,7 +504,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa sliced(), first(), last(), chop(), truncate(), {Sizes and Sub-Strings}
+    \sa sliced(), first(), last(), chop(), truncate(), slice(), {Sizes and Sub-Strings}
 */
 
 /*!
@@ -499,7 +530,7 @@ QT_BEGIN_NAMESPACE
 
     \note The behavior is undefined when \a n < 0 or \a n > size().
 
-    \sa sliced(), first(), last(), chopped(), truncate(), {Sizes and Sub-Strings}
+    \sa sliced(), first(), last(), chopped(), truncate(), slice(), {Sizes and Sub-Strings}
 */
 
 /*! \fn template <typename Visitor> decltype(auto) QAnyStringView::visit(Visitor &&v) const
@@ -582,12 +613,12 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn bool QAnyStringView::operator==(QAnyStringView lhs, QAnyStringView rhs)
-    \fn bool QAnyStringView::operator!=(QAnyStringView lhs, QAnyStringView rhs)
-    \fn bool QAnyStringView::operator<=(QAnyStringView lhs, QAnyStringView rhs)
-    \fn bool QAnyStringView::operator>=(QAnyStringView lhs, QAnyStringView rhs)
-    \fn bool QAnyStringView::operator<(QAnyStringView lhs, QAnyStringView rhs)
-    \fn bool QAnyStringView::operator>(QAnyStringView lhs, QAnyStringView rhs)
+    \fn bool QAnyStringView::operator==(const QAnyStringView &lhs, const QAnyStringView & rhs)
+    \fn bool QAnyStringView::operator!=(const QAnyStringView & lhs, const QAnyStringView & rhs)
+    \fn bool QAnyStringView::operator<=(const QAnyStringView & lhs, const QAnyStringView & rhs)
+    \fn bool QAnyStringView::operator>=(const QAnyStringView & lhs, const QAnyStringView & rhs)
+    \fn bool QAnyStringView::operator<(const QAnyStringView & lhs, const QAnyStringView & rhs)
+    \fn bool QAnyStringView::operator>(const QAnyStringView & lhs, const QAnyStringView & rhs)
 
     Operators that compare \a lhs to \a rhs.
 
@@ -607,6 +638,21 @@ QT_BEGIN_NAMESPACE
     if null QStrings or QByteArrays can legitimately be treated as empty ones.
 
     \sa QString::isNull(), QAnyStringView
+*/
+
+/*!
+    \fn QAnyStringView::max_size() const
+    \since 6.8
+
+    This function is provided for STL compatibility.
+
+    It returns the maximum number of elements that the string view can
+    theoretically represent. In practice, the number can be much smaller,
+    limited by the amount of memory available to the system.
+
+    \note The returned value is calculated based on the currently used character
+    type, so calling this function on two different views may return different
+    results.
 */
 
 /*!
@@ -650,5 +696,24 @@ QDebug operator<<(QDebug d, QAnyStringView s)
     return d;
 }
 
+
+/*!
+    \fn template <typename Char, size_t Size, QAnyStringView::if_compatible_char<Char>> QAnyStringView QAnyStringView::fromArray(const Char (&string)[Size])
+
+    Constructs a string view on the full character string literal \a string,
+    including any trailing \c{Char(0)}. If you don't want the
+    null-terminator included in the view then you can chop() it off
+    when you are certain it is at the end. Alternatively you can use
+    the constructor overload taking an array literal which will create
+    a view up to, but not including, the first null-terminator in the data.
+
+    \a string must remain valid for the lifetime of this string view
+    object.
+
+    This function will work with any array literal if \c Char is a
+    compatible character type. The compatible character types are: \c QChar, \c ushort, \c
+    char16_t and (on platforms, such as Windows, where it is a 16-bit
+    type) \c wchar_t.
+*/
 
 QT_END_NAMESPACE

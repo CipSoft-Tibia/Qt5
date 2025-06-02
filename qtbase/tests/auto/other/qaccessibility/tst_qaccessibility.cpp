@@ -5,7 +5,7 @@
 #ifdef Q_OS_WIN
 # include <QtCore/qt_windows.h>
 # include <oleacc.h>
-# include <QtGui/private/qwindowsuiawrapper_p.h>
+# include <uiautomation.h>
 # include <servprov.h>
 # include <winuser.h>
 #endif
@@ -966,6 +966,13 @@ void tst_QAccessibility::mainWindowTest()
     QCOMPARE(iface->text(QAccessible::Name), name);
     QCOMPARE(iface->role(), QAccessible::Window);
     QVERIFY(iface->state().active);
+
+    QTestAccessibility::clearEvents();
+    QLatin1String newName = QLatin1String("Main window with updated title");
+    mw->setWindowTitle(newName);
+    QCOMPARE(iface->text(QAccessible::Name), QLatin1String(newName));
+    QAccessibleEvent event(mw, QAccessible::NameChanged);
+    QVERIFY(QTestAccessibility::containsEvent(&event));
     }
     QTestAccessibility::clearEvents();
 

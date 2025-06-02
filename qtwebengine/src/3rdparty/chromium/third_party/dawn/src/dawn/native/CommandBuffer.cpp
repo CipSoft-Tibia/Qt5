@@ -1,16 +1,29 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/CommandBuffer.h"
 
@@ -40,8 +53,8 @@ CommandBufferBase::CommandBufferBase(DeviceBase* device,
     : ApiObjectBase(device, tag, label) {}
 
 // static
-CommandBufferBase* CommandBufferBase::MakeError(DeviceBase* device, const char* label) {
-    return new CommandBufferBase(device, ObjectBase::kError, label);
+Ref<CommandBufferBase> CommandBufferBase::MakeError(DeviceBase* device, const char* label) {
+    return AcquireRef(new CommandBufferBase(device, ObjectBase::kError, label));
 }
 
 ObjectType CommandBufferBase::GetType() const {
@@ -71,7 +84,7 @@ void CommandBufferBase::SetEncoderLabel(std::string encoderLabel) {
 }
 
 MaybeError CommandBufferBase::ValidateCanUseInSubmitNow() const {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
 
     DAWN_INVALID_IF(!IsAlive(), "%s cannot be submitted more than once.", this);
     return {};
@@ -91,9 +104,12 @@ CommandIterator* CommandBufferBase::GetCommandIteratorForTesting() {
 }
 
 bool IsCompleteSubresourceCopiedTo(const TextureBase* texture,
-                                   const Extent3D copySize,
-                                   const uint32_t mipLevel) {
-    Extent3D extent = texture->GetMipLevelSingleSubresourcePhysicalSize(mipLevel);
+                                   const Extent3D& copySize,
+                                   const uint32_t mipLevel,
+                                   Aspect aspect) {
+    DAWN_ASSERT(HasOneBit(aspect) || aspect == (Aspect::Depth | Aspect::Stencil));
+
+    Extent3D extent = texture->GetMipLevelSingleSubresourcePhysicalSize(mipLevel, aspect);
 
     switch (texture->GetDimension()) {
         case wgpu::TextureDimension::e1D:
@@ -103,35 +119,44 @@ bool IsCompleteSubresourceCopiedTo(const TextureBase* texture,
         case wgpu::TextureDimension::e3D:
             return extent.width == copySize.width && extent.height == copySize.height &&
                    extent.depthOrArrayLayers == copySize.depthOrArrayLayers;
+        case wgpu::TextureDimension::Undefined:
+            break;
     }
+    DAWN_UNREACHABLE();
+}
 
-    UNREACHABLE();
+bool IsCompleteSubresourceCopiedTo(const TextureBase* texture,
+                                   const Extent3D& copySize,
+                                   const uint32_t mipLevel,
+                                   wgpu::TextureAspect textureAspect) {
+    auto aspect = SelectFormatAspects(texture->GetFormat(), textureAspect);
+    return IsCompleteSubresourceCopiedTo(texture, copySize, mipLevel, aspect);
 }
 
 SubresourceRange GetSubresourcesAffectedByCopy(const TextureCopy& copy, const Extent3D& copySize) {
     switch (copy.texture->GetDimension()) {
         case wgpu::TextureDimension::e1D:
-            ASSERT(copy.origin.z == 0 && copySize.depthOrArrayLayers == 1);
-            ASSERT(copy.mipLevel == 0);
+            DAWN_ASSERT(copy.origin.z == 0 && copySize.depthOrArrayLayers == 1);
+            DAWN_ASSERT(copy.mipLevel == 0);
             return {copy.aspect, {0, 1}, {0, 1}};
         case wgpu::TextureDimension::e2D:
             return {copy.aspect, {copy.origin.z, copySize.depthOrArrayLayers}, {copy.mipLevel, 1}};
         case wgpu::TextureDimension::e3D:
             return {copy.aspect, {0, 1}, {copy.mipLevel, 1}};
+        case wgpu::TextureDimension::Undefined:
+            DAWN_UNREACHABLE();
     }
-
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 void LazyClearRenderPassAttachments(BeginRenderPassCmd* renderPass) {
-    for (ColorAttachmentIndex i :
-         IterateBitSet(renderPass->attachmentState->GetColorAttachmentsMask())) {
+    for (auto i : IterateBitSet(renderPass->attachmentState->GetColorAttachmentsMask())) {
         auto& attachmentInfo = renderPass->colorAttachments[i];
         TextureViewBase* view = attachmentInfo.view.Get();
         bool hasResolveTarget = attachmentInfo.resolveTarget != nullptr;
 
-        ASSERT(view->GetLayerCount() == 1);
-        ASSERT(view->GetLevelCount() == 1);
+        DAWN_ASSERT(view->GetLayerCount() == 1);
+        DAWN_ASSERT(view->GetLevelCount() == 1);
         SubresourceRange range = view->GetSubresourceRange();
 
         // If the loadOp is Load, but the subresource is not initialized, use Clear instead.
@@ -146,8 +171,8 @@ void LazyClearRenderPassAttachments(BeginRenderPassCmd* renderPass) {
             // cleared later in the pipeline. The texture will be resolved from the
             // source color attachment, which will be correctly initialized.
             TextureViewBase* resolveView = attachmentInfo.resolveTarget.Get();
-            ASSERT(resolveView->GetLayerCount() == 1);
-            ASSERT(resolveView->GetLevelCount() == 1);
+            DAWN_ASSERT(resolveView->GetLayerCount() == 1);
+            DAWN_ASSERT(resolveView->GetLevelCount() == 1);
             resolveView->GetTexture()->SetIsSubresourceContentInitialized(
                 true, resolveView->GetSubresourceRange());
         }
@@ -162,7 +187,7 @@ void LazyClearRenderPassAttachments(BeginRenderPassCmd* renderPass) {
                 break;
 
             case wgpu::StoreOp::Undefined:
-                UNREACHABLE();
+                DAWN_UNREACHABLE();
                 break;
         }
     }
@@ -170,8 +195,8 @@ void LazyClearRenderPassAttachments(BeginRenderPassCmd* renderPass) {
     if (renderPass->attachmentState->HasDepthStencilAttachment()) {
         auto& attachmentInfo = renderPass->depthStencilAttachment;
         TextureViewBase* view = attachmentInfo.view.Get();
-        ASSERT(view->GetLayerCount() == 1);
-        ASSERT(view->GetLevelCount() == 1);
+        DAWN_ASSERT(view->GetLayerCount() == 1);
+        DAWN_ASSERT(view->GetLevelCount() == 1);
         SubresourceRange range = view->GetSubresourceRange();
 
         SubresourceRange depthRange = range;
@@ -200,10 +225,45 @@ void LazyClearRenderPassAttachments(BeginRenderPassCmd* renderPass) {
         view->GetTexture()->SetIsSubresourceContentInitialized(
             attachmentInfo.stencilStoreOp == wgpu::StoreOp::Store, stencilRange);
     }
+
+    if (renderPass->attachmentState->HasPixelLocalStorage()) {
+        for (auto& attachmentInfo : renderPass->storageAttachments) {
+            TextureViewBase* view = attachmentInfo.storage.Get();
+
+            if (view == nullptr) {
+                continue;
+            }
+
+            DAWN_ASSERT(view->GetLayerCount() == 1);
+            DAWN_ASSERT(view->GetLevelCount() == 1);
+            const SubresourceRange& range = view->GetSubresourceRange();
+
+            // If the loadOp is Load, but the subresource is not initialized, use Clear instead.
+            if (attachmentInfo.loadOp == wgpu::LoadOp::Load &&
+                !view->GetTexture()->IsSubresourceContentInitialized(range)) {
+                attachmentInfo.loadOp = wgpu::LoadOp::Clear;
+                attachmentInfo.clearColor = {0.f, 0.f, 0.f, 0.f};
+            }
+
+            switch (attachmentInfo.storeOp) {
+                case wgpu::StoreOp::Store:
+                    view->GetTexture()->SetIsSubresourceContentInitialized(true, range);
+                    break;
+
+                case wgpu::StoreOp::Discard:
+                    view->GetTexture()->SetIsSubresourceContentInitialized(false, range);
+                    break;
+
+                case wgpu::StoreOp::Undefined:
+                    DAWN_UNREACHABLE();
+                    break;
+            }
+        }
+    }
 }
 
 bool IsFullBufferOverwrittenInTextureToBufferCopy(const CopyTextureToBufferCmd* copy) {
-    ASSERT(copy != nullptr);
+    DAWN_ASSERT(copy != nullptr);
 
     if (copy->destination.offset > 0) {
         // The copy doesn't touch the start of the buffer.

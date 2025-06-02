@@ -54,11 +54,6 @@ enum class EnumerateDevicesResult {
   kMaxValue = kTimedOut
 };
 
-enum class SubCaptureTargetType {
-  kCropTarget,
-  // TODO(crbug.com/1418194): Add kRestrictionTarget.
-};
-
 class MODULES_EXPORT MediaDevices final
     : public EventTarget,
       public ActiveScriptWrappable<MediaDevices>,
@@ -68,6 +63,8 @@ class MODULES_EXPORT MediaDevices final
   DEFINE_WRAPPERTYPEINFO();
 
  public:
+  using SubCaptureTargetType = media::mojom::blink::SubCaptureTargetType;
+
   static const char kSupplementName[];
   static MediaDevices* mediaDevices(Navigator&);
   explicit MediaDevices(Navigator&);
@@ -119,6 +116,8 @@ class MODULES_EXPORT MediaDevices final
   void OnDevicesChanged(mojom::blink::MediaDeviceType,
                         const Vector<WebMediaDeviceInfo>&) override;
 
+  void MaybeFireDeviceChangeEvent(bool has_permission);
+
   void SetDispatcherHostForTesting(
       mojo::PendingRemote<mojom::blink::MediaDevicesDispatcherHost>);
 
@@ -135,6 +134,7 @@ class MODULES_EXPORT MediaDevices final
 
  private:
   FRIEND_TEST_ALL_PREFIXES(MediaDevicesTest, ObserveDeviceChangeEvent);
+
   void ScheduleDispatchEvent(Event*);
   void DispatchScheduledEvents();
   void StartObserving();
@@ -154,6 +154,13 @@ class MODULES_EXPORT MediaDevices final
   mojom::blink::MediaDevicesDispatcherHost& GetDispatcherHost(LocalFrame*);
 
 #if !BUILDFLAG(IS_ANDROID)
+  using ElementToResolverMap =
+      HeapHashMap<Member<Element>, Member<ScriptPromiseResolver>>;
+
+  // Each SubCaptureTarget sub-type has a map that associates Elements
+  // with Promises for the asynchronous production of SubCaptureTargets.
+  ElementToResolverMap& GetResolverMap(SubCaptureTargetType type);
+
   // Manage the window of opportunity that occurs immediately after
   // display-capture starts. The application can call
   // CaptureController.setFocusBehavior() on the microtask where the
@@ -163,10 +170,12 @@ class MODULES_EXPORT MediaDevices final
                                                        CaptureController*);
   void CloseFocusWindowOfOpportunity(const String&, CaptureController*);
 
-  // Receives a message from the browser process with the crop-ID it has
-  // assigned to |element|.
-  void ResolveProduceCropIdPromise(Element* element,
-                                   const WTF::String& crop_id);
+  // Callback for receiving a message from the browser process with
+  // the base::Token which is backing a SubCaptureTarget (either CropTarget
+  // or RestrictionTarget).
+  void ResolveSubCaptureTargetPromise(Element* element,
+                                      SubCaptureTargetType type,
+                                      const WTF::String& id);
 #endif
 
   SEQUENCE_CHECKER(sequence_checker_);
@@ -181,22 +190,27 @@ class MODULES_EXPORT MediaDevices final
       enumerate_device_requests_;
 
 #if !BUILDFLAG(IS_ANDROID)
-  // 1. When produceCropId() is first called for an Element, it has no crop-ID
-  //    associated. We produce a Resolver, map the Element to it, and fire
-  //    off a message to the browser process, asking for a new crop-ID to be
-  //    generated.
-  // 2. Subsequent calls to produceCropId(), which occur before the browser
+  // 1. When CropTarget.fromElement() is first called for an Element,
+  //    it has no CropTarget associated with it, and similarly for
+  //    RestrictionTarget.fromElement(). For either of these, we produce
+  //    a Resolver, map the Element to it, and fire off a message to
+  //    the browser process, asking for a new base::Token to be generated.
+  //    This base::Token, once produced, will serve as the underlying
+  //    implementation of the CropTarget/RestrictionTarget object to which
+  //    the Promise will be resolved.
+  // 2. Subsequent calls to X.fromElement() which occur before the browser
   //    process has had time to respond, yield a copy of the original Promise
-  //    associated with this Element.
-  // 3. When the message browser process responds with a crop-ID for the
-  //    Element, we store the new crop-ID on the Element itself, resolve all
-  //    Promises returned for this Element, and eject the resolver from this
-  //    container.
-  // 4. Later calls to produceCropId() for this given Element discover that
-  //    a crop-ID is already assigned. They immediately return a resolved
-  //    Promise with the crop-ID.
-  HeapHashMap<Member<Element>, Member<ScriptPromiseResolver>>
-      crop_id_resolvers_;
+  //    associated with this Element. (Distinctly for either X=CropTarget
+  //    and X=RestrictionTarget.)
+  // 3. When the browser process responds with a base::Token, we store it
+  //    on the Element itself, resolve all Promises returned for this Element,
+  //    and eject the resolver from this container. (Note again that CropTarget
+  //    and RestrictionTarget are handled separately here.)
+  // 4. Later calls to X.fromElement() for this given Element discover that
+  //    a token has already been assigned. They immediately return a resolved
+  //    Promise with the relevant token.
+  ElementToResolverMap crop_target_resolvers_;
+  ElementToResolverMap restriction_target_resolvers_;
 #endif
 
   bool starting_observation_ = false;

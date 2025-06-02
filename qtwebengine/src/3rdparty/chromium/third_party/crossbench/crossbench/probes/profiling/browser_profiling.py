@@ -5,15 +5,19 @@
 from __future__ import annotations
 
 import abc
+import enum
 import json
-from typing import TYPE_CHECKING, List, Optional, cast
+from typing import TYPE_CHECKING, List, Optional, Tuple, cast
 
 from selenium.webdriver.safari.options import Options as SafariOptions
 
-from crossbench import compat, helper
-from crossbench.browsers.all import ChromiumWebDriver, Firefox, SafariWebDriver
-from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeResult,
-                                     ProbeScope, ResultLocation)
+from crossbench import compat
+from crossbench.browsers.chromium.webdriver import ChromiumWebDriver
+from crossbench.browsers.firefox.firefox import Firefox
+from crossbench.browsers.safari.webdriver import SafariWebDriver
+from crossbench.probes.probe import (Probe, ProbeConfigParser, ProbeContext,
+                                     ProbeIncompatibleBrowser, ProbeResult,
+                                     ProbeValidationError, ResultLocation)
 
 if TYPE_CHECKING:
   import pathlib
@@ -25,7 +29,8 @@ if TYPE_CHECKING:
   from crossbench.runner.run import Run
 
 
-class MozProfilerStartupFeatures(helper.StrEnumWithHelp):
+@enum.unique
+class MozProfilerStartupFeatures(compat.StrEnumWithHelp):
   """Options for MOZ_PROFILER_STARTUP_FEATURES env var.
     Extracted via MOZ_PROFILER_HELP=1 ./firefox-nightly-en/firefox
     """
@@ -102,26 +107,21 @@ class BrowserProfilingProbe(Probe):
         MozProfilerStartupFeatures] = moz_profiler_startup_features or []
 
   @property
+  def key(self) -> Tuple[Tuple, ...]:
+    return super().key + (("moz_profiler_startup_features",
+                           tuple(self.moz_profiler_startup_features)),)
+
+  @property
   def moz_profiler_startup_features(self) -> List[MozProfilerStartupFeatures]:
     return self._moz_profiler_startup_features
 
-  def is_compatible(self, browser: Browser) -> bool:
-    if isinstance(browser, ChromiumWebDriver):
-      return True
-    if isinstance(browser, Firefox):
-      return True
-    if isinstance(browser, SafariWebDriver):
-      return True
-    return False
-
-  def pre_check(self, env: HostEnvironment) -> None:
-    super().pre_check(env)
-    for browser in self._browsers:
-      self._pre_check_browser(browser, env)
-
-  def _pre_check_browser(self, browser: Browser, env: HostEnvironment) -> None:
+  def validate_browser(self, env: HostEnvironment, browser: Browser) -> None:
+    super().validate_browser(env, browser)
     if browser.platform.is_remote:
-      env.handle_warning(f"Probe({self}) only works on local browser")
+      raise ProbeValidationError(
+          self, f"Only works on local browser, but got {browser}.")
+    if isinstance(browser, (ChromiumWebDriver, SafariWebDriver)):
+      return
     if isinstance(browser, Firefox):
       browser_env = browser.platform.environ
       for env_var in list(FirefoxProfilerEnvVars):
@@ -129,32 +129,34 @@ class BrowserProfilingProbe(Probe):
           env.handle_warning(
               f"Probe({self}) conflicts with existing "
               f"env[{env_var.value}]={browser_env[env_var.value]}")
+    raise ProbeIncompatibleBrowser(self, browser)
 
-  def get_scope(self, run: Run) -> BrowserProfilingProbeScope:
+  def get_context(self, run: Run) -> BrowserProfilingProbeContext:
     if isinstance(run.browser, ChromiumWebDriver):
-      return ChromiumWebDriverBrowserProfilerProbeScope(self, run)
+      return ChromiumWebDriverBrowserProfilerProbeContext(self, run)
     if isinstance(run.browser, Firefox):
-      return FirefoxBrowserProfilerProbeScope(self, run)
+      return FirefoxBrowserProfilerProbeContext(self, run)
     if isinstance(run.browser, SafariWebDriver):
-      return SafariWebdriverBrowserProfilerProbeScope(self, run)
+      return SafariWebdriverBrowserProfilerProbeContext(self, run)
     raise NotImplementedError(
         f"Probe({self}): Unsupported browser: {run.browser}")
 
 
-class BrowserProfilingProbeScope(
-    ProbeScope[BrowserProfilingProbe], metaclass=abc.ABCMeta):
+class BrowserProfilingProbeContext(
+    ProbeContext[BrowserProfilingProbe], metaclass=abc.ABCMeta):
 
-  def setup(self, run: Run) -> None:
+  def setup(self) -> None:
     pass
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     pass
 
-  def stop(self, run: Run) -> None:
+  def stop(self) -> None:
     pass
 
 
-class ChromiumWebDriverBrowserProfilerProbeScope(BrowserProfilingProbeScope):
+class ChromiumWebDriverBrowserProfilerProbeContext(BrowserProfilingProbeContext
+                                                  ):
 
   def get_default_result_path(self) -> pathlib.Path:
     return (super().get_default_result_path().parent /
@@ -164,25 +166,25 @@ class ChromiumWebDriverBrowserProfilerProbeScope(BrowserProfilingProbeScope):
   def chromium(self) -> ChromiumWebDriver:
     return cast(ChromiumWebDriver, self.browser)
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     self.chromium.start_profiling()
 
-  def stop(self, run: Run) -> None:
-    with run.actions(f"Probe({self.probe}): extract DevTools profile."):
+  def stop(self) -> None:
+    with self.run.actions(f"Probe({self.probe}): extract DevTools profile."):
       profile = self.chromium.stop_profiling()
       with self.result_path.open("w", encoding="utf-8") as f:
         json.dump(profile, f)
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     return self.browser_result(json=[self.result_path])
 
 
-class FirefoxBrowserProfilerProbeScope(BrowserProfilingProbeScope):
+class FirefoxBrowserProfilerProbeContext(BrowserProfilingProbeContext):
 
   def get_default_result_path(self) -> pathlib.Path:
     return super().get_default_result_path().parent / "firefox.profile.json"
 
-  def setup(self, run: Run) -> None:
+  def setup(self) -> None:
     env = self.browser.platform.environ
     env[FirefoxProfilerEnvVars.STARTUP] = "y"
     if self.probe.moz_profiler_startup_features:
@@ -190,7 +192,7 @@ class FirefoxBrowserProfilerProbeScope(BrowserProfilingProbeScope):
           str(feature) for feature in self.probe.moz_profiler_startup_features)
     env[FirefoxProfilerEnvVars.SHUTDOWN] = str(self.result_path)
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     env = self.browser.platform.environ
     del env[FirefoxProfilerEnvVars.STARTUP]
     del env[FirefoxProfilerEnvVars.STARTUP_FEATURES]
@@ -198,7 +200,7 @@ class FirefoxBrowserProfilerProbeScope(BrowserProfilingProbeScope):
     return self.browser_result(json=[self.result_path])
 
 
-class SafariWebdriverBrowserProfilerProbeScope(BrowserProfilingProbeScope):
+class SafariWebdriverBrowserProfilerProbeContext(BrowserProfilingProbeContext):
 
   def get_default_result_path(self) -> pathlib.Path:
     return super().get_default_result_path().parent / "safari.timeline.json"
@@ -207,7 +209,7 @@ class SafariWebdriverBrowserProfilerProbeScope(BrowserProfilingProbeScope):
     assert isinstance(options, SafariOptions)
     cast(SafariOptions, options).automatic_profiling = True
 
-  def stop(self, run: Run) -> None:
+  def stop(self) -> None:
     # TODO: Update this mess when Safari supports a command-line option
     # to download the profile.
     # Manually safe the profile using apple script to navigate the safari UI
@@ -235,5 +237,5 @@ class SafariWebdriverBrowserProfilerProbeScope(BrowserProfilingProbeScope):
         end tell
       end tell""")
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     return self.browser_result(json=[self.result_path])

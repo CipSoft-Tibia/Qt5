@@ -10,21 +10,21 @@
 #include <utility>
 
 #include "base/containers/contains.h"
-#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
 #include "media/base/limits.h"
-#include "media/base/media_switches.h"
+#include "media/base/platform_features.h"
 #include "media/base/video_codecs.h"
 #include "media/gpu/chromeos/dmabuf_video_frame_pool.h"
+#include "media/gpu/chromeos/platform_video_frame_utils.h"
 #include "media/gpu/macros.h"
 #include "media/gpu/v4l2/v4l2_device.h"
-#include "media/gpu/v4l2/legacy/v4l2_stateful_workaround.h"
 #include "media/gpu/v4l2/v4l2_vda_helpers.h"
 #include "media/gpu/v4l2/v4l2_video_decoder_backend.h"
+#include "media/gpu/v4l2/v4l2_vp9_helpers.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace media {
@@ -127,8 +127,8 @@ bool V4L2StatefulVideoDecoderBackend::Initialize() {
     return false;
   }
 
-  framerate_control_ =
-      std::make_unique<V4L2FrameRateControl>(device_, task_runner_);
+  framerate_control_ = std::make_unique<V4L2FrameRateControl>(
+      base::BindRepeating(&V4L2Device::Ioctl, device_), task_runner_);
 
   return true;
 }
@@ -184,11 +184,6 @@ void V4L2StatefulVideoDecoderBackend::DoDecodeWork() {
     DCHECK_EQ(current_decode_request_->bytes_used, 0u);
 
     if (IsVp9KSVCStream(profile_, *current_decode_request_->buffer)) {
-      if (!base::FeatureList::IsEnabled(media::kVp9kSVCHWDecoding)) {
-        DLOG(ERROR) << "Vp9 k-SVC hardware decoding is disabled";
-        client_->OnBackendError();
-        return;
-      }
       if (!IsVp9KSVCSupportedDriver(driver_name_)) {
         DLOG(ERROR) << driver_name_ << " doesn't support VP9 k-SVC decoding";
         client_->OnBackendError();
@@ -350,7 +345,8 @@ void V4L2StatefulVideoDecoderBackend::EnqueueOutputBuffers() {
         // once frames are available.
         if (!video_frame)
           return;
-        buffer = output_queue_->GetFreeBufferForFrame(*video_frame);
+        buffer = output_queue_->GetFreeBufferForFrame(
+            GetSharedMemoryId(*video_frame));
         if (!buffer) {
           no_buffer = true;
           break;
@@ -778,7 +774,9 @@ bool V4L2StatefulVideoDecoderBackend::StopInputQueueOnResChange() const {
   return false;
 }
 
-size_t V4L2StatefulVideoDecoderBackend::GetNumOUTPUTQueueBuffers() const {
+size_t V4L2StatefulVideoDecoderBackend::GetNumOUTPUTQueueBuffers(
+    bool secure_mode) const {
+  CHECK(!secure_mode);
   constexpr size_t kNumInputBuffers = 8;
   return kNumInputBuffers;
 }

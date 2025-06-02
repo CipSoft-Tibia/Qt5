@@ -33,29 +33,30 @@ class QByteArray;
 class QSvgFont;
 class QTransform;
 
-class Q_SVG_PRIVATE_EXPORT QSvgTinyDocument : public QSvgStructureNode
+class Q_SVG_EXPORT QSvgTinyDocument : public QSvgStructureNode
 {
 public:
     static QSvgTinyDocument *load(const QString &file, QtSvg::Options options = {});
     static QSvgTinyDocument *load(const QByteArray &contents, QtSvg::Options options = {});
     static QSvgTinyDocument *load(QXmlStreamReader *contents, QtSvg::Options options = {});
+    static bool isLikelySvg(QIODevice *device, bool *isCompressed = nullptr);
 public:
     QSvgTinyDocument(QtSvg::Options options);
     ~QSvgTinyDocument();
     Type type() const override;
 
-    QSize size() const;
+    inline QSize size() const;
     void setWidth(int len, bool percent);
     void setHeight(int len, bool percent);
-    int width() const;
-    int height() const;
-    bool widthPercent() const;
-    bool heightPercent() const;
+    inline int width() const;
+    inline int height() const;
+    inline bool widthPercent() const;
+    inline bool heightPercent() const;
 
-    bool preserveAspectRatio() const;
+    inline bool preserveAspectRatio() const;
     void setPreserveAspectRatio(bool on);
 
-    QRectF viewBox() const;
+    inline QRectF viewBox() const;
     void setViewBox(const QRectF &rect);
 
     QtSvg::Options options() const;
@@ -79,10 +80,10 @@ public:
     QSvgPaintStyleProperty *namedStyle(const QString &id) const;
 
     void restartAnimation();
-    int currentElapsed() const;
+    inline int currentElapsed() const;
     bool animated() const;
     void setAnimated(bool a);
-    int animationDuration() const;
+    inline int animationDuration() const;
     int currentFrame() const;
     void setCurrentFrame(int);
     void setFramesPerSecond(int num);
@@ -112,7 +113,7 @@ private:
     const QtSvg::Options m_options;
 };
 
-Q_SVG_PRIVATE_EXPORT QDebug operator<<(QDebug debug, const QSvgTinyDocument &doc);
+Q_SVG_EXPORT QDebug operator<<(QDebug debug, const QSvgTinyDocument &doc);
 
 inline QSize QSvgTinyDocument::size() const
 {
@@ -149,7 +150,7 @@ inline bool QSvgTinyDocument::heightPercent() const
 inline QRectF QSvgTinyDocument::viewBox() const
 {
     if (m_viewBox.isNull()) {
-        m_viewBox = transformedBounds();
+        m_viewBox = bounds();
         m_implicitViewBox = true;
     }
 

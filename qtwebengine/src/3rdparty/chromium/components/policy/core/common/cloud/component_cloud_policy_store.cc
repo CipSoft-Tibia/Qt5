@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <string_view>
 #include <utility>
 
 #include "base/functional/bind.h"
@@ -87,7 +88,7 @@ base::Value::Dict TranslatePolicyMapEntryToJson(const PolicyMap::Entry& entry) {
   // not caring about its type.
   result.Set(kValue, entry.value_unsafe()->Clone());
   if (entry.level == POLICY_LEVEL_RECOMMENDED) {
-    result.Set(kLevel, base::StringPiece(kRecommended));
+    result.Set(kLevel, std::string_view(kRecommended));
   }
   return result;
 }
@@ -220,7 +221,7 @@ void ComponentCloudPolicyStore::Load() {
     policy_bundle_.Get(ns).Swap(&policy);
     cached_hashes_[ns] = payload.secure_hash();
     stored_policy_times_[ns] =
-        base::Time::FromJavaTime(policy_data.timestamp());
+        base::Time::FromMillisecondsSinceUnixEpoch(policy_data.timestamp());
   }
   delegate_->OnComponentCloudPolicyStoreUpdated();
 }
@@ -253,7 +254,8 @@ bool ComponentCloudPolicyStore::Store(const PolicyNamespace& ns,
   // And expose the policy.
   policy_bundle_.Get(ns).Swap(&policy);
   cached_hashes_[ns] = secure_hash;
-  stored_policy_times_[ns] = base::Time::FromJavaTime(policy_data->timestamp());
+  stored_policy_times_[ns] =
+      base::Time::FromMillisecondsSinceUnixEpoch(policy_data->timestamp());
   delegate_->OnComponentCloudPolicyStoreUpdated();
   return true;
 }

@@ -118,6 +118,10 @@ Item {
             change.sliceIndexY = 0
             change.sliceIndexZ = 0
             change.useHighDefShader = false
+            change.textureWidth = 5
+            change.textureHeight = 5
+            change.textureDepth = 2
+            change.preserveOpacity = false
 
             change.position = Qt.vector3d(1.0, 0.5, 1.0)
             change.positionAbsolute = true
@@ -139,6 +143,10 @@ Item {
             compare(change.sliceIndexY, 0)
             compare(change.sliceIndexZ, 0)
             compare(change.useHighDefShader, false)
+            compare(change.textureWidth, 5)
+            compare(change.textureHeight, 5)
+            compare(change.textureDepth, 2)
+            compare(change.preserveOpacity, false)
 
             compare(change.position, Qt.vector3d(1.0, 0.5, 1.0))
             compare(change.positionAbsolute, true)
@@ -147,6 +155,23 @@ Item {
             compare(change.scalingAbsolute, false)
             compare(change.shadowCasting, false)
             compare(change.visible, false)
+
+            // signals
+            compare(textureWidthSpy.count, 1)
+            compare(textureHeightSpy.count, 1)
+            compare(textureDepthSpy.count, 1)
+            compare(sliceIndexXSpy.count, 1)
+            compare(sliceIndexYSpy.count, 1)
+            compare(sliceIndexZSpy.count, 1)
+            compare(alphaMultiplierSpy.count, 1)
+            compare(preserveOpacitySpy.count, 1)
+            compare(useHighDefShaderSpy.count, 1)
+            compare(drawSlicesSpy.count, 1)
+            compare(drawSliceFramesSpy.count, 1)
+            compare(sliceFrameColorSpy.count, 1)
+            compare(sliceFrameWidthsSpy.count, 1)
+            compare(sliceFrameGapsSpy.count, 1)
+            compare(sliceFrameThicknessesSpy.count, 1)
         }
     }
 
@@ -163,5 +188,95 @@ Item {
             invalid.sliceFrameWidths = Qt.vector3d(-0.1, -0.1, -0.1)
             compare(invalid.sliceFrameWidths, Qt.vector3d(0.01, 0.01, 0.01))
         }
+    }
+
+    SignalSpy {
+        id: textureWidthSpy
+        target: change
+        signalName: "textureWidthChanged"
+    }
+
+    SignalSpy {
+        id: textureHeightSpy
+        target: change
+        signalName: "textureHeightChanged"
+    }
+
+    SignalSpy {
+        id: textureDepthSpy
+        target: change
+        signalName: "textureDepthChanged"
+    }
+
+    SignalSpy {
+        id: sliceIndexXSpy
+        target: change
+        signalName: "sliceIndexXChanged"
+    }
+
+    SignalSpy {
+        id: sliceIndexYSpy
+        target: change
+        signalName: "sliceIndexYChanged"
+    }
+
+    SignalSpy {
+        id: sliceIndexZSpy
+        target: change
+        signalName: "sliceIndexZChanged"
+    }
+
+    SignalSpy {
+        id: alphaMultiplierSpy
+        target: change
+        signalName: "alphaMultiplierChanged"
+    }
+
+    SignalSpy {
+        id: preserveOpacitySpy
+        target: change
+        signalName: "preserveOpacityChanged"
+    }
+
+    SignalSpy {
+        id: useHighDefShaderSpy
+        target: change
+        signalName: "useHighDefShaderChanged"
+    }
+
+    SignalSpy {
+        id: drawSlicesSpy
+        target: change
+        signalName: "drawSlicesChanged"
+    }
+
+    SignalSpy {
+        id: drawSliceFramesSpy
+        target: change
+        signalName: "drawSliceFramesChanged"
+    }
+
+    SignalSpy {
+        id: sliceFrameColorSpy
+        target: change
+        signalName: "sliceFrameColorChanged"
+    }
+
+    SignalSpy {
+        id: sliceFrameWidthsSpy
+        target: change
+        signalName: "sliceFrameWidthsChanged"
+    }
+
+    SignalSpy {
+        id: sliceFrameGapsSpy
+        target: change
+        signalName: "sliceFrameGapsChanged"
+    }
+
+    SignalSpy {
+        id: sliceFrameThicknessesSpy
+        target: change
+        signalName: "sliceFrameThicknessesChanged"
     }
 }

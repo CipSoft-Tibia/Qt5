@@ -221,8 +221,20 @@ bool BleGattServer::InitializeGattServer() {
     NEARBY_LOGS(VERBOSE) << __func__ << ": Create GATT service service_uuid="
                          << std::string(service_uuid_);
 
-    if (adapter_ == nullptr || !adapter_->IsEnabled()) {
+    if (adapter_ == nullptr) {
+      NEARBY_LOGS(ERROR) << __func__ << ": Bluetooth adapter is absent.";
+      return false;
+    }
+
+    if (!adapter_->IsEnabled()) {
       NEARBY_LOGS(ERROR) << __func__ << ": Bluetooth adapter is disabled.";
+      return false;
+    }
+
+    if (!adapter_->IsLowEnergySupported()) {
+      NEARBY_LOGS(ERROR) << __func__
+                         << ": Bluetooth adapter does not support BLE, which "
+                            "is needed to start GATT server.";
       return false;
     }
 
@@ -371,13 +383,36 @@ bool BleGattServer::StartAdvertisement(const ByteArray& service_data,
       return false;
     }
 
-    is_advertising_ = true;
-
     if (!is_gatt_server_inited_ && !InitializeGattServer()) {
       NEARBY_LOGS(ERROR) << ":Failed to initalize GATT service.";
       is_advertising_ = false;
       return false;
     }
+
+    if (gatt_service_provider_ == nullptr) {
+      NEARBY_LOGS(WARNING) << __func__ << ": no GATT server is running.";
+      is_advertising_ = false;
+      return false;
+    }
+
+    if (gatt_service_provider_.AdvertisementStatus() ==
+        GattServiceProviderAdvertisementStatus::Started) {
+      NEARBY_LOGS(WARNING) << __func__
+                           << ": GATT server is already in advertising.";
+      is_advertising_ = true;
+      return false;
+    }
+
+    if (!adapter_->IsPeripheralRoleSupported()) {
+      NEARBY_LOGS(ERROR)
+          << __func__
+          << ": Bluetooth Hardware does not support Peripheral Role, which is "
+             "required to start GATT server.";
+      is_advertising_ = false;
+      return false;
+    }
+
+    is_advertising_ = true;
 
     // Start the GATT server advertising
     GattServiceProviderAdvertisingParameters advertisement_parameters;

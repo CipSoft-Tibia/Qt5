@@ -30,21 +30,15 @@
 #ifndef THIRD_PARTY_CENTIPEDE_FEATURE_H_
 #define THIRD_PARTY_CENTIPEDE_FEATURE_H_
 
-#include <stddef.h>
-#include <string.h>
-
 // WARNING!!!: Be very careful with what STL headers or other dependencies you
 // add here. This header needs to remain mostly bare-bones so that we can
 // include it into runner.
 // <vector> is an exception, because it's too clumsy w/o it, and it introduces
 // minimal code footprint.
+#include <cstddef>
 #include <cstdint>
-#include <limits>
-#include <memory>
+#include <cstring>
 #include <vector>
-
-#include "./centipede/concurrent_bitset.h"
-#include "./centipede/int_utils.h"
 
 namespace centipede {
 
@@ -92,6 +86,11 @@ class Domain {
   // Returns the DomainId of the domain that the feature belongs to.
   static size_t FeatureToDomainId(feature_t feature) {
     return feature / kDomainSize;
+  }
+
+  // Returns the index into the domain of a feature.
+  static size_t FeatureToIndexInDomain(feature_t feature) {
+    return feature % kDomainSize;
   }
 
  private:
@@ -155,7 +154,7 @@ inline constexpr Domain kCMPHamming = {__COUNTER__};
 inline constexpr Domain kCMPDiffLog = {__COUNTER__};
 
 // Features derived from observing function call stacks.
-constexpr Domain kCallStack = {__COUNTER__};
+inline constexpr Domain kCallStack = {__COUNTER__};
 // Features derived from computing (bounded) control flow paths.
 inline constexpr Domain kBoundedPath = {__COUNTER__};
 // Features derived from (unordered) pairs of PCs.
@@ -176,6 +175,8 @@ inline constexpr Domain kLastDomain = {__COUNTER__};
 // For now, check that all domains (except maybe for kLastDomain) fit
 // into 32 bits.
 static_assert(kLastDomain.begin() <= (1ULL << 32));
+
+inline constexpr size_t kNumDomains = kLastDomain.domain_id();
 
 // Special feature used to indicate an absence of features. Typically used where
 // a feature array must not be empty, but doesn't have any other features.

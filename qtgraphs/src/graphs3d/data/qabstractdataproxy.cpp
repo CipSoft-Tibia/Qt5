@@ -20,13 +20,14 @@ QT_BEGIN_NAMESPACE
 
 /*!
  * \qmltype AbstractDataProxy
+ * \qmlabstract
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QAbstractDataProxy
+ * \nativetype QAbstractDataProxy
  * \brief Base type for all 3D graph data proxies.
  *
- * This type is uncreatable, but contains properties that are exposed via the
- * following subtypes: BarDataProxy, ScatterDataProxy, SurfaceDataProxy.
+ * This abstract class serves as a base class for the following subtypes:
+ * BarDataProxy, ScatterDataProxy, SurfaceDataProxy.
  *
  * For more information, see \l {Qt Graphs Data Handling with 3D}.
  */
@@ -44,11 +45,11 @@ QT_BEGIN_NAMESPACE
  * \value None
  *        No data type.
  * \value Bar
- *        Data type for Q3DBars.
+ *        Data type for Q3DBarsWidgetItem.
  * \value Scatter
- *        Data type for Q3DScatter.
+ *        Data type for Q3DScatterWidgetItem.
  * \value Surface
- *        Data type for Q3DSurface.
+ *        Data type for Q3DSurfaceWidgetItem.
  */
 
 /*!
@@ -70,7 +71,7 @@ QAbstractDataProxy::~QAbstractDataProxy() {}
  */
 QAbstractDataProxy::DataType QAbstractDataProxy::type() const
 {
-    const Q_D(QAbstractDataProxy);
+    Q_D(const QAbstractDataProxy);
     return d->m_type;
 }
 

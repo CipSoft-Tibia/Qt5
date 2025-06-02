@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -16,7 +17,6 @@
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "quiche/quic/core/http/http_constants.h"
 #include "quiche/quic/core/http/http_decoder.h"
 #include "quiche/quic/core/http/http_frames.h"
@@ -51,7 +51,6 @@ using spdy::SpdyHeadersIR;
 using spdy::SpdyPingId;
 using spdy::SpdyPriority;
 using spdy::SpdyPriorityIR;
-using spdy::SpdyPushPromiseIR;
 using spdy::SpdySerializedFrame;
 using spdy::SpdySettingsId;
 using spdy::SpdyStreamId;
@@ -159,17 +158,26 @@ class AlpsFrameDecoder : public HttpDecoder::Visitor {
   }
   bool OnUnknownFrameEnd() override { return true; }
 
-  const absl::optional<std::string>& error_detail() const {
+  const std::optional<std::string>& error_detail() const {
     return error_detail_;
   }
 
  private:
   QuicSpdySession* const session_;
-  absl::optional<std::string> error_detail_;
+  std::optional<std::string> error_detail_;
 
   // True if SETTINGS frame has been received via ALPS.
   bool settings_frame_received_via_alps_ = false;
 };
+
+uint64_t GetDefaultQpackMaximumDynamicTableCapacity(Perspective perspective) {
+  if (perspective == Perspective::IS_SERVER &&
+      GetQuicFlag(quic_server_disable_qpack_dynamic_table)) {
+    return 0;
+  }
+
+  return kDefaultQpackMaxDynamicTableCapacity;
+}
 
 }  // namespace
 
@@ -197,9 +205,11 @@ class QuicSpdySession::SpdyFramerVisitor
         /* is_sent = */ false, header_list_.compressed_header_bytes(),
         header_list_.uncompressed_header_bytes());
 
-    if (session_->IsConnected()) {
+    // Ignore pushed request headers.
+    if (session_->IsConnected() && !expecting_pushed_headers_) {
       session_->OnHeaderList(header_list_);
     }
+    expecting_pushed_headers_ = false;
     header_list_.Clear();
   }
 
@@ -355,18 +365,24 @@ class QuicSpdySession::SpdyFramerVisitor
                     QUIC_INVALID_HEADERS_STREAM_DATA);
   }
 
-  void OnPushPromise(SpdyStreamId stream_id, SpdyStreamId promised_stream_id,
-                     bool /*end*/) override {
+  void OnPushPromise(SpdyStreamId /*stream_id*/,
+                     SpdyStreamId promised_stream_id, bool /*end*/) override {
     QUICHE_DCHECK(!VersionUsesHttp3(session_->transport_version()));
     if (session_->perspective() != Perspective::IS_CLIENT) {
+      // PUSH_PROMISE sent by a client is a protocol violation.
       CloseConnection("PUSH_PROMISE not supported.",
                       QUIC_INVALID_HEADERS_STREAM_DATA);
       return;
     }
-    if (!session_->IsConnected()) {
-      return;
-    }
-    session_->OnPushPromise(stream_id, promised_stream_id);
+
+    // Push streams are ignored anyway, reset the stream to save bandwidth.
+    session_->MaybeSendRstStreamFrame(
+        promised_stream_id,
+        QuicResetStreamError::FromInternal(QUIC_REFUSED_STREAM),
+        /* bytes_written = */ 0);
+
+    QUICHE_DCHECK(!expecting_pushed_headers_);
+    expecting_pushed_headers_ = true;
   }
 
   void OnContinuation(SpdyStreamId /*stream_id*/, size_t /*payload_size*/,
@@ -430,6 +446,10 @@ class QuicSpdySession::SpdyFramerVisitor
 
   QuicSpdySession* session_;
   QuicHeaderList header_list_;
+
+  // True if the next OnHeaderFrameEnd() call signals the end of pushed request
+  // headers.
+  bool expecting_pushed_headers_ = false;
 };
 
 Http3DebugVisitor::Http3DebugVisitor() {}
@@ -455,13 +475,11 @@ QuicSpdySession::QuicSpdySession(
       qpack_encoder_send_stream_(nullptr),
       qpack_decoder_send_stream_(nullptr),
       qpack_maximum_dynamic_table_capacity_(
-          kDefaultQpackMaxDynamicTableCapacity),
+          GetDefaultQpackMaximumDynamicTableCapacity(perspective())),
       qpack_maximum_blocked_streams_(kDefaultMaximumBlockedStreams),
       max_inbound_header_list_size_(kDefaultMaxUncompressedHeaderSize),
       max_outbound_header_list_size_(std::numeric_limits<size_t>::max()),
       stream_id_(
-          QuicUtils::GetInvalidStreamId(connection->transport_version())),
-      promised_stream_id_(
           QuicUtils::GetInvalidStreamId(connection->transport_version())),
       frame_len_(0),
       fin_(false),
@@ -514,7 +532,7 @@ void QuicSpdySession::Initialize() {
   spdy_framer_visitor_->set_max_header_list_size(max_inbound_header_list_size_);
 
   // Limit HPACK buffering to 2x header list size limit.
-  h2_deframer_.GetHpackDecoder()->set_max_decode_buffer_size_bytes(
+  h2_deframer_.GetHpackDecoder().set_max_decode_buffer_size_bytes(
       2 * max_inbound_header_list_size_);
 }
 
@@ -733,12 +751,12 @@ void QuicSpdySession::OnHttp3GoAway(uint64_t id) {
       << "HTTP/3 GOAWAY received on version " << version();
 
   if (last_received_http3_goaway_id_.has_value() &&
-      id > last_received_http3_goaway_id_.value()) {
+      id > *last_received_http3_goaway_id_) {
     CloseConnectionWithDetails(
         QUIC_HTTP_GOAWAY_ID_LARGER_THAN_PREVIOUS,
         absl::StrCat("GOAWAY received with ID ", id,
                      " greater than previously received ID ",
-                     last_received_http3_goaway_id_.value()));
+                     *last_received_http3_goaway_id_));
     return;
   }
   last_received_http3_goaway_id_ = id;
@@ -809,12 +827,13 @@ void QuicSpdySession::SendHttp3GoAway(QuicErrorCode error_code,
         ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
     return;
   }
-  QuicStreamId stream_id;
+  ietf_streamid_manager().StopIncreasingIncomingMaxStreams();
 
-  stream_id = QuicUtils::GetMaxClientInitiatedBidirectionalStreamId(
-      transport_version());
+  QuicStreamId stream_id =
+      QuicUtils::GetMaxClientInitiatedBidirectionalStreamId(
+          transport_version());
   if (last_sent_http3_goaway_id_.has_value() &&
-      last_sent_http3_goaway_id_.value() <= stream_id) {
+      *last_sent_http3_goaway_id_ <= stream_id) {
     // Do not send GOAWAY frame with a higher id, because it is forbidden.
     // Do not send one with same stream id as before, since frames on the
     // control stream are guaranteed to be processed in order.
@@ -823,31 +842,6 @@ void QuicSpdySession::SendHttp3GoAway(QuicErrorCode error_code,
 
   send_control_stream_->SendGoAway(stream_id);
   last_sent_http3_goaway_id_ = stream_id;
-}
-
-void QuicSpdySession::WritePushPromise(QuicStreamId original_stream_id,
-                                       QuicStreamId promised_stream_id,
-                                       Http2HeaderBlock headers) {
-  if (perspective() == Perspective::IS_CLIENT) {
-    QUIC_BUG(quic_bug_10360_4) << "Client shouldn't send PUSH_PROMISE";
-    return;
-  }
-
-  if (VersionUsesHttp3(transport_version())) {
-    QUIC_BUG(quic_bug_12477_6)
-        << "Support for server push over HTTP/3 has been removed.";
-    return;
-  }
-
-  SpdyPushPromiseIR push_promise(original_stream_id, promised_stream_id,
-                                 std::move(headers));
-  // PUSH_PROMISE must not be the last frame sent out, at least followed by
-  // response headers.
-  push_promise.set_fin(false);
-
-  SpdySerializedFrame frame(spdy_framer_.SerializeFrame(push_promise));
-  headers_stream()->WriteOrBufferData(
-      absl::string_view(frame.data(), frame.size()), false, nullptr);
 }
 
 void QuicSpdySession::SendInitialData() {
@@ -859,7 +853,7 @@ void QuicSpdySession::SendInitialData() {
 }
 
 bool QuicSpdySession::CheckStreamWriteBlocked(QuicStream* stream) const {
-  if (GetQuicRestartFlag(quic_opport_bundle_qpack_decoder_data) &&
+  if (GetQuicRestartFlag(quic_opport_bundle_qpack_decoder_data3) &&
       qpack_decoder_send_stream_ != nullptr &&
       stream->id() == qpack_decoder_send_stream_->id()) {
     // Decoder data is always bundled opportunistically.
@@ -984,16 +978,6 @@ size_t QuicSpdySession::WriteHeadersOnHeadersStreamImpl(
   return frame.size();
 }
 
-void QuicSpdySession::OnPromiseHeaderList(
-    QuicStreamId /*stream_id*/, QuicStreamId /*promised_stream_id*/,
-    size_t /*frame_len*/, const QuicHeaderList& /*header_list*/) {
-  std::string error =
-      "OnPromiseHeaderList should be overridden in client code.";
-  QUIC_BUG(quic_bug_10360_6) << error;
-  connection()->CloseConnection(QUIC_INTERNAL_ERROR, error,
-                                ConnectionCloseBehavior::SILENT_CLOSE);
-}
-
 bool QuicSpdySession::ResumeApplicationState(ApplicationState* cached_state) {
   QUICHE_DCHECK_EQ(perspective(), Perspective::IS_CLIENT);
   QUICHE_DCHECK(VersionUsesHttp3(transport_version()));
@@ -1015,8 +999,8 @@ bool QuicSpdySession::ResumeApplicationState(ApplicationState* cached_state) {
   return true;
 }
 
-absl::optional<std::string> QuicSpdySession::OnAlpsData(
-    const uint8_t* alps_data, size_t alps_length) {
+std::optional<std::string> QuicSpdySession::OnAlpsData(const uint8_t* alps_data,
+                                                       size_t alps_length) {
   AlpsFrameDecoder alps_frame_decoder(this);
   HttpDecoder decoder(&alps_frame_decoder);
   decoder.ProcessInput(reinterpret_cast<const char*>(alps_data), alps_length);
@@ -1032,7 +1016,7 @@ absl::optional<std::string> QuicSpdySession::OnAlpsData(
     return "incomplete HTTP/3 frame";
   }
 
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 void QuicSpdySession::OnAcceptChFrameReceivedViaAlps(
@@ -1082,7 +1066,7 @@ bool QuicSpdySession::OnSettingsFrame(const SettingsFrame& frame) {
 
 bool QuicSpdySession::ValidateWebTransportSettingsConsistency() {
   // Only apply the following checks to draft-07 or later.
-  absl::optional<WebTransportHttp3Version> version =
+  std::optional<WebTransportHttp3Version> version =
       NegotiatedWebTransportVersion();
   if (!version.has_value() || *version == WebTransportHttp3Version::kDraft02) {
     return true;
@@ -1114,7 +1098,7 @@ bool QuicSpdySession::ValidateWebTransportSettingsConsistency() {
   return true;
 }
 
-absl::optional<std::string> QuicSpdySession::OnSettingsFrameViaAlps(
+std::optional<std::string> QuicSpdySession::OnSettingsFrameViaAlps(
     const SettingsFrame& frame) {
   QUICHE_DCHECK(VersionUsesHttp3(transport_version()));
 
@@ -1129,7 +1113,7 @@ absl::optional<std::string> QuicSpdySession::OnSettingsFrameViaAlps(
       return "error parsing setting";
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 bool QuicSpdySession::VerifySettingIsZeroOrOne(uint64_t id, uint64_t value) {
@@ -1406,20 +1390,8 @@ void QuicSpdySession::OnHeaders(SpdyStreamId stream_id, bool has_priority,
   }
   QUICHE_DCHECK_EQ(QuicUtils::GetInvalidStreamId(transport_version()),
                    stream_id_);
-  QUICHE_DCHECK_EQ(QuicUtils::GetInvalidStreamId(transport_version()),
-                   promised_stream_id_);
   stream_id_ = stream_id;
   fin_ = fin;
-}
-
-void QuicSpdySession::OnPushPromise(SpdyStreamId stream_id,
-                                    SpdyStreamId promised_stream_id) {
-  QUICHE_DCHECK_EQ(QuicUtils::GetInvalidStreamId(transport_version()),
-                   stream_id_);
-  QUICHE_DCHECK_EQ(QuicUtils::GetInvalidStreamId(transport_version()),
-                   promised_stream_id_);
-  stream_id_ = stream_id;
-  promised_stream_id_ = promised_stream_id;
 }
 
 // TODO (wangyix): Why is SpdyStreamId used instead of QuicStreamId?
@@ -1437,20 +1409,11 @@ void QuicSpdySession::OnPriority(SpdyStreamId stream_id,
 void QuicSpdySession::OnHeaderList(const QuicHeaderList& header_list) {
   QUIC_DVLOG(1) << ENDPOINT << "Received header list for stream " << stream_id_
                 << ": " << header_list.DebugString();
-  // This code path is only executed for push promise in IETF QUIC.
-  if (VersionUsesHttp3(transport_version())) {
-    QUICHE_DCHECK(promised_stream_id_ !=
-                  QuicUtils::GetInvalidStreamId(transport_version()));
-  }
-  if (promised_stream_id_ ==
-      QuicUtils::GetInvalidStreamId(transport_version())) {
-    OnStreamHeaderList(stream_id_, fin_, frame_len_, header_list);
-  } else {
-    OnPromiseHeaderList(stream_id_, promised_stream_id_, frame_len_,
-                        header_list);
-  }
+  QUICHE_DCHECK(!VersionUsesHttp3(transport_version()));
+
+  OnStreamHeaderList(stream_id_, fin_, frame_len_, header_list);
+
   // Reset state for the next frame.
-  promised_stream_id_ = QuicUtils::GetInvalidStreamId(transport_version());
   stream_id_ = QuicUtils::GetInvalidStreamId(transport_version());
   fin_ = false;
   frame_len_ = 0;
@@ -1470,9 +1433,8 @@ bool QuicSpdySession::HasActiveRequestStreams() const {
   return GetNumActiveStreams() + num_draining_streams() > 0;
 }
 
-QuicStream* QuicSpdySession::ProcessPendingStream(PendingStream* pending) {
-  QUICHE_DCHECK(VersionUsesHttp3(transport_version()));
-  QUICHE_DCHECK(connection()->connected());
+QuicStream* QuicSpdySession::ProcessReadUnidirectionalPendingStream(
+    PendingStream* pending) {
   struct iovec iov;
   if (!pending->sequencer()->GetReadableRegion(&iov)) {
     // The first byte hasn't been received yet.
@@ -1637,7 +1599,7 @@ void QuicSpdySession::BeforeConnectionCloseSent() {
     stream_id += QuicUtils::StreamIdDelta(transport_version());
   }
   if (last_sent_http3_goaway_id_.has_value() &&
-      last_sent_http3_goaway_id_.value() <= stream_id) {
+      *last_sent_http3_goaway_id_ <= stream_id) {
     // Do not send GOAWAY frame with a higher id, because it is forbidden.
     // Do not send one with same stream id as before, since frames on the
     // control stream are guaranteed to be processed in order.
@@ -1800,10 +1762,10 @@ bool QuicSpdySession::SupportsWebTransport() {
          NegotiatedWebTransportVersion().has_value() && allow_extended_connect_;
 }
 
-absl::optional<WebTransportHttp3Version>
+std::optional<WebTransportHttp3Version>
 QuicSpdySession::SupportedWebTransportVersion() {
   if (!SupportsWebTransport()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return NegotiatedWebTransportVersion();
 }
@@ -1931,17 +1893,17 @@ QuicSpdyStream* QuicSpdySession::CreateOutgoingBidirectionalWebTransportStream(
 }
 
 void QuicSpdySession::OnDatagramProcessed(
-    absl::optional<MessageStatus> /*status*/) {
+    std::optional<MessageStatus> /*status*/) {
   // TODO(b/184598230): make this work with multiple datagram flows.
 }
 
 void QuicSpdySession::DatagramObserver::OnDatagramProcessed(
-    absl::optional<MessageStatus> status) {
+    std::optional<MessageStatus> status) {
   session_->OnDatagramProcessed(status);
 }
 
 HttpDatagramSupport QuicSpdySession::LocalHttpDatagramSupport() {
-  return HttpDatagramSupport::kNone;
+  return HttpDatagramSupport::kRfc;
 }
 
 std::string HttpDatagramSupportToString(

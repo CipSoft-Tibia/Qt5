@@ -15,8 +15,9 @@
 #include "core/fpdfapi/parser/cpdf_dictionary.h"
 #include "core/fpdfapi/parser/cpdf_document.h"
 #include "core/fpdfapi/parser/cpdf_seekablemultistream.h"
+#include "core/fxcodec/jpeg/jpeg_progressive_decoder.h"
 #include "core/fxcrt/autonuller.h"
-#include "core/fxcrt/fixed_zeroed_data_vector.h"
+#include "core/fxcrt/fixed_size_data_vector.h"
 #include "core/fxcrt/stl_util.h"
 #include "core/fxcrt/xml/cfx_xmldocument.h"
 #include "core/fxcrt/xml/cfx_xmlparser.h"
@@ -39,6 +40,14 @@
 #include "xfa/fxfa/cxfa_ffwidgethandler.h"
 #include "xfa/fxfa/cxfa_fontmgr.h"
 #include "xfa/fxfa/cxfa_readynodeiterator.h"
+
+#ifdef PDF_ENABLE_XFA_BMP
+#include "core/fxcodec/bmp/bmp_progressive_decoder.h"
+#endif
+
+#ifdef PDF_ENABLE_XFA_GIF
+#include "core/fxcodec/gif/gif_progressive_decoder.h"
+#endif
 
 namespace {
 
@@ -94,9 +103,23 @@ RetainPtr<CPDF_SeekableMultiStream> CreateXFAMultiStream(
 void CPDFXFA_ModuleInit() {
   CFGAS_GEModule::Create();
   BC_Library_Init();
+#ifdef PDF_ENABLE_XFA_BMP
+  fxcodec::BmpProgressiveDecoder::InitializeGlobals();
+#endif
+#ifdef PDF_ENABLE_XFA_GIF
+  fxcodec::GifProgressiveDecoder::InitializeGlobals();
+#endif
+  fxcodec::JpegProgressiveDecoder::InitializeGlobals();
 }
 
 void CPDFXFA_ModuleDestroy() {
+  fxcodec::JpegProgressiveDecoder::DestroyGlobals();
+#ifdef PDF_ENABLE_XFA_GIF
+  fxcodec::GifProgressiveDecoder::DestroyGlobals();
+#endif
+#ifdef PDF_ENABLE_XFA_BMP
+  fxcodec::BmpProgressiveDecoder::DestroyGlobals();
+#endif
   BC_Library_Destroy();
   CFGAS_GEModule::Destroy();
 }
@@ -262,8 +285,14 @@ void CPDFXFA_Context::DeletePage(int page_index) {
   // if it's a valid page in the document.
   m_pPDFDoc->DeletePage(page_index);
 
-  if (fxcrt::IndexInBounds(m_XFAPageList, page_index))
-    m_XFAPageList[page_index].Reset();
+  if (fxcrt::IndexInBounds(m_XFAPageList, page_index)) {
+    m_XFAPageList.erase(m_XFAPageList.begin() + page_index);
+    for (int i = page_index; i < fxcrt::CollectionSize<int>(m_XFAPageList); i++) {
+      if (m_XFAPageList[i]) {
+        m_XFAPageList[i]->SetXFAPageViewIndex(i);
+      }
+    }
+  }
 }
 
 bool CPDFXFA_Context::ContainsExtensionForm() const {
@@ -335,17 +364,16 @@ WideString CPDFXFA_Context::Response(const WideString& wsQuestion,
     return WideString();
 
   constexpr int kMaxWideChars = 1024;
-  FixedZeroedDataVector<uint16_t> buffer(kMaxWideChars);
-  pdfium::span<uint16_t> buffer_span = buffer.writable_span();
+  constexpr int kMaxBytes = kMaxWideChars * sizeof(uint16_t);
+  auto buffer = FixedSizeDataVector<uint8_t>::Zeroed(kMaxBytes);
+  pdfium::span<uint8_t> buffer_span = buffer.span();
   int byte_length = m_pFormFillEnv->JS_appResponse(
-      wsQuestion, wsTitle, wsDefaultAnswer, WideString(), bMark,
-      pdfium::as_writable_bytes(buffer_span));
+      wsQuestion, wsTitle, wsDefaultAnswer, WideString(), bMark, buffer_span);
   if (byte_length <= 0)
     return WideString();
 
-  buffer_span = buffer_span.first(
-      std::min<size_t>(kMaxWideChars, byte_length / sizeof(uint16_t)));
-  return WideString::FromUTF16LE(buffer_span.data(), buffer_span.size());
+  buffer_span = buffer_span.first(std::min<size_t>(kMaxBytes, byte_length));
+  return WideString::FromUTF16LE(buffer_span);
 }
 
 RetainPtr<IFX_SeekableReadStream> CPDFXFA_Context::DownloadURL(
@@ -414,8 +442,7 @@ void CPDFXFA_Context::SendPostSaveToXFADoc() {
   CXFA_FFWidgetHandler* pWidgetHandler = pXFADocView->GetWidgetHandler();
   CXFA_ReadyNodeIterator it(pXFADocView->GetRootSubform());
   while (CXFA_Node* pNode = it.MoveToNext()) {
-    CXFA_EventParam preParam;
-    preParam.m_eType = XFA_EVENT_PostSave;
+    CXFA_EventParam preParam(XFA_EVENT_PostSave);
     preParam.m_bTargeted = false;
     pWidgetHandler->ProcessEvent(pNode, &preParam);
   }
@@ -435,8 +462,7 @@ void CPDFXFA_Context::SendPreSaveToXFADoc(
   CXFA_FFWidgetHandler* pWidgetHandler = pXFADocView->GetWidgetHandler();
   CXFA_ReadyNodeIterator it(pXFADocView->GetRootSubform());
   while (CXFA_Node* pNode = it.MoveToNext()) {
-    CXFA_EventParam preParam;
-    preParam.m_eType = XFA_EVENT_PreSave;
+    CXFA_EventParam preParam(XFA_EVENT_PreSave);
     preParam.m_bTargeted = false;
     pWidgetHandler->ProcessEvent(pNode, &preParam);
   }

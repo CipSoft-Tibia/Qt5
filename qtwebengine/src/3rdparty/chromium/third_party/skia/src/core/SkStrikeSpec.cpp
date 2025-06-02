@@ -147,7 +147,7 @@ SkStrikeSpec SkStrikeSpec::MakePDFVector(const SkTypeface& typeface, int* size) 
 
     return SkStrikeSpec(font,
                         SkPaint(),
-                        SkSurfaceProps(0, kUnknown_SkPixelGeometry),
+                        SkSurfaceProps(),
                         SkScalerContextFlags::kFakeGammaAndBoostContrast,
                         SkMatrix::I());
 }
@@ -164,7 +164,7 @@ SkStrikeSpec::SkStrikeSpec(const SkFont& font, const SkPaint& paint,
 
     fMaskFilter = sk_ref_sp(effects.fMaskFilter);
     fPathEffect = sk_ref_sp(effects.fPathEffect);
-    fTypeface = font.refTypefaceOrDefault();
+    fTypeface = font.refTypeface();
 }
 
 sk_sp<sktext::StrikeForGPU> SkStrikeSpec::findOrCreateScopedStrike(

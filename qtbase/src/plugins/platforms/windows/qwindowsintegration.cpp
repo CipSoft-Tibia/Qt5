@@ -105,7 +105,7 @@ struct QWindowsIntegrationPrivate
 #if QT_CONFIG(accessibility)
    QWindowsUiaAccessibility m_accessibility;
 #endif
-    QWindowsServices m_services;
+    mutable QScopedPointer<QWindowsServices> m_services;
 };
 
 template <typename IntType>
@@ -142,8 +142,8 @@ static inline unsigned parseOptions(const QStringList &paramList,
     unsigned options = 0;
     for (const QString &param : paramList) {
         if (param.startsWith(u"fontengine=")) {
-            if (param.endsWith(u"directwrite")) {
-                options |= QWindowsIntegration::FontDatabaseDirectWrite;
+            if (param.endsWith(u"gdi")) {
+                options |= QWindowsIntegration::FontDatabaseGDI;
             } else if (param.endsWith(u"freetype")) {
                 options |= QWindowsIntegration::FontDatabaseFreeType;
             } else if (param.endsWith(u"native")) {
@@ -173,8 +173,6 @@ static inline unsigned parseOptions(const QStringList &paramList,
             options |= QWindowsIntegration::AlwaysUseNativeMenus;
         } else if (param == u"menus=none") {
             options |= QWindowsIntegration::NoNativeMenus;
-        } else if (param == u"nowmpointer") {
-            options |= QWindowsIntegration::DontUseWMPointer;
         } else if (param == u"reverse") {
             options |= QWindowsIntegration::RtlEnabled;
         } else if (param == u"darkmode=0") {
@@ -209,10 +207,7 @@ void QWindowsIntegrationPrivate::parseOptions(QWindowsIntegration *q, const QStr
     if (tabletAbsoluteRange >= 0)
         QWindowsContext::setTabletAbsoluteRange(tabletAbsoluteRange);
 
-    if (m_context.initPointer(m_options))
-        QCoreApplication::setAttribute(Qt::AA_CompressHighFrequencyEvents);
-    else
-        m_context.initTablet();
+    QCoreApplication::setAttribute(Qt::AA_CompressHighFrequencyEvents);
     QWindowSystemInterfacePrivate::TabletEvent::setPlatformSynthesizesMouse(false);
 
     if (!dpiAwarenessSet) { // Set only once in case of repeated instantiations of QGuiApplication.
@@ -256,9 +251,9 @@ QWindowsIntegration::~QWindowsIntegration()
 
 void QWindowsIntegration::initialize()
 {
-    QString icStr = QPlatformInputContextFactory::requested();
-    icStr.isNull() ? d->m_inputContext.reset(new QWindowsInputContext)
-                   : d->m_inputContext.reset(QPlatformInputContextFactory::create(icStr));
+    auto icStrs = QPlatformInputContextFactory::requested();
+    icStrs.isEmpty() ? d->m_inputContext.reset(new QWindowsInputContext)
+                     : d->m_inputContext.reset(QPlatformInputContextFactory::create(icStrs));
 }
 
 bool QWindowsIntegration::hasCapability(QPlatformIntegration::Capability cap) const
@@ -484,17 +479,17 @@ QWindowsStaticOpenGLContext *QWindowsIntegration::staticOpenGLContext()
 QPlatformFontDatabase *QWindowsIntegration::fontDatabase() const
 {
     if (!d->m_fontDatabase) {
-#if QT_CONFIG(directwrite3)
-        if (d->m_options & QWindowsIntegration::FontDatabaseDirectWrite)
-            d->m_fontDatabase = new QWindowsDirectWriteFontDatabase;
-        else
-#endif
 #ifndef QT_NO_FREETYPE
         if (d->m_options & QWindowsIntegration::FontDatabaseFreeType)
             d->m_fontDatabase = new QWindowsFontDatabaseFT;
         else
 #endif // QT_NO_FREETYPE
-        d->m_fontDatabase = new QWindowsFontDatabase();
+#if QT_CONFIG(directwrite3)
+        if (!(d->m_options & (QWindowsIntegration::FontDatabaseGDI | QWindowsIntegration::DontUseDirectWriteFonts)))
+            d->m_fontDatabase = new QWindowsDirectWriteFontDatabase;
+        else
+#endif
+            d->m_fontDatabase = new QWindowsFontDatabase;
     }
     return d->m_fontDatabase;
 }
@@ -603,7 +598,10 @@ QPlatformTheme *QWindowsIntegration::createPlatformTheme(const QString &name) co
 
 QPlatformServices *QWindowsIntegration::services() const
 {
-    return &d->m_services;
+    if (d->m_services.isNull())
+        d->m_services.reset(new QWindowsServices);
+
+    return d->m_services.data();
 }
 
 void QWindowsIntegration::beep() const
@@ -646,7 +644,8 @@ void QWindowsIntegration::setApplicationBadge(qint64 number)
         return;
     }
 
-    const bool isDarkMode = QWindowsContext::isDarkMode();
+    const bool isDarkMode = QWindowsTheme::instance()->colorScheme()
+                         == Qt::ColorScheme::Dark;
 
     QColor badgeColor;
     QColor textColor;

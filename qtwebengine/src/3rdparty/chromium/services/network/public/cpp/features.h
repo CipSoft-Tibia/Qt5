@@ -9,7 +9,6 @@
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/time/time.h"
-#include "build/build_config.h"
 
 namespace network {
 namespace features {
@@ -34,12 +33,12 @@ BASE_DECLARE_FEATURE(kSplitAuthCacheByNetworkIsolationKey);
 COMPONENT_EXPORT(NETWORK_CPP) BASE_DECLARE_FEATURE(kDnsOverHttpsUpgrade);
 COMPONENT_EXPORT(NETWORK_CPP) BASE_DECLARE_FEATURE(kMaskedDomainList);
 COMPONENT_EXPORT(NETWORK_CPP)
+extern const base::FeatureParam<int> kMaskedDomainListExperimentGroup;
+COMPONENT_EXPORT(NETWORK_CPP)
 extern const base::FeatureParam<std::string>
     kMaskedDomainListExperimentalVersion;
 COMPONENT_EXPORT(NETWORK_CPP)
 BASE_DECLARE_FEATURE(kMdnsResponderGeneratedNameListing);
-COMPONENT_EXPORT(NETWORK_CPP)
-BASE_DECLARE_FEATURE(kEnableNetworkServiceResourceBlockList);
 COMPONENT_EXPORT(NETWORK_CPP) BASE_DECLARE_FEATURE(kOpaqueResponseBlockingV02);
 COMPONENT_EXPORT(NETWORK_CPP)
 BASE_DECLARE_FEATURE(kOpaqueResponseBlockingErrorsForAllFetches);
@@ -126,9 +125,6 @@ COMPONENT_EXPORT(NETWORK_CPP)
 extern const base::FeatureParam<bool> kPrefetchDNSWithURLAllAnchorElements;
 
 COMPONENT_EXPORT(NETWORK_CPP)
-BASE_DECLARE_FEATURE(kOutOfProcessSystemDnsResolution);
-
-COMPONENT_EXPORT(NETWORK_CPP)
 BASE_DECLARE_FEATURE(kAccessControlAllowMethodsInCORSPreflightSpecConformant);
 
 // If enabled, then navigation requests should check the match responses in the
@@ -140,33 +136,65 @@ BASE_DECLARE_FEATURE(kAccessControlAllowMethodsInCORSPreflightSpecConformant);
 COMPONENT_EXPORT(NETWORK_CPP)
 BASE_DECLARE_FEATURE(kPrefetchNoVarySearch);
 
+// If this feature param is true, No-Vary-Search will not only be parsed but
+// also respected by default, without needing to be turned on for a document
+// using an origin trial token.
+COMPONENT_EXPORT(NETWORK_CPP)
+extern const base::FeatureParam<bool> kPrefetchNoVarySearchShippedByDefault;
+
 // Enables UMA to track received GetCookiesString IPCs. This feature is enabled
 // by default, it is just here to allow some tests to disable it. These tests
 // make use of TaskEnvironment::FastForward with very long delays (days) which
 // interacts poorly with this metric that is recorded every 30s.
 COMPONENT_EXPORT(NETWORK_CPP) BASE_DECLARE_FEATURE(kGetCookiesStringUma);
 
-#if BUILDFLAG(IS_ANDROID)
-// Create empty network service out of process only if canonical network service
-// is in process to see process overhead on Android.
-COMPONENT_EXPORT(NETWORK_CPP)
-BASE_DECLARE_FEATURE(kNetworkServiceEmptyOutOfProcess);
-#endif
-
 COMPONENT_EXPORT(NETWORK_CPP)
 BASE_DECLARE_FEATURE(kCompressionDictionaryTransportBackend);
+
+enum class CompressionDictionaryTransportBackendVersion {
+  kV1,
+  kV2,
+};
+
+COMPONENT_EXPORT(NETWORK_CPP)
+extern const base::FeatureParam<CompressionDictionaryTransportBackendVersion>
+    kCompressionDictionaryTransportBackendVersion;
+
 COMPONENT_EXPORT(NETWORK_CPP)
 BASE_DECLARE_FEATURE(kCompressionDictionaryTransport);
+COMPONENT_EXPORT(NETWORK_CPP)
+BASE_DECLARE_FEATURE(kCompressionDictionaryTransportOverHttp1);
+COMPONENT_EXPORT(NETWORK_CPP)
+BASE_DECLARE_FEATURE(kCompressionDictionaryTransportRequireKnownRootCert);
 
 // Enables visibility aware network service resource scheduler. When enabled,
 // request may be prioritized or de-prioritized based on the visibility of
 // requestors.
+// TODO(https://crbug.com/1457817): Remove this feature.
 COMPONENT_EXPORT(NETWORK_CPP)
 BASE_DECLARE_FEATURE(kVisibilityAwareResourceScheduler);
 
 // Enables Compression Dictionary Transport with Zstandard (aka Shared Zstd).
 COMPONENT_EXPORT(NETWORK_CPP)
 BASE_DECLARE_FEATURE(kSharedZstd);
+
+// Enables de-duping of cookie access details sent to observers.
+COMPONENT_EXPORT(NETWORK_CPP)
+BASE_DECLARE_FEATURE(kCookieAccessDetailsNotificationDeDuping);
+
+COMPONENT_EXPORT(NETWORK_CPP)
+BASE_DECLARE_FEATURE(kReduceTransferSizeUpdatedIPC);
+
+COMPONENT_EXPORT(NETWORK_CPP)
+BASE_DECLARE_FEATURE(kSkipTpcdMitigationsForAds);
+COMPONENT_EXPORT(NETWORK_CPP)
+extern const base::FeatureParam<bool> kSkipTpcdMitigationsForAdsHeuristics;
+COMPONENT_EXPORT(NETWORK_CPP)
+extern const base::FeatureParam<bool> kSkipTpcdMitigationsForAdsMetadata;
+COMPONENT_EXPORT(NETWORK_CPP)
+extern const base::FeatureParam<bool> kSkipTpcdMitigationsForAdsTrial;
+COMPONENT_EXPORT(NETWORK_CPP)
+extern const base::FeatureParam<bool> kSkipTpcdMitigationsForAdsTopLevelTrial;
 
 }  // namespace features
 }  // namespace network

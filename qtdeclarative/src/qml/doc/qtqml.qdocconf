@@ -15,14 +15,11 @@ qhp.QtQml.virtualFolder       = qtqml
 qhp.QtQml.indexTitle          = Qt Qml
 qhp.QtQml.indexRoot           =
 
-qhp.QtQml.subprojects         = qmltypes classes examples
+qhp.QtQml.subprojects         = qmltypes classes
 qhp.QtQml.subprojects.classes.title = C++ Classes
 qhp.QtQml.subprojects.classes.indexTitle = Qt Qml C++ Classes
 qhp.QtQml.subprojects.classes.selectors = class headerfile
 qhp.QtQml.subprojects.classes.sortPages = true
-qhp.QtQml.subprojects.examples.title = Examples
-qhp.QtQml.subprojects.examples.indexTitle = Qt Qml Examples
-qhp.QtQml.subprojects.examples.selectors = example
 qhp.QtQml.subprojects.qmltypes.title = QML Types
 qhp.QtQml.subprojects.qmltypes.indexTitle = Qt Qml QML Types
 qhp.QtQml.subprojects.qmltypes.selectors = qmlclass
@@ -43,11 +40,13 @@ depends += \
     qtwidgets \
     qtquickcontrols \
     qmake \
+    qtsvg \
     qtcmake
 
 headerdirs  += ..
 
-sourcedirs  += ..
+sourcedirs  += .. \
+               ../../qmlmeta
 
 exampledirs += ../../../examples/qml \
                ../ \
@@ -77,4 +76,4 @@ spurious += "C\\+\\+ class .*\\\\instantiates .*"
 # Enforce zero documentation warnings
 warninglimit = 0
 
-macro.qmllintwarningcategory = "This warning category is spelled \c{[\1]} by qmllint."
+macro.qmllintwarningcategory = "This warning category is spelled \\c{[\1]} by qmllint."

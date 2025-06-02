@@ -592,6 +592,20 @@ Tool variables
         (See --export-rust-project). It enables such metadata to include
         information about the Rust standard library.
 
+    dynamic_link_switch
+        Valid for: Rust tools which link
+
+        A switch to be optionally inserted into linker command lines
+        to indicate that subsequent items may be dynamically linked.
+        For ld-like linkers, -Clink-arg=-Bdynamic may be a good choice.
+        This switch is inserted by gn into rustc command lines before
+        listing any non-Rust dependencies. This may be necessary because
+        sometimes rustc puts the linker into a mode where it would otherwise
+        link against static libraries by default. This flag will be
+        inserted into the {{rustdeps}} variable at the appropriate place;
+        {{ldflags}} can't be used for the same purpose because the flags
+        may not be inserted at the desired place in the command line.
+
 )"  // String break to prevent overflowing the 16K max VC string length.
     R"(Expansions for tool variables
 
@@ -797,6 +811,10 @@ Tool variables
     {{xcasset_compiler_flags}}
         Expands to the list of flags specified in corresponding
         create_bundle target.
+
+  The inputs for compile_xcassets tool will be found from the bundle_data
+  dependencies by looking for any file matching "*/*.xcassets/*" pattern.
+  The "$assets.xcassets" directory will be added as input to the tool.
 
   The Swift tool has multiple input and outputs. It must have exactly one
   output of .swiftmodule type, but can have one or more object file outputs,

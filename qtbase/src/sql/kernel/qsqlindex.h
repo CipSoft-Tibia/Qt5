@@ -7,13 +7,19 @@
 #include <QtSql/qtsqlglobal.h>
 #include <QtSql/qsqlrecord.h>
 #include <QtCore/qlist.h>
+#include <QtCore/qmetaobject.h>
 #include <QtCore/qstring.h>
 
+// clazy:excludeall=qproperty-without-notify
 QT_BEGIN_NAMESPACE
 
 
 class Q_SQL_EXPORT QSqlIndex : public QSqlRecord
 {
+    Q_GADGET
+    Q_PROPERTY(QString name READ name WRITE setName)
+    Q_PROPERTY(QString cursorName READ cursorName WRITE setCursorName)
+
 public:
     explicit QSqlIndex(const QString &cursorName = QString(), const QString &name = QString());
     QSqlIndex(const QSqlIndex &other);
@@ -27,7 +33,7 @@ public:
         cursor.swap(other.cursor);
         nm.swap(other.nm);
         sorts.swap(other.sorts);
-    };
+    }
 
     void setCursorName(const QString &cursorName);
     inline QString cursorName() const { return cursor; }

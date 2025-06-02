@@ -11,13 +11,13 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
+#include "third_party/blink/renderer/core/layout/inline/fragment_item.h"
 #include "third_party/blink/renderer/core/layout/layout_block_flow.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_shift_tracker.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
-#include "third_party/blink/renderer/core/layout/ng/inline/ng_fragment_item.h"
-#include "third_party/blink/renderer/core/layout/ng/legacy_layout_tree_walking.h"
-#include "third_party/blink/renderer/core/layout/ng/ng_physical_box_fragment.h"
+#include "third_party/blink/renderer/core/layout/legacy_layout_tree_walking.h"
+#include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/mobile_metrics/mobile_friendliness_checker.h"
 #include "third_party/blink/renderer/core/page/link_highlight.h"
 #include "third_party/blink/renderer/core/page/page.h"
@@ -136,9 +136,9 @@ void PaintInvalidator::UpdateLayoutShiftTracking(
   DCHECK(object.IsBox());
   const auto& box = To<LayoutBox>(object);
 
-  PhysicalRect new_rect = box.PhysicalVisualOverflowRectAllowingUnset();
+  PhysicalRect new_rect = box.VisualOverflowRectAllowingUnset();
   new_rect.Move(new_paint_offset);
-  PhysicalRect old_rect = box.PreviousPhysicalVisualOverflowRect();
+  PhysicalRect old_rect = box.PreviousVisualOverflowRect();
   old_rect.Move(adjusted_old_paint_offset);
 
   // TODO(crbug.com/1178618): We may want to do better than this. For now, just
@@ -202,7 +202,7 @@ void PaintInvalidator::UpdateLayoutShiftTracking(
 
 bool PaintInvalidator::InvalidatePaint(
     const LayoutObject& object,
-    const NGPrePaintInfo* pre_paint_info,
+    const PrePaintInfo* pre_paint_info,
     const PaintPropertyTreeBuilderContext* tree_builder_context,
     PaintInvalidatorContext& context) {
   TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("blink.invalidation"),
@@ -257,6 +257,11 @@ bool PaintInvalidator::InvalidatePaint(
         tree_builder_context->fragment_context;
     UpdateFromTreeBuilderContext(fragment_tree_builder_context, context);
     UpdateLayoutShiftTracking(object, fragment_tree_builder_context, context);
+    if (RuntimeEnabledFeatures::IntersectionOptimizationEnabled() &&
+        object.ShouldCheckLayoutForPaintInvalidation()) {
+      object.GetMutableForPainting()
+          .InvalidateIntersectionObserverCachedRects();
+    }
   } else {
     context.old_paint_offset = context.fragment_data->PaintOffset();
   }

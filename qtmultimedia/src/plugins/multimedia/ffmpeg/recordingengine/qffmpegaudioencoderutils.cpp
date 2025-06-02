@@ -8,7 +8,7 @@ QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 
-AVSampleFormat adjustSampleFormat(const AVSampleFormat *supportedFormats, AVSampleFormat requested)
+AVSampleFormat adjustSampleFormat(QSpan<const AVSampleFormat> supportedFormats, AVSampleFormat requested)
 {
     auto calcScore = [requested](AVSampleFormat format) {
         if (format == requested)
@@ -26,11 +26,11 @@ AVSampleFormat adjustSampleFormat(const AVSampleFormat *supportedFormats, AVSamp
         return DefaultAVScore - (bpsRequested - bps) - 1000000;
     };
 
-    const auto result = findBestAVFormat(supportedFormats, calcScore).first;
-    return result == AV_SAMPLE_FMT_NONE ? requested : result;
+    const auto result = findBestAVValue(supportedFormats, calcScore);
+    return result.value_or(requested);
 }
 
-int adjustSampleRate(const int *supportedRates, int requested)
+int adjustSampleRate(QSpan<const int> supportedRates, int requested)
 {
     auto calcScore = [requested](int rate) {
         if (requested == rate)
@@ -44,8 +44,8 @@ int adjustSampleRate(const int *supportedRates, int requested)
         return DefaultAVScore - (requested - rate) - 1000000;
     };
 
-    const auto result = findBestAVValue(supportedRates, calcScore).first;
-    return result == 0 ? requested : result;
+    const auto result = findBestAVValue(supportedRates, calcScore);
+    return result.value_or(requested);
 }
 
 static AVScore calculateScoreByChannelsCount(int supportedChannelsNumber,
@@ -68,25 +68,11 @@ static AVScore calculateScoreByChannelsMask(int supportedChannelsNumber, uint64_
     return calculateScoreByChannelsCount(supportedChannelsNumber, requestedChannelsNumber);
 }
 
-#if QT_FFMPEG_OLD_CHANNEL_LAYOUT
-
-uint64_t adjustChannelLayout(const uint64_t *supportedMasks, uint64_t requested)
+ChannelLayoutT adjustChannelLayout(QSpan<const ChannelLayoutT> supportedLayouts,
+                                   const ChannelLayoutT &requested)
 {
-    auto calcScore = [requested](uint64_t mask) {
-        return calculateScoreByChannelsMask(qPopulationCount(mask), mask,
-                                            qPopulationCount(requested), requested);
-    };
-
-    const auto result = findBestAVValue(supportedMasks, calcScore).first;
-    return result == 0 ? requested : result;
-}
-
-#else
-
-AVChannelLayout adjustChannelLayout(const AVChannelLayout *supportedLayouts,
-                                    const AVChannelLayout &requested)
-{
-    auto calcScore = [&requested](const AVChannelLayout &layout) {
+#if QT_FFMPEG_HAS_AV_CHANNEL_LAYOUT
+    auto calcScore = [&requested](const ChannelLayoutT &layout) {
         if (layout == requested)
             return BestAVScore;
 
@@ -105,10 +91,17 @@ AVChannelLayout adjustChannelLayout(const AVChannelLayout *supportedLayouts,
     };
 
     const auto result = findBestAVValue(supportedLayouts, calcScore);
-    return result.second == NotSuitableAVScore ? requested : result.first;
-}
+    return result.value_or(requested);
+#else
+    auto calcScore = [requested](ChannelLayoutT mask) {
+        return calculateScoreByChannelsMask(qPopulationCount(mask), mask,
+                                            qPopulationCount(requested), requested);
+    };
 
+    const auto result = findBestAVValue(supportedLayouts, calcScore);
+    return result.value_or(requested);
 #endif
+}
 
 } // namespace QFFmpeg
 

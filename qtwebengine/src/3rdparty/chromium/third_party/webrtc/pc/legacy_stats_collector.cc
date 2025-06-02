@@ -358,9 +358,8 @@ void ExtractStats(const cricket::VideoReceiverInfo& info,
   report->AddInt64(StatsReport::kStatsValueNameInterframeDelayMaxMs,
                    info.interframe_delay_max_ms);
 
-  report->AddString(
-      StatsReport::kStatsValueNameContentType,
-      webrtc::videocontenttypehelpers::ToString(info.content_type));
+  report->AddString(StatsReport::kStatsValueNameContentType,
+                    videocontenttypehelpers::ToString(info.content_type));
 }
 
 void ExtractStats(const cricket::VideoSenderInfo& info,
@@ -405,9 +404,8 @@ void ExtractStats(const cricket::VideoSenderInfo& info,
   for (const auto& i : ints)
     report->AddInt(i.name, i.value);
   report->AddString(StatsReport::kStatsValueNameMediaType, "video");
-  report->AddString(
-      StatsReport::kStatsValueNameContentType,
-      webrtc::videocontenttypehelpers::ToString(info.content_type));
+  report->AddString(StatsReport::kStatsValueNameContentType,
+                    videocontenttypehelpers::ToString(info.content_type));
 }
 
 void ExtractStats(const cricket::BandwidthEstimationInfo& info,
@@ -498,17 +496,17 @@ void ExtractStatsFromList(
 
 }  // namespace
 
-const char* IceCandidateTypeToStatsType(const std::string& candidate_type) {
-  if (candidate_type == cricket::LOCAL_PORT_TYPE) {
+const char* IceCandidateTypeToStatsType(const cricket::Candidate& candidate) {
+  if (candidate.is_local()) {
     return STATSREPORT_LOCAL_PORT_TYPE;
   }
-  if (candidate_type == cricket::STUN_PORT_TYPE) {
+  if (candidate.is_stun()) {
     return STATSREPORT_STUN_PORT_TYPE;
   }
-  if (candidate_type == cricket::PRFLX_PORT_TYPE) {
+  if (candidate.is_prflx()) {
     return STATSREPORT_PRFLX_PORT_TYPE;
   }
-  if (candidate_type == cricket::RELAY_PORT_TYPE) {
+  if (candidate.is_relay()) {
     return STATSREPORT_RELAY_PORT_TYPE;
   }
   RTC_DCHECK_NOTREACHED();
@@ -846,7 +844,7 @@ StatsReport* LegacyStatsCollector::AddCandidateReport(
     report->AddInt(StatsReport::kStatsValueNameCandidatePriority,
                    candidate.priority());
     report->AddString(StatsReport::kStatsValueNameCandidateType,
-                      IceCandidateTypeToStatsType(candidate.type()));
+                      IceCandidateTypeToStatsType(candidate));
     report->AddString(StatsReport::kStatsValueNameCandidateTransportType,
                       candidate.protocol());
   }
@@ -1046,7 +1044,7 @@ void LegacyStatsCollector::ExtractBweInfo() {
   if (pc_->signaling_state() == PeerConnectionInterface::kClosed)
     return;
 
-  webrtc::Call::Stats call_stats = pc_->GetCallStats();
+  Call::Stats call_stats = pc_->GetCallStats();
   cricket::BandwidthEstimationInfo bwe_info;
   bwe_info.available_send_bandwidth = call_stats.send_bandwidth_bps;
   bwe_info.available_recv_bandwidth = call_stats.recv_bandwidth_bps;

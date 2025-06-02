@@ -23,8 +23,8 @@
 #include "components/password_manager/core/browser/affiliation/affiliation_fetch_throttler.h"
 #include "components/password_manager/core/browser/affiliation/affiliation_fetcher_factory_impl.h"
 #include "components/password_manager/core/browser/affiliation/affiliation_fetcher_interface.h"
+#include "components/password_manager/core/browser/affiliation/affiliation_utils.h"
 #include "components/password_manager/core/browser/affiliation/facet_manager.h"
-#include "components/password_manager/core/browser/password_manager_util.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 
 namespace password_manager {
@@ -174,29 +174,17 @@ void AffiliationBackend::TrimUnusedCache(std::vector<FacetURI> facet_uris) {
 std::vector<GroupedFacets> AffiliationBackend::GetGroupingInfo(
     std::vector<FacetURI> facet_uris) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  std::vector<GroupedFacets> cache = cache_->GetAllGroups();
-  std::map<std::string, size_t> facet_to_group_id;
-  for (size_t i = 0; i < cache.size(); i++) {
-    for (const auto& facet : cache[i].facets) {
-      facet_to_group_id[facet.uri.potentially_invalid_spec()] = i;
-    }
-  }
-  base::flat_set<FacetURI> unique_facets(std::move(facet_uris));
-  std::set<int> added_groups;
+  std::unordered_set<std::string> facets_in_response;
   std::vector<GroupedFacets> result;
 
-  for (FacetURI& facet : unique_facets) {
-    auto it = facet_to_group_id.find(facet.potentially_invalid_spec());
-    // Add a new group with single facet if there is no matching facet in cache.
-    if (it == facet_to_group_id.end()) {
-      GroupedFacets new_group;
-      new_group.facets.emplace_back(std::move(facet));
-      result.push_back(std::move(new_group));
+  for (FacetURI& facet : facet_uris) {
+    // If facet is already in response, nothing else to do.
+    if (facets_in_response.contains(facet.potentially_invalid_spec())) {
       continue;
     }
-    // If group was added before there is nothing to do.
-    if (added_groups.insert(it->second).second) {
-      result.push_back(std::move(cache[it->second]));
+    result.push_back(cache_->GetGroup(facet));
+    for (const auto& response : result.back().facets) {
+      facets_in_response.insert(response.uri.potentially_invalid_spec());
     }
   }
   return result;
@@ -248,6 +236,11 @@ void AffiliationBackend::DeleteCache(const base::FilePath& db_path) {
 void AffiliationBackend::SetFetcherFactoryForTesting(
     std::unique_ptr<AffiliationFetcherFactory> fetcher_factory) {
   fetcher_factory_ = std::move(fetcher_factory);
+}
+
+AffiliationDatabase& AffiliationBackend::GetAffiliationDatabaseForTesting() {
+  CHECK(cache_.get());
+  return *cache_.get();
 }
 
 FacetManager* AffiliationBackend::GetOrCreateFacetManager(
@@ -323,8 +316,7 @@ void AffiliationBackend::OnFetchSucceeded(
   }
 
   auto psl_extensions = base::MakeFlatSet<std::string>(result->psl_extensions);
-  result->groupings = password_manager_util::MergeRelatedGroups(
-      psl_extensions, result->groupings);
+  result->groupings = MergeRelatedGroups(psl_extensions, result->groupings);
   std::map<std::string, const GroupedFacets*> map_facet_to_group;
   for (const GroupedFacets& grouped_facets : result->groupings) {
     for (const Facet& facet : grouped_facets.facets) {

@@ -10,7 +10,19 @@
 
 QT_BEGIN_NAMESPACE
 
-//TODO: Move docs (and inheritence) to real base when docs can propagate. Currently this pretends to be the base class!
+/*!
+    \qmltype Affector
+    \nativetype QQuickCustomAffector
+    \inqmlmodule QtQuick.Particles
+    \brief Applies alterations to the attributes of logical particles at any
+    point in their lifetime.
+    \inherits ParticleAffector
+    \ingroup qtquick-particles
+
+    Custom Affector manipulates the properties of the particles directly in
+    JavaScript.
+*/
+
 /*!
     \qmlsignal QtQuick.Particles::Affector::affectParticles(Array particles, real dt)
 

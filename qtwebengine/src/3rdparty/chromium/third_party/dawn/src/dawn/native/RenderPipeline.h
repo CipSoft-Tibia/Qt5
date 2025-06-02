@@ -1,16 +1,29 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_RENDERPIPELINE_H_
 #define SRC_DAWN_NATIVE_RENDERPIPELINE_H_
@@ -20,7 +33,6 @@
 #include <vector>
 
 #include "dawn/common/ContentLessObjectCacheable.h"
-#include "dawn/common/TypedInteger.h"
 #include "dawn/native/AttachmentState.h"
 #include "dawn/native/Forward.h"
 #include "dawn/native/IntegerTypes.h"
@@ -29,6 +41,21 @@
 #include "dawn/native/dawn_platform.h"
 
 namespace dawn::native {
+
+enum class VertexFormatBaseType {
+    Float,
+    Uint,
+    Sint,
+};
+
+struct VertexFormatInfo {
+    wgpu::VertexFormat format;
+    uint32_t byteSize;
+    uint32_t componentCount;
+    VertexFormatBaseType baseType;
+};
+
+const VertexFormatInfo& GetVertexFormatInfo(wgpu::VertexFormat format);
 
 class DeviceBase;
 
@@ -64,21 +91,18 @@ struct VertexBufferInfo {
 class RenderPipelineBase : public PipelineBase,
                            public ContentLessObjectCacheable<RenderPipelineBase> {
   public:
-    RenderPipelineBase(DeviceBase* device, const RenderPipelineDescriptor* descriptor);
+    RenderPipelineBase(DeviceBase* device, const UnpackedPtr<RenderPipelineDescriptor>& descriptor);
     ~RenderPipelineBase() override;
 
-    static RenderPipelineBase* MakeError(DeviceBase* device, const char* label);
+    static Ref<RenderPipelineBase> MakeError(DeviceBase* device, const char* label);
 
     ObjectType GetType() const override;
 
-    const ityp::bitset<VertexAttributeLocation, kMaxVertexAttributes>& GetAttributeLocationsUsed()
-        const;
+    const VertexAttributeMask& GetAttributeLocationsUsed() const;
     const VertexAttributeInfo& GetAttribute(VertexAttributeLocation location) const;
-    const ityp::bitset<VertexBufferSlot, kMaxVertexBuffers>& GetVertexBufferSlotsUsed() const;
-    const ityp::bitset<VertexBufferSlot, kMaxVertexBuffers>&
-    GetVertexBufferSlotsUsedAsVertexBuffer() const;
-    const ityp::bitset<VertexBufferSlot, kMaxVertexBuffers>&
-    GetVertexBufferSlotsUsedAsInstanceBuffer() const;
+    const VertexBufferMask& GetVertexBuffersUsed() const;
+    const VertexBufferMask& GetVertexBuffersUsedAsVertexBuffer() const;
+    const VertexBufferMask& GetVertexBuffersUsedAsInstanceBuffer() const;
     const VertexBufferInfo& GetVertexBuffer(VertexBufferSlot slot) const;
     uint32_t GetVertexBufferCount() const;
 
@@ -94,7 +118,7 @@ class RenderPipelineBase : public PipelineBase,
     float GetDepthBiasClamp() const;
     bool HasUnclippedDepth() const;
 
-    ityp::bitset<ColorAttachmentIndex, kMaxColorAttachments> GetColorAttachmentsMask() const;
+    ColorAttachmentMask GetColorAttachmentsMask() const;
     bool HasDepthStencilAttachment() const;
     wgpu::TextureFormat GetColorAttachmentFormat(ColorAttachmentIndex attachment) const;
     wgpu::TextureFormat GetDepthStencilFormat() const;
@@ -114,6 +138,8 @@ class RenderPipelineBase : public PipelineBase,
         bool operator()(const RenderPipelineBase* a, const RenderPipelineBase* b) const;
     };
 
+    static constexpr wgpu::TextureFormat kImplicitPLSSlotFormat = wgpu::TextureFormat::R32Uint;
+
   protected:
     void DestroyImpl() override;
 
@@ -122,17 +148,17 @@ class RenderPipelineBase : public PipelineBase,
 
     // Vertex state
     uint32_t mVertexBufferCount;
-    ityp::bitset<VertexAttributeLocation, kMaxVertexAttributes> mAttributeLocationsUsed;
-    ityp::array<VertexAttributeLocation, VertexAttributeInfo, kMaxVertexAttributes> mAttributeInfos;
-    ityp::bitset<VertexBufferSlot, kMaxVertexBuffers> mVertexBufferSlotsUsed;
-    ityp::bitset<VertexBufferSlot, kMaxVertexBuffers> mVertexBufferSlotsUsedAsVertexBuffer;
-    ityp::bitset<VertexBufferSlot, kMaxVertexBuffers> mVertexBufferSlotsUsedAsInstanceBuffer;
-    ityp::array<VertexBufferSlot, VertexBufferInfo, kMaxVertexBuffers> mVertexBufferInfos;
+    VertexAttributeMask mAttributeLocationsUsed;
+    PerVertexAttribute<VertexAttributeInfo> mAttributeInfos;
+    VertexBufferMask mVertexBuffersUsed;
+    VertexBufferMask mVertexBuffersUsedAsVertexBuffer;
+    VertexBufferMask mVertexBuffersUsedAsInstanceBuffer;
+    PerVertexBuffer<VertexBufferInfo> mVertexBufferInfos;
 
     // Attachments
     Ref<AttachmentState> mAttachmentState;
-    ityp::array<ColorAttachmentIndex, ColorTargetState, kMaxColorAttachments> mTargets;
-    ityp::array<ColorAttachmentIndex, BlendState, kMaxColorAttachments> mTargetBlend;
+    PerColorAttachment<ColorTargetState> mTargets;
+    PerColorAttachment<BlendState> mTargetBlend;
 
     // Other state
     PrimitiveState mPrimitive;

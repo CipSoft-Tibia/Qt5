@@ -15,7 +15,7 @@
 #include "libANGLE/Context.h"
 #include "libANGLE/Program.h"
 #include "libANGLE/angletypes.h"
-#include "libANGLE/renderer/GLImplFactory.h"
+#include "libANGLE/renderer/ContextImpl.h"
 #include "libANGLE/renderer/ProgramPipelineImpl.h"
 
 namespace gl
@@ -33,7 +33,7 @@ ProgramPipelineState::ProgramPipelineState(rx::GLImplFactory *factory)
       mExecutable(new ProgramExecutable(factory, &mInfoLog)),
       mIsLinked(false)
 {
-    for (const ShaderType shaderType : gl::AllShaderTypes())
+    for (const ShaderType shaderType : AllShaderTypes())
     {
         mPrograms[shaderType] = nullptr;
     }
@@ -54,7 +54,8 @@ void ProgramPipelineState::activeShaderProgram(Program *shaderProgram)
 void ProgramPipelineState::useProgramStage(const Context *context,
                                            const ShaderType shaderType,
                                            Program *shaderProgram,
-                                           angle::ObserverBinding *programObserverBindings)
+                                           angle::ObserverBinding *programObserverBinding,
+                                           angle::ObserverBinding *programExecutableObserverBinding)
 {
     Program *oldProgram = mPrograms[shaderType];
     if (oldProgram)
@@ -69,6 +70,12 @@ void ProgramPipelineState::useProgramStage(const Context *context,
         shaderProgram->getExecutable().hasLinkedShaderStage(shaderType))
     {
         mPrograms[shaderType] = shaderProgram;
+        // Install the program executable, if not already
+        if (shaderProgram->getSharedExecutable().get() != mProgramExecutables[shaderType].get())
+        {
+            InstallExecutable(context, shaderProgram->getSharedExecutable(),
+                              &mProgramExecutables[shaderType]);
+        }
         shaderProgram->addRef();
     }
     else
@@ -77,22 +84,25 @@ void ProgramPipelineState::useProgramStage(const Context *context,
         // given stage, it is as if the pipeline object has no programmable stage configured for the
         // indicated shader stage.
         mPrograms[shaderType] = nullptr;
+        UninstallExecutable(context, &mProgramExecutables[shaderType]);
     }
 
-    Program *program = mPrograms[shaderType];
-    programObserverBindings->bind(program);
+    programObserverBinding->bind(mPrograms[shaderType]);
+    programExecutableObserverBinding->bind(mProgramExecutables[shaderType].get());
 }
 
 void ProgramPipelineState::useProgramStages(
     const Context *context,
-    const gl::ShaderBitSet &shaderTypes,
+    const ShaderBitSet &shaderTypes,
     Program *shaderProgram,
-    std::vector<angle::ObserverBinding> *programObserverBindings)
+    std::vector<angle::ObserverBinding> *programObserverBindings,
+    std::vector<angle::ObserverBinding> *programExecutableObserverBindings)
 {
     for (ShaderType shaderType : shaderTypes)
     {
         useProgramStage(context, shaderType, shaderProgram,
-                        &programObserverBindings->at(static_cast<size_t>(shaderType)));
+                        &programObserverBindings->at(static_cast<size_t>(shaderType)),
+                        &programExecutableObserverBindings->at(static_cast<size_t>(shaderType)));
     }
 }
 
@@ -113,14 +123,14 @@ void ProgramPipelineState::updateExecutableTextures()
 {
     for (const ShaderType shaderType : mExecutable->getLinkedShaderStages())
     {
-        const Program *program = getShaderProgram(shaderType);
-        ASSERT(program);
+        const SharedProgramExecutable &programExecutable = getShaderProgramExecutable(shaderType);
+        ASSERT(programExecutable);
         mExecutable->setActiveTextureMask(mExecutable->getActiveSamplersMask() |
-                                          program->getExecutable().getActiveSamplersMask());
+                                          programExecutable->getActiveSamplersMask());
         mExecutable->setActiveImagesMask(mExecutable->getActiveImagesMask() |
-                                         program->getExecutable().getActiveImagesMask());
+                                         programExecutable->getActiveImagesMask());
         // Updates mActiveSamplerRefCounts, mActiveSamplerTypes, and mActiveSamplerFormats
-        mExecutable->updateActiveSamplers(program->getState());
+        mExecutable->updateActiveSamplers(*programExecutable);
     }
 }
 
@@ -129,11 +139,11 @@ void ProgramPipelineState::updateExecutableSpecConstUsageBits()
     rx::SpecConstUsageBits specConstUsageBits;
     for (const ShaderType shaderType : mExecutable->getLinkedShaderStages())
     {
-        const Program *program = getShaderProgram(shaderType);
-        ASSERT(program);
-        specConstUsageBits |= program->getState().getSpecConstUsageBits();
+        const SharedProgramExecutable &programExecutable = getShaderProgramExecutable(shaderType);
+        ASSERT(programExecutable);
+        specConstUsageBits |= programExecutable->getSpecConstUsageBits();
     }
-    mExecutable->mPODStruct.specConstUsageBits = specConstUsageBits;
+    mExecutable->mPod.specConstUsageBits = specConstUsageBits;
 }
 
 ProgramPipeline::ProgramPipeline(rx::GLImplFactory *factory, ProgramPipelineID handle)
@@ -144,9 +154,11 @@ ProgramPipeline::ProgramPipeline(rx::GLImplFactory *factory, ProgramPipelineID h
 {
     ASSERT(mProgramPipelineImpl);
 
-    for (const ShaderType shaderType : gl::AllShaderTypes())
+    for (const ShaderType shaderType : AllShaderTypes())
     {
         mProgramObserverBindings.emplace_back(this, static_cast<angle::SubjectIndex>(shaderType));
+        mProgramExecutableObserverBindings.emplace_back(
+            this, static_cast<angle::SubjectIndex>(shaderType));
     }
     mExecutableObserverBinding.bind(mState.mExecutable.get());
 }
@@ -168,7 +180,26 @@ void ProgramPipeline::onDestroy(const Context *context)
     }
 
     getImplementation()->destroy(context);
-    mState.mExecutable->destroy(context);
+    UninstallExecutable(context, &mState.mExecutable);
+
+    for (SharedProgramExecutable &executable : mState.mProgramExecutables)
+    {
+        if (executable)
+        {
+            mState.mProgramExecutablesToDiscard.emplace_back(std::move(executable));
+        }
+    }
+
+    mState.destroyDiscardedExecutables(context);
+}
+
+void ProgramPipelineState::destroyDiscardedExecutables(const Context *context)
+{
+    for (SharedProgramExecutable &executable : mProgramExecutablesToDiscard)
+    {
+        UninstallExecutable(context, &executable);
+    }
+    mProgramExecutablesToDiscard.clear();
 }
 
 angle::Result ProgramPipeline::setLabel(const Context *context, const std::string &label)
@@ -202,7 +233,7 @@ angle::Result ProgramPipeline::useProgramStages(const Context *context,
                                                 Program *shaderProgram)
 {
     bool needToUpdatePipelineState = false;
-    gl::ShaderBitSet shaderTypes;
+    ShaderBitSet shaderTypes;
     if (stages != GL_ALL_SHADER_BITS)
     {
         ASSERT(stages < 256u);
@@ -223,7 +254,9 @@ angle::Result ProgramPipeline::useProgramStages(const Context *context,
     for (ShaderType shaderType : shaderTypes)
     {
         if (mState.getShaderProgram(shaderType) != shaderProgram ||
-            (shaderProgram && shaderProgram->hasAnyDirtyBit()))
+            (shaderProgram &&
+             getShaderProgramExecutable(shaderType) != shaderProgram->getSharedExecutable()) ||
+            (shaderProgram && shaderProgram->getExecutable().hasAnyDirtyBit()))
         {
             needToUpdatePipelineState = true;
             break;
@@ -235,11 +268,11 @@ angle::Result ProgramPipeline::useProgramStages(const Context *context,
         return angle::Result::Continue;
     }
 
-    mState.useProgramStages(context, shaderTypes, shaderProgram, &mProgramObserverBindings);
-    updateLinkedShaderStages();
+    mState.useProgramStages(context, shaderTypes, shaderProgram, &mProgramObserverBindings,
+                            &mProgramExecutableObserverBindings);
 
     mState.mIsLinked = false;
-    onStateChange(angle::SubjectMessage::SubjectChanged);
+    onStateChange(angle::SubjectMessage::ProgramUnlinked);
 
     return angle::Result::Continue;
 }
@@ -248,10 +281,9 @@ void ProgramPipeline::updateLinkedShaderStages()
 {
     mState.mExecutable->resetLinkedShaderStages();
 
-    for (const ShaderType shaderType : gl::AllShaderTypes())
+    for (const ShaderType shaderType : AllShaderTypes())
     {
-        Program *program = mState.mPrograms[shaderType];
-        if (program)
+        if (getShaderProgramExecutable(shaderType))
         {
             mState.mExecutable->setLinkedShaderStages(shaderType);
         }
@@ -262,48 +294,45 @@ void ProgramPipeline::updateLinkedShaderStages()
 
 void ProgramPipeline::updateExecutableAttributes()
 {
-    Program *vertexProgram = getShaderProgram(gl::ShaderType::Vertex);
+    const SharedProgramExecutable &vertexExecutable =
+        getShaderProgramExecutable(ShaderType::Vertex);
 
-    if (!vertexProgram)
+    if (!vertexExecutable)
     {
         return;
     }
 
-    const ProgramExecutable &vertexExecutable = vertexProgram->getExecutable();
-    mState.mExecutable->mPODStruct.activeAttribLocationsMask =
-        vertexExecutable.mPODStruct.activeAttribLocationsMask;
-    mState.mExecutable->mPODStruct.maxActiveAttribLocation =
-        vertexExecutable.mPODStruct.maxActiveAttribLocation;
-    mState.mExecutable->mPODStruct.attributesTypeMask =
-        vertexExecutable.mPODStruct.attributesTypeMask;
-    mState.mExecutable->mPODStruct.attributesMask = vertexExecutable.mPODStruct.attributesMask;
-    mState.mExecutable->mProgramInputs            = vertexExecutable.mProgramInputs;
+    mState.mExecutable->mPod.activeAttribLocationsMask =
+        vertexExecutable->mPod.activeAttribLocationsMask;
+    mState.mExecutable->mPod.maxActiveAttribLocation =
+        vertexExecutable->mPod.maxActiveAttribLocation;
+    mState.mExecutable->mPod.attributesTypeMask = vertexExecutable->mPod.attributesTypeMask;
+    mState.mExecutable->mPod.attributesMask     = vertexExecutable->mPod.attributesMask;
+    mState.mExecutable->mProgramInputs          = vertexExecutable->mProgramInputs;
 
-    mState.mExecutable->mPODStruct.numViews       = vertexExecutable.mPODStruct.numViews;
-    mState.mExecutable->mPODStruct.drawIDLocation = vertexExecutable.mPODStruct.drawIDLocation;
-    mState.mExecutable->mPODStruct.baseVertexLocation =
-        vertexExecutable.mPODStruct.baseVertexLocation;
-    mState.mExecutable->mPODStruct.baseInstanceLocation =
-        vertexExecutable.mPODStruct.baseInstanceLocation;
+    mState.mExecutable->mPod.numViews             = vertexExecutable->mPod.numViews;
+    mState.mExecutable->mPod.drawIDLocation       = vertexExecutable->mPod.drawIDLocation;
+    mState.mExecutable->mPod.baseVertexLocation   = vertexExecutable->mPod.baseVertexLocation;
+    mState.mExecutable->mPod.baseInstanceLocation = vertexExecutable->mPod.baseInstanceLocation;
 }
 
 void ProgramPipeline::updateTransformFeedbackMembers()
 {
     ShaderType lastVertexProcessingStage =
-        gl::GetLastPreFragmentStage(getExecutable().getLinkedShaderStages());
+        GetLastPreFragmentStage(getExecutable().getLinkedShaderStages());
     if (lastVertexProcessingStage == ShaderType::InvalidEnum)
     {
         return;
     }
 
-    Program *shaderProgram = getShaderProgram(lastVertexProcessingStage);
-    ASSERT(shaderProgram);
+    const SharedProgramExecutable &lastPreFragmentExecutable =
+        getShaderProgramExecutable(lastVertexProcessingStage);
+    ASSERT(lastPreFragmentExecutable);
 
-    const ProgramExecutable &lastPreFragmentExecutable = shaderProgram->getExecutable();
     mState.mExecutable->mTransformFeedbackStrides =
-        lastPreFragmentExecutable.mTransformFeedbackStrides;
+        lastPreFragmentExecutable->mTransformFeedbackStrides;
     mState.mExecutable->mLinkedTransformFeedbackVaryings =
-        lastPreFragmentExecutable.mLinkedTransformFeedbackVaryings;
+        lastPreFragmentExecutable->mLinkedTransformFeedbackVaryings;
 }
 
 void ProgramPipeline::updateShaderStorageBlocks()
@@ -314,16 +343,15 @@ void ProgramPipeline::updateShaderStorageBlocks()
     // contain multiple shader stages.
     ShaderBitSet handledStages;
 
-    for (const gl::ShaderType shaderType : gl::AllShaderTypes())
+    for (const ShaderType shaderType : AllShaderTypes())
     {
-        const Program *shaderProgram = getShaderProgram(shaderType);
-        if (shaderProgram && !handledStages.test(shaderType))
+        const SharedProgramExecutable &programExecutable = getShaderProgramExecutable(shaderType);
+        if (programExecutable && !handledStages.test(shaderType))
         {
             // Only add each Program's blocks once.
-            handledStages |= shaderProgram->getExecutable().getLinkedShaderStages();
+            handledStages |= programExecutable->getLinkedShaderStages();
 
-            for (const InterfaceBlock &block :
-                 shaderProgram->getExecutable().getShaderStorageBlocks())
+            for (const InterfaceBlock &block : programExecutable->getShaderStorageBlocks())
             {
                 mState.mExecutable->mShaderStorageBlocks.emplace_back(block);
             }
@@ -340,110 +368,105 @@ void ProgramPipeline::updateImageBindings()
     // contain multiple shader stages.
     ShaderBitSet handledStages;
 
-    for (const gl::ShaderType shaderType : gl::AllShaderTypes())
+    for (const ShaderType shaderType : AllShaderTypes())
     {
-        const Program *shaderProgram = getShaderProgram(shaderType);
-        if (shaderProgram && !handledStages.test(shaderType))
+        const SharedProgramExecutable &programExecutable = getShaderProgramExecutable(shaderType);
+        if (programExecutable && !handledStages.test(shaderType))
         {
             // Only add each Program's blocks once.
-            handledStages |= shaderProgram->getExecutable().getLinkedShaderStages();
+            handledStages |= programExecutable->getLinkedShaderStages();
 
-            for (const ImageBinding &imageBinding : shaderProgram->getState().getImageBindings())
+            for (const ImageBinding &imageBinding : *programExecutable->getImageBindings())
             {
                 mState.mExecutable->mImageBindings.emplace_back(imageBinding);
             }
 
-            mState.mExecutable->updateActiveImages(shaderProgram->getExecutable());
+            mState.mExecutable->updateActiveImages(*programExecutable);
         }
     }
 }
 
 void ProgramPipeline::updateExecutableGeometryProperties()
 {
-    Program *geometryProgram = getShaderProgram(gl::ShaderType::Geometry);
+    const SharedProgramExecutable &geometryExecutable =
+        getShaderProgramExecutable(ShaderType::Geometry);
 
-    if (!geometryProgram)
+    if (!geometryExecutable)
     {
         return;
     }
 
-    const ProgramExecutable &geometryExecutable = geometryProgram->getExecutable();
-    mState.mExecutable->mPODStruct.geometryShaderInputPrimitiveType =
-        geometryExecutable.mPODStruct.geometryShaderInputPrimitiveType;
-    mState.mExecutable->mPODStruct.geometryShaderOutputPrimitiveType =
-        geometryExecutable.mPODStruct.geometryShaderOutputPrimitiveType;
-    mState.mExecutable->mPODStruct.geometryShaderInvocations =
-        geometryExecutable.mPODStruct.geometryShaderInvocations;
-    mState.mExecutable->mPODStruct.geometryShaderMaxVertices =
-        geometryExecutable.mPODStruct.geometryShaderMaxVertices;
+    mState.mExecutable->mPod.geometryShaderInputPrimitiveType =
+        geometryExecutable->mPod.geometryShaderInputPrimitiveType;
+    mState.mExecutable->mPod.geometryShaderOutputPrimitiveType =
+        geometryExecutable->mPod.geometryShaderOutputPrimitiveType;
+    mState.mExecutable->mPod.geometryShaderInvocations =
+        geometryExecutable->mPod.geometryShaderInvocations;
+    mState.mExecutable->mPod.geometryShaderMaxVertices =
+        geometryExecutable->mPod.geometryShaderMaxVertices;
 }
 
 void ProgramPipeline::updateExecutableTessellationProperties()
 {
-    Program *tessControlProgram = getShaderProgram(gl::ShaderType::TessControl);
-    Program *tessEvalProgram    = getShaderProgram(gl::ShaderType::TessEvaluation);
+    const SharedProgramExecutable &tessControlExecutable =
+        getShaderProgramExecutable(ShaderType::TessControl);
+    const SharedProgramExecutable &tessEvalExecutable =
+        getShaderProgramExecutable(ShaderType::TessEvaluation);
 
-    if (tessControlProgram)
+    if (tessControlExecutable)
     {
-        const ProgramExecutable &tessControlExecutable = tessControlProgram->getExecutable();
-        mState.mExecutable->mPODStruct.tessControlShaderVertices =
-            tessControlExecutable.mPODStruct.tessControlShaderVertices;
+        mState.mExecutable->mPod.tessControlShaderVertices =
+            tessControlExecutable->mPod.tessControlShaderVertices;
     }
 
-    if (tessEvalProgram)
+    if (tessEvalExecutable)
     {
-        const ProgramExecutable &tessEvalExecutable = tessEvalProgram->getExecutable();
-        mState.mExecutable->mPODStruct.tessGenMode  = tessEvalExecutable.mPODStruct.tessGenMode;
-        mState.mExecutable->mPODStruct.tessGenSpacing =
-            tessEvalExecutable.mPODStruct.tessGenSpacing;
-        mState.mExecutable->mPODStruct.tessGenVertexOrder =
-            tessEvalExecutable.mPODStruct.tessGenVertexOrder;
-        mState.mExecutable->mPODStruct.tessGenPointMode =
-            tessEvalExecutable.mPODStruct.tessGenPointMode;
+        mState.mExecutable->mPod.tessGenMode        = tessEvalExecutable->mPod.tessGenMode;
+        mState.mExecutable->mPod.tessGenSpacing     = tessEvalExecutable->mPod.tessGenSpacing;
+        mState.mExecutable->mPod.tessGenVertexOrder = tessEvalExecutable->mPod.tessGenVertexOrder;
+        mState.mExecutable->mPod.tessGenPointMode   = tessEvalExecutable->mPod.tessGenPointMode;
     }
 }
 
 void ProgramPipeline::updateFragmentInoutRangeAndEnablesPerSampleShading()
 {
-    Program *fragmentProgram = getShaderProgram(gl::ShaderType::Fragment);
+    const SharedProgramExecutable &fragmentExecutable =
+        getShaderProgramExecutable(ShaderType::Fragment);
 
-    if (!fragmentProgram)
+    if (!fragmentExecutable)
     {
         return;
     }
 
-    const ProgramExecutable &fragmentExecutable = fragmentProgram->getExecutable();
-    mState.mExecutable->mPODStruct.fragmentInoutRange =
-        fragmentExecutable.mPODStruct.fragmentInoutRange;
-    mState.mExecutable->mPODStruct.hasDiscard = fragmentExecutable.mPODStruct.hasDiscard;
-    mState.mExecutable->mPODStruct.enablesPerSampleShading =
-        fragmentExecutable.mPODStruct.enablesPerSampleShading;
+    mState.mExecutable->mPod.fragmentInoutRange = fragmentExecutable->mPod.fragmentInoutRange;
+    mState.mExecutable->mPod.hasDiscard         = fragmentExecutable->mPod.hasDiscard;
+    mState.mExecutable->mPod.enablesPerSampleShading =
+        fragmentExecutable->mPod.enablesPerSampleShading;
 }
 
 void ProgramPipeline::updateLinkedVaryings()
 {
     // Need to check all of the shader stages, not just linked, so we handle Compute correctly.
-    for (const gl::ShaderType shaderType : kAllGraphicsShaderTypes)
+    for (const ShaderType shaderType : kAllGraphicsShaderTypes)
     {
-        const Program *shaderProgram = getShaderProgram(shaderType);
-        if (shaderProgram && shaderProgram->isLinked())
+        const SharedProgramExecutable &programExecutable = getShaderProgramExecutable(shaderType);
+        if (programExecutable)
         {
-            const ProgramExecutable &executable = shaderProgram->getExecutable();
             mState.mExecutable->mLinkedOutputVaryings[shaderType] =
-                executable.getLinkedOutputVaryings(shaderType);
+                programExecutable->getLinkedOutputVaryings(shaderType);
             mState.mExecutable->mLinkedInputVaryings[shaderType] =
-                executable.getLinkedInputVaryings(shaderType);
+                programExecutable->getLinkedInputVaryings(shaderType);
         }
     }
 
-    const Program *computeProgram = getShaderProgram(ShaderType::Compute);
-    if (computeProgram && computeProgram->isLinked())
+    const SharedProgramExecutable &computeExecutable =
+        getShaderProgramExecutable(ShaderType::Compute);
+    if (computeExecutable)
     {
-        const ProgramExecutable &executable = computeProgram->getExecutable();
         mState.mExecutable->mLinkedOutputVaryings[ShaderType::Compute] =
-            executable.getLinkedOutputVaryings(ShaderType::Compute);
+            computeExecutable->getLinkedOutputVaryings(ShaderType::Compute);
         mState.mExecutable->mLinkedInputVaryings[ShaderType::Compute] =
-            executable.getLinkedInputVaryings(ShaderType::Compute);
+            computeExecutable->getLinkedInputVaryings(ShaderType::Compute);
     }
 }
 
@@ -470,18 +493,40 @@ void ProgramPipeline::updateExecutable()
     updateLinkedVaryings();
 }
 
+void ProgramPipeline::resolveAttachedPrograms(const Context *context)
+{
+    // Wait for attached programs to finish linking
+    for (Program *program : mState.mPrograms)
+    {
+        if (program != nullptr)
+        {
+            program->resolveLink(context);
+        }
+    }
+}
+
 // The attached shaders are checked for linking errors by matching up their variables.
 // Uniform, input and output variables get collected.
 // The code gets compiled into binaries.
 angle::Result ProgramPipeline::link(const Context *context)
 {
+    mState.destroyDiscardedExecutables(context);
+
+    // Make a new executable to hold the result of the link.
+    InstallExecutable(
+        context,
+        std::make_shared<ProgramExecutable>(context->getImplementation(), &mState.mInfoLog),
+        &mState.mExecutable);
+    onStateChange(angle::SubjectMessage::ProgramUnlinked);
+
+    updateLinkedShaderStages();
+
     ASSERT(!mState.mIsLinked);
 
     ProgramMergedVaryings mergedVaryings;
     ProgramVaryingPacking varyingPacking;
     LinkingVariables linkingVariables;
 
-    mState.mExecutable->reset();
     mState.mInfoLog.reset();
 
     linkingVariables.initForProgramPipeline(mState);
@@ -491,7 +536,7 @@ angle::Result ProgramPipeline::link(const Context *context)
     const Version &clientVersion   = context->getClientVersion();
     const bool isWebGL             = context->isWebGL();
 
-    if (mState.mExecutable->hasLinkedShaderStage(gl::ShaderType::Vertex))
+    if (mState.mExecutable->hasLinkedShaderStage(ShaderType::Vertex))
     {
         if (!linkVaryings())
         {
@@ -503,17 +548,18 @@ angle::Result ProgramPipeline::link(const Context *context)
             return angle::Result::Stop;
         }
 
-        Program *fragmentShaderProgram = getShaderProgram(ShaderType::Fragment);
-        if (fragmentShaderProgram)
+        const SharedProgramExecutable &fragmentExecutable =
+            getShaderProgramExecutable(ShaderType::Fragment);
+        if (fragmentExecutable)
         {
             // We should also be validating SSBO and image uniform counts.
-            const GLuint combinedImageUniforms          = 0;
-            const GLuint combinedShaderStorageBlocks    = 0;
-            const ProgramExecutable &fragmentExecutable = fragmentShaderProgram->getExecutable();
+            const GLuint combinedImageUniforms       = 0;
+            const GLuint combinedShaderStorageBlocks = 0;
+            ASSERT(mState.mExecutable->mOutputVariables.empty());
+            mState.mExecutable->mOutputVariables = fragmentExecutable->getOutputVariables();
             if (!mState.mExecutable->linkValidateOutputVariables(
                     caps, clientVersion, combinedImageUniforms, combinedShaderStorageBlocks,
-                    fragmentExecutable.getOutputVariables(),
-                    fragmentExecutable.getLinkedShaderVersion(ShaderType::Fragment),
+                    fragmentExecutable->getLinkedShaderVersion(ShaderType::Fragment),
                     ProgramAliasedBindings(), ProgramAliasedBindings()))
             {
                 return angle::Result::Continue;
@@ -523,7 +569,7 @@ angle::Result ProgramPipeline::link(const Context *context)
         // If separable program objects are in use, the set of attributes captured is taken
         // from the program object active on the last vertex processing stage.
         ShaderType lastVertexProcessingStage =
-            gl::GetLastPreFragmentStage(getExecutable().getLinkedShaderStages());
+            GetLastPreFragmentStage(getExecutable().getLinkedShaderStages());
         if (lastVertexProcessingStage == ShaderType::InvalidEnum)
         {
             //  If there is no active program for the vertex or fragment shader stages, the results
@@ -532,19 +578,20 @@ angle::Result ProgramPipeline::link(const Context *context)
             return angle::Result::Continue;
         }
 
-        Program *tfProgram = getShaderProgram(lastVertexProcessingStage);
-        ASSERT(tfProgram);
+        const SharedProgramExecutable *tfExecutable =
+            &getShaderProgramExecutable(lastVertexProcessingStage);
+        ASSERT(*tfExecutable);
 
-        if (!tfProgram)
+        if (!*tfExecutable)
         {
-            tfProgram = mState.mPrograms[ShaderType::Vertex];
+            tfExecutable = &getShaderProgramExecutable(ShaderType::Vertex);
         }
 
         mState.mExecutable->mTransformFeedbackVaryingNames =
-            tfProgram->getExecutable().mTransformFeedbackVaryingNames;
+            (*tfExecutable)->mTransformFeedbackVaryingNames;
 
         if (!mState.mExecutable->linkMergedVaryings(caps, limitations, clientVersion, isWebGL,
-                                                    mergedVaryings, linkingVariables, false,
+                                                    mergedVaryings, linkingVariables,
                                                     &varyingPacking))
         {
             return angle::Result::Stop;
@@ -552,32 +599,35 @@ angle::Result ProgramPipeline::link(const Context *context)
     }
 
     // Merge uniforms.
-    mState.mExecutable->copyUniformsFromProgramMap(mState.mPrograms);
+    mState.mExecutable->copyUniformsFromProgramMap(mState.mProgramExecutables);
 
-    if (mState.mExecutable->hasLinkedShaderStage(gl::ShaderType::Vertex))
+    if (mState.mExecutable->hasLinkedShaderStage(ShaderType::Vertex))
     {
-        const ProgramState &programState = mState.mPrograms[gl::ShaderType::Vertex]->getState();
-        mState.mExecutable->copyInputsFromProgram(programState);
+        const SharedProgramExecutable &executable = getShaderProgramExecutable(ShaderType::Vertex);
+        mState.mExecutable->copyInputsFromProgram(*executable);
     }
 
     // Merge shader buffers (UBOs, SSBOs, and atomic counter buffers) into the executable.
     // Also copy over image and sampler bindings.
     for (ShaderType shaderType : mState.mExecutable->getLinkedShaderStages())
     {
-        const ProgramState &programState = mState.mPrograms[shaderType]->getState();
-        mState.mExecutable->copyShaderBuffersFromProgram(programState, shaderType);
-        mState.mExecutable->copySamplerBindingsFromProgram(programState);
-        mState.mExecutable->copyImageBindingsFromProgram(programState);
+        const SharedProgramExecutable &executable = getShaderProgramExecutable(shaderType);
+        mState.mExecutable->copyUniformBuffersFromProgram(*executable, shaderType,
+                                                          &mState.mUniformBlockMap[shaderType]);
+        mState.mExecutable->copyStorageBuffersFromProgram(*executable, shaderType);
+        mState.mExecutable->copySamplerBindingsFromProgram(*executable);
+        mState.mExecutable->copyImageBindingsFromProgram(*executable);
     }
 
-    if (mState.mExecutable->hasLinkedShaderStage(gl::ShaderType::Fragment))
+    if (mState.mExecutable->hasLinkedShaderStage(ShaderType::Fragment))
     {
-        const ProgramState &programState = mState.mPrograms[gl::ShaderType::Fragment]->getState();
-        mState.mExecutable->copyOutputsFromProgram(programState);
+        const SharedProgramExecutable &executable =
+            getShaderProgramExecutable(ShaderType::Fragment);
+        mState.mExecutable->copyOutputsFromProgram(*executable);
     }
 
-    if (mState.mExecutable->hasLinkedShaderStage(gl::ShaderType::Vertex) ||
-        mState.mExecutable->hasLinkedShaderStage(gl::ShaderType::Compute))
+    if (mState.mExecutable->hasLinkedShaderStage(ShaderType::Vertex) ||
+        mState.mExecutable->hasLinkedShaderStage(ShaderType::Compute))
     {
         ANGLE_TRY(getImplementation()->link(context, mergedVaryings, varyingPacking));
     }
@@ -586,7 +636,7 @@ angle::Result ProgramPipeline::link(const Context *context)
     updateExecutable();
 
     mState.mIsLinked = true;
-    onStateChange(angle::SubjectMessage::SubjectChanged);
+    onStateChange(angle::SubjectMessage::ProgramRelinked);
 
     return angle::Result::Continue;
 }
@@ -606,24 +656,23 @@ bool ProgramPipeline::linkVaryings()
     ShaderType previousShaderType = ShaderType::InvalidEnum;
     for (ShaderType shaderType : kAllGraphicsShaderTypes)
     {
-        Program *program = getShaderProgram(shaderType);
-        if (!program)
+        const SharedProgramExecutable &programExecutable = getShaderProgramExecutable(shaderType);
+        if (!programExecutable)
         {
             continue;
         }
-        ProgramExecutable &executable = program->getExecutable();
 
         if (previousShaderType != ShaderType::InvalidEnum)
         {
-            Program *previousProgram = getShaderProgram(previousShaderType);
-            ASSERT(previousProgram);
-            const ProgramExecutable &previousExecutable = previousProgram->getExecutable();
+            const SharedProgramExecutable &previousExecutable =
+                getShaderProgramExecutable(previousShaderType);
+            ASSERT(previousExecutable);
 
             if (!LinkValidateShaderInterfaceMatching(
-                    previousExecutable.getLinkedOutputVaryings(previousShaderType),
-                    executable.getLinkedInputVaryings(shaderType), previousShaderType, shaderType,
-                    previousExecutable.getLinkedShaderVersion(previousShaderType),
-                    executable.getLinkedShaderVersion(shaderType), true, mState.mInfoLog))
+                    previousExecutable->getLinkedOutputVaryings(previousShaderType),
+                    programExecutable->getLinkedInputVaryings(shaderType), previousShaderType,
+                    shaderType, previousExecutable->getLinkedShaderVersion(previousShaderType),
+                    programExecutable->getLinkedShaderVersion(shaderType), true, mState.mInfoLog))
             {
                 return false;
             }
@@ -635,23 +684,25 @@ bool ProgramPipeline::linkVaryings()
     // Need to move logic of validating builtin varyings inside the for-loop above.
     // This is because the built-in symbols `gl_ClipDistance` and `gl_CullDistance`
     // can be redeclared in Geometry or Tessellation shaders as well.
-    Program *vertexProgram   = mState.mPrograms[ShaderType::Vertex];
-    Program *fragmentProgram = mState.mPrograms[ShaderType::Fragment];
-    if (!vertexProgram || !fragmentProgram)
+    const SharedProgramExecutable &vertexExecutable =
+        getShaderProgramExecutable(ShaderType::Vertex);
+    const SharedProgramExecutable &fragmentExecutable =
+        getShaderProgramExecutable(ShaderType::Fragment);
+    if (!vertexExecutable || !fragmentExecutable)
     {
         return true;
     }
-    ProgramExecutable &vertexExecutable   = vertexProgram->getExecutable();
-    ProgramExecutable &fragmentExecutable = fragmentProgram->getExecutable();
     return LinkValidateBuiltInVaryings(
-        vertexExecutable.getLinkedOutputVaryings(ShaderType::Vertex),
-        fragmentExecutable.getLinkedInputVaryings(ShaderType::Fragment), ShaderType::Vertex,
-        ShaderType::Fragment, vertexExecutable.getLinkedShaderVersion(ShaderType::Vertex),
-        fragmentExecutable.getLinkedShaderVersion(ShaderType::Fragment), mState.mInfoLog);
+        vertexExecutable->getLinkedOutputVaryings(ShaderType::Vertex),
+        fragmentExecutable->getLinkedInputVaryings(ShaderType::Fragment), ShaderType::Vertex,
+        ShaderType::Fragment, vertexExecutable->getLinkedShaderVersion(ShaderType::Vertex),
+        fragmentExecutable->getLinkedShaderVersion(ShaderType::Fragment), mState.mInfoLog);
 }
 
-void ProgramPipeline::validate(const gl::Context *context)
+void ProgramPipeline::validate(const Context *context)
 {
+    updateLinkedShaderStages();
+
     const Caps &caps = context->getCaps();
     mState.mValid    = true;
     mState.mInfoLog.reset();
@@ -709,18 +760,19 @@ void ProgramPipeline::validate(const gl::Context *context)
 
 angle::Result ProgramPipeline::syncState(const Context *context)
 {
-    Program::DirtyBits dirtyBits;
+    gl::ProgramExecutable::DirtyBits dirtyBits;
     for (const ShaderType shaderType : mState.mExecutable->getLinkedShaderStages())
     {
-        Program *shaderProgram = mState.mPrograms[shaderType];
-        if (shaderProgram)
+        const SharedProgramExecutable &executable = getShaderProgramExecutable(shaderType);
+        if (executable)
         {
-            dirtyBits |= shaderProgram->mDirtyBits;
+            dirtyBits |= executable->mDirtyBits;
         }
     }
     if (dirtyBits.any())
     {
-        ANGLE_TRY(mProgramPipelineImpl->syncState(context, dirtyBits));
+        // Transition dirty bits to the pipeline executable to be picked up in backend
+        getExecutable().mDirtyBits |= dirtyBits;
     }
 
     return angle::Result::Continue;
@@ -734,6 +786,9 @@ void ProgramPipeline::onUniformBufferStateChange(size_t uniformBufferIndex)
         if (shaderProgram)
         {
             shaderProgram->onUniformBufferStateChange(uniformBufferIndex);
+            shaderProgram->onPPOUniformBufferStateChange(shaderType, uniformBufferIndex,
+                                                         mState.mExecutable.get(),
+                                                         mState.mUniformBlockMap[shaderType]);
         }
     }
 }
@@ -747,22 +802,65 @@ void ProgramPipeline::onSubjectStateChange(angle::SubjectIndex index, angle::Sub
             mState.updateExecutableTextures();
             break;
 
-        case angle::SubjectMessage::ProgramRelinked:
+        case angle::SubjectMessage::ProgramUnlinked:
+            // A used program is being relinked.  Ensure next usage of the PPO resolve the program
+            // link and relinks the PPO.
             mState.mIsLinked = false;
-            onStateChange(angle::SubjectMessage::ProgramRelinked);
+            onStateChange(angle::SubjectMessage::ProgramUnlinked);
             break;
+
+        case angle::SubjectMessage::ProgramRelinked:
+        {
+            ShaderType shaderType = static_cast<ShaderType>(index);
+            ASSERT(mState.mPrograms[shaderType] != nullptr);
+            ASSERT(mState.mProgramExecutables[shaderType]);
+
+            mState.mIsLinked = false;
+            mState.mProgramExecutablesToDiscard.emplace_back(
+                std::move(mState.mProgramExecutables[shaderType]));
+            mState.mProgramExecutables[shaderType] =
+                mState.mPrograms[shaderType]->getSharedExecutable();
+
+            break;
+        }
         case angle::SubjectMessage::SamplerUniformsUpdated:
             mState.mExecutable->clearSamplerBindings();
             for (ShaderType shaderType : mState.mExecutable->getLinkedShaderStages())
             {
-                const ProgramState &programState = mState.mPrograms[shaderType]->getState();
-                mState.mExecutable->copySamplerBindingsFromProgram(programState);
+                const SharedProgramExecutable &executable = getShaderProgramExecutable(shaderType);
+                mState.mExecutable->copySamplerBindingsFromProgram(*executable);
             }
             mState.mExecutable->mActiveSamplerRefCounts.fill(0);
             mState.updateExecutableTextures();
             break;
         case angle::SubjectMessage::ProgramUniformUpdated:
             mProgramPipelineImpl->onProgramUniformUpdate(static_cast<ShaderType>(index));
+            break;
+        case angle::SubjectMessage::ProgramUniformBlockBindingUpdated:
+            if (mState.mIsLinked)
+            {
+                // The |binding| member of one of the UBOs in this program has changed.  Currently,
+                // we don't track _which_ UBO has its binding changed, and we update all here.
+                ShaderType shaderType                     = static_cast<ShaderType>(index);
+                const SharedProgramExecutable &executable = getShaderProgramExecutable(shaderType);
+                const std::vector<InterfaceBlock> &blocks = executable->getUniformBlocks();
+                for (size_t blockIndex = 0; blockIndex < blocks.size(); ++blockIndex)
+                {
+                    if (!blocks[blockIndex].isActive(shaderType))
+                    {
+                        continue;
+                    }
+                    const uint32_t blockIndexInPPO =
+                        mState.mUniformBlockMap[shaderType][static_cast<uint32_t>(blockIndex)];
+                    ASSERT(blockIndexInPPO < mState.mExecutable->mUniformBlocks.size());
+
+                    mState.mExecutable->mUniformBlocks[blockIndexInPPO].setBinding(
+                        blocks[blockIndex].pod.binding);
+                }
+
+                // Notify the context that the bindings have changed.
+                onStateChange(angle::SubjectMessage::ProgramUniformBlockBindingUpdated);
+            }
             break;
         default:
             UNREACHABLE();

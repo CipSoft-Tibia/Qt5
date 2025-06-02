@@ -18,6 +18,8 @@
 #include <QtGui/private/qguiapplication_p.h>
 #include <QtGui/qpa/qplatformtheme.h>
 #include <QtQuick/private/qquickevents_p_p.h>
+#include <QtQuick/private/qquickevents_p_p.h>
+#include <QtQuick/private/qquickaccessibleattached_p.h>
 #include <QtQml/qqmllist.h>
 
 QT_BEGIN_NAMESPACE
@@ -25,7 +27,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype AbstractButton
     \inherits Control
-//!     \instantiates QQuickAbstractButton
+//!     \nativetype QQuickAbstractButton
     \inqmlmodule QtQuick.Controls
     \since 5.7
     \ingroup qtquickcontrols-buttons
@@ -64,7 +66,7 @@ QT_BEGIN_NAMESPACE
 
     This signal is emitted when the button is interactively clicked by the user via touch, mouse, or keyboard.
 
-    \sa {Call a C++ function from QML when a Button is clicked}
+    \sa click(), animateClick(), {Call a C++ function from QML when a Button is clicked}
 */
 
 /*!
@@ -889,6 +891,12 @@ void QQuickAbstractButton::setAction(QQuickAction *action)
         setEnabled(action->isEnabled());
     }
 
+#if QT_CONFIG(accessibility)
+    auto attached = qobject_cast<QQuickAccessibleAttached*>(qmlAttachedPropertiesObject<QQuickAccessibleAttached>(this, true));
+    Q_ASSERT(attached);
+    attached->setProxying(qobject_cast<QQuickAccessibleAttached*>(qmlAttachedPropertiesObject<QQuickAccessibleAttached>(action, true)));
+#endif
+
     d->action = action;
 
     if (oldText != text())
@@ -1051,11 +1059,90 @@ qreal QQuickAbstractButton::implicitIndicatorHeight() const
     \qmlmethod void QtQuick.Controls::AbstractButton::toggle()
 
     Toggles the checked state of the button.
+
+    \sa click(), animateClick()
 */
 void QQuickAbstractButton::toggle()
 {
     Q_D(QQuickAbstractButton);
     setChecked(!d->checked);
+}
+
+/*!
+    \since Qt 6.8
+    \qmlmethod void QtQuick.Controls::AbstractButton::click()
+
+    Simulates the button being clicked with no delay between press and release.
+
+    All signals associated with a click are emitted as appropriate.
+
+    If the \l [QML] {Item::} {focusPolicy} includes \c Qt.ClickFocus,
+    \l [QML] {Item::} {activeFocus} will become \c true.
+
+    This function does nothing if the button is
+    \l [QML] {Item::enabled} {disabled}.
+
+    Calling this function again before the button is released resets
+    the release timer.
+
+    \sa animateClick(), pressed(), released(), clicked()
+*/
+void QQuickAbstractButton::click()
+{
+    Q_D(QQuickAbstractButton);
+    if (!isEnabled())
+        return;
+
+    // QQuickItemPrivate::deliverPointerEvent calls setFocusIfNeeded on real clicks,
+    // so we need to do it ourselves.
+    const bool setFocusOnPress = !QGuiApplication::styleHints()->setFocusOnTouchRelease();
+    if (setFocusOnPress && focusPolicy() & Qt::ClickFocus)
+        forceActiveFocus(Qt::MouseFocusReason);
+
+    const QPointF eventPos(d->width / 2, d->height / 2);
+    d->handlePress(eventPos, 0);
+    d->handleRelease(eventPos, 0);
+}
+
+/*!
+    \since Qt 6.8
+    \qmlmethod void QtQuick.Controls::AbstractButton::animateClick()
+
+    Simulates the button being clicked, with a 100 millisecond delay
+    between press and release, animating its visual state in the
+    process.
+
+    All signals associated with a click are emitted as appropriate.
+
+    If the \l [QML] {Item::} {focusPolicy} includes \c Qt.ClickFocus,
+    \l [QML] {Item::}{activeFocus} will become \c true.
+
+    This function does nothing if the button is
+    \l [QML] {Item::enabled} {disabled}.
+
+    Calling this function again before the button is released resets
+    the release timer.
+
+    \sa click(), pressed(), released(), clicked()
+*/
+void QQuickAbstractButton::animateClick()
+{
+    Q_D(QQuickAbstractButton);
+    if (!isEnabled())
+        return;
+
+    // See comment in click() for why we do this.
+    const bool setFocusOnPress = !QGuiApplication::styleHints()->setFocusOnTouchRelease();
+    if (setFocusOnPress && focusPolicy() & Qt::ClickFocus)
+        forceActiveFocus(Qt::MouseFocusReason);
+
+    // If the timer was already running, kill it so we can restart it.
+    if (d->animateTimer != 0)
+        killTimer(d->animateTimer);
+    else
+        d->handlePress(QPointF(d->width / 2, d->height / 2), 0);
+
+    d->animateTimer = startTimer(100);
 }
 
 void QQuickAbstractButton::componentComplete()
@@ -1158,6 +1245,12 @@ void QQuickAbstractButton::timerEvent(QTimerEvent *event)
         emit released();
         d->trigger();
         emit pressed();
+    } else if (event->timerId() == d->animateTimer) {
+        const bool setFocusOnRelease = QGuiApplication::styleHints()->setFocusOnTouchRelease();
+        if (setFocusOnRelease && focusPolicy() & Qt::ClickFocus)
+            forceActiveFocus(Qt::MouseFocusReason);
+        d->handleRelease(QPointF(d->width / 2, d->height / 2), 0);
+        d->animateTimer = 0;
     }
 }
 

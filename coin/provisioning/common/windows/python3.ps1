@@ -16,13 +16,26 @@ param(
 $package = "C:\Windows\temp\python-$version.exe"
 
 # check bit version
-if ( $archVer -eq 64 ) {
-    Write-Host "Installing 64 bit Python"
-    $externalUrl = "https://www.python.org/ftp/python/$version/python-$version-amd64.exe"
-    $internalUrl = "http://ci-files01-hki.ci.qt.io/input/windows/python-$version-amd64.exe"
-} else {
-    $externalUrl = "https://www.python.org/ftp/python/$version/python-$version.exe"
-    $internalUrl = "http://ci-files01-hki.ci.qt.io/input/windows/python-$version.exe"
+$cpu_arch = Get-CpuArchitecture
+Write-Host "Installing $cpu_arch Python"
+switch ($cpu_arch) {
+    arm64 {
+        $externalUrl = "https://www.python.org/ftp/python/$version/python-$version-arm64.exe"
+        $internalUrl = "http://ci-files01-hki.ci.qt.io/input/windows/python-$version-arm64.exe"
+        Break
+    }
+    x64 {
+        if ($archVer -eq "64") {
+            $externalUrl = "https://www.python.org/ftp/python/$version/python-$version-amd64.exe"
+            $internalUrl = "http://ci-files01-hki.ci.qt.io/input/windows/python-$version-amd64.exe"
+        } else {
+            $externalUrl = "https://www.python.org/ftp/python/$version/python-$version.exe"
+            $internalUrl = "http://ci-files01-hki.ci.qt.io/input/windows/python-$version.exe"
+        }
+    }
+    default {
+        throw "Unknown architecture $cpu_arch"
+    }
 }
 
 Write-Host "Fetching from URL..."
@@ -64,6 +77,19 @@ Write-Host "Configure pip"
 Run-Executable "$install_path\python.exe" "-m pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/python_module_cache"
 Run-Executable "$install_path\python.exe" "-m pip config --user set global.extra-index-url https://pypi.org/simple/"
 Run-Executable "$install_path\Scripts\pip3.exe" "$pip_args install virtualenv wheel html5lib"
+
+# Check if python version is higher than 3.10.
+# ntia-conformance-checker requires at least 3.8
+# reuse requires at least 3.9, to avoid conflict with installed conan jinja package,
+# at least until we use virtual envs.
+# The lowest version available on all windows platforms that we currently run on that satisfies
+# these requirements is 3.10.
+if ([version]::Parse($version) -gt [version]::Parse("3.10")) {
+    Run-Executable "$install_path\Scripts\pip3.exe" "$pip_args install -r $PSScriptRoot\..\shared\sbom_requirements.txt"
+    # Set the environment variable for the build system to know which python path to use for SBOM
+    # processing.
+    Set-EnvironmentVariable "SBOM_PYTHON_APPS_PATH" "$install_path\Scripts"
+}
 
 # Install PyPDF2 for QSR documentation
 Run-Executable "$install_path\Scripts\pip3.exe" "$pip_args install PyPDF2"

@@ -69,7 +69,7 @@ bool StatelessValidation::ValidateSwapchainCreateInfo(VkSwapchainCreateInfoKHR c
                                 loc.dot(Field::imageArrayLayers));
 
         // Validate VK_KHR_image_format_list VkImageFormatListCreateInfo
-        const auto format_list_info = LvlFindInChain<VkImageFormatListCreateInfo>(pCreateInfo->pNext);
+        const auto format_list_info = vku::FindStructInPNextChain<VkImageFormatListCreateInfo>(pCreateInfo->pNext);
         if (format_list_info) {
             const uint32_t viewFormatCount = format_list_info->viewFormatCount;
             if (((pCreateInfo->flags & VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR) == 0) && (viewFormatCount > 1)) {
@@ -81,8 +81,8 @@ bool StatelessValidation::ValidateSwapchainCreateInfo(VkSwapchainCreateInfoKHR c
 
             // Using the first format, compare the rest of the formats against it that they are compatible
             for (uint32_t i = 1; i < viewFormatCount; i++) {
-                if (FormatCompatibilityClass(format_list_info->pViewFormats[0]) !=
-                    FormatCompatibilityClass(format_list_info->pViewFormats[i])) {
+                if (vkuFormatCompatibilityClass(format_list_info->pViewFormats[0]) !=
+                    vkuFormatCompatibilityClass(format_list_info->pViewFormats[i])) {
                     skip |= LogError("VUID-VkSwapchainCreateInfoKHR-pNext-04099", device,
                                      loc.pNext(Struct::VkImageFormatListCreateInfo, Field::pViewFormats, i),
                                      "(%s) and pViewFormats[0] (%s) are not compatible in the pNext chain.",
@@ -156,7 +156,7 @@ bool StatelessValidation::manual_PreCallValidateQueuePresentKHR(VkQueue queue, c
     bool skip = false;
 
     if (pPresentInfo && pPresentInfo->pNext) {
-        const auto *present_regions = LvlFindInChain<VkPresentRegionsKHR>(pPresentInfo->pNext);
+        const auto *present_regions = vku::FindStructInPNextChain<VkPresentRegionsKHR>(pPresentInfo->pNext);
         if (present_regions) {
             // TODO: This and all other pNext extension dependencies should be added to code-generation
             if (!IsExtEnabled(device_extensions.vk_khr_incremental_present)) {
@@ -171,9 +171,21 @@ bool StatelessValidation::manual_PreCallValidateQueuePresentKHR(VkQueue queue, c
                                  error_obj.location.dot(Field::pPresentInfo).dot(Field::swapchainCount).Fields().c_str(),
                                  pPresentInfo->swapchainCount);
             }
-            skip |= ValidateStructPnext(error_obj.location, "pCreateInfo->pNext->pNext", NULL, present_regions->pNext, 0, NULL,
+            skip |= ValidateStructPnext(error_obj.location.pNext(Struct::VkPresentRegionsKHR), present_regions->pNext, 0, nullptr,
                                         GeneratedVulkanHeaderVersion, "VUID-VkPresentInfoKHR-pNext-pNext",
                                         "VUID-VkPresentInfoKHR-sType-unique");
+        }
+    }
+
+    if (pPresentInfo) {
+        for (uint32_t i = 0; i < pPresentInfo->swapchainCount; ++i) {
+            for (uint32_t j = i + 1; j < pPresentInfo->swapchainCount; ++j) {
+                if (pPresentInfo->pSwapchains[i] == pPresentInfo->pSwapchains[j]) {
+                    skip |= LogError("VUID-VkPresentInfoKHR-pSwapchain-09231", device, error_obj.location.dot(Field::pSwapchain),
+                                     "at index %" PRIu32 " and index %" PRIu32 " are both %s.", i, j,
+                                     FormatHandle(pPresentInfo->pSwapchains[i]).c_str());
+                }
+            }
         }
     }
 
@@ -239,10 +251,10 @@ bool StatelessValidation::manual_PreCallValidateGetPhysicalDeviceSurfaceCapabili
     }
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
     const auto *capabilities_full_screen_exclusive =
-        LvlFindInChain<VkSurfaceCapabilitiesFullScreenExclusiveEXT>(pSurfaceCapabilities->pNext);
+        vku::FindStructInPNextChain<VkSurfaceCapabilitiesFullScreenExclusiveEXT>(pSurfaceCapabilities->pNext);
     if (capabilities_full_screen_exclusive) {
         const auto *full_screen_exclusive_win32_info =
-            LvlFindInChain<VkSurfaceFullScreenExclusiveWin32InfoEXT>(pSurfaceInfo->pNext);
+            vku::FindStructInPNextChain<VkSurfaceFullScreenExclusiveWin32InfoEXT>(pSurfaceInfo->pNext);
         if (!full_screen_exclusive_win32_info) {
             skip |= LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-02671", physicalDevice, error_obj.location,
                              "pSurfaceCapabilities->pNext contains "
@@ -252,46 +264,36 @@ bool StatelessValidation::manual_PreCallValidateGetPhysicalDeviceSurfaceCapabili
     }
 #endif
 
-    if (IsExtEnabled(device_extensions.vk_ext_surface_maintenance1)) {
-        const auto *surface_present_mode_compatibility =
-            LvlFindInChain<VkSurfacePresentModeCompatibilityEXT>(pSurfaceCapabilities->pNext);
-        const auto *surface_present_scaling_compatibilities =
-            LvlFindInChain<VkSurfacePresentScalingCapabilitiesEXT>(pSurfaceCapabilities->pNext);
+    const auto *surface_present_mode_compatibility =
+        vku::FindStructInPNextChain<VkSurfacePresentModeCompatibilityEXT>(pSurfaceCapabilities->pNext);
+    const auto *surface_present_scaling_compatibilities =
+        vku::FindStructInPNextChain<VkSurfacePresentScalingCapabilitiesEXT>(pSurfaceCapabilities->pNext);
 
-        if (!(LvlFindInChain<VkSurfacePresentModeEXT>(pSurfaceInfo->pNext))) {
-            if (surface_present_mode_compatibility) {
-                skip |= LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-07776", physicalDevice, error_obj.location,
-                                 "VK_EXT_surface_maintenance1 is enabled and "
-                                 "pSurfaceCapabilities->pNext contains VkSurfacePresentModeCompatibilityEXT, but "
-                                 "pSurfaceInfo->pNext does not contain a VkSurfacePresentModeEXT structure.");
-            }
-
-            if (surface_present_scaling_compatibilities) {
-                skip |= LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-07777", physicalDevice, error_obj.location,
-                                 "VK_EXT_surface_maintenance1 is enabled and "
-                                 "pSurfaceCapabilities->pNext contains VkSurfacePresentScalingCapabilitiesEXT, but "
-                                 "pSurfaceInfo->pNext does not contain a VkSurfacePresentModeEXT structure.");
-            }
+    if (!(vku::FindStructInPNextChain<VkSurfacePresentModeEXT>(pSurfaceInfo->pNext))) {
+        if (surface_present_mode_compatibility) {
+            skip |= LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-07776", physicalDevice, error_obj.location,
+                             "pSurfaceCapabilities->pNext contains VkSurfacePresentModeCompatibilityEXT, but "
+                             "pSurfaceInfo->pNext does not contain a VkSurfacePresentModeEXT structure.");
         }
 
-        if (IsExtEnabled(instance_extensions.vk_google_surfaceless_query)) {
-            if (pSurfaceInfo->surface == VK_NULL_HANDLE) {
-                if (surface_present_mode_compatibility) {
-                    skip |=
-                        LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-07778", physicalDevice, error_obj.location,
-                                 "VK_EXT_surface_maintenance1 and "
-                                 "VK_GOOGLE_surfaceless_query are enabled and pSurfaceCapabilities->pNext contains a "
-                                 "VkSurfacePresentModeCompatibilityEXT structure, but pSurfaceInfo->surface is VK_NULL_HANDLE.");
-                }
+        if (surface_present_scaling_compatibilities) {
+            skip |= LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-07777", physicalDevice, error_obj.location,
+                             "pSurfaceCapabilities->pNext contains VkSurfacePresentScalingCapabilitiesEXT, but "
+                             "pSurfaceInfo->pNext does not contain a VkSurfacePresentModeEXT structure.");
+        }
+    }
 
-                if (surface_present_scaling_compatibilities) {
-                    skip |=
-                        LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-07779", physicalDevice, error_obj.location,
-                                 "VK_EXT_surface_maintenance1 and "
-                                 "VK_GOOGLE_surfaceless_query are enabled and pSurfaceCapabilities->pNext contains a "
-                                 "VkSurfacePresentScalingCapabilitiesEXT structure, but pSurfaceInfo->surface is VK_NULL_HANDLE.");
-                }
-            }
+    if (pSurfaceInfo->surface == VK_NULL_HANDLE) {
+        if (surface_present_mode_compatibility) {
+            skip |= LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-07778", physicalDevice, error_obj.location,
+                             "pSurfaceCapabilities->pNext contains a "
+                             "VkSurfacePresentModeCompatibilityEXT structure, but pSurfaceInfo->surface is VK_NULL_HANDLE.");
+        }
+
+        if (surface_present_scaling_compatibilities) {
+            skip |= LogError("VUID-vkGetPhysicalDeviceSurfaceCapabilities2KHR-pNext-07779", physicalDevice, error_obj.location,
+                             "pSurfaceCapabilities->pNext contains a "
+                             "VkSurfacePresentScalingCapabilitiesEXT structure, but pSurfaceInfo->surface is VK_NULL_HANDLE.");
         }
     }
     return skip;
@@ -350,7 +352,7 @@ bool StatelessValidation::PreCallValidateGetDeviceGroupSurfacePresentModes2EXT(V
         skip |= OutputExtensionError(error_obj.location, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
     if (!IsExtEnabled(device_extensions.vk_ext_full_screen_exclusive))
         skip |= OutputExtensionError(error_obj.location, VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME);
-    skip |= ValidateStructType(error_obj.location, "pSurfaceInfo", "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR",
+    skip |= ValidateStructType(error_obj.location.dot(Field::pSurfaceInfo), "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR",
                                pSurfaceInfo, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR, true,
                                "VUID-vkGetDeviceGroupSurfacePresentModes2EXT-pSurfaceInfo-parameter",
                                "VUID-VkPhysicalDeviceSurfaceInfo2KHR-sType-sType");
@@ -358,10 +360,9 @@ bool StatelessValidation::PreCallValidateGetDeviceGroupSurfacePresentModes2EXT(V
         constexpr std::array allowed_structs = {VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
                                                 VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT};
 
-        skip |= ValidateStructPnext(error_obj.location, "pSurfaceInfo->pNext",
-                                    "VkSurfaceFullScreenExclusiveInfoEXT, VkSurfaceFullScreenExclusiveWin32InfoEXT",
-                                    pSurfaceInfo->pNext, allowed_structs.size(), allowed_structs.data(),
-                                    GeneratedVulkanHeaderVersion, "VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-pNext",
+        skip |= ValidateStructPnext(error_obj.location.dot(Field::pSurfaceInfo), pSurfaceInfo->pNext, allowed_structs.size(),
+                                    allowed_structs.data(), GeneratedVulkanHeaderVersion,
+                                    "VUID-VkPhysicalDeviceSurfaceInfo2KHR-pNext-pNext",
                                     "VUID-VkPhysicalDeviceSurfaceInfo2KHR-sType-unique");
 
         if (pSurfaceInfo->surface == VK_NULL_HANDLE && !instance_extensions.vk_google_surfaceless_query) {
@@ -370,7 +371,7 @@ bool StatelessValidation::PreCallValidateGetDeviceGroupSurfacePresentModes2EXT(V
                              "is VK_NULL_HANDLE and VK_GOOGLE_surfaceless_query is not enabled.");
         }
 
-        skip |= ValidateRequiredHandle(error_obj.location, "pSurfaceInfo->surface", pSurfaceInfo->surface);
+        skip |= ValidateRequiredHandle(error_obj.location.dot(Field::pSurfaceInfo).dot(Field::surface), pSurfaceInfo->surface);
     }
     return skip;
 }

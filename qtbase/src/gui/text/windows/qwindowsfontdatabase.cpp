@@ -433,18 +433,6 @@ QFontNames qt_getCanonicalFontNames(const LOGFONT &lf)
     return fontNames;
 }
 
-static QChar *createFontFile(const QString &faceName)
-{
-    QChar *faceNamePtr = nullptr;
-    if (!faceName.isEmpty()) {
-        const int nameLength = qMin(faceName.length(), LF_FACESIZE - 1);
-        faceNamePtr = new QChar[nameLength + 1];
-        memcpy(static_cast<void *>(faceNamePtr), faceName.data(), sizeof(wchar_t) * nameLength);
-        faceNamePtr[nameLength] = u'\0';
-    }
-    return faceNamePtr;
-}
-
 namespace {
     struct StoreFontPayload {
         StoreFontPayload(const QString &family,
@@ -553,19 +541,19 @@ static bool addFontToDatabase(QString familyName,
 
     const bool wasPopulated = QPlatformFontDatabase::isFamilyPopulated(familyName);
     QPlatformFontDatabase::registerFont(familyName, styleName, foundryName, weight,
-                                        style, stretch, antialias, scalable, size, fixed, writingSystems, createFontFile(faceName));
+                                        style, stretch, antialias, scalable, size, fixed, writingSystems, new QWindowsFontDatabase::FontHandle(faceName));
 
 
     // add fonts windows can generate for us:
     if (weight <= QFont::DemiBold && styleName.isEmpty())
         QPlatformFontDatabase::registerFont(familyName, QString(), foundryName, QFont::Bold,
-                                            style, stretch, antialias, scalable, size, fixed, writingSystems, createFontFile(faceName));
+                                            style, stretch, antialias, scalable, size, fixed, writingSystems, new QWindowsFontDatabase::FontHandle(faceName));
     if (style != QFont::StyleItalic && styleName.isEmpty())
         QPlatformFontDatabase::registerFont(familyName, QString(), foundryName, weight,
-                                            QFont::StyleItalic, stretch, antialias, scalable, size, fixed, writingSystems, createFontFile(faceName));
+                                            QFont::StyleItalic, stretch, antialias, scalable, size, fixed, writingSystems, new QWindowsFontDatabase::FontHandle(faceName));
     if (weight <= QFont::DemiBold && style != QFont::StyleItalic && styleName.isEmpty())
         QPlatformFontDatabase::registerFont(familyName, QString(), foundryName, QFont::Bold,
-                                            QFont::StyleItalic, stretch, antialias, scalable, size, fixed, writingSystems, createFontFile(faceName));
+                                            QFont::StyleItalic, stretch, antialias, scalable, size, fixed, writingSystems, new QWindowsFontDatabase::FontHandle(faceName));
 
     // We came here from populating a different font family, so we have
     // to ensure the entire typographic family is populated before we
@@ -579,7 +567,7 @@ static bool addFontToDatabase(QString familyName,
 
     if (!subFamilyName.isEmpty() && familyName != subFamilyName) {
         QPlatformFontDatabase::registerFont(subFamilyName, subFamilyStyle, foundryName, weight,
-                                            style, stretch, antialias, scalable, size, fixed, writingSystems, createFontFile(faceName));
+                                            style, stretch, antialias, scalable, size, fixed, writingSystems, new QWindowsFontDatabase::FontHandle(faceName));
     }
 
     if (!englishName.isEmpty() && englishName != familyName)
@@ -751,7 +739,8 @@ QWindowsFontDatabase::~QWindowsFontDatabase()
 
 QFontEngine * QWindowsFontDatabase::fontEngine(const QFontDef &fontDef, void *handle)
 {
-    const QString faceName(static_cast<const QChar*>(handle));
+    FontHandle *fontHandle = static_cast<FontHandle *>(handle);
+    const QString faceName = fontHandle->faceName.left(LF_FACESIZE - 1);
     QFontEngine *fe = QWindowsFontDatabase::createEngine(fontDef, faceName,
                                                          defaultVerticalDPI(),
                                                          data());
@@ -782,7 +771,7 @@ QT_WARNING_POP
 
         QString actualFontName = font.changeFamilyName(uniqueFamilyName);
         if (actualFontName.isEmpty()) {
-            qWarning("%s: Can't change family name of font", __FUNCTION__);
+            qCWarning(lcQpaFonts, "%s: Can't change family name of font", __FUNCTION__);
             return 0;
         }
 
@@ -797,7 +786,7 @@ QT_WARNING_POP
         }
 
         if (fontHandle == 0) {
-            qWarning("%s: AddFontMemResourceEx failed", __FUNCTION__);
+            qCWarning(lcQpaFonts, "%s: AddFontMemResourceEx failed", __FUNCTION__);
         } else {
             QFontDef request;
             request.families = QStringList(uniqueFamilyName);
@@ -812,7 +801,7 @@ QT_WARNING_POP
 
             if (fontEngine) {
                 if (request.families != fontEngine->fontDef.families) {
-                    qWarning("%s: Failed to load font. Got fallback instead: %s", __FUNCTION__,
+                    qCWarning(lcQpaFonts, "%s: Failed to load font. Got fallback instead: %s", __FUNCTION__,
                              qPrintable(fontEngine->fontDef.families.constFirst()));
                     if (fontEngine->ref.loadRelaxed() == 0)
                         delete fontEngine;
@@ -1123,10 +1112,22 @@ void QWindowsFontDatabase::removeApplicationFonts()
     m_eudcFonts.clear();
 }
 
+QWindowsFontDatabase::FontHandle::FontHandle(IDWriteFontFace *face, const QString &name)
+    : fontFace(face), faceName(name)
+{
+    fontFace->AddRef();
+}
+
+
+QWindowsFontDatabase::FontHandle::~FontHandle()
+{
+    if (fontFace != nullptr)
+        fontFace->Release();
+}
+
 void QWindowsFontDatabase::releaseHandle(void *handle)
 {
-    const QChar *faceName = reinterpret_cast<const QChar *>(handle);
-    delete[] faceName;
+    delete static_cast<FontHandle *>(handle);
 }
 
 QString QWindowsFontDatabase::fontDir() const
@@ -1261,7 +1262,7 @@ QFontEngine *QWindowsFontDatabase::createEngine(const QFontDef &request, const Q
                 directWriteFontFace->Release();
             } else if (useDw) {
                 const QString errorString = qt_error_string(int(hr));
-                qWarning().noquote().nospace() << "DirectWrite: CreateFontFaceFromHDC() failed ("
+                qCWarning(lcQpaFonts).noquote().nospace() << "DirectWrite: CreateFontFaceFromHDC() failed ("
                     << errorString << ") for " << request << ' ' << lf << " dpi=" << dpi;
             }
 

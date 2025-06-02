@@ -15,11 +15,11 @@
 import {Draft, produce} from 'immer';
 import m from 'mithril';
 
+import {copyToClipboard} from '../base/clipboard';
 import {assertExists} from '../base/logging';
 import {Actions} from '../common/actions';
 import {RecordConfig} from '../controller/record_config_types';
 
-import {copyToClipboard} from './clipboard';
 import {globals} from './globals';
 
 export declare type Setter<T> = (draft: Draft<RecordConfig>, val: T) => void;
@@ -187,6 +187,7 @@ export class Slider implements m.ClassComponent<SliderAttrs> {
     const id = attrs.title.replace(/[^a-z0-9]/gmi, '_').toLowerCase();
     const maxIdx = attrs.values.length - 1;
     const val = attrs.get(globals.state.recordConfig);
+    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
     let min = attrs.min || 1;
     if (attrs.zeroIsDefault) {
       min = Math.min(0, min);

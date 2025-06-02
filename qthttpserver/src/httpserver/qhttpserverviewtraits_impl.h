@@ -47,7 +47,13 @@ struct FunctionTraitsImpl<ReturnT (*)(Args...)> : public FunctionTraitsHelper<Re
 {
 };
 
-template<class ReturnT, class ClassT, class... Args>
+template<typename ReturnT, typename ClassT, typename... Args>
+struct FunctionTraitsImpl<ReturnT (ClassT::*)(Args...)>
+    : public FunctionTraitsHelper<ReturnT, Args...>
+{
+};
+
+template<typename ReturnT, typename ClassT, typename... Args>
 struct FunctionTraitsImpl<ReturnT (ClassT::*)(Args...) const>
     : public FunctionTraitsHelper<ReturnT, Args...>
 {

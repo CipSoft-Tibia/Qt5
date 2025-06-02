@@ -25,7 +25,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_POSITIONINGQUICK_PRIVATE_EXPORT QDeclarativePosition : public QObject
+class Q_POSITIONINGQUICK_EXPORT QDeclarativePosition : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(Position)

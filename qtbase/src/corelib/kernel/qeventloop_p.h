@@ -20,7 +20,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class QEventLoopPrivate : public QObjectPrivate
+class Q_AUTOTEST_EXPORT QEventLoopPrivate : public QObjectPrivate
 {
     Q_DECLARE_PUBLIC(QEventLoop)
 public:
@@ -30,6 +30,7 @@ public:
         returnCode.storeRelaxed(-1);
         exit.storeRelaxed(true);
     }
+    ~QEventLoopPrivate() override;
 
     QAtomicInt quitLockRef;
 

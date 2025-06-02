@@ -21,15 +21,24 @@
 # ``Oracle::Oracle``
 #     The oracle instant client library
 
+if(NOT DEFINED Oracle_ROOT)
+    if(DEFINED ENV{Oracle_ROOT})
+        set(Oracle_ROOT "$ENV{Oracle_ROOT}")
+    endif()
+endif()
+
 find_path(Oracle_INCLUDE_DIR
   NAMES oci.h
-  HINTS ${Oracle_INCLUDE_DIR})
+  HINTS ${Oracle_INCLUDE_DIR} "${Oracle_ROOT}" "${Oracle_ROOT}/include" "${Oracle_ROOT}/sdk/include"
+)
 
 set(ORACLE_OCI_NAMES clntsh ociei oraociei12 oci)
 
 find_library(Oracle_LIBRARY
   NAMES ${ORACLE_OCI_NAMES}
-  HINTS ${Oracle_LIBRARY_DIR})
+  HINTS ${Oracle_LIBRARY_DIR} "${Oracle_ROOT}" "${Oracle_ROOT}/lib" "${Oracle_ROOT}/sdk/lib"
+  PATH_SUFFIXES msvc
+)
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(Oracle DEFAULT_MSG Oracle_LIBRARY Oracle_INCLUDE_DIR)

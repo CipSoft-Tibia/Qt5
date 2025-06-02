@@ -16,6 +16,8 @@ class QJniObjectPrivate;
 
 class Q_CORE_EXPORT QJniObject
 {
+    friend class QJniArrayBase;
+
     template <typename ...Args>
     struct LocalFrame {
         mutable JNIEnv *env;
@@ -99,6 +101,8 @@ public:
     QJniObject &operator=(QJniObject &&other) noexcept = default;
 
     ~QJniObject();
+
+    void swap(QJniObject &other) noexcept { d.swap(other.d); }
 
     template<typename Class, typename ...Args>
     static inline QJniObject construct(Args &&...args)
@@ -683,6 +687,10 @@ struct QT_TECH_PREVIEW_API JObjectBase
 
 protected:
     JObjectBase() = default;
+    JObjectBase(const JObjectBase &) = default;
+    JObjectBase(JObjectBase &&) = default;
+    JObjectBase &operator=(const JObjectBase &) = default;
+    JObjectBase &operator=(JObjectBase &&) = default;
     ~JObjectBase() = default;
 
     Q_IMPLICIT JObjectBase(jobject object) : m_object(object) {}
@@ -705,7 +713,7 @@ public:
     Q_IMPLICIT JObject(const QJniObject &object) : JObjectBase(object) {}
     Q_IMPLICIT JObject(QJniObject &&object) noexcept : JObjectBase(std::move(object)) {}
 
-    // base class destructor is protected, so need to provide all SMFs
+    // base class SMFs are protected, make them public:
     JObject(const JObject &other) = default;
     JObject(JObject &&other) noexcept = default;
     JObject &operator=(const JObject &other) = default;
@@ -714,7 +722,7 @@ public:
     ~JObject() = default;
 
     template<typename Arg, typename ...Args
-            , std::enable_if_t<!std::is_same_v<Arg, JObject>, bool> = true
+            , std::enable_if_t<!std::is_same_v<q20::remove_cvref_t<Arg>, JObject>, bool> = true
             , IfValidSignatureTypes<Arg, Args...> = true
     >
     explicit JObject(Arg && arg, Args &&...args)
@@ -723,10 +731,19 @@ public:
     {}
 
     // named constructors avoid ambiguities
-    static Type fromJObject(jobject object) { return Type(object); }
+    static JObject fromJObject(jobject object)
+    {
+        return JObject(object);
+    }
     template <typename ...Args>
-    static Type construct(Args &&...args) { return Type(std::forward<Args>(args)...); }
-    static Type fromLocalRef(jobject lref) { return Type(QJniObject::fromLocalRef(lref)); }
+    static JObject construct(Args &&...args)
+    {
+        return JObject(std::forward<Args>(args)...);
+    }
+    static JObject fromLocalRef(jobject lref)
+    {
+        return JObject(QJniObject::fromLocalRef(lref));
+    }
 
     static bool registerNativeMethods(std::initializer_list<JNINativeMethod> methods)
     {
@@ -801,8 +818,28 @@ public:
 private:
     friend bool comparesEqual(const JObject &lhs, const JObject &rhs)
     { return lhs.m_object == rhs.m_object; }
-    Q_DECLARE_EQUALITY_COMPARABLE(JObject);
+    Q_DECLARE_EQUALITY_COMPARABLE_NON_NOEXCEPT(JObject);
 };
+
+template <typename T> struct Traits<JObject<T>> {
+    static constexpr auto signature() { return Traits<T>::signature(); }
+    static constexpr auto className() { return Traits<T>::className(); }
+};
+
+template<>
+struct Traits<QJniObject>
+{
+    static constexpr auto className()
+    {
+        return CTString("java/lang/Object");
+    }
+
+    static constexpr auto signature()
+    {
+        return CTString("Ljava/lang/Object;");
+    }
+};
+
 }
 
 // This cannot be included earlier as QJniArray is a QJniObject subclass, but it
@@ -810,6 +847,16 @@ private:
 QT_END_NAMESPACE
 #include <QtCore/qjniarray.h>
 QT_BEGIN_NAMESPACE
+
+namespace QtJniTypes {
+namespace detail {
+template <typename C>
+using FromContainerTest = decltype(QJniArrayBase::fromContainer(std::declval<C>()));
+
+template <typename C>
+static constexpr bool isCompatibleSourceContainer = qxp::is_detected_v<FromContainerTest, C>;
+}
+}
 
 template <typename ...Args>
 template <typename T>
@@ -820,7 +867,7 @@ auto QJniObject::LocalFrame<Args...>::convertToJni(T &&value)
         return newLocalRef<jstring>(QJniObject::fromString(value));
     } else if constexpr (QtJniTypes::IsJniArray<Type>::value) {
         return value.arrayObject();
-    } else if constexpr (QJniArrayBase::canConvert<T>) {
+    } else if constexpr (QtJniTypes::detail::isCompatibleSourceContainer<T>) {
         using QJniArrayType = decltype(QJniArrayBase::fromContainer(std::forward<T>(value)));
         using ArrayType = decltype(std::declval<QJniArrayType>().arrayObject());
         return newLocalRef<ArrayType>(QJniArrayBase::fromContainer(std::forward<T>(value)).template object<jobject>());
@@ -840,8 +887,8 @@ auto QJniObject::LocalFrame<Args...>::convertFromJni(QJniObject &&object)
     if constexpr (std::is_same_v<Type, QString>) {
         return object.toString();
     } else if constexpr (QtJniTypes::IsJniArray<Type>::value) {
-        return T{object};
-    } else if constexpr (QJniArrayBase::canConvert<Type>) {
+        return T(std::move(object));
+    } else if constexpr (QtJniTypes::detail::isCompatibleSourceContainer<Type>) {
         // if we were to create a QJniArray from Type...
         using QJniArrayType = decltype(QJniArrayBase::fromContainer(std::declval<Type>()));
         // then that QJniArray would have elements of type
@@ -850,7 +897,7 @@ auto QJniObject::LocalFrame<Args...>::convertFromJni(QJniObject &&object)
         return QJniArray<ElementType>(object.template object<jarray>()).toContainer();
     } else if constexpr (std::is_array_v<Type>) {
         using ElementType = std::remove_extent_t<Type>;
-        return QJniArray<ElementType>{object};
+        return QJniArray<ElementType>(std::move(object));
     } else if constexpr (std::is_base_of_v<QJniObject, Type>
                         && !std::is_same_v<QJniObject, Type>) {
         return T{std::move(object)};

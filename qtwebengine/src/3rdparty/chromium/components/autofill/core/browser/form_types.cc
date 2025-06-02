@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "components/autofill/core/browser/form_types.h"
+
 #include "base/containers/contains.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/form_structure.h"
@@ -32,7 +33,7 @@ FormType FieldTypeGroupToFormType(FieldTypeGroup field_type_group) {
   }
 }
 
-base::StringPiece FormTypeToStringPiece(FormType form_type) {
+std::string_view FormTypeToStringView(FormType form_type) {
   switch (form_type) {
     case FormType::kAddressForm:
       return "Address";
@@ -52,7 +53,7 @@ bool FormHasAllCreditCardFields(const FormStructure& form_structure) {
   bool has_card_number_field = base::ranges::any_of(
       form_structure, [](const std::unique_ptr<AutofillField>& autofill_field) {
         return autofill_field->Type().GetStorableType() ==
-               ServerFieldType::CREDIT_CARD_NUMBER;
+               FieldType::CREDIT_CARD_NUMBER;
       });
 
   bool has_expiration_date_field = base::ranges::any_of(

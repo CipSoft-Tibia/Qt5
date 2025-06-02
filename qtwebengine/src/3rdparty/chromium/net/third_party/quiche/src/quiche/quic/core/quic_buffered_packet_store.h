@@ -5,14 +5,22 @@
 #ifndef QUICHE_QUIC_CORE_QUIC_BUFFERED_PACKET_STORE_H_
 #define QUICHE_QUIC_CORE_QUIC_BUFFERED_PACKET_STORE_H_
 
+#include <cstdint>
 #include <list>
+#include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
+#include "quiche/quic/core/connection_id_generator.h"
 #include "quiche/quic/core/quic_alarm.h"
 #include "quiche/quic/core/quic_alarm_factory.h"
 #include "quiche/quic/core/quic_clock.h"
+#include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/core/quic_time.h"
+#include "quiche/quic/core/quic_types.h"
+#include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/core/tls_chlo_extractor.h"
 #include "quiche/quic/platform/api/quic_export.h"
 #include "quiche/quic/platform/api/quic_socket_address.h"
@@ -33,7 +41,7 @@ class QuicBufferedPacketStorePeer;
 // of connections: connections with CHLO buffered and those without CHLO. The
 // latter has its own upper limit along with the max number of connections this
 // store can hold. The former pool can grow till this store is full.
-class QUIC_NO_EXPORT QuicBufferedPacketStore {
+class QUICHE_EXPORT QuicBufferedPacketStore {
  public:
   enum EnqueuePacketResult {
     SUCCESS = 0,
@@ -41,7 +49,7 @@ class QUIC_NO_EXPORT QuicBufferedPacketStore {
     TOO_MANY_CONNECTIONS  // Too many connections stored up in the store.
   };
 
-  struct QUIC_NO_EXPORT BufferedPacket {
+  struct QUICHE_EXPORT BufferedPacket {
     BufferedPacket(std::unique_ptr<QuicReceivedPacket> packet,
                    QuicSocketAddress self_address,
                    QuicSocketAddress peer_address);
@@ -57,7 +65,7 @@ class QUIC_NO_EXPORT QuicBufferedPacketStore {
   };
 
   // A queue of BufferedPackets for a connection.
-  struct QUIC_NO_EXPORT BufferedPacketList {
+  struct QUICHE_EXPORT BufferedPacketList {
     BufferedPacketList();
     BufferedPacketList(BufferedPacketList&& other);
 
@@ -68,20 +76,25 @@ class QUIC_NO_EXPORT QuicBufferedPacketStore {
     std::list<BufferedPacket> buffered_packets;
     QuicTime creation_time;
     // |parsed_chlo| is set iff the entire CHLO has been received.
-    absl::optional<ParsedClientHello> parsed_chlo;
+    std::optional<ParsedClientHello> parsed_chlo;
     // Indicating whether this is an IETF QUIC connection.
     bool ietf_quic;
     // If buffered_packets contains the CHLO, it is the version of the CHLO.
     // Otherwise, it is the version of the first packet in |buffered_packets|.
     ParsedQuicVersion version;
     TlsChloExtractor tls_chlo_extractor;
+    // Only one reference to the generator is stored per connection, and this is
+    // stored when the CHLO is buffered. The connection needs a stable,
+    // consistent way to generate IDs. Fixing it on the CHLO is a
+    // straightforward way to enforce that.
+    ConnectionIdGeneratorInterface* connection_id_generator = nullptr;
   };
 
   using BufferedPacketMap =
       quiche::QuicheLinkedHashMap<QuicConnectionId, BufferedPacketList,
                                   QuicConnectionIdHash>;
 
-  class QUIC_NO_EXPORT VisitorInterface {
+  class QUICHE_EXPORT VisitorInterface {
    public:
     virtual ~VisitorInterface() {}
 
@@ -101,12 +114,15 @@ class QUIC_NO_EXPORT QuicBufferedPacketStore {
 
   // Adds a copy of packet into the packet queue for given connection. If the
   // packet is the last one of the CHLO, |parsed_chlo| will contain a parsed
-  // version of the CHLO.
+  // version of the CHLO. |connection_id_generator| is the Connection ID
+  // Generator to use with the connection. It is ignored if |parsed_chlo| is
+  // absent.
   EnqueuePacketResult EnqueuePacket(
       QuicConnectionId connection_id, bool ietf_quic,
       const QuicReceivedPacket& packet, QuicSocketAddress self_address,
       QuicSocketAddress peer_address, const ParsedQuicVersion& version,
-      absl::optional<ParsedClientHello> parsed_chlo);
+      std::optional<ParsedClientHello> parsed_chlo,
+      ConnectionIdGeneratorInterface* connection_id_generator);
 
   // Returns true if there are any packets buffered for |connection_id|.
   bool HasBufferedPackets(QuicConnectionId connection_id) const;
@@ -114,18 +130,21 @@ class QUIC_NO_EXPORT QuicBufferedPacketStore {
   // Ingests this packet into the corresponding TlsChloExtractor. This should
   // only be called when HasBufferedPackets(connection_id) is true.
   // Returns whether we've now parsed a full multi-packet TLS CHLO.
-  // When this returns true, |out_alpns| is populated with the list of ALPNs
-  // extracted from the CHLO. |out_sni| is populated with the SNI tag in CHLO.
-  // |out_resumption_attempted| is populated if the CHLO has the
-  // 'pre_shared_key' TLS extension. |out_early_data_attempted| is populated if
-  // the CHLO has the 'early_data' TLS extension.
-  // When this returns false, and an unrecoverable error happened due to a TLS
-  // alert, |*tls_alert| will be set to the alert value.
+  // When this returns true, |out_supported_groups| is populated with the list
+  // of groups in the CHLO's 'supported_groups' TLS extension. |out_alpns| is
+  // populated with the list of ALPNs extracted from the CHLO. |out_sni| is
+  // populated with the SNI tag in CHLO. |out_resumption_attempted| is populated
+  // if the CHLO has the 'pre_shared_key' TLS extension.
+  // |out_early_data_attempted| is populated if the CHLO has the 'early_data'
+  // TLS extension. When this returns false, and an unrecoverable error happened
+  // due to a TLS alert, |*tls_alert| will be set to the alert value.
   bool IngestPacketForTlsChloExtraction(
       const QuicConnectionId& connection_id, const ParsedQuicVersion& version,
-      const QuicReceivedPacket& packet, std::vector<std::string>* out_alpns,
-      std::string* out_sni, bool* out_resumption_attempted,
-      bool* out_early_data_attempted, absl::optional<uint8_t>* tls_alert);
+      const QuicReceivedPacket& packet,
+      std::vector<uint16_t>* out_supported_groups,
+      std::vector<std::string>* out_alpns, std::string* out_sni,
+      bool* out_resumption_attempted, bool* out_early_data_attempted,
+      std::optional<uint8_t>* tls_alert);
 
   // Returns the list of buffered packets for |connection_id| and removes them
   // from the store. Returns an empty list if no early arrived packets for this

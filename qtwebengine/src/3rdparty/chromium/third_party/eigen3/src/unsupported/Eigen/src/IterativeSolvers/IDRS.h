@@ -12,6 +12,7 @@
 #ifndef EIGEN_IDRS_H
 #define EIGEN_IDRS_H
 
+// IWYU pragma: private
 #include "./InternalHeaderCheck.h"
 
 namespace Eigen {

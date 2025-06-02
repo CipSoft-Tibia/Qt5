@@ -8,8 +8,8 @@
 
 qt_internal_add_app(designer
     SOURCES
-        ../../../shared/fontpanel/fontpanel.cpp ../../../shared/fontpanel/fontpanel.h
-        ../../../shared/qttoolbardialog/qttoolbardialog.cpp ../../../shared/qttoolbardialog/qttoolbardialog.h ../../../shared/qttoolbardialog/qttoolbardialog.ui
+        ../../../shared/fontpanel/fontpanel.cpp ../../../shared/fontpanel/fontpanel_p.h
+        ../../../shared/qttoolbardialog/qttoolbardialog.cpp ../../../shared/qttoolbardialog/qttoolbardialog_p.h ../../../shared/qttoolbardialog/qttoolbardialog.ui
         appfontdialog.cpp appfontdialog.h
         assistantclient.cpp assistantclient.h
         designer_enums.h
@@ -81,7 +81,7 @@ qt_internal_add_resource(designer "qttoolbardialog"
 )
 
 set_target_properties(designer PROPERTIES
-    QT_TARGET_DESCRIPTION "Qt Designer"
+    QT_TARGET_DESCRIPTION "Qt Widgets Designer"
 )
 
 ## Scopes:

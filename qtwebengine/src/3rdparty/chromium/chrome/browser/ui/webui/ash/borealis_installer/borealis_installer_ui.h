@@ -44,6 +44,14 @@ class BorealisInstallerUI
       mojo::PendingReceiver<borealis_installer::mojom::PageHandlerFactory>
           pending_receiver);
 
+  // Send a close request to the web page. Return true if the page is already
+  // closed.
+  bool RequestClosePage();
+
+  base::WeakPtr<BorealisInstallerUI> GetWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
  private:
   void BindPageHandlerFactory(
       mojo::PendingReceiver<ash::borealis_installer::mojom::PageHandlerFactory>
@@ -60,7 +68,8 @@ class BorealisInstallerUI
   mojo::Receiver<ash::borealis_installer::mojom::PageHandlerFactory>
       page_factory_receiver_{this};
   bool page_closed_;
-  raw_ptr<content::WebUI, ExperimentalAsh> web_ui_;
+  raw_ptr<content::WebUI> web_ui_;
+  base::WeakPtrFactory<BorealisInstallerUI> weak_ptr_factory_{this};
 
   WEB_UI_CONTROLLER_TYPE_DECL();
 };

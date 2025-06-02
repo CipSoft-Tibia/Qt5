@@ -319,7 +319,7 @@ class RequestInterceptor {
                                      consumer_handle),
                 MOJO_RESULT_OK);
       original_client_->OnReceiveResponse(
-          std::move(response_head), std::move(consumer_handle), absl::nullopt);
+          std::move(response_head), std::move(consumer_handle), std::nullopt);
 
       uint32_t num_bytes = response_body.size();
       EXPECT_EQ(MOJO_RESULT_OK,
@@ -337,8 +337,8 @@ class RequestInterceptor {
   const GURL url_to_intercept_;
   URLLoaderInterceptor interceptor_;
 
-  absl::optional<url::Origin> request_initiator_to_inject_;
-  absl::optional<network::mojom::RequestMode> request_mode_to_inject_;
+  std::optional<url::Origin> request_initiator_to_inject_;
+  std::optional<network::mojom::RequestMode> request_mode_to_inject_;
 
   // |pending_test_client_remote_| below is used to transition results of
   // |test_client_.CreateRemote()| into IO thread.
@@ -1184,7 +1184,7 @@ IN_PROC_BROWSER_TEST_P(CrossSiteDocumentBlockingTest,
   // avoid injecting net errors).
   FetchHistogramsFromChildProcesses();
   base::HistogramTester histograms;
-  const char* prefetch_injection_script_template = R"(
+  static constexpr char kPrefetchInjectionScriptTemplate[] = R"(
       var link = document.createElement("link");
       link.rel = "prefetch";
       link.href = "/cross-site/b.com%s";
@@ -1197,7 +1197,7 @@ IN_PROC_BROWSER_TEST_P(CrossSiteDocumentBlockingTest,
       document.getElementsByTagName('head')[0].appendChild(link);
   )";
   std::string prefetch_injection_script = base::StringPrintf(
-      prefetch_injection_script_template, kPrefetchResourcePath);
+      kPrefetchInjectionScriptTemplate, kPrefetchResourcePath);
   EXPECT_TRUE(ExecJs(shell()->web_contents(), prefetch_injection_script));
 
   // Respond to the prefetch request in a way that:
@@ -1249,7 +1249,7 @@ IN_PROC_BROWSER_TEST_P(CrossSiteDocumentBlockingTest,
   // Verify that the cached response is available to the same-origin subframe
   // (e.g. that the network cache in the browser process got populated despite
   // CORB blocking).
-  const char* fetch_script_template = R"(
+  static constexpr char kFetchScriptTemplate[] = R"(
       fetch('%s')
           .then(response => response.text())
           .catch(error => {
@@ -1258,7 +1258,7 @@ IN_PROC_BROWSER_TEST_P(CrossSiteDocumentBlockingTest,
               return errorMessage;
           }); )";
   std::string fetch_script =
-      base::StringPrintf(fetch_script_template, kPrefetchResourcePath);
+      base::StringPrintf(kFetchScriptTemplate, kPrefetchResourcePath);
   EXPECT_EQ("<p>contents of the response</p>",
             EvalJs(ChildFrameAt(shell()->web_contents(), 0), fetch_script));
 }
@@ -1365,7 +1365,7 @@ IN_PROC_BROWSER_TEST_F(CrossSiteDocumentBlockingServiceWorkerTest,
   // Build a script for XHR-ing a cross-origin, nosniff HTML document.
   GURL cross_origin_url =
       GetURLOnCrossOriginServer("/site_isolation/nosniff.txt");
-  const char* script_template = R"(
+  static constexpr char kScriptTemplate[] = R"(
       fetch('%s', { mode: 'no-cors' })
           .then(response => response.text())
           .catch(error => {
@@ -1373,7 +1373,7 @@ IN_PROC_BROWSER_TEST_F(CrossSiteDocumentBlockingServiceWorkerTest,
               return errorMessage;
           }); )";
   std::string script =
-      base::StringPrintf(script_template, cross_origin_url.spec().c_str());
+      base::StringPrintf(kScriptTemplate, cross_origin_url.spec().c_str());
 
   // Make sure that base::HistogramTester below starts with a clean slate.
   FetchHistogramsFromChildProcesses();

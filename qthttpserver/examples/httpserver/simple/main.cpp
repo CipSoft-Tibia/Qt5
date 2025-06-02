@@ -7,12 +7,14 @@
 #if QT_CONFIG(ssl)
 #  include <QSslCertificate>
 #  include <QSslKey>
+#  include <QSslServer>
 #endif
 
 #include <QCoreApplication>
 #include <QFile>
 #include <QJsonObject>
 #include <QString>
+#include <QTcpServer>
 
 using namespace Qt::StringLiterals;
 
@@ -93,28 +95,35 @@ int main(int argc, char *argv[])
                     return QHttpServerResponse("text/plain", "Success\n");
             }
         }
-        QHttpServerResponse response("text/plain", "Authentication required\n",
-                                     QHttpServerResponse::StatusCode::Unauthorized);
-        response.setHeader("WWW-Authenticate", R"(Basic realm="Simple example", charset="UTF-8")");
-        return response;
-    });
-
-    //! [Using afterRequest()]
-    httpServer.afterRequest([](QHttpServerResponse &&resp) {
-        resp.setHeader("Server", "Qt HTTP Server");
+        QHttpServerResponse resp("text/plain", "Authentication required\n",
+                                 QHttpServerResponse::StatusCode::Unauthorized);
+        auto h = resp.headers();
+        h.append(QHttpHeaders::WellKnownHeader::WWWAuthenticate,
+                 R"(Basic realm="Simple example", charset="UTF-8")");
+        resp.setHeaders(std::move(h));
         return std::move(resp);
     });
-    //! [Using afterRequest()]
 
-    const auto port = httpServer.listen(QHostAddress::Any);
-    if (!port) {
+    //! [Using addAfterRequestHandler()]
+    httpServer.addAfterRequestHandler(&httpServer, [](const QHttpServerRequest &, QHttpServerResponse &resp) {
+        auto h = resp.headers();
+        h.append(QHttpHeaders::WellKnownHeader::Server, "Qt HTTP Server");
+        resp.setHeaders(std::move(h));
+    });
+    //! [Using addAfterRequestHandler()]
+
+    auto tcpserver = std::make_unique<QTcpServer>();
+    if (!tcpserver->listen() || !httpServer.bind(tcpserver.get())) {
         qWarning() << QCoreApplication::translate("QHttpServerExample",
                                                   "Server failed to listen on a port.");
         return -1;
     }
+    quint16 port = tcpserver->serverPort();
+    tcpserver.release();
 
 #if QT_CONFIG(ssl)
     //! [HTTPS Configuration example]
+    QSslConfiguration conf = QSslConfiguration::defaultConfiguration();
     const auto sslCertificateChain =
             QSslCertificate::fromPath(QStringLiteral(":/assets/certificate.crt"));
     if (sslCertificateChain.empty()) {
@@ -129,15 +138,22 @@ int main(int argc, char *argv[])
                       .arg(privateKeyFile.errorString());
         return -1;
     }
-    httpServer.sslSetup(sslCertificateChain.front(), QSslKey(&privateKeyFile, QSsl::Rsa));
+
+    conf.setLocalCertificate(sslCertificateChain.front());
+    conf.setPrivateKey(QSslKey(&privateKeyFile, QSsl::Rsa));
+
     privateKeyFile.close();
 
-    const auto sslPort = httpServer.listen(QHostAddress::Any);
-    if (!sslPort) {
+    auto sslserver = std::make_unique<QSslServer>();
+    sslserver->setSslConfiguration(conf);
+    if (!sslserver->listen() || !httpServer.bind(sslserver.get())) {
         qWarning() << QCoreApplication::translate("QHttpServerExample",
                                                   "Server failed to listen on a port.");
         return -1;
     }
+    quint16 sslPort = sslserver->serverPort();
+    sslserver.release();
+
     //! [HTTPS Configuration example]
 
     qInfo().noquote()

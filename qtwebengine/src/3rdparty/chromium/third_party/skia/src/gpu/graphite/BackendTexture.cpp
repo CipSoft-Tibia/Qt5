@@ -7,7 +7,8 @@
 
 #include "include/gpu/graphite/BackendTexture.h"
 
-#include "src/gpu/MutableTextureStateRef.h"
+#include "include/gpu/MutableTextureState.h"
+#include "include/gpu/vk/VulkanMutableTextureState.h"
 
 namespace skgpu::graphite {
 
@@ -44,6 +45,8 @@ BackendTexture& BackendTexture::operator=(const BackendTexture& that) {
 #ifdef SK_VULKAN
         case BackendApi::kVulkan:
             fVkImage = that.fVkImage;
+            fMutableState = that.fMutableState;
+            fMemoryAlloc = that.fMemoryAlloc;
             break;
 #endif
         default:
@@ -96,7 +99,7 @@ void BackendTexture::setMutableState(const skgpu::MutableTextureState& newState)
     fMutableState->set(newState);
 }
 
-sk_sp<MutableTextureStateRef> BackendTexture::getMutableState() const {
+sk_sp<MutableTextureState> BackendTexture::getMutableState() const {
     return fMutableState;
 }
 
@@ -108,11 +111,37 @@ BackendTexture::BackendTexture(WGPUTexture texture)
         , fDawnTexture(texture)
         , fDawnTextureView(nullptr) {}
 
+BackendTexture::BackendTexture(SkISize planeDimensions,
+                               const DawnTextureInfo& info,
+                               WGPUTexture texture)
+        : fDimensions(planeDimensions)
+        , fInfo(info)
+        , fDawnTexture(texture)
+        , fDawnTextureView(nullptr) {
+
+#if defined(__EMSCRIPTEN__)
+    SkASSERT(info.fAspect == wgpu::TextureAspect::All);
+#else
+    SkASSERT(info.fAspect == wgpu::TextureAspect::All ||
+             info.fAspect == wgpu::TextureAspect::Plane0Only ||
+             info.fAspect == wgpu::TextureAspect::Plane1Only ||
+             info.fAspect == wgpu::TextureAspect::Plane2Only);
+#endif
+}
+
+// When we only have a WGPUTextureView we can't actually take advantage of these TextureUsage bits
+// because they require having the WGPUTexture.
+static DawnTextureInfo strip_copy_usage(const DawnTextureInfo& info) {
+    DawnTextureInfo result = info;
+    result.fUsage &= ~(wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::CopySrc);
+    return result;
+}
+
 BackendTexture::BackendTexture(SkISize dimensions,
                                const DawnTextureInfo& info,
                                WGPUTextureView textureView)
         : fDimensions(dimensions)
-        , fInfo(info)
+        , fInfo(strip_copy_usage(info))
         , fDawnTexture(nullptr)
         , fDawnTextureView(textureView) {}
 
@@ -132,12 +161,12 @@ WGPUTextureView BackendTexture::getDawnTextureViewPtr() const {
 #endif
 
 #ifdef SK_METAL
-BackendTexture::BackendTexture(SkISize dimensions, MtlHandle mtlTexture)
+BackendTexture::BackendTexture(SkISize dimensions, CFTypeRef mtlTexture)
         : fDimensions(dimensions)
         , fInfo(MtlTextureInfo(mtlTexture))
         , fMtlTexture(mtlTexture) {}
 
-MtlHandle BackendTexture::getMtlTexture() const {
+CFTypeRef BackendTexture::getMtlTexture() const {
     if (this->isValid() && this->backend() == BackendApi::kMetal) {
         return fMtlTexture;
     }
@@ -150,10 +179,12 @@ BackendTexture::BackendTexture(SkISize dimensions,
                                const VulkanTextureInfo& info,
                                VkImageLayout layout,
                                uint32_t queueFamilyIndex,
-                               VkImage image)
+                               VkImage image,
+                               VulkanAlloc vulkanMemoryAllocation)
         : fDimensions(dimensions)
         , fInfo(info)
-        , fMutableState(new MutableTextureStateRef(layout, queueFamilyIndex))
+        , fMutableState(sk_make_sp<MutableTextureState>(layout, queueFamilyIndex))
+        , fMemoryAlloc(vulkanMemoryAllocation)
         , fVkImage(image) {}
 
 VkImage BackendTexture::getVkImage() const {
@@ -166,7 +197,7 @@ VkImage BackendTexture::getVkImage() const {
 VkImageLayout BackendTexture::getVkImageLayout() const {
     if (this->isValid() && this->backend() == BackendApi::kVulkan) {
         SkASSERT(fMutableState);
-        return fMutableState->getImageLayout();
+        return skgpu::MutableTextureStates::GetVkImageLayout(fMutableState.get());
     }
     return VK_IMAGE_LAYOUT_UNDEFINED;
 }
@@ -174,9 +205,16 @@ VkImageLayout BackendTexture::getVkImageLayout() const {
 uint32_t BackendTexture::getVkQueueFamilyIndex() const {
     if (this->isValid() && this->backend() == BackendApi::kVulkan) {
         SkASSERT(fMutableState);
-        return fMutableState->getQueueFamilyIndex();
+        return skgpu::MutableTextureStates::GetVkQueueFamilyIndex(fMutableState.get());
     }
     return 0;
+}
+
+const VulkanAlloc* BackendTexture::getMemoryAlloc() const {
+    if (this->isValid() && this->backend() == BackendApi::kVulkan) {
+        return &fMemoryAlloc;
+    }
+    return {};
 }
 #endif // SK_VULKAN
 

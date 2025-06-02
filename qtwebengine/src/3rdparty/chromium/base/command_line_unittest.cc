@@ -34,12 +34,15 @@
 
 namespace base {
 
+#if BUILDFLAG(IS_WIN)
 // To test Windows quoting behavior, we use a string that has some backslashes
 // and quotes.
 // Consider the command-line argument: q\"bs1\bs2\\bs3q\\\"
 // Here it is with C-style escapes.
 static const CommandLine::StringType kTrickyQuoted =
     FILE_PATH_LITERAL("q\\\"bs1\\bs2\\\\bs3q\\\\\\\"");
+#endif
+
 // It should be parsed by Windows as: q"bs1\bs2\\bs3q\"
 // Here that is with C-style escapes.
 static const CommandLine::StringType kTricky =
@@ -120,6 +123,17 @@ TEST(CommandLineTest, CommandLineConstructor) {
   EXPECT_EQ(FILE_PATH_LITERAL("unquoted arg-with-space"), *iter);
   ++iter;
   EXPECT_TRUE(iter == args.end());
+}
+
+TEST(CommandLineTest, CommandLineFromArgvWithoutProgram) {
+  CommandLine::StringVector argv = {FILE_PATH_LITERAL("--switch1"),
+                                    FILE_PATH_LITERAL("--switch2=value2")};
+
+  CommandLine cl = CommandLine::FromArgvWithoutProgram(argv);
+
+  EXPECT_EQ(base::FilePath(), cl.GetProgram());
+  EXPECT_TRUE(cl.HasSwitch("switch1"));
+  EXPECT_EQ("value2", cl.GetSwitchValueASCII("switch2"));
 }
 
 TEST(CommandLineTest, CommandLineFromString) {

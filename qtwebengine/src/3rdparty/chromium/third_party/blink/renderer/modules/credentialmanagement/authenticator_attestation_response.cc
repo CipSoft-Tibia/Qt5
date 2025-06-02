@@ -31,7 +31,10 @@ AuthenticatorAttestationResponse::~AuthenticatorAttestationResponse() = default;
 Vector<String> AuthenticatorAttestationResponse::getTransports() const {
   Vector<String> ret;
   for (auto transport : transports_) {
-    ret.emplace_back(mojo::ConvertTo<String>(transport));
+    ret.emplace_back(
+        mojo::TypeConverter<
+            String,
+            blink::mojom::blink::AuthenticatorTransport>::Convert(transport));
   }
   std::sort(ret.begin(), ret.end(), WTF::CodeUnitCompareLessThan);
   ret.erase(std::unique(ret.begin(), ret.end()), ret.end());

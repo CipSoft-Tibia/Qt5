@@ -4,50 +4,77 @@
 #ifndef QGRPCHANNELOPTIONS_H
 #define QGRPCHANNELOPTIONS_H
 
-#include <QtCore/qurl.h>
-#include <QtGrpc/qgrpcmetadata.h>
 #include <QtGrpc/qtgrpcglobal.h>
 
 #if QT_CONFIG(ssl)
 #  include <QtNetwork/qsslconfiguration.h>
 #endif
 
+#include <QtCore/qhash.h>
+#include <QtCore/qshareddata.h>
+#include <QtCore/qstringfwd.h>
+#include <QtCore/qtclasshelpermacros.h>
+#include <QtCore/qurl.h>
+
 #include <chrono>
-#include <memory>
 #include <optional>
 
 QT_BEGIN_NAMESPACE
 
-class QSslConfiguration;
-struct QGrpcChannelOptionsPrivate;
+class QDebug;
+class QVariant;
+class QGrpcSerializationFormat;
 
-class Q_GRPC_EXPORT QGrpcChannelOptions final
+class QGrpcChannelOptionsPrivate;
+QT_DECLARE_QESDP_SPECIALIZATION_DTOR(QGrpcChannelOptionsPrivate)
+
+class QGrpcChannelOptions final
 {
 public:
-    explicit QGrpcChannelOptions(const QUrl &host);
-    ~QGrpcChannelOptions();
+    Q_GRPC_EXPORT QGrpcChannelOptions();
+    Q_GRPC_EXPORT ~QGrpcChannelOptions();
 
-    QGrpcChannelOptions(const QGrpcChannelOptions &other);
-    QGrpcChannelOptions &operator=(const QGrpcChannelOptions &other);
-    QGrpcChannelOptions(QGrpcChannelOptions &&other) noexcept;
-    QGrpcChannelOptions &operator=(QGrpcChannelOptions &&other) noexcept;
+    Q_GRPC_EXPORT QGrpcChannelOptions(const QGrpcChannelOptions &other);
+    Q_GRPC_EXPORT QGrpcChannelOptions &operator=(const QGrpcChannelOptions &other);
 
-    QGrpcChannelOptions &withHost(const QUrl &host);
-    QGrpcChannelOptions &withDeadline(std::chrono::milliseconds deadline);
-    QGrpcChannelOptions &withMetadata(const QGrpcMetadata &metadata);
+    QGrpcChannelOptions(QGrpcChannelOptions &&other) noexcept = default;
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QGrpcChannelOptions)
 
-    [[nodiscard]] QUrl host() const noexcept;
-    [[nodiscard]] std::optional<std::chrono::milliseconds> deadline() const noexcept;
-    [[nodiscard]] QGrpcMetadata metadata() const;
+    Q_GRPC_EXPORT Q_IMPLICIT operator QVariant() const;
+
+    void swap(QGrpcChannelOptions &other) noexcept { d_ptr.swap(other.d_ptr); }
+
+    [[nodiscard]] Q_GRPC_EXPORT std::optional<std::chrono::milliseconds>
+    deadlineTimeout() const noexcept;
+    Q_GRPC_EXPORT QGrpcChannelOptions &setDeadlineTimeout(std::chrono::milliseconds timeout);
+
+    [[nodiscard]] Q_GRPC_EXPORT const QHash<QByteArray, QByteArray> &metadata() const & noexcept;
+    [[nodiscard]] Q_GRPC_EXPORT QHash<QByteArray, QByteArray> metadata() &&;
+    Q_GRPC_EXPORT QGrpcChannelOptions &setMetadata(const QHash<QByteArray, QByteArray> &metadata);
+    Q_GRPC_EXPORT QGrpcChannelOptions &setMetadata(QHash<QByteArray, QByteArray> &&metadata);
+
+    [[nodiscard]] Q_GRPC_EXPORT QGrpcSerializationFormat serializationFormat() const;
+    Q_GRPC_EXPORT QGrpcChannelOptions &
+    setSerializationFormat(const QGrpcSerializationFormat &format);
 
 #if QT_CONFIG(ssl)
-    QGrpcChannelOptions &withSslConfiguration(const QSslConfiguration &sslConfiguration);
-    [[nodiscard]] std::optional<QSslConfiguration> sslConfiguration() const noexcept;
+    [[nodiscard]] Q_GRPC_EXPORT std::optional<QSslConfiguration> sslConfiguration() const;
+    Q_GRPC_EXPORT QGrpcChannelOptions &
+    setSslConfiguration(const QSslConfiguration &sslConfiguration);
 #endif
 
 private:
-    std::unique_ptr<QGrpcChannelOptionsPrivate> dPtr;
+    QExplicitlySharedDataPointer<QGrpcChannelOptionsPrivate> d_ptr;
+
+#ifndef QT_NO_DEBUG_STREAM
+    friend Q_GRPC_EXPORT QDebug operator<<(QDebug debug, const QGrpcChannelOptions &chOpts);
+#endif
+
+    Q_DECLARE_PRIVATE(QGrpcChannelOptions)
 };
+
+Q_DECLARE_SHARED(QGrpcChannelOptions)
+
 QT_END_NAMESPACE
 
 #endif // QGRPCHANNELOPTIONS_H

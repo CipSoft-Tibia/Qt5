@@ -198,8 +198,8 @@ class WorkerTest : public ContentBrowserTest,
     GURL cookie_url = ssl_server_.GetURL(host, "/");
     std::unique_ptr<net::CanonicalCookie> cookie = net::CanonicalCookie::Create(
         cookie_url, std::string(kSameSiteCookie) + "; SameSite=Lax; Secure",
-        base::Time::Now(), absl::nullopt /* server_time */,
-        absl::nullopt /* cookie_partition_key */);
+        base::Time::Now(), std::nullopt /* server_time */,
+        std::nullopt /* cookie_partition_key */);
     base::RunLoop run_loop;
     cookie_manager->SetCanonicalCookie(
         *cookie, cookie_url, options,
@@ -719,13 +719,12 @@ IN_PROC_BROWSER_TEST_P(WorkerTest,
   EXPECT_TRUE(NavigateToURLFromRenderer(root->child_at(0), test_url));
   waiter.Run();
 
-  // Check cookies sent with each request to "a.test". Frame request should not
-  // have SameSite cookies, but SharedWorker could (though eventually this will
-  // need to be changed, to protect against cross-site user tracking).
+  // Check cookies sent with each request to "a.test".
+  // Neither the frame nor the SharedWorker should get SameSite cookies.
   EXPECT_EQ(kNoCookie, GetReceivedCookie(test_url.path()));
-  EXPECT_EQ(kSameSiteCookie, GetReceivedCookie(worker_url.path()));
-  EXPECT_EQ(kSameSiteCookie, GetReceivedCookie(script_url.path()));
-  EXPECT_EQ(kSameSiteCookie, GetReceivedCookie(resource_url.path()));
+  EXPECT_EQ(kNoCookie, GetReceivedCookie(worker_url.path()));
+  EXPECT_EQ(kNoCookie, GetReceivedCookie(script_url.path()));
+  EXPECT_EQ(kNoCookie, GetReceivedCookie(resource_url.path()));
 }
 
 // Test that an "a.test" worker sends "a.test" SameSite cookies, both when

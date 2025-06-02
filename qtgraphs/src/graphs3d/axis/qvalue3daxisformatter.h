@@ -1,18 +1,14 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QVALUE3DAXISFORMATTER_H
-#define QVALUE3DAXISFORMATTER_H
+#ifndef QTGRAPHS_QVALUE3DAXISFORMATTER_H
+#define QTGRAPHS_QVALUE3DAXISFORMATTER_H
 
-#if 0
-#  pragma qt_class(QValue3DAxisFormatter)
-#endif
-
-#include <QtCore/QList>
-#include <QtCore/QLocale>
-#include <QtCore/QObject>
-#include <QtCore/QScopedPointer>
-#include <QtCore/QStringList>
+#include <QtCore/qlist.h>
+#include <QtCore/qlocale.h>
+#include <QtCore/qobject.h>
+#include <QtCore/qscopedpointer.h>
+#include <QtCore/qstringlist.h>
 #include <QtGraphs/qgraphsglobal.h>
 
 QT_BEGIN_NAMESPACE
@@ -20,7 +16,7 @@ QT_BEGIN_NAMESPACE
 class QValue3DAxisFormatterPrivate;
 class QValue3DAxis;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QValue3DAxisFormatter : public QObject
+class Q_GRAPHS_EXPORT QValue3DAxisFormatter : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QValue3DAxisFormatter)
@@ -52,13 +48,17 @@ protected:
     void markDirty(bool labelsChange = false);
     QValue3DAxis *axis() const;
 
-    const QList<float> &gridPositions() const;
+    const QList<float> &gridPositions() const &;
+    QList<float> gridPositions() &&;
     void setGridPoitions(QList<float> gridPositions);
-    const QList<float> &subGridPositions() const;
+    const QList<float> &subGridPositions() const &;
+    QList<float> subGridPositions() &&;
     void setSubGridPositions(QList<float> subGridPositions);
-    const QList<float> &labelPositions() const;
+    const QList<float> &labelPositions() const &;
+    QList<float> labelPositions() &&;
     void setlabelPositions(QList<float> labelPositions);
-    const QStringList &labelStrings() const;
+    const QStringList &labelStrings() const &;
+    QStringList labelStrings() &&;
     void setLabelStrings(QStringList labelStrings);
 
     void setLocale(const QLocale &locale);

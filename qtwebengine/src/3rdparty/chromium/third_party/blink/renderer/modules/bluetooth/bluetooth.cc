@@ -334,8 +334,8 @@ ScriptPromise Bluetooth::getAvailability(ScriptState* script_state,
   // If Bluetooth is disallowed by Permissions Policy, getAvailability should
   // return false.
   if (!IsFeatureEnabled(window)) {
-    return ScriptPromise::Cast(script_state,
-                               ScriptValue::From(script_state, false));
+    return ScriptPromise::Cast(
+        script_state, v8::Boolean::New(script_state->GetIsolate(), false));
   }
 
   CHECK(window->IsSecureContext());
@@ -656,7 +656,7 @@ BluetoothDevice* Bluetooth::GetBluetoothDeviceRepresentingDevice(
   auto it =
       device_instance_map_.find(device_ptr->id.DeviceIdInBase64().c_str());
   if (it != device_instance_map_.end()) {
-    return it->value;
+    return it->value.Get();
   }
 
   BluetoothDevice* device = MakeGarbageCollected<BluetoothDevice>(

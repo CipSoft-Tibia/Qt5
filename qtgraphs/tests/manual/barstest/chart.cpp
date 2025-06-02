@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "chart.h"
-#include "custominputhandler.h"
 #include <QtGraphs/qcategory3daxis.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/qlogvalue3daxisformatter.h>
 #include <QtGraphs/qbardataproxy.h>
 #include <QtGraphs/q3dscene.h>
-#include <QtGraphs/q3dtheme.h>
-#include <QtGraphs/q3dinputhandler.h>
+#include <QtGraphs/qgraphstheme.h>
 #include <QtGraphs/qcustom3ditem.h>
 #include <QtCore/QRandomGenerator>
 #include <QtCore/QElapsedTimer>
@@ -17,7 +15,7 @@
 
 const QString celsiusString = QString(QChar(0xB0)) + "C";
 
-GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
+GraphModifier::GraphModifier(Q3DBarsWidgetItem *barchart, QColorDialog *colorDialog)
     : m_graph(barchart),
       m_colorDialog(colorDialog),
       m_columnCount(21),
@@ -54,10 +52,8 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
       m_currentAxis(m_fixedRangeAxis),
       m_negativeValuesOn(false),
       m_useNullInputHandler(false),
-      m_defaultInputHandler(0),
       m_ownTheme(0),
-      m_builtinTheme(new Q3DTheme(Q3DTheme::Theme::StoneMoss)),
-      m_customInputHandler(new CustomInputHandler),
+      m_builtinTheme(new QGraphsTheme()),
       m_extraSeries(0)
 {
     m_temperatureData->setObjectName("m_temperatureData");
@@ -121,7 +117,7 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
     m_graph->addAxis(m_genericColumnAxis);
 
     m_graph->setActiveTheme(m_builtinTheme);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftMedium);
+    m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::SoftMedium);
 
     m_temperatureData->setName("Oulu");
     m_temperatureData2->setName("Helsinki");
@@ -142,7 +138,7 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
     m_dummyData4->setItemLabelFormat(QStringLiteral("@seriesName: @valueLabel"));
     m_dummyData5->setItemLabelFormat(QStringLiteral("@seriesName: @valueLabel"));
 
-    m_genericData->dataProxy()->setColumnLabels(genericColumnLabels);
+    m_genericData->setColumnLabels(genericColumnLabels);
 
     m_temperatureData->setBaseColor(Qt::red);
     m_temperatureData->setSingleHighlightColor(Qt::cyan);
@@ -186,14 +182,13 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
     m_temperatureData->setSingleHighlightGradient(singleHighlightGradient);
     m_temperatureData->setMultiHighlightGradient(multiHighlightGradient);
 
-    m_graph->activeTheme()->setFont(QFont("Times Roman", 20));
+    m_graph->activeTheme()->setLabelFont(QFont("Times Roman", 20));
 
     // Release and store the default input handler.
-    m_defaultInputHandler = static_cast<Q3DInputHandler *>(m_graph->activeInputHandler());
-    m_graph->releaseInputHandler(m_defaultInputHandler);
-    m_graph->setActiveInputHandler(m_defaultInputHandler);
+    m_graph->unsetDefaultWheelHandler();
+    m_graph->setDefaultInputHandler();
 
-    QObject::connect(m_graph, &Q3DBars::shadowQualityChanged, this,
+    QObject::connect(m_graph, &Q3DBarsWidgetItem::shadowQualityChanged, this,
                      &GraphModifier::shadowQualityUpdatedByVisual);
     QObject::connect(m_temperatureData, &QBar3DSeries::selectedBarChanged, this,
                      &GraphModifier::handleSelectionChange);
@@ -202,13 +197,13 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
     QObject::connect(m_genericData, &QBar3DSeries::selectedBarChanged, this,
                      &GraphModifier::handleSelectionChange);
 
-    QObject::connect(m_graph, &Q3DBars::rowAxisChanged, this,
+    QObject::connect(m_graph, &Q3DBarsWidgetItem::rowAxisChanged, this,
                      &GraphModifier::handleRowAxisChanged);
-    QObject::connect(m_graph, &Q3DBars::columnAxisChanged, this,
+    QObject::connect(m_graph, &Q3DBarsWidgetItem::columnAxisChanged, this,
                      &GraphModifier::handleColumnAxisChanged);
-    QObject::connect(m_graph, &Q3DBars::valueAxisChanged, this,
+    QObject::connect(m_graph, &Q3DBarsWidgetItem::valueAxisChanged, this,
                      &GraphModifier::handleValueAxisChanged);
-    QObject::connect(m_graph, &Q3DBars::primarySeriesChanged, this,
+    QObject::connect(m_graph, &Q3DBarsWidgetItem::primarySeriesChanged, this,
                      &GraphModifier::handlePrimarySeriesChanged);
     QObject::connect(m_temperatureAxis, &QAbstract3DAxis::labelsChanged, this,
                      &GraphModifier::handleValueAxisLabelsChanged);
@@ -224,7 +219,9 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
     QObject::connect(&m_rotationTimer, &QTimer::timeout, this,
                      &GraphModifier::triggerRotation);
 
-    QObject::connect(m_graph, &QAbstract3DGraph::currentFpsChanged, this,
+    QObject::connect(m_graph,
+                     &Q3DGraphsWidgetItem::currentFpsChanged,
+                     this,
                      &GraphModifier::handleFpsChange);
 
     resetTemperatureData();
@@ -233,7 +230,6 @@ GraphModifier::GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog)
 GraphModifier::~GraphModifier()
 {
     delete m_graph;
-    delete m_defaultInputHandler;
 }
 
 void GraphModifier::start()
@@ -248,7 +244,8 @@ void GraphModifier::restart(int dynamicData)
     if (m_static) {
         m_graph->removeSeries(m_genericData);
 
-        m_graph->setWindowTitle(QStringLiteral("Average temperatures in Oulu, Finland (2006-2012)"));
+        m_graph->widget()->setWindowTitle(
+            QStringLiteral("Average temperatures in Oulu, Finland (2006-2012)"));
 
         m_graph->setValueAxis(m_temperatureAxis);
         m_graph->setRowAxis(m_yearAxis);
@@ -257,7 +254,7 @@ void GraphModifier::restart(int dynamicData)
     } else {
         m_graph->addSeries(m_genericData);
 
-        m_graph->setWindowTitle(QStringLiteral("Generic data"));
+        m_graph->widget()->setWindowTitle(QStringLiteral("Generic data"));
 
         m_minval = m_fixedRangeAxis->min();
         m_maxval = m_fixedRangeAxis->max();
@@ -600,87 +597,88 @@ void GraphModifier::changeStyle()
 
 void GraphModifier::changePresetCamera()
 {
-    static int preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
+    static int preset = int(QtGraphs3D::CameraPreset::FrontLow);
 
-    m_graph->setCameraPreset((QAbstract3DGraph::CameraPreset)preset);
+    m_graph->setCameraPreset((QtGraphs3D::CameraPreset) preset);
 
-    if (++preset > int(QAbstract3DGraph::CameraPreset::DirectlyBelow))
-        preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
+    if (++preset > int(QtGraphs3D::CameraPreset::DirectlyBelow))
+        preset = int(QtGraphs3D::CameraPreset::FrontLow);
 }
 
 void GraphModifier::changeTheme()
 {
-    static int theme = int(Q3DTheme::Theme::Qt);
+    static int theme = int(QGraphsTheme::Theme::QtGreen);
 
-    Q3DTheme *currentTheme = m_graph->activeTheme();
-    m_builtinTheme->setType(Q3DTheme::Theme(theme));
+    QGraphsTheme *currentTheme = m_graph->activeTheme();
+    m_builtinTheme->setTheme(QGraphsTheme::Theme(theme));
     if (currentTheme == m_ownTheme)
         m_graph->setActiveTheme(m_builtinTheme);
 
     switch (theme) {
-    case int(Q3DTheme::Theme::Qt):
-        qDebug() << __FUNCTION__ << "Qt";
+    case int(QGraphsTheme::Theme::QtGreen):
+        qDebug() << __FUNCTION__ << "QtGreen";
         break;
-    case int(Q3DTheme::Theme::PrimaryColors):
-        qDebug() << __FUNCTION__ << "PrimaryColors";
+    case int(QGraphsTheme::Theme::QtGreenNeon):
+        qDebug() << __FUNCTION__ << "QtGreenNeon";
         break;
-    case int(Q3DTheme::Theme::StoneMoss):
-        qDebug() << __FUNCTION__ << "StoneMoss";
+    case int(QGraphsTheme::Theme::MixSeries):
+        qDebug() << __FUNCTION__ << "MixSeries";
         break;
-    case int(Q3DTheme::Theme::ArmyBlue):
-        qDebug() << __FUNCTION__ << "ArmyBlue";
+    case int(QGraphsTheme::Theme::OrangeSeries):
+        qDebug() << __FUNCTION__ << "OrangeSeries";
         break;
-    case int(Q3DTheme::Theme::Retro):
-        qDebug() << __FUNCTION__ << "Retro";
+    case int(QGraphsTheme::Theme::PurpleSeries):
+        qDebug() << __FUNCTION__ << "PurpleSeries";
         break;
-    case int(Q3DTheme::Theme::Ebony):
-        qDebug() << __FUNCTION__ << "Ebony";
+    case int(QGraphsTheme::Theme::YellowSeries):
+        qDebug() << __FUNCTION__ << "YellowSeries";
         break;
-    case int(Q3DTheme::Theme::Isabelle):
-        qDebug() << __FUNCTION__ << "Isabelle";
+    case int(QGraphsTheme::Theme::GreySeries):
+        qDebug() << __FUNCTION__ << "GreySeries";
         break;
     default:
         qDebug() << __FUNCTION__ << "Unknown theme";
         break;
     }
 
-    if (++theme > int(Q3DTheme::Theme::Isabelle))
-        theme = int(Q3DTheme::Theme::Qt);
+    if (++theme > int(QGraphsTheme::Theme::UserDefined))
+        theme = int(QGraphsTheme::Theme::QtGreen);
 }
 
 void GraphModifier::changeLabelStyle()
 {
-    m_graph->activeTheme()->setLabelBackgroundEnabled(!m_graph->activeTheme()->isLabelBackgroundEnabled());
+    m_graph->activeTheme()->setLabelBackgroundVisible(
+        !m_graph->activeTheme()->isLabelBackgroundVisible());
 }
 
 void GraphModifier::changeSelectionMode()
 {
     static int selectionMode = m_graph->selectionMode();
 
-    if (++selectionMode > (int)(QAbstract3DGraph::SelectionItemAndColumn |
-                                QAbstract3DGraph::SelectionSlice |
-                                QAbstract3DGraph::SelectionMultiSeries))
-        selectionMode = QAbstract3DGraph::SelectionNone;
+    if (++selectionMode
+        > (int) (QtGraphs3D::SelectionFlag::ItemAndColumn | QtGraphs3D::SelectionFlag::Slice
+                 | QtGraphs3D::SelectionFlag::MultiSeries))
+        selectionMode = int(QtGraphs3D::SelectionFlag::None);
 
-    m_graph->setSelectionMode((QAbstract3DGraph::SelectionFlag)selectionMode);
+    m_graph->setSelectionMode((QtGraphs3D::SelectionFlag) selectionMode);
 }
 
 void GraphModifier::changeFont(const QFont &font)
 {
     QFont newFont = font;
     newFont.setPointSize(m_fontSize);
-    m_graph->activeTheme()->setFont(newFont);
+    m_graph->activeTheme()->setLabelFont(newFont);
 }
 
 void GraphModifier::changeFontSize(int fontsize)
 {
     m_fontSize = fontsize;
-    QFont font = m_graph->activeTheme()->font();
+    QFont font = m_graph->activeTheme()->labelFont();
     font.setPointSize(m_fontSize);
-    m_graph->activeTheme()->setFont(font);
+    m_graph->activeTheme()->setLabelFont(font);
 }
 
-void GraphModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality sq)
+void GraphModifier::shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality sq)
 {
     int quality = int(sq);
     // Updates the UI component to show correct shadow quality
@@ -711,15 +709,21 @@ void GraphModifier::handleSelectionChange(const QPoint &position)
 void GraphModifier::setUseNullInputHandler(int useNull)
 {
     qDebug() << "setUseNullInputHandler" << useNull;
-    if (m_useNullInputHandler == useNull)
+    if (m_useNullInputHandler == bool(useNull))
         return;
 
     m_useNullInputHandler = useNull;
 
-    if (useNull)
-        m_graph->setActiveInputHandler(0);
-    else
-        m_graph->setActiveInputHandler(m_defaultInputHandler);
+    if (useNull) {
+        m_graph->unsetDefaultInputHandler();
+        QObject::disconnect(m_graph, &Q3DGraphsWidgetItem::wheel, this, &GraphModifier::onWheel);
+        QObject::disconnect(m_graph,
+                            &Q3DGraphsWidgetItem::mouseMove,
+                            this,
+                            &GraphModifier::onMouseMove);
+    } else {
+        m_graph->setDefaultInputHandler();
+    }
 }
 
 void GraphModifier::handleRowAxisChanged(QCategory3DAxis *axis)
@@ -744,7 +748,7 @@ void GraphModifier::handlePrimarySeriesChanged(QBar3DSeries *series)
 
 void GraphModifier::changeShadowQuality(int quality)
 {
-    QAbstract3DGraph::ShadowQuality sq = QAbstract3DGraph::ShadowQuality(quality);
+    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
     emit shadowQualityChanged(quality);
 }
@@ -753,7 +757,8 @@ void GraphModifier::showFiveSeries()
 {
     releaseSeries();
     releaseAxes();
-    m_graph->setSelectionMode(QAbstract3DGraph::SelectionItemRowAndColumn | QAbstract3DGraph::SelectionMultiSeries);
+    m_graph->setSelectionMode(QtGraphs3D::SelectionFlag::ItemRowAndColumn
+                              | QtGraphs3D::SelectionFlag::MultiSeries);
 
     m_dummyData->dataProxy()->resetArray(makeDummyData());
     m_dummyData2->dataProxy()->resetArray(makeDummyData(), QStringList(), QStringList());
@@ -1009,13 +1014,20 @@ void GraphModifier::insertRemoveTestToggle()
         m_graph->removeSeries(m_dummyData2);
         releaseSeries();
         releaseAxes();
-        m_graph->setActiveInputHandler(m_defaultInputHandler);
+        QObject::disconnect(m_graph, &Q3DGraphsWidgetItem::wheel, this, &GraphModifier::onWheel);
+        QObject::disconnect(m_graph,
+                            &Q3DGraphsWidgetItem::mouseMove,
+                            this,
+                            &GraphModifier::onMouseMove);
+        m_graph->setDefaultInputHandler();
     } else {
         releaseSeries();
         releaseAxes();
         m_graph->rowAxis()->setRange(0, 32);
         m_graph->columnAxis()->setRange(0, 10);
-        m_graph->setActiveInputHandler(m_customInputHandler);
+        m_graph->unsetDefaultWheelHandler();
+        QObject::connect(m_graph, &Q3DGraphsWidgetItem::wheel, this, &GraphModifier::onWheel);
+        QObject::connect(m_graph, &Q3DGraphsWidgetItem::mouseMove, this, &GraphModifier::onMouseMove);
         m_graph->addSeries(m_dummyData);
         m_graph->addSeries(m_dummyData2);
         m_insertRemoveStep = 0;
@@ -1052,7 +1064,7 @@ void GraphModifier::useLogAxis(bool checked)
     }
     case 1: {
         qDebug() << "Case" << counter << ": Hide max label";
-        logFormatter->setShowEdgeLabels(false);
+        logFormatter->setEdgeLabelsVisible(false);
         break;
     }
     case 2: {
@@ -1405,22 +1417,22 @@ void GraphModifier::reverseValueAxis(int enabled)
 
 void GraphModifier::setInputHandlerRotationEnabled(int enabled)
 {
-    m_defaultInputHandler->setRotationEnabled(enabled);
+    m_graph->setRotationEnabled(enabled);
 }
 
 void GraphModifier::setInputHandlerZoomEnabled(int enabled)
 {
-    m_defaultInputHandler->setZoomEnabled(enabled);
+    m_graph->setZoomEnabled(enabled);
 }
 
 void GraphModifier::setInputHandlerSelectionEnabled(int enabled)
 {
-    m_defaultInputHandler->setSelectionEnabled(enabled);
+    m_graph->setSelectionEnabled(enabled);
 }
 
 void GraphModifier::setInputHandlerZoomAtTargetEnabled(int enabled)
 {
-    m_defaultInputHandler->setZoomAtTargetEnabled(enabled);
+    m_graph->setZoomAtTargetEnabled(enabled);
 }
 
 void GraphModifier::changeValueAxisSegments(int value)
@@ -1466,7 +1478,7 @@ void GraphModifier::insertRemoveTimerTimeout()
 
 void GraphModifier::triggerSelection()
 {
-    m_graph->scene()->setSelectionQueryPosition(m_customInputHandler->inputPosition());
+    m_graph->doPicking(m_mousePos);
 }
 
 void GraphModifier::triggerRotation()
@@ -1533,6 +1545,29 @@ void GraphModifier::setGraphMargin(int value)
     qDebug() << "Setting margin:" << m_graph->margin() << value;
 }
 
+void GraphModifier::onWheel(QWheelEvent *event)
+{
+    int zoomLevel = m_graph->cameraZoomLevel();
+    if (zoomLevel > 100)
+        zoomLevel += event->angleDelta().y() / 12;
+    else if (zoomLevel > 50)
+        zoomLevel += event->angleDelta().y() / 60;
+    else
+        zoomLevel += event->angleDelta().y() / 120;
+    if (zoomLevel > 500)
+        zoomLevel = 500;
+    else if (zoomLevel < 10)
+        zoomLevel = 10;
+
+    m_graph->setCameraZoomLevel(zoomLevel);
+}
+
+void GraphModifier::onMouseMove(QPoint mousePos)
+{
+    m_mousePos = mousePos;
+    m_graph->doPicking(mousePos);
+}
+
 void GraphModifier::populateFlatSeries(QBar3DSeries *series, int rows, int columns, float value)
 {
     QBarDataArray dataArray;
@@ -1559,14 +1594,14 @@ QBarDataRow GraphModifier::createFlatRow(int columns, float value)
     return dataRow;
 }
 
-void GraphModifier::setBackgroundEnabled(int enabled)
+void GraphModifier::setBackgroundVisible(int visible)
 {
-    m_graph->activeTheme()->setBackgroundEnabled(bool(enabled));
+    m_graph->activeTheme()->setBackgroundVisible(bool(visible));
 }
 
-void GraphModifier::setGridEnabled(int enabled)
+void GraphModifier::setGridVisible(int visible)
 {
-    m_graph->activeTheme()->setGridEnabled(bool(enabled));
+    m_graph->activeTheme()->setGridVisible(bool(visible));
 }
 
 void GraphModifier::rotateX(int rotation)
@@ -1655,10 +1690,10 @@ void GraphModifier::changeColorStyle(bool checked)
     Q_UNUSED(checked)
     int style = int(m_graph->activeTheme()->colorStyle());
 
-    if (++style > int(Q3DTheme::ColorStyle::RangeGradient))
-        style = int(Q3DTheme::ColorStyle::Uniform);
+    if (++style > int(QGraphsTheme::ColorStyle::RangeGradient))
+        style = int(QGraphsTheme::ColorStyle::Uniform);
 
-    m_graph->activeTheme()->setColorStyle(Q3DTheme::ColorStyle(style));
+    m_graph->activeTheme()->setColorStyle(QGraphsTheme::ColorStyle(style));
 }
 
 void GraphModifier::useOwnTheme(bool checked)
@@ -1666,25 +1701,24 @@ void GraphModifier::useOwnTheme(bool checked)
     Q_UNUSED(checked)
     // Own theme is persistent, any changes to it via UI will be remembered
     if (!m_ownTheme) {
-        m_ownTheme = new Q3DTheme();
-        m_ownTheme->setBackgroundEnabled(true);
-        m_ownTheme->setGridEnabled(true);
-        m_ownTheme->setAmbientLightStrength(0.3f);
-        m_ownTheme->setBackgroundColor(QColor(QRgb(0x99ca53)));
+        m_ownTheme = new QGraphsTheme();
+        m_ownTheme->setBackgroundVisible(true);
+        m_ownTheme->setGridVisible(true);
+        m_ownTheme->setPlotAreaBackgroundColor(QColor(QRgb(0x99ca53)));
         QList<QColor> colors;
         colors.append(QColor(QRgb(0x209fdf)));
-        m_ownTheme->setBaseColors(colors);
-        m_ownTheme->setColorStyle(Q3DTheme::ColorStyle::Uniform);
-        m_ownTheme->setGridLineColor(QColor(QRgb(0x99ca53)));
-        m_ownTheme->setLabelBackgroundEnabled(true);
-        m_ownTheme->setLabelBorderEnabled(true);
-        m_ownTheme->setLightColor(Qt::white);
-        m_ownTheme->setLightStrength(6.0f);
+        m_ownTheme->setSeriesColors(colors);
+        m_ownTheme->setColorStyle(QGraphsTheme::ColorStyle::Uniform);
+        QGraphsLine grid = m_ownTheme->grid();
+        grid.setMainColor(QColor(QRgb(0x99ca53)));
+        m_ownTheme->setGrid(grid);
+        m_ownTheme->setLabelBackgroundVisible(true);
+        m_ownTheme->setLabelBorderVisible(true);
         m_ownTheme->setMultiHighlightColor(QColor(QRgb(0x6d5fd5)));
         m_ownTheme->setSingleHighlightColor(QColor(QRgb(0xf6a625)));
         m_ownTheme->setLabelBackgroundColor(QColor(0xf6, 0xa6, 0x25, 0xa0));
         m_ownTheme->setLabelTextColor(QColor(QRgb(0x404044)));
-        m_ownTheme->setWindowColor(QColor(QRgb(0xffffff)));
+        m_ownTheme->setBackgroundColor(QColor(QRgb(0xffffff)));
     }
 
     m_graph->setActiveTheme(m_ownTheme);
@@ -1697,7 +1731,7 @@ void GraphModifier::changeBaseColor(const QColor &color)
     qDebug() << "base color changed to" << color;
     QList<QColor> colors;
     colors.append(color);
-    m_graph->activeTheme()->setBaseColors(colors);
+    m_graph->activeTheme()->setSeriesColors(colors);
 }
 
 void GraphModifier::setGradient(bool checked)
@@ -1729,11 +1763,11 @@ void GraphModifier::setGradient(bool checked)
 
     QList<QLinearGradient> barGradients;
     barGradients.append(barGradient);
-    m_graph->activeTheme()->setBaseGradients(barGradients);
+    m_graph->activeTheme()->setSeriesGradients(barGradients);
     m_graph->activeTheme()->setSingleHighlightGradient(singleHighlightGradient);
     m_graph->activeTheme()->setMultiHighlightGradient(multiHighlightGradient);
 
-    m_graph->activeTheme()->setColorStyle(Q3DTheme::ColorStyle::ObjectGradient);
+    m_graph->activeTheme()->setColorStyle(QGraphsTheme::ColorStyle::ObjectGradient);
 }
 
 void GraphModifier::toggleMultiseriesScaling()
@@ -1753,7 +1787,7 @@ void GraphModifier::toggleCustomItem()
         m_graph->removeCustomItemAt(positionTwo);
     } else if (state == 1) {
         QCustom3DItem *item = new QCustom3DItem();
-        item->setMeshFile(":/shuttle.obj");
+        item->setMeshFile(":/shuttle.mesh");
         item->setPosition(positionOne);
         item->setScaling(QVector3D(0.1f, 0.1f, 0.1f));
         item->setRotation(QQuaternion::fromAxisAndAngle(0.0f, 1.0f, 0.0f, QRandomGenerator::global()->generate()));
@@ -1762,7 +1796,7 @@ void GraphModifier::toggleCustomItem()
     } else {
         m_graph->removeCustomItemAt(positionOne);
         QCustom3DItem *item = new QCustom3DItem();
-        item->setMeshFile(":/shuttle.obj");
+        item->setMeshFile(":/shuttle.mesh");
         item->setPosition(positionTwo);
         item->setScaling(QVector3D(0.1f, 0.1f, 0.1f));
         item->setRotation(QQuaternion::fromAxisAndAngle(0.0f, 1.0f, 0.0f, QRandomGenerator::global()->generate()));

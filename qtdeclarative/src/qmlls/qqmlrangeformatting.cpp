@@ -124,7 +124,13 @@ void QQmlRangeFormatting::process(RequestPointerArgument request)
     };
 
     const auto startOffset = QQmlLSUtils::textOffsetFrom(code, selectedRangeStartLine, 0);
-    const auto endOffset = QQmlLSUtils::textOffsetFrom(code, selectedRangeEndLine + 1, 0);
+    auto endOffset = QQmlLSUtils::textOffsetFrom(code, selectedRangeEndLine + 1, 0);
+
+    // note: the character at endOffset (usually a \n) is ignored. Therefore avoid
+    // formatting \r\n that will ignore \n and format \r as a space (' ').
+    if (endOffset < code.size() && code[endOffset - 1] == u'\r' && code[endOffset] == u'\n')
+        --endOffset;
+
     const auto &toFormat = code.mid(startOffset, endOffset - startOffset);
     ow.write(removeSpaces(toFormat));
     ow.flush();

@@ -9,8 +9,6 @@
   \ingroup technology-apis
   \ingroup explanation
 
-  \tableofcontents
-
   The State Machine framework provides classes for creating and executing
   state graphs. This page illustrates the framework's key features in C++.
 

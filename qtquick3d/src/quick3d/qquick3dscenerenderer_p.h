@@ -37,7 +37,6 @@ QT_BEGIN_NAMESPACE
 
 class QQuick3DSceneManager;
 class QQuick3DViewport;
-struct QSSGRenderLayer;
 
 class QQuick3DSceneRenderer
 {
@@ -48,8 +47,12 @@ public:
 
     static QSSGRenderLayer::TonemapMode getTonemapMode(const QQuick3DSceneEnvironment &environment)
     {
-        return environment.useBuiltinTonemapper() ? QSSGRenderLayer::TonemapMode(environment.tonemapMode())
-                                                  : QSSGRenderLayer::TonemapMode::None;
+        if (environment.useBuiltinTonemapper())
+            return QSSGRenderLayer::TonemapMode(environment.tonemapMode());
+
+        // Special case for the extend scene environment...
+        return (environment.tonemapMode() != QQuick3DSceneEnvironment::QQuick3DEnvironmentTonemapModes::TonemapModeNone) ? QSSGRenderLayer::TonemapMode::Custom
+                                                                                                                         : QSSGRenderLayer::TonemapMode::None;
     }
 
 protected:
@@ -64,8 +67,9 @@ protected:
     void releaseCachedResources();
 
     std::optional<QSSGRenderRay> getRayFromViewportPos(const QPointF &pos);
-    QSSGRenderPickResult syncPick(const QSSGRenderRay &ray);
-    QSSGRenderPickResult syncPickOne(const QSSGRenderRay &ray, QSSGRenderNode *node);
+    PickResultList syncPick(const QSSGRenderRay &ray);
+    PickResultList syncPickOne(const QSSGRenderRay &ray, QSSGRenderNode *node);
+    PickResultList syncPickSubset(const QSSGRenderRay &ray, QVarLengthArray<QSSGRenderNode *> subset);
     PickResultList syncPickAll(const QSSGRenderRay &ray);
 
     void setGlobalPickingEnabled(bool isEnabled);
@@ -74,7 +78,9 @@ protected:
 
 private:
     void releaseAaDependentRhiResources();
-    void updateLayerNode(QQuick3DViewport *view3D, const QList<QSSGRenderGraphObject *> &resourceLoaders);
+    void updateLayerNode(QSSGRenderLayer &layerNode,
+                         const QQuick3DViewport &view3D,
+                         const QList<QSSGRenderGraphObject *> &resourceLoaders);
     void addNodeToLayer(QSSGRenderNode *node);
     void removeNodeFromLayer(QSSGRenderNode *node);
     std::shared_ptr<QSSGRenderContextInterface> m_sgContext;
@@ -83,6 +89,8 @@ private:
     QSize m_surfaceSize;
     SGFramebufferObjectNode *fboNode = nullptr;
     bool m_aaIsDirty = true;
+    bool m_temporalIsDirty = false;
+    bool m_timeBasedAA = false;
 
     // RHI
     QRhiTexture *m_texture = nullptr;
@@ -93,14 +101,16 @@ private:
     QRhiTextureRenderTarget *m_ssaaTextureToTextureRenderTarget = nullptr;
     QRhiRenderPassDescriptor *m_ssaaTextureToTextureRenderPassDescriptor = nullptr;
     QRhiRenderBuffer *m_msaaRenderBuffer = nullptr;
+    QRhiTexture *m_msaaMultiViewRenderBuffer = nullptr;
     QRhiTexture *m_ssaaTexture = nullptr;
     QRhiTexture *m_temporalAATexture = nullptr;
     QRhiTexture *m_prevTempAATexture = nullptr;
     QRhiTextureRenderTarget *m_temporalAARenderTarget = nullptr;
     QRhiRenderPassDescriptor *m_temporalAARenderPassDescriptor = nullptr;
     QRhiRenderBuffer *m_depthStencilBuffer = nullptr;
+    QRhiTexture *m_multiViewDepthStencilBuffer = nullptr;
     bool m_textureNeedsFlip = true;
-    QSSGRenderLayer::Background m_backgroundMode;
+    QSSGRenderLayer::Background m_backgroundMode = QSSGRenderLayer::Background::Unspecified;
     QColor m_userBackgroundColor = Qt::black;
     QColor m_linearBackgroundColor = Qt::black;
     QColor m_tonemappedBackgroundColor = Qt::black;
@@ -112,12 +122,11 @@ private:
     QSSGRenderNode *m_sceneRootNode = nullptr;
     QSSGRenderNode *m_importRootNode = nullptr;
 
-    float m_ssaaMultiplier = 1.5f;
-
     bool m_prepared = false;
 
-    int requestedFramesCount = 0;
+    int m_requestedFramesCount = 0;
     bool m_postProcessingStack = false;
+    bool m_useFBO = false;
     Q_QUICK3D_PROFILE_ID
 
     friend class SGFramebufferObjectNode;
@@ -125,11 +134,18 @@ private:
     friend class QQuick3DSGDirectRenderer;
     friend class QQuick3DViewport;
     friend struct ViewportTransformHelper;
+    friend class QQuick3DRenderLayerHelpers;
 };
 
-namespace QQuick3DRenderLayerHelpers {
-Q_QUICK3D_EXPORT void updateLayerNodeHelper(const QQuick3DViewport &view3D, QSSGRenderLayer &layerNode, bool &aaIsDirty, bool &temporalIsDirty, float &ssaaMultiplier);
-}
+class Q_QUICK3D_EXPORT QQuick3DRenderLayerHelpers
+{
+public:
+    static void updateLayerNodeHelper(const QQuick3DViewport &view3D,
+                                      const std::shared_ptr<QSSGRenderContextInterface> &rci,
+                                      QSSGRenderLayer &layerNode,
+                                      bool &aaIsDirty,
+                                      bool &temporalIsDirty);
+};
 
 class SGFramebufferObjectNode final : public QSGTextureProvider, public QSGSimpleTextureNode
 {
@@ -191,6 +207,8 @@ public:
 
     void requestRender();
     void setVisibility(bool visible);
+
+    void preSynchronize();
 
 private Q_SLOTS:
     void prepare();

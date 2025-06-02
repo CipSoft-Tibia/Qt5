@@ -60,7 +60,7 @@ namespace Qt3DRender {
     is enabled.
     \since 5.7
     \inqmlmodule Qt3D.Render
-    \instantiates Qt3DRender::QCullFace
+    \nativetype Qt3DRender::QCullFace
     \inherits RenderState
     \ingroup renderstates
 
@@ -121,7 +121,7 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property QCullFace::mode
+    \property Qt3DRender::QCullFace::mode
     Holds the culling mode used by QCullFace. Default is set to QCullFace.Back.
 */
 

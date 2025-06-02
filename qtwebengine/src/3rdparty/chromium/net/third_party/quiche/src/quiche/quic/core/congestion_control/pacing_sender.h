@@ -28,7 +28,7 @@ namespace test {
 class QuicSentPacketManagerPeer;
 }  // namespace test
 
-class QUIC_EXPORT_PRIVATE PacingSender {
+class QUICHE_EXPORT PacingSender {
  public:
   PacingSender();
   PacingSender(const PacingSender&) = delete;
@@ -43,6 +43,8 @@ class QUIC_EXPORT_PRIVATE PacingSender {
   void set_max_pacing_rate(QuicBandwidth max_pacing_rate) {
     max_pacing_rate_ = max_pacing_rate;
   }
+
+  void set_remove_non_initial_burst() { remove_non_initial_burst_ = true; }
 
   void set_alarm_granularity(QuicTime::Delta alarm_granularity) {
     alarm_granularity_ = alarm_granularity;
@@ -108,7 +110,7 @@ class QUIC_EXPORT_PRIVATE PacingSender {
   // time.
   bool pacing_limited_;
 
-  const bool remove_non_initial_burst_ =
+  bool remove_non_initial_burst_ =
       GetQuicReloadableFlag(quic_pacing_remove_non_initial_burst);
 };
 

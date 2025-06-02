@@ -31,7 +31,6 @@
 import type * as Platform from '../platform/platform.js';
 import * as Root from '../root/root.js';
 
-import {Format, type Color} from './Color.js';
 import {Console} from './Console.js';
 import {type GenericEvents, type EventDescriptor, type EventTargetEvent} from './EventTarget.js';
 import {ObjectWrapper} from './Object.js';
@@ -584,7 +583,7 @@ export class VersionController {
   static readonly SYNCED_VERSION_SETTING_NAME = 'syncedInspectorVersion';
   static readonly LOCAL_VERSION_SETTING_NAME = 'localInspectorVersion';
 
-  static readonly CURRENT_VERSION = 35;
+  static readonly CURRENT_VERSION = 36;
 
   readonly #globalVersionSetting: Setting<number>;
   readonly #syncedVersionSetting: Setting<number>;
@@ -1197,6 +1196,11 @@ export class VersionController {
     breakpointsSetting.set(breakpoints);
   }
 
+  updateVersionFrom35To36(): void {
+    // We have changed the default from 'false' to 'true' and this updates the existing setting just for once.
+    Settings.instance().createSetting('showThirdPartyIssues', true).set(true);
+  }
+
   /*
    * Any new migration should be added before this comment.
    *
@@ -1244,9 +1248,7 @@ export class VersionController {
   }
 }
 
-// TODO(crbug.com/1167717): Make this a const enum again
-// eslint-disable-next-line rulesdir/const_enum
-export enum SettingStorageType {
+export const enum SettingStorageType {
   /**
    * Synced storage persists settings with the active Chrome profile but also
    * syncs the settings across devices via Chrome Sync.
@@ -1266,24 +1268,6 @@ export function moduleSetting(settingName: string): Setting<unknown> {
 
 export function settingForTest(settingName: string): Setting<unknown> {
   return Settings.instance().settingForTest(settingName);
-}
-
-export function detectColorFormat(color: Color): Format {
-  let format;
-  const formatSetting = Settings.instance().moduleSetting('colorFormat').get();
-  if (formatSetting === Format.RGB) {
-    format = Format.RGB;
-  } else if (formatSetting === Format.HSL) {
-    format = Format.HSL;
-  } else if (formatSetting === Format.HWB) {
-    format = Format.HWB;
-  } else if (formatSetting === Format.HEX) {
-    format = color.asLegacyColor().detectHEXFormat();
-  } else {
-    format = color.format();
-  }
-
-  return format;
 }
 
 export {

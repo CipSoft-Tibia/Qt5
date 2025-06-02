@@ -85,9 +85,8 @@ static void f16_igemm(benchmark::State& state,
 
   std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> w(w_elements * num_buffers);
   std::fill(w.begin(), w.end(), 0);
-  xnn_pack_f16_conv_goki_w(
-    1 /* groups */, group_output_channels, kernel_size, group_input_channels,
-    nr, kr, sr, k.data(), b.data(), w.data(), 0 /* extra bytes */, nullptr);
+  xnn_pack_f16_conv_goki_w(/*groups=*/1, group_output_channels, kernel_size, group_input_channels, nr, kr, sr,
+    k.data(), b.data(), /*scale=*/nullptr, w.data(), /*extra_bytes=*/0, /*params=*/nullptr);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(w.cbegin(), w.cbegin() + w_elements, w.begin() + n * w_elements);
   }
@@ -113,7 +112,21 @@ static void f16_igemm(benchmark::State& state,
   convolution_op.dilation_width       = dilation;
   convolution_op.padding_top          = padding_top;
   convolution_op.padding_left         = padding_left;
-  xnn_indirection_init_conv2d(&convolution_op, mr, XNN_LOG2_SIZEOF_HALF);
+  const size_t tiled_output_size = round_up(output_size, mr);
+  xnn_indirection_init_conv2d(
+      /*output_tile_size=*/mr,
+      /*output_start=*/0,
+      /*output_end=*/tiled_output_size,
+      convolution_op.indirection_buffer,
+      convolution_op.input,
+      convolution_op.zero_buffer,
+      convolution_op.input_pixel_stride << XNN_LOG2_SIZEOF_HALF,
+      convolution_op.input_height, convolution_op.input_width,
+      convolution_op.output_height, convolution_op.output_width,
+      convolution_op.kernel_height, convolution_op.kernel_width,
+      convolution_op.stride_height, convolution_op.stride_width,
+      convolution_op.dilation_height, convolution_op.dilation_width,
+      convolution_op.padding_top, convolution_op.padding_left);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(i.cbegin(), i.cbegin() + i_elements, i.begin() + n * i_elements);
   }
@@ -219,9 +232,8 @@ static void f16_igemm(benchmark::State& state,
 
   std::vector<uint16_t, AlignedAllocator<uint16_t, 64>> w(w_elements * num_buffers);
   std::fill(w.begin(), w.end(), 0);
-  xnn_pack_f16_conv_goki_w(
-    1 /* groups */, group_output_channels, kernel_size, group_input_channels,
-    nr, kr, sr, k.data(), b.data(), w.data(), 0 /* extra bytes */, nullptr);
+  xnn_pack_f16_conv_goki_w(/*groups=*/1, group_output_channels, kernel_size, group_input_channels, nr, kr, sr,
+    k.data(), b.data(), /*scale=*/nullptr, w.data(), /*extra_bytes=*/0, /*params=*/nullptr);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(w.cbegin(), w.cbegin() + w_elements, w.begin() + n * w_elements);
   }
@@ -247,7 +259,21 @@ static void f16_igemm(benchmark::State& state,
   convolution_op.dilation_width       = dilation;
   convolution_op.padding_top          = padding_top;
   convolution_op.padding_left         = padding_left;
-  xnn_indirection_init_conv2d(&convolution_op, mr, XNN_LOG2_SIZEOF_HALF);
+  const size_t tiled_output_size = round_up(output_size, mr);
+  xnn_indirection_init_conv2d(
+      /*output_tile_size=*/mr,
+      /*output_start=*/0,
+      /*output_end=*/tiled_output_size,
+      convolution_op.indirection_buffer,
+      convolution_op.input,
+      convolution_op.zero_buffer,
+      convolution_op.input_pixel_stride << XNN_LOG2_SIZEOF_HALF,
+      convolution_op.input_height, convolution_op.input_width,
+      convolution_op.output_height, convolution_op.output_width,
+      convolution_op.kernel_height, convolution_op.kernel_width,
+      convolution_op.stride_height, convolution_op.stride_width,
+      convolution_op.dilation_height, convolution_op.dilation_width,
+      convolution_op.padding_top, convolution_op.padding_left);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(i.cbegin(), i.cbegin() + i_elements, i.begin() + n * i_elements);
   }
@@ -523,49 +549,49 @@ static void f16_igemm(benchmark::State& state,
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64
 
 #if XNN_ARCH_ARM64 && XNN_PLATFORM_JIT
-  static void jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_cortex_a55(benchmark::State& state, const char* net) {
+  static void f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_cortex_a55(benchmark::State& state, const char* net) {
     f16_igemm(state,
       xnn_generate_f16_igemm_ukernel_6x16__aarch64_neonfp16arith_cortex_a55,
       xnn_init_f16_minmax_fp16arith_params,
       /*mr=*/6, /*nr=*/16, /*kr=*/1, /*sr=*/1,
       benchmark::utils::CheckNEONFP16ARITH);
   }
-  static void jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_cortex_a55r0(benchmark::State& state, const char* net) {
+  static void f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_cortex_a55r0(benchmark::State& state, const char* net) {
     f16_igemm(state,
       xnn_generate_f16_igemm_ukernel_6x16__aarch64_neonfp16arith_cortex_a55r0,
       xnn_init_f16_minmax_fp16arith_params,
       /*mr=*/6, /*nr=*/16, /*kr=*/1, /*sr=*/1,
       benchmark::utils::CheckNEONFP16ARITH);
   }
-  static void jit_f16_igemm_6x16_5x16__aarch64_neonfp16arith_cortex_a55r0(benchmark::State& state, const char* net) {
+  static void f16_igemm_6x16_5x16__jit_aarch64_neonfp16arith_cortex_a55r0(benchmark::State& state, const char* net) {
     f16_igemm(state,
       xnn_generate_f16_igemm_ukernel_6x16__aarch64_neonfp16arith_cortex_a55r0,
       xnn_init_f16_minmax_fp16arith_params,
       /*mr=*/5, /*nr=*/16, /*kr=*/1, /*sr=*/1,
       benchmark::utils::CheckNEONFP16ARITH);
   }
-  static void jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_cortex_a75(benchmark::State& state, const char* net) {
+  static void f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_cortex_a75(benchmark::State& state, const char* net) {
     f16_igemm(state,
       xnn_generate_f16_igemm_ukernel_6x16__aarch64_neonfp16arith_cortex_a75,
       xnn_init_f16_minmax_fp16arith_params,
       /*mr=*/6, /*nr=*/16, /*kr=*/1, /*sr=*/1,
       benchmark::utils::CheckNEONFP16ARITH);
   }
-  static void jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_ld64(benchmark::State& state, const char* net) {
+  static void f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_ld64(benchmark::State& state, const char* net) {
     f16_igemm(state,
       xnn_generate_f16_igemm_ukernel_6x16__aarch64_neonfp16arith_ld64,
       xnn_init_f16_minmax_fp16arith_params,
       /*mr=*/6, /*nr=*/16, /*kr=*/1, /*sr=*/1,
       benchmark::utils::CheckNEONFP16ARITH);
   }
-  static void jit_f16_igemm_4x16_4x16__aarch64_neonfp16arith_ld64(benchmark::State& state, const char* net) {
+  static void f16_igemm_4x16_4x16__jit_aarch64_neonfp16arith_ld64(benchmark::State& state, const char* net) {
     f16_igemm(state,
       xnn_generate_f16_igemm_ukernel_4x16__aarch64_neonfp16arith_ld64,
       xnn_init_f16_minmax_fp16arith_params,
       /*mr=*/4, /*nr=*/16, /*kr=*/1, /*sr=*/1,
       benchmark::utils::CheckNEONFP16ARITH);
   }
-  static void jit_f16_igemm_1x16_1x16__aarch64_neonfp16arith_ld64(benchmark::State& state, const char* net) {
+  static void f16_igemm_1x16_1x16__jit_aarch64_neonfp16arith_ld64(benchmark::State& state, const char* net) {
     f16_igemm(state,
       xnn_generate_f16_igemm_ukernel_1x16__aarch64_neonfp16arith_ld64,
       xnn_init_f16_minmax_fp16arith_params,
@@ -573,14 +599,14 @@ static void f16_igemm(benchmark::State& state,
       benchmark::utils::CheckNEONFP16ARITH);
   }
 
-  BENCHMARK_CONV(jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_cortex_a55)
-  BENCHMARK_CONV(jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_cortex_a55)
-  BENCHMARK_CONV(jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_cortex_a55r0)
-  BENCHMARK_CONV(jit_f16_igemm_6x16_5x16__aarch64_neonfp16arith_cortex_a55r0)
-  BENCHMARK_CONV(jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_cortex_a75)
-  BENCHMARK_CONV(jit_f16_igemm_6x16_6x16__aarch64_neonfp16arith_ld64)
-  BENCHMARK_CONV(jit_f16_igemm_4x16_4x16__aarch64_neonfp16arith_ld64)
-  BENCHMARK_CONV(jit_f16_igemm_1x16_1x16__aarch64_neonfp16arith_ld64)
+  BENCHMARK_CONV(f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_cortex_a55)
+  BENCHMARK_CONV(f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_cortex_a55)
+  BENCHMARK_CONV(f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_cortex_a55r0)
+  BENCHMARK_CONV(f16_igemm_6x16_5x16__jit_aarch64_neonfp16arith_cortex_a55r0)
+  BENCHMARK_CONV(f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_cortex_a75)
+  BENCHMARK_CONV(f16_igemm_6x16_6x16__jit_aarch64_neonfp16arith_ld64)
+  BENCHMARK_CONV(f16_igemm_4x16_4x16__jit_aarch64_neonfp16arith_ld64)
+  BENCHMARK_CONV(f16_igemm_1x16_1x16__jit_aarch64_neonfp16arith_ld64)
 #endif  // XNN_ARCH_ARM64 && XNN_PLATFORM_JIT
 
 #ifndef XNNPACK_BENCHMARK_NO_MAIN

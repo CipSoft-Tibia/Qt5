@@ -113,7 +113,6 @@ void tst_QAction::actionEvent()
     // add action
     MyWidget testWidget(this);
     testWidget.show();
-    QApplicationPrivate::setActiveWindow(&testWidget);
     testWidget.addAction(&a);
     qApp->processEvents();
 
@@ -273,7 +272,6 @@ void tst_QAction::repeat()
 
     MyWidget testWidget(this);
     testWidget.show();
-    QApplicationPrivate::setActiveWindow(&testWidget);
     QVERIFY(QTest::qWaitForWindowActive(&testWidget));
 
     QAction act(&testWidget);
@@ -352,7 +350,6 @@ void tst_QAction::disableShortcutsWithBlockedWidgets()
     dialog.show();
     QVERIFY(QTest::qWaitForWindowExposed(&dialog));
 
-    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
     QSignalSpy spy(&action, &QAction::triggered);

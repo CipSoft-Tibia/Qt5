@@ -108,15 +108,6 @@
     QQuickItem's geometryChanged() function was renamed to
     \l{QQuickItem::}{geometryChange()}.
 
-    \section2 Changes to QQuickWidget
-
-    QQuickWidget is functional only when the scenegraph is rendering with
-    OpenGL. It will not be functional when using another graphics API, such as
-    Vulkan or Metal. Applications relying on QQuickWidget should force the usage
-    of OpenGL by calling
-    \c{QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL)} in their
-    main() function.
-
     \section2 Changes to QQuick* APIs
 
     \list

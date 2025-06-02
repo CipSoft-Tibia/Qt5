@@ -22,6 +22,7 @@ protected:
         NoChannels = 0x0,
         Qt = 0x1,
         Ssl = 0x2,
+        Json = 0x4,
         SslNoCredentials = 0x8,
         WithChannelDeadline = 0x10,
     };
@@ -32,7 +33,7 @@ protected:
     std::shared_ptr<qtgrpc::tests::TestService::Client> client();
     GrpcClientTestBase::Channels channelType();
 
-public slots:
+public Q_SLOTS:
     void initTestCase_data();
     void init();
 

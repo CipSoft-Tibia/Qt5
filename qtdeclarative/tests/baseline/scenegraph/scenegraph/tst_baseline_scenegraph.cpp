@@ -11,6 +11,9 @@
 
 #include <algorithm>
 
+// qmlscenegrabber's default timeout, in ms
+#define SCENE_TIMEOUT 6000
+
 QString blockify(const QByteArray& s)
 {
     const char* indent = "\n | ";
@@ -34,6 +37,7 @@ private Q_SLOTS:
     void initTestCase();
     void init();
     void cleanup();
+    void cleanupTestCase();
 #ifdef TEXTLESS_TEST
     void testNoTextRendering_data();
     void testNoTextRendering();
@@ -49,6 +53,7 @@ private:
 
     QString testSuitePath;
     QString grabberPath;
+    int grabberTimeout;
     int consecutiveErrors;   // Not test failures (image mismatches), but system failures (so no image at all)
     bool aborted;            // This run given up because of too many system failures
 };
@@ -57,6 +62,10 @@ private:
 tst_Scenegraph::tst_Scenegraph()
     : consecutiveErrors(0), aborted(false)
 {
+    int sceneTimeout = qEnvironmentVariableIntValue("LANCELOT_SCENE_TIMEOUT");
+    if (!sceneTimeout)
+        sceneTimeout = SCENE_TIMEOUT;
+    grabberTimeout = (sceneTimeout * 4) / 3; // Include some slack
 }
 
 
@@ -113,7 +122,12 @@ void tst_Scenegraph::cleanup()
 {
     // Allow subsystems time to settle
     if (!aborted)
-        QTest::qWait(20);
+        QTest::qWait(grabberTimeout / 100);
+}
+
+void tst_Scenegraph::cleanupTestCase()
+{
+    QBaselineTest::finalizeAndDisconnect();
 }
 
 #ifdef TEXTLESS_TEST
@@ -216,10 +230,10 @@ bool tst_Scenegraph::renderAndGrab(const QString& qmlFile, const QStringList& ex
     QString tmpfile = usePipe ? QString("-") : QString("/tmp/qmlscenegrabber-%1-out.ppm").arg(QCoreApplication::applicationPid());
     args << qmlFile << "-o" << tmpfile;
     grabber.start(grabberPath, args, QIODevice::ReadOnly);
-    grabber.waitForFinished(17000);         //### hardcoded, must be larger than the scene timeout in qmlscenegrabber
+    grabber.waitForFinished(grabberTimeout);
     if (grabber.state() != QProcess::NotRunning) {
         grabber.terminate();
-        grabber.waitForFinished(3000);
+        grabber.waitForFinished(grabberTimeout / 4);
     }
     QImage img;
     bool res = usePipe ? img.load(&grabber, "ppm") : img.load(tmpfile);
@@ -247,7 +261,8 @@ quint16 tst_Scenegraph::checksumFileOrDir(const QString &path)
         return 0;
     if (fi.isFile()) {
         QFile f(path);
-        f.open(QIODevice::ReadOnly);
+        if (!f.open(QIODevice::ReadOnly))
+            qFatal("Could not open file %s", qPrintable(path));
         QByteArray contents = f.readAll();
         return qChecksum(contents);
     }
@@ -263,15 +278,6 @@ quint16 tst_Scenegraph::checksumFileOrDir(const QString &path)
     return 0;
 }
 
-
-#define main _realmain
-QTEST_MAIN(tst_Scenegraph)
-#undef main
-
-int main(int argc, char *argv[])
-{
-    QBaselineTest::handleCmdLineArgs(&argc, &argv);
-    return _realmain(argc, argv);
-}
+QBASELINETEST_MAIN(tst_Scenegraph)
 
 #include "tst_baseline_scenegraph.moc"

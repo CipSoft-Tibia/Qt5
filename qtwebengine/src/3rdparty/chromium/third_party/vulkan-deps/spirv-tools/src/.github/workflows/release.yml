@@ -12,7 +12,7 @@ jobs:
   prepare-release-job:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       - name: Prepare CHANGELOG for version
         run: |
           python utils/generate_changelog.py CHANGES "${{ github.ref_name }}" VERSION_CHANGELOG

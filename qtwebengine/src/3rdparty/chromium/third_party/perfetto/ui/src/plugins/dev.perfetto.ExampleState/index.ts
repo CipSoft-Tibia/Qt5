@@ -13,11 +13,12 @@
 // limitations under the License.
 
 import {
-  Command,
+  createStore,
   Plugin,
   PluginContext,
-  PluginInfo,
-  TracePluginContext,
+  PluginContextTrace,
+  PluginDescriptor,
+  Store,
 } from '../../public';
 
 interface State {
@@ -26,8 +27,10 @@ interface State {
 
 // This example plugin shows using state that is persisted in the
 // permalink.
-class ExampleState implements Plugin<State> {
-  migrate(initialState: unknown): State {
+class ExampleState implements Plugin {
+  private store: Store<State> = createStore({counter: 0});
+
+  private migrate(initialState: unknown): State {
     if (initialState && typeof initialState === 'object' &&
         'counter' in initialState && typeof initialState.counter === 'number') {
       return {counter: initialState.counter};
@@ -40,24 +43,29 @@ class ExampleState implements Plugin<State> {
     //
   }
 
-  traceCommands(ctx: TracePluginContext<State>): Command[] {
-    const {viewer, store} = ctx;
-    return [
-      {
-        id: 'dev.perfetto.ExampleState#ShowCounter',
-        name: 'Show ExampleState counter',
-        callback: () => {
-          const counter = store.state.counter;
-          viewer.tabs.openQuery(
-              `SELECT ${counter} as counter;`, `Show counter ${counter}`);
-          store.edit((draft) => ++draft.counter);
-        },
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    this.store = ctx.mountStore((init: unknown) => this.migrate(init));
+
+    ctx.registerCommand({
+      id: 'dev.perfetto.ExampleState#ShowCounter',
+      name: 'Show ExampleState counter',
+      callback: () => {
+        const counter = this.store.state.counter;
+        ctx.tabs.openQuery(
+            `SELECT ${counter} as counter;`, `Show counter ${counter}`);
+        this.store.edit((draft) => {
+          ++draft.counter;
+        });
       },
-    ];
+    });
+  }
+
+  async onTraceUnload(_: PluginContextTrace): Promise<void> {
+    this.store.dispose();
   }
 }
 
-export const plugin: PluginInfo<State> = {
+export const plugin: PluginDescriptor = {
   pluginId: 'dev.perfetto.ExampleState',
   plugin: ExampleState,
 };

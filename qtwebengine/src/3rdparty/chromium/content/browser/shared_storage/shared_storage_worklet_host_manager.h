@@ -14,12 +14,13 @@
 #include "base/time/time.h"
 #include "content/browser/shared_storage/shared_storage_event_params.h"
 #include "content/common/content_export.h"
+#include "third_party/blink/public/mojom/origin_trial_feature/origin_trial_feature.mojom-shared.h"
+#include "third_party/blink/public/mojom/shared_storage/shared_storage.mojom.h"
 
 namespace content {
 
-struct FencedFrameConfig;
+class FencedFrameConfig;
 class SharedStorageDocumentServiceImpl;
-class SharedStorageWorkletDriver;
 class SharedStorageWorkletHost;
 
 // Manages the creation and destruction of the `SharedStorageWorkletHost`. The
@@ -32,6 +33,9 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
   class SharedStorageObserverInterface : public base::CheckedObserver {
    public:
     enum AccessType {
+      // The "Document" prefix indicates that the method is called from the
+      // Window scope, and the "Worklet" prefix indicates that the method is
+      // called from SharedStorageWorkletGlobalScope.
       kDocumentAddModule,
       kDocumentSelectURL,
       kDocumentRun,
@@ -60,7 +64,7 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
     virtual void OnUrnUuidGenerated(const GURL& urn_uuid) = 0;
 
     virtual void OnConfigPopulated(
-        const absl::optional<FencedFrameConfig>& config) = 0;
+        const std::optional<FencedFrameConfig>& config) = 0;
   };
 
   void OnDocumentServiceDestroyed(
@@ -69,8 +73,16 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
   void ExpireWorkletHostForDocumentService(
       SharedStorageDocumentServiceImpl* document_service);
 
-  SharedStorageWorkletHost* GetOrCreateSharedStorageWorkletHost(
-      SharedStorageDocumentServiceImpl* document_service);
+  void CreateWorkletHost(
+      SharedStorageDocumentServiceImpl* document_service,
+      const url::Origin& frame_origin,
+      const GURL& script_source_url,
+      const std::vector<blink::mojom::OriginTrialFeature>&
+          origin_trial_features,
+      mojo::PendingAssociatedReceiver<blink::mojom::SharedStorageWorkletHost>
+          worklet_host,
+      blink::mojom::SharedStorageDocumentService::CreateWorkletCallback
+          callback);
 
   void AddSharedStorageObserver(SharedStorageObserverInterface* observer);
 
@@ -96,16 +108,22 @@ class CONTENT_EXPORT SharedStorageWorkletHostManager {
 
   void NotifyUrnUuidGenerated(const GURL& urn_uuid);
 
-  void NotifyConfigPopulated(const absl::optional<FencedFrameConfig>& config);
+  void NotifyConfigPopulated(const std::optional<FencedFrameConfig>& config);
 
  protected:
   void OnWorkletKeepAliveFinished(SharedStorageWorkletHost*);
 
   // virtual for testing
-  virtual std::unique_ptr<SharedStorageWorkletHost>
-  CreateSharedStorageWorkletHost(
-      std::unique_ptr<SharedStorageWorkletDriver> driver,
-      SharedStorageDocumentServiceImpl& document_service);
+  virtual std::unique_ptr<SharedStorageWorkletHost> CreateWorkletHostHelper(
+      SharedStorageDocumentServiceImpl& document_service,
+      const url::Origin& frame_origin,
+      const GURL& script_source_url,
+      const std::vector<blink::mojom::OriginTrialFeature>&
+          origin_trial_features,
+      mojo::PendingAssociatedReceiver<blink::mojom::SharedStorageWorkletHost>
+          worklet_host,
+      blink::mojom::SharedStorageDocumentService::CreateWorkletCallback
+          callback);
 
  private:
   // The hosts that are attached to the worklet's owner document. Those hosts

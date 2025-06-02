@@ -1,6 +1,10 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+if(QT_FEATURE_qtprotobufgen OR QT_FEATURE_qtgrpcgen)
+    add_subdirectory(protocplugintestcommon)
+endif()
+
 if(QT_FEATURE_qtprotobufgen)
     add_subdirectory(protobufgen)
 endif()
@@ -21,7 +25,7 @@ if(QT_FEATURE_grpc AND TARGET Qt6::qtprotobufgen AND TARGET Qt6::qtgrpcgen)
     add_subdirectory(grpc)
 endif()
 
-if(TARGET Qt6::qtprotobufgen AND TARGET Qt6::Quick AND TARGET Qt6::QuickTest)
+if(TARGET Qt6::qtprotobufgen AND QT_FEATURE_protobufquick AND TARGET Qt6::QuickTest)
     add_subdirectory(protobufqml)
 endif()
 

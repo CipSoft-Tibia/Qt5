@@ -76,8 +76,9 @@ void QQmlVMEResolvedList::append(QObject *o) const
 
     QV4::ScopedObject object(scope, m_list);
     QV4::ArrayData::realloc(object, QV4::Heap::ArrayData::Simple, length + 1, false);
+    QV4::ScopedValue wrappedObject(scope, QV4::QObjectWrapper::wrap(scope.engine, o));
     arrayData->vtable()->put(
-            object, length, QV4::QObjectWrapper::wrap(scope.engine, o));
+            object, length, wrappedObject);
 }
 
 QObject *QQmlVMEResolvedList::at(qsizetype i) const
@@ -91,7 +92,8 @@ void QQmlVMEResolvedList::replace(qsizetype i, QObject *o) const
 {
     QV4::Scope scope(m_list->internalClass->engine);
     QV4::ScopedObject object(scope, m_list);
-    m_list->arrayData->vtable()->put(object, i, QV4::QObjectWrapper::wrap(scope.engine, o));
+    QV4::ScopedValue wrappedObject(scope, QV4::QObjectWrapper::wrap(scope.engine, o));
+    m_list->arrayData->vtable()->put(object, i, wrappedObject);
 }
 
 QQmlVMEResolvedList::~QQmlVMEResolvedList() = default;
@@ -430,6 +432,12 @@ QQmlVMEMetaObject::QQmlVMEMetaObject(QV4::ExecutionEngine *engine,
             uint size = compiledObject->nProperties + compiledObject->nFunctions;
             if (size) {
                 QV4::Heap::MemberData *data = QV4::MemberData::allocate(engine, size);
+                // we only have a weak reference below; if the VMEMetaObject is already marked
+                // (triggered by the allocate call above)
+                // we therefore might never mark the member data; consequently, mark it now
+                QV4::WriteBarrier::markCustom(engine, [data](QV4::MarkStack *ms) {
+                    data->mark(ms);
+                });
                 propertyAndMethodStorage.set(engine, data);
                 std::fill(data->values.values, data->values.values + data->values.size, QV4::Encode::undefined());
             }
@@ -1135,7 +1143,7 @@ int QQmlVMEMetaObject::metaCall(QObject *o, QMetaObject::Call c, int _id, void *
                 QV4::Scope scope(v4);
 
 
-                QV4::ScopedFunctionObject function(scope, method(id));
+                QV4::Scoped<QV4::JavaScriptFunctionObject> function(scope, method(id));
                 if (!function) {
                     // The function was not compiled.  There are some exceptional cases which the
                     // expression rewriter does not rewrite properly (e.g., \r-terminated lines
@@ -1388,7 +1396,7 @@ void QQmlVMEMetaObject::setVMEProperty(int index, const QV4::Value &v)
 void QQmlVMEMetaObject::ensureQObjectWrapper()
 {
     Q_ASSERT(cache);
-    QV4::QObjectWrapper::wrap(engine, object);
+    QV4::QObjectWrapper::ensureWrapper(engine, object);
 }
 
 void QQmlVMEMetaObject::mark(QV4::MarkStack *markStack)

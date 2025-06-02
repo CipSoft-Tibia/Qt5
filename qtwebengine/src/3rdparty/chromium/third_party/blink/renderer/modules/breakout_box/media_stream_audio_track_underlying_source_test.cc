@@ -27,6 +27,7 @@
 #include "third_party/blink/renderer/platform/mediastream/media_stream_audio_track.h"
 #include "third_party/blink/renderer/platform/mediastream/media_stream_component_impl.h"
 #include "third_party/blink/renderer/platform/testing/io_task_runner_testing_platform_support.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
 
 using testing::_;
@@ -147,6 +148,7 @@ class MediaStreamAudioTrackUnderlyingSourceTest : public testing::Test {
     return audio_bus;
   }
 
+  test::TaskEnvironment task_environment_;
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform_;
 };
 
@@ -241,7 +243,7 @@ TEST_F(MediaStreamAudioTrackUnderlyingSourceTest,
   // Pulling causes a pending pull since there are no frames available for
   // reading.
   EXPECT_EQ(source->NumPendingPullsForTesting(), 0);
-  source->pull(script_state);
+  source->Pull(script_state, ASSERT_NO_EXCEPTION);
   EXPECT_EQ(source->NumPendingPullsForTesting(), 1);
 
   source->Close();

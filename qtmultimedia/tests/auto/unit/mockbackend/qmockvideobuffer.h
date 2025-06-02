@@ -5,12 +5,12 @@
 #define QMOCKVIDEOBUFFER_H
 
 #include "qimage.h"
-#include "private/qabstractvideobuffer_p.h"
+#include "private/qhwvideobuffer_p.h"
 
-class QMockVideoBuffer : public QAbstractVideoBuffer
+class QMockVideoBuffer : public QHwVideoBuffer
 {
 public:
-    QMockVideoBuffer(QImage image) : QAbstractVideoBuffer(QVideoFrame::NoHandle), m_image(image) { }
+    QMockVideoBuffer(QImage image) : QHwVideoBuffer(QVideoFrame::NoHandle), m_image(image) { }
 
     MapData map(QVideoFrame::MapMode mode) override
     {
@@ -19,10 +19,10 @@ public:
             && mode != QVideoFrame::NotMapped) {
             m_mapMode = mode;
 
-            mapData.nPlanes = 1;
+            mapData.planeCount = 1;
             mapData.bytesPerLine[0] = m_image.bytesPerLine();
             mapData.data[0] = m_image.bits();
-            mapData.size[0] = m_image.sizeInBytes();
+            mapData.dataSize[0] = m_image.sizeInBytes();
         }
 
         return mapData;

@@ -96,7 +96,8 @@ class SubSurface : public SurfaceDelegate,
   void UnsetCanGoBack() override {}
   void SetPip() override {}
   void UnsetPip() override {}
-  void SetFloat() override {}
+  void SetFloatToLocation(
+      chromeos::FloatStartLocation float_start_location) override {}
   void SetAspectRatio(const gfx::SizeF& aspect_ratio) override {}
   void MoveToDesk(int desk_index) override {}
   void SetVisibleOnAllWorkspaces() override {}
@@ -115,8 +116,8 @@ class SubSurface : public SurfaceDelegate,
   void RemoveSubSurfaceObserver(SubSurfaceObserver* observer);
 
  private:
-  raw_ptr<Surface, ExperimentalAsh> surface_;
-  raw_ptr<Surface, ExperimentalAsh> parent_;
+  raw_ptr<Surface> surface_;
+  raw_ptr<Surface> parent_;
   bool is_synchronized_ = true;
 
   // Surface observer list. Surface does not own the observers.

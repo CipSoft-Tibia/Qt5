@@ -2,7 +2,7 @@ Version: 2
 Module only: True
 Configurations:
 -
-    Template: 'qtci-windows-10_22H2-x86_64-52'
+    Template: 'qtci-windows-10_22H2-x86_64-53'
     Compiler: 'MSVC2019'
     Features: ['DisableTests']
 -
@@ -10,7 +10,7 @@ Configurations:
     Compiler: 'Clang'
     Features: ['DisableTests']
 -
-    Template: 'qtci-linux-RHEL-9.2-x86_64-51'
+    Template: 'qtci-linux-RHEL-9.4-x86_64-50'
     Compiler: 'GCC'
     Features: ['DisableTests']
 -

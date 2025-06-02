@@ -90,9 +90,13 @@ EncoderStatus SetUpVpxConfig(const VideoEncoder::Options& opts,
     config->kf_max_dist = opts.keyframe_interval.value();
   }
 
+  uint32_t default_bitrate = GetDefaultVideoEncodeBitrate(
+      opts.frame_size, opts.framerate.value_or(30));
+  config->rc_end_usage = VPX_VBR;
+  // The unit of rc_target_bitrate is kilobits per second.
+  config->rc_target_bitrate = default_bitrate / 1000;
   if (opts.bitrate.has_value()) {
-    auto& bitrate = opts.bitrate.value();
-    config->rc_target_bitrate = bitrate.target_bps() / 1000;
+    const auto& bitrate = opts.bitrate.value();
     switch (bitrate.mode()) {
       case Bitrate::Mode::kVariable:
         config->rc_end_usage = VPX_VBR;
@@ -110,9 +114,9 @@ EncoderStatus SetUpVpxConfig(const VideoEncoder::Options& opts,
         config->rc_min_quantizer = 0;
         break;
     }
-  } else {
-    config->rc_target_bitrate = GetDefaultVideoEncodeBitrate(
-        opts.frame_size, opts.framerate.value_or(30));
+    if (bitrate.target_bps() != 0) {
+      config->rc_target_bitrate = bitrate.target_bps() / 1000;
+    }
   }
 
   config->g_w = opts.frame_size.width();
@@ -198,8 +202,8 @@ EncoderStatus ReallocateVpxImageIfNeeded(vpx_image_t* vpx_image,
                                          const vpx_img_fmt fmt,
                                          int width,
                                          int height) {
-  if (vpx_image->fmt != fmt || static_cast<int>(vpx_image->w) != width ||
-      static_cast<int>(vpx_image->h) != height) {
+  if (vpx_image->fmt != fmt || static_cast<int>(vpx_image->d_w) != width ||
+      static_cast<int>(vpx_image->d_h) != height) {
     vpx_img_free(vpx_image);
     if (vpx_image != vpx_img_alloc(vpx_image, fmt, width, height, 1)) {
       return EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode,
@@ -267,7 +271,7 @@ void VpxVideoEncoder::Initialize(VideoCodecProfile profile,
       options.bitrate->mode() == Bitrate::Mode::kExternal && !is_vp9) {
     std::move(done_cb).Run(
         EncoderStatus(EncoderStatus::Codes::kEncoderUnsupportedConfig,
-                      "Unsupported bitrate mode"));
+                      "VP8 doesn't support per-frame quantizer"));
     return;
   }
 
@@ -282,7 +286,7 @@ void VpxVideoEncoder::Initialize(VideoCodecProfile profile,
   }
 
   vpx_img_fmt img_fmt = VPX_IMG_FMT_NONE;
-  unsigned int bits_for_storage = 8;
+  unsigned int bits_for_storage = 0;
   switch (profile) {
     case VP9PROFILE_PROFILE1:
       codec_config_.g_profile = 1;
@@ -327,8 +331,8 @@ void VpxVideoEncoder::Initialize(VideoCodecProfile profile,
 
   // For VP9 the values used for real-time encoding mode are 5, 6, 7,
   // 8, 9. Higher means faster encoding, but lower quality.
-  // For VP8 typical values used for real-time encoding are -4, -6,
-  // -8, -10. Again larger magnitude means faster encoding but lower
+  // For VP8 typical values used for real-time encoding are -4, -6, -8,
+  // -10, -12. Again larger magnitude means faster encoding but lower
   // quality.
   int cpu_used = is_vp9 ? 7 : -6;
   vpx_error = vpx_codec_control(codec.get(), VP8E_SET_CPUUSED, cpu_used);
@@ -377,9 +381,16 @@ void VpxVideoEncoder::Initialize(VideoCodecProfile profile,
       }
     }
 
-    // In CBR mode use aq-mode=3 is enabled for quality improvement
+    // In CBR mode aq-mode=3 (cyclic refresh) is enabled for quality
+    // improvement. Note: For VP8, cyclic refresh is internally done as
+    // default.
     if (codec_config_.rc_end_usage == VPX_CBR) {
       vpx_codec_control(codec.get(), VP9E_SET_AQ_MODE, 3);
+    }
+
+    if (options.content_hint == ContentHint::Screen) {
+      vpx_codec_control(codec.get(), VP9E_SET_TUNE_CONTENT,
+                        VP9E_CONTENT_SCREEN);
     }
   }
 
@@ -388,10 +399,12 @@ void VpxVideoEncoder::Initialize(VideoCodecProfile profile,
   output_cb_ = BindCallbackToCurrentLoopIfNeeded(std::move(output_cb));
   codec_ = std::move(codec);
 
-  VideoEncoderInfo info;
-  info.implementation_name = "VpxVideoEncoder";
-  info.is_hardware_accelerated = false;
-  BindCallbackToCurrentLoopIfNeeded(std::move(info_cb)).Run(info);
+  if (info_cb) {
+    VideoEncoderInfo info;
+    info.implementation_name = "VpxVideoEncoder";
+    info.is_hardware_accelerated = false;
+    BindCallbackToCurrentLoopIfNeeded(std::move(info_cb)).Run(info);
+  }
 
   std::move(done_cb).Run(EncoderStatus::Codes::kOk);
 }
@@ -462,7 +475,7 @@ void VpxVideoEncoder::Encode(scoped_refptr<VideoFrame> frame,
     }
 
     auto convert_status =
-        ConvertAndScaleFrame(*frame, *resized_frame, resize_buf_);
+        frame_converter_.ConvertAndScale(*frame, *resized_frame);
     if (!convert_status.is_ok()) {
       std::move(done_cb).Run(
           EncoderStatus(EncoderStatus::Codes::kEncoderFailedEncode)
@@ -510,7 +523,7 @@ void VpxVideoEncoder::Encode(scoped_refptr<VideoFrame> frame,
             const_cast<uint8_t*>(frame->visible_data(VideoFrame::kYPlane));
         vpx_image_.planes[VPX_PLANE_U] =
             const_cast<uint8_t*>(frame->visible_data(VideoFrame::kUVPlane));
-        // In NV12 Y and U samples are combined in one plane (bytes go YUYUYU),
+        // In NV12 U and V samples are combined in one plane (bytes go UVUVUV),
         // but libvpx treats them as two planes with the same stride but shifted
         // by one byte.
         vpx_image_.planes[VPX_PLANE_V] = vpx_image_.planes[VPX_PLANE_U] + 1;
@@ -541,17 +554,17 @@ void VpxVideoEncoder::Encode(scoped_refptr<VideoFrame> frame,
     key_frame = true;
     UpdateEncoderColorSpace();
   }
-  auto deadline = VPX_DL_REALTIME;
+  const unsigned long deadline = VPX_DL_REALTIME;
   vpx_codec_flags_t flags = key_frame ? VPX_EFLAG_FORCE_KF : 0;
 
   int temporal_id = 0;
   if (codec_config_.ts_number_layers > 1) {
     if (key_frame)
-      temporal_svc_frame_index = 0;
-    int index_in_temp_cycle =
-        temporal_svc_frame_index % codec_config_.ts_periodicity;
+      temporal_svc_frame_index_ = 0;
+    unsigned int index_in_temp_cycle =
+        temporal_svc_frame_index_ % codec_config_.ts_periodicity;
     temporal_id = codec_config_.ts_layer_id[index_in_temp_cycle];
-    temporal_svc_frame_index++;
+    temporal_svc_frame_index_++;
 
     if (profile_ == VP8PROFILE_ANY) {
       auto* vp8_layers_flags = codec_config_.ts_number_layers == 2
@@ -599,11 +612,11 @@ void VpxVideoEncoder::ChangeOptions(const Options& options,
   }
 
   // Libvpx is very peculiar about encoded frame size changes,
-  // - VP8: As long as the frame area doesn't increase, internal codec
-  //        structures don't need to be reallocated and codec can be simply
-  //        reconfigured.
-  // - VP9: The codec cannot increase encoded width or height larger than their
-  //        initial values.
+  // - VP8: vpx_codec_enc_config_set() returns VPX_CODEC_INVALID_PARAM if we
+  //        try to increase encoded width or height larger than their initial
+  //        values.
+  // - VP9: The codec may crash if we try to increase encoded width or height
+  //        larger than their initial values.
   //
   // Mind the difference between old frame sizes:
   // - |originally_configured_size_| is set only once when the vpx_codec_ctx_t
@@ -612,25 +625,13 @@ void VpxVideoEncoder::ChangeOptions(const Options& options,
   // More info can be found here:
   //   https://bugs.chromium.org/p/webm/issues/detail?id=1642
   //   https://bugs.chromium.org/p/webm/issues/detail?id=912
-  if (profile_ == VP8PROFILE_ANY) {
-    // VP8 resize restrictions
-    auto old_area = originally_configured_size_.GetCheckedArea();
-    auto new_area = options.frame_size.GetCheckedArea();
-    DCHECK(old_area.IsValid());
-    if (!new_area.IsValid() || new_area.ValueOrDie() > old_area.ValueOrDie()) {
-      auto status = EncoderStatus(
-          EncoderStatus::Codes::kEncoderUnsupportedConfig,
-          "libvpx/VP8 doesn't support dynamically increasing frame area");
-      std::move(done_cb).Run(std::move(status));
-      return;
-    }
-  } else {
+  if (profile_ != VP8PROFILE_ANY) {
     // VP9 resize restrictions
     if (options.frame_size.width() > originally_configured_size_.width() ||
         options.frame_size.height() > originally_configured_size_.height()) {
       auto status = EncoderStatus(
           EncoderStatus::Codes::kEncoderUnsupportedConfig,
-          "libvpx/VP9 doesn't support dynamically increasing frame dimentions");
+          "libvpx/VP9 doesn't support dynamically increasing frame dimensions");
       std::move(done_cb).Run(std::move(status));
       return;
     }
@@ -733,7 +734,7 @@ void VpxVideoEncoder::DrainOutputs(int temporal_id,
       if (result.key_frame) {
         // If we got an unexpected key frame, temporal_svc_frame_index needs to
         // be adjusted, because the next frame should have index 1.
-        temporal_svc_frame_index = 1;
+        temporal_svc_frame_index_ = 1;
         result.temporal_id = 0;
       } else {
         result.temporal_id = temporal_id;

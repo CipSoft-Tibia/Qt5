@@ -649,8 +649,8 @@
         <translation>Unaprijeđeni pomoćnici</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file cannot be read because the extra info extension failed to load.</source>
@@ -1086,8 +1086,8 @@
         <translation>Obrazac</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1442,8 +1442,8 @@ Do you want to replace it?</source>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>Qt Designer &amp;Pomoć</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>Qt Widgets Designer &amp;Pomoć</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1454,8 +1454,8 @@ Do you want to replace it?</source>
         <translation>O dadacima</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>O programu Qt Designer</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>O programu Qt Widgets Designer</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1512,8 +1512,8 @@ Do you want to update the file location or generate a new form?</source>
         <translation>&amp;Novi obrazac</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -3246,12 +3246,12 @@ Do you want overwrite the template?</source>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Verzija %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer je program za izradu grafičkih sučelja za Qt aplikacija.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer je program za izradu grafičkih sučelja za Qt aplikacija.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
@@ -4698,12 +4698,12 @@ Odaberi neko drugo ime.</translation>
         <translation>Neuspjeli dodaci</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer nije našao nijedan dodatak</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer nije našao nijedan dodatak</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer je našao sljedeće dodatke</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer je našao sljedeće dodatke</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

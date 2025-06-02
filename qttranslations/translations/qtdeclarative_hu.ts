@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU">
-    <extra-po-header-language>hu</extra-po-header-language>
-    <extra-po-header-language_team>Hungarian &lt;kde-l10n-hu@kde.org&gt;</extra-po-header-language_team>
-    <extra-po-header-last_translator>Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header-last_translator>
-    <extra-po-header-po_revision_date>2024-02-07 22:26+0100</extra-po-header-po_revision_date>
-    <extra-po-header-project_id_version></extra-po-header-project_id_version>
-    <extra-po-header-x_generator>Lokalize 23.08.4</extra-po-header-x_generator>
-    <extra-po-header_comment># SPDX-FileCopyrightText: 2024 Kristof Kiszel &lt;ulysses@fsf.hu&gt;</extra-po-header_comment>
-    <extra-po-headers>MIME-Version,Content-Type,Content-Transfer-Encoding,Plural-Forms,X-Language,X-Qt-Contexts,Last-Translator,PO-Revision-Date,Project-Id-Version,Language-Team,Language,X-Generator</extra-po-headers>
 <context>
     <name>Object</name>
     <message>
@@ -692,6 +684,14 @@
         <translation>A fájl vége elérve az elfedési sorrendnél</translation>
     </message>
     <message>
+        <source>There can be at most one numeric separator between digits</source>
+        <translation>A számjegyek között legfeljebb egy numerikus elválasztó lehet</translation>
+    </message>
+    <message>
+        <source>A trailing numeric separator is not allowed in numeric literals</source>
+        <translation>A záró numerikus elválasztó nem megengedett numerikus literálokban</translation>
+    </message>
+    <message>
         <source>At least one octal digit is required after &apos;0%1&apos;</source>
         <translation>Legalább egy oktális számjegy szükséges a „0%1” után</translation>
     </message>
@@ -803,15 +803,15 @@
     </message>
     <message>
         <source>Invalid grouped property access</source>
-        <translation>Érvénytelen csoportos tulajdonság-hozzáférés</translation>
+        <translation>Érvénytelen hozzáférés a csoportos tulajdonsághoz</translation>
     </message>
     <message>
         <source>Invalid grouped property access: Property &quot;%1&quot; with primitive type &quot;%2&quot;.</source>
-        <translation>Érvénytelen csoportos tulajdonság-hozzáférés: a(z) „%1” tulajdonság a(z) „%2” primitív típussal.</translation>
+        <translation>Érvénytelen hozzáférés a csoportos tulajdonsághoz: a(z) „%1” tulajdonság a(z) „%2” primitív típussal.</translation>
     </message>
     <message>
         <source>Invalid grouped property access: Property &quot;%1&quot; with type &quot;%2&quot;, which is not a value type</source>
-        <translation>Érvénytelen csoportos tulajdonság-hozzáférés: a(z) „%1” tulajdonság a(z) „%2” típussal, amely nem egy értéktípus</translation>
+        <translation type="vanished">Érvénytelen csoportos tulajdonság-hozzáférés: a(z) „%1” tulajdonság a(z) „%2” típussal, amely nem egy értéktípus</translation>
     </message>
     <message>
         <source>Cannot assign to non-existent default property</source>
@@ -916,6 +916,14 @@
     <message>
         <source>Invalid property assignment: regular expression expected; use /pattern/ syntax</source>
         <translation>Érvénytelen tulajdonság-hozzárendelés: reguláris kifejezés szükséges, használja a /minta/ szintaxist</translation>
+    </message>
+    <message>
+        <source>Invalid grouped property access: Property &quot;%1&quot; with type &quot;%2&quot;, which is neither a value nor an object type</source>
+        <translation>Érvénytelen hozzáférés a csoportosított tulajdonsághoz: a(z) „%2” típusú „%1” tulajdonság sem nem érték, sem nem objektumtípus</translation>
+    </message>
+    <message>
+        <source>Unsupported grouped property access: Property &quot;%1&quot; with type &quot;%2&quot; has a dynamic meta-object.</source>
+        <translation>Nem támogatott hozzáférés a csoportosított tulajdonsághoz: a(z) „%2” típusú „%1” tulajdonságnak dinamikus metaobjektuma van.</translation>
     </message>
     <message>
         <source>Invalid property assignment: number or array of numbers expected</source>
@@ -1133,7 +1141,11 @@
     <name>QQuickLayoutMirroringAttached</name>
     <message>
         <source>LayoutDirection attached property only works with Items and Windows</source>
-        <translation>A LayoutDirection csatolt tulajdonság csak elemekkel és ablakokkal működik</translation>
+        <translation type="vanished">A LayoutDirection csatolt tulajdonság csak elemekkel és ablakokkal működik</translation>
+    </message>
+    <message>
+        <source>LayoutMirroring attached property only works with Items and Windows</source>
+        <translation>A LayoutMiroring csatolt tulajdonság csak Items és Windows objektumokkal működik</translation>
     </message>
 </context>
 <context>
@@ -1298,13 +1310,23 @@
     <name>FileDialog</name>
     <message>
         <source>“%1” already exists. Do you want to replace it?</source>
-        <translation>A(z) „%1” már létezik. Szeretné lecserélni?</translation>
+        <translation type="vanished">A(z) „%1” már létezik. Szeretné lecserélni?</translation>
     </message>
     <message>
         <source>A file with the same name already exists in %1.
 Replacing it will overwrite its current contents.</source>
-        <translation>Már létezik fájl ezen a néven itt: %1
+        <translation type="vanished">Már létezik fájl ezen a néven itt: %1
 Lecserélésével a jelenlegi tartalma felül lesz írva.</translation>
+    </message>
+    <message>
+        <source>Overwrite file?</source>
+        <translation>Felülírja a fájlt?</translation>
+    </message>
+    <message>
+        <source>“%1” already exists.
+Do you want to replace it?</source>
+        <translation>A(z) „%1” már létezik.
+Szeretné felülírni?</translation>
     </message>
     <message>
         <source>File name</source>
@@ -1580,7 +1602,7 @@ Lecserélésével a jelenlegi tartalma felül lesz írva.</translation>
     </message>
     <message>
         <source>Expected a single import.</source>
-        <translation>Egyetlen importálás elvárt.</translation>
+        <translation>Egyetlen importálás várt.</translation>
     </message>
     <message>
         <source>Expected import of QtQuick.tooling.</source>
@@ -1616,11 +1638,11 @@ Lecserélésével a jelenlegi tartalma felül lesz írva.</translation>
     </message>
     <message>
         <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
-        <translation>Csak név, prototípus, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames és immediateNames szükséges a parancsfájlkötésekben, nem „%1”.</translation>
+        <translation type="vanished">Csak név, prototípus, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, exportMetaObjectRevisions, deferredNames és immediateNames szükséges a parancsfájlkötésekben, nem „%1”.</translation>
     </message>
     <message>
         <source>Expected only script bindings and object definitions.</source>
-        <translation>Csak parancsfájlkötések és objektumdefiníciók elvártak.</translation>
+        <translation>Csak parancsfájlkötések és objektumdefiníciók vártak.</translation>
     </message>
     <message>
         <source>Component definition is missing a name binding.</source>
@@ -1632,7 +1654,7 @@ Lecserélésével a jelenlegi tartalma felül lesz írva.</translation>
     </message>
     <message>
         <source>Expected only name, type, revision, isPointer, isList, isCloned, isConstructor, and isJavaScriptFunction in script bindings.</source>
-        <translation>Csak név, típus, revízió, isPointer, isList, isCloned, isConstructor és isJavaScriptFunction elvárt a parancsfájlkötésekben.</translation>
+        <translation type="vanished">Csak név, típus, revízió, isPointer, isList, isCloned, isConstructor és isJavaScriptFunction elvárt a parancsfájlkötésekben.</translation>
     </message>
     <message>
         <source>Method or signal is missing a name script binding.</source>
@@ -1652,7 +1674,19 @@ Lecserélésével a jelenlegi tartalma felül lesz írva.</translation>
     </message>
     <message>
         <source>Expected only name, alias, isFlag, values, scoped, or type.</source>
-        <translation>Csak név, álnév, isFlag, értékek, hatókör és típus szükséges.</translation>
+        <translation type="vanished">Csak név, álnév, isFlag, értékek, hatókör és típus szükséges.</translation>
+    </message>
+    <message>
+        <source>Expected only name, prototype, defaultProperty, attachedType, valueType, exports, interfaces, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, aliases, exportMetaObjectRevisions, deferredNames, and immediateNames in script bindings, not &quot;%1&quot;.</source>
+        <translation>Csak név, prototípus, defaultProperty, attachedType, valueType, exportok, interfészek, isSingleton, isCreatable, isStructured, isComposite, hasCustomParser, álnevek, exportMetaObjectRevisions, deferredNames, és immediateNames várt parancsfájl-kötésekben, nem „%1”.</translation>
+    </message>
+    <message>
+        <source>Expected only name, type, revision, isPointer, isConstant, isList, isCloned, isConstructor, and isJavaScriptFunction in script bindings.</source>
+        <translation>Csak név, típus, revízió, isPointer, isConstant, isList, isCloned, isConstructor, és isJavaScriptFunction várt parancsfájl-kötésekben.</translation>
+    </message>
+    <message>
+        <source>Expected only name, alias, isFlag, values, isScoped, or type.</source>
+        <translation>Csak név, álnév, isFlag, értékek, isScoped vagy típus várt.</translation>
     </message>
     <message>
         <source>Expected only name, type, isPointer, isConstant, isReadonly, or IsList script bindings.</source>
@@ -1982,19 +2016,19 @@ A(z) %1 revízió a(z) %2.%3 verziónak felel meg, de %4.%5 kellene, hogy legyen
     </message>
     <message>
         <source>loadFile called without DomEnvironment or DomUniverse.</source>
-        <translation>A loadFile DomEnvironment vagy DomUniverse nélkül lett hívva.</translation>
+        <translation type="vanished">A loadFile DomEnvironment vagy DomUniverse nélkül lett hívva.</translation>
     </message>
     <message>
         <source>loadModuleDependency called without DomEnvironment.</source>
-        <translation>A loadModuleDependency DomEnvironment nélkül lett hívva.</translation>
+        <translation type="vanished">A loadModuleDependency DomEnvironment nélkül lett hívva.</translation>
     </message>
     <message>
         <source>Cannot load builtins without DomEnvironment</source>
-        <translation>Nem lehet betölteni beépítetteket DomEnvironment nélkül</translation>
+        <translation type="vanished">Nem lehet betölteni beépítetteket DomEnvironment nélkül</translation>
     </message>
     <message>
         <source>Called loadPendingDependencies without environment</source>
-        <translation>A loadPendingDependencies környezet nélkül lett hívva</translation>
+        <translation type="vanished">A loadPendingDependencies környezet nélkül lett hívva</translation>
     </message>
 </context>
 <context>
@@ -2053,7 +2087,7 @@ A(z) %1 revízió a(z) %2.%3 verziónak felel meg, de %4.%5 kellene, hogy legyen
     </message>
     <message>
         <source>Ignoring callback for loading of %1: universe is not valid anymore</source>
-        <translation>A visszahívés mellőzve a(z) %1 betöltéséhez: az univerzum többé nem érvényes</translation>
+        <translation type="vanished">A visszahívés mellőzve a(z) %1 betöltéséhez: az univerzum többé nem érvényes</translation>
     </message>
     <message>
         <source>Non existing path %1</source>
@@ -2080,7 +2114,7 @@ A(z) %1 revízió a(z) %2.%3 verziónak felel meg, de %4.%5 kellene, hogy legyen
     </message>
     <message>
         <source>Ignoring dependencies for non resolved path import %1</source>
-        <translation>Nem feloldott útvonal-importálás függőségeinek mellőzése: %1</translation>
+        <translation type="vanished">Nem feloldott útvonal-importálás függőségeinek mellőzése: %1</translation>
     </message>
     <message>
         <source>Ignoring dependencies for empty (invalid) type %1</source>
@@ -2194,11 +2228,27 @@ A(z) %1 revízió a(z) %2.%3 verziónak felel meg, de %4.%5 kellene, hogy legyen
     <name>QQuickTextDocument</name>
     <message>
         <source>Cannot load:</source>
-        <translation>Nem lehet betölteni:</translation>
+        <translation type="vanished">Nem lehet betölteni:</translation>
     </message>
     <message>
         <source>Cannot save:</source>
-        <translation>Nem lehet menteni:</translation>
+        <translation type="vanished">Nem lehet menteni:</translation>
+    </message>
+    <message>
+        <source>Null document object: cannot load</source>
+        <translation>Üres dokumentumobjektum: nem tölthető be</translation>
+    </message>
+    <message>
+        <source>Failed to read: %1</source>
+        <translation>Nem sikerült olvasni: %1</translation>
+    </message>
+    <message>
+        <source>%1 does not exist</source>
+        <translation>A(z) %1 nem létezik</translation>
+    </message>
+    <message>
+        <source>Cannot save: %1</source>
+        <translation>Nem lehet menteni: %1</translation>
     </message>
     <message>
         <source>Can only save to local files</source>
@@ -2214,6 +2264,61 @@ A(z) %1 revízió a(z) %2.%3 verziónak felel meg, de %4.%5 kellene, hogy legyen
     <message>
         <source>Conflicting properties &apos;visible&apos; and &apos;visibility&apos;</source>
         <translation type="vanished">Ütköző „visible” és „visibility” tulajdonságok</translation>
+    </message>
+</context>
+<context>
+    <name>QQmlComponentAndAliasResolverBase</name>
+    <message>
+        <source>Cannot wrap implicit component</source>
+        <translation>Nem lehet burkolni implicit komponenst</translation>
+    </message>
+    <message>
+        <source>Cannot mark object as component</source>
+        <translation>Nem lehet megjelölni objektumot komponensként</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new functions.</source>
+        <translation>Komponensobjektumok nem deklarálhatnak új függvényeket.</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new properties.</source>
+        <translation>Komponensobjektumok nem deklarálhatnak új tulajdonságokat.</translation>
+    </message>
+    <message>
+        <source>Component objects cannot declare new signals.</source>
+        <translation>Komponensobjektumok nem deklarálhatnak új jelzéseket.</translation>
+    </message>
+    <message>
+        <source>Cannot create empty component specification</source>
+        <translation>Nem lehet létrehozni üres komponensspecifikációt</translation>
+    </message>
+    <message>
+        <source>Component elements may not contain properties other than id</source>
+        <translation>A komponens elemek nem tartalmazhatnak az azonosítón kívül más tulajdonságokat</translation>
+    </message>
+    <message>
+        <source>Invalid component body specification</source>
+        <translation>Érvénytelen komponenstörzs-specifikáció</translation>
+    </message>
+    <message>
+        <source>id is not unique</source>
+        <translation>Az azonosító nem egyedi</translation>
+    </message>
+    <message>
+        <source>Circular alias reference detected</source>
+        <translation>Körkörös álnévhivatkozás észlelve</translation>
+    </message>
+    <message>
+        <source>Invalid alias reference. Unable to find id &quot;%1&quot;</source>
+        <translation>Érvénytelen álnévhivatkozás. A(z) „%1˝azonosító nem található.</translation>
+    </message>
+    <message>
+        <source>Invalid alias target location: %1</source>
+        <translation>Érvénytelen álnévcélhely: %1</translation>
+    </message>
+    <message>
+        <source>Unresolved alias found</source>
+        <translation>Feloldatlan álnév található</translation>
     </message>
 </context>
 </TS>

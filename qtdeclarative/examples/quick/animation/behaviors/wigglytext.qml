@@ -22,7 +22,7 @@ Rectangle {
         }
     }
 
-    function append(text) {
+    function append(text: string) {
         container.animated = false
         const lastLetter = container.children[container.children.length - 1]
         let newLetter = letterComponent.createObject(container)

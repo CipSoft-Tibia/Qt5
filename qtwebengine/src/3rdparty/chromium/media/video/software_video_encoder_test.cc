@@ -20,7 +20,7 @@
 #include "build/build_config.h"
 #include "media/base/decoder_buffer.h"
 #include "media/base/media_switches.h"
-#include "media/base/mock_media_log.h"
+#include "media/base/media_util.h"
 #include "media/base/video_decoder.h"
 #include "media/base/video_encoder.h"
 #include "media/base/video_frame.h"
@@ -97,17 +97,17 @@ class SoftwareVideoEncoderTest
         VideoColorSpace::JPEG(), VideoTransformation(), size, gfx::Rect(size),
         size, extra_data, EncryptionScheme::kUnencrypted);
 
-    if (codec_ == VideoCodec::kH264 || codec_ == VideoCodec::kVP8) {
+    if (codec_ == VideoCodec::kH264) {
 #if BUILDFLAG(ENABLE_FFMPEG_VIDEO_DECODERS)
       decoder_ = std::make_unique<FFmpegVideoDecoder>(&media_log_);
 #endif
-    } else if (codec_ == VideoCodec::kVP9) {
+    } else if (codec_ == VideoCodec::kVP8 || codec_ == VideoCodec::kVP9) {
 #if BUILDFLAG(ENABLE_LIBVPX)
       decoder_ = std::make_unique<VpxVideoDecoder>();
 #endif
     } else if (codec_ == VideoCodec::kAV1) {
 #if BUILDFLAG(ENABLE_DAV1D_DECODER)
-      decoder_ = std::make_unique<Dav1dVideoDecoder>(&media_log_);
+      decoder_ = std::make_unique<Dav1dVideoDecoder>(media_log_.Clone());
 #endif
     }
 
@@ -150,7 +150,7 @@ class SoftwareVideoEncoderTest
     auto i420_frame = CreateI420Frame(size, color, timestamp);
     auto nv12_frame = VideoFrame::CreateFrame(PIXEL_FORMAT_NV12, size,
                                               gfx::Rect(size), size, timestamp);
-    auto status = ConvertAndScaleFrame(*i420_frame, *nv12_frame, resize_buff_);
+    auto status = frame_converter_.ConvertAndScale(*i420_frame, *nv12_frame);
     EXPECT_TRUE(status.is_ok());
     return nv12_frame;
   }
@@ -335,9 +335,9 @@ class SoftwareVideoEncoderTest
   VideoCodec codec_;
   VideoCodecProfile profile_;
   VideoPixelFormat pixel_format_;
-  std::vector<uint8_t> resize_buff_;
+  VideoFrameConverter frame_converter_;
 
-  MockMediaLog media_log_;
+  NullMediaLog media_log_;
   base::test::TaskEnvironment task_environment_;
   std::unique_ptr<VideoEncoder> encoder_;
   std::unique_ptr<VideoDecoder> decoder_;
@@ -752,6 +752,44 @@ TEST_P(SVCVideoEncoderTest, ChangeLayers) {
   EXPECT_EQ(chunks.size(), total_frames_count);
 }
 
+TEST_P(SoftwareVideoEncoderTest, ReconfigureWithResizingNumberOfThreads) {
+  int outputs_count = 0;
+  VideoEncoder::Options options;
+  options.frame_size = gfx::Size(1024, 1024);
+
+  VideoEncoder::OutputCB output_cb = base::BindLambdaForTesting(
+      [&](VideoEncoderOutput output,
+          absl::optional<VideoEncoder::CodecDescription> desc) {
+        outputs_count++;
+      });
+
+  encoder_->Initialize(profile_, options, /*info_cb=*/base::DoNothing(),
+                       std::move(output_cb), ValidatingStatusCB());
+
+  auto frame0 = CreateFrame(options.frame_size, pixel_format_, {});
+  encoder_->Encode(frame0, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB());
+
+  options.frame_size = gfx::Size(1000, 608);
+  encoder_->ChangeOptions(options, VideoEncoder::OutputCB(),
+                          ValidatingStatusCB());
+
+  auto frame1 = CreateFrame(options.frame_size, pixel_format_, {});
+  encoder_->Encode(frame1, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB());
+
+  options.frame_size = gfx::Size(16, 720);
+  encoder_->ChangeOptions(options, VideoEncoder::OutputCB(),
+                          ValidatingStatusCB());
+
+  auto frame2 = CreateFrame(options.frame_size, pixel_format_, {});
+  encoder_->Encode(frame2, VideoEncoder::EncodeOptions(false),
+                   ValidatingStatusCB(/* quit_run_loop_on_call */ true));
+
+  RunUntilQuit();
+  EXPECT_EQ(outputs_count, 3);
+}
+
 TEST_P(H264VideoEncoderTest, ReconfigureWithResize) {
   VideoEncoder::Options options;
   gfx::Size size1(320, 200), size2(400, 240);
@@ -832,7 +870,6 @@ TEST_P(H264VideoEncoderTest, ReconfigureWithResize) {
   DecodeAndWaitForStatus(DecoderBuffer::CreateEOSBuffer());
 
   EXPECT_EQ(decoded_frames.size(), frames_to_encode.size());
-  std::vector<uint8_t> conversion_buffer;
   for (auto i = 0u; i < decoded_frames.size(); i++) {
     auto original_frame = frames_to_encode[i];
     auto decoded_frame = decoded_frames[i];
@@ -847,9 +884,8 @@ TEST_P(H264VideoEncoderTest, ReconfigureWithResize) {
       auto i420_frame =
           VideoFrame::CreateFrame(PIXEL_FORMAT_I420, size, gfx::Rect(size),
                                   size, decoded_frame->timestamp());
-      EXPECT_TRUE(
-          ConvertAndScaleFrame(*original_frame, *i420_frame, conversion_buffer)
-              .is_ok());
+      EXPECT_TRUE(frame_converter_.ConvertAndScale(*original_frame, *i420_frame)
+                      .is_ok());
       original_frame = i420_frame;
     }
     EXPECT_LE(CountDifferentPixels(*decoded_frame, *original_frame),

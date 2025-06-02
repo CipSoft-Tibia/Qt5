@@ -5,12 +5,12 @@
 #ifndef COMPONENTS_WINHTTP_NETWORK_FETCHER_H_
 #define COMPONENTS_WINHTTP_NETWORK_FETCHER_H_
 
-#include <windows.h>
-
 #include <stdint.h>
+#include <windows.h>
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/containers/flat_map.h"
@@ -20,7 +20,6 @@
 #include "base/memory/raw_ref.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/sequence_checker.h"
-#include "base/strings/string_piece_forward.h"
 #include "components/winhttp/proxy_configuration.h"
 #include "components/winhttp/scoped_hinternet.h"
 #include "url/gurl.h"
@@ -58,12 +57,13 @@ class NetworkFetcher : public base::RefCountedThreadSafe<NetworkFetcher> {
 
   // Downloads the content of the |url| to a file identified by |file_path|.
   // The content is written to the file as it is being retrieved from the
-  // network.
-  void DownloadToFile(const GURL& url,
-                      const base::FilePath& file_path,
-                      FetchStartedCallback fetch_started_callback,
-                      FetchProgressCallback fetch_progress_callback,
-                      FetchCompleteCallback fetch_complete_callback);
+  // network. Returns a closure that can be run to cancel the download.
+  base::OnceClosure DownloadToFile(
+      const GURL& url,
+      const base::FilePath& file_path,
+      FetchStartedCallback fetch_started_callback,
+      FetchProgressCallback fetch_progress_callback,
+      FetchCompleteCallback fetch_complete_callback);
 
   HRESULT QueryHeaderString(const std::wstring& name,
                             std::wstring* value) const;
@@ -132,7 +132,7 @@ class NetworkFetcher : public base::RefCountedThreadSafe<NetworkFetcher> {
   int port_ = 0;
   std::string path_for_request_;
 
-  base::WStringPiece verb_;
+  std::wstring_view verb_;
   std::string request_data_;
   // The value of Content-Type header, e.g. "application/json".
   std::string content_type_;

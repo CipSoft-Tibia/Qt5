@@ -43,10 +43,6 @@ const char kSessionManagerUnblockDevModeForInitialStateDetermination[] =
     "UnblockDevModeForInitialStateDetermination";
 const char kSessionManagerUnblockDevModeForCarrierLock[] =
     "UnblockDevModeForCarrierLock";
-const char kSessionManagerHandleSupervisedUserCreationStarting[] =
-    "HandleSupervisedUserCreationStarting";
-const char kSessionManagerHandleSupervisedUserCreationFinished[] =
-    "HandleSupervisedUserCreationFinished";
 const char kSessionManagerLockScreen[] = "LockScreen";
 const char kSessionManagerHandleLockScreenShown[] = "HandleLockScreenShown";
 const char kSessionManagerHandleLockScreenDismissed[] =

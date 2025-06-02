@@ -145,7 +145,7 @@ loading malicious code.
 
 \section1 Directory Listing qmldir Files
 
-A directory listing \c qmldir file distinctly different from a
+A directory listing \c qmldir file is distinctly different from a
 \l{qtqml-modules-qmldir.html}{module definition qmldir file}.  A directory
 listing \c qmldir file allows a group of QML documents to be quickly and easily
 shared, but it does not define a type namespace into which the QML object types

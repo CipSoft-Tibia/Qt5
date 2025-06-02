@@ -22,9 +22,11 @@ private slots:
     void mapped();
     void mappedThreadPool();
     void mappedWithMoveOnlyCallable();
+    void mappedWithGenericCallable();
     void mappedReduced();
     void mappedReducedThreadPool();
     void mappedReducedWithMoveOnlyCallable();
+    void mappedReducedWithGenericCallable();
     void mappedReducedDifferentType();
     void mappedReducedInitialValue();
     void mappedReducedInitialValueThreadPool();
@@ -226,7 +228,7 @@ void tst_QtConcurrentMap::map()
 #if 0
     // not allowed: map() on a const list, where functors try to modify the items in the list
     {
-        const QList<int> list = QList<int>() << 1 << 2 << 3;;
+        const QList<int> list = QList<int>() << 1 << 2 << 3;
 
         QtConcurrent::map(list, MultiplyBy2InPlace());
         QtConcurrent::map(list, multiplyBy2InPlace);
@@ -363,7 +365,7 @@ void tst_QtConcurrentMap::blockingMap()
 #if 0
     // not allowed: map() on a const list, where functors try to modify the items in the list
     {
-        const QList<int> list = QList<int>() << 1 << 2 << 3;;
+        const QList<int> list = QList<int>() << 1 << 2 << 3;
 
         QtConcurrent::blockingMap(list, MultiplyBy2InPlace());
         QtConcurrent::blockingMap(list, multiplyBy2InPlace);
@@ -751,6 +753,32 @@ void tst_QtConcurrentMap::mappedWithMoveOnlyCallable()
         const auto result = QtConcurrent::blockingMapped<QList<int>>(&pool, intList.begin(),
                                                                      intList.end(), MultiplyBy2());
         QCOMPARE(result, intListMultipiedBy2);
+    }
+}
+
+void tst_QtConcurrentMap::mappedWithGenericCallable()
+{
+    QList<int> intList{1, 2, 3};
+    QList<std::string> expectedResult{"1", "2", "3"};
+
+    auto toString = [](const auto &el) { return std::to_string(el); };
+    {
+        const auto res = QtConcurrent::mapped(intList, toString).results();
+        QCOMPARE_EQ(res, expectedResult);
+    }
+    {
+        const auto res = QtConcurrent::blockingMapped(intList, toString);
+        QCOMPARE_EQ(res, expectedResult);
+    }
+
+    QThreadPool pool;
+    {
+        const auto res = QtConcurrent::mapped(&pool, intList, toString).results();
+        QCOMPARE_EQ(res, expectedResult);
+    }
+    {
+        const auto res = QtConcurrent::blockingMapped(&pool, intList, toString);
+        QCOMPARE_EQ(res, expectedResult);
     }
 }
 
@@ -1146,6 +1174,40 @@ void tst_QtConcurrentMap::mappedReducedWithMoveOnlyCallable()
         const auto result = QtConcurrent::blockingMappedReduced(
                 &pool, intList.begin(), intList.end(), MultiplyBy2(), IntSumReduceMoveOnly());
         QCOMPARE(result, sum);
+    }
+}
+
+void tst_QtConcurrentMap::mappedReducedWithGenericCallable()
+{
+    QList<int> intList{1, 2, 3};
+    const std::string expectedResult{"123"};
+
+    auto toString = [](const auto &el) { return std::to_string(el); };
+    auto appendString = [](auto &res, const auto &el) { res.append(el); };
+    {
+        const auto res = QtConcurrent::mappedReduced<std::string>(intList, toString, appendString,
+                                                                  OrderedReduce).result();
+        QCOMPARE_EQ(res, expectedResult);
+    }
+    {
+        const auto res = QtConcurrent::blockingMappedReduced<std::string>(intList, toString,
+                                                                          appendString,
+                                                                          OrderedReduce);
+        QCOMPARE_EQ(res, expectedResult);
+    }
+
+    QThreadPool pool;
+    {
+        const auto res = QtConcurrent::mappedReduced<std::string>(&pool, intList, toString,
+                                                                  appendString,
+                                                                  OrderedReduce).result();
+        QCOMPARE_EQ(res, expectedResult);
+    }
+    {
+        const auto res = QtConcurrent::blockingMappedReduced<std::string>(&pool, intList, toString,
+                                                                          appendString,
+                                                                          OrderedReduce);
+        QCOMPARE_EQ(res, expectedResult);
     }
 }
 

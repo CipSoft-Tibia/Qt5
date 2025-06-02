@@ -80,6 +80,18 @@ struct _htmlEntityDesc {
     const char *desc;   /* the description */
 };
 
+#ifdef LIBXML_SAX1_ENABLED
+
+XML_DEPRECATED
+XMLPUBVAR const xmlSAXHandlerV1 htmlDefaultSAXHandler;
+
+#ifdef LIBXML_THREAD_ENABLED
+XML_DEPRECATED
+XMLPUBFUN const xmlSAXHandlerV1 *__htmlDefaultSAXHandler(void);
+#endif
+
+#endif /* LIBXML_SAX1_ENABLED */
+
 /*
  * There is only few public functions.
  */
@@ -283,7 +295,7 @@ typedef enum {
 XMLPUBFUN htmlStatus htmlAttrAllowed(const htmlElemDesc*, const xmlChar*, int) ;
 XMLPUBFUN int htmlElementAllowedHere(const htmlElemDesc*, const xmlChar*) ;
 XMLPUBFUN htmlStatus htmlElementStatusHere(const htmlElemDesc*, const htmlElemDesc*) ;
-XMLPUBFUN htmlStatus htmlNodeStatus(const htmlNodePtr, int) ;
+XMLPUBFUN htmlStatus htmlNodeStatus(htmlNodePtr, int) ;
 /**
  * htmlDefaultSubelement:
  * @elt: HTML element

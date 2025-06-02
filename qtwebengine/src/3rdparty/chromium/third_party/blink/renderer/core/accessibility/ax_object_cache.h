@@ -34,6 +34,7 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/platform/wtf/hash_counted_set.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "ui/accessibility/ax_error_types.h"
 
 namespace gfx {
 class Point;
@@ -46,17 +47,14 @@ struct AXTreeUpdate;
 
 namespace blink {
 
+class AbstractInlineTextBox;
 class AriaNotificationOptions;
 class AXObject;
 class AccessibleNode;
 class HTMLCanvasElement;
 class HTMLOptionElement;
-class HTMLTableElement;
 class HTMLFrameOwnerElement;
 class HTMLSelectElement;
-class LayoutBlockFlow;
-class LocalFrameView;
-class NGAbstractInlineTextBox;
 struct PhysicalRect;
 
 class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
@@ -79,6 +77,7 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
   // A Freeze() occurs during a serialization run.
   virtual void Freeze() = 0;
   virtual void Thaw() = 0;
+  virtual bool IsFrozen() const = 0;
 
   // Ensure that accessibility is clean and up-to-date for both the main and
   // popup document. Ensures layout is clean as well.
@@ -102,11 +101,12 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
   // Will also notify the parent that its children have changed, so that the
   // parent will recompute its children and be reserialized.
   virtual void Remove(AccessibleNode*) = 0;
-  virtual void Remove(LayoutObject*) = 0;
   virtual void Remove(Node*) = 0;
-  virtual void RemoveSubtreeWhenSafe(Node*) = 0;
+  virtual void RemoveSubtreeWhenSafe(Node*, bool remove_root = true) = 0;
+  virtual void RemoveAXObjectsInLayoutSubtree(LayoutObject*) = 0;
+  virtual void RemoveAXObjectsInLayoutSubtree(Node*) = 0;
   virtual void RemovePopup(Document*) = 0;
-  virtual void Remove(NGAbstractInlineTextBox*) = 0;
+  virtual void Remove(AbstractInlineTextBox*) = 0;
 
   virtual const Element* RootAXEditableElement(const Node*) = 0;
 
@@ -117,17 +117,17 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
   // Called by a node when text or a text equivalent (e.g. alt) attribute is
   // changed.
   virtual void TextChanged(const LayoutObject*) = 0;
-  // Called when the NGOffsetMapping is invalidated for the given object.
-  virtual void TextOffsetsChanged(const LayoutBlockFlow*) = 0;
   virtual void DocumentTitleChanged() = 0;
   // Called when a node is connected to the document.
   virtual void NodeIsConnected(Node*) = 0;
   // Called when a node is attached to the layout tree.
   virtual void NodeIsAttached(Node*) = 0;
+  // Called when a subtree is attached to the layout tree because of
+  // content-visibility or previously display:none content gaining layout.
+  virtual void SubtreeIsAttached(Node*) = 0;
 
   // Called to process queued subtree removals when flat tree traversal is safe.
   virtual void ProcessSubtreeRemovals() = 0;
-  // Returns true if the AXObjectCache cares about this attribute
   virtual void HandleAttributeChanged(const QualifiedName& attr_name,
                                       Element*) = 0;
   virtual void HandleFocusedUIElementChanged(Element* old_focused_node,
@@ -154,14 +154,13 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
                                           const AtomicString& event_type) = 0;
 
   // Handle any notifications which arrived while layout was dirty.
-  virtual void ProcessDeferredAccessibilityEvents(Document&) = 0;
+  // If |force|, then process regardless of any active batching or pauses.
+  virtual void ProcessDeferredAccessibilityEvents(Document&,
+                                                  bool force = false) = 0;
 
   // Changes to virtual Accessibility Object Model nodes.
   virtual void HandleAttributeChanged(const QualifiedName& attr_name,
                                       AccessibleNode*) = 0;
-
-  // Called when the DOM parser has reached the closing tag of a table element.
-  virtual void FinishedParsingTable(HTMLTableElement*) = 0;
 
   // Called when a HTMLFrameOwnerElement (such as an iframe element) changes the
   // embedding token of its child frame.
@@ -174,7 +173,6 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
   virtual void InlineTextBoxesUpdated(LayoutObject*) = 0;
 
   // Called when the scroll offset changes.
-  virtual void HandleScrollPositionChanged(LocalFrameView*) = 0;
   virtual void HandleScrollPositionChanged(LayoutObject*) = 0;
 
   virtual void HandleScrolledToAnchor(const Node* anchor_node) = 0;
@@ -205,6 +203,8 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
 
   virtual AXObject* ObjectFromAXID(AXID) const = 0;
 
+  virtual AXObject* Root() = 0;
+
   virtual AXID GenerateAXID() const = 0;
 
   virtual void AddAriaNotification(Node*,
@@ -226,18 +226,20 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
   virtual AXObject* GetPluginRoot() = 0;
 
   // Serialize entire tree, returning true if successful.
-  virtual bool SerializeEntireTree(size_t max_node_count,
-                                   base::TimeDelta timeout,
-                                   ui::AXTreeUpdate*) = 0;
+  virtual bool SerializeEntireTree(
+      size_t max_node_count,
+      base::TimeDelta timeout,
+      ui::AXTreeUpdate*,
+      std::set<ui::AXSerializationErrorFlag>* out_error = nullptr) = 0;
 
   // Recompute the entire tree and reserialize it.
   // This method is useful when something that potentially affects most of the
   // page occurs, such as an inertness change or a fullscreen toggle.
   // This keeps the existing nodes, but recomputes all of their properties and
   // reserializes everything.
-  // Compared with ResetSerializer() and MarkAXObjectDirtyWithDetails() with
-  // subtree = true, this does more work, because it recomputes the entire tree
-  // structure and properties of each node.
+  // Compared with ResetSerializer() and AddDirtyObjectToSerializationQueue()
+  // with subtree = true, this does more work, because it recomputes the entire
+  // tree structure and properties of each node.
   virtual void MarkDocumentDirty() = 0;
 
   // Compared with MarkDocumentDirty(), this does less work, because it assumes
@@ -247,15 +249,13 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
 
   virtual void MarkElementDirty(const Node*) = 0;
 
-  virtual void MarkAllImageAXObjectsDirty() = 0;
-
   // Notifies that an AXObject is dirty and its state needs
   // to be serialized again. If |subtree| is true, the entire subtree is
   // dirty.
   // |event_from| and |event_from_action| annotate this node change with info
   // about the event which caused the change. For example, an event from a user
   // or an event from a focus action.
-  virtual void MarkAXObjectDirtyWithDetails(
+  virtual void AddDirtyObjectToSerializationQueue(
       AXObject* obj,
       bool subtree,
       ax::mojom::blink::EventFrom event_from,
@@ -287,6 +287,28 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
   // Ensure that a call to ProcessDeferredAccessibilityEvents() will occur soon.
   virtual void ScheduleAXUpdate() const = 0;
 
+  // Ensure that a call to RenderAccessibilityImpl::AXReadyCallback() will occur
+  // as soon as possible.
+  virtual void ScheduleImmediateSerialization() = 0;
+
+  // Add an event to the queue of events to be processed as well as mark as
+  // dirty if needed.
+  virtual void AddEventToSerializationQueue(const ui::AXEvent& event,
+                                            bool immediate_serialization) = 0;
+
+  // Called from browser to RAI and then to AXCache to notify that a
+  // serialization has arrived to Browser.
+  virtual void OnSerializationReceived() = 0;
+
+  // Inform AXObjectCacheImpl that a serialization was cancelled.
+  virtual void OnSerializationCancelled() = 0;
+
+  // Inform AXObjectCacheImpl that a serialization was sent.
+  virtual void OnSerializationStartSend() = 0;
+
+  // Determine if a serialization is in the process or not.
+  virtual bool IsSerializationInFlight() const = 0;
+
  protected:
   friend class ScopedBlinkAXEventIntent;
   FRIEND_TEST_ALL_PREFIXES(ScopedBlinkAXEventIntentTest, SingleIntent);
@@ -305,6 +327,26 @@ class CORE_EXPORT AXObjectCache : public GarbageCollected<AXObjectCache> {
   AXObjectCache() = default;
 
   static AXObjectCacheCreateFunction create_function_;
+};
+
+class ScopedFreezeAXCache : public GarbageCollected<ScopedFreezeAXCache> {
+ public:
+  explicit ScopedFreezeAXCache(AXObjectCache& cache) : cache_(&cache) {
+    cache.Freeze();
+  }
+
+  ScopedFreezeAXCache(const ScopedFreezeAXCache&) = delete;
+  ScopedFreezeAXCache& operator=(const ScopedFreezeAXCache&) = delete;
+
+  ~ScopedFreezeAXCache() {
+    CHECK(cache_);
+    cache_->Thaw();
+  }
+
+  void Trace(Visitor* visitor) const { visitor->Trace(cache_); }
+
+ private:
+  WeakMember<AXObjectCache> cache_;
 };
 
 }  // namespace blink

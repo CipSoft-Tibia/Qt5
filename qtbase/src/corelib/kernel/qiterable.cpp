@@ -155,7 +155,7 @@ QT_BEGIN_NAMESPACE
     next item in the container and returns an iterator to the new current
     item.
 
-    Calling this function on QSequentialIterable::end() leads to undefined results.
+    Calling this function on QSequentialIterable::constEnd() leads to undefined results.
 
     \sa operator--()
 */
@@ -176,7 +176,7 @@ QT_BEGIN_NAMESPACE
     The prefix \c{--} operator (\c{--it}) makes the preceding item
     current and returns an iterator to the new current item.
 
-    Calling this function on QSequentialIterable::begin() leads to undefined results.
+    Calling this function on QSequentialIterable::constBegin() leads to undefined results.
 
     If the container in the QVariant does not support bi-directional iteration, calling this function
     leads to undefined results.
@@ -240,6 +240,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \fn template<class Container> qsizetype QIterator<Container>::operator-(const QIterator<Container> &j) const
+    \overload
 
     Returns the distance between the two iterators.
 
@@ -377,6 +378,8 @@ QT_BEGIN_NAMESPACE
 /*!
     \fn template <class Container> qsizetype QConstIterator<Container>::operator-(const QConstIterator<Container> &j) const
 
+    \overload
+
     Returns the distance between the two iterators.
 
     \sa operator+(), operator-=(), QIterable::canReverseIterate()
@@ -509,7 +512,7 @@ QT_BEGIN_NAMESPACE
     next item in the container and returns an iterator to the new current
     item.
 
-    Calling this function on QSequentialIterable::end() leads to undefined results.
+    Calling this function on QSequentialIterable::constEnd() leads to undefined results.
 
     \sa operator--()
 */
@@ -530,7 +533,7 @@ QT_BEGIN_NAMESPACE
     The prefix \c{--} operator (\c{--it}) makes the preceding item
     current and returns an iterator to the new current item.
 
-    Calling this function on QSequentialIterable::begin() leads to undefined results.
+    Calling this function on QSequentialIterable::constBegin() leads to undefined results.
 
     If the container in the QVariant does not support bi-directional iteration, calling this function
     leads to undefined results.

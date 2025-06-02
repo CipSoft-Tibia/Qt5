@@ -74,7 +74,7 @@ class StringViewTemplate {
   // |ch| must be an lvalue that outlives the StringViewTemplate.
   // NOLINTNEXTLINE(runtime/explicit)
   constexpr StringViewTemplate(const CharType& ch) noexcept
-      : m_Span(reinterpret_cast<const UnsignedType*>(&ch), 1) {}
+      : m_Span(reinterpret_cast<const UnsignedType*>(&ch), 1u) {}
 
   StringViewTemplate& operator=(const CharType* src) {
     m_Span = pdfium::span<const UnsignedType>(
@@ -101,7 +101,8 @@ class StringViewTemplate {
   }
 
   bool operator==(const StringViewTemplate& other) const {
-    return m_Span == other.m_Span;
+    return std::equal(m_Span.begin(), m_Span.end(), other.m_Span.begin(),
+                      other.m_Span.end());
   }
   bool operator==(const CharType* ptr) const {
     StringViewTemplate other(ptr);

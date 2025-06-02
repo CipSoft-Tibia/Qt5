@@ -1,6 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-3.0-only
 #include <qaudioengine_p.h>
+#include <qambientsound_p.h>
 #include <qspatialsound_p.h>
 #include <qambientsound.h>
 #include <qaudioroom_p.h>
@@ -23,6 +24,8 @@ QT_BEGIN_NAMESPACE
 // It might be possible to set this value lower on other OSes.
 const int bufferTimeMs = 100;
 
+// This class lives in the audioThread, but pulls data from QAudioEnginePrivate
+// which lives in the mainThread.
 class QAudioOutputStream : public QIODevice
 {
     Q_OBJECT
@@ -32,7 +35,7 @@ public:
     {
         open(QIODevice::ReadOnly);
     }
-    ~QAudioOutputStream();
+    ~QAudioOutputStream() override;
 
     qint64 readData(char *data, qint64 len) override;
 
@@ -53,23 +56,31 @@ public:
     }
 
     Q_INVOKABLE void startOutput() {
-        QMutexLocker l(&d->mutex);
+        d->mutex.lock();
         Q_ASSERT(!sink);
         QAudioFormat format;
-        format.setChannelConfig(d->outputMode == QAudioEngine::Surround ?
-                                    d->device.channelConfiguration() : QAudioFormat::ChannelConfigStereo);
+        auto channelConfig = d->outputMode == QAudioEngine::Surround ?
+                             d->device.channelConfiguration() : QAudioFormat::ChannelConfigStereo;
+        if (channelConfig != QAudioFormat::ChannelConfigUnknown)
+            format.setChannelConfig(channelConfig);
+        else
+            format.setChannelCount(d->device.preferredFormat().channelCount());
         format.setSampleRate(d->sampleRate);
         format.setSampleFormat(QAudioFormat::Int16);
-        d->ambisonicDecoder.reset(new QAmbisonicDecoder(QAmbisonicDecoder::HighQuality, format));
+        ambisonicDecoder.reset(new QAmbisonicDecoder(QAmbisonicDecoder::HighQuality, format));
         sink.reset(new QAudioSink(d->device, format));
-        sink->setBufferSize(d->sampleRate*bufferTimeMs/1000*sizeof(qint16)*format.channelCount());
+        const qsizetype bufferSize = format.bytesForDuration(bufferTimeMs * 1000);
+        sink->setBufferSize(bufferSize);
+        d->mutex.unlock();
+        // It is important to unlock the mutex before starting the sink, as the sink will
+        // call readData() in the audio thread, which will try to lock the mutex (again)
         sink->start(this);
     }
 
     Q_INVOKABLE void stopOutput() {
         sink->stop();
         sink.reset();
-        d->ambisonicDecoder.reset();
+        ambisonicDecoder.reset();
     }
 
     Q_INVOKABLE void restartOutput() {
@@ -88,6 +99,7 @@ private:
     qint64 m_pos = 0;
     QAudioEnginePrivate *d = nullptr;
     std::unique_ptr<QAudioSink> sink;
+    std::unique_ptr<QAmbisonicDecoder> ambisonicDecoder;
 };
 
 
@@ -105,9 +117,10 @@ qint64 QAudioOutputStream::readData(char *data, qint64 len)
     if (d->paused.loadRelaxed())
         return 0;
 
+    QMutexLocker l(&d->mutex);
     d->updateRooms();
 
-    int nChannels = d->ambisonicDecoder ? d->ambisonicDecoder->nOutputChannels() : 2;
+    int nChannels = ambisonicDecoder ? ambisonicDecoder->nOutputChannels() : 2;
     if (len < nChannels*int(sizeof(float))*QAudioEnginePrivate::bufferSize)
         return 0;
 
@@ -118,28 +131,40 @@ qint64 QAudioOutputStream::readData(char *data, qint64 len)
         // Fill input buffers
         for (auto *source : std::as_const(d->sources)) {
             auto *sp = QSpatialSoundPrivate::get(source);
+            if (!sp)
+                continue;
             float buf[QAudioEnginePrivate::bufferSize];
             sp->getBuffer(buf, QAudioEnginePrivate::bufferSize, 1);
             d->resonanceAudio->api->SetInterleavedBuffer(sp->sourceId, buf, 1, QAudioEnginePrivate::bufferSize);
         }
         for (auto *source : std::as_const(d->stereoSources)) {
             auto *sp = QAmbientSoundPrivate::get(source);
+            if (!sp)
+                continue;
             float buf[2*QAudioEnginePrivate::bufferSize];
             sp->getBuffer(buf, QAudioEnginePrivate::bufferSize, 2);
             d->resonanceAudio->api->SetInterleavedBuffer(sp->sourceId, buf, 2, QAudioEnginePrivate::bufferSize);
         }
 
-        if (d->ambisonicDecoder && d->outputMode == QAudioEngine::Surround) {
+        if (ambisonicDecoder && d->outputMode == QAudioEngine::Surround) {
             const float *channels[QAmbisonicDecoder::maxAmbisonicChannels];
             const float *reverbBuffers[2];
-            int nSamples = d->resonanceAudio->getAmbisonicOutput(channels, reverbBuffers, d->ambisonicDecoder->nInputChannels());
-            Q_ASSERT(d->ambisonicDecoder->nOutputChannels() <= 8);
-            d->ambisonicDecoder->processBufferWithReverb(channels, reverbBuffers, fd, nSamples);
+            int nSamples = d->resonanceAudio->getAmbisonicOutput(channels, reverbBuffers, ambisonicDecoder->nInputChannels());
+            Q_ASSERT(ambisonicDecoder->nOutputChannels() <= 8);
+            ambisonicDecoder->processBufferWithReverb(channels, reverbBuffers, fd, nSamples);
         } else {
             ok = d->resonanceAudio->api->FillInterleavedOutputBuffer(2, QAudioEnginePrivate::bufferSize, fd);
             if (!ok) {
-                qWarning() << "    Reading failed!";
-                break;
+                // If we get here, it means that resonanceAudio did not actually fill the buffer.
+                // Sometimes this is expected, for example if resonanceAudio does not have any sources.
+                // In this case we just fill the buffer with silence.
+                if (d->sources.isEmpty() && d->stereoSources.isEmpty()) {
+                    memset(fd, 0, nChannels * QAudioEnginePrivate::bufferSize * sizeof(short));
+                } else {
+                    // If we get here, it means that something unexpected happened, so bail.
+                    qWarning() << "    Reading failed!";
+                    break;
+                }
             }
         }
         fd += nChannels*QAudioEnginePrivate::bufferSize;
@@ -153,8 +178,8 @@ qint64 QAudioOutputStream::readData(char *data, qint64 len)
 
 QAudioEnginePrivate::QAudioEnginePrivate()
 {
+    audioThread.setObjectName(u"QAudioThread");
     device = QMediaDevices::defaultAudioOutput();
-    audioThread.setPriority(QThread::TimeCriticalPriority);
 }
 
 QAudioEnginePrivate::~QAudioEnginePrivate()
@@ -164,6 +189,7 @@ QAudioEnginePrivate::~QAudioEnginePrivate()
 
 void QAudioEnginePrivate::addSpatialSound(QSpatialSound *sound)
 {
+    QMutexLocker l(&mutex);
     QAmbientSoundPrivate *sd = QAmbientSoundPrivate::get(sound);
 
     sd->sourceId = resonanceAudio->api->CreateSoundObjectSource(vraudio::kBinauralHighQuality);
@@ -172,6 +198,7 @@ void QAudioEnginePrivate::addSpatialSound(QSpatialSound *sound)
 
 void QAudioEnginePrivate::removeSpatialSound(QSpatialSound *sound)
 {
+    QMutexLocker l(&mutex);
     QAmbientSoundPrivate *sd = QAmbientSoundPrivate::get(sound);
 
     resonanceAudio->api->DestroySource(sd->sourceId);
@@ -181,6 +208,7 @@ void QAudioEnginePrivate::removeSpatialSound(QSpatialSound *sound)
 
 void QAudioEnginePrivate::addStereoSound(QAmbientSound *sound)
 {
+    QMutexLocker l(&mutex);
     QAmbientSoundPrivate *sd = QAmbientSoundPrivate::get(sound);
 
     sd->sourceId = resonanceAudio->api->CreateStereoSource(2);
@@ -189,6 +217,7 @@ void QAudioEnginePrivate::addStereoSound(QAmbientSound *sound)
 
 void QAudioEnginePrivate::removeStereoSound(QAmbientSound *sound)
 {
+    QMutexLocker l(&mutex);
     QAmbientSoundPrivate *sd = QAmbientSoundPrivate::get(sound);
 
     resonanceAudio->api->DestroySource(sd->sourceId);
@@ -198,14 +227,17 @@ void QAudioEnginePrivate::removeStereoSound(QAmbientSound *sound)
 
 void QAudioEnginePrivate::addRoom(QAudioRoom *room)
 {
+    QMutexLocker l(&mutex);
     rooms.append(room);
 }
 
 void QAudioEnginePrivate::removeRoom(QAudioRoom *room)
 {
+    QMutexLocker l(&mutex);
     rooms.removeOne(room);
 }
 
+// This method is called from the audio thread
 void QAudioEnginePrivate::updateRooms()
 {
     if (!roomEffectsEnabled)
@@ -215,7 +247,7 @@ void QAudioEnginePrivate::updateRooms()
     listenerPositionDirty = false;
 
     bool roomDirty = false;
-    for (const auto &room : rooms) {
+    for (const auto &room : std::as_const(rooms)) {
         auto *rd = QAudioRoomPrivate::get(room);
         if (rd->dirty) {
             roomDirty = true;
@@ -269,6 +301,8 @@ void QAudioEnginePrivate::updateRooms()
     // update room effects for all sound sources
     for (auto *s : std::as_const(sources)) {
         auto *sp = QSpatialSoundPrivate::get(s);
+        if (!sp)
+            continue;
         sp->updateRoomEffects();
     }
 }
@@ -454,7 +488,7 @@ void QAudioEngine::start()
 
     d->outputStream.reset(new QAudioOutputStream(d));
     d->outputStream->moveToThread(&d->audioThread);
-    d->audioThread.start();
+    d->audioThread.start(QThread::TimeCriticalPriority);
 
     QMetaObject::invokeMethod(d->outputStream.get(), "startOutput");
 }
@@ -542,98 +576,6 @@ void QAudioEngine::setDistanceScale(float scale)
 float QAudioEngine::distanceScale() const
 {
     return d->distanceScale*100.f;
-}
-
-
-void QAmbientSoundPrivate::load()
-{
-    decoder.reset(new QAudioDecoder);
-    buffers.clear();
-    currentBuffer = 0;
-    sourceDeviceFile.reset(nullptr);
-    bufPos = 0;
-    m_playing = false;
-    m_loading = true;
-    auto *ep = QAudioEnginePrivate::get(engine);
-    QAudioFormat f;
-    f.setSampleFormat(QAudioFormat::Float);
-    f.setSampleRate(ep->sampleRate);
-    f.setChannelConfig(nchannels == 2 ? QAudioFormat::ChannelConfigStereo : QAudioFormat::ChannelConfigMono);
-    decoder->setAudioFormat(f);
-    if (url.scheme().compare(u"qrc", Qt::CaseInsensitive) == 0) {
-        auto qrcFile = std::make_unique<QFile>(u':' + url.path());
-        if (!qrcFile->open(QFile::ReadOnly))
-            return;
-        sourceDeviceFile = std::move(qrcFile);
-        decoder->setSourceDevice(sourceDeviceFile.get());
-    } else {
-        decoder->setSource(url);
-    }
-    connect(decoder.get(), &QAudioDecoder::bufferReady, this, &QAmbientSoundPrivate::bufferReady);
-    connect(decoder.get(), &QAudioDecoder::finished, this, &QAmbientSoundPrivate::finished);
-    decoder->start();
-}
-
-void QAmbientSoundPrivate::getBuffer(float *buf, int nframes, int channels)
-{
-    Q_ASSERT(channels == nchannels);
-    QMutexLocker l(&mutex);
-    if (!m_playing || currentBuffer >= buffers.size()) {
-        memset(buf, 0, channels * nframes * sizeof(float));
-    } else {
-        int frames = nframes;
-        float *ff = buf;
-        while (frames) {
-            if (currentBuffer < buffers.size()) {
-                const QAudioBuffer &b = buffers.at(currentBuffer);
-//            qDebug() << s << b.format().sampleRate() << b.format().channelCount() << b.format().sampleFormat();
-                auto *f = b.constData<float>() + bufPos*nchannels;
-                int toCopy = qMin(b.frameCount() - bufPos, frames);
-                memcpy(ff, f, toCopy*sizeof(float)*nchannels);
-                ff += toCopy*nchannels;
-                frames -= toCopy;
-                bufPos += toCopy;
-                Q_ASSERT(bufPos <= b.frameCount());
-                if (bufPos == b.frameCount()) {
-                    ++currentBuffer;
-                    bufPos = 0;
-                }
-            } else {
-                // no more data available
-                if (m_loading)
-                    qDebug() << "underrun" << frames << "frames when loading" << url;
-                memset(ff, 0, frames * channels * sizeof(float));
-                ff += frames * channels;
-                frames = 0;
-            }
-            if (!m_loading) {
-                if (currentBuffer == buffers.size()) {
-                    currentBuffer = 0;
-                    ++m_currentLoop;
-                }
-                if (m_loops > 0 && m_currentLoop >= m_loops) {
-                    m_playing = false;
-                    m_currentLoop = 0;
-                }
-            }
-        }
-        Q_ASSERT(ff - buf == channels*nframes);
-    }
-}
-
-void QAmbientSoundPrivate::bufferReady()
-{
-    QMutexLocker l(&mutex);
-    auto b = decoder->read();
-//    qDebug() << "read buffer" << b.format() << b.startTime() << b.duration();
-    buffers.append(b);
-    if (m_autoPlay)
-        m_playing = true;
-}
-
-void QAmbientSoundPrivate::finished()
-{
-    m_loading = false;
 }
 
 /*!

@@ -24,3 +24,7 @@ qt_internal_add_test(tst_protobuf_syntax
         Qt::Protobuf
         tst_protobuf_syntax_qtprotobuf_gen
 )
+
+set_target_properties(tst_protobuf_syntax_qtprotobuf_gen PROPERTIES
+    QT_USE_PROTOBUF_LIST_ALIASES FALSE
+)

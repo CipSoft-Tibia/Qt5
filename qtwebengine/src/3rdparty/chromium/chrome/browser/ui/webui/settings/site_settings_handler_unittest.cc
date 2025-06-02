@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/webui/settings/site_settings_handler.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -62,7 +63,6 @@
 #include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_url_info.h"
 #include "chrome/browser/web_applications/test/web_app_install_test_utils.h"
 #include "chrome/browser/web_applications/web_app_helpers.h"
-#include "chrome/browser/web_applications/web_app_id.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
@@ -71,9 +71,11 @@
 #include "chrome/test/base/testing_profile.h"
 #include "chrome/test/base/testing_profile_manager.h"
 #include "components/browsing_data/content/browsing_data_model.h"
+#include "components/browsing_data/content/browsing_data_model_test_util.h"
 #include "components/browsing_data/content/fake_browsing_data_model.h"
 #include "components/browsing_data/content/mock_cookie_helper.h"
 #include "components/browsing_data/content/mock_local_storage_helper.h"
+#include "components/browsing_data/core/features.h"
 #include "components/browsing_topics/browsing_topics_service.h"
 #include "components/browsing_topics/test_util.h"
 #include "components/client_hints/common/client_hints.h"
@@ -102,7 +104,7 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "components/ukm/test_ukm_recorder.h"
-#include "content/public/browser/browsing_data_remover.h"
+#include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/host_zoom_map.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/storage_partition.h"
@@ -124,7 +126,6 @@
 #include "services/device/public/mojom/serial.mojom.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/bluetooth/web_bluetooth.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -172,7 +173,8 @@ const struct PatternContentTypeTestCase {
   } expected;
 } kPatternsAndContentTypeTestCases[]{
     {{"https://google.com", "cookies"}, {true, ""}},
-    {{";", "cookies"}, {false, "Not a valid web address"}},
+    {{";", "cookies"}, {true, ""}},
+    {{"^", "cookies"}, {false, "Not a valid web address"}},
     {{"*", "cookies"}, {false, "Not a valid web address"}},
     {{"chrome://test", "popups"}, {false, "Not a valid web address"}},
     {{"chrome-untrusted://test", "popups"}, {false, "Not a valid web address"}},
@@ -257,18 +259,39 @@ apps::AppPtr MakeApp(const std::string& app_id,
 }
 
 void RegisterWebApp(Profile* profile, apps::AppPtr app) {
-  apps::AppRegistryCache& cache =
-      apps::AppServiceProxyFactory::GetForProfile(profile)->AppRegistryCache();
   std::vector<apps::AppPtr> deltas;
   deltas.push_back(std::move(app));
-  cache.OnApps(std::move(deltas), apps::AppType::kWeb,
-               /*should_notify_initialized=*/true);
+  apps::AppServiceProxyFactory::GetForProfile(profile)->OnApps(
+      std::move(deltas), apps::AppType::kWeb,
+      /*should_notify_initialized=*/true);
+}
+
+std::unique_ptr<net::CanonicalCookie> CreateCookieKey(
+    const GURL& url,
+    const std::string& cookie_line,
+    absl::optional<net::CookiePartitionKey> cookie_partition_key =
+        absl::nullopt) {
+  return net::CanonicalCookie::Create(url, cookie_line, base::Time::Now(),
+                                      absl::nullopt /* server_time */,
+                                      cookie_partition_key);
+}
+
+void RemoveModelEntries(
+    std::vector<browsing_data_model_test_util::BrowsingDataEntry>&
+        model_entries,
+    const std::vector<browsing_data_model_test_util::BrowsingDataEntry>&
+        entries_to_remove) {
+  for (const auto& entry : entries_to_remove) {
+    model_entries.erase(
+        std::remove(model_entries.begin(), model_entries.end(), entry),
+        model_entries.end());
+  }
 }
 
 struct TestModels {
   scoped_refptr<browsing_data::MockCookieHelper> cookie_helper;
   scoped_refptr<browsing_data::MockLocalStorageHelper> local_storage_helper;
-  const raw_ref<FakeBrowsingDataModel, ExperimentalAsh> browsing_data_model;
+  const raw_ref<FakeBrowsingDataModel> browsing_data_model;
 };
 
 }  // namespace
@@ -404,14 +427,14 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
     const base::Value* event_data = data.arg2();
     ASSERT_TRUE(event_data->is_dict());
 
-    absl::optional<bool> enabled = event_data->GetDict().FindBool("enabled");
+    std::optional<bool> enabled = event_data->GetDict().FindBool("enabled");
     ASSERT_TRUE(enabled.has_value());
     EXPECT_EQ(expected_enabled, *enabled);
 
     const base::Value::Dict* pref_data = event_data->GetDict().FindDict("pref");
     ASSERT_TRUE(pref_data);
 
-    absl::optional<bool> value = pref_data->FindBool("value");
+    std::optional<bool> value = pref_data->FindBool("value");
     ASSERT_TRUE(value.has_value());
     EXPECT_EQ(expected_value, *value);
   }
@@ -516,7 +539,9 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
 
     map->SetContentSettingCustomScope(
         ContentSettingsPattern::FromString(primary_pattern),
-        ContentSettingsPattern::FromString(secondary_pattern),
+        secondary_pattern.empty()
+            ? ContentSettingsPattern::Wildcard()
+            : ContentSettingsPattern::FromString(secondary_pattern),
         content_setting_type, content_setting, constraints);
     EXPECT_EQ(expected_total_calls, web_ui()->call_data().size());
     ASSERT_EQ("contentSettingSitePermissionChanged",
@@ -564,7 +589,7 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
     // exceptions.
     const auto* description = exception.FindString(site_settings::kDescription);
     ASSERT_FALSE(description);
-    absl::optional<bool> incognito =
+    std::optional<bool> incognito =
         exception.FindBool(site_settings::kIncognito);
     ASSERT_FALSE(incognito.has_value());
 
@@ -614,7 +639,7 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
     ASSERT_EQ(expected_embedding_exception.embedding_display_name,
               *embedding_display_name);
 
-    absl::optional<bool> incognito =
+    std::optional<bool> incognito =
         embedding_exception.FindBool(site_settings::kIncognito);
     ASSERT_TRUE(incognito.has_value());
     EXPECT_EQ(expected_embedding_exception.incognito, *incognito);
@@ -679,7 +704,7 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
     ASSERT_EQ(content_settings::ContentSettingToString(expected_setting),
               *setting);
 
-    absl::optional<bool> incognito =
+    std::optional<bool> incognito =
         exception.FindBool(site_settings::kIncognito);
     ASSERT_TRUE(incognito.has_value());
     EXPECT_EQ(expected_incognito, *incognito);
@@ -724,7 +749,7 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
     const base::Value* result = data.arg3();
     ASSERT_TRUE(result->is_dict());
 
-    absl::optional<bool> valid = result->GetDict().FindBool("isValid");
+    std::optional<bool> valid = result->GetDict().FindBool("isValid");
     ASSERT_TRUE(valid.has_value());
     EXPECT_EQ(expected_validity, *valid);
 
@@ -861,10 +886,9 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
     auto fake_browsing_data_model = std::make_unique<FakeBrowsingDataModel>(
         ChromeBrowsingDataModelDelegate::CreateForProfile(profile()));
 
-    std::move(setup).Run(
-        {mock_browsing_data_cookie_helper,
-         mock_browsing_data_local_storage_helper,
-         ToRawRef<ExperimentalAsh>(*fake_browsing_data_model)});
+    std::move(setup).Run({mock_browsing_data_cookie_helper,
+                          mock_browsing_data_local_storage_helper,
+                          ToRawRef(*fake_browsing_data_model)});
 
     mock_browsing_data_local_storage_helper->Notify();
     mock_browsing_data_cookie_helper->Notify();
@@ -876,59 +900,81 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
   // TODO(https://crbug.com/835712): Currently only set up the cookies and local
   // storage nodes, will update all other nodes in the future.
   void SetupModels() {
-    SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
-      models.local_storage_helper->AddLocalStorageForStorageKey(
-          blink::StorageKey::CreateFromStringForTesting(
-              "https://www.example.com/"),
-          2);
+    SetupModels(base::BindLambdaForTesting([this](const TestModels& models) {
+      std::vector<browsing_data_model_test_util::BrowsingDataEntry>
+          browsing_data_model_entries = {
+              kGoogleUnpartitionedEntry, kExampleUnpartitionedEntry,
+              kGoogleOnExampleEntry, kExampleOnGoogleSecureEntry,
+              kExampleOnGoogleInsecureEntry};
+      if (base::FeatureList::IsEnabled(
+              browsing_data::features::kDeprecateCookiesTreeModel)) {
+        browsing_data_model_entries.insert(
+            browsing_data_model_entries.end(),
+            {
+                kExampleLocalStorage,
+                kHttpExampleCookie,
+                kHttpsWwwExampleCookie,
+                kPartitionedHttpsWwwExampleOnGoogleAuCookie,
+                kPartitionedHttpsWwwExampleOnGoogleCookie,
+                kHttpAbcExampleCookie,
+                kHttpGoogleCookieA,
+                kHttpGoogleCookieB,
+                kHttpGoogleAuCookie,
+                kPartitionedHttpsGoogleAu1PCookie,
+                kPartitionedHttpsWwwAnotherExampleOnGoogleAuCookie,
+                kUngroupedHttpCookie,
+            });
+      } else {
+        models.local_storage_helper->AddLocalStorageForStorageKey(
+            blink::StorageKey::CreateFromStringForTesting(
+                "https://www.example.com/"),
+            2);
 
-      models.cookie_helper->AddCookieSamples(GURL("http://example.com"), "A=1");
-      models.cookie_helper->AddCookieSamples(GURL("https://www.example.com/"),
-                                             "B=1");
-      models.cookie_helper->AddCookieSamples(GURL("http://abc.example.com"),
-                                             "C=1");
-      models.cookie_helper->AddCookieSamples(GURL("http://google.com"), "A=1");
-      models.cookie_helper->AddCookieSamples(GURL("http://google.com"), "B=1");
-      models.cookie_helper->AddCookieSamples(GURL("http://google.com.au"),
-                                             "A=1");
+        models.cookie_helper->AddCookieSamples(GURL("http://example.com"),
+                                               "A=1");
+        models.cookie_helper->AddCookieSamples(GURL("https://www.example.com/"),
+                                               "B=1");
+        models.cookie_helper->AddCookieSamples(GURL("http://abc.example.com"),
+                                               "C=1");
+        models.cookie_helper->AddCookieSamples(GURL("http://google.com"),
+                                               "A=1");
+        models.cookie_helper->AddCookieSamples(GURL("http://google.com"),
+                                               "B=1");
+        models.cookie_helper->AddCookieSamples(GURL("http://google.com.au"),
+                                               "A=1");
 
-      models.cookie_helper->AddCookieSamples(
-          GURL("https://www.example.com"),
-          "__Host-A=1; Path=/; Partitioned; Secure;",
-          net::CookiePartitionKey::FromURLForTesting(
-              GURL("https://google.com.au")));
-      models.cookie_helper->AddCookieSamples(
-          GURL("https://google.com.au"),
-          "__Host-A=1; Path=/; Partitioned; Secure;",
-          net::CookiePartitionKey::FromURLForTesting(
-              GURL("https://google.com.au")));
-      models.cookie_helper->AddCookieSamples(
-          GURL("https://www.another-example.com"),
-          "__Host-A=1; Path=/; Partitioned; Secure;",
-          net::CookiePartitionKey::FromURLForTesting(
-              GURL("https://google.com.au")));
-      models.cookie_helper->AddCookieSamples(
-          GURL("https://www.example.com"),
-          "__Host-A=1; Path=/; Partitioned; Secure;",
-          net::CookiePartitionKey::FromURLForTesting(
-              GURL("https://google.com")));
+        models.cookie_helper->AddCookieSamples(
+            GURL("https://www.example.com"),
+            "__Host-A=1; Path=/; Partitioned; Secure;",
+            net::CookiePartitionKey::FromURLForTesting(
+                GURL("https://google.com.au")));
+        models.cookie_helper->AddCookieSamples(
+            GURL("https://google.com.au"),
+            "__Host-A=1; Path=/; Partitioned; Secure;",
+            net::CookiePartitionKey::FromURLForTesting(
+                GURL("https://google.com.au")));
+        models.cookie_helper->AddCookieSamples(
+            GURL("https://www.another-example.com"),
+            "__Host-A=1; Path=/; Partitioned; Secure;",
+            net::CookiePartitionKey::FromURLForTesting(
+                GURL("https://google.com.au")));
+        models.cookie_helper->AddCookieSamples(
+            GURL("https://www.example.com"),
+            "__Host-A=1; Path=/; Partitioned; Secure;",
+            net::CookiePartitionKey::FromURLForTesting(
+                GURL("https://google.com")));
 
-      // Add an entry which will not be grouped with any other entries. This
-      // will require a placeholder origin to be correctly added & removed.
-      models.cookie_helper->AddCookieSamples(GURL("http://ungrouped.com"),
-                                             "A=1");
+        // Add an entry which will not be grouped with any other entries. This
+        // will require a placeholder origin to be correctly added & removed.
+        models.cookie_helper->AddCookieSamples(GURL("http://ungrouped.com"),
+                                               "A=1");
+      }
 
-      models.browsing_data_model->AddBrowsingData(
-          url::Origin::Create(GURL("https://www.google.com")),
-          BrowsingDataModel::StorageType::kTrustTokens, 50000000000);
-      models.browsing_data_model->AddBrowsingData(
-          blink::StorageKey::Create(
-              url::Origin::Create(GURL("https://google.com/")),
-              net::SchemefulSite(
-                  url::Origin::Create(GURL("https://www.example.com/"))),
-              blink::mojom::AncestorChainBit::kCrossSite,
-              /*third_party_partitioning_allowed=*/true),
-          BrowsingDataModel::StorageType::kQuotaStorage, 100);
+      for (const auto& entry : browsing_data_model_entries) {
+        models.browsing_data_model->AddBrowsingData(
+            entry.data_key, *(entry.data_details.storage_types.begin()),
+            entry.data_details.storage_size, entry.data_details.cookie_count);
+      }
     }));
   }
 
@@ -970,13 +1016,13 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
   void SetupDefaultFirstPartySets(MockPrivacySandboxService* mock_service) {
     EXPECT_CALL(*mock_service, GetFirstPartySetOwner(_))
         .WillRepeatedly(
-            [&](const GURL& url) -> absl::optional<net::SchemefulSite> {
+            [&](const GURL& url) -> std::optional<net::SchemefulSite> {
               auto first_party_sets = GetTestFirstPartySets();
               if (first_party_sets.count(net::SchemefulSite(url))) {
                 return first_party_sets[net::SchemefulSite(url)];
               }
 
-              return absl::nullopt;
+              return std::nullopt;
             });
   }
 
@@ -1046,9 +1092,155 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
   const ContentSettingsType kPermissionStorageAccess =
       ContentSettingsType::STORAGE_ACCESS;
 
-  // The number of listeners that are expected to fire when any content setting
-  // is changed.
-  const size_t kNumberContentSettingListeners = 2;
+  // The number of listeners that are expected to fire when notification content
+  // setting is changed.
+  const size_t kNumberNotificationsContentSettingListeners = 2;
+
+  // The number of listeners that are expected to fire when cookies content
+  // setting is changed.
+  const size_t kNumberCookiesContentSettingListeners = 1;
+
+  // Browsing data model constants. Here, instead of in the anon namespace, to
+  // avoid static GURL creation.
+  const browsing_data_model_test_util::BrowsingDataEntry
+      kGoogleUnpartitionedEntry{
+          "www.google.com",
+          url::Origin::Create(GURL("https://www.google.com")),
+          {{BrowsingDataModel::StorageType::kTrustTokens}, 50000000000, 0}};
+  const browsing_data_model_test_util::BrowsingDataEntry
+      kExampleUnpartitionedEntry{
+          "www.example.com",
+          url::Origin::Create(GURL("https://www.example.com")),
+          {{BrowsingDataModel::StorageType::kTrustTokens}, 100, 0}};
+  const browsing_data_model_test_util::BrowsingDataEntry kGoogleOnExampleEntry{
+      "google.com",
+      blink::StorageKey::Create(
+          url::Origin::Create(GURL("https://google.com/")),
+          net::SchemefulSite(
+              url::Origin::Create(GURL("https://www.example.com/"))),
+          blink::mojom::AncestorChainBit::kCrossSite,
+          /*third_party_partitioning_allowed=*/true),
+      {{BrowsingDataModel::StorageType::kQuotaStorage}, 100, 0}};
+  const browsing_data_model_test_util::BrowsingDataEntry
+      kExampleOnGoogleSecureEntry{
+          "www.example.com",
+          blink::StorageKey::Create(
+              url::Origin::Create(GURL("https://www.example.com/")),
+              net::SchemefulSite(
+                  url::Origin::Create(GURL("https://www.google.com/"))),
+              blink::mojom::AncestorChainBit::kCrossSite,
+              /*third_party_partitioning_allowed=*/true),
+          {{BrowsingDataModel::StorageType::kQuotaStorage}, 100, 0}};
+  const browsing_data_model_test_util::BrowsingDataEntry
+      kExampleOnGoogleInsecureEntry{
+          "www.example.com",
+          blink::StorageKey::Create(
+              url::Origin::Create(GURL("https://www.example.com/")),
+              net::SchemefulSite(
+                  url::Origin::Create(GURL("http://www.google.com/"))),
+              blink::mojom::AncestorChainBit::kCrossSite,
+              /*third_party_partitioning_allowed=*/true),
+          {{BrowsingDataModel::StorageType::kQuotaStorage}, 100, 0}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry kHttpExampleCookie{
+      "example.com",
+      *(CreateCookieKey(GURL("http://example.com"), "A=1")),
+      {{BrowsingDataModel::StorageType::kCookie},
+       /*storage_size=*/0,
+       /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry kExampleLocalStorage{
+      "www.example.com",
+      blink::StorageKey::CreateFromStringForTesting("https://www.example.com/"),
+      {{BrowsingDataModel::StorageType::kLocalStorage},
+       /*storage_size=*/2,
+       /*cookie_count=*/0}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry kHttpsWwwExampleCookie{
+      "www.example.com",
+      *(CreateCookieKey(GURL("https://www.example.com"), "B=1")),
+      {{BrowsingDataModel::StorageType::kCookie},
+       /*storage_size=*/0,
+       /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry
+      kPartitionedHttpsWwwExampleOnGoogleAuCookie{
+          "www.example.com",
+          *(CreateCookieKey(GURL("https://www.example.com"),
+                            "__Host-A=1; Path=/; Partitioned; Secure;",
+                            net::CookiePartitionKey::FromURLForTesting(
+                                GURL("https://google.com.au")))),
+          {{BrowsingDataModel::StorageType::kCookie},
+           /*storage_size=*/0,
+           /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry
+      kPartitionedHttpsWwwExampleOnGoogleCookie{
+          "www.example.com",
+          *(CreateCookieKey(GURL("https://www.example.com"),
+                            "__Host-A=1; Path=/; Partitioned; Secure;",
+                            net::CookiePartitionKey::FromURLForTesting(
+                                GURL("https://google.com")))),
+          {{BrowsingDataModel::StorageType::kCookie},
+           /*storage_size=*/0,
+           /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry kHttpAbcExampleCookie{
+      "abc.example.com",
+      *(CreateCookieKey(GURL("http://abc.example.com"), "C=1")),
+      {{BrowsingDataModel::StorageType::kCookie},
+       /*storage_size=*/0,
+       /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry kHttpGoogleCookieA{
+      "google.com",
+      *(CreateCookieKey(GURL("http://google.com"), "A=1")),
+      {{BrowsingDataModel::StorageType::kCookie},
+       /*storage_size=*/0,
+       /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry kHttpGoogleCookieB{
+      "google.com",
+      *(CreateCookieKey(GURL("http://google.com"), "B=1")),
+      {{BrowsingDataModel::StorageType::kCookie},
+       /*storage_size=*/0,
+       /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry kHttpGoogleAuCookie{
+      "google.com.au",
+      *(CreateCookieKey(GURL("http://google.com.au"), "A=1")),
+      {{BrowsingDataModel::StorageType::kCookie},
+       /*storage_size=*/0,
+       /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry
+      kPartitionedHttpsGoogleAu1PCookie{
+          "google.com.au",
+          *(CreateCookieKey(GURL("https://google.com.au"),
+                            "__Host-A=1; Path=/; Partitioned; Secure;",
+                            net::CookiePartitionKey::FromURLForTesting(
+                                GURL("https://google.com.au")))),
+          {{BrowsingDataModel::StorageType::kCookie},
+           /*storage_size=*/0,
+           /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry
+      kPartitionedHttpsWwwAnotherExampleOnGoogleAuCookie{
+          "www.another-example.com",
+          *(CreateCookieKey(GURL("https://www.another-example.com"),
+                            "__Host-A=1; Path=/; Partitioned; Secure;",
+                            net::CookiePartitionKey::FromURLForTesting(
+                                GURL("https://google.com.au")))),
+          {{BrowsingDataModel::StorageType::kCookie},
+           /*storage_size=*/0,
+           /*cookie_count=*/1}};
+
+  const browsing_data_model_test_util::BrowsingDataEntry kUngroupedHttpCookie{
+      "ungrouped.com",
+      *(CreateCookieKey(GURL("http://ungrouped.com"), "A=1")),
+      {{BrowsingDataModel::StorageType::kCookie},
+       /*storage_size=*/0,
+       /*cookie_count=*/1}};
 
  private:
   content::BrowserTaskEnvironment task_environment_{
@@ -1066,15 +1258,212 @@ class SiteSettingsHandlerBaseTest : public testing::Test {
   raw_ptr<MockPrivacySandboxService> mock_privacy_sandbox_service_;
 };
 
-class SiteSettingsHandlerTest : public SiteSettingsHandlerBaseTest,
-                                public testing::WithParamInterface<bool> {};
+class SiteSettingsHandlerSchemeTest
+    : public SiteSettingsHandlerBaseTest,
+      public testing::WithParamInterface<std::tuple<bool, bool>> {
+ public:
+  SiteSettingsHandlerSchemeTest() {
+    if (IsDeprecateCookiesTreeModelEnabled()) {
+      feature_list_.InitAndEnableFeature(
+          browsing_data::features::kDeprecateCookiesTreeModel);
+    } else {
+      feature_list_.InitAndDisableFeature(
+          browsing_data::features::kDeprecateCookiesTreeModel);
+    }
+  }
 
-// True if testing for handle clear unpartitioned usage with HTTPS scheme URL.
-// When set to true, the tests use HTTPS scheme as origin. When set to
-// false, the tests use HTTP scheme as origin.
+ protected:
+  bool IsHttps() { return std::get<0>(GetParam()); }
+  bool IsDeprecateCookiesTreeModelEnabled() { return std::get<1>(GetParam()); }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// 1.True if testing for handle clear unpartitioned usage with
+// HTTPS scheme URL. When set to true, the tests use HTTPS scheme as origin.
+// When set to false, the tests use HTTP scheme as origin.
+// 2. Boolean to enable/disable the `kDeprecateCookiesTreeModel` feature.
+INSTANTIATE_TEST_SUITE_P(All,
+                         SiteSettingsHandlerSchemeTest,
+                         testing::Combine(testing::Bool(), testing::Bool()));
+
+TEST_P(SiteSettingsHandlerSchemeTest, StorageAccessExceptions_Description_All) {
+  const std::string kOrigin("google.com");
+  const std::string kEmbeddingOrigin("example.com");
+
+  const ContentSetting content_setting =
+      IsHttps() ? CONTENT_SETTING_ALLOW : CONTENT_SETTING_BLOCK;
+
+  SetContentSettingCustomScope(kOrigin, kEmbeddingOrigin,
+                               kPermissionStorageAccess, content_setting);
+
+  base::Value::List get_exception_list_args;
+  get_exception_list_args.Append(kCallbackId);
+  get_exception_list_args.Append(
+      content_settings::ContentSettingToString(content_setting));
+  handler()->HandleGetStorageAccessExceptionList(get_exception_list_args);
+
+  // Verify that the grouped exception is correct.
+  ValidateStorageAccessList(/*expected_total_calls=*/2U,
+                            /*expected_num_groups=*/1U);
+
+  ValidateStorageAccessException(
+      kOrigin, kOrigin, content_setting,
+      {{kEmbeddingOrigin, kEmbeddingOrigin, /*incognito=*/false}});
+}
+
+TEST_P(SiteSettingsHandlerSchemeTest, HandleClearUnpartitionedUsage) {
+  SetupModels();
+  std::vector<browsing_data_model_test_util::BrowsingDataEntry>
+      expected_browsing_data_model_entries;
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    expected_browsing_data_model_entries = {
+        kGoogleUnpartitionedEntry,
+        kExampleUnpartitionedEntry,
+        kGoogleOnExampleEntry,
+        kExampleOnGoogleSecureEntry,
+        kExampleOnGoogleInsecureEntry,
+        kExampleLocalStorage,
+        kHttpExampleCookie,
+        kHttpsWwwExampleCookie,
+        kPartitionedHttpsWwwExampleOnGoogleAuCookie,
+        kPartitionedHttpsWwwExampleOnGoogleCookie,
+        kHttpAbcExampleCookie,
+        kHttpGoogleCookieA,
+        kHttpGoogleCookieB,
+        kHttpGoogleAuCookie,
+        kPartitionedHttpsGoogleAu1PCookie,
+        kPartitionedHttpsWwwAnotherExampleOnGoogleAuCookie,
+        kUngroupedHttpCookie,
+    };
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    EXPECT_EQ(28u, handler()
+                       ->GetCookiesTreeModelForTesting()
+                       ->GetRoot()
+                       ->GetTotalNodeCount());
+    expected_browsing_data_model_entries = {
+        kGoogleUnpartitionedEntry,     kExampleUnpartitionedEntry,
+        kGoogleOnExampleEntry,         kExampleOnGoogleSecureEntry,
+        kExampleOnGoogleInsecureEntry,
+    };
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  }
+
+  base::Value::List args;
+  args.Append(IsHttps() ? "https://www.example.com/"
+                        : "http://www.example.com/");
+  handler()->HandleClearUnpartitionedUsage(args);
+
+  // Confirm that only the unpartitioned items for example.com have been
+  // cleared.
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kExampleUnpartitionedEntry,
+                           kExampleLocalStorage,
+                           kHttpsWwwExampleCookie,
+                       });
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kExampleUnpartitionedEntry,
+                       });
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+
+    auto remaining_host_nodes = GetHostNodes(GURL("https://www.example.com"));
+
+    // There should only be partitioned cookie entries remaining for the site.
+    ASSERT_EQ(1u, remaining_host_nodes.size());
+    ASSERT_EQ(1u, remaining_host_nodes[0]->children().size());
+    const auto& storage_node = remaining_host_nodes[0]->children()[0];
+    ASSERT_EQ(CookieTreeNode::DetailedInfo::TYPE_COOKIES,
+              storage_node->GetDetailedInfo().node_type);
+    ASSERT_EQ(2u, storage_node->children().size());
+    for (const auto& cookie_node : storage_node->children()) {
+      const auto& cookie = cookie_node->GetDetailedInfo().cookie;
+      EXPECT_EQ("www.example.com", cookie->Domain());
+      EXPECT_TRUE(cookie->IsPartitioned());
+    }
+  }
+
+  args = base::Value::List();
+  args.Append("https://google.com.au/");
+  handler()->HandleClearUnpartitionedUsage(args);
+
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    // First-party partitioned storage should be cleared.
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kHttpGoogleAuCookie,
+                           kPartitionedHttpsGoogleAu1PCookie,
+                       });
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    // Partitioned storage, even when keyed on the cookie domain site, should
+    // not be cleared.
+    auto remaining_host_nodes = GetHostNodes(GURL("https://google.com.au"));
+
+    // A single partitioned cookie should remain.
+    ASSERT_EQ(1u, remaining_host_nodes.size());
+    ASSERT_EQ(1u, remaining_host_nodes[0]->children().size());
+    const auto& cookies_node = remaining_host_nodes[0]->children()[0];
+    ASSERT_EQ(1u, cookies_node->children().size());
+    const auto& cookie_node = cookies_node->children()[0];
+    const auto& cookie = cookie_node->GetDetailedInfo().cookie;
+    EXPECT_TRUE(cookie->IsPartitioned());
+  }
+
+  args = base::Value::List();
+  args.Append("https://www.google.com/");
+  handler()->HandleClearUnpartitionedUsage(args);
+
+  // The unpartitioned Google and Example entries should be removed.
+  RemoveModelEntries(expected_browsing_data_model_entries,
+                     {
+                         kGoogleUnpartitionedEntry,
+                     });
+  browsing_data_model_test_util::ValidateBrowsingDataEntries(
+      handler()->GetBrowsingDataModelForTesting(),
+      expected_browsing_data_model_entries);
+}
+
+class SiteSettingsHandlerTest : public SiteSettingsHandlerBaseTest,
+                                public testing::WithParamInterface<bool> {
+ public:
+  SiteSettingsHandlerTest() {
+    if (IsDeprecateCookiesTreeModelEnabled()) {
+      feature_list_.InitAndEnableFeature(
+          browsing_data::features::kDeprecateCookiesTreeModel);
+    } else {
+      feature_list_.InitAndDisableFeature(
+          browsing_data::features::kDeprecateCookiesTreeModel);
+    }
+  }
+
+ protected:
+  bool IsDeprecateCookiesTreeModelEnabled() { return GetParam(); }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Boolean to enable/disable the `kDeprecateCookiesTreeModel` feature.
 INSTANTIATE_TEST_SUITE_P(All, SiteSettingsHandlerTest, testing::Bool());
 
-TEST_F(SiteSettingsHandlerTest, GetAndSetDefault) {
+TEST_P(SiteSettingsHandlerTest, GetAndSetDefault) {
   // Test the JS -> C++ -> JS callback path for getting and setting defaults.
   base::Value::List get_args;
   get_args.Append(kCallbackId);
@@ -1099,7 +1488,7 @@ TEST_F(SiteSettingsHandlerTest, GetAndSetDefault) {
 }
 
 // Flaky on CrOS and Linux. https://crbug.com/930481
-TEST_F(SiteSettingsHandlerTest, GetAllSites) {
+TEST_P(SiteSettingsHandlerTest, GetAllSites) {
   SetupModels();
 
   base::Value::List get_all_sites_args;
@@ -1331,7 +1720,7 @@ TEST_F(SiteSettingsHandlerTest, GetAllSites) {
   run_loop.RunUntilIdle();
 }
 
-TEST_F(SiteSettingsHandlerTest, Cookies) {
+TEST_P(SiteSettingsHandlerTest, Cookies) {
   base::Value::List get_all_sites_args;
   get_all_sites_args.Append(kCallbackId);
 
@@ -1339,9 +1728,19 @@ TEST_F(SiteSettingsHandlerTest, Cookies) {
   // AllSitesMap, returns the correct origin in GetAllSites.
   // This corresponds to case 1 in InsertOriginIntoGroup.
   {
-    SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
-      models.cookie_helper->AddCookieSamples(GURL("http://c1.com"), "A=1");
-    }));
+    if (IsDeprecateCookiesTreeModelEnabled()) {
+      SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
+        models.browsing_data_model->AddBrowsingData(
+            *(CreateCookieKey(GURL("http://c1.com"), "A=1")),
+            BrowsingDataModel::StorageType::kCookie,
+            /*storage_size=*/0,
+            /*cookie_count=*/1);
+      }));
+    } else {
+      SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
+        models.cookie_helper->AddCookieSamples(GURL("http://c1.com"), "A=1");
+      }));
+    }
 
     base::Value::List site_groups = GetOnStorageFetchedSentList();
 
@@ -1363,10 +1762,25 @@ TEST_F(SiteSettingsHandlerTest, Cookies) {
   // returned in GetAllSites.
   // This corresponds to case 2 in InsertOriginIntoGroup.
   {
-    SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
-      models.cookie_helper->AddCookieSamples(GURL("https://c2.com"), "A=1");
-      models.cookie_helper->AddCookieSamples(GURL("https://c2.com"), "B=1");
-    }));
+    if (IsDeprecateCookiesTreeModelEnabled()) {
+      SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
+        models.browsing_data_model->AddBrowsingData(
+            *(CreateCookieKey(GURL("https://c2.com"), "A=1")),
+            BrowsingDataModel::StorageType::kCookie,
+            /*storage_size=*/0,
+            /*cookie_count=*/1);
+        models.browsing_data_model->AddBrowsingData(
+            *(CreateCookieKey(GURL("https://c2.com"), "B=1")),
+            BrowsingDataModel::StorageType::kCookie,
+            /*storage_size=*/0,
+            /*cookie_count=*/1);
+      }));
+    } else {
+      SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
+        models.cookie_helper->AddCookieSamples(GURL("https://c2.com"), "A=1");
+        models.cookie_helper->AddCookieSamples(GURL("https://c2.com"), "B=1");
+      }));
+    }
 
     base::Value::List site_groups = GetOnStorageFetchedSentList();
 
@@ -1388,12 +1802,25 @@ TEST_F(SiteSettingsHandlerTest, Cookies) {
   // one exists.
   // This corresponds to case 3 in InsertOriginIntoGroup.
   {
-    SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
-      models.browsing_data_model->AddBrowsingData(
-          url::Origin::Create(GURL("https://w.c3.com")),
-          BrowsingDataModel::StorageType::kTrustTokens, 50);
-      models.cookie_helper->AddCookieSamples(GURL("http://w.c3.com"), "A=1");
-    }));
+    if (IsDeprecateCookiesTreeModelEnabled()) {
+      SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
+        models.browsing_data_model->AddBrowsingData(
+            url::Origin::Create(GURL("https://w.c3.com")),
+            BrowsingDataModel::StorageType::kTrustTokens, 50);
+        models.browsing_data_model->AddBrowsingData(
+            *(CreateCookieKey(GURL("http://w.c3.com"), "A=1")),
+            BrowsingDataModel::StorageType::kCookie,
+            /*storage_size=*/0,
+            /*cookie_count=*/1);
+      }));
+    } else {
+      SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
+        models.browsing_data_model->AddBrowsingData(
+            url::Origin::Create(GURL("https://w.c3.com")),
+            BrowsingDataModel::StorageType::kTrustTokens, 50);
+        models.cookie_helper->AddCookieSamples(GURL("http://w.c3.com"), "A=1");
+      }));
+    }
 
     base::Value::List site_groups = GetOnStorageFetchedSentList();
 
@@ -1414,10 +1841,25 @@ TEST_F(SiteSettingsHandlerTest, Cookies) {
   // Tests that placeholder cookie eTLD+1 origins get removed from AllSitesMap
   // when a more specific origin is added later.
   {
-    SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
-      models.cookie_helper->AddCookieSamples(GURL("https://c4.com"), "B=1");
-      models.cookie_helper->AddCookieSamples(GURL("https://w.c4.com"), "A=1");
-    }));
+    if (IsDeprecateCookiesTreeModelEnabled()) {
+      SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
+        models.browsing_data_model->AddBrowsingData(
+            *(CreateCookieKey(GURL("https://c4.com"), "B=1")),
+            BrowsingDataModel::StorageType::kCookie,
+            /*storage_size=*/0,
+            /*cookie_count=*/1);
+        models.browsing_data_model->AddBrowsingData(
+            *(CreateCookieKey(GURL("https://w.c4.com"), "A=1")),
+            BrowsingDataModel::StorageType::kCookie,
+            /*storage_size=*/0,
+            /*cookie_count=*/1);
+      }));
+    } else {
+      SetupModels(base::BindLambdaForTesting([](const TestModels& models) {
+        models.cookie_helper->AddCookieSamples(GURL("https://c4.com"), "B=1");
+        models.cookie_helper->AddCookieSamples(GURL("https://w.c4.com"), "A=1");
+      }));
+    }
 
     base::Value::List site_groups = GetOnStorageFetchedSentList();
 
@@ -1436,7 +1878,7 @@ TEST_F(SiteSettingsHandlerTest, Cookies) {
   }
 }
 
-TEST_F(SiteSettingsHandlerTest, GetRecentSitePermissions) {
+TEST_P(SiteSettingsHandlerTest, GetRecentSitePermissions) {
   // Constants used only in this test.
   std::string kAllowed =
       content_settings::ContentSettingToString(CONTENT_SETTING_ALLOW);
@@ -1544,7 +1986,7 @@ TEST_F(SiteSettingsHandlerTest, GetRecentSitePermissions) {
   }
 }
 
-TEST_F(SiteSettingsHandlerTest, OnStorageFetched) {
+TEST_P(SiteSettingsHandlerTest, OnStorageFetched) {
   SetupModels();
 
   handler()->ClearAllSitesMapForTesting();
@@ -1591,7 +2033,7 @@ TEST_F(SiteSettingsHandlerTest, OnStorageFetched) {
     EXPECT_EQ("https://google.com/",
               CHECK_DEREF(origin_info_1.FindString("origin")));
     EXPECT_EQ(0, origin_info_1.FindDouble("engagement"));
-    EXPECT_EQ(0, origin_info_1.FindDouble("usage"));
+    EXPECT_EQ(100, origin_info_1.FindDouble("usage"));
     EXPECT_EQ(0, origin_info_1.FindDouble("numCookies"));
     EXPECT_TRUE(origin_info_1.FindBool("isPartitioned").value_or(false));
 
@@ -1602,7 +2044,7 @@ TEST_F(SiteSettingsHandlerTest, OnStorageFetched) {
     EXPECT_EQ("https://www.example.com/",
               CHECK_DEREF(origin_info_2.FindString("origin")));
     EXPECT_EQ(0, origin_info_2.FindDouble("engagement"));
-    EXPECT_EQ(2, origin_info_2.FindDouble("usage"));
+    EXPECT_EQ(302, origin_info_2.FindDouble("usage"));
     EXPECT_EQ(1, origin_info_2.FindDouble("numCookies"));
     EXPECT_FALSE(origin_info_2.FindBool("isPartitioned").value_or(false));
   }
@@ -1626,7 +2068,7 @@ TEST_F(SiteSettingsHandlerTest, OnStorageFetched) {
     EXPECT_EQ("https://www.example.com/",
               CHECK_DEREF(partitioned_origin_info.FindString("origin")));
     EXPECT_EQ(0, partitioned_origin_info.FindDouble("engagement"));
-    EXPECT_EQ(0, partitioned_origin_info.FindDouble("usage"));
+    EXPECT_EQ(302, partitioned_origin_info.FindDouble("usage"));
     EXPECT_EQ(1, partitioned_origin_info.FindDouble("numCookies"));
     EXPECT_TRUE(
         partitioned_origin_info.FindBool("isPartitioned").value_or(false));
@@ -1690,7 +2132,7 @@ TEST_F(SiteSettingsHandlerTest, OnStorageFetched) {
     EXPECT_EQ("https://www.example.com/",
               CHECK_DEREF(partitioned_origin_three_info.FindString("origin")));
     EXPECT_EQ(0, partitioned_origin_three_info.FindDouble("engagement"));
-    EXPECT_EQ(0, partitioned_origin_three_info.FindDouble("usage"));
+    EXPECT_EQ(302, partitioned_origin_three_info.FindDouble("usage"));
     EXPECT_EQ(1, partitioned_origin_three_info.FindDouble("numCookies"));
     EXPECT_TRUE(partitioned_origin_three_info.FindBool("isPartitioned")
                     .value_or(false));
@@ -1720,11 +2162,11 @@ TEST_F(SiteSettingsHandlerTest, OnStorageFetched) {
   }
 }
 
-TEST_F(SiteSettingsHandlerTest, InstalledApps) {
+TEST_P(SiteSettingsHandlerTest, InstalledApps) {
   GURL start_url("http://abc.example.com/path");
   RegisterWebApp(
       profile(),
-      MakeApp(web_app::GenerateAppId(/*manifest_id=*/absl::nullopt, start_url),
+      MakeApp(web_app::GenerateAppId(/*manifest_id=*/std::nullopt, start_url),
               apps::AppType::kWeb, start_url.spec(), apps::Readiness::kReady,
               apps::InstallReason::kSync));
 
@@ -1774,7 +2216,7 @@ TEST_F(SiteSettingsHandlerTest, InstalledApps) {
   }
 }
 
-TEST_F(SiteSettingsHandlerTest, IncognitoExceptions) {
+TEST_P(SiteSettingsHandlerTest, IncognitoExceptions) {
   constexpr char kOriginToBlock[] = "https://www.blocked.com:443";
 
   auto validate_exception = [&kOriginToBlock](const base::Value& exception) {
@@ -1788,15 +2230,10 @@ TEST_F(SiteSettingsHandlerTest, IncognitoExceptions) {
   CreateIncognitoProfile();
 
   {
-    base::Value::List set_args;
-    set_args.Append(kOriginToBlock);  // Primary pattern.
-    set_args.Append(std::string());   // Secondary pattern.
-    set_args.Append(kNotifications);
-    set_args.Append(
-        content_settings::ContentSettingToString(CONTENT_SETTING_BLOCK));
-    set_args.Append(true);  // Incognito.
-
-    handler()->HandleSetCategoryPermissionForPattern(set_args);
+    SetContentSettingCustomScope(kOriginToBlock, std::string(),
+                                 kPermissionNotifications,
+                                 CONTENT_SETTING_BLOCK, 2U,
+                                 /*is_incognito=*/true);
 
     base::Value::List get_exception_list_args;
     get_exception_list_args.Append(kCallbackId);
@@ -1813,15 +2250,10 @@ TEST_F(SiteSettingsHandlerTest, IncognitoExceptions) {
   }
 
   {
-    base::Value::List set_args;
-    set_args.Append(kOriginToBlock);  // Primary pattern.
-    set_args.Append(std::string());   // Secondary pattern.
-    set_args.Append(kNotifications);
-    set_args.Append(
-        content_settings::ContentSettingToString(CONTENT_SETTING_BLOCK));
-    set_args.Append(false);  // Incognito.
-
-    handler()->HandleSetCategoryPermissionForPattern(set_args);
+    SetContentSettingCustomScope(kOriginToBlock, std::string(),
+                                 kPermissionNotifications,
+                                 CONTENT_SETTING_BLOCK, 5U,
+                                 /*is_incognito=*/false);
 
     base::Value::List get_exception_list_args;
     get_exception_list_args.Append(kCallbackId);
@@ -1841,7 +2273,7 @@ TEST_F(SiteSettingsHandlerTest, IncognitoExceptions) {
   DestroyIncognitoProfile();
 }
 
-TEST_F(SiteSettingsHandlerTest, ResetCategoryPermissionForEmbargoedOrigins) {
+TEST_P(SiteSettingsHandlerTest, ResetCategoryPermissionForEmbargoedOrigins) {
   constexpr char kOriginToBlock[] = "https://www.blocked.com:443";
   constexpr char kOriginToEmbargo[] = "https://embargoed.co.uk";
 
@@ -1925,7 +2357,7 @@ TEST_F(SiteSettingsHandlerTest, ResetCategoryPermissionForEmbargoedOrigins) {
   }
 }
 
-TEST_F(SiteSettingsHandlerTest, ResetCategoryPermissionForInvalidOrigins) {
+TEST_P(SiteSettingsHandlerTest, ResetCategoryPermissionForInvalidOrigins) {
   constexpr char kInvalidOrigin[] = "example.com";
   auto url = GURL(kInvalidOrigin);
   EXPECT_FALSE(url.is_valid());
@@ -1956,7 +2388,7 @@ TEST_F(SiteSettingsHandlerTest, ResetCategoryPermissionForInvalidOrigins) {
   handler()->HandleResetCategoryPermissionForPattern(reset_args);
 }
 
-TEST_F(SiteSettingsHandlerTest, Origins) {
+TEST_P(SiteSettingsHandlerTest, SetCategory_GetException_ResetCategory) {
   const std::string google("https://www.google.com:443");
   {
     // Test the JS -> C++ -> JS callback path for configuring origins, by
@@ -2003,7 +2435,7 @@ TEST_F(SiteSettingsHandlerTest, Origins) {
   ValidateNoOrigin(6U);
 }
 
-TEST_F(SiteSettingsHandlerTest, NotificationPermissionRevokeUkm) {
+TEST_P(SiteSettingsHandlerTest, NotificationPermissionRevokeUkm) {
   const std::string google("https://www.google.com");
   ukm::TestAutoSetUkmRecorder ukm_recorder;
   auto* history_service = HistoryServiceFactory::GetForProfile(
@@ -2042,7 +2474,7 @@ TEST_F(SiteSettingsHandlerTest, NotificationPermissionRevokeUkm) {
 
   auto entries = ukm_recorder.GetEntriesByName("Permission");
   EXPECT_EQ(1u, entries.size());
-  auto* entry = entries.front();
+  auto* entry = entries.front().get();
 
   ukm_recorder.ExpectEntrySourceHasUrl(entry, GURL(google));
   EXPECT_EQ(
@@ -2062,7 +2494,7 @@ TEST_F(SiteSettingsHandlerTest, NotificationPermissionRevokeUkm) {
 #else
 #define MAYBE_DefaultSettingSource DefaultSettingSource
 #endif
-TEST_F(SiteSettingsHandlerTest, MAYBE_DefaultSettingSource) {
+TEST_P(SiteSettingsHandlerTest, MAYBE_DefaultSettingSource) {
   // Use a non-default port to verify the display name does not strip this
   // off.
   const std::string google("https://www.google.com:183");
@@ -2138,7 +2570,7 @@ TEST_F(SiteSettingsHandlerTest, MAYBE_DefaultSettingSource) {
                  site_settings::SiteSettingSource::kPolicy, 10U);
 }
 
-TEST_F(SiteSettingsHandlerTest, GetAndSetOriginPermissions) {
+TEST_P(SiteSettingsHandlerTest, GetAndSetOriginPermissions) {
   const std::string origin_with_port("https://www.example.com:443");
   // The display name won't show the port if it's default for that scheme.
   const std::string origin("www.example.com");
@@ -2181,7 +2613,7 @@ TEST_F(SiteSettingsHandlerTest, GetAndSetOriginPermissions) {
                  site_settings::SiteSettingSource::kDefault, 4U);
 }
 
-TEST_F(SiteSettingsHandlerTest, GetAndSetForInvalidURLs) {
+TEST_P(SiteSettingsHandlerTest, GetAndSetForInvalidURLs) {
   const std::string origin("arbitrary string");
   EXPECT_FALSE(GURL(origin).is_valid());
   base::Value::List get_args;
@@ -2217,7 +2649,134 @@ TEST_F(SiteSettingsHandlerTest, GetAndSetForInvalidURLs) {
                  site_settings::SiteSettingSource::kInsecureOrigin, 2U);
 }
 
-TEST_F(SiteSettingsHandlerTest, ExceptionHelpers) {
+TEST_P(SiteSettingsHandlerTest, SetCategoryPermissionForPattern) {
+  const std::string kOrigin = "https://www.example.com:443";
+
+  base::Value::List set_args;
+  set_args.Append(kOrigin);        // Primary pattern.
+  set_args.Append(std::string());  // Secondary pattern.
+  set_args.Append(kNotifications);
+  set_args.Append(
+      content_settings::ContentSettingToString(CONTENT_SETTING_BLOCK));
+  set_args.Append(false);  // Incognito.
+
+  handler()->HandleSetCategoryPermissionForPattern(set_args);
+  EXPECT_EQ(kNumberNotificationsContentSettingListeners,
+            web_ui()->call_data().size());
+
+  HostContentSettingsMap* map =
+      HostContentSettingsMapFactory::GetForProfile(profile());
+
+  ASSERT_EQ(CONTENT_SETTING_BLOCK,
+            map->GetContentSetting(GURL(kOrigin), GURL(std::string()),
+                                   kPermissionNotifications));
+}
+
+TEST_P(SiteSettingsHandlerTest, SetCategoryPermissionForPattern_WildCard) {
+  const std::string kWildcardOrigin = "[*.]example.com";
+  const std::string kRealOrigin = "https://www.example.com";
+
+  base::Value::List set_args;
+  set_args.Append(kWildcardOrigin);  // Primary pattern.
+  set_args.Append(std::string());    // Secondary pattern.
+  set_args.Append(kNotifications);
+  set_args.Append(
+      content_settings::ContentSettingToString(CONTENT_SETTING_BLOCK));
+  set_args.Append(false);  // Incognito.
+
+  handler()->HandleSetCategoryPermissionForPattern(set_args);
+  EXPECT_EQ(kNumberNotificationsContentSettingListeners,
+            web_ui()->call_data().size());
+
+  HostContentSettingsMap* map =
+      HostContentSettingsMapFactory::GetForProfile(profile());
+
+  ASSERT_EQ(CONTENT_SETTING_BLOCK,
+            map->GetContentSetting(GURL(kRealOrigin), GURL(std::string()),
+                                   kPermissionNotifications));
+}
+
+TEST_P(SiteSettingsHandlerTest,
+       SetCategoryPermissionForPattern_SecondaryPattern) {
+  const std::string kOrigin = "https://www.example.com:443";
+  const std::string kSecondary = "https://www.secondary.com:443";
+
+  base::Value::List set_args;
+  set_args.Append(kOrigin);     // Primary pattern.
+  set_args.Append(kSecondary);  // Secondary pattern.
+  set_args.Append(site_settings::ContentSettingsTypeToGroupName(
+      ContentSettingsType::STORAGE_ACCESS));
+  set_args.Append(
+      content_settings::ContentSettingToString(CONTENT_SETTING_BLOCK));
+  set_args.Append(false);  // Incognito.
+
+  handler()->HandleSetCategoryPermissionForPattern(set_args);
+  EXPECT_EQ(1U, web_ui()->call_data().size());
+
+  HostContentSettingsMap* map =
+      HostContentSettingsMapFactory::GetForProfile(profile());
+
+  ASSERT_EQ(CONTENT_SETTING_BLOCK,
+            map->GetContentSetting(GURL(kOrigin), GURL(kSecondary),
+                                   kPermissionStorageAccess));
+}
+
+TEST_P(SiteSettingsHandlerTest, SetCategoryPermissionForPattern_Incognito) {
+  const std::string kOrigin = "https://www.example.com:443";
+  CreateIncognitoProfile();
+
+  HostContentSettingsMap* incognito_map =
+      HostContentSettingsMapFactory::GetForProfile(incognito_profile());
+  HostContentSettingsMap* map =
+      HostContentSettingsMapFactory::GetForProfile(profile());
+
+  {
+    base::Value::List set_args;
+    set_args.Append(kOrigin);        // Primary pattern.
+    set_args.Append(std::string());  // Secondary pattern.
+    set_args.Append(kNotifications);
+    set_args.Append(
+        content_settings::ContentSettingToString(CONTENT_SETTING_BLOCK));
+    set_args.Append(true);  // Incognito.
+
+    handler()->HandleSetCategoryPermissionForPattern(set_args);
+    EXPECT_EQ(3U, web_ui()->call_data().size());
+
+    ASSERT_EQ(CONTENT_SETTING_BLOCK, incognito_map->GetContentSetting(
+                                         GURL(kOrigin), GURL(std::string()),
+                                         kPermissionNotifications));
+    // Shouldn't change the setting for the normal profile.
+    ASSERT_EQ(CONTENT_SETTING_ASK,
+              map->GetContentSetting(GURL(kOrigin), GURL(std::string()),
+                                     kPermissionNotifications));
+  }
+
+  {
+    base::Value::List set_args;
+    set_args.Append(kOrigin);        // Primary pattern.
+    set_args.Append(std::string());  // Secondary pattern.
+    set_args.Append(kNotifications);
+    set_args.Append(
+        content_settings::ContentSettingToString(CONTENT_SETTING_ALLOW));
+    set_args.Append(false);  // Incognito.
+
+    handler()->HandleSetCategoryPermissionForPattern(set_args);
+    EXPECT_EQ(6U, web_ui()->call_data().size());
+
+    ASSERT_EQ(CONTENT_SETTING_ALLOW,
+              map->GetContentSetting(GURL(kOrigin), GURL(std::string()),
+                                     kPermissionNotifications));
+    // Shouldn't change the setting for the incognito profile.
+    ASSERT_EQ(CONTENT_SETTING_BLOCK, incognito_map->GetContentSetting(
+                                         GURL(kOrigin), GURL(std::string()),
+                                         kPermissionNotifications));
+  }
+
+  DestroyIncognitoProfile();
+}
+
+TEST_P(SiteSettingsHandlerTest,
+       SetCategoryPermissionForPattern_ExceptionHelpers) {
   ContentSettingsPattern pattern =
       ContentSettingsPattern::FromString("[*.]google.com");
   base::Value::Dict exception = site_settings::GetExceptionForPage(
@@ -2273,7 +2832,22 @@ TEST_F(SiteSettingsHandlerTest, ExceptionHelpers) {
   handler()->HandleSetCategoryPermissionForPattern(args);
 }
 
-TEST_F(SiteSettingsHandlerTest, ExtensionDisplayName) {
+TEST_P(SiteSettingsHandlerTest, SetCategoryPermissionForPattern_SessionOnly) {
+  const std::string kGoogleWithPort("https://www.google.com:443");
+  base::Value::List set_args;
+  set_args.Append(kGoogleWithPort);  // Primary pattern.
+  set_args.Append(std::string());    // Secondary pattern.
+  set_args.Append(kCookies);
+  set_args.Append(
+      content_settings::ContentSettingToString(CONTENT_SETTING_SESSION_ONLY));
+  set_args.Append(false);  // Incognito.
+  handler()->HandleSetCategoryPermissionForPattern(set_args);
+
+  EXPECT_EQ(kNumberCookiesContentSettingListeners,
+            web_ui()->call_data().size());
+}
+
+TEST_P(SiteSettingsHandlerTest, ExtensionDisplayName) {
   // When the extension is loaded, displayName is the extension's name and id.
   auto extension = LoadExtension(kExtensionName);
   auto extension_url = extension->url().spec();
@@ -2313,7 +2887,7 @@ TEST_F(SiteSettingsHandlerTest, ExtensionDisplayName) {
   }
 }
 
-TEST_F(SiteSettingsHandlerTest, PatternsAndContentType) {
+TEST_P(SiteSettingsHandlerTest, PatternsAndContentType) {
   unsigned counter = 1;
   for (const auto& test_case : kPatternsAndContentTypeTestCases) {
     base::Value::List args;
@@ -2327,7 +2901,7 @@ TEST_F(SiteSettingsHandlerTest, PatternsAndContentType) {
   }
 }
 
-TEST_F(SiteSettingsHandlerTest, Incognito) {
+TEST_P(SiteSettingsHandlerTest, Incognito) {
   base::Value::List args;
   handler()->HandleUpdateIncognitoStatus(args);
   ValidateIncognitoExists(false, 1U);
@@ -2339,7 +2913,7 @@ TEST_F(SiteSettingsHandlerTest, Incognito) {
   ValidateIncognitoExists(false, 3U);
 }
 
-TEST_F(SiteSettingsHandlerTest, ZoomLevels) {
+TEST_P(SiteSettingsHandlerTest, ZoomLevels) {
   std::string http_host("www.google.com");
   std::string error_host("chromewebdata");
   std::string data_url("data:text/plain;base64,SGVsbG8sIFdvcmxkIQ==");
@@ -2375,7 +2949,7 @@ TEST_F(SiteSettingsHandlerTest, ZoomLevels) {
   EXPECT_EQ(default_level, level);
 }
 
-TEST_F(SiteSettingsHandlerTest, TemporaryCookieExceptions) {
+TEST_P(SiteSettingsHandlerTest, TemporaryCookieExceptions) {
   // Set a temporary exception directly, instead of relying on any helpers that
   // have duration configurable via feature parameters.
   constexpr int kExpirationDurationInDays = 100;
@@ -2413,13 +2987,14 @@ TEST_F(SiteSettingsHandlerTest, TemporaryCookieExceptions) {
             CHECK_DEREF(exception_list[0].GetDict().FindString("description")));
 }
 
-class SiteSettingsHandlerIsolatedWebAppTest : public SiteSettingsHandlerTest {
+class SiteSettingsHandlerIsolatedWebAppTest
+    : public SiteSettingsHandlerBaseTest {
  public:
   void SetUp() override {
     web_app::test::AwaitStartWebAppProviderAndSubsystems(profile());
     InstallIsolatedWebApp(iwa_url(), "IWA Name");
 
-    SiteSettingsHandlerTest::SetUp();
+    SiteSettingsHandlerBaseTest::SetUp();
   }
 
  protected:
@@ -2429,9 +3004,9 @@ class SiteSettingsHandlerIsolatedWebAppTest : public SiteSettingsHandlerTest {
         "aerugqztij5biqquuk3mfwpsaibuegaqcitgfchwuosuofdjabzqaaic");
   }
 
-  web_app::AppId InstallIsolatedWebApp(const GURL& iwa_url,
+  webapps::AppId InstallIsolatedWebApp(const GURL& iwa_url,
                                        const std::string& name) {
-    web_app::AppId app_id =
+    webapps::AppId app_id =
         web_app::AddDummyIsolatedAppToRegistry(profile(), iwa_url, name);
     RegisterWebApp(profile(), MakeApp(app_id, apps::AppType::kWeb,
                                       iwa_url.spec(), apps::Readiness::kReady,
@@ -2561,7 +3136,11 @@ class SiteSettingsHandlerInfobarTest : public BrowserWithTestWindowTest {
         CreateBrowser(profile(), browser()->type(), false, window2_.get());
     window3_ = CreateBrowserWindow();
 
-    TestingProfile* profile2_ = CreateProfile2();
+    // Creates the second profile used by this test.
+    TestingProfile* profile2_ = profile_manager()->CreateTestingProfile(
+        "testing_profile2@test", nullptr, std::u16string(), 0,
+        GetTestingFactories());
+
     browser3_ =
         CreateBrowser(profile2_, browser()->type(), false, window3_.get());
 
@@ -2629,14 +3208,6 @@ class SiteSettingsHandlerInfobarTest : public BrowserWithTestWindowTest {
   // browser2 and browser() which are from profile()
   Browser* browser3() { return browser3_.get(); }
 
-  // Creates the second profile used by this test. The caller doesn't own the
-  // return value.
-  TestingProfile* CreateProfile2() {
-    return profile_manager()->CreateTestingProfile("testing_profile2@test",
-                                                   nullptr, std::u16string(), 0,
-                                                   GetTestingFactories());
-  }
-
   const std::string_view kNotifications =
       site_settings::ContentSettingsTypeToGroupName(
           ContentSettingsType::NOTIFICATIONS);
@@ -2692,8 +3263,8 @@ TEST_F(SiteSettingsHandlerInfobarTest, SettingPermissionsTriggersInfobar) {
   AddTab(browser(), origin_anchor);
   AddTab(browser(), foo);
   for (int i = 0; i < browser()->tab_strip_model()->count(); ++i) {
-    EXPECT_EQ(0u,
-              GetInfoBarManagerForTab(browser(), i, nullptr)->infobar_count());
+    EXPECT_EQ(
+        0u, GetInfoBarManagerForTab(browser(), i, nullptr)->infobars().size());
   }
 
   AddTab(browser2(), about);
@@ -2701,8 +3272,8 @@ TEST_F(SiteSettingsHandlerInfobarTest, SettingPermissionsTriggersInfobar) {
   AddTab(browser2(), origin_query);
   AddTab(browser2(), insecure);
   for (int i = 0; i < browser2()->tab_strip_model()->count(); ++i) {
-    EXPECT_EQ(0u,
-              GetInfoBarManagerForTab(browser2(), i, nullptr)->infobar_count());
+    EXPECT_EQ(
+        0u, GetInfoBarManagerForTab(browser2(), i, nullptr)->infobars().size());
   }
 
   // Block notifications.
@@ -2719,11 +3290,13 @@ TEST_F(SiteSettingsHandlerInfobarTest, SettingPermissionsTriggersInfobar) {
   for (int i = 0; i < browser()->tab_strip_model()->count(); ++i) {
     if (i == /*origin_anchor=*/1 || i == /*origin=*/3) {
       EXPECT_EQ(
-          1u, GetInfoBarManagerForTab(browser(), i, &tab_url)->infobar_count());
+          1u,
+          GetInfoBarManagerForTab(browser(), i, &tab_url)->infobars().size());
       EXPECT_TRUE(url::IsSameOriginWith(origin, tab_url));
     } else {
       EXPECT_EQ(
-          0u, GetInfoBarManagerForTab(browser(), i, &tab_url)->infobar_count());
+          0u,
+          GetInfoBarManagerForTab(browser(), i, &tab_url)->infobars().size());
       EXPECT_FALSE(url::IsSameOriginWith(origin, tab_url));
     }
   }
@@ -2731,12 +3304,12 @@ TEST_F(SiteSettingsHandlerInfobarTest, SettingPermissionsTriggersInfobar) {
     if (i == /*origin_query=*/1) {
       EXPECT_EQ(
           1u,
-          GetInfoBarManagerForTab(browser2(), i, &tab_url)->infobar_count());
+          GetInfoBarManagerForTab(browser2(), i, &tab_url)->infobars().size());
       EXPECT_TRUE(url::IsSameOriginWith(origin, tab_url));
     } else {
       EXPECT_EQ(
           0u,
-          GetInfoBarManagerForTab(browser2(), i, &tab_url)->infobar_count());
+          GetInfoBarManagerForTab(browser2(), i, &tab_url)->infobars().size());
       EXPECT_FALSE(url::IsSameOriginWith(origin, tab_url));
     }
   }
@@ -2769,11 +3342,13 @@ TEST_F(SiteSettingsHandlerInfobarTest, SettingPermissionsTriggersInfobar) {
     if (i == /*origin_path=*/0 || i == /*origin_anchor=*/1 ||
         i == /*origin=*/3) {
       EXPECT_EQ(
-          1u, GetInfoBarManagerForTab(browser(), i, &tab_url)->infobar_count());
+          1u,
+          GetInfoBarManagerForTab(browser(), i, &tab_url)->infobars().size());
       EXPECT_TRUE(url::IsSameOriginWith(origin, tab_url));
     } else {
       EXPECT_EQ(
-          0u, GetInfoBarManagerForTab(browser(), i, &tab_url)->infobar_count());
+          0u,
+          GetInfoBarManagerForTab(browser(), i, &tab_url)->infobars().size());
       EXPECT_FALSE(url::IsSameOriginWith(origin, tab_url));
     }
   }
@@ -2781,14 +3356,15 @@ TEST_F(SiteSettingsHandlerInfobarTest, SettingPermissionsTriggersInfobar) {
   // navigated to |example_without_www|) should disappear.
   for (int i = 0; i < browser2()->tab_strip_model()->count(); ++i) {
     EXPECT_EQ(
-        0u, GetInfoBarManagerForTab(browser2(), i, &tab_url)->infobar_count());
+        0u,
+        GetInfoBarManagerForTab(browser2(), i, &tab_url)->infobars().size());
     EXPECT_FALSE(url::IsSameOriginWith(origin, tab_url));
   }
 
   // Make sure it's the correct infobar that's being shown.
   EXPECT_EQ(infobars::InfoBarDelegate::PAGE_INFO_INFOBAR_DELEGATE,
             GetInfoBarManagerForTab(browser(), /*tab_index=*/0, &tab_url)
-                ->infobar_at(0)
+                ->infobars()[0]
                 ->delegate()
                 ->GetIdentifier());
   EXPECT_TRUE(url::IsSameOriginWith(origin, tab_url));
@@ -2814,11 +3390,11 @@ TEST_F(SiteSettingsHandlerInfobarTest,
   // Set up. No info bars.
   AddTab(browser(), origin_anchor);
   EXPECT_EQ(0u,
-            GetInfoBarManagerForTab(browser(), 0, nullptr)->infobar_count());
+            GetInfoBarManagerForTab(browser(), 0, nullptr)->infobars().size());
 
   AddTab(browser3(), origin_query);
   EXPECT_EQ(0u,
-            GetInfoBarManagerForTab(browser3(), 0, nullptr)->infobar_count());
+            GetInfoBarManagerForTab(browser3(), 0, nullptr)->infobars().size());
 
   // Block notifications.
   base::Value::List set_args;
@@ -2832,31 +3408,17 @@ TEST_F(SiteSettingsHandlerInfobarTest,
   // as `origin_anchor` have an infobar shown.
   GURL tab_url;
   EXPECT_EQ(1u,
-            GetInfoBarManagerForTab(browser(), 0, &tab_url)->infobar_count());
+            GetInfoBarManagerForTab(browser(), 0, &tab_url)->infobars().size());
   EXPECT_TRUE(url::IsSameOriginWith(origin, tab_url));
 
   // Make sure all tabs with the same origin as `origin_anchor` that don't
   // belong to the same profile don't have an infobar shown
-  EXPECT_EQ(0u,
-            GetInfoBarManagerForTab(browser3(), 0, &tab_url)->infobar_count());
+  EXPECT_EQ(
+      0u, GetInfoBarManagerForTab(browser3(), 0, &tab_url)->infobars().size());
   EXPECT_TRUE(url::IsSameOriginWith(origin, tab_url));
 }
 
-TEST_F(SiteSettingsHandlerTest, SessionOnlyException) {
-  const std::string google_with_port("https://www.google.com:443");
-  base::Value::List set_args;
-  set_args.Append(google_with_port);  // Primary pattern.
-  set_args.Append(std::string());     // Secondary pattern.
-  set_args.Append(kCookies);
-  set_args.Append(
-      content_settings::ContentSettingToString(CONTENT_SETTING_SESSION_ONLY));
-  set_args.Append(false);  // Incognito.
-  handler()->HandleSetCategoryPermissionForPattern(set_args);
-
-  EXPECT_EQ(kNumberContentSettingListeners, web_ui()->call_data().size());
-}
-
-TEST_F(SiteSettingsHandlerTest, BlockAutoplay_SendOnRequest) {
+TEST_P(SiteSettingsHandlerTest, BlockAutoplay_SendOnRequest) {
   base::Value::List args;
   handler()->HandleFetchBlockAutoplayStatus(args);
 
@@ -2864,7 +3426,7 @@ TEST_F(SiteSettingsHandlerTest, BlockAutoplay_SendOnRequest) {
   ValidateBlockAutoplay(true, true);
 }
 
-TEST_F(SiteSettingsHandlerTest, BlockAutoplay_SoundSettingUpdate) {
+TEST_P(SiteSettingsHandlerTest, BlockAutoplay_SoundSettingUpdate) {
   SetSoundContentSettingDefault(CONTENT_SETTING_BLOCK);
   base::RunLoop().RunUntilIdle();
 
@@ -2878,7 +3440,7 @@ TEST_F(SiteSettingsHandlerTest, BlockAutoplay_SoundSettingUpdate) {
   ValidateBlockAutoplay(true, true);
 }
 
-TEST_F(SiteSettingsHandlerTest, BlockAutoplay_PrefUpdate) {
+TEST_P(SiteSettingsHandlerTest, BlockAutoplay_PrefUpdate) {
   profile()->GetPrefs()->SetBoolean(prefs::kBlockAutoplayEnabled, false);
   base::RunLoop().RunUntilIdle();
 
@@ -2892,7 +3454,7 @@ TEST_F(SiteSettingsHandlerTest, BlockAutoplay_PrefUpdate) {
   ValidateBlockAutoplay(true, true);
 }
 
-TEST_F(SiteSettingsHandlerTest, BlockAutoplay_Update) {
+TEST_P(SiteSettingsHandlerTest, BlockAutoplay_Update) {
   EXPECT_TRUE(profile()->GetPrefs()->GetBoolean(prefs::kBlockAutoplayEnabled));
 
   base::Value::List data;
@@ -2902,7 +3464,7 @@ TEST_F(SiteSettingsHandlerTest, BlockAutoplay_Update) {
   EXPECT_FALSE(profile()->GetPrefs()->GetBoolean(prefs::kBlockAutoplayEnabled));
 }
 
-TEST_F(SiteSettingsHandlerTest, ExcludeWebUISchemesInLists) {
+TEST_P(SiteSettingsHandlerTest, ExcludeWebUISchemesInLists) {
   SetupModels();
   const ContentSettingsType content_settings_type =
       ContentSettingsType::NOTIFICATIONS;
@@ -2991,7 +3553,7 @@ TEST_F(SiteSettingsHandlerTest, ExcludeWebUISchemesInLists) {
 // GetOriginPermissions() returns the allowlisted exception. We explicitly
 // return this, so developers can easily test things (e.g. by navigating to
 // chrome://settings/content/siteDetails?site=chrome://example).
-TEST_F(SiteSettingsHandlerTest, IncludeWebUISchemesInGetOriginPermissions) {
+TEST_P(SiteSettingsHandlerTest, IncludeWebUISchemesInGetOriginPermissions) {
   const ContentSettingsType content_settings_type =
       ContentSettingsType::NOTIFICATIONS;
 
@@ -3026,7 +3588,7 @@ TEST_F(SiteSettingsHandlerTest, IncludeWebUISchemesInGetOriginPermissions) {
   }
 }
 
-TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_DiffPatterns) {
+TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_DiffPatterns) {
   const std::string kOrigin("https://[*.]google.com:443");
   const std::string kDisplayName("google.com");
 
@@ -3068,7 +3630,7 @@ TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_DiffPatterns) {
       /*index=*/1U);
 }
 
-TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_SamePrimaryPattern) {
+TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_SamePrimaryPattern) {
   const std::string kOrigin("https://[*.]google.com:443");
   const std::string kDisplayName("google.com");
 
@@ -3101,7 +3663,7 @@ TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_SamePrimaryPattern) {
       /*index=*/0U);
 }
 
-TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_DiffType) {
+TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_DiffType) {
   const std::string kOrigin("https://[*.]google.com:443");
   const std::string kEmbeddingOrigin("https://[*.]example.com:443");
 
@@ -3118,7 +3680,7 @@ TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_DiffType) {
   ValidateNoOrigin(2U);
 }
 
-TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_AutoGranted) {
+TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_AutoGranted) {
   const std::string kOrigin("https://[*.]google.com:443");
   const std::string kEmbeddingOrigin("https://[*.]example.com:443");
 
@@ -3139,7 +3701,7 @@ TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_AutoGranted) {
   ValidateNoOrigin(2U);
 }
 
-TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_Incognito) {
+TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_Incognito) {
   const std::string kOrigin("https://[*.]google.com:443");
   const std::string kDisplayName("google.com");
 
@@ -3168,7 +3730,7 @@ TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_Incognito) {
       {{kEmbeddingOrigin, kEmbeddingDisplayName, /*incognito=*/true}});
 }
 
-TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_NormalAndIncognito) {
+TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_NormalAndIncognito) {
   const std::string kOrigin("https://[*.]google.com:443");
   const std::string kDisplayName("google.com");
 
@@ -3226,7 +3788,7 @@ TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_NormalAndIncognito) {
       /*index=*/0U);
 }
 
-TEST_F(SiteSettingsHandlerTest,
+TEST_P(SiteSettingsHandlerTest,
        StorageAccessExceptions_NormalAndIncognito_SamePatterns) {
   const std::string kOrigin("https://[*.]google.com:443");
   const std::string kDisplayName("google.com");
@@ -3260,7 +3822,7 @@ TEST_F(SiteSettingsHandlerTest,
        {kEmbeddingOrigin, kEmbeddingDisplayName, /*incognito=*/true}});
 }
 
-TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_Extension) {
+TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_Extension) {
   auto extension = LoadExtension(kExtensionName);
   auto extension_url = extension->url().spec();
 
@@ -3298,32 +3860,7 @@ TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_Extension) {
       {{kEmbeddingOrigin, kEmbeddingDisplayName, /*incognito=*/false}});
 }
 
-TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_Description_All) {
-  const std::string kOrigin("google.com");
-  const std::string kEmbeddingOrigin("example.com");
-
-  const ContentSetting content_setting =
-      GetParam() ? CONTENT_SETTING_ALLOW : CONTENT_SETTING_BLOCK;
-
-  SetContentSettingCustomScope(kOrigin, kEmbeddingOrigin,
-                               kPermissionStorageAccess, content_setting);
-
-  base::Value::List get_exception_list_args;
-  get_exception_list_args.Append(kCallbackId);
-  get_exception_list_args.Append(
-      content_settings::ContentSettingToString(content_setting));
-  handler()->HandleGetStorageAccessExceptionList(get_exception_list_args);
-
-  // Verify that the grouped exception is correct.
-  ValidateStorageAccessList(/*expected_total_calls=*/2U,
-                            /*expected_num_groups=*/1U);
-
-  ValidateStorageAccessException(
-      kOrigin, kOrigin, content_setting,
-      {{kEmbeddingOrigin, kEmbeddingOrigin, /*incognito=*/false}});
-}
-
-TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_Description_Embargoed) {
+TEST_P(SiteSettingsHandlerTest, StorageAccessExceptions_Description_Embargoed) {
   const std::string kOrigin("https://google.com:443");
   const std::string kDisplayName("google.com");
 
@@ -3356,7 +3893,7 @@ TEST_F(SiteSettingsHandlerTest, StorageAccessExceptions_Description_Embargoed) {
                                        /*expected_incognito=*/false);
 }
 
-TEST_F(SiteSettingsHandlerTest,
+TEST_P(SiteSettingsHandlerTest,
        StorageAccessExceptions_Description_EmbargoedTwoProfiles) {
   const std::string kOrigin("https://google.com:443");
   const std::string kDisplayName("google.com");
@@ -3498,9 +4035,9 @@ TEST_P(StorageAccessSiteSettingsHandlerLifetimeTest,
 }
 
 class PersistentPermissionsSiteSettingsHandlerTest
-    : public SiteSettingsHandlerTest {
+    : public SiteSettingsHandlerBaseTest {
   void SetUp() override {
-    SiteSettingsHandlerTest::SetUp();
+    SiteSettingsHandlerBaseTest::SetUp();
     handler_ = std::make_unique<SiteSettingsHandler>(&profile_);
     handler_->set_web_ui(web_ui());
     handler_->AllowJavascript();
@@ -3515,6 +4052,8 @@ class PersistentPermissionsSiteSettingsHandlerTest
     // when Persistent Permissions is launched.
 
     // Enable Persisted Permissions.
+    // TODO(crbug.com/1467574): Remove `kFileSystemAccessPersistentPermissions`
+    // flag after FSA Persistent Permissions feature launch.
     feature_list_.InitAndEnableFeature(
         features::kFileSystemAccessPersistentPermissions);
   }
@@ -4384,16 +4923,13 @@ class SiteSettingsHandlerChooserExceptionTest
 
     // HandleSetOriginPermissions caused WebUIListenerCallbacks:
     // * contentSettingsChooserPermissionChanged once
-    // * contentSettingsSitePermissionChanged for each visible content type
+    // * contentSettingsSitePermissionChanged once
     // * contentSettingsSitePermissionChanged again for `content_type()`
-    const size_t kContentSettingsTypeCount =
-        site_settings::GetVisiblePermissionCategories().size();
-    EXPECT_EQ(kContentSettingsTypeCount + 3, web_ui()->call_data().size());
+    EXPECT_EQ(3u, web_ui()->call_data().size());
     {
       const base::Value::List& exceptions =
-          GetChooserExceptionListFromWebUiCallData(
-              group_name,
-              /*expected_total_calls=*/kContentSettingsTypeCount + 4);
+          GetChooserExceptionListFromWebUiCallData(group_name,
+                                                   /*expected_total_calls=*/4u);
       switch (content_type()) {
         case ContentSettingsType::BLUETOOTH_CHOOSER_DATA:
           EXPECT_TRUE(exceptions.empty());
@@ -4464,16 +5000,11 @@ class SiteSettingsHandlerChooserExceptionTest
     handler()->HandleSetOriginPermissions(args);
     GetChooserContext(profile())->FlushScheduledSaveSettingsCalls();
 
-    // HandleSetOriginPermissions caused WebUIListenerCallbacks:
-    // * contentSettingsSitePermissionChanged for each visible content type
-    const size_t kContentSettingsTypeCount =
-        site_settings::GetVisiblePermissionCategories().size();
-    EXPECT_EQ(kContentSettingsTypeCount + 1, web_ui()->call_data().size());
+    EXPECT_EQ(1u, web_ui()->call_data().size());
     {
       const base::Value::List& exceptions =
-          GetChooserExceptionListFromWebUiCallData(
-              group_name,
-              /*expected_total_calls=*/kContentSettingsTypeCount + 2);
+          GetChooserExceptionListFromWebUiCallData(group_name,
+                                                   /*expected_total_calls=*/2u);
       switch (content_type()) {
         case ContentSettingsType::BLUETOOTH_CHOOSER_DATA:
           EXPECT_TRUE(exceptions.empty());
@@ -5399,13 +5930,47 @@ TEST_F(SiteSettingsHandlerUsbTest, HandleSetOriginPermissionsPolicyOnly) {
   TestHandleSetOriginPermissionsPolicyOnly();
 }
 
-TEST_F(SiteSettingsHandlerTest, HandleClearSiteGroupDataAndCookies) {
+TEST_P(SiteSettingsHandlerTest, HandleClearSiteGroupDataAndCookies) {
   SetupModels();
-
-  EXPECT_EQ(28u, handler()
-                     ->GetCookiesTreeModelForTesting()
-                     ->GetRoot()
-                     ->GetTotalNodeCount());
+  std::vector<browsing_data_model_test_util::BrowsingDataEntry>
+      expected_browsing_data_model_entries;
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    expected_browsing_data_model_entries = {
+        kGoogleUnpartitionedEntry,
+        kExampleUnpartitionedEntry,
+        kGoogleOnExampleEntry,
+        kExampleOnGoogleSecureEntry,
+        kExampleOnGoogleInsecureEntry,
+        kExampleLocalStorage,
+        kHttpExampleCookie,
+        kHttpsWwwExampleCookie,
+        kPartitionedHttpsWwwExampleOnGoogleAuCookie,
+        kPartitionedHttpsWwwExampleOnGoogleCookie,
+        kHttpAbcExampleCookie,
+        kHttpGoogleCookieA,
+        kHttpGoogleCookieB,
+        kHttpGoogleAuCookie,
+        kPartitionedHttpsGoogleAu1PCookie,
+        kPartitionedHttpsWwwAnotherExampleOnGoogleAuCookie,
+        kUngroupedHttpCookie,
+    };
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    EXPECT_EQ(28u, handler()
+                       ->GetCookiesTreeModelForTesting()
+                       ->GetRoot()
+                       ->GetTotalNodeCount());
+    expected_browsing_data_model_entries = {
+        kGoogleUnpartitionedEntry,     kExampleUnpartitionedEntry,
+        kGoogleOnExampleEntry,         kExampleOnGoogleSecureEntry,
+        kExampleOnGoogleInsecureEntry,
+    };
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  }
 
   auto verify_site_group = [](const base::Value& site_group,
                               std::string expected_etld_plus1) {
@@ -5417,57 +5982,106 @@ TEST_F(SiteSettingsHandlerTest, HandleClearSiteGroupDataAndCookies) {
   base::Value::List storage_and_cookie_list = GetOnStorageFetchedSentList();
   EXPECT_EQ(4U, storage_and_cookie_list.size());
   verify_site_group(storage_and_cookie_list[0], "example.com");
+  verify_site_group(storage_and_cookie_list[1], "google.com");
+  verify_site_group(storage_and_cookie_list[2], "google.com.au");
+  verify_site_group(storage_and_cookie_list[3], "ungrouped.com");
 
   base::Value::List args;
   args.Append(GroupingKey::CreateFromEtldPlus1("example.com").Serialize());
   handler()->HandleClearSiteGroupDataAndCookies(args);
 
-  // All host nodes for non-secure example.com, and abc.example.com, which do
-  // not have any unpartitioned  storage, should have been removed.
-  ASSERT_EQ(0u, GetHostNodes(GURL("http://example.com")).size());
-  ASSERT_EQ(0u, GetHostNodes(GURL("http://abc.example.com")).size());
+  // Items partitioned on example.com, as well as unpartitioned example.com
+  // storage should be removed.
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kExampleUnpartitionedEntry,
+                           kExampleLocalStorage,
+                           kHttpExampleCookie,
+                           kHttpsWwwExampleCookie,
+                           kHttpAbcExampleCookie,
+                           kGoogleOnExampleEntry,
+                       });
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kExampleUnpartitionedEntry,
+                           kGoogleOnExampleEntry,
+                       });
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+    // All host nodes for non-secure example.com, and abc.example.com, which do
+    // not have any unpartitioned storage, should have been removed.
+    ASSERT_EQ(0u, GetHostNodes(GURL("http://example.com")).size());
+    ASSERT_EQ(0u, GetHostNodes(GURL("http://abc.example.com")).size());
 
-  // Confirm that partitioned cookies for www.example.com have not been deleted,
-  auto remaining_host_nodes = GetHostNodes(GURL("https://www.example.com"));
+    // Confirm that partitioned cookies for www.example.com have not been
+    // deleted,
+    auto remaining_host_nodes = GetHostNodes(GURL("https://www.example.com"));
 
-  // example.com storage partitioned on other sites should still remain.
-  {
-    ASSERT_EQ(1u, remaining_host_nodes.size());
-    ASSERT_EQ(1u, remaining_host_nodes[0]->children().size());
-    const auto& storage_node = remaining_host_nodes[0]->children()[0];
-    ASSERT_EQ(CookieTreeNode::DetailedInfo::TYPE_COOKIES,
-              storage_node->GetDetailedInfo().node_type);
-    ASSERT_EQ(2u, storage_node->children().size());
-    for (const auto& cookie_node : storage_node->children()) {
-      const auto& cookie = cookie_node->GetDetailedInfo().cookie;
-      EXPECT_EQ("www.example.com", cookie->Domain());
-      EXPECT_TRUE(cookie->IsPartitioned());
+    // example.com storage partitioned on other sites should still remain.
+    {
+      ASSERT_EQ(1u, remaining_host_nodes.size());
+      ASSERT_EQ(1u, remaining_host_nodes[0]->children().size());
+      const auto& storage_node = remaining_host_nodes[0]->children()[0];
+      ASSERT_EQ(CookieTreeNode::DetailedInfo::TYPE_COOKIES,
+                storage_node->GetDetailedInfo().node_type);
+      ASSERT_EQ(2u, storage_node->children().size());
+      for (const auto& cookie_node : storage_node->children()) {
+        const auto& cookie = cookie_node->GetDetailedInfo().cookie;
+        EXPECT_EQ("www.example.com", cookie->Domain());
+        EXPECT_TRUE(cookie->IsPartitioned());
+      }
     }
+
+    EXPECT_EQ(19u, handler()
+                       ->GetCookiesTreeModelForTesting()
+                       ->GetRoot()
+                       ->GetTotalNodeCount());
   }
 
-  EXPECT_EQ(19u, handler()
-                     ->GetCookiesTreeModelForTesting()
-                     ->GetRoot()
-                     ->GetTotalNodeCount());
-
   storage_and_cookie_list = GetOnStorageFetchedSentList();
-  EXPECT_EQ(4U, storage_and_cookie_list.size());
-  verify_site_group(storage_and_cookie_list[0], "example.com");
-  verify_site_group(storage_and_cookie_list[1], "google.com");
+  EXPECT_EQ(3U, storage_and_cookie_list.size());
+  verify_site_group(storage_and_cookie_list[0], "google.com");
+  verify_site_group(storage_and_cookie_list[1], "google.com.au");
+  verify_site_group(storage_and_cookie_list[2], "ungrouped.com");
 
   args.clear();
   args.Append(GroupingKey::CreateFromEtldPlus1("google.com").Serialize());
 
   handler()->HandleClearSiteGroupDataAndCookies(args);
-
-  EXPECT_EQ(14u, handler()
-                     ->GetCookiesTreeModelForTesting()
-                     ->GetRoot()
-                     ->GetTotalNodeCount());
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kGoogleUnpartitionedEntry,
+                           kExampleOnGoogleSecureEntry,
+                           kExampleOnGoogleInsecureEntry,
+                           kHttpGoogleCookieA,
+                           kHttpGoogleCookieB,
+                           kPartitionedHttpsWwwExampleOnGoogleCookie,
+                       });
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    EXPECT_EQ(14u, handler()
+                       ->GetCookiesTreeModelForTesting()
+                       ->GetRoot()
+                       ->GetTotalNodeCount());
+    // Google's 1P storage, as well as example on Google should have been
+    // cleared.
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(), {});
+  }
 
   storage_and_cookie_list = GetOnStorageFetchedSentList();
   EXPECT_EQ(2U, storage_and_cookie_list.size());
   verify_site_group(storage_and_cookie_list[0], "google.com.au");
+  verify_site_group(storage_and_cookie_list[1], "ungrouped.com");
 
   args.clear();
   args.Append(GroupingKey::CreateFromEtldPlus1("google.com.au").Serialize());
@@ -5475,18 +6089,31 @@ TEST_F(SiteSettingsHandlerTest, HandleClearSiteGroupDataAndCookies) {
   handler()->HandleClearSiteGroupDataAndCookies(args);
   // No nodes representing storage partitioned on google.com.au should be
   // present.
-  for (const auto& host_node :
-       handler()->GetCookiesTreeModelForTesting()->GetRoot()->children()) {
-    for (const auto& storage_node : host_node->children()) {
-      if (storage_node->GetDetailedInfo().node_type !=
-          CookieTreeNode::DetailedInfo::TYPE_COOKIES) {
-        continue;
-      }
-      for (const auto& cookie_node : storage_node->children()) {
-        const auto& cookie = cookie_node->GetDetailedInfo().cookie;
-        if (cookie->IsPartitioned()) {
-          EXPECT_NE("google.com.au",
-                    cookie->PartitionKey()->site().GetURL().host());
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kPartitionedHttpsWwwExampleOnGoogleAuCookie,
+                           kHttpGoogleAuCookie,
+                           kPartitionedHttpsGoogleAu1PCookie,
+                           kPartitionedHttpsWwwAnotherExampleOnGoogleAuCookie,
+                       });
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    for (const auto& host_node :
+         handler()->GetCookiesTreeModelForTesting()->GetRoot()->children()) {
+      for (const auto& storage_node : host_node->children()) {
+        if (storage_node->GetDetailedInfo().node_type !=
+            CookieTreeNode::DetailedInfo::TYPE_COOKIES) {
+          continue;
+        }
+        for (const auto& cookie_node : storage_node->children()) {
+          const auto& cookie = cookie_node->GetDetailedInfo().cookie;
+          if (cookie->IsPartitioned()) {
+            EXPECT_NE("google.com.au",
+                      cookie->PartitionKey()->site().GetURL().host());
+          }
         }
       }
     }
@@ -5505,70 +6132,9 @@ TEST_F(SiteSettingsHandlerTest, HandleClearSiteGroupDataAndCookies) {
   EXPECT_EQ(0U, storage_and_cookie_list.size());
 }
 
-TEST_P(SiteSettingsHandlerTest, HandleClearUnpartitionedUsage) {
-  SetupModels();
-
-  EXPECT_EQ(28u, handler()
-                     ->GetCookiesTreeModelForTesting()
-                     ->GetRoot()
-                     ->GetTotalNodeCount());
-  EXPECT_EQ(2,
-            std::distance(handler()->GetBrowsingDataModelForTesting()->begin(),
-                          handler()->GetBrowsingDataModelForTesting()->end()));
-
-  base::Value::List args;
-  args.Append(GetParam() ? "https://www.example.com/"
-                         : "http://www.example.com/");
-  handler()->HandleClearUnpartitionedUsage(args);
-
-  EXPECT_EQ(2,
-            std::distance(handler()->GetBrowsingDataModelForTesting()->begin(),
-                          handler()->GetBrowsingDataModelForTesting()->end()));
-
-  // Confirm that only the unpartitioned items for example.com have been
-  // cleared.
-  auto remaining_host_nodes = GetHostNodes(GURL("https://www.example.com"));
-
-  // There should only be partitioned cookie entries remaining for the site.
-  ASSERT_EQ(1u, remaining_host_nodes.size());
-  ASSERT_EQ(1u, remaining_host_nodes[0]->children().size());
-  const auto& storage_node = remaining_host_nodes[0]->children()[0];
-  ASSERT_EQ(CookieTreeNode::DetailedInfo::TYPE_COOKIES,
-            storage_node->GetDetailedInfo().node_type);
-  ASSERT_EQ(2u, storage_node->children().size());
-  for (const auto& cookie_node : storage_node->children()) {
-    const auto& cookie = cookie_node->GetDetailedInfo().cookie;
-    EXPECT_EQ("www.example.com", cookie->Domain());
-    EXPECT_TRUE(cookie->IsPartitioned());
-  }
-
-  // Partitioned storage, even when keyed on the cookie domain site, should
-  // not be cleared.
-  args = base::Value::List();
-  args.Append("https://google.com.au/");
-  handler()->HandleClearUnpartitionedUsage(args);
-
-  remaining_host_nodes = GetHostNodes(GURL("https://google.com.au"));
-
-  // A single partitioned cookie should remain.
-  ASSERT_EQ(1u, remaining_host_nodes.size());
-  ASSERT_EQ(1u, remaining_host_nodes[0]->children().size());
-  const auto& cookies_node = remaining_host_nodes[0]->children()[0];
-  ASSERT_EQ(1u, cookies_node->children().size());
-  const auto& cookie_node = cookies_node->children()[0];
-  const auto& cookie = cookie_node->GetDetailedInfo().cookie;
-  EXPECT_TRUE(cookie->IsPartitioned());
-
-  args = base::Value::List();
-  args.Append("https://www.google.com/");
-  handler()->HandleClearUnpartitionedUsage(args);
-
-  EXPECT_EQ(1,
-            std::distance(handler()->GetBrowsingDataModelForTesting()->begin(),
-                          handler()->GetBrowsingDataModelForTesting()->end()));
-
-// Clearing Site Specific Media Licenses Tests
 #if BUILDFLAG(IS_WIN)
+TEST_P(SiteSettingsHandlerTest, ClearSiteSpecificMediaLicenses) {
+  SetupModels();
   PrefService* user_prefs = profile()->GetPrefs();
 
   // In the beginning, there should be nothing stored in the origin data.
@@ -5593,6 +6159,7 @@ TEST_P(SiteSettingsHandlerTest, HandleClearUnpartitionedUsage) {
   // The code above adds origin data for both google and example.com
   EXPECT_EQ(2u, user_prefs->GetDict(prefs::kMediaCdmOriginData).size());
 
+  base::Value::List args;
   args = base::Value::List();
   args.Append("https://www.google.com/");
   handler()->HandleClearUnpartitionedUsage(args);
@@ -5602,11 +6169,10 @@ TEST_P(SiteSettingsHandlerTest, HandleClearUnpartitionedUsage) {
   EXPECT_EQ(1u, user_prefs->GetDict(prefs::kMediaCdmOriginData).size());
   EXPECT_TRUE(user_prefs->GetDict(prefs::kMediaCdmOriginData)
                   .contains("https://www.example.com/"));
-
-#endif  // BUILDFLAG(IS_WIN)
 }
+#endif  // BUILDFLAG(IS_WIN)
 
-TEST_F(SiteSettingsHandlerTest, ClearClientHints) {
+TEST_P(SiteSettingsHandlerTest, ClearClientHints) {
   // Confirm that when the user clears unpartitioned storage, or the eTLD+1
   // group, client hints are also cleared.
   SetupModels();
@@ -5689,7 +6255,7 @@ TEST_F(SiteSettingsHandlerTest, ClearClientHints) {
   EXPECT_EQ(0U, client_hints_settings.size());
 }
 
-TEST_F(SiteSettingsHandlerTest, ClearReducedAcceptLanguage) {
+TEST_P(SiteSettingsHandlerTest, ClearReducedAcceptLanguage) {
   // Confirm that when the user clears unpartitioned storage, or the eTLD+1
   // group, reduce accept language are also cleared.
   SetupModels();
@@ -5767,153 +6333,190 @@ TEST_F(SiteSettingsHandlerTest, ClearReducedAcceptLanguage) {
   EXPECT_EQ(0U, accept_language_settings.size());
 }
 
-TEST_F(SiteSettingsHandlerTest, HandleClearPartitionedUsage) {
+TEST_P(SiteSettingsHandlerTest, ClearDurableStorage) {
+  // Confirm that when the user clears durable storage or the eTLD+1
+  // group, durable storage are also cleared.
+  SetupModels();
+  handler()->OnStorageFetched();
+
+  GURL hosts[] = {GURL("https://example.com/"), GURL("https://www.example.com"),
+                  GURL("https://google.com/"), GURL("https://www.google.com/")};
+
+  HostContentSettingsMap* host_content_settings_map =
+      HostContentSettingsMapFactory::GetForProfile(profile());
+
+  // Add setting for the hosts.
+  for (const auto& host : hosts) {
+    host_content_settings_map->SetContentSettingDefaultScope(
+        host, GURL(), ContentSettingsType::DURABLE_STORAGE,
+        ContentSetting::CONTENT_SETTING_ALLOW);
+  }
+
+  // Clear at the eTLD+1 level and ensure affected origins are cleared.
+  base::Value::List args;
+  args.Append(GroupingKey::CreateFromEtldPlus1("example.com").Serialize());
+  handler()->HandleClearSiteGroupDataAndCookies(args);
+  ContentSettingsForOneType settings =
+      host_content_settings_map->GetSettingsForOneType(
+          ContentSettingsType::DURABLE_STORAGE);
+
+  // ContentSettingsType::DURABLE_STORAGE has a default settings type for the
+  // wildcard '*' set to BLOCK. Here, we expect 2 but we put 3.
+  EXPECT_EQ(3U, settings.size());
+
+  EXPECT_EQ(ContentSettingsPattern::FromURLNoWildcard(hosts[2]),
+            settings.at(0).primary_pattern);
+  EXPECT_EQ(ContentSettingsPattern::Wildcard(),
+            settings.at(0).secondary_pattern);
+  EXPECT_EQ(ContentSetting::CONTENT_SETTING_ALLOW,
+            settings.at(0).setting_value);
+
+  EXPECT_EQ(ContentSettingsPattern::FromURLNoWildcard(hosts[3]),
+            settings.at(1).primary_pattern);
+  EXPECT_EQ(ContentSettingsPattern::Wildcard(),
+            settings.at(1).secondary_pattern);
+  EXPECT_EQ(ContentSetting::CONTENT_SETTING_ALLOW,
+            settings.at(1).setting_value);
+
+  // Clear unpartitioned usage data, which should only affect the specific
+  // origin.
+  args.clear();
+  args.Append("https://google.com/");
+  handler()->HandleClearUnpartitionedUsage(args);
+
+  // Validate the reduce accept language has been cleared.
+  settings = host_content_settings_map->GetSettingsForOneType(
+      ContentSettingsType::DURABLE_STORAGE);
+
+  // ContentSettingsType::DURABLE_STORAGE has a default settings type for the
+  // wildcard '*' set to BLOCK. Here, we expect 1 but we put 2.
+  EXPECT_EQ(2U, settings.size());
+
+  // www.google.com should be the only remaining entry.
+  EXPECT_EQ(ContentSettingsPattern::FromURLNoWildcard(hosts[3]),
+            settings.at(0).primary_pattern);
+  EXPECT_EQ(ContentSettingsPattern::Wildcard(),
+            settings.at(0).secondary_pattern);
+  EXPECT_EQ(ContentSetting::CONTENT_SETTING_ALLOW,
+            settings.at(0).setting_value);
+
+  // Clear unpartitioned usage data through HTTPS scheme, make sure https site
+  // durable storage have been cleared when the specific origin HTTPS
+  // scheme exist.
+  args.clear();
+  args.Append("http://www.google.com/");
+  handler()->HandleClearUnpartitionedUsage(args);
+
+  // Validate the durable storage has been cleared.
+  settings = host_content_settings_map->GetSettingsForOneType(
+      ContentSettingsType::DURABLE_STORAGE);
+
+  // ContentSettingsType::DURABLE_STORAGE has a default settings type for the
+  // wildcard '*' set to BLOCK. Therefore, when there's only one rule, it means
+  // that there are none.
+  EXPECT_EQ(1U, settings.size());
+}
+
+TEST_P(SiteSettingsHandlerTest, HandleClearPartitionedUsage) {
   // Confirm that removing unpartitioned storage correctly removes the
   // appropriate nodes.
   SetupModels();
-
-  EXPECT_EQ(28u, handler()
-                     ->GetCookiesTreeModelForTesting()
-                     ->GetRoot()
-                     ->GetTotalNodeCount());
-  EXPECT_EQ(2,
-            std::distance(handler()->GetBrowsingDataModelForTesting()->begin(),
-                          handler()->GetBrowsingDataModelForTesting()->end()));
+  std::vector<browsing_data_model_test_util::BrowsingDataEntry>
+      expected_browsing_data_model_entries;
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    expected_browsing_data_model_entries = {
+        kGoogleUnpartitionedEntry,
+        kExampleUnpartitionedEntry,
+        kGoogleOnExampleEntry,
+        kExampleOnGoogleSecureEntry,
+        kExampleOnGoogleInsecureEntry,
+        kExampleLocalStorage,
+        kHttpExampleCookie,
+        kHttpsWwwExampleCookie,
+        kPartitionedHttpsWwwExampleOnGoogleAuCookie,
+        kPartitionedHttpsWwwExampleOnGoogleCookie,
+        kHttpAbcExampleCookie,
+        kHttpGoogleCookieA,
+        kHttpGoogleCookieB,
+        kHttpGoogleAuCookie,
+        kPartitionedHttpsGoogleAu1PCookie,
+        kPartitionedHttpsWwwAnotherExampleOnGoogleAuCookie,
+        kUngroupedHttpCookie,
+    };
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    EXPECT_EQ(28u, handler()
+                       ->GetCookiesTreeModelForTesting()
+                       ->GetRoot()
+                       ->GetTotalNodeCount());
+    expected_browsing_data_model_entries = {
+        kGoogleUnpartitionedEntry,     kExampleUnpartitionedEntry,
+        kGoogleOnExampleEntry,         kExampleOnGoogleSecureEntry,
+        kExampleOnGoogleInsecureEntry,
+    };
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  }
 
   base::Value::List args;
   args.Append("https://www.example.com/");
   args.Append(GroupingKey::CreateFromEtldPlus1("google.com").Serialize());
   handler()->HandleClearPartitionedUsage(args);
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kExampleOnGoogleSecureEntry,
+                           kExampleOnGoogleInsecureEntry,
+                           kPartitionedHttpsWwwExampleOnGoogleCookie,
+                       });
 
-  // This should have only removed cookies for embedded.com partitioned on
-  // google.com, leaving other cookies and storage untouched.
-  auto remaining_host_nodes = GetHostNodes(GURL("https://www.example.com"));
-  ASSERT_EQ(1u, remaining_host_nodes.size());
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
+  } else {
+    // This should have only removed cookies for embedded.com partitioned on
+    // google.com, leaving other cookies and storage untouched.
+    auto remaining_host_nodes = GetHostNodes(GURL("https://www.example.com"));
+    ASSERT_EQ(1u, remaining_host_nodes.size());
 
-  // Both cookies and local storage type nodes should remain.
-  ASSERT_EQ(2u, remaining_host_nodes[0]->children().size());
+    // Both cookies and local storage type nodes should remain.
+    ASSERT_EQ(2u, remaining_host_nodes[0]->children().size());
 
-  for (const auto& storage_node : remaining_host_nodes[0]->children()) {
-    if (storage_node->GetDetailedInfo().node_type ==
-        CookieTreeNode::DetailedInfo::TYPE_COOKIES) {
-      // Two cookies should remain, one unpartitioned and one partitioned on
-      // a different site.
-      ASSERT_EQ(2u, storage_node->children().size());
-      for (const auto& cookie_node : storage_node->children()) {
-        const auto& cookie = cookie_node->GetDetailedInfo().cookie;
-        if (cookie->IsPartitioned())
-          ASSERT_EQ("google.com.au",
-                    cookie->PartitionKey()->site().GetURL().host());
+    for (const auto& storage_node : remaining_host_nodes[0]->children()) {
+      if (storage_node->GetDetailedInfo().node_type ==
+          CookieTreeNode::DetailedInfo::TYPE_COOKIES) {
+        // Two cookies should remain, one unpartitioned and one partitioned on
+        // a different site.
+        ASSERT_EQ(2u, storage_node->children().size());
+        for (const auto& cookie_node : storage_node->children()) {
+          const auto& cookie = cookie_node->GetDetailedInfo().cookie;
+          if (cookie->IsPartitioned()) {
+            ASSERT_EQ("google.com.au",
+                      cookie->PartitionKey()->site().GetURL().host());
+          }
+        }
+      } else {
+        ASSERT_EQ(storage_node->GetDetailedInfo().node_type,
+                  CookieTreeNode::DetailedInfo::TYPE_LOCAL_STORAGES);
       }
-    } else {
-      ASSERT_EQ(storage_node->GetDetailedInfo().node_type,
-                CookieTreeNode::DetailedInfo::TYPE_LOCAL_STORAGES);
     }
+
+    // Both of the entries for Example on Google should have been removed.
+    RemoveModelEntries(expected_browsing_data_model_entries,
+                       {
+                           kExampleOnGoogleSecureEntry,
+                           kExampleOnGoogleInsecureEntry,
+                       });
+    browsing_data_model_test_util::ValidateBrowsingDataEntries(
+        handler()->GetBrowsingDataModelForTesting(),
+        expected_browsing_data_model_entries);
   }
-
-  // Should not have affected the browsing data model.
-  // TODO(crbug.com/1271155): Update when partitioned storage is represented
-  // by the browsing data model.
-  EXPECT_EQ(2,
-            std::distance(handler()->GetBrowsingDataModelForTesting()->begin(),
-                          handler()->GetBrowsingDataModelForTesting()->end()));
 }
 
-TEST_F(SiteSettingsHandlerTest, CookieSettingDescription) {
-  const auto kBlocked = [](int num) {
-    return l10n_util::GetPluralStringFUTF8(
-        IDS_SETTINGS_SITE_SETTINGS_COOKIES_BLOCK, num);
-  };
-  const auto kAllowed = [](int num) {
-    return l10n_util::GetPluralStringFUTF8(
-        IDS_SETTINGS_SITE_SETTINGS_COOKIES_ALLOW, num);
-  };
-  const std::string kBlockThirdParty = l10n_util::GetStringUTF8(
-      IDS_SETTINGS_SITE_SETTINGS_COOKIES_BLOCK_THIRD_PARTY);
-  const std::string kBlockThirdPartyIncognito = l10n_util::GetStringUTF8(
-      IDS_SETTINGS_SITE_SETTINGS_COOKIES_BLOCK_THIRD_PARTY_INCOGNITO);
-
-  // Enforce expected default profile setting.
-  profile()->GetPrefs()->SetInteger(
-      prefs::kCookieControlsMode,
-      static_cast<int>(content_settings::CookieControlsMode::kIncognitoOnly));
-  auto* content_settings =
-      HostContentSettingsMapFactory::GetForProfile(profile());
-  content_settings->SetDefaultContentSetting(
-      ContentSettingsType::COOKIES, ContentSetting::CONTENT_SETTING_ALLOW);
-  web_ui()->ClearTrackedCalls();
-
-  // Validate get method works.
-  base::Value::List get_args;
-  get_args.Append(kCallbackId);
-  handler()->HandleGetCookieSettingDescription(get_args);
-  const content::TestWebUI::CallData& data = *web_ui()->call_data().back();
-
-  EXPECT_EQ("cr.webUIResponse", data.function_name());
-  EXPECT_EQ(kCallbackId, data.arg1()->GetString());
-  ASSERT_TRUE(data.arg2()->GetBool());
-  EXPECT_EQ(kBlockThirdPartyIncognito, data.arg3()->GetString());
-
-  // Multiple listeners will be called when prefs and content settings are
-  // changed in this test. Increment our expected call_data index accordingly.
-  int expected_call_index = 0;
-  const int kPrefListenerIndex = 1;
-  const int kContentSettingListenerIndex = 2;
-
-  // Check updates are working,
-  profile()->GetPrefs()->SetInteger(
-      prefs::kCookieControlsMode,
-      static_cast<int>(content_settings::CookieControlsMode::kBlockThirdParty));
-  expected_call_index += kPrefListenerIndex;
-  ValidateCookieSettingUpdate(kBlockThirdParty, expected_call_index);
-
-  content_settings->SetDefaultContentSetting(
-      ContentSettingsType::COOKIES, ContentSetting::CONTENT_SETTING_BLOCK);
-  expected_call_index += kContentSettingListenerIndex;
-  ValidateCookieSettingUpdate(kBlocked(0), expected_call_index);
-
-  // Check changes which do not affect the effective cookie setting.
-  profile()->GetPrefs()->SetInteger(
-      prefs::kCookieControlsMode,
-      static_cast<int>(content_settings::CookieControlsMode::kOff));
-  expected_call_index += kPrefListenerIndex;
-  ValidateCookieSettingUpdate(kBlocked(0), expected_call_index);
-
-  // Set to allow and check previous changes are respected.
-  content_settings->SetDefaultContentSetting(
-      ContentSettingsType::COOKIES, ContentSetting::CONTENT_SETTING_ALLOW);
-  expected_call_index += kContentSettingListenerIndex;
-  ValidateCookieSettingUpdate(kAllowed(0), expected_call_index);
-
-  // Confirm exceptions are counted correctly.
-  GURL url1("https://example.com");
-  GURL url2("http://example.com");
-  GURL url3("http://another.example.com");
-  content_settings->SetContentSettingDefaultScope(
-      url1, url1, ContentSettingsType::COOKIES,
-      ContentSetting::CONTENT_SETTING_BLOCK);
-  expected_call_index += kContentSettingListenerIndex;
-  ValidateCookieSettingUpdate(kAllowed(1), expected_call_index);
-
-  content_settings->SetContentSettingDefaultScope(
-      url2, url2, ContentSettingsType::COOKIES,
-      ContentSetting::CONTENT_SETTING_ALLOW);
-  expected_call_index += kContentSettingListenerIndex;
-  ValidateCookieSettingUpdate(kAllowed(1), expected_call_index);
-
-  content_settings->SetContentSettingDefaultScope(
-      url3, url3, ContentSettingsType::COOKIES,
-      ContentSetting::CONTENT_SETTING_SESSION_ONLY);
-  expected_call_index += kContentSettingListenerIndex;
-  ValidateCookieSettingUpdate(kAllowed(1), expected_call_index);
-
-  content_settings->SetDefaultContentSetting(
-      ContentSettingsType::COOKIES, ContentSetting::CONTENT_SETTING_BLOCK);
-  expected_call_index += kContentSettingListenerIndex;
-  ValidateCookieSettingUpdate(kBlocked(2), expected_call_index);
-}
-
-TEST_F(SiteSettingsHandlerTest, HandleGetFpsMembershipLabel) {
+TEST_P(SiteSettingsHandlerTest, HandleGetFpsMembershipLabel) {
   base::Value::List args;
   args.Append("getFpsMembershipLabel");
   args.Append(5);
@@ -5927,7 +6530,7 @@ TEST_F(SiteSettingsHandlerTest, HandleGetFpsMembershipLabel) {
   EXPECT_EQ("5 sites in google.com's group", data.arg3()->GetString());
 }
 
-TEST_F(SiteSettingsHandlerTest, HandleGetFormattedBytes) {
+TEST_P(SiteSettingsHandlerTest, HandleGetFormattedBytes) {
   const double size = 120000000000;
   base::Value::List get_args;
   get_args.Append(kCallbackId);
@@ -5943,7 +6546,7 @@ TEST_F(SiteSettingsHandlerTest, HandleGetFormattedBytes) {
             data.arg3()->GetString());
 }
 
-TEST_F(SiteSettingsHandlerTest, HandleGetUsageInfo) {
+TEST_P(SiteSettingsHandlerTest, HandleGetUsageInfo) {
   SetupDefaultFirstPartySets(mock_privacy_sandbox_service());
 
   EXPECT_CALL(*mock_privacy_sandbox_service(), IsPartOfManagedFirstPartySet(_))
@@ -5958,19 +6561,25 @@ TEST_F(SiteSettingsHandlerTest, HandleGetUsageInfo) {
   // Confirm that usage info only returns unpartitioned storage.
   SetupModels();
 
-  EXPECT_EQ(28u, handler()
-                     ->GetCookiesTreeModelForTesting()
-                     ->GetRoot()
-                     ->GetTotalNodeCount());
-  EXPECT_EQ(2,
-            std::distance(handler()->GetBrowsingDataModelForTesting()->begin(),
+  if (IsDeprecateCookiesTreeModelEnabled()) {
+    EXPECT_EQ(
+        17, std::distance(handler()->GetBrowsingDataModelForTesting()->begin(),
                           handler()->GetBrowsingDataModelForTesting()->end()));
+  } else {
+    EXPECT_EQ(28u, handler()
+                       ->GetCookiesTreeModelForTesting()
+                       ->GetRoot()
+                       ->GetTotalNodeCount());
+    EXPECT_EQ(
+        5, std::distance(handler()->GetBrowsingDataModelForTesting()->begin(),
+                         handler()->GetBrowsingDataModelForTesting()->end()));
+  }
 
   base::Value::List args;
   args.Append("http://www.example.com");
   handler()->HandleFetchUsageTotal(args);
   handler()->ServicePendingRequests();
-  ValidateUsageInfo("http://www.example.com", "2 B", "1 cookie",
+  ValidateUsageInfo("http://www.example.com", "302 B", "1 cookie",
                     "1 site in example.com's group", true);
 
   args.clear();
@@ -6002,35 +6611,7 @@ TEST_F(SiteSettingsHandlerTest, HandleGetUsageInfo) {
   ValidateUsageInfo("http://ungrouped.com//", "", "1 cookie", "", false);
 }
 
-TEST_F(SiteSettingsHandlerTest, NonTreeModelDeletion) {
-  // Confirm that a BrowsingDataRemover task is started to remove Privacy
-  // Sandbox APIs that are not integrated with the tree model.
-  SetupModels();
-
-  base::Value::List storage_and_cookie_list = GetOnStorageFetchedSentList();
-  EXPECT_EQ(4U, storage_and_cookie_list.size());
-  EXPECT_CALL(*mock_browsing_topics_service(),
-              ClearTopicsDataForOrigin(
-                  url::Origin::Create(GURL("https://www.google.com"))));
-  EXPECT_CALL(*mock_browsing_topics_service(),
-              ClearTopicsDataForOrigin(
-                  url::Origin::Create(GURL("https://google.com"))));
-
-  base::Value::List args;
-  args.Append(GroupingKey::CreateFromEtldPlus1("google.com").Serialize());
-  handler()->HandleClearSiteGroupDataAndCookies(args);
-
-  auto* browsing_data_remover = profile()->GetBrowsingDataRemover();
-  EXPECT_EQ(content::BrowsingDataRemover::DATA_TYPE_PRIVACY_SANDBOX &
-                ~content::BrowsingDataRemover::DATA_TYPE_TRUST_TOKENS,
-            browsing_data_remover->GetLastUsedRemovalMaskForTesting());
-  EXPECT_EQ(base::Time::Min(),
-            browsing_data_remover->GetLastUsedBeginTimeForTesting());
-  EXPECT_EQ(content::BrowsingDataRemover::ORIGIN_TYPE_UNPROTECTED_WEB,
-            browsing_data_remover->GetLastUsedOriginTypeMaskForTesting());
-}
-
-TEST_F(SiteSettingsHandlerTest, FirstPartySetsMembership) {
+TEST_P(SiteSettingsHandlerTest, FirstPartySetsMembership) {
   SetupDefaultFirstPartySets(mock_privacy_sandbox_service());
 
   EXPECT_CALL(*mock_privacy_sandbox_service(), IsPartOfManagedFirstPartySet(_))
@@ -6062,7 +6643,7 @@ TEST_F(SiteSettingsHandlerTest, FirstPartySetsMembership) {
   ValidateSitesWithFps(storage_and_cookie_list, first_party_sets);
 }
 
-TEST_F(SiteSettingsHandlerTest, IsolatedWebAppUsageInfo) {
+TEST_P(SiteSettingsHandlerTest, IsolatedWebAppUsageInfo) {
   std::string iwa_url =
       "isolated-app://"
       "aerugqztij5biqquuk3mfwpsaibuegaqcitgfchwuosuofdjabzqaaic/";
@@ -6079,7 +6660,7 @@ TEST_F(SiteSettingsHandlerTest, IsolatedWebAppUsageInfo) {
       /*expected_fps_member_count_string=*/"", /*expected_fps_policy=*/false);
 }
 
-TEST_F(SiteSettingsHandlerTest, IsolatedWebAppClearSiteGroupDataAndCookies) {
+TEST_P(SiteSettingsHandlerTest, IsolatedWebAppClearSiteGroupDataAndCookies) {
   GURL iwa_url1(
       "isolated-app://"
       "abcdefztij5biqquuk3mfwpsaibuegaqcitgfchwuosuofdjabzqaaic/");
@@ -6115,7 +6696,7 @@ TEST_F(SiteSettingsHandlerTest, IsolatedWebAppClearSiteGroupDataAndCookies) {
   verify_site_group(all_sites_list[0], iwa_url2, 2000);
 }
 
-TEST_F(SiteSettingsHandlerTest, IsolatedWebAppClearUnpartitionedUsage) {
+TEST_P(SiteSettingsHandlerTest, IsolatedWebAppClearUnpartitionedUsage) {
   GURL iwa_url(
       "isolated-app://"
       "abcdefztij5biqquuk3mfwpsaibuegaqcitgfchwuosuofdjabzqaaic/");

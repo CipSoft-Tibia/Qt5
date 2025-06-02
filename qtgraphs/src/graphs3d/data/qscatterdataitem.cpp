@@ -21,7 +21,7 @@
  */
 
 /*!
- * \fn QScatterDataItem::QScatterDataItem(const QVector3D &position)
+ * \fn QScatterDataItem::QScatterDataItem(QVector3D position)
  * Constructs scatter data item with position \a position.
  */
 
@@ -31,13 +31,13 @@
  */
 
 /*!
- * \fn QScatterDataItem::QScatterDataItem(const QVector3D &position, const QQuaternion &rotation)
+ * \fn QScatterDataItem::QScatterDataItem(QVector3D position, const QQuaternion &rotation)
  * Constructs scatter data item with position \a position
  * and rotation \a rotation.
  */
 
 /*!
- * \fn void QScatterDataItem::setPosition(const QVector3D &pos)
+ * \fn void QScatterDataItem::setPosition(QVector3D pos)
  * Sets the position \a pos for this data item.
  */
 

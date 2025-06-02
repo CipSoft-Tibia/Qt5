@@ -151,7 +151,7 @@ void draw_texture(skgpu::ganesh::SurfaceDrawContext* sdc,
         // Conservative estimate of how much a coord could be outset from src rect:
         // 1/2 pixel for AA and 1/2 pixel for linear filtering
         float buffer = 0.5f * (aaFlags != GrQuadAAFlags::kNone) +
-                       0.5f * (filter == GrSamplerState::Filter::kLinear);
+                       GrTextureEffect::kLinearInset * (filter == GrSamplerState::Filter::kLinear);
         SkRect safeBounds = proxy->getBoundsRect();
         safeBounds.inset(buffer, buffer);
         if (!safeBounds.contains(srcRect)) {
@@ -232,7 +232,7 @@ void Device::drawEdgeAAImage(const SkImage* image,
     if (tm == SkTileMode::kClamp && !ib->isYUVA() && can_use_draw_texture(paint, sampling)) {
         // We've done enough checks above to allow us to pass ClampNearest() and not check for
         // scaling adjustments.
-        auto [view, ct] = skgpu::ganesh::AsView(rContext, image, GrMipmapped::kNo);
+        auto [view, ct] = skgpu::ganesh::AsView(rContext, image, skgpu::Mipmapped::kNo);
         if (!view) {
             return;
         }
@@ -304,10 +304,12 @@ void Device::drawEdgeAAImage(const SkImage* image,
             std::move(fp), image->imageInfo().colorInfo(), sdc->colorInfo());
     if (image->isAlphaOnly()) {
         if (const auto* shader = as_SB(paint.getShader())) {
-            auto shaderFP = GrFragmentProcessors::Make(
-                    shader,
-                    GrFPArgs(rContext, &sdc->colorInfo(), sdc->surfaceProps()),
-                    localToDevice);
+            auto shaderFP = GrFragmentProcessors::Make(shader,
+                                                       GrFPArgs(rContext,
+                                                                &sdc->colorInfo(),
+                                                                sdc->surfaceProps(),
+                                                                GrFPArgs::Scope::kDefault),
+                                                       localToDevice);
             if (!shaderFP) {
                 return;
             }
@@ -369,7 +371,8 @@ void Device::drawEdgeAAImage(const SkImage* image,
 void Device::drawSpecial(SkSpecialImage* special,
                          const SkMatrix& localToDevice,
                          const SkSamplingOptions& origSampling,
-                         const SkPaint& paint) {
+                         const SkPaint& paint,
+                         SkCanvas::SrcRectConstraint constraint) {
     SkASSERT(!paint.getMaskFilter() && !paint.getImageFilter());
     SkASSERT(special->isGaneshBacked());
 
@@ -383,6 +386,12 @@ void Device::drawSpecial(SkSpecialImage* special,
                                                        : SkCanvas::kNone_QuadAAFlags;
 
     GrSurfaceProxyView view = SkSpecialImages::AsView(this->recordingContext(), special);
+    if (!view) {
+        // This shouldn't happen since we shouldn't be mixing SkSpecialImage subclasses but
+        // returning early should avoid problems in release builds.
+        SkASSERT(false);
+        return;
+    }
     SkImage_Ganesh image(sk_ref_sp(special->getContext()),
                          special->uniqueID(),
                          std::move(view),
@@ -397,7 +406,7 @@ void Device::drawSpecial(SkSpecialImage* special,
                           localToDevice,
                           sampling,
                           paint,
-                          SkCanvas::kStrict_SrcRectConstraint,
+                          constraint,
                           srcToDst,
                           SkTileMode::kClamp);
 }
@@ -522,7 +531,7 @@ void Device::drawEdgeAAImageSet(const SkCanvas::ImageSetEntry set[], int count,
         const SkPoint* clip = set[i].fHasClip ? dstClips + dstClipIndex : nullptr;
         dstClipIndex += 4 * set[i].fHasClip;
 
-        // The default SkBaseDevice implementation is based on drawImageRect which does not allow
+        // The default SkDevice implementation is based on drawImageRect which does not allow
         // non-sorted src rects. TODO: Decide this is OK or make sure we handle it.
         if (!set[i].fSrcRect.isSorted()) {
             draw(i + 1);
@@ -535,7 +544,7 @@ void Device::drawEdgeAAImageSet(const SkCanvas::ImageSetEntry set[], int count,
         // drawImageQuad and the proper effect to dynamically sample their planes.
         if (!image->isYUVA()) {
             std::tie(view, std::ignore) =
-                    skgpu::ganesh::AsView(this->recordingContext(), image, GrMipmapped::kNo);
+                    skgpu::ganesh::AsView(this->recordingContext(), image, skgpu::Mipmapped::kNo);
             if (image->isAlphaOnly()) {
                 skgpu::Swizzle swizzle = skgpu::Swizzle::Concat(view.swizzle(),
                                                                 skgpu::Swizzle("aaaa"));

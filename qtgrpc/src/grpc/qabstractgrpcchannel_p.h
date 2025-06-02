@@ -16,22 +16,21 @@
 //
 
 #include <QtGrpc/qgrpcchanneloptions.h>
-#include <QtGrpc/qgrpcclientinterceptormanager.h>
-#include <QtGrpc/private/qtgrpcglobal_p.h>
 
+#include <QtCore/qnamespace.h>
 #include <QtCore/qthread.h>
 
 QT_BEGIN_NAMESPACE
 
-struct QAbstractGrpcChannelPrivate
+class QAbstractGrpcChannelPrivate
 {
-    QAbstractGrpcChannelPrivate(const QGrpcChannelOptions &options)
-        : threadId(QThread::currentThreadId()), channelOptions(std::move(options))
+public:
+    explicit QAbstractGrpcChannelPrivate(const QGrpcChannelOptions &options)
+        : threadId(QThread::currentThreadId()), channelOptions(options)
     {
     }
     const Qt::HANDLE threadId;
     QGrpcChannelOptions channelOptions;
-    QGrpcClientInterceptorManager interceptorManager;
 };
 
 QT_END_NAMESPACE

@@ -78,10 +78,35 @@ private:
 
 class RequiredProperties : public QHash<RequiredPropertyKey, RequiredPropertyInfo> {};
 
+class RequiredPropertiesAndTarget : public RequiredProperties
+{
+public:
+    RequiredPropertiesAndTarget(QObject *target) : target(target) {}
+    RequiredPropertiesAndTarget(const RequiredPropertiesAndTarget &) = default;
+    RequiredPropertiesAndTarget(RequiredPropertiesAndTarget &&) = default;
+    RequiredPropertiesAndTarget &operator=(const RequiredPropertiesAndTarget &) = default;
+    RequiredPropertiesAndTarget &operator=(RequiredPropertiesAndTarget &&) = default;
+    QObject *target = nullptr;
+};
+
 struct DeferredQPropertyBinding {
     QObject *target = nullptr;
     int properyIndex = -1;
     QUntypedPropertyBinding binding;
+};
+
+class ObjectInCreationGCAnchorList {
+public:
+    // this is a non owning view, rule of zero applies
+    ObjectInCreationGCAnchorList() = default;
+    ObjectInCreationGCAnchorList(const QV4::Scope &scope, int totalObjectCount)
+    {
+        allJavaScriptObjects = scope.alloc(totalObjectCount);
+    }
+    void trackObject(QV4::ExecutionEngine *engine, QObject *instance);
+    bool canTrack() const { return allJavaScriptObjects; }
+private:
+    QV4::Value *allJavaScriptObjects = nullptr; // pointer to vector on JS stack to reference JS wrappers during creation phase.
 };
 
 struct QQmlObjectCreatorSharedState final : QQmlRefCounted<QQmlObjectCreatorSharedState>
@@ -91,7 +116,7 @@ struct QQmlObjectCreatorSharedState final : QQmlRefCounted<QQmlObjectCreatorShar
     QFiniteStack<QQmlAbstractBinding::Ptr> allCreatedBindings;
     QFiniteStack<QQmlParserStatus*> allParserStatusCallbacks;
     QFiniteStack<QQmlGuard<QObject> > allCreatedObjects;
-    QV4::Value *allJavaScriptObjects; // pointer to vector on JS stack to reference JS wrappers during creation phase.
+    ObjectInCreationGCAnchorList allJavaScriptObjects; // pointer to vector on JS stack to reference JS wrappers during creation phase.
     QQmlComponentAttached *componentAttached;
     QList<QQmlFinalizerHook *> finalizeHooks;
     QQmlVmeProfiler profiler;
@@ -101,13 +126,14 @@ struct QQmlObjectCreatorSharedState final : QQmlRefCounted<QQmlObjectCreatorShar
     bool hadTopLevelRequiredProperties;
 };
 
-class Q_QML_PRIVATE_EXPORT QQmlObjectCreator
+class Q_QML_EXPORT QQmlObjectCreator
 {
     Q_DECLARE_TR_FUNCTIONS(QQmlObjectCreator)
 public:
-    QQmlObjectCreator(QQmlRefPointer<QQmlContextData> parentContext,
+    QQmlObjectCreator(const QQmlRefPointer<QQmlContextData> &parentContext,
                       const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
                       const QQmlRefPointer<QQmlContextData> &creationContext,
+                      const QString &inlineComponentName,
                       QQmlIncubatorPrivate  *incubator = nullptr);
     ~QQmlObjectCreator();
 
@@ -151,20 +177,19 @@ public:
     void removePendingBinding(QObject *target, int propertyIndex)
     {
         QList<DeferredQPropertyBinding> &pendingBindings = sharedState.data()->allQPropertyBindings;
-        auto it = std::remove_if(pendingBindings.begin(), pendingBindings.end(),
-                                 [&](const DeferredQPropertyBinding &deferred) {
+        pendingBindings.removeIf([&](const DeferredQPropertyBinding &deferred) {
             return deferred.properyIndex == propertyIndex && deferred.target == target;
         });
-        pendingBindings.erase(it, pendingBindings.end());
     }
 
 private:
-    QQmlObjectCreator(QQmlRefPointer<QQmlContextData> contextData,
-                      const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
-                      QQmlObjectCreatorSharedState *inheritedSharedState,
-                      bool isContextObject);
+    QQmlObjectCreator(
+            const QQmlRefPointer<QQmlContextData> &contextData,
+            const QQmlRefPointer<QV4::ExecutableCompilationUnit> &compilationUnit,
+            const QString inlineComponentName,
+            QQmlObjectCreatorSharedState *inheritedSharedState, bool isContextObject);
 
-    void init(QQmlRefPointer<QQmlContextData> parentContext);
+    void init(const QQmlRefPointer<QQmlContextData> &parentContext);
 
     QObject *createInstance(int index, QObject *parent = nullptr, bool isContextObject = false);
 
@@ -213,6 +238,7 @@ private:
 
     QQmlEngine *engine;
     QV4::ExecutionEngine *v4;
+    QString m_inlineComponentName;
     QQmlRefPointer<QV4::ExecutableCompilationUnit> compilationUnit;
     const QV4::CompiledData::Unit *qmlUnit;
     QQmlGuardedContextData parentContext;
@@ -245,6 +271,10 @@ private:
     void doPopulateDeferred(QObject *instance, int deferredIndex, Functor f)
     {
         QQmlData *declarativeData = QQmlData::get(instance);
+
+        // We're in the process of creating the object. We sure hope it's still alive.
+        Q_ASSERT(declarativeData && declarativeData->propertyCache);
+
         QObject *bindingTarget = instance;
 
         QQmlPropertyCache::ConstPtr cache = declarativeData->propertyCache;
@@ -254,8 +284,9 @@ private:
         qt_ptr_swap(_scopeObject, scopeObject);
 
         QV4::Scope valueScope(v4);
-        QScopedValueRollback<QV4::Value*> jsObjectGuard(sharedState->allJavaScriptObjects,
-                                                        valueScope.alloc(compilationUnit->totalObjectCount()));
+        QScopedValueRollback<ObjectInCreationGCAnchorList> jsObjectGuard(
+                sharedState->allJavaScriptObjects,
+                ObjectInCreationGCAnchorList(valueScope, compilationUnit->totalObjectCount(m_inlineComponentName)));
 
         Q_ASSERT(topLevelCreator);
         QV4::QmlContext *qmlContext = static_cast<QV4::QmlContext *>(valueScope.alloc());

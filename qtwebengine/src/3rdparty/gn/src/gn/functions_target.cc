@@ -15,22 +15,21 @@
 
 #define DEPENDENT_CONFIG_VARS \
   "  Dependent configs: all_dependent_configs, public_configs\n"
-#define DEPS_VARS \
+#define DEPS_VARS                                                         \
   "  Deps: assert_no_deps, data_deps, deps, public_deps, runtime_deps,\n" \
   "        write_runtime_deps\n"
 #define GENERAL_TARGET_VARS                                                \
   "  General: check_includes, configs, data, friend, inputs, metadata,\n"  \
   "           output_extension, output_name, public, sources, testonly,\n" \
   "           visibility\n"
-#define RUST_VARS \
-  "  Rust variables: aliased_deps, crate_root, crate_name\n"
-#define RUST_SHARED_VARS                                                 \
+#define RUST_VARS "  Rust variables: aliased_deps, crate_root, crate_name\n"
+#define RUST_SHARED_VARS \
   "  Rust variables: aliased_deps, crate_root, crate_name, crate_type\n"
-#define ACTION_VARS \
-  "  Action variables: args, bridge_header, configs, data, depfile,\n" \
-  "                    framework_dirs, inputs, module_deps, module_name,\n" \
-  "                    outputs*, pool, response_file_contents, script*,\n" \
-  "                    sources\n"
+#define ACTION_VARS                                                            \
+  "  Action variables: args, bridge_header, configs, data, depfile,\n"         \
+  "                    framework_dirs, inputs, mnemonic, module_deps,\n"       \
+  "                    module_name, outputs*, pool, response_file_contents,\n" \
+  "                    script*, sources\n"
 
 namespace functions {
 
@@ -173,10 +172,9 @@ File name handling
     R"(
 Variables
 
-)" CONFIG_VALUES_VARS_HELP DEPENDENT_CONFIG_VARS DEPS_VARS GENERAL_TARGET_VARS
-ACTION_VARS
+)" CONFIG_VALUES_VARS_HELP DEPENDENT_CONFIG_VARS DEPS_VARS GENERAL_TARGET_VARS ACTION_VARS
 
-R"(  * = required
+    R"(  * = required
 
 Example
 
@@ -244,10 +242,9 @@ File name handling
     R"(
 Variables
 
-)" CONFIG_VALUES_VARS_HELP DEPENDENT_CONFIG_VARS DEPS_VARS GENERAL_TARGET_VARS
-ACTION_VARS
+)" CONFIG_VALUES_VARS_HELP DEPENDENT_CONFIG_VARS DEPS_VARS GENERAL_TARGET_VARS ACTION_VARS
 
-R"(  * = required
+    R"(  * = required
 
 Example
 
@@ -256,6 +253,10 @@ Example
   action_foreach("my_idl") {
     script = "idl_processor.py"
     sources = [ "foo.idl", "bar.idl" ]
+
+    # Causes ninja to output "IDL <label>" rather than the default
+    # "ACTION <label>" when building this action.
+    mnemonic = "IDL"
 
     # Our script reads this file each time, so we need to list it as a
     # dependency so we can rebuild if it changes.
@@ -305,13 +306,18 @@ const char kBundleData_Help[] =
   generate iOS/macOS bundle. In cross-platform projects, it is advised to put it
   behind iOS/macOS conditionals.
 
+  If any source files in a bundle_data target match `*/*.xcassets/*` then they
+  will be considered part of an assets catalog, and instead of being copied to
+  the final bundle the assets catalog itself will be added to the inputs of the
+  assets catalog compilation step. See "compile_xcassets" tool.
+
   See "gn help create_bundle" for more information.
 
 Variables
 
 )" DEPENDENT_CONFIG_VARS DEPS_VARS GENERAL_TARGET_VARS
 
-R"(  Bundle-specific: sources*, outputs*
+    R"(  Bundle-specific: sources*, outputs*
   * = required
 
 Examples
@@ -379,31 +385,38 @@ const char kCreateBundle_Help[] =
   placed in the bundle. A create_bundle can declare its own explicit data and
   data_deps, however.
 
-Code signing
+Post-processing
 
-  Some bundle needs to be code signed as part of the build (on iOS all
-  application needs to be code signed to run on a device). The code signature
-  can be configured via the code_signing_script variable.
+  Some bundle needs to be post-processed as part of the build (e.g. on iOS all
+  application needs to be code signed to run on a device). The post processing
+  step can be configured via the post_processing_script variable.
 
-  If set, code_signing_script is the path of a script that invoked after all
-  files have been moved into the bundle. The script must not change any file in
-  the bundle, but may add new files.
+  If set, `post_processing_script` is the path of a script that invoked after
+  all files have been moved into the bundle. The script must not change any file
+  in the bundle, but may add new files.
 
-  If code_signing_script is defined, then code_signing_outputs must also be
-  defined and non-empty to inform when the script needs to be re-run. The
-  code_signing_args will be passed as is to the script (so path have to be
-  rebased) and additional inputs may be listed with the variable
-  code_signing_sources.
+  If `post_processing_script` is defined, then `post_processing_outputs` must
+  be defined and non-empty to inform when the script needs to be re-run. The
+  `post_processing_args` will be passed as is to the script (so path have to be
+  rebased) and additional inputs may be listed via `post_processing_sources`.
+
+Migration
+
+  The post-processing step used to be limited to code-signing. The properties
+  used to be named `code_signing_$name` instead of `post_processing_$name`. The
+  old names are still accepted as alias to facilitate migration but a warning
+  will be emitted and the alias eventually be removed.
 
 Variables
 
 )" DEPENDENT_CONFIG_VARS DEPS_VARS GENERAL_TARGET_VARS
 
-R"(  Bundle vars: bundle_root_dir, bundle_contents_dir, bundle_resources_dir,
+    R"(  Bundle vars: bundle_root_dir, bundle_contents_dir, bundle_resources_dir,
                bundle_executable_dir, bundle_deps_filter, product_type,
-               code_signing_args, code_signing_script, code_signing_sources,
-               code_signing_outputs, xcode_extra_attributes,
-               xcode_test_application_name, partial_info_plist
+               post_processing_args, post_processing_script,
+               post_processing_sources, post_processing_outputs,
+               xcode_extra_attributes, xcode_test_application_name,
+               partial_info_plist
 
 Example
 
@@ -475,19 +488,19 @@ Example
         deps = [ ":${app_name}_bundle_info_plist" ]
         if (is_ios && code_signing) {
           deps += [ ":${app_name}_generate_executable" ]
-          code_signing_script = "//build/config/ios/codesign.py"
-          code_signing_sources = [
+          post_processing_script = "//build/config/ios/codesign.py"
+          post_processing_sources = [
             invoker.entitlements_path,
             "$target_gen_dir/$app_name",
           ]
-          code_signing_outputs = [
+          post_processing_outputs = [
             "$bundle_root_dir/$app_name",
             "$bundle_root_dir/_CodeSignature/CodeResources",
             "$bundle_root_dir/embedded.mobileprovision",
             "$target_gen_dir/$app_name.xcent",
           ]
-          code_signing_args = [
-            "-i=" + ios_code_signing_identity,
+          post_processing_args = [
+            "-i=" + ios_post_processing_identity,
             "-b=" + rebase_path(
                 "$target_gen_dir/$app_name", root_build_dir),
             "-e=" + rebase_path(
@@ -543,7 +556,7 @@ Variables
 
 )" DEPENDENT_CONFIG_VARS DEPS_VARS GENERAL_TARGET_VARS
 
-R"(  Copy variables: sources*, outputs*
+    R"(  Copy variables: sources*, outputs*
   * = required
 
 Examples
@@ -717,7 +730,8 @@ Value RunRustLibrary(Scope* scope,
                               block, err);
 }
 
-// rust_proc_macro ----------------------------------------------------------------
+// rust_proc_macro
+// ----------------------------------------------------------------
 
 const char kRustProcMacro[] = "rust_proc_macro";
 const char kRustProcMacro_HelpShort[] =
@@ -741,10 +755,10 @@ Variables
 )" CONFIG_VALUES_VARS_HELP DEPS_VARS DEPENDENT_CONFIG_VARS GENERAL_TARGET_VARS
         RUST_VARS;
 Value RunRustProcMacro(Scope* scope,
-                   const FunctionCallNode* function,
-                   const std::vector<Value>& args,
-                   BlockNode* block,
-                   Err* err) {
+                       const FunctionCallNode* function,
+                       const std::vector<Value>& args,
+                       BlockNode* block,
+                       Err* err) {
   return ExecuteGenericTarget(functions::kRustProcMacro, scope, function, args,
                               block, err);
 }
@@ -843,8 +857,8 @@ const char kStaticLibrary_Help[] =
 Variables
 
   complete_static_lib
-)" CONFIG_VALUES_VARS_HELP DEPS_VARS DEPENDENT_CONFIG_VARS GENERAL_TARGET_VARS
-        RUST_VARS LANGUAGE_HELP;
+)" CONFIG_VALUES_VARS_HELP DEPS_VARS DEPENDENT_CONFIG_VARS GENERAL_TARGET_VARS RUST_VARS
+        LANGUAGE_HELP;
 
 Value RunStaticLibrary(Scope* scope,
                        const FunctionCallNode* function,
@@ -882,7 +896,7 @@ Common target variables
 
 )" DEPS_VARS DEPENDENT_CONFIG_VARS GENERAL_TARGET_VARS
 
-R"(
+    R"(
   Targets will also have variables specific to that type, see "gn help <type>"
   for more.
 
@@ -957,7 +971,7 @@ Variables
 
 )" DEPENDENT_CONFIG_VARS DEPS_VARS GENERAL_TARGET_VARS
 
-R"(  Generated file: contents, data_keys, rebase, walk_keys, output_conversion
+    R"(  Generated file: contents, data_keys, rebase, walk_keys, output_conversion
 
 Example (metadata collection)
 

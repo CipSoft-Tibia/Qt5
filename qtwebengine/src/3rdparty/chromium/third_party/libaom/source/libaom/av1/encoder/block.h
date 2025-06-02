@@ -1324,6 +1324,10 @@ typedef struct macroblock {
   uint8_t color_sensitivity[MAX_MB_PLANE - 1];
   //! Coding block distortion value for uv/color, minimum over the inter modes.
   int64_t min_dist_inter_uv;
+
+  //! The buffer used by search_tx_type() to swap dqcoeff in macroblockd_plane
+  // so we can keep dqcoeff of the best tx_type.
+  tran_low_t *dqcoeff_buf;
   /**@}*/
 
   /*****************************************************************************
@@ -1380,6 +1384,23 @@ typedef struct macroblock {
    * fast encoding stage for screen content tool detemination.
    */
   int palette_pixels;
+
+  /*!\brief Pointer to the structure which stores the statistics used by
+   * sb-level multi-pass encoding.
+   */
+  struct SB_FIRST_PASS_STATS *sb_stats_cache;
+
+  /*!\brief Pointer to the structure which stores the statistics used by
+   * first-pass when superblock is searched twice consecutively.
+   */
+  struct SB_FIRST_PASS_STATS *sb_fp_stats;
+
+#if CONFIG_PARTITION_SEARCH_ORDER
+  /*!\brief Pointer to RD_STATS structure to be used in
+   * av1_rd_partition_search().
+   */
+  RD_STATS *rdcost;
+#endif  // CONFIG_PARTITION_SEARCH_ORDER
 } MACROBLOCK;
 #undef SINGLE_REF_MODES
 

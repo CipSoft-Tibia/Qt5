@@ -177,9 +177,9 @@ bool QDesktopServices::openUrl(const QUrl &url)
         qWarning("The platform plugin does not support services.");
         return false;
     }
-    // We only use openDocument if there is no fragment for the URL to
+    // We only use openDocument if there is no fragment or query for the URL to
     // avoid it being lost when using openDocument
-    if (url.isLocalFile() && !url.hasFragment())
+    if (url.isLocalFile() && !url.hasFragment() && !url.hasQuery())
         return platformServices->openDocument(url);
     return platformServices->openUrl(url);
 }
@@ -210,10 +210,12 @@ bool QDesktopServices::openUrl(const QUrl &url)
     the destruction of the handler object does not overlap with concurrent
     invocations of openUrl() using it.
 
-    \section1 iOS
+    \target configuring qdesktopservices url handler on ios and macos
+    \section1 iOS and \macos
 
-    To use this function for receiving data from other apps on iOS you also need to
-    add the custom scheme to the \c CFBundleURLSchemes list in your Info.plist file:
+    To use this function for receiving data from other apps on iOS/\macos
+    you also need to add the custom scheme to the \c CFBundleURLSchemes
+    list in your Info.plist file:
 
     \snippet code/src_gui_util_qdesktopservices.cpp 4
 
@@ -228,7 +230,7 @@ bool QDesktopServices::openUrl(const QUrl &url)
 
     \snippet code/src_gui_util_qdesktopservices.cpp 7
 
-    iOS will search for /.well-known/apple-app-site-association on your domain,
+    iOS/\macos will search for /.well-known/apple-app-site-association on your domain,
     when the application is installed. If you want to listen to
     \c{https://your.domain.com/help?topic=ABCDEF} you need to provide the following
     content there:
@@ -238,6 +240,7 @@ bool QDesktopServices::openUrl(const QUrl &url)
     For more information, see the Apple Developer Documentation for
     \l {iOS: Supporting Associated Domains}{Supporting Associated Domains}.
 
+    \target configuring qdesktopservices url handler on android
     \section1 Android
 
     To use this function for receiving data from other apps on Android, you

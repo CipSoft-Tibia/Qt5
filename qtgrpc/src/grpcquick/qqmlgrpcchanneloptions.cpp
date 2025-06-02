@@ -1,11 +1,16 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include "qqmlgrpcchanneloptions_p.h"
-#include "qqmlgrpcmetadata_p.h"
+#include <QtGrpcQuick/private/qqmlgrpcchanneloptions_p.h>
+#include <QtGrpcQuick/private/qqmlgrpcmetadata_p.h>
+
+#include <QtGrpc/qgrpcserializationformat.h>
+
 #include <QtCore/private/qobject_p.h>
 
 #include <chrono>
+
+using namespace std::chrono_literals;
 
 QT_BEGIN_NAMESPACE
 
@@ -16,16 +21,16 @@ class QQmlGrpcChannelOptionsPrivate : public QObjectPrivate
 public:
     QQmlGrpcChannelOptionsPrivate();
 
-    QGrpcChannelOptions m_options;
-    QQmlGrpcMetadata *m_metadata = nullptr;
+    QGrpcChannelOptions options;
+    QtGrpc::SerializationFormat format = QtGrpc::SerializationFormat::Default;
+    QQmlGrpcMetadata *metadata = nullptr;
 #if QT_CONFIG(ssl)
-    QQmlSslConfiguration m_configuration;
+    QQmlSslConfiguration configuration;
 #endif // QT_CONFIG(ssl)
+    QMetaObject::Connection metadataUpdateConnection;
 };
 
-QQmlGrpcChannelOptionsPrivate::QQmlGrpcChannelOptionsPrivate()
-    : QObjectPrivate(),
-      m_options(QUrl())
+QQmlGrpcChannelOptionsPrivate::QQmlGrpcChannelOptionsPrivate() : QObjectPrivate()
 {
 }
 
@@ -34,71 +39,87 @@ QQmlGrpcChannelOptions::QQmlGrpcChannelOptions(QObject *parent)
 {
 }
 
-QUrl QQmlGrpcChannelOptions::host() const
-{
-    return d_func()->m_options.host();
-}
+QQmlGrpcChannelOptions::~QQmlGrpcChannelOptions() = default;
 
-void QQmlGrpcChannelOptions::setHost(const QUrl &newUrl)
+qint64 QQmlGrpcChannelOptions::deadlineTimeout() const
 {
-    Q_D(QQmlGrpcChannelOptions);
-    d->m_options.withHost(newUrl);
-    emit hostChanged();
-}
-
-qint64 QQmlGrpcChannelOptions::deadline() const
-{
-    std::chrono::milliseconds ms
-            = d_func()->m_options.deadline().value_or(std::chrono::milliseconds(0));
+    std::chrono::milliseconds ms = d_func()->options.deadlineTimeout().value_or(0ms);
     return ms.count();
 }
 
-void QQmlGrpcChannelOptions::setDeadline(qint64 value)
+void QQmlGrpcChannelOptions::setDeadlineTimeout(qint64 value)
 {
     Q_D(QQmlGrpcChannelOptions);
     std::chrono::milliseconds ms(value);
-    d->m_options.withDeadline(ms);
-    emit deadlineChanged();
+    d->options.setDeadlineTimeout(ms);
+    emit deadlineTimeoutChanged();
 }
 
-const QGrpcChannelOptions &QQmlGrpcChannelOptions::options() const
+const QGrpcChannelOptions &QQmlGrpcChannelOptions::options() const & noexcept
 {
-    return d_func()->m_options;
+    return d_func()->options;
 }
 
 QQmlGrpcMetadata *QQmlGrpcChannelOptions::metadata() const
 {
-    return d_func()->m_metadata;
+    return d_func()->metadata;
 }
 
 void QQmlGrpcChannelOptions::setMetadata(QQmlGrpcMetadata *value)
 {
     Q_D(QQmlGrpcChannelOptions);
-    if (d->m_metadata != value) {
-        d->m_metadata = value;
-        if (d->m_metadata)
-            d->m_options.withMetadata(d->m_metadata->metadata());
-        else
-            d->m_options.withMetadata(QGrpcMetadata());
-        emit metadataChanged();
+    if (d->metadata != value) {
+        if (d->metadataUpdateConnection) {
+            disconnect(d->metadataUpdateConnection);
+            d->metadataUpdateConnection = {};
+        }
+
+        d->metadata = value;
+        if (d->metadata) {
+            const auto updateMetadata = [this]() {
+                Q_D(QQmlGrpcChannelOptions);
+                d->options.setMetadata(d->metadata->metadata());
+                emit metadataChanged();
+            };
+            d->metadataUpdateConnection = connect(d->metadata, &QQmlGrpcMetadata::dataChanged, this,
+                                                  updateMetadata);
+            updateMetadata();
+        }
+    }
+}
+
+QtGrpc::SerializationFormat QQmlGrpcChannelOptions::serializationFormat() const
+{
+    return d_func()->format;
+}
+
+void QQmlGrpcChannelOptions::setSerializationFormat(QtGrpc::SerializationFormat format)
+{
+    Q_D(QQmlGrpcChannelOptions);
+    if (d->format != format) {
+        d->format = format;
+        d->options.setSerializationFormat(format);
+        emit serializationFormatChanged();
     }
 }
 
 #if QT_CONFIG(ssl)
 QQmlSslConfiguration QQmlGrpcChannelOptions::sslConfiguration() const
 {
-    return d_func()->m_configuration;
+    return d_func()->configuration;
 }
 
 void QQmlGrpcChannelOptions::setSslConfiguration(const QQmlSslConfiguration &config)
 {
     Q_D(QQmlGrpcChannelOptions);
-    if (d->m_configuration != config) {
-        d->m_configuration = config;
-        d->m_options.withSslConfiguration(d->m_configuration.configuration());
+    if (d->configuration != config) {
+        d->configuration = config;
+        d->options.setSslConfiguration(d->configuration.configuration());
         emit sslConfigurationChanged();
     }
 }
 #endif // QT_CONFIG(ssl)
 
 QT_END_NAMESPACE
+
+#include "moc_qqmlgrpcchanneloptions_p.cpp"

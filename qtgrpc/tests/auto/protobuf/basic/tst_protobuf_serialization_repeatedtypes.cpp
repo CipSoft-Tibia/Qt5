@@ -13,33 +13,33 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufRepeatedTypesSerializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() {
         m_serializer.reset(new QProtobufSerializer);
     }
-    void RepeatedIntMessageTest();
-    void RepeatedSIntMessageTest();
-    void RepeatedUIntMessageTest();
-    void RepeatedInt64MessageTest();
-    void RepeatedSInt64MessageTest();
-    void RepeatedUInt64MessageTest();
-    void RepeatedFixedIntMessageTest();
-    void RepeatedSFixedIntMessageTest();
-    void RepeatedFixedInt64MessageTest();
-    void RepeatedSFixedInt64MessageTest();
-    void RepeatedStringMessageTest();
-    void RepeatedFloatMessageTest();
-    void RepeatedDoubleMessageTest();
-    void RepeatedBytesMessageTest();
-    void RepeatedComplexMessageTest();
-    void RepeatedBoolMessageTest();
+    void repeatedIntMessageTest();
+    void repeatedSIntMessageTest();
+    void repeatedUIntMessageTest();
+    void repeatedInt64MessageTest();
+    void repeatedSInt64MessageTest();
+    void repeatedUInt64MessageTest();
+    void repeatedFixedIntMessageTest();
+    void repeatedSFixedIntMessageTest();
+    void repeatedFixedInt64MessageTest();
+    void repeatedSFixedInt64MessageTest();
+    void repeatedStringMessageTest();
+    void repeatedFloatMessageTest();
+    void repeatedDoubleMessageTest();
+    void repeatedBytesMessageTest();
+    void repeatedComplexMessageTest();
+    void repeatedBoolMessageTest();
 private:
     std::unique_ptr<QProtobufSerializer> m_serializer;
 };
 
 using namespace qtprotobufnamespace::tests;
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedIntMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedIntMessageTest()
 {
     RepeatedIntMessage test;
     test.setTestRepeatedInt({0, 1, 321, -65999, 123245, -3, 3});
@@ -51,7 +51,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedIntMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedSIntMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedSIntMessageTest()
 {
     RepeatedSIntMessage test;
     test.setTestRepeatedInt({1, 321, -65999, 123245, -3, 3, 0});
@@ -63,7 +63,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedSIntMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedUIntMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedUIntMessageTest()
 {
     RepeatedUIntMessage test;
     test.setTestRepeatedInt({1, 0, 321, 65999, 123245, 3});
@@ -75,7 +75,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedUIntMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedInt64MessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedInt64MessageTest()
 {
     RepeatedInt64Message test;
     test.setTestRepeatedInt({1, 321, -65999, 12324523123123, -3, 0, 3});
@@ -88,7 +88,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedInt64MessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedSInt64MessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedSInt64MessageTest()
 {
     RepeatedSInt64Message test;
     test.setTestRepeatedInt({1, 321, -65999, 12324523123123, 0, -3, 3});
@@ -100,7 +100,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedSInt64MessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedUInt64MessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedUInt64MessageTest()
 {
     RepeatedUInt64Message test;
     test.setTestRepeatedInt({1, 321, 0, 65999, 123245, 123245324235425234, 3});
@@ -112,7 +112,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedUInt64MessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedFixedIntMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedFixedIntMessageTest()
 {
     RepeatedFixedIntMessage test;
     test.setTestRepeatedInt({1, 321, 65999, 12324523, 3, 3, 0});
@@ -124,7 +124,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedFixedIntMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedSFixedIntMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedSFixedIntMessageTest()
 {
     RepeatedSFixedIntMessage test;
     test.setTestRepeatedInt({0, 1, 321, -65999, 12324523, -3, 3});
@@ -137,7 +137,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedSFixedIntMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedFixedInt64MessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedFixedInt64MessageTest()
 {
     RepeatedFixedInt64Message test;
     test.setTestRepeatedInt({1, 321, 65999, 123245324235425234, 3, 3, 0});
@@ -151,7 +151,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedFixedInt64MessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedSFixedInt64MessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedSFixedInt64MessageTest()
 {
     RepeatedSFixedInt64Message test;
     test.setTestRepeatedInt({1, 321, -65999, 123245324235425234, -3, 3, 0});
@@ -165,7 +165,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedSFixedInt64MessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedStringMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedStringMessageTest()
 {
     RepeatedStringMessage test;
     test.setTestRepeatedString({"aaaa","bbbbb","ccc","dddddd","eeeee", ""});
@@ -178,7 +178,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedStringMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedFloatMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedFloatMessageTest()
 {
     RepeatedFloatMessage test;
     test.setTestRepeatedFloat({0.4f, 1.2f, 0.5f, 1.4f, 0.6f});
@@ -191,7 +191,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedFloatMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedDoubleMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedDoubleMessageTest()
 {
     RepeatedDoubleMessage test;
     test.setTestRepeatedDouble({0.1, 0.2, 0.3, 0.4, 0.5});
@@ -205,7 +205,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedDoubleMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedBytesMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedBytesMessageTest()
 {
     RepeatedBytesMessage test;
     test.setTestRepeatedBytes({QByteArray::fromHex("010203040506"),
@@ -229,7 +229,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedBytesMessageTest()
              "0a060102030405060a000a05eaeaeaeaea0a06010203040506"_L1);
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedComplexMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedComplexMessageTest()
 {
     SimpleStringMessage stringMsg;
     stringMsg.setTestFieldString("qwerty");
@@ -247,7 +247,7 @@ void QtProtobufRepeatedTypesSerializationTest::RepeatedComplexMessageTest()
     QVERIFY(result.isEmpty());
 }
 
-void QtProtobufRepeatedTypesSerializationTest::RepeatedBoolMessageTest()
+void QtProtobufRepeatedTypesSerializationTest::repeatedBoolMessageTest()
 {
     RepeatedBoolMessage boolMsg;
     boolMsg.setTestRepeatedBool({ true, true, true, false, false, false, false, false,

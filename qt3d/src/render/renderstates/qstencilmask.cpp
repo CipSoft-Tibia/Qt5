@@ -31,7 +31,7 @@ namespace Qt3DRender {
     \since 5.7
     \ingroup renderstates
     \inqmlmodule Qt3D.Render
-    \instantiates Qt3DRender::QStencilMask
+    \nativetype Qt3DRender::QStencilMask
     \inherits RenderState
 
     A StencilMask type specifies the mask for the stencil test. Mask can be specified
@@ -52,12 +52,12 @@ namespace Qt3DRender {
 */
 
 /*!
-    \property QStencilMask::frontOutputMask
+    \property Qt3DRender::QStencilMask::frontOutputMask
     Holds the write mask for the fragment stencil values for front-facing polygons.
 */
 
 /*!
-    \property QStencilMask::backOutputMask
+    \property Qt3DRender::QStencilMask::backOutputMask
     Holds the write mask for the fragment stencil values for back-facing polygons.
 */
 

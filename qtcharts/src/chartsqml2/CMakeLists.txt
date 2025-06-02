@@ -28,7 +28,6 @@ qt_internal_add_qml_module(ChartsQml
         declarativexyseries.cpp # undef QT_NO_FOREACH
     DEFINES
         QT_BUILD_QMLCHARTS_LIB
-        QT_NO_CONTEXTLESS_CONNECT
     INCLUDE_DIRECTORIES
         ${CMAKE_CURRENT_SOURCE_DIR}
     LIBRARIES
@@ -40,8 +39,6 @@ qt_internal_add_qml_module(ChartsQml
         Qt::Gui
         Qt::Qml
         Qt::Quick
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
 )
 
 qt_internal_extend_target(ChartsQml CONDITION QT_FEATURE_opengl

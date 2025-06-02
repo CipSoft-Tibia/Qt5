@@ -21,6 +21,7 @@ jumbo_source_set("certificate_reader") {
     "//base",
     "//net",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
 source_set("certificate_roots") {
@@ -29,16 +30,24 @@ source_set("certificate_roots") {
     "cast_root_ca_cert_der-inc.h",
     "eureka_root_ca_der-inc.h",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
 jumbo_static_library("certificate") {
   sources = [
+    "cast_cert_printer.cc",
+    "cast_cert_printer.h",
     "cast_cert_validator.cc",
     "cast_cert_validator.h",
     "cast_crl.cc",
     "cast_crl.h",
+    "switches.cc",
+    "switches.h",
   ]
-  configs += [ ":developer_certificate_config" ]
+  configs += [
+    ":developer_certificate_config",
+    "//build/config/compiler:wexit_time_destructors",
+  ]
   deps = [
     ":certificate_roots",
     "//base",
@@ -51,12 +60,6 @@ jumbo_static_library("certificate") {
     # anyway since it doesn't check preprocesser macros.
     ":certificate_reader",
   ]
-  if (cast_allow_developer_certificate) {
-    sources += [
-      "switches.cc",
-      "switches.h",
-    ]
-  }
 }
 
 jumbo_source_set("openscreen_certificate_verifier") {
@@ -72,6 +75,7 @@ jumbo_source_set("openscreen_certificate_verifier") {
     "//net",
     "//third_party/openscreen/src/cast/common:public",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 }
 
 jumbo_static_library("test_support") {

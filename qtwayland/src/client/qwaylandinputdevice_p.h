@@ -65,6 +65,7 @@ class QWaylandTextInputMethod;
 #if QT_CONFIG(cursor)
 class QWaylandCursorTheme;
 class QWaylandCursorShape;
+template <typename T>
 class CursorSurface;
 #endif
 
@@ -83,6 +84,7 @@ public:
     QWaylandInputDevice(QWaylandDisplay *display, int version, uint32_t id);
     ~QWaylandInputDevice() override;
 
+    uint32_t id() const { return mId; }
     uint32_t capabilities() const { return mCaps; }
     QString seatname()  const { return mSeatName; }
 
@@ -144,6 +146,7 @@ protected:
     QWaylandDisplay *mQDisplay = nullptr;
     struct wl_display *mDisplay = nullptr;
 
+    uint32_t mId = -1;
     uint32_t mCaps = 0;
     QString mSeatName;
 
@@ -290,7 +293,7 @@ public:
     void updateCursor();
     void cursorTimerCallback();
     void cursorFrameCallback();
-    CursorSurface *getOrCreateCursorSurface();
+    CursorSurface<QWaylandInputDevice::Pointer> *getOrCreateCursorSurface();
 #endif
     QWaylandInputDevice *seat() const { return mParent; }
 
@@ -332,7 +335,7 @@ public:
         QScopedPointer<QWaylandCursorShape> shape;
         QWaylandCursorTheme *theme = nullptr;
         int themeBufferScale = 0;
-        QScopedPointer<CursorSurface> surface;
+        QScopedPointer<CursorSurface<QWaylandInputDevice::Pointer>> surface;
         QTimer frameTimer;
         bool gotFrameCallback = false;
         bool gotTimerCallback = false;

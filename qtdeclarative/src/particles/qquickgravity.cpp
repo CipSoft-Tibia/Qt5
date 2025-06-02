@@ -8,10 +8,10 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Gravity
-    \instantiates QQuickGravityAffector
+    \nativetype QQuickGravityAffector
     \inqmlmodule QtQuick.Particles
     \ingroup qtquick-particles
-    \inherits Affector
+    \inherits ParticleAffector
     \brief For applying acceleration in an angle.
 
     This element will accelerate all affected particles to a vector of

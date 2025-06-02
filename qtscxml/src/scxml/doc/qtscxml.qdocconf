@@ -7,7 +7,7 @@ version                 = $QT_VERSION
 
 # Install path for the examples
 examplesinstallpath     = scxml
-exampledirs             = ../../../examples/scxml
+exampledirs             = ../../../examples/scxml .
 
 examples.fileextensions += "*.scxml"
 

@@ -24,7 +24,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/modules/skcms/skcms.h"
 
-namespace gl {
+namespace gfx {
 struct HDRMetadata;
 }
 
@@ -132,8 +132,9 @@ TEST(RenderPassIOTest, SharedQuadStateList) {
         transform, gfx::Rect(0, 0, 640, 480), gfx::Rect(10, 10, 600, 400),
         gfx::MaskFilterInfo(gfx::RRectF(gfx::RectF(2.f, 3.f, 4.f, 5.f), 1.5f),
                             gradient_mask),
-        gfx::Rect(5, 20, 1000, 200), false, 0.5f, SkBlendMode::kDstOver, 101);
-    sqs1->is_fast_rounded_corner = true;
+        gfx::Rect(5, 20, 1000, 200), /*contents_opaque=*/false,
+        /*opacity_f=*/0.5f, SkBlendMode::kDstOver, /*sorting_context=*/101,
+        /*layer_id=*/0u, /*fast_rounded_corner=*/true);
   }
   base::Value::Dict dict0 = CompositorRenderPassToDict(*render_pass0);
   auto render_pass1 = CompositorRenderPassFromDict(dict0);
@@ -225,12 +226,11 @@ TEST(RenderPassIOTest, QuadList) {
       // 2. TextureDrawQuad with is_stream_video set to true.
       TextureDrawQuad* quad =
           render_pass0->CreateAndAppendDrawQuad<TextureDrawQuad>();
-      float opacity[] = {1, 1, 1, 1};
       quad->SetAll(render_pass0->shared_quad_state_list.ElementAt(sqs_index),
                    gfx::Rect(10, 10, 300, 400), gfx::Rect(10, 10, 200, 400),
                    false, ResourceId(100), gfx::Size(600, 800), false,
                    gfx::PointF(0.f, 0.f), gfx::PointF(1.f, 1.f),
-                   SkColors::kTransparent, opacity, false, false, false,
+                   SkColors::kTransparent, false, false, false,
                    gfx::ProtectedVideoType::kHardwareProtected);
       quad->is_stream_video = true;
       ++sqs_index;
@@ -268,13 +268,15 @@ TEST(RenderPassIOTest, QuadList) {
       // 5. TextureDrawQuad
       TextureDrawQuad* quad =
           render_pass0->CreateAndAppendDrawQuad<TextureDrawQuad>();
-      float vertex_opacity[4] = {1.f, 0.5f, 0.6f, 1.f};
       quad->SetAll(render_pass0->shared_quad_state_list.ElementAt(sqs_index),
                    gfx::Rect(0, 0, 100, 50), gfx::Rect(0, 0, 100, 50), false,
                    ResourceId(9u), gfx::Size(100, 50), false,
                    gfx::PointF(0.f, 0.f), gfx::PointF(1.f, 1.f),
-                   SkColors::kBlue, vertex_opacity, false, true, false,
+                   SkColors::kBlue, false, true, false,
                    gfx::ProtectedVideoType::kHardwareProtected);
+
+      float vertex_opacity[4] = {1.f, 0.5f, 0.6f, 1.f};
+      quad->set_vertex_opacity(vertex_opacity);
       ++sqs_index;
       ++quad_count;
     }

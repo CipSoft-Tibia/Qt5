@@ -20,7 +20,8 @@ static enum xnn_status create_transpose_operator(
   const struct xnn_value* values,
   size_t num_values,
   struct xnn_operator_data* opdata,
-  const struct xnn_caches* caches)
+  struct xnn_code_cache* code_cache,
+  struct xnn_weights_cache* weights_cache)
 {
   assert(node->num_inputs == 1);
   const uint32_t input_id = node->inputs[0];
@@ -28,9 +29,6 @@ static enum xnn_status create_transpose_operator(
   assert(input_id < num_values);
 
   assert(node->num_outputs == 1);
-  const uint32_t output_id = node->outputs[0];
-  assert(output_id != XNN_INVALID_VALUE_ID);
-  assert(output_id < num_values);
 
   enum xnn_status status;
   switch (node->compute_type) {
@@ -49,8 +47,6 @@ static enum xnn_status create_transpose_operator(
   }
 
   if (status == xnn_status_success) {
-    opdata->inputs[0] = input_id;
-    opdata->outputs[0] = output_id;
     opdata->shape1.num_dims = node->params.transpose.num_dims;
     opdata->shape2.num_dims = node->params.transpose.num_dims;
     memcpy(opdata->shape1.dim, values[input_id].shape.dim, opdata->shape1.num_dims * sizeof(size_t));
@@ -60,26 +56,68 @@ static enum xnn_status create_transpose_operator(
   return status;
 }
 
+static enum xnn_status reshape_transpose_operator(
+  struct xnn_operator_data* opdata,
+  struct xnn_value* values,
+  size_t num_values,
+  pthreadpool_t threadpool)
+{
+  enum xnn_status status;
+   switch (opdata->operator_objects[0]->type) {
+    case xnn_operator_type_transpose_nd_x16: {
+      status = xnn_reshape_transpose_nd_x16(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->shape2.dim,
+        threadpool);
+      break;
+    }
+    case xnn_operator_type_transpose_nd_x32: {
+      status = xnn_reshape_transpose_nd_x32(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->shape2.dim,
+        threadpool);
+      break;
+    }
+    case xnn_operator_type_transpose_nd_x8: {
+      status = xnn_reshape_transpose_nd_x8(
+        opdata->operator_objects[0],
+        opdata->shape1.num_dims,
+        opdata->shape1.dim,
+        opdata->shape2.dim,
+        threadpool);
+      break;
+    }
+    default:
+      XNN_UNREACHABLE;
+  }
+
+  return status;
+}
+
 static enum xnn_status setup_transpose_operator(
   const struct xnn_operator_data* opdata,
-  const struct xnn_blob* blobs,
-  size_t num_blobs,
+  const struct xnn_value* values,
+  size_t num_values,
   pthreadpool_t threadpool)
 {
   const uint32_t input_id = opdata->inputs[0];
   assert(input_id != XNN_INVALID_VALUE_ID);
-  assert(input_id < num_blobs);
+  assert(input_id < num_values);
 
   const uint32_t output_id = opdata->outputs[0];
   assert(output_id != XNN_INVALID_VALUE_ID);
-  assert(output_id < num_blobs);
+  assert(output_id < num_values);
 
-  const struct xnn_blob* input_blob = blobs + input_id;
-  const void* input_data = input_blob->data;
+  const struct xnn_value* input_value = values + input_id;
+  const void* input_data = input_value->data;
   assert(input_data != NULL);
 
-  const struct xnn_blob* output_blob = blobs + output_id;
-  void* output_data = output_blob->data;
+  const struct xnn_value* output_value = values + output_id;
+  void* output_data = output_value->data;
   assert(output_data != NULL);
 
   enum xnn_status status;
@@ -88,33 +126,21 @@ static enum xnn_status setup_transpose_operator(
       status = xnn_setup_transpose_nd_x16(
         opdata->operator_objects[0],
         input_data,
-        output_data,
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->shape2.dim,
-        threadpool);
+        output_data);
       break;
     }
     case xnn_operator_type_transpose_nd_x32: {
       status = xnn_setup_transpose_nd_x32(
         opdata->operator_objects[0],
         input_data,
-        output_data,
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->shape2.dim,
-        threadpool);
+        output_data);
       break;
     }
     case xnn_operator_type_transpose_nd_x8: {
       status = xnn_setup_transpose_nd_x8(
         opdata->operator_objects[0],
         input_data,
-        output_data,
-        opdata->shape1.num_dims,
-        opdata->shape1.dim,
-        opdata->shape2.dim,
-        threadpool);
+        output_data);
       break;
     }
     default:
@@ -246,6 +272,7 @@ enum xnn_status xnn_define_static_transpose(
 
   node->params.transpose.num_dims = num_dims;
   node->create = create_transpose_operator;
+  node->reshape = reshape_transpose_operator;
   node->setup = setup_transpose_operator;
 
   memcpy(node->params.transpose.perm, perm, num_dims * sizeof(size_t));

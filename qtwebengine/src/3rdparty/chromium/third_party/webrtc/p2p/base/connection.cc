@@ -13,6 +13,7 @@
 #include <math.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -21,6 +22,9 @@
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "api/array_view.h"
+#include "api/units/timestamp.h"
 #include "p2p/base/port_allocator.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/crc32.h"
@@ -246,6 +250,7 @@ Connection::Connection(rtc::WeakPtr<Port> port,
 Connection::~Connection() {
   RTC_DCHECK_RUN_ON(network_thread_);
   RTC_DCHECK(!port_);
+  RTC_DCHECK(!received_packet_callback_);
 }
 
 webrtc::TaskQueueBase* Connection::network_thread() const {
@@ -262,14 +267,17 @@ const Candidate& Connection::remote_candidate() const {
 }
 
 const rtc::Network* Connection::network() const {
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in network()";
   return port()->Network();
 }
 
 int Connection::generation() const {
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in generation()";
   return port()->generation();
 }
 
 uint64_t Connection::priority() const {
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in priority()";
   if (!port_)
     return 0;
 
@@ -442,22 +450,42 @@ void Connection::OnSendStunPacket(const void* data,
   }
 }
 
+void Connection::RegisterReceivedPacketCallback(
+    absl::AnyInvocable<void(Connection*, const rtc::ReceivedPacket&)>
+        received_packet_callback) {
+  RTC_DCHECK_RUN_ON(network_thread_);
+  RTC_CHECK(!received_packet_callback_);
+  received_packet_callback_ = std::move(received_packet_callback);
+}
+
+void Connection::DeregisterReceivedPacketCallback() {
+  RTC_DCHECK_RUN_ON(network_thread_);
+  received_packet_callback_ = nullptr;
+}
+
 void Connection::OnReadPacket(const char* data,
                               size_t size,
                               int64_t packet_time_us) {
+  OnReadPacket(
+      rtc::ReceivedPacket::CreateFromLegacy(data, size, packet_time_us));
+}
+void Connection::OnReadPacket(const rtc::ReceivedPacket& packet) {
   RTC_DCHECK_RUN_ON(network_thread_);
   std::unique_ptr<IceMessage> msg;
   std::string remote_ufrag;
   const rtc::SocketAddress& addr(remote_candidate_.address());
-  if (!port_->GetStunMessage(data, size, addr, &msg, &remote_ufrag)) {
+  if (!port_->GetStunMessage(
+          reinterpret_cast<const char*>(packet.payload().data()),
+          packet.payload().size(), addr, &msg, &remote_ufrag)) {
     // The packet did not parse as a valid STUN message
     // This is a data packet, pass it along.
     last_data_received_ = rtc::TimeMillis();
     UpdateReceiving(last_data_received_);
-    recv_rate_tracker_.AddSamples(size);
+    recv_rate_tracker_.AddSamples(packet.payload().size());
     stats_.packets_received++;
-    SignalReadPacket(this, data, size, packet_time_us);
-
+    if (received_packet_callback_) {
+      received_packet_callback_(this, packet);
+    }
     // If timed out sending writability checks, start up again
     if (!pruned_ && (write_state_ == STATE_WRITE_TIMEOUT)) {
       RTC_LOG(LS_WARNING)
@@ -562,10 +590,8 @@ void Connection::HandleStunBindingOrGoogPingRequest(IceMessage* msg) {
   // This connection should now be receiving.
   ReceivedPing(msg->transaction_id());
   if (field_trials_->extra_ice_ping && last_ping_response_received_ == 0) {
-    if (local_candidate().type() == RELAY_PORT_TYPE ||
-        local_candidate().type() == PRFLX_PORT_TYPE ||
-        remote_candidate().type() == RELAY_PORT_TYPE ||
-        remote_candidate().type() == PRFLX_PORT_TYPE) {
+    if (local_candidate().is_relay() || local_candidate().is_prflx() ||
+        remote_candidate().is_relay() || remote_candidate().is_prflx()) {
       const int64_t now = rtc::TimeMillis();
       if (last_ping_sent_ + kMinExtraPingDelayMs <= now) {
         RTC_LOG(LS_INFO) << ToString()
@@ -806,13 +832,14 @@ void Connection::Prune() {
 
 void Connection::Destroy() {
   RTC_DCHECK_RUN_ON(network_thread_);
-  RTC_DCHECK(port_) << "Calling Destroy() twice?";
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in Destroy()";
   if (port_)
     port_->DestroyConnection(this);
 }
 
 bool Connection::Shutdown() {
   RTC_DCHECK_RUN_ON(network_thread_);
+  RTC_DCHECK(port_) << ToDebugId() << ": Calling Shutdown() twice?";
   if (!port_)
     return false;  // already shut down.
 
@@ -832,6 +859,9 @@ bool Connection::Shutdown() {
   // information required for logging needs access to `port_`.
   port_.reset();
 
+  // Clear any pending requests (or responses).
+  requests_.Clear();
+
   return true;
 }
 
@@ -846,6 +876,7 @@ void Connection::FailAndPrune() {
   // will be nulled.
   // In such a case, there's a chance that the Port object gets
   // deleted before the Connection object ends up being deleted.
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in FailAndPrune()";
   if (!port_)
     return;
 
@@ -882,6 +913,7 @@ void Connection::set_selected(bool selected) {
 
 void Connection::UpdateState(int64_t now) {
   RTC_DCHECK_RUN_ON(network_thread_);
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in UpdateState()";
   if (!port_)
     return;
 
@@ -958,6 +990,7 @@ int64_t Connection::last_ping_sent() const {
 void Connection::Ping(int64_t now,
                       std::unique_ptr<StunByteStringAttribute> delta) {
   RTC_DCHECK_RUN_ON(network_thread_);
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in Ping()";
   if (!port_)
     return;
 
@@ -1251,11 +1284,13 @@ std::string Connection::ToDebugId() const {
 
 uint32_t Connection::ComputeNetworkCost() const {
   // TODO(honghaiz): Will add rtt as part of the network cost.
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in ComputeNetworkCost()";
   return port()->network_cost() + remote_candidate_.network_cost();
 }
 
 std::string Connection::ToString() const {
   RTC_DCHECK_RUN_ON(network_thread_);
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in ToString()";
   constexpr absl::string_view CONNECT_STATE_ABBREV[2] = {
       "-",  // not connected (false)
       "C",  // connected (true)
@@ -1457,6 +1492,8 @@ void Connection::OnConnectionRequestResponse(StunRequest* request,
 
 void Connection::OnConnectionRequestErrorResponse(ConnectionRequest* request,
                                                   StunMessage* response) {
+  RTC_DCHECK(port_) << ToDebugId()
+                    << ": port_ null in OnConnectionRequestErrorResponse";
   if (!port_)
     return;
 
@@ -1540,8 +1577,7 @@ void Connection::MaybeSetRemoteIceParametersAndGeneration(
 
 void Connection::MaybeUpdatePeerReflexiveCandidate(
     const Candidate& new_candidate) {
-  if (remote_candidate_.type() == PRFLX_PORT_TYPE &&
-      new_candidate.type() != PRFLX_PORT_TYPE &&
+  if (remote_candidate_.is_prflx() && !new_candidate.is_prflx() &&
       remote_candidate_.protocol() == new_candidate.protocol() &&
       remote_candidate_.address() == new_candidate.address() &&
       remote_candidate_.username() == new_candidate.username() &&
@@ -1610,6 +1646,8 @@ ConnectionInfo Connection::stats() {
 
 void Connection::MaybeUpdateLocalCandidate(StunRequest* request,
                                            StunMessage* response) {
+  RTC_DCHECK(port_) << ToDebugId()
+                    << ": port_ null in MaybeUpdateLocalCandidate";
   if (!port_)
     return;
 
@@ -1754,6 +1792,7 @@ ProxyConnection::ProxyConnection(rtc::WeakPtr<Port> port,
 int ProxyConnection::Send(const void* data,
                           size_t size,
                           const rtc::PacketOptions& options) {
+  RTC_DCHECK(port_) << ToDebugId() << ": port_ null in Send()";
   if (!port_)
     return SOCKET_ERROR;
 

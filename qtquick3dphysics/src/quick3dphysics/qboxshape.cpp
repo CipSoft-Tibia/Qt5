@@ -27,6 +27,8 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmlproperty vector3d BoxShape::extents
     This property defines the extents of the box in the x, y and z directions.
+
+    Default value: \c{(100, 100, 100)}
 */
 
 QBoxShape::QBoxShape() = default;

@@ -11,6 +11,7 @@ qt_internal_add_module(AxBasePrivate
     SOURCES
         qaxtypefunctions.cpp qaxtypefunctions_p.h
         qaxutils.cpp qaxutils_p.h
+        qbstr_p.h
     LIBRARIES
         advapi32
         gdi32
@@ -23,6 +24,8 @@ qt_internal_add_module(AxBasePrivate
         Qt::Gui
         Qt::GuiPrivate
         Qt::Widgets
+    NO_GENERATE_CPP_EXPORTS
+    QT_LICENSE_ID QT_COMMERCIAL_OR_BSD3
 )
 
 ## Scopes:

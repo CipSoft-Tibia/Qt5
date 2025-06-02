@@ -479,11 +479,16 @@ public:
 protected:
     T getValue(const QJsonArray &value) override
     {
-        if (value.count() > 3)
-            return T(value.at(0).toDouble(), value.at(1).toDouble(),
-                     value.at(2).toDouble(), value.at(3).toDouble());
-        else
+        if (value.count() >= 3) {
+            // Assuming color value, so limit values to [0, 1] and default alpha to 1.
+            qreal x = qBound(qreal(0), value.at(0).toDouble(), qreal(1));
+            qreal y = qBound(qreal(0), value.at(1).toDouble(), qreal(1));
+            qreal z = qBound(qreal(0), value.at(2).toDouble(), qreal(1));
+            qreal w = value.count() > 3 ? qBound(qreal(0), value.at(3).toDouble(), qreal(1)) : 1;
+            return T(x, y, z, w);
+        } else {
             return T();
+        }
     }
 };
 

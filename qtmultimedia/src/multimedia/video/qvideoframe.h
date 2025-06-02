@@ -25,6 +25,7 @@ QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QVideoFramePrivate, Q_MULTIMEDI
 
 class Q_MULTIMEDIA_EXPORT QVideoFrame
 {
+    Q_GADGET
 public:
 
     enum HandleType
@@ -40,6 +41,7 @@ public:
         WriteOnly = 0x02,
         ReadWrite = ReadOnly | WriteOnly
     };
+    Q_ENUM(MapMode)
 
 #if QT_DEPRECATED_SINCE(6, 7)
     enum RotationAngle
@@ -53,6 +55,8 @@ public:
 
     QVideoFrame();
     QVideoFrame(const QVideoFrameFormat &format);
+    explicit QVideoFrame(const QImage &image);
+    explicit QVideoFrame(std::unique_ptr<QAbstractVideoBuffer> videoBuffer);
     QVideoFrame(const QVideoFrame &other);
     ~QVideoFrame();
 
@@ -113,6 +117,9 @@ public:
     void setMirrored(bool);
     bool mirrored() const;
 
+    void setStreamFrameRate(qreal rate);
+    qreal streamFrameRate() const;
+
     QImage toImage() const;
 
     struct PaintOptions {
@@ -130,9 +137,13 @@ public:
 
     void paint(QPainter *painter, const QRectF &rect, const PaintOptions &options);
 
+#if QT_DEPRECATED_SINCE(6, 8)
+    QT_DEPRECATED_VERSION_X_6_8("The constructor is internal and deprecated")
     QVideoFrame(QAbstractVideoBuffer *buffer, const QVideoFrameFormat &format);
 
+    QT_DEPRECATED_VERSION_X_6_8("The method is internal and deprecated")
     QAbstractVideoBuffer *videoBuffer() const;
+#endif
 private:
     friend class QVideoFramePrivate;
     QExplicitlySharedDataPointer<QVideoFramePrivate> d;

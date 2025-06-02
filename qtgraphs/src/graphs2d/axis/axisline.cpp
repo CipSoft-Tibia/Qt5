@@ -11,6 +11,8 @@ AxisLine::AxisLine(QQuickItem *parent) :
 
 }
 
+AxisLine::~AxisLine() {}
+
 void AxisLine::componentComplete()
 {
     QQuickShaderEffect::componentComplete();
@@ -59,7 +61,7 @@ QColor AxisLine::color() const
     return m_color;
 }
 
-void AxisLine::setColor(const QColor &newColor)
+void AxisLine::setColor(QColor newColor)
 {
     if (m_color == newColor)
         return;

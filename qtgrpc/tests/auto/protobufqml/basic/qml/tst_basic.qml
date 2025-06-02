@@ -161,8 +161,8 @@ Item {
                         },
                         {
                             tag: "ComplexMessage testComplexField exact invalid type",
-                            field: complexMsgNoInit.testComplexField as simpleSIntMessage,
-                            answer: null
+                            field: complexMsgNoInit.testComplexField as simpleSIntMessage == undefined,
+                            answer: true
                         },
                         {
                             tag: "ComplexMessage testComplexField.testFieldString type",
@@ -1455,8 +1455,8 @@ Item {
         }
 
         function test_basicTypesInc_ImplicitJSValueConversion(data) {
-            verify(data.field == data.answer, "Incrementation error: "
-                   + data.field + " != " + data.answer)
+                verify(data.field == data.answer, "Incrementation error: "
+                       + data.field + " != " + data.answer)
         }
     }
 

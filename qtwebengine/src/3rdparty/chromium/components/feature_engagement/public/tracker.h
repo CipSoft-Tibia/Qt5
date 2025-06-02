@@ -16,6 +16,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
+#include "components/feature_engagement/public/configuration.h"
 #include "components/feature_engagement/public/configuration_provider.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
@@ -168,6 +169,22 @@ class Tracker : public KeyedService, public base::SupportsUserData {
 
   // Must be called whenever an event happens.
   virtual void NotifyEvent(const std::string& event) = 0;
+
+#if !BUILDFLAG(IS_ANDROID)
+  // Notifies that the "used" event for `feature` has happened.
+  virtual void NotifyUsedEvent(const base::Feature& feature) = 0;
+
+  // Erases all event data associated with a particular `feature`, including -
+  // but not limited to - trigger and used event data.
+  //
+  // This method is used by specific internals and test code.
+  virtual void ClearEventData(const base::Feature& feature) = 0;
+
+  // Retrieves information about each event condition and event count associated
+  // with a feature. The count will reflect the time window in EventConfig.
+  using EventList = std::vector<std::pair<EventConfig, int>>;
+  virtual EventList ListEvents(const base::Feature& feature) const = 0;
+#endif
 
   // This function must be called whenever the triggering condition for a
   // specific feature happens. Returns true iff the display of the in-product

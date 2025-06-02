@@ -18,6 +18,7 @@
 
 import os
 from generators.base_generator import BaseGenerator
+from generators.generator_utils import PlatformGuardHelper
 
 # If there is another success code other than VK_SUCCESS
 def hasNonVkSuccess(successCodes: list[str]) -> bool:
@@ -42,6 +43,7 @@ class BestPracticesOutputGenerator(BaseGenerator):
         # Commands that require an extra parameter for state sharing between validate/record steps
         self.extra_parameter_list = [
             "vkCreateShaderModule",
+            "vkCreateShadersEXT",
             "vkCreateGraphicsPipelines",
             "vkCreateComputePipelines",
             "vkAllocateDescriptorSets",
@@ -72,26 +74,26 @@ class BestPracticesOutputGenerator(BaseGenerator):
 
     def generate(self):
         self.write(f'''// *** THIS FILE IS GENERATED - DO NOT EDIT ***
-// See {os.path.basename(__file__)} for modifications
+            // See {os.path.basename(__file__)} for modifications
 
-/***************************************************************************
-*
-* Copyright (c) 2015-2023 The Khronos Group Inc.
-* Copyright (c) 2015-2023 Valve Corporation
-* Copyright (c) 2015-2023 LunarG, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-****************************************************************************/\n''')
+            /***************************************************************************
+            *
+            * Copyright (c) 2015-2023 The Khronos Group Inc.
+            * Copyright (c) 2015-2023 Valve Corporation
+            * Copyright (c) 2015-2023 LunarG, Inc.
+            *
+            * Licensed under the Apache License, Version 2.0 (the "License");
+            * you may not use this file except in compliance with the License.
+            * You may obtain a copy of the License at
+            *
+            *     http://www.apache.org/licenses/LICENSE-2.0
+            *
+            * Unless required by applicable law or agreed to in writing, software
+            * distributed under the License is distributed on an "AS IS" BASIS,
+            * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            * See the License for the specific language governing permissions and
+            * limitations under the License.
+            ****************************************************************************/\n''')
         self.write('// NOLINTBEGIN') # Wrap for clang-tidy to ignore
 
         # Build additional pass of functions to ignore
@@ -115,22 +117,23 @@ class BestPracticesOutputGenerator(BaseGenerator):
     def generateHeader(self):
         out = []
         out.append('''
-#pragma once
-#include <vulkan/vulkan_core.h>
-#include "containers/custom_containers.h"
-#include "error_message/record_object.h"
-''')
+            #pragma once
+            #include <vulkan/vulkan_core.h>
+            #include "containers/custom_containers.h"
+            #include "error_message/record_object.h"
+            ''')
+        guard_helper = PlatformGuardHelper()
         # List all Function declarations
         for command in [x for x in self.vk.commands.values() if x.name not in self.no_autogen_list]:
-            out.extend([f'#ifdef {command.protect}\n'] if command.protect else [])
+            out.extend(guard_helper.add_guard(command.protect))
             prototype = command.cPrototype.split("VKAPI_CALL ")[1]
             prototype = f'void PostCallRecord{prototype[2:]}'
-            prototype = prototype.replace(');', ',\n    const RecordObject&                         record_obj) {\n')
+            prototype = prototype.replace(');', ', const RecordObject& record_obj) {\n')
             prototype = prototype.replace(') {', ') override;\n')
             if command.name in self.extra_parameter_list:
-                prototype = prototype.replace(')', ',\n    void*                                       state_data)')
+                prototype = prototype.replace(')', ', void* state_data)')
             out.append(prototype)
-            out.extend([f'#endif // {command.protect}\n'] if command.protect else [])
+        out.extend(guard_helper.add_guard(None))
 
         # Create deprecated extension map
         out.append('const vvl::unordered_map<std::string, DeprecationData>  deprecated_extensions = {\n')
@@ -159,11 +162,12 @@ class BestPracticesOutputGenerator(BaseGenerator):
         self.write("".join(out))
 
     def generateSource(self):
+        guard_helper = PlatformGuardHelper()
         out = []
         out.append('''
-#include "chassis.h"
-#include "best_practices/best_practices_validation.h"
-''')
+            #include "chassis.h"
+            #include "best_practices/best_practices_validation.h"
+            ''')
         for command in [x for x in self.vk.commands.values() if x.name not in self.no_autogen_list]:
             paramList = [param.name for param in command.params]
             paramList.append('record_obj')
@@ -171,31 +175,38 @@ class BestPracticesOutputGenerator(BaseGenerator):
                 paramList.append('state_data')
             params = ', '.join(paramList)
 
-            out.append('\n')
-            out.extend([f'#ifdef {command.protect}\n'] if command.protect else [])
+            out.extend(guard_helper.add_guard(command.protect, extra_newline=True))
             prototype = command.cPrototype.split("VKAPI_CALL ")[1]
             prototype = f'void BestPractices::PostCallRecord{prototype[2:]}'
-            prototype = prototype.replace(');', ',\n    const RecordObject&                         record_obj) {\n')
+            prototype = prototype.replace(');', ', const RecordObject& record_obj) {\n')
             if command.name in self.extra_parameter_list:
-                prototype = prototype.replace(')', ',\n    void*                                       state_data)')
+                prototype = prototype.replace(')', ', void* state_data)')
             out.append(prototype)
 
-            out.append(f'    ValidationStateTracker::PostCallRecord{command.name[2:]}({params});\n')
-            if command.name in self.manual_postcallrecord_list:
-                out.append(f'    ManualPostCallRecord{command.name[2:]}({params});\n')
+            if command.alias:
+                # For alias that are promoted, just point to new function, RecordObject will allow us to distinguish the caller
+                paramList = [param.name for param in command.params]
+                paramList.append('record_obj')
+                params = ', '.join(paramList)
+                out.append(f'PostCallRecord{command.alias[2:]}({params});')
+            else:
+                out.append(f'ValidationStateTracker::PostCallRecord{command.name[2:]}({params});\n')
+                if command.name in self.manual_postcallrecord_list:
+                    out.append(f'ManualPostCallRecord{command.name[2:]}({params});\n')
 
-            if hasNonVkSuccess(command.successCodes):
-                out.append('    if (record_obj.result > VK_SUCCESS) {\n')
-                results = [ x for x in command.successCodes if x != 'VK_SUCCESS' ]
-                out.append(f'        LogPositiveSuccessCode(record_obj); // {", ".join(results)}\n')
-                out.append('        return;\n')
-                out.append('    }\n')
+                if hasNonVkSuccess(command.successCodes):
+                    out.append('''
+                        if (record_obj.result > VK_SUCCESS) {
+                            LogPositiveSuccessCode(record_obj);
+                            return;
+                        }''')
 
-            if command.errorCodes is not None:
-                out.append('    if (record_obj.result < VK_SUCCESS) {\n')
-                out.append(f'        LogErrorCode(record_obj); // {", ".join(command.errorCodes)}\n')
-                out.append('    }\n')
+                if command.errorCodes is not None:
+                    out.append('''
+                        if (record_obj.result < VK_SUCCESS) {
+                            LogErrorCode(record_obj);
+                        }''')
 
             out.append('}\n')
-            out.extend([f'#endif // {command.protect}\n'] if command.protect else [])
+        out.extend(guard_helper.add_guard(None, extra_newline=True))
         self.write(''.join(out))

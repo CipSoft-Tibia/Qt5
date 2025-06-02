@@ -140,7 +140,7 @@ void BMFreeFormShape::buildShape(const QJsonObject &shape)
 
     m_path.setFillRule(Qt::WindingFill);
 
-    if (m_direction)
+    if (hasReversedDirection())
         m_path = m_path.toReversed();
 }
 
@@ -201,7 +201,7 @@ void BMFreeFormShape::buildShape(int frame)
 
         m_path.setFillRule(Qt::WindingFill);
 
-        if (m_direction)
+        if (hasReversedDirection())
             m_path = m_path.toReversed();
     }
 }

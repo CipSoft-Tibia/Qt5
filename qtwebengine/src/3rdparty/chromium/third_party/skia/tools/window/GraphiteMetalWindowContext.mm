@@ -15,8 +15,9 @@
 #include "include/gpu/graphite/mtl/MtlBackendContext.h"
 #include "include/gpu/graphite/mtl/MtlGraphiteTypes.h"
 #include "include/gpu/graphite/mtl/MtlGraphiteUtils.h"
+#include "include/private/gpu/graphite/ContextOptionsPriv.h"
 #include "src/base/SkMathPriv.h"
-#include "tools/ToolUtils.h"
+#include "tools/GpuToolUtils.h"
 #include "tools/window/GraphiteMetalWindowContext.h"
 
 using skwindow::DisplayParams;
@@ -53,12 +54,14 @@ void GraphiteMetalWindowContext::initializeContext() {
     fValid = this->onInitializeContext();
 
     skgpu::graphite::MtlBackendContext backendContext = {};
-    backendContext.fDevice.retain((skgpu::graphite::MtlHandle)fDevice.get());
-    backendContext.fQueue.retain((skgpu::graphite::MtlHandle)fQueue.get());
+    backendContext.fDevice.retain((CFTypeRef)fDevice.get());
+    backendContext.fQueue.retain((CFTypeRef)fQueue.get());
 
-    skgpu::graphite::ContextOptions contextOptions;
-    contextOptions.fStoreContextRefInRecorder = true;
-    fGraphiteContext = skgpu::graphite::ContextFactory::MakeMetal(backendContext, contextOptions);
+    fDisplayParams.fGraphiteContextOptions.fOptions.fDisableCachedGlyphUploads = true;
+    // Needed to make synchronous readPixels work:
+    fDisplayParams.fGraphiteContextOptions.fPriv.fStoreContextRefInRecorder = true;
+    fGraphiteContext = skgpu::graphite::ContextFactory::MakeMetal(
+            backendContext, fDisplayParams.fGraphiteContextOptions.fOptions);
     fGraphiteRecorder = fGraphiteContext->makeRecorder(ToolUtils::CreateTestingRecorderOptions());
     // TODO
 //    if (!fGraphiteContext && fDisplayParams.fMSAASampleCount > 1) {
@@ -91,14 +94,14 @@ sk_sp<SkSurface> GraphiteMetalWindowContext::getBackbufferSurface() {
     }
 
     skgpu::graphite::BackendTexture backendTex(this->dimensions(),
-                                               (skgpu::graphite::MtlHandle)currentDrawable.texture);
+                                               (CFTypeRef)currentDrawable.texture);
 
     surface = SkSurfaces::WrapBackendTexture(this->graphiteRecorder(),
                                              backendTex,
                                              kBGRA_8888_SkColorType,
                                              fDisplayParams.fColorSpace,
                                              &fDisplayParams.fSurfaceProps);
-    fDrawableHandle = CFRetain((skgpu::graphite::MtlHandle) currentDrawable);
+    fDrawableHandle = CFRetain((CFTypeRef) currentDrawable);
 
     return surface;
 }

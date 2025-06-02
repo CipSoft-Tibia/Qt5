@@ -1,3 +1,4 @@
+#include "./centipede/binary_info.h"
 // Copyright 2022 The Centipede Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +21,7 @@
 #include <string_view>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "./centipede/blob_file.h"
 #include "./centipede/centipede_callbacks.h"
 #include "./centipede/command.h"
@@ -28,10 +30,14 @@
 #include "./centipede/coverage.h"
 #include "./centipede/defs.h"
 #include "./centipede/environment.h"
+#include "./centipede/feature.h"
+#include "./centipede/feature_set.h"
+#include "./centipede/pc_info.h"
 #include "./centipede/runner_result.h"
 #include "./centipede/rusage_profiler.h"
 #include "./centipede/stats.h"
 #include "./centipede/symbol_table.h"
+#include "./centipede/workdir.h"
 
 namespace centipede {
 
@@ -53,14 +59,12 @@ class Centipede {
   void FuzzingLoop();
 
   // Saves the sharded corpus into `dir`, one file per input.
-  static void SaveCorpusToLocalDir(const Environment &env,
-                                   std::string_view dir);
+  static void CorpusToFiles(const Environment &env, std::string_view dir);
   // Exports the corpus from `dir` (one file per input) into the sharded corpus.
   // Reads `dir` recursively.
   // Ignores inputs that already exist in the shard they need to be added to.
   // Sharding is stable and depends only on env.total_shards and the file name.
-  static void ExportCorpusFromLocalDir(const Environment &env,
-                                       std::string_view dir);
+  static void CorpusFromFiles(const Environment &env, std::string_view dir);
 
  private:
   // Executes inputs from `input_vec`.
@@ -159,6 +163,8 @@ class Centipede {
   size_t AddPcPairFeatures(FeatureVec &fv);
 
   const Environment &env_;
+  const WorkDir wd_{env_};
+
   CentipedeCallbacks &user_callbacks_;
   Rng rng_;
 

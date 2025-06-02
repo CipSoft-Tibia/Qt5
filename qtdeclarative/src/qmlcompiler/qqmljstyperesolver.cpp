@@ -31,6 +31,7 @@ QQmlJSTypeResolver::QQmlJSTypeResolver(QQmlJSImporter *importer)
       m_trackedTypes(std::make_unique<QHash<QQmlJSScope::ConstPtr, TrackedType>>())
 {
     const QQmlJSImporter::ImportedTypes &builtinTypes = m_imports;
+
     m_voidType = builtinTypes.type(u"void"_s).scope;
     assertExtension(m_voidType, "undefined"_L1);
 
@@ -66,6 +67,12 @@ QQmlJSTypeResolver::QQmlJSTypeResolver(QQmlJSImporter *importer)
 
     m_uint64Type = builtinTypes.type(u"qulonglong"_s).scope;
     Q_ASSERT(m_uint64Type);
+
+    m_sizeType = builtinTypes.type(u"qsizetype"_s).scope;
+    assertExtension(m_sizeType, "Number"_L1);
+
+    // qsizetype is either a 32bit or a 64bit signed integer. We don't want to special-case it.
+    Q_ASSERT(m_sizeType == m_int32Type || m_sizeType == m_int64Type);
 
     m_boolType = builtinTypes.type(u"bool"_s).scope;
     assertExtension(m_boolType, "Boolean"_L1);
@@ -169,7 +176,7 @@ void QQmlJSTypeResolver::init(QQmlJSImportVisitor *visitor, QQmlJS::AST::Node *p
 
     m_objectsById.clear();
     m_objectsByLocation.clear();
-    m_imports.clearTypes();
+    m_imports.clear();
     m_signalHandlers.clear();
 
     if (program)
@@ -179,6 +186,17 @@ void QQmlJSTypeResolver::init(QQmlJSImportVisitor *visitor, QQmlJS::AST::Node *p
     m_objectsByLocation = visitor->scopesBylocation();
     m_signalHandlers = visitor->signalHandlers();
     m_imports = visitor->imports();
+    m_seenModuleQualifiers = visitor->seenModuleQualifiers();
+}
+
+QQmlJSScope::ConstPtr QQmlJSTypeResolver::mathObject() const
+{
+    return jsGlobalObject()->property(u"Math"_s).type();
+}
+
+QQmlJSScope::ConstPtr QQmlJSTypeResolver::consoleObject() const
+{
+    return jsGlobalObject()->property(u"console"_s).type();
 }
 
 QQmlJSScope::ConstPtr
@@ -322,13 +340,12 @@ bool QQmlJSTypeResolver::isIntegral(const QQmlJSRegisterContent &type) const
 
 bool QQmlJSTypeResolver::isIntegral(const QQmlJSScope::ConstPtr &type) const
 {
-    // Only types of length <= 32bit count as integral
     return isSignedInteger(type) || isUnsignedInteger(type);
 }
 
 bool QQmlJSTypeResolver::isPrimitive(const QQmlJSScope::ConstPtr &type) const
 {
-    return isNumeric(type)
+    return (isNumeric(type) && !equals(type, m_int64Type) && !equals(type, m_uint64Type))
             || equals(type, m_boolType) || equals(type, m_voidType) || equals(type, m_nullType)
             || equals(type, m_stringType) || equals(type, m_jsPrimitiveType);
 }
@@ -345,18 +362,28 @@ bool QQmlJSTypeResolver::isNumeric(const QQmlJSScope::ConstPtr &type) const
 
 bool QQmlJSTypeResolver::isSignedInteger(const QQmlJSScope::ConstPtr &type) const
 {
-    // Only types of length <= 32bit count as integral
     return equals(type, m_int8Type)
             || equals(type, m_int16Type)
-            || equals(type, m_int32Type);
+            || equals(type, m_int32Type)
+            || equals(type, m_int64Type);
 }
 
 bool QQmlJSTypeResolver::isUnsignedInteger(const QQmlJSScope::ConstPtr &type) const
 {
-    // Only types of length <= 32bit count as integral
     return equals(type, m_uint8Type)
             || equals(type, m_uint16Type)
-            || equals(type, m_uint32Type);
+            || equals(type, m_uint32Type)
+            || equals(type, m_uint64Type);
+}
+
+bool QQmlJSTypeResolver::isNativeArrayIndex(const QQmlJSScope::ConstPtr &type) const
+{
+    return (equals(type, m_uint8Type)
+            || equals(type, m_int8Type)
+            || equals(type, m_uint16Type)
+            || equals(type, m_int16Type)
+            || equals(type, m_uint32Type)
+            || equals(type, m_int32Type));
 }
 
 QQmlJSScope::ConstPtr
@@ -763,14 +790,18 @@ QQmlJSScope::ConstPtr QQmlJSTypeResolver::merge(const QQmlJSScope::ConstPtr &a,
         return b;
 
     const auto isInt32Compatible = [&](const QQmlJSScope::ConstPtr &type) {
-        return (isIntegral(type) && !equals(type, uint32Type())) || equals(type, boolType());
+        return (isIntegral(type)
+                    && !equals(type, uint32Type())
+                    && !equals(type, int64Type())
+                    && !equals(type, uint64Type()))
+                || equals(type, boolType());
     };
 
     if (isInt32Compatible(a) && isInt32Compatible(b))
         return int32Type();
 
     const auto isUInt32Compatible = [&](const QQmlJSScope::ConstPtr &type) {
-        return isUnsignedInteger(type) || equals(type, boolType());
+        return (isUnsignedInteger(type) && !equals(type, uint64Type())) || equals(type, boolType());
     };
 
     if (isUInt32Compatible(a) && isUInt32Compatible(b))
@@ -1001,10 +1032,29 @@ static bool isRevisionAllowed(int memberRevision, const QQmlJSScope::ConstPtr &s
     return typeRevision.isValid() && typeRevision >= revision;
 }
 
+/*!
+ * \internal
+ * We can generally determine the relevant component boundaries for each scope. However,
+ * if the scope or any of its parents is assigned to a property of which we cannot see the
+ * type, we don't know whether the type of that property happens to be Component. In that
+ * case, we can't say.
+ */
+bool QQmlJSTypeResolver::canFindComponentBoundaries(const QQmlJSScope::ConstPtr &scope) const
+{
+    for (QQmlJSScope::ConstPtr parent = scope; parent; parent = parent->parentScope()) {
+        if (parent->isAssignedToUnknownProperty())
+            return false;
+    }
+    return true;
+}
+
 QQmlJSRegisterContent QQmlJSTypeResolver::scopedType(const QQmlJSScope::ConstPtr &scope,
                                                      const QString &name, int lookupIndex,
                                                      QQmlJSScopesByIdOptions options) const
 {
+    if (!canFindComponentBoundaries(scope))
+        return {};
+
     const auto isAssignedToDefaultProperty = [this](const QQmlJSScope::ConstPtr &parent,
                                                     const QQmlJSScope::ConstPtr &child) {
         const QString defaultPropertyName = parent->defaultPropertyName();
@@ -1115,7 +1165,8 @@ bool QQmlJSTypeResolver::checkEnums(const QQmlJSScope::ConstPtr &scope, const QS
             return true;
         }
 
-        if (!enumeration.isScoped() && enumeration.hasKey(name)) {
+        if ((!enumeration.isScoped() || enumeration.isQml() || !scope->enforcesScopedEnums())
+                && enumeration.hasKey(name)) {
             *result = QQmlJSRegisterContent::create(
                     storedType(enumeration.type()), enumeration, name,
                     inExtension ? QQmlJSRegisterContent::ExtensionObjectEnum
@@ -1369,6 +1420,11 @@ bool QQmlJSTypeResolver::canPrimitivelyConvertFromTo(
         return true;
     }
 
+    if (equals(to, m_stringType)
+            && from->accessSemantics() == QQmlJSScope::AccessSemantics::Sequence) {
+        return canConvertFromTo(from->valueType(), m_stringType);
+    }
+
     return false;
 }
 
@@ -1377,11 +1433,11 @@ QQmlJSRegisterContent QQmlJSTypeResolver::lengthProperty(
 {
     QQmlJSMetaProperty prop;
     prop.setPropertyName(u"length"_s);
-    prop.setTypeName(u"int"_s);
-    prop.setType(int32Type());
+    prop.setTypeName(u"qsizetype"_s);
+    prop.setType(sizeType());
     prop.setIsWritable(isWritable);
     return QQmlJSRegisterContent::create(
-            int32Type(), prop, QQmlJSRegisterContent::InvalidLookupIndex,
+            sizeType(), prop, QQmlJSRegisterContent::InvalidLookupIndex,
             QQmlJSRegisterContent::InvalidLookupIndex, QQmlJSRegisterContent::Builtin, scope);
 }
 
@@ -1543,13 +1599,7 @@ QQmlJSRegisterContent QQmlJSTypeResolver::memberType(
                 QQmlJSRegisterContent::GenericObjectProperty, jsValueType());
     }
     if (type.isImportNamespace()) {
-        if (type.scopeType()->accessSemantics() != QQmlJSScope::AccessSemantics::Reference) {
-            m_logger->log(u"Cannot use a non-QObject type %1 to access prefixed import"_s.arg(
-                                  type.scopeType()->internalName()),
-                          qmlPrefixedImportType, type.scopeType()->sourceLocation());
-            return {};
-        }
-
+        Q_ASSERT(type.scopeType()->isReferenceType());
         return registerContentForName(
                     name, type.scopeType(),
                     type.variant() == QQmlJSRegisterContent::ObjectModulePrefix);
@@ -1594,7 +1644,7 @@ QQmlJSRegisterContent QQmlJSTypeResolver::valueType(const QQmlJSRegisterContent 
             return scope->valueType();
 
         if (equals(scope, m_forInIteratorPtr))
-            return m_int32Type;
+            return m_sizeType;
 
         if (equals(scope, m_forOfIteratorPtr))
             return list.scopeType()->valueType();

@@ -954,8 +954,9 @@ void StateManager11::syncState(const gl::Context *context,
 
     const gl::State &state = context->getState();
 
-    for (size_t dirtyBit : dirtyBits)
+    for (auto iter = dirtyBits.begin(), endIter = dirtyBits.end(); iter != endIter; ++iter)
     {
+        size_t dirtyBit = *iter;
         switch (dirtyBit)
         {
             case gl::state::DIRTY_BIT_BLEND_EQUATIONS:
@@ -1169,7 +1170,10 @@ void StateManager11::syncState(const gl::Context *context,
                 invalidateTransformFeedback();
                 break;
             case gl::state::DIRTY_BIT_PROGRAM_BINDING:
-                mExecutableD3D = GetImplAs<ProgramExecutableD3D>(state.getProgramExecutable());
+                static_assert(
+                    gl::state::DIRTY_BIT_PROGRAM_EXECUTABLE > gl::state::DIRTY_BIT_PROGRAM_BINDING,
+                    "Dirty bit order");
+                iter.setLaterBit(gl::state::DIRTY_BIT_PROGRAM_EXECUTABLE);
                 break;
             case gl::state::DIRTY_BIT_PROGRAM_EXECUTABLE:
             {
@@ -1181,6 +1185,8 @@ void StateManager11::syncState(const gl::Context *context,
                 invalidateProgramShaderStorageBuffers();
                 invalidateDriverUniforms();
                 const gl::ProgramExecutable *executable = state.getProgramExecutable();
+                ASSERT(executable);
+                mExecutableD3D = GetImplAs<ProgramExecutableD3D>(executable);
                 if (!executable || command != gl::Command::Dispatch)
                 {
                     mInternalDirtyBits.set(DIRTY_BIT_PRIMITIVE_TOPOLOGY);
@@ -3073,9 +3079,7 @@ angle::Result StateManager11::syncProgramForCompute(const gl::Context *context)
 
     ShaderExecutableD3D *computeExe = nullptr;
     ANGLE_TRY(mExecutableD3D->getComputeExecutableForImage2DBindLayout(
-        context11, context11->getRenderer(),
-        context->getState().getProgram()->getState().getAttachedShader(gl::ShaderType::Compute),
-        &computeExe, nullptr));
+        context11, context11->getRenderer(), &computeExe, nullptr));
 
     const d3d11::ComputeShader *computeShader =
         (computeExe ? &GetAs<ShaderExecutable11>(computeExe)->getComputeShader() : nullptr);
@@ -3793,14 +3797,14 @@ angle::Result StateManager11::getUAVsForShaderStorageBuffers(const gl::Context *
                                                              gl::ShaderType shaderType,
                                                              UAVList *uavList)
 {
-    const gl::State &glState   = context->getState();
-    const gl::Program *program = glState.getProgram();
+    const gl::State &glState                = context->getState();
+    const gl::ProgramExecutable *executable = glState.getProgramExecutable();
     angle::FixedVector<Buffer11 *, gl::IMPLEMENTATION_MAX_SHADER_STORAGE_BUFFER_BINDINGS>
         previouslyBound;
-    for (size_t blockIndex = 0; blockIndex < program->getActiveShaderStorageBlockCount();
+    for (size_t blockIndex = 0; blockIndex < executable->getShaderStorageBlocks().size();
          blockIndex++)
     {
-        GLuint binding = program->getShaderStorageBlockBinding(static_cast<GLuint>(blockIndex));
+        GLuint binding = executable->getShaderStorageBlockBinding(static_cast<GLuint>(blockIndex));
         const unsigned int registerIndex = mExecutableD3D->getShaderStorageBufferRegisterIndex(
             static_cast<GLuint>(blockIndex), shaderType);
         // It means this block is active but not statically used.
@@ -3875,11 +3879,11 @@ angle::Result StateManager11::getUAVsForAtomicCounterBuffers(const gl::Context *
                                                              gl::ShaderType shaderType,
                                                              UAVList *uavList)
 {
-    const gl::State &glState   = context->getState();
-    const gl::Program *program = glState.getProgram();
-    for (const auto &atomicCounterBuffer : program->getState().getAtomicCounterBuffers())
+    const gl::State &glState                = context->getState();
+    const gl::ProgramExecutable *executable = glState.getProgramExecutable();
+    for (const auto &atomicCounterBuffer : executable->getAtomicCounterBuffers())
     {
-        GLuint binding     = atomicCounterBuffer.binding;
+        GLuint binding     = atomicCounterBuffer.pod.binding;
         const auto &buffer = glState.getIndexedAtomicCounterBuffer(binding);
         const unsigned int registerIndex =
             mExecutableD3D->getAtomicCounterBufferRegisterIndex(binding, shaderType);

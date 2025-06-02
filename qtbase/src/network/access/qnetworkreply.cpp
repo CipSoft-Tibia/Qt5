@@ -617,7 +617,7 @@ QVariant QNetworkReply::header(QNetworkRequest::KnownHeaders header) const
 bool QNetworkReply::hasRawHeader(QAnyStringView headerName) const
 {
     Q_D(const QNetworkReply);
-    return d->findRawHeader(headerName) != d->rawHeaders.constEnd();
+    return d->headers().contains(headerName);
 }
 
 /*!
@@ -633,9 +633,7 @@ bool QNetworkReply::hasRawHeader(QAnyStringView headerName) const
 QByteArray QNetworkReply::rawHeader(QAnyStringView headerName) const
 {
     Q_D(const QNetworkReply);
-    if (const auto it = d->findRawHeader(headerName); it != d->rawHeaders.constEnd())
-        return it->second;
-    return QByteArray();
+    return d->rawHeader(headerName);
 }
 
 /*! \typedef QNetworkReply::RawHeaderPair
@@ -650,7 +648,20 @@ QByteArray QNetworkReply::rawHeader(QAnyStringView headerName) const
 const QList<QNetworkReply::RawHeaderPair>& QNetworkReply::rawHeaderPairs() const
 {
     Q_D(const QNetworkReply);
-    return d->rawHeaders;
+    return d->allRawHeaders();
+}
+
+/*!
+    \since 6.8
+
+    Returns headers that were sent by the remote server.
+
+    \sa setHeaders(), QNetworkRequest::setAttribute(), QNetworkRequest::Attribute
+*/
+QHttpHeaders QNetworkReply::headers() const
+{
+    Q_D(const QNetworkReply);
+    return d->headers();
 }
 
 /*!
@@ -885,6 +896,45 @@ void QNetworkReply::setUrl(const QUrl &url)
 {
     Q_D(QNetworkReply);
     d->url = url;
+}
+
+/*!
+    \since 6.8
+
+    Sets \a newHeaders as headers in this network reply, overriding
+    any previously set headers.
+
+    If some headers correspond to the known headers, they will be
+    parsed and the corresponding parsed form will also be set.
+
+    \sa headers(), QNetworkRequest::KnownHeaders
+*/
+void QNetworkReply::setHeaders(const QHttpHeaders &newHeaders)
+{
+    Q_D(QNetworkReply);
+    d->setHeaders(newHeaders);
+}
+
+/*!
+    \overload
+    \since 6.8
+*/
+void QNetworkReply::setHeaders(QHttpHeaders &&newHeaders)
+{
+    Q_D(QNetworkReply);
+    d->setHeaders(std::move(newHeaders));
+}
+
+/*!
+    \since 6.8
+
+    Sets the header \a name to be of value \a value. If \a
+    name was previously set, it is overridden.
+*/
+void QNetworkReply::setWellKnownHeader(QHttpHeaders::WellKnownHeader name, QByteArrayView value)
+{
+    Q_D(QNetworkReply);
+    d->setHeader(name, value);
 }
 
 /*!

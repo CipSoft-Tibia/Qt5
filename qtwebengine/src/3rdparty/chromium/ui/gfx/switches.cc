@@ -39,22 +39,40 @@ const char kNoXshm[] = "no-xshm";
 }  // namespace switches
 
 namespace features {
-CONSTINIT const base::Feature kOddHeightMultiPlanarBuffers(
+#if BUILDFLAG(IS_APPLE)
+BASE_FEATURE(kOddHeightMultiPlanarBuffers,
              "OddHeightMultiPlanarBuffers",
-#if BUILDFLAG(IS_APPLE)
-             base::FEATURE_ENABLED_BY_DEFAULT
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kOddHeightMultiPlanarBuffers,
+             "OddHeightMultiPlanarBuffers",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
 
-CONSTINIT const base::Feature kOddWidthMultiPlanarBuffers(
-             "OddWidthMultiPlanarBuffers",
 #if BUILDFLAG(IS_APPLE)
-             base::FEATURE_ENABLED_BY_DEFAULT
+BASE_FEATURE(kOddWidthMultiPlanarBuffers,
+             "OddWidthMultiPlanarBuffers",
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #else
-             base::FEATURE_DISABLED_BY_DEFAULT
+BASE_FEATURE(kOddWidthMultiPlanarBuffers,
+             "OddWidthMultiPlanarBuffers",
+             base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-);
+
+#if BUILDFLAG(IS_CHROMEOS_LACROS)
+BASE_FEATURE(kUseSmartRefForGPUFenceHandle,
+             "UseSmartRefForGPUFenceHandle",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#else
+BASE_FEATURE(kUseSmartRefForGPUFenceHandle,
+             "UseSmartRefForGPUFenceHandle",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+BASE_FEATURE(kEnableIntelMediaCompression,
+             "EnableIntelMediaCompression",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 }  // namespace features

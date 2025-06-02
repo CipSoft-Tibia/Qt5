@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/dependency_graph.h"
 
@@ -19,7 +32,7 @@
 #include <variant>
 #include <vector>
 
-#include "src/tint/lang/core/builtin.h"
+#include "src/tint/lang/core/builtin_type.h"
 #include "src/tint/lang/core/builtin_value.h"
 #include "src/tint/lang/wgsl/ast/alias.h"
 #include "src/tint/lang/wgsl/ast/assignment_statement.h"
@@ -27,6 +40,7 @@
 #include "src/tint/lang/wgsl/ast/break_if_statement.h"
 #include "src/tint/lang/wgsl/ast/break_statement.h"
 #include "src/tint/lang/wgsl/ast/call_statement.h"
+#include "src/tint/lang/wgsl/ast/color_attribute.h"
 #include "src/tint/lang/wgsl/ast/compound_assignment_statement.h"
 #include "src/tint/lang/wgsl/ast/const.h"
 #include "src/tint/lang/wgsl/ast/continue_statement.h"
@@ -60,7 +74,7 @@
 #include "src/tint/lang/wgsl/ast/variable_decl_statement.h"
 #include "src/tint/lang/wgsl/ast/while_statement.h"
 #include "src/tint/lang/wgsl/ast/workgroup_attribute.h"
-#include "src/tint/lang/wgsl/sem/builtin.h"
+#include "src/tint/lang/wgsl/sem/builtin_fn.h"
 #include "src/tint/utils/containers/map.h"
 #include "src/tint/utils/containers/scope_stack.h"
 #include "src/tint/utils/containers/unique_vector.h"
@@ -122,11 +136,6 @@ struct Global {
 
 /// A map of global name to Global
 using GlobalMap = Hashmap<Symbol, Global*, 16>;
-
-/// Raises an ICE that a global ast::Node type was not handled by this system.
-void UnhandledNode(const ast::Node* node) {
-    TINT_ICE() << "unhandled node type: " << node->TypeInfo().name;
-}
 
 /// Raises an error diagnostic with the given message and source.
 void AddError(diag::List& diagnostics, const std::string& msg, const Source& source) {
@@ -193,8 +202,13 @@ class DependencyScanner {
             [&](const ast::Enable*) {
                 // Enable directives do not affect the dependency graph.
             },
-            [&](const ast::ConstAssert* assertion) { TraverseExpression(assertion->condition); },
-            [&](Default) { UnhandledNode(global->node); });
+            [&](const ast::Requires*) {
+                // Requires directives do not affect the dependency graph.
+            },
+            [&](const ast::ConstAssert* assertion) {
+                TraverseExpression(assertion->condition);
+            },  //
+            TINT_ICE_ON_NO_MATCH);
     }
 
   private:
@@ -315,12 +329,10 @@ class DependencyScanner {
                 TraverseStatement(w->body);
             },
             [&](const ast::ConstAssert* assertion) { TraverseExpression(assertion->condition); },
-            [&](Default) {
-                if (TINT_UNLIKELY((!stmt->IsAnyOf<ast::BreakStatement, ast::ContinueStatement,
-                                                  ast::DiscardStatement>()))) {
-                    UnhandledNode(stmt);
-                }
-            });
+            [&](const ast::BreakStatement*) {},     //
+            [&](const ast::ContinueStatement*) {},  //
+            [&](const ast::DiscardStatement*) {},   //
+            TINT_ICE_ON_NO_MATCH);
     }
 
     /// Adds the symbol definition to the current scope, raising an error if two
@@ -349,13 +361,7 @@ class DependencyScanner {
                     expr,
                     [&](const ast::IdentifierExpression* e) {
                         AddDependency(e->identifier, e->identifier->symbol);
-                        if (auto* tmpl_ident = e->identifier->As<ast::TemplatedIdentifier>()) {
-                            for (auto* arg : tmpl_ident->arguments) {
-                                pending.Push(arg);
-                            }
-                        }
                     },
-                    [&](const ast::CallExpression* call) { TraverseExpression(call->target); },
                     [&](const ast::BitcastExpression* cast) { TraverseExpression(cast->type); });
                 return ast::TraverseAction::Descend;
             });
@@ -377,69 +383,39 @@ class DependencyScanner {
     /// Traverses the attribute, performing symbol resolution and determining
     /// global dependencies.
     void TraverseAttribute(const ast::Attribute* attr) {
-        bool handled = Switch(
-            attr,
-            [&](const ast::BindingAttribute* binding) {
-                TraverseExpression(binding->expr);
-                return true;
-            },
-            [&](const ast::BuiltinAttribute* builtin) {
-                TraverseExpression(builtin->builtin);
-                return true;
-            },
-            [&](const ast::GroupAttribute* group) {
-                TraverseExpression(group->expr);
-                return true;
-            },
-            [&](const ast::IdAttribute* id) {
-                TraverseExpression(id->expr);
-                return true;
-            },
-            [&](const ast::IndexAttribute* index) {
-                TraverseExpression(index->expr);
-                return true;
-            },
+        Switch(
+            attr,  //
+            [&](const ast::BindingAttribute* binding) { TraverseExpression(binding->expr); },
+            [&](const ast::BuiltinAttribute* builtin) { TraverseExpression(builtin->builtin); },
+            [&](const ast::ColorAttribute* color) { TraverseExpression(color->expr); },
+            [&](const ast::GroupAttribute* group) { TraverseExpression(group->expr); },
+            [&](const ast::IdAttribute* id) { TraverseExpression(id->expr); },
+            [&](const ast::IndexAttribute* index) { TraverseExpression(index->expr); },
             [&](const ast::InterpolateAttribute* interpolate) {
                 TraverseExpression(interpolate->type);
                 TraverseExpression(interpolate->sampling);
-                return true;
             },
-            [&](const ast::LocationAttribute* loc) {
-                TraverseExpression(loc->expr);
-                return true;
-            },
-            [&](const ast::StructMemberAlignAttribute* align) {
-                TraverseExpression(align->expr);
-                return true;
-            },
-            [&](const ast::StructMemberSizeAttribute* size) {
-                TraverseExpression(size->expr);
-                return true;
-            },
+            [&](const ast::LocationAttribute* loc) { TraverseExpression(loc->expr); },
+            [&](const ast::StructMemberAlignAttribute* align) { TraverseExpression(align->expr); },
+            [&](const ast::StructMemberSizeAttribute* size) { TraverseExpression(size->expr); },
             [&](const ast::WorkgroupAttribute* wg) {
                 TraverseExpression(wg->x);
                 TraverseExpression(wg->y);
                 TraverseExpression(wg->z);
-                return true;
             },
             [&](const ast::InternalAttribute* i) {
                 for (auto* dep : i->dependencies) {
                     TraverseExpression(dep);
                 }
-                return true;
+            },
+            [&](Default) {
+                if (!attr->IsAnyOf<ast::BuiltinAttribute, ast::DiagnosticAttribute,
+                                   ast::InterpolateAttribute, ast::InvariantAttribute,
+                                   ast::MustUseAttribute, ast::StageAttribute, ast::StrideAttribute,
+                                   ast::StructMemberOffsetAttribute>()) {
+                    TINT_ICE() << "unhandled attribute type: " << attr->TypeInfo().name;
+                }
             });
-        if (handled) {
-            return;
-        }
-
-        if (attr->IsAnyOf<ast::BuiltinAttribute, ast::DiagnosticAttribute,
-                          ast::InterpolateAttribute, ast::InvariantAttribute, ast::MustUseAttribute,
-                          ast::StageAttribute, ast::StrideAttribute,
-                          ast::StructMemberOffsetAttribute>()) {
-            return;
-        }
-
-        UnhandledNode(attr);
     }
 
     /// The type of builtin that a symbol could represent.
@@ -474,8 +450,8 @@ class DependencyScanner {
 
         BuiltinType type = BuiltinType::kNone;
         std::variant<std::monostate,
-                     core::Function,
-                     core::Builtin,
+                     wgsl::BuiltinFn,
+                     core::BuiltinType,
                      core::BuiltinValue,
                      core::AddressSpace,
                      core::TexelFormat,
@@ -490,12 +466,12 @@ class DependencyScanner {
     /// @returns the builtin info
     DependencyScanner::BuiltinInfo GetBuiltinInfo(Symbol symbol) {
         return builtin_info_map.GetOrCreate(symbol, [&] {
-            if (auto builtin_fn = core::ParseFunction(symbol.NameView());
-                builtin_fn != core::Function::kNone) {
+            if (auto builtin_fn = wgsl::ParseBuiltinFn(symbol.NameView());
+                builtin_fn != wgsl::BuiltinFn::kNone) {
                 return BuiltinInfo{BuiltinType::kFunction, builtin_fn};
             }
-            if (auto builtin_ty = core::ParseBuiltin(symbol.NameView());
-                builtin_ty != core::Builtin::kUndefined) {
+            if (auto builtin_ty = core::ParseBuiltinType(symbol.NameView());
+                builtin_ty != core::BuiltinType::kUndefined) {
                 return BuiltinInfo{BuiltinType::kBuiltin, builtin_ty};
             }
             if (auto builtin_val = core::ParseBuiltinValue(symbol.NameView());
@@ -533,15 +509,16 @@ class DependencyScanner {
             auto builtin_info = GetBuiltinInfo(to);
             switch (builtin_info.type) {
                 case BuiltinType::kNone:
-                    graph_.resolved_identifiers.Add(from, UnresolvedIdentifier{to.Name()});
+                    graph_.resolved_identifiers.Add(
+                        from, ResolvedIdentifier::UnresolvedIdentifier{to.Name()});
                     break;
                 case BuiltinType::kFunction:
                     graph_.resolved_identifiers.Add(
-                        from, ResolvedIdentifier(builtin_info.Value<core::Function>()));
+                        from, ResolvedIdentifier(builtin_info.Value<wgsl::BuiltinFn>()));
                     break;
                 case BuiltinType::kBuiltin:
                     graph_.resolved_identifiers.Add(
-                        from, ResolvedIdentifier(builtin_info.Value<core::Builtin>()));
+                        from, ResolvedIdentifier(builtin_info.Value<core::BuiltinType>()));
                     break;
                 case BuiltinType::kBuiltinValue:
                     graph_.resolved_identifiers.Add(
@@ -639,11 +616,9 @@ struct DependencyAnalysis {
             [&](const ast::Variable* var) { return var->name->symbol; },
             [&](const ast::DiagnosticDirective*) { return Symbol(); },
             [&](const ast::Enable*) { return Symbol(); },
-            [&](const ast::ConstAssert*) { return Symbol(); },
-            [&](Default) {
-                UnhandledNode(node);
-                return Symbol{};
-            });
+            [&](const ast::Requires*) { return Symbol(); },
+            [&](const ast::ConstAssert*) { return Symbol(); },  //
+            TINT_ICE_ON_NO_MATCH);
     }
 
     /// @param node the ast::Node of the global declaration
@@ -664,10 +639,7 @@ struct DependencyAnalysis {
             [&](const ast::Function*) { return "function"; },         //
             [&](const ast::Variable* v) { return v->Kind(); },        //
             [&](const ast::ConstAssert*) { return "const_assert"; },  //
-            [&](Default) {
-                UnhandledNode(node);
-                return "<unknown>";
-            });
+            TINT_ICE_ON_NO_MATCH);
     }
 
     /// Traverses `module`, collecting all the global declarations and populating
@@ -748,13 +720,13 @@ struct DependencyAnalysis {
 
         // Make sure all directives go before any other global declarations.
         for (auto* global : declaration_order_) {
-            if (global->node->IsAnyOf<ast::DiagnosticDirective, ast::Enable>()) {
+            if (global->node->IsAnyOf<ast::DiagnosticDirective, ast::Enable, ast::Requires>()) {
                 sorted_.Add(global->node);
             }
         }
 
         for (auto* global : declaration_order_) {
-            if (global->node->IsAnyOf<ast::DiagnosticDirective, ast::Enable>()) {
+            if (global->node->IsAnyOf<ast::DiagnosticDirective, ast::Enable, ast::Requires>()) {
                 // Skip directives here, as they are already added.
                 continue;
             }
@@ -915,16 +887,13 @@ std::string ResolvedIdentifier::String() const {
             },
             [&](const ast::Parameter* n) {  //
                 return "parameter '" + n->name->symbol.Name() + "'";
-            },
-            [&](Default) {
-                TINT_UNREACHABLE() << "unhandled ast::Node: " << node->TypeInfo().name;
-                return "<unknown>";
-            });
+            },  //
+            TINT_ICE_ON_NO_MATCH);
     }
-    if (auto builtin_fn = BuiltinFunction(); builtin_fn != core::Function::kNone) {
+    if (auto builtin_fn = BuiltinFn(); builtin_fn != wgsl::BuiltinFn::kNone) {
         return "builtin function '" + tint::ToString(builtin_fn) + "'";
     }
-    if (auto builtin_ty = BuiltinType(); builtin_ty != core::Builtin::kUndefined) {
+    if (auto builtin_ty = BuiltinType(); builtin_ty != core::BuiltinType::kUndefined) {
         return "builtin type '" + tint::ToString(builtin_ty) + "'";
     }
     if (auto builtin_val = BuiltinValue(); builtin_val != core::BuiltinValue::kUndefined) {

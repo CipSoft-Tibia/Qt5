@@ -38,6 +38,7 @@ public:
     bool isLazy() const;
     bool isFullyLazy() const;
     bool isVolatile() const;
+    bool isProtected() const;
 
     size_t uninstantiatedGpuMemorySize() const;
 
@@ -136,6 +137,6 @@ private:
     TextureProxy* const fTextureProxy;
 };
 
-} // namepsace skgpu::graphite
+}  // namespace skgpu::graphite
 
 #endif // skgpu_graphite_TextureProxy_DEFINED

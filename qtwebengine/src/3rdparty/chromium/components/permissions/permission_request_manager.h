@@ -11,6 +11,7 @@
 
 #include "base/check_is_test.h"
 #include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/time/time.h"
@@ -155,7 +156,8 @@ class PermissionRequestManager
   void OnVisibilityChanged(content::Visibility visibility) override;
 
   // PermissionPrompt::Delegate:
-  const std::vector<PermissionRequest*>& Requests() override;
+  const std::vector<raw_ptr<PermissionRequest, VectorExperimental>>& Requests()
+      override;
   GURL GetRequestingOrigin() const override;
   GURL GetEmbeddingOrigin() const override;
   void Accept() override;
@@ -163,6 +165,7 @@ class PermissionRequestManager
   void Deny() override;
   void Dismiss() override;
   void Ignore() override;
+  void FinalizeCurrentRequests() override;
   void OpenHelpCenterLink(const ui::Event& event) override;
   void PreIgnoreQuietPrompt() override;
   bool WasCurrentRequestAlreadyDisplayed() override;
@@ -326,9 +329,11 @@ class PermissionRequestManager
   // Finalize request.
   void ResetViewStateForCurrentRequest();
 
-  // Delete the view object, finalize requests, asynchronously show a queued
-  // request if present.
-  void FinalizeCurrentRequests(PermissionAction permission_action);
+  // Records metrics and informs embargo and autoblocker about the requests
+  // being decided. Based on |view_->ShouldFinalizeRequestAfterDecided()| it
+  // will also call |FinalizeCurrentRequests()|. Otherwise a separate
+  // |FinalizeCurrentRequests()| call must be made to release the |view_|.
+  void CurrentRequestsDecided(PermissionAction permission_action);
 
   // Cancel all pending or active requests and destroy the PermissionPrompt if
   // one exists. This is called if the WebContents is destroyed or navigates its
@@ -395,6 +400,20 @@ class PermissionRequestManager
 
   void PreIgnoreQuietPromptInternal();
 
+  // Returns true if there is a request in progress that is initiated by an
+  // embedded permission element.
+  bool IsCurrentRequestEmbeddedPermissionElementInitiated() const;
+
+  // Returns true when the current request should be finalized together with the
+  // permission decision.
+  bool ShouldFinalizeRequestAfterDecided(PermissionAction action) const;
+
+  // Calculate and record the PermissionEmbargoStatus.
+  PermissionEmbargoStatus RecordActionAndGetEmbargoStatus(
+      content::BrowserContext* browser_context,
+      PermissionRequest* request,
+      PermissionAction permission_action);
+
   // Factory to be used to create views when needed.
   PermissionPrompt::Factory view_factory_;
 
@@ -416,7 +435,7 @@ class PermissionRequestManager
   // The request (or requests) that the user is currently being prompted for.
   // When this is non-empty, the |view_| is generally non-null as long as the
   // tab is visible.
-  std::vector<PermissionRequest*> requests_;
+  std::vector<raw_ptr<PermissionRequest, VectorExperimental>> requests_;
 
   struct PermissionRequestSource {
     content::GlobalRenderFrameHostId requesting_frame_id;

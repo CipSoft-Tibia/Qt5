@@ -38,6 +38,10 @@ namespace permissions {
 
 class Observer : public base::CheckedObserver {
  public:
+  // Called whenever there is a potential permission status change for the
+  // specified patterns. This function being called does not necessarily mean
+  // that the result of |GetPermissionStatus| has changed for any particular
+  // origin.
   virtual void OnPermissionChanged(
       const ContentSettingsPattern& primary_pattern,
       const ContentSettingsPattern& secondary_pattern,
@@ -64,6 +68,10 @@ using BrowserPermissionCallback = base::OnceCallback<void(ContentSetting)>;
 //   - Create a class that inherits from PermissionContextBase and passes the
 //     new permission.
 //   - Edit the PermissionRequest methods to add the new text.
+//   - Make sure to update
+//     third_party/blink/public/devtools_protocol/browser_protocol.pdl
+//     even if you don't intend to do anything DevTools-specific; you will
+//     run into problems with generated code otherwise.
 //   - Hit several asserts for the missing plumbing and fix them :)
 // After this you can override several other methods to customize behavior,
 // in particular it is advised to override UpdateTabContext in order to manage
@@ -109,6 +117,8 @@ class PermissionContextBase : public content_settings::Observer {
   // Update |result| with any modifications based on the device state. For
   // example, if |result| is ALLOW but Chrome does not have the relevant
   // permission at the device level, but will prompt the user, return ASK.
+  // This function updates the cached device permission status which can result
+  // in the permission status changing and observers being notified.
   virtual content::PermissionResult UpdatePermissionStatusWithDeviceStatus(
       content::PermissionResult result,
       const GURL& requesting_origin,
@@ -194,6 +204,9 @@ class PermissionContextBase : public content_settings::Observer {
       PermissionRequest::PermissionDecidedCallback permission_decided_callback,
       base::OnceClosure delete_callback) const;
 
+  // Implementors can override this method to avoid using automatic embargo.
+  virtual bool UsesAutomaticEmbargo() const;
+
   base::ObserverList<permissions::Observer> permission_observers_;
 
   // Set by subclasses to inform the base class that they will handle adding
@@ -218,6 +231,10 @@ class PermissionContextBase : public content_settings::Observer {
                          bool is_one_time,
                          bool is_final_decision);
 
+  void NotifyObservers(const ContentSettingsPattern& primary_pattern,
+                       const ContentSettingsPattern& secondary_pattern,
+                       ContentSettingsTypeSet content_type_set) const;
+
   raw_ptr<content::BrowserContext> browser_context_;
   const ContentSettingsType content_settings_type_;
   const blink::mojom::PermissionsPolicyFeature permissions_policy_feature_;
@@ -225,6 +242,9 @@ class PermissionContextBase : public content_settings::Observer {
       std::string,
       std::pair<std::unique_ptr<PermissionRequest>, BrowserPermissionCallback>>
       pending_requests_;
+
+  mutable absl::optional<bool> last_has_device_permission_result_ =
+      absl::nullopt;
 
   // Must be the last member, to ensure that it will be
   // destroyed first, which will invalidate weak pointers

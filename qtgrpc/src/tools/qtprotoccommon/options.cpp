@@ -10,7 +10,6 @@
 
 using namespace ::qtprotoccommon;
 static const char QmlPluginOption[] = "QML";
-static const char QmlPluginUriOption[] = "QML_URI";
 static const char CommentsGenerationOption[] = "COPY_COMMENTS";
 static const char FolderGenerationOption[] = "GENERATE_PACKAGE_SUBFOLDERS";
 static const char FieldEnumGenerationOption[] = "FIELD_ENUM";
@@ -49,7 +48,7 @@ std::string extractCompositeOptionValue(const std::string &option)
     return optionValue;
 }
 
-void Options::setFromString(const std::string &options, GeneratorType type)
+void Options::setFromString(const std::string &options, GeneratorType)
 {
     Options &instance = mutableInstance();
     for (const auto &option : utils::split(options, ";")) {
@@ -96,10 +95,7 @@ void Options::setFromString(const std::string &options, GeneratorType type)
                                       << instance.m_exportMacroFilename);
                 }
             }
-        } else if (option.find(QmlPluginUriOption) == 0 && type != QtGrpcGen) {
-            instance.m_qmlUri = extractCompositeOptionValue(option);
-            QT_PROTOBUF_DEBUG("set m_qmlUri: " << instance.m_qmlUri);
-        } else if (option == QmlPluginOption && type == QtGrpcGen) {
+        } else if (option == QmlPluginOption) {
             instance.m_qml = true;
             QT_PROTOBUF_DEBUG("set m_qml: true");
         }

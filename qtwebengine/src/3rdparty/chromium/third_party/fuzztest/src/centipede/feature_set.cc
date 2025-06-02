@@ -19,9 +19,11 @@
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <vector>
+#include <string_view>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "./centipede/control_flow.h"
 #include "./centipede/feature.h"
 #include "./centipede/logging.h"
 
@@ -31,32 +33,50 @@ namespace centipede {
 //                                FeatureSet
 //------------------------------------------------------------------------------
 
-// TODO(kcc): [impl] add tests.
+// This implementation is slow (needs to iterate over the entire domain),
+// but there is no need for it to be fast.
 PCIndexVec FeatureSet::ToCoveragePCs() const {
-  return {pc_index_set_.begin(), pc_index_set_.end()};
+  PCIndexVec pcs;
+  for (size_t idx = 0; idx < feature_domains::Domain::kDomainSize; ++idx) {
+    if (frequencies_[feature_domains::kPCs.ConvertToMe(idx)])
+      pcs.push_back(idx);
+  }
+  return pcs;
 }
 
-size_t FeatureSet::CountFeatures(feature_domains::Domain domain) {
+size_t FeatureSet::CountFeatures(feature_domains::Domain domain) const {
   return features_per_domain_[domain.domain_id()];
+}
+
+bool FeatureSet::HasUnseenFeatures(const FeatureVec &features) const {
+  for (auto feature : features) {
+    if (frequencies_[feature] == 0) return true;
+  }
+  return false;
 }
 
 __attribute__((noinline))  // to see it in profile.
 size_t
-FeatureSet::CountUnseenAndPruneFrequentFeatures(FeatureVec &features) const {
+FeatureSet::PruneFeaturesAndCountUnseen(FeatureVec &features) const {
   size_t number_of_unseen_features = 0;
   size_t num_kept = 0;
-  for (size_t i = 0, n = features.size(); i < n; i++) {
-    auto feature = features[i];
+  for (auto feature : features) {
+    if (ShouldDiscardFeature(feature)) continue;
     auto freq = frequencies_[feature];
-    if (freq == 0) {
-      ++number_of_unseen_features;
-    }
-    if (freq < FrequencyThreshold(feature)) {
-      features[num_kept++] = feature;
-    }
+    if (freq == 0) ++number_of_unseen_features;
+    if (freq < FrequencyThreshold(feature)) features[num_kept++] = feature;
   }
   features.resize(num_kept);
   return number_of_unseen_features;
+}
+
+void FeatureSet::PruneDiscardedDomains(FeatureVec &features) const {
+  size_t num_kept = 0;
+  for (auto feature : features) {
+    if (ShouldDiscardFeature(feature)) continue;
+    features[num_kept++] = feature;
+  }
+  features.resize(num_kept);
 }
 
 void FeatureSet::IncrementFrequencies(const FeatureVec &features) {
@@ -65,8 +85,6 @@ void FeatureSet::IncrementFrequencies(const FeatureVec &features) {
     if (freq == 0) {
       ++num_features_;
       ++features_per_domain_[feature_domains::Domain::FeatureToDomainId(f)];
-      if (feature_domains::kPCs.Contains(f))
-        pc_index_set_.insert(ConvertPCFeatureToPcIndex(f));
     }
     if (freq < FrequencyThreshold(f)) ++freq;
   }
@@ -99,12 +117,34 @@ std::string FeatureSet::DebugString() const {
   std::ostringstream os;
   os << VV((int)frequency_threshold_);
   os << VV(num_features_);
-  for (size_t domain = 0; domain < feature_domains::kLastDomain.domain_id();
-       ++domain) {
-    if (features_per_domain_[domain] == 0) continue;
-    os << " dom" << domain << ": " << features_per_domain_[domain];
-  }
+  os << this;
   return os.str();
+}
+
+std::ostream &operator<<(std::ostream &out, const FeatureSet &fs) {
+  auto num_cmp_features = fs.CountFeatures(feature_domains::kCMP) +
+                          fs.CountFeatures(feature_domains::kCMPEq) +
+                          fs.CountFeatures(feature_domains::kCMPModDiff) +
+                          fs.CountFeatures(feature_domains::kCMPHamming) +
+                          fs.CountFeatures(feature_domains::kCMPDiffLog);
+  auto LogIfNotZero = [&out](size_t value, std::string_view name) {
+    if (!value) return;
+    out << " " << name << ": " << value;
+  };
+  out << "ft: " << fs.size();
+  LogIfNotZero(fs.CountFeatures(feature_domains::kPCs), "cov");
+  LogIfNotZero(fs.CountFeatures(feature_domains::k8bitCounters), "cnt");
+  LogIfNotZero(fs.CountFeatures(feature_domains::kDataFlow), "df");
+  LogIfNotZero(num_cmp_features, "cmp");
+  LogIfNotZero(fs.CountFeatures(feature_domains::kCallStack), "stk");
+  LogIfNotZero(fs.CountFeatures(feature_domains::kBoundedPath), "path");
+  LogIfNotZero(fs.CountFeatures(feature_domains::kPCPair), "pair");
+  for (size_t i = 0; i < std::size(feature_domains::kUserDomains); ++i) {
+    LogIfNotZero(fs.CountFeatures(feature_domains::kUserDomains[i]),
+                 absl::StrCat("usr", i));
+  }
+  LogIfNotZero(fs.CountFeatures(feature_domains::kUnknown), "unknown");
+  return out;
 }
 
 }  // namespace centipede

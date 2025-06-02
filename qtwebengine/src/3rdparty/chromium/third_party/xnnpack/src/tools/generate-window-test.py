@@ -29,7 +29,7 @@ parser.set_defaults(defines=list())
 def split_ukernel_name(name):
   shift = 0
   row_tile = 1
-  match = re.fullmatch(r"xnn_s16_window(_shift(\d+))?_ukernel__(.+)_x(\d+)", name)
+  match = re.fullmatch(r"xnn_s16_window(_shift(\d+))?_ukernel__(.+)_u(\d+)", name)
   assert match is not None
   if match.group(2):
     shift = int(match.group(2))
@@ -223,14 +223,7 @@ def main(args):
       test_case = generate_test_cases(name, shift, row_tile, channels_tile, isa)
       tests += "\n\n" + xnncommon.postprocess_test_case(test_case, arch, isa)
 
-    txt_changed = True
-    if os.path.exists(options.output):
-      with codecs.open(options.output, "r", encoding="utf-8") as output_file:
-        txt_changed = output_file.read() != tests
-
-    if txt_changed:
-      with codecs.open(options.output, "w", encoding="utf-8") as output_file:
-        output_file.write(tests)
+    xnncommon.overwrite_if_changed(options.output, tests)
 
 
 if __name__ == "__main__":

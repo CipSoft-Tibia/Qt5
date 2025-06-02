@@ -3,7 +3,7 @@
 
 #include "qsavefile.h"
 
-#ifndef QT_NO_TEMPORARYFILE
+#if QT_CONFIG(temporaryfile)
 
 #include "qplatformdefs.h"
 #include "private/qsavefile_p.h"
@@ -57,8 +57,8 @@ QSaveFilePrivate::~QSaveFilePrivate()
     an error happened, and will discard the temporary file in commit().
 
     Much like with QFile, the file is opened with open(). Data is usually read
-    and written using QDataStream or QTextStream, but you can also call the
-    QIODevice-inherited functions read(), readLine(), readAll(), write().
+    and written using QDataStream or QTextStream, but you can also directly call
+    \l write().
 
     Unlike QFile, calling close() is not allowed. commit() replaces it. If commit()
     was not called and the QSaveFile instance is destroyed, the temporary file is
@@ -90,6 +90,7 @@ QSaveFile::QSaveFile(const QString &name)
 
 /*!
     Constructs a new file object with the given \a parent.
+    You need to call setFileName() before open().
 */
 QSaveFile::QSaveFile(QObject *parent)
     : QFileDevice(*new QSaveFilePrivate, parent)
@@ -113,10 +114,10 @@ QSaveFile::QSaveFile(const QString &name, QObject *parent)
 QSaveFile::~QSaveFile()
 {
     Q_D(QSaveFile);
-    QFileDevice::close();
-    if (d->fileEngine) {
+    if (isOpen()) {
+        QFileDevice::close();
+        Q_ASSERT(d->fileEngine);
         d->fileEngine->remove();
-        d->fileEngine.reset();
     }
 }
 
@@ -143,16 +144,15 @@ void QSaveFile::setFileName(const QString &name)
 }
 
 /*!
-    Opens the file using OpenMode \a mode, returning true if successful;
-    otherwise false.
+    Opens the file using \a mode flags. Returns \c true if successful;
+    otherwise returns \c false.
 
-    Important: the \a mode must include QIODevice::WriteOnly.
-    It may also have additional flags, such as QIODevice::Text and QIODevice::Unbuffered.
+    Important: The flags for \a mode must include \l QIODeviceBase::WriteOnly. Other
+    common flags you can use are \l Text and \l Unbuffered. Flags not supported at the
+    moment are \l ReadOnly (and therefore \l ReadWrite), \l Append, \l NewOnly and \l ExistingOnly;
+    they will generate a runtime warning.
 
-    QIODevice::ReadWrite, QIODevice::Append, QIODevice::NewOnly and
-    QIODevice::ExistingOnly are not supported at the moment.
-
-    \sa QIODevice::OpenMode, setFileName()
+    \sa setFileName(), QT_USE_NODISCARD_FILE_OPEN
 */
 bool QSaveFile::open(OpenMode mode)
 {
@@ -200,7 +200,7 @@ bool QSaveFile::open(OpenMode mode)
     }
 
     auto openDirectly = [&]() {
-        d->fileEngine.reset(QAbstractFileEngine::create(d->finalFileName));
+        d->fileEngine = QAbstractFileEngine::create(d->finalFileName);
         if (d->fileEngine->open(mode | QIODevice::Unbuffered)) {
             d->useTemporaryFile = false;
             QFileDevice::open(mode);
@@ -298,15 +298,20 @@ bool QSaveFile::commit()
     }
     QFileDevice::close(); // calls flush()
 
-    const auto fe = std::move(d->fileEngine);
+    const auto &fe = d->fileEngine;
 
     // Sync to disk if possible. Ignore errors (e.g. not supported).
     fe->syncToDisk();
 
+    // ensure we act on either a close()/flush() failure or a previous write()
+    // problem
+    if (d->error == QFileDevice::NoError)
+        d->error = d->writeError;
+    d->writeError = QFileDevice::NoError;
+
     if (d->useTemporaryFile) {
-        if (d->writeError != QFileDevice::NoError) {
+        if (d->error != QFileDevice::NoError) {
             fe->remove();
-            d->writeError = QFileDevice::NoError;
             return false;
         }
         // atomically replace old file with new file
@@ -318,7 +323,10 @@ bool QSaveFile::commit()
             return false;
         }
     }
-    return true;
+
+    // return true if all previous write() calls succeeded and if close() and
+    // flush() succeeded.
+    return d->error == QFileDevice::NoError;
 }
 
 /*!
@@ -412,4 +420,4 @@ QT_END_NAMESPACE
 #include "moc_qsavefile.cpp"
 #endif
 
-#endif // QT_NO_TEMPORARYFILE
+#endif // QT_CONFIG(temporaryfile)

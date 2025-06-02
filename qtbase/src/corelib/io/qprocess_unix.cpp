@@ -37,14 +37,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <termios.h>
 #include <unistd.h>
 
 #if __has_include(<paths.h>)
 #  include <paths.h>
-#endif
-#if __has_include(<linux/close_range.h>)
-// FreeBSD's is in <unistd.h>
-#  include <linux/close_range.h>
 #endif
 
 #if QT_CONFIG(process)
@@ -256,6 +253,20 @@ struct QChildProcess
         : d(d), argv(resolveExecutable(d->program), d->arguments),
           envp(d->environmentPrivate())
     {
+        // Open the working directory first, because this operation can fail.
+        // That way, if it does, we don't have anything to clean up.
+        if (!d->workingDirectory.isEmpty()) {
+            workingDirectory = opendirfd(QFile::encodeName(d->workingDirectory));
+            if (workingDirectory < 0) {
+                d->setErrorAndEmit(QProcess::FailedToStart, "chdir: "_L1 + qt_error_string());
+                d->cleanup();
+
+                // make sure our destructor does nothing
+                isUsingVfork = false;
+                return;
+            }
+        }
+
         // Block Unix signals, to ensure the user's handlers aren't run in the
         // child side and do something weird, especially if the handler and the
         // user of QProcess are completely different codebases.
@@ -267,23 +278,20 @@ struct QChildProcess
         // would be bad enough with regular fork(), but it's likely fatal with
         // vfork().
         disableThreadCancellations();
-
-        if (!d->workingDirectory.isEmpty()) {
-            workingDirectory = opendirfd(QFile::encodeName(d->workingDirectory));
-            if (workingDirectory < 0) {
-                d->setErrorAndEmit(QProcess::FailedToStart, "chdir: "_L1 + qt_error_string());
-                d->cleanup();
-            }
-        }
-
     }
     ~QChildProcess() noexcept(false)
     {
+        cleanup();
+    }
+
+    void cleanup() noexcept(false)
+    {
         if (workingDirectory >= 0)
             close(workingDirectory);
+        workingDirectory = -1;
 
-        restoreThreadCancellations();
         restoreSignalMask();
+        restoreThreadCancellations();
     }
 
     void maybeBlockSignals() noexcept
@@ -300,6 +308,7 @@ struct QChildProcess
 
     void restoreSignalMask() const noexcept
     {
+        // this function may be called more than once
         if (isUsingVfork)
             pthread_sigmask(SIG_SETMASK, &oldsigset, nullptr);
     }
@@ -334,7 +343,7 @@ private:
     }
 
 #if defined(PTHREAD_CANCEL_DISABLE)
-    int oldstate;
+    int oldstate = PTHREAD_CANCEL_DISABLE;
     void disableThreadCancellations() noexcept
     {
         // the following is *not* noexcept, but it won't throw while disabling
@@ -342,8 +351,12 @@ private:
     }
     void restoreThreadCancellations() noexcept(false)
     {
-        // this doesn't touch errno
-        pthread_setcancelstate(oldstate, nullptr);
+        // ensure we don't call pthread_setcancelstate() again
+        int oldoldstate = std::exchange(oldstate, PTHREAD_CANCEL_DISABLE);
+        if (oldoldstate != PTHREAD_CANCEL_DISABLE) {
+            // this doesn't touch errno
+            pthread_setcancelstate(oldoldstate, nullptr);
+        }
     }
 #else
     void disableThreadCancellations() noexcept {}
@@ -719,6 +732,7 @@ void QProcessPrivate::startProcess()
 
     if (forkfd == -1) {
         // Cleanup, report error and return
+        childProcess.cleanup();
 #if defined (QPROCESS_DEBUG)
         qDebug("fork failed: %ls", qUtf16Printable(qt_error_string(lastForkErrno)));
 #endif
@@ -828,10 +842,13 @@ static const char *applyProcessParameters(const QProcess::UnixProcessParameters 
     if (params.flags.testFlag(QProcess::UnixProcessFlag::CloseFileDescriptors)) {
         int r = -1;
         int fd = qMax(STDERR_FILENO + 1, params.lowestFileDescriptorToClose);
-#if QT_CONFIG(close_range)
+#ifdef CLOSE_RANGE_CLOEXEC
+        // Mark the file descriptors for closing upon execve() - we delay
+        // closing so we don't close the ones QProcess needs for itself.
         // On FreeBSD, this probably won't fail.
-        // On Linux, this will fail with ENOSYS before kernel 5.9.
-        r = close_range(fd, INT_MAX, 0);
+        // On Linux, this will fail with ENOSYS before kernel 5.9 and EINVAL
+        // before 5.11.
+        r = close_range(fd, INT_MAX, CLOSE_RANGE_CLOEXEC);
 #endif
         if (r == -1) {
             // We *could* read /dev/fd to find out what file descriptors are
@@ -842,7 +859,7 @@ static const char *applyProcessParameters(const QProcess::UnixProcessParameters 
             if (struct rlimit limit; getrlimit(RLIMIT_NOFILE, &limit) == 0)
                 max_fd = limit.rlim_cur;
             for ( ; fd < max_fd; ++fd)
-                close(fd);
+                fcntl(fd, F_SETFD, FD_CLOEXEC);
         }
     }
 
@@ -1329,6 +1346,7 @@ bool QProcessPrivate::startDetached(qint64 *pid)
     closeChannels();
 
     if (childPid == -1) {
+        childProcess.cleanup();
         setErrorAndEmit(QProcess::FailedToStart, "fork: "_L1 + qt_error_string(savedErrno));
         return false;
     }
@@ -1359,6 +1377,7 @@ bool QProcessPrivate::startDetached(qint64 *pid)
     } else if (!success) {
         if (pid)
             *pid = -1;
+        childProcess.cleanup();
         setErrorAndEmit(QProcess::FailedToStart,
                         startFailureErrorMessage(childStatus, startResult));
     }

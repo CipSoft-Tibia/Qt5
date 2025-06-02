@@ -84,6 +84,12 @@ Http2Server::~Http2Server()
 {
 }
 
+void Http2Server::setInformationalStatusCode(int code)
+{
+    if (code == 100 || (102 <= code && code <= 199))
+        informationalStatusCode = code;
+}
+
 void Http2Server::enablePushPromise(bool pushEnabled, const QByteArray &path)
 {
     pushPromiseEnabled = pushEnabled;
@@ -185,6 +191,9 @@ void Http2Server::sendServerSettings()
         writer.append(it.value());
         if (it.key() == Settings::INITIAL_WINDOW_SIZE_ID)
             streamRecvWindowSize = it.value();
+        if (it.key() == Settings::HEADER_TABLE_SIZE_ID) {
+            pendingMaxTableSizeUpdate = it.value();
+        }
     }
     writer.write(*socket);
     // Now, let's update our peer on a session recv window size:
@@ -322,7 +331,8 @@ void Http2Server::incomingConnection(qintptr socketDescriptor)
         connect(sslSocket, SIGNAL(sslErrors(QList<QSslError>)),
                 this, SLOT(ignoreErrorSlot()));
         QFile file(QT_TESTCASE_SOURCEDIR "/certs/fluke.key");
-        file.open(QIODevice::ReadOnly);
+        if (!file.open(QIODevice::ReadOnly))
+            qFatal("Cannot open certificate file %s", qPrintable(file.fileName()));
         QSslKey key(file.readAll(), QSsl::Rsa, QSsl::Pem, QSsl::PrivateKey);
         sslSocket->setPrivateKey(key);
         auto localCert = QSslCertificate::fromPath(QT_TESTCASE_SOURCEDIR "/certs/fluke.cert");
@@ -383,16 +393,12 @@ bool Http2Server::verifyProtocolUpgradeRequest()
     bool settingsOk = false;
 
     QHttpNetworkReplyPrivate *firstRequestReader = protocolUpgradeHandler->d_func();
+    const auto headers = firstRequestReader->headers();
 
     // That's how we append them, that's what I expect to find:
-    for (const auto &header : firstRequestReader->headers()) {
-        if (header.first == "Connection")
-            connectionOk = header.second.contains("Upgrade, HTTP2-Settings");
-        else if (header.first == "Upgrade")
-            upgradeOk = header.second.contains("h2c");
-        else if (header.first == "HTTP2-Settings")
-            settingsOk = true;
-    }
+    connectionOk = headers.combinedValue(QHttpHeaders::WellKnownHeader::Connection).contains("Upgrade, HTTP2-Settings");
+    upgradeOk = headers.combinedValue(QHttpHeaders::WellKnownHeader::Upgrade).contains("h2c");
+    settingsOk = headers.contains("HTTP2-Settings");
 
     return connectionOk && upgradeOk && settingsOk;
 }
@@ -666,6 +672,13 @@ void Http2Server::handleSETTINGS()
             return;
         }
 
+        // The client ACKed our setting, including the new decoder table size,
+        // so we can update it now:
+        if (pendingMaxTableSizeUpdate) {
+            decoder.setMaxDynamicTableSize(*pendingMaxTableSizeUpdate);
+            pendingMaxTableSizeUpdate.reset();
+        }
+
         waitingClientAck = false;
         emit serverSettingsAcked();
         return;
@@ -839,6 +852,25 @@ void Http2Server::sendResponse(quint32 streamID, bool emptyBody)
         sendResponse(lastPromisedStream, false);
         pushPromiseEnabled = true;
         // Now we'll continue with _normal_ response.
+    }
+
+    // Create a header with an informational status code and some random header
+    // fields. The setter ensures that the value is 100 or is between 102 and 199
+    // (inclusive) if set - otherwise it is 0
+
+    if (informationalStatusCode > 0) {
+        writer.start(FrameType::HEADERS, FrameFlag::END_HEADERS, streamID);
+
+        HttpHeader informationalHeader;
+        informationalHeader.push_back({":status", QByteArray::number(informationalStatusCode)});
+        informationalHeader.push_back(HeaderField("a_random_header_field", "it_will_be_dropped"));
+        informationalHeader.push_back(HeaderField("another_random_header_field", "drop_this_too"));
+
+        HPack::BitOStream ostream(writer.outboundFrame().buffer);
+        const bool result = encoder.encodeResponse(ostream, informationalHeader);
+        Q_ASSERT(result);
+
+        writer.writeHEADERS(*socket, maxFrameSize);
     }
 
     writer.start(FrameType::HEADERS, FrameFlag::END_HEADERS, streamID);

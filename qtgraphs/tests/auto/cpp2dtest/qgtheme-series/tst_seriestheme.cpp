@@ -51,7 +51,7 @@ void tst_seriestheme::initialProperties()
 {
     QVERIFY(m_theme);
 
-    QCOMPARE(m_theme->colorTheme(), QSeriesTheme::SeriesTheme1);
+    QCOMPARE(m_theme->colorTheme(), QSeriesTheme::SeriesColorTheme::SeriesTheme1);
     QCOMPARE(m_theme->colors(), {});
     QCOMPARE(m_theme->borderColors(), {});
     QCOMPARE(m_theme->borderWidth(), 0);
@@ -64,12 +64,12 @@ void tst_seriestheme::initializeProperties()
     QList<QColor> colors = {"#ff0000", "#ee0000"};
     QList<QColor> bordercolors = {"#ffff00", "#eeee00"};
 
-    m_theme->setColorTheme(QSeriesTheme::SeriesTheme2);
+    m_theme->setColorTheme(QSeriesTheme::SeriesColorTheme::SeriesTheme2);
     m_theme->setColors(colors);             // override colors
     m_theme->setBorderColors(bordercolors); // override bordercolors
     m_theme->setBorderWidth(1.0);
 
-    QCOMPARE(m_theme->colorTheme(), QSeriesTheme::SeriesTheme2);
+    QCOMPARE(m_theme->colorTheme(), QSeriesTheme::SeriesColorTheme::SeriesTheme2);
     QCOMPARE(m_theme->colors(), colors);
     QCOMPARE(m_theme->borderColors(), bordercolors);
     QCOMPARE(m_theme->borderWidth(), 1.0);
@@ -81,8 +81,7 @@ void tst_seriestheme::invalidProperties()
 
     m_theme->setBorderWidth(-1.0);
 
-    // TODO: QTBUG-121801
-    // QCOMPARE(m_theme->borderWidth(), 0.0);
+    QCOMPARE(m_theme->borderWidth(), 0.0);
 }
 
 void tst_seriestheme::setResetSeries()
@@ -121,7 +120,7 @@ void tst_seriestheme::setResetSeries()
     QCOMPARE(m_theme->graphSeriesCount(), 0);
 
     // Set theme to SeriesTheme1
-    m_theme->setColorTheme(QSeriesTheme::SeriesTheme1);
+    m_theme->setColorTheme(QSeriesTheme::SeriesColorTheme::SeriesTheme1);
 
     QCOMPARE(m_theme->colors(), colors1);
     QCOMPARE(m_theme->borderColors(), bordercolors1);
@@ -129,7 +128,7 @@ void tst_seriestheme::setResetSeries()
              "#ff3d9c73"); // 0 series, this should return the first color
 
     // Set theme to SeriesTheme2
-    m_theme->setColorTheme(QSeriesTheme::SeriesTheme2);
+    m_theme->setColorTheme(QSeriesTheme::SeriesColorTheme::SeriesTheme2);
 
     QCOMPARE(m_theme->colors(), colors2);
     QCOMPARE(m_theme->borderColors(), bordercolors2);
@@ -139,7 +138,7 @@ void tst_seriestheme::setResetSeries()
     // Reset theme
     m_theme->resetColorTheme();
 
-    QCOMPARE(m_theme->colorTheme(), QSeriesTheme::SeriesTheme1);
+    QCOMPARE(m_theme->colorTheme(), QSeriesTheme::SeriesColorTheme::SeriesTheme1);
     QCOMPARE(m_theme->colors(), colors1);
     QCOMPARE(m_theme->borderColors(), bordercolors1);
 

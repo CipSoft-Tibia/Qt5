@@ -33,21 +33,142 @@ static_assert(QQmlJSScope::sizeofQQmlSAElement() == sizeof(Element));
  */
 
 /*!
+    \enum QQmlSA::MethodType
+    \inmodule QtQmlCompiler
+
+    \brief Describes the type of a \l{QQmlSA::Method}.
+    \value Signal       The method is a signal
+    \value Slot         The method is a slot
+    \value Method       The method is a \l{Q_INVOKABLE} method
+    \value StaticMethod The method is a \l{Q_INVOKABLE} static method
+*/
+
+/*!
+    \enum QQmlSA::AccessSemantics
+    \inmodule QtQmlCompiler
+
+    \brief Describes how a type is accessed and shared.
+    \value Reference The type behaves like an \l{QML Object Types}{Object type}
+    \value Value     The type behaves like a \l{QML Value Types}{Value type}
+    \value None      The type is a \l{QML Namespaces}{namespace}, or is invalid
+    \value Sequence  The type behaves like a \l{QML Sequence Types}{Sequence type}
+
+    \sa {The QML Type System}
+*/
+
+/*!
+    \enum QQmlSA::BindingType
+    \inmodule QtQmlCompiler
+
+    \brief Describes the type of a \l{QQmlSA::Binding}.
+    \value Invalid          There is no binding
+    \value BoolLiteral      The binding is a bool literal
+    \value NumberLiteral    The binding is a number literal
+    \value StringLiteral    The binding is a string literal
+    \value RegExpLiteral    The binding is a regular expression literal
+    \value Null             The binding is a null literal
+    \value Translation      The binding is a \l{Text ID based translations}{translation}
+    \value TranslationById  The binding is a \l{Text ID based translations}{translation} by id
+    \value Script           The binding is a regular script
+    \value Object           The binging is an \l{QML Object Types}{Object}
+    \value Interceptor      The binding is an interceptor that can intercept writes to properties such as \l{Behavior QML Type}{Behavior}
+    \value ValueSource      The binging is a \l{Defining QML Types from C++#Property Value Sources}{property value source}
+    \value AttachedProperty The binding is an \l{QML Object Attributes#Attached Properties and Attached Signal Handlers}{attached object}
+    \value GroupProperty    The binding is a \l{QML Object Attributes#Grouped Properties}{grouped property}
+*/
+
+/*!
+    \enum QQmlSA::ScriptBindingKind
+    \inmodule QtQmlCompiler
+
+    \brief Describes the script type of a \l{QQmlSA::Binding} of type \l{Script}.
+    \value Invalid         The binding has an invalid script
+    \value PropertyBinding The binding is bound to a property
+    \value SignalHandler   The binding is a \l{Signal and Handler Event System#Receiving signals with signal handlers}{signal handler}
+    \value ChangeHandler   The binding is a \l{Signal and Handler Event System#Property change signal handlers}{change handler}
+*/
+
+/*!
+    \enum QQmlSA::ScopeType
+    \brief Describes the type of QML scope.
+    \value JSFunctionScope          The scope is a JavaScript function:
+                                    \badcode
+                                    Item {
+                                        function f() : int { <- begin
+                                            return 1
+                                        } <- end
+                                    }
+                                    \endcode
+    \value JSLexicalScope           The scope is a JavaScript lexical scope:
+                                    \badcode
+                                    property int i: { <- begin
+                                        let a = 1
+                                        { <- begin
+                                            console.log("hello")
+                                        } <- end
+                                        return a
+                                    } <- end
+                                    \endcode
+    \value QMLScope                 The scope is a QML Object:
+                                    \badcode
+                                    Item { <- begin
+                                        x: 50
+                                    } <- end
+                                    \endcode
+    \value GroupedPropertyScope     The scope is a \l{QML Object Attributes#Grouped Properties}{grouped property}:
+                                    \badcode
+                                    Text {
+                                        font { <- begin
+                                            pixelSize: 12
+                                            bold: true
+                                        } <- end
+                                    }
+                                    \endcode
+    \value AttachedPropertyScope    The scope is an \l{QML Object Attributes#Attached Properties and Attached Signal Handlers}{attached property}:
+                                    \badcode
+                                    Item {
+                                        Component.onCompleted: console.log("Hello")
+                                        ^^^^^^^^^
+                                                 \ Scope of attached property Component
+                                    }
+                                    \endcode
+    \value EnumScope                The scope is a QML \l{QML Enumerations}{enum}:
+                                    \badcode
+                                    enum E { <- begin
+                                        A,
+                                        B,
+                                        C
+                                    } <- end
+                                    \endcode
+
+    Each entry is shown with an example scope of the matching type in QML code.
+*/
+
+/*!
     \class QQmlSA::Binding::Bindings
     \inmodule QtQmlCompiler
 
     \brief Holds multiple property name to property binding associations.
  */
 
+/*!
+    Constructs a new Bindings object.
+ */
 Binding::Bindings::Bindings() : d_ptr{ new BindingsPrivate{ this } } { }
 
 BindingsPrivate::BindingsPrivate(QQmlSA::Binding::Bindings *interface) : q_ptr{ interface } { }
 
+/*!
+    Creates a copy of \a other.
+ */
 Binding::Bindings::Bindings(const Bindings &other)
     : d_ptr{ new BindingsPrivate{ this, *other.d_func() } }
 {
 }
 
+/*!
+    Destroys the Bindings object.
+ */
 Binding::Bindings::~Bindings() = default;
 
 BindingsPrivate::BindingsPrivate(QQmlSA::Binding::Bindings *interface, const BindingsPrivate &other)
@@ -69,6 +190,11 @@ QMultiHash<QString, Binding>::const_iterator Binding::Bindings::constBegin() con
     return d->constBegin();
 }
 
+/*!
+    \fn QMultiHash<QString, Binding>::const_iterator Binding::Bindings::begin() const
+    Same as constBegin().
+ */
+
 QMultiHash<QString, Binding>::const_iterator BindingsPrivate::constBegin() const
 {
     return m_bindings.constBegin();
@@ -83,6 +209,11 @@ QMultiHash<QString, Binding>::const_iterator Binding::Bindings::constEnd() const
     return d->constEnd();
 }
 
+/*!
+    \fn QMultiHash<QString, Binding>::const_iterator Binding::Bindings::end() const
+    Same as constEnd().
+ */
+
 QMultiHash<QString, Binding>::const_iterator BindingsPrivate::constEnd() const
 {
     return m_bindings.constEnd();
@@ -95,15 +226,28 @@ QMultiHash<QString, Binding>::const_iterator BindingsPrivate::constEnd() const
     \brief Represents a single QML property binding for a specific type.
  */
 
+/*!
+    Constructs a new Binding object.
+ */
 Binding::Binding() : d_ptr{ new BindingPrivate{ this } } { }
 
 BindingPrivate::BindingPrivate(Binding *interface) : q_ptr{ interface } { }
 
+/*!
+    Creates a copy of \a other.
+*/
 Binding::Binding(const Binding &other) : d_ptr{ new BindingPrivate{ this, *other.d_func() } } { }
 
+/*!
+    Move-constructs a \c Binding instance.
+*/
 Binding::Binding(Binding &&other) noexcept
     : d_ptr{ new BindingPrivate{ this, *other.d_func() } } { }
 
+
+/*!
+    Assigns \a other to this Binding instance.
+*/
 Binding &Binding::operator=(const Binding &other)
 {
     if (*this == other)
@@ -114,6 +258,9 @@ Binding &Binding::operator=(const Binding &other)
     return *this;
 }
 
+/*!
+    Move-assigns \a other to this Binding instance.
+*/
 Binding &Binding::operator=(Binding &&other) noexcept
 {
     if (*this == other)
@@ -124,6 +271,9 @@ Binding &Binding::operator=(Binding &&other) noexcept
     return *this;
 }
 
+/*!
+    Destroys the binding.
+*/
 Binding::~Binding() = default;
 
 bool Binding::operatorEqualsImpl(const Binding &lhs, const Binding &rhs)
@@ -154,7 +304,7 @@ const QQmlJSMetaPropertyBinding BindingPrivate::binding(const QQmlSA::Binding &b
 }
 
 /*!
-    Returns the type of the property if this element is a group property,
+    Returns the type of the property of this binding if it is a group property,
     otherwise returns an invalid Element.
  */
 Element Binding::groupType() const
@@ -162,6 +312,9 @@ Element Binding::groupType() const
     return QQmlJSScope::createQQmlSAElement(BindingPrivate::binding(*this).groupType());
 }
 
+/*!
+    Returns the type of this binding.
+ */
 QQmlSA::BindingType Binding::bindingType() const
 {
     return BindingPrivate::binding(*this).bindingType();
@@ -177,7 +330,7 @@ QString Binding::stringValue() const
 }
 
 /*!
-    Returns the name of the property using this binding.
+    Returns the name of the property bound with this binding.
  */
 QString Binding::propertyName() const
 {
@@ -212,8 +365,8 @@ double Binding::numberValue() const
 }
 
 /*!
-    Returns the kind of associated associated script if the content type of
-    this binding is Script, otherwise returns Script_Invalid.
+    Returns the kind of the associated script if the content type of this
+    binding is Script, otherwise returns Invalid.
  */
 QQmlSA::ScriptBindingKind Binding::scriptKind() const
 {
@@ -230,13 +383,18 @@ bool Binding::hasObject() const
 
 /*!
     Returns the type of the associated object if the content type of this
-    binding is Object, otherwise returns an invlaid Element.
+    binding is Object, otherwise returns an invalid Element.
  */
 QQmlSA::Element Binding::objectType() const
 {
     return QQmlJSScope::createQQmlSAElement(BindingPrivate::binding(*this).objectType());
 }
 
+/*!
+    Returns whether this binding has script value type undefined like when it
+    is assigned \c undefined. If the content type of this binding is not
+    \l{QQmlSA::BindingType::Script}, returns \c false.
+ */
 bool Binding::hasUndefinedScriptValue() const
 {
     const auto &jsBinding = BindingPrivate::binding(*this);
@@ -246,21 +404,42 @@ bool Binding::hasUndefinedScriptValue() const
 
 /*!
     Returns \c true if \a bindingType is a literal type, and \c false
-    otherwise. Literal types include strings, booleans, numbers, regular
-    expressions among other.
+    otherwise.
  */
 bool QQmlSA::Binding::isLiteralBinding(QQmlSA::BindingType bindingType)
 {
     return QQmlJSMetaPropertyBinding::isLiteralBinding(bindingType);
 }
 
+/*!
+    \fn friend bool Binding::operator==(const Binding &lhs, const Binding &rhs)
+    Returns \c true if \a lhs and \a rhs are equal, and \c false otherwise. Two
+    \c Bindings are considered equal if their property name, content type, and
+    source location match.
+ */
+/*!
+    \fn friend bool Binding::operator!=(const Binding &lhs, const Binding &rhs)
+    Returns \c true if \a lhs and \a rhs are not equal, and \c false otherwise.
+    Two \c Bindings are considered equal if their property name, content type,
+    and source location match.
+ */
+
+/*!
+    Constructs a new Methods object.
+*/
 QQmlSA::Method::Methods::Methods() : d_ptr{ new MethodsPrivate{ this } } { }
 
+/*!
+    Creates a copy of \a other.
+ */
 QQmlSA::Method::Methods::Methods(const Methods &other)
     : d_ptr{ new MethodsPrivate{ this, *other.d_func() } }
 {
 }
 
+/*!
+    Destroys the Methods instance.
+ */
 QQmlSA::Method::Methods::~Methods() = default;
 
 /*!
@@ -271,6 +450,11 @@ QMultiHash<QString, Method>::const_iterator Method::Methods::constBegin() const
     Q_D(const Methods);
     return d->constBegin();
 }
+
+/*!
+    \fn QMultiHash<QString, QQmlSA::Method>::const_iterator QQmlSA::Method::Methods::begin() const
+    Returns an iterator to the beginning of the methods.
+ */
 
 QMultiHash<QString, Method>::const_iterator MethodsPrivate::constBegin() const
 {
@@ -285,6 +469,12 @@ QMultiHash<QString, Method>::const_iterator Method::Methods::constEnd() const
     Q_D(const Methods);
     return d->constEnd();
 }
+
+/*!
+    \fn QMultiHash<QString, QQmlSA::Method>::const_iterator QQmlSA::Method::Methods::end() const
+    Returns an iterator to the end of the methods.
+ */
+
 QMultiHash<QString, Method>::const_iterator MethodsPrivate::constEnd() const
 {
     return m_methods.constEnd();
@@ -314,6 +504,11 @@ QString MethodPrivate::methodName() const
     return m_method.methodName();
 }
 
+QQmlSA::SourceLocation MethodPrivate::sourceLocation() const
+{
+    return QQmlSA::SourceLocationPrivate::createQQmlSASourceLocation(m_method.sourceLocation());
+}
+
 MethodType MethodPrivate::methodType() const
 {
     return m_method.methodType();
@@ -326,15 +521,27 @@ MethodType MethodPrivate::methodType() const
     \brief Represents a QML method.
  */
 
+/*!
+    Constructs a new Method object.
+ */
 Method::Method() : d_ptr{ new MethodPrivate{ this } } { }
 
+/*!
+    Creates a copy of \a other.
+ */
 Method::Method(const Method &other) : d_ptr{ new MethodPrivate{ this, *other.d_func() } } { }
 
+/*!
+    Move-constructs a Method instance.
+ */
 Method::Method(Method &&other) noexcept
     : d_ptr{ new MethodPrivate{ this, std::move(*other.d_func()) } }
 {
 }
 
+/*!
+    Assigns \a other to this Method instance.
+ */
 Method &Method::operator=(const Method &other)
 {
     if (*this == other)
@@ -345,6 +552,9 @@ Method &Method::operator=(const Method &other)
     return *this;
 }
 
+/*!
+    Move-assigns \a other to this Method instance.
+ */
 Method &Method::operator=(Method &&other) noexcept
 {
     if (*this == other)
@@ -355,6 +565,9 @@ Method &Method::operator=(Method &&other) noexcept
     return *this;
 }
 
+/*!
+    Destroys the Method.
+ */
 Method::~Method() = default;
 
 /*!
@@ -367,13 +580,30 @@ QString Method::methodName() const
 }
 
 /*!
-    Returns the type of this method. For example, Signal, Slot, Method or
-    StaticMethod.
+    Returns the type of this method.
  */
 MethodType Method::methodType() const
 {
     Q_D(const Method);
     return d->methodType();
+}
+
+/*!
+    \fn friend bool Method::operator==(const Method &lhs, const Method &rhs)
+    Returns \c true if \a lhs and \a rhs are equal, and \c false otherwise.
+ */
+/*!
+    \fn friend bool Method::operator!=(const Method &lhs, const Method &rhs)
+    Returns \c true if \a lhs and \a rhs are not equal, and \c false otherwise.
+ */
+
+/*!
+    Returns the location in the QML code where this method is defined.
+ */
+QQmlSA::SourceLocation Method::sourceLocation() const
+{
+    Q_D(const Method);
+    return d->sourceLocation();
 }
 
 bool Method::operatorEqualsImpl(const Method &lhs, const Method &rhs)
@@ -467,16 +697,28 @@ QQmlSA::Property PropertyPrivate::createProperty(const QQmlJSMetaProperty &prope
     \brief Represents a QML property.
  */
 
+/*!
+    Constructs a new Property object.
+ */
 Property::Property() : d_ptr{ new PropertyPrivate{ this } } { }
 
+/*!
+    Creates a copy of \a other.
+ */
 Property::Property(const Property &other)
     : d_ptr{ new PropertyPrivate{ this, *other.d_func() } } { }
 
+/*!
+    Move-constructs a Property instance.
+ */
 Property::Property(Property &&other) noexcept
     : d_ptr{ new PropertyPrivate{ this, std::move(*other.d_func()) } }
 {
 }
 
+/*!
+    Assigns \a other to this Property instance.
+ */
 Property &Property::operator=(const Property &other)
 {
     if (*this == other)
@@ -487,6 +729,9 @@ Property &Property::operator=(const Property &other)
     return *this;
 }
 
+/*!
+    Move-assigns \a other to this Property instance.
+ */
 Property &Property::operator=(Property &&other) noexcept
 {
     if (*this == other)
@@ -497,6 +742,9 @@ Property &Property::operator=(Property &&other) noexcept
     return *this;
 }
 
+/*!
+    Destroys this property.
+ */
 Property::~Property() = default;
 
 /*!
@@ -508,23 +756,41 @@ QString Property::typeName() const
     return d->typeName();
 }
 
+/*!
+    Returns \c true if this property is valid, \c false otherwise.
+ */
 bool Property::isValid() const
 {
     Q_D(const Property);
     return d->isValid();
 }
 
+/*!
+    Returns \c true if this property is read-only, \c false otherwise.
+ */
 bool Property::isReadonly() const
 {
     Q_D(const Property);
     return d->isReadonly();
 }
 
+/*!
+    Returns the type of this property.
+*/
 QQmlSA::Element Property::type() const
 {
     Q_D(const Property);
     return d->type();
 }
+
+/*!
+    \fn friend bool Property::operator==(const Property &lhs, const Property &rhs)
+    Returns \c true if \a lhs and \a rhs are equal, and \c false otherwise.
+ */
+/*!
+    \fn friend bool Property::operator!=(const Property &lhs, const Property &rhs)
+    Returns \c true if \a lhs and \a rhs are not equal, and \c false otherwise.
+ */
 
 
 bool Property::operatorEqualsImpl(const Property &lhs, const Property &rhs)
@@ -539,16 +805,30 @@ bool Property::operatorEqualsImpl(const Property &lhs, const Property &rhs)
     \brief Represents a QML type.
  */
 
+/*!
+    Constructs a new Element object.
+ */
 Element::Element()
 {
     new (m_data) QQmlJSScope::ConstPtr();
 }
 
+/*!
+    Creates a copy of \a other.
+ */
 Element::Element(const Element &other)
 {
     new (m_data) QQmlJSScope::ConstPtr(QQmlJSScope::scope(other));
 }
 
+/*!
+    \fn Element::Element(Element &&other) noexcept
+    Move-constructs an Element instance.
+ */
+
+/*!
+    Assigns \a other to this element instance.
+ */
 Element &Element::operator=(const Element &other)
 {
     if (this == &other)
@@ -558,6 +838,14 @@ Element &Element::operator=(const Element &other)
     return *this;
 }
 
+/*!
+    \fn QQmlSA::Element &QQmlSA::Element::operator=(QQmlSA::Element &&other)
+    Move-assigns \a other to this Element instance.
+ */
+
+/*!
+    Destroys the element.
+ */
 Element::~Element()
 {
     (*reinterpret_cast<QQmlJSScope::ConstPtr *>(m_data)).QQmlJSScope::ConstPtr::~ConstPtr();
@@ -603,6 +891,9 @@ bool Element::inherits(const Element &element) const
     return QQmlJSScope::scope(*this)->inherits(QQmlJSScope::scope(element));
 }
 
+/*!
+    Returns \c true if this element is null, \c false otherwise.
+ */
 bool Element::isNull() const
 {
     return QQmlJSScope::scope(*this).isNull();
@@ -626,7 +917,7 @@ AccessSemantics Element::accessSemantics() const
 }
 
 /*!
-    Returns true for objects defined from Qml, and false for objects declared from C++.
+    Returns \c true for objects defined from Qml, and \c false for objects declared from C++.
  */
 bool QQmlSA::Element::isComposite() const
 {
@@ -693,7 +984,7 @@ bool Element::hasMethod(const QString &methodName) const
  */
 
 /*!
-    Returns this Elements's method which are not defined on its base or
+    Returns this Elements's methods, which are not defined on its base or
     extension objects.
  */
 Method::Methods Element::ownMethods() const
@@ -702,7 +993,7 @@ Method::Methods Element::ownMethods() const
 }
 
 /*!
-    Returns the location in the QML code where this method is defined.
+    Returns the location in the QML code where this Element is defined.
  */
 QQmlSA::SourceLocation Element::sourceLocation() const
 {
@@ -711,7 +1002,7 @@ QQmlSA::SourceLocation Element::sourceLocation() const
 }
 
 /*!
-    Returns the file path of the QML code that defines this method.
+    Returns the file path of the QML code that defines this Element.
  */
 QString Element::filePath() const
 {
@@ -719,7 +1010,7 @@ QString Element::filePath() const
 }
 
 /*!
-    Returns whethe this Element has a property binding with the name \a name.
+    Returns whether this Element has a property binding with the name \a name.
  */
 bool Element::hasPropertyBindings(const QString &name) const
 {
@@ -795,11 +1086,17 @@ QQmlSA::Binding::Bindings BindingsPrivate::createBindings(
     return bindings;
 }
 
+/*!
+    Returns \c true if this element is not null, \c false otherwise.
+ */
 Element::operator bool() const
 {
     return bool(QQmlJSScope::scope(*this));
 }
 
+/*!
+    Returns \c true if this element is null, \c false otherwise.
+ */
 bool Element::operator!() const
 {
     return !QQmlJSScope::scope(*this);
@@ -815,10 +1112,24 @@ QString Element::name() const
     return QQmlJSScope::prettyName(QQmlJSScope::scope(*this)->internalName());
 }
 
+/*!
+    \fn friend inline bool Element::operator==(const Element &lhs, const Element &rhs)
+    Returns \c true if \a lhs and \a rhs are equal, and \c false otherwise.
+ */
+/*!
+    \fn friend inline bool Element::operator!=(const Element &lhs, const Element &rhs)
+    Returns \c true if \a lhs and \a rhs are not equal, and \c false otherwise.
+ */
+
 bool Element::operatorEqualsImpl(const Element &lhs, const Element &rhs)
 {
     return QQmlJSScope::scope(lhs) == QQmlJSScope::scope(rhs);
 }
+
+/*!
+    \fn friend inline qsizetype Element::qHash(const Element &key, qsizetype seed) noexcept
+    Returns the hash for \a key using \a seed to seed the calculation.
+*/
 
 qsizetype Element::qHashImpl(const Element &key, qsizetype seed) noexcept
 {
@@ -853,13 +1164,16 @@ private:
     GenericPass *q_ptr;
 };
 
-GenericPass::~GenericPass() = default;
-
 /*!
     Creates a generic pass.
  */
 GenericPass::GenericPass(PassManager *manager)
     : d_ptr{ new GenericPassPrivate{ this, manager } } { }
+
+/*!
+    Destroys the GenericPass instance.
+ */
+GenericPass::~GenericPass() = default;
 
 /*!
     Emits a warning message \a diagnostic about an issue of type \a id.
@@ -927,8 +1241,8 @@ Element GenericPass::resolveAttachedInFileScope(QAnyStringView typeName)
 
 /*!
     Returns the type of \a typeName defined in module \a moduleName.
-    If an attached type and and a non-attached type share the same
-    name (e.g. \c ListView), the \l Element corresponding to the
+    If an attached type and a non-attached type share the same name
+    (for example, \c ListView), the \l Element corresponding to the
     non-attached type is returned.
     To obtain the attached type, use \l resolveAttached.
  */
@@ -943,7 +1257,7 @@ Element GenericPass::resolveType(QAnyStringView moduleName, QAnyStringView typeN
 
 /*!
     Returns the type of the built-in type identified by \a typeName.
-    Built-in types encompasses \c{C++} types which the  QML engine can handle
+    Built-in types encompass \c{C++} types which the  QML engine can handle
     without any imports (e.g. \l QDateTime and \l QString), global EcmaScript
     objects like \c Number, as well as the \l {QML Global Object}
     {global Qt object}.
@@ -957,7 +1271,7 @@ Element GenericPass::resolveBuiltinType(QAnyStringView typeName) const
     auto scope = typeImporter->builtinInternalNames().type(typeNameString).scope;
     if (!scope) {
         // and qml names (e.g. for bool) - builtinImportHelper is private, so we can't do it in one call
-        auto builtins = typeImporter->importBuiltins();
+        auto builtins = typeImporter->importHardCodedBuiltins();
         scope = builtins.type(typeNameString).scope;
     }
     return QQmlJSScope::createQQmlSAElement(scope);
@@ -1231,14 +1545,18 @@ void PassManagerPrivate::analyzeBinding(const Element &element, const QQmlSA::El
     const QQmlSA::Binding &binding = info->second.binding;
     const QString &propertyName = info->second.fullPropertyName;
 
-    for (PropertyPass *pass : findPropertyUsePasses(element, propertyName))
+    const auto elementPasses = findPropertyUsePasses(element, propertyName);
+    for (PropertyPass *pass : elementPasses)
         pass->onBinding(element, propertyName, binding, bindingScope, value);
 
     if (!info->second.isAttached || bindingScope.baseType().isNull())
         return;
 
-    for (PropertyPass *pass : findPropertyUsePasses(bindingScope.baseType(), propertyName))
-        pass->onBinding(element, propertyName, binding, bindingScope, value);
+    const auto bindingScopePasses = findPropertyUsePasses(bindingScope.baseType(), propertyName);
+    for (PropertyPass *pass : bindingScopePasses) {
+        if (!elementPasses.contains(pass))
+            pass->onBinding(element, propertyName, binding, bindingScope, value);
+    }
 }
 
 /*!
@@ -1334,6 +1652,16 @@ void DebugElementPass::run(const Element &element) {
  */
 
 /*!
+    \fn LintPlugin::LintPlugin()
+    Constructs a LintPlugin object.
+ */
+
+/*!
+    \fn virtual LintPlugin::~LintPlugin()
+    Destroys the LintPlugin instance.
+ */
+
+/*!
     \fn void QQmlSA::LintPlugin::registerPasses(PassManager *manager, const Element &rootElement)
 
     Adds a pass \a manager that will be executed on \a rootElement.
@@ -1389,6 +1717,11 @@ void DebugElementPass::run(const Element &element) {
  */
 
 /*!
+    \fn ElementPass::ElementPass(PassManager *manager)
+    Creates an ElementPass object and uses \a manager to refer to the pass manager.
+*/
+
+/*!
     \fn void QQmlSA::ElementPass::run(const Element &element)
 
     Executes if \c shouldRun() returns \c true. Performs the real computation
@@ -1418,7 +1751,11 @@ bool ElementPass::shouldRun(const Element &element)
  */
 
 
+/*!
+    Creates a PropertyPass object and uses \a manager to refer to the pass manager.
+ */
 PropertyPass::PropertyPass(PassManager *manager) : GenericPass(manager) { }
+
 /*!
     Executes whenever a property gets bound to a value.
 
@@ -1633,22 +1970,34 @@ const QQmlJSFixSuggestion &FixSuggestionPrivate::fixSuggestion(const FixSuggesti
  */
 
 
+/*!
+    Creates a FixSuggestion object.
+ */
 FixSuggestion::FixSuggestion(const QString &fixDescription, const QQmlSA::SourceLocation &location,
                              const QString &replacement)
     : d_ptr{ new FixSuggestionPrivate{ this, fixDescription, location, replacement } }
 {
 }
 
+/*!
+    Creates a copy of \a other.
+ */
 FixSuggestion::FixSuggestion(const FixSuggestion &other)
     : d_ptr{ new FixSuggestionPrivate{ this, *other.d_func() } }
 {
 }
 
+/*!
+    Move-constructs a FixSuggestion instance.
+ */
 FixSuggestion::FixSuggestion(FixSuggestion &&other) noexcept
     : d_ptr{ new FixSuggestionPrivate{ this, std::move(*other.d_func()) } }
 {
 }
 
+/*!
+    Assigns \a other to this FixSuggestion instance.
+ */
 FixSuggestion &FixSuggestion::operator=(const FixSuggestion &other)
 {
     if (*this == other)
@@ -1658,6 +2007,9 @@ FixSuggestion &FixSuggestion::operator=(const FixSuggestion &other)
     return *this;
 }
 
+/*!
+    Move-assigns \a other to this FixSuggestion instance.
+ */
 FixSuggestion &FixSuggestion::operator=(FixSuggestion &&other) noexcept
 {
     if (*this == other)
@@ -1667,6 +2019,9 @@ FixSuggestion &FixSuggestion::operator=(FixSuggestion &&other) noexcept
     return *this;
 }
 
+/*!
+    Destorys the FixSuggestion instance.
+ */
 FixSuggestion::~FixSuggestion() = default;
 
 /*!
@@ -1727,7 +2082,8 @@ QString FixSuggestion::hint() const
 }
 
 /*!
-    Sets uses \a autoApplicable to set whtether this suggested fix can be applied automatically.
+    Sets \a autoApplicable to determine whether this suggested fix can be
+    applied automatically.
  */
 void FixSuggestion::setAutoApplicable(bool autoApplicable)
 {
@@ -1741,6 +2097,15 @@ bool QQmlSA::FixSuggestion::isAutoApplicable() const
 {
     return FixSuggestionPrivate::fixSuggestion(*this).isAutoApplicable();
 }
+
+/*!
+    \fn friend bool FixSuggestion::operator==(const FixSuggestion &lhs, const FixSuggestion &rhs)
+    Returns \c true if \a lhs and \a rhs are equal, and \c false otherwise.
+ */
+/*!
+    \fn friend bool FixSuggestion::operator!=(const FixSuggestion &lhs, const FixSuggestion &rhs)
+    Returns \c true if \a lhs and \a rhs are not equal, and \c false otherwise.
+ */
 
 bool FixSuggestion::operatorEqualsImpl(const FixSuggestion &lhs, const FixSuggestion &rhs)
 {

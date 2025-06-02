@@ -364,6 +364,12 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
+#ifdef Q_OS_VXWORKS
+constexpr auto isVxworks = true;
+#else
+constexpr auto isVxworks = false;
+#endif
+
 class QSslSocketGlobalData
 {
 public:
@@ -2964,7 +2970,13 @@ QList<QByteArray> QSslSocketPrivate::unixRootCertDirectories()
         ba("/opt/openssl/certs/"), // HP-UX
         ba("/etc/ssl/"), // OpenBSD
     };
-    return QList<QByteArray>::fromReadOnlyData(dirs);
+    QList<QByteArray> result = QList<QByteArray>::fromReadOnlyData(dirs);
+    if constexpr (isVxworks) {
+        static QByteArray vxworksCertsDir = qgetenv("VXWORKS_CERTS_DIR");
+        if (!vxworksCertsDir.isEmpty())
+            result.push_back(vxworksCertsDir);
+    }
+    return result;
 }
 
 /*!

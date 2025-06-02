@@ -24,8 +24,6 @@
 #include "chrome/common/pref_names.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "content/public/browser/notification_details.h"
-#include "content/public/browser/notification_service.h"
 #include "extensions/browser/extension_function_registry.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_system.h"
@@ -302,7 +300,7 @@ Command CommandService::FindCommandByName(const std::string& extension_id,
     std::string shortcut = it.first;
     if (!IsForCurrentPlatform(shortcut))
       continue;
-    absl::optional<bool> global = it.second.GetDict().FindBool(kGlobal);
+    std::optional<bool> global = it.second.GetDict().FindBool(kGlobal);
 
     std::vector<base::StringPiece> tokens = base::SplitStringPiece(
         shortcut, ":", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
@@ -615,7 +613,7 @@ bool CommandService::IsCommandShortcutUserModified(
     const std::string& command_name) {
   // Get the previous suggested key, if any.
   ui::Accelerator suggested_key;
-  absl::optional<bool> suggested_key_was_assigned;
+  std::optional<bool> suggested_key_was_assigned;
   ExtensionPrefs* extension_prefs = ExtensionPrefs::Get(profile_);
   const base::Value::Dict* commands_prefs =
       extension_prefs->ReadPrefAsDict(extension->id(), kCommands);

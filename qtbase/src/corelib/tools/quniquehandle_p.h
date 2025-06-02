@@ -17,8 +17,13 @@
 
 #include <QtCore/qtconfigmacros.h>
 #include <QtCore/qassert.h>
+#include <QtCore/qcompare.h>
+#include <QtCore/qswap.h>
+#include <QtCore/qtclasshelpermacros.h>
 
 #include <memory>
+#include <utility>
+#include <type_traits>
 
 QT_BEGIN_NAMESPACE
 
@@ -108,6 +113,19 @@ class QUniqueHandle
 {
 public:
     using Type = typename HandleTraits::Type;
+    static_assert(std::is_nothrow_default_constructible_v<Type>);
+    static_assert(std::is_nothrow_constructible_v<Type>);
+    static_assert(std::is_nothrow_copy_constructible_v<Type>);
+    static_assert(std::is_nothrow_move_constructible_v<Type>);
+    static_assert(std::is_nothrow_copy_assignable_v<Type>);
+    static_assert(std::is_nothrow_move_assignable_v<Type>);
+    static_assert(std::is_nothrow_destructible_v<Type>);
+    static_assert(noexcept(std::declval<Type>() == std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() != std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() < std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() <= std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() > std::declval<Type>()));
+    static_assert(noexcept(std::declval<Type>() >= std::declval<Type>()));
 
     QUniqueHandle() = default;
 
@@ -124,13 +142,12 @@ public:
         close();
     }
 
-    QUniqueHandle& operator=(QUniqueHandle &&rhs) noexcept
+    void swap(QUniqueHandle &other) noexcept
     {
-        if (this != std::addressof(rhs))
-            reset(rhs.release());
-
-        return *this;
+        qSwap(m_handle, other.m_handle);
     }
+
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_MOVE_AND_SWAP(QUniqueHandle)
 
     QUniqueHandle(const QUniqueHandle &) = delete;
     QUniqueHandle &operator=(const QUniqueHandle &) = delete;
@@ -151,7 +168,7 @@ public:
         return m_handle;
     }
 
-    void reset(const Type& handle) noexcept
+    void reset(const Type& handle = HandleTraits::invalidValue()) noexcept
     {
         if (handle == m_handle)
             return;
@@ -162,9 +179,7 @@ public:
 
     [[nodiscard]] Type release() noexcept
     {
-        Type handle = m_handle;
-        m_handle = HandleTraits::invalidValue();
-        return handle;
+        return std::exchange(m_handle, HandleTraits::invalidValue());
     }
 
     [[nodiscard]] Type *operator&() noexcept  // NOLINT(google-runtime-operator)
@@ -184,41 +199,35 @@ public:
         m_handle = HandleTraits::invalidValue();
     }
 
-    [[nodiscard]] friend bool operator==(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
+private:
+    friend bool comparesEqual(const QUniqueHandle& lhs, const QUniqueHandle& rhs) noexcept
     {
         return lhs.get() == rhs.get();
     }
 
-    [[nodiscard]] friend bool operator!=(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
+    friend Qt::strong_ordering compareThreeWay(const QUniqueHandle& lhs,
+                                               const QUniqueHandle& rhs) noexcept
     {
-        return lhs.get() != rhs.get();
+        if constexpr (std::is_pointer_v<Type>)
+            return qCompareThreeWay(Qt::totally_ordered_wrapper{ lhs.get() },
+                                    Qt::totally_ordered_wrapper{ rhs.get() });
+        else
+            return qCompareThreeWay(lhs.get(), rhs.get());
     }
 
-    [[nodiscard]] friend bool operator<(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
-    {
-        return lhs.get() < rhs.get();
-    }
+    Q_DECLARE_STRONGLY_ORDERED(QUniqueHandle)
 
-    [[nodiscard]] friend bool operator<=(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
-    {
-        return lhs.get() <= rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator>(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
-    {
-        return lhs.get() > rhs.get();
-    }
-
-    [[nodiscard]] friend bool operator>=(const QUniqueHandle &lhs, const QUniqueHandle &rhs) noexcept
-    {
-        return lhs.get() >= rhs.get();
-    }
-
-private:
     Type m_handle{ HandleTraits::invalidValue() };
 };
 
 // clang-format on
+
+template <typename Trait>
+void swap(QUniqueHandle<Trait> &lhs, QUniqueHandle<Trait> &rhs) noexcept
+{
+    lhs.swap(rhs);
+}
+
 
 QT_END_NAMESPACE
 

@@ -31,7 +31,8 @@ extern "C" {
 
 bool av1_compute_global_motion_feature_match(
     TransformationType type, YV12_BUFFER_CONFIG *src, YV12_BUFFER_CONFIG *ref,
-    int bit_depth, MotionModel *motion_models, int num_motion_models);
+    int bit_depth, MotionModel *motion_models, int num_motion_models,
+    bool *mem_alloc_failed);
 
 #ifdef __cplusplus
 }

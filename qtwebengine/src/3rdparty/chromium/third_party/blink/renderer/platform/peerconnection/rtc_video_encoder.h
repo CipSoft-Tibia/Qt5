@@ -12,10 +12,12 @@
 #include <vector>
 
 #include "base/feature_list.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/synchronization/lock.h"
 #include "media/base/video_decoder_config.h"
+#include "media/media_buildflags.h"
 #include "media/video/video_encode_accelerator.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
@@ -101,7 +103,8 @@ class PLATFORM_EXPORT RTCVideoEncoder : public webrtc::VideoEncoder {
   const bool is_constrained_h264_;
 
   // Factory for creating VEAs, shared memory buffers, etc.
-  media::GpuVideoAcceleratorFactories* const gpu_factories_;
+  const raw_ptr<media::GpuVideoAcceleratorFactories, ExperimentalRenderer>
+      gpu_factories_;
 
   scoped_refptr<media::MojoVideoEncoderMetricsProviderFactory>
       encoder_metrics_provider_factory_;

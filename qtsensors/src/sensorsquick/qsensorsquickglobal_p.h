@@ -16,8 +16,8 @@
 //
 
 #include <QtCore/qglobal.h>
-#include <QtSensorsQuick/private/qtsensorsquickexports_p.h>
+#include <QtSensorsQuick/qtsensorsquickexports.h>
 
-void Q_SENSORSQUICK_PRIVATE_EXPORT qml_register_types_QtSensors();
+void Q_SENSORSQUICK_EXPORT qml_register_types_QtSensors();
 
 #endif // QSENSORSQUICKGLOBALS_P_H

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
-if (NOT CMAKE_PROJECT_NAME STREQUAL "QtBase" AND NOT CMAKE_PROJECT_NAME STREQUAL "Qt")
+if(NOT PROJECT_NAME STREQUAL "QtBase" AND NOT PROJECT_NAME STREQUAL "Qt")
     include(.cmake.conf)
     # Store initial build type (if any is specified) to be read by
     # qt_internal_set_cmake_build_type().
@@ -22,8 +22,10 @@ if (NOT CMAKE_PROJECT_NAME STREQUAL "QtBase" AND NOT CMAKE_PROJECT_NAME STREQUAL
         BuildInternals
         Core
         Sql
-     )
-    qt_prepare_standalone_project()
+    )
+    # Use qtbase license files for standalone builds.
+    set(QT_SBOM_LICENSE_DIRS "${PROJECT_SOURCE_DIR}/../../../LICENSES")
+    qt_build_repo_begin()
 else()
     qt_internal_upgrade_cmake_policies()
 endif()
@@ -76,6 +78,6 @@ if(QT_FEATURE_sql_mimer)
     add_subdirectory(mimer)
 endif()
 
-if(NOT CMAKE_PROJECT_NAME STREQUAL "QtBase" AND NOT CMAKE_PROJECT_NAME STREQUAL "Qt")
-    qt_print_feature_summary()
+if(NOT PROJECT_NAME STREQUAL "QtBase" AND NOT PROJECT_NAME STREQUAL "Qt")
+    qt_build_repo_end()
 endif()

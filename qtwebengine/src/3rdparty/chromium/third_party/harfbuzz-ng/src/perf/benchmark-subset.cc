@@ -11,8 +11,8 @@
 
 enum operation_t
 {
-  subset_codepoints,
   subset_glyphs,
+  subset_unicodes,
   instance,
 };
 
@@ -116,6 +116,16 @@ static hb_face_t* preprocess_face(hb_face_t* face)
   return new_face;
 }
 
+static hb_face_t *cached_face;
+
+static void
+free_cached_face (void)
+{
+  hb_face_destroy (cached_face);
+  cached_face = nullptr;
+}
+
+
 /* benchmark for subsetting a font */
 static void BM_subset (benchmark::State &state,
                        operation_t operation,
@@ -126,7 +136,6 @@ static void BM_subset (benchmark::State &state,
 
   hb_face_t *face = nullptr;
 
-  static hb_face_t *cached_face;
   static const char *cached_font_path;
 
   if (!cached_font_path || strcmp (cached_font_path, test_input.font_path))
@@ -155,7 +164,7 @@ static void BM_subset (benchmark::State &state,
 
   switch (operation)
   {
-    case subset_codepoints:
+    case subset_unicodes:
     {
       hb_set_t* all_codepoints = hb_set_create ();
       hb_face_collect_unicodes (face, all_codepoints);
@@ -237,6 +246,10 @@ int main(int argc, char** argv)
 {
   benchmark::Initialize(&argc, argv);
 
+#ifndef HB_NO_ATEXIT
+  atexit (free_cached_face);
+#endif
+
   if (argc > 1)
   {
     num_tests = (argc - 1) / 2;
@@ -250,9 +263,9 @@ int main(int argc, char** argv)
 
 #define TEST_OPERATION(op, time_unit) test_operation (op, #op, tests, num_tests, time_unit)
 
-  TEST_OPERATION (subset_glyphs, benchmark::kMillisecond);
-  TEST_OPERATION (subset_codepoints, benchmark::kMillisecond);
-  TEST_OPERATION (instance, benchmark::kMillisecond);
+  TEST_OPERATION (subset_glyphs, benchmark::kMicrosecond);
+  TEST_OPERATION (subset_unicodes, benchmark::kMicrosecond);
+  TEST_OPERATION (instance, benchmark::kMicrosecond);
 
 #undef TEST_OPERATION
 

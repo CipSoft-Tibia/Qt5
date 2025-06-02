@@ -6,16 +6,16 @@
 
 #include <QtGraphs/qcustom3dvolume.h>
 #include <QtGraphs/qcustom3ditem.h>
-#include <QtGraphs/q3dscatter.h>
-#include <QtGraphs/q3dsurface.h>
-#include <QtGraphs/q3dbars.h>
+#include <QtGraphsWidgets/q3dscatterwidgetitem.h>
+#include <QtGraphsWidgets/q3dsurfacewidgetitem.h>
+#include <QtGraphsWidgets/q3dbarswidgetitem.h>
 #include <QtWidgets/QLabel>
 
 class VolumetricModifier : public QObject
 {
     Q_OBJECT
 public:
-    explicit VolumetricModifier(QAbstract3DGraph *scatter);
+    explicit VolumetricModifier(Q3DGraphsWidgetItem *scatter);
     ~VolumetricModifier();
 
     void setFpsLabel(QLabel *fpsLabel);
@@ -42,10 +42,10 @@ private:
     void checkRenderCase(int id, Qt::Axis axis, int index, const QList<uchar> &dataBefore,
                          QCustom3DVolume *volumeItem);
 
-    QAbstract3DGraph *m_graph;
-    Q3DScatter *m_scatterGraph;
-    Q3DSurface *m_surfaceGraph;
-    Q3DBars *m_barGraph;
+    Q3DGraphsWidgetItem *m_graph;
+    Q3DScatterWidgetItem *m_scatterGraph;
+    Q3DSurfaceWidgetItem *m_surfaceGraph;
+    Q3DBarsWidgetItem *m_barGraph;
     QCustom3DVolume *m_volumeItem;
     QCustom3DVolume *m_volumeItem2;
     QCustom3DVolume *m_volumeItem3;

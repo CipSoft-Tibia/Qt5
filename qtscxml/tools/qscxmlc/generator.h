@@ -27,7 +27,7 @@ public:
               QIODevice &outfile, // -- QtScxml
               bool requireCompleteTypes = false);
     void generateCode();
-    qsizetype registeredStringsCount() { return strings.size(); };
+    qsizetype registeredStringsCount() { return strings.size(); }
 
 // -- QtScxml
     void generateAccessorDefs();

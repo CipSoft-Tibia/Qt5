@@ -10,6 +10,9 @@
 #include "qmlpropertynode.h"
 #include "qmltypenode.h"
 #include "sharedcommentnode.h"
+#include <vector>
+
+using namespace Qt::Literals::StringLiterals;
 
 QT_BEGIN_NAMESPACE
 
@@ -90,7 +93,9 @@ Node *Aggregate::findChildNode(const QString &name, Node::Genus genus, int findF
     }
     if (genus != Node::DontCare && !(genus & this->genus()))
         return nullptr;
-    return m_functionMap.value(name);
+
+    auto it = m_functionMap.find(name);
+    return it != m_functionMap.end() ? (*(*it).begin()) : nullptr;
 }
 
 /*!
@@ -100,29 +105,14 @@ Node *Aggregate::findChildNode(const QString &name, Node::Genus genus, int findF
 void Aggregate::findChildren(const QString &name, NodeVector &nodes) const
 {
     nodes.clear();
-    int nonfunctionCount = m_nonfunctionMap.count(name);
-    auto it = m_functionMap.find(name);
-    if (it != m_functionMap.end()) {
-        int functionCount = 0;
-        FunctionNode *fn = it.value();
-        while (fn != nullptr) {
-            ++functionCount;
-            fn = fn->nextOverload();
-        }
-        nodes.reserve(nonfunctionCount + functionCount);
-        fn = it.value();
-        while (fn != nullptr) {
-            nodes.append(fn);
-            fn = fn->nextOverload();
-        }
-    } else {
-        nodes.reserve(nonfunctionCount);
-    }
-    if (nonfunctionCount > 0) {
-        for (auto it = m_nonfunctionMap.find(name);
-             it != m_nonfunctionMap.end() && it.key() == name; ++it) {
-            nodes.append(it.value());
-        }
+    const auto &functions = m_functionMap.value(name);
+    nodes.reserve(functions.size() + m_nonfunctionMap.count(name));
+    for (auto f : functions)
+        nodes.emplace_back(f);
+    auto [it, end] = m_nonfunctionMap.equal_range(name);
+    while (it != end) {
+        nodes.emplace_back(*it);
+        ++it;
     }
 }
 
@@ -149,57 +139,55 @@ Node *Aggregate::findNonfunctionChild(const QString &name, bool (Node::*isMatch)
   If \a parameters is empty but no matching function is found
   that has no parameters, return the first non-internal primary
   function or overload, whether it has parameters or not.
+
+  \sa normalizeOverloads()
  */
 FunctionNode *Aggregate::findFunctionChild(const QString &name, const Parameters &parameters)
 {
-    auto it = m_functionMap.find(name);
-    if (it == m_functionMap.end())
+    auto map_it = m_functionMap.find(name);
+    if (map_it == m_functionMap.end())
         return nullptr;
-    FunctionNode *fn = it.value();
 
-    if (parameters.isEmpty() && fn->parameters().isEmpty() && !fn->isInternal())
-        return fn;
+    auto match_it = std::find_if((*map_it).begin(), (*map_it).end(),
+        [&parameters](const FunctionNode *fn) {
+            if (fn->isInternal())
+                return false;
+            if (parameters.count() != fn->parameters().count())
+                return false;
+            for (int i = 0; i < parameters.count(); ++i)
+                if (parameters.at(i).type() != fn->parameters().at(i).type())
+                    return false;
+            return true;
+        });
 
-    while (fn != nullptr) {
-        if (parameters.count() == fn->parameters().count() && !fn->isInternal()) {
-            if (parameters.isEmpty())
-                return fn;
-            bool matched = true;
-            for (int i = 0; i < parameters.count(); i++) {
-                if (parameters.at(i).type() != fn->parameters().at(i).type()) {
-                    matched = false;
-                    break;
-                }
-            }
-            if (matched)
-                return fn;
-        }
-        fn = fn->nextOverload();
-    }
+    if (match_it != (*map_it).end())
+        return *match_it;
 
-    if (parameters.isEmpty()) {
-        for (fn = it.value(); fn != nullptr; fn = fn->nextOverload())
-            if (!fn->isInternal())
-                return fn;
-        return it.value();
-    }
-    return nullptr;
+    // Assumes that overloads are already normalized; i.e, if there's
+    // an active function, it'll be found at the start of the list.
+    auto *fn = (*(*map_it).begin());
+    return (parameters.isEmpty() && !fn->isInternal()) ? fn : nullptr;
 }
 
 /*!
-  Find the function node that is a child of this node, such
+  Returns the function node that is a child of this node, such
   that the function described has the same name and signature
   as the function described by the function node \a clone.
+
+  Returns \nullptr if no matching function was found.
  */
 FunctionNode *Aggregate::findFunctionChild(const FunctionNode *clone)
 {
-    FunctionNode *fn = m_functionMap.value(clone->name());
-    while (fn != nullptr) {
-        if (isSameSignature(clone, fn))
-            return fn;
-        fn = fn->nextOverload();
-    }
-    return nullptr;
+    auto funcs_it = m_functionMap.find(clone->name());
+    if (funcs_it == m_functionMap.end())
+        return nullptr;
+
+    auto func_it = std::find_if((*funcs_it).begin(), (*funcs_it).end(),
+        [clone](const FunctionNode *fn) {
+            return compare(clone, fn) == 0;
+        });
+
+    return func_it != (*funcs_it).end() ? *func_it : nullptr;
 }
 
 /*!
@@ -230,48 +218,72 @@ void Aggregate::markUndocumentedChildrenInternal()
 }
 
 /*!
-  This is where we set the overload numbers for function nodes.
+    Adopts each non-aggregate C++ node (function/macro, typedef, enum, variable,
+    or a shared comment node with genus Node::CPP) to the aggregate specified in
+    the node's documentation using the \\relates command.
+
+    If the target Aggregate is not found in the primary tree, creates a new
+    ProxyNode to use as the parent.
+*/
+void Aggregate::resolveRelates()
+{
+    auto *database = QDocDatabase::qdocDB();
+
+    for (auto *node : m_children) {
+        if (node->isRelatedNonmember())
+            continue;
+        if (node->genus() != Node::CPP)
+            continue;
+
+        if (!node->isAggregate()) {
+            const auto &relates_args = node->doc().metaCommandArgs("relates"_L1);
+            if (relates_args.isEmpty())
+                continue;
+
+            auto *aggregate = database->findRelatesNode(relates_args[0].first.split("::"_L1));
+            if (!aggregate)
+                aggregate = new ProxyNode(this, relates_args[0].first);
+            else if (node->parent() == aggregate)
+                continue;
+
+            aggregate->adoptChild(node);
+            node->setRelatedNonmember(true);
+        } else {
+            static_cast<Aggregate*>(node)->resolveRelates();
+        }
+    }
+}
+
+/*!
+  Sorts the lists of overloads in the function map and assigns overload
+  numbers.
+
+  For sorting, active functions take precedence over internal ones, as well
+  as ones marked as \\overload - the latter ones typically do not contain
+  full documentation, so selecting them as the \e primary function
+  would cause unnecessary warnings to be generated.
+
+  Otherwise, the order is set as determined by FunctionNode::compare().
  */
 void Aggregate::normalizeOverloads()
 {
-    /*
-      Ensure that none of the primary functions is inactive, private,
-      or marked \e {overload}.
-    */
-    for (auto it = m_functionMap.begin(); it != m_functionMap.end(); ++it) {
-        FunctionNode *fn = it.value();
-        if (fn->isOverload()) {
-            FunctionNode *primary = fn->findPrimaryFunction();
-            if (primary) {
-                primary->setNextOverload(fn);
-                it.value() = primary;
-                fn = primary;
-            }
-        }
-        int count = 0;
-        fn->setOverloadNumber(0); // also clears the overload flag
-        FunctionNode *internalFn = nullptr;
-        while (fn != nullptr) {
-            FunctionNode *next = fn->nextOverload();
-            if (next) {
-                if (next->isInternal()) {
-                    // internal overloads are moved to a separate list
-                    // and processed last
-                    fn->setNextOverload(next->nextOverload());
-                    next->setNextOverload(internalFn);
-                    internalFn = next;
-                } else {
-                    next->setOverloadNumber(++count);
-                    fn = fn->nextOverload();
-                }
-            } else {
-                fn->setNextOverload(internalFn);
-                break;
-            }
-        }
-        while (internalFn) {
-            internalFn->setOverloadNumber(++count);
-            internalFn = internalFn->nextOverload();
+    for (auto map_it = m_functionMap.begin(); map_it != m_functionMap.end(); ++map_it) {
+        if ((*map_it).size() > 1) {
+            std::sort((*map_it).begin(), (*map_it).end(),
+                [](const FunctionNode *f1, const FunctionNode *f2) -> bool {
+                    if (f1->isInternal() != f2->isInternal())
+                        return f2->isInternal();
+                    if (f1->isOverload() != f2->isOverload())
+                        return f2->isOverload();
+                    // Prioritize documented over undocumented
+                    if (f1->hasDoc() != f2->hasDoc())
+                        return f1->hasDoc();
+                    return (compare(f1, f2) < 0);
+            });
+            // Set overload numbers
+            signed short n{0};
+            for (auto *fn : (*map_it))
+                fn->setOverloadNumber(n++);
         }
     }
 
@@ -284,14 +296,18 @@ void Aggregate::normalizeOverloads()
 /*!
   Returns a const reference to the list of child nodes of this
   aggregate that are not function nodes. Duplicate nodes are
-  removed from the list.
+  removed from the list and the list is sorted.
  */
 const NodeList &Aggregate::nonfunctionList()
 {
     m_nonfunctionList = m_nonfunctionMap.values();
-    std::sort(m_nonfunctionList.begin(), m_nonfunctionList.end(), Node::nodeNameLessThan);
+    // Erase duplicates
+    std::sort(m_nonfunctionList.begin(), m_nonfunctionList.end());
     m_nonfunctionList.erase(std::unique(m_nonfunctionList.begin(), m_nonfunctionList.end()),
                             m_nonfunctionList.end());
+
+    // Sort based on node name
+    std::sort(m_nonfunctionList.begin(), m_nonfunctionList.end(), Node::nodeNameLessThan);
     return m_nonfunctionList;
 }
 
@@ -314,123 +330,6 @@ const EnumNode *Aggregate::findEnumNodeForValue(const QString &enumValue) const
             return en;
     }
     return nullptr;
-}
-
-/*!
-  Compare \a f1 to \a f2 and return \c true if they have the same
-  signature. Otherwise return \c false. They must have the same
-  number of parameters, and all the parameter types must be the
-  same. The functions must have the same constness and refness.
-  This is a private function.
- */
-bool Aggregate::isSameSignature(const FunctionNode *f1, const FunctionNode *f2)
-{
-    if (f1->parameters().count() != f2->parameters().count())
-        return false;
-    if (f1->isConst() != f2->isConst())
-        return false;
-    if (f1->isRef() != f2->isRef())
-        return false;
-    if (f1->isRefRef() != f2->isRefRef())
-        return false;
-
-    const Parameters &p1 = f1->parameters();
-    const Parameters &p2 = f2->parameters();
-    for (int i = 0; i < p1.count(); i++) {
-        if (p1.at(i).hasType() && p2.at(i).hasType()) {
-            QString t1 = p1.at(i).type();
-            QString t2 = p2.at(i).type();
-
-            if (t1.size() < t2.size())
-                qSwap(t1, t2);
-
-            /*
-              ### hack for C++ to handle superfluous
-              "Foo::" prefixes gracefully
-             */
-            if (t1 != t2 && t1 != (f2->parent()->name() + "::" + t2)) {
-                // Accept a difference in the template parametters of the type if one
-                // is omited (eg. "QAtomicInteger" == "QAtomicInteger<T>")
-                auto ltLoc = t1.indexOf('<');
-                auto gtLoc = t1.indexOf('>', ltLoc);
-                if (ltLoc < 0 || gtLoc < ltLoc)
-                    return false;
-                t1.remove(ltLoc, gtLoc - ltLoc + 1);
-                if (t1 != t2)
-                    return false;
-            }
-        }
-    }
-    return true;
-}
-
-/*!
-  This function is only called by addChild(), when the child is a
-  FunctionNode. If the function map does not contain a function with
-  the name in \a fn, \a fn is inserted into the function map. If the
-  map already contains a function by that name, \a fn is appended to
-  that function's linked list of overloads.
-
-  \note A function's overloads appear in the linked list in the same
-  order they were created. The first overload in the list is the first
-  overload created. This order is maintained in the numbering of
-  overloads. In other words, the first overload in the linked list has
-  overload number 1, and the last overload in the list has overload
-  number n, where n is the number of overloads not including the
-  function in the function map.
-
-  \not Adding a function increments the aggregate's function count,
-  which is the total number of function nodes in the function map,
-  including the overloads. The overloads are not inserted into the map
-  but are in a linked list using the FunctionNode's m_nextOverload
-  pointer.
-
-  \note The function's overload number and overload flag are set in
-  normalizeOverloads().
-
-  \note This is a private function.
-
-  \sa normalizeOverloads()
- */
-void Aggregate::addFunction(FunctionNode *fn)
-{
-    auto it = m_functionMap.find(fn->name());
-    if (it == m_functionMap.end())
-        m_functionMap.insert(fn->name(), fn);
-    else
-        it.value()->appendOverload(fn);
-}
-
-/*!
-  When an Aggregate adopts a function \a fn that is a child of
-  another Aggregate, the function is inserted into this
-  Aggregate's function map.
-
-  If the function has overloads, it is also moved to the end of
-  the overload list that's relative to the original parent
-  \a firstParent, in order to not interfere with documenting
-  other overloads.
-
-  \note \a fn is \b not removed from the original parent's function
-        map, as we want to be able to still find global functions
-        from the global namespace, even after adopting them
-        elsewhere.
- */
-void Aggregate::adoptFunction(FunctionNode *fn, Aggregate *firstParent)
-{
-    if (auto *primary = firstParent->m_functionMap.value(fn->name()); primary) {
-        if (primary->nextOverload()) {
-            if (primary != fn)
-                primary->removeOverload(fn);
-            else {
-                primary = primary->nextOverload();
-                firstParent->m_functionMap.insert(primary->name(), primary);
-            }
-            primary->appendOverload(fn);
-        }
-    }
-    fn->setNextOverload(nullptr);
-    addFunction(fn);
 }
 
 /*!
@@ -466,12 +365,11 @@ void Aggregate::addChild(Node *child)
 {
     m_children.append(child);
     child->setParent(this);
-    child->setOutputSubdirectory(this->outputSubdirectory());
     child->setUrl(QString());
     child->setIndexNodeFlag(isIndexNode());
 
     if (child->isFunction()) {
-        addFunction(static_cast<FunctionNode *>(child));
+        m_functionMap[child->name()].emplace_back(static_cast<FunctionNode *>(child));
     } else if (!child->name().isEmpty()) {
         m_nonfunctionMap.insert(child->name(), child);
         if (child->isEnumType())
@@ -491,10 +389,9 @@ void Aggregate::adoptChild(Node *child)
 {
     if (child->parent() != this) {
         m_children.append(child);
-        auto firstParent = child->parent();
         child->setParent(this);
         if (child->isFunction()) {
-            adoptFunction(static_cast<FunctionNode *>(child), firstParent);
+            m_functionMap[child->name()].emplace_back(static_cast<FunctionNode *>(child));
         } else if (!child->name().isEmpty()) {
             m_nonfunctionMap.insert(child->name(), child);
             if (child->isEnumType())
@@ -506,16 +403,6 @@ void Aggregate::adoptChild(Node *child)
                 adoptChild(n);
         }
     }
-}
-
-/*!
-  Recursively sets the output subdirectory for children
- */
-void Aggregate::setOutputSubdirectory(const QString &t)
-{
-    Node::setOutputSubdirectory(t);
-    for (auto *node : std::as_const(m_children))
-        node->setOutputSubdirectory(t);
 }
 
 /*!
@@ -551,25 +438,15 @@ QmlPropertyNode *Aggregate::hasQmlProperty(const QString &n, bool attached) cons
 }
 
 /*!
-  The FunctionNode \a fn is assumed to be a member function
-  of this Aggregate. The function's name is looked up in the
-  Aggregate's function map. It should be found because it is
-  assumed that \a fn is in this Aggregate's function map. But
-  in case it is not found, \c false is returned.
+  Returns \c true if this aggregate has multiple function
+  overloads matching the name of \a fn.
 
-  Normally, the name will be found in the function map, and
-  the value of the iterator is used to get the value, which
-  is a pointer to another FunctionNode, which is not itself
-  an overload. If that function has a non-null overload
-  pointer, true is returned. Otherwise false is returned.
-
-  This is a convenience function that you should not need to
-  use.
- */
+  \note Assumes \a fn is a member of this aggregate.
+*/
 bool Aggregate::hasOverloads(const FunctionNode *fn) const
 {
     auto it = m_functionMap.find(fn->name());
-    return !(it == m_functionMap.end()) && (it.value()->nextOverload() != nullptr);
+    return !(it == m_functionMap.end()) && (it.value().size() > 1);
 }
 
 /*
@@ -597,17 +474,15 @@ static bool keep(FunctionNode *fn)
  */
 void Aggregate::findAllFunctions(NodeMapMap &functionIndex)
 {
-    for (auto it = m_functionMap.constBegin(); it != m_functionMap.constEnd(); ++it) {
-        FunctionNode *fn = it.value();
-        if (keep(fn))
-            functionIndex[fn->name()].insert(fn->parent()->fullDocumentName(), fn);
-        fn = fn->nextOverload();
-        while (fn != nullptr) {
-            if (keep(fn))
-                functionIndex[fn->name()].insert(fn->parent()->fullDocumentName(), fn);
-            fn = fn->nextOverload();
-        }
+    for (auto functions : m_functionMap) {
+        std::for_each(functions.begin(), functions.end(),
+            [&functionIndex](FunctionNode *fn) {
+                if (keep(fn))
+                    functionIndex[fn->name()].insert(fn->parent()->fullDocumentName(), fn);
+            }
+        );
     }
+
     for (Node *node : std::as_const(m_children)) {
         if (node->isAggregate() && !node->isPrivate() && !node->isDontDocument())
             static_cast<Aggregate *>(node)->findAllFunctions(functionIndex);

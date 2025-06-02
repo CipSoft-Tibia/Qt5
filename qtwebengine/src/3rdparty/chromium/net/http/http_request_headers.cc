@@ -64,6 +64,7 @@ const char HttpRequestHeaders::kIfRange[] = "If-Range";
 const char HttpRequestHeaders::kIfUnmodifiedSince[] = "If-Unmodified-Since";
 const char HttpRequestHeaders::kOrigin[] = "Origin";
 const char HttpRequestHeaders::kPragma[] = "Pragma";
+const char HttpRequestHeaders::kPriority[] = "Priority";
 const char HttpRequestHeaders::kProxyAuthorization[] = "Proxy-Authorization";
 const char HttpRequestHeaders::kProxyConnection[] = "Proxy-Connection";
 const char HttpRequestHeaders::kRange[] = "Range";
@@ -105,11 +106,7 @@ HttpRequestHeaders::HttpRequestHeaders() = default;
 HttpRequestHeaders::HttpRequestHeaders(const HttpRequestHeaders& other) =
     default;
 HttpRequestHeaders::HttpRequestHeaders(HttpRequestHeaders&& other) = default;
-HttpRequestHeaders::~HttpRequestHeaders() {
-  // TODO(https://crbug.com/1477132): Remove this histogram in M119.
-  UMA_HISTOGRAM_EXACT_LINEAR("Net.HttpRequestHeaders.HeaderCount",
-                             headers_.size(), 101);
-}
+HttpRequestHeaders::~HttpRequestHeaders() = default;
 
 HttpRequestHeaders& HttpRequestHeaders::operator=(
     const HttpRequestHeaders& other) = default;
@@ -138,7 +135,7 @@ void HttpRequestHeaders::SetHeader(base::StringPiece key, std::string&& value) {
   // Invalid header names or values could mean clients can attach
   // browser-internal headers.
   CHECK(HttpUtil::IsValidHeaderName(key)) << key;
-  CHECK(HttpUtil::IsValidHeaderValue(value)) << key << ":" << value;
+  CHECK(HttpUtil::IsValidHeaderValue(value)) << key << " has invalid value.";
 
   SetHeaderInternal(key, std::move(value));
 }

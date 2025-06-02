@@ -4,9 +4,10 @@
 #include "grpctemplates.h"
 
 using namespace ::QtGrpc;
+
 const char *GrpcTemplates::ChildClassDeclarationTemplate()
 {
-    return "\nclass $export_macro$ $classname$ : public $parent_class$\n"
+    return "\nclass $export_macro$$classname$ : public $parent_class$\n"
            "{\n"
            "    Q_OBJECT\n";
 }
@@ -18,16 +19,11 @@ const char *GrpcTemplates::ClientQmlDeclarationTemplate()
 
 const char *GrpcTemplates::ClientMethodDeclarationAsyncTemplate()
 {
-    return "std::shared_ptr<QGrpcCallReply> $method_name$(const $param_type$ &$param_name$, const "
-           "QGrpcCallOptions &options = {});\n";
-}
-
-const char *GrpcTemplates::ClientMethodDeclarationAsync2Template()
-{
-    return "Q_INVOKABLE void $method_name$(const $param_type$ &$param_name$, const QObject "
-           "*context, "
-           "const std::function<void(std::shared_ptr<QGrpcCallReply>)> &callback, const "
-           "QGrpcCallOptions &options = {});\n";
+    return "[[nodiscard]]\n"
+           "std::unique_ptr<QGrpcCallReply> $method_name$(const $param_type$ &$param_name$);\n"
+           "[[nodiscard]]\n"
+           "std::unique_ptr<QGrpcCallReply> $method_name$(const $param_type$ &$param_name$, const "
+           "QGrpcCallOptions &options);\n";
 }
 
 const char *GrpcTemplates::ClientMethodDeclarationQmlTemplate()
@@ -35,13 +31,18 @@ const char *GrpcTemplates::ClientMethodDeclarationQmlTemplate()
     return "Q_INVOKABLE void $method_name$(const $param_type$ &$param_name$, "
            "const QJSValue &callback, "
            "const QJSValue &errorCallback, "
-           "const QGrpcCallOptions &options = {});\n";
+           "const QtGrpcQuickPrivate::QQmlGrpcCallOptions *options = nullptr);\n";
 }
 
 const char *GrpcTemplates::ServerMethodDeclarationTemplate()
 {
     return "Q_INVOKABLE virtual $return_type$ $method_name$(const $param_type$ &$param_name$) = "
            "0;\n";
+}
+
+const char *GrpcTemplates::ClientConstructorDeclarationTemplate()
+{
+    return "explicit $classname$(QObject *parent = nullptr);\n";
 }
 
 const char *GrpcTemplates::ClientConstructorDefinitionTemplate()
@@ -51,6 +52,16 @@ const char *GrpcTemplates::ClientConstructorDefinitionTemplate()
            "parent)\n"
            "{\n"
            "}\n\n";
+}
+
+const char *GrpcTemplates::ClientDestructorDeclarationTemplate()
+{
+    return "~$classname$() override;\n\n";
+}
+
+const char *GrpcTemplates::ClientDestructorDefinitionTemplate()
+{
+    return "$classname$::~$classname$() = default;\n";
 }
 
 const char *GrpcTemplates::ClientQmlConstructorDefinitionTemplate()
@@ -63,71 +74,184 @@ const char *GrpcTemplates::ClientQmlConstructorDefinitionTemplate()
 
 const char *GrpcTemplates::ClientMethodDefinitionAsyncTemplate()
 {
-    return "\nstd::shared_ptr<QGrpcCallReply> $classname$::$method_name$(const $param_type$ "
+    return "\nstd::unique_ptr<QGrpcCallReply> $classname$::$method_name$(const $param_type$ "
+           "&$param_name$)\n"
+           "{\n"
+           "    return call(\"$method_name$\"_L1, $param_name$, {});\n"
+           "}\n\n"
+           "\nstd::unique_ptr<QGrpcCallReply> $classname$::$method_name$(const $param_type$ "
            "&$param_name$, const QGrpcCallOptions &options)\n"
            "{\n"
-           "    return call<$param_type$>(\"$method_name$\"_L1, $param_name$, options);\n"
-           "}\n";
-}
-
-const char *GrpcTemplates::ClientMethodDefinitionAsync2Template()
-{
-    return "\nvoid $classname$::$method_name$(const $param_type$ &$param_name$, const QObject "
-           "*context, const std::function<void(std::shared_ptr<QGrpcCallReply>)> &callback, const "
-           "QGrpcCallOptions &options)\n"
-           "{\n"
-           "    std::shared_ptr<QGrpcCallReply> reply = call<$param_type$>(\"$method_name$\"_L1, "
-           "$param_name$, options);\n"
-           "    QObject::connect(reply.get(), &QGrpcCallReply::finished, context, [reply, "
-           "callback]() "
-           "{\n"
-           "        callback(reply);\n"
-           "    }, Qt::SingleShotConnection);\n"
+           "    return call(\"$method_name$\"_L1, $param_name$, options);\n"
            "}\n\n";
 }
 
 const char *GrpcTemplates::ClientMethodDefinitionQmlTemplate()
 {
-    return "\nvoid $classname$::$method_name$(const $param_type$ &$param_name$, const QJSValue "
-           "&callback, "
-           "const QJSValue &errorCallback,"
-           "const QGrpcCallOptions &options)\n"
+    return "\nvoid $classname$::$method_name$(const $param_type$ &$param_name$,\n"
+           "                const QJSValue &finishCallback,\n"
+           "                const QJSValue &errorCallback,\n"
+           "                const QtGrpcQuickPrivate::QQmlGrpcCallOptions *options)\n"
            "{\n"
-           "    if (!callback.isCallable()) {\n"
-           "        qWarning() << \"Unable to call $classname$::$method_name$, callback is not "
-           "callable\";\n"
-           "        return;\n"
-           "    }\n\n"
            "    QJSEngine *jsEngine = qjsEngine(this);\n"
            "    if (jsEngine == nullptr) {\n"
            "        qWarning() << \"Unable to call $classname$::$method_name$, it's only callable "
            "from JS engine context\";\n"
            "        return;\n"
            "    }\n\n"
-           "    std::shared_ptr<QGrpcCallReply> reply = call<$param_type$>(\"$method_name$\"_L1, "
-           "$param_name$, options);\n"
-           "    reply->subscribe(jsEngine, [reply, callback, jsEngine]() {\n"
-           "        auto result = reply->read<$return_type$>();\n"
-           "        callback.call(QJSValueList{jsEngine->toScriptValue(result)});\n"
-           "    }, [errorCallback, jsEngine](const QGrpcStatus &status) {\n"
-           "        errorCallback.call(QJSValueList{jsEngine->toScriptValue(status)});\n"
-           "    });\n"
-           "}\n";
+           "    auto reply = call(\"$method_name$\"_L1, $param_name$,"
+           " options ? options->options() : QGrpcCallOptions{});\n"
+           "    QtGrpcQuickFunctional::makeCallConnections<$return_type$>(jsEngine,\n"
+           "                        std::move(reply), finishCallback, errorCallback);\n"
+           "}\n\n";
 }
 
 const char *GrpcTemplates::ClientMethodStreamDeclarationTemplate()
 {
-    return "std::shared_ptr<$stream_type$> stream$method_name_upper$(const $param_type$ "
-           "&$param_name$, const QGrpcCallOptions &options = {});\n";
+    return "[[nodiscard]]\n"
+           "std::unique_ptr<QGrpc$stream_type$Stream> $method_name$(const $param_type$ "
+           "&$param_name$);\n"
+           "[[nodiscard]]\n"
+           "std::unique_ptr<QGrpc$stream_type$Stream> $method_name$(const $param_type$ "
+           "&$param_name$, const QGrpcCallOptions &options);\n";
 }
 
 const char *GrpcTemplates::ClientMethodStreamDefinitionTemplate()
 {
-    return "std::shared_ptr<$stream_type$> $classname$::stream$method_name_upper$("
+    return "std::unique_ptr<QGrpc$stream_type$Stream> $classname$::$method_name$("
+           "const $param_type$ &$param_name$)\n"
+           "{\n"
+           "    return $stream_type_lower$Stream(\"$method_name$\"_L1, "
+           "$param_name$, {});\n"
+           "}\n\n"
+           "std::unique_ptr<QGrpc$stream_type$Stream> $classname$::$method_name$("
            "const $param_type$ &$param_name$, const QGrpcCallOptions &options)\n"
            "{\n"
-           "    return startStream<$param_type$, $stream_type$>(\"$method_name$\"_L1, "
+           "    return $stream_type_lower$Stream(\"$method_name$\"_L1, "
            "$param_name$, options);\n"
+           "}\n\n";
+}
+
+const char *GrpcTemplates::StreamSenderDeclarationQmlTemplate()
+{
+    // We use the Q_MOC_RUN trick here to fool qmltyperegistrar. The template base class doesn't
+    // have any meta-type extras, and it cannot have them. So from the meta-type information
+    // perspective it behaves in exactly the same way as QObject.
+    return "class $export_macro$$sender_class_name$ : public QQmlGrpc$stream_type$StreamSender\n"
+           "{\n"
+           "    Q_OBJECT\n"
+           "    QML_NAMED_ELEMENT($sender_qml_name$)\n"
+           "    QML_UNCREATABLE(\"$sender_qml_name$ can only be created by gRPC "
+           "client instance\")\n"
+           "\n"
+           "    $sender_class_name$(QGrpc$stream_type$Stream *stream) : "
+           "QQmlGrpc$stream_type$StreamSender(stream) {}\n\n"
+           "public:\n"
+           "    Q_INVOKABLE void writeMessage(const $param_type$ &$param_name$)\n"
+           "    {\n"
+           "        writeMessageImpl($param_name$);\n"
+           "    }\n"
+           "    friend class $service_name$::$classname$;\n"
+           "};\n\n";
+}
+
+const char *GrpcTemplates::ClientMethodServerStreamDeclarationQmlTemplate()
+{
+    return "Q_INVOKABLE void $method_name$(const $param_type$ &$param_name$,\n"
+           "                const QJSValue &messageCallback,\n"
+           "                const QJSValue &finishCallback,\n"
+           "                const QJSValue &errorCallback,\n"
+           "                const QtGrpcQuickPrivate::QQmlGrpcCallOptions *options = nullptr);\n";
+}
+
+const char *GrpcTemplates::ClientMethodClientStreamDeclarationQmlTemplate()
+{
+    return "Q_INVOKABLE $sender_class_name$ *$method_name$("
+           "const $param_type$ &$param_name$,\n"
+           "                const QJSValue &finishCallback,\n"
+           "                const QJSValue &errorCallback,\n"
+           "                const QtGrpcQuickPrivate::QQmlGrpcCallOptions *options = nullptr);\n";
+}
+
+const char *GrpcTemplates::ClientMethodBidiStreamDeclarationQmlTemplate()
+{
+    return "Q_INVOKABLE $sender_class_name$ *$method_name$("
+           "const $param_type$ &$param_name$,\n"
+           "                const QJSValue &messageCallback,\n"
+           "                const QJSValue &finishCallback,\n"
+           "                const QJSValue &errorCallback,\n"
+           "                const QtGrpcQuickPrivate::QQmlGrpcCallOptions *options = nullptr);\n";
+}
+
+const char *GrpcTemplates::ClientMethodServerStreamDefinitionQmlTemplate()
+{
+    return "\nvoid $classname$::$method_name$(const $param_type$ &$param_name$,\n"
+           "            const QJSValue &messageCallback,\n"
+           "            const QJSValue &finishCallback,\n"
+           "            const QJSValue &errorCallback,\n"
+           "            const QtGrpcQuickPrivate::QQmlGrpcCallOptions *options)\n"
+           "{\n"
+           "    QJSEngine *jsEngine = qjsEngine(this);\n"
+           "    if (jsEngine == nullptr) {\n"
+           "        qWarning() << \"Unable to call $classname$::$method_name$, it's only callable "
+           "from JS engine context\";\n"
+           "        return;\n"
+           "    }\n\n"
+           "    auto stream = serverStream(\"$method_name$\"_L1, $param_name$,"
+           " options ? options->options() : QGrpcCallOptions{});\n"
+           "    QtGrpcQuickFunctional::makeServerStreamConnections<$return_type$>(jsEngine,\n"
+           "                        std::move(stream),\n"
+           "                        messageCallback, finishCallback, errorCallback);\n"
+           "}\n\n";
+}
+
+const char *GrpcTemplates::ClientMethodClientStreamDefinitionQmlTemplate()
+{
+    return "\n$sender_class_name$ *$classname$::$method_name$("
+           "const $param_type$ &$param_name$,\n"
+           "        const QJSValue &finishCallback,\n"
+           "        const QJSValue &errorCallback,\n"
+           "        const QtGrpcQuickPrivate::QQmlGrpcCallOptions *options)\n"
+           "{\n"
+           "    QJSEngine *jsEngine = qjsEngine(this);\n"
+           "    if (jsEngine == nullptr) {\n"
+           "        qWarning() << \"Unable to call $classname$::$method_name$, it's only callable "
+           "from JS engine context\";\n"
+           "        return nullptr;\n"
+           "    }\n\n"
+           "    auto stream = clientStream(\"$method_name$\"_L1,"
+           " $param_name$, options ? options->options() : QGrpcCallOptions{});\n"
+           "    auto *sender = new $sender_class_name$(stream.get());\n"
+           "    QtGrpcQuickFunctional::makeClientStreamConnections<$return_type$>(jsEngine,\n"
+           "                        std::move(stream), finishCallback, errorCallback);\n"
+           "    QJSEngine::setObjectOwnership(sender, QJSEngine::JavaScriptOwnership);\n"
+           "    return sender;\n"
+           "}\n\n";
+}
+
+const char *GrpcTemplates::ClientMethodBidiStreamDefinitionQmlTemplate()
+{
+    return "\n$sender_class_name$ *$classname$::$method_name$("
+           "const $param_type$ &$param_name$,\n"
+           "    const QJSValue &messageCallback,\n"
+           "    const QJSValue &finishCallback,\n"
+           "    const QJSValue &errorCallback,\n"
+           "    const QtGrpcQuickPrivate::QQmlGrpcCallOptions *options)\n"
+           "{\n"
+           "    QJSEngine *jsEngine = qjsEngine(this);\n"
+           "    if (jsEngine == nullptr) {\n"
+           "        qWarning() << \"Unable to call $classname$::$method_name$, it's only callable "
+           "from JS engine context\";\n"
+           "        return nullptr;\n"
+           "    }\n\n"
+           "    auto stream = bidiStream(\"$method_name$\"_L1,"
+           " $param_name$, options ? options->options() : QGrpcCallOptions {});\n"
+           "    auto *sender = new $sender_class_name$(stream.get());\n"
+           "    QtGrpcQuickFunctional::makeBidiStreamConnections<$return_type$>(jsEngine,\n"
+           "                        std::move(stream), messageCallback, finishCallback, "
+           "errorCallback);\n"
+           "    QJSEngine::setObjectOwnership(sender, QJSEngine::JavaScriptOwnership);\n"
+           "    return sender;\n"
            "}\n\n";
 }
 

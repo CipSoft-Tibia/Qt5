@@ -60,16 +60,16 @@ message PowerSupplyProperties {
       // position. For example, LEFT_BACK means the farthest-back port on the
       // left side, while BACK_LEFT means the leftmost port on the back of the
       // device.
-      LEFT        = 1;
-      RIGHT       = 2;
-      BACK        = 3;
-      FRONT       = 4;
-      LEFT_FRONT  = 5;
-      LEFT_BACK   = 6;
+      LEFT = 1;
+      RIGHT = 2;
+      BACK = 3;
+      FRONT = 4;
+      LEFT_FRONT = 5;
+      LEFT_BACK = 6;
       RIGHT_FRONT = 7;
-      RIGHT_BACK  = 8;
-      BACK_LEFT   = 9;
-      BACK_RIGHT  = 10;
+      RIGHT_BACK = 8;
+      BACK_LEFT = 9;
+      BACK_RIGHT = 10;
 
       // Next value to use: 11
     }

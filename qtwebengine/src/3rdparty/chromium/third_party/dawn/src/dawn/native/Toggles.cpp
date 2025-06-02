@@ -1,16 +1,29 @@
-// Copyright 2019 The Dawn Authors
+// Copyright 2019 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <array>
 
@@ -57,6 +70,10 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
      {"lazy_clear_resource_on_first_use",
       "Clears resource to zero on first usage. This initializes the resource so that no dirty bits "
       "from recycled memory is present in the new resource.",
+      "https://crbug.com/dawn/145", ToggleStage::Device}},
+    {Toggle::DisableLazyClearForMappedAtCreationBuffer,
+     {"disable_lazy_clear_for_mapped_at_creation_buffer",
+      "Disable clearing buffers to zero for buffers which are mapped at creation.",
       "https://crbug.com/dawn/145", ToggleStage::Device}},
     {Toggle::TurnOffVsync,
      {"turn_off_vsync",
@@ -198,12 +215,6 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
       "Dump shaders for debugging purposes. Dumped shaders will be log via EmitLog, thus printed "
       "in Chrome console or consumed by user-defined callback function.",
       "https://crbug.com/dawn/792", ToggleStage::Device}},
-    {Toggle::ForceWGSLStep,
-     {"force_wgsl_step",
-      "When ingesting SPIR-V shaders, force a first conversion to WGSL. This allows testing Tint's "
-      "SPIRV->WGSL translation on real content to be sure that it will work when the same "
-      "translation runs in a WASM module in the page.",
-      "https://crbug.com/dawn/960", ToggleStage::Device}},
     {Toggle::DisableWorkgroupInit,
      {"disable_workgroup_init",
       "Disables the workgroup memory zero-initialization for compute shaders.",
@@ -238,6 +249,11 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
      {"disable_timestamp_query_conversion",
       "Resolve timestamp queries into ticks instead of nanoseconds.", "https://crbug.com/dawn/1305",
       ToggleStage::Device}},
+    {Toggle::TimestampQuantization,
+     {"timestamp_quantization",
+      "Enable timestamp queries quantization to reduce the precision of timers that can be created "
+      "with timestamp queries.",
+      "https://crbug.com/dawn/1800", ToggleStage::Device}},
     {Toggle::ClearBufferBeforeResolveQueries,
      {"clear_buffer_before_resolve_queries",
       "clear destination buffer to zero before resolving queries. This toggle is enabled on Intel "
@@ -328,8 +344,9 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
     {Toggle::DisableSubAllocationFor2DTextureWithCopyDstOrRenderAttachment,
      {"disable_sub_allocation_for_2d_texture_with_copy_dst_or_render_attachment",
       "Disable resource sub-allocation for the 2D texture with CopyDst or RenderAttachment usage. "
-      "This toggle is enabled by default on D3D12 backends using Intel Gen9.5 and Gen11 GPUs and "
-      "on Vulkan backends using Intel Gen12 GPUs due to Intel Mesa Vulkan and D3D12 driver issues.",
+      "Due to driver issues, this toggle is enabled by default on D3D12 backends using Intel "
+      "Gen9.5 or Gen11 GPUs, on Vulkan backends using Intel Gen12 GPUs, and D3D12 backends using "
+      "AMD GPUs.",
       "https://crbug.com/1237175", ToggleStage::Device}},
     {Toggle::MetalUseCombinedDepthStencilFormatForStencil8,
      {"metal_use_combined_depth_stencil_format_for_stencil8",
@@ -402,6 +419,11 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
       "Use a blit instead of a copy command to copy bgra8unorm texture to a buffer."
       "Workaround for OpenGLES.",
       "https://crbug.com/dawn/1393", ToggleStage::Device}},
+    {Toggle::UseBlitForRGB9E5UfloatTextureCopy,
+     {"use_blit_for_rgb9e5ufloat_texture_copy",
+      "Use a blit instead of a copy command to copy rgb9e5ufloat texture to a texture or a buffer."
+      "Workaround for OpenGLES.",
+      "https://crbug.com/dawn/2079", ToggleStage::Device}},
     {Toggle::D3D12ReplaceAddWithMinusWhenDstFactorIsZeroAndSrcFactorIsDstAlpha,
      {"d3d12_replace_add_with_minus_when_dst_factor_is_zero_and_src_factor_is_dst_alpha",
       "Replace the blending operation 'Add' with 'Minus' when dstBlendFactor is 'Zero' and "
@@ -455,6 +477,39 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
       "with CreateCommittedResource() as a workaround of some driver issues on Intel Gen9 and "
       "Gen11 GPUs.",
       "https://crbug.com/dawn/484", ToggleStage::Device}},
+    {Toggle::UseTintIR,
+     {"use_tint_ir", "Enable the use of the Tint IR for backend codegen.",
+      "https://crbug.com/tint/1718", ToggleStage::Device}},
+    {Toggle::D3DDisableIEEEStrictness,
+     {"d3d_disable_ieee_strictness",
+      "Disable IEEE strictness when compiling shaders. It is otherwise enabled by default to "
+      "workaround issues where FXC can miscompile code that depends on special float values (NaN, "
+      "INF, etc).",
+      "https://crbug.com/tint/976", ToggleStage::Device}},
+    {Toggle::PolyFillPacked4x8DotProduct,
+     {"polyfill_packed_4x8_dot_product",
+      "Always use the polyfill version of dot4I8Packed() and dot4U8Packed().",
+      "https://crbug.com/tint/1497", ToggleStage::Device}},
+    {Toggle::D3D12PolyFillPackUnpack4x8,
+     {"d3d12_polyfill_pack_unpack_4x8",
+      "Always use the polyfill version of pack4xI8(), pack4xU8(), pack4xI8Clamp(), unpack4xI8() "
+      "and unpack4xU8() on D3D12 backends. Note that these functions are always polyfilled on all "
+      "other backends right now.",
+      "https://crbug.com/tint/1497", ToggleStage::Device}},
+    {Toggle::ExposeWGSLTestingFeatures,
+     {"expose_wgsl_testing_features",
+      "Make the Instance expose the ChromiumTesting* features for testing of "
+      "wgslLanguageFeatures functionality.",
+      "https://crbug.com/dawn/2260", ToggleStage::Instance}},
+    {Toggle::ExposeWGSLExperimentalFeatures,
+     {"expose_wgsl_experimental_features",
+      "Make the Instance expose the experimental features but not the unsage ones, so that safe "
+      "experimental features can be used without the need for allow_unsafe_apis",
+      "https://crbug.com/dawn/2260", ToggleStage::Instance}},
+    {Toggle::DisablePolyfillsOnIntegerDivisonAndModulo,
+     {"disable_polyfills_on_integer_div_and_mod",
+      "Disable the Tint polyfills on integer division and modulo.", "https://crbug.com/tint/2128",
+      ToggleStage::Device}},
     {Toggle::NoWorkaroundSampleMaskBecomesZeroForAllButLastColorTarget,
      {"no_workaround_sample_mask_becomes_zero_for_all_but_last_color_target",
       "MacOS 12.0+ Intel has a bug where the sample mask is only applied for the last color "
@@ -476,13 +531,13 @@ static constexpr ToggleEnumAndInfoList kToggleNameAndInfoList = {{
 }  // anonymous namespace
 
 void TogglesSet::Set(Toggle toggle, bool enabled) {
-    ASSERT(toggle != Toggle::InvalidEnum);
+    DAWN_ASSERT(toggle != Toggle::InvalidEnum);
     const size_t toggleIndex = static_cast<size_t>(toggle);
     bitset.set(toggleIndex, enabled);
 }
 
 bool TogglesSet::Has(Toggle toggle) const {
-    ASSERT(toggle != Toggle::InvalidEnum);
+    DAWN_ASSERT(toggle != Toggle::InvalidEnum);
     const size_t toggleIndex = static_cast<size_t>(toggle);
     return bitset.test(toggleIndex);
 }
@@ -535,7 +590,7 @@ TogglesState TogglesState::CreateFromTogglesDescriptor(const DawnTogglesDescript
 }
 
 TogglesState& TogglesState::InheritFrom(const TogglesState& inheritedToggles) {
-    ASSERT(inheritedToggles.GetStage() < mStage);
+    DAWN_ASSERT(inheritedToggles.GetStage() < mStage);
 
     // Do inheritance. All toggles that are force-set in the inherited toggles states would
     // be force-set in the result toggles state, and all toggles that are set in the inherited
@@ -543,7 +598,7 @@ TogglesState& TogglesState::InheritFrom(const TogglesState& inheritedToggles) {
     // state.
     for (uint32_t i : inheritedToggles.mTogglesSet.Iterate()) {
         const Toggle& toggle = static_cast<Toggle>(i);
-        ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage < mStage);
+        DAWN_ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage < mStage);
         bool isEnabled = inheritedToggles.mEnabledToggles.Has(toggle);
         bool isForced = inheritedToggles.mForcedToggles.Has(toggle);
         // Only inherit a toggle if it is not set by user requirement or is forced in earlier stage.
@@ -560,8 +615,8 @@ TogglesState& TogglesState::InheritFrom(const TogglesState& inheritedToggles) {
 
 // Set a toggle to given state, if the toggle has not been already set. Do nothing otherwise.
 void TogglesState::Default(Toggle toggle, bool enabled) {
-    ASSERT(toggle != Toggle::InvalidEnum);
-    ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage == mStage);
+    DAWN_ASSERT(toggle != Toggle::InvalidEnum);
+    DAWN_ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage == mStage);
     if (IsSet(toggle)) {
         return;
     }
@@ -570,10 +625,10 @@ void TogglesState::Default(Toggle toggle, bool enabled) {
 }
 
 void TogglesState::ForceSet(Toggle toggle, bool enabled) {
-    ASSERT(toggle != Toggle::InvalidEnum);
-    ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage == mStage);
+    DAWN_ASSERT(toggle != Toggle::InvalidEnum);
+    DAWN_ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage == mStage);
     // Make sure that each toggle is force-set at most once.
-    ASSERT(!mForcedToggles.Has(toggle));
+    DAWN_ASSERT(!mForcedToggles.Has(toggle));
     if (mTogglesSet.Has(toggle) && mEnabledToggles.Has(toggle) != enabled) {
         dawn::WarningLog() << "Forcing toggle \"" << ToggleEnumToName(toggle) << "\" to " << enabled
                            << " when it was " << !enabled;
@@ -584,7 +639,7 @@ void TogglesState::ForceSet(Toggle toggle, bool enabled) {
 }
 
 TogglesState& TogglesState::SetForTesting(Toggle toggle, bool enabled, bool forced) {
-    ASSERT(toggle != Toggle::InvalidEnum);
+    DAWN_ASSERT(toggle != Toggle::InvalidEnum);
     mTogglesSet.Set(toggle, true);
     mEnabledToggles.Set(toggle, enabled);
     mForcedToggles.Set(toggle, forced);
@@ -594,14 +649,14 @@ TogglesState& TogglesState::SetForTesting(Toggle toggle, bool enabled, bool forc
 
 bool TogglesState::IsSet(Toggle toggle) const {
     // Ensure that the toggle never used earlier than its stage.
-    ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage <= mStage);
+    DAWN_ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage <= mStage);
     return mTogglesSet.Has(toggle);
 }
 
 // Return true if the toggle is provided in enable list, and false otherwise.
 bool TogglesState::IsEnabled(Toggle toggle) const {
     // Ensure that the toggle never used earlier than its stage.
-    ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage <= mStage);
+    DAWN_ASSERT(TogglesInfo::GetToggleInfo(toggle)->stage <= mStage);
     return mEnabledToggles.Has(toggle);
 }
 
@@ -616,7 +671,7 @@ std::vector<const char*> TogglesState::GetEnabledToggleNames() const {
     for (uint32_t i : mEnabledToggles.Iterate()) {
         const Toggle& toggle = static_cast<Toggle>(i);
         // All enabled toggles must be provided.
-        ASSERT(mTogglesSet.Has(toggle));
+        DAWN_ASSERT(mTogglesSet.Has(toggle));
         const char* toggleName = ToggleEnumToName(toggle);
         enabledTogglesName[index] = toggleName;
         ++index;
@@ -648,11 +703,11 @@ void StreamIn(stream::Sink* s, const TogglesState& togglesState) {
 }
 
 const char* ToggleEnumToName(Toggle toggle) {
-    ASSERT(toggle != Toggle::InvalidEnum);
+    DAWN_ASSERT(toggle != Toggle::InvalidEnum);
 
     const ToggleEnumAndInfo& toggleNameAndInfo =
         kToggleNameAndInfoList[static_cast<size_t>(toggle)];
-    ASSERT(toggleNameAndInfo.toggle == toggle);
+    DAWN_ASSERT(toggleNameAndInfo.toggle == toggle);
     return toggleNameAndInfo.info.name;
 }
 
@@ -672,7 +727,7 @@ TogglesInfo::TogglesInfo() = default;
 TogglesInfo::~TogglesInfo() = default;
 
 const ToggleInfo* TogglesInfo::GetToggleInfo(const char* toggleName) {
-    ASSERT(toggleName);
+    DAWN_ASSERT(toggleName);
 
     EnsureToggleNameToEnumMapInitialized();
 
@@ -684,13 +739,13 @@ const ToggleInfo* TogglesInfo::GetToggleInfo(const char* toggleName) {
 }
 
 const ToggleInfo* TogglesInfo::GetToggleInfo(Toggle toggle) {
-    ASSERT(toggle != Toggle::InvalidEnum);
+    DAWN_ASSERT(toggle != Toggle::InvalidEnum);
 
     return &kToggleNameAndInfoList[static_cast<size_t>(toggle)].info;
 }
 
 Toggle TogglesInfo::ToggleNameToEnum(const char* toggleName) {
-    ASSERT(toggleName);
+    DAWN_ASSERT(toggleName);
 
     EnsureToggleNameToEnumMapInitialized();
 
@@ -708,7 +763,7 @@ void TogglesInfo::EnsureToggleNameToEnumMapInitialized() {
 
     for (size_t index = 0; index < kToggleNameAndInfoList.size(); ++index) {
         const ToggleEnumAndInfo& toggleNameAndInfo = kToggleNameAndInfoList[index];
-        ASSERT(index == static_cast<size_t>(toggleNameAndInfo.toggle));
+        DAWN_ASSERT(index == static_cast<size_t>(toggleNameAndInfo.toggle));
         mToggleNameToEnumMap[toggleNameAndInfo.info.name] = toggleNameAndInfo.toggle;
     }
 

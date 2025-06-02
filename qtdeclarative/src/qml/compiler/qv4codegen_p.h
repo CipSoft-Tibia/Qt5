@@ -45,7 +45,7 @@ struct ControlFlow;
 struct ControlFlowCatch;
 struct ControlFlowFinally;
 
-class Q_QML_COMPILER_PRIVATE_EXPORT CodegenWarningInterface
+class Q_QML_COMPILER_EXPORT CodegenWarningInterface
 {
 public:
     virtual void reportVarUsedBeforeDeclaration(const QString &name, const QString &fileName,
@@ -60,7 +60,7 @@ inline CodegenWarningInterface *defaultCodegenWarningInterface()
     return &iface;
 }
 
-class Q_QML_COMPILER_PRIVATE_EXPORT Codegen: protected QQmlJS::AST::Visitor
+class Q_QML_COMPILER_EXPORT Codegen: protected QQmlJS::AST::Visitor
 {
 protected:
     using BytecodeGenerator = QV4::Moth::BytecodeGenerator;
@@ -70,18 +70,12 @@ public:
             CodegenWarningInterface *iface = defaultCodegenWarningInterface(),
             bool storeSourceLocations = false);
 
-    void generateFromProgram(const QString &fileName,
-                             const QString &finalUrl,
-                             const QString &sourceCode,
-                             QQmlJS::AST::Program *ast,
-                             Module *module,
-                             ContextType contextType = ContextType::Global);
+    void generateFromProgram(
+            const QString &sourceCode, QQmlJS::AST::Program *ast, Module *module,
+            ContextType contextType = ContextType::Global);
 
-    void generateFromModule(const QString &fileName,
-                            const QString &finalUrl,
-                            const QString &sourceCode,
-                            QQmlJS::AST::ESModule *ast,
-                            Module *module);
+    void generateFromModule(const QString &sourceCode, QQmlJS::AST::ESModule *ast, Module *module);
+    void generateFromModule(const Value &value, Module *module);
 
 public:
     class VolatileMemoryLocationScanner;
@@ -732,10 +726,14 @@ public:
             const QString &name, bool lhs,
             const QQmlJS::SourceLocation &accessLocation = QQmlJS::SourceLocation());
 
-    QV4::CompiledData::CompilationUnit generateCompilationUnit(bool generateUnitData = true);
-    static QV4::CompiledData::CompilationUnit compileModule(
+    QQmlRefPointer<QV4::CompiledData::CompilationUnit> generateCompilationUnit(
+            bool generateUnitData = true);
+    static QQmlRefPointer<QV4::CompiledData::CompilationUnit> compileModule(
             bool debugMode, const QString &url, const QString &sourceCode,
             const QDateTime &sourceTimeStamp, QList<QQmlJS::DiagnosticMessage> *diagnostics);
+
+    static const QV4::CompiledData::Unit *generateNativeModuleUnitData(
+            bool debugMode, const QString &url, const QV4::Value &value);
 
     Context *currentContext() const { return _context; }
     BytecodeGenerator *generator() const { return bytecodeGenerator; }
@@ -855,7 +853,7 @@ private:
     void throwError(ErrorType errorType, const QQmlJS::SourceLocation &loc,
                     const QString &detail);
     bool traverseOptionalChain(QQmlJS::AST::Node *node);
-    void optionalChainFinalizer(Reference expressionResult, bool tailOfChain,
+    void optionalChainFinalizer(const Reference &expressionResult, bool tailOfChain,
                                 bool isDeleteExpression = false);
     Reference loadSubscriptForCall(const Reference &base);
     void generateThrowException(const QString &type, const QString &text = QString());

@@ -32,7 +32,7 @@
 #include <private/qmetaobject_p.h>
 #include <private/qmetaobjectbuilder_p.h>
 #include <private/qtools_p.h>
-
+#include <private/qbstr_p.h>
 #include <qt_windows.h>
 #include <ocidl.h>
 #include <ctype.h>
@@ -1830,16 +1830,14 @@ QByteArray MetaObjectGenerator::usertypeToString(const TYPEDESC &tdesc, ITypeInf
         usertypeinfo->GetContainingTypeLib(&usertypelib, &index);
         if (usertypelib) {
             // get type library name
-            BSTR typelibname = nullptr;
+            QBStr typelibname;
             usertypelib->GetDocumentation(-1, &typelibname, nullptr, nullptr, nullptr);
-            QByteArray typeLibName = QString::fromWCharArray(typelibname).toLatin1();
-            SysFreeString(typelibname);
+            QByteArray typeLibName = typelibname.str().toLatin1();
 
             // get type name
-            BSTR usertypename = nullptr;
+            QBStr usertypename;
             usertypelib->GetDocumentation(INT(index), &usertypename, nullptr, nullptr, nullptr);
-            QByteArray userTypeName = QString::fromWCharArray(usertypename).toLatin1();
-            SysFreeString(usertypename);
+            QByteArray userTypeName = usertypename.str().toLatin1();
 
             if (hasEnum(userTypeName)) // known enum?
                 typeName = userTypeName;
@@ -2233,14 +2231,12 @@ void MetaObjectGenerator::readEnumInfo()
                 continue;
 
             // Get the name of the enumeration
-            BSTR enumname;
+            QBStr enumname;
             QByteArray enumName;
-            if (typelib->GetDocumentation(INT(i), &enumname, nullptr, nullptr, nullptr) == S_OK) {
-                enumName = QString::fromWCharArray(enumname).toLatin1();
-                SysFreeString(enumname);
-            } else {
+            if (typelib->GetDocumentation(INT(i), &enumname, nullptr, nullptr, nullptr) == S_OK)
+                enumName = enumname.str().toLatin1();
+            else
                 enumName = "enum" + QByteArray::number(++enum_serial);
-            }
 
             // Get the attributes of the enum type
             for (const auto &value : values) {
@@ -2949,10 +2945,9 @@ QMetaObject *MetaObjectGenerator::metaObject(const QMetaObject *parentObject, co
     if (that) {
         readClassInfo();
         if (typelib) {
-            BSTR bstr;
+            QBStr bstr;
             typelib->GetDocumentation(-1, &bstr, nullptr, nullptr, nullptr);
-            current_typelib = QString::fromWCharArray(bstr).toLatin1();
-            SysFreeString(bstr);
+            current_typelib = bstr.str().toLatin1();
         }
         if (d->tryCache && tryCache())
             return d->metaobj;
@@ -2990,7 +2985,10 @@ QMetaObject *MetaObjectGenerator::metaObject(const QMetaObject *parentObject, co
         QByteArray realType(it.value().realType);
         if (!realType.isEmpty() && realType != type)
             moExtra.realPrototype.insert(name, realType);
-        addMetaProperty(builder, name, type, it.value().flags);
+        if (it.value().flags & EnumOrFlag)
+            addMetaProperty(builder, name, "int", it.value().flags);
+        else
+            addMetaProperty(builder, name, type, it.value().flags);
     }
 
     // each enum in form name\0

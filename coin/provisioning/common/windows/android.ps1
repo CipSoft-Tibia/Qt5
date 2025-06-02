@@ -24,8 +24,8 @@ $ndkZip = "C:\Windows\Temp\android_ndk.zip"
 $toolsVersion = "2.1"
 $toolsFile = "commandlinetools-win-6609375_latest.zip"
 $sdkApi = "ANDROID_API_VERSION"
-$sdkApiLevel = "android-34"
-$sdkBuildToolsVersion = "34.0.0"
+$sdkApiLevel = "android-35"
+$sdkBuildToolsVersion = "35.0.1"
 $toolsCachedUrl= "\\ci-files01-hki.ci.qt.io\provisioning\android\$toolsFile"
 $toolsOfficialUrl = "https://dl.google.com/android/repository/$toolsFile"
 $toolsChecksum = "e2e19c2ff584efa87ef0cfdd1987f92881323208"
@@ -55,6 +55,9 @@ New-Item -ItemType Directory -Path C:\Windows\Temp\android_extract
 Write-Host "Installing Android NDK $ndkVersionDefault"
 $ndkFolderDefault = Install $ndkCachedUrlDefault $ndkZip $ndkChecksumDefault $ndkOfficialUrlDefault
 Set-EnvironmentVariable "ANDROID_NDK_ROOT_DEFAULT" $ndkFolderDefault
+# To be used by vcpkg
+Set-EnvironmentVariable "ANDROID_NDK_HOME" $ndkFolderDefault
+$env:ANDROID_NDK_HOME = "$ndkFolderDefault"
 
 if ($ndkVersionDefault -eq $ndkVersionLatest) {
     Write-Host "Android Latest version is the same than Default. NDK installation done."

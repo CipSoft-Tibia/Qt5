@@ -35,6 +35,8 @@ public:
     void init(QPhysicsWorld *world, QPhysXWorld *physX) override;
     void sync(float deltaTime, QHash<QQuick3DNode *, QMatrix4x4> &transformCache) override;
     void createMaterial(QPhysXWorld *physX) override;
+    bool debugGeometryCapability() override;
+    DebugDrawBodyType getDebugDrawBodyType() override;
 
 private:
     physx::PxCapsuleController *controller = nullptr;

@@ -1,0 +1,51 @@
+// Copyright (C) 2024 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+
+syntax = "proto3";
+
+package qt.bench;
+
+service BenchmarkService {
+    rpc UnaryCall(UnaryCallRequest) returns (UnaryCallResponse);
+    rpc ServerStreaming(ServerStreamingRequest) returns (stream ServerStreamingResponse);
+    rpc ClientStreaming(stream ClientStreamingRequest) returns (ClientStreamingResponse);
+    rpc BiDiStreaming(stream BiDiStreamingRequest) returns (stream BiDiStreamingResponse);
+}
+
+message UnaryCallRequest {
+    uint64 ping = 1;
+}
+
+message UnaryCallResponse {
+    uint64 pong = 1;
+}
+
+message ServerStreamingRequest {
+    uint64 ping = 1;
+    optional bytes payload = 2;
+}
+
+message ServerStreamingResponse {
+    uint64 pong = 1;
+    optional bytes payload = 2;
+}
+
+message ClientStreamingRequest {
+    uint64 ping = 1;
+    optional bytes payload = 2;
+}
+
+message ClientStreamingResponse {
+    uint64 pong = 1;
+    optional bytes payload = 2;
+}
+
+message BiDiStreamingRequest {
+    uint64 ping = 1;
+    optional bytes payload = 2;
+}
+
+message BiDiStreamingResponse {
+    uint64 pong = 1;
+    optional bytes payload = 2;
+}

@@ -393,8 +393,10 @@ void tst_QHostInfo::reverseLookup_data()
 
     QTest::newRow("dns.google") << QString("8.8.8.8") << reverseLookupHelper("8.8.8.8") << 0 << false;
     QTest::newRow("one.one.one.one") << QString("1.1.1.1") << reverseLookupHelper("1.1.1.1") << 0 << false;
-    QTest::newRow("dns.google IPv6") << QString("2001:4860:4860::8888") << reverseLookupHelper("2001:4860:4860::8888") << 0 << true;
-    QTest::newRow("cloudflare IPv6") << QString("2606:4700:4700::1111") << reverseLookupHelper("2606:4700:4700::1111") << 0 << true;
+    if (QStringList hostNames = reverseLookupHelper("2001:4860:4860::8888"); !hostNames.isEmpty())
+        QTest::newRow("dns.google IPv6") << QString("2001:4860:4860::8888") << std::move(hostNames) << 0 << true;
+    if (QStringList hostNames = reverseLookupHelper("2606:4700:4700::1111"); !hostNames.isEmpty())
+        QTest::newRow("cloudflare IPv6") << QString("2606:4700:4700::1111") << std::move(hostNames) << 0 << true;
     QTest::newRow("bogus-name IPv6") << QString("1::2::3::4") << QStringList() << 1 << true;
 }
 
@@ -403,10 +405,6 @@ void tst_QHostInfo::reverseLookup()
     QFETCH(QString, address);
     QFETCH(QStringList, hostNames);
     QFETCH(int, err);
-    QFETCH(bool, ipv6);
-
-    if (ipv6 && !ipv6LookupsAvailable)
-        QSKIP("IPv6 reverse lookups are not supported on this platform");
 
     QHostInfo info = QHostInfo::fromName(address);
 
@@ -531,7 +529,7 @@ void tst_QHostInfo::multipleSameLookups()
     for (int i = 0; i < COUNT; i++)
         helper.lookupHostOldStyle();
 
-    QTRY_COMPARE_WITH_TIMEOUT(helper.lookupsDoneCounter, COUNT, 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(helper.lookupsDoneCounter, COUNT, 10s);
 }
 
 // this test is for the multi-threaded QHostInfo rewrite. It is about getting results at all,
@@ -568,7 +566,7 @@ void tst_QHostInfo::multipleDifferentLookups()
             helper.lookupHostOldStyle();
         }
 
-    QTRY_COMPARE_WITH_TIMEOUT(helper.lookupsDoneCounter, repeats*COUNT, 60000);
+    QTRY_COMPARE_WITH_TIMEOUT(helper.lookupsDoneCounter, repeats*COUNT, 60s);
 }
 
 void tst_QHostInfo::cache()

@@ -39,7 +39,7 @@ class Transform;
 
 namespace ui {
 class Compositor;
-enum class DomCode;
+enum class DomCode : uint32_t;
 class EventSink;
 class InputMethod;
 class ViewProp;
@@ -68,6 +68,8 @@ class AURA_EXPORT WindowTreeHost : public ui::ImeKeyEventDispatcher,
                                    public display::DisplayObserver,
                                    public ui::CompositorObserver {
  public:
+  static const char kWindowTreeHostUsesParent[];
+
   // VideoCaptureLock ensures state necessary for capturing video remains in
   // effect. For example, this may force keeping the compositor visible when
   // it normally would not be.

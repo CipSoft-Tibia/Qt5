@@ -83,6 +83,14 @@ class PLATFORM_EXPORT CalculationValue : public RefCounted<CalculationValue> {
     DCHECK(!IsExpression());
     return data_.value;
   }
+  bool HasExplicitPixels() const {
+    DCHECK(!IsExpression());
+    return data_.value.has_explicit_pixels;
+  }
+  bool HasExplicitPercent() const {
+    DCHECK(!IsExpression());
+    return data_.value.has_explicit_percent;
+  }
 
   // If |this| is an expression, returns the underlying expression. Otherwise,
   // creates one from the underlying |PixelsAndPercent| value.
@@ -92,6 +100,7 @@ class PLATFORM_EXPORT CalculationValue : public RefCounted<CalculationValue> {
                                               double progress,
                                               Length::ValueRange) const;
   scoped_refptr<const CalculationValue> SubtractFromOneHundredPercent() const;
+  scoped_refptr<const CalculationValue> Add(const CalculationValue&) const;
   scoped_refptr<const CalculationValue> Zoom(double factor) const;
 
  private:

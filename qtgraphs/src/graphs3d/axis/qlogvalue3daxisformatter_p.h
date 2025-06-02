@@ -39,7 +39,7 @@ protected:
     qreal m_logMax;
     qreal m_logRangeNormalizer;
     bool m_autoSubGrid;
-    bool m_showEdgeLabels;
+    bool m_edgeLabelsVisible;
 
 private:
     bool m_evenMinSegment;

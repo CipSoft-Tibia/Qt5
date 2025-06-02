@@ -19,13 +19,17 @@ qt_internal_add_module(WlShellIntegrationPrivate
         Wayland::Client
     PRIVATE_HEADER_FILTERS
         "^qwayland-.*\.h|^wayland-.*-protocol\.h"
+    NO_GENERATE_CPP_EXPORTS
+    QT_LICENSE_ID QT_COMMERCIAL_OR_LGPL3
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../3rdparty/protocol/wayland
 )
 
 qt6_generate_wayland_protocol_client_sources(WlShellIntegrationPrivate
     # this is just a helper module and still part of the QtWaylandClient build
     __QT_INTERNAL_WAYLAND_INCLUDE_DIR QtWaylandClient/private
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/wayland.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/wayland/wayland.xml
 )
 
 #### Keys ignored in scope 2:.:.:wl-shell-integration.pro:<TRUE>:

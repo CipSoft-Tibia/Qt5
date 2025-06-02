@@ -6,6 +6,7 @@
 #define NET_TOOLS_TRANSPORT_SECURITY_STATE_GENERATOR_CERT_UTIL_H_
 
 #include <stdint.h>
+#include <string>
 
 #include "base/strings/string_piece.h"
 #include "third_party/boringssl/src/include/openssl/x509v3.h"

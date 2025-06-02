@@ -459,6 +459,7 @@ if (pdf_enable_xfa_tiff) {
   if (pdfium_use_system_libtiff) {
     config("system_tiff_config") {
       libs = [ "tiff" ]
+      defines = [ "USE_SYSTEM_LIBTIFF" ]
     }
   } else {
     source_set("fx_tiff") {
@@ -536,6 +537,16 @@ source_set("pdfium_compiler_specific") {
   sources = [ "base/compiler_specific.h" ]
 }
 
+if (pdf_use_partition_alloc) {
+  group("pdfium_pa") {
+    public_deps = [
+      "//base/allocator/partition_allocator/src/partition_alloc:partition_alloc_buildflags",
+      "//base/allocator/partition_allocator/src/partition_alloc:raw_ptr",
+    ]
+    deps = [ "//base/allocator/partition_allocator/src/partition_alloc" ]
+  }
+}
+
 source_set("pdfium_base") {
   configs -= [ "//build/config/compiler:chromium_code" ]
   configs += [
@@ -574,7 +585,6 @@ source_set("pdfium_base") {
   ]
   public_deps = [
     ":pdfium_compiler_specific",
-    "../core/fxcrt:unowned_ptr",
     "//third_party/abseil-cpp:absl",
   ]
   if (is_win) {
@@ -583,6 +593,9 @@ source_set("pdfium_base") {
       "base/win/win_util.cc",
       "base/win/win_util.h",
     ]
+  }
+  if (pdf_use_partition_alloc) {
+    public_deps += [ ":pdfium_pa" ]
   }
 }
 

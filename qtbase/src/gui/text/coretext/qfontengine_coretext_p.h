@@ -38,7 +38,7 @@ public:
     ~QCoreTextFontEngine();
 
     glyph_t glyphIndex(uint ucs4) const override;
-    bool stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
+    int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
     void recalcAdvances(QGlyphLayout *, ShaperFlags) const override;
 
     glyph_metrics_t boundingBox(glyph_t glyph) override;
@@ -54,7 +54,7 @@ public:
     bool canRender(const QChar *string, int len) const override;
 
     int synthesized() const override { return synthesisFlags; }
-    bool supportsHorizontalSubPixelPositions() const override { return true; }
+    bool supportsHorizontalSubPixelPositions() const override { return !isColorFont(); }
     bool supportsVerticalSubPixelPositions() const override { return false; }
 
     QFixed lineThickness() const override;

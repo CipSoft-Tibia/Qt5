@@ -63,6 +63,13 @@ message ConnectionsLog {
 
     // Zero or more StrategySessions.
     repeated StrategySession strategy_session = 2;
+
+    // The client session flow id.
+    optional int64 client_flow_id = 3 /* type = ST_SESSION_ID */;
+
+    // All the connection tokens used in this client session.
+    optional string connection_token = 4
+        /* type = ST_SESSION_ID */;
   }
 
   // One round of a particular Strategy done by a client.
@@ -420,6 +427,9 @@ message ConnectionsLog {
 
     // The power level of this advertising
     optional location.nearby.proto.connections.PowerLevel power_level = 5;
+
+    // The dual band support status
+    optional bool supports_dual_band = 6;
   }
 
   // Some additional information to keep with the discovery phase.

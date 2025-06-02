@@ -25,7 +25,7 @@ TEST(ByteString, ElementAccess) {
   EXPECT_EQ('b', abc[1]);
   EXPECT_EQ('c', abc[2]);
 #ifndef NDEBUG
-  EXPECT_DEATH({ abc[3]; }, ".*");
+  EXPECT_DEATH({ abc[3]; }, "");
 #endif
 
   pdfium::span<const char> abc_span = abc.span();
@@ -59,7 +59,7 @@ TEST(ByteString, ElementAccess) {
   EXPECT_EQ("abc", abc);
   EXPECT_EQ("def", mutable_abc);
 #ifndef NDEBUG
-  EXPECT_DEATH({ mutable_abc.SetAt(3, 'g'); }, ".*");
+  EXPECT_DEATH({ mutable_abc.SetAt(3, 'g'); }, "");
   EXPECT_EQ("abc", abc);
 #endif
 }
@@ -1204,7 +1204,7 @@ TEST(ByteStringView, NotNull) {
   ByteStringView string3("abc");
   ByteStringView string6("abcdef");
   ByteStringView alternate_string3("abcdef", 3);
-  ByteStringView span_string4(pdfium::as_bytes(pdfium::make_span("abcd", 4)));
+  ByteStringView span_string4(pdfium::as_bytes(pdfium::make_span("abcd", 4u)));
   ByteStringView embedded_nul_string7("abc\0def", 7);
   ByteStringView illegal_string7("abcdef", 7);
 
@@ -1403,7 +1403,7 @@ TEST(ByteStringView, ElementAccess) {
   EXPECT_EQ('b', static_cast<char>(abc[1]));
   EXPECT_EQ('c', static_cast<char>(abc[2]));
 #ifndef NDEBUG
-  EXPECT_DEATH({ abc[3]; }, ".*");
+  EXPECT_DEATH({ abc[3]; }, "");
 #endif
 }
 
@@ -1519,8 +1519,10 @@ TEST(ByteStringView, OperatorEQ) {
   EXPECT_FALSE(c_string3 == byte_string_c);
 
   pdfium::span<const uint8_t> span5(
-      pdfium::as_bytes(pdfium::make_span("hello", 5)));
-  EXPECT_EQ(byte_string_c.raw_span(), span5);
+      pdfium::as_bytes(pdfium::make_span("hello", 5u)));
+  auto raw_span = byte_string_c.raw_span();
+  EXPECT_TRUE(
+      std::equal(raw_span.begin(), raw_span.end(), span5.begin(), span5.end()));
 }
 
 TEST(ByteStringView, OperatorNE) {

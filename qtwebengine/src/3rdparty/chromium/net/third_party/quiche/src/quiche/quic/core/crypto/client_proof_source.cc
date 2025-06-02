@@ -5,6 +5,8 @@
 #include "quiche/quic/core/crypto/client_proof_source.h"
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 
 namespace quic {
 
@@ -26,8 +28,8 @@ bool DefaultClientProofSource::AddCertAndKey(
 
 const ClientProofSource::CertAndKey* DefaultClientProofSource::GetCertAndKey(
     absl::string_view hostname) const {
-  const CertAndKey* result = LookupExact(hostname);
-  if (result != nullptr || hostname == "*") {
+  if (const CertAndKey* const result = LookupExact(hostname);
+      result || hostname == "*") {
     return result;
   }
 
@@ -37,7 +39,7 @@ const ClientProofSource::CertAndKey* DefaultClientProofSource::GetCertAndKey(
     auto dot_pos = hostname.find('.');
     if (dot_pos != std::string::npos) {
       std::string wildcard = absl::StrCat("*", hostname.substr(dot_pos));
-      const CertAndKey* result = LookupExact(wildcard);
+      const CertAndKey* const result = LookupExact(wildcard);
       if (result != nullptr) {
         return result;
       }

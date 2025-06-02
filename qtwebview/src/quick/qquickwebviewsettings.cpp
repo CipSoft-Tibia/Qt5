@@ -9,7 +9,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype WebViewSettings
-    //! \instantiates QQuickWebViewSettings
+    //! \nativetype QQuickWebViewSettings
     \inqmlmodule QtWebView
     \since QtWebView 6.5
     \brief Allows configuration of browser properties and attributes.

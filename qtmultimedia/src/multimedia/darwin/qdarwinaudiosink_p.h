@@ -14,18 +14,20 @@
 // We mean it.
 //
 
-#include <private/qaudiosystem_p.h>
-#include <private/qaudiostatemachine_p.h>
-
 #if defined(Q_OS_MACOS)
-# include <CoreAudio/CoreAudio.h>
+#  include <CoreAudio/CoreAudio.h>
 #endif
 #include <AudioUnit/AudioUnit.h>
 #include <CoreAudio/CoreAudioTypes.h>
 
-#include <QtCore/QIODevice>
-#include <qdarwinaudiodevice_p.h>
-#include <qsemaphore.h>
+#include <QtCore/qiodevice.h>
+#include <QtCore/qsemaphore.h>
+#include <QtMultimedia/private/qaudioringbuffer_p.h>
+#include <QtMultimedia/private/qaudiostatemachine_p.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qcoreaudioutils_p.h>
+#include <QtMultimedia/private/qdarwinaudiodevice_p.h>
+#include <QtMultimedia/private/qdarwinaudiounit_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -40,7 +42,7 @@ class QDarwinAudioSinkBuffer : public QObject
 
 public:
     QDarwinAudioSinkBuffer(int bufferSize, int maxPeriodSize, QAudioFormat const& audioFormat);
-    ~QDarwinAudioSinkBuffer();
+    ~QDarwinAudioSinkBuffer() override;
 
     qint64 readFrames(char *data, qint64 maxFrames);
     qint64 writeBytes(const char *data, qint64 maxSize);
@@ -72,7 +74,7 @@ private:
     const int m_periodTime = 0;
     QIODevice *m_device = nullptr;
     QTimer *m_fillTimer = nullptr;
-    std::unique_ptr<CoreAudioRingBuffer> m_buffer;
+    QtPrivate::QAudioRingBuffer<char> m_buffer;
 };
 
 class QDarwinAudioSinkDevice : public QIODevice
@@ -80,10 +82,10 @@ class QDarwinAudioSinkDevice : public QIODevice
 public:
     QDarwinAudioSinkDevice(QDarwinAudioSinkBuffer *audioBuffer, QObject *parent);
 
-    qint64 readData(char *data, qint64 len);
-    qint64 writeData(const char *data, qint64 len);
+    qint64 readData(char *data, qint64 len) override;
+    qint64 writeData(const char *data, qint64 len) override;
 
-    bool isSequential() const { return true; }
+    bool isSequential() const override { return true; }
 
 private:
     QDarwinAudioSinkBuffer *m_audioBuffer;
@@ -95,30 +97,30 @@ class QDarwinAudioSink : public QPlatformAudioSink
     Q_OBJECT
 
 public:
-    QDarwinAudioSink(const QAudioDevice &device, QObject *parent);
-    ~QDarwinAudioSink();
+    QDarwinAudioSink(const QAudioDevice &device, const QAudioFormat &format, QObject *parent);
+    ~QDarwinAudioSink() override;
 
-    void start(QIODevice *device);
-    QIODevice *start();
-    void stop();
-    void reset();
-    void suspend();
-    void resume();
-    qsizetype bytesFree() const;
-    void setBufferSize(qsizetype value);
-    qsizetype bufferSize() const;
-    qint64 processedUSecs() const;
-    QAudio::Error error() const;
-    QAudio::State state() const;
-    void setFormat(const QAudioFormat &format);
-    QAudioFormat format() const;
+    void start(QIODevice *device) override;
+    QIODevice *start() override;
+    void stop() override;
+    void reset() override;
+    void suspend() override;
+    void resume() override;
+    qsizetype bytesFree() const override;
+    void setBufferSize(qsizetype value) override;
+    qsizetype bufferSize() const override;
+    qint64 processedUSecs() const override;
+    QAudio::Error error() const override;
+    QAudio::State state() const override;
+    QAudioFormat format() const override;
 
-    void setVolume(qreal volume);
-    qreal volume() const;
+    void setVolume(qreal volume) override;
+    qreal volume() const override;
 
 private slots:
     void inputReady();
     void updateAudioDevice();
+    void appStateChanged(Qt::ApplicationState state);
 
 private:
     enum ThreadState { Running, Draining, Stopped };
@@ -136,8 +138,7 @@ private:
     void onAudioDeviceError();
     void onAudioDeviceDrained();
 
-    QAudioDevice m_audioDeviceInfo;
-    QByteArray m_device;
+    QAudioDevice m_audioDevice;
 
     static constexpr int DEFAULT_BUFFER_SIZE = 8 * 1024;
 
@@ -145,24 +146,25 @@ private:
     int m_internalBufferSize = DEFAULT_BUFFER_SIZE;
     int m_periodSizeBytes = 0;
     qint64 m_totalFrames = 0;
-    QAudioFormat m_audioFormat;
+    const QAudioFormat m_audioFormat;
     QIODevice *m_audioIO = nullptr;
-#if defined(Q_OS_MACOS)
-    AudioDeviceID m_audioDeviceId;
-#endif
     AudioUnit m_audioUnit = 0;
-    bool m_audioUnitStarted = false;
-    Float64 m_clockFrequency = 0;
     AudioStreamBasicDescription m_streamFormat;
     std::unique_ptr<QDarwinAudioSinkBuffer> m_audioBuffer;
     qreal m_cachedVolume = 1.;
 #if defined(Q_OS_MACOS)
+    bool addDisconnectListener(AudioObjectID);
+    void removeDisconnectListener();
+
+    QCoreAudioUtils::DeviceDisconnectMonitor m_disconnectMonitor;
+    QFuture<void> m_stopOnDisconnected;
+
     qreal m_volume = 1.;
 #endif
-    bool m_pullMode = false;
 
     QAudioStateMachine m_stateMachine;
     QSemaphore m_drainSemaphore;
+    AudioUnitState m_audioUnitState = AudioUnitState::Stopped;
 };
 
 QT_END_NAMESPACE

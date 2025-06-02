@@ -2,25 +2,26 @@
 // See valid_enum_values_generator.py for modifications
 
 /***************************************************************************
-*
-* Copyright (c) 2015-2023 The Khronos Group Inc.
-* Copyright (c) 2015-2023 Valve Corporation
-* Copyright (c) 2015-2023 LunarG, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-****************************************************************************/
+ *
+ * Copyright (c) 2015-2023 The Khronos Group Inc.
+ * Copyright (c) 2015-2023 Valve Corporation
+ * Copyright (c) 2015-2023 LunarG, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ ****************************************************************************/
 
 // NOLINTBEGIN
+// clang-format off
 template<> std::vector<VkResult> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkPipelineCacheHeaderVersion> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkImageLayout> ValidationObject::ValidParamValues() const;
@@ -64,11 +65,10 @@ template<> std::vector<VkPresentModeKHR> ValidationObject::ValidParamValues() co
 template<> std::vector<VkColorSpaceKHR> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkQueueGlobalPriorityKHR> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkFragmentShadingRateCombinerOpKHR> ValidationObject::ValidParamValues() const;
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 template<> std::vector<VkVideoEncodeTuningModeKHR> ValidationObject::ValidParamValues() const;
-#endif //VK_ENABLE_BETA_EXTENSIONS
 template<> std::vector<VkComponentTypeKHR> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkScopeKHR> ValidationObject::ValidParamValues() const;
+template<> std::vector<VkTimeDomainKHR> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkDebugReportObjectTypeEXT> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkRasterizationOrderAMD> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkShaderInfoTypeAMD> ValidationObject::ValidParamValues() const;
@@ -90,7 +90,6 @@ template<> std::vector<VkGeometryTypeKHR> ValidationObject::ValidParamValues() c
 template<> std::vector<VkAccelerationStructureTypeKHR> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkCopyAccelerationStructureModeKHR> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkAccelerationStructureMemoryRequirementsTypeNV> ValidationObject::ValidParamValues() const;
-template<> std::vector<VkTimeDomainEXT> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkMemoryOverallocationBehaviorAMD> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkPerformanceConfigurationTypeINTEL> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkQueryPoolSamplingModeINTEL> ValidationObject::ValidParamValues() const;
@@ -103,7 +102,7 @@ template<> std::vector<VkCoverageReductionModeNV> ValidationObject::ValidParamVa
 template<> std::vector<VkProvokingVertexModeEXT> ValidationObject::ValidParamValues() const;
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 template<> std::vector<VkFullScreenExclusiveEXT> ValidationObject::ValidParamValues() const;
-#endif //VK_USE_PLATFORM_WIN32_KHR
+#endif  // VK_USE_PLATFORM_WIN32_KHR
 template<> std::vector<VkLineRasterizationModeEXT> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkIndirectCommandsTokenTypeNV> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkDepthBiasRepresentationEXT> ValidationObject::ValidParamValues() const;
@@ -122,9 +121,13 @@ template<> std::vector<VkDirectDriverLoadingModeLUNARG> ValidationObject::ValidP
 template<> std::vector<VkOpticalFlowPerformanceLevelNV> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkOpticalFlowSessionBindingPointNV> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkShaderCodeTypeEXT> ValidationObject::ValidParamValues() const;
+template<> std::vector<VkLayerSettingTypeEXT> ValidationObject::ValidParamValues() const;
+template<> std::vector<VkLatencyMarkerNV> ValidationObject::ValidParamValues() const;
+template<> std::vector<VkOutOfBandQueueTypeNV> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkBlockMatchWindowCompareModeQCOM> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkCubicFilterWeightsQCOM> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkBuildAccelerationStructureModeKHR> ValidationObject::ValidParamValues() const;
 template<> std::vector<VkShaderGroupShaderKHR> ValidationObject::ValidParamValues() const;
+// clang-format on
 
 // NOLINTEND

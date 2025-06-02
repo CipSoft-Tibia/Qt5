@@ -36,6 +36,7 @@
 #include "flvdec.h"
 #include "h263.h"
 #include "h263dec.h"
+#include "hwaccel_internal.h"
 #include "hwconfig.h"
 #include "mpeg_er.h"
 #include "mpeg4video.h"
@@ -127,7 +128,6 @@ av_cold int ff_h263_decode_init(AVCodecContext *avctx)
         avctx->codec->id != AV_CODEC_ID_H263P &&
         avctx->codec->id != AV_CODEC_ID_MPEG4) {
         avctx->pix_fmt = h263_get_format(avctx);
-        ff_mpv_idct_init(s);
         if ((ret = ff_mpv_common_init(s)) < 0)
             return ret;
     }
@@ -190,7 +190,7 @@ static int decode_slice(MpegEncContext *s)
 
     if (s->avctx->hwaccel) {
         const uint8_t *start = s->gb.buffer + get_bits_count(&s->gb) / 8;
-        ret = s->avctx->hwaccel->decode_slice(s->avctx, start, s->gb.buffer_end - start);
+        ret = FF_HW_CALL(s->avctx, decode_slice, start, s->gb.buffer_end - start);
         // ensure we exit decode loop
         s->mb_y = s->mb_height;
         return ret;
@@ -458,23 +458,12 @@ retry:
     if (ret < 0)
         return ret;
 
-    if (!s->context_initialized)
-        // we need the idct permutation for reading a custom matrix
-        ff_mpv_idct_init(s);
-
     /* let's go :-) */
     if (CONFIG_WMV2_DECODER && s->msmpeg4_version == 5) {
         ret = ff_wmv2_decode_picture_header(s);
     } else if (CONFIG_MSMPEG4DEC && s->msmpeg4_version) {
         ret = ff_msmpeg4_decode_picture_header(s);
     } else if (CONFIG_MPEG4_DECODER && avctx->codec_id == AV_CODEC_ID_MPEG4) {
-        if (s->avctx->extradata_size && !s->extradata_parsed) {
-            GetBitContext gb;
-
-            if (init_get_bits8(&gb, s->avctx->extradata, s->avctx->extradata_size) >= 0 )
-                ff_mpeg4_decode_picture_header(avctx->priv_data, &gb, 1, 0);
-            s->extradata_parsed = 1;
-        }
         ret = ff_mpeg4_decode_picture_header(avctx->priv_data, &s->gb, 0, 0);
         s->skipped_last_frame = (ret == FRAME_SKIPPED);
     } else if (CONFIG_H263I_DECODER && s->codec_id == AV_CODEC_ID_H263I) {
@@ -568,8 +557,8 @@ retry:
         ff_thread_finish_setup(avctx);
 
     if (avctx->hwaccel) {
-        ret = avctx->hwaccel->start_frame(avctx, s->gb.buffer,
-                                          s->gb.buffer_end - s->gb.buffer);
+        ret = FF_HW_CALL(avctx, start_frame,
+                         s->gb.buffer, s->gb.buffer_end - s->gb.buffer);
         if (ret < 0 )
             return ret;
     }
@@ -621,10 +610,10 @@ retry:
     av_assert1(s->bitstream_buffer_size == 0);
 frame_end:
     if (!s->studio_profile)
-        ff_er_frame_end(&s->er);
+        ff_er_frame_end(&s->er, NULL);
 
     if (avctx->hwaccel) {
-        ret = avctx->hwaccel->end_frame(avctx);
+        ret = FF_HW_SIMPLE_CALL(avctx, end_frame);
         if (ret < 0)
             return ret;
     }

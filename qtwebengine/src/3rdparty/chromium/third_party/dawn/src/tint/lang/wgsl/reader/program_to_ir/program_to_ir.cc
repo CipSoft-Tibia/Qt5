@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/reader/program_to_ir/program_to_ir.h"
 
@@ -73,6 +86,7 @@
 #include "src/tint/lang/wgsl/ast/member_accessor_expression.h"
 #include "src/tint/lang/wgsl/ast/override.h"
 #include "src/tint/lang/wgsl/ast/phony_expression.h"
+#include "src/tint/lang/wgsl/ast/requires.h"
 #include "src/tint/lang/wgsl/ast/return_statement.h"
 #include "src/tint/lang/wgsl/ast/statement.h"
 #include "src/tint/lang/wgsl/ast/struct.h"
@@ -84,8 +98,9 @@
 #include "src/tint/lang/wgsl/ast/var.h"
 #include "src/tint/lang/wgsl/ast/variable_decl_statement.h"
 #include "src/tint/lang/wgsl/ast/while_statement.h"
+#include "src/tint/lang/wgsl/ir/builtin_call.h"
 #include "src/tint/lang/wgsl/program/program.h"
-#include "src/tint/lang/wgsl/sem/builtin.h"
+#include "src/tint/lang/wgsl/sem/builtin_fn.h"
 #include "src/tint/lang/wgsl/sem/call.h"
 #include "src/tint/lang/wgsl/sem/function.h"
 #include "src/tint/lang/wgsl/sem/index_accessor_expression.h"
@@ -111,14 +126,14 @@ using namespace tint::core::fluent_types;     // NOLINT
 namespace tint::wgsl::reader {
 namespace {
 
-using ResultType = tint::Result<core::ir::Module, diag::List>;
+using ResultType = tint::Result<core::ir::Module>;
 
 /// Impl is the private-implementation of FromProgram().
 class Impl {
   public:
     /// Constructor
     /// @param program the program to convert to IR
-    explicit Impl(const Program* program) : program_(program) {}
+    explicit Impl(const Program& program) : program_(program) {}
 
     /// Builds an IR module from the program passed to the constructor.
     /// @return the IR module or an error.
@@ -128,7 +143,7 @@ class Impl {
     enum class ControlFlags { kNone, kExcludeSwitch };
 
     // The input Program
-    const Program* program_ = nullptr;
+    const Program& program_;
 
     /// The IR module being built
     core::ir::Module mod;
@@ -139,7 +154,7 @@ class Impl {
     // The clone context used to clone data from #program_
     core::constant::CloneContext clone_ctx_{
         /* type_ctx */ core::type::CloneContext{
-            /* src */ {&program_->Symbols()},
+            /* src */ {&program_.Symbols()},
             /* dst */ {&builder_.ir.symbols, &builder_.ir.Types()},
         },
         /* dst */ {builder_.ir.constant_values},
@@ -190,11 +205,11 @@ class Impl {
         diagnostics_.add_error(tint::diag::System::IR, err, s);
     }
 
-    bool NeedTerminator() { return current_block_ && !current_block_->HasTerminator(); }
+    bool NeedTerminator() { return current_block_ && !current_block_->Terminator(); }
 
     void SetTerminator(core::ir::Terminator* terminator) {
         TINT_ASSERT(current_block_);
-        TINT_ASSERT(!current_block_->HasTerminator());
+        TINT_ASSERT(!current_block_->Terminator());
 
         current_block_->Append(terminator);
         current_block_ = nullptr;
@@ -216,7 +231,7 @@ class Impl {
     }
 
     ResultType EmitModule() {
-        auto* sem = program_->Sem().Module();
+        auto* sem = program_.Sem().Module();
 
         for (auto* decl : sem->DependencyOrderedDeclarations()) {
             tint::Switch(
@@ -231,7 +246,7 @@ class Impl {
                 [&](const ast::Variable* var) {
                     // Setup the current block to be the root block for the module. The builder
                     // will handle creating it if it doesn't exist already.
-                    TINT_SCOPED_ASSIGNMENT(current_block_, builder_.RootBlock());
+                    TINT_SCOPED_ASSIGNMENT(current_block_, mod.root_block);
                     EmitVariable(var);
                 },
                 [&](const ast::Function* func) { EmitFunction(func); },
@@ -244,21 +259,22 @@ class Impl {
                 },
                 [&](const ast::DiagnosticDirective*) {
                     // Ignored for now.
-                },
-                [&](Default) {
-                    add_error(decl->source, "unknown type: " + std::string(decl->TypeInfo().name));
-                });
+                },  //
+                [&](const ast::Requires*) {
+                    // Ignored for now.
+                },  //
+                TINT_ICE_ON_NO_MATCH);
         }
 
         if (diagnostics_.contains_errors()) {
-            return ResultType(std::move(diagnostics_));
+            return Failure{std::move(diagnostics_)};
         }
 
-        return ResultType{std::move(mod)};
+        return std::move(mod);
     }
 
     core::Interpolation ExtractInterpolation(const ast::InterpolateAttribute* interp) {
-        auto type = program_->Sem()
+        auto type = program_.Sem()
                         .Get(interp->type)
                         ->As<sem::BuiltinEnumExpression<core::InterpolationType>>();
         core::InterpolationType interpolation_type = type->Value();
@@ -266,7 +282,7 @@ class Impl {
         core::InterpolationSampling interpolation_sampling =
             core::InterpolationSampling::kUndefined;
         if (interp->sampling) {
-            auto sampling = program_->Sem()
+            auto sampling = program_.Sem()
                                 .Get(interp->sampling)
                                 ->As<sem::BuiltinEnumExpression<core::InterpolationSampling>>();
             interpolation_sampling = sampling->Value();
@@ -279,7 +295,7 @@ class Impl {
         // The flow stack should have been emptied when the previous function finished building.
         TINT_ASSERT(control_stack_.IsEmpty());
 
-        const auto* sem = program_->Sem().Get(ast_func);
+        const auto* sem = program_.Sem().Get(ast_func);
 
         auto* ir_func = builder_.Function(ast_func->name->symbol.NameView(),
                                           sem->ReturnType()->Clone(clone_ctx_.type_ctx));
@@ -321,27 +337,10 @@ class Impl {
                     [&](const ast::InvariantAttribute*) { ir_func->SetReturnInvariant(true); },
                     [&](const ast::BuiltinAttribute* b) {
                         if (auto* ident_sem =
-                                program_->Sem()
+                                program_.Sem()
                                     .Get(b)
                                     ->As<sem::BuiltinEnumExpression<core::BuiltinValue>>()) {
-                            switch (ident_sem->Value()) {
-                                case core::BuiltinValue::kPosition:
-                                    ir_func->SetReturnBuiltin(
-                                        core::ir::Function::ReturnBuiltin::kPosition);
-                                    break;
-                                case core::BuiltinValue::kFragDepth:
-                                    ir_func->SetReturnBuiltin(
-                                        core::ir::Function::ReturnBuiltin::kFragDepth);
-                                    break;
-                                case core::BuiltinValue::kSampleMask:
-                                    ir_func->SetReturnBuiltin(
-                                        core::ir::Function::ReturnBuiltin::kSampleMask);
-                                    break;
-                                default:
-                                    TINT_ICE() << "Unknown builtin value in return attributes "
-                                               << ident_sem->Value();
-                                    return;
-                            }
+                            ir_func->SetReturnBuiltin(ident_sem->Value());
                         } else {
                             TINT_ICE() << "Builtin attribute sem invalid";
                             return;
@@ -358,7 +357,7 @@ class Impl {
 
         Vector<core::ir::FunctionParam*, 1> params;
         for (auto* p : ast_func->params) {
-            const auto* param_sem = program_->Sem().Get(p)->As<sem::Parameter>();
+            const auto* param_sem = program_.Sem().Get(p)->As<sem::Parameter>();
             auto* ty = param_sem->Type()->Clone(clone_ctx_.type_ctx);
             auto* param = builder_.FunctionParam(p->name->symbol.NameView(), ty);
 
@@ -374,70 +373,21 @@ class Impl {
                     [&](const ast::InvariantAttribute*) { param->SetInvariant(true); },
                     [&](const ast::BuiltinAttribute* b) {
                         if (auto* ident_sem =
-                                program_->Sem()
+                                program_.Sem()
                                     .Get(b)
                                     ->As<sem::BuiltinEnumExpression<core::BuiltinValue>>()) {
-                            switch (ident_sem->Value()) {
-                                case core::BuiltinValue::kVertexIndex:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kVertexIndex);
-                                    break;
-                                case core::BuiltinValue::kInstanceIndex:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kInstanceIndex);
-                                    break;
-                                case core::BuiltinValue::kPosition:
-                                    param->SetBuiltin(core::ir::FunctionParam::Builtin::kPosition);
-                                    break;
-                                case core::BuiltinValue::kFrontFacing:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kFrontFacing);
-                                    break;
-                                case core::BuiltinValue::kLocalInvocationId:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kLocalInvocationId);
-                                    break;
-                                case core::BuiltinValue::kLocalInvocationIndex:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kLocalInvocationIndex);
-                                    break;
-                                case core::BuiltinValue::kGlobalInvocationId:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kGlobalInvocationId);
-                                    break;
-                                case core::BuiltinValue::kWorkgroupId:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kWorkgroupId);
-                                    break;
-                                case core::BuiltinValue::kNumWorkgroups:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kNumWorkgroups);
-                                    break;
-                                case core::BuiltinValue::kSampleIndex:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kSampleIndex);
-                                    break;
-                                case core::BuiltinValue::kSampleMask:
-                                    param->SetBuiltin(
-                                        core::ir::FunctionParam::Builtin::kSampleMask);
-                                    break;
-                                default:
-                                    TINT_ICE() << "Unknown builtin value in parameter attributes "
-                                               << ident_sem->Value();
-                                    return;
-                            }
+                            param->SetBuiltin(ident_sem->Value());
                         } else {
                             TINT_ICE() << "Builtin attribute sem invalid";
                             return;
                         }
                     });
 
-                if (param_sem->Location().has_value()) {
-                    param->SetLocation(param_sem->Location().value(), interpolation);
+                if (param_sem->Attributes().location.has_value()) {
+                    param->SetLocation(param_sem->Attributes().location.value(), interpolation);
                 }
-                if (param_sem->BindingPoint().has_value()) {
-                    param->SetBindingPoint(param_sem->BindingPoint()->group,
-                                           param_sem->BindingPoint()->binding);
+                if (param_sem->Attributes().color.has_value()) {
+                    TINT_UNIMPLEMENTED() << "IR does not currently support texel fetch extension";
                 }
             }
 
@@ -451,7 +401,7 @@ class Impl {
 
         // Add a terminator if one was not already created.
         if (NeedTerminator()) {
-            if (!program_->Sem().Get(ast_func->body)->Behaviors().Contains(sem::Behavior::kNext)) {
+            if (!program_.Sem().Get(ast_func->body)->Behaviors().Contains(sem::Behavior::kNext)) {
                 SetTerminator(builder_.Unreachable());
             } else {
                 SetTerminator(builder_.Return(current_function_));
@@ -467,7 +417,7 @@ class Impl {
         for (auto* s : stmts) {
             EmitStatement(s);
 
-            if (auto* sem = program_->Sem().Get(s);
+            if (auto* sem = program_.Sem().Get(s);
                 sem && !sem->Behaviors().Contains(sem::Behavior::kNext)) {
                 break;  // Unreachable statement.
             }
@@ -495,11 +445,8 @@ class Impl {
             [&](const ast::IncrementDecrementStatement* i) { EmitIncrementDecrement(i); },
             [&](const ast::ConstAssert*) {
                 // Not emitted
-            },
-            [&](Default) {
-                add_error(stmt->source,
-                          "unknown statement type: " + std::string(stmt->TypeInfo().name));
-            });
+            },  //
+            TINT_ICE_ON_NO_MATCH);
     }
 
     void EmitAssignment(const ast::AssignmentStatement* stmt) {
@@ -531,7 +478,7 @@ class Impl {
     void EmitIncrementDecrement(const ast::IncrementDecrementStatement* stmt) {
         auto lhs = EmitExpression(stmt->lhs);
 
-        auto* one = program_->TypeOf(stmt->lhs)->UnwrapRef()->is_signed_integer_scalar()
+        auto* one = program_.TypeOf(stmt->lhs)->UnwrapRef()->is_signed_integer_scalar()
                         ? builder_.Constant(1_i)
                         : builder_.Constant(1_u);
 
@@ -554,13 +501,13 @@ class Impl {
         auto b = builder_.Append(current_block_);
         if (auto* v = std::get_if<core::ir::Value*>(&lhs)) {
             auto* load = b.Load(*v);
-            auto* ty = load->Result()->Type();
-            auto* inst = current_block_->Append(BinaryOp(ty, load->Result(), rhs, op));
+            auto* ty = load->Result(0)->Type();
+            auto* inst = current_block_->Append(BinaryOp(ty, load->Result(0), rhs, op));
             b.Store(*v, inst);
         } else if (auto ref = std::get_if<VectorRefElementAccess>(&lhs)) {
             auto* load = b.LoadVectorElement(ref->vector, ref->index);
-            auto* ty = load->Result()->Type();
-            auto* inst = b.Append(BinaryOp(ty, load->Result(), rhs, op));
+            auto* ty = load->Result(0)->Type();
+            auto* inst = b.Append(BinaryOp(ty, load->Result(0), rhs, op));
             b.StoreVectorElement(ref->vector, ref->index, inst);
         }
     }
@@ -749,14 +696,14 @@ class Impl {
 
         ControlStackScope scope(this, switch_inst);
 
-        const auto* sem = program_->Sem().Get(stmt);
+        const auto* sem = program_.Sem().Get(stmt);
         for (const auto* c : sem->Cases()) {
-            Vector<core::ir::Switch::CaseSelector, 4> selectors;
+            Vector<core::ir::Constant*, 4> selectors;
             for (const auto* selector : c->Selectors()) {
                 if (selector->IsDefault()) {
-                    selectors.Push({nullptr});
+                    selectors.Push(nullptr);
                 } else {
-                    selectors.Push({builder_.Constant(selector->Value()->Clone(clone_ctx_))});
+                    selectors.Push(builder_.Constant(selector->Value()->Clone(clone_ctx_)));
                 }
             }
 
@@ -855,20 +802,20 @@ class Impl {
 
             void Bind(const ast::Expression* expr, core::ir::Value* value) {
                 // If this expression maps to sem::Load, insert a load instruction to get the result
-                if (impl.program_->Sem().Get<sem::Load>(expr)) {
+                if (impl.program_.Sem().Get<sem::Load>(expr)) {
                     auto* load = impl.builder_.Load(value);
                     impl.current_block_->Append(load);
-                    value = load->Result();
+                    value = load->Result(0);
                 }
                 bindings_.Add(expr, value);
             }
 
             void Bind(const ast::Expression* expr, const VectorRefElementAccess& access) {
                 // If this expression maps to sem::Load, insert a load instruction to get the result
-                if (impl.program_->Sem().Get<sem::Load>(expr)) {
+                if (impl.program_.Sem().Get<sem::Load>(expr)) {
                     auto* load = impl.builder_.LoadVectorElement(access.vector, access.index);
                     impl.current_block_->Append(load);
-                    bindings_.Add(expr, load->Result());
+                    bindings_.Add(expr, load->Result(0));
                 } else {
                     bindings_.Add(expr, access);
                 }
@@ -899,7 +846,7 @@ class Impl {
             void PopBlock() { impl.current_block_ = blocks.Pop(); }
 
             core::ir::Value* EmitConstant(const ast::Expression* expr) {
-                if (auto* sem = impl.program_->Sem().GetVal(expr)) {
+                if (auto* sem = impl.program_.Sem().GetVal(expr)) {
                     if (auto* v = sem->ConstantValue()) {
                         if (auto* cv = v->Clone(impl.clone_ctx_)) {
                             auto* val = impl.builder_.Constant(cv);
@@ -923,7 +870,7 @@ class Impl {
                     return;
                 }
 
-                auto* sem = impl.program_->Sem().Get(expr)->Unwrap();
+                auto* sem = impl.program_.Sem().Get(expr)->Unwrap();
 
                 // The access result type should match the source result type. If the source is a
                 // pointer, we generate a pointer.
@@ -958,13 +905,10 @@ class Impl {
                         }
                         auto* val = impl.builder_.Swizzle(ty, obj, std::move(indices));
                         impl.current_block_->Append(val);
-                        Bind(expr, val->Result());
+                        Bind(expr, val->Result(0));
                         return nullptr;
-                    },
-                    [&](Default) {
-                        TINT_ICE() << "invalid accessor: " + std::string(sem->TypeInfo().name);
-                        return nullptr;
-                    });
+                    },  //
+                    TINT_ICE_ON_NO_MATCH);
 
                 if (!index) {
                     return;
@@ -974,16 +918,16 @@ class Impl {
                 // of another access, then we can just append the index to that access.
                 if (!impl.mod.NameOf(obj).IsValid()) {
                     if (auto* inst_res = obj->As<core::ir::InstructionResult>()) {
-                        if (auto* access = inst_res->Source()->As<core::ir::Access>()) {
+                        if (auto* access = inst_res->Instruction()->As<core::ir::Access>()) {
                             access->AddIndex(index);
-                            access->Result()->SetType(ty);
+                            access->Result(0)->SetType(ty);
                             bindings_.Remove(expr->object);
                             // Move the access after the index expression.
                             if (impl.current_block_->Back() != access) {
                                 impl.current_block_->Remove(access);
                                 impl.current_block_->Append(access);
                             }
-                            Bind(expr, access->Result());
+                            Bind(expr, access->Result(0));
                             return;
                         }
                     }
@@ -992,11 +936,11 @@ class Impl {
                 // Create a new access
                 auto* access = impl.builder_.Access(ty, obj, index);
                 impl.current_block_->Append(access);
-                Bind(expr, access->Result());
+                Bind(expr, access->Result(0));
             }
 
             void EmitBinary(const ast::BinaryExpression* b) {
-                auto* b_sem = impl.program_->Sem().Get(b);
+                auto* b_sem = impl.program_.Sem().Get(b);
                 auto* ty = b_sem->Type()->Clone(impl.clone_ctx_.type_ctx);
                 auto lhs = GetValue(b->lhs);
                 if (!lhs) {
@@ -1006,12 +950,12 @@ class Impl {
                 if (!rhs) {
                     return;
                 }
-                core::ir::Binary* inst = impl.BinaryOp(ty, lhs, rhs, b->op);
+                auto* inst = impl.BinaryOp(ty, lhs, rhs, b->op);
                 if (!inst) {
                     return;
                 }
                 impl.current_block_->Append(inst);
-                Bind(b, inst->Result());
+                Bind(b, inst->Result(0));
             }
 
             void EmitUnary(const ast::UnaryOpExpression* expr) {
@@ -1019,7 +963,7 @@ class Impl {
                 if (!val) {
                     return;
                 }
-                auto* sem = impl.program_->Sem().Get(expr);
+                auto* sem = impl.program_.Sem().Get(expr);
                 auto* ty = sem->Type()->Clone(impl.clone_ctx_.type_ctx);
                 core::ir::Instruction* inst = nullptr;
                 switch (expr->op) {
@@ -1040,7 +984,7 @@ class Impl {
                         break;
                 }
                 impl.current_block_->Append(inst);
-                Bind(expr, inst->Result());
+                Bind(expr, inst->Result(0));
             }
 
             void EmitBitcast(const ast::BitcastExpression* b) {
@@ -1048,16 +992,16 @@ class Impl {
                 if (!val) {
                     return;
                 }
-                auto* sem = impl.program_->Sem().Get(b);
+                auto* sem = impl.program_.Sem().Get(b);
                 auto* ty = sem->Type()->Clone(impl.clone_ctx_.type_ctx);
                 auto* inst = impl.builder_.Bitcast(ty, val);
                 impl.current_block_->Append(inst);
-                Bind(b, inst->Result());
+                Bind(b, inst->Result(0));
             }
 
             void EmitCall(const ast::CallExpression* expr) {
                 // If this is a materialized semantic node, just use the constant value.
-                if (auto* mat = impl.program_->Sem().Get(expr)) {
+                if (auto* mat = impl.program_.Sem().Get(expr)) {
                     if (mat->ConstantValue()) {
                         auto* cv = mat->ConstantValue()->Clone(impl.clone_ctx_);
                         if (!cv) {
@@ -1080,7 +1024,7 @@ class Impl {
                     }
                     args.Push(value);
                 }
-                auto* sem = impl.program_->Sem().Get<sem::Call>(expr);
+                auto* sem = impl.program_.Sem().Get<sem::Call>(expr);
                 if (!sem) {
                     impl.add_error(expr->source, "failed to get semantic information for call " +
                                                      std::string(expr->TypeInfo().name));
@@ -1089,8 +1033,10 @@ class Impl {
                 auto* ty = sem->Target()->ReturnType()->Clone(impl.clone_ctx_.type_ctx);
                 core::ir::Instruction* inst = nullptr;
                 // If this is a builtin function, emit the specific builtin value
-                if (auto* b = sem->Target()->As<sem::Builtin>()) {
-                    inst = impl.builder_.Call(ty, b->Type(), args);
+                if (auto* b = sem->Target()->As<sem::BuiltinFn>()) {
+                    auto* res = impl.builder_.InstructionResult(ty);
+                    inst = impl.builder_.ir.instructions.Create<wgsl::ir::BuiltinCall>(
+                        res, b->Fn(), std::move(args));
                 } else if (sem->Target()->As<sem::ValueConstructor>()) {
                     inst = impl.builder_.Construct(ty, std::move(args));
                 } else if (sem->Target()->Is<sem::ValueConversion>()) {
@@ -1109,7 +1055,7 @@ class Impl {
                     return;
                 }
                 impl.current_block_->Append(inst);
-                Bind(expr, inst->Result());
+                Bind(expr, inst->Result(0));
             }
 
             void EmitIdentifier(const ast::IdentifierExpression* i) {
@@ -1123,7 +1069,7 @@ class Impl {
             }
 
             void EmitLiteral(const ast::LiteralExpression* lit) {
-                auto* sem = impl.program_->Sem().Get(lit);
+                auto* sem = impl.program_.Sem().Get(lit);
                 if (!sem) {
                     impl.add_error(lit->source, "failed to get semantic information for node " +
                                                     std::string(lit->TypeInfo().name));
@@ -1142,7 +1088,7 @@ class Impl {
             std::optional<VectorRefElementAccess> AsVectorRefElementAccess(
                 const ast::Expression* expr) {
                 return AsVectorRefElementAccess(
-                    impl.program_->Sem().Get<sem::ValueExpression>(expr)->UnwrapLoad());
+                    impl.program_.Sem().Get<sem::ValueExpression>(expr)->UnwrapLoad());
             }
 
             std::optional<VectorRefElementAccess> AsVectorRefElementAccess(
@@ -1152,12 +1098,12 @@ class Impl {
                     return std::nullopt;
                 }
 
-                auto* ref = access->Object()->Type()->As<core::type::Reference>();
-                if (!ref) {
+                auto* memory_view = access->Object()->Type()->As<core::type::MemoryView>();
+                if (!memory_view) {
                     return std::nullopt;
                 }
 
-                if (!ref->StoreType()->Is<core::type::Vector>()) {
+                if (!memory_view->StoreType()->Is<core::type::Vector>()) {
                     return std::nullopt;
                 }
                 return tint::Switch(
@@ -1206,7 +1152,7 @@ class Impl {
 
             void EndShortCircuit(const ast::BinaryExpression* b) {
                 auto res = GetValue(b);
-                auto* src = res->As<core::ir::InstructionResult>()->Source();
+                auto* src = res->As<core::ir::InstructionResult>()->Instruction();
                 auto* if_ = src->As<core::ir::If>();
                 TINT_ASSERT_OR_RETURN(if_);
                 auto rhs = GetValue(b->rhs);
@@ -1263,11 +1209,8 @@ class Impl {
                         tasks.Push([=] { Process(e->expr); });
                     },
                     [&](const ast::LiteralExpression* e) { EmitLiteral(e); },
-                    [&](const ast::IdentifierExpression* e) { EmitIdentifier(e); },
-                    [&](Default) {
-                        impl.add_error(expr->source,
-                                       "Unhandled: " + std::string(expr->TypeInfo().name));
-                    });
+                    [&](const ast::IdentifierExpression* e) { EmitIdentifier(e); },  //
+                    TINT_ICE_ON_NO_MATCH);
             }
         };
 
@@ -1286,7 +1229,7 @@ class Impl {
     void EmitCall(const ast::CallStatement* stmt) { (void)EmitValueExpression(stmt->expr); }
 
     void EmitVariable(const ast::Variable* var) {
-        auto* sem = program_->Sem().Get(var);
+        auto* sem = program_.Sem().Get(var);
 
         return tint::Switch(  //
             var,
@@ -1307,39 +1250,26 @@ class Impl {
                 current_block_->Append(val);
 
                 if (auto* gv = sem->As<sem::GlobalVariable>(); gv && var->HasBindingPoint()) {
-                    val->SetBindingPoint(gv->BindingPoint().value().group,
-                                         gv->BindingPoint().value().binding);
+                    val->SetBindingPoint(gv->Attributes().binding_point->group,
+                                         gv->Attributes().binding_point->binding);
                 }
 
                 // Store the declaration so we can get the instruction to store too
-                scopes_.Set(v->name->symbol, val->Result());
+                scopes_.Set(v->name->symbol, val->Result(0));
 
                 // Record the original name of the var
                 builder_.ir.SetName(val, v->name->symbol.Name());
             },
             [&](const ast::Let* l) {
-                auto* last_stmt = current_block_->Back();
                 auto init = EmitValueExpression(l->initializer);
                 if (!init) {
                     return;
                 }
 
-                auto* value = init;
-                if (current_block_->Back() == last_stmt) {
-                    // Emitting the let's initializer didn't create an instruction.
-                    // Create an core::ir::Let to give the let an instruction. This gives the let a
-                    // place of declaration and name, which preserves runtime semantics of the
-                    // let, and can be used by consumers of the IR to produce a variable or
-                    // debug info.
-                    auto* let = current_block_->Append(builder_.Let(l->name->symbol.Name(), value));
-                    value = let->Result();
-                } else {
-                    // Record the original name of the let
-                    builder_.ir.SetName(value, l->name->symbol.Name());
-                }
+                auto* let = current_block_->Append(builder_.Let(l->name->symbol.Name(), init));
 
                 // Store the results of the initialization
-                scopes_.Set(l->name->symbol, value);
+                scopes_.Set(l->name->symbol, let->Result(0));
             },
             [&](const ast::Override*) {
                 add_error(var->source,
@@ -1354,16 +1284,14 @@ class Impl {
                 // TODO(dsinclair): Probably want to store the const variable somewhere and then
                 // in identifier expression log an error if we ever see a const identifier. Add
                 // this when identifiers and variables are supported.
-            },
-            [&](Default) {
-                add_error(var->source, "unknown variable: " + std::string(var->TypeInfo().name));
-            });
+            },  //
+            TINT_ICE_ON_NO_MATCH);
     }
 
-    core::ir::Binary* BinaryOp(const core::type::Type* ty,
-                               core::ir::Value* lhs,
-                               core::ir::Value* rhs,
-                               core::BinaryOp op) {
+    core::ir::CoreBinary* BinaryOp(const core::type::Type* ty,
+                                   core::ir::Value* lhs,
+                                   core::ir::Value* rhs,
+                                   core::BinaryOp op) {
         switch (op) {
             case core::BinaryOp::kAnd:
                 return builder_.And(ty, lhs, rhs);
@@ -1409,15 +1337,17 @@ class Impl {
 
 }  // namespace
 
-tint::Result<core::ir::Module, std::string> ProgramToIR(const Program* program) {
-    if (!program->IsValid()) {
-        return std::string("input program is not valid");
+tint::Result<core::ir::Module> ProgramToIR(const Program& program) {
+    if (!program.IsValid()) {
+        return Failure{program.Diagnostics()};
     }
 
     Impl b(program);
     auto r = b.Build();
-    if (!r) {
-        return r.Failure().str();
+    if (r != Success) {
+        diag::List err = std::move(r.Failure().reason);
+        err.add_note(diag::System::IR, "AST:\n" + Program::printer(program), Source{});
+        return Failure{err};
     }
 
     return r.Move();

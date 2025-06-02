@@ -273,17 +273,14 @@ void QAspectManager::addNodes(const QList<QNode *> &nodes)
     // as this call) The idea is we want to avoid modifying the backend tree if
     // the Renderer hasn't allowed processFrame to continue yet
 
-    QList<NodeTreeChange> treeChanges;
-    treeChanges.reserve(nodes.size());
+    m_nodeTreeChanges.reserve(m_nodeTreeChanges.size() + nodes.size());
 
     for (QNode *node : nodes) {
-        treeChanges.push_back({ node->id(),
-                                QNodePrivate::get(node)->m_typeInfo,
-                                NodeTreeChange::Added,
-                                node });
+        m_nodeTreeChanges.push_back({ node->id(),
+                                      QNodePrivate::get(node)->m_typeInfo,
+                                      NodeTreeChange::Added,
+                                      node });
     }
-
-    m_nodeTreeChanges += treeChanges;
 }
 
 // Main Thread -> immediately following node destruction (call from QNode dtor)
@@ -512,13 +509,13 @@ void QAspectManager::processFrame()
 
         // Sync node / subnode relationship changes
         const auto dirtySubNodes = m_changeArbiter->takeDirtyEntityComponentNodes();
-        if (dirtySubNodes.size())
+        if (!dirtySubNodes.empty())
             for (QAbstractAspect *aspect : std::as_const(m_aspects))
                 QAbstractAspectPrivate::get(aspect)->syncDirtyEntityComponentNodes(dirtySubNodes);
 
         // Sync property updates
         const auto dirtyFrontEndNodes = m_changeArbiter->takeDirtyFrontEndNodes();
-        if (dirtyFrontEndNodes.size())
+        if (!dirtyFrontEndNodes.empty())
             for (QAbstractAspect *aspect : std::as_const(m_aspects))
                 QAbstractAspectPrivate::get(aspect)->syncDirtyFrontEndNodes(dirtyFrontEndNodes);
     }

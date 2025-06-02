@@ -10,37 +10,39 @@ Item {
     height: 150
     width: 150
 
-    ValueAxis3D {
+    Value3DAxis {
         id: initial
     }
 
-    ValueAxis3D {
+    Value3DAxis {
         id: initialized
-        formatter: ValueAxis3DFormatter { objectName: "formatter1" }
+        formatter: Value3DAxisFormatter { objectName: "formatter1" }
         labelFormat: "%f"
         reversed: true
         segmentCount: 10
         subSegmentCount: 5
 
         autoAdjustRange: false
-        labelAutoRotation: 10.0
+        labelAutoAngle: 10.0
         max: 20
         min: -10
         title: "initialized"
         titleFixed: false
         titleVisible: true
+        labelsVisible: false
+        titleOffset: 1
     }
 
-    ValueAxis3D {
+    Value3DAxis {
         id: change
     }
 
-    ValueAxis3D {
+    Value3DAxis {
         id: invalid
     }
 
     TestCase {
-        name: "ValueAxis3D Initial"
+        name: "Value3DAxis Initial"
 
         function test_initial() {
             verify(initial.formatter)
@@ -50,19 +52,21 @@ Item {
             compare(initial.subSegmentCount, 1)
 
             compare(initial.autoAdjustRange, true)
-            compare(initial.labelAutoRotation, 0.0)
+            compare(initial.labelAutoAngle, 0.0)
             compare(initial.max, 10)
             compare(initial.min, 0)
-            compare(initial.orientation, AbstractAxis3D.AxisOrientation.None)
+            compare(initial.orientation, Abstract3DAxis.AxisOrientation.None)
             compare(initial.title, "")
             compare(initial.titleFixed, true)
             compare(initial.titleVisible, false)
-            compare(initial.type, AbstractAxis3D.AxisType.Value)
+            compare(initial.labelsVisible, true)
+            compare(initial.titleOffset, 0)
+            compare(initial.type, Abstract3DAxis.AxisType.Value)
         }
     }
 
     TestCase {
-        name: "ValueAxis3D Initialized"
+        name: "Value3DAxis Initialized"
 
         function test_initialized() {
             compare(initialized.formatter.objectName, "formatter1")
@@ -72,19 +76,21 @@ Item {
             compare(initialized.subSegmentCount, 5)
 
             compare(initialized.autoAdjustRange, false)
-            compare(initialized.labelAutoRotation, 10.0)
+            compare(initialized.labelAutoAngle, 10.0)
             compare(initialized.max, 20)
             compare(initialized.min, -10)
             compare(initialized.title, "initialized")
             compare(initialized.titleFixed, false)
             compare(initialized.titleVisible, true)
+            compare(initialized.labelsVisible, false)
+            compare(initialized.titleOffset, 1)
         }
     }
 
     TestCase {
-        name: "ValueAxis3D Change"
+        name: "Value3DAxis Change"
 
-        ValueAxis3DFormatter { id: formatter1 }
+        Value3DAxisFormatter { id: formatter1 }
 
         function test_change() {
             change.formatter = formatter1
@@ -100,25 +106,29 @@ Item {
             compare(change.subSegmentCount, 5)
 
             change.autoAdjustRange = false
-            change.labelAutoRotation = 10.0
+            change.labelAutoAngle = 10.0
             change.max = 20
             change.min = -10
             change.title = "initialized"
             change.titleFixed = false
             change.titleVisible = true
+            change.labelsVisible = false
+            change.titleOffset = -1
 
             compare(change.autoAdjustRange, false)
-            compare(change.labelAutoRotation, 10.0)
+            compare(change.labelAutoAngle, 10.0)
             compare(change.max, 20)
             compare(change.min, -10)
             compare(change.title, "initialized")
             compare(change.titleFixed, false)
             compare(change.titleVisible, true)
+            compare(change.labelsVisible, false)
+            compare(change.titleOffset, -1)
         }
     }
 
     TestCase {
-        name: "ValueAxis3D Invalid"
+        name: "Value3DAxis Invalid"
 
         function test_invalid() {
             invalid.segmentCount = -1
@@ -126,14 +136,16 @@ Item {
             invalid.subSegmentCount = -1
             compare(invalid.subSegmentCount, 1)
 
-            invalid.labelAutoRotation = -10
-            compare(invalid.labelAutoRotation, 0.0)
-            invalid.labelAutoRotation = 100
-            compare(invalid.labelAutoRotation, 90.0)
+            invalid.labelAutoAngle = -10
+            compare(invalid.labelAutoAngle, 0.0)
+            invalid.labelAutoAngle = 100
+            compare(invalid.labelAutoAngle, 90.0)
             invalid.max = -10
             compare(invalid.min, -11)
             invalid.min = 10
             compare(invalid.max, 11)
+            invalid.titleOffset = 2
+            compare(invalid.titleOffset, 0)
         }
     }
 }

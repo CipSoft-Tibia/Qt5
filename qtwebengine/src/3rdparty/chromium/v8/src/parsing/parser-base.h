@@ -931,9 +931,21 @@ class ParserBase {
            scanner()->NextSymbol(ast_value_factory()) == name;
   }
 
+  bool PeekContextualKeyword(Token::Value token) {
+    return peek() == token && !scanner()->next_literal_contains_escapes();
+  }
+
   bool CheckContextualKeyword(const AstRawString* name) {
     if (PeekContextualKeyword(name)) {
       Consume(Token::IDENTIFIER);
+      return true;
+    }
+    return false;
+  }
+
+  bool CheckContextualKeyword(Token::Value token) {
+    if (PeekContextualKeyword(token)) {
+      Consume(token);
       return true;
     }
     return false;
@@ -956,11 +968,23 @@ class ParserBase {
     }
   }
 
+  void ExpectContextualKeyword(Token::Value token) {
+    // Token Should be in range of Token::IDENTIFIER + 1 to Token::ASYNC
+    DCHECK(base::IsInRange(token, Token::GET, Token::ASYNC));
+    Token::Value next = Next();
+    if (V8_UNLIKELY(next != token)) {
+      ReportUnexpectedToken(next);
+    }
+    if (V8_UNLIKELY(scanner()->literal_contains_escapes())) {
+      impl()->ReportUnexpectedToken(Token::ESCAPED_KEYWORD);
+    }
+  }
+
   bool CheckInOrOf(ForEachStatement::VisitMode* visit_mode) {
     if (Check(Token::IN)) {
       *visit_mode = ForEachStatement::ENUMERATE;
       return true;
-    } else if (CheckContextualKeyword(ast_value_factory()->of_string())) {
+    } else if (CheckContextualKeyword(Token::OF)) {
       *visit_mode = ForEachStatement::ITERATE;
       return true;
     }
@@ -968,8 +992,7 @@ class ParserBase {
   }
 
   bool PeekInOrOf() {
-    return peek() == Token::IN ||
-           PeekContextualKeyword(ast_value_factory()->of_string());
+    return peek() == Token::IN || PeekContextualKeyword(Token::OF);
   }
 
   // Checks whether an octal literal was last seen between beg_pos and end_pos.
@@ -4398,11 +4421,11 @@ void ParserBase<Impl>::ParseFunctionBody(
       } else {
         ParseStatementList(&inner_body, closing_token);
       }
-
       if (IsDerivedConstructor(kind)) {
+        // Derived constructors are implemented by returning `this` when the
+        // original return value is undefined, so always use `this`.
         ExpressionParsingScope expression_scope(impl());
-        inner_body.Add(factory()->NewReturnStatement(impl()->ThisExpression(),
-                                                     kNoSourcePosition));
+        UseThis();
         expression_scope.ValidateExpression();
       }
       Expect(closing_token);
@@ -4518,6 +4541,7 @@ bool ParserBase<Impl>::IsNextLetKeyword() {
     case Token::AWAIT:
     case Token::GET:
     case Token::SET:
+    case Token::OF:
     case Token::ASYNC:
       return true;
     case Token::FUTURE_STRICT_RESERVED_WORD:
@@ -4547,9 +4571,11 @@ ParserBase<Impl>::ParseArrowFunctionLiteral(
 
   DCHECK_IMPLIES(!has_error(), peek() == Token::ARROW);
   if (!impl()->HasCheckedSyntax() && scanner_->HasLineTerminatorBeforeNext()) {
-    // ASI inserts `;` after arrow parameters if a line terminator is found.
-    // `=> ...` is never a valid expression, so report as syntax error.
-    // If next token is not `=>`, it's a syntax error anyways.
+    // No line terminator allowed between the parameters and the arrow:
+    // ArrowFunction[In, Yield, Await] :
+    //   ArrowParameters[?Yield, ?Await] [no LineTerminator here] =>
+    //   ConciseBody[?In]
+    // If the next token is not `=>`, it's a syntax error anyway.
     impl()->ReportUnexpectedTokenAt(scanner_->peek_location(), Token::ARROW);
     return impl()->FailureExpression();
   }
@@ -5709,18 +5735,12 @@ typename ParserBase<Impl>::StatementT ParserBase<Impl>::ParseReturnStatement() {
 
   Token::Value tok = peek();
   ExpressionT return_value = impl()->NullExpression();
-  if (scanner()->HasLineTerminatorBeforeNext() || Token::IsAutoSemicolon(tok)) {
-    if (IsDerivedConstructor(function_state_->kind())) {
-      ExpressionParsingScope expression_scope(impl());
-      return_value = impl()->ThisExpression();
-      expression_scope.ValidateExpression();
-    }
-  } else {
+  if (!scanner()->HasLineTerminatorBeforeNext() &&
+      !Token::IsAutoSemicolon(tok)) {
     return_value = ParseExpression();
   }
   ExpectSemicolon();
 
-  return_value = impl()->RewriteReturn(return_value, loc.beg_pos);
   int continuation_pos = end_position();
   StatementT stmt =
       BuildReturnStatement(return_value, loc.beg_pos, continuation_pos);
@@ -6474,7 +6494,7 @@ typename ParserBase<Impl>::StatementT ParserBase<Impl>::ParseForAwaitStatement(
     }
   }
 
-  ExpectContextualKeyword(ast_value_factory()->of_string());
+  ExpectContextualKeyword(Token::OF);
 
   const bool kAllowIn = true;
   ExpressionT iterable = impl()->NullExpression();

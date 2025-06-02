@@ -41,15 +41,16 @@ public:
 
     [[nodiscard]] const QList<RelatedClass> &baseClasses() const { return m_bases; }
 
-    QmlTypeNode *qmlElement() { return m_qmlElement; }
-    void setQmlElement(QmlTypeNode *qcn) { m_qmlElement = qcn; }
     [[nodiscard]] bool isAbstract() const override { return m_abstract; }
     void setAbstract(bool b) override { m_abstract = b; }
     PropertyNode *findPropertyNode(const QString &name);
-    QmlTypeNode *findQmlBaseNode();
     FunctionNode *findOverriddenFunction(const FunctionNode *fn);
     PropertyNode *findOverriddenProperty(const FunctionNode *fn);
     [[nodiscard]] bool docMustBeGenerated() const override;
+
+    void insertQmlNativeType(QmlTypeNode *qmlTypeNode) { m_nativeTypeForQml << qmlTypeNode; }
+    bool isQmlNativeType() { return !m_nativeTypeForQml.empty(); }
+    const QSet<QmlTypeNode *> &qmlNativeTypes() { return m_nativeTypeForQml; }
 
 private:
     void promotePublicBases(const QList<RelatedClass> &bases);
@@ -60,7 +61,7 @@ private:
     QList<RelatedClass> m_ignoredBases {};
     bool m_abstract { false };
     bool m_wrapper { false };
-    QmlTypeNode *m_qmlElement { nullptr };
+    QSet<QmlTypeNode *> m_nativeTypeForQml;
 };
 
 QT_END_NAMESPACE

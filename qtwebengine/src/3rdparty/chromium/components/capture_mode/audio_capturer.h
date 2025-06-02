@@ -6,14 +6,14 @@
 #define COMPONENTS_CAPTURE_MODE_AUDIO_CAPTURER_H_
 
 #include <memory>
+#include <string_view>
 
 #include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
-#include "base/strings/string_piece_forward.h"
 #include "base/time/time.h"
 #include "components/capture_mode/capture_mode_export.h"
-#include "media/audio/audio_bus_pool.h"
 #include "media/base/audio_bus.h"
+#include "media/base/audio_bus_pool.h"
 #include "media/base/audio_capturer_source.h"
 #include "media/base/audio_parameters.h"
 #include "media/mojo/mojom/audio_stream_factory.mojom-forward.h"
@@ -40,7 +40,7 @@ using OnAudioCapturedCallback =
 class CAPTURE_MODE_EXPORT AudioCapturer
     : public media::AudioCapturerSource::CaptureCallback {
  public:
-  AudioCapturer(base::StringPiece device_id,
+  AudioCapturer(std::string_view device_id,
                 mojo::PendingRemote<media::mojom::AudioStreamFactory>
                     audio_stream_factory,
                 const media::AudioParameters& audio_params,

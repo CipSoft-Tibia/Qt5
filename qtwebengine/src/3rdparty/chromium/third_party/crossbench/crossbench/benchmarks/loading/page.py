@@ -30,7 +30,7 @@ class Page(Story, metaclass=abc.ABCMeta):
                name: str,
                duration: dt.timedelta = dt.timedelta(seconds=15),
                playback: Optional[PlaybackController] = None):
-    self._playback = playback or PlaybackController.once()
+    self._playback: PlaybackController = playback or PlaybackController.once()
     super().__init__(name, duration)
 
   def set_parent(self, parent: Page) -> None:

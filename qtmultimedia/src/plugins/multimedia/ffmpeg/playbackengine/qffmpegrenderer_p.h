@@ -14,11 +14,12 @@
 // We mean it.
 //
 
-#include "playbackengine/qffmpegplaybackengineobject_p.h"
-#include "playbackengine/qffmpegtimecontroller_p.h"
-#include "playbackengine/qffmpegframe_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackengineobject_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegtimecontroller_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegframe_p.h>
 
 #include <QtCore/qpointer.h>
+#include <QtCore/qqueue.h>
 
 #include <chrono>
 
@@ -30,15 +31,15 @@ class Renderer : public PlaybackEngineObject
 {
     Q_OBJECT
 public:
-    using TimePoint = TimeController::TimePoint;
-    using Clock = TimeController::Clock;
-    Renderer(const TimeController &tc, const std::chrono::microseconds &seekPosTimeOffset = {});
+    using TimePoint = RealClock::time_point;
 
-    void syncSoft(TimePoint tp, qint64 trackPos);
+    Renderer(const TimeController &tc);
 
-    qint64 seekPosition() const;
+    void syncSoft(TimePoint tp, TrackPosition trackPos);
 
-    qint64 lastPosition() const;
+    TrackPosition seekPosition() const;
+
+    TrackPosition lastPosition() const;
 
     void setPlaybackRate(float rate);
 
@@ -46,8 +47,9 @@ public:
 
     bool isStepForced() const;
 
+    void start(const TimeController &tc);
+
 public slots:
-    void setInitialPosition(TimePoint tp, qint64 trackPos);
 
     void onFinalFrameReceived();
 
@@ -56,11 +58,11 @@ public slots:
 signals:
     void frameProcessed(Frame);
 
-    void synchronized(Id id, TimePoint tp, qint64 pos);
+    void synchronized(Id id, TimePoint tp, TrackPosition pos);
 
     void forceStepDone();
 
-    void loopChanged(Id id, qint64 offset, int index);
+    void loopChanged(Id id, TrackPosition offset, int index);
 
 protected:
     bool setForceStepDone();
@@ -69,7 +71,7 @@ protected:
 
     bool canDoNextStep() const override;
 
-    int timerInterval() const override;
+    std::chrono::milliseconds timerInterval() const override;
 
     virtual void onPlaybackRateChanged() { }
 
@@ -84,16 +86,15 @@ protected:
     float playbackRate() const;
 
     std::chrono::microseconds frameDelay(const Frame &frame,
-                                         TimePoint timePoint = Clock::now()) const;
+                                         TimePoint timePoint = RealClock::now()) const;
 
     void changeRendererTime(std::chrono::microseconds offset);
 
     template<typename Output, typename ChangeHandler>
     void setOutputInternal(QPointer<Output> &actual, Output *desired, ChangeHandler &&changeHandler)
     {
-        const auto connectionType = thread() == QThread::currentThread()
-                ? Qt::AutoConnection
-                : Qt::BlockingQueuedConnection;
+        const auto connectionType =
+                thread()->isCurrentThread() ? Qt::AutoConnection : Qt::BlockingQueuedConnection;
         auto doer = [desired, changeHandler, &actual]() {
             const auto prev = std::exchange(actual, desired);
             if (prev != desired)
@@ -107,7 +108,7 @@ private:
 
 private:
     TimeController m_timeController;
-    qint64 m_lastFrameEnd = 0;
+    TrackPosition m_lastFrameEnd = TrackPosition(0);
     QAtomicInteger<qint64> m_lastPosition = 0;
     QAtomicInteger<qint64> m_seekPos = 0;
 
@@ -115,6 +116,7 @@ private:
     QQueue<Frame> m_frames;
 
     QAtomicInteger<bool> m_isStepForced = false;
+    bool m_started = false;
     std::optional<TimePoint> m_explicitNextFrameTime;
 };
 

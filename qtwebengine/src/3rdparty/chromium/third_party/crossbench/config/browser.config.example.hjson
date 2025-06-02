@@ -49,10 +49,14 @@
   // --------------------------------------------------------------------------
   // Contains browser configs
   browsers: {
-    "chrome-stable": {
+    "chrome-stable-with-flags": {
       // For "path" you can use a path, browser name, or a versioned browser.
       // See '--browser' option for all possible values.
       path: "chrome-stable",
+      # Either the browsers key ("chrome-stable-with-flags") if no label 
+      # is specified, otherwise the this label property ("custom-browser-label")
+      # is used.
+      label: "custom-browser-label",
       flags: [
         // You can reference multiple flag-groups here, any name added to
         // the 'flags' dict above can be used here.

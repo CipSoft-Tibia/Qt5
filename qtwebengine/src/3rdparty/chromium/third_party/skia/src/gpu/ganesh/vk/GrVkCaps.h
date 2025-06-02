@@ -30,14 +30,14 @@ public:
      * Creates a GrVkCaps that is set such that nothing is supported. The init function should
      * be called to fill out the caps.
      */
-    GrVkCaps(const GrContextOptions& contextOptions,
-             const skgpu::VulkanInterface* vkInterface,
-             VkPhysicalDevice device,
-             const VkPhysicalDeviceFeatures2& features,
+    GrVkCaps(const GrContextOptions&,
+             const skgpu::VulkanInterface*,
+             VkPhysicalDevice,
+             const VkPhysicalDeviceFeatures2&,
              uint32_t instanceVersion,
              uint32_t physicalDeviceVersion,
-             const skgpu::VulkanExtensions& extensions,
-             skgpu::Protected isProtected = skgpu::Protected::kNo);
+             const skgpu::VulkanExtensions&,
+             skgpu::Protected);
 
     bool isFormatSRGB(const GrBackendFormat&) const override;
 
@@ -277,6 +277,7 @@ private:
     enum VkVendor {
         kAMD_VkVendor = 4098,
         kARM_VkVendor = 5045,
+        kGoogle_VkVendor = 0x1AE0,
         kImagination_VkVendor = 4112,
         kIntel_VkVendor = 32902,
         kNvidia_VkVendor = 4318,
@@ -296,6 +297,11 @@ private:
         kAlderLake,
 
         kOther
+    };
+
+    enum DeviceID {
+        kSwiftshader_DeviceID = 0xC0DE, // As listed in Swiftshader code this may be a placeholder
+                                        // value but works for now.
     };
 
     static IntelGPUType GetIntelGPUType(uint32_t deviceID);
@@ -319,13 +325,13 @@ private:
         SkUNREACHABLE;
     }
 
-    void init(const GrContextOptions& contextOptions,
-              const skgpu::VulkanInterface* vkInterface,
-              VkPhysicalDevice device,
+    void init(const GrContextOptions&,
+              const skgpu::VulkanInterface*,
+              VkPhysicalDevice,
               const VkPhysicalDeviceFeatures2&,
               uint32_t physicalDeviceVersion,
               const skgpu::VulkanExtensions&,
-              GrProtected isProtected);
+              GrProtected);
     void initGrCaps(const skgpu::VulkanInterface* vkInterface,
                     VkPhysicalDevice physDev,
                     const VkPhysicalDeviceProperties&,
@@ -337,7 +343,9 @@ private:
     void initFormatTable(const GrContextOptions&,
                          const skgpu::VulkanInterface*,
                          VkPhysicalDevice,
-                         const VkPhysicalDeviceProperties&);
+                         const VkPhysicalDeviceProperties&,
+                         const VkPhysicalDeviceFeatures2&,
+                         const skgpu::VulkanExtensions&);
     void initStencilFormat(const skgpu::VulkanInterface* iface, VkPhysicalDevice physDev);
 
     void applyDriverCorrectnessWorkarounds(const VkPhysicalDeviceProperties&);
@@ -414,7 +422,7 @@ private:
         std::unique_ptr<ColorTypeInfo[]> fColorTypeInfos;
         int fColorTypeInfoCount = 0;
     };
-    static const size_t kNumVkFormats = 22;
+    static const size_t kNumVkFormats = 25;
     FormatInfo fFormatTable[kNumVkFormats];
 
     FormatInfo& getFormatInfo(VkFormat);

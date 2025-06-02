@@ -68,6 +68,9 @@ class AccountCapabilities {
   // The user account is able to use IP Protection.
   signin::Tribool can_use_chrome_ip_protection() const;
 
+  // The user account is able to use model execution features.
+  signin::Tribool can_use_model_execution_features() const;
+
   // Chrome can send user data to Google servers for machine learning purposes
   // with this capability.
   signin::Tribool is_allowed_for_machine_learning() const;
@@ -82,6 +85,10 @@ class AccountCapabilities {
 
   // Chrome applies parental controls to accounts with this capability.
   signin::Tribool is_subject_to_parental_controls() const;
+
+  // Whether at least one of the capabilities is not
+  // `signin::Tribool::kUnknown`.
+  bool AreAnyCapabilitiesKnown() const;
 
   // Whether none of the capabilities has `signin::Tribool::kUnknown`.
   bool AreAllCapabilitiesKnown() const;

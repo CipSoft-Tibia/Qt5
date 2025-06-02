@@ -9,6 +9,7 @@
 #include <QtVirtualKeyboard/private/enterkeyaction_p.h>
 #include <QtVirtualKeyboard/qvirtualkeyboardinputengine.h>
 #include <QtVirtualKeyboard/qvirtualkeyboardobserver.h>
+#include <QtVirtualKeyboard/private/enterkeyactionattachedtype_p.h>
 #include <QtVirtualKeyboard/private/virtualkeyboardattachedtype_p.h>
 #include <QtVirtualKeyboard/qvirtualkeyboarddictionarymanager.h>
 
@@ -18,13 +19,17 @@
 #include <QtQuick/qquickwindow.h>
 #include <QtGui/qpa/qplatformintegration.h>
 #include <QtGui/private/qguiapplication_p.h>
-#include <QQmlEngine>
 
 QT_BEGIN_NAMESPACE
 
 using namespace QtVirtualKeyboard;
 
-const bool QtVirtualKeyboard::QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS = qEnvironmentVariableIsSet("QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS");
+
+bool QtVirtualKeyboard::forceEventsWithoutFocus()
+{
+    static bool env = qEnvironmentVariableIsSet("QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS");
+    return env;
+}
 
 QVirtualKeyboardInputContextPrivate::QVirtualKeyboardInputContextPrivate(QVirtualKeyboardInputContext *q_ptr) :
     QObject(nullptr),
@@ -534,6 +539,46 @@ void QVirtualKeyboardInputContextPrivate::invokeAction(QInputMethod::Action acti
     }
 }
 
+void QVirtualKeyboardInputContextPrivate::maybeCloseOnReturn()
+{
+    if (!Settings::instance()->closeOnReturn())
+        return;
+
+    const int imHints = QInputMethod::queryFocusObject(Qt::ImHints, QVariant()).toInt();
+    if (imHints & Qt::ImhMultiLine)
+        return;
+
+    const Qt::EnterKeyType keyType = static_cast<Qt::EnterKeyType>(QInputMethod::queryFocusObject(Qt::ImEnterKeyType, QVariant()).toInt());
+    switch (keyType) {
+    case Qt::EnterKeyDefault:
+    case Qt::EnterKeyDone:
+    case Qt::EnterKeyGo:
+    case Qt::EnterKeySend:
+    case Qt::EnterKeySearch:
+        break;
+    case Qt::EnterKeyReturn:
+    case Qt::EnterKeyNext:
+    case Qt::EnterKeyPrevious:
+        return;
+    }
+
+    if (EnterKeyActionAttachedType *enterKeyActionAttachedType = static_cast<EnterKeyActionAttachedType *>(qmlAttachedPropertiesObject<EnterKeyAction>(inputItem(), false))) {
+        const EnterKeyAction::Id enterKeyActionId = static_cast<EnterKeyAction::Id>(enterKeyActionAttachedType->actionId());
+        switch (enterKeyActionId) {
+        case EnterKeyAction::None:
+        case EnterKeyAction::Done:
+        case EnterKeyAction::Go:
+        case EnterKeyAction::Search:
+        case EnterKeyAction::Send:
+            break;
+        case EnterKeyAction::Next:
+            return;
+        }
+    }
+
+    hideInputPanel();
+}
+
 bool QVirtualKeyboardInputContextPrivate::filterEvent(const QEvent *event)
 {
     QEvent::Type type = event->type();
@@ -565,6 +610,10 @@ bool QVirtualKeyboardInputContextPrivate::filterEvent(const QEvent *event)
             }
         }
 #endif
+
+        if (type == QEvent::KeyRelease && (key == Qt::Key_Return || key == Qt::Key_Enter)) {
+            maybeCloseOnReturn();
+        }
 
         // Break composing text since the virtual keyboard does not support hard keyboard events
         if (!preeditText.isEmpty()) {
@@ -641,18 +690,6 @@ void QVirtualKeyboardInputContextPrivate::updateSelectionControlVisible(bool inp
         selectionControlVisible = newSelectionControlVisible;
         emit q->selectionControlVisibleChanged();
     }
-}
-
-QVirtualKeyboardInputContext *QVirtualKeyboardInputContextForeign::create(
-        QQmlEngine *qmlEngine, QJSEngine *)
-{
-    static QMutex mutex;
-    static QHash<QQmlEngine *, QVirtualKeyboardInputContext *> instances;
-    QMutexLocker locker(&mutex);
-    QVirtualKeyboardInputContext *&instance = instances[qmlEngine];
-    if (instance == nullptr)
-        instance = new QVirtualKeyboardInputContext(qmlEngine);
-    return instance;
 }
 
 QT_END_NAMESPACE

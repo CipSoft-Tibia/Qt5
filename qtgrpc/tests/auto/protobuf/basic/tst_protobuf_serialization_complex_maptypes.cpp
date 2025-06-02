@@ -14,26 +14,26 @@ using namespace qtprotobufnamespace::tests;
 class QtProtobufMapTypesSerializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { m_serializer.reset(new QProtobufSerializer); }
-    void SimpleFixed32ComplexMapSerializeTest();
-    void SimpleSFixed32ComplexMapSerializeTest();
-    void SimpleInt32ComplexMapSerializeTest();
-    void SimpleSInt32ComplexMapSerializeTest();
-    void SimpleUInt32ComplexMapSerializeTest();
-    void SimpleFixed64ComplexMapSerializeTest();
-    void SimpleSFixed64ComplexMapSerializeTest();
-    void SimpleInt64ComplexMapSerializeTest();
-    void SimpleSInt64ComplexMapSerializeTest();
-    void SimpleUInt64ComplexMapSerializeTest();
-    void SimpleStringComplexMapSerializeTest();
+    void simpleFixed32ComplexMapSerializeTest();
+    void simpleSFixed32ComplexMapSerializeTest();
+    void simpleInt32ComplexMapSerializeTest();
+    void simpleSInt32ComplexMapSerializeTest();
+    void simpleUInt32ComplexMapSerializeTest();
+    void simpleFixed64ComplexMapSerializeTest();
+    void simpleSFixed64ComplexMapSerializeTest();
+    void simpleInt64ComplexMapSerializeTest();
+    void simpleSInt64ComplexMapSerializeTest();
+    void simpleUInt64ComplexMapSerializeTest();
+    void simpleStringComplexMapSerializeTest();
 
 private:
     std::unique_ptr<QProtobufSerializer> m_serializer;
 };
 
 //Complex map
-void QtProtobufMapTypesSerializationTest::SimpleFixed32ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleFixed32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -65,7 +65,7 @@ void QtProtobufMapTypesSerializationTest::SimpleFixed32ComplexMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleSFixed32ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleSFixed32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -98,7 +98,7 @@ void QtProtobufMapTypesSerializationTest::SimpleSFixed32ComplexMapSerializeTest(
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleInt32ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleInt32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -131,7 +131,7 @@ void QtProtobufMapTypesSerializationTest::SimpleInt32ComplexMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleSInt32ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleSInt32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -164,7 +164,7 @@ void QtProtobufMapTypesSerializationTest::SimpleSInt32ComplexMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleUInt32ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleUInt32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -196,7 +196,7 @@ void QtProtobufMapTypesSerializationTest::SimpleUInt32ComplexMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleFixed64ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleFixed64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -229,7 +229,7 @@ void QtProtobufMapTypesSerializationTest::SimpleFixed64ComplexMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleSFixed64ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleSFixed64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -262,7 +262,7 @@ void QtProtobufMapTypesSerializationTest::SimpleSFixed64ComplexMapSerializeTest(
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleInt64ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleInt64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -295,7 +295,7 @@ void QtProtobufMapTypesSerializationTest::SimpleInt64ComplexMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleSInt64ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleSInt64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -328,7 +328,7 @@ void QtProtobufMapTypesSerializationTest::SimpleSInt64ComplexMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleUInt64ComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleUInt64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -361,7 +361,7 @@ void QtProtobufMapTypesSerializationTest::SimpleUInt64ComplexMapSerializeTest()
              result.toHex());
 }
 
-void QtProtobufMapTypesSerializationTest::SimpleStringComplexMapSerializeTest()
+void QtProtobufMapTypesSerializationTest::simpleStringComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 

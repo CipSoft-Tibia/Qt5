@@ -9,6 +9,7 @@
 
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "cc/paint/paint_canvas.h"
 #include "cc/resources/shared_bitmap_id_registrar.h"
@@ -29,6 +30,10 @@ class CrossThreadSharedBitmap;
 
 namespace gfx {
 class Rect;
+}
+
+namespace gpu {
+class ClientSharedImage;
 }
 
 namespace viz {
@@ -188,17 +193,17 @@ class CONTENT_EXPORT PepperGraphics2DHost
       base::WeakPtr<PepperGraphics2DHost> host,
       scoped_refptr<viz::RasterContextProvider> context,
       const gfx::Size& size,
-      const gpu::Mailbox& mailbox,
+      scoped_refptr<gpu::ClientSharedImage> shared_image,
       const gpu::SyncToken& sync_token,
       bool lost);
 
-  RendererPpapiHost* renderer_ppapi_host_;
+  raw_ptr<RendererPpapiHost, ExperimentalRenderer> renderer_ppapi_host_;
 
   scoped_refptr<PPB_ImageData_Impl> image_data_;
 
   // Non-owning pointer to the plugin instance this context is currently bound
   // to, if any. If the context is currently unbound, this will be NULL.
-  PepperPluginInstanceImpl* bound_instance_;
+  raw_ptr<PepperPluginInstanceImpl, ExperimentalRenderer> bound_instance_;
 
   // Keeps track of all drawing commands queued before a Flush call.
   struct QueuedOperation;
@@ -238,11 +243,12 @@ class CONTENT_EXPORT PepperGraphics2DHost
   scoped_refptr<viz::RasterContextProvider> main_thread_context_;
   struct SharedImageInfo {
     SharedImageInfo(gpu::SyncToken sync_token,
-                    gpu::Mailbox mailbox,
-                    gfx::Size size)
-        : sync_token(sync_token), mailbox(mailbox), size(size) {}
+                    scoped_refptr<gpu::ClientSharedImage> shared_image,
+                    gfx::Size size);
+    SharedImageInfo(const SharedImageInfo& shared_image_info);
+    ~SharedImageInfo();
     gpu::SyncToken sync_token;
-    gpu::Mailbox mailbox;
+    scoped_refptr<gpu::ClientSharedImage> shared_image;
     gfx::Size size;
   };
   // Shared images that are available for recycling.

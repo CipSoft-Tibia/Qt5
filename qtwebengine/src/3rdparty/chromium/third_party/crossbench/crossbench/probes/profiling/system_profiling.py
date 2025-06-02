@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import abc
+import atexit
 import json
 import logging
 import multiprocessing
@@ -12,11 +13,11 @@ import pathlib
 import signal
 import subprocess
 import time
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, cast
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Tuple, cast
 
 from crossbench import helper, plt
 from crossbench.browsers.chromium.chromium import Chromium
-from crossbench.probes.probe import Probe, ProbeConfigParser, ProbeScope, ResultLocation
+from crossbench.probes.probe import Probe, ProbeConfigParser, ProbeContext, ResultLocation
 from crossbench.probes.results import ProbeResult
 from crossbench.probes.v8.log import V8LogProbe
 
@@ -99,6 +100,16 @@ class ProfilingProbe(Probe):
     if v8_interpreted_frames:
       assert js, "Cannot expose V8 interpreted frames without js profiling."
 
+  @property
+  def key(self) -> Tuple[Tuple, ...]:
+    return super().key + (
+        ("js", self._sample_js),
+        ("v8_interpreted_frames", self._expose_v8_interpreted_frames),
+        ("pprof", self._run_pprof),
+        ("browser_process", self._sample_browser_process),
+        ("spare_renderer_process", self._spare_renderer_process),
+    )
+
   def is_compatible(self, browser: Browser) -> bool:
     if browser.platform.is_linux:
       return isinstance(browser, Chromium)
@@ -129,12 +140,7 @@ class ProfilingProbe(Probe):
         chromium.features.disable("SpareRendererForSitePerProcess")
       self._attach_linux(chromium)
 
-  def pre_check(self, env: HostEnvironment) -> None:
-    super().pre_check(env)
-    for browser in self._browsers:
-      self._pre_check_browser(browser, env)
-
-  def _pre_check_browser(self, browser: Browser, env: HostEnvironment) -> None:
+  def validate_browser(self, env: HostEnvironment, browser: Browser) -> None:
     browser_platform = browser.platform
     if self.run_pprof:
       self._run_pprof = browser_platform.which("gcert") is not None
@@ -208,43 +214,51 @@ class ProfilingProbe(Probe):
         logging.info("    %s/*.perf.data*: %d more files",
                      largest_perf_file.parent, len(perf_files))
 
-  def get_scope(self, run: Run) -> ProfilingScope:
+  def get_context(self, run: Run) -> ProfilingContext:
     if run.platform.is_linux:
-      return LinuxProfilingScope(self, run)
+      return LinuxProfilingContext(self, run)
     if run.platform.is_macos:
-      return MacOSProfilingScope(self, run)
+      return MacOSProfilingContext(self, run)
     raise NotImplementedError("Invalid platform")
 
 
-class ProfilingScope(ProbeScope[ProfilingProbe], metaclass=abc.ABCMeta):
+class ProfilingContext(ProbeContext[ProfilingProbe], metaclass=abc.ABCMeta):
   pass
 
 
-class MacOSProfilingScope(ProfilingScope):
-  _process: subprocess.Popen
+class MacOSProfilingContext(ProfilingContext):
+  _process: Optional[subprocess.Popen]
 
   def get_default_result_path(self) -> pathlib.Path:
     return super().get_default_result_path().parent / "profile.trace"
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     self._process = self.browser_platform.popen("xctrace", "record",
                                                 "--template", "Time Profiler",
                                                 "--all-processes", "--output",
                                                 self.result_path)
     # xctrace takes some time to start up
     time.sleep(3)
+    if self._process.poll():
+      raise ValueError("Could not start xctrace")
+    atexit.register(self.stop_process)
 
-  def stop(self, run: Run) -> None:
+  def stop(self) -> None:
     # Needs to be SIGINT for xctrace, terminate won't work.
+    assert self._process
     self._process.send_signal(signal.SIGINT)
 
-  def tear_down(self, run: Run) -> ProbeResult:
-    while self._process.poll() is None:
-      time.sleep(1)
+  def tear_down(self) -> ProbeResult:
+    self.stop_process()
     return self.browser_result(file=(self.result_path,))
 
+  def stop_process(self) -> None:
+    if self._process:
+      helper.wait_and_kill(self._process, signal=signal.SIGINT)
+      self._process = None
 
-class LinuxProfilingScope(ProfilingScope):
+
+class LinuxProfilingContext(ProfilingContext):
   PERF_DATA_PATTERN = "*.perf.data"
   TEMP_FILE_PATTERNS = (
       "*.perf.data.jitted",
@@ -256,28 +270,35 @@ class LinuxProfilingScope(ProfilingScope):
     super().__init__(probe, run)
     self._perf_process: Optional[subprocess.Popen] = None
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     if not self.probe.sample_browser_process:
       return
-    if run.browser.pid is None:
+    if self.run.browser.pid is None:
       logging.warning("Cannot sample browser process")
       return
-    perf_data_file = run.out_dir / "browser.perf.data"
+    perf_data_file = self.run.out_dir / "browser.perf.data"
     # TODO: not fully working yet
     self._perf_process = self.browser_platform.popen(
         "perf", "record", "--call-graph=fp", "--freq=max", "--clockid=mono",
-        f"--output={perf_data_file}", f"--pid={run.browser.pid}")
+        f"--output={perf_data_file}", f"--pid={self.run.browser.pid}")
+    if self._perf_process.poll():
+      raise ValueError("Could not start linux profiler")
+    atexit.register(self.stop_process)
 
-  def setup(self, run: Run) -> None:
-    for probe in run.probes:
+  def setup(self) -> None:
+    for probe in self.run.probes:
       assert not isinstance(probe, V8LogProbe), (
           "Cannot use profiler and v8.log probe in parallel yet")
 
-  def stop(self, run: Run) -> None:
-    if self._perf_process:
-      self._perf_process.terminate()
+  def stop(self) -> None:
+    self.stop_process()
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def stop_process(self) -> None:
+    if self._perf_process:
+      helper.wait_and_kill(self._perf_process)
+      self._perf_process = None
+
+  def tear_down(self) -> ProbeResult:
     # Waiting for linux-perf to flush all perf data
     if self.probe.sample_browser_process:
       logging.debug("Waiting for browser process to stop")
@@ -288,16 +309,16 @@ class LinuxProfilingScope(ProfilingScope):
     time.sleep(2)
 
     perf_files: List[pathlib.Path] = helper.sort_by_file_size(
-        run.out_dir.glob(self.PERF_DATA_PATTERN))
+        self.run.out_dir.glob(self.PERF_DATA_PATTERN))
     raw_perf_files = perf_files
     urls: List[str] = []
     try:
       if self.probe.sample_js:
-        perf_files = self._inject_v8_symbols(run, perf_files)
+        perf_files = self._inject_v8_symbols(self.run, perf_files)
       if self.probe.run_pprof:
-        urls = self._export_to_pprof(run, perf_files)
+        urls = self._export_to_pprof(self.run, perf_files)
     finally:
-      self._clean_up_temp_files(run)
+      self._clean_up_temp_files(self.run)
     if self.probe.run_pprof:
       logging.debug("Profiling results: %s", urls)
       return self.browser_result(url=urls, file=raw_perf_files)

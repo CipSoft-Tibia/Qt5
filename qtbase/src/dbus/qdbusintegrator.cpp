@@ -151,7 +151,8 @@ static dbus_bool_t qDBusAddTimeout(DBusTimeout *timeout, void *data)
 
     Q_ASSERT(d->timeouts.key(timeout, 0) == 0);
 
-    int timerId = d->startTimer(std::chrono::milliseconds{q_dbus_timeout_get_interval(timeout)});
+    using namespace std::chrono_literals;
+    int timerId = d->startTimer(q_dbus_timeout_get_interval(timeout) * 1ms); // no overflow possible
     if (!timerId)
         return false;
 
@@ -2028,7 +2029,7 @@ public:
         // if this call is running on the main thread, we have a much lower
         // tolerance for delay because any long-term delay will wreck user
         // interactivity.
-        if (qApp && qApp->thread() == QThread::currentThread())
+        if (QThread::isMainThread())
             m_maxCallTimeoutMs = mainThreadWarningAmount;
         else
             m_maxCallTimeoutMs = otherThreadWarningAmount;

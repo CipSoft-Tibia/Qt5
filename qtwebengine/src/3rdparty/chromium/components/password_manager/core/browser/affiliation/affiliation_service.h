@@ -10,7 +10,6 @@
 #include "base/functional/callback_forward.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/password_manager/core/browser/affiliation/affiliation_utils.h"
-#include "components/password_manager/core/browser/password_store_backend_error.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 
 class GURL;
@@ -113,6 +112,13 @@ class AffiliationService : public KeyedService {
   // considered as PSL match.
   virtual void GetPSLExtensions(
       base::OnceCallback<void(std::vector<std::string>)> callback) const = 0;
+
+  // This method will fetch the latest affiliation and branding information for
+  // |facets| even if local cache is still fresh. |callback| is invoked on
+  // completion.
+  virtual void UpdateAffiliationsAndBranding(
+      const std::vector<FacetURI>& facets,
+      base::OnceClosure callback) = 0;
 };
 
 }  // namespace password_manager

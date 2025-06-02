@@ -98,7 +98,6 @@ void tst_QToolTip::keyEvent()
     widget.setWindowTitle(QLatin1String(QTest::currentTestFunction())
                           + QLatin1Char(' ') + QLatin1String(QTest::currentDataTag()));
     widget.show();
-    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     widget.showDelayedToolTip(100);
@@ -193,7 +192,6 @@ void tst_QToolTip::qtbug64550_stylesheet()
     Widget widget;
     widget.setStyleSheet(QStringLiteral("* { font-size: 48pt; }\n"));
     widget.show();
-    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     widget.showDelayedToolTip(100);

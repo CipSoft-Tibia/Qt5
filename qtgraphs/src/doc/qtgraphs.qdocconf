@@ -10,13 +10,15 @@ moduleheader        = QtGraphs
 examplesinstallpath = graphs
 exampledirs += \
                 ../../examples/graphs \
-                snippets
+                snippets \
+                ../graphs3d/widget/doc/snippets
 
 {headerdirs,sourcedirs} += ..
 
-imagedirs  += images
+imagedirs  += images \
+                ../graphs3d/widget/doc/images
 
-depends = qtcore qtgui qtqml qtquick qtdoc qtcmake qtwidgets qtquick3d
+depends = qtcore qtgui qtqml qtquick qtdoc qtcmake qtwidgets qtquickwidgets qtquick3d qtqmlmodels qtgraphswidgets
 
 qhp.projects                 = QtGraphs
 
@@ -26,14 +28,10 @@ qhp.QtGraphs.virtualFolder   = qtgraphs
 qhp.QtGraphs.indexTitle      = Qt Graphs
 qhp.QtGraphs.indexRoot       =
 
-qhp.QtGraphs.subprojects                             = gettingstarted examples classes types
-qhp.QtGraphs.subprojects.gettingstarted.title        = Getting Started
-qhp.QtGraphs.subprojects.gettingstarted.indexTitle   = Qt Graphs Getting Started
-qhp.QtGraphs.subprojects.gettingstarted.selectors    = doc:page
-qhp.QtGraphs.subprojects.gettingstarted.sortPages    = true
+qhp.QtGraphs.subprojects                             = examples classes types
 qhp.QtGraphs.subprojects.examples.title              = Examples
 qhp.QtGraphs.subprojects.examples.indexTitle         = Qt Graphs Examples
-qhp.QtGraphs.subprojects.examples.selectors          = doc:example
+qhp.QtGraphs.subprojects.examples.selectors          = example
 qhp.QtGraphs.subprojects.examples.sortPages          = true
 qhp.QtGraphs.subprojects.classes.title               = C++ Classes
 qhp.QtGraphs.subprojects.classes.indexTitle          = Qt Graphs C++ Classes
@@ -41,7 +39,7 @@ qhp.QtGraphs.subprojects.classes.selectors           = class
 qhp.QtGraphs.subprojects.classes.sortPages           = true
 qhp.QtGraphs.subprojects.types.title                 = QML Types
 qhp.QtGraphs.subprojects.types.indexTitle            = Qt Graphs QML Types
-qhp.QtGraphs.subprojects.types.selectors             = qmlclass
+qhp.QtGraphs.subprojects.types.selectors             = qmltype
 qhp.QtGraphs.subprojects.types.sortPages             = true
 
 navigation.landingpage = Qt Graphs

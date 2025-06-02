@@ -1,4 +1,4 @@
-// Copyright 2023 The Chromium Authors. All rights reserved.
+// Copyright 2023 The Chromium Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -191,11 +191,12 @@ void TCPServerSocket::ReleaseResources() {
   readable_stream_wrapper_.Clear();
 }
 
-void TCPServerSocket::OnReadableStreamClosed(ScriptValue exception) {
+void TCPServerSocket::OnReadableStreamClosed(v8::Local<v8::Value> exception) {
   DCHECK_EQ(GetState(), State::kOpen);
 
   if (!exception.IsEmpty()) {
-    GetClosedPromiseResolver()->Reject(exception);
+    GetClosedPromiseResolver()->Reject(
+        ScriptValue(GetScriptState()->GetIsolate(), exception));
     SetState(State::kAborted);
   } else {
     GetClosedPromiseResolver()->Resolve();

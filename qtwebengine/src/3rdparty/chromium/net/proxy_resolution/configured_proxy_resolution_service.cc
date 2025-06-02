@@ -45,10 +45,8 @@
 
 #if BUILDFLAG(IS_WIN)
 #include "net/proxy_resolution/win/proxy_resolver_winhttp.h"
-#elif BUILDFLAG(IS_IOS)
-#include "net/proxy_resolution/proxy_resolver_mac.h"
-#elif BUILDFLAG(IS_MAC)
-#include "net/proxy_resolution/proxy_resolver_mac.h"
+#elif BUILDFLAG(IS_APPLE)
+#include "net/proxy_resolution/proxy_resolver_apple.h"
 #endif
 
 using base::TimeTicks;
@@ -214,6 +212,32 @@ class ProxyResolverFromPacString : public ProxyResolver {
   const std::string pac_string_;
 };
 
+// ProxyResolver that simulates a proxy chain which returns
+// |proxy_chain| for every single URL.
+class ProxyResolverFromProxyChains : public ProxyResolver {
+ public:
+  explicit ProxyResolverFromProxyChains(
+      const std::vector<ProxyChain>& proxy_chains)
+      : proxy_chains_(proxy_chains) {}
+
+  int GetProxyForURL(const GURL& url,
+                     const NetworkAnonymizationKey& network_anonymization_key,
+                     ProxyInfo* results,
+                     CompletionOnceCallback callback,
+                     std::unique_ptr<Request>* request,
+                     const NetLogWithSource& net_log) override {
+    net::ProxyList proxy_list;
+    for (const ProxyChain& proxy_chain : proxy_chains_) {
+      proxy_list.AddProxyChain(proxy_chain);
+    }
+    results->UseProxyList(proxy_list);
+    return OK;
+  }
+
+ private:
+  const std::vector<ProxyChain> proxy_chains_;
+};
+
 // Creates ProxyResolvers using a platform-specific implementation.
 class ProxyResolverFactoryForSystem : public MultiThreadedProxyResolverFactory {
  public:
@@ -229,7 +253,7 @@ class ProxyResolverFactoryForSystem : public MultiThreadedProxyResolverFactory {
 #if BUILDFLAG(IS_WIN)
     return std::make_unique<ProxyResolverFactoryWinHttp>();
 #elif BUILDFLAG(IS_APPLE)
-    return std::make_unique<ProxyResolverFactoryMac>();
+    return std::make_unique<ProxyResolverFactoryApple>();
 #else
     NOTREACHED();
     return nullptr;
@@ -287,6 +311,30 @@ class ProxyResolverFactoryForPacResult : public ProxyResolverFactory {
   const std::string pac_string_;
 };
 
+class ProxyResolverFactoryForProxyChains : public ProxyResolverFactory {
+ public:
+  explicit ProxyResolverFactoryForProxyChains(
+      const std::vector<ProxyChain>& proxy_chains)
+      : ProxyResolverFactory(false), proxy_chains_(proxy_chains) {}
+
+  ProxyResolverFactoryForProxyChains(
+      const ProxyResolverFactoryForProxyChains&) = delete;
+  ProxyResolverFactoryForProxyChains& operator=(
+      const ProxyResolverFactoryForProxyChains&) = delete;
+
+  // ProxyResolverFactory override.
+  int CreateProxyResolver(const scoped_refptr<PacFileData>& pac_script,
+                          std::unique_ptr<ProxyResolver>* resolver,
+                          CompletionOnceCallback callback,
+                          std::unique_ptr<Request>* request) override {
+    *resolver = std::make_unique<ProxyResolverFromProxyChains>(proxy_chains_);
+    return OK;
+  }
+
+ private:
+  const std::vector<ProxyChain> proxy_chains_;
+};
+
 // Returns NetLog parameters describing a proxy configuration change.
 base::Value::Dict NetLogProxyConfigChangedParams(
     const absl::optional<ProxyConfigWithAnnotation>* old_config,
@@ -306,7 +354,7 @@ base::Value::Dict NetLogBadProxyListParams(
   base::Value::List list;
 
   for (const auto& retry_info_pair : *retry_info)
-    list.Append(retry_info_pair.first);
+    list.Append(retry_info_pair.first.ToDebugString());
   dict.Set("bad_proxy_list", std::move(list));
   return dict;
 }
@@ -314,7 +362,7 @@ base::Value::Dict NetLogBadProxyListParams(
 // Returns NetLog parameters on a successful proxy resolution.
 base::Value::Dict NetLogFinishedResolvingProxyParams(const ProxyInfo* result) {
   base::Value::Dict dict;
-  dict.Set("pac_string", result->ToPacString());
+  dict.Set("proxy_info", result->ToDebugString());
   return dict;
 }
 
@@ -889,6 +937,25 @@ ConfiguredProxyResolutionService::CreateFixedFromAutoDetectedPacResultForTest(
       /*quick_check_enabled=*/true);
 }
 
+// static
+std::unique_ptr<ConfiguredProxyResolutionService>
+ConfiguredProxyResolutionService::CreateFixedFromProxyChainsForTest(
+    const std::vector<ProxyChain>& proxy_chains,
+    const NetworkTrafficAnnotationTag& traffic_annotation) {
+  // We need the settings to contain an "automatic" setting, otherwise the
+  // ProxyResolver dependency we give it will never be used.
+  auto proxy_config_service = std::make_unique<ProxyConfigServiceFixed>(
+      ProxyConfigWithAnnotation(ProxyConfig::CreateFromCustomPacURL(GURL(
+                                    "https://my-pac-script.invalid/wpad.dat")),
+                                traffic_annotation));
+
+  return std::make_unique<ConfiguredProxyResolutionService>(
+      std::move(proxy_config_service),
+      std::make_unique<ProxyResolverFactoryForProxyChains>(proxy_chains),
+      nullptr,
+      /*quick_check_enabled=*/true);
+}
+
 int ConfiguredProxyResolutionService::ResolveProxy(
     const GURL& raw_url,
     const std::string& method,
@@ -917,24 +984,19 @@ int ConfiguredProxyResolutionService::ResolveProxy(
   // and password), and local data (i.e. reference fragment) which does not need
   // to be disclosed to the resolver.
   GURL url = SanitizeUrl(raw_url);
-  GURL top_frame_url =
-      network_anonymization_key.GetTopFrameSite().has_value() &&
-              network_anonymization_key.GetTopFrameSite()->GetURL().is_valid()
-          ? SanitizeUrl(network_anonymization_key.GetTopFrameSite()->GetURL())
-          : GURL();
 
   // Check if the request can be completed right away. (This is the case when
   // using a direct connection for example).
   int rv = TryToCompleteSynchronously(url, result);
   if (rv != ERR_IO_PENDING) {
-    rv = DidFinishResolvingProxy(url, top_frame_url, method, result, rv,
-                                 net_log);
+    rv = DidFinishResolvingProxy(url, network_anonymization_key, method, result,
+                                 rv, net_log);
     return rv;
   }
 
   auto req = std::make_unique<ConfiguredProxyResolutionRequest>(
-      this, url, top_frame_url, method, network_anonymization_key, result,
-      std::move(callback), net_log);
+      this, url, method, network_anonymization_key, result, std::move(callback),
+      net_log);
 
   if (current_state_ == STATE_READY) {
     // Start the resolve request.
@@ -1117,7 +1179,7 @@ void ConfiguredProxyResolutionService::OnInitProxyResolverComplete(int result) {
 bool ConfiguredProxyResolutionService::MarkProxiesAsBadUntil(
     const ProxyInfo& result,
     base::TimeDelta retry_delay,
-    const std::vector<ProxyServer>& additional_bad_proxies,
+    const std::vector<ProxyChain>& additional_bad_proxies,
     const NetLogWithSource& net_log) {
   result.proxy_list().UpdateRetryInfoOnFallback(&proxy_retry_info_, retry_delay,
                                                 false, additional_bad_proxies,
@@ -1137,8 +1199,8 @@ void ConfiguredProxyResolutionService::ReportSuccess(const ProxyInfo& result) {
     if (existing == proxy_retry_info_.end()) {
       proxy_retry_info_[iter.first] = iter.second;
       if (proxy_delegate_) {
-        const ProxyServer& bad_proxy =
-            ProxyUriToProxyServer(iter.first, ProxyServer::SCHEME_HTTP);
+        const ProxyChain& bad_proxy = iter.first;
+        DCHECK(!bad_proxy.is_direct());
         const ProxyRetryInfo& proxy_retry_info = iter.second;
         proxy_delegate_->OnFallback(bad_proxy, proxy_retry_info.net_error);
       }
@@ -1166,7 +1228,7 @@ void ConfiguredProxyResolutionService::RemovePendingRequest(
 
 int ConfiguredProxyResolutionService::DidFinishResolvingProxy(
     const GURL& url,
-    const GURL& top_frame_url,
+    const NetworkAnonymizationKey& network_anonymization_key,
     const std::string& method,
     ProxyInfo* result,
     int result_code,
@@ -1178,7 +1240,7 @@ int ConfiguredProxyResolutionService::DidFinishResolvingProxy(
     // Allow the proxy delegate to interpose on the resolution decision,
     // possibly modifying the ProxyInfo.
     if (proxy_delegate_)
-      proxy_delegate_->OnResolveProxy(url, top_frame_url, method,
+      proxy_delegate_->OnResolveProxy(url, network_anonymization_key, method,
                                       proxy_retry_info_, result);
 
     net_log.AddEvent(
@@ -1188,7 +1250,7 @@ int ConfiguredProxyResolutionService::DidFinishResolvingProxy(
     // This check is done to only log the NetLog event when necessary, it's
     // not a performance optimization.
     if (!proxy_retry_info_.empty()) {
-      result->DeprioritizeBadProxies(proxy_retry_info_);
+      result->DeprioritizeBadProxyChains(proxy_retry_info_);
       net_log.AddEvent(
           NetLogEventType::PROXY_RESOLUTION_SERVICE_DEPRIORITIZED_BAD_PROXIES,
           [&] { return NetLogFinishedResolvingProxyParams(result); });
@@ -1213,7 +1275,7 @@ int ConfiguredProxyResolutionService::DidFinishResolvingProxy(
       // Allow the proxy delegate to interpose on the resolution decision,
       // possibly modifying the ProxyInfo.
       if (proxy_delegate_)
-        proxy_delegate_->OnResolveProxy(url, top_frame_url, method,
+        proxy_delegate_->OnResolveProxy(url, network_anonymization_key, method,
                                         proxy_retry_info_, result);
     } else {
       result_code = ERR_MANDATORY_PROXY_CONFIGURATION_FAILED;
@@ -1333,11 +1395,11 @@ base::Value::Dict ConfiguredProxyResolutionService::GetProxyNetLogValues() {
     base::Value::List list;
 
     for (const auto& it : proxy_retry_info_) {
-      const std::string& proxy_uri = it.first;
+      const std::string& proxy_chain_uri = it.first.ToDebugString();
       const ProxyRetryInfo& retry_info = it.second;
 
       base::Value::Dict dict;
-      dict.Set("proxy_uri", proxy_uri);
+      dict.Set("proxy_chain_uri", proxy_chain_uri);
       dict.Set("bad_until", NetLog::TickCountToString(retry_info.bad_until));
 
       list.Append(base::Value(std::move(dict)));

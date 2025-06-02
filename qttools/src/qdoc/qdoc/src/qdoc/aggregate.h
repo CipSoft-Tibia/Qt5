@@ -7,6 +7,7 @@
 #include "pagenode.h"
 
 #include <optional>
+#include <vector>
 
 #include <QtCore/qglobal.h>
 #include <QtCore/qstringlist.h>
@@ -20,6 +21,8 @@ class QmlPropertyNode;
 class Aggregate : public PageNode
 {
 public:
+    using FunctionMap = QMap<QString, std::vector<FunctionNode*>>;
+
     [[nodiscard]] Node *findChildNode(const QString &name, Node::Genus genus,
                                       int findFlags = 0) const;
     Node *findNonfunctionChild(const QString &name, bool (Node::*)() const);
@@ -27,6 +30,7 @@ public:
     FunctionNode *findFunctionChild(const QString &name, const Parameters &parameters);
     FunctionNode *findFunctionChild(const FunctionNode *clone);
 
+    void resolveRelates();
     void normalizeOverloads();
     void markUndocumentedChildrenInternal();
 
@@ -51,7 +55,6 @@ public:
     void addChildByTitle(Node *child, const QString &title);
     void addChild(Node *child);
     void adoptChild(Node *child);
-    void setOutputSubdirectory(const QString &t) override;
 
     FunctionMap &functionMap() { return m_functionMap; }
     void findAllFunctions(NodeMapMap &functionIndex);
@@ -74,9 +77,6 @@ protected:
 
 private:
     friend class Node;
-    void addFunction(FunctionNode *fn);
-    void adoptFunction(FunctionNode *fn, Aggregate *firstParent);
-    static bool isSameSignature(const FunctionNode *f1, const FunctionNode *f2);
     void dropNonRelatedMembers();
 
 protected:

@@ -94,7 +94,9 @@ private:
     static QQmlJSScope::ConstPtr componentRoot(const QQmlJSScope::ConstPtr &inner)
     {
         QQmlJSScope::ConstPtr scope = inner;
-        while (scope && !scope->isComponentRootElement() && !scope->isInlineComponent()) {
+        while (scope
+                && scope->componentRootStatus() == QQmlJSScope::IsComponentRoot::No
+                && !scope->isInlineComponent()) {
             if (QQmlJSScope::ConstPtr parent = scope->parentScope())
                 scope = parent;
             else

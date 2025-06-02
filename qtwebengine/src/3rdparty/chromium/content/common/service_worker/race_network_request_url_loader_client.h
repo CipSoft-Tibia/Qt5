@@ -5,8 +5,11 @@
 #ifndef CONTENT_COMMON_SERVICE_WORKER_RACE_NETWORK_REQUEST_URL_LOADER_CLIENT_H_
 #define CONTENT_COMMON_SERVICE_WORKER_RACE_NETWORK_REQUEST_URL_LOADER_CLIENT_H_
 
+#include <optional>
+#include "base/containers/span.h"
 #include "base/time/time.h"
 #include "content/common/content_export.h"
+#include "content/common/service_worker/race_network_request_write_buffer_manager.h"
 #include "content/common/service_worker/service_worker_resource_loader.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -30,6 +33,7 @@ class CONTENT_EXPORT ServiceWorkerRaceNetworkRequestURLLoaderClient
     : public network::mojom::URLLoaderClient,
       public mojo::DataPipeDrainer::Client {
  public:
+
   using FetchResponseFrom = ServiceWorkerResourceLoader::FetchResponseFrom;
   enum class State {
     // The initial state.
@@ -99,13 +103,10 @@ class CONTENT_EXPORT ServiceWorkerRaceNetworkRequestURLLoaderClient
     kMaxValue = MOJO_RESULT_SHOULD_WAIT,
   };
 
-  // |data_pipe_capacity_num_bytes| indicates the byte size of the data pipe
-  // which is newly created in the constructor.
   ServiceWorkerRaceNetworkRequestURLLoaderClient(
       const network::ResourceRequest& request,
       base::WeakPtr<ServiceWorkerResourceLoader> owner,
-      mojo::PendingRemote<network::mojom::URLLoaderClient> forwarding_client,
-      uint32_t data_pipe_capacity_num_bytes);
+      mojo::PendingRemote<network::mojom::URLLoaderClient> forwarding_client);
   ServiceWorkerRaceNetworkRequestURLLoaderClient(
       const ServiceWorkerRaceNetworkRequestURLLoaderClient&) = delete;
   ServiceWorkerRaceNetworkRequestURLLoaderClient& operator=(
@@ -124,7 +125,7 @@ class CONTENT_EXPORT ServiceWorkerRaceNetworkRequestURLLoaderClient
   void OnReceiveResponse(
       network::mojom::URLResponseHeadPtr head,
       mojo::ScopedDataPipeConsumerHandle body,
-      absl::optional<mojo_base::BigBuffer> cached_metadata) override;
+      std::optional<mojo_base::BigBuffer> cached_metadata) override;
   void OnReceiveRedirect(const net::RedirectInfo& redirect_info,
                          network::mojom::URLResponseHeadPtr head) override;
   void OnUploadProgress(int64_t current_position,
@@ -137,7 +138,16 @@ class CONTENT_EXPORT ServiceWorkerRaceNetworkRequestURLLoaderClient
   // handler may not be consumed by the fetch handler itself if the fetch
   // handler doesn't dispatch the corresponding fetch request. In that case the
   // pipe may be stacked. So this method provides a way to just consume data.
+  //
+  // TODO(crbug.com/1472634): Consider migrating this to CancelWriteData().
   void DrainData(mojo::ScopedDataPipeConsumerHandle source);
+
+  // Close the corresponding data pipe based on |commit_responsibility|, and
+  // cancel watching. The data pipe may not be consumed in some cases e.g. the
+  // fetch handler doesn't dispatch the corresponding fetch request, or
+  // ServiceWorkerAutoPreload is enabled and the fetch result is not a fallback.
+  // In those cases the pipe may be stacked due to the lack of consuming.
+  void CancelWriteData(FetchResponseFrom commit_responsibility);
 
   // Commit and complete the response. Those can be called from |owner_|.
   void CommitAndCompleteResponseIfDataTransferFinished();
@@ -147,14 +157,7 @@ class CONTENT_EXPORT ServiceWorkerRaceNetworkRequestURLLoaderClient
       bool is_fallback);
 
  private:
-  struct DataPipeInfo {
-    mojo::ScopedDataPipeProducerHandle producer;
-    mojo::ScopedDataPipeConsumerHandle consumer;
-    mojo::SimpleWatcher watcher;
-    uint32_t num_write_bytes;
-    DataPipeInfo();
-    ~DataPipeInfo();
-  };
+  uint32_t GetDataPipeCapacityBytes();
   MojoResultForUMA ConvertMojoResultForUMA(MojoResult mojo_result);
 
   // mojo::DataPipeDrainer::Client overrides:
@@ -191,8 +194,10 @@ class CONTENT_EXPORT ServiceWorkerRaceNetworkRequestURLLoaderClient
   // process, and there could be the case if the response is not returned due to
   // the long fetch handler execution. and test case the mechanism to wait for
   // the fetch handler
-  void ReadAndWrite(MojoResult);
+  void ReadAndWrite(MojoResult mojo_result);
   void WatchDataUpdate();
+  std::pair<MojoResult, base::span<const char>> BeginReadData();
+  void CompleteReadData(uint32_t num_bytes_to_consume);
 
   void Abort();
 
@@ -200,6 +205,9 @@ class CONTENT_EXPORT ServiceWorkerRaceNetworkRequestURLLoaderClient
   // Record the time between the response received time and the fetch handler
   // end time iff both events are already reached.
   void MaybeRecordResponseReceivedToFetchHandlerEndTiming();
+
+  void RecordWriteDataResult(MojoResult result,
+                             const std::string& histogram_prefix);
 
   void SetFetchHandlerEndTiming(base::TimeTicks fetch_handler_end_time,
                                 bool is_fallback);
@@ -213,17 +221,21 @@ class CONTENT_EXPORT ServiceWorkerRaceNetworkRequestURLLoaderClient
   mojo::ScopedDataPipeConsumerHandle body_;
 
   network::mojom::URLResponseHeadPtr head_;
-  absl::optional<mojo_base::BigBuffer> cached_metadata_;
+  std::optional<mojo_base::BigBuffer> cached_metadata_;
 
-  DataPipeInfo data_pipe_for_race_network_request_;
-  DataPipeInfo data_pipe_for_fetch_handler_;
-  absl::optional<network::URLLoaderCompletionStatus> completion_status_;
+  RaceNetworkRequestWriteBufferManager
+      write_buffer_manager_for_race_network_request_;
+  RaceNetworkRequestWriteBufferManager write_buffer_manager_for_fetch_handler_;
+  std::optional<network::URLLoaderCompletionStatus> completion_status_;
   bool redirected_ = false;
   std::unique_ptr<mojo::DataPipeDrainer> data_drainer_;
   DataConsumePolicy data_consume_policy_ = DataConsumePolicy::kTeeResponse;
-  absl::optional<base::TimeTicks> response_received_time_;
-  absl::optional<base::TimeTicks> fetch_handler_end_time_;
-  absl::optional<bool> is_fetch_handler_fallback_;
+  std::optional<base::TimeTicks> response_received_time_;
+  std::optional<base::TimeTicks> fetch_handler_end_time_;
+  std::optional<bool> is_fetch_handler_fallback_;
+
+  base::TimeTicks request_start_;
+  base::Time request_start_time_;
 
   base::WeakPtrFactory<ServiceWorkerRaceNetworkRequestURLLoaderClient>
       weak_factory_{this};

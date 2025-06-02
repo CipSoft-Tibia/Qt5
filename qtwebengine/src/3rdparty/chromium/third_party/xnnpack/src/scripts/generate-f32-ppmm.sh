@@ -15,15 +15,32 @@ tools/xngen src/f32-ppmm/wasmsimd-splat.c.in -D MR=4 -D NR=8 -D MINMAX=MINMAX  -
 tools/xngen src/f32-ppmm/wasmsimd-splat.c.in -D MR=4 -D NR=8 -D MINMAX=PMINMAX -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-wasmsimd-x86-splat.c &
 
 ################################### ARM NEON ##################################
-tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=8 -D FMA=0 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-neon.c &
-tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=8 -D FMA=1 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-neonfma.c &
-tools/xngen src/f32-ppmm/neon.c.in -D MR=8 -D NR=8 -D FMA=0 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-neon.c &
-tools/xngen src/f32-ppmm/neon.c.in -D MR=8 -D NR=8 -D FMA=1 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-neonfma.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=8  -D FMA=0 -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-neon.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=8  -D FMA=1 -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-aarch64-neonfma.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=8 -D NR=8  -D FMA=0 -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-neon.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=8 -D NR=8  -D FMA=1 -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-aarch64-neonfma.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=8  -D FMA=0 -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-neon-prfm.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=8  -D FMA=1 -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-aarch64-neonfma-prfm.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=8 -D NR=8  -D FMA=0 -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-neon-prfm.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=8 -D NR=8  -D FMA=1 -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-aarch64-neonfma-prfm.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=16 -D FMA=0 -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-4x16-minmax-neon.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=16 -D FMA=1 -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-4x16-minmax-aarch64-neonfma.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=16 -D FMA=0 -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-4x16-minmax-neon-prfm.c &
+tools/xngen src/f32-ppmm/neon.c.in -D MR=4 -D NR=16 -D FMA=1 -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-4x16-minmax-aarch64-neonfma-prfm.c &
+
+############################### AArch64 assembly ##############################
+### LD128 micro-kernels
+tools/xngen src/f32-ppmm/4x8-aarch64-neonfma-ld128.S.in -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-asm-aarch64-neonfma-ld128.S &
+tools/xngen src/f32-ppmm/4x8-aarch64-neonfma-ld128.S.in -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-asm-aarch64-neonfma-ld128-prfm.S &
+tools/xngen src/f32-ppmm/8x8-aarch64-neonfma-ld128.S.in -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-asm-aarch64-neonfma-ld128.S &
+tools/xngen src/f32-ppmm/8x8-aarch64-neonfma-ld128.S.in -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-asm-aarch64-neonfma-ld128-prfm.S &
+### Cortex A75 micro-kernels
+tools/xngen src/f32-ppmm/4x8-aarch64-neonfma-cortex-a75.S.in -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-asm-aarch64-neonfma-cortex-a75.S &
+tools/xngen src/f32-ppmm/4x8-aarch64-neonfma-cortex-a75.S.in -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-asm-aarch64-neonfma-cortex-a75-prfm.S &
+tools/xngen src/f32-ppmm/8x8-aarch64-neonfma-cortex-a75.S.in -D PREFETCH=0 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-asm-aarch64-neonfma-cortex-a75.S &
+tools/xngen src/f32-ppmm/8x8-aarch64-neonfma-cortex-a75.S.in -D PREFETCH=1 -o src/f32-ppmm/gen/f32-ppmm-8x8-minmax-asm-aarch64-neonfma-cortex-a75-prfm.S &
 
 ################################### x86 SSE ###################################
 tools/xngen src/f32-ppmm/sse.c.in -D MR=4 -D NR=8 -o src/f32-ppmm/gen/f32-ppmm-4x8-minmax-sse.c &
-
-################################## Unit tests #################################
-tools/generate-gemm-test.py --spec test/f32-ppmm-minmax.yaml --output test/f32-ppmm-minmax.cc &
 
 wait

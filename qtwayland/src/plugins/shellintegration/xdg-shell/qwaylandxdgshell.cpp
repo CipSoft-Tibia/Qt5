@@ -6,6 +6,7 @@
 #include "qwaylandxdgshell_p.h"
 
 #include "qwaylandxdgexporterv2_p.h"
+#include "qwaylandxdgdialogv1_p.h"
 
 #include <QtWaylandClient/private/qwaylanddisplay_p.h>
 #include <QtWaylandClient/private/qwaylandwindow_p.h>
@@ -32,6 +33,16 @@ QWaylandXdgSurface::Toplevel::Toplevel(QWaylandXdgSurface *xdgSurface)
     }
     requestWindowStates(window->windowStates());
     requestWindowFlags(window->flags());
+    if (auto transientParent = xdgSurface->window()->transientParent()) {
+        auto parentSurface = qobject_cast<QWaylandXdgSurface *>(transientParent->shellSurface());
+        if (parentSurface && parentSurface->m_toplevel) {
+            set_parent(parentSurface->m_toplevel->object());
+            if (window->modality() != Qt::NonModal && m_xdgSurface->m_shell->m_xdgDialogWm) {
+                m_xdgDialog.reset(m_xdgSurface->m_shell->m_xdgDialogWm->getDialog(object()));
+                m_xdgDialog->set_modal();
+            }
+        }
+    }
 }
 
 QWaylandXdgSurface::Toplevel::~Toplevel()
@@ -94,7 +105,9 @@ void QWaylandXdgSurface::Toplevel::applyConfigure()
     if (!surfaceSize.isEmpty())
         m_xdgSurface->m_window->resizeFromApplyConfigure(surfaceSize.grownBy(m_xdgSurface->m_window->windowContentMargins()));
 
-    qCDebug(lcQpaWayland) << "Applied pending xdg_toplevel configure event:" << m_applied.size << m_applied.states;
+    qCDebug(lcQpaWayland) << "Applied pending xdg_toplevel configure event:" << m_applied.size
+                          << "and" << m_applied.states
+                          << ", suspended " << m_applied.suspended;
 }
 
 bool QWaylandXdgSurface::Toplevel::wantsDecorations()
@@ -153,7 +166,8 @@ void QWaylandXdgSurface::Toplevel::xdg_toplevel_configure(int32_t width, int32_t
         }
     }
     qCDebug(lcQpaWayland) << "Received xdg_toplevel.configure with" << m_pending.size
-                          << "and" << m_pending.states;
+                          << "and" << m_pending.states
+                          << ", suspended " << m_pending.suspended;
 }
 
 void QWaylandXdgSurface::Toplevel::xdg_toplevel_close()
@@ -217,7 +231,7 @@ QtWayland::xdg_toplevel::resize_edge QWaylandXdgSurface::Toplevel::convertToResi
 }
 
 QWaylandXdgSurface::Popup::Popup(QWaylandXdgSurface *xdgSurface, QWaylandWindow *parent,
-                                 QtWayland::xdg_positioner *positioner)
+                                 Positioner *positioner)
     : m_xdgSurface(xdgSurface)
     , m_parentXdgSurface(qobject_cast<QWaylandXdgSurface *>(parent->shellSurface()))
     , m_parent(parent)
@@ -279,7 +293,13 @@ void QWaylandXdgSurface::Popup::xdg_popup_configure(int32_t x, int32_t y, int32_
 
 void QWaylandXdgSurface::Popup::xdg_popup_popup_done()
 {
-    m_xdgSurface->m_window->window()->close();
+    QWindowSystemInterface::handleCloseEvent(m_xdgSurface->m_window->window());
+}
+
+void QWaylandXdgSurface::Popup::xdg_popup_repositioned(uint32_t token)
+{
+    if (token == m_waitingForRepositionSerial)
+        m_waitingForReposition = false;
 }
 
 QWaylandXdgSurface::QWaylandXdgSurface(QWaylandXdgShell *shell, ::xdg_surface *surface, QWaylandWindow *window)
@@ -298,11 +318,6 @@ QWaylandXdgSurface::QWaylandXdgSurface(QWaylandXdgShell *shell, ::xdg_surface *s
         setGrabPopup(transientParent, display->lastInputDevice(), display->lastInputSerial());
     } else {
         setToplevel();
-        if (transientParent) {
-            auto parentXdgSurface = qobject_cast<QWaylandXdgSurface *>(transientParent->shellSurface());
-            if (parentXdgSurface)
-                m_toplevel->set_parent(parentXdgSurface->m_toplevel->object());
-        }
     }
     setSizeHints();
 }
@@ -374,7 +389,13 @@ bool QWaylandXdgSurface::isExposed() const
     if (m_toplevel && m_toplevel->m_applied.suspended)
         return false;
 
-    return m_configured || m_pendingConfigureSerial;
+    // the popup repositioning specification is async
+    // we need to defer commits between our resize request
+    // and our new popup position being set
+    if (m_popup && m_popup->m_waitingForReposition)
+        return false;
+
+    return m_configured;
 }
 
 bool QWaylandXdgSurface::handleExpose(const QRegion &region)
@@ -382,11 +403,14 @@ bool QWaylandXdgSurface::handleExpose(const QRegion &region)
     if (!isExposed() && !region.isEmpty()) {
         return true;
     }
+    setWindowGeometry(window()->windowContentGeometry());
     return false;
 }
 
 void QWaylandXdgSurface::applyConfigure()
 {
+    bool wasExposed = isExposed();
+
     // It is a redundant ack_configure, so skipped.
     if (m_pendingConfigureSerial == m_appliedConfigureSerial)
         return;
@@ -399,6 +423,9 @@ void QWaylandXdgSurface::applyConfigure()
 
     m_configured = true;
     ack_configure(m_appliedConfigureSerial);
+
+    if (!wasExposed && isExposed())
+        m_window->sendRecursiveExposeEvent();
 }
 
 bool QWaylandXdgSurface::wantsDecorations() const
@@ -481,7 +508,178 @@ void QWaylandXdgSurface::setPopup(QWaylandWindow *parent)
 {
     Q_ASSERT(!m_toplevel && !m_popup);
 
-    auto positioner = new QtWayland::xdg_positioner(m_shell->m_xdgWmBase->create_positioner());
+    std::unique_ptr<Positioner> positioner = createPositioner(parent);
+    m_popup = new Popup(this, parent, positioner.get());
+}
+
+void QWaylandXdgSurface::setGrabPopup(QWaylandWindow *parent, QWaylandInputDevice *device, int serial)
+{
+    setPopup(parent);
+    m_popup->grab(device, serial);
+
+    // Synthesize Qt enter/leave events for popup
+    if (!parent)
+        return;
+    QWindow *leave = parent->window();
+    QWindowSystemInterface::handleLeaveEvent(leave);
+
+    QWindow *enter = nullptr;
+    if (m_popup && m_popup->m_xdgSurface && m_popup->m_xdgSurface->window())
+        enter = m_popup->m_xdgSurface->window()->window();
+
+    if (enter) {
+        const auto pos = m_popup->m_xdgSurface->window()->display()->waylandCursor()->pos();
+        QWindowSystemInterface::handleEnterEvent(enter, enter->handle()->mapFromGlobal(pos), pos);
+    }
+}
+
+void QWaylandXdgSurface::xdg_surface_configure(uint32_t serial)
+{
+    m_pendingConfigureSerial = serial;
+    if (!m_configured) {
+        // We have to do the initial applyConfigure() immediately, since that is the expose.
+        applyConfigure();
+    } else {
+        // Later configures are probably resizes, so we have to queue them up for a time when we
+        // are not painting to the window.
+        m_window->applyConfigureWhenPossible();
+    }
+}
+
+bool QWaylandXdgSurface::requestActivate()
+{
+    if (auto *activation = m_shell->activation()) {
+        if (!m_activationToken.isEmpty()) {
+            activation->activate(m_activationToken, window()->wlSurface());
+            m_activationToken = {};
+            return true;
+        } else if (const auto token = qEnvironmentVariable("XDG_ACTIVATION_TOKEN"); !token.isEmpty()) {
+            activation->activate(token, window()->wlSurface());
+            qunsetenv("XDG_ACTIVATION_TOKEN");
+            return true;
+        } else {
+            const auto focusWindow = QGuiApplication::focusWindow();
+            // At least GNOME requires to request the token in order to get the
+            // focus stealing prevention indication, so requestXdgActivationToken call
+            // is still necessary in that case.
+            const auto wlWindow = focusWindow ? static_cast<QWaylandWindow*>(focusWindow->handle()) : m_window;
+
+            QString appId;
+            if (const auto xdgSurface = qobject_cast<QWaylandXdgSurface *>(wlWindow->shellSurface()))
+                appId = xdgSurface->m_appId;
+
+            if (const auto seat = wlWindow->display()->lastInputDevice()) {
+                const auto tokenProvider = activation->requestXdgActivationToken(
+                        wlWindow->display(), wlWindow->wlSurface(), seat->serial(), appId);
+                connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, this,
+                        [this](const QString &token) {
+                            m_shell->activation()->activate(token, window()->wlSurface());
+                        });
+                connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, tokenProvider, &QObject::deleteLater);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool QWaylandXdgSurface::requestActivateOnShow()
+{
+    const Qt::WindowType type = m_window->window()->type();
+    if (type == Qt::ToolTip || type == Qt::Popup || type == Qt::SplashScreen)
+        return false;
+
+    if (m_window->window()->property("_q_showWithoutActivating").toBool())
+        return false;
+
+    return requestActivate();
+}
+
+void QWaylandXdgSurface::requestXdgActivationToken(quint32 serial)
+{
+    if (auto *activation = m_shell->activation()) {
+        auto tokenProvider = activation->requestXdgActivationToken(
+                m_shell->m_display, m_window->wlSurface(), serial, m_appId);
+        connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, m_window, &QWaylandWindow::xdgActivationTokenCreated);
+        connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, tokenProvider, &QObject::deleteLater);
+    } else {
+        QWaylandShellSurface::requestXdgActivationToken(serial);
+    }
+}
+
+void QWaylandXdgSurface::setXdgActivationToken(const QString &token)
+{
+    if (m_shell->activation()) {
+        m_activationToken = token;
+    } else {
+        qCWarning(lcQpaWayland) << "zxdg_activation_v1 not available";
+    }
+}
+
+void QWaylandXdgSurface::setAlertState(bool enabled)
+{
+    if (m_alertState == enabled)
+        return;
+
+    m_alertState = enabled;
+
+    if (!m_alertState)
+        return;
+
+    auto *activation = m_shell->activation();
+    if (!activation)
+        return;
+
+    const auto tokenProvider = activation->requestXdgActivationToken(
+            m_shell->m_display, m_window->wlSurface(), std::nullopt, m_appId);
+    connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, this,
+            [this](const QString &token) {
+                m_shell->activation()->activate(token, m_window->wlSurface());
+            });
+    connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, tokenProvider, &QObject::deleteLater);
+}
+
+QString QWaylandXdgSurface::externWindowHandle()
+{
+    if (!m_toplevel || !m_shell->exporter()) {
+        return QString();
+    }
+    if (!m_toplevel->m_exported) {
+        auto *exporterWrapper = static_cast<zxdg_exporter_v2 *>(
+                wl_proxy_create_wrapper(m_shell->exporter()->object()));
+        auto exportQueue = wl_display_create_queue(m_shell->display()->wl_display());
+        wl_proxy_set_queue(reinterpret_cast<wl_proxy *>(exporterWrapper), exportQueue);
+        m_toplevel->m_exported.reset(new QWaylandXdgExportedV2(
+                zxdg_exporter_v2_export_toplevel(exporterWrapper, m_window->wlSurface())));
+        // handle events is sent immediately
+        wl_display_roundtrip_queue(m_shell->display()->wl_display(), exportQueue);
+
+        wl_proxy_set_queue(reinterpret_cast<wl_proxy *>(m_toplevel->m_exported->object()), nullptr);
+        wl_proxy_wrapper_destroy(exporterWrapper);
+        wl_event_queue_destroy(exportQueue);
+    }
+    return m_toplevel->m_exported->handle();
+}
+
+void QWaylandXdgSurface::setWindowPosition(const QPoint &position)
+{
+    Q_UNUSED(position);
+
+    if (!m_popup)
+        return;
+
+    if (m_popup->version() < XDG_POPUP_REPOSITIONED_SINCE_VERSION)
+        return;
+
+    std::unique_ptr<Positioner> positioner = createPositioner(m_window->transientParent());
+    m_popup->m_waitingForRepositionSerial++;
+    m_popup->reposition(positioner->object(), m_popup->m_waitingForRepositionSerial);
+    m_popup->m_waitingForReposition = true;
+}
+
+std::unique_ptr<QWaylandXdgSurface::Positioner> QWaylandXdgSurface::createPositioner(QWaylandWindow *parent)
+{
+    std::unique_ptr<Positioner> positioner(new Positioner(m_shell));
     // set_popup expects a position relative to the parent
     QRect windowGeometry = m_window->windowContentGeometry();
     QMargins windowMargins = m_window->windowContentMargins() - m_window->clientSideMargins();
@@ -495,7 +693,7 @@ void QWaylandXdgSurface::setPopup(QWaylandWindow *parent)
     placementAnchor.translate(windowMargins.left(), windowMargins.top());
     placementAnchor.translate(-parentMargins.left(), -parentMargins.top());
 
-    uint32_t anchor = QtWayland::xdg_positioner::anchor_top_right;
+    uint32_t anchor = QtWayland::xdg_positioner::anchor_top_left;
     const QVariant anchorVariant = m_window->window()->property("_q_waylandPopupAnchor");
     if (anchorVariant.isValid()) {
         switch (anchorVariant.value<Qt::Edges>()) {
@@ -577,144 +775,9 @@ void QWaylandXdgSurface::setPopup(QWaylandWindow *parent)
     positioner->set_gravity(gravity);
     positioner->set_size(windowGeometry.width(), windowGeometry.height());
     positioner->set_constraint_adjustment(constraintAdjustment);
-    m_popup = new Popup(this, parent, positioner);
-    positioner->destroy();
-
-    delete positioner;
+    return positioner;
 }
 
-void QWaylandXdgSurface::setGrabPopup(QWaylandWindow *parent, QWaylandInputDevice *device, int serial)
-{
-    setPopup(parent);
-    m_popup->grab(device, serial);
-
-    // Synthesize Qt enter/leave events for popup
-    if (!parent)
-        return;
-    QWindow *leave = parent->window();
-    QWindowSystemInterface::handleLeaveEvent(leave);
-
-    QWindow *enter = nullptr;
-    if (m_popup && m_popup->m_xdgSurface && m_popup->m_xdgSurface->window())
-        enter = m_popup->m_xdgSurface->window()->window();
-
-    if (enter) {
-        const auto pos = m_popup->m_xdgSurface->window()->display()->waylandCursor()->pos();
-        QWindowSystemInterface::handleEnterEvent(enter, enter->handle()->mapFromGlobal(pos), pos);
-    }
-}
-
-void QWaylandXdgSurface::xdg_surface_configure(uint32_t serial)
-{
-    m_pendingConfigureSerial = serial;
-    if (!m_configured) {
-        // We have to do the initial applyConfigure() immediately, since that is the expose.
-        applyConfigure();
-        if (isExposed())
-            m_window->sendRecursiveExposeEvent();
-    } else {
-        // Later configures are probably resizes, so we have to queue them up for a time when we
-        // are not painting to the window.
-        m_window->applyConfigureWhenPossible();
-    }
-}
-
-bool QWaylandXdgSurface::requestActivate()
-{
-    if (auto *activation = m_shell->activation()) {
-        if (!m_activationToken.isEmpty()) {
-            activation->activate(m_activationToken, window()->wlSurface());
-            m_activationToken = {};
-            return true;
-        } else if (const auto token = qEnvironmentVariable("XDG_ACTIVATION_TOKEN"); !token.isEmpty()) {
-            activation->activate(token, window()->wlSurface());
-            qunsetenv("XDG_ACTIVATION_TOKEN");
-            return true;
-        } else {
-            const auto focusWindow = QGuiApplication::focusWindow();
-            // At least GNOME requires to request the token in order to get the
-            // focus stealing prevention indication, so requestXdgActivationToken call
-            // is still necessary in that case.
-            const auto wlWindow = focusWindow ? static_cast<QWaylandWindow*>(focusWindow->handle()) : m_window;
-
-            QString appId;
-            if (const auto xdgSurface = qobject_cast<QWaylandXdgSurface *>(wlWindow->shellSurface()))
-                appId = xdgSurface->m_appId;
-
-            if (const auto seat = wlWindow->display()->lastInputDevice()) {
-                const auto tokenProvider = activation->requestXdgActivationToken(
-                        wlWindow->display(), wlWindow->wlSurface(), seat->serial(), appId);
-                connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, this,
-                        [this, tokenProvider](const QString &token) {
-                            m_shell->activation()->activate(token, window()->wlSurface());
-                            tokenProvider->deleteLater();
-                        });
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-void QWaylandXdgSurface::requestXdgActivationToken(quint32 serial)
-{
-    if (auto *activation = m_shell->activation()) {
-        auto tokenProvider = activation->requestXdgActivationToken(
-                m_shell->m_display, m_window->wlSurface(), serial, m_appId);
-        connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, this,
-                [this, tokenProvider](const QString &token) {
-                    Q_EMIT m_window->xdgActivationTokenCreated(token);
-                    tokenProvider->deleteLater();
-                });
-    } else {
-        QWaylandShellSurface::requestXdgActivationToken(serial);
-    }
-}
-
-void QWaylandXdgSurface::setXdgActivationToken(const QString &token)
-{
-    if (m_shell->activation()) {
-        m_activationToken = token;
-    } else {
-        qCWarning(lcQpaWayland) << "zxdg_activation_v1 not available";
-    }
-}
-
-void QWaylandXdgSurface::setAlertState(bool enabled)
-{
-    if (m_alertState == enabled)
-        return;
-
-    m_alertState = enabled;
-
-    if (!m_alertState)
-        return;
-
-    auto *activation = m_shell->activation();
-    if (!activation)
-        return;
-
-    const auto tokenProvider = activation->requestXdgActivationToken(
-            m_shell->m_display, m_window->wlSurface(), std::nullopt, m_appId);
-    connect(tokenProvider, &QWaylandXdgActivationTokenV1::done, this,
-            [this, tokenProvider](const QString &token) {
-                m_shell->activation()->activate(token, m_window->wlSurface());
-                tokenProvider->deleteLater();
-            });
-}
-
-QString QWaylandXdgSurface::externWindowHandle()
-{
-    if (!m_toplevel || !m_shell->exporter()) {
-        return QString();
-    }
-    if (!m_toplevel->m_exported) {
-        m_toplevel->m_exported.reset(m_shell->exporter()->exportToplevel(m_window->wlSurface()));
-        // handle events is sent immediately
-        m_shell->display()->forceRoundTrip();
-    }
-    return m_toplevel->m_exported->handle();
-}
 
 QWaylandXdgShell::QWaylandXdgShell(QWaylandDisplay *display, QtWayland::xdg_wm_base *xdgWmBase)
     : m_display(display), m_xdgWmBase(xdgWmBase)
@@ -741,6 +804,20 @@ void QWaylandXdgShell::handleRegistryGlobal(void *data, wl_registry *registry, u
     if (interface == QLatin1String(QWaylandXdgExporterV2::interface()->name)) {
         xdgShell->m_xdgExporter.reset(new QWaylandXdgExporterV2(registry, id, version));
     }
+
+    if (interface == QLatin1String(QWaylandXdgDialogWmV1::interface()->name)) {
+        xdgShell->m_xdgDialogWm.reset(new QWaylandXdgDialogWmV1(registry, id, version));
+    }
+}
+
+QWaylandXdgSurface::Positioner::Positioner(QWaylandXdgShell *xdgShell)
+    : QtWayland::xdg_positioner(xdgShell->m_xdgWmBase->create_positioner())
+{
+}
+
+QWaylandXdgSurface::Positioner::~Positioner()
+{
+    destroy();
 }
 
 }

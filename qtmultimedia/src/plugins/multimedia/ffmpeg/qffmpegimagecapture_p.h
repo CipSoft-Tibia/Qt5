@@ -16,8 +16,8 @@
 // We mean it.
 //
 
-#include <private/qplatformimagecapture_p.h>
-#include "qffmpegmediacapturesession_p.h"
+#include <QtMultimedia/private/qplatformimagecapture_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegmediacapturesession_p.h>
 
 #include <QtCore/qpointer.h>
 #include <qqueue.h>
@@ -29,7 +29,7 @@ class QFFmpegImageCapture : public QPlatformImageCapture
     Q_OBJECT
 public:
     QFFmpegImageCapture(QImageCapture *parent);
-    virtual ~QFFmpegImageCapture();
+    ~QFFmpegImageCapture() override;
 
     bool isReadyForCapture() const override;
     int capture(const QString &fileName) override;

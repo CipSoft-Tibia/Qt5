@@ -23,7 +23,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype AnimatedSprite
-    \instantiates QQuickAnimatedSprite
+    \nativetype QQuickAnimatedSprite
     \inqmlmodule QtQuick
     \inherits Item
     \ingroup qtquick-visual
@@ -114,7 +114,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty qreal QtQuick::AnimatedSprite::frameRate
+    \qmlproperty real QtQuick::AnimatedSprite::frameRate
 
     Frames per second to show in the animation. Values less than or equal to \c 0 are invalid.
 

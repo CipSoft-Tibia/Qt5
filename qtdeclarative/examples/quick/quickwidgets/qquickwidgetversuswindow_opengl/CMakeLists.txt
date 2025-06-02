@@ -6,7 +6,7 @@ project(qquickwidgetversuswindow_opengl LANGUAGES CXX)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickWidgets ShaderTools Widgets)
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(qquickwidgetversuswindow_opengl
     WIN32
@@ -30,6 +30,7 @@ qt_add_qml_module(qquickwidgetversuswindow_opengl
     QML_FILES test.qml
     RESOURCE_PREFIX /qquickwidgetversuswindow_opengl
     NO_RESOURCE_TARGET_PATH
+    DEPENDENCIES QtQuick
 )
 
 qt6_add_shaders(qquickwidgetversuswindow_opengl "shaders"

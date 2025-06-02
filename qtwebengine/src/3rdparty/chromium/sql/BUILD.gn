@@ -161,5 +161,12 @@ if (!is_fuchsia) {
       "//base",
       "//base/test:test_support",
     ]
+
+    libfuzzer_options = [ "rss_limit_mb=4096" ]
+  }
+
+  group("fuzzers") {
+    testonly = true
+    deps = [ "//sql/fuzzers:sql_built_in_recovery_lpm_fuzzer" ]
   }
 }

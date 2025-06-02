@@ -69,6 +69,14 @@
     The \l {Windows Style} is a native-looking style for Windows.
     \note this style is only available for applications running on Windows.
 
+    \section2 FluentWinUI3 Style
+
+    \include style-screenshots.qdocinc {file} {FluentWinUI3} {fluentwinui3}
+
+    The \l {FluentWinUI3 Style} is a modern, native-looking style designed for platforms
+    running Windows 11 and above, which follows the Fluent UI and the WinUI 3 design guidelines.
+    The FluentWinUI3 can be run on all supported platforms.
+
     \section1 Using Styles in Qt Quick Controls
 
     \section2 Default Styles
@@ -92,6 +100,9 @@
     importing it in QML. For example, to import the Material style:
 
     \qml
+
+    // The style must be imported before any other QtQuick.Controls imports.
+
     import QtQuick.Controls.Material
 
     ApplicationWindow {
@@ -189,7 +200,7 @@
     example runs a Qt Quick Controls application with the Material style:
 
     \code
-    ./app -style material
+    ./app -style Material
     \endcode
 
     \section3 Environment variable
@@ -200,7 +211,7 @@
     the Universal style:
 
     \code
-    QT_QUICK_CONTROLS_STYLE=universal ./app
+    QT_QUICK_CONTROLS_STYLE=Universal ./app
     \endcode
 
     See \l {Supported Environment Variables in Qt Quick Controls} for the full list
@@ -230,6 +241,7 @@
     \li \l {Imagine Style}
     \li \l {Material Style}
     \li \l {Universal Style}
+    \li \l {FluentWinUI3 Style}
     \li \l {Customizing Qt Quick Controls}
     \li \l {Using File Selectors with Qt Quick Controls}
     \li \l {Deploying Qt Quick Controls Applications}

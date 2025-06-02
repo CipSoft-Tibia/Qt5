@@ -65,8 +65,9 @@ depends += \
     ../../qmllocalstorage \
     ../../quicklayouts \
     ../../labs \
-    ../../quick/jar/org/qtproject/qt/android \
-    ../../../examples/platforms
+    ../../quick/platform/android/jar/src/org/qtproject/qt/android \
+    ../../../examples/platforms \
+    ../../quickcontrols/doc/src/includes/
 
 # both have their own documentation project
 excludedirs += \
@@ -87,7 +88,8 @@ imagedirs += images
 {headerdirs,sourcedirs} += \
     ../../particles \
     ../../quickshapes \
-    ../../effects
+    ../../effects \
+    ../../quickvectorimage
 
 # Add imports and plugins directories because of dependencies
 {headerdirs,sourcedirs} += \

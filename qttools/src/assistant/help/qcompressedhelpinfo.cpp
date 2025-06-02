@@ -5,10 +5,11 @@
 
 #include "qhelpdbreader_p.h"
 
-#include <QtCore/QThread>
-#include <QtCore/QVersionNumber>
+#include <QtCore/qversionnumber.h>
 
 QT_BEGIN_NAMESPACE
+
+using namespace Qt::StringLiterals;
 
 class QCompressedHelpInfoPrivate : public QSharedData
 {
@@ -21,7 +22,6 @@ public:
         , m_version(other.m_version)
         , m_isNull(other.m_isNull)
     { }
-    ~QCompressedHelpInfoPrivate() = default;
 
     QString m_namespaceName;
     QString m_component;
@@ -54,8 +54,7 @@ public:
 */
 QCompressedHelpInfo::QCompressedHelpInfo()
     : d(new QCompressedHelpInfoPrivate)
-{
-}
+{}
 
 /*!
     Constructs a copy of \a other.
@@ -131,9 +130,9 @@ bool QCompressedHelpInfo::isNull() const
 */
 QCompressedHelpInfo QCompressedHelpInfo::fromCompressedHelpFile(const QString &documentationFileName)
 {
-    QHelpDBReader reader(documentationFileName,
-        QHelpGlobal::uniquifyConnectionName(QLatin1String("GetCompressedHelpInfo"),
-        QThread::currentThread()), nullptr);
+    void *pointer = const_cast<QString *>(&documentationFileName);
+    QHelpDBReader reader(documentationFileName, QHelpGlobal::uniquifyConnectionName(
+                         "GetCompressedHelpInfo"_L1, pointer), nullptr);
     if (reader.init()) {
         QCompressedHelpInfo info;
         info.d->m_namespaceName = reader.namespaceName();
@@ -142,7 +141,7 @@ QCompressedHelpInfo QCompressedHelpInfo::fromCompressedHelpFile(const QString &d
         info.d->m_isNull = false;
         return info;
     }
-    return QCompressedHelpInfo();
+    return {};
 }
 
 QT_END_NAMESPACE

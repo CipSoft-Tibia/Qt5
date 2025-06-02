@@ -1,355 +1,205 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/qtest.h>
 
-#include <QString>
-#include <QProcess>
-#include <QCryptographicHash>
-#include <qtprotobuftypes.h>
+#include <QtProtobuf/qtprotobuftypes.h>
 
-#define XSTR(x) DEFSTR(x)
-#define DEFSTR(x) #x
+#include <QtCore/qprocess.h>
+#include <QtCore/qstring.h>
+
+#include "protocplugintestcommon.h"
 
 using namespace Qt::StringLiterals;
-const QLatin1StringView cppProtobufGenExtension(".qpb.cpp");
-const QLatin1StringView headerProtobufGenExtension(".qpb.h");
-const QLatin1StringView cppExtension("_client.grpc.qpb.cpp");
-const QLatin1StringView headerExtension("_client.grpc.qpb.h");
-const QLatin1StringView grpcGenQtprotobufKey(" --plugin=protoc-gen-qtgrpc=");
-const QLatin1StringView optKey(" --qtgrpc_opt=");
-const QLatin1StringView outputKey(" --qtgrpc_out=");
-const QLatin1StringView includeKey(" -I");
-#ifndef PROTOC_EXECUTABLE
-#  error PROTOC_EXECUTABLE definition must be set and point to the valid protoc executable
+using namespace ProtocPluginTest;
+
+namespace {
+#if QT_CONFIG(process)
+#  ifndef PROTOC_EXECUTABLE
+#    error PROTOC_EXECUTABLE definition must be set and point to the valid protoc executable
+#  endif
+constexpr QLatin1StringView ProtocPath(PROTOC_EXECUTABLE);
+
+#  ifndef PROTOC_PLUGIN
+#    error PROTOC_PLUGIN definition must be set and point to the valid protoc plugin
+#  endif
+constexpr QLatin1StringView QtgrpcgenPath(PROTOC_PLUGIN);
+
+constexpr QLatin1StringView PluginKey(" --plugin=protoc-gen-qtgrpc=");
+constexpr QLatin1StringView OptKey(" --qtgrpc_opt=");
+constexpr QLatin1StringView OutKey(" --qtgrpc_out=");
+constexpr QLatin1StringView IncludeKey(" -I");
+
+constexpr QLatin1StringView CmdLineGeneratedDir("cmd_line_generated");
 #endif
-const QLatin1StringView protocolBufferCompiler(XSTR(PROTOC_EXECUTABLE));
-#if defined(Q_OS_WIN)
-const QLatin1StringView qtgrpcgen("/qtgrpcgen.exe");
-#else
-const QLatin1StringView qtgrpcgen("/qtgrpcgen");
+
+#ifndef BINARY_DIR
+#  error BINARY_DIR definition must be set
 #endif
+constexpr QLatin1StringView BinaryDir(BINARY_DIR);
 
-QByteArray msgProcessStartFailed(const QProcess &p)
-{
-    const QString result = QLatin1StringView("Could not start \"")
-            + QDir::toNativeSeparators(p.program()) + QLatin1StringView("\": ")
-            + p.errorString();
-    return result.toLocal8Bit();
-}
+#ifndef CMAKE_GENERATOR_TESTS
+#  define CMAKE_GENERATOR_TESTS
+#endif
+constexpr QLatin1StringView CMakeGeneratorTests(CMAKE_GENERATOR_TESTS);
 
-QByteArray msgProcessTimeout(const QProcess &p)
-{
-    return '"' + QDir::toNativeSeparators(p.program()).toLocal8Bit()
-            + "\" timed out.";
-}
+#ifndef CMAKE_GENERATED_DIR
+#  error CMAKE_GENERATED_DIR definition must be set
+#endif
+constexpr QLatin1StringView CMakeGeneratedDir(CMAKE_GENERATED_DIR);
 
-QByteArray msgProcessCrashed(QProcess &p)
-{
-    return '"' + QDir::toNativeSeparators(p.program()).toLocal8Bit()
-            + "\" crashed.\n" + p.readAllStandardError();
-}
+} // namespace
 
-QByteArray msgProcessFailed(QProcess &p)
-{
-    return '"' + QDir::toNativeSeparators(p.program()).toLocal8Bit()
-            + "\" returned " + QByteArray::number(p.exitCode()) + ":\n"
-            + p.readAllStandardError();
-}
-
-QByteArray hash(const QByteArray &fileData)
-{
-    return QCryptographicHash::hash(fileData, QCryptographicHash::Sha1);
-}
-
-QByteArrayList splitToLines(const QByteArray &data)
-{
-    return data.split('\n');
-}
-
-// Return size diff and first NOT equal line;
-QByteArray doCompare(const QByteArrayList &actual, const QByteArrayList &expected)
-{
-    QByteArray ba;
-
-    if (actual.size() != expected.size()) {
-        ba.append(QString("Length count different: actual: %1, expected: %2")
-                  .arg(actual.size()).arg(expected.size()).toUtf8());
-    }
-
-    for (int i = 0, n = expected.size(); i != n; ++i) {
-        QString expectedLine = expected.at(i);
-        if (expectedLine != actual.at(i)) {
-            ba.append("\n<<<<<< ACTUAL\n" + actual.at(i)
-                      + "\n======\n" + expectedLine.toUtf8()
-                      + "\n>>>>>> EXPECTED\n"
-                      );
-            break;
-        }
-    }
-    return ba;
-}
-
-QByteArray msgCannotReadFile(const QFile &file)
-{
-    const QString result = QLatin1StringView("Could not read file: ")
-            + QDir::toNativeSeparators(file.fileName())
-            + QLatin1StringView(": ") + file.errorString();
-    return result.toLocal8Bit();
-}
-
-void cleanFolder(const QString &folderName)
-{
-    QDir dir(folderName);
-    dir.removeRecursively();
-}
-
-bool protocolCompilerAvailableToRun()
-{
-    QProcess protoc;
-    protoc.startCommand(protocolBufferCompiler + " --version");
-
-    if (!protoc.waitForStarted())
-        return false;
-
-    if (!protoc.waitForFinished()) {
-        protoc.kill();
-        return false;
-    }
-
-    return protoc.exitStatus() == QProcess::NormalExit;
-}
-
-class tst_qtgrpcgen : public QObject
+class qtgrpcgenTest : public ProtocPluginTest::TestBase
 {
     Q_OBJECT
 
-private slots:
+private Q_SLOTS:
     void initTestCase();
 
     //! Test qt_add_grpc() cmake function
-    void cmakeGeneratedFile_data();
-    void cmakeGeneratedFile();
+    void cmakeGenerated_data();
+    void cmakeGenerated();
 
+#if QT_CONFIG(process)
     //! Test command-line call of qtgrpcgen
-    void cmdLineGeneratedFile_data();
-    void cmdLineGeneratedFile();
+    void cmdLineGenerated_data();
+    void cmdLineGenerated();
+#endif
 
     void cleanupTestCase();
-
-private:
-    QString m_grpcgen;
-    QString m_cmakeGenerated;
-    QString m_qmlCmakeGenerated;
-    QString m_commandLineGenerated;
-    QString m_expectedResult;
-    QString m_protoFiles;
 };
 
-void tst_qtgrpcgen::initTestCase()
+void qtgrpcgenTest::initTestCase()
 {
-    m_grpcgen = QLibraryInfo::path(QLibraryInfo::LibraryExecutablesPath) + qtgrpcgen;
-
-    m_cmakeGenerated = QFINDTESTDATA("qt_grpc_generated");
-    QVERIFY(!m_cmakeGenerated.isEmpty());
-
-#ifdef HAVE_QML
-    m_qmlCmakeGenerated = QFINDTESTDATA("qt_grpc_generated_qml");
-    QVERIFY(!m_qmlCmakeGenerated.isEmpty());
-#endif
-
-    m_expectedResult = QFINDTESTDATA("data/expected_result");
-    QVERIFY(!m_expectedResult.isEmpty());
-
-    m_protoFiles = QFINDTESTDATA("../shared/data/proto/");
-    QVERIFY(!m_protoFiles.isEmpty());
-
-    QDir testOutputBaseDir(QCoreApplication::applicationDirPath());
-    testOutputBaseDir.mkdir(QLatin1StringView("cmd_line_generation"));
-    QLatin1StringView folders[] = {"comments"_L1, "extra-namespace"_L1,
-                                   "fieldenum"_L1, "folder"_L1, "no-options"_L1};
-    for (QLatin1StringView folder : folders)
-        testOutputBaseDir.mkdir("cmd_line_generation/"_L1 + folder);
-
-    m_commandLineGenerated = testOutputBaseDir.absolutePath() +
-            QLatin1StringView("/cmd_line_generation");
-    QVERIFY(!m_commandLineGenerated.isEmpty());
-#ifdef Q_OS_MACOS
-    if (!protocolCompilerAvailableToRun())
-        QSKIP("Protocol buffer compiler is not provisioned for macOS ARM VMs: QTBUG-109130");
-#else
-    QVERIFY(protocolCompilerAvailableToRun());
-#endif
+    initPaths(BinaryDir, CMakeGeneratedDir, CmdLineGeneratedDir);
 }
 
-void tst_qtgrpcgen::cmakeGeneratedFile_data()
+void qtgrpcgenTest::cmakeGenerated_data()
 {
-    QTest::addColumn<QString>("fileName");
-    QTest::addColumn<QString>("folder");
-    QTest::addColumn<QString>("extension");
-    QTest::addColumn<QString>("cmakeGenerationFolder");
+    QTest::addColumn<QString>("testName");
+    QTest::addColumn<QString>("filePath");
 
-    const QLatin1StringView protobufExtensions[] = { cppProtobufGenExtension,
-                                                     headerProtobufGenExtension };
-
-    const QLatin1StringView grpcExtensions[] = { cppExtension, headerExtension };
-
-    for (const auto extension : grpcExtensions) {
-        QTest::addRow("testservice%s", extension.data())
-                << "testservice"
-                << "/folder/qtgrpc/tests/"
-                << QString(extension)
-                << m_cmakeGenerated;
-
-        QTest::addRow("separate/grpc/testservice%s", extension.data())
-            << "testservice"
-            << "/separate/grpc/qtgrpc/tests/" << QString(extension) << m_cmakeGenerated;
-    }
-
-    for (const auto extension : protobufExtensions) {
-        QTest::addRow("testservice%s", extension.data())
-            << "testservice"
-            << "/folder/qtgrpc/tests/" << QString(extension) << m_cmakeGenerated;
-
-        QTest::addRow("separate/protobuf/testservice%s", extension.data())
-            << "testservice"
-            << "/separate/protobuf/qtgrpc/tests/" << QString(extension) << m_cmakeGenerated;
-    }
-
-    QTest::addRow("tst_qtgrpcgen_client_grpc_only_exports.qpb.h")
-        << "tst_qtgrpcgen_client_grpc_only_exports.qpb.h"
-        << "/separate/grpc/" << QString() << m_cmakeGenerated;
-
-#ifdef HAVE_QML
-    const QLatin1StringView qmlExtensions[] = { cppExtension,
-                                                headerExtension };
-
-    for (const auto extension : qmlExtensions) {
-        QTest::addRow("qmltestservice%s", extension.data())
-                << "qmltestservice"
-                << "/qml/"
-                << QString(extension)
-                << m_qmlCmakeGenerated;
-    }
-#endif
-}
-
-void tst_qtgrpcgen::cmakeGeneratedFile()
-{
-    QFETCH(QString, fileName);
-    QFETCH(QString, folder);
-    QFETCH(QString, extension);
-    QFETCH(QString, cmakeGenerationFolder);
-
-    QFile expectedResultFile(m_expectedResult + folder + fileName + extension);
-    QFile generatedFile(cmakeGenerationFolder + folder + fileName + extension);
-
-    QVERIFY2(expectedResultFile.exists(), qPrintable(expectedResultFile.fileName()));
-    QVERIFY(generatedFile.exists());
-
-    QVERIFY2(expectedResultFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(expectedResultFile).constData());
-    QVERIFY2(generatedFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(generatedFile).constData());
-
-    QByteArray expectedData = expectedResultFile.readAll();
-    QByteArray generatedData = generatedFile.readAll();
-
-    expectedResultFile.close();
-    generatedFile.close();
-
-    if (hash(expectedData).toHex() != hash(generatedData).toHex())
-    {
-        const QString diff = doCompare(splitToLines(generatedData),
-                                       splitToLines(expectedData));
-        QCOMPARE_GT(diff.size(), 0); // Hashes can only differ if content does.
-        QFAIL(qPrintable(diff));
-    }
-    // Ensure we do see a failure, even in the unlikely case of a hash collision:
-    QVERIFY(generatedData == expectedData);
-}
-
-void tst_qtgrpcgen::cmdLineGeneratedFile_data()
-{
-    QTest::addColumn<QString>("fileName");
-    QTest::addColumn<QString>("folder");
-    QTest::addColumn<QString>("extension");
-
-    const QLatin1StringView extensions[] = { cppExtension, headerExtension };
-
-    for (const auto extension : extensions) {
-        QTest::addRow("testservice%s", extension.data())
-                << "testservice"
-                << "/no-options/"
-                << QString(extension);
-        QTest::addRow("testserivcenomessages%s", extension.data())
-                << "testserivcenomessages"
-                << "/no-options/"
-                << QString(extension);
+    const QStringList tests = QString(CMakeGeneratorTests).split(','_L1, Qt::SkipEmptyParts);
+    for (const auto &testName : tests) {
+        QDir testDir(cmakeExpectedResultPath() + '/'_L1 + testName);
+        const auto testFiles = scanDirectoryRecursively(testDir);
+        for (const auto &testFile : testFiles) {
+            auto relativePath = testDir.relativeFilePath(testFile.absoluteFilePath());
+            QTest::addRow("%s: %s", testName.toUtf8().constData(),
+                          relativePath.toUtf8().constData())
+                << testName << relativePath;
+        }
     }
 }
 
-void tst_qtgrpcgen::cmdLineGeneratedFile()
+void qtgrpcgenTest::cmakeGenerated()
 {
-    QFETCH(QString, fileName);
-    QFETCH(QString, folder);
-    QFETCH(QString, extension);
+    QFETCH(QString, testName);
+    QFETCH(QString, filePath);
+    compareTwoFiles(cmakeExpectedResultPath() + '/'_L1 + testName + '/'_L1 + filePath,
+                    cmakeGeneratedPath() + '/'_L1 + testName + '/'_L1 + filePath);
+}
+
+#if QT_CONFIG(process)
+void qtgrpcgenTest::cmdLineGenerated_data()
+{
+    QTest::addColumn<QString>("directory");
+    QTest::addColumn<QString>("protoFile");
+    QTest::addColumn<QString>("generatorOptions");
+
+    QTest::addRow("no_options") << "no_options"
+                                << "qtgrpcgen.proto"
+                                << "";
+
+    QTest::addRow("header_guard_filename") << "header_guard_filename"
+                                           << "qtgrpcgen.proto"
+                                           << "HEADER_GUARD=filename";
+
+    QTest::addRow("header_guard_pragma") << "header_guard_pragma"
+                                         << "qtgrpcgen.proto"
+                                         << "HEADER_GUARD=pragma";
+
+    QTest::addRow("qml") << "qml"
+                         << "qtgrpcgen.proto"
+                         << "QML";
+
+    QTest::addRow("qml_uri") << "qml_uri"
+                             << "qtgrpcgen.proto"
+                             << "QML;QML_URI=my.test.uri";
+
+    QTest::addRow("qml_uri_export_macro") << "qml_uri_export_macro"
+                                          << "qtgrpcgen.proto"
+                                          << "QML;QML_URI=my.test.uri;EXPORT_MACRO=TST_QTGRPC_GEN";
+
+    QTest::addRow("qml_uri_export_macro_generate_package_subfolders")
+        << "qml_uri_export_macro_generate_package_subfolders"
+        << "qtgrpcgen.proto"
+        << "QML;QML_URI=my.test.uri;EXPORT_MACRO=TST_QTGRPC_GEN;GENERATE_PACKAGE_SUBFOLDERS";
+
+    QTest::addRow("export_macro_custom_file_name")
+        << "export_macro_custom_file_name"
+        << "qtgrpcgen.proto"
+        << "EXPORT_MACRO=EXPORT_MACRO_WITH_FILE:custom_file_name";
+
+    QTest::addRow("export_macro_custom_file_name_force_generate")
+        << "export_macro_custom_file_name_force_generate"
+        << "qtgrpcgen.proto"
+        << "EXPORT_MACRO=EXPORT_MACRO_WITH_FILE:custom_file_name.hpp:true";
+
+    QTest::addRow("export_macro_custom_file_name_skip_generate")
+        << "export_macro_custom_file_name_skip_generate"
+        << "qtgrpcgen.proto"
+        << "EXPORT_MACRO=EXPORT_MACRO_WITH_FILE:custom_file_name.hxx:false";
+}
+
+void qtgrpcgenTest::cmdLineGenerated()
+{
+    QFETCH(QString, directory);
+    QFETCH(QString, protoFile);
+    QFETCH(QString, generatorOptions);
+
+    const QString fullProtoFilePath(expectedResultPath() + '/'_L1 + protoFile);
+    QVERIFY2(QFile::exists(fullProtoFilePath),
+             qPrintable("Input .proto scheme "_L1 + fullProtoFilePath + " doesn't exists"_L1));
+
+    QDir outputDirectory(cmdLineGeneratedPath());
+    if (!outputDirectory.exists(directory))
+        outputDirectory.mkdir(directory);
+    outputDirectory.cd(directory);
 
     QProcess process;
-    process.setWorkingDirectory(m_commandLineGenerated);
+    process.setWorkingDirectory(cmdLineGeneratedPath());
+    process.startCommand(ProtocPath + PluginKey + QtgrpcgenPath + OptKey + generatorOptions + OutKey
+                         + outputDirectory.absolutePath() + IncludeKey + expectedResultPath()
+                         + ' '_L1 + fullProtoFilePath);
 
-    /* Call command:
-         protoc --plugin=protoc-gen-qtgrpc=<path/to/bin/>qtgrpcgen \
-         --qtgrpc_opt=<option> \
-         --qtgrpc_out=<output_dir> [-I/extra/proto/include/path] <protofile>.proto */
-    process.startCommand(protocolBufferCompiler + QString(" ")
-                         + grpcGenQtprotobufKey + m_grpcgen
-                         + optKey + outputKey
-                         + m_commandLineGenerated + folder
-                         + includeKey + m_protoFiles
-                         + " " + fileName + ".proto");
-
-    QVERIFY2(process.waitForStarted(), msgProcessStartFailed(process).constData());
+    QVERIFY2(process.waitForStarted(), qPrintable(msgProcessStartFailed(process)));
     if (!process.waitForFinished()) {
         process.kill();
-        QFAIL(msgProcessTimeout(process).constData());
+        QFAIL(qPrintable(msgProcessTimeout(process)));
     }
-    QVERIFY2(process.exitStatus() == QProcess::NormalExit, msgProcessCrashed(process).constData());
-    QVERIFY2(process.exitCode() == 0, msgProcessFailed(process).constData());
+    QVERIFY2(process.exitStatus() == QProcess::NormalExit, qPrintable(msgProcessCrashed(process)));
+    QVERIFY2(process.exitCode() == 0, qPrintable(msgProcessFailed(process)));
 
-    QFile expectedResultFile(m_expectedResult + folder + fileName  + extension);
-    QFile generatedFile(m_commandLineGenerated + folder + fileName + extension);
+    QDir expectedResultDir(cmdLineExpectedResultPath() + '/'_L1 + directory);
+    const auto generatedFileList = scanDirectoryRecursively(outputDirectory);
+    const auto expectedFileList = scanDirectoryRecursively(expectedResultDir);
 
-    QVERIFY(generatedFile.exists());
-    QVERIFY(expectedResultFile.exists());
+    QCOMPARE_EQ(relativePaths(outputDirectory, generatedFileList),
+                relativePaths(expectedResultDir, expectedFileList));
 
-    QVERIFY2(expectedResultFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(expectedResultFile).constData());
-    QVERIFY2(generatedFile.open(QIODevice::ReadOnly | QIODevice::Text),
-             msgCannotReadFile(generatedFile).constData());
-
-    QByteArray expectedData = expectedResultFile.readAll();
-    QByteArray generatedData = generatedFile.readAll();
-
-    expectedResultFile.close();
-    generatedFile.close();
-
-    if (hash(expectedData).toHex() != hash(generatedData).toHex())
-    {
-        const QString diff = doCompare(splitToLines(generatedData),
-                                       splitToLines(expectedData));
-        QCOMPARE_GT(diff.size(), 0); // Hashes can only differ if content does.
-        QFAIL(qPrintable(diff));
+    for (qsizetype i = 0; i < expectedFileList.size(); ++i) {
+        compareTwoFiles(generatedFileList.at(i).absoluteFilePath(),
+                        expectedFileList.at(i).absoluteFilePath());
     }
-    // Ensure we do see a failure, even in the unlikely case of a hash collision:
-    QVERIFY(generatedData == expectedData);
 }
+#endif
 
-void tst_qtgrpcgen::cleanupTestCase()
+void qtgrpcgenTest::cleanupTestCase()
 {
-    // Leave this function at the bottom. It removes generated content.
-    cleanFolder(m_commandLineGenerated);
+    cleanupTestData();
 }
 
-QTEST_MAIN(tst_qtgrpcgen)
+QTEST_MAIN(qtgrpcgenTest)
 #include "tst_qtgrpcgen.moc"

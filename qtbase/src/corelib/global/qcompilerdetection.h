@@ -460,12 +460,6 @@
 #  define QT_ASAN_ENABLED
 #endif
 
-#ifdef __cplusplus
-# if __has_include(<version>) /* remove this check once Integrity, QNX have caught up */
-#  include <version>
-# endif
-#endif
-
 /*
  * C++11 support
  *
@@ -1230,6 +1224,12 @@
 #  endif
 #endif
 
+#if defined(__has_attribute) && __has_attribute(uninitialized)
+#  define Q_DECL_UNINITIALIZED __attribute__((uninitialized))
+#else
+#  define Q_DECL_UNINITIALIZED
+#endif
+
 
 /*
     Sanitize compiler feature availability
@@ -1277,9 +1277,14 @@ static_assert(!std::is_convertible_v<std::nullptr_t, bool>,
 
 #if defined(QT_BOOTSTRAPPED) || defined(QT_USE_PROTECTED_VISIBILITY) || !defined(__ELF__) || defined(__PIC__)
 // this is fine
+#elif defined(__PIE__)
+#  error "-fPIE is not sufficient if Qt was configured with the -DFEATURE_reduce_relocations=ON "\
+         "CMake option. Compile your code with -fPIC and without -fPIE or compile Qt with "\
+         "-DFEATURE_no_direct_extern_access=ON."
 #elif defined(QT_REDUCE_RELOCATIONS)
-#  error "You must build your code with position independent code if Qt was configured with -reduce-relocations. "\
-         "Compile your code with -fPIC (and not with -fPIE)."
+#  error "You must build your code with position independent code if Qt was configured with the "\
+         "-DFEATURE_reduce_relocations=ON CMake option. Compile your code with -fPIC and "\
+         "without -fPIE or compile Qt with -DFEATURE_no_direct_extern_access=ON."
 #endif
 
 #ifdef Q_PROCESSOR_X86_32

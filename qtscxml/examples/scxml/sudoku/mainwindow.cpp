@@ -187,6 +187,4 @@ MainWindow::MainWindow(QScxmlStateMachine *machine, QWidget *parent) :
             }
         }
     });
-
-    setLayout(layout);
 }

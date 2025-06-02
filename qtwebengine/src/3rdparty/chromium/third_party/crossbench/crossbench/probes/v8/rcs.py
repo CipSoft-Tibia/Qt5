@@ -8,26 +8,24 @@ import logging
 from typing import TYPE_CHECKING, Optional, cast
 
 from crossbench.browsers.chromium.chromium import Chromium
-from crossbench.probes.probe import Probe, ProbeMissingDataError, ProbeScope
+from crossbench.probes.chromium_probe import ChromiumProbe
+from crossbench.probes.probe import ProbeContext, ProbeMissingDataError
 from crossbench.probes.results import LocalProbeResult, ProbeResult
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser
-  from crossbench.runner.run import Run
   from crossbench.runner.groups import (BrowsersRunGroup, RepetitionsRunGroup,
                                         StoriesRunGroup)
+  from crossbench.runner.run import Run
 
 
-class V8RCSProbe(Probe):
+class V8RCSProbe(ChromiumProbe):
   """
   Chromium-only Probe to extract runtime-call-stats data that can be used
   to analyze precise counters and time spent in various VM components in V8:
   https://v8.dev/tools/head/callstats.html
   """
   NAME = "v8.rcs"
-
-  def is_compatible(self, browser: Browser) -> bool:
-    return isinstance(browser, Chromium)
 
   def attach(self, browser: Browser) -> None:
     assert isinstance(browser, Chromium), "Expected Chromium-based browser."
@@ -39,8 +37,8 @@ class V8RCSProbe(Probe):
   def result_path_name(self) -> str:
     return f"{self.name}.txt"
 
-  def get_scope(self, run: Run) -> V8RCSProbeScope:
-    return V8RCSProbeScope(self, run)
+  def get_context(self, run: Run) -> V8RCSProbeContext:
+    return V8RCSProbeContext(self, run)
 
   def merge_repetitions(self, group: RepetitionsRunGroup) -> ProbeResult:
     merged_result_path = group.get_local_probe_result_path(self)
@@ -74,26 +72,28 @@ class V8RCSProbe(Probe):
       if not story_group_file.exists():
         logging.info("Probe %s: skipping non-existing results file: %s",
                      self.NAME, story_group_file)
-      dest_file = merged_result_path / f"{story_group.path.name}.rcs.txt"
-      dest_file.symlink_to(story_group_file)
+        continue
+      dest_file = (
+          merged_result_path / f"{story_group.browser.unique_name}.rcs.txt")
+      self.runner_platform.symlink_or_copy(story_group_file, dest_file)
       files.append(dest_file)
     return LocalProbeResult(file=files)
 
 
-class V8RCSProbeScope(ProbeScope[V8RCSProbe]):
+class V8RCSProbeContext(ProbeContext[V8RCSProbe]):
   _rcs_table: Optional[str] = None
 
-  def setup(self, run: Run) -> None:
+  def setup(self) -> None:
     pass
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     pass
 
-  def stop(self, run: Run) -> None:
-    with run.actions("Extract RCS") as actions:
+  def stop(self) -> None:
+    with self.run.actions("Extract RCS") as actions:
       self._rcs_table = actions.js("return %GetAndResetRuntimeCallStats();")
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     if not self._rcs_table:
       raise ProbeMissingDataError(
           "Chrome didn't produce any RCS data. "

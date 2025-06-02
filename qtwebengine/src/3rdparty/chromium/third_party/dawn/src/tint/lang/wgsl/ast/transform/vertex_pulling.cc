@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/vertex_pulling.h"
 
@@ -126,6 +139,8 @@ StringStream& operator<<(StringStream& out, VertexFormat format) {
             return out << "sint32x3";
         case VertexFormat::kSint32x4:
             return out << "sint32x4";
+        case VertexFormat::kUnorm10_10_10_2:
+            return out << "unorm10-10-10-2";
     }
     return out << "<unknown>";
 }
@@ -223,6 +238,7 @@ VertexFormatType VertexFormatTypeOf(VertexFormat format) {
         case VertexFormat::kSnorm16x4:
         case VertexFormat::kFloat16x4:
         case VertexFormat::kFloat32x4:
+        case VertexFormat::kUnorm10_10_10_2:
             return {VertexDataType::kFloat, 4};
     }
     return {VertexDataType::kInvalid, 0};
@@ -235,14 +251,14 @@ struct VertexPulling::State {
     /// Constructor
     /// @param program the source program
     /// @param c the VertexPulling config
-    State(const Program* program, const VertexPulling::Config& c) : src(program), cfg(c) {}
+    State(const Program& program, const VertexPulling::Config& c) : src(program), cfg(c) {}
 
     /// Runs the transform
     /// @returns the new program or SkipTransform if the transform is not required
     ApplyResult Run() {
         // Find entry point
         const Function* func = nullptr;
-        for (auto* fn : src->AST().Functions()) {
+        for (auto* fn : src.AST().Functions()) {
             if (fn->PipelineStage() == PipelineStage::kVertex) {
                 if (func != nullptr) {
                     b.Diagnostics().add_error(
@@ -284,13 +300,13 @@ struct VertexPulling::State {
     };
 
     /// The source program
-    const Program* const src;
+    const Program& src;
     /// The transform config
     VertexPulling::Config const cfg;
     /// The target program builder
     ProgramBuilder b;
     /// The clone context
-    program::CloneContext ctx = {&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx = {&b, &src, /* auto_clone_symbols */ true};
     std::unordered_map<uint32_t, LocationInfo> location_info;
     std::function<const Expression*()> vertex_index_expr = nullptr;
     std::function<const Expression*()> instance_index_expr = nullptr;
@@ -667,6 +683,15 @@ struct VertexPulling::State {
             case VertexFormat::kFloat16x4:
                 return b.Call<vec4<f32>>(b.Call("unpack2x16float", load_u32()),
                                          b.Call("unpack2x16float", load_next_u32()));
+            case VertexFormat::kUnorm10_10_10_2:
+                auto* u32s = b.Call<vec4<u32>>(load_u32());
+                // shr = u32s >> vec4u(0, 10, 20, 30);
+                auto* shr = b.Shr(u32s, b.Call<vec4<u32>>(0_u, 10_u, 20_u, 30_u));
+                // mask = shr & vec4u(0x3FF, 0x3FF, 0x3FF, 0x3);
+                auto* mask = b.And(shr, b.Call<vec4<u32>>(0x3FF_u, 0x3FF_u, 0x3FF_u, 0x3_u));
+                // return vec4f(mask) / vec4f(1023, 1023, 1023, 3);
+                return b.Div(b.Call<vec4<f32>>(mask),
+                             b.Call<vec4<f32>>(1023_f, 1023_f, 1023_f, 3_f));
         }
 
         TINT_UNREACHABLE() << "format " << static_cast<int>(format);
@@ -768,21 +793,21 @@ struct VertexPulling::State {
             LocationInfo info;
             info.expr = [this, func_var] { return b.Expr(func_var); };
 
-            auto* sem = src->Sem().Get<sem::Parameter>(param);
+            auto* sem = src.Sem().Get(param);
             info.type = sem->Type();
 
-            if (TINT_UNLIKELY(!sem->Location().has_value())) {
+            if (TINT_UNLIKELY(!sem->Attributes().location.has_value())) {
                 TINT_ICE() << "Location missing value";
                 return;
             }
-            location_info[sem->Location().value()] = info;
+            location_info[sem->Attributes().location.value()] = info;
         } else {
             auto* builtin_attr = GetAttribute<BuiltinAttribute>(param->attributes);
             if (TINT_UNLIKELY(!builtin_attr)) {
                 TINT_ICE() << "Invalid entry point parameter";
                 return;
             }
-            auto builtin = src->Sem().Get(builtin_attr)->Value();
+            auto builtin = src.Sem().Get(builtin_attr)->Value();
             // Check for existing vertex_index and instance_index builtins.
             if (builtin == core::BuiltinValue::kVertexIndex) {
                 vertex_index_expr = [this, param] {
@@ -824,7 +849,7 @@ struct VertexPulling::State {
                 LocationInfo info;
                 info.expr = member_expr;
 
-                auto* sem = src->Sem().Get(member);
+                auto* sem = src.Sem().Get(member);
                 info.type = sem->Type();
 
                 TINT_ASSERT(sem->Attributes().location.has_value());
@@ -836,7 +861,7 @@ struct VertexPulling::State {
                     TINT_ICE() << "Invalid entry point parameter";
                     return;
                 }
-                auto builtin = src->Sem().Get(builtin_attr)->Value();
+                auto builtin = src.Sem().Get(builtin_attr)->Value();
                 // Check for existing vertex_index and instance_index builtins.
                 if (builtin == core::BuiltinValue::kVertexIndex) {
                     vertex_index_expr = member_expr;
@@ -891,7 +916,7 @@ struct VertexPulling::State {
 
         // Process entry point parameters.
         for (auto* param : func->params) {
-            auto* sem = src->Sem().Get(param);
+            auto* sem = src.Sem().Get(param);
             if (auto* str = sem->Type()->As<sem::Struct>()) {
                 ProcessStructParameter(func, param, str->Declaration());
             } else {
@@ -946,7 +971,7 @@ struct VertexPulling::State {
 VertexPulling::VertexPulling() = default;
 VertexPulling::~VertexPulling() = default;
 
-Transform::ApplyResult VertexPulling::Apply(const Program* src,
+Transform::ApplyResult VertexPulling::Apply(const Program& src,
                                             const DataMap& inputs,
                                             DataMap&) const {
     auto cfg = cfg_;

@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d12/ResidencyManagerD3D12.h"
 
@@ -64,8 +77,8 @@ void ResidencyManager::UnlockAllocation(Pageable* pageable) {
         return;
     }
 
-    ASSERT(pageable->IsResidencyLocked());
-    ASSERT(!pageable->IsInResidencyLRUCache());
+    DAWN_ASSERT(pageable->IsResidencyLocked());
+    DAWN_ASSERT(!pageable->IsInResidencyLRUCache());
     pageable->DecrementResidencyLock();
 
     // If another lock still exists on the heap, nothing further should be done.
@@ -85,10 +98,10 @@ ResidencyManager::MemorySegmentInfo* ResidencyManager::GetMemorySegmentInfo(
         case MemorySegment::Local:
             return &mVideoMemoryInfo.local;
         case MemorySegment::NonLocal:
-            ASSERT(!mDevice->GetDeviceInfo().isUMA);
+            DAWN_ASSERT(!mDevice->GetDeviceInfo().isUMA);
             return &mVideoMemoryInfo.nonLocal;
         default:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -164,15 +177,13 @@ ResultOrError<Pageable*> ResidencyManager::RemoveSingleEntryFromLRU(
     // If the next candidate for eviction was inserted into the LRU during the current serial,
     // it is because more memory is being used in a single command list than is available.
     // In this scenario, we cannot make any more resources resident and thrashing must occur.
-    if (lastSubmissionSerial == mDevice->GetPendingCommandSerial()) {
+    if (lastSubmissionSerial == mDevice->GetQueue()->GetPendingCommandSerial()) {
         return nullptr;
     }
 
     // We must ensure that any previous use of a resource has completed before the resource can
     // be evicted.
-    if (lastSubmissionSerial > mDevice->GetQueue()->GetCompletedCommandSerial()) {
-        DAWN_TRY(mDevice->WaitForSerial(lastSubmissionSerial));
-    }
+    DAWN_TRY(ToBackend(mDevice->GetQueue())->WaitForSerial(lastSubmissionSerial));
 
     pageable->RemoveFromList();
     return pageable;
@@ -197,7 +208,7 @@ MaybeError ResidencyManager::EnsureCanAllocate(uint64_t allocationSize,
 // memory, we should evict until there is. Returns the number of bytes evicted.
 ResultOrError<uint64_t> ResidencyManager::EnsureCanMakeResident(uint64_t sizeToMakeResident,
                                                                 MemorySegmentInfo* memorySegment) {
-    ASSERT(mResidencyManagementEnabled);
+    DAWN_ASSERT(mResidencyManagementEnabled);
 
     UpdateMemorySegmentInfo(memorySegment);
 
@@ -246,7 +257,7 @@ MaybeError ResidencyManager::EnsureHeapsAreResident(Heap** heaps, size_t heapCou
     uint64_t localSizeToMakeResident = 0;
     uint64_t nonLocalSizeToMakeResident = 0;
 
-    ExecutionSerial pendingCommandSerial = mDevice->GetPendingCommandSerial();
+    ExecutionSerial pendingCommandSerial = mDevice->GetQueue()->GetPendingCommandSerial();
     for (size_t i = 0; i < heapCount; i++) {
         Heap* heap = heaps[i];
 
@@ -286,7 +297,7 @@ MaybeError ResidencyManager::EnsureHeapsAreResident(Heap** heaps, size_t heapCou
     }
 
     if (nonLocalSizeToMakeResident > 0) {
-        ASSERT(!mDevice->GetDeviceInfo().isUMA);
+        DAWN_ASSERT(!mDevice->GetDeviceInfo().isUMA);
         return MakeAllocationsResident(&mVideoMemoryInfo.nonLocal, nonLocalSizeToMakeResident,
                                        nonLocalHeapsToMakeResident.size(),
                                        nonLocalHeapsToMakeResident.data());
@@ -345,15 +356,15 @@ void ResidencyManager::TrackResidentAllocation(Pageable* pageable) {
         return;
     }
 
-    ASSERT(pageable->IsInList() == false);
+    DAWN_ASSERT(pageable->IsInList() == false);
     GetMemorySegmentInfo(pageable->GetMemorySegment())->lruCache.Append(pageable);
 }
 
 // Places an artifical cap on Dawn's budget so we can test in a predictable manner. If used,
 // this function must be called before any resources have been created.
 void ResidencyManager::RestrictBudgetForTesting(uint64_t artificialBudgetCap) {
-    ASSERT(mVideoMemoryInfo.nonLocal.lruCache.empty());
-    ASSERT(!mRestrictBudgetForTesting);
+    DAWN_ASSERT(mVideoMemoryInfo.nonLocal.lruCache.empty());
+    DAWN_ASSERT(!mRestrictBudgetForTesting);
 
     mRestrictBudgetForTesting = true;
     UpdateVideoMemoryInfo();

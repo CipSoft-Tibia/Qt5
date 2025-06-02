@@ -641,8 +641,8 @@
         <translation>Forfremmet widgets</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This file cannot be read because the extra info extension failed to load.</source>
@@ -1078,8 +1078,8 @@
         <translation>Udformning</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1434,8 +1434,8 @@ Vil du erstatte den?</translation>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>Qt Designer &amp;hjælp</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>Qt Widgets Designer &amp;hjælp</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
@@ -1446,8 +1446,8 @@ Vil du erstatte den?</translation>
         <translation>Om Plugins</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>Om Qt Designer</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>Om Qt Widgets Designer</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1504,8 +1504,8 @@ Vil du opdatere filplaceringen eller generere en ny udformning?</translation>
         <translation>&amp;Ny udformning</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -3237,12 +3237,12 @@ Vil du overskrive skabelonen?</translation>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Version %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer er en grafisk brugerflade-designer til Qt-programmer.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer er en grafisk brugerflade-designer til Qt-programmer.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
@@ -4689,12 +4689,12 @@ Vælg venligst et andet navn.</translation>
         <translation>Fejlede plugins</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Qt Designer fandt ikke nogen plugins</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Qt Widgets Designer fandt ikke nogen plugins</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Qt Designer fandt følgende plugins</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Qt Widgets Designer fandt følgende plugins</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

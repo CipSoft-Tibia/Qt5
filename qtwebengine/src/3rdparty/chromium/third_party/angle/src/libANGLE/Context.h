@@ -37,16 +37,17 @@
 #include "libANGLE/RefCountObject.h"
 #include "libANGLE/ResourceManager.h"
 #include "libANGLE/ResourceMap.h"
-#include "libANGLE/SharedContextMutex.h"
 #include "libANGLE/State.h"
 #include "libANGLE/VertexAttribute.h"
 #include "libANGLE/angletypes.h"
 
 namespace angle
 {
+class Closure;
 class FrameCapture;
 class FrameCaptureShared;
 struct FrontendFeatures;
+class WaitableEvent;
 }  // namespace angle
 
 namespace rx
@@ -219,6 +220,7 @@ class StateCache final : angle::NonCopyable
     // 2. onProgramExecutableChange.
     // 3. onVertexArrayStateChange.
     // 4. onGLES1ClientStateChange.
+    // 5. onGLES1TextureStateChange.
     AttributesMask getActiveBufferedAttribsMask() const { return mCachedActiveBufferedAttribsMask; }
     AttributesMask getActiveClientAttribsMask() const { return mCachedActiveClientAttribsMask; }
     AttributesMask getActiveDefaultAttribsMask() const { return mCachedActiveDefaultAttribsMask; }
@@ -367,6 +369,7 @@ class StateCache final : angle::NonCopyable
     void onVertexArrayBufferContentsChange(Context *context);
     void onVertexArrayStateChange(Context *context);
     void onVertexArrayBufferStateChange(Context *context);
+    void onGLES1TextureStateChange(Context *context);
     void onGLES1ClientStateChange(Context *context);
     void onDrawFramebufferChange(Context *context);
     void onActiveTextureChange(Context *context);
@@ -413,9 +416,53 @@ class StateCache final : angle::NonCopyable
     AttributesMask mCachedActiveBufferedAttribsMask;
     AttributesMask mCachedActiveClientAttribsMask;
     AttributesMask mCachedActiveDefaultAttribsMask;
-    bool mCachedHasAnyEnabledClientAttrib;
+
+    // Given a vertex attribute's stride, the corresponding vertex buffer can fit a number of such
+    // attributes.  A draw call that attempts to use more vertex attributes thus needs to fail (when
+    // robust access is enabled).  The following variables help implement this limit given the
+    // following situations:
+    //
+    // Assume:
+    //
+    // Ni = Number of vertex attributes that can fit in buffer bound to attribute i.
+    // Di = Vertex attribute divisor set for attribute i.
+    // F = Draw calls "first" vertex index
+    // C = Draw calls vertex "count"
+    // B = Instanced draw calls "baseinstance"
+    // P = Instanced draw calls "primcount" (or "instancecount" in desktop GL)
+    //
+    // Then, for each attribute i:
+    //
+    //   If Di == 0 (i.e. non-instanced)
+    //     Vertices [F, F+C) are accessed
+    //     Draw call should fail if F+C > Ni
+    //
+    //   If Di != 0 (i.e. instanced), in a non-instanced draw call:
+    //     Only vertex 0 is accessed - note that a non-zero divisor in a non-instanced draw call
+    //       implies that F is ignored and the vertex index is not incremented.
+    //     Draw call should fail if Ni < 1
+    //
+    //   If Di != 0, in an instanced draw call:
+    //     Vertices [B, B+ceil(P/Di)) are accessed
+    //     Draw call should fail if B+ceil(P/Di) > Ni
+    //
+    // To avoid needing to iterate over all attributes in the hot paths, the following is
+    // calculated:
+    //
+    // Non-instanced limit: min(Ni) for all non-instanced attributes.  At draw time F+C <= min(Ni)
+    // is validated.
+    // Instanced limit: min(Ni*Di) for all instanced attributes.  At draw time, B+P <= min(Ni*Di) is
+    // validated (the math works out, try with an example!)
+    //
+    // For instanced attributes in a non-instanced draw call, need to check that min(Ni) > 0.
+    // Evaluating min(Ni*DI) > 0 produces the same result though, so the instanced limit is used
+    // there too.
+    //
+    // If there are no instanced attributes, the non-instanced limit is set to infinity.  If there
+    // are no instanced attributes, the instanced limits are set to infinity.
     GLint64 mCachedNonInstancedVertexElementLimit;
     GLint64 mCachedInstancedVertexElementLimit;
+
     mutable intptr_t mCachedBasicDrawStatesErrorString;
     mutable GLenum mCachedBasicDrawStatesErrorCode;
     mutable intptr_t mCachedBasicDrawElementsError;
@@ -428,6 +475,7 @@ class StateCache final : angle::NonCopyable
     // mCachedProgramPipelineError can be no-error or also in error, or
     // unknown due to early exiting.
     mutable intptr_t mCachedProgramPipelineError;
+    bool mCachedHasAnyEnabledClientAttrib;
     bool mCachedTransformFeedbackActiveUnpaused;
     StorageBuffersMask mCachedActiveShaderStorageBufferIndices;
     ImageUnitMask mCachedActiveImageUnitIndices;
@@ -534,7 +582,6 @@ class Context final : public egl::LabeledObject, angle::NonCopyable, public angl
     bool isTransformFeedbackGenerated(TransformFeedbackID transformFeedback) const;
 
     bool isExternal() const { return mIsExternal; }
-    bool saveAndRestoreState() const { return mSaveAndRestoreState; }
 
     void getBooleanvImpl(GLenum pname, GLboolean *params) const;
     void getFloatvImpl(GLenum pname, GLfloat *params) const;
@@ -699,6 +746,14 @@ class Context final : public egl::LabeledObject, angle::NonCopyable, public angl
 
     // GL_KHR_parallel_shader_compile
     std::shared_ptr<angle::WorkerThreadPool> getShaderCompileThreadPool() const;
+    std::shared_ptr<angle::WorkerThreadPool> getLinkSubTaskThreadPool() const;
+    std::shared_ptr<angle::WaitableEvent> postCompileLinkTask(
+        const std::shared_ptr<angle::Closure> &task,
+        angle::JobThreadSafety safety,
+        angle::JobResultExpectancy resultExpectancy) const;
+
+    // Single-threaded pool; runs everything instantly
+    std::shared_ptr<angle::WorkerThreadPool> getSingleThreadPool() const;
 
     // Generic multithread pool.
     std::shared_ptr<angle::WorkerThreadPool> getWorkerThreadPool() const;
@@ -752,28 +807,9 @@ class Context final : public egl::LabeledObject, angle::NonCopyable, public angl
 
     egl::ShareGroup *getShareGroup() const { return mState.getShareGroup(); }
 
-    // Note: mutex may be changed during the API call, including from other thread.
-    egl::ContextMutex *getContextMutex() const
-    {
-        return mState.mContextMutex.load(std::memory_order_relaxed);
-    }
-
-    // For debugging purposes. "ContextMutex" MUST be locked during this call.
-    bool isSharedContextMutexActive() const;
-    // For debugging purposes. "ContextMutex" MUST be locked during this call.
-    bool isContextMutexStateConsistent() const;
-
-    // Important note:
-    //   It is possible that this Context will continue to use "SingleContextMutex" in its current
-    //   thread after this call. Probability of that is controlled by the "kActivationDelayMicro"
-    //   constant. If problem happens or extra safety is critical - increase the
-    //   "kActivationDelayMicro".
-    //   For absolute 100% safety "SingleContextMutex" should not be used.
-    egl::ScopedContextMutexLock lockAndActivateSharedContextMutex();
-
-    // "SharedContextMutex" MUST be locked and active during this call.
-    // Merges "SharedContextMutex" of the Context with other "ShareContextMutex".
-    void mergeSharedContextMutexes(egl::ContextMutex *otherMutex);
+    // Warning! When need to store pointer to the mutex in other object use `getRoot()` pointer, do
+    // NOT get pointer of the `getContextMutex()` reference.
+    egl::ContextMutex &getContextMutex() const { return mState.mContextMutex; }
 
     bool supportsGeometryOrTesselation() const;
     void dirtyAllState();
@@ -834,8 +870,6 @@ class Context final : public egl::LabeledObject, angle::NonCopyable, public angl
 
     VertexArray *checkVertexArrayAllocation(VertexArrayID vertexArrayHandle);
     TransformFeedback *checkTransformFeedbackAllocation(TransformFeedbackID transformFeedback);
-
-    angle::Result onProgramLink(Program *programObject);
 
     void detachBuffer(Buffer *buffer);
     void detachTexture(TextureID texture);
@@ -950,6 +984,7 @@ class Context final : public egl::LabeledObject, angle::NonCopyable, public angl
     angle::ObserverBinding mVertexArrayObserverBinding;
     angle::ObserverBinding mDrawFramebufferObserverBinding;
     angle::ObserverBinding mReadFramebufferObserverBinding;
+    angle::ObserverBinding mProgramObserverBinding;
     angle::ObserverBinding mProgramPipelineObserverBinding;
     std::vector<angle::ObserverBinding> mUniformBufferObserverBindings;
     std::vector<angle::ObserverBinding> mAtomicCounterBufferObserverBindings;
@@ -972,7 +1007,6 @@ class Context final : public egl::LabeledObject, angle::NonCopyable, public angl
     OverlayType mOverlay;
 
     const bool mIsExternal;
-    const bool mSaveAndRestoreState;
 
     bool mIsDestroyed;
 

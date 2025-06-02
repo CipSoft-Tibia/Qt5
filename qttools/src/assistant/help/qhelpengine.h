@@ -8,7 +8,6 @@
 
 QT_BEGIN_NAMESPACE
 
-
 class QHelpContentModel;
 class QHelpContentWidget;
 class QHelpIndexModel;
@@ -40,4 +39,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif
+#endif // QHELPENGINE_H

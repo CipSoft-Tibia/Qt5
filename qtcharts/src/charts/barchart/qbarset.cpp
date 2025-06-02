@@ -24,7 +24,7 @@ QT_BEGIN_NAMESPACE
 */
 /*!
     \qmltype BarSet
-    \instantiates QBarSet
+    \nativetype QBarSet
     \inqmlmodule QtCharts
 
     \brief Represents one set of bars in a bar chart.
@@ -279,7 +279,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty QVariantList BarSet::values
+    \qmlproperty list<var> BarSet::values
     The values of the bar set. You can set a list of either \l [QML]{real} or \l [QML]{point}
     types as values.
 

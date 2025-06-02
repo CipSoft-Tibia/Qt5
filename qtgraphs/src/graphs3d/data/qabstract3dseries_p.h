@@ -15,7 +15,7 @@
 #define QABSTRACT3DSERIES_P_H
 
 #include <QtCore/private/qobject_p.h>
-#include <private/graphsglobal_p.h>
+#include <private/qgraphsglobal_p.h>
 
 #include "qabstract3dseries.h"
 
@@ -103,19 +103,19 @@ public:
     void setMeshRotation(const QQuaternion &rotation);
     void setUserDefinedMesh(const QString &meshFile);
 
-    void setColorStyle(Q3DTheme::ColorStyle style);
-    void setBaseColor(const QColor &color);
+    void setColorStyle(QGraphsTheme::ColorStyle style);
+    void setBaseColor(QColor color);
     void setBaseGradient(const QLinearGradient &gradient);
-    void setSingleHighlightColor(const QColor &color);
+    void setSingleHighlightColor(QColor color);
     void setSingleHighlightGradient(const QLinearGradient &gradient);
-    void setMultiHighlightColor(const QColor &color);
+    void setMultiHighlightColor(QColor color);
     void setMultiHighlightGradient(const QLinearGradient &gradient);
     void setName(const QString &name);
 
-    void resetToTheme(const Q3DTheme &theme, int seriesIndex, bool force);
+    void resetToTheme(const QGraphsTheme &theme, qsizetype seriesIndex, bool force);
     QString itemLabel();
     void markItemLabelDirty();
-    inline bool itemLabelDirty() const { return m_itemLabelDirty; }
+    bool itemLabelDirty() const { return m_itemLabelDirty; }
     void setItemLabelVisible(bool visible);
     bool isUsingGradient();
 
@@ -132,7 +132,7 @@ protected:
     QQuaternion m_meshRotation;
     QString m_userDefinedMesh;
 
-    Q3DTheme::ColorStyle m_colorStyle;
+    QGraphsTheme::ColorStyle m_colorStyle;
     QColor m_baseColor;
     QLinearGradient m_baseGradient;
     QColor m_singleHighlightColor;

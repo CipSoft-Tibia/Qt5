@@ -25,7 +25,11 @@ constexpr int kCrashListenerPort = 7779;
 constexpr int kSftpServerPort = 7780;
 
 constexpr int kLmkdKillDecisionPort = 7781;
-constexpr int kVmMemoryManagementServerPort = 7782;
+
+// Used by vm_tools::concierge::mm::ReclaimServer.
+constexpr int kVmMemoryManagementReclaimServerPort = 7782;
+// Used by vm_tools::concierge::mm::KillsServer.
+constexpr int kVmMemoryManagementKillsServerPort = 7783;
 
 // All ports above this value are reserved for seneschal servers.
 constexpr uint32_t kFirstSeneschalServerPort = 16384;

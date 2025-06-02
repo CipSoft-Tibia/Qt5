@@ -200,17 +200,27 @@ class GuestViewBase : public content::BrowserPluginGuestDelegate,
 
   content::NavigationController& GetController();
 
-  GuestViewManager* GetGuestViewManager();
+  GuestViewManager* GetGuestViewManager() const;
+
+  // Returns the URL of the owner RenderFrameHost's last committed URL.
+  const GURL& GetOwnerLastCommittedURL() const;
 
   // Returns the URL of the owner RenderFrameHost's SiteInstance.
   const GURL& GetOwnerSiteURL() const;
 
-  // Returns the host of the owner WebContents. For extensions, this is the
-  // extension ID.
+  // Returns the host of the owner WebContents. If the owner RenderFrameHost is
+  // for an extension, returns the host of its URL, which is an extension ID. If
+  // the owner RenderFrameHost is a non-extension embedder of a Controlled
+  // Frame, returns its serialized origin.
+  // TODO(crbug.com/1517391): Expose this information as a url::Origin.
   std::string owner_host() const { return owner_host_; }
 
   // Whether the guest view is inside a plugin document.
   bool is_full_page_plugin() const { return is_full_page_plugin_; }
+
+  bool IsOwnedByExtension() const;
+  bool IsOwnedByWebUI() const;
+  bool IsOwnedByControlledFrameEmbedder() const;
 
   // Saves the attach state of the custom element hosting this GuestView.
   void SetAttachParams(const base::Value::Dict& params);
@@ -376,11 +386,10 @@ class GuestViewBase : public content::BrowserPluginGuestDelegate,
   void RunFileChooser(content::RenderFrameHost* render_frame_host,
                       scoped_refptr<content::FileSelectListener> listener,
                       const blink::mojom::FileChooserParams& params) final;
-  bool ShouldFocusPageAfterCrash() final;
+  bool ShouldFocusPageAfterCrash(content::WebContents* source) final;
   void UpdatePreferredSize(content::WebContents* web_contents,
                            const gfx::Size& pref_size) final;
   void UpdateTargetURL(content::WebContents* source, const GURL& url) final;
-  bool ShouldResumeRequestsForCreatedWindow() final;
 
   // WebContentsObserver implementation.
   void DidStopLoading() final;

@@ -8,8 +8,8 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_unittest(ClangSPIRVTests
   CodeGenSpirvTest.cpp
-  FileTestFixture.cpp
-  FileTestUtils.cpp
+  LibTestFixture.cpp
+  LibTestUtils.cpp
   SpirvBasicBlockTest.cpp
   SpirvContextTest.cpp
   SpirvTestOptions.cpp
@@ -18,7 +18,6 @@ add_clang_unittest(ClangSPIRVTests
   SpirvConstantTest.cpp
   StringTest.cpp
   TestMain.cpp
-  WholeFileTestFixture.cpp
   )
 
 target_link_libraries(ClangSPIRVTests
@@ -29,7 +28,6 @@ target_link_libraries(ClangSPIRVTests
   clangSPIRV
   clangTooling
   dxcompiler
-  effcee
   SPIRV-Tools
   )
 
@@ -39,7 +37,7 @@ target_link_libraries(ClangSPIRVTests
 add_dependencies(ClangSPIRVTests dxcompiler)
 
 target_include_directories(ClangSPIRVTests
-  PRIVATE ${SPIRV_TOOLS_INCLUDE_DIR} ${DXC_EFFCEE_DIR})
+  PRIVATE ${SPIRV_TOOLS_INCLUDE_DIR})
 
 if (NOT CLANG_INCLUDE_TESTS)
   set_output_directory(ClangSPIRVTests
@@ -51,10 +49,6 @@ configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/SpirvTestOptions.h.in
     ${CMAKE_CURRENT_BINARY_DIR}/SpirvTestOptions.h
     )
-
-if(WIN32)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj") # otherwise will hit fatal error C1128 on windows x64
-endif(WIN32)
 
 if (NOT CLANG_INCLUDE_TESTS)
   add_test(NAME test-spirv-codegen COMMAND $<TARGET_FILE:ClangSPIRVTests>)

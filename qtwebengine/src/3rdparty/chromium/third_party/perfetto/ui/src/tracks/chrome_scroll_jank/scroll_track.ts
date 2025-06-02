@@ -12,34 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {v4 as uuidv4} from 'uuid';
-
-import {Engine} from '../../common/engine';
-import {
-  PrimaryTrackSortKey,
-  SCROLLING_TRACK_GROUP,
-} from '../../common/state';
 import {NamedSliceTrackTypes} from '../../frontend/named_slice_track';
-import {NewTrackArgs, Track} from '../../frontend/track';
+import {NewTrackArgs} from '../../frontend/track';
+import {PrimaryTrackSortKey} from '../../public';
 import {
   CustomSqlDetailsPanelConfig,
   CustomSqlTableDefConfig,
   CustomSqlTableSliceTrack,
 } from '../custom_sql_table_slices';
-import {ScrollJankPluginState} from './index';
 
-import {ScrollJankTracks as DecideTracksResult} from './index';
+import {
+  SCROLL_JANK_GROUP_ID,
+  ScrollJankPluginState,
+  ScrollJankTracks as DecideTracksResult,
+} from './index';
 import {ScrollDetailsPanel} from './scroll_details_panel';
 
-export {Data} from '../chrome_slices';
+export const CHROME_TOPLEVEL_SCROLLS_KIND =
+    'org.chromium.TopLevelScrolls.scrolls';
 
 export class TopLevelScrollTrack extends
     CustomSqlTableSliceTrack<NamedSliceTrackTypes> {
-  static readonly kind = 'org.chromium.TopLevelScrolls.scrolls';
-
-  static create(args: NewTrackArgs): Track {
-    return new TopLevelScrollTrack(args);
-  }
+  public static kind = CHROME_TOPLEVEL_SCROLLS_KIND;
 
   getSqlDataSource(): CustomSqlTableDefConfig {
     return {
@@ -63,7 +57,7 @@ export class TopLevelScrollTrack extends
 
     ScrollJankPluginState.getInstance().registerTrack({
       kind: TopLevelScrollTrack.kind,
-      trackId: this.trackId,
+      trackKey: this.trackKey,
       tableName: this.tableName,
       detailsPanelConfig: this.getDetailsPanel(),
     });
@@ -76,22 +70,16 @@ export class TopLevelScrollTrack extends
   }
 }
 
-export async function addTopLevelScrollTrack(engine: Engine):
-    Promise<DecideTracksResult> {
+export async function addTopLevelScrollTrack(): Promise<DecideTracksResult> {
   const result: DecideTracksResult = {
     tracksToAdd: [],
   };
 
-  await engine.query(`SELECT IMPORT('chrome.chrome_scrolls')`);
-
   result.tracksToAdd.push({
-    id: uuidv4(),
-    engineId: engine.id,
-    kind: TopLevelScrollTrack.kind,
+    uri: 'perfetto.ChromeScrollJank#toplevelScrolls',
     trackSortKey: PrimaryTrackSortKey.ASYNC_SLICE_TRACK,
     name: 'Chrome Scrolls',
-    config: {},
-    trackGroup: SCROLLING_TRACK_GROUP,
+    trackGroup: SCROLL_JANK_GROUP_ID,
   });
 
   return result;

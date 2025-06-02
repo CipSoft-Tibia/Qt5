@@ -43,6 +43,8 @@ public class QtJniObjectTestClass
     static char S_CHAR_VAR;
     static String S_STRING_OBJECT_VAR;
 
+    static char[] S_CHAR_ARRAY = A_STRING_OBJECT.toCharArray();
+
     // --------------------------------------------------------------------------------------------
     public static void staticVoidMethod() { return; }
     public static void staticVoidMethodWithArgs(int a, boolean b, char c) { return; }
@@ -151,6 +153,11 @@ public class QtJniObjectTestClass
     { return staticReverseObjectArray(array); }
 
     // --------------------------------------------------------------------------------------------
+    public static String[] staticStringArrayMethod()
+    { String[] array = { "First", "Second", "Third" }; return array; }
+    public String[] stringArrayMethod() { return staticStringArrayMethod(); }
+
+    // --------------------------------------------------------------------------------------------
     public static boolean[] staticBooleanArrayMethod()
     { boolean[] array = { true, true, true }; return array; }
     public boolean[] booleanArrayMethod() { return staticBooleanArrayMethod(); }
@@ -197,6 +204,18 @@ public class QtJniObjectTestClass
     }
     public char[] reverseCharArray(char[] array)
     { return staticReverseCharArray(array); }
+
+    // --------------------------------------------------------------------------------------------
+    public static char[] getStaticCharArray()
+    { return S_CHAR_ARRAY; }
+    public static void mutateStaticCharArray(char [] values)
+    {
+        for (int i = 0; i < values.length; ++i) {
+            S_CHAR_ARRAY[i] = values[i];
+        }
+    }
+    public static void replaceStaticCharArray(char[] array)
+    { S_CHAR_ARRAY = array; }
 
     // --------------------------------------------------------------------------------------------
     public static short[] staticShortArrayMethod() { short[] array = { 3, 2, 1 }; return array; }
@@ -284,6 +303,15 @@ public class QtJniObjectTestClass
     native public int callbackWithBoolean(boolean value);
     native public int callbackWithInt(int value);
     native public int callbackWithDouble(double value);
+    native public int callbackWithFloat(float value);
+    native public static int callbackWithFloatStatic(float value);
+    native public int callbackWithJniArray(double[] value);
+    native public int callbackWithRawArray(Object[] value);
+    native public int callbackWithQList(double[] value);
+    native public int callbackWithStringList(String[] value);
+    native public int callbackWithNull(String str);
+    native public int callbackWithMany(byte b, short s, int i, long l, float f, double d,
+                                       boolean bo, char c, String str);
 
     public int callMeBackWithObject(QtJniObjectTestClass that)
     {
@@ -318,6 +346,42 @@ public class QtJniObjectTestClass
     public int callMeBackWithDouble(double value)
     {
         return callbackWithDouble(value);
+    }
+
+    public int callMeBackWithFloat(float value)
+    {
+        return callbackWithFloat(value);
+    }
+    public int callMeBackWithFloatStatic(float value)
+    {
+        return callbackWithFloatStatic(value);
+    }
+
+    public int callMeBackWithJniArray(double[] value)
+    {
+        return callbackWithJniArray(value);
+    }
+    public int callMeBackWithRawArray(Object[] value)
+    {
+        return callbackWithRawArray(value);
+    }
+    public int callMeBackWithQList(double[] value)
+    {
+        return callbackWithQList(value);
+    }
+    public int callMeBackWithStringList(String[] value)
+    {
+        return callbackWithStringList(value);
+    }
+    public int callMeBackWithNull()
+    {
+        return callbackWithNull(null);
+    }
+    public int callMeBackWithMany()
+    {
+        return callbackWithMany(A_BYTE_VALUE, A_SHORT_VALUE, A_INT_VALUE, A_LONG_VALUE,
+                                A_FLOAT_VALUE, A_DOUBLE_VALUE, A_BOOLEAN_VALUE,
+                                A_CHAR_VALUE, A_STRING_OBJECT);
     }
 
     public Object callMethodThrowsException() throws Exception {

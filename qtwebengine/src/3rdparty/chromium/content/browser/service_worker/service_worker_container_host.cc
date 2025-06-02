@@ -10,6 +10,7 @@
 #include "base/containers/adapters.h"
 #include "base/containers/contains.h"
 #include "base/functional/callback_helpers.h"
+#include "base/functional/overloaded.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/uuid.h"
@@ -26,10 +27,12 @@
 #include "content/public/common/content_client.h"
 #include "content/public/common/origin_util.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
+#include "mojo/public/cpp/bindings/remote_set.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/service_worker/service_worker_scope_match.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_registration_options.mojom.h"
+#include "third_party/blink/public/mojom/service_worker/service_worker_running_status_callback.mojom.h"
 
 namespace content {
 
@@ -108,6 +111,37 @@ class ServiceWorkerContainerHost::PendingUpdateVersion {
   scoped_refptr<ServiceWorkerVersion> version_;
 };
 
+// To realize the running status condition in the ServiceWorker static routing
+// API, the latest ServiceWorker running status is notified to all renderers
+// that execute ServiceWorker subresource loaders and controlled by the
+// ServiceWorker.
+//
+// This is an observer to receive the ServiceWorker running status change,
+// and make the update notified to all the renderers via mojo IPC.
+//
+// See:
+// https://github.com/WICG/service-worker-static-routing-api/blob/main/final-form.md#use-service-worker-iif-running
+class ServiceWorkerContainerHost::ServiceWorkerRunningStatusObserver final
+    : public ServiceWorkerVersion::Observer {
+ public:
+  void OnRunningStateChanged(ServiceWorkerVersion* version) override {
+    Notify(version->running_status());
+  }
+  void Notify(blink::EmbeddedWorkerStatus status) {
+    for (const auto& callback : callbacks_) {
+      callback->OnStatusChanged(status);
+    }
+  }
+  void AddCallback(
+      mojo::PendingRemote<blink::mojom::ServiceWorkerRunningStatusCallback>
+          callback) {
+    callbacks_.Add(std::move(callback));
+  }
+
+ private:
+  mojo::RemoteSet<blink::mojom::ServiceWorkerRunningStatusCallback> callbacks_;
+};
+
 ServiceWorkerContainerHost::ServiceWorkerContainerHost(
     base::WeakPtr<ServiceWorkerContextCore> context)
     : context_(std::move(context)), create_time_(base::TimeTicks::Now()) {
@@ -165,6 +199,11 @@ ServiceWorkerContainerHost::~ServiceWorkerContainerHost() {
   if (controller_) {
     DCHECK(IsContainerForClient());
     controller_->Uncontrol(client_uuid());
+
+    if (running_status_observer_) {
+      controller_->RemoveObserver(running_status_observer_.get());
+      running_status_observer_.reset();
+    }
   }
 
   // Remove |this| as an observer of ServiceWorkerRegistrations.
@@ -319,7 +358,7 @@ void ServiceWorkerContainerHost::GetRegistrations(
   if (!CanServeContainerHostMethods(
           &callback, url_, GURL(),
           ServiceWorkerConsts::kServiceWorkerGetRegistrationsErrorPrefix,
-          absl::nullopt)) {
+          std::nullopt)) {
     return;
   }
 
@@ -329,7 +368,7 @@ void ServiceWorkerContainerHost::GetRegistrations(
     // ReportBadMessage() will kill the renderer process, but Mojo complains if
     // the callback is not run. Just run it with nonsense arguments.
     std::move(callback).Run(blink::mojom::ServiceWorkerErrorType::kUnknown,
-                            std::string(), absl::nullopt);
+                            std::string(), std::nullopt);
     return;
   }
 
@@ -453,13 +492,6 @@ void ServiceWorkerContainerHost::OnExecutionReady() {
   SendSetControllerServiceWorker(false /* notify_controllerchange */);
 
   SetExecutionReady();
-}
-
-void ServiceWorkerContainerHost::GetRunningStatus(
-    GetRunningStatusCallback callback) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  CHECK(controller_);
-  std::move(callback).Run(controller_->running_status());
 }
 
 void ServiceWorkerContainerHost::OnVersionAttributesChanged(
@@ -605,32 +637,12 @@ void ServiceWorkerContainerHost::CountFeature(
   container_->CountFeature(feature);
 }
 
-void ServiceWorkerContainerHost::SendSetControllerServiceWorker(
-    bool notify_controllerchange) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(IsContainerForClient());
+blink::mojom::ControllerServiceWorkerInfoPtr
+ServiceWorkerContainerHost::CreateControllerServiceWorkerInfo() {
+  CHECK(controller());
 
   auto controller_info = blink::mojom::ControllerServiceWorkerInfo::New();
   controller_info->client_id = client_uuid();
-  // Set |fetch_request_window_id| only when |controller_| is available.
-  // Setting |fetch_request_window_id| should not affect correctness, however,
-  // we have the extensions bug, https://crbug.com/963748, which we don't yet
-  // understand.  That is why we don't set |fetch_request_window_id| if there
-  // is no controller, at least, until we can fix the extension bug.
-  if (controller_ && fetch_request_window_id_) {
-    controller_info->fetch_request_window_id =
-        absl::make_optional(fetch_request_window_id_);
-  }
-
-  if (!controller_) {
-    container_->SetController(std::move(controller_info),
-                              notify_controllerchange);
-    return;
-  }
-
-  DCHECK(controller_registration());
-  DCHECK_EQ(controller_registration_->active_version(), controller_.get());
-
   controller_info->mode = GetControllerMode();
   controller_info->fetch_handler_type = controller()->fetch_handler_type();
   controller_info->effective_fetch_handler_type =
@@ -639,6 +651,7 @@ void ServiceWorkerContainerHost::SendSetControllerServiceWorker(
       controller()->fetch_handler_bypass_option();
   controller_info->sha256_script_checksum =
       controller()->sha256_script_checksum();
+
   if (controller()->router_evaluator()) {
     controller_info->router_data = blink::mojom::ServiceWorkerRouterData::New();
     controller_info->router_data->router_rules =
@@ -650,26 +663,65 @@ void ServiceWorkerContainerHost::SendSetControllerServiceWorker(
       controller_info->router_data->remote_cache_storage =
           std::move(remote_cache_storage);
     }
+    if (controller()->router_evaluator()->need_running_status()) {
+      controller_info->router_data->running_status_receiver =
+          GetRunningStatusCallbackReceiver();
+      controller_info->router_data->initial_running_status =
+          controller()->running_status();
+    }
   }
 
-  // Pass an endpoint for the client to talk to this controller.
+  // Note that |controller_info->remote_controller| is null if the controller
+  // has no fetch event handler. In that case the renderer frame won't get the
+  // controller pointer upon the navigation commit, and subresource loading will
+  // not be intercepted. (It might get intercepted later if the controller
+  // changes due to skipWaiting() so SetController is sent.)
   mojo::Remote<blink::mojom::ControllerServiceWorker> remote =
       GetRemoteControllerServiceWorker();
   if (remote.is_bound()) {
     controller_info->remote_controller = remote.Unbind();
   }
 
+  if (fetch_request_window_id()) {
+    controller_info->fetch_request_window_id =
+        std::make_optional(fetch_request_window_id());
+  }
+  // Populate used features for UseCounter purposes.
+  for (const auto feature : controller()->used_features()) {
+    controller_info->used_features.push_back(feature);
+  }
+  return controller_info;
+}
+
+void ServiceWorkerContainerHost::SendSetControllerServiceWorker(
+    bool notify_controllerchange) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(IsContainerForClient());
+
+  if (!controller_) {
+    // Do not set |fetch_request_window_id| when |controller_| is not available.
+    // Setting |fetch_request_window_id| should not affect correctness, however,
+    // we have the extensions bug, https://crbug.com/963748, which we don't yet
+    // understand.  That is why we don't set |fetch_request_window_id| if there
+    // is no controller, at least, until we can fix the extension bug.
+    auto controller_info = blink::mojom::ControllerServiceWorkerInfo::New();
+    controller_info->client_id = client_uuid();
+    container_->SetController(std::move(controller_info),
+                              notify_controllerchange);
+    return;
+  }
+
+  DCHECK(controller_registration());
+  DCHECK_EQ(controller_registration_->active_version(), controller_.get());
+
+  auto controller_info = CreateControllerServiceWorkerInfo();
+
   // Set the info for the JavaScript ServiceWorkerContainer#controller object.
-  base::WeakPtr<ServiceWorkerObjectHost> object_host =
-      GetOrCreateServiceWorkerObjectHost(controller_);
-  if (object_host) {
+  if (base::WeakPtr<ServiceWorkerObjectHost> object_host =
+          GetOrCreateServiceWorkerObjectHost(controller())) {
     controller_info->object_info =
         object_host->CreateCompleteObjectInfoToSend();
   }
-
-  // Populate used features for UseCounter purposes.
-  for (const blink::mojom::WebFeature feature : controller_->used_features())
-    controller_info->used_features.push_back(feature);
 
   container_->SetController(std::move(controller_info),
                             notify_controllerchange);
@@ -805,25 +857,36 @@ void ServiceWorkerContainerHost::RemoveServiceWorkerObjectHost(
 
 bool ServiceWorkerContainerHost::IsContainerForServiceWorker() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return client_info_ == absl::nullopt;
+  return client_info_ == std::nullopt;
 }
 
 bool ServiceWorkerContainerHost::IsContainerForClient() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return client_info_ != absl::nullopt;
+  return client_info_ != std::nullopt;
 }
 
 blink::mojom::ServiceWorkerClientType
 ServiceWorkerContainerHost::GetClientType() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(client_info_);
-  return client_info_->type();
+  return absl::visit(
+      base::Overloaded{
+          [](GlobalRenderFrameHostId render_frame_host_id) {
+            return blink::mojom::ServiceWorkerClientType::kWindow;
+          },
+          [](blink::DedicatedWorkerToken dedicated_worker_token) {
+            return blink::mojom::ServiceWorkerClientType::kDedicatedWorker;
+          },
+          [](blink::SharedWorkerToken shared_worker_token) {
+            return blink::mojom::ServiceWorkerClientType::kSharedWorker;
+          }},
+      *client_info_);
 }
 
 bool ServiceWorkerContainerHost::IsContainerForWindowClient() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return client_info_ &&
-         client_info_->type() == blink::mojom::ServiceWorkerClientType::kWindow;
+         absl::holds_alternative<GlobalRenderFrameHostId>(*client_info_);
 }
 
 bool ServiceWorkerContainerHost::IsContainerForWorkerClient() const {
@@ -832,8 +895,8 @@ bool ServiceWorkerContainerHost::IsContainerForWorkerClient() const {
   if (!client_info_)
     return false;
 
-  return client_info_->type() == ServiceWorkerClientType::kDedicatedWorker ||
-         client_info_->type() == ServiceWorkerClientType::kSharedWorker;
+  return absl::holds_alternative<blink::DedicatedWorkerToken>(*client_info_) ||
+         absl::holds_alternative<blink::SharedWorkerToken>(*client_info_);
 }
 
 ServiceWorkerClientInfo ServiceWorkerContainerHost::GetServiceWorkerClientInfo()
@@ -854,7 +917,7 @@ void ServiceWorkerContainerHost::OnBeginNavigationCommit(
   DCHECK(IsContainerForWindowClient());
 
   ongoing_navigation_frame_tree_node_id_ = RenderFrameHost::kNoFrameTreeNodeId;
-  client_info_->SetRenderFrameHostId(rfh_id);
+  client_info_ = rfh_id;
 
   if (controller_)
     controller_->UpdateForegroundPriority();
@@ -929,7 +992,7 @@ void ServiceWorkerContainerHost::CompleteWebWorkerPreparation(
 
 void ServiceWorkerContainerHost::UpdateUrls(
     const GURL& url,
-    const absl::optional<url::Origin>& top_frame_origin,
+    const std::optional<url::Origin>& top_frame_origin,
     const blink::StorageKey& storage_key) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   GURL previous_url = url_;
@@ -1147,7 +1210,7 @@ GlobalRenderFrameHostId ServiceWorkerContainerHost::GetRenderFrameHostId()
     const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(IsContainerForWindowClient());
-  return client_info_->GetRenderFrameHostId();
+  return absl::get<GlobalRenderFrameHostId>(*client_info_);
 }
 
 int ServiceWorkerContainerHost::GetProcessId() const {
@@ -1406,9 +1469,17 @@ void ServiceWorkerContainerHost::UpdateController(
       // was called.
       version->MoveControlleeToBackForwardCacheMap(client_uuid());
     }
+    if (running_status_observer_) {
+      version->AddObserver(running_status_observer_.get());
+      running_status_observer_->Notify(version->running_status());
+    }
   }
-  if (previous_version)
+  if (previous_version) {
     previous_version->Uncontrol(client_uuid());
+    if (running_status_observer_) {
+      previous_version->RemoveObserver(running_status_observer_.get());
+    }
+  }
 
   // SetController message should be sent only for clients.
   DCHECK(IsContainerForClient());
@@ -1546,7 +1617,7 @@ void ServiceWorkerContainerHost::RegistrationComplete(
   DCHECK(registration);
 
   std::move(callback).Run(
-      blink::mojom::ServiceWorkerErrorType::kNone, absl::nullopt,
+      blink::mojom::ServiceWorkerErrorType::kNone, std::nullopt,
       CreateServiceWorkerRegistrationObjectInfo(
           scoped_refptr<ServiceWorkerRegistration>(registration)));
 }
@@ -1598,7 +1669,7 @@ void ServiceWorkerContainerHost::GetRegistrationComplete(
   }
 
   std::move(callback).Run(blink::mojom::ServiceWorkerErrorType::kNone,
-                          absl::nullopt, std::move(info));
+                          std::nullopt, std::move(info));
 }
 
 void ServiceWorkerContainerHost::GetRegistrationsComplete(
@@ -1621,7 +1692,7 @@ void ServiceWorkerContainerHost::GetRegistrationsComplete(
         std::string(
             ServiceWorkerConsts::kServiceWorkerGetRegistrationsErrorPrefix) +
             std::string(ServiceWorkerConsts::kShutdownErrorMessage),
-        absl::nullopt);
+        std::nullopt);
     return;
   }
 
@@ -1634,7 +1705,7 @@ void ServiceWorkerContainerHost::GetRegistrationsComplete(
         error_type,
         ServiceWorkerConsts::kServiceWorkerGetRegistrationsErrorPrefix +
             error_message,
-        absl::nullopt);
+        std::nullopt);
     return;
   }
 
@@ -1659,7 +1730,7 @@ void ServiceWorkerContainerHost::GetRegistrationsComplete(
       });
 
   std::move(callback).Run(blink::mojom::ServiceWorkerErrorType::kNone,
-                          absl::nullopt, std::move(object_infos));
+                          std::nullopt, std::move(object_infos));
 }
 
 bool ServiceWorkerContainerHost::IsValidGetRegistrationMessage(
@@ -1835,6 +1906,22 @@ ServiceWorkerContainerHost::GetRemoteCacheStorage() {
       storage::mojom::CacheStorageOwner::kCacheAPI,
       remote.InitWithNewPipeAndPassReceiver());
   return remote;
+}
+
+mojo::PendingReceiver<blink::mojom::ServiceWorkerRunningStatusCallback>
+ServiceWorkerContainerHost::GetRunningStatusCallbackReceiver() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK(controller_);
+  if (!running_status_observer_) {
+    running_status_observer_ = absl::make_unique<
+        ServiceWorkerContainerHost::ServiceWorkerRunningStatusObserver>();
+    controller_->AddObserver(running_status_observer_.get());
+  }
+  mojo::PendingRemote<blink::mojom::ServiceWorkerRunningStatusCallback>
+      remote_callback;
+  auto receiver = remote_callback.InitWithNewPipeAndPassReceiver();
+  running_status_observer_->AddCallback(std::move(remote_callback));
+  return receiver;
 }
 
 }  // namespace content

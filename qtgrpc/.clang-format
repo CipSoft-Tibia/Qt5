@@ -87,8 +87,12 @@ IncludeBlocks: Preserve
 # Otherwise, try to fit them on the next line or put each one on its own line.
 PackConstructorInitializers: BinPack
 
-# Do not align multiline define '\' char
-AlignEscapedNewlines: DontAlign
+# When escaping newlines in a macro attach the '\' as far left as possible, e.g.
+##define a     \
+#   something; \
+#   other;     \
+#   thelastlineislong;
+AlignEscapedNewlines: Left
 
 # Try to fit as much as possible in the assignment line, break only if necessary
 PenaltyBreakAssignment: 1000
@@ -101,6 +105,7 @@ PenaltyReturnTypeOnItsOwnLine: 100
 # The coding style does not specify the following, but this is what gives
 # results closest to the existing code.
 AlignAfterOpenBracket: Align
+AlignArrayOfStructures: Left
 
 AlwaysBreakTemplateDeclarations: Yes
 

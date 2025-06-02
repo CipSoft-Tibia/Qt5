@@ -35,6 +35,7 @@
 #include <memory>
 #include <utility>
 
+#include "base/memory/raw_ptr.h"
 #include "base/synchronization/lock.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/platform/modules/mediastream/web_media_stream_source.h"
@@ -120,7 +121,8 @@ class PLATFORM_EXPORT MediaStreamSource final
 
   void SetAudioProcessingProperties(EchoCancellationMode echo_cancellation_mode,
                                     bool auto_gain_control,
-                                    bool noise_supression);
+                                    bool noise_supression,
+                                    bool voice_isolation);
 
   void GetSettings(MediaStreamTrackPlatform::Settings&);
 
@@ -135,6 +137,7 @@ class PLATFORM_EXPORT MediaStreamSource final
     Vector<String> echo_cancellation_type;
     Vector<bool> auto_gain_control;
     Vector<bool> noise_suppression;
+    Vector<bool> voice_isolation;
     Vector<int32_t> sample_size;
     Vector<int32_t> channel_count;
     Vector<int32_t> sample_rate;
@@ -144,6 +147,10 @@ class PLATFORM_EXPORT MediaStreamSource final
         MediaStreamTrackPlatform::FacingMode::kNone;
     String device_id;
     String group_id;
+
+    // Indicates if the device is available for use. If not, capabilities are
+    // not exposed.
+    bool is_available = true;
   };
 
   const Capabilities& GetCapabilities() { return capabilities_; }
@@ -179,7 +186,7 @@ class PLATFORM_EXPORT MediaStreamSource final
     void ConsumeAudio(AudioBus* bus, int number_of_frames);
 
     // m_consumer is not owned by this class.
-    WebAudioDestinationConsumer* consumer_;
+    raw_ptr<WebAudioDestinationConsumer, DanglingUntriaged> consumer_;
     // bus_vector_ must only be used in ConsumeAudio. The only reason it's a
     // member variable is to not have to reallocate it for each call.
     Vector<const float*> bus_vector_;
@@ -207,6 +214,7 @@ class PLATFORM_EXPORT MediaStreamSource final
   absl::optional<EchoCancellationMode> echo_cancellation_mode_;
   absl::optional<bool> auto_gain_control_;
   absl::optional<bool> noise_supression_;
+  absl::optional<bool> voice_isolation_;
 };
 
 typedef HeapVector<Member<MediaStreamSource>> MediaStreamSourceVector;

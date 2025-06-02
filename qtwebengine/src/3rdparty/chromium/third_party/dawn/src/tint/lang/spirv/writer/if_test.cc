@@ -1,18 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// GEN_BUILD:CONDITION(tint_build_ir)
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/spirv/writer/common/helper_test.h"
 
@@ -230,6 +241,34 @@ TEST_F(SpirvWriterTest, If_Phi_SingleValue_FalseReturn) {
 )");
 }
 
+TEST_F(SpirvWriterTest, If_Phi_SingleValue_ImplicitFalse) {
+    auto* func = b.Function("foo", ty.i32());
+    b.Append(func->Block(), [&] {
+        auto* i = b.If(true);
+        i->SetResults(b.InstructionResult(ty.i32()));
+        b.Append(i->True(), [&] {  //
+            b.ExitIf(i, 10_i);
+        });
+        b.Return(func, i);
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST("%12 = OpUndef %int");
+    EXPECT_INST(R"(
+          %4 = OpLabel
+               OpSelectionMerge %5 None
+               OpBranchConditional %true %6 %7
+          %6 = OpLabel
+               OpBranch %5
+          %7 = OpLabel
+               OpBranch %5
+          %5 = OpLabel
+         %10 = OpPhi %int %int_10 %6 %12 %7
+               OpReturnValue %10
+               OpFunctionEnd
+)");
+}
+
 TEST_F(SpirvWriterTest, If_Phi_MultipleValue_0) {
     auto* func = b.Function("foo", ty.i32());
     b.Append(func->Block(), [&] {
@@ -287,6 +326,50 @@ TEST_F(SpirvWriterTest, If_Phi_MultipleValue_1) {
          %13 = OpPhi %bool %true %6 %false %7
                OpReturnValue %13
                OpFunctionEnd
+)");
+}
+
+TEST_F(SpirvWriterTest, If_Phi_Nested) {
+    auto* func = b.Function("foo", ty.i32());
+    b.Append(func->Block(), [&] {
+        auto* outer = b.If(true);
+        outer->SetResults(b.InstructionResult(ty.i32()));
+        b.Append(outer->True(), [&] {  //
+            auto* inner = b.If(true);
+            inner->SetResults(b.InstructionResult(ty.i32()));
+            b.Append(inner->True(), [&] {  //
+                b.ExitIf(inner, 10_i);
+            });
+            b.Append(inner->False(), [&] {  //
+                b.ExitIf(inner, 20_i);
+            });
+            b.ExitIf(outer, inner->Result(0));
+        });
+        b.Append(outer->False(), [&] {  //
+            b.ExitIf(outer, 30_i);
+        });
+        b.Return(func, outer);
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST(R"(
+               OpSelectionMerge %5 None
+               OpBranchConditional %true %6 %7
+          %6 = OpLabel
+               OpSelectionMerge %10 None
+               OpBranchConditional %true %11 %12
+         %11 = OpLabel
+               OpBranch %10
+         %12 = OpLabel
+               OpBranch %10
+         %10 = OpLabel
+         %13 = OpPhi %int %int_10 %11 %int_20 %12
+               OpBranch %5
+          %7 = OpLabel
+               OpBranch %5
+          %5 = OpLabel
+         %16 = OpPhi %int %int_30 %7 %13 %10
+               OpReturnValue %16
 )");
 }
 

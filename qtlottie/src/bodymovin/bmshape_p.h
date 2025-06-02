@@ -57,6 +57,7 @@ public:
     virtual void applyTrim(const BMTrimPath& trimmer);
 
     int direction() const;
+    bool hasReversedDirection() const { return m_direction == 3; }
 
 protected:
     QPainterPath m_path;

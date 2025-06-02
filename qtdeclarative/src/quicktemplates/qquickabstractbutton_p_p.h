@@ -28,7 +28,7 @@ QT_BEGIN_NAMESPACE
 class QQuickAction;
 class QQuickButtonGroup;
 
-class Q_QUICKTEMPLATES2_PRIVATE_EXPORT QQuickAbstractButtonPrivate : public QQuickControlPrivate
+class Q_QUICKTEMPLATES2_EXPORT QQuickAbstractButtonPrivate : public QQuickControlPrivate
 {
 public:
     Q_DECLARE_PUBLIC(QQuickAbstractButton)
@@ -103,6 +103,7 @@ public:
     int repeatTimer = 0;
     int repeatDelay = AUTO_REPEAT_DELAY;
     int repeatInterval = AUTO_REPEAT_INTERVAL;
+    int animateTimer = 0;
 #if QT_CONFIG(shortcut)
     int shortcutId = 0;
     QKeySequence shortcut;

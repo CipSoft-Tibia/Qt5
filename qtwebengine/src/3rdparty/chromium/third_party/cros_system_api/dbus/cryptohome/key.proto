@@ -17,11 +17,11 @@ option go_package = "chromiumos/system_api/cryptohome_proto";
 // Software-enforced privileges.
 message KeyPrivileges {
   // Allows new keys to be added.
-  optional bool add = 2 [default=true];
+  optional bool add = 2 [default = true];
   // Allows other existing keys to be removed.
-  optional bool remove = 3 [default=true];
+  optional bool remove = 3 [default = true];
   // Allows the key to update itself.
-  optional bool update = 4 [default=true];
+  optional bool update = 4 [default = true];
 
   // Reserved fields as privileges are deprecated.
   reserved 1, 5;

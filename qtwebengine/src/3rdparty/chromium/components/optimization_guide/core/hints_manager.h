@@ -120,7 +120,8 @@ class HintsManager : public OptimizationHintsComponentObserver,
   // be computed on |url_keyed_hint| or |host_keyed_hint| if possible.
   // |skip_cache| will be used to determine if the decision is unknown.
   OptimizationTypeDecision CanApplyOptimization(
-      const GURL& navigation_url,
+      bool is_on_demand_request,
+      const GURL& url,
       proto::OptimizationType optimization_type,
       const proto::Hint* url_keyed_hint,
       const proto::Hint* host_keyed_hint,
@@ -152,7 +153,8 @@ class HintsManager : public OptimizationHintsComponentObserver,
       const std::vector<GURL>& urls,
       const base::flat_set<proto::OptimizationType>& optimization_types,
       proto::RequestContext request_context,
-      OnDemandOptimizationGuideDecisionRepeatingCallback callback);
+      OnDemandOptimizationGuideDecisionRepeatingCallback callback,
+      proto::RequestContextMetadata* request_context_metadata);
 
   // Clears all fetched hints from |hint_cache_|.
   void ClearFetchedHints();
@@ -218,6 +220,18 @@ class HintsManager : public OptimizationHintsComponentObserver,
   friend class HintsManagerTest;
 
   FRIEND_TEST_ALL_PREFIXES(HintsManagerFetchingTest, BatchUpdateFetcherCleanup);
+  FRIEND_TEST_ALL_PREFIXES(
+      HintsManagerFetchingTest,
+      PageInsightsHubContextRequestContextMetadataPihSentGetHintsRequest);
+  FRIEND_TEST_ALL_PREFIXES(
+      HintsManagerFetchingTest,
+      PageInsightsHubContextNotSentRequestContextMetadataPihSentGetHintsRequest);
+  FRIEND_TEST_ALL_PREFIXES(
+      HintsManagerFetchingTest,
+      PageInsightsHubContextRequestContextMetadataNotPihSentGetHintsRequest);
+  FRIEND_TEST_ALL_PREFIXES(
+      HintsManagerFetchingTest,
+      PageInsightsHubContextRequestContextMetadataPihNotSentGetHintsRequest);
 
   // Processes the optimization filters contained in the hints component.
   void ProcessOptimizationFilters(
@@ -317,6 +331,7 @@ class HintsManager : public OptimizationHintsComponentObserver,
           optimization_types,
       optimization_guide::proto::RequestContext request_context,
       OnDemandOptimizationGuideDecisionRepeatingCallback callback,
+      proto::RequestContextMetadata* request_context_metadata,
       const std::string& access_token);
 
   // Returns decisions for |url| and |optimization_types| based on what's cached
@@ -489,9 +504,6 @@ class HintsManager : public OptimizationHintsComponentObserver,
   // The current applcation locale of Chrome.
   const std::string application_locale_;
 
-  // The set of OAuth scopes to use for personalized metadata.
-  std::set<std::string> oauth_scopes_;
-
   // A reference to the PrefService for this profile. Not owned.
   raw_ptr<PrefService> pref_service_ = nullptr;
 
@@ -521,11 +533,10 @@ class HintsManager : public OptimizationHintsComponentObserver,
   std::unique_ptr<HintsFetcherFactory> hints_fetcher_factory_;
 
   // The top host provider that can be queried. Not owned.
-  raw_ptr<TopHostProvider, DanglingUntriaged> top_host_provider_ = nullptr;
+  raw_ptr<TopHostProvider> top_host_provider_ = nullptr;
 
   // The tab URL provider that can be queried. Not owned.
-  raw_ptr<TabUrlProvider, AcrossTasksDanglingUntriaged> tab_url_provider_ =
-      nullptr;
+  raw_ptr<TabUrlProvider> tab_url_provider_ = nullptr;
 
   // The timer used to schedule fetching hints from the remote Optimization
   // Guide Service.

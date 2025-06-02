@@ -12,7 +12,7 @@
 #include "base/test/test_timeouts.h"
 #import "content/app_shim_remote_cocoa/web_contents_occlusion_checker_mac.h"
 #include "content/browser/web_contents/web_contents_impl.h"
-#include "content/public/common/content_features.h"
+#include "content/common/features.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/content_browser_test.h"
 
@@ -313,6 +313,7 @@ class WebContentsNSViewHostStub
   bool DragPromisedFileTo(const ::base::FilePath& file_path,
                           const ::content::DropData& drop_data,
                           const ::GURL& download_url,
+                          const ::url::Origin& source_origin,
                           ::base::FilePath* out_file_path) override {
     return false;
   }
@@ -320,6 +321,7 @@ class WebContentsNSViewHostStub
   void DragPromisedFileTo(const ::base::FilePath& file_path,
                           const ::content::DropData& drop_data,
                           const ::GURL& download_url,
+                          const ::url::Origin& source_origin,
                           DragPromisedFileToCallback callback) override {}
 
   void EndDrag(uint32_t drag_operation,
@@ -482,7 +484,7 @@ class WindowOcclusionBrowserTestMac
       watcher = [[WebContentVisibilityUpdateCounter alloc] init];
     }
 
-    [window orderWindow:NSWindowAbove relativeTo:0];
+    [window orderFront:nil];
     ASSERT_TRUE([window isVisible]);
 
     if (kEnhancedWindowOcclusionDetection.Get()) {
@@ -491,7 +493,7 @@ class WindowOcclusionBrowserTestMac
   }
 
   void OrderWindowOut(NSWindow* window) {
-    [window orderWindow:NSWindowOut relativeTo:0];
+    [window orderOut:nil];
     ASSERT_FALSE(window.visible);
 
     WaitForOcclusionUpdate();

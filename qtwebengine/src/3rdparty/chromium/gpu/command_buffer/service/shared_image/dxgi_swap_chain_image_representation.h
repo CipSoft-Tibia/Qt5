@@ -24,7 +24,7 @@ class DXGISwapChainOverlayImageRepresentation
   ~DXGISwapChainOverlayImageRepresentation() override;
 
  protected:
-  absl::optional<gl::DCLayerOverlayImage> GetDCLayerOverlayImage() override;
+  std::optional<gl::DCLayerOverlayImage> GetDCLayerOverlayImage() override;
 
  private:
   bool BeginReadAccess(gfx::GpuFenceHandle& acquire_fence) override;
@@ -108,7 +108,7 @@ class DawnRepresentationDXGISwapChain : public DawnImageRepresentation {
   const wgpu::Device device_;
   wgpu::Texture texture_;
 };
-#endif  // BUIDFLAG(USE_DAWN)
+#endif  // BUILDFLAG(USE_DAWN)
 
 }  // namespace gpu
 

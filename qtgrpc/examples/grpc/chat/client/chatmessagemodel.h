@@ -5,25 +5,32 @@
 #ifndef CHATMESSAGEMODEL_H
 #define CHATMESSAGEMODEL_H
 
-#include <QAbstractListModel>
-#include <memory>
+#include "chatmessages.qpb.h"
 
-#include "simplechat.qpb.h"
+#include <QtQmlIntegration/qqmlintegration.h>
+
+#include <QtCore/QAbstractListModel>
+#include <QtCore/QList>
+#include <QtCore/QStringView>
 
 class ChatMessageModel : public QAbstractListModel
 {
     Q_OBJECT
+    QML_INTERFACE
+
 public:
     explicit ChatMessageModel(QObject *parent = nullptr);
+    ~ChatMessageModel() override;
 
-    int rowCount(const QModelIndex &parent) const override;
-    QHash<int, QByteArray> roleNames() const override;
-    QVariant data(const QModelIndex &index, int role) const override;
+    Q_INVOKABLE int rowCount(const QModelIndex &parent = QModelIndex()) const override;
 
-    void append(const qtgrpc::examples::chat::ChatMessageRepeated &messages);
+    Q_INVOKABLE QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
+
+    void appendMessage(const chat::ChatMessage &message);
 
 private:
-    qtgrpc::examples::chat::ChatMessageRepeated m_container;
+    QList<chat::ChatMessage> m_chatMessages;
+    Q_DISABLE_COPY_MOVE(ChatMessageModel)
 };
 
 #endif // CHATMESSAGEMODEL_H

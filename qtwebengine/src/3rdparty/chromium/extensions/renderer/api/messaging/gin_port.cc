@@ -5,7 +5,7 @@
 #include "extensions/renderer/api/messaging/gin_port.h"
 
 #include <cstring>
-#include <vector>
+#include <string_view>
 
 #include "base/functional/bind.h"
 #include "extensions/common/api/messaging/message.h"
@@ -84,7 +84,7 @@ void GinPort::DispatchOnMessage(v8::Local<v8::Context> context,
   }
 
   v8::Local<v8::Object> self = GetWrapper(isolate).ToLocalChecked();
-  std::vector<v8::Local<v8::Value>> args = {parsed_message, self};
+  v8::LocalVector<v8::Value> args(isolate, {parsed_message, self});
   DispatchEvent(context, &args, kOnMessageEvent);
 }
 
@@ -101,7 +101,7 @@ void GinPort::DispatchOnDisconnect(v8::Local<v8::Context> context) {
   v8::Context::Scope context_scope(context);
 
   v8::Local<v8::Object> self = GetWrapper(isolate).ToLocalChecked();
-  std::vector<v8::Local<v8::Value>> args = {self};
+  v8::LocalVector<v8::Value> args(isolate, {self});
   DispatchEvent(context, &args, kOnDisconnectEvent);
 
   InvalidateEvents(context);
@@ -201,7 +201,7 @@ v8::Local<v8::Value> GinPort::GetSender(gin::Arguments* arguments) {
 }
 
 v8::Local<v8::Object> GinPort::GetEvent(v8::Local<v8::Context> context,
-                                        base::StringPiece event_name) {
+                                        std::string_view event_name) {
   DCHECK(event_name == kOnMessageEvent || event_name == kOnDisconnectEvent);
   v8::Isolate* isolate = context->GetIsolate();
 
@@ -236,8 +236,8 @@ v8::Local<v8::Object> GinPort::GetEvent(v8::Local<v8::Context> context,
 }
 
 void GinPort::DispatchEvent(v8::Local<v8::Context> context,
-                            std::vector<v8::Local<v8::Value>>* args,
-                            base::StringPiece event_name) {
+                            v8::LocalVector<v8::Value>* args,
+                            std::string_view event_name) {
   v8::Isolate* isolate = context->GetIsolate();
   v8::Local<v8::Value> on_message = GetEvent(context, event_name);
   EventEmitter* emitter = nullptr;
@@ -270,7 +270,7 @@ void GinPort::InvalidateEvents(v8::Local<v8::Context> context) {
                                         GetEvent(context, kOnDisconnectEvent));
 }
 
-void GinPort::ThrowError(v8::Isolate* isolate, base::StringPiece error) {
+void GinPort::ThrowError(v8::Isolate* isolate, std::string_view error) {
   isolate->ThrowException(
       v8::Exception::Error(gin::StringToV8(isolate, error)));
 }

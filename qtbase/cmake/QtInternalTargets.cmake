@@ -77,7 +77,7 @@ function(qt_internal_set_warnings_are_errors_flags target target_scope)
     # Apparently qmake only adds -Werror to CXX and OBJCXX files, not C files. We have to do the
     # same otherwise MinGW builds break when building 3rdparty\md4c\md4c.c (and probably on other
     # platforms too).
-    set(cxx_only_genex "$<OR:$<COMPILE_LANGUAGE:CXX>,$<COMPILE_LANGUAGE:OBJCXX>>")
+    set(cxx_only_genex "$<COMPILE_LANGUAGE:CXX,OBJCXX>")
     set(final_condition_genex "$<AND:${warnings_are_errors_enabled_genex},${cxx_only_genex}>")
     set(flags_generator_expression "$<${final_condition_genex}:${flags}>")
 
@@ -133,29 +133,25 @@ function(qt_internal_add_global_definition definition)
     endif()
 endfunction()
 
-add_library(PlatformCommonInternal INTERFACE)
-qt_internal_add_target_aliases(PlatformCommonInternal)
+qt_internal_add_platform_internal_target(PlatformCommonInternal)
 target_link_libraries(PlatformCommonInternal INTERFACE Platform)
 
-add_library(PlatformModuleInternal INTERFACE)
-qt_internal_add_target_aliases(PlatformModuleInternal)
+qt_internal_add_platform_internal_target(PlatformModuleInternal)
 target_link_libraries(PlatformModuleInternal INTERFACE PlatformCommonInternal)
 
-add_library(PlatformPluginInternal INTERFACE)
-qt_internal_add_target_aliases(PlatformPluginInternal)
+qt_internal_add_platform_internal_target(PlatformPluginInternal)
 target_link_libraries(PlatformPluginInternal INTERFACE PlatformCommonInternal)
 
-add_library(PlatformAppInternal INTERFACE)
-qt_internal_add_target_aliases(PlatformAppInternal)
+qt_internal_add_platform_internal_target(PlatformAppInternal)
 target_link_libraries(PlatformAppInternal INTERFACE PlatformCommonInternal)
 
-add_library(PlatformToolInternal INTERFACE)
-qt_internal_add_target_aliases(PlatformToolInternal)
+qt_internal_add_platform_internal_target(PlatformToolInternal)
 target_link_libraries(PlatformToolInternal INTERFACE PlatformAppInternal)
 
 qt_internal_add_global_definition(QT_NO_JAVA_STYLE_ITERATORS)
-qt_internal_add_global_definition(QT_NO_AS_CONST)
+qt_internal_add_global_definition(QT_NO_QASCONST)
 qt_internal_add_global_definition(QT_NO_QEXCHANGE)
+qt_internal_add_global_definition(QT_NO_QSNPRINTF)
 qt_internal_add_global_definition(QT_NO_NARROWING_CONVERSIONS_IN_CONNECT)
 qt_internal_add_global_definition(QT_EXPLICIT_QFILE_CONSTRUCTION_FROM_PATH)
 qt_internal_add_global_definition(QT_USE_QSTRINGBUILDER SCOPE PLUGIN TOOL MODULE)
@@ -266,6 +262,13 @@ endif()
 # Taken from mkspecs/common/msvc-version.conf and mkspecs/common/msvc-desktop.conf
 if (MSVC AND NOT CLANG)
     if (MSVC_VERSION GREATER_EQUAL 1799)
+        set_target_properties(PlatformCommonInternal PROPERTIES _qt_cpp_compiler_frontend_variant
+            "${CMAKE_CXX_COMPILER_FRONTEND_VARIANT}")
+
+        # Protect against adding these flags when building qtbase with MSVC, and qtwebengine using
+        # clang-cl.
+        set(is_not_clang_cl_start "$<$<NOT:$<STREQUAL:$<CXX_COMPILER_ID>,Clang>>:")
+        set(is_not_clang_cl_end ">")
         target_compile_options(PlatformCommonInternal INTERFACE
             -FS
             -Zc:rvalueCast
@@ -275,18 +278,18 @@ if (MSVC AND NOT CLANG)
     if (MSVC_VERSION GREATER_EQUAL 1899)
         target_compile_options(PlatformCommonInternal INTERFACE
             -Zc:strictStrings
-            -Zc:throwingNew
+            "${is_not_clang_cl_start}-Zc:throwingNew${is_not_clang_cl_end}"
         )
     endif()
     if (MSVC_VERSION GREATER_EQUAL 1909) # MSVC 2017
         target_compile_options(PlatformCommonInternal INTERFACE
-            -Zc:referenceBinding
+            "${is_not_clang_cl_start}-Zc:referenceBinding${is_not_clang_cl_end}"
             -Zc:ternary
         )
     endif()
     if (MSVC_VERSION GREATER_EQUAL 1919) # MSVC 2019
         target_compile_options(PlatformCommonInternal INTERFACE
-            -Zc:externConstexpr
+            "${is_not_clang_cl_start}-Zc:externConstexpr${is_not_clang_cl_end}"
             #-Zc:lambda # Buggy. TODO: Enable again when stable enough.
             #-Zc:preprocessor # breaks build due to bug in default Windows SDK 10.0.19041
         )
@@ -315,17 +318,49 @@ if (GCC AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "9.2")
     target_compile_options(PlatformCommonInternal INTERFACE $<$<COMPILE_LANGUAGE:CXX>:-Wsuggest-override>)
 endif()
 
-if(QT_FEATURE_intelcet)
-    if(MSVC)
-        qt_internal_platform_link_options(PlatformCommonInternal INTERFACE
-            -CETCOMPAT
-        )
+# Hardening options
+
+qt_internal_apply_intel_cet_harderning(PlatformCommonInternal)
+
+if(QT_FEATURE_glibc_fortify_source)
+    set(is_optimized_build "$<OR:$<NOT:$<CONFIG:Debug>>,$<BOOL:${QT_FEATURE_optimize_debug}>>")
+    # Some compilers may define _FORTIFY_SOURCE by default when optimizing, remove it
+    # before defining our own
+    target_compile_options(PlatformCommonInternal BEFORE INTERFACE "$<${is_optimized_build}:-U_FORTIFY_SOURCE>")
+    if(TEST_glibc_234)
+        target_compile_options(PlatformCommonInternal INTERFACE "$<${is_optimized_build}:-D_FORTIFY_SOURCE=3>")
     else()
-        target_compile_options(PlatformCommonInternal INTERFACE
-            -fcf-protection=full
-        )
+        target_compile_options(PlatformCommonInternal INTERFACE "$<${is_optimized_build}:-D_FORTIFY_SOURCE=2>")
     endif()
 endif()
+
+if(QT_FEATURE_trivial_auto_var_init_pattern)
+    target_compile_options(PlatformCommonInternal INTERFACE -ftrivial-auto-var-init=pattern)
+endif()
+
+if(QT_FEATURE_stack_protector)
+    target_compile_options(PlatformCommonInternal INTERFACE -fstack-protector-strong)
+    if(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+        target_link_libraries(PlatformCommonInternal INTERFACE ssp)
+    endif()
+endif()
+
+if(QT_FEATURE_stack_clash_protection)
+    target_compile_options(PlatformCommonInternal INTERFACE -fstack-clash-protection)
+endif()
+
+if(QT_FEATURE_libstdcpp_assertions)
+    target_compile_definitions(PlatformCommonInternal INTERFACE _GLIBCXX_ASSERTIONS)
+endif()
+
+if(QT_FEATURE_libcpp_hardening)
+    target_compile_definitions(PlatformCommonInternal INTERFACE -D_LIBCPP_HARDENING_MODE=$<IF:$<CONFIG:Debug>,_LIBCPP_HARDENING_MODE_EXTENSIVE,_LIBCPP_HARDENING_MODE_FAST>)
+endif()
+
+if(QT_FEATURE_relro_now_linker)
+    qt_internal_platform_link_options(PlatformCommonInternal INTERFACE "-Wl,-z,relro,-z,now")
+endif()
+
 
 if(QT_FEATURE_force_asserts)
     target_compile_definitions(PlatformCommonInternal INTERFACE QT_FORCE_ASSERTS)

@@ -35,12 +35,14 @@
 #include "ui/gfx/selection_model.h"
 #include "ui/gfx/text_constants.h"
 #include "ui/touch_selection/touch_selection_metrics.h"
+#include "ui/views/buildflags.h"
 #include "ui/views/context_menu_controller.h"
 #include "ui/views/controls/textfield/textfield_model.h"
 #include "ui/views/drag_controller.h"
 #include "ui/views/metadata/view_factory.h"
 #include "ui/views/selection_controller.h"
 #include "ui/views/selection_controller_delegate.h"
+#include "ui/views/touchui/touch_selection_controller.h"
 #include "ui/views/view.h"
 #include "ui/views/word_lookup_client.h"
 
@@ -73,9 +75,9 @@ class VIEWS_EXPORT Textfield : public View,
                                public SelectionControllerDelegate,
                                public ui::TouchEditable,
                                public ui::TextInputClient {
- public:
-  METADATA_HEADER(Textfield);
+  METADATA_HEADER(Textfield, View)
 
+ public:
   enum MenuCommands {
     kUndo = kLastTouchEditableCommandId + 1,
     kDelete,
@@ -229,7 +231,7 @@ class VIEWS_EXPORT Textfield : public View,
   void SetMinimumWidthInChars(int minimum_width);
 
   // Gets/Sets the text to display when empty.
-  std::u16string GetPlaceholderText() const;
+  const std::u16string& GetPlaceholderText() const;
   void SetPlaceholderText(const std::u16string& text);
 
   void set_placeholder_text_color(SkColor color) {
@@ -381,9 +383,9 @@ class VIEWS_EXPORT Textfield : public View,
   // WordLookupClient overrides:
   bool GetWordLookupDataAtPoint(const gfx::Point& point,
                                 gfx::DecoratedText* decorated_word,
-                                gfx::Point* baseline_point) override;
+                                gfx::Rect* rect) override;
   bool GetWordLookupDataFromSelection(gfx::DecoratedText* decorated_text,
-                                      gfx::Point* baseline_point) override;
+                                      gfx::Rect* rect) override;
 
   // SelectionControllerDelegate overrides:
   bool HasTextBeingDragged() const override;
@@ -687,6 +689,12 @@ class VIEWS_EXPORT Textfield : public View,
 
   void StopSelectionDragging();
 
+#if BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
+  // Calculate widths for each grapheme and word starts and ends. Used for
+  // accessibility. Currently only on Windows when UIA is enabled.
+  void RefreshAccessibleTextOffsets();
+#endif  // BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
+
   // The text model.
   std::unique_ptr<TextfieldModel> model_;
 
@@ -716,6 +724,7 @@ class VIEWS_EXPORT Textfield : public View,
   int minimum_width_in_chars_ = -1;
 
   // Colors which override default system colors.
+  // TODO(tluk): These should be updated to be ColorIds instead of SkColors.
   absl::optional<SkColor> text_color_;
   absl::optional<SkColor> background_color_;
   absl::optional<SkColor> selection_text_color_;
@@ -768,8 +777,7 @@ class VIEWS_EXPORT Textfield : public View,
   // Is the user potentially dragging and dropping from this view?
   bool initiating_drag_ = false;
 
-  std::unique_ptr<ui::TouchEditingControllerDeprecated>
-      touch_selection_controller_;
+  std::unique_ptr<TouchSelectionController> touch_selection_controller_;
 
   SelectionController selection_controller_;
 
@@ -838,13 +846,19 @@ class VIEWS_EXPORT Textfield : public View,
   // Whether the text should be used to improve typing suggestions.
   absl::optional<bool> should_do_learning_;
 
+#if BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
+  // The string used to compute the text offsets for accessibility. This is used
+  // to determine if the offsets need to be recomputed.
+  std::u16string ax_value_used_to_compute_offsets_;
+#endif  // BUILDFLAG(SUPPORTS_AX_TEXT_OFFSETS)
+
   // Context menu related members.
   std::unique_ptr<ui::SimpleMenuModel> context_menu_contents_;
   std::unique_ptr<ViewsTextServicesContextMenu> text_services_context_menu_;
   std::unique_ptr<views::MenuRunner> context_menu_runner_;
 
   // View containing the text cursor.
-  raw_ptr<View, DanglingUntriaged> cursor_view_ = nullptr;
+  raw_ptr<View> cursor_view_ = nullptr;
 
 #if BUILDFLAG(IS_MAC)
   // Used to track active password input sessions.

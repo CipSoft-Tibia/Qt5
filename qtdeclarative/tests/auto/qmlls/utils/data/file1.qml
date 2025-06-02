@@ -52,4 +52,14 @@ Item {
         let x = c.children;
         return x;
     }
+
+    function helloLambda(c: C) {
+        let myLambda = function (x, y, z) {
+            let xyz = c.children;
+        };
+    }
+
+    // Hello World!
+    Item {}
+    // Goodbye World!
 }

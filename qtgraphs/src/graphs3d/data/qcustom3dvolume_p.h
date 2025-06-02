@@ -46,8 +46,8 @@ class QCustom3DVolumePrivate : public QCustom3DItemPrivate
 
 public:
     QCustom3DVolumePrivate();
-    QCustom3DVolumePrivate(const QVector3D &position,
-                           const QVector3D &scaling,
+    QCustom3DVolumePrivate(QVector3D position,
+                           QVector3D scaling,
                            const QQuaternion &rotation,
                            int textureWidth,
                            int textureHeight,

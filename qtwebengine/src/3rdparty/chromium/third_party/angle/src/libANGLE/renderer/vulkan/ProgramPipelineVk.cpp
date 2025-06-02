@@ -53,15 +53,16 @@ angle::Result ProgramPipelineVk::link(const gl::Context *glContext,
     {
         for (const gl::ShaderType shaderType : glExecutable.getLinkedShaderStages())
         {
-            const gl::Program *glProgram = mState.getShaderProgram(shaderType);
-            if (glProgram && gl::ShaderTypeSupportsTransformFeedback(shaderType))
+            const gl::SharedProgramExecutable &glShaderExecutable =
+                mState.getShaderProgramExecutable(shaderType);
+            if (glShaderExecutable && gl::ShaderTypeSupportsTransformFeedback(shaderType))
             {
                 const bool isTransformFeedbackStage =
                     shaderType == linkedTransformFeedbackStage &&
-                    !glProgram->getState().getLinkedTransformFeedbackVaryings().empty();
+                    !glShaderExecutable->getLinkedTransformFeedbackVaryings().empty();
 
                 SpvAssignTransformFeedbackLocations(
-                    shaderType, glProgram->getExecutable(), isTransformFeedbackStage,
+                    shaderType, *glShaderExecutable.get(), isTransformFeedbackStage,
                     &spvProgramInterfaceInfo, &executableVk->mVariableInfoMap);
             }
         }
@@ -74,9 +75,9 @@ angle::Result ProgramPipelineVk::link(const gl::Context *glContext,
 
     for (const gl::ShaderType shaderType : glExecutable.getLinkedShaderStages())
     {
-        const gl::Program *program               = mState.getShaderProgram(shaderType);
-        ProgramVk *programVk                     = vk::GetImpl(program);
-        ProgramExecutableVk *programExecutableVk = programVk->getExecutable();
+        const gl::SharedProgramExecutable &glShaderExecutable =
+            mState.getShaderProgramExecutable(shaderType);
+        ProgramExecutableVk *programExecutableVk = vk::GetImpl(glShaderExecutable.get());
         executableVk->mDefaultUniformBlocks[shaderType] =
             programExecutableVk->getSharedDefaultUniformBlock(shaderType);
 
@@ -100,23 +101,20 @@ angle::Result ProgramPipelineVk::link(const gl::Context *glContext,
                                                       &contextVk->getDescriptorSetLayoutCache(),
                                                       &contextVk->getMetaDescriptorPools()));
 
-    vk::RenderPass temporaryCompatibleRenderPass;
-    angle::Result result = executableVk->warmUpPipelineCache(
-        contextVk, contextVk->pipelineRobustness(), contextVk->pipelineProtectedAccess(),
-        &temporaryCompatibleRenderPass);
+    angle::Result result = angle::Result::Continue;
 
-    temporaryCompatibleRenderPass.destroy(contextVk->getDevice());
+    if (contextVk->getFeatures().warmUpPipelineCacheAtLink.enabled)
+    {
+        vk::RenderPass temporaryCompatibleRenderPass;
+        result = executableVk->warmUpPipelineCache(contextVk, contextVk->pipelineRobustness(),
+                                                   contextVk->pipelineProtectedAccess(),
+                                                   &temporaryCompatibleRenderPass);
+
+        temporaryCompatibleRenderPass.destroy(contextVk->getDevice());
+    }
+
     return result;
 }  // namespace rx
-
-angle::Result ProgramPipelineVk::syncState(const gl::Context *context,
-                                           const gl::Program::DirtyBits &dirtyBits)
-{
-    ASSERT(dirtyBits.any());
-    // Push dirty bits to executable so that they can be used later.
-    getExecutable()->mDirtyBits |= dirtyBits;
-    return angle::Result::Continue;
-}
 
 void ProgramPipelineVk::onProgramUniformUpdate(gl::ShaderType shaderType)
 {

@@ -17,11 +17,18 @@ set(generated_files
     "${out_dir}/testservice.pb.h" "${out_dir}/testservice.pb.cc"
     "${out_dir}/testservice.grpc.pb.h" "${out_dir}/testservice.grpc.pb.cc")
 
+set(extra_protoc_args "")
+get_target_property(protoc_version WrapProtoc::WrapProtoc _qt_internal_protobuf_version)
+if(protoc_version VERSION_GREATER_EQUAL "3.12" AND protoc_version VERSION_LESS "3.15")
+    list(APPEND extra_protoc_args "--experimental_allow_proto3_optional")
+endif()
+
 add_custom_command(
     OUTPUT ${generated_files}
     COMMAND
         $<TARGET_FILE:WrapProtoc::WrapProtoc>
     ARGS
+        ${extra_protoc_args}
         --grpc_out "${out_dir}"
         --cpp_out "${out_dir}"
         -I "${CMAKE_CURRENT_LIST_DIR}/../../../shared/proto/"

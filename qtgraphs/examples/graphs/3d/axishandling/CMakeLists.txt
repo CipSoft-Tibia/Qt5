@@ -38,7 +38,7 @@ target_link_libraries(axishandling PUBLIC
 )
 
 qt6_add_qml_module(axishandling
-    URI AxisHandling
+    URI AxisHandlingExample
     NO_RESOURCE_TARGET_PATH
     SOURCES
         customformatter.cpp customformatter.h

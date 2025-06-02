@@ -13,6 +13,7 @@
 #include <QImage>
 #include <private/qjnihelpers_p.h>
 #include <QtCore/QJniObject>
+#include <androidbackendregister.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -33,6 +34,7 @@ namespace QtAndroid
 {
     QBasicMutex *platformInterfaceMutex();
     QAndroidPlatformIntegration *androidPlatformIntegration();
+    AndroidBackendRegister *backendRegister();
     void setAndroidPlatformIntegration(QAndroidPlatformIntegration *androidPlatformIntegration);
     void setQtThread(QThread *thread);
     void setViewVisibility(jobject view, bool visible);
@@ -43,26 +45,15 @@ namespace QtAndroid
     int availableHeightPixels();
     double scaledDensity();
     double pixelDensity();
-    JavaVM *javaVM();
     jobject assets();
     AAssetManager *assetManager();
     jclass applicationClass();
-
-    QtJniTypes::QtActivityDelegateBase qtActivityDelegate();
-    QtJniTypes::QtInputDelegate qtInputDelegate();
-
-    // Keep synchronized with flags in ActivityDelegate.java
-    enum SystemUiVisibility {
-        SYSTEM_UI_VISIBILITY_NORMAL = 0,
-        SYSTEM_UI_VISIBILITY_FULLSCREEN = 1,
-        SYSTEM_UI_VISIBILITY_TRANSLUCENT = 2
-    };
-    void setSystemUiVisibility(SystemUiVisibility uiVisibility);
 
     jobject createBitmap(QImage img, JNIEnv *env = nullptr);
     jobject createBitmap(int width, int height, QImage::Format format, JNIEnv *env);
     jobject createBitmapDrawable(jobject bitmap, JNIEnv *env = nullptr);
 
+    void initializeAccessibility();
     void notifyAccessibilityLocationChange(uint accessibilityObjectId);
     void notifyObjectHide(uint accessibilityObjectId, uint parentObjectId);
     void notifyObjectShow(uint parentObjectId);

@@ -47,7 +47,7 @@ public:
         , XCTest
 #endif
     };
-    Q_ENUM(LogMode);
+    Q_ENUM(LogMode)
 
     static void enterTestFunction(const char* function);
     static void leaveTestFunction();
@@ -71,6 +71,7 @@ public:
 #ifndef QT_NO_REGULAREXPRESSION
     static void ignoreMessage(QtMsgType type, const QRegularExpression &expression);
 #endif
+    static void failOnWarning();
     static void failOnWarning(const char *msg);
 #ifndef QT_NO_REGULAREXPRESSION
     static void failOnWarning(const QRegularExpression &expression);
@@ -88,7 +89,7 @@ public:
     static void stopLogging();
 
     static void addLogger(LogMode mode, const char *filename);
-    static void addLogger(QAbstractTestLogger *logger);
+    static void addLogger(std::unique_ptr<QAbstractTestLogger> logger);
 
     static bool hasLoggers();
     static bool isRepeatSupported();

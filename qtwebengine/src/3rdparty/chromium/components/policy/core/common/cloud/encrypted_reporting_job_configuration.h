@@ -35,6 +35,7 @@ namespace policy {
 //         "sequencingId": 1,
 //         "generationId": 123456789,
 //         "priority": 1
+//         "generation_guid": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
 //       },
 //       "compressionInformation": {
 //         "compressionAlgorithm": 1
@@ -50,6 +51,7 @@ namespace policy {
 //         "sequencingId": 2,
 //         "generationId": 123456789,
 //         "priority": 1
+//         "generation_guid": "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
 //       },
 //       "compressionInformation": {
 //         "compressionAlgorithm": 1
@@ -57,7 +59,7 @@ namespace policy {
 //     }
 //   ],
 //   "attachEncryptionSettings": true,  // optional field
-//   "attachConfigurationFile": true, // optional field
+//   "configurationFileVersion": 123456, // optional field
 //   "source": "SomeString", // optional field - used only by tast tests
 //   "requestId": "SomeString",
 //   "device": {
@@ -130,13 +132,14 @@ class POLICY_EXPORT EncryptedReportingJobConfiguration
   std::string GetUmaString() const override;
 
  private:
-  std::set<std::string> GetTopLevelKeyAllowList();
+  static const base::flat_set<std::string>& GetTopLevelKeyAllowList();
   const bool is_device_managed_;
 
   // Parameters populated from the payload_.
   ::reporting::Priority priority_;
   int64_t generation_id_{-1};
   int64_t sequence_id_{-1};
+  size_t record_count_{0u};
 };
 
 }  // namespace policy

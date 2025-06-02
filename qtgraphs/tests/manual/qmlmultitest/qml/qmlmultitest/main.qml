@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Window
 import QtGraphs
 import "."
 
@@ -11,6 +12,18 @@ Item {
     id: mainView
     width: 800
     height: 600
+
+    Window {
+        id: anotherWin
+        visible: false
+        width: 400
+        height: 300
+
+        Item {
+            id: anotherOne
+            anchors.fill: parent
+        }
+    }
 
     Data {
         id: data
@@ -29,7 +42,7 @@ Item {
         Rectangle {
             Layout.fillHeight: true
             Layout.fillWidth: true
-            border.color: surfaceGraph.theme.gridLineColor
+            border.color: surfaceGraph.theme.grid.mainColor
             border.width: 2
             color: "#00000000"
 
@@ -37,11 +50,11 @@ Item {
                 id: surfaceGraph
                 anchors.fill: parent
                 anchors.margins: parent.border.width
-                theme: Theme3D {
-                    type: Theme3D.Theme.PrimaryColors
-                    font.pointSize: 60
+                theme: GraphsTheme {
+                    theme: GraphsTheme.Theme.MixSeries
+                    labelFont.pointSize: 60
                 }
-                cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
+                cameraPreset: Graphs3D.CameraPreset.IsometricLeftHigh
 
                 Surface3DSeries {
                     itemLabelFormat: "Pop density at (@xLabel N, @zLabel E): @yLabel"
@@ -94,8 +107,11 @@ Item {
                     Layout.minimumWidth: parent.width / 2
                     Layout.fillHeight: true
                     Layout.fillWidth: true
-                    text: "Quit"
-                    onClicked: Qt.quit();
+                    text: "Surprise!"
+                    onClicked: {
+                        anotherWin.visible = !anotherWin.visible
+                        scatterGraph.parent = scatterGraph.parent === anotherOne ? theFirstOne : anotherOne
+                    }
                 }
 
                 Button {
@@ -116,9 +132,10 @@ Item {
         }
 
         Rectangle {
+            id: theFirstOne
             Layout.fillHeight: true
             Layout.fillWidth: true
-            border.color: scatterGraph.theme.gridLineColor
+            border.color: scatterGraph.theme.grid.mainColor
             border.width: 2
             color: "#00000000"
 
@@ -126,11 +143,11 @@ Item {
                 id: scatterGraph
                 anchors.fill: parent
                 anchors.margins: parent.border.width
-                theme: Theme3D {
-                    type: Theme3D.Theme.PrimaryColors
-                    font.pointSize: 60
+                theme: GraphsTheme {
+                    theme: GraphsTheme.Theme.BlueSeries
+                    labelFont.pointSize: 60
                 }
-                cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
+                cameraPreset: Graphs3D.CameraPreset.IsometricLeftHigh
 
                 Scatter3DSeries {
                     itemLabelFormat: "Pop density at (@xLabel N, @zLabel E): @yLabel"
@@ -159,7 +176,7 @@ Item {
         Rectangle {
             Layout.fillHeight: true
             Layout.fillWidth: true
-            border.color: barGraph.theme.gridLineColor
+            border.color: barGraph.theme.grid.mainColor
             border.width: 2
             color: "#00000000"
 
@@ -167,12 +184,12 @@ Item {
                 id: barGraph
                 anchors.fill: parent
                 anchors.margins: parent.border.width
-                theme: Theme3D {
-                    type: Theme3D.Theme.Qt
-                    font.pointSize: 60
+                theme: GraphsTheme {
+                    theme: GraphsTheme.Theme.OrangeSeries
+                    labelFont.pointSize: 60
                 }
-                selectionMode: AbstractGraph3D.SelectionItemAndRow | AbstractGraph3D.SelectionSlice
-                cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
+                selectionMode: Graphs3D.SelectionFlag.ItemAndRow | Graphs3D.SelectionFlag.Slice
+                cameraPreset: Graphs3D.CameraPreset.IsometricLeftHigh
 
                 Bar3DSeries {
                     itemLabelFormat: "@seriesName: @valueLabel"
@@ -207,12 +224,12 @@ Item {
     }
 
     function resetCameras() {
-        surfaceGraph.cameraPreset = AbstractGraph3D.CameraPreset.IsometricLeftHigh
-        scatterGraph.cameraPreset = AbstractGraph3D.CameraPreset.IsometricLeftHigh
-        barGraph.cameraPreset = AbstractGraph3D.CameraPreset.IsometricLeftHigh
-        surfaceGraph.zoomLevel = 100.0
-        scatterGraph.zoomLevel = 100.0
-        barGraph.zoomLevel = 100.0
+        surfaceGraph.cameraPreset = Graphs3D.CameraPreset.IsometricLeftHigh
+        scatterGraph.cameraPreset = Graphs3D.CameraPreset.IsometricLeftHigh
+        barGraph.cameraPreset = Graphs3D.CameraPreset.IsometricLeftHigh
+        surfaceGraph.cameraZoomLevel = 100.0
+        scatterGraph.cameraZoomLevel = 100.0
+        barGraph.cameraZoomLevel = 100.0
     }
 
     function changeMMB() {

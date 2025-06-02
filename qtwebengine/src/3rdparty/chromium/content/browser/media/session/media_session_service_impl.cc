@@ -78,7 +78,7 @@ void MediaSessionServiceImpl::SetPlaybackState(
 }
 
 void MediaSessionServiceImpl::SetPositionState(
-    const absl::optional<media_session::MediaPosition>& position) {
+    const std::optional<media_session::MediaPosition>& position) {
   position_ = position;
   if (media_session_) {
     media_session_->RebuildAndNotifyMediaPositionChanged();

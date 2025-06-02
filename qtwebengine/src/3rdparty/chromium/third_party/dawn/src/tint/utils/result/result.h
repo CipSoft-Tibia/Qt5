@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_UTILS_RESULT_RESULT_H_
 #define SRC_TINT_UTILS_RESULT_RESULT_H_
@@ -18,6 +31,7 @@
 #include <utility>
 #include <variant>
 
+#include "src/tint/utils/diagnostic/diagnostic.h"
 #include "src/tint/utils/ice/ice.h"
 #include "src/tint/utils/text/string_stream.h"
 #include "src/tint/utils/traits/traits.h"
@@ -30,11 +44,35 @@ struct SuccessType {};
 /// An instance of SuccessType that can be used as a generic success value for a Result.
 static constexpr const SuccessType Success;
 
-/// Empty structure used as the default FAILURE_TYPE for a Result.
-struct FailureType {};
+/// The default Result error type.
+struct Failure {
+    /// Constructor with no diagnostics
+    Failure();
 
-/// An instance of FailureType which can be used as a generic failure value by Result
-static constexpr const FailureType Failure;
+    /// Constructor with a single diagnostic
+    /// @param err the single error diagnostic
+    explicit Failure(std::string_view err);
+
+    /// Constructor with a single diagnostic
+    /// @param diagnostic the failure diagnostic
+    explicit Failure(diag::Diagnostic diagnostic);
+
+    /// Constructor with a list of diagnostics
+    /// @param diagnostics the failure diagnostics
+    explicit Failure(diag::List diagnostics);
+
+    /// The diagnostics explaining the failure reason
+    diag::List reason;
+};
+
+/// Write the Failure to the given stream
+/// @param out the output stream
+/// @param failure the Failure
+/// @returns the output stream
+template <typename STREAM, typename = traits::EnableIfIsOStream<STREAM>>
+auto& operator<<(STREAM& out, const Failure& failure) {
+    return out << failure.reason;
+}
 
 /// Result is a helper for functions that need to return a value, or an failure value.
 /// Result can be constructed with either a 'success' or 'failure' value.
@@ -42,7 +80,7 @@ static constexpr const FailureType Failure;
 /// @tparam FAILURE_TYPE the 'failure' value type. Defaults to FailureType which provides no
 ///         information about the failure, except that something failed. Must not be the same type
 ///         as SUCCESS_TYPE.
-template <typename SUCCESS_TYPE, typename FAILURE_TYPE = FailureType>
+template <typename SUCCESS_TYPE, typename FAILURE_TYPE = Failure>
 struct [[nodiscard]] Result {
     static_assert(!std::is_same_v<SUCCESS_TYPE, FAILURE_TYPE>,
                   "Result must not have the same type for SUCCESS_TYPE and FAILURE_TYPE");
@@ -77,28 +115,23 @@ struct [[nodiscard]] Result {
               typename = std::void_t<decltype(SUCCESS_TYPE{std::declval<S>()}),
                                      decltype(FAILURE_TYPE{std::declval<F>()})>>
     Result(const Result<S, F>& other) {  // NOLINT(runtime/explicit):
-        if (other) {
+        if (other == Success) {
             value = SUCCESS_TYPE{other.Get()};
         } else {
             value = FAILURE_TYPE{other.Failure()};
         }
     }
 
-    /// @returns true if the result was a success
-    operator bool() const {
+    /// @returns the success value
+    /// @warning attempting to call this when the Result holds an failure will result in UB.
+    const SUCCESS_TYPE* operator->() const {
         Validate();
-        return std::holds_alternative<SUCCESS_TYPE>(value);
-    }
-
-    /// @returns true if the result was a failure
-    bool operator!() const {
-        Validate();
-        return std::holds_alternative<FAILURE_TYPE>(value);
+        return &(Get());
     }
 
     /// @returns the success value
     /// @warning attempting to call this when the Result holds an failure will result in UB.
-    const SUCCESS_TYPE* operator->() const {
+    SUCCESS_TYPE* operator->() {
         Validate();
         return &(Get());
     }
@@ -132,25 +165,54 @@ struct [[nodiscard]] Result {
     }
 
     /// Equality operator
-    /// @param val the value to compare this Result to
-    /// @returns true if this result holds a success value equal to `value`
-    bool operator==(SUCCESS_TYPE val) const {
-        Validate();
-        if (auto* v = std::get_if<SUCCESS_TYPE>(&value)) {
-            return *v == val;
-        }
-        return false;
+    /// @param other the Result to compare this Result to
+    /// @returns true if this Result is equal to @p other
+    template <typename T>
+    bool operator==(const Result& other) const {
+        return value == other.value;
     }
 
     /// Equality operator
     /// @param val the value to compare this Result to
-    /// @returns true if this result holds a failure value equal to `value`
-    bool operator==(FAILURE_TYPE val) const {
+    /// @returns true if this result holds a success or failure value equal to `value`
+    template <typename T>
+    bool operator==(const T& val) const {
         Validate();
-        if (auto* v = std::get_if<FAILURE_TYPE>(&value)) {
-            return *v == val;
+
+        using D = std::decay_t<T>;
+        static constexpr bool is_success = std::is_same_v<D, tint::SuccessType>;  // T == Success
+        static constexpr bool is_success_ty =
+            std::is_same_v<D, SUCCESS_TYPE> ||
+            (traits::IsStringLike<SUCCESS_TYPE> && traits::IsStringLike<D>);  // T == SUCCESS_TYPE
+        static constexpr bool is_failure_ty =
+            std::is_same_v<D, FAILURE_TYPE> ||
+            (traits::IsStringLike<FAILURE_TYPE> && traits::IsStringLike<D>);  // T == FAILURE_TYPE
+
+        static_assert(is_success || is_success_ty || is_failure_ty,
+                      "unsupported type for Result equality operator");
+        static_assert(!(is_success_ty && is_failure_ty),
+                      "ambiguous success / failure type for Result equality operator");
+
+        if constexpr (is_success) {
+            return std::holds_alternative<SUCCESS_TYPE>(value);
+        } else if constexpr (is_success_ty) {
+            if (auto* v = std::get_if<SUCCESS_TYPE>(&value)) {
+                return *v == val;
+            }
+            return false;
+        } else if constexpr (is_failure_ty) {
+            if (auto* v = std::get_if<FAILURE_TYPE>(&value)) {
+                return *v == val;
+            }
+            return false;
         }
-        return false;
+    }
+    /// Inequality operator
+    /// @param val the value to compare this Result to
+    /// @returns false if this result holds a success or failure value equal to `value`
+    template <typename T>
+    bool operator!=(const T& val) const {
+        return !(*this == val);
     }
 
   private:
@@ -168,8 +230,20 @@ template <typename STREAM,
           typename SUCCESS,
           typename FAILURE,
           typename = traits::EnableIfIsOStream<STREAM>>
-auto& operator<<(STREAM& out, Result<SUCCESS, FAILURE> res) {
-    return res ? (out << "success: " << res.Get()) : (out << "failure: " << res.Failure());
+auto& operator<<(STREAM& out, const Result<SUCCESS, FAILURE>& res) {
+    if (res == Success) {
+        if constexpr (traits::HasOperatorShiftLeft<STREAM&, SUCCESS>) {
+            return out << "success: " << res.Get();
+        } else {
+            return out << "success";
+        }
+    } else {
+        if constexpr (traits::HasOperatorShiftLeft<STREAM&, FAILURE>) {
+            return out << "failure: " << res.Failure();
+        } else {
+            return out << "failure";
+        }
+    }
 }
 
 }  // namespace tint

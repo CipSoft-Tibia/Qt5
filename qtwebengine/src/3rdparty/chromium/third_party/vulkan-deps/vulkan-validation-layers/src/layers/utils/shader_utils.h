@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2023 The Khronos Group Inc.
- * Copyright (c) 2015-2023 Valve Corporation
- * Copyright (c) 2015-2023 LunarG, Inc.
+/* Copyright (c) 2015-2024 The Khronos Group Inc.
+ * Copyright (c) 2015-2024 Valve Corporation
+ * Copyright (c) 2015-2024 LunarG, Inc.
  * Copyright (C) 2015-2023 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,40 +32,14 @@ struct DeviceFeatures;
 struct DeviceExtensions;
 class APIVersion;
 
-enum DescriptorReqBits {
-    DESCRIPTOR_REQ_VIEW_TYPE_1D = 1 << VK_IMAGE_VIEW_TYPE_1D,
-    DESCRIPTOR_REQ_VIEW_TYPE_1D_ARRAY = 1 << VK_IMAGE_VIEW_TYPE_1D_ARRAY,
-    DESCRIPTOR_REQ_VIEW_TYPE_2D = 1 << VK_IMAGE_VIEW_TYPE_2D,
-    DESCRIPTOR_REQ_VIEW_TYPE_2D_ARRAY = 1 << VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-    DESCRIPTOR_REQ_VIEW_TYPE_3D = 1 << VK_IMAGE_VIEW_TYPE_3D,
-    DESCRIPTOR_REQ_VIEW_TYPE_CUBE = 1 << VK_IMAGE_VIEW_TYPE_CUBE,
-    DESCRIPTOR_REQ_VIEW_TYPE_CUBE_ARRAY = 1 << VK_IMAGE_VIEW_TYPE_CUBE_ARRAY,
-
-    DESCRIPTOR_REQ_ALL_VIEW_TYPE_BITS = (1 << (VK_IMAGE_VIEW_TYPE_CUBE_ARRAY + 1)) - 1,
-
-    DESCRIPTOR_REQ_SINGLE_SAMPLE = 2 << VK_IMAGE_VIEW_TYPE_CUBE_ARRAY,
-    DESCRIPTOR_REQ_MULTI_SAMPLE = DESCRIPTOR_REQ_SINGLE_SAMPLE << 1,
-
-    DESCRIPTOR_REQ_COMPONENT_TYPE_FLOAT = DESCRIPTOR_REQ_MULTI_SAMPLE << 1,
-    DESCRIPTOR_REQ_COMPONENT_TYPE_SINT = DESCRIPTOR_REQ_COMPONENT_TYPE_FLOAT << 1,
-    DESCRIPTOR_REQ_COMPONENT_TYPE_UINT = DESCRIPTOR_REQ_COMPONENT_TYPE_SINT << 1,
-
-    DESCRIPTOR_REQ_VIEW_ATOMIC_OPERATION = DESCRIPTOR_REQ_COMPONENT_TYPE_UINT << 1,
-    DESCRIPTOR_REQ_SAMPLER_SAMPLED = DESCRIPTOR_REQ_VIEW_ATOMIC_OPERATION << 1,
-    DESCRIPTOR_REQ_SAMPLER_IMPLICITLOD_DREF_PROJ = DESCRIPTOR_REQ_SAMPLER_SAMPLED << 1,
-    DESCRIPTOR_REQ_SAMPLER_BIAS_OFFSET = DESCRIPTOR_REQ_SAMPLER_IMPLICITLOD_DREF_PROJ << 1,
-    DESCRIPTOR_REQ_IMAGE_READ_WITHOUT_FORMAT = DESCRIPTOR_REQ_SAMPLER_BIAS_OFFSET << 1,
-    DESCRIPTOR_REQ_IMAGE_WRITE_WITHOUT_FORMAT = DESCRIPTOR_REQ_IMAGE_READ_WITHOUT_FORMAT << 1,
-    DESCRIPTOR_REQ_IMAGE_DREF = DESCRIPTOR_REQ_IMAGE_WRITE_WITHOUT_FORMAT << 1,
-};
-typedef uint32_t DescriptorReqFlags;
-
+namespace spirv {
 struct ResourceInterfaceVariable;
+}  // namespace spirv
 
 struct DescriptorRequirement {
-    DescriptorReqFlags reqs;
-    const ResourceInterfaceVariable *variable;
-    DescriptorRequirement() : reqs(0) {}
+    uint64_t revalidate_hash;
+    const spirv::ResourceInterfaceVariable *variable;
+    DescriptorRequirement() : revalidate_hash(0), variable(nullptr) {}
 };
 
 enum class ShaderObjectStage : uint32_t {
@@ -81,7 +55,7 @@ enum class ShaderObjectStage : uint32_t {
     LAST = 8u,
 };
 
-constexpr uint32_t SHADER_OBJECT_STAGE_COUNT = 8u;
+constexpr uint32_t kShaderObjectStageCount = 8u;
 
 inline ShaderObjectStage VkShaderStageToShaderObjectStage(VkShaderStageFlagBits stage) {
     switch (stage) {
@@ -107,41 +81,52 @@ inline ShaderObjectStage VkShaderStageToShaderObjectStage(VkShaderStageFlagBits 
     return ShaderObjectStage::LAST;
 }
 
-inline bool operator==(const DescriptorRequirement &a, const DescriptorRequirement &b) noexcept { return a.reqs == b.reqs; }
+inline bool operator==(const DescriptorRequirement &a, const DescriptorRequirement &b) noexcept {
+    return a.revalidate_hash == b.revalidate_hash;
+}
 
-inline bool operator<(const DescriptorRequirement &a, const DescriptorRequirement &b) noexcept { return a.reqs < b.reqs; }
+inline bool operator<(const DescriptorRequirement &a, const DescriptorRequirement &b) noexcept {
+    return a.revalidate_hash < b.revalidate_hash;
+}
 
 // < binding index (of descriptor set) : meta data >
-typedef std::map<uint32_t, DescriptorRequirement> BindingVariableMap;
+typedef std::unordered_multimap<uint32_t, DescriptorRequirement> BindingVariableMap;
 
 // Capture which slots (set#->bindings) are actually used by the shaders of this pipeline
 using ActiveSlotMap = vvl::unordered_map<uint32_t, BindingVariableMap>;
 
-struct EntryPoint;
-struct SHADER_MODULE_STATE;
-struct SPIRV_MODULE_STATE;
 struct safe_VkPipelineShaderStageCreateInfo;
 struct safe_VkShaderCreateInfoEXT;
 struct safe_VkSpecializationInfo;
 
+namespace vvl {
+struct ShaderModule;
+}  // namespace vvl
+
+namespace spirv {
+struct Module;
+struct EntryPoint;
+class Instruction;
+}  // namespace spirv
+
 struct PipelineStageState {
-    // We use this over a SPIRV_MODULE_STATE because there are times we need to create empty objects
-    std::shared_ptr<const SHADER_MODULE_STATE> module_state;
-    std::shared_ptr<const SPIRV_MODULE_STATE> spirv_state;
+    // We use this over a spirv::Module because there are times we need to create empty objects
+    std::shared_ptr<const vvl::ShaderModule> module_state;
+    std::shared_ptr<const spirv::Module> spirv_state;
     const safe_VkPipelineShaderStageCreateInfo *pipeline_create_info;
     const safe_VkShaderCreateInfoEXT *shader_object_create_info;
     // If null, means it is an empty object, no SPIR-V backing it
-    std::shared_ptr<const EntryPoint> entrypoint;
+    std::shared_ptr<const spirv::EntryPoint> entrypoint;
 
     PipelineStageState(const safe_VkPipelineShaderStageCreateInfo *pipeline_create_info,
                        const safe_VkShaderCreateInfoEXT *shader_object_create_info,
-                       std::shared_ptr<const SHADER_MODULE_STATE> module_state,
-                       std::shared_ptr<const SPIRV_MODULE_STATE> spirv_state);
+                       std::shared_ptr<const vvl::ShaderModule> module_state, std::shared_ptr<const spirv::Module> spirv_state);
 
-    const char *getPName() const;
-    VkShaderStageFlagBits getStage() const;
-    safe_VkSpecializationInfo *getSpecializationInfo() const;
-    const void *getPNext() const;
+    const char *GetPName() const;
+    VkShaderStageFlagBits GetStage() const;
+    safe_VkSpecializationInfo *GetSpecializationInfo() const;
+    const void *GetPNext() const;
+    bool GetInt32ConstantValue(const spirv::Instruction &insn, uint32_t *value) const;
 };
 
 using StageStateVec = std::vector<PipelineStageState>;
@@ -217,8 +202,6 @@ class ValidationCache {
         for (auto h : other->good_shader_hashes_) good_shader_hashes_.insert(h);
     }
 
-    static uint32_t MakeShaderHash(VkShaderModuleCreateInfo const *smci);
-
     bool Contains(uint32_t hash) {
         auto guard = ReadLock();
         return good_shader_hashes_.count(hash) != 0;
@@ -266,8 +249,8 @@ spv_target_env PickSpirvEnv(const APIVersion &api_version, bool spirv_1_4);
 void AdjustValidatorOptions(const DeviceExtensions &device_extensions, const DeviceFeatures &enabled_features,
                             spvtools::ValidatorOptions &options);
 
-void GetActiveSlots(ActiveSlotMap &active_slots, const std::shared_ptr<const EntryPoint> &entrypoint);
+void GetActiveSlots(ActiveSlotMap &active_slots, const std::shared_ptr<const spirv::EntryPoint> &entrypoint);
 ActiveSlotMap GetActiveSlots(const StageStateVec &stage_states);
-ActiveSlotMap GetActiveSlots(const std::shared_ptr<const EntryPoint> &entrypoint);
+ActiveSlotMap GetActiveSlots(const std::shared_ptr<const spirv::EntryPoint> &entrypoint);
 
 uint32_t GetMaxActiveSlot(const ActiveSlotMap &active_slots);

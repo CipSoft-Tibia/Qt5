@@ -1,16 +1,29 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d12/ComputePipelineD3D12.h"
 
@@ -31,7 +44,7 @@ namespace dawn::native::d3d12 {
 
 Ref<ComputePipeline> ComputePipeline::CreateUninitialized(
     Device* device,
-    const ComputePipelineDescriptor* descriptor) {
+    const UnpackedPtr<ComputePipelineDescriptor>& descriptor) {
     return AcquireRef(new ComputePipeline(device, descriptor));
 }
 
@@ -48,12 +61,19 @@ MaybeError ComputePipeline::Initialize() {
         compileFlags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
     }
 
+    if (device->IsToggleEnabled(Toggle::UseDXC) &&
+        ((compileFlags & D3DCOMPILE_OPTIMIZATION_LEVEL2) == 0)) {
+        // DXC's default opt level is /O3, unlike FXC's /O1. Set explicitly, otherwise there's no
+        // way to tell if we want /O1 as D3DCOMPILE_OPTIMIZATION_LEVEL1 is defined to 0.
+        compileFlags |= D3DCOMPILE_OPTIMIZATION_LEVEL3;
+    }
+
     // Tint does matrix multiplication expecting row major matrices
     compileFlags |= D3DCOMPILE_PACK_MATRIX_ROW_MAJOR;
 
-    // FXC can miscompile code that depends on special float values (NaN, INF, etc) when IEEE
-    // strictness is not enabled. See crbug.com/tint/976.
-    compileFlags |= D3DCOMPILE_IEEE_STRICTNESS;
+    if (!device->IsToggleEnabled(Toggle::D3DDisableIEEEStrictness)) {
+        compileFlags |= D3DCOMPILE_IEEE_STRICTNESS;
+    }
 
     const ProgrammableStage& computeStage = GetStage(SingleShaderStage::Compute);
     ShaderModule* module = ToBackend(computeStage.module.Get());
@@ -62,8 +82,15 @@ MaybeError ComputePipeline::Initialize() {
     d3dDesc.pRootSignature = ToBackend(GetLayout())->GetRootSignature();
 
     d3d::CompiledShader compiledShader;
-    DAWN_TRY_ASSIGN(compiledShader, module->Compile(computeStage, SingleShaderStage::Compute,
-                                                    ToBackend(GetLayout()), compileFlags));
+    DAWN_TRY_ASSIGN(
+        compiledShader,
+        module->Compile(
+            computeStage, SingleShaderStage::Compute, ToBackend(GetLayout()), compileFlags,
+            /* usedInterstageVariables */ {},
+            /* maxSubgroupSizeForFullSubgroups */
+            IsFullSubgroupsRequired()
+                ? std::make_optional(device->GetLimits().experimentalSubgroupLimits.maxSubgroupSize)
+                : std::nullopt));
     d3dDesc.CS = {compiledShader.shaderBlob.Data(), compiledShader.shaderBlob.Size()};
 
     StreamIn(&mCacheKey, d3dDesc, ToBackend(GetLayout())->GetRootSignatureBlob());

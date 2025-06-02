@@ -54,6 +54,12 @@ enum ColorMode {
   MODE_COLOR = 3;
 }
 
+enum ConnectionType {
+  CONNECTION_UNSPECIFIED = 0;
+  CONNECTION_USB = 1;
+  CONNECTION_NETWORK = 2;
+}
+
 // An object representing one scanner.
 message ScannerInfo {
   // The name of the scanner, as reported by SANE.
@@ -67,11 +73,32 @@ message ScannerInfo {
 
   // The type of the scanner, e.g. "video camera", "flatbed scanner".
   string type = 4;
+
+  // UUID that can be used to match multiple entries pointing to the same
+  // physical scanner, e.g. multiple backends or TLS vs unencrypted.  This is a
+  // best-effort approximation; it is not always reliable for all backends or
+  // connection types.
+  string device_uuid = 5;
+
+  // How the scanner is connected to the computer.
+  ConnectionType connection_type = 6;
+
+  // True if the connection is secure against passive eavesdropping, e.g. USB or
+  // TLS.  This is not an indicator of integrity of the scanned data itself.
+  bool secure = 7;
+
+  // MIME types that can be returned from this scanner.
+  repeated string image_format = 8;
+
+  // A suggested string for displaying to the user.
+  string display_name = 9;
 }
 
 // Information returned from a ListScanners dbus request.
 message ListScannersResponse {
   repeated ScannerInfo scanners = 1;
+
+  OperationResult result = 2;
 }
 
 // Information returned from a GetScannerCapabilities dbus request.
@@ -238,6 +265,13 @@ message ScannerId {
 // are returned by OpenScanner and are passed to other functions that operate
 // on an open scanner.
 message ScannerHandle {
+  string token = 1;
+}
+
+// Unguessable token referring to an in-progress scan job.  Job handles are
+// returned by StartPreparedScan and are passed to other functions that operate
+// on a scan job.
+message JobHandle {
   string token = 1;
 }
 
@@ -446,6 +480,9 @@ message GetNextImageResponse {
 message CancelScanRequest {
   // A UUID identifying the scan job.
   string scan_uuid = 1;
+
+  // If this is set, used in preference to scan_uuid.
+  optional JobHandle job_handle = 2;
 }
 
 // Information returned from a CancelScan D-Bus request;
@@ -455,6 +492,14 @@ message CancelScanResponse {
 
   // The failure reason if success is false.
   string failure_reason = 2;
+
+  // If a JobHandle was supplied to CancelScan, the same handle is
+  // returned here.
+  optional JobHandle job_handle = 3;
+
+  // The result of cancelling the scan.  If success is true, this will be
+  // OPERATION_RESULT_SUCCESS.
+  OperationResult result = 4;
 }
 
 // Information sent with ScanStatus D-Bus signal.
@@ -626,4 +671,116 @@ message CloseScannerResponse {
   // The result of closing the handle.  The handle should be assumed to be no
   // longer valid even if the result is not OPERATION_RESULT_SUCCESS.
   OperationResult result = 2;
+}
+
+// Input parameter for the SetOptions d-bus method.
+message SetOptionsRequest {
+  // Scanner to be configured.  Must have been returned from a previous call to
+  // OpenScanner.
+  ScannerHandle scanner = 1;
+
+  // Zero or more options to have their values set.   Only the `name`, `type`,
+  // and appropriate value fields need to be set.  Leave all of the value fields
+  // unset to request automatic setting for options where this is possible.
+  //
+  // Options will be set in the order given here, so it is possible that earlier
+  // settings may make subsequent requested values fail constraint checks or
+  // inactive statuses.  The caller must check the individual status results in
+  // the response to confirm if every option was set successfully.
+  repeated ScannerOption options = 2;
+}
+
+// Response from the SetOptions d-bus method.
+message SetOptionsResponse {
+  // Scanner handle that was passed to SetOptions.
+  ScannerHandle scanner = 1;
+
+  // The result of setting each option.  The key is the option name and the
+  // value is the result.
+  map<string, OperationResult> results = 2;
+
+  // An updated configuration after setting all of the options in order.  This
+  // will be present even if setting some options fails, but can be missing if
+  // the scanner has been entirely disconnected or some other permanent error.
+  optional ScannerConfig config = 3;
+}
+
+// Input parameter for the GetCurrentConfig d-bus method.
+message GetCurrentConfigRequest {
+  // Scanner to get config for.  Must have been returned from a previous call to
+  // OpenScanner.
+  ScannerHandle scanner = 1;
+}
+
+// Response from the GetCurrentConfig d-bus method.
+message GetCurrentConfigResponse {
+  // Scanner handle that was passed to GetCurrentConfigRequest.
+  ScannerHandle scanner = 1;
+
+  // Result of getting the config.
+  OperationResult result = 2;
+
+  // If result is OPERATION_RESULT_SUCCESS, the current configuration of the
+  // scanner.
+  optional ScannerConfig config = 3;
+}
+
+// Input parameter for the StartPreparedScan d-bus method.
+message StartPreparedScanRequest {
+  // Scanner handle from OpenScanner where the scan is to be started.
+  ScannerHandle scanner = 1;
+
+  // Desired format for the returned scan data.  Must be one of the strings
+  // returned in the `image_format` field of this scanners ScannerInfo.
+  string image_format = 2;
+}
+
+// Response from the StartPreparedScan d-bus method.
+message StartPreparedScanResponse {
+  // Scanner handle that was passed to StartPreparedScan.
+  ScannerHandle scanner = 1;
+
+  // Result of starting the scan.
+  OperationResult result = 2;
+
+  // If result is OPERATION_RESULT_SUCCESS, a handle that can be used to read
+  // scanned data or cancel the new scan job.
+  optional JobHandle job_handle = 3;
+}
+
+// Input parameter for the ReadScanData d-bus method.
+message ReadScanDataRequest {
+  // Scan job handle to read from.  Must have been returned from
+  // StartPreparedScan.
+  JobHandle job_handle = 1;
+}
+
+// Response from the ReadScanData d-bus method.
+message ReadScanDataResponse {
+  // Job handle that was passed to ReadScanData.
+  JobHandle job_handle = 1;
+
+  // Result of reading the next chunk of data.  Some particular values:
+  //
+  // *  OPERATION_RESULT_SUCCESS: The operation succeeded. If data was
+  //      available, `data` will contain a non-zero next chunk of scanned data.
+  //      If no data was available, `data` will be empty; this does not indicate
+  //      EOF or an error.  In both cases, the caller should call this function
+  //      again after a short delay to continue reading the next chunk.
+  // *  OPERATION_RESULT_EOF: The operation succeeded and the end of scanned
+  //      data was reached.  `data` will contain the final chunk of scanned
+  //      data, which may be empty if the previous ReadScanData call happened to
+  //      reach the exact final byte.  After EOF is returned, subsequent calls
+  //      will continue to return EOF with an empty `data` payload.
+  // Other statuses indicate permanent errors and should not be retried.
+  OperationResult result = 2;
+
+  // If result is OPERATION_RESULT_SUCCESS or OPERATION_RESULT_EOF, zero or more
+  // bytes.  Unset for other result codes.
+  optional bytes data = 3;
+
+  // If result is OPERATION_RESULT_SUCCESS, an estimate of how much of the total
+  // scan data has been delivered so far, in the range 0-100.  Unset for other
+  // result codes.
+  optional uint32 estimated_completion = 4;
 }

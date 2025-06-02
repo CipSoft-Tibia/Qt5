@@ -17,7 +17,7 @@ using namespace QtVirtualKeyboard;
 
 /*!
     \qmltype InputContext
-    \instantiates QVirtualKeyboardInputContext
+    \nativetype QVirtualKeyboardInputContext
     \inqmlmodule QtQuick.VirtualKeyboard
     \ingroup qtvirtualkeyboard-internal-qml
     \brief Provides access to an input context.
@@ -195,7 +195,7 @@ QVirtualKeyboardInputEngine *QVirtualKeyboardInputContext::inputEngine() const
 void QVirtualKeyboardInputContext::sendKeyClick(int key, const QString &text, int modifiers)
 {
     Q_D(QVirtualKeyboardInputContext);
-    if ((d->_focus && d->platformInputContext) || QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS) {
+    if ((d->_focus && d->platformInputContext) || QtVirtualKeyboard::forceEventsWithoutFocus()) {
         QKeyEvent pressEvent(QEvent::KeyPress, key, Qt::KeyboardModifiers(modifiers), text);
         QKeyEvent releaseEvent(QEvent::KeyRelease, key, Qt::KeyboardModifiers(modifiers), text);
         VIRTUALKEYBOARD_DEBUG().nospace() << "InputContext::sendKeyClick()"
@@ -208,6 +208,10 @@ void QVirtualKeyboardInputContext::sendKeyClick(int key, const QString &text, in
         d->setState(QVirtualKeyboardInputContextPrivate::State::KeyEvent);
         d->platformInputContext->sendKeyEvent(&pressEvent);
         d->platformInputContext->sendKeyEvent(&releaseEvent);
+
+        if (key == Qt::Key_Return || key == Qt::Key_Enter)
+            d->maybeCloseOnReturn();
+
         if (d->activeKeys.isEmpty())
             d->clearState(QVirtualKeyboardInputContextPrivate::State::KeyEvent);
     } else {

@@ -2,16 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as i18n from '../../core/i18n/i18n.js';
 import type * as TraceEngine from '../../models/trace/trace.js';
+import * as ThemeSupport from '../../ui/legacy/theme_support/theme_support.js';
 
+import {buildGroupStyle, buildTrackHeader, getFormattedTime} from './AppenderUtils.js';
 import {
   type CompatibilityTracksAppender,
-  type TrackAppender,
   type HighlightedEntryInfo,
+  type TrackAppender,
   type TrackAppenderName,
 } from './CompatibilityTracksAppender.js';
-import * as i18n from '../../core/i18n/i18n.js';
-import {buildGroupStyle, buildTrackHeader, getFormattedTime} from './AppenderUtils.js';
 
 const UIStrings = {
   /**
@@ -27,11 +28,10 @@ export class AnimationsTrackAppender implements TrackAppender {
   readonly appenderName: TrackAppenderName = 'Animations';
 
   #compatibilityBuilder: CompatibilityTracksAppender;
-  #traceParsedData: Readonly<TraceEngine.Handlers.Migration.PartialTraceData>;
+  #traceParsedData: Readonly<TraceEngine.Handlers.Types.TraceParseData>;
 
   constructor(
-      compatibilityBuilder: CompatibilityTracksAppender,
-      traceParsedData: TraceEngine.Handlers.Migration.PartialTraceData) {
+      compatibilityBuilder: CompatibilityTracksAppender, traceParsedData: TraceEngine.Handlers.Types.TraceParseData) {
     this.#compatibilityBuilder = compatibilityBuilder;
     this.#traceParsedData = traceParsedData;
   }
@@ -53,7 +53,7 @@ export class AnimationsTrackAppender implements TrackAppender {
   }
 
   colorForEvent(): string {
-    return '#b9aced';
+    return ThemeSupport.ThemeSupport.instance().getComputedValue('--app-color-rendering');
   }
 
   titleForEvent(event: TraceEngine.Types.TraceEvents.TraceEventData): string {

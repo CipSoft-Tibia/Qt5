@@ -25,6 +25,9 @@ class QMockCamera;
 class QMockMediaCaptureSession;
 class QMockVideoSink;
 class QMockSurfaceCapture;
+class QPlatformMediaFormatInfo;
+class QMockAudioDevices;
+class QMockVideoDevices;
 
 class QMockIntegration : public QPlatformMediaIntegration
 {
@@ -36,6 +39,8 @@ public:
     {
         return static_cast<QMockIntegration *>(QPlatformMediaIntegration::instance());
     }
+
+    using QPlatformMediaIntegration::resetInstance;
 
     QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *decoder) override;
     QMaybe<QPlatformMediaPlayer *> createPlayer(QMediaPlayer *) override;
@@ -66,13 +71,19 @@ public:
     QMockVideoSink *lastVideoSink() const { return m_lastVideoSink; }
     QMockSurfaceCapture *lastScreenCapture() { return m_lastScreenCapture; }
     QMockSurfaceCapture *lastWindowCapture() { return m_lastWindowCapture; }
+    QPlatformMediaFormatInfo *getWritableFormatInfo();
+
+    QMockAudioDevices* audioDevices();
+    QMockVideoDevices* videoDevices();
+
+    int createVideoDevicesInvokeCount() const { return m_createVideoDevicesInvokeCount; }
+    int createAudioDevicesInvokeCount() const { return m_createAudioDevicesInvokeCount; }
 
 protected:
     QPlatformVideoDevices *createVideoDevices() override;
-    std::unique_ptr<QPlatformMediaDevices> createMediaDevices() override;
+    std::unique_ptr<QPlatformAudioDevices> createAudioDevices() override;
 
 private:
-
     Flags m_flags = {};
     QMockMediaPlayer *m_lastPlayer = nullptr;
     QMockAudioDecoder *m_lastAudioDecoderControl = nullptr;
@@ -82,6 +93,8 @@ private:
     QMockVideoSink *m_lastVideoSink = nullptr;
     QMockSurfaceCapture *m_lastScreenCapture = nullptr;
     QMockSurfaceCapture *m_lastWindowCapture = nullptr;
+    int m_createVideoDevicesInvokeCount = 0;
+    int m_createAudioDevicesInvokeCount = 0;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QMockIntegration::Flags);

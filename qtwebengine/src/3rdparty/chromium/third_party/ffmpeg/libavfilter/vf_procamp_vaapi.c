@@ -21,9 +21,9 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "vaapi_vpp.h"
+#include "video.h"
 
 // ProcAmp Min/Max/Default Values
 #define BRIGHTNESS_MIN     -100.0F

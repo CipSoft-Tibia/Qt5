@@ -17,34 +17,9 @@ private slots:
     void init();
 
     // HTML generator
-    void htmlFromQDocFile();
     void htmlFromCpp();
-    void htmlFromQml();
-    void htmlFromCppBug80259();
-
-    // WebXML generator
-    void webXmlFromQDocFile();
-    void webXmlFromCpp();
-    void webXmlFromQml();
-    void webXmlFromCppBug80259();
-    void illformated_documentation();
-
-    // DocBook generator (wiht and without extensions)
-    void docBookFromQDocFile();
-    void docBookFromCpp();
-    void docBookFromQml();
-    void docBookWithExtensionsFromQDocFile();
-    void docBookWithExtensionsFromCpp();
-    void docBookWithExtensionsFromQml();
 
     // Output format independent tests
-    void autoNavigation();
-    void tocBreadcrumbs();
-    void examplesManifestXmlAndQhp();
-    void ignoresinceVariable();
-    void templateParameters();
-    void scopedEnum();
-    void dontDocument();
     void inheritedQmlPropertyGroups();
     void crossModuleLinking();
     void indexLinking();
@@ -53,20 +28,6 @@ private slots:
     void preparePhase();
     void generatePhase();
     void noAutoList();
-    void nestedMacro();
-    void headerFile();
-    void usingDirective();
-    void properties();
-    void testTagFile();
-    void templatedCallables();
-    void testGlobalFunctions();
-    void proxyPage();
-    void nonAsciiCharacterInput();
-    void orderingCategoryCommand();
-    void lineComments();
-    void tableAfterValue();
-    void trailingBackslashes();
-    void modulestateCommand();
 
 private:
     QScopedPointer<QTemporaryDir> m_outputDir;
@@ -77,8 +38,7 @@ private:
 
     void runQDocProcess(const QStringList &arguments);
     void compareLineByLine(const QStringList &expectedFiles);
-    void testAndCompare(const char *input, const char *outNames, const char *extraParams = nullptr,
-                        const char *outputPathPrefix = nullptr);
+    void testAndCompare(const char *input, const char *outNames, const char *extraParams = nullptr);
     void copyIndexFiles();
 };
 
@@ -164,10 +124,9 @@ void tst_generatedOutput::compareLineByLine(const QStringList &expectedFiles)
 }
 
 void tst_generatedOutput::testAndCompare(const char *input, const char *outNames,
-                                         const char *extraParams, const char *outputPathPrefix)
+                                         const char *extraParams)
 {
-    QStringList args { "-outputdir", m_outputDir->path() + "/" + outputPathPrefix,
-                       QFINDTESTDATA(input) };
+    QStringList args{ "-outputdir", m_outputDir->path() + "/", QFINDTESTDATA(input) };
     if (extraParams)
         args << QString(QLatin1String(extraParams)).split(QChar(' '));
 
@@ -177,10 +136,6 @@ void tst_generatedOutput::testAndCompare(const char *input, const char *outNames
         return;
 
     QStringList expectedOuts(QString(QLatin1String(outNames)).split(QChar(' ')));
-    if (outputPathPrefix)
-        for (auto &expectedOut : expectedOuts)
-            expectedOut = QString(outputPathPrefix) + "/" + expectedOut;
-
     if (m_regen) {
         QVERIFY(m_expectedDir.mkpath(m_expectedDir.path()));
         for (const auto &file : std::as_const(expectedOuts)) {
@@ -210,16 +165,6 @@ void tst_generatedOutput::copyIndexFiles()
     }
 }
 
-void tst_generatedOutput::htmlFromQDocFile()
-{
-    testAndCompare("testdata/configs/test.qdocconf",
-                   "qdoctests-qdocfileoutput.html "
-                   "qdoctests-qdocfileoutput-linking.html "
-                   "qdoctests-qdocmanuallikefileoutput.html "
-                   "qdoctests-qdocfileoutput-exhaustive.html "
-                   "toc.html");
-}
-
 void tst_generatedOutput::htmlFromCpp()
 {
     testAndCompare("testdata/configs/testcpp.qdocconf",
@@ -234,238 +179,6 @@ void tst_generatedOutput::htmlFromCpp()
                    "autolinking.html "
                    "cpptypes.html "
                    "testqdoc.html");
-}
-
-void tst_generatedOutput::htmlFromQml()
-{
-    testAndCompare("testdata/configs/testqml.qdocconf",
-                   "qmlmodules.html "
-                   "test-componentset-example.html "
-                   "test-cmaketest-example.html "
-                   "uicomponents-qmlmodule.html "
-                   "qdoc-test-qmlmodule.html "
-                   "test-nover-qmlmodule.html "
-                   "qml-qdoc-test-abstractparent.html "
-                   "qml-qdoc-test-child.html "
-                   "qml-qdoc-test-yetanotherchild.html "
-                   "qml-qdoc-test-doctest.html "
-                   "qml-qdoc-test-type-members.html "
-                   "qml-qdoc-test-type-obsolete.html "
-                   "qml-qdoc-test-type.html "
-                   "qml-qdoc-test-oldtype.html "
-                   "qml-test-nover-doctest.html "
-                   "qml-test-nover-typenoversion.html "
-                   "qml-test-nover-typenoversion-members.html "
-                   "qml-uicomponents-progressbar.html "
-                   "qml-uicomponents-switch.html "
-                   "qml-uicomponents-tabwidget.html "
-                   "qml-int.html");
-}
-
-void tst_generatedOutput::htmlFromCppBug80259()
-{
-    testAndCompare("testdata/bug80259/testmodule.qdocconf",
-                   "first.html "
-                   "second.html "
-                   "third.html "
-                   "index.html");
-}
-
-void tst_generatedOutput::webXmlFromQDocFile()
-{
-    testAndCompare("testdata/configs/webxml_test.qdocconf",
-                   "html/qdoctests-qdocfileoutput.webxml "
-                   "html/qdoctests-qdocmanuallikefileoutput.webxml "
-                   "html/qdoctests-qdocfileoutput-linking.webxml "
-                   "html/qdoctests-qdocfileoutput-exhaustive.webxml");
-}
-
-void tst_generatedOutput::webXmlFromCpp()
-{
-    testAndCompare("testdata/configs/webxml_testcpp.qdocconf",
-                   "html/testcpp-module.webxml "
-                   "html/testqdoc-test.webxml "
-                   "html/testqdoc-testderived.webxml");
-}
-
-void tst_generatedOutput::webXmlFromQml()
-{
-    testAndCompare("testdata/configs/webxml_testqml.qdocconf",
-                   "html/test-componentset-example.webxml "
-                   "html/test-nover-qmlmodule.webxml "
-                   "html/uicomponents-qmlmodule.webxml");
-}
-
-void tst_generatedOutput::webXmlFromCppBug80259()
-{
-    testAndCompare("testdata/bug80259/webxml_testmodule.qdocconf",
-                   "html/first.webxml "
-                   "html/second.webxml "
-                   "html/third.webxml "
-                   "html/index.webxml");
-}
-
-void tst_generatedOutput::illformated_documentation()
-{
-    testAndCompare("testdata/illformatted_documentation/illformatted_documentation.qdocconf",
-                   "html/illformatted-examples.webxml "
-                   "html/illformatteddocumentation-someexample-example.webxml "
-                   "html/illformatteddocumentation.index "
-                   "page-with-an-image-at-the-top.html "
-                   "page-with-comment-after-brief.html "
-                   "another-page-with-comments-in-the-brief.html "
-                   "page-with-comment-in-brief.html "
-                   "brief-adventures.html");
-}
-
-void tst_generatedOutput::tableAfterValue()
-{
-    testAndCompare("testdata/tables/table-after-value.qdocconf",
-                   "tableaftervalue/tableaftervalue-members.html "
-                   "tableaftervalue/tableaftervalue.html "
-                   "tableaftervalue/tableaftervalue.index "
-                   "tableaftervalue/tableaftervalue.webxml "
-                   "tableaftervalue/tableaftervalue.xml");
-}
-
-void tst_generatedOutput::docBookFromQDocFile()
-{
-    testAndCompare("testdata/configs/docbook_test.qdocconf",
-                   "docbook/qdoctests-qdocfileoutput.xml "
-                   "docbook/qdoctests-qdocmanuallikefileoutput.xml "
-                   "docbook/qdoctests-qdocfileoutput-linking.xml "
-                   "docbook/qdoctests-qdocfileoutput-exhaustive.xml");
-}
-
-void tst_generatedOutput::docBookFromCpp()
-{
-    testAndCompare("testdata/configs/docbook_testcpp.qdocconf",
-                   "docbook/testcpp-module.xml "
-                   "docbook/testqdoc-test.xml "
-                   "docbook/testqdoc-testderived.xml "
-                   "docbook/cpptypes.xml "
-                   "docbook/testqdoc.xml");
-}
-
-void tst_generatedOutput::docBookFromQml()
-{
-    testAndCompare("testdata/configs/docbook_testqml.qdocconf",
-                   "docbook/test-componentset-example.xml "
-                   "docbook/uicomponents-qmlmodule.xml "
-                   "docbook/qdoc-test-qmlmodule.xml "
-                   "docbook/test-nover-qmlmodule.xml "
-                   "docbook/qml-qdoc-test-abstractparent.xml "
-                   "docbook/qml-qdoc-test-child.xml "
-                   "docbook/qml-qdoc-test-yetanotherchild.xml "
-                   "docbook/qml-qdoc-test-doctest.xml "
-                   "docbook/qml-qdoc-test-type.xml "
-                   "docbook/qml-qdoc-test-oldtype.xml "
-                   "docbook/qml-test-nover-typenoversion.xml "
-                   "docbook/qml-uicomponents-progressbar.xml "
-                   "docbook/qml-uicomponents-switch.xml "
-                   "docbook/qml-uicomponents-tabwidget.xml "
-                   "docbook/qml-int.xml");
-}
-
-void tst_generatedOutput::docBookWithExtensionsFromQDocFile()
-{
-    testAndCompare("testdata/configs/docbookext_test.qdocconf",
-                   "docbookext/qdoctests-qdocfileoutput.xml "
-                   "docbookext/qdoctests-qdocmanuallikefileoutput.xml "
-                   "docbookext/qdoctests-qdocfileoutput-linking.xml "
-                   "docbookext/qdoctests-qdocfileoutput-exhaustive.xml");
-}
-
-void tst_generatedOutput::docBookWithExtensionsFromCpp()
-{
-    testAndCompare("testdata/configs/docbookext_testcpp.qdocconf",
-                   "docbookext/testcpp-module.xml "
-                   "docbookext/testqdoc-test.xml "
-                   "docbookext/testqdoc-testderived.xml "
-                   "docbookext/testqdoc.xml");
-}
-
-void tst_generatedOutput::docBookWithExtensionsFromQml()
-{
-    testAndCompare("testdata/configs/docbookext_testqml.qdocconf",
-                   "docbookext/test-componentset-example.xml "
-                   "docbookext/uicomponents-qmlmodule.xml "
-                   "docbookext/qdoc-test-qmlmodule.xml "
-                   "docbookext/test-nover-qmlmodule.xml "
-                   "docbookext/qml-qdoc-test-abstractparent.xml "
-                   "docbookext/qml-qdoc-test-child.xml "
-                   "docbookext/qml-qdoc-test-yetanotherchild.xml "
-                   "docbookext/qml-qdoc-test-doctest.xml "
-                   "docbookext/qml-qdoc-test-type.xml "
-                   "docbookext/qml-test-nover-typenoversion.xml "
-                   "docbookext/qml-uicomponents-progressbar.xml "
-                   "docbookext/qml-uicomponents-switch.xml "
-                   "docbookext/qml-uicomponents-tabwidget.xml "
-                   "docbookext/qml-int.xml");
-}
-
-void tst_generatedOutput::autoNavigation()
-{
-    // Same expected files as htmlFromQdocFile, but with auto-generated navigation links
-    testAndCompare("testdata/configs/tocnavigation.qdocconf",
-                   "qdoctests-qdocfileoutput.html "
-                   "qdoctests-qdocfileoutput-linking.html "
-                   "qdoctests-qdocfileoutput-exhaustive.html "
-                   "toc.html");
-}
-
-void tst_generatedOutput::tocBreadcrumbs()
-{
-    testAndCompare("testdata/configs/tocbreadcrumbs.qdocconf",
-                   "tocbreadcrumbs/qdoctests-qdocfileoutput.html "
-                   "tocbreadcrumbs/qdoctests-qdocfileoutput-linking.html "
-                   "tocbreadcrumbs/qdoctests-qdocfileoutput-exhaustive.html "
-                   "tocbreadcrumbs/toc-test.html");
-}
-
-
-void tst_generatedOutput::examplesManifestXmlAndQhp()
-{
-    testAndCompare("testdata/configs/examples-qhp.qdocconf",
-                   "examples-manifest.xml "
-                   "test-demos-demo-example.html "
-                   "test.qhp");
-}
-
-void tst_generatedOutput::ignoresinceVariable()
-{
-    testAndCompare("testdata/configs/ignoresince.qdocconf",
-                   "ignoresince/testqdoc.html "
-                   "ignoresince/testqdoc-test.html");
-}
-
-void tst_generatedOutput::templateParameters()
-{
-    testAndCompare("testdata/configs/testtemplate.qdocconf",
-                   "template/testqdoc-test.html "
-                   "template/testqdoc-test-struct.html "
-                   "template/testqdoc-vec.html "
-                   "template/foo.html "
-                   "template/bar.html "
-                   "template/baz.html");
-}
-
-void tst_generatedOutput::scopedEnum()
-{
-    testAndCompare("testdata/configs/scopedenum.qdocconf",
-                   "scopedenum/testqdoc-test.html "
-                   "scopedenum/scoped-enum-linking.html "
-                   "scopedenum/whatsnew.html "
-                   "scopedenum-docbook/scoped-enum-linking.xml "
-                   "scopedenum-docbook/testqdoc-test.xml");
-}
-
-void tst_generatedOutput::dontDocument()
-{
-    testAndCompare("testdata/dontdocument/dontdocument.qdocconf",
-                   "dontdocument/classes.html "
-                   "dontdocument/seenclass.html "
-                   "dontdocument/dontdocument.qhp");
 }
 
 void tst_generatedOutput::inheritedQmlPropertyGroups()
@@ -517,14 +230,14 @@ void tst_generatedOutput::singleExec()
 {
     // Build both testcpp and crossmodule projects in single-exec mode
     testAndCompare("testdata/singleexec/singleexec.qdocconf",
-                   "testcpp-module.html "
-                   "testqdoc-test.html "
-                   "testqdoc-test-members.html "
-                   "testqdoc.html "
-                   "crossmoduleref.html "
-                   "crossmodule/all-namespaces.html "
-                   "crossmodule/testtype.html "
-                   "crossmodule/testtype-members.html",
+                   "testcpp/testcpp-module.html "
+                   "testcpp/testqdoc-test.html "
+                   "testcpp/testqdoc-test-members.html "
+                   "testcpp/testqdoc.html "
+                   "testcpp/crossmoduleref.html "
+                   "crossmodule/crossmodule/all-namespaces.html "
+                   "crossmodule/crossmodule/testtype.html "
+                   "crossmodule/crossmodule/testtype-members.html",
                    "-single-exec");
 }
 
@@ -554,170 +267,6 @@ void tst_generatedOutput::noAutoList()
                    "noautolist-docbook/testcpp-module.xml "
                    "noautolist-docbook/test-componentset-example.xml "
                    "noautolist-docbook/qdoc-test-qmlmodule.xml");
-}
-
-void tst_generatedOutput::nestedMacro()
-{
-    testAndCompare("testdata/configs/nestedmacro.qdocconf",
-                   "nestedmacro/testcpp-module.html "
-                   "docbook-nestedmacro/testcpp-module.xml");
-}
-
-void tst_generatedOutput::headerFile()
-{
-    testAndCompare("testdata/configs/headerfile.qdocconf",
-                   "headerfile/testheader.html "
-                   "headerfile/headers.html "
-                   "headerfile-docbook/testheader.xml "
-                   "headerfile-docbook/headers.xml");
-}
-
-void tst_generatedOutput::usingDirective()
-{
-    testAndCompare("testdata/configs/usingdirective.qdocconf", "space.html");
-}
-
-void tst_generatedOutput::properties()
-{
-    if (m_extraParams.isEmpty() && !m_regen) {
-        QSKIP("Required include paths not available");
-    }
-
-    testAndCompare("testdata/configs/properties.qdocconf",
-                   "properties/testqdoc-testderived.html "
-                   "properties/testqdoc-testderived-members.html "
-                   "properties/qml-themodule-thetype.html "
-                   "properties/testcpp.index "
-                   "properties-docbook/testqdoc-testderived.xml",
-                   m_extraParams.toLatin1().data());
-}
-
-void tst_generatedOutput::testTagFile()
-{
-    testAndCompare("testdata/configs/tagfiles.qdocconf", "testtagfile.tags");
-}
-
-void tst_generatedOutput::templatedCallables() {
-    testAndCompare("testdata/templatedcallables/templatedcallables.qdocconf",
-                   "templatedcallables/templated-callables-h.html "
-                   "templatedcallables/templated-callables-h.xml "
-                   "templatedcallables/templated-callables-h.webxml "
-                   "templatedcallables/templatedclass.html "
-                   "templatedcallables/templatedclass.xml "
-                   "templatedcallables/templatedclass.webxml");
-}
-
-void tst_generatedOutput::testGlobalFunctions()
-{
-    testAndCompare("testdata/configs/testglobals.qdocconf",
-                   "globals.html "
-                   "testglobals-module.html");
-}
-
-void tst_generatedOutput::proxyPage()
-{
-    testAndCompare("testdata/proxypage/proxypage.qdocconf",
-                   "proxypage/stdpair-proxypage-proxy.html "
-                   "proxypage-docbook/stdpair-proxypage-proxy.xml");
-}
-
-void tst_generatedOutput::nonAsciiCharacterInput()
-{
-    testAndCompare(
-            "testdata/non_ascii_character_input/non_ascii_character_input.qdocconf",
-            "html/nonasciicharacterinput.index "
-            "html/mozzarella-7c883eff.webxml "
-            "html/santa-14209312.webxml "
-            "html/seite-mit-ausschlie-lich-gro-buchstaben-im-titel-berschrift-htm-bfa91582.webxml "
-            "html/8b5c72eb.webxml "
-            "html/e85685de.webxml "
-            "seite-mit-ausschlie-lich-gro-buchstaben-im-titel-berschrift-htm-bfa91582.html "
-            "mozzarella-7c883eff.html "
-            "santa-14209312.html "
-            "8b5c72eb.html "
-            "e85685de.html "
-            "adventures-with-non-ascii-characters.html");
-}
-
-void tst_generatedOutput::lineComments()
-{
-    testAndCompare(
-       "testdata/line_comments/line_comments.qdocconf",
-
-   "linecomments/a-page-with-a-line-comment-in-the-see-also-command.html "
-            "linecomments/a-page-with-a-line-comment-in-the-see-also-command.webxml "
-            "linecomments/a-page-with-a-line-comment-in-the-see-also-command.xml "
-            "linecomments/another-page-with-an-image-at-the-top.html "
-            "linecomments/another-page-with-an-image-at-the-top.webxml "
-            "linecomments/another-page-with-an-image-at-the-top.xml "
-            "linecomments/line-comment-adventures.html "
-            "linecomments/line-comment-adventures.webxml "
-            "linecomments/line-comment-adventures.xml"
-    );
-}
-
-void tst_generatedOutput::trailingBackslashes()
-{
-    testAndCompare("testdata/trailing_backslashes/trailingbackslashes.qdocconf",
-                   "trailingbackslashes/struct-members.html "
-                   "trailingbackslashes/struct.html "
-                   "trailingbackslashes/struct.webxml "
-                   "trailingbackslashes/struct.xml "
-                   "trailingbackslashes/trailingbackslashes.index");
-}
-
-void tst_generatedOutput::modulestateCommand()
-{
-    testAndCompare("testdata/modulestate/modulestate.qdocconf",
-                   "modulestate/boringclass.html "
-                   "modulestate/boringclass.webxml "
-                   "modulestate/boringclass.xml "
-                   "modulestate/excitingclass.html "
-                   "modulestate/excitingclass.webxml "
-                   "modulestate/excitingclass.xml "
-                   "modulestate/moduleinstate-module.html "
-                   "modulestate/moduleinstate-module.webxml "
-                   "modulestate/moduleinstate-module.xml "
-                   "modulestate/modulestate.index");
-}
-
-void tst_generatedOutput::orderingCategoryCommand() {
-    testAndCompare("testdata/cxx20/cxx20.qdocconf",
-                   "cxx20/bar.html "
-                   "cxx20/bar.webxml "
-                   "cxx20/bar.xml "
-                   "cxx20/baz.html "
-                   "cxx20/baz.webxml "
-                   "cxx20/baz.xml "
-                   "cxx20/comparesstronglywiththreeclassesacrossmultiplelines.html "
-                   "cxx20/comparesstronglywiththreeclassesacrossmultiplelines.webxml "
-                   "cxx20/comparesstronglywiththreeclassesacrossmultiplelines.xml "
-                   "cxx20/comparesstronglywithoneclassandpartiallywithanother.html "
-                   "cxx20/comparesstronglywithoneclassandpartiallywithanother.webxml "
-                   "cxx20/comparesstronglywithoneclassandpartiallywithanother.xml "
-                   "cxx20/comparesstronglywiththreeclasses.html "
-                   "cxx20/comparesstronglywiththreeclasses.webxml "
-                   "cxx20/comparesstronglywiththreeclasses.xml "
-                   "cxx20/comparesstronglywithtwoclasses.html "
-                   "cxx20/comparesstronglywithtwoclasses.webxml "
-                   "cxx20/comparesstronglywithtwoclasses.xml "
-                   "cxx20/cxx20.index "
-                   "cxx20/equalitycomparableclass.html "
-                   "cxx20/equalitycomparableclass.webxml "
-                   "cxx20/equalitycomparableclass.xml "
-                   "cxx20/foo.html "
-                   "cxx20/foo.webxml "
-                   "cxx20/foo.xml "
-                   "cxx20/partiallyorderedclass.html "
-                   "cxx20/partiallyorderedclass.webxml "
-                   "cxx20/partiallyorderedclass.xml "
-                   "cxx20/stronglyorderedclass.html "
-                   "cxx20/stronglyorderedclass.webxml "
-                   "cxx20/stronglyorderedclass.xml "
-                   "cxx20/weaklyorderedclass.html "
-                   "cxx20/weaklyorderedclass.webxml "
-                   "cxx20/weaklyorderedclass.xml"
-    );
 }
 
 int main(int argc, char *argv[])

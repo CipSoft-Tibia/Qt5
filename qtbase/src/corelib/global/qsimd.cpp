@@ -18,7 +18,7 @@
 #include <assert.h>
 
 #ifdef Q_OS_LINUX
-#  include "../testlib/3rdparty/valgrind_p.h"
+#  include "../testlib/3rdparty/valgrind/valgrind_p.h"
 #endif
 
 #define QT_FUNCTION_TARGET_BASELINE
@@ -138,7 +138,8 @@ static inline quint64 detectProcessorFeatures()
         features |= feature ? CpuFeatureNEON : 0;
     if (sysctlbyname("hw.optional.armv8_crc32", &feature, &len, nullptr, 0) == 0)
         features |= feature ? CpuFeatureCRC32 : 0;
-    // There is currently no optional value for crypto/AES.
+    if (sysctlbyname("hw.optional.arm.FEAT_AES", &feature, &len, nullptr, 0) == 0)
+        features |= feature ? CpuFeatureAES : 0;
 #if defined(__ARM_FEATURE_CRYPTO)
     features |= CpuFeatureAES;
 #endif
@@ -151,7 +152,7 @@ static inline quint64 detectProcessorFeatures()
         features |= CpuFeatureAES;
     return features;
 #endif
-#if defined(__ARM_NEON__) || defined(__ARM_NEON)
+#if defined(__ARM_NEON__)
     features |= CpuFeatureNEON;
 #endif
 #if defined(__ARM_FEATURE_CRC32)
@@ -561,11 +562,6 @@ QT_FUNCTION_TARGET_BASELINE
 uint64_t QT_MANGLE_NAMESPACE(qDetectCpuFeatures)()
 {
     auto minFeatureTest = minFeature;
-#if defined(Q_OS_LINUX) && defined(Q_PROCESSOR_ARM_64)
-    // Yocto hard-codes CRC32+AES on. Since they are unlikely to be used
-    // automatically by compilers, we can just add runtime check.
-    minFeatureTest &= ~(CpuFeatureAES|CpuFeatureCRC32);
-#endif
 #if defined(Q_PROCESSOR_X86_64) && defined(cpu_feature_shstk)
     // Controlflow Enforcement Technology (CET) is an OS-assisted
     // hardware-feature, meaning the CPUID bit may be disabled if the OS
@@ -723,6 +719,12 @@ static bool checkRdrndWorks() noexcept
      */
     constexpr qsizetype TestBufferSize = 4;
     unsigned testBuffer[TestBufferSize] = {};
+
+    // But if the RDRND feature was statically enabled by the compiler, we
+    // assume that the RNG works. That's because the calls to qRandomCpu() will
+    // be guarded by qCpuHasFeature(RDRND) and that will be a constant true.
+    if (_compilerCpuFeatures & CpuFeatureRDRND)
+        return true;
 
     unsigned *end = qt_random_rdrnd(testBuffer, testBuffer + TestBufferSize);
     if (end < testBuffer + 3) {

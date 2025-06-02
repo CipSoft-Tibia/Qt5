@@ -5,7 +5,6 @@
 #define QAUDIODECODER_H
 
 #include <QtCore/qobject.h>
-#include <QtMultimedia/qmediaenumdebug.h>
 #include <QtMultimedia/qaudiobuffer.h>
 
 QT_BEGIN_NAMESPACE
@@ -31,7 +30,7 @@ public:
     Q_ENUM(Error)
 
     explicit QAudioDecoder(QObject *parent = nullptr);
-    ~QAudioDecoder();
+    ~QAudioDecoder() override;
 
     bool isSupported() const;
     bool isDecoding() const;
@@ -82,7 +81,5 @@ private:
 };
 
 QT_END_NAMESPACE
-
-Q_MEDIA_ENUM_DEBUG(QAudioDecoder, Error)
 
 #endif  // QAUDIODECODER_H

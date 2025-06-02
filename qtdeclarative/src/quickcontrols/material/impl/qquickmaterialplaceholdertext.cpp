@@ -107,6 +107,11 @@ void QQuickMaterialPlaceholderText::updateY()
     setY(shouldFloat() ? floatingTargetY() : normalTargetY());
 }
 
+void QQuickMaterialPlaceholderText::updateX()
+{
+    setX(shouldFloat() ? floatingTargetX() : normalTargetX());
+}
+
 qreal controlTopInset(QQuickItem *textControl)
 {
     if (const auto textArea = qobject_cast<QQuickTextArea *>(textControl))
@@ -147,6 +152,16 @@ qreal QQuickMaterialPlaceholderText::floatingTargetY() const
     // Outlined text fields have the placeaholder vertically centered
     // along the outline at the top.
     return (-m_largestHeight / 2.0) + controlTopInset(textControl());
+}
+
+qreal QQuickMaterialPlaceholderText::normalTargetX() const
+{
+    return m_leftPadding;
+}
+
+qreal QQuickMaterialPlaceholderText::floatingTargetX() const
+{
+    return m_floatingLeftPadding;
 }
 
 /*!
@@ -212,6 +227,24 @@ void QQuickMaterialPlaceholderText::setVerticalPadding(qreal verticalPadding)
     emit verticalPaddingChanged();
 }
 
+void QQuickMaterialPlaceholderText::setLeftPadding(int leftPadding)
+{
+    if (leftPadding == m_leftPadding)
+        return;
+
+    m_leftPadding = leftPadding;
+    updateX();
+}
+
+void QQuickMaterialPlaceholderText::setFloatingLeftPadding(int floatingLeftPadding)
+{
+    if (floatingLeftPadding == m_floatingLeftPadding)
+        return;
+
+    m_floatingLeftPadding = floatingLeftPadding;
+    updateX();
+}
+
 void QQuickMaterialPlaceholderText::adjustTransformOrigin()
 {
     switch (effectiveHAlign()) {
@@ -251,6 +284,13 @@ void QQuickMaterialPlaceholderText::controlGotActiveFocus()
         yAnimation->setEasingCurve(*animationEasingCurve);
         m_focusInAnimation->addAnimation(yAnimation);
 
+        QPropertyAnimation *xAnimation = new QPropertyAnimation(this, "x", this);
+        xAnimation->setDuration(300);
+        xAnimation->setStartValue(x());
+        xAnimation->setEndValue(floatingTargetX());
+        xAnimation->setEasingCurve(*animationEasingCurve);
+        m_focusInAnimation->addAnimation(xAnimation);
+
         auto *scaleAnimation = new QPropertyAnimation(this, "scale", this);
         scaleAnimation->setDuration(300);
         scaleAnimation->setStartValue(1);
@@ -261,6 +301,7 @@ void QQuickMaterialPlaceholderText::controlGotActiveFocus()
         m_focusInAnimation->start(QAbstractAnimation::DeleteWhenStopped);
     } else {
         updateY();
+        updateX();
     }
 }
 
@@ -282,6 +323,13 @@ void QQuickMaterialPlaceholderText::controlLostActiveFocus()
         yAnimation->setEasingCurve(*animationEasingCurve);
         m_focusOutAnimation->addAnimation(yAnimation);
 
+        QPropertyAnimation *xAnimation = new QPropertyAnimation(this, "x", this);
+        xAnimation->setDuration(300);
+        xAnimation->setStartValue(x());
+        xAnimation->setEndValue(normalTargetX());
+        xAnimation->setEasingCurve(*animationEasingCurve);
+        m_focusOutAnimation->addAnimation(xAnimation);
+
         auto *scaleAnimation = new QPropertyAnimation(this, "scale", this);
         scaleAnimation->setDuration(300);
         scaleAnimation->setStartValue(floatingScale);
@@ -292,12 +340,14 @@ void QQuickMaterialPlaceholderText::controlLostActiveFocus()
         m_focusOutAnimation->start(QAbstractAnimation::DeleteWhenStopped);
     } else {
         updateY();
+        updateX();
     }
 }
 
 void QQuickMaterialPlaceholderText::maybeSetFocusAnimationProgress()
 {
     updateY();
+    updateX();
     setScale(shouldFloat() ? floatingScale : 1.0);
 }
 

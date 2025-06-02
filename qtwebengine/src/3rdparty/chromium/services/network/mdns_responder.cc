@@ -104,8 +104,8 @@ const char kTxtversLine[] = "\x9txtvers=1";
 // shared resource record set, should be delayed uniformly and randomly in the
 // range of 20-120 ms. This delay is applied in addition to the scheduled delay
 // by rate limiting.
-const base::TimeDelta kMinRandDelayForSharedResult = base::Milliseconds(20);
-const base::TimeDelta kMaxRandDelayForSharedResult = base::Milliseconds(120);
+constexpr auto kMinRandDelayForSharedResult = base::Milliseconds(20);
+constexpr auto kMaxRandDelayForSharedResult = base::Milliseconds(120);
 
 class RandomUuidNameGenerator
     : public network::MdnsResponderManager::NameGenerator {
@@ -296,10 +296,6 @@ bool IsProbeQuery(const net::DnsQuery& query) {
   return query.qtype() == net::dns_protocol::kTypeANY;
 }
 
-void ReportServiceError(MdnsResponderServiceError error) {
-  UMA_HISTOGRAM_ENUMERATION("NetworkService.MdnsResponder.ServiceError", error);
-}
-
 struct PendingPacket {
   PendingPacket(scoped_refptr<net::IOBufferWithSize> buf,
                 scoped_refptr<MdnsResponseSendOption> option,
@@ -316,15 +312,6 @@ struct PendingPacket {
   scoped_refptr<MdnsResponseSendOption> option;
   base::TimeTicks send_ready_time;
 };
-
-// Returns a random TimeDelta between |min| and |max| following the uniform
-// distribution.
-base::TimeDelta GetRandTimeDelta(const base::TimeDelta& min,
-                                 const base::TimeDelta& max) {
-  DCHECK_LE(min, max);
-  return base::Microseconds(
-      base::RandInt(min.InMicroseconds(), max.InMicroseconds()));
-}
 
 }  // namespace
 
@@ -710,8 +697,8 @@ absl::optional<base::TimeDelta> MdnsResponderManager::SocketHandler::
         const MdnsResponseSendOption& option) {
   auto now = tick_clock_->NowTicks();
   const auto extra_delay_for_shared_result =
-      option.shared_result ? GetRandTimeDelta(kMinRandDelayForSharedResult,
-                                              kMaxRandDelayForSharedResult)
+      option.shared_result ? base::RandTimeDelta(kMinRandDelayForSharedResult,
+                                                 kMaxRandDelayForSharedResult)
                            : base::TimeDelta();
 
   // RFC 6762 requires the rate limiting applied on a per-record basis. When a
@@ -892,7 +879,6 @@ void MdnsResponderManager::StartIfNeeded() {
     start_result_ = SocketHandlerStartResult::ALL_FAILURE;
     throttled_start_end_ = tick_clock_->NowTicks() + kManagerStartThrottleDelay;
     LOG(ERROR) << "mDNS responder manager failed to start.";
-    ReportServiceError(MdnsResponderServiceError::kFailToStartManager);
     return;
   }
 
@@ -910,7 +896,6 @@ void MdnsResponderManager::CreateMdnsResponder(
   if (start_result_ == SocketHandlerStartResult::UNSPECIFIED ||
       start_result_ == SocketHandlerStartResult::ALL_FAILURE) {
     LOG(ERROR) << "The mDNS responder manager is not started yet.";
-    ReportServiceError(MdnsResponderServiceError::kFailToCreateResponder);
     receiver = mojo::NullReceiver();
     return;
   }
@@ -1024,7 +1009,6 @@ void MdnsResponderManager::OnSocketHandlerReadError(uint16_t socket_handler_id,
   if (socket_handler_by_id_.empty()) {
     LOG(ERROR)
         << "All socket handlers failed. Restarting the mDNS responder manager.";
-    ReportServiceError(MdnsResponderServiceError::kFatalSocketHandlerError);
     start_result_ = MdnsResponderManager::SocketHandlerStartResult::UNSPECIFIED;
     DCHECK(throttled_start_end_.is_null());
     StartIfNeeded();
@@ -1193,7 +1177,6 @@ void MdnsResponder::CreateNameForAddress(
   DCHECK(address.IsValid() || address.empty());
   if (!address.IsValid()) {
     LOG(ERROR) << "Invalid IP address to create a name for";
-    ReportServiceError(MdnsResponderServiceError::kInvalidIpToRegisterName);
     receiver_.reset();
     manager_->OnMojoConnectionError(this);
     return;
@@ -1317,7 +1300,6 @@ bool MdnsResponder::HasConflictWithExternalResolution(
   }
 
   LOG(ERROR) << "Received conflicting resolution for name: " << name;
-  ReportServiceError(MdnsResponderServiceError::kConflictingNameResolution);
   return true;
 }
 

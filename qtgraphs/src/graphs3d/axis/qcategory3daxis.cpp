@@ -21,24 +21,35 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmltype CategoryAxis3D
+ * \qmltype Category3DAxis
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QCategory3DAxis
- * \inherits AbstractAxis3D
+ * \nativetype QCategory3DAxis
+ * \inherits Abstract3DAxis
  * \brief Manipulates an axis of a graph.
  *
  * This type provides an axis that can be given labels.
  */
 
 /*!
- * \qmlproperty list CategoryAxis3D::labels
+ * \qmlproperty list Category3DAxis::labels
  *
- * The labels for the axis applied to categories. If there are fewer labels than
- * categories, the remaining ones do not have a label. If category labels are
- * not defined explicitly, labels are generated from the data row (or column)
+ * The labels for the axis are applied to categories. If there are fewer labels
+ * than categories, the remaining ones do not have a label. If category labels
+ * are not defined explicitly, labels are generated from the data row (or column)
  * labels of the primary series of the graph.
  */
+
+/*!
+ * \qmlsignal Category3DAxis::rowLabelsChanged()
+ *
+ * This signal is emitted when row \l labels change.
+*/
+/*!
+ * \qmlsignal Category3DAxis::columnLabelsChanged()
+ *
+ * This signal is emitted when column \l labels change.
+*/
 
 /*!
  * Constructs a category 3D axis with the parent \a parent.
@@ -108,9 +119,10 @@ QCategory3DAxisPrivate::~QCategory3DAxisPrivate() {}
 
 /*!
  * \internal
- * Graph uses this function to set labels from data proxy as category labels.
- * If the labels have been set explicitly by the user, data proxy labels are not
- * used.
+ * The graph uses this function to set labels from the data proxy as category
+ * labels.
+ * If the labels have been set explicitly by the user, data proxy labels
+ * are not used.
  */
 void QCategory3DAxisPrivate::setDataLabels(const QStringList &labels)
 {

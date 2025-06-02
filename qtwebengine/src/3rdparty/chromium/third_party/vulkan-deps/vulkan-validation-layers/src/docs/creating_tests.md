@@ -29,16 +29,16 @@ The `VkRenderFramework` class is "base class" that abstract most things in order
 For most tests, it is as simple as going
 
 ```cpp
-ASSERT_NO_FATAL_FAILURE(Init());
+RETURN_IF_SKIP(Init());
 
 // or
 
-ASSERT_NO_FATAL_FAILURE(InitFramework());
-ASSERT_NO_FATAL_FAILURE(InitState());
+RETURN_IF_SKIP(InitFramework());
+RETURN_IF_SKIP(InitState());
 
 // For Best Practices tests
-ASSERT_NO_FATAL_FAILURE(InitBestPracticesFramework());
-ASSERT_NO_FATAL_FAILURE(InitState());
+RETURN_IF_SKIP(InitBestPracticesFramework());
+RETURN_IF_SKIP(InitState());
 ```
 
 to set it up. This will create the `VkInstance` and `VkDevice` for you.
@@ -54,17 +54,14 @@ Here is an example of adding `VK_KHR_sampler_ycbcr_conversion` with all the exte
 ```cpp
 // Setup extensions, including dependent instance and device extensions. This call should be made before any call to InitFramework
 AddRequiredExtensions(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
+AddRequiredFeature(vkt::Feature:: samplerYcbcrConversion);
 
-//  Among other things, this will create the VkInstance and VkPhysicalDevice that will be used for the test.
-ASSERT_NO_FATAL_FAILURE(InitFramework());
-
-// Check that all extensions and their dependencies were enabled successfully
-if (!AreRequiredExtensionsEnabled()) {
-    GTEST_SKIP() << RequiredExtensionsNotSupported() << " not supported";
-}
+// Among other things, this will create the VkInstance and VkPhysicalDevice that will be used for the test.
+// Also will check that all extensions and their dependencies were enabled successfully
+RETURN_IF_SKIP(InitFramework());
 
 // Finish initializing state, including creating the VkDevice (whith extensions added) that will be used for the test
-ASSERT_NO_FATAL_FAILURE(InitState());
+RETURN_IF_SKIP(InitState());
 ```
 
 The pattern breaks down to
@@ -81,15 +78,11 @@ Sometimes it is worth checking for an extension, but still running the parts of 
 ```cpp
 AddRequiredExtensions(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 AddOptionalExtensions(VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME);
-ASSERT_NO_FATAL_FAILURE(Init());
+// Check required (not optional) extensions are still supported
+RETURN_IF_SKIP(Init());
 
 // need to wait until after phyiscal device creation to know if it was enabled
 const bool copy_commands2 = IsExtensionsEnabled(VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME);
-
-// Check required (not optional) extensions are still supported
-if (!AreRequiredExtensionsEnabled()) {
-    GTEST_SKIP() << RequiredExtensionsNotSupported() << " not supported";
-}
 
 // Validate core copy command
 m_errorMonitor->SetDesiredFailureMsg(kErrorBit, vuid);
@@ -112,15 +105,24 @@ If a certain version of Vulkan is needed a test writer can call
 
 ```cpp
 SetTargetApiVersion(VK_API_VERSION_1_1);
-ASSERT_NO_FATAL_FAILURE(InitFramework());
+// Will skip if the supported instance version is not high enough, but actual device supported version may be lower
+RETURN_IF_SKIP(InitFramework());
 ```
 
-Later in the test it can also be checked
+Later in the test the actual Vulkan version supported by the device can be checked
+
 ```cpp
 if (DeviceValidationVersion() >= VK_API_VERSION_1_1) {
-    // ...
+    // Only can be ran on Vulkan 1.0 or 1.1
 }
 ```
+
+### Promoted extensions
+
+The test framework now automatically handles extensions promoted to core versions by not enabling the extensions if the target instance Vulkan version (set through `SetTargetApiVersion`) or the Vulkan version supported by the device (queriable using `DeviceValidationVersion`) already includes the instance or device extension's functionality, respectively.
+This applies to both requirements requested using `AddRequiredExtensions` or `AddOptionalExtensions`, as well as optional requirements checked using `IsExtensionsEnabled`.
+
+In order to enforce enabling extensions even when they are included in the effective Vulkan version (which should only be necessary for very specific test cases), the test case can call the `AllowPromotedExtensions` function.
 
 ### Getting Function Pointers
 
@@ -214,7 +216,7 @@ used to make it obvious).
 VkImageSubresource subresource{};
 subresource.aspectMask = VK_IMAGE_ASPECT_MEMORY_PLANE_3_BIT_EXT;
 VkSubresourceLayout layout{};
-m_errorMonitor->SetDesiredFailureMsg(kErrorBit, "VUID-vkGetImageSubresourceLayout-tiling-02271");
+m_errorMonitor->SetDesiredFailureMsg(kErrorBit, "VUID-vkGetImageSubresourceLayout-tiling-09433");
 vk::GetImageSubresourceLayout(m_device->handle(), image.handle(), &subresource, &layout);
 m_errorMonitor->VerifyFound();
 ```
@@ -235,7 +237,7 @@ There are times a test writer will want to test a case where an implementation r
 ### Device Profile Format Feature
 Here is an example of how To enable it to allow overriding format features (limits are the same idea, just different function names):
 ```cpp
-ASSERT_NO_FATAL_FAILURE(Init());
+RETURN_IF_SKIP(Init());
 
 // Load required functions
 PFN_vkSetPhysicalDeviceFormatPropertiesEXT fpvkSetPhysicalDeviceFormatPropertiesEXT = nullptr;
@@ -262,8 +264,8 @@ if (!LoadDeviceProfileLayer(fpvkSetPhysicalDeviceFormatProperties2EXT, fpvkGetOr
     GTEST_SKIP() << "Failed to load device profile layer.";
 }
 
-auto fmt_props_3 = LvlInitStruct<VkFormatProperties3>();
-auto fmt_props = LvlInitStruct<VkFormatProperties2>(&fmt_props_3);
+VkFormatProperties3 fmt_props_3 = vku::InitStructHelper();
+VkFormatProperties2 fmt_props = vku::InitStructHelper(&fmt_props_3);
 
 // Removes unwanted support
 fpvkGetOriginalPhysicalDeviceFormatProperties2EXT(gpu(), image_format, &fmt_props);
@@ -282,7 +284,7 @@ fpvkSetPhysicalDeviceFormatProperties2EXT(gpu(), image_format, fmt_props);
 When using the device profile layer for limits, the test maybe need to call `vkSetPhysicalDeviceLimitsEXT` prior to creating the `VkDevice` for some validation state tracking
 
 ```cpp
-ASSERT_NO_FATAL_FAILURE(InitFramework());
+RETURN_IF_SKIP(InitFramework());
 
 // Load required functions
 PFN_vkSetPhysicalDeviceLimitsEXT fpvkSetPhysicalDeviceLimitsEXT = nullptr;
@@ -296,5 +298,5 @@ fpvkGetOriginalPhysicalDeviceLimitsEXT(gpu(), &props.limits);
 props.limits.maxPushConstantsSize = 16; // example
 fpvkSetPhysicalDeviceLimitsEXT(gpu(), &props.limits);
 
-ASSERT_NO_FATAL_FAILURE(InitState());
+RETURN_IF_SKIP(InitState());
 ```

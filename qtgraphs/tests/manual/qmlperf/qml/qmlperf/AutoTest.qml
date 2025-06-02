@@ -136,11 +136,11 @@ Item {
 
         if (varyOptimization.checked) {
             if (optimization[currentOptimization] === "Legacy") {
-                scatterGraph.optimizationHint = AbstractGraph3D.OptimizationHint.Default
-                barGraph.optimizationHint = AbstractGraph3D.OptimizationHint.Default
+                scatterGraph.optimizationHint = Graphs3D.OptimizationHint.Default
+                barGraph.optimizationHint = Graphs3D.OptimizationHint.Default
             } else {
-                scatterGraph.optimizationHint = AbstractGraph3D.OptimizationHint.Legacy
-                barGraph.optimizationHint = AbstractGraph3D.OptimizationHint.Legacy
+                scatterGraph.optimizationHint = Graphs3D.OptimizationHint.Legacy
+                barGraph.optimizationHint = Graphs3D.OptimizationHint.Legacy
             }
         }
 

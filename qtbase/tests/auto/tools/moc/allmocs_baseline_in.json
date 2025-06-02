@@ -3,11 +3,13 @@
         "classes": [
             {
                 "className": "BackslashNewlines",
+                "lineNumber": 16,
                 "object": true,
                 "qualifiedClassName": "BackslashNewlines",
                 "slots": [
                     {
                         "access": "public",
+                        "index": 0,
                         "name": "works",
                         "returnType": "void"
                     }
@@ -27,6 +29,7 @@
         "classes": [
             {
                 "className": "IfdefedClass",
+                "lineNumber": 13,
                 "object": true,
                 "qualifiedClassName": "IfdefedClass",
                 "superClasses": [
@@ -65,6 +68,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 8,
                 "qualifiedClassName": "CStyleEnums"
             }
         ],
@@ -171,6 +175,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 8,
                 "qualifiedClassName": "CXX11Enums"
             },
             {
@@ -236,6 +241,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 36,
                 "qualifiedClassName": "CXX11Enums2"
             },
             {
@@ -288,6 +294,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 50,
                 "object": true,
                 "qualifiedClassName": "CXX11Enums3",
                 "superClasses": [
@@ -305,26 +312,31 @@
         "classes": [
             {
                 "className": "ExplicitOverrideControlBase",
+                "lineNumber": 17,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlBase",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -338,26 +350,31 @@
             },
             {
                 "className": "ExplicitOverrideControlFinalQt",
+                "lineNumber": 39,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlFinalQt",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -371,26 +388,31 @@
             },
             {
                 "className": "ExplicitOverrideControlFinalCxx11",
+                "lineNumber": 61,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlFinalCxx11",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -404,26 +426,31 @@
             },
             {
                 "className": "ExplicitOverrideControlSealed",
+                "lineNumber": 83,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlSealed",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -437,26 +464,31 @@
             },
             {
                 "className": "ExplicitOverrideControlOverrideQt",
+                "lineNumber": 105,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlOverrideQt",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -470,26 +502,31 @@
             },
             {
                 "className": "ExplicitOverrideControlOverrideCxx11",
+                "lineNumber": 127,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlOverrideCxx11",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -503,26 +540,31 @@
             },
             {
                 "className": "ExplicitOverrideControlFinalQtOverrideQt",
+                "lineNumber": 149,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlFinalQtOverrideQt",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -536,26 +578,31 @@
             },
             {
                 "className": "ExplicitOverrideControlFinalCxx11OverrideCxx11",
+                "lineNumber": 171,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlFinalCxx11OverrideCxx11",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -569,26 +616,31 @@
             },
             {
                 "className": "ExplicitOverrideControlSealedOverride",
+                "lineNumber": 193,
                 "object": true,
                 "qualifiedClassName": "ExplicitOverrideControlSealedOverride",
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "pureSlot0",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "pureSlot1",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 2,
                         "name": "pureSlot2",
                         "returnType": "void"
                     },
                     {
                         "access": "private",
+                        "index": 3,
                         "name": "pureSlot3",
                         "returnType": "void"
                     }
@@ -608,6 +660,7 @@
         "classes": [
             {
                 "className": "FinalTestClassQt",
+                "lineNumber": 15,
                 "object": true,
                 "qualifiedClassName": "FinalTestClassQt",
                 "superClasses": [
@@ -619,6 +672,7 @@
             },
             {
                 "className": "ExportedFinalTestClassQt",
+                "lineNumber": 24,
                 "object": true,
                 "qualifiedClassName": "ExportedFinalTestClassQt",
                 "superClasses": [
@@ -630,6 +684,7 @@
             },
             {
                 "className": "ExportedFinalTestClassQtX",
+                "lineNumber": 32,
                 "object": true,
                 "qualifiedClassName": "ExportedFinalTestClassQtX",
                 "superClasses": [
@@ -641,6 +696,7 @@
             },
             {
                 "className": "FinalTestClassCpp11",
+                "lineNumber": 40,
                 "object": true,
                 "qualifiedClassName": "FinalTestClassCpp11",
                 "superClasses": [
@@ -652,6 +708,7 @@
             },
             {
                 "className": "ExportedFinalTestClassCpp11",
+                "lineNumber": 48,
                 "object": true,
                 "qualifiedClassName": "ExportedFinalTestClassCpp11",
                 "superClasses": [
@@ -663,6 +720,7 @@
             },
             {
                 "className": "ExportedFinalTestClassCpp11X",
+                "lineNumber": 56,
                 "object": true,
                 "qualifiedClassName": "ExportedFinalTestClassCpp11X",
                 "superClasses": [
@@ -674,6 +732,7 @@
             },
             {
                 "className": "SealedTestClass",
+                "lineNumber": 64,
                 "object": true,
                 "qualifiedClassName": "SealedTestClass",
                 "superClasses": [
@@ -685,6 +744,7 @@
             },
             {
                 "className": "ExportedSealedTestClass",
+                "lineNumber": 72,
                 "object": true,
                 "qualifiedClassName": "ExportedSealedTestClass",
                 "superClasses": [
@@ -696,6 +756,7 @@
             },
             {
                 "className": "ExportedSealedTestClassX",
+                "lineNumber": 80,
                 "object": true,
                 "qualifiedClassName": "ExportedSealedTestClassX",
                 "superClasses": [
@@ -713,6 +774,7 @@
         "classes": [
             {
                 "className": "CXX11TrailingReturn",
+                "lineNumber": 8,
                 "object": true,
                 "qualifiedClassName": "CXX11TrailingReturn",
                 "signals": [
@@ -724,6 +786,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 0,
                         "name": "trailingSignalReturn",
                         "returnType": "void"
                     }
@@ -731,6 +794,7 @@
                 "slots": [
                     {
                         "access": "public",
+                        "index": 1,
                         "name": "fun",
                         "returnType": "void"
                     },
@@ -746,6 +810,7 @@
                                 "type": "char"
                             }
                         ],
+                        "index": 2,
                         "name": "arguments",
                         "returnType": "int"
                     },
@@ -757,16 +822,19 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 3,
                         "name": "inlineFunc",
                         "returnType": "int"
                     },
                     {
                         "access": "public",
+                        "index": 4,
                         "name": "constRefReturn",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 5,
                         "name": "constConstRefReturn",
                         "returnType": "void"
                     }
@@ -797,6 +865,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 19,
                 "qualifiedClassName": "CXX17Namespace::A::B::C::D::ClassInNamespace"
             },
             {
@@ -811,6 +880,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 10,
                 "namespace": true,
                 "qualifiedClassName": "CXX17Namespace::A::B::C::D"
             }
@@ -830,6 +900,7 @@
                         }
                     ]
                 ],
+                "lineNumber": 8,
                 "object": true,
                 "qualifiedClassName": "DirInIncludePath",
                 "superClasses": [
@@ -851,6 +922,7 @@
         "classes": [
             {
                 "className": "Foo",
+                "lineNumber": 8,
                 "object": true,
                 "qualifiedClassName": "Foo",
                 "superClasses": [
@@ -882,6 +954,7 @@
                     }
                 ],
                 "className": "StringLiterals",
+                "lineNumber": 8,
                 "object": true,
                 "qualifiedClassName": "StringLiterals",
                 "superClasses": [
@@ -899,6 +972,7 @@
         "classes": [
             {
                 "className": "ForwardDeclaredParamClass",
+                "lineNumber": 20,
                 "object": true,
                 "qualifiedClassName": "ForwardDeclaredParamClass",
                 "signals": [
@@ -909,6 +983,7 @@
                                 "type": "ForwardDeclaredParam"
                             }
                         ],
+                        "index": 0,
                         "name": "signalNaked",
                         "returnType": "void"
                     },
@@ -919,6 +994,7 @@
                                 "type": "ForwardDeclaredContainer<ForwardDeclaredParam>"
                             }
                         ],
+                        "index": 1,
                         "name": "signalFDC",
                         "returnType": "void"
                     },
@@ -929,6 +1005,7 @@
                                 "type": "ForwardDeclaredContainer<int>"
                             }
                         ],
+                        "index": 2,
                         "name": "signalFDC",
                         "returnType": "void"
                     },
@@ -939,6 +1016,7 @@
                                 "type": "ForwardDeclaredContainer<QString>"
                             }
                         ],
+                        "index": 3,
                         "name": "signalFDC",
                         "returnType": "void"
                     },
@@ -949,6 +1027,7 @@
                                 "type": "ForwardDeclaredContainer<FullyDefined>"
                             }
                         ],
+                        "index": 4,
                         "name": "signalFDC",
                         "returnType": "void"
                     },
@@ -959,6 +1038,7 @@
                                 "type": "QSet<ForwardDeclaredParam>"
                             }
                         ],
+                        "index": 5,
                         "name": "signalQSet",
                         "returnType": "void"
                     },
@@ -969,6 +1049,7 @@
                                 "type": "QSet<int>"
                             }
                         ],
+                        "index": 6,
                         "name": "signalQSet",
                         "returnType": "void"
                     },
@@ -979,6 +1060,7 @@
                                 "type": "QSet<QString>"
                             }
                         ],
+                        "index": 7,
                         "name": "signalQSet",
                         "returnType": "void"
                     },
@@ -989,6 +1071,7 @@
                                 "type": "QSet<FullyDefined>"
                             }
                         ],
+                        "index": 8,
                         "name": "signalQSet",
                         "returnType": "void"
                     }
@@ -1001,6 +1084,7 @@
                                 "type": "ForwardDeclaredParam"
                             }
                         ],
+                        "index": 9,
                         "name": "slotNaked",
                         "returnType": "void"
                     },
@@ -1011,6 +1095,7 @@
                                 "type": "ForwardDeclaredContainer<ForwardDeclaredParam>"
                             }
                         ],
+                        "index": 10,
                         "name": "slotFDC",
                         "returnType": "void"
                     },
@@ -1021,6 +1106,7 @@
                                 "type": "ForwardDeclaredContainer<int>"
                             }
                         ],
+                        "index": 11,
                         "name": "slotFDC",
                         "returnType": "void"
                     },
@@ -1031,6 +1117,7 @@
                                 "type": "ForwardDeclaredContainer<QString>"
                             }
                         ],
+                        "index": 12,
                         "name": "slotFDC",
                         "returnType": "void"
                     },
@@ -1041,6 +1128,7 @@
                                 "type": "ForwardDeclaredContainer<FullyDefined>"
                             }
                         ],
+                        "index": 13,
                         "name": "slotFDC",
                         "returnType": "void"
                     },
@@ -1051,6 +1139,7 @@
                                 "type": "QSet<ForwardDeclaredParam>"
                             }
                         ],
+                        "index": 14,
                         "name": "slotQSet",
                         "returnType": "void"
                     },
@@ -1061,6 +1150,7 @@
                                 "type": "QSet<int>"
                             }
                         ],
+                        "index": 15,
                         "name": "slotQSet",
                         "returnType": "void"
                     },
@@ -1071,6 +1161,7 @@
                                 "type": "QSet<QString>"
                             }
                         ],
+                        "index": 16,
                         "name": "slotQSet",
                         "returnType": "void"
                     },
@@ -1081,6 +1172,7 @@
                                 "type": "QSet<FullyDefined>"
                             }
                         ],
+                        "index": 17,
                         "name": "slotQSet",
                         "returnType": "void"
                     }
@@ -1100,16 +1192,19 @@
         "classes": [
             {
                 "className": "FunctionWithAttributes",
+                "lineNumber": 22,
                 "object": true,
                 "qualifiedClassName": "FunctionWithAttributes",
                 "slots": [
                     {
                         "access": "public",
+                        "index": 0,
                         "name": "test1",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 1,
                         "name": "test2",
                         "returnType": "void"
                     }
@@ -1130,6 +1225,7 @@
             {
                 "className": "GadgetWithNoEnums",
                 "gadget": true,
+                "lineNumber": 8,
                 "qualifiedClassName": "GadgetWithNoEnums"
             },
             {
@@ -1145,6 +1241,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 17,
                 "qualifiedClassName": "DerivedGadgetWithEnums",
                 "superClasses": [
                     {
@@ -1162,11 +1259,13 @@
             {
                 "className": "BaseGadget",
                 "gadget": true,
+                "lineNumber": 11,
                 "qualifiedClassName": "GrandParentGadget::BaseGadget"
             },
             {
                 "className": "DerivedGadget",
                 "gadget": true,
+                "lineNumber": 13,
                 "qualifiedClassName": "GrandParentGadget::DerivedGadget",
                 "superClasses": [
                     {
@@ -1178,6 +1277,7 @@
             {
                 "className": "CRTPDerivedGadget",
                 "gadget": true,
+                "lineNumber": 15,
                 "qualifiedClassName": "GrandParentGadget::CRTPDerivedGadget",
                 "superClasses": [
                     {
@@ -1194,6 +1294,7 @@
         "classes": [
             {
                 "className": "TestFwdProperties",
+                "lineNumber": 20,
                 "object": true,
                 "properties": [
                     {
@@ -1249,6 +1350,7 @@
             },
             {
                 "className": "SomeRandomNamespace",
+                "lineNumber": 15,
                 "namespace": true,
                 "qualifiedClassName": "SomeRandomNamespace"
             }
@@ -1271,6 +1373,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 12,
                 "namespace": true,
                 "qualifiedClassName": "FooNamespace"
             },
@@ -1296,6 +1399,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 20,
                 "namespace": true,
                 "qualifiedClassName": "FooNamespace::FooNestedNamespace"
             },
@@ -1312,6 +1416,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 41,
                 "namespace": true,
                 "qualifiedClassName": "FooNamespace::FooNestedNamespace::FooMoreNestedNamespace"
             }
@@ -1323,6 +1428,7 @@
         "classes": [
             {
                 "className": "Base",
+                "lineNumber": 10,
                 "object": true,
                 "qualifiedClassName": "QTBUG_101141::Base",
                 "superClasses": [
@@ -1334,6 +1440,7 @@
             },
             {
                 "className": "Derived",
+                "lineNumber": 14,
                 "object": true,
                 "qualifiedClassName": "QTBUG_101141::Derived",
                 "superClasses": [
@@ -1364,6 +1471,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 9,
                 "object": true,
                 "properties": [
                     {
@@ -1391,6 +1499,7 @@
             },
             {
                 "className": "Baz",
+                "lineNumber": 27,
                 "object": true,
                 "properties": [
                     {
@@ -1438,11 +1547,13 @@
         "classes": [
             {
                 "className": "MyBooooooostishClass",
+                "lineNumber": 34,
                 "object": true,
                 "qualifiedClassName": "MyBooooooostishClass",
                 "signals": [
                     {
                         "access": "public",
+                        "index": 0,
                         "name": "mySignal",
                         "returnType": "void"
                     }
@@ -1450,6 +1561,7 @@
                 "slots": [
                     {
                         "access": "public",
+                        "index": 1,
                         "name": "mySlot",
                         "returnType": "void"
                     }
@@ -1470,6 +1582,7 @@
             {
                 "className": "Derived",
                 "gadget": true,
+                "lineNumber": 12,
                 "qualifiedClassName": "NonGadgetParent::Derived",
                 "superClasses": [
                     {
@@ -1486,11 +1599,13 @@
         "classes": [
             {
                 "className": "OldStyleCast",
+                "lineNumber": 8,
                 "object": true,
                 "qualifiedClassName": "OldStyleCast",
                 "slots": [
                     {
                         "access": "public",
+                        "index": 0,
                         "name": "foo",
                         "returnType": "void"
                     },
@@ -1513,6 +1628,7 @@
                                 "type": "const int*volatile*"
                             }
                         ],
+                        "index": 1,
                         "name": "bar",
                         "returnType": "int"
                     },
@@ -1526,6 +1642,7 @@
                                 "type": "QObject*"
                             }
                         ],
+                        "index": 2,
                         "name": "slot",
                         "returnType": "void"
                     }
@@ -1559,6 +1676,7 @@
                     }
                 ],
                 "className": "ParseDefine",
+                "lineNumber": 53,
                 "object": true,
                 "qualifiedClassName": "PD::ParseDefine",
                 "signals": [
@@ -1570,11 +1688,13 @@
                                 "type": "QMap<int,int>"
                             }
                         ],
+                        "index": 0,
                         "name": "cmdlineSignal",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 1,
                         "name": "signalQTBUG55853",
                         "returnType": "void"
                     }
@@ -1582,26 +1702,31 @@
                 "slots": [
                     {
                         "access": "public",
+                        "index": 2,
                         "name": "voidFunction",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 3,
                         "name": "stringMethod",
                         "returnType": "QString"
                     },
                     {
                         "access": "public",
+                        "index": 4,
                         "name": "combined1",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 5,
                         "name": "combined2",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 6,
                         "name": "combined3",
                         "returnType": "void"
                     },
@@ -1615,21 +1740,25 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 7,
                         "name": "combined4",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 8,
                         "name": "combined5",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 9,
                         "name": "combined6",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 10,
                         "name": "vararg1",
                         "returnType": "void"
                     },
@@ -1640,6 +1769,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 11,
                         "name": "vararg2",
                         "returnType": "void"
                     },
@@ -1653,11 +1783,13 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 12,
                         "name": "vararg3",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 13,
                         "name": "vararg4",
                         "returnType": "void"
                     },
@@ -1668,6 +1800,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 14,
                         "name": "vararg5",
                         "returnType": "void"
                     },
@@ -1681,6 +1814,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 15,
                         "name": "vararg6",
                         "returnType": "void"
                     },
@@ -1691,6 +1825,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 16,
                         "name": "INNERFUNCTION",
                         "returnType": "void"
                     },
@@ -1701,6 +1836,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 17,
                         "name": "inner_expanded",
                         "returnType": "void"
                     },
@@ -1711,11 +1847,13 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 18,
                         "name": "expanded_method",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 19,
                         "name": "conditionSlot",
                         "returnType": "void"
                     },
@@ -1726,6 +1864,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 20,
                         "name": "PD_DEFINE_ITSELF_SUFFIX",
                         "returnType": "void"
                     }
@@ -1745,6 +1884,7 @@
         "classes": [
             {
                 "className": "TestPluginMetaData",
+                "lineNumber": 9,
                 "object": true,
                 "qualifiedClassName": "TestPluginMetaData",
                 "superClasses": [
@@ -1762,6 +1902,7 @@
         "classes": [
             {
                 "className": "TestPointeeCanBeIncomplete",
+                "lineNumber": 14,
                 "object": true,
                 "qualifiedClassName": "TestPointeeCanBeIncomplete",
                 "slots": [
@@ -1772,6 +1913,7 @@
                                 "type": "QPointer<FwdClass>"
                             }
                         ],
+                        "index": 0,
                         "name": "setProp1",
                         "returnType": "void"
                     },
@@ -1782,6 +1924,7 @@
                                 "type": "QSharedPointer<FwdClass>"
                             }
                         ],
+                        "index": 1,
                         "name": "setProp2",
                         "returnType": "void"
                     },
@@ -1792,6 +1935,7 @@
                                 "type": "QWeakPointer<FwdClass>"
                             }
                         ],
+                        "index": 2,
                         "name": "setProp3",
                         "returnType": "void"
                     },
@@ -1802,6 +1946,7 @@
                                 "type": "FwdClass*"
                             }
                         ],
+                        "index": 3,
                         "name": "setProp4",
                         "returnType": "void"
                     },
@@ -1812,6 +1957,7 @@
                                 "type": "const FwdClass*"
                             }
                         ],
+                        "index": 4,
                         "name": "setProp5",
                         "returnType": "void"
                     },
@@ -1822,6 +1968,7 @@
                                 "type": "void*"
                             }
                         ],
+                        "index": 5,
                         "name": "setProp6",
                         "returnType": "void"
                     },
@@ -1832,6 +1979,7 @@
                                 "type": "const void*"
                             }
                         ],
+                        "index": 6,
                         "name": "setProp7",
                         "returnType": "void"
                     }
@@ -1851,16 +1999,19 @@
         "classes": [
             {
                 "className": "PureVirtualSignalsTest",
+                "lineNumber": 8,
                 "object": true,
                 "qualifiedClassName": "PureVirtualSignalsTest",
                 "signals": [
                     {
                         "access": "public",
+                        "index": 0,
                         "name": "mySignal",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 1,
                         "name": "myOtherSignal",
                         "returnType": "void"
                     },
@@ -1872,6 +2023,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 2,
                         "name": "mySignal2",
                         "returnType": "void"
                     }
@@ -1885,11 +2037,13 @@
             },
             {
                 "className": "PureVirtualSignalsImpl",
+                "lineNumber": 18,
                 "object": true,
                 "qualifiedClassName": "PureVirtualSignalsImpl",
                 "signals": [
                     {
                         "access": "public",
+                        "index": 0,
                         "name": "mySignal",
                         "returnType": "void"
                     },
@@ -1901,6 +2055,7 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 1,
                         "name": "mySignal2",
                         "returnType": "void"
                     }
@@ -1920,9 +2075,11 @@
         "classes": [
             {
                 "className": "InvokableBeforeReturnType",
+                "lineNumber": 9,
                 "methods": [
                     {
                         "access": "public",
+                        "index": 0,
                         "name": "foo",
                         "returnType": "const char*"
                     }
@@ -1938,14 +2095,17 @@
             },
             {
                 "className": "InvokableBeforeInline",
+                "lineNumber": 16,
                 "methods": [
                     {
                         "access": "public",
+                        "index": 0,
                         "name": "foo",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 1,
                         "name": "bar",
                         "returnType": "void"
                     }
@@ -1967,9 +2127,11 @@
         "classes": [
             {
                 "className": "TestQPrivateSlots",
+                "lineNumber": 14,
                 "methods": [
                     {
                         "access": "private",
+                        "index": 1,
                         "name": "method1",
                         "returnType": "void"
                     }
@@ -1979,6 +2141,7 @@
                 "slots": [
                     {
                         "access": "private",
+                        "index": 0,
                         "name": "_q_privateslot",
                         "returnType": "void"
                     }
@@ -2009,6 +2172,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 10,
                 "qualifiedClassName": "QTBUG_35657::A"
             }
         ],
@@ -2019,6 +2183,7 @@
         "classes": [
             {
                 "className": "B",
+                "lineNumber": 11,
                 "object": true,
                 "properties": [
                     {
@@ -2061,6 +2226,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 10,
                 "object": true,
                 "qualifiedClassName": "QTBUG_2151::A",
                 "superClasses": [
@@ -2072,6 +2238,7 @@
             },
             {
                 "className": "B",
+                "lineNumber": 17,
                 "object": true,
                 "properties": [
                     {
@@ -2115,6 +2282,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 48,
                 "qualifiedClassName": "Unsused::Gadget"
             },
             {
@@ -2129,6 +2297,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 48,
                 "object": true,
                 "qualifiedClassName": "Unsused::Object",
                 "superClasses": [
@@ -2151,6 +2320,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 53,
                 "qualifiedClassName": "NS1::Nested::Gadget"
             },
             {
@@ -2165,6 +2335,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 53,
                 "object": true,
                 "qualifiedClassName": "NS1::Nested::Object",
                 "superClasses": [
@@ -2187,6 +2358,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 57,
                 "qualifiedClassName": "NS1::NestedUnsused::Gadget"
             },
             {
@@ -2201,6 +2373,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 57,
                 "object": true,
                 "qualifiedClassName": "NS1::NestedUnsused::Object",
                 "superClasses": [
@@ -2223,6 +2396,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 60,
                 "qualifiedClassName": "NS1::Gadget"
             },
             {
@@ -2237,6 +2411,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 60,
                 "object": true,
                 "qualifiedClassName": "NS1::Object",
                 "superClasses": [
@@ -2248,6 +2423,7 @@
             },
             {
                 "className": "DependingObject",
+                "lineNumber": 61,
                 "object": true,
                 "properties": [
                     {
@@ -2287,6 +2463,7 @@
             },
             {
                 "className": "DependingNestedGadget",
+                "lineNumber": 61,
                 "object": true,
                 "properties": [
                     {
@@ -2313,6 +2490,7 @@
             },
             {
                 "className": "DependingNestedObject",
+                "lineNumber": 61,
                 "object": true,
                 "properties": [
                     {
@@ -2350,6 +2528,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 67,
                 "qualifiedClassName": "NS2::Nested::Gadget"
             },
             {
@@ -2364,6 +2543,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 67,
                 "object": true,
                 "qualifiedClassName": "NS2::Nested::Object",
                 "superClasses": [
@@ -2386,6 +2566,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 71,
                 "qualifiedClassName": "NS2::NestedUnsused::Gadget"
             },
             {
@@ -2400,6 +2581,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 71,
                 "object": true,
                 "qualifiedClassName": "NS2::NestedUnsused::Object",
                 "superClasses": [
@@ -2422,6 +2604,7 @@
                     }
                 ],
                 "gadget": true,
+                "lineNumber": 74,
                 "qualifiedClassName": "NS2::Gadget"
             },
             {
@@ -2436,6 +2619,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 74,
                 "object": true,
                 "qualifiedClassName": "NS2::Object",
                 "superClasses": [
@@ -2447,6 +2631,7 @@
             },
             {
                 "className": "DependingObject",
+                "lineNumber": 75,
                 "object": true,
                 "properties": [
                     {
@@ -2486,6 +2671,7 @@
             },
             {
                 "className": "DependingNestedGadget",
+                "lineNumber": 75,
                 "object": true,
                 "properties": [
                     {
@@ -2512,6 +2698,7 @@
             },
             {
                 "className": "DependingNestedObject",
+                "lineNumber": 75,
                 "object": true,
                 "properties": [
                     {
@@ -2544,6 +2731,7 @@
         "classes": [
             {
                 "className": "SignalWithDefaultArg",
+                "lineNumber": 9,
                 "object": true,
                 "qualifiedClassName": "SignalWithDefaultArg",
                 "signals": [
@@ -2555,11 +2743,13 @@
                                 "type": "int"
                             }
                         ],
+                        "index": 0,
                         "name": "signalWithDefaultArg",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 1,
                         "isCloned": true,
                         "name": "signalWithDefaultArg",
                         "returnType": "void"
@@ -2590,6 +2780,7 @@
                         ]
                     }
                 ],
+                "lineNumber": 9,
                 "object": true,
                 "qualifiedClassName": "KDAB",
                 "superClasses": [
@@ -2606,88 +2797,8 @@
     {
         "classes": [
             {
-                "className": "SingleFunctionKeywordBeforeReturnType",
-                "object": true,
-                "qualifiedClassName": "SingleFunctionKeywordBeforeReturnType",
-                "signals": [
-                    {
-                        "access": "public",
-                        "name": "mySignal",
-                        "returnType": "void"
-                    }
-                ],
-                "slots": [
-                    {
-                        "access": "public",
-                        "name": "mySlot",
-                        "returnType": "void"
-                    }
-                ],
-                "superClasses": [
-                    {
-                        "access": "public",
-                        "name": "QObject"
-                    }
-                ]
-            },
-            {
-                "className": "SingleFunctionKeywordBeforeInline",
-                "object": true,
-                "qualifiedClassName": "SingleFunctionKeywordBeforeInline",
-                "signals": [
-                    {
-                        "access": "public",
-                        "name": "mySignal",
-                        "returnType": "void"
-                    }
-                ],
-                "slots": [
-                    {
-                        "access": "public",
-                        "name": "mySlot",
-                        "returnType": "void"
-                    }
-                ],
-                "superClasses": [
-                    {
-                        "access": "public",
-                        "name": "QObject"
-                    }
-                ]
-            },
-            {
-                "className": "SingleFunctionKeywordAfterInline",
-                "object": true,
-                "qualifiedClassName": "SingleFunctionKeywordAfterInline",
-                "signals": [
-                    {
-                        "access": "public",
-                        "name": "mySignal",
-                        "returnType": "void"
-                    }
-                ],
-                "slots": [
-                    {
-                        "access": "public",
-                        "name": "mySlot",
-                        "returnType": "void"
-                    }
-                ],
-                "superClasses": [
-                    {
-                        "access": "public",
-                        "name": "QObject"
-                    }
-                ]
-            }
-        ],
-        "inputFile": "single_function_keyword.h",
-        "outputRevision": 68
-    },
-    {
-        "classes": [
-            {
                 "className": "SlotsWithVoidTemplateTest",
+                "lineNumber": 14,
                 "object": true,
                 "qualifiedClassName": "SlotsWithVoidTemplateTest",
                 "signals": [
@@ -2698,16 +2809,19 @@
                                 "type": "TestTemplate<void>"
                             }
                         ],
+                        "index": 0,
                         "name": "mySignal",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 1,
                         "name": "myVoidSignal",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 2,
                         "name": "myVoidSignal2",
                         "returnType": "void"
                     }
@@ -2715,11 +2829,13 @@
                 "slots": [
                     {
                         "access": "public",
+                        "index": 3,
                         "name": "dummySlot",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 4,
                         "name": "dummySlot2",
                         "returnType": "void"
                     },
@@ -2730,11 +2846,13 @@
                                 "type": "TestTemplate<void>"
                             }
                         ],
+                        "index": 5,
                         "name": "anotherSlot",
                         "returnType": "void"
                     },
                     {
                         "access": "public",
+                        "index": 6,
                         "name": "mySlot",
                         "returnType": "TestTemplate<void>"
                     }
@@ -2754,6 +2872,7 @@
         "classes": [
             {
                 "className": "Task192552",
+                "lineNumber": 13,
                 "object": true,
                 "qualifiedClassName": "Task192552",
                 "superClasses": [
@@ -2771,6 +2890,7 @@
         "classes": [
             {
                 "className": "TestObject",
+                "lineNumber": 16,
                 "object": true,
                 "qualifiedClassName": "NS_A::NS_B::TestObject",
                 "superClasses": [
@@ -2782,6 +2902,7 @@
             },
             {
                 "className": "TestMain",
+                "lineNumber": 30,
                 "object": true,
                 "qualifiedClassName": "NS_A::NS_Main::TestMain",
                 "superClasses": [
@@ -2799,6 +2920,7 @@
         "classes": [
             {
                 "className": "TypenameWithUnsigned",
+                "lineNumber": 13,
                 "object": true,
                 "qualifiedClassName": "TypenameWithUnsigned",
                 "slots": [
@@ -2809,6 +2931,7 @@
                                 "type": "uint"
                             }
                         ],
+                        "index": 0,
                         "name": "a",
                         "returnType": "void"
                     },
@@ -2820,6 +2943,7 @@
                                 "type": "uint"
                             }
                         ],
+                        "index": 1,
                         "name": "b",
                         "returnType": "void"
                     },
@@ -2830,6 +2954,7 @@
                                 "type": "uint*"
                             }
                         ],
+                        "index": 2,
                         "name": "c",
                         "returnType": "void"
                     },
@@ -2841,6 +2966,7 @@
                                 "type": "uint*"
                             }
                         ],
+                        "index": 3,
                         "name": "d",
                         "returnType": "void"
                     },
@@ -2851,6 +2977,7 @@
                                 "type": "uint&"
                             }
                         ],
+                        "index": 4,
                         "name": "e",
                         "returnType": "void"
                     },
@@ -2862,6 +2989,7 @@
                                 "type": "uint&"
                             }
                         ],
+                        "index": 5,
                         "name": "f",
                         "returnType": "void"
                     },
@@ -2872,6 +3000,7 @@
                                 "type": "unsigned1"
                             }
                         ],
+                        "index": 6,
                         "name": "g",
                         "returnType": "void"
                     },
@@ -2883,6 +3012,7 @@
                                 "type": "unsigned1"
                             }
                         ],
+                        "index": 7,
                         "name": "h",
                         "returnType": "void"
                     },
@@ -2896,6 +3026,7 @@
                                 "type": "unsigned1"
                             }
                         ],
+                        "index": 8,
                         "name": "i",
                         "returnType": "void"
                     },
@@ -2909,6 +3040,7 @@
                                 "type": "uint"
                             }
                         ],
+                        "index": 9,
                         "name": "j",
                         "returnType": "void"
                     },
@@ -2919,6 +3051,7 @@
                                 "type": "unsignedQImage"
                             }
                         ],
+                        "index": 10,
                         "name": "k",
                         "returnType": "void"
                     },
@@ -2930,6 +3063,7 @@
                                 "type": "unsignedQImage"
                             }
                         ],
+                        "index": 11,
                         "name": "l",
                         "returnType": "void"
                     }
@@ -2949,6 +3083,7 @@
         "classes": [
             {
                 "className": "Task87883",
+                "lineNumber": 16,
                 "object": true,
                 "qualifiedClassName": "Task87883",
                 "superClasses": [
@@ -2966,6 +3101,7 @@
         "classes": [
             {
                 "className": "Foo",
+                "lineNumber": 14,
                 "object": true,
                 "qualifiedClassName": "BBB::Foo",
                 "signals": [
@@ -2976,6 +3112,7 @@
                                 "type": "QList<QList<int>>"
                             }
                         ],
+                        "index": 0,
                         "name": "foo",
                         "returnType": "void"
                     },
@@ -2986,6 +3123,7 @@
                                 "type": "QList<QList<int>>"
                             }
                         ],
+                        "index": 1,
                         "name": "foo2",
                         "returnType": "void"
                     },
@@ -2996,6 +3134,7 @@
                                 "type": "QList<::AAA::BaseA*>"
                             }
                         ],
+                        "index": 2,
                         "name": "bar",
                         "returnType": "void"
                     },
@@ -3006,6 +3145,7 @@
                                 "type": "QList<::AAA::BaseA*>"
                             }
                         ],
+                        "index": 3,
                         "name": "bar2",
                         "returnType": "void"
                     },
@@ -3016,6 +3156,7 @@
                                 "type": "QList<const ::AAA::BaseA*>"
                             }
                         ],
+                        "index": 4,
                         "name": "bar3",
                         "returnType": "void"
                     }

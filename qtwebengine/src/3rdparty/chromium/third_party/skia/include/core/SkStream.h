@@ -25,19 +25,6 @@ class SkStreamAsset;
 /**
  *  SkStream -- abstraction for a source of bytes. Subclasses can be backed by
  *  memory, or a file, or something else.
- *
- *  NOTE:
- *
- *  Classic "streams" APIs are sort of async, in that on a request for N
- *  bytes, they may return fewer than N bytes on a given call, in which case
- *  the caller can "try again" to get more bytes, eventually (modulo an error)
- *  receiving their total N bytes.
- *
- *  Skia streams behave differently. They are effectively synchronous, and will
- *  always return all N bytes of the request if possible. If they return fewer
- *  (the read() call returns the number of bytes read) then that means there is
- *  no more data (at EOF or hit an error). The caller should *not* call again
- *  in hopes of fulfilling more of the request.
  */
 class SK_API SkStream {
 public:
@@ -81,6 +68,9 @@ public:
     virtual size_t peek(void* /*buffer*/, size_t /*size*/) const { return 0; }
 
     /** Returns true when all the bytes in the stream have been read.
+     *  As SkStream represents synchronous I/O, isAtEnd returns false when the
+     *  final stream length isn't known yet, even when all the bytes available
+     *  so far have been read.
      *  This may return true early (when there are no more bytes to be read)
      *  or late (after the first unsuccessful read).
      */

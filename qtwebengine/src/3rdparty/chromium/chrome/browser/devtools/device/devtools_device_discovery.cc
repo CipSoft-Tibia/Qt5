@@ -407,7 +407,7 @@ class DevToolsDeviceDiscovery::DiscoveryRequest
                      const std::string& response);
   void ParseBrowserInfo(scoped_refptr<RemoteBrowser> browser,
                         const std::string& version_response,
-                        bool& is_node);
+                        bool& is_chrome);
 
   base::OnceCallback<void(const CompleteDevices&)> callback_;
   DevToolsDeviceDiscovery::CompleteDevices complete_devices_;
@@ -462,9 +462,9 @@ void DevToolsDeviceDiscovery::DiscoveryRequest::ReceivedDeviceInfo(
 void DevToolsDeviceDiscovery::DiscoveryRequest::ParseBrowserInfo(
     scoped_refptr<RemoteBrowser> browser,
     const std::string& version_response,
-    bool& is_node) {
+    bool& is_chrome) {
   // Parse version, append to package name if available,
-  absl::optional<base::Value::Dict> value_dict =
+  std::optional<base::Value::Dict> value_dict =
       base::JSONReader::ReadDict(version_response);
   if (!value_dict) {
     return;
@@ -475,7 +475,7 @@ void DevToolsDeviceDiscovery::DiscoveryRequest::ParseBrowserInfo(
         *browser_name, "/", base::KEEP_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
     if (parts.size() == 2) {
       browser->version_ = parts[1];
-      is_node = parts[0] == "node.js";
+      is_chrome = parts[0] == "Chrome" || parts[0] == "HeadlessChrome";
     } else {
       browser->version_ = *browser_name;
     }
@@ -499,12 +499,12 @@ void DevToolsDeviceDiscovery::DiscoveryRequest::ReceivedVersion(
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
   std::string url = kPageListRequest;
-  bool is_node = false;
+  bool is_chrome = false;
   if (result >= 0) {
-    ParseBrowserInfo(browser, response, is_node);
+    ParseBrowserInfo(browser, response, is_chrome);
   }
   if (base::FeatureList::IsEnabled(::features::kDevToolsTabTarget) &&
-      !is_node) {
+      is_chrome) {
     url += "?for_tab";
   }
   device->SendJsonRequest(
@@ -521,7 +521,7 @@ void DevToolsDeviceDiscovery::DiscoveryRequest::ReceivedPages(
   if (result < 0) {
     return;
   }
-  absl::optional<base::Value> value = base::JSONReader::Read(response);
+  std::optional<base::Value> value = base::JSONReader::Read(response);
   if (!value) {
     return;
   }

@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_SIGNIN_SIGNIN_UTIL_H_
 #define CHROME_BROWSER_SIGNIN_SIGNIN_UTIL_H_
 
+#include <optional>
 #include <string>
 
 #include "base/containers/enum_set.h"
@@ -17,7 +18,6 @@
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/identity_manager/tribool.h"
 #include "net/cookies/canonical_cookie.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 class Profile;
 
@@ -101,19 +101,28 @@ bool IsProfileDeletionAllowed(Profile* profile);
 #if !BUILDFLAG(IS_CHROMEOS)
 
 // Returns true if managed accounts signin are required to create a new profile
-// by policies set in `profile`.
-bool IsProfileSeparationEnforcedByProfile(Profile* profile);
+// by policies set in `profile`. This will check the by default check the
+// ManagedAccountsSigninRestriction policy.
+// The optional `intercepted_account_email` will trigger a check to the
+// ProfileSeparationDomainExceptionList policy. Unless
+// `intercepted_account_email` is not available, it should always be passed.
+bool IsProfileSeparationEnforcedByProfile(
+    Profile* profile,
+    const std::string& intercepted_account_email);
 
 // Returns true if profile separation is enforced by
 // `intercepted_account_separation_policies`.
 bool IsProfileSeparationEnforcedByPolicies(
     const policy::ProfileSeparationPolicies&
-        intercepted_account_separation_policies);
+        intercepted_profile_separation_policies);
 
 bool ProfileSeparationAllowsKeepingUnmanagedBrowsingDataInManagedProfile(
     Profile* profile,
     const policy::ProfileSeparationPolicies&
-        intercepted_account_separation_policies);
+        intercepted_profile_separation_policies);
+
+bool IsAccountExemptedFromEnterpriseProfileSeparation(Profile* profile,
+                                                      const std::string& email);
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 // Records a UMA metric if the user accepts or not to create an enterprise
 // profile.

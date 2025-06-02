@@ -1,9 +1,32 @@
 #!/usr/bin/env lucicfg
 #
-# Copyright 2021 The Dawn Authors. All rights reserved.
-# Use of this source code is governed by a BSD-style license that can be
-# found in the LICENSE file.
+# Copyright 2021 The Dawn & Tint Authors
 #
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 """
 main.star: lucicfg configuration for Dawn's standalone builers.
 """
@@ -130,6 +153,14 @@ reclient = struct(
     ),
 )
 
+
+luci.notifier(
+    name = "gardener-notifier",
+    notify_rotation_urls = [
+        "https://chrome-ops-rotation-proxy.appspot.com/current/grotation:webgpu-gardener",
+    ],
+    on_occurrence = ["FAILURE", "INFRA_FAILURE"],
+)
 
 # Recipes
 
@@ -277,6 +308,7 @@ def add_ci_builder(name, os, clang, debug, cpu, fuzzer):
         properties = properties_ci,
         dimensions = dimensions_ci,
         caches = get_default_caches(os, clang),
+        notifies = ["gardener-notifier"],
         service_account = "dawn-ci-builder@chops-service-accounts.iam.gserviceaccount.com",
     )
 
@@ -363,6 +395,13 @@ def dawn_standalone_builder(name, clang, debug, cpu, fuzzer = False):
         luci.cq_tryjob_verifier(
             cq_group = "Dawn-CQ",
             builder = "dawn:try/" + name,
+            location_filters = [
+                cq.location_filter(path_regexp = ".*"),
+                cq.location_filter(
+                    path_regexp = "\\.github/.+",
+                    exclude = True,
+                ),
+            ],
         )
 
         # These builders run fine unbranched on branch CLs, so add them to the
@@ -390,15 +429,26 @@ def _add_branch_verifiers(builder_name, os, min_milestone = None, includable_onl
 _os_arch_to_branch_builder = {
     "linux": "dawn-linux-x64-deps-rel",
     "mac": "dawn-mac-x64-deps-rel",
+    "mac-arm64": "dawn-mac-arm64-deps-rel",
     "win": "dawn-win10-x64-deps-rel",
     "android-arm": "dawn-android-arm-deps-rel",
     "android-arm64": "dawn-android-arm64-deps-rel",
+}
+
+_os_arch_to_dawn_cq_builder = {
+    "linux": "linux-dawn-rel",
+    "mac": "mac-dawn-rel",
+    "mac-arm64": "mac-arm64-dawn-rel",
+    "win": "win-dawn-rel",
+    "android-arm": "android-dawn-arm-rel",
+    "android-arm64": "android-dawn-arm64-rel",
 }
 
 # The earliest milestone that the builder is relevant for
 _os_arch_to_min_milestone = {
     "linux": 112,
     "mac": 112,
+    "mac-arm64": 122,
     "win": 112,
     "android-arm": None,
     "android-arm64": None,
@@ -415,7 +465,15 @@ def chromium_dawn_tryjob(os, arch = None):
     if arch:
         luci.cq_tryjob_verifier(
             cq_group = "Dawn-CQ",
-            builder = "chromium:try/{os}-dawn-{arch}-rel".format(os = os, arch = arch),
+            builder = "chromium:try/{builder}".format(builder =
+                _os_arch_to_dawn_cq_builder["{os}-{arch}".format(os = os, arch = arch)]),
+            location_filters = [
+                cq.location_filter(path_regexp = ".*"),
+                cq.location_filter(
+                    path_regexp = "\\.github/.+",
+                    exclude = True,
+                ),
+            ],
         )
         _add_branch_verifiers(
             _os_arch_to_branch_builder["{os}-{arch}".format(os = os, arch = arch)],
@@ -426,6 +484,13 @@ def chromium_dawn_tryjob(os, arch = None):
         luci.cq_tryjob_verifier(
             cq_group = "Dawn-CQ",
             builder = "chromium:try/{}-dawn-rel".format(os),
+            location_filters = [
+                cq.location_filter(path_regexp = ".*"),
+                cq.location_filter(
+                    path_regexp = "\\.github/.+",
+                    exclude = True,
+                ),
+            ],
         )
         _add_branch_verifiers(_os_arch_to_branch_builder[os], os)
 
@@ -488,18 +553,7 @@ luci.builder(
         swarming.cache("nodejs"),
         swarming.cache("npmcache"),
     ],
-    notifies = [
-        luci.notifier(
-            name = "cts-roller-notifier",
-            # TODO(dawn:1940): Switch to the rotation email when stable
-            # notify_rotation_urls = [
-            #     "https://chrome-ops-rotation-proxy.appspot.com/current/grotation:webgpu-gardener",
-            # ],
-            notify_emails = ["enga@chromium.org"],
-            # TODO(dawn:1940): Remove SUCCESS when stable
-            on_occurrence = ["SUCCESS", "FAILURE", "INFRA_FAILURE"],
-        )
-    ],
+    notifies = ["gardener-notifier"],
     service_account = "dawn-automated-expectations@chops-service-accounts.iam.gserviceaccount.com",
 )
 
@@ -527,6 +581,7 @@ dawn_standalone_builder("cron-linux-clang-rel-x64", True, False, "x64", True)
 
 chromium_dawn_tryjob("linux")
 chromium_dawn_tryjob("mac")
+chromium_dawn_tryjob("mac", "arm64")
 chromium_dawn_tryjob("win")
 chromium_dawn_tryjob("android", "arm")
 chromium_dawn_tryjob("android", "arm64")

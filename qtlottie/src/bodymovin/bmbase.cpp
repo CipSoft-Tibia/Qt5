@@ -72,6 +72,11 @@ void BMBase::prependChild(BMBase *child)
     m_children.push_front(child);
 }
 
+void BMBase::insertChildBeforeLast(BMBase *child)
+{
+    m_children.insert(qMax(m_children.size() - 1, 0), child);
+}
+
 void BMBase::appendChild(BMBase *child)
 {
     m_children.push_back(child);

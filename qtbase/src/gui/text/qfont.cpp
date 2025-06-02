@@ -803,9 +803,7 @@ QFont &QFont::operator=(const QFont &font)
 /*!
     \fn void QFont::swap(QFont &other)
     \since 5.0
-
-    Swaps this font instance with \a other. This function is very fast
-    and never fails.
+    \memberswap{font instance}
 */
 
 /*!
@@ -1462,6 +1460,31 @@ QFont::StyleHint QFont::styleHint() const
     \value NoAntialias don't antialias the fonts.
     \value NoSubpixelAntialias avoid subpixel antialiasing on the fonts if possible.
     \value PreferAntialias antialias if possible.
+    \value [since 6.8] ContextFontMerging If the selected font does not contain a certain character,
+           then Qt automatically chooses a similar-looking fallback font that contains the
+           character. By default this is done on a character-by-character basis. This means that in
+           certain uncommon cases, multiple fonts may be used to represent one string of text even
+           if it's in the same script. Setting \c ContextFontMerging will try finding the fallback
+           font that matches the largest subset of the input string instead. This will be more
+           expensive for strings where missing glyphs occur, but may give more consistent results.
+           If \c NoFontMerging is set, then \c ContextFontMerging will have no effect.
+    \value [since 6.8] PreferTypoLineMetrics For compatibility reasons, OpenType fonts contain
+           two competing sets of the vertical line metrics that provide the
+           \l{QFontMetricsF::ascent()}{ascent}, \l{QFontMetricsF::descent()}{descent} and
+           \l{QFontMetricsF::leading()}{leading} of the font. These are often referred to as the
+           \l{https://learn.microsoft.com/en-us/typography/opentype/spec/os2#uswinascent}{win}
+           (Windows) metrics and the
+           \l{https://learn.microsoft.com/en-us/typography/opentype/spec/os2#sta}{typo}
+           (typographical) metrics. While the specification recommends using the \c typo metrics for
+           line spacing, many applications prefer the \c win metrics unless the \c{USE_TYPO_METRICS}
+           flag is set in the
+           \l{https://learn.microsoft.com/en-us/typography/opentype/spec/os2#fsselection}{fsSelection}
+           field of the font. For backwards-compatibility reasons, this is also the case for Qt
+           applications. This is not an issue for fonts that set the \c{USE_TYPO_METRICS} flag to
+           indicate that the \c{typo} metrics are valid, nor for fonts where the \c{win} metrics
+           and \c{typo} metrics match up. However, for certain fonts the \c{win} metrics may be
+           larger than the preferable line spacing and the \c{USE_TYPO_METRICS} flag may be unset
+           by mistake. For such fonts, setting \c{PreferTypoLineMetrics} may give superior results.
     \value NoFontMerging If the font selected for a certain writing system
            does not contain a character requested to draw, then Qt automatically chooses a similar
            looking font that contains the character. The NoFontMerging flag disables this feature.
@@ -2160,10 +2183,8 @@ QString QFont::toString() const
 }
 
 /*!
-    Returns the hash value for \a font. If specified, \a seed is used
-    to initialize the hash.
-
-    \relates QFont
+    \fn size_t qHash(const QFont &key, size_t seed)
+    \qhashold{QFont}
     \since 5.3
 */
 size_t qHash(const QFont &font, size_t seed) noexcept
@@ -2319,8 +2340,7 @@ void QFont::cacheStatistics()
 
 /*!
     \fn size_t QFont::Tag::qHash(QFont::Tag key, size_t seed) noexcept
-
-    Returns the hash value for \a key, using \a seed to seed the calculation.
+    \qhash{QFont::Tag}
 */
 
 /*!
@@ -2427,9 +2447,7 @@ std::optional<QFont::Tag> QFont::Tag::fromString(QAnyStringView view) noexcept
 
     By default, no variable axes are set.
 
-    \note In order to use variable axes on Windows, the application has to run with either the
-    FreeType or DirectWrite font databases. See the documentation for
-    QGuiApplication::QGuiApplication() for more information on how to select these technologies.
+    \note On Windows, variable axes are not supported if the optional GDI font backend is in use.
 
     \sa unsetVariableAxis
  */
@@ -3073,9 +3091,7 @@ QFontInfo &QFontInfo::operator=(const QFontInfo &fi)
 /*!
     \fn void QFontInfo::swap(QFontInfo &other)
     \since 5.0
-
-    Swaps this font info instance with \a other. This function is very
-    fast and never fails.
+    \memberswap{font info instance}
 */
 
 /*!
@@ -3266,7 +3282,7 @@ bool QFontInfo::fixedPitch() const
         QChar ch[2] = { u'i', u'm' };
         QGlyphLayoutArray<2> g;
         int l = 2;
-        if (!engine->stringToCMap(ch, 2, &g, &l, {}))
+        if (engine->stringToCMap(ch, 2, &g, &l, {}) < 0)
             Q_UNREACHABLE();
         Q_ASSERT(l == 2);
         engine->fontDef.fixedPitch = g.advances[0] == g.advances[1];

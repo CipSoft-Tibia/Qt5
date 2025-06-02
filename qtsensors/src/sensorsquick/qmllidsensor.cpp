@@ -5,7 +5,7 @@
 
 /*!
     \qmltype LidSensor
-//!    \instantiates QmlLidSensor
+//!    \nativetype QmlLidSensor
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.9
@@ -43,7 +43,7 @@ QSensor *QmlLidSensor::sensor() const
 
 /*!
     \qmltype LidReading
-//!    \instantiates QmlLidReading
+//!    \nativetype QmlLidReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.9
@@ -71,7 +71,7 @@ QmlLidReading::~QmlLidReading()
 }
 
 /*!
-    \qmlproperty qreal LidReading::backLidClosed
+    \qmlproperty real LidReading::backLidClosed
     This property holds whether the back lid is closed.
 
     Please see QLidReading::backLidClosed for information about this property.
@@ -88,7 +88,7 @@ QBindable<bool> QmlLidReading::bindableBackLidClosed() const
 }
 
 /*!
-    \qmlproperty qreal LidReading::frontLidClosed
+    \qmlproperty real LidReading::frontLidClosed
     This property holds whether the front lid is closed.
 
     Please see QLidReading::frontLidClosed for information about this property.

@@ -1,0 +1,38 @@
+From 1ee1724bf37f4ff78340e6bb342182ae195ff10e Mon Sep 17 00:00:00 2001
+From: Andy Nichols <nezticle@gmail.com>
+Date: Wed, 23 Oct 2024 09:10:08 +0200
+Subject: [PATCH] glslang: Fix/Workaround crash on Android (arm64-v8a) in debug
+ mode
+
+When compiling shaders (GLSL->SPIRV) at runtime on Android (arm64-v8a)
+when targeting debug mode, we get a crash in the STL/C++ runtime code
+just based on the particular usage patched.  By changing how this
+operation is performed, we can work around the triggered bug. This
+bug has already been reported upstream, and this workaround comes from
+that bug report. The fix was not applied upstream because they claim it
+is a bug in the Android NDK/runtime, and this is just a workaround, not
+a fix. That is fine for us though, we have many workaround patches.
+
+Change-Id: I44bdd148a85e3ede0924404aecfd7f0feeb16613
+---
+ src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp b/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
+index 7ee26e9..adb16cd 100644
+--- a/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
++++ b/src/3rdparty/glslang/SPIRV/GlslangToSpv.cpp
+@@ -9343,7 +9343,9 @@ spv::Id TGlslangToSpvTraverser::createMiscOperation(glslang::TOperator op, spv::
+         // Use an extended instruction from the standard library.
+         // Construct the call arguments, without modifying the original operands vector.
+         // We might need the remaining arguments, e.g. in the EOpFrexp case.
+-        std::vector<spv::Id> callArguments(operands.begin(), operands.begin() + consumedOperands);
++        std::vector<spv::Id> callArguments(consumedOperands);
++        for (size_t i = 0; i < consumedOperands; ++i)
++            callArguments[i] = operands[i];
+         id = builder.createBuiltinCall(typeId, extBuiltins >= 0 ? extBuiltins : stdBuiltins, libCall, callArguments);
+     } else if (opCode == spv::OpDot && !isFloat) {
+         // int dot(int, int)
+-- 
+2.39.5 (Apple Git-154)
+

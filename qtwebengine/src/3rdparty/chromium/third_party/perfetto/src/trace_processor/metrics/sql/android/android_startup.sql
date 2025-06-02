@@ -14,6 +14,8 @@
 -- limitations under the License.
 --
 
+SELECT RUN_METRIC('android/cpu_info.sql');
+
 -- Create the base tables and views containing the launch spans.
 INCLUDE PERFETTO MODULE android.startup.startups;
 SELECT RUN_METRIC('android/process_metadata.sql');
@@ -22,6 +24,9 @@ SELECT RUN_METRIC('android/process_metadata.sql');
 -- of the metric.
 SELECT RUN_METRIC('android/startup/slice_functions.sql');
 INCLUDE PERFETTO MODULE common.timestamps;
+
+-- Define helper functions related to slow start reasons
+SELECT RUN_METRIC('android/startup/slow_start_reasons.sql');
 
 -- Run all the HSC metrics.
 SELECT RUN_METRIC('android/startup/hsc.sql');
@@ -43,23 +48,19 @@ SELECT RUN_METRIC('android/startup/system_state.sql');
 -- Returns the slices for forked processes. Never present in hot starts.
 -- Prefer this over process start_ts, since the process might have
 -- been preforked.
-SELECT CREATE_VIEW_FUNCTION(
-  'ZYGOTE_FORK_FOR_LAUNCH(startup_id INT)',
-  'ts INT, dur INT',
-  '
-    SELECT slice.ts, slice.dur
-    FROM android_startups l
-    JOIN slice ON (
-      l.ts < slice.ts AND
-      slice.ts + slice.dur < l.ts_end AND
-      STR_SPLIT(slice.name, ": ", 1) = l.package
-    )
-    WHERE l.startup_id = $startup_id AND slice.name GLOB "Start proc: *"
-  '
-);
+CREATE OR REPLACE PERFETTO FUNCTION zygote_fork_for_launch(startup_id INT)
+RETURNS TABLE(ts INT, dur INT) AS
+SELECT slice.ts, slice.dur
+FROM android_startups l
+JOIN slice ON (
+  l.ts < slice.ts AND
+  slice.ts + slice.dur < l.ts_end AND
+  STR_SPLIT(slice.name, ': ', 1) = l.package
+)
+WHERE l.startup_id = $startup_id AND slice.name GLOB 'Start proc: *';
 
 -- Returns the fully drawn slice proto given a launch id.
-CREATE PERFETTO FUNCTION report_fully_drawn_for_launch(startup_id INT)
+CREATE OR REPLACE PERFETTO FUNCTION report_fully_drawn_for_launch(startup_id INT)
 RETURNS PROTO AS
 SELECT
   startup_slice_proto(report_fully_drawn_ts - launch_ts)
@@ -79,21 +80,24 @@ FROM (
 );
 
 -- Given a launch id and GLOB for a slice name, returns the N longest slice name and duration.
-SELECT CREATE_VIEW_FUNCTION(
-  'GET_LONG_SLICES_FOR_LAUNCH(startup_id INT, slice_name STRING, top_n INT)',
-  'slice_name STRING, slice_dur INT',
-  '
-    SELECT slice_name, slice_dur
-    FROM android_thread_slices_for_all_startups s
-    WHERE s.startup_id = $startup_id AND s.slice_name GLOB $slice_name
-    ORDER BY slice_dur DESC
-    LIMIT $top_n
-  '
-);
+CREATE OR REPLACE PERFETTO FUNCTION get_long_slices_for_launch(
+  startup_id INT, slice_name STRING, top_n INT)
+RETURNS TABLE(slice_name STRING, slice_dur INT) AS
+SELECT slice_name, slice_dur
+FROM android_thread_slices_for_all_startups s
+WHERE s.startup_id = $startup_id AND s.slice_name GLOB $slice_name
+ORDER BY slice_dur DESC
+LIMIT $top_n;
+
+-- Returns the number of CPUs.
+CREATE OR REPLACE PERFETTO FUNCTION get_number_of_cpus()
+RETURNS INT AS
+SELECT COUNT(DISTINCT cpu)
+FROM core_type_per_cpu;
 
 -- Define the view
 DROP VIEW IF EXISTS startup_view;
-CREATE VIEW startup_view AS
+CREATE PERFETTO VIEW startup_view AS
 SELECT
   AndroidStartupMetric_Startup(
     'startup_id',launches.startup_id,
@@ -240,6 +244,8 @@ SELECT
         SELECT startup_slice_proto(ts - launches.ts)
         FROM ZYGOTE_FORK_FOR_LAUNCH(launches.startup_id)
       ),
+      'time_to_running_state',
+      time_to_running_state_for_launch(launches.startup_id),
       'time_jit_thread_pool_on_cpu', NULL_IF_EMPTY(startup_slice_proto(
         thread_time_for_launch_state_and_thread(
          launches.startup_id,
@@ -335,6 +341,8 @@ SELECT
       'dex2oat_dur_ns',
       dur_of_process_running_concurrent_to_launch(launches.startup_id, '*dex2oat64')
     ),
+    -- Remove slow_start_reason implementation once slow_start_reason_detailed
+    -- is added to slow_start dashboards. (b/308460401)
     'slow_start_reason', (SELECT RepeatedField(slow_cause)
       FROM (
         SELECT 'No baseline or cloud profiles' AS slow_cause
@@ -370,6 +378,7 @@ SELECT
         SELECT 'Main Thread - Time spent in Runnable state'
           AS slow_cause
         WHERE
+          get_number_of_cpus() > 2 AND
           main_thread_time_for_launch_in_runnable_state(launches.startup_id) > launches.dur * 0.15
 
         UNION ALL
@@ -412,8 +421,10 @@ SELECT
 
         UNION ALL
         SELECT 'Potential CPU contention with another process' AS slow_cause
-        WHERE main_thread_time_for_launch_in_runnable_state(launches.startup_id) > 100e6
-          AND most_active_process_for_launch(launches.startup_id) IS NOT NULL
+        WHERE
+          get_number_of_cpus() > 2 AND
+          main_thread_time_for_launch_in_runnable_state(launches.startup_id) > 100e6 AND
+          most_active_process_for_launch(launches.startup_id) IS NOT NULL
 
         UNION ALL
         SELECT 'JIT Activity'
@@ -475,16 +486,17 @@ SELECT
         SELECT 'Main Thread - Binder transactions blocked'
         WHERE (
           SELECT COUNT(1)
-          FROM BINDER_TRANSACTION_REPLY_SLICES_FOR_LAUNCH(launches.startup_id, 2e7)
+          FROM binder_transaction_reply_slices_for_launch(launches.startup_id, 2e7)
         ) > 0
 
       )
-    )
+    ),
+    'slow_start_reason_detailed', get_slow_start_reason_detailed(launches.startup_id)
   ) AS startup
 FROM android_startups launches;
 
 DROP VIEW IF EXISTS android_startup_event;
-CREATE VIEW android_startup_event AS
+CREATE PERFETTO VIEW android_startup_event AS
 SELECT
   'slice' AS track_type,
   'Android App Startups' AS track_name,
@@ -494,7 +506,7 @@ SELECT
 FROM android_startups l;
 
 DROP VIEW IF EXISTS android_startup_output;
-CREATE VIEW android_startup_output AS
+CREATE PERFETTO VIEW android_startup_output AS
 SELECT
   AndroidStartupMetric(
     'startup', (

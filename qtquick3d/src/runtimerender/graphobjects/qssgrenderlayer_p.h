@@ -19,6 +19,7 @@
 #include <QtQuick3DRuntimeRender/private/qssgrendernode_p.h>
 #include <QtCore/qvarlengtharray.h>
 #include <QtCore/qlist.h>
+#include <QMutex>
 #include <ssg/qssglightmapper.h>
 
 QT_BEGIN_NAMESPACE
@@ -46,6 +47,12 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
         SSAA,
         MSAA,
         ProgressiveAA
+    };
+
+    enum class TAAMode : quint8
+    {
+        Off,
+        On
     };
 
     enum class AAQuality : quint8
@@ -90,9 +97,10 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
         Linear,
         Aces,
         HejlDawson,
-        Filmic
+        Filmic,
+        Custom
     };
-    static size_t constexpr TonemapModeCount = 5;
+    static size_t constexpr TonemapModeCount = 6;
 
     enum class LayerFlag
     {
@@ -131,6 +139,8 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     QSSGRenderLayer::Background background;
     QVector3D clearColor;
 
+    quint8 viewCount = 1;
+
     // Ambient occlusion
     float aoStrength = 0.0f;
     float aoDistance = 5.0f;
@@ -153,9 +163,8 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
 
     QSSGRenderImage *skyBoxCubeMap = nullptr;
 
-    bool temporalAAEnabled;
+    TAAMode temporalAAMode { TAAMode::Off };
     float temporalAAStrength;
-    bool ssaaEnabled;
     float ssaaMultiplier;
     bool specularAAEnabled;
 
@@ -165,10 +174,11 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     uint tempAAPassIndex;
     uint progAAPassIndex;
 
-    // The camera explicitly set on the view by the user.
-    QSSGRenderCamera *explicitCamera;
-    // The camera used for rendering (explicitCamera, nullptr or first usable camera).
-    QSSGRenderCamera *renderedCamera;
+    // The camera explicitly set on the view by the user. (backend node can be null)
+    QVarLengthArray<QSSGRenderCamera *, 2> explicitCameras;
+    // The camera used for rendering, multiple ones with multiview.
+    QVarLengthArray<QSSGRenderCamera *, 2> renderedCameras;
+    QMutex renderedCamerasMutex;
 
     // Tonemapping
     TonemapMode tonemapMode;
@@ -219,6 +229,12 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     MaterialDebugMode debugMode = MaterialDebugMode::None;
 
     bool wireframeMode = false;
+    bool drawDirectionalLightShadowBoxes = false;
+    bool drawShadowCastingBounds = false;
+    bool drawShadowReceivingBounds = false;
+    bool drawCascades = false;
+    bool drawSceneCascadeIntersection = false;
+    bool disableShadowCameraUpdate = false;
 
     QSSGRenderLayer();
     ~QSSGRenderLayer();
@@ -234,6 +250,25 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderLayer : public QSSGRenderNode
     void setImportScene(QSSGRenderNode &rootNode);
     void removeImportScene(QSSGRenderNode &rootNode);
 
+    [[nodiscard]] bool isMsaaEnabled() const { return antialiasingMode == AAMode::MSAA; }
+    [[nodiscard]] bool isSsaaEnabled() const { return antialiasingMode == AAMode::SSAA; }
+    [[nodiscard]] bool isProgressiveAAEnabled() const { return antialiasingMode == AAMode::ProgressiveAA; }
+    // NOTE: Temporal AA is not enabled when MSAA is enabled.
+    [[nodiscard]] bool isTemporalAAEnabled() const { return (temporalAAMode == TAAMode::On) && !isMsaaEnabled(); }
+
+    static constexpr float ssaaMultiplierForQuality(QSSGRenderLayer::AAQuality quality)
+    {
+        switch (quality) {
+        case QSSGRenderLayer::AAQuality::Normal:
+            return 1.2f;
+        case QSSGRenderLayer::AAQuality::High:
+            return 1.5f;
+        case QSSGRenderLayer::AAQuality::VeryHigh:
+            return 2.0f;
+        }
+
+        return 1.5f; // QSSGRenderLayer::AAQuality::High
+    }
 };
 QT_END_NAMESPACE
 

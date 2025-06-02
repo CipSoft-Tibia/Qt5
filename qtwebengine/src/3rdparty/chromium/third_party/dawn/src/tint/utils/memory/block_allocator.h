@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_UTILS_MEMORY_BLOCK_ALLOCATOR_H_
 #define SRC_TINT_UTILS_MEMORY_BLOCK_ALLOCATOR_H_
@@ -40,6 +53,7 @@ class BlockAllocator {
         std::array<T*, kMax> ptrs;
         Pointers* next;
         Pointers* prev;
+        size_t count;
     };
 
     /// Block is linked list of memory blocks.
@@ -48,7 +62,7 @@ class BlockAllocator {
     /// Note: We're not using std::aligned_storage here as this warns / errors on MSVC.
     struct alignas(BLOCK_ALIGNMENT) Block {
         uint8_t data[BLOCK_SIZE];
-        Block* next;
+        Block* next = nullptr;
     };
 
     // Forward declaration
@@ -56,7 +70,7 @@ class BlockAllocator {
     class TView;
 
     /// An iterator for the objects owned by the BlockAllocator.
-    template <bool IS_CONST, bool FORWARD>
+    template <bool IS_CONST>
     class TIterator {
         using PointerTy = std::conditional_t<IS_CONST, const T*, T*>;
 
@@ -76,10 +90,12 @@ class BlockAllocator {
         /// Progress the iterator forward one element
         /// @returns this iterator
         TIterator& operator++() {
-            if (FORWARD) {
-                ProgressForward();
-            } else {
-                ProgressBackwards();
+            if (ptrs != nullptr) {
+                ++idx;
+                if (idx >= ptrs->count) {
+                    idx = 0;
+                    ptrs = ptrs->next;
+                }
             }
             return *this;
         }
@@ -87,44 +103,27 @@ class BlockAllocator {
         /// Progress the iterator backwards one element
         /// @returns this iterator
         TIterator& operator--() {
-            if (FORWARD) {
-                ProgressBackwards();
-            } else {
-                ProgressForward();
+            if (ptrs != nullptr) {
+                if (idx == 0) {
+                    ptrs = ptrs->prev;
+                    idx = ptrs->count - 1;
+                }
+                --idx;
             }
             return *this;
         }
 
         /// @returns the pointer to the object at the current iterator position
-        PointerTy operator*() const { return ptrs ? ptrs->ptrs[idx] : nullptr; }
+        PointerTy operator*() const { return ptrs->ptrs[idx]; }
 
       private:
         friend TView<IS_CONST>;  // Keep internal iterator impl private.
         explicit TIterator(const Pointers* p, size_t i) : ptrs(p), idx(i) {}
 
-        /// Progresses the iterator forwards
-        void ProgressForward() {
-            if (ptrs != nullptr) {
-                ++idx;
-                if (idx == Pointers::kMax) {
-                    idx = 0;
-                    ptrs = ptrs->next;
-                }
-            }
-        }
-        /// Progresses the iterator backwards
-        void ProgressBackwards() {
-            if (ptrs != nullptr) {
-                if (idx == 0) {
-                    idx = Pointers::kMax - 1;
-                    ptrs = ptrs->prev;
-                }
-                --idx;
-            }
-        }
-
-        const Pointers* ptrs;
-        size_t idx;
+        /// The current Pointers
+        const Pointers* ptrs = nullptr;
+        /// The current index within #ptrs
+        size_t idx = 0;
     };
 
     /// View provides begin() and end() methods for looping over the objects owned by the
@@ -133,26 +132,12 @@ class BlockAllocator {
     class TView {
       public:
         /// @returns an iterator to the beginning of the view
-        TIterator<IS_CONST, true> begin() const {
-            return TIterator<IS_CONST, true>{allocator_->data.pointers.root, 0};
+        TIterator<IS_CONST> begin() const {
+            return TIterator<IS_CONST>{allocator_->data.pointers.root, 0};
         }
 
         /// @returns an iterator to the end of the view
-        TIterator<IS_CONST, true> end() const {
-            return allocator_->data.pointers.current_index >= Pointers::kMax
-                       ? TIterator<IS_CONST, true>{nullptr, 0}
-                       : TIterator<IS_CONST, true>{allocator_->data.pointers.current,
-                                                   allocator_->data.pointers.current_index};
-        }
-
-        /// @returns an iterator to the beginning of the view
-        TIterator<IS_CONST, false> rbegin() const { return TIterator<IS_CONST, false>{nullptr, 0}; }
-
-        /// @returns an iterator to the end of the view
-        TIterator<IS_CONST, false> rend() const {
-            return TIterator<IS_CONST, false>{allocator_->data.pointers.current,
-                                              allocator_->data.pointers.current_index};
-        }
+        TIterator<IS_CONST> end() const { return TIterator<IS_CONST>{nullptr, 0}; }
 
       private:
         friend BlockAllocator;  // For BlockAllocator::operator View()
@@ -162,16 +147,10 @@ class BlockAllocator {
 
   public:
     /// A forward-iterator type over the objects of the BlockAllocator
-    using Iterator = TIterator</* const */ false, /* forward */ true>;
+    using Iterator = TIterator</* const */ false>;
 
     /// An immutable forward-iterator type over the objects of the BlockAllocator
-    using ConstIterator = TIterator</* const */ true, /* forward */ true>;
-
-    /// A reverse-iterator type over the objects of the BlockAllocator
-    using ReverseIterator = TIterator</* const */ false, /* forward */ false>;
-
-    /// An immutable reverse-iterator type over the objects of the BlockAllocator
-    using ReverseConstIterator = TIterator</* const */ true, /* forward */ false>;
+    using ConstIterator = TIterator</* const */ true>;
 
     /// View provides begin() and end() methods for looping over the objects owned by the
     /// BlockAllocator.
@@ -287,7 +266,7 @@ class BlockAllocator {
     void AddObjectPointer(T* ptr) {
         auto& pointers = data.pointers;
 
-        if (pointers.current_index >= Pointers::kMax) {
+        if (!pointers.current || pointers.current->count == Pointers::kMax) {
             auto* prev_pointers = pointers.current;
             pointers.current = Allocate<Pointers>();
             if (!pointers.current) {
@@ -295,7 +274,7 @@ class BlockAllocator {
             }
             pointers.current->next = nullptr;
             pointers.current->prev = prev_pointers;
-            pointers.current_index = 0;
+            pointers.current->count = 0;
 
             if (prev_pointers) {
                 prev_pointers->next = pointers.current;
@@ -304,7 +283,7 @@ class BlockAllocator {
             }
         }
 
-        pointers.current->ptrs[pointers.current_index++] = ptr;
+        pointers.current->ptrs[pointers.current->count++] = ptr;
     }
 
     struct {
@@ -326,10 +305,6 @@ class BlockAllocator {
             /// The current (end) Pointers structure of the pointers linked list.
             /// AddObjectPointer() adds to this structure.
             Pointers* current = nullptr;
-            /// The array index in #current for the next append.
-            /// Initialized with Pointers::kMax so that the first append triggers a allocation of
-            /// the Pointers structure.
-            size_t current_index = Pointers::kMax;
         } pointers;
 
         size_t count = 0;

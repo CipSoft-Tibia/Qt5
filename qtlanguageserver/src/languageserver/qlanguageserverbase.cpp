@@ -7,9 +7,9 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-namespace QLspSpecification {
-
 Q_LOGGING_CATEGORY(lspLog, "qt.languageserver.protocol");
+
+namespace QLspSpecification {
 
 ProtocolBase::ProtocolBase(std::unique_ptr<ProtocolBasePrivate> &&priv) : d_ptr(std::move(priv))
 {

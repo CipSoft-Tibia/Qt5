@@ -69,6 +69,8 @@ namespace Spv
             HERO_C = 8,
             NZSL = 9,
             WGSL = 10,
+            Slang = 11,
+            Zig = 12,
         }
 
         [AllowDuplicates, CRepr] public enum ExecutionModel
@@ -581,6 +583,9 @@ namespace Spv
             MergeINTEL = 5834,
             BankBitsINTEL = 5835,
             ForcePow2DepthINTEL = 5836,
+            StridesizeINTEL = 5883,
+            WordsizeINTEL = 5884,
+            TrueDualPortINTEL = 5885,
             BurstCoalesceINTEL = 5899,
             CacheSizeINTEL = 5900,
             DontStaticallyCoalesceINTEL = 5901,
@@ -599,9 +604,7 @@ namespace Spv
             SingleElementVectorINTEL = 6085,
             VectorComputeCallableFunctionINTEL = 6087,
             MediaBlockIOINTEL = 6140,
-            InitModeINTEL = 6147,
-            ImplementInRegisterMapINTEL = 6148,
-            HostAccessINTEL = 6168,
+            StallFreeINTEL = 6151,
             FPMaxErrorDecorationINTEL = 6170,
             LatencyControlLabelINTEL = 6172,
             LatencyControlConstraintINTEL = 6173,
@@ -614,6 +617,11 @@ namespace Spv
             MMHostInterfaceMaxBurstINTEL = 6181,
             MMHostInterfaceWaitRequestINTEL = 6182,
             StableKernelArgumentINTEL = 6183,
+            HostAccessINTEL = 6188,
+            InitModeINTEL = 6190,
+            ImplementInRegisterMapINTEL = 6191,
+            CacheControlLoadINTEL = 6442,
+            CacheControlStoreINTEL = 6443,
         }
 
         [AllowDuplicates, CRepr] public enum BuiltIn
@@ -744,6 +752,8 @@ namespace Spv
             HitKindNV = 5333,
             CurrentRayTimeNV = 5334,
             HitTriangleVertexPositionsKHR = 5335,
+            HitMicroTriangleVertexPositionsNV = 5337,
+            HitMicroTriangleVertexBarycentricsNV = 5344,
             IncomingRayFlagsKHR = 5351,
             IncomingRayFlagsNV = 5351,
             RayGeometryIndexKHR = 5352,
@@ -751,6 +761,8 @@ namespace Spv
             SMCountNV = 5375,
             WarpIDNV = 5376,
             SMIDNV = 5377,
+            HitKindFrontFacingMicroTriangleNV = 5405,
+            HitKindBackFacingMicroTriangleNV = 5406,
             CullMaskKHR = 6021,
         }
 
@@ -1125,10 +1137,12 @@ namespace Spv
             FragmentShaderPixelInterlockEXT = 5378,
             DemoteToHelperInvocation = 5379,
             DemoteToHelperInvocationEXT = 5379,
+            DisplacementMicromapNV = 5380,
             RayTracingOpacityMicromapEXT = 5381,
             ShaderInvocationReorderNV = 5383,
             BindlessTextureNV = 5390,
             RayQueryPositionFetchKHR = 5391,
+            RayTracingDisplacementMicromapNV = 5409,
             SubgroupShuffleINTEL = 5568,
             SubgroupBufferBlockIOINTEL = 5569,
             SubgroupImageBlockIOINTEL = 5570,
@@ -1185,19 +1199,22 @@ namespace Spv
             GroupNonUniformRotateKHR = 6026,
             AtomicFloat32AddEXT = 6033,
             AtomicFloat64AddEXT = 6034,
-            LongConstantCompositeINTEL = 6089,
+            LongCompositesINTEL = 6089,
             OptNoneINTEL = 6094,
             AtomicFloat16AddEXT = 6095,
             DebugInfoModuleINTEL = 6114,
             BFloat16ConversionINTEL = 6115,
             SplitBarrierINTEL = 6141,
-            GlobalVariableFPGADecorationsINTEL = 6146,
+            FPGAClusterAttributesV2INTEL = 6150,
             FPGAKernelAttributesv2INTEL = 6161,
-            GlobalVariableHostAccessINTEL = 6167,
             FPMaxErrorINTEL = 6169,
             FPGALatencyControlINTEL = 6171,
             FPGAArgumentInterfacesINTEL = 6174,
+            GlobalVariableHostAccessINTEL = 6187,
+            GlobalVariableFPGADecorationsINTEL = 6189,
             GroupUniformArithmeticKHR = 6400,
+            MaskedGatherScatterINTEL = 6427,
+            CacheControlsINTEL = 6441,
         }
 
         [AllowDuplicates, CRepr] public enum RayFlagsShift
@@ -1349,6 +1366,23 @@ namespace Spv
             ReadINTEL = 1,
             WriteINTEL = 2,
             ReadWriteINTEL = 3,
+        }
+
+        [AllowDuplicates, CRepr] public enum LoadCacheControl
+        {
+            UncachedINTEL = 0,
+            CachedINTEL = 1,
+            StreamingINTEL = 2,
+            InvalidateAfterReadINTEL = 3,
+            ConstCachedINTEL = 4,
+        }
+
+        [AllowDuplicates, CRepr] public enum StoreCacheControl
+        {
+            UncachedINTEL = 0,
+            WriteThroughINTEL = 1,
+            WriteBackINTEL = 2,
+            StreamingINTEL = 3,
         }
 
         [AllowDuplicates, CRepr] public enum Op
@@ -1793,6 +1827,8 @@ namespace Spv
             OpSetMeshOutputsEXT = 5295,
             OpGroupNonUniformPartitionNV = 5296,
             OpWritePackedPrimitiveIndices4x8NV = 5299,
+            OpFetchMicroTriangleVertexPositionNV = 5300,
+            OpFetchMicroTriangleVertexBarycentricNV = 5301,
             OpReportIntersectionKHR = 5334,
             OpReportIntersectionNV = 5334,
             OpIgnoreIntersectionNV = 5335,
@@ -2062,6 +2098,7 @@ namespace Spv
             OpTypeStructContinuedINTEL = 6090,
             OpConstantCompositeContinuedINTEL = 6091,
             OpSpecConstantCompositeContinuedINTEL = 6092,
+            OpCompositeConstructContinuedINTEL = 6096,
             OpConvertFToBF16INTEL = 6116,
             OpConvertBF16ToFINTEL = 6117,
             OpControlBarrierArriveINTEL = 6142,
@@ -2074,6 +2111,8 @@ namespace Spv
             OpGroupLogicalAndKHR = 6406,
             OpGroupLogicalOrKHR = 6407,
             OpGroupLogicalXorKHR = 6408,
+            OpMaskedGatherINTEL = 6428,
+            OpMaskedScatterINTEL = 6429,
         }
     }
 }

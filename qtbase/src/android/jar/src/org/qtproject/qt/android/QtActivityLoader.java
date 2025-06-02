@@ -4,59 +4,37 @@
 
 package org.qtproject.qt.android;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.Dialog;
+import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.content.res.Resources;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.DisplayMetrics;
 import android.util.Log;
 
+import java.lang.IllegalArgumentException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 
-public class QtActivityLoader extends QtLoader {
+class QtActivityLoader extends QtLoader {
     private final Activity m_activity;
 
-    public QtActivityLoader(Activity activity)
+    private QtActivityLoader(Activity activity) throws IllegalArgumentException
     {
         super(new ContextWrapper(activity));
         m_activity = activity;
 
-        extractContextMetaData();
+        extractContextMetaData(m_activity);
     }
 
-    private void showErrorDialog() {
-        if (m_activity == null) {
-            Log.w(QtTAG, "cannot show the error dialog from a null activity object");
-            return;
-        }
-        Resources resources = m_activity.getResources();
-        String packageName = m_activity.getPackageName();
-        AlertDialog errorDialog = new AlertDialog.Builder(m_activity).create();
-        @SuppressLint("DiscouragedApi") int id = resources.getIdentifier(
-                "fatal_error_msg", "string", packageName);
-        errorDialog.setMessage(resources.getString(id));
-        errorDialog.setButton(Dialog.BUTTON_POSITIVE, resources.getString(android.R.string.ok),
-                (dialog, which) -> finish());
-        errorDialog.show();
-    }
-
-    @Override
-    protected void finish() {
-        if (m_activity == null) {
-            Log.w(QtTAG, "finish() called when activity object is null");
-            return;
-        }
-        showErrorDialog();
-        m_activity.finish();
+    static QtActivityLoader getActivityLoader(Activity activity) throws IllegalArgumentException {
+        if (m_instance == null)
+            m_instance = new QtActivityLoader(activity);
+        return (QtActivityLoader) m_instance;
     }
 
     private String getDecodedUtfString(String str)
@@ -96,9 +74,9 @@ public class QtActivityLoader extends QtLoader {
     }
 
     @Override
-    protected void extractContextMetaData()
+    protected void extractContextMetaData(Context context)
     {
-        super.extractContextMetaData();
+        super.extractContextMetaData(context);
 
         setEnvironmentVariable("QT_USE_ANDROID_NATIVE_DIALOGS", String.valueOf(1));
         setEnvironmentVariable("QT_ANDROID_APP_ICON_SIZE", String.valueOf(getAppIconSize()));

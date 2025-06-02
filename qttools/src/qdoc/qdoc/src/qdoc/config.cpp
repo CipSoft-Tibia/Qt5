@@ -15,7 +15,6 @@ QT_BEGIN_NAMESPACE
 
 QString ConfigStrings::AUTOLINKERRORS = QStringLiteral("autolinkerrors");
 QString ConfigStrings::BUILDVERSION = QStringLiteral("buildversion");
-QString ConfigStrings::CLANGDEFINES = QStringLiteral("clangdefines");
 QString ConfigStrings::CODEINDENT = QStringLiteral("codeindent");
 QString ConfigStrings::CODEPREFIX = QStringLiteral("codeprefix");
 QString ConfigStrings::CODESUFFIX = QStringLiteral("codesuffix");
@@ -81,6 +80,7 @@ QString ConfigStrings::TABSIZE = QStringLiteral("tabsize");
 QString ConfigStrings::TAGFILE = QStringLiteral("tagfile");
 QString ConfigStrings::TIMESTAMPS = QStringLiteral("timestamps");
 QString ConfigStrings::TOCTITLES = QStringLiteral("toctitles");
+QString ConfigStrings::TRADEMARKSPAGE = QStringLiteral("trademarkspage");
 QString ConfigStrings::URL = QStringLiteral("url");
 QString ConfigStrings::VERSION = QStringLiteral("version");
 QString ConfigStrings::VERSIONSYM = QStringLiteral("versionsym");
@@ -350,6 +350,7 @@ void Config::clear()
     m_location = Location();
     m_configVars.clear();
     m_includeFilesMap.clear();
+    m_excludedPaths.reset();
 }
 
 /*!
@@ -484,7 +485,7 @@ void Config::processCommandLineOptions(const QStringList &args)
     if (m_parser.isSet(m_parser.installDirOption))
         installDir = m_parser.value(m_parser.installDirOption);
     if (m_parser.isSet(m_parser.outputDirOption))
-        overrideOutputDir = m_parser.value(m_parser.outputDirOption);
+        overrideOutputDir = QDir(m_parser.value(m_parser.outputDirOption)).absolutePath();
 
     const auto outputFormats = m_parser.values(m_parser.outputFormatOption);
     for (const auto &format : outputFormats)
@@ -554,13 +555,12 @@ QString Config::getOutputDir(const QString &format) const
         t += QLatin1Char('/') + project.toLower();
     }
     if (m_configVars.value(format + Config::dot + "nosubdirs").asBool()) {
-        t = t.left(t.lastIndexOf('/'));
         QString singleOutputSubdir = m_configVars.value(format + Config::dot + "outputsubdir").asString();
         if (singleOutputSubdir.isEmpty())
             singleOutputSubdir = "html";
         t += QLatin1Char('/') + singleOutputSubdir;
     }
-    return t;
+    return QDir::cleanPath(t);
 }
 
 /*!
@@ -1395,6 +1395,45 @@ void Config::popWorkingDir()
     m_workingDirs.pop();
     if (!m_workingDirs.isEmpty())
         QDir::setCurrent(m_workingDirs.top());
+}
+
+const Config::ExcludedPaths& Config::getExcludedPaths() {
+    if (m_excludedPaths)
+        return *m_excludedPaths;
+
+    const auto &excludedDirList = getCanonicalPathList(CONFIG_EXCLUDEDIRS);
+    const auto &excludedFilesList = getCanonicalPathList(CONFIG_EXCLUDEFILES);
+
+    QSet<QString> excludedDirs = QSet<QString>(excludedDirList.cbegin(), excludedDirList.cend());
+    QSet<QString> excludedFiles = QSet<QString>(excludedFilesList.cbegin(), excludedFilesList.cend());
+
+    m_excludedPaths.emplace(ExcludedPaths{excludedDirs, excludedFiles});
+
+    return *m_excludedPaths;
+}
+
+std::set<Config::HeaderFilePath> Config::getHeaderFiles() {
+    static QStringList accepted_header_file_extensions{
+        "ch", "h", "h++", "hh", "hpp", "hxx"
+    };
+
+    const auto& [excludedDirs, excludedFiles] = getExcludedPaths();
+
+    QStringList headerList =
+            getAllFiles(CONFIG_HEADERS, CONFIG_HEADERDIRS, excludedDirs, excludedFiles);
+
+    std::set<HeaderFilePath> headers{};
+
+    for (const auto& header : headerList) {
+        if (header.contains("doc/snippets")) continue;
+
+        if (!accepted_header_file_extensions.contains(QFileInfo{header}.suffix()))
+            continue;
+
+        headers.insert(HeaderFilePath{QFileInfo{header}.canonicalPath(), QFileInfo{header}.fileName()});
+    }
+
+    return headers;
 }
 
 QT_END_NAMESPACE

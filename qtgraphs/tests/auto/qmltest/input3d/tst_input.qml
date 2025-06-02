@@ -1,4 +1,4 @@
-// Copyright (C) 2023 The Qt Company Ltd.
+// Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 import QtQuick 2.0
@@ -10,11 +10,11 @@ Item {
     width: 150
     height: 150
 
-    InputHandler3D {
+    Bars3D {
         id: initial
     }
 
-    InputHandler3D {
+    Bars3D {
         id: initialized
         rotationEnabled: false
         selectionEnabled: false
@@ -22,7 +22,7 @@ Item {
         zoomEnabled: false
     }
 
-    InputHandler3D {
+    Bars3D {
         id: change
     }
 

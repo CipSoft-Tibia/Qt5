@@ -6,8 +6,6 @@
 
 #include <QObject>
 
-#include <qmediaenumdebug.h>
-
 QT_BEGIN_NAMESPACE
 
 class QMediaPlaylistPrivate;
@@ -83,13 +81,10 @@ signals:
     void loadFailed();
 
 private:
-    QMediaPlaylistPrivate *d_ptr;
+    QMediaPlaylistPrivate *d_ptr = nullptr;
     Q_DECLARE_PRIVATE(QMediaPlaylist)
 };
 
 QT_END_NAMESPACE
-
-Q_MEDIA_ENUM_DEBUG(QMediaPlaylist, PlaybackMode)
-Q_MEDIA_ENUM_DEBUG(QMediaPlaylist, Error)
 
 #endif // QMEDIAPLAYLIST_H

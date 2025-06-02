@@ -31,11 +31,12 @@ QT_BEGIN_NAMESPACE
 
 namespace QtVirtualKeyboard {
 
-// Boolean variable QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS will enable virtual keyboard
+// QtVirtualKeyboard::forceEventsWithoutFocus() will enable virtual keyboard
 // to send key events without having any text input in focus when an environment
 // variable QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS is set. This will also enable virtual
 // keyboard shift key usage in the same no focus situation.
-extern const bool QT_VIRTUALKEYBOARD_FORCE_EVENTS_WITHOUT_FOCUS;
+
+bool forceEventsWithoutFocus();
 
 class PlatformInputContext;
 class ShiftHandler;
@@ -124,6 +125,7 @@ private:
     void commit();
     void update(Qt::InputMethodQueries queries);
     void invokeAction(QInputMethod::Action action, int cursorPosition);
+    void maybeCloseOnReturn();
     bool filterEvent(const QEvent *event);
     void addSelectionAttribute(QList<QInputMethodEvent::Attribute> &attributes);
     bool testAttribute(const QList<QInputMethodEvent::Attribute> &attributes, QInputMethodEvent::AttributeType attributeType) const;
@@ -194,23 +196,6 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QVirtualKeyboardInputContextPrivate::StateFlags)
-
-/*!
-    TODO: Remove this type and move the registration back into QVirtualKeyboardInputContext when
-          QML stops creating separate singleton instances for each version.
- */
-struct QVirtualKeyboardInputContextForeign
-{
-    Q_GADGET
-    QML_FOREIGN(QVirtualKeyboardInputContext)
-    QML_NAMED_ELEMENT(InputContext)
-    QML_SINGLETON
-    QML_ADDED_IN_VERSION(1, 0)
-    QML_EXTRA_VERSION(2, 0)
-
-public:
-    static QVirtualKeyboardInputContext *create(QQmlEngine *qmlEngine, QJSEngine *);
-};
 
 QT_END_NAMESPACE
 

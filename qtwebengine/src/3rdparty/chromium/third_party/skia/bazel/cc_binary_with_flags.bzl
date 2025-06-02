@@ -26,9 +26,8 @@ _bool_flags = [
 ]
 
 _string_flags = [
-    "//bazel/common_config_settings:fontmgr_factory",
     "//src/gpu:with_gl_standard",
-    "//gm/vias:via",
+    "//tools/testrunners/gm/vias:via",
 ]
 
 _string_list_flags = [
@@ -97,7 +96,7 @@ def _transition_rule_impl(ctx):
     return [
         DefaultInfo(
             executable = outfile,
-            runfiles = actual_binary[DefaultInfo].default_runfiles,
+            runfiles = actual_binary[DefaultInfo].data_runfiles,
         ),
     ]
 

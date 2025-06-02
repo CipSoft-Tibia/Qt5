@@ -33,6 +33,8 @@ qt_internal_add_module(AxServer
         Qt::Gui
         Qt::Widgets
         shell32
+    NO_GENERATE_CPP_EXPORTS
+    QT_LICENSE_ID QT_COMMERCIAL_OR_BSD3
 )
 
 set_source_files_properties(qaxservermain.cpp # define main()

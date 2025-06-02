@@ -33,6 +33,7 @@
 #include "third_party/blink/renderer/core/css/css_rule_list.h"
 #include "third_party/blink/renderer/core/css/css_style_sheet.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser.h"
+#include "third_party/blink/renderer/core/css/style_sheet_contents.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
@@ -98,6 +99,9 @@ CSSKeyframesRule::~CSSKeyframesRule() = default;
 
 void CSSKeyframesRule::setName(const String& name) {
   CSSStyleSheet::RuleMutationScope mutation_scope(this);
+  if (parentStyleSheet()) {
+    parentStyleSheet()->Contents()->NotifyDiffUnrepresentable();
+  }
 
   keyframes_rule_->SetName(name);
 }
@@ -117,6 +121,9 @@ void CSSKeyframesRule::appendRule(const ExecutionContext* execution_context,
   }
 
   CSSStyleSheet::RuleMutationScope mutation_scope(this);
+  if (parentStyleSheet()) {
+    parentStyleSheet()->Contents()->NotifyDiffUnrepresentable();
+  }
 
   keyframes_rule_->WrapperAppendKeyframe(keyframe);
 
@@ -137,6 +144,9 @@ void CSSKeyframesRule::deleteRule(const ExecutionContext* execution_context,
   }
 
   CSSStyleSheet::RuleMutationScope mutation_scope(this);
+  if (parentStyleSheet()) {
+    parentStyleSheet()->Contents()->NotifyDiffUnrepresentable();
+  }
 
   keyframes_rule_->WrapperRemoveKeyframe(i);
 

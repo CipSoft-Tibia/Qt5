@@ -22,7 +22,7 @@
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/browser_process.h"
 #endif
 #include "components/version_info/version_info.h"
@@ -91,10 +91,61 @@ void ResizeForNextOutput(std::string* compressed_log, z_stream* stream) {
 
 }  // namespace
 
+BASE_FEATURE(kWebRTCLogUploadSuffix,
+             "WebRTCLogUploadSuffix",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+std::string GetLogUploadProduct() {
+#if BUILDFLAG(IS_WIN)
+  const char product[] = "Chrome";
+#elif BUILDFLAG(IS_MAC)
+  const char product[] = "Chrome_Mac";
+// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
+// of lacros-chrome is complete.
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
+#if !defined(ADDRESS_SANITIZER)
+  const char product[] = "Chrome_Linux";
+#else
+  const char product[] = "Chrome_Linux_ASan";
+#endif
+#elif BUILDFLAG(IS_ANDROID)
+  const char product[] = "Chrome_Android";
+#elif BUILDFLAG(IS_CHROMEOS_ASH)
+  const char product[] = "Chrome_ChromeOS";
+#elif BUILDFLAG(IS_FUCHSIA)
+  const char product[] = "Chrome_Fuchsia";
+#else
+#error Platform not supported.
+#endif
+  if (base::FeatureList::IsEnabled(kWebRTCLogUploadSuffix)) {
+    return base::StrCat({product, "_webrtc"});
+  }
+  return product;
+}
+
+std::string GetLogUploadVersion() {
+  if (base::FeatureList::IsEnabled(kWebRTCLogUploadSuffix)) {
+    return std::string(version_info::GetVersionNumber());
+  }
+  return base::StrCat({version_info::GetVersionNumber(), "-webrtc"});
+}
+
 WebRtcLogUploader::UploadDoneData::UploadDoneData() = default;
 WebRtcLogUploader::UploadDoneData::UploadDoneData(
     WebRtcLogUploader::UploadDoneData&& other) = default;
 WebRtcLogUploader::UploadDoneData::~UploadDoneData() = default;
+
+// static
+WebRtcLogUploader* WebRtcLogUploader::GetInstance() {
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  if (!g_browser_process) {
+    return nullptr;
+  }
+  return g_browser_process->webrtc_log_uploader();
+#else
+  return nullptr;
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
+}
 
 WebRtcLogUploader::WebRtcLogUploader()
     : main_task_runner_(base::SequencedTaskRunner::GetCurrentDefault()),
@@ -137,7 +188,8 @@ void WebRtcLogUploader::OnLoggingStopped(
   if (base::PathExists(upload_done_data.paths.directory)) {
     webrtc_logging::DeleteOldWebRtcLogFiles(upload_done_data.paths.directory);
 
-    local_log_id = base::NumberToString(base::Time::Now().ToDoubleT());
+    local_log_id =
+        base::NumberToString(base::Time::Now().InSecondsFSinceUnixEpoch());
     base::FilePath log_file_path =
         upload_done_data.paths.directory.AppendASCII(local_log_id)
             .AddExtension(FILE_PATH_LITERAL(".gz"));
@@ -296,9 +348,7 @@ void WebRtcLogUploader::LoggingStoppedDoStore(
     base::FilePath meta_path =
         log_paths.directory.AppendASCII(log_id).AddExtension(
             FILE_PATH_LITERAL(".meta"));
-    base::WriteFile(meta_path,
-                    base::make_span(static_cast<const uint8_t*>(pickle.data()),
-                                    pickle.size()));
+    base::WriteFile(meta_path, pickle);
   }
 
   main_task_runner_->PostTask(
@@ -325,7 +375,7 @@ void WebRtcLogUploader::OnSimpleLoaderComplete(
   DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
   DCHECK(!shutdown_);
   network::SimpleURLLoader* loader = it->get();
-  absl::optional<int> response_code;
+  std::optional<int> response_code;
   if (loader->ResponseInfo() && loader->ResponseInfo()->headers) {
     response_code = loader->ResponseInfo()->headers->response_code();
   }
@@ -357,32 +407,10 @@ void WebRtcLogUploader::SetupMultipart(
     const base::FilePath& incoming_rtp_dump,
     const base::FilePath& outgoing_rtp_dump,
     const std::map<std::string, std::string>& meta_data) {
-#if BUILDFLAG(IS_WIN)
-  const char product[] = "Chrome";
-#elif BUILDFLAG(IS_MAC)
-  const char product[] = "Chrome_Mac";
-// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
-// of lacros-chrome is complete.
-#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
-#if !defined(ADDRESS_SANITIZER)
-  const char product[] = "Chrome_Linux";
-#else
-  const char product[] = "Chrome_Linux_ASan";
-#endif
-#elif BUILDFLAG(IS_ANDROID)
-  const char product[] = "Chrome_Android";
-#elif BUILDFLAG(IS_CHROMEOS_ASH)
-  const char product[] = "Chrome_ChromeOS";
-#elif BUILDFLAG(IS_FUCHSIA)
-  const char product[] = "Chrome_Fuchsia";
-#else
-#error Platform not supported.
-#endif
-  net::AddMultipartValueForUpload("prod", product, kWebrtcLogMultipartBoundary,
-                                  "", post_data);
-  net::AddMultipartValueForUpload(
-      "ver", base::StrCat({version_info::GetVersionNumber(), "-webrtc"}),
-      kWebrtcLogMultipartBoundary, "", post_data);
+  net::AddMultipartValueForUpload("prod", GetLogUploadProduct(),
+                                  kWebrtcLogMultipartBoundary, "", post_data);
+  net::AddMultipartValueForUpload("ver", GetLogUploadVersion(),
+                                  kWebrtcLogMultipartBoundary, "", post_data);
   net::AddMultipartValueForUpload("guid", "0", kWebrtcLogMultipartBoundary, "",
                                   post_data);
   net::AddMultipartValueForUpload("type", "webrtc_log",
@@ -459,7 +487,7 @@ std::string WebRtcLogUploader::CompressLog(WebRtcLogBuffer* buffer) {
 void WebRtcLogUploader::UploadCompressedLog(
     WebRtcLogUploader::UploadDoneData upload_done_data,
     std::unique_ptr<std::string> post_data) {
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
 
   DecreaseLogCount();
@@ -523,7 +551,7 @@ void WebRtcLogUploader::UploadCompressedLog(
                      std::move(upload_done_data)));
 #else
   NOTREACHED();
-#endif // !defined(TOOLKIT_QT)
+#endif //  !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 void WebRtcLogUploader::DecreaseLogCount() {
@@ -572,8 +600,9 @@ void WebRtcLogUploader::AddLocallyStoredLogInfoToUploadListFile(
 
   // Write the log ID and capture time to the log list file. Leave the upload
   // time and report ID empty.
-  contents += ",," + local_log_id + "," +
-              base::NumberToString(base::Time::Now().ToDoubleT()) + '\n';
+  contents +=
+      ",," + local_log_id + "," +
+      base::NumberToString(base::Time::Now().InSecondsFSinceUnixEpoch()) + '\n';
 
   if (!base::WriteFile(upload_list_path, contents)) {
     DPLOG(WARNING) << "Could not write data to WebRTC log list file.";
@@ -602,7 +631,8 @@ void WebRtcLogUploader::AddUploadedLogInfoToUploadListFile(
   // to find the local log ID, in that case insert the data into the existing
   // line. Otherwise add it in the end.
   base::Time time_now = base::Time::Now();
-  std::string time_now_str = base::NumberToString(time_now.ToDoubleT());
+  std::string time_now_str =
+      base::NumberToString(time_now.InSecondsFSinceUnixEpoch());
   size_t pos = contents.find(",," + local_log_id);
   if (pos != std::string::npos) {
     contents.insert(pos, time_now_str);
@@ -617,7 +647,7 @@ void WebRtcLogUploader::AddUploadedLogInfoToUploadListFile(
 }
 
 void WebRtcLogUploader::NotifyUploadDoneAndLogStats(
-    absl::optional<int> response_code,
+    std::optional<int> response_code,
     int network_error_code,
     const std::string& report_id,
     WebRtcLogUploader::UploadDoneData upload_done_data) {

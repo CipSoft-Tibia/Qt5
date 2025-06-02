@@ -36,7 +36,7 @@ protected:
 
     QItemModelBarDataProxy *m_proxy; // Not owned
     QBarDataArray m_proxyArray;
-    int m_columnCount;
+    qsizetype m_columnCount;
     int m_valueRole;
     int m_rotationRole;
     QRegularExpression m_valuePattern;

@@ -101,6 +101,9 @@ Pane {
                 TabButton {
                     text: "Tools"
                 }
+                TabButton {
+                    text: "Shadows"
+                }
             }
 
             StackLayout {
@@ -465,6 +468,43 @@ Pane {
                                 onValueChanged: explicitTextureSizeCheckBox.updateSize()
                                 Layout.maximumWidth: 120
                             }
+                        }
+                    }
+                }
+
+                Pane {
+                    id: shadowsPane
+                    ColumnLayout {
+                        width: parent.width
+                        CheckBox {
+                            text: "Draw directional light shadow bounding boxes"
+                            checked: root.source.environment.debugSettings.drawDirectionalLightShadowBoxes
+                            onCheckedChanged: root.source.environment.debugSettings.drawDirectionalLightShadowBoxes = checked
+                        }
+                        CheckBox {
+                            text: "Draw shadow casting bounding box"
+                            checked: root.source.environment.debugSettings.drawShadowCastingBounds
+                            onCheckedChanged: root.source.environment.debugSettings.drawShadowCastingBounds = checked
+                        }
+                        CheckBox {
+                            text: "Draw shadow receiving bounding box"
+                            checked: root.source.environment.debugSettings.drawShadowReceivingBounds
+                            onCheckedChanged: root.source.environment.debugSettings.drawShadowReceivingBounds = checked
+                        }
+                        CheckBox {
+                            text: "Draw cascades"
+                            checked: root.source.environment.debugSettings.drawCascades
+                            onCheckedChanged: root.source.environment.debugSettings.drawCascades = checked
+                        }
+                        CheckBox {
+                            text: "Draw scene cascade intersection"
+                            checked: root.source.environment.debugSettings.drawSceneCascadeIntersection
+                            onCheckedChanged: root.source.environment.debugSettings.drawSceneCascadeIntersection = checked
+                        }
+                        CheckBox {
+                            text: "Disable Shadow Camera Update"
+                            checked: root.source.environment.debugSettings.disableShadowCameraUpdate
+                            onCheckedChanged: root.source.environment.debugSettings.disableShadowCameraUpdate = checked
                         }
                     }
                 }

@@ -8,8 +8,11 @@
 #include <xdg-shell-client-protocol.h>
 #include <memory>
 
-#include "base/memory/raw_ptr.h"
 #include "ui/ozone/platform/wayland/host/shell_toplevel_wrapper.h"
+
+namespace gfx {
+class RoundedCornersF;
+}  // namespace gfx
 
 namespace ui {
 
@@ -34,12 +37,12 @@ class XDGToplevelWrapperImpl : public ShellToplevelWrapper {
   void SetMaximized() override;
   void UnSetMaximized() override;
   void SetCanFullscreen(bool can_fullscreen) override;
-  void SetFullscreen() override;
+  void SetFullscreen(WaylandOutput* wayland_output) override;
   void UnSetFullscreen() override;
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   void SetUseImmersiveMode(bool immersive) override;
-  bool SupportsTopLevelImmersiveStatus() const override;
   void SetTopInset(int height) override;
+  void SetShadowCornersRadii(const gfx::RoundedCornersF& radii) override;
 #endif
   void SetMinimized() override;
   void SurfaceMove(WaylandConnection* connection) override;
@@ -54,7 +57,8 @@ class XDGToplevelWrapperImpl : public ShellToplevelWrapper {
   void SetDecoration(DecorationMode decoration) override;
   void Lock(WaylandOrientationLockType lock_type) override;
   void Unlock() override;
-  void RequestWindowBounds(const gfx::Rect& bounds) override;
+  void RequestWindowBounds(const gfx::Rect& bounds,
+                           int64_t display_id) override;
   void SetRestoreInfo(int32_t, int32_t) override;
   void SetRestoreInfoWithWindowIdSource(int32_t, const std::string&) override;
   void SetSystemModal(bool modal) override;
@@ -62,7 +66,8 @@ class XDGToplevelWrapperImpl : public ShellToplevelWrapper {
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
   void EnableScreenCoordinates() override;
 #endif
-  void SetFloat() override;
+  void SetFloatToLocation(
+      WaylandFloatStartLocation float_start_location) override;
   void UnSetFloat() override;
   void SetZOrder(ZOrderLevel z_order) override;
   bool SupportsActivation() override;
@@ -122,6 +127,9 @@ class XDGToplevelWrapperImpl : public ShellToplevelWrapper {
                             uint32_t serial,
                             uint32_t direction,
                             uint32_t restart);
+  static void OnOverviewChange(void* data,
+                               zaura_toplevel* aura_toplevel,
+                               uint32_t in_overview_as_uint);
 
   // Send request to wayland compositor to enable a requested decoration mode.
   void SetTopLevelDecorationMode(DecorationMode requested_mode);

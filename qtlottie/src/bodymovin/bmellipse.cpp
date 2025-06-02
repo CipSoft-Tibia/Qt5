@@ -62,11 +62,11 @@ void BMEllipse::updateProperties(int frame)
     QPointF pos = QPointF(m_position.value().x() - m_size.value().width() / 2,
                              m_position.value().y() - m_size.value().height() / 2);
 
-    m_path = QPainterPath();
+    m_path.clear();
     m_path.arcMoveTo(QRectF(pos, m_size.value()), 90);
-    m_path.arcTo(QRectF(pos, m_size.value()), 90, 360);
+    m_path.arcTo(QRectF(pos, m_size.value()), 90, -360);
 
-    if (m_direction)
+    if (hasReversedDirection())
         m_path = m_path.toReversed();
 }
 

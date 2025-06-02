@@ -40,17 +40,19 @@ int main(int argc, char **argv)
     QVBoxLayout *vLayout2 = new QVBoxLayout();
     QVBoxLayout *vLayout3 = new QVBoxLayout();
 
-    Q3DBars *widgetchart = new Q3DBars();
-    QSize screenSize = widgetchart->screen()->size();
+    auto quickWidget = new QQuickWidget;
+    Q3DBarsWidgetItem *widgetchart = new Q3DBarsWidgetItem();
+    widgetchart->setWidget(quickWidget);
+    QSize screenSize = widgetchart->widget()->screen()->size();
 
-    widgetchart->setMinimumSize(QSize(screenSize.width() / 3, screenSize.height() / 3));
-    widgetchart->setMaximumSize(screenSize);
-    widgetchart->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    widgetchart->setFocusPolicy(Qt::StrongFocus);
+    widgetchart->widget()->setMinimumSize(QSize(screenSize.width() / 3, screenSize.height() / 3));
+    widgetchart->widget()->setMaximumSize(screenSize);
+    widgetchart->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    widgetchart->widget()->setFocusPolicy(Qt::StrongFocus);
 
     widget->setWindowTitle(QStringLiteral("Average temperatures in Oulu, Finland (2006-2012)"));
 
-    hLayout->addWidget(widgetchart, 1);
+    hLayout->addWidget(widgetchart->widget(), 1);
     hLayout->addLayout(vLayout);
     hLayout->addLayout(vLayout2);
     hLayout->addLayout(vLayout3);
@@ -551,34 +553,60 @@ int main(int argc, char **argv)
     QObject::connect(fontList, &QFontComboBox::currentFontChanged, modifier,
                      &GraphModifier::changeFont);
 
-    QObject::connect(fpsCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(fpsCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
                      &GraphModifier::setFpsMeasurement);
-    QObject::connect(reverseValueAxisCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(reverseValueAxisCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
                      &GraphModifier::reverseValueAxis);
-    QObject::connect(backgroundCheckBox, &QCheckBox::stateChanged, modifier,
-                     &GraphModifier::setBackgroundEnabled);
-    QObject::connect(gridCheckBox, &QCheckBox::stateChanged, modifier,
-                     &GraphModifier::setGridEnabled);
-    QObject::connect(inputHandlerRotationCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(backgroundCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::setBackgroundVisible);
+    QObject::connect(gridCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::setGridVisible);
+    QObject::connect(inputHandlerRotationCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
                      &GraphModifier::setInputHandlerRotationEnabled);
-    QObject::connect(inputHandlerZoomCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(inputHandlerZoomCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
                      &GraphModifier::setInputHandlerZoomEnabled);
-    QObject::connect(inputHandlerSelectionCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(inputHandlerSelectionCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
                      &GraphModifier::setInputHandlerSelectionEnabled);
-    QObject::connect(inputHandlerZoomAtTargetCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(inputHandlerZoomAtTargetCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
                      &GraphModifier::setInputHandlerZoomAtTargetEnabled);
-    QObject::connect(rotationCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(rotationCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
                      &GraphModifier::setUseNullInputHandler);
 
     SliderWrapper *rotationSliderWrapperX = new SliderWrapper(rotationSliderX);
     SliderWrapper *rotationSliderWrapperY = new SliderWrapper(rotationSliderY);
-    QObject::connect(rotationCheckBox, &QCheckBox::stateChanged, rotationSliderWrapperX,
-                    &SliderWrapper::setEnabled);
-    QObject::connect(rotationCheckBox, &QCheckBox::stateChanged, rotationSliderX,
-                     &QSlider::setValue);
-    QObject::connect(rotationCheckBox, &QCheckBox::stateChanged, rotationSliderWrapperY,
+    QObject::connect(rotationCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     rotationSliderWrapperX,
                      &SliderWrapper::setEnabled);
-    QObject::connect(rotationCheckBox, &QCheckBox::stateChanged, rotationSliderY,
+    QObject::connect(rotationCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     rotationSliderX,
+                     &QSlider::setValue);
+    QObject::connect(rotationCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     rotationSliderWrapperY,
+                     &SliderWrapper::setEnabled);
+    QObject::connect(rotationCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     rotationSliderY,
                      &QSlider::setValue);
 
     QObject::connect(floorLevelSlider, &QSlider::valueChanged, modifier,
@@ -607,41 +635,78 @@ int main(int argc, char **argv)
     SliderWrapper *maxSliderWrapperY = new SliderWrapper(maxSliderY);
     ButtonWrapper *swapAxisButtonWrapper = new ButtonWrapper(swapAxisButton);
 
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, addDataButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     addDataButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, addMultiDataButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     addMultiDataButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, insertDataButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     insertDataButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, insertMultiDataButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     insertMultiDataButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, changeSingleDataButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     changeSingleDataButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, changeRowButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     changeRowButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, changeRowsButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     changeRowsButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, removeRowButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     removeRowButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, removeRowsButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     removeRowsButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, massiveArrayButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     massiveArrayButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, sampleSliderWrapperX,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     sampleSliderWrapperX,
                      &SliderWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, sampleSliderWrapperZ,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     sampleSliderWrapperZ,
                      &SliderWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, minSliderWrapperX,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     minSliderWrapperX,
                      &SliderWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, minSliderWrapperZ,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     minSliderWrapperZ,
                      &SliderWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, minSliderWrapperY,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     minSliderWrapperY,
                      &SliderWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, maxSliderWrapperY,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     maxSliderWrapperY,
                      &SliderWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, swapAxisButtonWrapper,
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     swapAxisButtonWrapper,
                      &ButtonWrapper::setEnabled);
-    QObject::connect(staticCheckBox, &QCheckBox::stateChanged, modifier, &GraphModifier::restart);
+    QObject::connect(staticCheckBox,
+                     &QCheckBox::checkStateChanged,
+                     modifier,
+                     &GraphModifier::restart);
 
     modifier->setFpsLabel(fpsLabel);
 

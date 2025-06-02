@@ -38,7 +38,7 @@ typedef QQmlListCompositor Compositor;
 class QQmlDelegateModelAttachedMetaObject;
 class QQmlAbstractDelegateComponent;
 
-class Q_QMLMODELS_PRIVATE_EXPORT QQmlDelegateModelItemMetaType final
+class Q_QMLMODELS_EXPORT QQmlDelegateModelItemMetaType final
     : public QQmlRefCounted<QQmlDelegateModelItemMetaType>
 {
 public:
@@ -233,7 +233,7 @@ public:
 
     bool parseIndex(const QV4::Value &value, int *index, Compositor::Group *group) const;
     bool parseGroupArgs(
-            QQmlV4Function *args, Compositor::Group *group, int *index, int *count, int *groups) const;
+            QQmlV4FunctionPtr args, Compositor::Group *group, int *index, int *count, int *groups) const;
 
     Compositor::Group group;
     QPointer<QQmlDelegateModel> model;
@@ -334,7 +334,6 @@ public:
     QQmlReusableDelegateModelItemsPool m_reusableItemsPool;
     QList<QQDMIncubationTask *> m_finishedIncubating;
     QList<QByteArray> m_watchedRoles;
-    QHash<int, QByteArray> m_roleNamesBeforeReset;
 
     QString m_filterGroup;
 
@@ -348,7 +347,6 @@ public:
     bool m_transaction : 1;
     bool m_incubatorCleanupScheduled : 1;
     bool m_waitingToFetchMore : 1;
-    bool m_maybeResetRoleNames : 1;
 
     union {
         struct {

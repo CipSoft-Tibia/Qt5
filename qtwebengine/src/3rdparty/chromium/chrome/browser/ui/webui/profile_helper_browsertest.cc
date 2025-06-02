@@ -109,7 +109,13 @@ class ProfileHelperTest : public InProcessBrowserTest {
   }
 };
 
-IN_PROC_BROWSER_TEST_F(ProfileHelperTest, OpenNewWindowForProfile) {
+// TODO(crbug.com/1486054): Times out consistently on lacros asan builds.
+#if BUILDFLAG(IS_CHROMEOS_LACROS) && defined(ADDRESS_SANITIZER)
+#define MAYBE_OpenNewWindowForProfile DISABLED_OpenNewWindowForProfile
+#else
+#define MAYBE_OpenNewWindowForProfile OpenNewWindowForProfile
+#endif  // BUILDFLAG(IS_CHROMEOS_LACROS) && defined(ADDRESS_SANITIZER)
+IN_PROC_BROWSER_TEST_F(ProfileHelperTest, MAYBE_OpenNewWindowForProfile) {
   BrowserList* browser_list = BrowserList::GetInstance();
 
   Browser* original_browser = browser();
@@ -245,8 +251,9 @@ class ProfileHelperTestWithDestroyProfile
   base::test::ScopedFeatureList feature_list_;
 };
 
+// TODO(crbug.com/1504677): Fix this flaky test. Probably a timing issue.
 IN_PROC_BROWSER_TEST_P(ProfileHelperTestWithDestroyProfile,
-                       DeleteInactiveProfile) {
+                       DISABLED_DeleteInactiveProfile) {
   content::TestWebUI web_ui;
   Browser* original_browser = browser();
   ProfileAttributesStorage& storage =

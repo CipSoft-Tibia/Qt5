@@ -11,7 +11,7 @@
 
 /*!
     \qmltype RowLayout
-    //! \instantiates QQuickRowLayout
+    //! \nativetype QQuickRowLayout
     \inherits Item
     \inqmlmodule QtQuick.Layouts
     \ingroup layouts
@@ -71,7 +71,7 @@
 
 /*!
     \qmltype ColumnLayout
-    //! \instantiates QQuickColumnLayout
+    //! \nativetype QQuickColumnLayout
     \inherits Item
     \inqmlmodule QtQuick.Layouts
     \ingroup layouts
@@ -130,7 +130,7 @@
 
 /*!
     \qmltype GridLayout
-    //! \instantiates QQuickGridLayout
+    //! \nativetype QQuickGridLayout
     \inherits Item
     \inqmlmodule QtQuick.Layouts
     \ingroup layouts
@@ -633,9 +633,6 @@ void QQuickGridLayout::setFlow(QQuickGridLayout::Flow flow)
 
     Default value is \c false.
 
-    \note This API is considered tech preview and may change or be removed in future versions of
-    Qt.
-
     \sa GridLayout::uniformCellHeights, RowLayout::uniformCellSizes, ColumnLayout::uniformCellSizes
 */
 bool QQuickGridLayout::uniformCellWidths() const
@@ -666,9 +663,6 @@ void QQuickGridLayout::setUniformCellWidths(bool uniformCellWidths)
     compromisses to fullfill the requirements of all items.
 
     Default value is \c false.
-
-    \note This API is considered tech preview and may change or be removed in future versions of
-    Qt.
 
     \sa GridLayout::uniformCellWidths, RowLayout::uniformCellSizes, ColumnLayout::uniformCellSizes
 */
@@ -817,6 +811,7 @@ void QQuickGridLayout::insertLayoutItems()
             layoutItem->setStretchFactor(hStretch, Qt::Horizontal);
         if (vStretch >= 0)
             layoutItem->setStretchFactor(vStretch, Qt::Vertical);
+
         d->engine.insertItem(layoutItem, -1);
     }
 }
@@ -870,9 +865,6 @@ QQuickLinearLayout::QQuickLinearLayout(Qt::Orientation orientation,
     If this property is set to \c true, the layout will force all cells to have
     a uniform size.
 
-    \note This API is considered tech preview and may change or be removed in future versions of
-    Qt.
-
     \sa GridLayout::uniformCellWidths, GridLayout::uniformCellHeights, ColumnLayout::uniformCellSizes
 */
 /*!
@@ -881,9 +873,6 @@ QQuickLinearLayout::QQuickLinearLayout(Qt::Orientation orientation,
 
     If this property is set to \c true, the layout will force all cells to have
     a uniform size.
-
-    \note This API is considered tech preview and may change or be removed in future versions of
-    Qt.
 
     \sa GridLayout::uniformCellWidths, GridLayout::uniformCellHeights, RowLayout::uniformCellSizes
 */

@@ -75,7 +75,10 @@
         // too late at this point and the QWindow will be non-functional,
         // but we can at least print a warning.
         if ([MTLCreateSystemDefaultDevice() autorelease]) {
-            return [CAMetalLayer layer];
+            static bool allowPresentsWithTransaction =
+                !qEnvironmentVariableIsSet("QT_MTL_NO_TRANSACTION");
+            return allowPresentsWithTransaction ?
+                [QMetalLayer layer] : [CAMetalLayer layer];
         } else {
             qCWarning(lcQpaDrawing) << "Failed to create QWindow::MetalSurface."
                 << "Metal is not supported by any of the GPUs in this system.";
@@ -230,8 +233,50 @@
         return;
     }
 
-    qCDebug(lcQpaDrawing) << "[QNSView displayLayer]" << m_platformWindow->window();
-    m_platformWindow->handleExposeEvent(QRectF::fromCGRect(self.bounds).toRect());
+    const auto handleExposeEvent = [&]{
+        const auto bounds = QRectF::fromCGRect(self.bounds).toRect();
+        qCDebug(lcQpaDrawing) << "[QNSView displayLayer]" << m_platformWindow->window() << bounds;
+        m_platformWindow->handleExposeEvent(bounds);
+    };
+
+    if (auto *qtMetalLayer = qt_objc_cast<QMetalLayer*>(self.layer)) {
+        const bool presentedWithTransaction = qtMetalLayer.presentsWithTransaction;
+        qtMetalLayer.presentsWithTransaction = YES;
+
+        handleExposeEvent();
+
+        {
+            // Clearing the mainThreadPresentation below will auto-release the
+            // block held by the property, which in turn holds on to drawables,
+            // so we want to clean up as soon as possible, to prevent stalling
+            // when requesting new drawables. But merely referencing the block
+            // below for the nil-check will make another auto-released copy of
+            // the block, so the scope of the auto-release pool needs to include
+            // that check as well.
+            QMacAutoReleasePool pool;
+
+            // If the expose event resulted in a secondary thread requesting that its
+            // drawable should be presented on the main thread with transaction, do so.
+            if (auto mainThreadPresentation = qtMetalLayer.mainThreadPresentation) {
+                mainThreadPresentation();
+                qtMetalLayer.mainThreadPresentation = nil;
+            }
+        }
+
+        qtMetalLayer.presentsWithTransaction = presentedWithTransaction;
+
+        // We're done presenting, but we must wait to unlock the display lock
+        // until the display cycle finishes, as otherwise the render thread may
+        // step in and present before the transaction commits. The display lock
+        // is recursive, so setNeedsDisplay can be safely called in the meantime
+        // without any issue.
+        QMetaObject::invokeMethod(m_platformWindow, [qtMetalLayer]{
+            qCDebug(lcMetalLayer) << "Unlocking" << qtMetalLayer << "after finishing display-cycle";
+            qtMetalLayer.displayLock.unlock();
+        }, Qt::QueuedConnection);
+    } else {
+        handleExposeEvent();
+    }
 }
 
 @end

@@ -62,3 +62,45 @@ export function elementIsEditable(target: EventTarget|null): boolean {
 
   return true;
 }
+
+// Returns the mouse pointer's position relative to |e.currentTarget| for a
+// given |MouseEvent|.
+// Similar to |offsetX|, |offsetY| but for |currentTarget| rather than |target|.
+// If the event has no currentTarget or it is not an element, offsetX & offsetY
+// are returned instead.
+export function currentTargetOffset(e: MouseEvent): {x: number, y: number} {
+  if (e.currentTarget === e.target) {
+    return {x: e.offsetX, y: e.offsetY};
+  }
+
+  if (e.currentTarget && e.currentTarget instanceof Element) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    return {x: offsetX, y: offsetY};
+  }
+
+  return {x: e.offsetX, y: e.offsetY};
+}
+
+function calculateScrollbarWidth() {
+  const outer = document.createElement('div');
+  outer.style.overflowY = 'scroll';
+  const inner = document.createElement('div');
+  outer.appendChild(inner);
+  document.body.appendChild(outer);
+  const width =
+      outer.getBoundingClientRect().width - inner.getBoundingClientRect().width;
+  document.body.removeChild(outer);
+  return width;
+}
+
+let cachedScrollBarWidth: number|undefined = undefined;
+
+// Calculate the space a scrollbar takes up.
+export function getScrollbarWidth() {
+  if (cachedScrollBarWidth === undefined) {
+    cachedScrollBarWidth = calculateScrollbarWidth();
+  }
+  return cachedScrollBarWidth;
+}

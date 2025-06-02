@@ -13,6 +13,7 @@
 #include "core/fxcrt/fx_coordinates.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
+#include "core/fxge/cfx_glyphcache.h"
 #include "core/fxge/dib/cfx_dibitmap.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "testing/utils/hash.h"
@@ -26,6 +27,9 @@ class CFDETextOutTest : public testing::Test {
   ~CFDETextOutTest() override = default;
 
   void SetUp() override {
+#if defined(PDF_USE_SKIA)
+    CFX_GlyphCache::InitializeGlobals();
+#endif
     CFX_Size bitmap_size = GetBitmapSize();
     bitmap_ = pdfium::MakeRetain<CFX_DIBitmap>();
     ASSERT_TRUE(bitmap_->Create(bitmap_size.width, bitmap_size.height,
@@ -45,10 +49,14 @@ class CFDETextOutTest : public testing::Test {
   }
 
   void TearDown() override {
+    // reverse order form SetUp()
     text_out_.reset();
     font_.Reset();
     device_.reset();
     bitmap_.Reset();
+#if defined(PDF_USE_SKIA)
+    CFX_GlyphCache::DestroyGlobals();
+#endif
   }
 
   virtual RetainPtr<CFGAS_GEFont> LoadFont() {
@@ -88,8 +96,9 @@ TEST_F(CFDETextOutTest, DrawLogicTextBasic) {
   text_out().DrawLogicText(device(), L"foo", CFX_RectF(0, 0, 2100, 100));
   const char* checksum = []() {
 #if BUILDFLAG(IS_WIN)
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer())
-      return "76fd535f7d490d963598474494d0701e";
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+      return "cdd8f00144e421bf18f22d09896838b0";
+    }
 #endif
     return "b26f1c171fcdbf185823364185adacf0";
   }();
@@ -124,7 +133,7 @@ class CFDETextOutLargeBitmapTest : public CFDETextOutTest {
   }
 
   const char* GetLargeTextBlobChecksum() {
-    if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
+    if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
       return "cd357c6afbf17bb2ac48817df5d9eaad";
     }
     return "268b71a8660b51e31c6bf30fc7ff1e08";

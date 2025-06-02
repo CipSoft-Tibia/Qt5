@@ -11,4 +11,5 @@ qt_internal_add_test(tst_qgbars_modelproxy
         Qt::GuiPrivate
         Qt::Widgets
         Qt::Graphs
+        Qt::GraphsWidgets
 )

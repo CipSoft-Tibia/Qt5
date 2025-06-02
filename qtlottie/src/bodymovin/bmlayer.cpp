@@ -98,7 +98,7 @@ void BMLayer::parse(const QJsonObject &definition)
     QJsonArray effects = definition.value(QLatin1String("ef")).toArray();
     parseEffects(effects);
 
-    if (m_td > 1)
+    if (m_clipMode > 2)
         qCWarning(lcLottieQtBodymovinParser)
                 << "BM Layer: Only alpha mask layer supported:" << m_clipMode;
     if (m_blendMode > 0)

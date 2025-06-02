@@ -17,18 +17,22 @@ extern "C" {
 
 namespace QFFmpeg {
 
-class MediaCodecTextureSet : public TextureSet
+namespace {
+
+class MediaCodecTextureHandles : public QVideoFrameTexturesHandles
 {
 public:
-    MediaCodecTextureSet(qint64 textureHandle) : handle(textureHandle) { }
+    MediaCodecTextureHandles(TextureConverterBackendPtr &&converterBackend, quint64 textureHandle)
+        : m_parentConverterBackend(std::move(converterBackend)), m_handle(textureHandle)
+    {
+    }
 
-    qint64 textureHandle(QRhi *, int plane) override { return (plane == 0) ? handle : 0; }
+    quint64 textureHandle(QRhi &, int plane) override { return (plane == 0) ? m_handle : 0; }
 
 private:
-    qint64 handle;
+    TextureConverterBackendPtr m_parentConverterBackend; // ensures the backend is kept
+    quint64 m_handle;
 };
-
-namespace {
 
 void deleteSurface(AVHWDeviceContext *ctx)
 {
@@ -80,8 +84,22 @@ void MediaCodecTextureConverter::setupDecoderSurface(AVCodecContext *avCodecCont
     deviceContext->free = deleteSurface;
 }
 
-TextureSet *MediaCodecTextureConverter::getTextures(AVFrame *frame)
+QVideoFrameTexturesUPtr
+MediaCodecTextureConverter::createTextures(AVFrame * /*frame*/,
+                                           QVideoFrameTexturesUPtr & /*oldTextures*/)
 {
+    // Most likely, this method should be used instead of createTextureHandles, QRhiTexture is
+    // already created, and we don't need to convert it to handle and back. This work should be done
+    // in the scope of QTBUG-132174
+    return nullptr;
+}
+
+QVideoFrameTexturesHandlesUPtr
+MediaCodecTextureConverter::createTextureHandles(AVFrame *frame,
+                                                 QVideoFrameTexturesHandlesUPtr /*oldHandles*/)
+{
+    // TODO: reuse oldHandles: the underlying QRhiTexture must be taken from it instead of
+    // keeping it in AndroidTextureConverter. See QTBUG-132174
     AndroidSurfaceTexture * androidSurfaceTexture = getTextureSurface(frame);
 
     if (!androidSurfaceTexture || !androidSurfaceTexture->isValid())
@@ -115,6 +133,7 @@ TextureSet *MediaCodecTextureConverter::getTextures(AVFrame *frame)
 
     androidSurfaceTexture->updateTexImage();
 
-    return new MediaCodecTextureSet(externalTexture->nativeTexture().object);
+    return std::make_unique<MediaCodecTextureHandles>(shared_from_this(),
+                                                      externalTexture->nativeTexture().object);
 }
 }

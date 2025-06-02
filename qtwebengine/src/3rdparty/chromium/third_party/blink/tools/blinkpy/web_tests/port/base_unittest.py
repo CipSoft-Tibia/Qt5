@@ -26,6 +26,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import json
 import mock
 import operator
 import optparse
@@ -536,6 +537,18 @@ class PortTest(LoggingTestCase):
         # --additional-driver-flag doesn't affect baseline search path.
         self.assertEqual(list(port.expectations_dict().values()),
                          ['content1\n', 'content2\n'])
+
+    def test_additional_driver_flags_for_chrome(self):
+        port = self.make_port()
+        port.set_option_default('driver_name', 'chrome')
+        flags = port.additional_driver_flags()
+        self.assertNotIn('--run-web-tests', flags)
+        self.assertIn('--enable-blink-test-features', flags)
+        ignore_certs_flags = [
+            flag for flag in flags
+            if flag.startswith('--ignore-certificate-errors-spki-list=')
+        ]
+        self.assertEqual(len(ignore_certs_flags), 1)
 
     def test_flag_specific_expectations(self):
         port = self.make_port(port_name='foo')
@@ -1242,6 +1255,18 @@ class PortTest(LoggingTestCase):
 
     def test_reference_files(self):
         port = self.make_port(with_tests=True)
+        port.host.filesystem.write_text_file(
+            MOCK_WEB_TESTS + 'external/wpt/MANIFEST.json',
+            json.dumps({
+                'items': {
+                    'reftest': {
+                        'blank.html': [
+                            'abcdef123',
+                            [None, [['about:blank', '==']], {}],
+                        ],
+                    },
+                },
+            }))
         self.assertEqual(
             port.reference_files('passes/svgreftest.svg'),
             [('==', port.web_tests_dir() + 'passes/svgreftest-expected.svg')])
@@ -1251,6 +1276,8 @@ class PortTest(LoggingTestCase):
         self.assertEqual(port.reference_files('passes/phpreftest.php'),
                          [('!=', port.web_tests_dir() +
                            'passes/phpreftest-expected-mismatch.svg')])
+        self.assertEqual(port.reference_files('external/wpt/blank.html'),
+                         [('==', 'about:blank')])
 
     def test_reference_files_from_manifest(self):
         port = self.make_port(with_tests=True)
@@ -1908,7 +1935,7 @@ class PortTest(LoggingTestCase):
                 '--disable-threaded-animation',
                 '--trace-startup=*,-blink',
                 '--trace-startup-duration=0',
-                '--trace-startup-file=trace_layout_test_non_virtual_TIME.json',
+                '--trace-startup-file=trace_layout_test_non_virtual_TIME.pftrace',
             ], port.args_for_test('non/virtual'))
 
     def test_all_systems(self):

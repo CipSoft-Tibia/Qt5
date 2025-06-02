@@ -1,12 +1,8 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QVALUE3DAXIS_H
-#define QVALUE3DAXIS_H
-
-#if 0
-#  pragma qt_class(QValue3DAxis)
-#endif
+#ifndef QTGRAPHS_QVALUE3DAXIS_H
+#define QTGRAPHS_QVALUE3DAXIS_H
 
 #include <QtGraphs/qabstract3daxis.h>
 #include <QtGraphs/qvalue3daxisformatter.h>
@@ -15,27 +11,29 @@ QT_BEGIN_NAMESPACE
 
 class QValue3DAxisPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QValue3DAxis : public QAbstract3DAxis
+class Q_GRAPHS_EXPORT QValue3DAxis : public QAbstract3DAxis
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QValue3DAxis)
-    Q_PROPERTY(int segmentCount READ segmentCount WRITE setSegmentCount NOTIFY segmentCountChanged)
-    Q_PROPERTY(int subSegmentCount READ subSegmentCount WRITE setSubSegmentCount NOTIFY
-                   subSegmentCountChanged)
-    Q_PROPERTY(QString labelFormat READ labelFormat WRITE setLabelFormat NOTIFY labelFormatChanged)
+    Q_PROPERTY(qsizetype segmentCount READ segmentCount WRITE setSegmentCount NOTIFY
+                   segmentCountChanged FINAL)
+    Q_PROPERTY(qsizetype subSegmentCount READ subSegmentCount WRITE setSubSegmentCount NOTIFY
+                   subSegmentCountChanged FINAL)
     Q_PROPERTY(
-        QValue3DAxisFormatter *formatter READ formatter WRITE setFormatter NOTIFY formatterChanged)
-    Q_PROPERTY(bool reversed READ reversed WRITE setReversed NOTIFY reversedChanged)
+        QString labelFormat READ labelFormat WRITE setLabelFormat NOTIFY labelFormatChanged FINAL)
+    Q_PROPERTY(QValue3DAxisFormatter *formatter READ formatter WRITE setFormatter NOTIFY
+                   formatterChanged FINAL)
+    Q_PROPERTY(bool reversed READ reversed WRITE setReversed NOTIFY reversedChanged FINAL)
 
 public:
     explicit QValue3DAxis(QObject *parent = nullptr);
     ~QValue3DAxis() override;
 
-    void setSegmentCount(int count);
-    int segmentCount() const;
+    void setSegmentCount(qsizetype count);
+    qsizetype segmentCount() const;
 
-    void setSubSegmentCount(int count);
-    int subSegmentCount() const;
+    void setSubSegmentCount(qsizetype count);
+    qsizetype subSegmentCount() const;
 
     void setLabelFormat(const QString &format);
     QString labelFormat() const;
@@ -47,17 +45,17 @@ public:
     bool reversed() const;
 
     void recalculate();
-    int gridSize();
-    int subGridSize();
-    float gridPositionAt(int gridLine);
-    float subGridPositionAt(int gridLine);
-    float labelPositionAt(int index);
+    qsizetype gridSize();
+    qsizetype subGridSize();
+    float gridPositionAt(qsizetype gridLine);
+    float subGridPositionAt(qsizetype gridLine);
+    float labelPositionAt(qsizetype index);
     float positionAt(float x);
     QString stringForValue(float x);
 
 Q_SIGNALS:
-    void segmentCountChanged(int count);
-    void subSegmentCountChanged(int count);
+    void segmentCountChanged(qsizetype count);
+    void subSegmentCountChanged(qsizetype count);
     void labelFormatChanged(const QString &format);
     void formatterChanged(QValue3DAxisFormatter *formatter);
     void reversedChanged(bool enable);

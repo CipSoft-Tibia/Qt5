@@ -16,6 +16,7 @@ group("docs") {
     "./color_swatch",
     "./computed_style_property",
     "./computed_style_trace",
+    "./console_insight",
     "./css_overview",
     "./data_grid",
     "./data_grid_controller",

@@ -78,10 +78,9 @@ std::tuple<bool, absl::optional<std::string>> Base64UrlDecodeOptionalStringKey(
     return {true, absl::nullopt};
   }
   if (value->is_none()) {
-    return {!(base::FeatureList::IsEnabled(device::kWebAuthnNoNullInJSON) &&
-              (base::FeatureList::IsEnabled(
-                   device::kWebAuthnRequireUpToDateJSONForRemoteDesktop) ||
-               user != JSONUser::kRemoteDesktop)),
+    return {!base::FeatureList::IsEnabled(
+                device::kWebAuthnRequireUpToDateJSONForRemoteDesktop) &&
+                user == JSONUser::kRemoteDesktop,
             absl::nullopt};
   }
   std::string decoded;
@@ -276,6 +275,34 @@ base::Value ToValue(const device::CableDiscoveryData& cable_authentication) {
   return base::Value(std::move(value));
 }
 
+base::Value ToValue(
+    const blink::mojom::SupplementalPubKeysRequestPtr& supplemental_pub_keys) {
+  base::Value::List scopes;
+  if (supplemental_pub_keys->device_scope_requested) {
+    scopes.Append("device");
+  }
+  if (supplemental_pub_keys->provider_scope_requested) {
+    scopes.Append("provider");
+  }
+
+  base::Value::Dict value;
+  value.Set("scopes", std::move(scopes));
+  if (supplemental_pub_keys->attestation !=
+      device::AttestationConveyancePreference::kIndirect) {
+    value.Set("attestation", ToValue(supplemental_pub_keys->attestation));
+  }
+  if (supplemental_pub_keys->attestation_formats.size()) {
+    base::Value::List formats;
+    for (const std::string& format :
+         supplemental_pub_keys->attestation_formats) {
+      formats.Append(format);
+    }
+    value.Set("attestationFormats", std::move(formats));
+  }
+
+  return base::Value(std::move(value));
+}
+
 absl::optional<device::FidoTransportProtocol> FidoTransportProtocolFromValue(
     const base::Value& value) {
   if (!value.is_string()) {
@@ -293,10 +320,9 @@ OptionalAuthenticatorAttachmentFromValue(const base::Value* value,
     return device::AuthenticatorAttachment::kAny;
   }
   if (value->is_none()) {
-    if (base::FeatureList::IsEnabled(device::kWebAuthnNoNullInJSON) &&
-        (base::FeatureList::IsEnabled(
-             device::kWebAuthnRequireUpToDateJSONForRemoteDesktop) ||
-         user != JSONUser::kRemoteDesktop)) {
+    if (base::FeatureList::IsEnabled(
+            device::kWebAuthnRequireUpToDateJSONForRemoteDesktop) ||
+        user != JSONUser::kRemoteDesktop) {
       return absl::nullopt;
     }
     return device::AuthenticatorAttachment::kAny;
@@ -321,6 +347,15 @@ InvalidMakeCredentialField(const char* field_name) {
 std::pair<blink::mojom::GetAssertionAuthenticatorResponsePtr, std::string>
 InvalidGetAssertionField(const char* field_name) {
   return {nullptr, std::string("field missing or invalid: ") + field_name};
+}
+
+base::Value ToValue(const blink::mojom::PRFValuesPtr& prf_input) {
+  base::Value::Dict prf_value;
+  prf_value.Set("first", Base64UrlEncode(prf_input->first));
+  if (prf_input->second) {
+    prf_value.Set("second", Base64UrlEncode(*prf_input->second));
+  }
+  return base::Value(std::move(prf_value));
 }
 
 }  // namespace
@@ -392,6 +427,9 @@ base::Value ToValue(
 
   if (options->prf_enable) {
     base::Value::Dict prf_value;
+    if (options->prf_input) {
+      prf_value.Set("eval", ToValue(options->prf_input));
+    }
     extensions.Set("prf", std::move(prf_value));
   }
 
@@ -404,20 +442,16 @@ base::Value ToValue(
     extensions.Set("payment", std::move(payments_value));
   }
 
+  if (options->supplemental_pub_keys) {
+    extensions.Set("supplementalPubKeys",
+                   ToValue(options->supplemental_pub_keys));
+  }
+
   if (!extensions.empty()) {
     value.Set("extensions", std::move(extensions));
   }
 
   return base::Value(std::move(value));
-}
-
-base::Value ToValue(const blink::mojom::PRFValuesPtr& prf_input) {
-  base::Value::Dict prf_value;
-  prf_value.Set("first", Base64UrlEncode(prf_input->first));
-  if (prf_input->second) {
-    prf_value.Set("second", Base64UrlEncode(*prf_input->second));
-  }
-  return base::Value(std::move(prf_value));
 }
 
 base::Value ToValue(
@@ -502,11 +536,60 @@ base::Value ToValue(
     extensions.Set("prf", std::move(prf_value));
   }
 
+  if (options->extensions->supplemental_pub_keys) {
+    extensions.Set("supplementalPubKeys",
+                   ToValue(options->extensions->supplemental_pub_keys));
+  }
+
   if (!extensions.empty()) {
     value.Set("extensions", std::move(extensions));
   }
 
   return base::Value(std::move(value));
+}
+
+absl::optional<blink::mojom::PRFValuesPtr> ParsePRFResults(
+    const base::Value::Dict* results, const JSONUser user) {
+  const absl::optional<std::string> first =
+      Base64UrlDecodeStringKey(*results, "first");
+  if (!first || first->size() != 32) {
+    return absl::nullopt;
+  }
+
+  auto [ok, second] =
+      Base64UrlDecodeOptionalStringKey(*results, "second", user);
+  if (!ok || (second && second->size() != 32)) {
+    return absl::nullopt;
+  }
+
+  return blink::mojom::PRFValues::New(
+      /*id=*/absl::nullopt, ToByteVector(*first),
+      second ? absl::optional<std::vector<uint8_t>>(ToByteVector(*second))
+             : absl::nullopt);
+}
+
+absl::optional<blink::mojom::SupplementalPubKeysResponsePtr>
+ParseSupplementalPubKeys(const base::Value::Dict* json) {
+  const base::Value::List* signatures = json->FindList("signatures");
+  if (!signatures || signatures->empty()) {
+    return absl::nullopt;
+  }
+
+  auto ret = blink::mojom::SupplementalPubKeysResponse::New();
+  for (const base::Value& b64url_signature : *signatures) {
+    if (!b64url_signature.is_string()) {
+      return absl::nullopt;
+    }
+    absl::optional<std::vector<uint8_t>> signature =
+        Base64UrlDecode(b64url_signature.GetString(),
+                        base::Base64UrlDecodePolicy::DISALLOW_PADDING);
+    if (!signature) {
+      return absl::nullopt;
+    }
+    ret->signatures.emplace_back(std::move(*signature));
+  }
+
+  return ret;
 }
 
 std::pair<blink::mojom::MakeCredentialAuthenticatorResponsePtr, std::string>
@@ -566,13 +649,10 @@ MakeCredentialResponseFromValue(const base::Value& value, JSONUser user) {
   response->attestation_object = std::move(fields->attestation_object_bytes);
 
   if (base::FeatureList::IsEnabled(
-          device::kWebAuthnRequireEasyAccessorFieldsInJSON) &&
-      (base::FeatureList::IsEnabled(
-           device::kWebAuthnRequireUpToDateJSONForRemoteDesktop) ||
-       user != JSONUser::kRemoteDesktop)) {
+          device::kWebAuthnRequireUpToDateJSONForRemoteDesktop) ||
+      user != JSONUser::kRemoteDesktop) {
     // These fields are checked against the calculated values to ensure that
     // bugs in providers don't sneak in.
-
     absl::optional<int> opt_public_key_algo =
         attestation_response->FindInt("publicKeyAlgorithm");
     if (!opt_public_key_algo ||
@@ -713,6 +793,34 @@ MakeCredentialResponseFromValue(const base::Value& value, JSONUser user) {
     }
     response->supports_large_blob = *supported;
   }
+  const base::Value::Dict* prf = client_extension_results->FindDict("prf");
+  if (prf) {
+    response->echo_prf = true;
+    const absl::optional<bool> enabled = prf->FindBool("enabled");
+    if (!enabled) {
+      return InvalidMakeCredentialField("prf");
+    }
+    response->prf = *enabled;
+
+    const base::Value::Dict* results = prf->FindDict("results");
+    if (results) {
+      absl::optional<blink::mojom::PRFValuesPtr> prf_results =
+          ParsePRFResults(results, user);
+      if (!prf_results) {
+        return InvalidMakeCredentialField("prf");
+      }
+      response->prf_results = std::move(*prf_results);
+    }
+  }
+  const base::Value::Dict* supplemental_pub_keys =
+      client_extension_results->FindDict("supplementalPubKeys");
+  if (supplemental_pub_keys) {
+    auto maybe_result = ParseSupplementalPubKeys(supplemental_pub_keys);
+    if (!maybe_result) {
+      return InvalidMakeCredentialField("supplementalPubKeys");
+    }
+    response->supplemental_pub_keys = std::move(*maybe_result);
+  }
 
   return {std::move(response), ""};
 }
@@ -731,6 +839,8 @@ GetAssertionResponseFromValue(const base::Value& value, const JSONUser user) {
 
   auto response = blink::mojom::GetAssertionAuthenticatorResponse::New();
   response->info = blink::mojom::CommonCredentialInfo::New();
+  response->extensions =
+      blink::mojom::AuthenticationExtensionsClientOutputs::New();
 
   const std::string* id = dict.FindString("id");
   if (!id) {
@@ -795,8 +905,8 @@ GetAssertionResponseFromValue(const base::Value& value, const JSONUser user) {
   const absl::optional<bool> app_id =
       client_extension_results->FindBool("appid");
   if (app_id) {
-    response->echo_appid_extension = true;
-    response->appid_extension = *app_id;
+    response->extensions->echo_appid_extension = true;
+    response->extensions->appid_extension = *app_id;
   }
   if (client_extension_results->contains("getCredBlob")) {
     absl::optional<std::string> cred_blob =
@@ -804,25 +914,48 @@ GetAssertionResponseFromValue(const base::Value& value, const JSONUser user) {
     if (!cred_blob) {
       return InvalidGetAssertionField("credBlob");
     }
-    response->get_cred_blob = ToByteVector(*cred_blob);
+    response->extensions->get_cred_blob = ToByteVector(*cred_blob);
   }
   const base::Value::Dict* large_blob =
       client_extension_results->FindDict("largeBlob");
   if (large_blob) {
-    response->echo_large_blob = true;
+    response->extensions->echo_large_blob = true;
     if (large_blob->contains("blob")) {
       absl::optional<std::string> blob =
           Base64UrlDecodeStringKey(*large_blob, "blob");
       if (!blob) {
         return InvalidGetAssertionField("largeBlob");
       }
-      response->large_blob = ToByteVector(*blob);
+      response->extensions->large_blob = ToByteVector(*blob);
     }
     const absl::optional<bool> written = large_blob->FindBool("written");
     if (written) {
-      response->echo_large_blob_written = true;
-      response->large_blob_written = *written;
+      response->extensions->echo_large_blob_written = true;
+      response->extensions->large_blob_written = *written;
     }
+  }
+  const base::Value::Dict* prf = client_extension_results->FindDict("prf");
+  if (prf) {
+    const base::Value::Dict* results = prf->FindDict("results");
+    if (results) {
+      absl::optional<blink::mojom::PRFValuesPtr> prf_results =
+          ParsePRFResults(results, user);
+      if (!prf_results) {
+        return InvalidGetAssertionField("prf");
+      }
+
+      response->extensions->echo_prf = true;
+      response->extensions->prf_results = std::move(*prf_results);
+    }
+  }
+  const base::Value::Dict* supplemental_pub_keys =
+      client_extension_results->FindDict("supplementalPubKeys");
+  if (supplemental_pub_keys) {
+    auto maybe_result = ParseSupplementalPubKeys(supplemental_pub_keys);
+    if (!maybe_result) {
+      return InvalidGetAssertionField("supplementalPubKeys");
+    }
+    response->extensions->supplemental_pub_keys = std::move(*maybe_result);
   }
 
   return {std::move(response), ""};

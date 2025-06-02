@@ -30,14 +30,14 @@ public:
     ~QSurfaceDataProxyPrivate() override;
 
     void resetArray(QSurfaceDataArray &&newArray);
-    void setRow(int rowIndex, QSurfaceDataRow &&row);
-    void setRows(int rowIndex, QSurfaceDataArray &&rows);
-    void setItem(int rowIndex, int columnIndex, QSurfaceDataItem &&item);
-    int addRow(QSurfaceDataRow &&row);
-    int addRows(QSurfaceDataArray &&rows);
-    void insertRow(int rowIndex, QSurfaceDataRow &&row);
-    void insertRows(int rowIndex, QSurfaceDataArray &&rows);
-    void removeRows(int rowIndex, int removeCount);
+    void setRow(qsizetype rowIndex, QSurfaceDataRow &&row);
+    void setRows(qsizetype rowIndex, QSurfaceDataArray &&rows);
+    void setItem(qsizetype rowIndex, qsizetype columnIndex, QSurfaceDataItem &&item);
+    qsizetype addRow(QSurfaceDataRow &&row);
+    qsizetype addRows(QSurfaceDataArray &&rows);
+    void insertRow(qsizetype rowIndex, QSurfaceDataRow &&row);
+    void insertRows(qsizetype rowIndex, QSurfaceDataArray &&rows);
+    void removeRows(qsizetype rowIndex, qsizetype removeCount);
     void limitValues(QVector3D &minValues,
                      QVector3D &maxValues,
                      QAbstract3DAxis *axisX,
@@ -46,13 +46,6 @@ public:
     bool isValidValue(float value, QAbstract3DAxis *axis) const;
 
     void setSeries(QAbstract3DSeries *series) override;
-
-protected:
-    QSurfaceDataArray m_dataArray;
-
-private:
-    void clearRow(int rowIndex);
-    void clearArray();
 };
 
 QT_END_NAMESPACE

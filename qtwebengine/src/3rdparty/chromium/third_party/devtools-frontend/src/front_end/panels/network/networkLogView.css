@@ -42,7 +42,7 @@
 }
 
 #network-container.grid-focused.no-node-selected:focus-within {
-  border: 1px solid var(--legacy-accent-color);
+  border: 1px solid var(--sys-color-state-focus-ring);
 }
 
 .network-summary-bar {
@@ -130,7 +130,7 @@
 
 .network-cell-subtitle {
   font-weight: normal;
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
 }
 
 .network-badge {
@@ -148,7 +148,7 @@
 .network-error-row,
 .network-error-row .network-cell-subtitle {
   /* stylelint-disable-next-line declaration-no-important */
-  color: var(--color-red) !important;
+  color: var(--sys-color-error) !important;
 }
 
 .network-log-grid.data-grid tr.selected.network-error-row,
@@ -158,7 +158,7 @@
 .network-log-grid.data-grid:focus-within tr.selected.network-error-row,
 .network-log-grid.data-grid:focus-within tr.selected.network-error-row .network-cell-subtitle,
 .network-log-grid.data-grid:focus-within tr.selected.network-error-row .network-dim-cell {
-  color: var(--color-accent-red);
+  color: var(--sys-color-error);
 }
 
 /* We are using a multitude of different selector specificity rules here, which
@@ -178,7 +178,7 @@
 }
 
 .network-header-subtitle {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
 }
 
 .network-log-grid.data-grid.small .network-cell-subtitle,
@@ -186,15 +186,12 @@
   display: none;
 }
 
-.network-log-grid.data-grid.small tr.selected .network-cell-subtitle-show-inline-when-selected {
+.network-log-grid.data-grid.small .network-cell-subtitle.always-visible {
   display: inline;
   margin-left: 4px;
 }
 
 .network-log-grid tr.highlighted-row {
-  --override-highlight-fade-from: rgb(255 255 120 / 100%);
-  --override-highlight-fade-to: rgb(255 255 120 / 0%);
-
   animation: network-row-highlight-fadeout 2s 0s;
 }
 /* See comment above why the rules were disabled */
@@ -202,11 +199,11 @@
 
 @keyframes network-row-highlight-fadeout {
   from {
-    background-color: var(--override-highlight-fade-from);
+    background-color: var(--sys-color-yellow-container);
   }
 
   to {
-    background-color: var(--override-highlight-fade-to);
+    background-color: transparent;
   }
 }
 
@@ -230,24 +227,20 @@
   filter: none;
 }
 
-.data-grid-data-grid-node [is="ui-icon"].arrow-up-down-circle {
-  transform: scale(0.8);
-}
-
 .network-log-grid.data-grid .network-error-row.data-grid-data-grid-node img.icon,
 .network-log-grid.data-grid .network-error-row.data-grid-data-grid-node.selected img.icon {
   /* This is generated with https://codepen.io/sosuke/pen/Pjoqqp to target var(--color-red) */
   filter: brightness(0) saturate(100%) invert(35%) sepia(76%) saturate(1413%) hue-rotate(338deg) brightness(92%) contrast(103%);
 }
 
+.data-grid-data-grid-node devtools-icon[name="arrow-up-down-circle"],
 .network-log-grid.data-grid.small .icon {
   width: 16px;
   height: 16px;
+  vertical-align: sub;
 }
 
 .image-network-icon-preview {
-  background: var(--color-image-preview-background);
-  border: 1px solid var(--color-details-hairline);
   bottom: 0;
   left: 0;
   margin: auto;
@@ -279,21 +272,14 @@
    extracted out. */
 /* stylelint-disable-next-line no-descending-specificity */
 .network-dim-cell {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
 }
 
 .network-frame-divider {
-  --override-frame-divider: #fccc49;
-
   width: 2px;
-  background-color: var(--override-frame-divider);
+  background-color: var(--network-frame-divider-color); /* stylelint-disable-line plugin/use_theme_colors */
   z-index: 10;
   visibility: hidden;
-}
-
-.-theme-with-dark-background .network-frame-divider,
-:host-context(.-theme-with-dark-background) .network-frame-divider {
-  --override-frame-divider: rgb(182 134 3);
 }
 
 #network-container:not(.brief-mode) .data-container {
@@ -318,7 +304,7 @@
 }
 
 .network-status-pane {
-  color: var(--color-text-secondary);
+  color: var(--sys-color-token-subtle);
   background-color: var(--sys-color-cdt-base-container);
   z-index: 500;
   display: flex;
@@ -341,10 +327,20 @@
   width: 100%;
   display: table;
   z-index: 200;
-}
 
-.network-waterfall-header:hover {
-  background-color: var(--color-background-highlight);
+  & > div.hover-layer {
+    display: none;
+    background-color: var(--sys-color-state-hover-on-subtle);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  &:hover > div.hover-layer {
+    display: block;
+  }
 }
 
 .network-waterfall-header div {
@@ -388,8 +384,8 @@
 }
 
 .network-override-marker::before {
-  background-color: var(--color-purple-bright);
-  content: url("Images/empty.svg");
+  background-color: var(--sys-color-purple-bright);
+  content: var(--image-file-empty);
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -440,7 +436,11 @@
 
   .network-waterfall-header:hover {
     forced-color-adjust: none;
-    background-color: Highlight;
+    background-color: Highlight !important; /* stylelint-disable-line declaration-no-important */
+
+    & > div.hover-layer {
+      display: none;
+    }
   }
 
   .network-waterfall-header.small,
@@ -449,7 +449,11 @@
     background-color: canvas;
   }
 
-  .network-waterfall-header:hover .sort-order-icon-container [is="ui-icon"].icon-mask {
-    background-color: HighlightText;
+  .network-waterfall-header .sort-order-icon-container devtools-icon {
+    background-color: inherit;
+  }
+
+  .network-waterfall-header:hover .sort-order-icon-container devtools-icon {
+    color: HighlightText;
   }
 }

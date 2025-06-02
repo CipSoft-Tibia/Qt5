@@ -14,6 +14,8 @@
 #include <QtGui/qaccessible.h>
 #endif
 
+using namespace Qt::StringLiterals;
+
 namespace QtWebEngineCore {
 
 RenderWidgetHostViewQtDelegateItem::RenderWidgetHostViewQtDelegateItem(RenderWidgetHostViewQtDelegateClient *client, bool isPopup)
@@ -30,11 +32,12 @@ RenderWidgetHostViewQtDelegateItem::RenderWidgetHostViewQtDelegateItem(RenderWid
         setFocus(true);
         setActiveFocusOnTab(true);
     }
-    bind(client->compositorId());
+    bind(client->compositorId()); // Compositor::Observer
 }
 
 RenderWidgetHostViewQtDelegateItem::~RenderWidgetHostViewQtDelegateItem()
 {
+    unbind(); // Compositor::Observer
     releaseTextureResources();
     if (m_widgetDelegate) {
         m_widgetDelegate->Unbind();
@@ -319,9 +322,18 @@ void RenderWidgetHostViewQtDelegateItem::itemChange(ItemChange change, const Ite
 {
     QQuickItem::itemChange(change, value);
     if (change == QQuickItem::ItemSceneChange) {
-        for (const QMetaObject::Connection &c : std::as_const(m_windowConnections))
-            disconnect(c);
-        m_windowConnections.clear();
+        if (!m_windowConnections.isEmpty()) {
+            for (const QMetaObject::Connection &c : std::as_const(m_windowConnections))
+                disconnect(c);
+            m_windowConnections.clear();
+
+            auto comp = compositor();
+            if (comp && comp->type() == Compositor::Type::Native) {
+                comp->releaseTexture();
+                comp->releaseResources();
+            }
+        }
+
         if (value.window) {
             m_windowConnections.append(connect(value.window, &QQuickWindow::beforeRendering,
                                                this, &RenderWidgetHostViewQtDelegateItem::onBeforeRendering, Qt::DirectConnection));
@@ -347,6 +359,8 @@ void RenderWidgetHostViewQtDelegateItem::itemChange(ItemChange change, const Ite
             if (!m_isPopup)
                 onHide();
         }
+    } else if (change == QQuickItem::ItemDevicePixelRatioHasChanged) {
+        m_client->visualPropertiesChanged();
     }
 }
 
@@ -355,6 +369,12 @@ QSGNode *RenderWidgetHostViewQtDelegateItem::updatePaintNode(QSGNode *oldNode, U
     auto comp = compositor();
     if (!comp)
         return oldNode;
+
+    if (comp->type() == Compositor::Type::Native
+        && QGuiApplication::platformName() == "offscreen"_L1) {
+        comp->swapFrame();
+        return oldNode;
+    }
 
     QQuickWindow *win = QQuickItem::window();
 

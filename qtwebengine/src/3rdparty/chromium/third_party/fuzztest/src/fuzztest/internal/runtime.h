@@ -32,11 +32,13 @@
 #include "absl/functional/function_ref.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/discrete_distribution.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "./fuzztest/domain.h"
+#include "./fuzztest/internal/configuration.h"
 #include "./fuzztest/internal/coverage.h"
 #include "./fuzztest/internal/fixture_driver.h"
 #include "./fuzztest/internal/io.h"
@@ -64,40 +66,34 @@ namespace internal {
 class FuzzTestFuzzer {
  public:
   virtual ~FuzzTestFuzzer() = default;
-  virtual void RunInUnitTestMode() = 0;
+  virtual void RunInUnitTestMode(const Configuration& configuration) = 0;
   // Returns fuzzing mode's exit code. Zero indicates success.
-  virtual int RunInFuzzingMode(int* argc, char*** argv) = 0;
+  virtual int RunInFuzzingMode(int* argc, char*** argv,
+                               const Configuration& configuration) = 0;
 };
 
 class FuzzTest;
 
 using FuzzTestFuzzerFactory =
-    absl::AnyInvocable<std::unique_ptr<FuzzTestFuzzer>(const FuzzTest&) &&>;
+    absl::AnyInvocable<std::unique_ptr<FuzzTestFuzzer>(const FuzzTest&) const>;
 
 class FuzzTest {
  public:
   FuzzTest(BasicTestInfo test_info, FuzzTestFuzzerFactory factory)
-      : test_info_(test_info), make_(std::move(factory)) {}
+      : test_info_(std::move(test_info)), make_(std::move(factory)) {}
 
-  FuzzTest(const FuzzTest&) = delete;
-  FuzzTest& operator=(const FuzzTest&) = delete;
-
-  const char* suite_name() const { return test_info_.suite_name; }
-  const char* test_name() const { return test_info_.test_name; }
+  const std::string& suite_name() const { return test_info_.suite_name; }
+  const std::string& test_name() const { return test_info_.test_name; }
   std::string full_name() const {
-    return suite_name() + std::string(".") + test_name();
+    return absl::StrCat(test_info_.suite_name, ".", test_info_.test_name);
   }
-  const std::vector<std::string_view>& param_names() const {
-    return param_names_;
-  }
-  const char* file() const { return test_info_.file; }
+  const std::string& file() const { return test_info_.file; }
   int line() const { return test_info_.line; }
   bool uses_fixture() const { return test_info_.uses_fixture; }
-  auto make() && { return std::move(make_)(*this); }
+  auto make() const { return make_(*this); }
 
  private:
   BasicTestInfo test_info_;
-  std::vector<std::string_view> param_names_;
   FuzzTestFuzzerFactory make_;
 };
 
@@ -181,7 +177,7 @@ class Runtime {
  private:
   Runtime() = default;
 
-  void DumpReproducer(std::string_view outdir) const;
+  void DumpReproducer(absl::string_view outdir) const;
 
   // Some failures are not necessarily detected by signal handlers or by
   // sanitizers. For example, we could have test framework failures like
@@ -233,10 +229,11 @@ class FuzzTestFuzzerImpl : public FuzzTestFuzzer {
 
  private:
   // TODO(fniksic): Refactor to reduce code complexity and improve readability.
-  void RunInUnitTestMode() override;
+  void RunInUnitTestMode(const Configuration& configuration) override;
 
   // TODO(fniksic): Refactor to reduce code complexity and improve readability.
-  int RunInFuzzingMode(int* argc, char*** argv) override;
+  int RunInFuzzingMode(int* argc, char*** argv,
+                       const Configuration& configuration) override;
 
   // Use the standard PRNG instead of absl::BitGen because Abseil doesn't
   // guarantee seed stability
@@ -254,15 +251,15 @@ class FuzzTestFuzzerImpl : public FuzzTestFuzzer {
     absl::Duration run_time;
   };
 
-  void PopulateFromSeeds();
+  void PopulateFromSeeds(const std::vector<std::string>& corpus_files);
 
-  bool ReplayInputsIfAvailable();
+  bool ReplayInputsIfAvailable(const Configuration& configuration);
 
   std::optional<std::vector<std::string>> GetFilesToReplay();
 
   std::optional<corpus_type> ReadReproducerToMinimize();
 
-  std::optional<corpus_type> TryParse(std::string_view data);
+  std::optional<corpus_type> TryParse(absl::string_view data);
 
   void MutateValue(Input& input, absl::BitGenRef prng);
 
@@ -298,6 +295,10 @@ class FuzzTestFuzzerImpl : public FuzzTestFuzzer {
 
   bool ShouldStop();
 
+  std::optional<GenericDomainCorpusType> GetCorpusValueFromFile(
+      const std::string& path);
+  void ReplayInput(const std::string& path);
+
   const FuzzTest& test_;
   std::unique_ptr<UntypedFixtureDriver> fixture_driver_;
   std::unique_ptr<UntypedDomainInterface> params_domain_;
@@ -308,7 +309,7 @@ class FuzzTestFuzzerImpl : public FuzzTestFuzzer {
   // Corpus distribution is only used in Fuzzing mode.
   absl::discrete_distribution<> corpus_distribution_;
 
-  std::string_view corpus_out_dir_;
+  absl::string_view corpus_out_dir_;
   RuntimeStats stats_{};
   std::optional<size_t> runs_limit_;
   absl::Time time_limit_ = absl::InfiniteFuture();
@@ -322,6 +323,7 @@ class FuzzTestFuzzerImpl : public FuzzTestFuzzer {
   // Defined in centipede_adaptor.cc
   friend class CentipedeFuzzerAdaptor;
   friend class CentipedeAdaptorRunnerCallbacks;
+  friend class CentipedeAdaptorEngineCallbacks;
 };
 
 }  // namespace internal

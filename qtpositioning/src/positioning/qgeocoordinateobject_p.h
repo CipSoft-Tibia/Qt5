@@ -23,7 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_POSITIONING_PRIVATE_EXPORT QGeoCoordinateObject : public QObject
+class Q_POSITIONING_EXPORT QGeoCoordinateObject : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QGeoCoordinate coordinate READ coordinate WRITE setCoordinate NOTIFY
@@ -58,6 +58,6 @@ protected:
 QT_END_NAMESPACE
 
 QT_DECL_METATYPE_EXTERN_TAGGED(QGeoCoordinateObject*, QGeoCoordinateObject_ptr,
-                               Q_POSITIONING_PRIVATE_EXPORT)
+                               Q_POSITIONING_EXPORT)
 
 #endif // QGEOCOORDINATEOBJECT_P_H

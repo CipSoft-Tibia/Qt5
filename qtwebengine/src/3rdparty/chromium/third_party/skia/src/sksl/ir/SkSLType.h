@@ -10,8 +10,8 @@
 
 #include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/SkSLDefines.h"
 #include "include/private/base/SkTArray.h"
+#include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLPosition.h"
 #include "src/sksl/ir/SkSLIRNode.h"
 #include "src/sksl/ir/SkSLLayout.h"
@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -352,6 +353,13 @@ public:
     }
 
     /**
+     * Returns true if this is a storage texture.
+     */
+    bool isStorageTexture() const {
+        return fTypeKind == TypeKind::kTexture && this->dimensions() != SpvDimSubpassData;
+    }
+
+    /**
      * Returns the "priority" of a number type, in order of float > half > int > short.
      * When operating on two number types, the result is the higher-priority type.
      */
@@ -382,6 +390,13 @@ public:
      */
     virtual const Type& componentType() const {
         return *this;
+    }
+
+    /**
+     * For matrix types, returns the type of a single column (`m[n]`). Asserts for all other types.
+     */
+    const Type& columnType(const Context& context) const {
+        return this->componentType().toCompound(context, this->rows(), /*rows=*/1);
     }
 
     /**
@@ -451,17 +466,17 @@ public:
     }
 
     virtual SpvDim_ dimensions() const {
-        SkASSERT(false);
+        SkDEBUGFAIL("Internal error: not a texture type");
         return SpvDim1D;
     }
 
     virtual bool isDepth() const {
-        SkASSERT(false);
+        SkDEBUGFAIL("Internal error: not a texture type");
         return false;
     }
 
     virtual bool isArrayedTexture() const {
-        SkASSERT(false);
+        SkDEBUGFAIL("Internal error: not a texture type");
         return false;
     }
 
@@ -477,7 +492,9 @@ public:
         return fTypeKind == TypeKind::kSampler;
     }
 
-    bool isAtomic() const { return this->typeKind() == TypeKind::kAtomic; }
+    bool isAtomic() const {
+        return this->typeKind() == TypeKind::kAtomic;
+    }
 
     virtual bool isScalar() const {
         return false;
@@ -545,9 +562,17 @@ public:
         return 0;
     }
 
-    bool isOrContainsArray() const;
-    bool isOrContainsUnsizedArray() const;
-    bool isOrContainsAtomic() const;
+    virtual bool isOrContainsArray() const {
+        return false;
+    }
+
+    virtual bool isOrContainsUnsizedArray() const {
+        return false;
+    }
+
+    virtual bool isOrContainsAtomic() const {
+        return false;
+    }
 
     /**
      * Returns the corresponding vector or matrix type with the specified number of columns and
@@ -612,6 +637,11 @@ protected:
     const Type* applyAccessQualifiers(const Context& context,
                                       ModifierFlags* modifierFlags,
                                       Position pos) const;
+
+    /** If the type is a struct, returns the depth of the struct's most deeply-nested field. */
+    virtual int structNestingDepth() const {
+        return 0;
+    }
 
 private:
     using INHERITED = Symbol;

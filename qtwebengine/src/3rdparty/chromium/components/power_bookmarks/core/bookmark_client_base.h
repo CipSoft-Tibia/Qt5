@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 
+#include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "components/bookmarks/browser/base_bookmark_model_observer.h"
 #include "components/bookmarks/browser/bookmark_client.h"
@@ -24,6 +25,27 @@ class BookmarkNode;
 }  // namespace bookmarks
 
 namespace power_bookmarks {
+
+extern const char kSaveLocationStateHistogramBase[];
+
+// The possible ways a suggested save location can be handled. These must be
+// kept in sync with the values in enums.xml.
+enum class SuggestedSaveLocationState {
+  // The suggestion provider did not have a suggestion.
+  kNoSuggestion = 0,
+
+  // The provider had a suggestion but it was blocked from a prior rejection.
+  kBlocked = 1,
+
+  // The suggestion was used to create the bookmark.
+  kUsed = 2,
+
+  // The provider had a suggestion but was superseded by some other feature.
+  kSuperseded = 3,
+
+  // This enum must be last and is only used for histograms.
+  kMaxValue = kSuperseded
+};
 
 class BookmarkClientBase : public bookmarks::BookmarkClient {
  public:
@@ -74,7 +96,8 @@ class BookmarkClientBase : public bookmarks::BookmarkClient {
   raw_ptr<bookmarks::BookmarkModel> bookmark_model_{nullptr};
 
   // A list of providers of a save location for a given URL.
-  std::vector<SuggestedSaveLocationProvider*> save_location_providers_;
+  std::vector<raw_ptr<SuggestedSaveLocationProvider, VectorExperimental>>
+      save_location_providers_;
 
   // The UUID of the last folder that was suggested.
   base::Uuid last_suggested_folder_uuid_;

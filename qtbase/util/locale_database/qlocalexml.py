@@ -19,7 +19,9 @@ You can download jing from https://relaxng.org/jclark/jing.html if your
 package manager lacks the jing package.
 """
 
+from typing import Any, Callable, Iterable, Iterator, NoReturn
 from xml.sax.saxutils import escape
+from xml.dom import minidom
 
 from localetools import Error
 
@@ -44,91 +46,41 @@ def startCount(c, text): # strspn
     except StopIteration:
         return len(text)
 
-def convertFormat(format):
-    """Convert date/time format-specier from CLDR to Qt
-
-    Match up (as best we can) the differences between:
-    * https://www.unicode.org/reports/tr35/tr35-dates.html#Date_Field_Symbol_Table
-    * QDateTimeParser::parseFormat() and QLocalePrivate::dateTimeToString()
-    """
-    # Compare and contrast dateconverter.py's convert_date().
-    # Need to (check consistency and) reduce redundancy !
-    result = ""
-    i = 0
-    while i < len(format):
-        if format[i] == "'":
-            result += "'"
-            i += 1
-            while i < len(format) and format[i] != "'":
-                result += format[i]
-                i += 1
-            if i < len(format):
-                result += "'"
-                i += 1
-        else:
-            s = format[i:]
-            if s.startswith('E'): # week-day
-                n = startCount('E', s)
-                if n < 3:
-                    result += 'ddd'
-                elif n == 4:
-                    result += 'dddd'
-                else: # 5: narrow, 6 short; but should be name, not number :-(
-                    result += 'd' if n < 6 else 'dd'
-                i += n
-            elif s[0] in 'ab': # am/pm
-                # 'b' should distinguish noon/midnight, too :-(
-                result += "AP"
-                i += startCount('ab', s)
-            elif s.startswith('S'): # fractions of seconds: count('S') == number of decimals to show
-                result += 'z'
-                i += startCount('S', s)
-            elif s.startswith('V'): # long time zone specifiers (and a deprecated short ID)
-                result += 't'
-                i += startCount('V', s)
-            elif s[0] in 'zv': # zone
-                # Should use full name, e.g. "Central European Time", if 'zzzz' :-(
-                # 'v' should get generic non-location format, e.g. PT for "Pacific Time", no DST indicator
-                result += "t"
-                i += startCount('zv', s)
-            else:
-                result += format[i]
-                i += 1
-
-    return result
-
 class QLocaleXmlReader (object):
-    def __init__(self, filename):
-        self.root = self.__parse(filename)
+    def __init__(self, filename: str) -> None:
+        self.root: minidom.Element = self.__parse(filename)
 
         from enumdata import language_map, script_map, territory_map
-        # Lists of (id, enum name, code, en.xml name) tuples:
+        # Tuples  of (id, enum name, code, en.xml name) tuples:
         languages = tuple(self.__loadMap('language', language_map))
         scripts = tuple(self.__loadMap('script', script_map))
         territories = tuple(self.__loadMap('territory', territory_map))
+
+        # as enum members, tuple[tuple[str, str, str], tuple[str, str, str]]
         self.__likely = tuple(self.__likelySubtagsMap())
 
         # Mappings {ID: (enum name, code, en.xml name)}
-        self.languages = dict((v[0], v[1:]) for v in languages)
-        self.scripts = dict((v[0], v[1:]) for v in scripts)
-        self.territories = dict((v[0], v[1:]) for v in territories)
+        self.languages = {v[0]: v[1:] for v in languages}
+        self.scripts = {v[0]: v[1:] for v in scripts}
+        self.territories = {v[0]: v[1:] for v in territories}
 
         # Private mappings {enum name: (ID, code)}
-        self.__langByName = dict((v[1], (v[0], v[2])) for v in languages)
-        self.__textByName = dict((v[1], (v[0], v[2])) for v in scripts)
-        self.__landByName = dict((v[1], (v[0], v[2])) for v in territories)
+        self.__langByName = {v[1]: (v[0], v[2]) for v in languages}
+        self.__textByName = {v[1]: (v[0], v[2]) for v in scripts}
+        self.__landByName = {v[1]: (v[0], v[2]) for v in territories}
         # Other properties:
         self.__dupes = set(v[1] for v in languages) & set(v[1] for v in territories)
         self.cldrVersion = self.__firstChildText(self.root, "version")
 
-    def loadLocaleMap(self, calendars, grumble = lambda text: None):
-        kid = self.__firstChildText
-        likely = dict(self.__likely)
+    def loadLocaleMap(self, calendars: Iterable[str], grumble = lambda text: None):
+        kid: Callable[[minidom.Element, str], str] = self.__firstChildText
+        likely: dict[tuple[str, str, str], tuple[str, str, str]] = dict(self.__likely)
+
         for elt in self.__eachEltInGroup(self.root, 'localeList', 'locale'):
-            locale = Locale.fromXmlData(lambda k: kid(elt, k), calendars)
-            language = self.__langByName[locale.language][0]
-            script = self.__textByName[locale.script][0]
-            territory = self.__landByName[locale.territory][0]
+            locale: Locale = Locale.fromXmlData(lambda k: kid(elt, k), calendars)
+            language: int = self.__langByName[locale.language][0]
+            script: int = self.__textByName[locale.script][0]
+            territory: int = self.__landByName[locale.territory][0]
 
             if language != 1: # C
                 if territory == 0:
@@ -139,7 +91,8 @@ class QLocaleXmlReader (object):
                     # http://www.unicode.org/reports/tr35/#Likely_Subtags
                     try:
                         try:
-                            to = likely[(locale.language, 'AnyScript', locale.territory)]
+                            to: tuple[str, str, str] = likely[(locale.language, 'AnyScript',
+                                                               locale.territory)]
                         except KeyError:
                             to = likely[(locale.language, 'AnyScript', 'AnyTerritory')]
                     except KeyError:
@@ -150,7 +103,22 @@ class QLocaleXmlReader (object):
 
             yield (language, script, territory), locale
 
-    def languageIndices(self, locales):
+    def aliasToIana(self) -> Iterator[tuple[str, str]]:
+        kid: Callable[[minidom.Element, str], str] = self.__firstChildText
+        for elt in self.__eachEltInGroup(self.root, 'zoneAliases', 'zoneAlias'):
+            yield kid(elt, 'alias'), kid(elt, 'iana')
+
+    def msToIana(self) -> Iterator[tuple[str, str]]:
+        kid: Callable[[minidom.Element, str], str] = self.__firstChildText
+        for elt in self.__eachEltInGroup(self.root, 'windowsZone', 'msZoneIana'):
+            yield kid(elt, 'msid'), kid(elt, 'iana')
+
+    def msLandIanas(self) -> Iterator[tuple[str, str, str]]:
+        kid: Callable[[minidom.Element, str], str] = self.__firstChildText
+        for elt in self.__eachEltInGroup(self.root, 'windowsZone', 'msLandZones'):
+            yield kid(elt, 'msid'), kid(elt, 'territorycode'), kid(elt, 'ianaids')
+
+    def languageIndices(self, locales: tuple[int, ...]) -> Iterator[tuple[int, str]]:
         index = 0
         for key, value in self.languages.items():
             i, count = 0, locales.count(key)
@@ -159,14 +127,15 @@ class QLocaleXmlReader (object):
                 index += count
             yield i, value[0]
 
-    def likelyMap(self):
-        def tag(t):
+    def likelyMap(self) -> Iterator[tuple[str, tuple[int, int, int], str, tuple[int, int, int]]]:
+        def tag(t: tuple[tuple[int, str], tuple[int, str], tuple[int, str]]) -> Iterator[str]:
             lang, script, land = t
             yield lang[1] if lang[0] else 'und'
             if script[0]: yield script[1]
             if land[0]: yield land[1]
 
-        def ids(t):
+        def ids(t: tuple[tuple[int, str], tuple[int, str], tuple[int, str]]
+                ) -> tuple[int, int, int]:
             return tuple(x[0] for x in t)
 
         for pair in self.__likely:
@@ -175,20 +144,22 @@ class QLocaleXmlReader (object):
             yield ('_'.join(tag(have)), ids(have),
                    '_'.join(tag(give)), ids(give))
 
-    def defaultMap(self):
+    def defaultMap(self) -> Iterator[tuple[tuple[int, int], int]]:
         """Map language and script to their default territory by ID.
 
         Yields ((language, script), territory) wherever the likely
         sub-tags mapping says language's default locale uses the given
         script and territory."""
         for have, give in self.__likely:
-            if have[1:] == ('AnyScript', 'AnyTerritory') and give[2] != 'AnyTerritory':
+            if (have[0] != 'AnyLanguage'
+                    and have[1:] == ('AnyScript', 'AnyTerritory')
+                    and give[2] != 'AnyTerritory'):
                 assert have[0] == give[0], (have, give)
                 yield ((self.__langByName[give[0]][0],
                         self.__textByName[give[1]][0]),
                        self.__landByName[give[2]][0])
 
-    def enumify(self, name, suffix):
+    def enumify(self, name: str, suffix: str) -> str:
         """Stick together the parts of an enumdata.py name.
 
         Names given in enumdata.py include spaces and hyphens that we
@@ -215,17 +186,21 @@ class QLocaleXmlReader (object):
         return name
 
     # Implementation details:
-    def __loadMap(self, category, enum):
+    def __loadMap(self, category: str, enum: dict[int, tuple[str, str]]
+                 ) -> Iterator[tuple[int, str, str, str]]:
         kid = self.__firstChildText
         for element in self.__eachEltInGroup(self.root, f'{category}List', category):
             key = int(kid(element, 'id'))
             yield key, enum[key][0], kid(element, 'code'), kid(element, 'name')
 
-    def __likelySubtagsMap(self):
-        def triplet(element, keys=('language', 'script', 'territory'), kid = self.__firstChildText):
+    # Likely subtag management:
+    def __likelySubtagsMap(self) -> Iterator[tuple[tuple[str, str, str], tuple[str, str, str]]]:
+        def triplet(element: minidom.Element,
+                    keys: tuple[str, str, str]=('language', 'script', 'territory'),
+                    kid = self.__firstChildText) -> tuple[str, str, str]:
             return tuple(kid(element, key) for key in keys)
 
-        kid = self.__firstChildElt
+        kid: Callable[[minidom.Element, str], minidom.Element] = self.__firstChildElt
         for elt in self.__eachEltInGroup(self.root, 'likelySubtags', 'likelySubtag'):
             yield triplet(kid(elt, "from")), triplet(kid(elt, "to"))
 
@@ -235,25 +210,28 @@ class QLocaleXmlReader (object):
     # DOM access:
     from xml.dom import minidom
     @staticmethod
-    def __parse(filename, read = minidom.parse):
+    def __parse(filename: str, read = minidom.parse) -> minidom.Element:
         return read(filename).documentElement
 
     @staticmethod
-    def __isNodeNamed(elt, name, TYPE=minidom.Node.ELEMENT_NODE):
+    def __isNodeNamed(elt: minidom.Element|minidom.Text, name: str,
+                      TYPE: int = minidom.Node.ELEMENT_NODE) -> bool:
         return elt.nodeType == TYPE and elt.nodeName == name
     del minidom
 
     @staticmethod
-    def __eltWords(elt):
-        child = elt.firstChild
+    def __eltWords(elt: minidom.Element) -> Iterator[str]:
+        child: minidom.Text|minidom.CDATASection|None = elt.firstChild
         while child:
             if child.nodeType == elt.TEXT_NODE:
+                # Note: do not strip(), as some group separators are
+                # non-breaking spaces, that strip() will discard.
                 yield child.nodeValue
             child = child.nextSibling
 
     @classmethod
-    def __firstChildElt(cls, parent, name):
-        child = parent.firstChild
+    def __firstChildElt(cls, parent: minidom.Element, name: str) -> minidom.Element:
+        child: minidom.Text|minidom.Element = parent.firstChild
         while child:
             if cls.__isNodeNamed(child, name):
                 return child
@@ -262,13 +240,14 @@ class QLocaleXmlReader (object):
         raise Error(f'No {name} child found')
 
     @classmethod
-    def __firstChildText(cls, elt, key):
+    def __firstChildText(cls, elt: minidom.Element, key: str) -> str:
         return ' '.join(cls.__eltWords(cls.__firstChildElt(elt, key)))
 
     @classmethod
-    def __eachEltInGroup(cls, parent, group, key):
+    def __eachEltInGroup(cls, parent: minidom.Element, group: str, key: str
+                         ) -> Iterator[minidom.Element]:
         try:
-            element = cls.__firstChildElt(parent, group).firstChild
+            element: minidom.Element = cls.__firstChildElt(parent, group).firstChild
         except Error:
             element = None
 
@@ -279,7 +258,7 @@ class QLocaleXmlReader (object):
 
 
 class Spacer (object):
-    def __init__(self, indent = None, initial = ''):
+    def __init__(self, indent:str|int|None = None, initial: str = '') -> None:
         """Prepare to manage indentation and line breaks.
 
         Arguments are both optional.
@@ -287,29 +266,28 @@ class Spacer (object):
         First argument, indent, is either None (its default, for
         'minifying'), an ingeter (number of spaces) or the unit of
         text that is to be used for each indentation level (e.g. '\t'
-        to use tabs).  If indent is None, no indentation is added, nor
+        to use tabs). If indent is None, no indentation is added, nor
         are line-breaks; otherwise, self(text), for non-empty text,
         shall end with a newline and begin with indentation.
 
         Second argument, initial, is the initial indentation; it is
-        ignored if indent is None.  Indentation increases after each
+        ignored if indent is None. Indentation increases after each
         call to self(text) in which text starts with a tag and doesn't
         include its end-tag; indentation decreases if text starts with
-        an end-tag.  The text is not parsed any more carefully than
-        just described.
-        """
+        an end-tag. The text is not parsed any more carefully than
+        just described."""
         if indent is None:
-            self.__call = lambda x: x
+            self.__call: Callable[[str], str] = lambda x: x
         else:
-            self.__each = ' ' * indent if isinstance(indent, int) else indent
+            self.__each: str = ' ' * indent if isinstance(indent, int) else indent
             self.current = initial
             self.__call = self.__wrap
 
-    def __wrap(self, line):
+    def __wrap(self, line: str) -> str:
         if not line:
             return '\n'
 
-        indent = self.current
+        indent: str = self.current
         if line.startswith('</'):
             indent = self.current = indent[:-len(self.__each)]
         elif line.startswith('<') and not line.startswith('<!'):
@@ -319,11 +297,15 @@ class Spacer (object):
                 self.current += self.__each
         return indent + line + '\n'
 
-    def __call__(self, line):
+    def __call__(self, line: str) -> str:
         return self.__call(line)
 
 class QLocaleXmlWriter (object):
-    def __init__(self, save = None, space = Spacer(4)):
+    """Save the full set of locale data to a QLocaleXML file.
+
+    The output saved by this should conform to qlocalexml.rnc's
+    schema."""
+    def __init__(self, save: Callable[[str], int]|None = None, space: Spacer = Spacer(4)) -> None:
         """Set up to write digested CLDR data as QLocale XML.
 
         Arguments are both optional.
@@ -341,12 +323,12 @@ class QLocaleXmlWriter (object):
         back on a close-tag (its parsing is naive, but adequate to how
         this class uses it), while adding a newline to each line.
         """
-        self.__rawOutput = self.__printit if save is None else save
+        self.__rawOutput: Callable[[str], int] = self.__printit if save is None else save
         self.__wrap = space
         self.__write('<localeDatabase>')
 
     # Output of various sections, in their usual order:
-    def enumData(self, code2name):
+    def enumData(self, code2name: Callable[[str], Callable[[str, str], str]]) -> None:
         """Output name/id/code tables for language, script and territory.
 
         Parameter, code2name, is a function taking 'language',
@@ -362,14 +344,15 @@ class QLocaleXmlWriter (object):
         self.__enumTable('script', script_map, code2name)
         self.__enumTable('territory', territory_map, code2name)
         # Prepare to detect any unused codes (see __writeLocale(), close()):
-        self.__languages = set(p[1] for p in language_map.values()
-                               if not p[1].isspace())
-        self.__scripts = set(p[1] for p in script_map.values()
-                             if p[1] != 'Zzzz')
-        self.__territories = set(p[1] for p in territory_map.values()
-                                 if p[1] != 'ZZ')
+        self.__languages: set[str] = set(p[1] for p in language_map.values()
+                                         if not p[1].isspace())
+        self.__scripts: set[str] = set(p[1] for p in script_map.values()
+                                       if p[1] != 'Zzzz')
+        self.__territories: set[str] = set(p[1] for p in territory_map.values()
+                                           if p[1] != 'ZZ')
 
-    def likelySubTags(self, entries):
+    def likelySubTags(self, entries: Iterator[tuple[tuple[int, int, int, int],
+                                                    tuple[int, int, int, int]]]) -> None:
         self.__openTag('likelySubtags')
         for have, give in entries:
             self.__openTag('likelySubtag')
@@ -378,10 +361,49 @@ class QLocaleXmlWriter (object):
             self.__closeTag('likelySubtag')
         self.__closeTag('likelySubtags')
 
-    def locales(self, locales, calendars):
+    def zoneData(self, alias: dict[str, str],
+                 defaults: dict[str, str],
+                 windowsIds: dict[tuple[str, str], str]) -> None:
+        self.__openTag('zoneAliases')
+        # iana is a single IANA ID
+        # name has the same form, but has been made redundant
+        for name, iana in sorted(alias.items(), key = lambda s: (s[0].lower(), s[1])):
+            self.__openTag('zoneAlias')
+            self.inTag('alias', name)
+            self.inTag('iana', iana)
+            self.__closeTag('zoneAlias')
+        self.__closeTag('zoneAliases')
+
+        self.__openTag('windowsZone')
+        for (msid, code), ids in windowsIds.items():
+            # ianaids is a space-joined sequence of IANA IDs
+            self.__openTag('msLandZones')
+            self.inTag('msid', msid)
+            self.inTag('territorycode', code)
+            self.inTag('ianaids', ids)
+            self.__closeTag('msLandZones')
+
+        for winid, iana in defaults.items():
+            self.__openTag('msZoneIana')
+            self.inTag('msid', winid)
+            self.inTag('iana', iana)
+            self.__closeTag('msZoneIana')
+        self.__closeTag('windowsZone')
+
+    def locales(self, locales: dict[tuple[int, int, int, int], "Locale"], calendars: list[str],
+                en_US: tuple[int, int, int, int]) -> None:
+        """Write the data for each locale.
+
+        First argument, locales, is the mapping whose values are the
+        Locale objects, with each key being the matching tuple of
+        numeric IDs for language, script, territory and variant.
+        Second argument is a tuple of calendar names. Third is the
+        tuple of numeric IDs that corresponds to en_US (needed to
+        provide fallbacks for the C locale)."""
+
         self.__openTag('localeList')
         self.__openTag('locale')
-        self.__writeLocale(Locale.C(calendars), calendars)
+        self.__writeLocale(Locale.C(locales[en_US]), calendars)
         self.__closeTag('locale')
         for key in sorted(locales.keys()):
             self.__openTag('locale')
@@ -389,14 +411,14 @@ class QLocaleXmlWriter (object):
             self.__closeTag('locale')
         self.__closeTag('localeList')
 
-    def version(self, cldrVersion):
+    def version(self, cldrVersion: str) -> None:
         self.inTag('version', cldrVersion)
 
-    def inTag(self, tag, text):
+    def inTag(self, tag: str, text: str) -> None:
         self.__write(f'<{tag}>{text}</{tag}>')
 
-    def close(self, grumble):
-        """Finish writing and grumble any issues discovered."""
+    def close(self, grumble: Callable[[str], int]) -> None:
+        """Finish writing and grumble about any issues discovered."""
         if self.__rawOutput != self.__complain:
             self.__write('</localeDatabase>')
         self.__rawOutput = self.__complain
@@ -404,7 +426,7 @@ class QLocaleXmlWriter (object):
         if self.__languages or self.__scripts or self.__territories:
             grumble('Some enum members are unused, corresponding to these tags:\n')
             import textwrap
-            def kvetch(kind, seq, g = grumble, w = textwrap.wrap):
+            def kvetch(kind, seq, g = grumble, w = textwrap.wrap) -> None:
                 g('\n\t'.join(w(f' {kind}: {", ".join(sorted(seq))}', width=80)) + '\n')
             if self.__languages:
                 kvetch('Languages', self.__languages)
@@ -416,19 +438,23 @@ class QLocaleXmlWriter (object):
 
     # Implementation details
     @staticmethod
-    def __printit(text):
+    def __printit(text: str) -> int:
         print(text, end='')
+        return 0
+
     @staticmethod
-    def __complain(text):
+    def __complain(text) -> NoReturn:
         raise Error('Attempted to write data after closing :-(')
 
     @staticmethod
-    def __xmlSafe(text):
+    def __xmlSafe(text: str) -> str:
         return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
-    def __enumTable(self, tag, table, code2name):
+    def __enumTable(self, tag: str, table: dict[int, tuple[str, str]],
+                    code2name: Callable[[str], Callable[[str, str], str]]) -> None:
         self.__openTag(f'{tag}List')
-        enname, safe = code2name(tag), self.__xmlSafe
+        enname: Callable[[str, str], str] = code2name(tag)
+        safe: Callable[[str], str] = self.__xmlSafe
         for key, (name, code) in table.items():
             self.__openTag(tag)
             self.inTag('name', safe(enname(code, name)))
@@ -437,7 +463,7 @@ class QLocaleXmlWriter (object):
             self.__closeTag(tag)
         self.__closeTag(f'{tag}List')
 
-    def __likelySubTag(self, tag, likely):
+    def __likelySubTag(self, tag: str, likely: tuple[int, int, int, int]) -> None:
         self.__openTag(tag)
         self.inTag('language', likely[0])
         self.inTag('script', likely[1])
@@ -445,18 +471,21 @@ class QLocaleXmlWriter (object):
         # self.inTag('variant', likely[3])
         self.__closeTag(tag)
 
-    def __writeLocale(self, locale, calendars):
+    def __writeLocale(self, locale: "Locale", calendars: list[str]) -> None:
         locale.toXml(self.inTag, calendars)
         self.__languages.discard(locale.language_code)
         self.__scripts.discard(locale.script_code)
         self.__territories.discard(locale.territory_code)
 
-    def __openTag(self, tag):
+    def __openTag(self, tag: str, **attrs: int|str) -> None:
+        if attrs:
+            text: str = ', '.join(f'{k}="{v}"' for k, v in attrs.items())
+            tag = f'{tag} {text}'
         self.__write(f'<{tag}>')
     def __closeTag(self, tag):
         self.__write(f'</{tag}>')
 
-    def __write(self, line):
+    def __write(self, line: str) -> None:
         self.__rawOutput(self.__wrap(line))
 
 class Locale (object):
@@ -466,18 +495,19 @@ class Locale (object):
     same signatures as those of a dict, acting on the instance's
     __dict__, so the results are accessed as attributes rather than
     mapping keys."""
-    def __init__(self, data=None, **kw):
+    def __init__(self, data: dict[str, Any]|None = None, **kw: Any) -> None:
         self.update(data, **kw)
 
-    def update(self, data=None, **kw):
+    def update(self, data: dict[str, Any]|None = None, **kw: Any) -> None:
         if data: self.__dict__.update(data)
         if kw: self.__dict__.update(kw)
 
-    def __len__(self): # Used when testing as a boolean
+    def __len__(self) -> int: # Used when testing as a boolean
         return len(self.__dict__)
 
     @staticmethod
-    def propsMonthDay(scale, lengths=('long', 'short', 'narrow')):
+    def propsMonthDay(scale: str, lengths: tuple[str, str, str] = ('long', 'short', 'narrow')
+                      ) -> Iterator[str]:
         for L in lengths:
             yield camelCase((L, scale))
             yield camelCase(('standalone', L, scale))
@@ -486,8 +516,6 @@ class Locale (object):
     __asint = ("currencyDigits", "currencyRounding")
     # Convert day-name to Qt day-of-week number:
     __asdow = ("firstDayOfWeek", "weekendStart", "weekendEnd")
-    # Convert from CLDR format-strings to QDateTimeParser ones:
-    __asfmt = ("longDateFormat", "shortDateFormat", "longTimeFormat", "shortTimeFormat")
     # Just use the raw text:
     __astxt = ("language", "languageEndonym", "script", "territory", "territoryEndonym",
                "decimal", "group", "zero",
@@ -496,38 +524,42 @@ class Locale (object):
                "alternateQuotationStart", "alternateQuotationEnd",
                "listPatternPartStart", "listPatternPartMiddle",
                "listPatternPartEnd", "listPatternPartTwo", "am", "pm",
+               "longDateFormat", "shortDateFormat",
+               "longTimeFormat", "shortTimeFormat",
                'byte_unit', 'byte_si_quantified', 'byte_iec_quantified',
                "currencyIsoCode", "currencySymbol", "currencyDisplayName",
-               "currencyFormat", "currencyNegativeFormat")
+               "currencyFormat", "currencyNegativeFormat",
+               )
 
     # Day-of-Week numbering used by Qt:
     __qDoW = {"mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6, "sun": 7}
 
     @classmethod
-    def fromXmlData(cls, lookup, calendars=('gregorian',)):
+    def fromXmlData(cls, lookup: Callable[[str], str], calendars: Iterable[str]=('gregorian',)
+                    ) -> "Locale":
         """Constructor from the contents of XML elements.
 
-        Single parameter, lookup, is called with the names of XML
-        elements that should contain the relevant data, within a CLDR
-        locale element (within a localeList element); these names are
-        used for the attributes of the object constructed.  Attribute
-        values are obtained by suitably digesting the returned element
-        texts.\n"""
-        data = {}
+        First parameter, lookup, is called with the names of XML elements that
+        should contain the relevant data, within a QLocaleXML locale element
+        (within a localeList element); these names mostly match the attributes
+        of the object constructed. Its return must be the full text of the
+        first child DOM node element with the given name. Attribute values are
+        obtained by suitably digesting the returned element texts.
+
+        Optional second parameter, calendars, is a sequence of calendars for
+        which data is to be retrieved."""
+        data: dict[str, int|str|dict[str, str]] = {}
         for k in cls.__asint:
             data[k] = int(lookup(k))
 
         for k in cls.__asdow:
             data[k] = cls.__qDoW[lookup(k)]
 
-        for k in cls.__asfmt:
-            data[k] = convertFormat(lookup(k))
-
         for k in cls.__astxt + tuple(cls.propsMonthDay('days')):
             data['listDelim' if k == 'list' else k] = lookup(k)
 
         for k in cls.propsMonthDay('months'):
-            data[k] = dict((cal, lookup('_'.join((k, cal)))) for cal in calendars)
+            data[k] = {cal: lookup('_'.join((k, cal))) for cal in calendars}
 
         grouping = lookup('groupSizes').split(';')
         data.update(groupLeast = int(grouping[0]),
@@ -536,7 +568,8 @@ class Locale (object):
 
         return cls(data)
 
-    def toXml(self, write, calendars=('gregorian',)):
+    def toXml(self, write: Callable[[str, str], None], calendars: Iterable[str]=('gregorian',)
+              ) -> None:
         """Writes its data as QLocale XML.
 
         First argument, write, is a callable taking the name and
@@ -546,7 +579,7 @@ class Locale (object):
         Optional second argument is a list of calendar names, in the
         form used by CLDR; its default is ('gregorian',).
         """
-        get = lambda k: getattr(self, k)
+        get: Callable[[str], str | Iterable[int]] = lambda k: getattr(self, k)
         for key in ('language', 'script', 'territory'):
             write(key, get(key))
             write(f'{key}code', get(f'{key}_code'))
@@ -566,7 +599,7 @@ class Locale (object):
                     'longDateFormat', 'shortDateFormat',
                     'longTimeFormat', 'shortTimeFormat',
                     'currencyIsoCode', 'currencySymbol', 'currencyDisplayName',
-                    'currencyFormat', 'currencyNegativeFormat'
+                    'currencyFormat', 'currencyNegativeFormat',
                     ) + tuple(self.propsMonthDay('days')) + tuple(
                 '_'.join((k, cal))
                 for k in self.propsMonthDay('months')
@@ -577,97 +610,49 @@ class Locale (object):
         for key in ('currencyDigits', 'currencyRounding'):
             write(key, get(key))
 
-    # Tools used by __monthNames:
-    def fullName(i, name): return name
-    def firstThree(i, name): return name[:3]
-    def initial(i, name): return name[:1]
-    def number(i, name): return str(i + 1)
-    def islamicShort(i, name):
-        if not name: return name
-        if name == 'Shawwal': return 'Shaw.'
-        words = name.split()
-        if words[0].startswith('Dhu'):
-            words[0] = words[0][:7] + '.'
-        elif len(words[0]) > 3:
-            words[0] = words[0][:3] + '.'
-        return ' '.join(words)
-    @staticmethod
-    def __monthNames(calendars,
-                     known={ # Map calendar to (names, extractors...):
-            # TODO: do we even need these ?  CLDR's root.xml seems to
-            # have them, complete with yeartype="leap" handling for
-            # Hebrew's extra.
-            'gregorian': (('January', 'February', 'March', 'April', 'May', 'June', 'July',
-                           'August', 'September', 'October', 'November', 'December'),
-                          # Extractor pairs, (plain, standalone)
-                          (fullName, fullName), # long
-                          (firstThree, firstThree), # short
-                          (number, initial)), # narrow
-            'persian': (('Farvardin', 'Ordibehesht', 'Khordad', 'Tir', 'Mordad',
-                         'Shahrivar', 'Mehr', 'Aban', 'Azar', 'Dey', 'Bahman', 'Esfand'),
-                        (fullName, fullName),
-                        (firstThree, firstThree),
-                        (number, initial)),
-            'islamic': (('Muharram', 'Safar', 'Rabiʻ I', 'Rabiʻ II', 'Jumada I',
-                         'Jumada II', 'Rajab', 'Shaʻban', 'Ramadan', 'Shawwal',
-                         'Dhuʻl-Qiʻdah', 'Dhuʻl-Hijjah'),
-                        (fullName, fullName),
-                        (islamicShort, islamicShort),
-                        (number, number)),
-            'hebrew': (('Tishri', 'Heshvan', 'Kislev', 'Tevet', 'Shevat', 'Adar I',
-                        'Adar', 'Nisan', 'Iyar', 'Sivan', 'Tamuz', 'Av'),
-                       (fullName, fullName),
-                       (fullName, fullName),
-                       (number, number)),
-            },
-                     sizes=('long', 'short', 'narrow')):
-        for cal in calendars:
-            try:
-                data = known[cal]
-            except KeyError as e: # Need to add an entry to known, above.
-                e.args += ('Unsupported calendar:', cal)
-                raise
-            names, get = data[0], data[1:]
-            for n, size in enumerate(sizes):
-                yield ('_'.join((camelCase((size, 'months')), cal)),
-                       ';'.join(get[n][0](i, x) for i, x in enumerate(names)))
-                yield ('_'.join((camelCase(('standalone', size, 'months')), cal)),
-                       ';'.join(get[n][1](i, x) for i, x in enumerate(names)))
-    del fullName, firstThree, initial, number, islamicShort
-
     @classmethod
-    def C(cls, calendars=('gregorian',),
-          days = ('Sunday', 'Monday', 'Tuesday', 'Wednesday',
-                  'Thursday', 'Friday', 'Saturday'),
-          quantifiers=('k', 'M', 'G', 'T', 'P', 'E')):
-        """Returns an object representing the C locale."""
-        return cls(cls.__monthNames(calendars),
-                   language='C', language_code='0', languageEndonym='',
-                   script='AnyScript', script_code='0',
-                   territory='AnyTerritory', territory_code='0', territoryEndonym='',
-                   groupSizes=(3, 3, 1),
-                   decimal='.', group=',', list=';', percent='%',
-                   zero='0', minus='-', plus='+', exp='e',
+    def C(cls, en_US: "Locale") -> "Locale":  # return type should be Self from Python 3.11
+        """Returns an object representing the C locale.
+
+        Required argument, en_US, is the corresponding object for the
+        en_US locale (or the en_US_POSIX one if we ever support
+        variants). The C locale inherits from this, overriding what it
+        may need to."""
+        base = en_US.__dict__.copy()
+        # Soroush's original contribution shortened Jalali month names
+        # - contrary to CLDR, which doesn't abbreviate these in
+        # root.xml or en.xml, although some locales do, e.g. fr_CA.
+        # For compatibility with that,
+        for k in ('shortMonths_persian', 'standaloneShortMonths_persian'):
+            base[k] = ';'.join(x[:3] for x in base[k].split(';'))
+
+        return cls(base,
+                   language='C', language_code='',
+                   language_id=0, languageEndonym='',
+                   script='AnyScript', script_code='', script_id=0,
+                   territory='AnyTerritory', territory_code='',
+                   territory_id=0, territoryEndonym='',
+                   variant='', variant_code='', variant_id=0,
+                   # CLDR has non-ASCII versions of these:
                    quotationStart='"', quotationEnd='"',
-                   alternateQuotationStart='\'', alternateQuotationEnd='\'',
-                   listPatternPartStart='%1, %2',
-                   listPatternPartMiddle='%1, %2',
-                   listPatternPartEnd='%1, %2',
-                   listPatternPartTwo='%1, %2',
-                   byte_unit='bytes',
-                   byte_si_quantified=';'.join(q + 'B' for q in quantifiers),
-                   byte_iec_quantified=';'.join(q.upper() + 'iB' for q in quantifiers),
-                   am='AM', pm='PM', firstDayOfWeek='mon',
-                   weekendStart='sat', weekendEnd='sun',
-                   longDateFormat='EEEE, d MMMM yyyy', shortDateFormat='d MMM yyyy',
-                   longTimeFormat='HH:mm:ss z', shortTimeFormat='HH:mm:ss',
-                   longDays=';'.join(days),
-                   shortDays=';'.join(d[:3] for d in days),
-                   narrowDays='7;1;2;3;4;5;6',
-                   standaloneLongDays=';'.join(days),
-                   standaloneShortDays=';'.join(d[:3] for d in days),
-                   standaloneNarrowDays=';'.join(d[:1] for d in days),
-                   currencyIsoCode='', currencySymbol='',
-                   currencyDisplayName='',
+                   alternateQuotationStart="'", alternateQuotationEnd="'",
+                   # CLDR gives 'dddd, MMMM d, yyyy', 'M/d/yy', 'h:mm:ss Ap tttt',
+                   # 'h:mm Ap' with non-breaking space before Ap.
+                   longDateFormat='dddd, d MMMM yyyy', shortDateFormat='d MMM yyyy',
+                   longTimeFormat='HH:mm:ss t', shortTimeFormat='HH:mm:ss',
+                   # CLDR has US-$ and US-style formats:
+                   currencyIsoCode='', currencySymbol='', currencyDisplayName='',
                    currencyDigits=2, currencyRounding=1,
-                   currencyFormat='%1%2', currencyNegativeFormat='')
+                   currencyFormat='%1%2', currencyNegativeFormat='',
+                   # We may want to fall back to CLDR for some of these:
+                   firstDayOfWeek='mon', # CLDR has 'sun'
+                   exp='e', # CLDR has 'E'
+                   listPatternPartEnd='%1, %2', # CLDR has '%1, and %2'
+                   listPatternPartTwo='%1, %2', # CLDR has '%1 and %2'
+                   narrowDays='7;1;2;3;4;5;6', # CLDR has letters
+                   narrowMonths_gregorian='1;2;3;4;5;6;7;8;9;10;11;12', # CLDR has letters
+                   standaloneNarrowMonths_persian='F;O;K;T;M;S;M;A;A;D;B;E', # CLDR has digits
+                   # Keep these explicit, despite matching CLDR:
+                   decimal='.', group=',', percent='%',
+                   zero='0', minus='-', plus='+',
+                   am='AM', pm='PM', weekendStart='sat', weekendEnd='sun')

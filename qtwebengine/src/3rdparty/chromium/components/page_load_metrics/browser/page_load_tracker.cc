@@ -28,7 +28,9 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "page_load_metrics_observer_delegate.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 
@@ -257,14 +259,30 @@ void DispatchObserverTimingCallbacks(PageLoadMetricsObserverInterface* observer,
 }
 
 internal::PageLoadTrackerPageType CalculatePageType(
-    const content::NavigationHandle* navigation_handle) {
+    content::NavigationHandle* navigation_handle) {
   if (navigation_handle->IsInPrerenderedMainFrame()) {
     return internal::PageLoadTrackerPageType::kPrerenderPage;
   } else if (navigation_handle->GetNavigatingFrameType() ==
              content::FrameType::kFencedFrameRoot) {
     return internal::PageLoadTrackerPageType::kFencedFramesPage;
   }
-  return internal::PageLoadTrackerPageType::kPrimaryPage;
+  content::WebContentsDelegate* delegate =
+      navigation_handle->GetWebContents()->GetDelegate();
+  return (delegate && delegate->IsInPreviewMode())
+             ? internal::PageLoadTrackerPageType::kPreviewPrimaryPage
+             : internal::PageLoadTrackerPageType::kPrimaryPage;
+}
+
+bool CalculateIsOriginVisit(bool is_first_navigation,
+                            ui::PageTransition transition) {
+  if (is_first_navigation) {
+    return true;
+  }
+  if (ui::PageTransitionCoreTypeIs(transition, ui::PAGE_TRANSITION_LINK) ||
+      ui::PageTransitionCoreTypeIs(transition, ui::PAGE_TRANSITION_RELOAD)) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -279,6 +297,7 @@ PageLoadTracker::PageLoadTracker(
     ukm::SourceId source_id,
     base::WeakPtr<PageLoadTracker> parent_tracker)
     : did_stop_tracking_(false),
+      navigation_id_(navigation_handle->GetNavigationId()),
       navigation_start_(navigation_handle->NavigationStart()),
       url_(navigation_handle->GetURL()),
       start_url_(navigation_handle->GetURL()),
@@ -294,6 +313,9 @@ PageLoadTracker::PageLoadTracker(
       source_id_(source_id),
       web_contents_(navigation_handle->GetWebContents()),
       is_first_navigation_in_web_contents_(is_first_navigation_in_web_contents),
+      is_origin_visit_(
+          CalculateIsOriginVisit(is_first_navigation_in_web_contents,
+                                 navigation_handle->GetPageTransition())),
       soft_navigation_metrics_(CreateSoftNavigationMetrics()),
       page_type_(CalculatePageType(navigation_handle)),
       parent_tracker_(std::move(parent_tracker)) {
@@ -301,7 +323,7 @@ PageLoadTracker::PageLoadTracker(
   embedder_interface_->RegisterObservers(this);
   switch (page_type_) {
     case internal::PageLoadTrackerPageType::kPrimaryPage:
-      DCHECK_NE(ukm::kInvalidSourceId, source_id_);
+      CHECK_NE(ukm::kInvalidSourceId, source_id_);
       InvokeAndPruneObservers(
           "PageLoadMetricsObserver::OnStart",
           base::BindRepeating(
@@ -318,8 +340,8 @@ PageLoadTracker::PageLoadTracker(
           /*permit_forwarding=*/false);
       break;
     case internal::PageLoadTrackerPageType::kPrerenderPage:
-      DCHECK(!started_in_foreground_);
-      DCHECK_EQ(ukm::kInvalidSourceId, source_id_);
+      CHECK(!started_in_foreground_);
+      CHECK_EQ(ukm::kInvalidSourceId, source_id_);
       prerendering_state_ = PrerenderingState::kInPrerendering;
       InvokeAndPruneObservers(
           "PageLoadMetricsObserver::OnPrerenderStart",
@@ -337,7 +359,7 @@ PageLoadTracker::PageLoadTracker(
           internal::PageLoadPrerenderEvent::kNavigationInPrerenderedMainFrame);
       break;
     case internal::PageLoadTrackerPageType::kFencedFramesPage:
-      DCHECK_NE(ukm::kInvalidSourceId, source_id_);
+      CHECK_NE(ukm::kInvalidSourceId, source_id_);
       InvokeAndPruneObservers(
           "PageLoadMetricsObserver::OnFencedFramesStart",
           base::BindRepeating(
@@ -349,6 +371,21 @@ PageLoadTracker::PageLoadTracker(
               },
               navigation_handle, currently_committed_url),
           /*permit_forwarding=*/true);
+      break;
+    case internal::PageLoadTrackerPageType::kPreviewPrimaryPage:
+      CHECK_NE(ukm::kInvalidSourceId, source_id_);
+      prerendering_state_ = PrerenderingState::kInPreview;
+      InvokeAndPruneObservers(
+          "PageLoadMetricsObserver::OnPreviewStart",
+          base::BindRepeating(
+              [](content::NavigationHandle* navigation_handle,
+                 const GURL& currently_committed_url,
+                 PageLoadMetricsObserverInterface* observer) {
+                return observer->OnPreviewStart(navigation_handle,
+                                                currently_committed_url);
+              },
+              navigation_handle, currently_committed_url),
+          /*permit_forwarding=*/false);
       break;
   }
   RecordPageType(page_type_);
@@ -413,7 +450,8 @@ void PageLoadTracker::PageHidden() {
     //
     // Here we check that the first background follows some event in foreground.
     if (!first_background_time_.has_value()) {
-      if (prerendering_state_ == PrerenderingState::kNoPrerendering) {
+      if (prerendering_state_ == PrerenderingState::kNoPrerendering ||
+          prerendering_state_ == PrerenderingState::kInPreview) {
         DCHECK_EQ(!started_in_foreground_, first_foreground_time_.has_value());
       } else {
         DCHECK(!first_foreground_time_.has_value());
@@ -453,7 +491,8 @@ void PageLoadTracker::PageShown() {
     // See comment about visibility state transitions in PageHidden.
     //
     // Here we check that the first foreground follows some event in background.
-    if (prerendering_state_ == PrerenderingState::kNoPrerendering) {
+    if (prerendering_state_ == PrerenderingState::kNoPrerendering ||
+        prerendering_state_ == PrerenderingState::kInPreview) {
       DCHECK_EQ(started_in_foreground_, first_background_time_.has_value());
     } else {
       DCHECK(first_background_time_.has_value());
@@ -598,6 +637,19 @@ void PageLoadTracker::DidActivatePrerenderedPage(
   base::UmaHistogramEnumeration(
       internal::kPageLoadPrerender2Event,
       internal::PageLoadPrerenderEvent::kPrerenderActivationNavigation);
+}
+
+void PageLoadTracker::DidActivatePreviewedPage(
+    base::TimeTicks activation_time) {
+  CHECK_EQ(prerendering_state_, PrerenderingState::kInPreview);
+  prerendering_state_ = PrerenderingState::kNoPrerendering;
+
+  // We don't keep `activation_time` as `activation_start_` because we measure
+  // preview mode performance as navigation originated rather than activation.
+
+  for (const auto& observer : observers_) {
+    observer->DidActivatePreviewedPage(activation_time);
+  }
 }
 
 void PageLoadTracker::DidCommitSameDocumentNavigation(
@@ -749,22 +801,32 @@ void PageLoadTracker::FrameSizeChanged(
   }
 }
 
-void PageLoadTracker::OnCookiesRead(const GURL& url,
-                                    const GURL& first_party_url,
-                                    const net::CookieList& cookie_list,
-                                    bool blocked_by_policy) {
+void PageLoadTracker::OnCookiesRead(
+    const GURL& url,
+    const GURL& first_party_url,
+    bool blocked_by_policy,
+    bool is_ad_tagged,
+    const net::CookieSettingOverrides& cookie_setting_overrides,
+    bool is_partitioned_access) {
   for (const auto& observer : observers_) {
-    observer->OnCookiesRead(url, first_party_url, cookie_list,
-                            blocked_by_policy);
+    observer->OnCookiesRead(url, first_party_url, blocked_by_policy,
+                            is_ad_tagged, cookie_setting_overrides,
+                            is_partitioned_access);
   }
 }
 
-void PageLoadTracker::OnCookieChange(const GURL& url,
-                                     const GURL& first_party_url,
-                                     const net::CanonicalCookie& cookie,
-                                     bool blocked_by_policy) {
+void PageLoadTracker::OnCookieChange(
+    const GURL& url,
+    const GURL& first_party_url,
+    const net::CanonicalCookie& cookie,
+    bool blocked_by_policy,
+    bool is_ad_tagged,
+    const net::CookieSettingOverrides& cookie_setting_overrides,
+    bool is_partitioned_access) {
   for (const auto& observer : observers_) {
-    observer->OnCookieChange(url, first_party_url, cookie, blocked_by_policy);
+    observer->OnCookieChange(url, first_party_url, cookie, blocked_by_policy,
+                             is_ad_tagged, cookie_setting_overrides,
+                             is_partitioned_access);
   }
 }
 
@@ -944,9 +1006,10 @@ void PageLoadTracker::OnTimingChanged() {
   const mojom::PageLoadTiming& new_timing = metrics_update_dispatcher_.timing();
 
   if (new_timing.activation_start &&
-      !last_dispatched_merged_page_timing_->activation_start) {
-    DCHECK(prerendering_state_ ==
-           PrerenderingState::kActivatedNoActivationStart);
+      !last_dispatched_merged_page_timing_->activation_start &&
+      prerendering_state_ != PrerenderingState::kNoPrerendering) {
+    CHECK_EQ(prerendering_state_,
+             PrerenderingState::kActivatedNoActivationStart);
     prerendering_state_ = PrerenderingState::kActivated;
     activation_start_ = new_timing.activation_start;
   }
@@ -994,10 +1057,9 @@ void PageLoadTracker::OnTimingChanged() {
       metrics_update_dispatcher_.timing().Clone();
 }
 
-void PageLoadTracker::OnPageInputTimingChanged(uint64_t num_interactions,
-                                               uint64_t num_input_events) {
+void PageLoadTracker::OnPageInputTimingChanged(uint64_t num_interactions) {
   for (const auto& observer : observers_) {
-    observer->OnPageInputTimingUpdate(num_interactions, num_input_events);
+    observer->OnPageInputTimingUpdate(num_interactions);
   }
 }
 
@@ -1084,7 +1146,7 @@ void PageLoadTracker::OnSoftNavigationChanged(
   // when a new soft nav comes in.
   if (new_soft_navigation_metrics.count > soft_navigation_metrics_->count) {
     metrics_update_dispatcher_
-        .ResetSoftNavigationIntervalNormalizedResponsivenessMetrics();
+        .ResetSoftNavigationIntervalResponsivenessMetricsNormalization();
     metrics_update_dispatcher_.ResetSoftNavigationIntervalLayoutShift();
   }
 
@@ -1094,12 +1156,6 @@ void PageLoadTracker::OnSoftNavigationChanged(
 void PageLoadTracker::OnPrefetchLikely() {
   for (const auto& observer : observers_) {
     observer->OnPrefetchLikely();
-  }
-}
-
-void PageLoadTracker::DidActivatePortal(base::TimeTicks activation_time) {
-  for (const auto& observer : observers_) {
-    observer->DidActivatePortal(activation_time);
   }
 }
 
@@ -1275,16 +1331,16 @@ PageLoadTracker::GetSoftNavigationIntervalNormalizedCLSData() const {
       .soft_navigation_interval_normalized_layout_shift();
 }
 
-const NormalizedResponsivenessMetrics&
-PageLoadTracker::GetNormalizedResponsivenessMetrics() const {
-  return metrics_update_dispatcher_.normalized_responsiveness_metrics();
+const ResponsivenessMetricsNormalization&
+PageLoadTracker::GetResponsivenessMetricsNormalization() const {
+  return metrics_update_dispatcher_.responsiveness_metrics_normalization();
 }
 
-const NormalizedResponsivenessMetrics&
-PageLoadTracker::GetSoftNavigationIntervalNormalizedResponsivenessMetrics()
+const ResponsivenessMetricsNormalization&
+PageLoadTracker::GetSoftNavigationIntervalResponsivenessMetricsNormalization()
     const {
   return metrics_update_dispatcher_
-      .soft_navigation_interval_normalized_responsiveness_metrics();
+      .soft_navigation_interval_responsiveness_metrics_normalization();
 }
 
 const mojom::InputTiming& PageLoadTracker::GetPageInputTiming() const {
@@ -1341,6 +1397,22 @@ ukm::SourceId PageLoadTracker::GetPreviousUkmSourceIdForSoftNavigation() const {
 
 bool PageLoadTracker::IsFirstNavigationInWebContents() const {
   return is_first_navigation_in_web_contents_;
+}
+
+bool PageLoadTracker::IsOriginVisit() const {
+  return is_origin_visit_;
+}
+
+bool PageLoadTracker::IsTerminalVisit() const {
+  return is_terminal_visit_;
+}
+
+int64_t PageLoadTracker::GetNavigationId() const {
+  return navigation_id_;
+}
+
+void PageLoadTracker::RecordLinkNavigation() {
+  is_terminal_visit_ = false;
 }
 
 void PageLoadTracker::OnEnterBackForwardCache() {

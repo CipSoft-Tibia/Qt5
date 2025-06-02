@@ -1,5 +1,5 @@
 // Copyright (C) 2022 David Edmundson <davidedmundson@kde.org>
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "fractionalscalev1.h"
 
@@ -16,7 +16,7 @@ void FractionalScaleManager::wp_fractional_scale_manager_v1_get_fractional_scale
     auto *scaler = new FractionalScale(s, resource->client(), id, resource->version());
     connect(scaler, &QObject::destroyed, this, [this, scaler]() {
         m_fractionalScales.removeOne(scaler);
-    });
+    }, Qt::DirectConnection);
     m_fractionalScales << scaler;
 }
 

@@ -35,12 +35,12 @@ Item {
             selectedSeries = series
 
         // Set tableView current row to selected bar
-        var rowRole = series.dataProxy.rowLabels[position.x];
+        var rowRole = series.rowLabels[position.x];
         var colRole
         if (barGraph.columnAxis === graphAxes.total)
             colRole = "01";
         else
-            colRole = series.dataProxy.columnLabels[position.y];
+            colRole = series.columnLabels[position.y];
         var checkTimestamp = rowRole + "-" + colRole
 
         if (currentRow === -1 || checkTimestamp !== graphData.model.get(currentRow).timestamp) {
@@ -117,22 +117,22 @@ Item {
         color: "orange"
     }
 
-    Theme3D {
+    GraphsTheme {
         id: theme1
-        type: Theme3D.Theme.Retro
-        labelBorderEnabled: true
-        font.pointSize: 35
-        labelBackgroundEnabled: true
-        colorStyle: Theme3D.ColorStyle.Uniform
+        theme: GraphsTheme.Theme.YellowSeries
+        labelBorderVisible: true
+        labelFont.pointSize: 35
+        labelBackgroundVisible: true
+        colorStyle: GraphsTheme.ColorStyle.Uniform
     }
 
-    Theme3D {
+    GraphsTheme {
         id: theme2
-        type: Theme3D.Theme.ArmyBlue
-        labelBorderEnabled: true
-        font.pointSize: 35
-        labelBackgroundEnabled: true
-        colorStyle: Theme3D.ColorStyle.Uniform
+        theme: GraphsTheme.Theme.QtGreenNeon
+        labelBorderVisible: true
+        labelFont.pointSize: 35
+        labelBackgroundVisible: true
+        colorStyle: GraphsTheme.ColorStyle.Uniform
     }
 
     ColumnLayout {
@@ -259,9 +259,9 @@ Item {
             clip: true
             from: 0
             to: 100
-            value: barGraph.theme.shadowStrength
+            value: barGraph.shadowStrength
 
-            onValueChanged: barGraph.theme.shadowStrength = value
+            onValueChanged: barGraph.shadowStrength = value
         }
 
         Button {
@@ -292,13 +292,31 @@ Item {
 
             onClicked: {
                 if (text === "Hide labels") {
-                    barGraph.theme.labelsEnabled = false;
+                    barGraph.theme.labelsVisible = false;
                     text = "Show labels";
                 } else {
-                    barGraph.theme.labelsEnabled = true;
+                    barGraph.theme.labelsVisible = true;
                     text = "Hide labels";
                 }
             }
+        }
+
+        Column {
+            Label {
+                text: "Rotate bars"
+            }
+        }
+
+        Slider {
+            id: barsRotationSlider
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            from: 0
+            to: 360
+            value: 5
+
+            onValueChanged: barSeries.meshAngle = value
         }
     }
 
@@ -311,13 +329,13 @@ Item {
             id: barGraph
             width: dataView.width
             height: dataView.height
-            shadowQuality: AbstractGraph3D.ShadowQuality.Medium
-            selectionMode: AbstractGraph3D.SelectionItemAndRow | AbstractGraph3D.SelectionSlice
+            shadowQuality: Graphs3D.ShadowQuality.Medium
+            selectionMode: Graphs3D.SelectionFlag.ItemAndRow | Graphs3D.SelectionFlag.Slice
             theme: theme1
             barThickness: 0.7
             barSpacing: Qt.size(0.5, 0.5)
             barSpacingRelative: false
-            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeftHigh
+            cameraPreset: Graphs3D.CameraPreset.IsometricLeftHigh
             columnAxis: graphAxes.column
             rowAxis: graphAxes.row
             valueAxis: graphAxes.value

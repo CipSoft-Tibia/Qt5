@@ -1,0 +1,10 @@
+{
+  "probes": {
+    // config for the powersampler probe:
+    "powersampler": {
+      "bin_path": "/path/to/power_sampler",
+      "sampling_interval": 1,
+      "wait_for_battery": true,
+    }
+  }
+}

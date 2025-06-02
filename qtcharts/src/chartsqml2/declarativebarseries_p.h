@@ -31,7 +31,7 @@ QT_BEGIN_NAMESPACE
 
 class QChart;
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeBarSet : public QBarSet
+class Q_CHARTSQML_EXPORT DeclarativeBarSet : public QBarSet
 {
     Q_OBJECT
     Q_PROPERTY(QVariantList values READ values WRITE setValues)
@@ -71,7 +71,7 @@ private:
     QImage m_brushImage;
 };
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeBarSeries : public QBarSeries, public QQmlParserStatus
+class Q_CHARTSQML_EXPORT DeclarativeBarSeries : public QBarSeries, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
@@ -114,14 +114,15 @@ Q_SIGNALS:
     Q_REVISION(1, 2) void axisXTopChanged(QAbstractAxis *axis);
     Q_REVISION(1, 2) void axisYRightChanged(QAbstractAxis *axis);
 
-public Q_SLOTS:
+public:
+    // TODO: This method is used from classes that don't inherit DeclarativeBarSeries
+    //       Its implementation is empty. None of this makes any sense.
     static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
 
-public:
     DeclarativeAxes *m_axes;
 };
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeStackedBarSeries : public QStackedBarSeries, public QQmlParserStatus
+class Q_CHARTSQML_EXPORT DeclarativeStackedBarSeries : public QStackedBarSeries, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
@@ -164,14 +165,14 @@ Q_SIGNALS:
     Q_REVISION(1, 2) void axisXTopChanged(QAbstractAxis *axis);
     Q_REVISION(1, 2) void axisYRightChanged(QAbstractAxis *axis);
 
-public Q_SLOTS:
+private:
     static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
 
 public:
     DeclarativeAxes *m_axes;
 };
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativePercentBarSeries : public QPercentBarSeries, public QQmlParserStatus
+class Q_CHARTSQML_EXPORT DeclarativePercentBarSeries : public QPercentBarSeries, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
@@ -214,14 +215,14 @@ Q_SIGNALS:
     Q_REVISION(1, 2) void axisXTopChanged(QAbstractAxis *axis);
     Q_REVISION(1, 2) void axisYRightChanged(QAbstractAxis *axis);
 
-public Q_SLOTS:
+private:
     static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
 
 public:
     DeclarativeAxes *m_axes;
 };
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeHorizontalBarSeries : public QHorizontalBarSeries, public QQmlParserStatus
+class Q_CHARTSQML_EXPORT DeclarativeHorizontalBarSeries : public QHorizontalBarSeries, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
@@ -264,14 +265,14 @@ Q_SIGNALS:
     Q_REVISION(1, 2) void axisXTopChanged(QAbstractAxis *axis);
     Q_REVISION(1, 2) void axisYRightChanged(QAbstractAxis *axis);
 
-public Q_SLOTS:
+private:
     static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
 
 public:
     DeclarativeAxes *m_axes;
 };
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeHorizontalStackedBarSeries : public QHorizontalStackedBarSeries, public QQmlParserStatus
+class Q_CHARTSQML_EXPORT DeclarativeHorizontalStackedBarSeries : public QHorizontalStackedBarSeries, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
@@ -314,14 +315,14 @@ Q_SIGNALS:
     Q_REVISION(1, 2) void axisXTopChanged(QAbstractAxis *axis);
     Q_REVISION(1, 2) void axisYRightChanged(QAbstractAxis *axis);
 
-public Q_SLOTS:
+private:
     static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
 
 public:
     DeclarativeAxes *m_axes;
 };
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeHorizontalPercentBarSeries : public QHorizontalPercentBarSeries, public QQmlParserStatus
+class Q_CHARTSQML_EXPORT DeclarativeHorizontalPercentBarSeries : public QHorizontalPercentBarSeries, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
@@ -364,7 +365,7 @@ Q_SIGNALS:
     Q_REVISION(1, 2) void axisXTopChanged(QAbstractAxis *axis);
     Q_REVISION(1, 2) void axisYRightChanged(QAbstractAxis *axis);
 
-public Q_SLOTS:
+private:
     static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
 
 public:

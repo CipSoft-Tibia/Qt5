@@ -25,6 +25,7 @@ qt_internal_add_manual_test(cpp-client
 qt6_generate_wayland_protocol_client_sources(cpp-client
     FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../../src/extensions/qt-texture-sharing-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../src/extensions/server-buffer-extension.xml
 )
 
 #### Keys ignored in scope 1:.:.:cpp-client.pro:<TRUE>:

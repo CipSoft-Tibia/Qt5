@@ -23,7 +23,9 @@
 #include <optional>
 #include <set>
 
+#include "perfetto/ext/base/paged_memory.h"
 #include "perfetto/ext/base/scoped_file.h"
+#include "perfetto/ext/base/utils.h"
 #include "perfetto/ext/traced/data_source_types.h"
 #include "perfetto/ext/tracing/core/trace_writer.h"
 #include "perfetto/protozero/message.h"
@@ -45,6 +47,7 @@ namespace protos {
 namespace pbzero {
 class FtraceEventBundle;
 enum FtraceClock : int32_t;
+enum FtraceParseStatus : int32_t;
 }  // namespace pbzero
 }  // namespace protos
 
@@ -52,6 +55,59 @@ enum FtraceClock : int32_t;
 // tracing buffers.
 class CpuReader {
  public:
+  // Buffers used when parsing a chunk of ftrace data, allocated by
+  // FtraceController and repeatedly reused by all CpuReaders:
+  // * paged memory into which we read raw ftrace data.
+  // * buffers to accumulate and emit scheduling data in a structure-of-arrays
+  //   format (packed proto fields).
+  class ParsingBuffers {
+   public:
+    void AllocateIfNeeded() {
+      // PagedMemory stays valid as long as it was allocated once.
+      if (!ftrace_data_.IsValid()) {
+        ftrace_data_ = base::PagedMemory::Allocate(base::GetSysPageSize() *
+                                                   kFtraceDataBufSizePages);
+      }
+      // Heap-allocated buffer gets freed and reallocated.
+      if (!compact_sched_) {
+        compact_sched_ = std::make_unique<CompactSchedBuffer>();
+      }
+    }
+
+    void Release() {
+      if (ftrace_data_.IsValid()) {
+        ftrace_data_.AdviseDontNeed(ftrace_data_.Get(), ftrace_data_.size());
+      }
+      compact_sched_.reset();
+    }
+
+   private:
+    friend class CpuReader;
+    // When reading and parsing data for a particular cpu, we do it in batches
+    // of this many pages. In other words, we'll read up to
+    // |kFtraceDataBufSizePages| into memory, parse them, and then repeat if we
+    // still haven't caught up to the writer.
+    // TODO(rsavitski): consider making buffering & parsing page counts
+    // independent, should be a single counter in the cpu_reader, similar to
+    // lost_events case.
+    static constexpr size_t kFtraceDataBufSizePages = 32;
+
+    uint8_t* ftrace_data_buf() const {
+      return reinterpret_cast<uint8_t*>(ftrace_data_.Get());
+    }
+    size_t ftrace_data_buf_pages() const {
+      PERFETTO_DCHECK(ftrace_data_.size() ==
+                      base::GetSysPageSize() * kFtraceDataBufSizePages);
+      return kFtraceDataBufSizePages;
+    }
+    CompactSchedBuffer* compact_sched_buf() const {
+      return compact_sched_.get();
+    }
+
+    base::PagedMemory ftrace_data_;
+    std::unique_ptr<CompactSchedBuffer> compact_sched_;
+  };
+
   // Helper class to generate `TracePacket`s when needed. Public for testing.
   class Bundler {
    public:
@@ -61,6 +117,7 @@ class CpuReader {
             size_t cpu,
             const FtraceClockSnapshot* ftrace_clock_snapshot,
             protos::pbzero::FtraceClock ftrace_clock,
+            CompactSchedBuffer* compact_sched_buf,
             bool compact_sched_enabled)
         : trace_writer_(trace_writer),
           metadata_(metadata),
@@ -68,7 +125,11 @@ class CpuReader {
           cpu_(cpu),
           ftrace_clock_snapshot_(ftrace_clock_snapshot),
           ftrace_clock_(ftrace_clock),
-          compact_sched_enabled_(compact_sched_enabled) {}
+          compact_sched_enabled_(compact_sched_enabled),
+          compact_sched_buf_(compact_sched_buf) {
+      if (compact_sched_enabled_)
+        compact_sched_buf_->Reset();
+    }
 
     ~Bundler() { FinalizeAndRunSymbolizer(); }
 
@@ -85,11 +146,11 @@ class CpuReader {
     // This function is called after the contents of a FtraceBundle are written.
     void FinalizeAndRunSymbolizer();
 
-    CompactSchedBuffer* compact_sched_buffer() {
-      // FinalizeAndRunSymbolizer will only process the compact_sched_buffer_ if
+    CompactSchedBuffer* compact_sched_buf() {
+      // FinalizeAndRunSymbolizer will only process the compact_sched_buf_ if
       // there is an open bundle.
       GetOrCreateBundle();
-      return &compact_sched_buffer_;
+      return compact_sched_buf_;
     }
 
    private:
@@ -103,9 +164,7 @@ class CpuReader {
 
     TraceWriter::TracePacketHandle packet_;
     protos::pbzero::FtraceEventBundle* bundle_ = nullptr;
-    // Allocate the buffer for compact scheduler events (which will be unused if
-    // the compact option isn't enabled).
-    CompactSchedBuffer compact_sched_buffer_;
+    CompactSchedBuffer* const compact_sched_buf_;
   };
 
   struct PageHeader {
@@ -124,8 +183,7 @@ class CpuReader {
 
   // Reads and parses all ftrace data for this cpu (in batches), until we catch
   // up to the writer, or hit |max_pages|. Returns number of pages read.
-  size_t ReadCycle(uint8_t* parsing_buf,
-                   size_t parsing_buf_size_pages,
+  size_t ReadCycle(ParsingBuffers* parsing_bufs,
                    size_t max_pages,
                    const std::set<FtraceDataSource*>& started_data_sources);
 
@@ -235,12 +293,13 @@ class CpuReader {
   // which passes it to the CpuReader which passes it here.
   // The caller is responsible for validating that the page_header->size stays
   // within the current page.
-  static size_t ParsePagePayload(const uint8_t* start_of_payload,
-                                 const PageHeader* page_header,
-                                 const ProtoTranslationTable* table,
-                                 const FtraceDataSourceConfig* ds_config,
-                                 Bundler* bundler,
-                                 FtraceMetadata* metadata);
+  static protos::pbzero::FtraceParseStatus ParsePagePayload(
+      const uint8_t* start_of_payload,
+      const PageHeader* page_header,
+      const ProtoTranslationTable* table,
+      const FtraceDataSourceConfig* ds_config,
+      Bundler* bundler,
+      FtraceMetadata* metadata);
 
   // Parse a single raw ftrace event beginning at |start| and ending at |end|
   // and write it into the provided bundle as a proto.
@@ -298,22 +357,23 @@ class CpuReader {
   // Parses & encodes the given range of contiguous tracing pages. Called by
   // |ReadAndProcessBatch| for each active data source.
   //
-  // Returns the number of correctly processed pages. If the return value is
-  // equal to |pages_read|, there was no error. Otherwise, the return value
-  // points to the first page that contains an error.
+  // Returns true if all pages were parsed correctly. In case of parsing
+  // errors, they will be recorded in the FtraceEventBundle proto.
   //
   // public and static for testing
-  static size_t ProcessPagesForDataSource(
+  static bool ProcessPagesForDataSource(
       TraceWriter* trace_writer,
       FtraceMetadata* metadata,
       size_t cpu,
       const FtraceDataSourceConfig* ds_config,
+      base::FlatSet<protos::pbzero::FtraceParseStatus>* parse_errors,
       const uint8_t* parsing_buf,
       const size_t pages_read,
+      CompactSchedBuffer* compact_sched_buf,
       const ProtoTranslationTable* table,
       LazyKernelSymbolizer* symbolizer,
-      const FtraceClockSnapshot*,
-      protos::pbzero::FtraceClock);
+      const FtraceClockSnapshot* ftrace_clock_snapshot,
+      protos::pbzero::FtraceClock ftrace_clock);
 
  private:
   CpuReader(const CpuReader&) = delete;
@@ -327,6 +387,7 @@ class CpuReader {
       uint8_t* parsing_buf,
       size_t max_pages,
       bool first_batch_in_cycle,
+      CompactSchedBuffer* compact_sched_buf,
       const std::set<FtraceDataSource*>& started_data_sources);
 
   const size_t cpu_;

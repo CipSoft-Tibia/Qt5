@@ -14,7 +14,6 @@ const char kHibernateServicePath[] = "/org/chromium/Hibernate";
 const char kHibernateServiceName[] = "org.chromium.Hibernate";
 
 // Methods exposed by hiberman.
-const char kResumeFromHibernateMethod[] = "ResumeFromHibernate";
 const char kResumeFromHibernateASMethod[] = "ResumeFromHibernateAS";
 const char kAbortResumeMethod[] = "AbortResume";
 

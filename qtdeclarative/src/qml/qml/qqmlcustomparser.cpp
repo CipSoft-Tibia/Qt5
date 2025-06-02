@@ -105,8 +105,12 @@ int QQmlCustomParser::evaluateEnum(const QString &script, bool *ok) const
     if (scope != QLatin1String("Qt")) {
         if (imports.isNull())
             return -1;
-        QQmlType type;
 
+        QQmlTypeLoader *loader = typeLoader();
+        if (!loader)
+            return -1;
+
+        QQmlType type;
         if (imports.isT1()) {
             QQmlImportNamespace *ns = nullptr;
 
@@ -115,7 +119,7 @@ int QQmlCustomParser::evaluateEnum(const QString &script, bool *ok) const
             bool recursionDetected = false;
 
             if (!imports.asT1()->resolveType(
-                        scope, &type, nullptr, &ns, nullptr,
+                        loader, scope, &type, nullptr, &ns, nullptr,
                         QQmlType::AnyRegistrationType, &recursionDetected)) {
                 return -1;
             }
@@ -123,7 +127,7 @@ int QQmlCustomParser::evaluateEnum(const QString &script, bool *ok) const
             if (!type.isValid() && ns != nullptr) {
                 dot = nextDot(dot);
                 if (dot == -1 || !imports.asT1()->resolveType(
-                            script.left(dot), &type, nullptr, nullptr, nullptr,
+                            loader, script.left(dot), &type, nullptr, nullptr, nullptr,
                             QQmlType::AnyRegistrationType, &recursionDetected)) {
                     return -1;
                 }
@@ -131,13 +135,15 @@ int QQmlCustomParser::evaluateEnum(const QString &script, bool *ok) const
         } else {
             // Allow recursion so that we can find enums from the same document.
             const QQmlTypeNameCache::Result result
-                    = imports.asT2()->query<QQmlImport::AllowRecursion>(scope);
-            if (result.isValid()) {
+                    = imports.asT2()->query<QQmlImport::AllowRecursion>(scope, loader);
+            if (result.type.isValid()) {
                 type = result.type;
             } else if (result.importNamespace) {
                 dot = nextDot(dot);
-                if (dot != -1)
-                    type = imports.asT2()->query<QQmlImport::AllowRecursion>(script.left(dot)).type;
+                if (dot != -1) {
+                    type = imports.asT2()->query<QQmlImport::AllowRecursion>(
+                                                 script.left(dot), loader).type;
+                }
             }
         }
 
@@ -174,9 +180,9 @@ int QQmlCustomParser::evaluateEnum(const QString &script, bool *ok) const
         }
 
         if (!scopedEnumName.isEmpty())
-            return type.scopedEnumValue(engine, scopedEnumName, enumValue, ok);
+            return type.scopedEnumValue(loader, scopedEnumName, enumValue, ok);
         else
-            return type.enumValue(engine, enumValue, ok);
+            return type.enumValue(loader, enumValue, ok);
     }
 
     const QString enumValue = script.mid(dot + 1);
@@ -198,10 +204,24 @@ const QMetaObject *QQmlCustomParser::resolveType(const QString& name) const
 {
     if (!imports.isT1())
         return nullptr;
-    QQmlType qmltype;
-    if (!imports.asT1()->resolveType(name, &qmltype, nullptr, nullptr, nullptr))
+
+    QQmlTypeLoader *loader = typeLoader();
+    if (!loader)
         return nullptr;
+
+    QQmlType qmltype;
+    if (!imports.asT1()->resolveType(loader, name, &qmltype, nullptr, nullptr))
+        return nullptr;
+
     return qmltype.metaObject();
+}
+
+QQmlTypeLoader *QQmlCustomParser::typeLoader() const
+{
+    if (!engine && !validator)
+        return nullptr;
+
+    return validator ? validator->typeLoader() : &engine->typeLoader;
 }
 
 QT_END_NAMESPACE

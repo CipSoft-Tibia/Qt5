@@ -139,8 +139,6 @@ QSqlQueryModel::~QSqlQueryModel()
 }
 
 /*!
-    \since 4.1
-
     Fetches more rows from a database.
     This only affects databases that don't report back the size of a query
     (see QSqlDriver::hasFeature()).
@@ -162,8 +160,6 @@ void QSqlQueryModel::fetchMore(const QModelIndex &parent)
 }
 
 /*!
-    \since 4.1
-
     Returns \c true if it is possible to read more rows from the database.
     This only affects databases that don't report back the size of a query
     (see QSqlDriver::hasFeature()).
@@ -295,7 +291,6 @@ void QSqlQueryModel::endResetModel()
 }
 
 /*! \fn int QSqlQueryModel::rowCount(const QModelIndex &parent) const
-    \since 4.1
 
     If the database supports returning the size of a query
     (see QSqlDriver::hasFeature()), the number of rows of the current
@@ -388,8 +383,6 @@ void QSqlQueryModel::queryChange()
 /*!
     \deprecated [6.2] Use the \c{setQuery(QSqlQuery &&query)} overload instead.
     \overload
-    \since 4.5
-
 */
 void QSqlQueryModel::setQuery(const QSqlQuery &query)
 {
@@ -625,7 +618,7 @@ bool QSqlQueryModel::insertColumns(int column, int count, const QModelIndex &par
             d->colOffsets.append(nVal);
             Q_ASSERT(d->colOffsets.size() >= d->rec.count());
         }
-        for (int i = column + 1; i < d->colOffsets.size(); ++i)
+        for (qsizetype i = column + 1; i < d->colOffsets.size(); ++i)
             ++d->colOffsets[i];
     }
     endInsertColumns();
@@ -651,10 +644,9 @@ bool QSqlQueryModel::removeColumns(int column, int count, const QModelIndex &par
 
     beginRemoveColumns(parent, column, column + count - 1);
 
-    int i;
-    for (i = 0; i < count; ++i)
+    for (int i = 0; i < count; ++i)
         d->rec.remove(column);
-    for (i = column; i < d->colOffsets.size(); ++i)
+    for (qsizetype i = column; i < d->colOffsets.size(); ++i)
         d->colOffsets[i] -= count;
 
     endRemoveColumns();

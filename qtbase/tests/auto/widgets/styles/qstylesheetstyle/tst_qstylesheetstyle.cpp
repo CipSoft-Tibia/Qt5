@@ -125,6 +125,8 @@ private slots:
     void inheritWidgetPalette_data();
     void inheritWidgetPalette();
 
+    void resetFont();
+
 private:
     static QColor COLOR(const QWidget &w)
     {
@@ -980,7 +982,6 @@ void tst_QStyleSheetStyle::focusColors()
     centerOnScreen(&frame);
     frame.show();
 
-    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
     for (QWidget *widget : frame.widgets()) {
@@ -1026,7 +1027,6 @@ void tst_QStyleSheetStyle::hoverColors()
     QCursor::setPos(frame.geometry().topLeft() - QPoint(100, 0));
     frame.show();
 
-    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
     QWindow *frameWindow = frame.windowHandle();
@@ -1720,7 +1720,6 @@ void tst_QStyleSheetStyle::toolTip()
 
     centerOnScreen(&w);
     w.show();
-    QApplicationPrivate::setActiveWindow(&w);
     QVERIFY(QTest::qWaitForWindowActive(&w));
 
     QColor normalToolTipBgColor = QToolTip::palette().color(QPalette::Inactive, QPalette::ToolTipBase);
@@ -1889,7 +1888,6 @@ void tst_QStyleSheetStyle::complexWidgetFocus()
 
     centerOnScreen(&frame);
     frame.show();
-    QApplicationPrivate::setActiveWindow(&frame);
     QVERIFY(QTest::qWaitForWindowActive(&frame));
     for (QWidget *widget : widgets) {
         widget->setFocus();
@@ -1978,7 +1976,6 @@ void tst_QStyleSheetStyle::task232085_spinBoxLineEditBg()
 
     centerOnScreen(&frame);
     frame.show();
-    QApplicationPrivate::setActiveWindow(&frame);
     spinbox->setFocus();
     QVERIFY(QTest::qWaitForWindowActive(&frame));
 
@@ -2114,7 +2111,6 @@ void tst_QStyleSheetStyle::QTBUG36933_brokenPseudoClassLookup()
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
 
     widget.activateWindow();
-    QApplicationPrivate::setActiveWindow(&widget);
     QVERIFY(QTest::qWaitForWindowActive(&widget));
 
     QHeaderView *verticalHeader = widget.verticalHeader();
@@ -2532,6 +2528,28 @@ void tst_QStyleSheetStyle::inheritWidgetPalette()
     const QColor phColor = edit.palette().placeholderText().color();
 
     QCOMPARE(phColor, phColorPalette);
+}
+
+void tst_QStyleSheetStyle::resetFont()
+{
+    QDoubleSpinBox sb;
+    sb.setStyleSheet(R"(QDoubleSpinBox[changed="true"] {font: italic;})");
+
+    auto checkFont = [&sb](bool isItalic) {
+        sb.setProperty("changed", isItalic);
+        sb.style()->polish(&sb);
+        const auto children = sb.findChildren<QWidget *>();
+        for (const auto *w : children) {
+            auto diagnostics = qScopeGuard([&] {
+                qWarning() << "Failure with" << w << "should be italic:" << isItalic;
+            });
+            QCOMPARE(w->font().italic(), isItalic);
+            diagnostics.dismiss();
+        }
+    };
+    checkFont(false);
+    checkFont(true);
+    checkFont(false);
 }
 
 QTEST_MAIN(tst_QStyleSheetStyle)

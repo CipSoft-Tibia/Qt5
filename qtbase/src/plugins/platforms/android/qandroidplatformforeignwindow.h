@@ -16,8 +16,8 @@ class QAndroidPlatformForeignWindow : public QAndroidPlatformWindow
 {
 public:
     explicit QAndroidPlatformForeignWindow(QWindow *window, WId nativeHandle);
+    void initialize() override;
     ~QAndroidPlatformForeignWindow();
-    void setGeometry(const QRect &rect) override;
     void setVisible(bool visible) override;
     void applicationStateChanged(Qt::ApplicationState state) override;
     bool isForeignWindow() const override { return true; }

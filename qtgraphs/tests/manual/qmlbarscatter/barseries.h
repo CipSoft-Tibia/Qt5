@@ -27,8 +27,6 @@ private:
     QBarSet *m_barList;
     QTimer m_timer;
     CpuUsageUpdater m_cpuUpdater;
-    QBarCategoryAxis m_axis1;
-    QValueAxis m_axis2;
     int m_counter;
 };
 

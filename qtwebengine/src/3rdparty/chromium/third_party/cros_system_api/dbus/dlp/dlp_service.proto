@@ -202,9 +202,7 @@ message IsDlpPolicyMatchedResponse {
 }
 
 message GetFilesSourcesRequest {
-  // TODO(b/292089803): Remove once not used by Chrome.
-  // A list of files inodes.
-  repeated uint64 files_inodes = 1;
+  reserved 1;
   // A list of paths to the files.
   repeated string files_paths = 2;
 }
@@ -260,4 +258,11 @@ message IsFilesTransferRestrictedResponse {
   // Files restricted to be transferred.
   // Check results for the files to be transferred.
   repeated FileRestriction files_restrictions = 4;
+}
+
+message GetDatabaseEntriesResponse {
+  // Error message, empty if no error occurred.
+  optional string error_message = 1;
+  // Files entries.
+  repeated FileMetadata files_entries = 2;
 }

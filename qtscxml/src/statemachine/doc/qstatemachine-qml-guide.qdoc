@@ -8,8 +8,6 @@
   \ingroup technology-apis
   \ingroup explanation
 
-  \tableofcontents
-
   Qt State Machine QML APIs provide types for creating and
   executing state graphs in QML. It is similar to the C++ State Machine
   framework based on Harel's

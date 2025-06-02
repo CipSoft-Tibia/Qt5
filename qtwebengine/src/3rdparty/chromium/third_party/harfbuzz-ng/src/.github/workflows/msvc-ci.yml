@@ -28,33 +28,33 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+      uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
     - name: Setup Ccache
-      uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e # v1.2.9
+      uses: hendrikmuhs/ccache-action@2a51777f6f64b7b7bea213601acba8f5f4fdbe03 # v1.2.11
       with:
         variant: sccache
         key: ${{ github.job }}-${{ matrix.os }}-${{ matrix.ARCH }}
     - name: Setup Python
-      uses: actions/setup-python@bd6b4b6205c4dbad673328db7b31b7fab9e241c0 # v4.6.1
+      uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
       with:
         python-version: '3.x'
     - name: Setup MSVC
-      uses: ilammy/msvc-dev-cmd@cec98b9d092141f74527d0afa6feb2af698cfe89 # v1.12.1
+      uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
       with:
         arch : ${{ matrix.ARCH }}
     - name: Install Python Dependencies
       run: |
-        pip install --upgrade meson ninja fonttools
+        pip3 install -r .ci/requirements.txt --require-hashes
     - name: Setup Meson
       run: |
-        sccache --version
-        meson setup build `
-          --wrap-mode=forcefallback `
-          --buildtype=release `
-          -Dglib=enabled `
-          -Dfreetype=enabled `
-          -Dgdi=enabled `
-          -Ddirectwrite=enabled
+          sccache --version
+          meson setup build `
+            --wrap-mode=forcefallback `
+            --buildtype=release `
+            -Dglib=enabled `
+            -Dfreetype=enabled `
+            -Dgdi=enabled `
+            -Ddirectwrite=enabled
     - name: Build
       run: meson compile -Cbuild
     - name: Test

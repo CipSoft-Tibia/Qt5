@@ -14,20 +14,26 @@
 
 #include "./centipede/command.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/poll.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>  // NOLINT
 #include <string>
 #include <string_view>
 #include <system_error>  // NOLINT
+#include <utility>
+#include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
@@ -38,6 +44,8 @@
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "./centipede/early_exit.h"
 #include "./centipede/logging.h"
 #include "./centipede/util.h"
 
@@ -323,6 +331,28 @@ int Command::Execute() {
     exit_code = system(command_line_.c_str());
   }
 
+  // When the command is actually a wrapper shell launching the binary(-es)
+  // (e.g. a Docker container), the shell will preserve a normal exit code
+  // returned by the binary (the legal range for such codes that can be
+  // passed to `exit()` is [0..125]); but the shell will specially encode
+  // the exit code returned by the binary when the binary is killed by a
+  // signal by adding 128 to the signal number and returning the result as
+  // a normal exit code. This encoding is used in `bash` and `dash` but may be
+  // different in other shells, e.g., `ksh`.
+  //
+  // For more details, see https://tldp.org/LDP/abs/html/exitcodes.html.
+  //
+  // Therefore, to handle this case, we need to first unpack these special
+  // pseudo-normal exit codes before analyzing them further. After
+  // reassigning `WEXITSTATUS()` to exit_code, the if-else below will take
+  // the else-branch and unpack the signal number from the updated value. This
+  // has experimentally been observed to work with existing implementations of
+  // the `wait` macros but there is no definitive documentation for it.
+  if (WIFEXITED(exit_code) && WEXITSTATUS(exit_code) > 128 &&
+      WEXITSTATUS(exit_code) < 255) {
+    exit_code = WEXITSTATUS(exit_code);
+  }
+
   if (WIFEXITED(exit_code) && WEXITSTATUS(exit_code) != EXIT_SUCCESS) {
     const auto exit_status = WEXITSTATUS(exit_code);
     VlogProblemInfo(
@@ -346,6 +376,8 @@ int Command::Execute() {
       VlogProblemInfo(absl::StrCat("Command killed: signal=", signal),
                       /*vlog_level=*/1);
     }
+
+    // TODO(ussuri): Consider changing this to exit_code = EXIT_FAILURE.
     exit_code = signal;
   }
 

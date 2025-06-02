@@ -87,6 +87,12 @@ function(qt_internal_add_linker_version_script target)
 
         get_target_property(target_type ${target} TYPE)
         if(NOT target_type STREQUAL "INTERFACE_LIBRARY")
+            # Export all specializations of the QExplicitlySharedDataPointer
+            # and QSharedDataPointer destructors; due to use of the
+            # QT_DECLARE_Q{,E}SDP_SPECIALIZATION_DTOR_WITH_EXPORT macros
+            string(APPEND contents "\n    _ZN*18QSharedDataPointerI*D?Ev;")
+            string(APPEND contents "\n    _ZN*28QExplicitlySharedDataPointerI*D?Ev;")
+
             set(genex_prefix "\n    ")
             set(genex_glue "$<SEMICOLON>\n    ")
             set(genex_suffix "$<SEMICOLON>")
@@ -235,6 +241,7 @@ function(qt_internal_apply_gc_binaries target visibility)
     endif()
 endfunction()
 
+# Only applied to Bootstrap and BundledPCRE2.
 function(qt_internal_apply_intel_cet target visibility)
     if(NOT QT_FEATURE_intelcet)
         return()
@@ -254,31 +261,34 @@ function(qt_internal_apply_intel_cet target visibility)
             ">:-mshstk>")
     endif()
     if(flags)
+        set(opt_out_condition "$<NOT:$<BOOL:$<TARGET_PROPERTY:_qt_no_intel_cet_harderning>>>")
+        set(flags "$<${opt_out_condition}:${flags}>")
         target_compile_options("${target}" ${visibility} "${flags}")
     endif()
 endfunction()
 
-function(qt_internal_library_deprecation_level result)
-    # QT_DISABLE_DEPRECATED_UP_TO controls which version we use as a cut-off
-    # compiling in to the library. E.g. if it is set to QT_VERSION then no
-    # code which was deprecated before QT_VERSION will be compiled in.
-    if (NOT DEFINED QT_DISABLE_DEPRECATED_UP_TO)
-        if(WIN32)
-            # On Windows, due to the way DLLs work, we need to export all functions,
-            # including the inlines
-            list(APPEND deprecations "QT_DISABLE_DEPRECATED_UP_TO=0x040800")
-        else()
-            # On other platforms, Qt's own compilation does need to compile the Qt 5.0 API
-            list(APPEND deprecations "QT_DISABLE_DEPRECATED_UP_TO=0x050000")
-        endif()
-    else()
-        list(APPEND deprecations "QT_DISABLE_DEPRECATED_UP_TO=${QT_DISABLE_DEPRECATED_UP_TO}")
+# Meant to be applied to PlatformCommonInternal.
+function(qt_internal_apply_intel_cet_harderning target)
+    if(NOT QT_FEATURE_intelcet)
+        return()
     endif()
-    # QT_WARN_DEPRECATED_UP_TO controls the upper-bound of deprecation
-    # warnings that are emitted. E.g. if it is set to 0x060500 then all use of
-    # things deprecated in or before 6.5.0 will be warned against.
-    list(APPEND deprecations "QT_WARN_DEPRECATED_UP_TO=0x070000")
-    set("${result}" "${deprecations}" PARENT_SCOPE)
+
+    set(opt_out_condition "$<NOT:$<BOOL:$<TARGET_PROPERTY:_qt_no_intel_cet_harderning>>>")
+
+    if(MSVC)
+        set(intel_cet_flag "-CETCOMPAT")
+        set(condition "$<${opt_out_condition}:${intel_cet_flag}>")
+        qt_internal_platform_link_options("${target}" INTERFACE "${condition}")
+    else()
+        set(intel_cet_flag "-fcf-protection=full")
+        set(condition "$<${opt_out_condition}:${intel_cet_flag}>")
+        target_compile_options("${target}" INTERFACE "${condition}")
+    endif()
+endfunction()
+
+# Allow opting out of the Intel CET hardening on a per-target basis.
+function(qt_internal_skip_intel_cet_hardening target)
+    set_target_properties("${target}" PROPERTIES _qt_no_intel_cet_harderning TRUE)
 endfunction()
 
 # Sets the exceptions flags for the given target according to exceptions_on
@@ -462,21 +472,21 @@ endfunction()
 function(qt_internal_print_optimization_flags_values_helper languages configs target_link_types)
     foreach(lang ${languages})
         set(flag_var_name "CMAKE_${lang}_FLAGS")
-        message(STATUS "${flag_var_name}: ${${flag_var_name}}")
+        message(STATUS "${flag_var_name}: '${${flag_var_name}}'")
 
         foreach(config ${configs})
             set(flag_var_name "CMAKE_${lang}_FLAGS_${config}")
-            message(STATUS "${flag_var_name}: ${${flag_var_name}}")
+            message(STATUS "${flag_var_name}: '${${flag_var_name}}'")
         endforeach()
     endforeach()
 
     foreach(t ${target_link_types})
         set(flag_var_name "CMAKE_${t}_LINKER_FLAGS")
-        message(STATUS "${flag_var_name}: ${${flag_var_name}}")
+        message(STATUS "${flag_var_name}: '${${flag_var_name}}'")
 
         foreach(config ${configs})
             set(flag_var_name "CMAKE_${t}_LINKER_FLAGS_${config}")
-            message(STATUS "${flag_var_name}: ${${flag_var_name}}")
+            message(STATUS "${flag_var_name}: '${${flag_var_name}}'")
         endforeach()
     endforeach()
 endfunction()

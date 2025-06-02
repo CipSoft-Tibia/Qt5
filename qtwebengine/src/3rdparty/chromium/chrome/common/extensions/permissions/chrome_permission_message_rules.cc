@@ -279,7 +279,7 @@ class USBDevicesFormatter : public ChromePermissionMessageFormatter {
 };
 
 int GetEnterpriseReportingPrivatePermissionMessageId() {
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   if (!base::FeatureList::IsEnabled(
           enterprise_signals::features::kNewEvSignalsEnabled)) {
     return IDS_EXTENSION_PROMPT_WARNING_ENTERPRISE_REPORTING_PRIVATE;
@@ -721,6 +721,9 @@ ChromePermissionMessageRule::GetAllRules() {
       {IDS_EXTENSION_PROMPT_WARNING_ENTERPRISE_DEVICE_ATTRIBUTES,
        {APIPermissionID::kEnterpriseDeviceAttributes},
        {}},
+      {IDS_EXTENSION_PROMPT_WARNING_ENTERPRISE_KIOSK_INPUT,
+       {APIPermissionID::kEnterpriseKioskInput},
+       {}},
       {IDS_EXTENSION_PROMPT_WARNING_ENTERPRISE_NETWORKING_ATTRIBUTES,
        {APIPermissionID::kEnterpriseNetworkingAttributes},
        {}},
@@ -753,6 +756,9 @@ ChromePermissionMessageRule::GetAllRules() {
        {}},
       {IDS_EXTENSION_PROMPT_WARNING_CHROMEOS_EVENTS,
        {APIPermissionID::kChromeOSEvents},
+       {}},
+      {IDS_EXTENSION_PROMPT_WARNING_CHROMEOS_MANAGEMENT_AUDIO,
+       {APIPermissionID::kChromeOSManagementAudio},
        {}},
       {IDS_EXTENSION_PROMPT_WARNING_CHROMEOS_TELEMETRY,
        {APIPermissionID::kChromeOSTelemetry},

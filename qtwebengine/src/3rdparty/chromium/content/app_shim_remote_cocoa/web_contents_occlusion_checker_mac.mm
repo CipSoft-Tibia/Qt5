@@ -15,9 +15,9 @@
 #include "base/mac/mac_util.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/no_destructor.h"
+#include "content/common/features.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/common/content_client.h"
-#include "content/public/common/content_features.h"
 
 using features::kMacWebContentsOcclusion;
 
@@ -186,6 +186,24 @@ bool IsBrowserProcess() {
         addObserver:self
            selector:@selector(windowDidChangePositionInWindowList:)
                name:kWindowDidChangePositionInWindowList
+             object:nil];
+
+    // orderWindow:relativeTo: was the override point that caught all window
+    // list ordering changes up until Sonoma. With Sonoma, it appears that
+    // window cycling (Cmd+`) goes directly to -[NSWindow makeKeyWindow]. Add
+    // these window main notifications to catch the changes. Unfortunately,
+    // there doesn't appear to be a way to trigger any of the the window
+    // cycling machinery, so automated testing is impossible.
+    [notificationCenter
+        addObserver:self
+           selector:@selector(windowDidChangePositionInWindowList:)
+               name:NSWindowDidBecomeMainNotification
+             object:nil];
+
+    [notificationCenter
+        addObserver:self
+           selector:@selector(windowDidChangePositionInWindowList:)
+               name:NSWindowDidResignMainNotification
              object:nil];
 
     [[[NSWorkspace sharedWorkspace] notificationCenter]
@@ -371,8 +389,10 @@ bool IsBrowserProcess() {
 - (void)performOcclusionStateUpdates {
   _occlusionStateUpdatesAreScheduled = NO;
 
-  if (content::GetContentClient()->browser()->IsShuttingDown())
+  if (content::GetContentClient()->browser() &&
+      content::GetContentClient()->browser()->IsShuttingDown()) {
     return;
+  }
 
   DCHECK(!_updatingOcclusionStates);
 

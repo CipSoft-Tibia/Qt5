@@ -36,7 +36,7 @@ class PosixPlatform(Platform, metaclass=abc.ABCMeta):
   def _raw_machine_arch(self):
     if not self.is_remote:
       return super()._raw_machine_arch()
-    return self.sh_stdout("arch").strip()
+    return self.sh_stdout("uname", "-m").strip()
 
   _GET_CPONF_PROC_RE = re.compile(r".*PROCESSORS_CONF[^0-9]+(?P<cores>[0-9]+)")
 
@@ -124,6 +124,12 @@ class PosixPlatform(Platform, metaclass=abc.ABCMeta):
     else:
       self.sh("rm", path)
 
+  def touch(self, path: Union[str, pathlib.Path]) -> None:
+    if not self.is_remote:
+      super().touch(path)
+    else:
+      self.sh("touch", path)
+
   def mkdir(self, path: Union[str, pathlib.Path]) -> None:
     if not self.is_remote:
       super().mkdir(path)
@@ -171,6 +177,23 @@ class PosixPlatform(Platform, metaclass=abc.ABCMeta):
       return super().is_dir(path)
     return self.sh("[", "-d", path, "]", check=False).returncode == 0
 
+  def terminate(self, proc_pid: int) -> None:
+    self.sh("kill", "-s", "TERM", str(proc_pid))
+
+  def process_info(self, pid: int) -> Optional[Dict[str, Any]]:
+    if not self.is_remote:
+      return super().process_info(pid)
+    try:
+      lines = self.sh_stdout("ps", "-o", "comm", "-p", str(pid)).splitlines()
+      if len(lines) <= 1:
+        return None
+      assert len(lines) == 2, lines
+      tokens = lines[1].split()
+      assert len(tokens) == 1
+      return {"comm": tokens[0]}
+    except SubprocessError:
+      return None
+
   @property
   def environ(self) -> Environ:
     if not self.is_remote:
@@ -182,10 +205,16 @@ class RemotePosixEnviron(Environ):
 
   def __init__(self, platform: PosixPlatform) -> None:
     self._platform = platform
-    self._environ = dict(
-        line.split("=", maxsplit=1)
-        for line in self._platform.sh_stdout("env").splitlines()
-        if line)
+    self._environ = {}
+    for line in self._platform.sh_stdout("env").splitlines():
+      parts = line.split("=", maxsplit=1)
+      if len(parts) == 2:
+        key, value = parts
+        self._environ[key] = value
+      else:
+        assert len(parts) == 1
+        key = parts[0]
+        self._environ[key] = ""
 
   def __getitem__(self, key: str) -> str:
     return self._environ.__getitem__(key)

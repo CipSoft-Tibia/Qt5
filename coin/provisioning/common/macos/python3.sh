@@ -26,9 +26,11 @@ echo "Configure pip"
 /Library/Frameworks/Python.framework/Versions/3.9/bin/pip config --user set global.extra-index-url https://pypi.org/simple/
 
 /Library/Frameworks/Python.framework/Versions/3.9/bin/pip3 install virtualenv wheel html5lib
+/Library/Frameworks/Python.framework/Versions/3.9/bin/pip3 install -r ${BASH_SOURCE%/*}/../shared/sbom_requirements.txt
 
 SetEnvVar "PYTHON3_PATH" "/Library/Frameworks/Python.framework/Versions/3.9/bin"
 SetEnvVar "PIP3_PATH" "/Library/Frameworks/Python.framework/Versions/3.9/bin"
+SetEnvVar "SBOM_PYTHON_APPS_PATH" "/Library/Frameworks/Python.framework/Versions/3.9/bin"
 
 # Install Python certificates. Required at least for emsdk installation
 open /Applications/Python\ 3.9/Install\ Certificates.command

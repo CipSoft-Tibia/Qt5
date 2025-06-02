@@ -14,40 +14,46 @@
 
 import m from 'mithril';
 
+import {copyToClipboard} from '../base/clipboard';
 import {Trash} from '../base/disposable';
 import {findRef} from '../base/dom_utils';
 import {FuzzyFinder} from '../base/fuzzy';
 import {assertExists} from '../base/logging';
 import {undoCommonChatAppReplacements} from '../base/string_utils';
-import {Actions} from '../common/actions';
 import {
   duration,
-  setTimestampFormat,
   Span,
   Time,
   time,
   TimeSpan,
+} from '../base/time';
+import {Actions} from '../common/actions';
+import {pluginManager} from '../common/plugins';
+import {
+  DurationPrecision,
+  setDurationPrecision,
+  setTimestampFormat,
   TimestampFormat,
-} from '../common/time';
+} from '../common/timestamp_format';
 import {raf} from '../core/raf_scheduler';
 import {Command} from '../public';
+import {HotkeyConfig, HotkeyContext} from '../widgets/hotkey_context';
+import {HotkeyGlyphs} from '../widgets/hotkey_glyphs';
+import {maybeRenderFullscreenModalDialog} from '../widgets/modal';
 
 import {addTab} from './bottom_tab';
-import {copyToClipboard, onClickCopy} from './clipboard';
+import {onClickCopy} from './clipboard';
 import {CookieConsent} from './cookie_consent';
 import {globals} from './globals';
 import {toggleHelp} from './help_modal';
-import {fullscreenModalContainer} from './modal';
 import {Omnibox, OmniboxOption} from './omnibox';
-import {runQueryInNewTab} from './query_result_tab';
+import {verticalScrollToTrack} from './scroll_helper';
 import {executeSearch} from './search_handler';
 import {Sidebar} from './sidebar';
 import {SqlTableTab} from './sql_table/tab';
 import {SqlTables} from './sql_table/well_known_tables';
 import {Topbar} from './topbar';
 import {shareTrace} from './trace_attrs';
-import {HotkeyConfig, HotkeyContext} from './widgets/hotkey_context';
-import {HotkeyGlyphs} from './widgets/hotkey_glyphs';
 
 function renderPermalink(): m.Children {
   const permalink = globals.state.permalink;
@@ -186,11 +192,16 @@ export class App implements m.ClassComponent {
   private cmds: Command[] = [
     {
       id: 'perfetto.SetTimestampFormat',
-      name: 'Set timestamp format',
+      name: 'Set timestamp and duration format',
       callback:
           async () => {
             const options: PromptOption[] = [
               {key: TimestampFormat.Timecode, displayName: 'Timecode'},
+              {key: TimestampFormat.UTC, displayName: 'Realtime (UTC)'},
+              {
+                key: TimestampFormat.TraceTz,
+                displayName: 'Realtime (Trace TZ)',
+              },
               {key: TimestampFormat.Seconds, displayName: 'Seconds'},
               {key: TimestampFormat.Raw, displayName: 'Raw'},
               {
@@ -198,11 +209,34 @@ export class App implements m.ClassComponent {
                 displayName: 'Raw (with locale-specific formatting)',
               },
             ];
-            const promptText = 'Select timecode format...';
+            const promptText = 'Select format...';
 
             try {
               const result = await this.prompt(promptText, options);
               setTimestampFormat(result as TimestampFormat);
+              raf.scheduleFullRedraw();
+            } catch {
+              // Prompt was probably cancelled - do nothing.
+            }
+          },
+    },
+    {
+      id: 'perfetto.SetDurationPrecision',
+      name: 'Set duration precision',
+      callback:
+          async () => {
+            const options: PromptOption[] = [
+              {key: DurationPrecision.Full, displayName: 'Full'},
+              {
+                key: DurationPrecision.HumanReadable,
+                displayName: 'Human readable',
+              },
+            ];
+            const promptText = 'Select duration precision mode...';
+
+            try {
+              const result = await this.prompt(promptText, options);
+              setDurationPrecision(result as DurationPrecision);
               raf.scheduleFullRedraw();
             } catch {
               // Prompt was probably cancelled - do nothing.
@@ -284,12 +318,10 @@ export class App implements m.ClassComponent {
       callback:
           () => {
             const window = getTimeSpanOfSelectionOrVisibleWindow();
-            if (window) {
-              this.enterQueryMode();
-              this.queryText =
-                  `select  where ts >= ${window.start} and ts < ${window.end}`;
-              this.pendingCursorPlacement = 7;
-            }
+            this.enterQueryMode();
+            this.queryText =
+                `select  where ts >= ${window.start} and ts < ${window.end}`;
+            this.pendingCursorPlacement = 7;
           },
     },
     {
@@ -298,9 +330,55 @@ export class App implements m.ClassComponent {
       callback:
           () => {
             const window = getTimeSpanOfSelectionOrVisibleWindow();
-            if (window) {
-              const query = `ts >= ${window.start} and ts < ${window.end}`;
-              copyToClipboard(query);
+            const query = `ts >= ${window.start} and ts < ${window.end}`;
+            copyToClipboard(query);
+          },
+    },
+    {
+      // Selects & reveals the first track on the timeline with a given URI.
+      id: 'perfetto.FindTrack',
+      name: 'Find track by URI',
+      callback:
+          async () => {
+            const tracks = Array.from(pluginManager.trackRegistry.values());
+            const options = tracks.map(({uri}): PromptOption => {
+              return {key: uri, displayName: uri};
+            });
+
+            // Sort tracks in a natural sort order
+            const collator = new Intl.Collator('en', {
+              numeric: true,
+              sensitivity: 'base',
+            });
+            const sortedOptions = options.sort((a, b) => {
+              return collator.compare(a.displayName, b.displayName);
+            });
+
+            try {
+              const selectedUri =
+                  await this.prompt('Choose a track...', sortedOptions);
+
+              // Find the first track with this URI
+              const firstTrack = Object.values(globals.state.tracks)
+                                     .find(({uri}) => uri === selectedUri);
+              if (firstTrack) {
+                console.log(firstTrack);
+                verticalScrollToTrack(firstTrack.key, true);
+                const traceTime = globals.stateTraceTimeTP();
+                globals.makeSelection(
+                    Actions.selectArea({
+                      area: {
+                        start: traceTime.start,
+                        end: traceTime.end,
+                        tracks: [firstTrack.key],
+                      },
+                    }),
+                );
+              } else {
+                alert(`No tracks with uri ${selectedUri} on the timeline`);
+              }
+            } catch {
+              // Prompt was probably cancelled - do nothing.
             }
           },
     },
@@ -330,12 +408,10 @@ export class App implements m.ClassComponent {
     if (msgTTL > 0 || engineIsBusy) {
       setTimeout(() => raf.scheduleFullRedraw(), msgTTL * 1000);
       return m(
-          `.omnibox.message-mode`,
-          m(`input[placeholder=${
-                globals.state.status.msg}][readonly][disabled][ref=omnibox]`,
-            {
-              value: '',
-            }));
+          `.omnibox.message-mode`, m(`input[readonly][disabled][ref=omnibox]`, {
+            value: '',
+            placeholder: globals.state.status.msg,
+          }));
     }
 
     if (this.omniboxMode === OmniboxMode.Command) {
@@ -481,7 +557,7 @@ export class App implements m.ClassComponent {
         raf.scheduleFullRedraw();
       },
       onSubmit: (value, alt) => {
-        runQueryInNewTab(
+        globals.openQuery(
             undoCommonChatAppReplacements(value),
             alt ? 'Pinned query' : 'Omnibox query',
             alt ? undefined : 'omnibox_query');
@@ -504,7 +580,7 @@ export class App implements m.ClassComponent {
 
     return m(Omnibox, {
       value: globals.state.omniboxState.omnibox,
-      placeholder: 'Search...',
+      placeholder: 'Search or type \'>\' for commands or \':\' for SQL mode',
       inputRef: App.OMNIBOX_INPUT_REF,
       onInput: (value, prev) => {
         if (prev === '') {
@@ -586,7 +662,7 @@ export class App implements m.ClassComponent {
             m(Alerts),
             children,
             m(CookieConsent),
-            m(fullscreenModalContainer.mithrilComponent),
+            maybeRenderFullscreenModalDialog(),
             globals.state.perfDebug && m('.perf-stats'),
             ),
     );

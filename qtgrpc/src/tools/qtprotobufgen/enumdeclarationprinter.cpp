@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
 #include "enumdeclarationprinter.h"
-#include "utils.h"
 #include "generatorcommon.h"
 
 using namespace ::QtProtobuf;
@@ -24,8 +23,10 @@ void EnumDeclarationPrinter::startEnum()
 {
     m_printer->Print(m_typeMap, CommonTemplates::EnumGadgetDeclarationTemplate());
 
-    if (!m_typeMap["export_macro"].empty())
-        m_printer->Print(m_typeMap, CommonTemplates::QNamespaceDeclarationTemplate());
+    static const std::string exportMacro = common::buildExportMacro(false);
+    if (!exportMacro.empty())
+        m_printer->Print({{ "export_macro", exportMacro }},
+                         CommonTemplates::QNamespaceDeclarationTemplate());
     else
         m_printer->Print(m_typeMap, CommonTemplates::QNamespaceDeclarationNoExportTemplate());
 
@@ -37,7 +38,7 @@ void EnumDeclarationPrinter::startEnum()
 
 void EnumDeclarationPrinter::printEnum()
 {
-    m_printer->Print(m_typeMap, CommonTemplates::EnumDefinitionTemplate());
+    m_printer->Print(m_typeMap, CommonTemplates::EnumClassDefinitionTemplate());
 
     Indent();
     int numValues = m_descriptor->value_count();
@@ -51,7 +52,6 @@ void EnumDeclarationPrinter::printEnum()
 
     m_printer->Print(CommonTemplates::SemicolonBlockEnclosureTemplate());
     m_printer->Print(m_typeMap, CommonTemplates::QEnumNSTemplate());
-    m_printer->Print(m_typeMap, CommonTemplates::UsingRepeatedEnumTemplate());
 
     if (!m_typeMap["export_macro"].empty())
         m_printer->Print(m_typeMap, CommonTemplates::EnumRegistrationDeclaration());

@@ -17,6 +17,7 @@
 #include <private/qabstracthttpserver_p.h>
 
 #include <QtHttpServer/qhttpserverresponse.h>
+#include <QtNetwork/qhttpheaders.h>
 
 #include <functional>
 #include <unordered_map>
@@ -25,20 +26,13 @@ QT_BEGIN_NAMESPACE
 
 class QHttpServerResponsePrivate
 {
-    struct HashHelper {
-        std::size_t operator()(const QByteArray& key) const
-        {
-            return qHash(key.toLower());
-        }
-    };
-
 public:
     QHttpServerResponsePrivate(QByteArray &&d, const QHttpServerResponse::StatusCode sc);
     QHttpServerResponsePrivate(const QHttpServerResponse::StatusCode sc);
 
     QByteArray data;
     QHttpServerResponse::StatusCode statusCode;
-    std::unordered_multimap<QByteArray, QByteArray, HashHelper> headers;
+    QHttpHeaders headers;
 };
 
 QT_END_NAMESPACE

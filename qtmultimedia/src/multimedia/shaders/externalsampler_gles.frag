@@ -1,3 +1,6 @@
+// Copyright (C) 2024 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
 #extension GL_OES_EGL_image_external : require
 precision highp float;
 precision highp int;
@@ -10,6 +13,10 @@ struct buf
     float width;
     float masteringWhite;
     float maxLum;
+    int redOrAlphaIndex;
+    int plane1Format;
+    int plane2Format;
+    int plane3Format;
 };
 
 uniform buf ubuf;

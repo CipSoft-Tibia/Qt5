@@ -6,6 +6,7 @@
 #define COMPONENTS_AUTOFILL_CORE_COMMON_MOJOM_AUTOFILL_TYPES_MOJOM_TRAITS_H_
 
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -209,7 +210,11 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
     return r.value;
   }
 
-  static const std::string& form_control_type(
+  static const std::u16string& selected_text(const autofill::FormFieldData& r) {
+    return r.selected_text;
+  }
+
+  static autofill::mojom::FormControlType form_control_type(
       const autofill::FormFieldData& r) {
     return r.form_control_type;
   }
@@ -219,7 +224,7 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
     return r.autocomplete_attribute;
   }
 
-  static const absl::optional<autofill::AutocompleteParsingResult>
+  static const std::optional<autofill::AutocompleteParsingResult>
   parsed_autocomplete(const autofill::FormFieldData& r) {
     return r.parsed_autocomplete;
   }
@@ -261,6 +266,10 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
 
   static uint64_t max_length(const autofill::FormFieldData& r) {
     return r.max_length;
+  }
+
+  static bool is_user_edited(const autofill::FormFieldData& r) {
+    return r.is_user_edited;
   }
 
   static bool is_autofilled(const autofill::FormFieldData& r) {
@@ -324,14 +333,9 @@ struct StructTraits<autofill::mojom::FormFieldDataDataView,
     return r.bounds;
   }
 
-  static const std::vector<std::u16string>& datalist_values(
+  static const std::vector<autofill::SelectOption>& datalist_options(
       const autofill::FormFieldData& r) {
-    return r.datalist_values;
-  }
-
-  static const std::vector<std::u16string>& datalist_labels(
-      const autofill::FormFieldData& r) {
-    return r.datalist_labels;
+    return r.datalist_options;
   }
 
   static bool Read(autofill::mojom::FormFieldDataDataView data,
@@ -437,9 +441,14 @@ struct StructTraits<autofill::mojom::FormFieldDataPredictionsDataView,
     return r.heuristic_type;
   }
 
-  static const std::string& server_type(
+  static const std::optional<std::string>& server_type(
       const autofill::FormFieldDataPredictions& r) {
     return r.server_type;
+  }
+
+  static const std::string& html_type(
+      const autofill::FormFieldDataPredictions& r) {
+    return r.html_type;
   }
 
   static const std::string& overall_type(
@@ -489,6 +498,11 @@ struct StructTraits<autofill::mojom::FormDataPredictionsDataView,
 
   static const std::string& signature(const autofill::FormDataPredictions& r) {
     return r.signature;
+  }
+
+  static const std::string& alternative_signature(
+      const autofill::FormDataPredictions& r) {
+    return r.alternative_signature;
   }
 
   static const std::vector<autofill::FormFieldDataPredictions>& fields(
@@ -623,6 +637,11 @@ struct StructTraits<autofill::mojom::PasswordGenerationUIDataDataView,
   static const autofill::FormData& form_data(
       const autofill::password_generation::PasswordGenerationUIData& r) {
     return r.form_data;
+  }
+
+  static bool input_field_empty(
+      const autofill::password_generation::PasswordGenerationUIData& r) {
+    return r.input_field_empty;
   }
 
   static bool Read(

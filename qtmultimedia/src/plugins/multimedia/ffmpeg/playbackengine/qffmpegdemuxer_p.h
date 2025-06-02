@@ -14,10 +14,11 @@
 // We mean it.
 //
 
-#include "playbackengine/qffmpegplaybackengineobject_p.h"
-#include "private/qplatformmediaplayer_p.h"
-#include "playbackengine/qffmpegpacket_p.h"
-#include "playbackengine/qffmpegpositionwithoffset_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackengineobject_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegpacket_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackutils_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegtime_p.h>
+#include <QtMultimedia/private/qplatformmediaplayer_p.h>
 
 #include <unordered_map>
 
@@ -29,8 +30,8 @@ class Demuxer : public PlaybackEngineObject
 {
     Q_OBJECT
 public:
-    Demuxer(AVFormatContext *context, const PositionWithOffset &posWithOffset,
-            const StreamIndexes &streamIndexes, int loops);
+    Demuxer(AVFormatContext *context, TrackPosition initialPosUs, bool seekPending,
+            const LoopOffset &loopOffset, const StreamIndexes &streamIndexes, int loops);
 
     using RequestingSignal = void (Demuxer::*)(Packet);
     static RequestingSignal signalByTrackType(QPlatformMediaPlayer::TrackType trackType);
@@ -44,8 +45,11 @@ signals:
     void requestProcessAudioPacket(Packet);
     void requestProcessVideoPacket(Packet);
     void requestProcessSubtitlePacket(Packet);
-    void firstPacketFound(TimePoint tp, qint64 trackPos);
+    void firstPacketFound(Id id, TrackPosition absSeekPos);
     void packetsBuffered();
+
+protected:
+    std::chrono::milliseconds timerInterval() const override;
 
 private:
     bool canDoNextStep() const override;
@@ -58,11 +62,11 @@ private:
     struct StreamData
     {
         QPlatformMediaPlayer::TrackType trackType = QPlatformMediaPlayer::TrackType::NTrackTypes;
-        qint64 bufferedDuration = 0;
+        TrackDuration bufferedDuration = TrackDuration(0);
         qint64 bufferedSize = 0;
 
-        qint64 maxSentPacketsPos = 0;
-        qint64 maxProcessedPacketPos = 0;
+        TrackPosition maxSentPacketsPos = TrackPosition(0);
+        TrackPosition maxProcessedPacketPos = TrackPosition(0);
 
         bool isDataLimitReached = false;
     };
@@ -74,10 +78,14 @@ private:
     bool m_seeked = false;
     bool m_firstPacketFound = false;
     std::unordered_map<int, StreamData> m_streams;
-    PositionWithOffset m_posWithOffset;
-    qint64 m_maxPacketsEndPos = 0;
+    TrackPosition m_posInLoopUs = TrackPosition(0); // Position in current loop in [0, duration()]
+    LoopOffset m_loopOffset;
+    TrackPosition m_maxPacketsEndPos = TrackPosition(0);
     QAtomicInt m_loops = QMediaPlayer::Once;
     bool m_buffered = false;
+    qsizetype m_demuxerRetryCount = 0;
+    static constexpr qsizetype s_maxDemuxerRetries = 10; // Arbitrarily chosen
+    static constexpr std::chrono::milliseconds s_demuxerRetryInterval = std::chrono::milliseconds(10);
 };
 
 } // namespace QFFmpeg

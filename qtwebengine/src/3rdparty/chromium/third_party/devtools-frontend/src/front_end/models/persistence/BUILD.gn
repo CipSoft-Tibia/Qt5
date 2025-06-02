@@ -55,10 +55,7 @@ devtools_entrypoint("bundle") {
 
   visibility = [
     ":*",
-    "../../../test/unittests/front_end/models/bindings/*",
-    "../../../test/unittests/front_end/models/persistence/*",
-    "../../../test/unittests/front_end/models/workspace/*",
-    "../../../test/unittests/front_end/models/workspace_diff/*",
+    "../../../test/unittests/*",
     "../../entrypoints/main/*",
     "../../panels/network/*",
     "../../panels/recorder/*",
@@ -70,21 +67,17 @@ devtools_entrypoint("bundle") {
   visibility += devtools_models_visibility
 }
 
-devtools_entrypoint("legacy") {
-  entrypoint = "persistence-legacy.ts"
-
-  deps = [ ":bundle" ]
-
-  visibility = [
-    "../..:legacy_entrypoints",
-    "../../legacy_test_runner/*",
-  ]
-}
-
 devtools_entrypoint("meta") {
   entrypoint = "persistence-meta.ts"
 
-  deps = [ ":bundle" ]
+  deps = [
+    ":bundle",
+    "../../core/common:bundle",
+    "../../core/i18n:bundle",
+    "../../core/sdk:bundle",
+    "../../models/workspace:bundle",
+    "../../ui/legacy:bundle",
+  ]
 
   visibility = [ "../../entrypoints/*" ]
 }

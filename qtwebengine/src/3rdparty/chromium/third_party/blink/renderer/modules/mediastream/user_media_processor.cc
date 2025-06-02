@@ -214,12 +214,15 @@ void SurfaceAudioProcessingSettings(MediaStreamSource* source) {
         break;
     }
 
-    source->SetAudioProcessingProperties(echo_cancellation_mode,
-                                         properties.goog_auto_gain_control,
-                                         properties.goog_noise_suppression);
+    source->SetAudioProcessingProperties(
+        echo_cancellation_mode, properties.goog_auto_gain_control,
+        properties.goog_noise_suppression,
+        properties.voice_isolation ==
+            AudioProcessingProperties::VoiceIsolationType::
+                kVoiceIsolationEnabled);
   } else {
     // If the source is not a processed source, it could still support system
-    // echo cancellation. Surface that if it does.
+    // echo cancellation or voice. Surface that if it does.
     media::AudioParameters params = source_impl->GetAudioParameters();
     const MediaStreamSource::EchoCancellationMode echo_cancellation_mode =
         params.IsValid() &&
@@ -227,7 +230,12 @@ void SurfaceAudioProcessingSettings(MediaStreamSource* source) {
             ? MediaStreamSource::EchoCancellationMode::kSystem
             : MediaStreamSource::EchoCancellationMode::kDisabled;
 
-    source->SetAudioProcessingProperties(echo_cancellation_mode, false, false);
+    source->SetAudioProcessingProperties(
+        echo_cancellation_mode, false, false,
+        params.IsValid() &&
+            (params.effects() &
+             media::AudioParameters::VOICE_ISOLATION_SUPPORTED) &&
+            (params.effects() & media::AudioParameters::VOICE_ISOLATION));
   }
 }
 
@@ -322,7 +330,7 @@ class UserMediaProcessor::RequestInfo final
                             MediaStreamRequestResult result,
                             const String& result_name);
 
-  UserMediaRequest* request() { return request_; }
+  UserMediaRequest* request() { return request_.Get(); }
   int32_t request_id() const { return request_->request_id(); }
 
   State state() const { return state_; }
@@ -397,7 +405,7 @@ class UserMediaProcessor::RequestInfo final
 
   MediaStreamDescriptorVector* descriptors() {
     DCHECK(descriptors_);
-    return descriptors_;
+    return descriptors_.Get();
   }
 
   const mojom::blink::StreamDevicesSet& devices_set() const {
@@ -498,8 +506,10 @@ MediaStreamComponent* UserMediaProcessor::RequestInfo::CreateAndStartVideoTrack(
   return MediaStreamVideoTrack::CreateVideoTrack(
       native_source, video_capture_settings_.track_adapter_settings(),
       video_capture_settings_.noise_reduction(), is_video_content_capture_,
-      video_capture_settings_.min_frame_rate(), video_capture_settings_.pan(),
-      video_capture_settings_.tilt(), video_capture_settings_.zoom(),
+      video_capture_settings_.min_frame_rate(),
+      video_capture_settings_.image_capture_device_settings()
+          ? &*video_capture_settings_.image_capture_device_settings()
+          : nullptr,
       pan_tilt_zoom_allowed(),
       WTF::BindOnce(&UserMediaProcessor::RequestInfo::OnTrackStarted,
                     WrapWeakPersistent(this)),
@@ -813,6 +823,9 @@ void UserMediaProcessor::SetupVideoInput() {
   stream_controls->dynamic_surface_switching_requested =
       request->dynamic_surface_switching_requested();
 
+  stream_controls->exclude_monitor_type_surfaces =
+      request->exclude_monitor_type_surfaces();
+
   if (blink::IsDeviceMediaType(video_controls.stream_type)) {
     GetMediaDevicesDispatcher()->GetVideoInputCapabilities(
         WTF::BindOnce(&UserMediaProcessor::SelectVideoDeviceSettings,
@@ -982,7 +995,7 @@ void UserMediaProcessor::GenerateStreamForCurrentRequestInfo(
 WebMediaStreamDeviceObserver*
 UserMediaProcessor::GetMediaStreamDeviceObserver() {
   auto* media_stream_device_observer =
-      media_stream_device_observer_for_testing_;
+      media_stream_device_observer_for_testing_.get();
   if (frame_) {  // Can be null for tests.
     auto* web_frame =
         static_cast<WebLocalFrame*>(WebFrame::FromCoreFrame(frame_));
@@ -1490,6 +1503,7 @@ MediaStreamSource* UserMediaProcessor::InitializeAudioSourceObject(
   }
   capabilities.auto_gain_control = {true, false};
   capabilities.noise_suppression = {true, false};
+  capabilities.voice_isolation = {true, false};
   capabilities.sample_size = {
       media::SampleFormatToBitsPerChannel(media::kSampleFormatS16),  // min
       media::SampleFormatToBitsPerChannel(media::kSampleFormatS16)   // max
@@ -1551,8 +1565,10 @@ UserMediaProcessor::CreateAudioSource(
         frame_, device,
         base::OptionalToPtr(current_request_info_->audio_capture_settings()
                                 .requested_buffer_size()),
-        stream_controls->disable_local_echo, std::move(source_ready),
-        task_runner_);
+        stream_controls->disable_local_echo,
+        audio_processing_properties.echo_cancellation_type ==
+            EchoCancellationType::kEchoCancellationSystem,
+        std::move(source_ready), task_runner_);
   }
 
   // The audio device is not associated with screen capture and also requires
@@ -1683,7 +1699,7 @@ MediaStreamComponent* UserMediaProcessor::CreateAudioTrack(
   // set. Thus, all audio processing properties are known and can be surfaced
   // to |source|.
   SurfaceAudioProcessingSettings(source);
-  return component;
+  return component.Get();
 }
 
 void UserMediaProcessor::OnCreateNativeTracksCompleted(
@@ -1822,7 +1838,7 @@ MediaStreamSource* UserMediaProcessor::FindLocalSource(
         local_source->GetPlatformSource();
     const MediaStreamDevice& active_device = source->device();
     if (IsSameDevice(active_device, device)) {
-      return local_source;
+      return local_source.Get();
     }
   }
   return nullptr;
@@ -1935,13 +1951,9 @@ void UserMediaProcessor::StopAllProcessing() {
         [[fallthrough]];
 
       case RequestInfo::State::kNotSentForGeneration:
-        LogUserMediaRequestWithNoResult(
-            blink::MEDIA_STREAM_REQUEST_NOT_GENERATED);
         break;
 
       case RequestInfo::State::kGenerated:
-        LogUserMediaRequestWithNoResult(
-            blink::MEDIA_STREAM_REQUEST_PENDING_MEDIA_TRACKS);
         break;
     }
     current_request_info_ = nullptr;
@@ -2012,7 +2024,7 @@ bool UserMediaProcessor::HasActiveSources() const {
   return !local_sources_.empty();
 }
 
-#if !BUILDFLAG(IS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 void UserMediaProcessor::FocusCapturedSurface(const String& label, bool focus) {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   GetMediaStreamDispatcherHost()->FocusCapturedSurface(label, focus);

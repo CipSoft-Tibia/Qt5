@@ -11,7 +11,7 @@
 
 #include <QtDebug>
 
-// Example snippet based on viewProperties.glsllib
+// Example snippet
 // The comment in the ifdefed block is necessary to keep weird shader compilers (Vivante) happy.
 
 // #ifdef QQ3D_SHADER_META
@@ -104,6 +104,8 @@ ShaderMetaData getShaderMetaData(const QByteArray &data)
                 uniform.type = (it != end) ? it->toString().toLatin1() : QByteArray();
                 it = uObj.constFind(QLatin1String("name"));
                 uniform.name = (it != end) ? it->toString().toLatin1() : QByteArray();
+                it = uObj.constFind(QLatin1String("multiview_dependent"));
+                uniform.multiview = (it != end) ? it->toBool() : false;
 
                 it = uObj.constFind(QLatin1String("condition"));
                 const QString conditionString = (it != end) ? it->toString() : QString();
@@ -127,6 +129,8 @@ ShaderMetaData getShaderMetaData(const QByteArray &data)
                 inOutVar.name = (it != end) ? it->toString().toLatin1() : QByteArray();
                 it = uObj.constFind(QLatin1String("stage"));
                 inOutVar.stage = InputOutput::stageFromString((it != end) ? it->toString() : QString());
+                it = uObj.constFind(QLatin1String("flat"));
+                inOutVar.flat = (it != end) ? it->toBool() : false;
             }
             return inOutVar;
         };

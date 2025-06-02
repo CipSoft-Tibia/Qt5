@@ -2,11 +2,11 @@
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include "qgrpccallreply.h"
-#include "qgrpcchanneloperation.h"
+#include <QtGrpc/qgrpccallreply.h>
+#include <QtGrpc/qgrpcoperationcontext.h>
 
-#include <QtCore/qthread.h>
 #include <QtCore/qeventloop.h>
+#include <QtCore/qthread.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -15,50 +15,41 @@ using namespace Qt::StringLiterals;
 /*!
     \class QGrpcCallReply
     \inmodule QtGrpc
+    \brief The QGrpcCallReply class provides access in handling unary RPCs.
 
-    \brief The QGrpcCallReply class implements logic to handle gRPC calls
-    from the gRPC client side.
+    The QGrpcCallReply class provides the interface for handling unary remote
+    procedure calls (RPCs), which is one of the four \gRPC \l{Service
+    Methods}{service methods}.
 
-    The QGrpcCallReply object is owned by the client object that created it.
+    For a high-level overview, refer to the \l{Unary Calls} {Qt GRPC
+    Client Guide}.
+
+    \include qtgrpc-shared.qdocinc rpc-lifetime-note
 */
 
 /*!
-    \fn template <typename Func1, typename Func2> void QGrpcCallReply::subscribe(QObject *receiver,
-    Func1 &&finishCallback, Func2 &&errorCallback, Qt::ConnectionType type = Qt::AutoConnection);
+    \internal
 
-    Convenience function to connect the \a finishCallback and
-    \a errorCallback of \a receiver to the QGrpcCallReply::finished and
-    the QGrpcCallReply::errorOccurred signals with the given connection \a type.
+    Constructs a new QGrpcCallReply from an \a operationContext.
 
-    Calling this function is equivalent to the following:
-    \code
-        QObject::connect(this, &QGrpcCallReply::finished, receiver,
-                         std::forward<Func1>(finishCallback), type);
-        QObject::connect(this, &QGrpcCallReply::errorOccurred, receiver,
-                         std::forward<Func2>(errorCallback), type);
-    \endcode
+    This is usually called by the generated client interface.
+
+    \sa QGrpcClientBase::call QAbstractGrpcChannel::call
 */
-
-/*!
-    \fn template <typename Func1> void QGrpcCallReply::subscribe(QObject *receiver,
-    Func1 &&finishCallback, Qt::ConnectionType type = Qt::AutoConnection);
-
-    Convenience function to connect the \a finishCallback of \a receiver to
-    the QGrpcCallReply::finished signal with given connection \a type.
-
-    Calling this function is equivalent to the following:
-    \code
-        QObject::connect(this, &QGrpcCallReply::finished, receiver,
-                         std::forward<Func1>(finishCallback), type);
-    \endcode
-*/
-
-QGrpcCallReply::QGrpcCallReply(std::shared_ptr<QGrpcChannelOperation> channelOperation)
-    : QGrpcOperation(std::move(channelOperation))
+QGrpcCallReply::QGrpcCallReply(std::shared_ptr<QGrpcOperationContext> operationContext)
+    : QGrpcOperation(std::move(operationContext))
 {
 }
 
+/*!
+    Destroys the QGrpcCallReply.
+*/
 QGrpcCallReply::~QGrpcCallReply() = default;
+
+bool QGrpcCallReply::event(QEvent *event)
+{
+    return QObject::event(event);
+}
 
 QT_END_NAMESPACE
 

@@ -1396,7 +1396,9 @@ void QTextEngine::shapeText(int item) const
 
     QFontEngine *fontEngine = this->fontEngine(si, &si.ascent, &si.descent, &si.leading);
 
+#if QT_CONFIG(harfbuzz)
     bool kerningEnabled;
+#endif
     bool letterSpacingIsAbsolute;
     bool shapingEnabled = false;
     QHash<QFont::Tag, quint32> features;
@@ -1405,8 +1407,8 @@ void QTextEngine::shapeText(int item) const
     if (useRawFont) {
         QTextCharFormat f = format(&si);
         QFont font = f.font();
-        kerningEnabled = font.kerning();
 #  if QT_CONFIG(harfbuzz)
+        kerningEnabled = font.kerning();
         shapingEnabled = QFontEngine::scriptRequiresOpenType(QChar::Script(si.analysis.script))
                 || (font.styleStrategy() & QFont::PreferNoShaping) == 0;
 #  endif
@@ -1418,8 +1420,8 @@ void QTextEngine::shapeText(int item) const
 #endif
     {
         QFont font = this->font(si);
-        kerningEnabled = font.d->kerning;
 #if QT_CONFIG(harfbuzz)
+        kerningEnabled = font.d->kerning;
         shapingEnabled = QFontEngine::scriptRequiresOpenType(QChar::Script(si.analysis.script))
                 || (font.d->request.styleStrategy & QFont::PreferNoShaping) == 0;
 #endif
@@ -1445,7 +1447,7 @@ void QTextEngine::shapeText(int item) const
                 shapingEnabled
                     ? QFontEngine::GlyphIndicesOnly
                     : QFontEngine::ShaperFlag(0);
-        if (!fontEngine->stringToCMap(reinterpret_cast<const QChar *>(string), itemLength, &initialGlyphs, &nGlyphs, shaperFlags))
+        if (fontEngine->stringToCMap(reinterpret_cast<const QChar *>(string), itemLength, &initialGlyphs, &nGlyphs, shaperFlags) < 0)
             Q_UNREACHABLE();
     }
 
@@ -1745,7 +1747,8 @@ int QTextEngine::shapeTextWithHarfbuzzNG(const QScriptItem &si,
             g.offsets[0].y = QFixed{};
             g.attributes[0].clusterStart = true;
             g.attributes[0].dontPrint = true;
-            log_clusters[0] = glyphs_shaped;
+            for (uint str_pos = 0; str_pos < item_length; ++str_pos)
+                log_clusters[str_pos] = glyphs_shaped;
         }
 
         if (Q_UNLIKELY(engineIdx != 0)) {
@@ -2739,6 +2742,21 @@ bool QTextEngine::LayoutData::reallocate(int totalGlyphs)
 
     allocated = newAllocated;
     return true;
+}
+
+void QGlyphLayout::copy(QGlyphLayout *oldLayout)
+{
+    Q_ASSERT(offsets != oldLayout->offsets);
+
+    int n = std::min(numGlyphs, oldLayout->numGlyphs);
+
+    memcpy(offsets, oldLayout->offsets, n * sizeof(QFixedPoint));
+    memcpy(attributes, oldLayout->attributes, n * sizeof(QGlyphAttributes));
+    memcpy(justifications, oldLayout->justifications, n * sizeof(QGlyphJustification));
+    memcpy(advances, oldLayout->advances, n * sizeof(QFixed));
+    memcpy(glyphs, oldLayout->glyphs, n * sizeof(glyph_t));
+
+    numGlyphs = n;
 }
 
 // grow to the new size, copying the existing data to the new layout

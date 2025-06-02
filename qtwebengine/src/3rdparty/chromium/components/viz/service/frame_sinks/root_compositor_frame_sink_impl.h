@@ -12,7 +12,6 @@
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#include "build/chromeos_buildflags.h"
 #include "components/viz/common/surfaces/frame_sink_id.h"
 #include "components/viz/common/surfaces/local_surface_id.h"
 #include "components/viz/service/display/display_client.h"
@@ -28,6 +27,7 @@
 #include "services/viz/privileged/mojom/compositing/frame_sink_manager.mojom.h"
 #include "services/viz/public/mojom/compositing/compositor_frame_sink.mojom.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
+#include "ui/base/ozone_buildflags.h"
 #include "ui/gfx/ca_layer_params.h"
 
 namespace viz {
@@ -106,6 +106,7 @@ class VIZ_SERVICE_EXPORT RootCompositorFrameSinkImpl
   void SetNeedsBeginFrame(bool needs_begin_frame) override;
   void SetWantsAnimateOnlyBeginFrames() override;
   void SetWantsBeginFrameAcks() override;
+  void SetAutoNeedsBeginFrame() override;
   void SubmitCompositorFrame(
       const LocalSurfaceId& local_surface_id,
       CompositorFrame frame,
@@ -209,11 +210,9 @@ class VIZ_SERVICE_EXPORT RootCompositorFrameSinkImpl
   // to actually unref.
   LocalSurfaceId to_evict_on_next_draw_and_swap_ = LocalSurfaceId();
 
-// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
-// of lacros-chrome is complete.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
+#if BUILDFLAG(IS_LINUX) && BUILDFLAG(IS_OZONE_X11)
   gfx::Size last_swap_pixel_size_;
-#endif
+#endif  // BUILDFLAG(IS_LINUX) && BUILDFLAG(IS_OZONE_X11)
 
 #if BUILDFLAG(IS_APPLE)
   gfx::CALayerParams last_ca_layer_params_;

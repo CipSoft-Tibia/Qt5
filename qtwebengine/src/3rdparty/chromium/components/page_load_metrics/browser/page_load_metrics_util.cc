@@ -6,7 +6,6 @@
 
 #include <algorithm>
 
-#include "base/metrics/histogram_functions.h"
 #include "components/page_load_metrics/common/page_load_timing.h"
 #include "components/page_load_metrics/common/page_visit_final_status.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
@@ -164,6 +163,7 @@ absl::optional<base::TimeDelta> GetNonPrerenderingBackgroundStartTiming(
     const PageLoadMetricsObserverDelegate& delegate) {
   switch (delegate.GetPrerenderingState()) {
     case PrerenderingState::kNoPrerendering:
+    case PrerenderingState::kInPreview:
       if (delegate.StartedInForeground()) {
         return delegate.GetTimeToFirstBackground();
       } else {
@@ -209,6 +209,7 @@ base::TimeDelta CorrectEventAsNavigationOrActivationOrigined(
 
   switch (delegate.GetPrerenderingState()) {
     case PrerenderingState::kNoPrerendering:
+    case PrerenderingState::kInPreview:
       return event;
     case PrerenderingState::kInPrerendering:
     case PrerenderingState::kActivatedNoActivationStart:
@@ -365,8 +366,6 @@ PageVisitFinalStatus RecordPageVisitFinalStatusForTiming(
                             ? PageVisitFinalStatus::kReachedFCP
                             : PageVisitFinalStatus::kAborted;
   }
-  UMA_HISTOGRAM_ENUMERATION("UserPerceivedPageVisit.PageVisitFinalStatus",
-                            page_visit_status);
   ukm::builders::UserPerceivedPageVisit pageVisitBuilder(source_id);
   pageVisitBuilder.SetPageVisitFinalStatus(static_cast<int>(page_visit_status));
   pageVisitBuilder.Record(ukm::UkmRecorder::Get());

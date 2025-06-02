@@ -14,11 +14,12 @@ import("//build/config/coverage/coverage.gni")
 import("//build/config/dcheck_always_on.gni")
 import("//build/config/gclient_args.gni")
 import("//build/config/host_byteorder.gni")
+import("//build/config/pch.gni")
 import("//build/config/rust.gni")
-import("//build/config/sanitizers/sanitizers.gni")
 import("//build/config/ui.gni")
 import("//build/config/unwind.gni")
 import("//build/toolchain/cc_wrapper.gni")
+import("//build/toolchain/cros/cros_config.gni")
 import("//build/toolchain/goma.gni")
 import("//build/toolchain/rbe.gni")
 import("//build/toolchain/toolchain.gni")
@@ -89,6 +90,10 @@ declare_args() {
   # the needed gcov profiling data.
   auto_profile_path = ""
 
+  # Optimize for coverage guided fuzzing (balance between speed and number of
+  # branches)
+  optimize_for_fuzzing = false
+
   # Use stdlib=libc++
   use_libcxx = is_mac
 
@@ -134,11 +139,18 @@ declare_args() {
       (is_chromeos || is_android || is_win || is_linux || is_mac ||
        (is_ios && use_lld)) && is_official_build
 
+  # Whether to enable thin lto incremental builds.
+  # See: https://clang.llvm.org/docs/ThinLTO.html#incremental
+  # The cache can lead to non-determinism: https://crbug.com/1486045
+  thin_lto_enable_cache = true
+
   # Initialize all local variables with a pattern. This flag will fill
   # uninitialized floating-point types (and 32-bit pointers) with 0xFF and the
   # rest with 0xAA. This makes behavior of uninitialized memory bugs consistent,
   # recognizable in the debugger, and crashes on memory accesses through
   # uninitialized pointers.
+  #
+  # Flag discussion: https://crbug.com/977230
   #
   # TODO(crbug.com/1131993): This regresses binary size by ~1MB on Android and
   # needs to be evaluated before enabling it there as well.
@@ -152,10 +164,10 @@ declare_args() {
   # final binary. When enabled, the separated text sections with prefix
   # '.text.hot', '.text.unlikely', '.text.startup' and '.text.exit' will not be
   # merged to '.text' section. This allows us to identify the hot code section
-  # ('.text.hot') in the binary which may be mlocked or mapped to huge page to
-  # reduce TLB misses which gives performance improvement on cpu usage.
-  # The gold linker by default has text section splitting enabled.
-  use_text_section_splitting = false
+  # ('.text.hot') in the binary, which allows our data collection pipelines to
+  # more easily identify code that we assume to be hot/cold that doesn't turn
+  # out to be such in the field.
+  use_text_section_splitting = is_chromeos
 
   # Enable DWARF v5.
   use_dwarf5 = false
@@ -376,10 +388,6 @@ config("compiler") {
       } else if ((is_posix && !is_chromeos && !is_nacl) || is_fuchsia) {
         # TODO(phajdan.jr): Use -fstack-protector-strong when our gcc supports it.
         # See also https://crbug.com/533294
-        if (current_os != "zos") {
-          cflags += [ "--param=ssp-buffer-size=4" ]
-        }
-
         # The x86 toolchain currently has problems with stack-protector.
         if (is_android && current_cpu == "x86") {
           cflags += [ "-fno-stack-protector" ]
@@ -529,6 +537,11 @@ config("compiler") {
  #     asmflags += [ "-femit-dwarf-unwind=no-compact-unwind" ]
  #     cflags += [ "-femit-dwarf-unwind=no-compact-unwind" ]
     }
+
+    # dsymutil is not available in the system, on bots, for rustc to call. Our
+    # linker_driver.py script runs dsymutil itself, which is set to be the
+    # linker for Rust targets as well.
+    rustflags += [ "-Csplit-debuginfo=unpacked" ]
   }
 
   # Linux/Android/Fuchsia common flags setup.
@@ -653,6 +666,24 @@ config("compiler") {
       }
     }
 
+    # TODO(crbug.com/1488374): This causes binary size growth and potentially
+    # other problems.
+    # TODO(crbug.com/1491036): This isn't supported by Cronet's mainline llvm version.
+    if (default_toolchain != "//build/toolchain/cros:target" &&
+        !llvm_android_mainline) {
+      cflags += [
+        "-mllvm",
+        "-split-threshold-for-reg-with-hint=0",
+      ]
+      if (use_thin_lto && is_a_target_toolchain) {
+        if (is_win) {
+          ldflags += [ "-mllvm:-split-threshold-for-reg-with-hint=0" ]
+        } else {
+          ldflags += [ "-Wl,-mllvm,-split-threshold-for-reg-with-hint=0" ]
+        }
+      }
+    }
+
     # TODO(crbug.com/1235145): Investigate why/if this should be needed.
     if (is_win) {
       cflags += [ "/clang:-ffp-contract=off" ]
@@ -709,8 +740,7 @@ config("compiler") {
     }
   } else if (is_win && !is_mingw) {
     cflags_c += [ "/std:c11" ]
-    if ((defined(use_cxx17) && use_cxx17) ||
-        (!is_clang && defined(msvc_use_cxx17) && msvc_use_cxx17)) {
+    if (defined(use_cxx17) && use_cxx17) {
       cflags_cc += [ "/std:c++17" ]
     } else {
       cflags_cc += [ "/std:c++20" ]
@@ -764,9 +794,26 @@ config("compiler") {
       "-fsplit-lto-unit",
     ]
 
-    # Limit the size of the ThinLTO cache to the lesser of 10% of
-    # available disk space, 40GB and 100000 files.
-    cache_policy = "cache_size=10%:cache_size_bytes=40g:cache_size_files=100000"
+    if (thin_lto_enable_cache) {
+      # Limit the size of the ThinLTO cache to the lesser of 10% of
+      # available disk space, 40GB and 100000 files.
+      cache_policy =
+          "cache_size=10%:cache_size_bytes=40g:cache_size_files=100000"
+      cache_dir = rebase_path("$root_out_dir/thinlto-cache", root_build_dir)
+      if (is_win) {
+        ldflags += [
+          "/lldltocache:$cache_dir",
+          "/lldltocachepolicy:$cache_policy",
+        ]
+      } else {
+        if (is_apple) {
+          ldflags += [ "-Wl,-cache_path_lto,$cache_dir" ]
+        } else {
+          ldflags += [ "-Wl,--thinlto-cache-dir=$cache_dir" ]
+        }
+        ldflags += [ "-Wl,--thinlto-cache-policy=$cache_policy" ]
+      }
+    }
 
     # An import limit of 30 has better performance (per speedometer) and lower
     # binary size than the default setting of 100.
@@ -778,9 +825,6 @@ config("compiler") {
       ldflags += [
         "/opt:lldltojobs=all",
         "-mllvm:-import-instr-limit=$import_instr_limit",
-        "/lldltocache:" +
-            rebase_path("$root_out_dir/thinlto-cache", root_build_dir),
-        "/lldltocachepolicy:$cache_policy",
         "-mllvm:-disable-auto-upgrade-debug-info",
       ]
     } else {
@@ -795,19 +839,6 @@ config("compiler") {
       # TODO(thakis): Check if '=0' (that is, number of cores, instead
       # of "all" which means number of hardware threads) is faster.
       ldflags += [ "-Wl,--thinlto-jobs=all" ]
-      if (is_apple) {
-        ldflags += [
-          "-Wl,-cache_path_lto," +
-              rebase_path("$root_out_dir/thinlto-cache", root_build_dir),
-          "-Wcrl,object_path_lto",
-        ]
-      } else {
-        ldflags +=
-            [ "-Wl,--thinlto-cache-dir=" +
-              rebase_path("$root_out_dir/thinlto-cache", root_build_dir) ]
-      }
-
-      ldflags += [ "-Wl,--thinlto-cache-policy=$cache_policy" ]
 
       if (is_chromeos) {
         # ARM was originally set lower than x86 to keep the size
@@ -823,13 +854,13 @@ config("compiler") {
 
       ldflags += [ "-Wl,-mllvm,-import-instr-limit=$import_instr_limit" ]
 
-      if (!is_chromeos) {
-        # TODO(https://crbug.com/972449): turn on for ChromeOS when that
-        # toolchain has this flag.
-        # We only use one version of LLVM within a build so there's no need to
-        # upgrade debug info, which can be expensive since it runs the verifier.
-        ldflags += [ "-Wl,-mllvm,-disable-auto-upgrade-debug-info" ]
+      if (is_apple) {
+        ldflags += [ "-Wcrl,object_path_lto" ]
       }
+
+      # We only use one version of LLVM within a build so there's no need to
+      # upgrade debug info, which can be expensive since it runs the verifier.
+      ldflags += [ "-Wl,-mllvm,-disable-auto-upgrade-debug-info" ]
     }
 
     # TODO(https://crbug.com/1211155): investigate why this isn't effective on
@@ -837,13 +868,18 @@ config("compiler") {
     if (!is_android || current_cpu == "arm64") {
       cflags += [ "-fwhole-program-vtables" ]
 
-      # whole-program-vtables implies -fsplit-lto-unit, and Rust needs to match
-      # behaviour. Rust needs to know the linker will be doing LTO in this case
-      # or it rejects the Zsplit-lto-unit flag.
-      rustflags += [
-        "-Zsplit-lto-unit",
-        "-Clinker-plugin-lto=yes",
-      ]
+      if (toolchain_supports_rust_thin_lto) {
+        # whole-program-vtables implies -fsplit-lto-unit, and Rust needs to match
+        # behaviour. Rust needs to know the linker will be doing LTO in this case
+        # or it rejects the Zsplit-lto-unit flag.
+        rustflags += [
+          "-Zsplit-lto-unit",
+          "-Clinker-plugin-lto=yes",
+        ]
+      } else {
+        # Don't include bitcode if it won't be used.
+        rustflags += [ "-Cembed-bitcode=no" ]
+      }
 
       if (!is_win || is_mingw) {
         ldflags += [ "-fwhole-program-vtables" ]
@@ -866,6 +902,9 @@ config("compiler") {
   if (compiler_timing) {
     if (is_clang && !is_nacl) {
       cflags += [ "-ftime-trace" ]
+      if (use_lld && is_mac) {
+        ldflags += [ "-Wl,--time-trace" ]
+      }
     } else if (is_win) {
       cflags += [
         # "Documented" here:
@@ -1078,7 +1117,15 @@ config("compiler") {
   # TODO(https://crbug.com/702997): Move this back to the `runtime_library`
   # config when NaCl is removed.
   if (use_safe_libcxx) {
-    defines += [ "_LIBCPP_ENABLE_ASSERTIONS=1" ]
+    # TODO(https://crbug.com/1465186): Switch saigo to hardened mode once
+    # it's rolled in.
+    if (is_nacl_saigo) {
+      defines += [ "_LIBCPP_ENABLE_ASSERTIONS=1" ]
+    } else {
+      defines += [ "_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE" ]
+    }
+  } else {
+    defines += [ "_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_NONE" ]
   }
 }
 
@@ -1094,10 +1141,15 @@ config("thinlto_optimize_default") {
       ldflags = [ "-Wl,--lto-O" + lto_opt_level ]
     }
 
-    # We always point Rust to a linker that performs LTO, so we don't want Rust
-    # to preemptively do so during compilation too or they conflict. But we do
-    # want Rust to generate LTO metadata in order for the linker to do its job.
-    rustflags = [ "-Clinker-plugin-lto=yes" ]
+    if (toolchain_supports_rust_thin_lto) {
+      # We always point Rust to a linker that performs LTO, so we don't want Rust
+      # to preemptively do so during compilation too or they conflict. But we do
+      # want Rust to generate LTO metadata in order for the linker to do its job.
+      rustflags = [ "-Clinker-plugin-lto=yes" ]
+    } else {
+      # Don't include bitcode if it won't be used.
+      rustflags = [ "-Cembed-bitcode=no" ]
+    }
   }
 }
 
@@ -1123,10 +1175,15 @@ config("thinlto_optimize_max") {
       ldflags = [ "-Wl,--lto-O" + lto_opt_level ]
     }
 
-    # We always point Rust to a linker that performs LTO, so we don't want Rust
-    # to preemptively do so during compilation too or they conflict. But we do
-    # want Rust to generate LTO metadata in order for the linker to do its job.
-    rustflags = [ "-Clinker-plugin-lto=yes" ]
+    if (toolchain_supports_rust_thin_lto) {
+      # We always point Rust to a linker that performs LTO, so we don't want Rust
+      # to preemptively do so during compilation too or they conflict. But we do
+      # want Rust to generate LTO metadata in order for the linker to do its job.
+      rustflags = [ "-Clinker-plugin-lto=yes" ]
+    } else {
+      # Don't include bitcode if it won't be used.
+      rustflags = [ "-Cembed-bitcode=no" ]
+    }
   }
 }
 
@@ -1145,12 +1202,6 @@ config("compiler_cpu_abi") {
     configs += [ "//build/config/chromeos:compiler_cpu_abi" ]
   }
 
-  # TODO(https://crbug.com/1383873): Remove this once figured out.
-  if (is_apple && current_cpu == "arm64") {
-    cflags += [ "-fno-global-isel" ]
-    ldflags += [ "-fno-global-isel" ]
-  }
-
   if ((is_posix && !is_apple) || is_fuchsia) {
     # CPU architecture. We may or may not be doing a cross compile now, so for
     # simplicity we always explicitly set the architecture.
@@ -1159,6 +1210,17 @@ config("compiler_cpu_abi") {
         "-m64",
         "-msse3",
       ]
+
+      # Minimum SIMD support for devices running lacros.
+      # See https://crbug.com/1475858
+      if (is_chromeos_lacros) {
+        cflags += [
+          "-mssse3",
+          "-msse4",
+          "-msse4.1",
+          "-msse4.2",
+        ]
+      }
       ldflags += [ "-m64" ]
     } else if (current_cpu == "x86") {
       cflags += [ "-m32" ]
@@ -1698,6 +1760,32 @@ config("runtime_library") {
   }
 }
 
+# treat_warnings_as_errors ----------------------------------------------------
+#
+# Adding this config causes the compiler to treat warnings as fatal errors.
+# This is used as a subconfig of both chromium_code and no_chromium_code, and
+# is broken out separately so nocompile tests can force-enable this setting
+# independently of the default warning flags.
+config("treat_warnings_as_errors") {
+  if (is_win) {
+    cflags = [ "/WX" ]
+  } else {
+    cflags = [ "-Werror" ]
+
+    # The compiler driver can sometimes (rarely) emit warnings before calling
+    # the actual linker.  Make sure these warnings are treated as errors as
+    # well.
+    ldflags = [ "-Werror" ]
+  }
+
+  # Turn rustc warnings into the "deny" lint level, which produce compiler
+  # errors. The equivalent of -Werror for clang/gcc.
+  #
+  # Note we apply the actual lint flags in config("compiler"). All warnings
+  # are suppressed in third-party crates.
+  rustflags = [ "-Dwarnings" ]
+}
+
 # default_warnings ------------------------------------------------------------
 #
 # Collects all warning flags that are used by default.  This is used as a
@@ -1708,11 +1796,9 @@ config("default_warnings") {
   cflags_c = []
   cflags_cc = []
   ldflags = []
+  configs = []
 
   if (is_win && !is_mingw) {
-    if (treat_warnings_as_errors) {
-      cflags += [ "/WX" ]
-    }
     if (fatal_linker_warnings) {
       arflags = [ "/WX" ]
       ldflags = [ "/WX" ]
@@ -1867,6 +1953,7 @@ config("default_warnings") {
 
       "/wd4068",  # unknown pragma
       "/wd5051",  # attribute requires newer c++
+      "/w34996",
     ]
 
     cflags_cc += [
@@ -1881,9 +1968,9 @@ config("default_warnings") {
       cflags += [ "/wd4244" ]
     }
   } else {
-    if (is_apple && !is_nacl) {
-      # When compiling Objective-C, warns if a method is used whose
-      # availability is newer than the deployment target.
+    if ((is_apple || is_android) && !is_nacl) {
+      # Warns if a method is used whose availability is newer than the
+      # deployment target.
       cflags += [ "-Wunguarded-availability" ]
     }
 
@@ -1987,11 +2074,8 @@ config("default_warnings") {
         cflags += [ "-Wno-nonportable-include-path" ]
       }
 
-      if (is_fuchsia && llvm_force_head_revision) {
+      if (is_fuchsia) {
         cflags_cc += [
-          # TODO(https://crbug.com/1474032): fix and reenable
-          "-Wno-deprecated-literal-operator",
-
           # TODO(https://crbug.com/1474434): fix and reenable
           "-Wno-missing-field-initializers",
         ]
@@ -2003,18 +2087,30 @@ config("default_warnings") {
         # Ignore warnings about MSVC optimization pragmas.
         # TODO(thakis): Only for no_chromium_code? http://crbug.com/912662
         "-Wno-ignored-pragma-optimize",
+
+        # TODO(crbug.com/1343975) Evaluate and possibly enable.
+        "-Wno-deprecated-builtins",
+
+        # TODO(crbug.com/1352183) Evaluate and possibly enable.
+        "-Wno-bitfield-constant-conversion",
+
+        # TODO(crbug.com/1412713) Evaluate and possibly enable.
+        "-Wno-deprecated-this-capture",
+
+        # TODO(https://crbug.com/1491833): Fix and re-enable.
+        "-Wno-invalid-offsetof",
+
+        # TODO(crbug.com/1494809): Evaluate and possibly enable.
+        "-Wno-vla-extension",
+
+        # TODO(https://crbug.com/1490607): Fix and re-enable.
+        "-Wno-thread-safety-reference-return",
       ]
 
       if (!is_nacl) {
-        cflags += [
-          # TODO(crbug.com/1343975) Evaluate and possibly enable.
-          "-Wno-deprecated-builtins",
-
-          # TODO(crbug.com/1352183) Evaluate and possibly enable.
-          "-Wno-bitfield-constant-conversion",
-
-          # TODO(crbug.com/1412713) Evaluate and possibly enable.
-          "-Wno-deprecated-this-capture",
+        cflags_cc += [
+          # TODO(https://crbug.com/1513724): Fix and re-enable.
+          "-Wno-c++11-narrowing-const-reference",
         ]
       }
     }
@@ -2022,7 +2118,7 @@ config("default_warnings") {
     # Some builders, such as Cronet, use a different version of Clang than
     # Chromium. This can cause minor errors when compiling Chromium changes. We
     # want to avoid these errors.
-    if (use_lenient_compiler_flags) {
+    if (llvm_android_mainline) {
       cflags += [
         "-Wno-error=unknown-warning-option",
         "-Wno-error=unused-command-line-argument",
@@ -2094,26 +2190,9 @@ config("chromium_code") {
     }
   } else {
     cflags = [ "-Wall" ]
-    if (treat_warnings_as_errors) {
-      cflags += [ "-Werror" ]
-
-      # The compiler driver can sometimes (rarely) emit warnings before calling
-      # the actual linker.  Make sure these warnings are treated as errors as
-      # well.
-      ldflags = [ "-Werror" ]
-    }
     if (is_clang) {
       # Enable extra warnings for chromium_code when we control the compiler.
       cflags += [ "-Wextra" ]
-    }
-
-    if (treat_warnings_as_errors) {
-      # Turn rustc warnings into the "deny" lint level, which produce compiler
-      # errors. The equivalent of -Werror for clang/gcc.
-      #
-      # Note we apply the actual lint flags in config("compiler"). All warnings
-      # are suppressed in third-party crates.
-      rustflags = [ "-Dwarnings" ]
     }
 
     # In Chromium code, we define __STDC_foo_MACROS in order to get the
@@ -2132,9 +2211,10 @@ config("chromium_code") {
       # disabled, so only do that for Release build.
       fortify_level = "2"
 
-      # ChromeOS supports a high-quality _FORTIFY_SOURCE=3 implementation
-      # with a few custom glibc patches. Use that if it's available.
-      if (is_chromeos_ash) {
+      # ChromeOS's toolchain supports a high-quality _FORTIFY_SOURCE=3
+      # implementation with a few custom glibc patches. Use that if it's
+      # available.
+      if (is_chromeos_device && !lacros_use_chromium_toolchain) {
         fortify_level = "3"
       }
       cflags += [ "-U_FORTIFY_SOURCE", "-D_FORTIFY_SOURCE=" + fortify_level ]
@@ -2179,6 +2259,9 @@ config("chromium_code") {
     ":default_warnings",
     ":noshadowing",
   ]
+  if (treat_warnings_as_errors) {
+    configs += [ ":treat_warnings_as_errors" ]
+  }
 }
 
 config("no_chromium_code") {
@@ -2195,12 +2278,6 @@ config("no_chromium_code") {
       "/wd4267",  # TODO(jschuh): size_t to int.
     ]
   } else {
-    # GCC may emit unsuppressible warnings so don't add -Werror for no chromium
-    # code. crbug.com/589724
-    if (treat_warnings_as_errors && is_clang) {
-      cflags += [ "-Werror" ]
-      ldflags = [ "-Werror" ]
-    }
     if (is_clang && !is_nacl) {
       # TODO(thakis): Remove !is_nacl once
       # https://codereview.webrtc.org/1552863002/ made its way into chromium.
@@ -2234,6 +2311,12 @@ config("no_chromium_code") {
   rustflags = [ "--cap-lints=allow" ]
 
   configs = [ ":default_warnings" ]
+
+  # GCC may emit unsuppressible warnings so only apply this config when
+  # building with clang. crbug.com/589724
+  if (treat_warnings_as_errors && is_clang) {
+    configs += [ ":treat_warnings_as_errors" ]
+  }
 }
 
 # noshadowing -----------------------------------------------------------------
@@ -2425,6 +2508,11 @@ if (is_win && !is_mingw) {
     common_optimize_on_ldflags += [ "/OPT:REF" ]  # Remove unreferenced data.
     # TODO(thakis): Add LTO/PGO clang flags eventually, https://crbug.com/598772
   }
+
+  if (is_clang) {
+    # See below.
+    common_optimize_on_cflags += [ "/clang:-fno-math-errno" ]
+  }
 } else {
   common_optimize_on_cflags = []
   common_optimize_on_ldflags = []
@@ -2473,6 +2561,14 @@ if (is_win && !is_mingw) {
       "-Wl,--gc-sections",
     ]
   }
+
+  # We cannot rely on errno being set after math functions,
+  # especially since glibc does not set it. Thus, use -fno-math-errno
+  # so that the compiler knows it can inline math functions.
+  # Note that this is different from -ffast-math (even though -ffast-math
+  # implies -fno-math-errno), which also allows a number of unsafe
+  # optimizations.
+  common_optimize_on_cflags += [ "-fno-math-errno" ]
 }
 
 config("default_stack_frames") {

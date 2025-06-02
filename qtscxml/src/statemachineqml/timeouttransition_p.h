@@ -25,7 +25,7 @@
 QT_BEGIN_NAMESPACE
 class QTimer;
 
-class Q_STATEMACHINEQML_PRIVATE_EXPORT TimeoutTransition : public QSignalTransition, public QQmlParserStatus
+class Q_STATEMACHINEQML_EXPORT TimeoutTransition : public QSignalTransition, public QQmlParserStatus
 {
     Q_OBJECT
     Q_PROPERTY(int timeout READ timeout WRITE setTimeout BINDABLE bindableTimeout)

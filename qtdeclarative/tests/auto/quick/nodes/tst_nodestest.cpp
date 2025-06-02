@@ -34,7 +34,7 @@
 # define TST_D3D11
 #endif
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
 # define TST_MTL
 #endif
 

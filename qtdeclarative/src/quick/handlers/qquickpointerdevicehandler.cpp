@@ -13,7 +13,7 @@ QT_BEGIN_NAMESPACE
     \qmlabstract
     \since 5.10
     \preliminary
-    \instantiates QQuickPointerDeviceHandler
+    \nativetype QQuickPointerDeviceHandler
     \inherits PointerHandler
     \inqmlmodule QtQuick
     \brief Abstract handler for pointer events with device-specific constraints.
@@ -272,9 +272,9 @@ bool QQuickPointerDeviceHandler::wantsPointerEvent(QPointerEvent *event)
         return false;
     if (d->acceptedModifiers != Qt::KeyboardModifierMask && event->modifiers() != d->acceptedModifiers)
         return false;
-    // Some handlers (HoverHandler, PinchHandler) set acceptedButtons to Qt::NoButton to indicate that button state is irrelevant.
-    if (event->pointingDevice()->type() != QPointingDevice::DeviceType::TouchScreen &&
-            acceptedButtons() != Qt::NoButton && event->type() != QEvent::Wheel &&
+    // Some handlers (HoverHandler, PinchHandler, PointHandler) set
+    // acceptedButtons to Qt::NoButton to indicate that button state is irrelevant.
+    if (event->isSinglePointEvent() && acceptedButtons() != Qt::NoButton && event->type() != QEvent::Wheel &&
             (static_cast<QSinglePointEvent *>(event)->buttons() & acceptedButtons()) == 0 &&
             (static_cast<QSinglePointEvent *>(event)->button() & acceptedButtons()) == 0)
         return false;

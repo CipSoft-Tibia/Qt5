@@ -37,11 +37,11 @@ class CORE_EXPORT SpeculationRule final
       absl::optional<network::mojom::ReferrerPolicy>,
       mojom::blink::SpeculationEagerness,
       network::mojom::blink::NoVarySearchPtr,
-      mojom::blink::SpeculationInjectionWorld);
+      mojom::blink::SpeculationInjectionType);
   ~SpeculationRule();
 
   const Vector<KURL>& urls() const { return urls_; }
-  DocumentRulePredicate* predicate() const { return predicate_; }
+  DocumentRulePredicate* predicate() const { return predicate_.Get(); }
   bool requires_anonymous_client_ip_when_cross_origin() const {
     return requires_anonymous_client_ip_.value();
   }
@@ -57,8 +57,8 @@ class CORE_EXPORT SpeculationRule final
       const {
     return no_vary_search_expected_;
   }
-  mojom::blink::SpeculationInjectionWorld injection_world() const {
-    return injection_world_;
+  mojom::blink::SpeculationInjectionType injection_type() const {
+    return injection_type_;
   }
 
   void Trace(Visitor*) const;
@@ -72,8 +72,8 @@ class CORE_EXPORT SpeculationRule final
   const absl::optional<network::mojom::ReferrerPolicy> referrer_policy_;
   mojom::blink::SpeculationEagerness eagerness_;
   network::mojom::blink::NoVarySearchPtr no_vary_search_expected_;
-  mojom::blink::SpeculationInjectionWorld injection_world_ =
-      mojom::blink::SpeculationInjectionWorld::kNone;
+  mojom::blink::SpeculationInjectionType injection_type_ =
+      mojom::blink::SpeculationInjectionType::kNone;
 };
 
 }  // namespace blink

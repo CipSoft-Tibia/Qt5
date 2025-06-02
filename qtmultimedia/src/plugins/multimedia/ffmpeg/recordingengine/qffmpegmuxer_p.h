@@ -3,8 +3,19 @@
 #ifndef QFFMPEGMUXER_P_H
 #define QFFMPEGMUXER_P_H
 
-#include "qffmpegthread_p.h"
-#include "qffmpeg_p.h"
+//
+//  W A R N I N G
+//  -------------
+//
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
+//
+// We mean it.
+//
+
+#include <QtFFmpegMediaPluginImpl/private/qffmpegthread_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
 #include <queue>
 
 QT_BEGIN_NAMESPACE
@@ -23,7 +34,7 @@ public:
 private:
     AVPacketUPtr takePacket();
 
-    void init() override;
+    bool init() override;
     void cleanup() override;
     bool hasData() const override;
     void processOne() override;

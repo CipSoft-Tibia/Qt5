@@ -19,7 +19,6 @@
 
 #include "absl/strings/string_view.h"
 
-
 namespace anonymous_tokens {
 
 // Returned integer on successful execution of BoringSSL methods
@@ -62,7 +61,20 @@ constexpr absl::string_view kHkdfPublicMetadataInfo = "PBRSA";
 
 constexpr int kHkdfPublicMetadataInfoSizeInBytes = 5;
 
-}  // namespace anonymous_tokens
+// Object identifier for Rivest, Shamir, Adleman (RSA) Signature Scheme with
+// Appendix - Probabilistic Signature Scheme (RSASSA-PSS) defined here:
+// https://oidref.com/1.2.840.113549.1.1.10
+constexpr char kRsaSsaPssOid[] = "1.2.840.113549.1.1.10";
 
+// Object identifier for SHA384 defined here:
+// https://oidref.com/2.16.840.1.101.3.4.2.2
+constexpr char kSha384Oid[] = "2.16.840.1.101.3.4.2.2";
+
+// Object identifier for RSA algorithm that uses the Mask Generator Function 1
+// (MGF1) defined here:
+// https://oidref.com/1.2.840.113549.1.1.8
+constexpr char kRsaSsaPssMgf1Oid[] = "1.2.840.113549.1.1.8";
+
+}  // namespace anonymous_tokens
 
 #endif  // ANONYMOUS_TOKENS_CPP_CRYPTO_CONSTANTS_H_

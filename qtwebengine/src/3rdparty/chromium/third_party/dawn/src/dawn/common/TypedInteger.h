@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_COMMON_TYPEDINTEGER_H_
 #define SRC_DAWN_COMMON_TYPEDINTEGER_H_
@@ -101,7 +114,7 @@ class alignas(T) TypedIntegerImpl {
 
     // Increment / decrement operators for for-loop iteration
     constexpr TypedIntegerImpl& operator++() {
-        ASSERT(this->mValue < std::numeric_limits<T>::max());
+        DAWN_ASSERT(this->mValue < std::numeric_limits<T>::max());
         ++this->mValue;
         return *this;
     }
@@ -109,13 +122,13 @@ class alignas(T) TypedIntegerImpl {
     constexpr TypedIntegerImpl operator++(int) {
         TypedIntegerImpl ret = *this;
 
-        ASSERT(this->mValue < std::numeric_limits<T>::max());
+        DAWN_ASSERT(this->mValue < std::numeric_limits<T>::max());
         ++this->mValue;
         return ret;
     }
 
     constexpr TypedIntegerImpl& operator--() {
-        ASSERT(this->mValue > std::numeric_limits<T>::min());
+        DAWN_ASSERT(this->mValue > std::numeric_limits<T>::min());
         --this->mValue;
         return *this;
     }
@@ -123,7 +136,7 @@ class alignas(T) TypedIntegerImpl {
     constexpr TypedIntegerImpl operator--(int) {
         TypedIntegerImpl ret = *this;
 
-        ASSERT(this->mValue > std::numeric_limits<T>::min());
+        DAWN_ASSERT(this->mValue > std::numeric_limits<T>::min());
         --this->mValue;
         return ret;
     }
@@ -135,7 +148,7 @@ class alignas(T) TypedIntegerImpl {
         static_assert(std::is_same<T, T2>::value);
 
         // Overflow would wrap around
-        ASSERT(lhs.mValue + rhs.mValue >= lhs.mValue);
+        DAWN_ASSERT(lhs.mValue + rhs.mValue >= lhs.mValue);
         return lhs.mValue + rhs.mValue;
     }
 
@@ -148,12 +161,12 @@ class alignas(T) TypedIntegerImpl {
         if (lhs.mValue > 0) {
             // rhs is positive: |rhs| is at most the distance between max and |lhs|.
             // rhs is negative: (positive + negative) won't overflow
-            ASSERT(rhs.mValue <= std::numeric_limits<T>::max() - lhs.mValue);
+            DAWN_ASSERT(rhs.mValue <= std::numeric_limits<T>::max() - lhs.mValue);
         } else {
             // rhs is postive: (negative + positive) won't underflow
             // rhs is negative: |rhs| isn't less than the (negative) distance between min
             // and |lhs|
-            ASSERT(rhs.mValue >= std::numeric_limits<T>::min() - lhs.mValue);
+            DAWN_ASSERT(rhs.mValue >= std::numeric_limits<T>::min() - lhs.mValue);
         }
         return lhs.mValue + rhs.mValue;
     }
@@ -165,7 +178,7 @@ class alignas(T) TypedIntegerImpl {
         static_assert(std::is_same<T, T2>::value);
 
         // Overflow would wrap around
-        ASSERT(lhs.mValue - rhs.mValue <= lhs.mValue);
+        DAWN_ASSERT(lhs.mValue - rhs.mValue <= lhs.mValue);
         return lhs.mValue - rhs.mValue;
     }
 
@@ -179,11 +192,11 @@ class alignas(T) TypedIntegerImpl {
             // rhs is positive: positive minus positive won't overflow
             // rhs is negative: |rhs| isn't less than the (negative) distance between |lhs|
             // and max.
-            ASSERT(rhs.mValue >= lhs.mValue - std::numeric_limits<T>::max());
+            DAWN_ASSERT(rhs.mValue >= lhs.mValue - std::numeric_limits<T>::max());
         } else {
             // rhs is positive: |rhs| is at most the distance between min and |lhs|
             // rhs is negative: negative minus negative won't overflow
-            ASSERT(rhs.mValue <= lhs.mValue - std::numeric_limits<T>::min());
+            DAWN_ASSERT(rhs.mValue <= lhs.mValue - std::numeric_limits<T>::min());
         }
         return lhs.mValue - rhs.mValue;
     }
@@ -192,7 +205,7 @@ class alignas(T) TypedIntegerImpl {
     constexpr std::enable_if_t<std::is_signed<T2>::value, TypedIntegerImpl> operator-() const {
         static_assert(std::is_same<T, T2>::value);
         // The negation of the most negative value cannot be represented.
-        ASSERT(this->mValue != std::numeric_limits<T>::min());
+        DAWN_ASSERT(this->mValue != std::numeric_limits<T>::min());
         return TypedIntegerImpl(-this->mValue);
     }
 
@@ -250,6 +263,13 @@ constexpr ::dawn::detail::TypedIntegerImpl<Tag, T> Sub(
         static_cast<T>(::dawn::detail::TypedIntegerImpl<Tag, T>::SubImpl(lhs, rhs)));
 }
 
+template <typename Tag, typename T>
+constexpr ::dawn::detail::TypedIntegerImpl<Tag, T> PlusOne(
+    ::dawn::detail::TypedIntegerImpl<Tag, T> value) {
+    T one = 1;
+    return Add(value, ::dawn::detail::TypedIntegerImpl<Tag, T>(one));
+}
+
 template <typename T>
 constexpr std::enable_if_t<std::is_integral<T>::value, T> Add(T lhs, T rhs) {
     return static_cast<T>(lhs + rhs);
@@ -258,6 +278,11 @@ constexpr std::enable_if_t<std::is_integral<T>::value, T> Add(T lhs, T rhs) {
 template <typename T>
 constexpr std::enable_if_t<std::is_integral<T>::value, T> Sub(T lhs, T rhs) {
     return static_cast<T>(lhs - rhs);
+}
+
+template <typename T>
+constexpr std::enable_if_t<std::is_integral<T>::value, T> PlusOne(T value) {
+    return static_cast<T>(value + 1);
 }
 
 }  // namespace dawn::ityp

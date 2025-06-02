@@ -31,7 +31,7 @@ namespace Qt3DAnimation {
     \inqmlmodule Qt3D.Animation
     \since 5.9
     \inherits AbstractAnimation
-    \instantiates Qt3DAnimation::QKeyframeAnimation
+    \nativetype Qt3DAnimation::QKeyframeAnimation
 
     A KeyframeAnimation type implements simple keyframe animation
     that can be used to animate \l Transform. The keyframes consists of multiple
@@ -71,7 +71,7 @@ namespace Qt3DAnimation {
     Holds the repeat mode for the position values greater than the last frame position.
 */
 /*!
-    \enum QKeyframeAnimation::RepeatMode
+    \enum Qt3DAnimation::QKeyframeAnimation::RepeatMode
 
     This enumeration specifies how position values outside keyframe values are handled.
     \value None The animation is not applied to the target transform.

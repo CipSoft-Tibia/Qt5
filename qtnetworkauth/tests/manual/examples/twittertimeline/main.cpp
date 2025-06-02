@@ -49,7 +49,7 @@ int main(int argc, char **argv)
     const auto authenticate = [&]() {
         const auto clientIdentifier = twitterDialog.clientIdLineEdit->text();
         const auto clientSharedSecret = twitterDialog.clientSecretLineEdit->text();
-        twitterDialog.model.authenticate(qMakePair(clientIdentifier, clientSharedSecret));
+        twitterDialog.model.authenticate(std::make_pair(clientIdentifier, clientSharedSecret));
     };
     const auto buttonSlot = [&]() {
         if (twitterDialog.model.status() == Twitter::Status::Granted)

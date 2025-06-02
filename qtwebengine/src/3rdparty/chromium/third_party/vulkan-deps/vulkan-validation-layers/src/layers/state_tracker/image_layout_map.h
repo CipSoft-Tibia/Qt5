@@ -30,10 +30,11 @@
 #include "vulkan/vulkan.h"
 #include "error_message/logging.h"
 
-// Forward declarations...
-class CMD_BUFFER_STATE;
-class IMAGE_STATE;
-class IMAGE_VIEW_STATE;
+namespace vvl {
+class Image;
+class ImageView;
+class CommandBuffer;
+}  // namespace vvl
 #endif
 
 namespace image_layout_map {
@@ -49,7 +50,7 @@ struct InitialLayoutState {
     VkImageView image_view;          // For relaxed matching rule evaluation, else VK_NULL_HANDLE
     VkImageAspectFlags aspect_mask;  // For relaxed matching rules... else 0
     LoggingLabel label;
-    InitialLayoutState(const CMD_BUFFER_STATE& cb_state_, const IMAGE_VIEW_STATE* view_state_);
+    InitialLayoutState(const vvl::CommandBuffer& cb_state_, const vvl::ImageView* view_state_);
     InitialLayoutState() : image_view(VK_NULL_HANDLE), aspect_mask(0), label() {}
 };
 
@@ -112,18 +113,18 @@ class ImageSubresourceLayoutMap {
     using LayoutMap = subresource_adapter::BothRangeMap<LayoutEntry, 16>;
     using RangeType = LayoutMap::key_type;
 
-    bool SetSubresourceRangeLayout(const CMD_BUFFER_STATE& cb_state, const VkImageSubresourceRange& range, VkImageLayout layout,
+    bool SetSubresourceRangeLayout(const vvl::CommandBuffer& cb_state, const VkImageSubresourceRange& range, VkImageLayout layout,
                                    VkImageLayout expected_layout = kInvalidLayout);
-    void SetSubresourceRangeInitialLayout(const CMD_BUFFER_STATE& cb_state, const VkImageSubresourceRange& range,
+    void SetSubresourceRangeInitialLayout(const vvl::CommandBuffer& cb_state, const VkImageSubresourceRange& range,
                                           VkImageLayout layout);
-    void SetSubresourceRangeInitialLayout(const CMD_BUFFER_STATE& cb_state, VkImageLayout layout,
-                                          const IMAGE_VIEW_STATE& view_state);
+    void SetSubresourceRangeInitialLayout(const vvl::CommandBuffer& cb_state, VkImageLayout layout,
+                                          const vvl::ImageView& view_state);
     bool UpdateFrom(const ImageSubresourceLayoutMap& from);
     uintptr_t CompatibilityKey() const;
     const LayoutMap& GetLayoutMap() const { return layouts_; }
-    ImageSubresourceLayoutMap(const IMAGE_STATE& image_state);
+    ImageSubresourceLayoutMap(const vvl::Image& image_state);
     ~ImageSubresourceLayoutMap() {}
-    const IMAGE_STATE* GetImageView() const { return &image_state_; };
+    const vvl::Image* GetImageView() const { return &image_state_; };
 
     // This looks a bit ponderous but kAspectCount is a compile time constant
     VkImageSubresource Decode(IndexType index) const {
@@ -164,7 +165,7 @@ class ImageSubresourceLayoutMap {
     bool InRange(const VkImageSubresourceRange& range) const { return encoder_.InRange(range); }
 
   private:
-    const IMAGE_STATE& image_state_;
+    const vvl::Image& image_state_;
     const Encoder& encoder_;
     LayoutMap layouts_;
     InitialLayoutStates initial_layout_states_;

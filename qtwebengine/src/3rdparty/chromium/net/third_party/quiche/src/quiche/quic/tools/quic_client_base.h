@@ -15,7 +15,6 @@
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/crypto/crypto_handshake.h"
 #include "quiche/quic/core/deterministic_connection_id_generator.h"
-#include "quiche/quic/core/http/quic_client_push_promise_index.h"
 #include "quiche/quic/core/http/quic_spdy_client_session.h"
 #include "quiche/quic/core/http/quic_spdy_client_stream.h"
 #include "quiche/quic/core/quic_config.h"
@@ -277,6 +276,8 @@ class QuicClientBase : public QuicSession::Visitor {
 
   QuicConnectionHelperInterface* helper() { return helper_.get(); }
 
+  QuicAlarmFactory* alarm_factory() { return alarm_factory_.get(); }
+
   NetworkHelper* network_helper();
   const NetworkHelper* network_helper() const;
 
@@ -365,8 +366,6 @@ class QuicClientBase : public QuicSession::Visitor {
   // Returns the client connection ID to use.
   virtual QuicConnectionId GetClientConnectionId();
 
-  QuicAlarmFactory* alarm_factory() { return alarm_factory_.get(); }
-
   // Subclasses may need to explicitly clear the session on destruction
   // if they create it with objects that will be destroyed before this is.
   // You probably want to call this if you override CreateQuicSpdyClientSession.
@@ -453,7 +452,7 @@ class QuicClientBase : public QuicSession::Visitor {
   // If set,
   // - GetNextConnectionId will use this as the next server connection id.
   // - GenerateNewConnectionId will not be called.
-  absl::optional<QuicConnectionId> server_connection_id_override_;
+  std::optional<QuicConnectionId> server_connection_id_override_;
 
   // GenerateNewConnectionId creates a random connection ID of this length.
   // Defaults to 8.

@@ -4,14 +4,30 @@
 
 #include "quiche/quic/core/quic_buffered_packet_store.h"
 
+#include <cstddef>
+#include <list>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
+#include "quiche/quic/core/connection_id_generator.h"
+#include "quiche/quic/core/quic_alarm.h"
+#include "quiche/quic/core/quic_alarm_factory.h"
+#include "quiche/quic/core/quic_clock.h"
 #include "quiche/quic/core/quic_connection_id.h"
+#include "quiche/quic/core/quic_constants.h"
+#include "quiche/quic/core/quic_error_codes.h"
+#include "quiche/quic/core/quic_framer.h"
+#include "quiche/quic/core/quic_packets.h"
+#include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/quic/platform/api/quic_flags.h"
+#include "quiche/quic/platform/api/quic_socket_address.h"
+#include "quiche/common/platform/api/quiche_logging.h"
 
 namespace quic {
 
@@ -89,7 +105,8 @@ EnqueuePacketResult QuicBufferedPacketStore::EnqueuePacket(
     QuicConnectionId connection_id, bool ietf_quic,
     const QuicReceivedPacket& packet, QuicSocketAddress self_address,
     QuicSocketAddress peer_address, const ParsedQuicVersion& version,
-    absl::optional<ParsedClientHello> parsed_chlo) {
+    std::optional<ParsedClientHello> parsed_chlo,
+    ConnectionIdGeneratorInterface* connection_id_generator) {
   const bool is_chlo = parsed_chlo.has_value();
   QUIC_BUG_IF(quic_bug_12410_1, !GetQuicFlag(quic_allow_chlo_buffering))
       << "Shouldn't buffer packets if disabled via flag.";
@@ -144,6 +161,7 @@ EnqueuePacketResult QuicBufferedPacketStore::EnqueuePacket(
     connections_with_chlo_[connection_id] = false;  // Dummy value.
     // Set the version of buffered packets of this connection on CHLO.
     queue.version = version;
+    queue.connection_id_generator = connection_id_generator;
   } else {
     // Buffer non-CHLO packets in arrival order.
     queue.buffered_packets.push_back(std::move(new_entry));
@@ -191,7 +209,7 @@ BufferedPacketList QuicBufferedPacketStore::DeliverPackets(
       ParsedQuicVersion unused_parsed_version = UnsupportedQuicVersion();
       QuicConnectionId unused_destination_connection_id;
       QuicConnectionId unused_source_connection_id;
-      absl::optional<absl::string_view> unused_retry_token;
+      std::optional<absl::string_view> unused_retry_token;
       std::string unused_detailed_error;
 
       // We don't need to pass |generator| because we already got the correct
@@ -292,9 +310,11 @@ bool QuicBufferedPacketStore::HasChloForConnection(
 
 bool QuicBufferedPacketStore::IngestPacketForTlsChloExtraction(
     const QuicConnectionId& connection_id, const ParsedQuicVersion& version,
-    const QuicReceivedPacket& packet, std::vector<std::string>* out_alpns,
-    std::string* out_sni, bool* out_resumption_attempted,
-    bool* out_early_data_attempted, absl::optional<uint8_t>* tls_alert) {
+    const QuicReceivedPacket& packet,
+    std::vector<uint16_t>* out_supported_groups,
+    std::vector<std::string>* out_alpns, std::string* out_sni,
+    bool* out_resumption_attempted, bool* out_early_data_attempted,
+    std::optional<uint8_t>* tls_alert) {
   QUICHE_DCHECK_NE(out_alpns, nullptr);
   QUICHE_DCHECK_NE(out_sni, nullptr);
   QUICHE_DCHECK_NE(tls_alert, nullptr);
@@ -311,6 +331,7 @@ bool QuicBufferedPacketStore::IngestPacketForTlsChloExtraction(
     return false;
   }
   const TlsChloExtractor& tls_chlo_extractor = it->second.tls_chlo_extractor;
+  *out_supported_groups = tls_chlo_extractor.supported_groups();
   *out_alpns = tls_chlo_extractor.alpns();
   *out_sni = tls_chlo_extractor.server_name();
   *out_resumption_attempted = tls_chlo_extractor.resumption_attempted();

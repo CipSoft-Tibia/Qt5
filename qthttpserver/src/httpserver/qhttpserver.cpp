@@ -18,13 +18,20 @@ QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcHS, "qt.httpserver");
 
+QHttpServerPrivate::QHttpServerPrivate(QHttpServer *p) :
+    router(p)
+{
+}
+
 void QHttpServerPrivate::callMissingHandler(const QHttpServerRequest &request,
-                                            QHttpServerResponder &&responder)
+                                            QHttpServerResponder &responder)
 {
     Q_Q(QHttpServer);
 
-    if (missingHandler) {
-        missingHandler(request, std::move(responder));
+    if (missingHandler.context && missingHandler.slotObject &&
+        verifyThreadAffinity(missingHandler.context)) {
+        void *args[] = { nullptr, const_cast<QHttpServerRequest *>(&request), &responder };
+        missingHandler.slotObject->call(const_cast<QObject *>(missingHandler.context.data()), args);
     } else {
         qCDebug(lcHS) << "missing handler:" << request.url().path();
         q->sendResponse(QHttpServerResponder::StatusCode::NotFound, request, std::move(responder));
@@ -37,6 +44,16 @@ void QHttpServerPrivate::callMissingHandler(const QHttpServerRequest &request,
     \inmodule QtHttpServer
     \brief QHttpServer is a simplified API for QAbstractHttpServer and QHttpServerRouter.
 
+    QHttpServer allows to create a simple Http server by setting a range of
+    request handlers.
+
+    The \l route function can be used to conveniently add rules to
+    the servers \l QHttpServerRouter. To register a handler to be called after
+    every request use \l addAfterRequestHandler and to register a handler for
+    all unhandled requests use \l setMissingHandler.
+
+    Minimal example:
+
     \code
 
     QHttpServer server;
@@ -44,7 +61,13 @@ void QHttpServerPrivate::callMissingHandler(const QHttpServerRequest &request,
     server.route("/", [] () {
         return "hello world";
     });
-    server.listen();
+
+    auto tcpserver = new QTcpServer();
+    if (!tcpserver->listen() || !server.bind(tcpserver)) {
+        delete tcpserver;
+        return -1;
+    }
+    qDebug() << "Listening on port" << tcpserver->serverPort();
 
     \endcode
 */
@@ -53,45 +76,86 @@ void QHttpServerPrivate::callMissingHandler(const QHttpServerRequest &request,
     Creates an instance of QHttpServer with parent \a parent.
 */
 QHttpServer::QHttpServer(QObject *parent)
-    : QAbstractHttpServer(*new QHttpServerPrivate, parent)
+    : QAbstractHttpServer(*new QHttpServerPrivate(this), parent)
 {
 }
 
-/*! \fn template<typename Rule = QHttpServerRouterRule, typename ... Args> bool QHttpServer::route(Args && ... args)
+/*! \fn template <typename Rule = QHttpServerRouterRule, typename Functor> Rule *QHttpServer::route(const QString &pathPattern, QHttpServerRequest::Methods method, const QObject *receiver, Functor &&slot)
 
-    This function is just a wrapper to simplify the router API.
+    This is a convenience method to add a new \c Rule to the server's
+    \l{QHttpServerRouter}. The Rule template parameter can be any custom class
+    derived from QHttpServerRouterRule.
 
-    This function takes variadic arguments \a args. The last argument is a
-    callback (\c{ViewHandler}). The remaining arguments are used to create a
-    new \c Rule (the default is QHttpServerRouterRule). This is in turn added
-    to the QHttpServerRouter. It returns \c true if a new rule is created,
-    otherwise it returns \c false.
+    This function takes a \a pathPattern and a \a method that represent a set
+    of requests and creates a new \l{QHttpServerRouterRule} (or custom Rule if
+    specified in the template parameters) that forwards all respective requests
+    to the provided \a receiver and \a slot. The rule is added to the
+    \l{router}. For details on valid patterns in \a pathPattern, see the
+    \l{QHttpServerRouterRule} documentation.
 
-    \c ViewHandler can be a function pointer, non-mutable lambda, or any
-    other copiable callable with const call operator. The callable can take two
-    optional special arguments: \c {const QHttpServerRequest&} and
-    \c {QHttpServerResponder&&}. These special arguments must be the last in
-    the parameter list, but in any order, and there can be none, one, or both
-    of them present. Only handlers with \c void return type can accept
-    \c {QHttpServerResponder&&} arguments.
+    \a slot can be a member function pointer of \a receiver. It can also be
+    a function pointer, a non-mutable lambda, or any other copiable callable
+    with const call operator. In that case \a receiver has to be a \l QObject
+    pointer. The rule will be valid for the lifetime duration of the \a
+    receiver. The receiver must share the same thread affinity as the
+    QHttpServer for the registration to be successful and for the rule to be
+    executed.
 
-    Examples:
+    The slot can express its response with a return statement. The function has
+    to return QHttpServerResponse or any type that can be converted to
+    QHttpServerResponse. A large range of conversion constructors are available,
+    see \l{QHttpServerResponse}.
 
     \code
-
     QHttpServer server;
-
-    // Valid:
-    server.route("test", [] (const int page) { return ""; });
-    server.route("test", [] (const int page, const QHttpServerRequest &request) { return ""; });
-    server.route("test", [] (QHttpServerResponder &&responder) { return ""; });
-
-    // Invalid (compile time error):
-    server.route("test", [] (const QHttpServerRequest &request, const int page) { return ""; }); // request must be last
-    server.route("test", [] (QHttpServerRequest &request) { return ""; });      // request must be passed by const reference
-    server.route("test", [] (QHttpServerResponder &responder) { return ""; });  // responder must be passed by universal reference
-
+    server.route("/test", this, [] () { return ""; });
     \endcode
+
+    Alternatively, an optional last function argument \c {QHttpServerResponder&}
+    can be provided on which the response has to be written. If the response is
+    written to a \c {QHttpServerResponder&} the function must return \c void.
+
+    \code
+    server.route("/test2", this, [] (QHttpServerResponder &responder) {
+                                    responder.write(QHttpServerResponder::StatusCode::Forbidden); });
+    \endcode
+
+    The slot can further have a \c {const QHttpServerRequest&} as a
+    second to last parameter to get detailed information on the request
+
+    \code
+    server.route("/test3", this, [] (const QHttpServerRequest &request,
+                                    QHttpServerResponder &responder) {
+                                    responder.write(request.body(), "text/plain"_ba);});
+    \endcode
+
+    Finally, the callback can contain an arbitrary amount of copiable
+    parameters that are registered with the QHttpServerRouter::converters. By
+    default, these are most integer types, float, double, QString, QByteArray,
+    and QUrl. Additional converters can be registered, see
+    \l{QHttpServerRouter::addConverter}. These parameters must have a
+    corresponding placeholder in the \a pathPattern. For details on
+    placeholders and pathPattern see \l{QHttpServerRouterRule}.
+
+    \code
+    QHttpServer server;
+    server.route("/test/<arg>", this, [] (const int page) { return ""; });
+    \endcode
+
+    This function returns, if successful, a pointer to the newly created Rule,
+    otherwise a \c nullptr. The pointer can be used to set parameters on any
+    custom \l{QHttpServerRouter} class:
+
+    \code
+    auto rule = server.route<MyRule>("/test", this, [] () {return "";});
+    rule->setParameter("test");
+    \endcode
+
+.   This function must not be called from any \l route callback.
+
+    \note If a request was processed by a handler accepting \c
+    {QHttpServerResponder&} as an argument, none of the after request handlers
+    (see \l addAfterRequestHandler) will be called.
 
     Requests are processed sequentially inside the \c {QHttpServer}'s thread
     by default. The request handler may return \c {QFuture<QHttpServerResponse>}
@@ -106,48 +170,42 @@ QHttpServer::QHttpServer(QObject *parent)
     \endcode
 
     The body of \c QFuture is executed asynchronously, but all the network
-    communication is executed sequentially.
-    \c {QHttpServerResponder&&} special argument is not available for routes
-    returning a \c {QFuture}.
+    communication is executed sequentially in the thread the \c {QHttpServer}
+    belongs to. The \c {QHttpServerResponder&} special argument is not
+    available for routes returning a \c {QFuture}.
 
-    \sa QHttpServerRouter::addRule
+    \sa QHttpServerRouter::addRule, addAfterRequestHandler
 */
 
-/*! \fn template<typename ViewHandler> void QHttpServer::afterRequest(ViewHandler &&viewHandler)
-    Register a function to be run after each request.
+/*! \fn template <typename Rule = QHttpServerRouterRule, typename Functor> Rule *QHttpServer::route(const QString &pathPattern, const QObject *receiver, Functor &&slot)
 
-    The \a viewHandler argument can be a function pointer, non-mutable lambda,
-    or any other copiable callable with const call operator. The callable
-    can take one or two optional arguments: \c {QHttpServerResponse &&} and
-    \c {const QHttpServerRequest &}. If both are given, they can be in either
-    order.
+    \overload
 
-    Examples:
+    Overload of \l QHttpServer::route to create a Rule for \a pathPattern and
+    \l QHttpServerRequest::Method::AnyKnown. All requests are forwarded
+    to \a receiver and \a slot.
+*/
 
-    \code
+/*! \fn template <typename Rule = QHttpServerRouterRule, typename Functor> Rule *QHttpServer::route(const QString &pathPattern, QHttpServerRequest::Methods method, Functor &&handler)
 
-    QHttpServer server;
+    \overload
 
-    // Valid:
-    server.afterRequest([] (QHttpServerResponse &&resp, const QHttpServerRequest &request) {
-        return std::move(resp);
-    }
-    server.afterRequest([] (const QHttpServerRequest &request, QHttpServerResponse &&resp) {
-        return std::move(resp);
-    }
-    server.afterRequest([] (QHttpServerResponse &&resp) { return std::move(resp); }
+    Overload of \l QHttpServer::route to create a Rule for \a pathPattern and
+    \a method. All requests are forwarded to \a handler, which can be a
+    function pointer, a non-mutable lambda, or any other copiable callable with
+    const call operator. The rule will be valid until the QHttpServer is
+    destroyed.
+*/
 
-    // Invalid (compile time error):
-    // resp must be passed by universal reference
-    server.afterRequest([] (QHttpServerResponse &resp, const QHttpServerRequest &request) {
-        return std::move(resp);
-    }
-    // request must be passed by const reference
-    server.afterRequest([] (QHttpServerResponse &&resp, QHttpServerRequest &request) {
-        return std::move(resp);
-    }
+/*! \fn template <typename Rule = QHttpServerRouterRule, typename Functor> Rule *QHttpServer::route(const QString &pathPattern, Functor &&handler)
 
-    \endcode
+    \overload
+
+    Overload of \l QHttpServer::route to create a Rule for \a pathPattern and
+    \l QHttpServerRequest::Method::AnyKnown. All requests are forwarded to \a
+    handler, which can be a function pointer, a non-mutable lambda, or any
+    other copiable callable with const call operator. The rule will be valid
+    until the QHttpServer is destroyed.
 */
 
 /*!
@@ -158,7 +216,7 @@ QHttpServer::~QHttpServer()
 }
 
 /*!
-    Returns the router object.
+    Returns a pointer to the router object.
 */
 QHttpServerRouter *QHttpServer::router()
 {
@@ -167,33 +225,86 @@ QHttpServerRouter *QHttpServer::router()
 }
 
 /*!
-    \typealias QHttpServer::MissingHandler
-
-    Type alias for std::function<void(const QHttpServerRequest &request,
-                                      QHttpServerResponder &&responder)>.
+    Returns a pointer to the constant router object.
 */
-
-/*!
-    Set a handler to call for unhandled paths.
-
-    The invocable passed as \a handler will be invoked for each request
-    that cannot be handled by any of registered route handlers. Passing a
-    default-constructed std::function resets the handler to the default one
-    that produces replies with status 404 Not Found.
-*/
-void QHttpServer::setMissingHandler(QHttpServer::MissingHandler handler)
+const QHttpServerRouter *QHttpServer::router() const
 {
-    Q_D(QHttpServer);
-    d->missingHandler = handler;
+    Q_D(const QHttpServer);
+    return &d->router;
 }
+
+/*! \fn template <typename Functor> void QHttpServer::setMissingHandler(const QObject *receiver, Functor &&slot)
+    Set a handler for unhandled requests.
+
+    All unhandled requests will be forwarded to the \a{receiver}'s \a slot.
+
+    The \a slot has to implement the signature \c{void (*)(const
+    QHttpServerRequest &, QHttpServerResponder &)}. The \a slot can also be a
+    function pointer, non-mutable lambda, or any other copiable callable with
+    const call operator. In that case the \a receiver will be a context object.
+    The handler will be valid until the receiver object is destroyed.
+
+    The default handler replies with status 404: Not Found.
+*/
 
 /*!
     \internal
 */
-void QHttpServer::afterRequestImpl(AfterRequestHandler afterRequestHandler)
+void QHttpServer::setMissingHandlerImpl(const QObject *context, QtPrivate::QSlotObjectBase *handler)
 {
     Q_D(QHttpServer);
-    d->afterRequestHandlers.push_back(std::move(afterRequestHandler));
+    auto slot = QtPrivate::SlotObjUniquePtr(handler);
+    if (!d->verifyThreadAffinity(context))
+        return;
+    d->missingHandler = {context, std::move(slot)};
+}
+
+/*!
+    Resets the handler to the default one that produces replies with
+    status 404 Not Found.
+*/
+void QHttpServer::clearMissingHandler()
+{
+    Q_D(QHttpServer);
+    d->missingHandler.slotObject.reset();
+}
+
+
+/*! \fn template <typename Functor> void QHttpServer::addAfterRequestHandler(const QObject *receiver, Functor &&slot)
+    Register a \a receiver and \a slot to be called after every request is
+    handled.
+
+    The \a slot has to implement the signature \c{void (*)(const QHttpServerRequest &,
+    QHttpServerResponse &)}.
+
+    The \a slot can also be a function pointer, non-mutable lambda, or any other
+    copiable callable with const call operator. In that case the \a receiver will
+    be a context object and the handler will be valid until the context
+    object is destroyed.
+
+    Example:
+
+    \code
+    QHttpServer server;
+    server.addAfterRequestHandler(&server, [] (const QHttpServerRequest &req, QHttpServerResponse &resp) {
+        resp.write(req.body(), "text/plain"_ba);
+    }
+    \endcode
+
+    \note These handlers won't be called for requests, processed by handlers
+    with \c {QHttpServerResponder&} argument.
+*/
+
+/*!
+    \internal
+*/
+void QHttpServer::addAfterRequestHandlerImpl(const QObject *context, QtPrivate::QSlotObjectBase *handler)
+{
+    Q_D(QHttpServer);
+    auto slot = QtPrivate::SlotObjUniquePtr(handler);
+    if (!d->verifyThreadAffinity(context))
+        return;
+    d->afterRequestHandlers.push_back({context, std::move(slot)});
 }
 
 /*!
@@ -203,8 +314,13 @@ void QHttpServer::sendResponse(QHttpServerResponse &&response, const QHttpServer
                                QHttpServerResponder &&responder)
 {
     Q_D(QHttpServer);
-    for (auto afterRequestHandler : d->afterRequestHandlers)
-        response = afterRequestHandler(std::move(response), request);
+    for (auto &afterRequestHandler : d->afterRequestHandlers) {
+        if (afterRequestHandler.context && afterRequestHandler.slotObject &&
+            d->verifyThreadAffinity(afterRequestHandler.context)) {
+            void *args[] = { nullptr, const_cast<QHttpServerRequest *>(&request), &response };
+            afterRequestHandler.slotObject->call(const_cast<QObject *>(afterRequestHandler.context.data()), args);
+        }
+    }
     responder.sendResponse(response);
 }
 
@@ -232,11 +348,10 @@ bool QHttpServer::handleRequest(const QHttpServerRequest &request, QHttpServerRe
 /*!
     \internal
 */
-void QHttpServer::missingHandler(const QHttpServerRequest &request,
-                                 QHttpServerResponder &&responder)
+void QHttpServer::missingHandler(const QHttpServerRequest &request, QHttpServerResponder &responder)
 {
     Q_D(QHttpServer);
-    return d->callMissingHandler(request, std::move(responder));
+    return d->callMissingHandler(request, responder);
 }
 
 QT_END_NAMESPACE

@@ -19,20 +19,19 @@ QT_BEGIN_NAMESPACE
  * operates only on the annotations and the function description.
  */
 
-QQmlJSCompilePass::InstructionAnnotations QQmlJSStorageGeneralizer::run(
-        InstructionAnnotations annotations, Function *function,
-        QQmlJS::DiagnosticMessage *error)
+QQmlJSCompilePass::BlocksAndAnnotations
+QQmlJSStorageGeneralizer::run(Function *function, QQmlJS::DiagnosticMessage *error)
 {
     m_error = error;
 
-    if (QQmlJSScope::ConstPtr &returnType = function->returnType) {
+    if (QQmlJSRegisterContent &returnType = function->returnType; returnType.isValid()) {
         if (QQmlJSScope::ConstPtr stored = m_typeResolver->genericType(
-                    returnType, QQmlJSTypeResolver::ComponentIsGeneric::Yes)) {
-            returnType = stored;
+                    returnType.storedType(), QQmlJSTypeResolver::ComponentIsGeneric::Yes)) {
+            returnType = returnType.storedIn(stored);
         } else {
             setError(QStringLiteral("Cannot store the return type %1.")
-                     .arg(returnType->internalName(), 0));
-            return InstructionAnnotations();
+                     .arg(returnType.storedType()->internalName()));
+            return {};
         }
     }
 
@@ -53,12 +52,12 @@ QQmlJSCompilePass::InstructionAnnotations QQmlJSStorageGeneralizer::run(
         transformRegister(argument);
     }
 
-    for (auto i = annotations.begin(), iEnd = annotations.end(); i != iEnd; ++i) {
+    for (auto i = m_annotations.begin(), iEnd = m_annotations.end(); i != iEnd; ++i) {
         transformRegister(i->second.changedRegister);
         transformRegisters(i->second.typeConversions);
     }
 
-    return annotations;
+    return { std::move(m_basicBlocks), std::move(m_annotations) };
 }
 
 QT_END_NAMESPACE

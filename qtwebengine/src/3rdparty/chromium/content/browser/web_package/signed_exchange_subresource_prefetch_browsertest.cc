@@ -187,12 +187,12 @@ class NavigationHandleSXGAttributeObserver : public WebContentsObserver {
         navigation_handle->HasPrefetchedAlternativeSubresourceSignedExchange();
   }
 
-  const absl::optional<bool>& had_prefetched_alt_sxg() const {
+  const std::optional<bool>& had_prefetched_alt_sxg() const {
     return had_prefetched_alt_sxg_;
   }
 
  private:
-  absl::optional<bool> had_prefetched_alt_sxg_;
+  std::optional<bool> had_prefetched_alt_sxg_;
 };
 
 }  // namespace
@@ -1103,8 +1103,8 @@ IN_PROC_BROWSER_TEST_F(SignedExchangeSubresourcePrefetchBrowserTest,
       1 /* expected_script_fetch_count */);
 }
 
-// Flaky. See https://crbug.com/1415204.
-#if BUILDFLAG(IS_MAC)
+// Flaky. See https://crbug.com/1415204 and https://crbug.com/1494880.
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_ANDROID)
 #define MAYBE_MainResourceSXGAndScriptSXG_CrossOrigin_AsDocument \
   DISABLED_MainResourceSXGAndScriptSXG_CrossOrigin_AsDocument
 #else

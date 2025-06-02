@@ -31,17 +31,15 @@
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
 import * as Platform from '../../core/platform/platform.js';
+import {assertNotNullOrUndefined} from '../../core/platform/platform.js';
 import * as Root from '../../core/root/root.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as Protocol from '../../generated/protocol.js';
 import * as Bindings from '../bindings/bindings.js';
 import * as Formatter from '../formatter/formatter.js';
-
+import * as SourceMapScopes from '../source_map_scopes/source_map_scopes.js';
 import type * as TextUtils from '../text_utils/text_utils.js';
 import * as Workspace from '../workspace/workspace.js';
-import * as SourceMapScopes from '../source_map_scopes/source_map_scopes.js';
-
-import {assertNotNullOrUndefined} from '../../core/platform/platform.js';
 
 let breakpointManagerInstance: BreakpointManager;
 const INITIAL_RESTORE_BREAKPOINT_COUNT = 100;
@@ -186,17 +184,15 @@ export class BreakpointManager extends Common.ObjectWrapper.ObjectWrapper<EventT
 
     // Handle language plugins
     const {pluginManager} = this.debuggerWorkspaceBinding;
-    if (pluginManager) {
-      const sourceUrls = await pluginManager.getSourcesForScript(script);
-      if (Array.isArray(sourceUrls)) {
-        for (const sourceURL of sourceUrls) {
-          if (this.#hasBreakpointsForUrl(sourceURL)) {
-            const uiSourceCode =
-                await this.debuggerWorkspaceBinding.uiSourceCodeForDebuggerLanguagePluginSourceURLPromise(
-                    debuggerModel, sourceURL);
-            assertNotNullOrUndefined(uiSourceCode);
-            await this.#restoreBreakpointsForUrl(uiSourceCode);
-          }
+    const sourceUrls = await pluginManager.getSourcesForScript(script);
+    if (Array.isArray(sourceUrls)) {
+      for (const sourceURL of sourceUrls) {
+        if (this.#hasBreakpointsForUrl(sourceURL)) {
+          const uiSourceCode =
+              await this.debuggerWorkspaceBinding.uiSourceCodeForDebuggerLanguagePluginSourceURLPromise(
+                  debuggerModel, sourceURL);
+          assertNotNullOrUndefined(uiSourceCode);
+          await this.#restoreBreakpointsForUrl(uiSourceCode);
         }
       }
     }
@@ -500,8 +496,6 @@ export class BreakpointManager extends Common.ObjectWrapper.ObjectWrapper<EventT
   }
 }
 
-// TODO(crbug.com/1167717): Make this a const enum again
-// eslint-disable-next-line rulesdir/const_enum
 export enum Events {
   BreakpointAdded = 'breakpoint-added',
   BreakpointRemoved = 'breakpoint-removed',
@@ -823,7 +817,10 @@ export class Breakpoint implements SDK.TargetManager.SDKModelObserver<SDK.Debugg
 
     if (Root.Runtime.experiments.isEnabled('evaluateExpressionsWithSourceMaps') && location) {
       return SourceMapScopes.NamesResolver.allVariablesAtPosition(location)
-          .then(nameMap => Formatter.FormatterWorkerPool.formatterWorkerPool().javaScriptSubstitute(condition, nameMap))
+          .then(
+              nameMap => nameMap.size > 0 ?
+                  Formatter.FormatterWorkerPool.formatterWorkerPool().javaScriptSubstitute(condition, nameMap) :
+                  condition)
           .then(subsitutedCondition => addSourceUrl(subsitutedCondition), () => addSourceUrl(condition));
     }
     return addSourceUrl(condition);
@@ -1061,9 +1058,10 @@ export class ModelBreakpoint {
     }
     const hasBackendState = this.#breakpointIds.length;
 
-    // Case 1: State hasn't changed, and back-end is up to date and has information
-    // on some breakpoints.
-    if (hasBackendState && Breakpoint.State.equals(newState, this.#currentState)) {
+    // Case 1: Back-end has some breakpoints and the new state is a proper subset
+    // of the back-end state (in particular the new state contains at least a single
+    // position, meaning we're not removing the breakpoint completely).
+    if (hasBackendState && Breakpoint.State.subset(newState, this.#currentState)) {
       return DebuggerUpdateResult.OK;
     }
 
@@ -1249,33 +1247,22 @@ export namespace Breakpoint {
 
   export type State = Position[];
   export namespace State {
-
-    export function equals(stateA?: State|null, stateB?: State|null): boolean {
+    export function subset(stateA?: State|null, stateB?: State|null): boolean {
       if (stateA === stateB) {
         return true;
       }
       if (!stateA || !stateB) {
         return false;
       }
-      if (stateA.length !== stateB.length) {
+      if (stateA.length === 0) {
         return false;
       }
-      for (let i = 0; i < stateA.length; i++) {
-        const positionA = stateA[i];
-        const positionB = stateB[i];
-        if (positionA.url !== positionB.url) {
-          return false;
-        }
-        if (positionA.scriptHash !== positionB.scriptHash) {
-          return false;
-        }
-        if (positionA.lineNumber !== positionB.lineNumber) {
-          return false;
-        }
-        if (positionA.columnNumber !== positionB.columnNumber) {
-          return false;
-        }
-        if (positionA.condition !== positionB.condition) {
+      for (const positionA of stateA) {
+        if (stateB.find(
+                positionB => positionA.url === positionB.url && positionA.scriptHash === positionB.scriptHash &&
+                    positionA.lineNumber === positionB.lineNumber &&
+                    positionA.columnNumber === positionB.columnNumber &&
+                    positionA.condition === positionB.condition) === undefined) {
           return false;
         }
       }

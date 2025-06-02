@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef MOCKCOMPOSITOR_COREPROTOCOL_H
 #define MOCKCOMPOSITOR_COREPROTOCOL_H
@@ -124,6 +124,7 @@ protected:
     void surface_set_buffer_scale(Resource *resource, int32_t scale) override;
     void surface_commit(Resource *resource) override;
     void surface_frame(Resource *resource, uint32_t callback) override;
+    void surface_offset(Resource *resource, int32_t x, int32_t y) override;
 };
 
 class Region : public QtWaylandServer::wl_region
@@ -145,7 +146,7 @@ class WlCompositor : public Global, public QtWaylandServer::wl_compositor
 {
     Q_OBJECT
 public:
-    explicit WlCompositor(CoreCompositor *compositor, int version = 4)
+    explicit WlCompositor(CoreCompositor *compositor, int version = 5)
         : QtWaylandServer::wl_compositor(compositor->m_display, version)
         , m_compositor(compositor)
     {}
@@ -301,12 +302,14 @@ class Seat : public Global, public QtWaylandServer::wl_seat
 {
     Q_OBJECT
 public:
-    explicit Seat(CoreCompositor *compositor, uint capabilities = Seat::capability_pointer | Seat::capability_keyboard | Seat::capability_touch, int version = 9);
+    explicit Seat(CoreCompositor *compositor, uint capabilities = Seat::capability_pointer | Seat::capability_keyboard | Seat::capability_touch, int version = 9, const QString &seatName = QLatin1String("seat0"));
     ~Seat() override;
     void send_capabilities(Resource *resource, uint capabilities) = delete; // Use wrapper instead
     void send_capabilities(uint capabilities) = delete; // Use wrapper instead
     void setCapabilities(uint capabilities);
 
+
+    QString m_seatName;
     CoreCompositor *m_compositor = nullptr;
 
     Pointer* m_pointer = nullptr;
@@ -324,6 +327,7 @@ protected:
     void seat_bind_resource(Resource *resource) override
     {
         wl_seat::send_capabilities(resource->handle, m_capabilities);
+        wl_seat::send_name(resource->handle, m_seatName); // in any normal world this is would be set before capabilities. Weston does it after
     }
 
     void seat_get_pointer(Resource *resource, uint32_t id) override;

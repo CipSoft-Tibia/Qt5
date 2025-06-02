@@ -34,24 +34,42 @@
 #include "./centipede/logging.h"
 #include "./centipede/shard_reader.h"
 #include "./centipede/util.h"
+#include "./centipede/workdir.h"
 
 namespace centipede {
 
 void DistillTask(const Environment &env,
                  const std::vector<size_t> &shard_indices) {
+  const WorkDir wd{env};
   std::string log_line = absl::StrCat("DISTILL[S.", env.my_shard_index, "]: ");
-  const auto distill_to_path = env.MakeDistilledPath();
-  LOG(INFO) << log_line << VV(env.total_shards) << VV(distill_to_path);
+  const auto corpus_path = wd.DistilledCorpusFiles().MyShardPath();
+  const auto features_path = wd.DistilledFeaturesFiles().MyShardPath();
+  LOG(INFO) << log_line << VV(env.total_shards) << VV(corpus_path)
+            << VV(features_path);
 
-  const auto appender = DefaultBlobFileWriterFactory();
-  // NOTE: Overwrite distilled corpus files -- do not append.
-  CHECK_OK(appender->Open(distill_to_path, "w"));
-  FeatureSet feature_set(/*frequency_threshold=*/1);
+  const auto corpus_writer = DefaultBlobFileWriterFactory(env.riegeli);
+  const auto features_writer = DefaultBlobFileWriterFactory(env.riegeli);
+  // NOTE: Overwrite distilled corpus and features files -- do not append.
+  CHECK_OK(corpus_writer->Open(corpus_path, "w"));
+  CHECK_OK(features_writer->Open(features_path, "w"));
+
+  FeatureSet feature_set(/*frequency_threshold=*/1,
+                         env.MakeDomainDiscardMask());
+
+  const size_t num_total_shards = shard_indices.size();
+  size_t num_shards_read = 0;
+  size_t num_distilled_corpus_elements = 0;
+  const auto corpus_files = wd.CorpusFiles();
+  const auto features_files = wd.FeaturesFiles();
   for (size_t shard_idx : shard_indices) {
-    LOG(INFO) << log_line << "reading shard " << shard_idx;
+    const std::string corpus_path = corpus_files.ShardPath(shard_idx);
+    const std::string features_path = features_files.ShardPath(shard_idx);
+    VLOG(2) << log_line << "reading shard " << shard_idx << " from:\n"
+            << VV(corpus_path) << "\n"
+            << VV(features_path);
     // Read records from the current shard.
     std::vector<std::pair<ByteArray, FeatureVec>> records;
-    ReadShard(env.MakeCorpusPath(shard_idx), env.MakeFeaturesPath(shard_idx),
+    ReadShard(corpus_path, features_path,
               [&](const ByteArray &input, FeatureVec &input_features) {
                 records.emplace_back(input, std::move(input_features));
               });
@@ -65,19 +83,18 @@ void DistillTask(const Environment &env,
     // Iterate the records, add those that have new features.
     // This is a simple linear greedy set cover algorithm.
     for (auto &&[input, features] : records) {
-      VLOG(1) << log_line << VV(input.size()) << VV(features.size());
-      if (!feature_set.CountUnseenAndPruneFrequentFeatures(features)) continue;
+      feature_set.PruneDiscardedDomains(features);
+      if (!feature_set.HasUnseenFeatures(features)) continue;
       feature_set.IncrementFrequencies(features);
-      // Logging will log names of these variables.
-      auto num_new_features = features.size();
-      CHECK_NE(num_new_features, 0);
-      auto cov = feature_set.CountFeatures(feature_domains::kPCs);
-      auto ft = feature_set.size();
-      LOG(INFO) << log_line << "adding to distilled: " << VV(ft) << VV(cov)
-                << VV(input.size()) << VV(num_new_features);
-      // Append to the distilled corpus.
-      CHECK_OK(appender->Write(input));
+      // Append to the distilled corpus and features files.
+      CHECK_OK(corpus_writer->Write(input));
+      CHECK_OK(features_writer->Write(PackFeaturesAndHash(input, features)));
+      num_distilled_corpus_elements++;
     }
+    num_shards_read++;
+    LOG(INFO) << log_line << feature_set << " shards: " << num_shards_read
+              << "/" << num_total_shards
+              << " corpus: " << num_distilled_corpus_elements;
   }
 }
 

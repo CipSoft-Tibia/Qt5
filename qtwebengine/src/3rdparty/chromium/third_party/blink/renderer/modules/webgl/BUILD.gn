@@ -80,6 +80,8 @@ blink_modules_sources("webgl") {
     "webgl2_rendering_context_base.cc",
     "webgl2_rendering_context_base.h",
     "webgl_active_info.h",
+    "webgl_blend_func_extended.cc",
+    "webgl_blend_func_extended.h",
     "webgl_buffer.cc",
     "webgl_buffer.h",
     "webgl_clip_cull_distance.cc",
@@ -181,9 +183,6 @@ blink_modules_sources("webgl") {
     "webgl_vertex_array_object_base.h",
     "webgl_vertex_array_object_oes.cc",
     "webgl_vertex_array_object_oes.h",
-    "webgl_video_texture.cc",
-    "webgl_video_texture.h",
-    "webgl_video_texture_enum.h",
   ]
 
   # The modules/webgl/ directly is a larger module, and

@@ -1,27 +1,17 @@
 /**
- * Copyright 2023 Google Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * @license
+ * Copyright 2023 Google Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 /// <reference types="node" />
-import { Protocol } from 'devtools-protocol';
-import { Frame } from '../api/Frame.js';
-import { WaitForSelectorOptions } from '../common/IsolatedWorld.js';
-import { ElementFor, EvaluateFuncWith, HandleFor, HandleOr, NodeFor } from '../common/types.js';
-import { KeyInput } from '../common/USKeyboardLayout.js';
-import { KeyboardTypeOptions, KeyPressOptions, MouseClickOptions } from './Input.js';
+import type { Protocol } from 'devtools-protocol';
+import type { Frame } from '../api/Frame.js';
+import type { ElementFor, EvaluateFuncWith, HandleFor, HandleOr, NodeFor } from '../common/types.js';
+import type { KeyInput } from '../common/USKeyboardLayout.js';
+import { _isElementHandle } from './ElementHandleSymbol.js';
+import type { KeyboardTypeOptions, KeyPressOptions, MouseClickOptions } from './Input.js';
 import { JSHandle } from './JSHandle.js';
-import { ScreenshotOptions } from './Page.js';
+import type { ScreenshotOptions, WaitForSelectorOptions } from './Page.js';
 /**
  * @public
  */
@@ -80,6 +70,15 @@ export interface Point {
     y: number;
 }
 /**
+ * @public
+ */
+export interface ElementScreenshotOptions extends ScreenshotOptions {
+    /**
+     * @defaultValue `true`
+     */
+    scrollIntoView?: boolean;
+}
+/**
  * ElementHandle represents an in-page DOM element.
  *
  * @remarks
@@ -117,7 +116,20 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
     /**
      * @internal
      */
-    protected handle: JSHandle<ElementType>;
+    [_isElementHandle]: boolean;
+    /**
+     * A given method will have it's `this` replaced with an isolated version of
+     * `this` when decorated with this decorator.
+     *
+     * All changes of isolated `this` are reflected on the actual `this`.
+     *
+     * @internal
+     */
+    static bindIsolatedHandle<This extends ElementHandle<Node>>(target: (this: This, ...args: any[]) => Promise<any>, _: unknown): typeof target;
+    /**
+     * @internal
+     */
+    protected readonly handle: JSHandle<ElementType>;
     /**
      * @internal
      */
@@ -134,10 +146,6 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
      * @internal
      */
     getProperty<K extends keyof ElementType>(propertyName: HandleOr<K>): Promise<HandleFor<ElementType[K]>>;
-    /**
-     * @internal
-     */
-    getProperty(propertyName: string): Promise<JSHandle<unknown>>;
     /**
      * @internal
      */
@@ -166,6 +174,9 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
      * @internal
      */
     dispose(): Promise<void>;
+    /**
+     * @internal
+     */
     asElement(): ElementHandle<ElementType>;
     /**
      * Frame corresponding to the current handle.
@@ -233,7 +244,7 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
      *
      * JavaScript:
      *
-     * ```js
+     * ```ts
      * const feedHandle = await page.$('.feed');
      * expect(
      *   await feedHandle.$$eval('.tweet', nodes => nodes.map(n => n.innerText))
@@ -418,23 +429,30 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
      */
     click(this: ElementHandle<Element>, options?: Readonly<ClickOptions>): Promise<void>;
     /**
-     * This method creates and captures a dragevent from the element.
+     * Drags an element over the given element or point.
+     *
+     * @returns DEPRECATED. When drag interception is enabled, the drag payload is
+     * returned.
      */
-    drag(this: ElementHandle<Element>, target: Point): Promise<Protocol.Input.DragData>;
+    drag(this: ElementHandle<Element>, target: Point | ElementHandle<Element>): Promise<Protocol.Input.DragData | void>;
     /**
-     * This method creates a `dragenter` event on the element.
+     * @deprecated Do not use. `dragenter` will automatically be performed during dragging.
      */
     dragEnter(this: ElementHandle<Element>, data?: Protocol.Input.DragData): Promise<void>;
     /**
-     * This method creates a `dragover` event on the element.
+     * @deprecated Do not use. `dragover` will automatically be performed during dragging.
      */
     dragOver(this: ElementHandle<Element>, data?: Protocol.Input.DragData): Promise<void>;
     /**
-     * This method triggers a drop on the element.
+     * Drops the given element onto the current one.
+     */
+    drop(this: ElementHandle<Element>, element: ElementHandle<Element>): Promise<void>;
+    /**
+     * @deprecated No longer supported.
      */
     drop(this: ElementHandle<Element>, data?: Protocol.Input.DragData): Promise<void>;
     /**
-     * This method triggers a dragenter, dragover, and drop on the element.
+     * @deprecated Use `ElementHandle.drop` instead.
      */
     dragAndDrop(this: ElementHandle<Element>, target: ElementHandle<Node>, options?: {
         delay: number;
@@ -467,7 +485,7 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
      * For locals script connecting to remote chrome environments, paths must be
      * absolute.
      */
-    uploadFile(this: ElementHandle<HTMLInputElement>, ...paths: string[]): Promise<void>;
+    abstract uploadFile(this: ElementHandle<HTMLInputElement>, ...paths: string[]): Promise<void>;
     /**
      * This method scrolls element into view if needed, and then uses
      * {@link Touchscreen.tap} to tap in the center of the element.
@@ -524,11 +542,14 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
     press(key: KeyInput, options?: Readonly<KeyPressOptions>): Promise<void>;
     /**
      * This method returns the bounding box of the element (relative to the main frame),
-     * or `null` if the element is not visible.
+     * or `null` if the element is {@link https://drafts.csswg.org/css-display-4/#box-generation | not part of the layout}
+     * (example: `display: none`).
      */
     boundingBox(): Promise<BoundingBox | null>;
     /**
-     * This method returns boxes of the element, or `null` if the element is not visible.
+     * This method returns boxes of the element,
+     * or `null` if the element is {@link https://drafts.csswg.org/css-display-4/#box-generation | not part of the layout}
+     * (example: `display: none`).
      *
      * @remarks
      *
@@ -538,10 +559,13 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
     boxModel(): Promise<BoxModel | null>;
     /**
      * This method scrolls element into view if needed, and then uses
-     * {@link Page.(screenshot:3) } to take a screenshot of the element.
+     * {@link Page.(screenshot:2) } to take a screenshot of the element.
      * If the element is detached from DOM, the method throws an error.
      */
-    screenshot(this: ElementHandle<Element>, options?: ScreenshotOptions): Promise<string | Buffer>;
+    screenshot(options: Readonly<ScreenshotOptions> & {
+        encoding: 'base64';
+    }): Promise<string>;
+    screenshot(options?: Readonly<ScreenshotOptions>): Promise<Buffer>;
     /**
      * @internal
      */
@@ -566,10 +590,6 @@ export declare abstract class ElementHandle<ElementType extends Node = Element> 
      * or by calling element.scrollIntoView.
      */
     scrollIntoView(this: ElementHandle<Element>): Promise<void>;
-    /**
-     * @internal
-     */
-    abstract assertElementHasWorld(): asserts this;
     /**
      * If the element is a form input, you can use {@link ElementHandle.autofill}
      * to test if the form is compatible with the browser's autofill

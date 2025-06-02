@@ -12,7 +12,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "build/build_config.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/browser_process.h"
 #endif
 #include "chrome/browser/profiles/profile.h"
@@ -90,7 +90,7 @@ class PeerConnectionTrackerProxyImpl
 // 1. Certain platforms (mobile) are blocked from remote-bound logging.
 // 2. There is a Finch-controlled kill-switch for the feature.
 bool IsRemoteLoggingFeatureEnabled() {
-#if BUILDFLAG(IS_ANDROID) || defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_QTWEBENGINE)
   bool enabled = false;
 #else
   bool enabled = base::FeatureList::IsEnabled(features::kWebRtcRemoteEventLog);
@@ -432,7 +432,7 @@ std::unique_ptr<LogFileWriter::Factory>
 WebRtcEventLogManager::CreateRemoteLogFileWriterFactory() {
   if (remote_log_file_writer_factory_for_testing_) {
     return std::move(remote_log_file_writer_factory_for_testing_);
-#if !BUILDFLAG(IS_ANDROID) && !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_QTWEBENGINE)
   } else if (base::FeatureList::IsEnabled(
                  features::kWebRtcRemoteEventLogGzipped)) {
     return std::make_unique<GzippedLogFileWriterFactory>(

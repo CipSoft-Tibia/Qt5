@@ -37,7 +37,7 @@ void GeometryMapperTransformCache::Update(
     screen_transform_updated_ = true;
 
     DCHECK(node.ScrollNode());
-    nearest_scroll_translation_ = &node;
+    nearest_scroll_translation_ = scroll_translation_state_ = &node;
     return;
   }
 
@@ -54,6 +54,9 @@ void GeometryMapperTransformCache::Update(
 
   nearest_scroll_translation_ =
       node.ScrollNode() ? &node : parent.nearest_scroll_translation_;
+  scroll_translation_state_ = node.ScrollTranslationForFixed()
+                                  ? node.ScrollTranslationForFixed()
+                                  : nearest_scroll_translation_;
 
   nearest_directly_composited_ancestor_ =
       node.HasDirectCompositingReasons()
@@ -67,7 +70,7 @@ void GeometryMapperTransformCache::Update(
     to_2d_translation_root_ += translation;
 
     if (parent.plane_root_transform_) {
-      plane_root_transform_.emplace();
+      plane_root_transform_ = GeometryMapperTransformCache::PlaneRootTransform{};
       plane_root_transform_->plane_root = parent.plane_root();
       plane_root_transform_->to_plane_root = parent.to_plane_root();
       plane_root_transform_->to_plane_root.Translate(translation.x(),
@@ -95,7 +98,7 @@ void GeometryMapperTransformCache::Update(
       // as the 2d translation root.
       plane_root_transform_ = absl::nullopt;
     } else {
-      plane_root_transform_.emplace();
+      plane_root_transform_ = GeometryMapperTransformCache::PlaneRootTransform{};
       plane_root_transform_->plane_root = parent.plane_root();
       plane_root_transform_->to_plane_root.MakeIdentity();
       parent.ApplyToPlaneRoot(plane_root_transform_->to_plane_root);
@@ -137,7 +140,7 @@ void GeometryMapperTransformCache::UpdateScreenTransform(
   parent_node->UpdateScreenTransform();
   const auto& parent = parent_node->GetTransformCache();
 
-  screen_transform_.emplace();
+  screen_transform_ = GeometryMapperTransformCache::ScreenTransform{};
   parent.ApplyToScreen(screen_transform_->to_screen);
   if (node.FlattensInheritedTransform())
     screen_transform_->to_screen.Flatten();

@@ -30,6 +30,7 @@ class Q_CORE_EXPORT QThread : public QObject
 public:
     static Qt::HANDLE currentThreadId() noexcept Q_DECL_PURE_FUNCTION;
     static QThread *currentThread();
+    static bool isMainThread() noexcept;
     static int idealThreadCount() noexcept;
     static void yieldCurrentThread();
 
@@ -67,6 +68,8 @@ public:
 
     bool event(QEvent *event) override;
     int loopLevel() const;
+
+    bool isCurrentThread() const noexcept;
 
     template <typename Function, typename... Args>
     [[nodiscard]] static QThread *create(Function &&f, Args &&... args);

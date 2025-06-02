@@ -20,7 +20,6 @@ public:
     void printClassDeclaration();
     void printClassForwardDeclaration();
 
-    void printMetaTypesDeclaration();
 private:
     void printCopyFunctionality();
     void printMoveSemantic();

@@ -151,6 +151,12 @@ QGeoAreaMonitorInfo &QGeoAreaMonitorInfo::operator=(const QGeoAreaMonitorInfo &o
 */
 
 /*!
+    \fn void QGeoAreaMonitorInfo::swap(QGeoAreaMonitorInfo &other)
+    \since 6.2
+    \memberswap{QGeoAreaMonitorInfo object}
+*/
+
+/*!
     Returns the name of the QGeoAreaMonitorInfo object. The name should be used
     for user-visibility purposes.
  */

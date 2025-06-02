@@ -13,9 +13,8 @@
 #include "build/build_config.h"
 #include "components/history/core/browser/download_database.h"
 #include "components/history/core/browser/history_types.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "components/history/core/browser/sync/history_sync_metadata_database.h"
-#include "components/history/core/browser/sync/typed_url_sync_metadata_database.h"
 #endif
 #include "components/history/core/browser/url_database.h"
 #include "components/history/core/browser/visit_annotations_database.h"
@@ -183,8 +182,6 @@ class HistoryDatabase : public DownloadDatabase,
   // foreign visits, i.e. visits coming from other syncing devices.
   // Note that this only counts visits *not* pending deletion (see below) - as
   // soon as a deletion operation is started, this will get set to false.
-  // TODO(crbug.com/1365291): After syncer::HISTORY has launched, consider
-  // whether this bit is still required.
   bool MayContainForeignVisits();
   void SetMayContainForeignVisits(bool may_contain_foreign_visits);
 
@@ -196,20 +193,15 @@ class HistoryDatabase : public DownloadDatabase,
 
   // Retrieves/updates the bit that indicates whether the DB may contain any
   // visits known to sync.
-  // TODO(crbug.com/1365291): After syncer::HISTORY has launched, consider
-  // whether this bit is still required.
   bool KnownToSyncVisitsExist();
   void SetKnownToSyncVisitsExist(bool exist);
 
   // Sync metadata storage ----------------------------------------------------
 
-#if !defined(TOOLKIT_QT)
-  // Returns the sub-database used for storing Sync metadata for Typed URLs.
-  TypedURLSyncMetadataDatabase* GetTypedURLMetadataDB();
-
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Returns the sub-database used for storing Sync metadata for History.
   HistorySyncMetadataDatabase* GetHistoryMetadataDB();
-#endif  // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   sql::Database& GetDBForTesting();
 
@@ -241,19 +233,20 @@ class HistoryDatabase : public DownloadDatabase,
   void MigrateTimeEpoch();
 #endif
 
+  bool MigrateRemoveTypedUrlMetadata();
+
   // ---------------------------------------------------------------------------
 
   sql::Database db_;
   sql::MetaTable meta_table_;
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Most of the sub-DBs (URLDatabase etc.) are integrated into HistoryDatabase
   // via inheritance. However, that can lead to "diamond inheritance" issues
   // when multiple of these base classes define the same methods. Therefore the
-  // Sync metadata DBs are integrated via composition instead.
-  TypedURLSyncMetadataDatabase typed_url_metadata_db_;
+  // Sync metadata DB is integrated via composition instead.
   HistorySyncMetadataDatabase history_metadata_db_;
-#endif  // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
   base::Time cached_early_expiration_threshold_;
 };

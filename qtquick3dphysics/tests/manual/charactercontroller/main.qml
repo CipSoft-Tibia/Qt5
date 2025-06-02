@@ -71,7 +71,7 @@ Window {
                 castsShadow: true
                 brightness: 1
                 shadowMapQuality: Light.ShadowMapQualityVeryHigh
-                shadowFactor: 15
+                shadowFactor: 50
             }
 
             StaticRigidBody {

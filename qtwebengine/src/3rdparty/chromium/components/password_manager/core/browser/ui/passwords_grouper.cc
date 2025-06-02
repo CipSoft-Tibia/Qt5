@@ -13,9 +13,6 @@
 #include "components/password_manager/core/browser/affiliation/affiliation_utils.h"
 #include "components/password_manager/core/browser/passkey_credential.h"
 #include "components/password_manager/core/browser/password_form.h"
-#include "components/password_manager/core/browser/password_list_sorter.h"
-#include "components/password_manager/core/browser/password_manager_util.h"
-#include "components/password_manager/core/browser/password_ui_utils.h"
 #include "components/password_manager/core/browser/ui/credential_ui_entry.h"
 #include "components/url_formatter/elide_url.h"
 
@@ -30,41 +27,7 @@ constexpr char kFallbackIconQueryParams[] =
 constexpr char kDefaultAndroidIcon[] =
     "https://www.gstatic.com/images/branding/product/1x/play_apps_32dp.png";
 
-// Converts signon_realm (url for federated forms) into GURL and strips path. If
-// form is valid Android credential or conversion fails signon_realm is returned
-// as it is.
-std::string GetFacetRepresentation(const PasswordForm& form) {
-  FacetURI facet = FacetURI::FromPotentiallyInvalidSpec(form.signon_realm);
-  // Return result for android credentials immediately.
-  if (facet.IsValidAndroidFacetURI()) {
-    return facet.potentially_invalid_spec();
-  }
-  GURL url;
-  // For federated credentials use url. For everything else try to parse signon
-  // realm as GURL.
-  if (form.IsFederatedCredential()) {
-    url = form.url;
-  } else {
-    url = GURL(form.signon_realm);
-  }
 
-  // Strip path and everything after that.
-  std::string scheme_and_authority = url.GetWithEmptyPath().spec();
-
-  // If something went wrong (signon_realm is not a valid GURL), use signon
-  // realm as it is.
-  if (scheme_and_authority.empty()) {
-    scheme_and_authority = form.signon_realm;
-  }
-  return FacetURI::FromPotentiallyInvalidSpec(scheme_and_authority)
-      .potentially_invalid_spec();
-}
-
-std::string GetFacetRepresentation(const PasskeyCredential& passkey) {
-  std::string as_url = RPIDToURL(passkey.rp_id()).possibly_invalid_spec();
-  return FacetURI::FromPotentiallyInvalidSpec(as_url)
-      .potentially_invalid_spec();
-}
 
 FacetBrandingInfo CreateBrandingInfoFromFacetURI(
     const CredentialUIEntry& credential,
@@ -73,12 +36,12 @@ FacetBrandingInfo CreateBrandingInfoFromFacetURI(
   FacetURI facet_uri =
       FacetURI::FromPotentiallyInvalidSpec(credential.GetFirstSignonRealm());
   if (facet_uri.IsValidAndroidFacetURI()) {
-    branding_info.name = SplitByDotAndReverse(facet_uri.android_package_name());
+    branding_info.name = facet_uri.GetAndroidPackageDisplayName();
     branding_info.icon_url = GURL(kDefaultAndroidIcon);
     return branding_info;
   }
-  std::string group_name = password_manager_util::GetExtendedTopLevelDomain(
-      credential.GetURL(), psl_extensions);
+  std::string group_name =
+      GetExtendedTopLevelDomain(credential.GetURL(), psl_extensions);
   if (group_name.empty()) {
     group_name =
         credential.GetURL().is_valid()
@@ -96,6 +59,29 @@ FacetBrandingInfo CreateBrandingInfoFromFacetURI(
   branding_info.icon_url =
       GURL(kDefaultFallbackIconUrl).ReplaceComponents(replacements);
   return branding_info;
+}
+
+std::string CreateUsernamePasswordSortKey(const CredentialUIEntry& credential) {
+  std::string key;
+  // The origin isn't taken into account for normal credentials since we want to
+  // group them together.
+  const char kSortKeyPartsSeparator = ' ';
+  if (!credential.blocked_by_user) {
+    key += base::UTF16ToUTF8(credential.username) + kSortKeyPartsSeparator +
+           base::UTF16ToUTF8(credential.password);
+
+    key += kSortKeyPartsSeparator;
+    if (!credential.federation_origin.opaque()) {
+      key += credential.federation_origin.host();
+    } else {
+      key += kSortKeyPartsSeparator;
+    }
+  } else {
+    // Key for blocked by user credential since it does not store username and
+    // password. These credentials are not grouped together.
+    key = credential.GetAffiliatedDomains()[0].name;
+  }
+  return key;
 }
 
 }  // namespace
@@ -139,11 +125,9 @@ void PasswordsGrouper::GroupCredentials(std::vector<PasswordForm> forms,
   // Before grouping passwords merge related groups. After grouping is finished
   // invoke |callback|.
   affiliation_service_->GetGroupingInfo(
-      std::move(facets),
-      base::BindOnce(&password_manager_util::MergeRelatedGroups,
-                     psl_extensions_)
-          .Then(std::move(group_callback))
-          .Then(std::move(callback)));
+      std::move(facets), base::BindOnce(&MergeRelatedGroups, psl_extensions_)
+                             .Then(std::move(group_callback))
+                             .Then(std::move(callback)));
 }
 
 std::vector<AffiliatedGroup>
@@ -266,13 +250,13 @@ std::vector<PasswordForm> PasswordsGrouper::GetPasswordFormsFor(
   return forms_iterator->second;
 }
 
-absl::optional<PasskeyCredential> PasswordsGrouper::GetPasskeyFor(
+std::optional<PasskeyCredential> PasswordsGrouper::GetPasskeyFor(
     const CredentialUIEntry& credential) {
   // Find the group id based on the sign on realm.
   auto group_id_iterator = map_signon_realm_to_group_id_.find(
       SignonRealm(credential.GetFirstSignonRealm()));
   if (group_id_iterator == map_signon_realm_to_group_id_.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   // Find the passkey in the group.
   const std::vector<PasskeyCredential>& passkeys =
@@ -281,7 +265,7 @@ absl::optional<PasskeyCredential> PasswordsGrouper::GetPasskeyFor(
       base::ranges::find(passkeys, credential.passkey_credential_id,
                          &PasskeyCredential::credential_id);
   if (passkey_it == passkeys.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return *passkey_it;
 }
@@ -322,7 +306,8 @@ void PasswordsGrouper::GroupPasswordsImpl(
     map_signon_realm_to_group_id_[SignonRealm(form.signon_realm)] = group_id;
 
     // Store form for username/password key.
-    UsernamePasswordKey key(CreateUsernamePasswordSortKey(form));
+    UsernamePasswordKey key(
+        CreateUsernamePasswordSortKey(CredentialUIEntry(form)));
     map_group_id_to_credentials_[group_id].forms[key].push_back(
         std::move(form));
   }
@@ -368,6 +353,40 @@ void PasswordsGrouper::InitializePSLExtensionList(
     std::vector<std::string> psl_extension_list) {
   psl_extensions_ =
       base::MakeFlatSet<std::string>(std::move(psl_extension_list));
+}
+
+std::string GetFacetRepresentation(const PasswordForm& form) {
+  FacetURI facet = FacetURI::FromPotentiallyInvalidSpec(form.signon_realm);
+  // Return result for android credentials immediately.
+  if (facet.IsValidAndroidFacetURI()) {
+    return facet.potentially_invalid_spec();
+  }
+  GURL url;
+  // For federated credentials use url. For everything else try to parse signon
+  // realm as GURL.
+  if (form.IsFederatedCredential()) {
+    url = form.url;
+  } else {
+    url = GURL(form.signon_realm);
+  }
+
+  // Strip path and everything after that.
+  std::string scheme_and_authority = url.GetWithEmptyPath().spec();
+
+  // If something went wrong (signon_realm is not a valid GURL), use signon
+  // realm as it is.
+  if (scheme_and_authority.empty()) {
+    scheme_and_authority = form.signon_realm;
+  }
+  return FacetURI::FromPotentiallyInvalidSpec(scheme_and_authority)
+      .potentially_invalid_spec();
+}
+
+std::string GetFacetRepresentation(const PasskeyCredential& passkey) {
+  std::string as_url = base::StrCat(
+      {url::kHttpsScheme, url::kStandardSchemeSeparator, passkey.rp_id()});
+  return FacetURI::FromPotentiallyInvalidSpec(as_url)
+      .potentially_invalid_spec();
 }
 
 }  // namespace password_manager

@@ -106,7 +106,7 @@ class BasePcpHandler : public PcpHandler,
   // DiscoveryListener will get called in case of any event.
   Status StartDiscovery(ClientProxy* client, const std::string& service_id,
                         const DiscoveryOptions& discovery_options,
-                        const DiscoveryListener& listener) override;
+                        DiscoveryListener listener) override;
 
   // Stops Discovery if it is active, and changes CLientProxy state,
   // otherwise does nothing.
@@ -123,6 +123,11 @@ class BasePcpHandler : public PcpHandler,
   // Updates state on ClientProxy.
   Status RequestConnection(
       ClientProxy* client, const std::string& endpoint_id,
+      const ConnectionRequestInfo& info,
+      const ConnectionOptions& connection_options) override;
+
+  Status RequestConnectionV3(
+      ClientProxy* client, const NearbyDevice& remote_device,
       const ConnectionRequestInfo& info,
       const ConnectionOptions& connection_options) override;
 
@@ -410,6 +415,9 @@ class BasePcpHandler : public PcpHandler,
     // Pass Reject notification to client.
     void LocalEndpointRejectedConnection(const std::string& endpoint_id);
 
+    // Check for a pending connection to |endpoint_id|.
+    bool HasPendingConnectionToEndpoint(const std::string& endpoint_id);
+
     // Client state tracker to report events to. Never changes. Always valid.
     ClientProxy* client = nullptr;
     // Peer endpoint info, or empty, if not discovered yet. May change.
@@ -496,6 +504,9 @@ class BasePcpHandler : public PcpHandler,
       const std::string& remote_bluetooth_mac_address,
       const DiscoveryOptions& local_discovery_options)
       ABSL_LOCKS_EXCLUDED(discovered_endpoint_mutex_);
+
+  Status VerifyConnectionRequest(const std::string& endpoint_id,
+                                 ClientProxy* client);
 
   // Returns true if the webrtc endpoint is created and appended into
   // discovered_endpoints_ with key endpoint_id.

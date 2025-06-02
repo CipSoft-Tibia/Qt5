@@ -10,6 +10,7 @@
 #include <QtTest/qsignalspy.h>
 #include <QtTest/qtest.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
+#include <QtNetwork/qtcpserver.h>
 
 #include <functional>
 
@@ -48,11 +49,20 @@ private slots:
 
 struct HttpServer : QAbstractHttpServer {
     std::function<void(QHttpServerResponder responder)> handleRequestFunction;
-    QUrl url { QStringLiteral("http://localhost:%1").arg(listen()) };
+    QUrl url;
 
-    HttpServer(decltype(handleRequestFunction) function) : handleRequestFunction(function) {}
+    HttpServer(decltype(handleRequestFunction) function) : handleRequestFunction(function)
+    {
+        auto tcpserver = std::make_unique<QTcpServer>();
+        tcpserver->listen();
+        quint16 port = tcpserver->serverPort();
+        bind(tcpserver.get());
+        tcpserver.release();
+        url.setUrl(QStringLiteral("http://localhost:%1").arg(port));
+    }
+
     bool handleRequest(const QHttpServerRequest &, QHttpServerResponder &) override;
-    void missingHandler(const QHttpServerRequest &, QHttpServerResponder &&) override
+    void missingHandler(const QHttpServerRequest &, QHttpServerResponder &) override
     {
         Q_ASSERT(false);
     }
@@ -123,7 +133,9 @@ void tst_QHttpServerResponder::writeStatusCode()
 void tst_QHttpServerResponder::writeStatusCodeExtraHeader()
 {
     HttpServer server([=](QHttpServerResponder responder) {
-        responder.write({{ headerServerString, headerServerValue }});
+        QHttpHeaders headers;
+        headers.append(headerServerString, headerServerValue);
+        responder.write(headers);
     });
     auto reply = networkAccessManager->get(QNetworkRequest(server.url));
     qWaitForFinished(reply);
@@ -148,7 +160,9 @@ void tst_QHttpServerResponder::writeJsonExtraHeader()
 {
     const auto json = QJsonDocument::fromJson(R"JSON({ "key" : "value" })JSON"_ba);
     HttpServer server([json](QHttpServerResponder responder) {
-        responder.write(json, {{ headerServerString, headerServerValue }});
+        QHttpHeaders headers;
+        headers.append(headerServerString, headerServerValue);
+        responder.write(json, headers);
     });
     auto reply = networkAccessManager->get(QNetworkRequest(server.url));
     qWaitForFinished(reply);
@@ -213,12 +227,11 @@ void tst_QHttpServerResponder::writeFileExtraHeader()
     QSignalSpy spyDestroyIoDevice(file, &QObject::destroyed);
 
     HttpServer server([=](QHttpServerResponder responder) {
-        responder.write(
-            file,
-            {
-                 { "Content-Type"_ba, "text/html"_ba },
-                 { headerServerString, headerServerValue }
-            });
+        QHttpHeaders headers;
+        headers.append(QHttpHeaders::WellKnownHeader::ContentType, "text/html"_ba);
+        headers.append(headerServerString, headerServerValue);
+
+        responder.write(file, headers);
     });
     auto reply = networkAccessManager->get(QNetworkRequest(server.url));
     QTRY_VERIFY(reply->isFinished());
@@ -237,12 +250,11 @@ void tst_QHttpServerResponder::writeByteArrayExtraHeader()
     const QByteArray contentType("text/plain");
 
     HttpServer server([=](QHttpServerResponder responder) {
-        responder.write(
-            data,
-            {
-                 { "Content-Type", contentType },
-                 { headerServerString, headerServerValue }
-            });
+        QHttpHeaders headers;
+        headers.append(QHttpHeaders::WellKnownHeader::ContentType, contentType);
+        headers.append(headerServerString, headerServerValue);
+
+        responder.write(data, headers);
     });
     auto reply = networkAccessManager->get(QNetworkRequest(server.url));
     QTRY_VERIFY(reply->isFinished());

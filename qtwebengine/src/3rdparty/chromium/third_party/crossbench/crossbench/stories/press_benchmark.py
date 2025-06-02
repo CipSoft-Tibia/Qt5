@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import datetime as dt
 import abc
+import logging
 from typing import List, Optional, Sequence, Tuple, Type, TypeVar
+
+from crossbench.runner.run import Run
 
 from .story import Story
 
@@ -161,3 +164,11 @@ class PressBenchmarkStory(Story, metaclass=abc.ABCMeta):
     for substory in self._substories:
       assert substory in self.SUBSTORIES, (f"Unknown {self.NAME} substory %s" %
                                            substory)
+
+  def log_run_details(self, run: Run) -> None:
+    super().log_run_details(run)
+    self.log_run_test_url(run)
+
+  def log_run_test_url(self, run: Run):
+    del run
+    logging.info("STORY PUBLIC TEST URL: %s", self.URL)

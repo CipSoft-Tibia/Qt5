@@ -6,6 +6,7 @@
 #include "qwasmmediacapturesession_p.h"
 #include "qwasmcamera_p.h"
 #include "qwasmvideosink_p.h"
+#include <QDir>
 
 QT_BEGIN_NAMESPACE
 
@@ -25,13 +26,17 @@ int QWasmImageCapture::capture(const QString &fileName)
         return -1;
     }
 
-    // TODO if fileName.isEmpty() we choose filename and location
+    QString imageFilenName;
+    if (fileName.isEmpty())
+        imageFilenName = QDir::homePath() + "/image.jpg";
+    else
+        imageFilenName = fileName;
 
     QImage image = takePicture();
     if (image.isNull())
         return -1;
 
-    QImageWriter writer(fileName);
+    QImageWriter writer(imageFilenName);
     // TODO
     // writer.setQuality(quality);
     // writer.setFormat("png");
@@ -118,12 +123,10 @@ void QWasmImageCapture::setCaptureSession(QPlatformMediaCaptureSession *session)
     if (m_captureSession == captureSession)
         return;
 
-    m_isReadyForCapture = captureSession;
     if (captureSession) {
         m_lastId = 0;
         m_captureSession = captureSession;
     }
-    emit readyForCaptureChanged(m_isReadyForCapture);
     m_captureSession = captureSession;
 }
 

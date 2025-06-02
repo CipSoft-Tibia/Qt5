@@ -11,7 +11,7 @@ namespace internal {
 
 namespace {
 DISABLE_CFI_PERF
-void IterateObjectCache(Isolate* isolate, std::vector<Object>* cache,
+void IterateObjectCache(Isolate* isolate, std::vector<Tagged<Object>>* cache,
                         Root root_id, RootVisitor* visitor) {
   for (size_t i = 0;; ++i) {
     // Extend the array ready to get a value when deserializing.
@@ -19,7 +19,10 @@ void IterateObjectCache(Isolate* isolate, std::vector<Object>* cache,
     // During deserialization, the visitor populates the object cache and
     // eventually terminates the cache with undefined.
     visitor->VisitRootPointer(root_id, nullptr, FullObjectSlot(&cache->at(i)));
-    if (IsUndefined(cache->at(i), isolate)) break;
+    // We may see objects in trusted space here (outside of the main pointer
+    // compression cage), so have to use SafeEquals.
+    Tagged<Object> undefined = ReadOnlyRoots(isolate).undefined_value();
+    if (cache->at(i).SafeEquals(undefined)) break;
   }
 }
 }  // namespace

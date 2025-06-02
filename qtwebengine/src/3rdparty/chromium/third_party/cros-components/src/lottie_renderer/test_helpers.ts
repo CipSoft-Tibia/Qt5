@@ -18,7 +18,7 @@ interface LottieComponentParams {
   dynamic: boolean;
 }
 
-const ASSET_URL = '/assets/oobe_pin.json';
+const ASSET_URL = '/assets/welcome.json';
 /**
  * Render an lottie renderer component, and return a DOM reference to it.
  * This is done via a function in each individual test body rather than as

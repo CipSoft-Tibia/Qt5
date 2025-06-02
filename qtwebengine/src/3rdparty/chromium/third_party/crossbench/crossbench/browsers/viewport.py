@@ -85,7 +85,7 @@ class Viewport:
 
   @property
   def is_default(self) -> bool:
-    return self == Viewport.DEFAULT
+    return self is Viewport.DEFAULT
 
   @property
   def is_maximized(self) -> bool:
@@ -137,8 +137,27 @@ class Viewport:
   def mode(self) -> ViewportMode:
     return self._mode
 
+  @property
+  def key(self) -> Tuple[Tuple, ...]:
+    return (
+        ("mode", str(self.mode)),
+        ("x", self._x),
+        ("y", self._y),
+        ("width", self._width),
+        ("height", self._height),
+    )
+
   def __str__(self) -> str:
-    return f"Viewport({self.width}x{self.height},{self.x}x{self.y})"
+    if self.has_size:
+      return f"Viewport({self.width}x{self.height},{self.x}x{self.y})"
+    return f"Viewport({self.mode})"
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, Viewport):
+      return False
+    if self is other:
+      return True
+    return self.key == other.key
 
 
 Viewport.DEFAULT = Viewport()

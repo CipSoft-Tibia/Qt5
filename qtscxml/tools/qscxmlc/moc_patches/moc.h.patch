@@ -1,5 +1,5 @@
---- .upstream/moc.h	2024-02-05 14:10:55.937714571 +0100
-+++ moc.h	2024-02-05 14:12:52.133597464 +0100
+--- .upstream/moc.h	2024-08-05 12:14:28.111250492 +0200
++++ moc.h	2024-08-05 16:00:04.715392500 +0200
 @@ -4,14 +4,12 @@
  #ifndef MOC_H
  #define MOC_H
@@ -76,7 +76,7 @@
  };
  Q_DECLARE_TYPEINFO(PropertyDef, Q_RELOCATABLE_TYPE);
  
-@@ -204,6 +214,7 @@
+@@ -205,6 +215,7 @@
  };
  Q_DECLARE_TYPEINFO(NamespaceDef, Q_RELOCATABLE_TYPE);
  
@@ -84,7 +84,7 @@
  class Moc : public Parser
  {
  public:
-@@ -293,6 +304,7 @@
+@@ -294,6 +305,7 @@
  
      void checkListSizes(const ClassDef &def);
  };

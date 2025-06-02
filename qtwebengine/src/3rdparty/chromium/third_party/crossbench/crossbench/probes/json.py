@@ -19,7 +19,7 @@ from crossbench.probes import helper, metric
 from crossbench.probes.results import (EmptyProbeResult, LocalProbeResult,
                                        ProbeResult)
 
-from .probe import Probe, ProbeMissingDataError, ProbeScope
+from .probe import Probe, ProbeMissingDataError, ProbeContext
 
 if TYPE_CHECKING:
   from crossbench.runner.actions import Actions
@@ -60,8 +60,8 @@ class JsonResultProbe(Probe, metaclass=abc.ABCMeta):
   def process_json_data(self, json_data) -> Any:
     return json_data
 
-  def get_scope(self, run: Run) -> JsonResultProbeScope:
-    return JsonResultProbeScope(self, run)
+  def get_context(self, run: Run) -> JsonResultProbeContext:
+    return JsonResultProbeContext(self, run)
 
   def merge_repetitions(
       self,
@@ -184,8 +184,8 @@ class JsonResultProbe(Probe, metaclass=abc.ABCMeta):
 JsonResultProbeT = TypeVar("JsonResultProbeT", bound="JsonResultProbe")
 
 
-class JsonResultProbeScope(ProbeScope[JsonResultProbeT],
-                           Generic[JsonResultProbeT]):
+class JsonResultProbeContext(ProbeContext[JsonResultProbeT],
+                             Generic[JsonResultProbeT]):
 
   def __init__(self, probe: JsonResultProbeT, run: Run) -> None:
     super().__init__(probe, run)
@@ -198,17 +198,17 @@ class JsonResultProbeScope(ProbeScope[JsonResultProbeT],
   def to_json(self, actions: Actions) -> JSON:
     return self.probe.to_json(actions)
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     pass
 
-  def stop(self, run: Run) -> None:
-    self._json_data = self.extract_json(run)
+  def stop(self) -> None:
+    self._json_data = self.extract_json(self.run)
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     if self._json_data is None:
       return EmptyProbeResult()
     self._json_data = self.process_json_data(self._json_data)
-    return self.write_json(run, self._json_data)
+    return self.write_json(self.run, self._json_data)
 
   def extract_json(self, run: Run) -> JSON:
     with run.actions(f"Extracting Probe({self.probe.name})") as actions:

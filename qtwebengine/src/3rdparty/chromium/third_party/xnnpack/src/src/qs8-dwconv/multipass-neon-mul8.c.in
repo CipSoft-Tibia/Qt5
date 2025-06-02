@@ -28,10 +28,11 @@ $if REQUANTIZATION == "FP32" and ARMV8:
 #include <xnnpack/math.h>
 
 
+$DATATYPE_SPEC = {"QS8": "qs8", "QC8": "qs8_qc8w"}[DATATYPE]
 $PARAMS_STRUCT = REQUANTIZATION.lower() + "_" + ("neonv8" if ARMV8 else "neon")
-$PARAMS_UNION = "xnn_%s_conv_minmax_params" % DATATYPE.lower()
+$PARAMS_UNION = {"QC8": "xnn_qs8_qc8w_conv_minmax_params", "QS8": "xnn_qs8_conv_minmax_params"}[DATATYPE]
 $ISA = "neonv8" if ARMV8 else "neon"
-void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${FIRST_PASS_TILE}f${MIDDLE_PASS_TILE}m${LAST_PASS_TILE}l${CHANNEL_TILE}c${CHANNEL_SUBTILE}s${CHANNEL_ROUND}r__${ISA}_${"mla8" if MLA else "mul8"}_${LOAD_VARIANT.lower()}(
+void xnn_${DATATYPE_SPEC}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${FIRST_PASS_TILE}f${MIDDLE_PASS_TILE}m${LAST_PASS_TILE}l${CHANNEL_TILE}c${CHANNEL_SUBTILE}s${CHANNEL_ROUND}r__${ISA}_${"mla8" if MLA else "mul8"}_${LOAD_VARIANT.lower()}(
     size_t channels,
     size_t output_width,
     const int8_t** input,
@@ -85,13 +86,13 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
 
       for (; c >= ${CHANNEL_TILE}; c -= ${CHANNEL_TILE}) {
         $for C in range(0, CHANNEL_TILE, 4):
-          int32x4_t vacc${ABC[C:C+4]} = vld1q_s32(w); w = (const void*) ((const int32_t*) w + 4);
+          int32x4_t vacc${ABC[C:C+4]} = vld1q_s32(w); w = (const int32_t*) w + 4;
         $for K in range(FIRST_PASS_TILE):
 
           $if LOAD_VARIANT == "LD128":
             $for C in range(0, CHANNEL_TILE, 16):
               const int8x16_t vi${K}x${ABC[C:C+16]} = vld1q_s8(i${K}); i${K} += 16;
-              const int8x16_t vk${K}x${ABC[C:C+16]} = vld1q_s8(w); w = (const void*) ((const int8_t*) w + 16);
+              const int8x16_t vk${K}x${ABC[C:C+16]} = vld1q_s8(w); w = (const int8_t*) w + 16;
 
             $if K == 0:
               $for C in range(0, CHANNEL_TILE, 16):
@@ -108,7 +109,7 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
           $else:
             $for C in range(0, CHANNEL_TILE, 8):
               const int8x8_t vi${K}x${ABC[C:C+8]} = vld1_s8(i${K}); i${K} += 8;
-              const int8x8_t vk${K}x${ABC[C:C+8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + 8);
+              const int8x8_t vk${K}x${ABC[C:C+8]} = vld1_s8(w); w = (const int8_t*) w + 8;
 
             $if K == 0:
               $for C in range(0, CHANNEL_TILE, 8):
@@ -134,8 +135,8 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
       $else:
         if XNN_UNLIKELY(c != 0) {
           ${"do " if CHANNEL_TILE > 8 else ""}{
-            int32x4_t vacc${ABC[0:4]} = vld1q_s32(w); w = (const void*) ((const int32_t*) w + 4);
-            int32x4_t vacc${ABC[4:8]} = vld1q_s32(w); w = (const void*) ((const int32_t*) w + 4);
+            int32x4_t vacc${ABC[0:4]} = vld1q_s32(w); w = (const int32_t*) w + 4;
+            int32x4_t vacc${ABC[4:8]} = vld1q_s32(w); w = (const int32_t*) w + 4;
             $for K in range(FIRST_PASS_TILE):
 
               $if CHANNEL_TILE > 8:
@@ -143,9 +144,9 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
               $else:
                 const int8x8_t vi${K}x${ABC[0:8]} = vld1_s8(i${K});
               $if K == 0:
-                const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + ${CHANNEL_SUBTILE});
+                const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const int8_t*) w + ${CHANNEL_SUBTILE};
               $else:
-                const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + ${CHANNEL_SUBTILE});
+                const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const int8_t*) w + ${CHANNEL_SUBTILE};
 
               $if K == 0:
                 int16x8_t vprod${ABC[0:8]} = vmull_s8(vi${K}x${ABC[0:8]}, vk${K}x${ABC[0:8]});
@@ -188,7 +189,7 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
           $if LOAD_VARIANT == "LD128":
             $for C in range(0, CHANNEL_TILE, 16):
               const int8x16_t vi${K}x${ABC[C:C+16]} = vld1q_s8(i${K}); i${K} += 16;
-              const int8x16_t vk${K}x${ABC[C:C+16]} = vld1q_s8(w); w = (const void*) ((const int8_t*) w + 16);
+              const int8x16_t vk${K}x${ABC[C:C+16]} = vld1q_s8(w); w = (const int8_t*) w + 16;
 
             $if K == 0:
               $for C in range(0, CHANNEL_TILE, 16):
@@ -205,7 +206,7 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
           $else:
             $for C in range(0, CHANNEL_TILE, 8):
               const int8x8_t vi${K}x${ABC[C:C+8]} = vld1_s8(i${K}); i${K} += 8;
-              const int8x8_t vk${K}x${ABC[C:C+8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + 8);
+              const int8x8_t vk${K}x${ABC[C:C+8]} = vld1_s8(w); w = (const int8_t*) w + 8;
 
             $if K == 0:
               $for C in range(0, CHANNEL_TILE, 8):
@@ -240,9 +241,9 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
               $else:
                 const int8x8_t vi${K}x${ABC[0:8]} = vld1_s8(i${K});
               $if K == 0:
-                const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + ${CHANNEL_SUBTILE});
+                const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const int8_t*) w + ${CHANNEL_SUBTILE};
               $else:
-                const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + ${CHANNEL_SUBTILE});
+                const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const int8_t*) w + ${CHANNEL_SUBTILE};
 
               $if K == 0:
                 int16x8_t vprod${ABC[0:8]} = vmull_s8(vi${K}x${ABC[0:8]}, vk${K}x${ABC[0:8]});
@@ -281,7 +282,7 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
           $if LOAD_VARIANT == "LD128":
             $for C in range(0, CHANNEL_TILE, 16):
               const int8x16_t vi${K}x${ABC[C:C+16]} = vld1q_s8(i${K}); i${K} += 16;
-              const int8x16_t vk${K}x${ABC[C:C+16]} = vld1q_s8(w); w = (const void*) ((const int8_t*) w + 16);
+              const int8x16_t vk${K}x${ABC[C:C+16]} = vld1q_s8(w); w = (const int8_t*) w + 16;
 
             $if K == 0:
               $for C in range(0, CHANNEL_TILE, 16):
@@ -298,7 +299,7 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
           $else:
             $for C in range(0, CHANNEL_TILE, 8):
               const int8x8_t vi${K}x${ABC[C:C+8]} = vld1_s8(i${K}); i${K} += 8;
-              const int8x8_t vk${K}x${ABC[C:C+8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + 8);
+              const int8x8_t vk${K}x${ABC[C:C+8]} = vld1_s8(w); w = (const int8_t*) w + 8;
 
             $if K == 0:
               $for C in range(0, CHANNEL_TILE, 8):
@@ -330,7 +331,7 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
 
           $if DATATYPE == "QC8":
             $for C in range(0, CHANNEL_TILE, 4):
-              const float32x4_t vscale${ABC[C:C+4]} = vld1q_f32((const float*) w); w = (const void*) ((const float*) w + 4);
+              const float32x4_t vscale${ABC[C:C+4]} = vld1q_f32((const float*) w); w = (const float*) w + 4;
 
             $for C in range(0, CHANNEL_TILE, 4):
               vfpacc${ABC[C:C+4]} = vmulq_f32(vfpacc${ABC[C:C+4]}, vscale${ABC[C:C+4]});
@@ -411,9 +412,9 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
             $else:
               const int8x8_t vi${K}x${ABC[0:8]} = vld1_s8(i${K});
             $if K == 0:
-              const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + ${CHANNEL_SUBTILE});
+              const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const int8_t*) w + ${CHANNEL_SUBTILE};
             $else:
-              const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const void*) ((const int8_t*) w + ${CHANNEL_SUBTILE});
+              const int8x8_t vk${K}x${ABC[0:8]} = vld1_s8(w); w = (const int8_t*) w + ${CHANNEL_SUBTILE};
 
             $if K == 0:
               int16x8_t vprod${ABC[0:8]} = vmull_s8(vi${K}x${ABC[0:8]}, vk${K}x${ABC[0:8]});
@@ -440,8 +441,8 @@ void xnn_${DATATYPE.lower()}_dwconv_minmax_${REQUANTIZATION.lower()}_ukernel_${F
             float32x4_t vfpacc${ABC[4:8]} = vcvtq_f32_s32(vacc${ABC[4:8]});
 
             $if DATATYPE == "QC8":
-              const float32x4_t vscale${ABC[0:4]} = vld1q_f32((const float*) w); w = (const void*) ((const float*) w + 4);
-              const float32x4_t vscale${ABC[4:8]} = vld1q_f32((const float*) w); w = (const void*) ((const float*) w + 4);
+              const float32x4_t vscale${ABC[0:4]} = vld1q_f32((const float*) w); w = (const float*) w + 4;
+              const float32x4_t vscale${ABC[4:8]} = vld1q_f32((const float*) w); w = (const float*) w + 4;
               vfpacc${ABC[0:4]} = vmulq_f32(vfpacc${ABC[0:4]}, vscale${ABC[0:4]});
               vfpacc${ABC[4:8]} = vmulq_f32(vfpacc${ABC[4:8]}, vscale${ABC[4:8]});
             $else:

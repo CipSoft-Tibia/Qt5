@@ -14,8 +14,11 @@
 // We mean it.
 //
 
-#include "qffmpeghwaccel_p.h"
-#include "private/qplatformmediarecorder_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
+#include <QtMultimedia/private/qplatformmediarecorder_p.h>
+#include <QtMultimedia/private/qmultimediautils_p.h>
+
+#include <unordered_set>
 
 QT_BEGIN_NAMESPACE
 
@@ -23,50 +26,89 @@ class QMediaEncoderSettings;
 
 namespace QFFmpeg {
 
+class VideoFrameEncoder;
+using VideoFrameEncoderUPtr = std::unique_ptr<VideoFrameEncoder>;
+
 class VideoFrameEncoder
 {
 public:
-    static std::unique_ptr<VideoFrameEncoder> create(const QMediaEncoderSettings &encoderSettings,
-                                                     const QSize &sourceSize, qreal sourceFrameRate,
-                                                     AVPixelFormat sourceFormat,
-                                                     AVPixelFormat sourceSWFormat,
-                                                     AVFormatContext *formatContext);
+    struct SourceParams
+    {
+        QSize size;
+        AVPixelFormat format = AV_PIX_FMT_NONE;
+        AVPixelFormat swFormat = AV_PIX_FMT_NONE;
+        VideoTransformation transform;
+        qreal frameRate = 0.;
+        AVColorTransferCharacteristic colorTransfer = AVCOL_TRC_UNSPECIFIED;
+        AVColorSpace colorSpace = AVCOL_SPC_UNSPECIFIED;
+        AVColorRange colorRange = AVCOL_RANGE_UNSPECIFIED;
+    };
+    static VideoFrameEncoderUPtr create(const QMediaEncoderSettings &encoderSettings,
+                                        const SourceParams &sourceParams,
+                                        AVFormatContext *formatContext);
 
     ~VideoFrameEncoder();
 
-    bool open();
-
     AVPixelFormat sourceFormat() const { return m_sourceFormat; }
     AVPixelFormat targetFormat() const { return m_targetFormat; }
+
+    qreal codecFrameRate() const;
 
     qint64 getPts(qint64 ms) const;
 
     const AVRational &getTimeBase() const;
 
-    int sendFrame(AVFrameUPtr frame);
+    int sendFrame(AVFrameUPtr inputFrame);
     AVPacketUPtr retrievePacket();
 
 private:
-    VideoFrameEncoder() = default;
+    VideoFrameEncoder(AVStream *stream, const Codec &codec, HWAccelUPtr hwAccel,
+                      const SourceParams &sourceParams,
+                      const QMediaEncoderSettings &encoderSettings);
+
+    static AVStream *createStream(const SourceParams &sourceParams, AVFormatContext *formatContext);
+
+    bool updateSourceFormatAndSize(const AVFrame *frame);
 
     void updateConversions();
 
-    bool initCodec();
+    struct CreationResult
+    {
+        VideoFrameEncoderUPtr encoder;
+        AVPixelFormat targetFormat = AV_PIX_FMT_NONE;
+    };
 
-    bool initTargetFormats();
+    static CreationResult create(AVStream *stream, const Codec &codec, HWAccelUPtr hwAccel,
+                                 const SourceParams &sourceParams,
+                                 const QMediaEncoderSettings &encoderSettings,
+                                 const AVPixelFormatSet &prohibitedTargetFormats = {});
 
-    bool initCodecContext(AVFormatContext *formatContext);
+    void initTargetSize();
+
+    void initCodecFrameRate();
+
+    bool initTargetFormats(const AVPixelFormatSet &prohibitedTargetFormats);
+
+    void initStream();
+
+    bool initCodecContext();
+
+    bool open();
+
+    qint64 estimateDuration(const AVPacket &packet, bool isFirstPacket);
 
 private:
     QMediaEncoderSettings m_settings;
-    QSize m_sourceSize;
-
-    std::unique_ptr<HWAccel> m_accel;
-    const AVCodec *m_codec = nullptr;
     AVStream *m_stream = nullptr;
+    Codec m_codec;
+    HWAccelUPtr m_accel;
+
+    QSize m_sourceSize;
+    QSize m_targetSize;
+
+    qint64 m_lastPacketTime = AV_NOPTS_VALUE;
     AVCodecContextUPtr m_codecContext;
-    std::unique_ptr<SwsContext, decltype(&sws_freeContext)> m_converter = { nullptr,
-                                                                            &sws_freeContext };
+    SwsContextUPtr m_scaleContext;
     AVPixelFormat m_sourceFormat = AV_PIX_FMT_NONE;
     AVPixelFormat m_sourceSWFormat = AV_PIX_FMT_NONE;
     AVPixelFormat m_targetFormat = AV_PIX_FMT_NONE;
@@ -79,7 +121,7 @@ private:
     int64_t m_prevPacketDts = AV_NOPTS_VALUE;
     int64_t m_packetDtsOffset = 0;
 };
-}
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

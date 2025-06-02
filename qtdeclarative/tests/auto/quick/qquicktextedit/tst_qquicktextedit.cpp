@@ -206,6 +206,7 @@ private slots:
     void cursorRectangle_QTBUG_38947();
     void textCached_QTBUG_41583();
     void doubleSelect_QTBUG_38704();
+    void textChanged_QTBUG_130676();
 
     void padding();
     void paddingAndWrap();
@@ -236,6 +237,8 @@ private slots:
 
     void fontManipulationWithCursorSelection();
     void resizeTextEditPolish();
+
+    void setTextDocument();
 
 private:
     void simulateKeys(QWindow *window, const QList<Key> &keys);
@@ -1315,10 +1318,8 @@ void tst_qquicktextedit::textMargin()
 
 void tst_qquicktextedit::persistentSelection()
 {
-    QQuickView window(testFileUrl("persistentSelection.qml"));
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("persistentSelection.qml")));
 
     QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(edit);
@@ -1428,6 +1429,7 @@ void tst_qquicktextedit::selectionOnFocusOut()
 
 void tst_qquicktextedit::focusOnPress()
 {
+    const int doubleClickInterval = qApp->styleHints()->mouseDoubleClickInterval();
     QString componentStr =
             "import QtQuick 2.0\n"
             "TextEdit {\n"
@@ -1484,7 +1486,7 @@ void tst_qquicktextedit::focusOnPress()
     QCOMPARE(activeFocusSpy.size(), 2);
 
     // Wait for double click timeout to expire before clicking again.
-    QTest::qWait(400);
+    QTest::qWait(doubleClickInterval + 1);
     QTest::mousePress(&window, Qt::LeftButton, noModifiers, centerPoint);
     QGuiApplication::processEvents();
     QCOMPARE(textEditObject->hasFocus(), false);
@@ -1500,7 +1502,7 @@ void tst_qquicktextedit::focusOnPress()
     // Test a selection made in the on(Active)FocusChanged handler isn't overwritten.
     textEditObject->setProperty("selectOnFocus", true);
 
-    QTest::qWait(400);
+    QTest::qWait(doubleClickInterval + 1);
     QTest::mousePress(&window, Qt::LeftButton, noModifiers, centerPoint);
     QGuiApplication::processEvents();
     QCOMPARE(textEditObject->hasFocus(), true);
@@ -1597,19 +1599,11 @@ void tst_qquicktextedit::selection()
 
 void tst_qquicktextedit::overwriteMode()
 {
-    QString componentStr = "import QtQuick 2.0\nTextEdit { focus: true; }";
-    QQmlComponent textEditComponent(&engine);
-    textEditComponent.setData(componentStr.toLatin1(), QUrl());
-    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit*>(textEditComponent.create());
-    QVERIFY(textEdit != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("focusByDefault.qml")));
+    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit *>(window.rootObject());
 
     QSignalSpy spy(textEdit, SIGNAL(overwriteModeChanged(bool)));
-
-    QQuickWindow window;
-    textEdit->setParentItem(window.contentItem());
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
 
     QVERIFY(textEdit->hasActiveFocus());
 
@@ -1722,12 +1716,8 @@ void tst_qquicktextedit::isRightToLeft()
 
 void tst_qquicktextedit::keySelection()
 {
-    QQuickView window(testFileUrl("navigation.qml"));
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-
-    QVERIFY(window.rootObject() != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("navigation.qml")));
 
     QQuickTextEdit *input = qobject_cast<QQuickTextEdit *>(qvariant_cast<QObject *>(window.rootObject()->property("myInput")));
 
@@ -2104,7 +2094,7 @@ void tst_qquicktextedit::moveCursorSelectionSequence()
 
 void tst_qquicktextedit::mouseSelection_data()
 {
-    QTest::addColumn<QString>("qmlfile");
+    QTest::addColumn<QUrl>("qmlfile");
     QTest::addColumn<int>("from");
     QTest::addColumn<int>("to");
     QTest::addColumn<QString>("selectedText");
@@ -2113,64 +2103,64 @@ void tst_qquicktextedit::mouseSelection_data()
     QTest::addColumn<int>("clicks");
 
     // import installed
-    QTest::newRow("on") << testFile("mouseselection_true.qml") << 4 << 9 << "45678" << true << true << 1;
-    QTest::newRow("off") << testFile("mouseselection_false.qml") << 4 << 9 << QString() << true << true << 1;
-    QTest::newRow("default") << testFile("mouseselectionmode_default.qml") << 4 << 9 << "45678" << true << true << 1;
-    QTest::newRow("off word selection") << testFile("mouseselection_false_words.qml") << 4 << 9 << QString() << true << true << 1;
-    QTest::newRow("on word selection (4,9)") << testFile("mouseselection_true_words.qml") << 4 << 9 << "0123456789" << true << true << 1;
+    QTest::newRow("on") << testFileUrl("mouseselection_true.qml") << 4 << 9 << "45678" << true << true << 1;
+    QTest::newRow("off") << testFileUrl("mouseselection_false.qml") << 4 << 9 << QString() << true << true << 1;
+    QTest::newRow("default") << testFileUrl("mouseselectionmode_default.qml") << 4 << 9 << "45678" << true << true << 1;
+    QTest::newRow("off word selection") << testFileUrl("mouseselection_false_words.qml") << 4 << 9 << QString() << true << true << 1;
+    QTest::newRow("on word selection (4,9)") << testFileUrl("mouseselection_true_words.qml") << 4 << 9 << "0123456789" << true << true << 1;
 
-    QTest::newRow("on unfocused") << testFile("mouseselection_true.qml") << 4 << 9 << "45678" << false << false << 1;
-    QTest::newRow("on word selection (4,9) unfocused") << testFile("mouseselection_true_words.qml") << 4 << 9 << "0123456789" << false << false << 1;
+    QTest::newRow("on unfocused") << testFileUrl("mouseselection_true.qml") << 4 << 9 << "45678" << false << false << 1;
+    QTest::newRow("on word selection (4,9) unfocused") << testFileUrl("mouseselection_true_words.qml") << 4 << 9 << "0123456789" << false << false << 1;
 
-    QTest::newRow("on focus on press") << testFile("mouseselection_true.qml") << 4 << 9 << "45678" << false << true << 1;
-    QTest::newRow("on word selection (4,9) focus on press") << testFile("mouseselection_true_words.qml") << 4 << 9 << "0123456789" << false << true << 1;
+    QTest::newRow("on focus on press") << testFileUrl("mouseselection_true.qml") << 4 << 9 << "45678" << false << true << 1;
+    QTest::newRow("on word selection (4,9) focus on press") << testFileUrl("mouseselection_true_words.qml") << 4 << 9 << "0123456789" << false << true << 1;
 
-    QTest::newRow("on word selection (2,13)") << testFile("mouseselection_true_words.qml") << 2 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
-    QTest::newRow("on word selection (2,30)") << testFile("mouseselection_true_words.qml") << 2 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
-    QTest::newRow("on word selection (9,13)") << testFile("mouseselection_true_words.qml") << 9 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
-    QTest::newRow("on word selection (9,30)") << testFile("mouseselection_true_words.qml") << 9 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
-    QTest::newRow("on word selection (13,2)") << testFile("mouseselection_true_words.qml") << 13 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
-    QTest::newRow("on word selection (20,2)") << testFile("mouseselection_true_words.qml") << 20 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
-    QTest::newRow("on word selection (12,9)") << testFile("mouseselection_true_words.qml") << 12 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
-    QTest::newRow("on word selection (30,9)") << testFile("mouseselection_true_words.qml") << 30 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
+    QTest::newRow("on word selection (2,13)") << testFileUrl("mouseselection_true_words.qml") << 2 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
+    QTest::newRow("on word selection (2,30)") << testFileUrl("mouseselection_true_words.qml") << 2 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
+    QTest::newRow("on word selection (9,13)") << testFileUrl("mouseselection_true_words.qml") << 9 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
+    QTest::newRow("on word selection (9,30)") << testFileUrl("mouseselection_true_words.qml") << 9 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
+    QTest::newRow("on word selection (13,2)") << testFileUrl("mouseselection_true_words.qml") << 13 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
+    QTest::newRow("on word selection (20,2)") << testFileUrl("mouseselection_true_words.qml") << 20 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
+    QTest::newRow("on word selection (12,9)") << testFileUrl("mouseselection_true_words.qml") << 12 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
+    QTest::newRow("on word selection (30,9)") << testFileUrl("mouseselection_true_words.qml") << 30 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 1;
 
-    QTest::newRow("on double click (4,9)") << testFile("mouseselection_true.qml") << 4 << 9 << "0123456789" << true << true << 2;
-    QTest::newRow("on double click (2,13)") << testFile("mouseselection_true.qml") << 2 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
-    QTest::newRow("on double click (2,30)") << testFile("mouseselection_true.qml") << 2 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
-    QTest::newRow("on double click (9,13)") << testFile("mouseselection_true.qml") << 9 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
-    QTest::newRow("on double click (9,30)") << testFile("mouseselection_true.qml") << 9 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
-    QTest::newRow("on double click (13,2)") << testFile("mouseselection_true.qml") << 13 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
-    QTest::newRow("on double click (20,2)") << testFile("mouseselection_true.qml") << 20 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
-    QTest::newRow("on double click (12,9)") << testFile("mouseselection_true.qml") << 12 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
-    QTest::newRow("on double click (30,9)") << testFile("mouseselection_true.qml") << 30 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
+    QTest::newRow("on double click (4,9)") << testFileUrl("mouseselection_true.qml") << 4 << 9 << "0123456789" << true << true << 2;
+    QTest::newRow("on double click (2,13)") << testFileUrl("mouseselection_true.qml") << 2 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
+    QTest::newRow("on double click (2,30)") << testFileUrl("mouseselection_true.qml") << 2 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
+    QTest::newRow("on double click (9,13)") << testFileUrl("mouseselection_true.qml") << 9 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
+    QTest::newRow("on double click (9,30)") << testFileUrl("mouseselection_true.qml") << 9 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
+    QTest::newRow("on double click (13,2)") << testFileUrl("mouseselection_true.qml") << 13 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
+    QTest::newRow("on double click (20,2)") << testFileUrl("mouseselection_true.qml") << 20 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
+    QTest::newRow("on double click (12,9)") << testFileUrl("mouseselection_true.qml") << 12 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
+    QTest::newRow("on double click (30,9)") << testFileUrl("mouseselection_true.qml") << 30 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ" << true << true << 2;
 
-    QTest::newRow("on triple click (4,9)") << testFile("mouseselection_true.qml") << 4 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
-    QTest::newRow("on triple click (2,13)") << testFile("mouseselection_true.qml") << 2 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
-    QTest::newRow("on triple click (2,30)") << testFile("mouseselection_true.qml") << 2 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
-    QTest::newRow("on triple click (9,13)") << testFile("mouseselection_true.qml") << 9 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
-    QTest::newRow("on triple click (9,30)") << testFile("mouseselection_true.qml") << 9 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
-    QTest::newRow("on triple click (13,2)") << testFile("mouseselection_true.qml") << 13 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
-    QTest::newRow("on triple click (20,2)") << testFile("mouseselection_true.qml") << 20 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
-    QTest::newRow("on triple click (12,9)") << testFile("mouseselection_true.qml") << 12 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
-    QTest::newRow("on triple click (30,9)") << testFile("mouseselection_true.qml") << 30 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (4,9)") << testFileUrl("mouseselection_true.qml") << 4 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (2,13)") << testFileUrl("mouseselection_true.qml") << 2 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (2,30)") << testFileUrl("mouseselection_true.qml") << 2 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (9,13)") << testFileUrl("mouseselection_true.qml") << 9 << 13 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (9,30)") << testFileUrl("mouseselection_true.qml") << 9 << 30 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (13,2)") << testFileUrl("mouseselection_true.qml") << 13 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (20,2)") << testFileUrl("mouseselection_true.qml") << 20 << 2 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (12,9)") << testFileUrl("mouseselection_true.qml") << 12 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
+    QTest::newRow("on triple click (30,9)") << testFileUrl("mouseselection_true.qml") << 30 << 9 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n" << true << true << 3;
 
-    QTest::newRow("on triple click (2,40)") << testFile("mouseselection_true.qml") << 2 << 40 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n" << true << true << 3;
-    QTest::newRow("on triple click (2,50)") << testFile("mouseselection_true.qml") << 2 << 50 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
-    QTest::newRow("on triple click (25,40)") << testFile("mouseselection_true.qml") << 25 << 40 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n" << true << true << 3;
-    QTest::newRow("on triple click (25,50)") << testFile("mouseselection_true.qml") << 25 << 50 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
-    QTest::newRow("on triple click (40,25)") << testFile("mouseselection_true.qml") << 40 << 25 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n" << true << true << 3;
-    QTest::newRow("on triple click (40,50)") << testFile("mouseselection_true.qml") << 40 << 50 << "9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
-    QTest::newRow("on triple click (50,25)") << testFile("mouseselection_true.qml") << 50 << 25 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
-    QTest::newRow("on triple click (50,40)") << testFile("mouseselection_true.qml") << 50 << 40 << "9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
+    QTest::newRow("on triple click (2,40)") << testFileUrl("mouseselection_true.qml") << 2 << 40 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n" << true << true << 3;
+    QTest::newRow("on triple click (2,50)") << testFileUrl("mouseselection_true.qml") << 2 << 50 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
+    QTest::newRow("on triple click (25,40)") << testFileUrl("mouseselection_true.qml") << 25 << 40 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n" << true << true << 3;
+    QTest::newRow("on triple click (25,50)") << testFileUrl("mouseselection_true.qml") << 25 << 50 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
+    QTest::newRow("on triple click (40,25)") << testFileUrl("mouseselection_true.qml") << 40 << 25 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n" << true << true << 3;
+    QTest::newRow("on triple click (40,50)") << testFileUrl("mouseselection_true.qml") << 40 << 50 << "9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
+    QTest::newRow("on triple click (50,25)") << testFileUrl("mouseselection_true.qml") << 50 << 25 << "0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ\n9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
+    QTest::newRow("on triple click (50,40)") << testFileUrl("mouseselection_true.qml") << 50 << 40 << "9876543210\n\nZXYWVUTSRQPON MLKJIHGFEDCBA" << true << true << 3;
 
-    QTest::newRow("on tr align") << testFile("mouseselection_align_tr.qml") << 4 << 9 << "45678" << true << true << 1;
-    QTest::newRow("on center align") << testFile("mouseselection_align_center.qml") << 4 << 9 << "45678" << true << true << 1;
-    QTest::newRow("on bl align") << testFile("mouseselection_align_bl.qml") << 4 << 9 << "45678" << true << true << 1;
+    QTest::newRow("on tr align") << testFileUrl("mouseselection_align_tr.qml") << 4 << 9 << "45678" << true << true << 1;
+    QTest::newRow("on center align") << testFileUrl("mouseselection_align_center.qml") << 4 << 9 << "45678" << true << true << 1;
+    QTest::newRow("on bl align") << testFileUrl("mouseselection_align_bl.qml") << 4 << 9 << "45678" << true << true << 1;
 }
 
 void tst_qquicktextedit::mouseSelection()
 {
-    QFETCH(QString, qmlfile);
+    QFETCH(QUrl, qmlfile);
     QFETCH(int, from);
     QFETCH(int, to);
     QFETCH(QString, selectedText);
@@ -2178,13 +2168,8 @@ void tst_qquicktextedit::mouseSelection()
     QFETCH(bool, focusOnPress);
     QFETCH(int, clicks);
 
-    QQuickView window(QUrl::fromLocalFile(qmlfile));
-
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-
-    QVERIFY(window.rootObject() != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, qmlfile));
     QQuickTextEdit *textEditObject = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(textEditObject != nullptr);
 
@@ -2198,6 +2183,9 @@ void tst_qquicktextedit::mouseSelection()
     // press-and-drag-and-release from x1 to x2
     QPoint p1 = textEditObject->positionToRectangle(from).center().toPoint();
     QPoint p2 = textEditObject->positionToRectangle(to).center().toPoint();
+    QCursor::setPos(p2);
+    if (QCursor::pos() != p2)
+        QSKIP("Can't move mouse");
     if (clicks == 2)
         QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, p1, moreThanDoubleClickInterval);
     else if (clicks == 3)
@@ -2219,15 +2207,8 @@ void tst_qquicktextedit::mouseSelection()
 
 void tst_qquicktextedit::dragMouseSelection()
 {
-    QString qmlfile = testFile("mouseselection_true.qml");
-
-    QQuickView window(QUrl::fromLocalFile(qmlfile));
-
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-
-    QVERIFY(window.rootObject() != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("mouseselection_true.qml")));
     QQuickTextEdit *textEditObject = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(textEditObject != nullptr);
 
@@ -2238,7 +2219,6 @@ void tst_qquicktextedit::dragMouseSelection()
     QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, QPoint(x1,y));
     QTest::mouseMove(&window, QPoint(x2, y));
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, QPoint(x2,y));
-    QTest::qWait(300);
     QString str1;
     QTRY_VERIFY((str1 = textEditObject->selectedText()).size() > 3);
 
@@ -2248,7 +2228,6 @@ void tst_qquicktextedit::dragMouseSelection()
     QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, QPoint(x1,y));
     QTest::mouseMove(&window, QPoint(x2, y));
     QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, QPoint(x2,y));
-    QTest::qWait(300);
     QString str2;
     QTRY_VERIFY((str2 = textEditObject->selectedText()).size() > 3);
 
@@ -2445,27 +2424,19 @@ void tst_qquicktextedit::keyboardSelection()
     QFETCH(QKeySequence::StandardKey, standardKey);
     QFETCH(QString, selectedText);
 
-    QQmlComponent component(&engine);
-    component.setData("import QtQuick 2.1\n TextEdit { focus: true }", QUrl());
-    QScopedPointer<QObject> object(component.create());
-    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(object.data());
-    QVERIFY(edit);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("focusByDefault.qml")));
+    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit *>(window.rootObject());
+    QTRY_VERIFY(textEdit->hasActiveFocus());
 
-    edit->setText(text);
-    edit->setSelectByKeyboard(selectByKeyboard);
-    edit->setReadOnly(readOnly);
-    edit->setCursorPosition(cursorPosition);
-
-    QQuickWindow window;
-    edit->setParentItem(window.contentItem());
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-    QVERIFY(edit->hasActiveFocus());
+    textEdit->setText(text);
+    textEdit->setSelectByKeyboard(selectByKeyboard);
+    textEdit->setReadOnly(readOnly);
+    textEdit->setCursorPosition(cursorPosition);
 
     simulateKeys(&window, standardKey);
 
-    QCOMPARE(edit->selectedText(), selectedText);
+    QCOMPARE(textEdit->selectedText(), selectedText);
 }
 
 #endif // QT_CONFIG(shortcut)
@@ -2496,11 +2467,8 @@ void tst_qquicktextedit::renderType()
 
 void tst_qquicktextedit::inputMethodHints()
 {
-    QQuickView window(testFileUrl("inputmethodhints.qml"));
-    window.show();
-    window.requestActivate();
-
-    QVERIFY(window.rootObject() != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("inputmethodhints.qml")));
     QQuickTextEdit *textEditObject = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(textEditObject != nullptr);
     QVERIFY(textEditObject->inputMethodHints() & Qt::ImhNoPredictiveText);
@@ -2535,11 +2503,8 @@ void tst_qquicktextedit::positionAt()
     QFETCH(QQuickTextEdit::HAlignment, horizontalAlignment);
     QFETCH(QQuickTextEdit::VAlignment, verticalAlignment);
 
-    QQuickView window(testFileUrl("positionAt.qml"));
-    QVERIFY(window.rootObject() != nullptr);
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("positionAt.qml")));
 
     QQuickTextEdit *texteditObject = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(texteditObject != nullptr);
@@ -2670,13 +2635,8 @@ void tst_qquicktextedit::linkHover()
 
 void tst_qquicktextedit::linkInteraction()
 {
-    QQuickView window(testFileUrl("linkInteraction.qml"));
-    QVERIFY(window.rootObject() != nullptr);
-    QQuickVisualTestUtils::centerOnScreen(&window);
-    QQuickVisualTestUtils::moveMouseAway(&window);
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("linkInteraction.qml")));
 
     QQuickTextEdit *texteditObject = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(texteditObject != nullptr);
@@ -2733,18 +2693,18 @@ void tst_qquicktextedit::cursorDelegate_data()
 void tst_qquicktextedit::cursorDelegate()
 {
     QFETCH(QUrl, source);
-    QQuickView view(source);
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
-    QQuickTextEdit *textEditObject = view.rootObject()->findChild<QQuickTextEdit*>("textEditObject");
+
+    const int doubleClickInterval = qApp->styleHints()->mouseDoubleClickInterval();
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, source));
+    QQuickTextEdit *textEditObject = window.rootObject()->findChild<QQuickTextEdit*>("textEditObject");
     QVERIFY(textEditObject != nullptr);
     // Delegate creation is deferred until focus in or cursor visibility is forced.
     QVERIFY(!textEditObject->findChild<QQuickItem*>("cursorInstance"));
     QVERIFY(!textEditObject->isCursorVisible());
     //Test Delegate gets created
     textEditObject->setFocus(true);
-    QVERIFY(textEditObject->isCursorVisible());
+    QTRY_VERIFY(textEditObject->isCursorVisible());
     QQuickItem* delegateObject = textEditObject->findChild<QQuickItem*>("cursorInstance");
     QVERIFY(delegateObject);
     QCOMPARE(delegateObject->property("localProperty").toString(), QString("Hello"));
@@ -2759,9 +2719,8 @@ void tst_qquicktextedit::cursorDelegate()
     textEditObject->setSelectByMouse(true);
     textEditObject->setCursorPosition(0);
     const QPoint point1 = textEditObject->positionToRectangle(5).center().toPoint();
-    QTest::qWait(400);  //ensure this isn't treated as a double-click
-    QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, point1);
-    QTest::qWait(50);
+    QTest::qWait(doubleClickInterval + 1);  // ensure this isn't treated as a double-click
+    QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, point1);
     QTRY_VERIFY(textEditObject->cursorPosition() != 0);
     QCOMPARE(textEditObject->cursorRectangle().x(), delegateObject->x());
     QCOMPARE(textEditObject->cursorRectangle().y(), delegateObject->y());
@@ -2769,29 +2728,26 @@ void tst_qquicktextedit::cursorDelegate()
     // Test delegate gets moved on mouse drag
     textEditObject->setCursorPosition(0);
     const QPoint point2 = textEditObject->positionToRectangle(10).center().toPoint();
-    QTest::qWait(400);  //ensure this isn't treated as a double-click
-    QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, point1);
-    QMouseEvent mv(QEvent::MouseMove, point2, view.mapToGlobal(point2),
+    QTest::qWait(doubleClickInterval + 1);
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, point1);
+    QMouseEvent mv(QEvent::MouseMove, point2, window.mapToGlobal(point2),
                    Qt::LeftButton, Qt::LeftButton,Qt::NoModifier);
-    QGuiApplication::sendEvent(&view, &mv);
-    QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, point2);
-    QTest::qWait(50);
+    QGuiApplication::sendEvent(&window, &mv);
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, point2);
     QTRY_COMPARE(textEditObject->cursorRectangle().x(), delegateObject->x());
     QCOMPARE(textEditObject->cursorRectangle().y(), delegateObject->y());
 
     textEditObject->setReadOnly(true);
     textEditObject->setCursorPosition(0);
-    QTest::qWait(400);  //ensure this isn't treated as a double-click
-    QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, textEditObject->positionToRectangle(5).center().toPoint());
-    QTest::qWait(50);
+    QTest::qWait(doubleClickInterval + 1);
+    QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, textEditObject->positionToRectangle(5).center().toPoint());
     QTRY_VERIFY(textEditObject->cursorPosition() != 0);
     QCOMPARE(textEditObject->cursorRectangle().x(), delegateObject->x());
     QCOMPARE(textEditObject->cursorRectangle().y(), delegateObject->y());
 
     textEditObject->setCursorPosition(0);
-    QTest::qWait(400);  //ensure this isn't treated as a double-click
-    QTest::mouseClick(&view, Qt::LeftButton, Qt::NoModifier, textEditObject->positionToRectangle(5).center().toPoint());
-    QTest::qWait(50);
+    QTest::qWait(doubleClickInterval + 1);
+    QTest::mouseClick(&window, Qt::LeftButton, Qt::NoModifier, textEditObject->positionToRectangle(5).center().toPoint());
     QTRY_VERIFY(textEditObject->cursorPosition() != 0);
     QCOMPARE(textEditObject->cursorRectangle().x(), delegateObject->x());
     QCOMPARE(textEditObject->cursorRectangle().y(), delegateObject->y());
@@ -2805,7 +2761,7 @@ void tst_qquicktextedit::cursorDelegate()
     // Delegate moved when text is entered
     textEditObject->setText(QString());
     for (int i = 0; i < 20; ++i) {
-        QTest::keyClick(&view, Qt::Key_A);
+        QTest::keyClick(&window, Qt::Key_A);
         QCOMPARE(textEditObject->cursorRectangle().x(), delegateObject->x());
         QCOMPARE(textEditObject->cursorRectangle().y(), delegateObject->y());
     }
@@ -2875,11 +2831,10 @@ void tst_qquicktextedit::cursorVisible()
     edit.componentComplete();
     QSignalSpy spy(&edit, SIGNAL(cursorVisibleChanged(bool)));
 
-    QQuickView view(testFileUrl("cursorVisible.qml"));
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
-    QCOMPARE(&view, qGuiApp->focusWindow());
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("cursorVisible.qml")));
+
+    QTRY_COMPARE(qGuiApp->focusWindow(), &window);
 
     QCOMPARE(edit.isCursorVisible(), false);
 
@@ -2895,7 +2850,7 @@ void tst_qquicktextedit::cursorVisible()
     QCOMPARE(edit.isCursorVisible(), false);
     QCOMPARE(spy.size(), 2);
 
-    edit.setParentItem(view.rootObject());
+    edit.setParentItem(window.rootObject());
     QCOMPARE(edit.isCursorVisible(), true);
     QCOMPARE(spy.size(), 3);
 
@@ -2915,8 +2870,8 @@ void tst_qquicktextedit::cursorVisible()
     QCOMPARE(edit.isCursorVisible(), false);
     QCOMPARE(spy.size(), 6);
 
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    window.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
     QCOMPARE(edit.isCursorVisible(), true);
     QCOMPARE(spy.size(), 7);
 
@@ -3020,11 +2975,9 @@ void tst_qquicktextedit::delegateLoading()
 
 void tst_qquicktextedit::cursorDelegateHeight()
 {
-    QQuickView view(testFileUrl("cursorHeight.qml"));
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
-    QQuickTextEdit *textEditObject = view.rootObject()->findChild<QQuickTextEdit*>("textEditObject");
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("cursorHeight.qml")));
+    QQuickTextEdit *textEditObject = window.rootObject()->findChild<QQuickTextEdit*>();
     QVERIFY(textEditObject);
     // Delegate creation is deferred until focus in or cursor visibility is forced.
     QVERIFY(!textEditObject->findChild<QQuickItem*>("cursorInstance"));
@@ -3061,12 +3014,8 @@ the extent of the text, then they should ignore the keys.
 */
 void tst_qquicktextedit::navigation()
 {
-    QQuickView window(testFileUrl("navigation.qml"));
-    window.show();
-    window.requestActivate();
-
-    QVERIFY(window.rootObject() != nullptr);
-
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("navigation.qml")));
     QQuickTextEdit *input = qobject_cast<QQuickTextEdit *>(qvariant_cast<QObject *>(window.rootObject()->property("myInput")));
 
     QVERIFY(input != nullptr);
@@ -3212,13 +3161,8 @@ void tst_qquicktextedit::middleClickPaste()
     if (!PlatformQuirks::isClipboardAvailable())
         QSKIP("This machine doesn't support the clipboard");
 
-    QQuickView window(testFileUrl("mouseselection_true.qml"));
-
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-
-    QVERIFY(window.rootObject() != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("mouseselection_true.qml")));
     QQuickTextEdit *textEditObject = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(textEditObject != nullptr);
 
@@ -3248,9 +3192,8 @@ void tst_qquicktextedit::middleClickPaste()
 
 void tst_qquicktextedit::readOnly()
 {
-    QQuickView window(testFileUrl("readOnly.qml"));
-    window.show();
-    window.requestActivate();
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("readOnly.qml")));
 
     QVERIFY(window.rootObject() != nullptr);
 
@@ -3290,11 +3233,9 @@ void tst_qquicktextedit::inFlickableMouse()
     QFETCH(int, expectFlickingAfter);
 
     const int dragThreshold = QGuiApplication::styleHints()->startDragDistance();
-    QQuickView view(testFileUrl("inFlickable.qml"));
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
-    QQuickFlickable *flick = qobject_cast<QQuickFlickable *>(view.rootObject());
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("inFlickable.qml")));
+    QQuickFlickable *flick = qobject_cast<QQuickFlickable *>(window.rootObject());
     QVERIFY(flick);
     QQuickTextEdit *edit = flick->findChild<QQuickTextEdit*>("text");
     QVERIFY(edit);
@@ -3303,7 +3244,7 @@ void tst_qquicktextedit::inFlickableMouse()
 
     // flick with mouse
     QPoint p(10, 100);
-    QTest::mousePress(&view, Qt::LeftButton, {}, p);
+    QTest::mousePress(&window, Qt::LeftButton, {}, p);
     QObject *pressGrabber = QPointingDevicePrivate::get(QPointingDevice::primaryPointingDevice())->firstPointExclusiveGrabber();
     // even if TextEdit is readonly, it still grabs on press.  But not if it's disabled.
     if (enabled)
@@ -3314,14 +3255,14 @@ void tst_qquicktextedit::inFlickableMouse()
     // after a couple of events, Flickable steals the grab and starts moving
     for (; i < 4 && !flick->isMoving(); ++i) {
         p -= QPoint(0, dragThreshold);
-        QTest::mouseMove(&view, p);
+        QTest::mouseMove(&window, p);
     }
     QCOMPARE(flick->isMoving(), bool(expectFlickingAfter));
     if (expectFlickingAfter) {
         qCDebug(lcTests) << "flickable started moving after" << i << "moves, when we got to" << p;
         QCOMPARE(i, expectFlickingAfter);
     }
-    QTest::mouseRelease(&view, Qt::LeftButton, {}, p);
+    QTest::mouseRelease(&window, Qt::LeftButton, {}, p);
 }
 
 void tst_qquicktextedit::inFlickableTouch_data()
@@ -3398,11 +3339,9 @@ bool tst_qquicktextedit::isMainFontFixed()
 
 void tst_qquicktextedit::textInput()
 {
-    QQuickView view(testFileUrl("inputMethodEvent.qml"));
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
-    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(view.rootObject());
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("inputMethodEvent.qml")));
+    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(edit);
     QVERIFY(edit->hasActiveFocus());
 
@@ -3451,11 +3390,9 @@ void tst_qquicktextedit::inputMethodUpdate()
     QInputMethodPrivate *inputMethodPrivate = QInputMethodPrivate::get(qApp->inputMethod());
     inputMethodPrivate->testContext = &platformInputContext;
 
-    QQuickView view(testFileUrl("inputMethodEvent.qml"));
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
-    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(view.rootObject());
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("inputMethodEvent.qml")));
+    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(edit);
     QVERIFY(edit->hasActiveFocus());
 
@@ -3541,12 +3478,10 @@ void tst_qquicktextedit::openInputPanel()
     QInputMethodPrivate *inputMethodPrivate = QInputMethodPrivate::get(qApp->inputMethod());
     inputMethodPrivate->testContext = &platformInputContext;
 
-    QQuickView view(testFileUrl("openInputPanel.qml"));
-    view.showNormal();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("openInputPanel.qml")));
 
-    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(view.rootObject());
+    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(edit);
 
     // check default values
@@ -3557,28 +3492,28 @@ void tst_qquicktextedit::openInputPanel()
     QCOMPARE(qApp->inputMethod()->isVisible(), false);
 
     // input panel should open on focus
-    QPoint centerPoint(view.width()/2, view.height()/2);
+    QPoint centerPoint(window.width()/2, window.height()/2);
     Qt::KeyboardModifiers noModifiers = Qt::NoModifier;
-    QTest::mousePress(&view, Qt::LeftButton, noModifiers, centerPoint);
+    QTest::mousePress(&window, Qt::LeftButton, noModifiers, centerPoint);
     QGuiApplication::processEvents();
     QVERIFY(edit->hasActiveFocus());
     QCOMPARE(qApp->focusObject(), edit);
     QCOMPARE(qApp->inputMethod()->isVisible(), true);
-    QTest::mouseRelease(&view, Qt::LeftButton, noModifiers, centerPoint);
+    QTest::mouseRelease(&window, Qt::LeftButton, noModifiers, centerPoint);
 
     // input panel should be re-opened when pressing already focused TextEdit
     qApp->inputMethod()->hide();
     QCOMPARE(qApp->inputMethod()->isVisible(), false);
     QVERIFY(edit->hasActiveFocus());
-    QTest::mousePress(&view, Qt::LeftButton, noModifiers, centerPoint);
+    QTest::mousePress(&window, Qt::LeftButton, noModifiers, centerPoint);
     QGuiApplication::processEvents();
     QCOMPARE(qApp->inputMethod()->isVisible(), true);
-    QTest::mouseRelease(&view, Qt::LeftButton, noModifiers, centerPoint);
+    QTest::mouseRelease(&window, Qt::LeftButton, noModifiers, centerPoint);
 
     // input panel should stay visible if focus is lost to another text editor
     QSignalSpy inputPanelVisibilitySpy(qApp->inputMethod(), SIGNAL(visibleChanged()));
     QQuickTextEdit anotherEdit;
-    anotherEdit.setParentItem(view.rootObject());
+    anotherEdit.setParentItem(window.rootObject());
     anotherEdit.setFocus(true);
     QCOMPARE(qApp->inputMethod()->isVisible(), true);
     QCOMPARE(qApp->focusObject(), qobject_cast<QObject*>(&anotherEdit));
@@ -3586,7 +3521,7 @@ void tst_qquicktextedit::openInputPanel()
 
     anotherEdit.setFocus(false);
     QVERIFY(qApp->focusObject() != &anotherEdit);
-    QCOMPARE(view.activeFocusItem(), view.contentItem());
+    QCOMPARE(window.activeFocusItem(), window.contentItem());
     anotherEdit.setFocus(true);
 
     qApp->inputMethod()->hide();
@@ -3595,8 +3530,8 @@ void tst_qquicktextedit::openInputPanel()
     edit->setReadOnly(true);
     edit->setFocus(true);
     QCOMPARE(qApp->inputMethod()->isVisible(), false);
-    QTest::mousePress(&view, Qt::LeftButton, noModifiers, centerPoint);
-    QTest::mouseRelease(&view, Qt::LeftButton, noModifiers, centerPoint);
+    QTest::mousePress(&window, Qt::LeftButton, noModifiers, centerPoint);
+    QTest::mouseRelease(&window, Qt::LeftButton, noModifiers, centerPoint);
     QGuiApplication::processEvents();
     QCOMPARE(qApp->inputMethod()->isVisible(), false);
 
@@ -3605,8 +3540,8 @@ void tst_qquicktextedit::openInputPanel()
     edit->setFocus(false);
     edit->setFocus(true);
     QCOMPARE(qApp->inputMethod()->isVisible(), false);
-    QTest::mousePress(&view, Qt::LeftButton, noModifiers, centerPoint);
-    QTest::mouseRelease(&view, Qt::LeftButton, noModifiers, centerPoint);
+    QTest::mousePress(&window, Qt::LeftButton, noModifiers, centerPoint);
+    QTest::mouseRelease(&window, Qt::LeftButton, noModifiers, centerPoint);
     QCOMPARE(qApp->inputMethod()->isVisible(), false);
 
     inputMethodPrivate->testContext = nullptr;
@@ -4058,20 +3993,14 @@ void tst_qquicktextedit::largeTextTables() // QTBUG-118636
 
 void tst_qquicktextedit::signal_editingfinished()
 {
-    QQuickView *window = new QQuickView(nullptr);
-    window->setBaseSize(QSize(800,600));
+    QQuickView window;
+    window.setBaseSize(QSize(800, 600));
+    QVERIFY(QQuickTest::showView(window, testFileUrl("signal_editingfinished.qml")));
+    QCOMPARE(QGuiApplication::focusWindow(), &window);
 
-    window->setSource(testFileUrl("signal_editingfinished.qml"));
-    window->show();
-    window->requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(window));
-    QCOMPARE(QGuiApplication::focusWindow(), window);
-
-    QVERIFY(window->rootObject() != nullptr);
-
-    QQuickTextEdit *input1 = qobject_cast<QQuickTextEdit *>(qvariant_cast<QObject *>(window->rootObject()->property("input1")));
+    QQuickTextEdit *input1 = qobject_cast<QQuickTextEdit *>(qvariant_cast<QObject *>(window.rootObject()->property("input1")));
     QVERIFY(input1);
-    QQuickTextEdit *input2 = qobject_cast<QQuickTextEdit *>(qvariant_cast<QObject *>(window->rootObject()->property("input2")));
+    QQuickTextEdit *input2 = qobject_cast<QQuickTextEdit *>(qvariant_cast<QObject *>(window.rootObject()->property("input2")));
     QVERIFY(input2);
 
     QSignalSpy editingFinished1Spy(input1, SIGNAL(editingFinished()));
@@ -4082,7 +4011,7 @@ void tst_qquicktextedit::signal_editingfinished()
 
     {
         QKeyEvent key(QEvent::KeyPress, Qt::Key_Tab, Qt::ShiftModifier, "", false, 1);
-        QGuiApplication::sendEvent(window, &key);
+        QGuiApplication::sendEvent(&window, &key);
         QVERIFY(key.isAccepted());
         QTRY_COMPARE(editingFinished1Spy.size(), 1);
 
@@ -4098,7 +4027,7 @@ void tst_qquicktextedit::signal_editingfinished()
 
     {
         QKeyEvent key = QKeyEvent(QEvent::KeyPress, Qt::Key_Tab, Qt::ShiftModifier, "", false, 1);
-        QGuiApplication::sendEvent(window, &key);
+        QGuiApplication::sendEvent(&window, &key);
         QVERIFY(key.isAccepted());
         QTRY_COMPARE(editingFinished2Spy.size(), 1);
 
@@ -4280,16 +4209,14 @@ void tst_qquicktextedit::preeditCursorRectangle()
 {
     QString preeditText = "super";
 
-    QQuickView view(testFileUrl("inputMethodEvent.qml"));
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("inputMethodEvent.qml")));
 
-    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(view.rootObject());
+    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(edit);
 
+    QTRY_VERIFY(edit->findChild<QQuickItem *>("cursor") != nullptr);
     QQuickItem *cursor = edit->findChild<QQuickItem *>("cursor");
-    QVERIFY(cursor);
 
     QSignalSpy editSpy(edit, SIGNAL(cursorRectangleChanged()));
     QSignalSpy panelSpy(qGuiApp->inputMethod(), SIGNAL(cursorRectangleChanged()));
@@ -4363,12 +4290,10 @@ void tst_qquicktextedit::inputMethodComposing()
 {
     QString text = "supercalifragisiticexpialidocious!";
 
-    QQuickView view(testFileUrl("inputContext.qml"));
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("inputContext.qml")));
 
-    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(view.rootObject());
+    QQuickTextEdit *edit = qobject_cast<QQuickTextEdit *>(window.rootObject());
     QVERIFY(edit);
     QCOMPARE(QGuiApplication::focusObject(), static_cast<QObject *>(edit));
 
@@ -4479,11 +4404,11 @@ void tst_qquicktextedit::cursorRectangleSize()
 {
     QFETCH(bool, useCursorDelegate);
 
-    QQuickView *window = new QQuickView(testFileUrl("positionAt.qml"));
-    QVERIFY(window->rootObject() != nullptr);
-    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit *>(window->rootObject());
+    QQuickView window(testFileUrl("positionAt.qml"));
+    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit *>(window.rootObject());
+    QVERIFY(textEdit);
 
-    QQmlComponent cursorDelegate(window->engine());
+    QQmlComponent cursorDelegate(window.engine());
     if (useCursorDelegate) {
         cursorDelegate.setData("import QtQuick 2.0\nRectangle { width:10; height:10; }", QUrl());
         textEdit->setCursorDelegate(&cursorDelegate);
@@ -4495,9 +4420,9 @@ void tst_qquicktextedit::cursorRectangleSize()
     textEdit->setCursorPosition(3);
     QVERIFY(textEdit != nullptr);
     textEdit->setFocus(true);
-    window->show();
-    window->requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(window));
+    window.show();
+    window.requestActivate();
+    QVERIFY(QTest::qWaitForWindowActive(&window));
 
     QInputMethodQueryEvent event(Qt::ImCursorRectangle);
     qApp->sendEvent(textEdit, &event);
@@ -4522,8 +4447,6 @@ void tst_qquicktextedit::cursorRectangleSize()
     // input panel cursorRectangle property and tranformed item cursor rectangle match
     QRectF sceneCursorRect = QQuickItemPrivate::get(textEdit)->itemToWindowTransform().mapRect(cursorRectFromItem);
     QCOMPARE(sceneCursorRect, qApp->inputMethod()->cursorRectangle());
-
-    delete window;
 }
 
 void tst_qquicktextedit::getText_data()
@@ -5708,19 +5631,11 @@ void tst_qquicktextedit::undo()
     QFETCH(IntList, insertMode);
     QFETCH(QStringList, expectedString);
 
-    QString componentStr = "import QtQuick 2.0\nTextEdit { focus: true }";
-    QQmlComponent textEditComponent(&engine);
-    textEditComponent.setData(componentStr.toLatin1(), QUrl());
-    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit*>(textEditComponent.create());
-    QVERIFY(textEdit != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("focusByDefault.qml")));
+    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit *>(window.rootObject());
 
-    QQuickWindow window;
-    textEdit->setParentItem(window.contentItem());
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-
-    QVERIFY(textEdit->hasActiveFocus());
+    QTRY_VERIFY(textEdit->hasActiveFocus());
     QVERIFY(!textEdit->canUndo());
 
     QSignalSpy spy(textEdit, SIGNAL(canUndoChanged()));
@@ -5794,18 +5709,11 @@ void tst_qquicktextedit::redo()
     QFETCH(IntList, insertIndex);
     QFETCH(QStringList, expectedString);
 
-    QString componentStr = "import QtQuick 2.0\nTextEdit { focus: true }";
-    QQmlComponent textEditComponent(&engine);
-    textEditComponent.setData(componentStr.toLatin1(), QUrl());
-    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit*>(textEditComponent.create());
-    QVERIFY(textEdit != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("focusByDefault.qml")));
+    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit *>(window.rootObject());
 
-    QQuickWindow window;
-    textEdit->setParentItem(window.contentItem());
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-    QVERIFY(textEdit->hasActiveFocus());
+    QTRY_VERIFY(textEdit->hasActiveFocus());
 
     QVERIFY(!textEdit->canUndo());
     QVERIFY(!textEdit->canRedo());
@@ -6017,18 +5925,11 @@ void tst_qquicktextedit::undo_keypressevents()
     QFETCH(KeyList, keys);
     QFETCH(QStringList, expectedString);
 
-    QString componentStr = "import QtQuick 2.0\nTextEdit { focus: true }";
-    QQmlComponent textEditComponent(&engine);
-    textEditComponent.setData(componentStr.toLatin1(), QUrl());
-    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit*>(textEditComponent.create());
-    QVERIFY(textEdit != nullptr);
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("focusByDefault.qml")));
+    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit *>(window.rootObject());
 
-    QQuickWindow window;
-    textEdit->setParentItem(window.contentItem());
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-    QVERIFY(textEdit->hasActiveFocus());
+    QTRY_VERIFY(textEdit->hasActiveFocus());
 
     simulateKeys(&window, keys);
 
@@ -6043,18 +5944,10 @@ void tst_qquicktextedit::undo_keypressevents()
 
 void tst_qquicktextedit::clear()
 {
-    QString componentStr = "import QtQuick 2.0\nTextEdit { focus: true }";
-    QQmlComponent textEditComponent(&engine);
-    textEditComponent.setData(componentStr.toLatin1(), QUrl());
-    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit*>(textEditComponent.create());
-    QVERIFY(textEdit != nullptr);
-
-    QQuickWindow window;
-    textEdit->setParentItem(window.contentItem());
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
-    QVERIFY(textEdit->hasActiveFocus());
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("focusByDefault.qml")));
+    QQuickTextEdit *textEdit = qobject_cast<QQuickTextEdit *>(window.rootObject());
+    QTRY_VERIFY(textEdit->hasActiveFocus());
 
     QSignalSpy spy(textEdit, SIGNAL(canUndoChanged()));
 
@@ -6254,14 +6147,10 @@ void tst_qquicktextedit::remoteImagesInDocumentSource()
 
 void tst_qquicktextedit::emptytags_QTBUG_22058()
 {
-    QQuickView window(testFileUrl("qtbug-22058.qml"));
-    QVERIFY(window.rootObject() != nullptr);
-
-    window.show();
-    window.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("qtbug-22058.qml")));
     QQuickTextEdit *input = qobject_cast<QQuickTextEdit *>(qvariant_cast<QObject *>(window.rootObject()->property("inputField")));
-    QVERIFY(input->hasActiveFocus());
+    QTRY_VERIFY(input->hasActiveFocus());
 
     QInputMethodEvent event("", QList<QInputMethodEvent::Attribute>());
     event.setCommitString("<b>Bold<");
@@ -6328,6 +6217,15 @@ void tst_qquicktextedit::doubleSelect_QTBUG_38704()
     QCOMPARE(selectionSpy.size(), 2);
     textEdit->select(1,2); //Change selection start
     QCOMPARE(selectionSpy.size(), 3);
+}
+
+void tst_qquicktextedit::textChanged_QTBUG_130676()
+{
+    QQuickTextEdit textEdit;
+    QSignalSpy spy(&textEdit, SIGNAL(textChanged()));
+    QVERIFY(spy.isValid());
+    textEdit.setText("Hello Qt");
+    QVERIFY(spy.count() == 1);
 }
 
 void tst_qquicktextedit::padding()
@@ -6446,31 +6344,25 @@ void tst_qquicktextedit::QTBUG_51115_readOnlyResetsSelection()
 void tst_qquicktextedit::keys_shortcutoverride()
 {
     // Tests that QML TextEdit receives Keys.onShortcutOverride  (QTBUG-68711)
-    QQuickView view;
-    view.setSource(testFileUrl("keys_shortcutoverride.qml"));
-    view.show();
-    view.requestActivate();
-    QVERIFY(QTest::qWaitForWindowActive(&view));
-    QObject *root = view.rootObject();
-    QVERIFY(root);
-
-    QQuickTextEdit *textEdit = root->findChild<QQuickTextEdit*>();
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("keys_shortcutoverride.qml")));
+    QQuickTextEdit *textEdit = window.rootObject()->findChild<QQuickTextEdit*>();
     QVERIFY(textEdit);
-    QQuickRectangle *rectangle = root->findChild<QQuickRectangle*>(QLatin1String("rectangle"));
+    QQuickRectangle *rectangle = window.rootObject()->findChild<QQuickRectangle*>(QLatin1String("rectangle"));
     QVERIFY(rectangle);
 
     // Precondition: check if its not already changed
-    QCOMPARE(root->property("who").value<QString>(), QLatin1String("nobody"));
+    QCOMPARE(window.rootObject()->property("who").value<QString>(), QLatin1String("nobody"));
 
     // send Key_Escape to the Rectangle
-    QVERIFY(rectangle->hasActiveFocus());
-    QTest::keyPress(&view, Qt::Key_Escape);
-    QCOMPARE(root->property("who").value<QString>(), QLatin1String("Rectangle"));
+    QTRY_VERIFY(rectangle->hasActiveFocus());
+    QTest::keyPress(&window, Qt::Key_Escape);
+    QCOMPARE(window.rootObject()->property("who").value<QString>(), QLatin1String("Rectangle"));
 
     // send Key_Escape to TextEdit
     textEdit->setFocus(true);
-    QTest::keyPress(&view, Qt::Key_Escape);
-    QCOMPARE(root->property("who").value<QString>(), QLatin1String("TextEdit"));
+    QTest::keyPress(&window, Qt::Key_Escape);
+    QCOMPARE(window.rootObject()->property("who").value<QString>(), QLatin1String("TextEdit"));
 }
 
 void tst_qquicktextedit::transparentSelectionColor()
@@ -6478,18 +6370,13 @@ void tst_qquicktextedit::transparentSelectionColor()
     if (QGuiApplication::platformName() == QLatin1String("minimal"))
         QSKIP("Skipping due to grabWindow not functional on minimal platforms");
 
-    QQuickView view;
-    view.setSource(testFileUrl("transparentSelectionColor.qml"));
-    view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QObject *root = view.rootObject();
-    QVERIFY(root);
-
-    QQuickTextEdit *textEdit = root->findChild<QQuickTextEdit *>();
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("transparentSelectionColor.qml")));
+    QQuickTextEdit *textEdit = window.rootObject()->findChild<QQuickTextEdit *>();
     QVERIFY(textEdit);
     textEdit->selectAll();
 
-    QImage img = view.grabWindow();
+    QImage img = window.grabWindow();
     QCOMPARE(img.isNull(), false);
 
     QColor color = img.pixelColor(int(textEdit->width() / 2), int(textEdit->height()) / 2);
@@ -6500,19 +6387,17 @@ void tst_qquicktextedit::transparentSelectionColor()
 
 void tst_qquicktextedit::keyEventPropagation()
 {
-    QQuickView view;
-    view.setSource(testFileUrl("keyEventPropagation.qml"));
-    view.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&view));
-    QObject *root = view.rootObject();
+    QQuickView window;
+    QVERIFY(QQuickTest::showView(window, testFileUrl("keyEventPropagation.qml")));
+    QObject *root = window.rootObject();
     QVERIFY(root);
 
     QSignalSpy downSpy(root, SIGNAL(keyDown(int)));
     QSignalSpy upSpy(root, SIGNAL(keyUp(int)));
 
     QQuickTextEdit *textEdit = root->findChild<QQuickTextEdit *>();
-    QVERIFY(textEdit->hasActiveFocus());
-    simulateKey(&view, Qt::Key_Back);
+    QTRY_VERIFY(textEdit->hasActiveFocus());
+    simulateKey(&window, Qt::Key_Back);
     QCOMPARE(downSpy.size(), 1);
     QCOMPARE(upSpy.size(), 1);
     auto downKey = downSpy.takeFirst();
@@ -6520,7 +6405,7 @@ void tst_qquicktextedit::keyEventPropagation()
     QCOMPARE(downKey.at(0).toInt(), Qt::Key_Back);
     QCOMPARE(upKey.at(0).toInt(), Qt::Key_Back);
 
-    simulateKey(&view, Qt::Key_Shift);
+    simulateKey(&window, Qt::Key_Shift);
     QCOMPARE(downSpy.size(), 1);
     QCOMPARE(upSpy.size(), 1);
     downKey = downSpy.takeFirst();
@@ -6528,11 +6413,11 @@ void tst_qquicktextedit::keyEventPropagation()
     QCOMPARE(downKey.at(0).toInt(), Qt::Key_Shift);
     QCOMPARE(upKey.at(0).toInt(), Qt::Key_Shift);
 
-    simulateKey(&view, Qt::Key_A);
+    simulateKey(&window, Qt::Key_A);
     QCOMPARE(downSpy.size(), 0);
     QCOMPARE(upSpy.size(), 0);
 
-    simulateKey(&view, Qt::Key_Right);
+    simulateKey(&window, Qt::Key_Right);
     QCOMPARE(downSpy.size(), 0);
     QCOMPARE(upSpy.size(), 1);
     upKey = upSpy.takeFirst();
@@ -6858,6 +6743,55 @@ void tst_qquicktextedit::resizeTextEditPolish()
     auto *editPriv = QQuickTextEditPrivate::get(edit);
     QCOMPARE(editPriv->xoff, 0);
     QCOMPARE(editPriv->yoff, 0);
+}
+
+void tst_qquicktextedit::setTextDocument()
+{
+    QString componentStr = "import QtQuick\nTextEdit {}";
+    QQmlComponent texteditComponent(&engine);
+    texteditComponent.setData(componentStr.toLatin1(), QUrl());
+    auto textEdit = qobject_cast<QQuickTextEdit *>(texteditComponent.create());
+    QVERIFY(textEdit != nullptr);
+
+    QPointer<QTextDocument> docPtr = textEdit->textDocument()->textDocument();
+    QVERIFY(!docPtr.isNull());
+
+    // make sure the setter replaces the document and cleans up the default-created document
+    auto firstDoc = std::make_unique<QTextDocument>();
+    textEdit->textDocument()->setTextDocument(firstDoc.get());
+    QCOMPARE(textEdit->textDocument()->textDocument(), firstDoc.get());
+
+    QVERIFY(docPtr.isNull());
+    docPtr = firstDoc.get();
+
+    // make sure replacing a custom document does not delete the document
+    auto secondDoc = std::make_unique<QTextDocument>();
+    textEdit->textDocument()->setTextDocument(secondDoc.get());
+    QCOMPARE(textEdit->textDocument()->textDocument(), secondDoc.get());
+    QCOMPARE(docPtr.data(), firstDoc.get());
+
+    auto currentDoc = textEdit->textDocument()->textDocument();
+    docPtr = currentDoc;
+
+    // ensure two independent edits can both watch the same document
+    auto textEdit2 = qobject_cast<QQuickTextEdit *>(texteditComponent.create());
+    QVERIFY(textEdit2 != nullptr);
+
+    textEdit2->textDocument()->setTextDocument(currentDoc);
+    QVERIFY(!docPtr.isNull());
+
+    currentDoc->setPlainText("reset document");
+    QCOMPARE(textEdit->text(), textEdit2->text());
+
+    // resizing a single TextEdit should not break or livelock
+    textEdit2->setWidth(100);
+
+    // verify that deleting the textedit doesn't delete the document
+    // or leave behind connections to the document
+    delete textEdit;
+    textEdit = nullptr;
+    QCOMPARE(docPtr.data(), currentDoc);
+    currentDoc->setPlainText("hello world");
 }
 
 QT_END_NAMESPACE

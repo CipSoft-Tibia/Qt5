@@ -13,37 +13,37 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufRepeatedTypesJsonDeserializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init()
     {
         serializer.reset(new QProtobufJsonSerializer);
     }
 
-    void RepeatedStringMessageTest();
-    void RepeatedFloatMessageTest();
-    void RepeatedBytesMessageTest();
-    void RepeatedDoubleMessageTest();
-    void RepeatedIntMessageTest();
-    void RepeatedSIntMessageTest();
-    void RepeatedUIntMessageTest();
-    void RepeatedInt64MessageTest();
-    void RepeatedSInt64MessageTest();
-    void RepeatedUInt64MessageTest();
-    void RepeatedFixedIntMessageTest();
-    void RepeatedSFixedIntMessageTest();
-    void RepeatedFixedInt64MessageTest();
-    void RepeatedSFixedInt64MessageTest();
-    void RepeatedComplexMessageTest();
-    void RepeatedBoolMessageTest();
-    void MalformedJsonTest();
-    void InvalidTypeTest();
+    void repeatedStringMessageTest();
+    void repeatedFloatMessageTest();
+    void repeatedBytesMessageTest();
+    void repeatedDoubleMessageTest();
+    void repeatedIntMessageTest();
+    void repeatedSIntMessageTest();
+    void repeatedUIntMessageTest();
+    void repeatedInt64MessageTest();
+    void repeatedSInt64MessageTest();
+    void repeatedUInt64MessageTest();
+    void repeatedFixedIntMessageTest();
+    void repeatedSFixedIntMessageTest();
+    void repeatedFixedInt64MessageTest();
+    void repeatedSFixedInt64MessageTest();
+    void repeatedComplexMessageTest();
+    void repeatedBoolMessageTest();
+    void malformedJsonTest();
+    void invalidTypeTest();
 private:
     std::unique_ptr<QProtobufJsonSerializer> serializer;
 };
 
 using namespace qtprotobufnamespace::tests;
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedStringMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedStringMessageTest()
 {
     RepeatedStringMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedString\":[\"aaaa\",\"bbbbb\",\"ccc\",\"dddddd\",\"eeeee\",\"\"]}"_ba);
@@ -54,7 +54,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedStringMessageTest()
     QVERIFY(test.testRepeatedString().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedBytesMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedBytesMessageTest()
 {
     RepeatedBytesMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedBytes\":[\"AQIDBAUG\",\"/////w==\",\"6urq6uo=\",\"AQIDBAUG\"]}"_ba);
@@ -76,7 +76,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedBytesMessageTest()
     QVERIFY(test.testRepeatedBytes().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedFloatMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedFloatMessageTest()
 {
     RepeatedFloatMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedFloat\":[0.4,1.2,0.5,3.912348,0.6]}"_ba);
@@ -87,7 +87,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedFloatMessageTest()
     QVERIFY(test.testRepeatedFloat().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedDoubleMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedDoubleMessageTest()
 {
     RepeatedDoubleMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedDouble\":[0.1,0.2,0.3,3.912348239293,0.5]}"_ba);
@@ -98,7 +98,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedDoubleMessageTest()
     QVERIFY(test.testRepeatedDouble().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedIntMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedIntMessageTest()
 {
     RepeatedIntMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[0,1,321,-65999,123245,-3,3]}"_ba);
@@ -109,7 +109,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedIntMessageTest()
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedSIntMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedSIntMessageTest()
 {
     RepeatedSIntMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,321,-65999,123245,-3,3]}"_ba);
@@ -120,7 +120,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedSIntMessageTest()
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedUIntMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedUIntMessageTest()
 {
     RepeatedUIntMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,0,321,65999,123245,3]}"_ba);
@@ -131,7 +131,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedUIntMessageTest()
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedInt64MessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedInt64MessageTest()
 {
     RepeatedInt64Message test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,321,-65999,12324523123123,-3,0,3]}"_ba);
@@ -142,7 +142,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedInt64MessageTest()
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedSInt64MessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedSInt64MessageTest()
 {
     RepeatedSInt64Message test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,321,-65999,12324523123123,-3,3]}"_ba);
@@ -153,7 +153,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedSInt64MessageTest()
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedUInt64MessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedUInt64MessageTest()
 {
     RepeatedUInt64Message test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,321,65999,123245,123245324235425234,3]}"_ba);
@@ -164,7 +164,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedUInt64MessageTest()
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedFixedIntMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedFixedIntMessageTest()
 {
     RepeatedFixedIntMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,321,65999,12324523,3,3]}"_ba);
@@ -175,7 +175,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedFixedIntMessageTest
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedSFixedIntMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedSFixedIntMessageTest()
 {
     RepeatedSFixedIntMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[0,1,321,-65999,12324523,-3,3]}"_ba);
@@ -186,7 +186,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedSFixedIntMessageTes
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedFixedInt64MessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedFixedInt64MessageTest()
 {
     RepeatedFixedInt64Message test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,321,65999,123245324235425234,3,3]}"_ba);
@@ -197,7 +197,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedFixedInt64MessageTe
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedSFixedInt64MessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedSFixedInt64MessageTest()
 {
     RepeatedSFixedInt64Message test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,321,-65999,123245324235425234,-3,3]}"_ba);
@@ -208,7 +208,7 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedSFixedInt64MessageT
     QVERIFY(test.testRepeatedInt().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedComplexMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedComplexMessageTest()
 {
     RepeatedComplexMessage test;
     test.deserialize(serializer.get(), "{\"testRepeatedComplex\":[{\"testFieldInt\":21,\"testComplexField\":"
@@ -228,47 +228,47 @@ void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedComplexMessageTest(
     QVERIFY(test.testRepeatedComplex().isEmpty());
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::RepeatedBoolMessageTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::repeatedBoolMessageTest()
 {
     RepeatedBoolMessage boolMsg;
     boolMsg.deserialize(serializer.get(), "{\"testRepeatedBool\":[true,true,true,false,false,false,false,false,false,false,false,false,true]}"_ba);
-    QCOMPARE(serializer->deserializationError(), QAbstractProtobufSerializer::NoError);
+    QCOMPARE(serializer->lastError(), QAbstractProtobufSerializer::Error::None);
     QtProtobuf::boolList expected({ true,  true,  true,  false, false, false, false,
                                     false, false, false, false, false, true });
     QCOMPARE(boolMsg.testRepeatedBool().count(), 13);
     QCOMPARE(boolMsg.testRepeatedBool(), expected);
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::MalformedJsonTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::malformedJsonTest()
 {
     // no '['
     RepeatedBoolMessage boolMsg;
     boolMsg.deserialize(serializer.get(), "{\"testRepeatedBool\":true,true,true,false,false,false,false,false,false,false,false,false,true]}"_ba);
     QVERIFY(boolMsg.testRepeatedBool().size() == 0);
-    QCOMPARE(serializer->deserializationError(), QAbstractProtobufSerializer::UnexpectedEndOfStreamError);
+    QCOMPARE(serializer->lastError(), QAbstractProtobufSerializer::Error::UnexpectedEndOfStream);
 
     // twice ]
     RepeatedSInt64Message test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[]1,321,-65999,12324523123123,-3,3]}"_ba);
     QVERIFY(test.testRepeatedInt().size() == 0);
-    QCOMPARE(serializer->deserializationError(), QAbstractProtobufSerializer::UnexpectedEndOfStreamError);
+    QCOMPARE(serializer->lastError(), QAbstractProtobufSerializer::Error::UnexpectedEndOfStream);
 
 }
 
-void QtProtobufRepeatedTypesJsonDeserializationTest::InvalidTypeTest()
+void QtProtobufRepeatedTypesJsonDeserializationTest::invalidTypeTest()
 {
     // expected sint, string is used
     RepeatedSInt64Message test;
     test.deserialize(serializer.get(), "{\"testRepeatedInt\":[1,321,\"abcd\",12324523123123,-3,3]}"_ba);
-    QVERIFY(test.testRepeatedInt().size() == 0);
-    QCOMPARE(serializer->deserializationError(), QAbstractProtobufSerializer::InvalidFormatError);
+    QCOMPARE(test.testRepeatedInt().size(), 2);
+    QCOMPARE(serializer->lastError(), QAbstractProtobufSerializer::Error::InvalidFormat);
 
     // expected bool, float is used
     RepeatedBoolMessage boolMsg;
     boolMsg.deserialize(serializer.get(),
                         "{\"testRepeatedBool\":[true,true,true,7.8,false,false,false,false,false,false,false,false,true]}"_ba);
-    QVERIFY(test.testRepeatedInt().size() == 0);
-    QCOMPARE(serializer->deserializationError(), QAbstractProtobufSerializer::InvalidFormatError);
+    QCOMPARE(boolMsg.testRepeatedBool().size(), 3);
+    QCOMPARE(serializer->lastError(), QAbstractProtobufSerializer::Error::InvalidFormat);
 
 }
 

@@ -5,87 +5,18 @@
 #ifndef QTPROTOBUFTYPES_H
 #define QTPROTOBUFTYPES_H
 
-#include <QtProtobuf/qtprotobufglobal.h>
 #include <QtProtobuf/qprotobufmessage.h>
+#include <QtProtobuf/qtprotobufexports.h>
 
-#include <QtCore/qhash.h>
-#include <QtCore/qmetatype.h>
 #include <QtCore/qendian.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qmetatype.h>
+#include <QtCore/qstring.h>
 
-#include <memory>
 #include <type_traits>
-#include <utility>
 
 QT_BEGIN_NAMESPACE
-
-namespace QtProtobufPrivate {
-
-enum FieldFlag : uint { NoFlags = 0x0, NonPacked = 0x1, Oneof = 0x02, Optional = 0x04 };
-
-struct QProtobufPropertyOrdering
-{
-    const struct Data
-    {
-        uint version;
-        uint numFields;
-        uint fieldNumberOffset;
-        uint propertyIndexOffset;
-        uint flagsOffset;
-        uint fullPackageNameSize;
-    } *data;
-
-    Q_PROTOBUF_EXPORT QUtf8StringView getMessageFullName() const;
-    Q_PROTOBUF_EXPORT QUtf8StringView getJsonName(int index) const;
-    Q_PROTOBUF_EXPORT int getFieldNumber(int index) const;
-    Q_PROTOBUF_EXPORT int getPropertyIndex(int index) const;
-    Q_PROTOBUF_EXPORT uint getFieldFlags(int index) const;
-    Q_PROTOBUF_EXPORT int indexOfFieldNumber(int fieldNumber) const;
-    int fieldCount() const { return int(data->numFields); }
-
-private:
-    const uint *uint_data() const;
-    const char *char_data() const;
-    const uint &uint_dataForIndex(int index, uint offset) const;
-};
-static_assert(std::is_trivially_destructible_v<QProtobufPropertyOrdering>);
-
-extern Q_PROTOBUF_EXPORT void registerOrdering(QMetaType type, QProtobufPropertyOrdering ordering);
-
-// Convenience structure to hold a reference to a single entry
-struct QProtobufPropertyOrderingInfo
-{
-    QProtobufPropertyOrderingInfo(QProtobufPropertyOrdering ord, int ind)
-        : ordering(ord), index(ind)
-    {
-        Q_ASSERT(index >= 0);
-    }
-
-    QUtf8StringView getJsonName() const { return ordering.getJsonName(index); }
-    int getFieldNumber() const
-    {
-        return (overrideFieldNumber >= 0) ? overrideFieldNumber : ordering.getFieldNumber(index);
-    }
-    int getPropertyIndex() const { return ordering.getPropertyIndex(index); }
-    uint getFieldFlags() const { return ordering.getFieldFlags(index); }
-
-private:
-    QProtobufPropertyOrderingInfo(QProtobufPropertyOrdering ord, int ind, int fieldNumber)
-        : ordering(ord), index(ind), overrideFieldNumber(fieldNumber)
-    {
-    }
-    const QProtobufPropertyOrdering ordering;
-    const int index;
-    const int overrideFieldNumber = -1; // special case for maps
-};
-
-template<typename>
-using sfinae = void;
-template<typename T, typename = void>
-[[maybe_unused]] static constexpr bool HasProtobufPropertyOrdering = false;
-template<typename T>
-[[maybe_unused]] static constexpr bool
-        HasProtobufPropertyOrdering<T, sfinae<decltype(T::propertyOrdering)>> = true;
-} // namespace QtProtobufPrivate
 
 namespace QtProtobuf {
 Q_NAMESPACE_EXPORT(Q_PROTOBUF_EXPORT)
@@ -108,27 +39,32 @@ Q_ENUM_NS(WireTypes)
 template<typename T, typename tag>
 struct TransparentWrapper
 {
-    TransparentWrapper(T t = T()) : _t(t) { }
-    T _t;
-    operator T &() { return _t; }
-    operator T() const { return _t; }
-    TransparentWrapper &operator=(const T &t)
+    TransparentWrapper(T t_ = T()) : t(t_) { }
+    T t;
+    operator T &() { return t; }
+    operator T() const { return t; }
+    TransparentWrapper &operator=(T t_)
     {
-        _t = t;
+        t = t_;
         return *this;
     }
 
-    static T toType(TransparentWrapper t) { return t._t; }
-    static TransparentWrapper fromType(T _t) { return TransparentWrapper(_t); }
+    static T toType(TransparentWrapper t) { return t.t; }
+    static TransparentWrapper fromType(T t) { return TransparentWrapper(t); }
 
-    static QString toString(TransparentWrapper t) { return QString::number(t._t); }
+    static QString toString(TransparentWrapper t) { return QString::number(t.t); }
+
+private:
+    friend constexpr TransparentWrapper qbswap(TransparentWrapper source)
+    {
+        return { QT_PREPEND_NAMESPACE(qbswap)(source.t) };
+    }
+
+    friend size_t qHash(TransparentWrapper key, size_t seed = 0) noexcept
+    {
+        return QT_PREPEND_NAMESPACE(qHash)(seed, key.t);
+    }
 };
-
-template<typename T, typename tag>
-constexpr TransparentWrapper<T, tag> qbswap(TransparentWrapper<T, tag> source)
-{
-    return { QT_PREPEND_NAMESPACE(qbswap)(source._t) };
-}
 
 using int32 = TransparentWrapper<int32_t, struct int_tag>;
 using int64 = TransparentWrapper<int64_t, struct int_tag>;
@@ -155,59 +91,127 @@ using floatList = QList<float>;
 using doubleList = QList<double>;
 using boolList = QList<bool>;
 
-using RegisterFunction = void (*)();
-// This struct is used for type registrations in generated code
-struct ProtoTypeRegistrar
-{
-    Q_PROTOBUF_EXPORT explicit ProtoTypeRegistrar(QtProtobuf::RegisterFunction initializer);
-};
+template<typename T>
+using HasProtobufStaticPropertyOrdering = decltype(T::staticPropertyOrdering);
 
-template<typename T>
-bool repeatedValueCompare(const QList<T> &a, const QList<T> &b)
-{
-    return std::equal(a.begin(), a.end(), b.begin(), b.end());
-}
+template <typename T>
+using has_q_protobuf_object_macro = qxp::is_detected<HasProtobufStaticPropertyOrdering, T>;
 
-template<typename K, typename V>
-bool repeatedValueCompare(const QHash<K, V> &a, const QHash<K, V> &b)
-{
-    return a == b;
-}
+template <typename T>
+constexpr bool has_q_protobuf_object_macro_v = has_q_protobuf_object_macro<T>::value;
 
-template<typename T>
-struct qMakeUnsignedImpl
-{
-    using type = std::make_unsigned_t<T>;
-};
-template<typename T>
-struct qMakeUnsignedImpl<TransparentWrapper<T, struct fixed_tag>>
-{
-    using type = TransparentWrapper<std::make_unsigned_t<T>, fixed_tag>;
-};
-template<>
-struct qMakeUnsignedImpl<int32>
-{
-    using type = uint32_t;
-};
-template<>
-struct qMakeUnsignedImpl<int64>
-{
-    using type = uint64_t;
-};
-template<typename T>
-using qMakeUnsigned = typename qMakeUnsignedImpl<T>::type;
+template <typename T>
+inline constexpr bool IsProtobufScalarValueType = false;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::int32> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::int64> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::sint32> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::sint64> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::uint32> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::uint64> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::fixed32> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::fixed64> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::sfixed32> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::sfixed64> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<float> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<double> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QtProtobuf::boolean> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QString> = true;
+template <>
+constexpr inline bool IsProtobufScalarValueType<QByteArray> = true;
+
+template <typename T>
+using is_protobuf_scalar_value_type = std::bool_constant<IsProtobufScalarValueType<T>>;
+
+template <typename T>
+using is_protobuf_message = std::conjunction<std::negation<std::is_pointer<T>>,
+                                             std::is_base_of<QProtobufMessage, T>,
+                                             has_q_protobuf_object_macro<T>>;
+
+template <typename T>
+using if_protobuf_message = std::enable_if_t<is_protobuf_message<T>::value, bool>;
+
+template <typename T>
+using is_protobuf_non_message = std::disjunction<std::is_enum<T>,
+                                                 QtProtobuf::is_protobuf_scalar_value_type<T>>;
+
+template <typename T>
+using if_protobuf_non_message = std::enable_if_t<is_protobuf_non_message<T>::value, bool>;
+
+template <typename T>
+using is_protobuf_type = std::disjunction<is_protobuf_message<T>, is_protobuf_non_message<T>>;
+
+template <typename T>
+using if_protobuf_type = std::enable_if_t<is_protobuf_type<T>::value, bool>;
+
+template <typename T>
+using is_protobuf_message_without_ordering = std::conjunction<
+    std::negation<std::is_pointer<T>>, std::is_base_of<QProtobufMessage, T>,
+    std::negation<has_q_protobuf_object_macro<T>>>;
+
+template <typename T>
+using if_protobuf_message_without_ordering = std::enable_if_t<
+    is_protobuf_message_without_ordering<T>::value, bool>;
+
+template <typename T>
+inline constexpr bool IsProtobufMapKeyType = false;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::int32> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::int64> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::sint32> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::sint64> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::uint32> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::uint64> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::fixed32> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::fixed64> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::sfixed32> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::sfixed64> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QtProtobuf::boolean> = true;
+template <>
+constexpr inline bool IsProtobufMapKeyType<QString> = true;
+
+template <typename T>
+using is_protobuf_map_key = std::bool_constant<IsProtobufMapKeyType<T>>;
+
+template <typename T>
+using if_protobuf_map_key = std::enable_if_t<is_protobuf_map_key<T>::value, bool>;
+
+template <typename K, typename V>
+using if_protobuf_map = std::enable_if_t<std::conjunction_v<QtProtobuf::is_protobuf_map_key<K>,
+                                                            QtProtobuf::is_protobuf_type<V>>, bool>;
 
 } // namespace QtProtobuf
 
-Q_PROTOBUF_EXPORT void qRegisterProtobufTypes();
-
 QT_END_NAMESPACE
 
-QT_DECL_METATYPE_EXTERN_TAGGED(QtProtobuf::int32, QtProtobuf_int32, Q_PROTOBUF_EXPORT)
-QT_DECL_METATYPE_EXTERN_TAGGED(QtProtobuf::int64, QtProtobuf_int64, Q_PROTOBUF_EXPORT)
-QT_DECL_METATYPE_EXTERN_TAGGED(QtProtobuf::fixed32, QtProtobuf_fixed32, Q_PROTOBUF_EXPORT)
-QT_DECL_METATYPE_EXTERN_TAGGED(QtProtobuf::fixed64, QtProtobuf_fixed64, Q_PROTOBUF_EXPORT)
-QT_DECL_METATYPE_EXTERN_TAGGED(QtProtobuf::sfixed32, QtProtobuf_sfixed32, Q_PROTOBUF_EXPORT)
-QT_DECL_METATYPE_EXTERN_TAGGED(QtProtobuf::sfixed64, QtProtobuf_sfixed64, Q_PROTOBUF_EXPORT)
+Q_DECLARE_METATYPE(QtProtobuf::int32)
+Q_DECLARE_METATYPE(QtProtobuf::int64)
+Q_DECLARE_METATYPE(QtProtobuf::fixed32)
+Q_DECLARE_METATYPE(QtProtobuf::fixed64)
+Q_DECLARE_METATYPE(QtProtobuf::sfixed32)
+Q_DECLARE_METATYPE(QtProtobuf::sfixed64)
 
 #endif // QTPROTOBUFTYPES_H

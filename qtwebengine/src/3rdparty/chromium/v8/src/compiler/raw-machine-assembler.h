@@ -193,12 +193,26 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
   void OptimizedStoreField(MachineRepresentation rep, Node* object, int offset,
                            Node* value, WriteBarrierKind write_barrier) {
     DCHECK(!IsMapOffsetConstantMinusTag(offset));
+    DCHECK_NE(rep, MachineRepresentation::kIndirectPointer);
     AddNode(simplified()->StoreField(
                 FieldAccess(BaseTaggedness::kTaggedBase, offset,
                             MaybeHandle<Name>(), OptionalMapRef(), Type::Any(),
                             MachineType::TypeForRepresentation(rep),
                             write_barrier, "OptimizedStoreField")),
             object, value);
+  }
+  void OptimizedStoreIndirectPointerField(Node* object, int offset,
+                                          IndirectPointerTag tag, Node* value,
+                                          WriteBarrierKind write_barrier) {
+    DCHECK(!IsMapOffsetConstantMinusTag(offset));
+    DCHECK(write_barrier == WriteBarrierKind::kNoWriteBarrier ||
+           write_barrier == WriteBarrierKind::kIndirectPointerWriteBarrier);
+    FieldAccess access(BaseTaggedness::kTaggedBase, offset, MaybeHandle<Name>(),
+                       OptionalMapRef(), Type::Any(),
+                       MachineType::IndirectPointer(), write_barrier,
+                       "OptimizedStoreIndirectPointerField");
+    access.indirect_pointer_tag = tag;
+    AddNode(simplified()->StoreField(access), object, value);
   }
   void OptimizedStoreMap(Node* object, Node* value,
                          WriteBarrierKind write_barrier = kMapWriteBarrier) {
@@ -812,6 +826,9 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
   Node* TruncateFloat32ToUint32(Node* a, TruncateKind kind) {
     return AddNode(machine()->TruncateFloat32ToUint32(kind), a);
   }
+  Node* TruncateFloat64ToInt64(Node* a, TruncateKind kind) {
+    return AddNode(machine()->TruncateFloat64ToInt64(kind), a);
+  }
   Node* TryTruncateFloat32ToInt64(Node* a) {
     return AddNode(machine()->TryTruncateFloat32ToInt64(), a);
   }
@@ -926,6 +943,20 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
     return AddNode(machine()->Float64SilenceNaN(), a);
   }
 
+  // Stack operations.
+  Node* LoadFramePointer() { return AddNode(machine()->LoadFramePointer()); }
+  Node* LoadParentFramePointer() {
+    return AddNode(machine()->LoadParentFramePointer());
+  }
+
+  // SIMD operations that are needed outside of Wasm (e.g. in swisstable).
+  Node* I8x16Splat(Node* a) { return AddNode(machine()->I8x16Splat(), a); }
+  Node* I8x16BitMask(Node* a) { return AddNode(machine()->I8x16BitMask(), a); }
+  Node* I8x16Eq(Node* a, Node* b) {
+    return AddNode(machine()->I8x16Eq(), a, b);
+  }
+
+#if V8_ENABLE_WEBASSEMBLY
   // SIMD operations.
   Node* S128Const(const uint8_t value[16]) {
     return AddNode(machine()->S128Const(value));
@@ -936,19 +967,12 @@ class V8_EXPORT_PRIVATE RawMachineAssembler {
   }
   Node* I32x4Splat(Node* a) { return AddNode(machine()->I32x4Splat(), a); }
   Node* I16x8Splat(Node* a) { return AddNode(machine()->I16x8Splat(), a); }
-  Node* I8x16Splat(Node* a) { return AddNode(machine()->I8x16Splat(), a); }
 
-  Node* I8x16BitMask(Node* a) { return AddNode(machine()->I8x16BitMask(), a); }
-
-  Node* I8x16Eq(Node* a, Node* b) {
-    return AddNode(machine()->I8x16Eq(), a, b);
+  Node* LoadStackPointer() { return AddNode(machine()->LoadStackPointer()); }
+  void SetStackPointer(Node* ptr, wasm::FPRelativeScope fp_scope) {
+    AddNode(machine()->SetStackPointer(fp_scope), ptr);
   }
-
-  // Stack operations.
-  Node* LoadFramePointer() { return AddNode(machine()->LoadFramePointer()); }
-  Node* LoadParentFramePointer() {
-    return AddNode(machine()->LoadParentFramePointer());
-  }
+#endif
 
   // Parameters.
   Node* TargetParameter();

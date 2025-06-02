@@ -15,6 +15,9 @@
 #include "api/array_view.h"
 #include "api/video_codecs/av1_profile.h"
 #include "api/video_codecs/h264_profile_level_id.h"
+#ifdef RTC_ENABLE_H265
+#include "api/video_codecs/h265_profile_tier_level.h"
+#endif
 #include "api/video_codecs/video_codec.h"
 #include "api/video_codecs/vp9_profile.h"
 #include "rtc_base/checks.h"
@@ -25,8 +28,7 @@ namespace webrtc {
 
 namespace {
 
-std::string H264GetPacketizationModeOrDefault(
-    const SdpVideoFormat::Parameters& params) {
+std::string H264GetPacketizationModeOrDefault(const CodecParameterMap& params) {
   constexpr char kH264FmtpPacketizationMode[] = "packetization-mode";
   const auto it = params.find(kH264FmtpPacketizationMode);
   if (it != params.end()) {
@@ -37,8 +39,8 @@ std::string H264GetPacketizationModeOrDefault(
   return "0";
 }
 
-bool H264IsSamePacketizationMode(const SdpVideoFormat::Parameters& left,
-                                 const SdpVideoFormat::Parameters& right) {
+bool H264IsSamePacketizationMode(const CodecParameterMap& left,
+                                 const CodecParameterMap& right) {
   return H264GetPacketizationModeOrDefault(left) ==
          H264GetPacketizationModeOrDefault(right);
 }
@@ -61,6 +63,10 @@ bool IsSameCodecSpecific(const SdpVideoFormat& format1,
       return VP9IsSameProfile(format1.parameters, format2.parameters);
     case kVideoCodecAV1:
       return AV1IsSameProfile(format1.parameters, format2.parameters);
+#ifdef RTC_ENABLE_H265
+    case kVideoCodecH265:
+      return H265IsSameProfileTierLevel(format1.parameters, format2.parameters);
+#endif
     default:
       return true;
   }
@@ -70,12 +76,12 @@ bool IsSameCodecSpecific(const SdpVideoFormat& format1,
 SdpVideoFormat::SdpVideoFormat(const std::string& name) : name(name) {}
 
 SdpVideoFormat::SdpVideoFormat(const std::string& name,
-                               const Parameters& parameters)
+                               const CodecParameterMap& parameters)
     : name(name), parameters(parameters) {}
 
 SdpVideoFormat::SdpVideoFormat(
     const std::string& name,
-    const Parameters& parameters,
+    const CodecParameterMap& parameters,
     const absl::InlinedVector<ScalabilityMode, kScalabilityModeCount>&
         scalability_modes)
     : name(name),

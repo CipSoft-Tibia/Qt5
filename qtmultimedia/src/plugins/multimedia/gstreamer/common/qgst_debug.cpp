@@ -25,6 +25,11 @@ QDebug operator<<(QDebug dbg, const QGstStructureView &structure)
     return dbg << structure.structure;
 }
 
+QDebug operator<<(QDebug dbg, const QUniqueGstStructureHandle &structure)
+{
+    return dbg << QGstStructureView{structure};
+}
+
 QDebug operator<<(QDebug dbg, const QGValue &value)
 {
     return dbg << value.value;
@@ -80,17 +85,10 @@ QDebug operator<<(QDebug dbg, const GstCaps *caps)
 
 QDebug operator<<(QDebug dbg, const GstVideoInfo *info)
 {
-#if GST_CHECK_VERSION(1, 20, 0)
     return dbg << QGstCaps{
         gst_video_info_to_caps(info),
         QGstCaps::NeedsRef,
     };
-#else
-    return dbg << QGstCaps{
-        gst_video_info_to_caps(const_cast<GstVideoInfo *>(info)),
-        QGstCaps::NeedsRef,
-    };
-#endif
 }
 
 QDebug operator<<(QDebug dbg, const GstStructure *structure)
@@ -584,6 +582,93 @@ QDebug operator<<(QDebug dbg, const QCompactGstMessageAdaptor &m)
         saver.reset();
         return dbg << m.msg;
     }
+    }
+}
+
+QDebug operator<<(QDebug dbg, GstPlayMessage type)
+{
+    return dbg << gst_play_message_get_name(type);
+}
+
+QDebug operator<<(QDebug dbg, GstPlayState state)
+{
+    return dbg << gst_play_state_get_name(state);
+}
+
+QGstPlayMessageAdaptor::QGstPlayMessageAdaptor(const QGstreamerMessage &m)
+    : QGstPlayMessageAdaptor{
+          m.message(),
+      }
+{
+}
+
+QGstPlayMessageAdaptor::QGstPlayMessageAdaptor(GstMessage *m)
+    : msg{
+          m,
+      }
+{
+}
+
+QDebug operator<<(QDebug dbg, const QGstPlayMessageAdaptor &m)
+{
+    using namespace std::chrono;
+    Q_ASSERT(gst_play_is_play_message(m.msg));
+
+    std::optional<QDebugStateSaver> saver(dbg);
+
+    GstPlayMessage type;
+    gst_play_message_parse_type(m.msg, &type);
+
+    switch (type) {
+    case GST_PLAY_MESSAGE_URI_LOADED:
+    case GST_PLAY_MESSAGE_END_OF_STREAM:
+    case GST_PLAY_MESSAGE_MEDIA_INFO_UPDATED:
+    case GST_PLAY_MESSAGE_VOLUME_CHANGED:
+    case GST_PLAY_MESSAGE_MUTE_CHANGED:
+    case GST_PLAY_MESSAGE_SEEK_DONE:
+        return dbg << type;
+
+    case GST_PLAY_MESSAGE_POSITION_UPDATED: {
+        GstClockTime position;
+        gst_play_message_parse_position_updated(m.msg, &position);
+        return dbg << type << nanoseconds(position);
+    }
+    case GST_PLAY_MESSAGE_DURATION_CHANGED: {
+        GstClockTime duration;
+        gst_play_message_parse_duration_updated(m.msg, &duration);
+        return dbg << type << nanoseconds(duration);
+    }
+
+    case GST_PLAY_MESSAGE_STATE_CHANGED: {
+        GstPlayState state;
+        gst_play_message_parse_state_changed(m.msg, &state);
+        return dbg << type << state;
+    }
+    case GST_PLAY_MESSAGE_BUFFERING: {
+        guint percent;
+        gst_play_message_parse_buffering_percent(m.msg, &percent);
+        return dbg << type << percent;
+    }
+    case GST_PLAY_MESSAGE_ERROR: {
+        QUniqueGErrorHandle err;
+        QUniqueGstStructureHandle details;
+        gst_play_message_parse_error(m.msg, &err, &details);
+        return dbg << type << err << details.get();
+    }
+    case GST_PLAY_MESSAGE_WARNING: {
+        QUniqueGErrorHandle err;
+        QUniqueGstStructureHandle details;
+        gst_play_message_parse_warning(m.msg, &err, &details);
+        return dbg << type << err << details.get();
+    };
+
+    case GST_PLAY_MESSAGE_VIDEO_DIMENSIONS_CHANGED: {
+        guint width, height;
+        gst_play_message_parse_video_dimensions_changed(m.msg, &width, &height);
+        return dbg << type << QSize(width, height);
+    }
+    default:
+        Q_UNREACHABLE_RETURN(dbg);
     }
 }
 

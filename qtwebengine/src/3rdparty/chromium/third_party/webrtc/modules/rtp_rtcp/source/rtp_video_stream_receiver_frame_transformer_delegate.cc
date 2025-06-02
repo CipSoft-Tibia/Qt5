@@ -10,12 +10,14 @@
 
 #include "modules/rtp_rtcp/source/rtp_video_stream_receiver_frame_transformer_delegate.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
 #include "modules/rtp_rtcp/source/rtp_descriptor_authentication.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/logging.h"
 #include "rtc_base/thread.h"
 
 namespace webrtc {
@@ -47,9 +49,9 @@ class TransformableVideoReceiverFrame
 
   uint8_t GetPayloadType() const override { return frame_->PayloadType(); }
   uint32_t GetSsrc() const override { return Metadata().GetSsrc(); }
-  uint32_t GetTimestamp() const override { return frame_->Timestamp(); }
+  uint32_t GetTimestamp() const override { return frame_->RtpTimestamp(); }
   void SetRTPTimestamp(uint32_t timestamp) override {
-    frame_->SetTimestamp(timestamp);
+    frame_->SetRtpTimestamp(timestamp);
   }
 
   bool IsKeyFrame() const override {
@@ -75,6 +77,10 @@ class TransformableVideoReceiverFrame
   }
 
   Direction GetDirection() const override { return Direction::kReceiver; }
+  std::string GetMimeType() const override {
+    std::string mime_type = "video/";
+    return mime_type + CodecTypeToPayloadString(frame_->codec_type());
+  }
 
   const RtpVideoFrameReceiver* Receiver() { return receiver_; }
 
@@ -114,9 +120,14 @@ void RtpVideoStreamReceiverFrameTransformerDelegate::Reset() {
 void RtpVideoStreamReceiverFrameTransformerDelegate::TransformFrame(
     std::unique_ptr<RtpFrameObject> frame) {
   RTC_DCHECK_RUN_ON(&network_sequence_checker_);
-  frame_transformer_->Transform(
-      std::make_unique<TransformableVideoReceiverFrame>(std::move(frame), ssrc_,
-                                                        receiver_));
+  if (short_circuit_) {
+    // Just pass the frame straight back.
+    receiver_->ManageFrame(std::move(frame));
+  } else {
+    frame_transformer_->Transform(
+        std::make_unique<TransformableVideoReceiverFrame>(std::move(frame),
+                                                          ssrc_, receiver_));
+  }
 }
 
 void RtpVideoStreamReceiverFrameTransformerDelegate::OnTransformedFrame(
@@ -127,6 +138,20 @@ void RtpVideoStreamReceiverFrameTransformerDelegate::OnTransformedFrame(
       [delegate = std::move(delegate), frame = std::move(frame)]() mutable {
         delegate->ManageFrame(std::move(frame));
       });
+}
+
+void RtpVideoStreamReceiverFrameTransformerDelegate::StartShortCircuiting() {
+  rtc::scoped_refptr<RtpVideoStreamReceiverFrameTransformerDelegate> delegate(
+      this);
+  network_thread_->PostTask([delegate = std::move(delegate)]() mutable {
+    delegate->StartShortCircuitingOnNetworkSequence();
+  });
+}
+
+void RtpVideoStreamReceiverFrameTransformerDelegate::
+    StartShortCircuitingOnNetworkSequence() {
+  RTC_DCHECK_RUN_ON(&network_sequence_checker_);
+  short_circuit_ = true;
 }
 
 void RtpVideoStreamReceiverFrameTransformerDelegate::ManageFrame(

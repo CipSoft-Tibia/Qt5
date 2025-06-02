@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/common/SlabAllocator.h"
 
@@ -18,7 +31,6 @@
 #include <cstdlib>
 #include <limits>
 #include <new>
-
 #include "dawn/common/Assert.h"
 #include "dawn/common/Math.h"
 
@@ -31,23 +43,26 @@ SlabAllocatorImpl::IndexLinkNode::IndexLinkNode(Index index, Index nextIndex)
 
 // Slab
 
+SlabAllocatorImpl::Slab::Slab() = default;
 SlabAllocatorImpl::Slab::Slab(char allocation[], IndexLinkNode* head)
-    : allocation(allocation), freeList(head), prev(nullptr), next(nullptr), blocksInUse(0) {}
+    : allocation(allocation), freeList(head) {}
 
 SlabAllocatorImpl::Slab::Slab(Slab&& rhs) = default;
 
-SlabAllocatorImpl::SentinelSlab::SentinelSlab() : Slab(nullptr, nullptr) {}
+// SentinelSlab
 
+SlabAllocatorImpl::SentinelSlab::SentinelSlab() = default;
 SlabAllocatorImpl::SentinelSlab::SentinelSlab(SentinelSlab&& rhs) = default;
 
 SlabAllocatorImpl::SentinelSlab::~SentinelSlab() {
-    Slab* slab = this->next;
-    while (slab != nullptr) {
-        Slab* next = slab->next;
-        ASSERT(slab->blocksInUse == 0);
-        // Delete the slab's allocation. The slab is allocated inside slab->allocation.
-        delete[] slab->allocation;
-        slab = next;
+    // Delete the full linked list.
+    while (next) {
+        Slab* slab = next;
+        slab->Splice();
+        DAWN_ASSERT(slab->blocksInUse == 0);
+        char* allocation = slab->allocation;
+        slab->~Slab();  // Placement delete.
+        delete allocation;
     }
 }
 
@@ -70,7 +85,7 @@ SlabAllocatorImpl::SlabAllocatorImpl(Index blocksPerSlab,
           // Pad the allocation size by mAllocationAlignment so that the aligned allocation still
           // fulfills the required size.
           mAllocationAlignment) {
-    ASSERT(IsPowerOfTwo(mAllocationAlignment));
+    DAWN_ASSERT(IsPowerOfTwo(mAllocationAlignment));
 }
 
 SlabAllocatorImpl::SlabAllocatorImpl(SlabAllocatorImpl&& rhs)
@@ -110,63 +125,55 @@ bool SlabAllocatorImpl::IsNodeInSlab(Slab* slab, IndexLinkNode* node) const {
 }
 
 void SlabAllocatorImpl::PushFront(Slab* slab, IndexLinkNode* node) const {
-    ASSERT(IsNodeInSlab(slab, node));
+    DAWN_ASSERT(IsNodeInSlab(slab, node));
 
     IndexLinkNode* head = slab->freeList;
     if (head == nullptr) {
         node->nextIndex = kInvalidIndex;
     } else {
-        ASSERT(IsNodeInSlab(slab, head));
+        DAWN_ASSERT(IsNodeInSlab(slab, head));
         node->nextIndex = head->index;
     }
     slab->freeList = node;
 
-    ASSERT(slab->blocksInUse != 0);
+    DAWN_ASSERT(slab->blocksInUse != 0);
     slab->blocksInUse--;
 }
 
 SlabAllocatorImpl::IndexLinkNode* SlabAllocatorImpl::PopFront(Slab* slab) const {
-    ASSERT(slab->freeList != nullptr);
+    DAWN_ASSERT(slab->freeList != nullptr);
 
     IndexLinkNode* head = slab->freeList;
     if (head->nextIndex == kInvalidIndex) {
         slab->freeList = nullptr;
     } else {
-        ASSERT(IsNodeInSlab(slab, head));
+        DAWN_ASSERT(IsNodeInSlab(slab, head));
         slab->freeList = OffsetFrom(head, head->nextIndex - head->index);
-        ASSERT(IsNodeInSlab(slab, slab->freeList));
+        DAWN_ASSERT(IsNodeInSlab(slab, slab->freeList));
     }
 
-    ASSERT(slab->blocksInUse < mBlocksPerSlab);
+    DAWN_ASSERT(slab->blocksInUse < mBlocksPerSlab);
     slab->blocksInUse++;
     return head;
 }
 
 void SlabAllocatorImpl::SentinelSlab::Prepend(SlabAllocatorImpl::Slab* slab) {
-    if (this->next != nullptr) {
-        this->next->prev = slab;
+    if (next != nullptr) {
+        next->prev = slab;
     }
     slab->prev = this;
-    slab->next = this->next;
-    this->next = slab;
+    slab->next = next;
+    next = slab;
 }
 
 void SlabAllocatorImpl::Slab::Splice() {
-    SlabAllocatorImpl::Slab* originalPrev = this->prev;
-    SlabAllocatorImpl::Slab* originalNext = this->next;
-
-    this->prev = nullptr;
-    this->next = nullptr;
-
-    ASSERT(originalPrev != nullptr);
-
-    // Set the originalNext's prev pointer.
-    if (originalNext != nullptr) {
-        originalNext->prev = originalPrev;
+    DAWN_ASSERT(prev != nullptr);
+    prev->next = next;
+    if (next != nullptr) {
+        next->prev = prev;
     }
-
-    // Now, set the originalNext as the originalPrev's new next.
-    originalPrev->next = originalNext;
+    prev = nullptr;
+    next = nullptr;
 }
 
 void* SlabAllocatorImpl::Allocate() {
@@ -176,7 +183,7 @@ void* SlabAllocatorImpl::Allocate() {
 
     Slab* slab = mAvailableSlabs.next;
     IndexLinkNode* node = PopFront(slab);
-    ASSERT(node != nullptr);
+    DAWN_ASSERT(node != nullptr);
 
     // Move full slabs to a separate list, so allocate can always return quickly.
     if (slab->blocksInUse == mBlocksPerSlab) {
@@ -190,18 +197,18 @@ void* SlabAllocatorImpl::Allocate() {
 void SlabAllocatorImpl::Deallocate(void* ptr) {
     IndexLinkNode* node = NodeFromObject(ptr);
 
-    ASSERT(node->index < mBlocksPerSlab);
+    DAWN_ASSERT(node->index < mBlocksPerSlab);
     void* firstAllocation = ObjectFromNode(OffsetFrom(node, -node->index));
     Slab* slab = reinterpret_cast<Slab*>(static_cast<char*>(firstAllocation) - mSlabBlocksOffset);
-    ASSERT(slab != nullptr);
+    DAWN_ASSERT(slab != nullptr);
 
     bool slabWasFull = slab->blocksInUse == mBlocksPerSlab;
-    ASSERT(slab->blocksInUse != 0);
+    DAWN_ASSERT(slab->blocksInUse != 0);
     PushFront(slab, node);
 
     if (slabWasFull) {
         // Slab is in the full list. Move it to the recycled list.
-        ASSERT(slab->freeList != nullptr);
+        DAWN_ASSERT(slab->freeList != nullptr);
         slab->Splice();
         mRecycledSlabs.Prepend(slab);
     }
@@ -212,7 +219,7 @@ void SlabAllocatorImpl::Deallocate(void* ptr) {
 
 void SlabAllocatorImpl::GetNewSlab() {
     // Should only be called when there are no available slabs.
-    ASSERT(mAvailableSlabs.next == nullptr);
+    DAWN_ASSERT(mAvailableSlabs.next == nullptr);
 
     if (mRecycledSlabs.next != nullptr) {
         // If the recycled list is non-empty, swap their contents.
@@ -221,7 +228,7 @@ void SlabAllocatorImpl::GetNewSlab() {
         // We swapped the next pointers, so the prev pointer is wrong.
         // Update it here.
         mAvailableSlabs.next->prev = &mAvailableSlabs;
-        ASSERT(mRecycledSlabs.next == nullptr);
+        DAWN_ASSERT(mRecycledSlabs.next == nullptr);
         return;
     }
 

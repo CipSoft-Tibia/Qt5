@@ -1,19 +1,34 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/sem_helper.h"
 
+#include "src/tint/lang/wgsl/resolver/incomplete_type.h"
+#include "src/tint/lang/wgsl/resolver/unresolved_identifier.h"
 #include "src/tint/lang/wgsl/sem/builtin_enum_expression.h"
 #include "src/tint/lang/wgsl/sem/function.h"
 #include "src/tint/lang/wgsl/sem/function_expression.h"
@@ -38,6 +53,27 @@ std::string SemHelper::RawTypeNameOf(const core::type::Type* ty) const {
 core::type::Type* SemHelper::TypeOf(const ast::Expression* expr) const {
     auto* sem = GetVal(expr);
     return sem ? const_cast<core::type::Type*>(sem->Type()) : nullptr;
+}
+
+sem::TypeExpression* SemHelper::AsTypeExpression(sem::Expression* expr) const {
+    if (TINT_UNLIKELY(!expr)) {
+        return nullptr;
+    }
+
+    auto* ty_expr = expr->As<sem::TypeExpression>();
+    if (TINT_UNLIKELY(!ty_expr)) {
+        ErrorUnexpectedExprKind(expr, "type");
+        return nullptr;
+    }
+
+    auto* type = ty_expr->Type();
+    if (auto* incomplete = type->As<IncompleteType>(); TINT_UNLIKELY(incomplete)) {
+        AddError("expected '<' for '" + std::string(ToString(incomplete->builtin)) + "'",
+                 expr->Declaration()->source.End());
+        return nullptr;
+    }
+
+    return ty_expr;
 }
 
 std::string SemHelper::Describe(const sem::Expression* expr) const {
@@ -69,6 +105,9 @@ std::string SemHelper::Describe(const sem::Expression* expr) const {
             auto name = fn->name->symbol.Name();
             return "function '" + name + "'";
         },
+        [&](const sem::BuiltinEnumExpression<wgsl::BuiltinFn>* fn) {
+            return "builtin function '" + tint::ToString(fn->Value()) + "'";
+        },
         [&](const sem::BuiltinEnumExpression<core::Access>* access) {
             return "access '" + tint::ToString(access->Value()) + "'";
         },
@@ -87,15 +126,36 @@ std::string SemHelper::Describe(const sem::Expression* expr) const {
         [&](const sem::BuiltinEnumExpression<core::TexelFormat>* fmt) {
             return "texel format '" + tint::ToString(fmt->Value()) + "'";
         },
-        [&](Default) -> std::string {
-            TINT_ICE() << "unhandled sem::Expression type: "
-                       << (expr ? expr->TypeInfo().name : "<null>");
-            return "<unknown>";
-        });
+        [&](const UnresolvedIdentifier* ui) {
+            auto name = ui->Identifier()->identifier->symbol.Name();
+            return "unresolved identifier '" + name + "'";
+        },  //
+        TINT_ICE_ON_NO_MATCH);
 }
 
-void SemHelper::ErrorUnexpectedExprKind(const sem::Expression* expr,
-                                        std::string_view wanted) const {
+void SemHelper::ErrorUnexpectedExprKind(
+    const sem::Expression* expr,
+    std::string_view wanted,
+    tint::Slice<const std::string_view> suggestions /* = Empty */) const {
+    if (auto* ui = expr->As<UnresolvedIdentifier>()) {
+        auto* ident = ui->Identifier();
+        auto name = ident->identifier->symbol.Name();
+        AddError("unresolved " + std::string(wanted) + " '" + name + "'", ident->source);
+        if (!suggestions.IsEmpty()) {
+            // Filter out suggestions that have a leading underscore.
+            Vector<std::string_view, 8> filtered;
+            for (auto str : suggestions) {
+                if (str[0] != '_') {
+                    filtered.Push(str);
+                }
+            }
+            StringStream msg;
+            tint::SuggestAlternatives(name, filtered.Slice(), msg);
+            AddNote(msg.str(), ident->source);
+        }
+        return;
+    }
+
     AddError("cannot use " + Describe(expr) + " as " + std::string(wanted),
              expr->Declaration()->source);
     NoteDeclarationSource(expr->Declaration());
@@ -103,9 +163,10 @@ void SemHelper::ErrorUnexpectedExprKind(const sem::Expression* expr,
 
 void SemHelper::ErrorExpectedValueExpr(const sem::Expression* expr) const {
     ErrorUnexpectedExprKind(expr, "value");
-    if (auto* ty_expr = expr->As<sem::TypeExpression>()) {
-        if (auto* ident = ty_expr->Declaration()->As<ast::IdentifierExpression>()) {
-            AddNote("are you missing '()' for value constructor?", ident->source.End());
+    if (auto* ident = expr->Declaration()->As<ast::IdentifierExpression>()) {
+        if (expr->IsAnyOf<sem::FunctionExpression, sem::TypeExpression,
+                          sem::BuiltinEnumExpression<wgsl::BuiltinFn>>()) {
+            AddNote("are you missing '()'?", ident->source.End());
         }
     }
 }

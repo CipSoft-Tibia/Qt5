@@ -25,10 +25,9 @@
 #include "core/fxge/dib/cfx_dibitmap.h"
 #include "third_party/base/check.h"
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
 #include "core/fxcrt/data_vector.h"
 #include "core/fxge/cfx_defaultrenderdevice.h"
-#include "third_party/base/notreached.h"
 #include "third_party/skia/include/core/SkImage.h"   // nogncheck
 #include "third_party/skia/include/core/SkRefCnt.h"  // nogncheck
 #endif
@@ -45,7 +44,7 @@ struct CacheInfo {
   bool operator<(const CacheInfo& other) const { return time < other.time; }
 };
 
-#if defined(_SKIA_SUPPORT_)
+#if defined(PDF_USE_SKIA)
 // Wrapper around a `CFX_DIBBase` that memoizes `RealizeSkImage()`. This is only
 // safe if the underlying `CFX_DIBBase` is not mutable.
 class CachedImage final : public CFX_DIBBase {
@@ -63,15 +62,6 @@ class CachedImage final : public CFX_DIBBase {
     }
   }
 
-  pdfium::span<const uint8_t> GetBuffer() const override {
-    // TODO(crbug.com/pdfium/2051): Still needed for
-    // CGdiDeviceDriver::GDI_StretchDIBits(). `CachedImage` is only used when
-    // Skia is the default renderer, which should call `RealizeSkImage()`
-    // instead. Consider removing this or making it `NOTREACHED_NORETURN()`
-    // by reimplementing its caller when Skia is the default renderer.
-    return image_->GetBuffer();
-  }
-
   pdfium::span<const uint8_t> GetScanline(int line) const override {
     // TODO(crbug.com/pdfium/2050): Still needed for `Realize()` call in
     // `CPDF_ImageRenderer`.
@@ -79,10 +69,6 @@ class CachedImage final : public CFX_DIBBase {
   }
 
   bool SkipToScanline(int line, PauseIndicatorIface* pause) const override {
-    // TODO(crbug.com/pdfium/2051): `CachedImage` is only used by Skia, which
-    // should call `RealizeSkImage()` instead. Consider removing this, or at
-    // least making it `NOTREACHED_NORETURN()`.
-    NOTREACHED();
     return image_->SkipToScanline(line, pause);
   }
 
@@ -90,6 +76,12 @@ class CachedImage final : public CFX_DIBBase {
     // A better estimate would account for realizing the `SkImage`.
     return image_->GetEstimatedImageMemoryBurden();
   }
+
+#if BUILDFLAG(IS_WIN) || defined(PDF_USE_SKIA)
+  RetainPtr<const CFX_DIBitmap> RealizeIfNeeded() const override {
+    return image_->RealizeIfNeeded();
+  }
+#endif
 
   sk_sp<SkImage> RealizeSkImage() const override {
     if (!cached_skia_image_) {
@@ -102,27 +94,19 @@ class CachedImage final : public CFX_DIBBase {
   RetainPtr<CFX_DIBBase> image_;
   mutable sk_sp<SkImage> cached_skia_image_;
 };
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
 
 // Makes a `CachedImage` backed by `image` if Skia is the default renderer,
 // otherwise return the image itself. `realize_hint` indicates whether it would
 // be beneficial to realize `image` before caching.
 RetainPtr<CFX_DIBBase> MakeCachedImage(RetainPtr<CFX_DIBBase> image,
                                        bool realize_hint) {
-#if defined(_SKIA_SUPPORT_)
-  if (CFX_DefaultRenderDevice::SkiaIsDefaultRenderer()) {
-    // TODO(crbug.com/pdfium/2050): Ignore `realize_hint`, as `RealizeSkImage()`
-    // doesn't benefit from it. The current behavior masks a bug in `CPDF_DIB`
-    // in which `GetBuffer()` and `GetScanline()` don't give the same answer.
-    if (realize_hint) {
-      image = image->Realize();
-      if (!image) {
-        return nullptr;
-      }
-    }
+#if defined(PDF_USE_SKIA)
+  if (CFX_DefaultRenderDevice::UseSkiaRenderer()) {
+    // Ignore `realize_hint`, as `RealizeSkImage()` doesn't benefit from it.
     return pdfium::MakeRetain<CachedImage>(std::move(image));
   }
-#endif  // defined(_SKIA_SUPPORT_)
+#endif  // defined(PDF_USE_SKIA)
   return realize_hint ? image->Realize() : image;
 }
 

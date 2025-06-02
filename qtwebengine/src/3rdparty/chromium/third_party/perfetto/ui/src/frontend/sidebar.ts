@@ -15,20 +15,22 @@
 import m from 'mithril';
 
 import {assertExists, assertTrue} from '../base/logging';
+import {isString} from '../base/object_utils';
 import {Actions} from '../common/actions';
 import {getCurrentChannel} from '../common/channels';
 import {TRACE_SUFFIX} from '../common/constants';
 import {ConversionJobStatus} from '../common/conversion_jobs';
-import {Engine} from '../common/engine';
-import {featureFlags} from '../common/feature_flags';
 import {
   disableMetatracingAndGetTrace,
   enableMetatracing,
   isMetatracingEnabled,
 } from '../common/metatracing';
 import {EngineMode} from '../common/state';
+import {featureFlags} from '../core/feature_flags';
 import {raf} from '../core/raf_scheduler';
 import {SCM_REVISION, VERSION} from '../gen/perfetto_version';
+import {Engine} from '../trace_processor/engine';
+import {showModal} from '../widgets/modal';
 
 import {Animation} from './animation';
 import {downloadData, downloadUrl} from './download_utils';
@@ -38,7 +40,6 @@ import {
   isLegacyTrace,
   openFileWithLegacyTraceViewer,
 } from './legacy_trace_viewer';
-import {showModal} from './modal';
 import {Router} from './router';
 import {createTraceLink, isDownloadable, shareTrace} from './trace_attrs';
 import {
@@ -71,6 +72,13 @@ const WIDGETS_PAGE_IN_NAV_FLAG = featureFlags.register({
   id: 'showWidgetsPageInNav',
   name: 'Show widgets page',
   description: 'Show a link to the widgets page in the side bar.',
+  defaultValue: false,
+});
+
+const PLUGINS_PAGE_IN_NAV_FLAG = featureFlags.register({
+  id: 'showPluginsPageInNav',
+  name: 'Show plugins page',
+  description: 'Show a link to the plugins page in the side bar.',
   defaultValue: false,
 });
 
@@ -139,6 +147,12 @@ const SECTIONS: Section[] = [
         a: navigateWidgets,
         i: 'widgets',
         isVisible: () => WIDGETS_PAGE_IN_NAV_FLAG.get(),
+      },
+      {
+        t: 'Plugins',
+        a: navigatePlugins,
+        i: 'extension',
+        isVisible: () => PLUGINS_PAGE_IN_NAV_FLAG.get(),
       },
     ],
   },
@@ -328,7 +342,7 @@ function openCurrentTraceWithOldUI(e: Event) {
   e.preventDefault();
   assertTrue(isTraceLoaded());
   globals.logging.logEvent('Trace Actions', 'Open current trace in legacy UI');
-  if (!isTraceLoaded) return;
+  if (!isTraceLoaded()) return;
   getCurrentTrace()
       .then((file) => {
         openInOldUIWithSizeCheck(file);
@@ -342,7 +356,7 @@ function convertTraceToSystrace(e: Event) {
   e.preventDefault();
   assertTrue(isTraceLoaded());
   globals.logging.logEvent('Trace Actions', 'Convert to .systrace');
-  if (!isTraceLoaded) return;
+  if (!isTraceLoaded()) return;
   getCurrentTrace()
       .then((file) => {
         convertTraceToSystraceAndDownload(file);
@@ -356,7 +370,7 @@ function convertTraceToJson(e: Event) {
   e.preventDefault();
   assertTrue(isTraceLoaded());
   globals.logging.logEvent('Trace Actions', 'Convert to .json');
-  if (!isTraceLoaded) return;
+  if (!isTraceLoaded()) return;
   getCurrentTrace()
       .then((file) => {
         convertTraceToJsonAndDownload(file);
@@ -458,6 +472,11 @@ function navigateRecord(e: Event) {
 function navigateWidgets(e: Event) {
   e.preventDefault();
   Router.navigate('#!/widgets');
+}
+
+function navigatePlugins(e: Event) {
+  e.preventDefault();
+  Router.navigate('#!/plugins');
 }
 
 function navigateQuery(e: Event) {
@@ -630,7 +649,7 @@ const EngineRPCWidget: m.Component = {
     // RPC server is shut down after we load the UI and cached httpRpcState)
     // this will eventually become  consistent once the engine is created.
     if (mode === undefined) {
-      if (globals.frontendLocalState.httpRpcState.connected &&
+      if (globals.httpRpcState.connected &&
           globals.state.newEngineMode === 'USE_HTTP_RPC_IF_AVAILABLE') {
         mode = 'HTTP_RPC';
       } else {
@@ -769,8 +788,8 @@ export class Sidebar implements m.ClassComponent {
         let css = '';
         let attrs = {
           onclick: typeof item.a === 'function' ? item.a : null,
-          href: typeof item.a === 'string' ? item.a : '#',
-          target: typeof item.a === 'string' ? '_blank' : null,
+          href: isString(item.a) ? item.a : '#',
+          target: isString(item.a) ? '_blank' : null,
           disabled: false,
           id: item.t.toLowerCase().replace(/[^\w]/g, '_'),
         };
@@ -867,8 +886,14 @@ export class Sidebar implements m.ClassComponent {
           class: globals.state.sidebarVisible ? 'show-sidebar' : 'hide-sidebar',
           // 150 here matches --sidebar-timing in the css.
           // TODO(hjd): Should link to the CSS variable.
-          ontransitionstart: () => this._redrawWhileAnimating.start(150),
-          ontransitionend: () => this._redrawWhileAnimating.stop(),
+          ontransitionstart: (e: TransitionEvent) => {
+            if (e.target !== e.currentTarget) return;
+            this._redrawWhileAnimating.start(150);
+          },
+          ontransitionend: (e: TransitionEvent) => {
+            if (e.target !== e.currentTarget) return;
+            this._redrawWhileAnimating.stop();
+          },
         },
         shouldShowHiringBanner() ? m(HiringBanner) : null,
         m(

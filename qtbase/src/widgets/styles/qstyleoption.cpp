@@ -1342,7 +1342,7 @@ QStyleOptionTab::QStyleOptionTab(int version)
 /*!
     \variable QStyleOptionTab::shape
     \brief the tab shape used to draw the tab; by default
-    QTabBar::RoundedNorth
+    QTabBar::RoundedNorth.
 
     \sa QTabBar::Shape
 */
@@ -1557,7 +1557,7 @@ QStyleOptionProgressBar::QStyleOptionProgressBar(int version)
 
 /*!
     \variable QStyleOptionProgressBar::textAlignment
-    \brief the text alignment for the text in the QProgressBar
+    \brief the text alignment for the text in the QProgressBar.
 
     This can be used as a guide on where the text should be in the
     progress bar. The default value is Qt::AlignLeft.
@@ -2943,6 +2943,23 @@ QStyleOptionTitleBar::QStyleOptionTitleBar(int version)
     highlighting is required. The default value is false.
 
     \sa QStyle::SH_ItemView_ShowDecorationSelected, QAbstractItemView
+*/
+
+/*!
+    \variable QStyleOptionViewItem::locale
+    \brief the locale to use for displaying text, numbers and dates.
+
+    This allows the style to display e.g. dates in a different locale than
+    the default locale of the application.
+*/
+
+/*!
+    \variable QStyleOptionViewItem::widget
+    \brief the parent widget of the item
+
+    This member contains the parent widget (itemview) of the item to
+    be able to e.g. access some properties within the QStyledItemDelegate
+    methods.
 */
 
 /*!

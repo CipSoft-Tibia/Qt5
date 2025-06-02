@@ -16,9 +16,9 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+      uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
     - name: Setup Ccache
-      uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e # v1.2.9
+      uses: hendrikmuhs/ccache-action@2a51777f6f64b7b7bea213601acba8f5f4fdbe03 # v1.2.11
       with:
         key: ${{ github.job }}-${{ runner.os }}-${{ runner.arch }}
     - name: Install Dependencies
@@ -39,7 +39,7 @@ jobs:
           python3 \
           python3-setuptools
     - name: Install Python Dependencies
-      run: sudo pip3 install fonttools meson==0.56.0 gcovr==5.0
+      run: sudo pip3 install -r .ci/requirements.txt --require-hashes
     - name: Setup Meson
       run: |
         ccache --version

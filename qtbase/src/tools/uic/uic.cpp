@@ -38,9 +38,10 @@ bool Uic::printDependencies()
     QString fileName = opt.inputFile;
 
     QFile f;
-    if (fileName.isEmpty())
-        f.open(stdin, QIODevice::ReadOnly);
-    else {
+    if (fileName.isEmpty()) {
+        if (!f.open(stdin, QIODevice::ReadOnly))
+            return false;
+    } else {
         f.setFileName(fileName);
         if (!f.open(QIODevice::ReadOnly))
             return false;
@@ -107,10 +108,10 @@ static inline bool isCppCommentChar(QChar c)
     return  c == u'/' || c == u'*';
 }
 
-static int leadingCppCommentCharCount(QStringView s)
+static qsizetype leadingCppCommentCharCount(QStringView s)
 {
-    int i = 0;
-    for (const int size = s.size(); i < size && isCppCommentChar(s.at(i)); ++i) {
+    qsizetype i = 0;
+    for (const qsizetype size = s.size(); i < size && isCppCommentChar(s.at(i)); ++i) {
     }
     return i;
 }
@@ -121,7 +122,7 @@ void Uic::writeCopyrightHeaderPython(const DomUI *ui) const
     if (!comment.isEmpty()) {
         const auto lines = QStringView{comment}.split(u'\n');
         for (const auto &line : lines) {
-            if (const int leadingCommentChars = leadingCppCommentCharCount(line)) {
+            if (const auto leadingCommentChars = leadingCppCommentCharCount(line)) {
                  out << language::repeat(leadingCommentChars, '#')
                      << line.right(line.size() - leadingCommentChars);
             } else {
@@ -164,7 +165,7 @@ DomUI *Uic::parseUiFile(QXmlStreamReader &reader)
                 && !ui) {
                 const double version = versionFromUiAttribute(reader);
                 if (version < 4.0) {
-                    const QString msg = QString::fromLatin1("uic: File generated with too old version of Qt Designer (%1)").arg(version);
+                    const QString msg = QString::fromLatin1("uic: File generated with too old version of Qt Widgets Designer (%1)").arg(version);
                     fprintf(stderr, "%s\n", qPrintable(msg));
                     return nullptr;
                 }
@@ -201,7 +202,7 @@ bool Uic::write(QIODevice *in)
 
     double version = ui->attributeVersion().toDouble();
     if (version < 4.0) {
-        fprintf(stderr, "uic: File generated with too old version of Qt Designer\n");
+        fprintf(stderr, "uic: File generated with too old version of Qt Widgets Designer\n");
         return false;
     }
 

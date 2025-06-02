@@ -8,18 +8,19 @@ import pathlib
 from typing import TYPE_CHECKING, Optional
 
 import crossbench
-from crossbench.browsers.chromium.chromium import Chromium
 import crossbench.exception
 import crossbench.flags
-from crossbench import helper
+from crossbench import helper, plt
+from crossbench.browsers.chromium.chromium import Chromium
 
 if TYPE_CHECKING:
+  import crossbench.flags
   import crossbench.runner
+  from crossbench import plt
   from crossbench.browsers.splash_screen import SplashScreen
   from crossbench.browsers.viewport import Viewport
-  from crossbench import plt
-
-FlagsInitialDataType = crossbench.flags.Flags.InitialDataType
+  from crossbench.network.base import Network
+  FlagsInitialDataType = crossbench.flags.Flags.InitialDataType
 
 
 class Edge(Chromium):
@@ -35,7 +36,7 @@ class Edge(Chromium):
 
   @classmethod
   def stable_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Edge Stable",
         macos=["Microsoft Edge.app"],
         linux=["microsoft-edge"],
@@ -43,7 +44,7 @@ class Edge(Chromium):
 
   @classmethod
   def beta_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Edge Beta",
         macos=["Microsoft Edge Beta.app"],
         linux=["microsoft-edge-beta"],
@@ -51,7 +52,7 @@ class Edge(Chromium):
 
   @classmethod
   def dev_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Edge Dev",
         macos=["Microsoft Edge Dev.app"],
         linux=["microsoft-edge-dev"],
@@ -59,7 +60,7 @@ class Edge(Chromium):
 
   @classmethod
   def canary_path(cls) -> pathlib.Path:
-    return helper.search_app_or_executable(
+    return plt.PLATFORM.search_app_or_executable(
         "Edge Canary",
         macos=["Microsoft Edge Canary.app"],
         linux=[],
@@ -71,6 +72,7 @@ class Edge(Chromium):
                js_flags: FlagsInitialDataType = None,
                flags: FlagsInitialDataType = None,
                cache_dir: Optional[pathlib.Path] = None,
+               network: Optional[Network] = None,
                viewport: Optional[Viewport] = None,
                splash_screen: Optional[SplashScreen] = None,
                platform: Optional[plt.Platform] = None):
@@ -81,6 +83,7 @@ class Edge(Chromium):
         flags,
         cache_dir,
         type="edge",
+        network=network,
         viewport=viewport,
         splash_screen=splash_screen,
         platform=platform)

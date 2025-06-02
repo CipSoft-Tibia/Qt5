@@ -19,6 +19,7 @@
 #include <QtCore/qtaggedpointer.h>
 #include <QtCore/qmetatype.h>
 #include <QtCore/qcontainerfwd.h>
+#include <QtCore/qttypetraits.h>
 
 #include <functional>
 
@@ -29,16 +30,20 @@ class QBindingStorage;
 template<typename Class, typename T, auto Offset, auto Setter, auto Signal, auto Getter>
 class QObjectCompatProperty;
 
-struct QBindingObserverPtr;
-using PendingBindingObserverList = QVarLengthArray<QBindingObserverPtr>;
+class QPropertyBindingPrivatePtr;
+using PendingBindingObserverList = QVarLengthArray<QPropertyBindingPrivatePtr>;
 
 namespace QtPrivate {
 // QPropertyBindingPrivatePtr operates on a RefCountingMixin solely so that we can inline
 // the constructor and copy constructor
 struct RefCounted {
+
+    int refCount() const { return ref; }
+    void addRef() { ++ref; }
+    bool deref() { return --ref != 0; }
+
+private:
     int ref = 0;
-    void addRef() {++ref;}
-    bool deref() {--ref; return ref;}
 };
 }
 
@@ -61,7 +66,7 @@ public:
     QPropertyBindingPrivatePtr() noexcept : d(nullptr) { }
     ~QPropertyBindingPrivatePtr()
     {
-        if (d && (--d->ref == 0))
+        if (d && !d->deref())
             destroyAndFreeMemory();
     }
     Q_CORE_EXPORT void destroyAndFreeMemory();
@@ -91,28 +96,20 @@ public:
     void swap(QPropertyBindingPrivatePtr &other) noexcept
     { qt_ptr_swap(d, other.d); }
 
-    friend bool operator==(const QPropertyBindingPrivatePtr &p1, const QPropertyBindingPrivatePtr &p2) noexcept
-    { return p1.d == p2.d; }
-    friend bool operator!=(const QPropertyBindingPrivatePtr &p1, const QPropertyBindingPrivatePtr &p2) noexcept
-    { return p1.d != p2.d; }
-    friend bool operator==(const QPropertyBindingPrivatePtr &p1, const T *ptr) noexcept
-    { return p1.d == ptr; }
-    friend bool operator!=(const QPropertyBindingPrivatePtr &p1, const T *ptr) noexcept
-    { return p1.d != ptr; }
-    friend bool operator==(const T *ptr, const QPropertyBindingPrivatePtr &p2) noexcept
-    { return ptr == p2.d; }
-    friend bool operator!=(const T *ptr, const QPropertyBindingPrivatePtr &p2) noexcept
-    { return ptr != p2.d; }
-    friend bool operator==(const QPropertyBindingPrivatePtr &p1, std::nullptr_t) noexcept
-    { return !p1; }
-    friend bool operator!=(const QPropertyBindingPrivatePtr &p1, std::nullptr_t) noexcept
-    { return p1; }
-    friend bool operator==(std::nullptr_t, const QPropertyBindingPrivatePtr &p2) noexcept
-    { return !p2; }
-    friend bool operator!=(std::nullptr_t, const QPropertyBindingPrivatePtr &p2) noexcept
-    { return p2; }
-
 private:
+    friend bool comparesEqual(const QPropertyBindingPrivatePtr &lhs,
+                              const QPropertyBindingPrivatePtr &rhs) noexcept
+    { return lhs.d == rhs.d; }
+    Q_DECLARE_EQUALITY_COMPARABLE(QPropertyBindingPrivatePtr)
+    friend bool comparesEqual(const QPropertyBindingPrivatePtr &lhs,
+                              const T *rhs) noexcept
+    { return lhs.d == rhs; }
+    Q_DECLARE_EQUALITY_COMPARABLE(QPropertyBindingPrivatePtr, T*)
+    friend bool comparesEqual(const QPropertyBindingPrivatePtr &lhs,
+                              std::nullptr_t) noexcept
+    { return !lhs; }
+    Q_DECLARE_EQUALITY_COMPARABLE(QPropertyBindingPrivatePtr, std::nullptr_t)
+
     QtPrivate::RefCounted *d;
 };
 

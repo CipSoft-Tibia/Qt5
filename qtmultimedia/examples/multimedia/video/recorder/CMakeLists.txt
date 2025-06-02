@@ -19,6 +19,8 @@ qt_add_executable(recorder
     main.cpp
 )
 
+qt_add_ios_ffmpeg_libraries(recorder)
+
 set(resource_files
     "main.qml"
     "main_no_permissions.qml"
@@ -53,6 +55,7 @@ target_link_libraries(recorder PRIVATE
 set_target_properties(recorder PROPERTIES
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
+    QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android
 )
 
 install(TARGETS recorder

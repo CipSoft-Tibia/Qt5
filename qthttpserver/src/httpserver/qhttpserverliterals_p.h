@@ -22,11 +22,9 @@ QT_BEGIN_NAMESPACE
 
 namespace QHttpServerLiterals {
 
-QByteArray contentTypeHeader();
 QByteArray contentTypeXEmpty();
 QByteArray contentTypeTextHtml();
 QByteArray contentTypeJson();
-QByteArray contentLengthHeader();
 
 }
 

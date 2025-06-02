@@ -7,7 +7,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, cast
 
 from crossbench.browsers.chromium.chromium import Chromium
-from crossbench.probes.probe import Probe, ProbeScope
+from crossbench.probes.chromium_probe import ChromiumProbe
+from crossbench.probes.probe import ProbeContext
 from crossbench.probes.results import LocalProbeResult
 
 if TYPE_CHECKING:
@@ -17,15 +18,12 @@ if TYPE_CHECKING:
   from crossbench.runner.groups import (RepetitionsRunGroup, StoriesRunGroup)
 
 
-class V8BuiltinsPGOProbe(Probe):
+class V8BuiltinsPGOProbe(ChromiumProbe):
   """
   Chromium-only Probe to extract V8 builtins PGO data.
   The resulting data is used to optimize Torque and CSA builtins.
   """
   NAME = "v8.builtins.pgo"
-
-  def is_compatible(self, browser: Browser) -> bool:
-    return isinstance(browser, Chromium)
 
   def attach(self, browser: Browser) -> None:
     # Use inline isinstance assert to hint that we have a Chrome browser.
@@ -34,8 +32,8 @@ class V8BuiltinsPGOProbe(Probe):
     chromium = cast(Chromium, browser)
     chromium.js_flags.set("--allow-natives-syntax")
 
-  def get_scope(self, run: Run) -> V8BuiltinsPGOProbeScope:
-    return V8BuiltinsPGOProbeScope(self, run)
+  def get_context(self, run: Run) -> V8BuiltinsPGOProbeContext:
+    return V8BuiltinsPGOProbeContext(self, run)
 
   def merge_repetitions(self, group: RepetitionsRunGroup) -> ProbeResult:
     merged_result_path = group.get_local_probe_result_path(self)
@@ -52,21 +50,21 @@ class V8BuiltinsPGOProbe(Probe):
     return LocalProbeResult(file=[result_file])
 
 
-class V8BuiltinsPGOProbeScope(ProbeScope[V8BuiltinsPGOProbe]):
+class V8BuiltinsPGOProbeContext(ProbeContext[V8BuiltinsPGOProbe]):
   _pgo_counters: Optional[str] = None
 
-  def setup(self, run: Run) -> None:
+  def setup(self) -> None:
     pass
 
-  def start(self, run: Run) -> None:
+  def start(self) -> None:
     pass
 
-  def stop(self, run: Run) -> None:
-    with run.actions("Extract Builtins PGO DATA") as actions:
+  def stop(self) -> None:
+    with self.run.actions("Extract Builtins PGO DATA") as actions:
       self._pgo_counters = actions.js(
           "return %GetAndResetTurboProfilingData();")
 
-  def tear_down(self, run: Run) -> ProbeResult:
+  def tear_down(self) -> ProbeResult:
     assert self._pgo_counters is not None and self._pgo_counters, (
         "Chrome didn't produce any V8 builtins PGO data. "
         "Please make sure to set the v8_enable_builtins_profiling=true "

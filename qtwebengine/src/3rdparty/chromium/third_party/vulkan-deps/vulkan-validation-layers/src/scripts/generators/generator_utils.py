@@ -68,18 +68,20 @@ def getVUID(valid_vuids: set, vuid: str, quotes: bool = True) -> str:
         vuid = vuid.replace('VUID-', 'UNASSIGNED-')
     return vuid if not quotes else f'"{vuid}"'
 
-INDENT_SPACES = 4
-def incIndent(indent: str) -> str:
-    inc = ' ' * INDENT_SPACES
-    return indent + inc if indent else inc
+class PlatformGuardHelper():
+    """Used to elide platform guards together, so redundant #endif then #ifdefs are removed
+    Note - be sure to call add_guard(None) when done to add a trailing #endif if needed
+    """
+    def __init__(self):
+        self.current_guard = None
 
-def decIndent(indent: str) -> str:
-    return indent[:-INDENT_SPACES] if indent and (len(indent) > INDENT_SPACES) else ''
-
-# Add the indent to each line of the input
-def addIndent(indent: str, input: str) -> str:
-    out = ''
-    lines = input.split('\n')
-    for line in lines:
-        out += f'{indent}{line}\n'
-    return out
+    def add_guard(self, guard, extra_newline = False):
+        out = []
+        if self.current_guard is not guard and self.current_guard is not None:
+                out.append(f'#endif  // {self.current_guard}\n')
+        if extra_newline:
+            out.append('\n')
+        if self.current_guard is not guard and guard is not None:
+            out.append(f'#ifdef {guard}\n')
+        self.current_guard = guard
+        return out

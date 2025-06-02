@@ -38,6 +38,9 @@ public:
     operator QVariant() const;
 
 private:
+#ifndef QT_NO_DEBUG_STREAM
+    Q_DBUS_EXPORT friend QDebug operator<<(QDebug, const QDBusObjectPath &);
+#endif
     void doCheck();
 };
 Q_DECLARE_SHARED(QDBusObjectPath)
@@ -74,9 +77,7 @@ class Q_DBUS_EXPORT QDBusSignature
 {
     QString m_signature;
 public:
-    QDBusSignature() noexcept
-        : m_signature(QLatin1StringView("")) // mark non-null (empty signatures are valid)
-    {}
+    QDBusSignature() noexcept;
     // compiler-generated copy/move constructor/assignment operators are ok!
     // compiler-generated destructor is ok!
 

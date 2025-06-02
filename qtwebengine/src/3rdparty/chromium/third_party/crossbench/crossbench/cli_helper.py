@@ -11,15 +11,21 @@ import json
 import math
 import pathlib
 import re
+import shlex
 import sys
-from typing import Any, Iterator, Optional, Union
+from typing import Any, Iterator, List, NoReturn, Optional, TypeVar, Union
 from urllib.parse import urlparse
 
+import colorama
+
 import hjson
-from crossbench import plt
+
+from crossbench import helper, plt
 
 
-def parse_path(value: Union[str, pathlib.Path]) -> pathlib.Path:
+def parse_path(value: Union[str, pathlib.Path],
+               name: str = "File") -> pathlib.Path:
+  value = parse_not_none(value, "path")
   if not value:
     raise argparse.ArgumentTypeError("Invalid empty path.")
   try:
@@ -27,39 +33,52 @@ def parse_path(value: Union[str, pathlib.Path]) -> pathlib.Path:
   except RuntimeError as e:
     raise argparse.ArgumentTypeError(f"Invalid Path '{value}': {e}") from e
   if not path.exists():
-    raise argparse.ArgumentTypeError(f"Path '{path}' does not exist.")
+    raise argparse.ArgumentTypeError(f"{name} '{path}' does not exist.")
   return path
 
 
-def parse_existing_file_path(value: Union[str, pathlib.Path]) -> pathlib.Path:
-  path = parse_path(value)
+def parse_existing_file_path(value: Union[str, pathlib.Path],
+                             name: str = "File") -> pathlib.Path:
+  path = parse_path(value, name)
   if not path.is_file():
-    raise argparse.ArgumentTypeError(f"Path '{path}' is not a file.")
+    raise argparse.ArgumentTypeError(f"{name} '{path}' is not a file.")
   return path
 
 
-def parse_non_empty_file_path(value: Union[str, pathlib.Path]) -> pathlib.Path:
-  path: pathlib.Path = parse_existing_file_path(value)
+def parse_non_empty_file_path(value: Union[str, pathlib.Path],
+                              name: str = "File") -> pathlib.Path:
+  path: pathlib.Path = parse_existing_file_path(value, name)
   if path.stat().st_size == 0:
-    raise argparse.ArgumentTypeError(f"Path '{path}' is an empty file.")
+    raise argparse.ArgumentTypeError(f"{name} '{path}' is an empty file.")
   return path
 
 
-def parse_file_path(value: Union[str, pathlib.Path]) -> pathlib.Path:
-  return parse_non_empty_file_path(value)
+def parse_file_path(value: Union[str, pathlib.Path],
+                    name: str = "Path") -> pathlib.Path:
+  return parse_non_empty_file_path(value, name)
 
 
-def parse_dir_path(value: Union[str, pathlib.Path]) -> pathlib.Path:
-  path = parse_path(value)
+def parse_dir_path(value: Union[str, pathlib.Path],
+                   name: str = "Path") -> pathlib.Path:
+  path = parse_path(value, name)
   if not path.is_dir():
-    raise argparse.ArgumentTypeError(f"Path '{path}', is not a folder.")
+    raise argparse.ArgumentTypeError(f"{name} '{path}', is not a folder.")
   return path
 
 
-def parse_existing_path(value: Union[str, pathlib.Path]) -> pathlib.Path:
-  path = parse_path(value)
+def parse_non_empty_dir_path(value: Union[str, pathlib.Path],
+                             name: str = "Path") -> pathlib.Path:
+  dir_path = parse_dir_path(value, name)
+  for _ in dir_path.iterdir():
+    return dir_path
+  raise argparse.ArgumentTypeError(f"{name} '{dir_path}', must be non empty.")
+
+
+def parse_existing_path(value: Union[str, pathlib.Path],
+                        name: str = "Path") -> pathlib.Path:
+  path = parse_path(value, name)
   if not path.exists():
-    raise argparse.ArgumentTypeError(f"Path '{path}' does not exist.")
+    raise argparse.ArgumentTypeError(f"{name} '{path}' does not exist.")
   return path
 
 
@@ -189,41 +208,65 @@ def parse_dict_hjson_file(value: Union[str, pathlib.Path]) -> Any:
   return data
 
 
-def parse_positive_zero_float(value: Any) -> float:
+def try_resolve_existing_path(value: str) -> Optional[pathlib.Path]:
+  if not value:
+    return None
+  maybe_path = pathlib.Path(value)
+  if maybe_path.exists():
+    return maybe_path
+  maybe_path = maybe_path.expanduser()
+  if maybe_path.exists():
+    return maybe_path
+  return None
+
+
+def parse_float(value: Any, name: str = "float") -> float:
   try:
-    value_f = float(value)
+    return float(value)
   except ValueError as e:
-    raise argparse.ArgumentTypeError(f"Invalid float: '{value}'") from e
+    raise argparse.ArgumentTypeError(f"Invalid {name}: '{value}'") from e
+
+
+def parse_positive_zero_float(value: Any, name: str = "float") -> float:
+  value_f = parse_float(value, name)
   if not math.isfinite(value_f) or value_f < 0:
-    raise argparse.ArgumentTypeError(f"Expected float >= 0, but got: {value_f}")
+    raise argparse.ArgumentTypeError(
+        f"Expected {name} >= 0, but got: {value_f}")
   return value_f
 
 
-def parse_positive_zero_int(value: Any) -> int:
+def parse_int(value: Any, name: str = "integer") -> int:
   try:
-    positive_int = int(value)
+    return int(value)
   except ValueError as e:
-    raise argparse.ArgumentTypeError(f"Invalid integer: '{value}'") from e
-  if positive_int < 0:
-    raise argparse.ArgumentTypeError(
-        f"Expected int >= 0, but got: {positive_int}")
-  return positive_int
+    raise argparse.ArgumentTypeError(f"Invalid {name}: '{value}'") from e
 
 
-def parse_positive_int(value: str, msg: str = "") -> int:
-  try:
-    value_i = int(value)
-  except ValueError as e:
-    raise argparse.ArgumentTypeError(f"Invalid integer: '{value}'") from e
-  if not math.isfinite(value_i) or value_i <= 0:
+def parse_positive_zero_int(value: Any, name: str = "integer") -> int:
+  value_i = parse_int(value, name)
+  if value_i < 0:
     raise argparse.ArgumentTypeError(
-        f"Expected int > 0 {msg}, but got: {value_i}")
+        f"Expected {name} >= 0, but got: {value_i}")
   return value_i
 
 
+def parse_positive_int(value: Any, name: str = "integer") -> int:
+  value_i = parse_int(value, name)
+  if not math.isfinite(value_i) or value_i <= 0:
+    raise argparse.ArgumentTypeError(f"Expected {name} > 0, but got: {value_i}")
+  return value_i
+
+
+def parse_port(value: Any, msg: str = "port") -> int:
+  port = parse_int(value, msg)
+  if 1 <= port <= 65535:
+    return port
+  raise argparse.ArgumentTypeError(
+      f"Expected 1 <= {port} <= 65535, but got: {port}")
+
+
 def parse_non_empty_str(value: Any, name: str = "string") -> str:
-  if value is None:
-    raise argparse.ArgumentTypeError(f"Expected non-empty {name}, but got None")
+  value = parse_not_none(value, f"non-empty {name}")
   if not isinstance(value, str):
     raise argparse.ArgumentTypeError(
         f"Expected non-empty {name}, but got {type(value)}: {value}")
@@ -256,12 +299,41 @@ def parse_httpx_url_str(value: Any) -> str:
 def parse_bool(value: Any) -> bool:
   if isinstance(value, bool):
     return value
-  value = value.lower()
+  value = str(value).lower()
   if value == "true":
     return True
   if value == "false":
     return False
-  raise TypeError(f"Expected bool but got {type(value)}: {value}")
+  raise argparse.ArgumentTypeError(
+      f"Expected bool but got {type(value)}: {value}")
+
+
+NotNoneT = TypeVar("NotNoneT")
+
+
+def parse_not_none(value: Optional[NotNoneT],
+                   name: str = "not None") -> NotNoneT:
+  if value is None:
+    raise argparse.ArgumentTypeError(f"Expected {name}, but got None")
+  return value
+
+
+def parse_sh_cmd(value: Any) -> List[str]:
+  value = parse_not_none(value, "shell cmd")
+  if not value:
+    raise argparse.ArgumentTypeError(
+        f"Expected non-empty shell cmd, but got: {value}")
+  if isinstance(value, (list, tuple)):
+    for i, part in enumerate(value):
+      parse_non_empty_str(part, f"cmd[{i}]")
+    return list(value)
+  if not isinstance(value, str):
+    raise argparse.ArgumentTypeError(
+        f"Expected string or list, but got {type(value)}: {value}")
+  try:
+    return shlex.split(value)
+  except ValueError as e:
+    raise argparse.ArgumentTypeError(f"Invalid shell cmd: {value} ") from e
 
 
 class CrossBenchArgumentError(argparse.ArgumentError):
@@ -294,7 +366,7 @@ if sys.version_info < (3, 9, 0):
 
   class CrossBenchArgumentParser(_BaseCrossBenchArgumentParser):
 
-    def error(self, message) -> None:
+    def error(self, message) -> NoReturn:
       # Let the CrossBenchCLI handle all errors and simplify testing.
       exception = sys.exc_info()[1]
       if isinstance(exception, BaseException):
@@ -358,27 +430,29 @@ class Duration:
         "Make sure to use a supported time unit/suffix")
 
   @classmethod
-  def parse(cls, time_value: Union[float, int, str]) -> dt.timedelta:
-    return cls.parse_non_zero(time_value)
+  def parse(cls, time_value: Any, name: str = "duration") -> dt.timedelta:
+    return cls.parse_non_zero(time_value, name)
 
   @classmethod
-  def parse_non_zero(cls, time_value: Union[float, int, str]) -> dt.timedelta:
+  def parse_non_zero(cls,
+                     time_value: Any,
+                     name: str = "duration") -> dt.timedelta:
     duration: dt.timedelta = cls.parse_any(time_value)
     if duration.total_seconds() <= 0:
       raise argparse.ArgumentTypeError(
-          f"Expected non-zero duration, but got {duration}")
+          f"Expected non-zero {name}, but got {duration}")
     return duration
 
   @classmethod
-  def parse_zero(cls, time_value: Union[float, int, str]) -> dt.timedelta:
-    duration: dt.timedelta = cls.parse_any(time_value)
+  def parse_zero(cls, time_value: Any, name: str = "duration") -> dt.timedelta:
+    duration: dt.timedelta = cls.parse_any(time_value, name)
     if duration.total_seconds() < 0:
       raise argparse.ArgumentTypeError(
-          f"Expected positive duration, but got {duration}")
+          f"Expected positive {name}, but got {duration}")
     return duration
 
   @classmethod
-  def parse_any(cls, time_value: Union[float, int, str]) -> dt.timedelta:
+  def parse_any(cls, time_value: Any, name: str = "duration") -> dt.timedelta:
     """
     This function will parse the measurement and the value from string value.
 
@@ -387,35 +461,48 @@ class Duration:
     5m => 5*60 = dt.timedelta(minutes=5)
 
     """
+    if isinstance(time_value, dt.timedelta):
+      return time_value
     if isinstance(time_value, (int, float)):
-      if time_value < 0:
-        raise argparse.ArgumentTypeError(
-            f"Duration must be positive, but got: {time_value}")
       return dt.timedelta(seconds=time_value)
-
     if not time_value:
-      raise argparse.ArgumentTypeError("duration.")
+      raise argparse.ArgumentTypeError(f"Expected non-empty {name} value.")
+    if not isinstance(time_value, str):
+      raise argparse.ArgumentTypeError(
+          f"Unexpected {type(time_value)} for {name}: {time_value}")
 
     match = cls._DURATION_RE.fullmatch(time_value)
     if match is None:
-      raise argparse.ArgumentTypeError(
-          f"Unknown Duration format: '{time_value}'")
+      raise argparse.ArgumentTypeError(f"Unknown {name} format: '{time_value}'")
 
     value = match.group("value")
     if not value:
       raise argparse.ArgumentTypeError(
-          "Error: Duration value not found."
-          f"Make sure to include a valid duration value: '{time_value}'")
+          f"Error: {name} value not found."
+          f"Make sure to include a valid {name} value: '{time_value}'")
     time_unit = match.group("unit")
     try:
       time_value = float(value)
     except ValueError as e:
-      raise argparse.ArgumentTypeError(f"Duration must be a valid number, {e}")
-    if math.isnan(time_value) or math.isinf(time_value):
+      raise argparse.ArgumentTypeError(f"{name} must be a valid number, {e}")
+    if not math.isfinite(time_value):
       raise argparse.ArgumentTypeError(
-          f"Duration must be positive, but got: {time_value}")
+          f"{name} must be finite, but got: {time_value}")
 
     if not time_unit:
       # If no time unit provided we assume it is in seconds.
       return dt.timedelta(seconds=time_value)
     return cls._to_timedelta(time_value, time_unit)
+
+
+@contextlib.contextmanager
+def timer(msg: str = "Elapsed Time"):
+  _start_time = dt.datetime.now()
+
+  def print_timer():
+    delta = dt.datetime.now() - _start_time
+    indent = colorama.Cursor.FORWARD() * 3
+    sys.stdout.write(f"{indent}{msg}: {delta}\r")
+
+  with helper.RepeatTimer(interval=0.25, function=print_timer):
+    yield

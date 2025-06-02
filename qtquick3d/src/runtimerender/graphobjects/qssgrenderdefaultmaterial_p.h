@@ -61,6 +61,23 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraph
         A
     };
 
+    enum VertexColorMask : quint16
+    {
+        NoMask = 0,
+        RoughnessMask = 1,
+        NormalStrengthMask = 2,
+        SpecularAmountMask = 4,
+        ClearcoatAmountMask = 8,
+        ClearcoatRoughnessAmountMask = 16,
+        ClearcoatNormalStrengthMask = 32,
+        HeightAmountMask = 64,
+        MetalnessMask = 128,
+        OcclusionAmountMask = 256,
+        ThicknessFactorMask = 512,
+        TransmissionFactorMask = 1024
+    };
+    Q_DECLARE_FLAGS(VertexColorMaskFlags, VertexColorMask)
+
     QSSGRenderImage *colorMap = nullptr;
     // material section
     QSSGRenderImage *iblProbe = nullptr;
@@ -89,11 +106,22 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraph
     QVector3D emissiveColor = { 1.0f, 1.0f, 1.0f };
     QVector4D color{ 1.0f, 1.0f, 1.0f, 1.0f }; // colors are 0-1 normalized
     float diffuseLightWrap = 0.0f; // 0 - 1
+    float fresnelScaleBiasEnabled = false;
+    float fresnelScale = 1.0f;
+    float fresnelBias = 0.0f;
     float fresnelPower = 0.0f;
+    float clearcoatFresnelScaleBiasEnabled = false;
+    float clearcoatFresnelScale = 1.0f;
+    float clearcoatFresnelBias = 0.0f;
+    float clearcoatFresnelPower = 5.0f;
     float specularAmount = 1.0f; // 0-1
     float specularRoughness = 0.0f; // 0-1
     float metalnessAmount = 0.0f;
     float opacity = 1.0f; // 0-1
+    bool invertOpacityMapValue = false;
+    bool baseColorSingleChannelEnabled = false;
+    bool specularAmountSingleChannelEnabled = false;
+    bool emissiveSingleChannelEnabled = false;
     float bumpAmount = 0.0f; // 0-??
     float translucentFalloff = 0.0f; // 0 - ??
     float occlusionAmount = 1.0f; // 0 - 1
@@ -103,6 +131,7 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraph
     int maxHeightSamples = 32;
     float clearcoatAmount = 0.0f; // 0 - 1
     float clearcoatRoughnessAmount = 0.0f; // 0 - 1
+    float clearcoatNormalStrength = 1.0f; // 0 - 1
     float transmissionFactor = 0.0f; // 0 - 1
     float thicknessFactor = 0.0f; // 0 - 1
     float attenuationDistance = std::numeric_limits<float>::infinity();
@@ -115,6 +144,7 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraph
     QSSGCullFaceMode cullMode = QSSGCullFaceMode::Back;
     QSSGDepthDrawMode depthDrawMode = QSSGDepthDrawMode::OpaqueOnly;
     bool vertexColorsEnabled = false;
+    bool vertexColorsMaskEnabled = false;
     bool dirty = true;
     TextureChannelMapping roughnessChannel = TextureChannelMapping::R;
     TextureChannelMapping opacityChannel = TextureChannelMapping::A;
@@ -126,16 +156,30 @@ struct Q_QUICK3DRUNTIMERENDER_EXPORT QSSGRenderDefaultMaterial : QSSGRenderGraph
     TextureChannelMapping clearcoatRoughnessChannel = TextureChannelMapping::G;
     TextureChannelMapping transmissionChannel = TextureChannelMapping::R;
     TextureChannelMapping thicknessChannel = TextureChannelMapping::G;
+    TextureChannelMapping baseColorChannel = TextureChannelMapping::R;
+    TextureChannelMapping specularAmountChannel = TextureChannelMapping::R;
+    TextureChannelMapping emissiveChannel = TextureChannelMapping::R;
     float pointSize = 1.0f;
     float lineWidth = 1.0f;
+    VertexColorMaskFlags vertexColorRedMask = VertexColorMask::NoMask;
+    VertexColorMaskFlags vertexColorGreenMask = VertexColorMask::NoMask;
+    VertexColorMaskFlags vertexColorBlueMask = VertexColorMask::NoMask;
+    VertexColorMaskFlags vertexColorAlphaMask = VertexColorMask::NoMask;
 
     QSSGRenderDefaultMaterial(Type type = Type::DefaultMaterial);
     ~QSSGRenderDefaultMaterial();
 
     bool isSpecularEnabled() const { return specularAmount > .01f; }
     bool isMetalnessEnabled() const { return metalnessAmount > 0.01f; }
+    bool isFresnelScaleBiasEnabled() const { return fresnelScaleBiasEnabled; }
+    bool isClearcoatFresnelScaleBiasEnabled() const { return clearcoatFresnelScaleBiasEnabled; }
     bool isFresnelEnabled() const { return fresnelPower > 0.0f; }
     bool isVertexColorsEnabled() const { return vertexColorsEnabled; }
+    bool isVertexColorsMaskEnabled() const { return vertexColorsMaskEnabled; }
+    bool isInvertOpacityMapValue() const { return invertOpacityMapValue; }
+    bool isBaseColorSingleChannelEnabled() const { return baseColorSingleChannelEnabled; }
+    bool isSpecularAmountSingleChannelEnabled() const { return specularAmountSingleChannelEnabled; }
+    bool isEmissiveSingleChannelEnabled() const { return emissiveSingleChannelEnabled; }
     bool hasLighting() const { return lighting != MaterialLighting::NoLighting; }
     bool isClearcoatEnabled() const { return clearcoatAmount > 0.01f; }
     bool isTransmissionEnabled() const { return transmissionFactor > 0.01f; }

@@ -13,19 +13,19 @@
 class QtProtobufSyntaxTest : public QObject
 {
     Q_OBJECT
-private slots:
-    void UnderscoresTest();
-    void UpperCaseTest();
-    void ReservedTest();
-    void ReservedUpperCaseTest();
-    void ReservedEnumTest();
-    void LowerCaseEnumTest();
-    void UpperCaseEnumTest();
+private Q_SLOTS:
+    void underscoresTest();
+    void upperCaseTest();
+    void reservedTest();
+    void reservedUpperCaseTest();
+    void reservedEnumTest();
+    void lowerCaseEnumTest();
+    void upperCaseEnumTest();
 };
 
 using namespace qtprotobufnamespace::tests;
 
-void QtProtobufSyntaxTest::UnderscoresTest()
+void QtProtobufSyntaxTest::underscoresTest()
 {
     //Sanity compilation checks
     Message_Uderscore_name msg1;
@@ -42,26 +42,26 @@ void QtProtobufSyntaxTest::UnderscoresTest()
     qProtobufAssertMessagePropertyRegistered<CombinedMessageUnderscoreField , QtProtobuf::sint32>(1, "QtProtobuf::sint32", "underScoreMessageField");
 }
 
-void QtProtobufSyntaxTest::UpperCaseTest()
+void QtProtobufSyntaxTest::upperCaseTest()
 {
     qProtobufAssertMessagePropertyRegistered<MessageUpperCase, QtProtobuf::sint32>(1, "QtProtobuf::sint32", "testField");
 }
 
-void QtProtobufSyntaxTest::ReservedTest()
+void QtProtobufSyntaxTest::reservedTest()
 {
     qProtobufAssertMessagePropertyRegistered<MessageReserved, QtProtobuf::sint32>(1, "QtProtobuf::sint32", "import_proto");
     qProtobufAssertMessagePropertyRegistered<MessageReserved, QtProtobuf::sint32>(2, "QtProtobuf::sint32", "property_proto");
     qProtobufAssertMessagePropertyRegistered<MessageReserved, QtProtobuf::sint32>(3, "QtProtobuf::sint32", "id_proto");
 }
 
-void QtProtobufSyntaxTest::ReservedUpperCaseTest()
+void QtProtobufSyntaxTest::reservedUpperCaseTest()
 {
     qProtobufAssertMessagePropertyRegistered<MessageUpperCaseReserved, QtProtobuf::sint32>(1, "QtProtobuf::sint32", "import_proto");
     qProtobufAssertMessagePropertyRegistered<MessageUpperCaseReserved, QtProtobuf::sint32>(2, "QtProtobuf::sint32", "property_proto");
     qProtobufAssertMessagePropertyRegistered<MessageUpperCaseReserved, QtProtobuf::sint32>(3, "QtProtobuf::sint32", "id_proto");
 }
 
-void QtProtobufSyntaxTest::ReservedEnumTest()
+void QtProtobufSyntaxTest::reservedEnumTest()
 {
     const auto &metaObject = MessageEnumReserved_QtProtobufNested::staticMetaObject;
     QVERIFY(metaObject.enumeratorCount() > 0);
@@ -83,7 +83,7 @@ void QtProtobufSyntaxTest::ReservedEnumTest()
     QCOMPARE(simpleEnum.value(2), 2);
 }
 
-void QtProtobufSyntaxTest::LowerCaseEnumTest()
+void QtProtobufSyntaxTest::lowerCaseEnumTest()
 {
     const auto &metaObject = MessageEnumReserved_QtProtobufNested::staticMetaObject;
     QVERIFY(metaObject.enumeratorCount() > 0);
@@ -101,7 +101,7 @@ void QtProtobufSyntaxTest::LowerCaseEnumTest()
     QCOMPARE(simpleEnum.key(2), "enumValue2");
 }
 
-void QtProtobufSyntaxTest::UpperCaseEnumTest()
+void QtProtobufSyntaxTest::upperCaseEnumTest()
 {
     const auto &metaObject = MessageEnumReserved_QtProtobufNested::staticMetaObject;
     QVERIFY(metaObject.enumeratorCount() > 0);

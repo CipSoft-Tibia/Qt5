@@ -149,10 +149,10 @@ enum xnn_status xnn_create_runtime_v3(
   return status;
 }
 
-static enum xnn_status initialize_workspace_blobs(
-    xnn_subgraph_t subgraph,
+static enum xnn_status initialize_workspace_values(
     xnn_runtime_t runtime,
-    struct xnn_value_allocation_tracker* mem_alloc_tracker)
+    struct xnn_value_allocation_tracker* mem_alloc_tracker,
+    size_t old_persistent_size)
 {
   assert(runtime->workspace != NULL);
   const size_t persistent_size = runtime->workspace->persistent_size;
@@ -168,56 +168,109 @@ static enum xnn_status initialize_workspace_blobs(
   // Allocates larger workspace here if needed.
   if (runtime->workspace->size < mem_arena_size) {
     void* old_workspace_data = runtime->workspace->data;
-    if (runtime->workspace->size != 0) {
-      // Free up the workspace's current data. Free first then allocate to keep peak memory usage low.
-      xnn_release_simd_memory(runtime->workspace->data);
-    }
-    void* new_workspace_data = xnn_allocate_simd_memory(mem_arena_size);
+    void* new_workspace_data = xnn_allocate_zero_simd_memory(mem_arena_size);
     if (new_workspace_data == NULL) {
       xnn_log_error("failed to allocate %zu bytes for runtime workspace", mem_arena_size);
       return xnn_status_out_of_memory;
     }
     runtime->workspace->data = new_workspace_data;
     runtime->workspace->size = mem_arena_size;
-    xnn_log_debug("created workspace of size %zu", mem_arena_size);
     // Keep track of how much the workspace data moved.
     if (old_workspace_data != NULL) {
       workspace_data_delta = (uintptr_t) new_workspace_data - (uintptr_t) old_workspace_data;
+      // Persistent data needs to be copied if workspace grew.
+      memcpy(new_workspace_data, old_workspace_data, old_persistent_size);
+      xnn_release_simd_memory(old_workspace_data);
     }
+    xnn_log_debug("created workspace of size %zu, old workspace %p, new workspace %p, delta %td",
+                  mem_arena_size, old_workspace_data, new_workspace_data, workspace_data_delta);
   }
 
   assert(runtime->workspace->size >= mem_arena_size);
 
-  // Initialize current runtime's blob pointers.
+  // Initialize current runtime's value pointers.
   size_t persistent_offset = 0;
-  for (size_t i = 0; i < subgraph->num_values; i++) {
-    const struct xnn_value* value = &subgraph->values[i];
-    struct xnn_blob* blob = &runtime->blobs[i];
-    if (value->datatype != xnn_datatype_invalid && value->type == xnn_value_type_dense_tensor) {
-      if (blob->allocation_type == xnn_allocation_type_workspace) {
-        // Value is purely internal to the runtime, allocate it in the workspace.
-        blob->data = (void*) ((uintptr_t) runtime->workspace->data + persistent_size + mem_alloc_tracker->usage[i].alloc_offset);
-      } else if (blob->allocation_type == xnn_allocation_type_persistent) {
-        blob->data = (void*) ((uintptr_t) runtime->workspace->data + persistent_offset);
-        persistent_offset += round_up_po2(blob->size, XNN_EXTRA_BYTES);
+  for (size_t i = 0; i < runtime->num_values; i++) {
+    struct xnn_value* value = &runtime->values[i];
+    if (!xnn_value_is_valid(value)) {
+      continue;
+    }
+
+    if (value->allocation_type == xnn_allocation_type_workspace) {
+      // Value is purely internal to the runtime, allocate it in the workspace.
+      value->data =
+        (void*) ((uintptr_t) runtime->workspace->data + persistent_size + mem_alloc_tracker->usage[i].alloc_offset);
+      if (value->datatype == xnn_datatype_qdint8) {
+        value->quantization.dynamic_params =
+          (void*) ((uintptr_t) runtime->workspace->data + persistent_size + mem_alloc_tracker->usage[i].alloc_offset
+                   + xnn_tensor_get_rounded_size(value));
+
       }
+    } else if (value->allocation_type == xnn_allocation_type_persistent) {
+      value->data = (void*) ((uintptr_t) runtime->workspace->data + persistent_offset);
+      persistent_offset += xnn_tensor_get_rounded_size(value);
     }
   }
   assert(persistent_offset == persistent_size);
 
-  // Adjust the blob pointers of all runtimes that share this workspace.
+  // Initialize operator workspace values.
+  for (size_t i = 0; i < runtime->num_ops; i++) {
+    const struct xnn_usage_record* usage = &mem_alloc_tracker->usage[runtime->num_values + i];
+    if (usage->opdata_id == XNN_INVALID_NODE_ID) {
+      continue;
+    }
+    struct xnn_operator_data* opdata = &runtime->opdata[usage->opdata_id];
+    opdata->workspace = (void*) ((uintptr_t) runtime->workspace->data + persistent_size + usage->alloc_offset);
+  }
+
+  // Adjust the value pointers of all runtimes that share this workspace.
   if (workspace_data_delta != 0) {
     for (struct xnn_runtime* rt = runtime->workspace->first_user; rt != NULL; rt = rt->next_workspace_user) {
       // The current runtime already has the correct offset.
       if (rt == runtime) {
         continue;
       }
-      for (size_t i = 0; i < rt->num_blobs; i++) {
-        struct xnn_blob* blob = &rt->blobs[i];
-        if (blob->allocation_type == xnn_allocation_type_workspace ||
-            blob->allocation_type == xnn_allocation_type_persistent) {
-          assert(blob->data != NULL);
-          blob->data = (void*) ((uintptr_t) blob->data + workspace_data_delta);
+      // This runtime has not ever been setup yet, so it doesn't have any pointers into workspace, so does not need to
+      // be updated.
+      if (!rt->has_been_setup) {
+        continue;
+      }
+
+      // Adjust offsets of values in workspace.
+      for (size_t i = 0; i < rt->num_values; i++) {
+        struct xnn_value* value = &rt->values[i];
+        if (value->allocation_type == xnn_allocation_type_workspace ||
+            value->allocation_type == xnn_allocation_type_persistent) {
+          if (value->data != NULL) {
+            // Data can be null as the runtime using this workspace might not have been set up.
+            value->data = (void*) ((uintptr_t) value->data + workspace_data_delta);
+            if (value->datatype == xnn_datatype_qdint8) {
+              value->quantization.dynamic_params = (void*) ((uintptr_t) value->quantization.dynamic_params
+                                                            + workspace_data_delta);
+            }
+          }
+        }
+      }
+
+      // Re-setup all the nodes to adjust input/output pointers.
+      for (size_t i = 0; i < rt->num_ops; i++) {
+        struct xnn_operator_data* opdata = &rt->opdata[i];
+        for (size_t j = 0; j < XNN_MAX_OPERATOR_OBJECTS; j++) {
+          if (opdata->operator_objects[j] == NULL) {
+            // Operator was removed during optimization
+            continue;
+          }
+
+          if (opdata->workspace != NULL) {
+            opdata->workspace = (void*) ((uintptr_t) opdata->workspace + workspace_data_delta);
+          }
+
+          assert(opdata->setup != NULL);
+          const enum xnn_status status = opdata->setup(opdata, rt->values, rt->num_values, rt->threadpool);
+          if (status != xnn_status_success) {
+            xnn_log_error("failed to setup runtime: error in operator #%zu", i);
+            return status;
+          }
         }
       }
     }
@@ -226,19 +279,21 @@ static enum xnn_status initialize_workspace_blobs(
   return xnn_status_success;
 }
 
-// External inputs cannot be overwritten.
-// Static inputs cannot be overwritten.
-// Persistent tensors have their own space allocated at the front of the workspace.
+// Output can reuse input memory if both are allocated in the workspace.
 // If input has more than 1 consumer, we can't track all the consumers and update the first_consumer, so bail out.
 // Output memory fits in input memory. One of the inputs to a binary node could be implicitly broadcasted.
-static bool input_memory_can_be_reused(const xnn_subgraph_t subgraph, size_t input_id, size_t output_id)
+static bool input_memory_can_be_reused(const xnn_runtime_t runtime, size_t input_id, size_t output_id)
 {
-  const struct xnn_value* input = &subgraph->values[input_id];
-  const struct xnn_value* output = &subgraph->values[output_id];
-  const bool output_memory_fits = xnn_tensor_get_size(subgraph, output_id) == xnn_tensor_get_size(subgraph, input_id);
+  if (input_id == XNN_INVALID_VALUE_ID || output_id == XNN_INVALID_VALUE_ID) {
+    return false;
+  }
+  const struct xnn_value* input = &runtime->values[input_id];
+  const struct xnn_value* output = &runtime->values[output_id];
+  const bool output_memory_fits = xnn_tensor_get_size(input) == xnn_tensor_get_size(output);
   assert(input->num_consumers != 0);
-  return !xnn_value_is_external(input) && !xnn_value_is_static(input) && !xnn_value_is_persistent(input)
-      && !xnn_value_is_persistent(output) && input->num_consumers == 1 && output_memory_fits;
+  return input->allocation_type == xnn_allocation_type_workspace &&
+      output->allocation_type == xnn_allocation_type_workspace &&
+      input->num_consumers == 1 && output_memory_fits;
 }
 
 // An in-place operation reuses the input tensor's memory for its output. Examples are element-wise unary operations
@@ -249,11 +304,10 @@ static bool input_memory_can_be_reused(const xnn_subgraph_t subgraph, size_t inp
 // - remember the id of the tensor which we will reuse the alloc_offset to set onto the output tensor
 static void optimize_tensor_allocation_for_in_place_operations(
   struct xnn_value_allocation_tracker* tracker,
-  xnn_subgraph_t subgraph)
+  const xnn_runtime_t runtime)
 {
-  xnn_subgraph_analyze_consumers_and_producers(subgraph);
-  for (uint32_t n = 0; n < subgraph->num_nodes; n++) {
-    struct xnn_node* node = &subgraph->nodes[n];
+  for (uint32_t n = 0; n < runtime->num_ops; n++) {
+    const struct xnn_operator_data* node = &runtime->opdata[n];
     switch (node->type) {
       case xnn_node_type_abs:
       case xnn_node_type_add2:
@@ -287,7 +341,7 @@ static void optimize_tensor_allocation_for_in_place_operations(
     // Check all of the node's input to see which we can reuse.
     uint32_t input_id = XNN_INVALID_VALUE_ID;
     for (size_t i = 0; i < node->num_inputs; i++) {
-      if (input_memory_can_be_reused(subgraph, node->inputs[i], node->outputs[0])) {
+      if (input_memory_can_be_reused(runtime, node->inputs[i], node->outputs[0])) {
         input_id = node->inputs[i];
         break;  // Found an input we can reuse, early exit.
       }
@@ -298,7 +352,7 @@ static void optimize_tensor_allocation_for_in_place_operations(
     }
 
     // TODO(zhin): consider aliasing input to output rather than output to input.
-    struct xnn_value* output = &subgraph->values[node->outputs[0]];
+    struct xnn_value* output = &runtime->values[node->outputs[0]];
     if (output->num_consumers == 1) {
       uint32_t reuse_id = input_id;
       // If the tensor we are reusing is itself reused, find the "root tensor" to be reused.
@@ -337,7 +391,7 @@ enum xnn_status xnn_create_runtime_v4(
     goto error;
   }
 
-  const uint32_t optimization_flags = XNN_FLAG_SPARSE_INFERENCE | XNN_FLAG_HINT_FP16_INFERENCE |
+  const uint32_t optimization_flags = XNN_FLAG_HINT_SPARSE_INFERENCE | XNN_FLAG_HINT_FP16_INFERENCE |
     XNN_FLAG_FORCE_FP16_INFERENCE | XNN_FLAG_NO_OPERATOR_FUSION;
   status = xnn_subgraph_optimize(subgraph, flags & optimization_flags);
   if (status != xnn_status_success) {
@@ -374,6 +428,21 @@ enum xnn_status xnn_create_runtime_v4(
     }
   }
 
+  if (flags & XNN_FLAG_TRANSIENT_INDIRECTION_BUFFER) {
+    for (size_t i = 0; i < subgraph->num_nodes; i++) {
+      struct xnn_node* node = subgraph->nodes + i;
+      switch (node->type) {
+        case xnn_node_type_convolution_2d:
+        case xnn_node_type_depthwise_convolution_2d:
+        case xnn_node_type_static_resize_bilinear_2d:
+          node->flags |= XNN_FLAG_TRANSIENT_INDIRECTION_BUFFER;
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
   struct xnn_code_cache* code_cache = NULL;
   #if XNN_PLATFORM_JIT
     if (flags & XNN_FLAG_JIT) {
@@ -389,23 +458,52 @@ enum xnn_status xnn_create_runtime_v4(
       #endif
     }
   #endif
-  const struct xnn_caches caches = {
-    .code_cache = code_cache,
-    .weights_cache = weights_cache,
-  };
 
-  struct xnn_value* values = subgraph->values;
+  runtime->values = xnn_allocate_zero_memory(sizeof(struct xnn_value) * subgraph->num_values);
+  if (runtime->values == NULL) {
+    xnn_log_error("failed to allocate %zu bytes for runtime's value descriptors",
+      sizeof(struct xnn_value) * (size_t) subgraph->num_values);
+    goto error;
+  }
+
+  // Run a final analysis phase, no more modifications after this point.
+  xnn_subgraph_analyze_consumers_and_producers(subgraph);
+  // Make a copy of subgraph values since we can change them and runtime can outlive subgraph.
+  for (size_t i = 0; i < subgraph->num_values; i++) {
+    xnn_value_copy(runtime->values + i, subgraph->values + i);
+    // Value copy doesn't copy the id, but we want the same ID.
+    runtime->values[i].id = subgraph->values[i].id;
+  }
+  runtime->num_values = subgraph->num_values;
+  // No more optimizations should be performed on subgraph at this point, since modifications on the subgraph will not
+  // be copied to the runtime's values.
+
   for (size_t i = 0; i < subgraph->num_nodes; i++) {
     const struct xnn_node* node = subgraph->nodes + i;
+
+    // Initialize common fields we need for analysis.
+    runtime->opdata[i].type = node->type;
+    runtime->opdata[i].flags = node->flags;
+    runtime->opdata[i].id = node->id;
+    runtime->opdata[i].num_inputs = node->num_inputs;
+    runtime->opdata[i].num_outputs = node->num_outputs;
+    // Copy all inputs (not just num_inputs) to get all invalid ID (e.g. no bias).
+    for (size_t input_i = 0; input_i < node->num_inputs; input_i++) {
+      runtime->opdata[i].inputs[input_i] = node->inputs[input_i];
+    }
+    for (size_t output_i = 0; output_i < node->num_outputs; output_i++) {
+      runtime->opdata[i].outputs[output_i] = node->outputs[output_i];
+    }
 
     // Ignore fused nodes
     if (node->type != xnn_node_type_invalid) {
       assert(node->create != NULL);
-      status = node->create(node, values, subgraph->num_values, runtime->opdata + i, &caches);
+      status = node->create(node, runtime->values, runtime->num_values, runtime->opdata + i, code_cache, weights_cache);
       if (status != xnn_status_success) {
         goto error;
       }
       runtime->opdata[i].setup = node->setup;
+      runtime->opdata[i].reshape = node->reshape;
     }
   }
 
@@ -415,67 +513,29 @@ enum xnn_status xnn_create_runtime_v4(
     }
   #endif
 
-  runtime->blobs = xnn_allocate_zero_memory(sizeof(struct xnn_blob) * subgraph->num_values);
-  if (runtime->blobs == NULL) {
-    xnn_log_error("failed to allocate %zu bytes for blob descriptors",
-      sizeof(struct xnn_blob) * (size_t) subgraph->num_values);
-    goto error;
-  }
-  runtime->num_blobs = subgraph->num_values;
+  for (uint32_t i = 0; i < runtime->num_values; i++) {
+    struct xnn_value* value = &runtime->values[i];
+    if (!xnn_value_is_valid(value)) {
+      continue;
+    }
 
-  struct xnn_value_allocation_tracker mem_alloc_tracker;
-  xnn_init_value_allocation_tracker(&mem_alloc_tracker, subgraph);
-
-  size_t persistent_size = 0;
-  for (uint32_t i = 0; i < subgraph->num_values; i++) {
-    struct xnn_value* value = &subgraph->values[i];
-    struct xnn_blob* blob = &runtime->blobs[i];
-    if (value->datatype != xnn_datatype_invalid && value->type == xnn_value_type_dense_tensor) {
-      blob->size = xnn_tensor_get_size(subgraph, i);
-      blob->data = (void*) (uintptr_t) value->data;
-      if (blob->data == NULL) {
-        if (xnn_value_is_external(value)) {
-          // Value is non-static and external to the runtime: must be specified via a call to xnn_setup_runtime.
-          blob->allocation_type = xnn_allocation_type_external;
-        } else if (xnn_value_is_persistent(value)) {
-          // Persistent values are allocated in the front of the workspace without overlaps.
-          blob->allocation_type = xnn_allocation_type_persistent;
-          persistent_size += round_up_po2(blob->size, XNN_EXTRA_BYTES);
-        } else {
-          // Value is purely internal to the runtime, and must be allocated in its workspace.
-          xnn_add_value_allocation_tracker(&mem_alloc_tracker, i, round_up_po2(blob->size, XNN_EXTRA_BYTES));
-          blob->allocation_type = xnn_allocation_type_workspace;
-        }
-      } else if (value->fp16_compatible) {
-        // Value is static and has been converted to FP16 in a new buffer.
-        blob->allocation_type = xnn_allocation_type_dynamic;
-        // Runtime takes ownership of the data from subgraph.
-        value->data = NULL;
-      } else {
-        blob->allocation_type = xnn_allocation_type_static;
-      }
+    if (value->fp16_compatible && xnn_value_is_static(value)) {
+      // Value is static and has been converted to FP16 in a new buffer.
+      value->allocation_type = xnn_allocation_type_dynamic;
+      // Runtime takes ownership of the data from subgraph.
+      value->data = subgraph->values[i].data;
+      subgraph->values[i].data = NULL;
     }
   }
-  optimize_tensor_allocation_for_in_place_operations(&mem_alloc_tracker, subgraph);
-  xnn_plan_value_allocation_tracker(&mem_alloc_tracker);
 
   xnn_retain_workspace(workspace);
   runtime->workspace = workspace;
   runtime->next_workspace_user = runtime->workspace->first_user;
   runtime->workspace->first_user = runtime;
-  runtime->workspace->persistent_size = persistent_size;
-
-  status = initialize_workspace_blobs(subgraph, runtime, &mem_alloc_tracker);
-  if (status != xnn_status_success) {
-    xnn_release_value_allocation_tracker(&mem_alloc_tracker);
-    goto error;
-  }
 
   if (flags & XNN_FLAG_BASIC_PROFILING) {
     runtime->profiling = true;
   }
-
-  xnn_release_value_allocation_tracker(&mem_alloc_tracker);
 
   runtime->threadpool = threadpool;
 
@@ -487,25 +547,88 @@ error:
   return status;
 }
 
+enum xnn_status track_operator_workspace(
+  xnn_runtime_t runtime,
+  struct xnn_value_allocation_tracker* mem_alloc_tracker)
+{
+  for (uint32_t opdata_id = 0; opdata_id < runtime->num_ops; opdata_id++) {
+    struct xnn_operator_data* opdata = &runtime->opdata[opdata_id];
+    if (opdata->reshape != NULL) {
+      // Get operator workspace size.
+      enum xnn_status status = opdata->reshape(opdata, runtime->values, runtime->num_values, runtime->threadpool);
+      if (status != xnn_status_success) {
+        xnn_log_error("failed to reshape node #%" PRIu32, opdata_id);
+        return status;
+      }
+      xnn_add_operator_workspace_allocation_tracker(
+        mem_alloc_tracker, runtime->num_values + opdata_id, xnn_get_rounded_size(opdata->workspace_size),
+        opdata_id);
+    }
+  }
+  return xnn_status_success;
+}
+
 enum xnn_status xnn_setup_runtime(
   xnn_runtime_t runtime,
   size_t num_external_values,
   const struct xnn_external_value* external_values)
 {
+  size_t persistent_size = 0;
+  struct xnn_value_allocation_tracker mem_alloc_tracker;
+
+  xnn_init_value_allocation_tracker(&mem_alloc_tracker, runtime);
+
+  for (uint32_t i = 0; i < runtime->num_values; i++) {
+    const struct xnn_value* value = &runtime->values[i];
+    if (!xnn_value_is_valid(value)) {
+      continue;
+    }
+
+    if (value->allocation_type == xnn_allocation_type_workspace) {
+      // Value is purely internal to the runtime, and must be allocated in its workspace.
+      size_t tensor_size = xnn_tensor_get_rounded_size(value);
+      if (value->datatype == xnn_datatype_qdint8) {
+        const size_t batch_dims_size = xnn_shape_multiply_batch_dims(&value->shape, value->quantization.num_nonbatch_dims);
+        tensor_size += xnn_get_rounded_size((batch_dims_size + XNN_EXTRA_QUANTIZATION_PARAMS)
+                                    * sizeof(struct xnn_dynamic_quantization_params));
+      }
+      xnn_add_value_allocation_tracker(&mem_alloc_tracker, i, tensor_size);
+    } else if (value->allocation_type == xnn_allocation_type_persistent) {
+      persistent_size += xnn_tensor_get_rounded_size(value);
+    }
+  }
+  size_t old_persistent_size = runtime->workspace->persistent_size;
+  runtime->workspace->persistent_size = persistent_size;
+
+  enum xnn_status status = track_operator_workspace(runtime, &mem_alloc_tracker);
+  if (status != xnn_status_success) {
+    goto error;
+  }
+
+  optimize_tensor_allocation_for_in_place_operations(&mem_alloc_tracker, runtime);
+  xnn_plan_value_allocation_tracker(&mem_alloc_tracker);
+
+  status = initialize_workspace_values(runtime, &mem_alloc_tracker, old_persistent_size);
+  if (status != xnn_status_success) {
+    goto error;
+  }
+
+  xnn_release_value_allocation_tracker(&mem_alloc_tracker);
+
   // Validate inputs without changing internal state.
   // This ensures that runtime stays in consistent state in case validation fails midway.
   for (size_t i = 0; i < num_external_values; i++) {
     const struct xnn_external_value* external_value = &external_values[i];
     const uint32_t value_id = external_value->id;
-    if (value_id >= runtime->num_blobs) {
+    if (value_id >= runtime->num_values) {
       xnn_log_error("failed to setup runtime: out-of-bounds ID %" PRIu32 " in external value #%zu",
-        value_id, i);
+                    value_id, i);
       return xnn_status_invalid_parameter;
     }
 
-    const struct xnn_blob* blob = &runtime->blobs[value_id];
-    if (blob->allocation_type != xnn_allocation_type_external) {
-      xnn_log_error("failed to setup runtime: Value %" PRIu32 " is not external", value_id);
+    const struct xnn_value* value = &runtime->values[value_id];
+    if (value->allocation_type != xnn_allocation_type_external) {
+      xnn_log_error("failed to setup runtime: Value %" PRIu32 " is not external (%d)", value_id, value->allocation_type);
       return xnn_status_invalid_parameter;
     }
   }
@@ -514,12 +637,12 @@ enum xnn_status xnn_setup_runtime(
   for (size_t i = 0; i < num_external_values; i++) {
     const struct xnn_external_value* external_value = &external_values[i];
     const uint32_t value_id = external_value->id;
-    struct xnn_blob* blob = &runtime->blobs[value_id];
-    blob->data = external_value->data;
+    struct xnn_value* value = &runtime->values[value_id];
+    value->data = external_value->data;
   }
 
   for (size_t i = 0; i < runtime->num_ops; i++) {
-    const struct xnn_operator_data* opdata = &runtime->opdata[i];
+    struct xnn_operator_data* opdata = &runtime->opdata[i];
     for (size_t j = 0; j < XNN_MAX_OPERATOR_OBJECTS; j++) {
       if (opdata->operator_objects[j] == NULL) {
         // Operator was removed during optimization
@@ -527,15 +650,37 @@ enum xnn_status xnn_setup_runtime(
       }
 
       assert(opdata->setup != NULL);
-      const enum xnn_status status = opdata->setup(opdata, runtime->blobs, runtime->num_blobs, runtime->threadpool);
-      if (status != xnn_status_success) {
-        xnn_log_error("failed to setup runtime: error in operator #%zu", i);
-        return status;
+      if (opdata->reshape != NULL) {
+        enum xnn_status status = opdata->reshape(opdata, runtime->values, runtime->num_values, runtime->threadpool);
+        if (status != xnn_status_success) {
+          xnn_log_error("failed to setup runtime: error in reshaping operator #%zu", i);
+          return status;
+        }
+        assert(
+          opdata->operator_objects[j]->state == xnn_run_state_skip ||
+          opdata->operator_objects[j]->state == xnn_run_state_needs_setup);
+        status = opdata->setup(opdata, runtime->values, runtime->num_values, runtime->threadpool);
+        if (status != xnn_status_success) {
+          xnn_log_error("failed to setup runtime: error in setting pointers of operator #%zu", i);
+          return status;
+        }
+      } else {
+        const enum xnn_status status = opdata->setup(opdata, runtime->values, runtime->num_values, runtime->threadpool);
+        if (status != xnn_status_success) {
+          xnn_log_error("failed to setup runtime: error in operator #%zu", i);
+          return status;
+        }
       }
     }
   }
 
+  runtime->has_been_setup = true;
+
   return xnn_status_success;
+
+error:
+  xnn_release_value_allocation_tracker(&mem_alloc_tracker);
+  return status;
 }
 
 static xnn_timestamp xnn_read_timer() {
@@ -721,15 +866,15 @@ enum xnn_status xnn_delete_runtime(
       }
       xnn_release_memory(runtime->opdata);
 
-      if (runtime->blobs != NULL) {
+      if (runtime->values != NULL) {
         // Release the buffers created during FP16 rewrite.
-        for (size_t i = 0; i < runtime->num_blobs; i++) {
-          struct xnn_blob* blob = &runtime->blobs[i];
-          if (blob->allocation_type == xnn_allocation_type_dynamic) {
-            xnn_release_memory(blob->data);
+        for (size_t i = 0; i < runtime->num_values; i++) {
+          struct xnn_value* value = &runtime->values[i];
+          if (value->allocation_type == xnn_allocation_type_dynamic) {
+            xnn_release_memory(value->data);
           }
         }
-        xnn_release_memory(runtime->blobs);
+        xnn_release_memory(runtime->values);
       }
 
       if (runtime->workspace != NULL) {

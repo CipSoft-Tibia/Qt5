@@ -25,8 +25,10 @@ Q_CONSTINIT static std::atomic_flag s_printedWarning = Q_ATOMIC_FLAG_INIT;
 
 void QQmlDebuggingEnabler::enableDebugging(bool printWarning)
 {
-    if (printWarning && !s_printedWarning.test_and_set(std::memory_order_relaxed))
+    if (printWarning && !s_printedWarning.test_and_set(std::memory_order_relaxed)) {
         fprintf(stderr, "QML debugging is enabled. Only use this in a safe environment.\n");
+        fflush(stderr); // We really want to print this warning, even if stderr is buffered
+    }
     QQmlEnginePrivate::qml_debugging_enabled.store(true, std::memory_order_relaxed);
 }
 

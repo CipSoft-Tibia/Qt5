@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_computed_effect_timing.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_optional_effect_timing.h"
@@ -300,8 +301,11 @@ protocol::Response InspectorAnimationAgent::setPaused(
           }
         }
       }
+
       clone->pause();
-      clone->SetCurrentTimeInternal(current_time.value());
+      if (current_time) {
+        clone->SetCurrentTimeInternal(current_time.value());
+      }
     } else if (!paused && clone->Paused()) {
       clone->Unpause();
     }
@@ -314,7 +318,7 @@ blink::Animation* InspectorAnimationAgent::AnimationClone(
   const String id = String::Number(animation->SequenceNumber());
   auto it = id_to_animation_clone_.find(id);
   if (it != id_to_animation_clone_.end())
-    return it->value;
+    return it->value.Get();
 
   auto* old_effect = To<KeyframeEffect>(animation->effect());
   DCHECK(old_effect->Model()->IsKeyframeEffectModel());
@@ -444,8 +448,7 @@ protocol::Response InspectorAnimationAgent::resolveAnimation(
       ToV8InspectorStringView(kAnimationObjectGroup));
   *result = v8_session_->wrapObject(
       script_state->GetContext(),
-      ToV8(animation, script_state->GetContext()->Global(),
-           script_state->GetIsolate()),
+      ToV8Traits<Animation>::ToV8(script_state, animation),
       ToV8InspectorStringView(kAnimationObjectGroup),
       false /* generatePreview */);
   if (!*result) {

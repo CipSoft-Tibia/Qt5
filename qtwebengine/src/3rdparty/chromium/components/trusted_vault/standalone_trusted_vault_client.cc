@@ -6,7 +6,9 @@
 
 #include <utility>
 
+#include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_forward.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
@@ -19,9 +21,11 @@
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/trusted_vault/command_line_switches.h"
+#include "components/trusted_vault/proto/local_trusted_vault.pb.h"
 #include "components/trusted_vault/standalone_trusted_vault_backend.h"
 #include "components/trusted_vault/trusted_vault_access_token_fetcher_impl.h"
 #include "components/trusted_vault/trusted_vault_connection_impl.h"
+#include "components/trusted_vault/trusted_vault_server_constants.h"
 #include "google_apis/gaia/google_service_auth_error.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 
@@ -32,6 +36,14 @@ namespace {
 constexpr base::TaskTraits kBackendTaskTraits = {
     base::MayBlock(), base::TaskPriority::USER_VISIBLE,
     base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN};
+
+void ReplyToIsDeviceRegisteredForTesting(  // IN-TEST
+    base::OnceCallback<void(bool)> is_device_registered_callback,
+    const trusted_vault_pb::LocalDeviceRegistrationInfo&
+        device_registration_info) {
+  std::move(is_device_registered_callback)
+      .Run(device_registration_info.device_registered());
+}
 
 class IdentityManagerObserver : public signin::IdentityManager::Observer {
  public:
@@ -204,8 +216,10 @@ IdentityManagerObserver::GetPrimaryAccountRefreshTokenErrorState() const {
 class BackendDelegate : public StandaloneTrustedVaultBackend::Delegate {
  public:
   explicit BackendDelegate(
-      const base::RepeatingClosure& notify_recoverability_degraded_cb)
-      : notify_recoverability_degraded_cb_(notify_recoverability_degraded_cb) {}
+      const base::RepeatingClosure& notify_recoverability_degraded_cb,
+      const base::RepeatingClosure& notify_state_changed_cb)
+      : notify_recoverability_degraded_cb_(notify_recoverability_degraded_cb),
+        notify_state_changed_cb_(notify_state_changed_cb) {}
 
   ~BackendDelegate() override = default;
 
@@ -214,15 +228,34 @@ class BackendDelegate : public StandaloneTrustedVaultBackend::Delegate {
     notify_recoverability_degraded_cb_.Run();
   }
 
+  void NotifyStateChanged() override { notify_state_changed_cb_.Run(); }
+
  private:
   const base::RepeatingClosure notify_recoverability_degraded_cb_;
+  const base::RepeatingClosure notify_state_changed_cb_;
 };
+
+constexpr base::FilePath::CharType kChromeSyncTrustedVaultFilename[] =
+    FILE_PATH_LITERAL("trusted_vault.pb");
+constexpr base::FilePath::CharType kPasskeysTrustedVaultFilename[] =
+    FILE_PATH_LITERAL("passkeys_trusted_vault.pb");
+
+base::FilePath GetBackendFilePath(const base::FilePath& base_dir,
+                                  SecurityDomainId security_domain) {
+  switch (security_domain) {
+    case SecurityDomainId::kChromeSync:
+      return base_dir.Append(kChromeSyncTrustedVaultFilename);
+    case SecurityDomainId::kPasskeys:
+      return base_dir.Append(kPasskeysTrustedVaultFilename);
+  }
+  NOTREACHED_NORETURN();
+}
 
 }  // namespace
 
 StandaloneTrustedVaultClient::StandaloneTrustedVaultClient(
-    const base::FilePath& file_path,
-    const base::FilePath& deprecated_file_path,
+    SecurityDomainId security_domain,
+    const base::FilePath& base_dir,
     signin::IdentityManager* identity_manager,
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory)
     : backend_task_runner_(
@@ -233,17 +266,22 @@ StandaloneTrustedVaultClient::StandaloneTrustedVaultClient(
       ExtractTrustedVaultServiceURLFromCommandLine();
   if (trusted_vault_service_gurl.is_valid()) {
     connection = std::make_unique<TrustedVaultConnectionImpl>(
-        trusted_vault_service_gurl, url_loader_factory->Clone(),
+        security_domain, trusted_vault_service_gurl,
+        url_loader_factory->Clone(),
         std::make_unique<TrustedVaultAccessTokenFetcherImpl>(
             access_token_fetcher_frontend_.GetWeakPtr()));
   }
 
   backend_ = base::MakeRefCounted<StandaloneTrustedVaultBackend>(
-      file_path, deprecated_file_path,
-      std::make_unique<BackendDelegate>(base::BindPostTaskToCurrentDefault(
-          base::BindRepeating(&StandaloneTrustedVaultClient::
-                                  NotifyRecoverabilityDegradedChanged,
-                              weak_ptr_factory_.GetWeakPtr()))),
+      GetBackendFilePath(base_dir, security_domain),
+      std::make_unique<BackendDelegate>(
+          base::BindPostTaskToCurrentDefault(
+              base::BindRepeating(&StandaloneTrustedVaultClient::
+                                      NotifyRecoverabilityDegradedChanged,
+                                  weak_ptr_factory_.GetWeakPtr())),
+          base::BindPostTaskToCurrentDefault(base::BindRepeating(
+              &StandaloneTrustedVaultClient::NotifyBackendStateChanged,
+              weak_ptr_factory_.GetWeakPtr()))),
       std::move(connection));
   backend_task_runner_->PostTask(
       FROM_HERE,
@@ -368,6 +406,32 @@ void StandaloneTrustedVaultClient::FetchBackendPrimaryAccountForTesting(
       std::move(cb));
 }
 
+void StandaloneTrustedVaultClient::FetchIsDeviceRegisteredForTesting(
+    const std::string& gaia_id,
+    base::OnceCallback<void(bool)> callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(backend_);
+  backend_task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
+      base::BindOnce(
+          &StandaloneTrustedVaultBackend::GetDeviceRegistrationInfoForTesting,
+          backend_, gaia_id),
+      base::BindOnce(&ReplyToIsDeviceRegisteredForTesting,
+                     std::move(callback)));
+}
+
+void StandaloneTrustedVaultClient::AddDebugObserverForTesting(
+    DebugObserver* debug_observer) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  debug_observer_list_.AddObserver(debug_observer);
+}
+
+void StandaloneTrustedVaultClient::RemoveDebugObserverForTesting(
+    DebugObserver* debug_observer) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  debug_observer_list_.RemoveObserver(debug_observer);
+}
+
 void StandaloneTrustedVaultClient::
     GetLastAddedRecoveryMethodPublicKeyForTesting(
         base::OnceCallback<void(const std::vector<uint8_t>&)> callback) {
@@ -405,6 +469,13 @@ void StandaloneTrustedVaultClient::NotifyRecoverabilityDegradedChanged() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   for (Observer& observer : observer_list_) {
     observer.OnTrustedVaultRecoverabilityChanged();
+  }
+}
+
+void StandaloneTrustedVaultClient::NotifyBackendStateChanged() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  for (DebugObserver& debug_observer : debug_observer_list_) {
+    debug_observer.OnBackendStateChanged();
   }
 }
 

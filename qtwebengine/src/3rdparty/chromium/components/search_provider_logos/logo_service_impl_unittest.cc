@@ -349,7 +349,8 @@ class SigninHelper {
 class LogoServiceImplTest : public ::testing::Test {
  protected:
   LogoServiceImplTest()
-      : template_url_service_(nullptr, 0),
+      : template_url_service_(/*prefs=*/nullptr,
+                              /*search_engine_choice_service=*/nullptr),
         logo_cache_(new NiceMock<MockLogoCache>()),
         shared_factory_(
             base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
@@ -364,7 +365,8 @@ class LogoServiceImplTest : public ::testing::Test {
                     GURL("https://example.com/logo.json"),
                     /*make_default=*/true);
 
-    test_clock_.SetNow(base::Time::FromJsTime(INT64_C(1388686828000)));
+    test_clock_.SetNow(
+        base::Time::FromMillisecondsSinceUnixEpoch(INT64_C(1388686828000)));
     logo_service_ = std::make_unique<LogoServiceImpl>(
         base::FilePath(), signin_helper_.identity_manager(),
         &template_url_service_, std::make_unique<FakeImageDecoder>(),

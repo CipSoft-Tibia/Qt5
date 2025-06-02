@@ -32,11 +32,13 @@ WHERE
        s.name GLOB 'NotificationStackScrollLayout#onMeasure'
     OR s.name GLOB 'NotificationToplineView#onMeasure'
     OR s.name GLOB 'ExpNotRow#*'
+    OR s.name GLOB 'NotificationShadeWindowView#onMeasure'
+    OR s.name GLOB 'ImageFloatingTextView#onMeasure'
 )
 GROUP BY s.name;
 
 DROP VIEW IF EXISTS android_sysui_notifications_blocking_calls_metric_output;
-CREATE VIEW android_sysui_notifications_blocking_calls_metric_output AS
+CREATE PERFETTO VIEW android_sysui_notifications_blocking_calls_metric_output AS
 SELECT AndroidSysUINotificationsBlockingCallsMetric('blocking_calls', (
         SELECT RepeatedField(
             AndroidBlockingCall(

@@ -23,10 +23,8 @@ They can also use headers from, or packaged from, this repository.
 
 In most cases, developers should only need the headers, not the scripts and
 other material in this repository.
-In particular if you are packaging the headers for inclusion in Linux
-distributions or similar uses, we advise that you do not include the
-scripts, and direct potential users of the scripts to their canonical
-sources in the [Vulkan Specification
+If you need to run the scripts, please use them from their canonical source
+in the [Vulkan Specification
 repository](https://github.com/KhronosGroup/Vulkan-Docs).
 
 ## Contributing
@@ -47,10 +45,8 @@ Vulkan-Headers are shipped as part of the official [Vulkan-SDK](https://www.luna
 
 ## Version Tagging Scheme
 
-Updates to the `Vulkan-Headers` repository which correspond to a new Vulkan
-specification release are tagged using the following format:
-`v<`_`version`_`>` (e.g., `v1.3.255`).
+Updates to this repository which correspond to a new Vulkan specification release are tagged using the following format: `v<`_`version`_`>` (e.g., `v1.3.266`).
 
-**Note**: Marked version releases have undergone thorough testing but do not
-imply the same quality level as SDK tags. SDK tags follow the
-`sdk-<`_`version`_`>.<`_`patch`_`>` format (e.g., `sdk-1.3.250.0`).
+**Note**: Marked version releases have undergone thorough testing but do not imply the same quality level as SDK tags. SDK tags follow the `vulkan-sdk-<`_`version`_`>.<`_`patch`_`>` format (e.g., `vulkan-sdk-1.3.266.0`).
+
+This scheme was adopted following the `1.3.266` Vulkan specification release.

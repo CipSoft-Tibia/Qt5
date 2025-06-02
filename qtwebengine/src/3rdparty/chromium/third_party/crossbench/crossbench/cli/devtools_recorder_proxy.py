@@ -20,7 +20,7 @@ from typing import (TYPE_CHECKING, Any, Coroutine, Dict, List, Optional, Tuple,
 import websockets
 from websockets.server import WebSocketServerProtocol
 
-from crossbench import compat
+from crossbench import compat, helper
 
 if TYPE_CHECKING:
   from crossbench.types import JsonDict
@@ -69,12 +69,12 @@ class CrossbenchDevToolsRecorderProxy:
   _websocket: WebSocketServerProtocol
 
   def __init__(self, use_auth_token: bool = True) -> None:
-    self._token = secrets.token_hex(16)
-    self._use_auth_token = use_auth_token
-    self._print_cmd_output = False
-    self._port = self.DEFAULT_PORT
-    self._state = State.CONNECTED
-    self._crossbench_task = None
+    self._token: str = secrets.token_hex(16)
+    self._use_auth_token: bool = use_auth_token
+    self._print_cmd_output: bool = False
+    self._port: int = self.DEFAULT_PORT
+    self._state: State = State.CONNECTED
+    self._crossbench_task: Optional[asyncio.Task] = None
     self._crossbench_process = None
     self._tmp_json = pathlib.Path(
         tempfile.mkdtemp("crossbench_proxy")) / "devtools_recorder.json"
@@ -161,10 +161,7 @@ class CrossbenchDevToolsRecorderProxy:
   async def _stop_command(self) -> Tuple[Response, str]:
     if self._crossbench_process:
       logging.info("# CROSSBENCH COMMAND: KILL")
-      try:
-        self._crossbench_process.kill()
-      except ProcessLookupError as e:
-        logging.debug(e)
+      helper.wait_and_kill(self._crossbench_process)
     self._state = State.CONNECTED
     return await self._status_command()
 

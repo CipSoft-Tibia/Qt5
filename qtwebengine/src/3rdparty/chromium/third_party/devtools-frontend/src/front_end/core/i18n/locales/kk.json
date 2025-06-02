@@ -11,29 +11,26 @@
   "core/common/ResourceType.ts | document": {
     "message": "Құжат"
   },
-  "core/common/ResourceType.ts | documents": {
-    "message": "Құжаттар"
-  },
   "core/common/ResourceType.ts | eventsource": {
     "message": "EventSource"
   },
   "core/common/ResourceType.ts | fetch": {
     "message": "Алу"
   },
+  "core/common/ResourceType.ts | fetchAndXHR": {
+    "message": "Fetch және XHR"
+  },
   "core/common/ResourceType.ts | font": {
     "message": "Қаріп"
-  },
-  "core/common/ResourceType.ts | fonts": {
-    "message": "Қаріптер"
   },
   "core/common/ResourceType.ts | image": {
     "message": "Сурет"
   },
-  "core/common/ResourceType.ts | images": {
-    "message": "Суреттер"
-  },
   "core/common/ResourceType.ts | img": {
     "message": "img"
+  },
+  "core/common/ResourceType.ts | javascript": {
+    "message": "JavaScript"
   },
   "core/common/ResourceType.ts | js": {
     "message": "JS"
@@ -56,17 +53,11 @@
   "core/common/ResourceType.ts | script": {
     "message": "Скрипт"
   },
-  "core/common/ResourceType.ts | scripts": {
-    "message": "Скриптілер"
-  },
   "core/common/ResourceType.ts | signedexchange": {
     "message": "SignedExchange"
   },
   "core/common/ResourceType.ts | stylesheet": {
     "message": "Стильдер кестесі"
-  },
-  "core/common/ResourceType.ts | stylesheets": {
-    "message": "Стильдер кестелері"
   },
   "core/common/ResourceType.ts | texttrack": {
     "message": "TextTrack"
@@ -83,17 +74,11 @@
   "core/common/ResourceType.ts | websocket": {
     "message": "WebSocket"
   },
-  "core/common/ResourceType.ts | websockets": {
-    "message": "WebSockets"
-  },
   "core/common/ResourceType.ts | webtransport": {
     "message": "WebTransport"
   },
   "core/common/ResourceType.ts | ws": {
     "message": "WS"
-  },
-  "core/common/ResourceType.ts | xhrAndFetch": {
-    "message": "XHR және Fetch"
   },
   "core/common/Revealer.ts | applicationPanel": {
     "message": "Қолданба панелі"
@@ -106,6 +91,9 @@
   },
   "core/common/Revealer.ts | issuesView": {
     "message": "Ақауларды көру"
+  },
+  "core/common/Revealer.ts | memoryInspectorPanel": {
+    "message": "Жад тексеруші панелі"
   },
   "core/common/Revealer.ts | networkPanel": {
     "message": "Желі панелі"
@@ -233,6 +221,9 @@
   "core/sdk/CSSStyleSheetHeader.ts | thereWasAnErrorRetrievingThe": {
     "message": "Дереккөз стильдерін алу кезінде қате шықты."
   },
+  "core/sdk/ChildTargetManager.ts | main": {
+    "message": "Негізгі"
+  },
   "core/sdk/CompilerSourceMappingContentProvider.ts | couldNotLoadContentForSS": {
     "message": "{PH1} ({PH2}) үшін контент жүктелмеді."
   },
@@ -251,134 +242,8 @@
   "core/sdk/ConsoleModel.ts | profileSStarted": {
     "message": "\"{PH1}\" профилі басталды."
   },
-  "core/sdk/DOMDebuggerModel.ts | animation": {
-    "message": "Анимация"
-  },
-  "core/sdk/DOMDebuggerModel.ts | animationFrameFired": {
-    "message": "Анимация кадры басталды."
-  },
-  "core/sdk/DOMDebuggerModel.ts | cancelAnimationFrame": {
-    "message": "Анимация кадрынан бас тарту"
-  },
-  "core/sdk/DOMDebuggerModel.ts | canvas": {
-    "message": "Canvas"
-  },
-  "core/sdk/DOMDebuggerModel.ts | clipboard": {
-    "message": "Буфер"
-  },
-  "core/sdk/DOMDebuggerModel.ts | closeAudiocontext": {
-    "message": "AudioContext жабу"
-  },
-  "core/sdk/DOMDebuggerModel.ts | control": {
-    "message": "Басқару"
-  },
-  "core/sdk/DOMDebuggerModel.ts | createAudiocontext": {
-    "message": "AudioContext жасау"
-  },
-  "core/sdk/DOMDebuggerModel.ts | createCanvasContext": {
-    "message": "Кенеп контексін жасау"
-  },
-  "core/sdk/DOMDebuggerModel.ts | device": {
-    "message": "Құрылғы"
-  },
-  "core/sdk/DOMDebuggerModel.ts | domMutation": {
-    "message": "DOM мутациясы"
-  },
-  "core/sdk/DOMDebuggerModel.ts | dragDrop": {
-    "message": "Сүйреу/тастау"
-  },
-  "core/sdk/DOMDebuggerModel.ts | geolocation": {
-    "message": "Локация"
-  },
-  "core/sdk/DOMDebuggerModel.ts | keyboard": {
-    "message": "Пернетақта"
-  },
-  "core/sdk/DOMDebuggerModel.ts | load": {
-    "message": "Жүктеу"
-  },
-  "core/sdk/DOMDebuggerModel.ts | media": {
-    "message": "Мультимедиа"
-  },
-  "core/sdk/DOMDebuggerModel.ts | mouse": {
-    "message": "Тінтуір"
-  },
-  "core/sdk/DOMDebuggerModel.ts | notification": {
-    "message": "Хабарландыру"
-  },
-  "core/sdk/DOMDebuggerModel.ts | parse": {
-    "message": "Талдау"
-  },
-  "core/sdk/DOMDebuggerModel.ts | pictureinpicture": {
-    "message": "Суреттегі сурет"
-  },
-  "core/sdk/DOMDebuggerModel.ts | pointer": {
-    "message": "Меңзер"
-  },
-  "core/sdk/DOMDebuggerModel.ts | policyViolations": {
-    "message": "Саясат талаптарын бұзу жағдайлары"
-  },
-  "core/sdk/DOMDebuggerModel.ts | requestAnimationFrame": {
-    "message": "Анимация кадрын сұрау"
-  },
-  "core/sdk/DOMDebuggerModel.ts | resumeAudiocontext": {
-    "message": "AudioContext трансляциясын жалғастыру"
-  },
-  "core/sdk/DOMDebuggerModel.ts | script": {
-    "message": "Скрипт"
-  },
-  "core/sdk/DOMDebuggerModel.ts | scriptBlockedByContentSecurity": {
-    "message": "Скрипт Контент қауіпсіздігі саясаты арқылы бөгелді."
-  },
-  "core/sdk/DOMDebuggerModel.ts | scriptBlockedDueToContent": {
-    "message": "Скрипт Контент қауіпсіздігі саясатының директивасына сәйкес бөгелді: {PH1}"
-  },
-  "core/sdk/DOMDebuggerModel.ts | scriptFirstStatement": {
-    "message": "Скриптінің бірінші мәлімдемесі"
-  },
-  "core/sdk/DOMDebuggerModel.ts | setInnerhtml": {
-    "message": "innerHTML орнату"
-  },
-  "core/sdk/DOMDebuggerModel.ts | setTimeoutOrIntervalFired": {
-    "message": "{PH1} іске қосылды."
-  },
-  "core/sdk/DOMDebuggerModel.ts | sinkViolations": {
-    "message": "Қабылдау ережелерін бұзу"
-  },
-  "core/sdk/DOMDebuggerModel.ts | suspendAudiocontext": {
-    "message": "AudioContext уақытша тоқтату"
-  },
-  "core/sdk/DOMDebuggerModel.ts | timer": {
-    "message": "Таймер"
-  },
-  "core/sdk/DOMDebuggerModel.ts | touch": {
-    "message": "Түрту"
-  },
-  "core/sdk/DOMDebuggerModel.ts | trustedTypeViolations": {
-    "message": "Trusted Type бұзу жағдайлары"
-  },
-  "core/sdk/DOMDebuggerModel.ts | webaudio": {
-    "message": "WebAudio"
-  },
-  "core/sdk/DOMDebuggerModel.ts | webglErrorFired": {
-    "message": "WebGL қатесі шықты"
-  },
-  "core/sdk/DOMDebuggerModel.ts | webglErrorFiredS": {
-    "message": "WebGL қатесі шықты ({PH1})"
-  },
-  "core/sdk/DOMDebuggerModel.ts | webglWarningFired": {
-    "message": "WebGL ескертуі іске қосылды"
-  },
-  "core/sdk/DOMDebuggerModel.ts | window": {
-    "message": "Терезе"
-  },
-  "core/sdk/DOMDebuggerModel.ts | worker": {
-    "message": "Worker"
-  },
-  "core/sdk/DOMDebuggerModel.ts | xhr": {
-    "message": "XHR"
-  },
   "core/sdk/DebuggerModel.ts | block": {
-    "message": "Бөгеу"
+    "message": "Блоктау"
   },
   "core/sdk/DebuggerModel.ts | catchBlock": {
     "message": "Catch блогы"
@@ -403,21 +268,6 @@
   },
   "core/sdk/DebuggerModel.ts | withBlock": {
     "message": "With блогы"
-  },
-  "core/sdk/EventBreakpointsModel.ts | auctionWorklet": {
-    "message": "Жарнамалық аукцион"
-  },
-  "core/sdk/EventBreakpointsModel.ts | beforeBidderWorkletBiddingStart": {
-    "message": "Қатысушының баға ұсыну фазасының басталуы"
-  },
-  "core/sdk/EventBreakpointsModel.ts | beforeBidderWorkletReportingStart": {
-    "message": "Қатысушының есеп беру фазасының басталуы"
-  },
-  "core/sdk/EventBreakpointsModel.ts | beforeSellerWorkletReportingStart": {
-    "message": "Сатушының есеп беру фазасының басталуы"
-  },
-  "core/sdk/EventBreakpointsModel.ts | beforeSellerWorkletScoringStart": {
-    "message": "Сатушыға баға беру фазасының басталуы"
   },
   "core/sdk/NetworkManager.ts | fastG": {
     "message": "Жылдам 3G"
@@ -518,8 +368,14 @@
   "core/sdk/NetworkRequest.ts | theSchemeOfThisConnectionIsNot": {
     "message": "Бұл қосылымның схемасында cookie файлдарын сақтауға рұқсат жоқ."
   },
+  "core/sdk/NetworkRequest.ts | thirdPartyPhaseout": {
+    "message": "Бұл cookie үшінші тарап cookie файлына біртіндеп шектеу қоюға байланысты блокталды. Толық ақпарат \"Ақаулар\" қойындысында берілген."
+  },
   "core/sdk/NetworkRequest.ts | thisSetcookieDidntSpecifyASamesite": {
     "message": "Бұл Set-Cookie тақырыбы \"SameSite\" төлсипатын көрсетпеді, \"SameSite=Lax\"\" төлсипатына қайтарылып, бөгелді, себебі ол жоғары деңгейлі навигацияға жауап болып табылмайтын әртүрлі сайттағы жауаптан келді. Бұл жауап әртүрлі сайттағы жауап болып есептеледі, себебі URL-дің схемасы қазіргі сайттан басқа."
+  },
+  "core/sdk/NetworkRequest.ts | thisSetcookieHadADisallowedCharacter": {
+    "message": "Бұл Set-Cookie тақырыбында рұқсат берілмеген таңба (тыйым салынған ASCII басқару таңбасы немесе cookie файлы атауының, мәнінің, төлсипат атауының немесе төлсипат мәнінің ортасында пайда болса, қойынды таңбасы) болды."
   },
   "core/sdk/NetworkRequest.ts | thisSetcookieHadInvalidSyntax": {
     "message": "Бұл Set-Cookie тақырыбының синтаксисі жарамсыз болды."
@@ -535,6 +391,9 @@
   },
   "core/sdk/NetworkRequest.ts | thisSetcookieWasBlockedBecauseTheNameValuePairExceedsMaxSize": {
     "message": "Cookie файлын Set-Cookie тақырыбы арқылы орнату әрекеті бөгелді, себебі ол тым үлкен. Атау мен мәннің жалпы өлшемі 4096 таңбаға тең не одан кем болуы керек."
+  },
+  "core/sdk/NetworkRequest.ts | thisSetcookieWasBlockedDueThirdPartyPhaseout": {
+    "message": "Бұл cookie-ді орнату үшінші тарап cookie файлына біртіндеп шектеу қоюға байланысты блокталды. Толық ақпарат \"Ақаулар\" қойындысында берілген."
   },
   "core/sdk/NetworkRequest.ts | thisSetcookieWasBlockedDueToUser": {
     "message": "Cookie файлын Set-Cookie тақырыбы арқылы орнату әрекеті пайдаланушы параметрлеріне байланысты бөгелді."
@@ -727,9 +586,6 @@
   },
   "core/sdk/sdk-meta.ts | enableCache": {
     "message": "Кэшті қосу"
-  },
-  "core/sdk/sdk-meta.ts | enableCustomFormatters": {
-    "message": "Арнаулы форматтаушыларды қосу"
   },
   "core/sdk/sdk-meta.ts | enableJavascript": {
     "message": "JavaScript қосу"
@@ -1052,9 +908,6 @@
   "entrypoints/main/MainImpl.ts | undockIntoSeparateWindow": {
     "message": "Бөлек терезеге алып тастау"
   },
-  "entrypoints/main/main-meta.ts | asAuthored": {
-    "message": "Әзірленгендей"
-  },
   "entrypoints/main/main-meta.ts | auto": {
     "message": "авто"
   },
@@ -1066,12 +919,6 @@
   },
   "entrypoints/main/main-meta.ts | cancelSearch": {
     "message": "Іздеуден бас тарту"
-  },
-  "entrypoints/main/main-meta.ts | colorFormat": {
-    "message": "Түс форматы:"
-  },
-  "entrypoints/main/main-meta.ts | colorFormatSettingDisabled": {
-    "message": "Бұл параметр ескірген, себебі ол заманауи түс кеңістіктерімен үйлеспейді. Оны қайта қосу үшін тиісті тәжірибені өшіріңіз."
   },
   "entrypoints/main/main-meta.ts | darkCapital": {
     "message": "Қараңғы"
@@ -1156,18 +1003,6 @@
   },
   "entrypoints/main/main-meta.ts | searchOnEnterCommand": {
     "message": "Мәтін теру сәтінде іздеу пәрменін өшіру (іздеу үшін Enter пернесін басыңыз)"
-  },
-  "entrypoints/main/main-meta.ts | setColorFormatAsAuthored": {
-    "message": "Түс форматын рұқсат етілгендей орнату"
-  },
-  "entrypoints/main/main-meta.ts | setColorFormatToHex": {
-    "message": "Түс форматын HEX-ке ауыстыру"
-  },
-  "entrypoints/main/main-meta.ts | setColorFormatToHsl": {
-    "message": "Түс форматын HSL-ге ауыстыру"
-  },
-  "entrypoints/main/main-meta.ts | setColorFormatToRgb": {
-    "message": "Түс форматын RGB-ге ауыстыру"
   },
   "entrypoints/main/main-meta.ts | switchToDarkTheme": {
     "message": "Қараңғы режимге ауысу"
@@ -1256,6 +1091,12 @@
   "generated/Deprecation.ts | CSSSelectorInternalMediaControlsOverlayCastButton": {
     "message": "Әдепкі Cast интеграциясын өшіру үшін -internal-media-controls-overlay-cast-button таңдау құралын емес, disableRemotePlayback төлсипатын пайдалану керек."
   },
+  "generated/Deprecation.ts | CSSValueAppearanceNonStandard": {
+    "message": "inner-spin-button, media-slider, media-sliderthumb, media-volume-slider, media-volume-sliderthumb, push-button, searchfield-cancel-button, slider-horizontal, sliderthumb-horizontal, sliderthumb-vertical, square-button CSS көрініс мәндері стандартталмаған және олар өшіріледі."
+  },
+  "generated/Deprecation.ts | CSSValueAppearanceSliderVertical": {
+    "message": "slider-vertical CSS көрініс мәні стандартталмаған және ол өшіріледі."
+  },
   "generated/Deprecation.ts | CanRequestURLHTTPContainingNewline": {
     "message": "URL мекенжайларында \\(n|r|t) өшірілген бос орын таңбаларынан тұратын ресурс сұраулары да, кіші таңбалар (<) да бөгеледі. Бұл ресурстарды жүктеу үшін элемент төлсипатының мәндері сияқты кіші таңбаларды кодтап, жаңа жолдарды өшіріңіз."
   },
@@ -1289,9 +1130,6 @@
   "generated/Deprecation.ts | DocumentDomainSettingWithoutOriginAgentClusterHeader": {
     "message": "document.domain мәнін тағайындау арқылы бірдей дереккөз саясатын өңдеу процесі қолданыстан шығарылды және әдепкісінше өшіріледі. Бұл функцияны одан әрі пайдалану үшін, құжат немесе кадрлар бойынша HTTP жауабымен бірге Origin-Agent-Cluster: ?0 тақырыбын жіберу арқылы түпнұсқа кілтті агент кластерлерінен бас тартыңыз. Толығырақ мәлімет алу үшін https://developer.chrome.com/blog/immutable-document-domain/ бетін қараңыз."
   },
-  "generated/Deprecation.ts | ExpectCTHeader": {
-    "message": "Expect-CT тақырыбы қолданыстан шығарылды және өшіріледі. Chrome браузері 2018 жылдың 30 сәуірінен кейін шығарылған баршаға ашық сертификаттар үшін сертификат шынайылығын растауды талап етеді."
-  },
   "generated/Deprecation.ts | GeolocationInsecureOrigin": {
     "message": "getCurrentPosition() және watchPosition() бұдан былай қауіпті дереккөздерде қолданылмайды. Бұл функцияны пайдалану үшін қолданбаны HTTPS сияқты қауіпсіз дереккөзге ауыстырып көріңіз. Толығырақ мәлімет алу үшін https://goo.gle/chrome-insecure-origins бетін қараңыз."
   },
@@ -1324,9 +1162,6 @@
   },
   "generated/Deprecation.ts | NoSysexWebMIDIWithoutPermission": {
     "message": "MIDIOptions нұсқасында sysex көрсетілмесе, Web MIDI пайдалану рұқсатын сұрайды."
-  },
-  "generated/Deprecation.ts | NonStandardDeclarativeShadowDOM": {
-    "message": "Ескі, стандартталмаған shadowroot төлсипаты ескірген және M119 ішінде *енді жұмыс істемейді*. Оның орнына жаңа, стандартталған shadowrootmode төлсипатын пайдаланыңыз."
   },
   "generated/Deprecation.ts | NotificationInsecureOrigin": {
     "message": "Хабарландыру API-ын бұдан былай қауіпті дереккөздерден пайдалануға болмайды. Қолданбаны HTTPS сияқты қауіпсіз дереккөзге ауыстырып көріңіз. Толығырақ мәлімет алу үшін https://goo.gle/chrome-insecure-origins бетін қараңыз."
@@ -1406,6 +1241,9 @@
   "generated/Deprecation.ts | TextToSpeech_DisallowedByAutoplay": {
     "message": "Пайдаланушыны белсендірместен speechSynthesis.speak() саясатын шақыру мүмкіндігі қолданыстан шығарылды және өшіріледі."
   },
+  "generated/Deprecation.ts | UnloadHandler": {
+    "message": "Босату оқиғасы тыңдаушылары қолданыстан шығарылды және өшіріледі."
+  },
   "generated/Deprecation.ts | V8SharedArrayBufferConstructedInExtensionWithoutIsolation": {
     "message": "SharedArrayBuffer элементін одан әрі пайдалану үшін кеңейтімдерде дереккөзаралық оқшаулау нұсқасы таңдалуы керек. https://developer.chrome.com/docs/extensions/mv3/cross-origin-isolation/ бетін қараңыз."
   },
@@ -1484,6 +1322,9 @@
   "models/emulation/DeviceModeModel.ts | devicePixelRatioMustBeLessThanOr": {
     "message": "Құрылғының пиксель арақатынасы {PH1} мәнінен аз немесе оған тең болуы керек."
   },
+  "models/emulation/DeviceModeModel.ts | heightCannotBeEmpty": {
+    "message": "Биіктігі бос болмауы керек."
+  },
   "models/emulation/DeviceModeModel.ts | heightMustBeANumber": {
     "message": "Биіктік мәні сан болуы керек."
   },
@@ -1492,6 +1333,9 @@
   },
   "models/emulation/DeviceModeModel.ts | heightMustBeLessThanOrEqualToS": {
     "message": "Биіктік {PH1} шамасынан кіші немесе оған тең болуы керек."
+  },
+  "models/emulation/DeviceModeModel.ts | widthCannotBeEmpty": {
+    "message": "Ені бос болмауы керек."
   },
   "models/emulation/DeviceModeModel.ts | widthMustBeANumber": {
     "message": "Ені сан болуы керек."
@@ -1538,11 +1382,17 @@
   "models/issues_manager/ContentSecurityPolicyIssue.ts | trustedTypesPolicyViolation": {
     "message": "Сенімді түрлер – саясатты бұзу жағдайы"
   },
+  "models/issues_manager/CookieDeprecationMetadataIssue.ts | thirdPartyPhaseoutExplained": {
+    "message": "Үшінші тарап cookie файлдарынан біртіндеп бас тартуға дайындау"
+  },
   "models/issues_manager/CookieIssue.ts | aSecure": {
     "message": "қауіпсіз"
   },
   "models/issues_manager/CookieIssue.ts | anInsecure": {
     "message": "қауіпті"
+  },
+  "models/issues_manager/CookieIssue.ts | fileCrosSiteRedirectBug": {
+    "message": "Қате туралы хабарлау"
   },
   "models/issues_manager/CookieIssue.ts | firstPartySetsExplained": {
     "message": "First-Party Sets және SameParty төлсипаты"
@@ -1554,7 +1404,7 @@
     "message": "SameSite cookie файлдары түсіндірілді."
   },
   "models/issues_manager/CookieIssue.ts | thirdPartyPhaseoutExplained": {
-    "message": "Үшінші тарап cookie файлдарынан кезең-кезеңмен бас тартуға дайындалу"
+    "message": "Үшінші тарап cookie файлдарынан біртіндеп бас тартуға дайындау"
   },
   "models/issues_manager/CorsIssue.ts | CORS": {
     "message": "Ресурсты әртүрлі көздер арасында бөлісу (CORS)"
@@ -1703,6 +1553,12 @@
   "models/persistence/PersistenceActions.ts | overrideContent": {
     "message": "Контентті қайта анықтау"
   },
+  "models/persistence/PersistenceActions.ts | overrideSourceMappedFileExplanation": {
+    "message": "\"{PH1}\" — бастапқы түрлендірілген файл, оны қайта анықтау мүмкін емес."
+  },
+  "models/persistence/PersistenceActions.ts | overrideSourceMappedFileWarning": {
+    "message": "Оның орнына \"{PH1}\" қайта анықталсын ба?"
+  },
   "models/persistence/PersistenceActions.ts | saveAs": {
     "message": "Сақтау форматы…"
   },
@@ -1761,7 +1617,7 @@
     "message": "қайта жазу"
   },
   "models/persistence/persistence-meta.ts | showWorkspace": {
-    "message": "Жұмыс орнын көрсету"
+    "message": "Жұмыс орны параметрлерін көрсету"
   },
   "models/persistence/persistence-meta.ts | workspace": {
     "message": "Жұмыс орны"
@@ -1769,41 +1625,17 @@
   "models/timeline_model/TimelineJSProfile.ts | threadS": {
     "message": "{PH1} тізбек"
   },
-  "models/timeline_model/TimelineModel.ts | bidderWorklet": {
-    "message": "Сатып алушылар тізімі"
-  },
-  "models/timeline_model/TimelineModel.ts | bidderWorkletS": {
-    "message": "Сатып алушылар тізімі — {PH1}"
-  },
   "models/timeline_model/TimelineModel.ts | dedicatedWorker": {
     "message": "Арнаулы Worker"
-  },
-  "models/timeline_model/TimelineModel.ts | sellerWorklet": {
-    "message": "Сатушылар тізімі"
-  },
-  "models/timeline_model/TimelineModel.ts | sellerWorkletS": {
-    "message": "Сатушылар тізімі — {PH1}"
   },
   "models/timeline_model/TimelineModel.ts | threadS": {
     "message": "{PH1} тізбек"
   },
-  "models/timeline_model/TimelineModel.ts | unknownWorklet": {
-    "message": "Аукциондар тізімі"
-  },
-  "models/timeline_model/TimelineModel.ts | unknownWorkletS": {
-    "message": "Аукциондар тізімі — {PH1}"
-  },
   "models/timeline_model/TimelineModel.ts | workerS": {
-    "message": "Worker – {PH1}"
+    "message": "Worker – {PH1}"
   },
   "models/timeline_model/TimelineModel.ts | workerSS": {
-    "message": "Worker: {PH1} — {PH2}"
-  },
-  "models/timeline_model/TimelineModel.ts | workletService": {
-    "message": "Аукциондар тізімі қызметі"
-  },
-  "models/timeline_model/TimelineModel.ts | workletServiceS": {
-    "message": "Аукциондар тізімі қызметі — {PH1}"
+    "message": "Worker: {PH1} — {PH2}"
   },
   "models/workspace/UISourceCode.ts | index": {
     "message": "(индекс)"
@@ -1852,6 +1684,9 @@
   },
   "panels/accessibility/AccessibilityNodeView.ts | elementIsHiddenBy": {
     "message": "Элемент белсенді модальдік диалог арқылы жасырылған: "
+  },
+  "panels/accessibility/AccessibilityNodeView.ts | elementIsHiddenByChildTree": {
+    "message": "Элемент туынды элемент тармағы арқылы жасырылған: "
   },
   "panels/accessibility/AccessibilityNodeView.ts | elementIsInAnInertSubTree": {
     "message": "Элемент inert ішкі тармағында "
@@ -2298,10 +2133,10 @@
     "message": "Қолданба идентификаторы браузердің келесіні анықтауы үшін қолданылады: манифестің бұрыннан бар қолданбаны жаңартуы керек екені немесе орнатуға болатын жаңа веб-қолданбаға тиісті екені."
   },
   "panels/application/AppManifestView.ts | appIdNote": {
-    "message": "Манифесте {PH1} {PH2} көрсетілмеген, оның орнына {PH3} пайдаланылған. Қазіргі идентификацияға сәйкес келетін қолданба идентификаторын көрсету үшін {PH4} өрісіне {PH5} {PH6} мәнін енгізіңіз."
+    "message": "Манифесте {PH1} {PH2} көрсетілмеген, оның орнына {PH3} пайдаланылған. Қазіргі идентификацияға сәйкес келетін қолданба идентификаторын көрсету үшін {PH4} өрісін {PH5} {PH6} мәніне орнатыңыз."
   },
   "panels/application/AppManifestView.ts | avoidPurposeAnyAndMaskable": {
-    "message": "Белгішені \"purpose: \"any maskable\"\" мәнімен бірге мәлімдемеген жөн. Кейбір платформаларда өріс тым үлкен не тым кіші болғандықтан, бұл дұрыс көрінбеуі мүмкін."
+    "message": "Белгішені \"purpose\" (\"any maskable\") мәнімен бірге мәлімдемеген жөн. Кейбір платформаларда шегініс тым үлкен не тым кіші болғандықтан, бұл дұрыс көрінбеуі мүмкін."
   },
   "panels/application/AppManifestView.ts | backgroundColor": {
     "message": "Фон түсі"
@@ -2313,7 +2148,7 @@
     "message": "Ұсынылған идентификатор ({PH1}) буферге көшірілді."
   },
   "panels/application/AppManifestView.ts | copyToClipboard": {
-    "message": "Буферге көшіру"
+    "message": "Ұсынылған идентификаторды буферге көшіру"
   },
   "panels/application/AppManifestView.ts | couldNotCheckServiceWorker": {
     "message": "Манифестегі 'start_url' өрісі жоқ service worker құжаты тексерілмеді."
@@ -2322,7 +2157,7 @@
     "message": "Манифестен қажетті белгіше жүктеп алынбады."
   },
   "panels/application/AppManifestView.ts | customizePwaTitleBar": {
-    "message": "PWA тақырып бағанасының терезені басқару элементтері оверлейін бейімдеңіз."
+    "message": "PWA тақырып жолағының Window Controls Overlay оверлейін бейімдеу"
   },
   "panels/application/AppManifestView.ts | darkBackgroundColor": {
     "message": "Қара фон түсі"
@@ -2331,7 +2166,7 @@
     "message": "Қараңғы режим түсі"
   },
   "panels/application/AppManifestView.ts | description": {
-    "message": "Сипаттама"
+    "message": "Сипаттамасы"
   },
   "panels/application/AppManifestView.ts | descriptionMayBeTruncated": {
     "message": "Сипаттама толық көрінбеуі мүмкін."
@@ -2348,6 +2183,9 @@
   "panels/application/AppManifestView.ts | errorsAndWarnings": {
     "message": "Қателер және ескертулер"
   },
+  "panels/application/AppManifestView.ts | formFactor": {
+    "message": "Құрылымдық сипаттама"
+  },
   "panels/application/AppManifestView.ts | icon": {
     "message": "Белгіше"
   },
@@ -2362,6 +2200,9 @@
   },
   "panels/application/AppManifestView.ts | installability": {
     "message": "Орнатылғыштық"
+  },
+  "panels/application/AppManifestView.ts | label": {
+    "message": "Белгі"
   },
   "panels/application/AppManifestView.ts | learnMore": {
     "message": "Толығырақ"
@@ -2379,16 +2220,16 @@
     "message": "Манифесте \"name\" немесе \"short_name\" өрісі жоқ."
   },
   "panels/application/AppManifestView.ts | manifestDoesNotContainASuitable": {
-    "message": "Манифесте тиісті белгіше жоқ. Кемінде {PH1} пиксель болатын PNG, SVG немесе WebP форматындағы белгіше қажет. \"sizes\" төлсипаты орнатылуы керек. \"purpose\" төлсипаты орнатылса, оның құрамында \"any\" болуы тиіс."
+    "message": "Манифесте тиісті белгіше жоқ. Кемінде {PH1} пиксель болатын PNG, SVG немесе WebP форматындағы белгіше қажет. \"sizes\" төлсипаты орнатылуы керек. \"purpose\" төлсипаты орнатылса, оның құрамында \"any\" болуы қажет."
   },
   "panels/application/AppManifestView.ts | manifestSpecifies": {
     "message": "Манифест \"prefer_related_applications: TRUE\" деп көрсетеді."
   },
   "panels/application/AppManifestView.ts | manifestStartUrlIsNotValid": {
-    "message": "\"start_URL\" манифесі жарамды емес."
+    "message": "\"start_url\" манифесі жарамды емес."
   },
   "panels/application/AppManifestView.ts | name": {
-    "message": "Аты"
+    "message": "Атауы"
   },
   "panels/application/AppManifestView.ts | needHelpReadOurS": {
     "message": "Көмек керек пе? {PH1} бетін оқыңыз."
@@ -2399,8 +2240,14 @@
   "panels/application/AppManifestView.ts | noPlayStoreIdProvided": {
     "message": "Play Store идентификаторы көрсетілмеген."
   },
+  "panels/application/AppManifestView.ts | noScreenshotsForRicherPWAInstallOnDesktop": {
+    "message": "Richer PWA Install UI компьютерде қолжетімді болмайды. form_factor wide мәніне орнатылған кемінде бір скриншот қосыңыз."
+  },
+  "panels/application/AppManifestView.ts | noScreenshotsForRicherPWAInstallOnMobile": {
+    "message": "Richer PWA Install UI мобильдік құрылғыда қолжетімді болмайды. form_factor орнатылмаған немесе wide мәнінен басқа мәнге орнатылған кемінде бір скриншот қосыңыз."
+  },
   "panels/application/AppManifestView.ts | noSuppliedIconIsAtLeastSpxSquare": {
-    "message": "Берілген белгішенің ешқайсысы PNG, SVG немесе WebP форматында кемінде {PH1} шаршы пиксель емес, ал мақсат төлсипаты орнатылмаған немесе \"any\" төлсипатына орнатылған."
+    "message": "Берілген белгішенің ешқайсысы PNG, SVG немесе WebP форматында кемінде {PH1} шаршы пиксель емес, ал мақсат төлсипаты орнатылмаған немесе \"any\" мәніне орнатылған."
   },
   "panels/application/AppManifestView.ts | note": {
     "message": "Ескертпе:"
@@ -2425,6 +2272,9 @@
   },
   "panels/application/AppManifestView.ts | pageIsNotServedFromASecureOrigin": {
     "message": "Бет дереккөзі қорғалмаған."
+  },
+  "panels/application/AppManifestView.ts | platform": {
+    "message": "Платформа"
   },
   "panels/application/AppManifestView.ts | preferrelatedapplicationsIsOnly": {
     "message": "\"prefer_related_applications\" тек Chrome бета нұсқасында және Android тұрақты нұсқаларында жұмыс істейді."
@@ -2469,10 +2319,16 @@
     "message": "Скриншот"
   },
   "panels/application/AppManifestView.ts | screenshotPixelSize": {
-    "message": "{url} скриншоты алғашқы өлшем ретінде \"any\" орнына [width]x[height] пиксель өлшемін көрсету керек."
+    "message": "{url} скриншоты алғашқы өлшем ретінде any орнына [width]x[height] пиксель өлшемін көрсету керек."
   },
   "panels/application/AppManifestView.ts | screenshotS": {
     "message": "Скриншот №{PH1}"
+  },
+  "panels/application/AppManifestView.ts | screenshotsMustHaveSameAspectRatio": {
+    "message": "form_factor мәні бірдей барлық скриншоттың арақатынасы сол form_factor мәні бар бірінші скриншоттың арақатынасымен бірдей болуы керек. Кейбір скриншоттар еленбейді."
+  },
+  "panels/application/AppManifestView.ts | selectWindowControlsOverlayEmulationOs": {
+    "message": "Қосулы Window Controls Overlay оверлейін эмуляциялау"
   },
   "panels/application/AppManifestView.ts | shortName": {
     "message": "Қысқаша атауы"
@@ -2481,7 +2337,10 @@
     "message": "#{PH1} жылдам пәрмен"
   },
   "panels/application/AppManifestView.ts | shortcutSShouldIncludeAXPixel": {
-    "message": "#{PH1} жылдам пәрменінде 96x96 пиксельдік белгіше болу керек."
+    "message": "#{PH1} таңбашасында 96×96 пиксельдік белгіше болуы керек"
+  },
+  "panels/application/AppManifestView.ts | shortcutsMayBeNotAvailable": {
+    "message": "Пернелер тіркесімдерінің максималды саны платформаға тәуелді. Кейбір пернелер тіркесімі қолжетімді болмауы мүмкін."
   },
   "panels/application/AppManifestView.ts | showOnlyTheMinimumSafeAreaFor": {
     "message": "Бүркемелеуге болатын белгішелер үшін тек ең кіші қауіпсіз аймақты көрсету"
@@ -2496,10 +2355,19 @@
     "message": "Play Store қолданбасының URL мекенжайы мен Play Store идентификаторы сәйкес емес."
   },
   "panels/application/AppManifestView.ts | theSpecifiedApplicationPlatform": {
-    "message": "Android жүйесінде көрсетілген қолданба платформасына қолдау көрсетілмейді"
+    "message": "Android жүйесі көрсетілген қолданба платформасына қолдау көрсетпейді."
   },
   "panels/application/AppManifestView.ts | themeColor": {
     "message": "Тақырып түсі"
+  },
+  "panels/application/AppManifestView.ts | tooManyScreenshotsForDesktop": {
+    "message": "Жұмыс үстелінде көп дегенде 8 скриншот көрсетіледі. Қалғандары еленбейді."
+  },
+  "panels/application/AppManifestView.ts | tooManyScreenshotsForMobile": {
+    "message": "Мобильдік құрылғыда көп дегенде 5 скриншот көрсетіледі. Қалғандары еленбейді."
+  },
+  "panels/application/AppManifestView.ts | url": {
+    "message": "URL"
   },
   "panels/application/AppManifestView.ts | wcoFound": {
     "message": "Chrome {PH3} бетінде {PH2} өрісі үшін {PH1} мәнін сәтті тапты."
@@ -2570,9 +2438,6 @@
   "panels/application/ApplicationPanelSidebar.ts | openedWindows": {
     "message": "Ашық терезелер"
   },
-  "panels/application/ApplicationPanelSidebar.ts | preloading": {
-    "message": "Алдын ала жүктеу"
-  },
   "panels/application/ApplicationPanelSidebar.ts | refreshIndexeddb": {
     "message": "IndexedDB элементін жаңарту"
   },
@@ -2584,6 +2449,9 @@
   },
   "panels/application/ApplicationPanelSidebar.ts | theContentOfThisDocumentHasBeen": {
     "message": "Осы құжаттың мазмұны 'document.write()' арқылы динамикалық түрде жасалды."
+  },
+  "panels/application/ApplicationPanelSidebar.ts | thirdPartyPhaseout": {
+    "message": "{PH1} cookie файлдары үшінші тарап cookie файлына біртіндеп шектеу қоюға байланысты блокталды."
   },
   "panels/application/ApplicationPanelSidebar.ts | versionS": {
     "message": "Нұсқасы: {PH1}"
@@ -2894,20 +2762,23 @@
   "panels/application/OpenedWindowDetailsView.ts | yes": {
     "message": "Иә"
   },
-  "panels/application/PreloadingTreeElement.ts | preloads": {
-    "message": "Алдын ала жүктелгендер"
+  "panels/application/PreloadingTreeElement.ts | rules": {
+    "message": "Ережелер"
   },
-  "panels/application/PreloadingTreeElement.ts | speculationRules": {
-    "message": "Ұйғарым ережелері"
+  "panels/application/PreloadingTreeElement.ts | speculations": {
+    "message": "Ұйғарымдар"
   },
-  "panels/application/PreloadingTreeElement.ts | thisPage": {
-    "message": "Осы бет"
+  "panels/application/PreloadingTreeElement.ts | speculativeLoads": {
+    "message": "Ұйғарыммен жүктеу"
   },
   "panels/application/ReportingApiReportsView.ts | clickToDisplayBody": {
     "message": "Есеп мәтінін көрсету үшін оған басыңыз."
   },
   "panels/application/ReportingApiTreeElement.ts | reportingApi": {
     "message": "Reporting API"
+  },
+  "panels/application/ResourcesPanel.ts | webSqlDeprecation": {
+    "message": "Web SQL қолданыстан шыққан. Оны Chrome 123 жария етілгенше пайдалана тұру үшін ескі функцияның сынақ нұсқасына қосыла аласыз."
   },
   "panels/application/ServiceWorkerCacheTreeElement.ts | cacheStorage": {
     "message": "Кэш жады"
@@ -3007,6 +2878,9 @@
   },
   "panels/application/ServiceWorkersView.ts | receivedS": {
     "message": "Алынған: {PH1}"
+  },
+  "panels/application/ServiceWorkersView.ts | routers": {
+    "message": "Маршрутизаторлар"
   },
   "panels/application/ServiceWorkersView.ts | sActivatedAndIsS": {
     "message": "#{PH1} іске қосылды және {PH2}"
@@ -3256,6 +3130,15 @@
   },
   "panels/application/components/BackForwardCacheStrings.ts | JavaScriptExecution": {
     "message": "Chrome браузері кэштеу кезінде JavaScript бағдарламасын іске қосу талпынысын анықтады."
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | LiveMediaStreamTrack": {
+    "message": "Анықталмаған"
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | SmartCard": {
+    "message": "Анықталмаған"
+  },
+  "panels/application/components/BackForwardCacheStrings.ts | UnloadHandler": {
+    "message": "Анықталмаған"
   },
   "panels/application/components/BackForwardCacheStrings.ts | appBanner": {
     "message": "AppBanner сұраған беттер қазір алға-артқа өту кэшіне жарамайды."
@@ -3623,6 +3506,9 @@
   "panels/application/components/BackForwardCacheView.ts | circumstantialExplanation": {
     "message": "Бұл себептер өңделмейді, яғни кэштеуге беттің тікелей басқару құралынан тыс бірдеңе кедергі келтірді."
   },
+  "panels/application/components/BackForwardCacheView.ts | filesPerIssue": {
+    "message": "{n,plural, =1{# файл}other{# файл}}"
+  },
   "panels/application/components/BackForwardCacheView.ts | framesPerIssue": {
     "message": "{n,plural, =1{# жиек}other{# жиек}}"
   },
@@ -3749,11 +3635,14 @@
   "panels/application/components/FrameDetailsView.ts | clickToRevealInSourcesPanel": {
     "message": "\"Дереккөздер\" панелін көрсету үшін басу"
   },
+  "panels/application/components/FrameDetailsView.ts | contentSecurityPolicy": {
+    "message": "Контент қауіпсіздігі туралы саясат (CSP)"
+  },
   "panels/application/components/FrameDetailsView.ts | createdByAdScriptExplanation": {
     "message": "Осы кадр жасалған кезде, (async) stack төлсипатында жарнама скриптісі болған. Бұл кадрдың stack trace төлсипатын жасау барысын бақылау арқылы қосымша ақпарат алуға болады."
   },
   "panels/application/components/FrameDetailsView.ts | creationStackTrace": {
-    "message": "Stack Trace кадрын жасау үшін"
+    "message": "Stack Trace кадрын жасау"
   },
   "panels/application/components/FrameDetailsView.ts | creationStackTraceExplanation": {
     "message": "Бұл кадр бағдарламалық жолмен жасалды. stack trace оның жүзеге асырылу орнын көрсетеді."
@@ -3785,23 +3674,20 @@
   "panels/application/components/FrameDetailsView.ts | no": {
     "message": "Жоқ"
   },
+  "panels/application/components/FrameDetailsView.ts | none": {
+    "message": "Ешқандай"
+  },
   "panels/application/components/FrameDetailsView.ts | origin": {
     "message": "Түбір"
+  },
+  "panels/application/components/FrameDetailsView.ts | originTrialsExplanation": {
+    "message": "Origin trials жаңа немесе эксперименттік функцияны пайдалануға рұқсат береді."
   },
   "panels/application/components/FrameDetailsView.ts | ownerElement": {
     "message": "Иенің элементі"
   },
   "panels/application/components/FrameDetailsView.ts | parentIsAdExplanation": {
     "message": "Бұл жиектеу жарнама болып есептеледі, себебі оның негізгі жиектеуі жарнамалық жиектеу болып табылады."
-  },
-  "panels/application/components/FrameDetailsView.ts | prerendering": {
-    "message": "Алдын ала кескіндеу"
-  },
-  "panels/application/components/FrameDetailsView.ts | prerenderingStatus": {
-    "message": "Алдын ала кескіндеу күйі"
-  },
-  "panels/application/components/FrameDetailsView.ts | refresh": {
-    "message": "Жаңарту"
   },
   "panels/application/components/FrameDetailsView.ts | reportingTo": {
     "message": "хабарлама беру нүктелері:"
@@ -3884,6 +3770,9 @@
   "panels/application/components/OriginTrialTreeView.ts | matchSubDomains": {
     "message": "Ішкі доменді сәйкестендіру"
   },
+  "panels/application/components/OriginTrialTreeView.ts | noTrialTokens": {
+    "message": "Сынақ мерзімі токендері жоқ"
+  },
   "panels/application/components/OriginTrialTreeView.ts | origin": {
     "message": "Түпнұсқа"
   },
@@ -3931,144 +3820,6 @@
   },
   "panels/application/components/PermissionsPolicySection.ts | showDetails": {
     "message": "Мәліметтерді көрсету"
-  },
-  "panels/application/components/Prerender2.ts | Activated": {
-    "message": "Іске қосылды."
-  },
-  "panels/application/components/Prerender2.ts | ActivatedBeforeStarted": {
-    "message": "Бастау алдында іске қосылды."
-  },
-  "panels/application/components/Prerender2.ts | ActivationNavigationParameterMismatch": {
-    "message": "Бет алдын ала бейнеленді, бірақ навигация бастапқы алдын ала бейнелеуден өзгеше орындалды, сондықтан алдын ала бейнеленген бетті белсендіру мүмкін болмады."
-  },
-  "panels/application/components/Prerender2.ts | AudioOutputDeviceRequested": {
-    "message": "Алдын ала кескіндеу функциясы әлі AudioContext API-ді қолдамайды."
-  },
-  "panels/application/components/Prerender2.ts | BlockedByClient": {
-    "message": "Клиент ресурстың жүктелуін бөгеген."
-  },
-  "panels/application/components/Prerender2.ts | CancelAllHostsForTesting": {
-    "message": "CancelAllHostsForTesting."
-  },
-  "panels/application/components/Prerender2.ts | ClientCertRequested": {
-    "message": "Бұл бет клиент сертификатын сұрап жатыр, бірақ ол алдын ала кескіндеу сияқты жасырын бетке сай келмейді."
-  },
-  "panels/application/components/Prerender2.ts | CrossSiteNavigation": {
-    "message": "Жүктелген соң алдын ала бейнелеу бетінің навигациясы басқа сайттағы URL мекенжайына ауысты. Әзірше басқа сайттағы беттерді алдын ала бейнелеуге тыйым салынған."
-  },
-  "panels/application/components/Prerender2.ts | CrossSiteRedirect": {
-    "message": "Басқа сайттағы URL сілтемесіне бағытталған URL бетін алдын ала бейнелеуге әрекет жасалды. Әзірше басқа сайттағы беттерді алдын ала бейнелеуге тыйым салынған."
-  },
-  "panels/application/components/Prerender2.ts | DataSaverEnabled": {
-    "message": "Трафикті үнемдеу функциясы қосулы."
-  },
-  "panels/application/components/Prerender2.ts | Destroyed": {
-    "message": "Белгісіз себептерге байланысты алдын ала кескінделген беттен шығып кетті."
-  },
-  "panels/application/components/Prerender2.ts | DidFailLoad": {
-    "message": "Алдын ала кескіндеу кезінде DidFailLoadWithError қатесі орын алды."
-  },
-  "panels/application/components/Prerender2.ts | DisallowedApiMethod": {
-    "message": "API әдісіне тыйым салынды"
-  },
-  "panels/application/components/Prerender2.ts | Download": {
-    "message": "Алдын ала кескіндеу арқылы жүктеп алуға тыйым салынған."
-  },
-  "panels/application/components/Prerender2.ts | EmbedderTriggeredAndCrossOriginRedirected": {
-    "message": "Chrome ішкі жүйесінде іске қосылған алдын ала кескіндеу (мысалы, Omnibox алдын ала кескіндеуі) тоқтатылды, себебі навигация бағыты басқа домендегі бетке ауыстырылды."
-  },
-  "panels/application/components/Prerender2.ts | EmbedderTriggeredAndSameOriginRedirected": {
-    "message": "Chrome ішкі жүйесінде іске қосылған алдын ала кескіндеу (мысалы, Omnibox алдын ала кескіндеуі) тоқтатылды, себебі навигация бағыты осы домендегі басқа бетке ауыстырылды."
-  },
-  "panels/application/components/Prerender2.ts | FailToGetMemoryUsage": {
-    "message": "Жадтың пайдаланылуы туралы деректерді алу мүмкін емес."
-  },
-  "panels/application/components/Prerender2.ts | HasEffectiveUrl": {
-    "message": "Істейтін URL мекенжайы бар."
-  },
-  "panels/application/components/Prerender2.ts | InProgressNavigation": {
-    "message": "InProgressNavigation."
-  },
-  "panels/application/components/Prerender2.ts | InactivePageRestriction": {
-    "message": "Өшрілген бет шектеуі"
-  },
-  "panels/application/components/Prerender2.ts | InvalidSchemeNavigation": {
-    "message": "Алдын ала кескіндеу үшін тек HTTP(S) навигациясына рұқсат етілген."
-  },
-  "panels/application/components/Prerender2.ts | InvalidSchemeRedirect": {
-    "message": "HTTP(S) емес URL сілтемесіне бағытталған URL бетін алдын ала кескіндеуге әрекет жасалды. Тек HTTP(S) беттерін алдын ала кескіндеуге болады."
-  },
-  "panels/application/components/Prerender2.ts | LoginAuthRequested": {
-    "message": "Алдын ала кескіндеу құралы пайдаланушы интерфейсінің авторизациялау сұрауларын қолдамайды."
-  },
-  "panels/application/components/Prerender2.ts | LowEndDevice": {
-    "message": "Жады аз құрылғыларда алдын ала кескіндеуге болмайды."
-  },
-  "panels/application/components/Prerender2.ts | MainFrameNavigation": {
-    "message": "Бастапқы алдын ала кескіндеу навигациясынан кейінгі навигацияларға тыйым салынған."
-  },
-  "panels/application/components/Prerender2.ts | MaxNumOfRunningPrerendersExceeded": {
-    "message": "Рұқсат етілген алдын ала кескіндеу шегінен астыңыз."
-  },
-  "panels/application/components/Prerender2.ts | MemoryLimitExceeded": {
-    "message": "Жад лимитінен асып кетті."
-  },
-  "panels/application/components/Prerender2.ts | MixedContent": {
-    "message": "Алдын ала кескіндеу функциясын аралас контент жақтауы тоқтатты."
-  },
-  "panels/application/components/Prerender2.ts | MojoBinderPolicy": {
-    "message": "Алдын ала кескінделген бет тыйым салынған API-ді пайдаланды."
-  },
-  "panels/application/components/Prerender2.ts | NavigationBadHttpStatus": {
-    "message": "Сервер 200/204/205 санаттарына жатпайтын күй кодын қайтаруына байланысты бастапқы алдын ала кескіндеу навигациясы орындалмады."
-  },
-  "panels/application/components/Prerender2.ts | NavigationNotCommitted": {
-    "message": "Алдын ала кескіндеу беті соңында расталмады."
-  },
-  "panels/application/components/Prerender2.ts | NavigationRequestBlockedByCsp": {
-    "message": "Контент қауіпсіздігі саясаты навигация сұрауын бөгеді."
-  },
-  "panels/application/components/Prerender2.ts | NavigationRequestNetworkError": {
-    "message": "Алдын ала кескіндеу кезінде желі қатесі орын алды."
-  },
-  "panels/application/components/Prerender2.ts | PrerenderingOngoing": {
-    "message": "Алдын ала бейнелеу жалғасуда"
-  },
-  "panels/application/components/Prerender2.ts | RendererProcessCrashed": {
-    "message": "Алдын ала бейнеленген бет бұзылды."
-  },
-  "panels/application/components/Prerender2.ts | RendererProcessKilled": {
-    "message": "Алдын ала кескіндеу бетіне арналған рендеринг процесі үзілді."
-  },
-  "panels/application/components/Prerender2.ts | SameSiteCrossOriginNavigation": {
-    "message": "Жүктелген соң алдын ала бейнелеу бетінің навигациясы бір сайттың басқа доменіндегі URL мекенжайына ауысты. Әзірше басқа домендегі беттерді алдын ала кескіндеуге тыйым салынған."
-  },
-  "panels/application/components/Prerender2.ts | SameSiteCrossOriginNavigationNotOptIn": {
-    "message": "Жүктелген соң алдын ала бейнелеу бетінің навигациясы бір сайттың басқа доменіндегі URL мекенжайына ауысты. Межелі сайт Қолдаулар-Жүктеу-Режим: тіркелгі деректері берілген-алдын ала бейнелеуші тақырыбын жібермейінше, бұған рұқсат етілмейді."
-  },
-  "panels/application/components/Prerender2.ts | SameSiteCrossOriginRedirect": {
-    "message": "Бір сайттың басқа доменіндегі URL сілтемесіне бағытталған URL бетін алдын ала бейнелеуге әрекет жасалды. Әзірше басқа домендегі беттерді алдын ала кескіндеуге тыйым салынған."
-  },
-  "panels/application/components/Prerender2.ts | SameSiteCrossOriginRedirectNotOptIn": {
-    "message": "Бір сайттың басқа доменіндегі URL сілтемесіне бағытталған URL бетін алдын ала бейнелеуге әрекет жасалды. Межелі сайт Қолдаулар-Жүктеу-Режим: тіркелгі деректері берілген-алдын ала бейнелеуші тақырыбын жібермейінше, бұған рұқсат етілмейді."
-  },
-  "panels/application/components/Prerender2.ts | SslCertificateError": {
-    "message": "SSL сертификатының қатесі."
-  },
-  "panels/application/components/Prerender2.ts | StartFailed": {
-    "message": "Бастау мүмкін болады."
-  },
-  "panels/application/components/Prerender2.ts | Stop": {
-    "message": "Қойынды жұмысы тоқтатылды."
-  },
-  "panels/application/components/Prerender2.ts | TriggerBackgrounded": {
-    "message": "Қойынды фондық режимде қолданылып жатыр."
-  },
-  "panels/application/components/Prerender2.ts | TriggerDestroyed": {
-    "message": "Алдын ала кескіндеу қосылмады. Ол триггер көмегімен жойылды."
-  },
-  "panels/application/components/Prerender2.ts | UaChangeRequiresReload": {
-    "message": "UserAgentOverride әрекеті орындалған соң, қайта жүктеу керек."
   },
   "panels/application/components/ProtocolHandlersView.ts | dropdownLabel": {
     "message": "Протокол өңдегішін таңдаңыз."
@@ -4157,6 +3908,9 @@
   "panels/application/components/StackTrace.ts | cannotRenderStackTrace": {
     "message": "Стэкті трассалау барысын көрсету мүмкін емес."
   },
+  "panels/application/components/StackTrace.ts | creationStackTrace": {
+    "message": "Stack Trace кадрын жасау"
+  },
   "panels/application/components/StackTrace.ts | showLess": {
     "message": "Жию"
   },
@@ -4194,7 +3948,7 @@
     "message": "Жоқ"
   },
   "panels/application/components/StorageMetadataView.ts | none": {
-    "message": "Ешқандай"
+    "message": "Жоқ"
   },
   "panels/application/components/StorageMetadataView.ts | opaque": {
     "message": "(анық емес)"
@@ -4245,7 +3999,7 @@
     "message": "Жеке күй токендері"
   },
   "panels/application/preloading/PreloadingView.ts | filterAllPreloads": {
-    "message": "Барлық алдын ала жүктелетін әрекет"
+    "message": "Барлық алдын ала жүктеу әрекеті"
   },
   "panels/application/preloading/PreloadingView.ts | filterFilterByRuleSet": {
     "message": "Ережелер жинағы бойынша сүзу"
@@ -4314,22 +4068,22 @@
     "message": "Тексеру"
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusFailure": {
-    "message": "Алдын ала жүктеу сәтсіз болды."
+    "message": "Ұйғарыммен жүктеу мүмкін болмады."
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusNotTriggered": {
-    "message": "Алдын ала жүктеу әрекеті әлі іске қосылмаған."
+    "message": "Ұйғарыммен жүктеу әрекеті әлі іске қосылмаған."
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusPending": {
-    "message": "Алдын ала жүктеу мүмкіндігі жарамды, бірақ күтілуде."
+    "message": "Ұйғарыммен жүктеу мүмкіндігі жарамды, бірақ әлі басталмады."
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusReady": {
-    "message": "Алдын ала жүктеу аяқталды және нәтиже келесі навигация үшін дайын."
+    "message": "Ұйғарыммен жүктеу аяқталды және нәтиже келесі навигация үшін дайын."
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusRunning": {
-    "message": "Алдын ала жүктеу орындалуда."
+    "message": "Ұйғарыммен жүктеу жүріп жатыр."
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailedStatusSuccess": {
-    "message": "Алдын ала жүктеу аяқталды және навигация үшін пайдаланылды."
+    "message": "Ұйғарыммен жүктеу аяқталды және навигация үшін пайдаланылды."
   },
   "panels/application/preloading/components/PreloadingDetailsReportView.ts | detailsAction": {
     "message": "Әрекет"
@@ -4350,10 +4104,10 @@
     "message": "Қосымша мәліметтер алу үшін элементті таңдаңыз"
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByBatterySaver": {
-    "message": "Алдын ала жүктеу операциялық жүйенің Батареяны үнемдеу режиміне байланысты өшірілді."
+    "message": "Ұйғарыммен жүктеу операциялық жүйенің батареяны үнемдеу режиміне байланысты өшірілді."
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByDataSaver": {
-    "message": "Алдын ала жүктеу операциялық жүйенің \"Трафикті үнемдеу\" режиміне байланысты өшірілді."
+    "message": "Ұйғарыммен жүктеу операциялық жүйенің Data Saver режиміне байланысты өшірілді."
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByHoldbackPrefetchSpeculationRules": {
     "message": "Алдын ала алу күштеп қосулы, себебі әзірлеуші құралдары ашық. Әзірлеуші құралдары жабылған кезде, алдын ала алу өшіріледі, себебі бұл браузер сеансы – өнімділікті салыстыру жұмыстары үшін пайдаланылатын ұстап қалу тобының бөлігі."
@@ -4362,7 +4116,7 @@
     "message": "Алдын ала бейнелеу күштеп қосулы, себебі әзірлеуші құралдары ашық. Әзірлеуші құралдары жабылған кезде, алдын ала бейнелеу өшіріледі, себебі бұл браузер сеансы – өнімділікті салыстыру жұмыстары үшін пайдаланылатын ұстап қалу тобының бөлігі."
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | descriptionDisabledByPreference": {
-    "message": "Алдын ала жүктеу пайдаланушы параметрлеріне немесе кеңейтімге байланысты өшірілді. Параметріңізді жаңарту үшін {PH1} бетіне өтіңіз. Алдын ала жүктеуді блоктайтын кеңейтімді өшіру үшін {PH2} бетіне өтіңіз."
+    "message": "Ұйғарыммен жүктеу пайдаланушы параметрлеріне немесе кеңейтімге байланысты өшірілді. Параметріңізді жаңарту үшін {PH1} бетіне өтіңіз. Ұйғарыммен жүктеуді блоктайтын кеңейтімді өшіру үшін {PH2} бетіне өтіңіз."
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | extensionsSettings": {
     "message": "Кеңейтімдер параметрлері"
@@ -4383,19 +4137,19 @@
     "message": "Алдын ала бейнелеу өшірулі, бірақ қазір күштеп қосулы"
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | headerDisabledByPreference": {
-    "message": "Пайдаланушы параметрлері немесе кеңейтім"
+    "message": "Пайдаланушы параметрлері немесе кеңейтімдері"
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | infobarPreloadingIsDisabled": {
-    "message": "Алдын ала жүктеу өшірулі"
+    "message": "Ұйғарыммен жүктеу өшірілді"
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | infobarPreloadingIsForceEnabled": {
-    "message": "Алдын ала жүктеу күштеп қосылған"
+    "message": "Ұйғарыммен жүктеу күштеп қосылды"
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | preloadingPagesSettings": {
     "message": "Беттерді алдын ала жүктеу параметрлері"
   },
   "panels/application/preloading/components/PreloadingDisabledInfobar.ts | titleReasonsPreventingPreloading": {
-    "message": "Алдын ала жүктеуге кедергі келтіретін себептер"
+    "message": "Ұйғарыммен жүктеуге жол бермеу себептері"
   },
   "panels/application/preloading/components/PreloadingGrid.ts | action": {
     "message": "Әрекет"
@@ -4406,8 +4160,23 @@
   "panels/application/preloading/components/PreloadingGrid.ts | status": {
     "message": "Күйі"
   },
-  "panels/application/preloading/components/PreloadingString.ts | PrefetchEvicted": {
-    "message": "|kPrefetchNewLimits| қосулы болғандықтан, жаңарақ алдын ала алу үшін алдын ала алу өшірілді"
+  "panels/application/preloading/components/PreloadingMismatchedHeadersGrid.ts | activationNavigationValue": {
+    "message": "Белсендіру навигациясындағы мән"
+  },
+  "panels/application/preloading/components/PreloadingMismatchedHeadersGrid.ts | headerName": {
+    "message": "Жоғарғы деректеме атауы"
+  },
+  "panels/application/preloading/components/PreloadingMismatchedHeadersGrid.ts | initialNavigationValue": {
+    "message": "Бастапқы навигациядағы мән"
+  },
+  "panels/application/preloading/components/PreloadingMismatchedHeadersGrid.ts | missing": {
+    "message": "(жоқ)"
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchEvictedAfterCandidateRemoved": {
+    "message": "Алдын ала алу өшірілді, себебі бастапқы беттегі ұйғарым ережесі осы URL үшін енді алдын ала алу әрекетін іске қоспайды."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | PrefetchEvictedForNewerPrefetch": {
+    "message": "Алдын ала алу өшірілді, себебі бастапқы бетте тым көп алдын ала алу әрекеті жүріп жатыр, ал бұл ең ескілердің бірі болды."
   },
   "panels/application/preloading/components/PreloadingString.ts | PrefetchFailedIneligibleRedirect": {
     "message": "Алдын ала алу басқа жаққа бағытталды, бірақ бағыттау URL мекенжайы алдын ала алуға жарамайды."
@@ -4455,7 +4224,7 @@
     "message": "URL мекенжайын алдын ала алуға рұқсат жоқ, себебі ол әдепкі емес жад бөлігін пайдаланады."
   },
   "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligiblePreloadingDisabled": {
-    "message": "Алдын ала алу орындалмады, себебі алдын ала жүктеу өшірулі."
+    "message": "Алдын ала алу орындалмады, себебі ұйғарыммен жүктеу өшірілді."
   },
   "panels/application/preloading/components/PreloadingString.ts | PrefetchNotEligibleSameSiteCrossOriginPrefetchRequiredProxy": {
     "message": "URL мекенжайын алдын ала алуға рұқсат жоқ, себебі әдепкі желі контексін бір сайттың дереккөзаралық алдын ала алу сұрауына алдын ала алу прокси-серверін пайдалану үшін конфигурациялау мүмкін емес."
@@ -4481,11 +4250,17 @@
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivatedDuringMainFrameNavigation": {
     "message": "Бастапқы беттің негізгі кадр навигациясы барысында алдын ала бейнеленген бет белсендірілді."
   },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivatedWithAuxiliaryBrowsingContexts": {
+    "message": "Алдын ала бейнелеу қолданылмады, себебі белсендіру уақытында бастапқы бетке (әзірше қолдау көрсетілмейтін) сілтеме жасайтын белсенді ашу сілтемесі бар басқа терезелер болды."
+  },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivationFramePolicyNotCompatible": {
     "message": "Алдын ала бейнелеуші пайдаланылмады, себебі сынақ ортасының жалаушалары немесе бастапқы беттің рұқсаттар саясаты алдын ала бейнелеу бетіндегілермен үйлесімді болмады."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivationNavigationParameterMismatch": {
     "message": "Алдын ала бейнелеуші пайдаланылмады, себебі белсендіру уақытында әртүрлі навигация параметрлері (мысалы, HTTP жоғарғы деректемелері) навигация сұрауын бастапқы алдын ала бейнелеуге қарағанда есептелді."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusActivationUrlHasEffectiveUrl": {
+    "message": "Алдын ала бейнелеу қолданылмады, себебі белсендіру уақытында навигацияда қалыпты URL мекенжайынан басқаша тиімді URL болды. (Мысалы, \"Жаңа қойынды\" беті немесе орналастырылған қолданбалар.)"
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusAudioOutputDeviceRequested": {
     "message": "Алдын ала бейнеленген бет қазіргі уақытта қолдау көрсетілмейтін аудио шығысын сұрады."
@@ -4494,7 +4269,7 @@
     "message": "Алдын ала бейнелеуші орындалмады, себебі пайдаланушы браузерден батареяны аз пайдалануын сұрады."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusBlockedByClient": {
-    "message": "Кейбір ресурсты жүктеу блокталды."
+    "message": "Кейбір ресурсты жүктеу бұғатталды."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusClientCertRequested": {
     "message": "Алдын ала бейнелеу навигациясы HTTP клиент сертификатын қажет етті."
@@ -4517,9 +4292,6 @@
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusDownload": {
     "message": "Алдын ала бейнеленген бет қазіргі уақытта қолдау көрсетілмейтін жүктеп алуды бастауға әрекет жасады."
   },
-  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusFailToGetMemoryUsage": {
-    "message": "Алдын ала бейнелеуші орындалмады, браузерде ағымдағы жад қолданысын анықтауға әрекет жасағанда ішкі қате орын алды."
-  },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusHasEffectiveUrl": {
     "message": "Бастапқы бетте алдын ала бейнелеуді орындау мүмкін емес, себебі онда қалыпты URL мекенжайынан басқа тиімді URL мекенжайы бар. (Мысалы, \"Жаңа қойынды\" беті немесе орналастырылған қолданбалар.)"
   },
@@ -4538,8 +4310,14 @@
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMainFrameNavigation": {
     "message": "Алдын ала бейнеленген бет қазіргі уақытта қолдау көрсетілмейтін басқа URL мекенжайына ауысты."
   },
-  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMaxNumOfRunningPrerendersExceeded": {
-    "message": "Алдын ала бейнелеуші орындалмады, себебі бастапқы бетте тым көп ағымдағы алдын ала бейнелеушілер бар. Одан әрі алдын ала бейнелеуді қосу үшін басқа ұйғарым ережелерін жойыңыз."
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMaxNumOfRunningEagerPrerendersExceeded": {
+    "message": "Ұмтылысы \"eager\" алдын ала бейнелеу процесі орындалмады, себебі бастапқы бетте тым көп алдын ала бейнелеу әрекеттері жүріп жатыр. Одан әрі алдын ала бейнелеуді қосу үшін \"eager\" мәні бар басқа ұйғарым ережелерін өшіріңіз."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMaxNumOfRunningEmbedderPrerendersExceeded": {
+    "message": "Браузер арқылы алдын ала бейнелеу орындалмады, себебі бастапқы бетте жүріп жатқан алдын ала бейнелеу әрекеттері тым көп."
+  },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMaxNumOfRunningNonEagerPrerendersExceeded": {
+    "message": "Ескі \"eager\" емес алдын ала бейнелеу (ұмтылысы \"орташа\" немесе \"консервативті\" және курсорды сілтемелерге апару не басу арқылы іске қосылады) жаңа баяу алдын ала бейнелеу әрекетін бастауға байланысты автоматты түрде тоқтатылды. Оны сілтемеге қатысты қайта әрекет ету арқылы қайта іске қосуға болады."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusMemoryLimitExceeded": {
     "message": "Браузерде алдын ала бейнелеу жадының лимитінен асып кеткендіктен, алдын ала бейнелеуші орындалмады."
@@ -4571,23 +4349,26 @@
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrerenderingDisabledByDevTools": {
     "message": "Алдын ала бейнелеу орындалмады, себебі әзірлеуші құралдары алдын ала бейнелеуді өшіру үшін пайдаланылған."
   },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrerenderingUrlHasEffectiveUrl": {
+    "message": "Алдын ала бейнелеу навигациясы орындалмады, себебі онда қалыпты URL мекенжайынан басқаша тиімді URL мекенжайы бар. (Мысалы, \"Жаңа қойынды\" беті немесе орналастырылған қолданбалар.)"
+  },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrimaryMainFrameRendererProcessCrashed": {
     "message": "Бастапқы бет бұзылды."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusPrimaryMainFrameRendererProcessKilled": {
     "message": "Бастапқы бет жойылды."
   },
+  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusRedirectedPrerenderingUrlHasEffectiveUrl": {
+    "message": "Алдын ала бейнелеу навигациясы орындалмады, себебі ол қалыпты URL мекенжайынан өзгеше тиімді URL мекенжайына бағытталды. (Мысалы, \"Жаңа қойынды\" беті немесе орналастырылған қолданбалар.)"
+  },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusRendererProcessCrashed": {
-    "message": "Алдын ала бейнеленген бет бұзылды."
+    "message": "Алдын ала кескінделген бет бұзылды."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusRendererProcessKilled": {
     "message": "Алдын ала бейнеленген бет жойылды."
   },
-  "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusResourceLoadBlockedByClient": {
-    "message": "Кейбір ресурсты жүктеу блокталды."
-  },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginNavigationNotOptInInInitialNavigation": {
-    "message": "Алдын ала бейнеленген бет дереккөзаралық бір сайттың URL мекенжайына ауысты, бірақ мақсатты ресурс жауабында тиісті Қолдаулар-Жүктеу-Режим жоғарғы деректемесі қамтылмаған."
+    "message": "Алдын ала бейнелеу навигациясы орындалмады, себебі ол бір сайттың дереккөзаралық URL мекенжайына бағытталды, бірақ мақсатты ресурс жауабында тиісті \"Жүктеу-режиміне-қолдау-көрсетеді\" тақырыбы болмады."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSameSiteCrossOriginNavigationNotOptInInMainFrameNavigation": {
     "message": "Алдын ала бейнеленген бет дереккөзаралық бір сайттың URL мекенжайына ауысты, бірақ мақсатты ресурс жауабында тиісті Қолдаулар-Жүктеу-Режим жоғарғы деректемесі қамтылмаған."
@@ -4599,7 +4380,7 @@
     "message": "Алдын ала бейнеленген бет дереккөзаралық бір сайттың URL мекенжайына қайта бағытталатын URL мекенжайына ауысты, бірақ мақсатты ресурс жауабында тиісті Қолдаулар-Жүктеу-Режим жоғарғы деректемесі қамтылмаған."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSpeculationRuleRemoved": {
-    "message": "Белгісіз"
+    "message": "Алдын ала бейнеленген бет босатылды, себебі бастапқы бет <script type=\"speculationrules\"> ішінен сәйкес алдын ала бейнелеу ережесін алып тастады."
   },
   "panels/application/preloading/components/PreloadingString.ts | prerenderFinalStatusSslCertificateError": {
     "message": "Алдын ала бейнелеу навигациясы сәтсіз аяқталды, себебі SSL сертификаты жарамсыз."
@@ -4638,7 +4419,7 @@
     "message": "\"Желі\" панелінде көрсету үшін басыңыз"
   },
   "panels/application/preloading/components/RuleSetGrid.ts | buttonRevealPreloadsAssociatedWithRuleSet": {
-    "message": "Осы ережелер жинағымен байланысты алдын ала жүктелетіндерді көрсету"
+    "message": "Осы ережелер жинағымен байланысты ұйғарыммен жүктелетіндерді көрсету"
   },
   "panels/application/preloading/components/RuleSetGrid.ts | errors": {
     "message": "{errorCount,plural, =1{# қате}other{# қате}}"
@@ -4648,6 +4429,27 @@
   },
   "panels/application/preloading/components/RuleSetGrid.ts | status": {
     "message": "Күйі"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | badgeFailure": {
+    "message": "Орындалмаған"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | badgeFailureWithCount": {
+    "message": "{n,plural, =1{# орындалмады}other{# орындалмады}}"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | badgeInProgressWithCount": {
+    "message": "{n,plural, =1{# орындалып жатыр}other{# орындалып жатыр}}"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | badgeNoSpeculativeLoads": {
+    "message": "Ұйғарыммен жүктеу әрекетінсіз"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | badgeNotTriggeredWithCount": {
+    "message": "{n,plural, =1{# іске қосылмаған}other{# іске қосылмаған}}"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | badgeSuccess": {
+    "message": "Орындалды"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | badgeSuccessWithCount": {
+    "message": "{n,plural, =1{# орындалды}other{# орындалды}}"
   },
   "panels/application/preloading/components/UsedPreloadingView.ts | currentURL": {
     "message": "Ағымдағы URL"
@@ -4659,10 +4461,13 @@
     "message": "Бастапқы бет осы беттің URL мекенжайын алдын ала бейнелеуге әрекет жасады. Алдын ала бейнелеу сәтсіз аяқталды, бірақ нәтижелі жауап бөлігі әлі де алдын ала алу ретінде пайдаланылды."
   },
   "panels/application/preloading/components/UsedPreloadingView.ts | learnMore": {
-    "message": "Толық ақпарат"
+    "message": "Ұйғарыммен жүктеу туралы толық ақпарат: developer.chrome.com"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | mismatchedHeadersDetail": {
+    "message": "HTTP сұрауының сәйкес келмейтін жоғарғы деректемелері"
   },
   "panels/application/preloading/components/UsedPreloadingView.ts | noPreloads": {
-    "message": "Бастапқы бет осы беттің URL мекенжайын алдын ала жүктеуге әрекет жасамады."
+    "message": "Бастапқы бет осы беттің URL мекенжайын ұйғарыммен жүктеуге әрекеттенген жоқ."
   },
   "panels/application/preloading/components/UsedPreloadingView.ts | prefetchFailed": {
     "message": "Бастапқы бет осы беттің URL мекенжайын алдын ала алуға әрекет жасады, бірақ алдын ала алу сәтсіз аяқталды, сондықтан оның орнына толық навигация орындалды."
@@ -4671,10 +4476,7 @@
     "message": "Бұл бет сәтті алдын ала алынды."
   },
   "panels/application/preloading/components/UsedPreloadingView.ts | preloadedURLs": {
-    "message": "Бастапқы бет арқылы алдын ала жүктелген URL мекенжайлары"
-  },
-  "panels/application/preloading/components/UsedPreloadingView.ts | preloadingStatus": {
-    "message": "Алдын ала жүктеу күйі"
+    "message": "URL мекенжайлары бастапқы бет арқылы ұйғарыммен жүктеліп жатыр"
   },
   "panels/application/preloading/components/UsedPreloadingView.ts | prerenderFailed": {
     "message": "Бастапқы бет осы беттің URL мекенжайын алдын ала бейнелеуге әрекет жасады, бірақ алдын ала бейнелеу сәтсіз аяқталды, сондықтан оның орнына толық навигация орындалды."
@@ -4682,8 +4484,137 @@
   "panels/application/preloading/components/UsedPreloadingView.ts | prerenderUsed": {
     "message": "Бұл бет сәтті алдын ала бейнеленді."
   },
+  "panels/application/preloading/components/UsedPreloadingView.ts | speculationsInitiatedByThisPage": {
+    "message": "Осы бетте іске қосылған ұйғарымдар"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | speculativeLoadingStatusForThisPage": {
+    "message": "Осы бетке арналған ұйғарыммен жүктеу күйі"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | viewAllRules": {
+    "message": "Барлық ұйғарым ережесін көру"
+  },
+  "panels/application/preloading/components/UsedPreloadingView.ts | viewAllSpeculations": {
+    "message": "Барлық ұйғарымды көру"
+  },
+  "panels/autofill/AutofillView.ts | addressPreview": {
+    "message": "Мекенжайды алдын ала көру"
+  },
+  "panels/autofill/AutofillView.ts | attr": {
+    "message": "төлс."
+  },
+  "panels/autofill/AutofillView.ts | autoShow": {
+    "message": "Автотолтырудан кейін панельді автоматты түрде ашу"
+  },
+  "panels/autofill/AutofillView.ts | autocompleteAttribute": {
+    "message": "Автотолтыру төлсипаты"
+  },
+  "panels/autofill/AutofillView.ts | formField": {
+    "message": "Үлгі өрісі"
+  },
+  "panels/autofill/AutofillView.ts | formInspector": {
+    "message": "Тексерушіден"
+  },
+  "panels/autofill/AutofillView.ts | heur": {
+    "message": "эвр."
+  },
+  "panels/autofill/AutofillView.ts | inferredByHeuristics": {
+    "message": "Эвристика арқылы қорытындыланды"
+  },
+  "panels/autofill/AutofillView.ts | noDataAvailable": {
+    "message": "Автотолтыру оқиғасы анықталмады"
+  },
+  "panels/autofill/AutofillView.ts | predictedAutofillValue": {
+    "message": "Болжалды автотолтыру мәні"
+  },
+  "panels/autofill/AutofillView.ts | value": {
+    "message": "Мән"
+  },
+  "panels/autofill/autofill-meta.ts | autofill": {
+    "message": "Автотолтыру"
+  },
+  "panels/autofill/autofill-meta.ts | showAutofill": {
+    "message": "\"Автотолтыру\" панелін көрсету"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | animation": {
+    "message": "Анимация"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | auctionWorklet": {
+    "message": "Жарнамалық аукцион"
+  },
   "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | breakpointHit": {
     "message": "үзілу нүктесін басу"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | canvas": {
+    "message": "Canvas"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | clipboard": {
+    "message": "Буфер"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | control": {
+    "message": "Басқару"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | device": {
+    "message": "Құрылғы"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | domMutation": {
+    "message": "DOM мутациясы"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | dragDrop": {
+    "message": "Сүйреу/тастау"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | geolocation": {
+    "message": "Локация"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | keyboard": {
+    "message": "Пернетақта"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | load": {
+    "message": "Жүктеу"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | media": {
+    "message": "Мультимедиа"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | mouse": {
+    "message": "Тінтуір"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | notification": {
+    "message": "Хабарландыру"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | parse": {
+    "message": "Талдау"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | pictureinpicture": {
+    "message": "Суреттегі сурет"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | pointer": {
+    "message": "Меңзер"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | script": {
+    "message": "Скрипт"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | sharedStorageWorklet": {
+    "message": "Shared Storage тізімі"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | timer": {
+    "message": "Таймер"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | touch": {
+    "message": "Түрту"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | trustedTypeViolations": {
+    "message": "Trusted Type бұзу жағдайлары"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | webaudio": {
+    "message": "WebAudio"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | window": {
+    "message": "Терезе"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | worker": {
+    "message": "Worker"
+  },
+  "panels/browser_debugger/CategorizedBreakpointsSidebarPane.ts | xhr": {
+    "message": "XHR"
   },
   "panels/browser_debugger/DOMBreakpointsSidebarPane.ts | attributeModified": {
     "message": "Атрибут өзгертілді"
@@ -4735,9 +4666,6 @@
   },
   "panels/browser_debugger/DOMBreakpointsSidebarPane.ts | unchecked": {
     "message": "белгіленбеді"
-  },
-  "panels/browser_debugger/ObjectEventListenersSidebarPane.ts | refreshGlobalListeners": {
-    "message": "Ғаламдық тыңдаушыларды жаңарту"
   },
   "panels/browser_debugger/XHRBreakpointsSidebarPane.ts | addBreakpoint": {
     "message": "Тоқтату нүктесін қосу"
@@ -4793,6 +4721,9 @@
   "panels/browser_debugger/browser_debugger-meta.ts | page": {
     "message": "Бет"
   },
+  "panels/browser_debugger/browser_debugger-meta.ts | refreshGlobalListeners": {
+    "message": "Ғаламдық тыңдаушыларды жаңарту"
+  },
   "panels/browser_debugger/browser_debugger-meta.ts | showContentScripts": {
     "message": "Контент скриптілерін көрсету"
   },
@@ -4829,14 +4760,8 @@
   "panels/changes/ChangesView.ts | copy": {
     "message": "Көшіру"
   },
-  "panels/changes/ChangesView.ts | copyAllChangesFromCurrentFile": {
-    "message": "Қазір ашық тұрған файлдағы барлық өзгеріс дерегін көшіру"
-  },
   "panels/changes/ChangesView.ts | noChanges": {
     "message": "Өзгерістер жоқ"
-  },
-  "panels/changes/ChangesView.ts | revertAllChangesToCurrentFile": {
-    "message": "Осы файлға енгізілген барлық өзгерістерді қайтару"
   },
   "panels/changes/ChangesView.ts | sDeletions": {
     "message": "{n,plural, =1{# жою (-)}other{# жою (-)}}"
@@ -4846,6 +4771,12 @@
   },
   "panels/changes/changes-meta.ts | changes": {
     "message": "Өзгерістер"
+  },
+  "panels/changes/changes-meta.ts | copyAllChangesFromCurrentFile": {
+    "message": "Қазір ашық тұрған файлдағы барлық өзгеріс дерегін көшіру"
+  },
+  "panels/changes/changes-meta.ts | revertAllChangesToCurrentFile": {
+    "message": "Осы файлға енгізілген барлық өзгерістерді қайтару"
   },
   "panels/changes/changes-meta.ts | showChanges": {
     "message": "Өзгерістерді көрсету"
@@ -4890,7 +4821,7 @@
     "message": "Консоль хабары"
   },
   "panels/console/ConsolePrompt.ts | selfXssWarning": {
-    "message": "Ескерту: өзіңіз түсінбеген немесе тексермеген кодты әзірлеуші құралдары консоліне қоймаңыз. Бұл — шабуылдаушылардың жеке басыңызға тиесілі деректерді ұрлауына немесе компьютеріңізді басқаруына мүмкіндік беруі мүмкін. Қоюға рұқсат беру үшін төменде ''{PH1}'' деп теріңіз."
+    "message": "Ескерту: өзіңіз түсінбеген немесе тексермеген кодты әзірлеуші құралдары консоліне қоймаңыз. Бұл — шабуылдаушылардың жеке басыңызға тиесілі деректерді ұрлауына немесе компьютеріңізді басқаруына мүмкіндік беруі ықтимал. Қоюға рұқсат беру үшін төменде \"{PH1}\" деп теріңіз."
   },
   "panels/console/ConsoleSidebar.ts | dErrors": {
     "message": "{n,plural, =0{Қате жоқ}=1{# қате}other{# қате}}"
@@ -5084,6 +5015,15 @@
   "panels/console/ConsoleViewMessage.ts | exception": {
     "message": "<ерекше жағдай>"
   },
+  "panels/console/ConsoleViewMessage.ts | explainThisError": {
+    "message": "Осы қатені түсіндіру"
+  },
+  "panels/console/ConsoleViewMessage.ts | explainThisMessage": {
+    "message": "Бұл хабарды түсіндіру"
+  },
+  "panels/console/ConsoleViewMessage.ts | explainThisWarning": {
+    "message": "Осы ескертуді түсіндіру"
+  },
   "panels/console/ConsoleViewMessage.ts | functionWasResolvedFromBound": {
     "message": "Функция тәуелді функциядан ажыратылды."
   },
@@ -5216,6 +5156,9 @@
   "panels/console/console-meta.ts | showTimestamps": {
     "message": "Уақыт белгілерін көрсету"
   },
+  "panels/console/console-meta.ts | toggleConsole": {
+    "message": "Консольді көрсету/жасыру"
+  },
   "panels/console/console-meta.ts | treatEvaluationAsUserActivation": {
     "message": "Бағалауды пайдаланушы әрекеті ретінде қабылдау"
   },
@@ -5297,9 +5240,6 @@
   "panels/coverage/CoverageView.ts | chooseCoverageGranularityPer": {
     "message": "Қамту деңгейін таңдаңыз: функция үшін үстеме шығындар төмен, блок үшін үстеме шығындар жоғары."
   },
-  "panels/coverage/CoverageView.ts | clearAll": {
-    "message": "Барлығын өшіру"
-  },
   "panels/coverage/CoverageView.ts | clickTheRecordButtonSToStart": {
     "message": "Элементті суретке түсіруді бастау үшін жазу түймесін ({PH1}) басыңыз."
   },
@@ -5311,9 +5251,6 @@
   },
   "panels/coverage/CoverageView.ts | css": {
     "message": "CSS"
-  },
-  "panels/coverage/CoverageView.ts | export": {
-    "message": "Экспорттау…"
   },
   "panels/coverage/CoverageView.ts | filterCoverageByType": {
     "message": "Ауқымды түрі бойынша сүзу"
@@ -5342,14 +5279,17 @@
   "panels/coverage/CoverageView.ts | urlFilter": {
     "message": "URL сүзгісі"
   },
+  "panels/coverage/coverage-meta.ts | clearCoverage": {
+    "message": "Қамту аймағын тазалау"
+  },
   "panels/coverage/coverage-meta.ts | coverage": {
     "message": "Қолдану аймағы"
   },
+  "panels/coverage/coverage-meta.ts | exportCoverage": {
+    "message": "Қамту аймағын экспорттау"
+  },
   "panels/coverage/coverage-meta.ts | instrumentCoverage": {
     "message": "Аспаппен сүйемелдеу"
-  },
-  "panels/coverage/coverage-meta.ts | reloadPage": {
-    "message": "Бетті қайта жүктеу"
   },
   "panels/coverage/coverage-meta.ts | showCoverage": {
     "message": "Қамту құралын көрсету"
@@ -5394,7 +5334,7 @@
     "message": "Контраст арақатынасы"
   },
   "panels/css_overview/CSSOverviewCompletedView.ts | cssOverviewElements": {
-    "message": "CSS шолу элементтері"
+    "message": "CSS туралы жалпы ақпарат элементтері"
   },
   "panels/css_overview/CSSOverviewCompletedView.ts | declaration": {
     "message": "Мәлімдеу"
@@ -5472,7 +5412,7 @@
     "message": "Шолуды тазалау"
   },
   "panels/css_overview/CSSOverviewSidebarPanel.ts | cssOverviewPanelSidebar": {
-    "message": "CSS шолу панелінің жылжыту жолағы"
+    "message": "CSS туралы жалпы ақпарат панелінің жылжыту жолағы"
   },
   "panels/css_overview/CSSOverviewUnusedDeclarations.ts | bottomAppliedToAStatically": {
     "message": "Bottom тұрақты орналасқан элементке қолданылды"
@@ -5511,13 +5451,13 @@
     "message": "Параметр әсер еткен элементтер панеліндегі элементтердің орнын анықтау"
   },
   "panels/css_overview/components/CSSOverviewStartView.ts | quickStartWithCSSOverview": {
-    "message": "Жылдам бастау: бағаларды салыстыру қызметінің жаңа шолу панелімен жұмысты бастаңыз"
+    "message": "Жылдам бастау: жаңа CSS туралы жалпы ақпарат панелімен жұмысты бастаңыз"
   },
   "panels/css_overview/css_overview-meta.ts | cssOverview": {
     "message": "CSS туралы жалпы ақпарат"
   },
   "panels/css_overview/css_overview-meta.ts | showCssOverview": {
-    "message": "CSS шолуын көрсету"
+    "message": "CSS туралы жалпы ақпаратты көрсету"
   },
   "panels/developer_resources/DeveloperResourcesListView.ts | copyInitiatorUrl": {
     "message": "Бастамашының URL мекенжайын көшіру"
@@ -5576,6 +5516,12 @@
   "panels/developer_resources/developer_resources-meta.ts | showDeveloperResources": {
     "message": "Әзірлеуші ресурстарын көрсету"
   },
+  "panels/elements/CSSRuleValidator.ts | flexGridContainerPropertyRuleFix": {
+    "message": "Контейнер элементінде {PROPERTY_NAME} элементін орнатып көріңіз немесе оның орнына {ALTERNATIVE_PROPERTY_NAME} пайдаланыңыз."
+  },
+  "panels/elements/CSSRuleValidator.ts | flexGridContainerPropertyRuleReason": {
+    "message": "Бұл элемент — {CONTAINER_DISPLAY_NAME}, яғни {CONTAINER_DISPLAY_NAME} контейнерінің туынды элементі, бірақ {PROPERTY_NAME} тек контейнерлерге қолданылады."
+  },
   "panels/elements/CSSRuleValidator.ts | fontVariationSettingsWarning": {
     "message": "“{PH1}” {PH2} параметріне арналған мән “{PH5}” қаріптер тобы үшін [{PH3}, {PH4}] ауқымынан тыс."
   },
@@ -5584,6 +5530,9 @@
   },
   "panels/elements/CSSRuleValidator.ts | ruleViolatedByParentElementRuleReason": {
     "message": "Басты элементтегі {REASON_PROPERTY_DECLARATION_CODE} сипаты бар болғандықтан, {AFFECTED_PROPERTY_DECLARATION_CODE} сипаты істемейді."
+  },
+  "panels/elements/CSSRuleValidator.ts | ruleViolatedBySameElementRuleChangeFlexOrGrid": {
+    "message": "Бұл элементті контейнерге түрлендіру үшін {DISPLAY_GRID_RULE} немесе {DISPLAY_FLEX_RULE} қосып көріңіз."
   },
   "panels/elements/CSSRuleValidator.ts | ruleViolatedBySameElementRuleChangeSuggestion": {
     "message": "{EXISTING_PROPERTY_DECLARATION} сипатын {TARGET_PROPERTY_DECLARATION} деп орнатып көріңіз."
@@ -5777,6 +5726,9 @@
   "panels/elements/ElementsTreeElement.ts | hideElement": {
     "message": "Элементті жасыру"
   },
+  "panels/elements/ElementsTreeElement.ts | openMediaPanel": {
+    "message": "Медиа панеліне өту"
+  },
   "panels/elements/ElementsTreeElement.ts | paste": {
     "message": "Қою"
   },
@@ -5828,9 +5780,6 @@
   "panels/elements/EventListenersWidget.ts | passive": {
     "message": "Пассив"
   },
-  "panels/elements/EventListenersWidget.ts | refresh": {
-    "message": "Жаңарту"
-  },
   "panels/elements/EventListenersWidget.ts | resolveEventListenersBoundWith": {
     "message": "Құрылымға байланыстырылған оқиға тыңдаушыларын шешу"
   },
@@ -5855,11 +5804,20 @@
   "panels/elements/PlatformFontsWidget.ts | dGlyphs": {
     "message": "{n,plural, =1{(# глиф)}other{(# глиф)}}"
   },
+  "panels/elements/PlatformFontsWidget.ts | familyName": {
+    "message": "Тегі"
+  },
+  "panels/elements/PlatformFontsWidget.ts | fontOrigin": {
+    "message": "Түпнұсқа қаріп"
+  },
   "panels/elements/PlatformFontsWidget.ts | localFile": {
     "message": "Жергілікті файл"
   },
   "panels/elements/PlatformFontsWidget.ts | networkResource": {
     "message": "Желі ресурсы"
+  },
+  "panels/elements/PlatformFontsWidget.ts | postScriptName": {
+    "message": "PostScript атауы"
   },
   "panels/elements/PlatformFontsWidget.ts | renderedFonts": {
     "message": "Ұсынылған қаріптер"
@@ -5970,7 +5928,7 @@
     "message": "Қабаттар ағашында қабатты ашу үшін түймені басыңыз."
   },
   "panels/elements/StylesSidebarPane.ts | copiedToClipboard": {
-    "message": "Буферге көшірілді."
+    "message": "Буферге көшірілді"
   },
   "panels/elements/StylesSidebarPane.ts | copyAllCSSChanges": {
     "message": "CSS өзгерістерін көшіру"
@@ -6007,9 +5965,6 @@
   },
   "panels/elements/StylesSidebarPane.ts | layer": {
     "message": "Қабат"
-  },
-  "panels/elements/StylesSidebarPane.ts | newStyleRule": {
-    "message": "Жаңа стиль ережесі"
   },
   "panels/elements/StylesSidebarPane.ts | noMatchingSelectorOrStyle": {
     "message": "Сәйкес келетін селектор немесе стиль жоқ."
@@ -6049,6 +6004,15 @@
   },
   "panels/elements/components/CSSPropertyDocsView.ts | learnMore": {
     "message": "Толық ақпарат"
+  },
+  "panels/elements/components/CSSVariableValueView.ts | invalidPropertyValue": {
+    "message": "Сипат мәні жарамсыз. Күтілетін түрі: {type}."
+  },
+  "panels/elements/components/CSSVariableValueView.ts | registeredPropertyLinkTitle": {
+    "message": "Тіркелген сипатты көру"
+  },
+  "panels/elements/components/CSSVariableValueView.ts | sIsNotDefined": {
+    "message": "{PH1} анықталмады"
   },
   "panels/elements/components/ElementsBreadcrumbs.ts | breadcrumbs": {
     "message": "DOM ағашының навигация жолдары"
@@ -6131,11 +6095,17 @@
   "panels/elements/elements-meta.ts | layout": {
     "message": "Схемасы"
   },
+  "panels/elements/elements-meta.ts | newStyleRule": {
+    "message": "Жаңа стиль ережесі"
+  },
   "panels/elements/elements-meta.ts | properties": {
     "message": "Сипаттары"
   },
   "panels/elements/elements-meta.ts | redo": {
     "message": "Қайталау"
+  },
+  "panels/elements/elements-meta.ts | refreshEventListeners": {
+    "message": "Оқиға тыңдаушыларын жаңарту"
   },
   "panels/elements/elements-meta.ts | revealDomNodeOnHover": {
     "message": "Курсор апарғанда, DOM түйінін көрсету"
@@ -6205,6 +6175,9 @@
   },
   "panels/emulation/DeviceModeToolbar.ts | devicePixelRatio": {
     "message": "Құрылғының пиксель арақатынасы"
+  },
+  "panels/emulation/DeviceModeToolbar.ts | devicePosture": {
+    "message": "Құрылғы қалпы"
   },
   "panels/emulation/DeviceModeToolbar.ts | deviceType": {
     "message": "Құрылғы түрі"
@@ -6362,6 +6335,45 @@
   "panels/event_listeners/EventListenersView.ts | toggleWhetherEventListenerIs": {
     "message": "Оқиғаны бақылау құралын пассив не бөгеу режиміне ауыстыру"
   },
+  "panels/explain/components/ConsoleInsight.ts | closeInsight": {
+    "message": "Статистиканы жабу"
+  },
+  "panels/explain/components/ConsoleInsight.ts | consoleMessage": {
+    "message": "Консольдегі хабар"
+  },
+  "panels/explain/components/ConsoleInsight.ts | error": {
+    "message": "Бірдеңе дұрыс болмады…"
+  },
+  "panels/explain/components/ConsoleInsight.ts | generating": {
+    "message": "Жасалып жатыр…"
+  },
+  "panels/explain/components/ConsoleInsight.ts | insight": {
+    "message": "Статистика"
+  },
+  "panels/explain/components/ConsoleInsight.ts | networkRequest": {
+    "message": "Желі сұрауы"
+  },
+  "panels/explain/components/ConsoleInsight.ts | opensInNewTab": {
+    "message": "(жаңа қойындыда ашылады)"
+  },
+  "panels/explain/components/ConsoleInsight.ts | relatedCode": {
+    "message": "Сәйкес код"
+  },
+  "panels/explain/components/ConsoleInsight.ts | stackTrace": {
+    "message": "Стекті бақылау"
+  },
+  "panels/explain/components/ConsoleInsight.ts | submitFeedback": {
+    "message": "Пікір жіберу"
+  },
+  "panels/explain/explain-meta.ts | explainThisError": {
+    "message": "Осы қатені түсіндіру"
+  },
+  "panels/explain/explain-meta.ts | explainThisMessage": {
+    "message": "Бұл хабарды түсіндіру"
+  },
+  "panels/explain/explain-meta.ts | explainThisWarning": {
+    "message": "Осы ескертуді түсіндіру"
+  },
   "panels/issues/AffectedBlockedByResponseView.ts | blockedResource": {
     "message": "Блокталған ресурс"
   },
@@ -6479,6 +6491,9 @@
   "panels/issues/AffectedHeavyAdView.ts | warned": {
     "message": "Ескертілді"
   },
+  "panels/issues/AffectedMetadataAllowedSitesView.ts | nAllowedSites": {
+    "message": "{n,plural, =1{1 веб-сайтта cookie файлдарын пайдалануға рұқсат берілді}other{# веб-сайтта cookie файлдарын пайдалануға рұқсат берілді}}"
+  },
   "panels/issues/AffectedResourcesView.ts | clickToRevealTheFramesDomNodeIn": {
     "message": "Элементтер панеліндегі кадрдың DOM түйінін көрсету үшін басыңыз"
   },
@@ -6538,12 +6553,6 @@
   },
   "panels/issues/AttributionReportingIssueDetailsView.ts | untrustworthyOrigin": {
     "message": "Түпнұсқа сенімсіз"
-  },
-  "panels/issues/CSPViolationsView.ts | filter": {
-    "message": "Сүзгі"
-  },
-  "panels/issues/ComboBoxOfCheckBoxes.ts | genericMenuLabel": {
-    "message": "Mәзір"
   },
   "panels/issues/CorsIssueDetailsView.ts | allowCredentialsValueFromHeader": {
     "message": "Access-Control-Allow-Credentials тақырыбының мәні"
@@ -6743,14 +6752,8 @@
   "panels/issues/components/HideIssuesMenu.ts | tooltipTitle": {
     "message": "Ақауларды жасыру"
   },
-  "panels/issues/issues-meta.ts | cspViolations": {
-    "message": "CSP ережелерін бұзу жағдайлары"
-  },
   "panels/issues/issues-meta.ts | issues": {
     "message": "Ақаулар"
-  },
-  "panels/issues/issues-meta.ts | showCspViolations": {
-    "message": "\"CSP бұзулары\" құралын көрсету"
   },
   "panels/issues/issues-meta.ts | showIssues": {
     "message": "Ақауларды көрсету"
@@ -7226,6 +7229,75 @@
   "panels/lighthouse/lighthouse-meta.ts | showLighthouse": {
     "message": "Lighthouse көрсету"
   },
+  "panels/linear_memory_inspector/LinearMemoryInspectorController.ts | couldNotOpenLinearMemory": {
+    "message": "Сызықтық жад инспекторы ашылмады: буфер табылмады."
+  },
+  "panels/linear_memory_inspector/LinearMemoryInspectorController.ts | revealInMemoryInspectorPanel": {
+    "message": "Жад тексеруші панелінде көрсету"
+  },
+  "panels/linear_memory_inspector/LinearMemoryInspectorPane.ts | noOpenInspections": {
+    "message": "Ашық тексерулер жоқ"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryHighlightChipList.ts | deleteHighlight": {
+    "message": "Осы жадты ерекшелеуді тоқтату"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryHighlightChipList.ts | jumpToAddress": {
+    "message": "Осы жадқа өту"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryInspector.ts | addressHasToBeANumberBetweenSAnd": {
+    "message": "Мекенжай {PH1} және {PH2} аралығындағы сан болуы керек"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryNavigator.ts | enterAddress": {
+    "message": "Мекенжайды енгізу"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryNavigator.ts | goBackInAddressHistory": {
+    "message": "Мекенжай тарихына оралу"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryNavigator.ts | goForwardInAddressHistory": {
+    "message": "Мекенжай тарихында алға жүріңіз."
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryNavigator.ts | nextPage": {
+    "message": "Келесі бет"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryNavigator.ts | previousPage": {
+    "message": "Алдыңғы бет"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryNavigator.ts | refresh": {
+    "message": "Жаңарту"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryValueInterpreter.ts | changeEndianness": {
+    "message": "\"Endianness\" мәнін өзгерту"
+  },
+  "panels/linear_memory_inspector/components/LinearMemoryValueInterpreter.ts | toggleValueTypeSettings": {
+    "message": "Мән түрі параметрлерін қосу/өшіру"
+  },
+  "panels/linear_memory_inspector/components/ValueInterpreterDisplay.ts | addressOutOfRange": {
+    "message": "Мекенжай жад ауқымынан тыс"
+  },
+  "panels/linear_memory_inspector/components/ValueInterpreterDisplay.ts | changeValueTypeMode": {
+    "message": "Режимді өзгерту"
+  },
+  "panels/linear_memory_inspector/components/ValueInterpreterDisplay.ts | jumpToPointer": {
+    "message": "Мекенжайға өту"
+  },
+  "panels/linear_memory_inspector/components/ValueInterpreterDisplay.ts | signedValue": {
+    "message": "Signed мән"
+  },
+  "panels/linear_memory_inspector/components/ValueInterpreterDisplay.ts | unsignedValue": {
+    "message": "Unsigned мән"
+  },
+  "panels/linear_memory_inspector/components/ValueInterpreterDisplayUtils.ts | notApplicable": {
+    "message": "Қолданылмайды"
+  },
+  "panels/linear_memory_inspector/components/ValueInterpreterSettings.ts | otherGroup": {
+    "message": "Басқа"
+  },
+  "panels/linear_memory_inspector/linear_memory_inspector-meta.ts | memoryInspector": {
+    "message": "Жад тексеруші"
+  },
+  "panels/linear_memory_inspector/linear_memory_inspector-meta.ts | showMemoryInspector": {
+    "message": "Жад тексерушіні көрсету"
+  },
   "panels/media/EventDisplayTable.ts | eventDisplay": {
     "message": "Іс-шараны көрсету"
   },
@@ -7425,16 +7497,19 @@
     "message": "Әдепкі параметрлер"
   },
   "panels/mobile_throttling/NetworkPanelIndicator.ts | acceptedEncodingOverrideSet": {
-    "message": "Қабылданған Content-Encoding тақырыптары жинағы DevTools арқылы өзгертілді. Желі шарттары панелін қараңыз."
+    "message": "Қабылданған Content-Encoding жоғарғы деректемелерінің жинағы әзірлеуші құралдары арқылы өзгертілді. \"Желі шарттары\" панелін қараңыз"
+  },
+  "panels/mobile_throttling/NetworkPanelIndicator.ts | browserCacheDisabled": {
+    "message": "Браузер кэші өшірілді"
   },
   "panels/mobile_throttling/NetworkPanelIndicator.ts | networkThrottlingIsEnabled": {
     "message": "Желіні реттеу іске қосылды"
   },
   "panels/mobile_throttling/NetworkPanelIndicator.ts | requestsMayBeBlocked": {
-    "message": "Сұраулар блокталуы мүмкін"
+    "message": "Сұраулар блокталған болуы мүмкін. \"Желі сұрауын блоктау\" панелін қараңыз"
   },
   "panels/mobile_throttling/NetworkPanelIndicator.ts | requestsMayBeOverridden": {
-    "message": "Сұрауларды жергілікті түрде қайта анықтауға болады"
+    "message": "Сұраулар жергілікті түрде қайта анықталған болуы мүмкін. \"Дереккөздер\" панелін қараңыз"
   },
   "panels/mobile_throttling/NetworkThrottlingSelector.ts | custom": {
     "message": "Арнаулы"
@@ -7605,7 +7680,7 @@
     "message": "Hex көру құралы"
   },
   "panels/network/BlockedURLsPane.ts | addNetworkRequestBlockingPattern": {
-    "message": "Желі сұрауын бөгеу өрнегін қосу"
+    "message": "Желі сұрауын блоктау өрнегін қосу"
   },
   "panels/network/BlockedURLsPane.ts | addPattern": {
     "message": "Үлгі қосу"
@@ -7627,9 +7702,6 @@
   },
   "panels/network/BlockedURLsPane.ts | patternInputCannotBeEmpty": {
     "message": "Өрнек кірісі бос болмауы керек."
-  },
-  "panels/network/BlockedURLsPane.ts | removeAllPatterns": {
-    "message": "Барлық үлгіні өшіру"
   },
   "panels/network/BlockedURLsPane.ts | textPatternToBlockMatching": {
     "message": "Сәйкес келетін сұрауларды блоктауға арналған мәтін үлгісі; алмастырғыш таңба үшін \"*\" қолданыңыз"
@@ -7733,6 +7805,9 @@
   "panels/network/NetworkDataGridNode.ts | finished": {
     "message": "Аяқталды"
   },
+  "panels/network/NetworkDataGridNode.ts | initialPriorityToolTip": {
+    "message": "{PH1}, әуелгі басымдық: {PH2}"
+  },
   "panels/network/NetworkDataGridNode.ts | level": {
     "message": "1-деңгей"
   },
@@ -7741,6 +7816,9 @@
   },
   "panels/network/NetworkDataGridNode.ts | mappingMissing": {
     "message": "Chrome балама HTTP нұсқасын пайдаланбады, себебі сұрау шығарылған кезде балама протокол туралы ақпарат қолжетімді болмады, бірақ жауапта \"Alt-Svc\" тақырыбы көрсетілді."
+  },
+  "panels/network/NetworkDataGridNode.ts | matchedToServiceWorkerRouter": {
+    "message": "ServiceWorker router#{PH1} маршрутизаторына сәйкес, ресурс өлшемі: {PH2}"
   },
   "panels/network/NetworkDataGridNode.ts | memoryCache": {
     "message": "(жад кэші)"
@@ -7808,7 +7886,7 @@
   "panels/network/NetworkDataGridNode.ts | servedFromPrefetchCacheResource": {
     "message": "Алдын ала алынған кэштен ұсынылды, ресурс өлшемі: {PH1}"
   },
-  "panels/network/NetworkDataGridNode.ts | servedFromServiceworkerResource": {
+  "panels/network/NetworkDataGridNode.ts | servedFromServiceWorkerResource": {
     "message": "ServiceWorker арқылы қызмет көрсетіледі, ресурс өлшемі: {PH1}"
   },
   "panels/network/NetworkDataGridNode.ts | servedFromSignedHttpExchange": {
@@ -7817,11 +7895,14 @@
   "panels/network/NetworkDataGridNode.ts | servedFromWebBundle": {
     "message": "Web Bundle арқылы көрсетілді, ресурс өлшемі: {PH1}"
   },
-  "panels/network/NetworkDataGridNode.ts | serviceworker": {
+  "panels/network/NetworkDataGridNode.ts | serviceWorker": {
     "message": "(ServiceWorker)"
   },
   "panels/network/NetworkDataGridNode.ts | signedexchange": {
     "message": "signed-exchange"
+  },
+  "panels/network/NetworkDataGridNode.ts | thirdPartyPhaseout": {
+    "message": "Бұл сұрауға арналған cookie файлдары үшінші тарап cookie файлына біртіндеп шектеу қоюға байланысты блокталды. Толық ақпарат \"Ақаулар\" қойындысында берілген."
   },
   "panels/network/NetworkDataGridNode.ts | timeSubtitleTooltipText": {
     "message": "Кідіріс (жауап алынған уақыт – басталу уақыты)"
@@ -7840,6 +7921,9 @@
   },
   "panels/network/NetworkDataGridNode.ts | webBundleInnerRequest": {
     "message": "Web Bundle арқылы қызмет көрсетіледі"
+  },
+  "panels/network/NetworkItemView.ts | containsOverriddenHeaders": {
+    "message": "Бұл жауапта әзірлеуші құралдары арқылы қайта анықталған жоғарғы деректемелер бар"
   },
   "panels/network/NetworkItemView.ts | cookies": {
     "message": "Cookie файлдары"
@@ -7877,11 +7961,17 @@
   "panels/network/NetworkItemView.ts | response": {
     "message": "Жауап"
   },
+  "panels/network/NetworkItemView.ts | responseIsOverridden": {
+    "message": "Бұл жауап әзірлеуші құралдары арқылы қайта анықталды"
+  },
   "panels/network/NetworkItemView.ts | responsePreview": {
     "message": "Жауапты алдын ала көру"
   },
   "panels/network/NetworkItemView.ts | signedexchangeError": {
     "message": "SignedExchange қатесі"
+  },
+  "panels/network/NetworkItemView.ts | thirdPartyPhaseout": {
+    "message": "Cookie файлдары үшінші тарап cookie файлына біртіндеп шектеу қоюға байланысты блокталды."
   },
   "panels/network/NetworkItemView.ts | timing": {
     "message": "Уақыт"
@@ -7894,6 +7984,9 @@
   },
   "panels/network/NetworkItemView.ts | websocketMessages": {
     "message": "WebSocket хабарлары"
+  },
+  "panels/network/NetworkLogView.ts | allStrings": {
+    "message": "Барлығы"
   },
   "panels/network/NetworkLogView.ts | areYouSureYouWantToClearBrowser": {
     "message": "Браузер кэшін шынымен де өшіргіңіз келе ме?"
@@ -7938,10 +8031,13 @@
     "message": "Барлығын HAR ретінде көшіру"
   },
   "panels/network/NetworkLogView.ts | copyAllAsNodejsFetch": {
-    "message": "Барлығын Node.js fetch ретінде көшіру"
+    "message": "Барлығын fetch (Node.js) ретінде көшіру"
   },
   "panels/network/NetworkLogView.ts | copyAllAsPowershell": {
     "message": "Барлығын PowerShell ретінде көшіру"
+  },
+  "panels/network/NetworkLogView.ts | copyAllURLs": {
+    "message": "Барлық URL мекенжайын көшіру"
   },
   "panels/network/NetworkLogView.ts | copyAsCurl": {
     "message": "cURL ретінде көшіру"
@@ -7956,7 +8052,7 @@
     "message": "fetch ретінде көшіру"
   },
   "panels/network/NetworkLogView.ts | copyAsNodejsFetch": {
-    "message": "Node.js fetch ретінде көшіру"
+    "message": "fetch (Node.js) ретінде көшіру"
   },
   "panels/network/NetworkLogView.ts | copyAsPowershell": {
     "message": "PowerShell ретінде көшіру"
@@ -7973,6 +8069,9 @@
   "panels/network/NetworkLogView.ts | copyStacktrace": {
     "message": "Трассаланған стэкті көшіру"
   },
+  "panels/network/NetworkLogView.ts | copyURL": {
+    "message": "URL мекенжайын көшіру"
+  },
   "panels/network/NetworkLogView.ts | domcontentloadedS": {
     "message": "DOM контенті жүктелді: {PH1}"
   },
@@ -7986,13 +8085,13 @@
     "message": "Блокталған жауаптағы cookie файлдары"
   },
   "panels/network/NetworkLogView.ts | hideChromeExtension": {
-    "message": "\"chrome-extension://\" URL мекенжайларының сұрауларын жасыру"
+    "message": "\"chrome-extension://\" URL мекенжайларын жасыру"
   },
   "panels/network/NetworkLogView.ts | hideDataUrls": {
     "message": "Деректердің URL мекенжайларын жасыру"
   },
   "panels/network/NetworkLogView.ts | hidesDataAndBlobUrls": {
-    "message": "Деректерді жасырады: және блоб: URL мекенжайлары"
+    "message": "\"data:\" және \"blob:\" URL мекенжайларын жасыру"
   },
   "panels/network/NetworkLogView.ts | invertFilter": {
     "message": "Аудару"
@@ -8006,6 +8105,9 @@
   "panels/network/NetworkLogView.ts | loadS": {
     "message": "Жүктеу: {PH1}"
   },
+  "panels/network/NetworkLogView.ts | moreFilters": {
+    "message": "Басқа сүзгілер"
+  },
   "panels/network/NetworkLogView.ts | networkDataAvailable": {
     "message": "Желі трафигі қолжетімді"
   },
@@ -8013,10 +8115,13 @@
     "message": "Тек блокталған сұрауларды көрсету"
   },
   "panels/network/NetworkLogView.ts | onlyShowRequestsWithBlockedCookies": {
-    "message": "Блокталған жауап бойынша cookie файлдары бар сұрауларды ғана көрсету"
+    "message": "Блокталған жауапқа қатысты cookie файлдары бар сұрауларды ғана көрсету"
   },
   "panels/network/NetworkLogView.ts | onlyShowThirdPartyRequests": {
     "message": "Түпнұсқасы бет түпнұсқасынан өзгеше сұрауларды ғана көрсету"
+  },
+  "panels/network/NetworkLogView.ts | overTwoTypesSelected": {
+    "message": "{PH1}, {PH2}..."
   },
   "panels/network/NetworkLogView.ts | overrideHeaders": {
     "message": "Тақырыпты қайта анықтау"
@@ -8033,8 +8138,14 @@
   "panels/network/NetworkLogView.ts | replayXhr": {
     "message": "XHR сұрауын қайталау"
   },
-  "panels/network/NetworkLogView.ts | resourceTypesToInclude": {
-    "message": "Қосылатын ресурс түрлері"
+  "panels/network/NetworkLogView.ts | requestTypes": {
+    "message": "Сұрау түрлері"
+  },
+  "panels/network/NetworkLogView.ts | requestTypesToInclude": {
+    "message": "Қосылатын сұрау түрлері"
+  },
+  "panels/network/NetworkLogView.ts | requestTypesTooltip": {
+    "message": "Сұрауларды түрі бойынша іріктеу"
   },
   "panels/network/NetworkLogView.ts | sBResourcesLoadedByThePage": {
     "message": "{PH1} Б ресурс бет арқылы жүктелді."
@@ -8069,8 +8180,17 @@
   "panels/network/NetworkLogView.ts | saveAllAsHarWithContent": {
     "message": "Барлығын HAR ретінде контентпен сақтау"
   },
+  "panels/network/NetworkLogView.ts | showOnly": {
+    "message": "Тек мынаны көрсету: {PH1}"
+  },
+  "panels/network/NetworkLogView.ts | showOnlyHideRequests": {
+    "message": "Сұрауларды тек көрсету/жасыру"
+  },
   "panels/network/NetworkLogView.ts | thirdParty": {
     "message": "Үшінші тарап сұраулары"
+  },
+  "panels/network/NetworkLogView.ts | twoTypesSelected": {
+    "message": "{PH1}, {PH2}"
   },
   "panels/network/NetworkLogView.ts | unblockS": {
     "message": "Келесінің бөгеуін алу: {PH1}"
@@ -8089,6 +8209,9 @@
   },
   "panels/network/NetworkLogViewColumns.ts | endTime": {
     "message": "Аяқталу уақыты"
+  },
+  "panels/network/NetworkLogViewColumns.ts | hasOverrides": {
+    "message": "Қайта анықтау әрекеттері бар"
   },
   "panels/network/NetworkLogViewColumns.ts | initiator": {
     "message": "Бастаған"
@@ -8296,105 +8419,6 @@
   },
   "panels/network/RequestCookiesView.ts | thisRequestHasNoCookies": {
     "message": "Бұл сұраудың cookie файлдары жоқ."
-  },
-  "panels/network/RequestHeadersView.ts | activeClientExperimentVariation": {
-    "message": "Белсенді client experiment variation IDs."
-  },
-  "panels/network/RequestHeadersView.ts | activeClientExperimentVariationIds": {
-    "message": "Сервер тарапындағы әрекетті іске қосатын белсенді client experiment variation IDs."
-  },
-  "panels/network/RequestHeadersView.ts | chooseThisOptionIfTheResourceAnd": {
-    "message": "Ресурс пен құжатқа бірдей сайттан қызмет көрсетілсе, осы опцияны таңдаңыз."
-  },
-  "panels/network/RequestHeadersView.ts | copyValue": {
-    "message": "Мәнді көшіру"
-  },
-  "panels/network/RequestHeadersView.ts | decoded": {
-    "message": "Коды ашылды:"
-  },
-  "panels/network/RequestHeadersView.ts | fromDiskCache": {
-    "message": "(диск кэшінен)"
-  },
-  "panels/network/RequestHeadersView.ts | fromMemoryCache": {
-    "message": "(жад кэшінен)"
-  },
-  "panels/network/RequestHeadersView.ts | fromPrefetchCache": {
-    "message": "(алдын ала алынған кэштен)"
-  },
-  "panels/network/RequestHeadersView.ts | fromServiceWorker": {
-    "message": "(service worker қызметінен)"
-  },
-  "panels/network/RequestHeadersView.ts | fromSignedexchange": {
-    "message": "(signed-exchange қызметінен)"
-  },
-  "panels/network/RequestHeadersView.ts | fromWebBundle": {
-    "message": "(Web Bundle пакетінен)"
-  },
-  "panels/network/RequestHeadersView.ts | general": {
-    "message": "Жалпы"
-  },
-  "panels/network/RequestHeadersView.ts | learnMore": {
-    "message": "Толығырақ"
-  },
-  "panels/network/RequestHeadersView.ts | learnMoreInTheIssuesTab": {
-    "message": "Ақаулар қойындысынан толық ақпарат алуға болады."
-  },
-  "panels/network/RequestHeadersView.ts | onlyChooseThisOptionIfAn": {
-    "message": "Арбитрациялық веб-сайт, оның ішінде осы ресурс қауіп төндірмесе, осы опцияны ғана таңдаңыз."
-  },
-  "panels/network/RequestHeadersView.ts | onlyProvisionalHeadersAre": {
-    "message": "Тек тексеру тақырыптары қолжетімді, себебі бұл сұрау желімен жіберілген жоқ, оның орнына бастапқы сұрау тақырыптары сақталмайтын жергілікті кэште өңделді. Толық сұрау тақырыптарын көру үшін кэшті өшіріңіз."
-  },
-  "panels/network/RequestHeadersView.ts | provisionalHeadersAreShown": {
-    "message": "Шамамен алғандағы тақырыптар көрсетілген."
-  },
-  "panels/network/RequestHeadersView.ts | provisionalHeadersAreShownS": {
-    "message": "Шамамен алынған тақырыптар көрсетілген. Толық тақырыптарды көру үшін кэшті өшіріңіз."
-  },
-  "panels/network/RequestHeadersView.ts | referrerPolicy": {
-    "message": "Реферер саясаты"
-  },
-  "panels/network/RequestHeadersView.ts | remoteAddress": {
-    "message": "Қашықтағы мекенжай"
-  },
-  "panels/network/RequestHeadersView.ts | requestHeaders": {
-    "message": "Сұрау тақырыптары"
-  },
-  "panels/network/RequestHeadersView.ts | requestMethod": {
-    "message": "Сұрау әдісі"
-  },
-  "panels/network/RequestHeadersView.ts | requestUrl": {
-    "message": "URL сұрау"
-  },
-  "panels/network/RequestHeadersView.ts | responseHeaders": {
-    "message": "Жауап тақырыптары"
-  },
-  "panels/network/RequestHeadersView.ts | showMore": {
-    "message": "Жаю"
-  },
-  "panels/network/RequestHeadersView.ts | statusCode": {
-    "message": "Күй коды"
-  },
-  "panels/network/RequestHeadersView.ts | thisDocumentWasBlockedFrom": {
-    "message": "Сынақ ортасындағы iframe арқылы ашылған қалқымалы терезеде құжатты жүктеу блокталды, себебі бұл құжатта дереккөзаралық ашу құралының саясаты көрсетілген."
-  },
-  "panels/network/RequestHeadersView.ts | toEmbedThisFrameInYourDocument": {
-    "message": "Осы кадрды құжатқа ендіру үшін жауапта мына тақырыпты көрсете отырып, барлық бастапқы орындағы енгізу саясатын қосу қажет:"
-  },
-  "panels/network/RequestHeadersView.ts | toUseThisResourceFromADifferent": {
-    "message": "Осы ресурсты басқа бастапқы орыннан қолдану үшін сервер тиісті жауап тақырыптарында барлық бастапқы орын ресурсының саясатын көрсетуі керек:"
-  },
-  "panels/network/RequestHeadersView.ts | toUseThisResourceFromADifferentOrigin": {
-    "message": "Осы ресурсты басқа бастапқы орыннан қолдану үшін сервер барлық бастапқы орын ресурсы саясатының жауап тақырыбын босатуы мүмкін:"
-  },
-  "panels/network/RequestHeadersView.ts | toUseThisResourceFromADifferentSite": {
-    "message": "Осы ресурсты басқа сайттан пайдалану үшін сервер барлық бастапқы орын ресурсы саясатының жауап тақырыбын босатуы мүмкін:"
-  },
-  "panels/network/RequestHeadersView.ts | viewParsed": {
-    "message": "Талданғандарды көру"
-  },
-  "panels/network/RequestHeadersView.ts | viewSource": {
-    "message": "Дереккөзді көру"
   },
   "panels/network/RequestInitiatorView.ts | requestCallStack": {
     "message": "Қоңырау шалу стегін сұрау"
@@ -8727,7 +8751,7 @@
     "message": "Сервер тарапындағы әрекетті іске қосатын белсенді client experiment variation IDs."
   },
   "panels/network/components/HeaderSectionRow.ts | decoded": {
-    "message": "Коды ашылды:"
+    "message": "Шифрсыздандырылған:"
   },
   "panels/network/components/HeaderSectionRow.ts | editHeader": {
     "message": "Тақырыпты қайта анықтау"
@@ -8739,7 +8763,7 @@
     "message": "Толығырақ"
   },
   "panels/network/components/HeaderSectionRow.ts | learnMoreInTheIssuesTab": {
-    "message": "Ақаулар қойындысынан толық ақпарат алуға болады."
+    "message": "Ақаулар қойындысынан толығырақ білуге болады."
   },
   "panels/network/components/HeaderSectionRow.ts | reloadPrompt": {
     "message": "Осы өзгерістердің күшіне енуі үшін бетті/сұрауды жаңарту"
@@ -8751,13 +8775,13 @@
     "message": "Толығырақ"
   },
   "panels/network/components/RequestHeaderSection.ts | onlyProvisionalHeadersAre": {
-    "message": "Тек тексеру тақырыптары қолжетімді, себебі бұл сұрау желімен жіберілген жоқ, оның орнына бастапқы сұрау тақырыптары сақталмайтын жергілікті кэште өңделді. Толық сұрау тақырыптарын көру үшін кэшті өшіріңіз."
+    "message": "Тек тексеру тақырыптары қолжетімді, бірақ бұл сұрау желімен жіберілмеді, оның орнына бастапқы сұрау тақырыптары сақталмайтын жергілікті кэште өңделді. Толық сұрау тақырыптарын көру үшін кэшті өшіріңіз."
   },
   "panels/network/components/RequestHeaderSection.ts | provisionalHeadersAreShown": {
     "message": "Шамамен алынған тақырыптар көрсетілген."
   },
   "panels/network/components/RequestHeaderSection.ts | provisionalHeadersAreShownDisableCache": {
-    "message": "Шамамен алынған тақырыптар көрсетілген. Толық тақырыптарды көру үшін кэшті өшіріңіз."
+    "message": "Шамамен алғандағы тақырыптар көрсетілген. Толық тақырыптарды көру үшін кэшті өшіріңіз."
   },
   "panels/network/components/RequestHeadersView.ts | fromDiskCache": {
     "message": "(диск кэшінен)"
@@ -8772,10 +8796,10 @@
     "message": "(service worker қызметінен)"
   },
   "panels/network/components/RequestHeadersView.ts | fromSignedexchange": {
-    "message": "(signed-exchange қызметінен)"
+    "message": "(from signed-exchange)"
   },
   "panels/network/components/RequestHeadersView.ts | fromWebBundle": {
-    "message": "(Web Bundle пакетінен)"
+    "message": "(Web Bundle арқылы)"
   },
   "panels/network/components/RequestHeadersView.ts | general": {
     "message": "Жалпы"
@@ -8790,7 +8814,7 @@
     "message": "Қашықтағы мекенжай"
   },
   "panels/network/components/RequestHeadersView.ts | requestHeaders": {
-    "message": "Сұрау тақырыптары"
+    "message": "Тақырыптарды сұрау"
   },
   "panels/network/components/RequestHeadersView.ts | requestMethod": {
     "message": "Сұрау әдісі"
@@ -8880,16 +8904,19 @@
     "message": "Осы кадрды құжатқа ендіру үшін жауапта мына тақырыпты көрсете отырып, барлық бастапқы орындағы енгізу саясатын қосу қажет:"
   },
   "panels/network/components/ResponseHeaderSection.ts | toUseThisResourceFromADifferent": {
-    "message": "Осы ресурсты басқа бастапқы орыннан қолдану үшін сервер тиісті жауап тақырыптарында барлық бастапқы орын ресурсының саясатын көрсетуі керек:"
+    "message": "Осы ресурсты басқа бастапқы орыннан қолдану үшін сервер жауап тақырыптарында барлық бастапқы орын ресурсының саясатын көрсетуі керек:"
   },
   "panels/network/components/ResponseHeaderSection.ts | toUseThisResourceFromADifferentOrigin": {
-    "message": "Осы ресурсты басқа бастапқы орыннан қолдану үшін сервер барлық бастапқы орын ресурсы саясатының жауап тақырыбын босатуы мүмкін:"
+    "message": "Осы ресурсты басқа бастапқы орыннан қолдану үшін сервер барлық бастапқы орын ресурсындағы саясат жауабының тақырыбын жібереді:"
   },
   "panels/network/components/ResponseHeaderSection.ts | toUseThisResourceFromADifferentSite": {
-    "message": "Осы ресурсты басқа сайттан пайдалану үшін сервер барлық бастапқы орын ресурсы саясатының жауап тақырыбын босатуы мүмкін:"
+    "message": "Осы ресурсты басқа сайттан пайдалану үшін сервер түрлі түпнұсқалы ресурс саясаты жауабының тақырыбын босатуы мүмкін:"
   },
   "panels/network/components/WebBundleInfoView.ts | bundledResource": {
     "message": "Жинақталған ресурс"
+  },
+  "panels/network/network-meta.ts | addNetworkRequestBlockingPattern": {
+    "message": "Желі сұрауын блоктау өрнегін қосу"
   },
   "panels/network/network-meta.ts | clear": {
     "message": "Желі журналын өшіру"
@@ -8941,6 +8968,9 @@
   },
   "panels/network/network-meta.ts | recordNetworkLog": {
     "message": "Желі журналын жазу"
+  },
+  "panels/network/network-meta.ts | removeAllNetworkRequestBlockingPatterns": {
+    "message": "Желі сұрауын блоктайтын барлық өрнекті өшіру"
   },
   "panels/network/network-meta.ts | resourceType": {
     "message": "ресурс түрі"
@@ -9317,9 +9347,6 @@
   "panels/profiler/HeapSnapshotView.ts | retainers": {
     "message": "Ұстап қалушылар"
   },
-  "panels/profiler/HeapSnapshotView.ts | sKb": {
-    "message": "{PH1} КБ"
-  },
   "panels/profiler/HeapSnapshotView.ts | savingD": {
     "message": "Сақталуда… {PH1}%"
   },
@@ -9512,17 +9539,8 @@
   "panels/profiler/ProfileLauncherView.ts | takeSnapshot": {
     "message": "Снапшот жасау"
   },
-  "panels/profiler/ProfileSidebarTreeElement.ts | delete": {
-    "message": "Жою"
-  },
-  "panels/profiler/ProfileSidebarTreeElement.ts | load": {
-    "message": "Жүктеу…"
-  },
-  "panels/profiler/ProfileSidebarTreeElement.ts | save": {
-    "message": "Сақтау"
-  },
-  "panels/profiler/ProfileSidebarTreeElement.ts | saveWithEllipsis": {
-    "message": "Сақтау…"
+  "panels/profiler/ProfileSidebarTreeElement.ts | profileOptions": {
+    "message": "Профиль опциялары"
   },
   "panels/profiler/ProfileView.ts | chart": {
     "message": "Диаграмма"
@@ -9584,26 +9602,14 @@
   "panels/profiler/ProfilesPanel.ts | cantLoadProfileWhileAnother": {
     "message": "Басқа профиль жазылып жатқанда, профильді жүктеу мүмкін емес."
   },
-  "panels/profiler/ProfilesPanel.ts | clearAllProfiles": {
-    "message": "Барлық профильді өшіру"
-  },
   "panels/profiler/ProfilesPanel.ts | deprecationWarnMsg": {
     "message": "Бұл панель алдағы нұсқада ескіреді. JavaScript CPU профильдерін жазу үшін өнімділік панелін пайдаланыңыз."
-  },
-  "panels/profiler/ProfilesPanel.ts | enableThisPanelTemporarily": {
-    "message": "Бұл панельді уақытша қосу"
   },
   "panels/profiler/ProfilesPanel.ts | feedback": {
     "message": "Пікір"
   },
   "panels/profiler/ProfilesPanel.ts | goToPerformancePanel": {
     "message": "Өнімділік панеліне өту"
-  },
-  "panels/profiler/ProfilesPanel.ts | learnMore": {
-    "message": "Толық ақпарат"
-  },
-  "panels/profiler/ProfilesPanel.ts | load": {
-    "message": "Жүктеу…"
   },
   "panels/profiler/ProfilesPanel.ts | profileLoadingFailedS": {
     "message": "Профильді жүктеу мүмкін емес: {PH1}."
@@ -9614,20 +9620,29 @@
   "panels/profiler/ProfilesPanel.ts | runD": {
     "message": "{PH1} іске қосу"
   },
+  "panels/profiler/profiler-meta.ts | clearAllProfiles": {
+    "message": "Барлық профильді өшіру"
+  },
+  "panels/profiler/profiler-meta.ts | deleteProfile": {
+    "message": "Профильді жою"
+  },
   "panels/profiler/profiler-meta.ts | liveHeapProfile": {
     "message": "Динамикалық жад профилі"
   },
+  "panels/profiler/profiler-meta.ts | loadProfile": {
+    "message": "Профильді жүктеу…"
+  },
   "panels/profiler/profiler-meta.ts | memory": {
     "message": "Жад"
+  },
+  "panels/profiler/profiler-meta.ts | saveProfile": {
+    "message": "Профильді сақтау…"
   },
   "panels/profiler/profiler-meta.ts | showLiveHeapProfile": {
     "message": "Тікелей эфирдегі жинақ профилін көрсету"
   },
   "panels/profiler/profiler-meta.ts | showMemory": {
     "message": "Жадты көрсету"
-  },
-  "panels/profiler/profiler-meta.ts | showNativeFunctions": {
-    "message": "JS профиліндегі нативті функциялар көрсету"
   },
   "panels/profiler/profiler-meta.ts | startRecordingHeapAllocations": {
     "message": "Жинақ үлестірілуін жазуды бастау"
@@ -9710,6 +9725,9 @@
   "panels/protocol_monitor/ProtocolMonitor.ts | type": {
     "message": "Түрі"
   },
+  "panels/protocol_monitor/components/JSONEditor.ts | addCustomProperty": {
+    "message": "Арнаулы сипатты қосу"
+  },
   "panels/protocol_monitor/components/JSONEditor.ts | addParameter": {
     "message": "Параметр қосу"
   },
@@ -9721,6 +9739,12 @@
   },
   "panels/protocol_monitor/components/Toolbar.ts | copyCommand": {
     "message": "Пәрменді көшіру"
+  },
+  "panels/protocol_monitor/components/Toolbar.ts | sendCommandCmdEnter": {
+    "message": "Пәрменді жіберу: ⌘+Enter"
+  },
+  "panels/protocol_monitor/components/Toolbar.ts | sendCommandCtrlEnter": {
+    "message": "Пәрменді жіберу: Ctrl+Enter"
   },
   "panels/protocol_monitor/protocol_monitor-meta.ts | protocolMonitor": {
     "message": "Протокол мониторы"
@@ -9754,6 +9778,12 @@
   },
   "panels/recorder/RecorderController.ts | importRecording": {
     "message": "Жазбаны импорттау"
+  },
+  "panels/recorder/RecorderController.ts | noRecordings": {
+    "message": "Жазбалар жоқ"
+  },
+  "panels/recorder/RecorderController.ts | numberOfRecordings": {
+    "message": "жазба"
   },
   "panels/recorder/RecorderController.ts | replayRecording": {
     "message": "Жазбаны қайта ойнату"
@@ -10094,6 +10124,9 @@
   "panels/screencast/ScreencastView.ts | forward": {
     "message": "алға"
   },
+  "panels/screencast/ScreencastView.ts | mouseInput": {
+    "message": "Тінтуірді пайдалану"
+  },
   "panels/screencast/ScreencastView.ts | profilingInProgress": {
     "message": "Профильдеу жүріп жатыр"
   },
@@ -10105,6 +10138,9 @@
   },
   "panels/screencast/ScreencastView.ts | theTabIsInactive": {
     "message": "Қойынды белсенді емес"
+  },
+  "panels/screencast/ScreencastView.ts | touchInput": {
+    "message": "Түрту әрекетін пайдалану"
   },
   "panels/search/SearchResultsPane.ts | lineS": {
     "message": "{PH1}-жол"
@@ -11060,6 +11096,9 @@
   "panels/sources/BreakpointEditDialog.ts | pauseOnlyWhenTheConditionIsTrue": {
     "message": "Шарт true болғанда ғана кідіртіңіз"
   },
+  "panels/sources/CSSPlugin.ts | addSourceMap": {
+    "message": "Бастапқы түрлендірілген файлды қосу…"
+  },
   "panels/sources/CSSPlugin.ts | openColorPicker": {
     "message": "Түс палитрасын ашыңыз."
   },
@@ -11092,6 +11131,66 @@
   },
   "panels/sources/CallStackSidebarPane.ts | showMore": {
     "message": "Жаю"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | animationFrameFired": {
+    "message": "Анимация кадры басталды."
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | beforeBidderWorkletBiddingStart": {
+    "message": "Қатысушының баға ұсыну фазасының басталуы"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | beforeBidderWorkletReportingStart": {
+    "message": "Қатысушының есеп беру фазасының басталуы"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | beforeSellerWorkletReportingStart": {
+    "message": "Сатушының есеп беру фазасының басталуы"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | beforeSellerWorkletScoringStart": {
+    "message": "Сатушыға баға беру фазасының басталуы"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | cancelAnimationFrame": {
+    "message": "Анимация кадрынан бас тарту"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | closeAudiocontext": {
+    "message": "AudioContext жабу"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | createAudiocontext": {
+    "message": "AudioContext жасау"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | createCanvasContext": {
+    "message": "Кенеп контексін жасау"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | policyViolations": {
+    "message": "Саясат талаптарын бұзу жағдайлары"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | requestAnimationFrame": {
+    "message": "Анимация кадрын сұрау"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | resumeAudiocontext": {
+    "message": "AudioContext трансляциясын жалғастыру"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | scriptBlockedByContentSecurity": {
+    "message": "Скрипт Контент қауіпсіздігі саясаты арқылы бөгелді."
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | scriptFirstStatement": {
+    "message": "Скриптінің бірінші мәлімдемесі"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | setInnerhtml": {
+    "message": "innerHTML орнату"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | setTimeoutOrIntervalFired": {
+    "message": "{PH1} іске қосылды."
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | sinkViolations": {
+    "message": "Қабылдау ережелерін бұзу"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | suspendAudiocontext": {
+    "message": "AudioContext уақытша тоқтату"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | webglErrorFired": {
+    "message": "WebGL қатесі шықты"
+  },
+  "panels/sources/CategorizedBreakpointL10n.ts | webglWarningFired": {
+    "message": "WebGL ескертуі іске қосылды"
   },
   "panels/sources/CoveragePlugin.ts | clickToShowCoveragePanel": {
     "message": "Қамту панелін көрсету үшін басу"
@@ -11153,6 +11252,9 @@
   "panels/sources/DebuggerPausedMessage.ts | pausedOnXhrOrFetch": {
     "message": "XHR кезінде немесе алу кезінде кідіртілді."
   },
+  "panels/sources/DebuggerPausedMessage.ts | scriptBlockedDueToContent": {
+    "message": "Скрипт Контент қауіпсіздігі саясатының директивасына сәйкес бөгелді: {PH1}"
+  },
   "panels/sources/DebuggerPausedMessage.ts | subtreeModifications": {
     "message": "ішкі тармақ өзгерістері"
   },
@@ -11161,6 +11263,9 @@
   },
   "panels/sources/DebuggerPausedMessage.ts | trustedTypeSinkViolation": {
     "message": "Trusted Type қабылдау ережелерін бұзу"
+  },
+  "panels/sources/DebuggerPausedMessage.ts | webglErrorFiredS": {
+    "message": "WebGL қатесі шықты ({PH1})"
   },
   "panels/sources/DebuggerPlugin.ts | addBreakpoint": {
     "message": "Тоқтату нүктесін қосу"
@@ -11172,7 +11277,7 @@
     "message": "Журнал нүктесін қосу…"
   },
   "panels/sources/DebuggerPlugin.ts | addSourceMap": {
-    "message": "Бастапқы картаны қосу…"
+    "message": "Бастапқы түрлендірілген файлды қосу…"
   },
   "panels/sources/DebuggerPlugin.ts | addWasmDebugInfo": {
     "message": "DWARF түзету ақпараты қосылып жатыр…"
@@ -11276,6 +11381,12 @@
   "panels/sources/InplaceFormatterEditorAction.ts | formatS": {
     "message": "{PH1} файлын форматтау"
   },
+  "panels/sources/NavigatorView.ts | actionCannotBeUndone": {
+    "message": "Бұл әрекетті кері қайтару мүмкін емес."
+  },
+  "panels/sources/NavigatorView.ts | areYouSureYouWantToDeleteFolder": {
+    "message": "Осы қалтаны және оның мазмұнын шынымен жойғыңыз келе ме?"
+  },
   "panels/sources/NavigatorView.ts | areYouSureYouWantToDeleteThis": {
     "message": "Бұл файлды шынымен жойғыңыз келе ме?"
   },
@@ -11283,7 +11394,7 @@
     "message": "Бұл қалтаны шынымен шығарғыңыз келе ме?"
   },
   "panels/sources/NavigatorView.ts | areYouSureYouWantToRemoveThis": {
-    "message": "Осы қалтаны шынымен өшіргіңіз келе ме?"
+    "message": "Жұмыс орнынан \"{PH1}\" қалтасын өшіру қажет пе?"
   },
   "panels/sources/NavigatorView.ts | authored": {
     "message": "Әзірлеген"
@@ -11294,9 +11405,6 @@
   "panels/sources/NavigatorView.ts | delete": {
     "message": "Жою"
   },
-  "panels/sources/NavigatorView.ts | deleteAllOverrides": {
-    "message": "Барлық қайта анықтау жағдайларын жою"
-  },
   "panels/sources/NavigatorView.ts | deployed": {
     "message": "Іске асырған"
   },
@@ -11304,7 +11412,7 @@
     "message": "Браузер көретін түпкі дереккөздерден тұрады."
   },
   "panels/sources/NavigatorView.ts | excludeFolder": {
-    "message": "Қалтаны шығару"
+    "message": "Жұмыс орнынан шығару"
   },
   "panels/sources/NavigatorView.ts | makeACopy": {
     "message": "Көшірмесін жасау…"
@@ -11318,8 +11426,11 @@
   "panels/sources/NavigatorView.ts | openFolder": {
     "message": "Қалтаны ашу"
   },
+  "panels/sources/NavigatorView.ts | remove": {
+    "message": "Өшіру"
+  },
   "panels/sources/NavigatorView.ts | removeFolderFromWorkspace": {
-    "message": "Қалтаны жұмыс орнынан өшіру"
+    "message": "Жұмыс орнынан өшіру"
   },
   "panels/sources/NavigatorView.ts | rename": {
     "message": "Атын өзгерту…"
@@ -11335,6 +11446,9 @@
   },
   "panels/sources/NavigatorView.ts | searchInFolder": {
     "message": "Қалтадан іздеу"
+  },
+  "panels/sources/NavigatorView.ts | workspaceStopSyncing": {
+    "message": "Бұл әрекет өзгерістерді әзірлеуші құралдарынан дереккөздерге синхрондауды тоқтатады."
   },
   "panels/sources/OutlineQuickOpen.ts | noFileSelected": {
     "message": "Файл таңдалмады."
@@ -11380,9 +11494,6 @@
   },
   "panels/sources/ScopeChainSidebarPane.ts | returnValue": {
     "message": "Қайтару мәні"
-  },
-  "panels/sources/ScopeChainSidebarPane.ts | revealInMemoryInspectorPanel": {
-    "message": "\"Жад инспекторы\" панелінде көрсету"
   },
   "panels/sources/SnippetsPlugin.ts | ctrlenter": {
     "message": "Ctrl+Enter"
@@ -11487,7 +11598,7 @@
     "message": "500 мс блокталған барлық кідірісті жалғастыру"
   },
   "panels/sources/SourcesPanel.ts | revealInSidebar": {
-    "message": "Жылжыту жолағында көрсету"
+    "message": "Навигатордың жылжыту жолағында көрсету"
   },
   "panels/sources/SourcesPanel.ts | showDebugger": {
     "message": "Түзеткішті көрсету"
@@ -11498,8 +11609,8 @@
   "panels/sources/SourcesPanel.ts | showNavigator": {
     "message": "Навигаторды көрсету"
   },
-  "panels/sources/SourcesPanel.ts | storeSAsGlobalVariable": {
-    "message": "{PH1} элементін ғаламдық айнымалы ретінде сақтау"
+  "panels/sources/SourcesPanel.ts | storeAsGlobalVariable": {
+    "message": "Ғаламдық айнымалы ретінде сақтау"
   },
   "panels/sources/SourcesPanel.ts | terminateCurrentJavascriptCall": {
     "message": "Қазіргі JavaScript қоңырауын аяқтау"
@@ -11510,8 +11621,14 @@
   "panels/sources/SourcesView.ts | runCommand": {
     "message": "Пәрменді іске қосу"
   },
+  "panels/sources/SourcesView.ts | selectFolder": {
+    "message": "Қалта таңдау"
+  },
   "panels/sources/SourcesView.ts | sourceViewActions": {
     "message": "Дереккөзді көру әрекеттері"
+  },
+  "panels/sources/SourcesView.ts | workspaceDropInAFolderToSyncSources": {
+    "message": "Өзгерістерді жұмыс орнымен синхрондау үшін дереккөздері бар қалтаны мына жерге қойыңыз немесе"
   },
   "panels/sources/TabbedEditorContainer.ts | areYouSureYouWantToCloseUnsaved": {
     "message": "Сақталмаған файлды ({PH1}) шынымен жапқыңыз келе ме?"
@@ -11624,6 +11741,9 @@
   "panels/sources/sources-meta.ts | activateBreakpoints": {
     "message": "Тоқтату нүктелерін белсендіру"
   },
+  "panels/sources/sources-meta.ts | addFolder": {
+    "message": "Қалта қосу"
+  },
   "panels/sources/sources-meta.ts | addFolderToWorkspace": {
     "message": "Қалтаны жұмыс орнына қосу"
   },
@@ -11684,9 +11804,6 @@
   "panels/sources/sources-meta.ts | disableCssSourceMaps": {
     "message": "CSS бастапқы карталарын өшіру"
   },
-  "panels/sources/sources-meta.ts | disableJavascriptSourceMaps": {
-    "message": "JavaScript бастапқы карталарын өшіру"
-  },
   "panels/sources/sources-meta.ts | disableTabMovesFocus": {
     "message": "Қойынды қозғалыстарына мән беру функциясын өшіру"
   },
@@ -11728,9 +11845,6 @@
   },
   "panels/sources/sources-meta.ts | enableCssSourceMaps": {
     "message": "CSS бастапқы карталарын қосу"
-  },
-  "panels/sources/sources-meta.ts | enableJavascriptSourceMaps": {
-    "message": "JavaScript бастапқы карталарын қосу"
   },
   "panels/sources/sources-meta.ts | enableTabMovesFocus": {
     "message": "Қойынды қозғалыстарына мән беру функциясын қосу"
@@ -11795,6 +11909,9 @@
   "panels/sources/sources-meta.ts | resumeScriptExecution": {
     "message": "Скриптіні орындауды жалғастыру"
   },
+  "panels/sources/sources-meta.ts | revealActiveFileInSidebar": {
+    "message": "Навигатордың жылжыту жолағында белсенді файлды көрсету"
+  },
   "panels/sources/sources-meta.ts | runSnippet": {
     "message": "Үзіндіні іске қосу"
   },
@@ -11845,6 +11962,9 @@
   },
   "panels/sources/sources-meta.ts | showWhitespaceCharacters": {
     "message": "Бос орын таңбаларын көрсету:"
+  },
+  "panels/sources/sources-meta.ts | showWorkspace": {
+    "message": "Жұмыс орнын көрсету"
   },
   "panels/sources/sources-meta.ts | snippets": {
     "message": "Үзінділер"
@@ -11897,6 +12017,9 @@
   "panels/sources/sources-meta.ts | watch": {
     "message": "Сағат"
   },
+  "panels/sources/sources-meta.ts | workspace": {
+    "message": "Жұмыс орны"
+  },
   "panels/timeline/AnimationsTrackAppender.ts | animations": {
     "message": "Анимациялар"
   },
@@ -11921,6 +12044,327 @@
   "panels/timeline/CountersGraph.ts | ss": {
     "message": "[{PH1} – {PH2}]"
   },
+  "panels/timeline/EventUICategory.ts | animation": {
+    "message": "Анимация"
+  },
+  "panels/timeline/EventUICategory.ts | animationFrameFired": {
+    "message": "Анимация кадры басталды."
+  },
+  "panels/timeline/EventUICategory.ts | async": {
+    "message": "Бейсинхронды"
+  },
+  "panels/timeline/EventUICategory.ts | asyncTask": {
+    "message": "Бейсинхрондау тапсырмасы"
+  },
+  "panels/timeline/EventUICategory.ts | cacheModule": {
+    "message": "Модуль кодын кэштеу"
+  },
+  "panels/timeline/EventUICategory.ts | cacheScript": {
+    "message": "Скрипт кодын кэштеу"
+  },
+  "panels/timeline/EventUICategory.ts | cachedWasmModule": {
+    "message": "Кэштелген Wasm модулі"
+  },
+  "panels/timeline/EventUICategory.ts | cancelAnimationFrame": {
+    "message": "Анимация кадрынан бас тарту"
+  },
+  "panels/timeline/EventUICategory.ts | cancelIdleCallback": {
+    "message": "Күту режиміндегі кері шақырудан бас тарту"
+  },
+  "panels/timeline/EventUICategory.ts | commit": {
+    "message": "Тапсыру"
+  },
+  "panels/timeline/EventUICategory.ts | compileCode": {
+    "message": "Компиляциялау коды"
+  },
+  "panels/timeline/EventUICategory.ts | compileModule": {
+    "message": "Модуль компиляциялау"
+  },
+  "panels/timeline/EventUICategory.ts | compileScript": {
+    "message": "Скрипт компиляциялау"
+  },
+  "panels/timeline/EventUICategory.ts | compiledWasmModule": {
+    "message": "Компиляцияланған Wasm модулі"
+  },
+  "panels/timeline/EventUICategory.ts | compositeLayers": {
+    "message": "Күрделі қабаттар"
+  },
+  "panels/timeline/EventUICategory.ts | computeIntersections": {
+    "message": "Қиылыстарды есептеу"
+  },
+  "panels/timeline/EventUICategory.ts | consoleTime": {
+    "message": "Консоль уақыты"
+  },
+  "panels/timeline/EventUICategory.ts | cppGc": {
+    "message": "CPP GC"
+  },
+  "panels/timeline/EventUICategory.ts | createWebsocket": {
+    "message": "WebSocket жасау"
+  },
+  "panels/timeline/EventUICategory.ts | decrypt": {
+    "message": "Шифрдан шығару"
+  },
+  "panels/timeline/EventUICategory.ts | decryptReply": {
+    "message": "Жауапты шифрдан шығару"
+  },
+  "panels/timeline/EventUICategory.ts | deserializeCodeCache": {
+    "message": "Код кэшін сериядан шығару"
+  },
+  "panels/timeline/EventUICategory.ts | destroyWebsocket": {
+    "message": "WebSocket бұзу"
+  },
+  "panels/timeline/EventUICategory.ts | digest": {
+    "message": "Дайджест"
+  },
+  "panels/timeline/EventUICategory.ts | digestReply": {
+    "message": "Дайджест жауабы"
+  },
+  "panels/timeline/EventUICategory.ts | domGc": {
+    "message": "DOM қоқысын жинау"
+  },
+  "panels/timeline/EventUICategory.ts | domcontentloadedEvent": {
+    "message": "DOMContentLoaded оқиғасы"
+  },
+  "panels/timeline/EventUICategory.ts | drawFrame": {
+    "message": "Кадр сызу"
+  },
+  "panels/timeline/EventUICategory.ts | embedderCallback": {
+    "message": "Ендірушінің кері шақыруы"
+  },
+  "panels/timeline/EventUICategory.ts | encrypt": {
+    "message": "Шифрлау"
+  },
+  "panels/timeline/EventUICategory.ts | encryptReply": {
+    "message": "Жауапты шифрлау"
+  },
+  "panels/timeline/EventUICategory.ts | evaluateModule": {
+    "message": "Модульді бағалау"
+  },
+  "panels/timeline/EventUICategory.ts | evaluateScript": {
+    "message": "Скриптіні бағалау"
+  },
+  "panels/timeline/EventUICategory.ts | event": {
+    "message": "Оқиға"
+  },
+  "panels/timeline/EventUICategory.ts | eventTiming": {
+    "message": "Оқиға уақыты"
+  },
+  "panels/timeline/EventUICategory.ts | experience": {
+    "message": "Тәжірибе"
+  },
+  "panels/timeline/EventUICategory.ts | finishLoading": {
+    "message": "Жүктеуді аяқтау"
+  },
+  "panels/timeline/EventUICategory.ts | fireIdleCallback": {
+    "message": "Күту режиміндегі кері шақыруды іске қосу"
+  },
+  "panels/timeline/EventUICategory.ts | firstContentfulPaint": {
+    "message": "Бірінші контентті бояу"
+  },
+  "panels/timeline/EventUICategory.ts | firstPaint": {
+    "message": "Бірінші сурет салу"
+  },
+  "panels/timeline/EventUICategory.ts | frameStart": {
+    "message": "Кадрды бастау"
+  },
+  "panels/timeline/EventUICategory.ts | frameStartMainThread": {
+    "message": "Кадрдың басталу уақыты (негізгі тізбек)"
+  },
+  "panels/timeline/EventUICategory.ts | frameStartedLoading": {
+    "message": "Кадр жүктеле бастады."
+  },
+  "panels/timeline/EventUICategory.ts | functionCall": {
+    "message": "Функциялық шақыру"
+  },
+  "panels/timeline/EventUICategory.ts | gcEvent": {
+    "message": "Қоқыс жинау оқиғасы"
+  },
+  "panels/timeline/EventUICategory.ts | gpu": {
+    "message": "GPU"
+  },
+  "panels/timeline/EventUICategory.ts | hitTest": {
+    "message": "Басу сынағы"
+  },
+  "panels/timeline/EventUICategory.ts | idle": {
+    "message": "Бос"
+  },
+  "panels/timeline/EventUICategory.ts | imageDecode": {
+    "message": "Кескінді декодтау"
+  },
+  "panels/timeline/EventUICategory.ts | imageResize": {
+    "message": "Суреттің өлшемін өзгерту"
+  },
+  "panels/timeline/EventUICategory.ts | installTimer": {
+    "message": "Таймер орнату"
+  },
+  "panels/timeline/EventUICategory.ts | invalidateLayout": {
+    "message": "Схеманы жарамсыз деп тану"
+  },
+  "panels/timeline/EventUICategory.ts | jsFrame": {
+    "message": "JS кадры"
+  },
+  "panels/timeline/EventUICategory.ts | largestContentfulPaint": {
+    "message": "Ең үлкен контентті бояу"
+  },
+  "panels/timeline/EventUICategory.ts | layerize": {
+    "message": "Қабаттау"
+  },
+  "panels/timeline/EventUICategory.ts | layout": {
+    "message": "Орналасуы"
+  },
+  "panels/timeline/EventUICategory.ts | layoutShift": {
+    "message": "Формат өзгерісі"
+  },
+  "panels/timeline/EventUICategory.ts | loading": {
+    "message": "Жүктеу"
+  },
+  "panels/timeline/EventUICategory.ts | majorGc": {
+    "message": "Негізгі қоқыс жинау"
+  },
+  "panels/timeline/EventUICategory.ts | minorGc": {
+    "message": "Шағын қоқыс жинау"
+  },
+  "panels/timeline/EventUICategory.ts | onloadEvent": {
+    "message": "Жүктеу оқиғасы"
+  },
+  "panels/timeline/EventUICategory.ts | optimizeCode": {
+    "message": "Оңтайландыру коды"
+  },
+  "panels/timeline/EventUICategory.ts | other": {
+    "message": "Басқа"
+  },
+  "panels/timeline/EventUICategory.ts | paint": {
+    "message": "Сурет салу"
+  },
+  "panels/timeline/EventUICategory.ts | paintImage": {
+    "message": "Сурет салу"
+  },
+  "panels/timeline/EventUICategory.ts | paintSetup": {
+    "message": "Сурет салуды реттеу"
+  },
+  "panels/timeline/EventUICategory.ts | painting": {
+    "message": "Кескіндеу"
+  },
+  "panels/timeline/EventUICategory.ts | parseAndCompile": {
+    "message": "Талдау және компиляциялау"
+  },
+  "panels/timeline/EventUICategory.ts | parseHtml": {
+    "message": "HTML тілін талдау"
+  },
+  "panels/timeline/EventUICategory.ts | parseStylesheet": {
+    "message": "Стильдер кестесін талдау"
+  },
+  "panels/timeline/EventUICategory.ts | prePaint": {
+    "message": "Сурет салуға дейінгі қадам"
+  },
+  "panels/timeline/EventUICategory.ts | profilingOverhead": {
+    "message": "Профильдеу кезіндегі уақыт шығыны"
+  },
+  "panels/timeline/EventUICategory.ts | rasterizePaint": {
+    "message": "Сурет салуды растеризациялау"
+  },
+  "panels/timeline/EventUICategory.ts | recalculateStyle": {
+    "message": "Стильді қайта есептеу"
+  },
+  "panels/timeline/EventUICategory.ts | receiveData": {
+    "message": "Деректерді алу"
+  },
+  "panels/timeline/EventUICategory.ts | receiveResponse": {
+    "message": "Жауап алу"
+  },
+  "panels/timeline/EventUICategory.ts | receiveWebsocketHandshake": {
+    "message": "WebSocket келісімін алу"
+  },
+  "panels/timeline/EventUICategory.ts | removeTimer": {
+    "message": "Таймерді өшіру"
+  },
+  "panels/timeline/EventUICategory.ts | rendering": {
+    "message": "Рендеринг"
+  },
+  "panels/timeline/EventUICategory.ts | requestAnimationFrame": {
+    "message": "Анимация кадрын сұрау"
+  },
+  "panels/timeline/EventUICategory.ts | requestIdleCallback": {
+    "message": "Күту режиміндегі кері шақыруды сұрау"
+  },
+  "panels/timeline/EventUICategory.ts | requestMainThreadFrame": {
+    "message": "Негізгі тізбек кадрын сұрау"
+  },
+  "panels/timeline/EventUICategory.ts | runMicrotasks": {
+    "message": "Микротапсырмаларды іске қосу"
+  },
+  "panels/timeline/EventUICategory.ts | scheduleStyleRecalculation": {
+    "message": "Стильді қайта есептеуді жоспарлау"
+  },
+  "panels/timeline/EventUICategory.ts | scripting": {
+    "message": "Скрипт жазу"
+  },
+  "panels/timeline/EventUICategory.ts | scroll": {
+    "message": "Айналдыру"
+  },
+  "panels/timeline/EventUICategory.ts | sendRequest": {
+    "message": "Сұрау жіберу"
+  },
+  "panels/timeline/EventUICategory.ts | sendWebsocketHandshake": {
+    "message": "WebSocket келісімін жіберу"
+  },
+  "panels/timeline/EventUICategory.ts | sign": {
+    "message": "Қолтаңба"
+  },
+  "panels/timeline/EventUICategory.ts | signReply": {
+    "message": "Жауапқа қол қою"
+  },
+  "panels/timeline/EventUICategory.ts | streamingCompileTask": {
+    "message": "Трансляцияның компиляция тапсырмасы"
+  },
+  "panels/timeline/EventUICategory.ts | streamingWasmResponse": {
+    "message": "Wasm жауабын трансляциялау"
+  },
+  "panels/timeline/EventUICategory.ts | system": {
+    "message": "Жүйе"
+  },
+  "panels/timeline/EventUICategory.ts | task": {
+    "message": "Тапсырма"
+  },
+  "panels/timeline/EventUICategory.ts | timerFired": {
+    "message": "Таймер іске қосылды"
+  },
+  "panels/timeline/EventUICategory.ts | timestamp": {
+    "message": "Уақыт белгісі"
+  },
+  "panels/timeline/EventUICategory.ts | updateLayer": {
+    "message": "Қабатты жаңарту"
+  },
+  "panels/timeline/EventUICategory.ts | updateLayerTree": {
+    "message": "Қабат тармағын жаңарту"
+  },
+  "panels/timeline/EventUICategory.ts | userTiming": {
+    "message": "Пайдаланушы өткізетін уақыт"
+  },
+  "panels/timeline/EventUICategory.ts | verify": {
+    "message": "Растау"
+  },
+  "panels/timeline/EventUICategory.ts | verifyReply": {
+    "message": "Жауапты тексеру"
+  },
+  "panels/timeline/EventUICategory.ts | waitingForNetwork": {
+    "message": "Желіге қосылмады"
+  },
+  "panels/timeline/EventUICategory.ts | wasmModuleCacheHit": {
+    "message": "Wasm модулін кэшке айналдыру"
+  },
+  "panels/timeline/EventUICategory.ts | wasmModuleCacheInvalid": {
+    "message": "Wasm модуль кэші жарамсыз."
+  },
+  "panels/timeline/EventUICategory.ts | willSendRequest": {
+    "message": "Сұрау жібереді"
+  },
+  "panels/timeline/EventUICategory.ts | xhrLoad": {
+    "message": "Жүктеу: XHR"
+  },
+  "panels/timeline/EventUICategory.ts | xhrReadyStateChange": {
+    "message": "XHR дайындық күйін өзгерту"
+  },
   "panels/timeline/EventsTimelineTreeView.ts | Dms": {
     "message": "{PH1} мс"
   },
@@ -11942,6 +12386,12 @@
   "panels/timeline/InteractionsTrackAppender.ts | interactions": {
     "message": "Өзара әрекеттестік"
   },
+  "panels/timeline/IsolateSelector.ts | empty": {
+    "message": "(бос)"
+  },
+  "panels/timeline/IsolateSelector.ts | selectJavascriptVmInstance": {
+    "message": "JavaScript VM данасын таңдау"
+  },
   "panels/timeline/LayoutShiftsTrackAppender.ts | layoutShifts": {
     "message": "Формат өзгерістері"
   },
@@ -11951,11 +12401,68 @@
   "panels/timeline/ThreadAppender.ts | anonymous": {
     "message": "(анонимді)"
   },
-  "panels/timeline/ThreadAppender.ts | thread": {
-    "message": "Жаңа қозғалтқыштағы негізгі тізбек"
+  "panels/timeline/ThreadAppender.ts | bidderWorklet": {
+    "message": "Сатып алушылар тізімі"
   },
-  "panels/timeline/TimelineController.ts | cpuProfileForATargetIsNot": {
-    "message": "Нысана үшін орталық процессор профилі қолжетімді емес."
+  "panels/timeline/ThreadAppender.ts | bidderWorkletS": {
+    "message": "Сатып алушылар тізімі — {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | dedicatedWorker": {
+    "message": "Арнаулы Worker"
+  },
+  "panels/timeline/ThreadAppender.ts | eventDispatchS": {
+    "message": "Оқиға: {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | frameS": {
+    "message": "Кадр — {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | main": {
+    "message": "Негізгі"
+  },
+  "panels/timeline/ThreadAppender.ts | mainS": {
+    "message": "Негізгі — {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | onIgnoreList": {
+    "message": "Елемеу тізімінде"
+  },
+  "panels/timeline/ThreadAppender.ts | raster": {
+    "message": "Растр"
+  },
+  "panels/timeline/ThreadAppender.ts | rasterizerThreadS": {
+    "message": "Растеризатор тізбегі: {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | sellerWorklet": {
+    "message": "Сатушылар тізімі"
+  },
+  "panels/timeline/ThreadAppender.ts | sellerWorkletS": {
+    "message": "Сатушылар тізімі — {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | threadPool": {
+    "message": "Тізбек пулы"
+  },
+  "panels/timeline/ThreadAppender.ts | threadPoolThreadS": {
+    "message": "Тізбек пулының жұмысшысы: {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | threadS": {
+    "message": "{PH1} тізбегі"
+  },
+  "panels/timeline/ThreadAppender.ts | unknownWorklet": {
+    "message": "Аукциондар тізімі"
+  },
+  "panels/timeline/ThreadAppender.ts | unknownWorkletS": {
+    "message": "Аукциондар тізімі — {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | workerS": {
+    "message": "Worker – {PH1}"
+  },
+  "panels/timeline/ThreadAppender.ts | workerSS": {
+    "message": "Worker: {PH1} — {PH2}"
+  },
+  "panels/timeline/ThreadAppender.ts | workletService": {
+    "message": "Аукциондар тізімі қызметі"
+  },
+  "panels/timeline/ThreadAppender.ts | workletServiceS": {
+    "message": "Аукциондар тізімі қызметі — {PH1}"
   },
   "panels/timeline/TimelineController.ts | tracingNotSupported": {
     "message": "Нысананың мұндай түрінде өнімділікті бақылау жазбасы пайдаланылмайды."
@@ -12000,7 +12507,7 @@
     "message": "Кадр"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | frameS": {
-    "message": "Кадр — {PH1}"
+    "message": "Кадр — {PH1}"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | frames": {
     "message": "Кадрлар"
@@ -12012,7 +12519,7 @@
     "message": "Негізгі"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | mainS": {
-    "message": "Негізгі — {PH1}"
+    "message": "Негізгі — {PH1}"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | onIgnoreList": {
     "message": "Елемеу тізімінде"
@@ -12024,7 +12531,7 @@
     "message": "Растр"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | rasterizerThreadS": {
-    "message": "Растеризатор тізбегі {PH1}"
+    "message": "Растеризатор тізбегі: {PH1}"
   },
   "panels/timeline/TimelineFlameChartDataProvider.ts | sSelfS": {
     "message": "{PH1} (өзіндік {PH2})"
@@ -12130,6 +12637,9 @@
   },
   "panels/timeline/TimelinePanel.ts | disablesJavascriptSampling": {
     "message": "JavaScript үлгілеуін өшіреді, мобильдік құрылғылармен жұмыс істегенде шығынды азайтады"
+  },
+  "panels/timeline/TimelinePanel.ts | downloadAfterError": {
+    "message": "Өңделмеген бақылау оқиғаларын жүктеп алу"
   },
   "panels/timeline/TimelinePanel.ts | dropTimelineFileOrUrlHere": {
     "message": "Хронология файлын немесе URL мекенжайын осы жерге қойыңыз"
@@ -12251,8 +12761,11 @@
   "panels/timeline/TimelineTreeView.ts | hideHeaviestStack": {
     "message": "Ең ауыр стэкті жасыру"
   },
-  "panels/timeline/TimelineTreeView.ts | javascript": {
-    "message": "JavaScript"
+  "panels/timeline/TimelineTreeView.ts | matchCase": {
+    "message": "Регистрді есепке алу"
+  },
+  "panels/timeline/TimelineTreeView.ts | matchWholeWord": {
+    "message": "Тұтас сөзді сәйкестендіру"
   },
   "panels/timeline/TimelineTreeView.ts | noGrouping": {
     "message": "Топтаусыз"
@@ -12286,6 +12799,9 @@
   },
   "panels/timeline/TimelineTreeView.ts | unattributed": {
     "message": "[төлсипатталмаған]"
+  },
+  "panels/timeline/TimelineTreeView.ts | useRegularExpression": {
+    "message": "Тұрақты өрнекті қолдану"
   },
   "panels/timeline/TimelineTreeView.ts | vRuntime": {
     "message": "[V8 жұмыс уақыты]"
@@ -12324,10 +12840,10 @@
     "message": "Анимация кадры сұралды"
   },
   "panels/timeline/TimelineUIUtils.ts | async": {
-    "message": "Асинхронды"
+    "message": "Бейсинхронды"
   },
   "panels/timeline/TimelineUIUtils.ts | asyncTask": {
-    "message": "Асинхронды тапсырма"
+    "message": "Бейсинхрондау тапсырмасы"
   },
   "panels/timeline/TimelineUIUtils.ts | cacheModule": {
     "message": "Модуль кодын кэштеу"
@@ -12351,28 +12867,13 @@
     "message": "Анимация кадрынан бас тарту"
   },
   "panels/timeline/TimelineUIUtils.ts | cancelIdleCallback": {
-    "message": "Бос қоңыраудан бас тарту"
-  },
-  "panels/timeline/TimelineUIUtils.ts | changedAttributeToSs": {
-    "message": "(төлсипат \"{PH1}\"{PH2} болып өзгертілді)"
-  },
-  "panels/timeline/TimelineUIUtils.ts | changedClassToSs": {
-    "message": "(класс \"{PH1}\"{PH2} болып өзгертілді)"
-  },
-  "panels/timeline/TimelineUIUtils.ts | changedIdToSs": {
-    "message": "(идентификатор \"{PH1}\"{PH2} болып өзгерді)"
-  },
-  "panels/timeline/TimelineUIUtils.ts | changedPesudoToSs": {
-    "message": "(жалған элемент \"{PH1}\"{PH2} болып өзгерді)"
-  },
-  "panels/timeline/TimelineUIUtils.ts | changedSs": {
-    "message": "(\"{PH1}\"{PH2} өзгертілді)"
+    "message": "Күту режиміндегі кері шақырудан бас тарту"
   },
   "panels/timeline/TimelineUIUtils.ts | collected": {
     "message": "Жиналды"
   },
   "panels/timeline/TimelineUIUtils.ts | commit": {
-    "message": "Түрлендіру"
+    "message": "Тапсыру"
   },
   "panels/timeline/TimelineUIUtils.ts | compilationCacheKind": {
     "message": "Компиляция кэшінің түрі"
@@ -12390,13 +12891,13 @@
     "message": "Компиляциялау коды"
   },
   "panels/timeline/TimelineUIUtils.ts | compileModule": {
-    "message": "Модуль құрастыру"
+    "message": "Модуль компиляциялау"
   },
   "panels/timeline/TimelineUIUtils.ts | compileScript": {
-    "message": "Скрипт құрастыру"
+    "message": "Скрипт компиляциялау"
   },
   "panels/timeline/TimelineUIUtils.ts | compiledWasmModule": {
-    "message": "Жинақталған Wasm модулі"
+    "message": "Компиляцияланған Wasm модулі"
   },
   "panels/timeline/TimelineUIUtils.ts | compositeLayers": {
     "message": "Күрделі қабаттар"
@@ -12409,9 +12910,6 @@
   },
   "panels/timeline/TimelineUIUtils.ts | consumedCacheSize": {
     "message": "Қолданылған кэш өлшемі"
-  },
-  "panels/timeline/TimelineUIUtils.ts | cpuTime": {
-    "message": "Орталық процессор уақыты"
   },
   "panels/timeline/TimelineUIUtils.ts | createWebsocket": {
     "message": "WebSocket жасау"
@@ -12479,9 +12977,6 @@
   "panels/timeline/TimelineUIUtils.ts | emptyPlaceholder": {
     "message": "{PH1}"
   },
-  "panels/timeline/TimelineUIUtils.ts | emptyPlaceholderColon": {
-    "message": ": {PH1}"
-  },
   "panels/timeline/TimelineUIUtils.ts | encodedData": {
     "message": "Кодталған дерек"
   },
@@ -12492,7 +12987,7 @@
     "message": "Жауапты шифрлау"
   },
   "panels/timeline/TimelineUIUtils.ts | evaluateModule": {
-    "message": "Модульді эмуляциялау"
+    "message": "Модульді бағалау"
   },
   "panels/timeline/TimelineUIUtils.ts | evaluateScript": {
     "message": "Скриптіні бағалау"
@@ -12501,7 +12996,7 @@
     "message": "Оқиға"
   },
   "panels/timeline/TimelineUIUtils.ts | eventTiming": {
-    "message": "Іс-шара уақыты"
+    "message": "Оқиға уақыты"
   },
   "panels/timeline/TimelineUIUtils.ts | evolvedClsLink": {
     "message": "жетілдірілген"
@@ -12516,7 +13011,7 @@
     "message": "Жүктеуді аяқтау"
   },
   "panels/timeline/TimelineUIUtils.ts | fireIdleCallback": {
-    "message": "Бос қоңырауды іске қосу"
+    "message": "Күту режиміндегі кері шақыруды іске қосу"
   },
   "panels/timeline/TimelineUIUtils.ts | firstContentfulPaint": {
     "message": "Бірінші контентті бояу"
@@ -12528,10 +13023,7 @@
     "message": "Бірінші схеманы жарамсыз деп тану"
   },
   "panels/timeline/TimelineUIUtils.ts | firstPaint": {
-    "message": "Бірінші бояу"
-  },
-  "panels/timeline/TimelineUIUtils.ts | forcedReflow": {
-    "message": "Күштеп қайта жүргізу"
+    "message": "Бірінші сурет салу"
   },
   "panels/timeline/TimelineUIUtils.ts | frame": {
     "message": "Кадр"
@@ -12540,7 +13032,7 @@
     "message": "Кадрды бастау"
   },
   "panels/timeline/TimelineUIUtils.ts | frameStartMainThread": {
-    "message": "Кадрдың басталуы (негізгі тізбек)"
+    "message": "Кадрдың басталу уақыты (негізгі тізбек)"
   },
   "panels/timeline/TimelineUIUtils.ts | frameStartedLoading": {
     "message": "Кадр жүктеле бастады."
@@ -12549,10 +13041,10 @@
     "message": "Функция"
   },
   "panels/timeline/TimelineUIUtils.ts | functionCall": {
-    "message": "Функциялық қоңырау"
+    "message": "Функциялық шақыру"
   },
   "panels/timeline/TimelineUIUtils.ts | gcEvent": {
-    "message": "Қоқыс жинау іс-шарасы"
+    "message": "Қоқыс жинау оқиғасы"
   },
   "panels/timeline/TimelineUIUtils.ts | gpu": {
     "message": "GPU"
@@ -12560,26 +13052,20 @@
   "panels/timeline/TimelineUIUtils.ts | hadRecentInput": {
     "message": "Жақында енгізді."
   },
-  "panels/timeline/TimelineUIUtils.ts | handlerTookS": {
-    "message": "Өңдегішке {PH1} кетеді"
-  },
   "panels/timeline/TimelineUIUtils.ts | hitTest": {
-    "message": "Тінтуірдің басылғанын анықтау"
+    "message": "Басу сынағы"
   },
   "panels/timeline/TimelineUIUtils.ts | idle": {
     "message": "Бос"
-  },
-  "panels/timeline/TimelineUIUtils.ts | idleCallbackExecutionExtended": {
-    "message": "Күту режимінде кері шақыру процесін орындау мерзімінен {PH1} уақытқа шегерілді."
   },
   "panels/timeline/TimelineUIUtils.ts | idleCallbackRequested": {
     "message": "Күту режиміндегі кері шақыру сұралды"
   },
   "panels/timeline/TimelineUIUtils.ts | imageDecode": {
-    "message": "Кескіннің кодын ашу"
+    "message": "Кескінді декодтау"
   },
   "panels/timeline/TimelineUIUtils.ts | imageResize": {
-    "message": "Кескіннің өлшемін өзгерту"
+    "message": "Суреттің өлшемін өзгерту"
   },
   "panels/timeline/TimelineUIUtils.ts | imageUrl": {
     "message": "Кескіннің URL сілтемесі"
@@ -12590,6 +13076,9 @@
   "panels/timeline/TimelineUIUtils.ts | initiator": {
     "message": "Бастаған"
   },
+  "panels/timeline/TimelineUIUtils.ts | inputDelay": {
+    "message": "Енгізу кідірісі"
+  },
   "panels/timeline/TimelineUIUtils.ts | installTimer": {
     "message": "Таймер орнату"
   },
@@ -12597,7 +13086,10 @@
     "message": "Идентификатор"
   },
   "panels/timeline/TimelineUIUtils.ts | invalidateLayout": {
-    "message": "Схемасын жарамсыз деп тану"
+    "message": "Схеманы жарамсыз деп тану"
+  },
+  "panels/timeline/TimelineUIUtils.ts | invalidationWithCallFrame": {
+    "message": "{PH1}, {PH2}"
   },
   "panels/timeline/TimelineUIUtils.ts | invalidations": {
     "message": "Жарамсыздықтар"
@@ -12623,9 +13115,6 @@
   "panels/timeline/TimelineUIUtils.ts | layerRoot": {
     "message": "Қабат түбірі"
   },
-  "panels/timeline/TimelineUIUtils.ts | layerTree": {
-    "message": "Қабат тармағы"
-  },
   "panels/timeline/TimelineUIUtils.ts | layerize": {
     "message": "Қабаттау"
   },
@@ -12634,9 +13123,6 @@
   },
   "panels/timeline/TimelineUIUtils.ts | layoutForced": {
     "message": "Схема іске қосылды"
-  },
-  "panels/timeline/TimelineUIUtils.ts | layoutInvalidations": {
-    "message": "Схеманы жарамсыздықтары"
   },
   "panels/timeline/TimelineUIUtils.ts | layoutRoot": {
     "message": "Схема түбірі"
@@ -12651,27 +13137,18 @@
     "message": "кэштен жүктеу"
   },
   "panels/timeline/TimelineUIUtils.ts | loading": {
-    "message": "Жүктелуде"
+    "message": "Жүктеу"
   },
   "panels/timeline/TimelineUIUtils.ts | location": {
     "message": "Орын"
   },
-  "panels/timeline/TimelineUIUtils.ts | longInteractionINP": {
-    "message": "Ұзақ әрекеттестік"
-  },
-  "panels/timeline/TimelineUIUtils.ts | longTask": {
-    "message": "Ұзын тапсырма"
-  },
   "panels/timeline/TimelineUIUtils.ts | majorGc": {
-    "message": "Негізгі GC"
+    "message": "Негізгі қоқыс жинау"
   },
   "panels/timeline/TimelineUIUtils.ts | message": {
     "message": "Хабар"
   },
   "panels/timeline/TimelineUIUtils.ts | mimeType": {
-    "message": "MIME түрі"
-  },
-  "panels/timeline/TimelineUIUtils.ts | mimeTypeCaps": {
     "message": "MIME түрі"
   },
   "panels/timeline/TimelineUIUtils.ts | minorGc": {
@@ -12695,20 +13172,11 @@
   "panels/timeline/TimelineUIUtils.ts | no": {
     "message": "Жоқ"
   },
-  "panels/timeline/TimelineUIUtils.ts | node": {
-    "message": "Түйін:"
-  },
-  "panels/timeline/TimelineUIUtils.ts | nodes": {
-    "message": "Түйіндер:"
-  },
   "panels/timeline/TimelineUIUtils.ts | nodesThatNeedLayout": {
     "message": "Форматты қажет ететін түйіндер"
   },
-  "panels/timeline/TimelineUIUtils.ts | notOptimized": {
-    "message": "Оңтайландырылмады"
-  },
   "panels/timeline/TimelineUIUtils.ts | onloadEvent": {
-    "message": "Жүктеу іс-шарасы"
+    "message": "Жүктеу оқиғасы"
   },
   "panels/timeline/TimelineUIUtils.ts | optimizeCode": {
     "message": "Оңтайландыру коды"
@@ -12716,23 +13184,20 @@
   "panels/timeline/TimelineUIUtils.ts | other": {
     "message": "Басқа"
   },
-  "panels/timeline/TimelineUIUtils.ts | otherInvalidations": {
-    "message": "Басқа жарамсыздықтар"
-  },
   "panels/timeline/TimelineUIUtils.ts | ownerElement": {
     "message": "Иенің элементі"
   },
   "panels/timeline/TimelineUIUtils.ts | paint": {
-    "message": "Бояу"
+    "message": "Сурет салу"
   },
   "panels/timeline/TimelineUIUtils.ts | paintImage": {
-    "message": "Бояу кескіні"
+    "message": "Сурет салу"
   },
   "panels/timeline/TimelineUIUtils.ts | paintProfiler": {
     "message": "Бояу профильдеушісі"
   },
   "panels/timeline/TimelineUIUtils.ts | paintSetup": {
-    "message": "Бояуды баптау"
+    "message": "Сурет салуды реттеу"
   },
   "panels/timeline/TimelineUIUtils.ts | painting": {
     "message": "Кескіндеу"
@@ -12741,10 +13206,10 @@
     "message": "Талдау"
   },
   "panels/timeline/TimelineUIUtils.ts | parseAndCompile": {
-    "message": "Талдау және құрастыру"
+    "message": "Талдау және компиляциялау"
   },
   "panels/timeline/TimelineUIUtils.ts | parseHtml": {
-    "message": "HTML протоколын талдау"
+    "message": "HTML тілін талдау"
   },
   "panels/timeline/TimelineUIUtils.ts | parseStylesheet": {
     "message": "Стильдер кестесін талдау"
@@ -12755,11 +13220,17 @@
   "panels/timeline/TimelineUIUtils.ts | prePaint": {
     "message": "Сурет салуға дейінгі қадам"
   },
+  "panels/timeline/TimelineUIUtils.ts | presentationDelay": {
+    "message": "Презентация кідірісі"
+  },
   "panels/timeline/TimelineUIUtils.ts | preview": {
     "message": "Алдын ала көру"
   },
   "panels/timeline/TimelineUIUtils.ts | priority": {
     "message": "Маңыздылығы"
+  },
+  "panels/timeline/TimelineUIUtils.ts | processingTime": {
+    "message": "Өңдеу уақыты"
   },
   "panels/timeline/TimelineUIUtils.ts | producedCacheSize": {
     "message": "Шығарылған кэш өлшемі"
@@ -12771,7 +13242,7 @@
     "message": "Аралық"
   },
   "panels/timeline/TimelineUIUtils.ts | rasterizePaint": {
-    "message": "Бояуды растеризациялау"
+    "message": "Сурет салуды растеризациялау"
   },
   "panels/timeline/TimelineUIUtils.ts | recalculateStyle": {
     "message": "Стильді қайта есептеу"
@@ -12787,9 +13258,6 @@
   },
   "panels/timeline/TimelineUIUtils.ts | receiveWebsocketHandshake": {
     "message": "WebSocket келісімін алу"
-  },
-  "panels/timeline/TimelineUIUtils.ts | recurringHandlerTookS": {
-    "message": "Қайталанатын өңдегішке {PH1} кетті"
   },
   "panels/timeline/TimelineUIUtils.ts | relatedNode": {
     "message": "Ұқсас түйін"
@@ -12807,7 +13275,7 @@
     "message": "Анимация кадрын сұрау"
   },
   "panels/timeline/TimelineUIUtils.ts | requestIdleCallback": {
-    "message": "Бос қоңырауды сұрау"
+    "message": "Күту режиміндегі кері шақыруды сұрау"
   },
   "panels/timeline/TimelineUIUtils.ts | requestMainThreadFrame": {
     "message": "Негізгі тізбек кадрын сұрау"
@@ -12815,29 +13283,17 @@
   "panels/timeline/TimelineUIUtils.ts | requestMethod": {
     "message": "Сұрау әдісі"
   },
-  "panels/timeline/TimelineUIUtils.ts | resource": {
-    "message": "Ресурс"
-  },
   "panels/timeline/TimelineUIUtils.ts | reveal": {
     "message": "Ашу"
   },
   "panels/timeline/TimelineUIUtils.ts | runMicrotasks": {
     "message": "Микротапсырмаларды іске қосу"
   },
-  "panels/timeline/TimelineUIUtils.ts | sAndS": {
-    "message": "{PH1} және {PH2}"
-  },
-  "panels/timeline/TimelineUIUtils.ts | sAndSOther": {
-    "message": "{PH1}, {PH2} және тағы 1"
-  },
   "panels/timeline/TimelineUIUtils.ts | sAtS": {
     "message": "{PH2} уақыттағы {PH1}"
   },
   "panels/timeline/TimelineUIUtils.ts | sAtSParentheses": {
     "message": "{PH1} ({PH2} мәнінде)"
-  },
-  "panels/timeline/TimelineUIUtils.ts | sBytes": {
-    "message": "{n,plural, =1{# байт}other{# байт}}"
   },
   "panels/timeline/TimelineUIUtils.ts | sCLSInformation": {
     "message": "{PH1} пайдаланушыға қолайсыздық тудыруы мүмкін. Жақында {PH2} пайдаланылды."
@@ -12848,32 +13304,17 @@
   "panels/timeline/TimelineUIUtils.ts | sCollected": {
     "message": "{PH1} жиналды"
   },
-  "panels/timeline/TimelineUIUtils.ts | sForS": {
-    "message": "{PH1} {PH2} бойы"
-  },
-  "panels/timeline/TimelineUIUtils.ts | sIsALikelyPerformanceBottleneck": {
-    "message": "{PH1} жұмыстағы қиын тұс болуы мүмкін."
-  },
-  "panels/timeline/TimelineUIUtils.ts | sIsLikelyPoorPageResponsiveness": {
-    "message": "{PH1} беттің нашар жауап беретінін көрсетеді."
-  },
   "panels/timeline/TimelineUIUtils.ts | sOfS": {
     "message": "{PH2}/{PH1}"
   },
   "panels/timeline/TimelineUIUtils.ts | sS": {
     "message": "{PH1}: {PH2}"
   },
-  "panels/timeline/TimelineUIUtils.ts | sSAndSOthers": {
-    "message": "{PH1}, {PH2} және тағы {PH3}"
-  },
   "panels/timeline/TimelineUIUtils.ts | sSCurlyBrackets": {
     "message": "({PH1}, {PH2})"
   },
   "panels/timeline/TimelineUIUtils.ts | sSDimensions": {
     "message": "{PH1} × {PH2}"
-  },
-  "panels/timeline/TimelineUIUtils.ts | sSDot": {
-    "message": "{PH1}. {PH2}"
   },
   "panels/timeline/TimelineUIUtils.ts | sSSquareBrackets": {
     "message": "{PH1} [{PH2}…]"
@@ -12883,9 +13324,6 @@
   },
   "panels/timeline/TimelineUIUtils.ts | sSs": {
     "message": "{PH1} [{PH2}…{PH3}]"
-  },
-  "panels/timeline/TimelineUIUtils.ts | sTookS": {
-    "message": "{PH1} үшін {PH2} кетті."
   },
   "panels/timeline/TimelineUIUtils.ts | scheduleStyleRecalculation": {
     "message": "Стильді қайта есептеуді жоспарлау"
@@ -12903,7 +13341,7 @@
     "message": "скрипт жарамды емес"
   },
   "panels/timeline/TimelineUIUtils.ts | scripting": {
-    "message": "Скрипт жазылуда"
+    "message": "Скрипт жазу"
   },
   "panels/timeline/TimelineUIUtils.ts | scroll": {
     "message": "Айналдыру"
@@ -12917,14 +13355,11 @@
   "panels/timeline/TimelineUIUtils.ts | sendWebsocketHandshake": {
     "message": "WebSocket келісімін жіберу"
   },
-  "panels/timeline/TimelineUIUtils.ts | show": {
-    "message": "Көрсету"
-  },
   "panels/timeline/TimelineUIUtils.ts | sign": {
-    "message": "Белгі"
+    "message": "Қолтаңба"
   },
   "panels/timeline/TimelineUIUtils.ts | signReply": {
-    "message": "Белгі жауабы"
+    "message": "Жауапқа қол қою"
   },
   "panels/timeline/TimelineUIUtils.ts | size": {
     "message": "Өлшем"
@@ -12932,26 +13367,17 @@
   "panels/timeline/TimelineUIUtils.ts | stackTrace": {
     "message": "Стэкті трассалау"
   },
-  "panels/timeline/TimelineUIUtils.ts | stackTraceColon": {
-    "message": "Стэкті трассалау:"
-  },
   "panels/timeline/TimelineUIUtils.ts | state": {
     "message": "Күйі"
-  },
-  "panels/timeline/TimelineUIUtils.ts | statusCode": {
-    "message": "Күй коды"
   },
   "panels/timeline/TimelineUIUtils.ts | streamed": {
     "message": "Трансляцияланған"
   },
   "panels/timeline/TimelineUIUtils.ts | streamingCompileTask": {
-    "message": "Күрделі тапсырманы көрсету"
+    "message": "Трансляцияның компиляция тапсырмасы"
   },
   "panels/timeline/TimelineUIUtils.ts | streamingWasmResponse": {
     "message": "Wasm жауабын трансляциялау"
-  },
-  "panels/timeline/TimelineUIUtils.ts | styleInvalidations": {
-    "message": "Стиль жарамсыздықтары"
   },
   "panels/timeline/TimelineUIUtils.ts | stylesheetUrl": {
     "message": "Стильдер кестесінің URL мекенжайы"
@@ -12986,12 +13412,6 @@
   "panels/timeline/TimelineUIUtils.ts | type": {
     "message": "Tүрі"
   },
-  "panels/timeline/TimelineUIUtils.ts | unknown": {
-    "message": "белгісіз"
-  },
-  "panels/timeline/TimelineUIUtils.ts | unknownCause": {
-    "message": "Себебі белгісіз"
-  },
   "panels/timeline/TimelineUIUtils.ts | updateLayer": {
     "message": "Қабатты жаңарту"
   },
@@ -13011,19 +13431,16 @@
     "message": "Жауапты тексеру"
   },
   "panels/timeline/TimelineUIUtils.ts | waitingForNetwork": {
-    "message": "Желі күтілуде"
+    "message": "Желіге қосылмады"
   },
   "panels/timeline/TimelineUIUtils.ts | warning": {
     "message": "Ескерту"
   },
   "panels/timeline/TimelineUIUtils.ts | wasmModuleCacheHit": {
-    "message": "Wasm модулі кэшін басу"
+    "message": "Wasm модулін кэшке айналдыру"
   },
   "panels/timeline/TimelineUIUtils.ts | wasmModuleCacheInvalid": {
     "message": "Wasm модуль кэші жарамсыз."
-  },
-  "panels/timeline/TimelineUIUtils.ts | websocketProtocol": {
-    "message": "WebSocket протоколы"
   },
   "panels/timeline/TimelineUIUtils.ts | willSendRequest": {
     "message": "Сұрау жібереді"
@@ -13063,6 +13480,39 @@
   },
   "panels/timeline/UIDevtoolsUtils.ts | system": {
     "message": "Жүйе"
+  },
+  "panels/timeline/components/DetailsView.ts | forcedReflow": {
+    "message": "Күштеп қайта жүргізу"
+  },
+  "panels/timeline/components/DetailsView.ts | idleCallbackExecutionExtended": {
+    "message": "Күту режимінде кері шақыру процесін орындау мерзімінен {PH1} уақытқа шегерілді."
+  },
+  "panels/timeline/components/DetailsView.ts | longInteractionINP": {
+    "message": "Ұзақ әрекеттестік"
+  },
+  "panels/timeline/components/DetailsView.ts | longTask": {
+    "message": "Ұзын тапсырма"
+  },
+  "panels/timeline/components/DetailsView.ts | sIsALikelyPerformanceBottleneck": {
+    "message": "{PH1} жұмыстағы қиын тұс болуы мүмкін."
+  },
+  "panels/timeline/components/DetailsView.ts | sIsLikelyPoorPageResponsiveness": {
+    "message": "{PH1} беттің нашар жауап беретінін көрсетеді."
+  },
+  "panels/timeline/components/DetailsView.ts | sTookS": {
+    "message": "{PH1} үшін {PH2} кетті."
+  },
+  "panels/timeline/components/DetailsView.ts | websocketProtocol": {
+    "message": "WebSocket протоколы"
+  },
+  "panels/timeline/components/InteractionBreakdown.ts | inputDelay": {
+    "message": "Енгізу кідірісі"
+  },
+  "panels/timeline/components/InteractionBreakdown.ts | presentationDelay": {
+    "message": "Презентация кідірісі"
+  },
+  "panels/timeline/components/InteractionBreakdown.ts | processingTime": {
+    "message": "Өңдеу уақыты"
   },
   "panels/timeline/timeline-meta.ts | hideChromeFrameInLayersView": {
     "message": "Қабаттар көрінісінде chrome кадрын жасыру"
@@ -13174,6 +13624,9 @@
   },
   "panels/webauthn/WebauthnPane.ts | enableVirtualAuthenticator": {
     "message": "Виртуалдық аутентификатор ортасын қосу"
+  },
+  "panels/webauthn/WebauthnPane.ts | enterNewName": {
+    "message": "Жаңа атауды енгізіңіз"
   },
   "panels/webauthn/WebauthnPane.ts | export": {
     "message": "Экспорттау"
@@ -13319,71 +13772,11 @@
   "ui/components/issue_counter/IssueLinkIcon.ts | issueUnavailable": {
     "message": "Ақау қазір қолжетімсіз"
   },
-  "ui/components/linear_memory_inspector/LinearMemoryHighlightChipList.ts | deleteHighlight": {
-    "message": "Осы жадты ерекшелеуді тоқтату"
+  "ui/components/markdown_view/CodeBlock.ts | copied": {
+    "message": "Буферге көшірілді"
   },
-  "ui/components/linear_memory_inspector/LinearMemoryHighlightChipList.ts | jumpToAddress": {
-    "message": "Осы жадқа өту"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryInspector.ts | addressHasToBeANumberBetweenSAnd": {
-    "message": "Мекенжай {PH1} және {PH2} аралығындағы сан болуы керек"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryInspectorController.ts | couldNotOpenLinearMemory": {
-    "message": "Сызықтық жад инспекторы ашылмады: буфер табылмады."
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryInspectorPane.ts | noOpenInspections": {
-    "message": "Ашық тексерулер жоқ"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryNavigator.ts | enterAddress": {
-    "message": "Мекенжайды енгізу"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryNavigator.ts | goBackInAddressHistory": {
-    "message": "Мекенжай тарихына оралу"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryNavigator.ts | goForwardInAddressHistory": {
-    "message": "Мекенжай тарихында алға жүріңіз."
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryNavigator.ts | nextPage": {
-    "message": "Келесі бет"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryNavigator.ts | previousPage": {
-    "message": "Алдыңғы бет"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryNavigator.ts | refresh": {
-    "message": "Жаңарту"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryValueInterpreter.ts | changeEndianness": {
-    "message": "\"Endianness\" мәнін өзгерту"
-  },
-  "ui/components/linear_memory_inspector/LinearMemoryValueInterpreter.ts | toggleValueTypeSettings": {
-    "message": "Мән түрі параметрлерін қосу/өшіру"
-  },
-  "ui/components/linear_memory_inspector/ValueInterpreterDisplay.ts | addressOutOfRange": {
-    "message": "Мекенжай жад ауқымынан тыс"
-  },
-  "ui/components/linear_memory_inspector/ValueInterpreterDisplay.ts | changeValueTypeMode": {
-    "message": "Режимді өзгерту"
-  },
-  "ui/components/linear_memory_inspector/ValueInterpreterDisplay.ts | jumpToPointer": {
-    "message": "Мекенжайға өту"
-  },
-  "ui/components/linear_memory_inspector/ValueInterpreterDisplay.ts | signedValue": {
-    "message": "Signed мән"
-  },
-  "ui/components/linear_memory_inspector/ValueInterpreterDisplay.ts | unsignedValue": {
-    "message": "Unsigned мән"
-  },
-  "ui/components/linear_memory_inspector/ValueInterpreterDisplayUtils.ts | notApplicable": {
-    "message": "Қолданылмайды"
-  },
-  "ui/components/linear_memory_inspector/ValueInterpreterSettings.ts | otherGroup": {
-    "message": "Басқа"
-  },
-  "ui/components/linear_memory_inspector/linear_memory_inspector-meta.ts | memoryInspector": {
-    "message": "Жад тексеруші"
-  },
-  "ui/components/linear_memory_inspector/linear_memory_inspector-meta.ts | showMemoryInspector": {
-    "message": "Жадты тексеру құралын көрсету"
+  "ui/components/markdown_view/CodeBlock.ts | copy": {
+    "message": "Кодты көшіру"
   },
   "ui/components/panel_feedback/FeedbackButton.ts | feedback": {
     "message": "Пікір"
@@ -13436,6 +13829,9 @@
   "ui/legacy/ActionRegistration.ts | background_services": {
     "message": "Фондық қызметтер"
   },
+  "ui/legacy/ActionRegistration.ts | changes": {
+    "message": "Өзгерістер"
+  },
   "ui/legacy/ActionRegistration.ts | console": {
     "message": "Консоль"
   },
@@ -13474,6 +13870,9 @@
   },
   "ui/legacy/ActionRegistration.ts | performance": {
     "message": "Өнімділік"
+  },
+  "ui/legacy/ActionRegistration.ts | recorder": {
+    "message": "Диктофон"
   },
   "ui/legacy/ActionRegistration.ts | rendering": {
     "message": "Рендеринг"
@@ -13589,11 +13988,17 @@
   "ui/legacy/ListWidget.ts | cancelString": {
     "message": "Бас тарту"
   },
+  "ui/legacy/ListWidget.ts | changesSaved": {
+    "message": "Элементке енгізілген өзгерістер сақталды"
+  },
   "ui/legacy/ListWidget.ts | editString": {
     "message": "Өзгерту"
   },
   "ui/legacy/ListWidget.ts | removeString": {
     "message": "Өшіру"
+  },
+  "ui/legacy/ListWidget.ts | removedItem": {
+    "message": "Элемент өшірілді"
   },
   "ui/legacy/ListWidget.ts | saveString": {
     "message": "Сақтау"
@@ -14061,7 +14466,7 @@
     "message": "Сипат жоқ"
   },
   "ui/legacy/components/object_ui/ObjectPropertiesSection.ts | revealInMemoryInpector": {
-    "message": "\"Жад инспекторы\" панелінде көрсету"
+    "message": "Жад тексеруші панелінде көрсету"
   },
   "ui/legacy/components/object_ui/ObjectPropertiesSection.ts | showAllD": {
     "message": "Барлық {PH1} ұсынысты көрсету"
@@ -14107,6 +14512,18 @@
   },
   "ui/legacy/components/perf_ui/FlameChart.ts | flameChart": {
     "message": "Отты диаграмма"
+  },
+  "ui/legacy/components/perf_ui/FlameChart.ts | hideChildren": {
+    "message": "Туынды элементті жасыру"
+  },
+  "ui/legacy/components/perf_ui/FlameChart.ts | hideFunction": {
+    "message": "Функцияны жасыру"
+  },
+  "ui/legacy/components/perf_ui/FlameChart.ts | hideRepeatingChildren": {
+    "message": "Қайталанатын туынды элементті жасыру"
+  },
+  "ui/legacy/components/perf_ui/FlameChart.ts | resetTrace": {
+    "message": "Трассаны бастапқы күйге қайтару"
   },
   "ui/legacy/components/perf_ui/FlameChart.ts | sCollapsed": {
     "message": "{PH1} жиналды"
@@ -14192,6 +14609,9 @@
   "ui/legacy/components/quick_open/FilteredListWidget.ts | quickOpenPrompt": {
     "message": "Хабарды жылдам ашу"
   },
+  "ui/legacy/components/quick_open/FilteredListWidget.ts | sItemSOfS": {
+    "message": "{PH1}, {PH2}/{PH3} элемент"
+  },
   "ui/legacy/components/quick_open/QuickOpen.ts | typeToSeeAvailableCommands": {
     "message": "Қолжетімді пәрмендерді көру үшін \"?\" белгісін теріңіз"
   },
@@ -14243,8 +14663,17 @@
   "ui/legacy/components/source_frame/ResourceSourceFrame.ts | find": {
     "message": "Табу"
   },
+  "ui/legacy/components/source_frame/SourceFrame.ts | allow": {
+    "message": "Рұқсат беру"
+  },
+  "ui/legacy/components/source_frame/SourceFrame.ts | allowPasting": {
+    "message": "қоюға рұқсат беру"
+  },
   "ui/legacy/components/source_frame/SourceFrame.ts | bytecodePositionXs": {
     "message": "Байт кодының орны 0x{PH1}"
+  },
+  "ui/legacy/components/source_frame/SourceFrame.ts | cancel": {
+    "message": "Бас тарту"
   },
   "ui/legacy/components/source_frame/SourceFrame.ts | dCharactersSelected": {
     "message": "{PH1} таңба таңдалды"
@@ -14254,6 +14683,12 @@
   },
   "ui/legacy/components/source_frame/SourceFrame.ts | dSelectionRegions": {
     "message": "{PH1} таңдау аймағы"
+  },
+  "ui/legacy/components/source_frame/SourceFrame.ts | doNotPaste": {
+    "message": "Өзіңіз түсінбеген немесе тексермеген кодты әзірлеуші құралдарына қоймаңыз. Бұл — шабуылдаушылардың жеке басыңызға тиесілі деректерді ұрлауына немесе компьютеріңізді басқаруына мүмкіндік беруі ықтимал. Қоюға рұқсат беру үшін төменде ''{PH1}'' деп теріңіз."
+  },
+  "ui/legacy/components/source_frame/SourceFrame.ts | doYouTrustThisCode": {
+    "message": "Бұл кодқа сенесіз бе?"
   },
   "ui/legacy/components/source_frame/SourceFrame.ts | lineSColumnS": {
     "message": "{PH1}-жол, {PH2}-баған"
@@ -14266,6 +14701,9 @@
   },
   "ui/legacy/components/source_frame/SourceFrame.ts | source": {
     "message": "Дереккөз"
+  },
+  "ui/legacy/components/source_frame/SourceFrame.ts | typeAllowPasting": {
+    "message": "\"{PH1}\" деп теріңіз"
   },
   "ui/legacy/components/source_frame/XMLView.ts | find": {
     "message": "Табу"

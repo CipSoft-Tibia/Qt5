@@ -1,6 +1,6 @@
 """Build definitions and rules for XNNPACK."""
 
-load(":emscripten.bzl", "xnnpack_emscripten_benchmark_linkopts", "xnnpack_emscripten_deps", "xnnpack_emscripten_minimal_linkopts", "xnnpack_emscripten_test_linkopts")
+load("//:emscripten.bzl", "xnnpack_emscripten_benchmark_linkopts", "xnnpack_emscripten_deps", "xnnpack_emscripten_minimal_linkopts", "xnnpack_emscripten_test_linkopts")
 
 def xnnpack_visibility():
     """Visibility of :XNNPACK target.
@@ -68,6 +68,7 @@ def xnnpack_cc_library(
         wasm_srcs = [],
         wasmsimd_srcs = [],
         wasmrelaxedsimd_srcs = [],
+        linkopts = [],
         copts = [],
         gcc_copts = [],
         msvc_copts = [],
@@ -87,7 +88,7 @@ def xnnpack_cc_library(
         defines = [],
         includes = [],
         deps = [],
-        visibility = [],
+        visibility = [":__subpackages__"],
         testonly = False):
     """C/C++/assembly library with architecture-specific configuration.
 
@@ -139,55 +140,56 @@ def xnnpack_cc_library(
     native.cc_library(
         name = name,
         srcs = srcs + select({
-            ":aarch32": aarch32_srcs,
-            ":aarch64": aarch64_srcs,
-            ":riscv": riscv_srcs,
-            ":x86": x86_srcs,
-            ":emscripten_wasm": wasm_srcs,
-            ":emscripten_wasmsimd": wasmsimd_srcs,
-            ":emscripten_wasmrelaxedsimd": wasmrelaxedsimd_srcs,
+            "//build_config:aarch32": aarch32_srcs,
+            "//build_config:aarch64": aarch64_srcs,
+            "//build_config:riscv": riscv_srcs,
+            "//build_config:x86": x86_srcs,
+            "//build_config:emscripten_wasm": wasm_srcs,
+            "//build_config:emscripten_wasmsimd": wasmsimd_srcs,
+            "//build_config:emscripten_wasmrelaxedsimd": wasmrelaxedsimd_srcs,
             "//conditions:default": [],
         }),
         copts = [
             "-Iinclude",
             "-Isrc",
         ] + copts + select({
-            ":linux_k8": gcc_x86_copts,
-            ":linux_arm": aarch32_copts,
-            ":linux_armeabi": aarch32_copts,
-            ":linux_armhf": aarch32_copts,
-            ":linux_armv7a": aarch32_copts,
-            ":linux_arm64": aarch64_copts,
-            ":macos_x86_64": gcc_x86_copts,
-            ":macos_arm64": aarch64_copts,
-            ":windows_x86_64_clang": ["/clang:" + opt for opt in gcc_x86_copts],
-            ":windows_x86_64_mingw": mingw_copts + gcc_x86_copts,
-            ":windows_x86_64_msys": msys_copts + gcc_x86_copts,
-            ":windows_x86_64": msvc_x86_64_copts,
-            ":android_armv7": aarch32_copts,
-            ":android_arm64": aarch64_copts,
-            ":android_x86": gcc_x86_copts,
-            ":android_x86_64": gcc_x86_copts,
-            ":ios_arm64": aarch64_copts,
-            ":ios_arm64e": aarch64_copts,
-            ":ios_sim_arm64": aarch64_copts,
-            ":ios_x86_64": gcc_x86_copts,
-            ":watchos_arm64_32": aarch64_copts,
-            ":watchos_x86_64": gcc_x86_copts,
-            ":tvos_arm64": aarch64_copts,
-            ":tvos_x86_64": gcc_x86_copts,
-            ":emscripten_wasm": wasm_copts,
-            ":emscripten_wasmsimd": wasmsimd_copts,
-            ":emscripten_wasmrelaxedsimd": wasmrelaxedsimd_copts,
+            "//build_config:linux_k8": gcc_x86_copts,
+            "//build_config:linux_arm": aarch32_copts,
+            "//build_config:linux_armeabi": aarch32_copts,
+            "//build_config:linux_armhf": aarch32_copts,
+            "//build_config:linux_armv7a": aarch32_copts,
+            "//build_config:linux_arm64": aarch64_copts,
+            "//build_config:macos_x86_64": gcc_x86_copts,
+            "//build_config:macos_x86_64_legacy": gcc_x86_copts,
+            "//build_config:macos_arm64": aarch64_copts,
+            "//build_config:windows_x86_64_clang": ["/clang:" + opt for opt in gcc_x86_copts],
+            "//build_config:windows_x86_64_mingw": mingw_copts + gcc_x86_copts,
+            "//build_config:windows_x86_64_msys": msys_copts + gcc_x86_copts,
+            "//build_config:windows_x86_64": msvc_x86_64_copts,
+            "//build_config:android_armv7": aarch32_copts,
+            "//build_config:android_arm64": aarch64_copts,
+            "//build_config:android_x86": gcc_x86_copts,
+            "//build_config:android_x86_64": gcc_x86_copts,
+            "//build_config:ios_arm64": aarch64_copts,
+            "//build_config:ios_arm64e": aarch64_copts,
+            "//build_config:ios_sim_arm64": aarch64_copts,
+            "//build_config:ios_x86_64": gcc_x86_copts,
+            "//build_config:watchos_arm64_32": aarch64_copts,
+            "//build_config:watchos_x86_64": gcc_x86_copts,
+            "//build_config:tvos_arm64": aarch64_copts,
+            "//build_config:tvos_x86_64": gcc_x86_copts,
+            "//build_config:emscripten_wasm": wasm_copts,
+            "//build_config:emscripten_wasmsimd": wasmsimd_copts,
+            "//build_config:emscripten_wasmrelaxedsimd": wasmrelaxedsimd_copts,
             "//conditions:default": [],
         }) + select({
-            ":windows_x86_64_clang": ["/clang:" + opt for opt in gcc_copts],
-            ":windows_x86_64_mingw": gcc_copts,
-            ":windows_x86_64_msys": gcc_copts,
-            ":windows_x86_64": msvc_copts,
+            "//build_config:windows_x86_64_clang": ["/clang:" + opt for opt in gcc_copts],
+            "//build_config:windows_x86_64_mingw": gcc_copts,
+            "//build_config:windows_x86_64_msys": gcc_copts,
+            "//build_config:windows_x86_64": msvc_copts,
             "//conditions:default": gcc_copts,
         }) + select({
-            ":optimized_build": optimized_copts,
+            "//:optimized_build": optimized_copts,
             "//conditions:default": [],
         }),
         defines = defines,
@@ -195,13 +197,13 @@ def xnnpack_cc_library(
         includes = ["include", "src"] + includes,
         linkstatic = True,
         linkopts = select({
-            ":linux_k8": ["-lpthread"],
-            ":linux_arm": ["-lpthread"],
-            ":linux_armeabi": ["-lpthread"],
-            ":linux_armhf": ["-lpthread"],
-            ":linux_armv7a": ["-lpthread"],
-            ":linux_arm64": ["-lpthread"],
-            ":android": ["-lm"],
+            "//build_config:linux_k8": ["-lpthread"],
+            "//build_config:linux_arm": ["-lpthread"],
+            "//build_config:linux_armeabi": ["-lpthread"],
+            "//build_config:linux_armhf": ["-lpthread"],
+            "//build_config:linux_armv7a": ["-lpthread"],
+            "//build_config:linux_arm64": ["-lpthread"],
+            "//build_config:android": ["-lm"],
             "//conditions:default": [],
         }),
         textual_hdrs = hdrs,
@@ -242,19 +244,20 @@ def xnnpack_aggregate_library(
         name = name,
         linkstatic = True,
         deps = generic_deps + select({
-            ":aarch32": aarch32_deps,
-            ":aarch64": aarch64_deps,
-            ":x86": x86_deps,
-            ":emscripten_wasm": wasm_deps,
-            ":emscripten_wasmsimd": wasmsimd_deps,
-            ":emscripten_wasmrelaxedsimd": wasmrelaxedsimd_deps,
-            ":riscv": riscv_deps,
+            "//build_config:aarch32": aarch32_deps,
+            "//build_config:aarch64": aarch64_deps,
+            "//build_config:x86": x86_deps,
+            "//build_config:emscripten_wasm": wasm_deps,
+            "//build_config:emscripten_wasmsimd": wasmsimd_deps,
+            "//build_config:emscripten_wasmrelaxedsimd": wasmrelaxedsimd_deps,
+            "//build_config:riscv": riscv_deps,
         }),
         defines = defines,
         compatible_with = compatible_with,
+        visibility = ["//:__subpackages__"],
     )
 
-def xnnpack_unit_test(name, srcs, copts = [], mingw_copts = [], msys_copts = [], deps = [], tags = [], automatic = True, timeout = "short", shard_count = 1):
+def xnnpack_unit_test(name, srcs, copts = [], mingw_copts = [], msys_copts = [], deps = [], tags = [], linkopts = [], automatic = True, timeout = "short", shard_count = 1):
     """Unit test binary based on Google Test.
 
     Args:
@@ -268,6 +271,7 @@ def xnnpack_unit_test(name, srcs, copts = [], mingw_copts = [], msys_copts = [],
       deps: The list of additional libraries to be linked. Google Test library
             (with main() function) is always added as a dependency and does not
             need to be explicitly specified.
+      linkopts: The list of linking options
       tags: List of arbitrary text tags.
       automatic: Whether to create the test or testable binary.
       timeout: How long the test is expected to run before returning.
@@ -282,25 +286,25 @@ def xnnpack_unit_test(name, srcs, copts = [], mingw_copts = [], msys_copts = [],
                 "-Iinclude",
                 "-Isrc",
             ] + select({
-                ":windows_x86_64_mingw": mingw_copts,
-                ":windows_x86_64_msys": msys_copts,
+                "//build_config:windows_x86_64_mingw": mingw_copts,
+                "//build_config:windows_x86_64_msys": msys_copts,
                 "//conditions:default": [],
             }) + select({
-                ":windows_x86_64_clang": ["/clang:-Wno-unused-function"],
-                ":windows_x86_64_mingw": ["-Wno-unused-function"],
-                ":windows_x86_64_msys": ["-Wno-unused-function"],
-                ":windows_x86_64": [],
+                "//build_config:windows_x86_64_clang": ["/clang:-Wno-unused-function"],
+                "//build_config:windows_x86_64_mingw": ["-Wno-unused-function"],
+                "//build_config:windows_x86_64_msys": ["-Wno-unused-function"],
+                "//build_config:windows_x86_64": [],
                 "//conditions:default": ["-Wno-unused-function"],
             }) + copts,
             linkopts = select({
-                ":emscripten": xnnpack_emscripten_test_linkopts(),
+                "//build_config:emscripten": xnnpack_emscripten_test_linkopts(),
                 "//conditions:default": [],
-            }),
+            }) + linkopts,
             linkstatic = True,
             deps = [
                 "@com_google_googletest//:gtest_main",
             ] + deps + select({
-                ":emscripten": xnnpack_emscripten_deps(),
+                "//build_config:emscripten": xnnpack_emscripten_deps(),
                 "//conditions:default": [],
             }),
             tags = tags,
@@ -315,32 +319,32 @@ def xnnpack_unit_test(name, srcs, copts = [], mingw_copts = [], msys_copts = [],
                 "-Iinclude",
                 "-Isrc",
             ] + select({
-                ":windows_x86_64_mingw": mingw_copts,
-                ":windows_x86_64_msys": msys_copts,
+                "//build_config:windows_x86_64_mingw": mingw_copts,
+                "//build_config:windows_x86_64_msys": msys_copts,
                 "//conditions:default": [],
             }) + select({
-                ":windows_x86_64_clang": ["/clang:-Wno-unused-function"],
-                ":windows_x86_64_mingw": ["-Wno-unused-function"],
-                ":windows_x86_64_msys": ["-Wno-unused-function"],
-                ":windows_x86_64": [],
+                "//build_config:windows_x86_64_clang": ["/clang:-Wno-unused-function"],
+                "//build_config:windows_x86_64_mingw": ["-Wno-unused-function"],
+                "//build_config:windows_x86_64_msys": ["-Wno-unused-function"],
+                "//build_config:windows_x86_64": [],
                 "//conditions:default": ["-Wno-unused-function"],
             }) + copts,
             linkopts = select({
-                ":emscripten": xnnpack_emscripten_test_linkopts(),
+                "//build_config:emscripten": xnnpack_emscripten_test_linkopts(),
                 "//conditions:default": [],
             }),
             linkstatic = True,
             deps = [
                 "@com_google_googletest//:gtest_main",
             ] + deps + select({
-                ":emscripten": xnnpack_emscripten_deps(),
+                "//build_config:emscripten": xnnpack_emscripten_deps(),
                 "//conditions:default": [],
             }),
             testonly = True,
             tags = tags,
         )
 
-def xnnpack_binary(name, srcs, copts = [], deps = []):
+def xnnpack_binary(name, srcs, copts = [], deps = [], linkopts = []):
     """Minimal binary
 
     Args:
@@ -350,6 +354,7 @@ def xnnpack_binary(name, srcs, copts = [], deps = []):
              for include/ and src/ directories of XNNPACK are always prepended
              before these user-specified flags.
       deps: The list of libraries to be linked.
+      linkopts: The list of additional linker options
     """
     native.cc_binary(
         name = name,
@@ -359,9 +364,9 @@ def xnnpack_binary(name, srcs, copts = [], deps = []):
             "-Isrc",
         ] + copts,
         linkopts = select({
-            ":emscripten": xnnpack_emscripten_minimal_linkopts(),
+            "//build_config:emscripten": xnnpack_emscripten_minimal_linkopts(),
             "//conditions:default": [],
-        }),
+        }) + linkopts,
         linkstatic = True,
         deps = deps,
     )
@@ -386,24 +391,24 @@ def xnnpack_benchmark(name, srcs, copts = [], deps = [], tags = []):
             "-Iinclude",
             "-Isrc",
         ] + select({
-            ":windows_x86_64_clang": ["/clang:-Wno-unused-function"],
-            ":windows_x86_64_mingw": ["-Wno-unused-function"],
-            ":windows_x86_64_msys": ["-Wno-unused-function"],
-            ":windows_x86_64": [],
+            "//build_config:windows_x86_64_clang": ["/clang:-Wno-unused-function"],
+            "//build_config:windows_x86_64_mingw": ["-Wno-unused-function"],
+            "//build_config:windows_x86_64_msys": ["-Wno-unused-function"],
+            "//build_config:windows_x86_64": [],
             "//conditions:default": ["-Wno-unused-function"],
         }) + copts,
         linkopts = select({
-            ":emscripten": xnnpack_emscripten_benchmark_linkopts(),
-            ":windows_x86_64_mingw": ["-lshlwapi"],
-            ":windows_x86_64_msys": ["-lshlwapi"],
+            "//build_config:emscripten": xnnpack_emscripten_benchmark_linkopts(),
+            "//build_config:windows_x86_64_mingw": ["-lshlwapi"],
+            "//build_config:windows_x86_64_msys": ["-lshlwapi"],
             "//conditions:default": [],
         }),
         linkstatic = True,
         deps = [
             "@com_google_benchmark//:benchmark",
         ] + deps + select({
-            ":emscripten": xnnpack_emscripten_deps(),
+            "//build_config:emscripten": xnnpack_emscripten_deps(),
             "//conditions:default": [],
         }),
-	tags = tags,
+        tags = tags,
     )

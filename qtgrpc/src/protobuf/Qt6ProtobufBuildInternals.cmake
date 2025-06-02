@@ -80,6 +80,13 @@ function(qt_internal_add_protobuf_module target)
             set(proto_files_base_dir "${CMAKE_CURRENT_SOURCE_DIR}")
         endif()
 
+        # For non-prefix builds we should ensure that we copy .proto files to the destination build
+        # directory. Otherwise users will unnable to locate them using PROTO_INCLUDES property.
+        if(QT_WILL_INSTALL)
+            set(proto_files_dest_dir "${module_install_interface_include_dir}")
+        else()
+            set(proto_files_dest_dir "${module_build_interface_include_dir}")
+        endif()
         foreach(f IN LISTS arg_PROTO_FILES)
             if(IS_ABSOLUTE "${f}")
                 file(RELATIVE_PATH f_rel "${proto_files_base_dir}" "${f}")
@@ -91,7 +98,7 @@ function(qt_internal_add_protobuf_module target)
                 FILES
                     ${f}
                 DESTINATION
-                    "${module_install_interface_include_dir}/${relative_directory}"
+                    "${proto_files_dest_dir}/${relative_directory}"
             )
         endforeach()
 

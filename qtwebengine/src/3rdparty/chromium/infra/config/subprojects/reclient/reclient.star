@@ -6,6 +6,7 @@ load("//lib/builder_config.star", "builder_config")
 load("//lib/builders.star", "builders", "cpu", "os", "reclient", "xcode")
 load("//lib/ci.star", "ci")
 load("//lib/consoles.star", "consoles")
+load("//lib/gn_args.star", "gn_args")
 load("//lib/structs.star", "structs")
 load("//console-header.star", "HEADER")
 
@@ -18,7 +19,10 @@ luci.bucket(
         ),
         acl.entry(
             roles = acl.BUILDBUCKET_TRIGGERER,
-            groups = "project-chromium-ci-schedulers",
+            groups = [
+                "project-chromium-ci-schedulers",
+                "mdb/foundry-x-team",
+            ],
         ),
         acl.entry(
             roles = acl.BUILDBUCKET_OWNER,
@@ -41,6 +45,9 @@ ci.defaults.set(
     service_account = (
         "chromium-ci-builder@chops-service-accounts.iam.gserviceaccount.com"
     ),
+    siso_configs = ["builder"],
+    siso_enable_cloud_profiler = True,
+    siso_enable_cloud_trace = True,
 )
 
 consoles.console_view(
@@ -147,11 +154,11 @@ fyi_reclient_staging_builder(
             build_gs_bucket = "chromium-fyi-archive",
         ),
     ),
+    gn_args = gn_args.config(
+        configs = ["gpu_tests", "release_builder", "reclient"],
+    ),
     os = os.LINUX_DEFAULT,
     console_view_category = "linux",
-    reclient_bootstrap_env = {
-        "RBE_clang_depscan_archive": "true",
-    },
 )
 
 fyi_reclient_test_builder(
@@ -169,11 +176,11 @@ fyi_reclient_test_builder(
             build_gs_bucket = "chromium-fyi-archive",
         ),
     ),
+    gn_args = gn_args.config(
+        configs = ["gpu_tests", "release_builder", "reclient"],
+    ),
     os = os.LINUX_DEFAULT,
     console_view_category = "linux",
-    reclient_bootstrap_env = {
-        "RBE_clang_depscan_archive": "true",
-    },
 )
 
 fyi_reclient_test_builder(
@@ -191,6 +198,7 @@ fyi_reclient_test_builder(
             build_gs_bucket = "chromium-fyi-archive",
         ),
     ),
+    gn_args = "reclient/Linux Builder reclient test",
     os = os.LINUX_DEFAULT,
     console_view_category = "linux",
     reclient_bootstrap_env = {
@@ -216,6 +224,7 @@ fyi_reclient_test_builder(
             build_gs_bucket = "chromium-fyi-archive",
         ),
     ),
+    gn_args = "reclient/Linux Builder reclient test",
     os = os.LINUX_DEFAULT,
     console_view_category = "linux",
     reclient_bootstrap_env = {
@@ -237,6 +246,9 @@ fyi_reclient_staging_builder(
             ),
             build_gs_bucket = "chromium-fyi-archive",
         ),
+    ),
+    gn_args = gn_args.config(
+        configs = ["gpu_tests", "release_builder", "reclient", "minimal_symbols"],
     ),
     builderless = True,
     cores = 12,
@@ -262,6 +274,9 @@ fyi_reclient_test_builder(
             ),
             build_gs_bucket = "chromium-fyi-archive",
         ),
+    ),
+    gn_args = gn_args.config(
+        configs = ["gpu_tests", "release_builder", "reclient", "minimal_symbols"],
     ),
     builderless = True,
     cores = None,
@@ -289,6 +304,9 @@ fyi_reclient_staging_builder(
             build_gs_bucket = "chromium-fyi-archive",
         ),
     ),
+    gn_args = gn_args.config(
+        configs = ["gpu_tests", "release_builder", "reclient", "minimal_symbols"],
+    ),
     builderless = True,
     cores = 32,
     os = os.WINDOWS_ANY,
@@ -310,6 +328,9 @@ fyi_reclient_test_builder(
             ),
             build_gs_bucket = "chromium-fyi-archive",
         ),
+    ),
+    gn_args = gn_args.config(
+        configs = ["gpu_tests", "release_builder", "reclient", "minimal_symbols"],
     ),
     builderless = True,
     cores = 32,
@@ -336,6 +357,7 @@ fyi_reclient_staging_builder(
             cros_boards_with_qemu_images = "amd64-generic-vm",
         ),
     ),
+    gn_args = "reclient/Simple Chrome Builder reclient test",
     os = os.LINUX_DEFAULT,
     console_view_category = "linux",
 )
@@ -358,6 +380,17 @@ fyi_reclient_test_builder(
             cros_boards_with_qemu_images = "amd64-generic-vm",
         ),
     ),
+    gn_args = gn_args.config(
+        configs = [
+            "chromeos_device",
+            "dcheck_off",
+            "reclient",
+            "amd64-generic-vm",
+            "ozone_headless",
+            "use_fake_dbus_clients",
+            "also_build_lacros_chrome_for_architecture_amd64",
+        ],
+    ),
     os = os.LINUX_DEFAULT,
     console_view_category = "linux",
     execution_timeout = 4 * time.hour,
@@ -378,6 +411,17 @@ fyi_reclient_test_builder(
             build_gs_bucket = "chromium-fyi-archive",
         ),
     ),
+    gn_args = gn_args.config(
+        configs = [
+            "debug",
+            "static",
+            "minimal_symbols",
+            "reclient",
+            "ios_simulator",
+            "x64",
+            "xctest",
+        ],
+    ),
     builderless = True,
     cores = 12,
     os = os.MAC_DEFAULT,
@@ -386,7 +430,7 @@ fyi_reclient_test_builder(
     reclient_bootstrap_env = {
         "GLOG_vmodule": "bridge*=2",
     },
-    xcode = xcode.x14main,
+    xcode = xcode.xcode_default,
 )
 
 fyi_reclient_staging_builder(
@@ -404,6 +448,17 @@ fyi_reclient_staging_builder(
             build_gs_bucket = "chromium-fyi-archive",
         ),
     ),
+    gn_args = gn_args.config(
+        configs = [
+            "debug",
+            "static",
+            "minimal_symbols",
+            "reclient",
+            "ios_simulator",
+            "x64",
+            "xctest",
+        ],
+    ),
     builderless = True,
     cores = 12,
     os = os.MAC_DEFAULT,
@@ -412,7 +467,7 @@ fyi_reclient_staging_builder(
     reclient_bootstrap_env = {
         "GLOG_vmodule": "bridge*=2",
     },
-    xcode = xcode.x14main,
+    xcode = xcode.xcode_default,
 )
 
 fyi_reclient_staging_builder(
@@ -429,6 +484,16 @@ fyi_reclient_staging_builder(
             ),
             build_gs_bucket = "chromium-fyi-archive",
         ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "arm64",
+            "gpu_tests",
+            "release_builder",
+            "reclient",
+            "minimal_symbols",
+            "disable_nacl",
+        ],
     ),
     builderless = True,
     cores = 12,
@@ -455,6 +520,16 @@ fyi_reclient_test_builder(
             build_gs_bucket = "chromium-fyi-archive",
         ),
     ),
+    gn_args = gn_args.config(
+        configs = [
+            "arm64",
+            "gpu_tests",
+            "release_builder",
+            "reclient",
+            "minimal_symbols",
+            "disable_nacl",
+        ],
+    ),
     builderless = True,
     cores = 12,
     os = os.MAC_DEFAULT,
@@ -468,6 +543,14 @@ fyi_reclient_test_builder(
 ci.builder(
     name = "Comparison Linux (reclient vs reclient remote links)",
     executable = "recipe:reclient_reclient_comparison",
+    gn_args = {
+        "build1": gn_args.config(
+            configs = ["gpu_tests", "release_builder", "reclient"],
+        ),
+        "build2": gn_args.config(
+            configs = ["gpu_tests", "release_builder", "reclient_with_remoteexec_links"],
+        ),
+    },
     os = os.LINUX_DEFAULT,
     console_view_entry = consoles.console_view_entry(
         category = "linux",
@@ -493,6 +576,14 @@ ci.builder(
     name = "Windows Cross deterministic",
     description_html = "verify artifacts. should be removed after the migration. b/260228493",
     executable = "recipe:swarming/deterministic_build",
+    gn_args = {
+        "local": gn_args.config(
+            configs = ["release_builder", "x86", "minimal_symbols"],
+        ),
+        "reclient": gn_args.config(
+            configs = ["release_builder", "reclient", "x86", "minimal_symbols"],
+        ),
+    },
     builderless = True,
     cores = 32,
     os = os.WINDOWS_DEFAULT,
@@ -524,6 +615,9 @@ ci.builder(
             build_config = builder_config.build_config.RELEASE,
             target_bits = 64,
         ),
+    ),
+    gn_args = gn_args.config(
+        configs = ["gpu_tests", "release_builder", "reclient", "minimal_symbols"],
     ),
     builderless = True,
     cores = 32,
@@ -564,6 +658,9 @@ ci.builder(
             build_gs_bucket = None,
         ),
     ),
+    gn_args = gn_args.config(
+        configs = ["gpu_tests", "debug_builder", "reclient"],
+    ),
     cores = 32,
     os = os.LINUX_DEFAULT,
     console_view_entry = consoles.console_view_entry(
@@ -586,4 +683,70 @@ ci.builder(
         "RBE_canonicalize_working_dir": "true",
         "RBE_cache_silo": "Linux Builder (canonical wd) (reclient compare)",
     },
+)
+
+ci.builder(
+    name = "Comparison Linux (reclient)",
+    executable = "recipe:reclient_reclient_comparison",
+    gn_args = {
+        "build1": gn_args.config(
+            configs = ["gpu_tests", "release_builder", "reclient"],
+        ),
+        "build2": gn_args.config(
+            configs = ["gpu_tests", "release_builder", "reclient"],
+        ),
+    },
+    os = os.LINUX_DEFAULT,
+    console_view_entry = consoles.console_view_entry(
+        category = "linux",
+        short_name = "cmp",
+    ),
+    execution_timeout = 6 * time.hour,
+    reclient_bootstrap_env = {
+        "RBE_ip_reset_min_delay": "-1s",
+        "RBE_experimental_goma_deps_cache": "true",
+        "RBE_deps_cache_mode": "reproxy",
+        "RBE_fast_log_collection": "true",
+    },
+    reclient_cache_silo = "Comparison Linux - cache siloed",
+    reclient_instance = reclient.instance.TEST_TRUSTED,
+    reclient_jobs = reclient.jobs.DEFAULT,
+    shadow_reclient_instance = reclient.instance.TEST_UNTRUSTED,
+)
+
+ci.builder(
+    name = "Comparison Linux (reclient)(CQ)",
+    description_html = """\
+This builder measures Linux build performance with reclient prod vs test in cq configuration.<br/>\
+The bot specs should be in sync with <a href="https://ci.chromium.org/p/chromium/builders/try/linux-rel-compilator">linux-rel-compilator</a>.\
+""",
+    executable = "recipe:reclient_reclient_comparison",
+    gn_args = {
+        "build1": gn_args.config(
+            configs = ["gpu_tests", "release_builder", "reclient"],
+        ),
+        "build2": gn_args.config(
+            configs = ["gpu_tests", "release_builder", "reclient"],
+        ),
+    },
+    cores = 16,
+    os = os.LINUX_DEFAULT,
+    ssd = True,
+    console_view_entry = consoles.console_view_entry(
+        category = "linux|cq",
+        short_name = "cmp",
+    ),
+    execution_timeout = 6 * time.hour,
+    reclient_bootstrap_env = {
+        "RBE_ip_reset_min_delay": "-1s",
+        "RBE_experimental_goma_deps_cache": "true",
+        "RBE_deps_cache_mode": "reproxy",
+        "RBE_fast_log_collection": "true",
+    },
+    reclient_cache_silo = "Comparison Linux CQ - cache siloed",
+    reclient_instance = reclient.instance.TEST_UNTRUSTED,
+    reclient_jobs = reclient.jobs.HIGH_JOBS_FOR_CQ,
+    shadow_reclient_instance = reclient.instance.TEST_UNTRUSTED,
+    siso_enabled = True,
+    siso_project = reclient.instance.TEST_UNTRUSTED,
 )

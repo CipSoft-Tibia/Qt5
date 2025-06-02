@@ -68,6 +68,13 @@ Running JavaScript code can be influenced by a few environment variables, partic
             call depth is 1234 on most platforms. On QNX it is 640 because on QNX the default
             stack size is smaller than on most platforms.
     \row
+        \li \target{QV4_GC_TIMELIMIT}
+            \c{QV4_GC_TIMELIMIT}
+        \li This value is used to tell the engine how much time it should spend in each
+            incremental garbage collection step. It can either be a positive number,
+            specifying the timelimit in milliseconds, or 0. If the value is 0,
+            garbage collection becomes non-incremental.
+    \row
         \li \c{QV4_MM_AGGRESSIVE_GC}
         \li Setting this environment variable runs the garbage collector before each memory
             allocation. This is very expensive at run-time, but it quickly uncovers many memory

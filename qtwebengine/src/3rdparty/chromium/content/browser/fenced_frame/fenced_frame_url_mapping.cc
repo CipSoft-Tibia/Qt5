@@ -6,15 +6,20 @@
 
 #include <cstring>
 #include <map>
+#include <optional>
 #include <string>
 
+#include "base/containers/contains.h"
+#include "base/debug/crash_logging.h"
+#include "base/debug/dump_without_crashing.h"
+#include "base/feature_list.h"
 #include "base/functional/callback.h"
 #include "base/memory/ref_counted.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/types/id_type.h"
 #include "content/browser/fenced_frame/fenced_frame_reporter.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/fenced_frame/fenced_frame_utils.h"
 #include "third_party/blink/public/common/frame/fenced_frame_permissions_policies.h"
 #include "third_party/blink/public/common/interest_group/ad_display_size.h"
@@ -68,10 +73,20 @@ GURL SubstituteSizeIntoURL(const blink::AdDescriptor& ad_descriptor) {
   // Convert dimensions to pixels.
   gfx::Size size = AdSizeToGfxSize(ad_descriptor.size.value());
 
-  return GURL(SubstituteMappedStrings(
-      ad_descriptor.url.spec(),
-      {std::make_pair("{%AD_WIDTH%}", base::NumberToString(size.width())),
-       std::make_pair("{%AD_HEIGHT%}", base::NumberToString(size.height()))}));
+  std::string width = base::NumberToString(size.width());
+  std::string height = base::NumberToString(size.height());
+  std::vector<std::pair<std::string, std::string>> substitutions;
+
+  // Set up the width and height macros, in two formats.
+  substitutions.emplace_back("{%AD_WIDTH%}", width);
+  substitutions.emplace_back("{%AD_HEIGHT%}", height);
+  if (base::FeatureList::IsEnabled(
+          blink::features::kFencedFramesM120FeaturesPart1)) {
+    substitutions.emplace_back("${AD_WIDTH}", width);
+    substitutions.emplace_back("${AD_HEIGHT}", height);
+  }
+
+  return GURL(SubstituteMappedStrings(ad_descriptor.url.spec(), substitutions));
 }
 
 }  // namespace
@@ -122,7 +137,7 @@ void FencedFrameURLMapping::ImportPendingAdComponents(
   }
 }
 
-absl::optional<GURL> FencedFrameURLMapping::AddFencedFrameURLForTesting(
+std::optional<GURL> FencedFrameURLMapping::AddFencedFrameURLForTesting(
     const GURL& url,
     scoped_refptr<FencedFrameReporter> fenced_frame_reporter) {
   DCHECK(url.is_valid());
@@ -132,7 +147,7 @@ absl::optional<GURL> FencedFrameURLMapping::AddFencedFrameURLForTesting(
 
   if (!it.has_value()) {
     // Insertion fails, the number of urn mappings has reached limit.
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   auto& [urn, config] = *it.value();
@@ -143,22 +158,22 @@ absl::optional<GURL> FencedFrameURLMapping::AddFencedFrameURLForTesting(
       true, VisibilityToEmbedder::kTransparent, VisibilityToContent::kOpaque);
   // We don't know at this point if the test being run needs the FLEDGE or
   // Shared Storage permissions set. To be safe, we set both here.
-  config.effective_enabled_permissions.insert(
-      config.effective_enabled_permissions.end(),
+  config.effective_enabled_permissions_.insert(
+      config.effective_enabled_permissions_.end(),
       std::begin(blink::kFencedFrameFledgeDefaultRequiredFeatures),
       std::end(blink::kFencedFrameFledgeDefaultRequiredFeatures));
-  config.effective_enabled_permissions.insert(
-      config.effective_enabled_permissions.end(),
+  config.effective_enabled_permissions_.insert(
+      config.effective_enabled_permissions_.end(),
       std::begin(blink::kFencedFrameSharedStorageDefaultRequiredFeatures),
       std::end(blink::kFencedFrameSharedStorageDefaultRequiredFeatures));
   return urn;
 }
 
-absl::optional<FencedFrameURLMapping::UrnUuidToUrlMap::iterator>
+std::optional<FencedFrameURLMapping::UrnUuidToUrlMap::iterator>
 FencedFrameURLMapping::AddMappingForUrl(const GURL& url) {
   if (IsFull()) {
     // Number of urn mappings has reached limit, url will not be inserted.
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Create a urn::uuid.
@@ -173,7 +188,7 @@ FencedFrameURLMapping::AddMappingForUrl(const GURL& url) {
 blink::FencedFrame::RedactedFencedFrameConfig
 FencedFrameURLMapping::AssignFencedFrameURLAndInterestGroupInfo(
     const GURL& urn_uuid,
-    absl::optional<blink::AdSize> container_size,
+    std::optional<blink::AdSize> container_size,
     const blink::AdDescriptor& ad_descriptor,
     AdAuctionData ad_auction_data,
     base::RepeatingClosure on_navigate_callback,
@@ -217,12 +232,15 @@ FencedFrameURLMapping::AssignFencedFrameURLAndInterestGroupInfo(
   config.deprecated_should_freeze_initial_size_.emplace(
       !ad_descriptor.size.has_value(), VisibilityToEmbedder::kTransparent,
       VisibilityToContent::kOpaque);
-  config.ad_auction_data_.emplace(std::move(ad_auction_data),
-                                  VisibilityToEmbedder::kOpaque,
-                                  VisibilityToContent::kOpaque);
+  config.ad_auction_data_.emplace(
+      (base::FeatureList::IsEnabled(
+          blink::features::kFencedFramesM120FeaturesPart2))
+          ? ad_auction_data
+          : std::move(ad_auction_data),
+      VisibilityToEmbedder::kOpaque, VisibilityToContent::kOpaque);
   config.on_navigate_callback_ = std::move(on_navigate_callback);
 
-  config.effective_enabled_permissions =
+  config.effective_enabled_permissions_ =
       std::vector<blink::mojom::PermissionsPolicyFeature>(
           std::begin(blink::kFencedFrameFledgeDefaultRequiredFeatures),
           std::end(blink::kFencedFrameFledgeDefaultRequiredFeatures));
@@ -253,6 +271,14 @@ FencedFrameURLMapping::AssignFencedFrameURLAndInterestGroupInfo(
           /*fenced_frame_reporter=*/fenced_frame_reporter,
           /*is_ad_component=*/true);
     }
+    if (base::FeatureList::IsEnabled(
+            blink::features::kFencedFramesM120FeaturesPart2)) {
+      // M120 and afterwards: The ad auction data is added to the nested configs
+      // in order to enable leaveAdInterestGroup() for ad components.
+      nested_configs.back().ad_auction_data_.emplace(
+          ad_auction_data, VisibilityToEmbedder::kOpaque,
+          VisibilityToContent::kOpaque);
+    }
   }
   config.nested_configs_.emplace(std::move(nested_configs),
                                  VisibilityToEmbedder::kOpaque,
@@ -264,9 +290,9 @@ FencedFrameURLMapping::AssignFencedFrameURLAndInterestGroupInfo(
   return config.RedactFor(FencedFrameEntity::kEmbedder);
 }
 
-absl::optional<GURL> FencedFrameURLMapping::GeneratePendingMappedURN() {
+std::optional<GURL> FencedFrameURLMapping::GeneratePendingMappedURN() {
   if (IsFull()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   GURL urn_uuid = GenerateUrnUuid();
@@ -289,7 +315,7 @@ void FencedFrameURLMapping::ConvertFencedFrameURNToURL(
     return;
   }
 
-  absl::optional<FencedFrameProperties> properties;
+  std::optional<FencedFrameProperties> properties;
 
   auto it = urn_uuid_to_url_map_.find(urn_uuid);
   if (it != urn_uuid_to_url_map_.end()) {
@@ -302,16 +328,28 @@ void FencedFrameURLMapping::ConvertFencedFrameURNToURL(
 void FencedFrameURLMapping::RemoveObserverForURN(
     const GURL& urn_uuid,
     MappingResultObserver* observer) {
+  // TODO(crbug.com/1488795): Change these `DumpWithoutCrashing` to CHECK when
+  // we identify and fix the root cause. (Or just remove them if it is a
+  // harmless race condition.)
   auto it = pending_urn_uuid_to_url_map_.find(urn_uuid);
-  DCHECK(it != pending_urn_uuid_to_url_map_.end());
+  if (it == pending_urn_uuid_to_url_map_.end()) {
+    SCOPED_CRASH_KEY_STRING32("RemoveObserverForURN", "dump_location", "urn");
+    base::debug::DumpWithoutCrashing();
+    return;
+  }
 
   auto observer_it = it->second.find(observer);
-  DCHECK(observer_it != it->second.end());
+  if (observer_it == it->second.end()) {
+    SCOPED_CRASH_KEY_STRING32("RemoveObserverForURN", "dump_location",
+                              "observer");
+    base::debug::DumpWithoutCrashing();
+    return;
+  }
 
   it->second.erase(observer_it);
 }
 
-absl::optional<FencedFrameConfig>
+std::optional<FencedFrameConfig>
 FencedFrameURLMapping::OnSharedStorageURNMappingResultDetermined(
     const GURL& urn_uuid,
     const SharedStorageURNMappingResult& mapping_result) {
@@ -320,7 +358,7 @@ FencedFrameURLMapping::OnSharedStorageURNMappingResultDetermined(
 
   DCHECK(!IsMapped(urn_uuid));
 
-  absl::optional<FencedFrameConfig> config = absl::nullopt;
+  std::optional<FencedFrameConfig> config = std::nullopt;
 
   // Only if the resolved URL is fenced-frame-compatible do we:
   //   1.) Add it to `urn_uuid_to_url_map_`
@@ -332,7 +370,7 @@ FencedFrameURLMapping::OnSharedStorageURNMappingResultDetermined(
                                mapping_result.budget_metadata,
                                std::move(mapping_result.fenced_frame_reporter));
     config->mode_ = blink::FencedFrame::DeprecatedFencedFrameMode::kOpaqueAds;
-    config->effective_enabled_permissions = {
+    config->effective_enabled_permissions_ = {
         std::begin(blink::kFencedFrameSharedStorageDefaultRequiredFeatures),
         std::end(blink::kFencedFrameSharedStorageDefaultRequiredFeatures)};
 
@@ -341,7 +379,7 @@ FencedFrameURLMapping::OnSharedStorageURNMappingResultDetermined(
 
   std::set<raw_ptr<MappingResultObserver>>& observers = pending_it->second;
 
-  absl::optional<FencedFrameProperties> properties = absl::nullopt;
+  std::optional<FencedFrameProperties> properties = std::nullopt;
   auto final_it = urn_uuid_to_url_map_.find(urn_uuid);
   if (final_it != urn_uuid_to_url_map_.end()) {
     properties = FencedFrameProperties(final_it->second);
@@ -406,12 +444,11 @@ FencedFrameURLMapping::Id FencedFrameURLMapping::GetNextId() {
 }
 
 bool FencedFrameURLMapping::IsMapped(const GURL& urn_uuid) const {
-  return urn_uuid_to_url_map_.find(urn_uuid) != urn_uuid_to_url_map_.end();
+  return base::Contains(urn_uuid_to_url_map_, urn_uuid);
 }
 
 bool FencedFrameURLMapping::IsPendingMapped(const GURL& urn_uuid) const {
-  return pending_urn_uuid_to_url_map_.find(urn_uuid) !=
-         pending_urn_uuid_to_url_map_.end();
+  return base::Contains(pending_urn_uuid_to_url_map_, urn_uuid);
 }
 
 bool FencedFrameURLMapping::IsFull() const {

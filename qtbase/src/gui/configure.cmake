@@ -33,12 +33,11 @@ qt_set01(X11_SUPPORTED LINUX OR HPUX OR FREEBSD OR NETBSD OR OPENBSD OR SOLARIS 
 qt_find_package(ATSPI2 PROVIDED_TARGETS PkgConfig::ATSPI2 MODULE_NAME gui QMAKE_LIB atspi)
 qt_find_package(DirectFB PROVIDED_TARGETS PkgConfig::DirectFB MODULE_NAME gui QMAKE_LIB directfb)
 qt_find_package(Libdrm PROVIDED_TARGETS Libdrm::Libdrm MODULE_NAME gui QMAKE_LIB drm)
+qt_find_package(PlatformGraphics
+        PROVIDED_TARGETS PlatformGraphics::PlatformGraphics
+        MODULE_NAME gui QMAKE_LIB platform_graphics)
 qt_find_package(EGL PROVIDED_TARGETS EGL::EGL MODULE_NAME gui QMAKE_LIB egl)
-if(INTEGRITY AND _qt_igy_gui_libs)
-    qt_find_package(IntegrityPlatformGraphics
-        PROVIDED_TARGETS IntegrityPlatformGraphics::IntegrityPlatformGraphics
-        MODULE_NAME gui QMAKE_LIB integrity_platform_graphics)
-endif()
+
 qt_find_package(WrapSystemFreetype 2.2.0 PROVIDED_TARGETS WrapSystemFreetype::WrapSystemFreetype MODULE_NAME gui QMAKE_LIB freetype)
 if(QT_FEATURE_system_zlib)
     qt_add_qmake_lib_dependency(freetype zlib)
@@ -48,6 +47,16 @@ qt_add_qmake_lib_dependency(fontconfig freetype)
 qt_find_package(gbm PROVIDED_TARGETS gbm::gbm MODULE_NAME gui QMAKE_LIB gbm)
 qt_find_package(WrapSystemHarfbuzz 2.6.0 PROVIDED_TARGETS WrapSystemHarfbuzz::WrapSystemHarfbuzz MODULE_NAME gui QMAKE_LIB harfbuzz)
 qt_find_package(Libinput PROVIDED_TARGETS Libinput::Libinput MODULE_NAME gui QMAKE_LIB libinput)
+qt_find_package_extend_sbom(TARGETS Libinput::Libinput
+    COPYRIGHTS
+        "Copyright © 2006-2009 Simon Thum"
+        "Copyright © 2008-2012 Kristian Høgsberg"
+        "Copyright © 2010-2012 Intel Corporation"
+        "Copyright © 2010-2011 Benjamin Franzke"
+        "Copyright © 2011-2012 Collabora, Ltd."
+        "Copyright © 2013-2014 Jonas Ådahl"
+        "Copyright © 2013-2015 Red Hat, Inc."
+)
 qt_find_package(WrapSystemJpeg PROVIDED_TARGETS WrapSystemJpeg::WrapSystemJpeg MODULE_NAME gui QMAKE_LIB libjpeg)
 qt_find_package(WrapSystemMd4c PROVIDED_TARGETS WrapSystemMd4c::WrapSystemMd4c MODULE_NAME gui QMAKE_LIB libmd4c)
 qt_find_package(WrapSystemPNG PROVIDED_TARGETS WrapSystemPNG::WrapSystemPNG MODULE_NAME gui QMAKE_LIB libpng)
@@ -147,6 +156,12 @@ qt_find_package(RenderDoc PROVIDED_TARGETS RenderDoc::RenderDoc)
 
 #### Tests
 
+if(TARGET PlatformGraphics::PlatformGraphics)
+    set(plaform_graphics_libs PlatformGraphics::PlatformGraphics)
+else()
+    set(plaform_graphics_libs "")
+endif()
+
 # drm_atomic
 qt_config_compile_test(drm_atomic
     LABEL "DRM Atomic API"
@@ -175,6 +190,7 @@ qt_config_compile_test(egl_x11
     LIBRARIES
         EGL::EGL
         X11::X11
+        ${plaform_graphics_libs}
     CODE
 "// Check if EGL is compatible with X. Some EGL implementations, typically on
 // embedded devices, are not intended to be used together with X. EGL support
@@ -204,6 +220,7 @@ qt_config_compile_test(egl_brcm
     LABEL "Broadcom EGL (Raspberry Pi)"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/egl.h>
 #include <bcm_host.h>
@@ -223,6 +240,7 @@ qt_config_compile_test(egl_egldevice
     LABEL "EGLDevice"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -245,6 +263,7 @@ qt_config_compile_test(egl_mali
     LABEL "Mali EGL"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/fbdev_window.h>
 #include <EGL/egl.h>
@@ -264,6 +283,7 @@ qt_config_compile_test(egl_mali_2
     LABEL "Mali 2 EGL"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/egl.h>
 #include <GLES2/gl2.h>
@@ -278,10 +298,12 @@ mali_native_window *w = 0;
 ")
 
 # egl-viv
+
 qt_config_compile_test(egl_viv
     LABEL "i.Mx6 EGL"
     LIBRARIES
         EGL::EGL
+        ${plaform_graphics_libs}
     COMPILE_OPTIONS
         "-DEGL_API_FB=1"
     CODE
@@ -304,16 +326,12 @@ fbGetDisplayByIndex(0);
 "# FIXME: qmake: ['DEFINES += EGL_API_FB=1', '!integrity: DEFINES += LINUX=1']
 )
 
-set(test_libs EGL::EGL)
-if(INTEGRITY AND _qt_igy_gui_libs)
-    set(test_libs ${test_libs} IntegrityPlatformGraphics::IntegrityPlatformGraphics)
-endif()
-
 # egl-openwfd
 qt_config_compile_test(egl_openwfd
     LABEL "OpenWFD EGL"
     LIBRARIES
-        ${test_libs}
+        EGL::EGL
+        ${plaform_graphics_libs}
     CODE
 "#include <wfd.h>
 
@@ -332,6 +350,7 @@ qt_config_compile_test(egl_rcar
     LIBRARIES
         EGL::EGL
         GLESv2::GLESv2
+        ${plaform_graphics_libs}
     CODE
 "#include <EGL/egl.h>
 extern \"C\" {
@@ -353,15 +372,25 @@ qt_config_compile_test(evdev
     CODE
 "#if defined(__FreeBSD__)
 #  include <dev/evdev/input.h>
+#elif defined(__VXWORKS__)
+#include <evdevLib.h>
+typedef EV_DEV_EVENT input_event;
 #else
 #  include <linux/input.h>
 #  include <linux/kd.h>
 #endif
 enum {
+#if defined(__VXWORKS__)
+    e1 = EV_DEV_ABS,
+    e2 = EV_DEV_PTR_ABS_X,
+    e3 = EV_DEV_PTR_ABS_Y,
+    e4 = EV_DEV_PTR_BTN_TOUCH,
+#else
     e1 = ABS_PRESSURE,
     e2 = ABS_X,
     e3 = REL_X,
     e4 = SYN_REPORT,
+#endif
 };
 
 int main(void)
@@ -415,15 +444,11 @@ if(WASM)
     set(extra_compiler_options "-s FULL_ES3=1")
 endif()
 
-set(test_libs GLESv2::GLESv2)
-if(INTEGRITY AND _qt_igy_gui_libs)
-    set(test_libs ${test_libs} IntegrityPlatformGraphics::IntegrityPlatformGraphics)
-endif()
-
 qt_config_compile_test(opengles3
     LABEL "OpenGL ES 3.0"
     LIBRARIES
-        ${test_libs}
+        GLESv2::GLESv2
+        ${plaform_graphics_libs}
     COMPILE_OPTIONS ${extra_compiler_options}
     CODE
 "#ifdef __APPLE__
@@ -451,7 +476,8 @@ glMapBufferRange(GL_ARRAY_BUFFER, 0, 0, GL_MAP_READ_BIT);
 qt_config_compile_test(opengles31
     LABEL "OpenGL ES 3.1"
     LIBRARIES
-        ${test_libs}
+        GLESv2::GLESv2
+        ${plaform_graphics_libs}
     CODE
 "#include <GLES3/gl31.h>
 
@@ -469,7 +495,8 @@ glProgramUniform1i(0, 0, 0);
 qt_config_compile_test(opengles32
     LABEL "OpenGL ES 3.2"
     LIBRARIES
-        ${test_libs}
+        GLESv2::GLESv2
+        ${plaform_graphics_libs}
     CODE
 "#include <GLES3/gl32.h>
 
@@ -580,7 +607,7 @@ qt_config_compile_test(directwrite3
 int main(int, char **)
 {
     IUnknown *factory = nullptr;
-    DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory3),
+    DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory6),
                         &factory);
     return 0;
 }
@@ -811,6 +838,10 @@ qt_feature("vulkan" PUBLIC
     LABEL "Vulkan"
     CONDITION QT_FEATURE_library AND QT_FEATURE_vkgen AND WrapVulkanHeaders_FOUND
 )
+qt_feature("metal" PUBLIC
+    LABEL "Metal"
+    CONDITION MACOS OR IOS OR VISIONOS
+)
 qt_feature("vkkhrdisplay" PRIVATE
     SECTION "Platform plugins"
     LABEL "VK_KHR_display"
@@ -889,7 +920,7 @@ qt_feature("jpeg" PRIVATE
     CONDITION QT_FEATURE_imageformatplugin
     DISABLE INPUT_libjpeg STREQUAL 'no'
 )
-qt_feature_definition("jpeg" "QT_NO_IMAGEFORMAT_JPEG" NEGATE)
+qt_feature_definition("jpeg" "QT_NO_IMAGEFORMAT_JPEG" NEGATE VALUE "1")
 qt_feature("system-jpeg" PRIVATE
     LABEL "  Using system libjpeg"
     CONDITION QT_FEATURE_jpeg AND JPEG_FOUND
@@ -1218,6 +1249,7 @@ qt_feature("raster-fp" PRIVATE
     SECTION "Painting"
     LABEL "QPainter - floating point raster"
     PURPOSE "Internal painting support for floating point rasterization."
+    CONDITION NOT VXWORKS # QTBUG-115777
 )
 qt_feature("undocommand" PUBLIC
     SECTION "Utilities"
@@ -1241,7 +1273,7 @@ qt_feature("undogroup" PUBLIC
 qt_feature("graphicsframecapture" PRIVATE
     SECTION "Utilities"
     LABEL "QGraphicsFrameCapture"
-    PURPOSE "Provides a way to capture a graphic's API calls for a rendered frame."
+    PURPOSE "Provides a way to capture 3D graphics API calls for a rendered frame."
     CONDITION TEST_renderdoc OR (MACOS OR IOS)
 )
 qt_feature_definition("undogroup" "QT_NO_UNDOGROUP" NEGATE VALUE "1")
@@ -1250,6 +1282,7 @@ qt_feature("wayland" PUBLIC
     LABEL "Wayland"
     CONDITION TARGET Wayland::Client
 )
+
 qt_configure_add_summary_section(NAME "Qt Gui")
 qt_configure_add_summary_entry(ARGS "accessibility")
 qt_configure_add_summary_entry(ARGS "freetype")
@@ -1287,6 +1320,8 @@ qt_configure_add_summary_entry(ARGS "opengles31")
 qt_configure_add_summary_entry(ARGS "opengles32")
 qt_configure_end_summary_section() # end of "OpenGL" section
 qt_configure_add_summary_entry(ARGS "vulkan")
+qt_configure_add_summary_entry(ARGS "metal")
+qt_configure_add_summary_entry(ARGS "graphicsframecapture")
 qt_configure_add_summary_entry(ARGS "sessionmanager")
 qt_configure_end_summary_section() # end of "Qt Gui" section
 qt_configure_add_summary_section(NAME "Features used by QPA backends")
@@ -1364,7 +1399,7 @@ qt_configure_add_report_entry(
 qt_configure_add_report_entry(
     TYPE ERROR
     MESSAGE "The OpenGL functionality tests failed! You might need to modify the OpenGL package search path by setting the OpenGL_DIR CMake variable to the OpenGL library's installation directory."
-    CONDITION QT_FEATURE_gui AND NOT WATCHOS AND ( NOT INPUT_opengl STREQUAL 'no' ) AND NOT QT_FEATURE_opengl_desktop AND NOT QT_FEATURE_opengles2 AND NOT QT_FEATURE_opengl_dynamic
+    CONDITION QT_FEATURE_gui AND NOT WATCHOS AND NOT VISIONOS AND ( NOT INPUT_opengl STREQUAL 'no' ) AND NOT QT_FEATURE_opengl_desktop AND NOT QT_FEATURE_opengles2 AND NOT QT_FEATURE_opengl_dynamic
 )
 qt_configure_add_report_entry(
     TYPE WARNING

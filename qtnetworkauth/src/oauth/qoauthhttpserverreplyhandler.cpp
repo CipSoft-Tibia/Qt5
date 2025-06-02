@@ -1,10 +1,6 @@
 // Copyright (C) 2017 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtNetwork/qtnetwork-config.h>
-
-#ifndef QT_NO_HTTP
-
 #include <qabstractoauth.h>
 #include <qoauthhttpserverreplyhandler.h>
 #include "qabstractoauthreplyhandler_p.h"
@@ -19,9 +15,6 @@
 
 #include <QtNetwork/qtcpsocket.h>
 #include <QtNetwork/qnetworkreply.h>
-
-#include <cstring>
-#include <functional>
 
 QT_BEGIN_NAMESPACE
 
@@ -69,11 +62,20 @@ using namespace Qt::StringLiterals;
 
     \section1 IPv4 and IPv6
 
-    Currently if the handler is a loopback address, IPv4 any address,
-    or IPv6 any address, the used callback is in the form of
-    \e {http://localhost:{port}/{path}}. Otherwise, for specific
-    IP addresses, the actual IP literal is used. For instance
-    \e {http://192.168.0.2:{port}/{path}} in the case of IPv4.
+    If the handler is an \e any address handler
+    (\l {QHostAddress::SpecialAddress}{AnyIPv4, AnyIPv6, or Any}),
+    the used callback is in the form of \c {http://localhost:{port}/{path}}.
+    Handler will first attempt to listen on IPv4 loopback address,
+    and then on IPv6. \c {localhost} is used because it resolves correctly
+    on both IPv4 and IPv6 interfaces.
+
+    For loopback addresses
+    (\l {QHostAddress::SpecialAddress}{LocalHost or LocalHostIPv6})
+    the IP literals (\c {127.0.0.1} and \c {::1}) are used.
+
+    For specific IP addresses the provided IP literal is used directly,
+    for instance:
+    \e {http://192.168.0.123:{port}/{path}} in the case of an IPv4 address.
 */
 QOAuthHttpServerReplyHandlerPrivate::QOAuthHttpServerReplyHandlerPrivate(
         QOAuthHttpServerReplyHandler *p) :
@@ -95,17 +97,25 @@ QString QOAuthHttpServerReplyHandlerPrivate::callback() const
     url.setScheme(u"http"_s);
     url.setPort(callbackPort);
     url.setPath(path);
-
-    // convert Any and Localhost addresses to "localhost"
-    if (callbackAddress.isLoopback() || callbackAddress == QHostAddress::AnyIPv4
-        || callbackAddress == QHostAddress::Any || callbackAddress == QHostAddress::AnyIPv6) {
-        url.setHost(u"localhost"_s);
-    } else {
-        url.setHost(callbackAddress.toString());
-    }
-
+    url.setHost(callbackHost());
     return url.toString(QUrl::EncodeSpaces | QUrl::EncodeUnicode | QUrl::EncodeDelimiters
                             | QUrl::EncodeReserved);
+}
+
+QString QOAuthHttpServerReplyHandlerPrivate::callbackHost() const
+{
+    QString host;
+    if (callbackAddress == QHostAddress::AnyIPv4 || callbackAddress == QHostAddress::Any
+               || callbackAddress == QHostAddress::AnyIPv6) {
+        // Convert Any addresses to "localhost"
+        host = u"localhost"_s;
+    } else {
+        // For other than Any addresses, use QHostAddress::toString() which returns an
+        // IP literal. This includes user-provided addresses, as well as special addresses
+        // such as LocalHost (127.0.0.1) and LocalHostIPv6 (::1)
+        host = callbackAddress.toString();
+    }
+    return host;
 }
 
 void QOAuthHttpServerReplyHandlerPrivate::_q_clientConnected()
@@ -264,7 +274,7 @@ bool QOAuthHttpServerReplyHandlerPrivate::QHttpRequest::readStatus(QTcpSocket *s
             qCWarning(lcReplyHandler, "Invalid version");
             return false;
         }
-        version = qMakePair(fragment.at(fragment.size() - 3) - '0',
+        version = std::make_pair(fragment.at(fragment.size() - 3) - '0',
                             fragment.at(fragment.size() - 1) - '0');
         state = State::ReadingHeader;
         fragment.clear();
@@ -302,23 +312,23 @@ bool QOAuthHttpServerReplyHandlerPrivate::QHttpRequest::readHeader(QTcpSocket *s
 /*!
     Constructs a QOAuthHttpServerReplyHandler object using \a parent as a
     parent object. Calls \l {listen()} with port \c 0 and address
-    \l {QHostAddress::SpecialAddress}{Null}.
+    \l {QHostAddress::SpecialAddress}{LocalHost}.
 
     \sa listen()
 */
 QOAuthHttpServerReplyHandler::QOAuthHttpServerReplyHandler(QObject *parent) :
-    QOAuthHttpServerReplyHandler(QHostAddress::Null, 0, parent)
+    QOAuthHttpServerReplyHandler(QHostAddress::LocalHost, 0, parent)
 {}
 
 /*!
     Constructs a QOAuthHttpServerReplyHandler object using \a parent as a
     parent object. Calls \l {listen()} with \a port and address
-    \l {QHostAddress::SpecialAddress}{Null}.
+    \l {QHostAddress::SpecialAddress}{LocalHost}.
 
     \sa listen()
 */
 QOAuthHttpServerReplyHandler::QOAuthHttpServerReplyHandler(quint16 port, QObject *parent) :
-    QOAuthHttpServerReplyHandler(QHostAddress::Null, port, parent)
+    QOAuthHttpServerReplyHandler(QHostAddress::LocalHost, port, parent)
 {}
 
 /*!
@@ -496,5 +506,3 @@ bool QOAuthHttpServerReplyHandler::isListening() const
 QT_END_NAMESPACE
 
 #include "moc_qoauthhttpserverreplyhandler.cpp"
-
-#endif // QT_NO_HTTP

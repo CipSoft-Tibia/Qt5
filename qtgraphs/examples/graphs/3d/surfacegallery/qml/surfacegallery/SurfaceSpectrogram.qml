@@ -7,7 +7,7 @@ import QtGraphs
 
 Rectangle {
     id: spectrogramView
-    color: surfaceGraph.theme.windowColor
+    color: surfaceGraph.theme.backgroundColor
 
     required property bool portraitMode
 
@@ -34,7 +34,7 @@ Rectangle {
             GradientStop { position: 1.0; color: "white" }
         }
 
-        ValueAxis3D {
+        Value3DAxis {
             id: xAxis
             segmentCount: 8
             labelFormat: "%i\u00B0"
@@ -43,17 +43,17 @@ Rectangle {
             titleFixed: false
         }
 
-        ValueAxis3D {
+        Value3DAxis {
             id: yAxis
             segmentCount: 8
             labelFormat: "%i \%"
             title: "Value"
             titleVisible: true
-            labelAutoRotation: 0
+            labelAutoAngle: 0
             titleFixed: false
         }
 
-        ValueAxis3D {
+        Value3DAxis {
             id: zAxis
             segmentCount: 5
             labelFormat: "%i nm"
@@ -62,15 +62,12 @@ Rectangle {
             titleFixed: false
         }
 
-        Theme3D {
+        GraphsTheme {
             id: customTheme
-            type: Theme3D.Theme.Qt
-            // Don't show specular spotlight as we don't want it to distort the colors
-            lightStrength: 0.0
-            ambientLightStrength: 1.0
-            backgroundEnabled: false
-            gridLineColor: "#AAAAAA"
-            windowColor: "#EEEEEE"
+            theme: GraphsTheme.Theme.QtGreen
+            backgroundVisible: false
+            grid.mainColor: "#AAAAAA"
+            backgroundColor: "#EEEEEE"
         }
 
         //! [0]
@@ -78,12 +75,16 @@ Rectangle {
             id: surfaceGraph
             anchors.fill: parent
 
+            // Don't show specular spotlight as we don't want it to distort the colors
+            lightStrength: 0.0
+            ambientLightStrength: 1.0
+
             Surface3DSeries {
                 id: surfaceSeries
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
                 drawMode: Surface3DSeries.DrawSurface
                 baseGradient: surfaceGradient
-                colorStyle: Theme3D.ColorStyle.RangeGradient
+                colorStyle: GraphsTheme.ColorStyle.RangeGradient
                 itemLabelFormat: "(@xLabel, @zLabel): @yLabel"
 
                 ItemModelSurfaceDataProxy {
@@ -98,7 +99,7 @@ Rectangle {
             //! [1]
             // Remove the perspective and view the graph from top down to achieve 2D effect
             orthoProjection: true
-            cameraPreset: AbstractGraph3D.CameraPreset.DirectlyAbove
+            cameraPreset: Graphs3D.CameraPreset.DirectlyAbove
             //! [1]
 
             //! [2]
@@ -110,14 +111,12 @@ Rectangle {
             //! [4]
 
             //! [5]
-            inputHandler: TouchInputHandler3D {
-                rotationEnabled: !surfaceGraph.orthoProjection
-            }
+            rotationEnabled: !surfaceGraph.orthoProjection
             //! [5]
 
             theme: customTheme
-            shadowQuality: AbstractGraph3D.ShadowQuality.None
-            selectionMode: AbstractGraph3D.SelectionSlice | AbstractGraph3D.SelectionItemAndColumn
+            shadowQuality: Graphs3D.ShadowQuality.None
+            selectionMode: Graphs3D.SelectionFlag.Slice | Graphs3D.SelectionFlag.ItemAndColumn
             axisX: xAxis
             axisY: yAxis
             axisZ: zAxis
@@ -159,17 +158,17 @@ Rectangle {
             onClicked: {
                 if (surfaceGraph.orthoProjection) {
                     surfaceGraph.orthoProjection = false;
-                    xAxis.labelAutoRotation = 30;
-                    yAxis.labelAutoRotation = 30;
-                    zAxis.labelAutoRotation = 30;
+                    xAxis.labelAutoAngle = 30;
+                    yAxis.labelAutoAngle = 30;
+                    zAxis.labelAutoAngle = 30;
                 } else {
                     surfaceGraph.orthoProjection = true;
                     surfaceGraph.cameraPreset
-                            = AbstractGraph3D.CameraPreset.DirectlyAbove;
+                            = Graphs3D.CameraPreset.DirectlyAbove;
                     surfaceSeries.drawMode &= ~Surface3DSeries.DrawWireframe;
-                    xAxis.labelAutoRotation = 0;
-                    yAxis.labelAutoRotation = 0;
-                    zAxis.labelAutoRotation = 0;
+                    xAxis.labelAutoAngle = 0;
+                    yAxis.labelAutoAngle = 0;
+                    zAxis.labelAutoAngle = 0;
                 }
             }
         }

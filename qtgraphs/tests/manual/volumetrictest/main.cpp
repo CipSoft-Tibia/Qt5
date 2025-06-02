@@ -16,21 +16,22 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    //Q3DScatter *graph = new Q3DScatter();
-    //Q3DSurface *graph = new Q3DSurface();
-    Q3DBars *graph = new Q3DBars();
-
-    QSize screenSize = graph->screen()->size();
-    graph->setMinimumSize(QSize(screenSize.width() / 4, screenSize.height() / 4));
-    graph->setMaximumSize(screenSize);
-    graph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    graph->setFocusPolicy(Qt::StrongFocus);
-    graph->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    //Q3DScatterWidgetItem *graph = new Q3DScatterWidgetItem();
+    //Q3DSurfaceWidgetItem *graph = new Q3DSurfaceWidgetItem();
+    Q3DBarsWidgetItem *graph = new Q3DBarsWidgetItem();
+    QQuickWidget quickWidget;
+    graph->setWidget(&quickWidget);
+    QSize screenSize = graph->widget()->screen()->size();
+    graph->widget()->setMinimumSize(QSize(screenSize.width() / 4, screenSize.height() / 4));
+    graph->widget()->setMaximumSize(screenSize);
+    graph->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    graph->widget()->setFocusPolicy(Qt::StrongFocus);
+    graph->widget()->setResizeMode(QQuickWidget::SizeRootObjectToView);
 
     QWidget *widget = new QWidget;
     QHBoxLayout *hLayout = new QHBoxLayout(widget);
     QVBoxLayout *vLayout = new QVBoxLayout();
-    hLayout->addWidget(graph, 1);
+    hLayout->addWidget(graph->widget(), 1);
     hLayout->addLayout(vLayout);
 
     widget->setWindowTitle(QStringLiteral("Volumetric TEST"));
@@ -125,11 +126,11 @@ int main(int argc, char **argv)
     modifier->setFpsLabel(fpsLabel);
     modifier->setSliceLabels(sliceImageXLabel, sliceImageYLabel, sliceImageZLabel);
 
-    QObject::connect(sliceXCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(sliceXCheckBox, &QCheckBox::checkStateChanged, modifier,
                      &VolumetricModifier::sliceX);
-    QObject::connect(sliceYCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(sliceYCheckBox, &QCheckBox::checkStateChanged, modifier,
                      &VolumetricModifier::sliceY);
-    QObject::connect(sliceZCheckBox, &QCheckBox::stateChanged, modifier,
+    QObject::connect(sliceZCheckBox, &QCheckBox::checkStateChanged, modifier,
                      &VolumetricModifier::sliceZ);
     QObject::connect(sliceXSlider, &QSlider::valueChanged, modifier,
                      &VolumetricModifier::adjustSliceX);

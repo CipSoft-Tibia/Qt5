@@ -144,6 +144,8 @@ String NavigationPolicyToProtocol(NavigationPolicy policy) {
       return DispositionEnum::NewWindow;
     case kNavigationPolicyPictureInPicture:
       return DispositionEnum::NewWindow;
+    case kNavigationPolicyLinkPreview:
+      NOTREACHED_NORETURN();
   }
   return DispositionEnum::CurrentTab;
 }
@@ -167,7 +169,8 @@ Resource* CachedResource(LocalFrame* frame,
   Resource* cached_resource = document->Fetcher()->CachedResource(url);
   if (!cached_resource) {
     cached_resource = MemoryCache::Get()->ResourceForURL(
-        url, document->Fetcher()->GetCacheIdentifier(url));
+        url, document->Fetcher()->GetCacheIdentifier(
+                 url, /*skip_service_worker=*/false));
   }
   if (!cached_resource)
     cached_resource = loader->ResourceForURL(url);
@@ -294,14 +297,9 @@ static void MaybeEncodeTextContent(const String& text_content,
     *result =
         Base64Encode(base::as_bytes(base::make_span(buffer_data, buffer_size)));
     *base64_encoded = true;
-  } else if (text_content.IsNull()) {
+  } else {
     *result = "";
     *base64_encoded = false;
-  } else {
-    DCHECK(!text_content.Is8Bit());
-    *result = Base64Encode(
-        base::as_bytes(base::make_span(StringUTF8Adaptor(text_content))));
-    *base64_encoded = true;
   }
 }
 
@@ -480,6 +478,42 @@ String InspectorPageAgent::CachedResourceTypeJson(
   return ResourceTypeJson(ToResourceType(cached_resource.GetType()));
 }
 
+InspectorPageAgent::PageReloadScriptInjection::PageReloadScriptInjection(
+    InspectorAgentState& agent_state)
+    : pending_script_to_evaluate_on_load_once_(&agent_state,
+                                               /*default_value=*/{}),
+      target_url_for_pending_script_(&agent_state,
+                                     /*default_value=*/{}) {}
+
+void InspectorPageAgent::PageReloadScriptInjection::clear() {
+  script_to_evaluate_on_load_once_ = {};
+  pending_script_to_evaluate_on_load_once_.Set({});
+  target_url_for_pending_script_.Set({});
+}
+
+void InspectorPageAgent::PageReloadScriptInjection::SetPending(
+    String script,
+    const KURL& target_url) {
+  pending_script_to_evaluate_on_load_once_.Set(script);
+  target_url_for_pending_script_.Set(target_url.GetString());
+}
+
+void InspectorPageAgent::PageReloadScriptInjection::PromoteToLoadOnce() {
+  script_to_evaluate_on_load_once_ =
+      pending_script_to_evaluate_on_load_once_.Get();
+  target_url_for_active_script_ = target_url_for_pending_script_.Get();
+  pending_script_to_evaluate_on_load_once_.Set({});
+  target_url_for_pending_script_.Set({});
+}
+
+String InspectorPageAgent::PageReloadScriptInjection::GetScriptForInjection(
+    const KURL& target_url) {
+  if (target_url_for_active_script_ == target_url.GetString()) {
+    return script_to_evaluate_on_load_once_;
+  }
+  return {};
+}
+
 InspectorPageAgent::InspectorPageAgent(
     InspectedFrames* inspected_frames,
     Client* client,
@@ -497,15 +531,16 @@ InspectorPageAgent::InspectorPageAgent(
       lifecycle_events_enabled_(&agent_state_, /*default_value=*/false),
       bypass_csp_enabled_(&agent_state_, /*default_value=*/false),
       scripts_to_evaluate_on_load_(&agent_state_,
-                                   /*default_value=*/WTF::String()),
+                                   /*default_value=*/String()),
       worlds_to_evaluate_on_load_(&agent_state_,
-                                  /*default_value=*/WTF::String()),
+                                  /*default_value=*/String()),
       include_command_line_api_for_scripts_to_evaluate_on_load_(
           &agent_state_,
           /*default_value=*/false),
       standard_font_size_(&agent_state_, /*default_value=*/0),
       fixed_font_size_(&agent_state_, /*default_value=*/0),
-      script_font_families_cbor_(&agent_state_, std::vector<uint8_t>()) {}
+      script_font_families_cbor_(&agent_state_, std::vector<uint8_t>()),
+      script_injection_on_load_(agent_state_) {}
 
 void InspectorPageAgent::Restore() {
   if (enabled_.Get())
@@ -544,8 +579,7 @@ protocol::Response InspectorPageAgent::enable() {
 protocol::Response InspectorPageAgent::disable() {
   agent_state_.ClearAllFields();
   pending_isolated_worlds_.clear();
-  script_to_evaluate_on_load_once_ = String();
-  pending_script_to_evaluate_on_load_once_ = String();
+  script_injection_on_load_.clear();
   instrumenting_agents_->RemoveInspectorPageAgent(this);
   inspector_resource_content_loader_->Cancel(
       resource_content_loader_client_id_);
@@ -672,9 +706,18 @@ protocol::Response InspectorPageAgent::reload(
     Maybe<bool> optional_bypass_cache,
     Maybe<String> optional_script_to_evaluate_on_load,
     Maybe<String> loader_id) {
-  pending_script_to_evaluate_on_load_once_ =
-      optional_script_to_evaluate_on_load.value_or("");
+  if (loader_id.has_value() && inspected_frames_->Root()
+                                       ->Loader()
+                                       .GetDocumentLoader()
+                                       ->GetDevToolsNavigationToken()
+                                       .ToString() != loader_id->Ascii()) {
+    return protocol::Response::InvalidParams("Document already navigated");
+  }
+  script_injection_on_load_.SetPending(
+      optional_script_to_evaluate_on_load.value_or(""),
+      inspected_frames_->Root()->Loader().GetDocumentLoader()->Url());
   v8_session_->setSkipAllPauses(true);
+  v8_session_->resume(true /* terminate on resume */);
   return protocol::Response::Success();
 }
 
@@ -988,17 +1031,18 @@ void InspectorPageAgent::DidCreateMainWorldContext(LocalFrame* frame) {
     EvaluateScriptOnNewDocument(*frame, key);
   }
 
-  if (script_to_evaluate_on_load_once_.empty()) {
+  String script = script_injection_on_load_.GetScriptForInjection(
+      frame->Loader().GetDocumentLoader()->Url());
+  if (script.empty()) {
     return;
   }
   ScriptState* script_state = ToScriptStateForMainWorld(frame);
-  if (!script_state) {
+  if (!script_state || !v8_session_) {
     return;
   }
 
-  v8_session_->evaluate(
-      script_state->GetContext(),
-      ToV8InspectorStringView(script_to_evaluate_on_load_once_));
+  v8_session_->evaluate(script_state->GetContext(),
+                        ToV8InspectorStringView(script));
 }
 
 void InspectorPageAgent::EvaluateScriptOnNewDocument(
@@ -1018,7 +1062,7 @@ void InspectorPageAgent::EvaluateScriptOnNewDocument(
                       *DOMWrapperWorld::EnsureIsolatedWorld(
                           ToIsolate(window->GetFrame()), world->GetWorldId()));
   }
-  if (!script_state) {
+  if (!script_state || !v8_session_) {
     return;
   }
 
@@ -1048,8 +1092,7 @@ void InspectorPageAgent::LoadEventFired(LocalFrame* frame) {
 
 void InspectorPageAgent::WillCommitLoad(LocalFrame*, DocumentLoader* loader) {
   if (loader->GetFrame() == inspected_frames_->Root()) {
-    script_to_evaluate_on_load_once_ = pending_script_to_evaluate_on_load_once_;
-    pending_script_to_evaluate_on_load_once_ = String();
+    script_injection_on_load_.PromoteToLoadOnce();
   }
   GetFrontend()->frameNavigated(BuildObjectForFrame(loader->GetFrame()),
                                 protocol::Page::NavigationTypeEnum::Navigation);
@@ -1115,6 +1158,11 @@ void InspectorPageAgent::FrameRequestedNavigation(Frame* target_frame,
                                                   const KURL& url,
                                                   ClientNavigationReason reason,
                                                   NavigationPolicy policy) {
+  // TODO(b:303396822): Support Link Preview
+  if (policy == kNavigationPolicyLinkPreview) {
+    return;
+  }
+
   GetFrontend()->frameRequestedNavigation(
       IdentifiersFactory::FrameId(target_frame),
       ClientNavigationReasonToProtocol(reason), url.GetString(),
@@ -1316,7 +1364,7 @@ std::unique_ptr<protocol::Page::OriginTrialToken> CreateOriginTrialToken(
                      ->ToRawString())
       .setIsThirdParty(blink_trial_token.is_third_party())
       .setMatchSubDomains(blink_trial_token.match_subdomains())
-      .setExpiryTime(blink_trial_token.expiry_time().ToDoubleT())
+      .setExpiryTime(blink_trial_token.expiry_time().InSecondsFSinceUnixEpoch())
       .setTrialName(blink_trial_token.feature_name().c_str())
       .setUsageRestriction(CreateOriginTrialUsageRestriction(
           blink_trial_token.usage_restriction()))
@@ -1495,8 +1543,10 @@ InspectorPageAgent::BuildObjectForResourceTree(LocalFrame* frame) {
             .build();
     absl::optional<base::Time> last_modified =
         cached_resource->GetResponse().LastModified();
-    if (last_modified)
-      resource_object->setLastModified(last_modified.value().ToDoubleT());
+    if (last_modified) {
+      resource_object->setLastModified(
+          last_modified.value().InSecondsFSinceUnixEpoch());
+    }
     if (cached_resource->WasCanceled())
       resource_object->setCanceled(true);
     else if (cached_resource->GetStatus() == ResourceStatus::kLoadError)
@@ -1687,7 +1737,7 @@ void InspectorPageAgent::CreateIsolatedWorldImpl(
 
   LocalWindowProxy* isolated_world_window_proxy =
       frame.DomWindow()->GetScriptController().WindowProxy(*world);
-  v8::HandleScope handle_scope(V8PerIsolateData::MainThreadIsolate());
+  v8::HandleScope handle_scope(frame.DomWindow()->GetIsolate());
 
   callback->sendSuccess(v8_inspector::V8ContextInfo::executionContextId(
       isolated_world_window_proxy->ContextIfInitialized()));
@@ -1858,7 +1908,7 @@ void InspectorPageAgent::FileChooserOpened(LocalFrame* frame,
       IdentifiersFactory::FrameId(frame),
       multiple ? protocol::Page::FileChooserOpened::ModeEnum::SelectMultiple
                : protocol::Page::FileChooserOpened::ModeEnum::SelectSingle,
-      element ? Maybe<int>(DOMNodeIds::IdForNode(element)) : Maybe<int>());
+      element ? Maybe<int>(element->GetDomNodeId()) : Maybe<int>());
 }
 
 protocol::Response InspectorPageAgent::produceCompilationCache(
@@ -1921,6 +1971,11 @@ void InspectorPageAgent::Trace(Visitor* visitor) const {
   visitor->Trace(inspector_resource_content_loader_);
   visitor->Trace(isolated_worlds_);
   InspectorBaseAgent::Trace(visitor);
+}
+
+void InspectorPageAgent::Dispose() {
+  InspectorBaseAgent::Dispose();
+  v8_session_ = nullptr;
 }
 
 protocol::Response InspectorPageAgent::getOriginTrials(

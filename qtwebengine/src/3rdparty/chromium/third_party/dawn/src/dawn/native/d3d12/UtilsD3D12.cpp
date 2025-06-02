@@ -1,16 +1,29 @@
-// Copyright 2019 The Dawn Authors
+// Copyright 2019 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d12/UtilsD3D12.h"
 
@@ -44,10 +57,10 @@ uint64_t RequiredCopySizeByD3D12(const uint32_t bytesPerRow,
     // When calculating the required copy size for B2T/T2B copy, D3D12 doesn't respect
     // rowsPerImage paddings on the last image for 3D texture, but it does respect
     // bytesPerRow paddings on the last row.
-    ASSERT(blockInfo.width == 1);
-    ASSERT(blockInfo.height == 1);
+    DAWN_ASSERT(blockInfo.width == 1);
+    DAWN_ASSERT(blockInfo.height == 1);
     uint64_t lastRowBytes = Safe32x32(blockInfo.byteSize, copySize.width);
-    ASSERT(rowsPerImage > copySize.height);
+    DAWN_ASSERT(rowsPerImage > copySize.height);
     uint64_t lastImageBytesByD3D12 = Safe32x32(bytesPerRow, rowsPerImage - 1) + lastRowBytes;
 
     requiredCopySizeByD3D12 += lastImageBytesByD3D12;
@@ -101,7 +114,7 @@ D3D12_COMPARISON_FUNC ToD3D12ComparisonFunc(wgpu::CompareFunction func) {
             return D3D12_COMPARISON_FUNC_ALWAYS;
 
         case wgpu::CompareFunction::Undefined:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -179,7 +192,7 @@ void RecordBufferTextureCopyFromSplits(BufferTextureCopyDirection direction,
                                            info.textureOffset.y, info.textureOffset.z,
                                            &bufferLocation, &sourceRegion);
         } else {
-            ASSERT(direction == BufferTextureCopyDirection::T2B);
+            DAWN_ASSERT(direction == BufferTextureCopyDirection::T2B);
             const D3D12_BOX sourceRegion =
                 ComputeD3D12BoxFromOffsetAndSize(info.textureOffset, info.copySize);
 
@@ -240,16 +253,19 @@ void RecordBufferTextureCopyWithBufferHandle(BufferTextureCopyDirection directio
                                              const uint32_t rowsPerImage,
                                              const TextureCopy& textureCopy,
                                              const Extent3D& copySize) {
-    ASSERT(HasOneBit(textureCopy.aspect));
+    DAWN_ASSERT(HasOneBit(textureCopy.aspect));
 
     TextureBase* texture = textureCopy.texture.Get();
     const TexelBlockInfo& blockInfo = texture->GetFormat().GetAspectInfo(textureCopy.aspect).block;
 
     switch (texture->GetDimension()) {
+        case wgpu::TextureDimension::Undefined:
+            DAWN_UNREACHABLE();
+
         case wgpu::TextureDimension::e1D: {
             // 1D textures copy splits are a subset of the single-layer 2D texture copy splits,
             // at least while 1D textures can only have a single array layer.
-            ASSERT(texture->GetArrayLayers() == 1);
+            DAWN_ASSERT(texture->GetArrayLayers() == 1);
 
             TextureCopySubresource copyRegions = Compute2DTextureCopySubresource(
                 textureCopy.origin, copySize, blockInfo, offset, bytesPerRow);

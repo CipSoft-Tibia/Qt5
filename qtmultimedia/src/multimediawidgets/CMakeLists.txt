@@ -1,8 +1,6 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Generated from multimediawidgets.pro.
-
 #####################################################################
 ## MultimediaWidgets Module:
 #####################################################################
@@ -22,7 +20,6 @@ qt_internal_add_module(MultimediaWidgets
     PRIVATE_MODULE_INTERFACE
         Qt::MultimediaPrivate
         Qt::WidgetsPrivate
-    GENERATE_CPP_EXPORTS
 )
 
 ## Scopes:

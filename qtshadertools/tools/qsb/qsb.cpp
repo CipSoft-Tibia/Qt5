@@ -6,6 +6,7 @@
 #include <QtCore/qtextstream.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qdir.h>
+#include <QtCore/qset.h>
 #include <QtCore/qtemporarydir.h>
 #include <QtCore/qdebug.h>
 #include <QtCore/qlibraryinfo.h>
@@ -23,6 +24,8 @@
 // fatal ones should be unconditional; warnings from external tool
 // invocations must be guarded with !silent.
 static bool silent = false;
+
+using namespace Qt::StringLiterals;
 
 enum class FileType
 {
@@ -460,6 +463,91 @@ static void replaceShaderContents(QShader *shaderPack,
     }
 }
 
+static bool generateDepfile(QFile &depfile, const QString &inputFilename,
+                            const QString &outputFilename)
+{
+    constexpr QByteArrayView includeKeyword("include");
+    // Assume that the minimalistic include statment should look as following: #include "x"
+    constexpr qsizetype minIncludeStatementSize = includeKeyword.size() + 5;
+
+    QFile inputFile(inputFilename);
+    if (!inputFile.open(QFile::ReadOnly)) {
+        printError("Unable to open input file: '%s'", qPrintable(inputFilename));
+        return false;
+    }
+    depfile.write(outputFilename.toUtf8());
+    depfile.write(": \\\n  "_ba);
+    depfile.write(inputFilename.toUtf8());
+    enum { ParseHash, ParseInclude, ParseFilename } parserState = ParseHash;
+
+    QSet<QString> knownDeps;
+    QByteArray outputBuffer;
+    while (!inputFile.atEnd()) {
+        QByteArray line = inputFile.readLine();
+        if (line.size() < minIncludeStatementSize)
+            continue;
+
+        parserState = ParseHash;
+        for (auto it = line.constBegin(); it < line.constEnd(); ++it) {
+            const auto c = *it;
+            if (c == '\t' || c == ' ')
+                continue;
+
+            if (parserState == ParseHash) {
+                // Looking for #
+                if (c == '#')
+                    parserState = ParseInclude;
+                else
+                    break;
+            } else if (parserState == ParseInclude) {
+                // Looking for 'include'
+                if (includeKeyword == QByteArrayView(it, includeKeyword.size()))
+                    parserState = ParseFilename;
+                else
+                    break;
+                it += includeKeyword.size();
+            } else if (parserState == ParseFilename) {
+                // Looking for wrapping quotes
+                QString includeString = QString::fromUtf8(QByteArrayView(it, line.constEnd()));
+                QChar quoteCounterpart;
+                if (includeString.front() == '<') {
+                    quoteCounterpart = '>';
+                } else if (includeString.front() == '"') {
+                    quoteCounterpart = '"';
+                } else {
+                    qWarning("Unrecognised include statement: '%s'", qPrintable(includeString));
+                    break;
+                }
+
+                const auto filenameBegin = 1;
+                const auto filenameEnd = includeString.indexOf(quoteCounterpart, filenameBegin);
+                if (filenameEnd > filenameBegin) {
+                    QString filename =
+                            includeString.sliced(filenameBegin, filenameEnd - filenameBegin);
+                    QFileInfo info(QFileInfo(inputFilename).absolutePath() + '/' + filename);
+
+                    if (info.exists()) {
+                        QString filePath = info.absoluteFilePath();
+                        if (!knownDeps.contains(filePath)) {
+                            outputBuffer.append(" \\\n  "_ba + filePath.toUtf8());
+                            knownDeps.insert(filePath);
+                        }
+                    } else {
+                        qWarning("File '%s' included in '%s' doesn't exist. Skip adding "
+                                 "dependency.",
+                                 qPrintable(filename), qPrintable(inputFilename));
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    if (!outputBuffer.isEmpty())
+        depfile.write(outputBuffer);
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -571,6 +659,12 @@ int main(int argc, char **argv)
     QCommandLineOption silentOption({ "s", "silent" }, QObject::tr("Enables silent mode. Only fatal errors will be printed."));
     cmdLineParser.addOption(silentOption);
 
+    QCommandLineOption depfileOption("depfile",
+                                     QObject::tr("Enables generating the depfile for the input "
+                                                 "shaders, using the #include statements."),
+                                     QObject::tr("depfile"));
+    cmdLineParser.addOption(depfileOption);
+
     cmdLineParser.process(app);
 
     if (cmdLineParser.positionalArguments().isEmpty()) {
@@ -581,6 +675,19 @@ int main(int argc, char **argv)
     silent = cmdLineParser.isSet(silentOption);
 
     QShaderBaker baker;
+
+    QFile depfile;
+    if (const QString depfilePath = cmdLineParser.value(depfileOption); !depfilePath.isEmpty()) {
+        QDir().mkpath(QFileInfo(depfilePath).path());
+        depfile.setFileName(depfilePath);
+        if (!depfile.open(QFile::WriteOnly | QFile::Truncate)) {
+            printError("Unable to create DEPFILE: '%s'", qPrintable(depfilePath));
+            return 1;
+        }
+    }
+
+    const bool depfileRequired = depfile.isOpen();
+
     for (const QString &fn : cmdLineParser.positionalArguments()) {
         auto qsbVersion = QShader::SerializedFormatVersion::Latest;
         if (cmdLineParser.isSet(qsbVersionOption)) {
@@ -595,6 +702,7 @@ int main(int argc, char **argv)
                 return 1;
             }
         }
+
         if (cmdLineParser.isSet(dumpOption)
                 || cmdLineParser.isSet(extractOption)
                 || cmdLineParser.isSet(replaceOption)
@@ -628,6 +736,9 @@ int main(int argc, char **argv)
             }
             continue;
         }
+
+        if (depfileRequired && !generateDepfile(depfile, fn, cmdLineParser.value(outputOption)))
+            return 1;
 
         baker.setSourceFileName(fn);
 

@@ -96,6 +96,10 @@ class MetricsReporterTest : public testing::Test, MetricsReporter::Delegate {
       case StreamKind::kSingleWebFeed:
         histogram_name = "ContentSuggestions.Feed.SingleWebFeed.EngagementType";
         break;
+      case StreamKind::kSupervisedUser:
+        histogram_name =
+            "ContentSuggestions.Feed.SupervisedFeed.EngagementType";
+        break;
     }
     for (const auto& bucket : histogram_.GetAllSamples(histogram_name)) {
       result[static_cast<FeedEngagementType>(bucket.min)] += bucket.count;
@@ -1491,14 +1495,6 @@ TEST_F(MetricsReporterTest,
 TEST_F(MetricsReporterTest, GoodVisit_GoodExplicitInteraction_AddToReadLater) {
   reporter_->OtherUserAction(StreamType(StreamKind::kForYou),
                              FeedUserActionType::kAddedToReadLater);
-  histogram_.ExpectBucketCount(
-      "ContentSuggestions.Feed.AllFeeds.EngagementType",
-      FeedEngagementType::kGoodVisit, 1);
-}
-
-TEST_F(MetricsReporterTest, GoodVisit_GoodExplicitInteraction_Crow) {
-  reporter_->OtherUserAction(StreamType(StreamKind::kForYou),
-                             FeedUserActionType::kTappedCrowButton);
   histogram_.ExpectBucketCount(
       "ContentSuggestions.Feed.AllFeeds.EngagementType",
       FeedEngagementType::kGoodVisit, 1);

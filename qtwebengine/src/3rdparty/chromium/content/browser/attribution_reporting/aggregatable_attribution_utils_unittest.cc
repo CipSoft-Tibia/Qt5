@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include "components/aggregation_service/features.h"
 #include "components/attribution_reporting/aggregatable_trigger_data.h"
 #include "components/attribution_reporting/aggregatable_values.h"
 #include "components/attribution_reporting/aggregation_keys.h"
@@ -26,7 +28,6 @@
 #include "content/browser/attribution_reporting/attribution_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/numeric/int128.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/blink/public/mojom/private_aggregation/aggregatable_report.mojom.h"
 
 namespace content {
@@ -97,7 +98,7 @@ TEST(AggregatableAttributionUtilsTest, CreateAggregatableHistogram) {
                   /*negative=*/{})),
       };
 
-  absl::optional<attribution_reporting::FilterData> source_filter_data =
+  std::optional<attribution_reporting::FilterData> source_filter_data =
       attribution_reporting::FilterData::Create({{"filter", {"value"}}});
   ASSERT_TRUE(source_filter_data.has_value());
 
@@ -166,7 +167,8 @@ TEST(AggregatableAttributionUtilsTest, RoundsSourceRegistrationTime) {
   };
 
   for (const auto& test_case : kTestCases) {
-    base::Time source_time = base::Time::FromJavaTime(test_case.source_time);
+    base::Time source_time =
+        base::Time::FromMillisecondsSinceUnixEpoch(test_case.source_time);
     AttributionReport report =
         ReportBuilder(AttributionInfoBuilder().Build(),
                       SourceBuilder(source_time).BuildStored())
@@ -174,7 +176,7 @@ TEST(AggregatableAttributionUtilsTest, RoundsSourceRegistrationTime) {
                 {AggregatableHistogramContribution(/*key=*/1, /*value=*/2)})
             .BuildAggregatableAttribution();
 
-    absl::optional<AggregatableReportRequest> request =
+    std::optional<AggregatableReportRequest> request =
         CreateAggregatableReportRequest(report);
     ASSERT_TRUE(request.has_value());
     const base::Value::Dict& additional_fields =
@@ -188,8 +190,8 @@ TEST(AggregatableAttributionUtilsTest, RoundsSourceRegistrationTime) {
 }
 
 TEST(AggregatableAttributionUtilsTest, AggregationCoordinatorSet) {
-  auto coordinator_origin =
-      attribution_reporting::SuitableOrigin::Deserialize("https://a.test");
+  auto coordinator_origin = attribution_reporting::SuitableOrigin::Deserialize(
+      ::aggregation_service::kAggregationServiceCoordinatorAwsCloud.Get());
   AttributionReport report =
       ReportBuilder(AttributionInfoBuilder().Build(),
                     SourceBuilder().BuildStored())
@@ -198,7 +200,7 @@ TEST(AggregatableAttributionUtilsTest, AggregationCoordinatorSet) {
           .SetAggregationCoordinatorOrigin(*coordinator_origin)
           .BuildAggregatableAttribution();
 
-  absl::optional<AggregatableReportRequest> request =
+  std::optional<AggregatableReportRequest> request =
       CreateAggregatableReportRequest(report);
   ASSERT_TRUE(request.has_value());
   EXPECT_EQ(request->payload_contents().aggregation_coordinator_origin,
@@ -206,16 +208,16 @@ TEST(AggregatableAttributionUtilsTest, AggregationCoordinatorSet) {
 }
 
 TEST(AggregatableAttributionUtilsTest, AggregatableReportRequestForNullReport) {
-  absl::optional<AggregatableReportRequest> request =
+  std::optional<AggregatableReportRequest> request =
       CreateAggregatableReportRequest(
-          ReportBuilder(AttributionInfoBuilder().Build(),
-                        SourceBuilder(base::Time::FromJavaTime(1234567890123))
-                            .BuildStored())
+          ReportBuilder(
+              AttributionInfoBuilder().Build(),
+              SourceBuilder(
+                  base::Time::FromMillisecondsSinceUnixEpoch(1234567890123))
+                  .BuildStored())
               .BuildNullAggregatable());
   ASSERT_TRUE(request.has_value());
-  EXPECT_THAT(request->payload_contents().contributions,
-              ElementsAre(blink::mojom::AggregatableReportHistogramContribution(
-                  /*bucket=*/0, /*value=*/0)));
+  EXPECT_TRUE(request->payload_contents().contributions.empty());
   EXPECT_FALSE(
       request->payload_contents().aggregation_coordinator_origin.has_value());
   const std::string* source_registration_time =
@@ -227,11 +229,13 @@ TEST(AggregatableAttributionUtilsTest, AggregatableReportRequestForNullReport) {
 
 TEST(AggregatableAttributionUtilsTest,
      AggregatableReportRequestExcludingSourceRegistrationTime) {
-  absl::optional<AggregatableReportRequest> request =
+  std::optional<AggregatableReportRequest> request =
       CreateAggregatableReportRequest(
-          ReportBuilder(AttributionInfoBuilder().Build(),
-                        SourceBuilder(base::Time::FromJavaTime(1234567890123))
-                            .BuildStored())
+          ReportBuilder(
+              AttributionInfoBuilder().Build(),
+              SourceBuilder(
+                  base::Time::FromMillisecondsSinceUnixEpoch(1234567890123))
+                  .BuildStored())
               .SetAggregatableHistogramContributions(
                   {AggregatableHistogramContribution(/*key=*/1, /*value=*/2)})
               .SetSourceRegistrationTimeConfig(

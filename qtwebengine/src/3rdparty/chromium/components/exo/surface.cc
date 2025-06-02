@@ -7,13 +7,11 @@
 #include <utility>
 
 #include "ash/display/output_protection_delegate.h"
-#include "ash/public/cpp/shell_window_ids.h"
 #include "ash/public/cpp/window_properties.h"
 #include "ash/wm/desks/desks_util.h"
 #include "base/containers/adapters.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
-#include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
@@ -29,6 +27,7 @@
 #include "components/exo/surface_observer.h"
 #include "components/exo/window_properties.h"
 #include "components/exo/wm_helper.h"
+#include "components/viz/common/quads/compositor_frame.h"
 #include "components/viz/common/quads/compositor_render_pass.h"
 #include "components/viz/common/quads/shared_quad_state.h"
 #include "components/viz/common/quads/solid_color_draw_quad.h"
@@ -37,7 +36,6 @@
 #include "components/viz/common/quads/tile_draw_quad.h"
 #include "components/viz/common/resources/resource_id.h"
 #include "media/media_buildflags.h"
-#include "third_party/khronos/GLES2/gl2.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "ui/aura/client/aura_constants.h"
@@ -53,7 +51,6 @@
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "ui/events/event.h"
-#include "ui/gfx/buffer_format_util.h"
 #include "ui/gfx/buffer_types.h"
 #include "ui/gfx/color_space.h"
 #include "ui/gfx/geometry/dip_util.h"
@@ -226,7 +223,10 @@ class CustomWindowDelegate : public aura::WindowDelegate {
   void OnCaptureLost() override {}
   void OnPaint(const ui::PaintContext& context) override {}
   void OnDeviceScaleFactorChanged(float old_device_scale_factor,
-                                  float new_device_scale_factor) override {}
+                                  float new_device_scale_factor) override {
+    surface_->OnScaleFactorChanged(old_device_scale_factor,
+                                   new_device_scale_factor);
+  }
   void OnWindowDestroying(aura::Window* window) override {}
   void OnWindowDestroyed(aura::Window* window) override { delete this; }
   void OnWindowTargetVisibilityChanged(bool visible) override {}
@@ -251,7 +251,7 @@ class CustomWindowDelegate : public aura::WindowDelegate {
   }
 
  private:
-  const raw_ptr<Surface, ExperimentalAsh> surface_;
+  const raw_ptr<Surface> surface_;
 };
 
 class CustomWindowTargeter : public aura::WindowTargeter {
@@ -326,8 +326,8 @@ Surface::Surface()
   window_->Init(ui::LAYER_NOT_DRAWN);
   window_->SetEventTargeter(std::make_unique<CustomWindowTargeter>());
   window_->set_owned_by_parent(false);
-  WMHelper::GetInstance()->SetDragDropDelegate(window_.get());
 }
+
 Surface::~Surface() {
   for (SurfaceObserver& observer : observers_)
     observer.OnSurfaceDestroying(this);
@@ -363,6 +363,15 @@ Surface::~Surface() {
 // static
 Surface* Surface::AsSurface(const aura::Window* window) {
   return window->GetProperty(kSurfaceKey);
+}
+
+std::vector<raw_ptr<aura::Window, VectorExperimental>>
+Surface::GetChildWindows() const {
+  std::vector<raw_ptr<aura::Window, VectorExperimental>> children;
+  for (const auto& [sub_surface, _] : sub_surfaces_) {
+    children.push_back(sub_surface->window());
+  }
+  return children;
 }
 
 void Surface::Attach(Buffer* buffer) {
@@ -597,7 +606,8 @@ void Surface::OnSubSurfaceCommit() {
 }
 
 void Surface::SetRoundedCorners(const gfx::RRectF& rounded_corners_bounds,
-                                bool is_root_coordinates) {
+                                bool is_root_coordinates,
+                                bool commit_override) {
   TRACE_EVENT1("exo", "Surface::SetRoundedCorner", "corners",
                rounded_corners_bounds.ToString());
 
@@ -607,6 +617,13 @@ void Surface::SetRoundedCorners(const gfx::RRectF& rounded_corners_bounds,
     has_pending_contents_ = true;
     pending_state_.rounded_corners_bounds = rounded_corners_bounds;
     pending_state_.rounded_corners_is_root_coordinates = is_root_coordinates;
+  }
+
+  if (commit_override &&
+      (rounded_corners_bounds != state_.rounded_corners_bounds ||
+       is_root_coordinates != state_.rounded_corners_is_root_coordinates)) {
+    state_.rounded_corners_bounds = rounded_corners_bounds;
+    state_.rounded_corners_is_root_coordinates = is_root_coordinates;
   }
 }
 
@@ -855,19 +872,9 @@ void Surface::SetAspectRatio(const gfx::SizeF& aspect_ratio) {
     delegate_->SetAspectRatio(aspect_ratio);
 }
 
-void Surface::SetEmbeddedSurfaceId(
-    base::RepeatingCallback<viz::SurfaceId()> surface_id_callback) {
-  get_current_surface_id_ = std::move(surface_id_callback);
-  first_embedded_surface_id_ = viz::SurfaceId();
-}
-
-void Surface::SetEmbeddedSurfaceSize(const gfx::Size& size) {
-  embedded_surface_size_ = size;
-}
-
 void Surface::SetAcquireFence(std::unique_ptr<gfx::GpuFence> gpu_fence) {
   TRACE_EVENT1("exo", "Surface::SetAcquireFence", "fence_fd",
-               gpu_fence ? gpu_fence->GetGpuFenceHandle().owned_fd.get() : -1);
+               gpu_fence ? gpu_fence->GetGpuFenceHandle().Peek() : -1);
 
   pending_state_.acquire_fence = std::move(gpu_fence);
 }
@@ -945,9 +952,11 @@ void Surface::Commit() {
 }
 
 bool Surface::UpdateDisplay(int64_t old_display, int64_t new_display) {
-  if (!leave_enter_callback_.is_null()) {
-    if (!leave_enter_callback_.Run(old_display, new_display))
+  display_id_ = new_display;
+  if (has_contents() && !leave_enter_callback_.is_null()) {
+    if (!leave_enter_callback_.Run(old_display, new_display)) {
       return false;
+    }
   }
   for (const auto& sub_surface_entry : base::Reversed(sub_surfaces_)) {
     auto* sub_surface = sub_surface_entry.first;
@@ -1061,8 +1070,19 @@ void Surface::CommitSurfaceHierarchy(bool synchronized) {
         needs_update_buffer_transform = true;
 
       if (cached_state_.buffer.has_value()) {
+        bool had_contents = has_contents();
+
         state_.buffer = std::move(cached_state_.buffer);
         cached_state_.buffer.reset();
+
+        if (display_id_ != display::kInvalidDisplayId &&
+            !leave_enter_callback_.is_null()) {
+          if (!had_contents && has_contents()) {
+            leave_enter_callback_.Run(display::kInvalidDisplayId, display_id_);
+          } else if (had_contents && !has_contents()) {
+            leave_enter_callback_.Run(display_id_, display::kInvalidDisplayId);
+          }
+        }
       }
       state_.rounded_corners_bounds = cached_state_.rounded_corners_bounds;
       state_.rounded_corners_is_root_coordinates =
@@ -1193,7 +1213,8 @@ void Surface::AppendSurfaceHierarchyCallbacks(
 }
 
 void Surface::AppendSurfaceHierarchyContentsToFrame(
-    const gfx::PointF& origin,
+    const gfx::PointF& parent_to_root_px,
+    const gfx::PointF& to_parent_dp,
     bool needs_full_damage,
     FrameSinkResourceManager* resource_manager,
     absl::optional<float> device_scale_factor,
@@ -1204,8 +1225,12 @@ void Surface::AppendSurfaceHierarchyContentsToFrame(
     auto* sub_surface = sub_surface_entry.first;
     // Synchronsouly commit all pending state of the sub-surface and its
     // decendents.
+    gfx::PointF to_root_px =
+        parent_to_root_px +
+        gfx::ScalePoint(to_parent_dp, device_scale_factor.value_or(1.f))
+            .OffsetFromOrigin();
     sub_surface->AppendSurfaceHierarchyContentsToFrame(
-        origin + sub_surface_entry.second.OffsetFromOrigin(), needs_full_damage,
+        to_root_px, sub_surface_entry.second, needs_full_damage,
         resource_manager, device_scale_factor, frame);
   }
 
@@ -1218,7 +1243,8 @@ void Surface::AppendSurfaceHierarchyContentsToFrame(
         std::move(state_.per_commit_explicit_release_callback_));
   }
 
-  AppendContentsToFrame(origin, needs_full_damage, device_scale_factor, frame);
+  AppendContentsToFrame(parent_to_root_px, to_parent_dp, needs_full_damage,
+                        device_scale_factor, frame);
 }
 
 bool Surface::IsSynchronized() const {
@@ -1484,43 +1510,50 @@ static viz::SharedQuadState* AppendOrCreateSharedQuadState(
     quad_state = render_pass->CreateAndAppendSharedQuadState();
     quad_state->SetAll(quad_to_target_transform, quad_rect, quad_rect, msk,
                        quad_clip_rect, are_contents_opaque, opacity,
-                       SkBlendMode::kSrcOver, 0);
+                       SkBlendMode::kSrcOver, /*sorting_context=*/0,
+                       /*layer_id=*/0u, /*fast_rounded_corner=*/false);
   }
   return quad_state;
 }
 
-void Surface::AppendContentsToFrame(const gfx::PointF& origin,
+void Surface::AppendContentsToFrame(const gfx::PointF& parent_to_root_px,
+                                    const gfx::PointF& to_parent_dp,
                                     bool needs_full_damage,
                                     absl::optional<float> device_scale_factor,
                                     viz::CompositorFrame* frame) {
   const std::unique_ptr<viz::CompositorRenderPass>& render_pass =
       frame->render_pass_list.back();
-  gfx::RectF output_rect(origin, content_size_);
+  gfx::PointF parent_to_root_dp = gfx::ScalePoint(
+      parent_to_root_px, 1.f / device_scale_factor.value_or(1.f));
+  gfx::PointF to_root_dp = parent_to_root_dp + to_parent_dp.OffsetFromOrigin();
+  gfx::RectF output_rect(to_root_dp, content_size_);
   gfx::Rect quad_rect(0, 0, 1, 1);
 
-  // Surface bounds are in DIPs, but |damage_rect| and |output_rect| are in
+  // Surface bounds are in DIPs, but |damage_rect| should be specified in
   // pixels, so we need to scale by the |device_scale_factor|.
-  gfx::RectF damage_rect = needs_full_damage
-                               ? gfx::RectF(content_size_)
-                               : gfx::RectF(state_.damage.bounds());
-  if (!damage_rect.IsEmpty()) {
+  gfx::RectF damage_rect_px;
+  gfx::RectF damage_rect_dp = needs_full_damage
+                                  ? gfx::RectF(content_size_)
+                                  : gfx::RectF(state_.damage.bounds());
+  if (!damage_rect_dp.IsEmpty()) {
     // Outset damage by 1 DIP to as damage is in surface coordinate space and
     // client might not be aware of |device_scale_factor| and the
     // scaling/filtering it requires.
-    damage_rect.Inset(-1);
-    damage_rect += origin.OffsetFromOrigin();
-    damage_rect.Intersect(output_rect);
+    damage_rect_dp.Inset(-1);
+    damage_rect_dp += to_root_dp.OffsetFromOrigin();
+    damage_rect_dp.Intersect(output_rect);
 
+    damage_rect_px = damage_rect_dp;
     if (device_scale_factor.has_value()) {
       if (device_scale_factor.value() <= 1) {
-        damage_rect =
-            gfx::ConvertRectToPixels(damage_rect, device_scale_factor.value());
+        damage_rect_px = gfx::ConvertRectToPixels(damage_rect_px,
+                                                  device_scale_factor.value());
       } else {
         // The damage will eventually be rescaled by 1/device_scale_factor.
         // Since that scale factor is <1, taking the enclosed rect here means
         // that that rescaled RectF is <1px smaller than |damage_rect| in each
         // dimension, which makes the enclosing rect equal to |damage_rect|.
-        damage_rect.Scale(device_scale_factor.value());
+        damage_rect_px.Scale(device_scale_factor.value());
       }
     }
   }
@@ -1532,9 +1565,12 @@ void Surface::AppendContentsToFrame(const gfx::PointF& origin,
     // we skip translating into the root surface coordinates to keep the old
     // behavior.
     // TODO(crbug.com/1457446): Remove this.
-    auto clip_rect_offset = state_.clip_rect_is_parent_coordinates
-                                ? gfx::Vector2d()
-                                : origin.OffsetFromOrigin();
+    auto clip_rect_offset =
+        state_.clip_rect_is_parent_coordinates
+            ? parent_to_root_px.OffsetFromOrigin()
+            : gfx::ScalePoint(to_root_dp, device_scale_factor.value_or(1.f))
+                  .OffsetFromOrigin();
+
     quad_clip_rect = gfx::ToEnclosedRect(*state_.clip_rect + clip_rect_offset);
   }
 
@@ -1544,26 +1580,7 @@ void Surface::AppendContentsToFrame(const gfx::PointF& origin,
 
   gfx::Vector2dF translate(0.0f, 0.0f);
 
-  // Surface quads require the quad rect to be appropriately sized and need to
-  // use the shared quad clip rect.
-  if (get_current_surface_id_) {
-    quad_rect = gfx::Rect(embedded_surface_size_);
-    scale = gfx::Vector2dF(1.0f, 1.0f);
-
-    if (!state_.basic_state.crop.IsEmpty()) {
-      // In order to crop an AxB rect to CxD we need to scale by A/C, B/D.
-      // We achieve clipping by scaling it up and then drawing only in the
-      // output rectangle.
-      scale.Scale(content_size_.width() / state_.basic_state.crop.width(),
-                  content_size_.height() / state_.basic_state.crop.height());
-
-      auto offset = state_.basic_state.crop.origin().OffsetFromOrigin();
-      translate =
-          gfx::Vector2dF(-offset.x() * scale.x(), -offset.y() * scale.y());
-    }
-  } else {
-    scale.Scale(state_.basic_state.buffer_scale);
-  }
+  scale.Scale(state_.basic_state.buffer_scale);
 
   bool are_contents_opaque =
       !current_resource_has_alpha_ ||
@@ -1573,33 +1590,41 @@ void Surface::AppendContentsToFrame(const gfx::PointF& origin,
 
   gfx::MaskFilterInfo msk;
   if (!state_.rounded_corners_bounds.IsEmpty()) {
-    DCHECK(sub_surfaces_.empty());
     // `state_.rounded_corners_bounds` should be on local surface coordinates
     // but the deprecated implementation still uses root surface coordinates.
     // If so, we skip translating into the root surface coordinates to keep the
     // old behavior.
     // TODO(crbug.com/1470955): Remove this.
     auto rounded_corners_rect_offset =
-        state_.rounded_corners_is_root_coordinates ? gfx::Vector2d()
-                                                   : origin.OffsetFromOrigin();
+        state_.rounded_corners_is_root_coordinates
+            ? parent_to_root_dp.OffsetFromOrigin()
+            : to_root_dp.OffsetFromOrigin();
 
     // Set the mask.
     msk = gfx::MaskFilterInfo(state_.rounded_corners_bounds +
                               rounded_corners_rect_offset);
+
+    if (device_scale_factor.has_value()) {
+      msk.ApplyTransform(
+          gfx::Transform::MakeScale(device_scale_factor.value()));
+    }
   }
 
   // Compute the total transformation from post-transform buffer coordinates to
   // target coordinates.
-  // Scale and offset the normalized space to fit the content size rectangle.
+  // Scale to size then translate to position of subsurface in parent's space.
   gfx::Transform viewport_to_target_transform(
       gfx::AxisTransform2d::FromScaleAndTranslation(
-          scale, origin.OffsetFromOrigin() + translate));
+          scale, to_parent_dp.OffsetFromOrigin() + translate));
+  // Apply delegated transform matrix
   viewport_to_target_transform.PostConcat(state_.surface_transform);
-
   if (device_scale_factor.has_value()) {
     // Convert from DPs to pixels.
     viewport_to_target_transform.PostScale(device_scale_factor.value());
   }
+  // Translate to root in pixels.
+  viewport_to_target_transform.PostTranslate(
+      parent_to_root_px.OffsetFromOrigin());
 
   gfx::Transform quad_to_target_transform(buffer_transform_);
   quad_to_target_transform.PostConcat(viewport_to_target_transform);
@@ -1645,44 +1670,16 @@ void Surface::AppendContentsToFrame(const gfx::PointF& origin,
     else if (current_resource_has_alpha_ && are_contents_opaque)
       background_color = SkColors::kBlack;  // Avoid writing alpha < 1
 
-    // If this surface is being replaced by a SurfaceId emit a SurfaceDrawQuad.
-    if (get_current_surface_id_) {
-      auto current_surface_id = get_current_surface_id_.Run();
-      // If the surface ID is valid update it, otherwise keep showing the old
-      // one for now.
-      if (current_surface_id.is_valid()) {
-        latest_embedded_surface_id_ = current_surface_id;
-        if (!current_surface_id.HasSameEmbedTokenAs(
-                first_embedded_surface_id_)) {
-          first_embedded_surface_id_ = current_surface_id;
-        }
-      }
-      if (latest_embedded_surface_id_.is_valid() &&
-          !embedded_surface_size_.IsEmpty()) {
-        viz::SharedQuadState* quad_state =
-            render_pass->CreateAndAppendSharedQuadState();
-        quad_state->SetAll(quad_to_target_transform, quad_rect, quad_rect, msk,
-                           quad_clip_rect, are_contents_opaque,
-                           state_.basic_state.alpha, SkBlendMode::kSrcOver, 0);
-        if (!state_.basic_state.crop.IsEmpty()) {
-          quad_state->clip_rect = gfx::ToEnclosedRect(output_rect);
-        }
-        viz::SurfaceDrawQuad* surface_quad =
-            render_pass->CreateAndAppendDrawQuad<viz::SurfaceDrawQuad>();
-        surface_quad->SetNew(quad_state, quad_rect, quad_rect,
-                             viz::SurfaceRange(first_embedded_surface_id_,
-                                               latest_embedded_surface_id_),
-                             background_color,
-                             /*stretch_content_to_fill_bounds=*/false);
-      }
-      // A resource was still produced for this so we still need to release it
-      // later.
-      frame->resource_list.push_back(current_resource_);
-    } else if (state_.basic_state.alpha != 0.0f) {
+    if (state_.basic_state.alpha != 0.0f) {
       const viz::SharedQuadState* quad_state = AppendOrCreateSharedQuadState(
           state_.basic_state.alpha, render_pass, quad_to_target_transform,
           quad_rect, msk, quad_clip_rect, are_contents_opaque);
 
+      // Our historical implementation of the wayland blending protocol is to
+      // treat blend none as fully opaque alpha and not simply "src". This allow
+      // us to treat client buffers as rgbx. For an example see b/305977429
+      const bool force_rgbx_for_opaque =
+          are_contents_opaque && current_resource_has_alpha_;
       // Draw quad is only needed if buffer is not fully transparent.
       const bool requires_texture_draw_quad =
           state_.basic_state.only_visible_on_secure_output ||
@@ -1691,17 +1688,20 @@ void Surface::AppendContentsToFrame(const gfx::PointF& origin,
       if (requires_texture_draw_quad) {
         viz::TextureDrawQuad* texture_quad =
             render_pass->CreateAndAppendDrawQuad<viz::TextureDrawQuad>();
-        float vertex_opacity[4] = {1.0, 1.0, 1.0, 1.0};
-        texture_quad->SetNew(
-            quad_state, quad_rect, quad_rect,
-            /* needs_blending=*/!are_contents_opaque, current_resource_.id,
-            /* premultiplied*/ true, uv_crop.origin(), uv_crop.bottom_right(),
-            background_color, vertex_opacity,
-            /* flipped=*/false, /* nearest*/ false,
-            state_.basic_state.only_visible_on_secure_output,
-            gfx::ProtectedVideoType::kClear);
+        texture_quad->SetNew(quad_state, quad_rect, quad_rect,
+                             /* needs_blending=*/!are_contents_opaque,
+                             current_resource_.id,
+                             /* premultiplied*/ true, uv_crop.origin(),
+                             uv_crop.bottom_right(), background_color,
+                             /* flipped=*/false, /* nearest*/ false,
+                             state_.basic_state.only_visible_on_secure_output,
+                             gfx::ProtectedVideoType::kClear);
         if (current_resource_.is_overlay_candidate)
           texture_quad->set_resource_size_in_pixels(current_resource_.size);
+
+        if (force_rgbx_for_opaque) {
+          texture_quad->set_force_rgbx();
+        }
 
         switch (state_.overlay_priority_hint) {
           case OverlayPriority::LOW:
@@ -1726,11 +1726,11 @@ void Surface::AppendContentsToFrame(const gfx::PointF& origin,
         }
 #endif  // BUILDFLAG(USE_ARC_PROTECTED_MEDIA)
 
-        if (!damage_rect.IsEmpty()) {
-          texture_quad->damage_rect = gfx::ToEnclosedRect(damage_rect);
+        if (!damage_rect_px.IsEmpty()) {
+          texture_quad->damage_rect = gfx::ToEnclosedRect(damage_rect_px);
           render_pass->has_per_quad_damage = true;
           // Clear handled damage so it will not be added to the |render_pass|.
-          damage_rect = gfx::RectF();
+          damage_rect_px = gfx::RectF();
         }
       } else {
         viz::TileDrawQuad* tile_quad =
@@ -1761,7 +1761,7 @@ void Surface::AppendContentsToFrame(const gfx::PointF& origin,
                        false /* force_anti_aliasing_off */);
   }
 
-  render_pass->damage_rect.Union(gfx::ToEnclosedRect(damage_rect));
+  render_pass->damage_rect.Union(gfx::ToEnclosedRect(damage_rect_px));
 }
 
 void Surface::UpdateContentSize() {
@@ -1817,6 +1817,13 @@ void Surface::UpdateContentSize() {
 void Surface::SetFrameLocked(bool lock) {
   for (SurfaceObserver& observer : observers_)
     observer.OnFrameLockingChanged(this, lock);
+}
+
+void Surface::OnScaleFactorChanged(float old_scale_factor,
+                                   float new_scale_factor) {
+  for (SurfaceObserver& observer : observers_) {
+    observer.OnScaleFactorChanged(this, old_scale_factor, new_scale_factor);
+  }
 }
 
 void Surface::OnWindowOcclusionChanged(

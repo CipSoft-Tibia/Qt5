@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -80,7 +81,6 @@
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/wrapper_shared_url_loader_factory.h"
-#include "services/network/public/mojom/attribution.mojom.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "services/viz/public/cpp/gpu/context_provider_command_buffer.h"
 #include "storage/common/database/database_identifier.h"
@@ -96,7 +96,6 @@
 #include "third_party/blink/public/platform/url_conversion.h"
 #include "third_party/blink/public/platform/web_audio_latency_hint.h"
 #include "third_party/blink/public/platform/web_audio_sink_descriptor.h"
-#include "third_party/blink/public/platform/web_code_cache_loader.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_theme_engine.h"
 #include "third_party/blink/public/platform/web_url.h"
@@ -111,11 +110,13 @@
 #include "ui/base/ui_base_switches.h"
 #include "ui/gl/buildflags.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 
 #if BUILDFLAG(IS_MAC)
 #include "content/child/child_process_sandbox_support_impl_mac.h"
 #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #include "content/child/child_process_sandbox_support_impl_linux.h"
+#include "content/child/sandboxed_process_thread_type_handler.h"
 #endif
 
 #if BUILDFLAG(IS_POSIX)
@@ -181,7 +182,8 @@ RendererBlinkPlatformImpl::RendererBlinkPlatformImpl(
                             : nullptr),
       sudden_termination_disables_(0),
       is_locked_to_site_(false),
-      main_thread_scheduler_(main_thread_scheduler) {
+      main_thread_scheduler_(main_thread_scheduler),
+      next_frame_sink_id_(uint32_t{std::numeric_limits<int32_t>::max()} + 1) {
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   sk_sp<font_service::FontLoader> font_loader;
 #endif
@@ -247,9 +249,12 @@ std::string RendererBlinkPlatformImpl::GetNameForHistogram(const char* name) {
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 void RendererBlinkPlatformImpl::SetThreadType(base::PlatformThreadId thread_id,
                                               base::ThreadType thread_type) {
-  if (RenderThreadImpl* render_thread = RenderThreadImpl::current()) {
-    render_thread->render_message_filter()->SetThreadType(thread_id,
-                                                          thread_type);
+  // TODO: both of the usages of this method could just be switched to use
+  // base::PlatformThread::SetCurrentThreadType().
+  if (SandboxedProcessThreadTypeHandler* sandboxed_process_thread_type_handler =
+          SandboxedProcessThreadTypeHandler::Get()) {
+    sandboxed_process_thread_type_handler->HandleThreadTypeChange(thread_id,
+                                                                  thread_type);
   }
 }
 #endif
@@ -275,9 +280,9 @@ bool RendererBlinkPlatformImpl::sandboxEnabled() {
       switches::kSingleProcess);
 }
 
-uint64_t RendererBlinkPlatformImpl::VisitedLinkHash(const char* canonical_url,
-                                                    size_t length) {
-  return GetContentClient()->renderer()->VisitedLinkHash(canonical_url, length);
+uint64_t RendererBlinkPlatformImpl::VisitedLinkHash(
+    std::string_view canonical_url) {
+  return GetContentClient()->renderer()->VisitedLinkHash(canonical_url);
 }
 
 bool RendererBlinkPlatformImpl::IsLinkVisited(uint64_t link_hash) {
@@ -328,6 +333,16 @@ RendererBlinkPlatformImpl::CreateWebSocketHandshakeThrottleProvider() {
       ->CreateWebSocketHandshakeThrottleProvider();
 }
 
+bool RendererBlinkPlatformImpl::IsolateStartsInBackground() {
+  if (auto* renderer = GetContentClient()->renderer()) {
+    // Isolates start in the background if we do not handle hidden/visibility
+    // changes for this process. See `RenderThreadImpl::OnRendererHidden` and
+    // `RenderThreadImpl::OnRendererVisible`.
+    return !renderer->RunIdleHandlerWhenWidgetsHidden();
+  }
+  return BlinkPlatformImpl::IsolateStartsInBackground();
+}
+
 WebString RendererBlinkPlatformImpl::DefaultLocale() {
   return WebString::FromASCII(RenderThread::Get()->GetLocale());
 }
@@ -355,8 +370,9 @@ void RendererBlinkPlatformImpl::SuddenTerminationChanged(bool enabled) {
 //------------------------------------------------------------------------------
 
 viz::FrameSinkId RendererBlinkPlatformImpl::GenerateFrameSinkId() {
-  return viz::FrameSinkId(RenderThread::Get()->GetClientId(),
-                          RenderThread::Get()->GenerateRoutingID());
+  uint32_t frame_sink_id = next_frame_sink_id_++;
+  CHECK_LT(frame_sink_id, next_frame_sink_id_);
+  return viz::FrameSinkId(RenderThread::Get()->GetClientId(), frame_sink_id);
 }
 
 bool RendererBlinkPlatformImpl::IsLockedToSite() const {
@@ -501,7 +517,7 @@ bool RendererBlinkPlatformImpl::RTCSmoothnessAlgorithmEnabled() {
 
 //------------------------------------------------------------------------------
 
-absl::optional<double>
+std::optional<double>
 RendererBlinkPlatformImpl::GetWebRtcMaxCaptureFrameRate() {
   const std::string max_fps_str =
       base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
@@ -511,7 +527,7 @@ RendererBlinkPlatformImpl::GetWebRtcMaxCaptureFrameRate() {
     if (base::StringToDouble(max_fps_str, &value) && value >= 0.0)
       return value;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 scoped_refptr<media::AudioRendererSink>
@@ -633,6 +649,7 @@ void RendererBlinkPlatformImpl::Collect3DContextInformation(
   gl_info->optimus = gpu_info.optimus;
   gl_info->using_gpu_compositing = !IsGpuCompositingDisabled();
   gl_info->using_passthrough_command_decoder = gpu_info.passthrough_cmd_decoder;
+  gl_info->angle_implementation = gpu_info.gl_implementation_parts.angle;
 }
 
 std::unique_ptr<blink::WebGraphicsContext3DProvider>
@@ -666,6 +683,8 @@ RendererBlinkPlatformImpl::CreateOffscreenGraphicsContext3DProvider(
               .status_values[gpu::GPU_FEATURE_TYPE_CANVAS_OOP_RASTERIZATION] ==
           gpu::kGpuFeatureStatusEnabled;
   attributes.enable_gles2_interface = !attributes.enable_oop_rasterization;
+  attributes.enable_grcontext =
+      !attributes.enable_oop_rasterization && web_attributes.support_grcontext;
 
   attributes.gpu_preference = web_attributes.prefer_low_power_gpu
                                   ? gl::GpuPreference::kLowPower
@@ -678,19 +697,14 @@ RendererBlinkPlatformImpl::CreateOffscreenGraphicsContext3DProvider(
 
   constexpr bool automatic_flushes = true;
   constexpr bool support_locking = false;
-  bool use_grcontext =
-      !attributes.enable_oop_rasterization && web_attributes.support_grcontext;
 
-  scoped_refptr<viz::ContextProviderCommandBuffer> provider(
-      new viz::ContextProviderCommandBuffer(
-          std::move(gpu_channel_host),
-
-          kGpuStreamIdDefault, kGpuStreamPriorityDefault,
-          gpu::kNullSurfaceHandle, GURL(document_url), automatic_flushes,
-          support_locking, use_grcontext, gpu::SharedMemoryLimits(), attributes,
-          viz::command_buffer_metrics::ContextType::WEBGL));
   return std::make_unique<WebGraphicsContext3DProviderImpl>(
-      std::move(provider));
+      base::MakeRefCounted<viz::ContextProviderCommandBuffer>(
+          std::move(gpu_channel_host), kGpuStreamIdDefault,
+          kGpuStreamPriorityDefault, gpu::kNullSurfaceHandle,
+          GURL(document_url), automatic_flushes, support_locking,
+          gpu::SharedMemoryLimits(), attributes,
+          viz::command_buffer_metrics::ContextType::WEBGL));
 }
 
 //------------------------------------------------------------------------------
@@ -719,6 +733,39 @@ RendererBlinkPlatformImpl::CreateSharedOffscreenGraphicsContext3DProvider() {
 
 //------------------------------------------------------------------------------
 
+static std::unique_ptr<blink::WebGraphicsContext3DProvider>
+CreateWebGPUGraphicsContext3DImpl(
+    const blink::WebURL& document_url,
+    scoped_refptr<gpu::GpuChannelHost> gpu_channel_host) {
+  gpu::ContextCreationAttribs attributes;
+  // TODO(kainino): It's not clear yet how GPU preferences work for WebGPU.
+  attributes.gpu_preference = gl::GpuPreference::kHighPerformance;
+  attributes.enable_gles2_interface = false;
+  attributes.context_type = gpu::CONTEXT_TYPE_WEBGPU;
+
+  constexpr bool automatic_flushes = true;
+  constexpr bool support_locking = false;
+
+  // WebGPU GPUBuffers, which are backed by shared memory transfer buffers, may
+  // be accessed as ArrayBuffers from JavaScript. As such, the underlying
+  // buffers need to be mapped using the ArrayBuffer shared memory mapper. As
+  // there is currently no way of specifying a custom mapper per buffer, we
+  // have to map all buffers created by this provider using the custom mapper.
+  // TODO(crbug.com/1321521) instead of mapping all buffers created by this
+  // provider with the array buffer mapper, only map those that will actually
+  // be used as ArrayBuffers and remove this per-provider mapper again.
+  base::SharedMemoryMapper* buffer_mapper =
+      gin::GetSharedMemoryMapperForArrayBuffers();
+
+  return std::make_unique<WebGraphicsContext3DProviderImpl>(
+      base::MakeRefCounted<viz::ContextProviderCommandBuffer>(
+          std::move(gpu_channel_host), kGpuStreamIdDefault,
+          kGpuStreamPriorityDefault, gpu::kNullSurfaceHandle,
+          GURL(document_url), automatic_flushes, support_locking,
+          gpu::SharedMemoryLimits::ForWebGPUContext(), attributes,
+          viz::command_buffer_metrics::ContextType::WEBGPU, buffer_mapper));
+}
+
 std::unique_ptr<blink::WebGraphicsContext3DProvider>
 RendererBlinkPlatformImpl::CreateWebGPUGraphicsContext3DProvider(
     const blink::WebURL& document_url) {
@@ -733,39 +780,36 @@ RendererBlinkPlatformImpl::CreateWebGPUGraphicsContext3DProvider(
     return nullptr;
   }
 
-  gpu::ContextCreationAttribs attributes;
-  // TODO(kainino): It's not clear yet how GPU preferences work for WebGPU.
-  attributes.gpu_preference = gl::GpuPreference::kHighPerformance;
-  attributes.enable_gles2_interface = false;
-  attributes.context_type = gpu::CONTEXT_TYPE_WEBGPU;
-
-  constexpr bool automatic_flushes = true;
-  constexpr bool support_locking = false;
-  constexpr bool support_grcontext = true;
-
-  // WebGPU GPUBuffers, which are backed by shared memory transfer buffers, may
-  // be accessed as ArrayBuffers from JavaScript. As such, the underlying
-  // buffers need to be mapped using the ArrayBuffer shared memory mapper. As
-  // there is currently no way of specifying a custom mapper per buffer, we
-  // have to map all buffers created by this provider using the custom mapper.
-  // TODO(crbug.com/1321521) instead of mapping all buffers created by this
-  // provider with the array buffer mapper, only map those that will actually
-  // be used as ArrayBuffers and remove this per-provider mapper again.
-  base::SharedMemoryMapper* buffer_mapper =
-      gin::GetSharedMemoryMapperForArrayBuffers();
-
-  scoped_refptr<viz::ContextProviderCommandBuffer> provider(
-      new viz::ContextProviderCommandBuffer(
-          std::move(gpu_channel_host),
-
-          kGpuStreamIdDefault, kGpuStreamPriorityDefault,
-          gpu::kNullSurfaceHandle, GURL(document_url), automatic_flushes,
-          support_locking, support_grcontext,
-          gpu::SharedMemoryLimits::ForWebGPUContext(), attributes,
-          viz::command_buffer_metrics::ContextType::WEBGPU, buffer_mapper));
-  return std::make_unique<WebGraphicsContext3DProviderImpl>(
-      std::move(provider));
+  return CreateWebGPUGraphicsContext3DImpl(document_url, gpu_channel_host);
 #endif
+}
+
+void RendererBlinkPlatformImpl::CreateWebGPUGraphicsContext3DProviderAsync(
+    const blink::WebURL& document_url,
+    base::OnceCallback<
+        void(std::unique_ptr<blink::WebGraphicsContext3DProvider>)> callback) {
+#if !BUILDFLAG(USE_DAWN)
+  std::move(callback).Run(nullptr);
+#else
+  // Initiate the asynchronous call to establish the GPU channel
+  RenderThreadImpl::current()->EstablishGpuChannel(base::BindOnce(
+      &RendererBlinkPlatformImpl::OnGpuChannelEstablished,
+      weak_factory_.GetWeakPtr(), document_url, std::move(callback)));
+#endif
+}
+
+void RendererBlinkPlatformImpl::OnGpuChannelEstablished(
+    const blink::WebURL& document_url,
+    base::OnceCallback<
+        void(std::unique_ptr<blink::WebGraphicsContext3DProvider>)> callback,
+    scoped_refptr<gpu::GpuChannelHost> gpu_channel_host) {
+  if (!gpu_channel_host) {
+    std::move(callback).Run(nullptr);
+    return;
+  }
+
+  std::move(callback).Run(
+      CreateWebGPUGraphicsContext3DImpl(document_url, gpu_channel_host));
 }
 
 //------------------------------------------------------------------------------
@@ -814,12 +858,14 @@ bool RendererBlinkPlatformImpl::AllowScriptExtensionForServiceWorker(
 }
 
 blink::ProtocolHandlerSecurityLevel
-RendererBlinkPlatformImpl::GetProtocolHandlerSecurityLevel() {
-  return GetContentClient()->renderer()->GetProtocolHandlerSecurityLevel();
+RendererBlinkPlatformImpl::GetProtocolHandlerSecurityLevel(
+    const blink::WebSecurityOrigin& origin) {
+  url::Origin url_origin(origin);
+  return GetContentClient()->renderer()->GetProtocolHandlerSecurityLevel(
+      url_origin);
 }
 
-bool RendererBlinkPlatformImpl::OriginCanAccessServiceWorkers(
-    const blink::WebURL& url) {
+bool RendererBlinkPlatformImpl::OriginCanAccessServiceWorkers(const GURL& url) {
   return content::OriginCanAccessServiceWorkers(url);
 }
 
@@ -863,7 +909,8 @@ void RendererBlinkPlatformImpl::CreateServiceWorkerSubresourceLoaderFactory(
           /*remote_controller=*/mojo::NullRemote(),
           /*remote_cache_storage=*/mojo::NullRemote(), client_id.Utf8(),
           blink::mojom::ServiceWorkerFetchHandlerBypassOption::kDefault,
-          /*router_rules=*/absl::nullopt, blink::EmbeddedWorkerStatus::STOPPED),
+          /*router_rules=*/std::nullopt, blink::EmbeddedWorkerStatus::kStopped,
+          /*running_status_receiver=*/mojo::NullReceiver()),
       network::SharedURLLoaderFactory::Create(std::move(fallback_factory)),
       std::move(receiver), std::move(task_runner));
 }
@@ -977,15 +1024,6 @@ base::PlatformThreadId RendererBlinkPlatformImpl::GetIOThreadId() const {
   return io_thread_id_;
 }
 
-network::mojom::AttributionSupport
-RendererBlinkPlatformImpl::GetAttributionReportingSupport() {
-  auto* render_thread = RenderThreadImpl::current();
-  // RenderThreadImpl is null in some tests.
-  if (!render_thread)
-    return network::mojom::AttributionSupport::kWeb;
-  return render_thread->GetAttributionReportingSupport();
-}
-
 scoped_refptr<base::SingleThreadTaskRunner>
 RendererBlinkPlatformImpl::VideoFrameCompositorTaskRunner() {
   auto compositor_task_runner = CompositorThreadTaskRunner();
@@ -1015,12 +1053,18 @@ void RendererBlinkPlatformImpl::SetPrivateMemoryFootprint(
 }
 
 bool RendererBlinkPlatformImpl::IsUserLevelMemoryPressureSignalEnabled() {
-  return features::IsUserLevelMemoryPressureSignalEnabledOn4GbDevices() ||
+  return features::IsUserLevelMemoryPressureSignalEnabledOn3GbDevices() ||
+         features::IsUserLevelMemoryPressureSignalEnabledOn4GbDevices() ||
          features::IsUserLevelMemoryPressureSignalEnabledOn6GbDevices();
 }
 
 std::pair<base::TimeDelta, base::TimeDelta> RendererBlinkPlatformImpl::
     InertAndMinimumIntervalOfUserLevelMemoryPressureSignal() {
+  if (features::IsUserLevelMemoryPressureSignalEnabledOn3GbDevices()) {
+    return std::make_pair(
+        features::InertIntervalFor3GbDevices(),
+        features::MinUserMemoryPressureIntervalOn3GbDevices());
+  }
   if (features::IsUserLevelMemoryPressureSignalEnabledOn4GbDevices()) {
     return std::make_pair(
         features::InertIntervalFor4GbDevices(),

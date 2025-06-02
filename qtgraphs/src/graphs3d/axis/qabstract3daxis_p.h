@@ -29,8 +29,8 @@ public:
 
     void setOrientation(QAbstract3DAxis::AxisOrientation orientation);
 
-    inline bool isDefaultAxis() { return m_isDefaultAxis; }
-    inline void setDefaultAxis(bool isDefault) { m_isDefaultAxis = isDefault; }
+    bool isDefaultAxis() { return m_isDefaultAxis; }
+    void setDefaultAxis(bool isDefault) { m_isDefaultAxis = isDefault; }
 
     virtual void setRange(float min, float max, bool suppressWarnings = false);
     virtual void setMin(float min);
@@ -50,8 +50,10 @@ protected:
     float m_min;
     float m_max;
     bool m_autoAdjust;
-    float m_labelAutoRotation;
+    float m_labelAutoAngle;
+    float m_titleOffset;
     bool m_titleVisible;
+    bool m_labelsVisible;
     bool m_titleFixed;
 
     friend class QScatterDataProxyPrivate;

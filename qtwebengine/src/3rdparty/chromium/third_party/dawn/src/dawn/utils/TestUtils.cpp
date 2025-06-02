@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <algorithm>
 #include <memory>
@@ -43,7 +56,7 @@ std::ostream& operator<<(std::ostream& stream, const RGBA8& color) {
 uint32_t GetMinimumBytesPerRow(wgpu::TextureFormat format, uint32_t width) {
     const uint32_t bytesPerBlock = dawn::utils::GetTexelBlockSizeInBytes(format);
     const uint32_t blockWidth = dawn::utils::GetTextureFormatBlockWidth(format);
-    ASSERT(width % blockWidth == 0);
+    DAWN_ASSERT(width % blockWidth == 0);
     return Align(bytesPerBlock * (width / blockWidth), kTextureBytesPerRowAlignment);
 }
 
@@ -53,7 +66,7 @@ TextureDataCopyLayout GetTextureDataCopyLayoutForTextureAtLevel(wgpu::TextureFor
                                                                 wgpu::TextureDimension dimension,
                                                                 uint32_t rowsPerImage) {
     // Compressed texture formats not supported in this function yet.
-    ASSERT(dawn::utils::GetTextureFormatBlockWidth(format) == 1);
+    DAWN_ASSERT(dawn::utils::GetTextureFormatBlockWidth(format) == 1);
 
     TextureDataCopyLayout layout;
 
@@ -94,9 +107,9 @@ uint64_t RequiredBytesInCopy(uint64_t bytesPerRow,
     uint32_t blockSize = dawn::utils::GetTexelBlockSizeInBytes(textureFormat);
     uint32_t blockWidth = dawn::utils::GetTextureFormatBlockWidth(textureFormat);
     uint32_t blockHeight = dawn::utils::GetTextureFormatBlockHeight(textureFormat);
-    ASSERT(copyExtent.width % blockWidth == 0);
+    DAWN_ASSERT(copyExtent.width % blockWidth == 0);
     uint32_t widthInBlocks = copyExtent.width / blockWidth;
-    ASSERT(copyExtent.height % blockHeight == 0);
+    DAWN_ASSERT(copyExtent.height % blockHeight == 0);
     uint32_t heightInBlocks = copyExtent.height / blockHeight;
     return RequiredBytesInCopy(bytesPerRow, rowsPerImage, widthInBlocks, heightInBlocks,
                                copyExtent.depthOrArrayLayers, blockSize);
@@ -169,6 +182,7 @@ uint32_t VertexFormatSize(wgpu::VertexFormat format) {
         case wgpu::VertexFormat::Float32:
         case wgpu::VertexFormat::Uint32:
         case wgpu::VertexFormat::Sint32:
+        case wgpu::VertexFormat::Unorm10_10_10_2:
             return 4;
         case wgpu::VertexFormat::Uint16x4:
         case wgpu::VertexFormat::Sint16x4:
@@ -190,7 +204,7 @@ uint32_t VertexFormatSize(wgpu::VertexFormat format) {
         case wgpu::VertexFormat::Undefined:
             break;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 void RunInParallel(uint32_t numThreads,

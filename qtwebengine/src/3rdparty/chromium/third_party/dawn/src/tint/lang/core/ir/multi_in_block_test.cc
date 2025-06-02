@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/ir/multi_in_block.h"
 #include "gtest/gtest-spi.h"
@@ -33,6 +46,44 @@ TEST_F(IR_MultiInBlockTest, Fail_NullInboundBranch) {
             blk->AddInboundSiblingBranch(nullptr);
         },
         "");
+}
+
+TEST_F(IR_MultiInBlockTest, CloneInto) {
+    auto* loop = b.Loop();
+
+    auto* blk = b.MultiInBlock();
+    auto* add = b.Add(mod.Types().i32(), 1_i, 2_i);
+    blk->Append(add);
+    blk->SetParams({b.BlockParam(mod.Types().i32()), b.BlockParam(mod.Types().f32())});
+    blk->SetParent(loop);
+
+    auto* terminate = b.TerminateInvocation();
+    blk->AddInboundSiblingBranch(terminate);
+
+    auto* new_blk = b.MultiInBlock();
+    blk->CloneInto(clone_ctx, new_blk);
+
+    EXPECT_EQ(0u, new_blk->InboundSiblingBranches().Length());
+
+    EXPECT_EQ(2u, new_blk->Params().Length());
+    EXPECT_EQ(mod.Types().i32(), new_blk->Params()[0]->Type());
+    EXPECT_EQ(mod.Types().f32(), new_blk->Params()[1]->Type());
+
+    EXPECT_EQ(nullptr, new_blk->Parent());
+
+    EXPECT_EQ(1u, new_blk->Length());
+    EXPECT_NE(add, new_blk->Front());
+    EXPECT_TRUE(new_blk->Front()->Is<Binary>());
+    EXPECT_EQ(BinaryOp::kAdd, new_blk->Front()->As<Binary>()->Op());
+}
+
+TEST_F(IR_MultiInBlockTest, CloneEmpty) {
+    auto* blk = b.MultiInBlock();
+    auto* new_blk = b.MultiInBlock();
+    blk->CloneInto(clone_ctx, new_blk);
+
+    EXPECT_EQ(0u, new_blk->InboundSiblingBranches().Length());
+    EXPECT_EQ(0u, new_blk->Params().Length());
 }
 
 }  // namespace

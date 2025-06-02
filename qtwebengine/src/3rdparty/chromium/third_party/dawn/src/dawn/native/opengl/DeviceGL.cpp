@@ -1,22 +1,37 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/opengl/DeviceGL.h"
 
-#include "dawn/common/Log.h"
+#include <utility>
 
+#include "dawn/common/Log.h"
 #include "dawn/native/BackendConnection.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/ErrorData.h"
 #include "dawn/native/Instance.h"
 #include "dawn/native/opengl/BindGroupGL.h"
@@ -93,7 +108,7 @@ void KHRONOS_APIENTRY OnGLDebugMessage(GLenum source,
                            << "\n    Message: " << message;
 
         // Abort on an error when in Debug mode.
-        UNREACHABLE();
+        DAWN_UNREACHABLE();
     }
 }
 
@@ -103,7 +118,7 @@ namespace dawn::native::opengl {
 
 // static
 ResultOrError<Ref<Device>> Device::Create(AdapterBase* adapter,
-                                          const DeviceDescriptor* descriptor,
+                                          const UnpackedPtr<DeviceDescriptor>& descriptor,
                                           const OpenGLFunctions& functions,
                                           std::unique_ptr<Context> context,
                                           const TogglesState& deviceToggles) {
@@ -114,7 +129,7 @@ ResultOrError<Ref<Device>> Device::Create(AdapterBase* adapter,
 }
 
 Device::Device(AdapterBase* adapter,
-               const DeviceDescriptor* descriptor,
+               const UnpackedPtr<DeviceDescriptor>& descriptor,
                const OpenGLFunctions& functions,
                std::unique_ptr<Context> context,
                const TogglesState& deviceToggles)
@@ -126,10 +141,13 @@ Device::~Device() {
     Destroy();
 }
 
-MaybeError Device::Initialize(const DeviceDescriptor* descriptor) {
-    const OpenGLFunctions& gl = GetGL();
+MaybeError Device::Initialize(const UnpackedPtr<DeviceDescriptor>& descriptor) {
+    // Directly set the context current and use mGL instead of calling GetGL as GetGL will notify
+    // the (yet inexistent) queue that GL was used.
+    mContext->MakeCurrent();
+    const OpenGLFunctions& gl = mGL;
 
-    mFormatTable = BuildGLFormatTable(GetBGRAInternalFormat());
+    mFormatTable = BuildGLFormatTable(GetBGRAInternalFormat(gl));
 
     // Use the debug output functionality to get notified about GL errors
     // TODO(crbug.com/dawn/1475): add support for the KHR_debug and ARB_debug_output
@@ -172,20 +190,21 @@ MaybeError Device::Initialize(const DeviceDescriptor* descriptor) {
     }
     gl.Enable(GL_SAMPLE_MASK);
 
-    return DeviceBase::Initialize(AcquireRef(new Queue(this, &descriptor->defaultQueue)));
+    Ref<Queue> queue;
+    DAWN_TRY_ASSIGN(queue, Queue::Create(this, &descriptor->defaultQueue));
+    return DeviceBase::Initialize(std::move(queue));
 }
 
 const GLFormat& Device::GetGLFormat(const Format& format) {
-    ASSERT(format.IsSupported());
-    ASSERT(format.GetIndex() < mFormatTable.size());
+    DAWN_ASSERT(format.IsSupported());
+    DAWN_ASSERT(format.GetIndex() < mFormatTable.size());
 
     const GLFormat& result = mFormatTable[format.GetIndex()];
-    ASSERT(result.isSupportedOnBackend);
+    DAWN_ASSERT(result.isSupportedOnBackend);
     return result;
 }
 
-GLenum Device::GetBGRAInternalFormat() const {
-    const OpenGLFunctions& gl = GetGL();
+GLenum Device::GetBGRAInternalFormat(const OpenGLFunctions& gl) const {
     if (gl.IsGLExtensionSupported("GL_EXT_texture_format_BGRA8888") ||
         gl.IsGLExtensionSupported("GL_APPLE_texture_format_BGRA8888")) {
         return GL_BGRA8_EXT;
@@ -197,14 +216,14 @@ GLenum Device::GetBGRAInternalFormat() const {
 
 ResultOrError<Ref<BindGroupBase>> Device::CreateBindGroupImpl(
     const BindGroupDescriptor* descriptor) {
-    DAWN_TRY(ValidateGLBindGroupDescriptor(descriptor));
     return BindGroup::Create(this, descriptor);
 }
 ResultOrError<Ref<BindGroupLayoutInternalBase>> Device::CreateBindGroupLayoutImpl(
     const BindGroupLayoutDescriptor* descriptor) {
     return AcquireRef(new BindGroupLayout(this, descriptor));
 }
-ResultOrError<Ref<BufferBase>> Device::CreateBufferImpl(const BufferDescriptor* descriptor) {
+ResultOrError<Ref<BufferBase>> Device::CreateBufferImpl(
+    const UnpackedPtr<BufferDescriptor>& descriptor) {
     return AcquireRef(new Buffer(this, descriptor));
 }
 ResultOrError<Ref<CommandBufferBase>> Device::CreateCommandBuffer(
@@ -213,25 +232,25 @@ ResultOrError<Ref<CommandBufferBase>> Device::CreateCommandBuffer(
     return AcquireRef(new CommandBuffer(encoder, descriptor));
 }
 Ref<ComputePipelineBase> Device::CreateUninitializedComputePipelineImpl(
-    const ComputePipelineDescriptor* descriptor) {
+    const UnpackedPtr<ComputePipelineDescriptor>& descriptor) {
     return ComputePipeline::CreateUninitialized(this, descriptor);
 }
 ResultOrError<Ref<PipelineLayoutBase>> Device::CreatePipelineLayoutImpl(
-    const PipelineLayoutDescriptor* descriptor) {
+    const UnpackedPtr<PipelineLayoutDescriptor>& descriptor) {
     return AcquireRef(new PipelineLayout(this, descriptor));
 }
 ResultOrError<Ref<QuerySetBase>> Device::CreateQuerySetImpl(const QuerySetDescriptor* descriptor) {
     return AcquireRef(new QuerySet(this, descriptor));
 }
 Ref<RenderPipelineBase> Device::CreateUninitializedRenderPipelineImpl(
-    const RenderPipelineDescriptor* descriptor) {
+    const UnpackedPtr<RenderPipelineDescriptor>& descriptor) {
     return RenderPipeline::CreateUninitialized(this, descriptor);
 }
 ResultOrError<Ref<SamplerBase>> Device::CreateSamplerImpl(const SamplerDescriptor* descriptor) {
     return AcquireRef(new Sampler(this, descriptor));
 }
 ResultOrError<Ref<ShaderModuleBase>> Device::CreateShaderModuleImpl(
-    const ShaderModuleDescriptor* descriptor,
+    const UnpackedPtr<ShaderModuleDescriptor>& descriptor,
     ShaderModuleParseResult* parseResult,
     OwnedCompilationMessages* compilationMessages) {
     return ShaderModule::Create(this, descriptor, parseResult, compilationMessages);
@@ -242,7 +261,8 @@ ResultOrError<Ref<SwapChainBase>> Device::CreateSwapChainImpl(
     const SwapChainDescriptor* descriptor) {
     return DAWN_VALIDATION_ERROR("New swapchains not implemented.");
 }
-ResultOrError<Ref<TextureBase>> Device::CreateTextureImpl(const TextureDescriptor* descriptor) {
+ResultOrError<Ref<TextureBase>> Device::CreateTextureImpl(
+    const UnpackedPtr<TextureDescriptor>& descriptor) {
     return Texture::Create(this, descriptor);
 }
 ResultOrError<Ref<TextureViewBase>> Device::CreateTextureViewImpl(
@@ -259,21 +279,7 @@ ResultOrError<wgpu::TextureUsage> Device::GetSupportedSurfaceUsageImpl(
     return usages;
 }
 
-void Device::SubmitFenceSync() {
-    if (!mHasPendingCommands) {
-        return;
-    }
-
-    const OpenGLFunctions& gl = GetGL();
-    GLsync sync = gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    GetQueue()->IncrementLastSubmittedCommandSerial();
-    mFencesInFlight.emplace(sync, GetLastSubmittedCommandSerial());
-
-    // Reset mHasPendingCommands after GetGL() which will set mHasPendingCommands to true.
-    mHasPendingCommands = false;
-}
-
-MaybeError Device::ValidateTextureCanBeWrapped(const TextureDescriptor* descriptor) {
+MaybeError Device::ValidateTextureCanBeWrapped(const UnpackedPtr<TextureDescriptor>& descriptor) {
     DAWN_INVALID_IF(descriptor->dimension != wgpu::TextureDimension::e2D,
                     "Texture dimension (%s) is not %s.", descriptor->dimension,
                     wgpu::TextureDimension::e2D);
@@ -287,18 +293,22 @@ MaybeError Device::ValidateTextureCanBeWrapped(const TextureDescriptor* descript
     DAWN_INVALID_IF(descriptor->sampleCount != 1, "Sample count (%u) is not 1.",
                     descriptor->sampleCount);
 
-    DAWN_INVALID_IF(descriptor->usage &
-                        (wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::StorageBinding),
-                    "Texture usage (%s) cannot have %s or %s.", descriptor->usage,
-                    wgpu::TextureUsage::TextureBinding, wgpu::TextureUsage::StorageBinding);
+    DAWN_INVALID_IF(descriptor->usage & wgpu::TextureUsage::StorageBinding,
+                    "Texture usage (%s) cannot have %s.", descriptor->usage,
+                    wgpu::TextureUsage::StorageBinding);
 
     return {};
 }
-TextureBase* Device::CreateTextureWrappingEGLImage(const ExternalImageDescriptor* descriptor,
-                                                   ::EGLImage image) {
-    const OpenGLFunctions& gl = GetGL();
-    const TextureDescriptor* textureDescriptor = FromAPI(descriptor->cTextureDescriptor);
 
+Ref<TextureBase> Device::CreateTextureWrappingEGLImage(const ExternalImageDescriptor* descriptor,
+                                                       ::EGLImage image) {
+    const OpenGLFunctions& gl = GetGL();
+
+    UnpackedPtr<TextureDescriptor> textureDescriptor;
+    if (ConsumedError(ValidateAndUnpack(FromAPI(descriptor->cTextureDescriptor)),
+                      &textureDescriptor)) {
+        return nullptr;
+    }
     if (ConsumedError(ValidateTextureDescriptor(this, textureDescriptor))) {
         return nullptr;
     }
@@ -310,6 +320,7 @@ TextureBase* Device::CreateTextureWrappingEGLImage(const ExternalImageDescriptor
     gl.GenTextures(1, &tex);
     gl.BindTexture(GL_TEXTURE_2D, tex);
     gl.EGLImageTargetTexture2DOES(GL_TEXTURE_2D, image);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 
     GLint width, height;
     gl.GetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
@@ -327,19 +338,26 @@ TextureBase* Device::CreateTextureWrappingEGLImage(const ExternalImageDescriptor
 
     // TODO(dawn:803): Validate the OpenGL texture format from the EGLImage against the format
     // in the passed-in TextureDescriptor.
-    return new Texture(this, textureDescriptor, tex);
+    auto result = AcquireRef(new Texture(this, textureDescriptor, tex));
+    result->SetIsSubresourceContentInitialized(descriptor->isInitialized,
+                                               result->GetAllSubresources());
+    return result;
 }
 
-TextureBase* Device::CreateTextureWrappingGLTexture(const ExternalImageDescriptor* descriptor,
-                                                    GLuint texture) {
+Ref<TextureBase> Device::CreateTextureWrappingGLTexture(const ExternalImageDescriptor* descriptor,
+                                                        GLuint texture) {
     const OpenGLFunctions& gl = GetGL();
-    const TextureDescriptor* textureDescriptor = FromAPI(descriptor->cTextureDescriptor);
 
-    if (!HasFeature(Feature::ANGLETextureSharing)) {
-        HandleError(DAWN_VALIDATION_ERROR("Device does not support ANGLE GL texture sharing."));
+    UnpackedPtr<TextureDescriptor> textureDescriptor;
+    if (ConsumedError(ValidateAndUnpack(FromAPI(descriptor->cTextureDescriptor)),
+                      &textureDescriptor)) {
         return nullptr;
     }
     if (ConsumedError(ValidateTextureDescriptor(this, textureDescriptor))) {
+        return nullptr;
+    }
+    if (!HasFeature(Feature::ANGLETextureSharing)) {
+        HandleError(DAWN_VALIDATION_ERROR("Device does not support ANGLE GL texture sharing."));
         return nullptr;
     }
     if (ConsumedError(ValidateTextureCanBeWrapped(textureDescriptor))) {
@@ -361,41 +379,15 @@ TextureBase* Device::CreateTextureWrappingGLTexture(const ExternalImageDescripto
         return nullptr;
     }
 
-    return new Texture(this, textureDescriptor, texture);
+    auto result = AcquireRef(new Texture(this, textureDescriptor, texture));
+    result->SetIsSubresourceContentInitialized(descriptor->isInitialized,
+                                               result->GetAllSubresources());
+    return result;
 }
 
 MaybeError Device::TickImpl() {
-    SubmitFenceSync();
+    ToBackend(GetQueue())->SubmitFenceSync();
     return {};
-}
-
-ResultOrError<ExecutionSerial> Device::CheckAndUpdateCompletedSerials() {
-    ExecutionSerial fenceSerial{0};
-    const OpenGLFunctions& gl = GetGL();
-    while (!mFencesInFlight.empty()) {
-        auto [sync, tentativeSerial] = mFencesInFlight.front();
-
-        // Fence are added in order, so we can stop searching as soon
-        // as we see one that's not ready.
-
-        // TODO(crbug.com/dawn/633): Remove this workaround after the deadlock issue is fixed.
-        if (IsToggleEnabled(Toggle::FlushBeforeClientWaitSync)) {
-            gl.Flush();
-        }
-        GLenum result = gl.ClientWaitSync(sync, GL_SYNC_FLUSH_COMMANDS_BIT, 0);
-        if (result == GL_TIMEOUT_EXPIRED) {
-            return fenceSerial;
-        }
-        // Update fenceSerial since fence is ready.
-        fenceSerial = tentativeSerial;
-
-        gl.DeleteSync(sync);
-
-        mFencesInFlight.pop();
-
-        ASSERT(fenceSerial > GetQueue()->GetCompletedCommandSerial());
-    }
-    return fenceSerial;
 }
 
 MaybeError Device::CopyFromStagingToBufferImpl(BufferBase* source,
@@ -414,20 +406,7 @@ MaybeError Device::CopyFromStagingToTextureImpl(const BufferBase* source,
 }
 
 void Device::DestroyImpl() {
-    ASSERT(GetState() == State::Disconnected);
-}
-
-MaybeError Device::WaitForIdleForDestruction() {
-    const OpenGLFunctions& gl = GetGL();
-    gl.Finish();
-    DAWN_TRY(GetQueue()->CheckPassedSerials());
-    ASSERT(mFencesInFlight.empty());
-
-    return {};
-}
-
-bool Device::HasPendingCommands() const {
-    return mHasPendingCommands;
+    DAWN_ASSERT(GetState() == State::Disconnected);
 }
 
 uint32_t Device::GetOptimalBytesPerRowAlignment() const {
@@ -442,13 +421,9 @@ float Device::GetTimestampPeriodInNS() const {
     return 1.0f;
 }
 
-void Device::ForceEventualFlushOfCommands() {}
-
 const OpenGLFunctions& Device::GetGL() const {
-    if (mContext) {
-        mContext->MakeCurrent();
-    }
-    mHasPendingCommands = true;
+    mContext->MakeCurrent();
+    ToBackend(GetQueue())->OnGLUsed();
     return mGL;
 }
 

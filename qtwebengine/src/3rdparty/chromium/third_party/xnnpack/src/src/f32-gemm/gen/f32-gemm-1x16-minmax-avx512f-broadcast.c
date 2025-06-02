@@ -19,10 +19,10 @@ void xnn_f32_gemm_minmax_ukernel_1x16__avx512f_broadcast(
     size_t mr,
     size_t nc,
     size_t kc,
-    const float*restrict a,
+    const float* restrict a,
     size_t a_stride,
-    const float*restrict w,
-    float*restrict c,
+    const float* restrict w,
+    float* restrict c,
     size_t cm_stride,
     size_t cn_stride,
     const union xnn_f32_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])
@@ -70,13 +70,11 @@ void xnn_f32_gemm_minmax_ukernel_1x16__avx512f_broadcast(
 
       nc -= 16;
     } else {
-      if (nc & 15) {
-        // Prepare mask for valid 32-bit elements (depends on nc).
-        const __mmask16 vmask = _cvtu32_mask16((uint16_t) ((uint32_t) (UINT32_C(1) << nc) - UINT32_C(1)));
-
-        _mm512_mask_storeu_ps(c0, vmask, vacc0x0123456789ABCDEF);
-      }
-
+      assert(nc != 0);
+      assert(nc < 16);
+      // Prepare mask for valid 32-bit elements (depends on nc).
+      const __mmask16 vmask = _cvtu32_mask16((uint16_t) ((uint32_t) (UINT32_C(1) << nc) - UINT32_C(1)));
+      _mm512_mask_storeu_ps(c0, vmask, vacc0x0123456789ABCDEF);
       nc = 0;
     }
   } while (nc != 0);

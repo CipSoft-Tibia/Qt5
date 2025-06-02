@@ -1,9 +1,9 @@
 project('harfbuzz', 'c', 'cpp',
   meson_version: '>= 0.55.0',
-  version: '7.3.0',
+  version: '8.3.0',
   default_options: [
     'cpp_eh=none',          # Just to support msvc, we are passing -fno-exceptions also anyway
-    'cpp_rtti=false',       # Just to support msvc, we are passing -fno-rtti also anyway
+    # 'cpp_rtti=false',     # Do NOT enable, wraps inherit it and ICU needs RTTI
     'cpp_std=c++11',
     'wrap_mode=nofallback', # Use --wrap-mode=default to revert, https://github.com/harfbuzz/harfbuzz/pull/2548
   ],
@@ -21,6 +21,11 @@ hb_libtool_version_info = '@0@:0:@0@'.format(hb_version_int)
 pkgmod = import('pkgconfig')
 cpp = meson.get_compiler('cpp')
 null_dep = dependency('', required: false)
+
+# Enforce C++14 requirement for MSVC STL
+if ['clang', 'clang-cl'].contains(cpp.get_id()) and cpp.get_define('_MSC_FULL_VER') != ''
+  add_project_arguments('-std=c++14', language: 'cpp')
+endif
 
 if cpp.get_argument_syntax() == 'msvc'
   # Ignore several spurious warnings for things HarfBuzz does very commonly.
@@ -67,15 +72,15 @@ check_headers = [
 ]
 
 check_funcs = [
-  ['atexit'],
-  ['mprotect'],
-  ['sysconf'],
-  ['getpagesize'],
-  ['mmap'],
-  ['isatty'],
-  ['uselocale'],
-  ['newlocale'],
-  ['sincosf'],
+  ['atexit', {'prefix': '#include <stdlib.h>'}],
+  ['mprotect', {'prefix': '#include <sys/mman.h>'}],
+  ['sysconf', {'prefix': '#include <unistd.h>'}],
+  ['getpagesize', {'prefix': '#include <unistd.h>'}],
+  ['mmap', {'prefix': '#include <sys/mman.h>'}],
+  ['isatty', {'prefix': '#include <unistd.h>'}],
+  ['uselocale', {'prefix': '#include <locale.h>'}],
+  ['newlocale', {'prefix': '#include <locale.h>'}],
+  ['sincosf', {'prefix': '#define _GNU_SOURCE\n#include <math.h>'}],
 ]
 
 m_dep = cpp.find_library('m', required: false)
@@ -124,7 +129,6 @@ if meson.version().version_compare('>=0.60.0')
   icu_dep = dependency('icu-uc', 'ICU',
                             components: 'uc',
                             required: get_option('icu'),
-                            default_options: ['harfbuzz=disabled'],
                             allow_fallback: true)
 else
   # painful hack to handle multiple dependencies but also respect options
@@ -352,11 +356,12 @@ foreach check : check_funcs
   opts = check.get(1, {})
   link_withs = opts.get('link_with', [])
   check_deps = opts.get('deps', [])
+  check_prefix = opts.get('prefix', '')
   extra_deps = []
   found = true
 
   # First try without linking
-  found = cpp.has_function(name, dependencies: check_deps)
+  found = cpp.has_function(name, prefix: check_prefix, dependencies: check_deps)
 
   if not found and link_withs.length() > 0
     found = true
@@ -371,7 +376,7 @@ foreach check : check_funcs
     endforeach
 
     if found
-      found = cpp.has_function(name, dependencies: check_deps + extra_deps)
+      found = cpp.has_function(name, prefix: check_prefix, dependencies: check_deps + extra_deps)
     endif
   endif
 
@@ -380,6 +385,26 @@ foreach check : check_funcs
     conf.set('HAVE_@0@'.format(name.to_upper()), 1)
   endif
 endforeach
+
+# CMake support (package install dir)
+
+# Equivalent to configure_package_config_file(INSTALL_DESTINATION ...), see
+# https://cmake.org/cmake/help/latest/module/CMakePackageConfigHelpers.html#command:configure_package_config_file.
+# In certain unusual packaging layouts such as Nixpkgs, the Harfbuzz package
+# is installed into two Nix store paths, "out" and "dev", where "out" contains
+# libraries only (i.e. lib/libharfbuzz.so) and "dev" contains development
+# files, i.e. include and lib/cmake. If CMake package files are installed to
+# "out", Nixpkgs will move them to "dev", which breaks assumptions about
+# our file paths. Since we need to figure out relative install paths here
+# to make a relocatable package, we do need to know the final path of our
+# CMake files to calculate the correct relative paths.
+# Of course, this still defaults to $libdir/cmake if unset, which works for
+# most packaging layouts.
+cmake_package_install_dir = get_option('cmakepackagedir')
+
+if cmake_package_install_dir == ''
+  cmake_package_install_dir = get_option('libdir') / 'cmake'
+endif
 
 subdir('src')
 
@@ -411,6 +436,7 @@ build_summary = {
      'libdir': get_option('libdir'),
      'includedir': get_option('includedir'),
      'datadir': get_option('datadir'),
+     'cmakepackagedir': cmake_package_install_dir
     },
   'Unicode callbacks (you want at least one)':
     {'Builtin': true,

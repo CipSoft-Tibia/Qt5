@@ -43,7 +43,8 @@ protected:
     using Generator::generateProxyPage;
     void generateProxyPage(Aggregate *aggregate);
 
-    void generateList(const Node *relative, const QString &selector);
+    void generateList(const Node *relative, const QString &selector,
+                      Qt::SortOrder sortOrder = Qt::AscendingOrder);
     void generateHeader(const QString &title, const QString &subtitle, const Node *node);
     void closeTextSections();
     void generateFooter();
@@ -51,7 +52,8 @@ protected:
     void generateRequisites(const Aggregate *inner);
     void generateQmlRequisites(const QmlTypeNode *qcn);
     void generateSortedNames(const ClassNode *cn, const QList<RelatedClass> &rc);
-    void generateSortedQmlNames(const Node *base, const NodeList &subs);
+    void generateSortedQmlNames(const Node *base, const QStringList &knownTypes,
+                                const NodeList &subs);
     bool generateStatus(const Node *node);
     void generateGroupReferenceText(const Node *node);
     bool generateThreadSafeness(const Node *node);
@@ -74,7 +76,8 @@ private:
     void endDocument();
 
     void generateAnnotatedList(const Node *relative, const NodeList &nodeList,
-                               const QString &selector, GeneratedListType type = Auto);
+                               const QString &selector, GeneratedListType type = Auto,
+                               Qt::SortOrder sortOrder = Qt::AscendingOrder);
     void generateAnnotatedLists(const Node *relative, const NodeMultiMap &nmm,
                                 const QString &selector);
     void generateCompactList(const Node *relative, const NodeMultiMap &nmm, bool includeAlphabet,

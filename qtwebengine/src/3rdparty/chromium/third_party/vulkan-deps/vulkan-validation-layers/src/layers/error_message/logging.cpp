@@ -25,8 +25,10 @@
 #include <vulkan/vk_enum_string_helper.h>
 #include "generated/vk_safe_struct.h"
 #include "generated/vk_validation_error_messages.h"
-#include "external/xxhash.h"
 #include "error_location.h"
+#include "utils/hash_util.h"
+
+[[maybe_unused]] const char *kVUIDUndefined = "VUID_Undefined";
 
 VKAPI_ATTR void SetDebugUtilsSeverityFlags(std::vector<VkLayerDbgFunctionState> &callbacks, debug_report_data *debug_data) {
     // For all callback in list, return their complete set of severities and modes
@@ -102,16 +104,17 @@ static bool debug_log_msg(const debug_report_data *debug_data, VkFlags msg_flags
             continue;
         }
 
-        auto object_name_info = LvlInitStruct<VkDebugUtilsObjectNameInfoEXT>();
+        VkDebugUtilsObjectNameInfoEXT object_name_info = vku::InitStructHelper();
         object_name_info.objectType = ConvertVulkanObjectToCoreObject(objects.object_list[i].type);
         object_name_info.objectHandle = objects.object_list[i].handle;
         object_name_info.pObjectName = nullptr;
 
         std::string object_label = {};
         // Look for any debug utils or marker names to use for this object
-        object_label = debug_data->DebugReportGetUtilsObjectName(objects.object_list[i].handle);
+        // NOTE: the lock (debug_output_mutex) is held by the caller (LogMsg)
+        object_label = debug_data->DebugReportGetUtilsObjectNameNoLock(objects.object_list[i].handle);
         if (object_label.empty()) {
-            object_label = debug_data->DebugReportGetMarkerObjectName(objects.object_list[i].handle);
+            object_label = debug_data->DebugReportGetMarkerObjectNameNoLock(objects.object_list[i].handle);
         }
         if (!object_label.empty()) {
             object_labels.push_back(std::move(object_label));
@@ -138,9 +141,9 @@ static bool debug_log_msg(const debug_report_data *debug_data, VkFlags msg_flags
         object_name_infos.push_back(object_name_info);
     }
 
-    const uint32_t message_id_number = text_vuid ? vvl_vuid_hash(text_vuid) : 0U;
+    const uint32_t message_id_number = text_vuid ? hash_util::VuidHash(text_vuid) : 0U;
 
-    auto callback_data = LvlInitStruct<VkDebugUtilsMessengerCallbackDataEXT>();
+    VkDebugUtilsMessengerCallbackDataEXT callback_data = vku::InitStructHelper();
     callback_data.flags = 0;
     callback_data.pMessageIdName = text_vuid;
     callback_data.messageIdNumber = vvl_bit_cast<int32_t>(message_id_number);
@@ -218,7 +221,7 @@ static bool debug_log_msg(const debug_report_data *debug_data, VkFlags msg_flags
                 object_name_infos.emplace_back(null_object_name);
             }
             if (current_callback.debug_report_callback_function_ptr(
-                    msg_flags, convertCoreObjectToDebugReportObject(object_name_infos[0].objectType),
+                    msg_flags, ConvertCoreObjectToDebugReportObject(object_name_infos[0].objectType),
                     object_name_infos[0].objectHandle, message_id_number, 0, layer_prefix, composite.c_str(),
                     current_callback.pUserData)) {
                 bail = true;
@@ -293,14 +296,14 @@ VKAPI_ATTR VkResult LayerCreateReportCallback(debug_report_data *debug_data, boo
 VKAPI_ATTR void ActivateInstanceDebugCallbacks(debug_report_data *debug_data) {
     auto current = debug_data->instance_pnext_chain;
     for (;;) {
-        auto create_info = LvlFindInChain<VkDebugUtilsMessengerCreateInfoEXT>(current);
+        auto create_info = vku::FindStructInPNextChain<VkDebugUtilsMessengerCreateInfoEXT>(current);
         if (!create_info) break;
         current = create_info->pNext;
         VkDebugUtilsMessengerEXT utils_callback{};
         LayerCreateCallback((DEBUG_CALLBACK_UTILS | DEBUG_CALLBACK_INSTANCE), debug_data, create_info, &utils_callback);
     }
     for (;;) {
-        auto create_info = LvlFindInChain<VkDebugReportCallbackCreateInfoEXT>(current);
+        auto create_info = vku::FindStructInPNextChain<VkDebugReportCallbackCreateInfoEXT>(current);
         if (!create_info) break;
         current = create_info->pNext;
         VkDebugReportCallbackEXT report_callback{};
@@ -309,8 +312,8 @@ VKAPI_ATTR void ActivateInstanceDebugCallbacks(debug_report_data *debug_data) {
 }
 
 VKAPI_ATTR void DeactivateInstanceDebugCallbacks(debug_report_data *debug_data) {
-    if (!LvlFindInChain<VkDebugUtilsMessengerCreateInfoEXT>(debug_data->instance_pnext_chain) &&
-        !LvlFindInChain<VkDebugReportCallbackCreateInfoEXT>(debug_data->instance_pnext_chain))
+    if (!vku::FindStructInPNextChain<VkDebugUtilsMessengerCreateInfoEXT>(debug_data->instance_pnext_chain) &&
+        !vku::FindStructInPNextChain<VkDebugReportCallbackCreateInfoEXT>(debug_data->instance_pnext_chain))
         return;
     std::vector<VkDebugUtilsMessengerEXT> instance_utils_callback_handles{};
     std::vector<VkDebugReportCallbackEXT> instance_report_callback_handles{};
@@ -339,7 +342,7 @@ static bool LogMsgEnabled(const debug_report_data *debug_data, std::string_view 
         return false;
     }
     // If message is in filter list, bail out very early
-    const uint32_t message_id = vvl_vuid_hash(vuid_text);
+    const uint32_t message_id = hash_util::VuidHash(vuid_text);
     if (debug_data->filter_message_ids.find(message_id) != debug_data->filter_message_ids.end()) {
         return false;
     }
@@ -402,8 +405,7 @@ VKAPI_ATTR bool LogMsg(const debug_report_data *debug_data, VkFlags msg_flags, c
     }
 
     // Append the spec error text to the error message, unless it contains a word treated as special
-    if ((vuid_text.find("UNASSIGNED-") == std::string::npos) && (vuid_text.find(kVUIDUndefined) == std::string::npos) &&
-        (vuid_text.rfind("SYNC-", 0) == std::string::npos) && (vuid_text.find("INTERNAL-ERROR-") == std::string::npos)) {
+    if ((vuid_text.find("VUID-") != std::string::npos)) {
         // Linear search makes no assumptions about the layout of the string table. This is not fast, but it does not need to be at
         // this point in the error reporting path
         uint32_t num_vuids = sizeof(vuid_spec_text) / sizeof(vuid_spec_text_pair);
@@ -431,6 +433,12 @@ VKAPI_ATTR bool LogMsg(const debug_report_data *debug_data, VkFlags msg_flags, c
                     dest_string.replace(dest_string.find(to_replace), to_replace.size(), replace_with);
                 }
             };
+
+            // Add period at end if forgotten
+            // This provides better seperation between error message and spec text
+            if (str_plus_spec_text.back() != '.') {
+                str_plus_spec_text.append(".");
+            }
 
             str_plus_spec_text.append(" The Vulkan spec states: ");
             str_plus_spec_text.append(spec_text);
@@ -461,6 +469,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL MessengerBreakCallback([[maybe_unused]] VkDebugUt
                                                       [[maybe_unused]] VkDebugUtilsMessageTypeFlagsEXT message_type,
                                                       [[maybe_unused]] const VkDebugUtilsMessengerCallbackDataEXT *callback_data,
                                                       [[maybe_unused]] void *user_data) {
+    // TODO: Consider to use https://github.com/scottt/debugbreak
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     DebugBreak();
 #else
@@ -532,9 +541,4 @@ VKAPI_ATTR VkBool32 VKAPI_CALL MessengerWin32DebugOutputMsg(VkDebugUtilsMessageS
 #endif
 
     return false;
-}
-
-uint32_t vvl_vuid_hash(std::string_view vuid) {
-    constexpr uint32_t seed = 8;
-    return XXH32(vuid.data(), vuid.size(), seed);
 }

@@ -70,14 +70,14 @@ hb_plan_subset_cff_fdselect (const hb_subset_plan_t *plan,
     hb_codepoint_t prev_fd = CFF_UNDEF_CODE;
     hb_pair_t<unsigned, hb_codepoint_t> last_range {0, 0};
     auto it = hb_iter (plan->new_to_old_gid_list);
+    auto _ = *it;
     for (hb_codepoint_t gid = 0; gid < subset_num_glyphs; gid++)
     {
       hb_codepoint_t old_glyph;
-      auto &_ = *it;
       if (gid == _.first)
       {
 	old_glyph = _.second;
-	it++;
+	_ = *++it;
       }
       else
       {
@@ -94,6 +94,9 @@ hb_plan_subset_cff_fdselect (const hb_subset_plan_t *plan,
 	num_ranges++;
 	prev_fd = fd;
 	fdselect_ranges.push (code_pair_t { fd, gid });
+
+	if (gid == old_glyph)
+	  gid = hb_min (_.first - 1, last_range.second - 1);
       }
     }
 

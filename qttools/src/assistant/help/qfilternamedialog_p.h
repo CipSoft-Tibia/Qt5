@@ -15,8 +15,9 @@
 // We mean it.
 //
 
-#include <QtWidgets/QDialog>
 #include "ui_qfilternamedialog.h"
+
+#include <QtWidgets/qdialog.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -28,7 +29,7 @@ public:
     QFilterNameDialog(QWidget *parent = nullptr);
 
     void setFilterName(const QString &filter);
-    QString filterName() const;
+    QString filterName() const { return m_ui.lineEdit->text(); }
 
 private slots:
     void updateOkButton();

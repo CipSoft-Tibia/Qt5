@@ -20,6 +20,8 @@ private slots:
     void selectDeselect();
     void appendInsertRemove();
     void replaceAtClear();
+    void find();
+    void take();
 
 private:
     // QXYSeries is uncreatable, so testing is done through QScatterSeries
@@ -45,9 +47,8 @@ void tst_xyseries::initialProperties()
     QVERIFY(m_series);
 
     // Properties from QXYSeries
-    QCOMPARE(m_series->color(), "#ffffff");
-    QCOMPARE(m_series->selectedColor(), QColor::Invalid);
-    QCOMPARE(m_series->markerSize(), 15.0);
+    QCOMPARE(m_series->color(), QColor(Qt::transparent));
+    QCOMPARE(m_series->selectedColor(), QColor(Qt::transparent));
 }
 
 void tst_xyseries::initializeProperties()
@@ -56,11 +57,9 @@ void tst_xyseries::initializeProperties()
 
     m_series->setColor("#ff0000");
     m_series->setSelectedColor("#0000ff");
-    m_series->setMarkerSize(5.0);
 
     QCOMPARE(m_series->color(), "#ff0000");
     QCOMPARE(m_series->selectedColor(), "#0000ff");
-    QCOMPARE(m_series->markerSize(), 5.0);
 }
 
 void tst_xyseries::selectDeselect()
@@ -68,7 +67,7 @@ void tst_xyseries::selectDeselect()
     QVERIFY(m_series);
 
     QList<QPointF> points = {{0, 0}, {1, 1}, {2, 2}};
-    QList<int> allselected = {0, 1, 2};
+    QList<qsizetype> allselected = {0, 1, 2};
 
     m_series->append(points);
 
@@ -100,52 +99,72 @@ void tst_xyseries::selectDeselect()
 void tst_xyseries::appendInsertRemove()
 {
     QVERIFY(m_series);
+    QSignalSpy updateSpy(m_series, &QXYSeries::update);
+    QSignalSpy pointAddedSpy(m_series, &QXYSeries::pointAdded);
+    QSignalSpy pointRemovedSpy(m_series, &QXYSeries::pointRemoved);
+    QSignalSpy pointsRemovedSpy(m_series, &QXYSeries::pointsRemoved);
 
     QList<QPointF> points = {{0, 0}, {1, 1}, {2, 2}};
     QList<QPointF> morepoints = {{3, 3}, {4, 4}, {5, 5}};
     QList<QPointF> allpoints = {{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}};
     QList<QPointF> mixedpoints = {{0, 0}, {3, 3}, {1, 1}, {4, 4}, {2, 2}, {5, 5}};
 
+    QCOMPARE(updateSpy.count(), 0);
+
     // Append 3
     for (int i = 0; i < points.count(); ++i)
         m_series->append(points[i]);
 
+    QCOMPARE(updateSpy.count(), 3);
     QCOMPARE(m_series->points(), points);
+    QCOMPARE(pointAddedSpy.size(), 3);
 
     // Append 3 more
     m_series->append(morepoints);
 
+    QCOMPARE(updateSpy.count(), 6);
     QCOMPARE(m_series->points(), allpoints);
+    QCOMPARE(pointAddedSpy.size(), 6);
 
     // Remove the first 3 one by one
     for (int i = 2; i >= 0; --i)
         m_series->remove(i);
 
+    QCOMPARE(updateSpy.count(), 9);
     QCOMPARE(m_series->points(), morepoints);
+    QCOMPARE(pointRemovedSpy.size(), 3);
 
     // Insert them in between
     m_series->insert(0, points[0]);
     m_series->insert(2, points[1]);
     m_series->insert(4, points[2]);
 
+    QCOMPARE(updateSpy.count(), 12);
     QCOMPARE(m_series->points(), mixedpoints);
+    QCOMPARE(pointAddedSpy.size(), 9);
 
     // Remove first 3
-    m_series->removePoints(0, 3);
+    m_series->removeMultiple(0, 3);
 
+    QCOMPARE(updateSpy.count(), 13);
     QCOMPARE(m_series->count(), 3);
+    QCOMPARE(pointsRemovedSpy.size(), 1);
 
     // Append 3 by qreals
     for (int i = 10; i < 13; ++i)
         m_series->append(i, i);
 
+    QCOMPARE(updateSpy.count(), 16);
     QCOMPARE(m_series->count(), 6);
+    QCOMPARE(pointAddedSpy.size(), 12);
 
     // Remove 3 by qreals
     for (int i = 10; i < 13; ++i)
         m_series->remove(i, i);
 
+    QCOMPARE(updateSpy.count(), 19);
     QCOMPARE(m_series->count(), 3);
+    QCOMPARE(pointRemovedSpy.size(), 6);
 }
 
 void tst_xyseries::replaceAtClear()
@@ -169,6 +188,41 @@ void tst_xyseries::replaceAtClear()
     m_series->clear();
 
     QCOMPARE(m_series->count(), 0);
+}
+
+void tst_xyseries::find()
+{
+    QVERIFY(m_series);
+    QList<QPointF> points = {{1, 4}, {9, 2}, {3, 7}, {9, 2}, {8, 8}};
+
+    m_series->append(points);
+    auto sPoints = m_series->points();
+
+    QCOMPARE(sPoints, points);
+
+    auto item1 = m_series->find({9, 2});
+    auto item2 = m_series->find({1, 4});
+    auto item3 = m_series->find({8, 8});
+    auto item4 = m_series->find({300, 8});
+
+    QCOMPARE(item1, 1);
+    QCOMPARE(item2, 0);
+    QCOMPARE(item3, 4);
+    QCOMPARE(item4, -1);
+}
+
+void tst_xyseries::take()
+{
+    QVERIFY(m_series);
+    QList<QPointF> points = {{1, 4}, {9, 2}, {3, 7}, {9, 2}, {8, 8}};
+
+    m_series->append(points);
+    QCOMPARE(m_series->count(), 5);
+
+    QVERIFY(!m_series->take({100, 100}));
+    QCOMPARE(m_series->count(), 5);
+    QVERIFY(m_series->take({3, 7}));
+    QCOMPARE(m_series->count(), 4);
 }
 
 QTEST_MAIN(tst_xyseries)

@@ -24,8 +24,9 @@
 
 #include "qaudio.h"
 #include "qaudiodevice.h"
-#include <private/qaudiosystem_p.h>
-#include <private/qaudiostatemachine_p.h>
+#include <QtMultimedia/private/qpulsehelpers_p.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qaudiostatemachine_p.h>
 
 #include <pulse/pulseaudio.h>
 
@@ -39,7 +40,7 @@ class QPulseAudioSource : public QPlatformAudioSource
 
 public:
     QPulseAudioSource(const QByteArray &device, QObject *parent);
-    ~QPulseAudioSource();
+    ~QPulseAudioSource() override;
 
     qint64 read(char *data, qint64 len);
 
@@ -55,7 +56,7 @@ public:
     qint64 processedUSecs() const override;
     QAudio::Error error() const override;
     QAudio::State state() const override;
-    void setFormat(const QAudioFormat &format) override;
+    void setFormat(const QAudioFormat &format);
     QAudioFormat format() const override;
 
     void setVolume(qreal volume) override;
@@ -74,10 +75,13 @@ private slots:
     void onPulseContextFailed();
 
 private:
-    void applyVolume(const void *src, void *dest, int len);
+    void applyVolume(const void *src, void *dest, int len) const;
 
     bool open();
     void close();
+
+    using PAOperationHandle = QPulseAudioInternal::PAOperationHandle;
+    using PAStreamHandle = QPulseAudioInternal::PAStreamHandle;
 
     bool m_pullMode;
     bool m_opened;
@@ -86,13 +90,14 @@ private:
     unsigned int m_periodTime;
     QBasicTimer m_timer;
     qint64 m_elapsedTimeOffset;
-    pa_stream *m_stream;
+    PAStreamHandle m_stream;
     QByteArray m_streamName;
     QByteArray m_device;
     QByteArray m_tempBuffer;
     pa_sample_spec m_spec;
 
     QAudioStateMachine m_stateMachine;
+
 };
 
 class PulseInputPrivate : public QIODevice
@@ -102,6 +107,7 @@ public:
     PulseInputPrivate(QPulseAudioSource *audio);
     ~PulseInputPrivate() override = default;
 
+    qint64 bytesAvailable() const override;
     qint64 readData(char *data, qint64 len) override;
     qint64 writeData(const char *data, qint64 len) override;
 

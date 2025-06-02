@@ -9,9 +9,9 @@
 
 #include "include/core/SkTextureCompressionType.h"
 #include "include/gpu/GrTypes.h"
+#include "include/gpu/MutableTextureState.h"  // IWYU pragma: keep
 #include "include/private/base/SkAssert.h"
 #include "include/private/gpu/ganesh/GrTypesPriv.h"
-#include "src/gpu/MutableTextureStateRef.h"  // IWYU pragma: keep
 #include "src/gpu/ganesh/GrBackendSurfacePriv.h"
 
 #ifdef SK_METAL
@@ -27,8 +27,6 @@
 
 #include <algorithm>
 #include <new>
-
-namespace skgpu { class MutableTextureState; }
 
 GrBackendFormat::GrBackendFormat() : fValid(false) {}
 GrBackendFormat::~GrBackendFormat() = default;
@@ -303,7 +301,7 @@ GrBackendTexture::GrBackendTexture() : fIsValid(false) {}
 #ifdef SK_METAL
 GrBackendTexture::GrBackendTexture(int width,
                                    int height,
-                                   GrMipmapped mipmapped,
+                                   skgpu::Mipmapped mipmapped,
                                    const GrMtlTextureInfo& mtlInfo,
                                    std::string_view label)
         : fIsValid(true)
@@ -337,7 +335,7 @@ GrBackendTexture::GrBackendTexture(int width,
         , fWidth(width)
         , fHeight(height)
         , fLabel(label)
-        , fMipmapped(GrMipmapped(d3dInfo.fLevelCount > 1))
+        , fMipmapped(skgpu::Mipmapped(d3dInfo.fLevelCount > 1))
         , fBackend(GrBackendApi::kDirect3D)
         , fTextureType(GrTextureType::k2D)
         , fD3DInfo(d3dInfo, state.release()) {}
@@ -345,7 +343,7 @@ GrBackendTexture::GrBackendTexture(int width,
 
 GrBackendTexture::GrBackendTexture(int width,
                                    int height,
-                                   GrMipmapped mipmapped,
+                                   skgpu::Mipmapped mipmapped,
                                    const GrMockTextureInfo& mockInfo,
                                    std::string_view label)
         : fIsValid(true)
@@ -419,7 +417,7 @@ GrBackendTexture& GrBackendTexture::operator=(const GrBackendTexture& that) {
     return *this;
 }
 
-sk_sp<skgpu::MutableTextureStateRef> GrBackendTexture::getMutableState() const {
+sk_sp<skgpu::MutableTextureState> GrBackendTexture::getMutableState() const {
     return fTextureData->getMutableState();
 }
 
@@ -682,7 +680,7 @@ GrBackendRenderTarget& GrBackendRenderTarget::operator=(const GrBackendRenderTar
     return *this;
 }
 
-sk_sp<skgpu::MutableTextureStateRef> GrBackendRenderTarget::getMutableState() const {
+sk_sp<skgpu::MutableTextureState> GrBackendRenderTarget::getMutableState() const {
     return fRTData->getMutableState();
 }
 

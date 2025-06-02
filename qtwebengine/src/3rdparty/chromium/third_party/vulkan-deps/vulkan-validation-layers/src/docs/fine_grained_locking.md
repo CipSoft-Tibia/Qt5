@@ -98,7 +98,7 @@ Because validation often requires accessing objects in ways that go beyond their
 
 ## State Objects
 
-All Vulkan handles except `VkDevice` and `VkInstance` have a state object storing information needed for validation. State objects all inherit from the `BASE_NODE` class, and contain a combination of information determined at object creation time and information that changes based on how the object is used in other Vulkan API calls.
+All Vulkan handles except `VkDevice` and `VkInstance` have a state object storing information needed for validation. State objects all inherit from the `vvl::StateObject` class, and contain a combination of information determined at object creation time and information that changes based on how the object is used in other Vulkan API calls.
 
 
 ### Instance and Device object maps
@@ -107,7 +107,7 @@ State objects are stored in type specific maps within ValidationStateTracker.  T
 
 
 ```
-    VALSTATETRACK_MAP_AND_TRAITS(VkImage, IMAGE_STATE, imageMap);
+    VALSTATETRACK_MAP_AND_TRAITS(VkImage, vvl::Image, imageMap);
 ```
 
 Each map is implemented using `vl_concurrent_unordered_map`, which provides a locked map implementation and is already used elsewhere in the validation code. It is important to note that `vl_concurrent_unordered_map` doesn’t allow thread safe iteration across the map without making a copy of it. There are a few places in the code where this is currently required but they are not in performance critical paths.
@@ -143,7 +143,7 @@ This part of validation checks that all Vulkan objects used by a command buffer 
     // Because weak_ptrs cannot safely be used as hash keys, the parents are stored
     // in a map keyed by VulkanTypedHandle. This also allows looking for specific
     // parent types without locking every weak_ptr.
-    using NodeMap = vvl::unordered_map<VulkanTypedHandle, std::weak_ptr<BASE_NODE>>;
+    using NodeMap = vvl::unordered_map<VulkanTypedHandle, std::weak_ptr<vvl::StateObject>>;
   private:
     ReadLockGuard ReadLockTree() const { return ReadLockGuard(tree_lock_); }
     WriteLockGuard WriteLockTree() { return WriteLockGuard(tree_lock_); }
@@ -156,9 +156,9 @@ This part of validation checks that all Vulkan objects used by a command buffer 
 ```
 
 
-The tree is only accessible through methods of class BASE_NODE.  To allow the use of std::weak_ptr for parent references, BASE_NODE inherits from [std::enable_shared_from_this<BASE_NODE>](https://en.cppreference.com/w/cpp/memory/enable_shared_from_this). This adds a shared_from_this() method which returns a shared pointer to the object it is called on.  This method is most often used to get a weak_ptr parent reference. In C++17, a `weak_from_this()` method is available which would be more concise and slightly more efficient. Using shared_from_this() only works on objects stored in shared pointers, which is why it state objects MUST be constructed with `std::make_shared<>`.
+The tree is only accessible through methods of class vvl::StateObject.  To allow the use of std::weak_ptr for parent references, vvl::StateObject inherits from [std::enable_shared_from_this<vvl::StateObject>](https://en.cppreference.com/w/cpp/memory/enable_shared_from_this). This adds a shared_from_this() method which returns a shared pointer to the object it is called on.  This method is most often used to get a weak_ptr parent reference. In C++17, a `weak_from_this()` method is available which would be more concise and slightly more efficient. Using shared_from_this() only works on objects stored in shared pointers, which is why it state objects MUST be constructed with `std::make_shared<>`.
 
-`AddParent()` and `RemoveParent()` manage the contents of the tree. For example, when creating a `VkImageView`, the `IMAGE_VIEW_STATE` will be added to `IMAGE_STATE’s` parent_nodes_ with an `AddParent()`. During destruction of the `VkImageView`, the `IMAGE_VIEW_STATE` will be remove with a call to `RemoveParent()`. **IMPORTANT**:  `AddParent()` uses `shared_from_this(),` which only works after the constructor finishes executing. A second phase constructor `BASE_NODE::LinkChildNodes()` should be used to make `AddParent()` calls. `LinkChildNodes()` is called by the `Add()` method before inserting the new state object into the state object map.
+`AddParent()` and `RemoveParent()` manage the contents of the tree. For example, when creating a `VkImageView`, the `vvl::ImageView` will be added to `vvl::Image’s` parent_nodes_ with an `AddParent()`. During destruction of the `VkImageView`, the `vvl::ImageView` will be remove with a call to `RemoveParent()`. **IMPORTANT**:  `AddParent()` uses `shared_from_this(),` which only works after the constructor finishes executing. A second phase constructor `vvl::StateObject::LinkChildNodes()` should be used to make `AddParent()` calls. `LinkChildNodes()` is called by the `Add()` method before inserting the new state object into the state object map.
 
 `Destroy()` is called when the Vulkan object is destroyed. Note that because state objects are reference counted with a shared pointer, the state object might not be deleted and its destructor might not be called.
 
@@ -170,7 +170,7 @@ All of the above methods are guarded by the per-node `tree_lock_`, which MUST NO
 
 ###### PRs:
 
-[layers: Add BASE_NODE tree locking](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3658)
+[layers: Add vvl::StateObject tree locking](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3658)
 
 ### Locking policy for state objects
 
@@ -182,16 +182,16 @@ It is very common for state objects to contain data that is set up at creation t
 
 The following objects have already been updated to meet the above construction requirements and now only have `const` data members. They do not require any additional locking. This is the best way to make a state object thread safe and should be used whenever possible!
 
-* VkSampler / SAMPLER_STATE
-* VkSamplerYcbcrConversion / SAMPLER_YCBCR_CONVERSION_STATE
-* VkRenderPass / RENDER_PASS_STATE
-* VkFramebuffer / FRAMEBUFFER_STATE
-* VkBufferView / BUFFER_VIEW_STATE
-* VkImageView / IMAGE_VIEW_STATE
-* VkPipelineLayout / PIPELINE_LAYOUT_STATE
-* VkDescriptorSetLayout / cvdescriptorset::DescriptorSetLayout
-* VkQueryPool / QUERY_POOL_STATE
-* VkShaderModule / SPIRV_MODULE_STATE
+* VkSampler / vvl::Sampler
+* VkSamplerYcbcrConversion / vvl::SamplerYcbcrConversion
+* VkRenderPass / vvl::RenderPass
+* VkFramebuffer / vvl::Framebuffer
+* VkBufferView / vvl::BufferView
+* VkImageView / vvl::ImageView
+* VkPipelineLayout / vvl::PipelineLayout
+* VkDescriptorSetLayout / vvl::DescriptorSetLayout
+* VkQueryPool / vvl::QueryPool
+* VkShaderModule / vvl::ShaderModule
 * VkPipeline / Pipeline state
 
 Other state objects SHOULD make member data fields `const` if possible.
@@ -202,15 +202,15 @@ For data that must change after object creation, the next best strategy is to ma
 
 Thread safe accessors are very important for complex data structures such as vectors, sets, and maps. It may be possible in some cases to make simple counters or flags thread safe using `std::atomic` instead.
 
-`SURFACE_STATE` is an example of a state object with fully encapsulated non-const data members.
+`vvl::Surface` is an example of a state object with fully encapsulated non-const data members.
 
 #### Encapsulated with limited interactions with other state objects
 
-In some cases, state objects need to interact with each other. If possible, this should be done through accessor methods that manage each objects locking. Usually each object should only hold a lock while modifying its own state, and only call methods on other state objects after unlocking. This helps to prevent deadlock. `QUEUE_STATE`, `SEMAPHORE_STATE` and `FENCE_STATE` are an example of encapsulated but interacting state objects.
+In some cases, state objects need to interact with each other. If possible, this should be done through accessor methods that manage each objects locking. Usually each object should only hold a lock while modifying its own state, and only call methods on other state objects after unlocking. This helps to prevent deadlock. `vvl::Queue`, `vvl::Semaphore` and `vvl::Fence` are an example of encapsulated but interacting state objects.
 
 #### Public non-const data and user controlled locking
 
-`CMD_BUFFER_STATE` currently has many public non-const data members and does not manage its own locking. Instead it has public `ReadLock()` and `WriteLock()` methods to allow users to manage locking themselves. In most cases, this should be done by calling the state tracker `GetRead()` or `GetWrite()` methods to look up and then lock the state object.  **This is NOT a recommended model to follow in other state objects, as it is prone to deadlocks and race conditions.** More effort will be put into refactoring `CMD_BUFFER_STATE` and validation code to hopefully simplify the locking of this state object.
+`vvl::CommandBuffer` currently has many public non-const data members and does not manage its own locking. Instead it has public `ReadLock()` and `WriteLock()` methods to allow users to manage locking themselves. In most cases, this should be done by calling the state tracker `GetRead()` or `GetWrite()` methods to look up and then lock the state object.  **This is NOT a recommended model to follow in other state objects, as it is prone to deadlocks and race conditions.** More effort will be put into refactoring `vvl::CommandBuffer` and validation code to hopefully simplify the locking of this state object.
 
 
 
@@ -225,17 +225,17 @@ The following sections cover state objects with non-const data and describe how 
 There it not any instance member data in `ValidationStateTracker` other than state object maps. It would be nice if there were separate classes for `VkInstance` and `VkDevice` state but that is beyond the scope of this project.
 
 
-### VkPhysicalDevice / PHYSICAL_DEVICE_STATE
+### VkPhysicalDevice / vvl::PhysicalDevice
 
 Since VkPhysicalDevice handles persist until the VkInstance is destroyed, it is not necessary to hold shared_ptr reference counts on them.
 
 The `queue_family_known_count` field is an uint32_t storing the maximum property count used in a call to `vkGetPhysicalDeviceQueueFamilyProperties2()`. The `vkGetPhysicalDeviceDisplayPlanePropertiesKHR_called` field and `display_plane_property_count uint32_t` field are similar but for display plane properties.
 
-The `perf_counters` map is a per-queue family map of the results of calls to `vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCounters()` which are not otherwise modified. These could be made const by adding query code to `PHYSICAL_DEVICE_STATE` construction.
+The `perf_counters` map is a per-queue family map of the results of calls to `vkEnumeratePhysicalDeviceQueueFamilyPerformanceQueryCounters()` which are not otherwise modified. These could be made const by adding query code to `vvl::PhysicalDevice` construction.
 
 ###### PRs:
 
-[layers: Set up QUEUE_STATE and PHYSICAL_DEVICE_STATE at create time](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3370)
+[layers: Set up vvl::Queue and vvl::PhysicalDevice at create time](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3370)
 
 
 ## Device Data
@@ -291,58 +291,58 @@ TODO: the counter flag members should be atomic.
 ## Queue state
 
 
-### VkQueue / QUEUE_STATE
+### VkQueue / vvl::Queue
 
-QUEUE_STATE tracks command buffers, semaphores and fences that have been submitted to the to the queue, but have not finished executing:
+vvl::Queue tracks command buffers, semaphores and fences that have been submitted to the to the queue, but have not finished executing:
 
 
 ```
-    struct CB_SUBMISSION {
+    struct QueueSubmission {
         struct SemaphoreInfo {
-            std::shared_ptr<SEMAPHORE_STATE> semaphore;
+            std::shared_ptr<vvl::Semaphore> semaphore;
             uint64_t payload{0};
         };
 
-        std::vector<std::shared_ptr<CMD_BUFFER_STATE>> cbs;
+        std::vector<std::shared_ptr<vvl::CommandBuffer>> cbs;
         std::vector<SemaphoreInfo> wait_semaphores;
         std::vector<SemaphoreInfo> signal_semaphores;
-        std::shared_ptr<FENCE_STATE> fence;
+        std::shared_ptr<vvl::Fence> fence;
         uint32_t perf_submit_pass{0};
     };
 
     uint64_t seq_;
-    std::deque<CB_SUBMISSION> submissions_;
+    std::deque<QueueSubmission> submissions_;
 ```
 
-Each `CB_SUBMISSION` structure contains the state for a single call to `vkQueueSubmit()`, `vkQueueSubmit2()` or `vkQueueBindSparse()`. They are stored in order in the `submissions_` dequeue until the state tracker determines that they have completed execution.
+Each `QueueSubmission` structure contains the state for a single call to `vkQueueSubmit()`, `vkQueueSubmit2()` or `vkQueueBindSparse()`. They are stored in order in the `submissions_` dequeue until the state tracker determines that they have completed execution.
 
-`seq_` is a sequence number that increments in every `vkQueueSubmit()` call. It is also stored in `SEMAPHORE_STATE` and `FENCE_STATE`, to track at what point in the queue they will signal.
+`seq_` is a sequence number that increments in every `vkQueueSubmit()` call. It is also stored in `vvl::Semaphore` and `vvl::Fence`, to track at what point in the queue they will signal.
 
-`QUEUE_STATE::submissions_` and `seq_` are accessed during queue submissions, as well as when semaphore or fence state changes cause updates to the completion state of queues. In Vulkan calls to check the status of a fence or semaphore, the state tracker uses the sequence numbers to figure out how far execution of the queue has progressed and update the state of any objects earlier in the queue, which must have finished executing. Because this process happens in functions that do not require external synchronization on the queue, such as `vkGetFenceStatus()` and `vkWaitSemaphores()`, access to the dequeue and `seq_` are  lock guarded.
+`vvl::Queue::submissions_` and `seq_` are accessed during queue submissions, as well as when semaphore or fence state changes cause updates to the completion state of queues. In Vulkan calls to check the status of a fence or semaphore, the state tracker uses the sequence numbers to figure out how far execution of the queue has progressed and update the state of any objects earlier in the queue, which must have finished executing. Because this process happens in functions that do not require external synchronization on the queue, such as `vkGetFenceStatus()` and `vkWaitSemaphores()`, access to the dequeue and `seq_` are  lock guarded.
 
 Snce `VkQueues`  exist until their `VkDevice` is destroyed, it is not necessary to use shared pointers for every reference to them.
 
-### VkFence / FENCE_STATE
+### VkFence / vvl::Fence
 
-`FENCE_STATE` contains the following non-const members, which are used through accessor methods that manage locking:
+`vvl::Fence` contains the following non-const members, which are used through accessor methods that manage locking:
 
 
-        QUEUE_STATE *queue_{nullptr};
+        vvl::Queue *queue_{nullptr};
         uint64_t seq_{0};
-        FENCE_STATUS state;
-        SyncScope scope{kSyncScopeInternal};
+        State state_;
+        Scope scope_{kInternal};
 
-This data is used to track the current state of the `VkFence`, and its position in the `VkQueue` that will signal it. `FENCE_STATE` calls `QUEUE_STATE::Retire()` when it detects that the `VkFence` has been signaled. `QUEUE_STATE::Retire()` then updates its state for anything submitted before the fence.
+This data is used to track the current state of the `VkFence`, and its position in the `VkQueue` that will signal it. `vvl::Fence` calls `vvl::Queue::Retire()` when it detects that the `VkFence` has been signaled. `vvl::Queue::Retire()` then updates its state for anything submitted before the fence.
 
-### VkSemaphore / SEMAPHORE_STATE
+### VkSemaphore / vvl::Semaphore
 
-`SEMAPHORE_STATE` contains the following non-const members, which are used through accessor methods that manage locking:
+`vvl::Semaphore` contains the following non-const members, which are used through accessor methods that manage locking:
 
 
-        SyncScope scope_{kSyncScopeInternal};
-         struct SemOp {
+        Scope scope_{kInternal};
+        struct SemOp {
             enum OpType op_type; /* values: kNone, kWait, kSignal, kBinaryAcquire, kBinaryPresent */
-            QUEUE_STATE *queue;
+            vvl::Queue *queue;
             uint64_t seq;
             uint64_t payload;
         };
@@ -351,31 +351,31 @@ This data is used to track the current state of the `VkFence`, and its position 
         uint64_t next_payload_;
         std::multiset<SemOp> operations_;
 
-Vulkan semaphores are extremely complicated, and timeline semaphores behave very differently from binary semaphores. `SEMAPHORE_STATE` behaves slightly differently depending on if it is used for a timeline or binary semaphore.
+Vulkan semaphores are extremely complicated, and timeline semaphores behave very differently from binary semaphores. `vvl::Semaphore` behaves slightly differently depending on if it is used for a timeline or binary semaphore.
 
-For timeline semaphores, the `operations_` multiset stores all pending waits or signals, sorted by the `SemOp::payload` field, which is the user specified value. There can be multiple operations associated with each `payload` value and they can be added in almost any order.  Additionally, one signal operation could cause many wait operations to be completed.  All of these operations could be on different `VkQueues`. Because of this, the code for updating the state of the semaphore is more complex than for `FENCE_STATE`:
+For timeline semaphores, the `operations_` multiset stores all pending waits or signals, sorted by the `SemOp::payload` field, which is the user specified value. There can be multiple operations associated with each `payload` value and they can be added in almost any order.  Additionally, one signal operation could cause many wait operations to be completed.  All of these operations could be on different `VkQueues`. Because of this, the code for updating the state of the semaphore is more complex than for `vvl::Fence`:
 
     // Remove completed operations and return highest sequence numbers for all affected queues
-    using RetireResult = vvl::unordered_map<QUEUE_STATE *, uint64_t>;
-    RetireResult Retire(QUEUE_STATE *queue, uint64_t payload);
+    using RetireResult = vvl::unordered_map<vvl::Queue *, uint64_t>;
+    RetireResult Retire(vvl::Queue *queue, uint64_t payload);
 
-`RetireResult` makes it possible to handle state changes for several queues.  When called from `QUEUE_STATE::Retire()`, the `RetireResult`(s) for all `CB_SUBMISSIONS` is saved until the end of the current queue's processing, so that Retire() can be called on other queues without any locks held. `SEMAPHORE_STATE::Retire()` can also be called from `vkWaitSemaphores()` or `vkGetSemaphoreCounterValueKHR()`, but these cases are much simpler.
+`RetireResult` makes it possible to handle state changes for several queues.  When called from `vvl::Queue::Retire()`, the `RetireResult`(s) for all `QueueSubmission` is saved until the end of the current queue's processing, so that Retire() can be called on other queues without any locks held. `vvl::Semaphore::Retire()` can also be called from `vkWaitSemaphores()` or `vkGetSemaphoreCounterValueKHR()`, but these cases are much simpler.
 
 For binary semaphores, `SemOp::payload` is set from the `next_payload_` counter. Each semaphore operation will have a unique `payload` value. Having a `payload` value lets binary semaphores be treated as very simple and restricted timeline semaphores in most of the code.  Additionally, semaphores used with `vkQueuePresentKHR()` or `vkAcquireNextImageKHR()` must be treated specially because it isn't currently possible for the state tracker to reliably know when these semaphores change state.
 
 ###### PRs:
 
-[layers: Clean up QUEUE_STATE, FENCE_STATE and SEMAPHORE_STATE](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3284)
+[layers: Clean up vvl::Queue, vvl::Fence and vvl::Semaphore](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3284)
 
-[layers: Further clean up of FENCE_STATE, SEMAPHORE_STATE and QUEUE_STATE](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3610)
+[layers: Further clean up of vvl::Fence, vvl::Semaphore and vvl::Queue](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3610)
 
-[layers: Make QUEUE_STATE and related classes threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3656)
+[layers: Make vvl::Queue and related classes threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3656)
 
 ## Command Buffers
 
-### VkEvent / EVENT_STATE
+### VkEvent / vvl::Event
 
-EVENT_STATE contains a counter to track if the event is set in a command buffer:
+vvl::Event contains a counter to track if the event is set in a command buffer:
 
 
 ```
@@ -392,9 +392,9 @@ It also tracks the stageMask used when setting the event, so that the wait stage
 
 TODO: These variables could be made thread safe using `std::atomic<>`.
 
-### VkCommandPool / COMMAND_POOL_STATE
+### VkCommandPool / vvl::CommandPool
 
-The only dynamic data in `COMMAND_POOL_STATE` is a set of all the command buffers allocated from the pool:
+The only dynamic data in `vvl::CommandPool` is a set of all the command buffers allocated from the pool:
 
 
 ```
@@ -402,12 +402,12 @@ The only dynamic data in `COMMAND_POOL_STATE` is a set of all the command buffer
 ```
 
 
-This state is only changed in Vulkan functions that require external synchronization of the `VkCommandPool` handle. TODO: currently this object is not lock guarded but it could be converted to work like `DESCRIPTOR_POOL_STATE`, which is.
+This state is only changed in Vulkan functions that require external synchronization of the `VkCommandPool` handle. TODO: currently this object is not lock guarded but it could be converted to work like `vvl::DescriptorPool`, which is.
 
 
-### VkCommandBuffer / CMD_BUFFER_STATE
+### VkCommandBuffer / vvl::CommandBuffer
 
-`CMD_BUFFER_STATE` contains a large amount of data that is built up while commands are being recorded. There are around 30 non-const data members, so they are not listed here.
+`vvl::CommandBuffer` contains a large amount of data that is built up while commands are being recorded. There are around 30 non-const data members, so they are not listed here.
 
 Some of this data is moved into global state during queue submission, while other data is no longer needed.
 
@@ -421,7 +421,7 @@ Command buffer locking is handled by the `StateTracker::GetWrite<>` and `GetRead
  void CoreChecks::PreCallRecordCmdPipelineBarrier2(VkCommandBuffer commandBuffer,
                                                    const VkDependencyInfo *pDependencyInfo) {
     // BUG: this method gets a write lock
-    auto cb_state = GetWrite<CMD_BUFFER_STATE>(commandBuffer);
+    auto cb_state = GetWrite<vvl::CommandBuffer>(commandBuffer);
     RecordBarriers(Func::vkCmdPipelineBarrier2, cb_state.get(), *pDependencyInfo);
     TransitionImageLayouts(cb_state.get(), pDependencyInfo->imageMemoryBarrierCount,
                            pDependencyInfo->pImageMemoryBarriers);
@@ -438,7 +438,7 @@ Another example:
 bool CoreChecks::PreCallValidateCmdSetScissorWithCount(VkCommandBuffer commandBuffer, uint32_t scissorCount,
                                                        const VkRect2D *pScissors) const {
     // BUG: this method takes a read lock
-    auto cb_state = GetRead<CMD_BUFFER_STATE>(commandBuffer);
+    auto cb_state = GetRead<vvl::CommandBuffer>(commandBuffer);
     bool skip = false;
     // BUG: This helper method also called GetRead<>(), which will deadlock
     skip = ValidateExtendedDynamicState(commandBuffer, CMD_SETSCISSORWITHCOUNT, ...);
@@ -463,19 +463,19 @@ Note that not all legacy code, such as `ForbidInheritedViewportScissor()` has be
 
 ##### Queries
 
-During queue submission, query validation is performed via lambda functions added to `CMD_BUFFER_STATE::queryUpdates` by various CoreChecks methods. During the Validate phase, these are executed with the do_validate parameter set to true. And they are executed again during PostRecord with do_validate set to false. During submission, the final state of each `QueryObject` is updated into the corresponding `QUERY_POOL_STATE` object, which has a thread safe interface. When the command buffer is retired, all used `QueryObject` states are reset to `AVAILABLE`.
+During queue submission, query validation is performed via lambda functions added to `vvl::CommandBuffer::queryUpdates` by various CoreChecks methods. During the Validate phase, these are executed with the do_validate parameter set to true. And they are executed again during PostRecord with do_validate set to false. During submission, the final state of each `QueryObject` is updated into the corresponding `vvl::QueryPool` object, which has a thread safe interface. When the command buffer is retired, all used `QueryObject` states are reset to `AVAILABLE`.
 
 
 ##### Events
 
-Similar to queries, there are callbacks that validate and record event stage mask transitions in the command buffer. During submission the final stage mask generated by the command buffer is updated into `EVENT_STATE::stageMask` so that it becomes globally visible.
+Similar to queries, there are callbacks that validate and record event stage mask transitions in the command buffer. During submission the final stage mask generated by the command buffer is updated into `vvl::Event::stageMask` so that it becomes globally visible.
 
-Additionally, any events that are set or reset in the command buffer have `EVENT_STATE::write_in_use` incremented during submission and decremented when the command buffer is retired.
+Additionally, any events that are set or reset in the command buffer have `vvl::Event::write_in_use` incremented during submission and decremented when the command buffer is retired.
 
 
 ##### Image Layout
 
-Image Layout state is recorded and validated twice.  During command recording, data in `CMD_BUFFER_STATE` is used to track the current layouts as commands are recorded. During queue submission, the layout state is validated again and then copied into a global data structure so that it can be used in subsequent command buffers. This validation is discussed in more detail in the VkImage / IMAGE_STATE section.
+Image Layout state is recorded and validated twice.  During command recording, data in `vvl::CommandBuffer` is used to track the current layouts as commands are recorded. During queue submission, the layout state is validated again and then copied into a global data structure so that it can be used in subsequent command buffers. This validation is discussed in more detail in the VkImage / vvl::Image section.
 
 
 ##### QFO Transfers
@@ -492,20 +492,20 @@ These maps are updated from per-CB maps during queue submission. Because QFO inh
 
 ###### PRs:
 
-[layers: Move state tracker methods to CMD_BUFFER_STATE](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3149)
+[layers: Move state tracker methods to vvl::CommandBuffer](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3149)
 
-[practices: Use subclassed CMD_BUFFER_STATE](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3167)
+[practices: Use subclassed vvl::CommandBuffer](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3167)
 
-[layers: Use subclassed CMD_BUFFER_STATE in DebugPrintf and GpuAV](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3188)
+[layers: Use subclassed vvl::CommandBuffer in DebugPrintf and GpuAV](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3188)
 
-[layers: Move command counting to CMD_BUFFER_STATE::RecordCmd()](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3184)
+[layers: Move command counting to vvl::CommandBuffer::RecordCmd()](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3184)
 
-[layers: Move DescriptorSet cached validation to CMD_BUFFER_STATE](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3479) [
+[layers: Move DescriptorSet cached validation to vvl::CommandBuffer](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3479) [
 layers: Remove excess state object lookups](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3541)
 
 [corechecks: Remove extra CommandBuffer, Image and ImageView Get<> calls](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3550)
 
-[layers: Make CMD_BUFFER_STATE threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3659)
+[layers: Make vvl::CommandBuffer threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3659)
 
 [layers: Make global QFO and Image Layout state threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3669)
 
@@ -517,9 +517,9 @@ layers: Remove excess state object lookups](https://github.com/KhronosGroup/Vulk
 ## Memory objects
 
 
-### VkDeviceMemory / DEVICE_MEMORY_STATE
+### VkDeviceMemory / vvl::DeviceMemory
 
-`DEVICE_MEMORY_STATE` only contains dynamic member data related to `vkMemoryMap()` and `vkMemoryUnmap()` calls, which require the `VkDeviceMemory` handle to be externally synchronized:
+`vvl::DeviceMemory` only contains dynamic member data related to `vkMemoryMap()` and `vkMemoryUnmap()` calls, which require the `VkDeviceMemory` handle to be externally synchronized:
 
 
 ```
@@ -535,14 +535,14 @@ layers: Remove excess state object lookups](https://github.com/KhronosGroup/Vulk
 The `p_driver_data` pointer is only used by Best Practices validation, but it is used in `vkCmdDrawIndexed()`. It may require further review when Best Practices no longer uses the `ValidationObject` lock.
 
 
-### BINDABLE
+### vvl::Bindable
 
-`BINDABLE` is an abstract class representing something that can have `VkDeviceMemory` handles bound to it. It is used by the state objects for `VkImages`, `VkBuffers` and `VkAccelerationStructureNVs`. It tracks the state for bound memory in a map, which will have 0 or 1 entries except for when sparse memory is being used:
+`vvl::Bindable` is an abstract class representing something that can have `VkDeviceMemory` handles bound to it. It is used by the state objects for `VkImages`, `VkBuffers` and `VkAccelerationStructureNVs`. It tracks the state for bound memory in a map, which will have 0 or 1 entries except for when sparse memory is being used:
 
 
 ```
     struct MEM_BINDING {
-        std::shared_ptr<DEVICE_MEMORY_STATE> mem_state;
+        std::shared_ptr<vvl::DeviceMemory> mem_state;
         VkDeviceSize offset;
         VkDeviceSize size;
     };
@@ -555,9 +555,9 @@ This map is used to check memory has been bound to an object, and if the bound m
 TODO: `bound_memory_` is not thread safe if applications violate the Vulkan thread safety requirements.  It might be worthwhile to handle non-sparse and sparse separately somehow.
 
 
-### VkImage / IMAGE_STATE
+### VkImage / vvl::Image
 
-`IMAGE_STATE` contains flags used by Best Practices to ensure memory requirements are checked:
+`vvl::Image` contains flags used by Best Practices to ensure memory requirements are checked:
 
 
 ```
@@ -604,7 +604,7 @@ For ‘normal’ images it is set during creation, but for android AHB external 
 
 #### Image Layouts
 
-`IMAGE_STATE` maintains the global version of the image's layout state:
+`vvl::Image` maintains the global version of the image's layout state:
 
 
 ```
@@ -628,10 +628,10 @@ TODO: Locking of the `GlobalImageLayoutRangeMap` is currently managed by the cal
 
 For images created with `VK_IMAGE_CREATE_ALIAS_BIT` or bound to the same swapchain index,  multiple images will share the same layout state by copying the layout_range_map shared_ptr, rather than creating a new map.
 
-Each `CMD_BUFFER_STATE` maintains its own copy of the image layout state, in a different data structure:
+Each `vvl::CommandBuffer` maintains its own copy of the image layout state, in a different data structure:
 
 ```
-   typedef vvl::unordered_map<const IMAGE_STATE *,
+   typedef vvl::unordered_map<const vvl::Image *,
                                     std::shared_ptr<ImageSubresourceLayoutMap>>  CommandBufferImageLayoutMap;
    CommandBufferImageLayoutMap image_layout_map;
    typedef vvl::unordered_map<const GlobalImageLayoutRangeMap *,
@@ -647,9 +647,9 @@ The image_layout_map maintains a local copy of the layout state for any images u
 
 [layers: Make global QFO and Image Layout state threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3669)
 
-VkBuffer / BUFFER_STATE
+VkBuffer / vvl::Buffer
 
-`BUFFER_STATE` has a flag used only by Best Practices:
+`vvl::Buffer` has a flag used only by Best Practices:
 
 
 ```
@@ -657,18 +657,18 @@ VkBuffer / BUFFER_STATE
 ```
 
 
-And `BUFFER_STATE::deviceAddress` field is used for lookups in a separate map used by ray tracing validation in CoreChecks and GPUAV:
+And `vvl::Buffer::deviceAddress` field is used for lookups in a separate map used by ray tracing validation in CoreChecks and GPUAV:
 
 
 ```
-    vl_concurrent_unordered_map<VkDeviceAddress, BUFFER_STATE*> buffer_address_map_;
+    vl_concurrent_unordered_map<VkDeviceAddress, vvl::Buffer*> buffer_address_map_;
 ```
 
 
 The `deviceAddress` field can only be set after memory is bound to the buffer, so it cannot be const. But once it is set it is not modified.
 
 
-### VkAccelerationStructureKHR / ACCELERATION_STRUCTURE_STATE_KHR
+### VkAccelerationStructureKHR / vvl::AccelerationStructureKHR
 
 There are separate state objects for the KHR and NV versions of the extensions. Unfortunately, due to differences in how memory is bound in the 2 extensions, these objects cannot be easily combined.
 
@@ -699,7 +699,7 @@ layers: Refactor and improve acceleration structure state tracking](https://gith
 
 ```
     struct SWAPCHAIN_IMAGE {
-        IMAGE_STATE *image_state = nullptr;
+        vvl::Image *image_state = nullptr;
         VkDeviceSize fake_base_address = 0;
         bool acquired = false;
     };
@@ -716,9 +716,9 @@ Some of this data is set in `vkGetSwapchainImagesKHR()` and `vkBindImageMemory2K
 TODO: Accesses to most of these fields will need to be atomic or lock guarded.
 
 
-### VkSurfaceState / SURFACE_STATE
+### VkSurfaceState / vvl::Surface
 
-`SURFACE_STATE` tracks the results of several calls that involve both `VkPhysicalDevice` and `VkSurface`:
+`vvl::Surface` tracks the results of several calls that involve both `VkPhysicalDevice` and `VkSurface`:
 
 
 ```
@@ -740,7 +740,7 @@ Also, surfaces are instance level objects but they hold a reference on the curre
 
 ###### PRs:
 
-[layers: Make SURFACE_STATE, DESCRIPTOR_POOL_STATE, QUERY_POOL_STATE and ValidationCache threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3649)
+[layers: Make vvl::Surface, vvl::DescriptorPool, vvl::QueryPool and ValidationCache threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3649)
 
 [layers: Don't pre-query surface attributes during creation](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3452)
 
@@ -750,16 +750,16 @@ Also, surfaces are instance level objects but they hold a reference on the curre
 ## Descriptor sets
 
 
-### VkDescriptorPool / DESCRIPTOR_POOL_STATE
+### VkDescriptorPool / vvl::DescriptorPool
 
-All of the dynamic data in `DESCRIPTOR_POOL_STATE` is associated with tracking the currently allocated descriptor sets and the remaining resources available for allocating new ones:
+All of the dynamic data in `vvl::DescriptorPool` is associated with tracking the currently allocated descriptor sets and the remaining resources available for allocating new ones:
 
 
 
 
 ```
    // Collection of all sets in this pool`
-    vvl::unordered_set<cvdescriptorset::DescriptorSet *> sets;
+    vvl::unordered_set<vvl::DescriptorSet *> sets;
     // Available descriptor sets in this pool
     uint32_t availableSets;
     // Available # of descriptors of each type in this pool
@@ -770,10 +770,10 @@ This data is fully encapsulated by accessor methods that manage the locking.
 
 ###### PRs:
 
-[layers: Make SURFACE_STATE, DESCRIPTOR_POOL_STATE, QUERY_POOL_STATE and ValidationCache threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3649)
+[layers: Make vvl::Surface, vvl::DescriptorPool, vvl::QueryPool and ValidationCache threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3649)
 
 
-### VkDescriptorSet / cvdescriptorset::DescriptorSet
+### VkDescriptorSet / vvl::DescriptorSet
 
 Descriptor set validation, especially of image descriptors, is currently the most CPU intensive part of validation. The state for descriptor sets consists mostly of an efficient way to store descriptors of various types in a single vector:
 
@@ -791,7 +791,7 @@ TODO: The following variables need to be made const:
     // For a given dynamic offset index in the set, map to associated index of the descriptors in the set
     std::vector<size_t> dynamic_offset_idx_to_descriptor_list_;
 
-TODO: only used by push descriptors and effectively guarded by CMD_BUFFER_STATE locking
+TODO: only used by push descriptors and effectively guarded by vvl::CommandBuffer locking
 
 ````
 std::vector<safe_VkWriteDescriptorSet> push_descriptor_set_writes;
@@ -801,9 +801,9 @@ std::vector<safe_VkWriteDescriptorSet> push_descriptor_set_writes;
 
 [layers: Simplify push DescriptorSet management](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3657)
 
-## VkQueryPool / QUERY_POOL_STATE
+## VkQueryPool / vvl::QueryPool
 
-`QUERY_POOL_STATE` contains a 2 dimensional array tracking the current state of each query in the pool:
+`vvl::QueryPool` contains a 2 dimensional array tracking the current state of each query in the pool:
 
 
 ```
@@ -816,7 +816,7 @@ This data is fully encapsulated by accessor methods that manage the locking.
 
 [layers: remove global queryToStateMap](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3586)
 
-[layers: Make SURFACE_STATE, DESCRIPTOR_POOL_STATE, QUERY_POOL_STATE and ValidationCache threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3649)
+[layers: Make vvl::Surface, vvl::DescriptorPool, vvl::QueryPool and ValidationCache threadsafe](https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/3649)
 
 
 
@@ -828,15 +828,12 @@ This data is fully encapsulated by accessor methods that manage the locking.
 
 Multithreading is limited to the following test cases:
 
-* VkLayerTest.ThreadCommandBufferCollision
-* VkLayerTest.ThreadUpdateDescriptorCollision
-* VkLayerTest.ThreadUpdateDescriptorUpdateAfterBindNoCollision
-* VkLayerTest.ThreadUpdateDescriptorUpdateAfterBindNoCollision
-* VkPositiveLayerTest.ThreadSafetyDisplayObjects
-* VkPositiveLayerTest.ThreadSafetyDisplayPlaneObjects
-* VkPositiveLayerTest.ThreadNullFenceCollision
-
-Further tests are needed and should include Thread in their name, or be in a separate test suite.
+* NegativeThreading.CommandBufferCollision
+* NegativeThreading.UpdateDescriptorCollision
+* PositiveThreading.UpdateDescriptorUpdateAfterBindNoCollision
+* PositiveThreading.DisplayObjects
+* PositiveThreading.DisplayPlaneObjects
+* PositiveThreading.NullFenceCollision
 
 
 ## CTS

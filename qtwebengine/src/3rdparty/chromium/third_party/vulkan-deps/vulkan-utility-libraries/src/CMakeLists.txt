@@ -19,27 +19,13 @@ set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
 set(CMAKE_C_VISIBILITY_PRESET "hidden")
 set(CMAKE_VISIBILITY_INLINES_HIDDEN "YES")
 
+# This variable enables downstream users to customize the target API
+# variant (e.g. Vulkan SC)
+set(API_TYPE "vulkan")
+
 add_subdirectory(scripts)
 
-find_package(VulkanHeaders CONFIG QUIET)
-
-option(VUL_WERROR "Treat compiler warnings as errors")
-if (VUL_WERROR)
-    add_compile_options("$<IF:$<CXX_COMPILER_ID:MSVC>,/WX,-Werror>")
-    if (MSVC)
-        add_link_options(/WX)
-    endif()
-endif()
-
-if(${CMAKE_CXX_COMPILER_ID} MATCHES "(GNU|Clang)")
-    add_compile_options(
-        -Wall
-        -Wextra
-    )
-endif()
-
-add_library(VulkanUtilityHeaders INTERFACE)
-add_library(Vulkan::UtilityHeaders ALIAS VulkanUtilityHeaders)
+find_package(VulkanHeaders CONFIG)
 
 add_subdirectory(src)
 add_subdirectory(include)
@@ -52,11 +38,50 @@ if (VUL_IS_TOP_LEVEL)
     endif()
 
     include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
 
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/vulkan" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(
+        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/${API_TYPE}/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/vulkan"
+    )
 
+    # Create VulkanUtilityLibraries-targets.cmake
     set_target_properties(VulkanLayerSettings PROPERTIES EXPORT_NAME "LayerSettings")
     set_target_properties(VulkanUtilityHeaders PROPERTIES EXPORT_NAME "UtilityHeaders")
-    install(TARGETS VulkanLayerSettings VulkanUtilityHeaders EXPORT VulkanUtilityLibrariesConfig INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-    install(EXPORT VulkanUtilityLibrariesConfig DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanUtilityLibraries NAMESPACE Vulkan::)
+    set_target_properties(VulkanCompilerConfiguration PROPERTIES EXPORT_NAME "CompilerConfiguration")
+    install(
+        TARGETS VulkanLayerSettings VulkanUtilityHeaders VulkanCompilerConfiguration
+        EXPORT VulkanUtilityLibraries-targets
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    )
+    install(
+        EXPORT VulkanUtilityLibraries-targets
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanUtilityLibraries
+        NAMESPACE Vulkan::
+    )
+
+    # Create VulkanUtilityLibrariesConfig.cmake
+    set(VUL_EXPORT_TARGETS ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanUtilityLibraries/VulkanUtilityLibraries-targets.cmake)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/VulkanUtilityLibrariesConfig.cmake.in" [=[
+        include(CMakeFindDependencyMacro)
+        # NOTE: Because VulkanHeaders is a PUBLIC dependency it needs to be found prior to VulkanUtilityLibraries
+        find_dependency(VulkanHeaders REQUIRED)
+
+        @PACKAGE_INIT@
+
+        include(@PACKAGE_VUL_EXPORT_TARGETS@)
+    ]=])
+
+    configure_package_config_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/VulkanUtilityLibrariesConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/VulkanUtilityLibrariesConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanUtilityLibraries
+        PATH_VARS VUL_EXPORT_TARGETS
+        NO_SET_AND_CHECK_MACRO
+        NO_CHECK_REQUIRED_COMPONENTS_MACRO
+    )
+
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VulkanUtilityLibrariesConfig.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanUtilityLibraries
+    )
 endif()

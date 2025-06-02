@@ -526,7 +526,7 @@ const char kGenDeps_Help[] =
 
   Not all GN targets that get evaluated are actually turned into ninja targets
   (see "gn help execution"). If this target is generated, then any targets in
-  the "gen_deps" list will also be generated, regardless of the usual critera.
+  the "gen_deps" list will also be generated, regardless of the usual criteria.
 
   Since "gen_deps" are not build time dependencies, there can be cycles between
   "deps" and "gen_deps" or within "gen_deps" itself.
@@ -570,6 +570,21 @@ const char kArgs_Help[] =
            "{{source}}" ]
 
   See also "gn help action" and "gn help action_foreach".
+)";
+
+const char kMnemonic[] = "mnemonic";
+const char kMnemonic_HelpShort[] =
+    "mnemonic: [string] Prefix displayed when ninja runs this action.";
+const char kMnemonic_Help[] =
+    R"(mnemonic: [string] Prefix displayed when ninja runs this action.
+
+  Tools in GN can set their ninja "description" which is displayed when
+  building a target. These are commonly set with the format "CXX $output"
+  or "LINK $label". By default, all GN actions will have the description
+  "ACTION $label". Setting a mnemonic will override the "ACTION" prefix
+  with another string, but the label will still be unconditionally displayed.
+
+  Whitespace is not allowed within a mnemonic.
 )";
 
 const char kAssertNoDeps[] = "assert_no_deps";
@@ -743,6 +758,20 @@ const char kXcassetCompilerFlags_Help[] =
   in compile_xcassets tool.
 )";
 
+const char kTransparent[] = "transparent";
+const char kTransparent_HelpShort[] =
+    "transparent: [bool] True if the bundle is transparent.";
+const char kTransparent_Help[] =
+    R"(transparent: [bool] True if the bundle is transparent.
+
+  A boolean.
+
+  Valid for "create_bundle" target. If true, the "create_bundle" target will
+  not package the "bundle_data" deps but will forward them to all targets that
+  depends on it (unless the "bundle_data" target sets "product_type" to the
+  same value as the "create_bundle" target).
+)";
+
 const char kCflags[] = "cflags";
 const char kCflags_HelpShort[] =
     "cflags: [string list] Flags passed to all C compiler variants.";
@@ -759,8 +788,8 @@ const char kCommonCflagsHelp[] =
   versions of cflags* will be appended on the compiler command line after
   "cflags".
 
-  See also "asmflags" for flags for assembly-language files and "swiftflags"
-  for swift files.
+  See also "asmflags" for flags for assembly-language files, "swiftflags" for
+  swift files, and "rustflags" for Rust files.
 )" COMMON_ORDERING_HELP;
 const char* kCflags_Help = kCommonCflagsHelp;
 
@@ -828,52 +857,73 @@ Example
 
 const char kCodeSigningArgs[] = "code_signing_args";
 const char kCodeSigningArgs_HelpShort[] =
-    "code_signing_args: [string list] Arguments passed to code signing script.";
+    "code_signing_args: [string list] [deprecated] Args for the "
+    "post-processing script.";
 const char kCodeSigningArgs_Help[] =
-    R"(code_signing_args: [string list] Arguments passed to code signing script.
+    R"(code_signing_args: [string list] [deprecated] Args for the post-processing script.
 
-  For create_bundle targets, code_signing_args is the list of arguments to pass
-  to the code signing script. Typically you would use source expansion (see "gn
-  help source_expansion") to insert the source file names.
+  For create_bundle targets, post_processing_args is the list of arguments to
+  pass to the post-processing script. Typically you would use source expansion
+  (see "gn help source_expansion") to insert the source file names.
 
-  See also "gn help create_bundle".
-)";
+  Deprecated: this is an old name for the "post_processing_args" property of
+  the "create_bundle" target. It is still supported to avoid breaking existing
+  build rules, but a warning will be emitted when it is used.
 
-const char kCodeSigningScript[] = "code_signing_script";
-const char kCodeSigningScript_HelpShort[] =
-    "code_signing_script: [file name] Script for code signing.";
-const char kCodeSigningScript_Help[] =
-    R"(code_signing_script: [file name] Script for code signing."
-
-  An absolute or buildfile-relative file name of a Python script to run for a
-  create_bundle target to perform code signing step.
-
-  See also "gn help create_bundle".
-)";
-
-const char kCodeSigningSources[] = "code_signing_sources";
-const char kCodeSigningSources_HelpShort[] =
-    "code_signing_sources: [file list] Sources for code signing step.";
-const char kCodeSigningSources_Help[] =
-    R"(code_signing_sources: [file list] Sources for code signing step.
-
-  A list of files used as input for code signing script step of a create_bundle
-  target. Non-absolute paths will be resolved relative to the current build
-  file.
-
-  See also "gn help create_bundle".
+  See also "gn help create_bundle" and "gn help post_processing_args".
 )";
 
 const char kCodeSigningOutputs[] = "code_signing_outputs";
 const char kCodeSigningOutputs_HelpShort[] =
-    "code_signing_outputs: [file list] Output files for code signing step.";
+    "code_signing_outputs: [file list] [deprecated] Outputs of the "
+    "post-processing step.";
 const char kCodeSigningOutputs_Help[] =
-    R"(code_signing_outputs: [file list] Output files for code signing step.
+    R"(code_signing_outputs: [file list] [deprecated] Outputs of the post-processing step.
 
-  Outputs from the code signing step of a create_bundle target. Must refer to
+  Outputs from the post-processing step of a create_bundle target. Must refer to
   files in the build directory.
 
-  See also "gn help create_bundle".
+  Deprecated: this is an old name for the "post_processing_outputs" property of
+  the "create_bundle" target. It is still supported to avoid breaking existing
+  build rules, but a warning will be emitted when it is used.
+
+  See also "gn help create_bundle" and "gn help post_processing_args".
+)";
+
+const char kCodeSigningScript[] = "code_signing_script";
+const char kCodeSigningScript_HelpShort[] =
+    "code_signing_script: [file name] [deprecated] Script for the "
+    "post-processing step.";
+const char kCodeSigningScript_Help[] =
+    R"(code_signing_script: [file name] [deprecated] Script for the post-processing step."
+
+  An absolute or buildfile-relative file name of a Python script to run for a
+  create_bundle target to perform the post-processing step.
+
+  Deprecated: this is an old name for the "post_processing_script" property of
+  the "create_bundle" target. It is still supported to avoid breaking existing
+  build rules, but a warning will be emitted when it is used.
+
+  See also "gn help create_bundle" and "gn help post_processing_args".
+)";
+
+const char kCodeSigningSources[] = "code_signing_sources";
+const char kCodeSigningSources_HelpShort[] =
+    "code_signing_sources: [file list] [deprecated] Sources for the "
+    "post-processing "
+    "step.";
+const char kCodeSigningSources_Help[] =
+    R"(code_signing_sources: [file list] [deprecated] Sources for the post-processing step.
+
+  A list of files used as input for the post-processing step of a create_bundle
+  target. Non-absolute paths will be resolved relative to the current build
+  file.
+
+  Deprecated: this is an old name for the "post_processing_sources" property of
+  the "create_bundle" target. It is still supported to avoid breaking existing
+  build rules, but a warning will be emitted when it is used.
+
+  See also "gn help create_bundle" and "gn help post_processing_args".
 )";
 
 const char kCompleteStaticLib[] = "complete_static_lib";
@@ -1148,6 +1198,10 @@ Details of dependency propagation
   of targets, and public_configs are always propagated across public deps of
   all types of targets.
 
+  For Rust targets, deps ensures that Rust code can refer to the dependency
+  target. If the dependency is a C/C++ target, the path to that target will
+  be made available to Rust for `#[link]` directives.
+
   Data dependencies are propagated differently. See "gn help data_deps" and
   "gn help runtime_deps".
 
@@ -1403,8 +1457,7 @@ const char kLibDirs_Help[] =
   Specifies additional directories passed to the linker for searching for the
   required libraries. If an item is not an absolute path, it will be treated as
   being relative to the current build file.
-)" COMMON_LIB_INHERITANCE_HELP COMMON_ORDERING_HELP
-        LIBS_AND_LIB_DIRS_ORDERING_HELP
+)" COMMON_LIB_INHERITANCE_HELP COMMON_ORDERING_HELP LIBS_AND_LIB_DIRS_ORDERING_HELP
     R"(
 Example
 
@@ -1607,7 +1660,7 @@ const char kPartialInfoPlist_Help[] =
 
   Valid for create_bundle target, corresponds to the path for the partial
   Info.plist created by the asset catalog compiler that needs to be merged
-  with the application Info.plist (usually done by the code signing script).
+  with the application Info.plist (usually done by the post-processing script).
 
   The file will be generated regardless of whether the asset compiler has
   been invoked or not. See "gn help create_bundle".
@@ -1660,6 +1713,57 @@ Example
     pool = "//build:custom_pool"
     ...
   }
+)";
+
+const char kPostProcessingArgs[] = "post_processing_args";
+const char kPostProcessingArgs_HelpShort[] =
+    "post_processing_args: [string list] Args for the post-processing script.";
+const char kPostProcessingArgs_Help[] =
+    R"(post_processing_args: [string list] Args for the post-processing script.
+
+  For create_bundle targets, post_processing_args is the list of arguments to
+  pass to the post-processing script. Typically you would use source expansion
+  (see "gn help source_expansion") to insert the source file names.
+
+  See also "gn help create_bundle".
+)";
+
+const char kPostProcessingOutputs[] = "post_processing_outputs";
+const char kPostProcessingOutputs_HelpShort[] =
+    "post_processing_outputs: [file list] Outputs of the post-processing step.";
+const char kPostProcessingOutputs_Help[] =
+    R"(post_processing_outputs: [file list] Outputs of the post-processing step.
+
+  Outputs from the post-processing step of a create_bundle target. Must refer to
+  files in the build directory.
+
+  See also "gn help create_bundle".
+)";
+
+const char kPostProcessingScript[] = "post_processing_script";
+const char kPostProcessingScript_HelpShort[] =
+    "post_processing_script: [file name] Script for the post-processing step.";
+const char kPostProcessingScript_Help[] =
+    R"(post_processing_script: [file name] Script for the post-processing step."
+
+  An absolute or buildfile-relative file name of a Python script to run for a
+  create_bundle target to perform the post-processing step.
+
+  See also "gn help create_bundle".
+)";
+
+const char kPostProcessingSources[] = "post_processing_sources";
+const char kPostProcessingSources_HelpShort[] =
+    "post_processing_sources: [file list] Sources for the post-processing "
+    "step.";
+const char kPostProcessingSources_Help[] =
+    R"(post_processing_sources: [file list] Sources for the post-processing step.
+
+  A list of files used as input for the post-processing step of a create_bundle
+  target. Non-absolute paths will be resolved relative to the current build
+  file.
+
+  See also "gn help create_bundle".
 )";
 
 const char kPrecompiledHeader[] = "precompiled_header";
@@ -1752,15 +1856,18 @@ const char kPrecompiledSource_Help[] =
 
 const char kProductType[] = "product_type";
 const char kProductType_HelpShort[] =
-    "product_type: [string] Product type for Xcode projects.";
+    "product_type: [string] Product type for the bundle.";
 const char kProductType_Help[] =
-    R"(product_type: Product type for Xcode projects.
+    R"(product_type: [string] Product type for the bundle.
 
-  Correspond to the type of the product of a create_bundle target. Only
-  meaningful to Xcode (used as part of the Xcode project generation).
+  Valid for "create_bundle" and "bundle_data" targets.
 
-  When generating Xcode project files, only create_bundle target with a
-  non-empty product_type will have a corresponding target in Xcode project.
+  Correspond to the type of the bundle. Used by transparent "create_bundle"
+  target to control whether a "bundle_data" needs to be propagated or not.
+
+  When generating Xcode project, the product_type is propagated and only
+  "create_bundle" with a non-empty product_type will have a corresponding
+  target in the project.
 )";
 
 const char kPublic[] = "public";
@@ -2336,6 +2443,7 @@ const VariableInfoMap& GetTargetVariables() {
     INSERT_VARIABLE(BundleDepsFilter)
     INSERT_VARIABLE(BundleExecutableDir)
     INSERT_VARIABLE(XcassetCompilerFlags)
+    INSERT_VARIABLE(Transparent)
     INSERT_VARIABLE(Cflags)
     INSERT_VARIABLE(CflagsC)
     INSERT_VARIABLE(CflagsCC)
@@ -2343,9 +2451,9 @@ const VariableInfoMap& GetTargetVariables() {
     INSERT_VARIABLE(CflagsObjCC)
     INSERT_VARIABLE(CheckIncludes)
     INSERT_VARIABLE(CodeSigningArgs)
+    INSERT_VARIABLE(CodeSigningOutputs)
     INSERT_VARIABLE(CodeSigningScript)
     INSERT_VARIABLE(CodeSigningSources)
-    INSERT_VARIABLE(CodeSigningOutputs)
     INSERT_VARIABLE(CompleteStaticLib)
     INSERT_VARIABLE(Configs)
     INSERT_VARIABLE(Data)
@@ -2354,6 +2462,7 @@ const VariableInfoMap& GetTargetVariables() {
     INSERT_VARIABLE(Defines)
     INSERT_VARIABLE(Depfile)
     INSERT_VARIABLE(Deps)
+    INSERT_VARIABLE(Mnemonic)
     INSERT_VARIABLE(Externs)
     INSERT_VARIABLE(Friend)
     INSERT_VARIABLE(FrameworkDirs)
@@ -2371,6 +2480,10 @@ const VariableInfoMap& GetTargetVariables() {
     INSERT_VARIABLE(Outputs)
     INSERT_VARIABLE(PartialInfoPlist)
     INSERT_VARIABLE(Pool)
+    INSERT_VARIABLE(PostProcessingArgs)
+    INSERT_VARIABLE(PostProcessingOutputs)
+    INSERT_VARIABLE(PostProcessingScript)
+    INSERT_VARIABLE(PostProcessingSources)
     INSERT_VARIABLE(PrecompiledHeader)
     INSERT_VARIABLE(PrecompiledHeaderType)
     INSERT_VARIABLE(PrecompiledSource)

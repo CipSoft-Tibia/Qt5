@@ -71,7 +71,7 @@ enum class Feature : FlagType
     Ssao = (1 << 11) + 3,
     DepthPass = (1 << 12) + 4,
     OrthoShadowPass = (1 << 13) + 5,
-    CubeShadowPass = (1 << 14) + 6,
+    PerspectiveShadowPass = (1 << 14) + 6,
     LinearTonemapping = (1 << 15) + 7,
     AcesTonemapping = (1 << 16) + 8,
     HejlDawsonTonemapping = (1 << 17) + 9,
@@ -81,6 +81,8 @@ enum class Feature : FlagType
     ReflectionProbe = (1 << 21) + 13,
     ReduceMaxNumLights = (1 << 22) + 14,
     Lightmap = (1 << 23) + 15,
+    DisableMultiView = (1 << 24) + 16,
+    ForceIblExposure = (1 << 25) + 17,
 
     LastFeature
 };
@@ -105,6 +107,7 @@ void disableTonemapping()
     set(Feature::AcesTonemapping, false);
     set(Feature::FilmicTonemapping, false);
     set(Feature::HejlDawsonTonemapping, false);
+    set(Feature::ForceIblExposure, false);
 }
 
 inline friend QDebug operator<<(QDebug stream, const QSSGShaderFeatures &features)
@@ -175,18 +178,20 @@ private:
     typedef QHash<QSSGShaderCacheKey, QSSGRhiShaderPipelinePtr> TRhiShaderMap;
     QSSGRhiContext &m_rhiContext; // Not own, the RCI owns us and the QSSGRhiContext.
     TRhiShaderMap m_rhiShaders;
-    QByteArray m_insertStr; // member to potentially reuse the allocation after clear
+    QByteArray m_insertStr;   // member to potentially reuse the allocation after clear
+    QByteArray m_cacheKeyStr; // same here
     InitBakerFunc m_initBaker;
     QQsbInMemoryCollection m_persistentShaderBakingCache;
     QString m_persistentShaderStorageFileName;
     QSSGBuiltInRhiShaderCache m_builtInShaders;
 
-    QSSGRhiShaderPipelinePtr loadBuiltinForRhi(const QByteArray &inKey);
+    QSSGRhiShaderPipelinePtr loadBuiltinUncached(const QByteArray &inKey, int viewCount);
 
     void addShaderPreprocessor(QByteArray &str,
                                const QByteArray &inKey,
                                ShaderType shaderType,
-                               const QSSGShaderFeatures &inFeatures);
+                               const QSSGShaderFeatures &inFeatures,
+                               int viewCount);
 
 public:
     QSSGShaderCache(QSSGRhiContext &ctx,
@@ -215,7 +220,9 @@ public:
                                            const QByteArray &inVert,
                                            const QByteArray &inFrag,
                                            const QSSGShaderFeatures &inFeatures,
-                                           QSSGRhiShaderPipeline::StageFlags stageFlags);
+                                           QSSGRhiShaderPipeline::StageFlags stageFlags,
+                                           int viewCount,
+                                           bool perTargetCompilation);
 
     QSSGBuiltInRhiShaderCache &getBuiltInRhiShaders() { return m_builtInShaders; }
 

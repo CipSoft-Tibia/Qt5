@@ -25,6 +25,10 @@
 
 #include <AVFoundation/AVFoundation.h>
 
+#ifdef Q_OS_IOS
+#import <UIKit/UIDevice.h>
+#endif
+
 // In case we have SDK below 10.7/7.0:
 @class AVCaptureDeviceFormat;
 
@@ -159,6 +163,11 @@ QList<AudioValueRange> qt_supported_sample_rates_for_format(int codecId);
 QList<AudioValueRange> qt_supported_bit_rates_for_format(int codecId);
 std::optional<QList<UInt32>> qt_supported_channel_counts_for_format(int codecId);
 QList<UInt32> qt_supported_channel_layout_tags_for_format(int codecId, int noChannels);
+
+#ifdef Q_OS_IOS
+// Returns a rotation, measured in angles, 0 to 360 depending on the UIDeviceOrientation.
+int qt_ui_device_orientation_to_rotation_angle_degrees(UIDeviceOrientation orientation);
+#endif
 
 QT_END_NAMESPACE
 

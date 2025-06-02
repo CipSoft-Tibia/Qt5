@@ -11,7 +11,7 @@
 
 QSqlConnectionDialog::QSqlConnectionDialog(QWidget *parent)
     : QDialog(parent)
-    , m_ui(new Ui::QSqlConnectionDialogUi)
+    , m_ui{std::make_unique<Ui::QSqlConnectionDialogUi>()}
 {
     m_ui->setupUi(this);
 
@@ -21,19 +21,10 @@ QSqlConnectionDialog::QSqlConnectionDialog(QWidget *parent)
         m_ui->dbCheckBox->setEnabled(false);
 
     m_ui->comboDriver->addItems(drivers);
-
-    connect(m_ui->okButton, &QPushButton::clicked,
-            this, &QSqlConnectionDialog::onOkButton);
-    connect(m_ui->cancelButton, &QPushButton::clicked,
-            this, &QSqlConnectionDialog::reject);
-    connect(m_ui->dbCheckBox, &QCheckBox::stateChanged,
-            this, &QSqlConnectionDialog::onDbCheckBox);
 }
 
 QSqlConnectionDialog::~QSqlConnectionDialog()
-{
-    delete m_ui;
-}
+    = default;
 
 QString QSqlConnectionDialog::driverName() const
 {
@@ -70,18 +61,13 @@ bool QSqlConnectionDialog::useInMemoryDatabase() const
     return m_ui->dbCheckBox->isChecked();
 }
 
-void QSqlConnectionDialog::onOkButton()
+void QSqlConnectionDialog::accept()
 {
     if (m_ui->comboDriver->currentText().isEmpty()) {
         QMessageBox::information(this, tr("No database driver selected"),
                                  tr("Please select a database driver"));
         m_ui->comboDriver->setFocus();
     } else {
-        accept();
+        QDialog::accept();
     }
-}
-
-void QSqlConnectionDialog::onDbCheckBox()
-{
-    m_ui->connGroupBox->setEnabled(!m_ui->dbCheckBox->isChecked());
 }

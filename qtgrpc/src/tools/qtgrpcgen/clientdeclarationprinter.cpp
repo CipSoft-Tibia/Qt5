@@ -9,9 +9,6 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/stubs/common.h>
 
-#include <string>
-#include <unordered_set>
-
 #include "generatorcommon.h"
 #include "commontemplates.h"
 #include "grpctemplates.h"
@@ -49,10 +46,11 @@ void ClientDeclarationPrinter::printClientClass()
     m_printer->Print(m_typeMap, GrpcTemplates::ChildClassDeclarationTemplate());
 }
 
-void ClientDeclarationPrinter::printConstructor()
+void ClientDeclarationPrinter::printConstructorDestructor()
 {
     Indent();
-    m_printer->Print(m_typeMap, CommonTemplates::QObjectConstructorMessageDeclarationTemplate());
+    m_printer->Print(m_typeMap, GrpcTemplates::ClientConstructorDeclarationTemplate());
+    m_printer->Print(m_typeMap, GrpcTemplates::ClientDestructorDeclarationTemplate());
     Outdent();
 }
 
@@ -67,7 +65,6 @@ void ClientDeclarationPrinter::printClientMethodsDeclaration()
             m_printer->Print(parameters, GrpcTemplates::ClientMethodStreamDeclarationTemplate());
         } else {
             m_printer->Print(parameters, GrpcTemplates::ClientMethodDeclarationAsyncTemplate());
-            m_printer->Print(parameters, GrpcTemplates::ClientMethodDeclarationAsync2Template());
         }
         m_printer->Print("\n");
     }

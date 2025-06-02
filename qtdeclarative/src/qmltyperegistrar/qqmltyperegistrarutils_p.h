@@ -15,17 +15,21 @@
 // We mean it.
 //
 
+#include "qmetatypesjsonprocessor_p.h"
+
 #include <QtCore/qversionnumber.h>
 
 QT_BEGIN_NAMESPACE
 
 QTypeRevision handleInMinorVersion(QTypeRevision revision, int majorVersion);
-QAnyStringView interfaceName(const QCborValue &iface);
+QAnyStringView interfaceName(const Interface &iface);
 
-QDebug warning(const QCborMap &classDef);
+QDebug warning(const MetaType &classDef);
 QDebug warning(QAnyStringView fileName, int lineNumber = 0);
 
 QDebug error(QAnyStringView fileName, int lineNumber = 0);
+
+int mergeQtConfFiles(const QString &pathToList);
 
 QT_END_NAMESPACE
 

@@ -31,7 +31,7 @@ QT_BEGIN_NAMESPACE
 
 class QQuick3DNode;
 
-class Q_QUICK3D_PRIVATE_EXPORT QQuick3DNodePrivate : public QQuick3DObjectPrivate
+class Q_QUICK3D_EXPORT QQuick3DNodePrivate : public QQuick3DObjectPrivate
 {
     Q_DECLARE_PUBLIC(QQuick3DNode)
 
@@ -56,6 +56,8 @@ public:
 
     static inline QQuick3DNodePrivate *get(QQuick3DNode *node) { return node->d_func(); }
 
+    void setLocalTransform(const QMatrix4x4 &transform);
+
     RotationData m_rotation;
     QVector3D m_position;
     QVector3D m_scale{ 1.0f, 1.0f, 1.0f };
@@ -64,11 +66,13 @@ public:
     int m_staticFlags = 0;
     bool m_visible = true;
     QMatrix4x4 m_sceneTransform; // Right handed
+    QMatrix4x4 m_localTransform; // Right handed
     bool m_sceneTransformDirty = true;
     int m_sceneTransformConnectionCount = 0;
     int m_directionConnectionCount = 0;
     bool m_isHiddenInEditor = false;
     bool m_hasInheritedUniformScale = true;
+    bool m_hasExplicitLocalTransform = false;
 };
 
 

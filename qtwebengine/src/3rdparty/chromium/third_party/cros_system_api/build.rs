@@ -66,6 +66,11 @@ const BINDINGS_TO_GENERATE: &[(&str, &str, BindingsType)] = &[
         BindingsType::Client(OPTS),
     ),
     (
+        "org_chromium_swapmanagement",
+        "swap_management/dbus_bindings/org.chromium.SwapManagement.xml",
+        BindingsType::Client(OPTS),
+    ),
+    (
         "org_chromium_userdataauth",
         "cryptohome/dbus_bindings/org.chromium.UserDataAuth.xml",
         BindingsType::Client(OPTS),
@@ -106,6 +111,14 @@ const PROTOS_TO_GENERATE: &[(&str, &str)] = &[
         "printscanmgr_service",
         "system_api/dbus/printscanmgr/printscanmgr_service.proto",
     ),
+    (
+        "recoverable_key_store",
+        "system_api/dbus/cryptohome/recoverable_key_store.proto",
+    ),
+    (
+        "resource_manager",
+        "system_api/dbus/resource_manager/resource_manager.proto",
+    ),
     ("rpc", "system_api/dbus/cryptohome/rpc.proto"),
     (
         "shadercached",
@@ -115,6 +128,10 @@ const PROTOS_TO_GENERATE: &[(&str, &str)] = &[
     (
         "UserDataAuth",
         "system_api/dbus/cryptohome/UserDataAuth.proto",
+    ),
+    (
+        "vm_memory_management",
+        "system_api/non_standard_ipc/vm_memory_management/vm_memory_management.proto",
     ),
     ("vtpm_interface", "vtpm/vtpm_interface.proto"),
     (

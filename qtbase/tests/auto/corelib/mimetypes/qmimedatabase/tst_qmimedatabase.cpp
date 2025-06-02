@@ -65,18 +65,18 @@ void initializeLang()
 
 static inline QString testSuiteWarning()
 {
-
+    const auto smiVersion = "2.4"_L1;
     QString result;
     QTextStream str(&result);
     str << "\nCannot find the shared-mime-info test suite\nin the parent of: "
         << QDir::toNativeSeparators(QDir::currentPath()) << "\n"
            "cd " << QDir::toNativeSeparators(QStringLiteral("tests/auto/corelib/mimetypes/qmimedatabase")) << "\n"
-           "wget https://gitlab.freedesktop.org/xdg/shared-mime-info/-/archive/2.2/shared-mime-info-2.2.zip\n"
-           "unzip shared-mime-info-2.2.zip\n";
+           "wget https://gitlab.freedesktop.org/xdg/shared-mime-info/-/archive/%1/shared-mime-info-%1.zip\n"
+           "unzip shared-mime-info-%1.zip\n"_L1.arg(smiVersion);
 #ifdef Q_OS_WIN
-    str << "mkdir testfiles\nxcopy /s shared-mime-info-2.2 s-m-i\n";
+    str << "mkdir testfiles\nxcopy /s shared-mime-info-%1 s-m-i\n"_L1.arg(smiVersion);
 #else
-    str << "ln -s shared-mime-info-2.2 s-m-i\n";
+    str << "ln -s shared-mime-info-%1 s-m-i\n"_L1.arg(smiVersion);
 #endif
     return result;
 }
@@ -197,7 +197,6 @@ void tst_QMimeDatabase::mimeTypeForName()
     QMimeType s1 = db.mimeTypeForName(QString::fromLatin1("text/plain"));
     QVERIFY(s1.isValid());
     QCOMPARE(s1.name(), QString::fromLatin1("text/plain"));
-    //qDebug("Comment is %s", qPrintable(s1.comment()));
 
     QMimeType cbor = db.mimeTypeForName(QString::fromLatin1("application/cbor"));
     QVERIFY(cbor.isValid());
@@ -985,25 +984,8 @@ void tst_QMimeDatabase::findByFileName()
 
     QMimeDatabase database;
 
-    //qDebug() << Q_FUNC_INFO << filePath;
-
     const QMimeType resultMimeType(database.mimeTypeForFile(filePath, QMimeDatabase::MatchExtension));
-    if (resultMimeType.isValid()) {
-        //qDebug() << Q_FUNC_INFO << "MIME type" << resultMimeType.name() << "has generic icon name" << resultMimeType.genericIconName() << "and icon name" << resultMimeType.iconName();
-
-// Loading icons depend on the icon theme, we can't enable this test
-#if 0
-        QCOMPARE(resultMimeType.genericIconName(), QIcon::fromTheme(resultMimeType.genericIconName()).name());
-        QVERIFY2(!QIcon::fromTheme(resultMimeType.genericIconName()).isNull(), qPrintable(resultMimeType.genericIconName()));
-        QVERIFY2(QIcon::hasThemeIcon(resultMimeType.genericIconName()), qPrintable(resultMimeType.genericIconName()));
-
-        QCOMPARE(resultMimeType.iconName(), QIcon::fromTheme(resultMimeType.iconName()).name());
-        QVERIFY2(!QIcon::fromTheme(resultMimeType.iconName()).isNull(), qPrintable(resultMimeType.iconName()));
-        QVERIFY2(QIcon::hasThemeIcon(resultMimeType.iconName()), qPrintable(resultMimeType.iconName()));
-#endif
-    }
     const QString resultMimeTypeName = resultMimeType.name();
-    //qDebug() << Q_FUNC_INFO << "mimeTypeForFile() returned" << resultMimeTypeName;
 
     const bool failed = resultMimeTypeName != mimeTypeName;
     const bool shouldFail = (xFail.size() >= 1 && xFail.at(0) == QLatin1Char('x'));
@@ -1016,7 +998,6 @@ void tst_QMimeDatabase::findByFileName()
         QVERIFY2(resultMimeType == foundMimeType, qPrintable(resultMimeType.name() + QString::fromLatin1(" vs. ") + foundMimeType.name()));
         if (foundMimeType.isValid()) {
             const QString extension = QFileInfo(filePath).suffix();
-            //qDebug() << Q_FUNC_INFO << "globPatterns:" << foundMimeType.globPatterns() << "- extension:" << QString() + "*." + extension;
             if (foundMimeType.globPatterns().contains(QString::fromLatin1("*.") + extension))
                 return;
         }
@@ -1083,7 +1064,6 @@ void tst_QMimeDatabase::findByFile()
 
     QMimeDatabase database;
     const QString resultMimeTypeName = database.mimeTypeForFile(filePath).name();
-    //qDebug() << Q_FUNC_INFO << filePath << "->" << resultMimeTypeName;
     if (xFail.size() >= 3 && xFail.at(2) == QLatin1Char('x')) {
         // Expected to fail
         QVERIFY2(resultMimeTypeName != mimeTypeName, qPrintable(resultMimeTypeName));
@@ -1296,6 +1276,9 @@ void tst_QMimeDatabase::installNewLocalMimeType_data()
 
 void tst_QMimeDatabase::installNewLocalMimeType()
 {
+#if !QT_CONFIG(process)
+    QSKIP("This test requires QProcess support");
+#else
     QFETCH(bool, useLocalBinaryCache);
 
     qmime_secondsBetweenChecks = 0;
@@ -1410,6 +1393,7 @@ void tst_QMimeDatabase::installNewLocalMimeType()
     QCOMPARE(db.mimeTypeForFile(QLatin1String("foo.ymu"), QMimeDatabase::MatchExtension).name(),
              QString::fromLatin1("application/octet-stream"));
     QVERIFY(!db.mimeTypeForName(QLatin1String("text/x-suse-ymp")).isValid());
+#endif
 }
 
 QTEST_GUILESS_MAIN(tst_QMimeDatabase)

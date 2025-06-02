@@ -25,7 +25,6 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -385,8 +384,8 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUVA422P10,
     AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10,
     AV_PIX_FMT_YUV420P12,
-    AV_PIX_FMT_YUV422P12,
-    AV_PIX_FMT_YUV444P12,
+    AV_PIX_FMT_YUV422P12, AV_PIX_FMT_YUVA422P12,
+    AV_PIX_FMT_YUV444P12, AV_PIX_FMT_YUVA444P12,
     AV_PIX_FMT_YUV420P14,
     AV_PIX_FMT_YUV422P14,
     AV_PIX_FMT_YUV444P14,
@@ -396,7 +395,7 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_GBRP9,
     AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRAP10,
     AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12,
-    AV_PIX_FMT_GBRP14,
+    AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRAP14,
     AV_PIX_FMT_GBRP16, AV_PIX_FMT_GBRAP16,
     AV_PIX_FMT_NONE
 };
@@ -902,6 +901,7 @@ static int config_input(AVFilterLink *inlink)
     case AV_PIX_FMT_YUV444P10:
     case AV_PIX_FMT_YUVA444P10:
     case AV_PIX_FMT_YUV444P12:
+    case AV_PIX_FMT_YUVA444P12:
     case AV_PIX_FMT_YUV444P14:
     case AV_PIX_FMT_YUV444P16:
     case AV_PIX_FMT_YUVA444P16:
@@ -912,6 +912,7 @@ static int config_input(AVFilterLink *inlink)
     case AV_PIX_FMT_GBRP16:
     case AV_PIX_FMT_GBRAP10:
     case AV_PIX_FMT_GBRAP12:
+    case AV_PIX_FMT_GBRAP14:
     case AV_PIX_FMT_GBRAP16:
     case AV_PIX_FMT_GRAY9:
     case AV_PIX_FMT_GRAY10:
@@ -925,6 +926,7 @@ static int config_input(AVFilterLink *inlink)
     case AV_PIX_FMT_YUV422P10:
     case AV_PIX_FMT_YUVA422P10:
     case AV_PIX_FMT_YUV422P12:
+    case AV_PIX_FMT_YUVA422P12:
     case AV_PIX_FMT_YUV422P14:
     case AV_PIX_FMT_YUV422P16:
     case AV_PIX_FMT_YUVA422P16:
@@ -1040,13 +1042,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 static av_cold void uninit(AVFilterContext *ctx)
 {
     PseudoColorContext *s = ctx->priv;
@@ -1067,7 +1062,7 @@ const AVFilter ff_vf_pseudocolor = {
     .priv_class    = &pseudocolor_class,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,

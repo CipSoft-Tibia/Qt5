@@ -1045,6 +1045,11 @@ int DisassemblerX64::AVXInstruction(uint8_t* data) {
         current += PrintRightOperand(current);
         AppendToBuffer(",%s,0x%x", NameOfAVXRegister(regop), *current++);
         break;
+      case 0x19:
+        AppendToBuffer("vextractf128 ");
+        current += PrintRightXMMOperand(current);
+        AppendToBuffer(",%s,0x%x", NameOfAVXRegister(regop), *current++);
+        break;
       case 0x20:
         AppendToBuffer("vpinsrb %s,%s,", NameOfAVXRegister(regop),
                        NameOfAVXRegister(vvvv));
@@ -2783,7 +2788,7 @@ int DisassemblerX64::InstructionDecode(v8::base::Vector<char> out_buffer,
         break;
 
       case 0x3C:
-        AppendToBuffer("cmp al,0x%x", Imm8(data + 1));
+        AppendToBuffer("cmpb al,0x%x", Imm8(data + 1));
         data += 2;
         break;
 

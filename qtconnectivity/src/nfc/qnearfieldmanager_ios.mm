@@ -204,7 +204,10 @@ void QNearFieldManagerPrivateImpl::clearTargets()
 {
     auto i = detectedTargets.begin();
     while (i != detectedTargets.end()) {
-        (*i)->invalidate();
+        if (*i)
+            (*i)->invalidate();
+        else
+            qCWarning(QT_IOS_NFC, "Stale private near field target found");
         i = detectedTargets.erase(i);
     }
 }

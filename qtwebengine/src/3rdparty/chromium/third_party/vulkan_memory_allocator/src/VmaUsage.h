@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2017-2021 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (c) 2017-2022 Advanced Micro Devices, Inc. All rights reserved.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -25,9 +25,15 @@
 
 #ifdef _WIN32
 
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
+#if !defined(NOMINMAX)
+    #define NOMINMAX
+#endif
+
+#if !defined(WIN32_LEAN_AND_MEAN)
+    #define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <windows.h>
 #if !defined(VK_USE_PLATFORM_WIN32_KHR)
     #define VK_USE_PLATFORM_WIN32_KHR
 #endif // #if !defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -56,10 +62,13 @@ include all public interface declarations. Example:
 //#define VMA_DEBUG_MIN_BUFFER_IMAGE_GRANULARITY 256
 //#define VMA_USE_STL_SHARED_MUTEX 0
 //#define VMA_MEMORY_BUDGET 0
+//#define VMA_STATS_STRING_ENABLED 0
+//#define VMA_MAPPING_HYSTERESIS_ENABLED 0
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 
-#define VMA_VULKAN_VERSION 1002000 // Vulkan 1.2
+//#define VMA_VULKAN_VERSION 1003000 // Vulkan 1.3
+//#define VMA_VULKAN_VERSION 1002000 // Vulkan 1.2
 //#define VMA_VULKAN_VERSION 1001000 // Vulkan 1.1
 //#define VMA_VULKAN_VERSION 1000000 // Vulkan 1.0
 
@@ -75,6 +84,7 @@ include all public interface declarations. Example:
 #pragma warning(disable: 4100) // unreferenced formal parameter
 #pragma warning(disable: 4189) // local variable is initialized but not referenced
 #pragma warning(disable: 4324) // structure was padded due to alignment specifier
+#pragma warning(disable: 4820) // 'X': 'N' bytes padding added after data member 'X'
 
 #endif  // #ifdef _MSVC_LANG
 

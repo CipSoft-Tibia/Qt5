@@ -40,7 +40,6 @@ struct IOSurfaceFormatInfo
 constexpr std::array<IOSurfaceFormatInfo, 9> kIOSurfaceFormats = {{
     {GL_RED,      GL_UNSIGNED_BYTE,                1, GL_R8},
     {GL_RED,      GL_UNSIGNED_SHORT,               2, GL_R16_EXT},
-    {GL_R16UI,    GL_UNSIGNED_SHORT,               2, GL_R16UI},
     {GL_RG,       GL_UNSIGNED_BYTE,                2, GL_RG8},
     {GL_RG,       GL_UNSIGNED_SHORT,               4, GL_RG16_EXT},
     {GL_RGB,      GL_UNSIGNED_BYTE,                4, GL_RGBX8_ANGLE},
@@ -181,11 +180,13 @@ egl::Error IOSurfaceSurfaceVkMac::bindTexImage(const gl::Context *context,
     const vk::Format &format =
         renderer->getFormat(kIOSurfaceFormats[mFormatIndex].nativeSizedInternalFormat);
 
-    angle::Result result = mColorAttachment.image.stageSubresourceUpdate(
+    bool updateAppliedImmediately = false;
+    angle::Result result          = mColorAttachment.image.stageSubresourceUpdate(
         contextVk, gl::ImageIndex::Make2D(0),
         gl::Extents(static_cast<int>(width), pixelUnpack.imageHeight, 1), gl::Offset(),
         internalFormatInfo, pixelUnpack, kIOSurfaceFormats[mFormatIndex].type,
-        reinterpret_cast<uint8_t *>(source), format, vk::ImageAccess::Renderable);
+        reinterpret_cast<uint8_t *>(source), format, vk::ImageAccess::Renderable,
+        vk::ApplyImageUpdate::Defer, &updateAppliedImmediately);
 
     IOSurfaceUnlock(mIOSurface, 0, nullptr);
 

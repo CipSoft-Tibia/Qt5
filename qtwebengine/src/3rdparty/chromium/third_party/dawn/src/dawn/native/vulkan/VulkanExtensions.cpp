@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/vulkan/VulkanExtensions.h"
 
@@ -56,15 +69,15 @@ static constexpr std::array<InstanceExtInfo, kInstanceExtCount> sInstanceExtInfo
 
 const InstanceExtInfo& GetInstanceExtInfo(InstanceExt ext) {
     uint32_t index = static_cast<uint32_t>(ext);
-    ASSERT(index < sInstanceExtInfos.size());
-    ASSERT(sInstanceExtInfos[index].index == ext);
+    DAWN_ASSERT(index < sInstanceExtInfos.size());
+    DAWN_ASSERT(sInstanceExtInfos[index].index == ext);
     return sInstanceExtInfos[index];
 }
 
-std::unordered_map<std::string, InstanceExt> CreateInstanceExtNameMap() {
-    std::unordered_map<std::string, InstanceExt> result;
+absl::flat_hash_map<std::string, InstanceExt> CreateInstanceExtNameMap() {
+    absl::flat_hash_map<std::string, InstanceExt> result;
     for (const InstanceExtInfo& info : sInstanceExtInfos) {
-        result[info.name] = info.index;
+        result.emplace(info.name, info.index);
     }
     return result;
 }
@@ -79,7 +92,7 @@ InstanceExtSet EnsureDependencies(const InstanceExtSet& advertisedExts) {
     InstanceExtSet trimmedSet;
 
     auto HasDep = [&](InstanceExt ext) -> bool {
-        ASSERT(visitedSet[ext]);
+        DAWN_ASSERT(visitedSet[ext]);
         return trimmedSet[ext];
     };
 
@@ -111,7 +124,7 @@ InstanceExtSet EnsureDependencies(const InstanceExtSet& advertisedExts) {
                 break;
 
             case InstanceExt::EnumCount:
-                UNREACHABLE();
+                DAWN_UNREACHABLE();
         }
 
         trimmedSet.set(ext, hasDependencies && advertisedExts[ext]);
@@ -174,6 +187,7 @@ static constexpr std::array<DeviceExtInfo, kDeviceExtCount> sDeviceExtInfos{{
     {DeviceExt::ExternalMemoryFD, "VK_KHR_external_memory_fd", NeverPromoted},
     {DeviceExt::ExternalMemoryDmaBuf, "VK_EXT_external_memory_dma_buf", NeverPromoted},
     {DeviceExt::ExternalMemoryZirconHandle, "VK_FUCHSIA_external_memory", NeverPromoted},
+    {DeviceExt::ExternalMemoryHost, "VK_EXT_external_memory_host", NeverPromoted},
     {DeviceExt::ExternalSemaphoreFD, "VK_KHR_external_semaphore_fd", NeverPromoted},
     {DeviceExt::ExternalSemaphoreZirconHandle, "VK_FUCHSIA_external_semaphore", NeverPromoted},
     //
@@ -181,15 +195,15 @@ static constexpr std::array<DeviceExtInfo, kDeviceExtCount> sDeviceExtInfos{{
 
 const DeviceExtInfo& GetDeviceExtInfo(DeviceExt ext) {
     uint32_t index = static_cast<uint32_t>(ext);
-    ASSERT(index < sDeviceExtInfos.size());
-    ASSERT(sDeviceExtInfos[index].index == ext);
+    DAWN_ASSERT(index < sDeviceExtInfos.size());
+    DAWN_ASSERT(sDeviceExtInfos[index].index == ext);
     return sDeviceExtInfos[index];
 }
 
-std::unordered_map<std::string, DeviceExt> CreateDeviceExtNameMap() {
-    std::unordered_map<std::string, DeviceExt> result;
+absl::flat_hash_map<std::string, DeviceExt> CreateDeviceExtNameMap() {
+    absl::flat_hash_map<std::string, DeviceExt> result;
     for (const DeviceExtInfo& info : sDeviceExtInfos) {
-        result[info.name] = info.index;
+        result.emplace(info.name, info.index);
     }
     return result;
 }
@@ -202,7 +216,7 @@ DeviceExtSet EnsureDependencies(const DeviceExtSet& advertisedExts,
     DeviceExtSet trimmedSet;
 
     auto HasDep = [&](DeviceExt ext) -> bool {
-        ASSERT(visitedSet[ext]);
+        DAWN_ASSERT(visitedSet[ext]);
         return trimmedSet[ext];
     };
 
@@ -282,6 +296,7 @@ DeviceExtSet EnsureDependencies(const DeviceExtSet& advertisedExts,
 
             case DeviceExt::ExternalMemoryFD:
             case DeviceExt::ExternalMemoryZirconHandle:
+            case DeviceExt::ExternalMemoryHost:
             case DeviceExt::QueueFamilyForeign:
                 hasDependencies = HasDep(DeviceExt::ExternalMemory);
                 break;
@@ -311,7 +326,7 @@ DeviceExtSet EnsureDependencies(const DeviceExtSet& advertisedExts,
                 break;
 
             case DeviceExt::EnumCount:
-                UNREACHABLE();
+                DAWN_UNREACHABLE();
         }
 
         trimmedSet.set(ext, hasDependencies && advertisedExts[ext]);
@@ -344,15 +359,15 @@ static constexpr std::array<VulkanLayerInfo, kVulkanLayerCount> sVulkanLayerInfo
 
 const VulkanLayerInfo& GetVulkanLayerInfo(VulkanLayer layer) {
     uint32_t index = static_cast<uint32_t>(layer);
-    ASSERT(index < sVulkanLayerInfos.size());
-    ASSERT(sVulkanLayerInfos[index].layer == layer);
+    DAWN_ASSERT(index < sVulkanLayerInfos.size());
+    DAWN_ASSERT(sVulkanLayerInfos[index].layer == layer);
     return sVulkanLayerInfos[index];
 }
 
-std::unordered_map<std::string, VulkanLayer> CreateVulkanLayerNameMap() {
-    std::unordered_map<std::string, VulkanLayer> result;
+absl::flat_hash_map<std::string, VulkanLayer> CreateVulkanLayerNameMap() {
+    absl::flat_hash_map<std::string, VulkanLayer> result;
     for (const VulkanLayerInfo& info : sVulkanLayerInfos) {
-        result[info.name] = info.layer;
+        result.emplace(info.name, info.layer);
     }
     return result;
 }

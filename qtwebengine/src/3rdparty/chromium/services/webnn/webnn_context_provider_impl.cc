@@ -8,6 +8,8 @@
 #include <utility>
 
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
+#include "services/webnn/error.h"
+#include "services/webnn/public/mojom/webnn_error.mojom.h"
 #include "services/webnn/webnn_context_impl.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -67,26 +69,27 @@ void WebNNContextProviderImpl::CreateWebNNContext(
   // `options`.
   constexpr DML_FEATURE_LEVEL kMinDMLFeatureLevelForWebNN =
       DML_FEATURE_LEVEL_4_0;
-  scoped_refptr<dml::Adapter> adapter =
+  auto adapter_creation_result =
       dml::Adapter::GetInstance(kMinDMLFeatureLevelForWebNN);
-  if (!adapter) {
-    std::move(callback).Run(mojom::CreateContextResult::kNotSupported,
-                            mojo::NullRemote());
+  if (!adapter_creation_result.has_value()) {
+    std::move(callback).Run(mojom::CreateContextResult::NewError(
+        std::move(adapter_creation_result.error())));
     return;
   }
   // The remote sent to the renderer.
   mojo::PendingRemote<mojom::WebNNContext> blink_remote;
   // The receiver bound to WebNNContextImpl.
   impls_.push_back(base::WrapUnique<WebNNContextImpl>(new dml::ContextImpl(
-      std::move(adapter), blink_remote.InitWithNewPipeAndPassReceiver(),
-      this)));
-  std::move(callback).Run(mojom::CreateContextResult::kOk,
-                          std::move(blink_remote));
+      std::move(adapter_creation_result.value()),
+      blink_remote.InitWithNewPipeAndPassReceiver(), this)));
+  std::move(callback).Run(
+      mojom::CreateContextResult::NewContextRemote(std::move(blink_remote)));
 #else
   // TODO(crbug.com/1273291): Supporting WebNN Service on the platform.
-  std::move(callback).Run(mojom::CreateContextResult::kNotSupported,
-                          mojo::NullRemote());
-  DLOG(ERROR) << "Platform not supported for WebNN Service.";
+  std::move(callback).Run(ToError<mojom::CreateContextResult>(
+      mojom::Error::Code::kNotSupportedError,
+      "WebNN Service is not supported on this platform."));
+  DLOG(ERROR) << "WebNN Service is not supported on this platform.";
 #endif
 }
 

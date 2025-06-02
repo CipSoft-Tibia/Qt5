@@ -17,8 +17,9 @@
 
 #include <private/qplatformcamera_p.h>
 #include <private/qmultimediautils_p.h>
+#include <QtCore/private/quniquehandle_types_p.h>
 
-#include <mediacapture/qgstreamermediacapture_p.h>
+#include <mediacapture/qgstreamermediacapturesession_p.h>
 #include <common/qgst_p.h>
 #include <common/qgstpipeline_p.h>
 
@@ -37,7 +38,7 @@ class QGstreamerCamera : public QGstreamerCameraBase
 public:
     static QMaybe<QPlatformCamera *> create(QCamera *camera);
 
-    virtual ~QGstreamerCamera();
+    ~QGstreamerCamera() override;
 
     bool isActive() const override;
     void setActive(bool active) override;
@@ -101,8 +102,8 @@ private:
         if (int gstreamerDeviceFd = gstCamera.getInt("device-fd"); gstreamerDeviceFd != -1)
             return f(gstreamerDeviceFd);
 
-        auto v4l2FileDescriptor = QFileDescriptorHandle{
-            qt_safe_open(m_v4l2DevicePath.toLocal8Bit().constData(), O_RDONLY),
+        auto v4l2FileDescriptor = QUniqueFileDescriptorHandle{
+            QT_OPEN(m_v4l2DevicePath.toLocal8Bit().constData(), O_RDONLY),
         };
         if (!v4l2FileDescriptor) {
             qWarning() << "Unable to open the camera" << m_v4l2DevicePath
@@ -127,6 +128,23 @@ private:
 
     bool m_active = false;
     QString m_v4l2DevicePath;
+
+    std::optional<QCameraFormat> m_currentCameraFormat;
+
+    template <typename Functor>
+    void updateCamera(Functor &&f)
+    {
+        QGstPipeline pipeline = gstVideoConvert.getPipeline();
+        if (pipeline)
+            pipeline.setState(GstState::GST_STATE_READY);
+
+        gstVideoConvert.sink().modifyPipelineInIdleProbe([&] {
+            f();
+        });
+
+        if (pipeline)
+            pipeline.setState(GstState::GST_STATE_PLAYING);
+    }
 };
 
 class QGstreamerCustomCamera : public QGstreamerCameraBase

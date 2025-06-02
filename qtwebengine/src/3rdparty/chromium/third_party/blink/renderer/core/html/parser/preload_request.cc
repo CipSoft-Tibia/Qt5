@@ -90,9 +90,8 @@ std::unique_ptr<PreloadRequest> PreloadRequest::CreateIfNeeded(
 
 Resource* PreloadRequest::Start(Document* document) {
   DCHECK(document->domWindow());
-  base::TimeTicks discovery_timestamp = base::TimeTicks::Now();
   base::UmaHistogramTimes("Blink.PreloadRequestWaitTime",
-                          discovery_timestamp - creation_time_);
+                          base::TimeTicks::Now() - creation_time_);
 
   FetchInitiatorInfo initiator_info;
   initiator_info.name = AtomicString(initiator_name_);
@@ -122,13 +121,15 @@ Resource* PreloadRequest::Start(Document* document) {
         network::mojom::AttributionReportingEligibility::kEventSourceOrTrigger);
   }
 
-  bool shared_storage_writable =
-      shared_storage_writable_ &&
+  bool shared_storage_writable_opted_in =
+      shared_storage_writable_opted_in_ &&
       RuntimeEnabledFeatures::SharedStorageAPIM118Enabled(
           document->domWindow()) &&
-      document->domWindow()->IsSecureContext();
-  resource_request.SetSharedStorageWritable(shared_storage_writable);
-  if (shared_storage_writable) {
+      document->domWindow()->IsSecureContext() &&
+      !document->domWindow()->GetSecurityOrigin()->IsOpaque();
+  resource_request.SetSharedStorageWritableOptedIn(
+      shared_storage_writable_opted_in);
+  if (shared_storage_writable_opted_in) {
     CHECK_EQ(resource_type_, ResourceType::kImage);
     UseCounter::Count(document, WebFeature::kSharedStorageAPI_Image_Attribute);
   }
@@ -136,10 +137,6 @@ Resource* PreloadRequest::Start(Document* document) {
   ResourceLoaderOptions options(document->domWindow()->GetCurrentWorld());
   options.initiator_info = initiator_info;
   FetchParameters params(std::move(resource_request), options);
-
-  if (resource_type_ == ResourceType::kImage) {
-    params.SetDiscoveryTime(discovery_timestamp);
-  }
 
   auto* origin = document->domWindow()->GetSecurityOrigin();
   if (script_type_ == mojom::blink::ScriptType::kModule) {
@@ -185,7 +182,7 @@ Resource* PreloadRequest::Start(Document* document) {
     if (base::FeatureList::IsEnabled(features::kLCPScriptObserver)) {
       if (LCPCriticalPathPredictor* lcpp = document->GetFrame()->GetLCPP()) {
         if (lcpp->lcp_influencer_scripts().Contains(url)) {
-          is_potentially_lcp_element_ = true;
+          is_potentially_lcp_influencer_ = true;
         }
       }
     }
@@ -193,6 +190,11 @@ Resource* PreloadRequest::Start(Document* document) {
   params.SetRenderBlockingBehavior(render_blocking_behavior_);
 
   params.SetIsPotentiallyLCPElement(is_potentially_lcp_element_);
+  params.SetIsPotentiallyLCPInfluencer(is_potentially_lcp_influencer_);
+
+  if (LCPCriticalPathPredictor* lcpp = document->GetFrame()->GetLCPP()) {
+    lcpp->OnStartPreload(url);
+  }
 
   return PreloadHelper::StartPreload(resource_type_, params, *document);
 }

@@ -12,7 +12,7 @@ import './certificate_shared.css.js';
 
 import {CrDialogElement} from 'chrome://resources/cr_elements/cr_dialog/cr_dialog.js';
 import {I18nMixin} from 'chrome://resources/cr_elements/i18n_mixin.js';
-import {assertNotReached} from 'chrome://resources/js/assert_ts.js';
+import {assertNotReached} from 'chrome://resources/js/assert.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
 
@@ -48,11 +48,6 @@ export class CertificateDeleteConfirmationDialogElement extends
 
   model: CertificateSubnode;
   certificateType: CertificateType;
-
-  override connectedCallback() {
-    super.connectedCallback();
-    this.$.dialog.showModal();
-  }
 
   private getTitleText_(): string {
     const getString = (localizedMessageId: string) =>

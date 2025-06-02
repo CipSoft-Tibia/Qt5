@@ -1,31 +1,51 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_HLSL_WRITER_COMMON_OPTIONS_H_
 #define SRC_TINT_LANG_HLSL_WRITER_COMMON_OPTIONS_H_
 
 #include <bitset>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include "src/tint/api/common/binding_point.h"
 #include "src/tint/api/options/array_length_from_uniform.h"
 #include "src/tint/api/options/binding_remapper.h"
 #include "src/tint/api/options/external_texture.h"
+#include "src/tint/api/options/pixel_local.h"
+#include "src/tint/lang/core/access.h"
 #include "src/tint/utils/reflection/reflection.h"
 
 namespace tint::hlsl::writer {
+
+/// kMaxInterStageLocations == D3D11_PS_INPUT_REGISTER_COUNT - 2
+/// D3D11_PS_INPUT_REGISTER_COUNT == D3D12_PS_INPUT_REGISTER_COUNT
+constexpr uint32_t kMaxInterStageLocations = 30;
 
 /// Configuration options used for generating HLSL.
 struct Options {
@@ -42,25 +62,8 @@ struct Options {
     /// Set to `true` to disable software robustness that prevents out-of-bounds accesses.
     bool disable_robustness = false;
 
-    /// The binding point to use for information passed via root constants.
-    std::optional<BindingPoint> root_constant_binding_point;
-
     /// Set to `true` to disable workgroup memory zero initialization
     bool disable_workgroup_init = false;
-
-    /// Options used in the binding mappings for external textures
-    ExternalTextureOptions external_texture_options = {};
-
-    /// Options used to specify a mapping of binding points to indices into a UBO
-    /// from which to load buffer sizes.
-    ArrayLengthFromUniformOptions array_length_from_uniform = {};
-
-    /// Options used in the bindings remapper
-    BindingRemapperOptions binding_remapper_options = {};
-
-    /// Interstage locations actually used as inputs in the next stage of the pipeline.
-    /// This is potentially used for truncating unused interstage outputs at current shader stage.
-    std::bitset<16> interstage_locations;
 
     /// Set to `true` to run the TruncateInterstageVariables transform.
     bool truncate_interstage_variables = false;
@@ -68,15 +71,58 @@ struct Options {
     /// Set to `true` to generate polyfill for `reflect` builtin for vec2<f32>
     bool polyfill_reflect_vec2_f32 = false;
 
+    /// Set to `true` to generate polyfill for `dot4I8Packed` and `dot4U8Packed` builtins
+    bool polyfill_dot_4x8_packed = false;
+
+    /// Set to `true` to disable the polyfills on integer division and modulo.
+    bool disable_polyfill_integer_div_mod = false;
+
+    /// Set to `true` to generate polyfill for `pack4xI8`, `pack4xU8`, `pack4xI8Clamp`,
+    /// `unpack4xI8` and `unpack4xU8` builtins
+    bool polyfill_pack_unpack_4x8 = false;
+
+    /// Options used to specify a mapping of binding points to indices into a UBO
+    /// from which to load buffer sizes.
+    ArrayLengthFromUniformOptions array_length_from_uniform = {};
+
+    /// Interstage locations actually used as inputs in the next stage of the pipeline.
+    /// This is potentially used for truncating unused interstage outputs at current shader stage.
+    std::bitset<kMaxInterStageLocations> interstage_locations;
+
+    /// The binding point to use for information passed via root constants.
+    std::optional<BindingPoint> root_constant_binding_point;
+
+    /// Options used in the binding mappings for external textures
+    ExternalTextureOptions external_texture_options = {};
+
+    /// Options used in the bindings remapper
+    BindingRemapperOptions binding_remapper_options = {};
+
     /// The binding points that will be ignored in the rebustness transform.
     std::vector<BindingPoint> binding_points_ignored_in_robustness_transform;
 
+    /// AccessControls is a map of old binding point to new access control
+    std::unordered_map<BindingPoint, core::Access> access_controls;
+
+    /// Options used to deal with pixel local storage variables
+    PixelLocalOptions pixel_local_options = {};
+
     /// Reflect the fields of this class so that it can be used by tint::ForeachField()
     TINT_REFLECT(disable_robustness,
-                 root_constant_binding_point,
                  disable_workgroup_init,
+                 truncate_interstage_variables,
+                 polyfill_reflect_vec2_f32,
+                 polyfill_dot_4x8_packed,
+                 disable_polyfill_integer_div_mod,
+                 polyfill_pack_unpack_4x8,
+                 array_length_from_uniform,
+                 interstage_locations,
+                 root_constant_binding_point,
                  external_texture_options,
-                 array_length_from_uniform);
+                 binding_remapper_options,
+                 binding_points_ignored_in_robustness_transform,
+                 access_controls,
+                 pixel_local_options);
 };
 
 }  // namespace tint::hlsl::writer

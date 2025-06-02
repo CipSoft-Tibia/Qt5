@@ -6,6 +6,7 @@
 
 #include <QVariant>
 #include <qtprotobuftypes.h>
+#include <qprotobufregistration.h>
 
 class QtProtobufConverterTest : public QObject
 {
@@ -16,35 +17,35 @@ public:
         // messages)
         qRegisterProtobufTypes();
     }
-private slots:
-    void TestFromTypeConverters();
-    void TestToTypeConverters();
+private Q_SLOTS:
+    void testFromTypeConverters();
+    void testToTypeConverters();
 };
 
-void QtProtobufConverterTest::TestFromTypeConverters()
+void QtProtobufConverterTest::testFromTypeConverters()
 {
     QVariant testVariant;
 
     testVariant.setValue<uint32_t>(42);
-    QCOMPARE(testVariant.value<QtProtobuf::fixed32>()._t, quint32(42));
+    QCOMPARE(testVariant.value<QtProtobuf::fixed32>().t, quint32(42));
 
     testVariant.setValue<uint64_t>(43);
-    QCOMPARE(testVariant.value<QtProtobuf::fixed64>()._t, quint64(43));
+    QCOMPARE(testVariant.value<QtProtobuf::fixed64>().t, quint64(43));
 
     testVariant.setValue<int32_t>(44);
-    QCOMPARE(testVariant.value<QtProtobuf::sfixed32>()._t, 44);
+    QCOMPARE(testVariant.value<QtProtobuf::sfixed32>().t, 44);
 
     testVariant.setValue<int64_t>(45);
-    QCOMPARE(testVariant.value<QtProtobuf::sfixed64>()._t, 45);
+    QCOMPARE(testVariant.value<QtProtobuf::sfixed64>().t, 45);
 
     testVariant.setValue<int32_t>(46);
-    QCOMPARE(testVariant.value<QtProtobuf::int32>()._t, 46);
+    QCOMPARE(testVariant.value<QtProtobuf::int32>().t, 46);
 
     testVariant.setValue<int64_t>(47);
-    QCOMPARE(testVariant.value<QtProtobuf::int64>()._t, 47);
+    QCOMPARE(testVariant.value<QtProtobuf::int64>().t, 47);
 }
 
-void QtProtobufConverterTest::TestToTypeConverters()
+void QtProtobufConverterTest::testToTypeConverters()
 {
     bool ok = false;
     QVariant testVariant;

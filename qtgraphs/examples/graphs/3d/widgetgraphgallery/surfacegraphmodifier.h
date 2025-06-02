@@ -5,41 +5,42 @@
 #define SURFACEGRAPHMODIFIER_H
 
 #include <QtCore/qpropertyanimation.h>
-#include <QtGraphs/q3dinputhandler.h>
-#include <QtGraphs/q3dsurface.h>
 #include <QtGraphs/qcustom3ditem.h>
 #include <QtGraphs/qcustom3dlabel.h>
 #include <QtGraphs/qheightmapsurfacedataproxy.h>
 #include <QtGraphs/qsurface3dseries.h>
 #include <QtGraphs/qsurfacedataproxy.h>
+#include <QtGraphsWidgets/q3dsurfacewidgetitem.h>
 #include <QtWidgets/qlabel.h>
 #include <QtWidgets/qslider.h>
 
 class TopographicSeries;
 class HighlightSeries;
-class CustomInputHandler;
 
 class SurfaceGraphModifier : public QObject
 {
     Q_OBJECT
+
+    enum InputState { StateNormal = 0, StateDraggingX, StateDraggingZ, StateDraggingY };
+
 public:
-    explicit SurfaceGraphModifier(Q3DSurface *surface, QLabel *label, QObject *parent);
+    explicit SurfaceGraphModifier(Q3DSurfaceWidgetItem *surface, QLabel *label, QObject *parent);
     ~SurfaceGraphModifier();
 
     //! [0]
-    void toggleModeNone() { m_graph->setSelectionMode(QAbstract3DGraph::SelectionNone); }
-    void toggleModeItem() { m_graph->setSelectionMode(QAbstract3DGraph::SelectionItem); }
+    void toggleModeNone() { m_graph->setSelectionMode(QtGraphs3D::SelectionFlag::None); }
+    void toggleModeItem() { m_graph->setSelectionMode(QtGraphs3D::SelectionFlag::Item); }
     void toggleModeSliceRow()
     {
-        m_graph->setSelectionMode(QAbstract3DGraph::SelectionItemAndRow
-                                  | QAbstract3DGraph::SelectionSlice
-                                  | QAbstract3DGraph::SelectionMultiSeries);
+        m_graph->setSelectionMode(QtGraphs3D::SelectionFlag::ItemAndRow
+                                  | QtGraphs3D::SelectionFlag::Slice
+                                  | QtGraphs3D::SelectionFlag::MultiSeries);
     }
     void toggleModeSliceColumn()
     {
-        m_graph->setSelectionMode(QAbstract3DGraph::SelectionItemAndColumn
-                                  | QAbstract3DGraph::SelectionSlice
-                                  | QAbstract3DGraph::SelectionMultiSeries);
+        m_graph->setSelectionMode(QtGraphs3D::SelectionFlag::ItemAndColumn
+                                  | QtGraphs3D::SelectionFlag::Slice
+                                  | QtGraphs3D::SelectionFlag::MultiSeries);
     }
     //! [0]
 
@@ -69,15 +70,18 @@ public Q_SLOTS:
     void toggleShadows(bool shadows);
     void toggleSurfaceTexture(bool enable);
 
+    void handleAxisDragging(QVector2D delta);
+    void onWheel(QWheelEvent *event);
+
 private:
     void setAxisXRange(float min, float max);
     void setAxisZRange(float min, float max);
     void fillSqrtSinProxy();
-    void handleElementSelected(QAbstract3DGraph::ElementType type);
+    void handleElementSelected(QtGraphs3D::ElementType type);
     void resetSelection();
 
 private:
-    Q3DSurface *m_graph = nullptr;
+    Q3DSurfaceWidgetItem *m_graph = nullptr;
     QSurfaceDataProxy *m_sqrtSinProxy = nullptr;
     QSurface3DSeries *m_sqrtSinSeries = nullptr;
     QHeightMapSurfaceDataProxy *m_heightMapProxyOne = nullptr;
@@ -109,8 +113,20 @@ private:
     int m_highlightWidth = 0;
     int m_highlightHeight = 0;
 
-    CustomInputHandler *m_customInputHandler = nullptr;
-    Q3DInputHandler *m_defaultInputHandler = new Q3DInputHandler();
+    bool m_mousePressed = false;
+    InputState m_state = StateNormal;
+    float m_speedModifier = 20.f;
+    float m_aspectRatio = 0.f;
+    float m_axisXMinValue = 0.f;
+    float m_axisXMaxValue = 0.f;
+    float m_axisXMinRange = 0.f;
+    float m_axisZMinValue = 0.f;
+    float m_axisZMaxValue = 0.f;
+    float m_axisZMinRange = 0.f;
+    float m_areaMinValue = 0.f;
+    float m_areaMaxValue = 0.f;
+
+    void checkConstraints();
 };
 
 #endif // SURFACEGRAPHMODIFIER_H

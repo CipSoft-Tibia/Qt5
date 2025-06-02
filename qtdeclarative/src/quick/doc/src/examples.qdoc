@@ -100,6 +100,7 @@ Creator.
         \li \l{Qt Quick Controls - Gallery}{Controls Gallery}
         \li \l{tableview/gameoflife}{TableView}
         \li \l{Qt Quick Examples - Text}{Text and Fonts}
+        \li \l{Qt Quick Controls - Table of Contents}
         \endlist
     \enddiv
     \div {class="doc-column"}
@@ -183,6 +184,14 @@ Creator.
         \li \l{Qt Quick Widgets Example}{Using QQuickWidget}
         \li \l{QQuickWidget - QQuickView Comparison Example}{QQuickWidget - QQuickView Comparison (OpenGL)}
         \li \l{Qt Quick Examples - Embedded in Widgets}{Embedding a QQuickView as Native Window}
+        \endlist
+    \enddiv
+        \div {class="doc-column"}
+        \b{Qt Quick for Android}
+        \list
+        \li \l{Qt Quick for Android Studio Projects}
+        \li \l{Exposing QtAbstractListModel to QML}
+        \li \l{Using QtAbstractItemModel in Android Studio Projects}
         \endlist
     \enddiv
 \enddiv

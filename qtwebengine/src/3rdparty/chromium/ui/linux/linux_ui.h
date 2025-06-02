@@ -192,8 +192,11 @@ class COMPONENT_EXPORT(LINUX_UI) LinuxUi {
   // false will be returned if the key event doesn't correspond to a predefined
   // key binding.  Edit commands matched with |event| will be stored in
   // |edit_commands|, if |edit_commands| is non-nullptr.
+  //
+  // |text_falgs| is the current ui::TextInputFlags if available.
   virtual bool GetTextEditCommandsForEvent(
       const ui::Event& event,
+      int text_flags,
       std::vector<TextEditCommandAuraLinux>* commands) = 0;
 
   // Returns the default font rendering settings.
@@ -313,7 +316,8 @@ class COMPONENT_EXPORT(LINUX_UI) LinuxUiTheme {
   // if transparency is unsupported and the frame should be rendered opaque.
   // The returned object is not owned by the caller and will remain alive until
   // the process ends.
-  virtual WindowFrameProvider* GetWindowFrameProvider(bool solid_frame) = 0;
+  virtual WindowFrameProvider* GetWindowFrameProvider(bool solid_frame,
+                                                      bool tiled) = 0;
 
  protected:
   LinuxUiTheme();

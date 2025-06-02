@@ -6,9 +6,7 @@
 #####################################################################
 
 qt_internal_add_module(QmlCompiler
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
-    PLUGIN_TYPES qmllint
+        PLUGIN_TYPES qmllint
     SOURCES
         qcoloroutput_p.h qcoloroutput.cpp
         qdeferredpointer_p.h
@@ -17,14 +15,18 @@ qt_internal_add_module(QmlCompiler
         qqmljscodegenerator.cpp qqmljscodegenerator_p.h
         qqmljscompilepass_p.h
         qqmljscompiler.cpp qqmljscompiler_p.h
+        qqmljscompilerstats.cpp qqmljscompilerstats_p.h
+        qqmljscompilerstatsreporter.cpp qqmljscompilerstatsreporter_p.h
         qqmljsfunctioninitializer.cpp qqmljsfunctioninitializer_p.h
         qqmljsimporter.cpp qqmljsimporter_p.h
         qqmljsimportvisitor.cpp qqmljsimportvisitor_p.h
         qqmljsliteralbindingcheck.cpp qqmljsliteralbindingcheck_p.h
+        qqmljsvaluetypefromstringcheck.cpp qqmljsvaluetypefromstringcheck_p.h
         qqmljsloadergenerator.cpp qqmljsloadergenerator_p.h
         qqmljslogger_p.h qqmljslogger.cpp
         qqmljsloggingutils.h qqmljsloggingutils.cpp qqmljsloggingutils_p.h
         qqmljsmetatypes_p.h qqmljsmetatypes.cpp
+        qqmljsoptimizations_p.h qqmljsoptimizations.cpp
         qqmljsregistercontent.cpp qqmljsregistercontent_p.h
         qqmljsresourcefilemapper.cpp qqmljsresourcefilemapper_p.h
         qqmljsscope.cpp qqmljsscope_p.h
@@ -43,6 +45,8 @@ qt_internal_add_module(QmlCompiler
         qqmlsa_p.h qqmlsa.h qqmlsa.cpp
         qqmlsaconstants.h
         qqmlsasourcelocation.h qqmlsasourcelocation.cpp qqmlsasourcelocation_p.h
+    NO_UNITY_BUILD_SOURCES
+        qqmljsoptimizations.cpp
     PUBLIC_LIBRARIES
         Qt::Core
         Qt::Qml
@@ -54,14 +58,15 @@ qt_internal_add_module(QmlCompiler
         Qt::QmlToolingSettingsPrivate
 )
 
-qt_path_join(qml_build_dir "${QT_BUILD_DIR}" "${INSTALL_QMLDIR}")
+qt_path_join(qml_build_dir "${QT_BUILD_DIR}" "${INSTALL_QMLDIR}" "QML")
 qt_internal_add_resource(QmlCompiler "builtins"
     PREFIX
-        "/qt-project.org/qml/builtins"
+        "/qt-project.org/imports/QML"
     BASE
         "${qml_build_dir}"
     FILES
-        "${qml_build_dir}/builtins.qmltypes"
+        "${qml_build_dir}/qmldir"
+        "${qml_build_dir}/plugins.qmltypes"
         "${qml_build_dir}/jsroot.qmltypes"
 )
 

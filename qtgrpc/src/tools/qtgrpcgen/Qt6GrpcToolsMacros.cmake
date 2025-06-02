@@ -71,8 +71,6 @@ endfunction()
 #     - Collect PROTO_INCLUDES from the LINK_LIBRARIES property of TARGET
 #     - Collect proto files from the source files of the ${TARGET}
 
-# This function is currently in Technical Preview
-# Its signature and behavior might change.
 function(qt6_add_grpc target type)
     _qt_internal_get_protoc_common_options(protoc_option_opt protoc_single_opt protoc_multi_opt)
     _qt_internal_get_protoc_generate_arguments(protoc_option_arg protoc_single_arg protoc_multi_arg)
@@ -119,6 +117,12 @@ function(qt6_add_grpc target type)
         PROTO_FILES
             ${arg_PROTO_FILES}
     )
+
+    if(NOT proto_files AND arg_PROTO_FILES)
+        _qt_internal_protobuf_missing_definitions_warning(${target} grpc "${arg_PROTO_FILES}")
+        return()
+    endif()
+
     if(arg_PROTO_INCLUDES)
         list(APPEND proto_includes ${arg_PROTO_INCLUDES})
     endif()
@@ -197,6 +201,12 @@ function(qt6_add_grpc target type)
         ${QT_CMAKE_EXPORT_NAMESPACE}::Grpc
     )
     if(arg_QML)
+        if(NOT TARGET ${QT_CMAKE_EXPORT_NAMESPACE}::GrpcQuick)
+            message(FATAL_ERROR "QML option of the qt_add_grpc command requires"
+                " ${QT_CMAKE_EXPORT_NAMESPACE}::GrpcQuick target. Please make sure that you"
+                " have the respective Qt component found by adding it to the find_package call:"
+                "   find_package(${QT_CMAKE_EXPORT_NAMESPACE} COMPONENTS GrpcQuick)")
+        endif()
         target_link_libraries(${target} PRIVATE
             ${QT_CMAKE_EXPORT_NAMESPACE}::GrpcQuick)
     endif()

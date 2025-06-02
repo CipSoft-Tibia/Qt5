@@ -1,64 +1,65 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QITEMMODELBARDATAPROXY_H
-#define QITEMMODELBARDATAPROXY_H
+#ifndef QTGRAPHS_QITEMMODELBARDATAPROXY_H
+#define QTGRAPHS_QITEMMODELBARDATAPROXY_H
 
-#if 0
-#  pragma qt_class(QItemModelBarDataProxy)
-#endif
-
-#include <QtCore/QAbstractItemModel>
-#include <QtCore/QRegularExpression>
+#include <QtCore/qabstractitemmodel.h>
+#include <QtCore/qregularexpression.h>
 #include <QtGraphs/qbardataproxy.h>
 
 QT_BEGIN_NAMESPACE
 
 class QItemModelBarDataProxyPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QItemModelBarDataProxy : public QBarDataProxy
+class Q_GRAPHS_EXPORT QItemModelBarDataProxy : public QBarDataProxy
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QItemModelBarDataProxy)
     Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
-    Q_PROPERTY(
-        QAbstractItemModel *itemModel READ itemModel WRITE setItemModel NOTIFY itemModelChanged)
-    Q_PROPERTY(QString rowRole READ rowRole WRITE setRowRole NOTIFY rowRoleChanged)
-    Q_PROPERTY(QString columnRole READ columnRole WRITE setColumnRole NOTIFY columnRoleChanged)
-    Q_PROPERTY(QString valueRole READ valueRole WRITE setValueRole NOTIFY valueRoleChanged)
-    Q_PROPERTY(
-        QString rotationRole READ rotationRole WRITE setRotationRole NOTIFY rotationRoleChanged)
+    Q_PROPERTY(QAbstractItemModel *itemModel READ itemModel WRITE setItemModel NOTIFY
+                   itemModelChanged FINAL)
+    Q_PROPERTY(QString rowRole READ rowRole WRITE setRowRole NOTIFY rowRoleChanged FINAL)
+    Q_PROPERTY(QString columnRole READ columnRole WRITE setColumnRole NOTIFY columnRoleChanged FINAL)
+    Q_PROPERTY(QString valueRole READ valueRole WRITE setValueRole NOTIFY valueRoleChanged FINAL)
+    Q_PROPERTY(QString rotationRole READ rotationRole WRITE setRotationRole NOTIFY
+                   rotationRoleChanged FINAL)
     Q_PROPERTY(QStringList rowCategories READ rowCategories WRITE setRowCategories NOTIFY
-                   rowCategoriesChanged)
+                   rowCategoriesChanged FINAL)
     Q_PROPERTY(QStringList columnCategories READ columnCategories WRITE setColumnCategories NOTIFY
-                   columnCategoriesChanged)
+                   columnCategoriesChanged FINAL)
     Q_PROPERTY(bool useModelCategories READ useModelCategories WRITE setUseModelCategories NOTIFY
-                   useModelCategoriesChanged)
+                   useModelCategoriesChanged FINAL)
     Q_PROPERTY(bool autoRowCategories READ autoRowCategories WRITE setAutoRowCategories NOTIFY
-                   autoRowCategoriesChanged)
+                   autoRowCategoriesChanged FINAL)
     Q_PROPERTY(bool autoColumnCategories READ autoColumnCategories WRITE setAutoColumnCategories
-                   NOTIFY autoColumnCategoriesChanged)
+                   NOTIFY autoColumnCategoriesChanged FINAL)
     Q_PROPERTY(QRegularExpression rowRolePattern READ rowRolePattern WRITE setRowRolePattern NOTIFY
-                   rowRolePatternChanged)
+                   rowRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression columnRolePattern READ columnRolePattern WRITE
-                   setColumnRolePattern NOTIFY columnRolePatternChanged)
+                   setColumnRolePattern NOTIFY columnRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression valueRolePattern READ valueRolePattern WRITE setValueRolePattern
-                   NOTIFY valueRolePatternChanged)
+                   NOTIFY valueRolePatternChanged FINAL)
     Q_PROPERTY(QRegularExpression rotationRolePattern READ rotationRolePattern WRITE
-                   setRotationRolePattern NOTIFY rotationRolePatternChanged)
+                   setRotationRolePattern NOTIFY rotationRolePatternChanged FINAL)
     Q_PROPERTY(QString rowRoleReplace READ rowRoleReplace WRITE setRowRoleReplace NOTIFY
-                   rowRoleReplaceChanged)
+                   rowRoleReplaceChanged FINAL)
     Q_PROPERTY(QString columnRoleReplace READ columnRoleReplace WRITE setColumnRoleReplace NOTIFY
-                   columnRoleReplaceChanged)
+                   columnRoleReplaceChanged FINAL)
     Q_PROPERTY(QString valueRoleReplace READ valueRoleReplace WRITE setValueRoleReplace NOTIFY
-                   valueRoleReplaceChanged)
+                   valueRoleReplaceChanged FINAL)
     Q_PROPERTY(QString rotationRoleReplace READ rotationRoleReplace WRITE setRotationRoleReplace
-                   NOTIFY rotationRoleReplaceChanged)
+                   NOTIFY rotationRoleReplaceChanged FINAL)
     Q_PROPERTY(QItemModelBarDataProxy::MultiMatchBehavior multiMatchBehavior READ multiMatchBehavior
-                   WRITE setMultiMatchBehavior NOTIFY multiMatchBehaviorChanged)
+                   WRITE setMultiMatchBehavior NOTIFY multiMatchBehaviorChanged FINAL)
 
 public:
-    enum class MultiMatchBehavior { First, Last, Average, Cumulative };
+    enum class MultiMatchBehavior {
+        First,
+        Last,
+        Average,
+        Cumulative,
+    };
     Q_ENUM(MultiMatchBehavior)
 
     explicit QItemModelBarDataProxy(QObject *parent = nullptr);
@@ -125,8 +126,8 @@ public:
                const QStringList &rowCategories,
                const QStringList &columnCategories);
 
-    Q_INVOKABLE int rowCategoryIndex(const QString &category);
-    Q_INVOKABLE int columnCategoryIndex(const QString &category);
+    Q_INVOKABLE qsizetype rowCategoryIndex(const QString &category);
+    Q_INVOKABLE qsizetype columnCategoryIndex(const QString &category);
 
     void setRowRolePattern(const QRegularExpression &pattern);
     QRegularExpression rowRolePattern() const;

@@ -14,7 +14,7 @@ Follow the steps below or see the
 ```sh
 git clone https://android.googlesource.com/platform/external/perfetto/
 cd perfetto
-./tool/install-build-deps --ui
+./tools/install-build-deps --ui
 ```
 
 ### Copy the plugin skeleton
@@ -63,61 +63,211 @@ They can be accessed via the omnibox.
 
 Follow the [create a plugin](#create-a-plugin) to get an initial
 skeleton for your plugin.
-To add your first command edit either the `commands()` or `traceCommands()`
-methods.
+
+To add your first command, add a call to `ctx.registerCommand()` in either
+your `onActivate()` or `onTraceLoad()` hooks. The recommendation is to register
+commands in `onActivate()` by default unless they require something from
+`PluginContextTrace` which is not available on `PluginContext`.
+
+The tradeoff is that commands registered in `onTraceLoad()` are only available
+while a trace is loaded, whereas commands registered in `onActivate()` are
+available all the time the plugin is active.
 
 ```typescript
 class MyPlugin implements Plugin {
-  // ...
-
-  commands(ctx: PluginContext): Command[] {
-    return [
+  onActivate(ctx: PluginContext): void {
+    ctx.registerCommand(
        {
-         id: 'dev.perfetto.ExampleSimpleCommand#LogHelloWorld',
-         name: 'Log hello world',
-         callback: () => console.log('Hello, world!'),
+         id: 'dev.perfetto.ExampleSimpleCommand#LogHelloPlugin',
+         name: 'Log "Hello, plugin!"',
+         callback: () => console.log('Hello, plugin!'),
        },
-    ];
+    );
   }
 
-  traceCommands(ctx: TracePluginContext): Command[] {
-    return [
+  onTraceLoad(ctx: PluginContextTrace): void {
+    ctx.registerCommand(
        {
-         id: 'dev.perfetto.ExampleSimpleTraceCommand#LogHelloWorld',
-         name: 'Log hello trace',
+         id: 'dev.perfetto.ExampleSimpleTraceCommand#LogHelloTrace',
+         name: 'Log "Hello, trace!"',
          callback: () => console.log('Hello, trace!'),
        },
-    ];
+    );
   }
 }
 ```
 
-Commands are polled whenever the command list must be updated. When no trace is
-loaded, only the `commands()` method is called, whereas when a trace is loaded,
-both the `commands()` and the `traceCommands()` methods are called, and their
-outputs are concatenated.
-
-The difference between the two is that commands defined in `commands()` only
-have access to the viewer API, whereas commands defined in `traceCommands()` may
-access the store and the engine in addition to the viewer API.
-
-The tradeoff is that commands defined in `traceCommands()` are only available
-when a trace is loaded, whereas commands defined in `commands()` are available
-all the time.
-
 Here `id` is a unique string which identifies this command.
-The `id` should be prefixed with the plugin id followed by a `#`.
-`name` is a human readable name for the command.
+The `id` should be prefixed with the plugin id followed by a `#`. All command
+`id`s must be unique system-wide.
+`name` is a human readable name for the command, which is shown in the command
+palette.
 Finally `callback()` is the callback which actually performs the
 action.
+
+Commands are removed automatically when their context disappears. Commands
+registered with the `PluginContext` are removed when the plugin is deactivated,
+and commands registered with the `PluginContextTrace` are removed when the trace
+is unloaded.
 
 Examples:
 - [dev.perfetto.ExampleSimpleCommand](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/plugins/dev.perfetto.ExampleSimpleCommand/index.ts).
 - [dev.perfetto.CoreCommands](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/plugins/dev.perfetto.CoreCommands/index.ts).
 - [dev.perfetto.ExampleState](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/plugins/dev.perfetto.ExampleState/index.ts).
 
+#### Hotkeys
+
+A default hotkey may be provided when registering a command.
+
+```typescript
+ctx.registerCommand({
+  id: 'dev.perfetto.ExampleSimpleCommand#LogHelloWorld',
+  name: 'Log "Hello, World!"',
+  callback: () => console.log('Hello, World!'),
+  defaultHotkey: 'Shift+H',
+});
+```
+
+Even though the hotkey is a string, it's format checked at compile time using 
+typescript's [template literal types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html).
+
+See [hotkey.ts](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/base/hotkeys.ts)
+for more details on how the hotkey syntax works, and for the available keys and
+modifiers.
+
 ### Tracks
-TBD
+#### Defining Tracks
+Tracks describe how to render a track and how to respond to mouse interaction.
+However, the interface is a WIP and should be considered unstable.
+This documentation will be added to over the next few months after the design is
+finalised.
+
+#### Reusing Existing Tracks
+Creating tracks from scratch is difficult and the API is currently a WIP, so it
+is strongly recommended to use one of our existing base classes which do a lot
+of the heavy lifting for you. These base classes also provide a more stable
+layer between your track and the (currently unstable) track API.
+
+For example, if your track needs to show slices from a given a SQL expression (a
+very common pattern), extend the `NamedSliceTrack` abstract base class and
+implement `getSqlSource()`, which should return a query with the following
+columns:
+
+- `id: INTEGER`: A unique ID for the slice.
+- `ts: INTEGER`: The timestamp of the start of the slice.
+- `dur: INTEGER`: The duration of the slice.
+- `depth: INTEGER`: Integer value defining how deep the slice should be drawn in
+    the track, 0 being rendered at the top of the track, and increasing numbers
+    being drawn towards the bottom of the track.
+- `name: TEXT`: Text to be rendered on the slice and in the popup.
+
+For example, the following track describes a slice track that displays all
+slices that begin with the letter 'a'.
+```ts
+class MyTrack extends NamedSliceTrack {
+  getSqlSource(): string {
+    return `
+    SELECT
+      id,
+      ts,
+      dur,
+      depth,
+      name
+    from slice
+    where name like 'a%';
+    `;
+  }
+}
+```
+
+#### Registering Tracks
+Plugins may register tracks with Perfetto using
+`PluginContextTrace.registerTrack()`, usually in their `onTraceLoad` function.
+
+```ts
+class MyPlugin implements Plugin {
+  onTraceLoad(ctx: PluginContextTrace): void {
+    ctx.registerTrack({
+      uri: 'dev.MyPlugin#ExampleTrack',
+      displayName: 'My Example Track',
+      track: ({trackKey}) => {
+        return new MyTrack({engine: ctx.engine, trackKey});
+      },
+    });
+  }
+}
+```
+
+#### Default Tracks
+The "default" tracks are a list of tracks that are added to the timeline when a
+fresh trace is loaded (i.e. **not** when loading a trace from a permalink).
+This list is copied into the timeline after the trace has finished loading, at
+which point control is handed over to the user, allowing them add, remove and
+reorder tracks as they please.
+Thus it only makes sense to add default tracks in your plugin's `onTraceLoad`
+function, as adding a default track later will have no effect.
+
+```ts
+class MyPlugin implements Plugin {
+  onTraceLoad(ctx: PluginContextTrace): void {
+    ctx.registerTrack({
+      // ... as above ...
+    });
+
+    ctx.addDefaultTrack({
+      uri: 'dev.MyPlugin#ExampleTrack',
+      displayName: 'My Example Track',
+      sortKey: PrimaryTrackSortKey.ORDINARY_TRACK,
+    });
+  }
+}
+```
+
+Registering and adding a default track is such a common pattern that there is a
+shortcut for doing both in one go: `PluginContextTrace.registerStaticTrack()`,
+which saves having to repeat the URI and display name.
+
+```ts
+class MyPlugin implements Plugin {
+  onTraceLoad(ctx: PluginContextTrace): void {
+    ctx.registerStaticTrack({
+      uri: 'dev.MyPlugin#ExampleTrack',
+      displayName: 'My Example Track',
+      track: ({trackKey}) => {
+        return new MyTrack({engine: ctx.engine, trackKey});
+      },
+      sortKey: PrimaryTrackSortKey.COUNTER_TRACK,
+    });
+  }
+}
+```
+
+#### Adding Tracks Directly
+Sometimes plugins might want to add a track to the timeline immediately, usually
+as a result of a command or on some other user action such as a button click.
+We can do this using `PluginContext.timeline.addTrack()`.
+
+```ts
+class MyPlugin implements Plugin {
+  onTraceLoad(ctx: PluginContextTrace): void {
+    ctx.registerTrack({
+      // ... as above ...
+    });
+
+    // Register a command that directly adds a new track to the timeline
+    ctx.registerCommand({
+      id: 'dev.MyPlugin#AddMyTrack',
+      name: 'Add my track',
+      callback: () => {
+        ctx.timeline.addTrack(
+          'dev.MyPlugin#ExampleTrack',
+          'My Example Track'
+        );
+      },
+    });
+  }
+}
+```
 
 ### Tabs
 TBD
@@ -177,58 +327,73 @@ interface MyState {
 }
 ```
 
-This interface will be used as type parameter to the `Plugin` and
-`TracePluginContext` interfaces.
+To access permalink state, call `mountStore()` on your `PluginContextTrace`
+object, passing in a migration function.
 ```typescript
-class MyPlugin implements Plugin<MyState> {
-
-  migrate(initialState: unknown): MyState {
-    // ...
+class MyPlugin implements Plugin {
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    const store = ctx.mountStore(migrate);
   }
+}
 
-  async onTraceLoad(ctx: TracePluginContext<MyState>): Promise<void> {
-    // You can access the store on ctx.store
-  }
-
-  async onTraceUnload(ctx: TracePluginContext<MyState>): Promise<void> {
-    // You can access the store on ctx.store
-  }
-
+function migrate(initialState: unknown): MyState {
   // ...
 }
 ```
 
-`migrate()` is called after `onActivate()` just before `onTraceLoad()`. There
-are two cases to consider:
+When it comes to migration, there are two cases to consider:
 - Loading a new trace
 - Loading from a permalink
 
-In case of a new trace `migrate()` is called with `undefined`. In this
-case you should return a default version of `MyState`:
+In case of a new trace, your migration function is called with `undefined`. In
+this case you should return a default version of `MyState`:
 ```typescript
-class MyPlugin implements Plugin<MyState> {
+const DEFAULT = {favouriteSlices: []};
 
-  migrate(initialState: unknown): MyState {
-    if (initialState === undefined) {
-      return {
-        favouriteSlices: [];
-      };
-    }
-    // ...
+function migrate(initialState: unknown): MyState {
+  if (initialState === undefined) {
+    // Return default version of MyState.
+    return DEFAULT;
+  } else {
+    // Migrate old version here.
   }
-
-  // ...
 }
 ```
 
-In the permalink case `migrate()` is called with the state of the plugin
-store at the time the permalink was generated. This may be from a
-older or newer version of the plugin.
-**Plugin's must not make assumptions about the contents of `initialState`**.
+In the permalink case, your migration function is called with the state of the
+plugin store at the time the permalink was generated. This may be from an older
+or newer version of the plugin.
 
-In this case you need to carefully validate the state object.
+**Plugins must not make assumptions about the contents of `initialState`!**
 
-TODO: Add validation example.
+In this case you need to carefully validate the state object. This could be
+achieved in several ways, none of which are particularly straight forward. State
+migration is difficult!
+
+One brute force way would be to use a version number.
+
+```typescript
+interface MyState {
+  version: number;
+  favouriteSlices: MySliceInfo[];
+}
+
+const VERSION = 3;
+const DEFAULT = {favouriteSlices: []};
+
+function migrate(initialState: unknown): MyState {
+  if (initialState && (initialState as {version: any}).version === VERSION) {
+    // Version number checks out, assume the structure is correct.
+    return initialState as State;
+  } else {
+    // Null, undefined, or bad version number - return default value.
+    return DEFAULT;
+  }
+}
+```
+
+You'll need to remember to update your version number when making changes!
+Migration should be unit-tested to ensure compatibility.
 
 Examples:
 - [dev.perfetto.ExampleState](https://cs.android.com/android/platform/superproject/main/+/main:external/perfetto/ui/src/plugins/dev.perfetto.ExampleState/index.ts).

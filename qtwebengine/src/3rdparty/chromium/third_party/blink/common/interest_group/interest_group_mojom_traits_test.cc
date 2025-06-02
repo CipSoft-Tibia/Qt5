@@ -181,6 +181,24 @@ TEST(InterestGroupMojomTraitsTest,
   SerializeAndDeserializeAndCompare(interest_group);
 }
 
+TEST(InterestGroupMojomTraitsTest,
+     SerializeAndDeserializeTrustedBiddingSignalsSlotSizeMode) {
+  InterestGroup interest_group = CreateInterestGroup();
+  interest_group.trusted_bidding_signals_slot_size_mode =
+      InterestGroup::TrustedBiddingSignalsSlotSizeMode::kSlotSize;
+  SerializeAndDeserializeAndCompare(interest_group);
+  interest_group.trusted_bidding_signals_slot_size_mode =
+      InterestGroup::TrustedBiddingSignalsSlotSizeMode::kAllSlotsRequestedSizes;
+  SerializeAndDeserializeAndCompare(interest_group);
+}
+
+TEST(InterestGroupMojomTraitsTest,
+     SerializeAndDeserializeMaxTrustedBiddingSignalsURLLength) {
+  InterestGroup interest_group = CreateInterestGroup();
+  interest_group.max_trusted_bidding_signals_url_length = 8000;
+  SerializeAndDeserializeAndCompare(interest_group);
+}
+
 TEST(InterestGroupMojomTraitsTest, SerializeAndDeserializeUserBiddingSignals) {
   InterestGroup interest_group = CreateInterestGroup();
   interest_group.user_bidding_signals = "[]";
@@ -420,6 +438,14 @@ TEST(InterestGroupMojomTraitsTest, SerializeAndDeserializeAdditionalBidKey) {
       0xb1, 0x08, 0xc3, 0xbd, 0xae, 0x36, 0x9e, 0xf5, 0x49, 0xfa};
   InterestGroup interest_group = CreateInterestGroup();
   interest_group.additional_bid_key = kAdditionalBidKey;
+  SerializeAndDeserializeAndCompare(interest_group);
+}
+
+TEST(InterestGroupMojomTraitsTest,
+     SerializeAndDeserializeAggregationCoordinatorOrigin) {
+  InterestGroup interest_group = CreateInterestGroup();
+  interest_group.aggregation_coordinator_origin =
+      url::Origin::Create(GURL("https://example.com"));
   SerializeAndDeserializeAndCompare(interest_group);
 }
 

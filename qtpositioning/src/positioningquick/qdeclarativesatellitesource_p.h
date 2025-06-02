@@ -27,7 +27,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_POSITIONINGQUICK_PRIVATE_EXPORT QDeclarativeSatelliteSource : public QObject, public QQmlParserStatus
+class Q_POSITIONINGQUICK_EXPORT QDeclarativeSatelliteSource : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(SatelliteSource)

@@ -14,7 +14,7 @@
 QT_BEGIN_NAMESPACE
 
 namespace QOpcUa {
-Q_OPCUA_EXPORT Q_NAMESPACE
+Q_NAMESPACE_EXPORT(Q_OPCUA_EXPORT)
 Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
 
 // see OPC UA 1.05 Part 3, 5.2.3 & 8.29

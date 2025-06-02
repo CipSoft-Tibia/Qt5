@@ -133,9 +133,9 @@ FidoTunnelDevice::FidoTunnelDevice(
                           base::Unretained(this)));
   network_context_factory.Run()->CreateWebSocket(
       url, {kCableWebSocketProtocol}, net::SiteForCookies(),
-      net::IsolationInfo(), /*additional_headers=*/{},
-      network::mojom::kBrowserProcessId, url::Origin::Create(url),
-      network::mojom::kWebSocketOptionBlockAllCookies,
+      /*has_storage_access=*/false, net::IsolationInfo(),
+      /*additional_headers=*/{}, network::mojom::kBrowserProcessId,
+      url::Origin::Create(url), network::mojom::kWebSocketOptionBlockAllCookies,
       net::MutableNetworkTrafficAnnotationTag(kTrafficAnnotation),
       websocket_client_->BindNewHandshakeClientPipe(),
       /*url_loader_network_observer=*/mojo::NullRemote(),
@@ -184,13 +184,11 @@ FidoTunnelDevice::FidoTunnelDevice(
   std::vector<network::mojom::HttpHeaderPtr> headers;
   headers.emplace_back(network::mojom::HttpHeader::New(
       kCableClientPayloadHeader, client_payload_hex));
-  if (base::FeatureList::IsEnabled(device::kWebAuthnNewHybridUI)) {
-    headers.emplace_back(
-        network::mojom::HttpHeader::New(kCableSignalConnectionHeader, "true"));
-  }
+  headers.emplace_back(
+      network::mojom::HttpHeader::New(kCableSignalConnectionHeader, "true"));
   network_context_factory.Run()->CreateWebSocket(
       url, {kCableWebSocketProtocol}, net::SiteForCookies(),
-      net::IsolationInfo(), std::move(headers),
+      /*has_storage_access=*/false, net::IsolationInfo(), std::move(headers),
       network::mojom::kBrowserProcessId, url::Origin::Create(url),
       network::mojom::kWebSocketOptionBlockAllCookies,
       net::MutableNetworkTrafficAnnotationTag(kTrafficAnnotation),

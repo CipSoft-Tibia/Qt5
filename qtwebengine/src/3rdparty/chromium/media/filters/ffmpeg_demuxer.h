@@ -27,21 +27,19 @@
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
+#include "base/containers/flat_map.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "media/base/audio_decoder_config.h"
-#include "media/base/decoder_buffer.h"
 #include "media/base/decoder_buffer_queue.h"
 #include "media/base/demuxer.h"
 #include "media/base/media_log.h"
 #include "media/base/pipeline_status.h"
-#include "media/base/text_track_config.h"
 #include "media/base/timestamp_constants.h"
 #include "media/base/video_decoder_config.h"
 #include "media/ffmpeg/scoped_av_packet.h"
@@ -134,8 +132,6 @@ class MEDIA_EXPORT FFmpegDemuxerStream : public DemuxerStream {
   // Returns the total buffer size FFMpegDemuxerStream is holding onto.
   size_t MemoryUsage() const;
 
-  TextKind GetTextKind() const;
-
   // Returns the value associated with |key| in the metadata for the avstream.
   // Returns an empty string if the key is not present.
   std::string GetMetadata(const char* key) const;
@@ -150,8 +146,7 @@ class MEDIA_EXPORT FFmpegDemuxerStream : public DemuxerStream {
 
   // Use FFmpegDemuxerStream::Create to construct.
   // Audio/Video streams must include their respective DecoderConfig. At most
-  // one DecoderConfig should be provided (leaving the other nullptr). Both
-  // configs should be null for text streams.
+  // one DecoderConfig should be provided (leaving the other nullptr).
   FFmpegDemuxerStream(FFmpegDemuxer* demuxer,
                       AVStream* stream,
                       std::unique_ptr<AudioDecoderConfig> audio_config,
@@ -234,7 +229,8 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
   void Seek(base::TimeDelta time, PipelineStatusCallback cb) override;
   bool IsSeekable() const override;
   base::Time GetTimelineOffset() const override;
-  std::vector<DemuxerStream*> GetAllStreams() override;
+  std::vector<raw_ptr<DemuxerStream, VectorExperimental>> GetAllStreams()
+      override;
   base::TimeDelta GetStartTime() const override;
   int64_t GetMemoryUsage() const override;
   absl::optional<container_names::MediaContainerName> GetContainerForMetrics()
@@ -329,10 +325,6 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
   FFmpegDemuxerStream* GetFirstEnabledFFmpegStream(
       DemuxerStream::Type type) const;
 
-  // Called after the streams have been collected from the media, to allow
-  // the text renderer to bind each text stream to the cue rendering engine.
-  void AddTextStreams();
-
   void SetLiveness(StreamLiveness liveness);
 
   void SeekInternal(base::TimeDelta time,
@@ -417,7 +409,8 @@ class MEDIA_EXPORT FFmpegDemuxer : public Demuxer {
 
   const MediaTracksUpdatedCB media_tracks_updated_cb_;
 
-  std::map<MediaTrack::Id, FFmpegDemuxerStream*> track_id_to_demux_stream_map_;
+  base::flat_map<MediaTrack::Id, FFmpegDemuxerStream*>
+      track_id_to_demux_stream_map_;
 
   const bool is_local_file_;
 

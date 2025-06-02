@@ -48,6 +48,8 @@ class MockPage : public shopping_list::mojom::Page {
   MOCK_METHOD2(OperationFailedForBookmark,
                void(shopping_list::mojom::BookmarkProductInfoPtr product,
                     bool is_tracked));
+  MOCK_METHOD1(OnProductBookmarkMoved,
+               void(shopping_list::mojom::BookmarkProductInfoPtr product));
 };
 
 class MockDelegate : public ShoppingListHandler::Delegate {
@@ -228,7 +230,7 @@ TEST_F(ShoppingListHandlerTest, TestTrackProductSuccess) {
   handler_->TrackPriceForBookmark(product->id());
 
   // Assume the subscription callback fires with a success.
-  handler_->OnSubscribe(CreateUserTrackedSubscription(cluster_id), true);
+  handler_->OnSubscribe(BuildUserSubscriptionForClusterId(cluster_id), true);
 
   task_environment_.RunUntilIdle();
 }
@@ -251,7 +253,7 @@ TEST_F(ShoppingListHandlerTest, TestUntrackProductSuccess) {
   handler_->UntrackPriceForBookmark(product->id());
 
   // Assume the subscription callback fires with a success.
-  handler_->OnUnsubscribe(CreateUserTrackedSubscription(cluster_id), true);
+  handler_->OnUnsubscribe(BuildUserSubscriptionForClusterId(cluster_id), true);
 
   task_environment_.RunUntilIdle();
 }
@@ -278,7 +280,7 @@ TEST_F(ShoppingListHandlerTest, TestTrackProductFailure) {
   handler_->TrackPriceForBookmark(product->id());
 
   // Assume the subscription callback fires with a failure.
-  handler_->OnUnsubscribe(CreateUserTrackedSubscription(cluster_id), false);
+  handler_->OnUnsubscribe(BuildUserSubscriptionForClusterId(cluster_id), false);
 
   task_environment_.RunUntilIdle();
 }
@@ -305,7 +307,7 @@ TEST_F(ShoppingListHandlerTest, TestUntrackProductFailure) {
   handler_->UntrackPriceForBookmark(product->id());
 
   // Assume the subscription callback fires with a failure.
-  handler_->OnUnsubscribe(CreateUserTrackedSubscription(cluster_id), false);
+  handler_->OnUnsubscribe(BuildUserSubscriptionForClusterId(cluster_id), false);
 
   task_environment_.RunUntilIdle();
 }
@@ -319,7 +321,7 @@ TEST_F(ShoppingListHandlerTest, PageUpdateForPriceTrackChange) {
               PriceUntrackedForBookmark(MojoBookmarkInfoWithId(product->id())));
 
   // Assume the plumbing for subscriptions works and fake an unsubscribe event.
-  handler_->OnUnsubscribe(CreateUserTrackedSubscription(123L), true);
+  handler_->OnUnsubscribe(BuildUserSubscriptionForClusterId(123L), true);
 
   task_environment_.RunUntilIdle();
 }
@@ -330,7 +332,7 @@ TEST_F(ShoppingListHandlerTest, TestUnsubscribeCausedByBookmarkDeletion) {
                          MojoBookmarkInfoWithClusterId(cluster_id)))
       .Times(1);
 
-  handler_->OnUnsubscribe(CreateUserTrackedSubscription(cluster_id), true);
+  handler_->OnUnsubscribe(BuildUserSubscriptionForClusterId(cluster_id), true);
 
   task_environment_.RunUntilIdle();
 }
@@ -338,13 +340,16 @@ TEST_F(ShoppingListHandlerTest, TestUnsubscribeCausedByBookmarkDeletion) {
 TEST_F(ShoppingListHandlerTest, TestGetProductInfo_FeatureEnabled) {
   EXPECT_CALL(tracker_, NotifyEvent("price_tracking_side_panel_shown"));
 
+  shopping_service_->SetIsReady(true);
+  shopping_service_->SetIsShoppingListEligible(true);
+
   const bookmarks::BookmarkNode* product = AddProductBookmark(
       bookmark_model_.get(), u"product 1", GURL("http://example.com/1"), 123L,
       true, 1230000, "usd");
   AddProductBookmark(bookmark_model_.get(), u"product 2",
                      GURL("http://example.com/2"), 456L, false, 4560000, "usd");
   shopping_service_->SetGetAllSubscriptionsCallbackValue(
-      {CreateUserTrackedSubscription(123L)});
+      {BuildUserSubscriptionForClusterId(123L)});
 
   std::vector<const bookmarks::BookmarkNode*> bookmark_list;
   bookmark_list.push_back(product);
@@ -389,6 +394,8 @@ TEST_F(ShoppingListHandlerTest, TestGetAllShoppingInfo_FeatureEnabled) {
 TEST_F(ShoppingListHandlerTest,
        TestGetProductInfoForCurrentUrl_FeatureEligible) {
   base::RunLoop run_loop;
+
+  shopping_service_->SetIsPriceInsightsEligible(true);
 
   absl::optional<commerce::ProductInfo> info;
   info.emplace();
@@ -448,6 +455,7 @@ TEST_F(ShoppingListHandlerTest, TestGetPriceInsightsInfoForCurrentUrl) {
   info->catalog_history_prices.emplace_back("2021-01-01", 3330000);
   info->catalog_history_prices.emplace_back("2021-01-02", 4440000);
 
+  shopping_service_->SetIsPriceInsightsEligible(true);
   shopping_service_->SetResponseForGetPriceInsightsInfoForUrl(info);
 
   handler_->GetPriceInsightsInfoForCurrentUrl(base::BindOnce(
@@ -516,8 +524,14 @@ TEST_F(ShoppingListHandlerTest,
   const GURL current_url = GURL("http://example.com/1");
   delegate_->SetCurrentTabUrl(current_url);
 
-  AddProductBookmark(bookmark_model_.get(), u"product 1", current_url, 123L,
-                     true, 1230000, "usd");
+  ProductInfo info;
+  info.product_cluster_id = 123L;
+  info.title = "product";
+  AddProductBookmark(bookmark_model_.get(), u"product", current_url,
+                     info.product_cluster_id.value(), true, 1230000, "usd");
+  shopping_service_->SetIsSubscribedCallbackValue(true);
+  shopping_service_->SetResponseForGetProductInfoForUrl(info);
+
   EXPECT_CALL(*shopping_service_, IsSubscribed(testing::_, testing::_))
       .Times(1);
 
@@ -533,6 +547,10 @@ TEST_F(ShoppingListHandlerTest,
 TEST_F(ShoppingListHandlerTest,
        TestGetPriceTrackingStatusForCurrentUrl_WithoutBookmark) {
   base::RunLoop run_loop;
+
+  shopping_service_->SetSubscribeCallbackValue(false);
+  shopping_service_->SetResponseForGetProductInfoForUrl(absl::nullopt);
+  ;
 
   EXPECT_CALL(*shopping_service_, IsSubscribed(testing::_, testing::_))
       .Times(0);
@@ -562,29 +580,33 @@ TEST_F(ShoppingListHandlerTest, TestTrackPriceForCurrentUrl) {
 }
 
 TEST_F(ShoppingListHandlerTest, TestUntrackPriceForCurrentUrl) {
-  const bookmarks::BookmarkNode* product = AddProductBookmark(
-      bookmark_model_.get(), u"product 1", GURL("http://example.com/1"), 123L,
-      false, 1230000, "usd");
-  EXPECT_CALL(*delegate_, GetOrAddBookmarkForCurrentUrl)
-      .Times(1)
-      .WillOnce(testing::Return(product));
+  ProductInfo info;
+  info.product_cluster_id = 123L;
+  info.title = "product";
+  AddProductBookmark(bookmark_model_.get(), u"product",
+                     GURL("http://example.com/1"),
+                     info.product_cluster_id.value(), false, 1230000, "usd");
+  shopping_service_->SetIsSubscribedCallbackValue(true);
+  shopping_service_->SetResponseForGetProductInfoForUrl(info);
+
+  EXPECT_CALL(*delegate_, GetOrAddBookmarkForCurrentUrl).Times(0);
   EXPECT_CALL(*shopping_service_,
               Unsubscribe(VectorHasSubscriptionWithId("123"), testing::_))
       .Times(1);
 
   handler_->SetPriceTrackingStatusForCurrentUrl(false);
+  base::RunLoop().RunUntilIdle();
 }
 
-TEST_F(ShoppingListHandlerTest, TestGetParentBookmarkFolderNameForCurrentUrl) {
+TEST_F(ShoppingListHandlerTest,
+       TestGetParentBookmarkFolderNameForCurrentUrl_NoBookmark) {
   base::RunLoop run_loop;
-  const std::u16string& parent_name = bookmark_model_->other_node()->GetTitle();
   handler_->GetParentBookmarkFolderNameForCurrentUrl(base::BindOnce(
-      [](base::RunLoop* run_loop, const std::u16string& parent_name,
-         const std::u16string& name) {
-        ASSERT_EQ(parent_name, name);
+      [](base::RunLoop* run_loop, const std::u16string& name) {
+        ASSERT_EQ(u"", name);
         run_loop->Quit();
       },
-      &run_loop, parent_name));
+      &run_loop));
 
   run_loop.Run();
 }
@@ -593,6 +615,26 @@ TEST_F(ShoppingListHandlerTest, TestShowBookmarkEditorForCurrentUrl) {
   EXPECT_CALL(*delegate_, ShowBookmarkEditorForCurrentUrl).Times(1);
 
   handler_->ShowBookmarkEditorForCurrentUrl();
+}
+
+TEST_F(ShoppingListHandlerTest, TestBookmarkNodeMoved) {
+  uint64_t cluster_id = 12345L;
+
+  const bookmarks::BookmarkNode* node_with_product = AddProductBookmark(
+      bookmark_model_.get(), u"title", GURL("https://example.com"), cluster_id);
+  shopping_service_->SetIsSubscribedCallbackValue(true);
+  const bookmarks::BookmarkNode* node_without_product =
+      bookmark_model_->AddNewURL(bookmark_model_->other_node(), 0, u"title",
+                                 GURL("https://test.com"));
+
+  EXPECT_CALL(page_, OnProductBookmarkMoved(
+                         MojoBookmarkInfoWithId(node_with_product->id())))
+      .Times(1);
+  bookmark_model_->Move(node_with_product, bookmark_model_->bookmark_bar_node(),
+                        0);
+  bookmark_model_->Move(node_without_product,
+                        bookmark_model_->bookmark_bar_node(), 1);
+  base::RunLoop().RunUntilIdle();
 }
 
 class ShoppingListHandlerFeatureDisableTest : public testing::Test {

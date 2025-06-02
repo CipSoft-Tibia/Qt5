@@ -76,7 +76,8 @@ public:
 
     enum ShaperFlag {
         DesignMetrics = 0x0002,
-        GlyphIndicesOnly = 0x0004
+        GlyphIndicesOnly = 0x0004,
+        FullStringFallback = 0x008
     };
     Q_DECLARE_FLAGS(ShaperFlags, ShaperFlag)
 
@@ -147,13 +148,22 @@ public:
         return subPixelPositionFor(QFixedPoint(x, 0)).x;
     }
 
+    bool preferTypoLineMetrics() const;
     bool isColorFont() const { return glyphFormat == Format_ARGB; }
+    static bool isIgnorableChar(char32_t ucs4)
+    {
+        return ucs4 == QChar::LineSeparator
+               || ucs4 == QChar::LineFeed
+               || ucs4 == QChar::CarriageReturn
+               || ucs4 == QChar::ParagraphSeparator
+               || QChar::category(ucs4) == QChar::Other_Control;
+    }
 
     virtual QFixed emSquareSize() const { return ascent(); }
 
     /* returns 0 as glyph index for non existent glyphs */
     virtual glyph_t glyphIndex(uint ucs4) const = 0;
-    virtual bool stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const = 0;
+    virtual int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const = 0;
     virtual void recalcAdvances(QGlyphLayout *, ShaperFlags) const {}
     virtual void doKerning(QGlyphLayout *, ShaperFlags) const;
 
@@ -176,6 +186,7 @@ public:
     virtual QImage alphaMapForGlyph(glyph_t, const QFixedPoint &subPixelPosition, const QTransform &t);
     virtual QImage alphaRGBMapForGlyph(glyph_t, const QFixedPoint &subPixelPosition, const QTransform &t);
     virtual QImage bitmapForGlyph(glyph_t, const QFixedPoint &subPixelPosition, const QTransform &t, const QColor &color = QColor());
+    QImage renderedPathForGlyph(glyph_t glyph, const QColor &color);
     virtual Glyph *glyphData(glyph_t glyph, const QFixedPoint &subPixelPosition, GlyphFormat neededFormat, const QTransform &t);
     virtual bool hasInternalCaching() const { return false; }
 
@@ -393,7 +404,7 @@ public:
     ~QFontEngineBox();
 
     virtual glyph_t glyphIndex(uint ucs4) const override;
-    virtual bool stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
+    virtual int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
     virtual void recalcAdvances(QGlyphLayout *, ShaperFlags) const override;
 
     void draw(QPaintEngine *p, qreal x, qreal y, const QTextItemInt &si);
@@ -431,7 +442,7 @@ public:
     ~QFontEngineMulti();
 
     virtual glyph_t glyphIndex(uint ucs4) const override;
-    virtual bool stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
+    virtual int stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs, int *nglyphs, ShaperFlags flags) const override;
 
     virtual glyph_metrics_t boundingBox(const QGlyphLayout &glyphs) override;
     virtual glyph_metrics_t boundingBox(glyph_t glyph) override;

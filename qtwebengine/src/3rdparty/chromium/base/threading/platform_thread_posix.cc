@@ -17,7 +17,7 @@
 #include <memory>
 #include <tuple>
 
-#include "base/allocator/partition_allocator/partition_alloc_buildflags.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/partition_alloc_buildflags.h"
 #include "base/compiler_specific.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
@@ -38,14 +38,16 @@
 #endif
 
 #if BUILDFLAG(IS_FUCHSIA)
-#include <zircon/process.h>
+#include <lib/zx/thread.h>
+
+#include "base/fuchsia/koid.h"
 #else
 #include <sys/resource.h>
 #endif
 
 #if BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && BUILDFLAG(USE_STARSCAN)
-#include "base/allocator/partition_allocator/starscan/pcscan.h"
-#include "base/allocator/partition_allocator/starscan/stack/stack.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/starscan/pcscan.h"
+#include "base/allocator/partition_allocator/src/partition_alloc/starscan/stack/stack.h"
 #endif
 
 namespace base {
@@ -253,7 +255,9 @@ PlatformThreadId PlatformThreadBase::CurrentId() {
   //   thread control block of pthread). See gettid.c in bionic.
   return gettid();
 #elif BUILDFLAG(IS_FUCHSIA)
-  return zx_thread_self();
+  thread_local static zx_koid_t id =
+      GetKoid(*zx::thread::self()).value_or(ZX_KOID_INVALID);
+  return id;
 #elif BUILDFLAG(IS_SOLARIS) || BUILDFLAG(IS_QNX)
   return pthread_self();
 #elif BUILDFLAG(IS_NACL) && defined(__GLIBC__)

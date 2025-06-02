@@ -63,7 +63,7 @@ public:
 #ifdef SK_GL
         kNativeGL_BackendType,
 #endif
-#if SK_ANGLE && defined(SK_BUILD_FOR_WIN)
+#if SK_ANGLE && (defined(SK_BUILD_FOR_WIN) || defined(SK_BUILD_FOR_MAC))
         kANGLE_BackendType,
 #endif
 #ifdef SK_DAWN
@@ -178,8 +178,8 @@ protected:
 
     bool fIsContentInvalidated = false;  // use this to avoid duplicate invalidate events
 
-    void visitLayers(std::function<void(Layer*)> visitor);
-    bool signalLayers(std::function<bool(Layer*)> visitor);
+    void visitLayers(const std::function<void(Layer*)>& visitor);
+    bool signalLayers(const std::function<bool(Layer*)>& visitor);
 };
 
 }   // namespace sk_app

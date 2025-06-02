@@ -10,11 +10,12 @@
 #if QT_CONFIG(process)
 #include <QtCore/qprocess.h>
 #endif
+#include <QtQml/private/qqmlcomponent_p.h>
 #include <QtQml/private/qqmlengine_p.h>
-#include <QtQml/private/qqmltypedata_p.h>
-#include <QtQml/private/qqmltypeloader_p.h>
 #include <QtQml/private/qqmlirbuilder_p.h>
 #include <QtQml/private/qqmlirloader_p.h>
+#include <QtQml/private/qqmltypedata_p.h>
+#include <QtQml/private/qqmltypeloader_p.h>
 #include <QtQuickTestUtils/private/testhttpserver_p.h>
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <QQmlComponent>
@@ -34,6 +35,7 @@ private slots:
     void trimCache3();
     void keepSingleton();
     void keepRegistrations();
+    void importAndDestroy();
     void intercept();
     void redirect();
     void qmlSingletonWithinModule();
@@ -49,6 +51,8 @@ private slots:
     void declarativeCppAndQmlDir();
     void signalHandlersAreCompatible();
     void loadTypeOnShutdown();
+    void floodTypeLoaderEventQueue();
+    void retainQmlTypeAcrossEngines();
 
 private:
     void checkSingleton(const QString & dataDirectory);
@@ -93,7 +97,7 @@ void tst_QQMLTypeLoader::trimCache()
     QQmlEngine engine;
     QQmlTypeLoader &loader = QQmlEnginePrivate::get(&engine)->typeLoader;
     QVector<QQmlTypeData *> releaseLater;
-    QVector<QV4::ExecutableCompilationUnit *> releaseCompilationUnitLater;
+    QVector<QV4::CompiledData::CompilationUnit *> releaseCompilationUnitLater;
     for (int i = 0; i < 256; ++i) {
         QUrl url = testFileUrl("trim_cache.qml");
         url.setQuery(QString::number(i));
@@ -418,6 +422,49 @@ public:
     }
 };
 
+void tst_QQMLTypeLoader::importAndDestroy()
+{
+#if defined Q_OS_ANDROID || defined Q_OS_IOS
+    QSKIP("Data directory is not in the host file system on Android and iOS");
+#endif
+    qmlClearTypeRegistrations();
+
+    QQmlEngine engine;
+    NetworkAccessManagerFactory factory;
+    engine.setNetworkAccessManagerFactory(&factory);
+    QQmlComponent component(&engine);
+
+    // We redirect the import through the network access manager to make it asynchronous.
+    // Otherwise the type loader will just directly call back into the main thread and we
+    // won't get a chance to do mischief before initializeEngine gets called for the "Slow"
+    // module. Note that the "Slow" module needs to be loaded from a "local" URL since plugins
+    // can only be loaded locally.
+
+    // Detour through testFileUrl to get the path right on windows ('C:' and things like that)
+    QUrl url = testFileUrl("SlowImporter");
+    url.setScheme(url.scheme() + QLatin1String("+debug"));
+
+    component.setData(QString::fromLatin1(R"(
+        import '%1'
+        A {}
+    )").arg(url.toString()).toUtf8(), QUrl());
+
+    while (!QQmlMetaType::qmlType(
+                    QStringLiteral("SlowStuff"), QStringLiteral("Slow"), QTypeRevision())
+                    .isValid()) {
+        // busy wait for type to be registered
+        QVERIFY2(!component.isError(), qPrintable(component.errorString()));
+    }
+
+    // Now the type loader thread is likely waiting for the main thread to process the
+    // initializeEngine callback. We destroy the engine here to trigger the situation where the main
+    // thread needs to wake the type loader thread one more time to process the isShutdown flag.
+    // If it fails to do so, the type loader thread waits indefinitely for the main thread and the
+    // engine dtor in turn waits indefinitely for the type loader thread to terminate.
+
+    // The point of this test is that it _should not_ deadlock here.
+}
+
 void tst_QQMLTypeLoader::intercept()
 {
 #ifdef Q_OS_ANDROID
@@ -686,12 +733,13 @@ static void getCompilationUnitAndRuntimeInfo(QQmlRefPointer<QV4::ExecutableCompi
         QVERIFY(!typeData->isError()); // this returns
     }
 
-    unit = typeData->compilationUnit();
+    unit = engine->handle()->executableCompilationUnit(typeData->compilationUnit());
     QVERIFY(unit);
 
     // the QmlIR::Document is deleted once loader.getType() is complete, so
     // restore it
-    QmlIR::Document restoredIrDocument(false);
+    const QString &urlString = url.toString();
+    QmlIR::Document restoredIrDocument(urlString, urlString, false);
     QQmlIRLoader irLoader(unit->unitData(), &restoredIrDocument);
     irLoader.load();
     QCOMPARE(restoredIrDocument.objects.size(), 1);
@@ -778,6 +826,78 @@ void tst_QQMLTypeLoader::loadTypeOnShutdown()
 
     QVERIFY(dead1);
     QVERIFY(dead2);
+}
+
+void tst_QQMLTypeLoader::floodTypeLoaderEventQueue()
+{
+    QQmlEngine engine;
+
+    // Flood the typeloader with useless messages.
+    for (int i = 0; i < 1000; ++i) {
+        QQmlComponent c(&engine);
+        c.setData(QString::fromLatin1(R"(
+                import "barf:/not/actually/there%1"
+                SomeElement {}
+            )").arg(i).toUtf8(), QUrl::fromLocalFile(QString::fromLatin1("foo%1.qml").arg(i)));
+        QVERIFY(!c.isReady());
+        // Should not crash when destrying the QQmlComponent.
+    }
+}
+
+void tst_QQMLTypeLoader::retainQmlTypeAcrossEngines()
+{
+    QQmlEngine engine1;
+    QQmlComponent component1(&engine1, testFileUrl("B.qml"));
+    QVERIFY2(component1.isReady(), qPrintable(component1.errorString()));
+
+    QQmlEngine engine2;
+    QQmlComponent component2(&engine2, testFileUrl("B.qml"));
+    QVERIFY2(component2.isReady(), qPrintable(component2.errorString()));
+
+    QQmlEngine engine3;
+    QQmlComponent component3(&engine3, testFileUrl("C.qml"));
+    QVERIFY2(component3.isReady(), qPrintable(component3.errorString()));
+
+    QQmlComponentPrivate *p1 = QQmlComponentPrivate::get(&component1);
+    QVERIFY(p1);
+    const auto cu1 = p1->compilationUnit;
+    QVERIFY(cu1);
+
+    QQmlComponentPrivate *p2 = QQmlComponentPrivate::get(&component2);
+    QVERIFY(p2);
+    const auto cu2 = p2->compilationUnit;
+    QVERIFY(cu2);
+
+    QQmlComponentPrivate *p3 = QQmlComponentPrivate::get(&component3);
+    QVERIFY(p3);
+    const auto cu3 = p3->compilationUnit;
+    QVERIFY(cu3);
+
+    // The _executable_ CUs are all different
+    QVERIFY(cu1 != cu2);
+    QVERIFY(cu1 != cu3);
+    QVERIFY(cu2 != cu3);
+
+    const auto base1 = cu1->baseCompilationUnit();
+    const auto base2 = cu2->baseCompilationUnit();
+    const auto base3 = cu3->baseCompilationUnit();
+
+    QCOMPARE(base1, base2);
+    QVERIFY(base1 != base3);
+    QVERIFY(base2 != base3);
+
+    const QQmlType qmltype1 = base1->qmlType;
+    const QMetaObject *mo1 = qmltype1.typeId().metaObject();
+    QVERIFY(mo1);
+
+    const QQmlType qmltype3 = base3->qmlType;
+    const QMetaObject *mo3 = qmltype3.typeId().metaObject();
+    QVERIFY(mo3);
+
+    QVERIFY(mo1 != mo3);
+
+    // The base classes are all the same.
+    QCOMPARE(mo1->superClass(), mo3->superClass());
 }
 
 QTEST_MAIN(tst_QQMLTypeLoader)

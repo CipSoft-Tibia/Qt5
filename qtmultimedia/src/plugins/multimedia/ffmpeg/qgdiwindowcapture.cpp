@@ -7,6 +7,7 @@
 #include "qffmpegsurfacecapturegrabber_p.h"
 #include "private/qcapturablewindow_p.h"
 #include "private/qmemoryvideobuffer_p.h"
+#include "private/qvideoframe_p.h"
 
 #include <qt_windows.h>
 #include <QtCore/qloggingcategory.h>
@@ -104,7 +105,7 @@ private:
         }
 
         QVideoFrameFormat format(size, QVideoFrameFormat::Format_BGRX8888);
-        format.setFrameRate(frameRate());
+        format.setStreamFrameRate(frameRate());
         m_format = format;
         return true;
     }
@@ -155,7 +156,8 @@ private:
             return {};
         }
 
-        return QVideoFrame(new QMemoryVideoBuffer(array, bytesPerLine), m_format);
+        return QVideoFramePrivate::createFrame(
+                std::make_unique<QMemoryVideoBuffer>(std::move(array), bytesPerLine), m_format);
     }
 
 private:

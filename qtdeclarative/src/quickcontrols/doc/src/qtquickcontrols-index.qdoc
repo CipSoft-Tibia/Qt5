@@ -42,6 +42,47 @@
     required. It provides support for the \c {.webp} format used by the
     \l {Animated Images}{Imagine style}.
 
+    \section1 Controls
+
+    For the full list of Qt Quick Controls, see
+    \l {Qt Quick Controls QML Types}{QML Types}.
+
+    \section2 Button Controls
+
+    \annotatedlist qtquickcontrols-buttons
+
+    \section2 Container Controls
+
+    \annotatedlist qtquickcontrols-containers
+
+    \section2 Delegate Controls
+
+    \annotatedlist qtquickcontrols-delegates
+
+    \section2 Indicator Controls
+
+    \annotatedlist qtquickcontrols-indicators
+
+    \section2 Input Controls
+
+    \annotatedlist qtquickcontrols-input
+
+    \section2 Menu Controls
+
+    \annotatedlist qtquickcontrols-menus
+
+    \section2 Navigation Controls
+
+    \annotatedlist qtquickcontrols-navigation
+
+    \section2 Popup Controls
+
+    \annotatedlist qtquickcontrols-popups
+
+    \section2 Separator Controls
+
+    \annotatedlist qtquickcontrols-separators
+
     \section1 Versions
 
     Qt Quick Controls 2.0 was introduced in Qt 5.7. Subsequent minor Qt releases

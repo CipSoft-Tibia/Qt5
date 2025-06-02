@@ -11,6 +11,8 @@
 #include <QtCore/qstringfwd.h>
 #include <QtCore/qarraydata.h> // for QContainerImplHelper
 #include <QtCore/qbytearrayview.h>
+#include <QtCore/qcompare.h>
+#include <QtCore/qcontainerfwd.h>
 
 #include <string>
 #include <string_view>
@@ -172,6 +174,10 @@ public:
     template <typename Pointer, if_compatible_pointer<Pointer> = true>
     constexpr QBasicUtf8StringView(const Pointer &str) noexcept
         : QBasicUtf8StringView(str, QtPrivate::lengthHelperPointer(str)) {}
+
+    template <typename Char, if_compatible_char<Char> = true>
+    constexpr QBasicUtf8StringView(const Char (&str)[]) noexcept
+        : QBasicUtf8StringView(&*str) {} // decay to pointer
 #endif
 
 #ifdef Q_QDOC
@@ -180,7 +186,7 @@ public:
 #else
     template <typename String, if_compatible_qstring_like<String> = true>
     QBasicUtf8StringView(const String &str) noexcept
-        : QBasicUtf8StringView(str.isNull() ? nullptr : str.data(), qsizetype(str.size())) {}
+        : QBasicUtf8StringView{str.begin(), str.size()} {}
 #endif
 
     template <typename Container, if_compatible_container<Container> = true>
@@ -246,6 +252,11 @@ public:
     [[nodiscard]] constexpr QBasicUtf8StringView chopped(qsizetype n) const
     { verify(0, n); return sliced(0, m_size - n); }
 
+    constexpr QBasicUtf8StringView &slice(qsizetype pos)
+    { *this = sliced(pos); return *this; }
+    constexpr QBasicUtf8StringView &slice(qsizetype pos, qsizetype n)
+    { *this = sliced(pos, n); return *this; }
+
     constexpr void truncate(qsizetype n)
     { verify(0, n); m_size = n; }
     constexpr void chop(qsizetype n)
@@ -275,6 +286,8 @@ public:
     [[nodiscard]] Q_IMPLICIT operator std::basic_string_view<storage_type>() const noexcept
     { return std::basic_string_view<storage_type>(data(), size_t(size())); }
 
+    [[nodiscard]] constexpr qsizetype max_size() const noexcept { return maxSize(); }
+
     //
     // Qt compatibility API:
     //
@@ -289,10 +302,27 @@ public:
         return QtPrivate::compareStrings(*this, other, cs);
     }
 
-    [[nodiscard]] int compare(QStringView other,
-                              Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
-    [[nodiscard]] int compare(QLatin1StringView other,
-                              Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
+    // all defined in qstring.h
+    [[nodiscard]] inline int compare(QChar other,
+                                     Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
+    [[nodiscard]] inline int compare(QStringView other,
+                                     Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
+    [[nodiscard]] inline int compare(QLatin1StringView other,
+                                     Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
+    [[nodiscard]] inline int compare(const QByteArray &other,
+                                     Qt::CaseSensitivity cs = Qt::CaseSensitive) const noexcept;
+
+    [[nodiscard]] inline bool equal(QChar other) const noexcept;
+    [[nodiscard]] inline bool equal(QStringView other) const noexcept;
+    [[nodiscard]] inline bool equal(QLatin1StringView other) const noexcept;
+    [[nodiscard]] inline bool equal(const QByteArray &other) const noexcept;
+    // end defined in qstring.h
+
+    [[nodiscard]] static constexpr qsizetype maxSize() noexcept
+    {
+        // -1 to deal with the pointer one-past-the-end;
+        return QtPrivate::MaxAllocSize - 1;
+    }
 
 private:
     [[nodiscard]] static inline int compare(QBasicUtf8StringView lhs, QBasicUtf8StringView rhs) noexcept
@@ -301,28 +331,93 @@ private:
                                          QBasicUtf8StringView<false>(rhs.data(), rhs.size()));
     }
 
-    [[nodiscard]] friend inline bool operator==(QBasicUtf8StringView lhs, QBasicUtf8StringView rhs) noexcept
+    friend bool
+    comparesEqual(const QBasicUtf8StringView &lhs, const QBasicUtf8StringView &rhs) noexcept
     {
         return lhs.size() == rhs.size()
-               && QtPrivate::equalStrings(QBasicUtf8StringView<false>(lhs.data(), lhs.size()),
-                                          QBasicUtf8StringView<false>(rhs.data(), rhs.size()));
+                && QtPrivate::equalStrings(QBasicUtf8StringView<false>(lhs.data(), lhs.size()),
+                                           QBasicUtf8StringView<false>(rhs.data(), rhs.size()));
     }
-    [[nodiscard]] friend inline bool operator!=(QBasicUtf8StringView lhs, QBasicUtf8StringView rhs) noexcept
-    { return !operator==(lhs, rhs); }
+    friend Qt::strong_ordering
+    compareThreeWay(const QBasicUtf8StringView &lhs, const QBasicUtf8StringView &rhs) noexcept
+    {
+        const int res = QBasicUtf8StringView::compare(lhs, rhs);
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QBasicUtf8StringView)
 
-#ifdef __cpp_impl_three_way_comparison
-    [[nodiscard]] friend inline auto operator<=>(QBasicUtf8StringView lhs, QBasicUtf8StringView rhs) noexcept
-    { return QBasicUtf8StringView::compare(lhs, rhs) <=> 0; }
-#else
-    [[nodiscard]] friend inline bool operator<=(QBasicUtf8StringView lhs, QBasicUtf8StringView rhs) noexcept
-    { return QBasicUtf8StringView::compare(lhs, rhs) <= 0; }
-    [[nodiscard]] friend inline bool operator>=(QBasicUtf8StringView lhs, QBasicUtf8StringView rhs) noexcept
-    { return QBasicUtf8StringView::compare(lhs, rhs) >= 0; }
-    [[nodiscard]] friend inline bool operator<(QBasicUtf8StringView lhs, QBasicUtf8StringView rhs) noexcept
-    { return QBasicUtf8StringView::compare(lhs, rhs) < 0; }
-    [[nodiscard]] friend inline bool operator>(QBasicUtf8StringView lhs, QBasicUtf8StringView rhs) noexcept
-    { return QBasicUtf8StringView::compare(lhs, rhs) > 0; }
-#endif
+    friend bool
+    comparesEqual(const QBasicUtf8StringView &lhs, const QLatin1StringView &rhs) noexcept
+    {
+        return lhs.equal(rhs);
+    }
+    friend Qt::strong_ordering
+    compareThreeWay(const QBasicUtf8StringView &lhs, const QLatin1StringView &rhs) noexcept
+    {
+        const int res = lhs.compare(rhs);
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QBasicUtf8StringView, QLatin1StringView)
+
+    friend bool
+    comparesEqual(const QBasicUtf8StringView &lhs, const QStringView &rhs) noexcept
+    { return lhs.equal(rhs); }
+    friend Qt::strong_ordering
+    compareThreeWay(const QBasicUtf8StringView &lhs, const QStringView &rhs) noexcept
+    {
+        const int res = lhs.compare(rhs);
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QBasicUtf8StringView, QStringView)
+
+    friend bool comparesEqual(const QBasicUtf8StringView &lhs, const QChar &rhs) noexcept
+    { return lhs.equal(rhs); }
+    friend Qt::strong_ordering
+    compareThreeWay(const QBasicUtf8StringView &lhs, const QChar &rhs) noexcept
+    {
+        const int res = lhs.compare(rhs);
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QBasicUtf8StringView, QChar)
+    Q_DECLARE_STRONGLY_ORDERED(QBasicUtf8StringView, char16_t)
+
+#if !defined(QT_NO_CAST_FROM_ASCII) && !defined(QT_RESTRICTED_CAST_FROM_ASCII)
+    friend bool
+    comparesEqual(const QBasicUtf8StringView &lhs, const QByteArrayView &rhs) noexcept
+    {
+        return lhs.size() == rhs.size()
+                && QtPrivate::equalStrings(QBasicUtf8StringView<false>(lhs.data(), lhs.size()),
+                                           QBasicUtf8StringView<false>(rhs.data(), rhs.size()));
+    }
+    friend Qt::strong_ordering
+    compareThreeWay(const QBasicUtf8StringView &lhs, const QByteArrayView &rhs) noexcept
+    {
+        const int res = QtPrivate::compareStrings(QBasicUtf8StringView<false>(lhs.data(), lhs.size()),
+                                                  QBasicUtf8StringView<false>(rhs.data(), rhs.size()));
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QBasicUtf8StringView, QByteArrayView, QT_ASCII_CAST_WARN)
+
+    friend bool
+    comparesEqual(const QBasicUtf8StringView &lhs, const QByteArray &rhs) noexcept
+    {
+        return lhs.equal(rhs);
+    }
+    friend Qt::strong_ordering
+    compareThreeWay(const QBasicUtf8StringView &lhs, const QByteArray &rhs) noexcept
+    {
+        const int res = lhs.compare(rhs);
+        return Qt::compareThreeWay(res, 0);
+    }
+    Q_DECLARE_STRONGLY_ORDERED(QBasicUtf8StringView, QByteArray, QT_ASCII_CAST_WARN)
+
+    friend bool comparesEqual(const QBasicUtf8StringView &lhs, const char *rhs) noexcept
+    { return comparesEqual(lhs, QByteArrayView(rhs)); }
+    friend Qt::strong_ordering
+    compareThreeWay(const QBasicUtf8StringView &lhs, const char *rhs) noexcept
+    { return compareThreeWay(lhs, QByteArrayView(rhs)); }
+    Q_DECLARE_STRONGLY_ORDERED(QBasicUtf8StringView, const char *, QT_ASCII_CAST_WARN)
+#endif // !defined(QT_NO_CAST_FROM_ASCII) && !defined(QT_RESTRICTED_CAST_FROM_ASCII)
 
     Q_ALWAYS_INLINE constexpr void verify([[maybe_unused]] qsizetype pos = 0,
                                           [[maybe_unused]] qsizetype n = 1) const
@@ -344,7 +439,7 @@ Q_DECLARE_TYPEINFO_BODY(QBasicUtf8StringView<UseChar8T>, Q_PRIMITIVE_TYPE);
 
 template <typename QStringLike, std::enable_if_t<std::is_same_v<QStringLike, QByteArray>, bool> = true>
 [[nodiscard]] inline q_no_char8_t::QUtf8StringView qToUtf8StringViewIgnoringNull(const QStringLike &s) noexcept
-{ return q_no_char8_t::QUtf8StringView(s.data(), s.size()); }
+{ return q_no_char8_t::QUtf8StringView(s.begin(), s.size()); }
 #endif // Q_QDOC
 
 QT_END_NAMESPACE

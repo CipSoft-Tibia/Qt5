@@ -59,11 +59,11 @@ class Q_XML_EXPORT QDomImplementation
 {
 public:
     QDomImplementation();
-    QDomImplementation(const QDomImplementation&);
+    QDomImplementation(const QDomImplementation &implementation);
     ~QDomImplementation();
-    QDomImplementation& operator= (const QDomImplementation&);
-    bool operator== (const QDomImplementation&) const;
-    bool operator!= (const QDomImplementation&) const;
+    QDomImplementation& operator=(const QDomImplementation &other);
+    bool operator==(const QDomImplementation &other) const;
+    bool operator!=(const QDomImplementation &other) const;
 
     // functions
     bool hasFeature(const QString& feature, const QString& version) const;
@@ -111,10 +111,10 @@ public:
     };
 
     QDomNode();
-    QDomNode(const QDomNode&);
-    QDomNode& operator= (const QDomNode&);
-    bool operator== (const QDomNode&) const;
-    bool operator!= (const QDomNode&) const;
+    QDomNode(const QDomNode &node);
+    QDomNode& operator=(const QDomNode &other);
+    bool operator==(const QDomNode &other) const;
+    bool operator!=(const QDomNode &other) const;
     ~QDomNode();
 
     // DOM functions
@@ -145,7 +145,7 @@ public:
 
     // DOM attributes
     QString nodeValue() const;
-    void setNodeValue(const QString&);
+    void setNodeValue(const QString &value);
     QString prefix() const;
     void setPrefix(const QString& pre);
 
@@ -213,10 +213,10 @@ class Q_XML_EXPORT QDomNodeList
 {
 public:
     QDomNodeList();
-    QDomNodeList(const QDomNodeList&);
-    QDomNodeList& operator= (const QDomNodeList&);
-    bool operator== (const QDomNodeList&) const;
-    bool operator!= (const QDomNodeList&) const;
+    QDomNodeList(const QDomNodeList &nodeList);
+    QDomNodeList& operator=(const QDomNodeList &other);
+    bool operator==(const QDomNodeList &other) const;
+    bool operator!=(const QDomNodeList &other) const;
     ~QDomNodeList();
 
     // DOM functions
@@ -242,8 +242,8 @@ class Q_XML_EXPORT QDomDocumentType : public QDomNode
 {
 public:
     QDomDocumentType();
-    QDomDocumentType(const QDomDocumentType& x);
-    QDomDocumentType& operator= (const QDomDocumentType&);
+    QDomDocumentType(const QDomDocumentType &documentType);
+    QDomDocumentType& operator=(const QDomDocumentType &other);
 
     // DOM read only attributes
     QString name() const;
@@ -286,8 +286,8 @@ public:
     QDomDocument();
     explicit QDomDocument(const QString& name);
     explicit QDomDocument(const QDomDocumentType& doctype);
-    QDomDocument(const QDomDocument& x);
-    QDomDocument& operator= (const QDomDocument&);
+    QDomDocument(const QDomDocument &document);
+    QDomDocument& operator=(const QDomDocument &other);
     ~QDomDocument();
 
     // DOM functions
@@ -341,8 +341,8 @@ public:
     ParseResult setContent(QXmlStreamReader *reader, ParseOptions options = ParseOption::Default);
 
     // Qt extensions
-    QString toString(int = 1) const;
-    QByteArray toByteArray(int = 1) const;
+    QString toString(int indent = 1) const;
+    QByteArray toByteArray(int indent = 1) const;
 
 private:
     ParseResult setContentImpl(const QByteArray &data, ParseOptions options);
@@ -356,10 +356,10 @@ class Q_XML_EXPORT QDomNamedNodeMap
 {
 public:
     QDomNamedNodeMap();
-    QDomNamedNodeMap(const QDomNamedNodeMap&);
-    QDomNamedNodeMap& operator= (const QDomNamedNodeMap&);
-    bool operator== (const QDomNamedNodeMap&) const;
-    bool operator!= (const QDomNamedNodeMap&) const;
+    QDomNamedNodeMap(const QDomNamedNodeMap &namedNodeMap);
+    QDomNamedNodeMap& operator=(const QDomNamedNodeMap &other);
+    bool operator==(const QDomNamedNodeMap &other) const;
+    bool operator!=(const QDomNamedNodeMap &other) const;
     ~QDomNamedNodeMap();
 
     // DOM functions
@@ -393,8 +393,8 @@ class Q_XML_EXPORT QDomDocumentFragment : public QDomNode
 {
 public:
     QDomDocumentFragment();
-    QDomDocumentFragment(const QDomDocumentFragment& x);
-    QDomDocumentFragment& operator= (const QDomDocumentFragment&);
+    QDomDocumentFragment(const QDomDocumentFragment &documentFragment);
+    QDomDocumentFragment& operator=(const QDomDocumentFragment &other);
 
     // Overridden from QDomNode
     inline QDomNode::NodeType nodeType() const { return DocumentFragmentNode; }
@@ -410,8 +410,8 @@ class Q_XML_EXPORT QDomCharacterData : public QDomNode
 {
 public:
     QDomCharacterData();
-    QDomCharacterData(const QDomCharacterData& x);
-    QDomCharacterData& operator= (const QDomCharacterData&);
+    QDomCharacterData(const QDomCharacterData &characterData);
+    QDomCharacterData& operator=(const QDomCharacterData &other);
 
     // DOM functions
     QString substringData(unsigned long offset, unsigned long count);
@@ -425,7 +425,7 @@ public:
 
     // DOM attributes
     QString data() const;
-    void setData(const QString&);
+    void setData(const QString &data);
 
     // Overridden from QDomNode
     QDomNode::NodeType nodeType() const;
@@ -443,8 +443,8 @@ class Q_XML_EXPORT QDomAttr : public QDomNode
 {
 public:
     QDomAttr();
-    QDomAttr(const QDomAttr& x);
-    QDomAttr& operator= (const QDomAttr&);
+    QDomAttr(const QDomAttr &attr);
+    QDomAttr& operator=(const QDomAttr &other);
 
     // DOM read only attributes
     QString name() const;
@@ -453,7 +453,7 @@ public:
 
     // DOM attributes
     QString value() const;
-    void setValue(const QString&);
+    void setValue(const QString &value);
 
     // Overridden from QDomNode
     inline QDomNode::NodeType nodeType() const { return AttributeNode; }
@@ -470,8 +470,8 @@ class Q_XML_EXPORT QDomElement : public QDomNode
 {
 public:
     QDomElement();
-    QDomElement(const QDomElement& x);
-    QDomElement& operator= (const QDomElement&);
+    QDomElement(const QDomElement &element);
+    QDomElement& operator=(const QDomElement &other);
 
     // DOM functions
     QString attribute(const QString& name, const QString& defValue = QString() ) const;
@@ -528,8 +528,8 @@ class Q_XML_EXPORT QDomText : public QDomCharacterData
 {
 public:
     QDomText();
-    QDomText(const QDomText& x);
-    QDomText& operator= (const QDomText&);
+    QDomText(const QDomText &text);
+    QDomText& operator=(const QDomText &other);
 
     // DOM functions
     QDomText splitText(int offset);
@@ -549,8 +549,8 @@ class Q_XML_EXPORT QDomComment : public QDomCharacterData
 {
 public:
     QDomComment();
-    QDomComment(const QDomComment& x);
-    QDomComment& operator= (const QDomComment&);
+    QDomComment(const QDomComment &comment);
+    QDomComment& operator=(const QDomComment &other);
 
     // Overridden from QDomCharacterData
     inline QDomNode::NodeType nodeType() const { return CommentNode; }
@@ -566,8 +566,8 @@ class Q_XML_EXPORT QDomCDATASection : public QDomText
 {
 public:
     QDomCDATASection();
-    QDomCDATASection(const QDomCDATASection& x);
-    QDomCDATASection& operator= (const QDomCDATASection&);
+    QDomCDATASection(const QDomCDATASection &cdataSection);
+    QDomCDATASection& operator=(const QDomCDATASection &other);
 
     // Overridden from QDomText
     inline QDomNode::NodeType nodeType() const { return CDATASectionNode; }
@@ -583,8 +583,8 @@ class Q_XML_EXPORT QDomNotation : public QDomNode
 {
 public:
     QDomNotation();
-    QDomNotation(const QDomNotation& x);
-    QDomNotation& operator= (const QDomNotation&);
+    QDomNotation(const QDomNotation &notation);
+    QDomNotation& operator=(const QDomNotation &other);
 
     // DOM read only attributes
     QString publicId() const;
@@ -604,8 +604,8 @@ class Q_XML_EXPORT QDomEntity : public QDomNode
 {
 public:
     QDomEntity();
-    QDomEntity(const QDomEntity& x);
-    QDomEntity& operator= (const QDomEntity&);
+    QDomEntity(const QDomEntity &entity);
+    QDomEntity& operator=(const QDomEntity &other);
 
     // DOM read only attributes
     QString publicId() const;
@@ -625,8 +625,8 @@ class Q_XML_EXPORT QDomEntityReference : public QDomNode
 {
 public:
     QDomEntityReference();
-    QDomEntityReference(const QDomEntityReference& x);
-    QDomEntityReference& operator= (const QDomEntityReference&);
+    QDomEntityReference(const QDomEntityReference &entityReference);
+    QDomEntityReference& operator=(const QDomEntityReference &other);
 
     // Overridden from QDomNode
     inline QDomNode::NodeType nodeType() const { return EntityReferenceNode; }
@@ -642,15 +642,15 @@ class Q_XML_EXPORT QDomProcessingInstruction : public QDomNode
 {
 public:
     QDomProcessingInstruction();
-    QDomProcessingInstruction(const QDomProcessingInstruction& x);
-    QDomProcessingInstruction& operator= (const QDomProcessingInstruction&);
+    QDomProcessingInstruction(const QDomProcessingInstruction &processingInstruction);
+    QDomProcessingInstruction& operator=(const QDomProcessingInstruction &other);
 
     // DOM read only attributes
     QString target() const;
 
     // DOM attributes
     QString data() const;
-    void setData(const QString& d);
+    void setData(const QString &data);
 
     // Overridden from QDomNode
     inline QDomNode::NodeType nodeType() const { return ProcessingInstructionNode; }
@@ -663,7 +663,7 @@ private:
 };
 
 
-Q_XML_EXPORT QTextStream& operator<<(QTextStream&, const QDomNode&);
+Q_XML_EXPORT QTextStream& operator<<(QTextStream& stream, const QDomNode& node);
 
 QT_END_NAMESPACE
 

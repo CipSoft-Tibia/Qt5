@@ -352,7 +352,7 @@ QByteArray QImageWriter::format() const
     otherwise left unchanged.
 
     If the device is not already open, QImageWriter will attempt to
-    open the device in \l QIODevice::WriteOnly mode by calling
+    open the device in \l QIODeviceBase::WriteOnly mode by calling
     open(). Note that this does not work for certain devices, such as
     QProcess, QTcpSocket and QUdpSocket, where more logic is required
     to open the device.
@@ -588,8 +588,6 @@ QImageIOHandler::Transformations QImageWriter::transformation() const
 }
 
 /*!
-    \since 4.1
-
     Sets the image text associated with the key \a key to
     \a text. This is useful for storing copyright information
     or other information about the image. Example:
@@ -710,8 +708,6 @@ QString QImageWriter::errorString() const
 }
 
 /*!
-    \since 4.2
-
     Returns \c true if the writer supports \a option; otherwise returns
     false.
 

@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "quiche/quic/core/crypto/quic_crypto_client_config.h"
-#include "quiche/quic/core/http/quic_client_push_promise_index.h"
 #include "quiche/quic/core/http/quic_spdy_client_session.h"
 #include "quiche/quic/core/quic_config.h"
 #include "quiche/quic/core/quic_connection.h"
@@ -21,6 +20,7 @@
 #include "quiche/quic/platform/api/quic_socket_address.h"
 #include "quiche/quic/test_tools/crypto_test_utils.h"
 #include "quiche/quic/test_tools/mock_connection_id_generator.h"
+#include "quiche/quic/test_tools/quic_connection_peer.h"
 #include "quiche/quic/test_tools/quic_test_utils.h"
 
 namespace quic {
@@ -54,7 +54,7 @@ class FirstFlightExtractor : public DelegatedPacketWriter::Delegate {
             std::make_unique<QuicCryptoClientConfig>(
                 crypto_test_utils::ProofVerifierForTesting())) {}
 
-  void GenerateFirstFlight() {
+  void GenerateFirstFlight(QuicEcnCodepoint ecn = ECN_NOT_ECT) {
     crypto_config_->set_alpn(AlpnForVersion(version_));
     connection_ = new QuicConnection(
         server_connection_id_,
@@ -63,11 +63,15 @@ class FirstFlightExtractor : public DelegatedPacketWriter::Delegate {
         &alarm_factory_, &writer_,
         /*owns_writer=*/false, Perspective::IS_CLIENT,
         ParsedQuicVersionVector{version_}, connection_id_generator_);
+    if (ecn != ECN_NOT_ECT) {
+      QuicConnectionPeer::DisableEcnCodepointValidation(connection_);
+      connection_->set_ecn_codepoint(ecn);
+    }
     connection_->set_client_connection_id(client_connection_id_);
     session_ = std::make_unique<QuicSpdyClientSession>(
         config_, ParsedQuicVersionVector{version_},
         connection_,  // session_ takes ownership of connection_ here.
-        TestServerId(), crypto_config_.get(), &push_promise_index_);
+        TestServerId(), crypto_config_.get());
     session_->Initialize();
     session_->CryptoConnect();
   }
@@ -106,7 +110,6 @@ class FirstFlightExtractor : public DelegatedPacketWriter::Delegate {
   DelegatedPacketWriter writer_;
   QuicConfig config_;
   std::unique_ptr<QuicCryptoClientConfig> crypto_config_;
-  QuicClientPushPromiseIndex push_promise_index_;
   QuicConnection* connection_;  // Owned by session_.
   std::unique_ptr<QuicSpdyClientSession> session_;
   std::vector<std::unique_ptr<QuicReceivedPacket>> packets_;
@@ -117,12 +120,23 @@ std::vector<std::unique_ptr<QuicReceivedPacket>> GetFirstFlightOfPackets(
     const ParsedQuicVersion& version, const QuicConfig& config,
     const QuicConnectionId& server_connection_id,
     const QuicConnectionId& client_connection_id,
-    std::unique_ptr<QuicCryptoClientConfig> crypto_config) {
+    std::unique_ptr<QuicCryptoClientConfig> crypto_config,
+    QuicEcnCodepoint ecn) {
   FirstFlightExtractor first_flight_extractor(
       version, config, server_connection_id, client_connection_id,
       std::move(crypto_config));
-  first_flight_extractor.GenerateFirstFlight();
+  first_flight_extractor.GenerateFirstFlight(ecn);
   return first_flight_extractor.ConsumePackets();
+}
+
+std::vector<std::unique_ptr<QuicReceivedPacket>> GetFirstFlightOfPackets(
+    const ParsedQuicVersion& version, const QuicConfig& config,
+    const QuicConnectionId& server_connection_id,
+    const QuicConnectionId& client_connection_id,
+    std::unique_ptr<QuicCryptoClientConfig> crypto_config) {
+  return GetFirstFlightOfPackets(version, config, server_connection_id,
+                                 client_connection_id, std::move(crypto_config),
+                                 ECN_NOT_ECT);
 }
 
 std::vector<std::unique_ptr<QuicReceivedPacket>> GetFirstFlightOfPackets(

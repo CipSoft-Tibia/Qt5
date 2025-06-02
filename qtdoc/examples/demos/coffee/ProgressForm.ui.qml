@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Effects
 
 Item {
@@ -92,7 +92,7 @@ Item {
                 color: Colors.currentTheme.cardColor
                 Text {
                     id: caption
-                    text: "Your Coffee is preparing, Please Wait!"
+                    text: "Your coffee is being prepared..."
                     color: Colors.currentTheme.textColor
                     font.pixelSize: 18
                     font.weight: 600

@@ -150,6 +150,7 @@ void QJsonRpcProtocol::sendRequest(const Request &request,
             d->sendMessage(createRequest(request));
             return;
         }
+        break;
     default:
         break;
     }

@@ -139,7 +139,8 @@ static QString mocHeader(const QMetaObject *mo, const QStringList &name,
     formatCppMethods(str, mo, QMetaMethod::Slot);
     str << "};\n";
 
-    for (int n = name.size() - 1; n >= 0 ; --n)
+    // The final part of "name" is the class name. It shouldn't be closed as a namespace
+    for (int n = name.size() - 2; n >= 0; --n)
         str << "} // namespace " << name.at(n) << '\n';
 
     return result;

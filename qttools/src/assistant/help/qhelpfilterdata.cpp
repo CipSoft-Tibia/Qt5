@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qhelpfilterdata.h"
-#include <QtCore/QVersionNumber>
+
+#include <QtCore/qversionnumber.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -14,8 +15,7 @@ public:
         : QSharedData(other)
         , m_components(other.m_components)
         , m_versions(other.m_versions)
-    { }
-    ~QHelpFilterDataPrivate() = default;
+    {}
 
     QStringList m_components;
     QList<QVersionNumber> m_versions;
@@ -39,10 +39,7 @@ public:
 /*!
     Constructs the empty filter.
 */
-QHelpFilterData::QHelpFilterData()
-    : d(new QHelpFilterDataPrivate)
-{
-}
+QHelpFilterData::QHelpFilterData() : d(new QHelpFilterDataPrivate) { }
 
 /*!
     Constructs a copy of \a other.
@@ -64,7 +61,6 @@ QHelpFilterData::~QHelpFilterData() = default;
 */
 QHelpFilterData &QHelpFilterData::operator=(const QHelpFilterData &) = default;
 
-
 /*!
     Move-assigns \a other to this QHelpFilterData instance.
 */
@@ -79,8 +75,7 @@ QHelpFilterData &QHelpFilterData::operator=(QHelpFilterData &&) = default;
 
 bool QHelpFilterData::operator==(const QHelpFilterData &other) const
 {
-    return (d->m_components == other.d->m_components &&
-            d->m_versions == other.d->m_versions);
+    return (d->m_components == other.d->m_components && d->m_versions == other.d->m_versions);
 }
 
 /*!

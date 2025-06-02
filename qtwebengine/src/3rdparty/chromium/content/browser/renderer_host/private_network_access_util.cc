@@ -8,6 +8,7 @@
 #include "base/feature_list.h"
 #include "build/chromeos_buildflags.h"
 #include "content/browser/renderer_host/policy_container_host.h"
+#include "content/common/features.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
@@ -48,14 +49,14 @@ FeatureState FeatureStateForContext(RequestContext request_context) {
       }
 
       return FeatureState::kEnabled;
-    case RequestContext::kIframe:
+    case RequestContext::kNavigation:
       if (!base::FeatureList::IsEnabled(
-              features::kPrivateNetworkAccessForIframes)) {
+              features::kPrivateNetworkAccessForNavigations)) {
         return FeatureState::kDisabled;
       }
 
       if (base::FeatureList::IsEnabled(
-              features::kPrivateNetworkAccessForIframesWarningOnly)) {
+              features::kPrivateNetworkAccessForNavigationsWarningOnly)) {
         return FeatureState::kWarningOnly;
       }
 
@@ -230,12 +231,21 @@ AddressSpace CalculateIPAddressSpace(
     ContentBrowserClient* client) {
   // Determine the IPAddressSpace, based on the IP address and the response
   // headers received.
-  absl::optional<network::CalculateClientAddressSpaceParams> params =
-      absl::nullopt;
+  std::optional<network::CalculateClientAddressSpaceParams> params =
+      std::nullopt;
   if (response_head) {
-    params.emplace(response_head->url_list_via_service_worker,
-                   response_head->parsed_headers,
-                   response_head->remote_endpoint);
+    std::optional<network::mojom::IPAddressSpace> client_address_space;
+    if (response_head->was_fetched_via_service_worker &&
+        response_head->client_address_space !=
+            network::mojom::IPAddressSpace::kUnknown) {
+      client_address_space = response_head->client_address_space;
+    }
+    params.emplace<network::CalculateClientAddressSpaceParams>({
+        .client_address_space_inherited_from_service_worker =
+            client_address_space,
+        .parsed_headers = &response_head->parsed_headers,
+        .remote_endpoint = &response_head->remote_endpoint,
+    });
   }
   AddressSpace computed_ip_address_space =
       network::CalculateClientAddressSpace(url, params);
@@ -245,6 +255,18 @@ AddressSpace CalculateIPAddressSpace(
   }
 
   return IPAddressSpaceForSpecialScheme(url, client);
+}
+
+network::mojom::PrivateNetworkRequestPolicy OverrideBlockWithWarn(
+    network::mojom::PrivateNetworkRequestPolicy policy) {
+  switch (policy) {
+    case network::mojom::PrivateNetworkRequestPolicy::kWarn:
+      return network::mojom::PrivateNetworkRequestPolicy::kBlock;
+    case network::mojom::PrivateNetworkRequestPolicy::kPreflightWarn:
+      return network::mojom::PrivateNetworkRequestPolicy::kPreflightBlock;
+    default:
+      return policy;
+  }
 }
 
 }  // namespace content

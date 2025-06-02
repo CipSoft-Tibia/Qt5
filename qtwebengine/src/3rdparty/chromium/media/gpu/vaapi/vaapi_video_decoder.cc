@@ -67,11 +67,7 @@ constexpr size_t kTimestampCacheSize = 128;
 absl::optional<VideoPixelFormat> GetPixelFormatForBitDepth(uint8_t bit_depth) {
   constexpr auto kSupportedBitDepthAndGfxFormats = base::MakeFixedFlatMap<
       uint8_t, gfx::BufferFormat>({
-#if BUILDFLAG(IS_OZONE)
     {8u, gfx::BufferFormat::YUV_420_BIPLANAR}, {10u, gfx::BufferFormat::P010},
-#else
-    {8u, gfx::BufferFormat::RGBX_8888},
-#endif  // BUILDFLAG(IS_OZONE)
   });
   if (!base::Contains(kSupportedBitDepthAndGfxFormats, bit_depth)) {
     VLOGF(1) << "Unsupported bit depth: " << base::strict_cast<int>(bit_depth);
@@ -209,6 +205,7 @@ void VaapiVideoDecoder::Initialize(const VideoDecoderConfig& config,
     // Notify |decoder_delegate_| of an imminent VAContextID destruction, so it
     // can destroy any internal structures making use of it.
     decoder_delegate_->OnVAContextDestructionSoon();
+    decoder_delegate_ = nullptr;
 
     decoder_ = nullptr;
     DCHECK(vaapi_wrapper_);
@@ -218,7 +215,6 @@ void VaapiVideoDecoder::Initialize(const VideoDecoderConfig& config,
 
     DCHECK(vaapi_wrapper_->HasOneRef());
     vaapi_wrapper_ = nullptr;
-    decoder_delegate_ = nullptr;
 
     // |cdm_context_ref_| is reset after |decoder_| because we passed
     // |cdm_context_ref_->GetCdmContext()| when creating the |decoder_|, so we
@@ -434,16 +430,10 @@ void VaapiVideoDecoder::HandleDecodeTask() {
       SetState(State::kChangingResolution);
       client_->PrepareChangeResolution();
       break;
-    case AcceleratedVideoDecoder::kColorSpaceChange:
-      NOTIMPLEMENTED_LOG_ONCE();
-      break;
     case AcceleratedVideoDecoder::kRanOutOfSurfaces:
       // No more surfaces to decode into available, wait until client returns
       // video frames to the frame pool.
       SetState(State::kWaitingForOutput);
-      break;
-    case AcceleratedVideoDecoder::kNeedContextUpdate:
-      SetErrorState("context updates not supported");
       break;
     case AcceleratedVideoDecoder::kDecodeError:
       UMA_HISTOGRAM_BOOLEAN("Media.VaapiVideoDecoder.DecodeError", true);
@@ -455,8 +445,34 @@ void VaapiVideoDecoder::HandleDecodeTask() {
       SetState(State::kWaitingForProtected);
       // If we have lost our protected HW session, it should be recoverable, so
       // indicate that we have lost our decoder state so it can be reloaded.
-      if (decoder_delegate_->HasInitiatedProtectedRecovery())
+      if (decoder_delegate_->HasInitiatedProtectedRecovery()) {
+#if BUILDFLAG(IS_CHROMEOS_ASH)
+        // We only do the VAContext recreation for Chrome playback because there
+        // is no mechanism in ARC to re-seek so we would end up using invalid
+        // reference frames.
+        CHECK(cdm_context_ref_);
+        if (!cdm_context_ref_->GetCdmContext()
+                 ->GetChromeOsCdmContext()
+                 ->UsingArcCdm()) {
+          // The VA-API requires surfaces to outlive the contexts using them.
+          // Fortunately, if we got here, any context should have already been
+          // destroyed.
+          CHECK(!!vaapi_wrapper_);
+          CHECK(!vaapi_wrapper_->HasContext());
+          allocated_va_surfaces_.clear();
+          const gfx::Size decoder_pic_size = decoder_->GetPicSize();
+          if (decoder_pic_size.IsEmpty()) {
+            SetErrorState("|decoder_| returned an empty picture size");
+            return;
+          }
+          if (!vaapi_wrapper_->CreateContext(decoder_pic_size)) {
+            SetErrorState("failed creating VAContext");
+            return;
+          }
+        }
+#endif  // BUILDFLAG(IS_CHROMEOS_ASH)
         waiting_cb_.Run(WaitingReason::kDecoderStateLost);
+      }
       break;
   }
 }
@@ -495,14 +511,8 @@ scoped_refptr<VASurface> VaapiVideoDecoder::CreateSurface() {
     return nullptr;
   }
 
-  // |frame|s coming from ARC++ are not GpuMemoryBuffer-backed, but they have
-  // DmaBufs whose fd numbers are consistent along the lifetime of the VA
-  // surfaces they back.
-  DCHECK(frame->GetGpuMemoryBuffer() || frame->HasDmaBufs());
-  const gfx::GpuMemoryBufferId frame_id =
-      frame->GetGpuMemoryBuffer()
-          ? frame->GetGpuMemoryBuffer()->GetId()
-          : gfx::GpuMemoryBufferId(frame->DmabufFds()[0].get());
+  const gfx::GpuMemoryBufferId frame_id = GetSharedMemoryId(*frame);
+  DCHECK(frame_id.is_valid());
 
   scoped_refptr<VASurface> va_surface;
   if (!base::Contains(allocated_va_surfaces_, frame_id)) {
@@ -861,12 +871,13 @@ VaapiVideoDecoder::AllocateCustomFrameProxy(
     const gfx::Size& natural_size,
     bool use_protected,
     bool use_linear_buffers,
+    bool needs_detiling,
     base::TimeDelta timestamp) {
   if (!decoder)
     return CroStatus::Codes::kFailedToCreateVideoFrame;
-  return decoder->AllocateCustomFrame(format, coded_size, visible_rect,
-                                      natural_size, use_protected,
-                                      use_linear_buffers, timestamp);
+  return decoder->AllocateCustomFrame(
+      format, coded_size, visible_rect, natural_size, use_protected,
+      use_linear_buffers, needs_detiling, timestamp);
 }
 
 CroStatus::Or<scoped_refptr<VideoFrame>> VaapiVideoDecoder::AllocateCustomFrame(
@@ -876,11 +887,13 @@ CroStatus::Or<scoped_refptr<VideoFrame>> VaapiVideoDecoder::AllocateCustomFrame(
     const gfx::Size& natural_size,
     bool use_protected,
     bool use_linear_buffers,
+    bool needs_detiling,
     base::TimeDelta timestamp) {
   DVLOGF(2);
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(state_ == State::kChangingResolution || state_ == State::kDecoding);
   DCHECK(!use_linear_buffers);
+  DCHECK(!needs_detiling);
 
   scoped_refptr<VASurface> surface;
   switch (format) {
@@ -931,24 +944,6 @@ CroStatus::Or<scoped_refptr<VideoFrame>> VaapiVideoDecoder::AllocateCustomFrame(
 
   if (!frame)
     return CroStatus::Codes::kFailedToCreateVideoFrame;
-
-  if (format == PIXEL_FORMAT_NV12) {
-#if BUILDFLAG(ENABLE_VULKAN)
-    frame->set_ycbcr_info(gpu::VulkanYCbCrInfo(
-        /*image_format=*/VK_FORMAT_G8_B8R8_2PLANE_420_UNORM,
-        /*external_format=*/0,
-        /*suggested_ycbcr_model=*/VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709,
-        /*suggested_ycbcr_range=*/VK_SAMPLER_YCBCR_RANGE_ITU_NARROW,
-        /*suggested_xchroma_offset=*/VK_CHROMA_LOCATION_COSITED_EVEN,
-        /*suggested_ychroma_offset=*/VK_CHROMA_LOCATION_COSITED_EVEN,
-        /*format_features=*/VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
-            VK_FORMAT_FEATURE_TRANSFER_SRC_BIT |
-            VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
-            VK_FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT |
-            VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT |
-            VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT));
-#endif
-  }
 
   allocated_va_surfaces_[handle_id] = surface;
 

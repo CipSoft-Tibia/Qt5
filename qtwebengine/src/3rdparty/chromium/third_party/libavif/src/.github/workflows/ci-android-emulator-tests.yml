@@ -1,4 +1,4 @@
-name: CI
+name: CI Android Emulator Tests
 on:
   push:
     paths:
@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# Cancel the workflow if a new one is triggered from the same PR, branch, or tag, except on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   build-and-run-android-jni-tests:
     runs-on: macos-latest
@@ -18,31 +23,41 @@ jobs:
 
     steps:
       - name: Checkout the repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
       - name: Download and Setup the Android NDK
-        uses: nttld/setup-ndk@v1
+        uses: nttld/setup-ndk@6a7e9c5494a25c4842ca1011f710300132eacd94 # v1.4.2
         id: setup-ndk
         with:
           # r25c is the same as 25.2.9519653.
           ndk-version: r25c
           add-to-path: false
       - name: Setup ninja
-        uses: seanmiddleditch/gha-setup-ninja@v3
+        uses: seanmiddleditch/gha-setup-ninja@8b297075da4cd2a5f1fd21fe011b499edf06e9d2 # v4
       - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v1.13
+        uses: jwlawson/actions-setup-cmake@d06b37b47cfd043ec794ffa3e40e0b6b5858a7ec # v1.14.2
         with:
-          # This is the minimum cmake version needed to build libgav1.
-          cmake-version: '3.7.x'
-      - name: Build libgav1 with the Android NDK
+          cmake-version: "3.19.x"
+      - name: Setup python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c # v5.0.0
+        with:
+          python-version: '3.x'
+      - name: Setup meson
+        run: pip install meson
+      - name: Setup nasm
+        uses: ilammy/setup-nasm@13cbeb366c45c4379d3478cdcbadd8295feb5028 # v1.5.1
+      - name: Build dav1d with the Android NDK
         working-directory: ext
-        run: bash libgav1_android.sh ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: bash dav1d_android.sh ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Build libyuv with the Android NDK
+        working-directory: ext
+        run: bash libyuv_android.sh ${{ steps.setup-ndk.outputs.ndk-path }}
       - name: Setup JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@387ac29b308b003ca37ba93a6cab5eb57c8f5f93 # v4.0.0
         with:
           java-version: '11'
           distribution: 'zulu'
       - name: Run Instrumented Tests on the Emulator
-        uses: reactivecircus/android-emulator-runner@v2.28.0
+        uses: reactivecircus/android-emulator-runner@99a4aac18b4df9b3af66c4a1f04c1f23fa10c270 # v2.29.0
         with:
           working-directory: android_jni
           api-level: 30

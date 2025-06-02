@@ -39,6 +39,10 @@
 #         Relevant for GL_OVR_multiview which an OpenGL GLSL vertex shader can only use if num_views is
 #         declared in the shader. Not used for Vulkan (SPIR-V) and D3D12 (HLSL 6.1+), but should be set
 #         regardless whenever GLSL is enabled for a multiview vertex shader.
+#     Specify MULTIVIEW (and no VIEW_COUNT) to automatically generate non-multiview and multiview (view count 2)
+#         versions. For the multiview versions the shading languages and versions are set automatically.
+#         Thus this is a simple drop-in option for existing qt_add_shaders() calls to get multiview versions
+#         generated. The additional, multiview qsb files will have a suffix of .mv2qsb.
 #
 # The actual file name in the resource system is either :/PREFIX/FILES[i]-BASE+".qsb" or :/PREFIX/OUTPUTS[i]
 #
@@ -65,11 +69,13 @@
 function(_qt_internal_add_shaders_impl target resourcename)
     cmake_parse_arguments(
         arg
-        "BATCHABLE;PRECOMPILE;PERTARGETCOMPILE;NOGLSL;NOHLSL;NOMSL;DEBUGINFO;OPTIMIZED;SILENT;QUIET;TESSELLATION;_QT_INTERNAL"
+        "BATCHABLE;PRECOMPILE;PERTARGETCOMPILE;NOGLSL;NOHLSL;NOMSL;DEBUGINFO;OPTIMIZED;SILENT;QUIET;TESSELLATION;MULTIVIEW;_QT_INTERNAL"
         "PREFIX;BASE;GLSL;HLSL;MSL;OUTPUT_TARGETS;TESSELLATION_VERTEX_COUNT;TESSELLATION_MODE;ZORDER_LOC;VIEW_COUNT"
         "FILES;OUTPUTS;DEFINES"
         ${ARGN}
     )
+
+    _qt_internal_check_depfile_support(has_depfile_support)
 
     math(EXPR file_index "0")
     foreach(file_and_replacements IN LISTS arg_FILES)
@@ -142,63 +148,77 @@ function(_qt_internal_add_shaders_impl target resourcename)
             list(APPEND qsb_args "${metal_lang_versions}")
         endif()
 
-        if (arg_BATCHABLE)
-            list(APPEND qsb_args "-b")
-        endif()
-
-        if (arg_PRECOMPILE)
-            if (WIN32 AND NOT arg_NOHLSL)
-                list(APPEND qsb_args "-c")
-            endif()
-        endif()
-
-        if (arg_PERTARGETCOMPILE)
-            list(APPEND qsb_args "-p")
-        endif()
-
-        if (arg_DEBUGINFO)
-            list(APPEND qsb_args "-g")
-        endif()
-
-        if (arg_OPTIMIZED)
-            list(APPEND qsb_args "-O")
-        endif()
-
-        if (arg_TESSELLATION)
-            list(APPEND qsb_args "--msltess")
-        endif()
-
-        if (arg_TESSELLATION_VERTEX_COUNT)
-            list(APPEND qsb_args "--tess-vertex-count")
-            list(APPEND qsb_args "${arg_TESSELLATION_VERTEX_COUNT}")
-        endif()
-
-        if (arg_TESSELLATION_MODE)
-            list(APPEND qsb_args "--tess-mode")
-            list(APPEND qsb_args "${arg_TESSELLATION_MODE}")
-        endif()
-
-        if (arg_ZORDER_LOC)
-            list(APPEND qsb_args "--zorder-loc")
-            list(APPEND qsb_args "${arg_ZORDER_LOC}")
-        endif()
-
         if (arg_VIEW_COUNT)
             list(APPEND qsb_args "--view-count")
             list(APPEND qsb_args "${arg_VIEW_COUNT}")
         endif()
 
+        # Values that are reused in the optional extra run for automatic
+        # multiview variant generation go to qsb_common_args.
+        set(qsb_common_args "")
+
+        if (arg_BATCHABLE)
+            list(APPEND qsb_common_args "-b")
+        endif()
+
+        if (arg_PRECOMPILE)
+            if (WIN32 AND NOT arg_NOHLSL)
+                list(APPEND qsb_common_args "-c")
+            endif()
+        endif()
+
+        if (arg_PERTARGETCOMPILE)
+            list(APPEND qsb_common_args "-p")
+        endif()
+
+        if (arg_DEBUGINFO)
+            list(APPEND qsb_common_args "-g")
+        endif()
+
+        if (arg_OPTIMIZED)
+            list(APPEND qsb_common_args "-O")
+        endif()
+
+        if (arg_TESSELLATION)
+            list(APPEND qsb_common_args "--msltess")
+        endif()
+
+        if (arg_TESSELLATION_VERTEX_COUNT)
+            list(APPEND qsb_common_args "--tess-vertex-count")
+            list(APPEND qsb_common_args "${arg_TESSELLATION_VERTEX_COUNT}")
+        endif()
+
+        if (arg_TESSELLATION_MODE)
+            list(APPEND qsb_common_args "--tess-mode")
+            list(APPEND qsb_common_args "${arg_TESSELLATION_MODE}")
+        endif()
+
+        if (arg_ZORDER_LOC)
+            list(APPEND qsb_common_args "--zorder-loc")
+            list(APPEND qsb_common_args "${arg_ZORDER_LOC}")
+        endif()
+
         if (arg_SILENT)
-            list(APPEND qsb_args "-s")
+            list(APPEND qsb_common_args "-s")
         endif()
 
         foreach(qsb_def IN LISTS arg_DEFINES)
-            list(APPEND qsb_args "-D")
-            list(APPEND qsb_args "${qsb_def}")
+            list(APPEND qsb_common_args "-D")
+            list(APPEND qsb_common_args "${qsb_def}")
         endforeach()
+
+        list(APPEND qsb_args "${qsb_common_args}")
 
         list(APPEND qsb_args "-o")
         list(APPEND qsb_args "${qsb_result}")
+
+        if(has_depfile_support)
+            set(depfile "${qsb_result}.d")
+            list(APPEND qsb_args "--depfile" "${depfile}")
+            set(depfile_extra_args DEPFILE "${depfile}")
+        else()
+            set(depfile_extra_args "")
+        endif()
 
         list(APPEND qsb_args "${file_absolute}")
 
@@ -217,6 +237,7 @@ function(_qt_internal_add_shaders_impl target resourcename)
                 DEPENDS
                     "${file_absolute}"
                     ${QT_CMAKE_EXPORT_NAMESPACE}::qsb
+                ${depfile_extra_args}
                 VERBATIM
             )
         else()
@@ -228,12 +249,56 @@ function(_qt_internal_add_shaders_impl target resourcename)
                 DEPENDS
                     "${file_absolute}"
                     ${QT_CMAKE_EXPORT_NAMESPACE}::qsb
+                ${depfile_extra_args}
                 VERBATIM
             )
         endif()
 
         list(APPEND qsb_files "${qsb_result}")
         set_source_files_properties("${qsb_result}" PROPERTIES QT_RESOURCE_ALIAS "${output_file}")
+
+        if (arg_MULTIVIEW)
+            # Reuse qsb_common_args, but use fixed shading language targets and view count.
+            # Add a pre-defined suffix to the output filename.
+            set(qsb_multiview2_result "${CMAKE_CURRENT_BINARY_DIR}/.qsb/${output_file}.mv2qsb")
+            set(qsb_multiview2_args "")
+            # GL_OVR_multiview works best starting with these GLSL versions
+            list(APPEND qsb_multiview2_args "--glsl")
+            list(APPEND qsb_multiview2_args "330,300es")
+            # view instancing needs Shader Model 6.1
+            list(APPEND qsb_multiview2_args "--hlsl")
+            list(APPEND qsb_multiview2_args "61")
+            list(APPEND qsb_multiview2_args "--msl")
+            list(APPEND qsb_multiview2_args "21")
+            list(APPEND qsb_multiview2_args "--view-count")
+            list(APPEND qsb_multiview2_args "2")
+            list(APPEND qsb_multiview2_args "${qsb_common_args}")
+            list(APPEND qsb_multiview2_args "-o")
+            list(APPEND qsb_multiview2_args "${qsb_multiview2_result}")
+            list(APPEND qsb_multiview2_args "${file_absolute}")
+
+            if(has_depfile_support)
+                set(depfile "${qsb_multiview2_result}.d")
+                list(APPEND qsb_multiview2_args "--depfile" "${depfile}")
+                set(depfile_extra_args DEPFILE "${depfile}")
+            else()
+                set(depfile_extra_args "")
+            endif()
+
+            add_custom_command(
+                OUTPUT
+                    ${qsb_multiview2_result}
+                COMMAND
+                    ${QT_CMAKE_EXPORT_NAMESPACE}::qsb ${qsb_multiview2_args}
+                DEPENDS
+                    "${file_absolute}"
+                    ${QT_CMAKE_EXPORT_NAMESPACE}::qsb
+                ${depfile_extra_args}
+                VERBATIM
+            )
+            list(APPEND qsb_files "${qsb_multiview2_result}")
+            set_source_files_properties("${qsb_multiview2_result}" PROPERTIES QT_RESOURCE_ALIAS "${output_file}.mv2qsb")
+        endif()
 
         math(EXPR file_index "${file_index}+1")
     endforeach()

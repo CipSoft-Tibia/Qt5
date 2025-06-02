@@ -94,6 +94,64 @@ TEST(OptimizationGuideFeaturesTest,
   EXPECT_TRUE(features::ShouldExecutePageEntitiesModelOnPageContent("en-US"));
 }
 
+TEST(OptimizationGuideFeaturesTest, ModelQualityLoggingDefault) {
+  base::test::ScopedFeatureList scoped_feature_list;
+
+  scoped_feature_list.InitAndEnableFeature(features::kModelQualityLogging);
+
+  EXPECT_TRUE(features::IsModelQualityLoggingEnabled());
+
+  // Compose, wallpaper search and tab organization should be enabled by
+  // default whereas test feature should be disabled.
+  EXPECT_TRUE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_COMPOSE));
+  EXPECT_TRUE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_TAB_ORGANIZATION));
+  EXPECT_TRUE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_WALLPAPER_SEARCH));
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_TEST));
+}
+
+TEST(OptimizationGuideFeaturesTest, ComposeModelQualityLoggingDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      features::kModelQualityLogging,
+      {{"model_execution_feature_compose", "false"},
+       {"model_execution_feature_wallpaper_search", "false"},
+       {"model_execution_feature_tab_organization", "false"}});
+
+  EXPECT_TRUE(features::IsModelQualityLoggingEnabled());
+
+  // All features should be disabled for logging.
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_COMPOSE));
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_TAB_ORGANIZATION));
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_WALLPAPER_SEARCH));
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_TEST));
+}
+
+TEST(OptimizationGuideFeaturesTest, ModelQualityLoggingDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+
+  scoped_feature_list.InitAndDisableFeature(features::kModelQualityLogging);
+
+  // All features logging should be disabled if ModelQualityLogging is disabled.
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabled());
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_COMPOSE));
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_TAB_ORGANIZATION));
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_WALLPAPER_SEARCH));
+  EXPECT_FALSE(features::IsModelQualityLoggingEnabledForFeature(
+      proto::MODEL_EXECUTION_FEATURE_TEST));
+}
+
 TEST(OptimizationGuideFeaturesTest,
      ShouldExecutePageEntitiesModelOnPageContentWithAllowlist) {
   base::test::ScopedFeatureList scoped_feature_list;
@@ -152,32 +210,33 @@ TEST(OptimizationGuideFeaturesTest,
       features::ShouldExecutePageVisibilityModelOnPageContent("zh-CN"));
 }
 
-TEST(OptimizationGuideFeaturesTest,
-     OptimizationGuidePersonalizedFetchingScopes) {
-  {
-    EXPECT_THAT(
-        features::GetOAuthScopesForPersonalizedMetadata(),
-        ::testing::UnorderedElementsAre(GaiaConstants::kGoogleUserInfoProfile));
-  }
-  {
-    base::test::ScopedFeatureList scoped_feature_list;
-    scoped_feature_list.InitAndEnableFeatureWithParameters(
-        features::kOptimizationGuidePersonalizedFetching, {});
-    EXPECT_THAT(
-        features::GetOAuthScopesForPersonalizedMetadata(),
-        ::testing::UnorderedElementsAre(GaiaConstants::kGoogleUserInfoProfile));
-  }
-  {
-    base::test::ScopedFeatureList scoped_feature_list;
-    scoped_feature_list.InitAndEnableFeatureWithParameters(
-        features::kOptimizationGuidePersonalizedFetching,
-        {
-            {"oauth_scopes", ""},
-        });
-    EXPECT_THAT(
-        features::GetOAuthScopesForPersonalizedMetadata(),
-        ::testing::UnorderedElementsAre(GaiaConstants::kGoogleUserInfoProfile));
-  }
+TEST(OptimizationGuideFeaturesTest, RemotePageMetadataEnabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      features::kRemotePageMetadata,
+      {{"supported_locales", "en-US,en-CA"}, {"supported_countries", "US,CA"}});
+
+  EXPECT_TRUE(features::RemotePageMetadataEnabled("en-US", "CA"));
+  EXPECT_FALSE(features::RemotePageMetadataEnabled("", ""));
+  EXPECT_FALSE(features::RemotePageMetadataEnabled("en-US", "badcountry"));
+  EXPECT_FALSE(features::RemotePageMetadataEnabled("badlocale", "US"));
+}
+
+TEST(OptimizationGuideFeaturesTest, ShouldPersistSalientImageMetadata) {
+  base::test::ScopedFeatureList scoped_feature_list;
+
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      features::kPageContentAnnotationsPersistSalientImageMetadata,
+      {{"supported_locales", "en-US,en-CA"}, {"supported_countries", "US,CA"}});
+
+  EXPECT_TRUE(features::ShouldPersistSalientImageMetadata("en-US", "CA"));
+  // Tests case-insensitivity.
+  EXPECT_TRUE(features::ShouldPersistSalientImageMetadata("en-US", "cA"));
+  EXPECT_FALSE(features::ShouldPersistSalientImageMetadata("", ""));
+  EXPECT_FALSE(
+      features::ShouldPersistSalientImageMetadata("en-US", "badcountry"));
+  EXPECT_FALSE(features::ShouldPersistSalientImageMetadata("badlocale", "US"));
 }
 
 TEST(OptimizationGuideFeaturesTest, OptimizationGuidePersonalizedFetching) {
@@ -186,12 +245,7 @@ TEST(OptimizationGuideFeaturesTest, OptimizationGuidePersonalizedFetching) {
       features::kOptimizationGuidePersonalizedFetching,
       {
           {"allowed_contexts", "CONTEXT_PAGE_NAVIGATION,CONTEXT_BOOKMARKS"},
-          {"oauth_scopes", "scope,scope2"},
       });
-
-  // Check scopes.
-  EXPECT_THAT(features::GetOAuthScopesForPersonalizedMetadata(),
-              ::testing::UnorderedElementsAre("scope", "scope2"));
 
   // Check contexts.
   EXPECT_FALSE(features::ShouldEnablePersonalizedMetadata(
@@ -352,6 +406,23 @@ TEST(OptimizationGuideFeaturesTest, PredictionModelVersionInKillSwitch) {
                     testing::Pair(proto::OPTIMIZATION_TARGET_MODEL_VALIDATION,
                                   testing::ElementsAre(5))));
   }
+}
+
+TEST(OptimizationGuideFeaturesTest,
+     IsPerformanceClassCompatibleWithOnDeviceModel) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      features::kOptimizationGuideOnDeviceModel,
+      {{"compatible_on_device_performance_classes", "4,6"}});
+
+  EXPECT_FALSE(features::IsPerformanceClassCompatibleWithOnDeviceModel(
+      OnDeviceModelPerformanceClass::kError));
+  EXPECT_TRUE(features::IsPerformanceClassCompatibleWithOnDeviceModel(
+      OnDeviceModelPerformanceClass::kMedium));
+  EXPECT_FALSE(features::IsPerformanceClassCompatibleWithOnDeviceModel(
+      OnDeviceModelPerformanceClass::kHigh));
+  EXPECT_TRUE(features::IsPerformanceClassCompatibleWithOnDeviceModel(
+      OnDeviceModelPerformanceClass::kVeryHigh));
 }
 
 }  // namespace

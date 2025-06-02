@@ -5,7 +5,7 @@
 #include "mediacapture/qwasmimagecapture_p.h"
 
 #include "qwasmcamera_p.h"
-#include <private/qplatformmediadevices_p.h>
+#include <private/qplatformaudiodevices_p.h>
 #include <private/qplatformmediaintegration_p.h>
 #include <private/qwasmmediadevices_p.h>
 
@@ -13,7 +13,7 @@ Q_LOGGING_CATEGORY(qWasmMediaCaptureSession, "qt.multimedia.wasm.capturesession"
 
 QWasmMediaCaptureSession::QWasmMediaCaptureSession()
 {
-    QWasmMediaDevices *wasmMediaDevices = static_cast<QWasmMediaDevices *>(QPlatformMediaIntegration::instance()->mediaDevices());
+    QWasmMediaDevices *wasmMediaDevices = static_cast<QWasmMediaDevices *>(QPlatformMediaIntegration::instance()->audioDevices());
     wasmMediaDevices->initDevices();
 }
 
@@ -29,6 +29,7 @@ void QWasmMediaCaptureSession::setCamera(QPlatformCamera *camera)
     if (!camera) {
         if (m_camera == nullptr)
             return;
+        m_camera->setActive(false);
         m_camera.reset(nullptr);
     } else {
         QWasmCamera *wasmCamera = static_cast<QWasmCamera *>(camera);
@@ -58,7 +59,6 @@ void QWasmMediaCaptureSession::setImageCapture(QPlatformImageCapture *imageCaptu
     if (m_imageCapture) {
         m_imageCapture->setCaptureSession(this);
 
-        m_imageCapture->setReadyForCapture(true);
         emit imageCaptureChanged();
     }
 }
@@ -108,4 +108,10 @@ void QWasmMediaCaptureSession::setAudioOutput(QPlatformAudioOutput *output)
     if (m_audioOutput == output)
         return;
     m_audioOutput = output;
+}
+
+void QWasmMediaCaptureSession::setReadyForCapture(bool ready)
+{
+    if (m_imageCapture)
+        m_imageCapture->setReadyForCapture(ready);
 }

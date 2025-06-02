@@ -3,4 +3,5 @@
 
 if(TARGET Qt::Quick)
     qt_internal_add_example(hellographs)
+    qt_internal_add_example(cockpit)
 endif()

@@ -218,7 +218,9 @@ protected:
         }
 
         // If the type didn't match, we need to do JavaScript conversion. This should be rare.
-        return write(engine()->handle()->metaTypeToJS(type, result), isUndefined, flags);
+        QV4::Scope scope(engine()->handle());
+        QV4::ScopedValue value(scope, engine()->handle()->metaTypeToJS(type, result));
+        return write(value, isUndefined, flags);
     }
 
     // Returns true if successful, false if an error description was set on expression
@@ -417,6 +419,8 @@ QQmlBinding *QQmlBinding::createTranslationBinding(
 
                                            location.line, location.column });
     }
+#else
+    Q_UNUSED(propertyName)
 #endif
     return b;
 }
@@ -439,8 +443,10 @@ bool QQmlBinding::slowWrite(
     if (core.isVarProperty()) {
         QQmlVMEMetaObject *vmemo = QQmlVMEMetaObject::get(m_target.data());
         Q_ASSERT(vmemo);
+        QV4::Scope scope(qmlEngine->handle());
+        QV4::ScopedValue value(scope, qmlEngine->handle()->metaTypeToJS(resultType, result));
         vmemo->setVMEProperty(core.coreIndex(),
-                              qmlEngine->handle()->metaTypeToJS(resultType, result));
+                              value);
     } else if (isUndefined && core.isResettable()) {
         void *args[] = { nullptr };
         QMetaObject::metacall(m_target.data(), QMetaObject::ResetProperty, core.coreIndex(), args);
@@ -538,7 +544,8 @@ Q_NEVER_INLINE bool QQmlBinding::slowWrite(const QQmlPropertyData &core,
         delayedError()->setErrorDescription(QLatin1String("Unable to assign [undefined] to ")
                                             + typeName);
         return false;
-    } else if (const QV4::FunctionObject *f = result.as<QV4::FunctionObject>()) {
+    } else if (const QV4::FunctionObject *f = result.as<QV4::FunctionObject>();
+               f && !f->as<QV4::QQmlTypeWrapper>()) {
         if (f->isBinding())
             delayedError()->setErrorDescription(QLatin1String("Invalid use of Qt.binding() in a binding declaration."));
         else
@@ -680,7 +687,7 @@ void QQmlBinding::doUpdate(const DeleteWatcher &watcher, QQmlPropertyData::Write
     auto canWrite = [&]() { return !watcher.wasDeleted() && isAddedToObject() && !hasError(); };
     const QV4::Function *v4Function = function();
     if (v4Function && v4Function->kind == QV4::Function::AotCompiled && !hasBoundFunction()) {
-        const auto returnType = v4Function->aotCompiledFunction->returnType;
+        const auto returnType = v4Function->aotCompiledFunction.types[0];
         if (returnType == QMetaType::fromType<QVariant>()) {
             QVariant result;
             const bool isUndefined = !evaluate(&result, returnType);
@@ -698,7 +705,7 @@ void QQmlBinding::doUpdate(const DeleteWatcher &watcher, QQmlPropertyData::Write
                 if (returnType.flags() & QMetaType::NeedsDestruction)
                     returnType.destruct(result);
             } else if (canWrite()) {
-                error = !write(QV4::Encode::undefined(), true, flags);
+                error = !write(QV4::Value::undefinded(), true, flags);
             }
         }
     } else {

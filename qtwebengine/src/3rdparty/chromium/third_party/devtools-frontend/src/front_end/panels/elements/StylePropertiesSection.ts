@@ -42,6 +42,7 @@ import * as Bindings from '../../models/bindings/bindings.js';
 import * as TextUtils from '../../models/text_utils/text_utils.js';
 import type * as Components from '../../ui/legacy/components/utils/utils.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
 import {FontEditorSectionManager} from './ColorSwatchPopoverIcon.js';
 import * as ElementsComponents from './components/components.js';
@@ -176,6 +177,7 @@ export class StylePropertiesSection {
     this.element.classList.add('styles-section');
     this.element.classList.add('matched-styles');
     this.element.classList.add('monospace');
+    this.element.setAttribute('jslog', `${VisualLogging.section().context('style-properties')}`);
     UI.ARIAUtils.setLabel(this.element, `${this.headerText()}, css selector`);
     this.element.tabIndex = -1;
     UI.ARIAUtils.markAsListitem(this.element);
@@ -193,7 +195,10 @@ export class StylePropertiesSection {
     this.propertiesTreeOutline.section = this;
     this.innerElement.appendChild(this.propertiesTreeOutline.element);
 
-    this.showAllButton = UI.UIUtils.createTextButton('', this.showAllItems.bind(this), 'styles-show-all');
+    this.showAllButton = UI.UIUtils.createTextButton('', this.showAllItems.bind(this), {
+      className: 'styles-show-all',
+      jslogContext: 'elements.show-all-style-properties',
+    });
     this.innerElement.appendChild(this.showAllButton);
 
     const selectorContainer = document.createElement('div');
@@ -213,7 +218,8 @@ export class StylePropertiesSection {
     closeBrace.textContent = '}';
 
     if (this.styleInternal.parentRule) {
-      const newRuleButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.insertStyleRuleBelow), 'plus');
+      const newRuleButton = new UI.Toolbar.ToolbarButton(
+          i18nString(UIStrings.insertStyleRuleBelow), 'plus', undefined, 'elements.new-style-rule');
       newRuleButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.onNewRuleClick, this);
       newRuleButton.element.tabIndex = -1;
       if (!this.newStyleRuleToolbar) {
@@ -249,6 +255,7 @@ export class StylePropertiesSection {
     }
 
     this.selectorElement.addEventListener('click', this.handleSelectorClick.bind(this), false);
+    this.selectorElement.setAttribute('jslog', `${VisualLogging.stylesSelector().track({click: true})}`);
     this.element.addEventListener('contextmenu', this.handleContextMenuEvent.bind(this), false);
     this.element.addEventListener('mousedown', this.handleEmptySpaceMouseDown.bind(this), false);
     this.element.addEventListener('click', this.handleEmptySpaceClick.bind(this), false);
@@ -360,7 +367,9 @@ export class StylePropertiesSection {
       if (!rule) {
         return null;
       }
-      if (ruleLocation && rule.styleSheetId && header && !header.isAnonymousInlineStyleSheet()) {
+      if (ruleLocation && rule.styleSheetId && header &&
+          (!header.isAnonymousInlineStyleSheet() ||
+           matchedStyles.cssModel().sourceMapManager().sourceMapForClient(header))) {
         return StylePropertiesSection.linkifyRuleLocation(
             matchedStyles.cssModel(), linkifier, rule.styleSheetId, ruleLocation);
       }
@@ -380,7 +389,7 @@ export class StylePropertiesSection {
     }
 
     if (header?.isMutable && !header.isViaInspector()) {
-      const location = header.isConstructedByNew() ? null : linkifyRuleLocation();
+      const location = header.isConstructedByNew() && !header.sourceMapURL ? null : linkifyRuleLocation();
       if (location) {
         return location;
       }
@@ -535,7 +544,7 @@ export class StylePropertiesSection {
       default:
         // Filter out non-printable key strokes.
         if (keyboardEvent.key.length === 1) {
-          this.addNewBlankProperty(0).startEditing();
+          this.addNewBlankProperty(0).startEditingName();
         }
         break;
     }
@@ -820,7 +829,10 @@ export class StylePropertiesSection {
       queryText: containerQuery.text,
       onQueryTextClick,
     };
-    void this.addContainerForContainerQuery(containerQuery);
+    if (!/^style\(.*\)/.test(containerQuery.text)) {
+      // We only add container element for non-style queries.
+      void this.addContainerForContainerQuery(containerQuery);
+    }
     return containerQueryElement;
   }
 
@@ -1158,12 +1170,12 @@ export class StylePropertiesSection {
     const deepTarget = UI.UIUtils.deepElementFromEvent(event);
     const treeElement = deepTarget && UI.TreeOutline.TreeElement.getTreeElementBylistItemNode(deepTarget);
     if (treeElement && treeElement instanceof StylePropertyTreeElement) {
-      this.addNewBlankProperty(treeElement.property.index + 1).startEditing();
+      this.addNewBlankProperty(treeElement.property.index + 1).startEditingName();
     } else if (
         target.classList.contains('selector-container') || target.classList.contains('styles-section-subtitle')) {
-      this.addNewBlankProperty(0).startEditing();
+      this.addNewBlankProperty(0).startEditingName();
     } else {
-      this.addNewBlankProperty().startEditing();
+      this.addNewBlankProperty().startEditingName();
     }
     event.consume(true);
   }
@@ -1402,9 +1414,9 @@ export class StylePropertiesSection {
         currentChild = sibling instanceof StylePropertyTreeElement ? sibling : null;
       }
       if (!currentChild) {
-        this.addNewBlankProperty().startEditing();
+        this.addNewBlankProperty().startEditingName();
       } else {
-        currentChild.startEditing(currentChild.nameElement);
+        currentChild.startEditingName();
       }
     } else {
       const previousSection = this.previousEditableSibling();
@@ -1412,7 +1424,7 @@ export class StylePropertiesSection {
         return;
       }
 
-      previousSection.addNewBlankProperty().startEditing();
+      previousSection.addNewBlankProperty().startEditingName();
     }
   }
 
@@ -1635,6 +1647,19 @@ export class RegisteredPropertiesSection extends StylePropertiesSection {
     this.selectorElement.className = 'property-registration-key';
   }
 
+  override async setHeaderText(rule: SDK.CSSRule.CSSRule, newContent: string): Promise<void> {
+    if (!(rule instanceof SDK.CSSRule.CSSPropertyRule)) {
+      return;
+    }
+    const oldRange = rule.propertyName().range;
+    if (!oldRange) {
+      return;
+    }
+    if (await rule.setPropertyName(newContent)) {
+      this.parentPane.forceUpdate();
+    }
+  }
+
   override createRuleOriginNode(
       matchedStyles: SDK.CSSMatchedStyles.CSSMatchedStyles, linkifier: Components.Linkifier.Linkifier,
       rule: SDK.CSSRule.CSSRule|null): Node {
@@ -1642,6 +1667,15 @@ export class RegisteredPropertiesSection extends StylePropertiesSection {
       return super.createRuleOriginNode(matchedStyles, linkifier, rule);
     }
     return document.createTextNode('CSS.registerProperty');
+  }
+}
+
+export class FontPaletteValuesRuleSection extends StylePropertiesSection {
+  constructor(
+      stylesPane: StylesSidebarPane, matchedStyles: SDK.CSSMatchedStyles.CSSMatchedStyles,
+      style: SDK.CSSStyleDeclaration.CSSStyleDeclaration, sectionIdx: number) {
+    super(stylesPane, matchedStyles, style, sectionIdx, null, null);
+    this.selectorElement.className = 'font-palette-values-key';
   }
 }
 

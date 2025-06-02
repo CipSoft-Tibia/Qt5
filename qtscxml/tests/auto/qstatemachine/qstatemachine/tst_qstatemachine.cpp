@@ -74,6 +74,17 @@ static int globalTick;
     QCOMPARE(VAR->active(), !active); \
 }
 
+#define TEST_ACTIVE_CHANGED_SPY_ONLY(VAR, COUNT) \
+{ \
+    QTRY_COMPARE(VAR##_activeSpy.count(), COUNT); \
+    bool active = true; \
+    for (const QList<QVariant> &activeArgs : static_cast<QList<QList<QVariant> > >(VAR##_activeSpy)) { \
+        QVERIFY(activeArgs.at(0).typeId() == QMetaType::Bool); \
+        QVERIFY(activeArgs.at(0).toBool() == active); \
+        active = !active; \
+    } \
+}
+
 class SignalEmitter : public QObject
 {
 Q_OBJECT
@@ -6105,8 +6116,8 @@ void tst_QStateMachine::signalTransitionSenderInDifferentThread2()
 
     thread.quit();
     QTRY_VERIFY(thread.wait());
-    TEST_ACTIVE_CHANGED(s1, 2);
-    TEST_ACTIVE_CHANGED(s2, 2);
+    TEST_ACTIVE_CHANGED_SPY_ONLY(s1, 2);
+    TEST_ACTIVE_CHANGED_SPY_ONLY(s2, 2);
 }
 
 class SignalTransitionMutatorThread : public QThread

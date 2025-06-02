@@ -124,12 +124,14 @@ int main(int argc, char *argv[])
                                  QString(":/assets/img/%1-image.jpg").arg(imageId));
                      });
 
-    const auto port = httpServer.listen(QHostAddress::Any, portArg);
-    if (!port) {
+    auto tcpserver = std::make_unique<QTcpServer>();
+    if (!tcpserver->listen(QHostAddress::Any, portArg) || !httpServer.bind(tcpserver.get())) {
         qDebug() << QCoreApplication::translate("QHttpServerExample",
                                                 "Server failed to listen on a port.");
         return 0;
     }
+    quint16 port = tcpserver->serverPort();
+    tcpserver.release();
 
     qDebug() << QCoreApplication::translate(
                         "QHttpServerExample",

@@ -12,9 +12,22 @@
 #include <QString>
 #include <QtVersion>
 
-#include <array>
 #include <cmath>
+#include <limits>
 #include <QtCore/qxptype_traits.h>
+
+// Check that <type_traits> works for q(u)int128; if any of these trigger,
+// adjust the ifdef'ery in qtypes.h to exclude builds with broken lib support.
+#ifdef QT_SUPPORTS_INT128
+static_assert(std::is_signed_v<qint128>);
+static_assert(std::is_integral_v<qint128>);
+static_assert(std::is_integral_v<quint128>);
+static_assert(std::numeric_limits<qint128>::is_signed);
+static_assert(std::numeric_limits<qint128>::is_specialized);
+static_assert(std::numeric_limits<quint128>::is_specialized);
+static_assert((std::numeric_limits<qint128>::max)() == Q_INT128_MAX);
+static_assert((std::numeric_limits<quint128>::max)() == Q_UINT128_MAX);
+#endif // QT_SUPPORTS_INT128
 
 template <typename T>
 using AdlSwappableTest = decltype(swap(std::declval<T&>(), std::declval<T&>()));
@@ -41,6 +54,27 @@ static_assert(!q_is_adl_swappable_v<NotQDeclareShared>);
 
 MAKE_CLASS(Terry); // R.I.P.
 Q_DECLARE_SHARED(Terry)
+
+namespace Discworld {
+MAKE_CLASS(Librarian);
+Q_DECLARE_SHARED_NS(Discworld, Librarian)
+MAKE_CLASS(Baggage);
+namespace AnkhMorpork {
+MAKE_CLASS(Vetinari);
+// Q_DECLARE_SHARED_NS only work on a single nesting level
+namespace CityWatch {
+MAKE_CLASS(Vimes);
+} // namespace CityWatch
+} // namespace AnkhMorpork
+} // namespace Discworld
+Q_DECLARE_SHARED_NS_EXT(Discworld, Baggage)
+Q_DECLARE_SHARED_NS_EXT(Discworld::AnkhMorpork, Vetinari)
+Q_DECLARE_SHARED_NS_EXT(Discworld::AnkhMorpork::CityWatch, Vimes)
+// but Q_DECLARE_SHARED_NS works if all namespaces are opened in one statement:
+namespace Discworld::AnkhMorpork {
+MAKE_CLASS(Leonardo);
+Q_DECLARE_SHARED_NS(Discworld::AnkhMorpork, Leonardo)
+} // namespace Discworld::AnkhMorpork
 
 #undef MAKE_CLASS
 
@@ -75,6 +109,7 @@ private slots:
     void PRImacros();
     void testqToUnderlying();
     void nodiscard();
+    void tagStructDefinitions();
 };
 
 extern "C" {        // functions in qglobal.c
@@ -431,12 +466,22 @@ void tst_QGlobal::qDeclareSharedMarksTheTypeRelocatable()
 {
     static_assert(!QTypeInfo<QT_PREPEND_NAMESPACE(NotQDeclareShared)>::isRelocatable);
     static_assert( QTypeInfo<QT_PREPEND_NAMESPACE(Terry)>::isRelocatable);
+    static_assert( QTypeInfo<QT_PREPEND_NAMESPACE(Discworld::Librarian)>::isRelocatable);
+    static_assert( QTypeInfo<QT_PREPEND_NAMESPACE(Discworld::Baggage)>::isRelocatable);
+    static_assert( QTypeInfo<QT_PREPEND_NAMESPACE(Discworld::AnkhMorpork::Vetinari)>::isRelocatable);
+    static_assert( QTypeInfo<QT_PREPEND_NAMESPACE(Discworld::AnkhMorpork::Leonardo)>::isRelocatable);
+    static_assert( QTypeInfo<QT_PREPEND_NAMESPACE(Discworld::AnkhMorpork::CityWatch::Vimes)>::isRelocatable);
 }
 
 void tst_QGlobal::qDeclareSharedMakesTheTypeAdlSwappable()
 {
     static_assert(!q_is_adl_swappable_v<QT_PREPEND_NAMESPACE(NotQDeclareShared)>);
     static_assert( q_is_adl_swappable_v<QT_PREPEND_NAMESPACE(Terry)>);
+    static_assert( q_is_adl_swappable_v<QT_PREPEND_NAMESPACE(Discworld::Librarian)>);
+    static_assert( q_is_adl_swappable_v<QT_PREPEND_NAMESPACE(Discworld::Baggage)>);
+    static_assert( q_is_adl_swappable_v<QT_PREPEND_NAMESPACE(Discworld::AnkhMorpork::Vetinari)>);
+    static_assert( q_is_adl_swappable_v<QT_PREPEND_NAMESPACE(Discworld::AnkhMorpork::Leonardo)>);
+    static_assert( q_is_adl_swappable_v<QT_PREPEND_NAMESPACE(Discworld::AnkhMorpork::CityWatch::Vimes)>);
 
     #define CHECK(Class) do { \
         using C = QT_PREPEND_NAMESPACE(Class); \
@@ -450,6 +495,11 @@ void tst_QGlobal::qDeclareSharedMakesTheTypeAdlSwappable()
         QCOMPARE_EQ(rhs.s, "lhs"); \
     } while (false)
     CHECK(Terry);
+    CHECK(Discworld::Librarian);
+    CHECK(Discworld::Baggage);
+    CHECK(Discworld::AnkhMorpork::Vetinari);
+    CHECK(Discworld::AnkhMorpork::Leonardo);
+    CHECK(Discworld::AnkhMorpork::CityWatch::Vimes);
     #undef CHECK
 }
 
@@ -962,6 +1012,72 @@ void tst_QGlobal::nodiscard()
     Test t2{42.0f};
     QCOMPARE(t2.get(), 42);
 }
+
+void tst_QGlobal::tagStructDefinitions()
+{
+    {
+        // predefined:
+        static_assert(std::is_same_v<decltype(QtPrivate::Deprecated), const QtPrivate::Deprecated_t>);
+        [[maybe_unused]] constexpr auto tag = QtPrivate::Deprecated;
+        static_assert(std::is_same_v<decltype(tag), const QtPrivate::Deprecated_t>);
+    }
+    {
+        // self-defined:
+        QT_DEFINE_TAG(MyTag);
+        static_assert(std::is_same_v<decltype(MyTag), const MyTag_t>);
+        [[maybe_unused]] constexpr auto tag = MyTag;
+        static_assert(std::is_same_v<decltype(tag), const MyTag_t>);
+    }
+}
+
+QT_BEGIN_NAMESPACE
+
+// Compile-time typeinfo tests
+struct Complex1
+{
+    ~Complex1();
+};
+static_assert(QTypeInfo<Complex1>::isComplex);
+static_assert(!QTypeInfo<Complex1>::isRelocatable);
+
+struct Complex2
+{
+    Complex2(Complex2 &&);
+};
+static_assert(QTypeInfo<Complex2>::isComplex);
+static_assert(!QTypeInfo<Complex2>::isRelocatable);
+
+struct Complex3
+{
+    Complex3(int);
+};
+static_assert(QTypeInfo<Complex3>::isComplex);
+static_assert(QTypeInfo<Complex3>::isRelocatable);
+
+struct Relocatable1
+{
+    ~Relocatable1();
+};
+Q_DECLARE_TYPEINFO(Relocatable1, Q_RELOCATABLE_TYPE);
+static_assert(QTypeInfo<Relocatable1>::isComplex);
+static_assert(QTypeInfo<Relocatable1>::isRelocatable);
+
+struct Relocatable2
+{
+    Relocatable2(int);
+};
+Q_DECLARE_TYPEINFO(Relocatable2, Q_RELOCATABLE_TYPE);
+static_assert(QTypeInfo<Relocatable2>::isComplex);
+static_assert(QTypeInfo<Relocatable2>::isRelocatable);
+
+struct Trivial1
+{
+    int x[42];
+};
+static_assert(!QTypeInfo<Trivial1>::isComplex);
+static_assert(QTypeInfo<Trivial1>::isRelocatable);
+
+QT_END_NAMESPACE
 
 QTEST_APPLESS_MAIN(tst_QGlobal)
 #include "tst_qglobal.moc"

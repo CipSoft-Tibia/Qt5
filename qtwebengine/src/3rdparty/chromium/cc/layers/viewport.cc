@@ -9,6 +9,7 @@
 #include "base/check.h"
 #include "base/memory/ptr_util.h"
 #include "cc/input/browser_controls_offset_manager.h"
+#include "cc/input/snap_selection_strategy.h"
 #include "cc/trees/layer_tree_host_impl.h"
 #include "cc/trees/layer_tree_impl.h"
 #include "cc/trees/scroll_node.h"
@@ -93,6 +94,33 @@ bool Viewport::CanScroll(const ScrollNode& node,
   return result;
 }
 
+void Viewport::SnapIfNeeded() {
+  ScrollNode* scroll_node = OuterScrollNode();
+  if (!scroll_node || !scroll_node->snap_container_data.has_value()) {
+    return;
+  }
+
+  if (scroll_node == scroll_tree().CurrentlyScrollingNode()) {
+    // If there is an in-progress scroll gesture, InputHandler will take care of
+    // snapping at the end.
+    return;
+  }
+
+  SnapContainerData& data = scroll_node->snap_container_data.value();
+  gfx::PointF current_position = TotalScrollOffset();
+
+  SnapPositionData snap = data.FindSnapPosition(
+      *SnapSelectionStrategy::CreateForTargetElement(current_position));
+  if (snap.type == SnapPositionData::Type::kNone) {
+    return;
+  }
+
+  gfx::Vector2dF delta = snap.position - current_position;
+  delta.Scale(host_impl_->active_tree()->page_scale_factor_for_scroll());
+
+  ScrollBy(delta, gfx::Point(), false, false, true);
+}
+
 gfx::Vector2dF Viewport::ComputeClampedDelta(
     const gfx::Vector2dF& scroll_delta) const {
   // When clamping for the outer viewport, we need to distribute the scroll
@@ -128,10 +156,10 @@ gfx::SizeF Viewport::GetInnerViewportSizeExcludingScrollbars() const {
   ScrollbarSet scrollbars = host_impl_->ScrollbarsFor(outer_node->element_id);
   gfx::SizeF scrollbars_size;
   for (const auto* scrollbar : scrollbars) {
-    if (scrollbar->orientation() == ScrollbarOrientation::VERTICAL) {
+    if (scrollbar->orientation() == ScrollbarOrientation::kVertical) {
       scrollbars_size.set_width(scrollbar->bounds().width());
     } else {
-      DCHECK(scrollbar->orientation() == ScrollbarOrientation::HORIZONTAL);
+      DCHECK(scrollbar->orientation() == ScrollbarOrientation::kHorizontal);
       scrollbars_size.set_height(scrollbar->bounds().height());
     }
   }

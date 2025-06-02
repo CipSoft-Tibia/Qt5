@@ -70,7 +70,7 @@ class NET_EXPORT TCPClientSocket : public TransportClientSocket,
                   const IPEndPoint& peer_address);
 
   // Adopts an unconnected TCPSocket. TCPSocket may be bound or unbound. This
-  // function is used by TCPClientSocketBrokered.
+  // function is used by BrokeredTcpClientSocket.
   TCPClientSocket(std::unique_ptr<TCPSocket> unconnected_socket,
                   const AddressList& addresses,
                   std::unique_ptr<IPEndPoint> bound_address,
@@ -104,7 +104,6 @@ class NET_EXPORT TCPClientSocket : public TransportClientSocket,
   int GetLocalAddress(IPEndPoint* address) const override;
   const NetLogWithSource& NetLog() const override;
   bool WasEverUsed() const override;
-  bool WasAlpnNegotiated() const override;
   NextProto GetNegotiatedProtocol() const override;
   bool GetSSLInfo(SSLInfo* ssl_info) override;
   int64_t GetTotalReceivedBytes() const override;

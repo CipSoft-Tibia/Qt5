@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/spirv/writer/raise/merge_return.h"
 
@@ -98,7 +111,7 @@ TEST_F(SpirvWriter_MergeReturnTest, NoModify_SingleReturnInNestedMergeBlock) {
 
     b.Append(func->Block(), [&] {
         auto* swtch = b.Switch(in);
-        b.Append(b.Case(swtch, {core::ir::Switch::CaseSelector{}}), [&] { b.ExitSwitch(swtch); });
+        b.Append(b.DefaultCase(swtch), [&] { b.ExitSwitch(swtch); });
 
         auto* l = b.Loop();
         b.Append(l->Body(), [&] { b.ExitLoop(l); });
@@ -497,7 +510,7 @@ TEST_F(SpirvWriter_MergeReturnTest, IfElse_BothSidesReturn) {
 
 TEST_F(SpirvWriter_MergeReturnTest, IfElse_ThenStatements) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* cond = b.FunctionParam(ty.bool_());
     auto* func = b.Function("foo", ty.void_());
@@ -573,7 +586,7 @@ TEST_F(SpirvWriter_MergeReturnTest, IfElse_ThenStatements) {
 // to make sure that creation order doesn't matter.
 TEST_F(SpirvWriter_MergeReturnTest, IfElse_ThenStatements_ReturnsCreatedInDifferentOrder) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* cond = b.FunctionParam(ty.bool_());
     auto* func = b.Function("foo", ty.void_());
@@ -647,7 +660,7 @@ TEST_F(SpirvWriter_MergeReturnTest, IfElse_ThenStatements_ReturnsCreatedInDiffer
 
 TEST_F(SpirvWriter_MergeReturnTest, IfElse_Nested) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* func = b.Function("foo", ty.i32());
     auto* condA = b.FunctionParam("condA", ty.bool_());
@@ -793,7 +806,7 @@ TEST_F(SpirvWriter_MergeReturnTest, IfElse_Nested) {
 
 TEST_F(SpirvWriter_MergeReturnTest, IfElse_Nested_TrivialMerge) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* func = b.Function("foo", ty.i32());
     auto* condA = b.FunctionParam("condA", ty.bool_());
@@ -914,7 +927,7 @@ TEST_F(SpirvWriter_MergeReturnTest, IfElse_Nested_TrivialMerge) {
 
 TEST_F(SpirvWriter_MergeReturnTest, IfElse_Nested_WithBasicBlockArguments) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* func = b.Function("foo", ty.i32());
     auto* condA = b.FunctionParam("condA", ty.bool_());
@@ -1167,6 +1180,91 @@ TEST_F(SpirvWriter_MergeReturnTest, IfElse_Consecutive) {
     EXPECT_EQ(expect, str());
 }
 
+TEST_F(SpirvWriter_MergeReturnTest, IfElse_Consecutive_ThenUnreachable) {
+    auto* value = b.FunctionParam(ty.i32());
+    auto* func = b.Function("foo", ty.i32());
+    func->SetParams({value});
+
+    b.Append(func->Block(), [&] {
+        {
+            auto* if_ = b.If(b.Equal(ty.bool_(), value, 1_i));
+            b.Append(if_->True(), [&] { b.Return(func, 101_i); });
+        }
+        {
+            auto* ifelse = b.If(b.Equal(ty.bool_(), value, 2_i));
+            b.Append(ifelse->True(), [&] { b.Return(func, 202_i); });
+            b.Append(ifelse->False(), [&] { b.Return(func, 303_i); });
+        }
+        b.Unreachable();
+    });
+
+    auto* src = R"(
+%foo = func(%2:i32):i32 -> %b1 {
+  %b1 = block {
+    %3:bool = eq %2, 1i
+    if %3 [t: %b2] {  # if_1
+      %b2 = block {  # true
+        ret 101i
+      }
+    }
+    %4:bool = eq %2, 2i
+    if %4 [t: %b3, f: %b4] {  # if_2
+      %b3 = block {  # true
+        ret 202i
+      }
+      %b4 = block {  # false
+        ret 303i
+      }
+    }
+    unreachable
+  }
+}
+)";
+    EXPECT_EQ(src, str());
+
+    auto* expect = R"(
+%foo = func(%2:i32):i32 -> %b1 {
+  %b1 = block {
+    %return_value:ptr<function, i32, read_write> = var
+    %continue_execution:ptr<function, bool, read_write> = var, true
+    %5:bool = eq %2, 1i
+    if %5 [t: %b2] {  # if_1
+      %b2 = block {  # true
+        store %continue_execution, false
+        store %return_value, 101i
+        exit_if  # if_1
+      }
+    }
+    %6:bool = load %continue_execution
+    if %6 [t: %b3] {  # if_2
+      %b3 = block {  # true
+        %7:bool = eq %2, 2i
+        if %7 [t: %b4, f: %b5] {  # if_3
+          %b4 = block {  # true
+            store %continue_execution, false
+            store %return_value, 202i
+            exit_if  # if_3
+          }
+          %b5 = block {  # false
+            store %continue_execution, false
+            store %return_value, 303i
+            exit_if  # if_3
+          }
+        }
+        exit_if  # if_2
+      }
+    }
+    %8:i32 = load %return_value
+    ret %8
+  }
+}
+)";
+
+    Run(MergeReturn);
+
+    EXPECT_EQ(expect, str());
+}
+
 TEST_F(SpirvWriter_MergeReturnTest, Loop_UnconditionalReturnInBody) {
     auto* func = b.Function("foo", ty.i32());
 
@@ -1213,7 +1311,7 @@ TEST_F(SpirvWriter_MergeReturnTest, Loop_UnconditionalReturnInBody) {
 
 TEST_F(SpirvWriter_MergeReturnTest, Loop_ConditionalReturnInBody) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* cond = b.FunctionParam(ty.bool_());
     auto* func = b.Function("foo", ty.i32());
@@ -1327,7 +1425,7 @@ TEST_F(SpirvWriter_MergeReturnTest, Loop_ConditionalReturnInBody) {
 
 TEST_F(SpirvWriter_MergeReturnTest, Loop_ConditionalReturnInBody_UnreachableMerge) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* cond = b.FunctionParam(ty.bool_());
     auto* func = b.Function("foo", ty.i32());
@@ -1432,7 +1530,7 @@ TEST_F(SpirvWriter_MergeReturnTest, Loop_ConditionalReturnInBody_UnreachableMerg
 
 TEST_F(SpirvWriter_MergeReturnTest, DISABLED_Loop_WithBasicBlockArgumentsOnMerge) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* cond = b.FunctionParam(ty.bool_());
     auto* func = b.Function("foo", ty.i32());
@@ -1551,9 +1649,8 @@ TEST_F(SpirvWriter_MergeReturnTest, Switch_UnconditionalReturnInCase) {
 
     b.Append(func->Block(), [&] {
         auto* sw = b.Switch(cond);
-        b.Append(b.Case(sw, {core::ir::Switch::CaseSelector{b.Constant(1_i)}}),
-                 [&] { b.Return(func, 42_i); });
-        b.Append(b.Case(sw, {core::ir::Switch::CaseSelector{}}), [&] { b.ExitSwitch(sw); });
+        b.Append(b.Case(sw, {b.Constant(1_i)}), [&] { b.Return(func, 42_i); });
+        b.Append(b.DefaultCase(sw), [&] { b.ExitSwitch(sw); });
 
         b.Return(func, 0_i);
     });
@@ -1610,7 +1707,7 @@ TEST_F(SpirvWriter_MergeReturnTest, Switch_UnconditionalReturnInCase) {
 
 TEST_F(SpirvWriter_MergeReturnTest, Switch_ConditionalReturnInBody) {
     auto* global = b.Var(ty.ptr<private_, i32>());
-    b.RootBlock()->Append(global);
+    mod.root_block->Append(global);
 
     auto* cond = b.FunctionParam(ty.i32());
     auto* func = b.Function("foo", ty.i32());
@@ -1618,7 +1715,7 @@ TEST_F(SpirvWriter_MergeReturnTest, Switch_ConditionalReturnInBody) {
 
     b.Append(func->Block(), [&] {
         auto* sw = b.Switch(cond);
-        b.Append(b.Case(sw, {core::ir::Switch::CaseSelector{b.Constant(1_i)}}), [&] {
+        b.Append(b.Case(sw, {b.Constant(1_i)}), [&] {
             auto* ifcond = b.Equal(ty.bool_(), cond, 1_i);
             auto* ifelse = b.If(ifcond);
             b.Append(ifelse->True(), [&] { b.Return(func, 42_i); });
@@ -1628,7 +1725,7 @@ TEST_F(SpirvWriter_MergeReturnTest, Switch_ConditionalReturnInBody) {
             b.ExitSwitch(sw);
         });
 
-        b.Append(b.Case(sw, {core::ir::Switch::CaseSelector{}}), [&] { b.ExitSwitch(sw); });
+        b.Append(b.DefaultCase(sw), [&] { b.ExitSwitch(sw); });
 
         b.Return(func, 0_i);
     });
@@ -1725,13 +1822,10 @@ TEST_F(SpirvWriter_MergeReturnTest, Switch_WithBasicBlockArgumentsOnMerge) {
     b.Append(func->Block(), [&] {
         auto* sw = b.Switch(cond);
         sw->SetResults(b.InstructionResult(ty.i32()));  // NOLINT: false detection of std::tuple
-        b.Append(b.Case(sw, {core::ir::Switch::CaseSelector{b.Constant(1_i)}}),
-                 [&] { b.Return(func, 42_i); });
-        b.Append(b.Case(sw, {core::ir::Switch::CaseSelector{b.Constant(2_i)}}),
-                 [&] { b.Return(func, 99_i); });
-        b.Append(b.Case(sw, {core::ir::Switch::CaseSelector{b.Constant(3_i)}}),
-                 [&] { b.ExitSwitch(sw, 1_i); });
-        b.Append(b.Case(sw, {core::ir::Switch::CaseSelector{}}), [&] { b.ExitSwitch(sw, 0_i); });
+        b.Append(b.Case(sw, {b.Constant(1_i)}), [&] { b.Return(func, 42_i); });
+        b.Append(b.Case(sw, {b.Constant(2_i)}), [&] { b.Return(func, 99_i); });
+        b.Append(b.Case(sw, {b.Constant(3_i)}), [&] { b.ExitSwitch(sw, 1_i); });
+        b.Append(b.DefaultCase(sw), [&] { b.ExitSwitch(sw, 0_i); });
 
         b.Return(func, sw->Result(0));
     });

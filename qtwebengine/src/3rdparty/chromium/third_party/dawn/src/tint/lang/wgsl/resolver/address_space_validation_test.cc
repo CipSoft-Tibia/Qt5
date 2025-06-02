@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/resolver.h"
 
@@ -216,18 +229,6 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_Pointer) {
 56:78 note: while instantiating 'var' g)");
 }
 
-TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_Pointer) {
-    // type t = ptr<storage, ptr<private, f32>>;
-    Alias("t", ty.ptr<storage>(Source{{56, 78}}, ty.ptr<private_, f32>(Source{{12, 34}})));
-
-    ASSERT_FALSE(r()->Resolve());
-
-    EXPECT_EQ(
-        r()->error(),
-        R"(12:34 error: Type 'ptr<private, f32, read_write>' cannot be used in address space 'storage' as it is non-host-shareable
-56:78 note: while instantiating ptr<storage, ptr<private, f32, read_write>, read>)");
-}
-
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_IntScalar) {
     // var<storage> g : i32;
     GlobalVar("g", ty.i32(), core::AddressSpace::kStorage, Binding(0_a), Group(0_a));
@@ -245,7 +246,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_IntScalar) {
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_F16) {
     // enable f16;
     // var<storage> g : f16;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     GlobalVar("g", ty.f16(), core::AddressSpace::kStorage, Binding(0_a), Group(0_a));
 
@@ -255,7 +256,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_F16) {
 TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_F16) {
     // enable f16;
     // type t = ptr<storage, f16>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Alias("t", ty.ptr<storage, f16>());
 
@@ -266,7 +267,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_F16Alias) {
     // enable f16;
     // type a = f16;
     // var<storage, read> g : a;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Alias("a", ty.f16());
     GlobalVar("g", ty("a"), core::AddressSpace::kStorage, Binding(0_a), Group(0_a));
@@ -278,7 +279,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_F16Alias) {
     // enable f16;
     // type a = f16;
     // type t = ptr<storage, a>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Alias("a", ty.f16());
     Alias("t", ty.ptr<storage>(ty("a")));
@@ -302,7 +303,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_VectorF32) {
 
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_VectorF16) {
     // var<storage> g : vec4<f16>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     GlobalVar("g", ty.vec(ty.f16(), 4u), core::AddressSpace::kStorage, Binding(0_a), Group(0_a));
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -310,7 +311,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_VectorF16) {
 
 TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_VectorF16) {
     // type t = ptr<storage, vec4<f16>>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     Alias("t", ty.ptr<storage, vec4<f32>>());
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -339,7 +340,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_ArrayF16) {
     // enable f16;
     // struct S{ a : f16 };
     // var<storage, read> g : array<S, 3u>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("a", ty.f16())});
     GlobalVar("g", ty.array(ty("S"), 3_u), core::AddressSpace::kStorage, core::Access::kRead,
@@ -352,7 +353,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_ArrayF16) {
     // enable f16;
     // struct S{ a : f16 };
     // type t = ptr<storage, array<S, 3u>, read>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("a", ty.f16())});
     Alias("t", ty.ptr<storage, read>(ty.array(ty("S"), 3_u)));
@@ -407,7 +408,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_StructI32Aliases
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_StructF16) {
     // struct S { x : f16 };
     // var<storage, read> g : S;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("x", ty.f16())});
     GlobalVar("g", ty("S"), core::AddressSpace::kStorage, core::Access::kRead, Binding(0_a),
@@ -419,7 +420,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_StructF16) {
 TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_StructF16) {
     // struct S { x : f16 };
     // type t = ptr<storage, S, read>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("x", ty.f16())});
     Alias("t", ty.ptr<storage, read>(ty("S")));
@@ -431,7 +432,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_Storage_StructF16Alias
     // struct S { x : f16 };
     // type a1 = S;
     // var<storage, read> g : a1;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("x", ty.f16())});
     Alias("a1", ty("S"));
@@ -446,7 +447,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_Storage_StructF16Aliases
     // struct S { x : f16 };
     // type a1 = S;
     // type t = ptr<storage, a1, read>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("x", ty.f16())});
     Alias("a1", ty("S"));
@@ -631,18 +632,6 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformPointer) {
 56:78 note: while instantiating 'var' g)");
 }
 
-TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformPointer) {
-    // type t = ptr<uniform, ptr<private, f32>>;
-    Alias("t", ty.ptr<uniform>(Source{{56, 78}}, ty.ptr<private_, f32>(Source{{12, 34}})));
-
-    ASSERT_FALSE(r()->Resolve());
-
-    EXPECT_EQ(
-        r()->error(),
-        R"(12:34 error: Type 'ptr<private, f32, read_write>' cannot be used in address space 'uniform' as it is non-host-shareable
-56:78 note: while instantiating ptr<uniform, ptr<private, f32, read_write>, read>)");
-}
-
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformBufferIntScalar) {
     // var<uniform> g : i32;
     GlobalVar(Source{{56, 78}}, "g", ty.i32(), core::AddressSpace::kUniform, Binding(0_a),
@@ -661,7 +650,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformBufferIntScalar) 
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformBufferF16) {
     // enable f16;
     // var<uniform> g : f16;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     GlobalVar("g", ty.f16(), core::AddressSpace::kUniform, Binding(0_a), Group(0_a));
 
@@ -671,7 +660,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformBufferF16) {
 TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformBufferF16) {
     // enable f16;
     // type t = ptr<uniform, f16>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Alias("t", ty.ptr<uniform, f16>());
 
@@ -695,7 +684,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformBufferVectorF32) 
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformBufferVectorF16) {
     // enable f16;
     // var<uniform> g : vec4<f16>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     GlobalVar("g", ty.vec4<f16>(), core::AddressSpace::kUniform, Binding(0_a), Group(0_a));
 
@@ -705,7 +694,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformBufferVectorF16
 TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformBufferVectorF16) {
     // enable f16;
     // type t = ptr<uniform, vec4<f16>>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Alias("t", ty.ptr<uniform, f16>());
 
@@ -740,7 +729,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformBufferArrayF16)
     //   @size(16) f : f16;
     // }
     // var<uniform> g : array<S, 3u>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("a", ty.f16(), Vector{MemberSize(16_a)})});
     GlobalVar("g", ty.array(ty("S"), 3_u), core::AddressSpace::kUniform, Binding(0_a), Group(0_a));
@@ -754,7 +743,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformBufferArrayF16) {
     //   @size(16) f : f16;
     // }
     // type t = ptr<uniform, array<S, 3u>>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("a", ty.f16(), Vector{MemberSize(16_a)})});
     Alias("t", ty.ptr<uniform>(ty.array(ty("S"), 3_u)));
@@ -806,7 +795,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformBufferStructF16
     // enable f16;
     // struct S { x : f16 };
     // var<uniform> g : S;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("x", ty.f16())});
     GlobalVar("g", ty("S"), core::AddressSpace::kUniform, Binding(0_a), Group(0_a));
@@ -818,7 +807,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformBufferStructF16) 
     // enable f16;
     // struct S { x : f16 };
     // type t = ptr<uniform, S>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("x", ty.f16())});
     Alias("t", ty.ptr<uniform>(ty("S")));
@@ -831,7 +820,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_UniformBufferStructF16
     // struct S { x : f16 };
     // type a1 = S;
     // var<uniform> g : a1;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("x", ty.f16())});
     Alias("a1", ty("S"));
@@ -845,7 +834,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformBufferStructF16Al
     // struct S { x : f16 };
     // type a1 = S;
     // type t = ptr<uniform, a1>;
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{Member("x", ty.f16())});
     Alias("a1", ty("S"));
@@ -857,7 +846,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_UniformBufferStructF16Al
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantBool) {
     // enable chromium_experimental_push_constant;
     // var<push_constant> g : bool;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     GlobalVar(Source{{56, 78}}, "g", ty.bool_(Source{{12, 34}}), core::AddressSpace::kPushConstant);
 
     ASSERT_FALSE(r()->Resolve());
@@ -870,7 +859,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantBool) {
 TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_PushConstantBool) {
     // enable chromium_experimental_push_constant;
     // type t = ptr<push_constant, bool>;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     Alias(Source{{56, 78}}, "t", ty.ptr<push_constant>(ty.bool_(Source{{12, 34}})));
 
     ASSERT_FALSE(r()->Resolve());
@@ -884,8 +873,8 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantF16) {
     // enable f16;
     // enable chromium_experimental_push_constant;
     // var<push_constant> g : f16;
-    Enable(core::Extension::kF16);
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     GlobalVar("g", ty.f16(Source{{56, 78}}), core::AddressSpace::kPushConstant);
 
     ASSERT_FALSE(r()->Resolve());
@@ -897,8 +886,8 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_PushConstantF16) {
     // enable f16;
     // enable chromium_experimental_push_constant;
     // type t = ptr<push_constant, f16>;
-    Enable(core::Extension::kF16);
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kF16);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     Alias("t", ty.ptr<push_constant>(ty.f16(Source{{56, 78}})));
 
     ASSERT_FALSE(r()->Resolve());
@@ -909,7 +898,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_PushConstantF16) {
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantPointer) {
     // enable chromium_experimental_push_constant;
     // var<push_constant> g : ptr<private, f32>;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     GlobalVar(Source{{56, 78}}, "g", ty.ptr<private_, f32>(Source{{12, 34}}),
               core::AddressSpace::kPushConstant);
 
@@ -920,23 +909,10 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantPointer) {
 56:78 note: while instantiating 'var' g)");
 }
 
-TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_PushConstantPointer) {
-    // enable chromium_experimental_push_constant;
-    // type t = ptr<push_constant, ptr<private, f32>>;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
-    Alias(Source{{56, 78}}, "t", ty.ptr<push_constant>(ty.ptr<private_, f32>(Source{{12, 34}})));
-
-    ASSERT_FALSE(r()->Resolve());
-    EXPECT_EQ(
-        r()->error(),
-        R"(12:34 error: Type 'ptr<private, f32, read_write>' cannot be used in address space 'push_constant' as it is non-host-shareable
-note: while instantiating ptr<push_constant, ptr<private, f32, read_write>, read_write>)");
-}
-
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantIntScalar) {
     // enable chromium_experimental_push_constant;
     // var<push_constant> g : i32;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     GlobalVar("g", ty.i32(), core::AddressSpace::kPushConstant);
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -945,7 +921,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantIntScalar)
 TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_PushConstantIntScalar) {
     // enable chromium_experimental_push_constant;
     // type t = ptr<push_constant, i32>;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     Alias("t", ty.ptr<push_constant, i32>());
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -954,7 +930,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_PushConstantIntScalar) {
 TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantVectorF32) {
     // enable chromium_experimental_push_constant;
     // var<push_constant> g : vec4<f32>;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     GlobalVar("g", ty.vec4<f32>(), core::AddressSpace::kPushConstant);
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -963,7 +939,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantVectorF32)
 TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_PushConstantVectorF32) {
     // enable chromium_experimental_push_constant;
     // var<push_constant> g : vec4<f32>;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     Alias("t", ty.ptr<push_constant, vec4<f32>>());
 
     ASSERT_TRUE(r()->Resolve()) << r()->error();
@@ -973,7 +949,7 @@ TEST_F(ResolverAddressSpaceValidationTest, GlobalVariable_PushConstantArrayF32) 
     // enable chromium_experimental_push_constant;
     // struct S { a : f32}
     // var<push_constant> g : array<S, 3u>;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     Structure("S", Vector{Member("a", ty.f32())});
     GlobalVar("g", ty.array(ty("S"), 3_u), core::AddressSpace::kPushConstant);
 
@@ -984,7 +960,7 @@ TEST_F(ResolverAddressSpaceValidationTest, PointerAlias_PushConstantArrayF32) {
     // enable chromium_experimental_push_constant;
     // struct S { a : f32}
     // type t = ptr<push_constant, array<S, 3u>>;
-    Enable(core::Extension::kChromiumExperimentalPushConstant);
+    Enable(wgsl::Extension::kChromiumExperimentalPushConstant);
     Structure("S", Vector{Member("a", ty.f32())});
     Alias("t", ty.ptr<push_constant>(ty.array(ty("S"), 3_u)));
 

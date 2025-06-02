@@ -5,9 +5,21 @@
 #ifndef QUICHE_QUIC_MASQUE_MASQUE_ENCAPSULATED_CLIENT_SESSION_H_
 #define QUICHE_QUIC_MASQUE_MASQUE_ENCAPSULATED_CLIENT_SESSION_H_
 
+#include <string>
+
+#include "absl/strings/string_view.h"
+#include "quiche/quic/core/crypto/quic_crypto_client_config.h"
+#include "quiche/quic/core/frames/quic_connection_close_frame.h"
 #include "quiche/quic/core/http/quic_spdy_client_session.h"
+#include "quiche/quic/core/quic_config.h"
+#include "quiche/quic/core/quic_error_codes.h"
+#include "quiche/quic/core/quic_types.h"
+#include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/masque/masque_client_session.h"
 #include "quiche/quic/platform/api/quic_export.h"
+#include "quiche/quic/platform/api/quic_ip_address.h"
+#include "quiche/quic/platform/api/quic_socket_address.h"
+#include "quiche/common/capsule.h"
 
 namespace quic {
 
@@ -23,16 +35,14 @@ class QUIC_NO_EXPORT MasqueEncapsulatedClientSession
       public MasqueClientSession::EncapsulatedIpSession {
  public:
   // Takes ownership of |connection|, but not of |crypto_config| or
-  // |push_promise_index| or |masque_client_session|. All pointers must be
-  // non-null. Caller must ensure that |push_promise_index| and
-  // |masque_client_session| stay valid for the lifetime of the newly created
-  // MasqueEncapsulatedClientSession.
+  // |masque_client_session|. All pointers must be non-null. Caller must ensure
+  // that |masque_client_session| stays valid for the lifetime of the newly
+  // created MasqueEncapsulatedClientSession.
   MasqueEncapsulatedClientSession(
       const QuicConfig& config,
       const ParsedQuicVersionVector& supported_versions,
       QuicConnection* connection, const QuicServerId& server_id,
       QuicCryptoClientConfig* crypto_config,
-      QuicClientPushPromiseIndex* push_promise_index,
       MasqueClientSession* masque_client_session);
 
   // Disallow copy and assign.

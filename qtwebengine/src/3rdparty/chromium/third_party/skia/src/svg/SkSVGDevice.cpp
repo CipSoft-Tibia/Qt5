@@ -44,7 +44,7 @@
 #include "include/private/base/SkTemplates.h"
 #include "include/private/base/SkTo.h"
 #include "include/svg/SkSVGCanvas.h"
-#include "include/utils/SkBase64.h"
+#include "src/base/SkBase64.h"
 #include "src/base/SkTLazy.h"
 #include "src/core/SkAnnotationKeys.h"
 #include "src/core/SkClipStack.h"
@@ -369,10 +369,9 @@ void SkSVGDevice::AutoElement::addPaint(const SkPaint& paint, const Resources& r
         static constexpr char kDefaultFill[] = "black";
         if (!resources.fPaintServer.equals(kDefaultFill)) {
             this->addAttribute("fill", resources.fPaintServer);
-
-            if (SK_AlphaOPAQUE != SkColorGetA(paint.getColor())) {
-                this->addAttribute("fill-opacity", svg_opacity(paint.getColor()));
-            }
+        }
+        if (SK_AlphaOPAQUE != SkColorGetA(paint.getColor())) {
+            this->addAttribute("fill-opacity", svg_opacity(paint.getColor()));
         }
     } else {
         SkASSERT(style == SkPaint::kStroke_Style);
@@ -549,7 +548,7 @@ sk_sp<SkData> AsDataUri(SkImage* image) {
         }
     }
 
-    size_t b64Size = SkBase64::Encode(imageData->data(), imageData->size(), nullptr);
+    size_t b64Size = SkBase64::EncodedSize(imageData->size());
     sk_sp<SkData> dataUri = SkData::MakeUninitialized(selectedPrefixLength + b64Size);
     char* dest = (char*)dataUri->writable_data();
     memcpy(dest, selectedPrefix, selectedPrefixLength);
@@ -687,7 +686,7 @@ void SkSVGDevice::AutoElement::addTextAttributes(const SkFont& font) {
 
     SkString familyName;
     THashSet<SkString> familySet;
-    sk_sp<SkTypeface> tface = font.refTypefaceOrDefault();
+    sk_sp<SkTypeface> tface = font.refTypeface();
 
     SkASSERT(tface);
     SkFontStyle style = tface->fontStyle();
@@ -729,15 +728,16 @@ void SkSVGDevice::AutoElement::addTextAttributes(const SkFont& font) {
     }
 }
 
-sk_sp<SkBaseDevice> SkSVGDevice::Make(const SkISize& size, std::unique_ptr<SkXMLWriter> writer,
-                                      uint32_t flags) {
-    return writer ? sk_sp<SkBaseDevice>(new SkSVGDevice(size, std::move(writer), flags))
+sk_sp<SkDevice> SkSVGDevice::Make(const SkISize& size,
+                                  std::unique_ptr<SkXMLWriter> writer,
+                                  uint32_t flags) {
+    return writer ? sk_sp<SkDevice>(new SkSVGDevice(size, std::move(writer), flags))
                   : nullptr;
 }
 
 SkSVGDevice::SkSVGDevice(const SkISize& size, std::unique_ptr<SkXMLWriter> writer, uint32_t flags)
-    : INHERITED(SkImageInfo::MakeUnknown(size.fWidth, size.fHeight),
-                SkSurfaceProps(0, kUnknown_SkPixelGeometry))
+    : SkClipStackDevice(SkImageInfo::MakeUnknown(size.fWidth, size.fHeight),
+                        SkSurfaceProps(0, kUnknown_SkPixelGeometry))
     , fWriter(std::move(writer))
     , fResourceBucket(new ResourceBucket)
     , fFlags(flags)
@@ -982,7 +982,7 @@ void SkSVGDevice::drawBitmapCommon(const MxCp& mc, const SkBitmap& bm, const SkP
         return;
     }
 
-    size_t b64Size = SkBase64::Encode(pngData->data(), pngData->size(), nullptr);
+    size_t b64Size = SkBase64::EncodedSize(pngData->size());
     AutoTMalloc<char> b64Data(b64Size);
     SkBase64::Encode(pngData->data(), pngData->size(), b64Data.get());
 

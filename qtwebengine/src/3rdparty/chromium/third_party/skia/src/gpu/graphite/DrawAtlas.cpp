@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "include/core/SkColorSpace.h"
+#include "include/core/SkStream.h"
 #include "include/gpu/graphite/Recorder.h"
 #include "include/private/SkColorData.h"
 #include "include/private/base/SkTPin.h"
@@ -33,38 +34,6 @@ static const constexpr bool kDumpAtlasData = true;
 #else
 static const constexpr bool kDumpAtlasData = false;
 #endif
-
-class PlotUploadContext : public ConditionalUploadContext {
-public:
-    static std::unique_ptr<ConditionalUploadContext> Make(PlotLocator plotLocator,
-                                                          AtlasToken uploadToken,
-                                                          uint32_t atlasID) {
-        return std::unique_ptr<PlotUploadContext>(new PlotUploadContext(plotLocator,
-                                                                        uploadToken,
-                                                                        atlasID));
-    }
-    ~PlotUploadContext() override {}
-
-    bool needsUpload(Context* context) const override {
-        return context->priv().plotUploadTracker()->needsUpload(fPlotLocator,
-                                                                fUploadToken,
-                                                                fAtlasID);
-    }
-
-private:
-    PlotUploadContext(PlotLocator plotLocator,
-                      AtlasToken uploadToken,
-                      uint32_t atlasID)
-        : ConditionalUploadContext()
-        , fPlotLocator(plotLocator)
-        , fUploadToken(uploadToken)
-        , fAtlasID(atlasID) {}
-
-    // identifiers
-    PlotLocator fPlotLocator; // has plot index, page index, and eviction gen ID
-    AtlasToken fUploadToken;
-    uint32_t fAtlasID;
-};
 
 #ifdef SK_DEBUG
 void DrawAtlas::validate(const AtlasLocator& atlasLocator) const {
@@ -97,9 +66,9 @@ std::unique_ptr<DrawAtlas> DrawAtlas::Make(SkColorType colorType, size_t bpp, in
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-static int32_t next_id() {
-    static std::atomic<int32_t> nextID{1};
-    int32_t id;
+static uint32_t next_id() {
+    static std::atomic<uint32_t> nextID{1};
+    uint32_t id;
     do {
         id = nextID.fetch_add(1, std::memory_order_relaxed);
     } while (id == SK_InvalidGenID);
@@ -170,51 +139,30 @@ bool DrawAtlas::addToPage(unsigned int pageIdx, int width, int height, const voi
     return false;
 }
 
-bool DrawAtlas::recordUploads(UploadList* ul, Recorder* recorder, bool useCachedUploads) {
+bool DrawAtlas::recordUploads(UploadList* ul, Recorder* recorder) {
     TRACE_EVENT0("skia.gpu", TRACE_FUNC);
-    TokenTracker* tokenTracker = recorder->priv().tokenTracker();
     for (uint32_t pageIdx = 0; pageIdx < fNumActivePages; ++pageIdx) {
         PlotList::Iter plotIter;
         plotIter.init(fPages[pageIdx].fPlotList, PlotList::Iter::kHead_IterStart);
         for (Plot* plot = plotIter.get(); plot; plot = plotIter.next()) {
-            if (useCachedUploads || plot->needsUpload()) {
+            if (plot->needsUpload()) {
                 TextureProxy* proxy = fProxies[pageIdx].get();
                 SkASSERT(proxy);
 
-                // Need to grab this before it gets reset by prepareForUpload()
-                bool setUploadToken = plot->needsUpload();
-
                 const void* dataPtr;
                 SkIRect dstRect;
-                std::tie(dataPtr, dstRect) = plot->prepareForUpload(useCachedUploads);
+                std::tie(dataPtr, dstRect) = plot->prepareForUpload();
                 if (dstRect.isEmpty()) {
                     continue;
-                }
-                // We don't want to set the uploadToken for the conditional uploads
-                // we create at the start of a Recording -- if we do then each time we snap
-                // a new Recording it will update the token and effectively consider those
-                // uploads to take precedence over the ones that originally set up that
-                // state. Then when we play the Recording back it will overwrite those
-                // Plots even though they already contain the necessary glyphs. The Plots
-                // should keep the token value for the non-conditional uploads that
-                // originally set that state.
-                if (setUploadToken) {
-                    plot->setLastUploadToken(tokenTracker->nextFlushToken());
                 }
 
                 std::vector<MipLevel> levels;
                 levels.push_back({dataPtr, fBytesPerPixel*fPlotWidth});
 
-                // We need a conditional context for all uploads to ensure that they are
-                // registered in the PlotUploadTracker.
-                auto uploadContext = PlotUploadContext::Make(plot->plotLocator(),
-                                                             plot->lastUploadToken(),
-                                                             fAtlasID);
-
                 // Src and dst colorInfo are the same
                 SkColorInfo colorInfo(fColorType, kUnknown_SkAlphaType, nullptr);
                 if (!ul->recordUpload(recorder, sk_ref_sp(proxy), colorInfo, colorInfo, levels,
-                                      dstRect, std::move(uploadContext))) {
+                                      dstRect, /*ConditionalUploadContext=*/nullptr)) {
                     return false;
                 }
             }
@@ -475,7 +423,7 @@ bool DrawAtlas::activateNewPage(Recorder* recorder) {
     const Caps* caps = recorder->priv().caps();
     auto textureInfo = caps->getDefaultSampledTextureInfo(fColorType,
                                                           /*mipmapped=*/Mipmapped::kNo,
-                                                          Protected::kNo,
+                                                          recorder->priv().isProtected(),
                                                           Renderable::kNo);
     fProxies[fNumActivePages] = TextureProxy::Make(
             caps, {fTextureWidth, fTextureHeight}, textureInfo, skgpu::Budgeted::kYes);
@@ -517,6 +465,17 @@ inline void DrawAtlas::deactivateLastPage() {
     // remove ref to the texture proxy
     fProxies[lastPageIndex].reset();
     --fNumActivePages;
+}
+
+void DrawAtlas::evictAllPlots() {
+    PlotList::Iter plotIter;
+    for (uint32_t pageIndex = 0; pageIndex < fNumActivePages; ++pageIndex) {
+        plotIter.init(fPages[pageIndex].fPlotList, PlotList::Iter::kHead_IterStart);
+        while (Plot* plot = plotIter.get()) {
+            this->processEvictionAndResetRects(plot);
+            plotIter.next();
+        }
+    }
 }
 
 DrawAtlasConfig::DrawAtlasConfig(int maxTextureSize, size_t maxBytes) {
@@ -570,23 +529,6 @@ SkISize DrawAtlasConfig::plotDimensions(MaskFormat type) const {
         // ARGB and LCD always use 256x256 plots -- this has been shown to be faster
         return { 256, 256 };
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////
-
-bool PlotUploadTracker::needsUpload(PlotLocator plotLocator,
-                                    AtlasToken uploadToken,
-                                    uint32_t atlasID) {
-    uint32_t key = plotLocator.pageIndex() << 8 | plotLocator.plotIndex();
-
-    PlotAgeData* ageData = fAtlasData[atlasID].find(key);
-    if (!ageData || ageData->genID != plotLocator.genID() || ageData->uploadToken < uploadToken) {
-        PlotAgeData data{plotLocator.genID(), uploadToken};
-        fAtlasData[atlasID].set(key, data);
-        return true;
-    }
-
-    return false;
 }
 
 }  // namespace skgpu::graphite

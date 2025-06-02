@@ -42,11 +42,12 @@ struct Module;
 struct Class;
 struct TemplateObject;
 
-struct Q_QML_COMPILER_PRIVATE_EXPORT StringTableGenerator {
+struct Q_QML_COMPILER_EXPORT StringTableGenerator {
     StringTableGenerator();
 
     int registerString(const QString &str);
     int getStringId(const QString &string) const;
+    bool hasStringId(const QString &string) const { return stringToId.contains(string); }
     QString stringForIndex(int index) const { return strings.at(index); }
     uint stringCount() const { return strings.size() - backingUnitTableSize; }
 
@@ -69,7 +70,7 @@ private:
     bool frozen = false;
 };
 
-struct Q_QML_COMPILER_PRIVATE_EXPORT JSUnitGenerator {
+struct Q_QML_COMPILER_EXPORT JSUnitGenerator {
     enum LookupMode { LookupForStorage, LookupForCall };
 
     static void generateUnitChecksum(CompiledData::Unit *unit);
@@ -83,6 +84,7 @@ struct Q_QML_COMPILER_PRIVATE_EXPORT JSUnitGenerator {
 
     int registerString(const QString &str) { return stringTable.registerString(str); }
     int getStringId(const QString &string) const { return stringTable.getStringId(string); }
+    bool hasStringId(const QString &string) const { return stringTable.hasStringId(string); }
     QString stringForIndex(int index) const { return stringTable.stringForIndex(index); }
 
     int registerGetterLookup(const QString &name, LookupMode mode);

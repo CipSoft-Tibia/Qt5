@@ -7,14 +7,19 @@
 #include <private/qcomparisontesthelper_p.h>
 
 #include <qlocale.h>
+#include <qscopeguard.h>
 
 #if defined(Q_OS_WIN)
 #include <QOperatingSystemVersion>
 #endif
 
+#include <set>
+
 #if defined(Q_OS_WIN) && !QT_CONFIG(icu)
 #  define USING_WIN_TZ
 #endif
+
+using namespace Qt::StringLiterals;
 
 class tst_QTimeZone : public QObject
 {
@@ -38,6 +43,8 @@ private Q_SLOTS:
     void availableTimeZoneIds();
     void utcOffsetId_data();
     void utcOffsetId();
+    void hasAlternativeName_data();
+    void hasAlternativeName();
     void specificTransition_data();
     void specificTransition();
     void transitionEachZone_data();
@@ -65,11 +72,32 @@ private Q_SLOTS:
 
 private:
     void printTimeZone(const QTimeZone &tz);
-#if defined(QT_BUILD_INTERNAL) && QT_CONFIG(timezone)
+#if QT_CONFIG(timezone)
+#  if defined(QT_BUILD_INTERNAL)
     // Generic tests of privates, called by implementation-specific private tests:
     void testCetPrivate(const QTimeZonePrivate &tzp);
     void testEpochTranPrivate(const QTimeZonePrivate &tzp);
-#endif // QT_BUILD_INTERNAL && timezone backends
+#  endif // QT_BUILD_INTERNAL
+    // Where tzdb contains a link between zones in different territories, CLDR
+    // doesn't treat those as aliases for one another. For details see "Links in
+    // the tz database" at:
+    // https://www.unicode.org/reports/tr35/#time-zone-identifiers
+    // Some of these could be identified as equivalent by looking at metazone
+    // histories but, for now, we stick with CLDR's notion of alias.
+    const std::set<QByteArrayView> unAliasedLinks = {
+        // By continent:
+        "America/Kralendijk", "America/Lower_Princes", "America/Marigot", "America/St_Barthelemy",
+        "Antarctica/South_Pole",
+        "Arctic/Longyearbyen",
+        "Asia/Choibalsan",
+        "Atlantic/Jan_Mayen",
+        "Europe/Bratislava", "Europe/Busingen", "Europe/Mariehamn",
+        "Europe/Podgorica", "Europe/San_Marino", "Europe/Vatican",
+        // Assorted legacy abbreviations and POSIX zones:
+        "CET", "EET", "EST", "HST", "MET", "MST", "WET",
+        "CST6CDT", "EST5EDT", "MST7MDT", "PST8PDT",
+    };
+#endif // timezone backends
     // Set to true to print debug output, test Display Names and run long stress tests
     static constexpr bool debug = false;
 };
@@ -558,9 +586,13 @@ void tst_QTimeZone::isTimeZoneIdAvailable()
     const QList<QByteArray> available = QTimeZone::availableTimeZoneIds();
     for (const QByteArray &id : available) {
         QVERIFY2(QTimeZone::isTimeZoneIdAvailable(id), id);
-        QVERIFY2(QTimeZone(id).isValid(), id);
-        QCOMPARE(QTimeZone(id).id(), id);
+        const QTimeZone zone(id);
+        QVERIFY2(zone.isValid(), id);
+        if (unAliasedLinks.find(id) == unAliasedLinks.end())
+            QVERIFY2(zone.hasAlternativeName(id), zone.id() + " != " + id);
     }
+    // availableTimeZoneIds() doesn't list all possible offset IDs, but
+    // isTimeZoneIdAvailable() should accept them.
     for (qint32 offset = QTimeZone::MinUtcOffsetSecs;
          offset <= QTimeZone::MinUtcOffsetSecs; ++offset) {
         const QByteArray id = QTimeZone(offset).id();
@@ -584,7 +616,7 @@ void tst_QTimeZone::utcOffsetId_data()
 #define ROW(name, valid, offset) \
     QTest::newRow(name) << QByteArray(name) << valid << offset
 
-    // See qtbase/util/locale_database/cldr2qtimezone.py for source
+    // See qtbase/util/locale_database/zonedata.py for source
     // CLDR v35.1 IDs:
     ROW("UTC", true, 0);
     ROW("UTC-14:00", true, -50400);
@@ -698,6 +730,58 @@ void tst_QTimeZone::utcOffsetId()
 
         QCOMPARE(zone.id(), id);
     }
+}
+
+void tst_QTimeZone::hasAlternativeName_data()
+{
+    QTest::addColumn<QByteArray>("iana");
+    QTest::addColumn<QByteArray>("alias");
+
+    QTest::newRow("Montreal=Toronto") << "America/Toronto"_ba << "America/Montreal"_ba;
+    QTest::newRow("Asmera=Asmara") << "Africa/Asmara"_ba << "Africa/Asmera"_ba;
+    QTest::newRow("Argentina/Catamarca")
+        << "America/Argentina/Catamarca"_ba << "America/Catamarca"_ba;
+    QTest::newRow("Godthab=Nuuk") << "America/Nuuk"_ba << "America/Godthab"_ba;
+    QTest::newRow("Indiana/Indianapolis")
+        << "America/Indiana/Indianapolis"_ba << "America/Indianapolis"_ba;
+    QTest::newRow("Kentucky/Louisville")
+        << "America/Kentucky/Louisville"_ba << "America/Louisville"_ba;
+    QTest::newRow("Calcutta=Kolkata") << "Asia/Kolkata"_ba << "Asia/Calcutta"_ba;
+    QTest::newRow("Katmandu=Kathmandu") << "Asia/Kathmandu"_ba << "Asia/Katmandu"_ba;
+    QTest::newRow("Rangoon=Yangon") << "Asia/Yangon"_ba << "Asia/Rangoon"_ba;
+    QTest::newRow("Saigon=Ho_Chi_Minh") << "Asia/Ho_Chi_Minh"_ba << "Asia/Saigon"_ba;
+    QTest::newRow("Faeroe=Faroe") << "Atlantic/Faroe"_ba << "Atlantic/Faeroe"_ba;
+    QTest::newRow("Currie=Hobart") << "Australia/Hobart"_ba << "Australia/Currie"_ba;
+    QTest::newRow("Kiev=Kyiv") << "Europe/Kyiv"_ba << "Europe/Kiev"_ba;
+    QTest::newRow("Uzhgorod=Kyiv") << "Europe/Kyiv"_ba << "Europe/Uzhgorod"_ba;
+    QTest::newRow("Zaporozhye=Kyiv") << "Europe/Kyiv"_ba << "Europe/Zaporozhye"_ba;
+    QTest::newRow("Fiji=Fiji") << "Pacific/Fiji"_ba << "Pacific/Fiji"_ba;
+    QTest::newRow("Enderbury=Enderbury") << "Pacific/Enderbury"_ba << "Pacific/Enderbury"_ba;
+}
+
+void tst_QTimeZone::hasAlternativeName()
+{
+    QFETCH(const QByteArray, iana);
+    QFETCH(const QByteArray, alias);
+    const QTimeZone zone(iana);
+    const QTimeZone peer(alias);
+    if (!zone.isValid())
+        QSKIP("Backend doesn't support IANA ID");
+
+    auto report = qScopeGuard([zone, peer]() {
+        const QByteArray zid = zone.id(), pid = peer.id();
+        qDebug("Using %s and %s", zid.constData(), pid.constData());
+    });
+    QVERIFY2(peer.isValid(), "Construction should have fallen back on IANA ID");
+    QVERIFY(zone.hasAlternativeName(zone.id()));
+    QVERIFY(zone.hasAlternativeName(iana));
+    QVERIFY(peer.hasAlternativeName(peer.id()));
+    QVERIFY(peer.hasAlternativeName(alias));
+    QVERIFY(zone.hasAlternativeName(peer.id()));
+    QVERIFY(zone.hasAlternativeName(alias));
+    QVERIFY(peer.hasAlternativeName(zone.id()));
+    QVERIFY(peer.hasAlternativeName(iana));
+    report.dismiss();
 }
 
 void tst_QTimeZone::specificTransition_data()
@@ -910,10 +994,21 @@ void tst_QTimeZone::availableTimeZoneIds()
         qDebug() << QTimeZone::availableTimeZoneIds(0);
         qDebug() << "";
     } else {
-        //Just test the calls work, we cannot know what any test machine has available
+        // Test the calls work:
         QList<QByteArray> listAll = QTimeZone::availableTimeZoneIds();
-        QList<QByteArray> listUs = QTimeZone::availableTimeZoneIds(QLocale::UnitedStates);
-        QList<QByteArray> listZero = QTimeZone::availableTimeZoneIds(0);
+        QList<QByteArray> list001 = QTimeZone::availableTimeZoneIds(QLocale::World);
+        QList<QByteArray> listUsa = QTimeZone::availableTimeZoneIds(QLocale::UnitedStates);
+        QList<QByteArray> listGmt = QTimeZone::availableTimeZoneIds(0);
+        // We cannot know what any test machine has available, so can't test contents.
+        // But we can do a consistency check:
+        QCOMPARE_LT(list001.size(), listAll.size());
+        QCOMPARE_LT(listUsa.size(), listAll.size());
+        QCOMPARE_LT(listGmt.size(), listAll.size());
+        // And we do know CLDR data supplies some entries to each:
+        QCOMPARE_GT(listAll.size(), 0);
+        QCOMPARE_GT(list001.size(), 0);
+        QCOMPARE_GT(listUsa.size(), 0);
+        QCOMPARE_GT(listGmt.size(), 0);
     }
 }
 
@@ -924,7 +1019,8 @@ void tst_QTimeZone::stressTest()
     for (const QByteArray &id : idList) {
         QTimeZone testZone = QTimeZone(id);
         QCOMPARE(testZone.isValid(), true);
-        QCOMPARE(testZone.id(), id);
+        if (unAliasedLinks.find(id) == unAliasedLinks.end())
+            QVERIFY2(testZone.hasAlternativeName(id), testZone.id() + " != " + id);
         QDateTime testDate = QDateTime(QDate(2015, 1, 1), QTime(0, 0), UTC);
         testZone.territory();
         testZone.comment();
@@ -969,15 +1065,14 @@ void tst_QTimeZone::stressTest()
 void tst_QTimeZone::windowsId()
 {
 /*
-    Current (CLDR v45) Windows zones for "Central Standard Time":
+    Current Windows zones for "Central Standard Time":
     Region      IANA Id(s)
-    Default     "America/Chicago"
+    World       "America/Chicago" (the default)
     Canada      "America/Winnipeg America/Rankin_Inlet America/Resolute"
-    Mexico      "America/Matamoros"
+    Mexico      "America/Matamoros America/Ojinaga"
     USA         "America/Chicago America/Indiana/Knox America/Indiana/Tell_City America/Menominee"
                 "America/North_Dakota/Beulah America/North_Dakota/Center"
                 "America/North_Dakota/New_Salem"
-    AnyTerritory  "CST6CDT"
 */
     QCOMPARE(QTimeZone::ianaIdToWindowsId("America/Chicago"),
              QByteArray("Central Standard Time"));
@@ -992,52 +1087,67 @@ void tst_QTimeZone::windowsId()
     // Check default value
     QCOMPARE(QTimeZone::windowsIdToDefaultIanaId("Central Standard Time"),
              QByteArray("America/Chicago"));
+    QCOMPARE(QTimeZone::windowsIdToDefaultIanaId("Central Standard Time", QLocale::World),
+             QByteArray("America/Chicago"));
     QCOMPARE(QTimeZone::windowsIdToDefaultIanaId("Central Standard Time", QLocale::Canada),
              QByteArray("America/Winnipeg"));
     QCOMPARE(QTimeZone::windowsIdToDefaultIanaId("Central Standard Time", QLocale::AnyTerritory),
-             QByteArray("CST6CDT"));
+             QByteArray());
     QCOMPARE(QTimeZone::windowsIdToDefaultIanaId(QByteArray()), QByteArray());
 
-    // No country is sorted list of all zones
-    QList<QByteArray> list;
-    list << "America/Chicago" << "America/Indiana/Knox" << "America/Indiana/Tell_City"
-         << "America/Matamoros" << "America/Menominee" << "America/North_Dakota/Beulah"
-         << "America/North_Dakota/Center" << "America/North_Dakota/New_Salem"
-         << "America/Ojinaga" << "America/Rankin_Inlet"
-         << "America/Resolute" << "America/Winnipeg" << "CST6CDT";
-    QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time"), list);
-
-    // Check country with no match returns empty list
-    list.clear();
-    QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::NewZealand),
-             list);
-
-    // Check valid country returns list in preference order
-    list.clear();
-    list << "America/Winnipeg" << "America/Rankin_Inlet"
-         << "America/Resolute";
-    QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::Canada), list);
-
-    list.clear();
-    list << "America/Matamoros" << "America/Ojinaga";
-    QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::Mexico), list);
-
-    list.clear();
-    list << "America/Chicago" << "America/Indiana/Knox" << "America/Indiana/Tell_City"
-         << "America/Menominee" << "America/North_Dakota/Beulah" << "America/North_Dakota/Center"
-         << "America/North_Dakota/New_Salem";
-    QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::UnitedStates),
-             list);
-
-    list.clear();
-    list << "CST6CDT";
-    QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::AnyTerritory),
-             list);
-
-    // Check no windowsId return empty
-    list.clear();
-    QCOMPARE(QTimeZone::windowsIdToIanaIds(QByteArray()), list);
-    QCOMPARE(QTimeZone::windowsIdToIanaIds(QByteArray(), QLocale::AnyTerritory), list);
+    {
+        // With no country, expect sorted list of all zones for ID
+        const QList<QByteArray> list = {
+            "America/Chicago", "America/Indiana/Knox", "America/Indiana/Tell_City",
+            "America/Matamoros", "America/Menominee", "America/North_Dakota/Beulah",
+            "America/North_Dakota/Center", "America/North_Dakota/New_Salem",
+            "America/Ojinaga", "America/Rankin_Inlet", "America/Resolute",
+            "America/Winnipeg"
+        };
+        QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time"), list);
+    }
+    {
+        const QList<QByteArray> list = { "America/Chicago" };
+        QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::World),
+                 list);
+    }
+    {
+        // Check country with no match returns empty list
+        const QList<QByteArray> empty;
+        QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::NewZealand),
+                 empty);
+    }
+    {
+        // Check valid country returns list in preference order
+        const QList<QByteArray> list = {
+            "America/Winnipeg", "America/Rankin_Inlet", "America/Resolute"
+        };
+        QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::Canada), list);
+    }
+    {
+        const QList<QByteArray> list = { "America/Matamoros", "America/Ojinaga" };
+        QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::Mexico), list);
+    }
+    {
+        const QList<QByteArray> list = {
+            "America/Chicago", "America/Indiana/Knox", "America/Indiana/Tell_City",
+            "America/Menominee", "America/North_Dakota/Beulah", "America/North_Dakota/Center",
+            "America/North_Dakota/New_Salem"
+        };
+        QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::UnitedStates),
+                 list);
+    }
+    {
+        const QList<QByteArray> list;
+        QCOMPARE(QTimeZone::windowsIdToIanaIds("Central Standard Time", QLocale::AnyTerritory),
+                 list);
+    }
+    {
+        // Check empty if given no windowsId:
+        const QList<QByteArray> empty;
+        QCOMPARE(QTimeZone::windowsIdToIanaIds(QByteArray()), empty);
+        QCOMPARE(QTimeZone::windowsIdToIanaIds(QByteArray(), QLocale::AnyTerritory), empty);
+    }
 }
 
 void tst_QTimeZone::isValidId_data()
@@ -1216,9 +1326,22 @@ void tst_QTimeZone::utcTest()
     QCOMPARE(tzp.hasDaylightTime(), false);
     QCOMPARE(tzp.hasTransitions(), false);
 
+    // Test UTC accessor
+    const QDateTime now = QDateTime::currentDateTime();
+    auto tz = QTimeZone::utc();
+    QCOMPARE(tz.isValid(), true);
+    QCOMPARE(tz.id(), QByteArrayLiteral("UTC"));
+    QCOMPARE(tz.territory(), QLocale::AnyTerritory);
+    QCOMPARE(tz.abbreviation(now), QStringLiteral("UTC"));
+    QCOMPARE(tz.displayName(QTimeZone::StandardTime, QTimeZone::LongName, QLocale()), QStringLiteral("UTC"));
+    QCOMPARE(tz.offsetFromUtc(now), 0);
+    QCOMPARE(tz.standardTimeOffset(now), 0);
+    QCOMPARE(tz.daylightTimeOffset(now), 0);
+    QCOMPARE(tz.hasDaylightTime(), false);
+    QCOMPARE(tz.hasTransitions(), false);
+
     // Test create from UTC Offset:
-    QDateTime now = QDateTime::currentDateTime();
-    QTimeZone tz(36000);
+    tz = QTimeZone(36000);
     QVERIFY(tz.isValid());
     QCOMPARE(tz.id(), QByteArray("UTC+10:00"));
     QCOMPARE(tz.offsetFromUtc(now), 36000);
@@ -1272,7 +1395,7 @@ void tst_QTimeZone::utcTest()
 
 void tst_QTimeZone::icuTest()
 {
-#if defined(QT_BUILD_INTERNAL) && QT_CONFIG(icu)
+#if defined(QT_BUILD_INTERNAL) && QT_CONFIG(icu) && !defined(Q_OS_UNIX)
     // Known datetimes
     qint64 std = QDateTime(QDate(2012, 1, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
     qint64 dst = QDateTime(QDate(2012, 6, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
@@ -1315,7 +1438,7 @@ void tst_QTimeZone::icuTest()
     if (QTest::currentTestFailed())
         return;
     testEpochTranPrivate(QIcuTimeZonePrivate("America/Toronto"));
-#endif // icu
+#endif // ICU not on Unix
 }
 
 void tst_QTimeZone::tzTest()
@@ -1519,7 +1642,7 @@ void tst_QTimeZone::tzTest()
         QDateTime dt(QDate(2016, 3, 28), QTime(0, 0), UTC);
         QCOMPARE(tzBarnaul.data(dt.toMSecsSinceEpoch()).abbreviation, QString("+07"));
     }
-#endif // QT_BUILD_INTERNAL && Q_OS_UNIX && !Q_OS_DARWIN
+#endif // QT_BUILD_INTERNAL && Q_OS_UNIX && !Q_OS_DARWIN && !Q_OS_ANDROID
 }
 
 void tst_QTimeZone::macTest()
@@ -1677,6 +1800,8 @@ void tst_QTimeZone::localeSpecificDisplayName()
     QVERIFY(zone.isValid());
 
     const QString localeName = zone.displayName(timeType, QTimeZone::LongName, locale);
+    if (localeName.isEmpty()) // Backend doesn't know how to localize this zone's name
+        QEXPECT_FAIL("", "QTBUG-115158 zone name localization unknown", Continue);
     QCOMPARE(localeName, expectedName);
 }
 
@@ -1850,7 +1975,7 @@ void tst_QTimeZone::stdCompatibility()
     QByteArrayView zoneName = QByteArrayView(timeZone->name());
     QTimeZone tz = QTimeZone::fromStdTimeZonePtr(timeZone);
     if (tz.isValid())
-        QCOMPARE(tz.id(), zoneName);
+        QVERIFY2(tz.hasAlternativeName(zoneName), tz.id().constData());
     else
         QVERIFY(!QTimeZone::isTimeZoneIdAvailable(zoneName.toByteArray()));
 #else

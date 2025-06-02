@@ -7,11 +7,14 @@
 
 QT_BEGIN_NAMESPACE
 
-QOpenSLESDeviceInfo::QOpenSLESDeviceInfo(const QByteArray &device, const QString &desc, QAudioDevice::Mode mode)
-    : QAudioDevicePrivate(device, mode),
-      m_engine(QOpenSLESEngine::instance())
+QOpenSLESDeviceInfo::QOpenSLESDeviceInfo(QByteArray device,
+                                         QString desc,
+                                         QAudioDevice::Mode mode,
+                                         bool isDefaultDevice)
+    : QAudioDevicePrivate(std::move(device), mode, std::move(desc))
+    , m_engine(QOpenSLESEngine::instance())
 {
-    description = desc;
+    isDefault = isDefaultDevice;
 
     auto channels = m_engine->supportedChannelCounts(mode);
     if (channels.size()) {

@@ -21,11 +21,11 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "quiche/quic/core/congestion_control/rtt_stats.h"
 #include "quiche/quic/core/crypto/quic_decrypter.h"
 #include "quiche/quic/core/crypto/quic_encrypter.h"
@@ -75,7 +75,7 @@ class QuicConnectionPeer;
 
 // Class that receives callbacks from the connection when the path context is
 // available.
-class QUIC_EXPORT_PRIVATE MultiPortPathContextObserver {
+class QUICHE_EXPORT MultiPortPathContextObserver {
  public:
   virtual void OnMultiPortPathContextAvailable(
       std::unique_ptr<QuicPathValidationContext>) = 0;
@@ -85,7 +85,7 @@ class QUIC_EXPORT_PRIVATE MultiPortPathContextObserver {
 
 // Class that receives callbacks from the connection when frames are received
 // and when other interesting events happen.
-class QUIC_EXPORT_PRIVATE QuicConnectionVisitorInterface {
+class QUICHE_EXPORT QuicConnectionVisitorInterface {
  public:
   virtual ~QuicConnectionVisitorInterface() {}
 
@@ -244,9 +244,6 @@ class QUIC_EXPORT_PRIVATE QuicConnectionVisitorInterface {
   // Return false if the crypto stream fail to generate one.
   virtual bool MaybeSendAddressToken() = 0;
 
-  // When bandwidth update alarms.
-  virtual void OnBandwidthUpdateTimeout() = 0;
-
   // Runs OnMultiPortPathContextAvailable() from |context_observer| with context
   // needed for the connection to probe on the alternative path. The callback
   // must be called exactly once. May run OnMultiPortPathContextAvailable()
@@ -266,12 +263,15 @@ class QUIC_EXPORT_PRIVATE QuicConnectionVisitorInterface {
 
   // Asks session to bundle data opportunistically with outgoing data.
   virtual void MaybeBundleOpportunistically() = 0;
+
+  // Get from session the flow control send window for stream |id|.
+  virtual QuicByteCount GetFlowControlSendWindowSize(QuicStreamId id) = 0;
 };
 
 // Interface which gets callbacks from the QuicConnection at interesting
 // points.  Implementations must not mutate the state of the connection
 // as a result of these callbacks.
-class QUIC_EXPORT_PRIVATE QuicConnectionDebugVisitor
+class QUICHE_EXPORT QuicConnectionDebugVisitor
     : public QuicSentPacketManager::DebugDelegate {
  public:
   ~QuicConnectionDebugVisitor() override {}
@@ -465,7 +465,7 @@ class QUIC_EXPORT_PRIVATE QuicConnectionDebugVisitor
       absl::string_view /*client_hello*/) {}
 };
 
-class QUIC_EXPORT_PRIVATE QuicConnectionHelperInterface {
+class QUICHE_EXPORT QuicConnectionHelperInterface {
  public:
   virtual ~QuicConnectionHelperInterface() {}
 
@@ -479,7 +479,7 @@ class QUIC_EXPORT_PRIVATE QuicConnectionHelperInterface {
   virtual quiche::QuicheBufferAllocator* GetStreamSendBufferAllocator() = 0;
 };
 
-class QUIC_EXPORT_PRIVATE QuicConnection
+class QUICHE_EXPORT QuicConnection
     : public QuicFramerVisitorInterface,
       public QuicBlockedWriterInterface,
       public QuicPacketCreator::DelegateInterface,
@@ -692,7 +692,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
   bool OnAckTimestamp(QuicPacketNumber packet_number,
                       QuicTime timestamp) override;
   bool OnAckFrameEnd(QuicPacketNumber start,
-                     const absl::optional<QuicEcnCounts>& ecn_counts) override;
+                     const std::optional<QuicEcnCounts>& ecn_counts) override;
   bool OnStopWaitingFrame(const QuicStopWaitingFrame& frame) override;
   bool OnPaddingFrame(const QuicPaddingFrame& frame) override;
   bool OnPingFrame(const QuicPingFrame& frame) override;
@@ -730,7 +730,10 @@ class QUIC_EXPORT_PRIVATE QuicConnection
   // QuicPacketCreator::DelegateInterface
   bool ShouldGeneratePacket(HasRetransmittableData retransmittable,
                             IsHandshake handshake) override;
-  const QuicFrames MaybeBundleOpportunistically() override;
+  void MaybeBundleOpportunistically() override;
+  QuicByteCount GetFlowControlSendWindowSize(QuicStreamId id) override {
+    return visitor_->GetFlowControlSendWindowSize(id);
+  }
   QuicPacketBuffer GetPacketBuffer() override;
   void OnSerializedPacket(SerializedPacket packet) override;
   void OnUnrecoverableError(QuicErrorCode error,
@@ -752,7 +755,6 @@ class QUIC_EXPORT_PRIVATE QuicConnection
   // QuicIdleNetworkDetector::Delegate
   void OnHandshakeTimeout() override;
   void OnIdleNetworkDetected() override;
-  void OnBandwidthUpdateTimeout() override;
 
   // QuicPingManager::Delegate
   void OnKeepAliveTimeout() override;
@@ -963,7 +965,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
   // pending.  In addition, this flusher can be configured to ensure that an ACK
   // frame is included in the first packet created, if there's new ack
   // information to be sent.
-  class QUIC_EXPORT_PRIVATE ScopedPacketFlusher {
+  class QUICHE_EXPORT ScopedPacketFlusher {
    public:
     explicit ScopedPacketFlusher(QuicConnection* connection);
     ~ScopedPacketFlusher();
@@ -977,7 +979,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
     const bool handshake_packet_sent_;
   };
 
-  class QUIC_EXPORT_PRIVATE ScopedEncryptionLevelContext {
+  class QUICHE_EXPORT ScopedEncryptionLevelContext {
    public:
     ScopedEncryptionLevelContext(QuicConnection* connection,
                                  EncryptionLevel level);
@@ -1298,7 +1300,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
 
   void AddKnownServerAddress(const QuicSocketAddress& address);
 
-  absl::optional<QuicNewConnectionIdFrame>
+  std::optional<QuicNewConnectionIdFrame>
   MaybeIssueNewConnectionIdForPreferredAddress();
 
   // Kicks off validation of received server preferred address.
@@ -1450,19 +1452,19 @@ class QUIC_EXPORT_PRIVATE QuicConnection
     kMaxValue,
   };
 
-  struct QUIC_EXPORT_PRIVATE PendingPathChallenge {
+  struct QUICHE_EXPORT PendingPathChallenge {
     QuicPathFrameBuffer received_path_challenge;
     QuicSocketAddress peer_address;
   };
 
-  struct QUIC_EXPORT_PRIVATE PathState {
+  struct QUICHE_EXPORT PathState {
     PathState() = default;
 
     PathState(const QuicSocketAddress& alternative_self_address,
               const QuicSocketAddress& alternative_peer_address,
               const QuicConnectionId& client_connection_id,
               const QuicConnectionId& server_connection_id,
-              absl::optional<StatelessResetToken> stateless_reset_token)
+              std::optional<StatelessResetToken> stateless_reset_token)
         : self_address(alternative_self_address),
           peer_address(alternative_peer_address),
           client_connection_id(client_connection_id),
@@ -1481,7 +1483,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
     QuicSocketAddress peer_address;
     QuicConnectionId client_connection_id;
     QuicConnectionId server_connection_id;
-    absl::optional<StatelessResetToken> stateless_reset_token;
+    std::optional<StatelessResetToken> stateless_reset_token;
     // True if the peer address has been validated. Address is considered
     // validated when 1) an address token of the peer address is received and
     // validated, or 2) a HANDSHAKE packet has been successfully processed on
@@ -1494,7 +1496,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
     // Points to the send algorithm on the old default path while connection is
     // validating migrated peer address. Nullptr otherwise.
     std::unique_ptr<SendAlgorithmInterface> send_algorithm;
-    absl::optional<RttStats> rtt_stats;
+    std::optional<RttStats> rtt_stats;
     // If true, an ECN packet was acked on this path, so the path probably isn't
     // dropping ECN-marked packets.
     bool ecn_marked_packet_acked = false;
@@ -1509,7 +1511,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
   // addresses) of those packets which are serialized but failed to send because
   // socket is blocked. From unacked packet map and send algorithm's
   // perspective, buffered packets are treated as sent.
-  struct QUIC_EXPORT_PRIVATE BufferedPacket {
+  struct QUICHE_EXPORT BufferedPacket {
     BufferedPacket(const SerializedPacket& packet,
                    const QuicSocketAddress& self_address,
                    const QuicSocketAddress& peer_address,
@@ -1539,7 +1541,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
 
   // ReceivedPacketInfo comprises the received packet information.
   // TODO(fayang): move more fields to ReceivedPacketInfo.
-  struct QUIC_EXPORT_PRIVATE ReceivedPacketInfo {
+  struct QUICHE_EXPORT ReceivedPacketInfo {
     explicit ReceivedPacketInfo(QuicTime receipt_time);
     ReceivedPacketInfo(const QuicSocketAddress& destination_address,
                        const QuicSocketAddress& source_address,
@@ -1553,7 +1555,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
     QuicByteCount length = 0;
     QuicConnectionId destination_connection_id;
     // Fields below are only populated if packet gets decrypted successfully.
-    // TODO(fayang): consider using absl::optional for following fields.
+    // TODO(fayang): consider using std::optional for following fields.
     bool decrypted = false;
     EncryptionLevel decrypted_level = ENCRYPTION_INITIAL;
     QuicPacketHeader header;
@@ -1565,12 +1567,12 @@ class QUIC_EXPORT_PRIVATE QuicConnection
     QuicSocketAddress actual_destination_address;
   };
 
-  QUIC_EXPORT_PRIVATE friend std::ostream& operator<<(
+  QUICHE_EXPORT friend std::ostream& operator<<(
       std::ostream& os, const QuicConnection::ReceivedPacketInfo& info);
 
   // UndecrytablePacket comprises a undecryptable packet and related
   // information.
-  struct QUIC_EXPORT_PRIVATE UndecryptablePacket {
+  struct QUICHE_EXPORT UndecryptablePacket {
     UndecryptablePacket(const QuicEncryptedPacket& packet,
                         EncryptionLevel encryption_level,
                         const ReceivedPacketInfo& packet_info)
@@ -1642,7 +1644,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
 
   // A class which sets and clears in_probe_time_out_ when entering
   // and exiting OnRetransmissionTimeout, respectively.
-  class QUIC_EXPORT_PRIVATE ScopedRetransmissionTimeoutIndicator {
+  class QUICHE_EXPORT ScopedRetransmissionTimeoutIndicator {
    public:
     // |connection| must outlive this indicator.
     explicit ScopedRetransmissionTimeoutIndicator(QuicConnection* connection);
@@ -1683,7 +1685,7 @@ class QUIC_EXPORT_PRIVATE QuicConnection
       const PathState& default_path, const PathState& alternative_path,
       const QuicConnectionId& server_connection_id,
       QuicConnectionId* client_connection_id,
-      absl::optional<StatelessResetToken>* stateless_reset_token);
+      std::optional<StatelessResetToken>* stateless_reset_token);
 
   // Returns true and sets connection IDs if (self_address, peer_address)
   // corresponds to either the default path or alternative path. Returns false
@@ -2259,14 +2261,14 @@ class QUIC_EXPORT_PRIVATE QuicConnection
   // |server_connection_id_| with the value from that packet and save off the
   // original value of |server_connection_id_| into
   // |original_destination_connection_id_| for validation.
-  absl::optional<QuicConnectionId> original_destination_connection_id_;
+  std::optional<QuicConnectionId> original_destination_connection_id_;
 
   // The connection ID that replaces original_destination_connection_id_.
   QuicConnectionId original_destination_connection_id_replacement_;
 
   // After we receive a RETRY packet, |retry_source_connection_id_| contains
   // the source connection ID from that packet.
-  absl::optional<QuicConnectionId> retry_source_connection_id_;
+  std::optional<QuicConnectionId> retry_source_connection_id_;
 
   // Used to store content of packets which cannot be sent because of write
   // blocked. Packets' encrypted buffers are copied and owned by
@@ -2370,9 +2372,6 @@ class QUIC_EXPORT_PRIVATE QuicConnection
 
   const bool ignore_gquic_probing_ =
       GetQuicReloadableFlag(quic_ignore_gquic_probing);
-
-  const bool ignore_duplicate_new_cid_frame_ =
-      GetQuicReloadableFlag(quic_ignore_duplicate_new_cid_frame);
 
   RetransmittableOnWireBehavior retransmittable_on_wire_behavior_ = DEFAULT;
 

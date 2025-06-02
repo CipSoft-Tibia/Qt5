@@ -6,7 +6,7 @@
 #include <QtTest/QtTest>
 #include <QtMultimedia/private/qmediaplayer_p.h>
 
-#include <qscopedenvironmentvariable.h>
+#include <private/qscopedenvironmentvariable_p.h>
 
 QT_USE_NAMESPACE
 
@@ -77,29 +77,12 @@ void tst_QMediaPlayerGStreamer::initTestCase()
 void tst_QMediaPlayerGStreamer::init()
 {
     player = std::make_unique<QMediaPlayer>();
+    mediaStatusSpy.emplace(player.get(), &QMediaPlayer::mediaStatusChanged);
 }
 
 void tst_QMediaPlayerGStreamer::cleanup()
 {
     player.reset();
-}
-
-void tst_QMediaPlayerGStreamer::constructor_preparesGstPipeline()
-{
-    auto *rawPipeline = getGstPipeline();
-    QVERIFY(rawPipeline);
-
-    QGstPipeline pipeline{
-        rawPipeline,
-        QGstPipeline::NeedsRef,
-    };
-    QVERIFY(pipeline);
-
-    QVERIFY(pipeline.findByName("videoInputSelector"));
-    QVERIFY(pipeline.findByName("audioInputSelector"));
-    QVERIFY(pipeline.findByName("subTitleInputSelector"));
-
-    dumpGraph("constructor_preparesGstPipeline");
 }
 
 void tst_QMediaPlayerGStreamer::videoSink_constructor_overridesConversionElement()
@@ -115,13 +98,13 @@ void tst_QMediaPlayerGStreamer::videoSink_constructor_overridesConversionElement
     QVideoSink sink;
     player->setVideoSink(&sink);
     player->setSource(QUrl("qrc:/testdata/color_matrix.mp4"));
+    player->pause();
 
     QGstPipeline pipeline = getPipeline();
     QTEST_ASSERT(pipeline);
+    dumpGraph("videoSink_constructor_overridesConversionElement");
 
     QTRY_VERIFY(pipeline.findByName("myConverter"));
-
-    dumpGraph("videoSink_constructor_overridesConversionElement");
 }
 
 void tst_QMediaPlayerGStreamer::
@@ -138,6 +121,7 @@ void tst_QMediaPlayerGStreamer::
     QVideoSink sink;
     player->setVideoSink(&sink);
     player->setSource(QUrl("qrc:/testdata/color_matrix.mp4"));
+    player->pause();
 
     QGstPipeline pipeline = getPipeline();
     QTEST_ASSERT(pipeline);
@@ -146,6 +130,31 @@ void tst_QMediaPlayerGStreamer::
     QTRY_VERIFY(pipeline.findByName("myConverter2"));
 
     dumpGraph("videoSink_constructer_overridesConversionElement_withMultipleElements");
+}
+
+void tst_QMediaPlayerGStreamer::setSource_customGStreamerPipeline_videoTest()
+{
+    player->setSource(u"gstreamer-pipeline: videotestsrc name=testsrc"_s);
+
+    QGstPipeline pipeline = getPipeline();
+    QTEST_ASSERT(pipeline);
+
+    QVERIFY(pipeline.findByName("testsrc"));
+
+    dumpGraph("setSource_customGStreamerPipeline_videoTest");
+}
+
+void tst_QMediaPlayerGStreamer::setSource_customGStreamerPipeline_uriDecodeBin()
+{
+    player->setSource(
+            u"gstreamer-pipeline: uridecodebin uri=http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 name=testsrc"_s);
+
+    QGstPipeline pipeline = getPipeline();
+    QTEST_ASSERT(pipeline);
+
+    QVERIFY(pipeline.findByName("testsrc"));
+
+    dumpGraph("setSource_customGStreamerPipeline_uriDecodeBin");
 }
 
 QTEST_GUILESS_MAIN(tst_QMediaPlayerGStreamer)

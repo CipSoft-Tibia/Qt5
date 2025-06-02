@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Engine} from '../common/engine';
+import {Span, Time} from '../base/time';
 import {
   HighPrecisionTime,
   HighPrecisionTimeSpan,
 } from '../common/high_precision_time';
-import {LONG, NUM, STR, STR_NULL} from '../common/query_result';
 import {FtraceFilterState, Pagination} from '../common/state';
-import {Span, Time} from '../common/time';
 import {FtraceEvent, globals} from '../frontend/globals';
 import {publishFtracePanelData} from '../frontend/publish';
 import {ratelimit} from '../frontend/rate_limiters';
+import {Engine} from '../trace_processor/engine';
+import {LONG, NUM, STR, STR_NULL} from '../trace_processor/query_result';
 
 import {Controller} from './controller';
 
@@ -49,7 +49,7 @@ export class FtraceController extends Controller<'main'> {
 
   run() {
     if (this.shouldUpdate()) {
-      this.oldSpan = globals.frontendLocalState.visibleWindowTime;
+      this.oldSpan = globals.timeline.visibleWindowTime;
       this.oldFtraceFilter = globals.state.ftraceFilter;
       this.oldPagination = globals.state.ftracePagination;
       if (globals.state.ftracePagination.count > 0) {
@@ -69,7 +69,7 @@ export class FtraceController extends Controller<'main'> {
 
   private shouldUpdate(): boolean {
     // Has the visible window moved?
-    const visibleWindow = globals.frontendLocalState.visibleWindowTime;
+    const visibleWindow = globals.timeline.visibleWindowTime;
     if (!this.oldSpan.equals(visibleWindow)) {
       return true;
     }

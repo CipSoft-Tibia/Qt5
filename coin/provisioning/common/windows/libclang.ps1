@@ -1,11 +1,11 @@
 param(
-    [Int32]$archVer=32,
+    [string]$archVer="32",
     [string]$toolchain="vs2019",
     [bool]$setDefault=$true
 )
 . "$PSScriptRoot\helpers.ps1"
 
-$libclang_version="17.0.6"
+$libclang_version="18.1.7"
 Write-Output "libClang = $libclang_version" >> ~/versions.txt
 
 # PySide versions following 5.6 use a C++ parser based on Clang (http://clang.org/).
@@ -36,9 +36,22 @@ function install() {
 
 $toolchainSuffix = ""
 
+if ( $toolchain -eq "vs2022" ) {
+    if ( $archVer -eq "64" ) {
+        $sha1 = "7e51f0eabdfe8eea17aaf1dce7b2ffe1ea064f66"
+    }
+    elseif ( $archVer -eq "arm64" ) {
+        $sha1 = "986d4d0f253de505ef499345238c101dac1ca3a6"
+    }
+    else {
+        $sha1 = ""
+    }
+    $toolchainSuffix = "msvc"
+}
+
 if ( $toolchain -eq "vs2019" ) {
-    if ( $archVer -eq 64 ) {
-        $sha1 = "7e3e474081d2e1d5d95c9743532de01b8e59b9aa"
+    if ( $archVer -eq "64" ) {
+        $sha1 = "8e0862386caef7e4537599ef980eeb6ebee8767f"
     }
     else {
         $sha1 = ""
@@ -47,8 +60,8 @@ if ( $toolchain -eq "vs2019" ) {
 }
 
 if ( $toolchain -eq "mingw" ) {
-    if ( $archVer -eq 64 ) {
-        $sha1 = "b9e65f617cd8d6e8fb8ae734383f03f6a7b202ed"
+    if ( $archVer -eq "64" ) {
+        $sha1 = "a23cbb0822cf2eb8d1cecf26e8614ef37a7611e3"
     }
     else {
         $sha1 = ""
@@ -56,9 +69,10 @@ if ( $toolchain -eq "mingw" ) {
     $toolchainSuffix = "mingw"
 }
 
+
 if ( $toolchain -eq "llvm-mingw" ) {
-    if ( $archVer -eq 64 ) {
-        $sha1 = "1844f107d067b69deabf375fc024848c1c8b015d"
+    if ( $archVer -eq "64" ) {
+        $sha1 = "9c34f99eb575b42c2befe27829c08e6d3f01ae58"
     }
     else {
         $sha1 = ""

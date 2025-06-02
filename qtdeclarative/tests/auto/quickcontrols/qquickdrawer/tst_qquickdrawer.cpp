@@ -64,8 +64,10 @@ private slots:
     void hover_data();
     void hover();
 
+#if QT_CONFIG(wheelevent)
     void wheel_data();
     void wheel();
+#endif
 
     void multiple();
 
@@ -665,6 +667,7 @@ void tst_QQuickDrawer::hover()
     QVERIFY(!drawerItem->isHovered());
 }
 
+#if QT_CONFIG(wheelevent)
 void tst_QQuickDrawer::wheel_data()
 {
     QTest::addColumn<QString>("source");
@@ -751,6 +754,7 @@ void tst_QQuickDrawer::wheel()
         QVERIFY(qFuzzyCompare(drawerSlider->value(), oldDrawerValue)); // must not have moved
     }
 }
+#endif
 
 void tst_QQuickDrawer::multiple()
 {

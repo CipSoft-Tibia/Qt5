@@ -29,7 +29,7 @@ Windows:
 
 1. Open a command prompt.
 2. Ensure that the following tools can be found in the path:
- * Supported compiler (Visual Studio 2019 or later, or MinGW-builds gcc 11.2 or later)
+ * Supported compiler (Visual Studio 2022 or later, or MinGW-builds gcc 13.1 or later)
  * Python 3 ([https://www.python.org/downloads/windows/] or from Microsoft Store)
 
 ```
@@ -98,7 +98,7 @@ to your `PATH` environment variable to access them.
 Building Qt from git
 ====================
 
-See http://wiki.qt.io/Building_Qt_6_from_Git and README.git
+See http://wiki.qt.io/Building_Qt_6_from_Git and [README.git](README.git)
 for more information.
 See http://wiki.qt.io/Qt_6 for the reference platforms.
 

@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtbuttonpropertybrowser.h"
+#include "qtbuttonpropertybrowser_p.h"
 
 #include <QtCore/QHash>
 #include <QtWidgets/QGridLayout>
@@ -12,7 +12,7 @@ QT_BEGIN_NAMESPACE
 
 class QtButtonPropertyBrowserPrivate
 {
-    QtButtonPropertyBrowser *q_ptr;
+    QtButtonPropertyBrowser *q_ptr = nullptr;
     Q_DECLARE_PUBLIC(QtButtonPropertyBrowser)
 public:
 
@@ -54,7 +54,7 @@ private:
     QHash<WidgetItem *, QtBrowserItem *> m_itemToIndex;
     QHash<QWidget *, WidgetItem *> m_widgetToItem;
     QHash<QObject *, WidgetItem *> m_buttonToItem;
-    QGridLayout *m_mainLayout;
+    QGridLayout *m_mainLayout = nullptr;
     QList<WidgetItem *> m_children;
     QList<WidgetItem *> m_recreateQueue;
 };
@@ -573,4 +573,4 @@ bool QtButtonPropertyBrowser::isExpanded(QtBrowserItem *item) const
 
 QT_END_NAMESPACE
 
-#include "moc_qtbuttonpropertybrowser.cpp"
+#include "moc_qtbuttonpropertybrowser_p.cpp"

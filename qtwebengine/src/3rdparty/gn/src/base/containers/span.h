@@ -6,6 +6,7 @@
 #define BASE_CONTAINERS_SPAN_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include <algorithm>
 #include <array>
@@ -295,9 +296,9 @@ class span {
     return {data() + (size() - count), count};
   }
 
-  constexpr span<T, dynamic_extent> subspan(size_t offset,
-                                            size_t count = dynamic_extent) const
-      noexcept {
+  constexpr span<T, dynamic_extent> subspan(
+      size_t offset,
+      size_t count = dynamic_extent) const noexcept {
     // Note: CHECK_LE is not constexpr, hence regular CHECK must be used.
     CHECK(offset <= size());
     CHECK(count == dynamic_extent || count <= size() - offset);

@@ -14,7 +14,8 @@
 #ifndef SCATTERINSTANCING_H
 #define SCATTERINSTANCING_H
 
-#include <QtQuick3D/private/qquick3dinstancing_p.h>
+#include <QtGraphs/qgraphsglobal.h>
+#include <private/qquick3dinstancing_p.h>
 
 struct DataItemHolder
 {
@@ -24,7 +25,7 @@ struct DataItemHolder
     bool hide = false;
 };
 
-class ScatterInstancing : public QQuick3DInstancing
+class Q_GRAPHS_EXPORT ScatterInstancing : public QQuick3DInstancing
 {
     Q_OBJECT
 public:
@@ -32,7 +33,8 @@ public:
 
     const QList<DataItemHolder> &dataArray() const;
     void setDataArray(const QList<DataItemHolder> &newDataArray);
-    void hideDataItem(int index);
+    void hideDataItem(qsizetype index);
+    void unhidePreviousDataItem();
     void resetVisibilty();
 
     const QList<float> &customData() const;
@@ -41,6 +43,8 @@ public:
     void markDataDirty();
     bool rangeGradient() const;
     void setRangeGradient(bool newRangeGradient);
+
+    void setTransparency(bool transparency);
 
     bool isDirty() const { return m_dirty; }
 
@@ -56,6 +60,7 @@ private:
     int m_instanceCount = 0;
     bool m_dirty = true;
     bool m_rangeGradient = false;
+    qsizetype m_previousHideIndex = -1;
 };
 
 #endif // SCATTERINSTANCING_H

@@ -21,7 +21,7 @@
 // QQEM version number which is shown in About dialog and saved into files.
 // Note: Use string which can be converted to decimal number.
 // So e.g. "0.41" and no "0.41.2", "0.41beta" etc.
-#define APP_VERSION_STR "0.43"
+#define APP_VERSION_STR "0.44"
 
 int main(int argc, char *argv[])
 {

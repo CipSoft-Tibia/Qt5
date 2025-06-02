@@ -287,6 +287,8 @@ struct GPU_EXPORT
         prefs.enable_gpu_benchmarking_extension();
     out->enable_webgpu = prefs.enable_webgpu();
     out->enable_unsafe_webgpu = prefs.enable_unsafe_webgpu();
+    out->enable_webgpu_developer_features =
+        prefs.enable_webgpu_developer_features();
     if (!prefs.ReadUseWebgpuAdapter(&out->use_webgpu_adapter))
       return false;
     if (!prefs.ReadUseWebgpuPowerPreference(
@@ -302,8 +304,6 @@ struct GPU_EXPORT
     if (!prefs.ReadDisabledDawnFeaturesList(&out->disabled_dawn_features_list))
       return false;
 
-    out->enable_gpu_blocked_time_metric =
-        prefs.enable_gpu_blocked_time_metric();
     out->enable_perf_data_collection = prefs.enable_perf_data_collection();
 
 #if BUILDFLAG(IS_OZONE)
@@ -472,6 +472,10 @@ struct GPU_EXPORT
   static bool enable_unsafe_webgpu(const gpu::GpuPreferences& prefs) {
     return prefs.enable_unsafe_webgpu;
   }
+  static bool enable_webgpu_developer_features(
+      const gpu::GpuPreferences& prefs) {
+    return prefs.enable_webgpu_developer_features;
+  }
   static gpu::WebGPUAdapterName use_webgpu_adapter(
       const gpu::GpuPreferences& prefs) {
     return prefs.use_webgpu_adapter;
@@ -494,9 +498,6 @@ struct GPU_EXPORT
   static const std::vector<std::string>& disabled_dawn_features_list(
       const gpu::GpuPreferences& prefs) {
     return prefs.disabled_dawn_features_list;
-  }
-  static bool enable_gpu_blocked_time_metric(const gpu::GpuPreferences& prefs) {
-    return prefs.enable_gpu_blocked_time_metric;
   }
   static bool enable_perf_data_collection(const gpu::GpuPreferences& prefs) {
     return prefs.enable_perf_data_collection;

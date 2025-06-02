@@ -24,6 +24,12 @@ const remainder = (lhs: number, rhs: number) => ((lhs % rhs) + rhs) % rhs;
 const CHAR_TYPED_TO_PAINT = 'Realbox.CharTypedToRepaintLatency.ToPaint';
 const RESULT_CHANGED_TO_PAINT = 'Realbox.ResultChangedToRepaintLatency.ToPaint';
 
+export interface RealboxDropdownElement {
+  $: {
+    content: HTMLElement,
+  };
+}
+
 // A dropdown element that contains autocomplete matches. Provides an API for
 // the embedder (i.e., <ntp-realbox>) to change the selection.
 export class RealboxDropdownElement extends PolymerElement {
@@ -50,6 +56,18 @@ export class RealboxDropdownElement extends PolymerElement {
         value: false,
       },
 
+      chromeRefreshHoverShape: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('realboxCr23HoverFillShape'),
+        reflectToAttribute: true,
+      },
+
+      expandedStateLayoutChromeRefresh: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('realboxCr23ExpandedStateLayout'),
+        reflectToAttribute: true,
+      },
+
       /**
        * Whether the secondary side was at any point available to be shown.
        */
@@ -66,6 +84,7 @@ export class RealboxDropdownElement extends PolymerElement {
         type: Boolean,
         computed: `computeHasSecondarySide_(result)`,
         notify: true,
+        reflectToAttribute: true,
       },
 
       result: {
@@ -111,6 +130,8 @@ export class RealboxDropdownElement extends PolymerElement {
   }
 
   canShowSecondarySide: boolean;
+  chromeRefreshHoverShape: boolean;
+  expandedStateLayoutChromeRefresh: boolean;
   hadSecondarySide: boolean;
   hasSecondarySide: boolean;
   result: AutocompleteResult;
@@ -118,12 +139,30 @@ export class RealboxDropdownElement extends PolymerElement {
   private hiddenGroupIds_: number[];
   private selectableMatchElements_: RealboxMatchElement[];
   private showSecondarySide_: boolean;
-
+  private resizeObserver_: ResizeObserver|null = null;
   private pageHandler_: PageHandlerInterface;
 
   constructor() {
     super();
     this.pageHandler_ = RealboxBrowserProxy.getInstance().handler;
+  }
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.resizeObserver_ = new ResizeObserver(
+        (entries: ResizeObserverEntry[]) =>
+            this.pageHandler_.popupElementSizeChanged({
+              width: entries[0].contentRect.width,
+              height: entries[0].contentRect.height,
+            }));
+    this.resizeObserver_.observe(this.$.content);
+  }
+
+  override disconnectedCallback() {
+    if (this.resizeObserver_) {
+      this.resizeObserver_.disconnect();
+    }
+    super.disconnectedCallback();
   }
 
   //============================================================================
@@ -157,13 +196,18 @@ export class RealboxDropdownElement extends PolymerElement {
     this.selectedMatchIndex = index;
   }
 
-  updateSelection(selection: OmniboxPopupSelection) {
+  updateSelection(
+      oldSelection: OmniboxPopupSelection, selection: OmniboxPopupSelection) {
     if (selection.state === SelectionLineState.kFocusedButtonHeader) {
       // TODO: Focus group header.
       this.unselect();
       return;
     }
-
+    // If the updated selection is a new match, remove any remaining focus on
+    // the previous match.
+    if (oldSelection.line !== selection.line) {
+      this.selectableMatchElements[this.selectedMatchIndex]?.removeSelection();
+    }
     this.selectIndex(selection.line);
     this.selectableMatchElements[this.selectedMatchIndex]?.updateSelection(
         selection);
@@ -368,6 +412,10 @@ export class RealboxDropdownElement extends PolymerElement {
    * @returns Icon name for suggestion group show/hide toggle button.
    */
   private toggleButtonIconForGroup_(groupId: number): string {
+    if (loadTimeData.getBoolean('realboxCr23ExpandedStateIcons')) {
+      return this.groupIsHidden_(groupId) ? 'icon-arrow-drop-down-cr23' :
+                                            'icon-arrow-drop-up-cr23';
+    }
     return this.groupIsHidden_(groupId) ? 'icon-expand-more' :
                                           'icon-expand-less';
   }

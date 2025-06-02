@@ -86,8 +86,6 @@ QBitmap::QBitmap(int w, int h)
 }
 
 /*!
-    \deprecated [6.0] Use fromPixmap instead.
-
     Constructs a bitmap with the given \a size.  The pixels in the
     bitmap are uninitialized.
 
@@ -129,10 +127,7 @@ QBitmap::QBitmap(const QString& fileName, const char *format)
 
 /*!
     \fn void QBitmap::swap(QBitmap &other)
-    \since 4.8
-
-    Swaps bitmap \a other with this bitmap. This operation is very
-    fast and never fails.
+    \memberswap{bitmap}
 */
 
 /*!

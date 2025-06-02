@@ -11,6 +11,8 @@
 #include <QtNetwork/qtcpserver.h>
 #include <QTcpSocket>
 
+#include <utility>
+
 class WebServer : public QTcpServer
 {
 public:
@@ -46,7 +48,7 @@ public:
             Delete,
         } method = Method::Unknown;
         QUrl url;
-        QPair<quint8, quint8> version;
+        std::pair<quint8, quint8> version;
         QMap<QByteArray, QByteArray> headers;
         QByteArray body;
     };
@@ -103,8 +105,8 @@ WebServer::WebServer(Handler h, QObject *parent) :
                 clients.remove(socket);
             } else if (Q_LIKELY(request->state == HttpRequest::State::AllDone)) {
                 Q_ASSERT(handler);
-                if (request->headers.contains("Host")) {
-                    const auto parts = request->headers["Host"].split(':');
+                if (request->headers.contains("host")) {
+                    const auto parts = request->headers["host"].split(':');
                     request->url.setHost(parts.at(0));
                     if (parts.size() == 2)
                         request->url.setPort(parts.at(1).toUInt());
@@ -204,7 +206,7 @@ bool WebServer::HttpRequest::readStatus(QTcpSocket *socket)
             qWarning("Invalid version");
             return false;
         }
-        version = qMakePair(fragment.at(fragment.size() - 3) - '0',
+        version = std::make_pair(fragment.at(fragment.size() - 3) - '0',
                             fragment.at(fragment.size() - 1) - '0');
         state = State::ReadingHeader;
         fragment.clear();
@@ -229,7 +231,7 @@ bool WebServer::HttpRequest::readHeaders(QTcpSocket *socket)
 
                 const QByteArray key = fragment.mid(0, index).trimmed();
                 const QByteArray value = fragment.mid(index + 1).trimmed();
-                headers.insert(key, value);
+                headers.insert(key.toLower(), value);
                 fragment.clear();
             }
         }
@@ -239,9 +241,9 @@ bool WebServer::HttpRequest::readHeaders(QTcpSocket *socket)
 
 bool WebServer::HttpRequest::readBody(QTcpSocket *socket)
 {
-    if (headers.contains("Content-Length")) {
+    if (headers.contains("content-length")) {
         bool conversionResult;
-        bytesLeft = headers["Content-Length"].toInt(&conversionResult);
+        bytesLeft = headers["content-length"].toInt(&conversionResult);
         if (Q_UNLIKELY(!conversionResult))
             return false;
         fragment.resize(bytesLeft);

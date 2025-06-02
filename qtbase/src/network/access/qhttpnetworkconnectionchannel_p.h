@@ -39,6 +39,10 @@
 #else
 #   include <QtNetwork/qtcpsocket.h>
 #endif
+#if QT_CONFIG(localserver)
+#   include <QtNetwork/qlocalsocket.h>
+#endif
+
 
 #include <QtCore/qpointer.h>
 #include <QtCore/qscopedpointer.h>
@@ -71,7 +75,7 @@ public:
         ClosingState = 16,
         BusyState = (ConnectingState|WritingState|WaitingState|ReadingState|ClosingState)
     };
-    QAbstractSocket *socket;
+    QIODevice *socket;
     bool ssl;
     bool isInitialized;
     bool waitingForPotentialAbort = false;
@@ -162,6 +166,10 @@ public:
     void _q_bytesWritten(qint64 bytes); // proceed sending
     void _q_readyRead(); // pending data to read
     void _q_disconnected(); // disconnected from host
+    void _q_connected_abstract_socket(QAbstractSocket *socket);
+#if QT_CONFIG(localserver)
+    void _q_connected_local_socket(QLocalSocket *socket);
+#endif
     void _q_connected(); // start sending request
     void _q_error(QAbstractSocket::SocketError); // error from socket
 #ifndef QT_NO_NETWORKPROXY

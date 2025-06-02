@@ -9,15 +9,15 @@ import android.os.IBinder;
 
 import org.qtproject.qt.android.UsedFromNativeCode;
 
-public class QtAndroidServiceConnection implements ServiceConnection
+class QtAndroidServiceConnection implements ServiceConnection
 {
     @UsedFromNativeCode
-    public QtAndroidServiceConnection(long id)
+    QtAndroidServiceConnection(long id)
     {
         m_id = id;
     }
 
-    public void setId(long id)
+    void setId(long id)
     {
         synchronized(this)
         {

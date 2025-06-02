@@ -93,6 +93,7 @@ class BASE_EXPORT ThreadControllerWithMessagePumpImpl
   void OnBeginWorkItem() override;
   void OnEndWorkItem(int run_level_depth) override;
   void BeforeWait() override;
+  void BeginNativeWorkBeforeDoWork() override;
   MessagePump::Delegate::NextWorkInfo DoWork() override;
   bool DoIdleWork() override;
   int RunDepth() override;
@@ -129,9 +130,6 @@ class BASE_EXPORT ThreadControllerWithMessagePumpImpl
     // While Now() is less than |yield_to_native_after_batch| we will request a
     // yield to the MessagePump after |work_batch_size| work items.
     base::TimeTicks yield_to_native_after_batch = base::TimeTicks();
-
-    // When the next scheduled delayed work should run, if any.
-    TimeTicks next_delayed_do_work = TimeTicks::Max();
 
     // The time after which the runloop should quit.
     TimeTicks quit_runloop_after = TimeTicks::Max();
@@ -178,6 +176,7 @@ class BASE_EXPORT ThreadControllerWithMessagePumpImpl
       GUARDED_BY(task_runner_lock_);
 
   WorkDeduplicator work_deduplicator_;
+  bool in_native_work_batch_ = false;
 
   ThreadControllerPowerMonitor power_monitor_;
 

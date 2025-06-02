@@ -18,6 +18,7 @@
 #include <QtCore/QCborStreamReader>
 
 #include <private/qvariantanimation_p.h>
+#include <private/qqmlproperty_p.h>
 
 #include <algorithm>
 
@@ -50,6 +51,7 @@ protected:
 
     QVariant originalValue;
     QVariant lastValue;
+    QQmlAnyBinding originalBinding;
 };
 
 void QQuickKeyframeGroupPrivate::setupKeyframes()
@@ -163,7 +165,7 @@ public:
 /*!
     \qmltype Keyframe
     \inherits QtObject
-    \instantiates QQuickKeyframe
+    \nativetype QQuickKeyframe
     \inqmlmodule QtQuick.Timeline
     \ingroup qtqmltypes
 
@@ -237,7 +239,7 @@ QQuickKeyframe::QQuickKeyframe(QQuickKeyframePrivate &dd, QObject *parent)
 /*!
     \qmltype KeyframeGroup
     \inherits QtObject
-    \instantiates QQuickKeyframeGroup
+    \nativetype QQuickKeyframeGroup
     \inqmlmodule QtQuick.Timeline
     \ingroup qtqmltypes
 
@@ -427,8 +429,12 @@ void QQuickKeyframeGroup::init()
 {
     Q_D(QQuickKeyframeGroup);
     if (target()) {
+        QQmlProperty qmlProperty(target(), property());
         d->originalValue = QQmlProperty::read(target(), property());
-        d->userType = QQmlProperty(target(), property()).property().userType();
+        d->userType = qmlProperty.property().userType();
+        if (d->originalBinding)
+            d->originalBinding = nullptr;
+        d->originalBinding = QQmlAnyBinding::ofProperty(qmlProperty);
         if (property().contains(QLatin1Char('.'))) {
             if (d->userType == QMetaType::QVector2D
                     || d->userType == QMetaType::QVector3D
@@ -443,8 +449,15 @@ void QQuickKeyframeGroup::resetDefaultValue()
 {
     Q_D(QQuickKeyframeGroup);
 
-    if (QQmlProperty::read(target(), property()) == d->lastValue)
-        QQmlProperty::write(target(), property(), d->originalValue);
+    if (QQmlProperty::read(target(), property()) == d->lastValue) {
+        if (d->originalBinding) {
+            QQmlProperty qmlProperty(target(), property());
+            d->originalBinding.installOn(qmlProperty);
+            d->originalBinding = nullptr;
+        } else {
+            QQmlProperty::write(target(), property(), d->originalValue);
+        }
+    }
 }
 
 void QQuickKeyframeGroup::reset()

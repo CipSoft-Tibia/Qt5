@@ -1,4 +1,4 @@
-import { LitElement, html, css } from "lit";
+import { LitElement, html, css, unsafeCSS } from "lit";
 import { customElement } from "lit/decorators/custom-element.js";
 import { property } from "lit/decorators/property.js";
 import { state } from "lit/decorators/state.js";
@@ -6,6 +6,17 @@ import { classMap } from "lit/directives/class-map.js";
 
 import { todoStyles } from "./todo.css.js";
 import { DeleteTodoEvent, EditTodoEvent } from "./events.js";
+
+declare global {
+    // eslint-disable-next-line no-unused-vars
+    interface HTMLElementTagNameMap {
+        "todo-item": TodoItem;
+    }
+    // eslint-disable-next-line no-unused-vars
+    interface Window {
+        extraTodoItemCssToAdopt?: string;
+    }
+}
 
 @customElement("todo-item")
 export class TodoItem extends LitElement {
@@ -116,10 +127,15 @@ export class TodoItem extends LitElement {
                 display: none;
             }
 
-            .editing:last-child {
+            :host(:last-child) .editing {
                 margin-bottom: -1px;
             }
         `,
+        window.extraTodoItemCssToAdopt
+            ? css`
+                  ${unsafeCSS(window.extraTodoItemCssToAdopt)}
+              `
+            : css``,
     ];
 
     @property()
@@ -140,6 +156,7 @@ export class TodoItem extends LitElement {
             completed: this.completed ?? false,
             editing: this.isEditing,
         };
+
         return html`
             <li class="${classMap(itemClassList)}">
                 <div class="view">
@@ -179,12 +196,5 @@ export class TodoItem extends LitElement {
     #abortEdit(e: Event) {
         const input = e.target as HTMLInputElement;
         input.value = this.text ?? "";
-    }
-}
-
-declare global {
-    // eslint-disable-next-line no-unused-vars
-    interface HTMLElementTagNameMap {
-        "todo-item": TodoItem;
     }
 }

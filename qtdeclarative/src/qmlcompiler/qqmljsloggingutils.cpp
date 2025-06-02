@@ -10,6 +10,24 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
+/*!
+    \class QQmlSA::LoggerWarningId
+    \inmodule QtQmlCompiler
+
+    \brief A wrapper around a string literal to uniquely identify
+    warning categories in the \c{QQmlSA} framework.
+*/
+
+/*!
+    \fn QQmlSA::LoggerWarningId::LoggerWarningId(QAnyStringView name)
+    Constructs a LoggerWarningId object with logging catergory name \a name.
+*/
+
+/*!
+    \fn QAnyStringView QQmlSA::LoggerWarningId::name() const
+    Returns the name of the wrapped warning category.
+*/
+
 namespace QQmlJS {
 
 LoggerCategory::LoggerCategory() : d_ptr{ new LoggerCategoryPrivate } { }
@@ -126,14 +144,6 @@ LoggerCategoryPrivate *LoggerCategoryPrivate::get(LoggerCategory *loggerCategory
     Q_ASSERT(loggerCategory);
     return loggerCategory->d_func();
 }
-
-/*!
-    \class QQmlSA::LoggerWarningId
-    \inmodule QtQmlCompiler
-
-    \brief A wrapper around a string literal to uniquely identify
-    warning categories in the \c{QQmlSA} framework.
-*/
 
 namespace LoggingUtils {
 

@@ -22,16 +22,13 @@ source_set("feature_list") {
     "flag_descriptions.cc",
     "flag_descriptions.h",
   ]
-  public_deps = [ ":utils" ]
   deps = [
     ":commerce_heuristics_data",
     ":pref_names",
     "//base",
-    "//components/country_codes",
     "//components/flags_ui",
     "//components/prefs",
     "//components/search",
-    "//components/variations/service",
     "//third_party/re2:re2",
     "//url:url",
   ]
@@ -67,6 +64,8 @@ static_library("metrics") {
     "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/prefs",
+    "//services/metrics/public/cpp:metrics_cpp",
+    "//services/metrics/public/cpp:ukm_builders",
   ]
 }
 
@@ -200,6 +199,8 @@ static_library("shopping_service") {
     "shopping_power_bookmark_data_provider.h",
     "shopping_service.cc",
     "shopping_service.h",
+    "web_extractor.cc",
+    "web_extractor.h",
     "web_wrapper.cc",
     "web_wrapper.h",
   ]
@@ -211,11 +212,13 @@ static_library("shopping_service") {
     ":discounts_db_content_proto",
     ":feature_list",
     ":metrics",
+    ":parcel_tracking_db_content_proto",
     ":pref_names",
     ":proto",
     ":utils",
     "//base",
     "//components/bookmarks/browser",
+    "//components/commerce/core/parcel:parcel",
     "//components/history/core/browser",
     "//components/keyed_service/core",
     "//components/leveldb_proto",
@@ -231,6 +234,7 @@ static_library("shopping_service") {
     "//components/strings:components_strings_grit",
     "//components/sync/service",
     "//components/unified_consent",
+    "//services/metrics/public/cpp:metrics_cpp",
     "//services/network/public/cpp:cpp",
     "//ui/base",
     "//url:url",
@@ -248,10 +252,7 @@ static_library("shopping_service") {
       "android/shopping_service_android.h",
     ]
 
-    deps += [
-      "//components/commerce/core/android:core_jni",
-      "//url:gurl_android",
-    ]
+    deps += [ "//components/commerce/core/android:core_jni" ]
   }
 }
 
@@ -317,10 +318,13 @@ source_set("shopping_service_unit_tests") {
     ":metrics",
     ":pref_names",
     ":shopping_service_test_support",
+    "parcel:unit_tests",
     "subscriptions:test_support",
     "webui:unit_tests",
     "//components/history/core/browser",
     "//components/search",
+    "//components/ukm:test_support",
+    "//services/metrics/public/cpp:ukm_builders",
   ]
 }
 
@@ -344,6 +348,7 @@ source_set("account_checker") {
   ]
 
   deps = [
+    ":commerce_constants",
     ":feature_list",
     ":pref_names",
     "//base",
@@ -382,6 +387,7 @@ source_set("account_checker_unittests") {
   sources = [ "account_checker_unittest.cc" ]
   deps = [
     ":account_checker",
+    ":commerce_constants",
     ":feature_list",
     ":pref_names",
     "//base",
@@ -408,9 +414,16 @@ source_set("commerce_constants") {
 }
 
 source_set("commerce_types") {
-  sources = [ "commerce_types.h" ]
+  sources = [
+    "commerce_types.cc",
+    "commerce_types.h",
+  ]
 
-  deps = [ "//url" ]
+  deps = [
+    ":proto",
+    "//base",
+    "//url",
+  ]
 }
 
 source_set("utils") {
@@ -420,7 +433,8 @@ source_set("utils") {
   ]
   deps = [
     ":commerce_constants",
-    "//base",
+    ":commerce_types",
+    ":feature_list",
     "//net:net",
   ]
 }

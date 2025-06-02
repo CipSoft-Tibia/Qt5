@@ -21,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_POSITIONING_PRIVATE_EXPORT QGeoPolygonPrivate : public QGeoPathPrivate
+class Q_POSITIONING_EXPORT QGeoPolygonPrivate : public QGeoPathPrivate
 {
 public:
     QGeoPolygonPrivate();
@@ -54,7 +54,7 @@ public:
     QClipperUtils m_clipperWrapper;
 };
 
-class Q_POSITIONING_PRIVATE_EXPORT QGeoPolygonPrivateEager : public QGeoPolygonPrivate
+class Q_POSITIONING_EXPORT QGeoPolygonPrivateEager : public QGeoPolygonPrivate
 {
 public:
     QGeoPolygonPrivateEager();
@@ -84,7 +84,7 @@ public:
 };
 
 // This is a mean of creating a QGeoPolygonPrivateEager and injecting it into QGeoPolygons via operator=
-class Q_POSITIONING_PRIVATE_EXPORT QGeoPolygonEager : public QGeoPolygon
+class Q_POSITIONING_EXPORT QGeoPolygonEager : public QGeoPolygon
 {
     Q_GADGET
 public:

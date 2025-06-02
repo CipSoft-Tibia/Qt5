@@ -17,7 +17,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype MapQuickItem
-    \instantiates QDeclarativeGeoMapQuickItem
+    \nativetype QDeclarativeGeoMapQuickItem
     \inqmlmodule QtLocation
     \ingroup qml-QtLocation5-maps
     \since QtLocation 5.5
@@ -235,7 +235,7 @@ void QDeclarativeGeoMapQuickItem::afterChildrenChanged()
 }
 
 /*!
-    \qmlproperty QPointF MapQuickItem::anchorPoint
+    \qmlproperty point MapQuickItem::anchorPoint
 
     This property determines which point on the sourceItem that will be lined
     up with the coordinate on the map.

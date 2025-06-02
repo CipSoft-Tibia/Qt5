@@ -7,13 +7,14 @@
 #include <cfloat>
 #include <cmath>
 #include <functional>
+#include <memory>
 #include <random>
 #include <vector>
 
 #include <xnnpack.h>
 
-#include <benchmark/benchmark.h>
 #include "bench/utils.h"
+#include <benchmark/benchmark.h>
 #ifdef BENCHMARK_TENSORFLOW_LITE
 #include "flatbuffers/include/flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/interpreter.h"
@@ -51,24 +52,31 @@ void xnnpack_prelu_f32(benchmark::State& state, const char* net) {
   status = xnn_create_prelu_nc_f32(
     channels, channels /* input stride */, channels /* output stride */,
     slope.data(),
-    0 /* flags */, nullptr, &prelu_op);
+    0 /* flags */, nullptr, nullptr, &prelu_op);
   if (status != xnn_status_success) {
     state.SkipWithError("failed to create FP32 PReLU operator");
     return;
   }
 
-  status = xnn_setup_prelu_nc_f32(
+  status = xnn_reshape_prelu_nc_f32(
     prelu_op,
     batch_size * height * width,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+    /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape FP32 PReLU operator");
+    return;
+  }
+
+  status = xnn_setup_prelu_nc_f32(
+    prelu_op,
+    input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup FP32 PReLU operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(prelu_op, nullptr /* thread pool */);
+    status = xnn_run_operator(prelu_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run FP32 PReLU operator");
       return;

@@ -91,7 +91,6 @@ CONTENT_EXPORT extern const char kDisableSmoothScrolling[];
 CONTENT_EXPORT extern const char kDisableSoftwareRasterizer[];
 CONTENT_EXPORT extern const char kDisableSpeechAPI[];
 CONTENT_EXPORT extern const char kDisableSpeechSynthesisAPI[];
-CONTENT_EXPORT extern const char kDisableTestCerts[];
 CONTENT_EXPORT extern const char kDisableThreadedCompositing[];
 extern const char kDisableV8IdleTasks[];
 CONTENT_EXPORT extern const char kDisableWebRtcEncryption[];
@@ -157,6 +156,7 @@ CONTENT_EXPORT extern const char kLaunchAsBrowser[];
 CONTENT_EXPORT extern const char kLogGpuControlListDecisions[];
 CONTENT_EXPORT extern const char kLoggingLevel[];
 CONTENT_EXPORT extern const char kLogFile[];
+CONTENT_EXPORT extern const char kLogMissingUnloadACK[];
 extern const char kMaxActiveWebGLContexts[];
 CONTENT_EXPORT extern const char kMaxDecodedImageSizeMb[];
 CONTENT_EXPORT extern const char kMaxWebMediaPlayerCount[];
@@ -263,6 +263,10 @@ CONTENT_EXPORT extern const char kEnableLongpressDragSelection[];
 CONTENT_EXPORT extern const char kForceOnlineConnectionStateForIndicator[];
 CONTENT_EXPORT extern const char kRemoteDebuggingSocketName[];
 CONTENT_EXPORT extern const char kRendererWaitForJavaDebugger[];
+#endif
+
+#if BUILDFLAG(IS_IOS)
+CONTENT_EXPORT extern const char kPreventResizingContentsForTesting[];
 #endif
 
 // TODO(crbug.com/1052397): Revisit the macro expression once build flag switch

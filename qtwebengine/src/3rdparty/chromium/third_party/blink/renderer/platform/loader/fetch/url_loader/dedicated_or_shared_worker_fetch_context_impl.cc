@@ -12,6 +12,7 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
+#include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/wrapper_shared_url_loader_factory.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/loader/loader_constants.h"
@@ -24,10 +25,10 @@
 #include "third_party/blink/public/platform/resource_load_info_notifier_wrapper.h"
 #include "third_party/blink/public/platform/url_loader_throttle_provider.h"
 #include "third_party/blink/public/platform/weak_wrapper_resource_load_info_notifier.h"
-#include "third_party/blink/public/platform/web_code_cache_loader.h"
 #include "third_party/blink/public/platform/web_security_origin.h"
 #include "third_party/blink/public/platform/web_url_request_extra_data.h"
 #include "third_party/blink/public/platform/websocket_handshake_throttle_provider.h"
+#include "third_party/blink/renderer/platform/accept_languages_watcher.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader.h"
 #include "third_party/blink/renderer/platform/loader/fetch/url_loader/url_loader_factory.h"
 #include "url/url_constants.h"
@@ -73,7 +74,7 @@ class DedicatedOrSharedWorkerFetchContextImpl::Factory
   ~Factory() override = default;
 
   std::unique_ptr<URLLoader> CreateURLLoader(
-      const WebURLRequest& request,
+      const network::ResourceRequest& request,
       scoped_refptr<base::SingleThreadTaskRunner> freezable_task_runner,
       scoped_refptr<base::SingleThreadTaskRunner> unfreezable_task_runner,
       mojo::PendingRemote<mojom::blink::KeepAliveHandle> keep_alive_handle,
@@ -111,7 +112,8 @@ class DedicatedOrSharedWorkerFetchContextImpl::Factory
   base::WeakPtr<Factory> GetWeakPtr() { return weak_ptr_factory_.GetWeakPtr(); }
 
  private:
-  bool CanCreateServiceWorkerURLLoader(const WebURLRequest& request) {
+  bool CanCreateServiceWorkerURLLoader(
+      const network::ResourceRequest& request) {
     // TODO(horo): Unify this code path with
     // ServiceWorkerNetworkProviderForFrame::CreateURLLoader that is used
     // for document cases.
@@ -127,15 +129,15 @@ class DedicatedOrSharedWorkerFetchContextImpl::Factory
     // TODO(falken): Let ServiceWorkerSubresourceLoaderFactory handle the
     // request and move this check there (i.e., for such URLs, it should use
     // its fallback factory).
-    if (!request.Url().ProtocolIs(url::kHttpScheme) &&
-        !request.Url().ProtocolIs(url::kHttpsScheme) &&
-        !Platform::Current()->OriginCanAccessServiceWorkers(request.Url())) {
+    if (!request.url.SchemeIsHTTPOrHTTPS() &&
+        !Platform::Current()->OriginCanAccessServiceWorkers(request.url)) {
       return false;
     }
 
-    // If GetSkipServiceWorker() returns true, no need to intercept the request.
-    if (request.GetSkipServiceWorker())
+    // If `skip_service_worker` is true, no need to intercept the request.
+    if (request.skip_service_worker) {
       return false;
+    }
 
     return true;
   }
@@ -290,8 +292,9 @@ DedicatedOrSharedWorkerFetchContextImpl::CloneForNestedWorker(
   return new_context;
 }
 
-void DedicatedOrSharedWorkerFetchContextImpl::set_ancestor_frame_id(int id) {
-  ancestor_frame_id_ = id;
+void DedicatedOrSharedWorkerFetchContextImpl::SetAncestorFrameToken(
+    const LocalFrameToken& token) {
+  ancestor_frame_token_ = token;
 }
 
 void DedicatedOrSharedWorkerFetchContextImpl::set_site_for_cookies(
@@ -369,12 +372,6 @@ DedicatedOrSharedWorkerFetchContextImpl::WrapURLLoaderFactory(
       cors_exempt_header_list_, terminate_sync_load_event_);
 }
 
-std::unique_ptr<WebCodeCacheLoader>
-DedicatedOrSharedWorkerFetchContextImpl::CreateCodeCacheLoader(
-    CodeCacheHost* code_cache_host) {
-  return WebCodeCacheLoader::Create(code_cache_host);
-}
-
 void DedicatedOrSharedWorkerFetchContextImpl::WillSendRequest(
     WebURLRequest& request) {
   if (renderer_preferences_.enable_do_not_track) {
@@ -395,9 +392,9 @@ void DedicatedOrSharedWorkerFetchContextImpl::WillSendRequest(
 
 WebVector<std::unique_ptr<URLLoaderThrottle>>
 DedicatedOrSharedWorkerFetchContextImpl::CreateThrottles(
-    const WebURLRequest& request) {
+    const network::ResourceRequest& request) {
   if (throttle_provider_) {
-    return throttle_provider_->CreateThrottles(ancestor_frame_id_, request);
+    return throttle_provider_->CreateThrottles(ancestor_frame_token_, request);
   }
   return {};
 }
@@ -449,7 +446,7 @@ DedicatedOrSharedWorkerFetchContextImpl::CreateWebSocketHandshakeThrottle(
   if (!websocket_handshake_throttle_provider_)
     return nullptr;
   return websocket_handshake_throttle_provider_->CreateThrottle(
-      ancestor_frame_id_, std::move(task_runner));
+      ancestor_frame_token_, std::move(task_runner));
 }
 
 void DedicatedOrSharedWorkerFetchContextImpl::SetIsOfflineMode(
@@ -542,7 +539,7 @@ DedicatedOrSharedWorkerFetchContextImpl::CloneForNestedWorkerInternal(
       cors_exempt_header_list_,
       std::move(pending_resource_load_info_notifier)));
   new_context->is_on_sub_frame_ = is_on_sub_frame_;
-  new_context->ancestor_frame_id_ = ancestor_frame_id_;
+  new_context->ancestor_frame_token_ = ancestor_frame_token_;
   new_context->site_for_cookies_ = site_for_cookies_;
   new_context->top_frame_origin_ = top_frame_origin_;
   child_preference_watchers_.Add(std::move(preference_watcher));
@@ -604,9 +601,13 @@ void DedicatedOrSharedWorkerFetchContextImpl::UpdateSubresourceLoaderFactories(
 
 void DedicatedOrSharedWorkerFetchContextImpl::NotifyUpdate(
     const RendererPreferences& new_prefs) {
-  if (accept_languages_watcher_ &&
-      renderer_preferences_.accept_languages != new_prefs.accept_languages)
-    accept_languages_watcher_->NotifyUpdate();
+  // Reserving `accept_languages_watcher` on the stack ensures it is not GC'd
+  // within this scope.
+  auto* accept_languages_watcher = accept_languages_watcher_.Get();
+  if (accept_languages_watcher &&
+      renderer_preferences_.accept_languages != new_prefs.accept_languages) {
+    accept_languages_watcher->NotifyUpdate();
+  }
   renderer_preferences_ = new_prefs;
   for (auto& watcher : child_preference_watchers_)
     watcher->NotifyUpdate(new_prefs);

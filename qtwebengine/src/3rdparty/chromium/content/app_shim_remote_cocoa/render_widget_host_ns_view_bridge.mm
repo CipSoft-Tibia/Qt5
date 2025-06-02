@@ -159,7 +159,8 @@ void RenderWidgetHostNSViewBridge::SetBackgroundColor(SkColor color) {
   if (display_disabled_)
     return;
   ScopedCAActionDisabler disabler;
-  background_layer_.backgroundColor = skia::CGColorCreateFromSkColor(color);
+  background_layer_.backgroundColor =
+      skia::CGColorCreateFromSkColor(color).get();
 }
 
 void RenderWidgetHostNSViewBridge::SetVisible(bool visible) {
@@ -278,8 +279,8 @@ void RenderWidgetHostNSViewBridge::ShowDictionaryOverlay(
 }
 
 void RenderWidgetHostNSViewBridge::LockKeyboard(
-    const absl::optional<std::vector<uint32_t>>& uint_dom_codes) {
-  absl::optional<base::flat_set<ui::DomCode>> dom_codes;
+    const std::optional<std::vector<uint32_t>>& uint_dom_codes) {
+  std::optional<base::flat_set<ui::DomCode>> dom_codes;
   if (uint_dom_codes) {
     dom_codes.emplace();
     for (const auto& uint_dom_code : *uint_dom_codes)

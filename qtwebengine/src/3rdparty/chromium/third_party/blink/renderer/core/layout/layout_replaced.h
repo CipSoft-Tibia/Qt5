@@ -74,6 +74,7 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
   // or underflow the final content box by 1px.
   static PhysicalRect PreSnappedRectForPersistentSizing(const PhysicalRect&);
 
+  void AddVisualEffectOverflow();
   void RecalcVisualOverflow() override;
 
   // These values are specified to be 300 and 150 pixels in the CSS 2.1 spec.
@@ -121,13 +122,9 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
   // content box.
   bool ClipsToContentBox() const;
 
-  void SetBoxLayoutExtraInput(const BoxLayoutExtraInput* input) {
+  void SetNewContentRect(const PhysicalRect* new_content_rect) {
     NOT_DESTROYED();
-    extra_input_ = input;
-  }
-  const BoxLayoutExtraInput* GetBoxLayoutExtraInput() const {
-    NOT_DESTROYED();
-    return extra_input_;
+    new_content_rect_ = new_content_rect;
   }
 
   // This returns a local rectangle excluding borders and padding from
@@ -144,7 +141,7 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
     return true;
   }
 
-  bool IsInSelfHitTestingPhase(HitTestPhase phase) const final {
+  bool IsInSelfHitTestingPhase(HitTestPhase phase) const override {
     NOT_DESTROYED();
     if (LayoutBox::IsInSelfHitTestingPhase(phase))
       return true;
@@ -182,9 +179,9 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
 
   PositionWithAffinity PositionForPoint(const PhysicalOffset&) const override;
 
-  bool IsOfType(LayoutObjectType type) const override {
+  bool IsLayoutReplaced() const final {
     NOT_DESTROYED();
-    return type == kLayoutObjectReplaced || LayoutBox::IsOfType(type);
+    return true;
   }
 
   // The intrinsic size for a replaced element is based on its content's natural
@@ -194,14 +191,6 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
   // content's natural size. For example, if contain-intrinsic-size is
   // specified. Returns null for these cases.
   absl::optional<gfx::SizeF> ComputeObjectViewBoxSizeForIntrinsicSizing() const;
-
-  // This returns border-box size computed in NG if a
-  // BoxLayoutExtraInput is associated to this box.
-  PhysicalSize SizeFromNG() const;
-
-  // This returns border and padding values computed in NG if a
-  // BoxLayoutExtraInput is associated to this box.
-  NGPhysicalBoxStrut BorderPaddingFromNG() const;
 
   // ReplacedPainter doesn't support CompositeBackgroundAttachmentFixed yet.
   bool ComputeCanCompositeBackgroundAttachmentFixed() const override {
@@ -241,10 +230,10 @@ class CORE_EXPORT LayoutReplaced : public LayoutBox {
   // size for the element's contents.
   mutable PhysicalSize intrinsic_size_;
 
-  // Extra layout input data. This one may be set during layout, and cleared
+  // The new content rect for SVG roots. This is set during layout, and cleared
   // afterwards. Always nullptr when this object isn't in the process of being
   // laid out.
-  const BoxLayoutExtraInput* extra_input_ = nullptr;
+  const PhysicalRect* new_content_rect_ = nullptr;
 };
 
 template <>

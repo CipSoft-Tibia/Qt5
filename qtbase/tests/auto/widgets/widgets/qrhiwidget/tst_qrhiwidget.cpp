@@ -80,7 +80,7 @@ void tst_QRhiWidget::testData()
     }
 #endif
 
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
+#if QT_CONFIG(metal)
     QRhiMetalInitParams metalInitParams;
     if (QRhi::probe(QRhi::Metal, &metalInitParams))
         QTest::newRow("Metal") << QRhiWidget::Api::Metal;

@@ -19,9 +19,9 @@ void xnn_f32_ppmm_minmax_ukernel_4x8__neon(
   size_t mr,
   size_t nc,
   size_t kc,
-  const float*restrict a,
-  const float*restrict w,
-  float*restrict c,
+  const float* restrict a,
+  const float* restrict w,
+  float* restrict c,
   size_t cm_stride,
   size_t cn_stride,
   const union xnn_f32_minmax_params params[restrict XNN_MIN_ELEMENTS(1)])
@@ -31,6 +31,16 @@ void xnn_f32_ppmm_minmax_ukernel_4x8__neon(
   assert(nc != 0);
   assert(kc != 0);
   assert(kc % sizeof(float) == 0);
+
+  #if XNN_ARCH_ARM64
+    const float32x4x2_t vminmax = vld2q_dup_f32(&params->scalar.min);
+    const float32x4_t vmin = vminmax.val[0];
+    const float32x4_t vmax = vminmax.val[1];
+  #else
+    const float32x2x2_t vminmax = vld2_dup_f32(&params->scalar.min);
+    const float32x4_t vmin = vcombine_f32(vminmax.val[0], vminmax.val[0]);
+    const float32x4_t vmax = vcombine_f32(vminmax.val[1], vminmax.val[1]);
+  #endif
 
   float* c0 = c;
   float* c1 = (float*) ((uintptr_t) c0 + cm_stride);
@@ -45,6 +55,7 @@ void xnn_f32_ppmm_minmax_ukernel_4x8__neon(
   if XNN_UNPREDICTABLE(mr != 4) {
     c3 = c2;
   }
+
 
   do {
     float32x4_t vacc0x0123 = vld1q_f32(w); w += 4;
@@ -75,7 +86,6 @@ void xnn_f32_ppmm_minmax_ukernel_4x8__neon(
       k -= sizeof(float);
     } while (k != 0);
 
-    const float32x4_t vmax = vld1q_dup_f32(&params->scalar.max);
     vacc0x0123 = vminq_f32(vacc0x0123, vmax);
     vacc1x0123 = vminq_f32(vacc1x0123, vmax);
     vacc2x0123 = vminq_f32(vacc2x0123, vmax);
@@ -85,7 +95,6 @@ void xnn_f32_ppmm_minmax_ukernel_4x8__neon(
     vacc2x4567 = vminq_f32(vacc2x4567, vmax);
     vacc3x4567 = vminq_f32(vacc3x4567, vmax);
 
-    const float32x4_t vmin = vld1q_dup_f32(&params->scalar.min);
     vacc0x0123 = vmaxq_f32(vacc0x0123, vmin);
     vacc1x0123 = vmaxq_f32(vacc1x0123, vmin);
     vacc2x0123 = vmaxq_f32(vacc2x0123, vmin);

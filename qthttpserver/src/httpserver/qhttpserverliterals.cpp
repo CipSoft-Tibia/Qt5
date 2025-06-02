@@ -11,12 +11,6 @@ QT_BEGIN_NAMESPACE
 // references to the data are destroyed - by allocating on the heap, the last
 // user will free the data instead of referencing unloaded data
 
-QByteArray QHttpServerLiterals::contentTypeHeader()
-{
-    static QByteArray ba("Content-Type");
-    return ba;
-}
-
 QByteArray QHttpServerLiterals::contentTypeXEmpty()
 {
     static QByteArray ba("application/x-empty");
@@ -32,12 +26,6 @@ QByteArray QHttpServerLiterals::contentTypeTextHtml()
 QByteArray QHttpServerLiterals::contentTypeJson()
 {
     static QByteArray ba("application/json");
-    return ba;
-}
-
-QByteArray QHttpServerLiterals::contentLengthHeader()
-{
-    static QByteArray ba("Content-Length");
     return ba;
 }
 

@@ -46,7 +46,7 @@ using Specialized = Struct<int, T>;
         int data;
     } SomeType;
     int someFunction(int, int v = 0);
-    void someFunctionDefaultArg(int i, bool b);
+    void someFunctionDefaultArg(int i, bool b) const;
     void obsoleteMember();
     void anotherObsoleteMember();
     void deprecatedMember();
@@ -67,6 +67,9 @@ using Specialized = Struct<int, T>;
     virtual void virtualFun();
 
     friend bool operator==(const Test &lhs, const Test &rhs) { return false; }
+
+    Test() = delete;
+    Test &operator=(Test &&other) = delete;
 
 protected:
     void overload() {}

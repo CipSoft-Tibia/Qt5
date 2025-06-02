@@ -1,16 +1,29 @@
-// Copyright 2021 The Dawn Authors
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/TintUtils.h"
 
@@ -104,11 +117,13 @@ tint::ast::transform::VertexFormat ToTintVertexFormat(wgpu::VertexFormat format)
             return tint::ast::transform::VertexFormat::kSint32x3;
         case wgpu::VertexFormat::Sint32x4:
             return tint::ast::transform::VertexFormat::kSint32x4;
+        case wgpu::VertexFormat::Unorm10_10_10_2:
+            return tint::ast::transform::VertexFormat::kUnorm10_10_10_2;
 
         case wgpu::VertexFormat::Undefined:
             break;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 tint::ast::transform::VertexStepMode ToTintVertexStepMode(wgpu::VertexStepMode mode) {
@@ -118,9 +133,10 @@ tint::ast::transform::VertexStepMode ToTintVertexStepMode(wgpu::VertexStepMode m
         case wgpu::VertexStepMode::Instance:
             return tint::ast::transform::VertexStepMode::kInstance;
         case wgpu::VertexStepMode::VertexBufferNotUsed:
+        case wgpu::VertexStepMode::Undefined:
             break;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 }  // namespace
@@ -133,7 +149,7 @@ ScopedTintICEHandler::ScopedTintICEHandler(DeviceBase* device) {
     (void)init_once_tint_error_reporter;
 
     // Shouldn't have overlapping instances of this handler.
-    ASSERT(tlDevice == nullptr);
+    DAWN_ASSERT(tlDevice == nullptr);
     tlDevice = device;
 }
 
@@ -163,7 +179,7 @@ tint::ast::transform::VertexPulling::Config BuildVertexPullingTransformConfig(
     cfg.pulling_group = static_cast<uint32_t>(pullingBufferBindingSet);
 
     cfg.vertex_state.resize(renderPipeline.GetVertexBufferCount());
-    for (VertexBufferSlot slot : IterateBitSet(renderPipeline.GetVertexBufferSlotsUsed())) {
+    for (VertexBufferSlot slot : IterateBitSet(renderPipeline.GetVertexBuffersUsed())) {
         const VertexBufferInfo& dawnInfo = renderPipeline.GetVertexBuffer(slot);
         tint::ast::transform::VertexBufferLayoutDescriptor* tintInfo =
             &cfg.vertex_state[static_cast<uint8_t>(slot)];
@@ -201,12 +217,18 @@ tint::ast::transform::SubstituteOverride::Config BuildSubstituteOverridesTransfo
     return cfg;
 }
 
-}  // namespace dawn::native
-
-namespace tint::sem {
-
-bool operator<(const BindingPoint& a, const BindingPoint& b) {
-    return std::tie(a.group, a.binding) < std::tie(b.group, b.binding);
+// static
+template <>
+void stream::Stream<tint::Program>::Write(stream::Sink* sink, const tint::Program& p) {
+#if TINT_BUILD_WGSL_WRITER
+    tint::wgsl::writer::Options options{};
+    StreamIn(sink, tint::wgsl::writer::Generate(p, options)->wgsl);
+#else
+    // TODO(crbug.com/dawn/1481): We shouldn't need to write back to WGSL if we have a CacheKey
+    // built from the initial shader module input. Then, we would never need to parse the program
+    // and write back out to WGSL.
+    DAWN_UNREACHABLE();
+#endif
 }
 
-}  // namespace tint::sem
+}  // namespace dawn::native

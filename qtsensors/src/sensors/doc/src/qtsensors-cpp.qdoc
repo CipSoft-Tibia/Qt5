@@ -7,8 +7,6 @@
 \brief Explains how to use the Qt Sensors C++ API.
 \ingroup explanation
 
-\tableofcontents
-
 \section1 Sensor Types
 
 On a device there can be many types of sensors. Not all of the types that the Qt

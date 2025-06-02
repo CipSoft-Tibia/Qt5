@@ -118,6 +118,9 @@ message DiskImage {
 
   // If true, the disk image will be mounted with O_DIRECT.
   bool o_direct = 10;
+
+  // If true, the disk should enable multiple-workers.
+  bool multiple_workers = 11;
 }
 
 // Information about a particular VM.
@@ -182,8 +185,6 @@ message StartVmRequest {
   // If true, concierge should also perform termina-specific setup.
   bool start_termina = 5;
 
-  reserved 6;
-
   // The owner of the vm.
   string owner_id = 7;
 
@@ -195,7 +196,7 @@ message StartVmRequest {
   // physical TPM on the host device. TPM state does not persist across VM
   // launches. In order for the VM to see the virtual TPM, the guest kernel must
   // contain a virtio TPM driver.
-  bool software_tpm = 9;
+  bool software_tpm = 9 [deprecated = true];
 
   // This flag is only respected in developer mode and offers two things -
   // - It can treat a trusted VM as untrusted and run it on insecure host
@@ -209,8 +210,6 @@ message StartVmRequest {
   // The number of CPUs to give to the VM.  Cannot be larger than the number of
   // CPUs on the device and cannot be 0.
   uint32 cpus = 12;
-
-  reserved 13, 14;
 
   // Make the rootfs writable.
   bool writable_rootfs = 15;
@@ -236,8 +235,8 @@ message StartVmRequest {
   // Kernel cmdline parameters that will be passed to crosvm.
   repeated string kernel_params = 17;
 
-  // Enable Vulkan in the started Vm.
-  bool enable_vulkan = 18;
+  // DEPRECATED: Vulkan is enabled when it's supported, and GPU is enabled.
+  bool enable_vulkan = 18 [deprecated = true];
 
   // Enable Big GL rendering for the started Vm (default is GLES).
   bool enable_big_gl = 19;
@@ -368,9 +367,6 @@ message StartArcVmRequest {
   // How much memory to give ARCVM, in MiB. Optional.
   uint32 memory_mib = 12;
 
-  // Deprecated BalloonPolicyOptions. Do not use.
-  reserved 13;
-
   // Whether per-VM core scheduling should be used instead of the default one
   // (per-vCPU core scheduing.) This option is no-op on devices that have
   // neither MDS nor L1TF vulnerability. On those non-vulnerable devices, core
@@ -414,9 +410,6 @@ message StartArcVmRequest {
 
   // ArcVM metrics memory PSI period, -1 if disabled
   int32 vm_memory_psi_period = 28;
-
-  // Size of Guest Zram in bytes. Deprecated, use guest_zram_mib instead.
-  int32 guest_zram_size = 32 [deprecated = true];
 
   // Likelihood of sending cold memory to swap.
   // Default value of zero means "unset" - will use the system default.
@@ -493,6 +486,13 @@ message StartArcVmRequest {
 
   // Whether to enable O_DIRECT for the root disk (/dev/block/vda).
   bool rootfs_o_direct = 45;
+
+  // Whether to enable s2idle in the guest.
+  bool enable_s2idle = 46;
+
+  // Whether to enable the multiple-workers feature for the root disk
+  // (/dev/block/vda).
+  bool rootfs_multiple_workers = 47;
 }
 
 enum VmStatus {
@@ -1211,6 +1211,54 @@ message ListUsbDeviceResponse {
   repeated UsbDeviceMessage usb_devices = 2;
 }
 
+// Request to vm_concierge to attach an additional net tap device as a PCI
+// device to a VM.
+message AttachNetDeviceRequest {
+  // Name of the VM associated with vm_id
+  string vm_name = 1;
+
+  // The owner of the VM.
+  string owner_id = 2;
+
+  // The host interface name of the tap device.
+  string tap_name = 3;
+}
+
+// Response sent back by vm_concierge after it receives an
+// AttachNetDeviceRequest call.
+message AttachNetDeviceResponse {
+  // Was the device successfully attached?
+  bool success = 1;
+
+  // The PCI bus allocated to the PCI network device on the guest. Fits in u8.
+  uint32 guest_bus = 2;
+
+  // The reason for failure, if success is false.
+  string failure_reason = 3;
+}
+
+// Request sent to remove a hotplugged net tap PCI device from a VM.
+message DetachNetDeviceRequest {
+  // Name of the VM associated with vm_id
+  string vm_name = 1;
+
+  // The owner of the VM.
+  string owner_id = 2;
+
+  // The PCI bus num for the device to remove. Fits in u8.
+  uint32 guest_bus = 3;
+}
+
+// Response sent back by vm_concierge after it receives a
+// DetachNetDeviceRequest call.
+message DetachNetDeviceResponse {
+  // Was the device successfully detached?
+  bool success = 1;
+
+  // The reason for failure, if success is false.
+  string failure_reason = 2;
+}
+
 // Response sent back by vm_concierge after it receives a GetDnsSettings call.
 // Also being broadcast via DnsSettingsChanged signal.
 message DnsSettings {
@@ -1488,6 +1536,23 @@ message AggressiveBalloonRequest {
 message AggressiveBalloonResponse {
   // Whether inflating balloon succeeds or not.
   bool success = 1;
+
+  // The reason for failure.
+  string failure_reason = 2;
+}
+
+// Request to get an open FD to the VM Memory Management kills server.
+message GetVmMemoryManagementKillsConnectionRequest {}
+
+// Response to an GetVmMemoryManagementKillsConnection request.
+// A successful response must be accompanied with the fd that was opened to the
+// server.
+message GetVmMemoryManagementKillsConnectionResponse {
+  // Whether the request was successful.
+  bool success = 1;
+
+  // The timeout the client should use for kill requests.
+  uint32 host_kill_request_timeout_ms = 3;
 
   // The reason for failure.
   string failure_reason = 2;

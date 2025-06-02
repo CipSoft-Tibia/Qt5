@@ -87,7 +87,7 @@ public:
     OpacityAdapter(const skjson::ObjectValue& jobject,
                    sk_sp<sksg::RenderNode> child,
                    const AnimationBuilder& abuilder)
-        : INHERITED(sksg::OpacityEffect::Make(child)) {
+        : INHERITED(sksg::OpacityEffect::Make(std::move(child))) {
         this->bind(abuilder, jobject["o"], fOpacity);
     }
 
@@ -132,7 +132,7 @@ AnimationBuilder::AnimationBuilder(sk_sp<ResourceProvider> rp, sk_sp<SkFontMgr> 
                                    const SkSize& comp_size, float duration, float framerate,
                                    uint32_t flags)
     : fResourceProvider(std::move(rp))
-    , fLazyFontMgr(std::move(fontmgr))
+    , fFontMgr(std::move(fontmgr))
     , fPropertyObserver(std::move(pobserver))
     , fLogger(std::move(logger))
     , fMarkerObserver(std::move(mobserver))

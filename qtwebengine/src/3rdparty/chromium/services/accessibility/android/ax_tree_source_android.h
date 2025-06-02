@@ -6,7 +6,6 @@
 
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -29,9 +28,9 @@ class Window;
 namespace ax::android {
 class AXTreeSourceAndroidTest;
 
-using AXTreeAndroidSerializer =
-    ui::AXTreeSerializer<AccessibilityInfoDataWrapper*,
-                         std::vector<AccessibilityInfoDataWrapper*>>;
+using AXTreeAndroidSerializer = ui::AXTreeSerializer<
+    AccessibilityInfoDataWrapper*,
+    std::vector<raw_ptr<AccessibilityInfoDataWrapper, VectorExperimental>>>;
 
 // This class represents the accessibility tree from the focused ARC window.
 class AXTreeSourceAndroid
@@ -125,6 +124,9 @@ class AXTreeSourceAndroid
   AccessibilityInfoDataWrapper* GetFirstImportantAncestor(
       AccessibilityInfoDataWrapper* info_data) const;
 
+  AccessibilityInfoDataWrapper* GetFirstAccessibilityFocusableAncestor(
+      AccessibilityInfoDataWrapper* info_data) const;
+
   SerializationDelegate& serialization_delegate() const {
     return *serialization_delegate_.get();
   }
@@ -146,6 +148,8 @@ class AXTreeSourceAndroid
 
   // The window id of this tree.
   absl::optional<int32_t> window_id() const { return window_id_; }
+  // The root id of this tree.
+  absl::optional<int32_t> root_id() const { return root_id_; }
 
   void set_automation_event_router_for_test(
       extensions::AutomationEventRouterInterface* router) {
@@ -155,6 +159,9 @@ class AXTreeSourceAndroid
 
  private:
   friend class AXTreeSourceAndroidTest;
+
+  // Builds the map that stores relationships between nodes.
+  void BuildNodeMap(const mojom::AccessibilityEventData& event_data);
 
   // Actual implementation of NotifyAccessibilityEvent.
   void NotifyAccessibilityEventInternal(
@@ -220,8 +227,8 @@ class AXTreeSourceAndroid
   // AXActionHandlerBase:
   void PerformAction(const ui::AXActionData& data) override;
 
-  std::vector<AccessibilityInfoDataWrapper*>& GetChildren(
-      AccessibilityInfoDataWrapper* info_data) const;
+  std::vector<raw_ptr<AccessibilityInfoDataWrapper, VectorExperimental>>&
+  GetChildren(AccessibilityInfoDataWrapper* info_data) const;
 
   void ComputeAndCacheChildren(AccessibilityInfoDataWrapper* info_data) const;
 
@@ -242,7 +249,7 @@ class AXTreeSourceAndroid
   absl::optional<std::string> notification_key_;
 
   // Window corresponding this tree.
-  raw_ptr<aura::Window, DanglingUntriaged | ExperimentalAsh> window_;
+  raw_ptr<aura::Window, DanglingUntriaged> window_;
 
   // Cache of mapping from the *Android* window id to the last focused node id.
   std::map<int32_t, int32_t> window_id_to_last_focus_node_id_;
@@ -256,12 +263,12 @@ class AXTreeSourceAndroid
 
   // A delegate that handles accessibility actions on behalf of this tree. The
   // delegate is valid during the lifetime of this tree.
-  const raw_ptr<const Delegate, ExperimentalAsh> delegate_;
+  const raw_ptr<const Delegate> delegate_;
   // A delegate that handles unique serialization logic on behalf of this tree.
   // The delegate is valid during the lifetime of this tree.
   const std::unique_ptr<SerializationDelegate> serialization_delegate_;
 
-  raw_ptr<extensions::AutomationEventRouterInterface, ExperimentalAsh>
+  raw_ptr<extensions::AutomationEventRouterInterface>
       automation_event_router_for_test_ = nullptr;
 };
 

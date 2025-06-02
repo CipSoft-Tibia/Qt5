@@ -279,6 +279,18 @@ declare class NodeProp<T> {
     */
     static group: NodeProp<readonly string[]>;
     /**
+    Attached to nodes to indicate these should be
+    [displayed](https://codemirror.net/docs/ref/#language.syntaxTree)
+    in a bidirectional text isolate, so that direction-neutral
+    characters on their sides don't incorrectly get associated with
+    surrounding text. You'll generally want to set this for nodes
+    that contain arbitrary text, like strings and comments, and for
+    nodes that appear _inside_ arbitrary text, like HTML tags. When
+    not given a value, in a grammar declaration, defaults to
+    `"auto"`.
+    */
+    static isolate: NodeProp<"rtl" | "ltr" | "auto">;
+    /**
     The hash of the [context](#lr.ContextTracker.constructor)
     that the node was parsed in, if any. Used to limit reuse of
     contextual nodes.
@@ -610,6 +622,14 @@ declare class Tree {
     */
     resolveInner(pos: number, side?: -1 | 0 | 1): SyntaxNode;
     /**
+    In some situations, it can be useful to iterate through all
+    nodes around a position, including those in overlays that don't
+    directly cover the position. This method gives you an iterator
+    that will produce all nodes, from small to big, around the given
+    position.
+    */
+    resolveStack(pos: number, side?: -1 | 0 | 1): NodeIterator;
+    /**
     Iterate over the tree and its children, calling `enter` for any
     node that touches the `from`/`to` region (if given) before
     running over such a node's children, and `leave` (if given) when
@@ -651,6 +671,13 @@ declare class Tree {
     */
     static build(data: BuildData): Tree;
 }
+/**
+Represents a sequence of nodes.
+*/
+type NodeIterator = {
+    node: SyntaxNode;
+    next: NodeIterator | null;
+};
 type BuildData = {
     /**
     The buffer or buffer cursor to read the node data from.
@@ -822,7 +849,9 @@ interface SyntaxNodeRef {
     */
     readonly node: SyntaxNode;
     /**
-    Test whether the node matches a given context.
+    Test whether the node matches a given context—a sequence of
+    direct parent nodes. Empty strings in the context array act as
+    wildcards, other strings must match the ancestor node's name.
     */
     matchContext(context: readonly string[]): boolean;
 }
@@ -916,12 +945,6 @@ interface SyntaxNode extends SyntaxNodeRef {
     matching children, not just the first.
     */
     getChildren(type: string | number, before?: string | number | null, after?: string | number | null): SyntaxNode[];
-    /**
-    Test whether the node matches a given context—a sequence of
-    direct parent nodes. Empty strings in the context array act as
-    wildcards, other strings must match the ancestor node's name.
-    */
-    matchContext(context: readonly string[]): boolean;
 }
 /**
 A tree cursor object focuses on a given node in a syntax tree, and
@@ -948,7 +971,6 @@ declare class TreeCursor implements SyntaxNodeRef {
     private bufferNode;
     private yieldNode;
     private yieldBuf;
-    private yield;
     /**
     Move the cursor to this node's first child. When this returns
     false, the node has no child, and the cursor has not been moved.
@@ -1035,77 +1057,284 @@ declare class TreeCursor implements SyntaxNodeRef {
     matchContext(context: readonly string[]): boolean;
 }
 
+/**
+A parse stack. These are used internally by the parser to track
+parsing progress. They also provide some properties and methods
+that external code such as a tokenizer can use to get information
+about the parse state.
+*/
 declare class Stack {
+    /**
+    The input position up to which this stack has parsed.
+    */
     pos: number;
+    /**
+    The stack's current [context](#lr.ContextTracker) value, if
+    any. Its type will depend on the context tracker's type
+    parameter, or it will be `null` if there is no context
+    tracker.
+    */
     get context(): any;
+    /**
+    Check if the given term would be able to be shifted (optionally
+    after some reductions) on this stack. This can be useful for
+    external tokenizers that want to make sure they only provide a
+    given token when it applies.
+    */
     canShift(term: number): boolean;
+    /**
+    Get the parser used by this stack.
+    */
     get parser(): LRParser;
+    /**
+    Test whether a given dialect (by numeric ID, as exported from
+    the terms file) is enabled.
+    */
     dialectEnabled(dialectID: number): boolean;
     private shiftContext;
     private reduceContext;
     private updateContext;
 }
 
+/**
+[Tokenizers](#lr.ExternalTokenizer) interact with the input
+through this interface. It presents the input as a stream of
+characters, tracking lookahead and hiding the complexity of
+[ranges](#common.Parser.parse^ranges) from tokenizer code.
+*/
 declare class InputStream {
+    /**
+    Backup chunk
+    */
     private chunk2;
     private chunk2Pos;
+    /**
+    The character code of the next code unit in the input, or -1
+    when the stream is at the end of the input.
+    */
     next: number;
+    /**
+    The current position of the stream. Note that, due to parses
+    being able to cover non-contiguous
+    [ranges](#common.Parser.startParse), advancing the stream does
+    not always mean its position moves a single unit.
+    */
     pos: number;
     private rangeIndex;
     private range;
-    peek(offset: number): any;
+    /**
+    Look at a code unit near the stream position. `.peek(0)` equals
+    `.next`, `.peek(-1)` gives you the previous character, and so
+    on.
+
+    Note that looking around during tokenizing creates dependencies
+    on potentially far-away content, which may reduce the
+    effectiveness incremental parsing—when looking forward—or even
+    cause invalid reparses when looking backward more than 25 code
+    units, since the library does not track lookbehind.
+    */
+    peek(offset: number): number;
+    /**
+    Accept a token. By default, the end of the token is set to the
+    current stream position, but you can pass an offset (relative to
+    the stream position) to change that.
+    */
     acceptToken(token: number, endOffset?: number): void;
     private getChunk;
     private readNext;
+    /**
+    Move the stream forward N (defaults to 1) code units. Returns
+    the new value of [`next`](#lr.InputStream.next).
+    */
     advance(n?: number): number;
     private setDone;
 }
 interface ExternalOptions {
+    /**
+    When set to true, mark this tokenizer as depending on the
+    current parse stack, which prevents its result from being cached
+    between parser actions at the same positions.
+    */
     contextual?: boolean;
+    /**
+    By defaults, when a tokenizer returns a token, that prevents
+    tokenizers with lower precedence from even running. When
+    `fallback` is true, the tokenizer is allowed to run when a
+    previous tokenizer returned a token that didn't match any of the
+    current state's actions.
+    */
     fallback?: boolean;
+    /**
+    When set to true, tokenizing will not stop after this tokenizer
+    has produced a token. (But it will still fail to reach this one
+    if a higher-precedence tokenizer produced a token.)
+    */
     extend?: boolean;
 }
+/**
+`@external tokens` declarations in the grammar should resolve to
+an instance of this class.
+*/
 declare class ExternalTokenizer {
-    constructor(token: (input: InputStream, stack: Stack) => void, options?: ExternalOptions);
+    /**
+    Create a tokenizer. The first argument is the function that,
+    given an input stream, scans for the types of tokens it
+    recognizes at the stream's position, and calls
+    [`acceptToken`](#lr.InputStream.acceptToken) when it finds
+    one.
+    */
+    constructor(
+    /**
+    @internal
+    */
+    token: (input: InputStream, stack: Stack) => void, options?: ExternalOptions);
 }
 
+/**
+Context trackers are used to track stateful context (such as
+indentation in the Python grammar, or parent elements in the XML
+grammar) needed by external tokenizers. You declare them in a
+grammar file as `@context exportName from "module"`.
+
+Context values should be immutable, and can be updated (replaced)
+on shift or reduce actions.
+
+The export used in a `@context` declaration should be of this
+type.
+*/
 declare class ContextTracker<T> {
+    /**
+    Define a context tracker.
+    */
     constructor(spec: {
+        /**
+        The initial value of the context at the start of the parse.
+        */
         start: T;
+        /**
+        Update the context when the parser executes a
+        [shift](https://en.wikipedia.org/wiki/LR_parser#Shift_and_reduce_actions)
+        action.
+        */
         shift?(context: T, term: number, stack: Stack, input: InputStream): T;
+        /**
+        Update the context when the parser executes a reduce action.
+        */
         reduce?(context: T, term: number, stack: Stack, input: InputStream): T;
+        /**
+        Update the context when the parser reuses a node from a tree
+        fragment.
+        */
         reuse?(context: T, node: Tree, stack: Stack, input: InputStream): T;
+        /**
+        Reduce a context value to a number (for cheap storage and
+        comparison). Only needed for strict contexts.
+        */
         hash?(context: T): number;
+        /**
+        By default, nodes can only be reused during incremental
+        parsing if they were created in the same context as the one in
+        which they are reused. Set this to false to disable that
+        check (and the overhead of storing the hashes).
+        */
         strict?: boolean;
     });
 }
+/**
+Configuration options when
+[reconfiguring](#lr.LRParser.configure) a parser.
+*/
 interface ParserConfig {
+    /**
+    Node prop values to add to the parser's node set.
+    */
     props?: readonly NodePropSource[];
+    /**
+    The name of the `@top` declaration to parse from. If not
+    specified, the first top rule declaration in the grammar is
+    used.
+    */
     top?: string;
+    /**
+    A space-separated string of dialects to enable.
+    */
     dialect?: string;
+    /**
+    Replace the given external tokenizers with new ones.
+    */
     tokenizers?: {
         from: ExternalTokenizer;
         to: ExternalTokenizer;
     }[];
+    /**
+    Replace external specializers with new ones.
+    */
     specializers?: {
         from: (value: string, stack: Stack) => number;
         to: (value: string, stack: Stack) => number;
     }[];
+    /**
+    Replace the context tracker with a new one.
+    */
     contextTracker?: ContextTracker<any>;
+    /**
+    When true, the parser will raise an exception, rather than run
+    its error-recovery strategies, when the input doesn't match the
+    grammar.
+    */
     strict?: boolean;
+    /**
+    Add a wrapper, which can extend parses created by this parser
+    with additional logic (usually used to add
+    [mixed-language](#common.parseMixed) parsing).
+    */
     wrap?: ParseWrapper;
+    /**
+    The maximum length of the TreeBuffers generated in the output
+    tree. Defaults to 1024.
+    */
     bufferLength?: number;
 }
+/**
+Holds the parse tables for a given grammar, as generated by
+`lezer-generator`, and provides [methods](#common.Parser) to parse
+content with.
+*/
 declare class LRParser extends Parser {
+    /**
+    The nodes used in the trees emitted by this parser.
+    */
     readonly nodeSet: NodeSet;
     createParse(input: Input, fragments: readonly TreeFragment[], ranges: readonly {
         from: number;
         to: number;
     }[]): PartialParse;
+    /**
+    Configure the parser. Returns a new parser instance that has the
+    given settings modified. Settings not provided in `config` are
+    kept from the original parser.
+    */
     configure(config: ParserConfig): LRParser;
+    /**
+    Tells you whether any [parse wrappers](#lr.ParserConfig.wrap)
+    are registered for this parser.
+    */
     hasWrappers(): boolean;
+    /**
+    Returns the name associated with a given term. This will only
+    work for all terms when the parser was generated with the
+    `--names` option. By default, only the names of tagged terms are
+    stored.
+    */
     getName(term: number): string;
+    /**
+    The type of top node produced by the parser.
+    */
     get topNode(): NodeType;
+    /**
+    Used by the output of the parser generator. Not available to
+    user code. @hide
+    */
     static deserialize(spec: any): LRParser;
 }
 
@@ -1511,7 +1740,7 @@ declare class SelectionRange {
     /**
     Compare this range to another range.
     */
-    eq(other: SelectionRange): boolean;
+    eq(other: SelectionRange, includeAssoc?: boolean): boolean;
     /**
     Return a JSON-serializable object representing the range.
     */
@@ -1543,9 +1772,12 @@ declare class EditorSelection {
     */
     map(change: ChangeDesc, assoc?: number): EditorSelection;
     /**
-    Compare this selection to another selection.
+    Compare this selection to another selection. By default, ranges
+    are compared only by position. When `includeAssoc` is true,
+    cursor ranges must also have the same
+    [`assoc`](https://codemirror.net/6/docs/ref/#state.SelectionRange.assoc) value.
     */
-    eq(other: EditorSelection): boolean;
+    eq(other: EditorSelection, includeAssoc?: boolean): boolean;
     /**
     Get the primary selection range. Usually, you should make sure
     your code applies to _all_ ranges, by using methods like
@@ -1639,10 +1871,18 @@ Examples of uses of facets are the [tab
 size](https://codemirror.net/6/docs/ref/#state.EditorState^tabSize), [editor
 attributes](https://codemirror.net/6/docs/ref/#view.EditorView^editorAttributes), and [update
 listeners](https://codemirror.net/6/docs/ref/#view.EditorView^updateListener).
+
+Note that `Facet` instances can be used anywhere where
+[`FacetReader`](https://codemirror.net/6/docs/ref/#state.FacetReader) is expected.
 */
-declare class Facet<Input, Output = readonly Input[]> {
+declare class Facet<Input, Output = readonly Input[]> implements FacetReader<Output> {
     private isStatic;
     private constructor();
+    /**
+    Returns a facet reader for this facet, which can be used to
+    [read](https://codemirror.net/6/docs/ref/#state.EditorState.facet) it but not to define values for it.
+    */
+    get reader(): FacetReader<Output>;
     /**
     Define a new facet.
     */
@@ -1674,8 +1914,23 @@ declare class Facet<Input, Output = readonly Input[]> {
     */
     from<T extends Input>(field: StateField<T>): Extension;
     from<T>(field: StateField<T>, get: (value: T) => Input): Extension;
+    tag: Output;
 }
-type Slot<T> = Facet<any, T> | StateField<T> | "doc" | "selection";
+/**
+A facet reader can be used to fetch the value of a facet, through
+[`EditorState.facet`](https://codemirror.net/6/docs/ref/#state.EditorState.facet) or as a dependency
+in [`Facet.compute`](https://codemirror.net/6/docs/ref/#state.Facet.compute), but not to define new
+values for the facet.
+*/
+type FacetReader<Output> = {
+    /**
+    Dummy tag that makes sure TypeScript doesn't consider all object
+    types as conforming to this type. Not actually present on the
+    object.
+    */
+    tag: Output;
+};
+type Slot<T> = FacetReader<T> | StateField<T> | "doc" | "selection";
 type StateFieldSpec<Value> = {
     /**
     Creates the initial value for the field when a state is created.
@@ -2234,7 +2489,7 @@ declare class EditorState {
     /**
     Get the value of a state [facet](https://codemirror.net/6/docs/ref/#state.Facet).
     */
-    facet<Output>(facet: Facet<any, Output>): Output;
+    facet<Output>(facet: FacetReader<Output>): Output;
     /**
     Convert this state to a JSON-serializable object. When custom
     fields should be serialized, you can pass them in as an object
@@ -2678,6 +2933,10 @@ declare class RangeSet<T extends RangeValue> {
     */
     static of<T extends RangeValue>(ranges: readonly Range<T>[] | Range<T>, sort?: boolean): RangeSet<T>;
     /**
+    Join an array of range sets into a single set.
+    */
+    static join<T extends RangeValue>(sets: readonly RangeSet<T>[]): RangeSet<T>;
+    /**
     The empty set of ranges.
     */
     static empty: RangeSet<any>;
@@ -2722,12 +2981,56 @@ declare class StyleModule {
     finish?(sel: string): string
   })
   getRules(): string
-  static mount(root: Document | ShadowRoot | DocumentOrShadowRoot, module: StyleModule | ReadonlyArray<StyleModule>): void
+  static mount(
+    root: Document | ShadowRoot | DocumentOrShadowRoot,
+    module: StyleModule | ReadonlyArray<StyleModule>,
+    options?: {nonce?: string}
+  ): void
   static newName(): string
 }
 
 type StyleSpec = {
   [propOrSelector: string]: string | number | StyleSpec | null
+}
+
+/**
+Used to indicate [text direction](https://codemirror.net/6/docs/ref/#view.EditorView.textDirection).
+*/
+declare enum Direction {
+    /**
+    Left-to-right.
+    */
+    LTR = 0,
+    /**
+    Right-to-left.
+    */
+    RTL = 1
+}
+/**
+Represents a contiguous range of text that has a single direction
+(as in left-to-right or right-to-left).
+*/
+declare class BidiSpan {
+    /**
+    The start of the span (relative to the start of the line).
+    */
+    readonly from: number;
+    /**
+    The end of the span.
+    */
+    readonly to: number;
+    /**
+    The ["bidi
+    level"](https://unicode.org/reports/tr9/#Basic_Display_Algorithm)
+    of the span (in this context, 0 means
+    left-to-right, 1 means right-to-left, 2 means left-to-right
+    number inside right-to-left text).
+    */
+    readonly level: number;
+    /**
+    The direction of this span.
+    */
+    get dir(): Direction;
 }
 
 type Attrs = {
@@ -2781,6 +3084,15 @@ interface MarkDecorationSpec {
     */
     tagName?: string;
     /**
+    When using sets of decorations in
+    [`bidiIsolatedRanges`](https://codemirror.net/6/docs/ref/##view.EditorView^bidiIsolatedRanges),
+    this property provides the direction of the isolates. When null
+    or not given, it indicates the range has `dir=auto`, and its
+    direction should be derived from the first strong directional
+    character in it.
+    */
+    bidiIsolate?: Direction | null;
+    /**
     Decoration specs allow extra properties, which can be retrieved
     through the decoration's [`spec`](https://codemirror.net/6/docs/ref/#view.Decoration.spec)
     property.
@@ -2798,9 +3110,19 @@ interface WidgetDecorationSpec {
     cursor is on the same position. Otherwise, it'll be drawn before
     it. When multiple widgets sit at the same position, their `side`
     values will determine their ordering—those with a lower value
-    come first. Defaults to 0.
+    come first. Defaults to 0. May not be more than 10000 or less
+    than -10000.
     */
     side?: number;
+    /**
+    By default, to avoid unintended mixing of block and inline
+    widgets, block widgets with a positive `side` are always drawn
+    after all inline widgets at that position, and those with a
+    non-positive side before inline widgets. Setting this option to
+    `true` for a block widget will turn this off and cause it to be
+    rendered between the inline widgets, ordered by `side`.
+    */
+    inlineOrder?: boolean;
     /**
     Determines whether this is a block widgets, which will be drawn
     between lines, or an inline widget (the default) which is drawn
@@ -2901,6 +3223,13 @@ declare abstract class WidgetType {
     returns -1.
     */
     get estimatedHeight(): number;
+    /**
+    For inline widgets that are displayed inline (as opposed to
+    `inline-block`) and introduce line breaks (through `<br>` tags
+    or textual newlines), this must indicate the amount of line
+    breaks they introduce. Defaults to 0.
+    */
+    get lineBreaks(): number;
     /**
     Can be used to configure which kinds of events inside the widget
     should be ignored by the editor. The default is to ignore all
@@ -3026,6 +3355,17 @@ apply to the editor, and if it can, perform it as a side effect
 transaction) and return `true`.
 */
 type Command = (target: EditorView) => boolean;
+declare class ScrollTarget {
+    readonly range: SelectionRange;
+    readonly y: ScrollStrategy;
+    readonly x: ScrollStrategy;
+    readonly yMargin: number;
+    readonly xMargin: number;
+    readonly isSnapshot: boolean;
+    constructor(range: SelectionRange, y?: ScrollStrategy, x?: ScrollStrategy, yMargin?: number, xMargin?: number, isSnapshot?: boolean);
+    map(changes: ChangeDesc): ScrollTarget;
+    clip(state: EditorState): ScrollTarget;
+}
 /**
 This is the interface plugin objects conform to.
 */
@@ -3059,6 +3399,12 @@ interface PluginSpec<V extends PluginValue> {
     value.
     */
     eventHandlers?: DOMEventHandlers<V>;
+    /**
+    Registers [event observers](https://codemirror.net/6/docs/ref/#view.EditorView^domEventObservers)
+    for the plugin. Will, when called, have their `this` bound to
+    the plugin value.
+    */
+    eventObservers?: DOMEventHandlers<V>;
     /**
     Specify that the plugin provides additional extensions when
     added to an editor configuration.
@@ -3110,7 +3456,7 @@ interface MeasureRequest<T> {
     write?(measure: T, view: EditorView): void;
     /**
     When multiple requests with the same key are scheduled, only the
-    last one will actually be ran.
+    last one will actually be run.
     */
     key?: any;
 }
@@ -3233,11 +3579,6 @@ declare class BlockInfo {
     */
     get type(): BlockType | readonly BlockInfo[];
     /**
-    If this is a widget block, this will return the widget
-    associated with it.
-    */
-    get widget(): WidgetType | null;
-    /**
     The end of the element as a document position.
     */
     get to(): number;
@@ -3245,46 +3586,16 @@ declare class BlockInfo {
     The bottom position of the element.
     */
     get bottom(): number;
-}
-
-/**
-Used to indicate [text direction](https://codemirror.net/6/docs/ref/#view.EditorView.textDirection).
-*/
-declare enum Direction {
     /**
-    Left-to-right.
+    If this is a widget block, this will return the widget
+    associated with it.
     */
-    LTR = 0,
+    get widget(): WidgetType | null;
     /**
-    Right-to-left.
+    If this is a textblock, this holds the number of line breaks
+    that appear in widgets inside the block.
     */
-    RTL = 1
-}
-/**
-Represents a contiguous range of text that has a single direction
-(as in left-to-right or right-to-left).
-*/
-declare class BidiSpan {
-    /**
-    The start of the span (relative to the start of the line).
-    */
-    readonly from: number;
-    /**
-    The end of the span.
-    */
-    readonly to: number;
-    /**
-    The ["bidi
-    level"](https://unicode.org/reports/tr9/#Basic_Display_Algorithm)
-    of the span (in this context, 0 means
-    left-to-right, 1 means right-to-left, 2 means left-to-right
-    number inside right-to-left text).
-    */
-    readonly level: number;
-    /**
-    The direction of this span.
-    */
-    get dir(): Direction;
+    get widgetLineBreaks(): number;
 }
 
 /**
@@ -3314,11 +3625,23 @@ interface EditorViewConfig extends EditorStateConfig {
     */
     root?: Document | ShadowRoot;
     /**
-    Override the transaction [dispatch
-    function](https://codemirror.net/6/docs/ref/#view.EditorView.dispatch) for this editor view, which
-    is the way updates get routed to the view. Your implementation,
-    if provided, should probably call the view's [`update`
-    method](https://codemirror.net/6/docs/ref/#view.EditorView.update).
+    Pass an effect created with
+    [`EditorView.scrollIntoView`](https://codemirror.net/6/docs/ref/#view.EditorView^scrollIntoView) or
+    [`EditorView.scrollSnapshot`](https://codemirror.net/6/docs/ref/#view.EditorView.scrollSnapshot)
+    here to set an initial scroll position.
+    */
+    scrollTo?: StateEffect<any>;
+    /**
+    Override the way transactions are
+    [dispatched](https://codemirror.net/6/docs/ref/#view.EditorView.dispatch) for this editor view.
+    Your implementation, if provided, should probably call the
+    view's [`update` method](https://codemirror.net/6/docs/ref/#view.EditorView.update).
+    */
+    dispatchTransactions?: (trs: readonly Transaction[], view: EditorView) => void;
+    /**
+    **Deprecated** single-transaction version of
+    `dispatchTransactions`. Will force transactions to be dispatched
+    one at a time when used.
     */
     dispatch?: (tr: Transaction, view: EditorView) => void;
 }
@@ -3374,7 +3697,7 @@ declare class EditorView {
     composition there.
     */
     get compositionStarted(): boolean;
-    private _dispatch;
+    private dispatchTransactions;
     private _root;
     /**
     The document or shadow root that the view lives in.
@@ -3414,14 +3737,19 @@ declare class EditorView {
     constructor(config?: EditorViewConfig);
     /**
     All regular editor state updates should go through this. It
-    takes a transaction or transaction spec and updates the view to
-    show the new state produced by that transaction. Its
-    implementation can be overridden with an
-    [option](https://codemirror.net/6/docs/ref/#view.EditorView.constructor^config.dispatch). This
-    function is bound to the view instance, so it does not have to
-    be called as a method.
+    takes a transaction, array of transactions, or transaction spec
+    and updates the view to show the new state produced by that
+    transaction. Its implementation can be overridden with an
+    [option](https://codemirror.net/6/docs/ref/#view.EditorView.constructor^config.dispatchTransactions).
+    This function is bound to the view instance, so it does not have
+    to be called as a method.
+
+    Note that when multiple `TransactionSpec` arguments are
+    provided, these define a single transaction (the specs will be
+    merged), not a sequence of transactions.
     */
     dispatch(tr: Transaction): void;
+    dispatch(trs: readonly Transaction[]): void;
     dispatch(...specs: TransactionSpec[]): void;
     /**
     Update the view for the given array of transactions. This will
@@ -3479,6 +3807,16 @@ declare class EditorView {
         bottom: number;
     };
     /**
+    If the editor is transformed with CSS, this provides the scale
+    along the X axis. Otherwise, it will just be 1. Note that
+    transforms other than translation and scaling are not supported.
+    */
+    get scaleX(): number;
+    /**
+    Provide the CSS transformed scale along the Y axis.
+    */
+    get scaleY(): number;
+    /**
     Find the text line or block widget at the given vertical
     position (which is interpreted as relative to the [top of the
     document](https://codemirror.net/6/docs/ref/#view.EditorView.documentTop)).
@@ -3534,6 +3872,13 @@ declare class EditorView {
     non-whitespace characters.
     */
     moveByGroup(start: SelectionRange, forward: boolean): SelectionRange;
+    /**
+    Get the cursor position visually at the start or end of a line.
+    Note that this may differ from the _logical_ position at its
+    start or end (which is simply at `line.from`/`line.to`) if text
+    at the start or end goes against the line's base text direction.
+    */
+    visualLineSide(line: Line$1, end: boolean): SelectionRange;
     /**
     Move to the next line boundary in the given direction. If
     `includeWrap` is true, line wrapping is on, and there is a
@@ -3599,6 +3944,14 @@ declare class EditorView {
     another strategy to get reasonable coordinates).
     */
     coordsAtPos(pos: number, side?: -1 | 1): Rect | null;
+    /**
+    Return the rectangle around a given character. If `pos` does not
+    point in front of a character that is in the viewport and
+    rendered (i.e. not replaced, not a line break), this will return
+    null. For space characters that are a line wrap point, this will
+    return the position before the line break.
+    */
+    coordsForChar(pos: number): Rect | null;
     /**
     The default width of a character in the editor. May not
     accurately reflect the width of all characters (given variable
@@ -3685,14 +4038,29 @@ declare class EditorView {
         /**
         Extra vertical distance to add when moving something into
         view. Not used with the `"center"` strategy. Defaults to 5.
+        Must be less than the height of the editor.
         */
         yMargin?: number;
         /**
         Extra horizontal distance to add. Not used with the `"center"`
-        strategy. Defaults to 5.
+        strategy. Defaults to 5. Must be less than the width of the
+        editor.
         */
         xMargin?: number;
     }): StateEffect<unknown>;
+    /**
+    Return an effect that resets the editor to its current (at the
+    time this method was called) scroll position. Note that this
+    only affects the editor's own scrollable element, not parents.
+    See also
+    [`EditorViewConfig.scrollTo`](https://codemirror.net/6/docs/ref/#view.EditorViewConfig.scrollTo).
+
+    The effect should be used with a document identical to the one
+    it was created for. Failing to do so is not an error, but may
+    not scroll to the expected position. You can
+    [map](https://codemirror.net/6/docs/ref/#state.StateEffect.map) the effect to account for changes.
+    */
+    scrollSnapshot(): StateEffect<ScrollTarget>;
     /**
     Facet to add a [style
     module](https://github.com/marijnh/style-mod#documentation) to
@@ -3715,13 +4083,26 @@ declare class EditorView {
     */
     static domEventHandlers(handlers: DOMEventHandlers<any>): Extension;
     /**
+    Create an extension that registers DOM event observers. Contrary
+    to event [handlers](https://codemirror.net/6/docs/ref/#view.EditorView^domEventHandlers),
+    observers can't be prevented from running by a higher-precedence
+    handler returning true. They also don't prevent other handlers
+    and observers from running when they return true, and should not
+    call `preventDefault`.
+    */
+    static domEventObservers(observers: DOMEventHandlers<any>): Extension;
+    /**
     An input handler can override the way changes to the editable
     DOM content are handled. Handlers are passed the document
     positions between which the change was found, and the new
     content. When one returns true, no further input handlers are
     called and the default behavior is prevented.
+
+    The `insert` argument can be used to get the default transaction
+    that would be applied for this input. This can be useful when
+    dispatching the custom behavior as a separate transaction.
     */
-    static inputHandler: Facet<(view: EditorView, from: number, to: number, text: string) => boolean, readonly ((view: EditorView, from: number, to: number, text: string) => boolean)[]>;
+    static inputHandler: Facet<(view: EditorView, from: number, to: number, text: string, insert: () => Transaction) => boolean, readonly ((view: EditorView, from: number, to: number, text: string, insert: () => Transaction) => boolean)[]>;
     /**
     This facet can be used to provide functions that create effects
     to be dispatched when the editor's focus state changes.
@@ -3795,6 +4176,16 @@ declare class EditorView {
     */
     static decorations: Facet<DecorationSet | ((view: EditorView) => DecorationSet), readonly (DecorationSet | ((view: EditorView) => DecorationSet))[]>;
     /**
+    Facet that works much like
+    [`decorations`](https://codemirror.net/6/docs/ref/#view.EditorView^decorations), but puts its
+    inputs at the very bottom of the precedence stack, meaning mark
+    decorations provided here will only be split by other, partially
+    overlapping \`outerDecorations\` ranges, and wrap around all
+    regular decorations. Use this for mark elements that should, as
+    much as possible, remain in one piece.
+    */
+    static outerDecorations: Facet<DecorationSet | ((view: EditorView) => DecorationSet), readonly (DecorationSet | ((view: EditorView) => DecorationSet))[]>;
+    /**
     Used to provide ranges that should be treated as atoms as far as
     cursor motion is concerned. This causes methods like
     [`moveByChar`](https://codemirror.net/6/docs/ref/#view.EditorView.moveByChar) and
@@ -3806,6 +4197,16 @@ declare class EditorView {
     regions.
     */
     static atomicRanges: Facet<(view: EditorView) => RangeSet<any>, readonly ((view: EditorView) => RangeSet<any>)[]>;
+    /**
+    When range decorations add a `unicode-bidi: isolate` style, they
+    should also include a
+    [`bidiIsolate`](https://codemirror.net/6/docs/ref/#view.MarkDecorationSpec.bidiIsolate) property
+    in their decoration spec, and be exposed through this facet, so
+    that the editor can compute the proper text order. (Other values
+    for `unicode-bidi`, except of course `normal`, are not
+    supported.)
+    */
+    static bidiIsolatedRanges: Facet<DecorationSet | ((view: EditorView) => DecorationSet), readonly (DecorationSet | ((view: EditorView) => DecorationSet))[]>;
     /**
     Facet that allows extensions to provide additional scroll
     margins (space around the sides of the scrolling element that
@@ -3854,6 +4255,12 @@ declare class EditorView {
     static baseTheme(spec: {
         [selector: string]: StyleSpec;
     }): Extension;
+    /**
+    Provides a Content Security Policy nonce to use when creating
+    the style sheets for the editor. Holds the empty string when no
+    nonce has been provided.
+    */
+    static cspNonce: Facet<string, string>;
     /**
     Facet that provides additional DOM attributes for the editor's
     editable DOM element.
@@ -3983,6 +4390,13 @@ interface KeyBinding {
     selection can be undone).
     */
     preventDefault?: boolean;
+    /**
+    When set to true, `stopPropagation` will be called on keyboard
+    events that have their `preventDefault` called in response to
+    this key binding (see also
+    [`preventDefault`](https://codemirror.net/6/docs/ref/#view.KeyBinding.preventDefault)).
+    */
+    stopPropagation?: boolean;
 }
 /**
 Facet used for registering keymaps.
@@ -4164,6 +4578,9 @@ declare function tooltips(config?: {
     On iOS, which at the time of writing still doesn't properly
     support fixed positioning, the library always uses absolute
     positioning.
+
+    If the tooltip parent element sits in a transformed element, the
+    library also falls back to absolute positioning.
     */
     position?: "fixed" | "absolute";
     /**
@@ -5281,17 +5698,30 @@ interface FoldConfig {
     position of folded code. The `onclick` argument is the default
     click event handler, which toggles folding on the line that
     holds the element, and should probably be added as an event
-    handler to the returned element.
+    handler to the returned element. If
+    [`preparePlaceholder`](https://codemirror.net/6/docs/ref/#language.FoldConfig.preparePlaceholder)
+    is given, its result will be passed as 3rd argument. Otherwise,
+    this will be null.
 
     When this option isn't given, the `placeholderText` option will
     be used to create the placeholder element.
     */
-    placeholderDOM?: ((view: EditorView, onclick: (event: Event) => void) => HTMLElement) | null;
+    placeholderDOM?: ((view: EditorView, onclick: (event: Event) => void, prepared: any) => HTMLElement) | null;
     /**
     Text to use as placeholder for folded text. Defaults to `"…"`.
     Will be styled with the `"cm-foldPlaceholder"` class.
     */
     placeholderText?: string;
+    /**
+    Given a range that is being folded, create a value that
+    describes it, to be used by `placeholderDOM` to render a custom
+    widget that, for example, indicates something about the folded
+    range's size or type.
+    */
+    preparePlaceholder?: (state: EditorState, range: {
+        from: number;
+        to: number;
+    }) => any;
 }
 /**
 Create an extension that configures code folding.
@@ -5618,11 +6048,13 @@ interface StreamParser<State> {
     Read one token, advancing the stream past it, and returning a
     string indicating the token's style tag—either the name of one
     of the tags in
-    [`tags`](https://lezer.codemirror.net/docs/ref#highlight.tags),
-    or such a name suffixed by one or more tag
+    [`tags`](https://lezer.codemirror.net/docs/ref#highlight.tags)
+    or [`tokenTable`](https://codemirror.net/6/docs/ref/#language.StreamParser.tokenTable), or such a
+    name suffixed by one or more tag
     [modifier](https://lezer.codemirror.net/docs/ref#highlight.Tag^defineModifier)
     names, separated by periods. For example `"keyword"` or
-    "`variableName.constant"`.
+    "`variableName.constant"`, or a space-separated set of such
+    token types.
 
     It is okay to return a zero-length token, but only if that
     updates the state so that the next call will return a non-empty
@@ -5654,10 +6086,10 @@ interface StreamParser<State> {
     /**
     Extra tokens to use in this parser. When the tokenizer returns a
     token name that exists as a property in this object, the
-    corresponding tag will be assigned to the token.
+    corresponding tags will be assigned to the token.
     */
     tokenTable?: {
-        [name: string]: Tag;
+        [name: string]: Tag | readonly Tag[];
     };
 }
 /**
@@ -5675,15 +6107,38 @@ declare class StreamLanguage<State> extends Language {
 }
 
 /**
+Make sure nodes
+[marked](https://lezer.codemirror.net/docs/ref/#common.NodeProp^isolate)
+as isolating for bidirectional text are rendered in a way that
+isolates them from the surrounding text.
+*/
+declare function bidiIsolates(options?: {
+    /**
+    By default, isolating elements are only added when the editor
+    direction isn't uniformly left-to-right, or if it is, on lines
+    that contain right-to-left character. When true, disable this
+    optimization and add them everywhere.
+    */
+    alwaysIsolate?: boolean;
+}): Extension;
+
+/**
 Objects type used to represent individual completions.
 */
 interface Completion {
     /**
     The label to show in the completion picker. This is what input
-    is matched agains to determine whether a completion matches (and
+    is matched against to determine whether a completion matches (and
     how well it matches).
     */
     label: string;
+    /**
+    An optional override for the completion's visible label. When
+    using this, matched characters will only be highlighted if you
+    provide a [`getMatch`](https://codemirror.net/6/docs/ref/#autocomplete.CompletionResult.getMatch)
+    function.
+    */
+    displayLabel?: string;
     /**
     An optional short piece of information to show (with a different
     style) after the label.
@@ -5694,7 +6149,7 @@ interface Completion {
     a plain string or a function that'll render the DOM structure to
     show when invoked.
     */
-    info?: string | ((completion: Completion) => (Node | null | Promise<Node | null>));
+    info?: string | ((completion: Completion) => CompletionInfo | Promise<CompletionInfo>);
     /**
     How to apply the completion. The default is to replace it with
     its [label](https://codemirror.net/6/docs/ref/#autocomplete.Completion.label). When this holds a
@@ -5733,6 +6188,16 @@ interface Completion {
     */
     section?: string | CompletionSection;
 }
+/**
+The type returned from
+[`Completion.info`](https://codemirror.net/6/docs/ref/#autocomplete.Completion.info). May be a DOM
+node, null to indicate there is no info, or an object with an
+optional `destroy` method that cleans up the node.
+*/
+type CompletionInfo = Node | null | {
+    dom: Node;
+    destroy?(): void;
+};
 /**
 Object used to describe a completion
 [section](https://codemirror.net/6/docs/ref/#autocomplete.Completion.section). It is recommended to
@@ -5840,7 +6305,7 @@ may return its [result](https://codemirror.net/6/docs/ref/#autocomplete.Completi
 synchronously or as a promise. Returning null indicates no
 completions are available.
 */
-declare type CompletionSource = (context: CompletionContext) => CompletionResult | null | Promise<CompletionResult | null>;
+type CompletionSource = (context: CompletionContext) => CompletionResult | null | Promise<CompletionResult | null>;
 /**
 Interface for objects returned by completion sources.
 */
@@ -5881,12 +6346,15 @@ interface CompletionResult {
     filter?: boolean;
     /**
     When [`filter`](https://codemirror.net/6/docs/ref/#autocomplete.CompletionResult.filter) is set to
-    `false`, this may be provided to compute the ranges on the label
-    that match the input. Should return an array of numbers where
-    each pair of adjacent numbers provide the start and end of a
-    range.
+    `false` or a completion has a
+    [`displayLabel`](https://codemirror.net/6/docs/ref/#autocomplete.Completion.displayLabel), this
+    may be provided to compute the ranges on the label that match
+    the input. Should return an array of numbers where each pair of
+    adjacent numbers provide the start and end of a range. The
+    second argument, the match found by the library, is only passed
+    when `filter` isn't `false`.
     */
-    getMatch?: (completion: Completion) => readonly number[];
+    getMatch?: (completion: Completion, matched?: readonly number[]) => readonly number[];
     /**
     Synchronously update the completion result after typing or
     deletion. If given, this should not do any expensive work, since
@@ -5974,13 +6442,13 @@ interface CompletionConfig {
         position: number;
     }[];
     /**
-    By default, [info](https://codemirror.net/6/docs/ref/#autocomplet.Completion.info) tooltips are
-    placed to the side of the selected. This option can be used to
-    override that. It will be given rectangles for the list of
-    completions, the selected option, the info element, and the
-    availble [tooltip space](https://codemirror.net/6/docs/ref/#view.tooltips^config.tooltipSpace),
-    and should return style and/or class strings for the info
-    element.
+    By default, [info](https://codemirror.net/6/docs/ref/#autocomplete.Completion.info) tooltips are
+    placed to the side of the selected completion. This option can
+    be used to override that. It will be given rectangles for the
+    list of completions, the selected option, the info element, and
+    the availble [tooltip
+    space](https://codemirror.net/6/docs/ref/#view.tooltips^config.tooltipSpace), and should return
+    style and/or class strings for the info element.
     */
     positionInfo?: (view: EditorView, list: Rect, option: Rect, info: Rect, space: Rect) => {
         style?: string;
@@ -5999,6 +6467,13 @@ interface CompletionConfig {
     the tooltip. This option can be used to configure that delay.
     */
     interactionDelay?: number;
+    /**
+    When there are multiple asynchronous completion sources, this
+    controls how long the extension waits for a slow source before
+    displaying results from faster sources. Defaults to 100
+    milliseconds.
+    */
+    updateSyncTime?: number;
 }
 
 /**
@@ -6185,7 +6660,14 @@ declare const vueLanguage: LRLanguage;
 /**
 Vue template support.
 */
-declare function vue$1(): LanguageSupport;
+declare function vue$1(config?: {
+    /**
+    Provide an HTML language configuration to use as a base. _Must_
+    be the result of calling `html()` from `@codemirror/lang-html`,
+    not just any `LanguageSupport` object.
+    */
+    base?: LanguageSupport;
+}): LanguageSupport;
 
 declare const _codemirror_lang_vue_vueLanguage: typeof vueLanguage;
 declare namespace _codemirror_lang_vue {
@@ -6216,6 +6698,11 @@ highlighting and indentation information.
 */
 declare const sassLanguage: LRLanguage;
 /**
+Property, variable, $-variable, and value keyword completion
+source.
+*/
+declare const sassCompletionSource: CompletionSource;
+/**
 Language support for CSS.
 */
 declare function sass$1(config?: {
@@ -6226,10 +6713,12 @@ declare function sass$1(config?: {
     indented?: boolean;
 }): LanguageSupport;
 
+declare const _codemirror_lang_sass_sassCompletionSource: typeof sassCompletionSource;
 declare const _codemirror_lang_sass_sassLanguage: typeof sassLanguage;
 declare namespace _codemirror_lang_sass {
   export {
     sass$1 as sass,
+    _codemirror_lang_sass_sassCompletionSource as sassCompletionSource,
     _codemirror_lang_sass_sassLanguage as sassLanguage,
   };
 }
@@ -6489,6 +6978,12 @@ declare function markdown$1(config?: {
     [`commonmarkLanguage`](https://codemirror.net/6/docs/ref/#lang-markdown.commonmarkLanguage).
     */
     base?: Language;
+    /**
+    By default, the extension installs an autocompletion source that
+    completes HTML tags when a `<` is typed. Set this to false to
+    disable this.
+    */
+    completeHTMLTags?: boolean;
 }): LanguageSupport;
 
 declare const _codemirror_lang_markdown_commonmarkLanguage: typeof commonmarkLanguage;
@@ -6528,88 +7023,6 @@ declare namespace _codemirror_lang_less {
     less$1 as less,
     _codemirror_lang_less_lessCompletionSource as lessCompletionSource,
     _codemirror_lang_less_lessLanguage as lessLanguage,
-  };
-}
-
-/**
-Describes a problem or hint for a piece of code.
-*/
-interface Diagnostic {
-    /**
-    The start position of the relevant text.
-    */
-    from: number;
-    /**
-    The end position. May be equal to `from`, though actually
-    covering text is preferable.
-    */
-    to: number;
-    /**
-    The severity of the problem. This will influence how it is
-    displayed.
-    */
-    severity: "info" | "warning" | "error";
-    /**
-    An optional source string indicating where the diagnostic is
-    coming from. You can put the name of your linter here, if
-    applicable.
-    */
-    source?: string;
-    /**
-    The message associated with this diagnostic.
-    */
-    message: string;
-    /**
-    An optional custom rendering function that displays the message
-    as a DOM node.
-    */
-    renderMessage?: () => Node;
-    /**
-    An optional array of actions that can be taken on this
-    diagnostic.
-    */
-    actions?: readonly Action[];
-}
-/**
-An action associated with a diagnostic.
-*/
-interface Action {
-    /**
-    The label to show to the user. Should be relatively short.
-    */
-    name: string;
-    /**
-    The function to call when the user activates this action. Is
-    given the diagnostic's _current_ position, which may have
-    changed since the creation of the diagnostic, due to editing.
-    */
-    apply: (view: EditorView, from: number, to: number) => void;
-}
-
-/**
-Calls
-[`JSON.parse`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/parse)
-on the document and, if that throws an error, reports it as a
-single diagnostic.
-*/
-declare const jsonParseLinter: () => (view: EditorView) => Diagnostic[];
-
-/**
-A language provider that provides JSON parsing.
-*/
-declare const jsonLanguage: LRLanguage;
-/**
-JSON language support.
-*/
-declare function json$1(): LanguageSupport;
-
-declare const _codemirror_lang_json_jsonLanguage: typeof jsonLanguage;
-declare const _codemirror_lang_json_jsonParseLinter: typeof jsonParseLinter;
-declare namespace _codemirror_lang_json {
-  export {
-    json$1 as json,
-    _codemirror_lang_json_jsonLanguage as jsonLanguage,
-    _codemirror_lang_json_jsonParseLinter as jsonParseLinter,
   };
 }
 
@@ -6658,7 +7071,14 @@ declare const angularLanguage: LRLanguage;
 /**
 Angular Template language support.
 */
-declare function angular$1(): LanguageSupport;
+declare function angular$1(config?: {
+    /**
+    Provide an HTML language configuration to use as a base. _Must_
+    be the result of calling `html()` from `@codemirror/lang-html`,
+    not just any `LanguageSupport` object.
+    */
+    base?: LanguageSupport;
+}): LanguageSupport;
 
 declare const _codemirror_lang_angular_angularLanguage: typeof angularLanguage;
 declare namespace _codemirror_lang_angular {
@@ -6814,8 +7234,8 @@ property changed to `mac`.)
  - Delete: [`deleteCharForward`](https://codemirror.net/6/docs/ref/#commands.deleteCharForward)
  - Ctrl-Backspace (Alt-Backspace on macOS): [`deleteGroupBackward`](https://codemirror.net/6/docs/ref/#commands.deleteGroupBackward)
  - Ctrl-Delete (Alt-Delete on macOS): [`deleteGroupForward`](https://codemirror.net/6/docs/ref/#commands.deleteGroupForward)
- - Cmd-Backspace (macOS): [`deleteToLineStart`](https://codemirror.net/6/docs/ref/#commands.deleteToLineStart).
- - Cmd-Delete (macOS): [`deleteToLineEnd`](https://codemirror.net/6/docs/ref/#commands.deleteToLineEnd).
+ - Cmd-Backspace (macOS): [`deleteLineBoundaryBackward`](https://codemirror.net/6/docs/ref/#commands.deleteLineBoundaryBackward).
+ - Cmd-Delete (macOS): [`deleteLineBoundaryForward`](https://codemirror.net/6/docs/ref/#commands.deleteLineBoundaryForward).
 */
 declare const standardKeymap: readonly KeyBinding[];
 
@@ -6948,6 +7368,67 @@ declare namespace index_d$1 {
   };
 }
 
+type Severity = "hint" | "info" | "warning" | "error";
+/**
+Describes a problem or hint for a piece of code.
+*/
+interface Diagnostic {
+    /**
+    The start position of the relevant text.
+    */
+    from: number;
+    /**
+    The end position. May be equal to `from`, though actually
+    covering text is preferable.
+    */
+    to: number;
+    /**
+    The severity of the problem. This will influence how it is
+    displayed.
+    */
+    severity: Severity;
+    /**
+    When given, add an extra CSS class to parts of the code that
+    this diagnostic applies to.
+    */
+    markClass?: string;
+    /**
+    An optional source string indicating where the diagnostic is
+    coming from. You can put the name of your linter here, if
+    applicable.
+    */
+    source?: string;
+    /**
+    The message associated with this diagnostic.
+    */
+    message: string;
+    /**
+    An optional custom rendering function that displays the message
+    as a DOM node.
+    */
+    renderMessage?: () => Node;
+    /**
+    An optional array of actions that can be taken on this
+    diagnostic.
+    */
+    actions?: readonly Action[];
+}
+/**
+An action associated with a diagnostic.
+*/
+interface Action {
+    /**
+    The label to show to the user. Should be relatively short.
+    */
+    name: string;
+    /**
+    The function to call when the user activates this action. Is
+    given the diagnostic's _current_ position, which may have
+    changed since the creation of the diagnostic, due to editing.
+    */
+    apply: (view: EditorView, from: number, to: number) => void;
+}
+
 /**
 A language provider based on the [Lezer JavaScript
 parser](https://github.com/lezer-parser/javascript), extended with
@@ -6985,6 +7466,11 @@ A collection of JavaScript-related
 [snippets](https://codemirror.net/6/docs/ref/#autocomplete.snippet).
 */
 declare const snippets: readonly Completion[];
+/**
+A collection of snippet completions for TypeScript. Includes the
+JavaScript [snippets](https://codemirror.net/6/docs/ref/#lang-javascript.snippets).
+*/
+declare const typescriptSnippets: Completion[];
 
 /**
 Connects an [ESLint](https://eslint.org/) linter to CodeMirror's
@@ -7040,6 +7526,7 @@ declare const index_d_scopeCompletionSource: typeof scopeCompletionSource;
 declare const index_d_snippets: typeof snippets;
 declare const index_d_tsxLanguage: typeof tsxLanguage;
 declare const index_d_typescriptLanguage: typeof typescriptLanguage;
+declare const index_d_typescriptSnippets: typeof typescriptSnippets;
 declare namespace index_d {
   export {
     index_d_autoCloseTags as autoCloseTags,
@@ -7053,10 +7540,11 @@ declare namespace index_d {
     index_d_snippets as snippets,
     index_d_tsxLanguage as tsxLanguage,
     index_d_typescriptLanguage as typescriptLanguage,
+    index_d_typescriptSnippets as typescriptSnippets,
   };
 }
 
-declare type HighlightOptions = {
+type HighlightOptions = {
     /**
     Determines whether, when nothing is selected, the word around
     the cursor is matched instead. Defaults to false.
@@ -7090,6 +7578,48 @@ to the surrounding word when the selection is empty.
 */
 declare const selectNextOccurrence: StateCommand;
 
+interface IndentationMarkerConfiguration {
+    /**
+     * Determines whether active block marker is styled differently.
+     */
+    highlightActiveBlock?: boolean;
+    /**
+     * Determines whether markers in the first column are omitted.
+     */
+    hideFirstIndent?: boolean;
+    /**
+     * Determines the type of indentation marker.
+     */
+    markerType?: "fullScope" | "codeOnly";
+    /**
+     * Determines the thickness of marker (in pixels).
+     */
+    thickness?: number;
+    /**
+     * Determines the color of marker.
+     */
+    colors?: {
+        /**
+         * Color of inactive indent markers when using a light theme.
+         */
+        light?: string;
+        /**
+         * Color of inactive indent markers when using a dark theme.
+         */
+        dark?: string;
+        /**
+         * Color of active indent markers when using a light theme.
+         */
+        activeLight?: string;
+        /**
+         * Color of active indent markers when using a dark theme.
+         */
+        activeDark?: string;
+    };
+}
+
+declare function indentationMarkers(config?: IndentationMarkerConfiguration): Extension[];
+
 declare function angular(): Promise<typeof _codemirror_lang_angular>;
 declare function clojure(): Promise<StreamLanguage<unknown>>;
 declare function coffeescript(): Promise<StreamLanguage<unknown>>;
@@ -7103,7 +7633,6 @@ declare function dart(): Promise<StreamLanguage<unknown>>;
 declare function gss(): Promise<StreamLanguage<unknown>>;
 declare function go(): Promise<StreamLanguage<unknown>>;
 declare function java(): Promise<typeof _codemirror_lang_java>;
-declare function json(): Promise<typeof _codemirror_lang_json>;
 declare function kotlin(): Promise<StreamLanguage<unknown>>;
 declare function less(): Promise<typeof _codemirror_lang_less>;
 declare function markdown(): Promise<typeof _codemirror_lang_markdown>;
@@ -7118,4 +7647,4 @@ declare function vue(): Promise<typeof _codemirror_lang_vue>;
 declare function wast(): Promise<typeof _codemirror_lang_wast>;
 declare function xml(): Promise<typeof _codemirror_lang_xml>;
 
-export { Annotation, AnnotationType, ChangeDesc, ChangeSet, ChangeSpec, Command, Compartment, Completion, CompletionContext, CompletionResult, CompletionSource, Decoration, DecorationSet, EditorSelection, EditorState, EditorStateConfig, EditorView, Extension, Facet, GutterMarker, HighlightStyle, KeyBinding, LRParser, Language, LanguageSupport, Line$1 as Line, MapMode, MatchDecorator, NodeProp, NodeSet, NodeType, Panel, Parser, Prec, Range, RangeSet, RangeSetBuilder, SelectionRange, StateEffect, StateEffectType, StateField, StreamLanguage, StreamParser, StringStream, StyleModule, SyntaxNode, Tag, TagStyle, Text, TextIterator, Tooltip, TooltipView, Transaction, TransactionSpec, Tree, TreeCursor, ViewPlugin, ViewUpdate, WidgetType, acceptCompletion, angular, autocompletion, bracketMatching, clojure, closeBrackets, closeBracketsKeymap, closeCompletion, codeFolding, coffeescript, completeAnyWord, completionStatus, cpp, css, cssStreamParser, currentCompletions, cursorGroupLeft, cursorGroupRight, cursorMatchingBracket, cursorSyntaxLeft, cursorSyntaxRight, dart, drawSelection, ensureSyntaxTree, foldGutter, foldKeymap, go, gss, gutter, gutters, highlightSelectionMatches, highlightSpecialChars, highlightTree, history, historyKeymap, index_d$1 as html, ifNotIn, indentLess, indentMore, indentOnInput, indentUnit, insertNewlineAndIndent, java, index_d as javascript, json, keymap, kotlin, less, lineNumberMarkers, lineNumbers, markdown, moveCompletionSelection, php, placeholder, python, redo, redoSelection, repositionTooltips, sass, scala, scrollPastEnd, selectGroupLeft, selectGroupRight, selectMatchingBracket, selectNextOccurrence, selectSyntaxLeft, selectSyntaxRight, selectedCompletion, selectedCompletionIndex, shell, showPanel, showTooltip, standardKeymap, startCompletion, svelte, syntaxHighlighting, syntaxTree, tags, toggleComment, tooltips, undo, undoSelection, vue, wast, xml };
+export { Annotation, AnnotationType, ChangeDesc, ChangeSet, ChangeSpec, Command, Compartment, Completion, CompletionContext, CompletionResult, CompletionSource, Decoration, DecorationSet, EditorSelection, EditorState, EditorStateConfig, EditorView, Extension, Facet, GutterMarker, HighlightStyle, KeyBinding, LRParser, Language, LanguageSupport, Line$1 as Line, MapMode, MatchDecorator, NodeProp, NodeSet, NodeType, Panel, Parser, Prec, Range, RangeSet, RangeSetBuilder, SelectionRange, StateEffect, StateEffectType, StateField, StreamLanguage, StreamParser, StringStream, StyleModule, SyntaxNode, Tag, TagStyle, Text, TextIterator, Tooltip, TooltipView, Transaction, TransactionSpec, Tree, TreeCursor, ViewPlugin, ViewUpdate, WidgetType, acceptCompletion, angular, autocompletion, bidiIsolates, bracketMatching, clojure, closeBrackets, closeBracketsKeymap, closeCompletion, codeFolding, coffeescript, completeAnyWord, completionStatus, cpp, css, cssStreamParser, currentCompletions, cursorGroupLeft, cursorGroupRight, cursorMatchingBracket, cursorSyntaxLeft, cursorSyntaxRight, dart, drawSelection, ensureSyntaxTree, foldGutter, foldKeymap, go, gss, gutter, gutters, highlightSelectionMatches, highlightSpecialChars, highlightTree, history, historyKeymap, index_d$1 as html, ifNotIn, indentLess, indentMore, indentOnInput, indentUnit, indentationMarkers, insertNewlineAndIndent, java, index_d as javascript, keymap, kotlin, less, lineNumberMarkers, lineNumbers, markdown, moveCompletionSelection, php, placeholder, python, redo, redoSelection, repositionTooltips, sass, scala, scrollPastEnd, selectGroupLeft, selectGroupRight, selectMatchingBracket, selectNextOccurrence, selectSyntaxLeft, selectSyntaxRight, selectedCompletion, selectedCompletionIndex, shell, showPanel, showTooltip, standardKeymap, startCompletion, svelte, syntaxHighlighting, syntaxTree, tags, toggleComment, tooltips, undo, undoSelection, vue, wast, xml };

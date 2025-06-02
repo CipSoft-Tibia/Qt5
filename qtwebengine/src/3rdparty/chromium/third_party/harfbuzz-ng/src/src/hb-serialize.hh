@@ -113,7 +113,7 @@ struct hb_serialize_context_t
     {
       // Virtual links aren't considered for equality since they don't affect the functionality
       // of the object.
-      return hb_bytes_t (head, tail - head).hash () ^
+      return hb_bytes_t (head, hb_min (128, tail - head)).hash () ^
           real_links.as_bytes ().hash ();
     }
 
@@ -266,7 +266,7 @@ struct hb_serialize_context_t
 	   propagate_error (std::forward<Ts> (os)...); }
 
   /* To be called around main operation. */
-  template <typename Type>
+  template <typename Type=char>
   __attribute__((returns_nonnull))
   Type *start_serialize ()
   {

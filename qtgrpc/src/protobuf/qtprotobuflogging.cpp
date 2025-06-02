@@ -1,7 +1,7 @@
 // Copyright (C) 2019 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qtprotobuflogging_p.h"
+#include <QtProtobuf/private/qtprotobuflogging_p.h>
 
 QT_BEGIN_NAMESPACE
 

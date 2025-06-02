@@ -17,11 +17,6 @@ export function isSidenavItem(element: unknown): element is SidenavItem {
   return element instanceof Element && element.tagName === 'CROS-SIDENAV-ITEM';
 }
 
-/** True if the page is read right-to-left. */
-export function isRTL() {
-  return document.documentElement.dir === 'rtl';
-}
-
 /** Returns the active element, if it's a SidenavItem, or null. */
 export function shadowPiercingActiveItem(): Element|null {
   let activeElement = document.activeElement;

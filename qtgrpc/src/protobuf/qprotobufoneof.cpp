@@ -1,14 +1,15 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qprotobufoneof.h"
+#include <QtProtobuf/qprotobufoneof.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QtProtobufPrivate {
 /*!
     \internal
-    \fn template<typename T> void QProtobufOneof::setValue(const T &value, int fieldNumber)
+    \fn template<typename T, QtProtobuf::if_protobuf_type<T> = true> void QProtobufOneof::setValue(const T &value, int fieldNumber)
+    \fn template<typename T, QtProtobuf::if_protobuf_message<T> = true> void setValue(T &&value, int fieldNumber)
 
     Stores the \a value into QProtobufOneof with corresponding \a
     fieldNumber.
@@ -16,7 +17,7 @@ namespace QtProtobufPrivate {
 
 /*!
     \internal
-    \fn template<typename T, IsNonMessageProtobufType<T> = 0> T QProtobufOneof::value() const
+    \fn template <typename T, QtProtobuf::if_protobuf_non_message<T> = true> T QProtobufOneof::value() const
 
     Returns the value of non-message protobuf type stored in the
     QProtobufOneof object.
@@ -24,16 +25,30 @@ namespace QtProtobufPrivate {
 
 /*!
     \internal
-    \fn template<typename T, IsProtobufMessageType<T> = 0> T &QProtobufOneof::value() const
+    \fn template <typename T, QtProtobuf::if_protobuf_message<T> = true> const T *value() const
 
-    Returns the reference to a protobuf message that is stored inside the
+    Returns the pointer to a protobuf message that is stored inside the
     QProtobufOneof object.
 */
 
 /*!
     \internal
-    \fn template<typename T> bool QProtobufOneof::isEqual(const T &value, int fieldNumber) const
+    \fn template <typename T, QtProtobuf::if_protobuf_message<T> = true> T *value()
 
+    Returns the pointer to a protobuf message that is stored inside the
+    QProtobufOneof object. Mutable overload.
+*/
+
+/*!
+    \internal
+    \fn template <typename T, QtProtobuf::if_protobuf_non_message<T> = true> bool isEqual(const T &otherValue, int fieldNumber) const
+    Compares the data stored in QProtobufOneof with the value/fieldNumber
+    pair.
+*/
+
+/*!
+    \internal
+    \fn template <typename T, QtProtobuf::if_protobuf_message<T> = true> bool isEqual(const T &otherValue, int fieldNumber) const
     Compares the data stored in QProtobufOneof with the value/fieldNumber
     pair.
 */
@@ -92,12 +107,12 @@ QProtobufOneof &QProtobufOneof::operator=(const QProtobufOneof &other)
     \internal
     Checks if values stored in oneof is equal \a other.
 */
-bool QProtobufOneof::isEqual(const QProtobufOneof &other) const
+bool comparesEqual(const QProtobufOneof &lhs, const QProtobufOneof &rhs) noexcept
 {
-    if (d_ptr == other.d_ptr)
+    if (lhs.d_ptr == rhs.d_ptr)
         return true;
-    return d_func()->fieldNumber == other.d_func()->fieldNumber
-            && d_func()->value == other.d_func()->value;
+    return lhs.d_func()->fieldNumber == rhs.d_func()->fieldNumber
+        && lhs.d_func()->value == rhs.d_func()->value;
 }
 
 /*!
@@ -109,7 +124,7 @@ QProtobufOneof::~QProtobufOneof()
     delete d_ptr;
 }
 
-QVariant &QProtobufOneof::rawValue() const
+const QVariant &QProtobufOneof::rawValue() const
 {
     return d_ptr->value;
 }
@@ -148,6 +163,17 @@ int QProtobufOneof::fieldNumber() const
     return d->fieldNumber;
 }
 
+/*!
+    \internal
+    Ensures that underlying QVariant holds the required QMetaType. Initializes variant with the
+    default-constructed QMetaType if QVariant holds the different type.
+*/
+void QProtobufOneof::ensureRawValue(QMetaType metaType)
+{
+    Q_D(QProtobufOneof);
+    if (metaType != d->value.metaType())
+        d->value = QVariant::fromMetaType(metaType);
+}
 } // namespace QtProtobufPrivate
 
 QT_END_NAMESPACE

@@ -159,16 +159,16 @@ class MESSAGE_CENTER_PUBLIC_EXPORT RichNotificationData {
   // and only pass globally defined constants.
   // TODO(tetsui): Remove the pointer, after fixing VectorIconSource not to
   // retain VectorIcon reference.  https://crbug.com/760866
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
+  // RAW_PTR_EXCLUSION: Never allocated by PartitionAlloc (always points to a
+  // global), so there is no benefit to using a raw_ptr, only cost.
   RAW_PTR_EXCLUSION const gfx::VectorIcon* vector_small_image = &gfx::kNoneIcon;
 
   // Vector image to display on the parent notification of this notification,
   // illustrating the source of the group notification that this notification
   // belongs to. Optional. Note that all notification belongs to the same group
   // should have the same `parent_vector_small_image`.
-  // This field is not a raw_ptr<> because it was filtered by the rewriter for:
-  // #union
+  // RAW_PTR_EXCLUSION: Never allocated by PartitionAlloc (always points to a
+  // global), so there is no benefit to using a raw_ptr, only cost.
   RAW_PTR_EXCLUSION const gfx::VectorIcon* parent_vector_small_image =
       &gfx::kNoneIcon;
 
@@ -334,6 +334,9 @@ class MESSAGE_CENTER_PUBLIC_EXPORT Notification {
 
   // A display string for the source of the notification.
   const std::u16string& display_source() const { return display_source_; }
+  void set_display_source(const std::u16string display_source) {
+    display_source_ = display_source;
+  }
 
   bool allow_group() const { return allow_group_; }
   void set_allow_group(bool allow_group) { allow_group_ = allow_group; }

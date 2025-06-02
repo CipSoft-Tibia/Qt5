@@ -15,6 +15,10 @@ QT_BEGIN_NAMESPACE
     \ingroup painting
     \reentrant
 
+    \compares equality
+    \compareswith equality QPointF
+    \endcompareswith
+
     \brief The QPoint class defines a point in the plane using integer
     precision.
 
@@ -208,16 +212,17 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn bool QPoint::operator==(const QPoint &p1, const QPoint &p2)
+    \fn bool QPoint::operator==(const QPoint &lhs, const QPoint &rhs)
 
-    Returns \c true if \a p1 and \a p2 are equal; otherwise returns
-    false.
+    Returns \c true if \a lhs and \a rhs are equal; otherwise returns
+    \c false.
 */
 
 /*!
-    \fn bool QPoint::operator!=(const QPoint &p1, const QPoint &p2)
+    \fn bool QPoint::operator!=(const QPoint &lhs, const QPoint &rhs)
 
-    Returns \c true if \a p1 and \a p2 are not equal; otherwise returns \c false.
+    Returns \c true if \a lhs and \a rhs are not equal; otherwise returns
+    \c false.
 */
 
 /*!
@@ -445,12 +450,8 @@ QDebug operator<<(QDebug dbg, const QPointF &p)
 #endif
 
 /*!
-    \fn size_t qHash(QPoint key, size_t seed = 0)
-    \relates QHash
+    \qhashold{QHash}
     \since 6.0
-
-    Returns the hash value for the \a key, using \a seed to seed the
-    calculation.
 */
 size_t qHash(QPoint key, size_t seed) noexcept
 {
@@ -462,6 +463,10 @@ size_t qHash(QPoint key, size_t seed) noexcept
     \inmodule QtCore
     \ingroup painting
     \reentrant
+
+    \compares equality
+    \compareswith equality QPoint
+    \endcompareswith
 
     \brief The QPointF class defines a point in the plane using
     floating point precision.
@@ -730,9 +735,9 @@ size_t qHash(QPoint key, size_t seed) noexcept
 */
 
 /*!
-    \fn bool QPointF::operator==(const QPointF &p1, const QPointF &p2)
+    \fn bool QPointF::operator==(const QPointF &lhs, const QPointF &rhs)
 
-    Returns \c true if \a p1 is approximately equal to \a p2; otherwise
+    Returns \c true if \a lhs is approximately equal to \a rhs; otherwise
     returns \c false.
 
     \warning This function does not check for strict equality; instead,
@@ -742,13 +747,33 @@ size_t qHash(QPoint key, size_t seed) noexcept
 */
 
 /*!
-    \fn bool QPointF::operator!=(const QPointF &p1, const QPointF &p2);
+    \fn bool QPointF::operator!=(const QPointF &lhs, const QPointF &rhs)
 
-    Returns \c true if \a p1 is sufficiently different from \a p2;
+    Returns \c true if \a lhs is sufficiently different from \a rhs;
     otherwise returns \c false.
 
     \warning This function does not check for strict inequality; instead,
     it uses a fuzzy comparison to compare the points' coordinates.
+
+    \sa qFuzzyCompare
+*/
+
+/*!
+    \fn bool QPointF::qFuzzyCompare(const QPointF &p1, const QPointF &p2)
+    \since 6.8
+
+    Returns \c true if \a p1 is approximately equal to \a p2; otherwise
+    returns \c false.
+
+    \sa qFuzzyIsNull
+*/
+
+/*!
+    \fn bool QPointF::qFuzzyIsNull(const QPointF &point)
+    \since 6.8
+
+    Returns \c true if \a point is approximately equal to a point
+    \c {(0.0, 0.0)}.
 
     \sa qFuzzyCompare
 */

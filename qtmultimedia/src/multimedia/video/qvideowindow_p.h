@@ -22,6 +22,7 @@
 #include <qvideoframe.h>
 #include <private/qplatformvideosink_p.h>
 #include <private/qvideotexturehelper_p.h>
+#include <private/qvideoframetexturepool_p.h>
 #include <qbackingstore.h>
 
 QT_BEGIN_NAMESPACE
@@ -64,7 +65,6 @@ public:
     std::unique_ptr<QRhiBuffer> m_vertexBuf;
     bool m_vertexBufReady = false;
     std::unique_ptr<QRhiBuffer> m_uniformBuf;
-    std::unique_ptr<QVideoFrameTextures> m_frameTextures;
     std::unique_ptr<QRhiSampler> m_textureSampler;
     std::unique_ptr<QRhiShaderResourceBindings> m_shaderResourceBindings;
     std::unique_ptr<QRhiGraphicsPipeline> m_graphicsPipeline;
@@ -76,17 +76,13 @@ public:
 
     std::unique_ptr<QVideoSink> m_sink;
     QRhi::Implementation m_graphicsApi = QRhi::Null;
-    QVideoFrame m_currentFrame;
     QVideoTextureHelper::SubtitleLayout m_subtitleLayout;
-
-    enum { NVideoFrameSlots = 4 };
-    QVideoFrame m_videoFrameSlots[NVideoFrameSlots];
+    QVideoFrameTexturePool m_texturePool;
 
     bool initialized = false;
     bool isExposed = false;
     bool m_useRhi = true;
     bool m_hasSwapChain = false;
-    bool m_texturesDirty = true;
     bool m_subtitleDirty = false;
     bool m_hasSubtitle = false;
     QVideoFrameFormat format;
@@ -98,7 +94,7 @@ class Q_MULTIMEDIA_EXPORT QVideoWindow : public QWindow
 public:
     explicit QVideoWindow(QScreen *screen = nullptr);
     explicit QVideoWindow(QWindow *parent);
-    ~QVideoWindow();
+    ~QVideoWindow() override;
 
     Q_INVOKABLE QVideoSink *videoSink() const;
 

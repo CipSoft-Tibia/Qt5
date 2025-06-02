@@ -161,6 +161,9 @@ static GrGLVendor get_vendor(const char* vendorString) {
     if (0 == strcmp(vendorString, "ATI Technologies Inc.")) {
         return GrGLVendor::kATI;
     }
+    if (0 == strcmp(vendorString, "Apple")) {
+        return GrGLVendor::kApple;
+    }
     return GrGLVendor::kOther;
 }
 
@@ -381,6 +384,11 @@ static GrGLRenderer get_renderer(const char* rendererString, const GrGLExtension
         return GrGLRenderer::kMali4xx;
     }
 
+    static const char kAppleStr[] = "Apple";
+    if (0 == strncmp(rendererString, kAppleStr, std::size(kAppleStr) - 1)) {
+        return GrGLRenderer::kApple;
+    }
+
     if (strstr(rendererString, "WebGL")) {
         return GrGLRenderer::kWebGL;
     }
@@ -555,6 +563,17 @@ static std::tuple<GrGLDriver, GrGLDriverVersion> get_driver_and_version(GrGLStan
                 driver = GrGLDriver::kARM;
                 driverVersion = GR_GL_DRIVER_VER(driverMajor, driverMinor, 0);
             }
+        } else if (vendor == GrGLVendor::kApple) {
+            // There doesn't appear to be a minor version
+            int n = sscanf(versionString,
+                           "%d.%d Metal - %d",
+                           &major,
+                           &minor,
+                           &driverMajor);
+            if (n == 3) {
+                driver = GrGLDriver::kApple;
+                driverVersion = GR_GL_DRIVER_VER(driverMajor, 0, 0);
+            }
         } else {
             static constexpr char kEmulatorPrefix[] = "Android Emulator OpenGL ES Translator";
             if (0 == strncmp(kEmulatorPrefix, rendererString, strlen(kEmulatorPrefix))) {
@@ -693,6 +712,10 @@ get_webgl_vendor_and_renderer(
 
     GrGLVendor webglVendor = get_vendor(webglVendorString);
     GrGLRenderer webglRenderer = get_renderer(webglRendererString, interface->fExtensions);
+
+    if (webglVendor == GrGLVendor::kOther && strstr(webglRendererString, "Intel")) {
+        webglVendor = GrGLVendor::kIntel;
+    }
 
     return {webglVendor, webglRenderer};
 }

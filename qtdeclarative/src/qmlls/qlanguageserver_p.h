@@ -52,6 +52,7 @@ public:
         DidInitialize, // normal state of execution
         WaitPending,
         Stopping,
+        WaitingForExit,
         Stopped
     };
     Q_ENUM(RunStatus)

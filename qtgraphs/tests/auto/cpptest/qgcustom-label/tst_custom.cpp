@@ -57,8 +57,8 @@ void tst_custom::construct()
                                 QVector3D(1.0f, 1.0f, 1.0f), QQuaternion(1.0f, 1.0f, 10.0f, 100.0f));
     QVERIFY(custom);
     QCOMPARE(custom->backgroundColor(), QColor(Qt::gray));
-    QCOMPARE(custom->isBackgroundEnabled(), true);
-    QCOMPARE(custom->isBorderEnabled(), true);
+    QCOMPARE(custom->isBackgroundVisible(), true);
+    QCOMPARE(custom->isBorderVisible(), true);
     QCOMPARE(custom->isFacingCamera(), false);
     QCOMPARE(custom->font(), QFont("Times New Roman", 10));
     QCOMPARE(custom->text(), QString("label"));
@@ -80,8 +80,8 @@ void tst_custom::initialProperties()
     QVERIFY(m_custom);
 
     QCOMPARE(m_custom->backgroundColor(), QColor(Qt::gray));
-    QCOMPARE(m_custom->isBackgroundEnabled(), true);
-    QCOMPARE(m_custom->isBorderEnabled(), true);
+    QCOMPARE(m_custom->isBackgroundVisible(), true);
+    QCOMPARE(m_custom->isBorderVisible(), true);
     QCOMPARE(m_custom->isFacingCamera(), false);
     QCOMPARE(m_custom->font(), QFont("Arial", 20));
     QCOMPARE(m_custom->text(), QString());
@@ -103,17 +103,25 @@ void tst_custom::initializeProperties()
 {
     QVERIFY(m_custom);
 
+    QSignalSpy textSpy(m_custom, &QCustom3DLabel::textChanged);
+    QSignalSpy fontSpy(m_custom, &QCustom3DLabel::fontChanged);
+    QSignalSpy textColorSpy(m_custom, &QCustom3DLabel::textColorChanged);
+    QSignalSpy backgroundColorSpy(m_custom, &QCustom3DLabel::backgroundColorChanged);
+    QSignalSpy borderVisibleSpy(m_custom, &QCustom3DLabel::borderVisibleChanged);
+    QSignalSpy backgroundVisibleSpy(m_custom, &QCustom3DLabel::backgroundVisibleChanged);
+    QSignalSpy facingCameraSpy(m_custom, &QCustom3DLabel::facingCameraChanged);
+
     m_custom->setBackgroundColor(QColor(Qt::red));
-    m_custom->setBackgroundEnabled(false);
-    m_custom->setBorderEnabled(false);
+    m_custom->setBackgroundVisible(false);
+    m_custom->setBorderVisible(false);
     m_custom->setFacingCamera(true);
     m_custom->setFont(QFont("Times New Roman", 10));
     m_custom->setText(QString("This is a Custom Label"));
     m_custom->setTextColor(QColor(Qt::blue));
 
     QCOMPARE(m_custom->backgroundColor(), QColor(Qt::red));
-    QCOMPARE(m_custom->isBackgroundEnabled(), false);
-    QCOMPARE(m_custom->isBorderEnabled(), false);
+    QCOMPARE(m_custom->isBackgroundVisible(), false);
+    QCOMPARE(m_custom->isBorderVisible(), false);
     QCOMPARE(m_custom->isFacingCamera(), true);
     QCOMPARE(m_custom->font(), QFont("Times New Roman", 10));
     QCOMPARE(m_custom->text(), QString("This is a Custom Label"));
@@ -133,6 +141,14 @@ void tst_custom::initializeProperties()
     QCOMPARE(m_custom->scaling(), QVector3D(1.0f, 1.0f, 1.0f));
     QCOMPARE(m_custom->isShadowCasting(), true);
     QCOMPARE(m_custom->isVisible(), false);
+
+    QCOMPARE(textSpy.size(), 1);
+    QCOMPARE(fontSpy.size(), 1);
+    QCOMPARE(textColorSpy.size(), 1);
+    QCOMPARE(backgroundColorSpy.size(), 1);
+    QCOMPARE(borderVisibleSpy.size(), 1);
+    QCOMPARE(backgroundVisibleSpy.size(), 1);
+    QCOMPARE(facingCameraSpy.size(), 1);
 }
 
 void tst_custom::invalidProperties()

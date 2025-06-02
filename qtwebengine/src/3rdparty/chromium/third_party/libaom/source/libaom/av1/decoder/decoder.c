@@ -79,9 +79,10 @@ static void dec_setup_mi(CommonModeInfoParams *mi_params) {
 static void dec_free_mi(CommonModeInfoParams *mi_params) {
   aom_free(mi_params->mi_alloc);
   mi_params->mi_alloc = NULL;
+  mi_params->mi_alloc_size = 0;
   aom_free(mi_params->mi_grid_base);
   mi_params->mi_grid_base = NULL;
-  mi_params->mi_alloc_size = 0;
+  mi_params->mi_grid_size = 0;
   aom_free(mi_params->tx_type_map);
   mi_params->tx_type_map = NULL;
 }
@@ -217,7 +218,7 @@ void av1_decoder_remove(AV1Decoder *pbi) {
 
   if (pbi->num_workers > 0) {
     av1_loop_filter_dealloc(&pbi->lf_row_sync);
-    av1_loop_restoration_dealloc(&pbi->lr_row_sync, pbi->num_workers);
+    av1_loop_restoration_dealloc(&pbi->lr_row_sync);
     av1_dealloc_dec_jobs(&pbi->tile_mt_info);
   }
 

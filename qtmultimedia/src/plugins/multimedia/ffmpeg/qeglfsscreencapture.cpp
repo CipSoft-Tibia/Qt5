@@ -7,6 +7,7 @@
 #include "qguiapplication.h"
 #include "qopenglvideobuffer_p.h"
 #include "private/qimagevideobuffer_p.h"
+#include "private/qvideoframe_p.h"
 
 #include <QtOpenGL/private/qopenglcompositor_p.h>
 #include <QtOpenGL/private/qopenglframebufferobject_p.h>
@@ -54,10 +55,10 @@ protected:
         if (!m_format.isValid()) {
             auto image = videoBuffer->ensureImageBuffer().underlyingImage();
             m_format = { image.size(), QVideoFrameFormat::pixelFormatFromImageFormat(image.format()) };
-            m_format.setFrameRate(frameRate());
+            m_format.setStreamFrameRate(frameRate());
         }
 
-        return QVideoFrame(videoBuffer.release(), m_format);
+        return QVideoFramePrivate::createFrame(std::move(videoBuffer), m_format);
     }
 
     QVideoFrameFormat m_format;
@@ -90,10 +91,11 @@ protected:
         if (!m_format.isValid()) {
             m_format = { image.size(),
                          QVideoFrameFormat::pixelFormatFromImageFormat(image.format()) };
-            m_format.setFrameRate(frameRate());
+            m_format.setStreamFrameRate(frameRate());
         }
 
-        return QVideoFrame(new QImageVideoBuffer(std::move(image)), m_format);
+        return QVideoFramePrivate::createFrame(
+                std::make_unique<QImageVideoBuffer>(std::move(image)), m_format);
     }
 
 private:

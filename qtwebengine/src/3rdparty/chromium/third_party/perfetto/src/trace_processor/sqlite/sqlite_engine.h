@@ -24,6 +24,7 @@
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 #include "perfetto/base/status.h"
 #include "perfetto/ext/base/flat_hash_map.h"
@@ -58,8 +59,8 @@ class SqliteEngine {
     bool Step();
     bool IsDone() const;
 
+    const char* original_sql() const;
     const char* sql() const;
-    const char* expanded_sql();
 
     const base::Status& status() const { return status_; }
     sqlite3_stmt* sqlite_stmt() const { return stmt_.get(); }
@@ -70,8 +71,8 @@ class SqliteEngine {
     explicit PreparedStatement(ScopedStmt, SqlSource);
 
     ScopedStmt stmt_;
-    SqlSource sql_source_;
     ScopedSqliteString expanded_sql_;
+    SqlSource sql_source_;
     base::Status status_ = base::OkStatus();
   };
 
@@ -88,6 +89,9 @@ class SqliteEngine {
                                 void* ctx,
                                 FnCtxDestructor* ctx_destructor,
                                 bool deterministic);
+
+  // Unregisters a C++ function from SQL.
+  base::Status UnregisterFunction(const char* name, int argc);
 
   // Registers a SQLite virtual table module with the given name.
   template <typename Vtab, typename Context>
@@ -134,6 +138,7 @@ class SqliteEngine {
   SqliteEngine& operator=(SqliteEngine&&) = delete;
 
   base::FlatHashMap<std::string, SqliteTable::TableType> sqlite_tables_;
+  std::vector<std::string> all_created_sqlite_tables_;
   base::FlatHashMap<std::string, std::unique_ptr<SqliteTable>> saved_tables_;
   base::FlatHashMap<std::pair<std::string, int>, void*, FnHasher> fn_ctx_;
 

@@ -13,6 +13,8 @@
 #include "base/functional/bind.h"
 #include "base/json/json_writer.h"
 #include "base/lazy_instance.h"
+#include "base/memory/raw_ptr.h"
+#include "base/ranges/algorithm.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
@@ -26,12 +28,14 @@
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/common/url_constants.h"
+#include "extensions/browser/api/web_request/extension_web_request_event_router.h"
 #include "extensions/browser/api/web_request/web_request_api_constants.h"
 #include "extensions/browser/api/web_request/web_request_api_helpers.h"
 #include "extensions/browser/api/web_request/web_request_proxying_url_loader_factory.h"
 #include "extensions/browser/api/web_request/web_request_proxying_websocket.h"
 #include "extensions/browser/api/web_request/web_request_proxying_webtransport.h"
 #include "extensions/browser/browser_frame_context_data.h"
+#include "extensions/browser/browser_process_context_data.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_navigation_ui_data.h"
 #include "extensions/browser/extension_prefs.h"
@@ -40,14 +44,18 @@
 #include "extensions/browser/extension_util.h"
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/guest_view/web_view/web_view_guest.h"
+#include "extensions/browser/process_manager.h"
+#include "extensions/browser/process_map.h"
 #include "extensions/browser/warning_service.h"
 #include "extensions/browser/warning_set.h"
 #include "extensions/common/api/web_request.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
+#include "extensions/common/extension_api.h"
 #include "extensions/common/extension_features.h"
 #include "extensions/common/features/feature.h"
 #include "extensions/common/features/feature_provider.h"
+#include "extensions/common/mojom/context_type.mojom.h"
 #include "extensions/common/permissions/permissions_data.h"
 #include "extensions/common/url_pattern.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -149,7 +157,7 @@ void WebRequestAPI::Proxy::HandleAuthRequest(
     AuthRequestCallback callback) {
   // Default implementation cancels the request.
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE, base::BindOnce(std::move(callback), absl::nullopt,
+      FROM_HERE, base::BindOnce(std::move(callback), std::nullopt,
                                 false /* should_cancel */));
 }
 
@@ -223,7 +231,7 @@ void WebRequestAPI::ProxySet::MaybeProxyAuthRequest(
     // Run the |callback| which will display a dialog for the user to enter
     // their auth credentials.
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE, base::BindOnce(std::move(callback), absl::nullopt,
+        FROM_HERE, base::BindOnce(std::move(callback), std::nullopt,
                                   false /* should_cancel */));
     return;
   }
@@ -270,10 +278,8 @@ WebRequestAPI::WebRequestAPI(content::BrowserContext* context)
   // bit tricky right now because the singleton instance would need to
   // observe the EventRouter for each BrowserContext that has webRequest
   // API event listeners.
-  // Observe related events in the EventRouter for the
-  // ExtensionWebRequestEventRouter.
-  for (std::string event_name :
-       ExtensionWebRequestEventRouter::GetEventNames()) {
+  // Observe related events in the EventRouter for the WebRequestEventRouter.
+  for (std::string event_name : WebRequestEventRouter::GetEventNames()) {
     event_router->RegisterObserver(this, event_name);
   }
   extensions::ExtensionRegistry::Get(browser_context_)->AddObserver(this);
@@ -285,8 +291,10 @@ void WebRequestAPI::Shutdown() {
   proxies_.reset();
   EventRouter::Get(browser_context_)->UnregisterObserver(this);
   extensions::ExtensionRegistry::Get(browser_context_)->RemoveObserver(this);
-  ExtensionWebRequestEventRouter::GetInstance()->OnBrowserContextShutdown(
-      browser_context_);
+  // TODO(https://crbug.com/1433136): Remove this once WebRequestEventRouter
+  // implements `KeyedService::Shutdown` correctly.
+  WebRequestEventRouter::Get(browser_context_)
+      ->OnBrowserContextShutdown(browser_context_);
 }
 
 static base::LazyInstance<
@@ -332,15 +340,13 @@ void WebRequestAPI::OnListenerRemoved(const EventListenerInfo& details) {
         browser_context_.get(), details.extension_id, sub_event_name);
   } else {
     // This was an active listener registration.
-    auto update_type =
-        ExtensionWebRequestEventRouter::ListenerUpdateType::kRemove;
+    auto update_type = WebRequestEventRouter::ListenerUpdateType::kRemove;
     if (details.service_worker_version_id !=
         blink::mojom::kInvalidServiceWorkerVersionId) {
       // This was a listener removed for a service worker, but it wasn't the
       // lazy listener registration. In this case, we only deactivate the
       // listener (rather than removing it).
-      update_type =
-          ExtensionWebRequestEventRouter::ListenerUpdateType::kDeactivate;
+      update_type = WebRequestEventRouter::ListenerUpdateType::kDeactivate;
     }
 
     // Note that we unwrap the raw_ptr BrowserContext instance using
@@ -354,8 +360,6 @@ void WebRequestAPI::OnListenerRemoved(const EventListenerInfo& details) {
 
   // This PostTask is necessary even though we are already on the UI thread to
   // allow cases where blocking listeners remove themselves inside the handler.
-  // This Unretained is safe because the ExtensionWebRequestEventRouter
-  // singleton is leaked.
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, std::move(remove_listener));
 }
@@ -365,7 +369,7 @@ bool WebRequestAPI::MaybeProxyURLLoaderFactory(
     content::RenderFrameHost* frame,
     int render_process_id,
     URLLoaderFactoryType type,
-    absl::optional<int64_t> navigation_id,
+    std::optional<int64_t> navigation_id,
     ukm::SourceIdObj ukm_source_id,
     mojo::PendingReceiver<network::mojom::URLLoaderFactory>* factory_receiver,
     mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
@@ -374,9 +378,12 @@ bool WebRequestAPI::MaybeProxyURLLoaderFactory(
     const url::Origin& request_initiator) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   if (!MayHaveProxies()) {
-    bool skip_proxy = true;
+    bool use_proxy = false;
     // There are a few internal WebUIs that use WebView tag that are allowlisted
     // for webRequest.
+    // TODO(https://crbug.com/1500060): Remove the scheme check once we're sure
+    // that WebUIs with WebView run in real WebUI processes and check the
+    // context type using |IsAvailableToWebViewEmbedderFrame()| below.
     if (WebViewGuest::IsGuest(frame)) {
       content::RenderFrameHost* embedder =
           frame->GetOutermostMainFrameOrEmbedder();
@@ -385,16 +392,18 @@ bool WebRequestAPI::MaybeProxyURLLoaderFactory(
         auto* feature = FeatureProvider::GetAPIFeature("webRequestInternal");
         if (feature
                 ->IsAvailableToContext(
-                    nullptr, Feature::WEBUI_CONTEXT, embedder_url,
+                    nullptr, mojom::ContextType::kWebUi, embedder_url,
                     util::GetBrowserContextId(browser_context),
                     BrowserFrameContextData(frame))
                 .is_available()) {
-          skip_proxy = false;
+          use_proxy = true;
         }
+      } else {
+        use_proxy = IsAvailableToWebViewEmbedderFrame(frame);
       }
     }
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
     // Create a proxy URLLoader even when there is no CRX
     // installed with webRequest permissions. This allows the extension
     // requests to be intercepted for CRX telemetry service if enabled.
@@ -410,10 +419,10 @@ bool WebRequestAPI::MaybeProxyURLLoaderFactory(
         !base::FeatureList::IsEnabled(
             safe_browsing::
                 kExtensionTelemetryInterceptRemoteHostsContactedInRenderer)) {
-      skip_proxy = false;
+      use_proxy = true;
     }
-#endif  // !defined(TOOLKIT_QT)
-    if (skip_proxy) {
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
+    if (!use_proxy) {
       return false;
     }
   }
@@ -437,8 +446,9 @@ bool WebRequestAPI::MaybeProxyURLLoaderFactory(
 
   mojo::PendingReceiver<network::mojom::TrustedURLLoaderHeaderClient>
       header_client_receiver;
-  if (header_client)
+  if (header_client) {
     header_client_receiver = header_client->InitWithNewPipeAndPassReceiver();
+  }
 
   // NOTE: This request may be proxied on behalf of an incognito frame, but
   // |this| will always be bound to a regular profile (see
@@ -464,8 +474,11 @@ bool WebRequestAPI::MaybeProxyAuthRequest(
     scoped_refptr<net::HttpResponseHeaders> response_headers,
     const content::GlobalRequestID& request_id,
     bool is_main_frame,
-    AuthRequestCallback callback) {
-  if (!MayHaveProxies()) {
+    AuthRequestCallback callback,
+    WebViewGuest* web_view_guest) {
+  if (!MayHaveProxies() &&
+      (!web_view_guest || !IsAvailableToWebViewEmbedderFrame(
+                              web_view_guest->GetGuestMainFrame()))) {
     return false;
   }
 
@@ -491,23 +504,23 @@ void WebRequestAPI::ProxyWebSocket(
     content::ContentBrowserClient::WebSocketFactory factory,
     const GURL& url,
     const net::SiteForCookies& site_for_cookies,
-    const absl::optional<std::string>& user_agent,
+    const std::optional<std::string>& user_agent,
     mojo::PendingRemote<network::mojom::WebSocketHandshakeClient>
         handshake_client) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK(MayHaveProxies() || MayHaveWebsocketProxiesForExtensionTelemetry());
+  DCHECK(MayHaveProxies() || MayHaveWebsocketProxiesForExtensionTelemetry() ||
+         IsAvailableToWebViewEmbedderFrame(frame));
 
+  content::BrowserContext* browser_context =
+      frame->GetProcess()->GetBrowserContext();
   const bool has_extra_headers =
-      ExtensionWebRequestEventRouter::GetInstance()->HasAnyExtraHeadersListener(
-          frame->GetProcess()->GetBrowserContext());
-
-  const ukm::SourceIdObj& ukm_source_id =
-      ukm::SourceIdObj::FromInt64(frame->GetPageUkmSourceId());
+      WebRequestEventRouter::Get(browser_context)
+          ->HasAnyExtraHeadersListener(browser_context);
 
   WebRequestProxyingWebSocket::StartProxying(
       std::move(factory), url, site_for_cookies, user_agent,
       std::move(handshake_client), has_extra_headers,
-      frame->GetProcess()->GetID(), frame->GetRoutingID(), ukm_source_id,
+      frame->GetProcess()->GetID(), frame->GetRoutingID(),
       &request_id_generator_, frame->GetLastCommittedOrigin(),
       frame->GetProcess()->GetBrowserContext(), proxies_.get());
 }
@@ -522,8 +535,12 @@ void WebRequestAPI::ProxyWebTransport(
     content::ContentBrowserClient::WillCreateWebTransportCallback callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   if (!MayHaveProxies()) {
-    std::move(callback).Run(std::move(handshake_client), absl::nullopt);
-    return;
+    auto* render_frame_host = content::RenderFrameHost::FromID(
+        render_process_host.GetID(), frame_routing_id);
+    if (!IsAvailableToWebViewEmbedderFrame(render_frame_host)) {
+      std::move(callback).Run(std::move(handshake_client), std::nullopt);
+      return;
+    }
   }
   DCHECK(proxies_);
   StartWebRequestProxyingWebTransport(
@@ -551,7 +568,7 @@ bool WebRequestAPI::MayHaveProxies() const {
 bool WebRequestAPI::MayHaveWebsocketProxiesForExtensionTelemetry() const {
   // TODO(crbug.com/1447587): Clean up once new RHC interception logic is fully
   // launched.
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   return ExtensionsBrowserClient::Get()->IsExtensionTelemetryServiceEnabled(
              browser_context_) &&
          base::FeatureList::IsEnabled(
@@ -564,11 +581,38 @@ bool WebRequestAPI::MayHaveWebsocketProxiesForExtensionTelemetry() const {
                  kExtensionTelemetryInterceptRemoteHostsContactedInRenderer);
 #else
   return false;
-#endif  // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
+}
+
+bool WebRequestAPI::IsAvailableToWebViewEmbedderFrame(
+    content::RenderFrameHost* render_frame_host) const {
+  if (!render_frame_host || !WebViewGuest::IsGuest(render_frame_host)) {
+    return false;
+  }
+
+  content::BrowserContext* browser_context =
+      render_frame_host->GetBrowserContext();
+  content::RenderFrameHost* embedder_frame =
+      render_frame_host->GetOutermostMainFrameOrEmbedder();
+
+  if (!ProcessMap::Get(browser_context)
+           ->CanProcessHostContextType(/*extension=*/nullptr,
+                                       *embedder_frame->GetProcess(),
+                                       mojom::ContextType::kWebPage)) {
+    return false;
+  }
+
+  Feature::Availability availability =
+      ExtensionAPI::GetSharedInstance()->IsAvailable(
+          "webRequestInternal", /*extension=*/nullptr,
+          mojom::ContextType::kWebPage, embedder_frame->GetLastCommittedURL(),
+          CheckAliasStatus::ALLOWED, util::GetBrowserContextId(browser_context),
+          BrowserFrameContextData(embedder_frame));
+  return availability.is_available();
 }
 
 bool WebRequestAPI::HasExtraHeadersListenerForTesting() {
-  return ExtensionWebRequestEventRouter::GetInstance()
+  return WebRequestEventRouter::Get(browser_context_)
       ->HasAnyExtraHeadersListener(browser_context_);
 }
 
@@ -600,7 +644,7 @@ void WebRequestAPI::OnExtensionUnloaded(
 
 void WebRequestAPI::UpdateActiveListener(
     content::BrowserContext* browser_context,
-    ExtensionWebRequestEventRouter::ListenerUpdateType update_type,
+    WebRequestEventRouter::ListenerUpdateType update_type,
     const ExtensionId& extension_id,
     const std::string& sub_event_name,
     int worker_thread_id,
@@ -608,9 +652,10 @@ void WebRequestAPI::UpdateActiveListener(
   if (!ExtensionsBrowserClient::Get()->IsValidContext(browser_context)) {
     return;
   }
-  ExtensionWebRequestEventRouter::GetInstance()->UpdateActiveListener(
-      browser_context, update_type, extension_id, sub_event_name,
-      worker_thread_id, service_worker_version_id);
+  WebRequestEventRouter::Get(browser_context)
+      ->UpdateActiveListener(browser_context, update_type, extension_id,
+                             sub_event_name, worker_thread_id,
+                             service_worker_version_id);
 }
 
 void WebRequestAPI::RemoveLazyListener(content::BrowserContext* browser_context,
@@ -619,8 +664,8 @@ void WebRequestAPI::RemoveLazyListener(content::BrowserContext* browser_context,
   if (!ExtensionsBrowserClient::Get()->IsValidContext(browser_context)) {
     return;
   }
-  ExtensionWebRequestEventRouter::GetInstance()->RemoveLazyListener(
-      browser_context, extension_id, sub_event_name);
+  WebRequestEventRouter::Get(browser_context)
+      ->RemoveLazyListener(browser_context, extension_id, sub_event_name);
 }
 
 // Special QuotaLimitHeuristic for WebRequestHandlerBehaviorChangedFunction.
@@ -653,8 +698,7 @@ class ClearCacheQuotaHeuristic : public QuotaLimitHeuristic {
   bool Apply(Bucket* bucket, const base::TimeTicks& event_time) override;
 
  private:
-  // Callback that is triggered by the ExtensionWebRequestEventRouter on a page
-  // load.
+  // Callback that is triggered by the WebRequestEventRouter on a page load.
   //
   // We don't need to take care of the life time of |bucket|: It is owned by the
   // BucketMapper of our base class in |QuotaLimitHeuristic::bucket_mapper_|. As
@@ -678,7 +722,7 @@ bool ClearCacheQuotaHeuristic::Apply(Bucket* bucket,
   // Call bucket->DeductToken() on a new page load, this is when
   // webRequest.handlerBehaviorChanged() clears the cache.
   if (!callback_registered_) {
-    ExtensionWebRequestEventRouter::GetInstance()->AddCallbackForPageLoad(
+    WebRequestEventRouter::AddCallbackForPageLoad(
         base::BindOnce(&ClearCacheQuotaHeuristic::OnPageLoad,
                        weak_ptr_factory_.GetWeakPtr(), bucket));
     callback_registered_ = true;
@@ -699,7 +743,7 @@ WebRequestInternalAddEventListenerFunction::Run() {
   EXTENSION_FUNCTION_VALIDATE(args().size() == 6);
 
   // Argument 0 is the callback, which we don't use here.
-  ExtensionWebRequestEventRouter::RequestFilter filter;
+  WebRequestEventRouter::RequestFilter filter;
   EXTENSION_FUNCTION_VALIDATE(args()[1].is_dict());
   // Failure + an empty error string means a fatal error.
   std::string error;
@@ -780,11 +824,12 @@ WebRequestInternalAddEventListenerFunction::Run() {
   }
 
   bool success =
-      ExtensionWebRequestEventRouter::GetInstance()->AddEventListener(
-          browser_context(), extension_id_safe(), extension_name, event_name,
-          sub_event_name, std::move(filter), extra_info_spec, render_process_id,
-          web_view_instance_id, worker_thread_id(),
-          service_worker_version_id());
+      WebRequestEventRouter::Get(browser_context())
+          ->AddEventListener(browser_context(), extension_id_safe(),
+                             extension_name, event_name, sub_event_name,
+                             std::move(filter), extra_info_spec,
+                             render_process_id, web_view_instance_id,
+                             worker_thread_id(), service_worker_version_id());
   EXTENSION_FUNCTION_VALIDATE(success);
 
   helpers::ClearCacheOnNavigation();
@@ -798,11 +843,12 @@ void WebRequestInternalEventHandledFunction::OnError(
     uint64_t request_id,
     int render_process_id,
     int web_view_instance_id,
-    std::unique_ptr<ExtensionWebRequestEventRouter::EventResponse> response) {
-  ExtensionWebRequestEventRouter::GetInstance()->OnEventHandled(
-      browser_context(), extension_id_safe(), event_name, sub_event_name,
-      request_id, render_process_id, web_view_instance_id, worker_thread_id(),
-      service_worker_version_id(), std::move(response));
+    std::unique_ptr<WebRequestEventRouter::EventResponse> response) {
+  WebRequestEventRouter::Get(browser_context())
+      ->OnEventHandled(browser_context(), extension_id_safe(), event_name,
+                       sub_event_name, request_id, render_process_id,
+                       web_view_instance_id, worker_thread_id(),
+                       service_worker_version_id(), std::move(response));
 }
 
 ExtensionFunction::ResponseAction
@@ -822,12 +868,12 @@ WebRequestInternalEventHandledFunction::Run() {
   int web_view_instance_id = web_view_instance_id_value.GetInt();
 
   uint64_t request_id;
-  EXTENSION_FUNCTION_VALIDATE(base::StringToUint64(request_id_str,
-                                                   &request_id));
+  EXTENSION_FUNCTION_VALIDATE(
+      base::StringToUint64(request_id_str, &request_id));
 
   int render_process_id = source_process_id();
 
-  std::unique_ptr<ExtensionWebRequestEventRouter::EventResponse> response;
+  std::unique_ptr<WebRequestEventRouter::EventResponse> response;
   if (HasOptionalArgument(4)) {
     EXTENSION_FUNCTION_VALIDATE(args()[4].is_dict());
     const base::Value::Dict& dict_value = args()[4].GetDict();
@@ -835,9 +881,8 @@ WebRequestInternalEventHandledFunction::Run() {
     if (!dict_value.empty()) {
       base::Time install_time = ExtensionPrefs::Get(browser_context())
                                     ->GetLastUpdateTime(extension_id_safe());
-      response =
-          std::make_unique<ExtensionWebRequestEventRouter::EventResponse>(
-              extension_id_safe(), install_time);
+      response = std::make_unique<WebRequestEventRouter::EventResponse>(
+          extension_id_safe(), install_time);
     }
 
     const base::Value* redirect_url_value = dict_value.Find("redirectUrl");
@@ -944,10 +989,11 @@ WebRequestInternalEventHandledFunction::Run() {
     }
   }
 
-  ExtensionWebRequestEventRouter::GetInstance()->OnEventHandled(
-      browser_context(), extension_id_safe(), event_name, sub_event_name,
-      request_id, render_process_id, web_view_instance_id, worker_thread_id(),
-      service_worker_version_id(), std::move(response));
+  WebRequestEventRouter::Get(browser_context())
+      ->OnEventHandled(browser_context(), extension_id_safe(), event_name,
+                       sub_event_name, request_id, render_process_id,
+                       web_view_instance_id, worker_thread_id(),
+                       service_worker_version_id(), std::move(response));
 
   return RespondNow(NoArguments());
 }

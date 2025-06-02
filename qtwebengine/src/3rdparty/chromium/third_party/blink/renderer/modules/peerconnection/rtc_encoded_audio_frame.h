@@ -45,7 +45,6 @@ class MODULES_EXPORT RTCEncodedAudioFrame final : public ScriptWrappable {
   void setData(DOMArrayBuffer*);
   void setTimestamp(uint32_t timestamp, ExceptionState& exception_state);
   String toString() const;
-  RTCEncodedAudioFrame* clone(ExceptionState& exception_state) const;
 
   scoped_refptr<RTCEncodedAudioFrameDelegate> Delegate() const;
   void SyncDelegate() const;
@@ -55,12 +54,17 @@ class MODULES_EXPORT RTCEncodedAudioFrame final : public ScriptWrappable {
   // backed by that internal WebRTC frame.
   std::unique_ptr<webrtc::TransformableAudioFrameInterface> PassWebRtcFrame();
 
+  // Check whether the current payload bytes is too large to send.
+  // Always false if setData() hasn't been called.
+  bool IsDataTooLarge();
+
   void Trace(Visitor*) const override;
 
  private:
   scoped_refptr<RTCEncodedAudioFrameDelegate> delegate_;
   Vector<uint32_t> contributing_sources_;
   mutable Member<DOMArrayBuffer> frame_data_;
+  bool data_modified_ = false;
 };
 
 }  // namespace blink

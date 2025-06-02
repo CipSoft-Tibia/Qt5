@@ -46,6 +46,7 @@ qt_internal_add_module(EglFSDeviceIntegrationPrivate
         EGL::EGL
     HEADER_SYNC_SOURCE_DIRECTORY
         "${CMAKE_CURRENT_SOURCE_DIR}/api"
+    NO_GENERATE_CPP_EXPORTS
 )
 
 ## Scopes:
@@ -56,9 +57,10 @@ qt_internal_extend_target(EglFSDeviceIntegrationPrivate CONDITION TARGET Qt::Inp
         Qt::InputSupportPrivate
 )
 
-qt_internal_extend_target(EglFSDeviceIntegrationPrivate CONDITION INTEGRITY AND TARGET IntegrityPlatformGraphics::IntegrityPlatformGraphics
-    LIBRARIES
-        IntegrityPlatformGraphics::IntegrityPlatformGraphics
+qt_internal_extend_target(EglFSDeviceIntegrationPrivate
+    CONDITION TARGET PlatformGraphics::PlatformGraphics
+    PUBLIC_LIBRARIES
+        PlatformGraphics::PlatformGraphics
 )
 
 qt_internal_extend_target(EglFSDeviceIntegrationPrivate CONDITION QT_FEATURE_opengl
@@ -91,7 +93,7 @@ endif()
 qt_internal_add_plugin(QEglFSIntegrationPlugin
     OUTPUT_NAME qeglfs
     PLUGIN_TYPE platforms
-    DEFAULT_IF ${QT_QPA_DEFAULT_PLATFORM} MATCHES eglfs
+    DEFAULT_IF "eglfs" IN_LIST QT_QPA_PLATFORMS
     SOURCES
         qeglfsmain.cpp
     DEFINES

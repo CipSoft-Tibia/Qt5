@@ -4,8 +4,9 @@
 /*!
 \page qtqml-tooling-qmlimportscanner.html
 \title qmlimportscanner
-\brief Overview of the qmlimportscanner utility.
+\brief A tool that scans QML files inside the directory for QML import dependencies.
 \ingroup qtqml-tooling
+\ingroup qtqml-tooling-internal
 
 \section1 qmlimportscanner
 \c qmlimportscanner is an internal tool shipped with Qt Qml to scan QML files

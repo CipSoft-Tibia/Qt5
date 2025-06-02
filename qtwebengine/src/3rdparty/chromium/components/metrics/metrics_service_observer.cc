@@ -22,7 +22,8 @@ MetricsServiceObserver::Log::Event CreateEventStruct(
     base::StringPiece message) {
   MetricsServiceObserver::Log::Event event_struct;
   event_struct.event = event;
-  event_struct.timestampMs = base::Time::Now().ToJsTimeIgnoringNull();
+  event_struct.timestampMs =
+      base::Time::Now().InMillisecondsFSinceUnixEpochIgnoringNull();
   if (!message.empty()) {
     event_struct.message = std::string(message);
   }
@@ -171,9 +172,7 @@ bool MetricsServiceObserver::ExportLogsAsJson(bool include_log_proto_data,
     log_dict.Set("timestamp", log->timestamp);
 
     if (include_log_proto_data) {
-      std::string base64_encoded_data;
-      base::Base64Encode(log->data, &base64_encoded_data);
-      log_dict.Set("data", base64_encoded_data);
+      log_dict.Set("data", base::Base64Encode(log->data));
     }
 
     log_dict.Set("size", static_cast<int>(log->data.length()));

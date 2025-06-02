@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Engine} from '../common/engine';
+import {
+  duration,
+  Span,
+  time,
+  Time,
+  TimeSpan,
+} from '../base/time';
 import {
   LogBounds,
   LogBoundsKey,
@@ -20,18 +26,12 @@ import {
   LogEntriesKey,
   LogExistsKey,
 } from '../common/logs';
-import {LONG, LONG_NULL, NUM, STR} from '../common/query_result';
-import {escapeGlob, escapeQuery} from '../common/query_utils';
 import {LogFilteringCriteria} from '../common/state';
-import {
-  duration,
-  Span,
-  time,
-  Time,
-  TimeSpan,
-} from '../common/time';
 import {globals} from '../frontend/globals';
 import {publishTrackData} from '../frontend/publish';
+import {Engine} from '../trace_processor/engine';
+import {LONG, LONG_NULL, NUM, STR} from '../trace_processor/query_result';
+import {escapeGlob, escapeQuery} from '../trace_processor/query_utils';
 
 import {Controller} from './controller';
 

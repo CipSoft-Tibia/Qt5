@@ -312,7 +312,7 @@ void ChannelMojo::OnBrokenDataReceived() {
 // static
 MojoResult ChannelMojo::ReadFromMessageAttachmentSet(
     Message* message,
-    absl::optional<std::vector<mojo::native::SerializedHandlePtr>>* handles) {
+    std::optional<std::vector<mojo::native::SerializedHandlePtr>>* handles) {
   DCHECK(!*handles);
 
   MojoResult result = MOJO_RESULT_OK;
@@ -327,8 +327,9 @@ MojoResult ChannelMojo::ReadFromMessageAttachmentSet(
     auto serialized_handle = mojo::native::SerializedHandle::New();
     serialized_handle->the_handle = attachment->TakeMojoHandle();
     serialized_handle->type =
-        mojo::ConvertTo<mojo::native::SerializedHandleType>(
-            attachment->GetType());
+        mojo::TypeConverter<mojo::native::SerializedHandleType,
+                            MessageAttachment::Type>::Convert(attachment
+                                                                  ->GetType());
     output_handles.emplace_back(std::move(serialized_handle));
   }
   set->CommitAllDescriptors();
@@ -341,7 +342,7 @@ MojoResult ChannelMojo::ReadFromMessageAttachmentSet(
 
 // static
 MojoResult ChannelMojo::WriteToMessageAttachmentSet(
-    absl::optional<std::vector<mojo::native::SerializedHandlePtr>> handles,
+    std::optional<std::vector<mojo::native::SerializedHandlePtr>> handles,
     Message* message) {
   if (!handles)
     return MOJO_RESULT_OK;
@@ -350,7 +351,9 @@ MojoResult ChannelMojo::WriteToMessageAttachmentSet(
     scoped_refptr<MessageAttachment> unwrapped_attachment =
         MessageAttachment::CreateFromMojoHandle(
             std::move(handle->the_handle),
-            mojo::ConvertTo<MessageAttachment::Type>(handle->type));
+            mojo::TypeConverter<
+                MessageAttachment::Type,
+                mojo::native::SerializedHandleType>::Convert(handle->type));
     if (!unwrapped_attachment) {
       DLOG(WARNING) << "Pipe failed to unwrap handles.";
       return MOJO_RESULT_UNKNOWN;
@@ -390,6 +393,10 @@ void ChannelMojo::GetRemoteAssociatedInterface(
     // dropped).
     mojo::AssociateWithDisconnectedPipe(receiver.PassHandle());
   }
+}
+
+void ChannelMojo::SetUrgentMessageObserver(UrgentMessageObserver* observer) {
+  bootstrap_->SetUrgentMessageObserver(observer);
 }
 
 }  // namespace IPC

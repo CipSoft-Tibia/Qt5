@@ -68,16 +68,18 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmlproperty real Light::shadowBias
     This property is used to tweak the shadowing effect when objects
-    are casting shadows on themselves. The value range is [-1.0, 1.0]. Generally, a value
-    inside [-0.1, 0.1] is sufficient.
-    The default value is 0.
+    are casting shadows on themselves. The value tries to approximate the offset
+    in world space so it needs to be tweaked depending on the size of your scene.
+
+    The default value is \c{10}
 */
 
 /*!
     \qmlproperty real Light::shadowFactor
     This property determines how dark the cast shadows should be. The value range is [0, 100], where
     0 means no shadows and 100 means the light is fully shadowed.
-    The default value is 5.
+
+    The default value is \c{75}.
 */
 
 /*!
@@ -105,7 +107,12 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmlproperty real Light::shadowFilter
     This property sets how much blur is applied to the shadows.
+
     The default value is 5.
+
+    \deprecated [6.8] No longer used for anything, use \l{Light::}{pcfFactor} instead.
+
+    \sa Light::softShadowQuality
 */
 
 /*!
@@ -150,6 +157,39 @@ QT_BEGIN_NAMESPACE
     Global Illumination}.
 
     \sa Model::usedInBakedLighting, Model::bakedLightmap, Lightmapper, {Lightmaps and Global Illumination}
+*/
+
+/*!
+    \qmlproperty enumeration Light::softShadowQuality
+    \since 6.8
+
+    The property controls the soft shadow quality.
+
+    \value Light.Hard No soft shadows.
+    \value Light.PCF4 Percentage-closer filtering soft shadows with 4 samples.
+    \value Light.PCF8 Percentage-closer filtering soft shadows with 8 samples.
+    \value Light.PCF16 Percentage-closer filtering soft shadows with 16 samples.
+    \value Light.PCF32 Percentage-closer filtering soft shadows with 32 samples.
+    \value Light.PCF64 Percentage-closer filtering soft shadows with 64 samples.
+
+    Default value: \c Light.PCF4
+
+    \sa Light::pcfFactor, Light::shadowFilter
+*/
+
+/*!
+    \qmlproperty real Light::pcfFactor
+    \since 6.8
+
+    The property controls the PCF (percentage-closer filtering) factor. This
+    value tries to approximate the radius of a PCF filtering in world space.
+
+    \note PCF needs to be set in \l{Light::}{softShadowQuality} for this property
+    to have an effect.
+
+    Default value: \c{2.0}
+
+    \sa Light::softShadowQuality
 */
 
 QQuick3DAbstractLight::QQuick3DAbstractLight(QQuick3DNodePrivate &dd, QQuick3DNode *parent)
@@ -199,6 +239,11 @@ QQuick3DAbstractLight::QSSGShadowMapQuality QQuick3DAbstractLight::shadowMapQual
     return m_shadowMapQuality;
 }
 
+QQuick3DAbstractLight::QSSGSoftShadowQuality QQuick3DAbstractLight::softShadowQuality() const
+{
+    return m_softShadowQuality;
+}
+
 float QQuick3DAbstractLight::shadowMapFar() const
 {
     return m_shadowMapFar;
@@ -212,6 +257,11 @@ float QQuick3DAbstractLight::shadowFilter() const
 QQuick3DAbstractLight::QSSGBakeMode QQuick3DAbstractLight::bakeMode() const
 {
     return m_bakeMode;
+}
+
+float QQuick3DAbstractLight::pcfFactor() const
+{
+    return m_pcfFactor;
 }
 
 void QQuick3DAbstractLight::markAllDirty()
@@ -281,7 +331,6 @@ void QQuick3DAbstractLight::setCastsShadow(bool castsShadow)
 
 void QQuick3DAbstractLight::setShadowBias(float shadowBias)
 {
-    shadowBias = qBound(-1.0f, shadowBias, 1.0f);
     if (qFuzzyCompare(m_shadowBias, shadowBias))
         return;
 
@@ -315,6 +364,17 @@ void QQuick3DAbstractLight::setShadowMapQuality(
     update();
 }
 
+void QQuick3DAbstractLight::setSoftShadowQuality(QSSGSoftShadowQuality softShadowQuality)
+{
+    if (m_softShadowQuality == softShadowQuality)
+        return;
+
+    m_softShadowQuality = softShadowQuality;
+    m_dirtyFlags.setFlag(DirtyFlag::ShadowDirty);
+    emit softShadowQualityChanged();
+    update();
+}
+
 void QQuick3DAbstractLight::setBakeMode(QQuick3DAbstractLight::QSSGBakeMode bakeMode)
 {
     if (m_bakeMode == bakeMode)
@@ -323,6 +383,17 @@ void QQuick3DAbstractLight::setBakeMode(QQuick3DAbstractLight::QSSGBakeMode bake
     m_bakeMode = bakeMode;
     m_dirtyFlags.setFlag(DirtyFlag::BakeModeDirty);
     emit bakeModeChanged();
+    update();
+}
+
+void QQuick3DAbstractLight::setPcfFactor(float pcfFactor)
+{
+    if (m_pcfFactor == pcfFactor)
+        return;
+
+    m_pcfFactor = pcfFactor;
+    m_dirtyFlags.setFlag(DirtyFlag::ShadowDirty);
+    emit pcfFactorChanged();
     update();
 }
 
@@ -352,15 +423,15 @@ quint32 QQuick3DAbstractLight::mapToShadowResolution(QSSGShadowMapQuality qualit
 {
     switch (quality) {
     case QSSGShadowMapQuality::ShadowMapQualityMedium:
-        return 9;
+        return 512;
     case QSSGShadowMapQuality::ShadowMapQualityHigh:
-        return 10;
+        return 1024;
     case QSSGShadowMapQuality::ShadowMapQualityVeryHigh:
-        return 11;
+        return 2048;
     default:
         break;
     }
-    return 8;
+    return 256;
 }
 
 QSSGRenderGraphObject *QQuick3DAbstractLight::updateSpatialNode(QSSGRenderGraphObject *node)
@@ -392,8 +463,10 @@ QSSGRenderGraphObject *QQuick3DAbstractLight::updateSpatialNode(QSSGRenderGraphO
         light->m_shadowBias = m_shadowBias;
         light->m_shadowFactor = m_shadowFactor;
         light->m_shadowMapRes = mapToShadowResolution(m_shadowMapQuality);
+        light->m_softShadowQuality = static_cast<QSSGRenderLight::SoftShadowQuality>(m_softShadowQuality);
         light->m_shadowMapFar = m_shadowMapFar;
         light->m_shadowFilter = m_shadowFilter;
+        light->m_pcfFactor = m_pcfFactor;
     }
 
     if (m_dirtyFlags.testFlag(DirtyFlag::BakeModeDirty)) {

@@ -54,7 +54,7 @@ Item {
                 for (var i = 0; i < 10; i++)
                     appendRow();
                 if (graphModel.count > 2002) {
-                    scatterGraph.theme = isabelleTheme;
+                    scatterGraph.theme = orangeTheme;
                     isIncreasing = false;
                 }
             } else {
@@ -77,33 +77,38 @@ Item {
         }
     }
 
-    Theme3D {
+    GraphsTheme {
         id: dynamicColorTheme
-        type: Theme3D.Theme.Ebony
+        theme: GraphsTheme.Theme.QtGreen
+        colorScheme: GraphsTheme.ColorScheme.Dark
         baseColors: [dynamicColor]
-        font.pointSize: 50
-        labelBorderEnabled: true
+        labelFont.pointSize: 50
+        labelBorderVisible: true
         labelBackgroundColor: "gold"
         labelTextColor: "black"
+        axisX.labelTextColor: "black"
+        axisY.labelTextColor: "black"
+        axisZ.labelTextColor: "black"
     }
 
-    Theme3D {
-        id: isabelleTheme
-        type: Theme3D.Theme.Isabelle
-        font.pointSize: 50
-        labelBorderEnabled: true
+    GraphsTheme {
+        id: orangeTheme
+        theme: GraphsTheme.Theme.OrangeSeries
+        colorScheme: GraphsTheme.ColorScheme.Dark
+        labelFont.pointSize: 50
+        labelBorderVisible: true
         labelBackgroundColor: "gold"
         labelTextColor: "black"
+        axisX.labelTextColor: "black"
+        axisY.labelTextColor: "black"
+        axisZ.labelTextColor: "black"
     }
 
-    //! [0]
     Scatter3D {
         id: scatterGraph
-        inputHandler: null
-        //! [0]
         anchors.fill: parent
         theme: dynamicColorTheme
-        shadowQuality: AbstractGraph3D.ShadowQuality.Medium
+        shadowQuality: Graphs3D.ShadowQuality.Medium
         cameraYRotation: 45.0
         cameraXRotation: 45.0
         cameraZoomLevel: 75.0
@@ -134,14 +139,20 @@ Item {
         //! [9]
         //! [5]
         onSelectedElementChanged: {
-            if (selectedElement >= AbstractGraph3D.ElementType.AxisXLabel
-                    && selectedElement <= AbstractGraph3D.ElementType.AxisZLabel) {
+            if (selectedElement >= Graphs3D.ElementType.AxisXLabel
+                    && selectedElement <= Graphs3D.ElementType.AxisZLabel) {
                 selectedAxisLabel = selectedElement;
             } else {
                 selectedAxisLabel = -1;
             }
         }
         //! [5]
+
+        Component.onCompleted: {
+            //! [0]
+            unsetDefaultInputHandler();
+            //! [0]
+        }
     }
 
     //! [1]
@@ -168,7 +179,7 @@ Item {
 
         //! [2]
         onPressed: (mouse)=> {
-                       scatterGraph.scene.selectionQueryPosition = Qt.point(mouse.x, mouse.y);
+                       scatterGraph.doPicking(Qt.point(mouse.x, mouse.y));
                    }
         //! [2]
 
@@ -199,7 +210,7 @@ Item {
 
         // Adjust axes
         switch (selectedAxisLabel) {
-        case AbstractGraph3D.ElementType.AxisXLabel:
+        case Graphs3D.ElementType.AxisXLabel:
             var distance = ((moveX - moveY) * cameraMultiplier) / dragSpeedModifier;
             // Check if we need to change min or max first to avoid invalid ranges
             if (distance > 0) {
@@ -210,7 +221,7 @@ Item {
                 scatterGraph.axisX.min -= distance;
             }
             break;
-        case AbstractGraph3D.ElementType.AxisYLabel:
+        case Graphs3D.ElementType.AxisYLabel:
             distance = moveY / dragSpeedModifier;
             // Check if we need to change min or max first to avoid invalid ranges
             if (distance > 0) {
@@ -221,7 +232,7 @@ Item {
                 scatterGraph.axisY.max += distance;
             }
             break;
-        case AbstractGraph3D.ElementType.AxisZLabel:
+        case Graphs3D.ElementType.AxisZLabel:
             distance = ((moveX + moveY) * cameraMultiplier) / dragSpeedModifier;
             // Check if we need to change min or max first to avoid invalid ranges
             if (distance > 0) {
@@ -278,7 +289,7 @@ Item {
                 text = "Display Orthographic";
                 scatterGraph.orthoProjection = false;
                 // Orthographic projection disables shadows, so we need to switch them back on
-                scatterGraph.shadowQuality = AbstractGraph3D.ShadowQuality.Medium
+                scatterGraph.shadowQuality = Graphs3D.ShadowQuality.Medium
             } else {
                 text = "Display Perspective";
                 scatterGraph.orthoProjection = true;

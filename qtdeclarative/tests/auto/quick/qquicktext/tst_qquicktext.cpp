@@ -2172,12 +2172,12 @@ void tst_qquicktext::embeddedImages_data()
 
     QTest::newRow("local") << testFileUrl("embeddedImagesLocal.qml") << "" << QSize(100, 100);
     QTest::newRow("local-error") << testFileUrl("embeddedImagesLocalError.qml")
-        << testFileUrl("embeddedImagesLocalError.qml").toString()+":3:1: QML Text: Cannot open: " + testFileUrl("http/notexists.png").toString()
+        << testFileUrl("embeddedImagesLocalError.qml").toString()+":3:1: QML (QQuick)?Text: Cannot open: " + testFileUrl("http/notexists.png").toString()
          << QSize();
     QTest::newRow("local-relative") << testFileUrl("embeddedImagesLocalRelative.qml") << "" << QSize(100, 100);
     QTest::newRow("remote") << testFileUrl("embeddedImagesRemote.qml") << "" << QSize(100, 100);
     QTest::newRow("remote-error") << testFileUrl("embeddedImagesRemoteError.qml")
-                                  << testFileUrl("embeddedImagesRemoteError.qml").toString()+":3:1: QML Text: Error transferring {{ServerBaseUrl}}/notexists.png - server replied: Not found"
+                                  << testFileUrl("embeddedImagesRemoteError.qml").toString()+":3:1: QML (QQuick)?Text: Error transferring {{ServerBaseUrl}}/notexists.png - server replied: Not found"
                                    << QSize();
     QTest::newRow("remote-relative") << testFileUrl("embeddedImagesRemoteRelative.qml") << "" << QSize(100, 100);
     QTest::newRow("resource") << testFileUrl("embeddedImageResource.qml") << "" << QSize(16, 16);
@@ -2197,7 +2197,7 @@ void tst_qquicktext::embeddedImages()
     error.replace(QStringLiteral("{{ServerBaseUrl}}"), server.baseUrl().toString());
 
     if (!error.isEmpty())
-        QTest::ignoreMessage(QtWarningMsg, error.toLatin1());
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(error.toLatin1()));
 
     QQuickView view;
     view.rootContext()->setContextProperty(QStringLiteral("serverBaseUrl"), server.baseUrl());
@@ -2427,6 +2427,7 @@ void tst_qquicktext::dependentImplicitSizes()
     QQuickText *cappedWidthAndHeight = object->findChild<QQuickText *>("cappedWidthAndHeight");
     QQuickText *cappedWidthFixedHeight = object->findChild<QQuickText *>("cappedWidthFixedHeight");
     QQuickText *fixedWidthCappedHeight = object->findChild<QQuickText *>("fixedWidthCappedHeight");
+    QQuickText *defaultWidthNoWrapNoElide = object->findChild<QQuickText *>("defaultWidthNoWrapNoElide");
 
     QVERIFY(reference);
     QVERIFY(fixedWidthAndHeight);
@@ -2468,6 +2469,12 @@ void tst_qquicktext::dependentImplicitSizes()
     QVERIFY(fixedWidthCappedHeight->height() < fixedWidthCappedHeight->implicitHeight());
     QCOMPARE(fixedWidthCappedHeight->implicitWidth(), reference->implicitWidth());
     QCOMPARE(fixedWidthCappedHeight->implicitHeight(), fixedWidthAndHeight->implicitHeight());
+
+    // QTBUG-129143
+    // If we don't define width or height, width should be the same as implicitWidth
+    QCOMPARE(defaultWidthNoWrapNoElide->width(), defaultWidthNoWrapNoElide->implicitWidth());
+    QCOMPARE(defaultWidthNoWrapNoElide->height(), defaultWidthNoWrapNoElide->implicitHeight());
+    QCOMPARE(fixedWidthCappedHeight->implicitWidth(), reference->implicitWidth());
 }
 
 void tst_qquicktext::contentSize()
@@ -3430,9 +3437,9 @@ void tst_qquicktext::imgTagsError()
     QQmlComponent textComponent(&engine);
     const QString expectedMessage(
             testFileUrl(".").toString()
-            + ":2:1: QML Text: Cannot open: "
+            + ":2:1: QML (QQuick)?Text: Cannot open: "
             + testFileUrl("images/starfish_2.pn").toString());
-    QTest::ignoreMessage(QtWarningMsg, expectedMessage.toLatin1());
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(expectedMessage.toLatin1()));
     textComponent.setData(componentStr.toLatin1(), testFileUrl("."));
     QScopedPointer<QObject> object(textComponent.create());
     QQuickText *textObject = qobject_cast<QQuickText*>(object.data());
@@ -4271,7 +4278,7 @@ void tst_qquicktext::baselineOffset_data()
     QTest::newRow("scaled font")
             << "hello world"
             << "hello\nworld"
-            << QByteArray("width: 200; minimumPointSize: 1; font.pointSize: 64; fontSizeMode: Text.HorizontalFit")
+            << QByteArray("width: 200; minimumPointSize: 1; font.pointSize: 10000; fontSizeMode: Text.HorizontalFit")
             << &expectedBaselineScaled
             << &expectedBaselineTop;
 
@@ -4368,7 +4375,7 @@ void tst_qquicktext::baselineOffset_data()
     QTest::newRow("scaled font with padding")
             << "hello world"
             << "hello\nworld"
-            << QByteArray("width: 200; topPadding: 10; bottomPadding: 20; minimumPointSize: 1; font.pointSize: 64; fontSizeMode: Text.HorizontalFit")
+            << QByteArray("width: 200; topPadding: 10; bottomPadding: 20; minimumPointSize: 1; font.pointSize: 10000; fontSizeMode: Text.HorizontalFit")
             << &expectedBaselineScaled
             << &expectedBaselineTop;
 

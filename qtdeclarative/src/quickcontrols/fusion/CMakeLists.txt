@@ -122,7 +122,6 @@ qt_internal_add_qml_module(QuickControls2Fusion
         Qt::QuickControls2Private
         Qt::QuickPrivate
         Qt::QuickTemplates2Private
-    GENERATE_CPP_EXPORTS
 )
 
 target_sources(qtquickcontrols2fusionstyleplugin
@@ -130,8 +129,8 @@ target_sources(qtquickcontrols2fusionstyleplugin
         qtquickcontrols2fusionstyleplugin.cpp
 )
 
-target_link_libraries(qtquickcontrols2fusionstyleplugin
-    PRIVATE
+qt_internal_extend_target(qtquickcontrols2fusionstyleplugin
+    LIBRARIES
         Qt::QuickControls2Private
 )
 

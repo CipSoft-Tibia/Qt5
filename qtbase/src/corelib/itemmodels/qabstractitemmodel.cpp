@@ -34,7 +34,7 @@ QPersistentModelIndexData *QPersistentModelIndexData::create(const QModelIndex &
     Q_ASSERT(index.isValid()); // we will _never_ insert an invalid index in the list
     QPersistentModelIndexData *d = nullptr;
     QAbstractItemModel *model = const_cast<QAbstractItemModel *>(index.model());
-    QMultiHash<QModelIndex, QPersistentModelIndexData *> &indexes = model->d_func()->persistent.indexes;
+    QMultiHash<QtPrivate::QModelIndexWrapper, QPersistentModelIndexData *> &indexes = model->d_func()->persistent.indexes;
     const auto it = indexes.constFind(index);
     if (it != indexes.cend()) {
         d = (*it);
@@ -288,6 +288,9 @@ void QPersistentModelIndexData::destroy(QPersistentModelIndexData *data)
   \brief The QPersistentModelIndex class is used to locate data in a data model.
 
   \ingroup model-view
+  \compares strong
+  \compareswith strong QModelIndex
+  \endcompareswith
 
   A QPersistentModelIndex is a model index that can be stored by an
   application, and later used to access information in a model.
@@ -375,45 +378,53 @@ QPersistentModelIndex::~QPersistentModelIndex()
 }
 
 /*!
-  Returns \c{true} if this persistent model index is equal to the \a other
-  persistent model index; otherwise returns \c{false}.
-
-  The internal data pointer, row, column, and model values in the persistent
-  model index are used when comparing with another persistent model index.
-*/
-
-bool QPersistentModelIndex::operator==(const QPersistentModelIndex &other) const noexcept
-{
-    if (d && other.d)
-        return d->index == other.d->index;
-    return d == other.d;
-}
-
-/*!
-    \since 4.1
-
-    Returns \c{true} if this persistent model index is smaller than the \a other
+    \fn bool QPersistentModelIndex::operator==(const QPersistentModelIndex &lhs, const QPersistentModelIndex &rhs)
+    Returns \c{true} if \a lhs persistent model index is equal to the \a rhs
     persistent model index; otherwise returns \c{false}.
 
     The internal data pointer, row, column, and model values in the persistent
     model index are used when comparing with another persistent model index.
 */
 
-bool QPersistentModelIndex::operator<(const QPersistentModelIndex &other) const noexcept
-{
-    if (d && other.d)
-        return d->index < other.d->index;
+/*!
+    \fn bool QPersistentModelIndex::operator!=(const QPersistentModelIndex &lhs, const QPersistentModelIndex &rhs)
+    \since 4.2
 
-    return std::less<>{}(d, other.d);
+    Returns \c{true} if \a lhs persistent model index is not equal to the \a rhs
+    persistent model index; otherwise returns \c{false}.
+*/
+bool comparesEqual(const QPersistentModelIndex &lhs, const QPersistentModelIndex &rhs) noexcept
+{
+    if (lhs.d && rhs.d)
+        return lhs.d->index == rhs.d->index;
+    return lhs.d == rhs.d;
 }
 
 /*!
-    \fn bool QPersistentModelIndex::operator!=(const QPersistentModelIndex &other) const
-    \since 4.2
+    \fn bool QPersistentModelIndex::operator<(const QPersistentModelIndex &lhs, const QPersistentModelIndex &rhs)
+    \since 4.1
 
-    Returns \c{true} if this persistent model index is not equal to the \a
-    other persistent model index; otherwise returns \c{false}.
+    Returns \c{true} if \a lhs persistent model index is smaller than the \a rhs
+    persistent model index; otherwise returns \c{false}.
+
+    The internal data pointer, row, column, and model values in the persistent
+    model index are used when comparing with another persistent model index.
 */
+Qt::strong_ordering compareThreeWay(const QPersistentModelIndex &lhs,
+                                    const QPersistentModelIndex &rhs) noexcept
+{
+    if (lhs.d && rhs.d)
+        return compareThreeWay(lhs.d->index, rhs.d->index);
+
+    using Qt::totally_ordered_wrapper;
+    return compareThreeWay(totally_ordered_wrapper{lhs.d}, totally_ordered_wrapper{rhs.d});
+}
+
+Qt::strong_ordering compareThreeWay(const QPersistentModelIndex &lhs,
+                                    const QModelIndex &rhs) noexcept
+{
+    return compareThreeWay(lhs.d ? lhs.d->index : QModelIndex{}, rhs);
+}
 
 /*!
     Sets the persistent model index to refer to the same item in a model
@@ -433,9 +444,7 @@ QPersistentModelIndex &QPersistentModelIndex::operator=(const QPersistentModelIn
 /*!
     \fn void QPersistentModelIndex::swap(QPersistentModelIndex &other)
     \since 5.0
-
-    Swaps this persistent modelindex with \a other. This function is
-    very fast and never fails.
+    \memberswap{persistent modelindex}
 */
 
 /*!
@@ -470,32 +479,26 @@ QPersistentModelIndex::operator QModelIndex() const
 }
 
 /*!
-    Returns \c{true} if this persistent model index refers to the same location as
-    the \a other model index; otherwise returns \c{false}.
+    \fn bool QPersistentModelIndex::operator==(const QPersistentModelIndex &lhs, const QModelIndex &rhs)
+    Returns \c{true} if \a lhs persistent model index refers to the same location as
+    the \a rhs model index; otherwise returns \c{false}.
 
     The internal data pointer, row, column, and model values in the persistent
     model index are used when comparing with another model index.
-*/
-
-bool QPersistentModelIndex::operator==(const QModelIndex &other) const noexcept
-{
-    if (d)
-        return d->index == other;
-    return !other.isValid();
-}
+ */
 
 /*!
-    \fn bool QPersistentModelIndex::operator!=(const QModelIndex &other) const
+    \fn bool QPersistentModelIndex::operator!=(const QPersistentModelIndex &lhs, const QModelIndex &rhs)
 
-    Returns \c{true} if this persistent model index does not refer to the same
-    location as the \a other model index; otherwise returns \c{false}.
+    Returns \c{true} if \a lhs persistent model index does not refer to the same
+    location as the \a rhs model index; otherwise returns \c{false}.
 */
 
-bool QPersistentModelIndex::operator!=(const QModelIndex &other) const noexcept
+bool comparesEqual(const QPersistentModelIndex &lhs, const QModelIndex &rhs) noexcept
 {
-    if (d)
-        return d->index != other;
-    return other.isValid();
+    if (lhs.d)
+        return lhs.d->index == rhs;
+    return !rhs.isValid();
 }
 
 /*!
@@ -687,6 +690,7 @@ QDebug operator<<(QDebug dbg, const QPersistentModelIndex &idx)
 
 class QEmptyItemModel : public QAbstractItemModel
 {
+    Q_OBJECT
 public:
     explicit QEmptyItemModel(QObject *parent = nullptr) : QAbstractItemModel(parent) {}
     QModelIndex index(int, int, const QModelIndex &) const override { return QModelIndex(); }
@@ -1158,6 +1162,7 @@ void QAbstractItemModel::resetInternalData()
 
     \ingroup model-view
 
+    \compares strong
 
     This class is used as an index into item models derived from
     QAbstractItemModel. The index is used by item views, delegates, and
@@ -1329,23 +1334,21 @@ void QAbstractItemModel::resetInternalData()
 */
 
 /*!
-    \fn bool QModelIndex::operator==(const QModelIndex &other) const
+    \fn bool QModelIndex::operator==(const QModelIndex &lhs, const QModelIndex &rhs)
 
-    Returns \c{true} if this model index refers to the same location as the
-    \a other model index; otherwise returns \c{false}.
+    Returns \c{true} if \a lhs model index refers to the same location as the
+    \a rhs model index; otherwise returns \c{false}.
 
     The internal data pointer, row, column, and model values are used when
     comparing with another model index.
 */
 
-
 /*!
-    \fn bool QModelIndex::operator!=(const QModelIndex &other) const
+    \fn bool QModelIndex::operator!=(const QModelIndex &lhs, const QModelIndex &rhs)
 
-    Returns \c{true} if this model index does not refer to the same location as
-    the \a other model index; otherwise returns \c{false}.
+    Returns \c{true} if \a lhs model index does not refer to the same location as
+    the \a rhs model index; otherwise returns \c{false}.
 */
-
 
 /*!
     \fn QModelIndex QModelIndex::parent() const
@@ -3395,6 +3398,13 @@ void QAbstractItemModel::endMoveColumns()
 */
 void QAbstractItemModel::beginResetModel()
 {
+    Q_D(QAbstractItemModel);
+    if (d->resetting) {
+        qWarning() << "beginResetModel called on" << this << "without calling endResetModel first";
+        // Warn, but don't return early in case user code relies on the incorrect behavior.
+    }
+
+    d->resetting = true;
     emit modelAboutToBeReset(QPrivateSignal());
 }
 
@@ -3412,8 +3422,14 @@ void QAbstractItemModel::beginResetModel()
 void QAbstractItemModel::endResetModel()
 {
     Q_D(QAbstractItemModel);
+    if (!d->resetting) {
+        qWarning() << "endResetModel called on" << this << "without calling beginResetModel first";
+        // Warn, but don't return early in case user code relies on the incorrect behavior.
+    }
+
     d->invalidatePersistentIndexes();
     resetInternalData();
+    d->resetting = false;
     emit modelReset(QPrivateSignal());
 }
 
@@ -4125,10 +4141,10 @@ bool QAbstractListModel::dropMimeData(const QMimeData *data, Qt::DropAction acti
 */
 
 /*!
-    \fn bool QModelIndex::operator<(const QModelIndex &other) const
+    \fn bool QModelIndex::operator<(const QModelIndex &lhs, const QModelIndex &rhs)
     \since 4.1
 
-    Returns \c{true} if this model index is smaller than the \a other
+    Returns \c{true} if \a lhs model index is smaller than the \a rhs
     model index; otherwise returns \c{false}.
 
     The less than calculation is not directly useful to developers - the way that indexes
@@ -4137,12 +4153,9 @@ bool QAbstractListModel::dropMimeData(const QMimeData *data, Qt::DropAction acti
 */
 
 /*!
-    \fn size_t qHash(const QPersistentModelIndex &index, size_t seed = 0)
+    \fn size_t qHash(const QPersistentModelIndex &key, size_t seed)
     \since 5.0
-    \relates QPersistentModelIndex
-
-    Returns a hash of the QPersistentModelIndex \a index, using \a seed to
-    seed the calculation.
+    \qhashold{QPersistentModelIndex}
 */
 
 
@@ -4171,3 +4184,4 @@ void QAbstractItemModelPrivate::Persistent::insertMultiAtEnd(const QModelIndex& 
 QT_END_NAMESPACE
 
 #include "moc_qabstractitemmodel.cpp"
+#include "qabstractitemmodel.moc"

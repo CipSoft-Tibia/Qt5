@@ -29,7 +29,7 @@ QT_BEGIN_NAMESPACE
 
 class QTextLayout;
 
-class Q_QUICK_PRIVATE_EXPORT QQuickTextPrivate : public QQuickImplicitSizeItemPrivate
+class Q_QUICK_EXPORT QQuickTextPrivate : public QQuickImplicitSizeItemPrivate
 {
     Q_DECLARE_PUBLIC(QQuickText)
 public:
@@ -95,8 +95,8 @@ public:
     QFontInfo fontInfo;
 
     QTextLayout layout;
-    QTextLayout *elideLayout;
-    QQuickTextLine *textLine;
+    QScopedPointer<QTextLayout> elideLayout;
+    QScopedPointer<QQuickTextLine> textLine;
 
     qreal lineWidth;
 

@@ -16,7 +16,7 @@ qhp.QtGrpc.virtualFolder       = qtgrpc
 qhp.QtGrpc.indexTitle          = Qt GRPC
 qhp.QtGrpc.indexRoot           =
 
-qhp.QtGrpc.subprojects = qmltypes examples classes
+qhp.QtGrpc.subprojects = manual examples qmltypes classes
 
 qhp.QtGrpc.subprojects.qmltypes.title = QML Types
 qhp.QtGrpc.subprojects.qmltypes.indexTitle = Qt GRPC QML Types
@@ -32,27 +32,33 @@ qhp.QtGrpc.subprojects.classes.indexTitle = Qt GRPC C++ Classes
 qhp.QtGrpc.subprojects.classes.selectors  = class doc:headerfile
 qhp.QtGrpc.subprojects.classes.sortPages  = true
 
-depends += qtdoc qtcore qtnetwork qtwidgets qtprotobuf qtcmake qtqml
+qhp.QtGrpc.subprojects.manual.title = Qt GRPC
+qhp.QtGrpc.subprojects.manual.indexTitle = Qt GRPC module topics
+qhp.QtGrpc.subprojects.manual.type = manual
+
+depends += qtdoc qtcore qtnetwork qtwidgets qtprotobuf qtcmake qtqml qtquick qtquickcontrols
 
 {headerdirs,sourcedirs}  += .. \
-                            ../../tools/doc/src \
-                            ../../tools/qtgrpcgen/doc/src \
                             ../../grpcquick
 
+# Add additional documentation dirs
+sourcedirs  += ../../tools/doc
 
-exampledirs +=  ../../tools/qtgrpcgen/doc/src/snippets \
-                ../../../examples/grpc
-
-imagedirs   += images \
-               ../../../examples/grpc/doc/images
+exampledirs += src/snippets \
+               ../../../examples/grpc
 
 navigation.landingpage = "Qt GRPC"
 navigation.cppclassespage = "Qt GRPC C++ Classes"
 navigation.qmltypespage = "Qt GRPC QML Types"
+# Auto-generate navigation linking based on "Qt GRPC module topics":
+navigation.toctitles = "Qt GRPC module topics"
+navigation.toctitles.inclusive = false
 
 manifestmeta.highlighted.names = "QtGrpc/Magic 8 Ball"
 
 tagfile                 = qtgrpc.tags
+
+macro.gRPC = "\\tm gRPC"
 
 # Enforce zero documentation warnings
 warninglimit = 0

@@ -26,7 +26,7 @@ depends                 += qtcore qtnetwork qtdoc qtcmake qtgui
 
 headerdirs  += ..
 sourcedirs  += ..
-#imagedirs  += images
+imagedirs  += images
 
 examplesinstallpath     = oauth
 exampledirs += ../../../examples/oauth snippets
@@ -35,3 +35,6 @@ exampledirs += ../../../examples/oauth snippets
 
 navigation.landingpage = "Qt Network Authorization"
 navigation.cppclassespage = "Qt Network Authorization C++ Classes"
+
+# Enforce zero documentation warnings
+warninglimit = 0

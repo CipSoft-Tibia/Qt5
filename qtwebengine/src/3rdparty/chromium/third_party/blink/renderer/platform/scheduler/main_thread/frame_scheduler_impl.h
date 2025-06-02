@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "base/containers/flat_map.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/sequence_manager/task_queue.h"
@@ -86,6 +87,10 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
   // FrameScheduler implementation:
   void SetFrameVisible(bool frame_visible) override;
   bool IsFrameVisible() const override;
+  void SetVisibleAreaLarge(bool is_large) override;
+  bool IsVisibleAreaLarge() const override;
+  void SetHadUserActivation(bool had_user_activation) override;
+  bool HadUserActivation() const override;
 
   bool IsPageVisible() const override;
 
@@ -102,8 +107,7 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
 
   void TraceUrlChange(const String& url) override;
   void AddTaskTime(base::TimeDelta time) override;
-  void OnTaskCompleted(TaskQueue::TaskTiming*,
-                       base::TimeTicks desired_execution_time);
+  void OnTaskCompleted(TaskQueue::TaskTiming*);
   FrameScheduler::FrameType GetFrameType() const override;
   scoped_refptr<base::SingleThreadTaskRunner> GetTaskRunner(TaskType) override;
 
@@ -328,10 +332,15 @@ class PLATFORM_EXPORT FrameSchedulerImpl : public FrameScheduler,
   TraceableVariableController tracing_controller_;
   std::unique_ptr<FrameTaskQueueController> frame_task_queue_controller_;
 
-  MainThreadSchedulerImpl* const main_thread_scheduler_;  // NOT OWNED
-  PageSchedulerImpl* parent_page_scheduler_;              // NOT OWNED
-  FrameScheduler::Delegate* delegate_;                    // NOT OWNED
+  const raw_ptr<MainThreadSchedulerImpl, ExperimentalRenderer>
+      main_thread_scheduler_;  // NOT OWNED
+  raw_ptr<PageSchedulerImpl, ExperimentalRenderer>
+      parent_page_scheduler_;  // NOT OWNED
+  raw_ptr<FrameScheduler::Delegate, ExperimentalRenderer>
+      delegate_;  // NOT OWNED
   TraceableState<bool, TracingCategory::kInfo> frame_visible_;
+  TraceableState<bool, TracingCategory::kInfo> is_visible_area_large_;
+  TraceableState<bool, TracingCategory::kInfo> had_user_activation_;
   TraceableState<bool, TracingCategory::kInfo> frame_paused_;
   TraceableState<FrameOriginType, TracingCategory::kInfo> frame_origin_type_;
   TraceableState<bool, TracingCategory::kInfo> subresource_loading_paused_;

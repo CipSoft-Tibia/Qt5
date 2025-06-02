@@ -21,8 +21,8 @@
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/metrics/field_trial.h"
-#include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/ranges/algorithm.h"
 #include "base/strings/string_util.h"
@@ -110,10 +110,8 @@ void SetPreloadingEligibility(PreloadingAttempt* attempt,
 
 }  // namespace
 
-class NoStatePrefetchManager::OnCloseWebContentsDeleter
-    : public content::WebContentsDelegate,
-      public base::SupportsWeakPtr<
-          NoStatePrefetchManager::OnCloseWebContentsDeleter> {
+class NoStatePrefetchManager::OnCloseWebContentsDeleter final
+    : public content::WebContentsDelegate {
  public:
   OnCloseWebContentsDeleter(NoStatePrefetchManager* manager,
                             std::unique_ptr<WebContents> tab)
@@ -124,7 +122,7 @@ class NoStatePrefetchManager::OnCloseWebContentsDeleter
         FROM_HERE,
         base::BindOnce(
             &OnCloseWebContentsDeleter::ScheduleWebContentsForDeletion,
-            AsWeakPtr(), /*timeout=*/true),
+            weak_factory_.GetWeakPtr()),
         kDeleteWithExtremePrejudice);
   }
 
@@ -134,12 +132,11 @@ class NoStatePrefetchManager::OnCloseWebContentsDeleter
 
   void CloseContents(WebContents* source) override {
     DCHECK_EQ(tab_.get(), source);
-    ScheduleWebContentsForDeletion(/*timeout=*/false);
+    ScheduleWebContentsForDeletion();
   }
 
  private:
-  void ScheduleWebContentsForDeletion(bool timeout) {
-    UMA_HISTOGRAM_BOOLEAN("Prerender.TabContentsDeleterTimeout", timeout);
+  void ScheduleWebContentsForDeletion() {
     tab_->SetDelegate(nullptr);
     tab_->SetOwnerLocationForDebug(absl::nullopt);
     manager_->ScheduleDeleteOldWebContents(std::move(tab_), this);
@@ -148,6 +145,7 @@ class NoStatePrefetchManager::OnCloseWebContentsDeleter
 
   const raw_ptr<NoStatePrefetchManager> manager_;
   std::unique_ptr<WebContents> tab_;
+  base::WeakPtrFactory<OnCloseWebContentsDeleter> weak_factory_{this};
 };
 
 NoStatePrefetchManagerObserver::~NoStatePrefetchManagerObserver() = default;
@@ -252,7 +250,8 @@ NoStatePrefetchManager::StartPrefetchingFromLinkRelPrerender(
         content::preloading_predictor::kLinkRel, confidence, same_url_matcher);
     attempt = preloading_data->AddPreloadingAttempt(
         content::preloading_predictor::kLinkRel,
-        content::PreloadingType::kNoStatePrefetch, same_url_matcher);
+        content::PreloadingType::kNoStatePrefetch, same_url_matcher,
+        source_web_contents->GetPrimaryMainFrame()->GetPageUkmSourceId());
   }
   return StartPrefetchingWithPreconnectFallback(
       origin, url, referrer, initiator_origin, gfx::Rect(size),
@@ -730,7 +729,7 @@ NoStatePrefetchManager::StartPrefetchingWithPreconnectFallback(
     return nullptr;
   }
 
-  DCHECK(!no_state_prefetch_contents_ptr->prerendering_has_started());
+  DCHECK(!no_state_prefetch_contents_ptr->prefetching_has_started());
 
   std::unique_ptr<NoStatePrefetchHandle> no_state_prefetch_handle =
       base::WrapUnique(
@@ -745,7 +744,7 @@ NoStatePrefetchManager::StartPrefetchingWithPreconnectFallback(
   no_state_prefetch_contents_ptr->StartPrerendering(
       contents_bounds, session_storage_namespace, attempt);
 
-  DCHECK(no_state_prefetch_contents_ptr->prerendering_has_started());
+  DCHECK(no_state_prefetch_contents_ptr->prefetching_has_started());
 
   StartSchedulingPeriodicCleanups();
   return no_state_prefetch_handle;
@@ -1004,7 +1003,7 @@ void NoStatePrefetchManager::ScheduleDeleteOldWebContents(
 }
 
 void NoStatePrefetchManager::AddToHistory(NoStatePrefetchContents* contents) {
-  NoStatePrefetchHistory::Entry entry(contents->prerender_url(),
+  NoStatePrefetchHistory::Entry entry(contents->prefetch_url(),
                                       contents->final_status(),
                                       contents->origin(), base::Time::Now());
   prefetch_history_->AddEntry(entry);
@@ -1055,13 +1054,8 @@ void NoStatePrefetchManager::SkipNoStatePrefetchContentsAndMaybePreconnect(
 void NoStatePrefetchManager::RecordNetworkBytesConsumed(
     Origin origin,
     int64_t prerender_bytes) {
-  int64_t recent_browser_context_bytes =
-      browser_context_network_bytes_ -
-      last_recorded_browser_context_network_bytes_;
   last_recorded_browser_context_network_bytes_ = browser_context_network_bytes_;
-  DCHECK_GE(recent_browser_context_bytes, 0);
-  histograms_->RecordNetworkBytesConsumed(origin, prerender_bytes,
-                                          recent_browser_context_bytes);
+  histograms_->RecordNetworkBytesConsumed(origin, prerender_bytes);
 }
 
 void NoStatePrefetchManager::AddPrerenderProcessHost(

@@ -24,7 +24,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeSplineSeries : public QSplineSeries, public DeclarativeXySeries, public QQmlParserStatus
+class Q_CHARTSQML_EXPORT DeclarativeSplineSeries : public QSplineSeries, public DeclarativeXySeries, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)
@@ -95,11 +95,13 @@ Q_SIGNALS:
     Q_REVISION(1, 1) void capStyleChanged(Qt::PenCapStyle capStyle);
 
 public Q_SLOTS:
-    static void appendDeclarativeChildren(QQmlListProperty<QObject> *list, QObject *element);
     void handleCountChanged(int index);
 
 public:
     DeclarativeAxes *m_axes;
+
+private:
+    static void appendDeclarativeChildren(QQmlListProperty<QObject> *list, QObject *element);
 };
 
 QT_END_NAMESPACE

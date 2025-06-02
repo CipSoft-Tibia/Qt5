@@ -16,19 +16,21 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    Q3DScatter *graph = new Q3DScatter();
+    auto quickWidget = new QQuickWidget;
+    Q3DScatterWidgetItem *graph = new Q3DScatterWidgetItem();
+    graph->setWidget(quickWidget);
 
-    QSize screenSize = graph->screen()->size();
-    graph->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 1.5));
-    graph->setMaximumSize(screenSize);
-    graph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    graph->setFocusPolicy(Qt::StrongFocus);
-    graph->setResizeMode(QQuickWidget::SizeRootObjectToView);
+    QSize screenSize = graph->widget()->screen()->size();
+    graph->widget()->setMinimumSize(QSize(screenSize.width() / 2, screenSize.height() / 1.5));
+    graph->widget()->setMaximumSize(screenSize);
+    graph->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    graph->widget()->setFocusPolicy(Qt::StrongFocus);
+    graph->widget()->setResizeMode(QQuickWidget::SizeRootObjectToView);
 
     QWidget *widget = new QWidget;
     QHBoxLayout *hLayout = new QHBoxLayout(widget);
     QVBoxLayout *vLayout = new QVBoxLayout();
-    hLayout->addWidget(graph, 1);
+    hLayout->addWidget(graph->widget(), 1);
     hLayout->addLayout(vLayout);
 
     widget->setWindowTitle(QStringLiteral("Item rotations example - Magnetic field of the sun"));
@@ -69,5 +71,8 @@ int main(int argc, char **argv)
                      &ScatterDataModifier::setArrowsPerLine);
 
     widget->show();
-    return app.exec();
+    int retVal = app.exec();
+    delete modifier;
+    delete quickWidget;
+    return retVal;
 }

@@ -63,6 +63,8 @@ void SkPictureBackedGlyphDrawable::FlattenDrawable(SkWriteBuffer& buffer, SkDraw
     }
 
     sk_sp<SkPicture> picture = drawable->makePictureSnapshot();
+    // These drawables should not have SkImages, SkTypefaces or SkPictures inside of them, so
+    // the default SkSerialProcs are sufficient.
     sk_sp<SkData> data = picture->serialize();
 
     // If the picture is too big, or there is no picture, then drop by sending an empty byte array.
@@ -644,6 +646,7 @@ void SkGlyphDigest::setActionFor(skglyph::ActionType actionType,
             }
             case kDirectMaskCPU: {
                 if (strike->prepareForImage(glyph)) {
+                    SkASSERT(!glyph->isEmpty());
                     action = GlyphAction::kAccept;
                 }
                 break;

@@ -480,6 +480,7 @@ struct cff_subset_accelerator_t
       const hb_vector_t<parsed_cs_str_vec_t>& parsed_local_subrs) {
     cff_subset_accelerator_t* accel =
         (cff_subset_accelerator_t*) hb_malloc (sizeof(cff_subset_accelerator_t));
+    if (unlikely (!accel)) return nullptr;
     new (accel) cff_subset_accelerator_t (original_blob,
                                           parsed_charstrings,
                                           parsed_global_subrs,
@@ -516,7 +517,7 @@ struct cff_subset_accelerator_t
     auto *mapping = glyph_to_sid_map.get_relaxed ();
     if (mapping)
     {
-      mapping->~hb_vector_t ();
+      mapping->~glyph_to_sid_map_t ();
       hb_free (mapping);
     }
   }
@@ -524,7 +525,7 @@ struct cff_subset_accelerator_t
   parsed_cs_str_vec_t parsed_charstrings;
   parsed_cs_str_vec_t parsed_global_subrs;
   hb_vector_t<parsed_cs_str_vec_t> parsed_local_subrs;
-  mutable hb_atomic_ptr_t<hb_vector_t<uint16_t>> glyph_to_sid_map = nullptr;
+  mutable hb_atomic_ptr_t<glyph_to_sid_map_t> glyph_to_sid_map;
 
  private:
   hb_blob_t* original_blob;
@@ -606,7 +607,7 @@ struct subr_remap_t : hb_inc_bimap_t
      * no optimization based on usage counts. fonttools doesn't appear doing that either.
      */
 
-    resize (closure->get_population ());
+    alloc (closure->get_population ());
     for (auto old_num : *closure)
       add (old_num);
 
@@ -677,8 +678,8 @@ struct subr_subsetter_t
   {
     unsigned fd_count = acc.fdCount;
     const cff_subset_accelerator_t* cff_accelerator = nullptr;
-    if (plan->accelerator && plan->accelerator->cff_accelerator) {
-      cff_accelerator = plan->accelerator->cff_accelerator;
+    if (acc.cff_accelerator) {
+      cff_accelerator = acc.cff_accelerator;
       fd_count = cff_accelerator->parsed_local_subrs.length;
     }
 
@@ -772,7 +773,7 @@ struct subr_subsetter_t
 	}
       }
 
-      /* Doing this here one by one instead of compacting all at the en
+      /* Doing this here one by one instead of compacting all at the end
        * has massive peak-memory saving.
        *
        * The compacting both saves memory and makes further operations
@@ -1125,14 +1126,11 @@ struct subr_subsetter_t
 
     compact_parsed_subrs ();
 
-    plan->inprogress_accelerator->cff_accelerator =
+    acc.cff_accelerator =
         cff_subset_accelerator_t::create(acc.blob,
                                          parsed_charstrings,
                                          parsed_global_subrs_storage,
                                          parsed_local_subrs_storage);
-    plan->inprogress_accelerator->destroy_cff_accelerator =
-        cff_subset_accelerator_t::destroy;
-
   }
 
   const parsed_cs_str_t& get_parsed_charstring (unsigned i) const

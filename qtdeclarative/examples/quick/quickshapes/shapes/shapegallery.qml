@@ -146,6 +146,18 @@ Rectangle {
                     name: qsTr("Text")
                     shapeUrl: "text.qml"
                 }
+                ListElement {
+                    name: qsTr("Fill transform")
+                    shapeUrl: "fillTransform.qml"
+                }
+                ListElement {
+                    name: qsTr("Shape Rectangle")
+                    shapeUrl: "rectangle.qml"
+                }
+                ListElement {
+                    name: qsTr("Fill item")
+                    shapeUrl: "fillItem.qml"
+                }
             }
         }
     }

@@ -13,26 +13,26 @@
 #ifndef QABSTRACTAXIS_P_H
 #define QABSTRACTAXIS_P_H
 
-#include <QColor>
-#include <QtCore/QDebug>
-#include <QtGraphs/qabstractaxis.h>
+#include <QtGraphs/QAbstractAxis>
 #include <private/qgraphsview_p.h>
+#include <QtCore/QDebug>
+#include <QtCore/private/qobject_p.h>
+#include <QColor>
 
 #include <memory>
 
 QT_BEGIN_NAMESPACE
 
-class QAbstractAxisPrivate : public QObject
+class QQmlComponent;
+
+class QAbstractAxisPrivate : public QObjectPrivate
 {
-    Q_OBJECT
 public:
-    QAbstractAxisPrivate(QAbstractAxis *q);
-    ~QAbstractAxisPrivate();
+    QAbstractAxisPrivate();
+    ~QAbstractAxisPrivate() override;
 
 public:
-    Qt::Alignment alignment() const { return m_alignment; }
-    Qt::Orientation orientation() const { return m_orientation; }
-    void setAlignment(Qt::Alignment alignment);
+    void setGraph(QGraphsView *graph) { m_graph = graph; }
 
     //interface for manipulating range form base class
     virtual void setMin(const QVariant &min) = 0;
@@ -47,27 +47,20 @@ public:
 public Q_SLOTS:
     void handleRangeChanged(qreal min, qreal max);
 
-Q_SIGNALS:
-    void rangeChanged(qreal min, qreal max);
-
 protected:
-    QAbstractAxis *q_ptr;
-    // TODO: Used?
     QGraphsView *m_graph = nullptr;
 
 private:
-    Qt::Alignment m_alignment;
-    Qt::Orientation m_orientation = Qt::Orientation(0);
-
     bool m_visible = true;
 
     bool m_lineVisible = true;
 
-    bool m_gridLineVisible = true;
-    bool m_minorGridLineVisible = true;
+    bool m_gridVisible = true;
+    bool m_subGridVisible = true;
 
     bool m_labelsVisible = true;
     qreal m_labelsAngle = 0;
+    QQmlComponent *m_labelDelegate = nullptr;
 
     bool m_titleVisible = true;
     QColor m_titleColor;
@@ -75,7 +68,6 @@ private:
     QString m_title;
 
     Q_DECLARE_PUBLIC(QAbstractAxis)
-    friend class QAbstractAxis;
 };
 
 QT_END_NAMESPACE

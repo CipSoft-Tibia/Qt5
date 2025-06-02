@@ -19,10 +19,11 @@
 #include <QtCore/qloggingcategory.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qhash.h>
-#include <QtCore/qmap.h>
 #include <QtCore/qmutex.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qtextstream.h>
+
+#include <map>
 
 class tst_QLoggingRegistry;
 
@@ -54,9 +55,9 @@ public:
     Q_DECLARE_FLAGS(PatternFlags, PatternFlag)
 
     QString category;
-    int messageType;
+    int messageType = -1;
     PatternFlags flags;
-    bool enabled;
+    bool enabled = false;
 
 private:
     void parse(QStringView pattern);
@@ -127,7 +128,7 @@ private:
     QList<QLoggingRule> ruleSets[NumRuleSets];
     QHash<QLoggingCategory *, QtMsgType> categories;
     QLoggingCategory::CategoryFilter categoryFilter;
-    QMap<QByteArrayView, const char *> qtCategoryEnvironmentOverrides;
+    std::map<QByteArrayView, const char *> qtCategoryEnvironmentOverrides;
 
     friend class ::tst_QLoggingRegistry;
 };

@@ -27,6 +27,7 @@
 #include "components/feature_engagement/internal/chrome_variations_configuration.h"
 #include "components/feature_engagement/internal/display_lock_controller_impl.h"
 #include "components/feature_engagement/internal/editable_configuration.h"
+#include "components/feature_engagement/internal/event_model.h"
 #include "components/feature_engagement/internal/event_model_impl.h"
 #include "components/feature_engagement/internal/feature_config_condition_validator.h"
 #include "components/feature_engagement/internal/feature_config_event_storage_validator.h"
@@ -41,6 +42,7 @@
 #include "components/feature_engagement/internal/stats.h"
 #include "components/feature_engagement/internal/system_time_provider.h"
 #include "components/feature_engagement/internal/testing_clock_time_provider.h"
+#include "components/feature_engagement/public/configuration.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/feature_engagement/public/feature_list.h"
 #include "components/feature_engagement/public/group_constants.h"
@@ -94,6 +96,24 @@ std::unique_ptr<Tracker> CreateDemoModeTracker() {
       std::make_unique<OnceConditionValidator>(),
       std::make_unique<SystemTimeProvider>(), nullptr);
 }
+
+#if !BUILDFLAG(IS_ANDROID)
+
+// Reads event data from `config` and - if valid - places it into `result` along
+// with the event count in the appropriate window.
+void MaybeGetEventData(Tracker::EventList& result,
+                       const EventConfig& config,
+                       const EventModel& event_model,
+                       uint32_t current_day) {
+  if (config.name.empty()) {
+    return;
+  }
+  result.emplace_back(std::make_pair(
+      config,
+      event_model.GetEventCount(config.name, current_day, config.window)));
+}
+
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 }  // namespace
 
@@ -192,6 +212,44 @@ void TrackerImpl::NotifyEvent(const std::string& event) {
                            event_model_->IsReady());
 }
 
+#if !BUILDFLAG(IS_ANDROID)
+void TrackerImpl::NotifyUsedEvent(const base::Feature& feature) {
+  const auto& feature_config = configuration_->GetFeatureConfig(feature);
+  if (!feature_config.used.name.empty()) {
+    NotifyEvent(feature_config.used.name);
+  }
+}
+
+void TrackerImpl::ClearEventData(const base::Feature& feature) {
+  const auto& feature_config = configuration_->GetFeatureConfig(feature);
+  if (!feature_config.trigger.name.empty()) {
+    event_model_->ClearEvent(feature_config.trigger.name);
+  }
+  if (!feature_config.used.name.empty()) {
+    event_model_->ClearEvent(feature_config.used.name);
+  }
+  for (const auto& event_config : feature_config.event_configs) {
+    event_model_->ClearEvent(event_config.name);
+  }
+}
+
+Tracker::EventList TrackerImpl::ListEvents(const base::Feature& feature) const {
+  EventList result;
+  if (!IsInitialized()) {
+    return result;
+  }
+  const auto& feature_config = configuration_->GetFeatureConfig(feature);
+  const auto current_day = time_provider_->GetCurrentDay();
+  MaybeGetEventData(result, feature_config.trigger, *event_model_, current_day);
+  MaybeGetEventData(result, feature_config.used, *event_model_, current_day);
+  for (const auto& event_config : feature_config.event_configs) {
+    MaybeGetEventData(result, event_config, *event_model_, current_day);
+  }
+  return result;
+}
+
+#endif  // !BUILDFLAG(IS_ANDROID)
+
 bool TrackerImpl::ShouldTriggerHelpUI(const base::Feature& feature) {
   return ShouldTriggerHelpUIWithSnooze(feature).ShouldShowIph();
 }
@@ -210,7 +268,7 @@ TrackerImpl::TriggerDetails TrackerImpl::ShouldTriggerHelpUIWithSnooze(
   ConditionValidator::Result result = condition_validator_->MeetsConditions(
       feature, feature_config, group_configs, *event_model_,
       *availability_model_, *display_lock_controller_, configuration_.get(),
-      time_provider_->GetCurrentDay());
+      *time_provider_);
   if (result.NoErrors()) {
     condition_validator_->NotifyIsShowing(
         feature, feature_config, configuration_->GetRegisteredFeatures());
@@ -268,7 +326,7 @@ bool TrackerImpl::WouldTriggerHelpUI(const base::Feature& feature) const {
   ConditionValidator::Result result = condition_validator_->MeetsConditions(
       feature, feature_config, group_configs, *event_model_,
       *availability_model_, *display_lock_controller_, configuration_.get(),
-      time_provider_->GetCurrentDay());
+      *time_provider_);
   DVLOG(2) << "Would trigger result for " << feature.name
            << ": trigger=" << result.NoErrors()
            << " tracking_only=" << feature_config.tracking_only << " "
@@ -307,7 +365,7 @@ Tracker::TriggerState TrackerImpl::GetTriggerState(
   ConditionValidator::Result result = condition_validator_->MeetsConditions(
       feature, configuration_->GetFeatureConfig(feature), group_configs,
       *event_model_, *availability_model_, *display_lock_controller_,
-      configuration_.get(), time_provider_->GetCurrentDay());
+      configuration_.get(), *time_provider_);
 
   if (result.trigger_ok) {
     DVLOG(2) << "TriggerState for " << feature.name << ": "
@@ -342,9 +400,9 @@ void TrackerImpl::DismissedWithSnooze(
   } else if (snooze_action == SnoozeAction::DISMISSED) {
     event_model_->DismissSnooze(feature_config.trigger.name);
   }
+  Dismissed(feature);
   if (snooze_action.has_value())
     stats::RecordUserSnoozeAction(snooze_action.value());
-  RecordShownTime(feature);
 }
 
 std::unique_ptr<DisplayLockHandle> TrackerImpl::AcquireDisplayLock() {

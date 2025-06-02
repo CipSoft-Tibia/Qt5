@@ -1,21 +1,32 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// GEN_BUILD:CONDITION(tint_build_ir)
-
+#include "src/tint/lang/core/builtin_fn.h"
 #include "src/tint/lang/core/fluent_types.h"
-#include "src/tint/lang/core/function.h"
 #include "src/tint/lang/core/type/depth_multisampled_texture.h"
 #include "src/tint/lang/spirv/writer/common/helper_test.h"
 
@@ -132,11 +143,11 @@ class TextureBuiltinTest : public SpirvWriterTestWithParam<TextureBuiltinTestCas
         return nullptr;
     }
 
-    void Run(enum core::Function function, SamplerUsage sampler) {
+    void Run(enum core::BuiltinFn function, SamplerUsage sampler) {
         auto params = GetParam();
 
         auto* result_ty = MakeScalarType(params.result.type);
-        if (function == core::Function::kTextureStore) {
+        if (function == core::BuiltinFn::kTextureStore) {
             result_ty = ty.void_();
         }
         if (params.result.width > 1) {
@@ -164,7 +175,7 @@ class TextureBuiltinTest : public SpirvWriterTestWithParam<TextureBuiltinTestCas
             uint32_t arg_value = 1;
 
             Vector<core::ir::Value*, 4> args;
-            if (function == core::Function::kTextureGather &&
+            if (function == core::BuiltinFn::kTextureGather &&
                 params.texture_type != kDepthTexture) {
                 // Special case for textureGather, which has a component argument first.
                 auto* component = MakeScalarValue(kU32, arg_value++);
@@ -193,7 +204,9 @@ class TextureBuiltinTest : public SpirvWriterTestWithParam<TextureBuiltinTestCas
             }
         });
 
-        ASSERT_TRUE(Generate()) << Error() << output_;
+        Options options;
+        options.disable_image_robustness = true;
+        ASSERT_TRUE(Generate(options)) << Error() << output_;
         for (auto& inst : params.instructions) {
             EXPECT_INST(inst);
         }
@@ -205,7 +218,7 @@ class TextureBuiltinTest : public SpirvWriterTestWithParam<TextureBuiltinTestCas
 ////////////////////////////////////////////////////////////////
 using TextureSample = TextureBuiltinTest;
 TEST_P(TextureSample, Emit) {
-    Run(core::Function::kTextureSample, kSampler);
+    Run(core::BuiltinFn::kTextureSample, kSampler);
 }
 INSTANTIATE_TEST_SUITE_P(
     SpirvWriterTest,
@@ -400,7 +413,7 @@ INSTANTIATE_TEST_SUITE_P(
 ////////////////////////////////////////////////////////////////
 using TextureSampleBias = TextureBuiltinTest;
 TEST_P(TextureSampleBias, Emit) {
-    Run(core::Function::kTextureSampleBias, kSampler);
+    Run(core::BuiltinFn::kTextureSampleBias, kSampler);
 }
 INSTANTIATE_TEST_SUITE_P(
     SpirvWriterTest,
@@ -507,7 +520,7 @@ INSTANTIATE_TEST_SUITE_P(
 ////////////////////////////////////////////////////////////////
 using TextureSampleGrad = TextureBuiltinTest;
 TEST_P(TextureSampleGrad, Emit) {
-    Run(core::Function::kTextureSampleGrad, kSampler);
+    Run(core::BuiltinFn::kTextureSampleGrad, kSampler);
 }
 INSTANTIATE_TEST_SUITE_P(
     SpirvWriterTest,
@@ -618,7 +631,7 @@ INSTANTIATE_TEST_SUITE_P(
 ////////////////////////////////////////////////////////////////
 using TextureSampleLevel = TextureBuiltinTest;
 TEST_P(TextureSampleLevel, Emit) {
-    Run(core::Function::kTextureSampleLevel, kSampler);
+    Run(core::BuiltinFn::kTextureSampleLevel, kSampler);
 }
 INSTANTIATE_TEST_SUITE_P(
     SpirvWriterTest,
@@ -808,7 +821,7 @@ INSTANTIATE_TEST_SUITE_P(
 ////////////////////////////////////////////////////////////////
 using TextureSampleCompare = TextureBuiltinTest;
 TEST_P(TextureSampleCompare, Emit) {
-    Run(core::Function::kTextureSampleCompare, kComparisonSampler);
+    Run(core::BuiltinFn::kTextureSampleCompare, kComparisonSampler);
 }
 INSTANTIATE_TEST_SUITE_P(
     SpirvWriterTest,
@@ -893,7 +906,7 @@ INSTANTIATE_TEST_SUITE_P(
 ////////////////////////////////////////////////////////////////
 using TextureSampleCompareLevel = TextureBuiltinTest;
 TEST_P(TextureSampleCompareLevel, Emit) {
-    Run(core::Function::kTextureSampleCompareLevel, kComparisonSampler);
+    Run(core::BuiltinFn::kTextureSampleCompareLevel, kComparisonSampler);
 }
 INSTANTIATE_TEST_SUITE_P(
     SpirvWriterTest,
@@ -983,7 +996,7 @@ INSTANTIATE_TEST_SUITE_P(
 ////////////////////////////////////////////////////////////////
 using TextureGather = TextureBuiltinTest;
 TEST_P(TextureGather, Emit) {
-    Run(core::Function::kTextureGather, kSampler);
+    Run(core::BuiltinFn::kTextureGather, kSampler);
 }
 INSTANTIATE_TEST_SUITE_P(
     SpirvWriterTest,
@@ -1164,7 +1177,7 @@ INSTANTIATE_TEST_SUITE_P(
 ////////////////////////////////////////////////////////////////
 using TextureGatherCompare = TextureBuiltinTest;
 TEST_P(TextureGatherCompare, Emit) {
-    Run(core::Function::kTextureGatherCompare, kComparisonSampler);
+    Run(core::BuiltinFn::kTextureGatherCompare, kComparisonSampler);
 }
 INSTANTIATE_TEST_SUITE_P(
     SpirvWriterTest,
@@ -1249,7 +1262,7 @@ INSTANTIATE_TEST_SUITE_P(
 ////////////////////////////////////////////////////////////////
 using TextureLoad = TextureBuiltinTest;
 TEST_P(TextureLoad, Emit) {
-    Run(core::Function::kTextureLoad, kNoSampler);
+    Run(core::BuiltinFn::kTextureLoad, kNoSampler);
 }
 INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
                          TextureLoad,
@@ -1332,7 +1345,7 @@ INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
                                  kDepthMultisampledTexture,
                                  core::type::TextureDimension::k2d,
                                  /* texel type */ kF32,
-                                 {{"coords", 3, kI32}, {"sample_idx", 1, kI32}},
+                                 {{"coords", 2, kI32}, {"sample_idx", 1, kI32}},
                                  {"result", 1, kF32},
                                  {
                                      "OpImageFetch %v4float %t %coords Sample %sample_idx",
@@ -1368,7 +1381,7 @@ INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
 ////////////////////////////////////////////////////////////////
 using TextureStore = TextureBuiltinTest;
 TEST_P(TextureStore, Emit) {
-    Run(core::Function::kTextureStore, kNoSampler);
+    Run(core::BuiltinFn::kTextureStore, kNoSampler);
 }
 INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
                          TextureStore,
@@ -1443,7 +1456,7 @@ INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
 ////////////////////////////////////////////////////////////////
 using TextureDimensions = TextureBuiltinTest;
 TEST_P(TextureDimensions, Emit) {
-    Run(core::Function::kTextureDimensions, kNoSampler);
+    Run(core::BuiltinFn::kTextureDimensions, kNoSampler);
 }
 INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
                          TextureDimensions,
@@ -1693,7 +1706,7 @@ INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
 ////////////////////////////////////////////////////////////////
 using TextureNumLayers = TextureBuiltinTest;
 TEST_P(TextureNumLayers, Emit) {
-    Run(core::Function::kTextureNumLayers, kNoSampler);
+    Run(core::BuiltinFn::kTextureNumLayers, kNoSampler);
 }
 INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
                          TextureNumLayers,
@@ -1760,7 +1773,7 @@ INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
 ////////////////////////////////////////////////////////////////
 using TextureNumLevels = TextureBuiltinTest;
 TEST_P(TextureNumLevels, Emit) {
-    Run(core::Function::kTextureNumLevels, kNoSampler);
+    Run(core::BuiltinFn::kTextureNumLevels, kNoSampler);
 }
 INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
                          TextureNumLevels,
@@ -1770,80 +1783,80 @@ INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
                                  core::type::TextureDimension::k1d,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kSampledTexture,
                                  core::type::TextureDimension::k2d,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kSampledTexture,
                                  core::type::TextureDimension::k2dArray,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kSampledTexture,
                                  core::type::TextureDimension::k3d,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kSampledTexture,
                                  core::type::TextureDimension::kCube,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kSampledTexture,
                                  core::type::TextureDimension::kCubeArray,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kDepthTexture,
                                  core::type::TextureDimension::k2d,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kDepthTexture,
                                  core::type::TextureDimension::k2dArray,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kDepthTexture,
                                  core::type::TextureDimension::kCube,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              },
                              TextureBuiltinTestCase{
                                  kDepthTexture,
                                  core::type::TextureDimension::kCubeArray,
                                  /* texel type */ kF32,
                                  {},
-                                 {"result", 1, kI32},
-                                 {"%result = OpImageQueryLevels %int %t"},
+                                 {"result", 1, kU32},
+                                 {"%result = OpImageQueryLevels %uint %t"},
                              }),
                          PrintCase);
 
@@ -1852,7 +1865,7 @@ INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
 ////////////////////////////////////////////////////////////////
 using TextureNumSamples = TextureBuiltinTest;
 TEST_P(TextureNumSamples, Emit) {
-    Run(core::Function::kTextureNumSamples, kNoSampler);
+    Run(core::BuiltinFn::kTextureNumSamples, kNoSampler);
 }
 INSTANTIATE_TEST_SUITE_P(SpirvWriterTest,
                          TextureNumSamples,
@@ -1891,7 +1904,7 @@ TEST_F(SpirvWriterTest, TextureSampleBaseClampToEdge_2d_f32) {
     auto* func = b.Function("foo", ty.vec4<f32>());
     func->SetParams(args);
     b.Append(func->Block(), [&] {
-        auto* result = b.Call(ty.vec4<f32>(), core::Function::kTextureSampleBaseClampToEdge, args);
+        auto* result = b.Call(ty.vec4<f32>(), core::BuiltinFn::kTextureSampleBaseClampToEdge, args);
         b.Return(func, result);
         mod.SetName(result, "result");
     });
@@ -1926,14 +1939,106 @@ TEST_F(SpirvWriterTest, Bgra8Unorm_textureStore) {
     auto* func = b.Function("foo", ty.void_());
     func->SetParams({texture, coords, value});
     b.Append(func->Block(), [&] {
-        b.Call(ty.void_(), core::Function::kTextureStore, texture, coords, value);
+        b.Call(ty.void_(), core::BuiltinFn::kTextureStore, texture, coords, value);
+        b.Return(func);
+    });
+
+    Options options;
+    options.disable_image_robustness = true;
+    ASSERT_TRUE(Generate(options)) << Error() << output_;
+    EXPECT_INST(R"(
+         %13 = OpVectorShuffle %v4float %value %value 2 1 0 3
+               OpImageWrite %texture %coords %13 None
+)");
+}
+
+////////////////////////////////////////////////////////////////
+//// Texture robustness enabled.
+////////////////////////////////////////////////////////////////
+
+TEST_F(SpirvWriterTest, TextureDimensions_WithRobustness) {
+    auto* texture_ty =
+        ty.Get<core::type::SampledTexture>(core::type::TextureDimension::k2d, ty.f32());
+
+    auto* texture = b.FunctionParam("texture", texture_ty);
+    auto* level = b.FunctionParam("level", ty.i32());
+    auto* func = b.Function("foo", ty.vec2<u32>());
+    func->SetParams({texture, level});
+    b.Append(func->Block(), [&] {
+        auto* dims = b.Call(ty.vec2<u32>(), core::BuiltinFn::kTextureDimensions, texture, level);
+        b.Return(func, dims);
+        mod.SetName(dims, "dims");
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST(R"(
+         %11 = OpImageQueryLevels %uint %texture
+         %12 = OpISub %uint %11 %uint_1
+         %14 = OpBitcast %uint %level
+         %15 = OpExtInst %uint %16 UMin %14 %12
+       %dims = OpImageQuerySizeLod %v2uint %texture %15
+)");
+}
+
+TEST_F(SpirvWriterTest, TextureLoad_WithRobustness) {
+    auto* texture_ty =
+        ty.Get<core::type::SampledTexture>(core::type::TextureDimension::k2d, ty.f32());
+
+    auto* texture = b.FunctionParam("texture", texture_ty);
+    auto* coords = b.FunctionParam("coords", ty.vec2<u32>());
+    auto* level = b.FunctionParam("level", ty.i32());
+    auto* func = b.Function("foo", ty.vec4<f32>());
+    func->SetParams({texture, coords, level});
+    b.Append(func->Block(), [&] {
+        auto* result =
+            b.Call(ty.vec4<f32>(), core::BuiltinFn::kTextureLoad, texture, coords, level);
+        b.Return(func, result);
+        mod.SetName(result, "result");
+    });
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST(R"(
+         %13 = OpImageQuerySizeLod %v2uint %texture %uint_0
+         %15 = OpISub %v2uint %13 %16
+         %18 = OpExtInst %v2uint %19 UMin %coords %15
+         %20 = OpImageQueryLevels %uint %texture
+         %21 = OpISub %uint %20 %uint_1
+         %22 = OpBitcast %uint %level
+         %23 = OpExtInst %uint %19 UMin %22 %21
+     %result = OpImageFetch %v4float %texture %18 Lod %23
+)");
+}
+
+TEST_F(SpirvWriterTest, TextureStore_WithRobustness) {
+    auto format = core::TexelFormat::kRgba8Unorm;
+    auto* texture_ty = ty.Get<core::type::StorageTexture>(
+        core::type::TextureDimension::k2dArray, format, core::Access::kWrite,
+        core::type::StorageTexture::SubtypeFor(format, ty));
+
+    auto* texture = b.FunctionParam("texture", texture_ty);
+    auto* coords = b.FunctionParam("coords", ty.vec2<u32>());
+    auto* layer = b.FunctionParam("layer", ty.i32());
+    auto* value = b.FunctionParam("value", ty.vec4<f32>());
+    auto* func = b.Function("foo", ty.void_());
+    func->SetParams({texture, coords, layer, value});
+    b.Append(func->Block(), [&] {
+        b.Call(ty.void_(), core::BuiltinFn::kTextureStore, texture, coords, layer, value);
         b.Return(func);
     });
 
     ASSERT_TRUE(Generate()) << Error() << output_;
     EXPECT_INST(R"(
-         %13 = OpVectorShuffle %v4float %value %value 2 1 0 3
-               OpImageWrite %texture %coords %13 None
+         %15 = OpImageQuerySize %v3uint %texture
+         %17 = OpVectorShuffle %v2uint %15 %15 0 1
+         %18 = OpISub %v2uint %17 %19
+         %21 = OpExtInst %v2uint %22 UMin %coords %18
+         %23 = OpImageQuerySize %v3uint %texture
+         %24 = OpCompositeExtract %uint %23 2
+         %25 = OpISub %uint %24 %uint_1
+         %26 = OpBitcast %uint %layer
+         %27 = OpExtInst %uint %22 UMin %26 %25
+         %28 = OpCompositeConstruct %v3uint %21 %27
+               OpImageWrite %texture %28 %value None
 )");
 }
 

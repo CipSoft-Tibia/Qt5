@@ -5,11 +5,10 @@
 #define QHELP_GLOBAL_H
 
 #include <QtCore/qglobal.h>
-#include <QtCore/QString>
-#include <QtCore/QObject>
 
 QT_BEGIN_NAMESPACE
 
+class QString;
 
 #ifdef QT_STATIC
 #   define QHELP_EXPORT
@@ -19,7 +18,10 @@ QT_BEGIN_NAMESPACE
 #   define QHELP_EXPORT Q_DECL_IMPORT
 #endif
 
-class QHELP_EXPORT QHelpGlobal {
+// TODO Qt 7.0: Remove the class and make it a namespace with a collection of functions.
+//              Review, if they are still need to be public.
+class QHELP_EXPORT QHelpGlobal
+{
 public:
     static QString uniquifyConnectionName(const QString &name, void *pointer);
     static QString documentTitle(const QString &content);

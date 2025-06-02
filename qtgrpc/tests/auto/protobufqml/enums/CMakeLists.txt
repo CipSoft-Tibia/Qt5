@@ -7,6 +7,9 @@ if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
     find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
 endif()
 
+qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
+
 qt_internal_add_test(tst_protobuf_enumtypes_qml
     QMLTEST
     SOURCES
@@ -15,7 +18,6 @@ qt_internal_add_test(tst_protobuf_enumtypes_qml
         Qt::Qml
 )
 
-qt_policy(SET QTP0001 NEW)
 qt_add_qml_module(tst_protobuf_enumtypes_qml
     URI QmlTestUri
     VERSION 1.0

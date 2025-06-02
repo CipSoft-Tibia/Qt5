@@ -215,10 +215,8 @@ QueryURLResult& QueryURLResult::operator=(QueryURLResult&&) noexcept = default;
 
 MostVisitedURL::MostVisitedURL() = default;
 
-MostVisitedURL::MostVisitedURL(const GURL& url,
-                               const std::u16string& title,
-                               double score)
-    : url(url), title(title), score(score) {}
+MostVisitedURL::MostVisitedURL(const GURL& url, const std::u16string& title)
+    : url(url), title(title) {}
 
 MostVisitedURL::MostVisitedURL(const MostVisitedURL& other) = default;
 
@@ -297,6 +295,7 @@ HistoryAddPageArgs::HistoryAddPageArgs()
                          absl::nullopt,
                          absl::nullopt,
                          absl::nullopt,
+                         absl::nullopt,
                          absl::nullopt) {}
 
 HistoryAddPageArgs::HistoryAddPageArgs(
@@ -315,7 +314,8 @@ HistoryAddPageArgs::HistoryAddPageArgs(
     absl::optional<std::u16string> title,
     absl::optional<GURL> top_level_url,
     absl::optional<Opener> opener,
-    absl::optional<base::Uuid> bookmark_id,
+    absl::optional<int64_t> bookmark_id,
+    absl::optional<std::string> app_id,
     absl::optional<VisitContextAnnotations::OnVisitFields> context_annotations)
     : url(url),
       time(time),
@@ -333,6 +333,7 @@ HistoryAddPageArgs::HistoryAddPageArgs(
       top_level_url(top_level_url),
       opener(opener),
       bookmark_id(bookmark_id),
+      app_id(app_id),
       context_annotations(std::move(context_annotations)) {}
 
 HistoryAddPageArgs::HistoryAddPageArgs(const HistoryAddPageArgs& other) =

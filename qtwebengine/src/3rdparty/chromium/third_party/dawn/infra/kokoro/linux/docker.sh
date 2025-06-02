@@ -1,18 +1,31 @@
 #!/bin/bash
 
-# Copyright 2021 The Tint and Dawn Authors.
+# Copyright 2021 The Dawn & Tint Authors
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # This is the bash script invoked inside a docker container.
 # The script expects that the CWD points to a clean checkout of Dawn.
@@ -130,6 +143,7 @@ if [ "$BUILD_SYSTEM" == "cmake" ]; then
     COMMON_CMAKE_FLAGS+=" -DTINT_BUILD_SPV_WRITER=1"
     COMMON_CMAKE_FLAGS+=" -DTINT_BUILD_WGSL_WRITER=1"
     COMMON_CMAKE_FLAGS+=" -DTINT_RANDOMIZE_HASHES=1"
+    COMMON_CMAKE_FLAGS+=" -DDAWN_USE_BUILT_DXC=1"
 
     if [ "$BUILD_TOOLCHAIN" == "clang" ]; then
         using clang-13.0.1
@@ -138,7 +152,7 @@ if [ "$BUILD_SYSTEM" == "cmake" ]; then
         COMMON_CMAKE_FLAGS+=" -DTINT_BUILD_AST_FUZZER=1"
         COMMON_CMAKE_FLAGS+=" -DTINT_BUILD_REGEX_FUZZER=1"
     elif [ "$BUILD_TOOLCHAIN" == "gcc" ]; then
-        using gcc-10
+        using gcc-13
     fi
 
     if [ "$BUILD_SANITIZER" == "asan" ]; then
@@ -183,6 +197,13 @@ if [ "$BUILD_SYSTEM" == "cmake" ]; then
         ./tint_unittests
     hide_cmds
 
+    if [ -f ./tint_wgsl_fuzzer ]; then
+        status "Checking fuzzers"
+        show_cmds
+            ${SRC_DIR}/tools/run fuzz --check --build ${BUILD_DIR}
+        hide_cmds
+    fi
+
     if [ -f ./tint_ast_fuzzer_unittests ]; then
         status "Running tint_ast_fuzzer_unittests"
         show_cmds
@@ -197,9 +218,14 @@ if [ "$BUILD_SYSTEM" == "cmake" ]; then
         hide_cmds
     fi
 
-    status "Testing test/tint/test-all.sh"
+    status "Testing end-to-end tests"
     show_cmds
-        ${SRC_DIR}/test/tint/test-all.sh "${BUILD_DIR}/tint" --verbose
+        ${SRC_DIR}/tools/run tests --tint "${BUILD_DIR}/tint" --verbose
+    hide_cmds
+
+    status "Testing tools/run tests for SPIR-V IR backend"
+    show_cmds
+        ${SRC_DIR}/tools/run tests --tint "${BUILD_DIR}/tint" --verbose --format spvasm --use-ir
     hide_cmds
 
     status "Checking _other.cc files also build"
@@ -211,9 +237,27 @@ if [ "$BUILD_SYSTEM" == "cmake" ]; then
 
     status "Checking disabling all readers and writers also builds"
     show_cmds
-        cmake ${SRC_DIR} ${CMAKE_FLAGS} ${COMMON_CMAKE_FLAGS} -DTINT_BUILD_SPV_READER=OFF -DTINT_BUILD_SPV_WRITER=OFF -DTINT_BUILD_WGSL_READER=OFF -DTINT_BUILD_WGSL_WRITER=OFF -DTINT_BUILD_MSL_WRITER=OFF -DTINT_BUILD_HLSL_WRITER=OFF -DTINT_BUILD_BENCHMARKS=OFF
-        cmake --build . -- --jobs=$(nproc)
-        cmake ${SRC_DIR} ${CMAKE_FLAGS} ${COMMON_CMAKE_FLAGS} -DTINT_BUILD_SPV_READER=ON -DTINT_BUILD_SPV_WRITER=ON -DTINT_BUILD_WGSL_READER=ON -DTINT_BUILD_WGSL_WRITER=ON -DTINT_BUILD_MSL_WRITER=ON -DTINT_BUILD_HLSL_WRITER=ON -DTINT_BUILD_BENCHMARKS=ON
+        cmake ${SRC_DIR} ${CMAKE_FLAGS} ${COMMON_CMAKE_FLAGS} \
+            -DTINT_BUILD_SPV_READER=OFF \
+            -DTINT_BUILD_SPV_WRITER=OFF \
+            -DTINT_BUILD_WGSL_READER=OFF \
+            -DTINT_BUILD_WGSL_WRITER=OFF \
+            -DTINT_BUILD_MSL_WRITER=OFF \
+            -DTINT_BUILD_HLSL_WRITER=OFF \
+            -DTINT_BUILD_GLSL_WRITER=OFF \
+            -DTINT_BUILD_GLSL_VALIDATOR=OFF \
+            -DTINT_BUILD_BENCHMARKS=OFF
+        cmake --build . --target tint_cmd_tint_cmd -- --jobs=$(nproc)
+        cmake ${SRC_DIR} ${CMAKE_FLAGS} ${COMMON_CMAKE_FLAGS} \
+            -DTINT_BUILD_SPV_READER=ON \
+            -DTINT_BUILD_SPV_WRITER=ON \
+            -DTINT_BUILD_WGSL_READER=ON \
+            -DTINT_BUILD_WGSL_WRITER=ON \
+            -DTINT_BUILD_MSL_WRITER=ON \
+            -DTINT_BUILD_HLSL_WRITER=ON \
+            -DTINT_BUILD_GLSL_WRITER=ON \
+            -DTINT_BUILD_GLSL_VALIDATOR=ON \
+            -DTINT_BUILD_BENCHMARKS=ON
     hide_cmds
 else
     status "Unsupported build system: $BUILD_SYSTEM"

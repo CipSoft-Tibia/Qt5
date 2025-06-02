@@ -524,7 +524,7 @@ TEST_P(VisualRectMappingTest, ContainerFlippedWritingModeAndOverflowScroll) {
   EXPECT_EQ(0, scrollable_area->ScrollPosition().y());
   // The initial scroll offset is to the left-most because of flipped blocks
   // writing mode.
-  // 150 = total_layout_overflow(100 + 100) - width(50)
+  // 150 = total_scrollable_overflow(100 + 100) - width(50)
   EXPECT_EQ(150, scrollable_area->ScrollPosition().x());
   // Scroll to the right by 8 pixels.
   scrollable_area->ScrollToAbsolutePosition(gfx::PointF(142, 7));
@@ -619,7 +619,7 @@ TEST_P(VisualRectMappingTest, ContainerFlippedWritingModeAndOverflowHidden) {
   EXPECT_EQ(0, scrollable_area->ScrollPosition().y());
   // The initial scroll offset is to the left-most because of flipped blocks
   // writing mode.
-  // 150 = total_layout_overflow(100 + 100) - width(50)
+  // 150 = total_scrollable_overflow(100 + 100) - width(50)
   EXPECT_EQ(150, scrollable_area->ScrollPosition().x());
   scrollable_area->ScrollToAbsolutePosition(gfx::PointF(82, 7));
   UpdateAllLifecyclePhasesForTest();
@@ -658,7 +658,7 @@ TEST_P(VisualRectMappingTest, ContainerAndTargetDifferentFlippedWritingMode) {
   EXPECT_EQ(0, scrollable_area->ScrollPosition().y());
   // The initial scroll offset is to the left-most because of flipped blocks
   // writing mode.
-  // 150 = total_layout_overflow(100 + 100) - width(50)
+  // 150 = total_scrollable_overflow(100 + 100) - width(50)
   EXPECT_EQ(150, scrollable_area->ScrollPosition().x());
   // Scroll to the right by 8 pixels.
   scrollable_area->ScrollToAbsolutePosition(gfx::PointF(142, 7));
@@ -1353,6 +1353,35 @@ TEST_P(VisualRectMappingTest, AnchorPositionScroll) {
   // #anchored is moved into view and should have a non-empty visual rect
   CheckVisualRect(anchored, ancestor, PhysicalRect(0, 0, 50, 50),
                   PhysicalRect(100, 50, 50, 50));
+}
+
+TEST_P(VisualRectMappingTest, IgnoreFilters) {
+  SetBodyInnerHTML(R"HTML(
+    <div id="parent">
+      <div id="filter" style="filter: blur(1px)">
+        <div id="child"></div>
+      </div>
+    </div>
+  )HTML");
+
+  auto* parent = GetLayoutBoxByElementId("parent");
+  auto* filter = GetLayoutBoxByElementId("filter");
+  auto* child = GetLayoutBoxByElementId("child");
+  PhysicalRect input(0, 0, 50, 50);
+  PhysicalRect expected_without_filter = input;
+  PhysicalRect expected_with_filter(-3, -3, 56, 56);
+  CheckMapToVisualRectInAncestorSpace(input, expected_without_filter, child,
+                                      filter, kDefaultVisualRectFlags, true);
+  CheckMapToVisualRectInAncestorSpace(input, expected_without_filter, child,
+                                      filter, kIgnoreFilters, true);
+  CheckMapToVisualRectInAncestorSpace(input, expected_with_filter, child,
+                                      parent, kDefaultVisualRectFlags, true);
+  CheckMapToVisualRectInAncestorSpace(input, expected_without_filter, child,
+                                      parent, kIgnoreFilters, true);
+  CheckMapToVisualRectInAncestorSpace(input, expected_with_filter, filter,
+                                      parent, kDefaultVisualRectFlags, true);
+  CheckMapToVisualRectInAncestorSpace(input, expected_without_filter, filter,
+                                      parent, kIgnoreFilters, true);
 }
 
 }  // namespace blink

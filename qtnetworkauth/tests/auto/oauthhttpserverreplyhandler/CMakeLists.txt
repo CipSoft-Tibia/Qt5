@@ -9,7 +9,10 @@
 
 qt_internal_add_test(tst_oauthhttpserverreplyhandler
     SOURCES
+        ../shared/webserver.h
         tst_oauthhttpserverreplyhandler.cpp
+    INCLUDE_DIRECTORIES
+        ../shared
     LIBRARIES
         Qt::CorePrivate
         Qt::Network

@@ -18,20 +18,28 @@ returned by minidom.parse() and their child-nodes:
 
 See individual classes for further detail.
 """
+from __future__ import annotations
 from localetools import Error
 from dateconverter import convert_date
+from typing import Any, Callable, Iterator
+from xml.dom import minidom
 
 # The github version of CLDR uses '↑↑↑' to indicate "inherit"
 INHERIT = '↑↑↑'
 
+def _attrsFromDom(dom: minidom.Element) -> dict[str, str]:
+    return { k: (v if isinstance(v, str) else v.nodeValue)
+             for k, v in dom.attributes.items() }
+
 class Node (object):
     """Wrapper for an arbitrary DOM node.
 
-    Provides various ways to select chldren of a node. Selected child
+    Provides various ways to select children of a node. Selected child
     nodes are returned wrapped as Node objects.  A Node exposes the
     raw DOM node it wraps via its .dom attribute."""
 
-    def __init__(self, elt, dullAttrs = None, draft = 0):
+    def __init__(self, elt: minidom.Element,
+                 dullAttrs: dict[str, tuple[str, ...]]|None = None, draft: int = 0) -> None:
         """Wraps a DOM node for ease of access.
 
         First argument, elt, is the DOM node to wrap.
@@ -47,13 +55,17 @@ class Node (object):
         score of any ancestor of the new node.)"""
         self.dom, self.__dull = elt, dullAttrs
         try:
-            attr = elt.attributes['draft'].nodeValue
+            attr: str = elt.attributes['draft'].nodeValue
         except KeyError:
             self.draft = draft
         else:
             self.draft = max(draft, self.draftScore(attr))
 
-    def findAllChildren(self, tag, wanted = None, allDull = False):
+    def attributes(self) -> dict[str, str]:
+        return _attrsFromDom(self.dom)
+
+    def findAllChildren(self, tag: str, wanted: dict[str, str]|None = None,
+                        allDull: bool = False) -> Iterator[Node]:
         """All children that do have the given tag and attributes.
 
         First argument is the tag: children with any other tag are
@@ -69,7 +81,7 @@ class Node (object):
 
         if self.__dull is None:
             allDull = True
-        dull = () if allDull else self.__dull[tag]
+        dull: tuple[str, ...] = () if allDull else self.__dull[tag]
 
         for child in self.dom.childNodes:
             if child.nodeType != child.ELEMENT_NODE:
@@ -95,14 +107,14 @@ class Node (object):
 
             yield Node(child, self.__dull, self.draft)
 
-    def findUniqueChild(self, tag):
+    def findUniqueChild(self, tag: str) -> Node:
         """Returns the single child with the given nodeName.
 
         Raises Error if there is no such child or there is more than
         one."""
-        seq = self.findAllChildren(tag)
+        seq: Iterator[Node] = self.findAllChildren(tag)
         try:
-            node = next(seq)
+            node: Node = next(seq)
         except StopIteration:
             raise Error('No child found where one was expected', tag)
         for it in seq:
@@ -110,7 +122,7 @@ class Node (object):
         return node
 
     @classmethod
-    def draftScore(cls, level):
+    def draftScore(cls, level: str) -> int:
         """Maps draft level names to numeric scores.
 
         Single parameter, level, is the least sure value of the draft
@@ -132,19 +144,19 @@ class Node (object):
     __draftScores = dict(true = 4, unconfirmed = 3, provisional = 2,
                          contributed = 1, approved = 0, false = 0)
 
-def _parseXPath(selector):
+def _parseXPath(selector: str) -> tuple[str, dict[str, str]]:
     # Split "tag[attr=val][...]" into tag-name and attribute mapping
-    attrs = selector.split('[')
-    name = attrs.pop(0)
+    attrs: list[str] = selector.split('[')
+    name: str = attrs.pop(0)
     if attrs:
         attrs = [x.strip() for x in attrs]
         assert all(x.endswith(']') for x in attrs)
-        attrs = [x[:-1].split('=') for x in attrs]
+        attrs: list[list[str]] = [x[:-1].split('=') for x in attrs]
         assert all(len(x) in (1, 2) for x in attrs)
-        attrs = (('type', x[0]) if len(x) == 1 else x for x in attrs)
+        attrs: Iterator[tuple[str, str]] = (('type', x[0]) if len(x) == 1 else x for x in attrs)
     return name, dict(attrs)
 
-def _iterateEach(iters):
+def _iterateEach(iters: Iterator[Iterator[Any]]) -> Iterator[Any]:
     # Flatten a two-layer iterator.
     for it in iters:
         for item in it:
@@ -153,15 +165,16 @@ def _iterateEach(iters):
 class XmlScanner (object):
     """Wrap an XML file to enable XPath access to its nodes.
     """
-    def __init__(self, node):
+    def __init__(self, node: Node) -> None:
         self.root = node
 
-    def findNodes(self, xpath):
+    def findNodes(self, xpath: str) -> tuple[Node, ...]:
         """Return all nodes under self.root matching this xpath.
 
         Ignores any excess attributes."""
-        elts = (self.root,)
+        elts: tuple[Node, ...] = (self.root,)
         for selector in xpath.split('/'):
+            # tag is a str and attrs is a dict[str, str]
             tag, attrs = _parseXPath(selector)
             elts = tuple(_iterateEach(e.findAllChildren(tag, attrs) for e in elts))
             if not elts:
@@ -169,7 +182,8 @@ class XmlScanner (object):
         return elts
 
 class Supplement (XmlScanner):
-    def find(self, xpath, exclude=()):
+    def find(self, xpath: str,
+             exclude: tuple[str, ...] = ()) -> Iterator[tuple[str, dict[str, str]]]:
         """Finds nodes by matching a specified xpath.
 
         If exclude is passed, it should be a sequence of attribute names (its
@@ -181,21 +195,26 @@ class Supplement (XmlScanner):
         nodeName and attrs is a dict mapping the node's attribute's names to
         their values. For attribute values that are not simple strings, the
         nodeValue of the attribute node is used."""
-        elts = self.findNodes(xpath)
+        elts: tuple[Node, ...] = self.findNodes(xpath)
         for elt in _iterateEach(e.dom.childNodes or (e.dom,)
                                 for e in elts
                                 if not any(a in e.dom.attributes
                                            for a in exclude)):
             if elt.attributes:
-                yield (elt.nodeName,
-                       dict((k, v if isinstance(v, str) else v.nodeValue)
-                            for k, v in elt.attributes.items()))
+                yield elt.nodeName, _attrsFromDom(elt)
 
 class LocaleScanner (object):
-    def __init__(self, name, nodes, root):
+    def __init__(self, name: str, nodes: list[Node], root: XmlScanner) -> None:
+        """Set up to scan data for a specified locale.
+
+        First parameter is the name of the locale; it will be used in
+        error messages. Second is a sequence of DOM root-nodes of files
+        with locale data, later ones serving as fall-backs for data
+        missing in earlier ones. Third parameter is the root locale's
+        DOM node."""
         self.name, self.nodes, self.base = name, nodes, root
 
-    def find(self, xpath, default = None, draft = None):
+    def find(self, xpath: str, default: str|None = None, draft: int|None = None) -> str:
         """XPath search for the content of an element.
 
         Required argument, xpath, is the XPath to search for. Optional
@@ -215,7 +234,7 @@ class LocaleScanner (object):
                 raise
             return default
 
-    def tagCodes(self):
+    def tagCodes(self) -> Iterator[str]:
         """Yields four tag codes
 
         The tag codes are language, script, territory and variant; an
@@ -225,7 +244,7 @@ class LocaleScanner (object):
         top-level <alias> element of this file has a non-empty source
         attribute; that attribute value is mentioned in the error's
         message."""
-        root = self.nodes[0]
+        root: Node = self.nodes[0]
         for alias in root.findAllChildren('alias', allDull=True):
             try:
                 source = alias.dom.attributes['source'].nodeValue
@@ -234,7 +253,7 @@ class LocaleScanner (object):
             else:
                 raise Error(f'Alias to {source}')
 
-        ids = root.findUniqueChild('identity')
+        ids: Node = root.findUniqueChild('identity')
         for code in ('language', 'script', 'territory', 'variant'):
             for node in ids.findAllChildren(code, allDull=True):
                 try:
@@ -246,7 +265,7 @@ class LocaleScanner (object):
             else: # No value for this code, use empty
                 yield ''
 
-    def currencyData(self, isoCode):
+    def currencyData(self, isoCode: str) -> Iterator[tuple[str, str]]:
         """Fetches currency data for this locale.
 
         Single argument, isoCode, is the ISO currency code for the
@@ -254,28 +273,29 @@ class LocaleScanner (object):
         includes some currency formats.
         """
         if isoCode:
-            stem = f'numbers/currencies/currency[{isoCode}]/'
-            symbol = self.find(f'{stem}symbol', '')
-            name = self.__currencyDisplayName(stem)
+            stem: str = f'numbers/currencies/currency[{isoCode}]/'
+            symbol: str = self.find(f'{stem}symbol', '')
+            name: str = self.__currencyDisplayName(stem)
         else:
             symbol = name = ''
         yield 'currencySymbol', symbol
         yield 'currencyDisplayName', name
 
-    def numericData(self, lookup, complain = lambda text: None):
+    def numericData(self, lookup: Callable[[str], dict[str, str]]
+                    ) -> Iterator[tuple[str, str]]:
         """Generate assorted numeric data for the locale.
 
         First argument, lookup, is a callable that maps a numbering
         system's name to certain data about the system, as a mapping;
         we expect this to have 'digits' as a key.
         """
-        system = self.find('numbers/defaultNumberingSystem')
-        stem = f'numbers/symbols[numberSystem={system}]/'
-        decimal = self.find(f'{stem}decimal')
-        group = self.find(f'{stem}group')
+        system: str = self.find('numbers/defaultNumberingSystem')
+        stem: str = f'numbers/symbols[numberSystem={system}]/'
+        decimal: str = self.find(f'{stem}decimal')
+        group: str = self.find(f'{stem}group')
         if decimal == group:
             # mn_Mong_MN @v43 :-(
-            clean = Node.draftScore('approved')
+            clean: int = Node.draftScore('approved')
             decimal = self.find(f'{stem}decimal', draft=clean)
             group = self.find(f'{stem}group', draft=clean)
             assert decimal != group, (self.name, system, decimal)
@@ -287,9 +307,9 @@ class LocaleScanner (object):
         yield 'exp', self.find(f'{stem}exponential')
         yield 'groupSizes', self.__numberGrouping(system)
 
-        digits = lookup(system)['digits']
+        digits: str = lookup(system)['digits']
         assert len(digits) == 10
-        zero = digits[0]
+        zero: str = digits[0]
         # Qt's number-formatting code assumes digits are consecutive
         # (except Suzhou - see QTBUG-85409 - which shares its zero
         # with CLDR's very-non-contiguous hanidec):
@@ -297,15 +317,15 @@ class LocaleScanner (object):
                    for i, c in enumerate(digits[1:], 1))
         yield 'zero', zero
 
-        plus = self.find(f'{stem}plusSign')
-        minus = self.find(f'{stem}minusSign')
+        plus: str = self.find(f'{stem}plusSign')
+        minus: str = self.find(f'{stem}minusSign')
         yield 'plus', plus
         yield 'minus', minus
 
         # Currency formatting:
         xpath = 'numbers/currencyFormats/currencyFormatLength/currencyFormat[accounting]/pattern'
         try:
-            money = self.find(xpath.replace('Formats/',
+            money: str = self.find(xpath.replace('Formats/',
                                             f'Formats[numberSystem={system}]/'))
         except Error:
             money = self.find(xpath)
@@ -317,7 +337,7 @@ class LocaleScanner (object):
             neg = it
         yield 'currencyNegativeFormat', neg
 
-    def textPatternData(self):
+    def textPatternData(self) -> Iterator[tuple[str, str]]:
         for key in ('quotationStart', 'alternateQuotationEnd',
                     'quotationEnd', 'alternateQuotationStart'):
             yield key, self.find(f'delimiters/{key}')
@@ -344,8 +364,10 @@ class LocaleScanner (object):
                        convert_date(self.find(
                             f'{stem}{key}Formats/{key}FormatLength[{pair[1]}]/{key}Format/pattern')))
 
-    def endonyms(self, language, script, territory, variant):
+    def endonyms(self, language: str, script: str, territory: str, variant: str
+                 ) -> Iterator[tuple[str, str]]:
         # TODO: take variant into account ?
+        # TODO: QTBUG-47892, support query for all combinations
         for seq in ((language, script, territory),
                     (language, script), (language, territory), (language,)):
             if not all(seq):
@@ -364,12 +386,12 @@ class LocaleScanner (object):
         yield ('territoryEndonym',
                self.find(f'localeDisplayNames/territories/territory[{territory}]', ''))
 
-    def unitData(self):
+    def unitData(self) -> Iterator[tuple[str, str]]:
         yield ('byte_unit',
                self.find('units/unitLength[long]/unit[digital-byte]/displayName',
                          'bytes'))
 
-        unit = self.__findUnit('', 'B')
+        unit: str | None = self.__findUnit('', 'B')
         cache = [] # Populated by the SI call, to give hints to the IEC call
         yield ('byte_si_quantified',
                ';'.join(self.__unitCount('', unit, cache)))
@@ -378,8 +400,8 @@ class LocaleScanner (object):
         yield ('byte_iec_quantified',
                ';'.join(self.__unitCount('bi', 'iB', cache)))
 
-    def calendarNames(self, calendars):
-        namings = self.__nameForms
+    def calendarNames(self, calendars: list[str]) -> Iterator[tuple[str, str]]:
+        namings: tuple[tuple[str, str, str], ...] = self.__nameForms
         for cal in calendars:
             stem = f'dates/calendars/calendar[{cal}]/months/'
             for key, mode, size in namings:
@@ -405,13 +427,17 @@ class LocaleScanner (object):
         ('long', 'format', 'wide'),
         ('short', 'format', 'abbreviated'),
         ('narrow', 'format', 'narrow'),
-        ) # Used for month and day names
+    ) # Used for month and day names
 
-    def __find(self, xpath):
-        retries, foundNone = [ xpath.split('/') ], True
+    def __find(self, xpath: str) -> Iterator[Node]:
+        retries: list[list[str]] = [ xpath.split('/') ]
+        foundNone: bool = True
         while retries:
-            tags, elts, roots = retries.pop(), self.nodes, (self.base.root,)
+            tags: list[str] = retries.pop()
+            elts: tuple[Node, ...] = tuple(self.nodes)
+            roots: tuple[Node] = (self.base.root,)
             for selector in tags:
+                # tag is a str, attrs is a dict[str, str]
                 tag, attrs = _parseXPath(selector)
                 elts = tuple(_iterateEach(e.findAllChildren(tag, attrs) for e in elts))
                 if not elts:
@@ -428,12 +454,13 @@ class LocaleScanner (object):
             # Process roots separately: otherwise the alias-processing
             # is excessive.
             for i, selector in enumerate(tags):
+                # tag is a str, attrs is a dict[str, str]
                 tag, attrs = _parseXPath(selector)
 
                 for alias in tuple(_iterateEach(r.findAllChildren('alias', allDull=True)
                                                 for r in roots)):
                     if alias.dom.attributes['source'].nodeValue == 'locale':
-                        replace = alias.dom.attributes['path'].nodeValue.split('/')
+                        replace: list[str] = alias.dom.attributes['path'].nodeValue.split('/')
                         retries.append(self.__xpathJoin(tags[:i], replace, tags[i:]))
 
                 roots = tuple(_iterateEach(r.findAllChildren(tag, attrs) for r in roots))
@@ -460,7 +487,7 @@ class LocaleScanner (object):
             raise Error(f'No {sought} in {self.name}')
 
     @staticmethod
-    def __skipInheritors(elts):
+    def __skipInheritors(elts: tuple[Node, ...]) -> Iterator[Node]:
         for elt in elts:
             try:
                 if elt.dom.firstChild.nodeValue != INHERIT:
@@ -468,19 +495,19 @@ class LocaleScanner (object):
             except (AttributeError, KeyError):
                 yield elt
 
-    def __currencyDisplayName(self, stem):
+    def __currencyDisplayName(self, stem: str) -> str | None:
         try:
             return self.find(stem + 'displayName')
         except Error:
             pass
-        for x in  ('zero', 'one', 'two', 'few', 'many', 'other'):
+        for x in ('zero', 'one', 'two', 'few', 'many', 'other'):
             try:
                 return self.find(f'{stem}displayName[count={x}]')
             except Error:
                 pass
         return ''
 
-    def __findUnit(self, keySuffix, quantify, fallback=''):
+    def __findUnit(self, keySuffix: str, quantify: str, fallback: str = '') -> str:
         # The displayName for a quantified unit in en.xml is kByte
         # (even for unitLength[narrow]) instead of kB (etc.), so
         # prefer any unitPattern provided, but prune its placeholder:
@@ -488,7 +515,7 @@ class LocaleScanner (object):
             stem = f'units/unitLength[{size}{keySuffix}]/unit[digital-{quantify}byte]/'
             for count in ('many', 'few', 'two', 'other', 'zero', 'one'):
                 try:
-                    ans = self.find(f'{stem}unitPattern[count={count}]')
+                    ans: str = self.find(f'{stem}unitPattern[count={count}]')
                 except Error:
                     continue
 
@@ -507,10 +534,11 @@ class LocaleScanner (object):
 
         return fallback
 
-    def __unitCount(self, keySuffix, suffix, cache,
+    def __unitCount(self, keySuffix: str, suffix: str, cache: list[str],
                     # Stop at exa/exbi: 16 exbi = 2^{64} < zetta =
                     # 1000^7 < zebi = 2^{70}, the next quantifiers up:
-                    siQuantifiers = ('kilo', 'mega', 'giga', 'tera', 'peta', 'exa')):
+                    siQuantifiers: tuple[str, ...] = ('kilo',
+                    'mega', 'giga', 'tera', 'peta', 'exa')) -> Iterator[str]:
         """Work out the unit quantifiers.
 
         Unfortunately, the CLDR data only go up to terabytes and we
@@ -536,7 +564,7 @@ class LocaleScanner (object):
         else: # first call
             tail = suffix = suffix or 'B'
             for q in siQuantifiers:
-                it = self.__findUnit(keySuffix, q)
+                it: str | None = self.__findUnit(keySuffix, q)
                 # kB for kilobyte, in contrast with KiB for IEC:
                 q = q[0] if q == 'kilo' else q[0].upper()
                 if not it:
@@ -547,7 +575,7 @@ class LocaleScanner (object):
                     cache.append(rest)
                 yield it
 
-    def __numberGrouping(self, system):
+    def __numberGrouping(self, system: str) -> tuple[int, int, int]:
         """Sizes of groups of digits within a number.
 
         Returns a triple (least, higher, top) for which:
@@ -567,9 +595,9 @@ class LocaleScanner (object):
         elsewhere)."""
         top = int(self.find('numbers/minimumGroupingDigits'))
         assert top < 4, top # We store it in a 2-bit field
-        grouping = self.find(f'numbers/decimalFormats[numberSystem={system}]/'
+        grouping: str | None = self.find(f'numbers/decimalFormats[numberSystem={system}]/'
                              'decimalFormatLength/decimalFormat/pattern')
-        groups = grouping.split('.')[0].split(',')[-3:]
+        groups: list[str] = grouping.split('.')[0].split(',')[-3:]
         assert all(len(x) < 8 for x in groups[-2:]), grouping # we store them in 3-bit fields
         if len(groups) > 2:
             return len(groups[-1]), len(groups[-2]), top
@@ -578,7 +606,7 @@ class LocaleScanner (object):
         return size, size, top
 
     @staticmethod
-    def __currencyFormats(patterns, plus, minus):
+    def __currencyFormats(patterns: str, plus: str, minus: str) -> Iterator[str]:
         for p in patterns.split(';'):
             p = p.replace('0', '#').replace(',', '').replace('.', '')
             try:
@@ -599,17 +627,17 @@ class LocaleScanner (object):
             yield p
 
     @staticmethod
-    def __fromLdmlListPattern(pattern):
+    def __fromLdmlListPattern(pattern: str) -> str:
         # This is a very limited parsing of the format for list pattern part only.
         return pattern.replace('{0}', '%1').replace('{1}', '%2').replace('{2}', '%3')
 
     @staticmethod
-    def __fromLdmlPath(seq): # tool function for __xpathJoin()
+    def __fromLdmlPath(seq: list[str]) -> Iterator[str]: # tool function for __xpathJoin()
         """Convert LDML's [@name='value'] to our [name=value] form."""
         for it in seq:
             # First dismember it:
-            attrs = it.split('[')
-            tag = attrs.pop(0)
+            attrs: list[str] = it.split('[')
+            tag: str = attrs.pop(0)
             if not attrs: # Short-cut the easy case:
                 yield it
                 continue
@@ -626,7 +654,7 @@ class LocaleScanner (object):
             yield '['.join(attrs)
 
     @classmethod
-    def __xpathJoin(cls, head, insert, tail):
+    def __xpathJoin(cls, head: list[str], insert: list[str], tail: list[str]) -> list[str]:
         """Join three lists of XPath selectors.
 
         Each of head, insert and tail is a sequence of selectors but

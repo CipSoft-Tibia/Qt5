@@ -17,7 +17,10 @@
 #include <QtNetwork/qsslserver.h>
 #include <QtNetwork/qsslcertificate.h>
 #include <QtNetwork/qsslkey.h>
+#include <QtNetwork/qsslsocket.h>
 #endif
+
+#include <QtTest/private/qtesthelpers_p.h>
 
 #include <utility>
 
@@ -1132,6 +1135,11 @@ void tst_QWebSocket::authenticationRequired_data()
         qDebug("Skipping the SslServer part of this test because proper TLS is not supported.");
         return;
     }
+    if (QTestPrivate::isSecureTransportBlockingTest()) {
+        qDebug("SecureTransport is blocking in keychain access.");
+        return;
+    }
+
     // And double that, but now with TLS
     for (auto &server : serverScenarios) {
         server.withEncryption = true;
@@ -1361,7 +1369,7 @@ void tst_QWebSocket::customHeader()
         QVERIFY(serverSocketSpy.wait());
         data.append(serverSocket->readAll());
     }
-    QVERIFY(data.contains("CustomHeader: Example"));
+    QVERIFY(QLatin1StringView(data).contains("CustomHeader: Example"_L1, Qt::CaseInsensitive));
     const auto view = QLatin1String(data);
     const auto keyHeader = QLatin1String("Sec-WebSocket-Key:");
     const qsizetype keyStart = view.indexOf(keyHeader, 0, Qt::CaseInsensitive) + keyHeader.size();

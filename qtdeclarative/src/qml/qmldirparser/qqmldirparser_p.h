@@ -25,7 +25,7 @@
 QT_BEGIN_NAMESPACE
 
 class QQmlEngine;
-class Q_QML_COMPILER_PRIVATE_EXPORT QQmlDirParser
+class Q_QML_COMPILER_EXPORT QQmlDirParser
 {
 public:
     void clear();
@@ -129,7 +129,12 @@ public:
     QList<Script> scripts() const { return _scripts; }
     QList<Plugin> plugins() const { return _plugins; }
     bool designerSupported() const { return _designerSupported; }
+
+    // A static module has side effects outside the mere importing of types. We shall not warn
+    // about it being being "unused". The builtins are also a static module.
     bool isStaticModule() const { return _isStaticModule; }
+
+    // A system module includes the JavaScript root object
     bool isSystemModule() const { return _isSystemModule; }
 
     QStringList typeInfos() const { return _typeInfos; }
@@ -140,6 +145,8 @@ public:
 private:
     bool maybeAddComponent(const QString &typeName, const QString &fileName, const QString &version, QHash<QString,Component> &hash, int lineNumber = -1, bool multi = true);
     void reportError(quint16 line, quint16 column, const QString &message);
+    void insertComponentOrScript(
+            const QString &name, const QString &fileName, QTypeRevision version);
 
 private:
     QList<QQmlJS::DiagnosticMessage> _errors;

@@ -25,6 +25,7 @@
 #include "vulkan_spirv.h"
 #include "internal.h"
 #include "transpose.h"
+#include "video.h"
 
 typedef struct TransposeVulkanContext {
     FFVulkanContext vkctx;
@@ -119,8 +120,6 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
     RET(ff_vk_exec_pipeline_register(vkctx, &s->e, &s->pl));
 
     s->initialized = 1;
-
-    return 0;
 
 fail:
     if (spv_opaque)

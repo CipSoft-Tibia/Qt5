@@ -4,6 +4,7 @@
 #include "playbackengine/qffmpegaudiorenderer_p.h"
 #include "qaudiosink.h"
 #include "qaudiooutput.h"
+#include "qaudiobufferoutput.h"
 #include "private/qplatformaudiooutput_p.h"
 #include <QtCore/qloggingcategory.h>
 
@@ -56,10 +57,25 @@ qreal sampleRateFactor() {
 
     return result;
 }
+
+QAudioFormat audioFormatFromFrame(const Frame &frame)
+{
+    return QFFmpegMediaFormatInfo::audioFormatFromCodecParameters(
+            *frame.codecContext()->stream()->codecpar);
+}
+
+std::unique_ptr<QFFmpegResampler> createResampler(const Frame &frame,
+                                                  const QAudioFormat &outputFormat)
+{
+    return std::make_unique<QFFmpegResampler>(frame.codecContext(), outputFormat,
+                                              frame.startTime().get());
+}
+
 } // namespace
 
-AudioRenderer::AudioRenderer(const TimeController &tc, QAudioOutput *output)
-    : Renderer(tc), m_output(output)
+AudioRenderer::AudioRenderer(const TimeController &tc, QAudioOutput *output,
+                             QAudioBufferOutput *bufferOutput)
+    : Renderer(tc), m_output(output), m_bufferOutput(bufferOutput)
 {
     if (output) {
         // TODO: implement the signals in QPlatformAudioOutput and connect to them, QTBUG-112294
@@ -72,6 +88,12 @@ AudioRenderer::AudioRenderer(const TimeController &tc, QAudioOutput *output)
 void AudioRenderer::setOutput(QAudioOutput *output)
 {
     setOutputInternal(m_output, output, [this](QAudioOutput *) { onDeviceChanged(); });
+}
+
+void AudioRenderer::setOutput(QAudioBufferOutput *bufferOutput)
+{
+    setOutputInternal(m_bufferOutput, bufferOutput,
+                      [this](QAudioBufferOutput *) { m_bufferOutputChanged = true; });
 }
 
 AudioRenderer::~AudioRenderer()
@@ -93,17 +115,32 @@ void AudioRenderer::onDeviceChanged()
 Renderer::RenderingResult AudioRenderer::renderInternal(Frame frame)
 {
     if (frame.isValid())
-        updateOutput(frame.codec());
+        updateOutputs(frame);
 
+    // push to sink first in order not to waste time on resampling
+    // for QAudioBufferOutput
+    const RenderingResult result = pushFrameToOutput(frame);
+
+    if (m_lastFramePushDone)
+        pushFrameToBufferOutput(frame);
+    // else // skip pushing the same data to QAudioBufferOutput
+
+    m_lastFramePushDone = result.done;
+
+    return result;
+}
+
+AudioRenderer::RenderingResult AudioRenderer::pushFrameToOutput(const Frame &frame)
+{
     if (!m_ioDevice || !m_resampler)
         return {};
 
     Q_ASSERT(m_sink);
 
-    auto firstFrameFlagGuard = qScopeGuard([&]() { m_firstFrame = false; });
+    auto firstFrameFlagGuard = qScopeGuard([&]() { m_firstFrameToSink = false; });
 
     const SynchronizationStamp syncStamp{ m_sink->state(), m_sink->bytesFree(),
-                                          m_bufferedData.offset, Clock::now() };
+                                          m_bufferedData.offset, RealClock::now() };
 
     if (!m_bufferedData.isValid()) {
         if (!frame.isValid()) {
@@ -143,50 +180,54 @@ Renderer::RenderingResult AudioRenderer::renderInternal(Frame frame)
     return {};
 }
 
+void AudioRenderer::pushFrameToBufferOutput(const Frame &frame)
+{
+    if (!m_bufferOutput)
+        return;
+
+    if (frame.isValid()) {
+        Q_ASSERT(m_bufferOutputResampler);
+
+        // TODO: get buffer from m_bufferedData if resample formats are equal
+        QAudioBuffer buffer = m_bufferOutputResampler->resample(frame.avFrame());
+        emit m_bufferOutput->audioBufferReceived(buffer);
+    } else {
+        emit m_bufferOutput->audioBufferReceived({});
+    }
+}
+
 void AudioRenderer::onPlaybackRateChanged()
 {
     m_resampler.reset();
 }
 
-int AudioRenderer::timerInterval() const
+std::chrono::milliseconds AudioRenderer::timerInterval() const
 {
-    constexpr auto MaxFixableInterval = 50; // ms
+    constexpr auto MaxFixableInterval = 50ms;
 
     const auto interval = Renderer::timerInterval();
 
-    if (m_firstFrame || !m_sink || m_sink->state() != QAudio::IdleState
+    if (m_firstFrameToSink || !m_sink || m_sink->state() != QAudio::IdleState
         || interval > MaxFixableInterval)
         return interval;
 
-    return 0;
+    return 0ms;
 }
 
 void AudioRenderer::onPauseChanged()
 {
-    m_firstFrame = true;
+    m_firstFrameToSink = true;
     Renderer::onPauseChanged();
 }
 
-void AudioRenderer::initResempler(const Codec *codec)
+void AudioRenderer::initResampler(const Frame &frame)
 {
     // We recreate resampler whenever format is changed
 
-    /*    AVSampleFormat requiredFormat =
-    QFFmpegMediaFormatInfo::avSampleFormat(m_format.sampleFormat());
-
-    #if QT_FFMPEG_OLD_CHANNEL_LAYOUT
-        qCDebug(qLcAudioRenderer) << "init resampler" << requiredFormat
-                                  << codec->stream()->codecpar->channels;
-    #else
-        qCDebug(qLcAudioRenderer) << "init resampler" << requiredFormat
-                                  << codec->stream()->codecpar->ch_layout.nb_channels;
-    #endif
-    */
-
-    auto resamplerFormat = m_format;
+    auto resamplerFormat = m_sinkFormat;
     resamplerFormat.setSampleRate(
-            qRound(m_format.sampleRate() / playbackRate() * sampleRateFactor()));
-    m_resampler = std::make_unique<QFFmpegResampler>(codec, resamplerFormat);
+            qRound(m_sinkFormat.sampleRate() / playbackRate() * sampleRateFactor()));
+    m_resampler = createResampler(frame, resamplerFormat);
 }
 
 void AudioRenderer::freeOutput()
@@ -203,34 +244,47 @@ void AudioRenderer::freeOutput()
 
     m_bufferedData = {};
     m_deviceChanged = false;
+    m_sinkFormat = {};
     m_timings = {};
     m_bufferLoadingInfo = {};
 }
 
-void AudioRenderer::updateOutput(const Codec *codec)
+void AudioRenderer::updateOutputs(const Frame &frame)
 {
     if (m_deviceChanged) {
         freeOutput();
-        m_format = {};
         m_resampler.reset();
+    }
+
+    if (m_bufferOutput) {
+        if (m_bufferOutputChanged) {
+            m_bufferOutputChanged = false;
+            m_bufferOutputResampler.reset();
+        }
+
+        if (!m_bufferOutputResampler) {
+            QAudioFormat outputFormat = m_bufferOutput->format();
+            if (!outputFormat.isValid())
+                outputFormat = audioFormatFromFrame(frame);
+            m_bufferOutputResampler = createResampler(frame, outputFormat);
+        }
     }
 
     if (!m_output)
         return;
 
-    if (!m_format.isValid()) {
-        m_format =
-                QFFmpegMediaFormatInfo::audioFormatFromCodecParameters(codec->stream()->codecpar);
-        m_format.setChannelConfig(m_output->device().channelConfiguration());
+    if (!m_sinkFormat.isValid()) {
+        m_sinkFormat = audioFormatFromFrame(frame);
+        m_sinkFormat.setChannelConfig(m_output->device().channelConfiguration());
     }
 
     if (!m_sink) {
         // Insert a delay here to test time offset synchronization, e.g. QThread::sleep(1)
-        m_sink = std::make_unique<QAudioSink>(m_output->device(), m_format);
+        m_sink = std::make_unique<QAudioSink>(m_output->device(), m_sinkFormat);
         updateVolume();
-        m_sink->setBufferSize(m_format.bytesForDuration(DesiredBufferTime.count()));
+        m_sink->setBufferSize(m_sinkFormat.bytesForDuration(DesiredBufferTime.count()));
         m_ioDevice = m_sink->start();
-        m_firstFrame = true;
+        m_firstFrameToSink = true;
 
         connect(m_sink.get(), &QAudioSink::stateChanged, this,
                 &AudioRenderer::onAudioSinkStateChanged);
@@ -244,9 +298,8 @@ void AudioRenderer::updateOutput(const Codec *codec)
                  && m_timings.maxSoundDelay < m_timings.actualBufferDuration);
     }
 
-    if (!m_resampler) {
-        initResempler(codec);
-    }
+    if (!m_resampler)
+        initResampler(frame);
 }
 
 void AudioRenderer::updateSynchronization(const SynchronizationStamp &stamp, const Frame &frame)
@@ -269,7 +322,7 @@ void AudioRenderer::updateSynchronization(const SynchronizationStamp &stamp, con
             // clang-format off
             qCDebug(qLcAudioRenderer)
                 << "Change rendering time:"
-                << "\n  First frame:" << m_firstFrame
+                << "\n  First frame:" << m_firstFrameToSink
                 << "\n  Delay (frame+buffer-written):" << currentFrameDelay << "+"
                                                        << bufferLoadingTime << "-"
                                                        << writtenTime << "="
@@ -306,7 +359,7 @@ void AudioRenderer::updateSynchronization(const SynchronizationStamp &stamp, con
                                       : qMax(soundDelay, fixedDelay);
 
         if (stamp.timePoint - m_bufferLoadingInfo.timePoint > BufferLoadingMeasureTime
-            || (m_firstFrame && isHigh) || shouldHandleIdle) {
+            || (m_firstFrameToSink && isHigh) || shouldHandleIdle) {
             const auto targetDelay = isHigh
                     ? (m_timings.maxSoundDelay + m_timings.minSoundDelay) / 2
                     : m_timings.minSoundDelay + DurationBias;
@@ -339,13 +392,13 @@ microseconds AudioRenderer::bufferLoadingTime(const SynchronizationStamp &syncSt
 
 void AudioRenderer::onAudioSinkStateChanged(QAudio::State state)
 {
-    if (state == QAudio::IdleState && !m_firstFrame)
+    if (state == QAudio::IdleState && !m_firstFrameToSink && !m_deviceChanged)
         scheduleNextStep();
 }
 
 microseconds AudioRenderer::durationForBytes(qsizetype bytes) const
 {
-    return microseconds(m_format.durationForBytes(static_cast<qint32>(bytes)));
+    return microseconds(m_sinkFormat.durationForBytes(static_cast<qint32>(bytes)));
 }
 
 } // namespace QFFmpeg

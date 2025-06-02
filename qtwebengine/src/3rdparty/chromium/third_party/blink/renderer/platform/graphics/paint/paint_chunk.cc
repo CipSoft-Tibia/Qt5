@@ -33,9 +33,9 @@ struct SameSizeAsPaintChunk {
   PaintChunk::Id id;
   PaintChunk::BackgroundColorInfo background_color;
   PropertyTreeState properties;
-  void* hit_test_data;
-  void* region_capture_data;
-  void* layer_selection;
+  std::unique_ptr<int> hit_test_data;
+  std::unique_ptr<int> region_capture_data;
+  std::unique_ptr<int> layer_selection;
   gfx::Rect bounds;
   gfx::Rect drawable_bounds;
   gfx::Rect rect_known_to_be_opaque;

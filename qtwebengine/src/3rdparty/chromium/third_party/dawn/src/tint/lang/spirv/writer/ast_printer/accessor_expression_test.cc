@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/spirv/writer/ast_printer/helper_test.h"
 #include "src/tint/lang/spirv/writer/common/spv_dump_test.h"
@@ -95,6 +108,84 @@ TEST_F(SpirvASTPrinterTest, Runtime_IndexAccessor_Vector) {
     auto* ary = Var("ary", ty.vec3<u32>());
     auto* x = Var("x", IndexAccessor(ary, 1_i));
     WrapInFunction(ary, x);
+
+    Builder& b = SanitizeAndBuild();
+
+    ASSERT_TRUE(b.Build()) << b.Diagnostics();
+
+    EXPECT_EQ(DumpInstructions(b.Module().Types()), R"(%2 = OpTypeVoid
+%1 = OpTypeFunction %2
+%8 = OpTypeInt 32 0
+%7 = OpTypeVector %8 3
+%6 = OpTypePointer Function %7
+%9 = OpConstantNull %7
+%10 = OpTypeInt 32 1
+%11 = OpConstant %10 1
+%12 = OpTypePointer Function %8
+%16 = OpConstantNull %8
+)");
+    EXPECT_EQ(DumpInstructions(b.Module().Functions()[0].variables()),
+              R"(%5 = OpVariable %6 Function %9
+%15 = OpVariable %12 Function %16
+)");
+    EXPECT_EQ(DumpInstructions(b.Module().Functions()[0].instructions()),
+              R"(%13 = OpAccessChain %12 %5 %11
+%14 = OpLoad %8 %13
+OpStore %15 %14
+OpReturn
+)");
+
+    Validate(b);
+}
+
+TEST_F(SpirvASTPrinterTest, Runtime_IndexAccessor_Vector_ViaDerefPointerIndex) {
+    // var ary : vec3<u32>;
+    // let p = &ary;
+    // var x = (*p)[1i];
+
+    auto* ary = Var("ary", ty.vec3<u32>());
+    auto* p = Let("p", AddressOf("ary"));
+    auto* x = Var("x", IndexAccessor(Deref(p), 1_i));
+    WrapInFunction(ary, p, x);
+
+    Builder& b = SanitizeAndBuild();
+
+    ASSERT_TRUE(b.Build()) << b.Diagnostics();
+
+    EXPECT_EQ(DumpInstructions(b.Module().Types()), R"(%2 = OpTypeVoid
+%1 = OpTypeFunction %2
+%8 = OpTypeInt 32 0
+%7 = OpTypeVector %8 3
+%6 = OpTypePointer Function %7
+%9 = OpConstantNull %7
+%10 = OpTypeInt 32 1
+%11 = OpConstant %10 1
+%12 = OpTypePointer Function %8
+%16 = OpConstantNull %8
+)");
+    EXPECT_EQ(DumpInstructions(b.Module().Functions()[0].variables()),
+              R"(%5 = OpVariable %6 Function %9
+%15 = OpVariable %12 Function %16
+)");
+    EXPECT_EQ(DumpInstructions(b.Module().Functions()[0].instructions()),
+              R"(%13 = OpAccessChain %12 %5 %11
+%14 = OpLoad %8 %13
+OpStore %15 %14
+OpReturn
+)");
+
+    Validate(b);
+}
+
+TEST_F(SpirvASTPrinterTest, Runtime_IndexAccessor_Vector_ViaPointerIndex) {
+    // var ary : vec3<u32>;
+    // let p = &ary;
+    // var x = p[1i];
+
+    auto* ary = Var("ary", ty.vec3<u32>());
+    auto* p = Let("p", AddressOf("ary"));
+    auto* x = Var("x", IndexAccessor(p, 1_i));
+    WrapInFunction(ary, p, x);
 
     Builder& b = SanitizeAndBuild();
 
@@ -938,6 +1029,96 @@ TEST_F(SpirvASTPrinterTest, MemberAccessor) {
 
     auto* expr = MemberAccessor("ident", "b");
     WrapInFunction(var, expr);
+
+    Builder& b = SanitizeAndBuild();
+
+    ASSERT_TRUE(b.Build()) << b.Diagnostics();
+
+    EXPECT_EQ(DumpInstructions(b.Module().Types()), R"(%2 = OpTypeVoid
+%1 = OpTypeFunction %2
+%8 = OpTypeFloat 32
+%7 = OpTypeStruct %8 %8
+%6 = OpTypePointer Function %7
+%9 = OpConstantNull %7
+%10 = OpTypeInt 32 0
+%11 = OpConstant %10 1
+%12 = OpTypePointer Function %8
+)");
+    EXPECT_EQ(DumpInstructions(b.Module().Functions()[0].variables()),
+              R"(%5 = OpVariable %6 Function %9
+)");
+    EXPECT_EQ(DumpInstructions(b.Module().Functions()[0].instructions()),
+              R"(%13 = OpAccessChain %12 %5 %11
+%14 = OpLoad %8 %13
+OpReturn
+)");
+
+    Validate(b);
+}
+
+TEST_F(SpirvASTPrinterTest, MemberAccessor_ViaDerefPointerDot) {
+    // my_struct {
+    //   a : f32
+    //   b : f32
+    // }
+    // var ident : my_struct
+    // let p = &ident;
+    // (*p).b
+
+    auto* s = Structure("my_struct", Vector{
+                                         Member("a", ty.f32()),
+                                         Member("b", ty.f32()),
+                                     });
+
+    auto* var = Var("ident", ty.Of(s));
+    auto* p = Let("p", AddressOf(var));
+    auto* expr = MemberAccessor(Deref(p), "b");
+    WrapInFunction(var, p, expr);
+
+    Builder& b = SanitizeAndBuild();
+
+    ASSERT_TRUE(b.Build()) << b.Diagnostics();
+
+    EXPECT_EQ(DumpInstructions(b.Module().Types()), R"(%2 = OpTypeVoid
+%1 = OpTypeFunction %2
+%8 = OpTypeFloat 32
+%7 = OpTypeStruct %8 %8
+%6 = OpTypePointer Function %7
+%9 = OpConstantNull %7
+%10 = OpTypeInt 32 0
+%11 = OpConstant %10 1
+%12 = OpTypePointer Function %8
+)");
+    EXPECT_EQ(DumpInstructions(b.Module().Functions()[0].variables()),
+              R"(%5 = OpVariable %6 Function %9
+)");
+    EXPECT_EQ(DumpInstructions(b.Module().Functions()[0].instructions()),
+              R"(%13 = OpAccessChain %12 %5 %11
+%14 = OpLoad %8 %13
+OpReturn
+)");
+
+    Validate(b);
+}
+
+TEST_F(SpirvASTPrinterTest, MemberAccessor_ViaPointerDot) {
+    // my_struct {
+    //   a : f32
+    //   b : f32
+    // }
+    // var ident : my_struct
+    // let p = &ident;
+    // p.b
+
+    auto* s = Structure("my_struct", Vector{
+                                         Member("a", ty.f32()),
+                                         Member("b", ty.f32()),
+                                     });
+
+    auto* var = Var("ident", ty.Of(s));
+    auto* p = Let("p", AddressOf(var));
+    auto* expr = MemberAccessor(p, "b");
+    WrapInFunction(var, p, expr);
 
     Builder& b = SanitizeAndBuild();
 

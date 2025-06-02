@@ -13,6 +13,8 @@ namespace scheduler {
 
 namespace {
 
+std::atomic_bool disable_align_wake_ups{false};
+
 struct FeatureNames {
   std::string short_name;
   std::string human_readable;
@@ -130,6 +132,12 @@ FeatureNames FeatureToNames(WebSchedulerTrackedFeature feature) {
       return {"IndexedDBEvent", "IndexedDB event is pending"};
     case WebSchedulerTrackedFeature::kWebSerial:
       return {"WebSerial", "Serial port open"};
+    case WebSchedulerTrackedFeature::kSmartCard:
+      return {"SmartCard", "SmartCardContext used"};
+    case WebSchedulerTrackedFeature::kLiveMediaStreamTrack:
+      return {"LiveMediaStreamTrack", "page has live MediaStreamTrack"};
+    case WebSchedulerTrackedFeature::kUnloadHandler:
+      return {"UnloadHandler", "page contains unload handler"};
   }
   return {};
 }
@@ -221,6 +229,16 @@ WebSchedulerTrackedFeatures StickyFeatures() {
           WebSchedulerTrackedFeature::kWebRTCSticky,
           WebSchedulerTrackedFeature::kWebSocketSticky,
           WebSchedulerTrackedFeature::kWebTransportSticky};
+}
+
+// static
+void DisableAlignWakeUpsForProcess() {
+  disable_align_wake_ups.store(true, std::memory_order_relaxed);
+}
+
+// static
+bool IsAlignWakeUpsDisabledForProcess() {
+  return disable_align_wake_ups.load(std::memory_order_relaxed);
 }
 
 // static

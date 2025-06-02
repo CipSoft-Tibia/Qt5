@@ -69,7 +69,7 @@ QVariant TwitterTimelineModel::headerData(int section, Qt::Orientation orientati
     return section;
 }
 
-void TwitterTimelineModel::authenticate(const QPair<QString, QString> &clientCredentials)
+void TwitterTimelineModel::authenticate(const std::pair<QString, QString> &clientCredentials)
 {
     twitter.setClientCredentials(clientCredentials);
     twitter.grant();

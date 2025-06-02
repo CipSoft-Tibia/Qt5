@@ -27,11 +27,10 @@ namespace quic {
 
 // An implementation of QuicCryptoServerStreamBase which uses
 // TLS 1.3 for the crypto handshake protocol.
-class QUIC_EXPORT_PRIVATE TlsServerHandshaker
-    : public TlsHandshaker,
-      public TlsServerConnection::Delegate,
-      public ProofSourceHandleCallback,
-      public QuicCryptoServerStreamBase {
+class QUICHE_EXPORT TlsServerHandshaker : public TlsHandshaker,
+                                          public TlsServerConnection::Delegate,
+                                          public ProofSourceHandleCallback,
+                                          public QuicCryptoServerStreamBase {
  public:
   // |crypto_config| must outlive TlsServerHandshaker.
   TlsServerHandshaker(QuicSession* session,
@@ -99,6 +98,10 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   virtual std::string GetAcceptChValueForHostname(
       const std::string& hostname) const;
 
+  // Returns whether server uses new ALPS codepoint to negotiate application
+  // settings. If client sends new ALPS codepoint in ClientHello, return true.
+  bool UseAlpsNewCodepoint() const;
+
   // Get the ClientCertMode that is currently in effect on this handshaker.
   ClientCertMode client_cert_mode() const {
     return tls_connection_.ssl_config().client_cert_mode;
@@ -164,7 +167,7 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   TlsConnection::Delegate* ConnectionDelegate() override { return this; }
 
   // The status of cert selection. nullopt means it hasn't started.
-  const absl::optional<QuicAsyncStatus>& select_cert_status() const {
+  const std::optional<QuicAsyncStatus>& select_cert_status() const {
     return select_cert_status_;
   }
   // Whether |cert_verify_sig_| contains a valid signature.
@@ -194,8 +197,7 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   void SetIgnoreTicketOpen(bool value) { ignore_ticket_open_ = value; }
 
  private:
-  class QUIC_EXPORT_PRIVATE DecryptCallback
-      : public ProofSource::DecryptCallback {
+  class QUICHE_EXPORT DecryptCallback : public ProofSource::DecryptCallback {
    public:
     explicit DecryptCallback(TlsServerHandshaker* handshaker);
     void Run(std::vector<uint8_t> plaintext) override;
@@ -214,8 +216,7 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
 
   // DefaultProofSourceHandle delegates all operations to the shared proof
   // source.
-  class QUIC_EXPORT_PRIVATE DefaultProofSourceHandle
-      : public ProofSourceHandle {
+  class QUICHE_EXPORT DefaultProofSourceHandle : public ProofSourceHandle {
    public:
     DefaultProofSourceHandle(TlsServerHandshaker* handshaker,
                              ProofSource* proof_source);
@@ -233,9 +234,9 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
         const QuicConnectionId& original_connection_id,
         absl::string_view ssl_capabilities, const std::string& hostname,
         absl::string_view client_hello, const std::string& alpn,
-        absl::optional<std::string> alps,
+        std::optional<std::string> alps,
         const std::vector<uint8_t>& quic_transport_params,
-        const absl::optional<std::vector<uint8_t>>& early_data_context,
+        const std::optional<std::vector<uint8_t>>& early_data_context,
         const QuicSSLConfig& ssl_config) override;
 
     // Delegates to proof_source_->ComputeTlsSignature.
@@ -251,7 +252,7 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
     ProofSourceHandleCallback* callback() override { return handshaker_; }
 
    private:
-    class QUIC_EXPORT_PRIVATE DefaultSignatureCallback
+    class QUICHE_EXPORT DefaultSignatureCallback
         : public ProofSource::SignatureCallback {
      public:
       explicit DefaultSignatureCallback(DefaultProofSourceHandle* handle)
@@ -291,13 +292,13 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
     DefaultSignatureCallback* signature_callback_ = nullptr;
   };
 
-  struct QUIC_NO_EXPORT SetTransportParametersResult {
+  struct QUICHE_EXPORT SetTransportParametersResult {
     bool success = false;
     // Empty vector if QUIC transport params are not set successfully.
     std::vector<uint8_t> quic_transport_params;
-    // absl::nullopt if there is no application state to begin with.
+    // std::nullopt if there is no application state to begin with.
     // Empty vector if application state is not set successfully.
-    absl::optional<std::vector<uint8_t>> early_data_context;
+    std::optional<std::vector<uint8_t>> early_data_context;
   };
 
   SetTransportParametersResult SetTransportParameters();
@@ -308,9 +309,9 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   bool TransportParametersMatch(
       absl::Span<const uint8_t> serialized_params) const;
 
-  struct QUIC_NO_EXPORT SetApplicationSettingsResult {
+  struct QUICHE_EXPORT SetApplicationSettingsResult {
     bool success = false;
-    // TODO(b/239676439): Change type to absl::optional<std::string> and make
+    // TODO(b/239676439): Change type to std::optional<std::string> and make
     // sure SetApplicationSettings() returns nullopt if no ALPS data.
     std::string alps_buffer;
   };
@@ -348,14 +349,17 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   // Force SessionTicketOpen to return ssl_ticket_aead_ignore_ticket if called.
   bool ignore_ticket_open_ = false;
 
+  // True if new ALPS codepoint in the ClientHello.
+  bool alps_new_codepoint_received_ = false;
+
   // nullopt means select cert hasn't started.
-  absl::optional<QuicAsyncStatus> select_cert_status_;
+  std::optional<QuicAsyncStatus> select_cert_status_;
 
   std::string cert_verify_sig_;
   std::unique_ptr<ProofSource::Details> proof_source_details_;
 
   // Count the duration of the current async operation, if any.
-  absl::optional<QuicTimeAccumulator> async_op_timer_;
+  std::optional<QuicTimeAccumulator> async_op_timer_;
 
   std::unique_ptr<ApplicationState> application_state_;
 

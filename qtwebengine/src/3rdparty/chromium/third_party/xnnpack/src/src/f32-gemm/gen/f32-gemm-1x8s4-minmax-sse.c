@@ -18,10 +18,10 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
     size_t mr,
     size_t nc,
     size_t kc,
-    const float*restrict a,
+    const float* restrict a,
     size_t a_stride,
-    const float*restrict w,
-    float*restrict c,
+    const float* restrict w,
+    float* restrict c,
     size_t cm_stride,
     size_t cn_stride,
     const union xnn_f32_minmax_params params[restrict XNN_MIN_ELEMENTS(1)]) XNN_OOB_READS
@@ -44,10 +44,9 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
     w += 8;
 
     size_t k = kc;
-    while (k >= 4 * sizeof(float)) {
+    for (; k >= 4 * sizeof(float); k -= 4 * sizeof(float)) {
       __m128 va0 = _mm_loadu_ps(a0);
       a0 += 4;
-
 
       const __m128 vb0123c0 = _mm_load_ps(w + 0);
       const __m128 vb4567c0 = _mm_load_ps(w + 4);
@@ -56,7 +55,6 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
       vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(va0, vb4567c0));
 
       va0 = _mm_shuffle_ps(va0, va0, _MM_SHUFFLE(0, 3, 2, 1));
-
       const __m128 vb0123c1 = _mm_load_ps(w + 8);
       const __m128 vb4567c1 = _mm_load_ps(w + 12);
 
@@ -64,7 +62,6 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
       vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(va0, vb4567c1));
 
       va0 = _mm_shuffle_ps(va0, va0, _MM_SHUFFLE(0, 3, 2, 1));
-
       const __m128 vb0123c2 = _mm_load_ps(w + 16);
       const __m128 vb4567c2 = _mm_load_ps(w + 20);
 
@@ -72,7 +69,6 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
       vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(va0, vb4567c2));
 
       va0 = _mm_shuffle_ps(va0, va0, _MM_SHUFFLE(0, 3, 2, 1));
-
       const __m128 vb0123c3 = _mm_load_ps(w + 24);
       const __m128 vb4567c3 = _mm_load_ps(w + 28);
 
@@ -81,12 +77,10 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
 
 
       w += 32;
-      k -= 4 * sizeof(float);
     }
     if XNN_UNLIKELY(k != 0) {
       __m128 va0 = _mm_loadu_ps(a0);
       a0 = (const float*) ((uintptr_t) a0 + k);
-
 
       const __m128 vb0123c0 = _mm_load_ps(w + 0);
       const __m128 vb4567c0 = _mm_load_ps(w + 4);
@@ -95,7 +89,6 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
       vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(_mm_andnot_ps(_mm_cmpeq_ps(_mm_setzero_ps(), vb4567c0), va0), vb4567c0));
 
       va0 = _mm_shuffle_ps(va0, va0, _MM_SHUFFLE(0, 3, 2, 1));
-
       const __m128 vb0123c1 = _mm_load_ps(w + 8);
       const __m128 vb4567c1 = _mm_load_ps(w + 12);
 
@@ -103,7 +96,6 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
       vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(_mm_andnot_ps(_mm_cmpeq_ps(_mm_setzero_ps(), vb4567c1), va0), vb4567c1));
 
       va0 = _mm_shuffle_ps(va0, va0, _MM_SHUFFLE(0, 3, 2, 1));
-
       const __m128 vb0123c2 = _mm_load_ps(w + 16);
       const __m128 vb4567c2 = _mm_load_ps(w + 20);
 
@@ -111,7 +103,6 @@ void xnn_f32_gemm_minmax_ukernel_1x8s4__sse(
       vacc0x4567 = _mm_add_ps(vacc0x4567, _mm_mul_ps(_mm_andnot_ps(_mm_cmpeq_ps(_mm_setzero_ps(), vb4567c2), va0), vb4567c2));
 
       va0 = _mm_shuffle_ps(va0, va0, _MM_SHUFFLE(0, 3, 2, 1));
-
       const __m128 vb0123c3 = _mm_load_ps(w + 24);
       const __m128 vb4567c3 = _mm_load_ps(w + 28);
 

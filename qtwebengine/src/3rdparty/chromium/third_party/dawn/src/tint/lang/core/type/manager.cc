@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/type/manager.h"
 
@@ -161,26 +174,41 @@ const core::type::Array* Manager::array(const core::type::Type* elem_ty,
 
 const core::type::Array* Manager::runtime_array(const core::type::Type* elem_ty,
                                                 uint32_t stride /* = 0 */) {
+    uint32_t implicit_stride = tint::RoundUp(elem_ty->Align(), elem_ty->Size());
     if (stride == 0) {
-        stride = elem_ty->Align();
+        stride = implicit_stride;
     }
+    TINT_ASSERT(stride >= implicit_stride);
+
     return Get<core::type::Array>(
         /* element type */ elem_ty,
         /* element count */ Get<RuntimeArrayCount>(),
         /* array alignment */ elem_ty->Align(),
         /* array size */ stride,
         /* element stride */ stride,
-        /* implicit stride */ elem_ty->Align());
+        /* implicit stride */ implicit_stride);
 }
 
 const core::type::Pointer* Manager::ptr(core::AddressSpace address_space,
                                         const core::type::Type* subtype,
-                                        core::Access access /* = core::Access::kReadWrite */) {
-    return Get<core::type::Pointer>(address_space, subtype, access);
+                                        core::Access access /* = core::Access::kUndefined */) {
+    return Get<core::type::Pointer>(
+        address_space, subtype,
+        access == core::Access::kUndefined ? DefaultAccessFor(address_space) : access);
+}
+
+core::type::Struct* Manager::Struct(Symbol name, VectorRef<const StructMember*> members) {
+    uint32_t max_align = 0u;
+    for (const auto& m : members) {
+        max_align = std::max(max_align, m->Align());
+    }
+    uint32_t size = members.Back()->Offset() + members.Back()->Size();
+    return Get<core::type::Struct>(name, std::move(members), max_align,
+                                   tint::RoundUp(max_align, size), size);
 }
 
 core::type::Struct* Manager::Struct(Symbol name, VectorRef<StructMemberDesc> md) {
-    tint::Vector<const core::type::StructMember*, 4> members;
+    tint::Vector<const StructMember*, 4> members;
     uint32_t current_size = 0u;
     uint32_t max_align = 0u;
     for (const auto& m : md) {
@@ -192,8 +220,8 @@ core::type::Struct* Manager::Struct(Symbol name, VectorRef<StructMemberDesc> md)
         current_size = offset + m.type->Size();
         max_align = std::max(max_align, align);
     }
-    return Get<core::type::Struct>(name, members, max_align, tint::RoundUp(max_align, current_size),
-                                   current_size);
+    return Get<core::type::Struct>(name, std::move(members), max_align,
+                                   tint::RoundUp(max_align, current_size), current_size);
 }
 
 }  // namespace tint::core::type

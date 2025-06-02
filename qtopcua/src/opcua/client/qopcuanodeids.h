@@ -1,4 +1,3 @@
-
 // Copyright (C) 2023 basysKom GmbH, opensource@basyskom.com
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
@@ -14,7 +13,7 @@ QT_BEGIN_NAMESPACE
 namespace QOpcUa {
     namespace NodeIds {
 #ifndef QT_OPCUA_NO_NS0IDNAMES
-        Q_OPCUA_EXPORT Q_NAMESPACE
+        Q_NAMESPACE_EXPORT(Q_OPCUA_EXPORT)
 #endif
 
         enum class Namespace0 : quint32 {

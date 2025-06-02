@@ -22,7 +22,7 @@ QRenderPassPrivate::QRenderPassPrivate()
 }
 /*!
     \qmltype RenderPass
-    \instantiates Qt3DRender::QRenderPass
+    \nativetype Qt3DRender::QRenderPass
     \inqmlmodule Qt3D.Render
     \inherits Node
     \since 5.7
@@ -140,7 +140,7 @@ QRenderPassPrivate::QRenderPassPrivate()
     \sa QRenderPassFilter, QFilterKey, QParameter, QRenderState, QEffect, QTechnique
  */
 /*!
-    \typedef ParameterList
+    \typedef Qt3DRender::ParameterList
     \relates Qt3DRender::QRenderPass
 
     A list of Qt3DRender::QParameter parameters.

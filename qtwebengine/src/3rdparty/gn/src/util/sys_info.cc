@@ -14,7 +14,46 @@
 
 #if defined(OS_WIN)
 #include <windows.h>
+#include "base/win/registry.h"
 #endif
+
+bool IsLongPathsSupportEnabled() {
+#if defined(OS_WIN)
+  struct LongPathSupport {
+    LongPathSupport() {
+      // Probe ntdll.dll for RtlAreLongPathsEnabled, and call it if it exists.
+      HINSTANCE ntdll_lib = GetModuleHandleW(L"ntdll");
+      if (ntdll_lib) {
+        using FunctionType = BOOLEAN(WINAPI*)();
+        auto func_ptr = reinterpret_cast<FunctionType>(
+            GetProcAddress(ntdll_lib, "RtlAreLongPathsEnabled"));
+        if (func_ptr) {
+          supported = func_ptr();
+          return;
+        }
+      }
+
+      // If the ntdll approach failed, the registry approach is still reliable,
+      // because the manifest should've always be linked with gn.exe in Windows.
+      const char16_t key_name[] = uR"(SYSTEM\CurrentControlSet\Control\FileSystem)";
+      const char16_t value_name[] = u"LongPathsEnabled";
+
+      base::win::RegKey key(HKEY_LOCAL_MACHINE, key_name, KEY_READ);
+      DWORD value;
+      if (key.ReadValueDW(value_name, &value) == ERROR_SUCCESS) {
+        supported = value == 1;
+      }
+    }
+
+    bool supported = false;
+  };
+
+  static LongPathSupport s_long_paths;  // constructed lazily
+  return s_long_paths.supported;
+#else
+  return true;
+#endif
+}
 
 std::string OperatingSystemArchitecture() {
 #if defined(OS_POSIX)
@@ -48,6 +87,8 @@ std::string OperatingSystemArchitecture() {
       return "x86";
     case PROCESSOR_ARCHITECTURE_AMD64:
       return "x86_64";
+    case PROCESSOR_ARCHITECTURE_ARM64:
+      return "arm64";
     case PROCESSOR_ARCHITECTURE_IA64:
       return "ia64";
   }
@@ -83,7 +124,14 @@ int NumberOfProcessors() {
 
   return static_cast<int>(res);
 #elif defined(OS_WIN)
-  return ::GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+  // On machines with more than 64 logical processors this will not return the
+  // full number of processors. Instead it will return the number of processors
+  // in one processor group - something smaller than 65. However this is okay
+  // because gn doesn't parallelize well beyond 10-20 threads - it starts to run
+  // slower.
+  SYSTEM_INFO system_info = {};
+  ::GetNativeSystemInfo(&system_info);
+  return system_info.dwNumberOfProcessors;
 #else
 #error
 #endif

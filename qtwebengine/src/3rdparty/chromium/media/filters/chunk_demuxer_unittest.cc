@@ -1002,8 +1002,9 @@ class ChunkDemuxerTest : public ::testing::Test {
   }
 
   DemuxerStream* GetStream(DemuxerStream::Type type) {
-    std::vector<DemuxerStream*> streams = demuxer_->GetAllStreams();
-    for (auto* stream : streams) {
+    std::vector<raw_ptr<DemuxerStream, VectorExperimental>> streams =
+        demuxer_->GetAllStreams();
+    for (media::DemuxerStream* stream : streams) {
       if (stream->type() == type)
         return stream;
     }
@@ -1372,7 +1373,7 @@ TEST_F(ChunkDemuxerTest, Init) {
 
       const AudioDecoderConfig& config = audio_stream->audio_decoder_config();
       EXPECT_EQ(AudioCodec::kVorbis, config.codec());
-      EXPECT_EQ(32, config.bits_per_channel());
+      EXPECT_EQ(4, config.bytes_per_channel());
       EXPECT_EQ(CHANNEL_LAYOUT_STEREO, config.channel_layout());
       EXPECT_EQ(44100, config.samples_per_second());
       EXPECT_GT(config.extra_data().size(), 0u);
@@ -1392,8 +1393,9 @@ TEST_F(ChunkDemuxerTest, Init) {
       EXPECT_FALSE(video_stream);
     }
 
-    for (auto* stream : demuxer_->GetAllStreams())
+    for (media::DemuxerStream* stream : demuxer_->GetAllStreams()) {
       EXPECT_TRUE(stream->SupportsConfigChanges());
+    }
 
     ShutdownDemuxer();
     demuxer_.reset();

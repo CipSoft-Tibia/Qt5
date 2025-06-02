@@ -62,6 +62,7 @@
 #include "third_party/blink/renderer/modules/webgl/oes_texture_half_float.h"
 #include "third_party/blink/renderer/modules/webgl/oes_texture_half_float_linear.h"
 #include "third_party/blink/renderer/modules/webgl/oes_vertex_array_object.h"
+#include "third_party/blink/renderer/modules/webgl/webgl_blend_func_extended.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_color_buffer_float.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_compressed_texture_astc.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_compressed_texture_etc.h"
@@ -78,10 +79,11 @@
 #include "third_party/blink/renderer/modules/webgl/webgl_multi_draw.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_multi_draw_instanced_base_vertex_base_instance.h"
 #include "third_party/blink/renderer/modules/webgl/webgl_polygon_mode.h"
-#include "third_party/blink/renderer/modules/webgl/webgl_video_texture.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/drawing_buffer.h"
 
 namespace blink {
+
+class ExceptionState;
 
 // An helper function for the two create() methods. The return value is an
 // indicate of whether the create() should return nullptr or not.
@@ -173,22 +175,23 @@ WebGLRenderingContext::AsV8OffscreenRenderingContext() {
 }
 
 ImageBitmap* WebGLRenderingContext::TransferToImageBitmap(
-    ScriptState* script_state) {
+    ScriptState* script_state,
+    ExceptionState& exception_state) {
   return TransferToImageBitmapBase(script_state);
 }
 
 void WebGLRenderingContext::RegisterContextExtensions() {
   RegisterExtension(angle_instanced_arrays_);
   RegisterExtension(ext_blend_min_max_);
-  RegisterExtension(ext_clip_control_, kDraftExtension);
+  RegisterExtension(ext_clip_control_);
   RegisterExtension(ext_color_buffer_half_float_);
-  RegisterExtension(ext_depth_clamp_, kDraftExtension);
+  RegisterExtension(ext_depth_clamp_);
   RegisterExtension(ext_disjoint_timer_query_, TimerQueryExtensionsEnabled()
                                                    ? kApprovedExtension
                                                    : kDeveloperExtension);
   RegisterExtension(ext_float_blend_);
   RegisterExtension(ext_frag_depth_);
-  RegisterExtension(ext_polygon_offset_clamp_, kDraftExtension);
+  RegisterExtension(ext_polygon_offset_clamp_);
   RegisterExtension(ext_shader_texture_lod_);
   RegisterExtension(ext_texture_compression_bptc_);
   RegisterExtension(ext_texture_compression_rgtc_);
@@ -204,6 +207,7 @@ void WebGLRenderingContext::RegisterContextExtensions() {
   RegisterExtension(oes_texture_half_float_);
   RegisterExtension(oes_texture_half_float_linear_);
   RegisterExtension(oes_vertex_array_object_);
+  RegisterExtension(webgl_blend_func_extended_);
   RegisterExtension(webgl_color_buffer_float_);
   RegisterExtension(webgl_compressed_texture_astc_);
   RegisterExtension(webgl_compressed_texture_etc_);
@@ -217,8 +221,7 @@ void WebGLRenderingContext::RegisterContextExtensions() {
   RegisterExtension(webgl_draw_buffers_);
   RegisterExtension(webgl_lose_context_, kApprovedExtension);
   RegisterExtension(webgl_multi_draw_);
-  RegisterExtension(webgl_polygon_mode_, kDraftExtension);
-  RegisterExtension(webgl_video_texture_, kDraftExtension);
+  RegisterExtension(webgl_polygon_mode_);
 }
 
 void WebGLRenderingContext::Trace(Visitor* visitor) const {
@@ -246,6 +249,7 @@ void WebGLRenderingContext::Trace(Visitor* visitor) const {
   visitor->Trace(oes_texture_half_float_);
   visitor->Trace(oes_texture_half_float_linear_);
   visitor->Trace(oes_vertex_array_object_);
+  visitor->Trace(webgl_blend_func_extended_);
   visitor->Trace(webgl_color_buffer_float_);
   visitor->Trace(webgl_compressed_texture_astc_);
   visitor->Trace(webgl_compressed_texture_etc_);
@@ -260,7 +264,6 @@ void WebGLRenderingContext::Trace(Visitor* visitor) const {
   visitor->Trace(webgl_lose_context_);
   visitor->Trace(webgl_multi_draw_);
   visitor->Trace(webgl_polygon_mode_);
-  visitor->Trace(webgl_video_texture_);
   WebGLRenderingContextBase::Trace(visitor);
 }
 

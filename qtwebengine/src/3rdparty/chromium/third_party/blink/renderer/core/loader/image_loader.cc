@@ -27,6 +27,7 @@
 
 #include "services/network/public/mojom/attribution.mojom-blink.h"
 #include "services/network/public/mojom/web_client_hints_types.mojom-blink.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_controller.h"
@@ -121,12 +122,8 @@ bool CanReuseFromListOfAvailableImages(
 
 class ImageLoader::Task {
  public:
-  Task(ImageLoader* loader,
-       UpdateFromElementBehavior update_behavior,
-       base::TimeTicks discovery_time)
-      : loader_(loader),
-        update_behavior_(update_behavior),
-        discovery_time_(discovery_time) {
+  Task(ImageLoader* loader, UpdateFromElementBehavior update_behavior)
+      : loader_(loader), update_behavior_(update_behavior) {
     ExecutionContext* context = loader_->GetElement()->GetExecutionContext();
     async_task_context_.Schedule(context, "Image");
     world_ = context->GetCurrentWorld();
@@ -137,7 +134,7 @@ class ImageLoader::Task {
       return;
     ExecutionContext* context = loader_->GetElement()->GetExecutionContext();
     probe::AsyncTask async_task(context, &async_task_context_);
-    loader_->DoUpdateFromElement(world_, update_behavior_, discovery_time_);
+    loader_->DoUpdateFromElement(world_, update_behavior_);
   }
 
   void ClearLoader() {
@@ -153,7 +150,6 @@ class ImageLoader::Task {
   scoped_refptr<const DOMWrapperWorld> world_;
 
   probe::AsyncTaskContext async_task_context_;
-  base::TimeTicks discovery_time_;
   base::WeakPtrFactory<Task> weak_factory_{this};
 };
 
@@ -364,20 +360,6 @@ static void ConfigureRequest(
       html_image_element) {
     params.SetResourceWidth(html_image_element->GetResourceWidth());
   }
-
-  if (html_image_element) {
-    constexpr WebFeature kCountOrbBlockAs[2][2] = {
-        {WebFeature::kORBBlockWithoutAnyEventHandler,
-         WebFeature::kORBBlockWithOnErrorButWithoutOnLoadEventHandler},
-        {WebFeature::kORBBlockWithOnLoadButWithoutOnErrorEventHandler,
-         WebFeature::kORBBlockWithOnLoadAndOnErrorEventHandler}};
-
-    auto event_path = EventPath(element);
-    params.SetCountORBBlockAs(
-        kCountOrbBlockAs
-            [event_path.HasEventListenersInPath(event_type_names::kLoad)]
-            [event_path.HasEventListenersInPath(event_type_names::kError)]);
-  }
 }
 
 inline void ImageLoader::DispatchErrorEvent() {
@@ -411,9 +393,8 @@ inline void ImageLoader::ClearFailedLoadURL() {
 }
 
 inline void ImageLoader::EnqueueImageLoadingMicroTask(
-    UpdateFromElementBehavior update_behavior,
-    base::TimeTicks discovery_time) {
-  auto task = std::make_unique<Task>(this, update_behavior, discovery_time);
+    UpdateFromElementBehavior update_behavior) {
+  auto task = std::make_unique<Task>(this, update_behavior);
   pending_task_ = task->GetWeakPtr();
   element_->GetDocument().GetAgent().event_loop()->EnqueueMicrotask(
       WTF::BindOnce(&Task::Run, std::move(task)));
@@ -441,7 +422,6 @@ void ImageLoader::UpdateImageState(ImageResourceContent* new_image_content) {
 void ImageLoader::DoUpdateFromElement(
     scoped_refptr<const DOMWrapperWorld> world,
     UpdateFromElementBehavior update_behavior,
-    base::TimeTicks discovery_time,
     UpdateType update_type,
     bool force_blocking) {
   // FIXME: According to
@@ -523,13 +503,15 @@ void ImageLoader::DoUpdateFromElement(
             network::mojom::AttributionReportingEligibility::
                 kEventSourceOrTrigger);
       }
-      bool shared_storage_writable =
+      bool shared_storage_writable_opted_in =
           GetElement()->FastHasAttribute(
               html_names::kSharedstoragewritableAttr) &&
           RuntimeEnabledFeatures::SharedStorageAPIM118Enabled(
               GetElement()->GetExecutionContext()) &&
-          GetElement()->GetExecutionContext()->IsSecureContext();
-      resource_request.SetSharedStorageWritable(shared_storage_writable);
+          GetElement()->GetExecutionContext()->IsSecureContext() &&
+          !GetElement()->GetExecutionContext()->GetSecurityOrigin()->IsOpaque();
+      resource_request.SetSharedStorageWritableOptedIn(
+          shared_storage_writable_opted_in);
     }
 
     bool page_is_being_dismissed =
@@ -554,8 +536,6 @@ void ImageLoader::DoUpdateFromElement(
 
     FetchParameters params(std::move(resource_request),
                            resource_loader_options);
-
-    params.SetDiscoveryTime(discovery_time);
 
     ConfigureRequest(params, *element_, frame->GetClientHintsPreferences());
 
@@ -648,8 +628,6 @@ void ImageLoader::UpdateFromElement(UpdateFromElementBehavior update_behavior,
     return;
   }
 
-  base::TimeTicks discovery_time = base::TimeTicks::Now();
-
   AtomicString image_source_url = element_->ImageSourceURL();
   suppress_error_events_ = (update_behavior == kUpdateSizeChanged);
 
@@ -685,8 +663,7 @@ void ImageLoader::UpdateFromElement(UpdateFromElementBehavior update_behavior,
   if (ShouldLoadImmediately(ImageSourceToKURL(image_source_url)) &&
       update_behavior != kUpdateFromMicrotask) {
     DoUpdateFromElement(element_->GetExecutionContext()->GetCurrentWorld(),
-                        update_behavior, discovery_time, UpdateType::kSync,
-                        force_blocking);
+                        update_behavior, UpdateType::kSync, force_blocking);
     return;
   }
   // Allow the idiom "img.src=''; img.src='.." to clear down the image before an
@@ -712,7 +689,7 @@ void ImageLoader::UpdateFromElement(UpdateFromElementBehavior update_behavior,
   // context. We don't want to slow down the raw HTML parsing case by loading
   // images we don't intend to display.
   if (element_->GetDocument().IsActive())
-    EnqueueImageLoadingMicroTask(update_behavior, discovery_time);
+    EnqueueImageLoadingMicroTask(update_behavior);
 }
 
 KURL ImageLoader::ImageSourceToKURL(AtomicString image_source_url) const {
@@ -741,7 +718,8 @@ bool ImageLoader::ShouldLoadImmediately(const KURL& url) const {
   // content when style recalc is over and DOM mutation is allowed again.
   if (!url.IsNull()) {
     Resource* resource = MemoryCache::Get()->ResourceForURL(
-        url, element_->GetDocument().Fetcher()->GetCacheIdentifier(url));
+        url, element_->GetDocument().Fetcher()->GetCacheIdentifier(
+                 url, /*skip_service_worker=*/false));
 
     if (resource && !resource->ErrorOccurred() &&
         CanReuseFromListOfAvailableImages(
@@ -754,7 +732,7 @@ bool ImageLoader::ShouldLoadImmediately(const KURL& url) const {
   }
 
   return (IsA<HTMLObjectElement>(*element_) ||
-          IsA<HTMLEmbedElement>(*element_));
+          IsA<HTMLEmbedElement>(*element_) || IsA<HTMLVideoElement>(*element_));
 }
 
 void ImageLoader::ImageChanged(ImageResourceContent* content,
@@ -876,6 +854,21 @@ LayoutImageResource* ImageLoader::GetLayoutImageResource() const {
   return nullptr;
 }
 
+void ImageLoader::OnAttachLayoutTree() {
+  LayoutImageResource* image_resource = GetLayoutImageResource();
+  if (!image_resource) {
+    return;
+  }
+  // If the LayoutImageResource already has an image, it either means that it
+  // hasn't been freshly created or that it is generated content ("content:
+  // url(...)") - in which case we don't need to do anything or shouldn't do
+  // anything respectively.
+  if (image_resource->HasImage()) {
+    return;
+  }
+  image_resource->SetImageResource(image_content_);
+}
+
 void ImageLoader::UpdateLayoutObject() {
   LayoutImageResource* image_resource = GetLayoutImageResource();
 
@@ -898,6 +891,14 @@ ResourcePriority ImageLoader::ComputeResourcePriority() const {
 
   ResourcePriority priority = image_resource->ComputeResourcePriority();
   priority.source = ResourcePriority::Source::kImageLoader;
+  if (features::
+          kLCPCriticalPathPredictorImageLoadPriorityEnabledForHTMLImageElement
+              .Get()) {
+    auto* html_image_element = DynamicTo<HTMLImageElement>(element_.Get());
+    if (html_image_element) {
+      priority.is_lcp_resource = html_image_element->IsPredictedLcpElement();
+    }
+  }
   return priority;
 }
 

@@ -7,6 +7,9 @@ if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
     find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
 endif()
 
+qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
+
 qt_internal_add_test(tst_nestedtypes_qtprotobuf_qmltest
     QMLTEST
     SOURCES
@@ -14,8 +17,6 @@ qt_internal_add_test(tst_nestedtypes_qtprotobuf_qmltest
     LIBRARIES
         Qt::Qml
 )
-
-qt_policy(SET QTP0001 NEW)
 
 qt_add_protobuf(tst_nestedtypes_qtprotobuf_qml
     PROTO_FILES

@@ -3,7 +3,7 @@
 
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Controls
+import QtQuick.Controls.Fusion
 import QtGraphs
 //import QtDataVisualization
 import "."
@@ -14,6 +14,7 @@ Item {
     height: 820
 
     property var customTheme: customSurfaceTheme
+    property var currentGraph: surface
 
     Gradient {
         id: customGradient
@@ -38,25 +39,36 @@ Item {
         color: "blue"
     }
 
-    Theme3D {
+    Color {
+        id: surfaceColor
+        color: "white"
+    }
+
+    GraphsTheme {
         id: customSurfaceTheme
-        type: Theme3D.Theme.UserDefined
-        colorStyle: Theme3D.ColorStyle.ObjectGradient
-        backgroundColor: "gray"
-        gridLineColor: "lightGray"
-        multiHighlightColor: "orange"
+        theme: GraphsTheme.Theme.QtGreen
+        colorStyle: GraphsTheme.ColorStyle.ObjectGradient
+        plotAreaBackgroundColor: "gray"
+        baseColors: [surfaceColor]
+        baseGradients: [customGradient]
+        labelFont: Qt.font({
+                               family: "Courier New",
+                               bold: true,
+                               // pointSize: 100
+                           })
+        grid.mainColor: "lightGray"
         singleHighlightColor: "yellow"
-        multiHighlightGradient: multiGradient
         singleHighlightGradient: singleGradient
     }
 
-    Theme3D {
+    GraphsTheme {
         id: customBarsTheme
-        type: Theme3D.Theme.UserDefined
-        colorStyle: Theme3D.ColorStyle.ObjectGradient
+        theme: GraphsTheme.Theme.UserDefined
+        colorStyle: GraphsTheme.ColorStyle.ObjectGradient
         baseColors: [barColor]
-        backgroundColor: "gray"
-        gridLineColor: "lightGray"
+        baseGradients: [customGradient]
+        plotAreaBackgroundColor: "gray"
+        grid.mainColor: "lightGray"
         multiHighlightColor: "orange"
         singleHighlightColor: "yellow"
         multiHighlightGradient: multiGradient
@@ -73,22 +85,23 @@ Item {
             id: surface
             anchors.fill: graphView
             theme: customSurfaceTheme
-            shadowQuality: AbstractGraph3D.ShadowQuality.None
-            selectionMode: AbstractGraph3D.SelectionNone
-            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
-            msaaSamples: 8
+            shadowQuality: Graphs3D.ShadowQuality.None
+            selectionMode: Graphs3D.SelectionFlag.None
+            cameraPreset: Graphs3D.CameraPreset.IsometricLeft
+            msaaSamples: 4
             aspectRatio: 3.0
-            visible: !barsVisible.checked
+            visible: !graphMod.barsVisible
 
             Surface3DSeries {
                 id: surfaceSeries
-                baseGradient: customGradient
-                baseColor: "white"
+                // If you want to check with series colors, uncomment these
+                // baseGradient: customGradient
+                // baseColor: surfaceColor.color
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/layer_1.png"
                     autoScaleY: true
                 }
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
                 drawMode: Surface3DSeries.DrawSurface
             }
         }
@@ -97,16 +110,36 @@ Item {
             id: bars
             anchors.fill: graphView
             theme: customBarsTheme
-            shadowQuality: AbstractGraph3D.ShadowQuality.None
-            selectionMode: AbstractGraph3D.SelectionItemAndRow
-            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
-            msaaSamples: 8
+            shadowQuality: Graphs3D.ShadowQuality.None
+            selectionMode: Graphs3D.SelectionFlag.ItemAndRow
+            cameraPreset: Graphs3D.CameraPreset.IsometricLeft
+            //optimizationHint: Graphs3D.OptimizationHint.Legacy
+            msaaSamples: 4
             aspectRatio: 3.0
-            visible: barsVisible.checked
+            visible: graphMod.barsVisible
 
             Bar3DSeries {
                 id: barsSeries
-                baseGradient: customGradient
+                // If you want to check with series colors, uncomment these
+                // baseGradient: customGradient
+                // baseColor: barColor.color
+                columnLabels: [
+                    "col 1",
+                    "col 2",
+                    "col 3",
+                    "col 4",
+                    "col 5",
+                    "col 6",
+                ]
+                rowLabels: [
+                    "row 1",
+                    "row 2",
+                    "row 3",
+                    "row 4",
+                    "row 5",
+                    "row 6",
+                ]
+
                 ItemModelBarDataProxy {
                     id: barProxy
                     itemModel: ListModel {
@@ -145,160 +178,30 @@ Item {
         }
     }
 
-    ColumnLayout {
-        id: settings
+    TabBar {
+        id: bar
         anchors.top: parent.top
         anchors.left: parent.left
         width: 200
-        spacing: 10
 
-        Label {
-            text: "Bars3D Graph"
-            color: "gray"
+        TabButton {
+            text: qsTr("Graph")
         }
-        CheckBox {
-            id: barsVisible
-            onCheckedChanged: {
-                customTheme = (checked ? customBarsTheme : customSurfaceTheme)
-            }
+        TabButton {
+            text: qsTr("Background")
         }
+    }
 
-        Label {
-            text: "Ambient Light Strength"
-            color: "gray"
-        }
-        Slider {
-            from: 0.0
-            to: 1.0
-            value: customTheme.ambientLightStrength
-            onValueChanged: customTheme.ambientLightStrength = value
-        }
+    StackLayout {
+        id: settings
+        anchors.top: bar.bottom
+        anchors.left: parent.left
+        anchors.topMargin: 20
+        anchors.leftMargin: 20
+        width: 200
+        currentIndex: bar.currentIndex
 
-        Label {
-            text: "Light Strength"
-            color: "gray"
-        }
-        Slider {
-            from: 0.0
-            to: 10.0
-            value: customTheme.lightStrength
-            onValueChanged: customTheme.lightStrength = value
-        }
-
-        Label {
-            text: testgradientchange.checked ? "Gradient Color, Red" : "Light Color; Red"
-            color: "gray"
-        }
-        Slider {
-            from: 0.0
-            to: 1.0
-            value: testgradientchange.checked ? 1.0 : customTheme.lightColor.r
-            onValueChanged: testgradientchange.checked ? (redstop.color.r = value)
-                                                       : (customTheme.lightColor.r = value)
-        }
-
-        Label {
-            text: testgradientchange.checked ? "Gradient Color, Green" : "Light Color; Green"
-            color: "gray"
-        }
-        Slider {
-            from: 0.0
-            to: 1.0
-            value: testgradientchange.checked ? 0.5 : customTheme.lightColor.g
-            onValueChanged: testgradientchange.checked ? (greenstop.color.g = value)
-                                                       : (customTheme.lightColor.g = value)
-        }
-
-        Label {
-            text: testgradientchange.checked ? "Bar Color, Blue" : "Light Color; Blue"
-            color: "gray"
-        }
-        Slider {
-            from: 0.0
-            to: 1.0
-            value: testgradientchange.checked ? barColor.color.b
-                                              : customTheme.lightColor.b
-            onValueChanged: testgradientchange.checked ? barColor.color.b  = value
-                                                       : customTheme.lightColor.b = value
-        }
-
-        Label {
-            text: "Color Style Uniform"
-            color: "gray"
-        }
-        CheckBox {
-            checked: (customTheme.colorStyle === Theme3D.ColorStyle.Uniform)
-            onCheckedChanged: {
-                if (checked)
-                    customTheme.colorStyle = Theme3D.ColorStyle.Uniform
-                else
-                    customTheme.colorStyle = Theme3D.ColorStyle.ObjectGradient
-            }
-        }
-
-        Label {
-            text: "Background"
-            color: "gray"
-        }
-        CheckBox {
-            checked: customTheme.backgroundEnabled
-            onCheckedChanged: {
-                customTheme.backgroundEnabled = checked
-            }
-        }
-
-        Label {
-            text: "Grid"
-            color: "gray"
-        }
-        CheckBox {
-            checked: customTheme.gridEnabled
-            onCheckedChanged: {
-                customTheme.gridEnabled = checked
-            }
-        }
-
-        Label {
-            text: "Labels"
-            color: "gray"
-        }
-        CheckBox {
-            checked: customTheme.labelsEnabled
-            onCheckedChanged: {
-                customTheme.labelsEnabled = checked
-            }
-        }
-
-        Label {
-            text: "Label Background"
-            color: "gray"
-        }
-        CheckBox {
-            checked: customTheme.labelBackgroundEnabled
-            onCheckedChanged: {
-                customTheme.labelBackgroundEnabled = checked
-            }
-        }
-
-        Label {
-            text: "Label Border"
-            color: "gray"
-        }
-        CheckBox {
-            checked: customTheme.labelBorderEnabled
-            onCheckedChanged: {
-                customTheme.labelBorderEnabled = checked
-            }
-        }
-
-        Label {
-            text: "Test Theme Color/Gradient Change"
-            color: "gray"
-        }
-        CheckBox {
-            id: testgradientchange
-            checked: false
-        }
-
+        GraphModifiers {id : graphMod}
+        BackgroundModifiers {id: backMod}
     }
 }

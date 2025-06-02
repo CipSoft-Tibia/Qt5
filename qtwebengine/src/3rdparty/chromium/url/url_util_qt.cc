@@ -160,7 +160,7 @@ void CustomScheme::AddScheme(const CustomScheme& cs)
   GetMutableSchemes().push_back(cs);
 }
 
-const CustomScheme* CustomScheme::FindScheme(base::StringPiece name)
+const CustomScheme* CustomScheme::FindScheme(std::string_view name)
 {
   for (const CustomScheme& cs : GetSchemes())
     if (base::EqualsCaseInsensitiveASCII(name, cs.name))

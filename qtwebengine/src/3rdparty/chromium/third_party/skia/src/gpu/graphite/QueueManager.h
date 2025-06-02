@@ -11,12 +11,15 @@
 #include "include/core/SkRefCnt.h"
 #include "include/gpu/graphite/GraphiteTypes.h"
 #include "include/private/base/SkDeque.h"
+#include "include/private/base/SkTArray.h"
+#include "src/core/SkTHash.h"
 
 #include <memory>
 #include <vector>
 
 namespace skgpu::graphite {
 
+class Buffer;
 class CommandBuffer;
 class Context;
 class GpuWorkSubmission;
@@ -24,6 +27,7 @@ struct InsertRecordingInfo;
 class ResourceProvider;
 class SharedContext;
 class Task;
+class UploadBufferManager;
 
 class QueueManager {
 public:
@@ -36,9 +40,12 @@ public:
     [[nodiscard]] bool addTask(Task*, Context*);
 
     // Adds a proc that will be called when the current CommandBuffer is submitted and finishes
-    [[nodiscard]] bool addFinishInfo(const InsertFinishInfo&, ResourceProvider*);
+    [[nodiscard]] bool addFinishInfo(const InsertFinishInfo&,
+                                     ResourceProvider*,
+                                     SkSpan<const sk_sp<Buffer>> buffersToAsyncMap = {});
 
     [[nodiscard]] bool submitToGpu();
+    [[nodiscard]] bool hasUnfinishedGpuWork();
     void checkForFinishedWork(SyncToCpu);
 
 #if defined(GRAPHITE_TEST_UTILS)
@@ -47,6 +54,10 @@ public:
 #endif
 
     void returnCommandBuffer(std::unique_ptr<CommandBuffer>);
+
+    virtual void tick() const {}
+
+    void addUploadBufferManagerRefs(UploadBufferManager*);
 
 protected:
     QueueManager(const SharedContext* sharedContext);
@@ -65,6 +76,8 @@ private:
     SkDeque fOutstandingSubmissions;
 
     std::vector<std::unique_ptr<CommandBuffer>> fAvailableCommandBuffers;
+
+    skia_private::THashMap<uint32_t, uint32_t> fLastAddedRecordingIDs;
 };
 
 } // namespace skgpu::graphite

@@ -64,8 +64,8 @@ const int32_t kIdnaConversionOption = UIDNA_CHECK_BIDI;
 
 namespace blink {
 
-ScriptRegexp* EmailInputType::CreateEmailRegexp() {
-  return MakeGarbageCollected<ScriptRegexp>(kEmailPattern,
+ScriptRegexp* EmailInputType::CreateEmailRegexp(v8::Isolate* isolate) {
+  return MakeGarbageCollected<ScriptRegexp>(isolate, kEmailPattern,
                                             kTextCaseUnicodeInsensitive);
 }
 
@@ -182,10 +182,6 @@ void EmailInputType::CountUsage() {
     if (has_max_length)
       CountUsageIfVisible(WebFeature::kInputTypeEmailMultipleMaxLength);
   }
-}
-
-const AtomicString& EmailInputType::FormControlType() const {
-  return input_type_names::kEmail;
 }
 
 // The return value is an invalid email address string if the specified string

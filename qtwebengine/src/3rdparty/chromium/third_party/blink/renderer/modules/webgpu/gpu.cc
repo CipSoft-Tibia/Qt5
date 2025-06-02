@@ -126,16 +126,15 @@ GPU* GPU::gpu(NavigatorBase& navigator) {
 GPU::GPU(NavigatorBase& navigator)
     : Supplement<NavigatorBase>(navigator),
       ExecutionContextLifecycleObserver(navigator.GetExecutionContext()),
-      wgsl_language_features_(MakeGarbageCollected<WGSLLanguageFeatures>()),
+      wgsl_language_features_(
+          MakeGarbageCollected<WGSLLanguageFeatures>(GatherWGSLFeatures())),
       mappable_buffer_handles_(
-          base::MakeRefCounted<BoxedMappableWGPUBufferHandles>()) {
-  DCHECK(wgsl_language_features_->FeatureNameSet().empty());
-}
+          base::MakeRefCounted<BoxedMappableWGPUBufferHandles>()) {}
 
 GPU::~GPU() = default;
 
 WGSLLanguageFeatures* GPU::wgslLanguageFeatures() const {
-  return wgsl_language_features_;
+  return wgsl_language_features_.Get();
 }
 
 void GPU::Trace(Visitor* visitor) const {
@@ -344,10 +343,9 @@ void GPU::RequestAdapterImpl(ScriptState* script_state,
   DCHECK_NE(dawn_control_client_, nullptr);
 
   WGPURequestAdapterOptions dawn_options = AsDawnType(options);
-  auto* callback =
-      BindWGPUOnceCallback(&GPU::OnRequestAdapterCallback, WrapPersistent(this),
-                           WrapPersistent(script_state),
-                           WrapPersistent(options), WrapPersistent(resolver));
+  auto* callback = MakeWGPUOnceCallback(resolver->WrapCallbackInScriptScope(
+      WTF::BindOnce(&GPU::OnRequestAdapterCallback, WrapPersistent(this),
+                    WrapPersistent(script_state), WrapPersistent(options))));
 
   dawn_control_client_->GetProcs().instanceRequestAdapter(
       dawn_control_client_->GetWGPUInstance(), &dawn_options,

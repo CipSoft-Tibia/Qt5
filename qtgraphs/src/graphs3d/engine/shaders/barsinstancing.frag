@@ -4,30 +4,37 @@ float directionalBrightness = 0.75; // 0...1.0
 
 VARYING vec3 pos;
 VARYING vec3 instanceColor;
+VARYING float instanceAlpha;
 
 void MAIN()
 {
     vec3 color;
     vec2 gradientUV;
+    float alpha;
     switch(colorStyle) {
     case 0: //uniform
         gradientUV = vec2((pos.y + 1.0) / 2.0, 0.0); //for highlight only
         color = normalize(uniformColor.rgb);
         color *= instanceColor;
+        alpha = instanceAlpha;
         break;
     case 1: // objectgradient
         gradientUV = vec2((pos.y + 1.0) / 2.0, 0.0);
         color = texture(custex, gradientUV).xyz;
+        alpha = texture(custex, gradientUV).w;
         break;
     case 2: //rangegradient
         gradientUV = vec2((VAR_WORLD_POSITION.y + 1.0) / 2.0, 0.0);
         color = texture(custex, gradientUV).xyz;
+        alpha = texture(custex, gradientUV).w;
         break;
     }
-    if (isHighlight)
+    if (isHighlight) {
         color = texture(custex, gradientUV).xyz;
+        alpha = texture(custex, gradientUV).w;
+    }
 
-    diffuse = vec4(color, 1.0);
+    diffuse = vec4(color, alpha);
     BASE_COLOR = diffuse;
 }
 

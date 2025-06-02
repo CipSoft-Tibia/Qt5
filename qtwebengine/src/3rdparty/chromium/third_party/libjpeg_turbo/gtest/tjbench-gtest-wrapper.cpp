@@ -60,7 +60,7 @@ class TJBenchTest : public
 
   static void SetUpTestSuite() {
     base::FilePath resource_path;
-    ASSERT_TRUE(base::PathService::Get(base::DIR_SOURCE_ROOT, &resource_path));
+    ASSERT_TRUE(base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &resource_path));
     resource_path = resource_path.AppendASCII("third_party");
     resource_path = resource_path.AppendASCII("libjpeg_turbo");
     resource_path = resource_path.AppendASCII("testimages");
@@ -130,7 +130,7 @@ class TJBenchTestMerged : public
 
   static void SetUpTestSuite() {
     base::FilePath resource_path;
-    ASSERT_TRUE(base::PathService::Get(base::DIR_SOURCE_ROOT, &resource_path));
+    ASSERT_TRUE(base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &resource_path));
     resource_path = resource_path.AppendASCII("third_party");
     resource_path = resource_path.AppendASCII("libjpeg_turbo");
     resource_path = resource_path.AppendASCII("testimages");

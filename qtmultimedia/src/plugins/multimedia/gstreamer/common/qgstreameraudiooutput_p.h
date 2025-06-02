@@ -28,11 +28,12 @@ class QGstreamerAudioOutput : public QObject, public QPlatformAudioOutput
 {
 public:
     static QMaybe<QPlatformAudioOutput *> create(QAudioOutput *parent);
-    ~QGstreamerAudioOutput();
+    ~QGstreamerAudioOutput() override;
 
     void setAudioDevice(const QAudioDevice &) override;
     void setVolume(float) override;
     void setMuted(bool) override;
+    void setAsync(bool);
 
     QGstElement gstElement() const { return m_audioOutputBin; }
 
@@ -51,6 +52,8 @@ private:
     QGstElement m_audioResample;
     QGstElement m_audioVolume;
     QGstElement m_audioSink;
+
+    bool m_sinkIsAsync = true;
 };
 
 QT_END_NAMESPACE

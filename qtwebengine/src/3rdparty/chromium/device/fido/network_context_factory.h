@@ -17,4 +17,3 @@ using NetworkContextFactory =
 }  // namespace device
 
 #endif  // DEVICE_FIDO_NETWORK_CONTEXT_FACTORY_H_
-

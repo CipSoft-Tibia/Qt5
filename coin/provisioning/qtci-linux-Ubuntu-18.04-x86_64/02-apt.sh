@@ -97,6 +97,7 @@ installPackages+=(g++-multilib)
 # python3 development package
 installPackages+=(python3-dev)
 installPackages+=(python3-pip)
+installPackages+=(python3-venv)
 installPackages+=(virtualenv)
 installPackages+=(python3-wheel)
 # python2 development package
@@ -167,6 +168,8 @@ installPackages+=(ruby)
 installPackages+=(libxslt1-dev)
 installPackages+=(libxml2-dev)
 installPackages+=(libhyphen-dev)
+# Fix dependencies in shared ffmpeg libs
+installPackages+=(patchelf)
 
 echo "Running update for apt"
 waitLoop

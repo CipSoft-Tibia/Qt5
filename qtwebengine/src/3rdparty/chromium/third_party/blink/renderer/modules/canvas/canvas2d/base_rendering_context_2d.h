@@ -25,8 +25,13 @@
 #include "third_party/blink/renderer/modules/canvas/canvas2d/identifiability_study_helper.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/graphics/image_orientation.h"
+#include "third_party/blink/renderer/platform/graphics/memory_managed_paint_recorder.h"
 #include "third_party/blink/renderer/platform/timer.h"
 #include "ui/gfx/geometry/skia_conversions.h"
+
+namespace ui {
+class ColorProvider;
+}  // namespace ui
 
 namespace blink {
 
@@ -37,6 +42,9 @@ class CanvasColorCache;
 class CanvasImageSource;
 class Color;
 class Image;
+class Mesh2DVertexBuffer;
+class Mesh2DUVBuffer;
+class Mesh2DIndexBuffer;
 class OffscreenCanvas;
 class Path2D;
 class TextMetrics;
@@ -48,6 +56,11 @@ using cc::UsePaintCache;
 class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
  public:
   static constexpr unsigned kFallbackToCPUAfterReadbacks = 2;
+
+  // Try to restore context 4 times in the event that the context is lost. If
+  // the context is unable to be restored after 4 attempts, we discard the
+  // backing storage of the context and allocate a new one.
+  static const unsigned kMaxTryRestoreContextAttempts = 4;
 
   BaseRenderingContext2D(const BaseRenderingContext2D&) = delete;
   BaseRenderingContext2D& operator=(const BaseRenderingContext2D&) = delete;
@@ -112,7 +125,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
                   ExceptionState& exception_state);
   // Pop state stack if top state was pushed by beginLayer, restore state and draw the bitmap.
   void endLayer(ExceptionState& exception_state);
-  void reset();          // Called by the javascript interface
+  virtual void reset();  // Called by the javascript interface
   void ResetInternal();  // Called from within blink
 
   void scale(double sx, double sy);
@@ -153,11 +166,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   bool isPointInStroke(const double x, const double y);
   bool isPointInStroke(Path2D*, const double x, const double y);
 
-  void clearRect(double x,
-                 double y,
-                 double width,
-                 double height,
-                 bool for_reset = false);
+  void clearRect(double x, double y, double width, double height);
   void fillRect(double x, double y, double width, double height);
   void strokeRect(double x, double y, double width, double height);
 
@@ -213,6 +222,18 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
                                const String& repetition_type,
                                ExceptionState&);
 
+  Mesh2DVertexBuffer* createMesh2DVertexBuffer(NotShared<DOMFloat32Array>,
+                                               ExceptionState&);
+  Mesh2DUVBuffer* createMesh2DUVBuffer(NotShared<DOMFloat32Array>,
+                                       ExceptionState&);
+  Mesh2DIndexBuffer* createMesh2DIndexBuffer(NotShared<DOMUint16Array>,
+                                             ExceptionState&);
+  void drawMesh(const Mesh2DVertexBuffer* vertex_buffer,
+                const Mesh2DUVBuffer* uv_buffer,
+                const Mesh2DIndexBuffer* index_buffer,
+                const V8CanvasImageSource* image,
+                ExceptionState&);
+
   ImageData* createImageData(ImageData*, ExceptionState&) const;
   ImageData* createImageData(int sw, int sh, ExceptionState&) const;
   ImageData* createImageData(int sw,
@@ -257,10 +278,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   virtual int Width() const = 0;
   virtual int Height() const = 0;
 
-  virtual bool IsAccelerated() const {
-    NOTREACHED();
-    return false;
-  }
+  bool IsAccelerated() const;
   virtual bool CanCreateCanvas2dResourceProvider() const = 0;
 
   virtual RespectImageOrientationEnum RespectImageOrientation() const = 0;
@@ -275,6 +293,10 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   }
   virtual cc::PaintCanvas* GetPaintCanvas() = 0;
 
+  // Returns the paint ops recorder this context uses. Can be `nullptr` if no
+  // recorder is available.
+  virtual MemoryManagedPaintRecorder* Recorder() = 0;
+
   // Called when about to draw. When this is called GetPaintCanvas() has already
   // been called and returned a non-null value.
   virtual void WillDraw(const SkIRect& dirty_rect,
@@ -283,7 +305,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   virtual sk_sp<PaintFilter> StateGetFilter() = 0;
   void SnapshotStateForFilter();
 
-  CanvasRenderingContextHost* GetCanvasRenderingContextHost() override {
+  virtual CanvasRenderingContextHost* GetCanvasRenderingContextHost() const {
     return nullptr;
   }
 
@@ -446,7 +468,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
 
   void WillUseCurrentFont() const;
   virtual bool WillSetFont() const;
-  virtual bool ResolveFont(const String& new_font);
+  virtual bool ResolveFont(const String& new_font) = 0;
   virtual bool CurrentFontResolvedAndUpToDate() const;
 
   explicit BaseRenderingContext2D(
@@ -487,8 +509,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
     NOTREACHED();
     return false;
   }
-  virtual scoped_refptr<StaticBitmapImage> GetImage(
-      CanvasResourceProvider::FlushReason) {
+  virtual scoped_refptr<StaticBitmapImage> GetImage(FlushReason) {
     NOTREACHED();
     return nullptr;
   }
@@ -503,7 +524,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   int layer_count_ = 0;
   AntiAliasingMode clip_antialiasing_;
 
-  virtual void FinalizeFrame(CanvasResourceProvider::FlushReason) {}
+  virtual void FinalizeFrame(FlushReason) {}
 
   float GetFontBaseline(const SimpleFontData&) const;
   virtual void DispatchContextLostEvent(TimerBase*);
@@ -549,7 +570,6 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
 
   virtual bool IsPaint2D() const { return false; }
   void WillOverwriteCanvas(OverdrawOp);
-  virtual void WillOverwriteCanvas() = 0;
 
   void SetColorScheme(mojom::blink::ColorScheme color_scheme) {
     if (color_scheme == color_scheme_) {
@@ -561,6 +581,9 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
     }
     color_scheme_ = color_scheme;
   }
+
+  // Returns the color provider stored in the Page via the Document.
+  const ui::ColorProvider* GetColorProvider() const;
 
   bool context_restorable_{true};
   CanvasRenderingContext::LostContextMode context_lost_mode_{
@@ -694,7 +717,7 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
     return false;
   }
 
-  virtual void FlushCanvas(CanvasResourceProvider::FlushReason) = 0;
+  virtual absl::optional<cc::PaintRecord> FlushCanvas(FlushReason) = 0;
 
   // Only call if identifiability_study_helper_.ShouldUpdateBuilder() returns
   // true.
@@ -711,6 +734,8 @@ class MODULES_EXPORT BaseRenderingContext2D : public CanvasPath {
   // Parses the string as a color and returns the result of parsing.
   ColorParseResult ParseColorOrCurrentColor(const String& color_string,
                                             Color& color) const;
+
+  cc::PaintFlags GetClearFlags() const;
 
   bool origin_tainted_by_content_;
   UsePaintCache path2d_use_paint_cache_;
@@ -813,10 +838,11 @@ ALWAYS_INLINE void BaseRenderingContext2D::CheckOverdraw(
   if (overdraw_op == OverdrawOp::kDrawImage) {  // static branch
     if (UNLIKELY(flags->getBlendMode() != SkBlendMode::kSrcOver) ||
         UNLIKELY(flags->getLooper()) || UNLIKELY(flags->getImageFilter()) ||
-        UNLIKELY(flags->getMaskFilter()) ||
-        UNLIKELY(flags->getAlpha() < 0xFF) ||
-        UNLIKELY(image_type == CanvasRenderingContext2DState::kNonOpaqueImage))
+        UNLIKELY(flags->getMaskFilter()) || UNLIKELY(!flags->isOpaque()) ||
+        UNLIKELY(image_type ==
+                 CanvasRenderingContext2DState::kNonOpaqueImage)) {
       return;
+    }
   }
 
   if (overdraw_op == OverdrawOp::kClearRect ||
@@ -892,7 +918,7 @@ void BaseRenderingContext2D::DrawInternal(
     // This happens if draw_func called flush() on the PaintCanvas. The flush
     // cannot be performed inside the scope of draw_func because it would break
     // the logic of CompositedDraw.
-    FlushCanvas(CanvasResourceProvider::FlushReason::kVolatileSourceImage);
+    FlushCanvas(FlushReason::kVolatileSourceImage);
   }
 }
 

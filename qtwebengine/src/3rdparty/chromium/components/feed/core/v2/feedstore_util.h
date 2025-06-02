@@ -7,7 +7,7 @@
 
 #include <string>
 #include "base/containers/flat_set.h"
-#include "base/strings/string_piece_forward.h"
+#include "base/strings/string_piece.h"
 #include "base/time/time.h"
 #include "components/feed/core/proto/v2/store.pb.h"
 #include "components/feed/core/v2/public/stream_type.h"
@@ -23,6 +23,7 @@ class Metadata;
 
 const char kForYouStreamKey[] = "i";
 const char kFollowStreamKey[] = "w";
+const char kSupervisedUserStreamKey[] = "s";
 constexpr base::StringPiece kSingleWebFeedStreamKeyPrefix = "c";
 constexpr base::StringPiece kSingleWebFeedMenuStreamKeyPrefix = "m/";
 constexpr base::StringPiece kSingleWebFeedOtherStreamKeyPrefix = "o/";

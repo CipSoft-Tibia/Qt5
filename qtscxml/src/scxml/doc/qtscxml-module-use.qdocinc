@@ -22,7 +22,7 @@
 
 //! [cmakestatecharts]
     \code
-    qt6_add_statecharts(mytarget
+    qt_add_statecharts(mytarget
         MyStatemachine.scxml
     )
     \endcode

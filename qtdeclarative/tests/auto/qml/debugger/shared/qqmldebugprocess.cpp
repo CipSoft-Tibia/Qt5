@@ -56,7 +56,7 @@ QString QQmlDebugProcess::stateString() const
 
 void QQmlDebugProcess::start(const QStringList &arguments)
 {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     // make sure m_executable points to the actual binary even if it's inside an app bundle
     QFileInfo binFile(m_executable);
     if (!binFile.isExecutable()) {
@@ -81,7 +81,7 @@ void QQmlDebugProcess::stop()
     if (m_process.state() != QProcess::NotRunning) {
         disconnect(&m_process, &QProcess::errorOccurred, this, &QQmlDebugProcess::processError);
         m_process.kill();
-        if (!m_process.waitForFinished(5000))
+        if (!m_process.waitForFinished(10000))
             qFatal("Debug process refused to be killed. We need to crash now.");
     }
 }

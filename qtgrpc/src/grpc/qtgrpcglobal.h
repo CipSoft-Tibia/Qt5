@@ -5,11 +5,13 @@
 #ifndef QTGRPCGLOBAL_H
 #define QTGRPCGLOBAL_H
 
+#include <QtGrpc/qtgrpc-config.h>
+#include <QtGrpc/qtgrpcexports.h>
+
+#include <QtNetwork/qtnetwork-config.h>
+
 #include <QtCore/qglobal.h>
 #include <QtCore/qtconfigmacros.h>
 #include <QtCore/qtcore-config.h>
-#include <QtGrpc/qtgrpc-config.h>
-#include <QtGrpc/qtgrpcexports.h>
-#include <QtNetwork/qtnetwork-config.h>
 
 #endif // QTGRPCGLOBAL_H

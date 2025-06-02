@@ -93,37 +93,22 @@ enum class ProfileSignout {
   // (eg. using history sync promo in recent tabs), but declined history sync
   // eventually.
   kUserDeclinedHistorySyncAfterDedicatedSignIn = 27,
-
+  // If the device lock is removed from an Android automotive device, the
+  // current account is automatically signed out.
+  kDeviceLockRemovedOnAutomotive = 28,
+  // User revoked Sync from the Settings by pressing "Turn off" in the "Sync and
+  // Google Services" page.
+  kRevokeSyncFromSettings = 29,
+  // User was in the web-only signed in state in the UNO model and clicked to
+  // turn on sync, but cancelled the sync confirmation dialog so they are
+  // reverted to the initial state, signed out in the profile but keeping the
+  // account on the web only.
+  kCancelSyncConfirmationOnWebOnlySignedIn = 30,
+  // Profile signout when IdleTimeoutActions enterprise policy triggers sign
+  // out.
+  kIdleTimeoutPolicyTriggeredSignOut = 31,
   // Keep this as the last enum.
-  kMaxValue = kUserDeclinedHistorySyncAfterDedicatedSignIn
-};
-
-// Enum values used for use with "AutoLogin.Reverse" histograms.
-enum AccessPointAction {
-  // The infobar was shown to the user.
-  HISTOGRAM_SHOWN,
-  // The user pressed the accept button to perform the suggested action.
-  HISTOGRAM_ACCEPTED,
-  // The user pressed the reject to turn off the feature.
-  HISTOGRAM_REJECTED,
-  // The user pressed the X button to dismiss the infobar this time.
-  HISTOGRAM_DISMISSED,
-  // The user completely ignored the infobar.  Either they navigated away, or
-  // they used the page as is.
-  HISTOGRAM_IGNORED,
-  // The user clicked on the learn more link in the infobar.
-  HISTOGRAM_LEARN_MORE,
-  // The sync was started with default settings.
-  HISTOGRAM_WITH_DEFAULTS,
-  // The sync was started with advanced settings.
-  HISTOGRAM_WITH_ADVANCED,
-  // The sync was started through auto-accept with default settings.
-  HISTOGRAM_AUTO_WITH_DEFAULTS,
-  // The sync was started through auto-accept with advanced settings.
-  HISTOGRAM_AUTO_WITH_ADVANCED,
-  // The sync was aborted with an undo button.
-  HISTOGRAM_UNDO,
-  HISTOGRAM_MAX
+  kMaxValue = kIdleTimeoutPolicyTriggeredSignOut
 };
 
 // Enum values which enumerates all access points where sign in could be
@@ -199,6 +184,16 @@ enum class AccessPoint : int {
   ACCESS_POINT_SET_UP_LIST = 51,
   // Access point for the local password migration warning on Android.
   ACCESS_POINT_PASSWORD_MIGRATION_WARNING_ANDROID = 52,
+  // Access point for the Save to Photos feature on iOS.
+  ACCESS_POINT_SAVE_TO_PHOTOS_IOS = 53,
+  // Access point for the Chrome Signin Intercept Bubble.
+  ACCESS_POINT_CHROME_SIGNIN_INTERCEPT_BUBBLE = 54,
+  // Restore primary account info in case it was lost.
+  ACCESS_POINT_RESTORE_PRIMARY_ACCOUNT_ON_PROFILE_LOAD = 55,
+  // Access point for the tab organization UI within the tab search bubble.
+  ACCESS_POINT_TAB_ORGANIZATION = 56,
+  // Access point for the Save to Drive feature on iOS.
+  ACCESS_POINT_SAVE_TO_DRIVE_IOS = 57,
 
   // Add values above this line with a corresponding label to the
   // "SigninAccessPoint" enum in tools/metrics/histograms/enums.xml
@@ -220,7 +215,7 @@ enum class ReauthAccessPoint {
   kPasswordSettings = 3,
   kGeneratePasswordDropdown = 4,
   kGeneratePasswordContextMenu = 5,
-  kPasswordMoveBubble = 6,
+  // kPasswordMoveBubble = 6, (deprecated)
   // The password save bubble *without* a destination picker, i.e. the password
   // was already saved locally.
   kPasswordSaveLocallyBubble = 7,
@@ -300,8 +295,8 @@ enum class AccountConsistencyPromoAction : int {
   TIMEOUT_ERROR_SHOWN = 17,
   // The web sign-in is not shown because the user is already signed in.
   SUPPRESSED_ALREADY_SIGNED_IN = 18,
-  // AuthenticationFlow failed to sign-in.
-  SIGN_IN_FAILED = 19,
+  // AuthenticationFlow on iOS is cancelled or failed to sign-in.
+  IOS_AUTH_FLOW_CANCELLED_OR_FAILED = 19,
   // The promo was shown to the user, with no existing on-device account. (i.e.
   // the no-account menu was shown)
   SHOWN_WITH_NO_DEVICE_ACCOUNT = 20,
@@ -323,9 +318,6 @@ enum class AccountConsistencyPromoAction : int {
 // numeric values should never be reused.
 // Please keep in Sync with "SigninReason" in
 // src/tools/metrics/histograms/enums.xml.
-// A Java counterpart will be generated for this enum.
-// GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.signin.metrics
-// GENERATED_JAVA_CLASS_NAME_OVERRIDE: SigninReason
 enum class Reason : int {
   kSigninPrimaryAccount = 0,
   kAddSecondaryAccount = 1,
@@ -425,8 +417,10 @@ enum class SourceForRefreshTokenOperation {
   // kSupervisedUser_InitSync = 2,
   kInlineLoginHandler_Signin = 3,
   kPrimaryAccountManager_ClearAccount = 4,
-  kPrimaryAccountManager_LegacyPreDiceSigninFlow = 5,
-  kUserMenu_RemoveAccount = 6,
+  // DEPRECATED
+  // kPrimaryAccountManager_LegacyPreDiceSigninFlow = 5,
+  // DEPRECATED
+  // kUserMenu_RemoveAccount = 6,
   kUserMenu_SignOutAllAccounts = 7,
   kSettings_Signout = 8,
   kSettings_PauseSync = 9,
@@ -441,8 +435,9 @@ enum class SourceForRefreshTokenOperation {
   // DEPRECATED on 09/2021 (used for force migration to DICE)
   // kAccountReconcilor_RevokeTokensNotInCookies = 18,
   kLogoutTabHelper_PrimaryPageChanged = 19,
+  kForceSigninReauthWithDifferentAccount = 20,
 
-  kMaxValue = kLogoutTabHelper_PrimaryPageChanged,
+  kMaxValue = kForceSigninReauthWithDifferentAccount,
 };
 
 // Different types of reporting. This is used as a histogram suffix.
@@ -483,9 +478,6 @@ void LogSigninAccessPointStarted(AccessPoint access_point,
                                  PromoAction promo_action);
 void LogSigninAccessPointCompleted(AccessPoint access_point,
                                    PromoAction promo_action);
-
-// Tracks the reason of sign in.
-void LogSigninReason(Reason reason);
 
 // Logs sign in offered events and their associated access points.
 // Access points (or features) are responsible for recording this where relevant

@@ -14,22 +14,21 @@
 
 import m from 'mithril';
 
+import {time, Time} from '../base/time';
 import {Actions} from '../common/actions';
-import {colorForString} from '../common/colorizer';
+import {colorForFtrace} from '../common/colorizer';
 import {StringListPatch} from '../common/state';
-import {time, Time} from '../common/time';
-
-import {globals} from './globals';
-import {Panel} from './panel';
-import {DetailsShell} from './widgets/details_shell';
+import {DetailsShell} from '../widgets/details_shell';
 import {
   MultiSelectDiff,
   Option as MultiSelectOption,
   PopupMultiSelect,
-} from './widgets/multiselect';
-import {PopupPosition} from './widgets/popup';
+} from '../widgets/multiselect';
+import {PopupPosition} from '../widgets/popup';
+import {VirtualScrollContainer} from '../widgets/virtual_scroll_container';
+
+import {globals} from './globals';
 import {Timestamp} from './widgets/timestamp';
-import {VirtualScrollContainer} from './widgets/virtual_scroll_container';
 
 const ROW_H = 20;
 const PAGE_SIZE = 250;
@@ -51,7 +50,7 @@ const PAGE_SIZE = 250;
 // Another call to view() can come at any time, as a reusult of the controller
 // giving us some data.
 //
-export class FtracePanel extends Panel<{}> {
+export class FtracePanel implements m.ClassComponent {
   private page: number = 0;
   private pageCount: number = 0;
 
@@ -178,12 +177,7 @@ export class FtracePanel extends Panel<{}> {
 
         const rank = i + offset;
 
-        const color = colorForString(name);
-        const hsl = `hsl(
-          ${color.h},
-          ${color.s - 20}%,
-          ${Math.min(color.l + 10, 60)}%
-        )`;
+        const color = colorForFtrace(name).base.cssString;
 
         rows.push(m(
             `.row`,
@@ -193,7 +187,7 @@ export class FtracePanel extends Panel<{}> {
               onmouseout: this.onRowOut.bind(this),
             },
             m('.cell', timestamp),
-            m('.cell', m('span.colour', {style: {background: hsl}}), name),
+            m('.cell', m('span.colour', {style: {background: color}}), name),
             m('.cell', cpu),
             m('.cell', process),
             m('.cell', args),
@@ -204,6 +198,4 @@ export class FtracePanel extends Panel<{}> {
       return m('.rows', rows);
     }
   }
-
-  renderCanvas() {}
 }

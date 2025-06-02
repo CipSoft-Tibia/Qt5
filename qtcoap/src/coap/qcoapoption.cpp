@@ -144,7 +144,7 @@ QCoapOption &QCoapOption::operator=(const QCoapOption &other)
 }
 
 /*!
-    Move-assignment operator.
+    Moves \a other into this option and returns a reference to this QCoapOption.
  */
 QCoapOption &QCoapOption::operator=(QCoapOption &&other) noexcept
 {

@@ -10,61 +10,66 @@ Item {
     height: 150
     width: 150
 
-    LogValueAxis3DFormatter {
+    LogValue3DAxisFormatter {
         id: initial
     }
 
-    LogValueAxis3DFormatter {
+    LogValue3DAxisFormatter {
         id: initialized
         autoSubGrid: false
         base: 0.1
-        showEdgeLabels: false
+        edgeLabelsVisible: false
     }
 
-    LogValueAxis3DFormatter {
+    LogValue3DAxisFormatter {
         id: change
     }
 
-    LogValueAxis3DFormatter {
+    LogValue3DAxisFormatter {
         id: invalid
     }
 
     TestCase {
-        name: "LogValueAxis3DFormatter Initial"
+        name: "LogValue3DAxisFormatter Initial"
 
         function test_initial() {
             compare(initial.autoSubGrid, true)
             compare(initial.base, 10)
-            compare(initial.showEdgeLabels, true)
+            compare(initial.edgeLabelsVisible, true)
         }
     }
 
     TestCase {
-        name: "LogValueAxis3DFormatter Initialized"
+        name: "LogValue3DAxisFormatter Initialized"
 
         function test_initialized() {
             compare(initialized.autoSubGrid, false)
             compare(initialized.base, 0.1)
-            compare(initialized.showEdgeLabels, false)
+            compare(initialized.edgeLabelsVisible, false)
         }
     }
 
     TestCase {
-        name: "LogValueAxis3DFormatter Change"
+        name: "LogValue3DAxisFormatter Change"
 
         function test_change() {
             change.autoSubGrid = false
             change.base = 0.1
-            change.showEdgeLabels = false
+            change.edgeLabelsVisible = false
 
             compare(change.autoSubGrid, false)
             compare(change.base, 0.1)
-            compare(change.showEdgeLabels, false)
+            compare(change.edgeLabelsVisible, false)
+
+            //signals
+            compare(baseSpy.count, 1)
+            compare(autoSubGridSpy.count, 1)
+            compare(edgeLabelVisibilitySpy.count, 1)
         }
     }
 
     TestCase {
-        name: "LogValueAxis3DFormatter Invalid"
+        name: "LogValue3DAxisFormatter Invalid"
 
         function test_invalid() {
             invalid.base = 1
@@ -72,5 +77,23 @@ Item {
             invalid.base = -1
             compare(invalid.base, 10)
         }
+    }
+
+    SignalSpy {
+        id: baseSpy
+        target: change
+        signalName: "baseChanged"
+    }
+
+    SignalSpy {
+        id: autoSubGridSpy
+        target: change
+        signalName: "autoSubGridChanged"
+    }
+
+    SignalSpy {
+        id: edgeLabelVisibilitySpy
+        target: change
+        signalName: "edgeLabelsVisibleChanged"
     }
 }

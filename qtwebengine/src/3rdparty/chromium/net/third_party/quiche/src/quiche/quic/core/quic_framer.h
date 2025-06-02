@@ -66,7 +66,7 @@ const size_t kMaxAckBlocks = (1 << (kNumberOfAckBlocksSize * 8)) - 1;
 
 // This class receives callbacks from the framer when packets
 // are processed.
-class QUIC_EXPORT_PRIVATE QuicFramerVisitorInterface {
+class QUICHE_EXPORT QuicFramerVisitorInterface {
  public:
   virtual ~QuicFramerVisitorInterface() {}
 
@@ -165,7 +165,7 @@ class QUIC_EXPORT_PRIVATE QuicFramerVisitorInterface {
   // the reported ECN counts in the ack frame, if present.
   virtual bool OnAckFrameEnd(
       QuicPacketNumber start,
-      const absl::optional<QuicEcnCounts>& ecn_counts) = 0;
+      const std::optional<QuicEcnCounts>& ecn_counts) = 0;
 
   // Called when a StopWaitingFrame has been parsed.
   virtual bool OnStopWaitingFrame(const QuicStopWaitingFrame& frame) = 0;
@@ -261,7 +261,7 @@ class QUIC_EXPORT_PRIVATE QuicFramerVisitorInterface {
 
 // Class for parsing and constructing QUIC packets.  It has a
 // QuicFramerVisitorInterface that is called when packets are parsed.
-class QUIC_EXPORT_PRIVATE QuicFramer {
+class QUICHE_EXPORT QuicFramer {
  public:
   // Constructs a new framer that installs a kNULL QuicEncrypter and
   // QuicDecrypter for level ENCRYPTION_INITIAL. |supported_versions| specifies
@@ -457,7 +457,7 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
       QuicVersionLabel* version_label, ParsedQuicVersion* parsed_version,
       QuicConnectionId* destination_connection_id,
       QuicConnectionId* source_connection_id,
-      absl::optional<absl::string_view>* retry_token,
+      std::optional<absl::string_view>* retry_token,
       std::string* detailed_error);
 
   // Parses the unencrypted fields in |packet| and stores them in the other
@@ -475,7 +475,7 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
       ParsedQuicVersion* parsed_version,
       QuicConnectionId* destination_connection_id,
       QuicConnectionId* source_connection_id,
-      absl::optional<absl::string_view>* retry_token,
+      std::optional<absl::string_view>* retry_token,
       std::string* detailed_error, ConnectionIdGeneratorInterface& generator);
 
   // Serializes a packet containing |frames| into |buffer|.
@@ -731,7 +731,7 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
 
   // AckTimestampRange is a data structure derived from a QuicAckFrame. It is
   // used to serialize timestamps in a IETF_ACK_RECEIVE_TIMESTAMPS frame.
-  struct QUIC_EXPORT_PRIVATE AckTimestampRange {
+  struct QUICHE_EXPORT AckTimestampRange {
     QuicPacketCount gap;
     // |range_begin| and |range_end| are index(es) in
     // QuicAckFrame.received_packet_times, representing a continuous range of
@@ -746,7 +746,7 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
       const absl::InlinedVector<AckTimestampRange, 2>& timestamp_ranges,
       QuicDataWriter* writer) const;
 
-  struct QUIC_EXPORT_PRIVATE AckFrameInfo {
+  struct QUICHE_EXPORT AckFrameInfo {
     AckFrameInfo();
     AckFrameInfo(const AckFrameInfo& other);
     ~AckFrameInfo();
@@ -1198,8 +1198,7 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
 // frame->quic_error_code is set to
 // QuicErrorCode::QUIC_IETF_GQUIC_ERROR_MISSING.  If there is an error code in
 // the string then it is removed from the string.
-QUIC_EXPORT_PRIVATE void MaybeExtractQuicErrorCode(
-    QuicConnectionCloseFrame* frame);
+QUICHE_EXPORT void MaybeExtractQuicErrorCode(QuicConnectionCloseFrame* frame);
 
 }  // namespace quic
 

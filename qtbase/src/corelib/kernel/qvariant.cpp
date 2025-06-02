@@ -305,11 +305,18 @@ static QVariant::Private clonePrivate(const QVariant::Private &other)
     if (d.is_shared) {
         d.data.shared->ref.ref();
     } else if (const QtPrivate::QMetaTypeInterface *iface = d.typeInterface()) {
-        Q_ASSERT(d.canUseInternalSpace(iface));
+        if (Q_LIKELY(d.canUseInternalSpace(iface))) {
+            // if not trivially copyable, ask to copy (if it's trivially
+            // copyable, we've already copied it)
+            if (iface->copyCtr)
+                QtMetaTypePrivate::copyConstruct(iface, d.data.data, other.data.data);
+        } else {
+            // highly unlikely, but possible case: type has changed relocatability
+            // between builds
+            d.data.shared = QVariant::PrivateShared::create(iface->size, iface->alignment);
+            QtMetaTypePrivate::copyConstruct(iface, d.data.shared->data(), other.data.data);
+        }
 
-        // if not trivially copyable, ask to copy
-        if (iface->copyCtr)
-            QtMetaTypePrivate::copyConstruct(iface, d.data.data, other.data.data);
     }
     return d;
 }
@@ -324,6 +331,7 @@ static QVariant::Private clonePrivate(const QVariant::Private &other)
     \ingroup objectmodel
     \ingroup shared
 
+    \compares equality
 
     Because C++ forbids unions from including types that have
     non-default constructors or destructors, most interesting Qt
@@ -1073,9 +1081,7 @@ QVariant &QVariant::operator=(const QVariant &variant)
 /*!
     \fn void QVariant::swap(QVariant &other)
     \since 4.8
-
-    Swaps variant \a other with this variant. This operation is very
-    fast and never fails.
+    \memberswap{variant}
 */
 
 /*!
@@ -2152,9 +2158,9 @@ bool QVariant::view(int type, void *ptr)
 }
 
 /*!
-    \fn bool QVariant::operator==(const QVariant &v1, const QVariant &v2)
+    \fn bool QVariant::operator==(const QVariant &lhs, const QVariant &rhs)
 
-    Returns \c true if \a v1 and \a v2 are equal; otherwise returns \c false.
+    Returns \c true if \a lhs and \a rhs are equal; otherwise returns \c false.
 
     QVariant uses the equality operator of the type() contained to check for
     equality.
@@ -2178,9 +2184,9 @@ bool QVariant::view(int type, void *ptr)
 */
 
 /*!
-    \fn bool QVariant::operator!=(const QVariant &v1, const QVariant &v2)
+    \fn bool QVariant::operator!=(const QVariant &lhs, const QVariant &rhs)
 
-    Returns \c false if \a v1 and \a v2 are equal; otherwise returns \c true.
+    Returns \c false if \a lhs and \a rhs are equal; otherwise returns \c true.
 
     QVariant uses the equality operator of the type() contained to check for
     equality.

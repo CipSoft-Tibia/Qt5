@@ -25,7 +25,7 @@ QT_BEGIN_NAMESPACE
 
 class DeclarativeAxes;
 
-class Q_CHARTSQML_PRIVATE_EXPORT DeclarativeCandlestickSet : public QCandlestickSet
+class Q_CHARTSQML_EXPORT DeclarativeCandlestickSet : public QCandlestickSet
 {
     Q_OBJECT
     Q_PROPERTY(QString brushFilename READ brushFilename WRITE setBrushFilename NOTIFY brushFilenameChanged)
@@ -102,7 +102,6 @@ Q_SIGNALS:
     void brushFilenameChanged(const QString &brushFilename);
 
 public Q_SLOTS:
-    static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
     void onClicked(QCandlestickSet *set);
     void onHovered(bool status, QCandlestickSet *set);
     void onPressed(QCandlestickSet *set);
@@ -116,6 +115,8 @@ public:
     DeclarativeAxes *m_axes;
 
 private:
+    static void appendSeriesChildren(QQmlListProperty<QObject> *list, QObject *element);
+
     QString m_brushFilename;
     QImage m_brushImage;
 };

@@ -18,31 +18,17 @@
  */
 #pragma once
 #include "custom_containers.h"
+#include "sync/sync_utils.h"
 #include "utils/hash_util.h"
 
 // Types to store queue family ownership (QFO) Transfers
-class COMMAND_POOL_STATE;
 
 template <typename Barrier>
 inline bool IsTransferOp(const Barrier &barrier) {
     return barrier.srcQueueFamilyIndex != barrier.dstQueueFamilyIndex;
 }
 
-// specializations for barriers that cannot do queue family ownership transfers
-template <>
-constexpr bool IsTransferOp(const VkMemoryBarrier &barrier) {
-    return false;
-}
-template <>
-constexpr bool IsTransferOp(const VkMemoryBarrier2KHR &barrier) {
-    return false;
-}
-template <>
-constexpr bool IsTransferOp(const VkSubpassDependency2 &barrier) {
-    return false;
-}
-
-static inline bool QueueFamilyIsExternal(const uint32_t queue_family_index) {
+static inline bool IsQueueFamilyExternal(const uint32_t queue_family_index) {
     return (queue_family_index == VK_QUEUE_FAMILY_EXTERNAL) || (queue_family_index == VK_QUEUE_FAMILY_FOREIGN_EXT);
 }
 
@@ -73,17 +59,13 @@ struct QFOTransferBarrierBase {
 // Image barrier specific implementation
 struct QFOImageTransferBarrier : public QFOTransferBarrierBase<VkImage> {
     using BaseType = QFOTransferBarrierBase<VkImage>;
+    using ImageBarrier = sync_utils::ImageBarrier;
     VkImageLayout oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageLayout newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageSubresourceRange subresourceRange;
 
     QFOImageTransferBarrier() = default;
-    QFOImageTransferBarrier(const VkImageMemoryBarrier &barrier)
-        : BaseType(barrier.image, barrier.srcQueueFamilyIndex, barrier.dstQueueFamilyIndex),
-          oldLayout(barrier.oldLayout),
-          newLayout(barrier.newLayout),
-          subresourceRange(barrier.subresourceRange) {}
-    QFOImageTransferBarrier(const VkImageMemoryBarrier2KHR &barrier)
+    QFOImageTransferBarrier(const ImageBarrier &barrier)
         : BaseType(barrier.image, barrier.srcQueueFamilyIndex, barrier.dstQueueFamilyIndex),
           oldLayout(barrier.oldLayout),
           newLayout(barrier.newLayout),
@@ -101,27 +83,24 @@ struct QFOImageTransferBarrier : public QFOTransferBarrierBase<VkImage> {
     // TODO: codegen a comprehensive complie time type -> string (and or other traits) template family
     static const char *BarrierName() { return "VkImageMemoryBarrier"; }
     static const char *HandleName() { return "VkImage"; }
-    // UNASSIGNED-VkImageMemoryBarrier-image-00001 QFO transfer image barrier must not duplicate QFO recorded in command buffer
-    static const char *ErrMsgDuplicateQFOInCB() { return "UNASSIGNED-VkImageMemoryBarrier-image-00001"; }
-    // UNASSIGNED-VkImageMemoryBarrier-image-00002 QFO transfer image barrier must not duplicate QFO submitted in batch
-    static const char *ErrMsgDuplicateQFOInSubmit() { return "UNASSIGNED-VkImageMemoryBarrier-image-00002"; }
-    // UNASSIGNED-VkImageMemoryBarrier-image-00003 QFO transfer image barrier must not duplicate QFO submitted previously
-    static const char *ErrMsgDuplicateQFOSubmitted() { return "UNASSIGNED-VkImageMemoryBarrier-image-00003"; }
-    // UNASSIGNED-VkImageMemoryBarrier-image-00004 QFO acquire image barrier must have matching QFO release submitted previously
-    static const char *ErrMsgMissingQFOReleaseInSubmit() { return "UNASSIGNED-VkImageMemoryBarrier-image-00004"; }
+    // QFO transfer image barrier must not duplicate QFO recorded in command buffer
+    static const char *DuplicateQFOInCB() { return "WARNING-VkImageMemoryBarrier-image-00001"; }
+    // QFO transfer image barrier must not duplicate QFO submitted in batch
+    static const char *DuplicateQFOInSubmit() { return "WARNING-VkImageMemoryBarrier-image-00002"; }
+    // QFO transfer image barrier must not duplicate QFO submitted previously
+    static const char *DuplicateQFOSubmitted() { return "WARNING-VkImageMemoryBarrier-image-00003"; }
+    // QFO acquire image barrier must have matching QFO release submitted previously
+    static const char *MissingQFOReleaseInSubmit() { return "UNASSIGNED-VkImageMemoryBarrier-image-00004"; }
 };
 
 // Buffer barrier specific implementation
 struct QFOBufferTransferBarrier : public QFOTransferBarrierBase<VkBuffer> {
     using BaseType = QFOTransferBarrierBase<VkBuffer>;
+    using BufferBarrier = sync_utils::BufferBarrier;
     VkDeviceSize offset = 0;
     VkDeviceSize size = 0;
     QFOBufferTransferBarrier() = default;
-    QFOBufferTransferBarrier(const VkBufferMemoryBarrier &barrier)
-        : BaseType(barrier.buffer, barrier.srcQueueFamilyIndex, barrier.dstQueueFamilyIndex),
-          offset(barrier.offset),
-          size(barrier.size) {}
-    QFOBufferTransferBarrier(const VkBufferMemoryBarrier2KHR &barrier)
+    QFOBufferTransferBarrier(const BufferBarrier &barrier)
         : BaseType(barrier.buffer, barrier.srcQueueFamilyIndex, barrier.dstQueueFamilyIndex),
           offset(barrier.offset),
           size(barrier.size) {}
@@ -134,14 +113,14 @@ struct QFOBufferTransferBarrier : public QFOTransferBarrierBase<VkBuffer> {
     }
     static const char *BarrierName() { return "VkBufferMemoryBarrier"; }
     static const char *HandleName() { return "VkBuffer"; }
-    // UNASSIGNED-VkImageMemoryBarrier-buffer-00001 QFO transfer buffer barrier must not duplicate QFO recorded in command buffer
-    static const char *ErrMsgDuplicateQFOInCB() { return "UNASSIGNED-VkBufferMemoryBarrier-buffer-00001"; }
-    // UNASSIGNED-VkBufferMemoryBarrier-buffer-00002 QFO transfer buffer barrier must not duplicate QFO submitted in batch
-    static const char *ErrMsgDuplicateQFOInSubmit() { return "UNASSIGNED-VkBufferMemoryBarrier-buffer-00002"; }
-    // UNASSIGNED-VkBufferMemoryBarrier-buffer-00003 QFO transfer buffer barrier must not duplicate QFO submitted previously
-    static const char *ErrMsgDuplicateQFOSubmitted() { return "UNASSIGNED-VkBufferMemoryBarrier-buffer-00003"; }
-    // UNASSIGNED-VkBufferMemoryBarrier-buffer-00004 QFO acquire buffer barrier must have matching QFO release submitted previously
-    static const char *ErrMsgMissingQFOReleaseInSubmit() { return "UNASSIGNED-VkBufferMemoryBarrier-buffer-00004"; }
+    // QFO transfer buffer barrier must not duplicate QFO recorded in command buffer
+    static const char *DuplicateQFOInCB() { return "WARNING-VkBufferMemoryBarrier-buffer-00001"; }
+    // QFO transfer buffer barrier must not duplicate QFO submitted in batch
+    static const char *DuplicateQFOInSubmit() { return "WARNING-VkBufferMemoryBarrier-buffer-00002"; }
+    // QFO transfer buffer barrier must not duplicate QFO submitted previously
+    static const char *DuplicateQFOSubmitted() { return "WARNING-VkBufferMemoryBarrier-buffer-00003"; }
+    // QFO acquire buffer barrier must have matching QFO release submitted previously
+    static const char *MissingQFOReleaseInSubmit() { return "UNASSIGNED-VkBufferMemoryBarrier-buffer-00004"; }
 };
 
 template <typename TransferBarrier>
@@ -169,7 +148,7 @@ using GlobalQFOTransferBarrierMap =
 // Submit queue uses the Scoreboard to track all release/acquire operations in a batch.
 template <typename TransferBarrier>
 using QFOTransferCBScoreboard =
-    vvl::unordered_map<TransferBarrier, const CMD_BUFFER_STATE *, QFOTransferBarrierHash<TransferBarrier>>;
+    vvl::unordered_map<TransferBarrier, const vvl::CommandBuffer *, QFOTransferBarrierHash<TransferBarrier>>;
 
 template <typename TransferBarrier>
 struct QFOTransferCBScoreboards {

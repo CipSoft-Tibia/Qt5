@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/builtin_value.h"
 #include "src/tint/lang/wgsl/ast/discard_statement.h"
@@ -1034,7 +1047,7 @@ TEST_F(ResolverFunctionValidationTest, ParameterMatrixNoType) {
 
 enum class Expectation {
     kAlwaysPass,
-    kPassWithFullPtrParameterExtension,
+    kPassWithUnrestrictedPointerParameters,
     kAlwaysFail,
     kInvalid,
 };
@@ -1046,45 +1059,57 @@ struct TestParams {
 struct TestWithParams : ResolverTestWithParam<TestParams> {};
 
 using ResolverFunctionParameterValidationTest = TestWithParams;
-TEST_P(ResolverFunctionParameterValidationTest, AddressSpaceNoExtension) {
+TEST_P(ResolverFunctionParameterValidationTest, AddressSpaceWithoutUnrestrictedPointerParameters) {
+    auto features = wgsl::AllowedFeatures::Everything();
+    features.features.erase(wgsl::LanguageFeature::kUnrestrictedPointerParameters);
+    Resolver r(this, features);
+
     auto& param = GetParam();
-    auto ptr_type = ty("ptr", Ident(Source{{12, 34}}, param.address_space), ty.i32());
+    Structure("S", Vector{Member("a", ty.i32())});
+    auto ptr_type = ty("ptr", Ident(Source{{12, 34}}, param.address_space), ty("S"));
     auto* arg = Param(Source{{12, 34}}, "p", ptr_type);
     Func("f", Vector{arg}, ty.void_(), tint::Empty);
 
+    if (param.address_space == core::AddressSpace::kPixelLocal) {
+        Enable(wgsl::Extension::kChromiumExperimentalPixelLocal);
+    }
+
     if (param.expectation == Expectation::kAlwaysPass) {
-        ASSERT_TRUE(r()->Resolve()) << r()->error();
+        ASSERT_TRUE(r.Resolve()) << r.error();
     } else {
         StringStream ss;
         ss << param.address_space;
-        EXPECT_FALSE(r()->Resolve());
+        EXPECT_FALSE(r.Resolve());
         if (param.expectation == Expectation::kInvalid) {
             std::string err = R"(12:34 error: unresolved address space '${addr_space}'
-12:34 note: Possible values: 'function', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')";
+12:34 note: Possible values: 'function', 'pixel_local', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')";
             err = tint::ReplaceAll(err, "${addr_space}", tint::ToString(param.address_space));
-            EXPECT_EQ(r()->error(), err);
+            EXPECT_EQ(r.error(), err);
         } else {
-            EXPECT_EQ(r()->error(),
-                      "12:34 error: function parameter of pointer type cannot be in '" +
-                          tint::ToString(param.address_space) + "' address space");
+            EXPECT_EQ(r.error(), "12:34 error: function parameter of pointer type cannot be in '" +
+                                     tint::ToString(param.address_space) + "' address space");
         }
     }
 }
-TEST_P(ResolverFunctionParameterValidationTest, AddressSpaceWithExtension) {
+TEST_P(ResolverFunctionParameterValidationTest, AddressSpaceWithUnrestrictedPointerParameters) {
     auto& param = GetParam();
-    auto ptr_type = ty("ptr", Ident(Source{{12, 34}}, param.address_space), ty.i32());
+    Structure("S", Vector{Member("a", ty.i32())});
+    auto ptr_type = ty("ptr", Ident(Source{{12, 34}}, param.address_space), ty("S"));
     auto* arg = Param(Source{{12, 34}}, "p", ptr_type);
-    Enable(core::Extension::kChromiumExperimentalFullPtrParameters);
     Func("f", Vector{arg}, ty.void_(), tint::Empty);
 
+    if (param.address_space == core::AddressSpace::kPixelLocal) {
+        Enable(wgsl::Extension::kChromiumExperimentalPixelLocal);
+    }
+
     if (param.expectation == Expectation::kAlwaysPass ||
-        param.expectation == Expectation::kPassWithFullPtrParameterExtension) {
+        param.expectation == Expectation::kPassWithUnrestrictedPointerParameters) {
         ASSERT_TRUE(r()->Resolve()) << r()->error();
     } else {
         EXPECT_FALSE(r()->Resolve());
         if (param.expectation == Expectation::kInvalid) {
             std::string err = R"(12:34 error: unresolved address space '${addr_space}'
-12:34 note: Possible values: 'function', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')";
+12:34 note: Possible values: 'function', 'pixel_local', 'private', 'push_constant', 'storage', 'uniform', 'workgroup')";
             err = tint::ReplaceAll(err, "${addr_space}", tint::ToString(param.address_space));
             EXPECT_EQ(r()->error(), err);
         } else {
@@ -1097,16 +1122,19 @@ TEST_P(ResolverFunctionParameterValidationTest, AddressSpaceWithExtension) {
 INSTANTIATE_TEST_SUITE_P(
     ResolverTest,
     ResolverFunctionParameterValidationTest,
-    testing::Values(
-        TestParams{core::AddressSpace::kUndefined, Expectation::kInvalid},
-        TestParams{core::AddressSpace::kIn, Expectation::kAlwaysFail},
-        TestParams{core::AddressSpace::kOut, Expectation::kAlwaysFail},
-        TestParams{core::AddressSpace::kUniform, Expectation::kPassWithFullPtrParameterExtension},
-        TestParams{core::AddressSpace::kWorkgroup, Expectation::kPassWithFullPtrParameterExtension},
-        TestParams{core::AddressSpace::kHandle, Expectation::kInvalid},
-        TestParams{core::AddressSpace::kStorage, Expectation::kPassWithFullPtrParameterExtension},
-        TestParams{core::AddressSpace::kPrivate, Expectation::kAlwaysPass},
-        TestParams{core::AddressSpace::kFunction, Expectation::kAlwaysPass}));
+    testing::Values(TestParams{core::AddressSpace::kUndefined, Expectation::kInvalid},
+                    TestParams{core::AddressSpace::kIn, Expectation::kAlwaysFail},
+                    TestParams{core::AddressSpace::kOut, Expectation::kAlwaysFail},
+                    TestParams{core::AddressSpace::kUniform,
+                               Expectation::kPassWithUnrestrictedPointerParameters},
+                    TestParams{core::AddressSpace::kWorkgroup,
+                               Expectation::kPassWithUnrestrictedPointerParameters},
+                    TestParams{core::AddressSpace::kHandle, Expectation::kInvalid},
+                    TestParams{core::AddressSpace::kStorage,
+                               Expectation::kPassWithUnrestrictedPointerParameters},
+                    TestParams{core::AddressSpace::kPixelLocal, Expectation::kAlwaysFail},
+                    TestParams{core::AddressSpace::kPrivate, Expectation::kAlwaysPass},
+                    TestParams{core::AddressSpace::kFunction, Expectation::kAlwaysPass}));
 
 }  // namespace
 }  // namespace tint::resolver

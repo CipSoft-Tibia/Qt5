@@ -116,7 +116,7 @@ export class TimelineGrid {
     context.save();
     context.scale(window.devicePixelRatio, window.devicePixelRatio);
     const height = Math.floor(context.canvas.height / window.devicePixelRatio);
-    context.strokeStyle = getComputedStyle(document.body).getPropertyValue('--sys-color-divider');
+    context.strokeStyle = getComputedStyle(document.body).getPropertyValue('--app-color-strokestyle');
     context.lineWidth = 1;
 
     context.translate(0.5, 0.5);
@@ -140,7 +140,7 @@ export class TimelineGrid {
     context.fillStyle = ThemeSupport.ThemeSupport.instance().getComputedValue('--color-background-opacity-50');
     context.fillRect(0, 0, width, headerHeight);
 
-    context.fillStyle = ThemeSupport.ThemeSupport.instance().getComputedValue('--color-text-primary');
+    context.fillStyle = ThemeSupport.ThemeSupport.instance().getComputedValue('--sys-color-on-surface');
     context.textBaseline = 'hanging';
     context.font = `${DEFAULT_FONT_SIZE} ${getFontFamilyForCanvas()}`;
 

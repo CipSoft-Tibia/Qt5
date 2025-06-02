@@ -8,108 +8,120 @@
 #  pragma qt_class(QProtobufOneof)
 #endif
 
+#include <QtProtobuf/qprotobufmessage.h>
+#include <QtProtobuf/qtprotobuftypes.h>
+
 #include <QtCore/qmetatype.h>
+#include <QtCore/qtclasshelpermacros.h>
 #include <QtCore/qvariant.h>
 
-#include <QtProtobuf/qtprotobuftypes.h>
-#include <QtProtobuf/qprotobufmessage.h>
-
-#include <type_traits>
-
 QT_BEGIN_NAMESPACE
-
-class QAbstractProtobufSerializer;
 
 namespace QtProtobufPrivate {
 
 class QProtobufOneofPrivate;
-class Q_PROTOBUF_EXPORT QProtobufOneof final
+class QProtobufOneof final
 {
-    template<typename T>
-    using IsProtobufMessageType =
-            typename std::enable_if_t<!std::is_pointer_v<T>
-                                              && std::is_base_of_v<QProtobufMessage, T>
-                                              && HasProtobufPropertyOrdering<T>,
-                                      int>;
+    template <typename T>
+    using is_oneof_value_type = std::disjunction<
+        QtProtobuf::is_protobuf_message_without_ordering<T>,
+        QtProtobuf::is_protobuf_non_message<T>>;
+    template <typename T>
+    using if_oneof_value_type = std::enable_if_t<is_oneof_value_type<T>::value, bool>;
 
-    template<typename T>
-    using IsNonMessageProtobufType = typename std::enable_if_t<
-            std::disjunction_v<
-                    std::is_same<T, QtProtobuf::int32>, std::is_same<T, QtProtobuf::int64>,
-                    std::is_same<T, QtProtobuf::sint32>, std::is_same<T, QtProtobuf::sint64>,
-                    std::is_same<T, QtProtobuf::uint32>, std::is_same<T, QtProtobuf::uint64>,
-                    std::is_same<T, QtProtobuf::fixed32>, std::is_same<T, QtProtobuf::fixed64>,
-                    std::is_same<T, QtProtobuf::sfixed32>, std::is_same<T, QtProtobuf::sfixed64>,
-                    std::is_same<T, float>, std::is_same<T, double>,
-                    std::is_same<T, QtProtobuf::boolean>, std::is_enum<T>,
-                    std::is_same<T, QString>, std::is_same<T, QByteArray>>,
-            int>;
+    template <typename T>
+    using is_oneof_compatible = std::disjunction<QtProtobuf::is_protobuf_message<T>,
+                                                 is_oneof_value_type<T>>;
+    template <typename T>
+    using if_oneof_compatible = std::enable_if_t<is_oneof_compatible<T>::value, bool>;
 
 public:
-    QProtobufOneof();
-    ~QProtobufOneof();
-    QProtobufOneof(const QProtobufOneof &other);
-    QProtobufOneof &operator=(const QProtobufOneof &other);
+    Q_PROTOBUF_EXPORT  QProtobufOneof();
+    Q_PROTOBUF_EXPORT  ~QProtobufOneof();
+    Q_PROTOBUF_EXPORT  QProtobufOneof(const QProtobufOneof &other);
+    Q_PROTOBUF_EXPORT  QProtobufOneof &operator=(const QProtobufOneof &other);
     QProtobufOneof(QProtobufOneof &&other) noexcept : d_ptr(std::exchange(other.d_ptr, {})) { }
-    QProtobufOneof &operator=(QProtobufOneof &&other) noexcept
+    QT_MOVE_ASSIGNMENT_OPERATOR_IMPL_VIA_PURE_SWAP(QProtobufOneof)
+    void swap(QProtobufOneof &other) noexcept
     {
         qt_ptr_swap(d_ptr, other.d_ptr);
-        return *this;
     }
 
-    template<typename T>
+    template <typename T, if_oneof_compatible<T> = true>
     void setValue(const T &value, int fieldNumber)
     {
         setValue(QVariant::fromValue<T>(value), fieldNumber);
     }
 
-    template<typename T, IsNonMessageProtobufType<T> = 0>
+    template<typename T, QtProtobuf::if_protobuf_message<T> = true>
+    void setValue(T &&value, int fieldNumber)
+    {
+        setValue(QVariant::fromValue<T>(std::forward<T>(value)), fieldNumber);
+    }
+
+    template <typename T, if_oneof_value_type<T> = true>
     T value() const
     {
-        Q_ASSERT(QMetaType::fromType<T>() == rawValue().metaType());
+        ensureMetaType(QMetaType::fromType<T>(), rawValue().metaType());
         return rawValue().value<T>();
     }
 
-    template<typename T, IsProtobufMessageType<T> = 0>
-    T *value() const
+    template <typename T, QtProtobuf::if_protobuf_message<T> = true>
+    T *message()
     {
-        Q_ASSERT(QMetaType::fromType<T>() == rawValue().metaType());
-        return reinterpret_cast<T *>(rawValue().data());
+        ensureRawValue(QMetaType::fromType<T>());
+        return static_cast<T *>(rawValue().data());
     }
 
-    template<typename T, IsNonMessageProtobufType<T> = 0>
+    template <typename T, QtProtobuf::if_protobuf_message<T> = true>
+    const T *message() const
+    {
+        ensureMetaType(QMetaType::fromType<T>(), rawValue().metaType());
+        return static_cast<const T *>(rawValue().data());
+    }
+
+    template <typename T, if_oneof_value_type<T> = true>
     bool isEqual(const T &otherValue, int fieldNumber) const
     {
         return this->fieldNumber() == fieldNumber
                 && QMetaType::fromType<T>() == rawValue().metaType() && value<T>() == otherValue;
     }
 
-    template<typename T, IsProtobufMessageType<T> = 0>
+    template <typename T, QtProtobuf::if_protobuf_message<T> = true>
     bool isEqual(const T &otherValue, int fieldNumber) const
     {
-        return this->fieldNumber() == fieldNumber
-                && QMetaType::fromType<T>() == rawValue().metaType() && value<T>()
-                && *(value<T>()) == otherValue;
+        if (this->fieldNumber() != fieldNumber
+            || QMetaType::fromType<T>() != rawValue().metaType()) {
+            return false;
+        }
+
+        const auto *messagePtr = message<T>();
+        return messagePtr && *messagePtr == otherValue;
     }
 
-    int fieldNumber() const;
-    bool holdsField(int fieldNumber) const;
+    Q_PROTOBUF_EXPORT int fieldNumber() const;
+    Q_PROTOBUF_EXPORT bool holdsField(int fieldNumber) const;
 
 private:
-    friend bool operator==(const QProtobufOneof &lhs, const QProtobufOneof &rhs)
+    Q_ALWAYS_INLINE static void ensureMetaType(QMetaType lhs, QMetaType rhs)
     {
-        return lhs.isEqual(rhs);
+        Q_ASSERT(lhs == rhs);
     }
-    friend bool operator!=(const QProtobufOneof &lhs, const QProtobufOneof &rhs)
-    {
-        return !lhs.isEqual(rhs);
-    }
-    bool isEqual(const QProtobufOneof &other) const;
+
+    Q_PROTOBUF_EXPORT void ensureRawValue(QMetaType metaType);
+
+    friend Q_PROTOBUF_EXPORT bool comparesEqual(const QProtobufOneof &lhs,
+                                                const QProtobufOneof &rhs) noexcept;
+    Q_DECLARE_EQUALITY_COMPARABLE(QProtobufOneof)
 
     friend class QT_PREPEND_NAMESPACE(QProtobufMessage);
 
-    void setValue(const QVariant &value, int fieldNumber);
-    QVariant &rawValue() const;
+    Q_PROTOBUF_EXPORT void setValue(const QVariant &value, int fieldNumber);
+    Q_PROTOBUF_EXPORT const QVariant &rawValue() const;
+    QVariant &rawValue()
+    {
+        return const_cast<QVariant &>(std::as_const(*this).rawValue());
+    }
 
     QProtobufOneofPrivate *d_ptr;
     Q_DECLARE_PRIVATE(QProtobufOneof)
@@ -117,7 +129,5 @@ private:
 } // namespace QtProtobufPrivate
 
 QT_END_NAMESPACE
-
-Q_DECLARE_METATYPE(QtProtobufPrivate::QProtobufOneof)
 
 #endif // QPROTOBUFONEOF_H

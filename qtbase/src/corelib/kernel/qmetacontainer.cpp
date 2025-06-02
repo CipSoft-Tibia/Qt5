@@ -14,6 +14,8 @@ QT_BEGIN_NAMESPACE
 
     \ingroup objectmodel
 
+    \compares equality
+
     The class provides a number of primitive container operations, using void*
     as operands. This way, you can manipulate a generic container retrieved from
     a Variant without knowing its type.
@@ -33,6 +35,18 @@ QT_BEGIN_NAMESPACE
     \since 6.0
 
     Returns the QMetaSequence corresponding to the type given as template parameter.
+*/
+
+/*!
+    \class QMetaContainer
+    \inmodule QtCore
+    \since 6.0
+    \brief The QMetaContainer class provides common functionality for sequential
+        and associative containers.
+
+    \ingroup objectmodel
+
+    \compares equality
 */
 
 /*!
@@ -490,7 +504,7 @@ void QMetaContainer::copyIterator(void *target, const void *source) const
 }
 
 /*!
-    Advances the non-const \a iterator by \a step steps. If \a steps is negative
+    Advances the non-const \a iterator by \a step steps. If \a step is negative
     the \a iterator is moved backwards, towards the beginning of the container.
     The behavior is unspecified for negative values of \a step if
     \l hasBidirectionalIterator() returns false.
@@ -738,7 +752,7 @@ void QMetaContainer::copyConstIterator(void *target, const void *source) const
 }
 
 /*!
-    Advances the const \a iterator by \a step steps. If \a steps is negative
+    Advances the const \a iterator by \a step steps. If \a step is negative
     the \a iterator is moved backwards, towards the beginning of the container.
     The behavior is unspecified for negative values of \a step if
     \l hasBidirectionalIterator() returns false.
@@ -790,21 +804,19 @@ void QMetaSequence::valueAtConstIterator(const void *iterator, void *result) con
 }
 
 /*!
-    \fn bool operator==(QMetaSequence a, QMetaSequence b)
+    \fn bool QMetaSequence::operator==(const QMetaSequence &lhs, const QMetaSequence &rhs)
     \since 6.0
-    \relates QMetaSequence
 
-    Returns \c true if the QMetaSequence \a a represents the same container type
-    as the QMetaSequence \a b, otherwise returns \c false.
+    Returns \c true if the QMetaSequence \a lhs represents the same container type
+    as the QMetaSequence \a rhs, otherwise returns \c false.
 */
 
 /*!
-    \fn bool operator!=(QMetaSequence a, QMetaSequence b)
+    \fn bool QMetaSequence::operator!=(const QMetaSequence &lhs, const QMetaSequence &rhs)
     \since 6.0
-    \relates QMetaSequence
 
-    Returns \c true if the QMetaSequence \a a represents a different container
-    type than the QMetaSequence \a b, otherwise returns \c false.
+    Returns \c true if the QMetaSequence \a lhs represents a different container
+    type than the QMetaSequence \a rhs, otherwise returns \c false.
 */
 
 

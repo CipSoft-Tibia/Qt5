@@ -111,11 +111,7 @@ public:
     QWindow *hostWindow() const;
 
 protected:
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
-#else
-    bool nativeEvent(const QByteArray &eventType, void *message, long *result) override;
-#endif
     bool event(QEvent *e) override;
     bool eventFilter(QObject *o, QEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
@@ -454,19 +450,11 @@ static const wchar_t *qaxatom = L"QAxContainer4_Atom";
 class QAxNativeEventFilter : public QAbstractNativeEventFilter
 {
 public:
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *) override;
-#else
-    bool nativeEventFilter(const QByteArray &eventType, void *message, long *) override;
-#endif
 };
 Q_GLOBAL_STATIC(QAxNativeEventFilter, s_nativeEventFilter)
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool QAxNativeEventFilter::nativeEventFilter(const QByteArray &, void *m, qintptr *)
-#else
-bool QAxNativeEventFilter::nativeEventFilter(const QByteArray &, void *m, long *)
-#endif
 {
     MSG *msg = static_cast<MSG *>(m);
     const uint message = msg->message;
@@ -1696,11 +1684,7 @@ void QAxHostWidget::showEvent(QShowEvent *)
     resizeObject();
 }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 bool QAxHostWidget::nativeEvent(const QByteArray &eventType, void *message, qintptr *result)
-#else
-bool QAxHostWidget::nativeEvent(const QByteArray &eventType, void *message, long *result)
-#endif
 {
     if (axhost && axhost->inPlaceObjectWindowless
         && eventType == QByteArrayLiteral("windows_generic_MSG")) {

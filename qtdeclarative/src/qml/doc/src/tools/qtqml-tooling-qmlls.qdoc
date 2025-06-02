@@ -3,11 +3,13 @@
 
 /*!
 \page qtqml-tooling-qmlls.html
-\title \QMLLS Reference
-\brief Overview of the QML Language Server (qmlls).
+\title \QMLLS
+\keyword \QMLLS Reference
+\brief A tool that helps you write code in your favorite LSP-supporting editor.
 \ingroup qtqml-tooling
+\ingroup qtqml-tooling-devtools
 
-QML Language Server is a tool shipped with Qt that helps you write code
+\QMLLS is a tool shipped with Qt that helps you write code
 in your favorite (LSP-supporting) editor.
 See \l{https://microsoft.github.io/language-server-protocol/}{Language Server Protocol}
 for more information.
@@ -20,56 +22,59 @@ Currently, it enables your editor to:
     \li Find usages of JavaScript variables and QML objects
     \li Rename JavaScript variables and QML objects
     \li Format QML files
+    \li Get help from Qt Documentation
 \endlist
 
-\note qmlls is currently in development, see \l{Known Limitations} for
-more details.
+\note \c qmlls is currently in development, see
+\l{#Known Limitations}{Known Limitations} for more details.
 
 \section1 Supported Features
 
 \section2 Linting
 
-QML Language Server can automatically lint opened QML files
+\QMLLS can automatically lint opened QML files
 and display warnings or errors straight in the editor. See
-\l{qmllint Reference}{qmllint} for more information about the linting process.
+\l{qmllint} for more information about the linting process,
+and \l{QML Lint Warning and Errors} on how to fix warnings and
+errors.
 
 \section2 Formatting
 
-QML Language Server can format entire files from inside
+\QMLLS can format entire files from inside
 the editor. See \l{qmlformat} for more information about the
 formatting process.
 
 
 \section2 Finding Definitions
 
-QML Language Server can find definitions of JavaScript variables,
+\QMLLS can find definitions of JavaScript variables,
 functions, QML object id's and QML properties from their usages.
 
-QML Language Server can also find the definition of types used in
+\QMLLS can also find the definition of types used in
 type annotations for JavaScript functions, QML object properties,
 and QML object instantiation.
 
 \section2 Finding Usages
 
-QML Language Server can find usages of JavaScript variables,
+\QMLLS can find usages of JavaScript variables,
 QML object properties, JavaScript functions, QML object methods,
 and QML object id's.
 
 \section2 Renaming
 
-QML Language Server can rename JavaScript variables and functions,
+\QMLLS can rename JavaScript variables and functions,
 as well as QML object properties, methods, and id's, as long as
 they are defined in a QML file.
 
 \section2 Suggesting Autocompletion Items
 
-QML Language Server provides autocompletion suggestions for
+\QMLLS provides autocompletion suggestions for
 JavaScript variables, expressions, and statements, as well as
 QML object properties, methods, and id's.
 
 \section2 Tracking Changes in C++ Files
 
-QML Language Server can track changes in C++ files defining QML
+\QMLLS can track changes in C++ files defining QML
 types. It automatically rebuilds CMake QML modules to provide
 accurate and up-to-date warnings and completion items for C++
 defined QML types.
@@ -77,27 +82,73 @@ defined QML types.
 You can
 \l{Disabling automatic CMake builds}{disable this feature}.
 
-\section1 Setting up the QML Language Server in Your Editor
+\section2 Documentation Hints
 
-\note You can find the QML Language Server binary under
+\QMLLS includes a documentation hints feature that
+provides programmers with quick access to Qt’s documentation
+by hovering over a keyword. In order to use this feature, your
+Qt kit should contain the Qt documentation and your project
+should be built with \l{QT_QML_GENERATE_QMLLS_INI} variable.
+
+\section1 Setting up the \QMLLS in Your Editor
+
+\note You can find the \QMLLS binary under
 \c{<Qt installation folder>/bin/qmlls} in installations of Qt
 made with \QOI.
 
 \section2 Setting up the Build Directory
 
-QML Language Server needs to know the location of your build
-folder. You can pass it the following ways:
+\QMLLS needs to know the location of your build
+folder. You can pass it in the following ways:
 \list
     \li The \c{--build-dir} command line option. In this case
 your editor should invoke \c{qmlls} as following:
 \badcode
-<path/to/qmlls> --build-dir <path/to/build-directory>
+<path/to/qmlls> ... --build-dir <path/to/build-directory> ...
 \endcode
     \li The \c{QMLLS_BUILD_DIRS} environment variable.
     \li The \c{.qmlls.ini} settings file, see \l {Configuration File}.
 \endlist
 
 \note When the build directory is specified in multiple ways, the
+command line option takes preference over the environment variable
+that takes precedence over the setting file.
+
+\section2 Setting up the import paths
+
+\QMLLS needs to know the import paths of the Qt version that you
+are using in your project. You can pass the import paths in the
+following ways:
+\list
+    \li The \c{-I} command line option. In this case
+your editor should invoke \c{qmlls} as following:
+\badcode
+<path/to/qmlls> ... -I /path/to/imports -I /optional/path/to/another/import ...
+\endcode
+    \li The \c{QML_IMPORT_PATH} environment variable. In this case you
+        should pass the \c{-E} option to \QMLLS.
+    \li The \c{.qmlls.ini} settings file, see \l {Configuration File}.
+\endlist
+
+\note When the import path is specified in multiple ways, the
+command line option takes preference over the environment variable
+that takes precedence over the setting file.
+
+\section2 Setting up the documentation path
+
+\QMLLS can show documentation hints when it knows the documentation
+path of the Qt version that you are using in your project. You can pass
+the documentation path in the following ways:
+\list
+    \li The \c{-d} or \c{-p} command line option. In this case
+your editor should invoke \c{qmlls} as following:
+\badcode
+<path/to/qmlls> ... -d /path/to/docs ...
+\endcode
+    \li The \c{.qmlls.ini} settings file, see \l {Configuration File}.
+\endlist
+
+\note When the documentation path is specified in multiple ways, the
 command line option takes preference over the environment variable
 that takes precedence over the setting file.
 
@@ -119,7 +170,7 @@ your editor should invoke \c{qmlls} as follows:
 
 \section1 Configuration File
 
-QML Language Server can be configured via a configuration file \c{.qmlls.ini}.
+\QMLLS can be configured via a configuration file \c{.qmlls.ini}.
 This file should be in the root source directory of the project.
 It should be a text file in the ini-format.
 
@@ -132,37 +183,34 @@ The configuration file should look like this:
 [General]
 buildDir=<path/to/build-directory>
 no-cmake-calls=<true-or-false>
+docDir=<path/to/qt-documentation>
+importPaths=<path/to/imports>
 \endcode
 
 Currently, the configuration file can be used to set the build
 directory of the current project and optionally disable the automatic
 CMake rebuild functionality for C++ defined QML types.
 
-\note QML Language Server can create default configuration files
+\note \QMLLS can create default configuration files
 using the \c{--write-defaults} option. This will overwrite an
 already existing .qmlls.ini file in the current directory.
 
 \section1 Known Limitations
 
-QML Language Server might emit false positive warnings on projects
-that were not built, as it needs the build information to find
-QML modules defined in the same project, for example.
-
-Despite covering many common QML features,
-the QML Language Server is still in development with some features
+Despite covering many common QML features, \QMLLS is still in development with some features
 yet to be supported:
-
 \list
-    \li Renaming QML types.
     \li Suggesting autocompletions on invalid QML files.
     \li Navigating to definitions of objects defined in C++.
-    \li Supporting all QML and JavaScript language constructs for all features.
+    \li Autocompleting context properties
 \endlist
 
-The QML code model in the QML Language Server does not yet
-support all of the JavaScript language constructs, which means that
-some features like navigating to definition and finding usages might not
-work on these language constructs.
-
+\QMLLS might emit false positive warnings on projects
+\list
+    \li using QMake or imperative type registration---see \l{Port QML modules to CMake}
+    \li that were not built---\QMLLS uses the build information to find QML modules
+    \li where QML modules don't follow the guidelines in \l{Modern QML modules}
+    \li not using \l QT_QML_GENERATE_QMLLS_INI
+\endlist
 
 */

@@ -145,14 +145,14 @@ Column {
                 property bool selectionChangedFlag: selectionChanged
                 property variant backendValue: backendValues.selectionMode
                 property variant valueFromBackend: backendValue.value
-                property string enumScope: "AbstractGraph3D"
+                property string enumScope: "Graphs3D.SelectionFlag"
                 property string enumSeparator: " | "
                 property int checkedCount: 0
-                property bool selectionItem: false
-                property bool selectionRow: false
-                property bool selectionColumn: false
-                property bool selectionSlice: false
-                property bool selectionMulti: false
+                property bool item: false
+                property bool row: false
+                property bool column: false
+                property bool slice: false
+                property bool multi: false
 
                 function checkValue(checkedVariable, variableText, expressionBase) {
                     var expressionStr = expressionBase
@@ -171,14 +171,14 @@ Column {
                 function composeSelectionMode() {
                     var expressionStr = ""
                     checkedCount = 0
-                    expressionStr = checkValue(selectionItem, "SelectionItem", expressionStr)
-                    expressionStr = checkValue(selectionRow, "SelectionRow", expressionStr)
-                    expressionStr = checkValue(selectionColumn, "SelectionColumn", expressionStr)
-                    expressionStr = checkValue(selectionSlice, "SelectionSlice", expressionStr)
-                    expressionStr = checkValue(selectionMulti, "SelectionMultiSeries", expressionStr)
+                    expressionStr = checkValue(item, "Item", expressionStr)
+                    expressionStr = checkValue(row, "Row", expressionStr)
+                    expressionStr = checkValue(column, "Column", expressionStr)
+                    expressionStr = checkValue(slice, "Slice", expressionStr)
+                    expressionStr = checkValue(multi, "MultiSeries", expressionStr)
 
                     if (checkedCount === 0)
-                        backendValue.expression = enumScope + ".SelectionNone"
+                        backendValue.expression = enumScope + ".None"
                     else
                         backendValue.expression = expressionStr
                 }
@@ -187,17 +187,17 @@ Column {
                     if (backendValue.value === undefined)
                         return
 
-                    selectionItem = (backendValue.expression.indexOf("SelectionItem") !== -1)
-                    selectionRow = (backendValue.expression.indexOf("SelectionRow") !== -1)
-                    selectionColumn = (backendValue.expression.indexOf("SelectionColumn") !== -1)
-                    selectionSlice = (backendValue.expression.indexOf("SelectionSlice") !== -1)
-                    selectionMulti = (backendValue.expression.indexOf("SelectionMultiSeries") !== -1)
+                    item = (backendValue.expression.indexOf("Item") !== -1)
+                    row = (backendValue.expression.indexOf("Row") !== -1)
+                    column = (backendValue.expression.indexOf("Column") !== -1)
+                    slice = (backendValue.expression.indexOf("Slice") !== -1)
+                    multi = (backendValue.expression.indexOf("MultiSeries") !== -1)
 
-                    selectionItemBox.checked = selectionItem
-                    selectionRowBox.checked = selectionRow
-                    selectionColumnBox.checked = selectionColumn
-                    selectionSliceBox.checked = selectionSlice
-                    selectionMultiSeriesBox.checked = selectionMulti
+                    itemBox.checked = item
+                    rowBox.checked = row
+                    columnBox.checked = column
+                    sliceBox.checked = slice
+                    multiSeriesBox.checked = multi
                 }
 
                 onSelectionChangedFlagChanged: evaluate()
@@ -214,47 +214,47 @@ Column {
                     anchors.fill: parent
 
                     Controls.CheckBox {
-                        id: selectionItemBox
-                        text: "SelectionItem"
+                        id: itemBox
+                        text: "Item"
                         Layout.fillWidth: true
                         onClicked: {
-                            selectionLayout.selectionItem = checked
+                            selectionLayout.item = checked
                             selectionLayout.composeSelectionMode()
                         }
                     }
                     Controls.CheckBox {
-                        id: selectionRowBox
-                        text: "SelectionRow"
+                        id: rowBox
+                        text: "Row"
                         Layout.fillWidth: true
                         onClicked: {
-                            selectionLayout.selectionRow = checked
+                            selectionLayout.row = checked
                             selectionLayout.composeSelectionMode()
                         }
                     }
                     Controls.CheckBox {
-                        id: selectionColumnBox
-                        text: "SelectionColumn"
+                        id: columnBox
+                        text: "Column"
                         Layout.fillWidth: true
                         onClicked: {
-                            selectionLayout.selectionColumn = checked
+                            selectionLayout.column = checked
                             selectionLayout.composeSelectionMode()
                         }
                     }
                     Controls.CheckBox {
-                        id: selectionSliceBox
-                        text: "SelectionSlice"
+                        id: sliceBox
+                        text: "Slice"
                         Layout.fillWidth: true
                         onClicked: {
-                            selectionLayout.selectionSlice = checked
+                            selectionLayout.slice = checked
                             selectionLayout.composeSelectionMode()
                         }
                     }
                     Controls.CheckBox {
-                        id: selectionMultiSeriesBox
-                        text: "SelectionMultiSeries"
+                        id: multiSeriesBox
+                        text: "MultiSeries"
                         Layout.fillWidth: true
                         onClicked: {
-                            selectionLayout.selectionMulti = checked
+                            selectionLayout.multi = checked
                             selectionLayout.composeSelectionMode()
                         }
                     }

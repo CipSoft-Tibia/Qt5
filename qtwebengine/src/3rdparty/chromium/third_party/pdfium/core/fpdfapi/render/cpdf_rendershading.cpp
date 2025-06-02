@@ -77,7 +77,7 @@ std::array<FX_ARGB, kShadingSteps> GetShadingSteps(
       if (!func)
         continue;
       absl::optional<uint32_t> nresults =
-          func->Call(pdfium::make_span(&input, 1), result_span);
+          func->Call(pdfium::span_from_ref(input), result_span);
       if (nresults.has_value())
         result_span = result_span.subspan(nresults.value());
     }
@@ -134,7 +134,8 @@ void DrawAxialShading(const RetainPtr<CFX_DIBitmap>& pBitmap,
   CFX_Matrix matrix = mtObject2Bitmap.GetInverse();
   for (int row = 0; row < height; row++) {
     uint32_t* dib_buf =
-        reinterpret_cast<uint32_t*>(pBitmap->GetWritableScanline(row).data());
+        fxcrt::reinterpret_span<uint32_t>(pBitmap->GetWritableScanline(row))
+            .data();
     for (int column = 0; column < width; column++) {
       CFX_PointF pos = matrix.Transform(
           CFX_PointF(static_cast<float>(column), static_cast<float>(row)));
@@ -207,7 +208,8 @@ void DrawRadialShading(const RetainPtr<CFX_DIBitmap>& pBitmap,
   CFX_Matrix matrix = mtObject2Bitmap.GetInverse();
   for (int row = 0; row < height; row++) {
     uint32_t* dib_buf =
-        reinterpret_cast<uint32_t*>(pBitmap->GetWritableScanline(row).data());
+        fxcrt::reinterpret_span<uint32_t>(pBitmap->GetWritableScanline(row))
+            .data();
     for (int column = 0; column < width; column++) {
       CFX_PointF pos = matrix.Transform(
           CFX_PointF(static_cast<float>(column), static_cast<float>(row)));
@@ -288,7 +290,8 @@ void DrawFuncShading(const RetainPtr<CFX_DIBitmap>& pBitmap,
   std::vector<float> result_array(total_results);
   for (int row = 0; row < height; ++row) {
     uint32_t* dib_buf =
-        reinterpret_cast<uint32_t*>(pBitmap->GetWritableScanline(row).data());
+        fxcrt::reinterpret_span<uint32_t>(pBitmap->GetWritableScanline(row))
+            .data();
     for (int column = 0; column < width; column++) {
       CFX_PointF pos = matrix.Transform(
           CFX_PointF(static_cast<float>(column), static_cast<float>(row)));
@@ -713,8 +716,9 @@ struct PatchDrawer {
       CFX_FillRenderOptions fill_options(
           CFX_FillRenderOptions::WindingOptions());
       fill_options.full_cover = true;
-      if (bNoPathSmooth)
+      if (bNoPathSmooth) {
         fill_options.aliased_path = true;
+      }
       pDevice->DrawPath(
           path, nullptr, nullptr,
           ArgbEncode(alpha, div_colors[0].comp[0], div_colors[0].comp[1],
@@ -768,7 +772,7 @@ struct PatchDrawer {
   int max_delta;
   CFX_Path path;
   UnownedPtr<CFX_RenderDevice> pDevice;
-  int bNoPathSmooth;
+  bool bNoPathSmooth;
   int alpha;
   CoonColor patch_colors[4];
 };
@@ -914,12 +918,10 @@ void CPDF_RenderShading::Draw(CFX_RenderDevice* pDevice,
     return;
   }
   CPDF_DeviceBuffer buffer(pContext, pDevice, clip_rect_bbox, pCurObj, 150);
-  if (!buffer.Initialize())
+  RetainPtr<CFX_DIBitmap> pBitmap = buffer.Initialize();
+  if (!pBitmap) {
     return;
-
-  RetainPtr<CFX_DIBitmap> pBitmap = buffer.GetBitmap();
-  if (pBitmap->GetBuffer().empty())
-    return;
+  }
 
   if (background != 0) {
     pBitmap->Clear(background);

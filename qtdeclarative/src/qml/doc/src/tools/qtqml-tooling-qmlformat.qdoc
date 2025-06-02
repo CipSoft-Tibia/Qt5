@@ -4,8 +4,9 @@
 /*!
 \page qtqml-tooling-qmlformat.html
 \title qmlformat
-\brief Overview of the qmlformat tool.
+\brief A tool that automatically formats QML files according to QML coding convention.
 \ingroup qtqml-tooling
+\ingroup qtqml-tooling-devtools
 
 \section1 qmlformat
 \e qmlformat is a tool that automatically formats QML files in accordance

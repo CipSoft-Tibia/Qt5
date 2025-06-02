@@ -40,8 +40,11 @@ QQmlJSLinterCodegen::compileBinding(const QV4::Compiler::Context *context,
     const QString name = m_document->stringAt(irBinding.propertyNameIndex);
     QQmlJSCompilePass::Function function =
             initializer.run(context, name, astNode, irBinding, &initializationError);
-    if (initializationError.isValid())
-        diagnose(initializationError.message, initializationError.type, initializationError.loc);
+    if (initializationError.isValid()) {
+        diagnose(u"Could not determine signature of binding for %1: %2"_s
+                         .arg(name, initializationError.message),
+                 initializationError.type, initializationError.loc);
+    }
 
     QQmlJS::DiagnosticMessage analyzeError;
     if (!analyzeFunction(context, &function, &analyzeError)) {
@@ -66,8 +69,11 @@ QQmlJSLinterCodegen::compileFunction(const QV4::Compiler::Context *context,
                 &m_typeResolver, m_currentObject->location, m_currentScope->location);
     QQmlJSCompilePass::Function function =
             initializer.run(context, name, astNode, &initializationError);
-    if (initializationError.isValid())
-        diagnose(initializationError.message, initializationError.type, initializationError.loc);
+    if (initializationError.isValid()) {
+        diagnose(u"Could not determine signature of function %1: %2"_s
+                         .arg(name, initializationError.message),
+                 initializationError.type, initializationError.loc);
+    }
 
     QQmlJS::DiagnosticMessage analyzeError;
     if (!analyzeFunction(context, &function, &analyzeError)) {
@@ -78,21 +84,30 @@ QQmlJSLinterCodegen::compileFunction(const QV4::Compiler::Context *context,
     return QQmlJSAotFunction {};
 }
 
+void QQmlJSLinterCodegen::setPassManager(QQmlSA::PassManager *passManager)
+{
+    m_passManager = passManager;
+    auto managerPriv = QQmlSA::PassManagerPrivate::get(passManager);
+    managerPriv->m_typeResolver = typeResolver();
+}
+
 bool QQmlJSLinterCodegen::analyzeFunction(const QV4::Compiler::Context *context,
                                           QQmlJSCompilePass::Function *function,
                                           QQmlJS::DiagnosticMessage *error)
 {
     QQmlJSTypePropagator propagator(m_unitGenerator, &m_typeResolver, m_logger,
-                                    m_passManager);
-    QQmlJSCompilePass::InstructionAnnotations annotations = propagator.run(function, error);
+                                    {}, {}, m_passManager);
+    auto [basicBlocks, annotations] = propagator.run(function, error);
     if (!error->isValid()) {
-        QQmlJSShadowCheck shadowCheck(m_unitGenerator, &m_typeResolver, m_logger);
-        shadowCheck.run(&annotations, function, error);
+        QQmlJSShadowCheck shadowCheck(m_unitGenerator, &m_typeResolver, m_logger, basicBlocks,
+                                      annotations);
+        shadowCheck.run(function, error);
     }
 
     if (!error->isValid()) {
-        QQmlJSStorageGeneralizer generalizer(m_unitGenerator, &m_typeResolver, m_logger);
-        generalizer.run(annotations, function, error);
+        QQmlJSStorageGeneralizer generalizer(m_unitGenerator, &m_typeResolver, m_logger,
+                                             basicBlocks, annotations);
+        generalizer.run(function, error);
     }
 
     if (error->isValid()) {

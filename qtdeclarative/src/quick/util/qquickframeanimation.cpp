@@ -95,7 +95,7 @@ private:
 
 /*!
     \qmltype FrameAnimation
-    \instantiates QQuickFrameAnimation
+    \nativetype QQuickFrameAnimation
     \inqmlmodule QtQuick
     \ingroup qtquick-interceptors
     \since 6.4
@@ -252,7 +252,7 @@ int QQuickFrameAnimation::currentFrame() const
 }
 
 /*!
-    \qmlproperty qreal QtQuick::FrameAnimation::frameTime
+    \qmlproperty real QtQuick::FrameAnimation::frameTime
     \readonly
 
     This property holds the time (in seconds) since the previous frame update.
@@ -289,7 +289,7 @@ qreal QQuickFrameAnimation::frameTime() const
 }
 
 /*!
-    \qmlproperty qreal QtQuick::FrameAnimation::smoothFrameTime
+    \qmlproperty real QtQuick::FrameAnimation::smoothFrameTime
     \readonly
 
     This property holds the smoothed time (in seconds) since the previous frame update.
@@ -317,7 +317,7 @@ qreal QQuickFrameAnimation::smoothFrameTime() const
 }
 
 /*!
-    \qmlproperty qreal QtQuick::FrameAnimation::elapsedTime
+    \qmlproperty real QtQuick::FrameAnimation::elapsedTime
     \readonly
 
     This property holds the time (in seconds) since the previous start.

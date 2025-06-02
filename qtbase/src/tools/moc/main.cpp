@@ -171,6 +171,8 @@ int runMoc(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     QCoreApplication::setApplicationVersion(QString::fromLatin1(QT_VERSION_STR));
+    // let moc identify itself as moc, even if the binary has been renamed
+    QCoreApplication::setApplicationName(QString::fromLatin1("moc"));
 
     bool autoInclude = true;
     bool defaultInclude = true;
@@ -461,11 +463,14 @@ int runMoc(int argc, char **argv)
 
     if (filename.isEmpty()) {
         filename = QStringLiteral("standard input");
-        in.open(stdin, QIODevice::ReadOnly);
+        if (!in.open(stdin, QIODevice::ReadOnly)) {
+            fprintf(stderr, "moc: cannot open standard input: %s\n", qPrintable(in.errorString()));
+            return 1;
+        }
     } else {
         in.setFileName(filename);
         if (!in.open(QIODevice::ReadOnly)) {
-            fprintf(stderr, "moc: %s: No such file\n", qPrintable(filename));
+            fprintf(stderr, "moc: cannot open %s: %s\n", qPrintable(filename), qPrintable(in.errorString()));
             return 1;
         }
         moc.filename = filename.toLocal8Bit();

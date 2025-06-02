@@ -4,26 +4,20 @@
 cmake_minimum_required(VERSION 3.16)
 project(windowembedding LANGUAGES CXX)
 
-if(NOT DEFINED INSTALL_EXAMPLESDIR)
-    set(INSTALL_EXAMPLESDIR "examples")
-endif()
-
-set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/quick/windowembedding")
-
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Widgets)
 find_package(Qt6 QUIET OPTIONAL_COMPONENTS Multimedia)
 
-qt_standard_project_setup(REQUIRES 6.7)
+qt_standard_project_setup(REQUIRES 6.8)
 
 add_subdirectory("../../../examples/quick/shared" "shared")
 
-qt_add_executable(windowembedding
+qt_add_executable(windowembedding_test
     WIN32
     MACOSX_BUNDLE
     main.cpp
 )
 
-target_link_libraries(windowembedding PRIVATE
+target_link_libraries(windowembedding_test PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Qml
@@ -31,9 +25,9 @@ target_link_libraries(windowembedding PRIVATE
     Qt6::Widgets
 )
 
-add_dependencies(windowembedding windowembedding_shared)
+add_dependencies(windowembedding_test windowembedding_shared)
 
-qt_add_qml_module(windowembedding
+qt_add_qml_module(windowembedding_test
     URI windowembeddingexample
     QML_FILES
         "windowembedding.qml"
@@ -52,8 +46,8 @@ qt_add_qml_module(windowembedding
 )
 
 if(TARGET Qt::Multimedia)
-    target_link_libraries(windowembedding PRIVATE Qt6::Multimedia)
-    qt_target_qml_sources(windowembedding
+    target_link_libraries(windowembedding_test PRIVATE Qt6::Multimedia)
+    qt_target_qml_sources(windowembedding_test
         QML_FILES "examples/hdr.qml"
         RESOURCES "examples/hdrtest.mp4"
     )
@@ -62,7 +56,7 @@ endif()
 if(APPLE)
     enable_language(OBJCXX)
     set_source_files_properties(main.cpp PROPERTIES LANGUAGE OBJCXX)
-    target_link_libraries(windowembedding PRIVATE
+    target_link_libraries(windowembedding_test PRIVATE
         "-framework WebKit"
         "-framework MapKit"
         "-framework AVFoundation"
@@ -70,16 +64,23 @@ if(APPLE)
     )
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         # Xcode fails to sign Contents/PlugIns/shared/qmldir
-        set_target_properties(windowembedding PROPERTIES
+        set_target_properties(windowembedding_test PROPERTIES
             XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
         )
     endif()
 endif()
 
-install(TARGETS windowembedding
-    RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
-    BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
-    LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
+install(TARGETS windowembedding_test
+    BUNDLE  DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-bundle_shared(windowembedding)
+qt_generate_deploy_qml_app_script(
+    TARGET windowembedding_test
+    OUTPUT_SCRIPT deploy_script
+    MACOS_BUNDLE_POST_BUILD
+    NO_UNSUPPORTED_PLATFORM_ERROR
+    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
+)
+install(SCRIPT ${deploy_script})

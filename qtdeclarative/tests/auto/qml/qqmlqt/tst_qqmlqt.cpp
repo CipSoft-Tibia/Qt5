@@ -28,6 +28,7 @@
 
 #include <QtQuickTestUtils/private/qmlutils_p.h>
 #include <private/qtenvironmentvariables_p.h> // for qTzSet()
+#include <private/qqmlengine_p.h>
 
 class tst_qqmlqt : public QQmlDataTest
 {
@@ -56,8 +57,10 @@ private slots:
     void alpha();
     void tint();
     void color();
+#if QT_CONFIG(desktopservices)
     void openUrlExternally();
     void openUrlExternally_pragmaLibrary();
+#endif
     void md5();
     void createComponent();
     void createComponent_pragmaLibrary();
@@ -194,6 +197,9 @@ void tst_qqmlqt::hsla()
     QCOMPARE(qvariant_cast<QColor>(object->property("test4")), QColor());
     QCOMPARE(qvariant_cast<QColor>(object->property("test5")), QColor::fromHslF(1, 1, 1, 1));
     QCOMPARE(qvariant_cast<QColor>(object->property("test6")), QColor::fromHslF(0, 0, 0, 0));
+    QColor test7 = qvariant_cast<QColor>(object->property("test7"));
+    QCOMPARE(test7, QColor::fromHslF(-1, 0, 0.5, 1));
+    QCOMPARE(test7.hslHue(), -1.0f);
 }
 
 void tst_qqmlqt::hsva()
@@ -214,6 +220,9 @@ void tst_qqmlqt::hsva()
     QCOMPARE(qvariant_cast<QColor>(object->property("test4")), QColor());
     QCOMPARE(qvariant_cast<QColor>(object->property("test5")), QColor::fromHsvF(1, 1, 1, 1));
     QCOMPARE(qvariant_cast<QColor>(object->property("test6")), QColor::fromHsvF(0, 0, 0, 0));
+    QColor test7 = qvariant_cast<QColor>(object->property("test7"));
+    QCOMPARE(test7, QColor::fromHsvF(-1, 0, 0.5, 1));
+    QCOMPARE(test7.hsvHue(), -1.0f);
 }
 
 void tst_qqmlqt::colorEqual()
@@ -614,6 +623,7 @@ public slots:
     void noteCall(const QUrl &url) { called++; last = url; }
 };
 
+#if QT_CONFIG(desktopservices)
 void tst_qqmlqt::openUrlExternally()
 {
     MyUrlHandler handler;
@@ -660,6 +670,7 @@ void tst_qqmlqt::openUrlExternally_pragmaLibrary()
     QCOMPARE(handler.called,2);
     QCOMPARE(handler.last, htmlTestFile);
 }
+#endif
 
 void tst_qqmlqt::md5()
 {
@@ -1282,6 +1293,7 @@ void tst_qqmlqt::later_data()
 
 void tst_qqmlqt::later()
 {
+    QQmlEngine engine;
     QFETCH(QString, function);
     QFETCH(QStringList, expectedWarnings);
     QFETCH(QStringList, propNames);
@@ -1472,6 +1484,7 @@ void tst_qqmlqt::fontSetsProperties() {
     QVERIFY(object != nullptr);
 
     QFont fontProperty = qvariant_cast<QFont>(object->property("fontProperty"));
+    QVERIFY(fontProperty.styleStrategy() & QFont::ContextFontMerging);
     QCOMPARE(fontProperty.variableAxisTags().size(), 1);
     QCOMPARE(fontProperty.variableAxisValue("abcd"), 23.0625);
     QCOMPARE(fontProperty.featureTags().size(), 1);

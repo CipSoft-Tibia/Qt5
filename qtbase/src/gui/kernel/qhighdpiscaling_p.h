@@ -102,7 +102,7 @@ private:
     static QDpi effectiveLogicalDpi(const QPlatformScreen *screen, qreal rawFactor, qreal roundedFactor);
     static qreal screenSubfactor(const QPlatformScreen *screen);
     static QScreen *screenForPosition(Point position, QScreen *guess);
-    static QVector<QHighDpiScaling::ScreenFactor> parseScreenScaleFactorsSpec(const QStringView &screenScaleFactors);
+    static QList<QHighDpiScaling::ScreenFactor> parseScreenScaleFactorsSpec(QStringView screenScaleFactors);
 
     static qreal m_factor;
     static bool m_active;
@@ -172,7 +172,7 @@ inline QMargins scale(const QMargins &margins, qreal scaleFactor, QPoint origin 
 template<typename T>
 QList<T> scale(const QList<T> &list, qreal scaleFactor, QPoint origin = QPoint(0, 0))
 {
-    if (!QHighDpiScaling::isActive())
+    if (qFuzzyCompare(scaleFactor, qreal(1)))
         return list;
 
     QList<T> scaled;
@@ -184,7 +184,7 @@ QList<T> scale(const QList<T> &list, qreal scaleFactor, QPoint origin = QPoint(0
 
 inline QRegion scale(const QRegion &region, qreal scaleFactor, QPoint origin = QPoint(0, 0))
 {
-    if (!QHighDpiScaling::isActive())
+    if (qFuzzyCompare(scaleFactor, qreal(1)))
         return region;
 
     QRegion scaled = region.translated(-origin);

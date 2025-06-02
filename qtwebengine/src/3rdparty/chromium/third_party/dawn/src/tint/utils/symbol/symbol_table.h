@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_UTILS_SYMBOL_SYMBOL_TABLE_H_
 #define SRC_TINT_UTILS_SYMBOL_SYMBOL_TABLE_H_
@@ -40,17 +53,19 @@ class SymbolTable {
     /// @returns the symbol table
     SymbolTable& operator=(SymbolTable&& other);
 
-    /// Wrap sets this symbol table to hold symbols which point to the allocated names in @p o.
-    /// The symbol table after Wrap is intended to temporarily extend the objects
-    /// of an existing immutable SymbolTable
-    /// As the copied objects are owned by @p o, @p o must not be destructed
-    /// or assigned while using this symbol table.
+    /// @returns a symbol table to hold symbols which point to the allocated names in @p o.
+    /// The symbol table after Wrap is intended to temporarily extend the objects of an existing
+    /// immutable SymbolTable.
+    /// @warning As the copied objects are owned by @p o, @p o must not be destructed or assigned
+    /// while using this symbol table.
     /// @param o the immutable SymbolTable to extend
-    void Wrap(const SymbolTable& o) {
-        next_symbol_ = o.next_symbol_;
-        name_to_symbol_ = o.name_to_symbol_;
-        last_prefix_to_index_ = o.last_prefix_to_index_;
-        generation_id_ = o.generation_id_;
+    static SymbolTable Wrap(const SymbolTable& o) {
+        SymbolTable out(o.generation_id_);
+        out.next_symbol_ = o.next_symbol_;
+        out.name_to_symbol_ = o.name_to_symbol_;
+        out.last_prefix_to_index_ = o.last_prefix_to_index_;
+        out.generation_id_ = o.generation_id_;
+        return out;
     }
 
     /// Registers a name into the symbol table, returning the Symbol.

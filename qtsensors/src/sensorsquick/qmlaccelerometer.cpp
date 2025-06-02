@@ -6,7 +6,7 @@
 
 /*!
     \qmltype Accelerometer
-//!    \instantiates QmlAccelerometer
+//!    \nativetype QmlAccelerometer
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -66,7 +66,7 @@ QSensor *QmlAccelerometer::sensor() const
 
 /*!
     \qmltype AccelerometerReading
-//!    \instantiates QmlAccelerometerReading
+//!    \nativetype QmlAccelerometerReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -91,7 +91,7 @@ QmlAccelerometerReading::~QmlAccelerometerReading()
 }
 
 /*!
-    \qmlproperty qreal AccelerometerReading::x
+    \qmlproperty real AccelerometerReading::x
     This property holds the acceleration on the X axis.
 
     Please see QAccelerometerReading::x for information about this property.
@@ -108,7 +108,7 @@ QBindable<qreal> QmlAccelerometerReading::bindableX() const
 }
 
 /*!
-    \qmlproperty qreal AccelerometerReading::y
+    \qmlproperty real AccelerometerReading::y
     This property holds the acceleration on the Y axis.
 
     Please see QAccelerometerReading::y for information about this property.
@@ -125,7 +125,7 @@ QBindable<qreal> QmlAccelerometerReading::bindableY() const
 }
 
 /*!
-    \qmlproperty qreal AccelerometerReading::z
+    \qmlproperty real AccelerometerReading::z
     This property holds the acceleration on the Z axis.
 
     Please see QAccelerometerReading::z for information about this property.

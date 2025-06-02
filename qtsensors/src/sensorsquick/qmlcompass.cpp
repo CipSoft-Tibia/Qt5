@@ -6,7 +6,7 @@
 
 /*!
     \qmltype Compass
-//!    \instantiates QmlCompass
+//!    \nativetype QmlCompass
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -43,7 +43,7 @@ QSensor *QmlCompass::sensor() const
 
 /*!
     \qmltype CompassReading
-//!    \instantiates QmlCompassReading
+//!    \nativetype QmlCompassReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -68,7 +68,7 @@ QmlCompassReading::~QmlCompassReading()
 }
 
 /*!
-    \qmlproperty qreal CompassReading::azimuth
+    \qmlproperty real CompassReading::azimuth
     This property holds the azimuth of the device.
 
     Please see QCompassReading::azimuth for information about this property.
@@ -85,7 +85,7 @@ QBindable<qreal> QmlCompassReading::bindableAzimuth() const
 }
 
 /*!
-    \qmlproperty qreal CompassReading::calibrationLevel
+    \qmlproperty real CompassReading::calibrationLevel
     This property holds the calibration level of the reading.
 
     Please see QCompassReading::calibrationLevel for information about this property.

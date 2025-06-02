@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qgstreamervideodevices_p.h"
+
 #include <QtMultimedia/qmediadevices.h>
 #include <QtMultimedia/private/qcameradevice_p.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/private/quniquehandle_types_p.h>
 
 #include <common/qgst_p.h>
+#include <common/qgst_debug_p.h>
 #include <common/qgstutils_p.h>
 #include <common/qglist_helper_p.h>
 
@@ -16,12 +20,15 @@
 
 QT_BEGIN_NAMESPACE
 
+static Q_LOGGING_CATEGORY(ltVideoDevices, "qt.multimedia.gstreamer.videodevices");
+
 QGstreamerVideoDevices::QGstreamerVideoDevices(QPlatformMediaIntegration *integration)
     : QPlatformVideoDevices(integration),
       m_deviceMonitor{
           gst_device_monitor_new(),
+          QGstDeviceMonitorHandle::HasRef,
       },
-      m_bus{
+      m_busObserver{
           QGstBusHandle{
                   gst_device_monitor_get_bus(m_deviceMonitor.get()),
                   QGstBusHandle::HasRef,
@@ -30,7 +37,7 @@ QGstreamerVideoDevices::QGstreamerVideoDevices(QPlatformMediaIntegration *integr
 {
     gst_device_monitor_add_filter(m_deviceMonitor.get(), "Video/Source", nullptr);
 
-    m_bus.installMessageFilter(this);
+    m_busObserver.installMessageFilter(this);
     gst_device_monitor_start(m_deviceMonitor.get());
 
     GList *devices = gst_device_monitor_get_devices(m_deviceMonitor.get());
@@ -50,7 +57,7 @@ QGstreamerVideoDevices::~QGstreamerVideoDevices()
     gst_device_monitor_stop(m_deviceMonitor.get());
 }
 
-QList<QCameraDevice> QGstreamerVideoDevices::videoDevices() const
+QList<QCameraDevice> QGstreamerVideoDevices::findVideoInputs() const
 {
     QList<QCameraDevice> devices;
 
@@ -78,25 +85,38 @@ QList<QCameraDevice> QGstreamerVideoDevices::videoDevices() const
             devices.append(info->create());
 
         auto caps = QGstCaps(gst_device_get_caps(device.gstDevice.get()), QGstCaps::HasRef);
-        if (!caps.isNull()) {
+        if (caps) {
             QList<QCameraFormat> formats;
             QSet<QSize> photoResolutions;
 
             int size = caps.size();
             for (int i = 0; i < size; ++i) {
                 auto cap = caps.at(i);
-
-                QSize resolution = cap.resolution();
-                if (!resolution.isValid())
-                    continue;
-
                 auto pixelFormat = cap.pixelFormat();
                 auto frameRate = cap.frameRateRange();
 
-                auto *f = new QCameraFormatPrivate{ QSharedData(), pixelFormat, resolution,
-                                                    frameRate.min, frameRate.max };
-                formats << f->create();
-                photoResolutions.insert(resolution);
+                if (pixelFormat == QVideoFrameFormat::PixelFormat::Format_Invalid) {
+                    qCDebug(ltVideoDevices) << "pixel format not supported:" << cap;
+                    continue; // skip pixel formats that we don't support
+                }
+
+                auto addFormatForResolution = [&](QSize resolution) {
+                    auto *f = new QCameraFormatPrivate{
+                        QSharedData(), pixelFormat, resolution, frameRate.min, frameRate.max,
+                    };
+                    formats.append(f->create());
+                    photoResolutions.insert(resolution);
+                };
+
+                std::optional<QGRange<QSize>> resolutionRange = cap.resolutionRange();
+                if (resolutionRange) {
+                    addFormatForResolution(resolutionRange->min);
+                    addFormatForResolution(resolutionRange->max);
+                } else {
+                    QSize resolution = cap.resolution();
+                    if (resolution.isValid())
+                        addFormatForResolution(resolution);
+                }
             }
             info->videoFormats = formats;
             // ### sort resolutions?
@@ -117,22 +137,50 @@ void QGstreamerVideoDevices::addDevice(QGstDeviceHandle device)
 
     const auto *p = QGstStructureView(structureHandle.get())["device.path"].toString();
     if (p) {
-        QFileDescriptorHandle fd{
+        QUniqueFileDescriptorHandle fd{
             qt_safe_open(p, O_RDONLY),
         };
+
+        if (!fd) {
+            qCDebug(ltVideoDevices) << "Cannot open v4l2 device:" << p;
+            return;
+        }
+
+        struct v4l2_capability cap;
+        if (::ioctl(fd.get(), VIDIOC_QUERYCAP, &cap) < 0) {
+            qCWarning(ltVideoDevices)
+                    << "ioctl failed: VIDIOC_QUERYCAP" << qt_error_string(errno) << p;
+            return;
+        }
+
+        if (cap.device_caps & V4L2_CAP_META_CAPTURE) {
+            qCDebug(ltVideoDevices) << "V4L2_CAP_META_CAPTURE device detected" << p;
+            return;
+        }
+        if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+            qCDebug(ltVideoDevices) << "not a V4L2_CAP_VIDEO_CAPTURE device" << p;
+            return;
+        }
+        if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
+            qCDebug(ltVideoDevices) << "not a V4L2_CAP_STREAMING device" << p;
+            return;
+        }
+
         int index;
         if (::ioctl(fd.get(), VIDIOC_G_INPUT, &index) < 0) {
             switch (errno) {
-            case ENOTTY: // no video inputs
-            case EINVAL: // ioctl is not supported. E.g. the Broadcom Image Signal Processor
-                         // available on Raspberry Pi
+            case ENOTTY:
+                qCDebug(ltVideoDevices) << "device does not have video inputs" << p;
                 return;
 
             default:
-                qWarning() << "ioctl failed: VIDIOC_G_INPUT" << qt_error_string(errno) << p;
+                qCWarning(ltVideoDevices)
+                        << "ioctl failed: VIDIOC_G_INPUT" << qt_error_string(errno) << p;
                 return;
             }
         }
+    } else {
+        qCDebug(ltVideoDevices) << "Video device not a v4l2 device:" << structureHandle;
     }
 #endif
 
@@ -146,8 +194,10 @@ void QGstreamerVideoDevices::addDevice(QGstDeviceHandle device)
             std::move(device),
             QByteArray::number(m_idGenerator),
     });
-    emit videoInputsChanged();
+
     m_idGenerator++;
+
+    onVideoInputsChanged();
 }
 
 void QGstreamerVideoDevices::removeDevice(QGstDeviceHandle device)
@@ -157,7 +207,7 @@ void QGstreamerVideoDevices::removeDevice(QGstDeviceHandle device)
 
     if (it != m_videoSources.end()) {
         m_videoSources.erase(it);
-        emit videoInputsChanged();
+        onVideoInputsChanged();
     }
 }
 

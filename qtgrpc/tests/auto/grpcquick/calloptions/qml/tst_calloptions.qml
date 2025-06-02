@@ -13,13 +13,13 @@ TestCase {
     GrpcCallOptions {
         id: options
         metadata: grpcData
-        deadline: { 1000 }
+        deadlineTimeout: { 1000 }
     }
 
     GrpcCallOptions {
         id: options_dup
         metadata: options.metadata
-        deadline: options.deadline
+        deadlineTimeout: options.deadlineTimeout
     }
 
     GrpcMetadata {
@@ -31,7 +31,7 @@ TestCase {
     GrpcCallOptions {
         id: optionsWithChangedProperties
         metadata: grpcData
-        deadline: { 2000 }
+        deadlineTimeout: { 2000 }
     }
 
     GrpcCallOptions {
@@ -40,7 +40,7 @@ TestCase {
 
     Component.onCompleted: {
         optionsWithChangedProperties.metadata = null
-        optionsWithChangedProperties.deadline = 3000
+        optionsWithChangedProperties.deadlineTimeout = 3000
     }
 
     function test_OptionTypes_data() {
@@ -70,14 +70,14 @@ TestCase {
                         field: options.metadata.data["user-name"], answer: "localhost" },
                     { tag: "options.metadata.data[user-password] == qwerty",
                         field: options.metadata.data["user-password"], answer: "qwerty" },
-                    { tag: "metadata deadline == 1000",
-                        field: options.deadline, answer: 1000 },
+                    { tag: "metadata deadlineTimeout == 1000",
+                        field: options.deadlineTimeout, answer: 1000 },
                     { tag: "options == options_dup",
                         field: options.metadata, answer: options_dup.metadata },
                     { tag: "optionsWithChangedProperties.metadata == null",
                         field: optionsWithChangedProperties.metadata, answer: null },
-                    { tag: "optionsWithChangedProperties.deadline == 3000",
-                        field: optionsWithChangedProperties.deadline, answer: 3000 },
+                    { tag: "optionsWithChangedProperties.deadlineTimeout == 3000",
+                        field: optionsWithChangedProperties.deadlineTimeout, answer: 3000 },
                     { tag: "optionsWithDefaultProperty.metadata == null",
                         field: optionsWithDefaultProperty.metadata, answer: null }
                 ]

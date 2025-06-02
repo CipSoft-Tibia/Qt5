@@ -40,7 +40,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype BarCategoryAxis
-    \instantiates QBarCategoryAxis
+    \nativetype QBarCategoryAxis
     \inqmlmodule QtCharts
 
     \inherits AbstractAxis
@@ -67,7 +67,7 @@ QT_BEGIN_NAMESPACE
   \brief The categories of an axis.
 */
 /*!
-  \qmlproperty QStringList BarCategoryAxis::categories
+  \qmlproperty list<string> BarCategoryAxis::categories
   The categories of an axis.
 */
 

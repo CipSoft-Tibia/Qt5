@@ -27,31 +27,48 @@
 
 namespace blink {
 
-MemoryManagedPaintRecorder::MemoryManagedPaintRecorder(
-    MemoryManagedPaintCanvas::Client* client)
-    : client_(client) {
-  DCHECK(client);
+MemoryManagedPaintRecorder::MemoryManagedPaintRecorder(gfx::Size size,
+                                                       Client* client)
+    : client_(client), canvas_(size) {
+  if (client_) {
+    client_->InitializeForRecording(&canvas_);
+  }
 }
 
 MemoryManagedPaintRecorder::~MemoryManagedPaintRecorder() = default;
 
-cc::PaintCanvas* MemoryManagedPaintRecorder::beginRecording(
-    const gfx::Size& size) {
-  DCHECK(!is_recording_);
-  is_recording_ = true;
-
-  if (!canvas_ || size != size_) {
-    canvas_ = std::make_unique<MemoryManagedPaintCanvas>(size, client_);
-  }
-  size_ = size;
-  return canvas_.get();
+void MemoryManagedPaintRecorder::SetClient(Client* client) {
+  client_ = client;
 }
 
 cc::PaintRecord MemoryManagedPaintRecorder::finishRecordingAsPicture() {
-  DCHECK(canvas_);
-  DCHECK(is_recording_);
-  is_recording_ = false;
-  return canvas_->ReleaseAsRecord();
+  cc::PaintRecord record = canvas_.ReleaseAsRecord();
+  if (client_) {
+    client_->InitializeForRecording(&canvas_);
+  }
+  return record;
+}
+
+void MemoryManagedPaintRecorder::SkipQueuedDrawCommands() {
+  // If no draw calls have been recorded, we have nothing to skip. The recoding
+  // could still contain layers or matrix clip stack levels. As an optimization,
+  // we can keep the recording untouched as there is no need to discard the
+  // layer matrix clip stack just to rebuild it again.
+  if (HasRecordedDrawOps()) {
+    finishRecordingAsPicture();
+  }
+
+  if (client_) {
+    client_->RecordingCleared();
+  }
+}
+
+void MemoryManagedPaintRecorder::RestartRecording() {
+  // Discard the whole recording and re-initialize it.
+  finishRecordingAsPicture();
+  if (client_) {
+    client_->RecordingCleared();
+  }
 }
 
 }  // namespace blink

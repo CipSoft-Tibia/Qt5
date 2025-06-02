@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -i
 #
-# Copyright 2013-2023 The Khronos Group Inc.
+# Copyright 2013-2024 The Khronos Group Inc.
 #
 # SPDX-License-Identifier: Apache-2.0
 """Base class for source/header/doc generators, as well as some utility functions."""
@@ -64,9 +64,8 @@ def regSortCategoryKey(feature):
             return 0.5
         else:
             return 0
-    if (feature.category == 'ARB'
-        or feature.category == 'KHR'
-            or feature.category == 'OES'):
+
+    if feature.category.upper() in ['ARB', 'KHR', 'OES']:
         return 1
 
     return 2

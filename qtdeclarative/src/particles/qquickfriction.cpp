@@ -7,10 +7,10 @@
 QT_BEGIN_NAMESPACE
 /*!
     \qmltype Friction
-    \instantiates QQuickFrictionAffector
+    \nativetype QQuickFrictionAffector
     \inqmlmodule QtQuick.Particles
     \ingroup qtquick-particles
-    \inherits Affector
+    \inherits ParticleAffector
     \brief For applying friction proportional to the particle's current velocity.
 
 */

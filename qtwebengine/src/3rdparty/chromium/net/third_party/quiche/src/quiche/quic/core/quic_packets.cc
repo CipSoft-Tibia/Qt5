@@ -4,6 +4,8 @@
 
 #include "quiche/quic/core/quic_packets.h"
 
+#include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "absl/strings/escaping.h"
@@ -13,7 +15,6 @@
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/core/quic_versions.h"
-#include "quiche/quic/platform/api/quic_flag_utils.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 
 namespace quic {
@@ -311,7 +312,7 @@ QuicEncryptedPacket::QuicEncryptedPacket(absl::string_view data)
 
 std::unique_ptr<QuicEncryptedPacket> QuicEncryptedPacket::Clone() const {
   char* buffer = new char[this->length()];
-  memcpy(buffer, this->data(), this->length());
+  std::copy(this->data(), this->data() + this->length(), buffer);
   return std::make_unique<QuicEncryptedPacket>(buffer, this->length(), true);
 }
 
@@ -372,13 +373,27 @@ std::unique_ptr<QuicReceivedPacket> QuicReceivedPacket::Clone() const {
   if (this->packet_headers()) {
     char* headers_buffer = new char[this->headers_length()];
     memcpy(headers_buffer, this->packet_headers(), this->headers_length());
-    return std::make_unique<QuicReceivedPacket>(
-        buffer, this->length(), receipt_time(), true, ttl(), ttl() >= 0,
-        headers_buffer, this->headers_length(), true);
+    if (GetQuicReloadableFlag(quic_clone_ecn)) {
+      QUIC_RELOADABLE_FLAG_COUNT_N(quic_clone_ecn, 1, 2);
+      return std::make_unique<QuicReceivedPacket>(
+          buffer, this->length(), receipt_time(), true, ttl(), ttl() >= 0,
+          headers_buffer, this->headers_length(), true, this->ecn_codepoint());
+    } else {
+      return std::make_unique<QuicReceivedPacket>(
+          buffer, this->length(), receipt_time(), true, ttl(), ttl() >= 0,
+          headers_buffer, this->headers_length(), true);
+    }
   }
 
-  return std::make_unique<QuicReceivedPacket>(
-      buffer, this->length(), receipt_time(), true, ttl(), ttl() >= 0);
+  if (GetQuicReloadableFlag(quic_clone_ecn)) {
+    QUIC_RELOADABLE_FLAG_COUNT_N(quic_clone_ecn, 2, 2);
+    return std::make_unique<QuicReceivedPacket>(
+        buffer, this->length(), receipt_time(), true, ttl(), ttl() >= 0,
+        nullptr, 0, false, this->ecn_codepoint());
+  } else {
+    return std::make_unique<QuicReceivedPacket>(
+        buffer, this->length(), receipt_time(), true, ttl(), ttl() >= 0);
+  }
 }
 
 std::ostream& operator<<(std::ostream& os, const QuicReceivedPacket& s) {

@@ -1,6 +1,6 @@
-/* Copyright (c) 2021-2022 The Khronos Group Inc.
- * Copyright (c) 2021-2023 Valve Corporation
- * Copyright (c) 2021-2023 LunarG, Inc.
+/* Copyright (c) 2021-2024 The Khronos Group Inc.
+ * Copyright (c) 2021-2024 Valve Corporation
+ * Copyright (c) 2021-2024 LunarG, Inc.
  * Copyright (C) 2021-2022 Google Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,18 +21,24 @@
 
 void Location::AppendFields(std::ostream& out) const {
     if (prev) {
-        prev->AppendFields(out);
-        const bool needs_dot = prev->structure != vvl::Struct::Empty || prev->field != vvl::Field::Empty;
-        if (needs_dot) {
-            out << ".";
+        // When apply a .dot(sub_index) we duplicate the field item
+        // Instead of dealing with partial non-const Location, just do the check here
+        const Location& prev_loc = (prev->field == field && prev->index == kNoIndex && prev->prev) ? *prev->prev : *prev;
+
+        // Work back and print for Locaiton first
+        prev_loc.AppendFields(out);
+
+        // check if need connector from last item
+        if (prev_loc.structure != vvl::Struct::Empty || prev_loc.field != vvl::Field::Empty) {
+            out << ((prev_loc.index == kNoIndex && IsFieldPointer(prev_loc.field)) ? "->" : ".");
         }
     }
+    if (isPNext && structure != vvl::Struct::Empty) {
+        out << "pNext<" << vvl::String(structure) << (field != vvl::Field::Empty ? ">." : ">");
+    }
     if (field != vvl::Field::Empty) {
-        if (isPNext && structure != vvl::Struct::Empty) {
-            out << "pNext<" << vvl::String(structure) << ">.";
-        }
         out << vvl::String(field);
-        if (index != Location::kNoIndex) {
+        if (index != kNoIndex) {
             out << "[" << index << "]";
         }
     }

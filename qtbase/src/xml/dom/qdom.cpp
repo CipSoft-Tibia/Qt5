@@ -47,7 +47,7 @@ using namespace Qt::StringLiterals;
 
 /* ##### new TODOs:
 
-  Remove empty emthods in the *Private classes
+  Remove empty methods in the *Private classes
 
   Make a lot of the (mostly empty) methods in the public classes inline.
   Specially constructors assignment operators and comparison operators are candidates.
@@ -374,52 +374,52 @@ QDomImplementation::QDomImplementation()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a implementation.
 */
-QDomImplementation::QDomImplementation(const QDomImplementation &x)
+QDomImplementation::QDomImplementation(const QDomImplementation &implementation)
+    : impl(implementation.impl)
 {
-    impl = x.impl;
     if (impl)
         impl->ref.ref();
 }
 
-QDomImplementation::QDomImplementation(QDomImplementationPrivate *p)
+QDomImplementation::QDomImplementation(QDomImplementationPrivate *pimpl)
+    : impl(pimpl)
 {
     // We want to be co-owners, so increase the reference count
-    impl = p;
     if (impl)
         impl->ref.ref();
 }
 
 /*!
-    Assigns \a x to this DOM implementation.
+    Assigns \a other to this DOM implementation.
 */
-QDomImplementation& QDomImplementation::operator=(const QDomImplementation &x)
+QDomImplementation& QDomImplementation::operator=(const QDomImplementation &other)
 {
-    if (x.impl)
-        x.impl->ref.ref();
+    if (other.impl)
+        other.impl->ref.ref();
     if (impl && !impl->ref.deref())
         delete impl;
-    impl = x.impl;
+    impl = other.impl;
     return *this;
 }
 
 /*!
-    Returns \c true if \a x and this DOM implementation object were
+    Returns \c true if \a other and this DOM implementation object were
     created from the same QDomDocument; otherwise returns \c false.
 */
-bool QDomImplementation::operator==(const QDomImplementation &x) const
+bool QDomImplementation::operator==(const QDomImplementation &other) const
 {
-    return (impl == x.impl);
+    return impl == other.impl;
 }
 
 /*!
-    Returns \c true if \a x and this DOM implementation object were
+    Returns \c true if \a other and this DOM implementation object were
     created from different QDomDocuments; otherwise returns \c false.
 */
-bool QDomImplementation::operator!=(const QDomImplementation &x) const
+bool QDomImplementation::operator!=(const QDomImplementation &other) const
 {
-    return (impl != x.impl);
+    return !operator==(other);
 }
 
 /*!
@@ -639,17 +639,12 @@ QDomNodeListPrivate::~QDomNodeListPrivate()
         delete node_impl;
 }
 
-bool QDomNodeListPrivate::operator==(const QDomNodeListPrivate &other) const
+bool QDomNodeListPrivate::operator==(const QDomNodeListPrivate &other) const noexcept
 {
     return (node_impl == other.node_impl) && (tagname == other.tagname);
 }
 
-bool QDomNodeListPrivate::operator!=(const QDomNodeListPrivate &other) const
-{
-    return (node_impl != other.node_impl) || (tagname != other.tagname);
-}
-
-void QDomNodeListPrivate::createList()
+void QDomNodeListPrivate::createList() const
 {
     if (!node_impl)
         return;
@@ -703,16 +698,21 @@ void QDomNodeListPrivate::createList()
     }
 }
 
-QDomNodePrivate* QDomNodeListPrivate::item(int index)
+bool QDomNodeListPrivate::maybeCreateList() const
 {
     if (!node_impl)
-        return nullptr;
+        return false;
 
     const QDomDocumentPrivate *const doc = node_impl->ownerDocument();
     if (!doc || timestamp != doc->nodeListTime)
         createList();
 
-    if (index >= list.size())
+    return true;
+}
+
+QDomNodePrivate *QDomNodeListPrivate::item(int index)
+{
+    if (!maybeCreateList() || index >= list.size() || index < 0)
         return nullptr;
 
     return list.at(index);
@@ -720,14 +720,8 @@ QDomNodePrivate* QDomNodeListPrivate::item(int index)
 
 int QDomNodeListPrivate::length() const
 {
-    if (!node_impl)
+    if (!maybeCreateList())
         return 0;
-
-    const QDomDocumentPrivate *const doc = node_impl->ownerDocument();
-    if (!doc || timestamp != doc->nodeListTime) {
-        QDomNodeListPrivate *that = const_cast<QDomNodeListPrivate *>(this);
-        that->createList();
-    }
 
     return list.size();
 }
@@ -771,54 +765,54 @@ QDomNodeList::QDomNodeList()
 {
 }
 
-QDomNodeList::QDomNodeList(QDomNodeListPrivate* p)
-    : impl(p)
+QDomNodeList::QDomNodeList(QDomNodeListPrivate *pimpl)
+    : impl(pimpl)
 {
 }
 
 /*!
-    Constructs a copy of \a n.
+    Constructs a copy of \a nodeList.
 */
-QDomNodeList::QDomNodeList(const QDomNodeList& n)
+QDomNodeList::QDomNodeList(const QDomNodeList &nodeList)
+    : impl(nodeList.impl)
 {
-    impl = n.impl;
     if (impl)
         impl->ref.ref();
 }
 
 /*!
-    Assigns \a n to this node list.
+    Assigns \a other to this node list.
 */
-QDomNodeList& QDomNodeList::operator=(const QDomNodeList &n)
+QDomNodeList& QDomNodeList::operator=(const QDomNodeList &other)
 {
-    if (n.impl)
-        n.impl->ref.ref();
+    if (other.impl)
+        other.impl->ref.ref();
     if (impl && !impl->ref.deref())
         delete impl;
-    impl = n.impl;
+    impl = other.impl;
     return *this;
 }
 
 /*!
-    Returns \c true if the node list \a n and this node list are equal;
+    Returns \c true if the node list \a other and this node list are equal;
     otherwise returns \c false.
 */
-bool QDomNodeList::operator==(const QDomNodeList &n) const
+bool QDomNodeList::operator==(const QDomNodeList &other) const
 {
-    if (impl == n.impl)
+    if (impl == other.impl)
         return true;
-    if (!impl || !n.impl)
+    if (!impl || !other.impl)
         return false;
-    return (*impl == *n.impl);
+    return (*impl == *other.impl);
 }
 
 /*!
-    Returns \c true the node list \a n and this node list are not equal;
+    Returns \c true the node list \a other and this node list are not equal;
     otherwise returns \c false.
 */
-bool QDomNodeList::operator!=(const QDomNodeList &n) const
+bool QDomNodeList::operator!=(const QDomNodeList &other) const
 {
-    return !operator==(n);
+    return !operator==(other);
 }
 
 /*!
@@ -1355,16 +1349,40 @@ void QDomNodePrivate::normalize()
     qNormalizeNode(this);
 }
 
-/*! \internal
-  \a depth is used for indentation, it seems.
- */
-void QDomNodePrivate::save(QTextStream& s, int depth, int indent) const
+void QDomNodePrivate::saveSubTree(const QDomNodePrivate *n, QTextStream &s,
+                                  int depth, int indent) const
 {
-    const QDomNodePrivate* n = first;
-    while (n) {
-        n->save(s, depth, indent);
-        n = n->next;
+    if (!n)
+        return;
+
+    const QDomNodePrivate *root = n->first;
+    n->save(s, depth, indent);
+    if (root) {
+        const int branchDepth = depth + 1;
+        int layerDepth = 0;
+        while (root) {
+            root->save(s, layerDepth + branchDepth, indent);
+            // A flattened (non-recursive) depth-first walk through the node tree.
+            if (root->first) {
+                layerDepth ++;
+                root = root->first;
+                continue;
+            }
+            root->afterSave(s, layerDepth + branchDepth, indent);
+            const QDomNodePrivate *prev = root;
+            root = root->next;
+            // Close QDomElementPrivate groups
+            while (!root && (layerDepth > 0)) {
+                root = prev->parent();
+                layerDepth --;
+                root->afterSave(s, layerDepth + branchDepth, indent);
+                prev = root;
+                root = root->next;
+            }
+        }
+        Q_ASSERT(layerDepth == 0);
     }
+    n->afterSave(s, depth, indent);
 }
 
 void QDomNodePrivate::setLocation(int lineNumber, int columnNumber)
@@ -1474,48 +1492,48 @@ QDomNode::QDomNode()
 }
 
 /*!
-    Constructs a copy of \a n.
+    Constructs a copy of \a node.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomNode::QDomNode(const QDomNode &n)
+QDomNode::QDomNode(const QDomNode &node)
+    : impl(node.impl)
 {
-    impl = n.impl;
     if (impl)
         impl->ref.ref();
 }
 
 /*!  \internal
-  Constructs a new node for the data \a n.
+  Constructs a new node for the data \a pimpl.
 */
-QDomNode::QDomNode(QDomNodePrivate *n)
+QDomNode::QDomNode(QDomNodePrivate *pimpl)
+    : impl(pimpl)
 {
-    impl = n;
     if (impl)
         impl->ref.ref();
 }
 
 /*!
-    Assigns a copy of \a n to this DOM node.
+    Assigns a copy of \a other to this DOM node.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomNode& QDomNode::operator=(const QDomNode &n)
+QDomNode& QDomNode::operator=(const QDomNode &other)
 {
-    if (n.impl)
-        n.impl->ref.ref();
+    if (other.impl)
+        other.impl->ref.ref();
     if (impl && !impl->ref.deref())
         delete impl;
-    impl = n.impl;
+    impl = other.impl;
     return *this;
 }
 
 /*!
-    Returns \c true if \a n and this DOM node are equal; otherwise
+    Returns \c true if \a other and this DOM node are equal; otherwise
     returns \c false.
 
     Any instance of QDomNode acts as a reference to an underlying data
@@ -1534,18 +1552,18 @@ QDomNode& QDomNode::operator=(const QDomNode &n)
     \c {element3 == element4} will return false because they refer to
     two different nodes in the underlying data structure.
 */
-bool QDomNode::operator== (const QDomNode& n) const
+bool QDomNode::operator==(const QDomNode &other) const
 {
-    return (impl == n.impl);
+    return impl == other.impl;
 }
 
 /*!
-    Returns \c true if \a n and this DOM node are not equal; otherwise
+    Returns \c true if \a other and this DOM node are not equal; otherwise
     returns \c false.
 */
-bool QDomNode::operator!= (const QDomNode& n) const
+bool QDomNode::operator!=(const QDomNode &other) const
 {
-    return (impl != n.impl);
+    return !operator==(other);
 }
 
 /*!
@@ -1622,15 +1640,14 @@ QString QDomNode::nodeValue() const
 }
 
 /*!
-    Sets the node's value to \a v.
+    Sets the node's value to \a value.
 
     \sa nodeValue()
 */
-void QDomNode::setNodeValue(const QString& v)
+void QDomNode::setNodeValue(const QString& value)
 {
-    if (!impl)
-        return;
-    IMPL->setNodeValue(v);
+    if (impl)
+        IMPL->setNodeValue(value);
 }
 
 /*!
@@ -2153,7 +2170,7 @@ void QDomNode::save(QTextStream& stream, int indent, EncodingPolicy encodingPoli
     if (isDocument())
         static_cast<const QDomDocumentPrivate *>(impl)->saveDocument(stream, indent, encodingPolicy);
     else
-        IMPL->save(stream, 1, indent);
+        IMPL->saveSubTree(IMPL, stream, 1, indent);
 }
 
 /*!
@@ -2504,11 +2521,12 @@ int QDomNode::columnNumber() const
  *
  **************************************************************/
 
-QDomNamedNodeMapPrivate::QDomNamedNodeMapPrivate(QDomNodePrivate* n) : ref(1)
+QDomNamedNodeMapPrivate::QDomNamedNodeMapPrivate(QDomNodePrivate *pimpl)
+    : ref(1)
+    , parent(pimpl)
+    , readonly(false)
+    , appendToParent(false)
 {
-    readonly = false;
-    parent = n;
-    appendToParent = false;
 }
 
 QDomNamedNodeMapPrivate::~QDomNamedNodeMapPrivate()
@@ -2516,16 +2534,16 @@ QDomNamedNodeMapPrivate::~QDomNamedNodeMapPrivate()
     clearMap();
 }
 
-QDomNamedNodeMapPrivate* QDomNamedNodeMapPrivate::clone(QDomNodePrivate* p)
+QDomNamedNodeMapPrivate* QDomNamedNodeMapPrivate::clone(QDomNodePrivate *pimpl)
 {
-    std::unique_ptr<QDomNamedNodeMapPrivate> m(new QDomNamedNodeMapPrivate(p));
+    std::unique_ptr<QDomNamedNodeMapPrivate> m(new QDomNamedNodeMapPrivate(pimpl));
     m->readonly = readonly;
     m->appendToParent = appendToParent;
 
     auto it = map.constBegin();
     for (; it != map.constEnd(); ++it) {
         QDomNodePrivate *new_node = it.value()->cloneNode();
-        new_node->setParent(p);
+        new_node->setParent(pimpl);
         m->setNamedItem(new_node);
     }
 
@@ -2697,51 +2715,51 @@ QDomNamedNodeMap::QDomNamedNodeMap()
 }
 
 /*!
-    Constructs a copy of \a n.
+    Constructs a copy of \a namedNodeMap.
 */
-QDomNamedNodeMap::QDomNamedNodeMap(const QDomNamedNodeMap &n)
+QDomNamedNodeMap::QDomNamedNodeMap(const QDomNamedNodeMap &namedNodeMap)
+    : impl(namedNodeMap.impl)
 {
-    impl = n.impl;
     if (impl)
         impl->ref.ref();
 }
 
-QDomNamedNodeMap::QDomNamedNodeMap(QDomNamedNodeMapPrivate *n)
+QDomNamedNodeMap::QDomNamedNodeMap(QDomNamedNodeMapPrivate *pimpl)
+    : impl(pimpl)
 {
-    impl = n;
     if (impl)
         impl->ref.ref();
 }
 
 /*!
-    Assigns \a n to this named node map.
+    Assigns \a other to this named node map.
 */
-QDomNamedNodeMap& QDomNamedNodeMap::operator=(const QDomNamedNodeMap &n)
+QDomNamedNodeMap& QDomNamedNodeMap::operator=(const QDomNamedNodeMap &other)
 {
-    if (n.impl)
-        n.impl->ref.ref();
+    if (other.impl)
+        other.impl->ref.ref();
     if (impl && !impl->ref.deref())
         delete impl;
-    impl = n.impl;
+    impl = other.impl;
     return *this;
 }
 
 /*!
-    Returns \c true if \a n and this named node map are equal; otherwise
+    Returns \c true if \a other and this named node map are equal; otherwise
     returns \c false.
 */
-bool QDomNamedNodeMap::operator== (const QDomNamedNodeMap& n) const
+bool QDomNamedNodeMap::operator==(const QDomNamedNodeMap &other) const
 {
-    return (impl == n.impl);
+    return impl == other.impl;
 }
 
 /*!
-    Returns \c true if \a n and this named node map are not equal;
+    Returns \c true if \a other and this named node map are not equal;
     otherwise returns \c false.
 */
-bool QDomNamedNodeMap::operator!= (const QDomNamedNodeMap& n) const
+bool QDomNamedNodeMap::operator!=(const QDomNamedNodeMap &other) const
 {
-    return (impl != n.impl);
+    return !operator==(other);
 }
 
 /*!
@@ -3070,11 +3088,11 @@ void QDomDocumentTypePrivate::save(QTextStream& s, int, int indent) const
 
         auto it2 = notations->map.constBegin();
         for (; it2 != notations->map.constEnd(); ++it2)
-            it2.value()->save(s, 0, indent);
+            it2.value()->saveSubTree(it2.value(), s, 0, indent);
 
         auto it = entities->map.constBegin();
         for (; it != entities->map.constEnd(); ++it)
-            it.value()->save(s, 0, indent);
+            it.value()->saveSubTree(it.value(), s, 0, indent);
 
         s << ']';
     }
@@ -3117,30 +3135,30 @@ QDomDocumentType::QDomDocumentType() : QDomNode()
 }
 
 /*!
-    Constructs a copy of \a n.
+    Constructs a copy of \a documentType.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomDocumentType::QDomDocumentType(const QDomDocumentType& n)
-    : QDomNode(n)
+QDomDocumentType::QDomDocumentType(const QDomDocumentType &documentType)
+    : QDomNode(documentType)
 {
 }
 
-QDomDocumentType::QDomDocumentType(QDomDocumentTypePrivate* n)
-    : QDomNode(n)
+QDomDocumentType::QDomDocumentType(QDomDocumentTypePrivate *pimpl)
+    : QDomNode(pimpl)
 {
 }
 
 /*!
-    Assigns \a n to this document type.
+    Assigns \a other to this document type.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomDocumentType &QDomDocumentType::operator=(const QDomDocumentType &n) = default;
+QDomDocumentType &QDomDocumentType::operator=(const QDomDocumentType &other) = default;
 /*!
     Returns the name of the document type as specified in the
     &lt;!DOCTYPE name&gt; tag.
@@ -3298,25 +3316,25 @@ QDomDocumentFragment::QDomDocumentFragment(QDomDocumentFragmentPrivate* n)
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a documentFragment.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomDocumentFragment::QDomDocumentFragment(const QDomDocumentFragment& x)
-    : QDomNode(x)
+QDomDocumentFragment::QDomDocumentFragment(const QDomDocumentFragment &documentFragment)
+    : QDomNode(documentFragment)
 {
 }
 
 /*!
-    Assigns \a x to this DOM document fragment.
+    Assigns \a other to this DOM document fragment.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomDocumentFragment &QDomDocumentFragment::operator=(const QDomDocumentFragment &x) = default;
+QDomDocumentFragment &QDomDocumentFragment::operator=(const QDomDocumentFragment &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomDocumentFragment::nodeType() const
@@ -3424,14 +3442,14 @@ QDomCharacterData::QDomCharacterData()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a characterData.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomCharacterData::QDomCharacterData(const QDomCharacterData& x)
-    : QDomNode(x)
+QDomCharacterData::QDomCharacterData(const QDomCharacterData &characterData)
+    : QDomNode(characterData)
 {
 }
 
@@ -3441,13 +3459,13 @@ QDomCharacterData::QDomCharacterData(QDomCharacterDataPrivate* n)
 }
 
 /*!
-    Assigns \a x to this character data.
+    Assigns \a other to this character data.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomCharacterData &QDomCharacterData::operator=(const QDomCharacterData &x) = default;
+QDomCharacterData &QDomCharacterData::operator=(const QDomCharacterData &other) = default;
 
 /*!
     Returns the string stored in this object.
@@ -3463,12 +3481,12 @@ QString QDomCharacterData::data() const
 }
 
 /*!
-    Sets this object's string to \a v.
+    Sets this object's string to \a data.
 */
-void QDomCharacterData::setData(const QString& v)
+void QDomCharacterData::setData(const QString &data)
 {
     if (impl)
-        impl->setNodeValue(v);
+        impl->setNodeValue(data);
 }
 
 /*!
@@ -3612,47 +3630,57 @@ static QString encodeText(const QString &str,
                           const bool performAVN = false,
                           const bool encodeEOLs = false)
 {
-    QString retval(str);
-    int len = retval.size();
-    int i = 0;
+    QString retval;
+    qsizetype start = 0;
+    auto appendToOutput = [&](qsizetype cur, const auto &replacement)
+    {
+        if (start < cur) {
+            retval.reserve(str.size() + replacement.size());
+            retval.append(QStringView(str).first(cur).sliced(start));
+        }
+        // Skip over str[cur], replaced by replacement
+        start = cur + 1;
+        retval.append(replacement);
+    };
 
-    while (i < len) {
-        const QChar ati(retval.at(i));
-
-        if (ati == u'<') {
-            retval.replace(i, 1, "&lt;"_L1);
-            len += 3;
-            i += 4;
-        } else if (encodeQuotes && (ati == u'"')) {
-            retval.replace(i, 1, "&quot;"_L1);
-            len += 5;
-            i += 6;
-        } else if (ati == u'&') {
-            retval.replace(i, 1, "&amp;"_L1);
-            len += 4;
-            i += 5;
-        } else if (ati == u'>' && i >= 2 && retval[i - 1] == u']' && retval[i - 2] == u']') {
-            retval.replace(i, 1, "&gt;"_L1);
-            len += 3;
-            i += 4;
-        } else if (performAVN &&
-                   (ati == QChar(0xA) ||
-                    ati == QChar(0xD) ||
-                    ati == QChar(0x9))) {
-            const QString replacement(u"&#x"_s + QString::number(ati.unicode(), 16) + u';');
-            retval.replace(i, 1, replacement);
-            i += replacement.size();
-            len += replacement.size() - 1;
-        } else if (encodeEOLs && ati == QChar(0xD)) {
-            retval.replace(i, 1, "&#xd;"_L1); // Replace a single 0xD with a ref for 0xD
-            len += 4;
-            i += 5;
-        } else {
-            ++i;
+    const qsizetype len = str.size();
+    for (qsizetype cur = 0; cur < len; ++cur) {
+        switch (str[cur].unicode()) {
+            case u'<':
+                appendToOutput(cur, "&lt;"_L1);
+                break;
+            case u'"':
+                if (encodeQuotes)
+                    appendToOutput(cur, "&quot;"_L1);
+                break;
+            case u'&':
+                appendToOutput(cur, "&amp;"_L1);
+                break;
+            case u'>':
+                if (cur >= 2 && str[cur - 1] == u']' && str[cur - 2] == u']')
+                    appendToOutput(cur, "&gt;"_L1);
+                break;
+            case u'\r':
+                if (performAVN || encodeEOLs)
+                    appendToOutput(cur, "&#xd;"_L1);    // \r == 0x0d
+                break;
+            case u'\n':
+                if (performAVN)
+                    appendToOutput(cur, "&#xa;"_L1);    // \n == 0x0a
+                break;
+            case u'\t':
+                if (performAVN)
+                    appendToOutput(cur, "&#x9;"_L1);    // \t == 0x09
+                break;
+            default:
+                break;
         }
     }
-
-    return retval;
+    if (start > 0) {
+        retval.append(QStringView(str).first(len).sliced(start));
+        return retval;
+    }
+    return str;
 }
 
 void QDomAttrPrivate::save(QTextStream& s, int, int) const
@@ -3730,14 +3758,14 @@ QDomAttr::QDomAttr()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a attr.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomAttr::QDomAttr(const QDomAttr& x)
-    : QDomNode(x)
+QDomAttr::QDomAttr(const QDomAttr &attr)
+    : QDomNode(attr)
 {
 }
 
@@ -3747,13 +3775,13 @@ QDomAttr::QDomAttr(QDomAttrPrivate* n)
 }
 
 /*!
-    Assigns \a x to this DOM attribute.
+    Assigns \a other to this DOM attribute.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomAttr &QDomAttr::operator=(const QDomAttr &x) = default;
+QDomAttr &QDomAttr::operator=(const QDomAttr &other) = default;
 
 /*!
     Returns the attribute's name.
@@ -3805,15 +3833,15 @@ QString QDomAttr::value() const
 }
 
 /*!
-    Sets the attribute's value to \a v.
+    Sets the attribute's value to \a value.
 
     \sa value()
 */
-void QDomAttr::setValue(const QString& v)
+void QDomAttr::setValue(const QString &value)
 {
     if (!impl)
         return;
-    impl->setNodeValue(v);
+    impl->setNodeValue(value);
     IMPL->m_specified = true;
 }
 
@@ -4117,13 +4145,25 @@ void QDomElementPrivate::save(QTextStream& s, int depth, int indent) const
             if (indent != -1)
                 s << Qt::endl;
         }
-        QDomNodePrivate::save(s, depth + 1, indent); if (!last->isText())
-            s << QString(indent < 1 ? 0 : depth * indent, u' ');
-
-        s << "</" << qName << '>';
     } else {
         s << "/>";
     }
+}
+
+void QDomElementPrivate::afterSave(QTextStream &s, int depth, int indent) const
+{
+    if (last) {
+        QString qName(name);
+
+        if (!prefix.isEmpty())
+            qName = prefix + u':' + name;
+
+        if (!last->isText())
+            s << QString(indent < 1 ? 0 : depth * indent, u' ');
+
+        s << "</" << qName << '>';
+    }
+
     if (!(next && next->isText())) {
         /* -1 disables new lines. */
         if (indent != -1)
@@ -4201,14 +4241,14 @@ QDomElement::QDomElement()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a element.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomElement::QDomElement(const QDomElement& x)
-    : QDomNode(x)
+QDomElement::QDomElement(const QDomElement &element)
+    : QDomNode(element)
 {
 }
 
@@ -4218,13 +4258,13 @@ QDomElement::QDomElement(QDomElementPrivate* n)
 }
 
 /*!
-    Assigns \a x to this DOM element.
+    Assigns \a other to this DOM element.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomElement &QDomElement::operator=(const QDomElement &x) = default;
+QDomElement &QDomElement::operator=(const QDomElement &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomElement::nodeType() const
@@ -4722,14 +4762,14 @@ QDomText::QDomText()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a text.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomText::QDomText(const QDomText& x)
-    : QDomCharacterData(x)
+QDomText::QDomText(const QDomText &text)
+    : QDomCharacterData(text)
 {
 }
 
@@ -4739,13 +4779,13 @@ QDomText::QDomText(QDomTextPrivate* n)
 }
 
 /*!
-    Assigns \a x to this DOM text.
+    Assigns \a other to this DOM text.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomText &QDomText::operator=(const QDomText &x) = default;
+QDomText &QDomText::operator=(const QDomText &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomText::nodeType() const
@@ -4850,14 +4890,14 @@ QDomComment::QDomComment()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a comment.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomComment::QDomComment(const QDomComment& x)
-    : QDomCharacterData(x)
+QDomComment::QDomComment(const QDomComment &comment)
+    : QDomCharacterData(comment)
 {
 }
 
@@ -4867,13 +4907,13 @@ QDomComment::QDomComment(QDomCommentPrivate* n)
 }
 
 /*!
-    Assigns \a x to this DOM comment.
+    Assigns \a other to this DOM comment.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomComment &QDomComment::operator=(const QDomComment &x) = default;
+QDomComment &QDomComment::operator=(const QDomComment &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomComment::nodeType() const
@@ -4955,14 +4995,14 @@ QDomCDATASection::QDomCDATASection()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a cdataSection.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomCDATASection::QDomCDATASection(const QDomCDATASection& x)
-    : QDomText(x)
+QDomCDATASection::QDomCDATASection(const QDomCDATASection &cdataSection)
+    : QDomText(cdataSection)
 {
 }
 
@@ -4972,13 +5012,13 @@ QDomCDATASection::QDomCDATASection(QDomCDATASectionPrivate* n)
 }
 
 /*!
-    Assigns \a x to this CDATA section.
+    Assigns \a other to this CDATA section.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomCDATASection &QDomCDATASection::operator=(const QDomCDATASection &x) = default;
+QDomCDATASection &QDomCDATASection::operator=(const QDomCDATASection &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomCDATASection::nodeType() const
@@ -5076,14 +5116,14 @@ QDomNotation::QDomNotation()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a notation.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomNotation::QDomNotation(const QDomNotation& x)
-    : QDomNode(x)
+QDomNotation::QDomNotation(const QDomNotation &notation)
+    : QDomNode(notation)
 {
 }
 
@@ -5093,13 +5133,13 @@ QDomNotation::QDomNotation(QDomNotationPrivate* n)
 }
 
 /*!
-    Assigns \a x to this DOM notation.
+    Assigns \a other to this DOM notation.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomNotation &QDomNotation::operator=(const QDomNotation &x) = default;
+QDomNotation &QDomNotation::operator=(const QDomNotation &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomNotation::nodeType() const
@@ -5270,14 +5310,14 @@ QDomEntity::QDomEntity()
 
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a entity.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomEntity::QDomEntity(const QDomEntity& x)
-    : QDomNode(x)
+QDomEntity::QDomEntity(const QDomEntity &entity)
+    : QDomNode(entity)
 {
 }
 
@@ -5287,13 +5327,13 @@ QDomEntity::QDomEntity(QDomEntityPrivate* n)
 }
 
 /*!
-    Assigns \a x to this DOM entity.
+    Assigns \a other to this DOM entity.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomEntity &QDomEntity::operator=(const QDomEntity &x) = default;
+QDomEntity &QDomEntity::operator=(const QDomEntity &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomEntity::nodeType() const
@@ -5419,14 +5459,14 @@ QDomEntityReference::QDomEntityReference()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a entityReference.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomEntityReference::QDomEntityReference(const QDomEntityReference& x)
-    : QDomNode(x)
+QDomEntityReference::QDomEntityReference(const QDomEntityReference &entityReference)
+    : QDomNode(entityReference)
 {
 }
 
@@ -5436,13 +5476,13 @@ QDomEntityReference::QDomEntityReference(QDomEntityReferencePrivate* n)
 }
 
 /*!
-    Assigns \a x to this entity reference.
+    Assigns \a other to this entity reference.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomEntityReference &QDomEntityReference::operator=(const QDomEntityReference &x) = default;
+QDomEntityReference &QDomEntityReference::operator=(const QDomEntityReference &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomEntityReference::nodeType() const
@@ -5533,14 +5573,14 @@ QDomProcessingInstruction::QDomProcessingInstruction()
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a processingInstruction.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomProcessingInstruction::QDomProcessingInstruction(const QDomProcessingInstruction& x)
-    : QDomNode(x)
+QDomProcessingInstruction::QDomProcessingInstruction(const QDomProcessingInstruction &processingInstruction)
+    : QDomNode(processingInstruction)
 {
 }
 
@@ -5550,14 +5590,14 @@ QDomProcessingInstruction::QDomProcessingInstruction(QDomProcessingInstructionPr
 }
 
 /*!
-    Assigns \a x to this processing instruction.
+    Assigns \a other to this processing instruction.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
 QDomProcessingInstruction &
-QDomProcessingInstruction::operator=(const QDomProcessingInstruction &x) = default;
+QDomProcessingInstruction::operator=(const QDomProcessingInstruction &other) = default;
 
 /*!
     \fn QDomNode::NodeType QDomProcessingInstruction::nodeType() const
@@ -5590,15 +5630,14 @@ QString QDomProcessingInstruction::data() const
 }
 
 /*!
-    Sets the data contained in the processing instruction to \a d.
+    Sets the data contained in the processing instruction to \a data.
 
     \sa data()
 */
-void QDomProcessingInstruction::setData(const QString& d)
+void QDomProcessingInstruction::setData(const QString &data)
 {
-    if (!impl)
-        return;
-    impl->setNodeValue(d);
+    if (impl)
+        impl->setNodeValue(data);
 }
 
 /**************************************************************
@@ -5905,7 +5944,7 @@ void QDomDocumentPrivate::saveDocument(QTextStream& s, const int indent, QDomNod
                 type->save(s, 0, indent);
                 doc = true;
             }
-            n->save(s, 0, indent);
+            n->saveSubTree(n, s, 0, indent);
             n = n->next;
         }
     }
@@ -5932,8 +5971,8 @@ void QDomDocumentPrivate::saveDocument(QTextStream& s, const int indent, QDomNod
         }
 
         // Now we serialize all the nodes after the faked XML declaration(the PI).
-        while(startNode) {
-            startNode->save(s, 0, indent);
+        while (startNode) {
+            startNode->saveSubTree(startNode, s, 0, indent);
             startNode = startNode->next;
         }
     }
@@ -6054,30 +6093,30 @@ QDomDocument::QDomDocument(const QDomDocumentType& doctype)
 }
 
 /*!
-    Constructs a copy of \a x.
+    Constructs a copy of \a document.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomDocument::QDomDocument(const QDomDocument& x)
-    : QDomNode(x)
+QDomDocument::QDomDocument(const QDomDocument &document)
+    : QDomNode(document)
 {
 }
 
-QDomDocument::QDomDocument(QDomDocumentPrivate* x)
-    : QDomNode(x)
+QDomDocument::QDomDocument(QDomDocumentPrivate *pimpl)
+    : QDomNode(pimpl)
 {
 }
 
 /*!
-    Assigns \a x to this DOM document.
+    Assigns \a other to this DOM document.
 
     The data of the copy is shared (shallow copy): modifying one node
     will also change the other. If you want to make a deep copy, use
     cloneNode().
 */
-QDomDocument &QDomDocument::operator=(const QDomDocument &x) = default;
+QDomDocument &QDomDocument::operator=(const QDomDocument &other) = default;
 
 /*!
     Destroys the object and frees its resources.

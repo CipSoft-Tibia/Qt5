@@ -14,6 +14,9 @@
 
 #include "./centipede/environment.h"
 
+#include <cstddef>
+#include <string_view>
+
 #include "gtest/gtest.h"
 
 namespace centipede {
@@ -47,15 +50,6 @@ TEST(Environment, UpdateForExperiment) {
   Experiment(9, true, 10, "E10", "use_cmp_features=true:path_level=10:");
   Experiment(10, true, 20, "E11", "use_cmp_features=true:path_level=20:");
   Experiment(11, true, 30, "E12", "use_cmp_features=true:path_level=30:");
-}
-
-TEST(Environment, MakeCoverageReportPath) {
-  // TODO(ussuri): Environment is not test-friendly (initialized through
-  //  flags, which are hidden in the .cc). Fix.
-  EXPECT_EQ(Environment{}.MakeCoverageReportPath(),
-            "coverage-report-.000000.txt");
-  EXPECT_EQ(Environment{}.MakeCoverageReportPath("initial"),
-            "coverage-report-.000000.initial.txt");
 }
 
 }  // namespace centipede

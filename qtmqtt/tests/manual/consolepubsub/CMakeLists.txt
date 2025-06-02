@@ -16,7 +16,9 @@ endif()
 
 set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/mqtt/consolepubsub")
 
-find_package(Qt6 REQUIRED COMPONENTS Mqtt)
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    find_package(Qt6 REQUIRED COMPONENTS Mqtt)
+end()
 
 #
 # Pub

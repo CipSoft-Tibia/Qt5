@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import {BigintMath} from '../base/bigint_math';
+import {duration, Time, time} from '../base/time';
 import {RecordConfig} from '../controller/record_config_types';
 import {
   GenericSliceDetailsTabConfigBase,
@@ -22,10 +23,9 @@ import {
   PivotTree,
   TableColumn,
 } from '../frontend/pivot_table_types';
-import {TrackTags} from '../public/index';
+import {PrimaryTrackSortKey} from '../public/index';
 
 import {Direction} from './event_set';
-import {duration, Time, time} from './time';
 
 /**
  * A plain js object, holding objects of type |Class| keyed by string id.
@@ -33,6 +33,11 @@ import {duration, Time, time} from './time';
  * serialize for use in postMessage.
  */
 export interface ObjectById<Class extends{id: string}> { [id: string]: Class; }
+
+// Same as ObjectById but the key parameter is called `key` rather than `id`.
+export interface ObjectByKey<Class extends {key: string}> {
+  [key: string]: Class;
+}
 
 export interface Timestamped {
   lastUpdate: number;
@@ -119,43 +124,20 @@ export const MAX_TIME = 180;
 // 36. Remove metrics
 // 37. Add additional pendingDeeplink fields (visStart, visEnd).
 // 38. Add track tags.
-export const STATE_VERSION = 38;
+// 39. Ported cpu_slice, ftrace, and android_log tracks to plugin tracks. Track
+//     state entries now require a URI and old track implementations are no
+//     longer registered.
+// 40. Ported counter, process summary/sched, & cpu_freq to plugin tracks.
+// 41. Ported all remaining tracks.
+// 42. Rename trackId -> trackKey.
+// 43. Remove visibleTracks.
+export const STATE_VERSION = 43;
 
 export const SCROLLING_TRACK_GROUP = 'ScrollingTracks';
 
 export type EngineMode = 'WASM'|'HTTP_RPC';
 
 export type NewEngineMode = 'USE_HTTP_RPC_IF_AVAILABLE'|'FORCE_BUILTIN_WASM';
-
-// Tracks within track groups (usually corresponding to processes) are sorted.
-// As we want to group all tracks related to a given thread together, we use
-// two keys:
-// - Primary key corresponds to a priority of a track block (all tracks related
-//   to a given thread or a single track if it's not thread-associated).
-// - Secondary key corresponds to a priority of a given thread-associated track
-//   within its thread track block.
-// Each track will have a sort key, which either a primary sort key
-// (for non-thread tracks) or a tid and secondary sort key (mapping of tid to
-// primary sort key is done independently).
-export enum PrimaryTrackSortKey {
-  DEBUG_SLICE_TRACK,
-  NULL_TRACK,
-  PROCESS_SCHEDULING_TRACK,
-  PROCESS_SUMMARY_TRACK,
-  EXPECTED_FRAMES_SLICE_TRACK,
-  ACTUAL_FRAMES_SLICE_TRACK,
-  PERF_SAMPLES_PROFILE_TRACK,
-  HEAP_PROFILE_TRACK,
-  MAIN_THREAD,
-  RENDER_THREAD,
-  GPU_COMPLETION_THREAD,
-  CHROME_IO_THREAD,
-  CHROME_COMPOSITOR_THREAD,
-  ORDINARY_THREAD,
-  COUNTER_TRACK,
-  ASYNC_SLICE_TRACK,
-  ORDINARY_TRACK,
-}
 
 // Key that is used to sort tracks within a block of tracks associated with a
 // given thread.
@@ -186,14 +168,20 @@ export type UtidToTrackSortKey = {
 
 export enum ProfileType {
   HEAP_PROFILE = 'heap_profile',
+  MIXED_HEAP_PROFILE = 'heap_profile:com.android.art,libc.malloc',
   NATIVE_HEAP_PROFILE = 'heap_profile:libc.malloc',
   JAVA_HEAP_SAMPLES = 'heap_profile:com.android.art',
   JAVA_HEAP_GRAPH = 'graph',
   PERF_SAMPLE = 'perf',
 }
 
-export type FlamegraphStateViewingOption =
-    'SPACE'|'ALLOC_SPACE'|'OBJECTS'|'ALLOC_OBJECTS'|'PERF_SAMPLES';
+export enum FlamegraphStateViewingOption {
+  SPACE_MEMORY_ALLOCATED_NOT_FREED_KEY = 'SPACE',
+  ALLOC_SPACE_MEMORY_ALLOCATED_KEY = 'ALLOC_SPACE',
+  OBJECTS_ALLOCATED_NOT_FREED_KEY = 'OBJECTS',
+  OBJECTS_ALLOCATED_KEY = 'ALLOC_OBJECTS',
+  PERF_SAMPLES_KEY = 'PERF_SAMPLES',
+}
 
 export interface CallsiteInfo {
   id: number;
@@ -244,26 +232,22 @@ export type TraceSource =
     TraceFileSource|TraceArrayBufferSource|TraceUrlSource|TraceHttpRpcSource;
 
 export interface TrackState {
-  id: string;
-  engineId: string;
-  kind: string;
+  uri: string;
+  key: string;
   name: string;
   labels?: string[];
   trackSortKey: TrackSortKey;
   trackGroup?: string;
-  tags: TrackTags;
-  config: {
-    trackId?: number;
-    trackIds?: number[];
-  };
+  params?: unknown;
+  state?: unknown;
 }
 
 export interface TrackGroupState {
   id: string;
-  engineId: string;
   name: string;
   collapsed: boolean;
-  tracks: string[];  // Child track ids.
+  tracks: string[];         // Child track ids.
+  fixedOrdering?: boolean;  // Render tracks without sorting.
 }
 
 export interface EngineConfig {
@@ -372,7 +356,7 @@ export interface CpuProfileSampleSelection {
 export interface ChromeSliceSelection {
   kind: 'CHROME_SLICE';
   id: number;
-  table: string;
+  table?: string;
 }
 
 export interface ThreadStateSelection {
@@ -383,7 +367,7 @@ export interface ThreadStateSelection {
 export interface LogSelection {
   kind: 'LOG';
   id: number;
-  trackId: string;
+  trackKey: string;
 }
 
 export interface GenericSliceSelection {
@@ -400,7 +384,7 @@ export type Selection =
     (NoteSelection|SliceSelection|CounterSelection|HeapProfileSelection|
      CpuProfileSampleSelection|ChromeSliceSelection|ThreadStateSelection|
      AreaSelection|PerfSamplesSelection|LogSelection|GenericSliceSelection)&
-    {trackId?: string};
+    {trackKey?: string};
 export type SelectionKind = Selection['kind'];  // 'THREAD_STATE' | 'SLICE' ...
 
 export interface Pagination {
@@ -556,12 +540,11 @@ export interface State {
   traceTime: TraceTime;
   traceUuid?: string;
   trackGroups: ObjectById<TrackGroupState>;
-  tracks: ObjectById<TrackState>;
-  uiTrackIdByTraceTrackId: {[key: number]: string;};
+  tracks: ObjectByKey<TrackState>;
+  trackKeyByTrackId: {[key: number]: string;};
   utidToThreadSortKey: UtidToTrackSortKey;
   areas: ObjectById<AreaById>;
   aggregatePreferences: ObjectById<AggregationState>;
-  visibleTracks: string[];
   scrollingTracks: string[];
   pinnedTracks: string[];
   debugTrackId?: string;
@@ -576,7 +559,6 @@ export interface State {
   ftracePagination: Pagination;
   ftraceFilter: FtraceFilterState;
   traceConversionInProgress: boolean;
-  visualisedArgs: string[];
 
   /**
    * This state is updated on the frontend at 60Hz and eventually syncronised to
@@ -636,6 +618,7 @@ export interface State {
   pendingDeeplink?: PendingDeeplinkState;
 
   // Individual plugin states
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   plugins: {[key: string]: any};
 }
 
@@ -967,9 +950,10 @@ export function getBuiltinChromeCategoryList(): string[] {
   ];
 }
 
-export function getContainingTrackId(state: State, trackId: string): null|
+export function getContainingTrackId(state: State, trackKey: string): null|
     string {
-  const track = state.tracks[trackId];
+  const track = state.tracks[trackKey];
+  // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
   if (!track) {
     return null;
   }

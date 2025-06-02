@@ -38,10 +38,6 @@
 
     \sa {ActiveQt Framework}
 
-    Topics:
-
-    \tableofcontents
-
     \section1 Using the Library
 
     To turn a standard Qt application into a COM server using the

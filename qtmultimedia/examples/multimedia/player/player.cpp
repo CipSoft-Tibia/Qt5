@@ -6,6 +6,7 @@
 #include "playlistmodel.h"
 #include "qmediaplaylist.h"
 #include "videowidget.h"
+#include "audiolevelmeter.h"
 
 #include <QApplication>
 #include <QAudioDevice>
@@ -27,6 +28,7 @@
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QVBoxLayout>
+#include <QAudioBufferOutput>
 
 Player::Player(QWidget *parent) : QWidget(parent)
 {
@@ -56,12 +58,22 @@ Player::Player(QWidget *parent) : QWidget(parent)
     connect(m_playlist, &QMediaPlaylist::currentIndexChanged, this,
             &Player::playlistPositionChanged);
 
+    // audio level meter
+    m_audioBufferOutput = new QAudioBufferOutput(this);
+    m_player->setAudioBufferOutput(m_audioBufferOutput);
+    m_audioLevelMeter = new AudioLevelMeter(this);
+    connect(m_audioBufferOutput, &QAudioBufferOutput::audioBufferReceived,
+            m_audioLevelMeter, &AudioLevelMeter::onAudioBufferReceived);
+    connect(m_player, &QMediaPlayer::playingChanged,
+            m_audioLevelMeter, &AudioLevelMeter::deactivate);
+
     // player layout
     QBoxLayout *layout = new QVBoxLayout(this);
 
     // display
     QBoxLayout *displayLayout = new QHBoxLayout;
     displayLayout->addWidget(m_videoWidget, 2);
+    displayLayout->addWidget(m_audioLevelMeter, 3);
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
     m_playlistView = new QListView();
     m_playlistView->setModel(m_playlistModel);
@@ -287,18 +299,16 @@ void Player::metaDataChanged()
         m_metaDataLabels[i]->setDisabled(true);
     }
 
-    for (auto &key : metaData.keys()) {
+    for (auto &&[key, value] : metaData.asKeyValueRange()) {
         int i = int(key);
         if (key == QMediaMetaData::CoverArtImage) {
-            QVariant v = metaData.value(key);
             if (QLabel *cover = qobject_cast<QLabel *>(m_metaDataFields[key])) {
-                QImage coverImage = v.value<QImage>();
+                QImage coverImage = value.value<QImage>();
                 cover->setPixmap(QPixmap::fromImage(coverImage));
             }
         } else if (key == QMediaMetaData::ThumbnailImage) {
-            QVariant v = metaData.value(key);
             if (QLabel *thumbnail = qobject_cast<QLabel *>(m_metaDataFields[key])) {
-                QImage thumbnailImage = v.value<QImage>();
+                QImage thumbnailImage = value.value<QImage>();
                 thumbnail->setPixmap(QPixmap::fromImage(thumbnailImage));
             }
         } else if (QLineEdit *field = qobject_cast<QLineEdit *>(m_metaDataFields[key])) {
@@ -307,6 +317,20 @@ void Player::metaDataChanged()
         }
         m_metaDataFields[i]->setDisabled(false);
         m_metaDataLabels[i]->setDisabled(false);
+    }
+
+    const QList<QMediaMetaData> tracks = m_player->videoTracks();
+    const int currentVideoTrack = m_player->activeVideoTrack();
+    if (currentVideoTrack >= 0 && currentVideoTrack < tracks.size()) {
+        const QMediaMetaData track = tracks.value(currentVideoTrack);
+        for (const QMediaMetaData::Key &key : track.keys()) {
+            if (QLineEdit *field = qobject_cast<QLineEdit *>(m_metaDataFields[key])) {
+                QString stringValue = track.stringValue(key);
+                field->setText(stringValue);
+            }
+            m_metaDataFields[key]->setDisabled(true);
+            m_metaDataLabels[key]->setDisabled(true);
+        }
     }
 #endif
 }

@@ -18,12 +18,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "preserve_color.h"
@@ -559,20 +557,13 @@ static const AVFilterPad colorlevels_inputs[] = {
     },
 };
 
-static const AVFilterPad colorlevels_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_colorlevels = {
     .name          = "colorlevels",
     .description   = NULL_IF_CONFIG_SMALL("Adjust the color levels."),
     .priv_size     = sizeof(ColorLevelsContext),
     .priv_class    = &colorlevels_class,
     FILTER_INPUTS(colorlevels_inputs),
-    FILTER_OUTPUTS(colorlevels_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS(AV_PIX_FMT_0RGB,   AV_PIX_FMT_0BGR,
                    AV_PIX_FMT_ARGB,   AV_PIX_FMT_ABGR,
                    AV_PIX_FMT_RGB0,   AV_PIX_FMT_BGR0,

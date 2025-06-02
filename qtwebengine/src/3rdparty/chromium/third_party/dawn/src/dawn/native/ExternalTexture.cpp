@@ -1,16 +1,29 @@
-// Copyright 2021 The Dawn Authors
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/ExternalTexture.h"
 
@@ -50,8 +63,8 @@ MaybeError ValidateExternalTexturePlane(const TextureViewBase* textureView) {
 
 MaybeError ValidateExternalTextureDescriptor(const DeviceBase* device,
                                              const ExternalTextureDescriptor* descriptor) {
-    ASSERT(descriptor);
-    ASSERT(descriptor->plane0);
+    DAWN_ASSERT(descriptor);
+    DAWN_ASSERT(descriptor->plane0);
 
     DAWN_TRY(device->ValidateObject(descriptor->plane0));
 
@@ -101,7 +114,7 @@ MaybeError ValidateExternalTextureDescriptor(const DeviceBase* device,
     DAWN_INVALID_IF(descriptor->visibleSize.width == 0 || descriptor->visibleSize.height == 0,
                     "VisibleSize %s have 0 on width or height.", &descriptor->visibleSize);
 
-    const Extent3D textureSize = descriptor->plane0->GetTexture()->GetSize();
+    const Extent3D textureSize = descriptor->plane0->GetSingleSubresourceVirtualSize();
     DAWN_INVALID_IF(descriptor->visibleSize.width > textureSize.width ||
                         descriptor->visibleSize.height > textureSize.height,
                     "VisibleSize %s is exceed the texture size, defined by Plane0 size (%u, %u).",
@@ -174,7 +187,7 @@ MaybeError ExternalTextureBase::Initialize(DeviceBase* device,
     // passed from Chromium. The matrix was originally sourced from /skia/src/core/SkYUVMath.cpp.
     // This matrix is only used in multiplanar scenarios.
     if (params.numPlanes == 2) {
-        ASSERT(descriptor->yuvToRgbConversionMatrix);
+        DAWN_ASSERT(descriptor->yuvToRgbConversionMatrix);
         const float* yMat = descriptor->yuvToRgbConversionMatrix;
         std::copy(yMat, yMat + 12, params.yuvToRgbConversionMatrix.begin());
     }
@@ -266,8 +279,8 @@ MaybeError ExternalTextureBase::Initialize(DeviceBase* device,
         case wgpu::ExternalTextureRotation::Rotate0Degrees:
             break;
         case wgpu::ExternalTextureRotation::Rotate90Degrees:
-            coordTransformMatrix = Mul(mat2x3{0, -1, 0,   // x' = -y
-                                              +1, 0, 0},  // y' = x
+            coordTransformMatrix = Mul(mat2x3{0, +1, 0,   // x' = y
+                                              -1, 0, 0},  // y' = -x
                                        coordTransformMatrix);
             break;
         case wgpu::ExternalTextureRotation::Rotate180Degrees:
@@ -276,8 +289,9 @@ MaybeError ExternalTextureBase::Initialize(DeviceBase* device,
                                        coordTransformMatrix);
             break;
         case wgpu::ExternalTextureRotation::Rotate270Degrees:
-            coordTransformMatrix = Mul(mat2x3{0, +1, 0,   // x' = y
-                                              -1, 0, 0},  // y' = -x
+
+            coordTransformMatrix = Mul(mat2x3{0, -1, 0,   // x' = -y
+                                              +1, 0, 0},  // y' = x
                                        coordTransformMatrix);
             break;
     }
@@ -287,10 +301,10 @@ MaybeError ExternalTextureBase::Initialize(DeviceBase* device,
     coordTransformMatrix = Translate(coordTransformMatrix, 0.5, 0.5);
 
     // Calculate scale factors and offsets from the specified visibleSize.
-    ASSERT(descriptor->visibleSize.width > 0);
-    ASSERT(descriptor->visibleSize.height > 0);
-    uint32_t frameWidth = descriptor->plane0->GetTexture()->GetWidth();
-    uint32_t frameHeight = descriptor->plane0->GetTexture()->GetHeight();
+    DAWN_ASSERT(descriptor->visibleSize.width > 0);
+    DAWN_ASSERT(descriptor->visibleSize.height > 0);
+    uint32_t frameWidth = descriptor->plane0->GetSingleSubresourceVirtualSize().width;
+    uint32_t frameHeight = descriptor->plane0->GetSingleSubresourceVirtualSize().height;
     float xScale =
         static_cast<float>(descriptor->visibleSize.width) / static_cast<float>(frameWidth);
     float yScale =
@@ -324,7 +338,7 @@ const std::array<Ref<TextureViewBase>, kMaxPlanesPerFormat>& ExternalTextureBase
 }
 
 MaybeError ExternalTextureBase::ValidateCanUseInSubmitNow() const {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
     DAWN_INVALID_IF(mState != ExternalTextureState::Active,
                     "External texture %s used in a submit is not active.", this);
 
@@ -368,12 +382,19 @@ void ExternalTextureBase::APIDestroy() {
 }
 
 void ExternalTextureBase::DestroyImpl() {
+    // TODO(crbug.com/dawn/831): DestroyImpl is called from two places.
+    // - It may be called if the texture is explicitly destroyed with APIDestroy.
+    //   This case is NOT thread-safe and needs proper synchronization with other
+    //   simultaneous uses of the texture.
+    // - It may be called when the last ref to the texture is dropped and the texture
+    //   is implicitly destroyed. This case is thread-safe because there are no
+    //   other threads using the texture since there are no other live refs.
     mState = ExternalTextureState::Destroyed;
 }
 
 // static
-ExternalTextureBase* ExternalTextureBase::MakeError(DeviceBase* device, const char* label) {
-    return new ExternalTextureBase(device, ObjectBase::kError, label);
+Ref<ExternalTextureBase> ExternalTextureBase::MakeError(DeviceBase* device, const char* label) {
+    return AcquireRef(new ExternalTextureBase(device, ObjectBase::kError, label));
 }
 
 BufferBase* ExternalTextureBase::GetParamsBuffer() const {
@@ -385,12 +406,12 @@ ObjectType ExternalTextureBase::GetType() const {
 }
 
 const Extent2D& ExternalTextureBase::GetVisibleSize() const {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
     return mVisibleSize;
 }
 
 const Origin2D& ExternalTextureBase::GetVisibleOrigin() const {
-    ASSERT(!IsError());
+    DAWN_ASSERT(!IsError());
     return mVisibleOrigin;
 }
 

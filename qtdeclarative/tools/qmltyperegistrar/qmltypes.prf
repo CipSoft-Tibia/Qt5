@@ -81,7 +81,7 @@ QML_TYPEREGISTRAR_FLAGS = \
     --import-name=$$QML_IMPORT_NAME \
     --major-version=$$QML_IMPORT_MAJOR_VERSION \
     --minor-version=$$QML_IMPORT_MINOR_VERSION \
-    --foreign-types=$$join(QML_FOREIGN_METATYPES, ',')
+    $$join(QML_FOREIGN_METATYPES, ',', '--foreign-types=')
 
 !isEmpty(QML_PAST_MAJOR_VERSIONS) {
     for(past_major_version,QML_PAST_MAJOR_VERSIONS): QML_TYPEREGISTRAR_FLAGS += --past-major-version $$past_major_version

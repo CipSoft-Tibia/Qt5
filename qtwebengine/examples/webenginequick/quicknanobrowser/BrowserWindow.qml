@@ -44,6 +44,7 @@ ApplicationWindow {
         property alias webRTCPublicInterfacesOnly : webRTCPublicInterfacesOnly.checked
         property alias devToolsEnabled: devToolsEnabled.checked
         property alias pdfViewerEnabled: pdfViewerEnabled.checked
+        property int imageAnimationPolicy: WebEngineSettings.ImageAnimationPolicy.Allow
     }
 
     Action {
@@ -362,10 +363,49 @@ ApplicationWindow {
                     }
                     MenuItem {
                         id: pdfViewerEnabled
-                        text: "PDF viewer enabled"
+                        text: "PDF Viewer Enabled"
                         checkable: true
                         checked: WebEngine.settings.pdfViewerEnabled
                     }
+
+                    Menu {
+                        id: imageAnimationPolicy
+                        title: "Image Animation Policy"
+
+                        MenuItem {
+                            id: disableImageAnimation
+                            text: "Disable All Image Animation"
+                            checkable: true
+                            autoExclusive: true
+                            checked: WebEngine.settings.imageAnimationPolicy === WebEngineSettings.ImageAnimationPolicy.Disallow
+                            onTriggered: {
+                                appSettings.imageAnimationPolicy = WebEngineSettings.ImageAnimationPolicy.Disallow
+                            }
+                        }
+
+                        MenuItem {
+                            id: allowImageAnimation
+                            text: "Allow All Animated Images"
+                            checkable: true
+                            autoExclusive: true
+                            checked: WebEngine.settings.imageAnimationPolicy === WebEngineSettings.ImageAnimationPolicy.Allow
+                            onTriggered : {
+                                appSettings.imageAnimationPolicy = WebEngineSettings.ImageAnimationPolicy.Allow
+                            }
+                        }
+
+                        MenuItem {
+                            id: animateImageOnce
+                            text: "Animate Image Once"
+                            checkable: true
+                            autoExclusive: true
+                            checked: WebEngine.settings.imageAnimationPolicy === WebEngineSettings.ImageAnimationPolicy.AnimateOnce
+                            onTriggered : {
+                                appSettings.imageAnimationPolicy = WebEngineSettings.ImageAnimationPolicy.AnimateOnce
+                            }
+                        }
+                    }
+
                 }
             }
         }
@@ -520,9 +560,15 @@ ApplicationWindow {
                 settings.touchIconsEnabled: appSettings.touchIconsEnabled
                 settings.webRTCPublicInterfacesOnly: appSettings.webRTCPublicInterfacesOnly
                 settings.pdfViewerEnabled: appSettings.pdfViewerEnabled
+                settings.imageAnimationPolicy: appSettings.imageAnimationPolicy
                 settings.screenCaptureEnabled: true
 
                 onCertificateError: function(error) {
+                    if (!error.isMainFrame) {
+                        error.rejectCertificate();
+                        return;
+                    }
+
                     error.defer();
                     sslDialog.enqueue(error);
                 }
@@ -608,10 +654,9 @@ ApplicationWindow {
                         findBar.reset();
                 }
 
-                onFeaturePermissionRequested: function(securityOrigin, feature) {
-                    featurePermissionDialog.securityOrigin = securityOrigin;
-                    featurePermissionDialog.feature = feature;
-                    featurePermissionDialog.visible = true;
+                onPermissionRequested: function(permission) {
+                    permissionDialog.permission = permission;
+                    permissionDialog.visible = true;
                 }
                 onWebAuthUxRequested: function(request) {
                     webAuthDialog.init(request);
@@ -696,7 +741,7 @@ ApplicationWindow {
         }
     }
     Dialog {
-        id: featurePermissionDialog
+        id: permissionDialog
         anchors.centerIn: parent
         width: Math.min(browserWindow.width, browserWindow.height) / 3 * 2
         contentWidth: mainTextForPermissionDialog.width
@@ -704,53 +749,59 @@ ApplicationWindow {
         standardButtons: Dialog.No | Dialog.Yes
         title: "Permission Request"
 
-        property var feature;
-        property url securityOrigin;
+        property var permission;
 
         contentItem: Item {
             Label {
                 id: mainTextForPermissionDialog
-                text: featurePermissionDialog.questionForFeature()
             }
         }
 
-        onAccepted: currentWebView && currentWebView.grantFeaturePermission(securityOrigin, feature, true)
-        onRejected: currentWebView && currentWebView.grantFeaturePermission(securityOrigin, feature, false)
+        onAccepted: permission.grant()
+        onRejected: permission.deny()
         onVisibleChanged: {
-            if (visible)
+            if (visible) {
+                mainTextForPermissionDialog.text = questionForPermissionType();
                 width = contentWidth + 20;
+            }
         }
 
-        function questionForFeature() {
-            var question = "Allow " + securityOrigin + " to "
+        function questionForPermissionType() {
+            var question = "Allow " + permission.origin + " to "
 
-            switch (feature) {
-            case WebEngineView.Geolocation:
+            switch (permission.permissionType) {
+            case WebEnginePermission.PermissionType.Geolocation:
                 question += "access your location information?";
                 break;
-            case WebEngineView.MediaAudioCapture:
+            case WebEnginePermission.PermissionType.MediaAudioCapture:
                 question += "access your microphone?";
                 break;
-            case WebEngineView.MediaVideoCapture:
+            case WebEnginePermission.PermissionType.MediaVideoCapture:
                 question += "access your webcam?";
                 break;
-            case WebEngineView.MediaVideoCapture:
+            case WebEnginePermission.PermissionType.MediaAudioVideoCapture:
                 question += "access your microphone and webcam?";
                 break;
-            case WebEngineView.MouseLock:
+            case WebEnginePermission.PermissionType.MouseLock:
                 question += "lock your mouse cursor?";
                 break;
-            case WebEngineView.DesktopVideoCapture:
+            case WebEnginePermission.PermissionType.DesktopVideoCapture:
                 question += "capture video of your desktop?";
                 break;
-            case WebEngineView.DesktopAudioVideoCapture:
+            case WebEnginePermission.PermissionType.DesktopAudioVideoCapture:
                 question += "capture audio and video of your desktop?";
                 break;
-            case WebEngineView.Notifications:
+            case WebEnginePermission.PermissionType.Notifications:
                 question += "show notification on your desktop?";
                 break;
+            case WebEnginePermission.PermissionType.ClipboardReadWrite:
+                question += "read from and write to your clipboard?";
+                break;
+            case WebEnginePermission.PermissionType.LocalFontsAccess:
+                question += "access the fonts stored on your machine?";
+                break;
             default:
-                question += "access unknown or unsupported feature [" + feature + "] ?";
+                question += "access unknown or unsupported permission type [" + permission.permissionType + "] ?";
                 break;
             }
 

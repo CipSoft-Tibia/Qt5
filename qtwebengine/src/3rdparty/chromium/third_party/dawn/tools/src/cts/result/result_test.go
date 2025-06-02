@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 package result_test
 
@@ -71,7 +84,7 @@ func TestStringAndParse(t *testing.T) {
 			t.Errorf("'%v'.String() was not as expected:\n%v", test.result, diff)
 			continue
 		}
-		parsed, err := result.Parse(test.expect)
+		_, parsed, err := result.Parse(test.expect)
 		if err != nil {
 			t.Errorf("Parse('%v') returned %v", test.expect, err)
 			continue
@@ -87,11 +100,11 @@ func TestParseError(t *testing.T) {
 		in, expect string
 	}{
 		{``, `unable to parse result ''`},
-		{`a`, `unable to parse result 'a'`},
+		{`a b`, `unable to parse result 'a b'`},
 		{`a b c d e`, `unable to parse result 'a b c d e': time: invalid duration "d"`},
 		{`a b c 10s e`, `unable to parse result 'a b c 10s e': strconv.ParseBool: parsing "e": invalid syntax`},
 	} {
-		_, err := result.Parse(test.in)
+		_, _, err := result.Parse(test.in)
 		got := ""
 		if err != nil {
 			got = err.Error()
@@ -1041,13 +1054,19 @@ func TestStatusTree(t *testing.T) {
 }
 
 func TestReadWrite(t *testing.T) {
-	in := result.List{
-		{Query: Q(`suite:a:*`), Tags: T(`x`), Status: result.Pass},
-		{Query: Q(`suite:b,*`), Tags: T(`y`), Status: result.Failure},
-		{Query: Q(`suite:a:b:*`), Tags: T(`x`, `y`), Status: result.Skip},
-		{Query: Q(`suite:a:c,*`), Tags: T(`y`, `x`), Status: result.Failure},
-		{Query: Q(`suite:a,b:c,*`), Tags: T(`y`, `x`), Status: result.Crash},
-		{Query: Q(`suite:a,b:c:*`), Status: result.Slow},
+	in := result.ResultsByExecutionMode{
+		"bar": result.List{
+			{Query: Q(`suite:a:*`), Tags: T(`x`), Status: result.Pass},
+			{Query: Q(`suite:b,*`), Tags: T(`y`), Status: result.Failure},
+			{Query: Q(`suite:a:b:*`), Tags: T(`x`, `y`), Status: result.Skip},
+			{Query: Q(`suite:a:c,*`), Tags: T(`y`, `x`), Status: result.Failure},
+			{Query: Q(`suite:a,b:c,*`), Tags: T(`y`, `x`), Status: result.Crash},
+			{Query: Q(`suite:a,b:c:*`), Status: result.Slow},
+		},
+		"foo": result.List{
+			{Query: Q(`suite:d:*`), Tags: T(`x`), Status: result.Pass},
+			{Query: Q(`suite:e,*`), Tags: T(`y`), Status: result.Failure},
+		},
 	}
 	buf := &bytes.Buffer{}
 	if err := result.Write(buf, in); err != nil {

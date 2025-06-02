@@ -10,6 +10,7 @@ CustomMaterial {
 
     property vector2d vertices
     property vector2d range
+    property real graphHeight
 
     vertexShader: "qrc:/shaders/surfaceGridvert"
     fragmentShader: "qrc:/shaders/surfaceGridfrag"

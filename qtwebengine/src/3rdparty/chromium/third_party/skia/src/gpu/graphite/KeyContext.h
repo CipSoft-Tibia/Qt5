@@ -12,6 +12,7 @@
 #include "include/core/SkM44.h"
 #include "include/core/SkMatrix.h"
 #include "include/private/SkColorData.h"
+#include "src/core/SkColorSpaceXformSteps.h"
 #include "src/gpu/graphite/TextureProxy.h"
 
 namespace skgpu::graphite {
@@ -70,6 +71,13 @@ public:
 
     const SkPMColor4f& paintColor() const { return fPaintColor; }
 
+    enum class Scope {
+        kDefault,
+        kRuntimeEffect,
+    };
+
+    Scope scope() const { return fScope; }
+
 protected:
     Recorder* fRecorder = nullptr;
     SkM44 fLocal2Dev;
@@ -77,7 +85,11 @@ protected:
     ShaderCodeDictionary* fDictionary;
     RuntimeEffectDictionary* fRTEffectDict;
     SkColorInfo fDstColorInfo;
+    // Although stored as premul the paint color is actually comprised of an opaque RGB portion
+    // and a separate alpha portion. The two portions will never be used together but are stored
+    // together to reduce the number of uniforms.
     SkPMColor4f fPaintColor = SK_PMColor4fBLACK;
+    Scope fScope = Scope::kDefault;
 
 private:
     const Caps* fCaps = nullptr;
@@ -103,6 +115,36 @@ private:
     KeyContextWithLocalMatrix& operator=(const KeyContextWithLocalMatrix&) = delete;
 
     SkMatrix fStorage;
+};
+
+class KeyContextWithColorInfo : public KeyContext {
+public:
+    KeyContextWithColorInfo(const KeyContext& other, const SkColorInfo& info) : KeyContext(other) {
+        // We want to keep fPaintColor's alpha value but replace the RGB with values in the new
+        // color space
+        SkPMColor4f tmp = fPaintColor;
+        tmp.fA = 1.0f;
+        SkColorSpaceXformSteps(fDstColorInfo, info).apply(tmp.vec());
+        fPaintColor.fR = tmp.fR;
+        fPaintColor.fG = tmp.fG;
+        fPaintColor.fB = tmp.fB;
+        fDstColorInfo = info;
+    }
+
+private:
+    KeyContextWithColorInfo(const KeyContextWithColorInfo&) = delete;
+    KeyContextWithColorInfo& operator=(const KeyContextWithColorInfo&) = delete;
+};
+
+class KeyContextWithScope : public KeyContext {
+public:
+    KeyContextWithScope(const KeyContext& other, KeyContext::Scope scope) : KeyContext(other) {
+        fScope = scope;
+    }
+
+private:
+    KeyContextWithScope(const KeyContextWithScope&) = delete;
+    KeyContextWithScope& operator=(const KeyContextWithScope&) = delete;
 };
 
 } // namespace skgpu::graphite

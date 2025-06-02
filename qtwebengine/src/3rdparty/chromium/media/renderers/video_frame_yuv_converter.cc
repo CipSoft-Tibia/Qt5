@@ -13,6 +13,7 @@
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "media/base/media_switches.h"
 #include "media/base/video_frame.h"
+#include "media/base/video_util.h"
 #include "media/renderers/video_frame_yuv_mailboxes_holder.h"
 #include "third_party/skia/include/core/SkCanvas.h"
 #include "third_party/skia/include/core/SkColorSpace.h"
@@ -23,6 +24,7 @@
 #include "third_party/skia/include/core/SkYUVAInfo.h"
 #include "third_party/skia/include/core/SkYUVAPixmaps.h"
 #include "third_party/skia/include/gpu/GrDirectContext.h"
+#include "third_party/skia/include/gpu/GrTypes.h"
 #include "third_party/skia/include/gpu/GrYUVABackendTextures.h"
 #include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
 #include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
@@ -90,7 +92,7 @@ void DrawYUVImageToSkSurface(const VideoFrame* video_frame,
                                         SkCanvas::kStrict_SrcRectConstraint);
   }
 
-  gr_context->flushAndSubmit(surface);
+  gr_context->flushAndSubmit(surface.get(), GrSyncCpu::kNo);
 }
 
 }  // namespace
@@ -100,8 +102,8 @@ VideoFrameYUVConverter::~VideoFrameYUVConverter() = default;
 
 bool VideoFrameYUVConverter::IsVideoFrameFormatSupported(
     const VideoFrame& video_frame) {
-  return std::get<0>(VideoFrameYUVMailboxesHolder::VideoPixelFormatToSkiaValues(
-             video_frame.format())) != SkYUVAInfo::PlaneConfig::kUnknown;
+  return std::get<0>(VideoPixelFormatToSkiaValues(video_frame.format())) !=
+         SkYUVAInfo::PlaneConfig::kUnknown;
 }
 
 bool VideoFrameYUVConverter::ConvertYUVVideoFrameNoCaching(
@@ -129,24 +131,33 @@ bool VideoFrameYUVConverter::ConvertYUVVideoFrame(
   if (!holder_)
     holder_ = std::make_unique<VideoFrameYUVMailboxesHolder>();
 
+  // All platforms except android have shipped passthrough command decoder which
+  // supports it. On Android this code path should always use RasterDecoder
+  // which also supports this.
+  DUMP_WILL_BE_CHECK(raster_context_provider->ContextCapabilities()
+                         .supports_yuv_to_rgb_conversion);
+
   if (raster_context_provider->GrContext() &&
       !(raster_context_provider->ContextCapabilities()
-            .supports_yuv_rgb_conversion &&
+            .supports_yuv_to_rgb_conversion &&
         dest_mailbox_holder.mailbox.IsSharedImage())) {
     return ConvertFromVideoFrameYUVWithGrContext(
         video_frame, raster_context_provider, dest_mailbox_holder,
         gr_params.value_or(GrParams()));
   }
 
-  // The RasterInterface path does not support flip_y or use_visible_rect.
+  // The RasterInterface path does not support flip_y.
   if (gr_params) {
     DCHECK(!gr_params->flip_y);
-    DCHECK(!gr_params->use_visible_rect);
   }
 
   auto* ri = raster_context_provider->RasterInterface();
   DCHECK(ri);
   ri->WaitSyncTokenCHROMIUM(dest_mailbox_holder.sync_token.GetConstData());
+
+  auto source_rect = gr_params && gr_params->use_visible_rect
+                         ? video_frame->visible_rect()
+                         : gfx::Rect(video_frame->coded_size());
 
   if (!video_frame->HasTextures() && IsWritePixelsYUVEnabled()) {
     // For pure software pixel upload paths with video frames that don't have
@@ -157,8 +168,8 @@ bool VideoFrameYUVConverter::ConvertYUVVideoFrame(
                                    /*allow_multiplanar_for_upload=*/true);
     gpu::Mailbox src_mailbox = mailboxes[0];
     ri->CopySharedImage(src_mailbox, dest_mailbox_holder.mailbox, GL_TEXTURE_2D,
-                        0, 0, 0, 0, video_frame->coded_size().width(),
-                        video_frame->coded_size().height(),
+                        0, 0, source_rect.x(), source_rect.y(),
+                        source_rect.width(), source_rect.height(),
                         /*unpack_flip_y=*/false,
                         /*unpack_premultiply_alpha=*/false);
   } else if (video_frame->shared_image_format_type() !=
@@ -168,8 +179,8 @@ bool VideoFrameYUVConverter::ConvertYUVVideoFrame(
     // textures.
     gpu::Mailbox src_mailbox = video_frame->mailbox_holder(0).mailbox;
     ri->CopySharedImage(src_mailbox, dest_mailbox_holder.mailbox, GL_TEXTURE_2D,
-                        0, 0, 0, 0, video_frame->coded_size().width(),
-                        video_frame->coded_size().height(),
+                        0, 0, source_rect.x(), source_rect.y(),
+                        source_rect.width(), source_rect.height(),
                         /*unpack_flip_y=*/false,
                         /*unpack_premultiply_alpha=*/false);
   } else {
@@ -180,9 +191,11 @@ bool VideoFrameYUVConverter::ConvertYUVVideoFrame(
                                    mailboxes,
                                    /*allow_multiplanar_for_upload=*/false);
     ri->ConvertYUVAMailboxesToRGB(
-        dest_mailbox_holder.mailbox, holder_->yuva_info().yuvColorSpace(),
-        nullptr, holder_->yuva_info().planeConfig(),
-        holder_->yuva_info().subsampling(), mailboxes);
+        dest_mailbox_holder.mailbox, source_rect.x(), source_rect.y(),
+        source_rect.width(), source_rect.height(),
+        holder_->yuva_info().yuvColorSpace(), nullptr,
+        holder_->yuva_info().planeConfig(), holder_->yuva_info().subsampling(),
+        mailboxes);
   }
   return true;
 }

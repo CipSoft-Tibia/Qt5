@@ -11,6 +11,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "components/reporting/client/report_queue.h"
@@ -19,6 +20,7 @@
 #include "components/reporting/metrics/metric_reporting_controller.h"
 #include "components/reporting/metrics/reporting_settings.h"
 #include "components/reporting/metrics/sampler.h"
+#include "components/reporting/proto/synced/record_constants.pb.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace reporting {
@@ -87,11 +89,17 @@ void OneShotCollector::OnMetricDataCollected(
     absl::optional<MetricData> metric_data) {
   CheckOnSequence();
   CHECK(is_event_driven || on_data_reported_);
+  CHECK(metric_report_queue_);
   if (!metric_data.has_value()) {
+    base::UmaHistogramExactLinear(
+        OneShotCollector::kNoMetricDataMetricsName,
+        static_cast<int>(metric_report_queue_->GetDestination()),
+        Destination_ARRAYSIZE);
     return;
   }
 
-  metric_data->set_timestamp_ms(base::Time::Now().ToJavaTime());
+  metric_data->set_timestamp_ms(
+      base::Time::Now().InMillisecondsSinceUnixEpoch());
   if (is_event_driven) {
     CHECK(metric_data->has_telemetry_data());
     metric_data->mutable_telemetry_data()->set_is_event_driven(is_event_driven);

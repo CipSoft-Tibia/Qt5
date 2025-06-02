@@ -8,15 +8,15 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <vector>
 
-#include <fp16.h>
-
 #include <xnnpack.h>
 
-#include <benchmark/benchmark.h>
+#include <fp16/fp16.h>
 #include "bench/utils.h"
+#include <benchmark/benchmark.h>
 #ifdef BENCHMARK_TENSORFLOW_LITE
 #include "flatbuffers/include/flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/interpreter.h"
@@ -48,24 +48,27 @@ static void xnnpack_elu_f16(benchmark::State& state) {
 
   xnn_operator_t elu_op = nullptr;
   status = xnn_create_elu_nc_f16(
-    1 /* channels */, 1 /* input stride */, 1 /* output stride */,
     1.0f /* alpha */, 0 /* flags */, &elu_op);
   if (status != xnn_status_success || elu_op == nullptr) {
     state.SkipWithError("failed to create ELU operator");
     return;
   }
 
-  status = xnn_setup_elu_nc_f16(
-    elu_op, batch_size,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+  status = xnn_reshape_elu_nc_f16(elu_op, batch_size,
+    /*channels=*/1, /*input_stride=*/1, /*output_stride=*/1, /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape ELU operator");
+    return;
+  }
+
+  status = xnn_setup_elu_nc_f16(elu_op, input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup ELU operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(elu_op, nullptr /* thread pool */);
+    status = xnn_run_operator(elu_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run ELU operator");
       return;
@@ -111,24 +114,27 @@ static void xnnpack_elu_f32(benchmark::State& state) {
 
   xnn_operator_t elu_op = nullptr;
   status = xnn_create_elu_nc_f32(
-    1 /* channels */, 1 /* input stride */, 1 /* output stride */,
     1.0f /* alpha */, 0 /* flags */, &elu_op);
   if (status != xnn_status_success || elu_op == nullptr) {
     state.SkipWithError("failed to create ELU operator");
     return;
   }
 
-  status = xnn_setup_elu_nc_f32(
-    elu_op, batch_size,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+  status = xnn_reshape_elu_nc_f32(elu_op, batch_size,
+    /*channels=*/1, /*input_stride=*/1, /*output_stride=*/1, /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape ELU operator");
+    return;
+  }
+
+  status = xnn_setup_elu_nc_f32(elu_op, input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup ELU operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(elu_op, nullptr /* thread pool */);
+    status = xnn_run_operator(elu_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run ELU operator");
       return;
@@ -176,7 +182,6 @@ static void xnnpack_elu_qs8(benchmark::State& state) {
 
   xnn_operator_t elu_op = nullptr;
   status = xnn_create_elu_nc_qs8(
-    1 /* channels */, 1 /* input stride */, 1 /* output stride */,
     1.0f /* alpha */,
     0 /* input zero point */, 1.0f /* input scale */,
     0 /* output zero point */, 1.0f /* output scale */,
@@ -187,17 +192,21 @@ static void xnnpack_elu_qs8(benchmark::State& state) {
     return;
   }
 
-  status = xnn_setup_elu_nc_qs8(
-    elu_op, batch_size,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+  status = xnn_reshape_elu_nc_qs8(elu_op, batch_size,
+    /*channels=*/1, /*input_stride=*/1, /*output_stride=*/1, /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape ELU operator");
+    return;
+  }
+
+  status = xnn_setup_elu_nc_qs8(elu_op, input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup ELU operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(elu_op, nullptr /* thread pool */);
+    status = xnn_run_operator(elu_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run ELU operator");
       return;

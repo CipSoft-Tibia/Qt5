@@ -149,6 +149,8 @@ class FakeDatagramServerSocket : public net::DatagramServerSocket {
 
   int SetDoNotFragment() override { return net::OK; }
 
+  int SetRecvEcn() override { return net::OK; }
+
   void SetMsgConfirm(bool confirm) override {}
 
   void ReceivePacket(const net::IPEndPoint& address,
@@ -314,10 +316,9 @@ class P2PSocketUdpTest : public testing::Test {
   P2PMessageThrottler throttler_;
   ScopedFakeClock fake_clock_;
   base::circular_deque<FakeDatagramServerSocket::UDPPacket> sent_packets_;
-  raw_ptr<FakeDatagramServerSocket, DanglingUntriaged>
-      socket_;  // Owned by |socket_impl_|.
   FakeP2PSocketDelegate socket_delegate_;
   std::unique_ptr<P2PSocketUdp> socket_impl_;
+  raw_ptr<FakeDatagramServerSocket> socket_;  // Owned by |socket_impl_|.
   std::unique_ptr<FakeSocketClient> fake_client_;
 
   net::IPEndPoint local_address_;
@@ -359,6 +360,7 @@ TEST_F(P2PSocketUdpTest, SendDataNoAuth) {
   std::vector<uint8_t> packet;
   CreateRandomPacket(&packet);
 
+  socket_ = nullptr;  // Since about to give up `socket_impl_`.
   auto* socket_impl_ptr = socket_impl_.get();
   socket_delegate_.ExpectDestruction(std::move(socket_impl_));
   socket_impl_ptr->Send(packet, P2PPacketInfo(dest1_, options, 0));
@@ -436,6 +438,7 @@ TEST_F(P2PSocketUdpTest, SendAfterStunResponseDifferentHost) {
   std::vector<uint8_t> packet;
   CreateRandomPacket(&packet);
 
+  socket_ = nullptr;  // Since about to give up `socket_impl_`.
   auto* socket_impl_ptr = socket_impl_.get();
   socket_delegate_.ExpectDestruction(std::move(socket_impl_));
   socket_impl_ptr->Send(packet, P2PPacketInfo(dest2_, options, 0));

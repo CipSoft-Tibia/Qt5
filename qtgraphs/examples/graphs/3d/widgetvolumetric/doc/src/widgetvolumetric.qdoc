@@ -33,14 +33,14 @@
 
     \snippet 3d/widgetvolumetric/volumetric.cpp 2
 
-    Use eight bit indexed color for the texture, as it is compact and makes it easy to adjust the
+    Use eight-bit indexed color for the texture, as it is compact and makes it easy to adjust the
     colors without needing to reset the whole texture. For the texture data, use the data created
     earlier based on height maps.
     Typically, the data for volume items comes pregenerated in the form of a stack of images, so
     the data generation details can be skipped. For more information about the actual data
     generation process, see the example code.
 
-    Since eight bit indexed colors are used, a color table is needed to map the eight bit color
+    Since eight-bit indexed colors are used, a color table is needed to map the eight-bit color
     indexes to actual colors. In a typical use case, you would get the color table from the source
     images instead of using one manually defined:
 
@@ -69,9 +69,9 @@
 
     \snippet 3d/widgetvolumetric/volumetric.cpp 7
 
-    The second way to view slices is to use QCustom3DVolume::renderSlice() method, which produces
-    a QImage from the specified slice. This image can then be displayed on another widget, such
-    as a QLabel:
+    The second way to view slices is to use the QCustom3DVolume::renderSlice() method, which
+    produces a QImage from the specified slice. This image can then be displayed on another widget,
+    such as a QLabel:
 
     \snippet 3d/widgetvolumetric/volumetric.cpp 8
 
@@ -88,24 +88,24 @@
     The QCustom3DVolume::alphaMultiplier is a general multiplier that is applied to the alpha value
     of each voxel of the volume. It makes it possible to add uniform transparency to the already
     somewhat transparent portions of the volume to reveal internal opaque details. This multiplier
-    doesn't affect colors that are fully opaque, unless the QCustom3DVolume::preserveOpacity
+    doesn't affect fully opaque colors, unless the QCustom3DVolume::preserveOpacity
     property is set to \c{false}.
 
     An alternative way to adjust the transparency of the volume is to adjust the alpha values of the
-    voxels directly. For eight bit indexed textures, this is done simply by modifying and resetting
+    voxels directly. For eight-bit indexed textures, this is done simply by modifying and resetting
     the color table:
 
     \snippet 3d/widgetvolumetric/volumetric.cpp 11
 
     \section1 High Definition vs. Low Definition Shader
 
-    By default, the volumetric rendering uses a high definition shader. It accounts for each
+    By default, the volumetric rendering uses a high-definition shader. It accounts for each
     voxel of the volume with the correct weight when ray-tracing the volume contents, providing an
     accurate representation of even the finer details of the volume.
     However, this is computationally very expensive, so the frame rate suffers.
     If rendering speed is more important than pixel-perfect accuracy of the volume contents, take
-    the much faster low definition shader into use by setting QCustom3DVolume::useHighDefShader
-    property \c{false}. The low definition shader achieves the speed by making compromises on
+    the much faster low-definition shader into use by setting QCustom3DVolume::useHighDefShader
+    property \c{false}. The low-definition shader achieves the speed by making compromises on
     accuracy, so it doesn't guarantee that every voxel of the volume will be sampled. This can lead
     to flickering or other rendering artifacts on the finer details of the volume.
 

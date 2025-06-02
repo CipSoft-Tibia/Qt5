@@ -13,18 +13,16 @@
 #ifndef QBARCATEGORYAXIS_P_H
 #define QBARCATEGORYAXIS_P_H
 
-#include <QtGraphs/qbarcategoryaxis.h>
+#include <QtGraphs/QBarCategoryAxis>
 #include <private/qabstractaxis_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QBarCategoryAxisPrivate : public QAbstractAxisPrivate
 {
-    Q_OBJECT
-
 public:
-    QBarCategoryAxisPrivate(QBarCategoryAxis *q);
-    ~QBarCategoryAxisPrivate();
+    QBarCategoryAxisPrivate();
+    ~QBarCategoryAxisPrivate() override;
 
 public:
     //interface for manipulating range form base class

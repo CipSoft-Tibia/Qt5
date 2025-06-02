@@ -17,39 +17,39 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufTypesDeserializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { serializer.reset(new QProtobufSerializer); }
 
-    void FixedInt32MessageDeserializeTest_data();
-    void FixedInt32MessageDeserializeTest();
-    void FixedInt64MessageDeserializeTest_data();
-    void FixedInt64MessageDeserializeTest();
-    void SFixedInt32MessageDeserializeTest_data();
-    void SFixedInt32MessageDeserializeTest();
-    void SFixedInt64MessageDeserializeTest_data();
-    void SFixedInt64MessageDeserializeTest();
-    void FloatMessageDeserializeTest_data();
-    void FloatMessageDeserializeTest();
-    void DoubleMessageDeserializeTest_data();
-    void DoubleMessageDeserializeTest();
-    void IntMessageDeserializeTest_data();
-    void IntMessageDeserializeTest();
-    void StringMessageDeserializeTest_data();
-    void StringMessageDeserializeTest();
-    void ComplexTypeDeserializeTest_data();
-    void ComplexTypeDeserializeTest();
-    void SIntMessageDeserializeTest_data();
-    void SIntMessageDeserializeTest();
-    void UIntMessageDeserializeTest_data();
-    void UIntMessageDeserializeTest();
-    void BoolDeserializeTest_data();
-    void BoolDeserializeTest();
-    void RedundantFieldIsIgnoredAtDeserializationTest_data();
-    void RedundantFieldIsIgnoredAtDeserializationTest();
-    void FieldIndexRangeTest();
-    void OneofMessageTest();
-    void OneofMessageEmptyTest();
-    void OneofMessageMultipleFieldsTest();
+    void fixedInt32MessageDeserializeTest_data();
+    void fixedInt32MessageDeserializeTest();
+    void fixedInt64MessageDeserializeTest_data();
+    void fixedInt64MessageDeserializeTest();
+    void sFixedInt32MessageDeserializeTest_data();
+    void sFixedInt32MessageDeserializeTest();
+    void sFixedInt64MessageDeserializeTest_data();
+    void sFixedInt64MessageDeserializeTest();
+    void floatMessageDeserializeTest_data();
+    void floatMessageDeserializeTest();
+    void doubleMessageDeserializeTest_data();
+    void doubleMessageDeserializeTest();
+    void intMessageDeserializeTest_data();
+    void intMessageDeserializeTest();
+    void stringMessageDeserializeTest_data();
+    void stringMessageDeserializeTest();
+    void complexTypeDeserializeTest_data();
+    void complexTypeDeserializeTest();
+    void sIntMessageDeserializeTest_data();
+    void sIntMessageDeserializeTest();
+    void uIntMessageDeserializeTest_data();
+    void uIntMessageDeserializeTest();
+    void boolDeserializeTest_data();
+    void boolDeserializeTest();
+    void redundantFieldIsIgnoredAtDeserializationTest_data();
+    void redundantFieldIsIgnoredAtDeserializationTest();
+    void fieldIndexRangeTest();
+    void oneofMessageTest();
+    void oneofMessageEmptyTest();
+    void oneofMessageMultipleFieldsTest();
 
 private:
     std::unique_ptr<QProtobufSerializer> serializer;
@@ -74,12 +74,12 @@ void generateTestData()
     }
 }
 
-void QtProtobufTypesDeserializationTest::FixedInt32MessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::fixedInt32MessageDeserializeTest_data()
 {
     generateTestData<uint32_t, IntTypes::Fixed>();
 }
 
-void QtProtobufTypesDeserializationTest::FixedInt32MessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::fixedInt32MessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const uint32_t, expectedValue);
@@ -89,12 +89,12 @@ void QtProtobufTypesDeserializationTest::FixedInt32MessageDeserializeTest()
     QCOMPARE(test.testFieldFixedInt32(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::FixedInt64MessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::fixedInt64MessageDeserializeTest_data()
 {
     generateTestData<uint64_t, IntTypes::Fixed>();
 }
 
-void QtProtobufTypesDeserializationTest::FixedInt64MessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::fixedInt64MessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const uint64_t, expectedValue);
@@ -104,12 +104,12 @@ void QtProtobufTypesDeserializationTest::FixedInt64MessageDeserializeTest()
     QCOMPARE(test.testFieldFixedInt64(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::SFixedInt32MessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::sFixedInt32MessageDeserializeTest_data()
 {
     generateTestData<int32_t, IntTypes::SFixed>();
 }
 
-void QtProtobufTypesDeserializationTest::SFixedInt32MessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::sFixedInt32MessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const int32_t, expectedValue);
@@ -119,12 +119,12 @@ void QtProtobufTypesDeserializationTest::SFixedInt32MessageDeserializeTest()
     QCOMPARE(test.testFieldFixedInt32(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::SFixedInt64MessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::sFixedInt64MessageDeserializeTest_data()
 {
     generateTestData<int64_t, IntTypes::SFixed>();
 }
 
-void QtProtobufTypesDeserializationTest::SFixedInt64MessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::sFixedInt64MessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const int64_t, expectedValue);
@@ -134,7 +134,7 @@ void QtProtobufTypesDeserializationTest::SFixedInt64MessageDeserializeTest()
     QCOMPARE(test.testFieldFixedInt64(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::FloatMessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::floatMessageDeserializeTest_data()
 {
     QTest::addColumn<QByteArray>("hexData");
     QTest::addColumn<float>("expectedValue");
@@ -147,7 +147,7 @@ void QtProtobufTypesDeserializationTest::FloatMessageDeserializeTest_data()
     QTest::newRow("value_float_max") << "3dffff7f7f"_ba << std::numeric_limits<float>::max();
 }
 
-void QtProtobufTypesDeserializationTest::FloatMessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::floatMessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const float, expectedValue);
@@ -157,7 +157,7 @@ void QtProtobufTypesDeserializationTest::FloatMessageDeserializeTest()
     QCOMPARE(test.testFieldFloat(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::DoubleMessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::doubleMessageDeserializeTest_data()
 {
     QTest::addColumn<QByteArray>("hexData");
     QTest::addColumn<double>("expectedValue");
@@ -172,7 +172,7 @@ void QtProtobufTypesDeserializationTest::DoubleMessageDeserializeTest_data()
             << "41ffffffffffffef7f"_ba << std::numeric_limits<double>::max();
 }
 
-void QtProtobufTypesDeserializationTest::DoubleMessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::doubleMessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const double, expectedValue);
@@ -182,12 +182,12 @@ void QtProtobufTypesDeserializationTest::DoubleMessageDeserializeTest()
     QCOMPARE(test.testFieldDouble(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::IntMessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::intMessageDeserializeTest_data()
 {
     generateTestData<int32_t, IntTypes::Int>();
 }
 
-void QtProtobufTypesDeserializationTest::IntMessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::intMessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const int32_t, expectedValue);
@@ -197,7 +197,7 @@ void QtProtobufTypesDeserializationTest::IntMessageDeserializeTest()
     QCOMPARE(test.testFieldInt(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::StringMessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::stringMessageDeserializeTest_data()
 {
     QTest::addColumn<QByteArray>("hexData");
     QTest::addColumn<QString>("expectedValue");
@@ -228,7 +228,7 @@ void QtProtobufTypesDeserializationTest::StringMessageDeserializeTest_data()
                "9zHuIs5JGppXxX1"_s;
 }
 
-void QtProtobufTypesDeserializationTest::StringMessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::stringMessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const QString, expectedValue);
@@ -238,7 +238,7 @@ void QtProtobufTypesDeserializationTest::StringMessageDeserializeTest()
     QCOMPARE(test.testFieldString().toStdString().c_str(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::ComplexTypeDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::complexTypeDeserializeTest_data()
 {
     QTest::addColumn<QByteArray>("hexData");
     QTest::addColumn<int32_t>("intField");
@@ -300,25 +300,32 @@ void QtProtobufTypesDeserializationTest::ComplexTypeDeserializeTest_data()
                "SPbUpNmUvBdMZMHQvqOmTNXEPpN0b74MDOMQfWJShOo3NkAvMjs"_s;
 }
 
-void QtProtobufTypesDeserializationTest::ComplexTypeDeserializeTest()
+void QtProtobufTypesDeserializationTest::complexTypeDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const int32_t, intField);
     QFETCH(const QString, stringField);
 
+    SimpleStringMessage msg;
+    msg.setTestFieldString("Pre-set message value");
     ComplexMessage test;
+    test.setTestComplexField(msg);
+    ComplexMessage test2 = test;
 
     test.deserialize(serializer.get(), QByteArray::fromHex(hexData));
     QCOMPARE(test.testFieldInt(), intField);
     QCOMPARE(test.testComplexField().testFieldString(), stringField);
+
+    QCOMPARE_NE(test, test2);
+    QCOMPARE(test2.testComplexField(), msg);
 }
 
-void QtProtobufTypesDeserializationTest::SIntMessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::sIntMessageDeserializeTest_data()
 {
     generateTestData<int32_t, IntTypes::SInt>();
 }
 
-void QtProtobufTypesDeserializationTest::SIntMessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::sIntMessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const int32_t, expectedValue);
@@ -328,12 +335,12 @@ void QtProtobufTypesDeserializationTest::SIntMessageDeserializeTest()
     QCOMPARE(test.testFieldInt(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::UIntMessageDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::uIntMessageDeserializeTest_data()
 {
     generateTestData<uint32_t, IntTypes::UInt>();
 }
 
-void QtProtobufTypesDeserializationTest::UIntMessageDeserializeTest()
+void QtProtobufTypesDeserializationTest::uIntMessageDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const uint32_t, expectedValue);
@@ -343,7 +350,7 @@ void QtProtobufTypesDeserializationTest::UIntMessageDeserializeTest()
     QCOMPARE(test.testFieldInt(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::BoolDeserializeTest_data()
+void QtProtobufTypesDeserializationTest::boolDeserializeTest_data()
 {
     QTest::addColumn<QByteArray>("hexData");
     QTest::addColumn<bool>("expectedValue");
@@ -353,7 +360,7 @@ void QtProtobufTypesDeserializationTest::BoolDeserializeTest_data()
     QTest::newRow("False") << "0800"_ba << false;
 }
 
-void QtProtobufTypesDeserializationTest::BoolDeserializeTest()
+void QtProtobufTypesDeserializationTest::boolDeserializeTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const bool, expectedValue);
@@ -363,7 +370,7 @@ void QtProtobufTypesDeserializationTest::BoolDeserializeTest()
     QCOMPARE(test.testFieldBool(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::RedundantFieldIsIgnoredAtDeserializationTest_data()
+void QtProtobufTypesDeserializationTest::redundantFieldIsIgnoredAtDeserializationTest_data()
 {
     QTest::addColumn<QByteArray>("hexData");
     QTest::addColumn<QString>("expectedValue");
@@ -378,7 +385,7 @@ void QtProtobufTypesDeserializationTest::RedundantFieldIsIgnoredAtDeserializatio
     QTest::newRow("field_12") << "60d3ffffffffffffffff0112083206717765727479"_ba << u"qwerty"_s;
 }
 
-void QtProtobufTypesDeserializationTest::RedundantFieldIsIgnoredAtDeserializationTest()
+void QtProtobufTypesDeserializationTest::redundantFieldIsIgnoredAtDeserializationTest()
 {
     QFETCH(const QByteArray, hexData);
     QFETCH(const QString, expectedValue);
@@ -389,7 +396,7 @@ void QtProtobufTypesDeserializationTest::RedundantFieldIsIgnoredAtDeserializatio
     QCOMPARE(test.testComplexField().testFieldString(), expectedValue);
 }
 
-void QtProtobufTypesDeserializationTest::FieldIndexRangeTest()
+void QtProtobufTypesDeserializationTest::fieldIndexRangeTest()
 {
     FieldIndexTest1Message msg1;
     msg1.deserialize(serializer.get(), QByteArray::fromHex("f80102"));
@@ -408,7 +415,7 @@ void QtProtobufTypesDeserializationTest::FieldIndexRangeTest()
     QCOMPARE(msg4.testField(), 1);
 }
 
-void QtProtobufTypesDeserializationTest::OneofMessageTest()
+void QtProtobufTypesDeserializationTest::oneofMessageTest()
 {
     ComplexMessage complexField;
     SimpleStringMessage stringField;
@@ -447,7 +454,7 @@ void QtProtobufTypesDeserializationTest::OneofMessageTest()
     QCOMPARE(test.testFieldInt(), 0);
 }
 
-void QtProtobufTypesDeserializationTest::OneofMessageEmptyTest()
+void QtProtobufTypesDeserializationTest::oneofMessageEmptyTest()
 {
     ComplexMessage complexField;
     SimpleStringMessage stringField;
@@ -473,7 +480,7 @@ void QtProtobufTypesDeserializationTest::OneofMessageEmptyTest()
     QCOMPARE(test.testFieldInt(), 0);
 }
 
-void QtProtobufTypesDeserializationTest::OneofMessageMultipleFieldsTest()
+void QtProtobufTypesDeserializationTest::oneofMessageMultipleFieldsTest()
 {
     ComplexMessage complexField;
     SimpleStringMessage stringField;

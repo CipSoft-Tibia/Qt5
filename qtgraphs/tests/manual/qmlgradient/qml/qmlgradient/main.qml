@@ -58,17 +58,17 @@ Item {
             GradientStop { position: 1.0; color: "blueviolet" }
         }
 
-        Theme3D {
+        GraphsTheme {
             id: mainTheme
-            type: Theme3D.Theme.StoneMoss
+            theme: GraphsTheme.Theme.QtGreenNeon
 
-            colorStyle: Theme3D.ColorStyle.RangeGradient
+            colorStyle: GraphsTheme.ColorStyle.RangeGradient
             baseGradients: [mainGradient]
         }
 
-        Theme3D {
+        GraphsTheme {
             id: secondaryTheme
-            type: Theme3D.Theme.ArmyBlue
+            theme: GraphsTheme.Theme.GreySeries
             baseGradients: [secondaryGradient]
         }
 
@@ -78,9 +78,9 @@ Item {
             height: surfaceview.height
             theme: mainTheme
 
-            shadowQuality: AbstractGraph3D.ShadowQuality.Medium
-            selectionMode: AbstractGraph3D.SelectionSlice | AbstractGraph3D.SelectionItemAndRow
-            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
+            shadowQuality: Graphs3D.ShadowQuality.Medium
+            selectionMode: Graphs3D.SelectionFlag.Slice | Graphs3D.SelectionFlag.ItemAndRow
+            cameraPreset: Graphs3D.CameraPreset.IsometricLeft
             axisY.min: 0.0
             axisY.max: 500.0
             axisX.segmentCount: 10
@@ -100,7 +100,7 @@ Item {
                 id: heightSeries
                 drawMode: Surface3DSeries.DrawSurface
                 visible: true
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
 
                 HeightMapSurfaceDataProxy {
                     heightMapFile: ":/map"

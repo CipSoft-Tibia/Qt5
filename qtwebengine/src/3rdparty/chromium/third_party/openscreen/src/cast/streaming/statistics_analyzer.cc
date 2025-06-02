@@ -155,6 +155,7 @@ void StatisticsAnalyzer::RecordFrameLatencies(const FrameEvent& frame_event) {
     if (map_is_full) {
       frame_infos.erase(frame_infos.begin());
     }
+
     auto emplace_result =
         frame_infos.emplace(frame_event.rtp_timestamp, FrameInfo{});
     OSP_CHECK(emplace_result.second);

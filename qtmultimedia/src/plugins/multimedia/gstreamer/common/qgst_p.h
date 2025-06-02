@@ -17,6 +17,7 @@
 
 #include <QtCore/qdebug.h>
 #include <QtCore/qlist.h>
+#include <QtCore/qmutex.h>
 #include <QtCore/qsemaphore.h>
 
 #include <QtMultimedia/qaudioformat.h>
@@ -24,6 +25,7 @@
 #include <QtMultimedia/private/qtmultimediaglobal_p.h>
 #include <QtMultimedia/private/qmultimediautils_p.h>
 #include <QtMultimedia/private/qplatformmediaplayer_p.h>
+#include <QtMultimedia/private/qsharedhandle_p.h>
 
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
@@ -33,6 +35,9 @@
 #include "qgst_handle_types_p.h"
 
 #include <type_traits>
+#ifdef __cpp_lib_three_way_comparison
+#  include <compare>
+#endif
 
 #if QT_CONFIG(gstreamer_photography)
 #  define GST_USE_UNSTABLE_API
@@ -169,13 +174,21 @@ DestinationType *qGstCheckedCast(SourceType *arg)
 class QSize;
 class QGstStructureView;
 class QGstCaps;
-class QGstPipelinePrivate;
 class QCameraFormat;
 
 template <typename T> struct QGRange
 {
     T min;
     T max;
+
+#ifdef __cpp_impl_three_way_comparison
+    auto operator<=> (const QGRange &) const = default;
+#else
+    bool operator==(const QGRange &rhs) const
+    {
+        return std::tie(min, max) == std::tie(rhs.min, rhs.max);
+    }
+#endif
 };
 
 struct QGString : QUniqueGStringHandle
@@ -186,6 +199,31 @@ struct QGString : QUniqueGStringHandle
     QByteArrayView asByteArrayView() const { return QByteArrayView{ get() }; }
     QString toQString() const { return QString::fromUtf8(get()); }
 
+#ifdef __cpp_lib_three_way_comparison
+    // clang-format off
+    friend auto operator<=>(const QGString &lhs, const QGString &rhs)
+    {
+        return lhs.asStringView() <=> rhs.asStringView();
+    }
+    friend auto operator<=>(const QGString &lhs, const QLatin1StringView rhs)
+    {
+        return lhs.asStringView() <=> rhs;
+    }
+    friend auto operator<=>(const QGString &lhs, const QByteArrayView rhs)
+    {
+        return lhs.asByteArrayView() <=> rhs;
+    }
+    friend auto operator<=>(const QLatin1StringView lhs, const QGString &rhs)
+    {
+        return lhs <=> rhs.asStringView();
+    }
+    friend auto operator<=>(const QByteArrayView lhs, const QGString &rhs)
+    {
+        return lhs <=> rhs.asByteArrayView();
+    }
+    // clang-format on
+#else
+    // remove once we're on c++20
     bool operator==(const QGString &str) const { return asStringView() == str.asStringView(); }
     bool operator==(const QLatin1StringView str) const { return asStringView() == str; }
     bool operator==(const QByteArrayView str) const { return asByteArrayView() == str; }
@@ -214,16 +252,10 @@ struct QGString : QUniqueGStringHandle
     {
         return lhs < rhs.asByteArrayView();
     }
+#endif
 
     explicit operator QByteArrayView() const { return asByteArrayView(); }
-    explicit operator QByteArray() const
-    {
-        QByteArrayView view{ asByteArrayView() };
-        return QByteArray{
-            view.data(),
-            view.size(),
-        };
-    }
+    explicit operator QByteArray() const { return QByteArray{ asByteArrayView() }; }
 };
 
 class QGValue
@@ -258,92 +290,6 @@ public:
     QList<QAudioFormat::SampleFormat> getSampleFormats() const;
 };
 
-namespace QGstPointerImpl {
-
-template <typename RefcountedObject>
-struct QGstRefcountingAdaptor;
-
-template <typename GstType>
-class QGstObjectWrapper
-{
-    using Adaptor = QGstRefcountingAdaptor<GstType>;
-
-    GstType *m_object = nullptr;
-
-public:
-    enum RefMode { HasRef, NeedsRef };
-
-    constexpr QGstObjectWrapper() = default;
-
-    explicit QGstObjectWrapper(GstType *object, RefMode mode) : m_object(object)
-    {
-        if (m_object && mode == NeedsRef)
-            Adaptor::ref(m_object);
-    }
-
-    QGstObjectWrapper(const QGstObjectWrapper &other) : m_object(other.m_object)
-    {
-        if (m_object)
-            Adaptor::ref(m_object);
-    }
-
-    ~QGstObjectWrapper()
-    {
-        if (m_object)
-            Adaptor::unref(m_object);
-    }
-
-    QGstObjectWrapper(QGstObjectWrapper &&other) noexcept
-        : m_object(std::exchange(other.m_object, nullptr))
-    {
-    }
-
-    QGstObjectWrapper &
-    operator=(const QGstObjectWrapper &other) // NOLINT: bugprone-unhandled-self-assign
-    {
-        if (m_object != other.m_object) {
-            GstType *originalObject = m_object;
-
-            m_object = other.m_object;
-            if (m_object)
-                Adaptor::ref(m_object);
-            if (originalObject)
-                Adaptor::unref(originalObject);
-        }
-        return *this;
-    }
-
-    QGstObjectWrapper &operator=(QGstObjectWrapper &&other) noexcept
-    {
-        if (this != &other) {
-            GstType *originalObject = m_object;
-            m_object = std::exchange(other.m_object, nullptr);
-
-            if (originalObject)
-                Adaptor::unref(originalObject);
-        }
-        return *this;
-    }
-
-    friend bool operator==(const QGstObjectWrapper &a, const QGstObjectWrapper &b)
-    {
-        return a.m_object == b.m_object;
-    }
-    friend bool operator!=(const QGstObjectWrapper &a, const QGstObjectWrapper &b)
-    {
-        return a.m_object != b.m_object;
-    }
-
-    explicit operator bool() const { return bool(m_object); }
-    bool isNull() const { return !m_object; }
-    GstType *release() { return std::exchange(m_object, nullptr); }
-
-protected:
-    GstType *get() const { return m_object; }
-};
-
-} // namespace QGstPointerImpl
-
 class QGstreamerMessage;
 
 class QGstStructureView
@@ -365,21 +311,27 @@ public:
     QSize resolution() const;
     QVideoFrameFormat::PixelFormat pixelFormat() const;
     QGRange<float> frameRateRange() const;
+    std::optional<QGRange<QSize>> resolutionRange() const;
     QGstreamerMessage getMessage();
     std::optional<Fraction> pixelAspectRatio() const;
     QSize nativeSize() const;
 };
 
-template <>
-struct QGstPointerImpl::QGstRefcountingAdaptor<GstCaps>
+struct QSharedGstCapsTraits
 {
-    static void ref(GstCaps *arg) noexcept { gst_caps_ref(arg); }
-    static void unref(GstCaps *arg) noexcept { gst_caps_unref(arg); }
+    using Type = GstCaps *;
+    static constexpr Type invalidValue() noexcept { return nullptr; }
+    static GstCaps *ref(GstCaps *arg) noexcept { return gst_caps_ref(arg); }
+    static bool unref(GstCaps *arg) noexcept
+    {
+        gst_caps_unref(arg);
+        return true;
+    }
 };
 
-class QGstCaps : public QGstPointerImpl::QGstObjectWrapper<GstCaps>
+class QGstCaps : public QtPrivate::QSharedHandle<QSharedGstCapsTraits>
 {
-    using BaseClass = QGstPointerImpl::QGstObjectWrapper<GstCaps>;
+    using BaseClass = QtPrivate::QSharedHandle<QSharedGstCapsTraits>;
 
 public:
     using BaseClass::BaseClass;
@@ -407,18 +359,27 @@ public:
     QGstCaps copy() const;
 };
 
-template <>
-struct QGstPointerImpl::QGstRefcountingAdaptor<GstObject>
+struct QSharedGstObjectTraits
 {
-    static void ref(GstObject *arg) noexcept { gst_object_ref_sink(arg); }
-    static void unref(GstObject *arg) noexcept { gst_object_unref(arg); }
+    using Type = GstObject *;
+    static constexpr Type invalidValue() noexcept { return nullptr; }
+    static GstObject *ref(GstObject *arg) noexcept
+    {
+        gst_object_ref_sink(arg);
+        return arg;
+    }
+    static bool unref(GstObject *arg) noexcept
+    {
+        gst_object_unref(arg);
+        return true;
+    }
 };
 
 class QGObjectHandlerConnection;
 
-class QGstObject : public QGstPointerImpl::QGstObjectWrapper<GstObject>
+class QGstObject : public QtPrivate::QSharedHandle<QSharedGstObjectTraits>
 {
-    using BaseClass = QGstPointerImpl::QGstObjectWrapper<GstObject>;
+    using BaseClass = QtPrivate::QSharedHandle<QSharedGstObjectTraits>;
 
 public:
     using BaseClass::BaseClass;
@@ -430,10 +391,10 @@ public:
 
     void set(const char *property, const char *str);
     void set(const char *property, bool b);
-    void set(const char *property, uint i);
-    void set(const char *property, int i);
-    void set(const char *property, qint64 i);
-    void set(const char *property, quint64 i);
+    void set(const char *property, int32_t i);
+    void set(const char *property, uint32_t i);
+    void set(const char *property, int64_t i);
+    void set(const char *property, uint64_t i);
     void set(const char *property, double d);
     void set(const char *property, const QGstObject &o);
     void set(const char *property, const QGstCaps &c);
@@ -562,50 +523,14 @@ public:
     bool sendEvent(GstEvent *event);
     void sendFlushStartStop(bool resetTime);
 
-    template<auto Member, typename T>
-    void addProbe(T *instance, GstPadProbeType type) {
-        auto callback = [](GstPad *pad, GstPadProbeInfo *info, gpointer userData) {
-            return (static_cast<T *>(userData)->*Member)(QGstPad(pad, NeedsRef), info);
-        };
-
-        gst_pad_add_probe(pad(), type, callback, instance, nullptr);
-    }
+    template <auto Member, typename T>
+    void addProbe(T *instance, GstPadProbeType type);
 
     template <typename Functor>
-    void doInIdleProbe(Functor &&work)
-    {
-        struct CallbackData {
-            QSemaphore waitDone;
-            Functor work;
-        };
+    void doInIdleProbe(Functor &&work);
 
-        CallbackData cd{
-            .waitDone = QSemaphore{},
-            .work = std::forward<Functor>(work),
-        };
-
-        auto callback= [](GstPad *, GstPadProbeInfo *, gpointer p) {
-            auto cd = reinterpret_cast<CallbackData*>(p);
-            cd->work();
-            cd->waitDone.release();
-            return GST_PAD_PROBE_REMOVE;
-        };
-
-        gst_pad_add_probe(pad(), GST_PAD_PROBE_TYPE_IDLE, callback, &cd, nullptr);
-        cd.waitDone.acquire();
-    }
-
-    template<auto Member, typename T>
-    void addEosProbe(T *instance) {
-        auto callback = [](GstPad *, GstPadProbeInfo *info, gpointer userData) {
-            if (GST_EVENT_TYPE(GST_PAD_PROBE_INFO_DATA(info)) != GST_EVENT_EOS)
-                return GST_PAD_PROBE_PASS;
-            (static_cast<T *>(userData)->*Member)();
-            return GST_PAD_PROBE_REMOVE;
-        };
-
-        gst_pad_add_probe(pad(), GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, callback, instance, nullptr);
-    }
+    template <auto Member, typename T>
+    void addEosProbe(T *instance);
 
     template <typename Functor>
     void modifyPipelineInIdleProbe(Functor &&f);
@@ -624,6 +549,7 @@ public:
     GstClockTime time() const;
 };
 
+class QGstBin;
 class QGstPipeline;
 
 class QGstElement : public QGstObject
@@ -724,7 +650,10 @@ public:
     GstElement *element() const;
 
     QGstElement getParent() const;
+    QGstBin getParentBin() const;
     QGstPipeline getPipeline() const;
+
+    void removeFromParent();
     void dumpPipelineGraph(const char *filename) const;
 
 private:
@@ -732,6 +661,83 @@ private:
     mutable QGstQueryHandle m_positionQuery;
 };
 
+// QGstPad implementations
+
+template <auto Member, typename T>
+void QGstPad::addProbe(T *instance, GstPadProbeType type)
+{
+    auto callback = [](GstPad *pad, GstPadProbeInfo *info, gpointer userData) {
+        return (static_cast<T *>(userData)->*Member)(QGstPad(pad, NeedsRef), info);
+    };
+
+    gst_pad_add_probe(pad(), type, callback, instance, nullptr);
+}
+
+template <typename Functor>
+void QGstPad::doInIdleProbe(Functor &&work)
+{
+    using namespace std::chrono_literals;
+
+    struct CallbackData
+    {
+        QSemaphore waitDone;
+        std::once_flag onceFlag;
+        Functor work;
+
+        void run()
+        {
+            std::call_once(onceFlag, [&] {
+                work();
+            });
+        }
+    };
+
+    CallbackData cd{ QSemaphore{}, {}, std::forward<Functor>(work) };
+
+    auto callback = [](GstPad *, GstPadProbeInfo *, gpointer p) {
+        auto cd = reinterpret_cast<CallbackData *>(p);
+        cd->run();
+        cd->waitDone.release();
+        return GST_PAD_PROBE_REMOVE;
+    };
+
+    gulong probe = gst_pad_add_probe(pad(), GST_PAD_PROBE_TYPE_IDLE, callback, &cd, nullptr);
+    if (probe == 0)
+        return; // probe was executed
+
+    bool success = cd.waitDone.try_acquire_for(250ms);
+    if (success)
+        return;
+
+    // the probe has not been executed for 250ms, probably because the element has transitioned
+    // from playing to paused. Flushing the pad would unblock paused pads
+    sendFlushIfPaused();
+
+    success = cd.waitDone.try_acquire_for(1s);
+    if (success)
+        return;
+
+    // if the idle probe still has not been called, we remove it and call it
+    // explicitly to avoid deadlocking the application. Probably not exactly safe,
+    // but better than deadlocking
+    qWarning() << "QGstPad::doInIdleProbe blocked for 1s. Executing the pad probe manually";
+    parent().dumpPipelineGraph("doInIdleProbeHang");
+    gst_pad_remove_probe(pad(), probe);
+    cd.run();
+}
+
+template <auto Member, typename T>
+void QGstPad::addEosProbe(T *instance)
+{
+    auto callback = [](GstPad *, GstPadProbeInfo *info, gpointer userData) {
+        if (GST_EVENT_TYPE(GST_PAD_PROBE_INFO_DATA(info)) != GST_EVENT_EOS)
+            return GST_PAD_PROBE_PASS;
+        (static_cast<T *>(userData)->*Member)();
+        return GST_PAD_PROBE_REMOVE;
+    };
+
+    gst_pad_add_probe(pad(), GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, callback, instance, nullptr);
+}
 template <typename Functor>
 void QGstPad::modifyPipelineInIdleProbe(Functor &&f)
 {
@@ -828,8 +834,8 @@ public:
     }
 
     template <typename... Ts>
-    std::enable_if_t<(std::is_base_of_v<QGstElement, Ts> && ...), void>
-    stopAndRemoveElements(Ts... ts)
+    std::enable_if_t<(std::is_base_of_v<QGstElement, std::remove_reference_t<Ts>> && ...), void>
+    stopAndRemoveElements(Ts &&...ts)
     {
         bool stateChangeSuccessful = (ts.setStateSync(GST_STATE_NULL) && ...);
         Q_ASSERT(stateChangeSuccessful);
@@ -840,6 +846,7 @@ public:
 
     void addGhostPad(const QGstElement &child, const char *name);
     void addGhostPad(const char *name, const QGstPad &pad);
+    void addUnlinkedGhostPads(GstPadDirection);
 
     bool syncChildrenState();
 

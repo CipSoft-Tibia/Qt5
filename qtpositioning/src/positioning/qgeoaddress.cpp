@@ -398,6 +398,12 @@ QGeoAddress::QGeoAddress(const QGeoAddress &other)
 */
 
 /*!
+    \fn void QGeoAddress::swap(QGeoAddress &other)
+    \since 6.2
+    \memberswap{address}
+*/
+
+/*!
     Destroys this address.
 */
 QGeoAddress::~QGeoAddress()

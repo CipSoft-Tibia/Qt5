@@ -61,8 +61,9 @@ bool GetLocalCertificatesDir(const base::FilePath& certificates_dir,
   }
 
   base::FilePath src_dir;
-  if (!base::PathService::Get(base::DIR_SOURCE_ROOT, &src_dir))
+  if (!base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &src_dir)) {
     return false;
+  }
 
   *local_certificates_dir = src_dir.Append(certificates_dir);
   return true;
@@ -199,10 +200,8 @@ bool BaseTestServer::GetFilePathWithReplacements(
   for (auto it = text_to_replace.begin(); it != end; ++it) {
     const std::string& old_text = it->first;
     const std::string& new_text = it->second;
-    std::string base64_old;
-    std::string base64_new;
-    base::Base64Encode(old_text, &base64_old);
-    base::Base64Encode(new_text, &base64_new);
+    std::string base64_old = base::Base64Encode(old_text);
+    std::string base64_new = base::Base64Encode(new_text);
     if (first_query_parameter) {
       new_file_path += "?";
       first_query_parameter = false;
@@ -248,7 +247,7 @@ scoped_refptr<X509Certificate> BaseTestServer::GetCertificate() const {
 
   CertificateList certs_in_file =
       X509Certificate::CreateCertificateListFromBytes(
-          base::as_bytes(base::make_span(cert_data)),
+          base::as_byte_span(cert_data),
           X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
   if (certs_in_file.empty())
     return nullptr;

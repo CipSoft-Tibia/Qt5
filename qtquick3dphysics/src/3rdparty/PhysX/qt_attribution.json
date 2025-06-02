@@ -1,5 +1,5 @@
 {
-    "Id": "PhysX",
+    "Id": "physx",
     "Name": "NVIDIA PhysX SDK",
     "QDocModule": "qtquick3dphysics",
     "Description": "The NVIDIA PhysX SDK is a scalable multi-platform physics solution supporting a wide range of devices",

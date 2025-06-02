@@ -10,51 +10,55 @@ Item {
     height: 150
     width: 150
 
-    CategoryAxis3D {
+    Category3DAxis {
         id: initial
     }
 
-    CategoryAxis3D {
+    Category3DAxis {
         id: initialized
         labels: ["first", "second"]
 
         autoAdjustRange: false
-        labelAutoRotation: 10.0
+        labelAutoAngle: 10.0
         max: 20
         min: 10
         title: "initialized"
         titleFixed: false
         titleVisible: true
+        labelsVisible: false
+        titleOffset: 1
     }
 
-    CategoryAxis3D {
+    Category3DAxis {
         id: change
     }
 
-    CategoryAxis3D {
+    Category3DAxis {
         id: invalid
     }
 
     TestCase {
-        name: "CategoryAxis3D Initial"
+        name: "Category3DAxis Initial"
 
         function test_initial() {
             compare(initial.labels.length, 0)
 
             compare(initial.autoAdjustRange, true)
-            compare(initial.labelAutoRotation, 0.0)
+            compare(initial.labelAutoAngle, 0.0)
             compare(initial.max, 10)
             compare(initial.min, 0)
-            compare(initial.orientation, AbstractAxis3D.AxisOrientation.None)
+            compare(initial.orientation, Abstract3DAxis.AxisOrientation.None)
             compare(initial.title, "")
             compare(initial.titleFixed, true)
             compare(initial.titleVisible, false)
-            compare(initial.type, AbstractAxis3D.AxisType.Category)
+            compare(initial.labelsVisible, true)
+            compare(initial.titleOffset, 0)
+            compare(initial.type, Abstract3DAxis.AxisType.Category)
         }
     }
 
     TestCase {
-        name: "CategoryAxis3D Initialized"
+        name: "Category3DAxis Initialized"
 
         function test_initialized() {
             compare(initialized.labels.length, 2)
@@ -62,17 +66,19 @@ Item {
             compare(initialized.labels[1], "second")
 
             compare(initialized.autoAdjustRange, false)
-            compare(initialized.labelAutoRotation, 10.0)
+            compare(initialized.labelAutoAngle, 10.0)
             compare(initialized.max, 20)
             compare(initialized.min, 10)
             compare(initialized.title, "initialized")
             compare(initialized.titleFixed, false)
             compare(initialized.titleVisible, true)
+            compare(change.labelsVisible, false)
+            compare(initialized.titleOffset, 1)
         }
     }
 
     TestCase {
-        name: "CategoryAxis3D Change"
+        name: "Category3DAxis Change"
 
         function test_change() {
             change.labels = ["first"]
@@ -86,35 +92,42 @@ Item {
             compare(change.labels[1], "another")
 
             change.autoAdjustRange = false
-            change.labelAutoRotation = 10.0
+            change.labelAutoAngle = 10.0
             change.max = 20
             change.min = 10
             change.title = "initialized"
             change.titleFixed = false
             change.titleVisible = true
+            change.labelsVisible = false
+            change.titleOffset = -1
 
             compare(change.autoAdjustRange, false)
-            compare(change.labelAutoRotation, 10.0)
+            compare(change.labelAutoAngle, 10.0)
             compare(change.max, 20)
             compare(change.min, 10)
             compare(change.title, "initialized")
             compare(change.titleFixed, false)
             compare(change.titleVisible, true)
+            compare(change.labelsVisible, false)
+            compare(change.titleOffset, -1)
         }
     }
 
     TestCase {
-        name: "CategoryAxis3D Invalid"
+        name: "Category3DAxis Invalid"
 
         function test_invalid() {
-            invalid.labelAutoRotation = -10
-            compare(invalid.labelAutoRotation, 0.0)
-            invalid.labelAutoRotation = 100
-            compare(invalid.labelAutoRotation, 90.0)
+            invalid.labelAutoAngle = -10
+            compare(invalid.labelAutoAngle, 0.0)
+            invalid.labelAutoAngle = 100
+            compare(invalid.labelAutoAngle, 90.0)
             invalid.max = -10
             compare(invalid.min, 0)
             invalid.min = 10
             compare(invalid.max, 11)
+            invalid.titleOffset = 2
+            compare(invalid.titleOffset, 0)
+
         }
     }
 }

@@ -7,17 +7,23 @@
 #include <data/enumProperty.h>
 #include <data/enumproblems.h>
 #include <data/getOptionalLookup.h>
+#include <data/listprovider.h>
 #include <data/objectwithmethod.h>
+#include <data/qmlusing.h>
 #include <data/resettable.h>
+#include <data/takenumber.h>
 #include <data/weathermoduleurl.h>
 #include <data/withlength.h>
 
-#include <QtQml/private/qqmlengine_p.h>
-#include <QtQml/private/qqmlpropertycachecreator_p.h>
+#include <private/qqmlbind_p.h>
+#include <private/qqmlengine_p.h>
+#include <private/qqmlpropertycachecreator_p.h>
 
-#include <QtTest>
-#include <QtQml>
+#include <QtTest/qsignalspy.h>
+#include <QtTest/qtest.h>
+
 #include <QtGui/qcolor.h>
+#include <QtGui/qfont.h>
 #include <QtGui/qpa/qplatformdialoghelper.h>
 
 #if QT_CONFIG(process)
@@ -27,6 +33,7 @@
 using namespace Qt::StringLiterals;
 
 Q_IMPORT_QML_PLUGIN(TestTypesPlugin)
+Q_IMPORT_QML_PLUGIN(ConfusedPlugin)
 
 class tst_QmlCppCodegen : public QObject
 {
@@ -40,6 +47,7 @@ private slots:
     void ambiguousAs();
     void ambiguousSignals();
     void anchorsFill();
+    void anonymousComposite();
     void argumentConversion();
     void array();
     void arrayCtor();
@@ -66,6 +74,7 @@ private slots:
     void componentReturnType();
     void compositeSingleton();
     void compositeTypeMethod();
+    void confusedModule();
     void consoleObject();
     void consoleTrace();
     void construct();
@@ -89,12 +98,14 @@ private slots:
     void enumProblems();
     void enumScope();
     void enums();
+    void enforceSignature();
     void enumsInOtherObject();
     void equalityQObjects();
     void equalityQUrl();
     void equalityTestsWithNullOrUndefined();
     void equalityVarAndNonStorable();
     void equalityVarAndStorable();
+    void equalityVarWithOutConversion();
     void equalsUndefined();
     void evadingAmbiguity();
     void exceptionFromInner();
@@ -127,6 +138,7 @@ private slots:
     void infinities();
     void infinitiesToInt();
     void innerObjectNonShadowable();
+    void insertContextOnInvalidType();
     void intEnumCompare();
     void intOverflow();
     void intToEnum();
@@ -135,6 +147,7 @@ private slots:
     void interestingFiles_data();
     void internalConversion();
     void invalidPropertyType();
+    void invalidateCompositeType();
     void invisibleBase();
     void invisibleListElementType();
     void invisibleSingleton();
@@ -147,6 +160,7 @@ private slots:
     void jsImport();
     void jsMathObject();
     void jsmoduleImport();
+    void jsonArrayToStringList();
     void lengthAccessArraySequenceCompat();
     void letAndConst();
     void listAsArgument();
@@ -155,18 +169,24 @@ private slots:
     void listLength();
     void listOfInvisible();
     void listPropertyAsModel();
+    void listToString();
     void lotsOfRegisters();
     void math();
     void mathMinMax();
     void mathOperations();
+    void mathStaticProperties();
     void mergedObjectReadWrite();
     void methodOnListLookup();
     void methods();
     void modulePrefix();
+    void multiDirectory_data();
+    void multiDirectory();
     void multiForeign();
     void multiLookup();
+    void multiRedirect();
     void multipleCtors();
     void namespaceWithEnum();
+    void noBuiltinsImport();
     void noQQmlData();
     void nonNotifyable();
     void notEqualsInt();
@@ -174,6 +194,8 @@ private slots:
     void nullAccess();
     void nullAccessInsideSignalHandler();
     void nullComparison();
+    void nullishCoalescing();
+    void nullishCoalescing_data();
     void numbersInJsPrimitive();
     void objectInVar();
     void objectLookupOnListElement();
@@ -188,6 +210,7 @@ private slots:
     void popContextAfterRet();
     void prefixedType();
     void propertyOfParent();
+    void qmlUsing();
     void reduceWithNullThis();
     void readEnumFromInstance();
     void readonlyListProperty();
@@ -222,6 +245,8 @@ private slots:
     void stringLength();
     void stringToByteArray();
     void structuredValueType();
+    void takeNumbers();
+    void takeNumbers_data();
     void testIsnan();
     void thisObject();
     void throwObjectName();
@@ -232,6 +257,7 @@ private slots:
     void typePropagationLoop();
     void typePropertyClash();
     void typedArray();
+    void unclearComponentBoundaries();
     void undefinedResets();
     void undefinedToDouble();
     void unknownAttached();
@@ -239,6 +265,7 @@ private slots:
     void unstoredUndefined();
     void unusedAttached();
     void urlString();
+    void valueTypeArgument();
     void valueTypeBehavior();
     void valueTypeLists();
     void valueTypeProperty();
@@ -249,6 +276,7 @@ private slots:
     void voidConversion();
     void voidFunction();
     void writeBack();
+    void writeVariantMap();
 };
 
 static QByteArray arg1()
@@ -593,6 +621,16 @@ void tst_QmlCppCodegen::anchorsFill()
 
     child->setProperty("parent", QVariant::fromValue(newParent));
     QCOMPARE(child->property("width").toInt(), 47);
+}
+
+void tst_QmlCppCodegen::anonymousComposite()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, QUrl(u"qrc:/qt/qml/TestTypes/anonymousCompositeUser.qml"_s));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+    QCOMPARE(o->property("b").toInt(), 5);
 }
 
 void tst_QmlCppCodegen::argumentConversion()
@@ -1065,6 +1103,28 @@ void tst_QmlCppCodegen::compositeTypeMethod()
     QVERIFY(!object.isNull());
     QSignalSpy spy(object.data(), SIGNAL(foo()));
     QTRY_VERIFY(spy.size() > 0);
+}
+
+void tst_QmlCppCodegen::confusedModule()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/Confused/Main.qml"_s));
+    QVERIFY2(!component.isError(), component.errorString().toUtf8());
+    QTest::ignoreMessage(QtDebugMsg, "Hello from Test");
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(!object.isNull());
+
+    QQmlComponent component2(&engine, QUrl(u"qrc:/qt/qml/Confused/Main2.qml"_s));
+    QVERIFY2(!component2.isError(), component2.errorString().toUtf8());
+
+    // TODO: We would like to have a better error here, but we currently cannot propagate it.
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            "qrc:/qt/qml/Confused/Main2.qml:5: "
+            "TypeError: Property 'Print' of object Broken is not a function");
+
+    QScopedPointer<QObject> object2(component2.create());
+    QVERIFY(!object2.isNull());
 }
 
 void tst_QmlCppCodegen::consoleObject()
@@ -1646,6 +1706,23 @@ void tst_QmlCppCodegen::enums()
 
 }
 
+void tst_QmlCppCodegen::enforceSignature()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/TestTypes/enforceSignature.qml"_s));
+    QVERIFY2(!component.isError(), component.errorString().toUtf8());
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(!object.isNull());
+
+    const QVariant a = object->property("a");
+    QCOMPARE(a.metaType(), QMetaType::fromType<QObject *>());
+    QCOMPARE(a.value<QObject *>(), nullptr);
+
+    const QVariant b = object->property("b");
+    QCOMPARE(b.metaType(), QMetaType::fromType<QObject *>());
+    QCOMPARE(b.value<QObject *>(), nullptr);
+}
+
 void tst_QmlCppCodegen::enumsInOtherObject()
 {
     QQmlEngine engine;
@@ -1777,6 +1854,20 @@ void tst_QmlCppCodegen::equalityVarAndStorable()
     QMetaObject::invokeMethod(p.data(), "verify", 11);
 }
 
+void tst_QmlCppCodegen::equalityVarWithOutConversion()
+{
+    QQmlEngine engine;
+    QUrl url(u"qrc:/qt/qml/TestTypes/equalityVarWithOutConversion.qml"_s);
+    QQmlComponent component(&engine, url);
+    QVERIFY2(!component.isError(), component.errorString().toUtf8());
+    QScopedPointer<QObject> o(component.create());
+    QVERIFY(!o.isNull());
+
+    auto ss = o->property("ss").value<QQmlScriptString>();
+    QQmlExpression expr(ss);
+    expr.evaluate();
+}
+
 void tst_QmlCppCodegen::equalsUndefined()
 {
     QQmlEngine engine;
@@ -1859,9 +1950,8 @@ void tst_QmlCppCodegen::failures()
 {
     const auto &aotFailure
             = QmlCacheGeneratedCode::_qt_qml_TestTypes_failures_qml::aotBuiltFunctions[0];
-    QVERIFY(aotFailure.argumentTypes.isEmpty());
     QVERIFY(!aotFailure.functionPtr);
-    QCOMPARE(aotFailure.extraData, 0);
+    QCOMPARE(aotFailure.functionIndex, 0);
 }
 
 void tst_QmlCppCodegen::fallbackLookups()
@@ -2435,6 +2525,36 @@ void tst_QmlCppCodegen::innerObjectNonShadowable()
     QCOMPARE(rootObject->objectName(), u"foo"_s);
 }
 
+class HandleHandler : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(QQmlComponent *handle MEMBER m_handle)
+
+private:
+    QQmlComponent *m_handle = nullptr;
+};
+
+void tst_QmlCppCodegen::insertContextOnInvalidType()
+{
+    qmlRegisterType<HandleHandler>("Handlerei", 1, 0, "HandleHandler");
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/TestTypes/insertContextOnInvalidType.qml"_s));
+
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            "qrc:/qt/qml/TestTypes/insertContextOnInvalidType.qml:5: "
+            "ReferenceError: handleDelegate is not defined");
+    QScopedPointer<QObject> rootObject(component.create());
+    QVERIFY(rootObject);
+
+    const char *outter = "handleDelegateOutter";
+    QVERIFY(rootObject->metaObject()->indexOfProperty(outter) != -1);
+    QVERIFY(!rootObject->property(outter).isValid());
+}
+
 void tst_QmlCppCodegen::intEnumCompare()
 {
     QQmlEngine engine;
@@ -2582,6 +2702,25 @@ void tst_QmlCppCodegen::invalidPropertyType()
     QVERIFY(myCppType->useListDelegate());
 }
 
+void tst_QmlCppCodegen::invalidateCompositeType()
+{
+    for (int i = 0; i < 3; ++i) {
+        QQmlEngine engine;
+        QQmlComponent c(&engine, QUrl(u"qrc:/qt/qml/TestTypes/invalidateCompositeType.qml"_s));
+        QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+        QScopedPointer<QObject> o(c.create());
+        QVERIFY(o);
+
+        QObject *d = o->property("d").value<QObject *>();
+        QVERIFY(d);
+        QCOMPARE(o->property("d2").value<QObject *>(), d);
+
+        QObject *group = d->property("child2").value<QObject *>();
+        QVERIFY(group);
+        QCOMPARE(o->property("d3").value<QObject *>(), group);
+    }
+}
+
 void tst_QmlCppCodegen::invisibleBase()
 {
     QQmlEngine engine;
@@ -2618,13 +2757,13 @@ void tst_QmlCppCodegen::invisibleSingleton()
     qmlClearTypeRegistrations();
 
     QQmlEngine engine;
-    const QUrl copy(u"qrc:/qt/qml/TestTypes/hidden/Main.qml"_s);
+    const QUrl copy(u"qrc:/qt/qml/HiddenTestTypes/hidden/Main.qml"_s);
     QQmlComponent c(&engine, copy);
     QVERIFY2(c.isReady(), qPrintable(c.errorString()));
 
     QTest::ignoreMessage(
                 QtWarningMsg,
-                "qrc:/qt/qml/TestTypes/hidden/Main.qml:4:5: "
+                "qrc:/qt/qml/HiddenTestTypes/hidden/Main.qml:4:5: "
                 "Unable to assign [undefined] to QColor");
     QScopedPointer<QObject> o(c.create());
     QVERIFY(!o.isNull());
@@ -2870,6 +3009,75 @@ void tst_QmlCppCodegen::jsmoduleImport()
     QVERIFY(result.toBool());
 }
 
+void tst_QmlCppCodegen::jsonArrayToStringList()
+{
+    QQmlEngine engine;
+    const QString urlString = u"qrc:/qt/qml/TestTypes/jsonArrayToStringList.qml"_s;
+    QQmlComponent component(&engine, QUrl(urlString));
+    QVERIFY2(!component.isError(), component.errorString().toUtf8());
+
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            "Converting array value at position 0 from double to QStringList via QJSValue even "
+            "though they are not directly convertible");
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            "Converting array value at position 2 from double to QStringList via QJSValue even "
+            "though they are not directly convertible");
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            "Converting array value at position 3 from std::nullptr_t to QStringList via QJSValue "
+            "even though they are not directly convertible");
+    QTest::ignoreMessage(
+            QtWarningMsg,
+            "Converting array value at position 4 from std::nullptr_t to QStringList via QJSValue "
+            "even though they are not directly convertible");
+
+    QTest::ignoreMessage(QtDebugMsg, "json [1,aa,2,null,null]");
+    QTest::ignoreMessage(QtDebugMsg, "strings [1,aa,2,null,null]");
+    QTest::ignoreMessage(QtDebugMsg, "strings2 [1,aa,2,null,null]");
+
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(!object.isNull());
+
+    QListProvider *provider = qobject_cast<QListProvider *>(object.data());
+    QCOMPARE(provider->json(), QJsonDocument::fromJson("[1,\"aa\",2,null,null]").array());
+    QCOMPARE(provider->strings(), (QStringList { u"1"_s, u"aa"_s, u"2"_s, u"null"_s, u"null"_s }));
+    QCOMPARE(provider->property("strings2").toStringList(),
+             (QStringList { u"1"_s, u"aa"_s, u"2"_s, u"null"_s, u"null"_s }));
+
+    QCOMPARE(provider->stringStrings(), (QList<QStringList> {
+        QStringList(),
+        QStringList { u"aa"_s }, // QVariant::convert auto-converts QString to QStringList ...
+        QStringList(),
+        QStringList(),
+        QStringList(),
+    }));
+
+    // Note1: Converting a generic array to string is basically ArrayPrototype.join().
+    //        This produces an empty string for null. Try [null, null].join() for that.
+    //        Converting a single null to string (in an element-by-element operation)
+    //        produces the string "null". Try (null + "") for that. The inconsistency is
+    //        in JavaScript itself, not in our implementation.
+    // Note2: Converting an array to string produces an un-delimited string. If you
+    //        convert a nested array to string, you don't see the boundaries anymore.
+    //        Try [[1, 2],[3, 4]].join() for that. Again, that's JavaScript itself.
+
+    provider->setJson(QJsonDocument::fromJson(R"([
+        ["c", null, [99], {"x": 12}],
+        [1, 2, 3, "bbb", [16, "a", null]]
+    ])").array());
+
+    QCOMPARE(provider->strings(),
+             (QStringList { u"c,,99,[object Object]"_s, u"1,2,3,bbb,16,a,"_s }));
+    QCOMPARE(provider->property("strings2").toStringList(),
+             (QStringList { u"c,,99,[object Object]"_s, u"1,2,3,bbb,16,a,"_s }));
+    QCOMPARE(provider->stringStrings(), (QList<QStringList> {
+        QStringList { u"c"_s, u"null"_s, u"99"_s, u"[object Object]"_s },
+        QStringList { u"1"_s, u"2"_s, u"3"_s, u"bbb"_s, u"16,a,"_s}
+    }));
+}
+
 void tst_QmlCppCodegen::lengthAccessArraySequenceCompat()
 {
     QQmlEngine engine;
@@ -2915,9 +3123,19 @@ void tst_QmlCppCodegen::listAsArgument()
 void tst_QmlCppCodegen::listConversion()
 {
     QQmlEngine e;
-    QQmlComponent c(&e, QUrl(u"qrc:/qt/qml/TestTypes/listConversion.qml"_s));
-    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
-    QScopedPointer<QObject> o(c.create());
+    QQmlComponent component(&e, QUrl(u"qrc:/qt/qml/TestTypes/listConversion.qml"_s));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+    QTest::ignoreMessage(
+                QtWarningMsg,
+                QRegularExpression(u"Cannot append QObject\\(0x[0-9a-f]+, name = \"a\"\\) "
+                                   "to a QML list of QQmlBind\\*"_s));
+    QTest::ignoreMessage(
+                QtWarningMsg,
+                QRegularExpression(u"Cannot append QObject\\(0x[0-9a-f]+, name = \"b\"\\) "
+                                   "to a QML list of QQmlBind\\*"_s));
+
+    QScopedPointer<QObject> o(component.create());
     QVERIFY(!o.isNull());
 
     QQmlListProperty<QObject> list = o->property("o").value<QQmlListProperty<QObject>>();
@@ -2938,6 +3156,39 @@ void tst_QmlCppCodegen::listConversion()
         QVariant::fromValue<qsizetype>(3),
         QVariant::fromValue<Person *>(nullptr)
     }));
+
+    QCOMPARE(o->property("numbers").value<QList<int>>(), (QList<int>{1, 2}));
+    auto objects = o->property("objects").value<QQmlListProperty<QObject>>();
+    QCOMPARE(objects.count(&objects), 2);
+
+    const QObject *a = objects.at(&objects, 0);
+    QVERIFY(a);
+    QCOMPARE(a->objectName(), u"a"_s);
+
+    const QObject *b = objects.at(&objects, 1);
+    QVERIFY(b);
+    QCOMPARE(b->objectName(), u"b"_s);
+
+    auto bindings = o->property("bindings").value<QQmlListProperty<QQmlBind>>();
+    QCOMPARE(bindings.count(&bindings), 2);
+
+    const QQmlBind *c = bindings.at(&bindings, 0);
+    QVERIFY(c);
+    QCOMPARE(c->objectName(), u"c"_s);
+
+    const QQmlBind *d = bindings.at(&bindings, 1);
+    QVERIFY(d);
+    QCOMPARE(d->objectName(), u"d"_s);
+
+    auto objectsFromBindings = o->property("objectsFromBindings").value<QQmlListProperty<QObject>>();
+    QCOMPARE(objectsFromBindings.count(&objectsFromBindings), 2);
+    QCOMPARE(objectsFromBindings.at(&objectsFromBindings, 0), c);
+    QCOMPARE(objectsFromBindings.at(&objectsFromBindings, 1), d);
+
+    auto nulls = o->property("nulls").value<QQmlListProperty<QQmlBind>>();
+    QCOMPARE(nulls.count(&nulls), 2);
+    QCOMPARE(nulls.at(&nulls, 0), nullptr);
+    QCOMPARE(nulls.at(&nulls, 1), nullptr);
 }
 
 void tst_QmlCppCodegen::listIndices()
@@ -2988,6 +3239,30 @@ void tst_QmlCppCodegen::listPropertyAsModel()
 
     QQmlListReference children(o.data(), "children");
     QCOMPARE(children.count(), 5);
+}
+
+void tst_QmlCppCodegen::listToString()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, QUrl(u"qrc:/qt/qml/TestTypes/listToString.qml"_s));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+
+    QTest::ignoreMessage(QtDebugMsg, "[one,two]");
+    QTest::ignoreMessage(QtDebugMsg, "one,two");
+    QTest::ignoreMessage(QtDebugMsg, "[1,2]");
+    QTest::ignoreMessage(QtDebugMsg, "1,2");
+    QTest::ignoreMessage(
+            QtDebugMsg,
+            QRegularExpression("\\[QObject_QML_[0-9]+\\(0x[0-9a-f]+\\),"
+                               "QObject_QML_[0-9]+\\(0x[0-9a-f]+\\)\\]"));
+    QTest::ignoreMessage(
+            QtDebugMsg,
+            QRegularExpression("QObject_QML_[0-9]+\\(0x[0-9a-f]+\\),"
+                               "QObject_QML_[0-9]+\\(0x[0-9a-f]+\\)"));
+
+    QTest::ignoreMessage(QtDebugMsg, "[a,b]");
+
+    QScopedPointer<QObject> o(c.create());
 }
 
 void tst_QmlCppCodegen::lotsOfRegisters()
@@ -3188,6 +3463,26 @@ void tst_QmlCppCodegen::mathOperations()
     }
 }
 
+void tst_QmlCppCodegen::mathStaticProperties()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/TestTypes/mathStaticProperties.qml"_s));
+    QVERIFY2(!component.isError(), component.errorString().toUtf8());
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(!object.isNull());
+
+    // Approximate values based on
+    // https://262.ecma-international.org/14.0/#sec-value-properties-of-the-math-object
+    QCOMPARE(object->property("e").toDouble(), 2.7182818284590452354);
+    QCOMPARE(object->property("ln10").toDouble(), 2.302585092994046);
+    QCOMPARE(object->property("ln2").toDouble(), 0.6931471805599453);
+    QCOMPARE(object->property("log10e").toDouble(), 0.4342944819032518);
+    QCOMPARE(object->property("log2e").toDouble(), 1.4426950408889634);
+    QCOMPARE(object->property("pi").toDouble(), 3.1415926535897932);
+    QCOMPARE(object->property("sqrt1_2").toDouble(), 0.7071067811865476);
+    QCOMPARE(object->property("sqrt2").toDouble(), 1.4142135623730951);
+}
+
 void tst_QmlCppCodegen::mergedObjectReadWrite()
 {
     QQmlEngine e;
@@ -3305,6 +3600,29 @@ void tst_QmlCppCodegen::modulePrefix()
     QCOMPARE(rootObject->property("baz").toString(), QStringLiteral("ItIsTheSingleton"));
 }
 
+void tst_QmlCppCodegen::multiDirectory_data()
+{
+    QTest::addColumn<QUrl>("url");
+    QTest::addRow("from qt_add_qml_module")
+            << QUrl(u"qrc:/qt/qml/TestTypes/extra/extra.qml"_s);
+#ifndef VERY_OLD_CMAKE
+    QTest::addRow("from qt_target_qml_sources")
+            << QUrl(u"qrc:/qt/qml/TestTypes/extra2/extra.qml"_s);
+#endif
+}
+
+void tst_QmlCppCodegen::multiDirectory()
+{
+    QFETCH(QUrl, url);
+    QQmlEngine engine;
+    QQmlComponent component(&engine, url);
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> rootObject(component.create());
+    QVERIFY(rootObject);
+
+    QCOMPARE(rootObject->property("r").value<QRectF>(), QRectF(4, 6, 8, 10));
+}
+
 void tst_QmlCppCodegen::multiForeign()
 {
     QQmlEngine engine;
@@ -3331,6 +3649,18 @@ void tst_QmlCppCodegen::multiLookup()
     QCOMPARE(quitSpy.size(), 1);
 }
 
+void tst_QmlCppCodegen::multiRedirect()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/TestTypes/multiRedirect.qml"_s));
+    QVERIFY2(!component.isError(), qPrintable(component.errorString()));
+
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(!object.isNull());
+
+    QCOMPARE(object->objectName(), u"green"_s);
+}
+
 void tst_QmlCppCodegen::multipleCtors()
 {
     QQmlEngine engine;
@@ -3351,6 +3681,17 @@ void tst_QmlCppCodegen::namespaceWithEnum()
     QScopedPointer<QObject> o(c.create());
     QVERIFY(!o.isNull());
     QCOMPARE(o->property("i").toInt(), 2);
+}
+
+void tst_QmlCppCodegen::noBuiltinsImport()
+{
+    QQmlEngine engine;
+    QQmlComponent c(&engine, QUrl(u"qrc:/qt/qml/TestTypes/noBuiltinsImport.qml"_s));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+
+    QCOMPARE(o->property("textureSize").value<QSizeF>(), QSizeF(1024, 1024));
 }
 
 void tst_QmlCppCodegen::noQQmlData()
@@ -3490,6 +3831,54 @@ void tst_QmlCppCodegen::nullComparison()
     QCOMPARE(o->property("x").toInt(), 1);
     QCOMPARE(o->property("y").toInt(), 5);
     QCOMPARE(o->property("z").toInt(), 18);
+}
+
+void tst_QmlCppCodegen::nullishCoalescing_data()
+{
+    QTest::addColumn<QString>("propertyName");
+    QTest::addColumn<QVariant>("expected");
+
+    const auto undefinedValue = QVariant();
+    const auto nullValue = QVariant::fromMetaType(QMetaType::fromType<std::nullptr_t>(), nullptr);
+
+    QTest::addRow("trivial-good-int") << "p1" << QVariant(5);
+    QTest::addRow("trivial-good-string") << "p2" << QVariant("6");
+
+    QTest::addRow("trivial-bad-undefined-undefined") << "p3" << undefinedValue;
+    QTest::addRow("trivial-bad-undefined-null") << "p4" << nullValue;
+    QTest::addRow("trivial-bad-undefined-int") << "p5" << QVariant(-1);
+    QTest::addRow("trivial-bad-undefined-string") << "p6" << QVariant("-1");
+
+    QTest::addRow("trivial-bad-null-undefined") << "p7" << undefinedValue;
+    QTest::addRow("trivial-bad-null-null") << "p8" << nullValue;
+    QTest::addRow("trivial-bad-null-int") << "p9" << QVariant(-1);
+    QTest::addRow("trivial-bad-null-string") << "p10" << QVariant("-1");
+
+    QTest::addRow("enum1") << "p11" << QVariant(1);
+
+    QTest::addRow("multiple ?? int") << "p12" << QVariant(1);
+    QTest::addRow("multiple ?? string") << "p13" << QVariant("1");
+    QTest::addRow("multiple ?? mixed2") << "p14" << QVariant("2");
+    QTest::addRow("multiple ?? mixed3") << "p15" << QVariant(1);
+
+    QTest::addRow("optional + nullish bad") << "p16" << QVariant(-1);
+    QTest::addRow("optional + nullish good") << "p17" << QVariant(5);
+}
+
+void tst_QmlCppCodegen::nullishCoalescing()
+{
+    QQmlEngine engine;
+    const QUrl document(u"qrc:/qt/qml/TestTypes/nullishCoalescing.qml"_s);
+    QQmlComponent c(&engine, document);
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(o);
+
+    QFETCH(QString, propertyName);
+    QFETCH(QVariant, expected);
+
+    QVariant actual = o->property(propertyName.toLocal8Bit());
+    QCOMPARE(actual, expected);
 }
 
 void tst_QmlCppCodegen::numbersInJsPrimitive()
@@ -3912,6 +4301,127 @@ void tst_QmlCppCodegen::propertyOfParent()
         expected = !expected;
         object->setProperty("foo", expected);
     }
+}
+
+void tst_QmlCppCodegen::qmlUsing()
+{
+    QQmlEngine engine;
+    const QString url = u"qrc:/qt/qml/TestTypes/qmlUsing.qml"_s;
+    QQmlComponent component(&engine, QUrl(url));
+    QVERIFY2(component.isReady(), component.errorString().toUtf8());
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(!object.isNull());
+
+    UsingUserObject *u = qobject_cast<UsingUserObject *>(object.data());
+    QVERIFY(u);
+
+    QCOMPARE(u->a(), 7);
+    QCOMPARE(u->getB(), 5);
+    QCOMPARE(u->val().a(), 24);
+    QCOMPARE(u->val().getB(), 25);
+    QCOMPARE(u->property("valA").toInt(), 24);
+    QCOMPARE(u->property("myA").toInt(), 7);
+    QCOMPARE(u->property("myB").toInt(), 5);
+    QCOMPARE(u->property("myA2").toInt(), 7);
+    QCOMPARE(u->property("myB2").toInt(), 5);
+
+    QCOMPARE(u->u(), 9u);
+    QCOMPARE(u->val().u(), 26u);
+    QCOMPARE(u->property("valU").toUInt(), 26u);
+    QCOMPARE(u->property("myU").toUInt(), 9u);
+    QCOMPARE(u->property("myU2").toUInt(), 9u);
+
+    QList<int> as;
+    QList<int> bs;
+    QList<uint> us;
+    QObject::connect(u, &UsingUserObject::aChanged, this, [&]() {
+        as.append(u->a());
+        bs.append(u->getB());
+    });
+
+    QObject::connect(u, &UsingUserObject::uChanged, this, [&]() {
+        us.append(u->u());
+    });
+
+    QMetaObject::invokeMethod(object.data(), "twiddle");
+
+    const QList<int> expectedA = { 57, 59 };
+    QCOMPARE(as, expectedA);
+
+    const QList<int> expectedB = { 5, 58 };
+    QCOMPARE(bs, expectedB);
+
+    const QList<uint> expectedU = { 62, 63 };
+    QCOMPARE(us, expectedU);
+
+    QCOMPARE(u->a(), 59);
+    QCOMPARE(u->getB(), 60);
+    QCOMPARE(u->val().a(), 55);
+    QCOMPARE(u->val().getB(), 25);
+    QCOMPARE(u->property("valA").toInt(), 55);
+    QCOMPARE(u->property("myA").toInt(), 59);
+    QCOMPARE(u->property("myB").toInt(), 5);  // Remains 5, due to lack of signaling
+    QCOMPARE(u->property("myA2").toInt(), 59);
+    QCOMPARE(u->property("myB2").toInt(), 5); // Remains 5, due to lack of signaling
+
+    QCOMPARE(u->u(), 63u);
+    QCOMPARE(u->val().u(), 61u);
+    QCOMPARE(u->property("valU").toUInt(), 61u);
+    QCOMPARE(u->property("myU").toUInt(), 63u);
+    QCOMPARE(u->property("myU2").toUInt(), 63u);
+
+
+    QMetaObject::invokeMethod(object.data(), "burn");
+
+    const uint huge = 4294967295;
+
+    const QList<uint> expectedU2 = { 62, 63, huge, 64, huge };
+    QCOMPARE(us, expectedU2);
+
+    QCOMPARE(u->u(), huge);
+    QCOMPARE(u->val().u(), huge);
+    QCOMPARE(u->property("valU").toUInt(), huge);
+    QCOMPARE(u->property("myU").toUInt(), huge);
+    QCOMPARE(u->property("myU2").toUInt(), huge);
+
+    QMetaObject::invokeMethod(object.data(), "twiddle");
+
+    const QString iError = u" Error: Cannot assign QString to TransparentWrapper<int,int_tag>"_s;
+    const QString uError = u" Error: Cannot assign QString to TransparentWrapper<uint,int_tag>"_s;
+
+    QTest::ignoreMessage(QtWarningMsg, qPrintable(url + u":46:"_s + iError));
+    QMetaObject::invokeMethod(object.data(), "impossibleValA");
+    QCOMPARE(u->val().a(), 55);
+    QCOMPARE(u->property("valA").toInt(), 55);
+
+    QTest::ignoreMessage(QtWarningMsg, qPrintable(url + u":50:"_s + iError));
+    QMetaObject::invokeMethod(object.data(), "impossibleA");
+    QCOMPARE(u->a(), 59);
+    QCOMPARE(u->property("myA").toInt(), 59);
+    QCOMPARE(u->property("myA2").toInt(), 59);
+
+    QTest::ignoreMessage(QtWarningMsg, qPrintable(url + u":54:"_s + iError));
+    QMetaObject::invokeMethod(object.data(), "impossibleSelfA");
+    QCOMPARE(u->a(), 59);
+    QCOMPARE(u->property("myA").toInt(), 59);
+    QCOMPARE(u->property("myA2").toInt(), 59);
+
+    QTest::ignoreMessage(QtWarningMsg, qPrintable(url + u":58:"_s + uError));
+    QMetaObject::invokeMethod(object.data(), "impossibleValU");
+    QCOMPARE(u->val().u(), 61u);
+    QCOMPARE(u->property("valU").toUInt(), 61u);
+
+    QTest::ignoreMessage(QtWarningMsg, qPrintable(url + u":62:"_s + uError));
+    QMetaObject::invokeMethod(object.data(), "impossibleU");
+    QCOMPARE(u->u(), 63u);
+    QCOMPARE(u->property("myU").toUInt(), 63u);
+    QCOMPARE(u->property("myU2").toUInt(), 63u);
+
+    QTest::ignoreMessage(QtWarningMsg, qPrintable(url + u":66:"_s + uError));
+    QMetaObject::invokeMethod(object.data(), "impossibleSelfU");
+    QCOMPARE(u->u(), 63u);
+    QCOMPARE(u->property("myU").toUInt(), 63u);
+    QCOMPARE(u->property("myU2").toUInt(), 63u);
 }
 
 void tst_QmlCppCodegen::reduceWithNullThis()
@@ -4443,7 +4953,64 @@ void tst_QmlCppCodegen::structuredValueType()
     w.setStrings(QStringList({"one", "two", "three"}));
 
     QCOMPARE(o->property("w").value<WeatherModelUrl>(), w);
+
+    WeatherModelUrlDerived w1;
+    w1.setStrings(QStringList({u"four"_s, u"five"_s, u"six"_s}));
+    QCOMPARE(o->property("w1").value<WeatherModelUrlDerived>(), w1);
 }
+
+void tst_QmlCppCodegen::takeNumbers()
+{
+    QFETCH(QByteArray, method);
+    QFETCH(int, expectedInt);
+    QFETCH(qsizetype, expectedSizeType);
+    QFETCH(qlonglong, expectedLongLong);
+
+    QQmlEngine engine;
+    QQmlComponent c(&engine, QUrl(u"qrc:/qt/qml/TestTypes/takenumber.qml"_s));
+    QVERIFY2(c.isReady(), qPrintable(c.errorString()));
+    QScopedPointer<QObject> o(c.create());
+    QVERIFY(!o.isNull());
+
+    TakeNumber *takeNumber = qobject_cast<TakeNumber *>(o.data());
+    QVERIFY(takeNumber != nullptr);
+
+    o->metaObject()->invokeMethod(o.data(), method);
+
+    QCOMPARE(takeNumber->takenInt, expectedInt);
+    QCOMPARE(takeNumber->takenNegativeInt, -expectedInt);
+    QCOMPARE(takeNumber->takenQSizeType, expectedSizeType);
+    QCOMPARE(takeNumber->takenQLongLong, expectedLongLong);
+    QCOMPARE(takeNumber->takenNumbers,
+             (Numbers {expectedInt, -expectedInt, expectedSizeType, expectedLongLong}));
+    QCOMPARE(takeNumber->propertyInt, expectedInt);
+    QCOMPARE(takeNumber->propertyNegativeInt, -expectedInt);
+    QCOMPARE(takeNumber->propertyQSizeType, expectedSizeType);
+    QCOMPARE(takeNumber->propertyQLongLong, expectedLongLong);
+    QCOMPARE(takeNumber->propertyNumbers,
+             (Numbers {expectedInt, -expectedInt, expectedSizeType, expectedLongLong}));
+}
+
+void tst_QmlCppCodegen::takeNumbers_data()
+{
+    QTest::addColumn<QByteArray>("method");
+    QTest::addColumn<int>("expectedInt");
+    QTest::addColumn<qsizetype>("expectedSizeType");
+    QTest::addColumn<qlonglong>("expectedLongLong");
+
+    QTest::addRow("literal0") << "literal0"_ba << 0 << qsizetype(0) << 0ll;
+    QTest::addRow("literal56") << "literal56"_ba << 56 << qsizetype(56) << 56ll;
+
+    QTest::addRow("variable0") << "variable0"_ba << 0 << qsizetype(0) << 0ll;
+    QTest::addRow("variable484") << "variable484"_ba << 484 << qsizetype(484) << 484ll;
+
+    QTest::addRow("literal3B")
+            << "literal3B"_ba << int(3000000000ll) << qsizetype(3000000000ll) << 3000000000ll;
+    QTest::addRow("variable3B")
+            << "variable3B"_ba << int(3000000000ll) << qsizetype(3000000000ll) << 3000000000ll;
+
+}
+
 
 void tst_QmlCppCodegen::testIsnan()
 {
@@ -4645,6 +5212,19 @@ void tst_QmlCppCodegen::typedArray()
     QCOMPARE(result, 20);
 }
 
+void tst_QmlCppCodegen::unclearComponentBoundaries()
+{
+    QQmlEngine engine;
+    QQmlComponent component(
+                &engine, QUrl(u"qrc:/qt/qml/TestTypes/unclearComponentBoundaries.qml"_s));
+
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> rootObject(component.create());
+    QVERIFY(rootObject);
+
+    QCOMPARE(rootObject->objectName(), u"outer"_s);
+}
+
 void tst_QmlCppCodegen::undefinedResets()
 {
     QQmlEngine engine;
@@ -4744,6 +5324,18 @@ void tst_QmlCppCodegen::urlString()
     QCOMPARE(qvariant_cast<QUrl>(rootObject->property("d")), QUrl(u"http://aaaaaa.com"_s));
     QCOMPARE(qvariant_cast<QUrl>(rootObject->property("e")), QUrl(u"http://a112233.de"_s));
     QCOMPARE(rootObject->objectName(), QLatin1String("http://dddddd.com"));
+}
+
+void tst_QmlCppCodegen::valueTypeArgument()
+{
+    QTest::ignoreMessage(QtMsgType::QtDebugMsg, "Reading l.i=5");
+
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/TestTypes/ValueTypeArgument.qml"_s));
+
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> rootObject(component.create());
+    QVERIFY(rootObject);
 }
 
 void tst_QmlCppCodegen::valueTypeBehavior()
@@ -4969,6 +5561,22 @@ void tst_QmlCppCodegen::writeBack()
     QCOMPARE(shadowable->area(), QRectF(40, 50, 16, 17));
 
     QCOMPARE(person->property("ints"), QVariant::fromValue(QList<int>({12, 22, 2, 1, 0, 0, 33})));
+}
+
+void tst_QmlCppCodegen::writeVariantMap()
+{
+    QQmlEngine engine;
+    QQmlComponent component(&engine, QUrl(u"qrc:/qt/qml/StringBuilderTestTypes/writeVariantMap.qml"_s));
+    QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+    QScopedPointer<QObject> object(component.create());
+    QVERIFY(!object.isNull());
+
+    const QVariantMap v = object->property("data").toMap();
+    QCOMPARE(v.size(), 1);
+    const QVariant textPlain = v[u"text/plain"_s];
+    QCOMPARE(textPlain.metaType(), QMetaType::fromType<QString>());
+    QCOMPARE(textPlain.toString(), u"%Drag Me%"_s);
+
 }
 
 QTEST_MAIN(tst_QmlCppCodegen)

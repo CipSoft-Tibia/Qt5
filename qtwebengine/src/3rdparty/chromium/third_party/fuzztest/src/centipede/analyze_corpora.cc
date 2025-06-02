@@ -15,17 +15,67 @@
 #include "./centipede/analyze_corpora.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "./centipede/binary_info.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/corpus.h"
+#include "./centipede/coverage.h"
+#include "./centipede/defs.h"
 #include "./centipede/feature.h"
 #include "./centipede/logging.h"
+#include "./centipede/pc_info.h"
+#include "./centipede/remote_file.h"
+#include "./centipede/shard_reader.h"
+#include "./centipede/workdir.h"
 
 namespace centipede {
-void AnalyzeCorpora(const BinaryInfo &binary_info,
-                    const std::vector<CorpusRecord> &a,
-                    const std::vector<CorpusRecord> &b) {
+
+namespace {
+
+std::vector<CorpusRecord> ReadCorpora(std::string_view binary_name,
+                                      std::string_view binary_hash,
+                                      std::string_view workdir_path) {
+  WorkDir workdir(std::string(workdir_path), std::string(binary_name),
+                  std::string(binary_hash), /*my_shard_index=*/0);
+  std::vector<std::string> corpus_paths;
+  RemoteGlobMatch(workdir.CorpusFiles().AllShardsGlob(), corpus_paths);
+  std::vector<std::string> features_paths;
+  RemoteGlobMatch(workdir.FeaturesFiles().AllShardsGlob(), features_paths);
+
+  CHECK_EQ(corpus_paths.size(), features_paths.size());
+  std::vector<CorpusRecord> corpus;
+  for (int i = 0; i < corpus_paths.size(); ++i) {
+    LOG(INFO) << "Reading corpus at: " << corpus_paths[i];
+    LOG(INFO) << "Reading features at: " << features_paths[i];
+    ReadShard(corpus_paths[i], features_paths[i],
+              [&corpus](const ByteArray &input, FeatureVec &features) {
+                corpus.push_back({input, features});
+              });
+  }
+  return corpus;
+}
+
+BinaryInfo ReadBinaryInfo(std::string_view binary_name,
+                          std::string_view binary_hash,
+                          std::string_view workdir_path) {
+  WorkDir workdir(std::string(workdir_path), std::string(binary_name),
+                  std::string(binary_hash), /*my_shard_index=*/0);
+  BinaryInfo ret;
+  ret.Read(workdir.BinaryInfoDirPath());
+  return ret;
+}
+
+AnalyzeCorporaResults AnalyzeCorpora(const BinaryInfo &binary_info,
+                                     const std::vector<CorpusRecord> &a,
+                                     const std::vector<CorpusRecord> &b) {
   // `a_pcs` will contain all PCs covered by `a`.
   absl::flat_hash_set<size_t> a_pcs;
   for (const auto &record : a) {
@@ -40,6 +90,7 @@ void AnalyzeCorpora(const BinaryInfo &binary_info,
   // `b_unique_indices` are indices of inputs that have PCs from `b_only_pcs`.
   // `b_shared_indices` are indices of all other inputs from `b`.
   absl::flat_hash_set<size_t> b_only_pcs;
+  absl::flat_hash_set<size_t> b_pcs;
   std::vector<size_t> b_shared_indices, b_unique_indices;
   for (size_t i = 0; i < b.size(); ++i) {
     const auto &record = b[i];
@@ -47,6 +98,7 @@ void AnalyzeCorpora(const BinaryInfo &binary_info,
     for (const auto &feature : record.features) {
       if (!feature_domains::kPCs.Contains(feature)) continue;
       auto pc = ConvertPCFeatureToPcIndex(feature);
+      b_pcs.insert(pc);
       if (a_pcs.contains(pc)) continue;
       b_only_pcs.insert(pc);
       has_b_only = true;
@@ -56,27 +108,77 @@ void AnalyzeCorpora(const BinaryInfo &binary_info,
     else
       b_shared_indices.push_back(i);
   }
-  LOG(INFO) << VV(a.size()) << VV(b.size()) << VV(a_pcs.size())
-            << VV(b_only_pcs.size()) << VV(b_shared_indices.size())
-            << VV(b_unique_indices.size());
 
-  const auto &pc_table = binary_info.pc_table;
-  const auto &symbols = binary_info.symbols;
+  absl::flat_hash_set<size_t> a_only_pcs;
+  for (const auto &record : a) {
+    for (const auto &feature : record.features) {
+      if (!feature_domains::kPCs.Contains(feature)) continue;
+      auto pc = ConvertPCFeatureToPcIndex(feature);
+      if (b_pcs.contains(pc)) continue;
+      a_only_pcs.insert(pc);
+    }
+  }
+  LOG(INFO) << VV(a.size()) << VV(b.size()) << VV(a_pcs.size())
+            << VV(a_only_pcs.size()) << VV(b_only_pcs.size())
+            << VV(b_shared_indices.size()) << VV(b_unique_indices.size());
+
+  // Sort PCs to put them in the canonical order, as in pc_table.
+  AnalyzeCorporaResults ret;
+  ret.a_pcs = std::vector<size_t>{a_pcs.begin(), a_pcs.end()};
+  std::sort(ret.a_pcs.begin(), ret.a_pcs.end());
+  ret.b_pcs = std::vector<size_t>{b_pcs.begin(), b_pcs.end()};
+  std::sort(ret.b_pcs.begin(), ret.b_pcs.end());
+  ret.a_only_pcs = std::vector<size_t>{a_only_pcs.begin(), a_only_pcs.end()};
+  std::sort(ret.a_only_pcs.begin(), ret.a_only_pcs.end());
+  ret.b_only_pcs = std::vector<size_t>{b_only_pcs.begin(), b_only_pcs.end()};
+  std::sort(ret.b_only_pcs.begin(), ret.b_only_pcs.end());
+  return ret;
+}
+
+}  // namespace
+
+AnalyzeCorporaResults AnalyzeCorpora(std::string_view binary_name,
+                                     std::string_view binary_hash,
+                                     std::string_view workdir_a,
+                                     std::string_view workdir_b) {
+  BinaryInfo binary_info_a =
+      ReadBinaryInfo(binary_name, binary_hash, workdir_a);
+  BinaryInfo binary_info_b =
+      ReadBinaryInfo(binary_name, binary_hash, workdir_b);
+
+  CHECK_EQ(binary_info_a.pc_table.size(), binary_info_b.pc_table.size());
+  CHECK_EQ(binary_info_a.symbols.size(), binary_info_b.symbols.size());
+
+  const std::vector<CorpusRecord> a =
+      ReadCorpora(binary_name, binary_hash, workdir_a);
+  const std::vector<CorpusRecord> b =
+      ReadCorpora(binary_name, binary_hash, workdir_b);
+
+  AnalyzeCorporaResults ret = AnalyzeCorpora(binary_info_a, a, b);
+  ret.binary_info = std::move(binary_info_a);
+  return ret;
+}
+
+void AnalyzeCorporaToLog(std::string_view binary_name,
+                         std::string_view binary_hash,
+                         std::string_view workdir_a,
+                         std::string_view workdir_b) {
+  AnalyzeCorporaResults results =
+      AnalyzeCorpora(binary_name, binary_hash, workdir_a, workdir_b);
+
+  const auto &pc_table = results.binary_info.pc_table;
+  const auto &symbols = results.binary_info.symbols;
   CoverageLogger coverage_logger(pc_table, symbols);
 
-  CoverageFrontier frontier_a(binary_info);
-  frontier_a.Compute(a);
-
   // TODO(kcc): use frontier_a to show the most interesting b-only PCs.
-
-  // Sort b-only PCs to print them in the canonical order, as in pc_table.
-  std::vector<size_t> b_only_pcs_vec{b_only_pcs.begin(), b_only_pcs.end()};
-  std::sort(b_only_pcs_vec.begin(), b_only_pcs_vec.end());
+  // TODO(kcc): these cause a CHECK-fail
+  // CoverageFrontier frontier_a(results.binary_info);
+  // frontier_a.Compute(a);
 
   // First, print the newly covered functions (including partially covered).
   LOG(INFO) << "B-only new functions:";
   absl::flat_hash_set<std::string_view> b_only_new_functions;
-  for (const auto pc : b_only_pcs_vec) {
+  for (const auto pc : results.b_only_pcs) {
     if (!pc_table[pc].has_flag(PCInfo::kFuncEntry)) continue;
     auto str = coverage_logger.ObserveAndDescribeIfNew(pc);
     if (!str.empty()) LOG(INFO).NoPrefix() << str;
@@ -85,7 +187,7 @@ void AnalyzeCorpora(const BinaryInfo &binary_info,
 
   // Now, print newly covered edges in functions that were covered in `a`.
   LOG(INFO) << "B-only new edges:";
-  for (const auto pc : b_only_pcs_vec) {
+  for (const auto pc : results.b_only_pcs) {
     if (b_only_new_functions.contains(symbols.func(pc))) continue;
     auto str = coverage_logger.ObserveAndDescribeIfNew(pc);
     if (!str.empty()) LOG(INFO).NoPrefix() << str;

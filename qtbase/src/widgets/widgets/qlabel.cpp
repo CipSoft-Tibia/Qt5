@@ -3,21 +3,15 @@
 
 #include "qpainter.h"
 #include "qevent.h"
-#include "qdrawutil.h"
-#include "qapplication.h"
-#if QT_CONFIG(abstractbutton)
-#include "qabstractbutton.h"
-#endif
 #include "qstyle.h"
 #include "qstyleoption.h"
-#include <limits.h>
-#include "qclipboard.h"
-#include <qdebug.h>
-#include <qurl.h>
 #include "qlabel_p.h"
 #include "private/qstylesheetstyle_p.h"
 #include <qmath.h>
 
+#if QT_CONFIG(abstractbutton)
+#include "qabstractbutton.h"
+#endif
 #if QT_CONFIG(accessibility)
 #include <qaccessible.h>
 #endif
@@ -28,46 +22,17 @@ using namespace Qt::StringLiterals;
 
 QLabelPrivate::QLabelPrivate()
     : QFramePrivate(),
-      sh(),
-      msh(),
-      text(),
-      pixmap(),
-      scaledpixmap(),
-      cachedimage(),
-#ifndef QT_NO_PICTURE
-      picture(),
-#endif
-#if QT_CONFIG(movie)
-      movie(),
-#endif
-      control(nullptr),
-      shortcutCursor(),
-#ifndef QT_NO_CURSOR
-      cursor(),
-#endif
-#ifndef QT_NO_SHORTCUT
-      buddy(),
-      shortcutId(0),
-#endif
-      textformat(Qt::AutoText),
-      effectiveTextFormat(Qt::PlainText),
-      textInteractionFlags(Qt::LinksAccessibleByMouse),
-      sizePolicy(),
-      margin(0),
-      align(Qt::AlignLeft | Qt::AlignVCenter | Qt::TextExpandTabs),
-      indent(-1),
       valid_hints(false),
       scaledcontents(false),
       textLayoutDirty(false),
       textDirty(false),
       isTextLabel(false),
-      hasShortcut(/*???*/),
+      hasShortcut(false),
 #ifndef QT_NO_CURSOR
       validCursor(false),
       onAnchor(false),
 #endif
-      openExternalLinks(false),
-      resourceProvider(nullptr)
+      openExternalLinks(false)
 {
 }
 
@@ -82,7 +47,7 @@ QLabelPrivate::~QLabelPrivate()
     \ingroup basicwidgets
     \inmodule QtWidgets
 
-    \image windows-label.png
+    \image fusion-label.png
 
     QLabel is used for displaying text or an image. No user
     interaction functionality is provided. The visual appearance of
@@ -405,9 +370,7 @@ void QLabel::setPicture(const QPicture &picture)
 
 void QLabel::setNum(int num)
 {
-    QString str;
-    str.setNum(num);
-    setText(str);
+    setText(QString::number(num));
 }
 
 /*!
@@ -425,9 +388,7 @@ void QLabel::setNum(int num)
 
 void QLabel::setNum(double num)
 {
-    QString str;
-    str.setNum(num);
-    setText(str);
+    setText(QString::number(num));
 }
 
 /*!
@@ -1096,13 +1057,9 @@ void QLabel::paintEvent(QPaintEvent *)
             QSize scaledSize = d->scaledcontents ? (cr.size() * dpr)
                                : (d->pixmap->size() * (dpr / d->pixmap->devicePixelRatio()));
             if (!d->scaledpixmap || d->scaledpixmap->size() != scaledSize) {
-                if (!d->cachedimage)
-                    d->cachedimage = d->pixmap->toImage();
-                d->scaledpixmap.reset();
-                QImage scaledImage =
-                    d->cachedimage->scaled(scaledSize,
-                                           Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-                d->scaledpixmap = QPixmap::fromImage(std::move(scaledImage));
+                d->scaledpixmap =
+                        d->pixmap->scaled(scaledSize,
+                                          Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
                 d->scaledpixmap->setDevicePixelRatio(dpr);
             }
             pix = *d->scaledpixmap;
@@ -1310,7 +1267,6 @@ void QLabelPrivate::clearContents()
     picture.reset();
 #endif
     scaledpixmap.reset();
-    cachedimage.reset();
     pixmap.reset();
 
     text.clear();
@@ -1454,10 +1410,8 @@ void QLabel::setScaledContents(bool enable)
     if ((bool)d->scaledcontents == enable)
         return;
     d->scaledcontents = enable;
-    if (!enable) {
+    if (!enable)
         d->scaledpixmap.reset();
-        d->cachedimage.reset();
-    }
     update(contentsRect());
 }
 

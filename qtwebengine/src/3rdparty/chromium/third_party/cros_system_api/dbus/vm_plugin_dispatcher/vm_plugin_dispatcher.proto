@@ -310,12 +310,12 @@ message VmStateChangedSignal {
 
 // State of hypervisor agent in a VM.
 enum VmToolsState {
-    VM_TOOLS_STATE_UNKNOWN = 0;
+  VM_TOOLS_STATE_UNKNOWN = 0;
 
-    VM_TOOLS_STATE_POSSIBLY_INSTALLED = 1;
-    VM_TOOLS_STATE_NOT_INSTALLED = 2;
-    VM_TOOLS_STATE_INSTALLED = 3;
-    VM_TOOLS_STATE_OUTDATED = 4;
+  VM_TOOLS_STATE_POSSIBLY_INSTALLED = 1;
+  VM_TOOLS_STATE_NOT_INSTALLED = 2;
+  VM_TOOLS_STATE_INSTALLED = 3;
+  VM_TOOLS_STATE_OUTDATED = 4;
 };
 
 // Signals change of state of hypervisor agent in a VM.

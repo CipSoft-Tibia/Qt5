@@ -14,12 +14,18 @@
 
 import m from 'mithril';
 
+import {Time, time} from '../base/time';
 import {runQuery} from '../common/queries';
-import {Duration, time} from '../common/time';
 import {raf} from '../core/raf_scheduler';
-import {addDebugTrack} from '../tracks/debug/slice_track';
+import {addDebugSliceTrack} from '../tracks/debug/slice_track';
+import {Anchor} from '../widgets/anchor';
+import {Button} from '../widgets/button';
+import {DetailsShell} from '../widgets/details_shell';
+import {GridLayout} from '../widgets/grid_layout';
+import {Section} from '../widgets/section';
+import {SqlRef} from '../widgets/sql_ref';
+import {Tree, TreeNode} from '../widgets/tree';
 
-import {Anchor} from './anchor';
 import {BottomTab, bottomTabRegistry, NewBottomTabArgs} from './bottom_tab';
 import {SchedSqlId, ThreadStateSqlId} from './sql_types';
 import {
@@ -35,14 +41,8 @@ import {
   ThreadState,
   ThreadStateRef,
 } from './thread_state';
-import {Button} from './widgets/button';
-import {DetailsShell} from './widgets/details_shell';
-import {DurationWidget} from './widgets/duration';
-import {GridLayout} from './widgets/grid_layout';
-import {Section} from './widgets/section';
-import {SqlRef} from './widgets/sql_ref';
+import {DurationWidget, renderDuration} from './widgets/duration';
 import {Timestamp} from './widgets/timestamp';
-import {Tree, TreeNode} from './widgets/tree';
 
 interface ThreadStateTabConfig {
   // Id into |thread_state| sql table.
@@ -229,47 +229,30 @@ export class ThreadStateTab extends BottomTab<ThreadStateTabConfig> {
       utid: state.thread!.utid,
       name,
     });
-    const sliceColumns = {ts: 'ts', dur: 'dur', name: 'thread_name'};
-    const sliceSliceColumns = {ts: 'ts', dur: 'dur', name: 'slice_name'};
+
+    const sliceColumns = {ts: 'ts', dur: 'dur', name: 'name'};
     const sliceColumnNames = [
-      'ts',
-      'dur',
       'id',
       'utid',
-      'thread_name',
-      'process_name',
-      'height',
+      'ts',
+      'dur',
+      'name',
       'table_name',
     ];
 
-    const sliceColumnThreadStateNames = [
-      'ts',
-      'dur',
+    const sliceLiteColumns = {ts: 'ts', dur: 'dur', name: 'thread_name'};
+    const sliceLiteColumnNames = [
       'id',
       'utid',
-      'thread_name',
-      'process_name',
-      'state',
-      'blocked_function',
-      'height',
-      'table_name'
-    ];
-
-    const sliceColumnSliceNames = [
       'ts',
       'dur',
-      'id',
-      'utid',
       'thread_name',
       'process_name',
-      'slice_name',
-      'slice_depth',
-      'height',
       'table_name',
     ];
 
     const nameForNextOrPrev = (state: ThreadState) =>
-        `${state.state} for ${Duration.humanise(state.dur)}`;
+        `${state.state} for ${renderDuration(state.dur)}`;
     return [m(
         Tree,
         this.relatedStates.waker && m(TreeNode, {
@@ -295,73 +278,70 @@ export class ThreadStateTab extends BottomTab<ThreadStateTabConfig> {
               {
                 left: 'Woken threads',
               },
-              this.relatedStates.wakee.map(
-                  (state) => m(TreeNode, ({
-                                 left: m(Timestamp, {
-                                   ts: state.ts,
-                                   display: `Start+${
-                                       Duration.humanise(state.ts - startTs)}`,
-                                 }),
-                                 right: renderRef(
-                                     state, getFullThreadName(state.thread)),
+              this.relatedStates.wakee.map((state) => m(TreeNode, ({
+                  left: m(Timestamp, {
+                    ts: state.ts,
+                    display: [
+                      'Start+',
+                      m(DurationWidget, {dur: Time.sub(state.ts, startTs)}),
+                    ],
+                  }),
+                  right: renderRef(state, getFullThreadName(state.thread)),
                   })))),
       ), m(Button,
            {
-          label: 'Critical path',
-          onclick: () => runQuery(`SELECT IMPORT('experimental.thread_executing_span');`, this.engine)
-              .then(() => addDebugTrack(
+          label: 'Critical path lite',
+          onclick: () => runQuery(`INCLUDE PERFETTO MODULE experimental.thread_executing_span;`, this.engine)
+              .then(() => addDebugSliceTrack(
               this.engine,
                   {
                     sqlSource:
                   `
-                   SELECT ts, dur, id, utid, thread_name, process_name, height,
-                   "thread_state" AS table_name
-                     FROM experimental_thread_executing_span_critical_path(
-                       NULL, ${this.state?.thread?.utid})
+                    SELECT
+                      cr.id,
+                      cr.utid,
+                      cr.ts,
+                      cr.dur,
+                      thread.name AS thread_name,
+                      process.name AS process_name,
+                      'thread_state' AS table_name
+                    FROM
+                      experimental_thread_executing_span_critical_path(
+                        ${this.state?.thread?.utid},
+                        trace_bounds.start_ts,
+                        trace_bounds.end_ts - trace_bounds.start_ts) cr,
+                      trace_bounds
+                    JOIN thread USING(utid)
+                    JOIN process USING(upid)
+                  `,
+                  columns: sliceLiteColumnNames,
+                  },
+               `${this.state?.thread?.name}`,
+                  sliceLiteColumns,
+                  sliceLiteColumnNames)),
+      },
+      ), m(Button,
+           {
+          label: 'Critical path',
+          onclick: () => runQuery(`INCLUDE PERFETTO MODULE experimental.thread_executing_span;`, this.engine)
+              .then(() => addDebugSliceTrack(
+              this.engine,
+                  {
+                    sqlSource:
+                  `
+                    SELECT cr.id, cr.utid, cr.ts, cr.dur, cr.name, cr.table_name
+                      FROM
+                        experimental_thread_executing_span_critical_path_stack(
+                          ${this.state?.thread?.utid},
+                          trace_bounds.start_ts,
+                          trace_bounds.end_ts - trace_bounds.start_ts) cr,
+                        trace_bounds WHERE name IS NOT NULL
                   `,
                   columns: sliceColumnNames,
                   },
                `${this.state?.thread?.name}`,
                   sliceColumns,
                   sliceColumnNames)),
-      },
-      ), m(Button,
-           {
-          label: 'Critical path thread states',
-          onclick: () => runQuery(`SELECT IMPORT('experimental.thread_executing_span');`, this.engine)
-              .then(() => addDebugTrack(
-              this.engine,
-                  {
-                    sqlSource:
-                  `
-                   SELECT ts, dur, thread_state_id AS id, utid, thread_name, process_name, state, blocked_function, height,
-                   "thread_state" AS table_name
-                     FROM experimental_thread_executing_span_critical_path_thread_states(${this.state?.thread?.utid})
-                  `,
-                  columns: sliceColumnThreadStateNames,
-                  },
-               `${this.state?.thread?.name}`,
-                  sliceColumns,
-                  sliceColumnThreadStateNames)),
-      },
-      ), m(Button,
-           {
-          label: 'Critical path slices',
-          onclick: () => runQuery(`SELECT IMPORT('experimental.thread_executing_span');`, this.engine)
-              .then(() => addDebugTrack(
-              this.engine,
-                  {
-                    sqlSource:
-                  `
-                   SELECT ts, dur, slice_id AS id, utid, thread_name, process_name, slice_name, slice_depth, height,
-                   "slice" AS table_name
-                     FROM experimental_thread_executing_span_critical_path_slices(${this.state?.thread?.utid})
-                  `,
-                  columns: sliceColumnSliceNames,
-                  },
-               `${this.state?.thread?.name}`,
-                  sliceSliceColumns,
-                  sliceColumnSliceNames)),
       },
       )];
   }
@@ -370,8 +350,6 @@ export class ThreadStateTab extends BottomTab<ThreadStateTabConfig> {
   isLoading() {
     return this.state === undefined || this.relatedStates === undefined;
   }
-
-  renderTabCanvas(): void {}
 }
 
 bottomTabRegistry.register(ThreadStateTab);

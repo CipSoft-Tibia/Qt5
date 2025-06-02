@@ -45,7 +45,7 @@ struct QTemporaryFileName
     QFileSystemEntry::NativePath generateNext();
 };
 
-#ifndef QT_NO_TEMPORARYFILE
+#if QT_CONFIG(temporaryfile)
 
 class QTemporaryFilePrivate : public QFilePrivate
 {
@@ -55,6 +55,8 @@ public:
     QTemporaryFilePrivate();
     explicit QTemporaryFilePrivate(const QString &templateNameIn);
     ~QTemporaryFilePrivate();
+
+    bool rename(const QString &newName, bool overwrite);
 
     QAbstractFileEngine *engine() const override;
     void resetFileEngine() const;
@@ -88,8 +90,7 @@ public:
         if (filePathIsTemplate) {
             d->fileEntry.clear();
         } else {
-            d->fileEntry = QFileSystemEntry(file);
-            QFSFileEngine::setFileName(file);
+            QFSFileEngine::setFileEntry(QFileSystemEntry(file));
         }
     }
     ~QTemporaryFileEngine();
@@ -116,7 +117,7 @@ public:
     bool unnamedFile = false;
 };
 
-#endif // QT_NO_TEMPORARYFILE
+#endif // QT_CONFIG(temporaryfile)
 
 QT_END_NAMESPACE
 

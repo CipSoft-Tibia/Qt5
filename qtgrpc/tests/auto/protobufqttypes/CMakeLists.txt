@@ -25,6 +25,7 @@ qt_internal_add_test(tst_protobuf_qtcoretypes
 qt_add_protobuf(tst_protobuf_qtcoretypes
     PROTO_FILES
         ../shared/data/proto/qtcoretypes.proto
+        qtcoretypesnested.proto
     PROTO_INCLUDES
         $<TARGET_PROPERTY:Qt6::ProtobufQtCoreTypes,QT_PROTO_INCLUDES>
     OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated"
@@ -51,6 +52,7 @@ if(QT_FEATURE_gui)
     qt_add_protobuf(tst_protobuf_qtguitypes
         PROTO_FILES
             ../shared/data/proto/qtguitypes.proto
+            qtguitypesnested.proto
         PROTO_INCLUDES
             $<TARGET_PROPERTY:Qt6::ProtobufQtGuiTypes,QT_PROTO_INCLUDES>
         OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated_gui"

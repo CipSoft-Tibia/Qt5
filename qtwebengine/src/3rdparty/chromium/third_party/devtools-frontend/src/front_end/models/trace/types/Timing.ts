@@ -30,8 +30,11 @@ export const enum TimeUnit {
 
 // Other types.
 
-export interface TraceWindow {
-  min: MicroSeconds;
-  max: MicroSeconds;
-  range: MicroSeconds;
+export interface TraceWindow<TimeFormat extends MicroSeconds|MilliSeconds> {
+  min: TimeFormat;
+  max: TimeFormat;
+  range: TimeFormat;
 }
+
+export type TraceWindowMicroSeconds = TraceWindow<MicroSeconds>;
+export type TraceWindowMilliSeconds = TraceWindow<MilliSeconds>;

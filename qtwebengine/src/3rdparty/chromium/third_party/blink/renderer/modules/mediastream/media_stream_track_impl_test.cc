@@ -37,6 +37,7 @@
 #include "third_party/blink/renderer/platform/mediastream/media_stream_component_impl.h"
 #include "third_party/blink/renderer/platform/mediastream/media_stream_source.h"
 #include "third_party/blink/renderer/platform/testing/io_task_runner_testing_platform_support.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 
 using testing::_;
 
@@ -76,6 +77,7 @@ MakeLocalMediaStreamAudioSource() {
       /*blink::WebLocalFrame=*/nullptr, device,
       /*requested_buffer_size=*/nullptr,
       /*disable_local_echo=*/false,
+      /*enable_system_echo_cancellation=*/false,
       blink::WebPlatformMediaStreamSource::ConstraintsRepeatingCallback(),
       blink::scheduler::GetSingleThreadTaskRunnerForTesting());
 }
@@ -170,6 +172,7 @@ class MediaStreamTrackImplTest : public testing::Test {
     WebHeap::CollectAllGarbageForTesting();
   }
 
+  test::TaskEnvironment task_environment_;
   ScopedTestingPlatformSupport<IOTaskRunnerTestingPlatformSupport> platform_;
 };
 
@@ -554,7 +557,7 @@ TEST_F(MediaStreamTrackImplTest,
   // Apply new constraints.
   MediaTrackConstraints* track_constraints = MakeMediaTrackConstraints(
       kReducedWidth, kReducedHeight, kMinFrameRate, kMaxFrameRate);
-  EXPECT_CALL(*platform_source_ptr, GetCropVersion)
+  EXPECT_CALL(*platform_source_ptr, GetSubCaptureTargetVersion)
       .WillRepeatedly(testing::Return(1));
   ScriptPromise apply_constraints_promise =
       track->applyConstraints(v8_scope.GetScriptState(), track_constraints);

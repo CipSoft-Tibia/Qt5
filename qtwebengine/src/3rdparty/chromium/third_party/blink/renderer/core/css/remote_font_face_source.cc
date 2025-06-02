@@ -15,8 +15,10 @@
 #include "third_party/blink/renderer/core/css/font_face_set_document.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
+#include "third_party/blink/renderer/core/lcp_critical_path_predictor/lcp_critical_path_predictor.h"
 #include "third_party/blink/renderer/core/loader/subresource_integrity_helper.h"
 #include "third_party/blink/renderer/core/probe/core_probes.h"
 #include "third_party/blink/renderer/core/workers/worker_global_scope.h"
@@ -414,6 +416,7 @@ void RemoteFontFaceSource::BeginLoadIfNeeded() {
   SetDisplay(face_->GetFontFace()->GetFontDisplay());
 
   auto* font = To<FontResource>(GetResource());
+  CHECK(font);
   if (font->StillNeedsLoad()) {
     if (font->IsLowPriorityLoadingAllowedForRemoteFont()) {
       execution_context->AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
@@ -430,6 +433,16 @@ void RemoteFontFaceSource::BeginLoadIfNeeded() {
     }
     if (execution_context->Fetcher()->StartLoad(font)) {
       histograms_.LoadStarted();
+      if (LocalDOMWindow* window =
+              DynamicTo<LocalDOMWindow>(execution_context)) {
+        if (LocalFrame* frame = window->GetFrame()) {
+          if (frame->IsOutermostMainFrame()) {
+            if (LCPCriticalPathPredictor* lcpp = frame->GetLCPP()) {
+              lcpp->OnFontFetched(font->Url());
+            }
+          }
+        }
+      }
     }
   }
 
@@ -529,25 +542,6 @@ void RemoteFontFaceSource::FontLoadHistograms::RecordLoadTimeHistogram(
     base::UmaHistogramTimes("WebFont.DownloadTime.LoadError", delta);
     return;
   }
-
-  size_t size = font->EncodedSize();
-  if (size < 10 * 1024) {
-    base::UmaHistogramTimes("WebFont.DownloadTime.0.Under10KB", delta);
-    return;
-  }
-  if (size < 50 * 1024) {
-    base::UmaHistogramTimes("WebFont.DownloadTime.1.10KBTo50KB", delta);
-    return;
-  }
-  if (size < 100 * 1024) {
-    base::UmaHistogramTimes("WebFont.DownloadTime.2.50KBTo100KB", delta);
-    return;
-  }
-  if (size < 1024 * 1024) {
-    base::UmaHistogramTimes("WebFont.DownloadTime.3.100KBTo1MB", delta);
-    return;
-  }
-  base::UmaHistogramTimes("WebFont.DownloadTime.4.Over1MB", delta);
 }
 
 RemoteFontFaceSource::FontLoadHistograms::CacheHitMetrics

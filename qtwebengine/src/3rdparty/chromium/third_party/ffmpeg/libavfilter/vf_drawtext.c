@@ -1757,9 +1757,17 @@ continue_on_failed2:
                     first_min_x64 = FFMIN(glyph->bbox.xMin, first_min_x64);
                 }
                 if (t == hb->glyph_count - 1) {
-                    w64 += glyph->bbox.xMax;
-                    last_max_x64 = FFMAX(glyph->bbox.xMax, last_max_x64);
-                    cur_line->offset_right64 = glyph->bbox.xMax;
+                    // The following code measures the width of the line up to the last
+                    // character's horizontal advance
+                    int last_char_width = hb->glyph_pos[t].x_advance;
+
+                    // The following code measures the width of the line up to the rightmost
+                    // visible pixel of the last character
+                    // int last_char_width = glyph->bbox.xMax;
+
+                    w64 += last_char_width;
+                    last_max_x64 = FFMAX(last_char_width, last_max_x64);
+                    cur_line->offset_right64 = last_char_width;
                 } else {
                     if (is_tab) {
                         int size = s->blank_advance64 * s->tabsize;
@@ -2181,13 +2189,6 @@ static const AVFilterPad avfilter_vf_drawtext_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_vf_drawtext_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_drawtext = {
     .name          = "drawtext",
     .description   = NULL_IF_CONFIG_SMALL("Draw text on top of video frames using libfreetype library."),
@@ -2196,7 +2197,7 @@ const AVFilter ff_vf_drawtext = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_drawtext_inputs),
-    FILTER_OUTPUTS(avfilter_vf_drawtext_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .process_command = command,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,

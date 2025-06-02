@@ -4,12 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import '../../material/web/iconbutton/filled-icon-button';
+import '@material/web/iconbutton/filled-icon-button.js';
 import '@material/web/iconbutton/filled-tonal-icon-button.js';
 import '@material/web/iconbutton/icon-button.js';
 
 import {css, CSSResultGroup, html, LitElement} from 'lit';
-
 
 /**
  * Icon buttons have different variants depending on the container
@@ -28,33 +27,42 @@ const FILLED_ICON_ON_IMAGE =
     css`var(--cros-icon-button-color-override, var(--cros-sys-on_surface))`;
 
 const FILLED_CONTAINER_ON_BASE = css`var(--cros-sys-surface_variant)`;
-const FILLED_CONTAINER_ON_IMAGE = css`var(--cros-sys-surface)`;
+const FILLED_CONTAINER_ON_IMAGE = css`var(--cros-sys-surface3)`;
 
-const FLOATING_ICON_ON_BASE = css`var(--cros-sys-on_surface)`;
-const FLOATING_ICON_ON_SUBTLE = css`var(--cros-sys-on_primary_container)`;
-const FLOATING_ICON_ON_PROMINENT = css`var(--cros-sys-on_primary)`;
-const FLOATING_ICON_ON_IMAGE = css`white`;
+const FLOATING_ICON_ON_BASE =
+    css`var(--cros-icon-button-color-override, var(--cros-sys-on_surface))`;
+const FLOATING_ICON_ON_SUBTLE =
+    css`var(--cros-icon-button-color-override, var(--cros-sys-on_primary_container))`;
+const FLOATING_ICON_ON_PROMINENT =
+    css`var(--cros-icon-button-color-override, var(--cros-sys-on_primary))`;
+const FLOATING_ICON_ON_IMAGE =
+    css`var(--cros-icon-button-color-override, white)`;
 
-const TOGGLE_ICON_ON_BASE = css`var(--cros-sys-on_surface)`;
-const TOGGLE_ICON_ON_SUBTLE = css`var(--cros-sys-on_primary_container)`;
-const TOGGLE_ICON_ON_PROMINENT = css`var(--cros-sys-on_primary)`;
+const TOGGLE_ICON_ON_BASE =
+    css`var(--cros-icon-button-color-override, var(--cros-sys-on_surface))`;
+const TOGGLE_ICON_ON_SUBTLE =
+    css`var(--cros-icon-button-color-override, var(--cros-sys-on_primary_container))`;
+const TOGGLE_ICON_ON_PROMINENT =
+    css`var(--cros-icon-button-color-override, var(--cros-sys-on_primary))`;
 
-const TOGGLE_SELECTED_ICON_ON_BASE = css`var(--cros-sys-on_primary_container)`;
+const TOGGLE_SELECTED_ICON_ON_BASE =
+    css`var(--cros-icon-button-selected-color-override, var(--cros-sys-on_primary_container))`;
 const TOGGLE_SELECTED_ICON_ON_SUBTLE =
-    css`var(--cros-sys-on_primary_container)`;
-const TOGGLE_SELECTED_ICON_ON_PROMINENT = css`var(--cros-sys-on_primary)`;
+    css`var(--cros-icon-button-selected-color-override, var(--cros-sys-on_primary_container))`;
+const TOGGLE_SELECTED_ICON_ON_PROMINENT =
+    css`var(--cros-icon-button-selected-color-override, var(--cros-sys-on_primary))`;
 
 const TOGGLE_CONTAINER_ON_BASE = css`var(--cros-sys-primary_container)`;
 const TOGGLE_CONTAINER_ON_SUBTLE = css`var(--cros-sys-highlight_shape)`;
 const TOGGLE_CONTAINER_ON_PROMINENT = css`var(--cros-sys-highlight_shape)`;
+
+const LARGE_CONTAINER_WIDTH = css`72px`;
+const LARGE_CONTAINER_HEIGHT = css`56px`;
+
 /**
- * A cros compliant icon-button component.
- * See spec:
- * https://www.figma.com/file/1XsFoZH868xLcLPfPZRxLh/CrOS-Next---Component-Library-%26-Spec?node-id=2447%3A5928
+ * A ChromeOS compliant icon-button component.
  */
 export class IconButton extends LitElement {
-  /** @export */
-  a11yLabel: string;
   /** @export */
   buttonStyle: 'filled'|'floating'|'toggle';
   /** @export */
@@ -81,7 +89,8 @@ export class IconButton extends LitElement {
       --md-filled-tonal-icon-button-container-color: ${
       FILLED_CONTAINER_ON_BASE};
       --md-filled-tonal-icon-button-container-shape: 12px;
-      --md-filled-tonal-icon-button-container-size: 40px;
+      --md-filled-tonal-icon-button-container-width: 40px;
+      --md-filled-tonal-icon-button-container-height: 40px;
       --md-filled-tonal-icon-button-disabled-container-color: var(--cros-sys-disabled_container);
       --md-filled-tonal-icon-button-disabled-container-opacity: 1;
       --md-filled-tonal-icon-button-disabled-icon-color: var(--cros-sys-disabled);
@@ -91,7 +100,7 @@ export class IconButton extends LitElement {
       --md-filled-tonal-icon-button-hover-state-layer-color: var(--cros-sys-hover_on_subtle);
       --md-filled-tonal-icon-button-hover-state-layer-opacity: 1;
       --md-filled-tonal-icon-button-icon-color: ${FILLED_ICON_ON_BASE};
-      --md-filled-tonal-icon-button-icon-size: 20px;
+      --md-filled-tonal-icon-button-icon-size: var(--cros-icon-button-icon-size, 20px);
       --md-filled-tonal-icon-button-pressed-icon-color: ${FILLED_ICON_ON_BASE};
       --md-filled-tonal-icon-button-pressed-state-layer-color: var(--cros-sys-ripple_neutral_on_subtle);
       --md-filled-tonal-icon-button-pressed-state-layer-opacity: 1;
@@ -99,21 +108,22 @@ export class IconButton extends LitElement {
       FILLED_ICON_ON_BASE};
       --md-filled-tonal-icon-button-selected-pressed-icon-color: ${
       FILLED_ICON_ON_BASE};
+      --md-focus-ring-duration: 0s;
     }
     :host([size="small"]) md-filled-tonal-icon-button {
       --md-filled-tonal-icon-button-container-shape: 10px;
-      --md-filled-tonal-icon-button-container-size: 32px;
-      --md-filled-tonal-icon-button-icon-size: 20px;
+      --md-filled-tonal-icon-button-container-width: 32px;
+      --md-filled-tonal-icon-button-container-height: 32px;
+      --md-filled-tonal-icon-button-icon-size: var(--cros-icon-button-icon-size, 20px);
     }
     :host([size="large"]) md-filled-tonal-icon-button {
       --md-filled-tonal-icon-button-container-shape: 16px;
-      --md-filled-tonal-icon-button-container-size: 80px;
-      --md-filled-tonal-icon-button-icon-size: 24px;
-      height: 64px;
+      --md-filled-tonal-icon-button-container-height: ${LARGE_CONTAINER_HEIGHT};
+      --md-filled-tonal-icon-button-container-width: ${LARGE_CONTAINER_WIDTH};
+      --md-filled-tonal-icon-button-icon-size: var(--cros-icon-button-icon-size, 24px);
       margin: 0;
-      width: 80px;
     }
-    :host([surface="image"]) md-filled-tonal-icon-button {
+    :host([surface="image"][buttonStyle="filled"]) md-filled-tonal-icon-button {
       --md-filled-tonal-icon-button-container-color: ${
       FILLED_CONTAINER_ON_IMAGE};
       --md-filled-tonal-icon-button-focus-icon-color: ${FILLED_ICON_ON_IMAGE};
@@ -125,15 +135,29 @@ export class IconButton extends LitElement {
       --md-filled-tonal-icon-button-selected-pressed-icon-color: ${
       FILLED_ICON_ON_IMAGE};
     }
+    :host([surface="image"][buttonStyle="floating"]) md-filled-tonal-icon-button {
+      --md-filled-tonal-icon-button-container-color: rgba(var(--cros-sys-black-rgb), 0.6);
+      --md-filled-tonal-icon-button-focus-icon-color: ${FLOATING_ICON_ON_IMAGE};
+      --md-filled-tonal-icon-button-hover-icon-color: ${FLOATING_ICON_ON_IMAGE};
+      --md-filled-tonal-icon-button-icon-color: ${FLOATING_ICON_ON_IMAGE};
+      --md-filled-tonal-icon-button-pressed-icon-color: ${
+      FLOATING_ICON_ON_IMAGE};
+      --md-filled-tonal-icon-button-selected-focus-icon-color: ${
+      FLOATING_ICON_ON_IMAGE};
+      --md-filled-tonal-icon-button-selected-pressed-icon-color: ${
+      FLOATING_ICON_ON_IMAGE};
+      }
     :host([shape="circle"]) md-filled-tonal-icon-button {
       --md-filled-tonal-icon-button-container-shape: 100vmax;
     }
     md-icon-button {
+      --md-focus-ring-duration: 0s;
       --md-icon-button-disabled-icon-color: ${FLOATING_ICON_ON_BASE};
       --md-icon-button-disabled-icon-opacity: var(--cros-sys-disabled-opacity);
-      --md-icon-button-icon-size: 20px;
+      --md-icon-button-icon-size: var(--cros-icon-button-icon-size, 20px);
       --md-icon-button-state-layer-shape: 12px;
-      --md-icon-button-state-layer-size: 40px;
+      --md-icon-button-state-layer-width: 40px;
+      --md-icon-button-state-layer-height: 40px;
       --md-icon-button-focus-icon-color: ${FLOATING_ICON_ON_BASE};
       --md-icon-button-hover-icon-color: ${FLOATING_ICON_ON_BASE};
       --md-icon-button-hover-state-layer-color: var(--cros-sys-hover_on_subtle);
@@ -144,18 +168,19 @@ export class IconButton extends LitElement {
       --md-icon-button-pressed-state-layer-opacity: 1;
     }
     :host([size="small"]) md-icon-button {
-      --md-icon-button-icon-size: 20px;
+      --md-icon-button-icon-size: var(--cros-icon-button-icon-size, 20px);
       --md-icon-button-state-layer-shape: 10px;
-      --md-icon-button-state-layer-size: 32px;
+      --md-icon-button-state-layer-width: 32px;
+      --md-icon-button-state-layer-height: 32px;
     }
     :host([size="large"]) md-icon-button {
-      --md-icon-button-icon-size: 24px;
+      --md-icon-button-icon-size: var(--cros-icon-button-icon-size, 24px);
       --md-icon-button-state-layer-shape: 16px;
-      height: 64px;
+      height: ${LARGE_CONTAINER_HEIGHT};
       margin: 0;
-      width: 80px;
+      width: ${LARGE_CONTAINER_WIDTH};
     }
-    :host([surface="surface"]) md-icon-button {
+    :host([surface="subtle"]) md-icon-button {
       --md-icon-button-disabled-icon-color: ${FLOATING_ICON_ON_SUBTLE};
       --md-icon-button-focus-icon-color: ${FLOATING_ICON_ON_SUBTLE};
       --md-icon-button-hover-icon-color: ${FLOATING_ICON_ON_SUBTLE};
@@ -171,27 +196,20 @@ export class IconButton extends LitElement {
       --md-icon-button-pressed-icon-color: ${FLOATING_ICON_ON_PROMINENT};
       --md-icon-button-pressed-state-layer-color: var(--cros-sys-ripple_neutral_on_prominent);
     }
-    :host([surface="image"]) md-icon-button {
-      --md-icon-button-disabled-icon-color: ${FLOATING_ICON_ON_IMAGE};
-      --md-icon-button-focus-icon-color: ${FLOATING_ICON_ON_IMAGE};
-      --md-icon-button-hover-icon-color: ${FLOATING_ICON_ON_IMAGE};
-      --md-icon-button-hover-state-layer-color: rgba(255, 255, 255, 0.06);
-      --md-icon-button-icon-color: ${FLOATING_ICON_ON_IMAGE};
-      --md-icon-button-pressed-icon-color: ${FLOATING_ICON_ON_IMAGE};
-      --md-icon-button-pressed-state-layer-color: rgba(255, 255, 255, 0.08);
-    }
     :host([shape="circle"]) md-icon-button {
       --md-icon-button-state-layer-shape: 100vmax;
     }
     md-filled-icon-button {
       --md-filled-icon-button-container-shape: 12px;
-      --md-filled-icon-button-container-size: 40px;
+      --md-filled-icon-button-container-width: 40px;
+      --md-filled-icon-button-container-height: 40px;
       --md-filled-icon-button-disabled-container-color: #00000000;
       --md-filled-icon-button-disabled-container-opacity: 1;
       --md-filled-icon-button-disabled-icon-color: var(--cros-sys-disabled);
       --md-filled-icon-button-disabled-icon-opacity: 1;
       --md-filled-icon-button-hover-state-layer-opacity: 1;
-      --md-filled-icon-button-icon-size: 20px;
+      --md-filled-icon-button-icon-size: var(--cros-icon-button-icon-size, 20px);
+      --md-filled-icon-button-pressed-state-layer-opacity: 1;
       --md-filled-icon-button-selected-container-color: ${
       TOGGLE_CONTAINER_ON_BASE};
       --md-filled-icon-button-toggle-selected-focus-icon-color: ${
@@ -211,19 +229,20 @@ export class IconButton extends LitElement {
       --md-filled-icon-button-toggle-pressed-icon-color: ${TOGGLE_ICON_ON_BASE};
       --md-filled-icon-button-toggle-pressed-state-layer-color: var(--cros-sys-ripple_primary);
       --md-filled-icon-button-unselected-container-color: #00000000;
+      --md-focus-ring-duration: 0s;
     }
     :host([size="large"]) md-filled-icon-button {
       --md-filled-icon-button-container-shape: 16px;
-      --md-filled-icon-button-container-size: 80px;
-      --md-filled-icon-button-icon-size: 24px;
-      height: 64px;
+      --md-filled-icon-button-container-width: ${LARGE_CONTAINER_WIDTH};
+      --md-filled-icon-button-container-height: ${LARGE_CONTAINER_HEIGHT};
+      --md-filled-icon-button-icon-size: var(--cros-icon-button-icon-size, 24px);
       margin: 0;
-      width: 80px;
     }
     :host([size="small"]) md-filled-icon-button {
       --md-filled-icon-button-container-shape: 10px;
-      --md-filled-icon-button-container-size: 32px;
-      --md-filled-icon-button-icon-size: 20px;
+      --md-filled-icon-button-container-width: 32px;
+      --md-filled-icon-button-container-height: 32px;
+      --md-filled-icon-button-icon-size: var(--cros-icon-button-icon-size, 20px);
     }
     :host([surface="subtle"]) md-filled-icon-button {
       --md-filled-icon-button-selected-container-color: ${
@@ -274,17 +293,28 @@ export class IconButton extends LitElement {
     md-filled-icon-button::part(focus-ring),
     md-icon-button::part(focus-ring) {
       --md-focus-ring-color: var(--cros-sys-focus_ring);
+      --md-focus-ring-width: 2px;
     }
     :host([surface="prominent"]) md-filled-tonal-icon-button::part(focus-ring),
     :host([surface="prominent"]) md-filled-icon-button::part(focus-ring),
     :host([surface="prominent"]) md-icon-button::part(focus-ring) {
       --md-focus-ring-color: var(--cros-sys-inverse_focus_ring);
     }
+
+    ::slotted(ea-icon) {
+      --ea-icon-size: var(--cros-icon-button-icon-size, 20px);
+    }
   `;
 
   /** @nocollapse */
+  static override shadowRootOptions = {
+    ...LitElement.shadowRootOptions,
+    delegatesFocus: true
+  };
+
+  /** @nocollapse */
   static override properties = {
-    a11yLabel: {type: String, reflect: true},
+    ariaLabel: {type: String, reflect: true, attribute: 'aria-label'},
     prominent: {type: Boolean, reflect: true},
     buttonStyle: {type: String},
     size: {type: String, reflect: true},
@@ -296,7 +326,7 @@ export class IconButton extends LitElement {
 
   constructor() {
     super();
-    this.a11yLabel = '';
+    this.ariaLabel = '';
     this.buttonStyle = 'filled';
     this.size = 'default';
     this.shape = 'square';
@@ -305,25 +335,47 @@ export class IconButton extends LitElement {
     this.selected = false;
   }
 
+  override connectedCallback() {
+    super.connectedCallback();
+    // All aria properties on button just get proxied down to the real <button>
+    // element, as such we set role to presentation so screenreaders ignore
+    // this component and instead only read aria attributes off the inner
+    // interactive element.
+    this.setAttribute('role', 'presentation');
+  }
+
   override render() {
+    const ariaLabel = this.ariaLabel || '';
     if (this.buttonStyle === 'toggle') {
-      return html`<md-filled-icon-button aria-label=${
-          this.a11yLabel} toggle ?selected=${this.selected} ?disabled=${
-          this.disabled}>
-        <slot name="icon"></slot>
-        <slot name="selectedIcon" slot="selected"></slot>
-      </md-filled-icon-button>`;
-    } else if (this.buttonStyle === 'floating') {
-      return html`<md-icon-button ?disabled=${this.disabled} aria-label=${
-          this.a11yLabel}>
-        <slot name="icon"></slot>
-      </md-icon-button>`;
-    } else {
-      return html`<md-filled-tonal-icon-button ?disabled=${
-          this.disabled} aria-label=${this.a11yLabel}>
-        <slot name="icon"></slot>
-      </md-filled-tonal-icon-button>`;
+      return html`
+          <md-filled-icon-button
+              aria-label=${ariaLabel}
+              toggle
+              ?selected=${this.selected}
+              ?disabled=${this.disabled}
+              aria-disabled=${this.disabled}>
+            <slot name="icon"></slot>
+            <slot name="selectedIcon" slot="selected"></slot>
+          </md-filled-icon-button>`;
     }
+
+    if (this.buttonStyle === 'floating' && this.surface !== 'image') {
+      return html`
+          <md-icon-button
+              ?disabled=${this.disabled}
+              aria-label=${ariaLabel}
+              aria-disabled=${this.disabled}>
+            <slot name="icon"></slot>
+          </md-icon-button>`;
+    }
+
+    return html`
+          <md-filled-tonal-icon-button
+              ?disabled=${this.disabled}
+              aria-label=${ariaLabel}
+              aria-disabled=${this.disabled}>
+            <slot name="icon"></slot>
+          </md-filled-tonal-icon-button>`;
   }
 }
 

@@ -6,26 +6,21 @@ import("//build_overrides/build.gni")
 import("../../pdfium.gni")
 import("../../testing/test.gni")
 
-source_set("unowned_ptr") {
-  sources = [ "unowned_ptr.h" ]
-  deps = [ "../../third_party:pdfium_compiler_specific" ]
-  configs += [ "../../:pdfium_strict_config" ]
-  if (pdf_use_partition_alloc) {
-    if (pdf_use_partition_alloc_new_location) {
-      public_deps = [
-        "//base/allocator/partition_allocator/src/partition_alloc:partition_alloc_buildflags",
-        "//base/allocator/partition_allocator/src/partition_alloc:raw_ptr",
-      ]
-    } else {
-      public_deps = [
-        "//base/allocator/partition_allocator:partition_alloc_buildflags",
-        "//base/allocator/partition_allocator:raw_ptr",
-      ]
-    }
-  }
-}
-
 source_set("fxcrt") {
+  visibility = [
+    "../*",
+    "../../:*",
+    "../../fpdfsdk/*",
+    "../../fxbarcode:*",
+    "../../fxjs:*",
+    "../../testing:*",
+    "../../testing/fuzzers/*",
+    "../../third_party:fx_agg",
+    "../../third_party:fx_lcms2",
+    "../../third_party:fx_libopenjpeg",
+    "../../third_party:fx_tiff",
+    "../../xfa/*",
+  ]
   sources = [
     "autonuller.h",
     "autorestorer.h",
@@ -52,9 +47,6 @@ source_set("fxcrt") {
     "data_vector.h",
     "fileaccess_iface.h",
     "fixed_size_data_vector.h",
-    "fixed_try_alloc_zeroed_data_vector.h",
-    "fixed_uninit_data_vector.h",
-    "fixed_zeroed_data_vector.h",
     "fx_2d_size.h",
     "fx_bidi.cpp",
     "fx_bidi.h",
@@ -93,7 +85,6 @@ source_set("fxcrt") {
     "retain_ptr.h",
     "scoped_set_insertion.h",
     "shared_copy_on_write.h",
-    "small_buffer.h",
     "span_util.h",
     "stl_util.h",
     "string_data_template.cpp",
@@ -101,6 +92,7 @@ source_set("fxcrt") {
     "string_pool_template.h",
     "string_view_template.h",
     "tree_node.h",
+    "unowned_ptr.h",
     "utf16.h",
     "weak_ptr.h",
     "widestring.cpp",
@@ -126,42 +118,15 @@ source_set("fxcrt") {
     "../../:pdfium_strict_config",
     "../../:pdfium_noshorten_config",
   ]
-  visibility = [
-    "../*",
-    "../../:*",
-    "../../fpdfsdk/*",
-    "../../fxbarcode:*",
-    "../../fxjs:*",
-    "../../testing:*",
-    "../../testing/fuzzers/*",
-    "../../third_party:fx_agg",
-    "../../third_party:fx_lcms2",
-    "../../third_party:fx_libopenjpeg",
-    "../../third_party:fx_tiff",
-    "../../xfa/*",
-  ]
-  deps = [ "../../third_party:pdfium_base" ]
   public_deps = [
-    ":unowned_ptr",
     "../../:freetype_common",
     "../../third_party:pdfium_base",
     "//third_party/icu:icuuc",
   ]
+  deps = [ "../../third_party:pdfium_compiler_specific" ]
   if (pdf_use_partition_alloc) {
     sources += [ "fx_memory_pa.cpp" ]
-    if (pdf_use_partition_alloc_new_location) {
-      deps += [
-        "//base/allocator/partition_allocator/src/partition_alloc",
-        "//base/allocator/partition_allocator/src/partition_alloc:partition_alloc_buildflags",
-        "//base/allocator/partition_allocator/src/partition_alloc:raw_ptr",
-      ]
-    } else {
-      deps += [
-        "//base/allocator/partition_allocator:partition_alloc",
-        "//base/allocator/partition_allocator:partition_alloc_buildflags",
-        "//base/allocator/partition_allocator:raw_ptr",
-      ]
-    }
+    public_deps += [ "../../third_party:pdfium_pa" ]
   } else {
     sources += [ "fx_memory_malloc.cpp" ]
   }
@@ -220,9 +185,7 @@ pdfium_unittest_source_set("unittests") {
     "cfx_seekablestreamproxy_unittest.cpp",
     "cfx_timer_unittest.cpp",
     "code_point_view_unittest.cpp",
-    "fixed_try_alloc_zeroed_data_vector_unittest.cpp",
-    "fixed_uninit_data_vector_unittest.cpp",
-    "fixed_zeroed_data_vector_unittest.cpp",
+    "fixed_size_data_vector_unittest.cpp",
     "fx_bidi_unittest.cpp",
     "fx_coordinates_unittest.cpp",
     "fx_extension_unittest.cpp",
@@ -242,7 +205,6 @@ pdfium_unittest_source_set("unittests") {
     "retain_ptr_unittest.cpp",
     "scoped_set_insertion_unittest.cpp",
     "shared_copy_on_write_unittest.cpp",
-    "small_buffer_unittest.cpp",
     "span_util_unittest.cpp",
     "string_pool_template_unittest.cpp",
     "tree_node_unittest.cpp",
@@ -262,11 +224,7 @@ pdfium_unittest_source_set("unittests") {
   deps = [ ":unit_test_support" ]
   pdfium_root_dir = "../../"
   if (pdf_use_partition_alloc) {
-    if (pdf_use_partition_alloc_new_location) {
-      deps += [ "//base/allocator/partition_allocator/src/partition_alloc" ]
-    } else {
-      deps += [ "//base/allocator/partition_allocator:partition_alloc" ]
-    }
+    deps += [ "//base/allocator/partition_allocator/src/partition_alloc" ]
   }
   if (pdf_enable_xfa) {
     sources += [ "cfx_memorystream_unittest.cpp" ]

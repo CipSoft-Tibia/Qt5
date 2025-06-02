@@ -22,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 class QOrientationSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlOrientationSensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlOrientationSensor : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(OrientationSensor)
@@ -38,7 +38,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlOrientationSensorReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlOrientationSensorReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(QOrientationReading::Orientation orientation READ orientation

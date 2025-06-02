@@ -1,16 +1,29 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/DynamicUploader.h"
 
@@ -19,6 +32,7 @@
 #include "dawn/common/Math.h"
 #include "dawn/native/Buffer.h"
 #include "dawn/native/Device.h"
+#include "dawn/native/Queue.h"
 
 namespace dawn::native {
 
@@ -28,11 +42,13 @@ DynamicUploader::DynamicUploader(DeviceBase* device) : mDevice(device) {
 }
 
 void DynamicUploader::ReleaseStagingBuffer(Ref<BufferBase> stagingBuffer) {
-    mReleasedStagingBuffers.Enqueue(std::move(stagingBuffer), mDevice->GetPendingCommandSerial());
+    mReleasedStagingBuffers.Enqueue(std::move(stagingBuffer),
+                                    mDevice->GetQueue()->GetPendingCommandSerial());
 }
 
 ResultOrError<UploadHandle> DynamicUploader::AllocateInternal(uint64_t allocationSize,
-                                                              ExecutionSerial serial) {
+                                                              ExecutionSerial serial,
+                                                              uint64_t offsetAlignment) {
     // Disable further sub-allocation should the request be too large.
     if (allocationSize > kRingBufferSize) {
         BufferDescriptor bufferDesc = {};
@@ -54,23 +70,18 @@ ResultOrError<UploadHandle> DynamicUploader::AllocateInternal(uint64_t allocatio
     }
 
     // Note: Validation ensures size is already aligned.
-    // First-fit: find next smallest buffer large enough to satisfy the allocation request.
+    // First-fit: find next buffer large enough to satisfy the allocation request.
+    uint64_t startOffset = RingBufferAllocator::kInvalidOffset;
     RingBuffer* targetRingBuffer = mRingBuffers.back().get();
     for (auto& ringBuffer : mRingBuffers) {
-        const RingBufferAllocator& ringBufferAllocator = ringBuffer->mAllocator;
+        RingBufferAllocator& ringBufferAllocator = ringBuffer->mAllocator;
         // Prevent overflow.
-        ASSERT(ringBufferAllocator.GetSize() >= ringBufferAllocator.GetUsedSize());
-        const uint64_t remainingSize =
-            ringBufferAllocator.GetSize() - ringBufferAllocator.GetUsedSize();
-        if (allocationSize <= remainingSize) {
+        DAWN_ASSERT(ringBufferAllocator.GetSize() >= ringBufferAllocator.GetUsedSize());
+        startOffset = ringBufferAllocator.Allocate(allocationSize, serial, offsetAlignment);
+        if (startOffset != RingBufferAllocator::kInvalidOffset) {
             targetRingBuffer = ringBuffer.get();
             break;
         }
-    }
-
-    uint64_t startOffset = RingBufferAllocator::kInvalidOffset;
-    if (targetRingBuffer != nullptr) {
-        startOffset = targetRingBuffer->mAllocator.Allocate(allocationSize, serial);
     }
 
     // Upon failure, append a newly created ring buffer to fulfill the
@@ -83,7 +94,7 @@ ResultOrError<UploadHandle> DynamicUploader::AllocateInternal(uint64_t allocatio
         startOffset = targetRingBuffer->mAllocator.Allocate(allocationSize, serial);
     }
 
-    ASSERT(startOffset != RingBufferAllocator::kInvalidOffset);
+    DAWN_ASSERT(startOffset != RingBufferAllocator::kInvalidOffset);
 
     // Allocate the staging buffer backing the ringbuffer.
     // Note: the first ringbuffer will be lazily created.
@@ -100,7 +111,7 @@ ResultOrError<UploadHandle> DynamicUploader::AllocateInternal(uint64_t allocatio
         targetRingBuffer->mStagingBuffer = std::move(stagingBuffer);
     }
 
-    ASSERT(targetRingBuffer->mStagingBuffer != nullptr);
+    DAWN_ASSERT(targetRingBuffer->mStagingBuffer != nullptr);
 
     UploadHandle uploadHandle;
     uploadHandle.stagingBuffer = targetRingBuffer->mStagingBuffer.Get();
@@ -126,19 +137,11 @@ void DynamicUploader::Deallocate(ExecutionSerial lastCompletedSerial) {
     mReleasedStagingBuffers.ClearUpTo(lastCompletedSerial);
 }
 
-// TODO(dawn:512): Optimize this function so that it doesn't allocate additional memory
-// when it's not necessary.
 ResultOrError<UploadHandle> DynamicUploader::Allocate(uint64_t allocationSize,
                                                       ExecutionSerial serial,
                                                       uint64_t offsetAlignment) {
-    ASSERT(offsetAlignment > 0);
-    UploadHandle uploadHandle;
-    DAWN_TRY_ASSIGN(uploadHandle, AllocateInternal(allocationSize + offsetAlignment - 1, serial));
-    uint64_t additionalOffset =
-        Align(uploadHandle.startOffset, offsetAlignment) - uploadHandle.startOffset;
-    uploadHandle.mappedBuffer = static_cast<uint8_t*>(uploadHandle.mappedBuffer) + additionalOffset;
-    uploadHandle.startOffset += additionalOffset;
-    return uploadHandle;
+    DAWN_ASSERT(offsetAlignment > 0);
+    return AllocateInternal(allocationSize, serial, offsetAlignment);
 }
 
 bool DynamicUploader::ShouldFlush() {

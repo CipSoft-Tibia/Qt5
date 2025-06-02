@@ -1,16 +1,29 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/DawnNative.h"
 
@@ -130,11 +143,6 @@ void Adapter::ResetInternalDeviceForTesting() {
     mImpl->GetPhysicalDevice()->ResetInternalDeviceForTesting();
 }
 
-// AdapterDiscoverOptionsBase
-
-PhysicalDeviceDiscoveryOptionsBase::PhysicalDeviceDiscoveryOptionsBase(WGPUBackendType type)
-    : backendType(type) {}
-
 // DawnInstanceDescriptor
 
 DawnInstanceDescriptor::DawnInstanceDescriptor() {
@@ -143,9 +151,11 @@ DawnInstanceDescriptor::DawnInstanceDescriptor() {
 
 bool DawnInstanceDescriptor::operator==(const DawnInstanceDescriptor& rhs) const {
     return (nextInChain == rhs.nextInChain) &&
-           std::tie(additionalRuntimeSearchPathsCount, additionalRuntimeSearchPaths, platform) ==
+           std::tie(additionalRuntimeSearchPathsCount, additionalRuntimeSearchPaths, platform,
+                    backendValidationLevel, beginCaptureOnStartup, enableAdapterBlocklist) ==
                std::tie(rhs.additionalRuntimeSearchPathsCount, rhs.additionalRuntimeSearchPaths,
-                        rhs.platform);
+                        rhs.platform, rhs.backendValidationLevel, rhs.beginCaptureOnStartup,
+                        rhs.enableAdapterBlocklist);
 }
 
 // Instance
@@ -160,34 +170,6 @@ Instance::~Instance() {
         mImpl->APIRelease();
         mImpl = nullptr;
     }
-}
-
-void Instance::DiscoverDefaultPhysicalDevices() {
-    mImpl->DiscoverDefaultPhysicalDevices();
-}
-
-bool Instance::DiscoverPhysicalDevices(const PhysicalDeviceDiscoveryOptionsBase* options) {
-    return mImpl->DiscoverPhysicalDevices(options);
-}
-
-// Deprecated.
-void Instance::DiscoverDefaultAdapters() {
-    mImpl->DiscoverDefaultPhysicalDevices();
-}
-
-// Deprecated.
-bool Instance::DiscoverAdapters(const AdapterDiscoveryOptionsBase* options) {
-    return mImpl->DiscoverPhysicalDevices(options);
-}
-
-std::vector<Adapter> Instance::GetAdapters() const {
-    dawn::WarningLog() << "GetAdapters() is deprecated. Call EnumerateAdapters(options) instead.";
-    // Adapters are owned by mImpl so it is safe to return non RAII pointers to them
-    std::vector<Adapter> adapters;
-    for (const Ref<AdapterBase>& adapter : mImpl->GetAdapters()) {
-        adapters.push_back(Adapter(adapter.Get()));
-    }
-    return adapters;
 }
 
 std::vector<Adapter> Instance::EnumerateAdapters(const WGPURequestAdapterOptions* options) const {
@@ -276,8 +258,8 @@ DAWN_NATIVE_EXPORT bool DeviceTick(WGPUDevice device) {
     return FromAPI(device)->APITick();
 }
 
-DAWN_NATIVE_EXPORT bool InstanceProcessEvents(WGPUInstance instance) {
-    return FromAPI(instance)->APIProcessEvents();
+DAWN_NATIVE_EXPORT void InstanceProcessEvents(WGPUInstance instance) {
+    FromAPI(instance)->APIProcessEvents();
 }
 
 // ExternalImageDescriptor
@@ -313,8 +295,12 @@ std::vector<const ToggleInfo*> AllToggleInfos() {
     return TogglesInfo::AllToggleInfos();
 }
 
-FeatureInfo GetFeatureInfo(wgpu::FeatureName featureName) {
-    return kFeatureNameAndInfoList[FromAPI(featureName)];
+const FeatureInfo* GetFeatureInfo(wgpu::FeatureName feature) {
+    Feature f = FromAPI(feature);
+    if (f == Feature::InvalidEnum) {
+        return nullptr;
+    }
+    return &kFeatureNameAndInfoList[FromAPI(feature)];
 }
 
 }  // namespace dawn::native

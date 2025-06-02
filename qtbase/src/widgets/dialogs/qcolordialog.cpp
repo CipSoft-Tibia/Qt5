@@ -516,8 +516,6 @@ int QColorDialog::customCount()
 }
 
 /*!
-    \since 4.5
-
     Returns the custom color at the given \a index as a QColor value.
 */
 QColor QColorDialog::customColor(int index)
@@ -1398,8 +1396,8 @@ void QColorShower::htmlEd()
     if (t.isEmpty())
         return;
 
-    if (!t.startsWith(QStringLiteral("#"))) {
-        t = QStringLiteral("#") + t;
+    if (!t.startsWith(u"#")) {
+        t.prepend(u"#");
         QSignalBlocker blocker(htEd);
         htEd->setText(t);
     }
@@ -1612,7 +1610,7 @@ void QColorDialogPrivate::pickScreenColor()
     Q_Q(QColorDialog);
 
     auto *platformServices = QGuiApplicationPrivate::platformIntegration()->services();
-    if (platformServices->hasCapability(QPlatformServices::Capability::ColorPicking)) {
+    if (platformServices && platformServices->hasCapability(QPlatformServices::Capability::ColorPicking)) {
         if (auto *colorPicker = platformServices->colorPicker(q->windowHandle())) {
             q->connect(colorPicker, &QPlatformServiceColorPicker::colorPicked, q,
                        [q, colorPicker](const QColor &color) {
@@ -1974,8 +1972,6 @@ static const Qt::WindowFlags qcd_DefaultWindowFlags =
 */
 
 /*!
-    \since 4.5
-
     Constructs a color dialog with the given \a parent.
 */
 QColorDialog::QColorDialog(QWidget *parent)
@@ -1984,8 +1980,6 @@ QColorDialog::QColorDialog(QWidget *parent)
 }
 
 /*!
-    \since 4.5
-
     Constructs a color dialog with the given \a parent and specified
     \a initial color.
 */
@@ -2056,8 +2050,6 @@ void QColorDialog::setOption(ColorDialogOption option, bool on)
 }
 
 /*!
-    \since 4.5
-
     Returns \c true if the given \a option is enabled; otherwise, returns
     false.
 
@@ -2109,8 +2101,6 @@ QColorDialog::ColorDialogOptions QColorDialog::options() const
 
 /*!
     \enum QColorDialog::ColorDialogOption
-
-    \since 4.5
 
     This enum specifies various options that affect the look and feel
     of a color dialog.
@@ -2182,8 +2172,6 @@ void QColorDialogPrivate::setVisible(bool visible)
 }
 
 /*!
-    \since 4.5
-
     Opens the dialog and connects its colorSelected() signal to the slot specified
     by \a receiver and \a member.
 
@@ -2199,8 +2187,6 @@ void QColorDialog::open(QObject *receiver, const char *member)
 }
 
 /*!
-    \since 4.5
-
     Pops up a modal color dialog with the given window \a title (or "Select Color" if none is
     specified), lets the user choose a color, and returns that color. The color is initially set
     to \a initial. The dialog is a child of \a parent. It returns an invalid (see
@@ -2211,13 +2197,19 @@ void QColorDialog::open(QObject *receiver, const char *member)
 QColor QColorDialog::getColor(const QColor &initial, QWidget *parent, const QString &title,
                               ColorDialogOptions options)
 {
-    QColorDialog dlg(parent);
+    QAutoPointer<QColorDialog> dlg(new QColorDialog(parent));
     if (!title.isEmpty())
-        dlg.setWindowTitle(title);
-    dlg.setOptions(options);
-    dlg.setCurrentColor(initial);
-    dlg.exec();
-    return dlg.selectedColor();
+        dlg->setWindowTitle(title);
+    dlg->setOptions(options);
+    dlg->setCurrentColor(initial);
+
+    // If the dlg was deleted with a parent window,
+    // dlg == nullptr after leaving the exec().
+    dlg->exec();
+    if (bool(dlg))
+        return dlg->selectedColor();
+    else
+        return QColor();
 }
 
 /*!

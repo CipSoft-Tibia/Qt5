@@ -128,8 +128,8 @@ void ProtocolGen::requestInitialize(const InitializeParams &params,
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<InitializeResult>(response.data, responseHandler, errorHandler);
             },
@@ -150,8 +150,8 @@ void ProtocolGen::requestShutdown(const std::nullptr_t &params,
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::nullptr_t>(response.data, responseHandler, errorHandler);
             },
@@ -189,8 +189,8 @@ void ProtocolGen::requestShowMessageRequest(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<MessageActionItem, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -208,8 +208,8 @@ void ProtocolGen::requestShowDocument(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<ShowDocumentResult>(response.data, responseHandler, errorHandler);
             },
@@ -230,8 +230,8 @@ void ProtocolGen::requestWorkDoneProgressCreate(const WorkDoneProgressCreatePara
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::nullptr_t>(response.data, responseHandler, errorHandler);
             },
@@ -257,8 +257,8 @@ void ProtocolGen::requestRegistration(const RegistrationParams &params,
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::nullptr_t>(response.data, responseHandler, errorHandler);
             },
@@ -274,8 +274,8 @@ void ProtocolGen::requestUnregistration(const UnregistrationParams &params,
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::nullptr_t>(response.data, responseHandler, errorHandler);
             },
@@ -293,8 +293,8 @@ void ProtocolGen::requestWorkspaceWorkspaceFolders(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<WorkspaceFolder>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -322,8 +322,8 @@ void ProtocolGen::requestConfiguration(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<QList<QJsonValue>>(response.data, responseHandler, errorHandler);
             },
@@ -346,8 +346,8 @@ void ProtocolGen::requestWorkspaceSymbol(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<SymbolInformation>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -365,8 +365,8 @@ void ProtocolGen::requestExecuteCommand(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QJsonValue, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -384,8 +384,8 @@ void ProtocolGen::requestApplyWorkspaceEdit(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<ApplyWorkspaceEditResponse>(response.data, responseHandler,
                                                               errorHandler);
@@ -403,8 +403,8 @@ void ProtocolGen::requestCreateFiles(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<WorkspaceEdit, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -427,8 +427,8 @@ void ProtocolGen::requestRenameFiles(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<WorkspaceEdit, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -451,8 +451,8 @@ void ProtocolGen::requestDeleteFiles(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<WorkspaceEdit, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -490,8 +490,8 @@ void ProtocolGen::requestWillSaveTextDocument(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<TextEdit>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -526,8 +526,8 @@ void ProtocolGen::requestCompletion(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<
                             std::variant<QList<CompletionItem>, CompletionList, std::nullptr_t>>(
@@ -545,8 +545,8 @@ void ProtocolGen::requestCompletionItemResolve(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<CompletionItem>(response.data, responseHandler, errorHandler);
             },
@@ -563,8 +563,8 @@ void ProtocolGen::requestHover(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<Hover, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -582,8 +582,8 @@ void ProtocolGen::requestSignatureHelp(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<SignatureHelp, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -603,8 +603,8 @@ void ProtocolGen::requestDeclaration(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<Location, QList<Location>, QList<LocationLink>,
                                                std::nullptr_t>>(response.data, responseHandler,
@@ -625,8 +625,8 @@ void ProtocolGen::requestDefinition(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<Location, QList<Location>, QList<LocationLink>,
                                                std::nullptr_t>>(response.data, responseHandler,
@@ -647,8 +647,8 @@ void ProtocolGen::requestTypeDefinition(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<Location, QList<Location>, QList<LocationLink>,
                                                std::nullptr_t>>(response.data, responseHandler,
@@ -669,8 +669,8 @@ void ProtocolGen::requestImplementation(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<Location, QList<Location>, QList<LocationLink>,
                                                std::nullptr_t>>(response.data, responseHandler,
@@ -689,8 +689,8 @@ void ProtocolGen::requestReference(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<Location>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -709,8 +709,8 @@ void ProtocolGen::requestDocumentHighlight(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<DocumentHighlight>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -730,8 +730,8 @@ void ProtocolGen::requestDocumentSymbol(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<DocumentSymbol>, QList<SymbolInformation>,
                                                std::nullptr_t>>(response.data, responseHandler,
@@ -752,8 +752,8 @@ void ProtocolGen::requestCodeAction(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<
                             std::variant<QList<std::variant<Command, CodeAction>>, std::nullptr_t>>(
@@ -771,8 +771,8 @@ void ProtocolGen::requestCodeActionResolve(const CodeAction &params,
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<CodeAction>(response.data, responseHandler, errorHandler);
             },
@@ -789,8 +789,8 @@ void ProtocolGen::requestCodeLens(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<CodeLens>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -807,8 +807,8 @@ void ProtocolGen::requestCodeLensResolve(const CodeLens &params,
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<CodeLens>(response.data, responseHandler, errorHandler);
             },
@@ -824,8 +824,8 @@ void ProtocolGen::requestCodeLensRefresh(const std::nullptr_t &params,
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::nullptr_t>(response.data, responseHandler, errorHandler);
             },
@@ -843,8 +843,8 @@ void ProtocolGen::requestDocumentLink(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<DocumentLink>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -861,8 +861,8 @@ void ProtocolGen::requestDocumentLinkResolve(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<DocumentLink>(response.data, responseHandler, errorHandler);
             },
@@ -879,8 +879,8 @@ void ProtocolGen::requestDocumentColor(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<QList<ColorInformation>>(response.data, responseHandler,
                                                            errorHandler);
@@ -898,8 +898,8 @@ void ProtocolGen::requestColorPresentation(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<QList<ColorPresentation>>(response.data, responseHandler,
                                                             errorHandler);
@@ -917,8 +917,8 @@ void ProtocolGen::requestDocumentFormatting(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<TextEdit>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -936,8 +936,8 @@ void ProtocolGen::requestDocumentRangeFormatting(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<TextEdit>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -955,8 +955,8 @@ void ProtocolGen::requestDocumentOnTypeFormatting(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<TextEdit>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -974,8 +974,8 @@ void ProtocolGen::requestRename(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<WorkspaceEdit, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -995,8 +995,8 @@ void ProtocolGen::requestPrepareRename(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<Range, RangePlaceHolder, DefaultBehaviorStruct,
                                                std::nullptr_t>>(response.data, responseHandler,
@@ -1016,8 +1016,8 @@ void ProtocolGen::requestFoldingRange(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<FoldingRange>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -1036,8 +1036,8 @@ void ProtocolGen::requestSelectionRange(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<SelectionRange>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -1056,8 +1056,8 @@ void ProtocolGen::requestCallHierarchyPrepare(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<CallHierarchyItem>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -1076,8 +1076,8 @@ void ProtocolGen::requestCallHierarchyIncomingCalls(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<CallHierarchyIncomingCall>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -1096,8 +1096,8 @@ void ProtocolGen::requestCallHierarchyOutgoingCalls(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<CallHierarchyOutgoingCall>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -1115,8 +1115,8 @@ void ProtocolGen::requestSemanticTokens(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<SemanticTokens, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -1136,8 +1136,8 @@ void ProtocolGen::requestSemanticTokensDelta(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<
                             std::variant<SemanticTokens, SemanticTokensDelta, std::nullptr_t>>(
@@ -1156,8 +1156,8 @@ void ProtocolGen::requestSemanticTokensRange(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<SemanticTokens, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -1174,8 +1174,8 @@ void ProtocolGen::requestRequestingARefreshOfAllSemanticTokens(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::nullptr_t>(response.data, responseHandler, errorHandler);
             },
@@ -1193,8 +1193,8 @@ void ProtocolGen::requestLinkedEditingRange(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<LinkedEditingRanges, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);
@@ -1212,8 +1212,8 @@ void ProtocolGen::requestMoniker(
             [responseHandler = std::move(responseHandler),
              errorHandler = std::move(errorHandler)](const QJsonRpcProtocol::Response &response) {
                 if (response.errorCode.isDouble())
-                    errorHandler(ResponseError { response.errorCode.toInt(),
-                                                 response.errorMessage.toUtf8(), response.data });
+                    errorHandler(ResponseError{ response.errorCode.toInt(),
+                                                response.errorMessage.toUtf8(), response.data });
                 else
                     decodeAndCall<std::variant<QList<Moniker>, std::nullptr_t>>(
                             response.data, responseHandler, errorHandler);

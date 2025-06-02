@@ -28,6 +28,9 @@ fuzzer_test("ini_parser_fuzzer") {
     "//base",
     "//chrome/common:ini_parser",
   ]
+
+  # Large ini files can cause test cases to timeout
+  libfuzzer_options = [ "max_len=100000" ]
 }
 grit("resources") {
   source = "common_resources.grd"
@@ -44,7 +47,7 @@ buildflag_header("buildflags") {
   header = "buildflags.h"
   flags = [
     "CHROME_ENABLE_LOGGING_BY_DEFAULT=$chrome_enable_logging_by_default",
-    "CHROME_ROOT_STORE_POLICY_SUPPORTED=$chrome_root_store_policy_supported",
+    "CHROME_CERTIFICATE_POLICIES_SUPPORTED=$chrome_certificate_policies_supported",
     "ENABLE_BACKGROUND_MODE=$enable_background_mode",
     "ENABLE_BACKGROUND_CONTENTS=$enable_background_contents",
     "ENABLE_CHROME_NOTIFICATIONS=$enable_chrome_notifications",
@@ -67,6 +70,7 @@ source_set("channel_info") {
     "channel_info.cc",
     "channel_info.h",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
   deps = [
     "//build:branding_buildflags",
     "//build:chromeos_buildflags",
@@ -104,6 +108,7 @@ source_set("ini_parser") {
     "ini_parser.cc",
     "ini_parser.h",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
   deps = [ "//base" ]
 }
 
@@ -186,7 +191,6 @@ static_library("common_lib") {
     "//chrome/common/profiler",
     "//chrome/common/search:mojo_bindings",
     "//chrome/installer/util:with_no_strings",
-    "//components/cdm/common",
     "//components/client_hints/common",
     "//components/cloud_devices/common",
     "//components/component_updater",
@@ -260,6 +264,10 @@ static_library("common_lib") {
     "//components/no_state_prefetch/common:mojo_bindings",
     "//components/page_load_metrics/common:common",
   ]
+
+  if (is_android || enable_library_cdms) {
+    public_deps += [ "//components/cdm/common" ]
+  }
 
   if (enable_supervised_users) {
     public_deps += [ "//components/supervised_user/core/common" ]
@@ -377,6 +385,8 @@ static_library("common_lib") {
     ]
     public_deps += [ "//ash/keyboard/ui" ]
     deps += [ "//ash/constants" ]
+  } else if (is_chromeos_lacros) {
+    deps += [ "//chromeos/startup" ]
   }
 
   if (is_chromeos) {
@@ -493,7 +503,7 @@ static_library("common_lib") {
   }
 
   if (enable_bound_session_credentials) {
-    sources += [ "bound_session_request_throttled_listener.h" ]
+    sources += [ "bound_session_request_throttled_handler.h" ]
   }
 }
 
@@ -523,9 +533,7 @@ static_library("non_code_constants") {
     "env_vars.cc",
     "env_vars.h",
   ]
-  if (is_win) {
-    sources += [ "chrome_icon_resources_win.h" ]
-  }
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   deps = [
     ":buildflags",
@@ -540,6 +548,10 @@ static_library("non_code_constants") {
     "//printing/buildflags",
     "//ui/base:buildflags",
   ]
+
+  if (is_win) {
+    sources += [ "chrome_icon_resources_win.h" ]
+  }
 }
 
 component("chrome_features") {
@@ -549,6 +561,7 @@ component("chrome_features") {
     "chrome_features.cc",
     "chrome_features.h",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   deps = [
     ":buildflags",
@@ -571,11 +584,11 @@ component("chrome_features") {
 static_library("url_constants") {
   visibility = [ "//chrome/common/*" ]
   sources = [
-    "url_constants.cc",
     "url_constants.h",
     "webui_url_constants.cc",
     "webui_url_constants.h",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   public_deps = [
     ":buildflags",
@@ -610,11 +623,13 @@ static_library("constants") {
     "pref_font_webkit_names.h",
     "pref_names.h",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   public_deps = [
     ":buildflags",
     ":chrome_features",
     ":non_code_constants",
+    "//components/compose:buildflags",
     "//components/signin/public/base:signin_buildflags",
     "//content/public/common:result_codes",
     "//rlz/buildflags",
@@ -667,6 +682,7 @@ static_library("constants") {
     deps += [
       "//chromeos/crosapi/cpp:crosapi_constants",
       "//chromeos/lacros:lacros_paths",
+      "//chromeos/startup",
     ]
     public_deps += [ "//chromeos/crosapi/mojom" ]
   } else if (is_linux || is_chromeos) {
@@ -768,6 +784,20 @@ mojom("mojo_bindings") {
 
   if (is_mac) {
     sources += [ "mac/app_shim.mojom" ]
+    cpp_typemaps = [
+      {
+        types = [
+          {
+            mojom = "chrome.mojom.FeatureState"
+            cpp = "::variations::VariationsCommandLine"
+            move_only = true
+          },
+        ]
+        traits_headers = [ "mac/app_shim_mojom_traits.h" ]
+        traits_sources = [ "mac/app_shim_mojom_traits.cc" ]
+        traits_public_deps = [ "//components/variations/net" ]
+      },
+    ]
   }
 
   if (is_win) {

@@ -11,7 +11,7 @@ QT_BEGIN_NAMESPACE
 
 namespace QtProtobuf {
 
-Q_PROTOBUFQTGUITYPES_EXPORT void qRegisterProtobufQtGuiTypes();
+Q_PROTOBUFQTGUITYPES_EXPORT void registerProtobufQtGuiTypes();
 
 }
 

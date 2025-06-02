@@ -2537,6 +2537,31 @@ void tst_QDateTime::ordering_data()
     generateRow(epochEast1h, epochWest1h, Qt::weak_ordering::equivalent);
     if (epochTimeType == LocalTimeIsUtc)
         generateRow(epoch, local1970, Qt::weak_ordering::equivalent);
+
+#if QT_CONFIG(timezone)
+    // See qtimezone.h's comments on M(ax|in)UtcOffsetSecs:
+    QTimeZone alaska("America/Metlakatla"), phillip("Asia/Manila");
+    if (alaska.isValid() && phillip.isValid()) {
+        // Date Narciso Claveria ordered Manila's transition:
+        QDateTime edict(QDate(1844, 8, 16), QTime(8, 4), phillip); // GMT start of next day
+        // Backends may lack relevant data, so check:
+        const int alaskaOffset = edict.toTimeZone(alaska).offsetFromUtc();
+        const int manilaOffset = edict.toTimeZone(phillip).offsetFromUtc();
+        if (manilaOffset < 0 && alaskaOffset > 0) {
+            qint64 offsetGap = alaskaOffset - manilaOffset; // 31h 9m 42s
+            QDateTime equiv = edict.toTimeZone(alaska); // 15:13:42, on the next day.
+            QTest::newRow("extreme.equivalent")
+                << edict << equiv << Qt::weak_ordering::equivalent;
+            // Despite internal msecs values; edict's is offsetGap * 1000 less than equiv's.
+            // Even the least increase in that gap does imply less:
+            QTest::newRow("extreme.less")
+                << edict << equiv.addMSecs(1) << Qt::weak_ordering::less;
+            // Until offsetGap seconds later, edict's msecs doesn't catch up with equiv's:
+            QTest::newRow("extreme.greater")
+                << edict.addSecs(offsetGap - 1) << equiv << Qt::weak_ordering::greater;
+        }
+    }
+#endif
 }
 
 void tst_QDateTime::ordering()
@@ -3309,6 +3334,12 @@ void tst_QDateTime::fromStringStringFormat_data()
             << u"2018 wilful long working block relief 12-19T21:09 cruel"_s
             << u"yyyy wilful long working block relief MM-ddThh:mm cruel blurb encore flux"_s
             << 1900 << QDateTime();
+    QTest::newRow("fix-century-Mon")
+            << u"Monday, 23 April 12 22:51:41"_s << u"dddd, d MMMM yy hh:mm:ss"_s << 1900
+            << QDateTime(QDate(2012, 4, 23), QTime(22, 51, 41));
+    QTest::newRow("fix-century-Tue")
+            << u"Tuesday, 23 April 12 22:51:41"_s << u"dddd, d MMMM yy hh:mm:ss"_s << 2000
+            << QDateTime(QDate(1912, 4, 23), QTime(22, 51, 41));
 
     // test unicode
     QTest::newRow("unicode handling")
@@ -3328,6 +3359,17 @@ void tst_QDateTime::fromStringStringFormat_data()
     QTest::newRow("ASN.1:UTC-end")
             << u"491231235959Z"_s << u"yyMMddHHmmsst"_s << 1950
             << QDate(2049, 12, 31).endOfDay(QTimeZone::UTC).addMSecs(-999);
+    // Reproducer for QTBUG-129287
+    QTest::newRow("ASN.1:max")
+            << u"99991231235959Z"_s << u"yyyyMMddHHmmsst"_s << 1950
+            << QDate(9999, 12, 31).endOfDay(QTimeZone::UTC).addMSecs(-999);
+    // Can also be reproduced with more legible formats:
+    QTest::newRow("UTC:max")
+            << u"9999 Dec 31 23:59:59 +00:00"_s << u"yyyy MMM dd HH:mm:ss t"_s << 9900
+            << QDate(9999, 12, 31).endOfDay(QTimeZone::UTC).addMSecs(-999);
+    QTest::newRow("UTC:min")
+            << u"0100 Jan 1 00:00:00 +00:00"_s << u"yyyy MMM d HH:mm:ss t"_s << 100
+            << QDate(100, 1, 1).startOfDay(QTimeZone::UTC);
 
     // fuzzer test
     QTest::newRow("integer overflow found by fuzzer")
@@ -3353,9 +3395,17 @@ void tst_QDateTime::fromStringStringFormat()
     QFETCH(int, baseYear);
     QFETCH(QDateTime, expected);
 
-    QDateTime dt = QDateTime::fromString(string, format, baseYear);
+    if (futureTimeType == LocalTimeAheadOfUtc) {
+        // The new parser should remove the bounds, removing this limitation.
+        QEXPECT_FAIL("ASN.1:max", "QTBUG-77948: min/max are local times", Abort);
+        QEXPECT_FAIL("UTC:max", "QTBUG-77948: min/max are local times", Abort);
+    }
+    // For contrast, UTC::min gets away with it, which probably means there are
+    // genuinely out-of-range cases the old parser gets wrong.
 
+    QDateTime dt = QDateTime::fromString(string, format, baseYear);
     QCOMPARE(dt, expected);
+
     if (expected.isValid()) {
         QCOMPARE(dt.timeSpec(), expected.timeSpec());
         QCOMPARE(dt.timeRepresentation(), dt.timeRepresentation());

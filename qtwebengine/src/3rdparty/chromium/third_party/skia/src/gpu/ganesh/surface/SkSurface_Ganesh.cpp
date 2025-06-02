@@ -167,7 +167,7 @@ sk_sp<SkImage> SkSurface_Ganesh::onNewImageSnapshot(const SkIRect* subset) {
                     sk_ref_sp(rContext), srcView, fDevice->imageInfo().colorInfo());
         }
         auto rect = subset ? *subset : SkIRect::MakeSize(srcView.dimensions());
-        GrMipmapped mipmapped = srcView.mipmapped();
+        skgpu::Mipmapped mipmapped = srcView.mipmapped();
         srcView = GrSurfaceProxyView::Copy(rContext,
                                            std::move(srcView),
                                            mipmapped,
@@ -267,9 +267,9 @@ bool SkSurface_Ganesh::onCharacterize(GrSurfaceCharacterization* characterizatio
     GrSurfaceProxyView readSurfaceView = fDevice->readSurfaceView();
     size_t maxResourceBytes = direct->getResourceCacheLimit();
 
-    bool mipmapped = readSurfaceView.asTextureProxy()
-                             ? GrMipmapped::kYes == readSurfaceView.asTextureProxy()->mipmapped()
-                             : false;
+    skgpu::Mipmapped mipmapped = readSurfaceView.asTextureProxy()
+                                         ? readSurfaceView.asTextureProxy()->mipmapped()
+                                         : skgpu::Mipmapped::kNo;
 
     bool usesGLFBO0 = readSurfaceView.asRenderTargetProxy()->glRTFBOIDIs0();
     // We should never get in the situation where we have a texture render target that is also
@@ -291,7 +291,7 @@ bool SkSurface_Ganesh::onCharacterize(GrSurfaceCharacterization* characterizatio
             readSurfaceView.origin(),
             numSamples,
             GrSurfaceCharacterization::Textureable(SkToBool(readSurfaceView.asTextureProxy())),
-            GrSurfaceCharacterization::MipMapped(mipmapped),
+            mipmapped,
             GrSurfaceCharacterization::UsesGLFBO0(usesGLFBO0),
             GrSurfaceCharacterization::VkRTSupportsInputAttachment(vkRTSupportsInputAttachment),
             GrSurfaceCharacterization::VulkanSecondaryCBCompatible(false),
@@ -369,7 +369,7 @@ bool SkSurface_Ganesh::onIsCompatible(const GrSurfaceCharacterization& character
         }
 
         if (characterization.isMipMapped() &&
-            GrMipmapped::kNo == targetView.asTextureProxy()->mipmapped()) {
+            skgpu::Mipmapped::kNo == targetView.asTextureProxy()->mipmapped()) {
             // Fail if the DDL's surface was mipmapped but the replay surface is not.
             // Allow drawing to proceed if the DDL was not mipmapped but the replay surface is.
             return false;
@@ -570,7 +570,7 @@ sk_sp<SkSurface> RenderTarget(GrRecordingContext* rContext,
                                                 c.imageInfo(),
                                                 SkBackingFit::kExact,
                                                 c.sampleCount(),
-                                                GrMipmapped(c.isMipMapped()),
+                                                skgpu::Mipmapped(c.isMipMapped()),
                                                 c.isProtected(),
                                                 c.origin(),
                                                 c.surfaceProps(),
@@ -601,10 +601,11 @@ sk_sp<SkSurface> RenderTarget(GrRecordingContext* rContext,
         return nullptr;
     }
     sampleCount = std::max(1, sampleCount);
-    GrMipmapped mipmapped = shouldCreateWithMips ? GrMipmapped::kYes : GrMipmapped::kNo;
+    skgpu::Mipmapped mipmapped =
+            shouldCreateWithMips ? skgpu::Mipmapped::kYes : skgpu::Mipmapped::kNo;
 
     if (!rContext->priv().caps()->mipmapSupport()) {
-        mipmapped = GrMipmapped::kNo;
+        mipmapped = skgpu::Mipmapped::kNo;
     }
 
     auto device = rContext->priv().createDevice(budgeted,
@@ -798,7 +799,7 @@ void FlushAndSubmit(SkSurface* surface) {
         return;
     }
     if (auto rContext = surface->recordingContext(); rContext != nullptr) {
-        rContext->asDirectContext()->flushAndSubmit(surface, false);
+        rContext->asDirectContext()->flushAndSubmit(surface, GrSyncCpu::kNo);
     }
 }
 
@@ -807,7 +808,7 @@ void FlushAndSubmit(sk_sp<SkSurface> surface) {
         return;
     }
     if (auto rContext = surface->recordingContext(); rContext != nullptr) {
-        rContext->asDirectContext()->flushAndSubmit(surface.get(), false);
+        rContext->asDirectContext()->flushAndSubmit(surface.get(), GrSyncCpu::kNo);
     }
 }
 

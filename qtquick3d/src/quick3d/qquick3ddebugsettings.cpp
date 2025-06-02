@@ -7,7 +7,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype DebugSettings
-    \inherits Object
+    \inherits QtObject
     \inqmlmodule QtQuick3D
     \brief Used to configure debug settings.
 
@@ -148,6 +148,149 @@ void QQuick3DDebugSettings::setWireframeEnabled(bool newWireframeEnabled)
         return;
     m_wireframeEnabled = newWireframeEnabled;
     emit wireframeEnabledChanged();
+    update();
+}
+
+/*!
+    \qmlproperty bool QtQuick3D::DebugSettings::drawDirectionalLightShadowBoxes
+    \since 6.8
+
+    When this property is enabled a bounding box is drawn for every directional light's shadowmap.
+
+    The default value is \c false.
+*/
+
+bool QQuick3DDebugSettings::drawDirectionalLightShadowBoxes() const
+{
+    return m_drawDirectionalLightShadowBoxes;
+}
+
+void QQuick3DDebugSettings::setDrawDirectionalLightShadowBoxes(bool newDrawDirectionalLightShadowBoxes)
+{
+    if (m_drawDirectionalLightShadowBoxes == newDrawDirectionalLightShadowBoxes)
+        return;
+    m_drawDirectionalLightShadowBoxes = newDrawDirectionalLightShadowBoxes;
+    emit drawDirectionalLightShadowBoxesChanged();
+    update();
+}
+
+/*!
+    \qmlproperty bool QtQuick3D::DebugSettings::drawShadowCastingBounds
+    \since 6.8
+
+    When this property is enabled a bounding box is drawn for the shadow casting objects.
+
+    The default value is \c false.
+*/
+
+bool QQuick3DDebugSettings::drawShadowCastingBounds() const
+{
+    return m_drawShadowCastingBounds;
+}
+
+void QQuick3DDebugSettings::setDrawShadowCastingBounds(bool newDrawShadowCastingBounds)
+{
+    if (m_drawShadowCastingBounds == newDrawShadowCastingBounds)
+        return;
+    m_drawShadowCastingBounds = newDrawShadowCastingBounds;
+    emit drawShadowCastingBoundsChanged();
+    update();
+}
+
+/*!
+    \qmlproperty bool QtQuick3D::DebugSettings::drawShadowReceivingBounds
+    \since 6.8
+
+    When this property is enabled a bounding box is drawn for the shadow receiving objects.
+
+    The default value is \c false.
+*/
+
+bool QQuick3DDebugSettings::drawShadowReceivingBounds() const
+{
+    return m_drawShadowReceivingBounds;
+}
+
+void QQuick3DDebugSettings::setDrawShadowReceivingBounds(bool newDrawShadowReceivingBounds)
+{
+    if (m_drawShadowReceivingBounds == newDrawShadowReceivingBounds)
+        return;
+    m_drawShadowReceivingBounds = newDrawShadowReceivingBounds;
+    emit drawShadowReceivingBoundsChanged();
+    update();
+}
+
+/*!
+    \qmlproperty bool QtQuick3D::DebugSettings::drawCascades
+    \since 6.8
+
+    When this property is enabled a frustum is drawn with splits indicating where the
+    shadowmap cascades begin and end.
+
+    The default value is \c false.
+*/
+
+bool QQuick3DDebugSettings::drawCascades() const
+{
+    return m_drawCascades;
+}
+
+void QQuick3DDebugSettings::setDrawCascades(bool newDrawCascades)
+{
+    if (m_drawCascades == newDrawCascades)
+        return;
+    m_drawCascades = newDrawCascades;
+    emit drawCascadesChanged();
+    update();
+}
+
+/*!
+    \qmlproperty bool QtQuick3D::DebugSettings::drawSceneCascadeIntersection
+    \since 6.8
+
+    When this property is enabled the intersection of the shadowmap cascades
+    and the casting and receiving objects of the scene is drawn.
+
+    The default value is \c false.
+*/
+
+bool QQuick3DDebugSettings::drawSceneCascadeIntersection() const
+{
+    return m_drawSceneCascadeIntersection;
+}
+
+void QQuick3DDebugSettings::setDrawSceneCascadeIntersection(bool newDrawSceneCascadeIntersection)
+{
+    if (m_drawSceneCascadeIntersection == newDrawSceneCascadeIntersection)
+        return;
+    m_drawSceneCascadeIntersection = newDrawSceneCascadeIntersection;
+    emit drawSceneCascadeIntersectionChanged();
+    update();
+}
+
+/*!
+    \qmlproperty bool QtQuick3D::DebugSettings::disableShadowCameraUpdate
+    \since 6.8
+
+    When this property is enabled the camera update is disabled for the shadowmap.
+    This means that the view frustum will be locked in space just for the shadowmap
+    calculations. This is just a debug tool to be able to view the camera frustum
+    and shadow map from different angles.
+
+    The default value is \c false.
+*/
+
+bool QQuick3DDebugSettings::disableShadowCameraUpdate() const
+{
+    return m_disableShadowCameraUpdate;
+}
+
+void QQuick3DDebugSettings::setDisableShadowCameraUpdate(bool newDisableShadowCameraUpdate)
+{
+    if (m_disableShadowCameraUpdate == newDisableShadowCameraUpdate)
+        return;
+    m_disableShadowCameraUpdate = newDisableShadowCameraUpdate;
+    emit disableShadowCameraUpdateChanged();
     update();
 }
 

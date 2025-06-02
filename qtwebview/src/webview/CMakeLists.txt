@@ -28,6 +28,14 @@ qt_internal_add_module(WebView
     PRIVATE_MODULE_INTERFACE
         Qt::CorePrivate
         Qt::GuiPrivate
+    NO_GENERATE_CPP_EXPORTS
+)
+
+qt_internal_extend_target(WebView CONDITION WIN32 AND TARGET Qt::WebEngineQuick
+    PUBLIC_LIBRARIES
+        Qt::WebEngineQuick
+    DEFINES
+        QTWEBVIEW_LINK_WEBENGINE
 )
 
 if(ANDROID)

@@ -9,6 +9,7 @@
 #include <type_traits>
 
 #include "base/auto_reset.h"
+#include "base/check.h"
 #include "base/debug/alias.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
@@ -50,7 +51,7 @@ DWORD GetSleepTimeoutMs(TimeTicks next_task_time,
 
   // A saturated_cast with an unsigned destination automatically clamps negative
   // values at zero.
-  static_assert(!std::is_signed<DWORD>::value, "DWORD is unexpectedly signed");
+  static_assert(!std::is_signed_v<DWORD>, "DWORD is unexpectedly signed");
   return saturated_cast<DWORD>(timeout_ms);
 }
 
@@ -90,7 +91,7 @@ void MessagePumpWin::Quit() {
 MessagePumpForUI::MessagePumpForUI() {
   bool succeeded = message_window_.Create(
       BindRepeating(&MessagePumpForUI::MessageCallback, Unretained(this)));
-  DCHECK(succeeded);
+  CHECK(succeeded);
 }
 
 MessagePumpForUI::~MessagePumpForUI() = default;
@@ -521,6 +522,7 @@ bool MessagePumpForUI::ProcessMessageHelper(const MSG& msg) {
   if (msg.message == kMsgHaveWork && msg.hwnd == message_window_.hwnd())
     return ProcessPumpReplacementMessage();
 
+  run_state_->delegate->BeginNativeWorkBeforeDoWork();
   auto scoped_do_work_item = run_state_->delegate->BeginWorkItem();
 
   TRACE_EVENT("base,toplevel", "MessagePumpForUI DispatchMessage",
@@ -761,6 +763,7 @@ bool MessagePumpForIO::WaitForIOCompletion(DWORD timeout) {
   if (ProcessInternalIOItem(item))
     return true;
 
+  run_state_->delegate->BeginNativeWorkBeforeDoWork();
   auto scoped_do_work_item = run_state_->delegate->BeginWorkItem();
 
   TRACE_EVENT(

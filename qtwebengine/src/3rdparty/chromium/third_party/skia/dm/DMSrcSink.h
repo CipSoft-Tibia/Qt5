@@ -15,9 +15,10 @@
 #include "include/core/SkData.h"
 #include "include/core/SkPicture.h"
 #include "include/gpu/graphite/ContextOptions.h"
-#include "src/utils/SkMultiPictureDocument.h"
+#include "include/docs/SkMultiPictureDocument.h"
 #include "tools/flags/CommonFlagsConfig.h"
 #include "tools/gpu/MemoryCache.h"
+#include "tools/graphite/TestOptions.h"
 
 #include <functional>
 
@@ -26,11 +27,6 @@
 namespace skiagm::verifiers {
 class VerifierList;
 }
-
-namespace skgpu::graphite {
-struct Options;
-}
-
 namespace DM {
 
 // This is just convenience.  It lets you use either return "foo" or return SkStringPrintf(...).
@@ -94,8 +90,10 @@ struct SinkFlags {
 };
 
 struct Src {
+    using GraphiteTestContext = skiatest::graphite::GraphiteTestContext;
+
     virtual ~Src() {}
-    [[nodiscard]] virtual Result draw(SkCanvas* canvas) const = 0;
+    [[nodiscard]] virtual Result draw(SkCanvas* canvas, GraphiteTestContext*) const = 0;
     virtual SkISize size() const = 0;
     virtual Name name() const = 0;
     virtual void modifyGrContextOptions(GrContextOptions*) const  {}
@@ -103,17 +101,14 @@ struct Src {
     virtual bool veto(SinkFlags) const { return false; }
 
     virtual int pageCount() const { return 1; }
-    [[nodiscard]] virtual Result draw([[maybe_unused]] int page, SkCanvas* canvas) const {
-        return this->draw(canvas);
+    [[nodiscard]] virtual Result draw([[maybe_unused]] int page,
+                                      SkCanvas* canvas,
+                                      GraphiteTestContext* graphiteTestContext) const {
+        return this->draw(canvas, graphiteTestContext);
     }
     virtual SkISize size([[maybe_unused]] int page) const { return this->size(); }
     // Force Tasks using this Src to run on the main thread?
     virtual bool serial() const { return false; }
-
-    /** Return a list of verifiers for the src, or null if no verifiers should be run .*/
-    virtual std::unique_ptr<skiagm::verifiers::VerifierList> getVerifiers() const {
-        return nullptr;
-    }
 };
 
 struct Sink {
@@ -142,15 +137,13 @@ class GMSrc : public Src {
 public:
     explicit GMSrc(skiagm::GMFactory);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
     void modifyGrContextOptions(GrContextOptions* options) const override;
 #if defined(SK_GRAPHITE)
     void modifyGraphiteContextOptions(skgpu::graphite::ContextOptions*) const override;
 #endif
-
-    std::unique_ptr<skiagm::verifiers::VerifierList> getVerifiers() const override;
 
 private:
     skiagm::GMFactory fFactory;
@@ -177,7 +170,7 @@ public:
     };
     CodecSrc(Path, Mode, DstColorType, SkAlphaType, float);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
     bool veto(SinkFlags) const override;
@@ -195,7 +188,7 @@ class AndroidCodecSrc : public Src {
 public:
     AndroidCodecSrc(Path, CodecSrc::DstColorType, SkAlphaType, int sampleSize);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
     bool veto(SinkFlags) const override;
@@ -224,7 +217,7 @@ public:
 
     BRDSrc(Path, Mode, CodecSrc::DstColorType, uint32_t);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
     bool veto(SinkFlags) const override;
@@ -244,7 +237,7 @@ public:
     };
     ImageGenSrc(Path, Mode, SkAlphaType, bool);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
     bool veto(SinkFlags) const override;
@@ -261,7 +254,7 @@ class ColorCodecSrc : public Src {
 public:
     ColorCodecSrc(Path, bool decode_to_dst);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
     bool veto(SinkFlags) const override;
@@ -274,7 +267,7 @@ class SKPSrc : public Src {
 public:
     explicit SKPSrc(Path path);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
 private:
@@ -288,7 +281,7 @@ class BisectSrc : public SKPSrc {
 public:
     explicit BisectSrc(Path path, const char* trail);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
 
 private:
     SkString fTrail;
@@ -301,7 +294,7 @@ class SkottieSrc final : public Src {
 public:
     explicit SkottieSrc(Path path);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
     bool veto(SinkFlags) const override;
@@ -329,7 +322,7 @@ class SVGSrc : public Src {
 public:
     explicit SVGSrc(Path path);
 
-    Result draw(SkCanvas*) const override;
+    Result draw(SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     Name name() const override;
     bool veto(SinkFlags) const override;
@@ -349,8 +342,8 @@ public:
     explicit MSKPSrc(Path path);
 
     int pageCount() const override;
-    Result draw(SkCanvas* c) const override;
-    Result draw(int, SkCanvas*) const override;
+    Result draw(SkCanvas* c, GraphiteTestContext*) const override;
+    Result draw(int, SkCanvas*, GraphiteTestContext*) const override;
     SkISize size() const override;
     SkISize size(int) const override;
     Name name() const override;
@@ -585,8 +578,13 @@ public:
     }
 
 private:
-    skgpu::graphite::ContextOptions fBaseContextOptions;
+    sk_sp<SkSurface> makeSurface(skgpu::graphite::Recorder*, SkISize) const;
+
+    using SurfaceType = SkCommandLineConfigGraphite::SurfaceType;
+
+    skiatest::graphite::TestOptions fOptions;
     skgpu::ContextType fContextType;
+    SurfaceType fSurfaceType;
     SkColorType fColorType;
     SkAlphaType fAlphaType;
     sk_sp<SkColorSpace> fColorSpace;

@@ -7,8 +7,10 @@
 
 #include "src/compiler/js-heap-broker.h"
 #include "src/compiler/turboshaft/assembler.h"
+#include "src/compiler/turboshaft/builtin-call-descriptors.h"
 #include "src/compiler/turboshaft/index.h"
 #include "src/compiler/turboshaft/operations.h"
+#include "src/compiler/turboshaft/phase.h"
 #include "src/compiler/turboshaft/representations.h"
 
 namespace v8::internal::compiler::turboshaft {
@@ -21,18 +23,41 @@ class DebugFeatureLoweringReducer : public Next {
   TURBOSHAFT_REDUCER_BOILERPLATE()
 
   OpIndex REDUCE(DebugPrint)(OpIndex input, RegisterRepresentation rep) {
-    switch (rep.value()) {
-      case RegisterRepresentation::PointerSized():
-        __ CallBuiltin_DebugPrintWordPtr(isolate_, __ NoContextConstant(),
-                                         input);
-        break;
-      case RegisterRepresentation::Float64():
-        __ CallBuiltin_DebugPrintFloat64(isolate_, __ NoContextConstant(),
-                                         input);
-        break;
-      default:
-        // TODO(nicohartmann@): Support other representations.
-        UNIMPLEMENTED();
+    if (isolate_ != nullptr) {
+      switch (rep.value()) {
+        case RegisterRepresentation::PointerSized():
+          __ CallBuiltin_DebugPrintWordPtr(isolate_, __ NoContextConstant(),
+                                           input);
+          break;
+        case RegisterRepresentation::Float64():
+          __ CallBuiltin_DebugPrintFloat64(isolate_, __ NoContextConstant(),
+                                           input);
+          break;
+        default:
+          // TODO(nicohartmann@): Support other representations.
+          UNIMPLEMENTED();
+      }
+    } else {
+#if V8_ENABLE_WEBASSEMBLY
+      DCHECK(PipelineData::Get().is_wasm());
+      switch (rep.value()) {
+        case RegisterRepresentation::Float64():
+          __ template WasmCallBuiltinThroughJumptable<
+              BuiltinCallDescriptor::DebugPrintFloat64>(__ NoContextConstant(),
+                                                        {input});
+          break;
+        case RegisterRepresentation::PointerSized():
+          __ template WasmCallBuiltinThroughJumptable<
+              BuiltinCallDescriptor::DebugPrintWordPtr>(__ NoContextConstant(),
+                                                        {input});
+          break;
+        default:
+          // TODO(mliedtke): Support other representations.
+          UNIMPLEMENTED();
+      }
+#else
+      UNREACHABLE();
+#endif
     }
     return {};
   }

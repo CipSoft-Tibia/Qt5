@@ -14,23 +14,25 @@
 // We mean it.
 //
 
-#include "qffmpeg_p.h"
-#include "qffmpeghwaccel_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegdefs_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
+
+#include <QtCore/qspan.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 
-AVPixelFormat findTargetSWFormat(AVPixelFormat sourceSWFormat, const AVCodec *codec,
-                                 const HWAccel &accel);
+std::optional<AVPixelFormat> findTargetSWFormat(AVPixelFormat sourceSWFormat, const Codec &codec,
+                                                const HWAccel &accel,
+                                                const AVPixelFormatSet &prohibitedFormats = {});
 
-AVPixelFormat findTargetFormat(AVPixelFormat sourceFormat, AVPixelFormat sourceSWFormat,
-                               const AVCodec *codec, const HWAccel *accel);
+std::optional<AVPixelFormat> findTargetFormat(AVPixelFormat sourceFormat,
+                                              AVPixelFormat sourceSWFormat, const Codec &codec,
+                                              const HWAccel *accel,
+                                              const AVPixelFormatSet &prohibitedFormats = {});
 
-std::pair<const AVCodec *, std::unique_ptr<HWAccel>> findHwEncoder(AVCodecID codecID,
-                                                                   const QSize &sourceSize);
-
-const AVCodec *findSwEncoder(AVCodecID codecID, AVPixelFormat sourceSWFormat);
+AVScore findSWFormatScores(const Codec &codec, AVPixelFormat sourceSWFormat);
 
 /**
  * @brief adjustFrameRate get a rational frame rate be requested qreal rate.
@@ -38,7 +40,7 @@ const AVCodec *findSwEncoder(AVCodecID codecID, AVPixelFormat sourceSWFormat);
  *        the function selects the most suitable one,
  *        otherwise just makes AVRational from qreal.
  */
-AVRational adjustFrameRate(const AVRational *supportedRates, qreal requestedRate);
+AVRational adjustFrameRate(QSpan<const AVRational> supportedRates, qreal requestedRate);
 
 /**
  * @brief adjustFrameTimeBase gets adjusted timebase by a list of supported frame rates
@@ -53,9 +55,11 @@ AVRational adjustFrameRate(const AVRational *supportedRates, qreal requestedRate
  *
  *        The adjusted time base is supposed to be set to stream and codec context.
  */
-AVRational adjustFrameTimeBase(const AVRational *supportedRates, AVRational frameRate);
+AVRational adjustFrameTimeBase(QSpan<const AVRational> supportedRates, AVRational frameRate);
 
-QSize adjustVideoResolution(const AVCodec *codec, QSize requestedResolution);
+QSize adjustVideoResolution(const Codec &codec, QSize requestedResolution);
+
+int getScaleConversionType(const QSize &sourceSize, const QSize &targetSize);
 
 } // namespace QFFmpeg
 

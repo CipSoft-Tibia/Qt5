@@ -23,17 +23,17 @@ void SensorClient::receive()
         const auto datagram = m_client.receiveDatagram();
         qt::examples::sensors::tlv::TlvMessage msg;
         msg.deserialize(&m_serializer, datagram.data());
-        if (m_serializer.deserializationError()
-                != QAbstractProtobufSerializer::NoError) {
+        if (m_serializer.lastError()
+                != QAbstractProtobufSerializer::Error::None) {
             qWarning().nospace() << "Unable to deserialize datagram ("
-                       << m_serializer.deserializationError() << ")"
-                       << m_serializer.deserializationErrorString();
+                       << qToUnderlying(m_serializer.lastError()) << ")"
+                       << m_serializer.lastErrorString();
             continue;
         }
 //! [0]
 
         switch (msg.type()) {
-        case qt::examples::sensors::tlv::MessageTypeGadget::Coordinates: {
+        case qt::examples::sensors::tlv::MessageTypeGadget::MessageType::Coordinates: {
 //! [1]
             qt::examples::sensors::Coordinates coord;
             coord.deserialize(&m_serializer, msg.value());
@@ -41,13 +41,13 @@ void SensorClient::receive()
             break;
 //! [1]
         }
-        case qt::examples::sensors::tlv::MessageTypeGadget::Temperature: {
+        case qt::examples::sensors::tlv::MessageTypeGadget::MessageType::Temperature: {
             qt::examples::sensors::Temperature temp;
             temp.deserialize(&m_serializer, msg.value());
             emit temperatureUpdated(temp);
             break;
         }
-        case qt::examples::sensors::tlv::MessageTypeGadget::WarningNotification: {
+        case qt::examples::sensors::tlv::MessageTypeGadget::MessageType::WarningNotification: {
             qt::examples::sensors::WarningNotification warn;
             warn.deserialize(&m_serializer, msg.value());
             emit warning(warn);
@@ -55,11 +55,11 @@ void SensorClient::receive()
         }
         }
 
-        if (m_serializer.deserializationError()
-                != QAbstractProtobufSerializer::NoError) {
+        if (m_serializer.lastError()
+                != QAbstractProtobufSerializer::Error::None) {
             qWarning().nospace() << "Unable to deserialize message ("
-                       << m_serializer.deserializationError() << ")"
-                       << m_serializer.deserializationErrorString();
+                       << qToUnderlying(m_serializer.lastError()) << ")"
+                       << m_serializer.lastErrorString();
             continue;
         }
     }

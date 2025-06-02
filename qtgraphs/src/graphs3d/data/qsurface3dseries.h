@@ -1,12 +1,8 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QSURFACE3DSERIES_H
-#define QSURFACE3DSERIES_H
-
-#if 0
-#  pragma qt_class(QSurface3DSeries)
-#endif
+#ifndef QTGRAPHS_QSURFACE3DSERIES_H
+#define QTGRAPHS_QSURFACE3DSERIES_H
 
 #include <QtGraphs/qabstract3dseries.h>
 #include <QtGraphs/qsurfacedataproxy.h>
@@ -15,32 +11,38 @@ QT_BEGIN_NAMESPACE
 
 class QSurface3DSeriesPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QSurface3DSeries : public QAbstract3DSeries
+class Q_GRAPHS_EXPORT QSurface3DSeries : public QAbstract3DSeries
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QSurface3DSeries)
-    Q_PROPERTY(QSurfaceDataProxy *dataProxy READ dataProxy WRITE setDataProxy NOTIFY dataProxyChanged)
+    Q_PROPERTY(QSurfaceDataProxy *dataProxy READ dataProxy WRITE setDataProxy NOTIFY
+                   dataProxyChanged FINAL)
     Q_PROPERTY(
         QPoint selectedPoint READ selectedPoint WRITE setSelectedPoint NOTIFY selectedPointChanged)
-    Q_PROPERTY(bool flatShadingEnabled READ isFlatShadingEnabled WRITE setFlatShadingEnabled NOTIFY
-                   flatShadingEnabledChanged)
+    Q_PROPERTY(bool flatShadingSupported READ isFlatShadingSupported NOTIFY
+                   flatShadingSupportedChanged FINAL)
+    Q_PROPERTY(QSurface3DSeries::DrawFlags drawMode READ drawMode WRITE setDrawMode NOTIFY
+                   drawModeChanged FINAL)
+    Q_PROPERTY(QSurface3DSeries::Shading shading READ shading WRITE setShading NOTIFY shadingChanged)
+    Q_PROPERTY(QImage texture READ texture WRITE setTexture NOTIFY textureChanged FINAL)
     Q_PROPERTY(
-        bool flatShadingSupported READ isFlatShadingSupported NOTIFY flatShadingSupportedChanged)
-    Q_PROPERTY(
-        QSurface3DSeries::DrawFlags drawMode READ drawMode WRITE setDrawMode NOTIFY drawModeChanged)
-    Q_PROPERTY(QImage texture READ texture WRITE setTexture NOTIFY textureChanged)
-    Q_PROPERTY(QString textureFile READ textureFile WRITE setTextureFile NOTIFY textureFileChanged)
+        QString textureFile READ textureFile WRITE setTextureFile NOTIFY textureFileChanged FINAL)
     Q_PROPERTY(QColor wireframeColor READ wireframeColor WRITE setWireframeColor NOTIFY
-                   wireframeColorChanged)
+                   wireframeColorChanged FINAL)
+    Q_PROPERTY(
+        QSurfaceDataArray dataArray READ dataArray WRITE setDataArray NOTIFY dataArrayChanged FINAL)
 
 public:
     enum DrawFlag {
         DrawWireframe = 1,
         DrawSurface = 2,
-        DrawSurfaceAndWireframe = DrawWireframe | DrawSurface
+        DrawSurfaceAndWireframe = DrawWireframe | DrawSurface,
     };
     Q_FLAG(DrawFlag)
     Q_DECLARE_FLAGS(DrawFlags, DrawFlag)
+
+    enum class Shading { Smooth, Flat };
+    Q_ENUM(Shading)
 
     explicit QSurface3DSeries(QObject *parent = nullptr);
     explicit QSurface3DSeries(QSurfaceDataProxy *dataProxy, QObject *parent = nullptr);
@@ -49,12 +51,12 @@ public:
     void setDataProxy(QSurfaceDataProxy *proxy);
     QSurfaceDataProxy *dataProxy() const;
 
-    void setSelectedPoint(const QPoint &position);
+    void setSelectedPoint(QPoint position);
     QPoint selectedPoint() const;
     static QPoint invalidSelectionPosition();
 
-    void setFlatShadingEnabled(bool enabled);
-    bool isFlatShadingEnabled() const;
+    void setShading(const QSurface3DSeries::Shading shading);
+    QSurface3DSeries::Shading shading() const;
 
     void setDrawMode(QSurface3DSeries::DrawFlags mode);
     QSurface3DSeries::DrawFlags drawMode() const;
@@ -66,18 +68,25 @@ public:
     void setTextureFile(const QString &filename);
     QString textureFile() const;
 
-    void setWireframeColor(const QColor &color);
+    void setWireframeColor(QColor color);
     QColor wireframeColor() const;
+
+    void setDataArray(const QSurfaceDataArray &newDataArray);
+    void clearRow(qsizetype rowIndex);
+    void clearArray();
+    const QSurfaceDataArray &dataArray() const &;
+    QSurfaceDataArray dataArray() &&;
 
 Q_SIGNALS:
     void dataProxyChanged(QSurfaceDataProxy *proxy);
-    void selectedPointChanged(const QPoint &position);
-    void flatShadingEnabledChanged(bool enable);
-    void flatShadingSupportedChanged(bool enable);
+    void selectedPointChanged(QPoint position);
+    void flatShadingSupportedChanged(bool enabled);
     void drawModeChanged(QSurface3DSeries::DrawFlags mode);
     void textureChanged(const QImage &image);
     void textureFileChanged(const QString &filename);
-    void wireframeColorChanged(const QColor &color);
+    void wireframeColorChanged(QColor color);
+    void dataArrayChanged(const QSurfaceDataArray &array);
+    void shadingChanged(const Shading shading);
 
 protected:
     explicit QSurface3DSeries(QSurface3DSeriesPrivate &d, QObject *parent = nullptr);

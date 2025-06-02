@@ -26,8 +26,8 @@ class QuicCryptoStream;
 // provides functionality common to both the client and server, such as moving
 // messages between the TLS stack and the QUIC crypto stream, and handling
 // derivation of secrets.
-class QUIC_EXPORT_PRIVATE TlsHandshaker : public TlsConnection::Delegate,
-                                          public CryptoMessageParser {
+class QUICHE_EXPORT TlsHandshaker : public TlsConnection::Delegate,
+                                    public CryptoMessageParser {
  public:
   // TlsHandshaker does not take ownership of any of its arguments; they must
   // outlive the TlsHandshaker.
@@ -175,8 +175,7 @@ class QUIC_EXPORT_PRIVATE TlsHandshaker : public TlsConnection::Delegate,
  private:
   // ProofVerifierCallbackImpl handles the result of an asynchronous certificate
   // verification operation.
-  class QUIC_EXPORT_PRIVATE ProofVerifierCallbackImpl
-      : public ProofVerifierCallback {
+  class QUICHE_EXPORT ProofVerifierCallbackImpl : public ProofVerifierCallback {
    public:
     explicit ProofVerifierCallbackImpl(TlsHandshaker* parent);
     ~ProofVerifierCallbackImpl() override;
@@ -205,8 +204,6 @@ class QUIC_EXPORT_PRIVATE TlsHandshaker : public TlsConnection::Delegate,
 
   int expected_ssl_error_ = SSL_ERROR_WANT_READ;
   bool is_connection_closed_ = false;
-  const bool check_connected_before_set_read_secret_ =
-      GetQuicReloadableFlag(quic_check_connected_before_set_read_secret);
 
   QuicCryptoStream* stream_;
   HandshakerDelegateInterface* handshaker_delegate_;
@@ -228,7 +225,7 @@ class QUIC_EXPORT_PRIVATE TlsHandshaker : public TlsConnection::Delegate,
     // https://www.iana.org/assignments/tls-parameters/tls-parameters.xhtml#tls-parameters-6
     uint8_t desc;
   };
-  absl::optional<TlsAlert> last_tls_alert_;
+  std::optional<TlsAlert> last_tls_alert_;
 };
 
 }  // namespace quic

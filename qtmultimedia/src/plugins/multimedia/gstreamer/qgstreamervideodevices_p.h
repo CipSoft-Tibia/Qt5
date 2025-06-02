@@ -21,7 +21,7 @@
 #include <vector>
 
 #include <common/qgst_handle_types_p.h>
-#include <common/qgst_bus_p.h>
+#include <common/qgst_bus_observer_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -30,13 +30,15 @@ class QGstreamerVideoDevices final : public QPlatformVideoDevices,
 {
 public:
     explicit QGstreamerVideoDevices(QPlatformMediaIntegration *integration);
-    ~QGstreamerVideoDevices();
+    ~QGstreamerVideoDevices() override;
 
-    QList<QCameraDevice> videoDevices() const override;
     GstDevice *videoDevice(const QByteArray &id) const;
 
     void addDevice(QGstDeviceHandle);
     void removeDevice(QGstDeviceHandle);
+
+protected:
+    QList<QCameraDevice> findVideoInputs() const override;
 
 private:
     bool processBusMessage(const QGstreamerMessage &message) override;
@@ -51,7 +53,7 @@ private:
     std::vector<QGstRecordDevice> m_videoSources;
 
     QGstDeviceMonitorHandle m_deviceMonitor;
-    QGstBus m_bus;
+    QGstBusObserver m_busObserver;
 };
 
 QT_END_NAMESPACE

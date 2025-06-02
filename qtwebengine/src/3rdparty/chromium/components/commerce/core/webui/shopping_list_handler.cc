@@ -9,13 +9,16 @@
 
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
 #include "components/bookmarks/browser/bookmark_node.h"
+#include "components/commerce/core/commerce_constants.h"
 #include "components/commerce/core/commerce_feature_list.h"
 #include "components/commerce/core/price_tracking_utils.h"
 #include "components/commerce/core/shopping_service.h"
 #include "components/commerce/core/subscriptions/commerce_subscription.h"
+#include "components/commerce/core/webui/webui_utils.h"
 #include "components/feature_engagement/public/tracker.h"
 #include "components/payments/core/currency_formatter.h"
 #include "components/power_bookmarks/core/power_bookmark_utils.h"
@@ -27,48 +30,6 @@
 
 namespace commerce {
 namespace {
-
-shopping_list::mojom::ProductInfoPtr ProductInfoToMojoProduct(
-    const GURL& url,
-    const absl::optional<const ProductInfo>& info,
-    const std::string& locale) {
-  auto product_info = shopping_list::mojom::ProductInfo::New();
-
-  if (!info.has_value()) {
-    return product_info;
-  }
-
-  product_info->title = info->title;
-  product_info->cluster_title = info->product_cluster_title;
-  product_info->domain = base::UTF16ToUTF8(
-      url_formatter::FormatUrlForDisplayOmitSchemePathAndTrivialSubdomains(
-          GURL(url)));
-  product_info->product_url = url;
-  product_info->image_url = info->image_url;
-  if (info->product_cluster_id.has_value()) {
-    product_info->cluster_id = info->product_cluster_id.value();
-  }
-
-  std::unique_ptr<payments::CurrencyFormatter> formatter =
-      std::make_unique<payments::CurrencyFormatter>(info->currency_code,
-                                                    locale);
-  formatter->SetMaxFractionalDigits(2);
-
-  product_info->current_price =
-      base::UTF16ToUTF8(formatter->Format(base::NumberToString(
-          static_cast<float>(info->amount_micros) / kToMicroCurrency)));
-
-  // Only send the previous price if it is higher than the current price.
-  if (info->previous_amount_micros.has_value() &&
-      info->previous_amount_micros.value() > info->amount_micros) {
-    product_info->previous_price =
-        base::UTF16ToUTF8(formatter->Format(base::NumberToString(
-            static_cast<float>(info->previous_amount_micros.value()) /
-            kToMicroCurrency)));
-  }
-
-  return product_info;
-}
 
 shopping_list::mojom::BookmarkProductInfoPtr BookmarkNodeToMojoProduct(
     bookmarks::BookmarkModel& model,
@@ -216,7 +177,8 @@ ShoppingListHandler::ShoppingListHandler(
       tracker_(tracker),
       locale_(locale),
       delegate_(std::move(delegate)) {
-  scoped_observation_.Observe(shopping_service_);
+  scoped_subscriptions_observation_.Observe(shopping_service_);
+  scoped_bookmark_model_observation_.Observe(bookmark_model_);
   // It is safe to schedule updates and observe bookmarks. If the feature is
   // disabled, no new information will be fetched or provided to the frontend.
   shopping_service_->ScheduleSavedProductUpdate();
@@ -313,6 +275,28 @@ void ShoppingListHandler::OnUnsubscribe(
   if (succeeded) {
     HandleSubscriptionChange(subscription, false);
   }
+}
+
+void ShoppingListHandler::BookmarkModelChanged() {}
+
+void ShoppingListHandler::BookmarkNodeMoved(
+    bookmarks::BookmarkModel* model,
+    const bookmarks::BookmarkNode* old_parent,
+    size_t old_index,
+    const bookmarks::BookmarkNode* new_parent,
+    size_t new_index) {
+  const bookmarks::BookmarkNode* node = new_parent->children()[new_index].get();
+  if (!node) {
+    return;
+  }
+  std::unique_ptr<power_bookmarks::PowerBookmarkMeta> meta =
+      power_bookmarks::GetNodePowerBookmarkMeta(bookmark_model_, node);
+  if (!meta || !meta->has_shopping_specifics() ||
+      !meta->shopping_specifics().has_product_cluster_id()) {
+    return;
+  }
+  remote_page_->OnProductBookmarkMoved(
+      BookmarkNodeToMojoProduct(*bookmark_model_, node, locale_));
 }
 
 void ShoppingListHandler::HandleSubscriptionChange(
@@ -417,27 +401,86 @@ void ShoppingListHandler::GetShoppingCollectionBookmarkFolderId(
 
 void ShoppingListHandler::GetPriceTrackingStatusForCurrentUrl(
     GetPriceTrackingStatusForCurrentUrlCallback callback) {
-  const GURL current_url = delegate_->GetCurrentTabUrl().value();
-  const bookmarks::BookmarkNode* existing_node =
-      bookmark_model_->GetMostRecentlyAddedUserNodeForURL(current_url);
-  if (!existing_node) {
-    std::move(callback).Run(false);
-    return;
-  }
-  commerce::IsBookmarkPriceTracked(
-      shopping_service_, bookmark_model_, existing_node,
+  // The URL may or may not have a bookmark associated with it. Prioritize
+  // accessing the product info for the URL before looking at an existing
+  // bookmark.
+  shopping_service_->GetProductInfoForUrl(
+      delegate_->GetCurrentTabUrl().value(),
       base::BindOnce(
-          &ShoppingListHandler::OnGetPriceTrackingStatusForCurrentUrl,
+          [](base::WeakPtr<ShoppingListHandler> handler,
+             GetPriceTrackingStatusForCurrentUrlCallback callback,
+             const GURL& url, const absl::optional<const ProductInfo>& info) {
+            if (!info.has_value() || !info->product_cluster_id.has_value() ||
+                !handler || !CanTrackPrice(info)) {
+              std::move(callback).Run(false);
+              return;
+            }
+            CommerceSubscription sub(
+                SubscriptionType::kPriceTrack,
+                IdentifierType::kProductClusterId,
+                base::NumberToString(info->product_cluster_id.value()),
+                ManagementType::kUserManaged);
+
+            handler->shopping_service_->IsSubscribed(
+                sub,
+                base::BindOnce(
+                    [](GetPriceTrackingStatusForCurrentUrlCallback callback,
+                       bool subscribed) {
+                      std::move(callback).Run(subscribed);
+                    },
+                    std::move(callback)));
+          },
           weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
 }
 
 void ShoppingListHandler::SetPriceTrackingStatusForCurrentUrl(bool track) {
-  const bookmarks::BookmarkNode* node =
-      delegate_->GetOrAddBookmarkForCurrentUrl();
   if (track) {
-    TrackPriceForBookmark(node->id());
+    // If the product on the page isn't already tracked, create a bookmark for
+    // it and start tracking.
+    TrackPriceForBookmark(delegate_->GetOrAddBookmarkForCurrentUrl()->id());
   } else {
-    UntrackPriceForBookmark(node->id());
+    // If the product is already tracked, there must be a bookmark, but it's not
+    // necessarily the page the user is currently on (i.e. multi-merchant
+    // tracking). Prioritize accessing the product info for the URL before
+    // attempting to access the bookmark.
+
+    base::OnceCallback<void(uint64_t)> unsubscribe = base::BindOnce(
+        [](base::WeakPtr<ShoppingListHandler> handler, uint64_t id) {
+          if (!handler) {
+            return;
+          }
+
+          commerce::SetPriceTrackingStateForClusterId(
+              handler->shopping_service_, handler->bookmark_model_, id, false,
+              base::BindOnce([](bool success) {}));
+        },
+        weak_ptr_factory_.GetWeakPtr());
+
+    shopping_service_->GetProductInfoForUrl(
+        delegate_->GetCurrentTabUrl().value(),
+        base::BindOnce(
+            [](base::WeakPtr<ShoppingListHandler> handler,
+               base::OnceCallback<void(uint64_t)> unsubscribe, const GURL& url,
+               const absl::optional<const ProductInfo>& info) {
+              if (!handler) {
+                return;
+              }
+
+              if (!info.has_value() || !info->product_cluster_id.has_value()) {
+                absl::optional<uint64_t> cluster_id =
+                    GetProductClusterIdFromBookmark(url,
+                                                    handler->bookmark_model_);
+
+                if (cluster_id.has_value()) {
+                  std::move(unsubscribe).Run(cluster_id.value());
+                }
+
+                return;
+              }
+
+              std::move(unsubscribe).Run(info->product_cluster_id.value());
+            },
+            weak_ptr_factory_.GetWeakPtr(), std::move(unsubscribe)));
   }
 }
 
@@ -445,7 +488,8 @@ void ShoppingListHandler::GetParentBookmarkFolderNameForCurrentUrl(
     GetParentBookmarkFolderNameForCurrentUrlCallback callback) {
   const GURL current_url = delegate_->GetCurrentTabUrl().value();
   std::move(callback).Run(
-      commerce::GetBookmarkParentNameOrDefault(bookmark_model_, current_url));
+      commerce::GetBookmarkParentName(bookmark_model_, current_url)
+          .value_or(base::EmptyString16()));
 }
 
 void ShoppingListHandler::ShowBookmarkEditorForCurrentUrl() {

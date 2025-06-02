@@ -7,7 +7,7 @@ import type * as Protocol from '../../generated/protocol.js';
 import * as TraceEngine from '../../models/trace/trace.js';
 
 import {TimelineJSProfileProcessor} from './TimelineJSProfile.js';
-import {RecordType, EventOnTimelineData, TimelineModelImpl} from './TimelineModel.js';
+import {RecordType, TimelineModelImpl} from './TimelineModel.js';
 import {type TimelineModelFilter} from './TimelineModelFilter.js';
 
 export class Node {
@@ -105,7 +105,7 @@ export class TopDownNode extends Node {
     const startTime = root.startTime;
     const endTime = root.endTime;
     const instantEventCallback = root.doNotAggregate ? onInstantEvent : undefined;
-    const eventIdCallback = root.doNotAggregate ? undefined : _eventId;
+    const eventIdCallback = root.doNotAggregate ? undefined : generateEventID;
     const eventGroupIdCallback = root.getEventGroupIdCallback();
     let depth = 0;
     // The amount of ancestors found to match this node's ancestors
@@ -315,7 +315,8 @@ export class BottomUpRootNode extends Node {
 
   filterChildren(children: ChildrenCache): ChildrenCache {
     for (const [id, child] of children) {
-      if (child.event && !this.textFilter.accept(child.event)) {
+      // to provide better context to user only filter first (top) level.
+      if (child.event && child.depth <= 1 && !this.textFilter.accept(child.event)) {
         children.delete((id as string | symbol));
       }
     }
@@ -346,7 +347,7 @@ export class BottomUpRootNode extends Node {
       const duration = actualEndTime - Math.max(currentStartTime, startTime);
       selfTimeStack[selfTimeStack.length - 1] -= duration;
       selfTimeStack.push(duration);
-      const id = _eventId(e);
+      const id = generateEventID(e);
       const noNodeOnStack = !totalTimeById.has(id);
       if (noNodeOnStack) {
         totalTimeById.set(id, duration);
@@ -355,7 +356,7 @@ export class BottomUpRootNode extends Node {
     }
 
     function onEndEvent(e: TraceEngine.Legacy.CompatibleTraceEvent): void {
-      const id = _eventId(e);
+      const id = generateEventID(e);
       let node = nodeById.get(id);
       if (!node) {
         node = new BottomUpNode(root, id, e, false, root);
@@ -476,7 +477,7 @@ export class BottomUpNode extends Node {
       }
       selfTimeStack[selfTimeStack.length - 1] -= duration;
       selfTimeStack.push(duration);
-      const id = _eventId(e);
+      const id = generateEventID(e);
       eventIdStack.push(id);
       eventStack.push(e);
     }
@@ -530,6 +531,12 @@ export function eventURL(event: TraceEngine.Legacy.Event|
   if (data && data['url']) {
     return data['url'];
   }
+  // Temporary break to aid migration: no events are from the old engine now,
+  // and we are incrementally removing these checks
+  if (!TraceEngine.Legacy.eventIsFromNewEngine(event)) {
+    return null;
+  }
+
   let frame = eventStackFrame(event);
   while (frame) {
     const url = frame['url'] as Platform.DevToolsPath.UrlString;
@@ -543,29 +550,31 @@ export function eventURL(event: TraceEngine.Legacy.Event|
   return null;
 }
 
-export function eventStackFrame(event: TraceEngine.Legacy.Event|
-                                TraceEngine.Types.TraceEvents.TraceEventData): Protocol.Runtime.CallFrame|null {
-  if (TimelineModelImpl.isJsFrameEvent(event)) {
-    return event.args['data'] || null as Protocol.Runtime.CallFrame | null;
+export function eventStackFrame(event: TraceEngine.Types.TraceEvents.TraceEventData): Protocol.Runtime.CallFrame|null {
+  if (TraceEngine.Types.TraceEvents.isProfileCall(event)) {
+    return event.callFrame;
   }
-  return EventOnTimelineData.forEvent(event).topFrame();
+  const topFrame = event.args?.data?.stackTrace?.[0];
+  if (!topFrame) {
+    return null;
+  }
+  return {...topFrame, scriptId: String(topFrame.scriptId) as Protocol.Runtime.ScriptId};
 }
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export function _eventId(event: TraceEngine.Legacy.CompatibleTraceEvent): string {
+export function generateEventID(event: TraceEngine.Legacy.CompatibleTraceEvent): string {
+  if (TraceEngine.Legacy.eventIsFromNewEngine(event) && TraceEngine.Types.TraceEvents.isProfileCall(event)) {
+    const name = TimelineJSProfileProcessor.isNativeRuntimeFrame(event.callFrame) ?
+        TimelineJSProfileProcessor.nativeGroup(event.callFrame.functionName) :
+        event.callFrame.functionName;
+    const location = event.callFrame.scriptId || event.callFrame.url || '';
+    return `f:${name}@${location}`;
+  }
+
   if (event.name === RecordType.TimeStamp) {
     return `${event.name}:${event.args.data.message}`;
   }
-  if (!TimelineModelImpl.isJsFrameEvent(event)) {
-    return event.name;
-  }
-  const frame = event.args['data'];
-  const location = frame['scriptId'] || frame['url'] || '';
-  const functionName = frame['functionName'];
-  const name = TimelineJSProfileProcessor.isNativeRuntimeFrame(frame) ?
-      TimelineJSProfileProcessor.nativeGroup(functionName) || functionName :
-      `${functionName}:${frame['lineNumber']}:${frame['columnNumber']}`;
-  return `f:${name}@${location}`;
+
+  return event.name;
 }
 
 export type ChildrenCache = Map<string|symbol, Node>;

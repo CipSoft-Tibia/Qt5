@@ -50,6 +50,7 @@ static_library("browser") {
     "typed_count_sorter.h",
     "url_index.cc",
     "url_index.h",
+    "uuid_index.h",
   ]
 
   public_deps = [ "//components/bookmarks/common" ]
@@ -63,6 +64,7 @@ static_library("browser") {
     "//components/prefs",
     "//components/query_parser",
     "//components/strings",
+    "//components/sync/base:features",
     "//components/url_formatter",
     "//net",
     "//third_party/icu",
@@ -146,6 +148,7 @@ source_set("unit_tests") {
     "//components/prefs",
     "//components/prefs:test_support",
     "//components/query_parser",
+    "//components/sync/base:features",
     "//testing/gtest",
     "//ui/base",
     "//ui/base:data_exchange",

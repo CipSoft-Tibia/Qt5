@@ -81,6 +81,8 @@ class BundleClientProxy : public mojom::CompositorFrameSinkClient {
     }
   }
 
+  void OnSurfaceEvicted(const LocalSurfaceId& local_surface_id) override {}
+
  private:
   FrameSinkBundleImpl* GetBundle() {
     return manager_->GetFrameSinkBundle(bundle_id_);
@@ -133,6 +135,10 @@ void CompositorFrameSinkImpl::SetWantsAnimateOnlyBeginFrames() {
 
 void CompositorFrameSinkImpl::SetWantsBeginFrameAcks() {
   support_->SetWantsBeginFrameAcks();
+}
+
+void CompositorFrameSinkImpl::SetAutoNeedsBeginFrame() {
+  support_->SetAutoNeedsBeginFrame();
 }
 
 void CompositorFrameSinkImpl::SubmitCompositorFrame(

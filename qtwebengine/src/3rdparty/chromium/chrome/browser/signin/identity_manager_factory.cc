@@ -11,7 +11,7 @@
 #include "base/observer_list.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/image_fetcher/image_decoder_impl.h"
 #endif
@@ -27,13 +27,13 @@
 #include "components/signin/public/webdata/token_web_data.h"
 #include "content/public/browser/network_service_instance.h"
 
-#if (BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS_LACROS)) && !defined(TOOLKIT_QT)
+#if (BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS_LACROS)) && !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/signin/core/browser/cookie_settings_util.h"
 #endif
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) && !defined(TOOLKIT_QT)
+#if BUILDFLAG(ENABLE_DICE_SUPPORT) && !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/web_data_service_factory.h"
 #include "components/keyed_service/core/service_access_type.h"
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
@@ -54,7 +54,7 @@
 #include "components/account_manager_core/chromeos/account_manager_facade_factory.h"
 #endif
 
-#if BUILDFLAG(IS_WIN) && !defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_QTWEBENGINE)
 #include "base/functional/bind.h"
 #include "chrome/browser/signin/signin_util_win.h"
 #endif
@@ -73,7 +73,7 @@ IdentityManagerFactory::IdentityManagerFactory()
               // Guest mode.
               .WithGuest(ProfileSelection::kOriginalOnly)
               .Build()) {
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) && !defined(TOOLKIT_QT)
+#if BUILDFLAG(ENABLE_DICE_SUPPORT) && !BUILDFLAG(IS_QTWEBENGINE)
   DependsOn(WebDataServiceFactory::GetInstance());
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
   DependsOn(UnexportableKeyServiceFactory::GetInstance());
@@ -134,7 +134,7 @@ KeyedService* IdentityManagerFactory::BuildServiceInstanceFor(
   Profile* profile = Profile::FromBrowserContext(context);
 
   signin::IdentityManagerBuildParams params;
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   params.account_consistency =
       AccountConsistencyModeManager::GetMethodForProfile(profile),
   params.image_decoder = std::make_unique<ImageDecoderImpl>();
@@ -148,7 +148,7 @@ KeyedService* IdentityManagerFactory::BuildServiceInstanceFor(
   params.signin_client = ChromeSigninClientFactory::GetForProfile(profile);
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS_LACROS)
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   {
     scoped_refptr<content_settings::CookieSettings> cookie_settings =
         CookieSettingsFactory::GetForProfile(profile);
@@ -157,10 +157,10 @@ KeyedService* IdentityManagerFactory::BuildServiceInstanceFor(
   }
 #else
   params.delete_signin_cookies_on_exit = true;
-#endif
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT) || BUILDFLAG(IS_CHROMEOS_LACROS)
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT) && !defined(TOOLKIT_QT)
+#if BUILDFLAG(ENABLE_DICE_SUPPORT) && !BUILDFLAG(IS_QTWEBENGINE)
   params.token_web_data = WebDataServiceFactory::GetTokenWebDataForProfile(
       profile, ServiceAccessType::EXPLICIT_ACCESS);
 #if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
@@ -191,7 +191,7 @@ KeyedService* IdentityManagerFactory::BuildServiceInstanceFor(
   params.is_regular_profile = is_regular_profile;
 #endif
 
-#if BUILDFLAG(IS_WIN) && !defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_QTWEBENGINE)
   params.reauth_callback =
       base::BindRepeating(&signin_util::ReauthWithCredentialProviderIfPossible,
                           base::Unretained(profile));

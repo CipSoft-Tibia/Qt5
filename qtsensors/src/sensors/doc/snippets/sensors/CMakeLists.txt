@@ -10,7 +10,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 COMPONENTS Core Sensors)
+find_package(Qt6 REQUIRED COMPONENTS Core Sensors)
 
 qt_add_executable(sensorsdocsnippet
     creating.cpp
@@ -18,6 +18,7 @@ qt_add_executable(sensorsdocsnippet
     mybackend.h
     plugin.cpp
     start.cpp
+    myreading.cpp
 )
 
 target_link_libraries(sensorsdocsnippet PUBLIC
@@ -30,3 +31,5 @@ if (GCC AND UNIX)
         log
     )
 endif()
+
+qt_autogen_tools(sensorsdocsnippet ENABLE_AUTOGEN_TOOLS moc rcc uic)

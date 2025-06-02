@@ -51,10 +51,14 @@ public:
 
     void invalidateSurface() override;
 
+    QMutex* eglSurfaceLock();
+
 private:
     QWaylandEglClientBufferIntegration *m_clientBufferIntegration = nullptr;
     struct wl_egl_window *m_waylandEglWindow = nullptr;
 
+    // Locks any manipulation of the eglSurface size
+    QMutex m_eglSurfaceLock;
     EGLSurface m_eglSurface = EGL_NO_SURFACE;
     mutable bool m_resize = false;
     mutable QOpenGLFramebufferObject *m_contentFBO = nullptr;

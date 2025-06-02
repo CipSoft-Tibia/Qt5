@@ -88,6 +88,7 @@ struct CompactSchedConfig {
 
 CompactSchedConfig CreateCompactSchedConfig(
     const FtraceConfig& request,
+    bool switch_requested,
     const CompactSchedEventFormat& compact_format);
 
 CompactSchedConfig EnabledCompactSchedConfigForTesting();
@@ -229,6 +230,9 @@ class CompactSchedBuffer {
   // Writes out the currently buffered events, and starts the next batch
   // internally.
   void WriteAndReset(protos::pbzero::FtraceEventBundle* bundle);
+
+  // Not normally needed: reinitialise the buffer from an unknown state.
+  void Reset();
 
  private:
   CommInterner interner_;

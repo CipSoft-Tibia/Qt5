@@ -19,11 +19,11 @@ QT_BEGIN_NAMESPACE
     of the set. For missing values in the middle of a set, the numerical value of zero is used.
     Labels for zero value sets are not shown.
 
-    \sa QAbstractBarSeries, QBarSeries
+    \sa QBarSeries
 */
 /*!
     \qmltype BarSet
-    \instantiates QBarSet
+    \nativetype QBarSet
     \inqmlmodule QtGraphs
     \ingroup graphs_qml_2D
     \brief Represents one set of bars in a bar graph.
@@ -34,7 +34,7 @@ QT_BEGIN_NAMESPACE
     of the set. For missing values in the middle of a set, the numerical value of zero is used.
     Labels for zero value sets are not shown.
 
-    \sa AbstractBarSeries, BarSeries
+    \sa BarSeries
 */
 
 /*!
@@ -53,6 +53,15 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmlproperty color BarSet::color
     The fill color of the bar set.
+*/
+
+/*!
+    \property QBarSet::selectedColor
+    \brief The fill color of the selected set.
+*/
+/*!
+    \qmlproperty color BarSet::selectedColor
+    The fill color of the selected set.
 */
 
 /*!
@@ -102,7 +111,21 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty QVariantList BarSet::values
+   \property QBarSet::values
+   \brief The values of the bar set.
+
+    You can set a list of either \l [QML]{real} or \l [QML]{point}
+    types as values.
+
+    If you set a list of real types as values, they directly define the bar set values.
+
+    If you set a list of point types as values, the x-coordinate of the point specifies its
+    zero-based index in the bar set. The size of the bar set is the highest x-coordinate value + 1.
+    If a point is missing for any x-coordinate between zero and the highest value,
+    it gets the value zero.
+ */
+/*!
+    \qmlproperty list<variant> BarSet::values
     The values of the bar set. You can set a list of either \l [QML]{real} or \l [QML]{point}
     types as values.
 
@@ -121,33 +144,59 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \fn void QBarSet::valuesChanged()
-    This signal is emitted when the values of the bar set change.
+    \fn void QBarSet::update()
+    This signal is emitted when the barset is updated.
+*/
+/*!
+    \qmlsignal BarSet::update()
+    This signal is emitted when the barset is updated.
 */
 
 /*!
-    \fn void QBarSet::labelChanged()
+    \qmlsignal BarSet::labelChanged()
     This signal is emitted when the label of the bar set changes.
     \sa label
 */
 
 /*!
-    \fn void QBarSet::colorChanged(QColor)
+    \qmlsignal BarSet::colorChanged(color)
     This signal is emitted when the fill color of the bar set changes to \a color.
 */
 
 /*!
-    \fn void QBarSet::borderColorChanged(QColor)
+    \qmlsignal BarSet::borderColorChanged(color)
     This signal is emitted when the border color of the bar set changes to \a color.
 */
 
 /*!
-    \fn void QBarSet::labelColorChanged(QColor)
+    \qmlsignal BarSet::labelColorChanged(color)
     This signal is emitted when the text (label) color of the bar set changes to \a color.
 */
 
 /*!
-    \fn void QBarSet::valuesAdded(int index, int count)
+    \qmlsignal BarSet::valuesChanged()
+    This signal is emitted when the values of the bar set change.
+*/
+
+/*!
+    \qmlsignal BarSet::selectedColorChanged(color color)
+    This signal is emitted when the selected bar color changes. The new color is
+    \a color.
+*/
+
+/*!
+    \qmlsignal BarSet::countChanged()
+    This signal is emitted when the barset's value count changes.
+*/
+
+/*!
+    \qmlsignal BarSet::borderWidthChanged(real width)
+    This signal is emitted when the barset's border width changes.
+    The new width is \a width.
+*/
+
+/*!
+    \fn void QBarSet::valuesAdded(qsizetype index, qsizetype count)
     This signal is emitted when new values are added to the bar set.
     \a index indicates the position of the first inserted value, and \a count is the number
     of inserted values.
@@ -158,12 +207,10 @@ QT_BEGIN_NAMESPACE
     This signal is emitted when new values are added to the bar set.
     \a index indicates the position of the first inserted value, and \a count is the number
     of inserted values.
-
-    The corresponding signal handler is \c onValuesAdded.
 */
 
 /*!
-    \fn void QBarSet::valuesRemoved(int index, int count)
+    \fn void QBarSet::valuesRemoved(qsizetype index, qsizetype count)
     This signal is emitted when values are removed from the bar set.
     \a index indicates the position of the first removed value, and \a count is the number
     of removed values.
@@ -174,36 +221,74 @@ QT_BEGIN_NAMESPACE
     This signal is emitted when values are removed from the bar set.
     \a index indicates the position of the first removed value, and \a count is the number
     of removed values.
-
-    The corresponding signal handler is \c onValuesRemoved.
 */
 
 /*!
-    \fn void QBarSet::valueChanged(int index)
+    \fn void QBarSet::valueChanged(qsizetype index)
     This signal is emitted when the value at the position specified by \a index is modified.
     \sa at()
 */
 /*!
     \qmlsignal BarSet::valueChanged(int index)
     This signal is emitted when the value at the position specified by \a index is modified.
+*/
 
-    The corresponding signal handler is \c onValueChanged.
+/*!
+    \fn void QBarSet::updatedBars()
+    This signal is emitted when the bars in this set are updated.
+*/
+/*!
+    \qmlsignal BarSet::updatedBars()
+    This signal is emitted when the bars in this set are updated.
+*/
+
+/*!
+    \fn void QBarSet::valueAdded(qsizetype index, qsizetype count)
+    This signal is emitted when new values are added to the bar set.
+    \a index indicates the position of the first inserted value, and \a count
+    is the number of inserted values.
+*/
+/*!
+    \qmlsignal BarSet::valueAdded(int index, int count)
+    This signal is emitted when new values are added to the bar set.
+    \a index indicates the position of the first inserted value, and \a count
+    is the number of inserted values.
+*/
+
+/*!
+    \fn void QBarSet::valueRemoved(qsizetype index, qsizetype count)
+    This signal is emitted when values are removed from the bar set.
+    \a index indicates the position of the first removed value, and \a count
+    is the number of removed values.
+*/
+/*!
+    \qmlsignal BarSet::valueRemoved(int index, int count)
+    This signal is emitted when values are removed from the bar set.
+    \a index indicates the position of the first removed value, and \a count
+    is the number of removed values.
+*/
+
+/*!
+    \fn void QBarSet::selectedBarsChanged(const QList<qsizetype> &indexes)
+    This signal is emitted when the selected bar changes. \a indexes is
+    a list selected bar indexes.
+*/
+/*!
+    \qmlsignal BarSet::selectedBarsChanged(list<int> indexes)
+    This signal is emitted when the selected bar changes. \a indexes is
+    a list selected bar indexes.
 */
 
 QBarSet::QBarSet(QObject *parent)
-    : QObject(parent),
-      d_ptr(new QBarSetPrivate(QString(), this))
-{
-}
+    : QBarSet(QString(), parent)
+{}
 
 /*!
     Constructs a bar set with the label \a label and the parent \a parent.
 */
-QBarSet::QBarSet(const QString label, QObject *parent)
-    : QObject(parent),
-      d_ptr(new QBarSetPrivate(label, this))
-{
-}
+QBarSet::QBarSet(const QString &label, QObject *parent)
+    : QObject(*(new QBarSetPrivate(label)), parent)
+{}
 
 /*!
     Removes the bar set.
@@ -216,11 +301,12 @@ QBarSet::~QBarSet()
 /*!
     Sets \a label as the new label for the bar set.
 */
-void QBarSet::setLabel(const QString label)
+void QBarSet::setLabel(const QString &label)
 {
-    if (d_ptr->m_label != label) {
-        d_ptr->m_label = label;
-        d_ptr->setLabelsDirty(true);
+    Q_D(QBarSet);
+    if (d->m_label != label) {
+        d->m_label = label;
+        d->setLabelsDirty(true);
         emit update();
         emit labelChanged();
     }
@@ -231,25 +317,34 @@ void QBarSet::setLabel(const QString label)
 */
 QString QBarSet::label() const
 {
-    return d_ptr->m_label;
+    Q_D(const QBarSet);
+    return d->m_label;
 }
 
 /*!
     \qmlmethod BarSet::append(real value)
     Appends the new value specified by \a value to the end of the bar set.
 */
-
 /*!
     Appends the new value specified by \a value to the end of the bar set.
 */
-void QBarSet::append(const qreal value)
+void QBarSet::append(qreal value)
 {
+    Q_D(QBarSet);
     // Convert to QPointF
-    int index = d_ptr->m_values.size();
-    d_ptr->append(QPointF(d_ptr->m_values.size(), value));
+    qsizetype index = d->m_values.size();
+    d->append(QPointF(d->m_values.size(), value));
     emit valuesAdded(index, 1);
+    emit countChanged();
+    emit update();
 }
 
+/*!
+    \qmlmethod BarSet::append(list<real> values)
+    Appends the list of real values specified by \a values to the end of the bar set.
+
+    \sa append()
+*/
 /*!
     Appends the list of real values specified by \a values to the end of the bar set.
 
@@ -257,38 +352,37 @@ void QBarSet::append(const qreal value)
 */
 void QBarSet::append(const QList<qreal> &values)
 {
-    int index = d_ptr->m_values.size();
-    d_ptr->append(values);
+    Q_D(QBarSet);
+    qsizetype index = d->m_values.size();
+    d->append(values);
     emit valuesAdded(index, values.size());
+    emit countChanged();
+    emit update();
 }
 
 /*!
-    A convenience operator for appending the real value specified by \a value to the end of the
-    bar set.
+    \qmlmethod BarSet::insert(int index, real value)
+    Inserts \a value in the position specified by \a index.
+    The values following the inserted value are moved up one position.
 
-    \sa append()
+    \sa remove()
 */
-QBarSet &QBarSet::operator << (const qreal &value)
-{
-    append(value);
-    return *this;
-}
-
 /*!
     Inserts \a value in the position specified by \a index.
     The values following the inserted value are moved up one position.
 
     \sa remove()
 */
-void QBarSet::insert(const int index, const qreal value)
+void QBarSet::insert(qsizetype index, qreal value)
 {
-    d_ptr->insert(index, value);
+    Q_D(QBarSet);
+    d->insert(index, value);
 
     bool callSignal = false;
-    if (!d_ptr->m_selectedBars.isEmpty()) {
+    if (!d->m_selectedBars.isEmpty()) {
         // if value was inserted we need to move already selected bars by 1
-        QSet<int> selectedAfterInsert;
-        for (const auto &value : std::as_const(d_ptr->m_selectedBars)) {
+        QSet<qsizetype> selectedAfterInsert;
+        for (const auto &value : std::as_const(d->m_selectedBars)) {
             if (value >= index) {
                 selectedAfterInsert << value + 1;
                 callSignal = true;
@@ -296,10 +390,12 @@ void QBarSet::insert(const int index, const qreal value)
                 selectedAfterInsert << value;
             }
         }
-        d_ptr->m_selectedBars = selectedAfterInsert;
+        d->m_selectedBars = selectedAfterInsert;
+        emit update();
     }
 
     emit valuesAdded(index, 1);
+    emit countChanged();
     if (callSignal)
         emit selectedBarsChanged(selectedBars());
 }
@@ -311,18 +407,20 @@ void QBarSet::insert(const int index, const qreal value)
 
     If you leave out \a count, only the value specified by \a index is removed.
 */
-
 /*!
     Removes the number of values specified by \a count from the bar set starting with
     the value specified by \a index.
     \sa insert()
 */
-void QBarSet::remove(const int index, const int count)
+void QBarSet::remove(qsizetype index, qsizetype count)
 {
-    int removedCount = d_ptr->remove(index, count);
-    if (removedCount > 0)
+    Q_D(QBarSet);
+    qsizetype removedCount = d->remove(index, count);
+    if (removedCount > 0) {
         emit valuesRemoved(index, removedCount);
-    return;
+        emit countChanged();
+        emit update();
+    }
 }
 
 /*!
@@ -330,69 +428,106 @@ void QBarSet::remove(const int index, const int count)
     Adds the value specified by \a value to the bar set at the position
     specified by \a index.
 */
-
 /*!
     Adds the value specified by \a value to the bar set at the position specified by \a index.
 */
-void QBarSet::replace(const int index, const qreal value)
+void QBarSet::replace(qsizetype index, qreal value)
 {
-    if (index >= 0 && index < d_ptr->m_values.size()) {
-        d_ptr->replace(index, value);
+    Q_D(QBarSet);
+    if (index >= 0 && index < d->m_values.size()) {
+        d->replace(index, value);
         emit valueChanged(index);
+        emit update();
     }
 }
 
 /*!
-    \qmlmethod BarSet::at(int index)
+    \qmlmethod real BarSet::at(int index)
     Returns the value specified by \a index from the bar set.
     If the index is out of bounds, 0.0 is returned.
 */
-
 /*!
     Returns the value specified by \a index from the bar set.
     If the index is out of bounds, 0.0 is returned.
 */
-qreal QBarSet::at(const int index) const
+qreal QBarSet::at(qsizetype index) const
 {
-    if (index < 0 || index >= d_ptr->m_values.size())
+    Q_D(const QBarSet);
+    if (index < 0 || index >= d->m_values.size())
         return 0;
-    return d_ptr->m_values.at(index).y();
+    return d->m_values.at(index).y();
+}
+
+/*!
+    \qmlmethod int BarSet::count()
+    Returns the number of values in a bar set.
+*/
+/*!
+    Returns the number of values in a bar set.
+*/
+qsizetype QBarSet::count() const
+{
+    Q_D(const QBarSet);
+    return d->m_values.size();
+}
+
+/*!
+    \qmlmethod real BarSet::sum()
+    Returns the sum of all values in the bar set.
+*/
+/*!
+    Returns the sum of all values in the bar set.
+*/
+qreal QBarSet::sum() const
+{
+    Q_D(const QBarSet);
+    qreal total(0);
+    for (int i = 0; i < d->m_values.size(); i++)
+        total += d->m_values.at(i).y();
+    return total;
+}
+
+/*!
+    \qmlmethod BarSet::clear()
+    Removes all values from the set.
+*/
+/*!
+    Removes all values from the set.
+*/
+void QBarSet::clear()
+{
+    Q_D(QBarSet);
+    remove(0, d->m_values.size());
+}
+
+/*!
+    A convenience operator for appending the real value specified by \a value to the end of the
+    bar set.
+
+    \sa append()
+*/
+QBarSet &QBarSet::operator << (qreal value)
+{
+    append(value);
+    return *this;
 }
 
 /*!
     Returns the value of the bar set specified by \a index.
     If the index is out of bounds, 0.0 is returned.
 */
-qreal QBarSet::operator [](const int index) const
+qreal QBarSet::operator [](qsizetype index) const
 {
     return at(index);
 }
 
 /*!
-    Returns the number of values in a bar set.
-*/
-int QBarSet::count() const
-{
-    return d_ptr->m_values.size();
-}
-
-/*!
-    Returns the sum of all values in the bar set.
-*/
-qreal QBarSet::sum() const
-{
-    qreal total(0);
-    for (int i = 0; i < d_ptr->m_values.size(); i++)
-        total += d_ptr->m_values.at(i).y();
-    return total;
-}
-
-/*!
     Returns the fill color for the bar set.
 */
-QColor QBarSet::color()
+QColor QBarSet::color() const
 {
-    return d_ptr->m_color;
+    Q_D(const QBarSet);
+    return d->m_color;
 }
 
 /*!
@@ -400,8 +535,9 @@ QColor QBarSet::color()
 */
 void QBarSet::setColor(QColor color)
 {
-    if (d_ptr->m_color != color) {
-        d_ptr->m_color = color;
+    Q_D(QBarSet);
+    if (d->m_color != color) {
+        d->m_color = color;
         emit update();
         emit colorChanged(color);
     }
@@ -410,9 +546,10 @@ void QBarSet::setColor(QColor color)
 /*!
     Returns the line color for the bar set.
 */
-QColor QBarSet::borderColor()
+QColor QBarSet::borderColor() const
 {
-    return d_ptr->m_borderColor;
+    Q_D(const QBarSet);
+    return d->m_borderColor;
 }
 
 /*!
@@ -420,8 +557,9 @@ QColor QBarSet::borderColor()
 */
 void QBarSet::setBorderColor(QColor color)
 {
-    if (d_ptr->m_borderColor != color) {
-        d_ptr->m_borderColor = color;
+    Q_D(QBarSet);
+    if (d->m_borderColor != color) {
+        d->m_borderColor = color;
         emit update();
         emit borderColorChanged(color);
     }
@@ -430,9 +568,10 @@ void QBarSet::setBorderColor(QColor color)
 /*!
     Returns the text color for the bar set.
 */
-QColor QBarSet::labelColor()
+QColor QBarSet::labelColor() const
 {
-    return d_ptr->m_labelColor;
+    Q_D(const QBarSet);
+    return d->m_labelColor;
 }
 
 /*!
@@ -440,8 +579,9 @@ QColor QBarSet::labelColor()
 */
 void QBarSet::setLabelColor(QColor color)
 {
-    if (d_ptr->m_labelColor != color) {
-        d_ptr->m_labelColor = color;
+    Q_D(QBarSet);
+    if (d->m_labelColor != color) {
+        d->m_labelColor = color;
         emit update();
         emit labelColorChanged(color);
     }
@@ -456,20 +596,22 @@ void QBarSet::setLabelColor(QColor color)
 */
 QColor QBarSet::selectedColor() const
 {
-    return d_ptr->m_selectedColor;
+    Q_D(const QBarSet);
+    return d->m_selectedColor;
 }
 
 /*!
     Sets the \a color of the selected bars.
     \sa selectedColor
 */
-void QBarSet::setSelectedColor(const QColor &color)
+void QBarSet::setSelectedColor(QColor color)
 {
-    if (d_ptr->m_selectedColor != color) {
-        d_ptr->m_selectedColor = color;
-        d_ptr->setLabelsDirty(true);
+    Q_D(QBarSet);
+    if (d->m_selectedColor != color) {
+        d->m_selectedColor = color;
+        d->setLabelsDirty(true);
         emit update();
-        emit d_ptr->updatedBars();
+        emit updatedBars();
         emit selectedColorChanged(color);
     }
 }
@@ -477,27 +619,30 @@ void QBarSet::setSelectedColor(const QColor &color)
 
 qreal QBarSet::borderWidth() const
 {
-    return d_ptr->m_borderWidth;
+    Q_D(const QBarSet);
+    return d->m_borderWidth;
 }
 
 void QBarSet::setBorderWidth(qreal width)
 {
-    if (d_ptr->m_borderWidth != width) {
-        d_ptr->m_borderWidth = width;
+    Q_D(QBarSet);
+    width = qMax(0.0, width);
+    if (!qFuzzyCompare(d->m_borderWidth, width)) {
+        d->m_borderWidth = width;
         emit update();
         emit borderWidthChanged(width);
     }
 }
 
-QVariantList QBarSet::values()
+QVariantList QBarSet::values() const
 {
     QVariantList values;
-    for (int i(0); i < count(); i++)
+    for (qsizetype i(0); i < count(); i++)
         values.append(QVariant(QBarSet::at(i)));
     return values;
 }
 
-void QBarSet::setValues(QVariantList values)
+void QBarSet::setValues(const QVariantList &values)
 {
     bool valuesUpdated = false;
     // See if we can replace values instead of remove & add all.
@@ -554,44 +699,70 @@ void QBarSet::setValues(QVariantList values)
 
 
 /*!
-   Returns \c true if the bar at the given \a index is among selected bars and \c false otherwise.
-   \note Selected bars are drawn using the selected color if it was specified using QBarSet::setSelectedColor.
-   \sa selectedBars(), setBarSelected(), setSelectedColor()
+    \qmlmethod bool BarSet::isBarSelected(int index)
+    Returns \c true if the bar at the given \a index is among selected bars and \c false otherwise.
+    \note Selected bars are drawn using the selected color if it was specified using BarSet::setSelectedColor.
+    \sa selectedBars, setBarSelected(), selectedColor
  */
-bool QBarSet::isBarSelected(int index) const
+/*!
+    Returns \c true if the bar at the given \a index is among selected bars and \c false otherwise.
+    \note Selected bars are drawn using the selected color if it was specified using QBarSet::setSelectedColor.
+    \sa selectedBars(), setBarSelected(), setSelectedColor()
+ */
+bool QBarSet::isBarSelected(qsizetype index) const
 {
-    return d_ptr->isBarSelected(index);
+    Q_D(const QBarSet);
+    return d->isBarSelected(index);
 }
 
 /*!
-  Marks the bar at \a index as selected.
-  \note Emits QBarSet::selectedBarsChanged.
-  \sa setBarSelected()
+    \qmlmethod BarSet::selectBar(int index)
+    Marks the bar at \a index as selected.
+    \note Emits BarSet::selectedBarsChanged.
+    \sa setBarSelected()
  */
-void QBarSet::selectBar(int index)
+/*!
+    Marks the bar at \a index as selected.
+    \note Emits QBarSet::selectedBarsChanged.
+    \sa setBarSelected()
+ */
+void QBarSet::selectBar(qsizetype index)
 {
     setBarSelected(index, true);
 }
 
 /*!
-  Deselects the bar at \a index.
-  \note Emits QBarSet::selectedBarsChanged.
-  \sa setBarSelected()
+    \qmlmethod BarSet::deselectBar(int index)
+    Deselects the bar at \a index.
+    \note Emits BarSet::selectedBarsChanged.
+    \sa setBarSelected()
  */
-void QBarSet::deselectBar(int index)
+/*!
+    Deselects the bar at \a index.
+    \note Emits QBarSet::selectedBarsChanged.
+    \sa setBarSelected()
+ */
+void QBarSet::deselectBar(qsizetype index)
 {
     setBarSelected(index, false);
 }
 
 /*!
-  Marks the bar at \a index as either selected or deselected as specified by \a selected.
-  \note Selected bars are drawn using the selected color if it was specified. Emits QBarSet::selectedBarsChanged.
-  \sa setSelectedColor()
+    \qmlmethod BarSet::setBarSelected(int index, bool selected)
+    Marks the bar at \a index as either selected or deselected as specified by \a selected.
+    \note Selected bars are drawn using the selected color if it was specified. Emits BarSet::selectedBarsChanged.
+    \sa selectedColor
  */
-void QBarSet::setBarSelected(int index, bool selected)
+/*!
+    Marks the bar at \a index as either selected or deselected as specified by \a selected.
+    \note Selected bars are drawn using the selected color if it was specified. Emits QBarSet::selectedBarsChanged.
+    \sa setSelectedColor()
+ */
+void QBarSet::setBarSelected(qsizetype index, bool selected)
 {
+    Q_D(QBarSet);
     bool callSignal = false;
-    d_ptr->setBarSelected(index, selected, callSignal);
+    d->setBarSelected(index, selected, callSignal);
 
     if (callSignal)
         emit selectedBarsChanged(selectedBars());
@@ -599,15 +770,22 @@ void QBarSet::setBarSelected(int index, bool selected)
 }
 
 /*!
-  Marks all bars in the series as selected.
-  \note Emits QBarSet::selectedBarsChanged.
-  \sa setBarSelected()
+    \qmlmethod BarSet::selectAllBars()
+    Marks all bars in the set as selected.
+    \note Emits BarSet::selectedBarsChanged.
+    \sa setBarSelected()
+ */
+/*!
+    Marks all bars in the set as selected.
+    \note Emits QBarSet::selectedBarsChanged.
+    \sa setBarSelected()
  */
 void QBarSet::selectAllBars()
 {
+    Q_D(QBarSet);
     bool callSignal = false;
-    for (int i = 0; i < d_ptr->m_values.size(); ++i)
-        d_ptr->setBarSelected(i, true, callSignal);
+    for (int i = 0; i < d->m_values.size(); ++i)
+        d->setBarSelected(i, true, callSignal);
 
     if (callSignal)
         emit selectedBarsChanged(selectedBars());
@@ -615,15 +793,22 @@ void QBarSet::selectAllBars()
 }
 
 /*!
-  Deselects all bars in the series.
-  \note Emits QBarSet::selectedBarsChanged.
-  \sa setBarSelected()
+    \qmlmethod BarSet::deselectAllBars()
+    Deselects all bars in the set.
+    \note Emits BarSet::selectedBarsChanged.
+    \sa setBarSelected()
+ */
+/*!
+    Deselects all bars in the set.
+    \note Emits QBarSet::selectedBarsChanged.
+    \sa setBarSelected()
  */
 void QBarSet::deselectAllBars()
 {
+    Q_D(QBarSet);
     bool callSignal = false;
-    for (int i = 0; i < d_ptr->m_values.size(); ++i)
-        d_ptr->setBarSelected(i, false, callSignal);
+    for (int i = 0; i < d->m_values.size(); ++i)
+        d->setBarSelected(i, false, callSignal);
 
     if (callSignal)
         emit selectedBarsChanged(selectedBars());
@@ -631,15 +816,22 @@ void QBarSet::deselectAllBars()
 }
 
 /*!
-  Marks multiple bars passed in an \a indexes list as selected.
-  \note Emits QBarSet::selectedBarsChanged.
-  \sa setBarSelected()
+    \qmlmethod BarSet::selectBars(list<int> indexes)
+    Marks multiple bars passed in an \a indexes list as selected.
+    \note Emits BarSet::selectedBarsChanged.
+    \sa setBarSelected()
  */
-void QBarSet::selectBars(const QList<int> &indexes)
+/*!
+    Marks multiple bars passed in an \a indexes list as selected.
+    \note Emits QBarSet::selectedBarsChanged.
+    \sa setBarSelected()
+ */
+void QBarSet::selectBars(const QList<qsizetype> &indexes)
 {
+    Q_D(QBarSet);
     bool callSignal = false;
-    for (const int &index : indexes)
-        d_ptr->setBarSelected(index, true, callSignal);
+    for (const qsizetype &index : indexes)
+        d->setBarSelected(index, true, callSignal);
 
     if (callSignal)
         emit selectedBarsChanged(selectedBars());
@@ -647,15 +839,22 @@ void QBarSet::selectBars(const QList<int> &indexes)
 }
 
 /*!
-  Marks multiple bars passed in an \a indexes list as deselected.
-  \note Emits QBarSet::selectedBarsChanged.
-  \sa setBarSelected()
+    \qmlmethod BarSet::deselectBars(list<int> indexes)
+    Marks multiple bars passed in an \a indexes list as deselected.
+    \note Emits BarSet::selectedBarsChanged.
+    \sa setBarSelected()
  */
-void QBarSet::deselectBars(const QList<int> &indexes)
+/*!
+    Marks multiple bars passed in an \a indexes list as deselected.
+    \note Emits QBarSet::selectedBarsChanged.
+    \sa setBarSelected()
+ */
+void QBarSet::deselectBars(const QList<qsizetype> &indexes)
 {
+    Q_D(QBarSet);
     bool callSignal = false;
-    for (const int &index : indexes)
-        d_ptr->setBarSelected(index, false, callSignal);
+    for (const qsizetype &index : indexes)
+        d->setBarSelected(index, false, callSignal);
 
     if (callSignal)
         emit selectedBarsChanged(selectedBars());
@@ -663,15 +862,22 @@ void QBarSet::deselectBars(const QList<int> &indexes)
 }
 
 /*!
-  Changes the selection state of bars at the given \a indexes to the opposite one.
-  \note Emits QBarSet::selectedBarsChanged.
-  \sa setBarSelected()
+    \qmlmethod BarSet::toggleSelection(list<int> indexes)
+    Changes the selection state of bars at the given \a indexes to the opposite one.
+    \note Emits BarSet::selectedBarsChanged.
+    \sa setBarSelected()
  */
-void QBarSet::toggleSelection(const QList<int> &indexes)
+/*!
+    Changes the selection state of bars at the given \a indexes to the opposite one.
+    \note Emits QBarSet::selectedBarsChanged.
+    \sa setBarSelected()
+ */
+void QBarSet::toggleSelection(const QList<qsizetype> &indexes)
 {
+    Q_D(QBarSet);
     bool callSignal = false;
-    for (const int &index : indexes)
-        d_ptr->setBarSelected(index, !isBarSelected(index), callSignal);
+    for (const qsizetype &index : indexes)
+        d->setBarSelected(index, !isBarSelected(index), callSignal);
 
     if (callSignal)
         emit selectedBarsChanged(selectedBars());
@@ -682,70 +888,72 @@ void QBarSet::toggleSelection(const QList<int> &indexes)
   Returns a list of bars marked as selected.
   \sa setBarSelected()
  */
-QList<int> QBarSet::selectedBars() const
+QList<qsizetype> QBarSet::selectedBars() const
 {
-    return QList<int>(d_ptr->m_selectedBars.begin(), d_ptr->m_selectedBars.end());
+    Q_D(const QBarSet);
+    return QList<qsizetype>(d->m_selectedBars.begin(), d->m_selectedBars.end());
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-QBarSetPrivate::QBarSetPrivate(const QString label, QBarSet *parent) : QObject(parent),
-    q_ptr(parent),
-    m_label(label),
-    m_visualsDirty(true)
-{
-}
+QBarSetPrivate::QBarSetPrivate(const QString &label)
+    : m_label(label)
+    , m_visualsDirty(true)
+{}
 
-QBarSetPrivate::~QBarSetPrivate()
-{
-}
+QBarSetPrivate::~QBarSetPrivate() {}
 
 void QBarSetPrivate::append(QPointF value)
 {
     if (isValidValue(value)) {
+        Q_Q(QBarSet);
         m_values.append(value);
-        emit valueAdded(m_values.size() - 1, 1);
+        emit q->valueAdded(m_values.size() - 1, 1);
     }
 }
 
 void QBarSetPrivate::append(const QList<QPointF> &values)
 {
-    int originalIndex = m_values.size();
+    qsizetype originalIndex = m_values.size();
     for (const auto &value : values) {
         if (isValidValue(value))
             m_values.append(value);
     }
-    emit valueAdded(originalIndex, values.size());
+    Q_Q(QBarSet);
+    emit q->valueAdded(originalIndex, values.size());
 }
 
 void QBarSetPrivate::append(const QList<qreal> &values)
 {
-    int originalIndex = m_values.size();
-    int index = originalIndex;
+    qsizetype originalIndex = m_values.size();
+    qsizetype index = originalIndex;
     for (const auto value : values) {
         if (isValidValue(value)) {
             m_values.append(QPointF(index, value));
             index++;
         }
     }
-    emit valueAdded(originalIndex, values.size());
+    Q_Q(QBarSet);
+    emit q->valueAdded(originalIndex, values.size());
 }
 
-void QBarSetPrivate::insert(const int index, const qreal value)
+void QBarSetPrivate::insert(qsizetype index, qreal value)
 {
     m_values.insert(index, QPointF(index, value));
-    emit valueAdded(index, 1);
+    Q_Q(QBarSet);
+    emit q->valueAdded(index, 1);
 }
 
-void QBarSetPrivate::insert(const int index, const QPointF value)
+void QBarSetPrivate::insert(qsizetype index, QPointF value)
 {
     m_values.insert(index, value);
-    emit valueAdded(index, 1);
+    Q_Q(QBarSet);
+    emit q->valueAdded(index, 1);
 }
 
-int QBarSetPrivate::remove(const int index, const int count)
+qsizetype QBarSetPrivate::remove(qsizetype index, qsizetype count)
 {
-    int removeCount = count;
+    qsizetype removeCount = count;
 
     if ((index < 0) || (m_values.size() == 0))
         return 0; // Invalid index or not values in list, remove nothing.
@@ -760,9 +968,9 @@ int QBarSetPrivate::remove(const int index, const int count)
 
     bool callSignal = false;
     if (!m_selectedBars.empty()) {
-        QSet<int> selectedAfterRemoving;
+        QSet<qsizetype> selectedAfterRemoving;
 
-        for (const int &selectedBarIndex : std::as_const(m_selectedBars)) {
+        for (const qsizetype &selectedBarIndex : std::as_const(m_selectedBars)) {
             if (selectedBarIndex < index) {
                 selectedAfterRemoving << selectedBarIndex;
             } else if (selectedBarIndex >= index + removeCount) {
@@ -775,38 +983,37 @@ int QBarSetPrivate::remove(const int index, const int count)
 
         m_selectedBars = selectedAfterRemoving;
     }
-
-    emit valueRemoved(index, removeCount);
+    Q_Q(QBarSet);
+    emit q->valueRemoved(index, removeCount);
     if (callSignal)
-        emit q_ptr->selectedBarsChanged(q_ptr->selectedBars());
+        emit q->selectedBarsChanged(q->selectedBars());
 
     return removeCount;
 }
 
-void QBarSetPrivate::replace(const int index, const qreal value)
+void QBarSetPrivate::replace(qsizetype index, qreal value)
 {
     if (index < 0 || index >= m_values.size())
         return;
 
     m_values.replace(index, QPointF(index, value));
-    emit valueChanged(index);
 }
 
-qreal QBarSetPrivate::pos(const int index)
+qreal QBarSetPrivate::pos(qsizetype index) const
 {
     if (index < 0 || index >= m_values.size())
         return 0;
     return m_values.at(index).x();
 }
 
-qreal QBarSetPrivate::value(const int index)
+qreal QBarSetPrivate::value(qsizetype index) const
 {
     if (index < 0 || index >= m_values.size())
         return 0;
     return m_values.at(index).y();
 }
 
-void QBarSetPrivate::setBarSelected(int index, bool selected, bool &callSignal)
+void QBarSetPrivate::setBarSelected(qsizetype index, bool selected, bool &callSignal)
 {
     if (index < 0 || index > m_values.size() - 1)
         return;
@@ -827,7 +1034,7 @@ void QBarSetPrivate::setBarSelected(int index, bool selected, bool &callSignal)
         setVisualsDirty(true);
 }
 
-bool QBarSetPrivate::isBarSelected(int index) const
+bool QBarSetPrivate::isBarSelected(qsizetype index) const
 {
     return m_selectedBars.contains(index);
 }
@@ -835,4 +1042,3 @@ bool QBarSetPrivate::isBarSelected(int index) const
 QT_END_NAMESPACE
 
 #include "moc_qbarset.cpp"
-#include "moc_qbarset_p.cpp"

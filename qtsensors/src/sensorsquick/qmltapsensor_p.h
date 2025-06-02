@@ -22,7 +22,7 @@ QT_BEGIN_NAMESPACE
 
 class QTapSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlTapSensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlTapSensor : public QmlSensor
 {
     Q_OBJECT
     Q_PROPERTY(bool returnDoubleTapEvents READ returnDoubleTapEvents WRITE setReturnDoubleTapEvents NOTIFY returnDoubleTapEventsChanged)
@@ -45,7 +45,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlTapSensorReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlTapSensorReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(QTapReading::TapDirection tapDirection READ tapDirection

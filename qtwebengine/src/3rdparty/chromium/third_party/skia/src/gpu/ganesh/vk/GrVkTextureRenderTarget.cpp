@@ -131,7 +131,7 @@ sk_sp<GrVkTextureRenderTarget> GrVkTextureRenderTarget::MakeWrappedTextureRender
         GrWrapOwnership wrapOwnership,
         GrWrapCacheable cacheable,
         const GrVkImageInfo& info,
-        sk_sp<skgpu::MutableTextureStateRef> mutableState) {
+        sk_sp<skgpu::MutableTextureState> mutableState) {
     // Adopted textures require both image and allocation because we're responsible for freeing
     SkASSERT(VK_NULL_HANDLE != info.fImage &&
              (kBorrow_GrWrapOwnership == wrapOwnership || VK_NULL_HANDLE != info.fAlloc.fMemory));
@@ -192,8 +192,10 @@ size_t GrVkTextureRenderTarget::onGpuMemorySize() const {
     if (this->numSamples() > 1) {
         // Msaa attachment should have a valid size
         SkASSERT(this->colorAttachment()->gpuMemorySize() ==
-                 GrSurface::ComputeSize(this->backendFormat(), this->dimensions(),
-                                        this->numSamples(), GrMipmapped::kNo));
+                 GrSurface::ComputeSize(this->backendFormat(),
+                                        this->dimensions(),
+                                        this->numSamples(),
+                                        skgpu::Mipmapped::kNo));
     }
 #endif
     return GrSurface::ComputeSize(this->backendFormat(), this->dimensions(),

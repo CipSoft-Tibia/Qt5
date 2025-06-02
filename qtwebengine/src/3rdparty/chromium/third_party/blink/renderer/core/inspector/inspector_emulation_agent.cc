@@ -192,6 +192,7 @@ protocol::Response InspectorEmulationAgent::disable() {
   if (emulate_auto_dark_mode_.Get()) {
     setAutoDarkModeOverride(Maybe<bool>());
   }
+  timezone_override_.reset();
   setDefaultBackgroundColorOverride(Maybe<protocol::DOM::RGBA>());
   disabled_image_types_.Clear();
   return protocol::Response::Success();
@@ -312,6 +313,7 @@ protocol::Response InspectorEmulationAgent::setEmulatedMedia(
       }
       WebThemeEngineHelper::GetNativeThemeEngine()->OverrideForcedColorsTheme(
           is_dark_mode);
+      GetWebViewImpl()->GetPage()->EmulateForcedColors(is_dark_mode);
     } else if (forced_colors_value == "none") {
       if (!forced_colors_override_) {
         initial_system_color_info_state_ =
@@ -320,9 +322,11 @@ protocol::Response InspectorEmulationAgent::setEmulatedMedia(
       forced_colors_override_ = true;
       WebThemeEngineHelper::GetNativeThemeEngine()->SetForcedColors(
           ForcedColors::kNone);
+      GetWebViewImpl()->GetPage()->DisableEmulatedForcedColors();
     } else if (forced_colors_override_) {
       WebThemeEngineHelper::GetNativeThemeEngine()->ResetToSystemColors(
           initial_system_color_info_state_);
+      GetWebViewImpl()->GetPage()->DisableEmulatedForcedColors();
     }
 
     for (const WTF::String& feature : emulated_media_features_.Keys()) {
@@ -396,6 +400,9 @@ protocol::Response InspectorEmulationAgent::setFocusEmulationEnabled(
   protocol::Response response = AssertPage();
   if (!response.IsSuccess())
     return response;
+  if (enabled == emulate_focus_.Get()) {
+    return response;
+  }
   emulate_focus_.Set(enabled);
   GetWebViewImpl()->GetPage()->GetFocusController().SetFocusEmulationEnabled(
       enabled);
@@ -457,7 +464,7 @@ protocol::Response InspectorEmulationAgent::setVirtualTimePolicy(
   // This needs to happen before we apply virtual time.
   base::Time initial_time =
       initial_virtual_time.has_value()
-          ? base::Time::FromDoubleT(initial_virtual_time.value())
+          ? base::Time::FromSecondsSinceUnixEpoch(initial_virtual_time.value())
           : base::Time();
   virtual_time_base_ticks_ =
       virtual_time_controller_.EnableVirtualTime(initial_time);
@@ -549,6 +556,11 @@ protocol::Response InspectorEmulationAgent::setNavigatorOverrides(
 void InspectorEmulationAgent::VirtualTimeBudgetExpired() {
   TRACE_EVENT_NESTABLE_ASYNC_END0("renderer.scheduler", "VirtualTimeBudget",
                                   TRACE_ID_LOCAL(this));
+  // Disregard the event if the agent is disabled. Another agent may take care
+  // of pausing the time in case of an in-process frame swap.
+  if (!enabled_) {
+    return;
+  }
   virtual_time_controller_.SetVirtualTimePolicy(
       VirtualTimeController::VirtualTimePolicy::kPause);
   virtual_time_policy_.Set(protocol::Emulation::VirtualTimePolicyEnum::Pause);
@@ -592,7 +604,8 @@ protocol::Response InspectorEmulationAgent::setDeviceMetricsOverride(
     Maybe<bool> dont_set_visible_size,
     Maybe<protocol::Emulation::ScreenOrientation>,
     Maybe<protocol::Page::Viewport>,
-    Maybe<protocol::Emulation::DisplayFeature>) {
+    Maybe<protocol::Emulation::DisplayFeature>,
+    Maybe<protocol::Emulation::DevicePosture>) {
   // We don't have to do anything other than reply to the client, as the
   // emulation parameters should have already been updated by the handling of
   // blink::mojom::FrameWidget::EnableDeviceEmulation.

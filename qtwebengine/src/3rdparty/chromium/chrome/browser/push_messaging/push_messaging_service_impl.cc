@@ -20,13 +20,13 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #endif
 #include "chrome/browser/gcm/gcm_profile_service_factory.h"
 #include "chrome/browser/gcm/instance_id/instance_id_profile_service_factory.h"
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/lifetime/termination_notification.h"
 #include "chrome/browser/permissions/permission_revocation_request.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
@@ -38,7 +38,7 @@
 #include "chrome/browser/push_messaging/push_messaging_features.h"
 #include "chrome/browser/push_messaging/push_messaging_service_factory.h"
 #include "chrome/browser/push_messaging/push_messaging_utils.h"
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/ui/chrome_pages.h"
 #endif
 #include "chrome/common/buildflags.h"
@@ -53,6 +53,9 @@
 #include "components/gcm_driver/instance_id/instance_id_driver.h"
 #include "components/gcm_driver/instance_id/instance_id_profile_service.h"
 #include "components/permissions/permission_manager.h"
+#if !BUILDFLAG(IS_QTWEBENGINE)
+#include "components/permissions/permission_uma_util.h"
+#endif
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
@@ -67,6 +70,7 @@
 #include "content/public/browser/storage_partition.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
+#include "extensions/common/constants.h"
 #include "third_party/blink/public/common/permissions/permission_utils.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom.h"
@@ -278,7 +282,7 @@ PushMessagingServiceImpl::PushMessagingServiceImpl(Profile* profile)
       pending_push_subscription_count_(0),
       notification_manager_(profile) {
   DCHECK(profile);
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   HostContentSettingsMapFactory::GetForProfile(profile_)->AddObserver(this);
 
   on_app_terminating_subscription_ =
@@ -347,13 +351,13 @@ void PushMessagingServiceImpl::OnStoreReset() {
 
 void PushMessagingServiceImpl::OnMessage(const std::string& app_id,
                                          const gcm::IncomingMessage& message) {
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // We won't have time to process and act on the message.
   // TODO(peter) This should be checked at the level of the GCMDriver, so that
   // the message is not consumed. See https://crbug.com/612815
   if (g_browser_process->IsShuttingDown() || shutdown_started_)
     return;
-#endif // !TOOLKIT_QT
+#endif  // !BUILDFLAG(IS_QTWBENGINE)
 
 #if BUILDFLAG(ENABLE_BACKGROUND_MODE)
   if (!in_flight_keep_alive_) {
@@ -371,7 +375,7 @@ void PushMessagingServiceImpl::OnMessage(const std::string& app_id,
       PushMessagingAppIdentifier::FindByAppId(profile_, app_id);
   // Drop message and unregister if app_id was unknown (maybe recently deleted).
   if (app_identifier.is_null()) {
-    absl::optional<PushMessagingAppIdentifier> refresh_identifier =
+    std::optional<PushMessagingAppIdentifier> refresh_identifier =
         refresher_.FindActiveAppIdentifier(app_id);
     if (!refresh_identifier) {
       DeliverMessageCallback(app_id, GURL::EmptyGURL(),
@@ -391,7 +395,7 @@ void PushMessagingServiceImpl::OnMessage(const std::string& app_id,
 
   if (IsPermissionSet(app_identifier.origin())) {
     messages_pending_permission_check_.emplace(app_id, message);
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
     // Start abusive and disruptive origin verifications only if no other
     // respective verification is in progress.
     if (!origin_revocation_request_)
@@ -408,7 +412,7 @@ void PushMessagingServiceImpl::OnMessage(const std::string& app_id,
   }
 }
 
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 void PushMessagingServiceImpl::CheckOriginAndDispatchNextMessage() {
   if (messages_pending_permission_check_.empty())
     return;
@@ -529,7 +533,7 @@ void PushMessagingServiceImpl::DispatchNextMessage()
 
   DispatchNextMessage();
 }
-#endif // !TOOLKIT_QT
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
 void PushMessagingServiceImpl::
     DeliverNextQueuedMessageForServiceWorkerRegistration(
@@ -562,7 +566,7 @@ void PushMessagingServiceImpl::
 
   // The payload of a push message can be valid with content, valid with empty
   // content, or null.
-  absl::optional<std::string> payload;
+  std::optional<std::string> payload;
   if (message.decrypted)
     payload = message.raw_data;
 
@@ -621,9 +625,12 @@ void PushMessagingServiceImpl::DeliverMessageCallback(
       // enabled through a command line flag.
       if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
               switches::kAllowSilentPush)) {
+        // Defaults to true since that is the more restrictive option.
+        bool user_visible_only = base::Contains(
+            origins_bypassing_user_visible_requirement, requesting_origin);
         notification_manager_.EnforceUserVisibleOnlyRequirements(
             requesting_origin, service_worker_registration_id,
-            std::move(message_handled_callback));
+            std::move(message_handled_callback), user_visible_only);
         message_handled_callback = base::OnceCallback<void(bool)>();
       }
       break;
@@ -864,7 +871,7 @@ void PushMessagingServiceImpl::SubscribeFromDocument(
   // It is OK to ignore `requesting_origin` because it will be calculated from
   // `render_frame_host` and we always use `requesting_origin` for
   // NOTIFICATIONS.
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   profile_->GetPermissionController()->RequestPermissionFromCurrentDocument(
       render_frame_host,
       content::PermissionRequestDescription(
@@ -922,6 +929,10 @@ void PushMessagingServiceImpl::SubscribeFromWorker(
     return;
   }
 
+  if (!options->user_visible_only) {
+    origins_bypassing_user_visible_requirement.insert(app_identifier.origin());
+  }
+
   DoSubscribe(std::move(app_identifier), std::move(options),
               std::move(register_callback),
               /* render_process_id= */ -1, /* render_frame_id= */ -1,
@@ -931,10 +942,15 @@ void PushMessagingServiceImpl::SubscribeFromWorker(
 blink::mojom::PermissionStatus PushMessagingServiceImpl::GetPermissionStatus(
     const GURL& origin,
     bool user_visible) {
-  if (!user_visible)
+  // Allows some origins to pass userVisibleOnly false to the push manager if
+  // they request it, but deny others.
+  if (!user_visible &&
+      !notification_manager_.ShouldSkipUserVisibleOnlyRequirements(
+          origin, /*requested_user_visible_only=*/!user_visible)) {
     return blink::mojom::PermissionStatus::DENIED;
+  }
 
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   // Because the Push API is tied to Service Workers, many usages of the API
   // won't have an embedding origin at all. Only consider the requesting
   // |origin| when checking whether permission to use the API has been granted.
@@ -1101,7 +1117,7 @@ void PushMessagingServiceImpl::SubscribeEnd(
     RegisterCallback callback,
     const std::string& subscription_id,
     const GURL& endpoint,
-    const absl::optional<base::Time>& expiration_time,
+    const std::optional<base::Time>& expiration_time,
     const std::vector<uint8_t>& p256dh,
     const std::vector<uint8_t>& auth,
     blink::mojom::PushRegistrationStatus status) {
@@ -1114,7 +1130,7 @@ void PushMessagingServiceImpl::SubscribeEndWithError(
     blink::mojom::PushRegistrationStatus status) {
   SubscribeEnd(std::move(callback), std::string() /* subscription_id */,
                GURL::EmptyGURL() /* endpoint */,
-               absl::nullopt /* expiration_time */,
+               std::nullopt /* expiration_time */,
                std::vector<uint8_t>() /* p256dh */,
                std::vector<uint8_t>() /* auth */, status);
 }
@@ -1202,15 +1218,14 @@ void PushMessagingServiceImpl::GetSubscriptionInfo(
   if (app_identifier.is_null()) {
     std::move(callback).Run(
         false /* is_valid */, GURL::EmptyGURL() /*endpoint*/,
-        absl::nullopt /* expiration_time */,
-        std::vector<uint8_t>() /* p256dh */, std::vector<uint8_t>() /* auth */);
+        std::nullopt /* expiration_time */, std::vector<uint8_t>() /* p256dh */,
+        std::vector<uint8_t>() /* auth */);
     return;
   }
 
   const GURL endpoint = push_messaging::CreateEndpoint(subscription_id);
-
   const std::string& app_id = app_identifier.app_id();
-  absl::optional<base::Time> expiration_time = app_identifier.expiration_time();
+  std::optional<base::Time> expiration_time = app_identifier.expiration_time();
 
   base::OnceCallback<void(bool)> validate_cb =
       base::BindOnce(&PushMessagingServiceImpl::DidValidateSubscription,
@@ -1232,14 +1247,14 @@ void PushMessagingServiceImpl::DidValidateSubscription(
     const std::string& app_id,
     const std::string& sender_id,
     const GURL& endpoint,
-    const absl::optional<base::Time>& expiration_time,
+    const std::optional<base::Time>& expiration_time,
     SubscriptionInfoCallback callback,
     bool is_valid) {
   if (!is_valid) {
     std::move(callback).Run(
         false /* is_valid */, GURL::EmptyGURL() /* endpoint */,
-        absl::nullopt /* expiration_time */,
-        std::vector<uint8_t>() /* p256dh */, std::vector<uint8_t>() /* auth */);
+        std::nullopt /* expiration_time */, std::vector<uint8_t>() /* p256dh */,
+        std::vector<uint8_t>() /* auth */);
     return;
   }
 
@@ -1252,7 +1267,7 @@ void PushMessagingServiceImpl::DidValidateSubscription(
 
 void PushMessagingServiceImpl::DidGetEncryptionInfo(
     const GURL& endpoint,
-    const absl::optional<base::Time>& expiration_time,
+    const std::optional<base::Time>& expiration_time,
     SubscriptionInfoCallback callback,
     std::string p256dh,
     std::string auth_secret) const {
@@ -1308,6 +1323,8 @@ void PushMessagingServiceImpl::UnsubscribeInternal(
       base::BindOnce(&PushMessagingServiceImpl::DidClearPushSubscriptionId,
                      weak_factory_.GetWeakPtr(), reason, app_id, sender_id,
                      std::move(callback)));
+
+  origins_bypassing_user_visible_requirement.erase(origin);
 }
 
 void PushMessagingServiceImpl::DidClearPushSubscriptionId(
@@ -1497,7 +1514,15 @@ void PushMessagingServiceImpl::OnContentSettingChanged(
       barrier_closure.Run();
       continue;
     }
-
+#if !BUILDFLAG(IS_QTWEBENGINE)
+    if (!permissions::PermissionUmaUtil::ScopedRevocationReporter::
+            IsInstanceInScope()) {
+      permissions::PermissionUmaUtil::PermissionRevoked(
+          ContentSettingsType::NOTIFICATIONS,
+          permissions::PermissionSourceUI::UNIDENTIFIED,
+          app_identifier.origin(), profile_);
+    }
+#endif
     UnexpectedChange(app_identifier,
                      blink::mojom::PushUnregistrationReason::PERMISSION_REVOKED,
                      barrier_closure);
@@ -1567,7 +1592,7 @@ void PushMessagingServiceImpl::GetPushSubscriptionFromAppIdentifierEnd(
     const std::string& sender_id,
     bool is_valid,
     const GURL& endpoint,
-    const absl::optional<base::Time>& expiration_time,
+    const std::optional<base::Time>& expiration_time,
     const std::vector<uint8_t>& p256dh,
     const std::vector<uint8_t>& auth) {
   if (!is_valid) {
@@ -1639,7 +1664,7 @@ void PushMessagingServiceImpl::SetContentSettingChangedCallbackForTesting(
 
 void PushMessagingServiceImpl::Shutdown() {
   GetGCMDriver()->RemoveAppHandler(kPushMessagingAppIdentifierPrefix);
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   HostContentSettingsMapFactory::GetForProfile(profile_)->RemoveObserver(this);
 #endif
 }
@@ -1691,7 +1716,7 @@ void PushMessagingServiceImpl::StartRefresh(
       PushMessagingAppIdentifier::Generate(
           old_app_identifier.origin(),
           old_app_identifier.service_worker_registration_id(),
-          absl::nullopt /* expiration_time */);
+          std::nullopt /* expiration_time */);
 
   refresher_.Refresh(old_app_identifier, new_app_identifier.app_id(),
                      sender_id);
@@ -1713,7 +1738,7 @@ void PushMessagingServiceImpl::UpdateSubscription(
   auto register_callback = base::BindOnce(
       [](RegisterCallback cb, Profile* profile, PushMessagingAppIdentifier ai,
          const std::string& registration_id, const GURL& endpoint,
-         const absl::optional<base::Time>& expiration_time,
+         const std::optional<base::Time>& expiration_time,
          const std::vector<uint8_t>& p256dh, const std::vector<uint8_t>& auth,
          blink::mojom::PushRegistrationStatus status) {
         base::OnceClosure closure =
@@ -1728,11 +1753,24 @@ void PushMessagingServiceImpl::UpdateSubscription(
         }
       },
       std::move(callback), profile_, app_identifier);
+
+  blink::mojom::PermissionStatus permission_status =
+      blink::mojom::PermissionStatus::GRANTED;
+
+  if (!options->user_visible_only) {
+    if (notification_manager_.ShouldSkipUserVisibleOnlyRequirements(
+            app_identifier.origin(), options->user_visible_only)) {
+      origins_bypassing_user_visible_requirement.insert(
+          app_identifier.origin());
+    } else {
+      permission_status = blink::mojom::PermissionStatus::DENIED;
+    }
+  }
   // Subscribe using the new subscription information, this will overwrite
   // the expiration time of |app_identifier|
   DoSubscribe(app_identifier, std::move(options), std::move(register_callback),
               -1 /* render_process_id */, -1 /* render_frame_id */,
-              blink::mojom::PermissionStatus::GRANTED);
+              permission_status);
 }
 
 void PushMessagingServiceImpl::DidUpdateSubscription(
@@ -1742,7 +1780,7 @@ void PushMessagingServiceImpl::DidUpdateSubscription(
     const std::string& sender_id,
     const std::string& registration_id,
     const GURL& endpoint,
-    const absl::optional<base::Time>& expiration_time,
+    const std::optional<base::Time>& expiration_time,
     const std::vector<uint8_t>& p256dh,
     const std::vector<uint8_t>& auth,
     blink::mojom::PushRegistrationStatus status) {

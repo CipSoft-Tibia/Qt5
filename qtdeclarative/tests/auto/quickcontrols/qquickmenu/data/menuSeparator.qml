@@ -28,6 +28,8 @@ ApplicationWindow {
         id: menu
         cascade: true
 
+        enter: null
+
         Component.onCompleted: {
             addItem(newMenuItem)
             addItem(menuSeparator)

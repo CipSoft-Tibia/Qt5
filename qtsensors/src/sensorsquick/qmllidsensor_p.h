@@ -20,7 +20,7 @@ QT_BEGIN_NAMESPACE
 
 class QLidSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlLidSensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlLidSensor : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(LidSensor)
@@ -37,7 +37,7 @@ private:
     QLidSensor *m_sensor;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlLidReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlLidReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(bool backLidClosed READ backLidClosed

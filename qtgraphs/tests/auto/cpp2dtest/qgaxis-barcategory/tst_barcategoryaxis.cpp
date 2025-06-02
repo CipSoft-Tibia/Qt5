@@ -62,6 +62,12 @@ void tst_barcategoryaxis::initializeProperties()
 {
     QVERIFY(m_axis);
 
+    QSignalSpy spy0(m_axis, &QBarCategoryAxis::categoriesChanged);
+    QSignalSpy spy1(m_axis, &QBarCategoryAxis::minChanged);
+    QSignalSpy spy2(m_axis, &QBarCategoryAxis::maxChanged);
+    QSignalSpy spy3(m_axis, &QBarCategoryAxis::categoryRangeChanged);
+    QSignalSpy spy4(m_axis, &QBarCategoryAxis::countChanged);
+
     QStringList cats = {"One", "Two", "Three"};
 
     m_axis->setCategories(cats);
@@ -80,6 +86,12 @@ void tst_barcategoryaxis::initializeProperties()
 
     m_axis->setRange("Zero", "Ten");
 
+    QCOMPARE(spy0.size(), 1);
+    QCOMPARE(spy1.size(), 1);
+    QCOMPARE(spy2.size(), 1);
+    QCOMPARE(spy3.size(), 1);
+    QCOMPARE(spy4.size(), 1);
+
     // TODO: QTBUG-121718
     // QCOMPARE(m_axis->min(), "Zero");
     // QCOMPARE(m_axis->max(), "Ten");
@@ -88,6 +100,12 @@ void tst_barcategoryaxis::initializeProperties()
 void tst_barcategoryaxis::appendInsertRemove()
 {
     QVERIFY(m_axis);
+
+    QSignalSpy spy0(m_axis, &QBarCategoryAxis::categoriesChanged);
+    QSignalSpy spy1(m_axis, &QBarCategoryAxis::minChanged);
+    QSignalSpy spy2(m_axis, &QBarCategoryAxis::maxChanged);
+    QSignalSpy spy3(m_axis, &QBarCategoryAxis::categoryRangeChanged);
+    QSignalSpy spy4(m_axis, &QBarCategoryAxis::countChanged);
 
     QStringList cats = {"One", "Two", "Three"};
     QStringList morecats = {"Four", "Five", "Six"};
@@ -124,11 +142,23 @@ void tst_barcategoryaxis::appendInsertRemove()
     QCOMPARE(m_axis->categories(), mixedcats);
     QCOMPARE(m_axis->min(), mixedcats[0]);
     QCOMPARE(m_axis->max(), mixedcats[mixedcats.length() - 1]);
+
+    QCOMPARE(spy0.size(), 12);
+    QCOMPARE(spy1.size(), 5);
+    QCOMPARE(spy2.size(), 7);
+    QCOMPARE(spy3.size(), 11);
+    QCOMPARE(spy4.size(), 12);
 }
 
 void tst_barcategoryaxis::replaceClear()
 {
     QVERIFY(m_axis);
+
+    QSignalSpy spy0(m_axis, &QBarCategoryAxis::categoriesChanged);
+    QSignalSpy spy1(m_axis, &QBarCategoryAxis::minChanged);
+    QSignalSpy spy2(m_axis, &QBarCategoryAxis::maxChanged);
+    QSignalSpy spy3(m_axis, &QBarCategoryAxis::categoryRangeChanged);
+    QSignalSpy spy4(m_axis, &QBarCategoryAxis::countChanged);
 
     QStringList mixedcats = {"One", "Four", "Two", "Five", "Six", "Three"};
     QStringList replacedcats = {"Ten", "Four", "Fifteen", "Five", "Six", "Twenty"};
@@ -147,6 +177,12 @@ void tst_barcategoryaxis::replaceClear()
     // Clear
     m_axis->clear();
     QCOMPARE(m_axis->count(), 0);
+
+    QCOMPARE(spy0.size(), 5);
+    QCOMPARE(spy1.size(), 3);
+    QCOMPARE(spy2.size(), 3);
+    QCOMPARE(spy3.size(), 4);
+    QCOMPARE(spy4.size(), 5);
 }
 
 QTEST_MAIN(tst_barcategoryaxis)

@@ -266,8 +266,8 @@ void WaylandSurface::set_acquire_fence(gfx::GpuFenceHandle acquire_fence) {
          connection_->UseImplicitSyncInterop());
   if (!acquire_fence.is_null()) {
     base::TimeTicks ticks;
-    auto status = gfx::GpuFence::GetStatusChangeTime(
-        acquire_fence.owned_fd.get(), &ticks);
+    auto status =
+        gfx::GpuFence::GetStatusChangeTime(acquire_fence.Peek(), &ticks);
     if (status == gfx::GpuFence::kSignaled)
       acquire_fence = gfx::GpuFenceHandle();
   }
@@ -445,14 +445,17 @@ wl::Object<wl_subsurface> WaylandSurface::CreateSubsurface(
   return subsurface;
 }
 
-void WaylandSurface::ApplyPendingState() {
+bool WaylandSurface::ApplyPendingState() {
   DCHECK(!apply_state_immediately_);
+  bool needs_commit = false;
+
   if (pending_state_.buffer_id != state_.buffer_id) {
     // The logic in DamageBuffer currently relies on attachment coordinates of
     // (0, 0). If this changes, then the calculation in DamageBuffer will also
     // need to be updated.
     // Note: should the offset be non-zero, use wl_surface_offset() to set it.
     wl_surface_attach(surface_.get(), pending_state_.buffer, 0, 0);
+    needs_commit = true;
 
     // Do not call GetOrCreateSurfaceSync() if the buffer management doesn't
     // happen with WaylandBufferManagerHost. That is, if Wayland EGL
@@ -466,7 +469,7 @@ void WaylandSurface::ApplyPendingState() {
       if (surface_sync) {
         if (!pending_state_.acquire_fence.is_null()) {
           zwp_linux_surface_synchronization_v1_set_acquire_fence(
-              surface_sync, pending_state_.acquire_fence.owned_fd.get());
+              surface_sync, pending_state_.acquire_fence.Peek());
         }
 
         if (!next_explicit_release_request_.is_null()) {
@@ -496,8 +499,7 @@ void WaylandSurface::ApplyPendingState() {
       } else if (connection_->UseImplicitSyncInterop()) {
         if (!pending_state_.acquire_fence.is_null()) {
           connection_->buffer_manager_host()->InsertAcquireFence(
-              pending_state_.buffer_id,
-              pending_state_.acquire_fence.owned_fd.get());
+              pending_state_.buffer_id, pending_state_.acquire_fence.Peek());
         }
       }
     }
@@ -509,18 +511,21 @@ void WaylandSurface::ApplyPendingState() {
   // a different one.
   if (pending_state_.color_space != state_.color_space) {
     zcr_color_management_surface_->SetColorSpace(pending_state_.color_space);
+    needs_commit = true;
   }
 
   if (pending_state_.buffer_transform != state_.buffer_transform) {
     wl_output_transform wl_transform =
         wl::ToWaylandTransform(pending_state_.buffer_transform);
     wl_surface_set_buffer_transform(surface_.get(), wl_transform);
+    needs_commit = true;
   }
 
   if (pending_state_.opacity != state_.opacity) {
     DCHECK(blending());
     zcr_blending_v1_set_alpha(blending(),
                               wl_fixed_from_double(pending_state_.opacity));
+    needs_commit = true;
   }
   if (pending_state_.use_blending != state_.use_blending) {
     DCHECK(blending());
@@ -528,6 +533,7 @@ void WaylandSurface::ApplyPendingState() {
                                  pending_state_.use_blending
                                      ? ZCR_BLENDING_V1_BLENDING_EQUATION_PREMULT
                                      : ZCR_BLENDING_V1_BLENDING_EQUATION_NONE);
+    needs_commit = true;
   }
 
   if (pending_state_.priority_hint != state_.priority_hint) {
@@ -535,6 +541,7 @@ void WaylandSurface::ApplyPendingState() {
     overlay_prioritized_surface_set_overlay_priority(
         overlay_priority_surface(),
         TranslatePriority(pending_state_.priority_hint));
+    needs_commit = true;
   }
 
   // Don't set input region when use_native_frame is enabled.
@@ -550,6 +557,7 @@ void WaylandSurface::ApplyPendingState() {
                                  GetWaylandScale(pending_state_))
                   .get()
             : nullptr);
+    needs_commit = true;
   }
 
   // It's important to set opaque region for opaque windows (provides
@@ -563,6 +571,7 @@ void WaylandSurface::ApplyPendingState() {
             : CreateAndAddRegion(pending_state_.opaque_region_px,
                                  GetWaylandScale(pending_state_))
                   .get());
+    needs_commit = true;
   }
 
   if (pending_state_.background_color != state_.background_color) {
@@ -578,6 +587,7 @@ void WaylandSurface::ApplyPendingState() {
 
       augmented_surface_set_background_color(get_augmented_surface(),
                                              &color_data);
+      needs_commit = true;
 
       wl_array_release(&color_data);
     }
@@ -588,9 +598,6 @@ void WaylandSurface::ApplyPendingState() {
     gfx::RRectF rounded_clip_bounds = pending_state_.rounded_clip_bounds;
     rounded_clip_bounds.Scale(1.f / GetWaylandScale(pending_state_));
 
-    // For backwards compatibility, support both the latest and the deprecated
-    // incarnation of this request. In the future, this API will get a clean up
-    // pass.
     if (augmented_surface_get_version(get_augmented_surface()) >=
         AUGMENTED_SURFACE_SET_ROUNDED_CORNERS_CLIP_BOUNDS_SINCE_VERSION) {
       augmented_surface_set_rounded_corners_clip_bounds(
@@ -615,28 +622,14 @@ void WaylandSurface::ApplyPendingState() {
               rounded_clip_bounds
                   .GetCornerRadii(gfx::RRectF::Corner::kLowerLeft)
                   .x()));
+      needs_commit = true;
     } else if (augmented_surface_get_version(get_augmented_surface()) >=
                AUGMENTED_SURFACE_SET_ROUNDED_CLIP_BOUNDS_SINCE_VERSION) {
-      augmented_surface_set_rounded_clip_bounds(
-          get_augmented_surface(), rounded_clip_bounds.rect().x(),
-          rounded_clip_bounds.rect().y(), rounded_clip_bounds.rect().width(),
-          rounded_clip_bounds.rect().height(),
-          wl_fixed_from_double(
-              rounded_clip_bounds
-                  .GetCornerRadii(gfx::RRectF::Corner::kUpperLeft)
-                  .x()),
-          wl_fixed_from_double(
-              rounded_clip_bounds
-                  .GetCornerRadii(gfx::RRectF::Corner::kUpperRight)
-                  .x()),
-          wl_fixed_from_double(
-              rounded_clip_bounds
-                  .GetCornerRadii(gfx::RRectF::Corner::kLowerRight)
-                  .x()),
-          wl_fixed_from_double(
-              rounded_clip_bounds
-                  .GetCornerRadii(gfx::RRectF::Corner::kLowerLeft)
-                  .x()));
+      // For debugging purposes, stdout uses of the old incarnation of this API.
+      // In the future, this API will get a clean up pass.
+      LOG(WARNING) << "The 'augmented_surface::set_rounded_clip_bounds' "
+                      "request has been deprecated in favor of "
+                      "augmented_surface::set_rounded_corners_clip_bounds.";
     }
   }
 
@@ -656,6 +649,7 @@ void WaylandSurface::ApplyPendingState() {
         augmented_surface_set_clip_rect(get_augmented_surface(), kMinusOne,
                                         kMinusOne, kMinusOne, kMinusOne);
       }
+      needs_commit = true;
     }
   }
 
@@ -665,6 +659,7 @@ void WaylandSurface::ApplyPendingState() {
                                         pending_state_.contains_video
                                             ? WP_CONTENT_TYPE_V1_TYPE_VIDEO
                                             : WP_CONTENT_TYPE_V1_TYPE_NONE);
+    needs_commit = true;
   }
 
   // Buffer-local coordinates are in pixels, surface coordinates are in DIP.
@@ -734,6 +729,7 @@ void WaylandSurface::ApplyPendingState() {
       surface_scale_set_ != applying_surface_scale) {
     wl_surface_set_buffer_scale(surface_.get(), applying_surface_scale);
     surface_scale_set_ = applying_surface_scale;
+    needs_commit = true;
   }
   DCHECK_GE(surface_scale_set_, 1);
 
@@ -803,6 +799,7 @@ void WaylandSurface::ApplyPendingState() {
     wp_viewport_set_source(viewport(), src_to_set[0], src_to_set[1],
                            src_to_set[2], src_to_set[3]);
     memcpy(src_set_, src_to_set, 4 * sizeof(*src_to_set));
+    needs_commit = true;
   }
 
   gfx::SizeF viewport_dst_dip =
@@ -829,6 +826,7 @@ void WaylandSurface::ApplyPendingState() {
       augmented_surface_set_destination_size(
           augmented_surface, wl_fixed_from_double(viewport_dst_dip.width()),
           wl_fixed_from_double(viewport_dst_dip.height()));
+      needs_commit = true;
     } else if (viewport()) {
       wp_viewport_set_destination(
           viewport(),
@@ -836,6 +834,7 @@ void WaylandSurface::ApplyPendingState() {
                               : static_cast<int>(dst_to_set[0]),
           dst_to_set[1] > 0.f ? base::ClampRound(viewport_dst_dip.height())
                               : static_cast<int>(dst_to_set[1]));
+      needs_commit = true;
     }
     memcpy(dst_set_, dst_to_set, 2 * sizeof(*dst_to_set));
   }
@@ -845,7 +844,7 @@ void WaylandSurface::ApplyPendingState() {
       pending_state_.damage_px.back().IsEmpty()) {
     pending_state_.damage_px.clear();
     state_ = pending_state_;
-    return;
+    return needs_commit;
   }
 
   DCHECK(pending_state_.buffer);
@@ -861,9 +860,11 @@ void WaylandSurface::ApplyPendingState() {
   // damage into buffer space.
   wl_surface_damage(surface_.get(), damage.x(), damage.y(), damage.width(),
                     damage.height());
+  needs_commit = true;
 
   pending_state_.damage_px.clear();
   state_ = pending_state_;
+  return needs_commit;
 }
 
 void WaylandSurface::ForceImmediateStateApplication() {

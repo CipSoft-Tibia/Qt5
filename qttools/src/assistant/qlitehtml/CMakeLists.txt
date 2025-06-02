@@ -29,6 +29,10 @@ endif()
 find_package(QT 5.15 NAMES Qt6 Qt5 COMPONENTS Widgets REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
 set(Qt Qt${QT_VERSION_MAJOR})
+if(QT_VERSION_MAJOR VERSION_GREATER_EQUAL "6")
+    find_package(${Qt} ${Qt${QT_VERSION_MAJOR}_VERSION} QUIET CONFIG OPTIONAL_COMPONENTS
+        PrintSupport)
+endif()
 
 add_subdirectory(src)
 add_subdirectory(tests/manual/browser)

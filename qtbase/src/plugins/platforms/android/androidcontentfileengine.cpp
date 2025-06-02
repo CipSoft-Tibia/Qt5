@@ -16,19 +16,15 @@ QT_BEGIN_NAMESPACE
 using namespace QNativeInterface;
 using namespace Qt::StringLiterals;
 
-Q_DECLARE_JNI_CLASS(ContentResolverType, "android/content/ContentResolver");
-Q_DECLARE_JNI_CLASS(UriType, "android/net/Uri");
-Q_DECLARE_JNI_CLASS(Uri, "android/net/Uri");
 Q_DECLARE_JNI_CLASS(ParcelFileDescriptorType, "android/os/ParcelFileDescriptor");
 Q_DECLARE_JNI_CLASS(CursorType, "android/database/Cursor");
-Q_DECLARE_JNI_TYPE(StringArray, "[Ljava/lang/String;");
 
 static QJniObject &contentResolverInstance()
 {
     static QJniObject contentResolver;
     if (!contentResolver.isValid()) {
         contentResolver = QJniObject(QNativeInterface::QAndroidApplication::context())
-                .callMethod<QtJniTypes::ContentResolverType>("getContentResolver");
+                .callMethod<QtJniTypes::ContentResolver>("getContentResolver");
     }
 
     return contentResolver;
@@ -80,7 +76,7 @@ bool AndroidContentFileEngine::open(QIODevice::OpenMode openMode,
     }
 
     m_pfd = contentResolverInstance().callMethod<
-            QtJniTypes::ParcelFileDescriptorType, QtJniTypes::UriType, jstring>(
+            QtJniTypes::ParcelFileDescriptorType, QtJniTypes::Uri, jstring>(
                 "openFileDescriptor",
                 m_documentFile->uri().object(),
                 QJniObject::fromString(openModeStr).object<jstring>());
@@ -248,31 +244,29 @@ QString AndroidContentFileEngine::fileName(FileName f) const
     return QString();
 }
 
-QAbstractFileEngine::Iterator *AndroidContentFileEngine::beginEntryList(QDir::Filters filters,
-                                                                    const QStringList &filterNames)
+QAbstractFileEngine::IteratorUniquePtr
+AndroidContentFileEngine::beginEntryList(const QString &path, QDirListing::IteratorFlags filters,
+                                         const QStringList &filterNames)
 {
-    return new AndroidContentFileEngineIterator(filters, filterNames);
-}
-
-QAbstractFileEngine::Iterator *AndroidContentFileEngine::endEntryList()
-{
-    return nullptr;
+    return std::make_unique<AndroidContentFileEngineIterator>(path, filters, filterNames);
 }
 
 AndroidContentFileEngineHandler::AndroidContentFileEngineHandler() = default;
 AndroidContentFileEngineHandler::~AndroidContentFileEngineHandler() = default;
 
-QAbstractFileEngine* AndroidContentFileEngineHandler::create(const QString &fileName) const
+std::unique_ptr<QAbstractFileEngine>
+AndroidContentFileEngineHandler::create(const QString &fileName) const
 {
-    if (!fileName.startsWith("content"_L1))
-        return nullptr;
+    if (fileName.startsWith("content"_L1))
+        return std::make_unique<AndroidContentFileEngine>(fileName);
 
-    return new AndroidContentFileEngine(fileName);
+    return {};
+
 }
 
-AndroidContentFileEngineIterator::AndroidContentFileEngineIterator(QDir::Filters filters,
-                                                                   const QStringList &filterNames)
-    : QAbstractFileEngineIterator(filters, filterNames)
+AndroidContentFileEngineIterator::AndroidContentFileEngineIterator(
+    const QString &path, QDirListing::IteratorFlags filters, const QStringList &filterNames)
+    : QAbstractFileEngineIterator(path, filters, filterNames)
 {
 }
 
@@ -280,15 +274,7 @@ AndroidContentFileEngineIterator::~AndroidContentFileEngineIterator()
 {
 }
 
-QString AndroidContentFileEngineIterator::next()
-{
-    if (!hasNext())
-        return QString();
-    ++m_index;
-    return currentFilePath();
-}
-
-bool AndroidContentFileEngineIterator::hasNext() const
+bool AndroidContentFileEngineIterator::advance()
 {
     if (m_index == -1 && m_files.isEmpty()) {
         const auto currentPath = path();
@@ -299,9 +285,18 @@ bool AndroidContentFileEngineIterator::hasNext() const
         if (iterDoc->isDirectory())
             for (const auto &doc : iterDoc->listFiles())
                 m_files.append(doc);
+        if (m_files.isEmpty())
+            return false;
+        m_index = 0;
+        return true;
     }
 
-    return m_index < (m_files.size() - 1);
+    if (m_index < m_files.size() - 1) {
+        ++m_index;
+        return true;
+    }
+
+    return false;
 }
 
 QString AndroidContentFileEngineIterator::currentFileName() const
@@ -375,12 +370,10 @@ public:
     {
         auto cursor = contentResolverInstance().callMethod<QtJniTypes::CursorType>(
             "query",
-            uri.object<QtJniTypes::UriType>(),
-            projection.isEmpty() ?
-                        nullptr : fromStringList(projection).object<QtJniTypes::StringArray>(),
+            uri.object<QtJniTypes::Uri>(),
+            QJniArray(projection),
             selection.isEmpty() ? nullptr : QJniObject::fromString(selection).object<jstring>(),
-            selectionArgs.isEmpty() ?
-                        nullptr : fromStringList(selectionArgs).object<QtJniTypes::StringArray>(),
+            QJniArray(selectionArgs),
             sortOrder.isEmpty() ? nullptr : QJniObject::fromString(sortOrder).object<jstring>());
         if (!cursor.isValid())
             return {};
@@ -414,15 +407,6 @@ public:
     bool moveToNext() { return m_object.callMethod<jboolean>("moveToNext"); }
 
 private:
-    static QJniObject fromStringList(const QStringList &list)
-    {
-        QJniEnvironment env;
-        auto array = env->NewObjectArray(list.size(), env.findClass("java/lang/String"), nullptr);
-        for (int i = 0; i < list.size(); ++i)
-            env->SetObjectArrayElement(array, i, QJniObject::fromString(list[i]).object());
-        return QJniObject::fromLocalRef(array);
-    }
-
     QJniObject m_object;
 };
 
@@ -464,7 +448,7 @@ const QLatin1String MIME_TYPE_DIR("vnd.android.document/directory");
 
 QString documentId(const QJniObject &uri)
 {
-    return QJniObject::callStaticMethod<jstring, QtJniTypes::UriType>(
+    return QJniObject::callStaticMethod<jstring, QtJniTypes::Uri>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "getDocumentId",
                 uri.object()).toString();
@@ -472,7 +456,7 @@ QString documentId(const QJniObject &uri)
 
 QString treeDocumentId(const QJniObject &uri)
 {
-    return QJniObject::callStaticMethod<jstring, QtJniTypes::UriType>(
+    return QJniObject::callStaticMethod<jstring, QtJniTypes::Uri>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "getTreeDocumentId",
                 uri.object()).toString();
@@ -480,20 +464,20 @@ QString treeDocumentId(const QJniObject &uri)
 
 QJniObject buildChildDocumentsUriUsingTree(const QJniObject &uri, const QString &parentDocumentId)
 {
-    return QJniObject::callStaticMethod<QtJniTypes::UriType>(
+    return QJniObject::callStaticMethod<QtJniTypes::Uri>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "buildChildDocumentsUriUsingTree",
-                uri.object<QtJniTypes::UriType>(),
+                uri.object<QtJniTypes::Uri>(),
                 QJniObject::fromString(parentDocumentId).object<jstring>());
 
 }
 
 QJniObject buildDocumentUriUsingTree(const QJniObject &treeUri, const QString &documentId)
 {
-    return QJniObject::callStaticMethod<QtJniTypes::UriType>(
+    return QJniObject::callStaticMethod<QtJniTypes::Uri>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "buildDocumentUriUsingTree",
-                treeUri.object<QtJniTypes::UriType>(),
+                treeUri.object<QtJniTypes::Uri>(),
                 QJniObject::fromString(documentId).object<jstring>());
 }
 
@@ -503,7 +487,7 @@ bool isDocumentUri(const QJniObject &uri)
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "isDocumentUri",
                 QNativeInterface::QAndroidApplication::context(),
-                uri.object<QtJniTypes::UriType>());
+                uri.object<QtJniTypes::Uri>());
 }
 
 bool isTreeUri(const QJniObject &uri)
@@ -511,17 +495,17 @@ bool isTreeUri(const QJniObject &uri)
     return QJniObject::callStaticMethod<jboolean>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "isTreeUri",
-                uri.object<QtJniTypes::UriType>());
+                uri.object<QtJniTypes::Uri>());
 }
 
 QJniObject createDocument(const QJniObject &parentDocumentUri, const QString &mimeType,
                           const QString &displayName)
 {
-    return QJniObject::callStaticMethod<QtJniTypes::UriType>(
+    return QJniObject::callStaticMethod<QtJniTypes::Uri>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "createDocument",
-                contentResolverInstance().object<QtJniTypes::ContentResolverType>(),
-                parentDocumentUri.object<QtJniTypes::UriType>(),
+                contentResolverInstance().object<QtJniTypes::ContentResolver>(),
+                parentDocumentUri.object<QtJniTypes::Uri>(),
                 QJniObject::fromString(mimeType).object<jstring>(),
                 QJniObject::fromString(displayName).object<jstring>());
 }
@@ -535,8 +519,8 @@ bool deleteDocument(const QJniObject &documentUri)
     return QJniObject::callStaticMethod<jboolean>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "deleteDocument",
-                contentResolverInstance().object<QtJniTypes::ContentResolverType>(),
-                documentUri.object<QtJniTypes::UriType>());
+                contentResolverInstance().object<QtJniTypes::ContentResolver>(),
+                documentUri.object<QtJniTypes::Uri>());
 }
 
 QJniObject moveDocument(const QJniObject &sourceDocumentUri,
@@ -547,13 +531,13 @@ QJniObject moveDocument(const QJniObject &sourceDocumentUri,
     if (!(flags & Document::FLAG_SUPPORTS_MOVE))
         return {};
 
-    return QJniObject::callStaticMethod<QtJniTypes::UriType>(
+    return QJniObject::callStaticMethod<QtJniTypes::Uri>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "moveDocument",
-                contentResolverInstance().object<QtJniTypes::ContentResolverType>(),
-                sourceDocumentUri.object<QtJniTypes::UriType>(),
-                sourceParentDocumentUri.object<QtJniTypes::UriType>(),
-                targetParentDocumentUri.object<QtJniTypes::UriType>());
+                contentResolverInstance().object<QtJniTypes::ContentResolver>(),
+                sourceDocumentUri.object<QtJniTypes::Uri>(),
+                sourceParentDocumentUri.object<QtJniTypes::Uri>(),
+                targetParentDocumentUri.object<QtJniTypes::Uri>());
 }
 
 QJniObject renameDocument(const QJniObject &documentUri, const QString &displayName)
@@ -562,11 +546,11 @@ QJniObject renameDocument(const QJniObject &documentUri, const QString &displayN
     if (!(flags & Document::FLAG_SUPPORTS_RENAME))
         return {};
 
-    return QJniObject::callStaticMethod<QtJniTypes::UriType>(
+    return QJniObject::callStaticMethod<QtJniTypes::Uri>(
                 QtJniTypes::Traits<QtJniTypes::DocumentsContract>::className(),
                 "renameDocument",
-                contentResolverInstance().object<QtJniTypes::ContentResolverType>(),
-                documentUri.object<QtJniTypes::UriType>(),
+                contentResolverInstance().object<QtJniTypes::ContentResolver>(),
+                documentUri.object<QtJniTypes::Uri>(),
                 QJniObject::fromString(displayName).object<jstring>());
 }
 } // End DocumentsContract namespace
@@ -597,7 +581,7 @@ QJniObject parseUri(const QString &uri)
     if (uriToParse.contains(' '))
         uriToParse.replace(' ', QUrl::toPercentEncoding(" "));
 
-    return QJniObject::callStaticMethod<QtJniTypes::UriType>(
+    return QJniObject::callStaticMethod<QtJniTypes::Uri>(
                 QtJniTypes::Traits<QtJniTypes::Uri>::className(),
                 "parse",
                 QJniObject::fromString(uriToParse).object<jstring>());
@@ -734,7 +718,7 @@ bool DocumentFile::canRead() const
 {
     const auto context = QJniObject(QNativeInterface::QAndroidApplication::context());
     const bool selfUriPermission = context.callMethod<jint>("checkCallingOrSelfUriPermission",
-                                                            m_uri.object<QtJniTypes::UriType>(),
+                                                            m_uri.object<QtJniTypes::Uri>(),
                                                             FLAG_GRANT_READ_URI_PERMISSION);
     if (selfUriPermission != 0)
         return false;
@@ -746,7 +730,7 @@ bool DocumentFile::canWrite() const
 {
     const auto context = QJniObject(QNativeInterface::QAndroidApplication::context());
     const bool selfUriPermission = context.callMethod<jint>("checkCallingOrSelfUriPermission",
-                                                            m_uri.object<QtJniTypes::UriType>(),
+                                                            m_uri.object<QtJniTypes::Uri>(),
                                                             FLAG_GRANT_WRITE_URI_PERMISSION);
     if (selfUriPermission != 0)
         return false;

@@ -13,6 +13,7 @@ import android.content.ContextWrapper;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ComponentInfo;
+import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.res.Resources;
 import android.os.Build;
 import android.os.Bundle;
@@ -21,6 +22,7 @@ import android.system.Os;
 import android.util.Log;
 
 import java.io.File;
+import java.lang.IllegalArgumentException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -30,7 +32,7 @@ import java.util.Objects;
 
 import dalvik.system.DexClassLoader;
 
-public abstract class QtLoader {
+abstract class QtLoader {
 
     protected static final String QtTAG = "QtLoader";
 
@@ -40,7 +42,6 @@ public abstract class QtLoader {
     private String m_nativeLibrariesDir = null;
     private ClassLoader m_classLoader;
 
-    protected final ContextWrapper m_context;
     protected ComponentInfo m_contextInfo;
 
     protected String m_mainLibPath;
@@ -48,50 +49,51 @@ public abstract class QtLoader {
     protected String m_applicationParameters = "";
     protected HashMap<String, String> m_environmentVariables = new HashMap<>();
 
+    protected static QtLoader m_instance = null;
+    protected boolean m_librariesLoaded;
+
+    enum LoadingResult { Succeeded, AlreadyLoaded, Failed }
+
     /**
      * Sets and initialize the basic pieces.
      * Initializes the class loader since it doesn't rely on anything
      * other than the context.
      * Also, we can already initialize the static classes contexts here.
+     * @throws IllegalArgumentException if the given Context is not either an Activity or Service,
+     *         or no ComponentInfo could be found for it
      **/
-    public QtLoader(ContextWrapper context) {
-        m_context = context;
-        m_resources = m_context.getResources();
-        m_packageName = m_context.getPackageName();
+     QtLoader(ContextWrapper context) throws IllegalArgumentException {
+        m_resources = context.getResources();
+        m_packageName = context.getPackageName();
+        final Context baseContext = context.getBaseContext();
+        if (!(baseContext instanceof Activity || baseContext instanceof Service)) {
+            throw new IllegalArgumentException("QtLoader: Context is not an instance of " +
+                                               "Activity or Service");
+        }
 
-        initClassLoader();
-        initStaticClasses();
-        initContextInfo();
+        initClassLoader(baseContext);
+        initStaticClasses(baseContext);
+        try {
+            initContextInfo(baseContext);
+        } catch (NameNotFoundException e) {
+            throw new IllegalArgumentException("QtLoader: No ComponentInfo found for given " +
+                                               "Context", e);
+        }
     }
-
-    /**
-     * Implements the logic for finish the extended context, mostly called
-     * in error cases.
-     **/
-    abstract protected void finish();
 
     /**
      * Initializes the context info instance which is used to retrieve
      * the app metadata from the AndroidManifest.xml or other xml resources.
      * Some values are dependent on the context being an Activity or Service.
      **/
-    protected void initContextInfo() {
-        try {
-            Context context = m_context.getBaseContext();
-            if (context instanceof Activity) {
-                m_contextInfo = context.getPackageManager().getActivityInfo(
-                        ((Activity)context).getComponentName(), PackageManager.GET_META_DATA);
-            } else if (context instanceof Service) {
-                m_contextInfo = context.getPackageManager().getServiceInfo(
-                        new ComponentName(context, context.getClass()),
-                        PackageManager.GET_META_DATA);
-            } else {
-                Log.w(QtTAG, "Context is not an instance of Activity or Service, could not get " +
-                             "context info for it");
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            finish();
+    protected void initContextInfo(Context context) throws NameNotFoundException {
+        if (context instanceof Activity) {
+            m_contextInfo = context.getPackageManager().getActivityInfo(
+                    ((Activity)context).getComponentName(), PackageManager.GET_META_DATA);
+        } else if (context instanceof Service) {
+            m_contextInfo = context.getPackageManager().getServiceInfo(
+                    new ComponentName(context, context.getClass()),
+                    PackageManager.GET_META_DATA);
         }
     }
 
@@ -100,13 +102,13 @@ public abstract class QtLoader {
      * call context specific metadata extraction. This also sets the various environment
      * variables and application parameters.
      **/
-    protected void extractContextMetaData() {
+    protected void extractContextMetaData(Context context) {
         setEnvironmentVariable("QT_ANDROID_FONTS", "Roboto;Droid Sans;Droid Sans Fallback");
         String monospaceFonts = "Droid Sans Mono;Droid Sans;Droid Sans Fallback";
         setEnvironmentVariable("QT_ANDROID_FONTS_MONOSPACE", monospaceFonts);
         setEnvironmentVariable("QT_ANDROID_FONTS_SERIF", "Droid Serif");
-        setEnvironmentVariable("HOME", m_context.getFilesDir().getAbsolutePath());
-        setEnvironmentVariable("TMPDIR", m_context.getCacheDir().getAbsolutePath());
+        setEnvironmentVariable("HOME", context.getFilesDir().getAbsolutePath());
+        setEnvironmentVariable("TMPDIR", context.getCacheDir().getAbsolutePath());
         setEnvironmentVariable("QT_BLOCK_EVENT_LOOPS_WHEN_SUSPENDED", isBackgroundRunningBlocked());
         setEnvironmentVariable("QTRACE_LOCATION", getMetaData("android.app.trace_location"));
         appendApplicationParameters(getMetaData("android.app.arguments"));
@@ -146,8 +148,7 @@ public abstract class QtLoader {
         return new ArrayList<>();
     }
 
-    private void initStaticClasses() {
-        Context context = m_context.getBaseContext();
+    private void initStaticClasses(Context context) {
         boolean isActivity = context instanceof Activity;
         for (String className : getStaticInitClasses()) {
             try {
@@ -190,12 +191,12 @@ public abstract class QtLoader {
      * Initialize the class loader instance and sets it via QtNative.
      * This would also be used by QJniObject API.
      **/
-    private void initClassLoader()
+    private void initClassLoader(Context context)
     {
         // directory where optimized DEX files should be written.
-        String outDexPath = m_context.getDir("outdex", Context.MODE_PRIVATE).getAbsolutePath();
-        String sourceDir = m_context.getApplicationInfo().sourceDir;
-        m_classLoader = new DexClassLoader(sourceDir, outDexPath, null, m_context.getClassLoader());
+        String outDexPath = context.getDir("outdex", Context.MODE_PRIVATE).getAbsolutePath();
+        String sourceDir = context.getApplicationInfo().sourceDir;
+        m_classLoader = new DexClassLoader(sourceDir, outDexPath, null, context.getClassLoader());
         QtNative.setClassLoader(m_classLoader);
     }
 
@@ -284,8 +285,10 @@ public abstract class QtLoader {
      * If none of the above are valid, it falls back to predefined system path.
      **/
     private void parseNativeLibrariesDir() {
+        if (m_contextInfo == null)
+            return;
         if (isBundleQtLibs()) {
-            String nativeLibraryPrefix = m_context.getApplicationInfo().nativeLibraryDir + "/";
+            String nativeLibraryPrefix = m_contextInfo.applicationInfo.nativeLibraryDir + "/";
             File nativeLibraryDir = new File(nativeLibraryPrefix);
             if (nativeLibraryDir.exists()) {
                 String[] list = nativeLibraryDir.list();
@@ -334,9 +337,6 @@ public abstract class QtLoader {
      *
      * @noinspection SameParameterValue*/
     private String getApplicationMetaData(String key) {
-        if (m_contextInfo == null)
-            return "";
-
         ApplicationInfo applicationInfo = m_contextInfo.applicationInfo;
         if (applicationInfo == null)
             return "";
@@ -416,13 +416,17 @@ public abstract class QtLoader {
     }
 
     /**
-     * Loads all Qt native bundled libraries and main library.
+     * Returns QtLoader.LoadingResult.Succeeded if libraries are successfully loaded,
+     * QtLoader.LoadingResult.AlreadyLoaded if they have already been loaded,
+     * and QtLoader.LoadingResult.Failed if loading the libraries failed.
      **/
-    public void loadQtLibraries() {
+    public LoadingResult loadQtLibraries() {
+        if (m_librariesLoaded)
+            return LoadingResult.AlreadyLoaded;
+
         if (!useLocalQtLibs()) {
             Log.w(QtTAG, "Use local Qt libs is false");
-            finish();
-            return;
+            return LoadingResult.Failed;
         }
 
         if (m_nativeLibrariesDir == null)
@@ -430,8 +434,7 @@ public abstract class QtLoader {
 
         if (m_nativeLibrariesDir == null || m_nativeLibrariesDir.isEmpty()) {
             Log.e(QtTAG, "The native libraries directory is null or empty");
-            finish();
-            return;
+            return LoadingResult.Failed;
         }
 
         setEnvironmentVariable("QT_PLUGIN_PATH", m_nativeLibrariesDir);
@@ -462,16 +465,14 @@ public abstract class QtLoader {
 
         if (!loadLibraries(nativeLibraries)) {
             Log.e(QtTAG, "Loading Qt native libraries failed");
-            finish();
-            return;
+            return LoadingResult.Failed;
         }
 
         // add all bundled Qt libs to loader params
         ArrayList<String> bundledLibraries = new ArrayList<>(preferredAbiLibs(getBundledLibs()));
         if (!loadLibraries(bundledLibraries)) {
             Log.e(QtTAG, "Loading Qt bundled libraries failed");
-            finish();
-            return;
+            return LoadingResult.Failed;
         }
 
         if (m_mainLibName == null)
@@ -479,8 +480,10 @@ public abstract class QtLoader {
         // Load main lib
         if (!loadMainLibrary(m_mainLibName + "_" + m_preferredAbi)) {
             Log.e(QtTAG, "Loading main library failed");
-            finish();
+            return LoadingResult.Failed;
         }
+        m_librariesLoaded = true;
+        return LoadingResult.Succeeded;
     }
 
     // Loading libraries using System.load() uses full lib paths

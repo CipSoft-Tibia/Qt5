@@ -123,7 +123,6 @@ qt_internal_add_qml_module(QuickControls2Universal
         Qt::QuickControls2UniversalStyleImpl
         Qt::QuickPrivate
         Qt::QuickTemplates2Private
-    GENERATE_CPP_EXPORTS
 )
 
 target_sources(qtquickcontrols2universalstyleplugin
@@ -131,8 +130,8 @@ target_sources(qtquickcontrols2universalstyleplugin
         qtquickcontrols2universalstyleplugin.cpp
 )
 
-target_link_libraries(qtquickcontrols2universalstyleplugin
-    PRIVATE
+qt_internal_extend_target(qtquickcontrols2universalstyleplugin
+    LIBRARIES
         Qt::QuickControls2Private
 )
 

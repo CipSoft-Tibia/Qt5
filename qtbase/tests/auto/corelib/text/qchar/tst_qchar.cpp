@@ -6,6 +6,66 @@
 #include <qfile.h>
 #include <qstringlist.h>
 
+#include <climits>
+#include <type_traits>
+
+template <typename C>
+constexpr inline bool implicitly = std::is_convertible_v<C, QChar>;
+template <typename C>
+constexpr inline bool explicitly = std::is_constructible_v<QChar, C>;
+template <typename C>
+constexpr inline bool disabled = !explicitly<C>;
+
+//
+// Conversion from character types
+//
+static_assert(implicitly<char>);
+#ifdef __cpp_char8_t
+static_assert(explicitly<char8_t>); // via integer promotion
+#endif
+static_assert(implicitly<char16_t>);
+#ifdef Q_OS_WIN
+static_assert(implicitly<wchar_t>);
+#else
+static_assert(explicitly<wchar_t>);
+#endif
+static_assert(explicitly<char32_t>);
+
+//
+// Conversion from others
+//
+#if defined(QT_RESTRICTED_CAST_FROM_ASCII)
+static_assert(explicitly<uchar>); // via integer promotion
+#else
+static_assert(explicitly<uchar>);
+#endif
+static_assert(implicitly<short>);
+static_assert(implicitly<ushort>);
+static_assert(explicitly<int>);
+static_assert(explicitly<uint>);
+
+//
+// Disabled conversions (from Qt 6.9)
+//
+static_assert(explicitly<bool>); // via integer promotion
+static_assert(disabled<std::byte>);
+static_assert(explicitly<signed char>); // via integer promotion
+static_assert(disabled<long>);
+static_assert(disabled<long long>);
+static_assert(disabled<unsigned long>);
+static_assert(disabled<unsigned long long>);
+static_assert(explicitly<Qt::Key>); // via promotion to underlying_type_t
+enum E1 {};
+static_assert(explicitly<E1>);      // ditto
+enum class E2 {};
+static_assert(disabled<E2>);
+#ifndef Q_OS_QNX // ¯\_(ツ)_/¯
+enum E1C : char16_t {};
+static_assert(explicitly<E1C>);
+#endif
+enum class E2C : char16_t {};
+static_assert(disabled<E2C>);
+
 class tst_QChar : public QObject
 {
     Q_OBJECT
@@ -17,6 +77,8 @@ private slots:
     void operator_eqeq_null();
     void operators_data();
     void operators();
+    void qchar_qlatin1char_operators_symmetry_data();
+    void qchar_qlatin1char_operators_symmetry();
     void toUpper();
     void toLower();
     void toTitle();
@@ -165,6 +227,36 @@ void tst_QChar::operators()
     QFETCH(QChar, rhs);
 
 #define CHECK(op) QCOMPARE((lhs op rhs), (lhs.unicode() op rhs.unicode()))
+    CHECK(==);
+    CHECK(!=);
+    CHECK(< );
+    CHECK(> );
+    CHECK(<=);
+    CHECK(>=);
+#undef CHECK
+}
+
+void tst_QChar::qchar_qlatin1char_operators_symmetry_data()
+{
+    QTest::addColumn<char>("lhs");
+    QTest::addColumn<char>("rhs");
+
+    const uchar values[] = {0x00, 0x3a, 0x7f, 0x80, 0xab, 0xff};
+
+    for (uchar i : values) {
+        for (uchar j : values)
+            QTest::addRow("'\\x%02x'_op_'\\x%02x'", i, j) << char(i) << char(j);
+    }
+}
+
+void tst_QChar::qchar_qlatin1char_operators_symmetry()
+{
+    QFETCH(char, lhs);
+    QFETCH(char, rhs);
+
+    const QLatin1Char l1lhs(lhs);
+    const QLatin1Char l1rhs(rhs);
+#define CHECK(op) QCOMPARE((l1lhs op l1rhs), (QChar(l1lhs) op QChar(l1rhs)))
     CHECK(==);
     CHECK(!=);
     CHECK(< );
@@ -774,9 +866,7 @@ void tst_QChar::normalization_data()
     QString testFile = QFINDTESTDATA("data/NormalizationTest.txt");
     QVERIFY2(!testFile.isEmpty(), "data/NormalizationTest.txt not found!");
     QFile f(testFile);
-    QVERIFY(f.exists());
-
-    f.open(QIODevice::ReadOnly);
+    QVERIFY(f.open(QIODevice::ReadOnly));
 
     while (!f.atEnd()) {
         linenum++;

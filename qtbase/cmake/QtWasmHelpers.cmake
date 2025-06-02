@@ -11,16 +11,11 @@ function (qt_internal_setup_wasm_target_properties wasmTarget)
     "SHELL:-s WASM_BIGINT=1"
     "SHELL:-s STACK_SIZE=5MB")
 
-    target_link_libraries("${wasmTarget}" INTERFACE embind)
-
     ## wasm64
     if (WASM64)
         target_compile_options("${wasmTarget}" INTERFACE "SHELL:-s MEMORY64=1" )
         target_link_options("${wasmTarget}" INTERFACE   "SHELL:-s MEMORY64=1" -mwasm64)
     endif()
-    # Enable MODULARIZE so that we are able to set EXPORT_NAME later and instantiate on demand (with
-    # MODULARIZE=0, emscripten creates a global app instance object at Javascript eval time)
-    target_link_options("${wasmTarget}" INTERFACE "SHELL:-s MODULARIZE=1")
 
     #simd
     if (QT_FEATURE_wasm_simd128)
@@ -34,8 +29,6 @@ function (qt_internal_setup_wasm_target_properties wasmTarget)
     if (QT_FEATURE_wasm_exceptions)
         target_compile_options("${wasmTarget}" INTERFACE -fwasm-exceptions)
         target_link_options("${wasmTarget}" INTERFACE -fwasm-exceptions)
-    else()
-        target_link_options("${wasmTarget}" INTERFACE "SHELL:-s DISABLE_EXCEPTION_CATCHING=1")
     endif()
 
     if (QT_FEATURE_thread)
@@ -62,7 +55,6 @@ function (qt_internal_setup_wasm_target_properties wasmTarget)
 
     # a few good defaults to make console more verbose while debugging
     target_link_options("${wasmTarget}" INTERFACE $<$<CONFIG:Debug>:
-        "SHELL:-s DEMANGLE_SUPPORT=1"
         --profiling-funcs>)
 
     # target_link_options("${wasmTarget}" INTERFACE "SHELL:-s LIBRARY_DEBUG=1") # print out library calls, verbose
@@ -121,9 +113,5 @@ function (qt_internal_setup_wasm_target_properties wasmTarget)
 endfunction()
 
 function(qt_internal_wasm_add_finalizers target)
-    qt_add_list_file_finalizer(_qt_internal_set_wasm_export_name ${target})
-    qt_add_list_file_finalizer(_qt_internal_add_wasm_extra_exported_methods ${target})
-    qt_add_list_file_finalizer(_qt_internal_wasm_add_target_helpers ${target})
+    qt_add_list_file_finalizer(_qt_internal_finalize_wasm_app ${target})
 endfunction()
-
-

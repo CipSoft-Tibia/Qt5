@@ -106,6 +106,8 @@ installPackages+=(gstreamer1.0-plugins-rtp)
 installPackages+=(gstreamer1.0-plugins-ugly)
 installPackages+=(gir1.2-gst-plugins-base-1.0)
 installPackages+=(gir1.2-gst-plugins-bad-1.0)
+installPackages+=(libpipewire-0.3-dev)
+installPackages+=(libspa-0.2-dev)
 installPackages+=(yasm)
 installPackages+=(libva-dev)
 # for QtMultimedia streaming tests
@@ -117,6 +119,7 @@ installPackages+=(g++-multilib)
 # python3 development package
 installPackages+=(python3-dev)
 installPackages+=(python3-pip)
+installPackages+=(python3-venv)
 installPackages+=(virtualenv)
 installPackages+=(python3-wheel)
 installPackages+=(python-is-python3)
@@ -139,8 +142,8 @@ installPackages+=(libicu-dev)
 installPackages+=(zlib1g-dev)
 installPackages+=(zlib1g)
 installPackages+=(openjdk-8-jdk)
-#Java 11 for Android
-installPackages+=(openjdk-11-jdk)
+#Java 17 for Android, needed by RTA
+installPackages+=(openjdk-17-jdk)
 installPackages+=(libgtk-3-dev)
 installPackages+=(ninja-build)
 installPackages+=(libssl-dev)
@@ -230,6 +233,13 @@ installPackages+=(keyutils)
 installPackages+=(cifs-utils)
 # VxWorks QEMU network setup (tunctl)
 installPackages+=(uml-utilities)
+# used for reading vcpkg packages version, from vcpkg.json
+installPackages+=(jq)
+
+installPackages+=(patchelf)
+
+# For tst_license.pl with all the machines generating SBOM
+installPackages+=(libjson-perl)
 
 echo "Running update for apt"
 waitLoop
@@ -241,9 +251,15 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -q -y -o DPkg::Lock::Timeout=300 ins
 # Configure pip
 pip config --user set global.index https://ci-files01-hki.ci.qt.io/input/python_module_cache
 pip config --user set global.extra-index-url https://pypi.org/simple/
+pip install --user -r "${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt"
 
 source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 # SetEnvVar "PATH" "/usr/lib/nodejs-mozilla/bin:\$PATH"
 
+# Provisioning during installation says:
+# 'The script sbom2doc is installed in '/home/qt/.local/bin' which is not on PATH.'
+# hence the explicit assignment to SBOM_PYTHON_APPS_PATH.
+SetEnvVar "SBOM_PYTHON_APPS_PATH" "/home/qt/.local/bin"
+
 OpenSSLVersion="$(openssl version |cut -b 9-14)"
-echo "OpenSSL = $OpenSSLVersion" >> ~/versions.txt
+echo "System's OpenSSL = $OpenSSLVersion" >> ~/versions.txt

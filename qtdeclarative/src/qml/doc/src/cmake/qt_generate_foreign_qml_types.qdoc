@@ -60,8 +60,8 @@ qt_generate_foreign_qml_types(mylib mylib_declarative)
 \endcode
 
 \note In the example above, \c mylib does not depend on QtQml or QtQuick, but only on the
-header-only QmlIntegration target (for the QtQmlIntegration/qqmlintegration.h header, which provides
-the \c QML_ELEMENT macro).
+header-only QmlIntegration target (for the \l{qqmlintegration.h} header, which provides
+the \l QML_ELEMENT macro).
 
 The effect is equivalent to using \c QML_FOREIGN with custom structs in the QML library to expose
 the types.

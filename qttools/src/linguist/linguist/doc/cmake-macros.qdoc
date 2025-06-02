@@ -50,12 +50,12 @@ invoked. You can find possible options in the \l{lrelease}{lrelease documentatio
 
 By default, the \c{qm} files will be placed in the current build directory
 (\c{CMAKE_CURRENT_BINARY_DIR}). To change this, you can set \c{OUTPUT_LOCATION}
-as a property of the source \c{.ts} file.
+as a property of the source \c{.ts} file before calling \c qt_add_translation.
 
 For example, with the following code, the \c{.qm} files are generated
 in a \c{translations} directory below the current build directory.
 
-\snippet cmake-macros/examples.cmake set_output_location_on_ts_file
+\snippet cmake-macros/examples.cmake set_output_location_on_ts_file_with_qt_add_translation
 
 \section1 Examples
 
@@ -312,12 +312,12 @@ documentation}.
 
 By default, the \c{.qm} files will be placed in the current build directory
 (\c{CMAKE_CURRENT_BINARY_DIR}). To change this, you can set \c{OUTPUT_LOCATION}
-as a property of the source \c{.ts} file.
+as a property of the source \c{.ts} file before calling \c qt_add_lrelease.
 
 For example, with the following code, the \c{.qm} files are generated
 in a \c{translations} directory below the current build directory.
 
-\snippet cmake-macros/examples.cmake set_output_location_on_ts_file
+\snippet cmake-macros/examples.cmake set_output_location_on_ts_file_with_qt_add_lrelease
 
 \section1 Processing Generated .qm Files
 
@@ -405,6 +405,7 @@ qt_add_translations([target]
                     [NO_GENERATE_PLURALS_TS_FILE]
                     [RESOURCE_PREFIX prefix]
                     [OUTPUT_TARGETS variable-name]
+                    [TS_FILES_OUTPUT_VARIABLE variable-name]    # since 6.8
                     [QM_FILES_OUTPUT_VARIABLE variable-name]
                     [SOURCES source1.cpp [sources2.cpp ...]]
                     [INCLUDE_DIRECTORIES directory1 [directory2 ...]]
@@ -489,6 +490,9 @@ can specify a different base name with the \c{TS_FILE_BASE} argument.
 \note \c TS_FILE_DIR and \c TS_FILE_BASE have no effect for explicitly specified
 \c{.ts} files.
 
+Since Qt 6.8, you can specify the \c TS_FILES_OUTPUT_VARIABLE argument to store
+the automatically determined \c{.ts} file paths in a variable.
+
 \include cmake-macros.qdoc plurals-ts-file
 
 A plurals-only \c{.ts} is automatically generated unless the option \c
@@ -540,12 +544,12 @@ need to pass \c{LRELEASE_OPTIONS -idbased} to \c qt_add_translations.
 
 By default, the \c{.qm} files will be placed in the current build directory
 (\c{CMAKE_CURRENT_BINARY_DIR}). To change this, you can set \c{OUTPUT_LOCATION}
-as a property of the source \c{.ts} file.
+as a property of the source \c{.ts} file before calling \c qt_add_translations.
 
 For example, with the following code, the \c{.qm} files are generated
 in a \c{translations} directory below the current build directory.
 
-\snippet cmake-macros/examples.cmake set_output_location_on_ts_file
+\snippet cmake-macros/examples.cmake set_output_location_on_ts_file_with_qt_add_translations
 
 \section1 Embedding Generated .qm Files in Resources
 

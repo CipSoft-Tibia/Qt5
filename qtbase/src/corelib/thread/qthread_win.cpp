@@ -11,6 +11,7 @@
 
 #include <private/qcoreapplication_p.h>
 #include <private/qeventdispatcher_win_p.h>
+#include "qloggingcategory.h"
 
 #include <qt_windows.h>
 
@@ -18,6 +19,17 @@
 #  define _MT
 #endif // _MT
 #include <process.h>
+
+extern "C" {
+// MinGW is missing the declaration of SetThreadDescription:
+WINBASEAPI
+HRESULT
+WINAPI
+SetThreadDescription(
+    _In_ HANDLE hThread,
+    _In_ PCWSTR lpThreadDescription
+    );
+}
 
 QT_BEGIN_NAMESPACE
 
@@ -65,7 +77,7 @@ QThreadData *QThreadData::current(bool createIfNecessary)
         // avoid recursion.
         TlsSetValue(qt_current_thread_data_tls_index, threadData);
         QT_TRY {
-            threadData->thread = new QAdoptedThread(threadData);
+            threadData->thread.storeRelease(new QAdoptedThread(threadData));
         } QT_CATCH(...) {
             TlsSetValue(qt_current_thread_data_tls_index, 0);
             threadData->deref();
@@ -76,8 +88,11 @@ QThreadData *QThreadData::current(bool createIfNecessary)
         threadData->isAdopted = true;
         threadData->threadId.storeRelaxed(reinterpret_cast<Qt::HANDLE>(quintptr(GetCurrentThreadId())));
 
-        if (!QCoreApplicationPrivate::theMainThread) {
-            QCoreApplicationPrivate::theMainThread = threadData->thread.loadRelaxed();
+        if (!QCoreApplicationPrivate::theMainThreadId) {
+            auto *mainThread = threadData->thread.loadRelaxed();
+            mainThread->setObjectName("Qt mainThread");
+            QCoreApplicationPrivate::theMainThread.storeRelease(mainThread);
+            QCoreApplicationPrivate::theMainThreadId.storeRelaxed(threadData->threadId.loadRelaxed());
         } else {
             HANDLE realHandle = INVALID_HANDLE_VALUE;
             DuplicateHandle(GetCurrentProcess(),
@@ -87,7 +102,7 @@ QThreadData *QThreadData::current(bool createIfNecessary)
                     0,
                     FALSE,
                     DUPLICATE_SAME_ACCESS);
-            qt_watch_adopted_thread(realHandle, threadData->thread);
+            qt_watch_adopted_thread(realHandle, threadData->thread.loadRelaxed());
         }
     }
     return threadData;
@@ -195,7 +210,7 @@ DWORD WINAPI qt_adopted_thread_watcher_function(LPVOID)
             auto thread_p = static_cast<QThreadPrivate *>(QObjectPrivate::get(thread));
             Q_UNUSED(thread_p);
             Q_ASSERT(!thread_p->finished);
-            QThreadPrivate::finish(thread);
+            thread_p->finish();
         }
         data->deref();
 
@@ -211,39 +226,6 @@ DWORD WINAPI qt_adopted_thread_watcher_function(LPVOID)
 
     return 0;
 }
-
-#if !defined(QT_NO_DEBUG) && defined(Q_CC_MSVC)
-
-#ifndef Q_OS_WIN64
-#  define ULONG_PTR DWORD
-#endif
-
-typedef struct tagTHREADNAME_INFO
-{
-    DWORD dwType;      // must be 0x1000
-    LPCSTR szName;     // pointer to name (in user addr space)
-    HANDLE dwThreadID; // thread ID (-1=caller thread)
-    DWORD dwFlags;     // reserved for future use, must be zero
-} THREADNAME_INFO;
-
-void qt_set_thread_name(HANDLE threadId, LPCSTR threadName)
-{
-    THREADNAME_INFO info;
-    info.dwType = 0x1000;
-    info.szName = threadName;
-    info.dwThreadID = threadId;
-    info.dwFlags = 0;
-
-    __try
-    {
-        RaiseException(0x406D1388, 0, sizeof(info)/sizeof(DWORD),
-                       reinterpret_cast<const ULONG_PTR*>(&info));
-    }
-    __except (EXCEPTION_CONTINUE_EXECUTION)
-    {
-    }
-}
-#endif // !QT_NO_DEBUG && Q_CC_MSVC
 
 /**************************************************************************
  ** QThreadPrivate
@@ -278,18 +260,17 @@ unsigned int __stdcall QT_ENSURE_STACK_ALIGNED_FOR_SSE QThreadPrivate::start(voi
     data->ensureEventDispatcher();
     data->eventDispatcher.loadRelaxed()->startingUp();
 
-#if !defined(QT_NO_DEBUG) && defined(Q_CC_MSVC)
     // sets the name of the current thread.
-    qt_set_thread_name(HANDLE(-1), thr->d_func()->objectName.isEmpty()
-                        ? thr->metaObject()->className()
-                        : std::exchange(thr->d_func()->objectName, {}).toLocal8Bit().constData());
-#endif
+    QString threadName = std::exchange(thr->d_func()->objectName, {});
+    if (Q_LIKELY(threadName.isEmpty()))
+        threadName = QString::fromUtf8(thr->metaObject()->className());
+    SetThreadDescription(GetCurrentThread(), reinterpret_cast<const wchar_t *>(threadName.utf16()));
 
     emit thr->started(QThread::QPrivateSignal());
     QThread::setTerminationEnabled(true);
     thr->run();
 
-    finish(arg);
+    thr->d_func()->finish();
     return 0;
 }
 
@@ -304,10 +285,10 @@ unsigned int __stdcall QT_ENSURE_STACK_ALIGNED_FOR_SSE QThreadPrivate::start(voi
 
     In those cases, \a arg will not be the current thread.
 */
-void QThreadPrivate::finish(void *arg, bool lockAnyway) noexcept
+void QThreadPrivate::finish(bool lockAnyway) noexcept
 {
-    QThread *thr = reinterpret_cast<QThread *>(arg);
-    QThreadPrivate *d = thr->d_func();
+    QThreadPrivate *d = this;
+    QThread *thr = q_func();
 
     QMutexLocker locker(lockAnyway ? &d->mutex : nullptr);
     d->isInFinish = true;
@@ -500,7 +481,7 @@ void QThread::terminate()
     }
 
     TerminateThread(d->handle, 0);
-    QThreadPrivate::finish(this, false);
+    d->finish(false);
 }
 
 bool QThread::wait(QDeadlineTimer deadline)
@@ -514,6 +495,13 @@ bool QThread::wait(QDeadlineTimer deadline)
     }
     if (d->finished || !d->running)
         return true;
+    return d->wait(locker, deadline);
+}
+
+bool QThreadPrivate::wait(QMutexLocker<QMutex> &locker, QDeadlineTimer deadline)
+{
+    Q_ASSERT(locker.isLocked());
+    QThreadPrivate *d = this;
 
     ++d->waiters;
     locker.mutex()->unlock();
@@ -538,7 +526,7 @@ bool QThread::wait(QDeadlineTimer deadline)
     if (ret && !d->finished) {
         // thread was terminated by someone else
 
-        QThreadPrivate::finish(this, false);
+        d->finish(false);
     }
 
     if (d->finished && !d->waiters) {
@@ -558,7 +546,7 @@ void QThread::setTerminationEnabled(bool enabled)
     QMutexLocker locker(&d->mutex);
     d->terminationEnabled = enabled;
     if (enabled && d->terminatePending) {
-        QThreadPrivate::finish(thr, false);
+        d->finish(false);
         locker.unlock(); // don't leave the mutex locked!
         _endthreadex(0);
     }

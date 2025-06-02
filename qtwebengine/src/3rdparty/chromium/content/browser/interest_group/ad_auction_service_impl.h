@@ -14,6 +14,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
+#include "base/types/expected.h"
 #include "base/uuid.h"
 #include "content/browser/fenced_frame/fenced_frame_url_mapping.h"
 #include "content/browser/interest_group/auction_nonce_manager.h"
@@ -39,7 +40,6 @@
 
 namespace content {
 
-class AdAuctionPageData;
 class InterestGroupManagerImpl;
 struct BiddingAndAuctionServerKey;
 class RenderFrameHost;
@@ -65,6 +65,10 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
                           const std::string& name,
                           LeaveInterestGroupCallback callback) override;
   void LeaveInterestGroupForDocument() override;
+  void ClearOriginJoinedInterestGroups(
+      const url::Origin& owner,
+      const std::vector<std::string>& interest_groups_to_keep,
+      ClearOriginJoinedInterestGroupsCallback callback) override;
   void UpdateAdInterestGroups() override;
   void CreateAuctionNonce(CreateAuctionNonceCallback callback) override;
   void RunAdAuction(
@@ -81,6 +85,7 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
       DeprecatedReplaceInURNCallback callback) override;
   void GetInterestGroupAdAuctionData(
       const url::Origin& seller,
+      const std::optional<url::Origin>& coordinator,
       GetInterestGroupAdAuctionDataCallback callback) override;
   void CreateAdRequest(blink::mojom::AdRequestConfigPtr config,
                        CreateAdRequestCallback callback) override;
@@ -100,6 +105,7 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
   RenderFrameHostImpl* GetFrame() override;
   scoped_refptr<SiteInstance> GetFrameSiteInstance() override;
   network::mojom::ClientSecurityStatePtr GetClientSecurityState() override;
+  std::optional<std::string> GetCookieDeprecationLabel() override;
 
   using DocumentService::origin;
   using DocumentService::render_frame_host;
@@ -115,9 +121,11 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
     ~BiddingAndAuctionDataConstructionState();
 
     base::TimeTicks start_time;
-    BiddingAndAuctionData data;
+    std::unique_ptr<BiddingAndAuctionServerKey> key;
+    std::unique_ptr<BiddingAndAuctionData> data;
     base::Uuid request_id;
     url::Origin seller;
+    std::optional<url::Origin> coordinator;
     GetInterestGroupAdAuctionDataCallback callback;
   };
 
@@ -142,8 +150,6 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
                                      interest_group_api_operation,
                                  const url::Origin& origin) const;
 
-  AdAuctionPageData* GetAdAuctionPageData();
-
   // Deletes `auction`.
   void OnAuctionComplete(
       RunAdAuctionCallback callback,
@@ -152,10 +158,10 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
       GlobalRenderFrameHostId render_frame_host_id,
       const base::WeakPtr<PageImpl> page_impl,
       AuctionRunner* auction,
-      bool manually_aborted,
-      absl::optional<blink::InterestGroupKey> winning_group_key,
-      absl::optional<blink::AdSize> requested_ad_size,
-      absl::optional<blink::AdDescriptor> ad_descriptor,
+      bool aborted_by_script,
+      std::optional<blink::InterestGroupKey> winning_group_key,
+      std::optional<blink::AdSize> requested_ad_size,
+      std::optional<blink::AdDescriptor> ad_descriptor,
       std::vector<blink::AdDescriptor> ad_component_descriptors,
       std::vector<std::string> errors,
       std::unique_ptr<InterestGroupAuctionReporter> reporter);
@@ -166,15 +172,29 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
       const std::vector<auction_worklet::mojom::PrivateAggregationRequestPtr>&
           private_aggregation_requests);
 
-  void OnGotAuctionData(BiddingAndAuctionDataConstructionState state,
-                        BiddingAndAuctionData data);
+  // On failing to fetch ad auction data, call the first callback in
+  // ba_data_callbacks_ & start loading the next following request in
+  // ba_data_callbacks_.
+  void ReturnEmptyGetInterestGroupAdAuctionDataCallback(const std::string msg);
+  void LoadAuctionDataAndKeyForNextQueuedRequest();
+  void OnGotAuctionData(base::Uuid request_id, BiddingAndAuctionData data);
   void OnGotBiddingAndAuctionServerKey(
-      BiddingAndAuctionDataConstructionState state,
-      absl::optional<BiddingAndAuctionServerKey> key);
+      base::Uuid request_id,
+      scoped_refptr<network::WrapperSharedURLLoaderFactory> loader,
+      base::expected<BiddingAndAuctionServerKey, std::string> maybe_key);
+  void OnGotAuctionDataAndKey(base::Uuid request_id);
 
   InterestGroupManagerImpl& GetInterestGroupManager() const;
 
   url::Origin GetTopWindowOrigin() const;
+
+  // Return whether the auction is expected to fail because any of
+  // RenderFrameHostImpl, PageImpl and FencedFrameUrlMapping has changed during
+  // the auction.
+  bool IsAuctionExpectedToFail(
+      FencedFrameURLMapping::Id fenced_frame_urls_map_id,
+      GlobalRenderFrameHostId render_frame_host_id,
+      const base::WeakPtr<PageImpl> page_impl);
 
   // To avoid race conditions associated with top frame navigations (mentioned
   // in document_service.h), we need to save the values of the main frame
@@ -210,10 +230,17 @@ class CONTENT_EXPORT AdAuctionServiceImpl final
   const raw_ptr<PrivateAggregationManager> private_aggregation_manager_;
 
   // Whether a UseCounter has already been logged for usage of the Private
-  // Aggregation API in general and the extended Private Aggregation API,
-  // respectively.
+  // Aggregation API in general, the extended Private Aggregation API and the
+  // Private Aggregation API's enableDebugMode(), respectively.
   bool has_logged_private_aggregation_web_features_ = false;
   bool has_logged_extended_private_aggregation_web_feature_ = false;
+  bool has_logged_private_aggregation_enable_debug_mode_web_feature_ = false;
+
+  // Track the state of GetInterestGroupAdAuctionData calls. One request will be
+  // handled at a time (the first in the queue). The first
+  // BiddingAndAuctionDataConstructionState's data and key will be edited in
+  // place as they are loaded.
+  base::queue<BiddingAndAuctionDataConstructionState> ba_data_callbacks_;
 
   base::WeakPtrFactory<AdAuctionServiceImpl> weak_ptr_factory_{this};
 };

@@ -51,7 +51,7 @@ public:
     virtual void terminateGenerator();
     virtual QString typeString(const Node *node);
 
-    QString fullDocumentLocation(const Node *node, bool useSubdir = false);
+    QString fullDocumentLocation(const Node *node);
     QString linkForExampleFile(const QString &path, const QString &fileExt = QString());
     static QString exampleFileTitle(const ExampleNode *relative, const QString &fileName);
     static Generator *currentGenerator() { return s_currentGenerator; }
@@ -73,7 +73,7 @@ public:
     virtual QString fileBase(const Node *node) const;
 
 protected:
-    static QFile *openSubPageFile(const Node *node, const QString &fileName);
+    static QFile *openSubPageFile(const PageNode *node, const QString &fileName);
     void beginSubPage(const Node *node, const QString &fileName);
     void endSubPage();
     [[nodiscard]] virtual QString fileExtension() const = 0;
@@ -108,6 +108,7 @@ protected:
     QMap<QString, QString> &formattingRightMap();
     const Atom *generateAtomList(const Atom *atom, const Node *relative, CodeMarker *marker,
                                  bool generate, int &numGeneratedAtoms);
+    void generateEnumValuesForQmlProperty(const Node *node, CodeMarker *marker);
     void generateRequiredLinks(const Node *node, CodeMarker *marker);
     void generateLinkToExample(const ExampleNode *en, CodeMarker *marker,
                                const QString &exampleUrl);
@@ -134,7 +135,8 @@ protected:
     bool parseArg(const QString &src, const QString &tag, int *pos, int n, QStringView *contents,
                   QStringView *par1 = nullptr);
     void unknownAtom(const Atom *atom);
-    int appendSortedQmlNames(Text &text, const Node *base, const NodeList &subs);
+    int appendSortedQmlNames(Text &text, const Node *base, const QStringList &knownTypes,
+                             const NodeList &subs);
 
     static bool hasExceptions(const Node *node, NodeList &reentrant, NodeList &threadsafe,
                               NodeList &nonreentrant);
@@ -159,6 +161,12 @@ protected:
     // std::sort already defaults to operator< when no predicate is
     // provided.
     static bool comparePaths(const QString &a, const QString &b) { return (a < b); }
+    static bool appendTrademark(const Atom *atom);
+
+    static Qt::SortOrder sortOrder(const QString &str)
+    {
+        return (str == "descending") ? Qt::DescendingOrder : Qt::AscendingOrder;
+    }
 
 private:
     static Generator *s_currentGenerator;
@@ -170,6 +178,7 @@ private:
     static QString s_outSubdir;
     static QStringList s_outFileNames;
     static QSet<QString> s_outputFormats;
+    static QSet<QString> s_trademarks;
     static QHash<QString, QString> s_outputPrefixes;
     static QHash<QString, QString> s_outputSuffixes;
     static bool s_noLinkErrors;

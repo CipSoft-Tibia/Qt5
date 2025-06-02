@@ -30,12 +30,23 @@ qt_internal_add_tool(${target_name}
         QT_NO_CAST_FROM_BYTEARRAY
         QT_NO_FOREACH
         QT_NO_QPAIR
+        QT_USE_NODISCARD_FILE_OPEN
     INCLUDE_DIRECTORIES
         ${CMAKE_CURRENT_SOURCE_DIR}
         ../../3rdparty/tinycbor/src
         ../shared
 )
 qt_internal_return_unless_building_tools()
+
+qt_internal_extend_sbom(${target_name}
+    COPYRIGHTS
+        "Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>"
+        "Copyright (C) 2014 Olivier Goffart <ogoffart@woboq.org>"
+        "Copyright (C) 2016 Intel Corporation."
+        "Copyright (C) 2018 Intel Corporation."
+        "Copyright (C) 2018 The Qt Company Ltd."
+        "Copyright (C) 2019 Olivier Goffart <ogoffart@woboq.com>"
+)
 
 ## Scopes:
 #####################################################################

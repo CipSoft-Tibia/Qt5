@@ -1056,19 +1056,22 @@ int QHeaderView::logicalIndex(int visualIndex) const
 }
 
 /*!
-    \since 5.0
+    \property QHeaderView::sectionsMovable
 
-    If \a movable is true, the header sections may be moved by the user;
+    If \a sectionsMovable is true, the header sections may be moved by the user;
     otherwise they are fixed in place.
 
     When used in combination with QTreeView, the first column is not
     movable (since it contains the tree structure), by default.
     You can make it movable with setFirstSectionMovable(true).
 
-    \sa sectionsMovable(), sectionMoved()
+    \sa sectionMoved()
     \sa setFirstSectionMovable()
 */
 
+/*!
+    Sets \l sectionsMovable to \a movable.
+ */
 void QHeaderView::setSectionsMovable(bool movable)
 {
     Q_D(QHeaderView);
@@ -1076,17 +1079,8 @@ void QHeaderView::setSectionsMovable(bool movable)
 }
 
 /*!
-    \since 5.0
-
-    Returns \c true if the header can be moved by the user; otherwise returns
-    false.
-
-    By default, sections are movable in QTreeView (except for the first one),
-    and not movable in QTableView.
-
-    \sa setSectionsMovable()
+    Returns \l sectionsMovable.
 */
-
 bool QHeaderView::sectionsMovable() const
 {
     Q_D(const QHeaderView);
@@ -1130,14 +1124,17 @@ bool QHeaderView::isFirstSectionMovable() const
 }
 
 /*!
-    \since 5.0
+    \property QHeaderView::sectionsClickable
 
-    If \a clickable is true, the header will respond to single clicks.
+    Holds \c true if the header is clickable; otherwise \c false. A
+    clickable header could be set up to allow the user to change the
+    representation of the data in the view related to the header.
 
-    \sa sectionsClickable(), sectionClicked(), sectionPressed(),
-    setSortIndicatorShown()
+    \sa sectionPressed(), setSortIndicatorShown()
 */
-
+/*!
+    Set \l sectionsClickable to \a clickable.
+*/
 void QHeaderView::setSectionsClickable(bool clickable)
 {
     Q_D(QHeaderView);
@@ -1145,15 +1142,8 @@ void QHeaderView::setSectionsClickable(bool clickable)
 }
 
 /*!
-    \since 5.0
-
-    Returns \c true if the header is clickable; otherwise returns \c false. A
-    clickable header could be set up to allow the user to change the
-    representation of the data in the view related to the header.
-
-    \sa setSectionsClickable()
+    Returns \l sectionsClickable.
 */
-
 bool QHeaderView::sectionsClickable() const
 {
     Q_D(const QHeaderView);
@@ -1528,6 +1518,7 @@ void QHeaderView::setDefaultSectionSize(int size)
     Q_D(QHeaderView);
     if (size < 0 || size > maxSizeSection)
         return;
+    d->oldDefaultSectionSize = d->defaultSectionSize;
     d->setDefaultSectionSize(size);
 }
 
@@ -1535,7 +1526,9 @@ void QHeaderView::resetDefaultSectionSize()
 {
     Q_D(QHeaderView);
     if (d->customDefaultSectionSize) {
+        d->oldDefaultSectionSize = d->defaultSectionSize;
         d->updateDefaultSectionSizeFromStyle();
+        d->setDefaultSectionSize(d->defaultSectionSize);
         d->customDefaultSectionSize = false;
     }
 }
@@ -2386,8 +2379,12 @@ bool QHeaderView::event(QEvent *e)
         }
         break; }
     case QEvent::StyleChange:
-        if (!d->customDefaultSectionSize)
+        if (!d->customDefaultSectionSize) {
+            d->oldDefaultSectionSize = d->defaultSectionSize;
             d->updateDefaultSectionSizeFromStyle();
+            d->setDefaultSectionSize(d->defaultSectionSize);
+            d->customDefaultSectionSize = false;
+        }
         break;
     default:
         break;
@@ -3860,7 +3857,11 @@ void QHeaderViewPrivate::setDefaultSectionSize(int size)
     for (int i = 0; i < sectionItems.size(); ++i) {
         QHeaderViewPrivate::SectionItem &section = sectionItems[i];
         if (hiddenSectionSize.isEmpty() || !isVisualIndexHidden(i)) { // resize on not hidden.
-            const int newSize = size;
+            // Resize to the new default if the current size is the old default,
+            // or 0. Otherwise don't change.
+            const int newSize = (section.size == oldDefaultSectionSize || !section.size)
+                              ? size
+                              : section.size;
             if (newSize != section.size) {
                 length += newSize - section.size; //the whole length is changed
                 const int oldSectionSize = section.sectionSize();

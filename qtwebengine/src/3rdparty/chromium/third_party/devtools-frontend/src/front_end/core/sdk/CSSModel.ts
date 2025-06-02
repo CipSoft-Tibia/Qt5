@@ -48,7 +48,7 @@ import {CSSStyleSheetHeader} from './CSSStyleSheetHeader.js';
 import {DOMModel, type DOMNode} from './DOMModel.js';
 import {
   Events as ResourceTreeModelEvents,
-  type PrimaryPageChangeType,
+  PrimaryPageChangeType,
   type ResourceTreeFrame,
   ResourceTreeModel,
 } from './ResourceTreeModel.js';
@@ -199,6 +199,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       this.fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
+      console.error(e);
       return false;
     }
   }
@@ -219,6 +220,29 @@ export class CSSModel extends SDKModel<EventTypes> {
       this.fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
+      console.error(e);
+      return false;
+    }
+  }
+
+  async setPropertyRulePropertyName(
+      styleSheetId: Protocol.CSS.StyleSheetId, range: TextUtils.TextRange.TextRange, text: string): Promise<boolean> {
+    Host.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
+
+    try {
+      await this.ensureOriginalStyleSheetText(styleSheetId);
+      const {propertyName} =
+          await this.agent.invoke_setPropertyRulePropertyName({styleSheetId, range, propertyName: text});
+
+      if (!propertyName) {
+        return false;
+      }
+      this.#domModel.markUndoableState();
+      const edit = new Edit(styleSheetId, range, text, propertyName);
+      this.fireStyleSheetChanged(styleSheetId, edit);
+      return true;
+    } catch (e) {
+      console.error(e);
       return false;
     }
   }
@@ -239,6 +263,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       this.fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
+      console.error(e);
       return false;
     }
   }
@@ -304,7 +329,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       return null;
     }
 
-    return new CSSMatchedStyles({
+    return await CSSMatchedStyles.create({
       cssModel: this,
       node: (node as DOMNode),
       inlinePayload: response.inlineStyle || null,
@@ -318,6 +343,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       positionFallbackRules: response.cssPositionFallbackRules || [],
       propertyRules: response.cssPropertyRules ?? [],
       cssPropertyRegistrations: response.cssPropertyRegistrations ?? [],
+      fontPaletteValuesRule: response.cssFontPaletteValuesRule,
     });
   }
 
@@ -430,6 +456,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       this.fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
+      console.error(e);
       return false;
     }
   }
@@ -452,6 +479,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       this.fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
+      console.error(e);
       return false;
     }
   }
@@ -473,6 +501,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       this.fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
+      console.error(e);
       return false;
     }
   }
@@ -513,6 +542,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       this.fireStyleSheetChanged(styleSheetId, edit);
       return new CSSStyleRule(this, rule);
     } catch (e) {
+      console.error(e);
       return null;
     }
   }
@@ -536,6 +566,7 @@ export class CSSModel extends SDKModel<EventTypes> {
       }
       return this.#styleSheetIdToHeader.get(styleSheetId) || null;
     } catch (e) {
+      console.error(e);
       return null;
     }
   }
@@ -718,7 +749,7 @@ export class CSSModel extends SDKModel<EventTypes> {
     if (event.data.frame.backForwardCacheDetails.restoredFromCache) {
       await this.suspendModel();
       await this.resumeModel();
-    } else {
+    } else if (event.data.type !== PrimaryPageChangeType.Activation) {
       this.resetStyleSheets();
       this.resetFontFaces();
     }
@@ -835,8 +866,6 @@ export class CSSModel extends SDKModel<EventTypes> {
   }
 }
 
-// TODO(crbug.com/1167717): Make this a const enum again
-// eslint-disable-next-line rulesdir/const_enum
 export enum Events {
   FontsUpdated = 'FontsUpdated',
   MediaQueryResultChanged = 'MediaQueryResultChanged',
@@ -997,9 +1026,7 @@ export class CSSPropertyTracker extends Common.ObjectWrapper.ObjectWrapper<CSSPr
 
 const StylePollingInterval = 1000;  // throttling interval for style polling, in milliseconds
 
-// TODO(crbug.com/1167717): Make this a const enum again
-// eslint-disable-next-line rulesdir/const_enum
-export enum CSSPropertyTrackerEvents {
+export const enum CSSPropertyTrackerEvents {
   TrackedCSSPropertiesUpdated = 'TrackedCSSPropertiesUpdated',
 }
 

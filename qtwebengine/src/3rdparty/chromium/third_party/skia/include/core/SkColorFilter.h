@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
 class SkColorMatrix;
 class SkColorSpace;
@@ -64,6 +65,12 @@ public:
      */
     sk_sp<SkColorFilter> makeComposed(sk_sp<SkColorFilter> inner) const;
 
+    /** Return a colorfilter that will compute this filter in a specific color space. By default all
+     *  filters operate in the destination (surface) color space. This allows filters like Blend and
+     *  Matrix, or runtime color filters to perform their math in a known space.
+     */
+    sk_sp<SkColorFilter> makeWithWorkingColorSpace(sk_sp<SkColorSpace>) const;
+
     static sk_sp<SkColorFilter> Deserialize(const void* data, size_t size,
                                             const SkDeserialProcs* procs = nullptr);
 
@@ -76,8 +83,10 @@ private:
 
 class SK_API SkColorFilters {
 public:
-    static sk_sp<SkColorFilter> Compose(sk_sp<SkColorFilter> outer, sk_sp<SkColorFilter> inner) {
-        return outer ? outer->makeComposed(inner) : inner;
+    static sk_sp<SkColorFilter> Compose(const sk_sp<SkColorFilter>& outer,
+                                        sk_sp<SkColorFilter> inner) {
+        return outer ? outer->makeComposed(std::move(inner))
+                     : std::move(inner);
     }
 
     // Blends between the constant color (src) and input color (dst) based on the SkBlendMode.

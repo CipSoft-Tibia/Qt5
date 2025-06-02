@@ -6,7 +6,6 @@
 #define COMPONENTS_EXO_SURFACE_H_
 
 #include <list>
-#include <set>
 #include <utility>
 
 #include "base/functional/callback.h"
@@ -21,12 +20,12 @@
 #include "components/exo/surface_delegate.h"
 #include "components/viz/common/frame_sinks/begin_frame_source.h"
 #include "components/viz/common/resources/transferable_resource.h"
+#include "components/viz/common/surfaces/surface_id.h"
 #include "third_party/skia/include/core/SkBlendMode.h"
 #include "ui/aura/window.h"
+#include "ui/gfx/geometry/mask_filter_info.h"
 #include "ui/gfx/geometry/rect.h"
-#include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/gfx/geometry/rrect_f.h"
-#include "ui/gfx/geometry/size_conversions.h"
 #include "ui/gfx/geometry/size_f.h"
 #include "ui/gfx/geometry/transform.h"
 #include "ui/gfx/native_widget_types.h"
@@ -108,6 +107,9 @@ class Surface final : public ui::PropertyHandler {
 
   aura::Window* window() const { return window_.get(); }
 
+  std::vector<raw_ptr<aura::Window, VectorExperimental>> GetChildWindows()
+      const;
+
   void set_leave_enter_callback(LeaveEnterCallback callback) {
     leave_enter_callback_ = callback;
   }
@@ -188,10 +190,17 @@ class Surface final : public ui::PropertyHandler {
   void PlaceSubSurfaceBelow(Surface* sub_surface, Surface* sibling);
   void OnSubSurfaceCommit();
 
+  using SubSurfaceEntry = std::pair<Surface*, gfx::PointF>;
+  using SubSurfaceEntryList = std::list<SubSurfaceEntry>;
+  SubSurfaceEntryList& sub_surfaces() { return sub_surfaces_; }
+
   // `is_root_coordinates` specifies whether `rounded_corners_bounds` is on its
   // root surface coordinates or on the local surface coordinates.
+  // If `commit` is true, rounded corner bounds are add to committed state,
+  // overriding the previously committed value.
   void SetRoundedCorners(const gfx::RRectF& rounded_corners_bounds,
-                         bool is_root_coordinates);
+                         bool is_root_coordinates,
+                         bool commit_override);
   void SetOverlayPriorityHint(OverlayPriority hint);
 
   // Sets the surface's clip rectangle.
@@ -279,15 +288,6 @@ class Surface final : public ui::PropertyHandler {
   // Returns whether this surface or any of its subsurfaces contains a video.
   bool ContainsVideo();
 
-  // Enable embedding of an arbitrary viz surface in this exo surface.
-  // If the callback is valid, a SurfaceDrawQuad will be emitted targeting
-  // the returned SurfaceId each frame.
-  void SetEmbeddedSurfaceId(
-      base::RepeatingCallback<viz::SurfaceId()> surface_id_callback);
-
-  // Set the size of the embedded surface, to allow proper scaling.
-  void SetEmbeddedSurfaceSize(const gfx::Size& size);
-
   // Request that the attached surface buffer at the next commit is associated
   // with a gpu fence to be signaled when the buffer is ready for use.
   void SetAcquireFence(std::unique_ptr<gfx::GpuFence> gpu_fence);
@@ -323,7 +323,8 @@ class Surface final : public ui::PropertyHandler {
 
   // This will append contents for surface and its descendants to frame.
   void AppendSurfaceHierarchyContentsToFrame(
-      const gfx::PointF& origin,
+      const gfx::PointF& parent_to_root_px,
+      const gfx::PointF& to_parent_dp,
       bool needs_full_damage,
       FrameSinkResourceManager* resource_manager,
       absl::optional<float> device_scale_factor,
@@ -397,6 +398,8 @@ class Surface final : public ui::PropertyHandler {
 
   // Set occlusion tracking region for surface.
   void SetOcclusionTracking(bool tracking);
+
+  void OnScaleFactorChanged(float old_scale_factor, float new_scale_factor);
 
   // Triggers sending an occlusion update to observers.
   void OnWindowOcclusionChanged(
@@ -636,7 +639,8 @@ class Surface final : public ui::PropertyHandler {
 
   // Puts the current surface into a draw quad, and appends the draw quads into
   // the |frame|.
-  void AppendContentsToFrame(const gfx::PointF& origin,
+  void AppendContentsToFrame(const gfx::PointF& parent_to_root_px,
+                             const gfx::PointF& to_parent_dp,
                              bool needs_full_damage,
                              absl::optional<float> device_scale_factor,
                              viz::CompositorFrame* frame);
@@ -684,8 +688,6 @@ class Surface final : public ui::PropertyHandler {
   // The stack of sub-surfaces to take effect when Commit() is called.
   // Bottom-most sub-surface at the front of the list and top-most sub-surface
   // at the back.
-  using SubSurfaceEntry = std::pair<Surface*, gfx::PointF>;
-  using SubSurfaceEntryList = std::list<SubSurfaceEntry>;
   SubSurfaceEntryList pending_sub_surfaces_;
   SubSurfaceEntryList sub_surfaces_;
 
@@ -713,25 +715,20 @@ class Surface final : public ui::PropertyHandler {
   // This can be set to have some functions delegated. E.g. ShellSurface class
   // can set this to handle Commit() and apply any double buffered state it
   // maintains.
-  raw_ptr<SurfaceDelegate, ExperimentalAsh> delegate_ = nullptr;
+  raw_ptr<SurfaceDelegate> delegate_ = nullptr;
 
   // Surface observer list. Surface does not own the observers.
   base::ObserverList<SurfaceObserver, true>::Unchecked observers_;
 
   std::unique_ptr<ash::OutputProtectionDelegate> output_protection_;
 
-  viz::SurfaceId first_embedded_surface_id_;
-  viz::SurfaceId latest_embedded_surface_id_;
-  base::RepeatingCallback<viz::SurfaceId()> get_current_surface_id_;
-
-  // The embedded surface is actually |embedded_surface_size_|. This is used
-  // for calculating clipping and scaling.
-  gfx::Size embedded_surface_size_;
-
   LeaveEnterCallback leave_enter_callback_;
 
   bool keyboard_shortcuts_inhibited_ = false;
   bool legacy_buffer_release_skippable_ = false;
+
+  // Display id state for unmapped surfaces.
+  int64_t display_id_ = display::kInvalidDisplayId;
 };
 
 class ScopedSurface {
@@ -745,8 +742,8 @@ class ScopedSurface {
   Surface* get() { return surface_; }
 
  private:
-  const raw_ptr<Surface, ExperimentalAsh> surface_;
-  const raw_ptr<SurfaceObserver, ExperimentalAsh> observer_;
+  const raw_ptr<Surface> surface_;
+  const raw_ptr<SurfaceObserver> observer_;
 };
 
 }  // namespace exo

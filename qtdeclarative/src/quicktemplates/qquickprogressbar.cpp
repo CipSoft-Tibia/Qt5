@@ -9,7 +9,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype ProgressBar
     \inherits Control
-//!     \instantiates QQuickProgressBar
+//!     \nativetype QQuickProgressBar
     \inqmlmodule QtQuick.Controls
     \since 5.7
     \ingroup qtquickcontrols-indicators
@@ -66,7 +66,7 @@ QQuickProgressBar::QQuickProgressBar(QQuickItem *parent)
     : QQuickControl(*(new QQuickProgressBarPrivate), parent)
 {
     Q_D(QQuickProgressBar);
-    d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
+    d->setSizePolicy(QLayoutPolicy::Expanding, QLayoutPolicy::Fixed);
 }
 
 /*!

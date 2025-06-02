@@ -94,6 +94,8 @@ enum class ClientHintIssueReason {
 //     would have to be included in various cc files.
 class CORE_EXPORT AuditsIssue {
  public:
+  explicit AuditsIssue(std::unique_ptr<protocol::Audits::InspectorIssue> issue);
+
   AuditsIssue() = delete;
   AuditsIssue(const AuditsIssue&) = delete;
   AuditsIssue& operator=(const AuditsIssue&) = delete;
@@ -154,7 +156,7 @@ class CORE_EXPORT AuditsIssue {
       const mojom::blink::RequestContextType request_context,
       LocalFrame* frame,
       const MixedContentResolutionStatus resolution_status,
-      const absl::optional<String>& devtools_id);
+      const String& devtools_id);
 
   static AuditsIssue CreateContentSecurityPolicyIssue(
       const blink::SecurityPolicyViolationEventInit& violation_data,
@@ -182,17 +184,24 @@ class CORE_EXPORT AuditsIssue {
                                                      WTF::OrdinalNumber line,
                                                      WTF::OrdinalNumber column);
 
+  static void ReportPropertyRuleIssue(
+      Document* document,
+      const KURL& url,
+      WTF::OrdinalNumber line,
+      WTF::OrdinalNumber column,
+      protocol::Audits::PropertyRuleIssueReason reason,
+      const String& propertyValue);
+
   static void ReportStylesheetLoadingRequestFailedIssue(
       Document* document,
       const KURL& url,
-      const absl::optional<String>& requestId,
+      const String& request_id,
       const KURL& initiator_url,
       WTF::OrdinalNumber initiator_line,
       WTF::OrdinalNumber initiator_column,
       const String& failureMessage);
 
  private:
-  explicit AuditsIssue(std::unique_ptr<protocol::Audits::InspectorIssue> issue);
 
   std::unique_ptr<protocol::Audits::InspectorIssue> issue_;
 };

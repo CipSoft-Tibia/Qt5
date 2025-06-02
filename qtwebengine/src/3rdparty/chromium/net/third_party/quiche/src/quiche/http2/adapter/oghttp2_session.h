@@ -5,10 +5,10 @@
 #include <limits>
 #include <list>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "quiche/http2/adapter/data_source.h"
 #include "quiche/http2/adapter/event_forwarder.h"
@@ -47,11 +47,14 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
     // The perspective of this session.
     Perspective perspective = Perspective::kClient;
     // The maximum HPACK table size to use.
-    absl::optional<size_t> max_hpack_encoding_table_capacity = absl::nullopt;
+    std::optional<size_t> max_hpack_encoding_table_capacity;
     // The maximum number of decoded header bytes that a stream can receive.
-    absl::optional<uint32_t> max_header_list_bytes = absl::nullopt;
+    std::optional<uint32_t> max_header_list_bytes = std::nullopt;
     // The maximum size of an individual header field, including name and value.
-    absl::optional<uint32_t> max_header_field_size = absl::nullopt;
+    std::optional<uint32_t> max_header_field_size = std::nullopt;
+    // The assumed initial value of the remote endpoint's max concurrent streams
+    // setting.
+    std::optional<uint32_t> remote_max_concurrent_streams = std::nullopt;
     // Whether to automatically send PING acks when receiving a PING.
     bool auto_ping_ack = true;
     // Whether (as server) to send a RST_STREAM NO_ERROR when sending a fin on
@@ -151,6 +154,10 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   // Returns the size of the HPACK decoder's most recently applied size limit.
   int GetHpackDecoderSizeLimit() const;
 
+  uint32_t GetMaxOutboundConcurrentStreams() const {
+    return max_outbound_concurrent_streams_;
+  }
+
   // From Http2Session.
   int64_t ProcessBytes(absl::string_view bytes) override;
   int Consume(Http2StreamId stream_id, size_t num_bytes) override;
@@ -238,8 +245,8 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
     std::unique_ptr<spdy::Http2HeaderBlock> trailers;
     void* user_data = nullptr;
     int32_t send_window;
-    absl::optional<HeaderType> received_header_type;
-    absl::optional<size_t> remaining_content_length;
+    std::optional<HeaderType> received_header_type;
+    std::optional<size_t> remaining_content_length;
     bool half_closed_local = false;
     bool half_closed_remote = false;
     // Indicates that `outbound_body` temporarily cannot produce data.
@@ -279,7 +286,7 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
                     type_ == HeaderType::RESPONSE_100);
       return validator_->status_header();
     }
-    absl::optional<size_t> content_length() const {
+    std::optional<size_t> content_length() const {
       return validator_->content_length();
     }
     void SetAllowExtendedConnect() { validator_->SetAllowExtendedConnect(); }
@@ -403,7 +410,7 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   void CloseStream(Http2StreamId stream_id, Http2ErrorCode error_code);
 
   // Calculates the next expected header type for a stream in a given state.
-  HeaderType NextHeaderType(absl::optional<HeaderType> current_type);
+  HeaderType NextHeaderType(std::optional<HeaderType> current_type);
 
   // Returns true if the session can create a new stream.
   bool CanCreateStream() const;
@@ -438,6 +445,20 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   // Updates stream receive window managers to use the newly advertised stream
   // initial window.
   void UpdateStreamReceiveWindowSizes(uint32_t new_value);
+
+  // Gathers information required to construct a DATA frame header.
+  struct DataFrameInfo {
+    int64_t payload_length;
+    bool end_data;
+    bool send_fin;
+  };
+  DataFrameInfo GetDataFrameInfo(Http2StreamId stream_id,
+                                 size_t flow_control_available,
+                                 StreamState& stream_state);
+
+  // Invokes the appropriate API to send a DATA frame header and payload.
+  bool SendDataFrame(Http2StreamId stream_id, absl::string_view frame_header,
+                     size_t payload_length, StreamState& stream_state);
 
   // Receives events when inbound frames are parsed.
   Http2VisitorInterface& visitor_;
@@ -520,11 +541,12 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   int32_t initial_stream_send_window_ = kInitialFlowControlWindowSize;
   uint32_t max_frame_payload_ = kDefaultFramePayloadSizeLimit;
   // The maximum number of concurrent streams that this connection can open to
-  // its peer and allow from its peer, respectively. Although the initial value
-  // is unlimited, the spec encourages a value of at least 100. We limit
-  // ourselves to opening 100 until told otherwise by the peer and allow an
-  // unlimited number from the peer until updated from SETTINGS we send.
-  uint32_t max_outbound_concurrent_streams_ = 100u;
+  // its peer. Although the initial value
+  // is unlimited, the spec encourages a value of at least 100. Initially 100 or
+  // the specified option until told otherwise by the peer.
+  uint32_t max_outbound_concurrent_streams_;
+  // The maximum number of concurrent streams that this connection allows from
+  // its peer. Unlimited, until SETTINGS with some other value is acknowledged.
   uint32_t pending_max_inbound_concurrent_streams_ =
       std::numeric_limits<uint32_t>::max();
   uint32_t max_inbound_concurrent_streams_ =
@@ -534,7 +556,7 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   // acking SETTINGS from the peer. Only contains a value if the peer advertises
   // a larger table capacity than currently used; a smaller value can safely be
   // applied immediately upon receipt.
-  absl::optional<uint32_t> encoder_header_table_capacity_when_acking_;
+  std::optional<uint32_t> encoder_header_table_capacity_when_acking_;
 
   uint8_t current_frame_type_ = 0;
 

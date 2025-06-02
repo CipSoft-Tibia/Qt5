@@ -51,7 +51,7 @@ void tst_graphtheme::initialProperties()
 {
     QVERIFY(m_theme);
 
-    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorThemeDark);
+    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorTheme::Dark);
     QCOMPARE(m_theme->gridMajorBarsWidth(), 2.0);
     QCOMPARE(m_theme->gridMinorBarsWidth(), 1.0);
     QCOMPARE(m_theme->gridSmoothing(), 1.0);
@@ -71,7 +71,7 @@ void tst_graphtheme::initialProperties()
     QCOMPARE(m_theme->axisXSmoothing(), 1.0);
     QCOMPARE(m_theme->axisXLabelsColor(), QColor());
     QCOMPARE(m_theme->axisXLabelsFont(), QFont());
-    QCOMPARE(m_theme->shadowEnabled(), false);
+    QCOMPARE(m_theme->shadowVisible(), false);
     QCOMPARE(m_theme->shadowColor(), QColor());
     QCOMPARE(m_theme->shadowBarWidth(), 0.0);
     QCOMPARE(m_theme->shadowXOffset(), 0.0);
@@ -83,7 +83,7 @@ void tst_graphtheme::initializeProperties()
 {
     QVERIFY(m_theme);
 
-    m_theme->setColorTheme(QGraphTheme::ColorThemeDark);
+    m_theme->setColorTheme(QGraphTheme::ColorTheme::Dark);
     m_theme->setGridMajorBarsWidth(3.5);
     m_theme->setGridMinorBarsWidth(1.5);
     m_theme->setGridSmoothing(0.5);
@@ -95,14 +95,14 @@ void tst_graphtheme::initializeProperties()
     m_theme->setAxisXMinorBarWidth(5.0);
     m_theme->setAxisXSmoothing(3.0);
     m_theme->setAxisXLabelsFont(QFont("Arial", 20));
-    m_theme->setShadowEnabled(true);
+    m_theme->setShadowVisible(true);
     m_theme->setShadowColor("#66000000");
     m_theme->setShadowBarWidth(2.0);
     m_theme->setShadowXOffset(1.0);
     m_theme->setShadowYOffset(-1.0);
     m_theme->setShadowSmoothing(2.0);
 
-    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorThemeDark);
+    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorTheme::Dark);
     QCOMPARE(m_theme->gridMajorBarsWidth(), 3.5);
     QCOMPARE(m_theme->gridMinorBarsWidth(), 1.5);
     QCOMPARE(m_theme->gridSmoothing(), 0.5);
@@ -122,7 +122,7 @@ void tst_graphtheme::initializeProperties()
     QCOMPARE(m_theme->axisXSmoothing(), 3.0);
     QCOMPARE(m_theme->axisXLabelsColor(), "#fffafafa");
     QCOMPARE(m_theme->axisXLabelsFont(), QFont("Arial", 20));
-    QCOMPARE(m_theme->shadowEnabled(), true);
+    QCOMPARE(m_theme->shadowVisible(), true);
     QCOMPARE(m_theme->shadowColor(), "#66000000");
     QCOMPARE(m_theme->shadowBarWidth(), 2.0);
     QCOMPARE(m_theme->shadowXOffset(), 1.0);
@@ -138,9 +138,9 @@ void tst_graphtheme::overrideProperties()
     m_theme->componentComplete();
 
     // Set a theme
-    m_theme->setColorTheme(QGraphTheme::ColorThemeLight);
+    m_theme->setColorTheme(QGraphTheme::ColorTheme::Light);
 
-    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorThemeLight);
+    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorTheme::Light);
     QCOMPARE(m_theme->gridMajorBarsColor(), "#ff141414");
     QCOMPARE(m_theme->gridMinorBarsColor(), "#ff323232");
     QCOMPARE(m_theme->axisYMajorColor(), "#ff141414");
@@ -160,7 +160,7 @@ void tst_graphtheme::overrideProperties()
     m_theme->setAxisYLabelsColor("#ffaabbcc");
     m_theme->setAxisXLabelsColor("#ff445566");
 
-    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorThemeLight);
+    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorTheme::Light);
     QCOMPARE(m_theme->gridMajorBarsColor(), "red");
     QCOMPARE(m_theme->gridMinorBarsColor(), "green");
     QCOMPARE(m_theme->axisYMajorColor(), "yellow");
@@ -171,9 +171,9 @@ void tst_graphtheme::overrideProperties()
     QCOMPARE(m_theme->axisXLabelsColor(), "#ff445566");
 
     // Override with a theme
-    m_theme->setColorTheme(QGraphTheme::ColorThemeDark);
+    m_theme->setColorTheme(QGraphTheme::ColorTheme::Dark);
 
-    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorThemeDark);
+    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorTheme::Dark);
     QCOMPARE(m_theme->gridMajorBarsColor(), "#fffafafa");
     QCOMPARE(m_theme->gridMinorBarsColor(), "#ff969696");
     QCOMPARE(m_theme->axisYMajorColor(), "#fffafafa");
@@ -192,9 +192,9 @@ void tst_graphtheme::setReset()
     m_theme->componentComplete();
 
     // Set a theme
-    m_theme->setColorTheme(QGraphTheme::ColorThemeLight);
+    m_theme->setColorTheme(QGraphTheme::ColorTheme::Light);
 
-    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorThemeLight);
+    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorTheme::Light);
     QCOMPARE(m_theme->gridMajorBarsColor(), "#ff141414");
     QCOMPARE(m_theme->gridMinorBarsColor(), "#ff323232");
     QCOMPARE(m_theme->axisYMajorColor(), "#ff141414");
@@ -207,7 +207,7 @@ void tst_graphtheme::setReset()
     // Reset theme
     m_theme->resetColorTheme();
 
-    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorThemeDark);
+    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorTheme::Dark);
     QCOMPARE(m_theme->gridMajorBarsColor(), "#fffafafa");
     QCOMPARE(m_theme->gridMinorBarsColor(), "#ff969696");
     QCOMPARE(m_theme->axisYMajorColor(), "#fffafafa");
@@ -218,9 +218,9 @@ void tst_graphtheme::setReset()
     QCOMPARE(m_theme->axisXLabelsColor(), "#fffafafa");
 
     // Set another theme
-    m_theme->setColorTheme(QGraphTheme::ColorThemeLight);
+    m_theme->setColorTheme(QGraphTheme::ColorTheme::Light);
 
-    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorThemeLight);
+    QCOMPARE(m_theme->colorTheme(), QGraphTheme::ColorTheme::Light);
     QCOMPARE(m_theme->gridMajorBarsColor(), "#ff141414");
     QCOMPARE(m_theme->gridMinorBarsColor(), "#ff323232");
     QCOMPARE(m_theme->axisYMajorColor(), "#ff141414");

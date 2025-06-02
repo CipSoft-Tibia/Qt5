@@ -7,15 +7,16 @@
 
 #include <inttypes.h>
 
+#include <compare>
 #include <iosfwd>
 #include <limits>
 #include <string>
-#include <tuple>
 
-#include "base/trace_event/typed_macros.h"
+#include "base/tracing/protos/chrome_track_event.pbzero.h"
 #include "base/unguessable_token.h"
 #include "components/viz/common/viz_common_export.h"
 #include "mojo/public/cpp/bindings/struct_traits.h"
+#include "third_party/perfetto/include/perfetto/tracing/traced_proto.h"
 
 namespace viz {
 namespace mojom {
@@ -142,6 +143,12 @@ class VIZ_COMMON_EXPORT LocalSurfaceId {
   // this will return false.
   bool IsNewerThan(const LocalSurfaceId& other) const;
 
+  // Returns whether this LocalSurfaceId was generated after |other|. In the
+  // case where both `this` and `other` have advanced separate sequences, then
+  // this will return false. In the case where `embed_token_` has changed, this
+  // will return true.
+  bool IsNewerThanOrEmbeddingChanged(const LocalSurfaceId& other) const;
+
   // Returns whether this LocalSurfaceId was generated after |other| or equal to
   // it.
   bool IsSameOrNewerThan(const LocalSurfaceId& other) const;
@@ -188,7 +195,6 @@ inline bool operator<=(const LocalSurfaceId& lhs, const LocalSurfaceId& rhs) {
 inline bool operator>=(const LocalSurfaceId& lhs, const LocalSurfaceId& rhs) {
   return !operator<(lhs, rhs);
 }
-
 }  // namespace viz
 
 #endif  // COMPONENTS_VIZ_COMMON_SURFACES_LOCAL_SURFACE_ID_H_

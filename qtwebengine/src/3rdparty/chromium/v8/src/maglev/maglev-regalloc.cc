@@ -68,9 +68,15 @@ ControlNode* NearestPostDominatingHole(ControlNode* node) {
   // If the node is a Jump, it may be a hole, but only if it is not a
   // fallthrough (jump to the immediately next block). Otherwise, it will point
   // to the nearest post-dominating hole in its own "next" field.
-  if (Jump* jump = node->TryCast<Jump>()) {
-    if (IsTargetOfNodeFallthrough(jump, jump->target())) {
-      return jump->next_post_dominating_hole();
+  if (node->Is<Jump>() || node->Is<CheckpointedJump>()) {
+    BasicBlock* target;
+    if (auto jmp = node->TryCast<Jump>()) {
+      target = jmp->target();
+    } else {
+      target = node->Cast<CheckpointedJump>()->target();
+    }
+    if (IsTargetOfNodeFallthrough(node, target)) {
+      return node->next_post_dominating_hole();
     }
   }
 
@@ -138,7 +144,7 @@ ControlNode* HighestPostDominatingHole(
 
 bool IsLiveAtTarget(ValueNode* node, ControlNode* source, BasicBlock* target) {
   DCHECK_NOT_NULL(node);
-  DCHECK(!node->is_dead());
+  DCHECK(!node->has_no_more_uses());
 
   // If we're looping, a value can only be live if it was live before the loop.
   if (target->control_node()->id() <= source->id()) {
@@ -147,7 +153,7 @@ bool IsLiveAtTarget(ValueNode* node, ControlNode* source, BasicBlock* target) {
   }
 
   // Drop all values on resumable loop headers.
-  if (target->has_state() && target->state()->is_resumable_loop()) return false;
+  if (target->is_loop() && target->state()->is_resumable_loop()) return false;
 
   // TODO(verwaest): This should be true but isn't because we don't yet
   // eliminate dead code.
@@ -182,9 +188,10 @@ void ClearDeadFallthroughRegisters(RegisterFrameState<RegisterT>& registers,
 }
 
 bool IsDeadNodeToSkip(Node* node) {
-  return node->Is<ValueNode>() && node->Cast<ValueNode>()->is_dead() &&
+  return node->Is<ValueNode>() && node->Cast<ValueNode>()->has_no_more_uses() &&
          !node->properties().is_required_when_unused();
 }
+
 }  // namespace
 
 StraightForwardRegisterAllocator::StraightForwardRegisterAllocator(
@@ -370,6 +377,10 @@ void StraightForwardRegisterAllocator::AllocateRegisters() {
     constant->SetConstantLocation();
     USE(value);
   }
+  for (const auto& [value, constant] : graph_->uint32()) {
+    constant->SetConstantLocation();
+    USE(value);
+  }
   for (const auto& [value, constant] : graph_->float64()) {
     constant->SetConstantLocation();
     USE(value);
@@ -388,13 +399,9 @@ void StraightForwardRegisterAllocator::AllocateRegisters() {
       if (block->state()->is_exception_handler()) {
         // Exceptions start from a blank state of register values.
         ClearRegisterValues();
-      } else if (block->state()->is_resumable_loop() &&
-                 block->state()->predecessor_count() <= 1) {
+      } else if (block->state()->IsUnreachable()) {
         // Loops that are only reachable through JumpLoop start from a blank
         // state of register values.
-        // This should actually only support predecessor_count == 1, but we
-        // currently don't eliminate resumable loop headers (and subsequent code
-        // until the next resume) that end up being unreachable from JumpLoop.
         ClearRegisterValues();
       } else {
         InitializeRegisterValues(block->state()->register_state());
@@ -449,26 +456,33 @@ void StraightForwardRegisterAllocator::AllocateRegisters() {
 
     // Activate phis.
     if (block->has_phi()) {
+      Phi::List& phis = *block->phis();
       // Firstly, make the phi live, and try to assign it to an input
       // location.
-      for (Phi* phi : *block->phis()) {
-        // Ignore dead phis.
-        // TODO(leszeks): We should remove dead phis entirely and turn this
-        // into a DCHECK.
-        if (!phi->has_valid_live_range()) continue;
-        phi->SetNoSpill();
-        TryAllocateToInput(phi);
+      for (auto phi_it = phis.begin(); phi_it != phis.end();) {
+        Phi* phi = *phi_it;
+        if (!phi->has_valid_live_range()) {
+          // We might still have left over dead Phis, due to phis being kept
+          // alive by deopts that the representation analysis dropped. Clear
+          // them out now.
+          phi_it = phis.RemoveAt(phi_it);
+        } else {
+          DCHECK(phi->has_valid_live_range());
+          phi->SetNoSpill();
+          TryAllocateToInput(phi);
+          ++phi_it;
+        }
       }
       if (block->is_exception_handler_block()) {
         // If we are in exception handler block, then we find the ExceptionPhi
         // (the first one by default) that is marked with the
         // virtual_accumulator and force kReturnRegister0. This corresponds to
         // the exception message object.
-        for (Phi* phi : *block->phis()) {
+        for (Phi* phi : phis) {
           DCHECK_EQ(phi->input_count(), 0);
           DCHECK(phi->is_exception_phi());
           if (phi->owner() == interpreter::Register::virtual_accumulator()) {
-            if (!phi->is_dead()) {
+            if (!phi->has_no_more_uses()) {
               phi->result().SetAllocated(ForceAllocate(kReturnRegister0, phi));
               if (v8_flags.trace_maglev_regalloc) {
                 printing_visitor_->Process(phi, ProcessingState(block_it_));
@@ -502,11 +516,8 @@ void StraightForwardRegisterAllocator::AllocateRegisters() {
         }
       }
       // Secondly try to assign the phi to a free register.
-      for (Phi* phi : *block->phis()) {
-        // Ignore dead phis.
-        // TODO(leszeks): We should remove dead phis entirely and turn this into
-        // a DCHECK.
-        if (!phi->has_valid_live_range()) continue;
+      for (Phi* phi : phis) {
+        DCHECK(phi->has_valid_live_range());
         if (phi->result().operand().IsAllocated()) continue;
         if (phi->use_double_register()) {
           if (!double_registers_.UnblockedFreeIsEmpty()) {
@@ -536,11 +547,8 @@ void StraightForwardRegisterAllocator::AllocateRegisters() {
         }
       }
       // Finally just use a stack slot.
-      for (Phi* phi : *block->phis()) {
-        // Ignore dead phis.
-        // TODO(leszeks): We should remove dead phis entirely and turn this into
-        // a DCHECK.
-        if (!phi->has_valid_live_range()) continue;
+      for (Phi* phi : phis) {
+        DCHECK(phi->has_valid_live_range());
         if (phi->result().operand().IsAllocated()) continue;
         AllocateSpillSlot(phi);
         // TODO(verwaest): Will this be used at all?
@@ -612,12 +620,12 @@ void StraightForwardRegisterAllocator::UpdateUse(
         << "Using " << PrintNodeLabel(graph_labeller(), node) << "...\n";
   }
 
-  DCHECK(!node->is_dead());
+  DCHECK(!node->has_no_more_uses());
 
   // Update the next use.
-  node->set_next_use(input_location->next_use_id());
+  node->advance_next_use(input_location->next_use_id());
 
-  if (!node->is_dead()) return;
+  if (!node->has_no_more_uses()) return;
 
   if (v8_flags.trace_maglev_regalloc) {
     printing_visitor_->os()
@@ -649,6 +657,7 @@ void StraightForwardRegisterAllocator::AllocateEagerDeopt(
     const EagerDeoptInfo& deopt_info) {
   detail::DeepForEachInput(
       &deopt_info, [&](ValueNode* node, InputLocation* input) {
+        DCHECK(!node->Is<Identity>());
         // We might have dropped this node without spilling it. Spill it now.
         if (!node->has_register() && !node->is_loadable()) {
           Spill(node);
@@ -662,6 +671,7 @@ void StraightForwardRegisterAllocator::AllocateLazyDeopt(
     const LazyDeoptInfo& deopt_info) {
   detail::DeepForEachInput(&deopt_info,
                            [&](ValueNode* node, InputLocation* input) {
+                             DCHECK(!node->Is<Identity>());
                              // Lazy deopts always need spilling, and should
                              // always be loaded from their loadable slot.
                              Spill(node);
@@ -743,6 +753,7 @@ void StraightForwardRegisterAllocator::AllocateNode(Node* node) {
     AllocateLazyDeopt(*node->lazy_deopt_info());
   }
 
+  // Make sure to save snapshot after allocate eager deopt registers.
   if (node->properties().needs_register_snapshot()) SaveRegisterSnapshot(node);
 
   if (v8_flags.trace_maglev_regalloc) {
@@ -868,7 +879,7 @@ void StraightForwardRegisterAllocator::AllocateNodeResult(ValueNode* node) {
     DCHECK(node->has_register());
     FreeRegistersUsedBy(node);
     DCHECK(!node->has_register());
-    DCHECK(node->is_dead());
+    DCHECK(node->has_no_more_uses());
   }
 }
 
@@ -933,15 +944,19 @@ void StraightForwardRegisterAllocator::InitializeBranchTargetPhis(
   // which means we shouldn't update register state as we go (as if we were
   // emitting a series of serialised moves) but rather take 'old' register
   // state as the phi input.
-  Phi::List* phis = target->phis();
-  for (Phi* phi : *phis) {
-    // Ignore dead phis.
-    // TODO(leszeks): We should remove dead phis entirely and turn this into a
-    // DCHECK.
-    if (!phi->has_valid_live_range()) continue;
-
-    Input& input = phi->input(predecessor_id);
-    input.InjectLocation(input.node()->allocation());
+  Phi::List& phis = *target->phis();
+  for (auto phi_it = phis.begin(); phi_it != phis.end();) {
+    Phi* phi = *phi_it;
+    if (!phi->has_valid_live_range()) {
+      // We might still have left over dead Phis, due to phis being kept
+      // alive by deopts that the representation analysis dropped. Clear
+      // them out now.
+      phi_it = phis.RemoveAt(phi_it);
+    } else {
+      Input& input = phi->input(predecessor_id);
+      input.InjectLocation(input.node()->allocation());
+      ++phi_it;
+    }
   }
 }
 
@@ -1361,7 +1376,7 @@ void StraightForwardRegisterAllocator::AssignArbitraryRegisterInput(
   UpdateUse(&input);
   // Only need to mark the location as clobbered if the node wasn't already
   // killed by UpdateUse.
-  if (is_clobbered && !node->is_dead()) {
+  if (is_clobbered && !node->has_no_more_uses()) {
     MarkAsClobbered(node, location);
   }
   // Clobbered inputs should no longer be in the allocated location, as far as
@@ -1506,16 +1521,12 @@ void StraightForwardRegisterAllocator::VerifyRegisterState() {
   for (BasicBlock* block : *graph_) {
     if (block->has_phi()) {
       for (Phi* phi : *block->phis()) {
-        // Ignore dead phis.
-        // TODO(leszeks): We should remove dead phis entirely and turn this into
-        // a DCHECK.
-        if (!phi->has_valid_live_range()) continue;
         ValidateValueNode(phi);
       }
     }
     for (Node* node : block->nodes()) {
-      if (IsDeadNodeToSkip(node)) continue;
       if (ValueNode* value_node = node->TryCast<ValueNode>()) {
+        if (node->Is<Identity>()) continue;
         ValidateValueNode(value_node);
       }
     }
@@ -1571,6 +1582,25 @@ void StraightForwardRegisterAllocator::SaveRegisterSnapshot(NodeBase* node) {
       snapshot.live_registers.clear(reg);
       snapshot.live_tagged_registers.clear(reg);
     }
+  }
+  if (node->properties().can_eager_deopt()) {
+    // If we eagerly deopt after a deferred call, the registers saved by the
+    // runtime call might not include the inputs into the eager deopt. Here, we
+    // make sure that all the eager deopt registers are included in the
+    // snapshot.
+    detail::DeepForEachInput(
+        node->eager_deopt_info(), [&](ValueNode* node, InputLocation* input) {
+          if (!input->IsAnyRegister()) return;
+          if (input->IsDoubleRegister()) {
+            snapshot.live_double_registers.set(input->AssignedDoubleRegister());
+          } else {
+            snapshot.live_registers.set(input->AssignedGeneralRegister());
+            if (node->is_tagged()) {
+              snapshot.live_tagged_registers.set(
+                  input->AssignedGeneralRegister());
+            }
+          }
+        });
   }
   node->set_register_snapshot(snapshot);
 }
@@ -1648,7 +1678,7 @@ RegisterT StraightForwardRegisterAllocator::PickRegisterToFree(
       best = reg;
       break;
     }
-    int use = value->next_use();
+    int use = value->current_next_use();
     if (use > furthest_use) {
       furthest_use = use;
       best = reg;
@@ -2276,7 +2306,7 @@ void StraightForwardRegisterAllocator::MergeRegisterValues(ControlNode* control,
         // though).
         DCHECK_IMPLIES(
             !incoming->is_loadable() && !IsInRegister(target_state, incoming),
-            !IsForwardReachable(target, incoming->next_use(),
+            !IsForwardReachable(target, incoming->current_next_use(),
                                 incoming->live_range().end));
       }
 

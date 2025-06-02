@@ -82,7 +82,7 @@ public:
                                          QSSGRhiGraphicsPipelineState *ps,
                                          const QSSGRenderCustomMaterial &material,
                                          QSSGSubsetRenderable &renderable,
-                                         const QSSGRenderCamera &camera,
+                                         const QSSGRenderCameraList &cameras,
                                          const QVector2D *depthAdjust,
                                          const QMatrix4x4 *alteredModelViewProjection);
 
@@ -94,6 +94,7 @@ public:
                               const QSSGLayerRenderData &layerData,
                               QRhiRenderPassDescriptor *renderPassDescriptor,
                               int samples,
+                              int viewCount,
                               QSSGRenderCamera *camera = nullptr,
                               QSSGRenderTextureCubeFace cubeFace = QSSGRenderTextureCubeFaceNone,
                               QMatrix4x4 *modelViewProjection = nullptr,

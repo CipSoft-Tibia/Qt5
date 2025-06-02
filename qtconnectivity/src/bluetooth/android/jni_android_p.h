@@ -23,12 +23,14 @@
 QT_BEGIN_NAMESPACE
 
 // CLASS declaration implies also TYPE declaration
+Q_DECLARE_JNI_CLASS(QtBtUtility,
+                    "org/qtproject/qt/android/bluetooth/QtBluetoothUtility")
 Q_DECLARE_JNI_CLASS(QtBtBroadcastReceiver,
-                    "org/qtproject/qt/android/bluetooth/QtBluetoothBroadcastReceiver");
+                    "org/qtproject/qt/android/bluetooth/QtBluetoothBroadcastReceiver")
 Q_DECLARE_JNI_CLASS(QtBtGattCharacteristic,
-                    "org/qtproject/qt/android/bluetooth/QtBluetoothGattCharacteristic");
+                    "org/qtproject/qt/android/bluetooth/QtBluetoothGattCharacteristic")
 Q_DECLARE_JNI_CLASS(QtBtGattDescriptor,
-                    "org/qtproject/qt/android/bluetooth/QtBluetoothGattDescriptor");
+                    "org/qtproject/qt/android/bluetooth/QtBluetoothGattDescriptor")
 Q_DECLARE_JNI_CLASS(QtBtInputStreamThread,
                     "org/qtproject/qt/android/bluetooth/QtBluetoothInputStreamThread")
 Q_DECLARE_JNI_CLASS(QtBtSocketServer, "org/qtproject/qt/android/bluetooth/QtBluetoothSocketServer")
@@ -44,11 +46,7 @@ Q_DECLARE_JNI_CLASS(BluetoothGattCharacteristic, "android/bluetooth/BluetoothGat
 Q_DECLARE_JNI_CLASS(BluetoothDevice, "android/bluetooth/BluetoothDevice")
 Q_DECLARE_JNI_CLASS(IntentFilter, "android/content/IntentFilter")
 Q_DECLARE_JNI_CLASS(AndroidContext, "android/content/Context")
-Q_DECLARE_JNI_CLASS(UUID, "java/util/UUID")
 
-Q_DECLARE_JNI_TYPE(ParcelableArray, "[Landroid/os/Parcelable;")
-Q_DECLARE_JNI_TYPE(ParcelUuidArray, "[Landroid/os/ParcelUuid;")
-Q_DECLARE_JNI_TYPE(StringArray, "[Ljava/lang/String;")
 
 Q_DECLARE_JNI_CLASS(BluetoothManager, "android/bluetooth/BluetoothManager")
 Q_DECLARE_JNI_CLASS(AdvertiseData, "android/bluetooth/le/AdvertiseData")
@@ -58,10 +56,13 @@ Q_DECLARE_JNI_CLASS(OutputStream, "java/io/OutputStream")
 Q_DECLARE_JNI_CLASS(BluetoothSocket, "android/bluetooth/BluetoothSocket")
 Q_DECLARE_JNI_CLASS(BroadcastReceiver, "android/content/BroadcastReceiver")
 Q_DECLARE_JNI_CLASS(BluetoothClass, "android/bluetooth/BluetoothClass")
-Q_DECLARE_JNI_CLASS(Parcelable, "android/os/Parcelable")
-Q_DECLARE_JNI_CLASS(Intent, "android/content/Intent")
 Q_DECLARE_JNI_CLASS(Bundle, "android/os/Bundle")
 Q_DECLARE_JNI_CLASS(List, "java/util/List")
+
+namespace QtJniTypes {
+using ParcelableArray = QJniArray<Parcelable>;
+using ParcelUuidArray = QJniArray<ParcelUuid>;
+}
 
 // QLowEnergyHandle is a quint16, ensure it is interpreted as jint
 template<>

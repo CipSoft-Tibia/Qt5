@@ -184,7 +184,7 @@ static LayoutObject* ChildOfFlexboxOrGridParentOrGrandparent(
   if (!parent) {
     return nullptr;
   }
-  if (parent->IsLayoutNGFlexibleBox() || parent->IsLayoutNGGrid()) {
+  if (parent->IsFlexibleBox() || parent->IsLayoutGrid()) {
     return &layer->GetLayoutObject();
   }
 
@@ -192,7 +192,7 @@ static LayoutObject* ChildOfFlexboxOrGridParentOrGrandparent(
   if (!grandparent) {
     return nullptr;
   }
-  if (grandparent->IsLayoutNGFlexibleBox() || grandparent->IsLayoutNGGrid()) {
+  if (grandparent->IsFlexibleBox() || grandparent->IsLayoutGrid()) {
     return parent;
   }
   return nullptr;
@@ -238,10 +238,6 @@ static void GetOrderSortedChildren(
   for (PaintLayer* child = paint_layer->FirstChild(); child;
        child = child->NextSibling()) {
     sorted_children.push_back(child);
-  }
-
-  if (!RuntimeEnabledFeatures::PaintFlexGridSortedByOrderEnabled()) {
-    return;
   }
 
   std::stable_sort(sorted_children.begin(), sorted_children.end(),

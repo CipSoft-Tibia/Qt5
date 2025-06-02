@@ -239,6 +239,14 @@ void tst_RenderControl::dynamicLights()
 #endif
     }
 
+#if defined(Q_OS_WIN)
+#ifdef Q_PROCESSOR_ARM
+    if (qgetenv("QTEST_ENVIRONMENT") == "ci") {
+        QSKIP("Skipping test due to problems on windows arm64 on CI");
+    }
+#endif
+#endif
+
     bool readCompleted = false;
     QRhiReadbackResult readResult;
     QImage result;
@@ -347,7 +355,7 @@ void tst_RenderControl::dynamicLights()
         QVERIFY(comparePixelNormPos(result, 0.5, 0.5, QColor::fromRgb(0, 255, 0), FUZZ));
         QVERIFY(comparePixelNormPos(result, 0.5, 0.666, QColor::fromRgb(0, 0, 0), FUZZ));
         // floor is darker due to the shadow
-        QVERIFY(comparePixelNormPos(result, 0.5, 0.9, QColor::fromRgb(0, 99, 0), FUZZ));
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.9, QColor::fromRgb(0, 72, 0), FUZZ));
     }
 
     // Case: make the DirectionalLight visible and cast shadows
@@ -363,7 +371,7 @@ void tst_RenderControl::dynamicLights()
         QVERIFY(comparePixelNormPos(result, 0.5, 0.5, QColor::fromRgb(239, 255, 239), FUZZ));
         QVERIFY(comparePixelNormPos(result, 0.5, 0.9, QColor::fromRgb(248, 255, 248), FUZZ));
         // floor in shadow, now with some green added
-        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(0, 118, 0), FUZZ));
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(0, 82, 0), FUZZ));
     }
 
     // Case: make the DirectionalLight not cast shadows and reduce brightness
@@ -377,7 +385,7 @@ void tst_RenderControl::dynamicLights()
         QCOMPARE(result.size(), QSize(640, 480));
 
         QVERIFY(comparePixelNormPos(result, 0.5, 0.5, QColor::fromRgb(115, 255, 115), FUZZ));
-        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(120, 160, 120), FUZZ));
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(120, 142, 120), FUZZ));
     }
 
     // Case: destroy the DirectionalLight
@@ -392,7 +400,7 @@ void tst_RenderControl::dynamicLights()
         QVERIFY(comparePixelNormPos(result, 0.5, 0.5, QColor::fromRgb(0, 255, 0), FUZZ));
         QVERIFY(comparePixelNormPos(result, 0.5, 0.666, QColor::fromRgb(0, 0, 0), FUZZ));
         // floor is darker due to the shadow
-        QVERIFY(comparePixelNormPos(result, 0.5, 0.9, QColor::fromRgb(0, 99, 0), FUZZ));
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.9, QColor::fromRgb(0, 72, 0), FUZZ));
     }
 
     // Case: re-add a shadow casting DirectionalLight emitting downwards
@@ -407,7 +415,7 @@ void tst_RenderControl::dynamicLights()
         QVERIFY(comparePixelNormPos(result, 0.5, 0.5, QColor::fromRgb(239, 255, 239), FUZZ));
         QVERIFY(comparePixelNormPos(result, 0.5, 0.9, QColor::fromRgb(248, 255, 248), FUZZ));
         // floor in shadow, now with some green added
-        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(0, 118, 0), FUZZ));
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(0, 82, 0), FUZZ));
     }
 
     // Case: destroy the PointLight
@@ -486,7 +494,7 @@ void tst_RenderControl::dynamicLights()
         QCOMPARE(result.size(), QSize(640, 480));
 
         QVERIFY(comparePixelNormPos(result, 0.5, 0.5, QColor::fromRgb(255, 255, 255), FUZZ));
-        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(0, 118, 0), FUZZ));
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(0, 82, 0), FUZZ));
     }
 
     // Case: delete all but one DirectionalLight, reduce its color and brightness, and add a red SpotLight
@@ -505,7 +513,7 @@ void tst_RenderControl::dynamicLights()
         QCOMPARE(result.size(), QSize(640, 480));
 
         QVERIFY(comparePixelNormPos(result, 0.5, 0.5, QColor::fromRgb(0, 255, 83), FUZZ));
-        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(18, 114, 0), FUZZ));
+        QVERIFY(comparePixelNormPos(result, 0.5, 0.8, QColor::fromRgb(10, 82, 0), FUZZ));
     }
 
     // Case: add a lot of lights, to exceed the limit of 15. Should survive

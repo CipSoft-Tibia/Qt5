@@ -199,8 +199,9 @@ bool InterceptNavigationDelegate::ShouldIgnoreNavigation(
               ->GetFrameToken()) {
     content::RenderFrameHost* initiator_frame_host =
         content::RenderFrameHost::FromFrameToken(
-            navigation_handle->GetInitiatorProcessId(),
-            navigation_handle->GetInitiatorFrameToken().value());
+            content::GlobalRenderFrameHostToken(
+                navigation_handle->GetInitiatorProcessId(),
+                navigation_handle->GetInitiatorFrameToken().value()));
     // If the initiator is gone treat it as not visible.
     hidden_cross_frame =
         !initiator_frame_host || initiator_frame_host->GetVisibilityState() !=
@@ -248,7 +249,7 @@ void InterceptNavigationDelegate::HandleSubframeExternalProtocol(
       Java_InterceptNavigationDelegate_handleSubframeExternalProtocol(
           env, jdelegate, url::GURLAndroid::FromNativeGURL(env, escaped_url),
           page_transition, has_user_gesture,
-          initiating_origin ? initiating_origin->CreateJavaObject() : nullptr);
+          initiating_origin ? initiating_origin->ToJavaObject() : nullptr);
   if (j_gurl.is_null())
     return;
   subframe_redirect_url_ = url::GURLAndroid::ToNativeGURL(env, j_gurl);

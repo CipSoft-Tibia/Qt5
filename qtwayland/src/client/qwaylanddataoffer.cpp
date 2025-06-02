@@ -17,6 +17,11 @@ QT_BEGIN_NAMESPACE
 
 namespace QtWaylandClient {
 
+static QString plainText()
+{
+    return QStringLiteral("text/plain");
+}
+
 static QString utf8Text()
 {
     return QStringLiteral("text/plain;charset=utf-8");
@@ -163,21 +168,29 @@ void QWaylandMimeData::appendFormat(const QString &mimeType)
 
 bool QWaylandMimeData::hasFormat_sys(const QString &mimeType) const
 {
-    if (m_types.contains(mimeType))
-        return true;
-
-    if (mimeType == QStringLiteral("text/plain") && m_types.contains(utf8Text()))
-        return true;
-
-    if (mimeType == uriList() && m_types.contains(mozUrl()))
-        return true;
-
-    return false;
+    return formats().contains(mimeType);
 }
 
 QStringList QWaylandMimeData::formats_sys() const
 {
-    return m_types;
+    QStringList types;
+    types.reserve(m_types.size());
+
+    for (const QString &type : m_types) {
+        QString mime = type;
+
+        if (mime == utf8Text()) {
+            mime = plainText();
+        } else if (mime == mozUrl()) {
+            mime = uriList();
+        }
+
+        if (!types.contains(mime)) {
+            types << mime;
+        }
+    }
+
+    return types;
 }
 
 QVariant QWaylandMimeData::retrieveData_sys(const QString &mimeType, QMetaType type) const
@@ -191,7 +204,7 @@ QVariant QWaylandMimeData::retrieveData_sys(const QString &mimeType, QMetaType t
     QString mime = mimeType;
 
     if (!m_types.contains(mimeType)) {
-        if (mimeType == QStringLiteral("text/plain") && m_types.contains(utf8Text()))
+        if (mimeType == plainText() && m_types.contains(utf8Text()))
             mime = utf8Text();
         else if (mimeType == uriList() && m_types.contains(mozUrl()))
             mime = mozUrl();

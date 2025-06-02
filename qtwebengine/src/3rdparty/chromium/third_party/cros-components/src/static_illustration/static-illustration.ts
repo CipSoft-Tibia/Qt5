@@ -15,8 +15,11 @@ function isAbortError(error: unknown): boolean {
 }
 
 /**
- * A static illustration component for SVG illustrations. This component
- * supports both externally fetched SVGs as well as local HTMLTemplateElements.
+ * A static illustration component for illustrations. This component supports:
+ *   - External non dynamic color images (app logos for example).
+ *   - Externally fetched SVGs with dynamic color tokens references.
+ *   - Local HTMLTemplateElements.
+ *
  * The external url will override any local template provided, eg the following
  * will result in ONLY the external SVG being fetched and rendererd:
  *
@@ -44,14 +47,14 @@ export class StaticIllustration extends LitElement {
   static override properties = {
     url: {type: String},
     cachedExternalSVG: {type: String},
-    coloredExternalSVGDataURL: {type: String},
+    imgSrc: {type: String},
     alt: {type: String},
     forceColor: {type: String},
     template: {attribute: false, type: HTMLTemplateElement}
   };
 
   /**
-   * A url to a external svg asset with embedded cros var references.
+   * A url to a external static illustration.
    * @export
    */
   url: string|null;
@@ -69,23 +72,23 @@ export class StaticIllustration extends LitElement {
    */
   template: HTMLTemplateElement;
   /**
-   * A css variable that all fills in the svg specified by `url` should be
-   * mapped to. Allows for legacy single color svg's to be made
-   * dynamic. Pass the variable in as `--cros-name`.
+   * If and only if `url` points to a SVG file all `fill`s in the svg will be
+   * mapped to css variable specified in `fillColor`. Allows for legacy single
+   * color svg's to be made dynamic. Pass the variable in as `--cros-name`.
    * @export
    */
   forceColor: string|null;
+
   /**
-   * After we fetch a external svg file from `url` we cache it so we can recolor
-   * it without having to repeat the network request.
+   * If `url` points at a external svg file from `url` we cache it so we can
+   * recolor it without having to repeat the network request.
    */
   private cachedExternalSVG: string|null;
   /**
-   * A data url containing our external SVG data after having css vars replaced
-   * with real hex codes.
+   * A src for a image tag that contains `url` but with after any necessary
+   * dynamic color preprocessing.
    */
-  private coloredExternalSVGDataURL: string|null;
-
+  private imgSrc: string|null;
   /**
    * Everytime we make a fetch we increment this token. This allows us to
    * gracefully handle the user changing the url multiple times before the first
@@ -97,6 +100,7 @@ export class StaticIllustration extends LitElement {
 
   private readonly onColorChange = () => void this.recolorExternalAsset();
   private shouldRenderTemplate = false;
+
 
   /** @nocollapse */
   static override styles: CSSResultGroup = css`
@@ -116,7 +120,7 @@ export class StaticIllustration extends LitElement {
     super();
     this.url = null;
     this.cachedExternalSVG = null;
-    this.coloredExternalSVGDataURL = null;
+    this.imgSrc = null;
     this.alt = null;
     this.forceColor = null;
     this.template = document.createElement('template');
@@ -128,7 +132,7 @@ export class StaticIllustration extends LitElement {
       // recolor we can silently exit. This isn't an error state however because
       // we expect this function to be called at any time the OS color theme
       // changes which can be before the element is initialized or when we
-      // aren't rendering a external assert.
+      // aren't rendering a external svg assert.
       return;
     }
 
@@ -165,10 +169,10 @@ export class StaticIllustration extends LitElement {
           (match, variable) => currentStyles.getPropertyValue(variable));
     }
     const b64 = btoa(resolvedSVG);
-    this.coloredExternalSVGDataURL = `data:${SVG_CONTENT_TYPE};base64,${b64}`;
+    this.imgSrc = `data:${SVG_CONTENT_TYPE};base64,${b64}`;
   }
 
-  private async fetchExternalSVG(url: string) {
+  private async fetchUrl(url: string) {
     this.currentFetchToken++;
     const currentSession = this.currentFetchToken;
 
@@ -207,14 +211,14 @@ export class StaticIllustration extends LitElement {
     if (code !== 200) {
       throw new Error(`cros-static-illustration could not fetch '${url}',
         got response (${code})`);
-    } else if (contentType !== SVG_CONTENT_TYPE) {
-      throw new Error(
-          `cros-static-illustration could not process ${url} as it has a non
-        svg content-type (${contentType})`);
+    } else if (contentType === SVG_CONTENT_TYPE) {
+      this.cachedExternalSVG = await response.text();
+      this.recolorExternalAsset();
+    } else {
+      // Some other external asset. Simply render it as is.
+      this.imgSrc = url;
     }
 
-    this.cachedExternalSVG = await response.text();
-    this.recolorExternalAsset();
     this.dispatchEvent(new CustomEvent('illustration-updated'));
   }
 
@@ -234,7 +238,7 @@ export class StaticIllustration extends LitElement {
     if (changedProperties.has('url')) {
       if (this.url) {
         this.shouldRenderTemplate = false;
-        this.fetchExternalSVG(this.url);
+        this.fetchUrl(this.url);
         return;
       }
 
@@ -246,13 +250,13 @@ export class StaticIllustration extends LitElement {
   }
 
   override render() {
-    if (!this.shouldRenderTemplate && !!this.coloredExternalSVGDataURL) {
+    if (!this.shouldRenderTemplate && !!this.imgSrc) {
       // If we don't have alt text set the alt attribute to empty string.
       // https://www.w3.org/WAI/WCAG21/Techniques/html/H67.html
       return html`
         <img
           alt=${this.alt !== null ? this.alt : ''}
-          src="${this.coloredExternalSVGDataURL}"/>
+          src="${this.imgSrc}"/>
       `;
     }
     // This will either render a local SVG template or the empty template.

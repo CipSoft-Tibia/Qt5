@@ -4,11 +4,25 @@
 
 #include "quiche/quic/masque/masque_client.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "quiche/quic/core/crypto/proof_verifier.h"
+#include "quiche/quic/core/io/quic_event_loop.h"
+#include "quiche/quic/core/quic_connection.h"
+#include "quiche/quic/core/quic_connection_id.h"
+#include "quiche/quic/core/quic_error_codes.h"
+#include "quiche/quic/core/quic_session.h"
+#include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/masque/masque_client_session.h"
 #include "quiche/quic/masque/masque_utils.h"
+#include "quiche/quic/platform/api/quic_logging.h"
+#include "quiche/quic/platform/api/quic_socket_address.h"
+#include "quiche/quic/tools/quic_default_client.h"
 #include "quiche/quic/tools/quic_name_lookup.h"
 #include "quiche/quic/tools/quic_url.h"
 
@@ -31,7 +45,7 @@ std::unique_ptr<QuicSession> MasqueClient::CreateQuicClientSession(
                   << connection->connection_id();
   return std::make_unique<MasqueClientSession>(
       masque_mode_, uri_template_, *config(), supported_versions, connection,
-      server_id(), crypto_config(), push_promise_index(), this);
+      server_id(), crypto_config(), this);
 }
 
 MasqueClientSession* MasqueClient::masque_client_session() {

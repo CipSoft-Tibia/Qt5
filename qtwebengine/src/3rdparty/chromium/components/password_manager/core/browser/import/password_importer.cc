@@ -4,6 +4,7 @@
 
 #include "components/password_manager/core/browser/import/password_importer.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -18,16 +19,14 @@
 #include "base/types/expected_macros.h"
 #include "components/password_manager/core/browser/import/csv_password.h"
 #include "components/password_manager/core/browser/import/csv_password_sequence.h"
+#include "components/password_manager/core/browser/import/import_results.h"
 #include "components/password_manager/core/browser/password_form.h"
-#include "components/password_manager/core/browser/password_manager_util.h"
-#include "components/password_manager/core/browser/password_ui_utils.h"
 #include "components/password_manager/core/browser/ui/credential_ui_entry.h"
-#include "components/password_manager/core/browser/ui/import_results.h"
+#include "components/password_manager/core/browser/ui/credential_utils.h"
 #include "components/password_manager/core/browser/ui/saved_passwords_presenter.h"
 #include "components/password_manager/core/common/password_manager_features.h"
 #include "components/password_manager/services/csv_password/csv_password_parser_service.h"
 #include "components/sync/base/features.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 using password_manager::ImportEntry;
 namespace password_manager {
@@ -112,7 +111,7 @@ ImportEntry::Status GetConflictType(
 ImportEntry CreateFailedImportEntry(const CredentialUIEntry& credential,
                                     const ImportEntry::Status status) {
   ImportEntry result;
-  result.url = password_manager::GetShownOrigin(credential);
+  result.url = credential.GetAffiliatedDomains()[0].name;
   result.username = base::UTF16ToUTF8(credential.username);
   result.status = status;
   return result;
@@ -122,7 +121,7 @@ ImportEntry CreateValidImportEntry(const CredentialUIEntry& credential,
                                    int id) {
   ImportEntry result;
   result.id = id;
-  result.url = password_manager::GetShownOrigin(credential);
+  result.url = credential.GetAffiliatedDomains()[0].name;
   result.username = base::UTF16ToUTF8(credential.username);
   result.password = base::UTF16ToUTF8(credential.password);
   result.status = ImportEntry::VALID;
@@ -183,14 +182,14 @@ CSVPasswordToCredentialUIEntry(const CSVPassword& csv_password,
   if (url.spec().length() > 2048) {
     return base::unexpected(with_status(ImportEntry::Status::LONG_URL));
   }
-  if (!password_manager_util::IsValidPasswordURL(url)) {
+  if (!IsValidPasswordURL(url)) {
     return base::unexpected(with_status(ImportEntry::Status::INVALID_URL));
   }
 
   return password_manager::CredentialUIEntry(csv_password, store);
 }
 
-absl::optional<CredentialUIEntry> GetConflictingCredential(
+std::optional<CredentialUIEntry> GetConflictingCredential(
     const std::map<std::u16string, std::vector<CredentialUIEntry>>&
         credentials_by_username,
     const CredentialUIEntry& imported_credential) {
@@ -211,7 +210,7 @@ absl::optional<CredentialUIEntry> GetConflictingCredential(
       }
     }
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 std::vector<PasswordForm> GetMatchingPasswordForms(
@@ -388,7 +387,7 @@ void ProcessParsedCredential(
   // Check if there are local credentials with the same signon_realm and
   // username, but different password. Such credentials are considered
   // conflicts.
-  absl::optional<CredentialUIEntry> conflicting_credential =
+  std::optional<CredentialUIEntry> conflicting_credential =
       GetConflictingCredential(credentials_by_username, imported_credential);
   if (conflicting_credential.has_value()) {
     std::vector<PasswordForm> forms = GetMatchingPasswordForms(
@@ -586,9 +585,7 @@ void PasswordImporter::ConsumePasswords(
   base::UmaHistogramCounts1M("PasswordManager.Import.PerFile.Duplicates",
                              duplicates_count);
 
-  if (!base::FeatureList::IsEnabled(
-          password_manager::features::kPasswordsImportM2) ||
-      conflicts.empty()) {
+  if (conflicts.empty()) {
     for (const std::vector<PasswordForm>& forms : conflicts) {
       results.displayed_entries.push_back(CreateFailedImportEntry(
           CredentialUIEntry(forms), GetConflictType(to_store)));
@@ -640,9 +637,7 @@ void PasswordImporter::ImportFinished(ImportResultsCallback results_callback,
                                       size_t conflicts_count) {
   ReportImportResultsMetrics(results, start_time, conflicts_count);
 
-  if (base::FeatureList::IsEnabled(
-          password_manager::features::kPasswordsImportM2) &&
-      results.displayed_entries.empty()) {
+  if (results.displayed_entries.empty()) {
     // After successful import with no errors, the user has an option to delete
     // the imported file.
     state_ = kFinished;

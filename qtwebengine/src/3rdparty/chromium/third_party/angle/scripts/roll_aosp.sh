@@ -58,6 +58,7 @@ function generate_Android_bp_file() {
             "angle_enable_d3d11 = false"
             "angle_enable_null = false"
             "angle_enable_metal = false"
+            "angle_enable_wgpu = false"
 
             # SwiftShader is loaded as the system Vulkan driver on Android, not compiled by ANGLE
             "angle_enable_swiftshader = false"
@@ -135,6 +136,15 @@ delete_only_deps=(
 # Delete dep directories so that gclient can check them out
 for dep in "${third_party_deps[@]}" "${delete_only_deps[@]}"; do
     rm -rf "$dep"
+done
+
+# Remove cruft from any previous bad rolls (https://anglebug.com/8352)
+extra_third_party_removal_patterns=(
+   "*/_gclient_*"
+)
+
+for removal_dir in "${extra_third_party_removal_patterns[@]}"; do
+    find third_party -wholename "$removal_dir" -delete
 done
 
 # Sync all of ANGLE's deps so that 'gn gen' works

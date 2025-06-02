@@ -7,12 +7,13 @@
 #include <cfloat>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <random>
 #include <vector>
 
-#include <benchmark/benchmark.h>
 #include "bench/dwconv.h"
 #include "bench/utils.h"
+#include <benchmark/benchmark.h>
 
 #include <xnnpack.h>
 #include <xnnpack/aligned-allocator.h>
@@ -89,7 +90,7 @@ static void f32_dwconv(benchmark::State& state,
   std::fill(w.begin(), w.end(), 0.0f);
   xnn_pack_f32_dwconv_ghw_w(primary_tile, 0, 0, kernel_height, kernel_width, channels,
                             channel_tile, channel_tile, /*channel_round=*/1,
-                            k.data(), b.data(), w.data(),
+                            k.data(), b.data(), /*scale=*/nullptr, w.data(),
                             /*per_tile_extra_bytes=*/0, /*per_subtile_extra_bytes=*/0, nullptr);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(w.cbegin(), w.cbegin() + w_elements, w.begin() + n * w_elements);
@@ -114,7 +115,19 @@ static void f32_dwconv(benchmark::State& state,
   convolution_op.padding_top        = padding_top;
   convolution_op.padding_left       = padding_left;
 
-  xnn_indirection_init_dwconv2d(&convolution_op, step_height, step_width, primary_tile, XNN_LOG2_SIZEOF_FLOAT);
+  xnn_indirection_init_dwconv2d(
+    /*output_y_start=*/0, /*output_y_end=*/convolution_op.output_height,
+    convolution_op.indirection_buffer,
+    convolution_op.input,
+    convolution_op.input_pixel_stride << XNN_LOG2_SIZEOF_FLOAT,
+    convolution_op.zero_buffer,
+    convolution_op.input_height, convolution_op.input_width,
+    convolution_op.output_height, convolution_op.output_width,
+    convolution_op.kernel_height, convolution_op.kernel_width,
+    convolution_op.stride_height, convolution_op.stride_width,
+    convolution_op.dilation_height, convolution_op.dilation_width,
+    convolution_op.padding_top, convolution_op.padding_left,
+    step_height, step_width, primary_tile);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(i.cbegin(), i.cbegin() + i_elements, i.begin() + n * i_elements);
   }
@@ -211,7 +224,7 @@ static void f32_dwconv(
   std::generate(b.begin(), b.end(), std::ref(f32rng));
 
   std::vector<float> z(channels + XNN_EXTRA_BYTES / sizeof(float));
-  std::vector<float, AlignedAllocator<float, 64>> buffer(channels + XNN_MAX_SIMD_SIZE / sizeof(float));
+  std::vector<float, AlignedAllocator<float, 64>> buffer(channels + XNN_MULTIPASS_EXTRA_BYTES / sizeof(float));
 
   const size_t tile_size = xnn_dwconv_multipass_tile_size(
     kernel_size, first_pass_tile, middle_pass_tile, last_pass_tile);
@@ -232,8 +245,8 @@ static void f32_dwconv(
   xnn_pack_f32_dwconv_ghw_w(first_pass_tile, middle_pass_tile, last_pass_tile,
                             kernel_height, kernel_width,
                             channels, channel_tile, channel_subtile, channel_round,
-                            k.data(), b.data(), w.data(),
-                            /*per_tile_extra_bytes=*/0, /*per_subtile_extra_bytes=*/0, nullptr);
+                            k.data(), b.data(), /*scale=*/nullptr, w.data(),
+                            /*per_tile_extra_bytes=*/0, /*per_subtile_extra_bytes=*/0, /*params=*/nullptr);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(w.cbegin(), w.cbegin() + w_elements, w.begin() + n * w_elements);
   }
@@ -257,7 +270,19 @@ static void f32_dwconv(
   convolution_op.padding_top        = padding_top;
   convolution_op.padding_left       = padding_left;
 
-  xnn_indirection_init_dwconv2d(&convolution_op, step_height, step_width, tile_size, XNN_LOG2_SIZEOF_FLOAT);
+  xnn_indirection_init_dwconv2d(
+    /*output_y_start=*/0, /*output_y_end=*/convolution_op.output_height,
+    convolution_op.indirection_buffer,
+    convolution_op.input,
+    convolution_op.input_pixel_stride << XNN_LOG2_SIZEOF_FLOAT,
+    convolution_op.zero_buffer,
+    convolution_op.input_height, convolution_op.input_width,
+    convolution_op.output_height, convolution_op.output_width,
+    convolution_op.kernel_height, convolution_op.kernel_width,
+    convolution_op.stride_height, convolution_op.stride_width,
+    convolution_op.dilation_height, convolution_op.dilation_width,
+    convolution_op.padding_top, convolution_op.padding_left,
+    step_height, step_width, tile_size);
   for (size_t n = 1; n < num_buffers; n++) {
     std::copy(i.cbegin(), i.cbegin() + i_elements, i.begin() + n * i_elements);
   }

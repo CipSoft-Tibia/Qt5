@@ -5,6 +5,7 @@
 #ifndef QUICHE_QUIC_CORE_TLS_CHLO_EXTRACTOR_H_
 #define QUICHE_QUIC_CORE_TLS_CHLO_EXTRACTOR_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,7 +27,7 @@ namespace quic {
 // then uses a QuicStreamSequencer to reassemble the contents of the crypto
 // stream, and implements QuicStreamSequencer::StreamInterface to access the
 // reassembled data.
-class QUIC_NO_EXPORT TlsChloExtractor
+class QUICHE_EXPORT TlsChloExtractor
     : public QuicFramerVisitorInterface,
       public QuicStreamSequencer::StreamInterface {
  public:
@@ -49,6 +50,9 @@ class QUIC_NO_EXPORT TlsChloExtractor
   std::string server_name() const { return server_name_; }
   bool resumption_attempted() const { return resumption_attempted_; }
   bool early_data_attempted() const { return early_data_attempted_; }
+  const std::vector<uint16_t>& supported_groups() const {
+    return supported_groups_;
+  }
   absl::Span<const uint8_t> client_hello_bytes() const {
     return client_hello_bytes_;
   }
@@ -67,7 +71,7 @@ class QUIC_NO_EXPORT TlsChloExtractor
   }
 
   // Returns the TLS alert that caused the unrecoverable error, if any.
-  absl::optional<uint8_t> tls_alert() const {
+  std::optional<uint8_t> tls_alert() const {
     QUICHE_DCHECK(!tls_alert_.has_value() ||
                   state_ == State::kUnrecoverableFailure);
     return tls_alert_;
@@ -113,7 +117,7 @@ class QUIC_NO_EXPORT TlsChloExtractor
   }
   bool OnAckFrameEnd(
       QuicPacketNumber /*start*/,
-      const absl::optional<QuicEcnCounts>& /*ecn_counts*/) override {
+      const std::optional<QuicEcnCounts>& /*ecn_counts*/) override {
     return true;
   }
   bool OnStopWaitingFrame(const QuicStopWaitingFrame& /*frame*/) override {
@@ -253,6 +257,8 @@ class QUIC_NO_EXPORT TlsChloExtractor
   std::string error_details_;
   // Whether a CRYPTO frame was parsed in this packet.
   bool parsed_crypto_frame_in_this_packet_;
+  // Array of NamedGroups parsed from the CHLO's supported_groups extension.
+  std::vector<uint16_t> supported_groups_;
   // Array of ALPNs parsed from the CHLO.
   std::vector<std::string> alpns_;
   // SNI parsed from the CHLO.
@@ -265,14 +271,14 @@ class QUIC_NO_EXPORT TlsChloExtractor
   bool early_data_attempted_ = false;
   // If set, contains the TLS alert that caused an unrecoverable error, which is
   // an AlertDescription value defined in go/rfc/8446#appendix-B.2.
-  absl::optional<uint8_t> tls_alert_;
+  std::optional<uint8_t> tls_alert_;
   // Exact TLS message bytes.
   std::vector<uint8_t> client_hello_bytes_;
 };
 
 // Convenience method to facilitate logging TlsChloExtractor::State.
-QUIC_NO_EXPORT std::ostream& operator<<(std::ostream& os,
-                                        const TlsChloExtractor::State& state);
+QUICHE_EXPORT std::ostream& operator<<(std::ostream& os,
+                                       const TlsChloExtractor::State& state);
 
 }  // namespace quic
 

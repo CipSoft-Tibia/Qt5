@@ -1,7 +1,7 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-if (NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if (NOT (WIN32 OR UIKIT))
     return()
 endif()
 
@@ -49,6 +49,7 @@ qt_internal_add_module(EntryPointPrivate
     NO_PRIVATE_MODULE
     NO_ADDITIONAL_TARGET_INFO
     ${extra_cmake_includes_arg}
+    QT_LICENSE_ID QT_COMMERCIAL_OR_BSD3
 )
 
 set(export_targets EntryPointPrivate)
@@ -111,7 +112,7 @@ if(WIN32)
     qt_internal_add_sync_header_dependencies(EntryPointImplementation Core)
 endif()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(UIKIT)
     set_target_properties(EntryPointPrivate PROPERTIES
         INTERFACE_LINK_OPTIONS "-Wl,-e,_qt_main_wrapper"
     )

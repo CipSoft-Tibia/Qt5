@@ -344,7 +344,7 @@ void QWaylandQtTextInputMethod::setFocus(QWaylandSurface *surface)
     Q_D(QWaylandQtTextInputMethod);
 
     QWaylandQtTextInputMethodPrivate::Resource *resource = surface != nullptr ? d->resourceMap().value(surface->waylandClient()) : nullptr;
-    if (d->resource == resource)
+    if (d->resource == resource && d->focusedSurface == surface) // same client, same surface
         return;
 
     if (d->resource != nullptr && d->focusedSurface != nullptr) {

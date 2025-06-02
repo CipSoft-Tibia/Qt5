@@ -319,7 +319,6 @@ Test_CheckBox.pdf * * * *
 1.pdf * * * gdi
 123.pdf * * * gdi
 1_image.pdf * * * gdi
-2_halftone.pdf * * * gdi
 3_interpolate_image.pdf * * * gdi
 3bigpreview.pdf * * * gdi
 4_3.pdf * * * gdi
@@ -332,7 +331,6 @@ FRC_8.5_URI_IsMap.pdf * * * gdi
 bug_691967.pdf * * * gdi
 bug_86459.pdf * * * gdi
 bug_880920.pdf * * * gdi
-bug_898443.pdf * * * gdi
 ch_7_0.pdf * * * gdi
 ch_7_1.pdf * * * gdi
 ch_7_4.pdf * * * gdi
@@ -403,7 +401,6 @@ example_064.pdf * * * gdi
 example_065.pdf * * * gdi
 image_8bit_devicergb_dctdecode.pdf * * * gdi
 image_bmp.pdf * * * gdi
-image_foxit.pdf * * * gdi
 image_jpg.pdf * * * gdi
 image_png.pdf * * * gdi
 image_tif.pdf * * * gdi
@@ -539,14 +536,12 @@ validate_alert_box.pdf * * * gdi
 widget_javascript.pdf * * * gdi
 
 # TODO(pdfium:2056): Remove after associated bug is fixed
-11.pdf * * * gdi
 1_10_watermark.pdf * * * gdi
 1_matrix.pdf * * * gdi
 2_color_tiling.pdf * * * gdi
 2_shading_type_6_00.pdf * * * gdi
 2_shading_type_6_001.pdf * * * gdi
 2_uncolor_tiling.pdf * * * gdi
-3_image_imagemask.pdf * * * gdi
 FRC_11_8.2.4_View_edit.pdf * * * gdi
 FRC_12_8.2.4_View_remove_all.pdf * * * gdi
 FRC_13_8.2.4_View_remove_value.pdf * * * gdi
@@ -573,11 +568,9 @@ FRC_7_8.2.4_View_H.pdf * * * gdi
 FRC_8_8.2.4_View_D.pdf * * * gdi
 FRC_9_8.2.4_View_T.pdf * * * gdi
 annotation_circle_fill_opacity.pdf * * * gdi
-annotation_highlight_opacity.pdf * * * gdi
 annotation_square_fill_opacity.pdf * * * gdi
 annotation_square_fill_opacity_dash.pdf * * * gdi
 bug_0_length_line.pdf * * * gdi
-bug_668762.pdf * * * gdi
 bug_883026.pdf * * * gdi
 clipping_text.pdf * * * gdi
 en_fqa.pdf * * * gdi
@@ -598,7 +591,6 @@ path_5_pattern.pdf * * * gdi
 path_7.pdf * * * gdi
 path_9.pdf * * * gdi
 transformation.pdf * * * gdi
-transparent.pdf * * * gdi
 transparent1.pdf * * * gdi
 xfermodes.pdf * * * gdi
 xfermodes2.pdf * * * gdi
@@ -706,10 +698,6 @@ xfa_textfield.in win * * *
 # TODO(pdfium:2054): Remove after associated bug is fixed
 bug_1258968.in * * * gdi
 bug_1383708.in * * * gdi
-bug_718762.in * * * gdi
-bug_966263.in * * * gdi
-bug_986108.in * * * gdi
-image_transformer_other.in * * * gdi
 
 # TODO(pdfium:2055): Remove after associated bug is fixed
 barcode_test.pdf * * * gdi
@@ -763,7 +751,6 @@ bug_1430333.in * * * gdi
 bug_1822.in * * * gdi
 bug_1847.in * * * gdi
 bug_1949.in * * * gdi
-bug_1966.in * * * gdi
 bug_1972_1.in * * * gdi
 bug_1972_3.in * * * gdi
 bug_1995.in * * * gdi

@@ -1,6 +1,6 @@
 [
     {
-        "Id": "protobuf-qtprotobufgen",
+        "Id": "protobuf",
         "Name": "protobuf",
         "QDocModule": "qtprotobuf",
         "QtUsage": "Used in the qtprotobufgen generator.",
@@ -30,7 +30,7 @@
         "Version": "21.9"
     },
     {
-        "Id": "gRPC",
+        "Id": "grpc",
         "Name": "gRPC",
         "QDocModule": "qtgrpc",
         "QtUsage": "Used in the gRPC examples and tests.",
@@ -40,6 +40,7 @@
         "Homepage": "https://grpc.io",
         "License": "Apache License 2.0",
         "LicenseId": "Apache-2.0",
+        "LicenseFile": "LICENSE.Apache-2.0.txt",
         "Copyright": "Copyright 2015 gRPC authors.",
         "Version": "1.50.1"
     }

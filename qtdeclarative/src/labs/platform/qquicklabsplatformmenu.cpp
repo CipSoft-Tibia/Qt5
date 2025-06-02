@@ -30,7 +30,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype Menu
     \inherits QtObject
-//! \instantiates QQuickLabsPlatformMenu
+//! \nativetype QQuickLabsPlatformMenu
     \inqmlmodule Qt.labs.platform
     \since 5.8
     \brief A native menu.
@@ -650,7 +650,7 @@ void QQuickLabsPlatformMenu::clear()
 
     Opens the menu at the specified \a target item, optionally aligned to a menu \a item.
 */
-void QQuickLabsPlatformMenu::open(QQmlV4Function *args)
+void QQuickLabsPlatformMenu::open(QQmlV4FunctionPtr args)
 {
     if (!m_handle)
         return;

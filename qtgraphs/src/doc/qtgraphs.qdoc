@@ -5,7 +5,12 @@
     \module QtGraphs
     \qtcmakepackage Graphs
     \qtvariable graphs
-    \modulestate Technical Preview
+*/
+
+/*!
+    \module QtGraphsWidgets
+    \qtcmakepackage GraphsWidgets
+    \qtvariable graphswidgets
 */
 
 /*!
@@ -38,8 +43,27 @@
 */
 
 /*!
+    \title Qt Graphs C++ Classes for Widgets
+    \group graphs_3D_widgets
+    \ingroup graphs
+
+    \brief C++ classes for the Qt Graphs for 3D API used with widgets.
+
+    The Qt Graphs for 3D widget functionality can be accessed via these C++ classes.
+*/
+
+/*!
+    \title Qt Graphs C++ Common Classes
+    \group graphs_common
+    \ingroup graphs
+
+    \brief C++ classes for the Qt Graphs common API.
+
+    The Qt Graphs common functionality, like theme, can be accessed via these C++ classes.
+*/
+
+/*!
     \qmlmodule QtGraphs
-    \modulestate Technical Preview
 */
 
 /*!
@@ -71,6 +95,18 @@
     \brief QML types for the Qt Graphs for 2D API.
 
     The Qt Graphs for 2D functionality can be accessed via these QML types.
+
+    \section1 QML Types
+*/
+
+/*!
+    \title Qt Graphs QML Common Types
+    \group graphs_qml_common
+    \ingroup graphs_qml
+
+    \brief QML types for the Qt Graphs common API.
+
+    The Qt Graphs common functionality. like theme, can be accessed via these QML types.
 
     \section1 QML Types
 */
@@ -159,12 +195,16 @@
 
     \list
         \li Surfaces with non-straight rows and columns do not always render properly.
-        \li Changing most of Q3DScene properties affecting subviewports currently has no effect.
         \li Widget based examples layout incorrectly in iOS.
-        \li Reparenting a graph to an item in another QQuickWindow is not supported.
+        \li Widget based examples are not supported for Android or WinRT.
         \li Android qmake builds of QML applications importing QtGraphs also require
             "QT += graphs" in the pro file. This is because Qt Graphs
             QML plugin has a dependency to Qt Graphs C++ library, which Qt Creator
             doesn't automatically add to the deployment package.
+        \li Transparency is not supported for Surface3D due to a limitation with Qt Quick 3D.
+        \li Transparency functionality is not available for highlighted items
+            in Bars3D and Scatter3D.
+        \li Shadows are not supported with Surface3D.
+
     \endlist
 */

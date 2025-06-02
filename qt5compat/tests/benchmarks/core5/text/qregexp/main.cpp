@@ -23,6 +23,8 @@ class tst_qregexp : public QObject
 public:
     tst_qregexp();
 private slots:
+    void initTestCase();
+
     void escape_old();
     void escape_old_data() { escape_data(); }
     void escape_new1();
@@ -66,8 +68,12 @@ tst_qregexp::tst_qregexp()
     :QObject()
     ,str1("We are all happy monkeys")
 {
+}
+
+void tst_qregexp::initTestCase()
+{
         QFile f(":/main.cpp");
-        f.open(QFile::ReadOnly);
+        QVERIFY(f.open(QFile::ReadOnly));
         str2=f.readAll();
 }
 

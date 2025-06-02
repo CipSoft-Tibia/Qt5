@@ -26,6 +26,7 @@
 #include "libavformat/mux.h"
 #include "libavformat/version.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/frame.h"
 #include "libavutil/internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
@@ -503,7 +504,7 @@ static av_cold int pulse_write_header(AVFormatContext *h)
         pulse_map_channels_to_pulse(&st->codecpar->ch_layout, &channel_map);
         /* Unknown channel is present in channel_layout, let PulseAudio use its default. */
         if (channel_map.channels != sample_spec.channels) {
-            av_log(s, AV_LOG_WARNING, "Unknown channel. Using defaul channel map.\n");
+            av_log(s, AV_LOG_WARNING, "Unknown channel. Using default channel map.\n");
             channel_map.channels = 0;
         }
     } else
@@ -801,6 +802,11 @@ const FFOutputFormat ff_pulse_muxer = {
     .get_output_timestamp = pulse_get_output_timestamp,
     .get_device_list      = pulse_get_device_list,
     .control_message      = pulse_control_message,
+#if FF_API_ALLOW_FLUSH
     .p.flags              = AVFMT_NOFILE | AVFMT_ALLOW_FLUSH,
+#else
+    .p.flags              = AVFMT_NOFILE,
+#endif
     .p.priv_class         = &pulse_muxer_class,
+    .flags_internal       = FF_FMT_ALLOW_FLUSH,
 };

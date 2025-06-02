@@ -24,10 +24,13 @@ class QDocDatabase;
 struct TargetRec
 {
 public:
-    enum TargetType { Unknown, Target, Keyword, Contents };
+    enum TargetType { Unknown, Target, Keyword, Contents, ContentsKeyword };
 
     TargetRec(QString name, TargetRec::TargetType type, Node *node, int priority)
-        : m_node(node), m_ref(std::move(name)), m_type(type), m_priority(priority)
+        : m_node(node),
+          m_ref(std::move(name)),
+          m_type(type == ContentsKeyword ? Keyword : type),
+          m_priority(priority)
     {
         // Discard the dedicated ref for keywords - they always
         // link to the top of the QDoc comment they appear in
@@ -62,6 +65,9 @@ private: // Note the constructor and destructor are private.
     ~Tree();
 
 public: // Of necessity, a few public functions remain.
+    [[nodiscard]] Node *findNodeByNameAndType(const QStringList &path,
+                                              bool (Node::*isMatch)() const) const;
+
     [[nodiscard]] const QString &camelCaseModuleName() const { return m_camelCaseModuleName; }
     [[nodiscard]] const QString &physicalModuleName() const { return m_physicalModuleName; }
     [[nodiscard]] const QString &indexFileName() const { return m_indexFileName; }
@@ -71,6 +77,7 @@ public: // Of necessity, a few public functions remain.
     void appendProxy(ProxyNode *t) { m_proxies.append(t); }
     void addToDontDocumentMap(QString &arg);
     void markDontDocumentNodes();
+    static QString refForAtom(const Atom *atom);
 
 private: // The rest of the class is private.
     Aggregate *findAggregate(const QString &name);
@@ -91,14 +98,17 @@ private: // The rest of the class is private.
     const Node *findNode(const QStringList &path, const Node *relative, int flags,
                          Node::Genus genus) const;
 
-    [[nodiscard]] Node *findNodeByNameAndType(const QStringList &path,
-                                              bool (Node::*isMatch)() const) const;
     Aggregate *findRelatesNode(const QStringList &path);
     const Node *findEnumNode(const Node *node, const Node *aggregate, const QStringList &path, int offset) const;
     QString getRef(const QString &target, const Node *node) const;
     void insertTarget(const QString &name, const QString &title, TargetRec::TargetType type,
                       Node *node, int priority);
     void resolveTargets(Aggregate *root);
+    void addToPageNodeByTitleMap(Node *node);
+    void populateTocSectionTargetMap(Node *node);
+    void addKeywordsToTargetMaps(Node *node);
+    void addTargetsToTargetMap(Node *node);
+
     const TargetRec *findUnambiguousTarget(const QString &target, Node::Genus genus) const;
     [[nodiscard]] const PageNode *findPageNodeByTitle(const QString &title) const;
 
@@ -115,7 +125,6 @@ private: // The rest of the class is private.
     [[nodiscard]] const NamespaceNode *root() const { return &m_root; }
 
     ClassList allBaseClasses(const ClassNode *classe) const;
-    QString refForAtom(const Atom *atom);
 
     CNMap *getCollectionMap(Node::NodeType type);
     [[nodiscard]] const CNMap &groups() const { return m_groups; }

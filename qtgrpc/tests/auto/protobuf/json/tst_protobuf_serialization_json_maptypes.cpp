@@ -13,36 +13,36 @@ using namespace Qt::Literals::StringLiterals;
 class QtProtobufJsonMapTypesSerializationTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { m_serializer.reset(new QProtobufJsonSerializer); }
-    void SimpleFixed32StringMapSerializeTest();
-    void SimpleSFixed32StringMapSerializeTest();
-    void SimpleInt32StringMapSerializeTest();
-    void SimpleSInt32StringMapSerializeTest();
-    void SimpleUInt32StringMapSerializeTest();
-    void SimpleFixed64StringMapSerializeTest();
-    void SimpleSFixed64StringMapSerializeTest();
-    void SimpleInt64StringMapSerializeTest();
-    void SimpleSInt64StringMapSerializeTest();
-    void SimpleUInt64StringMapSerializeTest();
-    void SimpleStringStringMapSerializeTest();
-    void SimpleSInt32ComplexMessageMapSerializeTest();
-    void SimpleSFixed32ComplexMapSerializeTest();
-    void SimpleInt32ComplexMapSerializeTest();
-    void SimpleSInt32ComplexMapSerializeTest();
-    void SimpleUInt32ComplexMapSerializeTest();
-    void SimpleFixed64ComplexMapSerializeTest();
-    void SimpleSFixed64ComplexMapSerializeTest();
-    void SimpleInt64ComplexMapSerializeTest();
-    void SimpleSInt64ComplexMapSerializeTest();
-    void SimpleUInt64ComplexMapSerializeTest();
-    void SimpleStringComplexMapSerializeTest();
+    void simpleFixed32StringMapSerializeTest();
+    void simpleSFixed32StringMapSerializeTest();
+    void simpleInt32StringMapSerializeTest();
+    void simpleSInt32StringMapSerializeTest();
+    void simpleUInt32StringMapSerializeTest();
+    void simpleFixed64StringMapSerializeTest();
+    void simpleSFixed64StringMapSerializeTest();
+    void simpleInt64StringMapSerializeTest();
+    void simpleSInt64StringMapSerializeTest();
+    void simpleUInt64StringMapSerializeTest();
+    void simpleStringStringMapSerializeTest();
+    void simpleSInt32ComplexMessageMapSerializeTest();
+    void simpleSFixed32ComplexMapSerializeTest();
+    void simpleInt32ComplexMapSerializeTest();
+    void simpleSInt32ComplexMapSerializeTest();
+    void simpleUInt32ComplexMapSerializeTest();
+    void simpleFixed64ComplexMapSerializeTest();
+    void simpleSFixed64ComplexMapSerializeTest();
+    void simpleInt64ComplexMapSerializeTest();
+    void simpleSInt64ComplexMapSerializeTest();
+    void simpleUInt64ComplexMapSerializeTest();
+    void simpleStringComplexMapSerializeTest();
 
 private:
     std::unique_ptr<QProtobufJsonSerializer> m_serializer;
 };
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleFixed32StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleFixed32StringMapSerializeTest()
 {
     SimpleFixed32StringMapMessage test;
     test.setMapField({ { 10, { "ten" } },
@@ -55,7 +55,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleFixed32StringMapSerializeTes
         "{\"mapField\":{\"0\":\"\",\"10\":\"ten\",\"15\":\"fifteen\",\"42\":\"fourty two\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSFixed32StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSFixed32StringMapSerializeTest()
 {
     SimpleSFixed32StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { -42, { "minus fourty two" } }, { 15, { "fifteen" } } });
@@ -64,7 +64,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSFixed32StringMapSerializeTe
              "{\"mapField\":{\"-42\":\"minus fourty two\",\"10\":\"ten\",\"15\":\"fifteen\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleInt32StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleInt32StringMapSerializeTest()
 {
     SimpleInt32StringMapMessage test;
     test.setMapField({ { -10, { "minus ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -73,7 +73,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleInt32StringMapSerializeTest(
              "{\"mapField\":{\"-10\":\"minus ten\",\"15\":\"fifteen\",\"42\":\"fourty two\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSInt32StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSInt32StringMapSerializeTest()
 {
     SimpleSInt32StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { -42, { "minus fourty two" } }, { 15, { "fifteen" } } });
@@ -82,7 +82,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSInt32StringMapSerializeTest
              "{\"mapField\":{\"-42\":\"minus fourty two\",\"10\":\"ten\",\"15\":\"fifteen\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleUInt32StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleUInt32StringMapSerializeTest()
 {
     SimpleUInt32StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -90,7 +90,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleUInt32StringMapSerializeTest
     QCOMPARE(result, "{\"mapField\":{\"10\":\"ten\",\"15\":\"fifteen\",\"42\":\"fourty two\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleFixed64StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleFixed64StringMapSerializeTest()
 {
     SimpleFixed64StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -98,7 +98,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleFixed64StringMapSerializeTes
     QCOMPARE(result, "{\"mapField\":{\"10\":\"ten\",\"15\":\"fifteen\",\"42\":\"fourty two\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSFixed64StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSFixed64StringMapSerializeTest()
 {
     SimpleSFixed64StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { -42, { "minus fourty two" } }, { 15, { "fifteen" } } });
@@ -107,7 +107,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSFixed64StringMapSerializeTe
              "{\"mapField\":{\"-42\":\"minus fourty two\",\"10\":\"ten\",\"15\":\"fifteen\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleInt64StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleInt64StringMapSerializeTest()
 {
     SimpleInt64StringMapMessage test;
     test.setMapField({ { -10, { "minus ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -116,7 +116,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleInt64StringMapSerializeTest(
              "{\"mapField\":{\"-10\":\"minus ten\",\"15\":\"fifteen\",\"42\":\"fourty two\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSInt64StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSInt64StringMapSerializeTest()
 {
     SimpleSInt64StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { -42, { "minus fourty two" } }, { 15, { "fifteen" } } });
@@ -125,7 +125,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSInt64StringMapSerializeTest
              "{\"mapField\":{\"-42\":\"minus fourty two\",\"10\":\"ten\",\"15\":\"fifteen\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleUInt64StringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleUInt64StringMapSerializeTest()
 {
     SimpleUInt64StringMapMessage test;
     test.setMapField({ { 10, { "ten" } }, { 42, { "fourty two" } }, { 15, { "fifteen" } } });
@@ -133,7 +133,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleUInt64StringMapSerializeTest
     QCOMPARE(result, "{\"mapField\":{\"10\":\"ten\",\"15\":\"fifteen\",\"42\":\"fourty two\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleStringStringMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleStringStringMapSerializeTest()
 {
     SimpleStringStringMapMessage test;
     test.setMapField({ { "ben", "ten" },
@@ -145,7 +145,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleStringStringMapSerializeTest
              "\"what is the answer?\":\"fourty two\"}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSInt32ComplexMessageMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSInt32ComplexMessageMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -176,7 +176,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSInt32ComplexMessageMapSeria
              "{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSFixed32ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSFixed32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -209,7 +209,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSFixed32ComplexMapSerializeT
         "\"65555\":{\"testComplexField\":{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleInt32ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleInt32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -241,7 +241,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleInt32ComplexMapSerializeTest
              "{\"testComplexField\":{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSInt32ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSInt32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -274,7 +274,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSInt32ComplexMapSerializeTes
              "\"fourty two ten sixteen\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleUInt32ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleUInt32ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -306,7 +306,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleUInt32ComplexMapSerializeTes
              "{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleFixed64ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleFixed64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -339,7 +339,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleFixed64ComplexMapSerializeTe
              "{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSFixed64ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSFixed64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -372,7 +372,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSFixed64ComplexMapSerializeT
         "\"65555\":{\"testComplexField\":{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleInt64ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleInt64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -404,7 +404,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleInt64ComplexMapSerializeTest
              "{\"testComplexField\":{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleSInt64ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleSInt64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -436,7 +436,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleSInt64ComplexMapSerializeTes
              "{\"testComplexField\":{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleUInt64ComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleUInt64ComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 
@@ -468,7 +468,7 @@ void QtProtobufJsonMapTypesSerializationTest::SimpleUInt64ComplexMapSerializeTes
              ":{\"testFieldString\":\"WUT?\"},\"testFieldInt\":10}}}"_ba);
 }
 
-void QtProtobufJsonMapTypesSerializationTest::SimpleStringComplexMapSerializeTest()
+void QtProtobufJsonMapTypesSerializationTest::simpleStringComplexMapSerializeTest()
 {
     qtprotobufnamespace::tests::SimpleStringMessage stringMsg;
 

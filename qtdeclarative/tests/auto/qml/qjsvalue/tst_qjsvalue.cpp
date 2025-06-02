@@ -364,10 +364,11 @@ void tst_QJSValue::toString()
     // variant should use internal valueOf(), then fall back to QVariant::toString(),
     // then fall back to "QVariant(typename)"
     QJSValue variant = eng.toScriptValue(QPoint(10, 20));
+    QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
     QVERIFY(!variant.isVariant());
+    QT_WARNING_POP
     QCOMPARE(variant.toString(), QString::fromLatin1("QPoint(10, 20)"));
     variant = eng.toScriptValue(QUrl());
-    QVERIFY(!variant.isVariant());
     QVERIFY(variant.isUrl());
     QVERIFY(variant.toString().isEmpty());
 
@@ -2807,7 +2808,7 @@ void tst_QJSValue::deleteFromDifferentThread()
     std::unique_ptr<QThread> thread(QThread::create([&]() {
         QMutexLocker locker(&mutex);
         QJSValuePrivate::free(&jsval);
-        QJSValuePrivate::setValue(&jsval, QV4::Encode::undefined());
+        QJSValuePrivate::setValue(&jsval, QV4::Value::fromReturnedValue(QV4::Encode::undefined()));
         QVERIFY(storage.firstPage != nullptr);
         condition.wakeOne();
     }));
@@ -2816,6 +2817,7 @@ void tst_QJSValue::deleteFromDifferentThread()
     thread->start();
     condition.wait(&mutex);
     QTRY_VERIFY(thread->isFinished());
+    storage.clearFreePageHint();
     QTRY_COMPARE(storage.firstPage, nullptr);
 #endif
 }

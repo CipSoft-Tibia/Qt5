@@ -11,7 +11,7 @@ QT_BEGIN_NAMESPACE
 
 namespace CpptestUtil {
 
-static bool isOpenGLSupported()
+[[maybe_unused]] static inline bool isOpenGLSupported()
 {
     return QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::OpenGL);
 }

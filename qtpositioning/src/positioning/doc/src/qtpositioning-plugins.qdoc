@@ -15,7 +15,8 @@ Some plugins already ship with Qt. These are:
 \table
     \row
         \li \b android
-        \li Wraps Android positioning subsystem. Available only on Android.
+        \li Wraps \l {Qt Positioning Android plugin}{Android} positioning subsystem.
+            Available only on Android.
     \row
         \li \b corelocation
         \li Wraps iOS and macOS positioning subsystems. Available only on Apple platforms supporting corelocation.

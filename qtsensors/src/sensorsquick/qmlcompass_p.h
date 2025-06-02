@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 
 class QCompass;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlCompass : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlCompass : public QmlSensor
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(Compass)
@@ -37,7 +37,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlCompassReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlCompassReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal azimuth READ azimuth NOTIFY azimuthChanged BINDABLE bindableAzimuth)

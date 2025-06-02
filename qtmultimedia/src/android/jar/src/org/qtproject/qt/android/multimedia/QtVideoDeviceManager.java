@@ -20,22 +20,26 @@ import android.util.Log;
 
 import java.lang.String;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-public class QtVideoDeviceManager {
+import org.qtproject.qt.android.UsedFromNativeCode;
+
+class QtVideoDeviceManager {
 
     CameraManager mCameraManager;
     Map<String, CameraCharacteristics> cache;
 
-    public QtVideoDeviceManager(Context context) {
+    @UsedFromNativeCode
+    QtVideoDeviceManager(Context context) {
         mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         cache = new WeakHashMap<String, CameraCharacteristics>();
     }
 
-    public CameraCharacteristics getCameraCharacteristics(String cameraId) {
+    CameraCharacteristics getCameraCharacteristics(String cameraId) {
 
         if (cache.containsKey(cameraId))
             return cache.get(cameraId);
@@ -78,10 +82,11 @@ public class QtVideoDeviceManager {
         return codecs.toArray(new String[codecs.size()]);
     }
 
-    static public String[] getHWVideoDecoders() { return getHWVideoCodecs(CODEC.DECODER); }
-    static public String[] getHWVideoEncoders() { return getHWVideoCodecs(CODEC.ENCODER); }
+    static String[] getHWVideoDecoders() { return getHWVideoCodecs(CODEC.DECODER); }
+    static String[] getHWVideoEncoders() { return getHWVideoCodecs(CODEC.ENCODER); }
 
-    public String[] getCameraIdList() {
+    @UsedFromNativeCode
+    String[] getCameraIdList() {
         try {
             return mCameraManager.getCameraIdList();
         } catch (Exception e) {
@@ -90,21 +95,24 @@ public class QtVideoDeviceManager {
         return null;
     }
 
-    public int getSensorOrientation(String cameraId) {
+    @UsedFromNativeCode
+    int getSensorOrientation(String cameraId) {
         CameraCharacteristics characteristics =  getCameraCharacteristics(cameraId);
         if (characteristics == null)
             return 0;
         return characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
     }
 
-    public int getLensFacing(String cameraId) {
+    @UsedFromNativeCode
+    int getLensFacing(String cameraId) {
         CameraCharacteristics characteristics =  getCameraCharacteristics(cameraId);
         if (characteristics == null)
             return 0;
         return characteristics.get(CameraCharacteristics.LENS_FACING);
     }
 
-    public String[] getFpsRange(String cameraId) {
+    @UsedFromNativeCode
+    String[] getFpsRange(String cameraId) {
 
         CameraCharacteristics characteristics =  getCameraCharacteristics(cameraId);
         if (characteristics == null)
@@ -121,7 +129,8 @@ public class QtVideoDeviceManager {
         return fps;
     }
 
-    public float[] getZoomRange(String cameraId) {
+    @UsedFromNativeCode
+    float[] getZoomRange(String cameraId) {
 
         float[] zoomRange = { 1.0f, 1.0f };
         final CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
@@ -142,7 +151,7 @@ public class QtVideoDeviceManager {
         return zoomRange;
     }
 
-    public Rect getActiveArraySize(String cameraId) {
+    Rect getActiveArraySize(String cameraId) {
         Rect activeArraySize = new Rect();
         final CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics != null)
@@ -151,7 +160,8 @@ public class QtVideoDeviceManager {
     }
 
     static final int maxResolution = 3840*2160; // 4k resolution
-    public String[] getStreamConfigurationsSizes(String cameraId, int imageFormat) {
+    @UsedFromNativeCode
+    String[] getStreamConfigurationsSizes(String cameraId, int imageFormat) {
 
         CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics == null)
@@ -172,7 +182,7 @@ public class QtVideoDeviceManager {
         return stream.toArray(new String[0]);
     }
 
-    public int stringToControlAEMode(String mode) {
+    int stringToControlAEMode(String mode) {
         switch (mode) {
             case "off":
                 return CaptureRequest.CONTROL_AE_MODE_ON;
@@ -189,7 +199,7 @@ public class QtVideoDeviceManager {
         }
     }
 
-    public String controlAEModeToString(int mode) {
+    String controlAEModeToString(int mode) {
         switch (mode) {
             case CaptureRequest.CONTROL_AE_MODE_ON:
                 return "off";
@@ -207,16 +217,72 @@ public class QtVideoDeviceManager {
         }
     }
 
-    public int[] getSupportedAfModes(String cameraId) {
+    // Returns all available modes exposed by the physical device, regardless
+    // of whether we have implemented them.
+    //
+    // Guaranteed to not return null. Will instead return array of size zero.
+    @UsedFromNativeCode
+    int[] getAllAvailableAfModes(String cameraId) {
+        if (cameraId.isEmpty())
+            return new int[0];
 
         CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics == null)
             return new int[0];
 
-        return characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+        final int[] characteristicsValue = characteristics.get(
+            CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
+        return characteristicsValue != null ? characteristicsValue : new int[0];
     }
 
-    public String[] getSupportedFlashModes(String cameraId) {
+    // Returns true if the afMode is both available and we have a working implementation
+    // for it.
+    @UsedFromNativeCode
+    boolean isAfModeSupported(String cameraId, int afMode) {
+        if (cameraId == null || cameraId.isEmpty())
+            return false;
+
+        final boolean available = Arrays
+            .stream(getAllAvailableAfModes(cameraId))
+            .anyMatch(value -> value == afMode);
+
+        if (available) {
+            if (afMode == CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                return true;
+            else if (afMode == CameraCharacteristics.CONTROL_AF_MODE_OFF
+                && isManualFocusDistanceSupported(cameraId))
+                return true;
+        }
+
+
+        return false;
+    }
+
+    // Returns supported QCamera::FocusModes as strings. I.e FocusModeAuto becomes "FocusModeAuto".
+    // This method will return only those focus-modes for which we have an implementation, and
+    // is also reported as available by the physical device. This method will never return null.
+    // It is guaranteed to return an empty list if no focus modes are found.
+    //
+    // Note: These returned strings MUST match that of QCamera::FocusMode.
+    @UsedFromNativeCode
+    String[] getSupportedQCameraFocusModesAsStrings(String cameraId) {
+        ArrayList<String> outList = new ArrayList<String>();
+
+        // FocusModeAuto maps to the CONTINUOUS_PICTURE mode.
+        if (isAfModeSupported(cameraId, CameraCharacteristics.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) {
+            outList.add("FocusModeAuto");
+        }
+
+        if (isAfModeSupported(cameraId, CameraCharacteristics.CONTROL_AF_MODE_OFF)
+            && isManualFocusDistanceSupported(cameraId))
+            outList.add("FocusModeManual");
+
+        String[] ret = new String[ outList.size() ];
+        return outList.toArray(ret);
+    }
+
+    @UsedFromNativeCode
+    String[] getSupportedFlashModes(String cameraId) {
 
         CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics == null)
@@ -232,7 +298,32 @@ public class QtVideoDeviceManager {
         return supportedFlashModesList.toArray(ret);
     }
 
-    static public boolean isEmulator()
+    // Returns the CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE for the given cameraId.
+    // for the given cameraId. If this returns 0, it means the camera is fixed-focus and can't be
+    // adjusted and so should not be applied as manual focus distance.
+    // Returns -1 if setting focus distance is not supported.
+    float getLensInfoMinimumFocusDistance(String cameraId) {
+        final CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
+        if (characteristics == null)
+            return -1;
+        final Float value = characteristics.get(
+            CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+        if (value == null)
+            return -1;
+        return value;
+    }
+
+    // Returns true if the camera is able to manually set
+    // lens focus distance. This is required to support
+    // QCamera::FocusModeManual and QCamera::Feature::FocusDistance.
+    //
+    // Docs require LENS_INFO_MINIMUM_FOCUS_DISTANCE to be higher than 0 in
+    // order for manual focus distance to be supported.
+    boolean isManualFocusDistanceSupported(String cameraId) {
+        return getLensInfoMinimumFocusDistance(cameraId) > 0;
+    }
+
+    static boolean isEmulator()
     {
         return ((Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic"))
             || Build.FINGERPRINT.startsWith("generic")
@@ -249,7 +340,8 @@ public class QtVideoDeviceManager {
             || Build.PRODUCT.contains("simulator"));
     }
 
-    public boolean isTorchModeSupported(String cameraId) {
+    @UsedFromNativeCode
+    boolean isTorchModeSupported(String cameraId) {
         boolean ret = false;
         final CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics != null)

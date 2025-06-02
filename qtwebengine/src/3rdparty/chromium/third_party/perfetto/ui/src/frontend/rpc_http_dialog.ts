@@ -16,16 +16,16 @@ import m from 'mithril';
 
 import {assertExists} from '../base/logging';
 import {Actions} from '../common/actions';
-import {HttpRpcEngine, RPC_URL} from '../common/http_rpc_engine';
-import {StatusResult} from '../core/protos';
 import {VERSION} from '../gen/perfetto_version';
-import {perfetto} from '../gen/protos';
+import {StatusResult, TraceProcessorApiVersion} from '../protos';
+import {HttpRpcEngine, RPC_URL} from '../trace_processor/http_rpc_engine';
+import {showModal} from '../widgets/modal';
 
 import {globals} from './globals';
-import {showModal} from './modal';
+import {publishHttpRpcState} from './publish';
 
-const CURRENT_API_VERSION = perfetto.protos.TraceProcessorApiVersion
-                                .TRACE_PROCESSOR_CURRENT_API_VERSION;
+const CURRENT_API_VERSION =
+    TraceProcessorApiVersion.TRACE_PROCESSOR_CURRENT_API_VERSION;
 
 const PROMPT = `Trace Processor Native Accelerator detected on ${RPC_URL} with:
 $loadedTraceName
@@ -80,7 +80,7 @@ let forceUseOldVersion = false;
 // having to open a trace).
 export async function CheckHttpRpcConnection(): Promise<void> {
   const state = await HttpRpcEngine.checkConnection();
-  globals.frontendLocalState.setHttpRpcState(state);
+  publishHttpRpcState(state);
   if (!state.connected) return;
   const tpStatus = assertExists(state.status);
 

@@ -20,7 +20,7 @@ QQmlJSResourceFileMapper::Filter QQmlJSResourceFileMapper::allQmlJSFilter() {
 QQmlJSResourceFileMapper::Filter QQmlJSResourceFileMapper::localFileFilter(const QString &file)
 {
     return Filter {
-        QFileInfo(file).canonicalFilePath(),
+        QDir::cleanPath(QFileInfo(file).absoluteFilePath()),
         QStringList(),
         File
     };

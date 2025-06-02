@@ -163,6 +163,7 @@ struct BaseDef {
     QMap<QByteArray, QByteArray> flagAliases;
     qsizetype begin = 0;
     qsizetype end = 0;
+    qsizetype lineNumber = 0;
 };
 
 struct SuperClass {

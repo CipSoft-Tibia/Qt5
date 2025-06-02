@@ -459,6 +459,13 @@ gfx::NativeViewAccessible AXPlatformNodeBase::GetNativeViewAccessible() {
 }
 
 void AXPlatformNodeBase::NotifyAccessibilityEvent(ax::mojom::Event event_type) {
+  if (event_type == ax::mojom::Event::kAlert) {
+    CHECK(ui::IsAlert(GetRole()))
+        << "On some platforms, the alert event does not work correctly unless "
+           "it is fired on an object with an alert role. Role was "
+        << GetRole();
+  }
+
   OnNotifyEventCallbackMap& callback_map = GetOnNotifyEventCallbackMap();
   if (callback_map.find(event_type) != callback_map.end() &&
       callback_map[event_type]) {
@@ -467,7 +474,8 @@ void AXPlatformNodeBase::NotifyAccessibilityEvent(ax::mojom::Event event_type) {
 }
 
 #if BUILDFLAG(IS_APPLE)
-void AXPlatformNodeBase::AnnounceText(const std::u16string& text) {}
+void AXPlatformNodeBase::AnnounceTextAs(const std::u16string& text,
+                                        AnnouncementType announcement_type) {}
 #endif
 
 AXPlatformNodeDelegate* AXPlatformNodeBase::GetDelegate() const {
@@ -1557,14 +1565,10 @@ void AXPlatformNodeBase::ComputeAttributes(PlatformAttributeList* attributes) {
 
   // Expose dropeffect attribute.
   // aria-dropeffect is deprecated in WAI-ARIA 1.1.
-  if (delegate_->HasIntAttribute(ax::mojom::IntAttribute::kDropeffect)) {
-    std::string dropeffect = GetData().DropeffectBitfieldToString();
-    AddAttributeToList("dropeffect", dropeffect, attributes);
+  if (delegate_->HasIntAttribute(
+          ax::mojom::IntAttribute::kDropeffectDeprecated)) {
+    NOTREACHED();
   }
-
-  // Expose grabbed attribute.
-  // aria-grabbed is deprecated in WAI-ARIA 1.1.
-  AddAttributeToList(ax::mojom::BoolAttribute::kGrabbed, "grabbed", attributes);
 
   // Expose class attribute.
   std::string class_attr;

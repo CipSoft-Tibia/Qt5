@@ -31,7 +31,7 @@ class QByteArray;
 
 class QGeoPositionInfo;
 class QGeoSatelliteInfo;
-class Q_POSITIONING_PRIVATE_EXPORT QLocationUtils
+class Q_POSITIONING_EXPORT QLocationUtils
 {
 public:
     enum CardinalDirection {

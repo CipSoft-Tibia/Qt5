@@ -6,7 +6,6 @@
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
 #include <QtGraphs/qscatter3dseries.h>
-#include <QtGraphs/q3dtheme.h>
 #include <qmath.h>
 #include <QComboBox>
 
@@ -15,18 +14,18 @@ const int numberOfRows = 8;
 const float limit = 8.0f;
 #define HEDGEHOG
 
-ScatterDataModifier::ScatterDataModifier(Q3DScatter *scatter)
+ScatterDataModifier::ScatterDataModifier(Q3DScatterWidgetItem *scatter)
     : m_graph(scatter),
       m_fontSize(40.0f),
       m_style(QAbstract3DSeries::Mesh::UserDefined),
       m_smooth(true)
 {
-    m_graph->activeTheme()->setType(Q3DTheme::Theme::Ebony);
-    QFont font = m_graph->activeTheme()->font();
+    m_graph->activeTheme()->setTheme(QGraphsTheme::Theme::QtGreen);
+    QFont font = m_graph->activeTheme()->labelFont();
     font.setPointSize(m_fontSize);
-    m_graph->activeTheme()->setFont(font);
-    m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::SoftLow);
-    m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
+    m_graph->activeTheme()->setLabelFont(font);
+    m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::SoftLow);
+    m_graph->setCameraPreset(QtGraphs3D::CameraPreset::Front);
 
     m_graph->setAxisX(new QValue3DAxis);
     m_graph->setAxisY(new QValue3DAxis);
@@ -107,9 +106,9 @@ void ScatterDataModifier::addData()
 void ScatterDataModifier::enableOptimization(int enabled)
 {
     if (enabled)
-        m_graph->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Default);
+        m_graph->setOptimizationHint(QtGraphs3D::OptimizationHint::Default);
     else
-        m_graph->setOptimizationHint(QAbstract3DGraph::OptimizationHint::Legacy);
+        m_graph->setOptimizationHint(QtGraphs3D::OptimizationHint::Legacy);
 }
 
 void ScatterDataModifier::changeStyle(int style)
@@ -124,36 +123,37 @@ void ScatterDataModifier::changeStyle(int style)
 
 void ScatterDataModifier::changeTheme(int theme)
 {
-    Q3DTheme *currentTheme = m_graph->activeTheme();
-    currentTheme->setType(Q3DTheme::Theme(theme));
-    emit backgroundEnabledChanged(currentTheme->isBackgroundEnabled());
-    emit gridEnabledChanged(currentTheme->isGridEnabled());
-    emit fontChanged(currentTheme->font());
+    QGraphsTheme *currentTheme = m_graph->activeTheme();
+    currentTheme->setTheme(QGraphsTheme::Theme(theme));
+    emit backgroundVisibleChanged(currentTheme->isPlotAreaBackgroundVisible());
+    emit gridVisibleChanged(currentTheme->isGridVisible());
+    emit fontChanged(currentTheme->labelFont());
 }
 
 void ScatterDataModifier::changePresetCamera()
 {
-    static int preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
+    static int preset = int(QtGraphs3D::CameraPreset::FrontLow);
 
-    m_graph->setCameraPreset((QAbstract3DGraph::CameraPreset)preset);
+    m_graph->setCameraPreset((QtGraphs3D::CameraPreset) preset);
 
-    if (++preset > int(QAbstract3DGraph::CameraPreset::DirectlyBelow))
-        preset = int(QAbstract3DGraph::CameraPreset::FrontLow);
+    if (++preset > int(QtGraphs3D::CameraPreset::DirectlyBelow))
+        preset = int(QtGraphs3D::CameraPreset::FrontLow);
 }
 
 void ScatterDataModifier::changeLabelStyle()
 {
-    m_graph->activeTheme()->setLabelBackgroundEnabled(!m_graph->activeTheme()->isLabelBackgroundEnabled());
+    m_graph->activeTheme()->setLabelBackgroundVisible(
+        !m_graph->activeTheme()->isLabelBackgroundVisible());
 }
 
 void ScatterDataModifier::changeFont(const QFont &font)
 {
     QFont newFont = font;
     newFont.setPointSizeF(m_fontSize);
-    m_graph->activeTheme()->setFont(newFont);
+    m_graph->activeTheme()->setLabelFont(newFont);
 }
 
-void ScatterDataModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality sq)
+void ScatterDataModifier::shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality sq)
 {
     int quality = int(sq);
     emit shadowQualityChanged(quality); // connected to a checkbox in main.cpp
@@ -162,35 +162,26 @@ void ScatterDataModifier::shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQ
 void ScatterDataModifier::triggerRotation()
 {
     if (m_graph->seriesList().size()) {
-        int selectedIndex = m_graph->seriesList().at(0)->selectedItem();
-        if (selectedIndex != QScatter3DSeries::invalidSelectionIndex()) {
-            static float itemAngle = 0.0f;
-            QScatterDataItem item(m_graph->seriesList().at(0)->dataProxy()->itemAt(selectedIndex));
-            QQuaternion itemRotation = QQuaternion::fromAxisAndAngle(0.0f, 0.0f, 1.0f, itemAngle++);
-            item.setRotation(itemRotation);
-            m_graph->seriesList().at(0)->dataProxy()->setItem(selectedIndex, item);
-        } else {
-            static float seriesAngle = 0.0f;
-            QQuaternion rotation = QQuaternion::fromAxisAndAngle(1.0f, 1.0f, 1.0f, seriesAngle++);
-            m_graph->seriesList().at(0)->setMeshRotation(rotation);
-        }
+        static float seriesAngle = 0.0f;
+        QQuaternion rotation = QQuaternion::fromAxisAndAngle(1.0f, 1.0f, 1.0f, seriesAngle++);
+        m_graph->seriesList().at(0)->setMeshRotation(rotation);
     }
 }
 
 void ScatterDataModifier::changeShadowQuality(int quality)
 {
-    QAbstract3DGraph::ShadowQuality sq = QAbstract3DGraph::ShadowQuality(quality);
+    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
 }
 
-void ScatterDataModifier::setBackgroundEnabled(int enabled)
+void ScatterDataModifier::setBackgroundVisible(int visible)
 {
-    m_graph->activeTheme()->setBackgroundEnabled((bool)enabled);
+    m_graph->activeTheme()->setPlotAreaBackgroundVisible((bool)visible);
 }
 
-void ScatterDataModifier::setGridEnabled(int enabled)
+void ScatterDataModifier::setGridVisible(int visible)
 {
-    m_graph->activeTheme()->setGridEnabled((bool)enabled);
+    m_graph->activeTheme()->setGridVisible((bool)visible);
 }
 
 void ScatterDataModifier::toggleRotation()

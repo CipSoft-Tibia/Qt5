@@ -1,3 +1,0 @@
-include(config.qdocconf)
-project = UsingDirective
-{includepaths,headerdirs,sourcedirs} = ../usingdirective

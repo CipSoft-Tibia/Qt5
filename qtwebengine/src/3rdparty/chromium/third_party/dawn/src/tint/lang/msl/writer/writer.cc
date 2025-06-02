@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/msl/writer/writer.h"
 
@@ -18,65 +31,72 @@
 #include <utility>
 
 #include "src/tint/lang/msl/writer/ast_printer/ast_printer.h"
+#include "src/tint/lang/msl/writer/common/option_helpers.h"
+#include "src/tint/lang/msl/writer/printer/printer.h"
+#include "src/tint/lang/msl/writer/raise/raise.h"
 
-#if TINT_BUILD_IR
-#include "src/tint/lang/msl/writer/printer/printer.h"               // nogncheck
-#include "src/tint/lang/msl/writer/raise/raise.h"                   // nogncheck
-#include "src/tint/lang/wgsl/reader/program_to_ir/program_to_ir.h"  // nogncheck
-#endif                                                              // TINT_BUILD_IR
+#if TINT_BUILD_WGSL_READER
+#include "src/tint/lang/wgsl/reader/lower/lower.h"
+#include "src/tint/lang/wgsl/reader/program_to_ir/program_to_ir.h"
+#endif
 
 namespace tint::msl::writer {
 
-Result<Output, std::string> Generate(const Program* program, const Options& options) {
-    if (!program->IsValid()) {
-        return std::string("input program is not valid");
+Result<Output> Generate(core::ir::Module& ir, const Options& options) {
+    {
+        auto res = ValidateBindingOptions(options);
+        if (res != Success) {
+            return res.Failure();
+        }
     }
 
     Output output;
-#if TINT_BUILD_IR
-    if (options.use_tint_ir) {
-        // Convert the AST program to an IR module.
-        auto converted = wgsl::reader::ProgramToIR(program);
-        if (!converted) {
-            return std::string("IR converter: " + converted.Failure());
-        }
 
-        auto ir = converted.Move();
-
-        // Raise the IR to the MSL dialect.
-        auto raised = raise::Raise(&ir);
-        if (!raised) {
-            return std::move(raised.Failure());
-        }
-
-        // Generate the MSL code.
-        auto impl = std::make_unique<Printer>(&ir);
-        auto result = impl->Generate();
-        if (!result) {
-            return result.Failure();
-        }
-        output.msl = impl->Result();
-    } else  // NOLINT(readability/braces)
-#endif
-    {
-        // Sanitize the program.
-        auto sanitized_result = Sanitize(program, options);
-        if (!sanitized_result.program.IsValid()) {
-            return sanitized_result.program.Diagnostics().str();
-        }
-        output.needs_storage_buffer_sizes = sanitized_result.needs_storage_buffer_sizes;
-        output.used_array_length_from_uniform_indices =
-            std::move(sanitized_result.used_array_length_from_uniform_indices);
-
-        // Generate the MSL code.
-        auto impl = std::make_unique<ASTPrinter>(&sanitized_result.program);
-        if (!impl->Generate()) {
-            return impl->Diagnostics().str();
-        }
-        output.msl = impl->Result();
-        output.has_invariant_attribute = impl->HasInvariant();
-        output.workgroup_allocations = impl->DynamicWorkgroupAllocations();
+    // Raise from core-dialect to MSL-dialect.
+    if (auto res = Raise(ir, options); res != Success) {
+        return res.Failure();
     }
+
+    // Generate the MSL code.
+    auto result = Print(ir);
+    if (result != Success) {
+        return result.Failure();
+    }
+    output.msl = result.Get();
+    return output;
+}
+
+Result<Output> Generate(const Program& program, const Options& options) {
+    if (!program.IsValid()) {
+        return Failure{program.Diagnostics()};
+    }
+
+    {
+        auto res = ValidateBindingOptions(options);
+        if (res != Success) {
+            return res.Failure();
+        }
+    }
+
+    Output output;
+
+    // Sanitize the program.
+    auto sanitized_result = Sanitize(program, options);
+    if (!sanitized_result.program.IsValid()) {
+        return Failure{sanitized_result.program.Diagnostics()};
+    }
+    output.needs_storage_buffer_sizes = sanitized_result.needs_storage_buffer_sizes;
+    output.used_array_length_from_uniform_indices =
+        std::move(sanitized_result.used_array_length_from_uniform_indices);
+
+    // Generate the MSL code.
+    auto impl = std::make_unique<ASTPrinter>(sanitized_result.program);
+    if (!impl->Generate()) {
+        return Failure{impl->Diagnostics()};
+    }
+    output.msl = impl->Result();
+    output.has_invariant_attribute = impl->HasInvariant();
+    output.workgroup_allocations = impl->DynamicWorkgroupAllocations();
 
     return output;
 }

@@ -13,12 +13,11 @@
 // limitations under the License.
 
 import {Disposable, Trash} from '../base/disposable';
-import {elementIsEditable} from '../base/dom_utils';
+import {currentTargetOffset, elementIsEditable} from '../base/dom_utils';
 import {raf} from '../core/raf_scheduler';
 
 import {Animation} from './animation';
 import {DragGestureHandler} from './drag_gesture_handler';
-import {globals} from './globals';
 import {handleKey} from './keyboard_event_handler';
 
 // When first starting to pan or zoom, move at least this many units.
@@ -110,7 +109,6 @@ export class PanAndZoomHandler implements Disposable {
   private zoomAnimation = new Animation(this.onZoomAnimationStep.bind(this));
 
   private element: HTMLElement;
-  private contentOffsetX: number;
   private onPanned: (movedPx: number) => void;
   private onZoomed: (zoomPositionPx: number, zoomRatio: number) => void;
   private editSelection: (currentPx: number) => boolean;
@@ -122,7 +120,6 @@ export class PanAndZoomHandler implements Disposable {
 
   constructor({
     element,
-    contentOffsetX,
     onPanned,
     onZoomed,
     editSelection,
@@ -130,7 +127,6 @@ export class PanAndZoomHandler implements Disposable {
     endSelection,
   }: {
     element: HTMLElement,
-    contentOffsetX: number,
     onPanned: (movedPx: number) => void,
     onZoomed: (zoomPositionPx: number, zoomRatio: number) => void,
     editSelection: (currentPx: number) => boolean,
@@ -140,7 +136,6 @@ export class PanAndZoomHandler implements Disposable {
     endSelection: (edit: boolean) => void,
   }) {
     this.element = element;
-    this.contentOffsetX = contentOffsetX;
     this.onPanned = onPanned;
     this.onZoomed = onZoomed;
     this.editSelection = editSelection;
@@ -236,11 +231,8 @@ export class PanAndZoomHandler implements Disposable {
   }
 
   private onMouseMove(e: MouseEvent) {
-    const pageOffset = globals.state.sidebarVisible && !globals.hideSidebar ?
-        this.contentOffsetX :
-        0;
-    // We can't use layerX here because there are many layers in this element.
-    this.mousePositionX = e.clientX - pageOffset;
+    this.mousePositionX = currentTargetOffset(e).x;
+
     // Only change the cursor when hovering, the DragGestureHandler handles
     // changing the cursor during drag events. This avoids the problem of
     // the cursor flickering between styles if you drag fast and get too
@@ -258,7 +250,7 @@ export class PanAndZoomHandler implements Disposable {
     if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       this.onPanned(e.deltaX * HORIZONTAL_WHEEL_PAN_SPEED);
       raf.scheduleRedraw();
-    } else if (e.ctrlKey && this.mousePositionX) {
+    } else if (e.ctrlKey && this.mousePositionX !== null) {
       const sign = e.deltaY < 0 ? -1 : 1;
       const deltaY = sign * Math.log2(1 + Math.abs(e.deltaY));
       this.onZoomed(this.mousePositionX, deltaY * WHEEL_ZOOM_SPEED);
@@ -319,7 +311,7 @@ export class PanAndZoomHandler implements Disposable {
     this.shiftDown = down;
     if (this.shiftDown) {
       this.element.style.cursor = PAN_CURSOR;
-    } else if (this.mousePositionX) {
+    } else if (this.mousePositionX !== null) {
       this.element.style.cursor = DRAG_CURSOR;
     }
   }

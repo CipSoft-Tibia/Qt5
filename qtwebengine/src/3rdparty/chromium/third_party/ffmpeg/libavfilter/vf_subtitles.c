@@ -33,6 +33,7 @@
 #include "config_components.h"
 #if CONFIG_SUBTITLES_FILTER
 # include "libavcodec/avcodec.h"
+# include "libavcodec/codec_desc.h"
 # include "libavformat/avformat.h"
 #endif
 #include "libavutil/avstring.h"
@@ -212,13 +213,6 @@ static const AVFilterPad ass_inputs[] = {
     },
 };
 
-static const AVFilterPad ass_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 #if CONFIG_ASS_FILTER
 
 static const AVOption ass_options[] = {
@@ -260,7 +254,7 @@ const AVFilter ff_vf_ass = {
     .init          = init_ass,
     .uninit        = uninit,
     FILTER_INPUTS(ass_inputs),
-    FILTER_OUTPUTS(ass_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &ass_class,
 };
@@ -515,7 +509,7 @@ const AVFilter ff_vf_subtitles = {
     .init          = init_subtitles,
     .uninit        = uninit,
     FILTER_INPUTS(ass_inputs),
-    FILTER_OUTPUTS(ass_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &subtitles_class,
 };

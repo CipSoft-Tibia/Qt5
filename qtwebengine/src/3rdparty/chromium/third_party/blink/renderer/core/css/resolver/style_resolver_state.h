@@ -78,8 +78,8 @@ class CORE_EXPORT StyleResolverState {
   Element* GetStyledElement() const { return styled_element_; }
   // These are all just pass-through methods to ElementResolveContext.
   Element& GetElement() const { return element_context_.GetElement(); }
-  const ContainerNode* ParentNode() const {
-    return element_context_.ParentNode();
+  const Element* ParentElement() const {
+    return element_context_.ParentElement();
   }
   const ComputedStyle* RootElementStyle() const {
     return element_context_.RootElementStyle();
@@ -237,8 +237,8 @@ class CORE_EXPORT StyleResolverState {
 
   void UpdateLengthConversionData();
 
-  void SetIsResolvingPositionFallbackStyle() {
-    is_resolving_position_fallback_style_ = true;
+  void SetIsResolvingPositionFallbackStyle(bool is_resolving = true) {
+    is_resolving_position_fallback_style_ = is_resolving;
   }
   bool IsResolvingPositionFallbackStyle() const {
     return is_resolving_position_fallback_style_;

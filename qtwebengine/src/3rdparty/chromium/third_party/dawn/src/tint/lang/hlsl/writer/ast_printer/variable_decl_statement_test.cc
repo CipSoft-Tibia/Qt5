@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/variable_decl_statement.h"
 #include "gmock/gmock.h"
@@ -156,7 +169,7 @@ TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_f32) {
 }
 
 TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* C = Const("C", Expr(1_h));
     Func("f", tint::Empty, ty.void_(),
@@ -230,7 +243,7 @@ TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_vec3_f3
 }
 
 TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_vec3_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* C = Const("C", Call<vec3<f16>>(1_h, 2_h, 3_h));
     Func("f", tint::Empty, ty.void_(),
@@ -286,7 +299,7 @@ TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_mat2x3_
 }
 
 TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_mat2x3_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* C = Const("C", Call<mat2x3<f16>>(1_h, 2_h, 3_h, 4_h, 5_h, 6_h));
     Func("f", tint::Empty, ty.void_(),
@@ -384,7 +397,7 @@ TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Initializer_Z
 }
 
 TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Initializer_ZeroVec_F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* var = Var("a", ty.vec3<f16>(), Call<vec3<f16>>());
 
@@ -413,7 +426,7 @@ TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Initializer_Z
 }
 
 TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Initializer_ZeroMat_F16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* var = Var("a", ty.mat2x3<f16>(), Call<mat2x3<f16>>());
 
@@ -426,6 +439,149 @@ TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Initializer_Z
     EXPECT_EQ(
         gen.Result(),
         R"(matrix<float16_t, 2, 3> a = matrix<float16_t, 2, 3>((float16_t(0.0h)).xxx, (float16_t(0.0h)).xxx);
+)");
+}
+
+TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_Mat) {
+    auto* C = Const("C", Call<mat2x3<f32>>(1_f, 2_f, 3_f, 4_f, 5_f, 6_f));
+
+    Func("f", tint::Empty, ty.void_(),
+         Vector{
+             Decl(C),
+             Decl(Let("l", Expr(C))),
+         });
+
+    ASTPrinter& gen = Build();
+
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+
+    EXPECT_EQ(gen.Result(), R"(void f() {
+  const float2x3 l = float2x3(float3(1.0f, 2.0f, 3.0f), float3(4.0f, 5.0f, 6.0f));
+}
+)");
+}
+
+TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_Struct_of_Mat) {
+    Structure("S", Vector{Member("m", ty.mat2x3<f32>())});
+    auto* C = Const("C", Call("S", Call<mat2x3<f32>>(1_f, 2_f, 3_f, 4_f, 5_f, 6_f)));
+
+    Func("f", tint::Empty, ty.void_(),
+         Vector{
+             Decl(C),
+             Decl(Let("l", Expr(C))),
+         });
+
+    ASTPrinter& gen = Build();
+
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+
+    EXPECT_EQ(gen.Result(), R"(struct S {
+  float2x3 m;
+};
+
+void f() {
+  S l = {float2x3(float3(1.0f, 2.0f, 3.0f), float3(4.0f, 5.0f, 6.0f))};
+}
+)");
+}
+
+TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_Struct_of_Struct_of_Mat) {
+    Structure("S", Vector{Member("m", ty.mat2x3<f32>())});
+    Structure("S2", Vector{Member("s", ty("S"))});
+    auto* C = Const("C", Call("S2", Call("S", Call<mat2x3<f32>>(1_f, 2_f, 3_f, 4_f, 5_f, 6_f))));
+
+    Func("f", tint::Empty, ty.void_(),
+         Vector{
+             Decl(C),
+             Decl(Let("l", Expr(C))),
+         });
+
+    ASTPrinter& gen = Build();
+
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+
+    EXPECT_EQ(gen.Result(), R"(struct S {
+  float2x3 m;
+};
+struct S2 {
+  S s;
+};
+
+void f() {
+  S2 l = {{float2x3(float3(1.0f, 2.0f, 3.0f), float3(4.0f, 5.0f, 6.0f))}};
+}
+)");
+}
+
+TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_Struct_of_Array_of_Mat) {
+    Structure("S", Vector{Member("m", ty.array(ty.mat2x3<f32>(), 1_u))});
+
+    auto* C = Const("C", Call("S", Call(ty.array(ty.mat2x3<f32>(), 1_u),
+                                        Call<mat2x3<f32>>(1_f, 2_f, 3_f, 4_f, 5_f, 6_f))));
+
+    Func("f", tint::Empty, ty.void_(),
+         Vector{
+             Decl(C),
+             Decl(Let("l", Expr(C))),
+         });
+
+    ASTPrinter& gen = Build();
+
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+
+    EXPECT_EQ(gen.Result(), R"(struct S {
+  float2x3 m[1];
+};
+
+void f() {
+  S l = {{float2x3(float3(1.0f, 2.0f, 3.0f), float3(4.0f, 5.0f, 6.0f))}};
+}
+)");
+}
+
+TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_Array_of_Mat) {
+    auto* C = Const("C", Call(ty.array(ty.mat2x3<f32>(), 1_u),
+                              Call<mat2x3<f32>>(1_f, 2_f, 3_f, 4_f, 5_f, 6_f)));
+
+    Func("f", tint::Empty, ty.void_(),
+         Vector{
+             Decl(C),
+             Decl(Let("l", Expr(C))),
+         });
+
+    ASTPrinter& gen = Build();
+
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+
+    EXPECT_EQ(gen.Result(), R"(void f() {
+  float2x3 l[1] = {float2x3(float3(1.0f, 2.0f, 3.0f), float3(4.0f, 5.0f, 6.0f))};
+}
+)");
+}
+
+TEST_F(HlslASTPrinterTest_VariableDecl, Emit_VariableDeclStatement_Const_Array_of_Struct_of_Mat) {
+    Structure("S", Vector{Member("m", ty.mat2x3<f32>())});
+
+    auto* C = Const("C", Call(ty.array(ty("S"), 1_u),
+                              Call(ty("S"), Call<mat2x3<f32>>(1_f, 2_f, 3_f, 4_f, 5_f, 6_f))));
+
+    Func("f", tint::Empty, ty.void_(),
+         Vector{
+             Decl(C),
+             Decl(Let("l", Expr(C))),
+         });
+
+    ASTPrinter& gen = Build();
+
+    ASSERT_TRUE(gen.Generate()) << gen.Diagnostics();
+
+    EXPECT_EQ(gen.Result(), R"(struct S {
+  float2x3 m;
+};
+
+void f() {
+  S l[1] = {{float2x3(float3(1.0f, 2.0f, 3.0f), float3(4.0f, 5.0f, 6.0f))}};
+}
 )");
 }
 

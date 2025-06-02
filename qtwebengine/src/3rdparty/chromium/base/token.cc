@@ -7,8 +7,10 @@
 #include <inttypes.h>
 
 #include "base/check.h"
+#include "base/hash/hash.h"
 #include "base/pickle.h"
 #include "base/rand_util.h"
+#include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 
@@ -28,7 +30,7 @@ Token Token::CreateRandom() {
 }
 
 std::string Token::ToString() const {
-  return base::StringPrintf("%016" PRIX64 "%016" PRIX64, words_.w0, words_.w1);
+  return base::StringPrintf("%016" PRIX64 "%016" PRIX64, words_[0], words_[1]);
 }
 
 // static
@@ -71,6 +73,10 @@ absl::optional<Token> ReadTokenFromPickle(PickleIterator* pickle_iterator) {
     return absl::nullopt;
 
   return Token(high, low);
+}
+
+size_t TokenHash::operator()(const Token& token) const {
+  return HashInts64(token.high(), token.low());
 }
 
 }  // namespace base

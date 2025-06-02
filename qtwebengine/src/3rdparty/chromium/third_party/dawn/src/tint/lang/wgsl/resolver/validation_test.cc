@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/resolver/resolver.h"
 
@@ -81,9 +94,10 @@ TEST_F(ResolverValidationTest, WorkgroupMemoryUsedInVertexStage) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              "3:4 error: workgroup memory cannot be used by vertex pipeline "
-              "stage\n1:2 note: variable is declared here");
+    EXPECT_EQ(
+        r()->error(),
+        R"(3:4 error: var with 'workgroup' address space cannot be used by vertex pipeline stage
+1:2 note: variable is declared here)");
 }
 
 TEST_F(ResolverValidationTest, WorkgroupMemoryUsedInFragmentStage) {
@@ -111,8 +125,9 @@ TEST_F(ResolverValidationTest, WorkgroupMemoryUsedInFragmentStage) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(3:4 error: workgroup memory cannot be used by fragment pipeline stage
+    EXPECT_EQ(
+        r()->error(),
+        R"(3:4 error: var with 'workgroup' address space cannot be used by fragment pipeline stage
 1:2 note: variable is declared here
 5:6 note: called by function 'f2'
 7:8 note: called by function 'f1'
@@ -126,7 +141,7 @@ TEST_F(ResolverValidationTest, UnhandledStmt) {
             b.WrapInFunction(b.create<FakeStmt>());
             resolver::Resolve(b);
         },
-        "internal compiler error: unhandled node type: tint::resolver::FakeStmt");
+        "internal compiler error: Switch() matched no cases. Type: tint::resolver::FakeStmt");
 }
 
 TEST_F(ResolverValidationTest, Stmt_If_NonBool) {
@@ -154,9 +169,9 @@ TEST_F(ResolverValidationTest, Expr_ErrUnknownExprType) {
         {
             ProgramBuilder b;
             b.WrapInFunction(b.create<FakeExpr>());
-            Resolver(&b).Resolve();
+            Resolver(&b, {}).Resolve();
         },
-        "internal compiler error: unhandled expression type: tint::resolver::FakeExpr");
+        "internal compiler error: Switch() matched no cases. Type: tint::resolver::FakeExpr");
 }
 
 TEST_F(ResolverValidationTest, UsingUndefinedVariable_Fail) {
@@ -168,7 +183,7 @@ TEST_F(ResolverValidationTest, UsingUndefinedVariable_Fail) {
     WrapInFunction(assign);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: unresolved identifier 'b')");
+    EXPECT_EQ(r()->error(), R"(12:34 error: unresolved value 'b')");
 }
 
 TEST_F(ResolverValidationTest, UsingUndefinedVariableInBlockStatement_Fail) {
@@ -183,7 +198,7 @@ TEST_F(ResolverValidationTest, UsingUndefinedVariableInBlockStatement_Fail) {
     WrapInFunction(body);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: unresolved identifier 'b')");
+    EXPECT_EQ(r()->error(), R"(12:34 error: unresolved value 'b')");
 }
 
 TEST_F(ResolverValidationTest, UsingUndefinedVariableGlobalVariable_Pass) {
@@ -223,7 +238,7 @@ TEST_F(ResolverValidationTest, UsingUndefinedVariableInnerScope_Fail) {
     WrapInFunction(outer_body);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: unresolved identifier 'a')");
+    EXPECT_EQ(r()->error(), R"(12:34 error: unresolved value 'a')");
 }
 
 TEST_F(ResolverValidationTest, UsingUndefinedVariableOuterScope_Pass) {
@@ -263,7 +278,7 @@ TEST_F(ResolverValidationTest, UsingUndefinedVariableDifferentScope_Fail) {
     WrapInFunction(outer_body);
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(), R"(12:34 error: unresolved identifier 'a')");
+    EXPECT_EQ(r()->error(), R"(12:34 error: unresolved value 'a')");
 }
 
 TEST_F(ResolverValidationTest, AddressSpace_FunctionVariableWorkgroupClass) {
@@ -368,12 +383,10 @@ TEST_F(ResolverValidationTest, Expr_MemberAccessor_BadParent) {
     WrapInFunction(Decl(param), Decl(ret));
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              "12:34 error: invalid member accessor expression. Expected vector or struct, got "
-              "'ptr<function, vec4<f32>, read_write>'");
+    EXPECT_EQ(r()->error(), "error: cannot dereference expression of type 'f32'");
 }
 
-TEST_F(ResolverValidationTest, EXpr_MemberAccessor_FuncGoodParent) {
+TEST_F(ResolverValidationTest, Expr_MemberAccessor_FuncGoodParent) {
     // fn func(p: ptr<function, vec4<f32>>) -> f32 {
     //     let x: f32 = (*p).z;
     //     return x;
@@ -390,7 +403,7 @@ TEST_F(ResolverValidationTest, EXpr_MemberAccessor_FuncGoodParent) {
     EXPECT_TRUE(r()->Resolve()) << r()->error();
 }
 
-TEST_F(ResolverValidationTest, EXpr_MemberAccessor_FuncBadParent) {
+TEST_F(ResolverValidationTest, Expr_MemberAccessor_FuncBadParent) {
     // fn func(p: ptr<function, vec4<f32>>) -> f32 {
     //     let x: f32 = *p.z;
     //     return x;
@@ -406,9 +419,7 @@ TEST_F(ResolverValidationTest, EXpr_MemberAccessor_FuncBadParent) {
          });
 
     EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              "12:34 error: invalid member accessor expression. Expected vector or struct, got "
-              "'ptr<function, vec4<f32>, read_write>'");
+    EXPECT_EQ(r()->error(), "error: cannot dereference expression of type 'f32'");
 }
 
 TEST_F(ResolverValidationTest,
@@ -1259,24 +1270,6 @@ TEST_F(ResolverTest, U32_Overflow) {
 
     EXPECT_FALSE(r()->Resolve());
     EXPECT_EQ(r()->error(), R"(12:24 error: value 4294967296 cannot be represented as 'u32')");
-}
-
-//    var a: array<i32,2>;
-//    *&a[0] = 1;
-TEST_F(ResolverTest, PointerIndexing_Fail) {
-    // var a: array<i32,2>;
-    // let p = &a;
-    // *p[0] = 0;
-
-    auto* a = Var("a", ty.array<i32, 2>());
-    auto* p = AddressOf("a");
-    auto* idx = Assign(Deref(IndexAccessor(p, 0_u)), 0_u);
-
-    WrapInFunction(a, idx);
-
-    EXPECT_FALSE(r()->Resolve());
-    EXPECT_EQ(r()->error(),
-              R"(error: cannot index type 'ptr<function, array<i32, 2>, read_write>')");
 }
 
 }  // namespace

@@ -10,9 +10,9 @@
 class QtProtobufEnumTypesSerializationTest : public QObject
 {
     Q_OBJECT
-private slots:
-    void SimpleEnumMessageSerializeTest();
-    void RepeatedEnumMessageTest();
+private Q_SLOTS:
+    void simpleEnumMessageSerializeTest();
+    void repeatedEnumMessageTest();
 
     void init() {
         m_serializer.reset(new QProtobufSerializer);
@@ -24,7 +24,7 @@ private:
 using namespace qtprotobufnamespace::tests;
 using namespace Qt::Literals::StringLiterals;
 
-void QtProtobufEnumTypesSerializationTest::SimpleEnumMessageSerializeTest()
+void QtProtobufEnumTypesSerializationTest::simpleEnumMessageSerializeTest()
 {
     SimpleEnumMessage test;
     test.setLocalEnum(SimpleEnumMessage::LocalEnum::LOCAL_ENUM_VALUE2);
@@ -33,7 +33,7 @@ void QtProtobufEnumTypesSerializationTest::SimpleEnumMessageSerializeTest()
     QCOMPARE(result.toHex(), "0802"_ba);
 }
 
-void QtProtobufEnumTypesSerializationTest::RepeatedEnumMessageTest()
+void QtProtobufEnumTypesSerializationTest::repeatedEnumMessageTest()
 {
     RepeatedEnumMessage msg;
 

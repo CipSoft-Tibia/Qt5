@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 #pragma once
-#include "state_tracker/base_node.h"
+#include "state_tracker/state_object.h"
 
 // Note: some of the types in this header are needed by both the DescriptorSet and Pipeline
 // state objects. It is helpful to have a separate header to avoid circular #include madness.
@@ -54,14 +54,16 @@ struct hash<SamplerUsedByImage> {
 };
 }  // namespace std
 
-class SAMPLER_STATE : public BASE_NODE {
+namespace vvl {
+
+class Sampler : public StateObject {
   public:
     const VkSamplerCreateInfo createInfo;
     const VkSamplerYcbcrConversion samplerConversion;
     const VkSamplerCustomBorderColorCreateInfoEXT customCreateInfo;
 
-    SAMPLER_STATE(const VkSampler s, const VkSamplerCreateInfo *pci)
-        : BASE_NODE(s, kVulkanObjectTypeSampler),
+    Sampler(const VkSampler s, const VkSamplerCreateInfo *pci)
+        : StateObject(s, kVulkanObjectTypeSampler),
           createInfo(*pci),
           samplerConversion(GetConversion(pci)),
           customCreateInfo(GetCustomCreateInfo(pci)) {}
@@ -70,41 +72,33 @@ class SAMPLER_STATE : public BASE_NODE {
 
   private:
     static inline VkSamplerYcbcrConversion GetConversion(const VkSamplerCreateInfo *pci) {
-        auto *conversionInfo = LvlFindInChain<VkSamplerYcbcrConversionInfo>(pci->pNext);
+        auto *conversionInfo = vku::FindStructInPNextChain<VkSamplerYcbcrConversionInfo>(pci->pNext);
         return conversionInfo ? conversionInfo->conversion : VK_NULL_HANDLE;
     }
     static inline VkSamplerCustomBorderColorCreateInfoEXT GetCustomCreateInfo(const VkSamplerCreateInfo *pci) {
         VkSamplerCustomBorderColorCreateInfoEXT result{};
-        auto cbci = LvlFindInChain<VkSamplerCustomBorderColorCreateInfoEXT>(pci->pNext);
+        auto cbci = vku::FindStructInPNextChain<VkSamplerCustomBorderColorCreateInfoEXT>(pci->pNext);
         if (cbci) result = *cbci;
         return result;
     }
 };
 
-class SAMPLER_YCBCR_CONVERSION_STATE : public BASE_NODE {
+class SamplerYcbcrConversion : public StateObject {
   public:
     const VkFormatFeatureFlags2KHR format_features;
     const VkFormat format;
     const VkFilter chromaFilter;
     const uint64_t external_format;
 
-    SAMPLER_YCBCR_CONVERSION_STATE(VkSamplerYcbcrConversion ycbcr, const VkSamplerYcbcrConversionCreateInfo *info,
-                                   VkFormatFeatureFlags2KHR features)
-        : BASE_NODE(ycbcr, kVulkanObjectTypeSamplerYcbcrConversion),
+    SamplerYcbcrConversion(VkSamplerYcbcrConversion ycbcr, const VkSamplerYcbcrConversionCreateInfo *info,
+                           VkFormatFeatureFlags2KHR features)
+        : StateObject(ycbcr, kVulkanObjectTypeSamplerYcbcrConversion),
           format_features(features),
           format(info->format),
           chromaFilter(info->chromaFilter),
-          external_format(GetExternalFormat(info)) {}
+          external_format(GetExternalFormat(info->pNext)) {}
 
     VkSamplerYcbcrConversion ycbcr_conversion() const { return handle_.Cast<VkSamplerYcbcrConversion>(); }
-
-  private:
-#ifdef VK_USE_PLATFORM_ANDROID_KHR
-    uint64_t GetExternalFormat(const VkSamplerYcbcrConversionCreateInfo *info) {
-        const VkExternalFormatANDROID *ext_format_android = LvlFindInChain<VkExternalFormatANDROID>(info->pNext);
-        return ext_format_android ? ext_format_android->externalFormat : 0;
-    }
-#else
-    uint64_t GetExternalFormat(const VkSamplerYcbcrConversionCreateInfo *info) { return 0; }
-#endif  // VK_USE_PLATFORM_ANDROID_KHR
 };
+
+}  // namespace vvl

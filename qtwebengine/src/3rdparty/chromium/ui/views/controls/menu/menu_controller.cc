@@ -427,14 +427,14 @@ struct MenuController::MenuPart {
   //       but is over a menu (for example, the mouse is over a separator or
   //       empty menu), this is null and parent is the menu the mouse was
   //       clicked on.
-  raw_ptr<MenuItemView, DanglingUntriaged> menu = nullptr;
+  raw_ptr<MenuItemView> menu = nullptr;
 
   // If type is kMenuItem but the mouse is not over a menu item this is the
   // parent of the menu item the user clicked on. Otherwise this is null.
-  raw_ptr<MenuItemView, DanglingUntriaged> parent = nullptr;
+  raw_ptr<MenuItemView> parent = nullptr;
 
   // This is the submenu the mouse is over.
-  raw_ptr<SubmenuView, DanglingUntriaged> submenu = nullptr;
+  raw_ptr<SubmenuView> submenu = nullptr;
 
   // Whether the controller should apply SELECTION_OPEN_SUBMENU to this item.
   bool should_submenu_show = false;
@@ -463,14 +463,15 @@ class MenuController::MenuScrollTask {
     SubmenuView* const new_menu = part.submenu;
     CHECK(new_menu);
     const bool new_is_up = part.type == MenuPartType::kScrollUp;
-    if (std::exchange(submenu_, new_menu) == new_menu &&
-        std::exchange(is_scrolling_up_, new_is_up) == new_is_up) {
+    if (new_menu == submenu_ && is_scrolling_up_ == new_is_up) {
       return;
     }
 
     start_scroll_time_ = base::Time::Now();
+    submenu_ = new_menu;
     pixels_per_second_ = submenu_->GetPreferredItemHeight() * 20;
     start_y_ = submenu_->GetVisibleBounds().y();
+    is_scrolling_up_ = new_is_up;
     if (!scrolling_timer_.IsRunning()) {
       scrolling_timer_.Start(FROM_HERE, base::Hertz(60), this,
                              &MenuScrollTask::Run);
@@ -1395,7 +1396,7 @@ ui::PostDispatchAction MenuController::OnWillDispatchKeyEvent(
         kKeysThatDontPropagate.end())
       return ui::POST_DISPATCH_PERFORM_DEFAULT;
   }
-  event->StopPropagation();
+  event->SetSkipped();
   return ui::POST_DISPATCH_NONE;
 }
 
@@ -1413,6 +1414,9 @@ void MenuController::OnWidgetDestroying(Widget* widget) {
   owner_->RemoveObserver(this);
   owner_ = nullptr;
   native_view_for_gestures_ = nullptr;
+  // Exit menu to ensure that we are not holding on to resources when the
+  // widget has been destroyed.
+  ExitMenu();
 }
 
 bool MenuController::IsCancelAllTimerRunningForTest() {
@@ -1509,10 +1513,11 @@ void MenuController::SetSelection(MenuItemView* menu_item,
   if (pending_item_changed)
     StopShowTimer();
 
-  if (selection_types & SELECTION_UPDATE_IMMEDIATELY)
+  if (selection_types & SELECTION_UPDATE_IMMEDIATELY) {
     CommitPendingSelection();
-  else if (pending_item_changed)
+  } else if (pending_item_changed) {
     StartShowTimer();
+  }
 
   // Notify an accessibility focus event on all menu items except for the root.
   if (menu_item && pending_item_changed &&
@@ -1532,7 +1537,7 @@ void MenuController::SetSelection(MenuItemView* menu_item,
         menu_item->GetParentMenuItem()->GetSubmenu()) {
       menu_item->GetParentMenuItem()->GetSubmenu()->NotifyAccessibilityEvent(
           ax::mojom::Event::kSelectedChildrenChanged,
-          true /* send_native_event */);
+          /*send_native_event=*/true);
     }
   }
 }
@@ -2200,16 +2205,15 @@ void MenuController::OpenMenuImpl(MenuItemView* item, bool show) {
           : CalculateMenuBounds(item, preferred_open_direction,
                                 &resulting_direction, &anchor);
 
-  // TODO(crbug.com/1467321): Investigate why menu bounds can be zero. Remove
-  // the log when the crash is fixed.
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
-  CHECK(!bounds.size().IsEmpty())
-      << "Menu size must NOT be empty but it is " << bounds.ToString()
-      << " calculated as "
-      << (calculate_as_bubble_menu ? "bubble menu" : "menu")
-      << ". The item count is "
-      << static_cast<int>(item->GetSubmenu()->GetMenuItems().size())
-      << ". See crbug.com/1467321.";
+  if (bounds.size().IsEmpty()) {
+    LOG(WARNING) << "Menu size is unexpectedly zero. Bounds: "
+                 << bounds.ToString()
+                 << ", anchor: " << anchor.anchor_rect.ToString()
+                 << ", display_bounds: " << state_.monitor_bounds.ToString()
+                 << ", calculated as bubble: " << calculate_as_bubble_menu;
+    base::debug::DumpWithoutCrashing();
+  }
 #endif
 
   SetChildMenuOpenDirectionAtDepth(menu_depth, resulting_direction);
@@ -2261,7 +2265,7 @@ void MenuController::OpenMenuImpl(MenuItemView* item, bool show) {
       const gfx::Point mouse_pos = ConvertFromScreen(
           *item->submenu_,
           display::Screen::GetScreen()->GetCursorScreenPoint());
-      MenuPart part_under_mouse = GetMenuPart(item->submenu_, mouse_pos);
+      MenuPart part_under_mouse = GetMenuPart(item->submenu_.get(), mouse_pos);
       if (part_under_mouse.type != MenuPartType::kNone) {
         menu_open_mouse_loc_ =
             GetLocationInRootMenu(*item->submenu_, mouse_pos);
@@ -2814,7 +2818,6 @@ void MenuController::IncrementSelection(
     Button* button = GetFirstHotTrackedView(item);
     if (button) {
       DCHECK_EQ(hot_button_, button);
-      SetHotTrackedButton(nullptr);
     }
     bool direction_is_down = direction == INCREMENT_SELECTION_DOWN;
     View* to_make_hot =

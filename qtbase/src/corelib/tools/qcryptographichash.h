@@ -8,6 +8,7 @@
 
 #include <QtCore/qbytearray.h>
 #include <QtCore/qobjectdefs.h>
+#include <QtCore/qspan.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -91,6 +92,19 @@ public:
     static QByteArray hash(const QByteArray &data, Algorithm method);
 #endif
     static QByteArray hash(QByteArrayView data, Algorithm method);
+
+    static QByteArrayView hashInto(QSpan<char> buffer, QByteArrayView data, Algorithm method) noexcept
+    { return hashInto(as_writable_bytes(buffer), {&data, 1}, method); }
+    static QByteArrayView hashInto(QSpan<uchar> buffer, QByteArrayView data, Algorithm method) noexcept
+    { return hashInto(as_writable_bytes(buffer), {&data, 1}, method); }
+    static QByteArrayView hashInto(QSpan<std::byte> buffer, QByteArrayView data, Algorithm method) noexcept
+    { return hashInto(buffer, {&data, 1}, method); }
+    static QByteArrayView hashInto(QSpan<char> buffer, QSpan<const QByteArrayView> data, Algorithm method) noexcept
+    { return hashInto(as_writable_bytes(buffer), data, method); }
+    static QByteArrayView hashInto(QSpan<uchar> buffer, QSpan<const QByteArrayView> data, Algorithm method) noexcept
+    { return hashInto(as_writable_bytes(buffer), data, method); }
+    static QByteArrayView hashInto(QSpan<std::byte> buffer, QSpan<const QByteArrayView> data, Algorithm method) noexcept;
+
     static int hashLength(Algorithm method);
     static bool supportsAlgorithm(Algorithm method);
 private:

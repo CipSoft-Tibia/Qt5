@@ -14,8 +14,9 @@
 // We mean it.
 //
 
-#include <private/qplatformaudioinput_p.h>
-#include "qffmpegthread_p.h"
+#include <QtMultimedia/private/qplatformaudioinput_p.h>
+#include <QtMultimedia/private/qplatformaudiobufferinput_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegthread_p.h>
 #include <qaudioinput.h>
 
 QT_BEGIN_NAMESPACE
@@ -24,32 +25,30 @@ class QAudioSource;
 class QAudioBuffer;
 namespace QFFmpeg {
 class AudioSourceIO;
-}
+} // namespace QFFmpeg
 
 constexpr int DefaultAudioInputBufferSize = 4096;
 
-class QFFmpegAudioInput : public QObject, public QPlatformAudioInput
+class QFFmpegAudioInput : public QAudioBufferSource, public QPlatformAudioInput
 {
+    // for qobject_cast
     Q_OBJECT
 public:
     QFFmpegAudioInput(QAudioInput *qq);
-    ~QFFmpegAudioInput();
+    ~QFFmpegAudioInput() override;
 
     void setAudioDevice(const QAudioDevice &/*device*/) override;
     void setMuted(bool /*muted*/) override;
     void setVolume(float /*volume*/) override;
 
-    void setFrameSize(int frameSize);
+    void setBufferSize(int bufferSize);
     void setRunning(bool b);
 
     int bufferSize() const;
 
-Q_SIGNALS:
-    void newAudioBuffer(const QAudioBuffer &buffer);
-
 private:
-    QFFmpeg::AudioSourceIO *audioIO = nullptr;
-    std::unique_ptr<QThread> inputThread;
+    QFFmpeg::AudioSourceIO *m_audioIO = nullptr;
+    std::unique_ptr<QThread> m_inputThread;
 };
 
 QT_END_NAMESPACE

@@ -38,7 +38,7 @@ public:
                                          QSSGRhiContext *rhiCtx,
                                          char *ubufData,
                                          QSSGParticlesRenderable &renderable,
-                                         QSSGRenderCamera &inCamera);
+                                         const QSSGRenderCameraList &cameras);
     static void updateUniformsForParticleModel(QSSGRhiShaderPipeline &shaderPipeline,
                                                char *ubufData,
                                                const QSSGRenderModel *model, quint32 offset);
@@ -50,7 +50,8 @@ public:
                                      const QSSGLayerRenderData &inData,
                                      QRhiRenderPassDescriptor *renderPassDescriptor,
                                      int samples,
-                                     QSSGRenderCamera *camera = nullptr,
+                                     int viewCount,
+                                     QSSGRenderCamera *alteredCamera = nullptr,
                                      QSSGRenderTextureCubeFace cubeFace = QSSGRenderTextureCubeFaceNone,
                                      QSSGReflectionMapEntry *entry = nullptr);
     static void rhiRenderRenderable(QSSGRhiContext *rhiCtx,

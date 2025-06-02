@@ -4,24 +4,24 @@
 
 import * as Common from '../../core/common/common.js';
 import * as Host from '../../core/host/host.js';
+import * as Persistence from '../../models/persistence/persistence.js';
 
 /**
  * @fileoverview using private properties isn't a Closure violation in tests.
  */
-self.BindingsTestRunner = self.BindingsTestRunner || {};
 
 Host.InspectorFrontendHost.InspectorFrontendHostInstance.isolatedFileSystem = function(name) {
-  return BindingsTestRunner.TestFileSystem.instances[name];
+  return TestFileSystem.instances[name];
 };
 
-BindingsTestRunner.TestFileSystem = function(fileSystemPath) {
-  this.root = new BindingsTestRunner.TestFileSystem.Entry(this, '', true, null);
+export const TestFileSystem = function(fileSystemPath) {
+  this.root = new TestFileSystem.Entry(this, '', true, null);
   this.fileSystemPath = fileSystemPath;
 };
 
-BindingsTestRunner.TestFileSystem.instances = {};
+TestFileSystem.instances = {};
 
-BindingsTestRunner.TestFileSystem.prototype = {
+TestFileSystem.prototype = {
   dumpAsText: function() {
     const result = [];
     dfs(this.root, '');
@@ -44,13 +44,13 @@ BindingsTestRunner.TestFileSystem.prototype = {
 
   reportCreated: function(callback, type) {
     const fileSystemPath = this.fileSystemPath;
-    BindingsTestRunner.TestFileSystem.instances[this.fileSystemPath] = this;
+    TestFileSystem.instances[this.fileSystemPath] = this;
 
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.dispatchEventToListeners(
         Host.InspectorFrontendHostAPI.Events.FileSystemAdded,
         {fileSystem: {fileSystemPath: this.fileSystemPath, fileSystemName: this.fileSystemPath, type}});
 
-    self.Persistence.isolatedFileSystemManager.addEventListener(
+    Persistence.IsolatedFileSystemManager.IsolatedFileSystemManager.instance().addEventListener(
         Persistence.IsolatedFileSystemManager.Events.FileSystemAdded, created);
 
     function created(event) {
@@ -59,14 +59,14 @@ BindingsTestRunner.TestFileSystem.prototype = {
         return;
       }
 
-      self.Persistence.isolatedFileSystemManager.removeEventListener(
+      Persistence.IsolatedFileSystemManager.IsolatedFileSystemManager.instance().removeEventListener(
           Persistence.IsolatedFileSystemManager.Events.FileSystemAdded, created);
       callback(fileSystem);
     }
   },
 
   reportRemoved: function() {
-    delete BindingsTestRunner.TestFileSystem.instances[this.fileSystemPath];
+    delete TestFileSystem.instances[this.fileSystemPath];
     Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.dispatchEventToListeners(
         Host.InspectorFrontendHostAPI.Events.FileSystemRemoved, this.fileSystemPath);
   },
@@ -97,7 +97,7 @@ BindingsTestRunner.TestFileSystem.prototype = {
   }
 };
 
-BindingsTestRunner.TestFileSystem.Entry = function(fileSystem, name, isDirectory, parent) {
+TestFileSystem.Entry = function(fileSystem, name, isDirectory, parent) {
   this.fileSystem = fileSystem;
   this.name = name;
   this.children = new Map();
@@ -106,7 +106,7 @@ BindingsTestRunner.TestFileSystem.Entry = function(fileSystem, name, isDirectory
   this.parent = parent;
 };
 
-BindingsTestRunner.TestFileSystem.Entry.prototype = {
+TestFileSystem.Entry.prototype = {
   get fullPath() {
     return (this.parent ? this.parent.fullPath + '/' + this.name : '');
   },
@@ -133,13 +133,13 @@ BindingsTestRunner.TestFileSystem.Entry.prototype = {
   },
 
   mkdir: function(name) {
-    const child = new BindingsTestRunner.TestFileSystem.Entry(this.fileSystem, name, true, this);
+    const child = new TestFileSystem.Entry(this.fileSystem, name, true, this);
     this.children.set(name, child);
     return child;
   },
 
   addFile: function(name, content) {
-    const child = new BindingsTestRunner.TestFileSystem.Entry(this.fileSystem, name, false, this);
+    const child = new TestFileSystem.Entry(this.fileSystem, name, false, this);
     this.children.set(name, child);
 
     child.content = new Blob([content], {type: 'text/plain'});
@@ -165,11 +165,11 @@ BindingsTestRunner.TestFileSystem.Entry.prototype = {
   },
 
   createReader: function() {
-    return new BindingsTestRunner.TestFileSystem.Reader([...this.children.values()]);
+    return new TestFileSystem.Reader([...this.children.values()]);
   },
 
   createWriter: function(success, failure) {
-    success(new BindingsTestRunner.TestFileSystem.Writer(this));
+    success(new TestFileSystem.Writer(this));
   },
 
   file: function(callback) {
@@ -251,11 +251,11 @@ BindingsTestRunner.TestFileSystem.Entry.prototype = {
   }
 };
 
-BindingsTestRunner.TestFileSystem.Reader = function(children) {
+TestFileSystem.Reader = function(children) {
   this.children = children;
 };
 
-BindingsTestRunner.TestFileSystem.Reader.prototype = {
+TestFileSystem.Reader.prototype = {
   readEntries: function(callback) {
     const children = this.children;
     this.children = [];
@@ -263,12 +263,12 @@ BindingsTestRunner.TestFileSystem.Reader.prototype = {
   }
 };
 
-BindingsTestRunner.TestFileSystem.Writer = function(entry) {
+TestFileSystem.Writer = function(entry) {
   this.entry = entry;
   this.modificationTimesDelta = 500;
 };
 
-BindingsTestRunner.TestFileSystem.Writer.prototype = {
+TestFileSystem.Writer.prototype = {
   write: function(blob) {
     this.entry.timestamp += this.modificationTimesDelta;
     this.entry.content = blob;

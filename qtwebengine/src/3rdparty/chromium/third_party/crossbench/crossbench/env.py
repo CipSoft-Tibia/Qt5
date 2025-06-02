@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import enum
 import logging
 import os
 import pathlib
@@ -14,7 +15,9 @@ from typing import (TYPE_CHECKING, Any, Callable, Dict, Iterable, List,
                     Optional, Union)
 from urllib.parse import urlparse
 
-from crossbench import helper, plt
+import colorama
+
+from crossbench import compat, helper, plt
 
 if TYPE_CHECKING:
   from crossbench.browsers.browser import Browser
@@ -107,7 +110,8 @@ class HostEnvironmentConfig:
     return HostEnvironmentConfig(**kwargs)
 
 
-class ValidationMode(helper.StrEnumWithHelp):
+@enum.unique
+class ValidationMode(compat.StrEnumWithHelp):
   THROW = ("throw", "Strict mode, throw and abort on env issues")
   PROMPT = ("prompt", "Prompt to accept potential env issues")
   WARN = ("warn", "Only display a warning for env issue")
@@ -135,6 +139,16 @@ _config_catan = _config_strict.merge(
         screen_brightness_percent=65,
         system_forbidden_process_names=["terminal", "iterm2"],
         screen_allow_autobrightness=False))
+
+STALE_RESULT_ICONS = {
+    75: "👻",
+    100: "👾",
+    125: "🎃",
+    150: "👹",
+    200: "💀",
+    250: "😱",
+    500: "🤯"
+}
 
 
 class HostEnvironment:
@@ -212,8 +226,8 @@ class HostEnvironment:
       return
     if self._validation_mode == ValidationMode.PROMPT:
       if allow_interactive:
-        result = input(f"{helper.TTYColor.RED}{message} Continue?"
-                       f"{helper.TTYColor.RESET} [Yn]")
+        result = input(f"{colorama.Fore.RED}{message} Continue?"
+                       f"{colorama.Fore.RESET} [Yn]")
         # Accept <enter> as default input to continue.
         if result.lower() != "n":
           return
@@ -222,14 +236,19 @@ class HostEnvironment:
           f"Unknown environment validation mode={self._validation_mode}")
     raise ValidationError(message)
 
-  def validate_url(self, url: str) -> bool:
+  def validate_url(self,
+                   url: str,
+                   platform: plt.Platform = plt.PLATFORM) -> bool:
     if self._validation_mode == ValidationMode.SKIP:
-      # TODO: validate file-urls on remote browser platforms.
+      return True
+    result = urlparse(url)
+    if result.scheme == "file":
+      return platform.exists(pathlib.Path(result.path))
+    if platform.is_remote and result.hostname in ("localhost", "127.0.0.1"):
+      # TODO: support remote URL verification, for now we just assume that
+      # checking a live site is ok.
       return True
     try:
-      result = urlparse(url)
-      if result.scheme == "file":
-        return pathlib.Path(result.path).exists()
       if not all([result.scheme in ["http", "https"], result.netloc]):
         return False
       if self._validation_mode != ValidationMode.PROMPT:
@@ -353,7 +372,7 @@ class HostEnvironment:
     if self._config.browser_allow_existing_process:
       return
     browser_binaries: Dict[str, List[Browser]] = helper.group_by(
-        self._runner.browsers, key=lambda browser: str(browser.path))
+        self._runner.browsers, key=lambda browser: str(browser.path.resolve()))
     own_pid = os.getpid()
     for proc_info in self._platform.processes(["cmdline", "exe", "pid",
                                                "name"]):
@@ -415,7 +434,7 @@ class HostEnvironment:
   def _check_probes(self) -> None:
     for probe in self._runner.probes:
       try:
-        probe.pre_check(self)
+        probe.validate_env(self)
       except Exception as e:
         raise ValidationError(
             f"Probe='{probe.NAME}' validation failed: {e}") from e
@@ -435,6 +454,10 @@ class HostEnvironment:
       return
     message = (f"Found {num_results} existing crossbench results. "
                f"Consider cleaning stale results in '{results_dir}'")
+    for count, icon in reversed(STALE_RESULT_ICONS.items()):
+      if num_results > count:
+        message = f"{icon} {message}"
+        break
     if num_results > 50:
       logging.error(message)
     else:

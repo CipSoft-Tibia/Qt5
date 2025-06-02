@@ -111,12 +111,12 @@ void WebXMLGenerator::generateExampleFilePage(const Node *en, ResolvedFile resol
     writer.writeStartElement("WebXML");
     writer.writeStartElement("document");
     writer.writeStartElement("page");
-    writer.writeAttribute("name", resolved_file.get_path());
-    writer.writeAttribute("href", linkForExampleFile(resolved_file.get_path()));
-    QString title = exampleFileTitle(static_cast<const ExampleNode *>(en), resolved_file.get_path());
+    writer.writeAttribute("name", resolved_file.get_query());
+    writer.writeAttribute("href", linkForExampleFile(resolved_file.get_query()));
+    const QString title = exampleFileTitle(static_cast<const ExampleNode *>(en), resolved_file.get_query());
     writer.writeAttribute("title", title);
     writer.writeAttribute("fulltitle", title);
-    writer.writeAttribute("subtitle", resolved_file.get_path());
+    writer.writeAttribute("subtitle", resolved_file.get_query());
     writer.writeStartElement("description");
 
     if (Config::instance().get(CONFIG_LOCATIONINFO).asBool()) {
@@ -456,6 +456,8 @@ const Atom *WebXMLGenerator::addAtomElements(QXmlStreamWriter &writer, const Ato
             writer.writeEndElement();
         else if (atom->string() == ATOM_FORMATTING_INDEX)
             writer.writeEndElement();
+        else if (atom->string() == ATOM_FORMATTING_TRADEMARK && appendTrademark(atom))
+            writer.writeCharacters(QChar(0x2122)); // 'TM' symbol
     }
         if (m_inLink) {
             writer.writeEndElement(); // link

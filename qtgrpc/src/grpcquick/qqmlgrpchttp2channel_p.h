@@ -15,39 +15,45 @@
 // We mean it.
 //
 
-#include <QtGrpcQuick/qtgrpcquickexports.h>
-#include <QtGrpcQuick/qqmlabstractgrpcchannel.h>
 #include <QtGrpcQuick/private/qqmlgrpcchanneloptions_p.h>
+#include <QtGrpcQuick/qqmlabstractgrpcchannel.h>
+#include <QtGrpcQuick/qtgrpcquickexports.h>
 
-#include <QtQml/qqmlregistration.h>
+#include <QtQmlIntegration/qqmlintegration.h>
 
 QT_BEGIN_NAMESPACE
 
+class QQmlGrpcHttp2ChannelPrivate;
 class Q_GRPCQUICK_EXPORT QQmlGrpcHttp2Channel : public QQmlAbstractGrpcChannel
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(GrpcHttp2Channel)
     QML_ADDED_IN_VERSION(6, 7)
-    Q_PROPERTY(QQmlGrpcChannelOptions *options READ options
-                       WRITE setOptions NOTIFY optionsChanged REQUIRED)
-    Q_PROPERTY(std::shared_ptr<QAbstractGrpcChannel> channel READ getChannel NOTIFY channelUpdated)
+    Q_PROPERTY(QUrl hostUri READ hostUri WRITE setHostUri NOTIFY hostUriChanged REQUIRED)
+    Q_PROPERTY(QQmlGrpcChannelOptions *options READ options WRITE setOptions NOTIFY optionsChanged)
+    Q_PROPERTY(std::shared_ptr<QAbstractGrpcChannel> channel READ channel NOTIFY channelUpdated)
 
 public:
-    QQmlGrpcHttp2Channel(QObject *parent = nullptr);
-    ~QQmlGrpcHttp2Channel();
-    std::shared_ptr<QAbstractGrpcChannel> getChannel() final;
-    QQmlGrpcChannelOptions *options() const { return m_options; }
+    explicit QQmlGrpcHttp2Channel(QObject *parent = nullptr);
+    ~QQmlGrpcHttp2Channel() override;
+
+    std::shared_ptr<QAbstractGrpcChannel> channel() const final;
+
+    QQmlGrpcChannelOptions *options() const noexcept;
     void setOptions(QQmlGrpcChannelOptions *options);
 
-signals:
+    QUrl hostUri() const noexcept;
+    void setHostUri(const QUrl &hostUri);
+
+Q_SIGNALS:
     void optionsChanged();
     void channelUpdated();
+    void hostUriChanged();
 
 private:
     void updateChannel();
 
-    QQmlGrpcChannelOptions *m_options;
-    std::shared_ptr<QAbstractGrpcChannel> m_channel;
+    Q_DECLARE_PRIVATE(QQmlGrpcHttp2Channel)
 };
 
 QT_END_NAMESPACE

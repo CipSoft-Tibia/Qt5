@@ -13,7 +13,6 @@ Item {
     width: 800
     height: 600
 
-    property int iconDimension: 38
     property int margin: 30
     property int spacing: 10
     property int radius: 6
@@ -26,15 +25,16 @@ Item {
     //! [1]
 
     //! [2]
-    Theme3D {
+    GraphsTheme {
         id: themeQt
-        type: Theme3D.Theme.Qt
-        font.pointSize: 40
+        theme: GraphsTheme.Theme.QtGreen
+        labelFont.pointSize: 40
     }
 
-    Theme3D {
-        id: themeRetro
-        type: Theme3D.Theme.Retro
+    GraphsTheme {
+        id: themeQtNeonGreen
+        theme: GraphsTheme.Theme.QtGreenNeon
+        colorScheme: GraphsTheme.ColorScheme.Dark
     }
     //! [2]
 
@@ -58,12 +58,9 @@ Item {
         //! [6]
         //! [7]
         contentItem: Row {
-            id :content
-            IconImage {
+            id: content
+            Image {
                 id: iconImage
-                width: iconDimension
-                height: iconDimension
-                color: "transparent"
             }
             Label {
                 text: buttonRoot.text
@@ -96,14 +93,14 @@ Item {
             //! [8]
             CustomButton {
                 id: shadowButton
-                text: graph.shadowQuality === AbstractGraph3D.ShadowQuality.None ?
+                text: graph.shadowQuality === Graphs3D.ShadowQuality.None ?
                           qsTr("Show Shadows") : qsTr("Hide Shadows")
-                source: graph.shadowQuality === AbstractGraph3D.ShadowQuality.None ?
+                source: graph.shadowQuality === Graphs3D.ShadowQuality.None ?
                             "qrc:/images/shadow.svg" : "qrc:/images/shadow_hide.svg"
                 onClicked: {
-                    graph.shadowQuality = graph.shadowQuality === AbstractGraph3D.ShadowQuality.None ?
-                                AbstractGraph3D.ShadowQuality.High :
-                                AbstractGraph3D.ShadowQuality.None
+                    graph.shadowQuality = graph.shadowQuality === Graphs3D.ShadowQuality.None ?
+                                Graphs3D.ShadowQuality.High :
+                                Graphs3D.ShadowQuality.None
                 }
             }
             //! [8]
@@ -122,23 +119,23 @@ Item {
             CustomButton {
                 id: cameraButton
                 text: qsTr("Camera Placement")
-                source: graph.cameraPreset === AbstractGraph3D.CameraPreset.Front ?
-                                        "qrc:/images/camera.svg" : "qrc:/images/camera2.svg"
+                source: graph.cameraPreset === Graphs3D.CameraPreset.Front ?
+                            "qrc:/images/camera.svg" : "qrc:/images/camera2.svg"
                 onClicked: {
-                    graph.cameraPreset = graph.cameraPreset === AbstractGraph3D.CameraPreset.Front ?
-                                AbstractGraph3D.CameraPreset.IsometricRightHigh :
-                                AbstractGraph3D.CameraPreset.Front
+                    graph.cameraPreset = graph.cameraPreset === Graphs3D.CameraPreset.Front ?
+                                Graphs3D.CameraPreset.IsometricRightHigh :
+                                Graphs3D.CameraPreset.Front
                 }
             }
 
             CustomButton {
                 id: backgroundButton
                 text: qsTr("Hide Background")
-                source: graph.theme.backgroundEnabled ?
-                                        "qrc:/images/background_hide.svg" : "qrc:/images/background.svg"
+                source: graph.theme.backgroundVisible ?
+                            "qrc:/images/background_hide.svg" : "qrc:/images/background.svg"
                 onClicked: {
-                    graph.theme.backgroundEnabled = !graph.theme.backgroundEnabled
-                    text = graph.theme.backgroundEnabled ? qsTr("Hide Background") : qsTr("Show Background")
+                    graph.theme.plotAreaBackgroundVisible = !graph.theme.plotAreaBackgroundVisible
+                    text = graph.theme.plotAreaBackgroundVisible ? qsTr("Hide Graph Background") : qsTr("Show Graph Background")
                 }
             }
         }
@@ -160,8 +157,8 @@ Item {
             text: qsTr("Change Theme")
             source: "qrc:/images/theme.svg"
             onClicked: {
-                graph.theme = graph.theme.type === Theme3D.Theme.Retro ? themeQt : themeRetro
-                backgroundButton.text = graph.theme.backgroundEnabled ? qsTr("Hide Background") : qsTr("Show Background")
+                graph.theme = graph.theme.theme === GraphsTheme.Theme.QtGreenNeon ? themeQt : themeQtNeonGreen
+                backgroundButton.text = graph.theme.plotAreaBackgroundVisible ? qsTr("Hide Graph Background") : qsTr("Show Graph Background")
             }
         }
     }

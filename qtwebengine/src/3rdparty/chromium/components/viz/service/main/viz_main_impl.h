@@ -57,6 +57,7 @@ class VizMainImpl : public mojom::VizMain {
     virtual ~Delegate() = default;
 
     virtual void OnInitializationFailed() = 0;
+    virtual void OnGpuChannelManagerCreated(gpu::GpuChannelManager* gpu_channel_manager) = 0;
     virtual void OnGpuServiceConnection(GpuServiceImpl* gpu_service) = 0;
     virtual void PostCompositorThreadCreated(
         base::SingleThreadTaskRunner* task_runner) = 0;

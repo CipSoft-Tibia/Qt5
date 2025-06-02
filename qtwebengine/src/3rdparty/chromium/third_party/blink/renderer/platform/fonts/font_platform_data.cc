@@ -223,7 +223,7 @@ bool FontPlatformData::operator==(const FontPlatformData& a) const {
          orientation_ == a.orientation_;
 }
 
-SkFontID FontPlatformData::UniqueID() const {
+SkTypefaceID FontPlatformData::UniqueID() const {
   return Typeface()->uniqueID();
 }
 
@@ -263,7 +263,7 @@ bool FontPlatformData::HasSpaceInLigaturesOrKerning(
 }
 
 unsigned FontPlatformData::GetHash() const {
-  unsigned h = SkTypeface::UniqueID(Typeface());
+  unsigned h = UniqueID();
   h ^= 0x01010101 * ((static_cast<int>(is_hash_table_deleted_value_) << 3) |
                      (static_cast<int>(orientation_) << 2) |
                      (static_cast<int>(synthetic_bold_) << 1) |
@@ -345,7 +345,9 @@ WebFontRenderStyle FontPlatformData::QuerySystemRenderStyle(
 
   return result;
 }
+#endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN)
 
+#if !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_IOS)
 SkFont FontPlatformData::CreateSkFont(const FontDescription*) const {
   SkFont font;
   style_.ApplyToSkFont(&font);
@@ -360,7 +362,7 @@ SkFont FontPlatformData::CreateSkFont(const FontDescription*) const {
 
   return font;
 }
-#endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN)
+#endif  // !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_IOS)
 
 scoped_refptr<OpenTypeVerticalData> FontPlatformData::CreateVerticalData()
     const {

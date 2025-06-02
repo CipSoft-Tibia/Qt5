@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/expand_compound_assignment.h"
 
@@ -201,6 +214,122 @@ fn main() {
 fn main() {
   var v : vec4<i32>;
   v.y = (v.y + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(ExpandCompoundAssignmentTest, LhsArrayOfVectorComponent_MemberAccessor_ViaArrayIndex) {
+    auto* src = R"(
+fn main() {
+  var v : array<vec4<i32>, 3>;
+  v[0].y += 1;
+}
+)";
+
+    auto* expect = R"(
+fn main() {
+  var v : array<vec4<i32>, 3>;
+  let tint_symbol = &(v[0]);
+  (*(tint_symbol)).y = ((*(tint_symbol)).y + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(ExpandCompoundAssignmentTest, LhsVectorComponent_MemberAccessor_ViaDerefPointerDot) {
+    auto* src = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &v;
+  (*p).y += 1;
+}
+)";
+
+    // TODO(crbug.com/tint/2115): we currently needlessly hoist pointer-deref to another pointer.
+    auto* expect = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &(v);
+  let tint_symbol = &(*(p));
+  (*(tint_symbol)).y = ((*(tint_symbol)).y + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(ExpandCompoundAssignmentTest, LhsVectorComponent_MemberAccessor_ViaPointerDot) {
+    auto* src = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &v;
+  p.y += 1;
+}
+)";
+
+    auto* expect = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &(v);
+  p.y = (p.y + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(ExpandCompoundAssignmentTest, LhsVectorComponent_MemberAccessor_ViaDerefPointerIndex) {
+    auto* src = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &v;
+  (*p)[0] += 1;
+}
+)";
+
+    // TODO(crbug.com/tint/2115): we currently needlessly hoist pointer-deref to another pointer.
+    auto* expect = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &(v);
+  let tint_symbol = &(*(p));
+  let tint_symbol_1 = 0;
+  (*(tint_symbol))[tint_symbol_1] = ((*(tint_symbol))[tint_symbol_1] + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(ExpandCompoundAssignmentTest, LhsVectorComponent_MemberAccessor_ViaPointerIndex) {
+    auto* src = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &v;
+  p[0] += 1;
+}
+)";
+
+    auto* expect = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &(v);
+  let tint_symbol = p;
+  let tint_symbol_1 = 0;
+  (*(tint_symbol))[tint_symbol_1] = ((*(tint_symbol))[tint_symbol_1] + 1);
 }
 )";
 
@@ -665,6 +794,79 @@ fn main() {
     EXPECT_EQ(expect, str(got));
 }
 
+TEST_F(ExpandCompoundAssignmentTest,
+       Increment_LhsVectorComponent_ArrayAccessor_ViaDerefPointerIndex) {
+    auto* src = R"(
+var<private> v : vec4<i32>;
+
+fn idx() -> i32 {
+  v.y = 42;
+  return 1;
+}
+
+fn main() {
+  let p = &v;
+  (*p)[idx()]++;
+}
+)";
+
+    auto* expect = R"(
+var<private> v : vec4<i32>;
+
+fn idx() -> i32 {
+  v.y = 42;
+  return 1;
+}
+
+fn main() {
+  let p = &(v);
+  let tint_symbol = &(*(p));
+  let tint_symbol_1 = idx();
+  (*(tint_symbol))[tint_symbol_1] = ((*(tint_symbol))[tint_symbol_1] + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(ExpandCompoundAssignmentTest, Increment_LhsVectorComponent_ArrayAccessor_ViaPointerIndex) {
+    auto* src = R"(
+var<private> v : vec4<i32>;
+
+fn idx() -> i32 {
+  v.y = 42;
+  return 1;
+}
+
+fn main() {
+  let p = &v;
+  p[idx()]++;
+}
+)";
+
+    auto* expect = R"(
+var<private> v : vec4<i32>;
+
+fn idx() -> i32 {
+  v.y = 42;
+  return 1;
+}
+
+fn main() {
+  let p = &(v);
+  let tint_symbol = p;
+  let tint_symbol_1 = idx();
+  (*(tint_symbol))[tint_symbol_1] = ((*(tint_symbol))[tint_symbol_1] + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
 TEST_F(ExpandCompoundAssignmentTest, Increment_LhsVectorComponent_MemberAccessor) {
     auto* src = R"(
 fn main() {
@@ -677,6 +879,53 @@ fn main() {
 fn main() {
   var v : vec4<i32>;
   v.y = (v.y + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(ExpandCompoundAssignmentTest,
+       Increment_LhsVectorComponent_MemberAccessor_ViaDerefPointerDot) {
+    auto* src = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &v;
+  (*p).y++;
+}
+)";
+
+    // TODO(crbug.com/tint/2115): we currently needlessly hoist pointer-deref to another pointer.
+    auto* expect = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &(v);
+  let tint_symbol = &(*(p));
+  (*(tint_symbol)).y = ((*(tint_symbol)).y + 1);
+}
+)";
+
+    auto got = Run<ExpandCompoundAssignment>(src);
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(ExpandCompoundAssignmentTest, Increment_LhsVectorComponent_MemberAccessor_ViaPointerDot) {
+    auto* src = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &v;
+  p.y++;
+}
+)";
+
+    auto* expect = R"(
+fn main() {
+  var v : vec4<i32>;
+  let p = &(v);
+  p.y = (p.y + 1);
 }
 )";
 

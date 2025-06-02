@@ -14,20 +14,24 @@
 
 import m from 'mithril';
 
-import {Actions} from '../common/actions';
-import {EngineProxy} from '../common/engine';
-import {LONG, NUM, NUM_NULL, STR_NULL} from '../common/query_result';
-import {translateState} from '../common/thread_state';
+import {Icons} from '../base/semantic_icons';
 import {
   duration,
   Time,
   time,
-} from '../common/time';
+} from '../base/time';
+import {exists} from '../base/utils';
+import {Actions} from '../common/actions';
+import {pluginManager} from '../common/plugins';
+import {translateState} from '../common/thread_state';
+import {EngineProxy} from '../trace_processor/engine';
+import {LONG, NUM, NUM_NULL, STR_NULL} from '../trace_processor/query_result';
+import {CPU_SLICE_TRACK_KIND} from '../tracks/cpu_slices';
+import {THREAD_STATE_TRACK_KIND} from '../tracks/thread_state';
+import {Anchor} from '../widgets/anchor';
 
-import {Anchor} from './anchor';
 import {globals} from './globals';
 import {scrollToTrackAndTs} from './scroll_helper';
-import {Icons} from './semantic_icons';
 import {
   asUtid,
   SchedSqlId,
@@ -104,6 +108,7 @@ export async function getThreadStateFromConstraints(
 
   for (; it.valid(); it.next()) {
     const ioWait = it.ioWait === null ? undefined : it.ioWait > 0;
+    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
     const wakerUtid = asUtid(it.wakerUtid || undefined);
 
     // TODO(altimin): Consider fetcing thread / process info using a single
@@ -141,15 +146,20 @@ export async function getThreadState(
 export function goToSchedSlice(cpu: number, id: SchedSqlId, ts: time) {
   let trackId: string|undefined;
   for (const track of Object.values(globals.state.tracks)) {
-    if (track.kind === 'CpuSliceTrack' &&
-        (track.config as {cpu: number}).cpu === cpu) {
-      trackId = track.id;
+    if (exists(track?.uri)) {
+      const trackInfo = pluginManager.resolveTrackInfo(track.uri);
+      if (trackInfo?.kind === CPU_SLICE_TRACK_KIND) {
+        if (trackInfo?.cpu === cpu) {
+          trackId = track.key;
+          break;
+        }
+      }
     }
   }
   if (trackId === undefined) {
     return;
   }
-  globals.makeSelection(Actions.selectSlice({id, trackId}));
+  globals.makeSelection(Actions.selectSlice({id, trackKey: trackId}));
   scrollToTrackAndTs(trackId, ts);
 }
 
@@ -169,21 +179,24 @@ export class ThreadStateRef implements m.ClassComponent<ThreadStateRefAttrs> {
         {
           icon: Icons.UpdateSelection,
           onclick: () => {
-            let trackId: string|number|undefined;
+            let trackKey: string|number|undefined;
             for (const track of Object.values(globals.state.tracks)) {
-              if (track.kind === 'ThreadStateTrack' &&
-                  (track.config as {utid: number}).utid === vnode.attrs.utid) {
-                trackId = track.id;
+              const trackDesc = pluginManager.resolveTrackInfo(track.uri);
+              if (trackDesc && trackDesc.kind === THREAD_STATE_TRACK_KIND &&
+                  trackDesc.utid === vnode.attrs.utid) {
+                trackKey = track.key;
               }
             }
 
-            if (trackId) {
+            /* eslint-disable @typescript-eslint/strict-boolean-expressions */
+            if (trackKey) {
+              /* eslint-enable */
               globals.makeSelection(Actions.selectThreadState({
                 id: vnode.attrs.id,
-                trackId: trackId.toString(),
+                trackKey: trackKey.toString(),
               }));
 
-              scrollToTrackAndTs(trackId, vnode.attrs.ts, true);
+              scrollToTrackAndTs(trackKey, vnode.attrs.ts, true);
             }
           },
         },

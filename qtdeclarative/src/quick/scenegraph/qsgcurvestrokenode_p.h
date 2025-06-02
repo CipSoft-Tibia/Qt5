@@ -4,7 +4,7 @@
 #ifndef QSGCURVESTROKENODE_P_H
 #define QSGCURVESTROKENODE_P_H
 
-#include <QtQuick/private/qtquickexports_p.h>
+#include <QtQuick/qtquickexports.h>
 #include <QtQuick/qsgnode.h>
 
 #include "qsgcurveabstractnode_p.h"
@@ -23,7 +23,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_QUICK_PRIVATE_EXPORT QSGCurveStrokeNode : public QSGCurveAbstractNode
+class Q_QUICK_EXPORT QSGCurveStrokeNode : public QSGCurveAbstractNode
 {
 public:
     QSGCurveStrokeNode();
@@ -31,6 +31,7 @@ public:
     void setColor(QColor col) override
     {
         m_color = col;
+        markDirty(DirtyMaterial);
     }
 
     QColor color() const
@@ -41,6 +42,7 @@ public:
     void setStrokeWidth(float width)
     {
         m_strokeWidth = width;
+        markDirty(DirtyMaterial);
     }
 
     float strokeWidth() const

@@ -28,6 +28,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/timestamp.h"
 #include "libavutil/xga_font_data.h"
+#include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
@@ -567,15 +568,6 @@ static av_cold void uninit(AVFilterContext *ctx)
 
 AVFILTER_DEFINE_CLASS_EXT(graphmonitor, "(a)graphmonitor", graphmonitor_options);
 
-#if CONFIG_GRAPHMONITOR_FILTER
-
-static const AVFilterPad graphmonitor_inputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 static const AVFilterPad graphmonitor_outputs[] = {
     {
         .name         = "default",
@@ -583,6 +575,8 @@ static const AVFilterPad graphmonitor_outputs[] = {
         .config_props = config_output,
     },
 };
+
+#if CONFIG_GRAPHMONITOR_FILTER
 
 const AVFilter ff_vf_graphmonitor = {
     .name          = "graphmonitor",
@@ -592,7 +586,7 @@ const AVFilter ff_vf_graphmonitor = {
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
-    FILTER_INPUTS(graphmonitor_inputs),
+    FILTER_INPUTS(ff_video_default_filterpad),
     FILTER_OUTPUTS(graphmonitor_outputs),
     FILTER_QUERY_FUNC(query_formats),
     .process_command = ff_filter_process_command,
@@ -602,21 +596,6 @@ const AVFilter ff_vf_graphmonitor = {
 
 #if CONFIG_AGRAPHMONITOR_FILTER
 
-static const AVFilterPad agraphmonitor_inputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
-static const AVFilterPad agraphmonitor_outputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-        .config_props = config_output,
-    },
-};
-
 const AVFilter ff_avf_agraphmonitor = {
     .name          = "agraphmonitor",
     .description   = NULL_IF_CONFIG_SMALL("Show various filtergraph stats."),
@@ -625,8 +604,8 @@ const AVFilter ff_avf_agraphmonitor = {
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
-    FILTER_INPUTS(agraphmonitor_inputs),
-    FILTER_OUTPUTS(agraphmonitor_outputs),
+    FILTER_INPUTS(ff_audio_default_filterpad),
+    FILTER_OUTPUTS(graphmonitor_outputs),
     FILTER_QUERY_FUNC(query_formats),
     .process_command = ff_filter_process_command,
 };

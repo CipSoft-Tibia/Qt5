@@ -83,12 +83,12 @@ public:
     }
 
     template<typename T>
-    void sendSuccessfullResponse(T result);
+    void sendSuccessfullResponse(const T &result);
     template<typename T>
-    void sendErrorResponse(int code, const QByteArray &message, T data);
+    void sendErrorResponse(int code, const QByteArray &message, const T &data);
     void sendErrorResponse(int code, const QByteArray &message);
     template<typename... Params>
-    void sendNotification(const QByteArray &method, Params... params);
+    void sendNotification(const QByteArray &method, const Params &...params);
 
     IdType id() const { return m_id; }
     QString idStr()
@@ -117,24 +117,22 @@ class Q_JSONRPC_EXPORT TypedHandler : public QJsonRpcProtocol::MessageHandler
 public:
     TypedHandler() = default; // invalid instance
     TypedHandler(const QByteArray &method,
-                 std::function<void(const QJsonRpcProtocol::Request &,
-                                    const QJsonRpcProtocol::ResponseHandler &)>
-                         rHandler,
-                 std::function<void(const QJsonRpcProtocol::Notification &)> nHandler)
+                 const std::function<void(const QJsonRpcProtocol::Request &,
+                                          const QJsonRpcProtocol::ResponseHandler &)> &rHandler,
+                 const std::function<void(const QJsonRpcProtocol::Notification &)> &nHandler)
         : m_method(method), m_requestHandler(rHandler), m_notificationHandler(nHandler)
     {
     }
 
     TypedHandler(const QByteArray &method,
-                 std::function<void(const QJsonRpcProtocol::Request &,
-                                    const QJsonRpcProtocol::ResponseHandler &)>
-                         rHandler)
+                 const std::function<void(const QJsonRpcProtocol::Request &,
+                                          const QJsonRpcProtocol::ResponseHandler &)> &rHandler)
         : m_method(method), m_requestHandler(rHandler), m_notificationHandler()
     {
     }
 
     TypedHandler(const QByteArray &method,
-                 std::function<void(const QJsonRpcProtocol::Notification &)> nHandler)
+                 const std::function<void(const QJsonRpcProtocol::Notification &)> &nHandler)
         : m_method(method), m_requestHandler(), m_notificationHandler(nHandler)
     {
     }
@@ -191,9 +189,9 @@ public:
     TypedRpc() = default;
 
     template<typename... Params>
-    void sendRequestId(std::variant<int, QByteArray> id, const QByteArray &method,
+    void sendRequestId(const std::variant<int, QByteArray> &id, const QByteArray &method,
                        const QJsonRpcProtocol::Handler<QJsonRpcProtocol::Response> &rHandler,
-                       Params... params)
+                       const Params &...params)
     {
         QJsonRpcProtocol::sendRequest(Request { QTypedJson::toJsonValue(id),
                                                 QString::fromUtf8(method),
@@ -204,22 +202,22 @@ public:
     template<typename... Params>
     void sendRequest(const QByteArray &method,
                      const QJsonRpcProtocol::Handler<QJsonRpcProtocol::Response> &handler,
-                     Params... params)
+                     const Params &...params)
     {
         sendRequestId(++m_lastId, method, handler, params...);
     }
 
     template<typename... Params>
-    void sendNotification(const QByteArray &method, Params... params)
+    void sendNotification(const QByteArray &method, const Params &...params)
     {
         QJsonRpcProtocol::sendNotification(
                 Notification { QString::fromUtf8(method), QTypedJson::toJsonValue(params...) });
     }
 
     template<typename Req, typename Resp>
-    void
-    registerRequestHandler(const QByteArray &method,
-                           std::function<void(const QByteArray &, const Req &, Resp &&)> handler)
+    void registerRequestHandler(
+            const QByteArray &method,
+            const std::function<void(const QByteArray &, const Req &, Resp &&)> &handler)
     {
         if (m_handlers.contains(method) && handler) {
             qCWarning(QTypedJson::jsonRpcLog)
@@ -259,8 +257,9 @@ public:
     }
 
     template<typename N>
-    void registerNotificationHandler(const QByteArray &method,
-                                     std::function<void(const QByteArray &, const N &)> handler)
+    void registerNotificationHandler(
+            const QByteArray &method,
+            const std::function<void(const QByteArray &, const N &)> &handler)
     {
         if (m_handlers.contains(method) && handler) {
             qCWarning(QTypedJson::jsonRpcLog)
@@ -292,9 +291,10 @@ public:
         m_handlers[method] = h;
     }
 
-    void sendBatch(QJsonRpcProtocol::Batch &&batch,
-                   const QJsonRpcProtocol::Handler<QJsonRpcProtocol::Response> &handler) =
-            delete; // disable batch support
+    void sendBatch(
+            QJsonRpcProtocol::Batch &&batch,
+            const QJsonRpcProtocol::Handler<QJsonRpcProtocol::Response> &handler)
+        = delete; // disable batch support
     void installOnCloseAction(const TypedResponse::OnCloseAction &closeAction);
     TypedResponse::OnCloseAction onCloseAction();
     void doOnCloseAction(TypedResponse::Status, const IdType &);
@@ -306,13 +306,14 @@ private:
 };
 
 template<typename T>
-void TypedResponse::sendSuccessfullResponse(T result)
+void TypedResponse::sendSuccessfullResponse(const T &result)
 {
     if (m_status == Status::Started) {
         m_status = Status::SentSuccess;
-        QJsonValue jsonId = QTypedJson::toJsonValue(m_id);
-        QJsonValue jsonResult = QTypedJson::toJsonValue(result);
-        m_responseHandler(QJsonRpcProtocol::Response { jsonId, jsonResult });
+        m_responseHandler(QJsonRpcProtocol::Response {
+            QTypedJson::toJsonValue(m_id),
+            QTypedJson::toJsonValue(result)
+        });
         doOnCloseActions();
     } else {
         qCWarning(QTypedJson::jsonRpcLog)
@@ -321,7 +322,7 @@ void TypedResponse::sendSuccessfullResponse(T result)
 }
 
 template<typename T>
-void TypedResponse::sendErrorResponse(int code, const QByteArray &message, T data)
+void TypedResponse::sendErrorResponse(int code, const QByteArray &message, const T &data)
 {
     if (m_status == Status::Started) {
         m_status = Status::SentError;
@@ -337,7 +338,7 @@ void TypedResponse::sendErrorResponse(int code, const QByteArray &message, T dat
 }
 
 template<typename... Params>
-void TypedResponse::sendNotification(const QByteArray &method, Params... params)
+void TypedResponse::sendNotification(const QByteArray &method, const Params &...params)
 {
     m_typedRpc->sendNotification(method, params...);
 }

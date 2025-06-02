@@ -15,8 +15,6 @@
 #ifndef QABSTRACTOAUTH2_P_H
 #define QABSTRACTOAUTH2_P_H
 
-#ifndef QT_NO_HTTP
-
 #include <optional>
 
 #include <private/qabstractoauth_p.h>
@@ -30,6 +28,8 @@
 
 #include <QtNetwork/qnetworkreply.h>
 
+#include <utility>
+
 QT_BEGIN_NAMESPACE
 
 class QNetworkAccessManager;
@@ -39,10 +39,11 @@ class QAbstractOAuth2Private : public QAbstractOAuthPrivate
     Q_DECLARE_PUBLIC(QAbstractOAuth2)
 
 public:
-    QAbstractOAuth2Private(const QPair<QString, QString> &clientCredentials,
+    QAbstractOAuth2Private(const std::pair<QString, QString> &clientCredentials,
                            const QUrl &authorizationUrl, QNetworkAccessManager *manager = nullptr);
     ~QAbstractOAuth2Private();
 
+    void setExpiresAt(const QDateTime &expiration);
     static QString generateRandomState();
     QNetworkRequest createRequest(QUrl url, const QVariantMap *parameters = nullptr);
 
@@ -52,7 +53,7 @@ public:
     QString userAgent = QStringLiteral("QtOAuth/1.0 (+https://www.qt.io)");
     QString responseType;
     const QString bearerFormat = QStringLiteral("Bearer %1"); // Case sensitive
-    QDateTime expiresAt;
+    QDateTime expiresAtUtc;
     QString refreshToken;
 #ifndef QT_NO_SSL
     std::optional<QSslConfiguration> sslConfiguration;
@@ -76,11 +77,12 @@ public:
         static const QString scope;
         static const QString state;
         static const QString tokenType;
+        static const QString codeVerifier;
+        static const QString codeChallenge;
+        static const QString codeChallengeMethod;
     };
 };
 
 QT_END_NAMESPACE
-
-#endif // QT_NO_HTTP
 
 #endif // QABSTRACTOAUTH2_P_H

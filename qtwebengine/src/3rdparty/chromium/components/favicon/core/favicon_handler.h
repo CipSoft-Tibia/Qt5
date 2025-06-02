@@ -124,7 +124,7 @@ class FaviconHandler {
         const GURL& page_url,
         FaviconDriverObserver::NotificationIconType notification_icon_type) = 0;
 
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
     virtual void OnHandlerCompleted(FaviconHandler *handler) {}
 #endif
   };
@@ -170,7 +170,7 @@ class FaviconHandler {
       FaviconDriverObserver::NotificationIconType handler_type,
       bool candidates_from_web_manifest);
 
-#if defined(TOOLKIT_QT)
+#if BUILDFLAG(IS_QTWEBENGINE)
   FaviconDriverObserver::NotificationIconType Type() const { return handler_type_; }
 #endif
 

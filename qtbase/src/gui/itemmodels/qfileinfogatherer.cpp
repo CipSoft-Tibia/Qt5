@@ -4,7 +4,7 @@
 #include "qfileinfogatherer_p.h"
 #include <qcoreapplication.h>
 #include <qdebug.h>
-#include <qdiriterator.h>
+#include <qdirlisting.h>
 #include <private/qabstractfileiconprovider_p.h>
 #include <private/qfileinfo_p.h>
 #ifndef Q_OS_WIN
@@ -264,11 +264,9 @@ void QFileInfoGatherer::setWatching(bool v)
 #if QT_CONFIG(filesystemwatcher)
     QMutexLocker locker(&mutex);
     if (v != m_watching) {
-        if (!v) {
-            delete m_watcher;
-            m_watcher = nullptr;
-        }
         m_watching = v;
+        if (!m_watching)
+            delete std::exchange(m_watcher, nullptr);
     }
 #else
     Q_UNUSED(v);
@@ -390,21 +388,23 @@ void QFileInfoGatherer::getFileInfos(const QString &path, const QStringList &fil
 #ifdef QT_BUILD_INTERNAL
         fetchedRoot.storeRelaxed(true);
 #endif
-        QFileInfoList infoList;
-        if (files.isEmpty()) {
-            infoList = QDir::drives();
-        } else {
-            infoList.reserve(files.size());
-            for (const auto &file : files)
-                infoList << QFileInfo(file);
-        }
         QList<std::pair<QString, QFileInfo>> updatedFiles;
-        updatedFiles.reserve(infoList.size());
-        const auto rend = infoList.rend();
-        for (auto rit = infoList.rbegin(); rit != rend; ++rit) {
-            QFileInfo &driveInfo = *rit;
-            driveInfo.stat();
-            updatedFiles.emplace_back(std::pair{translateDriveName(driveInfo), std::move(driveInfo)});
+        auto addToUpdatedFiles = [&updatedFiles](QFileInfo &&fileInfo) {
+            fileInfo.stat();
+            updatedFiles.emplace_back(std::pair{translateDriveName(fileInfo), fileInfo});
+        };
+
+        if (files.isEmpty()) {
+            // QDir::drives() calls QFSFileEngine::drives() which creates the QFileInfoList on
+            // the stack and return it, so this list is not shared, so no detaching.
+            QFileInfoList infoList = QDir::drives();
+            updatedFiles.reserve(infoList.size());
+            for (auto rit = infoList.rbegin(), rend = infoList.rend(); rit != rend; ++rit)
+                addToUpdatedFiles(std::move(*rit));
+        } else {
+            updatedFiles.reserve(files.size());
+            for (auto rit = files.crbegin(), rend = files.crend(); rit != rend; ++rit)
+                addToUpdatedFiles(QFileInfo(*rit));
         }
         emit updates(path, updatedFiles);
         return;
@@ -419,9 +419,13 @@ void QFileInfoGatherer::getFileInfos(const QString &path, const QStringList &fil
 
     QStringList allFiles;
     if (files.isEmpty()) {
-        QDirIterator dirIt(path, QDir::AllEntries | QDir::System | QDir::Hidden);
-        while (!isInterruptionRequested() && dirIt.hasNext()) {
-            fileInfo = dirIt.nextFileInfo();
+        // Use QDirListing::IteratorFlags when QFileSystemModel is
+        // changed to use them too
+        constexpr auto dirFilters = QDir::AllEntries | QDir::System | QDir::Hidden;
+        for (const auto &dirEntry : QDirListing(path, {}, dirFilters.toInt())) {
+            if (isInterruptionRequested())
+                break;
+            fileInfo = dirEntry.fileInfo();
             fileInfo.stat();
             allFiles.append(fileInfo.fileName());
             fetch(fileInfo, base, firstTime, updatedFiles, path);

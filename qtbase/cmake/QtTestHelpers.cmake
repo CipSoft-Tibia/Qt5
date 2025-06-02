@@ -38,11 +38,10 @@ function(qt_internal_add_benchmark target)
         endif()
     endif()
 
-    qt_internal_library_deprecation_level(deprecation_define)
-
     qt_internal_add_executable(${target}
         NO_INSTALL # we don't install benchmarks
         NO_UNITY_BUILD # excluded by default
+        QT_BENCHMARK_TEST
         OUTPUT_DIRECTORY "${arg_OUTPUT_DIRECTORY}" # avoid polluting bin directory
         ${exec_args}
     )
@@ -232,6 +231,7 @@ function(qt_internal_get_test_arg_definitions optional_args single_value_args mu
         QML_IMPORTPATH
         TESTDATA
         QT_TEST_SERVER_LIST
+        ANDROID_TESTRUNNER_PRE_TEST_ADB_COMMANDS
         ${__default_private_args}
         ${__default_public_args}
         PARENT_SCOPE
@@ -251,12 +251,19 @@ function(qt_internal_add_test_to_batch batch_name name)
 
     # Lazy-init the test batch
     if(NOT TARGET ${target})
-        qt_internal_library_deprecation_level(deprecation_define)
+        if(${arg_MANUAL})
+            set(is_manual "QT_MANUAL_TEST")
+        else()
+            set(is_manual "")
+        endif()
+
         qt_internal_add_executable(${target}
             ${exceptions_text}
             ${gui_text}
             ${version_arg}
             NO_INSTALL
+            QT_TEST
+            ${is_manual}
             OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build_dir"
             SOURCES "${QT_CMAKE_DIR}/qbatchedtestrunner.in.cpp"
             DEFINES QTEST_BATCH_TESTS ${deprecation_define}
@@ -275,8 +282,6 @@ function(qt_internal_add_test_to_batch batch_name name)
         set_property(TARGET ${target} PROPERTY _qt_has_gui ${arg_GUI})
         set_property(TARGET ${target} PROPERTY _qt_has_lowdpi ${arg_LOWDPI})
         set_property(TARGET ${target} PROPERTY _qt_version ${version_arg})
-        set_property(TARGET ${target} PROPERTY _qt_is_test_executable TRUE)
-        set_property(TARGET ${target} PROPERTY _qt_is_manual_test ${arg_MANUAL})
     else()
         # Check whether the args match with the batch. Some differences between
         # flags cannot be reconciled - one should not combine these tests into
@@ -444,6 +449,8 @@ endfunction()
 #       The option forces adding the provided TESTDATA to resources.
 #    MANUAL
 #       The option indicates that the test is a manual test.
+#    ANDROID_TESTRUNNER_PRE_TEST_ADB_COMMANDS
+#       Passes --pre-test-adb-command <command> to androidTestRunner. Android specific argument.
 function(qt_internal_add_test name)
     qt_internal_get_test_arg_definitions(optional_args single_value_args multi_value_args)
 
@@ -513,13 +520,20 @@ function(qt_internal_add_test name)
         list(APPEND private_includes ${arg_INCLUDE_DIRECTORIES})
 
         qt_internal_prepare_test_target_flags(version_arg exceptions_text gui_text ${ARGN})
-        qt_internal_library_deprecation_level(deprecation_define)
+
+        if(${arg_MANUAL})
+            set(is_manual "QT_MANUAL_TEST")
+        else()
+            set(is_manual "")
+        endif()
 
         qt_internal_add_executable("${name}"
             ${exceptions_text}
             ${gui_text}
             ${version_arg}
             NO_INSTALL
+            QT_TEST
+            ${is_manual}
             OUTPUT_DIRECTORY "${arg_OUTPUT_DIRECTORY}"
             SOURCES "${arg_SOURCES}"
             INCLUDE_DIRECTORIES
@@ -566,12 +580,14 @@ function(qt_internal_add_test name)
             LIBRARIES ${QT_CMAKE_EXPORT_NAMESPACE}::QuickTest
         )
 
-        qt_internal_extend_target("${name}" CONDITION arg_QMLTEST AND NOT ANDROID
+        qt_internal_extend_target("${name}"
+            CONDITION arg_QMLTEST AND NOT ANDROID AND NOT QT_FORCE_BUILTIN_TESTDATA
             DEFINES
                 QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
         )
 
-        qt_internal_extend_target("${name}" CONDITION arg_QMLTEST AND ANDROID
+        qt_internal_extend_target("${name}"
+            CONDITION arg_QMLTEST AND (ANDROID OR QT_FORCE_BUILTIN_TESTDATA)
             DEFINES
                 QUICK_TEST_SOURCE_DIR=":/"
         )
@@ -580,8 +596,6 @@ function(qt_internal_add_test name)
         qt_internal_extend_target("${name}" CONDITION ANDROID
             LIBRARIES ${QT_CMAKE_EXPORT_NAMESPACE}::Gui
         )
-        set_target_properties(${name} PROPERTIES _qt_is_test_executable TRUE)
-        set_target_properties(${name} PROPERTIES _qt_is_manual_test ${arg_MANUAL})
 
         set(blacklist_file "${CMAKE_CURRENT_SOURCE_DIR}/BLACKLIST")
         if(EXISTS ${blacklist_file})
@@ -647,8 +661,15 @@ function(qt_internal_add_test name)
                                "This is fine if OpenSSL was built statically.")
             endif()
         endif()
-        qt_internal_android_test_arguments(
-            "${name}" "${android_timeout}" test_executable extra_test_args)
+        qt_internal_android_test_runner_arguments("${name}" test_executable extra_test_args)
+        list(APPEND extra_test_args "--timeout" "${android_timeout}" "--verbose")
+
+        if(arg_ANDROID_TESTRUNNER_PRE_TEST_ADB_COMMANDS)
+            foreach(command IN LISTS arg_ANDROID_TESTRUNNER_PRE_TEST_ADB_COMMANDS)
+                list(APPEND extra_test_args "--pre-test-adb-command" "${command}")
+            endforeach()
+        endif()
+
         set(test_working_dir "${CMAKE_CURRENT_BINARY_DIR}")
     elseif(QNX)
         set(test_working_dir "")
@@ -681,7 +702,11 @@ function(qt_internal_add_test name)
 
         # This tells cmake to run the tests with this script, since wasm files can't be
         # executed directly
-        set_property(TARGET "${name}" PROPERTY CROSSCOMPILING_EMULATOR "emrun")
+        if (CMAKE_HOST_WIN32)
+            set_property(TARGET "${name}" PROPERTY CROSSCOMPILING_EMULATOR "emrun.bat")
+        else()
+            set_property(TARGET "${name}" PROPERTY CROSSCOMPILING_EMULATOR "emrun")
+        endif()
     else()
         if(arg_QMLTEST AND NOT arg_SOURCES)
             set(test_working_dir "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -750,18 +775,10 @@ function(qt_internal_add_test name)
             )
         endif()
 
-        # Add a ${target}/check makefile target, to more easily test one test.
-
-        set(test_config_options "")
-        get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
-        if(is_multi_config)
-            set(test_config_options -C $<CONFIG>)
-        endif()
-        add_custom_target("${testname}_check"
-            VERBATIM
-            COMMENT "Running ${CMAKE_CTEST_COMMAND} -V -R \"^${name}$\" ${test_config_options}"
-            COMMAND "${CMAKE_CTEST_COMMAND}" -V -R "^${name}$" ${test_config_options}
-        )
+        # Add a ${target}_check makefile target, to more easily test one test.
+        # TODO: Note in batch mode testname tests would execute all batched tests defined in name
+        _qt_internal_make_check_target(${testname} CTEST_TEST_NAME ${name})
+        # Add appropriate dependencies to the targets as needed
         if(TARGET "${name}")
             add_dependencies("${testname}_check" "${name}")
             if(ANDROID)
@@ -770,7 +787,7 @@ function(qt_internal_add_test name)
         endif()
     endif()
 
-    if(ANDROID OR IOS OR WASM OR INTEGRITY OR arg_BUILTIN_TESTDATA)
+    if(ANDROID OR IOS OR WASM OR INTEGRITY OR arg_BUILTIN_TESTDATA OR QT_FORCE_BUILTIN_TESTDATA)
         set(builtin_testdata TRUE)
     endif()
 
@@ -795,10 +812,10 @@ function(qt_internal_add_test name)
                     if(NOT blacklist_files)
                         set_target_properties(${name} PROPERTIES _qt_blacklist_files "")
                         set(blacklist_files "")
-                        cmake_language(EVAL CODE "cmake_language(DEFER DIRECTORY \"${CMAKE_SOURCE_DIR}\" CALL \"_qt_internal_finalize_batch\" \"${name}\") ")
                     endif()
                     list(PREPEND blacklist_files "${CMAKE_CURRENT_SOURCE_DIR}/${blacklist_path}")
-                    set_target_properties(${name} PROPERTIES _qt_blacklist_files "${blacklist_files}")
+                    set_target_properties(${name} PROPERTIES
+                        _qt_blacklist_files "${blacklist_files}")
                 endif()
             else()
                 set(blacklist_path "BLACKLIST")
@@ -858,7 +875,50 @@ function(qt_internal_add_test name)
         endif()
     endif()
 
+    if(MACOS AND NOT CMAKE_GENERATOR STREQUAL "Xcode")
+        # Add com.apple.security.get-task-allow entitlement to each
+        # test binary, so we can hook into the Swift crash handling.
+        if(NOT arg_QMLTEST AND arg_SOURCES)
+            set(entitlements_file
+                "${__qt_internal_cmake_apple_support_files_path}/test.entitlements.plist")
+            add_custom_command(TARGET "${name}"
+                POST_BUILD COMMAND codesign --sign -
+                    --entitlements "${entitlements_file}"
+                    "$<TARGET_FILE:${name}>"
+                )
+        endif()
+    endif()
+
     qt_internal_add_test_finalizers("${name}")
+endfunction()
+
+# Generates a blacklist file for the global batched test target.
+function(qt_internal_finalize_test_batch_blacklist)
+    _qt_internal_test_batch_target_name(batch_target_name)
+    if(NOT TARGET "${batch_target_name}")
+        return()
+    endif()
+
+    set(generated_blacklist_file "${CMAKE_CURRENT_BINARY_DIR}/BLACKLIST")
+
+    set(final_contents "")
+
+    get_target_property(blacklist_files "${batch_target_name}" _qt_blacklist_files)
+    if(blacklist_files)
+        foreach(blacklist_file ${blacklist_files})
+            file(READ "${blacklist_file}" file_contents)
+            if(file_contents)
+                string(APPEND final_contents "${file_contents}\n")
+            endif()
+        endforeach()
+    endif()
+
+    qt_configure_file(OUTPUT "${generated_blacklist_file}" CONTENT "${final_contents}")
+
+    qt_internal_add_resource(${batch_target_name} "batch_blacklist"
+        PREFIX "/"
+        FILES "${generated_blacklist_file}"
+        BASE ${CMAKE_CURRENT_BINARY_DIR})
 endfunction()
 
 # Given an optional test timeout value (specified via qt_internal_add_test's TIMEOUT option)
@@ -1076,6 +1136,14 @@ function(qt_internal_collect_command_environment out_path out_plugin_path)
 endfunction()
 
 function(qt_internal_add_test_finalizers target)
+    # Opt out to skip the new way of running test finalizers, and instead use the old way for
+    # specific platforms.
+    # TODO: Remove once we confirm that the new way of running test finalizers for all platforms
+    # doesn't cause any issues.
+    if(QT_INTERNAL_SKIP_TEST_FINALIZERS_V2)
+        return()
+    endif()
+
     # It might not be safe to run all the finalizers of _qt_internal_finalize_executable
     # within the context of a Qt build (not a user project) when targeting a host build.
     # At least one issue is missing qmlimportscanner at configure time.

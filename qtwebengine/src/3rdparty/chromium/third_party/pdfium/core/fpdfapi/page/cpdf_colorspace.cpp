@@ -21,7 +21,6 @@
 #include "core/fpdfapi/page/cpdf_function.h"
 #include "core/fpdfapi/page/cpdf_iccprofile.h"
 #include "core/fpdfapi/page/cpdf_indexedcs.h"
-#include "core/fpdfapi/page/cpdf_pagemodule.h"
 #include "core/fpdfapi/page/cpdf_pattern.h"
 #include "core/fpdfapi/page/cpdf_patterncs.h"
 #include "core/fpdfapi/parser/cpdf_array.h"
@@ -32,6 +31,7 @@
 #include "core/fpdfapi/parser/cpdf_stream.h"
 #include "core/fpdfapi/parser/fpdf_parser_utility.h"
 #include "core/fxcodec/fx_codec.h"
+#include "core/fxcodec/icc/icc_transform.h"
 #include "core/fxcrt/data_vector.h"
 #include "core/fxcrt/fx_2d_size.h"
 #include "core/fxcrt/fx_memory_wrappers.h"
@@ -423,6 +423,47 @@ void XYZ_to_sRGB_WhitePoint(float X,
   *B = RGB_Conversion(RGB.c);
 }
 
+class StockColorSpaces {
+ public:
+  StockColorSpaces()
+      : gray_(pdfium::MakeRetain<CPDF_DeviceCS>(
+            CPDF_ColorSpace::Family::kDeviceGray)),
+        rgb_(pdfium::MakeRetain<CPDF_DeviceCS>(
+            CPDF_ColorSpace::Family::kDeviceRGB)),
+        cmyk_(pdfium::MakeRetain<CPDF_DeviceCS>(
+            CPDF_ColorSpace::Family::kDeviceCMYK)),
+        pattern_(pdfium::MakeRetain<CPDF_PatternCS>()) {
+    pattern_->InitializeStockPattern();
+  }
+  StockColorSpaces(const StockColorSpaces&) = delete;
+  StockColorSpaces& operator=(const StockColorSpaces&) = delete;
+  ~StockColorSpaces() = default;
+
+  RetainPtr<CPDF_ColorSpace> GetStockCS(CPDF_ColorSpace::Family family) {
+    if (family == CPDF_ColorSpace::Family::kDeviceGray) {
+      return gray_;
+    }
+    if (family == CPDF_ColorSpace::Family::kDeviceRGB) {
+      return rgb_;
+    }
+    if (family == CPDF_ColorSpace::Family::kDeviceCMYK) {
+      return cmyk_;
+    }
+    if (family == CPDF_ColorSpace::Family::kPattern) {
+      return pattern_;
+    }
+    NOTREACHED_NORETURN();
+  }
+
+ private:
+  RetainPtr<CPDF_DeviceCS> gray_;
+  RetainPtr<CPDF_DeviceCS> rgb_;
+  RetainPtr<CPDF_DeviceCS> cmyk_;
+  RetainPtr<CPDF_PatternCS> pattern_;
+};
+
+StockColorSpaces* g_stock_colorspaces = nullptr;
+
 }  // namespace
 
 PatternValue::PatternValue() = default;
@@ -433,6 +474,23 @@ PatternValue::~PatternValue() = default;
 
 void PatternValue::SetComps(pdfium::span<const float> comps) {
   fxcrt::spancpy(pdfium::make_span(m_Comps), comps);
+}
+
+// static
+void CPDF_ColorSpace::InitializeGlobals() {
+  CHECK(!g_stock_colorspaces);
+  g_stock_colorspaces = new StockColorSpaces();
+}
+
+// static
+void CPDF_ColorSpace::DestroyGlobals() {
+  delete g_stock_colorspaces;
+  g_stock_colorspaces = nullptr;
+}
+
+// static
+RetainPtr<CPDF_ColorSpace> CPDF_ColorSpace::GetStockCS(Family family) {
+  return g_stock_colorspaces->GetStockCS(family);
 }
 
 // static
@@ -447,11 +505,6 @@ RetainPtr<CPDF_ColorSpace> CPDF_ColorSpace::GetStockCSForName(
   if (name == "Pattern")
     return GetStockCS(Family::kPattern);
   return nullptr;
-}
-
-// static
-RetainPtr<CPDF_ColorSpace> CPDF_ColorSpace::GetStockCS(Family family) {
-  return CPDF_PageModule::GetInstance()->GetStockCS(family);
 }
 
 // static
@@ -551,11 +604,6 @@ uint32_t CPDF_ColorSpace::ComponentsForFamily(Family family) {
     default:
       NOTREACHED_NORETURN();
   }
-}
-
-// static
-bool CPDF_ColorSpace::IsValidIccComponents(int components) {
-  return components == 1 || components == 3 || components == 4;
 }
 
 std::vector<float> CPDF_ColorSpace::CreateBufAndSetDefaultColor() const {
@@ -898,20 +946,15 @@ uint32_t CPDF_ICCBasedCS::v_Load(CPDF_Document* pDoc,
   // PDF viewers tolerate invalid values, Acrobat does not, so be consistent
   // with Acrobat and reject bad values.
   RetainPtr<const CPDF_Dictionary> pDict = pStream->GetDict();
-  int32_t nDictComponents = pDict ? pDict->GetIntegerFor("N") : 0;
-  if (!IsValidIccComponents(nDictComponents))
+  const int32_t nDictComponents = pDict ? pDict->GetIntegerFor("N") : 0;
+  if (!fxcodec::IccTransform::IsValidIccComponents(nDictComponents)) {
     return 0;
+  }
 
-  uint32_t nComponents = static_cast<uint32_t>(nDictComponents);
+  // Safe to cast, as the value just got validated.
+  const uint32_t nComponents = static_cast<uint32_t>(nDictComponents);
   m_pProfile = CPDF_DocPageData::FromDocument(pDoc)->GetIccProfile(pStream);
   if (!m_pProfile)
-    return 0;
-
-  // The PDF 1.7 spec also says the number of components in the ICC profile
-  // must match the N value. However, that assumes the viewer actually
-  // understands the ICC profile.
-  // If the valid ICC profile has a mismatch, fail.
-  if (m_pProfile->IsValid() && m_pProfile->GetComponents() != nComponents)
     return 0;
 
   // If PDFium does not understand the ICC profile format at all, or if it's
@@ -977,7 +1020,7 @@ void CPDF_ICCBasedCS::TranslateImageLine(pdfium::span<uint8_t> dest_span,
 
   // |nMaxColors| will not overflow since |nComponents| is limited in size.
   const uint32_t nComponents = CountComponents();
-  DCHECK(IsValidIccComponents(nComponents));
+  DCHECK(fxcodec::IccTransform::IsValidIccComponents(nComponents));
   int nMaxColors = 1;
   for (uint32_t i = 0; i < nComponents; i++)
     nMaxColors *= 52;
@@ -1074,7 +1117,7 @@ RetainPtr<CPDF_ColorSpace> CPDF_ICCBasedCS::GetStockAlternateProfile(
 // static
 std::vector<float> CPDF_ICCBasedCS::GetRanges(const CPDF_Dictionary* pDict,
                                               uint32_t nComponents) {
-  DCHECK(IsValidIccComponents(nComponents));
+  DCHECK(fxcodec::IccTransform::IsValidIccComponents(nComponents));
   RetainPtr<const CPDF_Array> pRanges = pDict->GetArrayFor("Range");
   if (pRanges && pRanges->size() >= nComponents * 2)
     return ReadArrayElementsToVector(pRanges.Get(), nComponents * 2);

@@ -28,7 +28,7 @@ TensorDesc::TensorDesc(DML_TENSOR_DATA_TYPE data_type,
     CHECK_EQ(dimensions_.size(), strides.size());
   }
 
-  // If no strides is given, set strides as default value calculated from
+  // If no strides are given, set strides as default value calculated from
   // dimensions, e.g., a tensor with dimensions [1, 2, 3, 4] should have default
   // strides [24, 12, 4, 1], referring to
   // https://docs.microsoft.com/en-us/windows/win32/direct3d12/dml-helper-functions#calculatestrides.
@@ -122,4 +122,83 @@ void TensorDesc::Transpose(base::span<const uint32_t> permutation) {
   buffer_desc_.Strides = strides_.data();
 }
 
+// Change the dimensions and strides of the TensorDesc by setting the stride of
+// broadcasting dimension to 0 and reuse the stride value for other dimensions,
+// its behavior follows the helper function:
+// https://learn.microsoft.com/en-us/windows/ai/directml/dml-helper-functions#calculatestrides
+void TensorDesc::BroadcastTo(base::span<const uint32_t> broadcasted_dims,
+                             size_t ignorable_tails_count) {
+  // When broadcasting to a 0D scalar (broadcasted_dims = {}), only the
+  // dimension of original tensor equals to {1} is legal, and the dimensions_
+  // and strides_ of TensorDesc do not need to be changed at this time.
+  if (broadcasted_dims.empty()) {
+    CHECK_EQ(ignorable_tails_count, 0u);
+    CHECK_EQ(dimensions_.size(), 1u);
+    CHECK_EQ(dimensions_[0], 1u);
+    return;
+  }
+
+  auto original_rank = dimensions_.size(),
+       broadcasted_rank = broadcasted_dims.size();
+  CHECK_LE(original_rank, broadcasted_rank);
+
+  EnsureMinimumRank(broadcasted_rank, Alignment::kTrailing);
+
+  CHECK_LE(ignorable_tails_count, original_rank);
+  for (size_t i = 0; i < broadcasted_rank - ignorable_tails_count; ++i) {
+    if (dimensions_[i] != broadcasted_dims[i]) {
+      CHECK_EQ(dimensions_[i], 1u);
+      dimensions_[i] = broadcasted_dims[i];
+      strides_[i] = 0;
+    }
+  }
+}
+
+void TensorDesc::EnsureMinimumRank(size_t minimum_rank, Alignment alignment) {
+  if (dimensions_.size() >= minimum_rank) {
+    return;
+  }
+
+  size_t insertion_count = minimum_rank - dimensions_.size();
+  switch (alignment) {
+    case Alignment::kLeading: {
+      dimensions_.insert(dimensions_.end(), insertion_count, 1u);
+      strides_.insert(strides_.end(), insertion_count, 0u);
+      break;
+    }
+    case Alignment::kTrailing: {
+      dimensions_.insert(dimensions_.begin(), insertion_count, 1u);
+      strides_.insert(strides_.begin(), insertion_count, 0u);
+      break;
+    }
+  }
+
+  // Note the TotalTensorSizeInBytes is not changed by inserting ones in
+  // dimensions.
+  buffer_desc_.DimensionCount = dimensions_.size();
+  buffer_desc_.Sizes = dimensions_.data();
+  buffer_desc_.Strides = strides_.data();
+}
+
+void TensorDesc::MakeBroadcastCompatible(size_t minimum_rank,
+                                         base::span<const uint32_t> axes) {
+  if (dimensions_.size() >= minimum_rank) {
+    return;
+  }
+
+  CHECK_LE(axes.size(), dimensions_.size());
+  std::vector<uint32_t> new_dimensions(minimum_rank, 1);
+  std::vector<uint32_t> new_strides(minimum_rank, 0);
+  for (size_t i = 0; i < axes.size(); i++) {
+    CHECK_LT(axes[i], minimum_rank);
+    new_dimensions[axes[i]] = dimensions_[i];
+    new_strides[axes[i]] = strides_[i];
+  }
+
+  dimensions_ = std::move(new_dimensions);
+  strides_ = std::move(new_strides);
+  buffer_desc_.DimensionCount = dimensions_.size();
+  buffer_desc_.Sizes = dimensions_.data();
+  buffer_desc_.Strides = strides_.data();
+}
 }  // namespace webnn::dml

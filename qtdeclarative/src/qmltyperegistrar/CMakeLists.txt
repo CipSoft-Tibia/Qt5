@@ -24,9 +24,7 @@ qt_internal_add_module(QmlTypeRegistrarPrivate
         QT_NO_CAST_TO_ASCII
     PUBLIC_LIBRARIES
         Qt::CorePrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
-)
+    )
 
 qt_internal_add_resource(QmlTypeRegistrarPrivate "jsRootMetaTypes"
     PREFIX

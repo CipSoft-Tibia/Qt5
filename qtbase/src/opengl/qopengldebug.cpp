@@ -42,8 +42,6 @@ QT_IMPL_METATYPE_EXTERN(QOpenGLDebugMessage)
     \since 5.1
     \ingroup painting-3D
 
-    \tableofcontents
-
     \section1 Introduction
 
     OpenGL programming can be very error prone. Most of the time, a single
@@ -848,10 +846,8 @@ QOpenGLDebugMessage &QOpenGLDebugMessage::operator=(const QOpenGLDebugMessage &d
 */
 
 /*!
-    \fn void QOpenGLDebugMessage::swap(QOpenGLDebugMessage &debugMessage)
-
-    Swaps the message \a debugMessage with this message. This operation is very
-    fast and never fails.
+    \fn void QOpenGLDebugMessage::swap(QOpenGLDebugMessage &other)
+    \memberswap{message]
 */
 
 /*!

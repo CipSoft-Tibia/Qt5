@@ -14,7 +14,7 @@ from typing import (TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple,
 
 import crossbench.probes.helper as probes_helper
 from crossbench import cli_helper, helper
-from crossbench.benchmarks import PressBenchmark, PressBenchmarkStoryFilter
+from crossbench.benchmarks.base import PressBenchmark, PressBenchmarkStoryFilter
 from crossbench.probes import metric as cb_metric
 from crossbench.probes.json import JsonResultProbe
 from crossbench.probes.results import ProbeResult, ProbeResultDict
@@ -103,12 +103,13 @@ class SpeedometerProbe(JsonResultProbe, metaclass=abc.ABCMeta):
 
 class SpeedometerStory(PressBenchmarkStory, metaclass=abc.ABCMeta):
   URL_LOCAL: str = "http://localhost:8000/"
+  DEFAULT_ITERATIONS: int = 10
 
   def __init__(self,
                substories: Sequence[str] = (),
-               iterations: int = 10,
+               iterations: Optional[int] = None,
                url: Optional[str] = None):
-    self._iterations = iterations or 10
+    self._iterations: int = iterations or self.DEFAULT_ITERATIONS
     assert self.iterations >= 1, f"Invalid iterations count: '{iterations}'."
     super().__init__(url=url, substories=substories)
 
@@ -120,9 +121,16 @@ class SpeedometerStory(PressBenchmarkStory, metaclass=abc.ABCMeta):
   def substory_duration(self) -> dt.timedelta:
     return self.iterations * dt.timedelta(seconds=0.4)
 
+  @property
+  def url_params(self) -> Dict[str, str]:
+    if self.iterations == self.DEFAULT_ITERATIONS:
+      return {}
+    return {"iterationCount": str(self.iterations)}
+
   def setup(self, run: Run) -> None:
-    updated_url = helper.update_url_query(
-        self.url, {"iterationCount": str(self.iterations)})
+    updated_url = helper.update_url_query(self.url, self.url_params)
+    if updated_url != self.url:
+      logging.info("CUSTOM URL: %s", updated_url)
 
     with run.actions("Setup") as actions:
       actions.show_url(updated_url)
@@ -192,7 +200,7 @@ class SpeedometerBenchmarkStoryFilter(PressBenchmarkStoryFilter):
     parser.add_argument(
         "--iterations",
         "--iteration-count",
-        default=10,
+        default=SpeedometerStory.DEFAULT_ITERATIONS,
         type=cli_helper.parse_positive_int,
         help="Number of iterations each Speedometer subtest is run "
         "within the same session. \n"

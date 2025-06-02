@@ -25,6 +25,8 @@
 #include <QtQml/private/qqmljsastvisitor_p.h>
 #include <QtQml/private/qqmljsast_p.h>
 #include <QtQml/private/qqmljsdiagnosticmessage_p.h>
+#include <QtQmlCompiler/qqmlsa.h>
+#include <QtQmlCompiler/private/qqmljsliteralbindingcheck_p.h>
 
 #include <cstdlib> // EXIT_SUCCESS, EXIT_FAILURE
 
@@ -258,27 +260,36 @@ int main(int argc, char **argv)
 
     QQmlJSImporter importer { importPaths, &mapper };
     importer.setMetaDataMapper(&metaDataMapper);
-    auto createQmltcVisitor = [](const QQmlJSScope::Ptr &root, QQmlJSImporter *importer,
-                                 QQmlJSLogger *logger, const QString &implicitImportDirectory,
-                                 const QStringList &qmldirFiles) -> QQmlJSImportVisitor * {
-        return new QmltcVisitor(root, importer, logger, implicitImportDirectory, qmldirFiles);
+    auto qmltcVisitor = [](QQmlJS::AST::Node *rootNode, QQmlJSImporter *self,
+                                 const QQmlJSImporter::ImportVisitorPrerequisites &p) {
+        QmltcVisitor v(p.m_target, self, p.m_logger, p.m_implicitImportDirectory, p.m_qmldirFiles);
+        QQmlJS::AST::Node::accept(rootNode, &v);
     };
-    importer.setImportVisitorCreator(createQmltcVisitor);
+    importer.setImportVisitor(qmltcVisitor);
 
     QQmlJSLogger logger;
-    logger.setFileName(url);
+    logger.setFilePath(url);
     logger.setCode(sourceCode);
     setupLogger(logger);
 
     auto currentScope = QQmlJSScope::create();
     if (parser.isSet(moduleOption))
-        currentScope->setModuleName(parser.value(moduleOption));
+        currentScope->setOwnModuleName(parser.value(moduleOption));
 
     QmltcVisitor visitor(currentScope, &importer, &logger,
                          QQmlJSImportVisitor::implicitImportDirectory(url, &mapper), qmldirFiles);
     visitor.setMode(QmltcVisitor::Compile);
     QmltcTypeResolver typeResolver { &importer };
     typeResolver.init(&visitor, qmlParser.rootNode());
+
+    using PassManagerPtr =
+            std::unique_ptr<QQmlSA::PassManager,
+                            decltype(&QQmlSA::PassManagerPrivate::deletePassManager)>;
+    PassManagerPtr passMan(QQmlSA::PassManagerPrivate::createPassManager(&visitor, &typeResolver),
+                           &QQmlSA::PassManagerPrivate::deletePassManager);
+    passMan->registerPropertyPass(std::make_unique<QQmlJSLiteralBindingCheck>(passMan.get()),
+                                  QString(), QString(), QString());
+    passMan->analyze(QQmlJSScope::createQQmlSAElement(visitor.result()));
 
     if (logger.hasErrors())
         return EXIT_FAILURE;

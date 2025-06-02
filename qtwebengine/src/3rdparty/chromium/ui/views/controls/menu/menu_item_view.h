@@ -16,6 +16,7 @@
 #include "build/build_config.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/interaction/element_identifier.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/menu_separator_types.h"
 #include "ui/base/themed_vector_icon.h"
@@ -74,9 +75,9 @@ class TestMenuItemView;
 // (show) the menu as well as for details on the life time of the menu.
 
 class VIEWS_EXPORT MenuItemView : public View {
- public:
-  METADATA_HEADER(MenuItemView);
+  METADATA_HEADER(MenuItemView, View)
 
+ public:
   // Different types of menu items.
   enum class Type {
     kNormal,             // Performs an action when selected.
@@ -241,6 +242,10 @@ class VIEWS_EXPORT MenuItemView : public View {
 
   // Returns true if this menu item has a submenu and it is showing
   bool SubmenuIsShowing() const;
+
+  // Sets the identifier of the submenu, if there is one, or to a future submenu
+  // that would be created.
+  void SetSubmenuId(ui::ElementIdentifier submenu_id);
 
   // Returns the parent menu item.
   MenuItemView* GetParentMenuItem() { return parent_menu_item_; }
@@ -588,7 +593,7 @@ class VIEWS_EXPORT MenuItemView : public View {
   bool canceled_ = false;
 
   // Our parent.
-  raw_ptr<MenuItemView, DanglingUntriaged> parent_menu_item_ = nullptr;
+  const raw_ptr<MenuItemView> parent_menu_item_ = nullptr;
 
   // Type of menu. NOTE: MenuItemView doesn't itself represent SEPARATOR,
   // that is handled by an entirely different view class.
@@ -612,8 +617,11 @@ class VIEWS_EXPORT MenuItemView : public View {
   // Whether the menu item contains user-created text.
   bool may_have_mnemonics_ = true;
 
-  // Submenu, created via CreateSubmenu.
-  raw_ptr<SubmenuView, DanglingUntriaged> submenu_ = nullptr;
+  // Submenu, created via `CreateSubmenu`.
+  std::unique_ptr<SubmenuView> submenu_;
+
+  // Identifier to assign to a submenu if one is created.
+  ui::ElementIdentifier submenu_id_;
 
   std::u16string title_;
   std::u16string secondary_title_;
@@ -628,7 +636,7 @@ class VIEWS_EXPORT MenuItemView : public View {
   bool show_mnemonics_ = false;
 
   // Pointer to a view with a menu icon.
-  raw_ptr<ImageView, DanglingUntriaged> icon_view_ = nullptr;
+  raw_ptr<ImageView> icon_view_ = nullptr;
 
   // The tooltip to show on hover for this menu item.
   std::u16string tooltip_;
@@ -638,7 +646,7 @@ class VIEWS_EXPORT MenuItemView : public View {
   mutable MenuItemDimensions dimensions_;
 
   // Removed items to be deleted in ChildrenChanged().
-  std::vector<View*> removed_items_;
+  std::vector<raw_ptr<View, VectorExperimental>> removed_items_;
 
   absl::optional<int> vertical_margin_;
 
@@ -657,17 +665,17 @@ class VIEWS_EXPORT MenuItemView : public View {
   bool children_use_full_width_ = false;
 
   // Contains an image for the checkbox or radio icon.
-  raw_ptr<ImageView, DanglingUntriaged> radio_check_image_view_ = nullptr;
+  raw_ptr<ImageView> radio_check_image_view_ = nullptr;
 
   // The submenu indicator arrow icon in case the menu item has a Submenu.
-  raw_ptr<ImageView, DanglingUntriaged> submenu_arrow_image_view_ = nullptr;
+  raw_ptr<ImageView> submenu_arrow_image_view_ = nullptr;
 
   // The forced visual selection state of this item, if any.
   absl::optional<bool> forced_visual_selection_;
 
   // The vertical separator that separates the actionable and submenu regions of
   // an ACTIONABLE_SUBMENU.
-  raw_ptr<Separator, DanglingUntriaged> vertical_separator_ = nullptr;
+  raw_ptr<Separator> vertical_separator_ = nullptr;
 
   // Whether this menu item is rendered differently to draw attention to it.
   bool is_alerted_ = false;
@@ -705,9 +713,9 @@ class VIEWS_EXPORT MenuItemView : public View {
 // EmptyMenuMenuItem is used when a menu has no menu items.
 
 class VIEWS_EXPORT EmptyMenuMenuItem : public MenuItemView {
- public:
-  METADATA_HEADER(EmptyMenuMenuItem);
+  METADATA_HEADER(EmptyMenuMenuItem, MenuItemView)
 
+ public:
   explicit EmptyMenuMenuItem(MenuItemView* parent);
   EmptyMenuMenuItem(const EmptyMenuMenuItem&) = delete;
   EmptyMenuMenuItem& operator=(const EmptyMenuMenuItem&) = delete;

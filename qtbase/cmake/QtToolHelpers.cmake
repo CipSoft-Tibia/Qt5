@@ -22,6 +22,10 @@
 #     TRY_RUN_FLAGS
 #         Command line flags that are going to be passed to the tool for testing its correctness.
 #         If no flags were given, we default to `-v`.
+#     REQUIRED_FOR_DOCS
+#         Specifies that the built tool is required to generate documentation. Examples are qdoc,
+#         and qvkgen (because they participate in header file generation, which are needed for
+#         documentation generation).
 #
 # One-value Arguments:
 #     EXTRA_CMAKE_FILES
@@ -50,18 +54,25 @@ function(qt_internal_add_tool target_name)
         INSTALL_VERSIONED_LINK
         EXCEPTIONS
         NO_UNITY_BUILD
-        TRY_RUN)
+        TRY_RUN
+        REQUIRED_FOR_DOCS
+        ${__qt_internal_sbom_optional_args}
+    )
     set(one_value_keywords
         TOOLS_TARGET
         INSTALL_DIR
         CORE_LIBRARY
         TRY_RUN_FLAGS
-        ${__default_target_info_args})
+        ${__default_target_info_args}
+        ${__qt_internal_sbom_single_args}
+    )
     set(multi_value_keywords
         EXTRA_CMAKE_FILES
         EXTRA_CMAKE_INCLUDES
         PUBLIC_LIBRARIES
-        ${__default_private_args})
+        ${__default_private_args}
+        ${__qt_internal_sbom_multi_args}
+    )
 
     cmake_parse_arguments(PARSE_ARGV 1 arg
         "${option_keywords}"
@@ -100,13 +111,22 @@ function(qt_internal_add_tool target_name)
             "removed in a future Qt version. Use the LIBRARIES option instead.")
     endif()
 
-    qt_internal_library_deprecation_level(deprecation_define)
-
     if(arg_NO_UNITY_BUILD)
         set(arg_NO_UNITY_BUILD "NO_UNITY_BUILD")
     else()
         set(arg_NO_UNITY_BUILD "")
     endif()
+
+    _qt_internal_forward_function_args(
+        FORWARD_PREFIX arg
+        FORWARD_OUT_VAR add_executable_args
+        FORWARD_SINGLE
+            TARGET_COMPANY
+            TARGET_COPYRIGHT
+            TARGET_DESCRIPTION
+            TARGET_PRODUCT
+            TARGET_VERSION
+    )
 
     qt_internal_add_executable("${target_name}"
         OUTPUT_DIRECTORY "${output_dir}"
@@ -130,16 +150,11 @@ function(qt_internal_add_tool target_name)
         LINK_OPTIONS ${arg_LINK_OPTIONS}
         MOC_OPTIONS ${arg_MOC_OPTIONS}
         DISABLE_AUTOGEN_TOOLS ${disable_autogen_tools}
-        TARGET_VERSION ${arg_TARGET_VERSION}
-        TARGET_PRODUCT ${arg_TARGET_PRODUCT}
-        TARGET_DESCRIPTION ${arg_TARGET_DESCRIPTION}
-        TARGET_COMPANY ${arg_TARGET_COMPANY}
-        TARGET_COPYRIGHT ${arg_TARGET_COPYRIGHT}
+        ${add_executable_args}
         # If you are putting anything after these, make sure that
         # qt_set_target_info_properties knows how to process them
     )
     qt_internal_add_target_aliases("${target_name}")
-    _qt_internal_apply_strict_cpp("${target_name}")
     qt_internal_adjust_main_config_runtime_output_dir("${target_name}" "${output_dir}")
 
     if (WIN32)
@@ -153,7 +168,10 @@ function(qt_internal_add_tool target_name)
                  APPEND PROPERTY
                  EXPORT_PROPERTIES "_qt_package_version")
 
-    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.19.0" AND QT_FEATURE_debug_and_release)
+    get_cmake_property(is_multi_config GENERATOR_IS_MULTI_CONFIG)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.19.0"
+            AND QT_FEATURE_debug_and_release
+            AND is_multi_config)
         set_property(TARGET "${target_name}"
             PROPERTY EXCLUDE_FROM_ALL "$<NOT:$<CONFIG:${QT_MULTI_CONFIG_FIRST_CONFIG}>>")
     endif()
@@ -167,6 +185,9 @@ function(qt_internal_add_tool target_name)
 
     if(TARGET host_tools)
         add_dependencies(host_tools "${target_name}")
+        if(arg_REQUIRED_FOR_DOCS)
+            add_dependencies(doc_tools "${target_name}")
+        endif()
         if(arg_CORE_LIBRARY STREQUAL "Bootstrap")
             add_dependencies(bootstrap_tools "${target_name}")
         endif()
@@ -188,8 +209,21 @@ function(qt_internal_add_tool target_name)
         set_property(GLOBAL APPEND PROPERTY QT_USER_FACING_TOOL_TARGETS ${target_name})
     endif()
 
+    if(QT_GENERATE_SBOM)
+        set(sbom_args "")
+        list(APPEND sbom_args TYPE QT_TOOL)
+    endif()
 
     if(NOT arg_NO_INSTALL AND arg_TOOLS_TARGET)
+        set(will_install TRUE)
+    else()
+        set(will_install FALSE)
+        if(QT_GENERATE_SBOM)
+            list(APPEND sbom_args NO_INSTALL)
+        endif()
+    endif()
+
+    if(will_install)
         # Assign a tool to an export set, and mark the module to which the tool belongs.
         qt_internal_append_known_modules_with_tools("${arg_TOOLS_TARGET}")
 
@@ -199,11 +233,14 @@ function(qt_internal_add_tool target_name)
         qt_get_cmake_configurations(cmake_configs)
 
         set(install_initial_call_args
-            EXPORT "${INSTALL_CMAKE_NAMESPACE}${arg_TOOLS_TARGET}ToolsTargets")
+            EXPORT "${INSTALL_CMAKE_NAMESPACE}${arg_TOOLS_TARGET}ToolsTargets"
+            COMPONENT host_tools
+        )
 
         foreach(cmake_config ${cmake_configs})
             qt_get_install_target_default_args(
                 OUT_VAR install_targets_default_args
+                OUT_VAR_RUNTIME runtime_install_destination
                 RUNTIME "${install_dir}"
                 CMAKE_CONFIG "${cmake_config}"
                 ALL_CMAKE_CONFIGS ${cmake_configs})
@@ -214,6 +251,15 @@ function(qt_internal_add_tool target_name)
                 set(install_optional_arg OPTIONAL)
               else()
                 unset(install_optional_arg)
+            endif()
+
+            if(QT_GENERATE_SBOM)
+                _qt_internal_sbom_append_multi_config_aware_single_arg_option(
+                    RUNTIME_PATH
+                    "${runtime_install_destination}"
+                    "${cmake_config}"
+                    sbom_args
+                )
             endif()
 
             qt_install(TARGETS "${target_name}"
@@ -240,8 +286,34 @@ function(qt_internal_add_tool target_name)
         _qt_internal_add_try_run_post_build("${target_name}" "${arg_TRY_RUN_FLAGS}")
     endif()
 
-    qt_enable_separate_debug_info(${target_name} "${install_dir}" QT_EXECUTABLE)
+    qt_internal_defer_separate_debug_info("${target_name}"
+        SEPARATE_DEBUG_INFO_ARGS
+            "${install_dir}"
+            QT_EXECUTABLE
+    )
     qt_internal_install_pdb_files(${target_name} "${install_dir}")
+
+    if(QT_GENERATE_SBOM)
+        _qt_internal_forward_function_args(
+            FORWARD_APPEND
+            FORWARD_PREFIX arg
+            FORWARD_OUT_VAR sbom_args
+            FORWARD_OPTIONS
+                ${__qt_internal_sbom_optional_args}
+            FORWARD_SINGLE
+                ${__qt_internal_sbom_single_args}
+            FORWARD_MULTI
+                ${__qt_internal_sbom_multi_args}
+        )
+
+        qt_internal_extend_qt_entity_sbom(${target_name} ${sbom_args})
+    endif()
+
+    qt_add_list_file_finalizer(qt_internal_finalize_tool ${target_name})
+endfunction()
+
+function(qt_internal_finalize_tool target)
+    _qt_internal_finalize_sbom(${target})
 endfunction()
 
 function(_qt_internal_add_try_run_post_build target try_run_flags)
@@ -316,6 +388,7 @@ function(qt_export_tools module_name)
 
     # List of package dependencies that need be find_package'd when using the Tools package.
     set(package_deps "")
+    set(third_party_deps "")
 
     # Additional cmake files to install
     set(extra_cmake_files "")
@@ -328,7 +401,15 @@ function(qt_export_tools module_name)
         # e.g. qtwaylandscanner depends on WaylandScanner (non-qt package).
         get_target_property(extra_packages "${tool_name}" QT_EXTRA_PACKAGE_DEPENDENCIES)
         if(extra_packages)
-            list(APPEND package_deps "${extra_packages}")
+            foreach(third_party_dep IN LISTS extra_packages)
+                list(GET third_party_dep 0 third_party_dep_name)
+                list(GET third_party_dep 1 third_party_dep_version)
+
+                # Assume that all tool thirdparty deps are mandatory.
+                # TODO: Components are not supported
+                list(APPEND third_party_deps
+                    "${third_party_dep_name}\\\;FALSE\\\;${third_party_dep_version}\\\;\\\;")
+            endforeach()
         endif()
 
         get_target_property(_extra_cmake_files "${tool_name}" EXTRA_CMAKE_FILES)
@@ -497,24 +578,33 @@ endfunction()
 # Sets QT_WILL_BUILD_TOOLS if tools will be built and QT_WILL_RENAME_TOOL_TARGETS
 # if those tools have replaced naming.
 function(qt_check_if_tools_will_be_built)
-    # By default, we build our own tools unless we're cross-building.
+    # By default, we build our own tools unless we're cross-building or QT_HOST_PATH is set.
     set(need_target_rename FALSE)
+    set(require_find_tools FALSE)
     if(CMAKE_CROSSCOMPILING)
         set(will_build_tools FALSE)
         if(QT_FORCE_BUILD_TOOLS)
             set(will_build_tools TRUE)
             set(need_target_rename TRUE)
         endif()
+        set(require_find_tools TRUE)
     else()
-        set(will_build_tools TRUE)
+        if(QT_HOST_PATH)
+            set(will_build_tools FALSE)
+        else()
+            set(will_build_tools TRUE)
+        endif()
         if(QT_FORCE_FIND_TOOLS)
             set(will_build_tools FALSE)
-            if(QT_FORCE_BUILD_TOOLS)
-                set(will_build_tools TRUE)
-                set(need_target_rename TRUE)
-            endif()
+            set(require_find_tools TRUE)
+        endif()
+        if(QT_FORCE_BUILD_TOOLS)
+            set(will_build_tools TRUE)
+            set(need_target_rename TRUE)
         endif()
     endif()
+
+    set_property(GLOBAL PROPERTY qt_require_find_tools "${require_find_tools}")
 
     set(QT_WILL_BUILD_TOOLS ${will_build_tools} CACHE INTERNAL "Are tools going to be built" FORCE)
     set(QT_WILL_RENAME_TOOL_TARGETS ${need_target_rename} CACHE INTERNAL
@@ -552,6 +642,15 @@ function(qt_internal_find_tool out_var target_name tools_target)
         message(FATAL_ERROR "The tool \"${name}\" has not been assigned to a module via"
                             " TOOLS_TARGET (so it can't be found) and it can't be built"
                             " (QT_WILL_BUILD_TOOLS is ${QT_WILL_BUILD_TOOLS}).")
+    endif()
+
+    if(NOT CMAKE_CROSSCOMPILING)
+        if(QT_INTERNAL_FORCE_FIND_HOST_TOOLS_MODULE_LIST AND
+            NOT "${tools_target}" IN_LIST QT_INTERNAL_FORCE_FIND_HOST_TOOLS_MODULE_LIST)
+            message(STATUS "Tool '${full_name}' will be built from source.")
+            set(${out_var} "TRUE" PARENT_SCOPE)
+            return()
+        endif()
     endif()
 
     if(QT_WILL_RENAME_TOOL_TARGETS AND (name STREQUAL target_name))
@@ -667,7 +766,8 @@ function(qt_internal_find_tool out_var target_name tools_target)
         endif()
     endif()
 
-    if(NOT QT_WILL_BUILD_TOOLS)
+    get_property(require_find_tools GLOBAL PROPERTY qt_require_find_tools)
+    if(require_find_tools AND NOT TARGET ${full_name})
         if(${${tools_package_name}_FOUND})
             set(pkg_found_msg "")
             string(APPEND pkg_found_msg
@@ -684,7 +784,9 @@ function(qt_internal_find_tool out_var target_name tools_target)
         message(FATAL_ERROR
             "Failed to find the host tool \"${full_name}\". It is part of "
             ${pkg_found_msg})
-    else()
+    endif()
+
+    if(QT_WILL_BUILD_TOOLS)
         message(STATUS "Tool '${full_name}' will be built from source.")
     endif()
     set(${out_var} "TRUE" PARENT_SCOPE)

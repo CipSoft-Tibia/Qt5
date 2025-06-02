@@ -1,0 +1,74 @@
+// Copyright (C) 2024 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
+
+/*!
+    \example xr_freeformteleportation
+    \ingroup quick3d-examples
+    \ingroup qt3dxr-examples
+    \title Qt Quick 3D - XR Freeform Teleportation Example
+    \examplecategory {3D}
+    \brief Demonstrates how to make a simple locomotion in Qt Quick 3D XR.
+    \image xrfreeformteleportation-example.jpg
+
+    \section1 Overview
+
+    This example shows how to move to places in the virtual environment using a simple freeform
+    teleportation system, a non-continuous form of movement.
+
+    \section2 Controls
+
+    When you run the example, use the following controls for navigation.
+
+    \table
+        \header
+            \li Action
+            \li Control
+        \row
+            \li Rotation
+            \li Left and Right stick on the right controller
+        \row
+            \li Aim and Teleport
+            \li Forward stick on the right controller
+    \endtable
+
+    \section1 Implementation
+
+    You can easily re-use \c FreeformTeleporter in other projects, as all the logic is
+    contained within that type.
+
+    \snippet xr_freeformteleportation/main.qml FreeformTeleporter component
+
+    The FreeformTeleporter component has the following properties that need to be set:
+
+    \qml
+        var rayPicker
+    \endqml
+
+    The \c rayPicker property can be any object that implements a rayPick method. In this example,
+    we are using XrView's built-in ray-picking method.
+
+    \qml
+        Node cameraOrigin
+    \endqml
+
+    The \c cameraOrigin property is the center of the camera's local reference space. In Xr this
+    will be the location where tracked items, like the camera, will be placed relative to.
+    We will, therefore, use the XrOrigin node as the cameraOrigin.
+
+    \qml
+        Node camera
+    \endqml
+
+    The \c camera property contains the camera used to render the scene. In this
+    example, we use the tracked XrCamera we created earlier.
+
+    \qml
+        Node beamHandle
+    \endqml
+
+    The \c beamHandle property is the Node used as the teleportation beam's start point.
+    In this example, we use the right controller \l {XrController}{xrRightController} as the beamHandle.
+
+    \sa {Locomotion in \qxr}
+
+*/

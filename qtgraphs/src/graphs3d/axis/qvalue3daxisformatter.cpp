@@ -24,17 +24,17 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmltype ValueAxis3DFormatter
+ * \qmltype Value3DAxisFormatter
  * \inqmlmodule QtGraphs
  * \ingroup graphs_qml_3D
- * \instantiates QValue3DAxisFormatter
+ * \nativetype QValue3DAxisFormatter
  * \brief A base type for 3D value axis formatters.
  *
  * This type provides formatting rules for a linear value 3D axis.
- * This type is the default type for ValueAxis3D and thus never needs to be
+ * This type is the default type for Value3DAxis and thus never needs to be
  * explicitly created. This type has no public functionality.
  *
- * \sa ValueAxis3D
+ * \sa Value3DAxis
  */
 
 /*!
@@ -71,7 +71,7 @@ void QValue3DAxisFormatter::setAllowNegatives(bool allow)
  */
 bool QValue3DAxisFormatter::allowNegatives() const
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->m_allowNegatives;
 }
 
@@ -90,7 +90,7 @@ void QValue3DAxisFormatter::setAllowZero(bool allow)
  */
 bool QValue3DAxisFormatter::allowZero() const
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->m_allowZero;
 }
 
@@ -196,7 +196,7 @@ QString QValue3DAxisFormatter::stringForValue(qreal value, const QString &format
  */
 float QValue3DAxisFormatter::positionAt(float value) const
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->positionAt(value);
 }
 
@@ -213,7 +213,7 @@ float QValue3DAxisFormatter::positionAt(float value) const
  */
 float QValue3DAxisFormatter::valueAt(float position) const
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->valueAt(position);
 }
 
@@ -232,7 +232,7 @@ void QValue3DAxisFormatter::populateCopy(QValue3DAxisFormatter &copy)
 }
 
 /*!
- * Marks this formatter dirty, prompting the renderer to make a new copy of its
+ * Marks this formatter as dirty, prompting the renderer to make a new copy of its
  * cache on the next renderer synchronization. This method should be called by a
  * subclass whenever the formatter is changed in a way that affects the resolved
  * values. Set \a labelsChange to \c true if the change requires regenerating
@@ -253,7 +253,7 @@ void QValue3DAxisFormatter::markDirty(bool labelsChange)
  */
 QValue3DAxis *QValue3DAxisFormatter::axis() const
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->m_axis;
 }
 
@@ -265,10 +265,24 @@ QValue3DAxis *QValue3DAxisFormatter::axis() const
  *
  * \sa QValue3DAxis::segmentCount, recalculate()
  */
-const QList<float> &QValue3DAxisFormatter::gridPositions() const
+const QList<float> &QValue3DAxisFormatter::gridPositions() const &
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->m_gridPositions;
+}
+
+/*!
+ * Returns an array of normalized grid line positions by value.
+ * The default array size is equal to the segment count of the parent axis plus
+ * one, but a subclassed implementation of the recalculate() method may resize
+ * the array differently.
+ *
+ * \sa QValue3DAxis::segmentCount, recalculate()
+ */
+QList<float> QValue3DAxisFormatter::gridPositions() &&
+{
+    Q_D(QValue3DAxisFormatter);
+    return std::move(d->m_gridPositions);
 }
 
 /*!
@@ -292,10 +306,24 @@ void QValue3DAxisFormatter::setGridPoitions(QList<float> gridPositions)
  *
  * \sa QValue3DAxis::segmentCount, QValue3DAxis::subSegmentCount, recalculate()
  */
-const QList<float> &QValue3DAxisFormatter::subGridPositions() const
+const QList<float> &QValue3DAxisFormatter::subGridPositions() const &
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->m_subGridPositions;
+}
+
+/*!
+ * Returns an array of normalized sub-grid line positions by value.
+ * The default array size is equal to the segment count of the parent axis times
+ * the sub-segment count of the parent axis minus one, but a subclassed
+ * implementation of the recalculate() method may resize the array differently.
+ *
+ * \sa QValue3DAxis::segmentCount, QValue3DAxis::subSegmentCount, recalculate()
+ */
+QList<float> QValue3DAxisFormatter::subGridPositions() &&
+{
+    Q_D(QValue3DAxisFormatter);
+    return std::move(d->m_subGridPositions);
 }
 
 /*!
@@ -321,10 +349,25 @@ void QValue3DAxisFormatter::setSubGridPositions(QList<float> subGridPositions)
  *
  * \sa QValue3DAxis::segmentCount, QAbstract3DAxis::labels, recalculate()
  */
-const QList<float> &QValue3DAxisFormatter::labelPositions() const
+const QList<float> &QValue3DAxisFormatter::labelPositions() const &
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->m_labelPositions;
+}
+
+/*!
+ * Returns an array of normalized label positions by value.
+ * The default array size is equal to the segment count of the parent axis plus
+ * one, but a subclassed implementation of the recalculate() method may resize
+ * the array differently. By default, the label at the index zero corresponds to
+ * the minimum value of the axis.
+ *
+ * \sa QValue3DAxis::segmentCount, QAbstract3DAxis::labels, recalculate()
+ */
+QList<float> QValue3DAxisFormatter::labelPositions() &&
+{
+    Q_D(QValue3DAxisFormatter);
+    return std::move(d->m_labelPositions);
 }
 
 /*!
@@ -346,10 +389,21 @@ void QValue3DAxisFormatter::setlabelPositions(QList<float> labelPositions)
  *
  * \sa labelPositions()
  */
-const QStringList &QValue3DAxisFormatter::labelStrings() const
+const QStringList &QValue3DAxisFormatter::labelStrings() const &
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->m_labelStrings;
+}
+
+/*!
+ * Returns a string list by value containing formatter label strings.
+ *
+ * \sa labelPositions()
+ */
+QStringList QValue3DAxisFormatter::labelStrings() &&
+{
+    Q_D(QValue3DAxisFormatter);
+    return std::move(d->m_labelStrings);
 }
 
 /*!
@@ -371,7 +425,7 @@ void QValue3DAxisFormatter::setLabelStrings(QStringList labelStrings)
  * formatter is set to an axis attached to the graph, or the graph's locale
  * changes.
  *
- * \sa locale(), QAbstract3DGraph::locale
+ * \sa locale(), Q3DGraphsWidgetItem::locale
  */
 void QValue3DAxisFormatter::setLocale(const QLocale &locale)
 {
@@ -385,7 +439,7 @@ void QValue3DAxisFormatter::setLocale(const QLocale &locale)
  */
 QLocale QValue3DAxisFormatter::locale() const
 {
-    const Q_D(QValue3DAxisFormatter);
+    Q_D(const QValue3DAxisFormatter);
     return d->m_locale;
 }
 

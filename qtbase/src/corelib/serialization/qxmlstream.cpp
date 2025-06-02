@@ -811,7 +811,7 @@ QString QXmlStreamReader::tokenString() const
  */
 static constexpr QLatin1StringView contextString(QXmlStreamReaderPrivate::XmlContext ctxt)
 {
-    return QLatin1StringView(QXmlStreamReader_XmlContextString.at(static_cast<int>(ctxt)));
+    return QLatin1StringView(QXmlStreamReader_XmlContextString.viewAt(static_cast<int>(ctxt)));
 }
 
 #endif // feature xmlstreamreader
@@ -2332,6 +2332,8 @@ QXmlStreamAttributes QXmlStreamReader::attributes() const
 
     \ingroup xml-tools
 
+    \compares equality
+
     An attribute consists of an optionally empty namespaceUri(), a
     name(), a value(), and an isDefault() attribute.
 
@@ -2406,14 +2408,14 @@ QXmlStreamAttribute::QXmlStreamAttribute(const QString &qualifiedName, const QSt
    value following an ATTLIST declaration in the DTD; otherwise
    returns \c false.
 */
-/*! \fn bool QXmlStreamAttribute::operator==(const QXmlStreamAttribute &other) const
+/*! \fn bool QXmlStreamAttribute::operator==(const QXmlStreamAttribute &lhs, const QXmlStreamAttribute &rhs)
 
-    Compares this attribute with \a other and returns \c true if they are
+    Compares \a lhs attribute with \a rhs and returns \c true if they are
     equal; otherwise returns \c false.
  */
-/*! \fn bool QXmlStreamAttribute::operator!=(const QXmlStreamAttribute &other) const
+/*! \fn bool QXmlStreamAttribute::operator!=(const QXmlStreamAttribute &lhs, const QXmlStreamAttribute &rhs)
 
-    Compares this attribute with \a other and returns \c true if they are
+    Compares \a lhs attribute with \a rhs and returns \c true if they are
     not equal; otherwise returns \c false.
  */
 
@@ -2462,6 +2464,8 @@ QXmlStreamAttribute::QXmlStreamAttribute(const QString &qualifiedName, const QSt
 
     \ingroup xml-tools
 
+    \compares equality
+
     An notation declaration consists of a name(), a systemId(), and a publicId().
 */
 
@@ -2485,14 +2489,14 @@ Returns the system identifier.
 Returns the public identifier.
 */
 
-/*! \fn inline bool QXmlStreamNotationDeclaration::operator==(const QXmlStreamNotationDeclaration &other) const
+/*! \fn inline bool QXmlStreamNotationDeclaration::operator==(const QXmlStreamNotationDeclaration &lhs, const QXmlStreamNotationDeclaration &rhs)
 
-    Compares this notation declaration with \a other and returns \c true
+    Compares \a lhs notation declaration with \a rhs and returns \c true
     if they are equal; otherwise returns \c false.
  */
-/*! \fn inline bool QXmlStreamNotationDeclaration::operator!=(const QXmlStreamNotationDeclaration &other) const
+/*! \fn inline bool QXmlStreamNotationDeclaration::operator!=(const QXmlStreamNotationDeclaration &lhs, const QXmlStreamNotationDeclaration &rhs)
 
-    Compares this notation declaration with \a other and returns \c true
+    Compares \a lhs notation declaration with \a rhs and returns \c true
     if they are not equal; otherwise returns \c false.
  */
 
@@ -2512,16 +2516,18 @@ Returns the public identifier.
 
     \ingroup xml-tools
 
+    \compares equality
+
     An namespace declaration consists of a prefix() and a namespaceUri().
 */
-/*! \fn inline bool QXmlStreamNamespaceDeclaration::operator==(const QXmlStreamNamespaceDeclaration &other) const
+/*! \fn inline bool QXmlStreamNamespaceDeclaration::operator==(const QXmlStreamNamespaceDeclaration &lhs, const QXmlStreamNamespaceDeclaration &rhs)
 
-    Compares this namespace declaration with \a other and returns \c true
+    Compares \a lhs namespace declaration with \a rhs and returns \c true
     if they are equal; otherwise returns \c false.
  */
-/*! \fn inline bool QXmlStreamNamespaceDeclaration::operator!=(const QXmlStreamNamespaceDeclaration &other) const
+/*! \fn inline bool QXmlStreamNamespaceDeclaration::operator!=(const QXmlStreamNamespaceDeclaration &lhs, const QXmlStreamNamespaceDeclaration &rhs)
 
-    Compares this namespace declaration with \a other and returns \c true
+    Compares \a lhs namespace declaration with \a rhs and returns \c true
     if they are not equal; otherwise returns \c false.
  */
 
@@ -2578,6 +2584,7 @@ Returns the namespaceUri.
 
     \ingroup xml-tools
 
+    \compares equality
     An entity declaration consists of a name(), a notationName(), a
     systemId(), a publicId(), and a value().
 */
@@ -2610,14 +2617,14 @@ Returns the public identifier.
 Returns the entity's value.
 */
 
-/*! \fn bool QXmlStreamEntityDeclaration::operator==(const QXmlStreamEntityDeclaration &other) const
+/*! \fn bool QXmlStreamEntityDeclaration::operator==(const QXmlStreamEntityDeclaration &lhs, const QXmlStreamEntityDeclaration &rhs)
 
-    Compares this entity declaration with \a other and returns \c true if
+    Compares \a lhs entity declaration with \a rhs and returns \c true if
     they are equal; otherwise returns \c false.
  */
-/*! \fn bool QXmlStreamEntityDeclaration::operator!=(const QXmlStreamEntityDeclaration &other) const
+/*! \fn bool QXmlStreamEntityDeclaration::operator!=(const QXmlStreamEntityDeclaration &lhs, const QXmlStreamEntityDeclaration &rhs)
 
-    Compares this entity declaration with \a other and returns \c true if
+    Compares \a lhs entity declaration with \a rhs and returns \c true if
     they are not equal; otherwise returns \c false.
  */
 

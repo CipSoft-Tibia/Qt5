@@ -28,6 +28,7 @@
 #include "components/viz/service/frame_sinks/gpu_vsync_begin_frame_source.h"
 #include "components/viz/service/hit_test/hit_test_aggregator.h"
 #include "services/viz/public/mojom/compositing/layer_context.mojom.h"
+#include "ui/base/ozone_buildflags.h"
 #include "ui/gfx/geometry/skia_conversions.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -108,13 +109,11 @@ RootCompositorFrameSinkImpl::Create(
   output_surface->SetNeedsSwapSizeNotifications(
       params->send_swap_size_notifications);
 
-// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
-// of lacros-chrome is complete.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
+#if BUILDFLAG(IS_LINUX) && BUILDFLAG(IS_OZONE_X11)
   // For X11, we need notify client about swap completion after resizing, so the
   // client can use it for synchronize with X11 WM.
   output_surface->SetNeedsSwapSizeNotifications(true);
-#endif
+#endif  // BUILDFLAG(IS_LINUX) && BUILDFLAG(IS_OZONE_X11)
 
   // Create some sort of a BeginFrameSource, depending on the platform and
   // |params|.
@@ -215,7 +214,9 @@ RootCompositorFrameSinkImpl::Create(
       display_controller.get(), sii, params->renderer_settings, debug_settings);
 
   auto display = std::make_unique<Display>(
-      frame_sink_manager->shared_bitmap_manager(), params->renderer_settings,
+      frame_sink_manager->shared_bitmap_manager(),
+      output_surface_provider->GetSharedImageManager(),
+      output_surface_provider->GetSyncPointManager(), params->renderer_settings,
       debug_settings, params->frame_sink_id, std::move(display_controller),
       std::move(output_surface), std::move(overlay_processor),
       std::move(scheduler), std::move(task_runner));
@@ -316,7 +317,8 @@ bool RootCompositorFrameSinkImpl::WillEvictSurface(
                        /*filter_info=*/gfx::MaskFilterInfo(),
                        /*clip=*/absl::nullopt,
                        /*contents_opaque=*/true, /*opacity_f=*/1.f,
-                       /*blend=*/SkBlendMode::kSrcOver, /*sorting_context=*/0);
+                       /*blend=*/SkBlendMode::kSrcOver, /*sorting_context=*/0,
+                       /*layer_id=*/0u, /*fast_rounded_corner=*/false);
 
     SolidColorDrawQuad* solid_quad =
         render_pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
@@ -530,6 +532,10 @@ void RootCompositorFrameSinkImpl::SetWantsBeginFrameAcks() {
   support_->SetWantsBeginFrameAcks();
 }
 
+void RootCompositorFrameSinkImpl::SetAutoNeedsBeginFrame() {
+  support_->SetAutoNeedsBeginFrame();
+}
+
 void RootCompositorFrameSinkImpl::SubmitCompositorFrame(
     const LocalSurfaceId& local_surface_id,
     CompositorFrame frame,
@@ -707,14 +713,13 @@ void RootCompositorFrameSinkImpl::DisplayDidCompleteSwapWithSize(
 #if BUILDFLAG(IS_ANDROID)
   if (display_client_ && enable_swap_competion_callback_)
     display_client_->DidCompleteSwapWithSize(pixel_size);
-// TODO(crbug.com/1052397): Revisit the macro expression once build flag switch
-// of lacros-chrome is complete.
-#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS_LACROS)
+#elif BUILDFLAG(IS_LINUX) && BUILDFLAG(IS_OZONE_X11)
   if (display_client_ && pixel_size != last_swap_pixel_size_) {
     last_swap_pixel_size_ = pixel_size;
     display_client_->DidCompleteSwapWithNewSize(last_swap_pixel_size_);
   }
-#else
+#else  // !BUILDFLAG(IS_ANDROID) && !(BUILDFLAG(IS_LINUX) &&
+       // BUILDFLAG(IS_OZONE_X11))
   NOTREACHED();
 #endif
 }

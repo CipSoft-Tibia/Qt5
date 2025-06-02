@@ -59,6 +59,10 @@
 #include "third_party/skia/include/ports/SkFontConfigInterface.h"
 #endif
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#include "content/child/sandboxed_process_thread_type_handler.h"
+#endif
+
 namespace content {
 namespace {
 
@@ -144,6 +148,10 @@ void GpuChildThread::Init(const base::TimeTicks& process_start_time) {
 
   viz_main_.gpu_service()->set_start_time(process_start_time);
 
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  SandboxedProcessThreadTypeHandler::NotifyMainChildThreadCreated();
+#endif
+
   // When running in in-process mode, this has been set in the browser at
   // ChromeBrowserMainPartsAndroid::PreMainMessageLoopRun().
 #if BUILDFLAG(IS_ANDROID)
@@ -175,6 +183,12 @@ void GpuChildThread::OnInitializationFailed() {
   OnChannelError();
 }
 
+void GpuChildThread::OnGpuChannelManagerCreated(gpu::GpuChannelManager* manager) {
+#if BUILDFLAG(IS_QTWEBENGINE)
+  manager->set_share_group(GetContentClient()->gpu()->GetInProcessGpuShareGroup());
+#endif
+}
+
 void GpuChildThread::OnGpuServiceConnection(viz::GpuServiceImpl* gpu_service) {
   media::AndroidOverlayMojoFactoryCB overlay_factory_cb;
 #if BUILDFLAG(IS_ANDROID)
@@ -183,10 +197,6 @@ void GpuChildThread::OnGpuServiceConnection(viz::GpuServiceImpl* gpu_service) {
                           base::SingleThreadTaskRunner::GetCurrentDefault());
   gpu_service->media_gpu_channel_manager()->SetOverlayFactory(
       overlay_factory_cb);
-#endif
-
-#if defined(TOOLKIT_QT)
-  gpu_channel_manager()->set_share_group(GetContentClient()->gpu()->GetInProcessGpuShareGroup());
 #endif
 
   if (!IsInBrowserProcess()) {

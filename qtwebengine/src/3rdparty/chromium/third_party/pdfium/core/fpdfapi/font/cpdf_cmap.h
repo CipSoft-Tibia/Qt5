@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "core/fpdfapi/font/cpdf_cidfont.h"
-#include "core/fxcrt/fixed_zeroed_data_vector.h"
+#include "core/fxcrt/fixed_size_data_vector.h"
 #include "core/fxcrt/retain_ptr.h"
 #include "core/fxcrt/unowned_ptr.h"
 #include "third_party/base/containers/span.h"
@@ -77,9 +77,9 @@ class CPDF_CMap final : public Retainable {
   CIDSet GetCharset() const { return m_Charset; }
   void SetCharset(CIDSet set) { m_Charset = set; }
 
-  void SetDirectCharcodeToCIDTable(size_t idx, uint16_t val) {
-    m_DirectCharcodeToCIDTable.writable_span()[idx] = val;
-  }
+  void SetDirectCharcodeToCIDTableRange(uint32_t start_code,
+                                        uint32_t end_code,
+                                        uint16_t start_cid);
   bool IsDirectCharcodeToCIDTableIsEmpty() const {
     return m_DirectCharcodeToCIDTable.empty();
   }
@@ -96,7 +96,7 @@ class CPDF_CMap final : public Retainable {
   CIDCoding m_Coding = CIDCoding::kUNKNOWN;
   std::vector<bool> m_MixedTwoByteLeadingBytes;
   std::vector<CodeRange> m_MixedFourByteLeadingRanges;
-  FixedZeroedDataVector<uint16_t> m_DirectCharcodeToCIDTable;
+  FixedSizeDataVector<uint16_t> m_DirectCharcodeToCIDTable;
   std::vector<CIDRange> m_AdditionalCharcodeToCIDMappings;
   UnownedPtr<const fxcmap::CMap> m_pEmbedMap;
 };

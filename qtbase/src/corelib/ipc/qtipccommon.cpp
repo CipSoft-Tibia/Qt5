@@ -244,6 +244,8 @@ QNativeIpcKey QtIpcCommon::platformSafeKey(const QString &key, QtIpcCommon::IpcT
     \since 6.6
     \brief The QNativeIpcKey class holds a native key used by QSystemSemaphore and QSharedMemory.
 
+    \compares equality
+
     The \l QSharedMemory and \l QSystemSemaphore classes identify their
     resource using a system-wide identifier known as a "key". The low-level key
     value as well as the key type are encapsulated in Qt using the \l
@@ -422,9 +424,7 @@ void QNativeIpcKey::destroy_internal() noexcept
 
 /*!
     \fn QNativeIpcKey::swap(QNativeIpcKey &other) noexcept
-
-    Swaps the native IPC key and type \a other with this object.
-    This operation is very fast and never fails.
+    \memberswap{native IPC key and type}
 */
 
 /*!
@@ -497,15 +497,8 @@ void QNativeIpcKey::setNativeKey_internal(const QString &)
 }
 
 /*!
-    \fn size_t QNativeIpcKey::qHash(const QNativeIpcKey &ipcKey) noexcept
-
-    Returns the hash value for \a ipcKey, using a default seed of \c 0.
-*/
-
-/*!
-    \fn size_t QNativeIpcKey::qHash(const QNativeIpcKey &ipcKey, size_t seed) noexcept
-
-    Returns the hash value for \a ipcKey, using \a seed to seed the calculation.
+    \fn size_t QNativeIpcKey::qHash(const QNativeIpcKey &key, size_t seed)
+    \qhash{QNativeIpcKey}
 */
 size_t qHash(const QNativeIpcKey &ipcKey, size_t seed) noexcept
 {

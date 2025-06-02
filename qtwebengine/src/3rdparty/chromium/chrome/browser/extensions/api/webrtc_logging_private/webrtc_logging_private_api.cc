@@ -16,7 +16,7 @@
 #include "base/supports_user_data.h"
 #include "build/build_config.h"
 #include "chrome/browser/extensions/api/tabs/tabs_constants.h"
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/browser/extensions/extension_tab_util.h"
 #endif
 #include "chrome/browser/profiles/profile.h"
@@ -108,15 +108,6 @@ content::RenderProcessHost* WebrtcLoggingPrivateFunction::RphFromRequest(
   if (request.target_webview && *request.target_webview) {
     content::RenderProcessHost* target_host = nullptr;
     int guests_found = 0;
-    auto get_guest = [](int* guests_found,
-                        content::RenderProcessHost** target_host,
-                        content::WebContents* guest_contents) {
-      *guests_found = *guests_found + 1;
-      *target_host = guest_contents->GetPrimaryMainFrame()->GetProcess();
-      // Don't short-circuit, so we can count how many other guest contents
-      // there are.
-      return false;
-    };
     auto* guest_view_manager =
         guest_view::GuestViewManager::FromBrowserContext(browser_context());
     if (!guest_view_manager) {
@@ -126,8 +117,13 @@ content::RenderProcessHost* WebrtcLoggingPrivateFunction::RphFromRequest(
       return nullptr;
     }
     guest_view_manager->ForEachGuest(
-        GetSenderWebContents(),
-        base::BindRepeating(get_guest, &guests_found, &target_host));
+        GetSenderWebContents(), [&](content::WebContents* guest_contents) {
+          ++guests_found;
+          target_host = guest_contents->GetPrimaryMainFrame()->GetProcess();
+          // Don't short-circuit, so we can count how many other guest contents
+          // there are.
+          return false;
+        });
     if (!target_host) {
       *error = "No webview render process found";
       return nullptr;
@@ -159,7 +155,7 @@ content::RenderProcessHost* WebrtcLoggingPrivateFunction::RphFromRequest(
     return nullptr;
   }
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
   int tab_id = *request.tab_id;
   content::WebContents* contents = nullptr;
   if (!ExtensionTabUtil::GetTabById(tab_id, browser_context(), true,
@@ -190,7 +186,7 @@ content::RenderProcessHost* WebrtcLoggingPrivateFunction::RphFromRequest(
   return rph;
 #else
   return nullptr;
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 WebRtcLoggingController*
@@ -261,7 +257,7 @@ void WebrtcLoggingPrivateFunctionWithRecordingDoneCallback::FireCallback(
 
 ExtensionFunction::ResponseAction
 WebrtcLoggingPrivateSetMetaDataFunction::Run() {
-  absl::optional<SetMetaData::Params> params =
+  std::optional<SetMetaData::Params> params =
       SetMetaData::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -282,7 +278,7 @@ WebrtcLoggingPrivateSetMetaDataFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction WebrtcLoggingPrivateStartFunction::Run() {
-  absl::optional<Start::Params> params = Start::Params::Create(args());
+  std::optional<Start::Params> params = Start::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   WebRtcLoggingController::GenericDoneCallback callback;
@@ -298,8 +294,8 @@ ExtensionFunction::ResponseAction WebrtcLoggingPrivateStartFunction::Run() {
 
 ExtensionFunction::ResponseAction
 WebrtcLoggingPrivateSetUploadOnRenderCloseFunction::Run() {
-#if !defined(TOOLKIT_QT)
-  absl::optional<SetUploadOnRenderClose::Params> params =
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  std::optional<SetUploadOnRenderClose::Params> params =
       SetUploadOnRenderClose::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -316,11 +312,11 @@ WebrtcLoggingPrivateSetUploadOnRenderCloseFunction::Run() {
   return RespondNow(NoArguments());
 #else
   return RespondNow(Error("Uploading log is not supported by QtWebEngine"));
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 ExtensionFunction::ResponseAction WebrtcLoggingPrivateStopFunction::Run() {
-  absl::optional<Stop::Params> params = Stop::Params::Create(args());
+  std::optional<Stop::Params> params = Stop::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   WebRtcLoggingController::GenericDoneCallback callback;
@@ -335,7 +331,7 @@ ExtensionFunction::ResponseAction WebrtcLoggingPrivateStopFunction::Run() {
 }
 
 ExtensionFunction::ResponseAction WebrtcLoggingPrivateStoreFunction::Run() {
-  absl::optional<Store::Params> params = Store::Params::Create(args());
+  std::optional<Store::Params> params = Store::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   WebRtcLoggingController::GenericDoneCallback callback;
@@ -354,8 +350,8 @@ ExtensionFunction::ResponseAction WebrtcLoggingPrivateStoreFunction::Run() {
 
 ExtensionFunction::ResponseAction
 WebrtcLoggingPrivateUploadStoredFunction::Run() {
-#if !defined(TOOLKIT_QT)
-  absl::optional<UploadStored::Params> params =
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  std::optional<UploadStored::Params> params =
       UploadStored::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -375,12 +371,12 @@ WebrtcLoggingPrivateUploadStoredFunction::Run() {
   return RespondLater();
 #else
   return RespondNow(Error("Uploading log is not supported by QtWebEngine"));
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 ExtensionFunction::ResponseAction WebrtcLoggingPrivateUploadFunction::Run() {
-#if !defined(TOOLKIT_QT)
-  absl::optional<Upload::Params> params = Upload::Params::Create(args());
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  std::optional<Upload::Params> params = Upload::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   std::string error;
@@ -396,11 +392,11 @@ ExtensionFunction::ResponseAction WebrtcLoggingPrivateUploadFunction::Run() {
   return RespondLater();
 #else
   return RespondNow(Error("Uploading log is not supported by QtWebEngine"));
-#endif // !defined(TOOLKIT_QT)
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 
 ExtensionFunction::ResponseAction WebrtcLoggingPrivateDiscardFunction::Run() {
-  absl::optional<Discard::Params> params = Discard::Params::Create(args());
+  std::optional<Discard::Params> params = Discard::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
   WebRtcLoggingController::GenericDoneCallback callback;
@@ -416,7 +412,7 @@ ExtensionFunction::ResponseAction WebrtcLoggingPrivateDiscardFunction::Run() {
 
 ExtensionFunction::ResponseAction
 WebrtcLoggingPrivateStartRtpDumpFunction::Run() {
-  absl::optional<StartRtpDump::Params> params =
+  std::optional<StartRtpDump::Params> params =
       StartRtpDump::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -449,7 +445,7 @@ WebrtcLoggingPrivateStartRtpDumpFunction::Run() {
 
 ExtensionFunction::ResponseAction
 WebrtcLoggingPrivateStopRtpDumpFunction::Run() {
-  absl::optional<StopRtpDump::Params> params =
+  std::optional<StopRtpDump::Params> params =
       StopRtpDump::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -486,7 +482,7 @@ WebrtcLoggingPrivateStartAudioDebugRecordingsFunction::Run() {
     return RespondNow(Error(""));
   }
 
-  absl::optional<StartAudioDebugRecordings::Params> params =
+  std::optional<StartAudioDebugRecordings::Params> params =
       StartAudioDebugRecordings::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -523,7 +519,7 @@ WebrtcLoggingPrivateStopAudioDebugRecordingsFunction::Run() {
     return RespondNow(Error(""));
   }
 
-  absl::optional<StopAudioDebugRecordings::Params> params =
+  std::optional<StopAudioDebugRecordings::Params> params =
       StopAudioDebugRecordings::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 
@@ -551,7 +547,7 @@ WebrtcLoggingPrivateStopAudioDebugRecordingsFunction::Run() {
 
 ExtensionFunction::ResponseAction
 WebrtcLoggingPrivateStartEventLoggingFunction::Run() {
-  absl::optional<StartEventLogging::Params> params =
+  std::optional<StartEventLogging::Params> params =
       StartEventLogging::Params::Create(args());
   EXTENSION_FUNCTION_VALIDATE(params);
 

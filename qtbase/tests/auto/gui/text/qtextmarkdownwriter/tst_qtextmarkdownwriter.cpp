@@ -36,6 +36,7 @@ private slots:
     void testWriteNestedNumericLists();
     void testWriteNumericListWithStart();
     void testWriteTable();
+    void frontMatter();
     void charFormatWrapping_data();
     void charFormatWrapping();
     void charFormat_data();
@@ -535,6 +536,19 @@ void tst_QTextMarkdownWriter::testWriteTable()
     QCOMPARE(md, expected);
 }
 
+void tst_QTextMarkdownWriter::frontMatter()
+{
+    QTextCursor cursor(document);
+    cursor.insertText("bar");
+    document->setMetaInformation(QTextDocument::FrontMatter, "foo");
+
+    const QString output = documentToUnixMarkdown();
+    const QString expectedOutput("---\nfoo\n---\nbar\n\n");
+    if (output != expectedOutput && isMainFontFixed())
+        QEXPECT_FAIL("", "fixed-pitch main font (QTBUG-103484)", Continue);
+    QCOMPARE(output, expectedOutput);
+}
+
 void tst_QTextMarkdownWriter::charFormatWrapping_data()
 {
     QTest::addColumn<QTextFormat::Property>("property");
@@ -745,6 +759,7 @@ void tst_QTextMarkdownWriter::rewriteDocument_data()
     QTest::newRow("word wrap") << "wordWrap.md";
     QTest::newRow("links") << "links.md";
     QTest::newRow("lists and code blocks") << "listsAndCodeBlocks.md";
+    QTest::newRow("front matter") << "yaml.md";
     QTest::newRow("long headings") << "longHeadings.md";
 }
 
@@ -888,7 +903,7 @@ void tst_QTextMarkdownWriter::fromPlainTextAndBack_data()
             R"(!"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~)";
     // https://spec.commonmark.org/0.31.2/#example-13
     QTest::newRow("literal backslashes") <<
-            QString::fromUtf16(uR"(\→\A\a\ \3\φ\«)") <<
+            QString(uR"(\→\A\a\ \3\φ\«)") <<
             "\\\\\u2192\\\\A\\\\a\\\\ \\\\3\\\\\u03C6\\\\\u00AB";
     // https://spec.commonmark.org/0.31.2/#example-14
     QTest::newRow("escape to avoid em") <<

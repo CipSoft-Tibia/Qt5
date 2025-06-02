@@ -6,8 +6,8 @@
 #define QUICHE_QUIC_CORE_QUIC_INTERVAL_DEQUE_H_
 
 #include <algorithm>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "quiche/quic/core/quic_interval.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
@@ -138,9 +138,9 @@ class QuicIntervalDequePeer;
 //   //   container -> {{2, [25, 30)}, {3, [35, 50)}}
 
 template <class T, class C = quiche::QuicheCircularDeque<T>>
-class QUIC_NO_EXPORT QuicIntervalDeque {
+class QUICHE_NO_EXPORT QuicIntervalDeque {
  public:
-  class QUIC_NO_EXPORT Iterator {
+  class QUICHE_NO_EXPORT Iterator {
    public:
     // Used by |std::lower_bound|
     using iterator_category = std::forward_iterator_tag;
@@ -167,7 +167,7 @@ class QUIC_NO_EXPORT QuicIntervalDeque {
       }
       index_++;
       if (deque_->cached_index_.has_value()) {
-        const std::size_t cached_index = deque_->cached_index_.value();
+        const std::size_t cached_index = *deque_->cached_index_;
         // If all items are iterated then reset the |cached_index_|
         if (index_ == container_size) {
           deque_->cached_index_.reset();
@@ -243,7 +243,7 @@ class QUIC_NO_EXPORT QuicIntervalDeque {
   bool Empty() const;
 
  private:
-  struct QUIC_NO_EXPORT IntervalCompare {
+  struct QUICHE_NO_EXPORT IntervalCompare {
     bool operator()(const T& item, std::size_t interval_begin) const {
       return item.interval().max() <= interval_begin;
     }
@@ -259,7 +259,7 @@ class QUIC_NO_EXPORT QuicIntervalDeque {
   friend class test::QuicIntervalDequePeer;
 
   C container_;
-  absl::optional<std::size_t> cached_index_;
+  std::optional<std::size_t> cached_index_;
 };
 
 template <class T, class C>
@@ -286,7 +286,7 @@ void QuicIntervalDeque<T, C>::PopFront() {
     cached_index_.reset();
   }
   if (cached_index_.value_or(0) > 0) {
-    cached_index_ = cached_index_.value() - 1;
+    cached_index_ = *cached_index_ - 1;
   }
 }
 
@@ -309,7 +309,7 @@ typename QuicIntervalDeque<T, C>::Iterator QuicIntervalDeque<T, C>::DataAt(
     return Search(interval_begin, 0, container_.size());
   }
 
-  const std::size_t cached_index = cached_index_.value();
+  const std::size_t cached_index = *cached_index_;
   QUICHE_DCHECK(cached_index < container_.size());
 
   const QuicInterval<size_t> cached_interval =

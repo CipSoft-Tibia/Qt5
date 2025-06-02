@@ -171,6 +171,15 @@ class FrameWriter {
                                                iterator);
   }
 
+  void PushFeedbackVectorForMaterialization(
+      const TranslatedFrame::iterator& iterator) {
+    // Push a marker temporarily.
+    PushRawObject(ReadOnlyRoots(deoptimizer_->isolate()).arguments_marker(),
+                  "feedback vector");
+    deoptimizer_->QueueFeedbackVectorForMaterialization(
+        output_address(top_offset_), iterator);
+  }
+
   void PushStackJSArguments(TranslatedFrame::iterator& iterator,
                             int parameters_count) {
     std::vector<TranslatedFrame::iterator> parameters;
@@ -248,7 +257,7 @@ class FrameWriter {
 Deoptimizer* Deoptimizer::New(Address raw_function, DeoptimizeKind kind,
                               Address from, int fp_to_sp_delta,
                               Isolate* isolate) {
-  Tagged<JSFunction> function = JSFunction::cast(Object(raw_function));
+  Tagged<JSFunction> function = JSFunction::cast(Tagged<Object>(raw_function));
   Deoptimizer* deoptimizer =
       new Deoptimizer(isolate, function, kind, from, fp_to_sp_delta);
   isolate->set_current_deoptimizer(deoptimizer);
@@ -325,7 +334,11 @@ class ActivationsFinder : public ThreadVisitor {
                 SafepointTable::FindEntry(isolate, code, it.frame()->pc());
             trampoline_pc = safepoint.trampoline_pc();
           }
-          DCHECK_IMPLIES(code == topmost_, safe_to_deopt_);
+          // TODO(saelo): currently we have to use full pointer comparison as
+          // builtin Code is still inside the sandbox while runtime-generated
+          // Code is in trusted space.
+          static_assert(!kAllCodeObjectsLiveInTrustedSpace);
+          DCHECK_IMPLIES(code.SafeEquals(topmost_), safe_to_deopt_);
           static_assert(SafepointEntry::kNoTrampolinePC == -1);
           CHECK_GE(trampoline_pc, 0);
           // Replace the current pc on the stack with the trampoline.
@@ -340,7 +353,7 @@ class ActivationsFinder : public ThreadVisitor {
 
  private:
 #ifdef DEBUG
-  GcSafeCode topmost_;
+  Tagged<GcSafeCode> topmost_;
   bool safe_to_deopt_;
 #endif
 };
@@ -422,8 +435,12 @@ void Deoptimizer::DeoptimizeFunction(Tagged<JSFunction> function,
   RCS_SCOPE(isolate, RuntimeCallCounterId::kDeoptimizeCode);
   TimerEventScope<TimerEventDeoptimizeCode> timer(isolate);
   TRACE_EVENT0("v8", "V8.DeoptimizeCode");
-  function->ResetIfCodeFlushed();
-  if (code.is_null()) code = function->code();
+  if (v8_flags.profile_guided_optimization) {
+    function->shared()->set_cached_tiering_decision(
+        CachedTieringDecision::kNormal);
+  }
+  function->ResetIfCodeFlushed(isolate);
+  if (code.is_null()) code = function->code(isolate);
 
   if (CodeKindCanDeoptimize(code->kind())) {
     // Mark the code for deoptimization and unlink any functions that also
@@ -895,9 +912,12 @@ void Deoptimizer::DoComputeOutputFrames() {
   // deoptimized.
   bool osr_early_exit = Deoptimizer::GetDeoptInfo().deopt_reason ==
                         DeoptimizeReason::kOSREarlyExit;
+  // TODO(saelo): We have to use full pointer comparisons here while not all
+  // Code objects have been migrated into trusted space.
+  static_assert(!kAllCodeObjectsLiveInTrustedSpace);
   if (IsJSFunction(function_) &&
       (compiled_code_->osr_offset().IsNone()
-           ? function_->code() == compiled_code_
+           ? function_->code(isolate()).SafeEquals(compiled_code_)
            : (!osr_early_exit &&
               DeoptExitIsInsideOsrLoop(isolate(), function_,
                                        bytecode_offset_in_outermost_frame_,
@@ -1012,9 +1032,10 @@ void Deoptimizer::DoComputeUnoptimizedFrame(TranslatedFrame* translated_frame,
   TranslatedFrame::iterator function_iterator = value_iterator++;
 
   Tagged<BytecodeArray> bytecode_array;
-  base::Optional<DebugInfo> debug_info = shared->TryGetDebugInfo(isolate());
-  if (debug_info.has_value() && debug_info->HasBreakInfo()) {
-    bytecode_array = debug_info->DebugBytecodeArray();
+  base::Optional<Tagged<DebugInfo>> debug_info =
+      shared->TryGetDebugInfo(isolate());
+  if (debug_info.has_value() && debug_info.value()->HasBreakInfo()) {
+    bytecode_array = debug_info.value()->DebugBytecodeArray(isolate());
   } else {
     bytecode_array = shared->GetBytecodeArray(isolate());
   }
@@ -1171,6 +1192,9 @@ void Deoptimizer::DoComputeUnoptimizedFrame(TranslatedFrame* translated_frame,
   Tagged<Smi> smi_bytecode_offset = Smi::FromInt(raw_bytecode_offset);
   frame_writer.PushRawObject(smi_bytecode_offset, "bytecode offset\n");
 
+  // We need to materialize the closure before getting the feedback vector.
+  frame_writer.PushFeedbackVectorForMaterialization(function_iterator);
+
   if (verbose_tracing_enabled()) {
     PrintF(trace_scope()->file(), "    -------------------------\n");
   }
@@ -1229,7 +1253,8 @@ void Deoptimizer::DoComputeUnoptimizedFrame(TranslatedFrame* translated_frame,
       // the exception (which lives in the result register).
       intptr_t accumulator_value =
           input_->GetRegister(kInterpreterAccumulatorRegister.code());
-      frame_writer.PushRawObject(Object(accumulator_value), "accumulator\n");
+      frame_writer.PushRawObject(Tagged<Object>(accumulator_value),
+                                 "accumulator\n");
     } else {
       // If we are lazily deoptimizing make sure we store the deopt
       // return value into the appropriate slot.
@@ -1278,7 +1303,8 @@ void Deoptimizer::DoComputeUnoptimizedFrame(TranslatedFrame* translated_frame,
 
   // Clear the context register. The context might be a de-materialized object
   // and will be materialized by {Runtime_NotifyDeoptimized}. For additional
-  // safety we use Smi(0) instead of the potential {arguments_marker} here.
+  // safety we use Tagged<Smi>(0) instead of the potential {arguments_marker}
+  // here.
   if (is_topmost) {
     intptr_t context_value = static_cast<intptr_t>(Smi::zero().ptr());
     Register context_reg = JavaScriptFrame::context_register();
@@ -1491,7 +1517,8 @@ void Deoptimizer::DoComputeConstructCreateStubFrame(
 
   // Clear the context register. The context might be a de-materialized object
   // and will be materialized by {Runtime_NotifyDeoptimized}. For additional
-  // safety we use Smi(0) instead of the potential {arguments_marker} here.
+  // safety we use Tagged<Smi>(0) instead of the potential {arguments_marker}
+  // here.
   if (is_topmost) {
     intptr_t context_value = static_cast<intptr_t>(Smi::zero().ptr());
     Register context_reg = JavaScriptFrame::context_register();
@@ -1621,7 +1648,8 @@ void Deoptimizer::DoComputeConstructInvokeStubFrame(
 
   // Clear the context register. The context might be a de-materialized object
   // and will be materialized by {Runtime_NotifyDeoptimized}. For additional
-  // safety we use Smi(0) instead of the potential {arguments_marker} here.
+  // safety we use Tagged<Smi>(0) instead of the potential {arguments_marker}
+  // here.
   if (is_topmost) {
     intptr_t context_value = static_cast<intptr_t>(Smi::zero().ptr());
     Register context_reg = JavaScriptFrame::context_register();
@@ -1907,7 +1935,7 @@ void Deoptimizer::DoComputeBuiltinContinuation(
       case BuiltinContinuationMode::JAVASCRIPT_HANDLE_EXCEPTION: {
         intptr_t accumulator_value =
             input_->GetRegister(kInterpreterAccumulatorRegister.code());
-        frame_writer.PushRawObject(Object(accumulator_value),
+        frame_writer.PushRawObject(Tagged<Object>(accumulator_value),
                                    "exception (from accumulator)\n");
       } break;
     }
@@ -2040,7 +2068,8 @@ void Deoptimizer::DoComputeBuiltinContinuation(
 
   // Clear the context register. The context might be a de-materialized object
   // and will be materialized by {Runtime_NotifyDeoptimized}. For additional
-  // safety we use Smi(0) instead of the potential {arguments_marker} here.
+  // safety we use Tagged<Smi>(0) instead of the potential {arguments_marker}
+  // here.
   if (is_topmost) {
     intptr_t context_value = static_cast<intptr_t>(Smi::zero().ptr());
     Register context_reg = JavaScriptFrame::context_register();
@@ -2101,6 +2130,16 @@ void Deoptimizer::MaterializeHeapObjects() {
         (*value).ptr();
   }
 
+  for (auto& fbv_materialization : feedback_vector_to_materialize_) {
+    Handle<Object> closure = fbv_materialization.value_->GetValue();
+    DCHECK(IsJSFunction(*closure));
+    Tagged<Object> feedback_vector =
+        Tagged<JSFunction>::cast(*closure)->raw_feedback_cell()->value();
+    CHECK(IsFeedbackVector(feedback_vector));
+    *(reinterpret_cast<Address*>(fbv_materialization.output_slot_address_)) =
+        feedback_vector.ptr();
+  }
+
   translated_state_.VerifyMaterializedObjects();
 
   bool feedback_updated = translated_state_.DoUpdateFeedback();
@@ -2123,6 +2162,11 @@ void Deoptimizer::QueueValueForMaterialization(
   if (obj == ReadOnlyRoots(isolate_).arguments_marker()) {
     values_to_materialize_.push_back({output_address, iterator});
   }
+}
+
+void Deoptimizer::QueueFeedbackVectorForMaterialization(
+    Address output_address, const TranslatedFrame::iterator& iterator) {
+  feedback_vector_to_materialize_.push_back({output_address, iterator});
 }
 
 unsigned Deoptimizer::ComputeInputFrameAboveFpFixedSize() const {

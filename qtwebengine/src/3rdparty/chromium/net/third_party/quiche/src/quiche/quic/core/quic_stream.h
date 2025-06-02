@@ -20,10 +20,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <list>
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "quiche/quic/core/frames/quic_rst_stream_frame.h"
 #include "quiche/quic/core/quic_error_codes.h"
@@ -50,7 +50,7 @@ class QuicSession;
 class QuicStream;
 
 // Buffers frames for a stream until the first byte of that frame arrives.
-class QUIC_EXPORT_PRIVATE PendingStream
+class QUICHE_EXPORT PendingStream
     : public QuicStreamSequencer::StreamInterface {
  public:
   PendingStream(QuicStreamId id, QuicSession* session);
@@ -86,7 +86,7 @@ class QUIC_EXPORT_PRIVATE PendingStream
   void OnStopSending(QuicResetStreamError stop_sending_error_code);
 
   // The error code received from QuicStopSendingFrame (if any).
-  const absl::optional<QuicResetStreamError>& GetStopSendingErrorCode() const {
+  const std::optional<QuicResetStreamError>& GetStopSendingErrorCode() const {
     return stop_sending_error_code_;
   }
 
@@ -100,6 +100,8 @@ class QUIC_EXPORT_PRIVATE PendingStream
   // Tells the sequencer to ignore all incoming data itself and not call
   // OnDataAvailable().
   void StopReading();
+
+  QuicTime creation_time() const { return creation_time_; }
 
  private:
   friend class QuicStream;
@@ -132,11 +134,12 @@ class QUIC_EXPORT_PRIVATE PendingStream
   // Stores the buffered frames.
   QuicStreamSequencer sequencer_;
   // The error code received from QuicStopSendingFrame (if any).
-  absl::optional<QuicResetStreamError> stop_sending_error_code_;
+  std::optional<QuicResetStreamError> stop_sending_error_code_;
+  // The time when this pending stream is created.
+  const QuicTime creation_time_;
 };
 
-class QUIC_EXPORT_PRIVATE QuicStream
-    : public QuicStreamSequencer::StreamInterface {
+class QUICHE_EXPORT QuicStream : public QuicStreamSequencer::StreamInterface {
  public:
   // Creates a new stream with stream_id |id| associated with |session|. If
   // |is_static| is true, then the stream will be given precedence
@@ -391,6 +394,12 @@ class QUIC_EXPORT_PRIVATE QuicStream
     stream_contributes_to_connection_flow_control_ = false;
   }
 
+  // Returns the min of stream level flow control window size and connection
+  // level flow control window size.
+  QuicByteCount CalculateSendWindowSize() const;
+
+  const QuicTime::Delta pending_duration() const { return pending_duration_; }
+
  protected:
   // Called when data of [offset, offset + data_length] is buffered in send
   // buffer.
@@ -437,7 +446,7 @@ class QUIC_EXPORT_PRIVATE QuicStream
   // Send RESET_STREAM if it hasn't been sent yet.
   void MaybeSendRstStream(QuicResetStreamError error);
 
-  // Convenience warppers for two methods above.
+  // Convenience wrappers for two methods above.
   void MaybeSendRstStream(QuicRstStreamErrorCode error) {
     MaybeSendRstStream(QuicResetStreamError::FromInternal(error));
   }
@@ -475,9 +484,9 @@ class QUIC_EXPORT_PRIVATE QuicStream
   // RFC 9000.
   virtual void OnWriteSideInDataRecvdState() {}
 
-  // Return the current flow control send window in bytes.
-  absl::optional<QuicByteCount> GetSendWindow() const;
-  absl::optional<QuicByteCount> GetReceiveWindow() const;
+  // Return the current stream-level flow control send window in bytes.
+  std::optional<QuicByteCount> GetSendWindow() const;
+  std::optional<QuicByteCount> GetReceiveWindow() const;
 
  private:
   friend class test::QuicStreamPeer;
@@ -486,8 +495,9 @@ class QUIC_EXPORT_PRIVATE QuicStream
   QuicStream(QuicStreamId id, QuicSession* session,
              QuicStreamSequencer sequencer, bool is_static, StreamType type,
              uint64_t stream_bytes_read, bool fin_received,
-             absl::optional<QuicFlowController> flow_controller,
-             QuicFlowController* connection_flow_controller);
+             std::optional<QuicFlowController> flow_controller,
+             QuicFlowController* connection_flow_controller,
+             QuicTime::Delta pending_duration);
 
   // Calls MaybeSendBlocked on the stream's flow controller and the connection
   // level flow controller.  If the stream is flow control blocked by the
@@ -557,7 +567,7 @@ class QUIC_EXPORT_PRIVATE QuicStream
   // True if the stream has sent STOP_SENDING to the session.
   bool stop_sending_sent_;
 
-  absl::optional<QuicFlowController> flow_controller_;
+  std::optional<QuicFlowController> flow_controller_;
 
   // The connection level flow controller. Not owned.
   QuicFlowController* connection_flow_controller_;
@@ -598,6 +608,10 @@ class QUIC_EXPORT_PRIVATE QuicStream
 
   // Creation time of this stream, as reported by the QuicClock.
   const QuicTime creation_time_;
+
+  // The duration when the data for this stream was stored in a PendingStream
+  // before being moved to this QuicStream.
+  const QuicTime::Delta pending_duration_;
 
   Perspective perspective_;
 };

@@ -1,16 +1,29 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_COMMON_RESULT_H_
 #define SRC_DAWN_COMMON_RESULT_H_
@@ -20,6 +33,7 @@
 #include <memory>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include "dawn/common/Assert.h"
 #include "dawn/common/Compiler.h"
@@ -33,7 +47,7 @@ namespace dawn {
 // It is meant to be used as the return type of functions that might fail. The reason for the Empty
 // case is that a Result should never be discarded, only destructured (its error or success moved
 // out) or moved into a different Result. The Empty case tags Results that have been moved out and
-// Result's destructor should ASSERT on it being Empty.
+// Result's destructor should DAWN_ASSERT on it being Empty.
 //
 // Since C++ doesn't have efficient sum types for the special cases we care about, we provide
 // template specializations for them.
@@ -211,7 +225,7 @@ class [[nodiscard]] Result<Ref<T>, E> {
 template <typename T, typename E>
 class [[nodiscard]] Result {
   public:
-    Result(T&& success);
+    Result(T success);
     Result(std::unique_ptr<E> error);
 
     Result(Result<T, E>&& other);
@@ -222,19 +236,11 @@ class [[nodiscard]] Result {
     bool IsError() const;
     bool IsSuccess() const;
 
-    T&& AcquireSuccess();
+    T AcquireSuccess();
     std::unique_ptr<E> AcquireError();
 
   private:
-    enum PayloadType {
-        Success = 0,
-        Error = 1,
-        Acquired = 2,
-    };
-    PayloadType mType;
-
-    std::unique_ptr<E> mError;
-    T mSuccess;
+    std::variant<std::monostate, T, std::unique_ptr<E>> mPayload;
 };
 
 // Implementation of Result<void, E>
@@ -249,14 +255,14 @@ Result<void, E>::Result(Result<void, E>&& other) : mError(std::move(other.mError
 
 template <typename E>
 Result<void, E>& Result<void, E>::operator=(Result<void, E>&& other) {
-    ASSERT(mError == nullptr);
+    DAWN_ASSERT(mError == nullptr);
     mError = std::move(other.mError);
     return *this;
 }
 
 template <typename E>
 Result<void, E>::~Result() {
-    ASSERT(mError == nullptr);
+    DAWN_ASSERT(mError == nullptr);
 }
 
 template <typename E>
@@ -282,13 +288,13 @@ namespace detail {
 
 template <typename T>
 T* GetSuccessFromPayload(intptr_t payload) {
-    ASSERT(GetPayloadType(payload) == Success);
+    DAWN_ASSERT(GetPayloadType(payload) == Success);
     return reinterpret_cast<T*>(payload);
 }
 
 template <typename E>
 E* GetErrorFromPayload(intptr_t payload) {
-    ASSERT(GetPayloadType(payload) == Error);
+    DAWN_ASSERT(GetPayloadType(payload) == Error);
     return reinterpret_cast<E*>(payload ^ 1);
 }
 
@@ -312,7 +318,7 @@ Result<T*, E>::Result(Result<TChild*, E>&& other) : mPayload(other.mPayload) {
 template <typename T, typename E>
 template <typename TChild>
 Result<T*, E>& Result<T*, E>::operator=(Result<TChild*, E>&& other) {
-    ASSERT(mPayload == detail::kEmptyPayload);
+    DAWN_ASSERT(mPayload == detail::kEmptyPayload);
     static_assert(std::is_same<T, TChild>::value || std::is_base_of<T, TChild>::value);
     mPayload = other.mPayload;
     other.mPayload = detail::kEmptyPayload;
@@ -321,7 +327,7 @@ Result<T*, E>& Result<T*, E>::operator=(Result<TChild*, E>&& other) {
 
 template <typename T, typename E>
 Result<T*, E>::~Result() {
-    ASSERT(mPayload == detail::kEmptyPayload);
+    DAWN_ASSERT(mPayload == detail::kEmptyPayload);
 }
 
 template <typename T, typename E>
@@ -364,7 +370,7 @@ Result<const T*, E>::Result(Result<const T*, E>&& other) : mPayload(other.mPaylo
 
 template <typename T, typename E>
 Result<const T*, E>& Result<const T*, E>::operator=(Result<const T*, E>&& other) {
-    ASSERT(mPayload == detail::kEmptyPayload);
+    DAWN_ASSERT(mPayload == detail::kEmptyPayload);
     mPayload = other.mPayload;
     other.mPayload = detail::kEmptyPayload;
     return *this;
@@ -372,7 +378,7 @@ Result<const T*, E>& Result<const T*, E>::operator=(Result<const T*, E>&& other)
 
 template <typename T, typename E>
 Result<const T*, E>::~Result() {
-    ASSERT(mPayload == detail::kEmptyPayload);
+    DAWN_ASSERT(mPayload == detail::kEmptyPayload);
 }
 
 template <typename T, typename E>
@@ -426,7 +432,7 @@ template <typename T, typename E>
 template <typename U>
 Result<Ref<U>, E>& Result<Ref<T>, E>::operator=(Result<Ref<U>, E>&& other) {
     static_assert(std::is_convertible<U*, T*>::value);
-    ASSERT(mPayload == detail::kEmptyPayload);
+    DAWN_ASSERT(mPayload == detail::kEmptyPayload);
     mPayload = other.mPayload;
     other.mPayload = detail::kEmptyPayload;
     return *this;
@@ -434,7 +440,7 @@ Result<Ref<U>, E>& Result<Ref<T>, E>::operator=(Result<Ref<U>, E>&& other) {
 
 template <typename T, typename E>
 Result<Ref<T>, E>::~Result() {
-    ASSERT(mPayload == detail::kEmptyPayload);
+    DAWN_ASSERT(mPayload == detail::kEmptyPayload);
 }
 
 template <typename T, typename E>
@@ -449,7 +455,7 @@ bool Result<Ref<T>, E>::IsSuccess() const {
 
 template <typename T, typename E>
 Ref<T> Result<Ref<T>, E>::AcquireSuccess() {
-    ASSERT(IsSuccess());
+    DAWN_ASSERT(IsSuccess());
     Ref<T> success = AcquireRef(detail::GetSuccessFromPayload<T>(mPayload));
     mPayload = detail::kEmptyPayload;
     return success;
@@ -457,7 +463,7 @@ Ref<T> Result<Ref<T>, E>::AcquireSuccess() {
 
 template <typename T, typename E>
 std::unique_ptr<E> Result<Ref<T>, E>::AcquireError() {
-    ASSERT(IsError());
+    DAWN_ASSERT(IsError());
     std::unique_ptr<E> error(detail::GetErrorFromPayload<E>(mPayload));
     mPayload = detail::kEmptyPayload;
     return std::move(error);
@@ -465,52 +471,52 @@ std::unique_ptr<E> Result<Ref<T>, E>::AcquireError() {
 
 // Implementation of Result<T, E>
 template <typename T, typename E>
-Result<T, E>::Result(T&& success) : mType(Success), mSuccess(std::move(success)) {}
+Result<T, E>::Result(T success) : mPayload(std::move(success)) {}
 
 template <typename T, typename E>
-Result<T, E>::Result(std::unique_ptr<E> error) : mType(Error), mError(std::move(error)) {}
+Result<T, E>::Result(std::unique_ptr<E> error) : mPayload(std::move(error)) {}
 
 template <typename T, typename E>
 Result<T, E>::~Result() {
-    ASSERT(mType == Acquired);
+    DAWN_ASSERT(std::holds_alternative<std::monostate>(mPayload));
 }
 
 template <typename T, typename E>
-Result<T, E>::Result(Result<T, E>&& other)
-    : mType(other.mType), mError(std::move(other.mError)), mSuccess(std::move(other.mSuccess)) {
-    other.mType = Acquired;
+Result<T, E>::Result(Result<T, E>&& other) {
+    *this = std::move(other);
 }
+
 template <typename T, typename E>
 Result<T, E>& Result<T, E>::operator=(Result<T, E>&& other) {
-    mType = other.mType;
-    mError = std::move(other.mError);
-    mSuccess = std::move(other.mSuccess);
-    other.mType = Acquired;
+    DAWN_ASSERT(std::holds_alternative<std::monostate>(mPayload));
+    std::swap(mPayload, other.mPayload);
     return *this;
 }
 
 template <typename T, typename E>
 bool Result<T, E>::IsError() const {
-    return mType == Error;
+    return std::holds_alternative<std::unique_ptr<E>>(mPayload);
 }
 
 template <typename T, typename E>
 bool Result<T, E>::IsSuccess() const {
-    return mType == Success;
+    return std::holds_alternative<T>(mPayload);
 }
 
 template <typename T, typename E>
-T&& Result<T, E>::AcquireSuccess() {
-    ASSERT(mType == Success);
-    mType = Acquired;
-    return std::move(mSuccess);
+T Result<T, E>::AcquireSuccess() {
+    DAWN_ASSERT(IsSuccess());
+    auto payload = std::move(mPayload);
+    mPayload = {};
+    return std::move(std::get<T>(payload));
 }
 
 template <typename T, typename E>
 std::unique_ptr<E> Result<T, E>::AcquireError() {
-    ASSERT(mType == Error);
-    mType = Acquired;
-    return std::move(mError);
+    DAWN_ASSERT(IsError());
+    auto payload = std::move(mPayload);
+    mPayload = {};
+    return std::move(std::get<std::unique_ptr<E>>(payload));
 }
 
 }  // namespace dawn

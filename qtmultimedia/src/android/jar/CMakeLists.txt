@@ -12,13 +12,17 @@ set(java_sources
     src/org/qtproject/qt/android/multimedia/QtVideoDeviceManager.java
     src/org/qtproject/qt/android/multimedia/QtMediaRecorderListener.java
     src/org/qtproject/qt/android/multimedia/QtMultimediaUtils.java
+    src/org/qtproject/qt/android/multimedia/QtScreenGrabber.java
+    src/org/qtproject/qt/android/multimedia/QtScreenCaptureService.java
     src/org/qtproject/qt/android/multimedia/QtSurfaceHolderCallback.java
     src/org/qtproject/qt/android/multimedia/QtSurfaceTextureHolder.java
     src/org/qtproject/qt/android/multimedia/QtSurfaceTextureListener.java
 )
 
 qt_internal_add_jar(Qt${QtMultimedia_VERSION_MAJOR}AndroidMultimedia
-    INCLUDE_JARS ${QT_ANDROID_JAR}
+    INCLUDE_JARS
+        ${QT_ANDROID_JAR}
+        ${QT6_INSTALL_PREFIX}/jar/Qt${QtMultimedia_VERSION_MAJOR}Android.jar
     SOURCES ${java_sources}
     OUTPUT_DIR "${QT_BUILD_DIR}/jar"
 )

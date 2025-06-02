@@ -81,6 +81,9 @@ class V8_EXPORT_PRIVATE LargeObjectSpace : public Space {
 
   std::unique_ptr<ObjectIterator> GetObjectIterator(Heap* heap) override;
 
+  void AddAllocationObserver(AllocationObserver* observer);
+  void RemoveAllocationObserver(AllocationObserver* observer);
+
 #ifdef VERIFY_HEAP
   void Verify(Isolate* isolate, SpaceVerificationVisitor* visitor) const final;
 #endif
@@ -138,30 +141,29 @@ class V8_EXPORT_PRIVATE LargeObjectSpace : public Space {
 
 class OldLargeObjectSpace : public LargeObjectSpace {
  public:
-  explicit OldLargeObjectSpace(Heap* heap);
+  V8_EXPORT_PRIVATE explicit OldLargeObjectSpace(Heap* heap);
 
   V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
-  AllocateRaw(int object_size);
-
-  V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
-  AllocateRawBackground(LocalHeap* local_heap, int object_size);
+  AllocateRaw(LocalHeap* local_heap, int object_size);
 
   void PromoteNewLargeObject(LargePage* page);
 
  protected:
   explicit OldLargeObjectSpace(Heap* heap, AllocationSpace id);
-  V8_WARN_UNUSED_RESULT AllocationResult AllocateRaw(int object_size,
+  V8_WARN_UNUSED_RESULT AllocationResult AllocateRaw(LocalHeap* local_heap,
+                                                     int object_size,
                                                      Executability executable);
-  V8_WARN_UNUSED_RESULT AllocationResult AllocateRawBackground(
-      LocalHeap* local_heap, int object_size, Executability executable);
 };
 
 class SharedLargeObjectSpace : public OldLargeObjectSpace {
  public:
   explicit SharedLargeObjectSpace(Heap* heap);
+};
 
-  V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
-  AllocateRawBackground(LocalHeap* local_heap, int object_size);
+// Similar to the TrustedSpace, but for large objects.
+class TrustedLargeObjectSpace : public OldLargeObjectSpace {
+ public:
+  explicit TrustedLargeObjectSpace(Heap* heap);
 };
 
 class NewLargeObjectSpace : public LargeObjectSpace {
@@ -169,7 +171,7 @@ class NewLargeObjectSpace : public LargeObjectSpace {
   NewLargeObjectSpace(Heap* heap, size_t capacity);
 
   V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
-  AllocateRaw(int object_size);
+  AllocateRaw(LocalHeap* local_heap, int object_size);
 
   // Available bytes for objects in this space.
   size_t Available() const override;
@@ -189,10 +191,7 @@ class CodeLargeObjectSpace : public OldLargeObjectSpace {
   explicit CodeLargeObjectSpace(Heap* heap);
 
   V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
-  AllocateRaw(int object_size);
-
-  V8_EXPORT_PRIVATE V8_WARN_UNUSED_RESULT AllocationResult
-  AllocateRawBackground(LocalHeap* local_heap, int object_size);
+  AllocateRaw(LocalHeap* local_heap, int object_size);
 
  protected:
   void AddPage(LargePage* page, size_t object_size) override;

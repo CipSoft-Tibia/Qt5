@@ -15,8 +15,10 @@
 // We mean it.
 
 #include <QQuickItem>
-#include <QtQuickShapes/private/qquickshape_p.h>
+#include <QtGraphs/qabstractseries.h>
 #include <QtQuick/private/qsgdefaultinternalrectanglenode_p.h>
+#include <QtQuickShapes/private/qquickshape_p.h>
+#include <QPainterPath>
 
 QT_BEGIN_NAMESPACE
 
@@ -24,48 +26,85 @@ class QGraphsView;
 class QXYSeries;
 class QLineSeries;
 class QScatterSeries;
+class QSplineSeries;
+class AxisRenderer;
+struct QLegendData;
 
 class PointRenderer : public QQuickItem
 {
     Q_OBJECT
-    QML_ELEMENT
 public:
-    PointRenderer(QQuickItem *parent = nullptr);
-    virtual ~PointRenderer();
+    PointRenderer(QGraphsView *graph);
+    ~PointRenderer() override;
 
-    void handlePolish(QLineSeries *series);
-    void handlePolish(QScatterSeries *series);
+    void handlePolish(QXYSeries *series);
+    void afterPolish(QList<QAbstractSeries *> &cleanupSeries);
     void updateSeries(QXYSeries *series);
+    void afterUpdate(QList<QAbstractSeries *> &cleanupSeries);
     bool handleMouseMove(QMouseEvent *event);
     bool handleMousePress(QMouseEvent *event);
     bool handleMouseRelease(QMouseEvent *event);
     bool handleHoverMove(QHoverEvent *event);
 
-Q_SIGNALS:
-
 private:
-    struct PointGroup {
-        QXYSeries *series;
+    struct PointGroup
+    {
+        QXYSeries *series = nullptr;
         QQuickShapePath *shapePath = nullptr;
-        QList<QQuickPathLine *> paths;
+        QPainterPath painterPath;
         QList<QQuickItem *> markers;
-        QList<QSGDefaultInternalRectangleNode *> nodes;
+        QQmlComponent *currentMarker = nullptr;
+        QQmlComponent *previousMarker = nullptr;
         QList<QRectF> rects;
-        int colorIndex = -1;
+        qsizetype colorIndex = -1;
         bool hover = false;
     };
+
+    QQmlComponent *m_tempMarker = nullptr;
 
     QGraphsView *m_graph = nullptr;
     QQuickShape m_shape;
     QMap<QXYSeries *, PointGroup *> m_groups;
-    int m_currentColorIndex = 0;
+    qsizetype m_currentColorIndex = 0;
 
     // Point drag variables
     bool m_pointPressed = false;
     bool m_pointDragging = false;
     QPoint m_pressStart;
     PointGroup *m_pressedGroup = nullptr;
-    int m_pressedPointIndex = 0;
+    qsizetype m_pressedPointIndex = 0;
+
+    // Render area variables
+    qreal m_maxVertical = 0;
+    qreal m_maxHorizontal = 0;
+    qreal m_verticalOffset = 0;
+    qreal m_horizontalOffset = 0;
+    qreal m_areaWidth = 0;
+    qreal m_areaHeight = 0;
+
+    qreal defaultSize(QXYSeries *series = nullptr);
+
+    struct SeriesStyle {
+        QColor color;
+        QColor selectedColor;
+        QColor borderColor;
+        qreal borderWidth;
+    };
+
+    SeriesStyle getSeriesStyle(PointGroup *group);
+
+    void calculateRenderCoordinates(
+        AxisRenderer *axisRenderer, qreal origX, qreal origY, qreal *renderX, qreal *renderY);
+    void reverseRenderCoordinates(
+        AxisRenderer *axisRenderer, qreal renderX, qreal renderY, qreal *origX, qreal *origY);
+    void updatePointDelegate(
+        QXYSeries *series, PointGroup *group, qsizetype pointIndex, qreal x, qreal y);
+    void hidePointDelegates(QXYSeries *series);
+    void updateLegendData(QXYSeries *series, QLegendData &legendData);
+
+    void updateScatterSeries(QScatterSeries *scatter, QLegendData &legendData);
+    void updateLineSeries(QLineSeries *line, QLegendData &legendData);
+    void updateSplineSeries(QSplineSeries *spline, QLegendData &legendData);
 };
 
 QT_END_NAMESPACE

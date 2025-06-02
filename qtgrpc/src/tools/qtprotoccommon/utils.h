@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <set>
 
 #ifdef QT_PROTOBUF_DEBUG_GENERATOR
 #    include <iostream>
@@ -25,11 +26,12 @@ namespace utils {
 std::vector<std::string> split(std::string_view s, std::string_view c, bool keepEmpty = false);
 std::string replace(std::string_view where, std::string_view from, std::string_view to);
 void asciiToLower(std::string &str);
+void asciiToUpper(std::string &str);
 std::string removeFileSuffix(std::string fileName);
 std::string extractFileBasename(std::string fileName);
+std::string toValidIdentifier(std::string_view name);
 std::string capitalizeAsciiName(std::string name);
 std::string deCapitalizeAsciiName(std::string name);
-std::string escapedQmlUri(const std::string &uri);
 std::string &rtrim(std::string &s);
 // trim from beginning of string (left)
 std::string &ltrim(std::string &s);
@@ -86,6 +88,12 @@ constexpr char toAsciiUpper(char ch) noexcept
 {
     return isAsciiLower(ch) ? ch - 'a' + 'A' : ch;
 }
+
+struct HeaderComparator
+{
+    bool operator ()(const std::string &lhs, const std::string &rhs) const;
+};
+using ExternalIncludesOrderedSet = std::set<std::string, HeaderComparator>;
 
 } // namespace utils
 } // namespace qtprotoccommon

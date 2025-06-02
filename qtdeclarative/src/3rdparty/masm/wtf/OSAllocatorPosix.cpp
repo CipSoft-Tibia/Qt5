@@ -114,8 +114,6 @@ void* OSAllocator::reserveUncommitted(size_t bytes, Usage usage, bool writable, 
     if (result == MAP_FAILED)
         CRASH();
 
-    while (madvise(result, bytes, MADV_DONTNEED) == -1 && errno == EAGAIN) { }
-
     if (fd != -1)
         close(fd);
 #else
@@ -140,8 +138,8 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage usage, bool writable, bo
         protection |= PROT_EXEC;
 
     int flags = MAP_PRIVATE | MAP_ANON;
-#if PLATFORM(IOS)
-    if (executable)
+#if OS(DARWIN)
+    if (executable || usage == OSAllocator::JSJITCodePages)
         flags |= MAP_JIT;
 #endif
 
@@ -186,6 +184,11 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage usage, bool writable, bo
 #endif
             CRASH();
     }
+#if OS(VXWORKS) && defined(QT_RTP_MEM_FILL) && QT_RTP_MEM_FILL
+    // page allocator expects mmap'ed memory to be zero'ed
+    memset(result, 0, bytes);
+#endif
+
     if (result && includesGuardPages) {
         // We use mmap to remap the guardpages rather than using mprotect as
         // mprotect results in multiple references to the code region.  This
@@ -273,20 +276,59 @@ void OSAllocator::releaseDecommitted(void* address, size_t bytes)
         CRASH();
 }
 
+#if OS(MAC_OS_X) && CPU(X86_64)
+
+// For unknown reasons, the correct detection (see below) causes crashes on macOS on x86_64.
+// Use the known good one from Qt 6.8.0 for now.
+// TODO: Delete this when macOS on x86_64 is not a thing anymore.
 bool OSAllocator::canAllocateExecutableMemory()
 {
     int flags = MAP_PRIVATE | MAP_ANON;
-#if PLATFORM(IOS)
-    if (executable)
-        flags |= MAP_JIT;
-#endif
     const auto size = pageSize();
-    void *testPage = mmap(nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, flags, /*fd*/-1, /*offset*/0);
+    void *testPage = mmap(
+            nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, flags, /*fd*/-1, /*offset*/0);
     if (testPage == MAP_FAILED)
         return false;
     munmap(testPage, size);
     return true;
 }
+
+#else
+
+bool OSAllocator::canAllocateExecutableMemory()
+{
+    int flags = MAP_PRIVATE;
+#if OS(DARWIN)
+    flags |= MAP_JIT;
+#endif
+
+    // Get a read/write memfd page
+    const auto size = pageSize();
+#if OS(LINUX)
+    const int fd = memfdForUsage(size, OSAllocator::JSJITCodePages);
+#else
+    const int fd = -1;
+#endif
+    if (fd == -1)
+        flags |= MAP_ANON;
+    void *testPage = mmap(nullptr, size, PROT_READ | PROT_WRITE, flags, fd, /*offset*/0);
+    if (fd != -1)
+        close(fd);
+
+    if (testPage == MAP_FAILED)
+        return false;
+
+    // Write something into the page, to trigger CoW
+    memset(testPage, 0xab, sizeof(quintptr));
+
+    // Then make it executable
+    const bool result = mprotect(testPage, size, PROT_READ | PROT_EXEC) == 0;
+
+    munmap(testPage, size);
+    return result;
+}
+
+#endif
 
 } // namespace WTF
 

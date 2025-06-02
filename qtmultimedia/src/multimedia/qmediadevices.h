@@ -13,8 +13,6 @@ QT_BEGIN_NAMESPACE
 class QAudioDevice;
 class QCameraDevice;
 
-class QMediaDevicesPrivate;
-
 class Q_MULTIMEDIA_EXPORT QMediaDevices : public QObject
 {
     Q_OBJECT
@@ -27,7 +25,7 @@ class Q_MULTIMEDIA_EXPORT QMediaDevices : public QObject
 
 public:
     QMediaDevices(QObject *parent = nullptr);
-    ~QMediaDevices();
+    ~QMediaDevices() override;
 
     static QList<QAudioDevice> audioInputs();
     static QList<QAudioDevice> audioOutputs();
@@ -44,9 +42,6 @@ Q_SIGNALS:
 
 protected:
     void connectNotify(const QMetaMethod &signal) override;
-
-private:
-    friend class QMediaDevicesPrivate;
 };
 
 QT_END_NAMESPACE

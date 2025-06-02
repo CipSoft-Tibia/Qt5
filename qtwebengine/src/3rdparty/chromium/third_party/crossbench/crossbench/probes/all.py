@@ -8,9 +8,13 @@ from typing import Tuple, Type
 
 from crossbench.probes import internal
 from crossbench.probes.debugger import DebuggerProbe
+from crossbench.probes.dtrace import DTraceProbe
 from crossbench.probes.json import JsonResultProbe
+from crossbench.probes.perfetto import PerfettoProbe
 from crossbench.probes.performance_entries import PerformanceEntriesProbe
+from crossbench.probes.polling import ShellPollingProbe
 from crossbench.probes.power_sampler import PowerSamplerProbe
+from crossbench.probes.powermetrics import PowerMetricsProbe
 from crossbench.probes.probe import Probe
 from crossbench.probes.profiling.browser_profiling import BrowserProfilingProbe
 from crossbench.probes.profiling.system_profiling import ProfilingProbe
@@ -21,6 +25,7 @@ from crossbench.probes.v8.log import V8LogProbe
 from crossbench.probes.v8.rcs import V8RCSProbe
 from crossbench.probes.v8.turbolizer import V8TurbolizerProbe
 from crossbench.probes.video import VideoProbe
+from crossbench.probes.web_page_replay.recorder import WebPageReplayProbe
 
 ABSTRACT_PROBES: Tuple[Type[Probe], ...] = (Probe, JsonResultProbe)
 
@@ -44,11 +49,15 @@ assert INTERNAL_PROBES[1] == internal.DurationsProbe
 
 # Probes that can be used on arbitrary stories and may be user configurable.
 GENERAL_PURPOSE_PROBES: Tuple[Type[Probe], ...] = (
+    BrowserProfilingProbe,
     DebuggerProbe,
+    DTraceProbe,
+    PerfettoProbe,
     PerformanceEntriesProbe,
+    PowerMetricsProbe,
     PowerSamplerProbe,
     ProfilingProbe,
-    BrowserProfilingProbe,
+    ShellPollingProbe,
     SystemStatsProbe,
     TracingProbe,
     V8BuiltinsPGOProbe,
@@ -56,6 +65,7 @@ GENERAL_PURPOSE_PROBES: Tuple[Type[Probe], ...] = (
     V8RCSProbe,
     V8TurbolizerProbe,
     VideoProbe,
+    WebPageReplayProbe,
 )
 
 for probe_cls in GENERAL_PURPOSE_PROBES:

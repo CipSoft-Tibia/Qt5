@@ -8,6 +8,7 @@
 #include <private/qcameradevice_p.h>
 #include <private/qmultimediautils_p.h>
 #include <private/qmemoryvideobuffer_p.h>
+#include <private/qvideoframe_p.h>
 #include <private/qcore_unix_p.h>
 
 #include <qsocketnotifier.h>
@@ -297,7 +298,6 @@ void QV4L2Camera::setManualIsoSensitivity(int iso)
         iso = qBound(minIso(), iso, maxIso());
         setV4L2Parameter(V4L2_CID_ISO_SENSITIVITY, iso);
     }
-    return;
 }
 
 int QV4L2Camera::isoSensitivity() const
@@ -373,8 +373,8 @@ void QV4L2Camera::readFrame()
         return;
     }
 
-    auto videoBuffer = new QMemoryVideoBuffer(buffer->data, m_bytesPerLine);
-    QVideoFrame frame(videoBuffer, frameFormat());
+    auto videoBuffer = std::make_unique<QMemoryVideoBuffer>(buffer->data, m_bytesPerLine);
+    QVideoFrame frame = QVideoFramePrivate::createFrame(std::move(videoBuffer), frameFormat());
 
     auto &v4l2Buffer = buffer->v4l2Buffer;
 

@@ -3,20 +3,47 @@
 
 #include "redditmodel.h"
 
-#include <QtNetwork/qnetworkreply.h>
+#include <QtNetworkAuth/qoauthhttpserverreplyhandler.h>
+
+#include <QtGui/qdesktopservices.h>
+
+#include <QtNetwork/qrestaccessmanager.h>
+#include <QtNetwork/qrestreply.h>
 
 #include <QtCore/qjsonarray.h>
 #include <QtCore/qjsondocument.h>
 
 using namespace Qt::StringLiterals;
 
+static constexpr auto hotUrl = "https://oauth.reddit.com/hot"_L1;
+static constexpr auto authorizationUrl = "https://www.reddit.com/api/v1/authorize"_L1;
+static constexpr auto accessTokenUrl = "https://www.reddit.com/api/v1/access_token"_L1;
+static constexpr auto scope = "identity read"_L1;
+
 RedditModel::RedditModel(QObject *parent) : QAbstractTableModel(parent) {}
 
 RedditModel::RedditModel(const QString &clientId, QObject *parent) :
-    QAbstractTableModel(parent),
-    redditWrapper(clientId)
+    QAbstractTableModel(parent)
 {
-    grant();
+    QNetworkAccessManager *qnam = new QNetworkAccessManager(this);
+    network = new QRestAccessManager(qnam, qnam);
+
+    redditApi.setBaseUrl(QUrl(hotUrl));
+
+    auto replyHandler = new QOAuthHttpServerReplyHandler(QHostAddress::Any, 1337, this);
+    oauth2.setReplyHandler(replyHandler);
+    oauth2.setAuthorizationUrl(QUrl(authorizationUrl));
+    oauth2.setAccessTokenUrl(QUrl(accessTokenUrl));
+    oauth2.setScope(scope);
+    oauth2.setClientIdentifier(clientId);
+
+    QObject::connect(&oauth2, &QAbstractOAuth::granted, this, [this] {
+        redditApi.setBearerToken(oauth2.token().toLatin1());
+        updateHotThreads();
+    });
+    connect(&oauth2, &QOAuth2AuthorizationCodeFlow::authorizeWithBrowser, this,
+            &QDesktopServices::openUrl);
+    oauth2.grant();
 }
 
 int RedditModel::rowCount(const QModelIndex &parent) const
@@ -46,26 +73,16 @@ QVariant RedditModel::data(const QModelIndex &index, int role) const
     return QVariant();
 }
 
-void RedditModel::grant()
+void RedditModel::updateHotThreads()
 {
-    redditWrapper.grant();
-    connect(&redditWrapper, &RedditWrapper::authenticated, this, &RedditModel::update);
-}
-
-void RedditModel::update()
-{
-    auto reply = redditWrapper.requestHotThreads();
-
-    connect(reply, &QNetworkReply::finished, this, [=]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            emit error(reply->errorString());
+    network->get(redditApi.createRequest(), this, [this](QRestReply &reply) {
+        if (!reply.isSuccess()) {
+            emit error(reply.errorString());
             return;
         }
-        const auto json = reply->readAll();
-        const auto document = QJsonDocument::fromJson(json);
-        Q_ASSERT(document.isObject());
-        const auto rootObject = document.object();
+        const auto document = reply.readJson();
+        Q_ASSERT(document && document->isObject());
+        const auto rootObject = document->object();
         Q_ASSERT(rootObject.value("kind"_L1).toString() == "Listing"_L1);
         const auto dataValue = rootObject.value("data"_L1);
         Q_ASSERT(dataValue.isObject());

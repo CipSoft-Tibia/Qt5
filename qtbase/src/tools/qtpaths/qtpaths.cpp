@@ -61,9 +61,6 @@ static const StringEnum lookupTableData[] = {
     { "ApplicationsLocation", QStandardPaths::ApplicationsLocation, false },
     { "CacheLocation", QStandardPaths::CacheLocation, true },
     { "ConfigLocation", QStandardPaths::ConfigLocation, false },
-#if QT_VERSION < QT_VERSION_CHECK(6,0,0)
-    { "DataLocation", QStandardPaths::DataLocation, true },
-#endif
     { "DesktopLocation", QStandardPaths::DesktopLocation, false },
     { "DocumentsLocation", QStandardPaths::DocumentsLocation, false },
     { "DownloadLocation", QStandardPaths::DownloadLocation, false },
@@ -255,7 +252,7 @@ int main(int argc, char **argv)
     }
 
     QT_WARNING_PUSH
-#if defined(Q_CC_GNU_ONLY) && Q_CC_GNU >= 1300 && Q_CC_GNU < 1500
+#if defined(Q_CC_GNU_ONLY) && Q_CC_GNU >= 1300 && Q_CC_GNU < 1600
     QT_WARNING_DISABLE_GCC("-Wdangling-reference")
 #endif
     if (parser.isSet(display)) {

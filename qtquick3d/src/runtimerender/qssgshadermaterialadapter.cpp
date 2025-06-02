@@ -41,7 +41,8 @@ bool QSSGShaderMaterialAdapter::hasCustomShaderSnippet(QSSGShaderCache::ShaderTy
 }
 
 QByteArray QSSGShaderMaterialAdapter::customShaderSnippet(QSSGShaderCache::ShaderType,
-                                                          QSSGShaderLibraryManager &)
+                                                          QSSGShaderLibraryManager &,
+                                                          bool)
 {
     return QByteArray();
 }
@@ -96,6 +97,31 @@ bool QSSGShaderDefaultMaterialAdapter::isVertexColorsEnabled()
     return m_material.isVertexColorsEnabled();
 }
 
+bool QSSGShaderDefaultMaterialAdapter::isVertexColorsMaskEnabled()
+{
+    return m_material.isVertexColorsMaskEnabled();
+}
+
+bool QSSGShaderDefaultMaterialAdapter::isInvertOpacityMapValue()
+{
+    return m_material.isInvertOpacityMapValue();
+}
+
+bool QSSGShaderDefaultMaterialAdapter::isBaseColorSingleChannelEnabled()
+{
+    return m_material.isBaseColorSingleChannelEnabled();
+}
+
+bool QSSGShaderDefaultMaterialAdapter::isSpecularAmountSingleChannelEnabled()
+{
+    return m_material.isSpecularAmountSingleChannelEnabled();
+}
+
+bool QSSGShaderDefaultMaterialAdapter::isEmissiveSingleChannelEnabled()
+{
+    return m_material.isEmissiveSingleChannelEnabled();
+}
+
 bool QSSGShaderDefaultMaterialAdapter::isClearcoatEnabled()
 {
     return m_material.isClearcoatEnabled();
@@ -131,6 +157,26 @@ QSSGRenderDefaultMaterial::MaterialAlphaMode QSSGShaderDefaultMaterialAdapter::a
     return m_material.alphaMode;
 }
 
+QSSGRenderDefaultMaterial::VertexColorMaskFlags QSSGShaderDefaultMaterialAdapter::vertexColorRedMask()
+{
+    return m_material.vertexColorRedMask;
+}
+
+QSSGRenderDefaultMaterial::VertexColorMaskFlags QSSGShaderDefaultMaterialAdapter::vertexColorGreenMask()
+{
+    return m_material.vertexColorGreenMask;
+}
+
+QSSGRenderDefaultMaterial::VertexColorMaskFlags QSSGShaderDefaultMaterialAdapter::vertexColorBlueMask()
+{
+    return m_material.vertexColorBlueMask;
+}
+
+QSSGRenderDefaultMaterial::VertexColorMaskFlags QSSGShaderDefaultMaterialAdapter::vertexColorAlphaMask()
+{
+    return m_material.vertexColorAlphaMask;
+}
+
 QSSGRenderImage *QSSGShaderDefaultMaterialAdapter::iblProbe()
 {
     return m_material.iblProbe;
@@ -156,9 +202,44 @@ float QSSGShaderDefaultMaterialAdapter::ior()
     return m_material.ior;
 }
 
+bool QSSGShaderDefaultMaterialAdapter::isFresnelScaleBiasEnabled()
+{
+    return m_material.fresnelScaleBiasEnabled;
+}
+
+float QSSGShaderDefaultMaterialAdapter::fresnelScale()
+{
+    return m_material.fresnelScale;
+}
+
+float QSSGShaderDefaultMaterialAdapter::fresnelBias()
+{
+    return m_material.fresnelBias;
+}
+
 float QSSGShaderDefaultMaterialAdapter::fresnelPower()
 {
     return m_material.fresnelPower;
+}
+
+bool QSSGShaderDefaultMaterialAdapter::isClearcoatFresnelScaleBiasEnabled()
+{
+    return m_material.clearcoatFresnelScaleBiasEnabled;
+}
+
+float QSSGShaderDefaultMaterialAdapter::clearcoatFresnelScale()
+{
+    return m_material.clearcoatFresnelScale;
+}
+
+float QSSGShaderDefaultMaterialAdapter::clearcoatFresnelBias()
+{
+    return m_material.clearcoatFresnelBias;
+}
+
+float QSSGShaderDefaultMaterialAdapter::clearcoatFresnelPower()
+{
+    return m_material.clearcoatFresnelPower;
 }
 
 float QSSGShaderDefaultMaterialAdapter::metalnessAmount()
@@ -236,6 +317,11 @@ float QSSGShaderDefaultMaterialAdapter::clearcoatRoughnessAmount()
     return m_material.clearcoatRoughnessAmount;
 }
 
+float QSSGShaderDefaultMaterialAdapter::clearcoatNormalStrength()
+{
+    return m_material.clearcoatNormalStrength;
+}
+
 float QSSGShaderDefaultMaterialAdapter::transmissionFactor()
 {
     return m_material.transmissionFactor;
@@ -290,16 +376,39 @@ bool QSSGShaderCustomMaterialAdapter::isVertexColorsEnabled()
     return m_material.m_renderFlags.testFlag(QSSGRenderCustomMaterial::RenderFlag::VarColor);
 }
 
+bool QSSGShaderCustomMaterialAdapter::isVertexColorsMaskEnabled()
+{
+    return false;
+}
+
+bool QSSGShaderCustomMaterialAdapter::isInvertOpacityMapValue()
+{
+    return false;
+}
+
+bool QSSGShaderCustomMaterialAdapter::isBaseColorSingleChannelEnabled()
+{
+    return false;
+}
+
+bool QSSGShaderCustomMaterialAdapter::isSpecularAmountSingleChannelEnabled()
+{
+    return false;
+}
+
+bool QSSGShaderCustomMaterialAdapter::isEmissiveSingleChannelEnabled()
+{
+    return false;
+}
+
 bool QSSGShaderCustomMaterialAdapter::isClearcoatEnabled()
 {
-    // TODO: Expose Clearcoat properties to custom material
-    return false;
+    return m_material.m_renderFlags.testFlag(QSSGRenderCustomMaterial::RenderFlag::Clearcoat);
 }
 
 bool QSSGShaderCustomMaterialAdapter::isTransmissionEnabled()
 {
-    // TODO: Expose Transmission to custom material
-    return false;
+   return m_material.m_renderFlags.testFlag(QSSGRenderCustomMaterial::RenderFlag::Transmission);
 }
 
 bool QSSGShaderCustomMaterialAdapter::hasLighting()
@@ -325,6 +434,26 @@ QSSGRenderDefaultMaterial::MaterialSpecularModel QSSGShaderCustomMaterialAdapter
 QSSGRenderDefaultMaterial::MaterialAlphaMode QSSGShaderCustomMaterialAdapter::alphaMode()
 {
     return QSSGRenderDefaultMaterial::MaterialAlphaMode::Default;
+}
+
+QSSGRenderDefaultMaterial::VertexColorMaskFlags QSSGShaderCustomMaterialAdapter::vertexColorRedMask()
+{
+    return QSSGRenderDefaultMaterial::NoMask;
+}
+
+QSSGRenderDefaultMaterial::VertexColorMaskFlags QSSGShaderCustomMaterialAdapter::vertexColorGreenMask()
+{
+    return QSSGRenderDefaultMaterial::NoMask;
+}
+
+QSSGRenderDefaultMaterial::VertexColorMaskFlags QSSGShaderCustomMaterialAdapter::vertexColorBlueMask()
+{
+    return QSSGRenderDefaultMaterial::NoMask;
+}
+
+QSSGRenderDefaultMaterial::VertexColorMaskFlags QSSGShaderCustomMaterialAdapter::vertexColorAlphaMask()
+{
+    return QSSGRenderDefaultMaterial::NoMask;
 }
 
 QSSGRenderImage *QSSGShaderCustomMaterialAdapter::iblProbe()
@@ -359,7 +488,42 @@ float QSSGShaderCustomMaterialAdapter::ior()
     return 1.45f;
 }
 
+bool QSSGShaderCustomMaterialAdapter::isFresnelScaleBiasEnabled()
+{
+    return m_material.m_renderFlags.testFlag(QSSGRenderCustomMaterial::RenderFlag::FresnelScaleBias);
+}
+
+float QSSGShaderCustomMaterialAdapter::fresnelScale()
+{
+    return 1.0f;
+}
+
+float QSSGShaderCustomMaterialAdapter::fresnelBias()
+{
+    return 0.0f;
+}
+
 float QSSGShaderCustomMaterialAdapter::fresnelPower()
+{
+    return 0.0f;
+}
+
+bool QSSGShaderCustomMaterialAdapter::isClearcoatFresnelScaleBiasEnabled()
+{
+    return m_material.m_renderFlags.testFlag(QSSGRenderCustomMaterial::RenderFlag::ClearcoatFresnelScaleBias);
+}
+
+float QSSGShaderCustomMaterialAdapter::clearcoatFresnelScale()
+{
+    return 1.0f;
+}
+
+float QSSGShaderCustomMaterialAdapter::clearcoatFresnelBias()
+{
+    return 0.0f;
+}
+
+float QSSGShaderCustomMaterialAdapter::clearcoatFresnelPower()
 {
     return 0.0f;
 }
@@ -439,6 +603,11 @@ float QSSGShaderCustomMaterialAdapter::clearcoatRoughnessAmount()
     return 0.0f;
 }
 
+float QSSGShaderCustomMaterialAdapter::clearcoatNormalStrength()
+{
+    return 1.0f;
+}
+
 float QSSGShaderCustomMaterialAdapter::transmissionFactor()
 {
     return 0.0f;
@@ -473,10 +642,14 @@ bool QSSGShaderCustomMaterialAdapter::hasCustomShaderSnippet(QSSGShaderCache::Sh
 }
 
 QByteArray QSSGShaderCustomMaterialAdapter::customShaderSnippet(QSSGShaderCache::ShaderType type,
-                                                                QSSGShaderLibraryManager &shaderLibraryManager)
+                                                                QSSGShaderLibraryManager &shaderLibraryManager,
+                                                                bool multiViewCompatible)
 {
-    if (hasCustomShaderSnippet(type))
-        return shaderLibraryManager.getShaderSource(m_material.m_shaderPathKey, type);
+    if (hasCustomShaderSnippet(type)) {
+        const QByteArray shaderPathKey = m_material.m_shaderPathKey[multiViewCompatible ? QSSGRenderCustomMaterial::MultiViewShaderPathKeyIndex
+                                                                                        : QSSGRenderCustomMaterial::RegularShaderPathKeyIndex];
+        return shaderLibraryManager.getShaderSource(shaderPathKey, type);
+    }
 
     return QByteArray();
 }
@@ -486,7 +659,8 @@ bool QSSGShaderCustomMaterialAdapter::hasCustomShaderFunction(QSSGShaderCache::S
                                                               QSSGShaderLibraryManager &shaderLibraryManager)
 {
     if (hasCustomShaderSnippet(shaderType))
-        return shaderLibraryManager.getShaderMetaData(m_material.m_shaderPathKey, shaderType).customFunctions.contains(funcName);
+        return shaderLibraryManager.getShaderMetaData(m_material.m_shaderPathKey[QSSGRenderCustomMaterial::RegularShaderPathKeyIndex],
+                                                      shaderType).customFunctions.contains(funcName);
 
     return false;
 }
@@ -509,84 +683,87 @@ namespace {
 // Must be in sync with the shader generator.
 static const QSSGCustomMaterialVariableSubstitution qssg_var_subst_tab[] = {
     // uniform (block members)
-    { "MODELVIEWPROJECTION_MATRIX", "qt_modelViewProjection" },
-    { "VIEWPROJECTION_MATRIX", "qt_viewProjectionMatrix" },
-    { "MODEL_MATRIX", "qt_modelMatrix" },
-    { "VIEW_MATRIX", "qt_viewMatrix" },
-    { "NORMAL_MATRIX", "qt_normalMatrix"},
-    { "BONE_TRANSFORMS", "qt_getTexMatrix" },
-    { "BONE_NORMAL_TRANSFORMS", "qt_getTexMatrix" },
-    { "PROJECTION_MATRIX", "qt_projectionMatrix" },
-    { "INVERSE_PROJECTION_MATRIX", "qt_inverseProjectionMatrix" },
-    { "CAMERA_POSITION", "qt_cameraPosition" },
-    { "CAMERA_DIRECTION", "qt_cameraDirection" },
-    { "CAMERA_PROPERTIES", "qt_cameraProperties" },
-    { "FRAMEBUFFER_Y_UP", "qt_rhi_properties.x" },
-    { "NDC_Y_UP", "qt_rhi_properties.y" },
-    { "NEAR_CLIP_VALUE", "qt_rhi_properties.z" },
-    { "IBL_MAXMIPMAP", "qt_lightProbeProperties.y" },
-    { "IBL_HORIZON", "qt_lightProbeProperties.z" },
-    { "IBL_EXPOSE", "qt_lightProbeProperties.w" },
+    { "MODELVIEWPROJECTION_MATRIX", "qt_modelViewProjection", true },
+    { "VIEWPROJECTION_MATRIX", "qt_viewProjectionMatrix", true },
+    { "MODEL_MATRIX", "qt_modelMatrix", false },
+    { "VIEW_MATRIX", "qt_viewMatrix", true },
+    { "NORMAL_MATRIX", "qt_normalMatrix", false },
+    { "BONE_TRANSFORMS", "qt_getTexMatrix", false },
+    { "BONE_NORMAL_TRANSFORMS", "qt_getTexMatrix", false },
+    { "PROJECTION_MATRIX", "qt_projectionMatrix", true },
+    { "INVERSE_PROJECTION_MATRIX", "qt_inverseProjectionMatrix", true },
+    { "CAMERA_POSITION", "qt_cameraPosition", true },
+    { "CAMERA_DIRECTION", "qt_cameraDirection", true },
+    { "CAMERA_PROPERTIES", "qt_cameraProperties", false },
+    { "FRAMEBUFFER_Y_UP", "qt_rhi_properties.x", false },
+    { "NDC_Y_UP", "qt_rhi_properties.y", false },
+    { "NEAR_CLIP_VALUE", "qt_rhi_properties.z", false },
+    { "IBL_MAXMIPMAP", "qt_lightProbeProperties.y", false },
+    { "IBL_HORIZON", "qt_lightProbeProperties.z", false },
+    { "IBL_EXPOSE", "qt_lightProbeProperties.w", false },
 
     // outputs
-    { "POSITION", "gl_Position" },
-    { "FRAGCOLOR", "fragOutput" },
-    { "POINT_SIZE", "gl_PointSize" },
+    { "POSITION", "gl_Position", false },
+    { "FRAGCOLOR", "fragOutput", false },
+    { "POINT_SIZE", "gl_PointSize", false },
 
     // fragment inputs
-    { "FRAGCOORD", "gl_FragCoord"},
+    { "FRAGCOORD", "gl_FragCoord", false },
 
     // functions
-    { "DIRECTIONAL_LIGHT", "qt_directionalLightProcessor" },
-    { "POINT_LIGHT", "qt_pointLightProcessor" },
-    { "SPOT_LIGHT", "qt_spotLightProcessor" },
-    { "AMBIENT_LIGHT", "qt_ambientLightProcessor" },
-    { "SPECULAR_LIGHT", "qt_specularLightProcessor" },
-    { "MAIN", "qt_customMain" },
-    { "POST_PROCESS", "qt_customPostProcessor" },
-    { "IBL_PROBE", "qt_iblProbeProcessor" },
+    { "DIRECTIONAL_LIGHT", "qt_directionalLightProcessor", false },
+    { "POINT_LIGHT", "qt_pointLightProcessor", false },
+    { "SPOT_LIGHT", "qt_spotLightProcessor", false },
+    { "AMBIENT_LIGHT", "qt_ambientLightProcessor", false },
+    { "SPECULAR_LIGHT", "qt_specularLightProcessor", false },
+    { "MAIN", "qt_customMain", false },
+    { "POST_PROCESS", "qt_customPostProcessor", false },
+    { "IBL_PROBE", "qt_iblProbeProcessor", false },
 
     // textures
-    { "SCREEN_TEXTURE", "qt_screenTexture" },
-    { "SCREEN_MIP_TEXTURE", "qt_screenTexture" }, // same resource as SCREEN_TEXTURE under the hood
-    { "DEPTH_TEXTURE", "qt_depthTexture" },
-    { "AO_TEXTURE", "qt_aoTexture" },
-    { "IBL_TEXTURE", "qt_lightProbe" },
-    { "LIGHTMAP", "qt_lightmap" },
+    { "SCREEN_TEXTURE", "qt_screenTexture", true },
+    { "SCREEN_MIP_TEXTURE", "qt_screenTexture", true }, // same resource as SCREEN_TEXTURE under the hood
+    { "DEPTH_TEXTURE", "qt_depthTexture", true },
+    { "AO_TEXTURE", "qt_aoTexture", true },
+    { "IBL_TEXTURE", "qt_lightProbe", false },
+    { "LIGHTMAP", "qt_lightmap", false },
 
     // For shaded only: vertex outputs, for convenience and perf. (only those
     // that are always present when lighting is enabled) The custom vertex main
     // can also calculate on its own and pass them on with VARYING but that's a
     // bit wasteful since we calculate these anyways.
-    { "VAR_WORLD_NORMAL", "qt_varNormal" },
-    { "VAR_WORLD_TANGENT", "qt_varTangent" },
-    { "VAR_WORLD_BINORMAL", "qt_varBinormal" },
-    { "VAR_WORLD_POSITION", "qt_varWorldPos" },
+    { "VAR_WORLD_NORMAL", "qt_varNormal", false },
+    { "VAR_WORLD_TANGENT", "qt_varTangent", false },
+    { "VAR_WORLD_BINORMAL", "qt_varBinormal", false },
+    { "VAR_WORLD_POSITION", "qt_varWorldPos", false },
     // vertex color is always enabled for custom materials (shaded)
-    { "VAR_COLOR", "qt_varColor" },
+    { "VAR_COLOR", "qt_varColor", false },
 
     // effects
-    { "INPUT", "qt_inputTexture" },
-    { "INPUT_UV", "qt_inputUV" },
-    { "TEXTURE_UV", "qt_textureUV" },
-    { "INPUT_SIZE", "qt_inputSize" },
-    { "OUTPUT_SIZE", "qt_outputSize" },
-    { "FRAME", "qt_frame_num" },
+    { "INPUT", "qt_inputTexture", true },
+    { "INPUT_UV", "qt_inputUV", false },
+    { "TEXTURE_UV", "qt_textureUV", false },
+    { "INPUT_SIZE", "qt_inputSize", false },
+    { "OUTPUT_SIZE", "qt_outputSize", false },
+    { "FRAME", "qt_frame_num", false },
 
     // instancing
-    { "INSTANCE_COLOR", "qt_instanceColor"},
-    { "INSTANCE_DATA", "qt_instanceData"},
-    { "INSTANCE_INDEX", "gl_InstanceIndex"},
+    { "INSTANCE_COLOR", "qt_instanceColor", false },
+    { "INSTANCE_DATA", "qt_instanceData", false },
+    { "INSTANCE_INDEX", "gl_InstanceIndex", false },
 
     // morphing
-    { "MORPH_POSITION", "qt_getTargetPositionFromTargetId"},
-    { "MORPH_NORMAL", "qt_getTargetNormalFromTargetId"},
-    { "MORPH_TANGENT", "qt_getTargetTangentFromTargetId"},
-    { "MORPH_BINORMAL", "qt_getTargetBinormalFromTargetId"},
-    { "MORPH_WEIGHTS", "qt_morphWeights"},
+    { "MORPH_POSITION", "qt_getTargetPositionFromTargetId", false },
+    { "MORPH_NORMAL", "qt_getTargetNormalFromTargetId", false },
+    { "MORPH_TANGENT", "qt_getTargetTangentFromTargetId", false },
+    { "MORPH_BINORMAL", "qt_getTargetBinormalFromTargetId", false },
+    { "MORPH_WEIGHTS", "qt_morphWeights", false },
 
     // custom variables
-    { "SHARED_VARS", "struct QT_SHARED_VARS"}
+    { "SHARED_VARS", "struct QT_SHARED_VARS", false },
+
+    // multiview
+    { "VIEW_INDEX", "qt_viewIndex", false }
 };
 
 // Functions that, if present, get an argument list injected.
@@ -611,7 +788,6 @@ struct Tokenizer {
         Token_CloseParen,
         Token_SemiColon,
         Token_Identifier,
-        Token_Macro,
         Token_OpenBraket,
         Token_CloseBraket,
         Token_Unspecified,
@@ -654,24 +830,6 @@ Tokenizer::Token Tokenizer::next()
             }
             return Token_Unspecified;
 
-        case '#': {
-            while (*pos) {
-                if (*pos == '\n') {
-                    ++pos;
-                    break;
-                } else if (*pos == '\\') {
-                    ++pos;
-                    while (*pos && (*pos == ' ' || *pos == '\t'))
-                        ++pos;
-                    if (*pos && (*pos == '\n' || (*pos == '\r' && pos[1] == '\n')))
-                        pos += 2;
-                } else {
-                    ++pos;
-                }
-            }
-            return Token_Unspecified;
-        }
-
         case ';': return Token_SemiColon;
         case '\0': return Token_EOF;
         case '{': return Token_OpenBrace;
@@ -711,7 +869,9 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
                                                      QSSGShaderCache::ShaderType type,
                                                      const StringPairList &baseUniforms,
                                                      const StringPairList &baseInputs,
-                                                     const StringPairList &baseOutputs)
+                                                     const StringPairList &baseOutputs,
+                                                     bool multiViewCompatible,
+                                                     const StringPairList &multiViewDependentSamplers)
 {
     QByteArrayList inputs;
     QByteArrayList outputs;
@@ -748,15 +908,21 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
             if (id.trimmed() == QByteArrayLiteral("VARYING")) {
                 QByteArray vtype;
                 QByteArray vname;
+                bool vflat = false;
                 lastPos = tok.pos;
                 t = tok.next();
                 while (t != Tokenizer::Token_EOF) {
                     QByteArray data = QByteArray::fromRawData(lastPos, tok.pos - lastPos);
                     if (t == Tokenizer::Token_Identifier) {
-                        if (vtype.isEmpty())
+                        if (vtype.isEmpty()) {
                             vtype = data.trimmed();
-                        else if (vname.isEmpty())
+                            if (vtype == QByteArrayLiteral("flat")) {
+                                vflat = true;
+                                vtype.clear();
+                            }
+                        } else if (vname.isEmpty()) {
                             vname = data.trimmed();
+                        }
                     }
                     if (t == Tokenizer::Token_SemiColon)
                         break;
@@ -764,9 +930,9 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
                     t = tok.next();
                 }
                 if (type == QSSGShaderCache::ShaderType::Vertex)
-                    outputs.append(vtype + " " + vname);
+                    outputs.append((vflat ? "flat " : "") + vtype + " " + vname);
                 else
-                    inputs.append(vtype + " " + vname);
+                    inputs.append((vflat ? "flat " : "") + vtype + " " + vname);
             } else {
                 const QByteArray trimmedId = id.trimmed();
                 if (funcFinderState == 0 && trimmedId == QByteArrayLiteral("void")) {
@@ -805,10 +971,38 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
                     md.flags |= QSSGCustomShaderMetaData::UsesIblOrientation;
                 else if (trimmedId == QByteArrayLiteral("LIGHTMAP"))
                     md.flags |= QSSGCustomShaderMetaData::UsesLightmap;
+                else if (trimmedId == QByteArrayLiteral("VIEW_INDEX"))
+                    md.flags |= QSSGCustomShaderMetaData::UsesViewIndex;
+                else if (trimmedId == QByteArrayLiteral("INPUT"))
+                    md.flags |= QSSGCustomShaderMetaData::UsesInputTexture;
+                else if (trimmedId == QByteArrayLiteral("CLEARCOAT_AMOUNT"))
+                    md.flags |= QSSGCustomShaderMetaData::UsesClearcoat;
+                else if (trimmedId == QByteArrayLiteral("CLEARCOAT_FRESNEL_SCALE") ||
+                            trimmedId == QByteArrayLiteral("CLEARCOAT_FRESNEL_BIAS"))
+                    md.flags |= QSSGCustomShaderMetaData::UsesClearcoatFresnelScaleBias;
+                else if (trimmedId == QByteArrayLiteral("FRESNEL_SCALE") ||
+                            trimmedId == QByteArrayLiteral("FRESNEL_BIAS"))
+                    md.flags |= QSSGCustomShaderMetaData::UsesFresnelScaleBias;
+                else if (trimmedId == QByteArrayLiteral("TRANSMISSION_FACTOR")) {
+                    md.flags |= QSSGCustomShaderMetaData::UsesTransmission;
+                    md.flags |= QSSGCustomShaderMetaData::UsesScreenTexture;
+                    md.flags |= QSSGCustomShaderMetaData::UsesScreenMipTexture;
+                }
 
                 for (const QSSGCustomMaterialVariableSubstitution &subst : qssg_var_subst_tab) {
                     if (trimmedId == subst.builtin) {
-                        id.replace(subst.builtin, subst.actualName); // replace, not assignment, to keep whitespace etc.
+                        QByteArray newExpr;
+                        newExpr.assign(subst.actualName);
+                        if (subst.multiViewDependent && multiViewCompatible) {
+                            if (subst.builtin.endsWith(QByteArrayLiteral("_TEXTURE"))
+                                || subst.builtin == QByteArrayLiteral("INPUT"))
+                            {
+                                newExpr += QByteArrayLiteral("Array"); // e.g. qt_depthTexture -> qt_depthTextureArray
+                            } else {
+                                newExpr += QByteArrayLiteral("[qt_viewIndex]"); // e.g. qt_viewProjectionMatrix -> qt_viewProjectionMatrix[qt_viewIndex]
+                            }
+                        }
+                        id.replace(subst.builtin, newExpr); // replace, not assignment, to keep whitespace etc.
                         if (trimmedId == QByteArrayLiteral("BONE_TRANSFORMS")) {
                             useJointTexState = 0;
                             md.flags |= QSSGCustomShaderMetaData::UsesSkinning;
@@ -846,6 +1040,8 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
             funcFinderState = 0;
             break;
         case Tokenizer::Token_OpenBraket:
+            // copy everything as-is up to the [
+            result += QByteArray::fromRawData(lastPos, tok.pos - lastPos - 1);
             if (useJointTexState == 0) {
                 result += QByteArrayLiteral("(2 * (");
                 ++useJointTexState;
@@ -863,6 +1059,8 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
             result += QByteArrayLiteral("[");
             break;
         case Tokenizer::Token_CloseBraket:
+            // copy everything as-is up to the ]
+            result += QByteArray::fromRawData(lastPos, tok.pos - lastPos - 1);
             // This implementation will not allow mixed usages of BONE_TRANSFORMS and
             // BONE_NORMAL_TRANSFORMS.
             // For example, BONE_TRANSFORM[int(BONE_NORMAL_TRANFORMS[i][0].x)]
@@ -895,12 +1093,50 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
     result += '\n';
 
     StringPairList allUniforms = baseUniforms;
-    if (md.flags.testFlag(QSSGCustomShaderMetaData::UsesScreenTexture) || md.flags.testFlag(QSSGCustomShaderMetaData::UsesScreenMipTexture))
-        allUniforms.append({ "sampler2D", "qt_screenTexture" });
-    if (md.flags.testFlag(QSSGCustomShaderMetaData::UsesDepthTexture))
-        allUniforms.append({ "sampler2D", "qt_depthTexture" });
-    if (md.flags.testFlag(QSSGCustomShaderMetaData::UsesAoTexture))
-        allUniforms.append({ "sampler2D", "qt_aoTexture" });
+
+    for (const StringPair &samplerTypeAndName : multiViewDependentSamplers) {
+        if (multiViewCompatible)
+            allUniforms.append({ "sampler2DArray", samplerTypeAndName.second });
+        else
+            allUniforms.append(samplerTypeAndName);
+    }
+
+    // We either have qt_depthTexture or qt_depthTextureArray (or none of them),
+    // but never both. We do not generally support binding a 2D texture to a
+    // sampler2DArray binding point and vice versa. Therefore it is up to the
+    // shader snippet to ifdef with QSHADER_VIEW_COUNT if it wants to support
+    // both multiview and non-multiview rendering.
+    if (md.flags.testFlag(QSSGCustomShaderMetaData::UsesDepthTexture)) {
+        if (multiViewCompatible)
+            allUniforms.append({ "sampler2DArray", "qt_depthTextureArray" });
+        else
+            allUniforms.append({ "sampler2D", "qt_depthTexture" });
+    }
+
+    // And the same pattern for qt_screenTexture(Array).
+    if ((md.flags.testFlag(QSSGCustomShaderMetaData::UsesScreenTexture) || md.flags.testFlag(QSSGCustomShaderMetaData::UsesScreenMipTexture))) {
+        if (multiViewCompatible)
+            allUniforms.append({ "sampler2DArray", "qt_screenTextureArray" });
+        else
+            allUniforms.append({ "sampler2D", "qt_screenTexture" });
+    }
+
+    // And for SSAO.
+    if (md.flags.testFlag(QSSGCustomShaderMetaData::UsesAoTexture)) {
+        if (multiViewCompatible)
+            allUniforms.append({ "sampler2DArray", "qt_aoTextureArray" });
+        else
+            allUniforms.append({ "sampler2D", "qt_aoTexture" });
+    }
+
+    // Input texture for post-processing effects.
+    if (md.flags.testFlag(QSSGCustomShaderMetaData::UsesInputTexture)) {
+        if (multiViewCompatible)
+            allUniforms.append({ "sampler2DArray", "qt_inputTextureArray" });
+        else
+            allUniforms.append({ "sampler2D", "qt_inputTexture" });
+    }
+
     if (md.flags.testFlag(QSSGCustomShaderMetaData::UsesLightmap))
         allUniforms.append({ "sampler2D", "qt_lightmap" });
 
@@ -918,10 +1154,16 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
 
     const char *stageStr = type == QSSGShaderCache::ShaderType::Vertex ? "vertex" : "fragment";
     StringPairList allInputs = baseInputs;
+    QVarLengthArray<bool, 16> inputIsFlat(allInputs.count(), false);
     for (const QByteArray &inputTypeAndName : inputs) {
         const QByteArrayList typeAndName = inputTypeAndName.split(' ');
-        if (typeAndName.size() == 2)
+        if (typeAndName.size() == 2) {
             allInputs.append({ typeAndName[0].trimmed(), typeAndName[1].trimmed() });
+            inputIsFlat.append(false);
+        } else if (typeAndName.size() == 3 && typeAndName[0].startsWith("flat")) {
+            allInputs.append({ typeAndName[1].trimmed(), typeAndName[2].trimmed() });
+            inputIsFlat.append(true);
+        }
     }
     if (!allInputs.isEmpty()) {
         static const char *metaStart = "#ifdef QQ3D_SHADER_META\n/*{\n  \"inputs\": [\n";
@@ -930,7 +1172,9 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
         for (int i = 0, count = allInputs.size(); i < count; ++i) {
             dst.append("    { \"type\": \"" + allInputs[i].first
                     + "\", \"name\": \"" + allInputs[i].second
-                    + "\", \"stage\": \"" + stageStr + "\" }");
+                    + "\", \"stage\": \"" + stageStr
+                    + (inputIsFlat[i] ? "\", \"flat\": true" : "\"")
+                    + " }");
             if (i < count - 1)
                 dst.append(",");
             dst.append("\n");
@@ -939,10 +1183,16 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
     }
 
     StringPairList allOutputs = baseOutputs;
+    QVarLengthArray<bool, 16> outputIsFlat(allOutputs.count(), false);
     for (const QByteArray &outputTypeAndName : outputs) {
         const QByteArrayList typeAndName = outputTypeAndName.split(' ');
-        if (typeAndName.size() == 2)
+        if (typeAndName.size() == 2) {
             allOutputs.append({ typeAndName[0].trimmed(), typeAndName[1].trimmed() });
+            outputIsFlat.append(false);
+        } else if (typeAndName.size() == 3 && typeAndName[0].startsWith("flat")) {
+            allOutputs.append({ typeAndName[1].trimmed(), typeAndName[2].trimmed() });
+            outputIsFlat.append(true);
+        }
     }
     if (!allOutputs.isEmpty()) {
         static const char *metaStart = "#ifdef QQ3D_SHADER_META\n/*{\n  \"outputs\": [\n";
@@ -951,7 +1201,9 @@ QSSGShaderCustomMaterialAdapter::prepareCustomShader(QByteArray &dst,
         for (int i = 0, count = allOutputs.size(); i < count; ++i) {
             dst.append("    { \"type\": \"" + allOutputs[i].first
                     + "\", \"name\": \"" + allOutputs[i].second
-                    + "\", \"stage\": \"" + stageStr + "\" }");
+                    + "\", \"stage\": \"" + stageStr
+                    + (outputIsFlat[i] ? "\", \"flat\": true" : "\"")
+                    + " }");
             if (i < count - 1)
                 dst.append(",");
             dst.append("\n");

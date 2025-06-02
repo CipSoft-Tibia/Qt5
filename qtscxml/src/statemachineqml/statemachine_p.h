@@ -26,7 +26,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_STATEMACHINEQML_PRIVATE_EXPORT StateMachine : public QStateMachine, public QQmlParserStatus
+class Q_STATEMACHINEQML_EXPORT StateMachine : public QStateMachine, public QQmlParserStatus
 {
     Q_OBJECT
     Q_INTERFACES(QQmlParserStatus)

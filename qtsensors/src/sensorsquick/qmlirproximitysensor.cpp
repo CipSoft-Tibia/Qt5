@@ -6,7 +6,7 @@
 
 /*!
     \qmltype IRProximitySensor
-//!    \instantiates QmlIRProximitySensor
+//!    \nativetype QmlIRProximitySensor
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -42,7 +42,7 @@ QSensor *QmlIRProximitySensor::sensor() const
 
 /*!
     \qmltype IRProximityReading
-//!    \instantiates QmlIRProximitySensorReading
+//!    \nativetype QmlIRProximitySensorReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -68,7 +68,7 @@ QmlIRProximitySensorReading::~QmlIRProximitySensorReading()
 }
 
 /*!
-    \qmlproperty qreal IRProximityReading::reflectance
+    \qmlproperty real IRProximityReading::reflectance
     This property holds the reflectance value.
 
     Please see QIRProximityReading::reflectance for information about this property.

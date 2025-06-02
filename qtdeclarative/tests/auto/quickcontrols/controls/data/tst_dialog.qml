@@ -80,10 +80,10 @@ TestCase {
 
     function test_reject() {
         let control = createTemporaryObject(dialog, testCase)
-
         let openedSpy = createTemporaryObject(signalSpy, testCase, {target: control, signalName: "opened"})
         verify(openedSpy.valid)
 
+        control.popupType = Popup.Item
         control.open()
         openedSpy.wait()
         compare(openedSpy.count, 1)
@@ -157,6 +157,37 @@ TestCase {
         tryCompare(control, "visible", false)
         compare(rejectedSpy.count, 4)
         compare(closedSpy.count, 4)
+    }
+
+    function test_destructiveRoleDialogClose() {
+        let control = createTemporaryObject(dialog, testCase)
+        verify(control)
+
+        // Set up the dialog with a DestructiveRole button
+        control.standardButtons = Dialog.Discard
+
+        let discardedSpy = createTemporaryObject(signalSpy, testCase, {target: control, signalName: "discarded"})
+        verify(discardedSpy.valid)
+
+        let closedSpy = createTemporaryObject(signalSpy, testCase, {target: control, signalName: "closed"})
+        verify(closedSpy.valid)
+
+        control.open()
+        verify(control.visible)
+
+        let discardButton = control.standardButton(Dialog.Discard)
+        verify(discardButton)
+        discardButton.clicked()
+
+        // Check that the discarded() signal is emitted
+        compare(discardedSpy.count, 1)
+
+        if (control.visible)
+            control.close()
+
+       // Check that the dialog is closed
+       tryCompare(control, "visible", false)
+       compare(closedSpy.count, 1)
     }
 
     function test_buttonBox_data() {

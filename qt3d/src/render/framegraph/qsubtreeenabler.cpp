@@ -27,7 +27,7 @@ namespace Qt3DRender
     \qmltype SubtreeEnabler
     \inqmlmodule Qt3D.Render
     \since 5.14
-    \instantiates Qt3DRender::QSubtreeEnabler
+    \nativetype Qt3DRender::QSubtreeEnabler
     \inherits FrameGraphNode
     \brief Enables or disables entire subtrees of frame graph nodes.
 
@@ -72,7 +72,7 @@ QSubtreeEnabler::~QSubtreeEnabler()
 }
 
 /*!
-    \enum QSubtreeEnabler::Enablement
+    \enum Qt3DRender::QSubtreeEnabler::Enablement
 
     Specifies whether subtree enablement is persistent or transient.
 

@@ -1,39 +1,6 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
-
-/****************************************************************************
-**
-** Copyright (c) 2007-2008, Apple, Inc.
-**
-** All rights reserved.
-**
-** Redistribution and use in source and binary forms, with or without
-** modification, are permitted provided that the following conditions are met:
-**
-**   * Redistributions of source code must retain the above copyright notice,
-**     this list of conditions and the following disclaimer.
-**
-**   * Redistributions in binary form must reproduce the above copyright notice,
-**     this list of conditions and the following disclaimer in the documentation
-**     and/or other materials provided with the distribution.
-**
-**   * Neither the name of Apple, Inc. nor the names of its contributors
-**     may be used to endorse or promote products derived from this software
-**     without specific prior written permission.
-**
-** THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-** "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-** LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-** A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-** CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-** EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-** PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-** PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-** LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-** NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-** SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-**
-****************************************************************************/
+// Copyright (c) 2007-2008, Apple, Inc.
+// SPDX-License-Identifier: BSD-3-Clause
 
 #include <AppKit/AppKit.h>
 
@@ -171,10 +138,11 @@ void QCocoaEventDispatcherPrivate::maybeStopCFRunLoopTimer()
     runLoopTimerRef = nullptr;
 }
 
-void QCocoaEventDispatcher::registerTimer(int timerId, qint64 interval, Qt::TimerType timerType, QObject *obj)
+void QCocoaEventDispatcher::registerTimer(Qt::TimerId timerId, Duration interval,
+                                          Qt::TimerType timerType, QObject *obj)
 {
 #ifndef QT_NO_DEBUG
-    if (timerId < 1 || interval < 0 || !obj) {
+    if (qToUnderlying(timerId) < 1 || interval.count() < 0 || !obj) {
         qWarning("QCocoaEventDispatcher::registerTimer: invalid arguments");
         return;
     } else if (obj->thread() != thread() || thread() != QThread::currentThread()) {
@@ -188,10 +156,10 @@ void QCocoaEventDispatcher::registerTimer(int timerId, qint64 interval, Qt::Time
     d->maybeStartCFRunLoopTimer();
 }
 
-bool QCocoaEventDispatcher::unregisterTimer(int timerId)
+bool QCocoaEventDispatcher::unregisterTimer(Qt::TimerId timerId)
 {
 #ifndef QT_NO_DEBUG
-    if (timerId < 1) {
+    if (qToUnderlying(timerId) < 1) {
         qWarning("QCocoaEventDispatcher::unregisterTimer: invalid argument");
         return false;
     } else if (thread() != QThread::currentThread()) {
@@ -230,13 +198,13 @@ bool QCocoaEventDispatcher::unregisterTimers(QObject *obj)
     return returnValue;
 }
 
-QList<QCocoaEventDispatcher::TimerInfo>
-QCocoaEventDispatcher::registeredTimers(QObject *object) const
+QList<QCocoaEventDispatcher::TimerInfoV2>
+QCocoaEventDispatcher::timersForObject(QObject *object) const
 {
 #ifndef QT_NO_DEBUG
     if (!object) {
         qWarning("QCocoaEventDispatcher:registeredTimers: invalid argument");
-        return QList<TimerInfo>();
+        return {};
     }
 #endif
 
@@ -540,17 +508,17 @@ bool QCocoaEventDispatcher::processEvents(QEventLoop::ProcessEventsFlags flags)
     return retVal;
 }
 
-int QCocoaEventDispatcher::remainingTime(int timerId)
+auto QCocoaEventDispatcher::remainingTime(Qt::TimerId timerId) const -> Duration
 {
 #ifndef QT_NO_DEBUG
-    if (timerId < 1) {
+    if (qToUnderlying(timerId) < 1) {
         qWarning("QCocoaEventDispatcher::remainingTime: invalid argument");
-        return -1;
+        return Duration::min();
     }
 #endif
 
-    Q_D(QCocoaEventDispatcher);
-    return d->timerInfoList.timerRemainingTime(timerId);
+    Q_D(const QCocoaEventDispatcher);
+    return d->timerInfoList.remainingDuration(timerId);
 }
 
 void QCocoaEventDispatcher::wakeUp()
@@ -795,13 +763,16 @@ QCocoaEventDispatcherPrivate::QCocoaEventDispatcherPrivate()
 {
 }
 
+QCocoaEventDispatcherPrivate::~QCocoaEventDispatcherPrivate()
+    = default;
+
 void qt_mac_maybeCancelWaitForMoreEventsForwarder(QAbstractEventDispatcher *eventDispatcher)
 {
     static_cast<QCocoaEventDispatcher *>(eventDispatcher)->d_func()->maybeCancelWaitForMoreEvents();
 }
 
 QCocoaEventDispatcher::QCocoaEventDispatcher(QObject *parent)
-    : QAbstractEventDispatcher(*new QCocoaEventDispatcherPrivate, parent)
+    : QAbstractEventDispatcherV2(*new QCocoaEventDispatcherPrivate, parent)
 {
     Q_D(QCocoaEventDispatcher);
 

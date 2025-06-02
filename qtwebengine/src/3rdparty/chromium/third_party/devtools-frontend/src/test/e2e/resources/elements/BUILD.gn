@@ -9,6 +9,7 @@ copy_to_gen("elements") {
     "accessibility-iframe-page.html",
     "accessibility-simple-page.html",
     "adornment-container-query.html",
+    "adornment-media.html",
     "adornment-scroll-snap.html",
     "adornment-shadow.html",
     "adornment.html",
@@ -42,6 +43,7 @@ copy_to_gen("elements") {
     "grid-editor.html",
     "highlight-pseudo-inheritance.html",
     "hover.html",
+    "iframe-documenturl.html",
     "inactive-css-page.html",
     "inactive-css-with-invalid-value.html",
     "limited-quirks-mode.html",
@@ -62,5 +64,6 @@ copy_to_gen("elements") {
     "stylesheets-with-various-sources.html",
     "switch-panels-while-editing-as-html.html",
     "target.html",
+    "view-transition.html",
   ]
 }

@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/constant/eval_test.h"
 
@@ -98,7 +111,7 @@ TEST_F(ConstEvalTest, Scalar_f32) {
 }
 
 TEST_F(ConstEvalTest, Scalar_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Expr(9.9_h);
     WrapInFunction(expr);
@@ -140,7 +153,7 @@ Case C() {
 }
 using ConstEvalZeroInitTest = ConstEvalTestWithParam<Case>;
 TEST_P(ConstEvalZeroInitTest, Test) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     auto& param = GetParam();
     auto ty = param.type(*this);
     auto* expr = Call(ty);
@@ -296,7 +309,7 @@ TEST_F(ConstEvalTest, Vec3_ZeroInit_f32) {
 }
 
 TEST_F(ConstEvalTest, Vec3_ZeroInit_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<vec3<f16>>();
     WrapInFunction(expr);
@@ -443,7 +456,7 @@ TEST_F(ConstEvalTest, Vec3_Splat_f32) {
 }
 
 TEST_F(ConstEvalTest, Vec3_Splat_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<vec3<f16>>(9.9_h);
     WrapInFunction(expr);
@@ -651,7 +664,7 @@ TEST_F(ConstEvalTest, Vec3_FullConstruct_f32) {
 }
 
 TEST_F(ConstEvalTest, Vec3_FullConstruct_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<vec3<f16>>(1_h, 2_h, 3_h);
     WrapInFunction(expr);
@@ -914,7 +927,7 @@ TEST_F(ConstEvalTest, Vec3_MixConstruct_f32_mixed_sign_0) {
 }
 
 TEST_F(ConstEvalTest, Vec3_MixConstruct_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<vec3<f16>>(1_h, Call<vec2<f16>>(2_h, 3_h));
     WrapInFunction(expr);
@@ -945,7 +958,7 @@ TEST_F(ConstEvalTest, Vec3_MixConstruct_f16) {
 }
 
 TEST_F(ConstEvalTest, Vec3_MixConstruct_f16_all_10) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<vec3<f16>>(10_h, Call<vec2<f16>>(10_h, 10_h));
     WrapInFunction(expr);
@@ -976,7 +989,7 @@ TEST_F(ConstEvalTest, Vec3_MixConstruct_f16_all_10) {
 }
 
 TEST_F(ConstEvalTest, Vec3_MixConstruct_f16_all_positive_0) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<vec3<f16>>(0_h, Call<vec2<f16>>(0_h, 0_h));
     WrapInFunction(expr);
@@ -1007,7 +1020,7 @@ TEST_F(ConstEvalTest, Vec3_MixConstruct_f16_all_positive_0) {
 }
 
 TEST_F(ConstEvalTest, Vec3_MixConstruct_f16_all_negative_0) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<vec3<f16>>(Call<vec2<f16>>(-0_h, -0_h), -0_h);
     WrapInFunction(expr);
@@ -1038,7 +1051,7 @@ TEST_F(ConstEvalTest, Vec3_MixConstruct_f16_all_negative_0) {
 }
 
 TEST_F(ConstEvalTest, Vec3_MixConstruct_f16_mixed_sign_0) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<vec3<f16>>(0_h, Call<vec2<f16>>(-0_h, 0_h));
     WrapInFunction(expr);
@@ -1198,7 +1211,7 @@ TEST_F(ConstEvalTest, Mat2x3_ZeroInit_f32) {
 }
 
 TEST_F(ConstEvalTest, Mat2x3_ZeroInit_f16) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     auto* expr = Call<mat2x3<f16>>();
     WrapInFunction(expr);
@@ -1446,6 +1459,7 @@ TEST_F(ConstEvalTest, Array_Struct_f32_Zero) {
     ASSERT_NE(sem, nullptr);
     auto* arr = sem->Type()->As<core::type::Array>();
     ASSERT_NE(arr, nullptr);
+    ASSERT_EQ(arr->ConstantCount(), 2u);
     EXPECT_TRUE(arr->ElemType()->Is<core::type::Struct>());
     EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
     EXPECT_TRUE(sem->ConstantValue()->AnyZero());
@@ -1478,6 +1492,7 @@ TEST_F(ConstEvalTest, Array_i32_Elements) {
     ASSERT_NE(sem, nullptr);
     auto* arr = sem->Type()->As<core::type::Array>();
     ASSERT_NE(arr, nullptr);
+    ASSERT_EQ(arr->ConstantCount(), 4u);
     EXPECT_TRUE(arr->ElemType()->Is<core::type::I32>());
     EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
     EXPECT_FALSE(sem->ConstantValue()->AnyZero());
@@ -1500,6 +1515,131 @@ TEST_F(ConstEvalTest, Array_i32_Elements) {
     EXPECT_EQ(sem->ConstantValue()->Index(3)->ValueAs<i32>(), 40_i);
 }
 
+TEST_F(ConstEvalTest, Array_Infer_i32_i32) {
+    auto* expr = Call<array<Infer>>(10_i, 20_i);
+    WrapInFunction(expr);
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto* sem = Sem().Get(expr);
+    ASSERT_NE(sem, nullptr);
+    auto* arr = sem->Type()->As<core::type::Array>();
+    ASSERT_NE(arr, nullptr);
+    ASSERT_EQ(arr->ConstantCount(), 2u);
+    EXPECT_TRUE(arr->ElemType()->Is<core::type::I32>());
+    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
+    EXPECT_FALSE(sem->ConstantValue()->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->AllZero());
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(0)->ValueAs<i32>(), 10_i);
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(1)->ValueAs<i32>(), 20_i);
+}
+
+TEST_F(ConstEvalTest, Array_Infer_ai_ai) {
+    auto* expr = Call<array<Infer>>(10_a, 20_a);
+    GlobalConst("C", expr);
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto* sem = Sem().Get(expr);
+    ASSERT_NE(sem, nullptr);
+    auto* arr = sem->Type()->As<core::type::Array>();
+    ASSERT_NE(arr, nullptr);
+    ASSERT_EQ(arr->ConstantCount(), 2u);
+    EXPECT_TRUE(arr->ElemType()->Is<core::type::AbstractInt>());
+    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
+    EXPECT_FALSE(sem->ConstantValue()->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->AllZero());
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(0)->ValueAs<AInt>(), 10_a);
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(1)->ValueAs<AInt>(), 20_a);
+}
+
+TEST_F(ConstEvalTest, Array_Infer_af_af) {
+    auto* expr = Call<array<Infer>>(10.0_a, 20.0_a);
+    GlobalConst("C", expr);
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto* sem = Sem().Get(expr);
+    ASSERT_NE(sem, nullptr);
+    auto* arr = sem->Type()->As<core::type::Array>();
+    ASSERT_NE(arr, nullptr);
+    ASSERT_EQ(arr->ConstantCount(), 2u);
+    EXPECT_TRUE(arr->ElemType()->Is<core::type::AbstractFloat>());
+    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
+    EXPECT_FALSE(sem->ConstantValue()->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->AllZero());
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(0)->ValueAs<AFloat>(), 10_a);
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(1)->ValueAs<AFloat>(), 20_a);
+}
+
+TEST_F(ConstEvalTest, Array_Infer_af_ai) {
+    auto* expr = Call<array<Infer>>(10.0_a, 20_a);
+    GlobalConst("C", expr);
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto* sem = Sem().Get(expr);
+    ASSERT_NE(sem, nullptr);
+    auto* arr = sem->Type()->As<core::type::Array>();
+    ASSERT_NE(arr, nullptr);
+    ASSERT_EQ(arr->ConstantCount(), 2u);
+    EXPECT_TRUE(arr->ElemType()->Is<core::type::AbstractFloat>());
+    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
+    EXPECT_FALSE(sem->ConstantValue()->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->AllZero());
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(0)->ValueAs<AFloat>(), 10_a);
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(1)->ValueAs<AFloat>(), 20_a);
+}
+
+TEST_F(ConstEvalTest, Array_Infer_ai_af) {
+    auto* expr = Call<array<Infer>>(10_a, 20.0_a);
+    GlobalConst("C", expr);
+
+    EXPECT_TRUE(r()->Resolve()) << r()->error();
+
+    auto* sem = Sem().Get(expr);
+    ASSERT_NE(sem, nullptr);
+    auto* arr = sem->Type()->As<core::type::Array>();
+    ASSERT_NE(arr, nullptr);
+    ASSERT_EQ(arr->ConstantCount(), 2u);
+    EXPECT_TRUE(arr->ElemType()->Is<core::type::AbstractFloat>());
+    EXPECT_TYPE(sem->ConstantValue()->Type(), sem->Type());
+    EXPECT_FALSE(sem->ConstantValue()->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->AllZero());
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(0)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(0)->ValueAs<AFloat>(), 10_a);
+
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AnyZero());
+    EXPECT_FALSE(sem->ConstantValue()->Index(1)->AllZero());
+    EXPECT_EQ(sem->ConstantValue()->Index(1)->ValueAs<AFloat>(), 20_a);
+}
+
 namespace ArrayInit {
 struct Case {
     Value input;
@@ -1513,7 +1653,7 @@ static std::ostream& operator<<(std::ostream& o, const Case& c) {
 
 using ResolverConstEvalArrayInitTest = ConstEvalTestWithParam<Case>;
 TEST_P(ResolverConstEvalArrayInitTest, Test) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     auto& param = GetParam();
     auto* expr = param.input.Expr(*this);
     auto* a = Const("a", expr);
@@ -1686,7 +1826,7 @@ TEST_F(ConstEvalTest, Array_Struct_f32_Elements) {
 }
 
 TEST_F(ConstEvalTest, Struct_ZeroInit) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     auto* s = Structure("S", Vector{
                                  Member("a", ty.i32()),
                                  Member("b", ty.u32()),
@@ -1729,7 +1869,7 @@ TEST_F(ConstEvalTest, Struct_ZeroInit) {
 }
 
 TEST_F(ConstEvalTest, Struct_Nested_ZeroInit) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
     auto* inner = Structure("Inner", Vector{
                                          Member("a", ty.i32()),
                                          Member("b", ty.u32()),
@@ -1812,7 +1952,7 @@ TEST_F(ConstEvalTest, Struct_I32s_ZeroInit) {
 }
 
 TEST_F(ConstEvalTest, Struct_MixedScalars_ZeroInit) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{
                        Member("m1", ty.i32()),
@@ -1924,7 +2064,7 @@ TEST_F(ConstEvalTest, Struct_VectorF32s_ZeroInit) {
 }
 
 TEST_F(ConstEvalTest, Struct_MixedVectors_ZeroInit) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{
                        Member("m1", ty.vec2<i32>()),
@@ -2055,7 +2195,7 @@ TEST_F(ConstEvalTest, Struct_Struct_ZeroInit) {
 }
 
 TEST_F(ConstEvalTest, Struct_MixedScalars_Construct) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{
                        Member("m1", ty.i32()),
@@ -2106,7 +2246,7 @@ TEST_F(ConstEvalTest, Struct_MixedScalars_Construct) {
 }
 
 TEST_F(ConstEvalTest, Struct_MixedVectors_Construct) {
-    Enable(core::Extension::kF16);
+    Enable(wgsl::Extension::kF16);
 
     Structure("S", Vector{
                        Member("m1", ty.vec2<i32>()),

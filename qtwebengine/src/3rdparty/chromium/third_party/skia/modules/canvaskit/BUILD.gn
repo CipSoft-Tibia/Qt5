@@ -131,6 +131,7 @@ skia_wasm_lib("canvaskit") {
   if (skia_canvaskit_enable_skottie) {
     sources += [
       "../../modules/skottie/utils/SkottieUtils.cpp",
+      "../../modules/skottie/utils/TextEditor.cpp",
       "skottie_bindings.cpp",
     ]
   }
@@ -348,6 +349,9 @@ skia_wasm_lib("canvaskit") {
     "EMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0",
     "SK_SHAPER_HARFBUZZ_AVAILABLE",
   ]
+  if (skia_canvaskit_enable_embedded_font) {
+    defines += [ "CK_EMBED_FONT" ]
+  }
   if (skia_canvaskit_enable_paragraph) {
     defines += [ "CK_INCLUDE_PARAGRAPH" ]
   }

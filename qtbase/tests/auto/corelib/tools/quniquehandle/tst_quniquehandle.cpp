@@ -76,7 +76,7 @@ struct TestTraits
 {
     using Type = GlobalResource::handle;
 
-    static bool close(Type handle)
+    static bool close(Type handle) noexcept
     {
         return GlobalResource::close(handle);
     }
@@ -146,6 +146,20 @@ private slots:
         QVERIFY(GlobalResource::isOpen(dest.get()));
     }
 
+    void moveAssignment_maintainsOwnershipWhenSelfAssigning() const
+    {
+        Handle resource{ GlobalResource::open() };
+
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_GCC("-Wself-move")
+QT_WARNING_DISABLE_CLANG("-Wself-move")
+        resource = std::move(resource);
+QT_WARNING_POP
+
+        QVERIFY(resource.isValid());
+        QVERIFY(GlobalResource::isOpen(resource.get()));
+    }
+
     void isValid_returnsFalse_onlyWhenHandleIsInvalid() const
     {
         const Handle invalid;
@@ -186,7 +200,7 @@ private slots:
         QCOMPARE_EQ(valid.get(), resource);
     }
 
-    void reset_resetsPreviousValueAndTakesOwnership() const
+    void reset_resetsPreviousValueAndTakesOwnership_whenCalledWithHandle() const
     {
         const auto resource0 = GlobalResource::open();
         const auto resource1 = GlobalResource::open();
@@ -196,6 +210,36 @@ private slots:
 
         QVERIFY(!GlobalResource::isOpen(resource0));
         QVERIFY(GlobalResource::isOpen(resource1));
+    }
+
+    void reset_resetsOwningHandleToInvalid_whenCalledWithNoArguments() const
+    {
+        const auto resource0 = GlobalResource::open();
+
+        Handle h{ resource0 };
+        h.reset();
+
+        QVERIFY(!GlobalResource::isOpen(resource0));
+        QVERIFY(!h);
+    }
+
+    void reset_maintainsOwnership_whenCalledWithOwnedHandle() const
+    {
+        const auto resource = GlobalResource::open();
+
+        Handle h{ resource };
+        h.reset(resource);
+
+        QVERIFY(GlobalResource::isOpen(resource));
+        QVERIFY(h);
+    }
+
+    void reset_doesNothing_whenCalledOnInvalidHandle() const
+    {
+        Handle h{ };
+        h.reset();
+
+        QVERIFY(!h);
     }
 
     void release_returnsInvalidResource_whenCalledOnInvalidHandle() const
@@ -220,16 +264,51 @@ private slots:
 
     void swap_swapsOwnership() const
     {
-        const auto resource0 = GlobalResource::open();
-        const auto resource1 = GlobalResource::open();
+         { // Swapping valid and invalid handle
+            Handle h0{ GlobalResource::open() };
+            Handle h1;
 
-        Handle h0{ resource0 };
-        Handle h1{ resource1 };
+            h0.swap(h1);
 
-        std::swap(h0, h1);
+            QVERIFY(!h0.isValid());
+            QVERIFY(h1.isValid());
+        }
+        { // Swapping valid handles
+            const auto resource0 = GlobalResource::open();
+            const auto resource1 = GlobalResource::open();
 
-        QCOMPARE_EQ(h0.get(), resource1);
-        QCOMPARE_EQ(h1.get(), resource0);
+            Handle h0{ resource0 };
+            Handle h1{ resource1 };
+
+            h0.swap(h1);
+
+            QCOMPARE_EQ(h0.get(), resource1);
+            QCOMPARE_EQ(h1.get(), resource0);
+        }
+        { // std::swap
+            const auto resource0 = GlobalResource::open();
+            const auto resource1 = GlobalResource::open();
+
+            Handle h0{ resource0 };
+            Handle h1{ resource1 };
+
+            std::swap(h0, h1);
+
+            QCOMPARE_EQ(h0.get(), resource1);
+            QCOMPARE_EQ(h1.get(), resource0);
+        }
+        { // swap
+            const auto resource0 = GlobalResource::open();
+            const auto resource1 = GlobalResource::open();
+
+            Handle h0{ resource0 };
+            Handle h1{ resource1 };
+
+            swap(h0, h1);
+
+            QCOMPARE_EQ(h0.get(), resource1);
+            QCOMPARE_EQ(h1.get(), resource0);
+        }
     }
 
     void comparison_behavesAsInt_whenHandleTypeIsInt_data() const
@@ -248,7 +327,7 @@ private slots:
         {
             using Type = int;
 
-            static bool close(Type)
+            static bool close(Type) noexcept
             {
                 return true;
             }
@@ -263,6 +342,48 @@ private slots:
 
         QFETCH(int, lhs);
         QFETCH(int, rhs);
+
+        QCOMPARE_EQ(Handle{ lhs } == Handle{ rhs }, lhs == rhs);
+        QCOMPARE_EQ(Handle{ lhs } != Handle{ rhs }, lhs != rhs);
+        QCOMPARE_EQ(Handle{ lhs } < Handle{ rhs }, lhs < rhs);
+        QCOMPARE_EQ(Handle{ lhs } <= Handle{ rhs }, lhs <= rhs);
+        QCOMPARE_EQ(Handle{ lhs } > Handle{ rhs }, lhs > rhs);
+        QCOMPARE_EQ(Handle{ lhs } >= Handle{ rhs },  lhs >= rhs);
+
+        QCOMPARE_EQ(Handle{ }, Handle{ });
+    }
+
+    void comparison_behavesAsPointer_whenHandleTypeIsPointer_data() const
+    {
+        QTest::addColumn<int*>("lhs");
+        QTest::addColumn<int*>("rhs");
+
+        QTest::addRow("lhs == rhs") << reinterpret_cast<int*>(2) << reinterpret_cast<int*>(2);
+        QTest::addRow("lhs < rhs") << reinterpret_cast<int*>(1) << reinterpret_cast<int*>(2);
+        QTest::addRow("lhs > rhs") << reinterpret_cast<int*>(2) << reinterpret_cast<int*>(1);
+    }
+
+    void comparison_behavesAsPointer_whenHandleTypeIsPointer() const
+    {
+        struct IntPtrTraits
+        {
+            using Type = int*;
+
+            static bool close(Type)
+            {
+                return true;
+            }
+
+            static Type invalidValue() noexcept
+            {
+                return nullptr;
+            }
+        };
+
+        using Handle = QUniqueHandle<IntPtrTraits>;
+
+        QFETCH(int*, lhs);
+        QFETCH(int*, rhs);
 
         QCOMPARE_EQ(Handle{ lhs } == Handle{ rhs }, lhs == rhs);
         QCOMPARE_EQ(Handle{ lhs } != Handle{ rhs }, lhs != rhs);

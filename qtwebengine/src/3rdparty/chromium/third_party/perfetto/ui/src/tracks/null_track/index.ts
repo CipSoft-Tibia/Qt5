@@ -12,36 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {NewTrackArgs, Track} from '../../frontend/track';
-import {Plugin, PluginContext, PluginInfo} from '../../public';
+import {
+  Plugin,
+  PluginContext,
+  PluginContextTrace,
+  PluginDescriptor,
+  Track,
+} from '../../public';
 
+export const NULL_TRACK_URI = 'perfetto.NullTrack';
 export const NULL_TRACK_KIND = 'NullTrack';
 
-export class NullTrack extends Track {
-  static readonly kind = NULL_TRACK_KIND;
-  constructor(args: NewTrackArgs) {
-    super(args);
-    this.frontendOnly = true;
-  }
-
-  static create(args: NewTrackArgs): NullTrack {
-    return new NullTrack(args);
-  }
-
+export class NullTrack implements Track {
   getHeight(): number {
     return 30;
   }
 
-  renderCanvas(_: CanvasRenderingContext2D): void {}
+  render(): void {}
 }
 
 class NullTrackPlugin implements Plugin {
-  onActivate(ctx: PluginContext): void {
-    ctx.registerTrack(NullTrack);
+  onActivate(_ctx: PluginContext): void {}
+
+  async onTraceLoad(ctx: PluginContextTrace): Promise<void> {
+    // TODO(stevegolton): This is not the right way to handle blank tracks,
+    // instead we should probably just render some blank element at render time
+    // if no track uri is supplied.
+    ctx.registerTrack({
+      uri: NULL_TRACK_URI,
+      displayName: 'Null Track',
+      kind: NULL_TRACK_KIND,
+      track: () => new NullTrack(),
+    });
   }
 }
 
-export const plugin: PluginInfo = {
+export const plugin: PluginDescriptor = {
   pluginId: 'perfetto.NullTrack',
   plugin: NullTrackPlugin,
 };

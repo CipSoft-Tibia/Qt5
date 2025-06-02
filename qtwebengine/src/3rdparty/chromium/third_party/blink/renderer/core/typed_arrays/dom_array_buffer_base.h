@@ -27,6 +27,8 @@ class CORE_EXPORT DOMArrayBufferBase : public ScriptWrappable {
 
   size_t ByteLength() const { return contents_.DataLength(); }
 
+  // TODO(331348222): It doesn't make sense to detach DomSharedArrayBuffers,
+  // remove that possibility.
   virtual bool IsDetached() const { return is_detached_; }
 
   void Detach() { is_detached_ = true; }
@@ -38,7 +40,7 @@ class CORE_EXPORT DOMArrayBufferBase : public ScriptWrappable {
   }
 
   // ScriptWrappable overrides:
-  v8::MaybeLocal<v8::Value> Wrap(ScriptState*) override {
+  v8::Local<v8::Value> Wrap(ScriptState*) override {
     NOTREACHED();
     return v8::Local<v8::Value>();
   }

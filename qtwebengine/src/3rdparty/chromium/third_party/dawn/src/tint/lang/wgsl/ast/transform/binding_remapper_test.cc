@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/binding_remapper.h"
 
@@ -103,9 +116,9 @@ struct S {
   a : f32,
 }
 
-@group(1) @binding(2) var<storage, read> a : S;
+@internal(disable_validation__binding_point_collision) @group(1) @binding(2) var<storage, read> a : S;
 
-@group(3) @binding(2) var<storage, read> b : S;
+@internal(disable_validation__binding_point_collision) @group(3) @binding(2) var<storage, read> b : S;
 
 @compute @workgroup_size(1)
 fn f() {
@@ -147,11 +160,11 @@ struct S {
   a : f32,
 }
 
-@group(2) @binding(1) var<storage, read_write> a : S;
+@internal(disable_validation__binding_point_collision) @group(2) @binding(1) var<storage, read_write> a : S;
 
-@group(3) @binding(2) var<storage, read_write> b : S;
+@internal(disable_validation__binding_point_collision) @group(3) @binding(2) var<storage, read_write> b : S;
 
-@group(4) @binding(3) var<storage, read> c : S;
+@internal(disable_validation__binding_point_collision) @group(4) @binding(3) var<storage, read> c : S;
 
 @compute @workgroup_size(1)
 fn f() {
@@ -191,9 +204,9 @@ struct S {
   a : f32,
 }
 
-@group(4) @binding(5) var<storage, read_write> a : S;
+@internal(disable_validation__binding_point_collision) @group(4) @binding(5) var<storage, read_write> a : S;
 
-@group(6) @binding(7) var<storage, read_write> b : S;
+@internal(disable_validation__binding_point_collision) @group(6) @binding(7) var<storage, read_write> b : S;
 
 @compute @workgroup_size(1)
 fn f() {
@@ -297,13 +310,13 @@ struct S {
   i : i32,
 }
 
-@group(1) @binding(1) var<storage, read> a : S;
+@internal(disable_validation__binding_point_collision) @group(1) @binding(1) var<storage, read> a : S;
 
-@group(1) @binding(1) var<storage, read> b : S;
+@internal(disable_validation__binding_point_collision) @group(1) @binding(1) var<storage, read> b : S;
 
-@group(5) @binding(4) var<storage, read> c : S;
+@internal(disable_validation__binding_point_collision) @group(5) @binding(4) var<storage, read> c : S;
 
-@group(5) @binding(4) var<storage, read> d : S;
+@internal(disable_validation__binding_point_collision) @group(5) @binding(4) var<storage, read> d : S;
 
 @compute @workgroup_size(1)
 fn f1() {

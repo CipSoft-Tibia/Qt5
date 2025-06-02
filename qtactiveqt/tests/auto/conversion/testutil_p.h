@@ -16,64 +16,24 @@
 //
 
 #include <qtcore/qt_windows.h>
+#include <qtcore/private/qcomobject_p.h>
 #include <qtcore/qtglobal>
-#include <wrl/client.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <atomic>
 
-using Microsoft::WRL::ComPtr;
-
-template<typename T>
-struct ComBase : T
+template <typename T>
+ULONG refCount(const ComPtr<T> &p)
 {
-    ~ComBase() { Q_ASSERT(m_refCount == 0); }
+    p->AddRef();
+    return p->Release();
+}
 
-    ULONG AddRef() final
-    {
-        return m_refCount++;
-    }
-
-    ULONG Release() final
-    {
-        const int refCount = --m_refCount;
-        if (refCount == 0)
-            delete this;
-        return refCount;
-    }
-
-    std::atomic_int m_refCount = 1u;
+struct IUnknownStub : QComObject<IUnknown>
+{
 };
 
-struct IUnknownStub : ComBase<IUnknown>
+struct IDispatchStub : QComObject<IDispatch>
 {
-    HRESULT QueryInterface(const IID &riid, void **ppvObject) override
-    {
-        if (!ppvObject)
-            return E_POINTER;
-
-        if (riid == IID_IUnknown) {
-            *ppvObject = this;
-            return S_OK;
-        }
-
-        return E_NOINTERFACE;
-    }
-};
-
-struct IDispatchStub : ComBase<IDispatch>
-{
-    HRESULT QueryInterface(const IID &riid, void **ppvObject) override
-    {
-        if (!ppvObject)
-            return E_POINTER;
-
-        if (riid == IID_IUnknown || riid == IID_IDispatch) {
-            *ppvObject = this;
-            return S_OK;
-        }
-
-        return E_NOINTERFACE;
-    }
-
     HRESULT GetTypeInfoCount(UINT * /*pctinfo*/) override { return E_NOTIMPL; }
 
     HRESULT GetTypeInfo(UINT /*iTInfo*/, LCID /*lcid*/, ITypeInfo ** /*ppTInfo*/) override

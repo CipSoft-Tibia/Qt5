@@ -7,6 +7,7 @@ qt_internal_add_test(${PROJECT_NAME}
     GUI
     QMLTEST
     SOURCES
+        ../shared/util.h
         tst_enable_disable.cpp
     LIBRARIES
         Qt::Core

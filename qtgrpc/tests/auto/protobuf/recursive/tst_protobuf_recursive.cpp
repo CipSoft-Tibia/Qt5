@@ -15,10 +15,10 @@
 class QtProtobufRecursiveTest : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void init() { m_serializer.reset(new QProtobufSerializer); }
-    void SerializationTest();
-    void DeserializationTest();
+    void serializationTest();
+    void deserializationTest();
 
 private:
     std::unique_ptr<QProtobufSerializer> m_serializer;
@@ -38,7 +38,7 @@ void initRecursive(RecursiveMessage &parent, int &times)
     parent.setTestFieldRecursive(child);
 }
 
-void QtProtobufRecursiveTest::SerializationTest()
+void QtProtobufRecursiveTest::serializationTest()
 {
     int times = 10;
     RecursiveMessage msg;
@@ -57,7 +57,7 @@ void QtProtobufRecursiveTest::SerializationTest()
              "1200");
 }
 
-void QtProtobufRecursiveTest::DeserializationTest()
+void QtProtobufRecursiveTest::deserializationTest()
 {
     RecursiveMessage msg;
     msg.deserialize(m_serializer.get(), QByteArray::fromHex("083712080836120412020835"));

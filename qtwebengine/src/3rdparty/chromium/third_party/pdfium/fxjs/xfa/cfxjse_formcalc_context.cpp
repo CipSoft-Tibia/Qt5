@@ -35,6 +35,7 @@
 #include "third_party/base/numerics/safe_conversions.h"
 #include "v8/include/v8-container.h"
 #include "v8/include/v8-function-callback.h"
+#include "v8/include/v8-local-handle.h"
 #include "v8/include/v8-object.h"
 #include "v8/include/v8-primitive.h"
 #include "xfa/fgas/crt/cfgas_decimal.h"
@@ -667,18 +668,17 @@ WideString EncodeURL(const ByteString& bsURL) {
 
   WideString wsURL = WideString::FromUTF8(bsURL.AsStringView());
   WideTextBuffer wsResultBuf;
-  wchar_t szEncode[4];
-  szEncode[0] = '%';
-  szEncode[3] = 0;
+  wchar_t encode_buffer[3];
+  encode_buffer[0] = '%';
   for (char32_t ch : pdfium::CodePointView(wsURL.AsStringView())) {
     size_t i = 0;
     size_t iCount = std::size(kStrUnsafe);
     while (i < iCount) {
       if (ch == kStrUnsafe[i]) {
         int32_t iIndex = ch / 16;
-        szEncode[1] = kStrCode[iIndex];
-        szEncode[2] = kStrCode[ch - iIndex * 16];
-        wsResultBuf << szEncode;
+        encode_buffer[1] = kStrCode[iIndex];
+        encode_buffer[2] = kStrCode[ch - iIndex * 16];
+        wsResultBuf << WideStringView(encode_buffer, 3);
         break;
       }
       ++i;
@@ -691,9 +691,9 @@ WideString EncodeURL(const ByteString& bsURL) {
     while (i < iCount) {
       if (ch == kStrReserved[i]) {
         int32_t iIndex = ch / 16;
-        szEncode[1] = kStrCode[iIndex];
-        szEncode[2] = kStrCode[ch - iIndex * 16];
-        wsResultBuf << szEncode;
+        encode_buffer[1] = kStrCode[iIndex];
+        encode_buffer[2] = kStrCode[ch - iIndex * 16];
+        wsResultBuf << WideStringView(encode_buffer, 3);
         break;
       }
       ++i;
@@ -715,9 +715,9 @@ WideString EncodeURL(const ByteString& bsURL) {
 
     if ((ch >= 0x80 && ch <= 0xff) || ch <= 0x1f || ch == 0x7f) {
       int32_t iIndex = ch / 16;
-      szEncode[1] = kStrCode[iIndex];
-      szEncode[2] = kStrCode[ch - iIndex * 16];
-      wsResultBuf << szEncode;
+      encode_buffer[1] = kStrCode[iIndex];
+      encode_buffer[2] = kStrCode[ch - iIndex * 16];
+      wsResultBuf << WideStringView(encode_buffer, 3);
     } else if (ch >= 0x20 && ch <= 0x7e) {
       wsResultBuf.AppendChar(ch);
     } else {
@@ -735,20 +735,20 @@ WideString EncodeURL(const ByteString& bsURL) {
 
       int32_t iIndex = 0;
       if (iLen % 2 != 0) {
-        szEncode[1] = '0';
-        szEncode[2] = wsBuffer[iLen - 1];
+        encode_buffer[1] = '0';
+        encode_buffer[2] = wsBuffer[iLen - 1];
         iIndex = iLen - 2;
       } else {
-        szEncode[1] = wsBuffer[iLen - 1];
-        szEncode[2] = wsBuffer[iLen - 2];
+        encode_buffer[1] = wsBuffer[iLen - 1];
+        encode_buffer[2] = wsBuffer[iLen - 2];
         iIndex = iLen - 3;
       }
-      wsResultBuf << szEncode;
+      wsResultBuf << WideStringView(encode_buffer, 3);
       while (iIndex > 0) {
-        szEncode[1] = wsBuffer[iIndex];
-        szEncode[2] = wsBuffer[iIndex - 1];
+        encode_buffer[1] = wsBuffer[iIndex];
+        encode_buffer[2] = wsBuffer[iIndex - 1];
         iIndex -= 2;
-        wsResultBuf << szEncode;
+        wsResultBuf << WideStringView(encode_buffer, 3);
       }
     }
   }
@@ -757,10 +757,10 @@ WideString EncodeURL(const ByteString& bsURL) {
 
 WideString EncodeHTML(const ByteString& bsHTML) {
   WideString wsHTML = WideString::FromUTF8(bsHTML.AsStringView());
-  wchar_t szEncode[9];
-  szEncode[0] = '&';
-  szEncode[1] = '#';
-  szEncode[2] = 'x';
+  wchar_t encode_buffer[8];
+  encode_buffer[0] = '&';
+  encode_buffer[1] = '#';
+  encode_buffer[2] = 'x';
   WideTextBuffer wsResultBuf;
   for (char32_t ch : pdfium::CodePointView(wsHTML.AsStringView())) {
     WideString htmlReserve;
@@ -772,21 +772,19 @@ WideString EncodeHTML(const ByteString& bsHTML) {
       wsResultBuf.AppendChar(static_cast<wchar_t>(ch));
     } else if (ch < 256) {
       int32_t iIndex = ch / 16;
-      szEncode[3] = kStrCode[iIndex];
-      szEncode[4] = kStrCode[ch - iIndex * 16];
-      szEncode[5] = ';';
-      szEncode[6] = 0;
-      wsResultBuf << szEncode;
+      encode_buffer[3] = kStrCode[iIndex];
+      encode_buffer[4] = kStrCode[ch - iIndex * 16];
+      encode_buffer[5] = ';';
+      wsResultBuf << WideStringView(encode_buffer, 6);
     } else if (ch < 65536) {
       int32_t iBigByte = ch / 256;
       int32_t iLittleByte = ch % 256;
-      szEncode[3] = kStrCode[iBigByte / 16];
-      szEncode[4] = kStrCode[iBigByte % 16];
-      szEncode[5] = kStrCode[iLittleByte / 16];
-      szEncode[6] = kStrCode[iLittleByte % 16];
-      szEncode[7] = ';';
-      szEncode[8] = 0;
-      wsResultBuf << szEncode;
+      encode_buffer[3] = kStrCode[iBigByte / 16];
+      encode_buffer[4] = kStrCode[iBigByte % 16];
+      encode_buffer[5] = kStrCode[iLittleByte / 16];
+      encode_buffer[6] = kStrCode[iLittleByte % 16];
+      encode_buffer[7] = ';';
+      wsResultBuf << WideStringView(encode_buffer, 8);
     } else {
       // TODO(tsepez): Handle codepoint not in BMP.
     }
@@ -797,10 +795,10 @@ WideString EncodeHTML(const ByteString& bsHTML) {
 WideString EncodeXML(const ByteString& bsXML) {
   WideString wsXML = WideString::FromUTF8(bsXML.AsStringView());
   WideTextBuffer wsResultBuf;
-  wchar_t szEncode[9];
-  szEncode[0] = '&';
-  szEncode[1] = '#';
-  szEncode[2] = 'x';
+  wchar_t encode_buffer[8];
+  encode_buffer[0] = '&';
+  encode_buffer[1] = '#';
+  encode_buffer[2] = 'x';
   for (char32_t ch : pdfium::CodePointView(wsXML.AsStringView())) {
     switch (ch) {
       case '"':
@@ -833,21 +831,19 @@ WideString EncodeXML(const ByteString& bsXML) {
           wsResultBuf.AppendChar(static_cast<wchar_t>(ch));
         } else if (ch < 256) {
           int32_t iIndex = ch / 16;
-          szEncode[3] = kStrCode[iIndex];
-          szEncode[4] = kStrCode[ch - iIndex * 16];
-          szEncode[5] = ';';
-          szEncode[6] = 0;
-          wsResultBuf << szEncode;
+          encode_buffer[3] = kStrCode[iIndex];
+          encode_buffer[4] = kStrCode[ch - iIndex * 16];
+          encode_buffer[5] = ';';
+          wsResultBuf << WideStringView(encode_buffer, 6);
         } else if (ch < 65536) {
           int32_t iBigByte = ch / 256;
           int32_t iLittleByte = ch % 256;
-          szEncode[3] = kStrCode[iBigByte / 16];
-          szEncode[4] = kStrCode[iBigByte % 16];
-          szEncode[5] = kStrCode[iLittleByte / 16];
-          szEncode[6] = kStrCode[iLittleByte % 16];
-          szEncode[7] = ';';
-          szEncode[8] = 0;
-          wsResultBuf << szEncode;
+          encode_buffer[3] = kStrCode[iBigByte / 16];
+          encode_buffer[4] = kStrCode[iBigByte % 16];
+          encode_buffer[5] = kStrCode[iLittleByte / 16];
+          encode_buffer[6] = kStrCode[iLittleByte % 16];
+          encode_buffer[7] = ';';
+          wsResultBuf << WideStringView(encode_buffer, 8);
         } else {
           // TODO(tsepez): Handle codepoint not in BMP.
         }
@@ -1191,9 +1187,9 @@ bool SimpleValueCompare(v8::Isolate* pIsolate,
   return fxv8::IsNull(firstValue) && fxv8::IsNull(secondValue);
 }
 
-std::vector<v8::Local<v8::Value>> UnfoldArgs(
+v8::LocalVector<v8::Value> UnfoldArgs(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  std::vector<v8::Local<v8::Value>> results;
+  v8::LocalVector<v8::Value> results(info.GetIsolate());
   v8::Isolate* pIsolate = info.GetIsolate();
   for (int i = 1; i < info.Length(); ++i) {
     v8::Local<v8::Value> arg = info[i];
@@ -1308,14 +1304,14 @@ absl::optional<CFXJSE_Engine::ResolveResult> ResolveObjects(
                                         dwFlags);
 }
 
-std::vector<v8::Local<v8::Value>> ParseResolveResult(
+v8::LocalVector<v8::Value> ParseResolveResult(
     CFXJSE_HostObject* pHostObject,
     const CFXJSE_Engine::ResolveResult& resolveNodeRS,
     v8::Local<v8::Value> pParentValue,
     bool* bAttribute) {
-  std::vector<v8::Local<v8::Value>> resultValues;
   CFXJSE_FormCalcContext* pContext = ToFormCalcContext(pHostObject);
   v8::Isolate* pIsolate = pContext->GetIsolate();
+  v8::LocalVector<v8::Value> resultValues(pIsolate);
 
   if (resolveNodeRS.type == CFXJSE_Engine::ResolveResult::Type::kNodes) {
     *bAttribute = false;
@@ -2996,12 +2992,11 @@ void CFXJSE_FormCalcContext::Eval(
   std::unique_ptr<CFXJSE_Context> pNewContext =
       CFXJSE_Context::Create(pIsolate, nullptr, nullptr, nullptr);
 
-  auto returnValue = std::make_unique<CFXJSE_Value>();
   ByteString bsScript = FX_UTF8Encode(wsJavaScriptBuf.value().AsStringView());
-  pNewContext->ExecuteScript(bsScript.AsStringView(), returnValue.get(),
-                             v8::Local<v8::Object>());
+  CFXJSE_Context::ExecutionResult result = pNewContext->ExecuteScript(
+      bsScript.AsStringView(), v8::Local<v8::Object>());
 
-  info.GetReturnValue().Set(returnValue->DirectGetValue());
+  info.GetReturnValue().Set(result.value->DirectGetValue());
 }
 
 // static
@@ -3021,7 +3016,7 @@ void CFXJSE_FormCalcContext::Ref(
     return;
   }
 
-  std::vector<v8::Local<v8::Value>> values(3);
+  v8::LocalVector<v8::Value> values(info.GetIsolate(), 3);
   int intVal = 3;
   if (fxv8::IsNull(argOne)) {
     // TODO(dsinclair): Why is this 4 when the others are all 3?
@@ -4905,7 +4900,7 @@ void CFXJSE_FormCalcContext::fm_var_filter(
   }
 
   if (iFlags == 4) {
-    std::vector<v8::Local<v8::Value>> values(3);
+    v8::LocalVector<v8::Value> values(info.GetIsolate(), 3);
     values[0] = fxv8::NewNumberHelper(info.GetIsolate(), 3);
     values[1] = fxv8::NewNullHelper(info.GetIsolate());
     values[2] = fxv8::NewNullHelper(info.GetIsolate());
@@ -4927,7 +4922,7 @@ void CFXJSE_FormCalcContext::concat_fm_object(
     CFXJSE_HostObject* pThis,
     const v8::FunctionCallbackInfo<v8::Value>& info) {
   v8::Isolate* pIsolate = ToFormCalcContext(pThis)->GetIsolate();
-  std::vector<v8::Local<v8::Value>> returnValues;
+  v8::LocalVector<v8::Value> returnValues(pIsolate);
   for (int i = 0; i < info.Length(); ++i) {
     if (fxv8::IsArray(info[i])) {
       v8::Local<v8::Array> arr = info[i].As<v8::Array>();
@@ -5058,7 +5053,10 @@ void CFXJSE_FormCalcContext::DotAccessorCommon(
       return;
     }
 
-    std::vector<std::vector<v8::Local<v8::Value>>> resolveValues(iLength - 2);
+    // TODO(crbug.com/pdfium/2090) - doublecheck use of std::vector
+    std::vector<v8::LocalVector<v8::Value>> resolveValues(
+        iLength - 2, v8::LocalVector<v8::Value>(info.GetIsolate()));
+
     bool bAttribute = false;
     bool bAllEmpty = true;
     for (uint32_t i = 2; i < iLength; i++) {
@@ -5079,7 +5077,7 @@ void CFXJSE_FormCalcContext::DotAccessorCommon(
       return;
     }
 
-    std::vector<v8::Local<v8::Value>> values;
+    v8::LocalVector<v8::Value> values(pIsolate);
     values.push_back(fxv8::NewNumberHelper(pIsolate, 1));
     values.push_back(
         bAttribute ? fxv8::NewStringHelper(pIsolate, bsName.AsStringView())
@@ -5116,10 +5114,10 @@ void CFXJSE_FormCalcContext::DotAccessorCommon(
   }
 
   bool bAttribute = false;
-  std::vector<v8::Local<v8::Value>> resolveValues =
+  v8::LocalVector<v8::Value> resolveValues =
       ParseResolveResult(pThis, maybeResult.value(), argAccessor, &bAttribute);
 
-  std::vector<v8::Local<v8::Value>> values(resolveValues.size() + 2);
+  v8::LocalVector<v8::Value> values(pIsolate, resolveValues.size() + 2);
   values[0] = fxv8::NewNumberHelper(pIsolate, 1);
   values[1] = bAttribute
                   ? fxv8::NewStringHelper(pIsolate, bsName.AsStringView())

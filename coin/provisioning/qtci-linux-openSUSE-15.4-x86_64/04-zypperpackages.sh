@@ -72,6 +72,9 @@ sudo zypper -nq install openssl-3
 # Valgrind (Needed for testlib selftests)
 sudo zypper -nq install valgrind-devel
 
+# Java
+sudo zypper -nq install java-17-openjdk
+
 gccVersion="$(gcc --version |grep gcc |cut -b 17-23)"
 echo "GCC = $gccVersion" >> versions.txt
 

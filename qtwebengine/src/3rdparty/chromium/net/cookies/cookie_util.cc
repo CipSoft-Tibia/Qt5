@@ -32,6 +32,7 @@
 #include "net/cookies/cookie_monster.h"
 #include "net/cookies/cookie_options.h"
 #include "net/first_party_sets/first_party_set_metadata.h"
+#include "net/first_party_sets/first_party_sets_cache_filter.h"
 #include "net/http/http_util.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
@@ -341,7 +342,7 @@ bool GetCookieDomainWithString(const GURL& url,
   // a sequence of individual domain name labels"; a label can only be empty if
   // it is the last label in the name, but a name ending in `..` would have an
   // empty label in the penultimate position and is thus invalid.
-  if (base::EndsWith(url_host, "..")) {
+  if (url_host.ends_with("..")) {
     return false;
   }
   // If no domain was specified in the domain string, default to a host cookie.
@@ -621,7 +622,7 @@ bool IsOnPath(const std::string& cookie_path, const std::string& url_path) {
 
   // Make sure the cookie path is a prefix of the url path.  If the url path is
   // shorter than the cookie path, then the cookie path can't be a prefix.
-  if (!base::StartsWith(url_path, cookie_path, base::CompareCase::SENSITIVE)) {
+  if (!url_path.starts_with(cookie_path)) {
     return false;
   }
 
@@ -889,16 +890,24 @@ bool IsSchemeBoundCookiesEnabled() {
   return base::FeatureList::IsEnabled(features::kEnableSchemeBoundCookies);
 }
 
+bool IsTimeLimitedInsecureCookiesEnabled() {
+  return IsSchemeBoundCookiesEnabled() &&
+         base::FeatureList::IsEnabled(features::kTimeLimitedInsecureCookies);
+}
+
 bool IsSchemefulSameSiteEnabled() {
   return base::FeatureList::IsEnabled(features::kSchemefulSameSite);
 }
 
-absl::optional<FirstPartySetMetadata> ComputeFirstPartySetMetadataMaybeAsync(
+absl::optional<
+    std::pair<FirstPartySetMetadata, FirstPartySetsCacheFilter::MatchInfo>>
+ComputeFirstPartySetMetadataMaybeAsync(
     const SchemefulSite& request_site,
     const IsolationInfo& isolation_info,
     const CookieAccessDelegate* cookie_access_delegate,
-    base::OnceCallback<void(FirstPartySetMetadata)> callback) {
-  if (isolation_info.party_context().has_value() && cookie_access_delegate) {
+    base::OnceCallback<void(FirstPartySetMetadata,
+                            FirstPartySetsCacheFilter::MatchInfo)> callback) {
+  if (cookie_access_delegate) {
     return cookie_access_delegate->ComputeFirstPartySetMetadataMaybeAsync(
         request_site,
         base::OptionalToPtr(
@@ -906,7 +915,8 @@ absl::optional<FirstPartySetMetadata> ComputeFirstPartySetMetadataMaybeAsync(
         std::move(callback));
   }
 
-  return FirstPartySetMetadata();
+  return std::make_pair(FirstPartySetMetadata(),
+                        FirstPartySetsCacheFilter::MatchInfo());
 }
 
 CookieOptions::SameSiteCookieContext::ContextMetadata::HttpMethod

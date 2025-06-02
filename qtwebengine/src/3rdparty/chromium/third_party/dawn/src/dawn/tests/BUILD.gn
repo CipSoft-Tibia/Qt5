@@ -1,22 +1,44 @@
-# Copyright 2012 The Dawn Authors
+# Copyright 2012 The Dawn & Tint Authors
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import("../../../scripts/dawn_overrides_with_defaults.gni")
 
 import("//testing/test.gni")
 import("${dawn_root}/generator/dawn_generator.gni")
 import("${dawn_root}/scripts/dawn_features.gni")
+
+# When embedded by Chrome, partition_alloc and the dangling pointer detector
+# are already initialized. Dawn shouldn't attempt to initialize them again. This
+# variable is useful to avoid double initialization of the library.
+dawn_enable_partition_alloc = false
+if (dawn_standalone && defined(dawn_partition_alloc_dir)) {
+  import("//build_overrides/partition_alloc.gni")
+  dawn_enable_partition_alloc = enable_dangling_raw_ptr_checks_default
+}
 
 group("tests") {
   testonly = true
@@ -161,6 +183,16 @@ template("dawn_test") {
 
     configs += [ "${dawn_root}/src/dawn/common:internal_config" ]
 
+    if (dawn_tests_use_angle && defined(dawn_angle_dir)) {
+      if (!defined(data_deps)) {
+        data_deps = []
+      }
+      data_deps += [
+        "${dawn_angle_dir}:libEGL",
+        "${dawn_angle_dir}:libGLESv2",
+      ]
+    }
+
     # Running Dawn tests within Chromium in Windows may require DXC, copy DXC
     # binary from Windows SDK.
     if (build_with_chromium && is_win &&
@@ -253,12 +285,14 @@ dawn_test("dawn_unittests") {
     ":gmock_and_gtest",
     ":mock_webgpu_gen",
     ":native_mocks_sources",
+    ":partition_alloc_support",
     ":platform_mocks_sources",
     "${dawn_root}/src/dawn:cpp",
     "${dawn_root}/src/dawn:proc",
     "${dawn_root}/src/dawn/common",
     "${dawn_root}/src/dawn/native:sources",
     "${dawn_root}/src/dawn/native:static",
+    "${dawn_root}/src/dawn/partition_alloc:raw_ptr",
     "${dawn_root}/src/dawn/utils",
     "${dawn_root}/src/dawn/wire",
   ]
@@ -282,6 +316,7 @@ dawn_test("dawn_unittests") {
     "DawnNativeTest.cpp",
     "DawnNativeTest.h",
     "MockCallback.h",
+    "ParamGenerator.h",
     "ToggleParser.cpp",
     "ToggleParser.h",
     "unittests/AsyncTaskTests.cpp",
@@ -294,6 +329,7 @@ dawn_test("dawn_unittests") {
     "unittests/ContentLessObjectCacheTests.cpp",
     "unittests/EnumClassBitmasksTests.cpp",
     "unittests/EnumMaskIteratorTests.cpp",
+    "unittests/EnumeratorTests.cpp",
     "unittests/ErrorTests.cpp",
     "unittests/FeatureTests.cpp",
     "unittests/GPUInfoTests.cpp",
@@ -302,7 +338,6 @@ dawn_test("dawn_unittests") {
     "unittests/ITypBitsetTests.cpp",
     "unittests/ITypSpanTests.cpp",
     "unittests/ITypVectorTests.cpp",
-    "unittests/LimitsTests.cpp",
     "unittests/LinkedListTests.cpp",
     "unittests/MathTests.cpp",
     "unittests/MutexProtectedTests.cpp",
@@ -312,6 +347,7 @@ dawn_test("dawn_unittests") {
     "unittests/PerStageTests.cpp",
     "unittests/PerThreadProcTests.cpp",
     "unittests/PlacementAllocatedTests.cpp",
+    "unittests/RangeTests.cpp",
     "unittests/RefBaseTests.cpp",
     "unittests/RefCountedTests.cpp",
     "unittests/ResultTests.cpp",
@@ -335,6 +371,7 @@ dawn_test("dawn_unittests") {
     "unittests/native/DestroyObjectTests.cpp",
     "unittests/native/DeviceAsyncTaskTests.cpp",
     "unittests/native/DeviceCreationTests.cpp",
+    "unittests/native/LimitsTests.cpp",
     "unittests/native/ObjectContentHasherTests.cpp",
     "unittests/native/StreamTests.cpp",
     "unittests/validation/BindGroupValidationTests.cpp",
@@ -383,6 +420,7 @@ dawn_test("dawn_unittests") {
     "unittests/validation/ValidationTest.h",
     "unittests/validation/VertexBufferValidationTests.cpp",
     "unittests/validation/VertexStateValidationTests.cpp",
+    "unittests/validation/WGSLFeatureValidationTests.cpp",
     "unittests/validation/WritableBufferBindingAliasingValidationTests.cpp",
     "unittests/validation/WritableTextureBindingAliasingValidationTests.cpp",
     "unittests/validation/WriteBufferTests.cpp",
@@ -395,6 +433,8 @@ dawn_test("dawn_unittests") {
     "unittests/wire/WireDisconnectTests.cpp",
     "unittests/wire/WireErrorCallbackTests.cpp",
     "unittests/wire/WireExtensionTests.cpp",
+    "unittests/wire/WireFutureTest.cpp",
+    "unittests/wire/WireFutureTest.h",
     "unittests/wire/WireInjectDeviceTests.cpp",
     "unittests/wire/WireInjectInstanceTests.cpp",
     "unittests/wire/WireInjectSwapChainTests.cpp",
@@ -407,6 +447,13 @@ dawn_test("dawn_unittests") {
     "unittests/wire/WireTest.cpp",
     "unittests/wire/WireTest.h",
   ]
+
+  # `dawn_unittests` are known to run for both Dawn standalone and Chrome. This
+  # file is testing specifically the Dawn's standalone configuration of
+  # partition_alloc.
+  if (dawn_enable_partition_alloc) {
+    sources += [ "unittests/RawPtrTests.cpp" ]
+  }
 
   if (is_win) {
     sources += [ "unittests/WindowsUtilsTests.cpp" ]
@@ -426,6 +473,25 @@ dawn_test("dawn_unittests") {
 }
 
 ###############################################################################
+# Dawn PartitionAlloc support for tests
+###############################################################################
+source_set("partition_alloc_support") {
+  testonly = true
+
+  deps = [
+    "${dawn_root}/src/dawn/common",
+    "${dawn_root}/src/dawn/partition_alloc",
+  ]
+
+  public = [ "PartitionAllocSupport.h" ]
+  sources = [ "PartitionAllocSupport.cpp" ]
+
+  if (dawn_enable_partition_alloc) {
+    defines = [ "DAWN_ENABLE_PARTITION_ALLOC" ]
+  }
+}
+
+###############################################################################
 # Dawn test infrastructure targets
 ###############################################################################
 
@@ -434,6 +500,7 @@ source_set("test_infra_sources") {
   testonly = true
 
   deps = [
+    ":partition_alloc_support",
     "${dawn_root}/src/dawn:cpp",
     "${dawn_root}/src/dawn:proc",
     "${dawn_root}/src/dawn/common",
@@ -443,10 +510,12 @@ source_set("test_infra_sources") {
     "${dawn_root}/src/dawn/wire",
   ]
 
-  public_deps = [ ":gmock_and_gtest" ]
+  public_deps = [
+    ":gmock_and_gtest",
+    "${dawn_root}/src/dawn/partition_alloc:raw_ptr",
+  ]
 
-  if (dawn_supports_glfw_for_windowing || dawn_enable_opengl) {
-    assert(dawn_supports_glfw_for_windowing)
+  if (dawn_supports_glfw_for_windowing) {
     public_deps += [ "${dawn_root}/src/dawn/glfw" ]
   }
 
@@ -477,6 +546,7 @@ source_set("platform_mocks_sources") {
     "${dawn_root}/src/dawn/common",
     "${dawn_root}/src/dawn/platform",
   ]
+  public_deps = [ "${dawn_root}/src/dawn/partition_alloc:raw_ptr" ]
 
   sources = [
     "mocks/platform/CachingInterfaceMock.cpp",
@@ -494,6 +564,7 @@ source_set("end2end_tests_sources") {
     "${dawn_root}/src/dawn:proc",
     "${dawn_root}/src/dawn/common",
     "${dawn_root}/src/dawn/native:headers",
+    "${dawn_root}/src/dawn/partition_alloc:raw_ptr",
     "${dawn_root}/src/dawn/platform",
     "${dawn_root}/src/dawn/utils",
     "${dawn_root}/src/dawn/wire",
@@ -501,8 +572,12 @@ source_set("end2end_tests_sources") {
 
   sources = [
     "end2end/AdapterCreationTests.cpp",
+    "end2end/AdapterEnumerationTests.cpp",
+    "end2end/AdapterPropertiesD3DTests.cpp",
     "end2end/BasicTests.cpp",
     "end2end/BindGroupTests.cpp",
+    "end2end/BufferHostMappedPointerTests.cpp",
+    "end2end/BufferHostMappedPointerTests.h",
     "end2end/BufferTests.cpp",
     "end2end/BufferZeroInitTests.cpp",
     "end2end/ClipSpaceTests.cpp",
@@ -537,24 +612,28 @@ source_set("end2end_tests_sources") {
     "end2end/DualSourceBlendTests.cpp",
     "end2end/DynamicBufferOffsetTests.cpp",
     "end2end/EntryPointTests.cpp",
-    "end2end/ExperimentalDP4aTests.cpp",
+    "end2end/EventTests.cpp",
+    "end2end/ExperimentalSubgroupsTests.cpp",
     "end2end/ExternalTextureTests.cpp",
     "end2end/FirstIndexOffsetTests.cpp",
     "end2end/FragDepthTests.cpp",
+    "end2end/FramebufferFetchTests.cpp",
     "end2end/GpuMemorySynchronizationTests.cpp",
     "end2end/HistogramTests.cpp",
     "end2end/IndexFormatTests.cpp",
     "end2end/MaxLimitTests.cpp",
     "end2end/MemoryAllocationStressTests.cpp",
+    "end2end/MemoryHeapPropertiesTests.cpp",
     "end2end/MultisampledRenderingTests.cpp",
     "end2end/MultisampledSamplingTests.cpp",
     "end2end/MultithreadTests.cpp",
     "end2end/NonzeroBufferCreationTests.cpp",
     "end2end/NonzeroTextureCreationTests.cpp",
     "end2end/OpArrayLengthTests.cpp",
-    "end2end/PhysicalDeviceDiscoveryTests.cpp",
+    "end2end/Packed4x8IntegerDotProductTests.cpp",
     "end2end/PipelineCachingTests.cpp",
     "end2end/PipelineLayoutTests.cpp",
+    "end2end/PixelLocalStorageTests.cpp",
     "end2end/PrimitiveStateTests.cpp",
     "end2end/PrimitiveTopologyTests.cpp",
     "end2end/QueryTests.cpp",
@@ -572,8 +651,6 @@ source_set("end2end_tests_sources") {
     "end2end/ShaderF16Tests.cpp",
     "end2end/ShaderTests.cpp",
     "end2end/ShaderValidationTests.cpp",
-    "end2end/SharedTextureMemoryTests.cpp",
-    "end2end/SharedTextureMemoryTests.h",
     "end2end/StorageTextureTests.cpp",
     "end2end/SubresourceRenderAttachmentTests.cpp",
     "end2end/Texture3DTests.cpp",
@@ -608,18 +685,11 @@ source_set("end2end_tests_sources") {
     sources += [ "end2end/D3D12CachingTests.cpp" ]
   }
 
-  if (is_win) {
-    sources += [ "end2end/SharedTextureMemoryTests_win.cpp" ]
-  }
-
   if (is_mac || is_ios) {
     if (dawn_enable_metal) {
-      sources += [
-        "end2end/IOSurfaceWrappingTests.cpp",
-        "end2end/VideoViewsTests_mac.cpp",
-      ]
+      sources += [ "end2end/VideoViewsTests_mac.cpp" ]
     }
-    sources += [ "end2end/SharedTextureMemoryTests_apple.mm" ]
+    sources += [ "end2end/BufferHostMappedPointerTests_apple.mm" ]
 
     frameworks = [ "IOSurface.framework" ]
 
@@ -627,6 +697,13 @@ source_set("end2end_tests_sources") {
         []) {
       configs -= [ "//build/config/compiler:enable_arc" ]
     }
+  }
+
+  if (is_mac || is_ios || is_linux) {
+    sources += [ "end2end/BufferHostMappedPointerTests_posix.cpp" ]
+  }
+  if (is_win) {
+    sources += [ "end2end/BufferHostMappedPointerTests_win.cpp" ]
   }
 
   if (dawn_supports_glfw_for_windowing) {
@@ -659,6 +736,7 @@ source_set("white_box_tests_sources") {
     "${dawn_root}/src/dawn:cpp",
     "${dawn_root}/src/dawn:proc",
     "${dawn_root}/src/dawn/common",
+    "${dawn_root}/src/dawn/partition_alloc:raw_ptr",
 
     # Statically linked and with sources because the end2end white_box tests use Dawn internals.
     "${dawn_root}/src/dawn/native:sources",
@@ -667,8 +745,19 @@ source_set("white_box_tests_sources") {
     "${dawn_root}/src/dawn/wire",
   ]
 
-  sources = []
+  sources = [
+    "white_box/SharedTextureMemoryTests.cpp",
+    "white_box/SharedTextureMemoryTests.h",
+  ]
   libs = []
+
+  if (is_mac || is_ios) {
+    sources += [ "white_box/SharedTextureMemoryTests_apple.mm" ]
+  }
+
+  if (is_win) {
+    sources += [ "white_box/SharedTextureMemoryTests_win.cpp" ]
+  }
 
   if (dawn_enable_vulkan) {
     deps += [ "${dawn_vulkan_headers_dir}:vulkan_headers" ]
@@ -682,6 +771,15 @@ source_set("white_box_tests_sources") {
         "white_box/VulkanImageWrappingTests_OpaqueFD.cpp",
         "white_box/VulkanImageWrappingTests_OpaqueFD.h",
       ]
+
+      sources += [
+        "white_box/SharedTextureMemoryTests_dmabuf.cpp",
+        "white_box/SharedTextureMemoryTests_opaquefd.cpp",
+      ]
+    }
+
+    if (is_android) {
+      sources += [ "white_box/SharedTextureMemoryTests_android.cpp" ]
     }
 
     if (dawn_enable_error_injection) {
@@ -767,6 +865,7 @@ dawn_test("dawn_perf_tests") {
     "${dawn_root}/src/dawn:cpp",
     "${dawn_root}/src/dawn:proc",
     "${dawn_root}/src/dawn/common",
+    "${dawn_root}/src/dawn/partition_alloc:raw_ptr",
     "${dawn_root}/src/dawn/platform",
     "${dawn_root}/src/dawn/utils",
     "${dawn_root}/src/dawn/wire",

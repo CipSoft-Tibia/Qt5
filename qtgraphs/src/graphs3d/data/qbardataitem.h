@@ -1,8 +1,8 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QBARDATAITEM_H
-#define QBARDATAITEM_H
+#ifndef QTGRAPHS_QBARDATAITEM_H
+#define QTGRAPHS_QBARDATAITEM_H
 
 #include <QtGraphs/qgraphsglobal.h>
 
@@ -11,7 +11,7 @@ QT_BEGIN_NAMESPACE
 class QBarDataItem
 {
 public:
-    constexpr QBarDataItem() noexcept {};
+    constexpr QBarDataItem() noexcept = default;
     explicit constexpr QBarDataItem(float value) noexcept
         : m_value(value)
     {}

@@ -121,6 +121,25 @@ void tst_custom::initializeProperties()
 {
     QVERIFY(m_custom);
 
+    QSignalSpy textureWidthSpy(m_custom, &QCustom3DVolume::textureWidthChanged);
+    QSignalSpy textureHeightSpy(m_custom, &QCustom3DVolume::textureHeightChanged);
+    QSignalSpy textureDepthSpy(m_custom, &QCustom3DVolume::textureDepthChanged);
+    QSignalSpy sliceIndexXSpy(m_custom, &QCustom3DVolume::sliceIndexXChanged);
+    QSignalSpy sliceIndexYSpy(m_custom, &QCustom3DVolume::sliceIndexYChanged);
+    QSignalSpy sliceIndexZSpy(m_custom, &QCustom3DVolume::sliceIndexZChanged);
+    QSignalSpy colorTableSpy(m_custom, &QCustom3DVolume::colorTableChanged);
+    QSignalSpy textureDataSpy(m_custom, &QCustom3DVolume::textureDataChanged);
+    QSignalSpy textureFormatSpy(m_custom, &QCustom3DVolume::textureFormatChanged);
+    QSignalSpy alphaMultiplierSpy(m_custom, &QCustom3DVolume::alphaMultiplierChanged);
+    QSignalSpy preserveOpacitySpy(m_custom, &QCustom3DVolume::preserveOpacityChanged);
+    QSignalSpy useHighDefShaderSpy(m_custom, &QCustom3DVolume::useHighDefShaderChanged);
+    QSignalSpy drawSlicesSpy(m_custom, &QCustom3DVolume::drawSlicesChanged);
+    QSignalSpy drawSliceFramesSpy(m_custom, &QCustom3DVolume::drawSliceFramesChanged);
+    QSignalSpy sliceFrameColorSpy(m_custom, &QCustom3DVolume::sliceFrameColorChanged);
+    QSignalSpy sliceFrameWidthSpy(m_custom, &QCustom3DVolume::sliceFrameWidthsChanged);
+    QSignalSpy sliceFrameGapsSpy(m_custom, &QCustom3DVolume::sliceFrameGapsChanged);
+    QSignalSpy sliceFrameThicknessSpy(m_custom, &QCustom3DVolume::sliceFrameThicknessesChanged);
+
     m_custom->setAlphaMultiplier(0.1f);
     m_custom->setDrawSliceFrames(true);
     m_custom->setDrawSliceFrames(true);
@@ -147,6 +166,7 @@ void tst_custom::initializeProperties()
     QCOMPARE(m_custom->sliceIndexZ(), 0);
     QCOMPARE(m_custom->useHighDefShader(), false);
 
+
     // Common (from QCustom3DVolume)
     m_custom->setPosition(QVector3D(1.0f, 1.0f, 1.0f));
     m_custom->setPositionAbsolute(true);
@@ -155,6 +175,13 @@ void tst_custom::initializeProperties()
     m_custom->setScalingAbsolute(false);
     m_custom->setShadowCasting(false);
     m_custom->setVisible(false);
+    m_custom->setTextureWidth(10);
+    m_custom->setTextureHeight(10);
+    m_custom->setTextureDepth(10);
+    m_custom->setDrawSlices(true);
+
+    QList<QRgb> colors = { 0x88112233 };
+    m_custom->setColorTable(colors);
 
     QCOMPARE(m_custom->position(), QVector3D(1.0f, 1.0f, 1.0f));
     QCOMPARE(m_custom->isPositionAbsolute(), true);
@@ -163,6 +190,25 @@ void tst_custom::initializeProperties()
     QCOMPARE(m_custom->isScalingAbsolute(), false);
     QCOMPARE(m_custom->isShadowCasting(), false);
     QCOMPARE(m_custom->isVisible(), false);
+
+    QCOMPARE(textureWidthSpy.size(), 1);
+    QCOMPARE(textureHeightSpy.size(), 1);
+    QCOMPARE(textureDepthSpy.size(), 1);
+    QCOMPARE(sliceIndexXSpy.size(), 1);
+    QCOMPARE(sliceIndexYSpy.size(), 1);
+    QCOMPARE(sliceIndexZSpy.size(), 1);
+    QCOMPARE(colorTableSpy.size(), 1);
+    QCOMPARE(textureDataSpy.size(), 0);
+    QCOMPARE(textureFormatSpy.size(), 0);
+    QCOMPARE(alphaMultiplierSpy.size(), 1);
+    QCOMPARE(preserveOpacitySpy.size(), 1);
+    QCOMPARE(useHighDefShaderSpy.size(), 1);
+    QCOMPARE(drawSlicesSpy.size(), 1);
+    QCOMPARE(drawSliceFramesSpy.size(), 1);
+    QCOMPARE(sliceFrameColorSpy.size(), 1);
+    QCOMPARE(sliceFrameWidthSpy.size(), 1);
+    QCOMPARE(sliceFrameGapsSpy.size(), 1);
+    QCOMPARE(sliceFrameThicknessSpy.size(), 1);
 }
 
 void tst_custom::invalidProperties()

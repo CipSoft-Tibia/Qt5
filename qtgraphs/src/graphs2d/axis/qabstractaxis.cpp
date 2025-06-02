@@ -1,7 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtGraphs/qabstractaxis.h>
+#include <QtGraphs/QAbstractAxis>
 #include <private/qabstractaxis_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -20,7 +20,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype AbstractAxis
-    \instantiates QAbstractAxis
+    \nativetype QAbstractAxis
     \inqmlmodule QtGraphs
     \ingroup graphs_qml_2D
 
@@ -37,9 +37,9 @@ QT_BEGIN_NAMESPACE
 
     This enum type specifies the type of the axis object.
 
-    \value AxisTypeNoAxis
-    \value AxisTypeValue
-    \value AxisTypeBarCategory
+    \value Value
+    \value BarCategory
+    \value DateTime
 */
 
 /*!
@@ -82,8 +82,21 @@ QT_BEGIN_NAMESPACE
     \brief The angle of the axis labels in degrees.
 */
 /*!
-    \qmlproperty qreal AbstractAxis::labelsAngle
+    \qmlproperty real AbstractAxis::labelsAngle
     The angle of the axis labels in degrees.
+*/
+
+/*!
+    \property QAbstractAxis::labelDelegate
+    \brief A custom QML Component used as a label for the axis.
+    This component should either be a \a Text component or contain "property string text",
+    so that this property will be assigned the value of the label.
+*/
+/*!
+    \qmlproperty Component AbstractAxis::labelDelegate
+    A custom QML Component used as a label for the axis.
+    This component should either be a \a Text component or contain "property string text",
+    so that this property will be assigned the value of the label.
 */
 
 /*!
@@ -97,16 +110,16 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \property QAbstractAxis::minorGridVisible
-    \brief The visibility of the minor grid lines.
+    \property QAbstractAxis::subGridVisible
+    \brief The visibility of the subgrid lines.
 
-    Applies only to axes that support minor grid lines.
+    Applies only to axes that support subgrid lines.
     By default, the value is \c true.
 */
 /*!
-    \qmlproperty bool AbstractAxis::minorGridVisible
-    The visibility of the minor grid lines. Applies only to axes that support
-    minor grid lines. By default, the value is \c true.
+    \qmlproperty bool AbstractAxis::subGridVisible
+    The visibility of the subgrid lines. Applies only to axes that support
+    subgrid lines. By default, the value is \c true.
 */
 
 /*!
@@ -150,84 +163,65 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \property QAbstractAxis::orientation
-    \brief The orientation of the axis.
-
-    Fixed to either Qt::Horizontal or Qt::Vertical when the axis is added to a graph.
-*/
-/*!
-    \qmlproperty Qt.Orientation AbstractAxis::orientation
-    The orientation of the axis. Fixed to either \l {Qt::Horizontal}{Qt.Horizontal}
-    or \l{Qt::Vertical}{Qt.Vertical} when the axis is set to a series.
+    \fn void QAbstractAxis::update()
+    This signal is emitted when the axis needs to be updated.
 */
 
 /*!
-    \property QAbstractAxis::alignment
-    \brief The alignment of the axis.
-
-    Can be Qt::AlignLeft, Qt::AlignRight, Qt::AlignBottom, or Qt::AlignTop.
-*/
-/*!
-    \qmlproperty alignment AbstractAxis::alignment
-    The alignment of the axis. Can be \l{Qt::AlignLeft}{Qt.AlignLeft},
-    \l{Qt::AlignRight}{Qt.AlignRight}, \l{Qt::AlignBottom}{Qt.AlignBottom}, or
-    \l{Qt::AlignTop}{Qt.AlignTop}.
-*/
-
-/*!
-    \fn void QAbstractAxis::visibleChanged(bool visible)
+    \qmlsignal AbstractAxis::visibleChanged(bool visible)
     This signal is emitted when the visibility of the axis changes to \a visible.
 */
 
 /*!
-    \fn void QAbstractAxis::lineVisibleChanged(bool visible)
+    \qmlsignal AbstractAxis::lineVisibleChanged(bool visible)
     This signal is emitted when the visibility of the axis line changes to \a visible.
 */
 
 /*!
-    \fn void QAbstractAxis::labelsVisibleChanged(bool visible)
+    \qmlsignal AbstractAxis::labelsVisibleChanged(bool visible)
     This signal is emitted when the visibility of the labels of the axis changes to \a visible.
 */
 
 /*!
-    \fn void QAbstractAxis::labelsAngleChanged(qreal angle)
+    \qmlsignal AbstractAxis::labelsAngleChanged(string angle)
     This signal is emitted when the angle of the axis labels changes to \a angle.
 */
 
 /*!
-    \fn void QAbstractAxis::gridVisibleChanged(bool visible)
+    \qmlsignal AbstractAxis::gridVisibleChanged(bool visible)
     This signal is emitted when the visibility of the grid lines of the axis changes to \a visible.
 */
 
 /*!
-    \fn void QAbstractAxis::minorGridVisibleChanged(bool visible)
+    \qmlsignal AbstractAxis::minorGridVisibleChanged(bool visible)
     This signal is emitted when the visibility of the minor grid lines of the axis
     changes to \a visible.
 */
 
 /*!
-    \fn void QAbstractAxis::titleTextChanged(const QString &text)
+    \qmlsignal AbstractAxis::titleTextChanged(string text)
     This signal is emitted when the text of the axis title changes to \a text.
 */
 
 /*!
-    \fn void QAbstractAxis::titleColorChanged(const QColor &color)
+    \qmlsignal AbstractAxis::titleColorChanged(color color)
     This signal is emitted when the color used to draw the axis title changes to \a color.
 */
 
 /*!
-    \fn void QAbstractAxis::titleVisibleChanged(bool visible)
+    \qmlsignal AbstractAxis::titleVisibleChanged(bool visible)
     This signal is emitted when the visibility of the title text of the axis changes to \a visible.
 */
 
 /*!
-    \fn void QAbstractAxis::titleFontChanged(const QFont &font)
+    \qmlsignal AbstractAxis::titleFontChanged(Font font)
     This signal is emitted when the font of the axis title changes to \a font.
 */
 
 /*!
-    \fn void QAbstractAxis::update()
-    This signal is emitted when the axis needs to be updated.
+    \qmlsignal AbstractAxis::rangeChanged(string min, string max)
+    This signal is emitted when the axis range changes. \a min and \a max are
+    the min and max of the new range.
 */
 
 /*!
@@ -236,11 +230,9 @@ QT_BEGIN_NAMESPACE
     graph when the axis is added.
 */
 
-QAbstractAxis::QAbstractAxis(QAbstractAxisPrivate &d, QObject *parent)
-    : QObject(parent),
-      d_ptr(&d)
-{
-}
+QAbstractAxis::QAbstractAxis(QAbstractAxisPrivate &dd, QObject *parent)
+    : QObject(dd, parent)
+{}
 
 /*!
   Destructs the axis object. When the axis is added to a graph, the graph object takes ownership.
@@ -248,8 +240,6 @@ QAbstractAxis::QAbstractAxis(QAbstractAxisPrivate &d, QObject *parent)
 
 QAbstractAxis::~QAbstractAxis()
 {
-    if (d_ptr->m_graph)
-        qFatal("Still binded axis detected !");
 }
 
 /*!
@@ -257,8 +247,9 @@ QAbstractAxis::~QAbstractAxis()
  */
 void QAbstractAxis::setLineVisible(bool visible)
 {
-    if (d_ptr->m_lineVisible != visible) {
-        d_ptr->m_lineVisible = visible;
+    Q_D(QAbstractAxis);
+    if (d->m_lineVisible != visible) {
+        d->m_lineVisible = visible;
         emit update();
         emit lineVisibleChanged(visible);
     }
@@ -266,41 +257,47 @@ void QAbstractAxis::setLineVisible(bool visible)
 
 bool QAbstractAxis::isLineVisible() const
 {
-    return d_ptr->m_lineVisible;
+    Q_D(const QAbstractAxis);
+    return d->m_lineVisible;
 }
 
-void QAbstractAxis::setGridLineVisible(bool visible)
+void QAbstractAxis::setGridVisible(bool visible)
 {
-    if (d_ptr->m_gridLineVisible != visible) {
-        d_ptr->m_gridLineVisible = visible;
+    Q_D(QAbstractAxis);
+    if (d->m_gridVisible != visible) {
+        d->m_gridVisible = visible;
         emit update();
         emit gridVisibleChanged(visible);
     }
 }
 
-bool QAbstractAxis::isGridLineVisible() const
+bool QAbstractAxis::isGridVisible() const
 {
-    return d_ptr->m_gridLineVisible;
+    Q_D(const QAbstractAxis);
+    return d->m_gridVisible;
 }
 
-void QAbstractAxis::setMinorGridLineVisible(bool visible)
+void QAbstractAxis::setSubGridVisible(bool visible)
 {
-    if (d_ptr->m_minorGridLineVisible != visible) {
-        d_ptr->m_minorGridLineVisible = visible;
+    Q_D(QAbstractAxis);
+    if (d->m_subGridVisible != visible) {
+        d->m_subGridVisible = visible;
         emit update();
-        emit minorGridVisibleChanged(visible);
+        emit subGridVisibleChanged(visible);
     }
 }
 
-bool QAbstractAxis::isMinorGridLineVisible() const
+bool QAbstractAxis::isSubGridVisible() const
 {
-    return d_ptr->m_minorGridLineVisible;
+    Q_D(const QAbstractAxis);
+    return d->m_subGridVisible;
 }
 
 void QAbstractAxis::setLabelsVisible(bool visible)
 {
-    if (d_ptr->m_labelsVisible != visible) {
-        d_ptr->m_labelsVisible = visible;
+    Q_D(QAbstractAxis);
+    if (d->m_labelsVisible != visible) {
+        d->m_labelsVisible = visible;
         emit update();
         emit labelsVisibleChanged(visible);
     }
@@ -308,13 +305,15 @@ void QAbstractAxis::setLabelsVisible(bool visible)
 
 bool QAbstractAxis::labelsVisible() const
 {
-    return d_ptr->m_labelsVisible;
+    Q_D(const QAbstractAxis);
+    return d->m_labelsVisible;
 }
 
 void QAbstractAxis::setLabelsAngle(qreal angle)
 {
-    if (d_ptr->m_labelsAngle != angle) {
-        d_ptr->m_labelsAngle = angle;
+    Q_D(QAbstractAxis);
+    if (d->m_labelsAngle != angle) {
+        d->m_labelsAngle = angle;
         emit update();
         emit labelsAngleChanged(angle);
     }
@@ -322,13 +321,31 @@ void QAbstractAxis::setLabelsAngle(qreal angle)
 
 qreal QAbstractAxis::labelsAngle() const
 {
-    return d_ptr->m_labelsAngle;
+    Q_D(const QAbstractAxis);
+    return d->m_labelsAngle;
+}
+
+QQmlComponent *QAbstractAxis::labelDelegate() const
+{
+    Q_D(const QAbstractAxis);
+    return d->m_labelDelegate;
+}
+
+void QAbstractAxis::setLabelDelegate(QQmlComponent *newLabelDelegate)
+{
+    Q_D(QAbstractAxis);
+    if (d->m_labelDelegate == newLabelDelegate)
+        return;
+    d->m_labelDelegate = newLabelDelegate;
+    emit labelDelegateChanged();
+    emit update();
 }
 
 void QAbstractAxis::setTitleVisible(bool visible)
 {
-    if (d_ptr->m_titleVisible != visible) {
-        d_ptr->m_titleVisible = visible;
+    Q_D(QAbstractAxis);
+    if (d->m_titleVisible != visible) {
+        d->m_titleVisible = visible;
         emit update();
         emit titleVisibleChanged(visible);
     }
@@ -336,16 +353,18 @@ void QAbstractAxis::setTitleVisible(bool visible)
 
 bool QAbstractAxis::isTitleVisible() const
 {
-    return d_ptr->m_titleVisible;
+    Q_D(const QAbstractAxis);
+    return d->m_titleVisible;
 }
 
 /*!
   Sets the color used to draw titles to \a color.
  */
-void QAbstractAxis::setTitleColor(const QColor &color)
+void QAbstractAxis::setTitleColor(QColor color)
 {
-    if (d_ptr->m_titleColor != color) {
-        d_ptr->m_titleColor = color;
+    Q_D(QAbstractAxis);
+    if (d->m_titleColor != color) {
+        d->m_titleColor = color;
         emit update();
         emit titleColorChanged(color);
     }
@@ -356,7 +375,8 @@ void QAbstractAxis::setTitleColor(const QColor &color)
 */
 QColor QAbstractAxis::titleColor() const
 {
-    return d_ptr->m_titleColor;
+    Q_D(const QAbstractAxis);
+    return d->m_titleColor;
 }
 
 /*!
@@ -364,8 +384,9 @@ QColor QAbstractAxis::titleColor() const
 */
 void QAbstractAxis::setTitleFont(const QFont &font)
 {
-    if (d_ptr->m_titleFont != font) {
-        d_ptr->m_titleFont = font;
+    Q_D(QAbstractAxis);
+    if (d->m_titleFont != font) {
+        d->m_titleFont = font;
         emit update();
         emit titleFontChanged(font);
     }
@@ -376,13 +397,15 @@ void QAbstractAxis::setTitleFont(const QFont &font)
 */
 QFont QAbstractAxis::titleFont() const
 {
-    return d_ptr->m_titleFont;
+    Q_D(const QAbstractAxis);
+    return d->m_titleFont;
 }
 
 void QAbstractAxis::setTitleText(const QString &title)
 {
-    if (d_ptr->m_title != title) {
-        d_ptr->m_title = title;
+    Q_D(QAbstractAxis);
+    if (d->m_title != title) {
+        d->m_title = title;
         emit update();
         emit titleTextChanged(title);
     }
@@ -390,12 +413,14 @@ void QAbstractAxis::setTitleText(const QString &title)
 
 QString QAbstractAxis::titleText() const
 {
-    return d_ptr->m_title;
+    Q_D(const QAbstractAxis);
+    return d->m_title;
 }
 
 bool QAbstractAxis::isVisible() const
 {
-    return d_ptr->m_visible;
+    Q_D(const QAbstractAxis);
+    return d->m_visible;
 }
 
 /*!
@@ -403,8 +428,9 @@ bool QAbstractAxis::isVisible() const
 */
 void QAbstractAxis::setVisible(bool visible)
 {
-    if (d_ptr->m_visible != visible) {
-        d_ptr->m_visible = visible;
+    Q_D(QAbstractAxis);
+    if (d->m_visible != visible) {
+        d->m_visible = visible;
         emit update();
         emit visibleChanged(visible);
     }
@@ -434,7 +460,8 @@ void QAbstractAxis::hide()
 */
 void QAbstractAxis::setMin(const QVariant &min)
 {
-    d_ptr->setMin(min);
+    Q_D(QAbstractAxis);
+    d->setMin(min);
 }
 
 /*!
@@ -444,7 +471,8 @@ void QAbstractAxis::setMin(const QVariant &min)
 */
 void QAbstractAxis::setMax(const QVariant &max)
 {
-    d_ptr->setMax(max);
+    Q_D(QAbstractAxis);
+    d->setMax(max);
 }
 
 /*!
@@ -454,55 +482,19 @@ void QAbstractAxis::setMax(const QVariant &max)
 */
 void QAbstractAxis::setRange(const QVariant &min, const QVariant &max)
 {
-    d_ptr->setRange(min, max);
-}
-
-
-/*!
-  Returns the orientation of the axis (vertical or horizontal).
-*/
-Qt::Orientation QAbstractAxis::orientation() const
-{
-    return d_ptr->orientation();
-}
-
-void QAbstractAxis::setOrientation(Qt::Orientation orientation)
-{
-    d_ptr->m_orientation = orientation;
-}
-
-Qt::Alignment QAbstractAxis::alignment() const
-{
-    return d_ptr->alignment();
+    Q_D(QAbstractAxis);
+    d->setRange(min, max);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-QAbstractAxisPrivate::QAbstractAxisPrivate(QAbstractAxis *q)
-    : q_ptr(q)
-{
-}
+QAbstractAxisPrivate::QAbstractAxisPrivate() {}
 
 QAbstractAxisPrivate::~QAbstractAxisPrivate()
 {
-}
-
-void QAbstractAxisPrivate::setAlignment(Qt::Alignment alignment)
-{
-    switch (alignment) {
-    case Qt::AlignTop:
-    case Qt::AlignBottom:
-        m_orientation = Qt::Horizontal;
-        break;
-    case Qt::AlignLeft:
-    case Qt::AlignRight:
-        m_orientation = Qt::Vertical;
-        break;
-    default:
-        qWarning("No alignment specified !");
-        break;
-    }
-    m_alignment = alignment;
+    Q_Q(QAbstractAxis);
+    if (m_graph)
+        m_graph->removeAxis(q);
 }
 
 void QAbstractAxisPrivate::handleRangeChanged(qreal min, qreal max)

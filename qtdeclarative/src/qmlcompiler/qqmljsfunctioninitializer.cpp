@@ -116,10 +116,11 @@ void QQmlJSFunctionInitializer::populateSignature(
         }
     }
 
-    if (!function->returnType) {
+    if (!function->returnType.isValid()) {
         if (ast->typeAnnotation) {
-            function->returnType = m_typeResolver->typeFromAST(ast->typeAnnotation->type);
-            if (!function->returnType)
+            function->returnType = m_typeResolver->globalType(
+                    m_typeResolver->typeFromAST(ast->typeAnnotation->type));
+            if (!function->returnType.isValid())
                 signatureError(u"Cannot resolve return type %1"_s.arg(
                                    QmlIR::IRBuilder::asString(ast->typeAnnotation->type->typeId)));
         }
@@ -168,73 +169,67 @@ QQmlJSCompilePass::Function QQmlJSFunctionInitializer::run(
     }
 
     function.isProperty = m_objectType->hasProperty(propertyName);
-    if (!function.isProperty) {
-        if (QQmlSignalNames::isHandlerName(propertyName)) {
-            if (auto actualPropertyName =
-                QQmlSignalNames::changedHandlerNameToPropertyName(propertyName);
-                actualPropertyName && m_objectType->hasProperty(*actualPropertyName)) {
-                function.isSignalHandler = true;
-            } else {
-                auto signalName = QQmlSignalNames::handlerNameToSignalName(propertyName);
-                const auto methods = m_objectType->methods(*signalName);
-                for (const auto &method : methods) {
-                    if (method.isCloned())
-                        continue;
-                    if (method.methodType() == QQmlJSMetaMethodType::Signal) {
-                        function.isSignalHandler = true;
-                        const auto arguments = method.parameters();
-                        for (qsizetype i = 0, end = arguments.size(); i < end; ++i) {
-                            const auto &type = arguments[i].type();
-                            if (type.isNull()) {
-                                diagnose(u"Cannot resolve the argument type %1."_s.arg(
-                                                 arguments[i].typeName()),
-                                         QtDebugMsg, bindingLocation, error);
-                                function.argumentTypes.append(
-                                        m_typeResolver->tracked(
-                                                m_typeResolver->globalType(m_typeResolver->varType())));
-                            } else {
-                                function.argumentTypes.append(m_typeResolver->tracked(
-                                        m_typeResolver->globalType(type)));
-                            }
-                        }
-                        break;
-                    }
-                }
-                if (!function.isSignalHandler) {
-                    diagnose(u"Could not compile signal handler for %1: The signal does not exist"_s.arg(
-                                     *signalName),
-                             QtWarningMsg, bindingLocation, error);
-                }
-            }
-        }
-    }
-
-    if (!function.isSignalHandler) {
-        if (!function.isProperty) {
-            diagnose(u"Could not compile binding for %1: The property does not exist"_s.arg(
-                         propertyName),
-                     QtWarningMsg, bindingLocation, error);
-        }
-
+    if (function.isProperty) {
         const auto property = m_objectType->property(propertyName);
         if (const QQmlJSScope::ConstPtr propertyType = property.type()) {
-            function.returnType = propertyType->isListProperty()
-                    ? m_typeResolver->qObjectListType()
-                    : propertyType;
+            function.returnType = m_typeResolver->globalType(propertyType->isListProperty()
+                ? m_typeResolver->qObjectListType()
+                : QQmlJSScope::ConstPtr(property.type()));
         } else {
-            QString message = u"Cannot resolve property type %1 for binding on %2."_s
-                    .arg(property.typeName(), propertyName);
-            if (m_objectType->isNameDeferred(propertyName)) {
-                // If the property doesn't exist but the name is deferred, then
-                // it's deferred via the presence of immediate names. Those are
-                // most commonly used to enable generalized grouped properties.
-                message += u" You may want use ID-based grouped properties here.";
-            }
-            diagnose(message, QtWarningMsg, bindingLocation, error);
+            diagnose(u"Cannot resolve property type %1 for binding on %2."_s
+                             .arg(property.typeName(), propertyName),
+                     QtWarningMsg, bindingLocation, error);
         }
 
         if (!property.bindable().isEmpty() && !property.isPrivate())
             function.isQPropertyBinding = true;
+    } else if (QQmlSignalNames::isHandlerName(propertyName)) {
+        if (auto actualPropertyName =
+            QQmlSignalNames::changedHandlerNameToPropertyName(propertyName);
+            actualPropertyName && m_objectType->hasProperty(*actualPropertyName)) {
+            function.isSignalHandler = true;
+        } else {
+            auto signalName = QQmlSignalNames::handlerNameToSignalName(propertyName);
+            const auto methods = m_objectType->methods(*signalName);
+            for (const auto &method : methods) {
+                if (method.isCloned())
+                    continue;
+                if (method.methodType() == QQmlJSMetaMethodType::Signal) {
+                    function.isSignalHandler = true;
+                    const auto arguments = method.parameters();
+                    for (qsizetype i = 0, end = arguments.size(); i < end; ++i) {
+                        const auto &type = arguments[i].type();
+                        if (type.isNull()) {
+                            diagnose(u"Cannot resolve the argument type %1."_s.arg(
+                                             arguments[i].typeName()),
+                                     QtDebugMsg, bindingLocation, error);
+                            function.argumentTypes.append(
+                                    m_typeResolver->tracked(
+                                        m_typeResolver->globalType(m_typeResolver->varType())));
+                        } else {
+                            function.argumentTypes.append(
+                                    m_typeResolver->tracked(
+                                        m_typeResolver->globalType(type)));
+                        }
+                    }
+                    break;
+                }
+            }
+            if (!function.isSignalHandler) {
+                diagnose(u"Could not find signal \"%1\"."_s.arg(*signalName),
+                         QtWarningMsg, bindingLocation, error);
+            }
+        }
+    } else {
+        QString message = u"Could not find property \"%1\"."_s.arg(propertyName);
+        if (m_objectType->isNameDeferred(propertyName)) {
+            // If the property doesn't exist but the name is deferred, then
+            // it's deferred via the presence of immediate names. Those are
+            // most commonly used to enable generalized grouped properties.
+            message += u" You may want use ID-based grouped properties here.";
+        }
+
+        diagnose(message, QtWarningMsg, bindingLocation, error);
     }
 
     QQmlJS::MemoryPool pool;

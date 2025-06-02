@@ -11,10 +11,13 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <vector>
 
 #include <xnnpack.h>
+#include <xnnpack/aligned-allocator.h>
+#include <xnnpack/common.h>
 
 #include <benchmark/benchmark.h>
 #ifdef BENCHMARK_TENSORFLOW_LITE
@@ -69,18 +72,32 @@ static void xnnpack_average_pooling_qu8(benchmark::State& state, const char* net
     return;
   }
 
-  status = xnn_setup_average_pooling2d_nhwc_qu8(
+  size_t workspace_size = 0;
+  size_t workspace_alignment = 0;
+  status = xnn_reshape_average_pooling2d_nhwc_qu8(
     pooling_op,
     batch_size, input_height, input_width,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+    &workspace_size, &workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape Average Pooling operator");
+    return;
+  }
+
+  std::vector<char, AlignedAllocator<char, XNN_ALLOCATION_ALIGNMENT>> workspace(workspace_size);
+
+  status = xnn_setup_average_pooling2d_nhwc_qu8(
+    pooling_op,
+    workspace.data(),
+    input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup Average Pooling operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(pooling_op, nullptr /* thread pool */);
+    status = xnn_run_operator(pooling_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run Average Pooling operator");
       return;
@@ -145,18 +162,32 @@ static void xnnpack_average_pooling_f32(benchmark::State& state, const char* net
     return;
   }
 
-  status = xnn_setup_average_pooling2d_nhwc_f32(
+  size_t workspace_size = 0;
+  size_t workspace_alignment = 0;
+  status = xnn_reshape_average_pooling2d_nhwc_f32(
     pooling_op,
     batch_size, input_height, input_width,
-    input.data(), output.data(),
-    nullptr /* thread pool */);
+    &workspace_size, &workspace_alignment,
+    /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
+    /*threadpool=*/nullptr);
+  if (status != xnn_status_success) {
+    state.SkipWithError("failed to reshape Average Pooling operator");
+    return;
+  }
+
+  std::vector<char, AlignedAllocator<char, XNN_ALLOCATION_ALIGNMENT>> workspace(workspace_size);
+
+  status = xnn_setup_average_pooling2d_nhwc_f32(
+    pooling_op,
+    workspace.data(),
+    input.data(), output.data());
   if (status != xnn_status_success) {
     state.SkipWithError("failed to setup Average Pooling operator");
     return;
   }
 
   for (auto _ : state) {
-    status = xnn_run_operator(pooling_op, nullptr /* thread pool */);
+    status = xnn_run_operator(pooling_op, /*threadpool=*/nullptr);
     if (status != xnn_status_success) {
       state.SkipWithError("failed to run Average Pooling operator");
       return;

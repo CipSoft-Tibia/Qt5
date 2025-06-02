@@ -5,6 +5,7 @@
 #include "qquickpopup_p_p.h"
 #include "qquickpopupanchors_p.h"
 #include "qquickpopupitem_p_p.h"
+#include "qquickpopupwindow_p_p.h"
 #include "qquickpopuppositioner_p_p.h"
 #include "qquickapplicationwindow_p.h"
 #include "qquickoverlay_p_p.h"
@@ -19,16 +20,18 @@
 #include <QtQuick/private/qquickaccessibleattached_p.h>
 #include <QtQuick/private/qquicktransition_p.h>
 #include <QtQuick/private/qquickitem_p.h>
+#include <qpa/qplatformintegration.h>
+#include <private/qguiapplication_p.h>
 
 QT_BEGIN_NAMESPACE
 
 Q_LOGGING_CATEGORY(lcDimmer, "qt.quick.controls.popup.dimmer")
-Q_LOGGING_CATEGORY(lcPopup, "qt.quick.controls.popup")
+Q_LOGGING_CATEGORY(lcQuickPopup, "qt.quick.controls.popup")
 
 /*!
     \qmltype Popup
     \inherits QtObject
-//!     \instantiates QQuickPopup
+//!     \nativetype QQuickPopup
     \inqmlmodule QtQuick.Controls
     \since 5.7
     \ingroup qtquickcontrols-popups
@@ -39,8 +42,8 @@ Q_LOGGING_CATEGORY(lcPopup, "qt.quick.controls.popup")
     used with \l Window or \l ApplicationWindow.
 
     \qml
-    import QtQuick.Window 2.2
-    import QtQuick.Controls 2.12
+    import QtQuick.Window
+    import QtQuick.Controls
 
     ApplicationWindow {
         id: window
@@ -65,10 +68,6 @@ Q_LOGGING_CATEGORY(lcPopup, "qt.quick.controls.popup")
         }
     }
     \endqml
-
-    In order to ensure that a popup is displayed above other items in the
-    scene, it is recommended to use ApplicationWindow. ApplicationWindow also
-    provides background dimming effects.
 
     Popup does not provide a layout of its own, but requires you to position
     its contents, for instance by creating a \l RowLayout or a \l ColumnLayout.
@@ -121,6 +120,57 @@ Q_LOGGING_CATEGORY(lcPopup, "qt.quick.controls.popup")
     }
     \endcode
 
+    \section1 Popup type
+
+    Since Qt 6.8, some popups, such as \l Menu, offer three different implementations,
+    depending on the platform. You can choose which one you prefer by setting \l popupType.
+
+    Whether a popup will be able to use the preferred type depends on the platform.
+    \c Popup.Item is supported on all platforms, but \c Popup.Window and \c Popup.Native
+    are normally only supported on desktop platforms. Additionally, if a popup is a
+    \l Menu inside a \l {Native menu bars}{native menubar}, the menu will be native as
+    well. And if the menu is a sub-menu inside another menu, the parent (or root) menu
+    will decide the type.
+
+    \section2 Showing a popup as an item
+
+    By setting \l popupType to \c Popup.Item, the popup will \e not be shown as a separate
+    window, but as an item inside the same scene as the parent. This item is parented
+    to that scene's \l{Overlay::overlay}{overlay}, and styled to look like an actual window.
+
+    This option is especially useful on platforms that doesn't support multiple windows.
+    This was also the only option before Qt 6.8.
+
+    In order to ensure that a popup is displayed above other items in the
+    scene, it is recommended to use ApplicationWindow. ApplicationWindow also
+    provides background dimming effects.
+
+    \section2 Showing a popup as a separate window
+
+    By setting \l popupType to \c Popup.Window, the popup will be shown inside a top-level
+    \l {QQuickWindow}{window} configured with the \l Qt::Popup flag. Using a window to show a
+    popup has the advantage that the popup will float on top of the parent window, and
+    can be placed outside of its geometry. The popup will otherwise look the same as when
+    using \c Popup.Item, that is, it will use the same QML delegates and styling as
+    when using \c Popup.Item.
+
+    \note If the platform doesn't support \c Popup.Window, \c Popup.Item will be used as fallback.
+
+    \section2 Showing a native popup
+
+    By setting \l popupType to \c Popup.Native, the popup will be shown using a platform
+    native popup window. This window, and all its contents, will be rendered by the
+    platform, and not by QML. This means that the QML delegates assigned to the popup
+    will \e not be used for rendering. If you for example
+    use this option on a \l Menu, it will be implemented using platform-specific
+    menu APIs. This will normally make the popup look and feel more native than for example
+    \c Popup.Window, but at the same time, suffer from platform limitations and differences
+    related to appearance and behavior. Such limitations are documented in more detail
+    in the subclasses that are affected, such as for a
+    \l {Limitations when using native menus}{Menu}).
+
+    \note If the platform doesn't support \c Popup.Native, \c Popup.Window will be used as fallback.
+
     \section1 Popup Sizing
 
     If only a single item is used within a Popup, it will resize to fit the
@@ -172,12 +222,12 @@ Q_LOGGING_CATEGORY(lcPopup, "qt.quick.controls.popup")
      }
     \endcode
 
-    \note The popup's \l{contentItem}{content item} gets parented to the
-    \l{Overlay::overlay}{overlay}, and does not live within the popup's parent.
-    Because of that, a \l{Item::scale}{scale} applied to the tree in which
-    the popup lives does not apply to the visual popup. To make the popup
-    of e.g. a \l{ComboBox} follow the scale of the combobox, apply the same scale
-    to the \l{Overlay::overlay}{overlay} as well:
+    \note When using \l {Showing a popup as an item}{popup items}, the popup's
+    \l{contentItem}{content item} gets parented to the \l{Overlay::}{overlay},
+    and does not live within the popup's parent. Because of that, a \l{Item::}
+    {scale} applied to the tree in which the popup lives does not apply to the
+    visual popup. To make the popup of e.g. a \l{ComboBox} follow the scale of
+    the combobox, apply the same scale to the \l{Overlay::}{overlay} as well:
 
     \code
     Window {
@@ -221,8 +271,8 @@ Q_LOGGING_CATEGORY(lcPopup, "qt.quick.controls.popup")
 
     \section1 Showing Non-Child Items in Front of Popup
 
-    Popup sets its contentItem's
-    \l{qtquick-visualcanvas-visualparent.html}{visual parent}
+    In cases where \l {Showing a popup as an item}{popup windows} are not being used,
+    Popup sets its contentItem's \l{qtquick-visualcanvas-visualparent.html}{visual parent}
     to be the window's \l{Overlay::overlay}{overlay}, in order to ensure that
     the popup appears in front of everything else in the scene.
     In some cases, it might be useful to put an item in front of a popup,
@@ -425,6 +475,18 @@ Q_LOGGING_CATEGORY(lcPopup, "qt.quick.controls.popup")
     \sa closed()
 */
 
+QQuickItem *QQuickPopup::findParentItem() const
+{
+    QObject *obj = parent();
+    while (obj) {
+        QQuickItem *item = qobject_cast<QQuickItem *>(obj);
+        if (item)
+            return item;
+        obj = obj->parent();
+    }
+    return nullptr;
+}
+
 const QQuickPopup::ClosePolicy QQuickPopupPrivate::DefaultClosePolicy = QQuickPopup::CloseOnEscape | QQuickPopup::CloseOnPressOutside;
 
 QQuickPopupPrivate::QQuickPopupPrivate()
@@ -437,7 +499,6 @@ void QQuickPopupPrivate::init()
     Q_Q(QQuickPopup);
     popupItem = new QQuickPopupItem(q);
     popupItem->setVisible(false);
-    q->setParentItem(qobject_cast<QQuickItem *>(parent));
     QObject::connect(popupItem, &QQuickControl::paddingChanged, q, &QQuickPopup::paddingChanged);
     QObject::connect(popupItem, &QQuickControl::backgroundChanged, q, &QQuickPopup::backgroundChanged);
     QObject::connect(popupItem, &QQuickControl::contentItemChanged, q, &QQuickPopup::contentItemChanged);
@@ -512,7 +573,8 @@ bool QQuickPopupPrivate::blockInput(QQuickItem *item, const QPointF &point) cons
     // don't block presses and releases
     // a) outside a non-modal popup,
     // b) to popup children/content, or
-    // b) outside a modal popups's background dimming
+    // c) outside a modal popups's background dimming
+
     return modal && ((popupItem != item) && !popupItem->isAncestorOf(item)) && (!dimmer || dimmer->contains(dimmer->mapFromScene(point)));
 }
 
@@ -521,7 +583,16 @@ bool QQuickPopupPrivate::handlePress(QQuickItem *item, const QPointF &point, ulo
     Q_UNUSED(timestamp);
     pressPoint = point;
     outsidePressed = !contains(point);
-    outsideParentPressed = outsidePressed && parentItem && !parentItem->contains(parentItem->mapFromScene(point));
+
+    if (outsidePressed && parentItem) {
+        // Note that the parentItem (e.g a menuBarItem, in case of a MenuBar) will
+        // live inside another window when using popup windows. We therefore need to
+        // map to and from global.
+        const QPointF globalPoint = item->mapToGlobal(point);
+        const QPointF localPoint = parentItem->mapFromGlobal(globalPoint);
+        outsideParentPressed = !parentItem->contains(localPoint);
+    }
+
     tryClose(point, QQuickPopup::CloseOnPressOutside | QQuickPopup::CloseOnPressOutsideParent);
     return blockInput(item, point);
 }
@@ -583,6 +654,66 @@ bool QQuickPopupPrivate::handleHoverEvent(QQuickItem *item, QHoverEvent *event)
     }
 }
 
+QMarginsF QQuickPopupPrivate::windowInsets() const
+{
+    Q_Q(const QQuickPopup);
+    // If the popup has negative insets, it means that its background is pushed
+    // outside the bounds of the popup. This is fine when the popup is an item in the
+    // scene (Popup.Item), but will result in the background being clipped when using
+    // a window (Popup.Window). To avoid this, the window will been made bigger than
+    // the popup (according to the insets), to also include the part that ends up
+    // outside (which is usually a drop-shadow).
+    // Note that this also means that we need to take those extra margins into account
+    // whenever we resize or position the menu, so that the top-left of the popup ends
+    // up at the requested position, and not the top-left of the window.
+
+    const auto *popupItemPrivate = QQuickControlPrivate::get(popupItem);
+    if (!usePopupWindow() || (popupItemPrivate->background.isExecuting() && popupItemPrivate->background->clip())) {
+        // Items in the scene are allowed to draw out-of-bounds, so we don't
+        // need to do anything if we're not using popup windows. The same is
+        // also true for popup windows if the background is clipped.
+        return {0, 0, 0, 0};
+    }
+
+    return {
+        q->leftInset() < 0 ? -q->leftInset() : 0,
+        q->rightInset() < 0 ? -q->rightInset() : 0,
+        q->topInset() < 0 ? -q->topInset() : 0,
+        q->bottomInset() < 0 ? -q->bottomInset() : 0
+    };
+}
+
+QPointF QQuickPopupPrivate::windowInsetsTopLeft() const
+{
+    const QMarginsF windowMargins = windowInsets();
+    return {windowMargins.left(), windowMargins.top()};
+}
+
+void QQuickPopupPrivate::setEffectivePosFromWindowPos(const QPointF &windowPos)
+{
+    // Popup operates internally with three different positions; requested
+    // position, effective position, and window position. The first is the
+    // position requested by the application, and the second is where the popup
+    // is actually placed. The reason for placing it on a different position than
+    // the one requested, is to keep it inside the window (in case of Popup.Item),
+    // or the screen (in case of Popup.Window).
+    // Additionally, since a popup can set Qt::FramelessWindowHint and draw the
+    // window frame from the background delegate, the effective position in that
+    // case is adjusted to be the top-left corner of the background delegate, rather
+    // than the top-left corner of the window. This allowes the background delegate
+    // to render a drop-shadow between the edge of the window and the background frame.
+    // Finally, the window position is the actual position of the window, including
+    // any drop-shadow effects. This posision can be calculated by taking
+    // the effective position and subtract the dropShadowOffset().
+    Q_Q(QQuickPopup);
+    const QPointF oldEffectivePos = effectivePos;
+    effectivePos = windowPos + windowInsetsTopLeft();
+    if (!qFuzzyCompare(oldEffectivePos.x(), effectivePos.x()))
+        emit q->xChanged();
+    if (!qFuzzyCompare(oldEffectivePos.y(), effectivePos.y()))
+        emit q->yChanged();
+}
+
 #if QT_CONFIG(quicktemplates2_multitouch)
 bool QQuickPopupPrivate::handleTouchEvent(QQuickItem *item, QTouchEvent *event)
 {
@@ -631,37 +762,17 @@ bool QQuickPopupPrivate::prepareEnterTransition()
         return false;
 
     if (transitionState != EnterTransition) {
-        QQuickOverlay *overlay = QQuickOverlay::overlay(window);
-        const auto popupStack = QQuickOverlayPrivate::get(overlay)->stackingOrderPopups();
-        popupItem->setParentItem(overlay);
-        // if there is a stack of popups, and the current top popup item belongs to an
-        // ancestor of this popup, then make sure that this popup's item is at the top
-        // of the stack.
-        const QQuickPopup *topPopup = popupStack.isEmpty() ? nullptr : popupStack.first();
-        const QObject *ancestor = q;
-        while (ancestor && topPopup) {
-            if (ancestor == topPopup)
-                break;
-            ancestor = ancestor->parent();
-        }
-        if (topPopup && topPopup != q && ancestor) {
-            QQuickItem *topPopupItem = popupStack.first()->popupItem();
-            popupItem->stackAfter(topPopupItem);
-            // If the popup doesn't have an explicit z value set, set it to be at least as
-            // high as the current top popup item so that later opened popups are on top.
-            if (!hasZ)
-                popupItem->setZ(qMax(topPopupItem->z(), popupItem->z()));
-        }
+        visible = true;
+        adjustPopupItemParentAndWindow();
         if (dim)
             createOverlay();
         showDimmer();
         emit q->aboutToShow();
-        visible = true;
         transitionState = EnterTransition;
-        popupItem->setVisible(true);
         getPositioner()->setParentItem(parentItem);
         emit q->visibleChanged();
 
+        QQuickOverlay *overlay = QQuickOverlay::overlay(window);
         auto *overlayPrivate = QQuickOverlayPrivate::get(overlay);
         if (overlayPrivate->lastActiveFocusItem.isNull())
             overlayPrivate->lastActiveFocusItem = window->activeFocusItem();
@@ -678,6 +789,8 @@ bool QQuickPopupPrivate::prepareExitTransition()
     if (transitionState == ExitTransition && transitionManager.isRunning())
         return false;
 
+    Q_ASSERT(popupItem);
+
     // We need to cache the original scale and opacity values so we can reset it after
     // the exit transition is done so they have the original values again
     prevScale = popupItem->scale();
@@ -687,24 +800,8 @@ bool QQuickPopupPrivate::prepareExitTransition()
         // The setFocus(false) call below removes any active focus before we're
         // able to check it in finalizeExitTransition.
         if (!hadActiveFocusBeforeExitTransition) {
-            const auto hasFocusInRoot = [](QQuickItem *item) {
-                Q_ASSERT(item);
-                if (!item->window() || item->window()->isActive())
-                    return item->hasActiveFocus();
-
-                // fallback for when there's no active window
-                const auto *da = QQuickItemPrivate::get(item)->deliveryAgentPrivate();
-                if (!da || !da->rootItem)
-                    return false;
-
-                QQuickItem *focusItem = da->rootItem;
-                while (focusItem->isFocusScope() && focusItem->scopedFocusItem())
-                    focusItem = focusItem->scopedFocusItem();
-
-                return focusItem == item;
-            };
-
-            hadActiveFocusBeforeExitTransition = hasFocusInRoot(popupItem);
+            const auto *da = QQuickItemPrivate::get(popupItem)->deliveryAgentPrivate();
+            hadActiveFocusBeforeExitTransition = popupItem->hasActiveFocus() || (da && da->focusTargetItem() == popupItem);
         }
 
         if (focus)
@@ -721,7 +818,7 @@ void QQuickPopupPrivate::finalizeEnterTransition()
 {
     Q_Q(QQuickPopup);
     transitionState = NoTransition;
-    getPositioner()->reposition();
+    reposition();
     emit q->openedChanged();
     opened();
 }
@@ -765,8 +862,8 @@ void QQuickPopupPrivate::finalizeExitTransition()
             overlayPrivate->lastActiveFocusItem = nullptr;
         }
     }
-
     visible = false;
+    adjustPopupItemParentAndWindow();
     transitionState = NoTransition;
     hadActiveFocusBeforeExitTransition = false;
     emit q->visibleChanged();
@@ -795,6 +892,11 @@ void QQuickPopupPrivate::opened()
     QAccessibleEvent ev(q->popupItem(), type);
     QAccessible::updateAccessibility(&ev);
 #endif
+}
+
+Qt::WindowFlags QQuickPopupPrivate::popupWindowType() const
+{
+    return Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
 }
 
 QMarginsF QQuickPopupPrivate::getMargins() const
@@ -952,7 +1054,89 @@ QPalette QQuickPopupPrivate::defaultPalette() const
     return QQuickTheme::palette(QQuickTheme::System);
 }
 
-static QQuickItem *createDimmer(QQmlComponent *component, QQuickPopup *popup, QQuickItem *parent)
+QQuickPopup::PopupType QQuickPopupPrivate::resolvedPopupType() const
+{
+    // Whether or not the resolved popup type ends up the same as the preferred popup type
+    // depends on platform capabilities, the popup subclass, and sometimes also the location
+    // of the popup in the parent hierarchy (menus). This function can therefore be overridden
+    // to return the actual popup type that should be used, based on the knowledge the popup
+    // has just before it's about to be shown.
+
+    // PopupType::Native is not directly supported by QQuickPopup (only by subclasses).
+    // So for that case, we fall back to use PopupType::Window, if supported.
+    if (m_popupType == QQuickPopup::PopupType::Window
+        || m_popupType == QQuickPopup::PopupType::Native) {
+        if (QGuiApplicationPrivate::platformIntegration()->hasCapability(QPlatformIntegration::Capability::MultipleWindows))
+            return QQuickPopup::PopupType::Window;
+    }
+
+    return QQuickPopup::PopupType::Item;
+}
+
+bool QQuickPopupPrivate::usePopupWindow() const
+{
+    return resolvedPopupType() == QQuickPopup::PopupType::Window;
+}
+
+void QQuickPopupPrivate::adjustPopupItemParentAndWindow()
+{
+    Q_Q(QQuickPopup);
+    QQuickOverlay *overlay = QQuickOverlay::overlay(window);
+
+    if (visible && popupWindowDirty) {
+        popupItem->setParentItem(overlay);
+        if (popupWindow) {
+            popupWindow->deleteLater();
+            popupWindow = nullptr;
+        }
+        popupWindowDirty = false;
+    }
+
+    if (usePopupWindow()) {
+        if (visible) {
+            if (!popupWindow) {
+                popupWindow = new QQuickPopupWindow(q, window);
+                popupWindow->setWidth(popupItem->width() + windowInsets().left() + windowInsets().right());
+                popupWindow->setHeight(popupItem->height() + windowInsets().top() + windowInsets().bottom());
+                popupWindow->setModality(modal ? Qt::ApplicationModal : Qt::NonModal);
+                popupItem->resetTitle();
+                popupWindow->setTitle(m_title);
+            }
+            popupItem->setParentItem(popupWindow->contentItem());
+            popupItem->forceActiveFocus(Qt::PopupFocusReason);
+        }
+        if (popupWindow)
+            popupWindow->setVisible(visible);
+    } else {
+        if (visible) {
+            popupItem->setParentItem(overlay);
+            const auto popupStack = QQuickOverlayPrivate::get(overlay)->stackingOrderPopups();
+            // if there is a stack of popups, and the current top popup item belongs to an
+            // ancestor of this popup, then make sure that this popup's item is at the top
+            // of the stack.
+            const QQuickPopup *topPopup = popupStack.isEmpty() ? nullptr : popupStack.first();
+            const QObject *ancestor = q;
+            while (ancestor && topPopup) {
+                if (ancestor == topPopup)
+                    break;
+                ancestor = ancestor->parent();
+            }
+            if (topPopup && topPopup != q && ancestor) {
+                QQuickItem *topPopupItem = popupStack.first()->popupItem();
+                popupItem->stackAfter(topPopupItem);
+                // If the popup doesn't have an explicit z value set, set it to be at least as
+                // high as the current top popup item so that later opened popups are on top.
+                if (!hasZ)
+                    popupItem->setZ(qMax(topPopupItem->z(), popupItem->z()));
+            }
+        }
+
+        popupItem->setTitle(m_title);
+    }
+    popupItem->setVisible(visible);
+}
+
+QQuickItem *QQuickPopupPrivate::createDimmer(QQmlComponent *component, QQuickPopup *popup, QQuickItem *parent) const
 {
     QQuickItem *item = nullptr;
     if (component) {
@@ -969,7 +1153,8 @@ static QQuickItem *createDimmer(QQmlComponent *component, QQuickPopup *popup, QQ
 
     if (item) {
         item->setParentItem(parent);
-        item->stackBefore(popup->popupItem());
+        if (resolvedPopupType() != QQuickPopup::PopupType::Window)
+            item->stackBefore(popup->popupItem());
         item->setZ(popup->z());
         // needed for the virtual keyboard to set a containment mask on the dimmer item
         qCDebug(lcDimmer) << "dimmer" << item << "registered with" << parent;
@@ -1050,10 +1235,15 @@ void QQuickPopupPrivate::toggleOverlay()
 void QQuickPopupPrivate::updateContentPalettes(const QPalette& parentPalette)
 {
     // Inherit parent palette to all child objects
-    inheritPalette(parentPalette);
-
+    if (providesPalette())
+        inheritPalette(parentPalette);
     // Inherit parent palette to items within popup (such as headers and footers)
     QQuickItemPrivate::get(popupItem)->updateChildrenPalettes(parentPalette);
+}
+
+void QQuickPopupPrivate::updateChildrenPalettes(const QPalette& parentPalette)
+{
+    updateContentPalettes(parentPalette);
 }
 
 void QQuickPopupPrivate::showDimmer()
@@ -1159,6 +1349,9 @@ QQuickPopup::~QQuickPopup()
     d->popupItem = nullptr;
     delete d->positioner;
     d->positioner = nullptr;
+    if (d->popupWindow)
+        delete d->popupWindow;
+    d->popupWindow = nullptr;
 }
 
 /*!
@@ -1194,8 +1387,7 @@ void QQuickPopup::close()
 */
 qreal QQuickPopup::x() const
 {
-    Q_D(const QQuickPopup);
-    return d->effectiveX;
+    return d_func()->effectivePos.x();
 }
 
 void QQuickPopup::setX(qreal x)
@@ -1213,8 +1405,7 @@ void QQuickPopup::setX(qreal x)
 */
 qreal QQuickPopup::y() const
 {
-    Q_D(const QQuickPopup);
-    return d->effectiveY;
+    return d_func()->effectivePos.y();
 }
 
 void QQuickPopup::setY(qreal y)
@@ -1225,8 +1416,7 @@ void QQuickPopup::setY(qreal y)
 
 QPointF QQuickPopup::position() const
 {
-    Q_D(const QQuickPopup);
-    return QPointF(d->effectiveX, d->effectiveY);
+    return d_func()->effectivePos;
 }
 
 void QQuickPopup::setPosition(const QPointF &pos)
@@ -1262,6 +1452,9 @@ void QQuickPopup::setPosition(const QPointF &pos)
     of an already open popup, then it will be stacked on top of its parent.
     This ensures that children are never hidden under their parents.
 
+    If the popup has its own window, the z-value will determine the window
+    stacking order instead.
+
     The default z-value is \c 0.
 
     \sa x, y
@@ -1276,9 +1469,13 @@ void QQuickPopup::setZ(qreal z)
 {
     Q_D(QQuickPopup);
     d->hasZ = true;
-    if (qFuzzyCompare(z, d->popupItem->z()))
+    bool previousZ = d->popupWindow ? d->popupWindow->z() : d->popupItem->z();
+    if (qFuzzyCompare(z, previousZ))
         return;
-    d->popupItem->setZ(z);
+    if (d->popupWindow)
+        d->popupWindow->setZ(z);
+    else
+        d->popupItem->setZ(z);
     emit zChanged();
 }
 
@@ -1304,7 +1501,16 @@ void QQuickPopup::setWidth(qreal width)
 {
     Q_D(QQuickPopup);
     d->hasWidth = true;
-    d->popupItem->setWidth(width);
+
+    // QQuickPopupWindow::setWidth() triggers a window resize event.
+    // This will cause QQuickPopupWindow::resizeEvent() to resize
+    // the popupItem. QQuickPopupItem::geometryChanged() calls QQuickPopup::geometryChange(),
+    // which emits widthChanged().
+
+    if (d->popupWindow)
+        d->popupWindow->setWidth(width + d->windowInsets().left() + d->windowInsets().right());
+    else
+        d->popupItem->setWidth(width);
 }
 
 void QQuickPopup::resetWidth()
@@ -1334,7 +1540,16 @@ void QQuickPopup::setHeight(qreal height)
 {
     Q_D(QQuickPopup);
     d->hasHeight = true;
-    d->popupItem->setHeight(height);
+
+    // QQuickPopupWindow::setHeight() triggers a window resize event.
+    // This will cause QQuickPopupWindow::resizeEvent() to resize
+    // the popupItem. QQuickPopupItem::geometryChanged() calls QQuickPopup::geometryChange(),
+    // which emits heightChanged().
+
+    if (d->popupWindow)
+        d->popupWindow->setHeight(height + d->windowInsets().top() + d->windowInsets().bottom());
+    else
+        d->popupItem->setHeight(height);
 }
 
 void QQuickPopup::resetHeight()
@@ -1943,7 +2158,7 @@ void QQuickPopup::resetParentItem()
     if (QQuickWindow *window = qobject_cast<QQuickWindow *>(parent()))
         setParentItem(window->contentItem());
     else
-        setParentItem(qobject_cast<QQuickItem *>(parent()));
+        setParentItem(findParentItem());
 }
 
 /*!
@@ -2074,17 +2289,18 @@ QQmlListProperty<QQuickItem> QQuickPopupPrivate::contentChildren()
     \qmlproperty bool QtQuick.Controls::Popup::clip
 
     This property holds whether clipping is enabled. The default value is \c false.
+    Clipping only works when the popup isn't in its own window.
 */
 bool QQuickPopup::clip() const
 {
     Q_D(const QQuickPopup);
-    return d->popupItem->clip();
+    return d->popupItem->clip() && !d->usePopupWindow();
 }
 
 void QQuickPopup::setClip(bool clip)
 {
     Q_D(QQuickPopup);
-    if (clip == d->popupItem->clip())
+    if (clip == d->popupItem->clip() || d->usePopupWindow())
         return;
     d->popupItem->setClip(clip);
     emit clipChanged();
@@ -2164,6 +2380,7 @@ void QQuickPopup::setModal(bool modal)
     if (d->modal == modal)
         return;
     d->modal = modal;
+    d->popupWindowDirty = true;
     if (d->complete && d->visible)
         d->toggleOverlay();
     emit modalChanged();
@@ -2232,7 +2449,12 @@ bool QQuickPopup::isVisible() const
 void QQuickPopup::setVisible(bool visible)
 {
     Q_D(QQuickPopup);
-    if (d->visible == visible && d->transitionState != QQuickPopupPrivate::ExitTransition)
+    // During an exit transition, d->visible == true until the transition has completed.
+    // Therefore, this guard must not return early if setting visible to true while
+    // d->visible is true.
+    if (d->visible && visible && d->transitionState != QQuickPopupPrivate::ExitTransition)
+        return;
+    if (!d->visible && !visible)
         return;
 
     if (!d->complete || (visible && !d->window)) {
@@ -2694,6 +2916,67 @@ void QQuickPopup::resetBottomInset()
     d->popupItem->resetBottomInset();
 }
 
+
+/*!
+    \qmlproperty enumeration QtQuick.Controls::Popup::popupType
+    \since 6.8
+
+    This property determines the type of popup that is preferred.
+
+    Available options:
+    \value Item         The popup will be embedded into the
+                        \l{Showing a popup as an item}{same scene as the parent},
+                        without the use of a separate window.
+    \value Window       The popup will be presented in a \l {Popup type}
+                        {separate window}. If the platform doesn't support
+                        multiple windows, \c Popup.Item will be used instead.
+    \value Native       The popup will be native to the platform. If the
+                        platform doesn't support native popups, \c Popup.Window
+                        will be used instead.
+
+    Whether a popup will be able to use the preferred type depends on the platform.
+    \c Popup.Item is supported on all platforms, but \c Popup.Window and \c Popup.Native
+    are normally only supported on desktop platforms. Additionally, if a popup is a
+    \l Menu inside a \l {Native menu bars}{native menubar}, the menu will be native as
+    well. And if the menu is a sub-menu inside another menu, the parent (or root) menu
+    will decide the type.
+
+    The default value is usually \c Popup.Item, with some exceptions, mentioned above.
+    This might change in future versions of Qt, for certain styles and platforms that benefit
+    from using other popup types.
+    If you always want to use native menus for all styles on macOS, for example, you can do:
+
+    \code
+    Menu {
+        popupType: Qt.platform.os === "osx" ? Popup.Native : Popup.Window
+    }
+    \endcode
+
+    Also, if you choose to customize a popup (by for example changing any of the
+    delegates), you should consider setting the popup type to be \c Popup.Window
+    as well. This will ensure that your changes will be visible on all platforms
+    and for all styles. Otherwise, when native menus are being used, the delegates
+    will \e not be used for rendering.
+
+    \sa {Popup type}
+*/
+QQuickPopup::PopupType QQuickPopup::popupType() const
+{
+    Q_D(const QQuickPopup);
+    return d->m_popupType;
+}
+
+void QQuickPopup::setPopupType(PopupType popupType)
+{
+    Q_D(QQuickPopup);
+    if (d->m_popupType == popupType)
+        return;
+
+    d->m_popupType = popupType;
+
+    emit popupTypeChanged();
+}
+
 /*!
     \since QtQuick.Controls 2.3 (Qt 5.10)
     \qmlproperty palette QtQuick.Controls::Popup::palette
@@ -2765,7 +3048,7 @@ void QQuickPopup::classBegin()
 void QQuickPopup::componentComplete()
 {
     Q_D(QQuickPopup);
-    qCDebug(lcPopup) << "componentComplete" << this;
+    qCDebug(lcQuickPopup) << "componentComplete" << this;
     if (!parentItem())
         resetParentItem();
 
@@ -2864,6 +3147,18 @@ void QQuickPopup::mouseUngrabEvent()
     d->handleUngrab();
 }
 
+/*!
+    \internal
+
+    Called whenever the window receives a Wheel/Hover/Mouse/Touch event,
+    and has an active popup (with popupType: Popup.Item) in its scene.
+
+    The purpose is to close popups when the press/release event happened outside of it,
+    and the closePolicy allows for it to happen.
+
+    If the function is called from childMouseEventFilter, then the return value of this
+    function will determine whether the event will be filtered, or delivered to \a item.
+*/
 bool QQuickPopup::overlayEvent(QQuickItem *item, QEvent *event)
 {
     Q_D(QQuickPopup);
@@ -2925,7 +3220,7 @@ void QQuickPopup::contentItemChange(QQuickItem *newItem, QQuickItem *oldItem)
 
 void QQuickPopup::contentSizeChange(const QSizeF &newSize, const QSizeF &oldSize)
 {
-    qCDebug(lcPopup) << "contentSizeChange called on" << this << "with newSize" << newSize << "oldSize" << oldSize;
+    qCDebug(lcQuickPopup) << "contentSizeChange called on" << this << "with newSize" << newSize << "oldSize" << oldSize;
     if (!qFuzzyCompare(newSize.width(), oldSize.width()))
         emit contentWidthChanged();
     if (!qFuzzyCompare(newSize.height(), oldSize.height()))
@@ -2942,8 +3237,9 @@ void QQuickPopup::fontChange(const QFont &newFont, const QFont &oldFont)
 void QQuickPopup::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry)
 {
     Q_D(QQuickPopup);
-    qCDebug(lcPopup) << "geometryChange called on" << this << "with newGeometry" << newGeometry << "oldGeometry" << oldGeometry;
-    d->reposition();
+    qCDebug(lcQuickPopup) << "geometryChange called on" << this << "with newGeometry" << newGeometry << "oldGeometry" << oldGeometry;
+    if (!d->usePopupWindow())
+        d->reposition();
     if (!qFuzzyCompare(newGeometry.width(), oldGeometry.width())) {
         emit widthChanged();
         emit availableWidthChanged();

@@ -25,7 +25,6 @@ namespace Qt3DAnimation {
     \brief A type grouping animations together.
     \inqmlmodule Qt3D.Animation
     \since 5.9
-    \inherits QObject
 
     AnimationGroup type is used to group multiple animations so that
     they can act as one animation. The position set to the group is also set to

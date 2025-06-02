@@ -11,7 +11,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "quiche/blind_sign_auth/anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.h"
+#include "anonymous_tokens/cpp/client/anonymous_tokens_rsa_bssa_client.h"
+#include "anonymous_tokens/cpp/privacy_pass/rsa_bssa_public_metadata_client.h"
 #include "quiche/blind_sign_auth/blind_sign_auth_interface.h"
 #include "quiche/blind_sign_auth/blind_sign_auth_protos.h"
 #include "quiche/blind_sign_auth/blind_sign_http_interface.h"
@@ -23,8 +24,9 @@ namespace quiche {
 // BlindSignAuth provides signed, unblinded tokens to callers.
 class QUICHE_EXPORT BlindSignAuth : public BlindSignAuthInterface {
  public:
-  explicit BlindSignAuth(BlindSignHttpInterface* http_fetcher)
-      : http_fetcher_(http_fetcher) {}
+  explicit BlindSignAuth(BlindSignHttpInterface* http_fetcher,
+                         privacy::ppn::BlindSignAuthOptions auth_options)
+      : http_fetcher_(http_fetcher), auth_options_(std::move(auth_options)) {}
 
   // Returns signed unblinded tokens and their expiration time in a callback.
   // Tokens are single-use.
@@ -34,27 +36,47 @@ class QUICHE_EXPORT BlindSignAuth : public BlindSignAuthInterface {
   // BlindSignHttpInterface callbacks.
   // Callers can make multiple concurrent requests to GetTokens.
   void GetTokens(std::string oauth_token, int num_tokens,
-                 SignedTokenCallback callback) override;
+                 ProxyLayer proxy_layer, SignedTokenCallback callback) override;
 
  private:
   void GetInitialDataCallback(std::string oauth_token, int num_tokens,
+                              ProxyLayer proxy_layer,
                               SignedTokenCallback callback,
                               absl::StatusOr<BlindSignHttpResponse> response);
+  void GeneratePrivacyPassTokens(
+      privacy::ppn::GetInitialDataResponse initial_data_response,
+      absl::Time public_metadata_expiry_time, std::string oauth_token,
+      int num_tokens, ProxyLayer proxy_layer, SignedTokenCallback callback);
+  void GenerateRsaBssaTokens(
+      privacy::ppn::GetInitialDataResponse initial_data_response,
+      absl::Time public_metadata_expiry_time, std::string oauth_token,
+      int num_tokens, ProxyLayer proxy_layer, SignedTokenCallback callback);
   void AuthAndSignCallback(
       privacy::ppn::PublicMetadataInfo public_metadata_info,
       absl::Time public_key_expiry_time,
-      private_membership::anonymous_tokens::AnonymousTokensSignRequest
+      anonymous_tokens::AnonymousTokensSignRequest
           at_sign_request,
       std::unique_ptr<
-          private_membership::anonymous_tokens::AnonymousTokensRsaBssaClient>
+          anonymous_tokens::AnonymousTokensRsaBssaClient>
           bssa_client,
+      SignedTokenCallback callback,
+      absl::StatusOr<BlindSignHttpResponse> response);
+  void PrivacyPassAuthAndSignCallback(
+      std::string encoded_extensions, absl::Time public_key_expiry_time,
+      anonymous_tokens::AnonymousTokensUseCase use_case,
+      std::vector<std::unique_ptr<anonymous_tokens::
+                                      PrivacyPassRsaBssaPublicMetadataClient>>
+          privacy_pass_clients,
       SignedTokenCallback callback,
       absl::StatusOr<BlindSignHttpResponse> response);
   absl::Status FingerprintPublicMetadata(
       const privacy::ppn::PublicMetadata& metadata, uint64_t* fingerprint);
   absl::StatusCode HttpCodeToStatusCode(int http_code);
+  privacy::ppn::ProxyLayer QuicheProxyLayerToPpnProxyLayer(
+      quiche::ProxyLayer proxy_layer);
 
   BlindSignHttpInterface* http_fetcher_ = nullptr;
+  privacy::ppn::BlindSignAuthOptions auth_options_;
 };
 
 }  // namespace quiche

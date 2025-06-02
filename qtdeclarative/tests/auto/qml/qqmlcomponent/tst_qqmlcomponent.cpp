@@ -142,6 +142,7 @@ private slots:
     void removeBinding();
     void complexObjectArgument();
     void bindingEvaluationOrder();
+    void compilationUnitsWithSameUrl();
     void bindingInRequired();
 
 private:
@@ -1041,6 +1042,19 @@ void tst_qqmlcomponent::testSetInitialProperties()
 
     }
     {
+        // setInitialProperties: reject setting nested properties
+        auto r = QRegularExpression(".*Setting initial properties failed: Cannot initialize "
+                                    "nested property. To set a.b as an initial property, create a"
+                                    ", set its property b, and pass a as an initial property.");
+        QTest::ignoreMessage(QtWarningMsg, r);
+
+        ComponentWithPublicSetInitial comp(&eng);
+        comp.loadUrl(testFileUrl("allJSONTypes.qml")); // Any valid QML file
+        QScopedPointer<QObject> obj { comp.beginCreate(eng.rootContext()) };
+        comp.setInitialProperties(obj.get(), { { "a.b", 1 } });
+        comp.completeCreate();
+    }
+    {
         // createWithInitialProperties convenience function
         QQmlComponent comp(&eng);
         comp.loadUrl(testFileUrl("requiredNotSet.qml"));
@@ -1349,8 +1363,7 @@ void tst_qqmlcomponent::loadFromModule()
 void tst_qqmlcomponent::loadFromModuleLifecycle()
 {
     QQmlEngine engine;
-    QList<int> loadFromModuleOrder;
-    QList<int> plainLoadOrder;
+    const QString text = "text"_L1;
     const QList<int> expected {1, 2, 3};
     {
         QQmlComponent component(&engine);
@@ -1359,19 +1372,58 @@ void tst_qqmlcomponent::loadFromModuleLifecycle()
         std::unique_ptr<QObject> root{ component.create() };
         LifeCycleWatcher *watcher = qobject_cast<LifeCycleWatcher *>(root.get());
         QVERIFY(watcher);
-        loadFromModuleOrder = watcher->states;
-        QCOMPARE(loadFromModuleOrder, expected);
+        QCOMPARE(watcher->states, expected);
+        QCOMPARE(watcher->observedTexts, QStringList(3));
+
+        const QString loaded = "load from module"_L1;
+        root.reset(component.createWithInitialProperties(QVariantMap{{text, loaded}}));
+        watcher = qobject_cast<LifeCycleWatcher *>(root.get());
+        QVERIFY(watcher);
+        QCOMPARE(watcher->states, expected);
+        QCOMPARE(watcher->observedTexts, QStringList({QString(), loaded, loaded}));
     }
+
     {
         QQmlComponent component(&engine);
         component.setData("import test; LifeCycleWatcher {}", {});
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
         std::unique_ptr<QObject> root{ component.create() };
         LifeCycleWatcher *watcher = qobject_cast<LifeCycleWatcher *>(root.get());
         QVERIFY(watcher);
-        plainLoadOrder = watcher->states;
+        QCOMPARE(watcher->states, expected);
+        QCOMPARE(watcher->observedTexts, QStringList(3));
+
+        const QString loaded = "load from data"_L1;
+        root.reset(component.createWithInitialProperties(QVariantMap{{text, loaded}}));
+        watcher = qobject_cast<LifeCycleWatcher *>(root.get());
+        QVERIFY(watcher);
+        QCOMPARE(watcher->states, expected);
+        QCOMPARE(watcher->observedTexts, QStringList({QString(), loaded, loaded}));
     }
-    QCOMPARE(loadFromModuleOrder, plainLoadOrder);
+
+    {
+        QQmlComponent component(&engine);
+        const QString compiled = "inline"_L1;
+        component.setData("import test; LifeCycleWatcher { text: 'inline' }", {});
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+        std::unique_ptr<QObject> root{ component.create() };
+        LifeCycleWatcher *watcher = qobject_cast<LifeCycleWatcher *>(root.get());
+        QVERIFY(watcher);
+        QCOMPARE(watcher->states, expected);
+        QCOMPARE(watcher->observedTexts, QStringList({QString(), compiled, compiled}));
+
+        const QString loaded = "overridden"_L1;
+        std::unique_ptr<QObject> withProperties(
+                component.createWithInitialProperties(QVariantMap{{text, loaded}}));
+        watcher = qobject_cast<LifeCycleWatcher *>(withProperties.get());
+        QVERIFY(watcher);
+        QCOMPARE(watcher->states, expected);
+        QCOMPARE(watcher->observedTexts, QStringList({QString(), loaded, loaded}));
+    }
+
+
 }
 
 struct CallVerifyingIncubtor : QQmlIncubator
@@ -1470,7 +1522,7 @@ void tst_qqmlcomponent::loadFromQrc()
     QQmlComponentPrivate *p = QQmlComponentPrivate::get(&component);
     QVERIFY(p);
     QVERIFY(p->compilationUnit);
-    QVERIFY(p->compilationUnit->aotCompiledFunctions);
+    QVERIFY(p->compilationUnit->baseCompilationUnit()->aotCompiledFunctions);
 }
 
 void tst_qqmlcomponent::removeBinding()
@@ -1528,6 +1580,41 @@ void tst_qqmlcomponent::bindingEvaluationOrder()
     QCOMPARE(myList[0].toString(), u"dummy"_s);
     QCOMPARE(myList[1].toString(), u"p1"_s);
     QCOMPARE(myList[2].toString(), u"p2"_s);
+}
+
+void tst_qqmlcomponent::compilationUnitsWithSameUrl()
+{
+    QQmlEngine engine;
+    engine.setUiLanguage("de_CH");
+
+    std::vector<std::unique_ptr<QObject>> objects;
+    for (int i = 0; i < 10; ++i) {
+        QQmlComponent component(&engine);
+        component.setData(R"(
+            import QtQml
+            QtObject {
+                function returnThing() : string { return Qt.uiLanguage }
+            }
+        )", QUrl("duplicate.qml"));
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+
+        std::unique_ptr<QObject> o(component.create());
+        QVERIFY(o.get());
+
+        QString result;
+        QMetaObject::invokeMethod(o.get(), "returnThing", Q_RETURN_ARG(QString, result));
+        QCOMPARE(result, "de_CH");
+
+        objects.push_back(std::move(o));
+    }
+
+    gc(engine);
+
+    for (const auto &o: objects) {
+        QString result;
+        QMetaObject::invokeMethod(o.get(), "returnThing", Q_RETURN_ARG(QString, result));
+        QCOMPARE(result, "de_CH");
+    }
 }
 
 void tst_qqmlcomponent::bindingInRequired()

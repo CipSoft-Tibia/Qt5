@@ -9,6 +9,7 @@
 #include <QtTest/qsignalspy.h>
 #include <QtTest/qtest.h>
 #include <QtNetwork/qnetworkaccessmanager.h>
+#include <QtNetwork/qtcpserver.h>
 
 Q_DECLARE_METATYPE(QNetworkAccessManager::Operation);
 
@@ -17,18 +18,18 @@ QT_BEGIN_NAMESPACE
 struct HttpServer : QAbstractHttpServer {
     QHttpServerRouter router;
 
-    HttpServer() = default;
+    HttpServer() : router(this) {};
 
     template<typename ViewHandler>
     void route(const char *path, const QHttpServerRequest::Methods methods, ViewHandler &&viewHandler)
     {
         auto rule = std::make_unique<QHttpServerRouterRule>(
-                path, methods,
+                path, methods, this,
                 [this, viewHandler = std::forward<ViewHandler>(viewHandler)](
                         const QRegularExpressionMatch &match, const QHttpServerRequest &,
-                        QHttpServerResponder &&responder) mutable {
-                    auto boundViewHandler = router.bindCaptured(viewHandler, match);
-                    boundViewHandler(std::move(responder));
+                        QHttpServerResponder &responder) mutable {
+                    auto boundViewHandler = QHttpServerRouterRule::bindCaptured(this, viewHandler, match);
+                    boundViewHandler(responder);
                 });
 
         router.addRule<ViewHandler>(std::move(rule));
@@ -45,7 +46,7 @@ struct HttpServer : QAbstractHttpServer {
         return router.handleRequest(request, responder);
     }
 
-    void missingHandler(const QHttpServerRequest &, QHttpServerResponder &&responder) override
+    void missingHandler(const QHttpServerRequest &, QHttpServerResponder &responder) override
     {
         responder.write(QHttpServerResponder::StatusCode::NotFound);
     }
@@ -59,6 +60,7 @@ private slots:
     void initTestCase();
     void routerRule_data();
     void routerRule();
+    void viewHandlerMemberFunction();
     void viewHandlerNoArg();
     void viewHandlerOneArg();
     void viewHandlerTwoArgs();
@@ -71,27 +73,32 @@ private:
     QString urlBase;
 };
 
-static void getTest(QHttpServerResponder &&responder)
+static void getTest(QHttpServerResponder &responder)
 {
     responder.write(QString("get-test").toUtf8(), "text/plain");
 }
 
 void tst_QHttpServerRouter::initTestCase()
 {
-    auto pageHandler = [] (const quint64 &page, QHttpServerResponder &&responder) {
+    auto pageHandler = [] (const quint64 &page, QHttpServerResponder &responder) {
         responder.write(QString("page: %1").arg(page).toUtf8(), "text/plain");
     };
 
     httpserver.route("/page/", pageHandler);
 
     httpserver.route("/post-only", QHttpServerRequest::Method::Post,
-                     [] (QHttpServerResponder &&responder) {
+                     [] (QHttpServerResponder &responder) {
         responder.write(QString("post-test").toUtf8(), "text/plain");
     });
 
     httpserver.route("/get-only", QHttpServerRequest::Method::Get, getTest);
 
-    urlBase = QStringLiteral("http://localhost:%1%2").arg(httpserver.listen());
+    auto tcpserver = std::make_unique<QTcpServer>();
+    QVERIFY2(tcpserver->listen(QHostAddress::Any), "HTTP server listen failed");
+    quint16 port = tcpserver->serverPort();
+    QVERIFY2(httpserver.bind(tcpserver.get()), "HTTP server bind failed");
+    tcpserver.release();
+    urlBase = QStringLiteral("http://localhost:%1%2").arg(port);
 }
 
 void tst_QHttpServerRouter::routerRule_data()
@@ -193,6 +200,83 @@ void tst_QHttpServerRouter::routerRule()
     QCOMPARE(reply->readAll(), body);
 }
 
+void tst_QHttpServerRouter::viewHandlerMemberFunction()
+{
+    class ViewClass
+    {
+    public:
+        void viewClassNoArg()
+        {
+        }
+
+        void viewClassOneArg(const quint64 &)
+        {
+        }
+
+        QString viewClassReturnString()
+        {
+            return "";
+        }
+    };
+
+    using ViewTraitsNoArg = QHttpServerRouterViewTraits<decltype(&ViewClass::viewClassNoArg), true>;
+    using ArgsNoArg = typename ViewTraitsNoArg::Arguments;
+
+    static_assert(ArgsNoArg::Count == 0,
+                  "viewClassNoArg: Args::Count == 0");
+    static_assert(ArgsNoArg::CapturableCount == 0,
+                  "viewClassNoArg: Args::CapturableCount == 0");
+    static_assert(ArgsNoArg::PlaceholdersCount == 0,
+                  "viewClassNoArg: Args::PlaceholdersCount == 0");
+    static_assert(ArgsNoArg::Valid, "viewClassNoArg: Args::Valid");
+    static_assert(ArgsNoArg::StaticAssert, "viewClassNoArg: Args::StaticAssert");
+
+    static_assert(std::is_same<ViewTraitsNoArg::BindableType, std::function<void()>>::value,
+                  "viewClassNoArg::BindableType");
+
+    using ViewTraitsOneArg = QHttpServerRouterViewTraits<decltype(&ViewClass::viewClassOneArg), true>;
+    using ArgsOneArg = typename ViewTraitsOneArg::Arguments;
+
+    static_assert(ArgsOneArg::Count == 1,
+                  "viewOneArg: Args::Count == 1");
+    static_assert(ArgsOneArg::CapturableCount == 1,
+                  "viewOneArg: Args::CapturableCount == 1");
+    static_assert(ArgsOneArg::PlaceholdersCount == 0,
+                  "viewOneArg: Args::PlaceholdersCount == 0");
+    static_assert(ArgsOneArg::Last::IsRequest::Value == 0,
+                  "viewOneArg: Args::Last::IsRequest::Value == 0");
+    static_assert(ArgsOneArg::Last::IsRequest::Valid == 0,
+                  "viewOneArg: Args::Last::IsRequest::Valid == 0");
+    static_assert(ArgsOneArg::Last::IsResponder::Value == 0,
+                  "viewOneArg: Args::Last::IsResponder::Value == 0");
+    static_assert(ArgsOneArg::Last::IsResponder::Valid == 0,
+                  "viewOneArg: Args::Last::IsResponder::Valid == 0");
+    static_assert(ArgsOneArg::Last::IsSpecial::Value == 0,
+                  "viewOneArg: Args::Last::IsSpecial::Value == 0");
+    static_assert(ArgsOneArg::Last::IsSpecial::Valid == 0,
+                  "viewOneArg: Args::Last::IsSpecial::Valid == 0");
+    static_assert(ArgsOneArg::Last::IsSimple::Value,
+                  "viewOneArg: Args::Last::IsSimple::Value");
+    static_assert(ArgsOneArg::Last::IsSimple::Valid,
+                  "viewOneArg: Args::Last::IsSimple::Valid");
+    static_assert(ArgsOneArg::Last::Valid,
+                  "viewOneArg: Args::Last::Valid");
+    static_assert(ArgsOneArg::Last::StaticAssert,
+                  "viewOneArg: Args::Last::StaticAssert");
+    static_assert(std::is_same<ArgsOneArg::Last::Type, const quint64 &>::value,
+                  "viewNonArg: std::is_same<Args::Last::Type, const quint64 &>");
+    static_assert(ArgsOneArg::Valid, "viewOneArg: Args::Valid");
+    static_assert(ArgsOneArg::StaticAssert, "viewOneArg: Args::StaticAssert");
+
+    using ViewTraitsReturnString = QHttpServerRouterViewTraits<decltype(&ViewClass::viewClassReturnString), true>;
+
+    static_assert(std::is_same<ViewTraitsReturnString::ReturnType, QString>::value,
+                  "ArgsReturnString: std::is_same<ViewTraitsReturnString::ReturnType, QString>");
+    static_assert(std::is_same<ViewTraitsReturnString::BindableType, std::function<QString()>>::value,
+                  "viewClassNoArg::BindableType");
+
+}
+
 void tst_QHttpServerRouter::viewHandlerNoArg()
 {
     auto viewNonArg = [] () {
@@ -210,6 +294,10 @@ void tst_QHttpServerRouter::viewHandlerNoArg()
 
     static_assert(Args::Valid, "viewNonArg: Args::Valid");
     static_assert(Args::StaticAssert, "viewNonArg: Args::StaticAssert");
+
+    static_assert(std::is_same<ViewTraits::BindableType, std::function<void()>>::value,
+                  "viewClassNoArg::BindableType");
+
 }
 
 void tst_QHttpServerRouter::viewHandlerOneArg()
@@ -323,7 +411,7 @@ void tst_QHttpServerRouter::viewHandlerTwoArgs()
 
 void tst_QHttpServerRouter::viewHandlerResponder()
 {
-    auto view = [] (QHttpServerResponder &&) {
+    auto view = [] (QHttpServerResponder &) {
     };
 
     using ViewTraits = QHttpServerRouterViewTraits<decltype(view), true>;
@@ -355,8 +443,8 @@ void tst_QHttpServerRouter::viewHandlerResponder()
                   "viewResponder: Args::Last::Valid");
     static_assert(Args::Last::StaticAssert,
                   "viewResponder: Args::Last::StaticAssert");
-    static_assert(std::is_same<Args::Last::Type, QHttpServerResponder &&>::value,
-                  "viewNonArg: std::is_same<Args::Last::Type, QHttpServerResponder &&>");
+    static_assert(std::is_same<Args::Last::Type, QHttpServerResponder &>::value,
+                  "viewNonArg: std::is_same<Args::Last::Type, QHttpServerResponder &>");
     static_assert(Args::Valid, "viewResponder: Args::Valid");
     static_assert(Args::StaticAssert, "viewResponder: Args::StaticAssert");
 }
@@ -403,7 +491,7 @@ void tst_QHttpServerRouter::viewHandlerRequest()
 
 void tst_QHttpServerRouter::viewHandlerLastTwoSpecials()
 {
-    auto view = [] (const QHttpServerRequest &, QHttpServerResponder &&) {
+    auto view = [] (const QHttpServerRequest &, QHttpServerResponder &) {
     };
 
     using ViewTraits = QHttpServerRouterViewTraits<decltype(view), true>;
@@ -462,8 +550,8 @@ void tst_QHttpServerRouter::viewHandlerLastTwoSpecials()
                   "viewTwoSpecialArgs: Args::Arg1::Valid");
     static_assert(Arg1::StaticAssert,
                   "viewTwoSpecialArgs: Args::Arg1::StaticAssert");
-    static_assert(std::is_same<Arg1::Type, QHttpServerResponder &&>::value,
-                  "viewTwoSpecialArgs: std::is_same<Args::Arg1::Type, QHttpServerResponder &&>");
+    static_assert(std::is_same<Arg1::Type, QHttpServerResponder &>::value,
+                  "viewTwoSpecialArgs: std::is_same<Args::Arg1::Type, QHttpServerResponder &>");
 
     static_assert(Args::Valid, "viewTwoSpecialArgs: Args::Valid");
     // StaticAssert is disabled in tests

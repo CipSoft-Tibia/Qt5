@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_SPIRV_WRITER_AST_PRINTER_HELPER_TEST_H_
 #define SRC_TINT_LANG_SPIRV_WRITER_AST_PRINTER_HELPER_TEST_H_
@@ -53,12 +66,14 @@ class TestHelperBase : public ProgramBuilder, public BASE {
         if (spirv_builder) {
             return *spirv_builder;
         }
-        [&] {
-            ASSERT_TRUE(IsValid()) << "Builder program is not valid\n" << Diagnostics().str();
-        }();
+        if (!IsValid()) {
+            ADD_FAILURE() << "ProgramBuilder is not valid: " << Diagnostics();
+        }
         program = std::make_unique<Program>(resolver::Resolve(*this));
-        [&] { ASSERT_TRUE(program->IsValid()) << program->Diagnostics().str(); }();
-        spirv_builder = std::make_unique<Builder>(program.get());
+        if (!program->IsValid()) {
+            ADD_FAILURE() << program->Diagnostics();
+        }
+        spirv_builder = std::make_unique<Builder>(*program);
         return *spirv_builder;
     }
 
@@ -72,15 +87,24 @@ class TestHelperBase : public ProgramBuilder, public BASE {
         if (spirv_builder) {
             return *spirv_builder;
         }
-        [&] {
-            ASSERT_TRUE(IsValid()) << "Builder program is not valid\n" << Diagnostics().str();
-        }();
+        if (!IsValid()) {
+            ADD_FAILURE() << "ProgramBuilder is not valid: " << Diagnostics();
+        }
         program = std::make_unique<Program>(resolver::Resolve(*this));
-        [&] { ASSERT_TRUE(program->IsValid()) << program->Diagnostics().str(); }();
-        auto result = Sanitize(program.get(), options);
-        [&] { ASSERT_TRUE(result.program.IsValid()) << result.program.Diagnostics().str(); }();
+        if (!program->IsValid()) {
+            ADD_FAILURE() << program->Diagnostics();
+        }
+        auto result = Sanitize(*program, options);
+        if (!result.program.IsValid()) {
+            ADD_FAILURE() << result.program.Diagnostics();
+        }
         *program = std::move(result.program);
-        spirv_builder = std::make_unique<Builder>(program.get());
+        bool zero_initialize_workgroup_memory =
+            !options.disable_workgroup_init &&
+            options.use_zero_initialize_workgroup_memory_extension;
+        spirv_builder =
+            std::make_unique<Builder>(*program, zero_initialize_workgroup_memory,
+                                      options.experimental_require_subgroup_uniform_control_flow);
         return *spirv_builder;
     }
 
@@ -90,7 +114,7 @@ class TestHelperBase : public ProgramBuilder, public BASE {
     void Validate(Builder& b) {
         BinaryWriter writer;
         writer.WriteHeader(b.Module().IdBound());
-        writer.WriteModule(&b.Module());
+        writer.WriteModule(b.Module());
         auto binary = writer.Result();
 
         std::string spv_errors;

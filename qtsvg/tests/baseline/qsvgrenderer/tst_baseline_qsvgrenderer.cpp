@@ -9,7 +9,6 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDirIterator>
 #include <QtCore/QDebug>
-#include <QtCore/QProcess>
 #include <QtGui/QImage>
 
 #include <algorithm>
@@ -24,6 +23,7 @@ public:
 private Q_SLOTS:
     void initTestCase();
     void cleanup();
+    void cleanupTestCase();
     void testRendering_data();
     void testRendering();
 
@@ -67,6 +67,10 @@ void tst_QSvgRenderer::cleanup()
 
 }
 
+void tst_QSvgRenderer::cleanupTestCase()
+{
+    QBaselineTest::finalizeAndDisconnect();
+}
 
 void tst_QSvgRenderer::testRendering_data()
 {
@@ -142,7 +146,11 @@ quint16 tst_QSvgRenderer::checksumFileOrDir(const QString &path)
         return 0;
     if (fi.isFile()) {
         QFile f(path);
-        f.open(QIODevice::ReadOnly | QIODevice::Text);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            qWarning("Cannot open %ls: %ls",
+                     qUtf16Printable(path), qUtf16Printable(f.errorString()));
+            return 0;
+        }
         QByteArray contents = f.readAll();
         return qChecksum(contents);
     }
@@ -158,15 +166,6 @@ quint16 tst_QSvgRenderer::checksumFileOrDir(const QString &path)
     return 0;
 }
 
-
-#define main _realmain
-QTEST_MAIN(tst_QSvgRenderer)
-#undef main
-
-int main(int argc, char *argv[])
-{
-    QBaselineTest::handleCmdLineArgs(&argc, &argv);
-    return _realmain(argc, argv);
-}
+QBASELINETEST_MAIN(tst_QSvgRenderer)
 
 #include "tst_baseline_qsvgrenderer.moc"

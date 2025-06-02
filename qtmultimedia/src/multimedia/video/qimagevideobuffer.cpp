@@ -51,30 +51,23 @@ QImage fixImage(QImage image)
 
 } // namespace
 
-QImageVideoBuffer::QImageVideoBuffer(QImage image)
-    : QAbstractVideoBuffer(QVideoFrame::NoHandle), m_image(fixImage(std::move(image)))
-{
-}
+QImageVideoBuffer::QImageVideoBuffer(QImage image) : m_image(fixImage(std::move(image))) { }
 
 QAbstractVideoBuffer::MapData QImageVideoBuffer::map(QVideoFrame::MapMode mode)
 {
     MapData mapData;
-    if (m_mapMode == QVideoFrame::NotMapped && !m_image.isNull()
-        && mode != QVideoFrame::NotMapped) {
-        m_mapMode = mode;
 
-        mapData.nPlanes = 1;
+    if (!m_image.isNull()) {
+        mapData.planeCount = 1;
         mapData.bytesPerLine[0] = m_image.bytesPerLine();
-        mapData.data[0] = m_image.bits();
-        mapData.size[0] = m_image.sizeInBytes();
+        if (mode == QVideoFrame::ReadOnly)
+            mapData.data[0] = const_cast<uint8_t *>(m_image.constBits());
+        else
+            mapData.data[0] = m_image.bits();
+        mapData.dataSize[0] = m_image.sizeInBytes();
     }
 
     return mapData;
-}
-
-void QImageVideoBuffer::unmap()
-{
-    m_mapMode = QVideoFrame::NotMapped;
 }
 
 QImage QImageVideoBuffer::underlyingImage() const

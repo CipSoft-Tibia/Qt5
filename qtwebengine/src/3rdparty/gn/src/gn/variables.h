@@ -130,6 +130,10 @@ extern const char kXcassetCompilerFlags[];
 extern const char kXcassetCompilerFlags_HelpShort[];
 extern const char kXcassetCompilerFlags_Help[];
 
+extern const char kTransparent[];
+extern const char kTransparent_HelpShort[];
+extern const char kTransparent_Help[];
+
 extern const char kCflags[];
 extern const char kCflags_HelpShort[];
 extern const char* kCflags_Help;
@@ -158,6 +162,10 @@ extern const char kCodeSigningArgs[];
 extern const char kCodeSigningArgs_HelpShort[];
 extern const char kCodeSigningArgs_Help[];
 
+extern const char kCodeSigningOutputs[];
+extern const char kCodeSigningOutputs_HelpShort[];
+extern const char kCodeSigningOutputs_Help[];
+
 extern const char kCodeSigningScript[];
 extern const char kCodeSigningScript_HelpShort[];
 extern const char kCodeSigningScript_Help[];
@@ -165,10 +173,6 @@ extern const char kCodeSigningScript_Help[];
 extern const char kCodeSigningSources[];
 extern const char kCodeSigningSources_HelpShort[];
 extern const char kCodeSigningSources_Help[];
-
-extern const char kCodeSigningOutputs[];
-extern const char kCodeSigningOutputs_HelpShort[];
-extern const char kCodeSigningOutputs_Help[];
 
 extern const char kCompleteStaticLib[];
 extern const char kCompleteStaticLib_HelpShort[];
@@ -270,6 +274,22 @@ extern const char kPool[];
 extern const char kPool_HelpShort[];
 extern const char kPool_Help[];
 
+extern const char kPostProcessingArgs[];
+extern const char kPostProcessingArgs_HelpShort[];
+extern const char kPostProcessingArgs_Help[];
+
+extern const char kPostProcessingOutputs[];
+extern const char kPostProcessingOutputs_HelpShort[];
+extern const char kPostProcessingOutputs_Help[];
+
+extern const char kPostProcessingScript[];
+extern const char kPostProcessingScript_HelpShort[];
+extern const char kPostProcessingScript_Help[];
+
+extern const char kPostProcessingSources[];
+extern const char kPostProcessingSources_HelpShort[];
+extern const char kPostProcessingSources_Help[];
+
 extern const char kPrecompiledHeader[];
 extern const char kPrecompiledHeader_HelpShort[];
 extern const char kPrecompiledHeader_Help[];
@@ -361,6 +381,10 @@ extern const char kXcodeExtraAttributes_Help[];
 extern const char kGenDeps[];
 extern const char kGenDeps_HelpShort[];
 extern const char kGenDeps_Help[];
+
+extern const char kMnemonic[];
+extern const char kMnemonic_HelpShort[];
+extern const char kMnemonic_Help[];
 
 // -----------------------------------------------------------------------------
 

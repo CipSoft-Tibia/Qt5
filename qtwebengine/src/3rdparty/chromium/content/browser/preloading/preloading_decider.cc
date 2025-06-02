@@ -6,12 +6,15 @@
 
 #include "base/check_op.h"
 #include "base/containers/enum_set.h"
+#include "base/feature_list.h"
 #include "base/strings/string_split.h"
 #include "content/browser/preloading/prefetch/no_vary_search_helper.h"
 #include "content/browser/preloading/prefetch/prefetch_document_manager.h"
 #include "content/browser/preloading/prefetch/prefetch_params.h"
 #include "content/browser/preloading/preloading.h"
 #include "content/browser/preloading/preloading_data_impl.h"
+#include "content/browser/preloading/preloading_trigger_type_impl.h"
+#include "content/browser/preloading/prerender/prerender_features.h"
 #include "content/browser/preloading/prerenderer_impl.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/public/browser/navigation_handle.h"
@@ -43,12 +46,23 @@ EagernessSet EagernessSetFromFeatureParam(base::StringPiece value) {
   return set;
 }
 
-void PrefetchDestructionCallback(WeakDocumentPtr document, const GURL& url) {
+void OnPrefetchDestroyed(WeakDocumentPtr document, const GURL& url) {
   PreloadingDecider* preloading_decider =
       PreloadingDecider::GetForCurrentDocument(
           document.AsRenderFrameHostIfValid());
   if (preloading_decider) {
-    preloading_decider->OnPrefetchEvicted(url);
+    preloading_decider->OnPreloadDiscarded(
+        {url, blink::mojom::SpeculationAction::kPrefetch});
+  }
+}
+
+void OnPrerenderCanceled(WeakDocumentPtr document, const GURL& url) {
+  PreloadingDecider* preloading_decider =
+      PreloadingDecider::GetForCurrentDocument(
+          document.AsRenderFrameHostIfValid());
+  if (preloading_decider) {
+    preloading_decider->OnPreloadDiscarded(
+        {url, blink::mojom::SpeculationAction::kPrerender});
   }
 }
 
@@ -100,7 +114,12 @@ PreloadingDecider::PreloadingDecider(RenderFrameHost* rfh)
   if (PrefetchNewLimitsEnabled()) {
     PrefetchDocumentManager::GetOrCreateForCurrentDocument(rfh)
         ->SetPrefetchDestructionCallback(base::BindRepeating(
-            &PrefetchDestructionCallback, rfh->GetWeakDocumentPtr()));
+            &OnPrefetchDestroyed, rfh->GetWeakDocumentPtr()));
+  }
+
+  if (base::FeatureList::IsEnabled(features::kPrerender2NewLimitAndScheduler)) {
+    prerenderer_->SetPrerenderCancellationCallback(
+        base::BindRepeating(&OnPrerenderCanceled, rfh->GetWeakDocumentPtr()));
   }
 }
 
@@ -323,8 +342,12 @@ void PreloadingDecider::UpdateSpeculationCandidates(
 
     // TODO(crbug.com/1341019): Pass the action requested by speculation rules
     // to PreloadingPrediction.
-    AddPreloadingPrediction(candidate->url, GetPredictorForSpeculationRules(
-                                                candidate->injection_world));
+    PreloadingTriggerType trigger_type =
+        PreloadingTriggerTypeFromSpeculationInjectionType(
+            candidate->injection_type);
+    PreloadingPredictor predictor =
+        GetPredictorForPreloadingTriggerType(trigger_type);
+    AddPreloadingPrediction(candidate->url, std::move(predictor));
 
     return false;
   };
@@ -480,8 +503,15 @@ PreloadingDeciderObserverForTesting* PreloadingDecider::SetObserverForTesting(
   return std::exchange(observer_for_testing_, observer);
 }
 
+Prerenderer& PreloadingDecider::GetPrerendererForTesting() {
+  CHECK(prerenderer_);
+  return *prerenderer_;
+}
+
 std::unique_ptr<Prerenderer> PreloadingDecider::SetPrerendererForTesting(
     std::unique_ptr<Prerenderer> prerenderer) {
+  prerenderer->SetPrerenderCancellationCallback(base::BindRepeating(
+      &OnPrerenderCanceled, render_frame_host().GetWeakDocumentPtr()));
   return std::exchange(prerenderer_, std::move(prerenderer));
 }
 
@@ -492,8 +522,7 @@ bool PreloadingDecider::IsOnStandByForTesting(
          on_standby_candidates_.end();
 }
 
-void PreloadingDecider::OnPrefetchEvicted(const GURL& url) {
-  SpeculationCandidateKey key{url, blink::mojom::SpeculationAction::kPrefetch};
+void PreloadingDecider::OnPreloadDiscarded(SpeculationCandidateKey key) {
   auto it = processed_candidates_.find(key);
   CHECK(it != processed_candidates_.end());
   std::vector<blink::mojom::SpeculationCandidatePtr> candidates =
@@ -513,6 +542,9 @@ void PreloadingDecider::OnPrefetchEvicted(const GURL& url) {
     // it would defeat the purpose of evicting in the first place, and due to a
     // possible-rentrancy into PrefetchService::Prefetch(), it could cause us to
     // exceed the limit.
+
+    // TODO(crbug.com/1464021): Add implementation for the kEager case for
+    // prerender.
   }
 }
 

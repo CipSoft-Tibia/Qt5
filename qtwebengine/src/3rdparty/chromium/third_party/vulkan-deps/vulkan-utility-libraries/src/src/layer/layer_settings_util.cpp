@@ -47,38 +47,49 @@ std::string GetFileSettingName(const char *pLayerName, const char *pSettingName)
     return settingName.str();
 }
 
-std::string GetEnvSettingName(const char *layer_key, const char *setting_key, TrimMode trim_mode) {
+static const char *GetDefaultPrefix() {
+#ifdef __ANDROID__
+    return "vulkan";
+#else
+    return "";
+#endif
+}
+
+std::string GetEnvSettingName(const char *layer_key, const char *requested_prefix, const char *setting_key, TrimMode trim_mode) {
     std::stringstream result;
+    const std::string prefix = (requested_prefix == nullptr || trim_mode != TRIM_NAMESPACE) ? GetDefaultPrefix() : requested_prefix;
 
 #if defined(__ANDROID__)
+    const std::string full_prefix = std::string("debug.") + prefix + ".";
     switch (trim_mode) {
         default:
         case TRIM_NONE: {
-            result << "debug.vulkan." << GetFileSettingName(layer_key, setting_key);
+            result << full_prefix << GetFileSettingName(layer_key, setting_key);
             break;
         }
         case TRIM_VENDOR: {
-            result << "debug.vulkan." << GetFileSettingName(TrimVendor(layer_key).c_str(), setting_key);
+            result << full_prefix << GetFileSettingName(TrimVendor(layer_key).c_str(), setting_key);
             break;
         }
         case TRIM_NAMESPACE: {
-            result << "debug.vulkan." << setting_key;
+            result << full_prefix << setting_key;
             break;
         }
     }
 #else
+    const std::string full_prefix = std::string("VK_") + (prefix.empty() ? "" : prefix + "_");
     switch (trim_mode) {
         default:
         case TRIM_NONE: {
-            result << "VK_" << vl::ToUpper(TrimPrefix(layer_key)) << "_" << vl::ToUpper(setting_key);
+            result << full_prefix << vl::ToUpper(TrimPrefix(layer_key)) << "_" << vl::ToUpper(setting_key);
             break;
         }
         case TRIM_VENDOR: {
-            result << "VK_" << vl::ToUpper(TrimVendor(layer_key)) << "_" << vl::ToUpper(setting_key);
+            result << full_prefix << vl::ToUpper(TrimVendor(layer_key)) << "_" << vl::ToUpper(setting_key);
             break;
         }
         case TRIM_NAMESPACE: {
-            result << "VK_" << vl::ToUpper(setting_key);
+            result << full_prefix << vl::ToUpper(setting_key);
             break;
         }
     }
@@ -88,14 +99,14 @@ std::string GetEnvSettingName(const char *layer_key, const char *setting_key, Tr
 }
 
 char GetEnvDelimiter() {
-#ifdef WIN32 // a define is necessary because ':' is used for disk drives on Windows path
+#ifdef WIN32  // a define is necessary because ':' is used for disk drives on Windows path
     return ';';
 #else
     return ':';
 #endif
 }
 
-char FindDelimiter(const std::string& s) {
+char FindDelimiter(const std::string &s) {
     if (s.find(',') != std::string::npos) {
         return ',';
     } else if (s.find(GetEnvDelimiter()) != std::string::npos) {
@@ -191,17 +202,17 @@ int32_t ToInt32(const std::string &token) {
 int64_t ToInt64(const std::string &token) {
     int64_t int_id = 0;
     if (token.find("0x") == 0 || token.find("0X") == 0 || token.find("-0x") == 0 || token.find("-0X") == 0) {  // Handle hex format
-        int_id = static_cast<uint64_t>(std::strtoll(token.c_str(), nullptr, 16));
+        int_id = static_cast<int64_t>(std::strtoll(token.c_str(), nullptr, 16));
     } else {
-        int_id = static_cast<uint64_t>(std::strtoll(token.c_str(), nullptr, 10));  // Decimal format
+        int_id = static_cast<int64_t>(std::strtoll(token.c_str(), nullptr, 10));  // Decimal format
     }
     return int_id;
 }
 
-VlFrameset ToFrameSet(const std::string &s) {
+VkuFrameset ToFrameSet(const std::string &s) {
     assert(IsFrameSets(s));
 
-    VlFrameset frameset{0, 1, 1};
+    VkuFrameset frameset{0, 1, 1};
 
     const std::vector<std::string> &frameset_split = vl::Split(s, '-');
     if (frameset_split.size() >= 1) {
@@ -217,10 +228,10 @@ VlFrameset ToFrameSet(const std::string &s) {
     return frameset;
 }
 
-std::vector<VlFrameset> ToFrameSets(const std::string &s) {
+std::vector<VkuFrameset> ToFrameSets(const std::string &s) {
     std::vector<std::string> tokens = Split(s, FindDelimiter(s));
 
-    std::vector<VlFrameset> results;
+    std::vector<VkuFrameset> results;
     results.resize(tokens.size());
     for (std::size_t i = 0, n = tokens.size(); i < n; ++i) {
         results[i] = ToFrameSet(tokens[i]);

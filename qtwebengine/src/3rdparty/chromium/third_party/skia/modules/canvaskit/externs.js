@@ -142,18 +142,28 @@ var CanvasKit = {
       getScalarSlot: function() {},
       setVec2Slot: function() {},
       getVec2Slot: function() {},
+      setTextSlot: function() {},
+      getTextSlot: function() {},
       setImageSlot: function() {},
       setTransform: function() {},
       size: function() {},
+
+      attachEditor:          function() {},
+      enableEditor:          function() {},
+      dispatchEditorKey:     function() {},
+      dispatchEditorPointer: function() {},
+      setEditorCursorWeight: function() {},
     },
     _render: function() {},
     _seek: function() {},
     _seekFrame: function() {},
     _setTransform: function() {},
+    _getSlotInfo: function() {},
     _setColorSlot: function() {},
     _getColorSlot: function() {},
     _setVec2Slot: function() {},
     _getVec2Slot: function() {},
+    _setTextSlot: function() {},
     _size: function() {},
   },
 
@@ -165,16 +175,21 @@ var CanvasKit = {
     getHeight: function() {},
     getIdeographicBaseline: function() {},
     getLineMetrics: function() {},
+    getLineMetricsAt: function() {},
+    getLineNumberAt: function() {},
     getLongestLine: function() {},
     getMaxIntrinsicWidth: function() {},
     getMaxWidth: function() {},
     getMinIntrinsicWidth: function() {},
+    getNumberOfLines: function() {},
     getWordBoundary: function() {},
     getShapedLines: function() {},
     layout: function() {},
 
     // private API
     /** @return {Float32Array} */
+    _getClosestGlyphInfoAtCoordinate: function() {},
+    _getGlyphInfoAt: function() {},
     _getRectsForRange: function() {},
     _getRectsForPlaceholders: function() {},
   },
@@ -785,11 +800,12 @@ var CanvasKit = {
   },
 
   Typeface: {
-    MakeFreeTypeFaceFromData: function() {},
+    GetDefault: function() {},
+    MakeTypefaceFromData: function() {},
     prototype: {
       getGlyphIDs: function() {},
     },
-    _MakeFreeTypeFaceFromData: function() {},
+    _MakeTypefaceFromData: function() {},
     _getGlyphIDs: function() {},
   },
 
@@ -1095,6 +1111,23 @@ var CanvasKit = {
     TriangleFan: {},
   },
 
+  InputState: {
+    Up: {},
+    Down: {},
+    Move: {},
+    Right: {},
+    Left: {},
+  },
+
+  ModifierKey: {
+    None: {},
+    Shift: {},
+    Control: {},
+    Option: {},
+    Command: {},
+    FirstPass: {},
+  },
+
   // Things Enscriptem adds for us
 
   /**
@@ -1140,6 +1173,8 @@ var CanvasKit = {
 // unless they go on the prototype.
 CanvasKit.Paragraph.prototype.getRectsForRange = function() {};
 CanvasKit.Paragraph.prototype.getRectsForPlaceholders = function() {};
+CanvasKit.Paragraph.prototype.getClosestGlyphInfoAtCoordinate = function() {};
+CanvasKit.Paragraph.prototype.getGlyphInfoAt = function() {};
 
 CanvasKit.Surface.prototype.dispose = function() {};
 CanvasKit.Surface.prototype.flush = function() {};

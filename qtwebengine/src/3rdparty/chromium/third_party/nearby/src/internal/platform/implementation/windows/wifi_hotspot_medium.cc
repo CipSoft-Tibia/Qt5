@@ -16,20 +16,19 @@
 #include <exception>
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "absl/strings/string_view.h"
-#include "absl/time/time.h"
 #include "internal/platform/feature_flags.h"
 #include "internal/platform/flags/nearby_platform_feature_flags.h"
 #include "internal/platform/implementation/windows/wifi_hotspot.h"
+#include "internal/platform/implementation/windows/wifi_intel.h"
 
 // Nearby connections headers
 #include "internal/flags/nearby_flags.h"
 #include "internal/platform/cancellation_flag_listener.h"
 #include "internal/platform/implementation/windows/utils.h"
 #include "internal/platform/logging.h"
+#include "internal/platform/wifi_utils.h"
 
 namespace nearby {
 namespace windows {
@@ -256,6 +255,25 @@ bool WifiHotspotMedium::StartWifiHotspot(
         WiFiDirectAdvertisementPublisherStatus::Started) {
       NEARBY_LOGS(INFO) << __func__ << ": WiFi Hotspot created and started.";
       medium_status_ |= kMediumStatusBeaconing;
+      if (NearbyFlags::GetInstance().GetBoolFlag(
+              platform::config_package_nearby::nearby_platform_feature::
+                  kEnableIntelPieSdk)) {
+        WifiIntel& intel_wifi{WifiIntel::GetInstance()};
+        if (intel_wifi.Start()) {
+          int GO_channel = static_cast<int>(intel_wifi.GetGOChannel());
+          NEARBY_LOGS(INFO)
+              << "Intel PIE enabled, Hotspot is running on channel: "
+              << GO_channel;
+          intel_wifi.Stop();
+          hotspot_credentials_->SetFrequency(
+              WifiUtils::ConvertChannelToFrequencyMhz(GO_channel,
+                                                      WifiBandType::kUnknown));
+        }
+      } else {
+        NEARBY_LOGS(INFO)
+            << "Intel PIE disabled, Can't extract Hotspot channel info!";
+        hotspot_credentials_->SetFrequency(-1);
+      }
       return true;
     }
 
@@ -422,9 +440,17 @@ bool WifiHotspotMedium::ConnectWifiHotspot(
 
     // SoftAP is an abbreviation for "software enabled access point".
     WiFiAvailableNetwork nearby_softap{nullptr};
+
+    auto channel = WifiUtils::ConvertFrequencyMhzToChannel(
+        hotspot_credentials_->GetFrequency());
+    WifiIntel& intel_wifi{WifiIntel::GetInstance()};
+    bool intel_wifi_started = intel_wifi.Start();
+    if (intel_wifi_started) {
+      intel_wifi.SetScanFilter(channel);
+    }
+
     NEARBY_LOGS(INFO) << "Scanning for Nearby Hotspot SSID: "
                       << hotspot_credentials_->GetSSID();
-
     // First time scan may not find our target hotspot, try 2 more times can
     // almost guarantee to find the Hotspot
     wifi_adapter_.ScanAsync().get();
@@ -434,8 +460,8 @@ bool WifiHotspotMedium::ConnectWifiHotspot(
         platform::config_package_nearby::nearby_platform_feature::
             kWifiHotspotScanMaxRetries);
 
-    NEARBY_LOGS(INFO) << "maximum scan retries=" << wifi_hotspot_max_scans;
-    for (int i = 0; i < wifi_hotspot_max_scans; i++) {
+    int i;
+    for (i = 0; i < wifi_hotspot_max_scans; i++) {
       for (const auto& network :
            wifi_adapter_.NetworkReport().AvailableNetworks()) {
         if (!wifi_connected_network_ && !ssid.empty() &&
@@ -454,12 +480,19 @@ bool WifiHotspotMedium::ConnectWifiHotspot(
       NEARBY_LOGS(INFO) << "Scan ... ";
       wifi_adapter_.ScanAsync().get();
     }
+    NEARBY_LOGS(INFO) << "Finish scanning "
+                      << (nearby_softap ? "successfully" : "failed") << " with "
+                      << i+1 << " times trying.";
+
+    if (intel_wifi_started) {
+      intel_wifi.ResetScanFilter();
+      intel_wifi.Stop();
+    }
 
     if (!nearby_softap) {
       NEARBY_LOGS(INFO) << "Hotspot is not found";
       return false;
     }
-
     PasswordCredential creds;
     creds.Password(winrt::to_hstring(hotspot_credentials_->GetPassword()));
 

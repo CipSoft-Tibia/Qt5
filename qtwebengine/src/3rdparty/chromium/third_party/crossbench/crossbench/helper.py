@@ -4,8 +4,9 @@
 
 from __future__ import annotations
 
+import atexit
+import contextlib
 import datetime as dt
-import enum
 import logging
 import os
 import pathlib
@@ -18,30 +19,21 @@ import urllib
 import urllib.error
 import urllib.parse as urlparse
 import urllib.request
-from typing import (Any, Callable, Dict, Final, Iterable, Iterator, List,
-                    Optional, Sequence, Tuple, Type, TypeVar, Union)
+from subprocess import Popen, TimeoutExpired
+from typing import (TYPE_CHECKING, Any, Callable, Dict, Final, Iterable,
+                    Iterator, List, Optional, Tuple, Type, TypeVar, Union)
 
-import tabulate
+from colorama import init, Fore, Style
 
 from crossbench import plt
 
+if TYPE_CHECKING:
+  import signal
+
+init()
+
 assert hasattr(shlex,
                "join"), ("Please update to python v3.8 that has shlex.join")
-
-
-class TTYColor:
-  CYAN = "\033[1;36;6m"
-  PURPLE = "\033[1;35;5m"
-  BLUE = "\033[38;5;4m"
-  YELLOW = "\033[38;5;3m"
-  GREEN = "\033[38;5;2m"
-  RED = "\033[38;5;1m"
-  BLACK = "\033[38;5;0m"
-
-  BOLD = "\033[1m"
-  UNDERLINE = "\033[4m"
-  REVERSED = "\033[7m"
-  RESET = "\033[0m"
 
 
 class ColoredLogFormatter(logging.Formatter):
@@ -50,10 +42,10 @@ class ColoredLogFormatter(logging.Formatter):
 
   FORMATS = {
       logging.DEBUG: FORMAT,
-      logging.INFO: TTYColor.GREEN + FORMAT + TTYColor.RESET,
-      logging.WARNING: TTYColor.YELLOW + FORMAT + TTYColor.RESET,
-      logging.ERROR: TTYColor.RED + FORMAT + TTYColor.RESET,
-      logging.CRITICAL: TTYColor.BOLD + FORMAT + TTYColor.RESET,
+      logging.INFO: str(Fore.GREEN) + FORMAT + str(Fore.RESET),
+      logging.WARNING: str(Fore.YELLOW) + FORMAT + str(Fore.RESET),
+      logging.ERROR: str(Fore.RED) + FORMAT + str(Fore.RESET),
+      logging.CRITICAL: str(Style.BRIGHT) + FORMAT + str(Style.RESET_ALL),
   }
 
   def format(self, record: logging.LogRecord) -> str:
@@ -117,59 +109,13 @@ SIZE_UNITS: Final[Tuple[str, ...]] = ("B", "KiB", "MiB", "GiB", "TiB")
 
 
 def get_file_size(file: pathlib.Path, digits: int = 2) -> str:
-  size = file.stat().st_size
+  size: float = float(file.stat().st_size)
   unit_index = 0
-  divisor = 1024
+  divisor = 1024.0
   while (unit_index < len(SIZE_UNITS)) and size >= divisor:
     unit_index += 1
     size /= divisor
   return f"{size:.{digits}f} {SIZE_UNITS[unit_index]}"
-
-
-def _search_executable(
-    name: str,
-    macos: Sequence[str],
-    win: Sequence[str],
-    linux: Sequence[str],
-    platform: plt.Platform,
-    lookup_callable: Callable[[pathlib.Path], Optional[pathlib.Path]],
-) -> pathlib.Path:
-  executables: Sequence[str] = []
-  if platform.is_macos:
-    executables = macos
-  elif platform.is_win:
-    executables = win
-  elif platform.is_linux:
-    executables = linux
-  if not executables:
-    raise ValueError(f"Executable {name} not supported on {platform}")
-  for name_or_path in executables:
-    path = pathlib.Path(name_or_path).expanduser()
-    binary = lookup_callable(path)
-    if binary and binary.exists():
-      return binary
-  raise ValueError(f"Executable {name} not found on {platform}")
-
-
-def search_app_or_executable(
-    name: str,
-    macos: Sequence[str] = (),
-    win: Sequence[str] = (),
-    linux: Sequence[str] = (),
-    platform: Optional[plt.Platform] = None) -> pathlib.Path:
-  platform = platform or plt.PLATFORM
-  return _search_executable(name, macos, win, linux, platform,
-                            platform.search_app)
-
-
-def search_binary(name: str,
-                  macos: Sequence[str] = (),
-                  win: Sequence[str] = (),
-                  linux: Sequence[str] = (),
-                  platform: Optional[plt.Platform] = None) -> pathlib.Path:
-  platform = platform or plt.PLATFORM
-  return _search_executable(name, macos, win, linux, platform,
-                            platform.search_binary)
 
 # =============================================================================
 
@@ -178,7 +124,7 @@ def urlopen(url: str):
   try:
     logging.debug("Opening url: %s", url)
     return urllib.request.urlopen(url)
-  except urllib.error.HTTPError as e:
+  except (urllib.error.HTTPError, urllib.error.URLError) as e:
     logging.info("Could not load url=%s", url)
     raise e
 
@@ -195,6 +141,7 @@ class ChangeCWD:
   def __enter__(self) -> None:
     self.prev_dir = os.getcwd()
     os.chdir(self.new_dir)
+    logging.debug("CWD=%s", self.new_dir)
 
   def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
     assert self.prev_dir, "ChangeCWD was not entered correctly."
@@ -212,11 +159,16 @@ class SystemSleepPreventer:
   def __enter__(self) -> None:
     if plt.PLATFORM.is_macos:
       self._process = plt.PLATFORM.popen("caffeinate", "-imdsu")
+      atexit.register(self.stop_process)
     # TODO: Add linux support
 
   def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
+    self.stop_process()
+
+  def stop_process(self) -> None:
     if self._process:
       self._process.kill()
+      self._process = None
 
 
 class TimeScope:
@@ -228,7 +180,7 @@ class TimeScope:
     self._message = message
     self._level = level
     self._start: Optional[dt.datetime] = None
-    self._duration = dt.timedelta()
+    self._duration: dt.timedelta = dt.timedelta()
 
   @property
   def message(self) -> str:
@@ -252,13 +204,14 @@ class WaitRange:
   min: dt.timedelta
   max: dt.timedelta
   current: dt.timedelta
+  max_iterations: Optional[int]
 
   def __init__(
       self,
-      min: Union[float, dt.timedelta] = 0.1,  # pylint: disable=redefined-builtin
-      timeout: Union[float, dt.timedelta] = 10,
+      min: Union[int, float, dt.timedelta] = 0.1,  # pylint: disable=redefined-builtin
+      timeout: Union[int, float, dt.timedelta] = 10,
       factor: float = 1.01,
-      max: Optional[Union[float, dt.timedelta]] = None,  # pylint: disable=redefined-builtin
+      max: Optional[Union[int, float, dt.timedelta]] = None,  # pylint: disable=redefined-builtin
       max_iterations: Optional[int] = None
   ) -> None:
     if isinstance(min, dt.timedelta):
@@ -293,8 +246,11 @@ class WaitRange:
       i += 1
 
 
-def wait_with_backoff(wait_range: WaitRange) -> Iterator[Tuple[float, float]]:
-  assert isinstance(wait_range, WaitRange)
+def wait_with_backoff(
+    wait_range: Union[int, float, dt.timedelta, WaitRange]
+) -> Iterator[Tuple[float, float]]:
+  if not isinstance(wait_range, WaitRange):
+    wait_range = WaitRange(timeout=wait_range)
   start = dt.datetime.now()
   timeout = wait_range.timeout
   for sleep_for in wait_range:
@@ -404,40 +360,6 @@ class Spinner:
     time.sleep(self._sleep_time)
 
 
-class EnumWithHelp(enum.Enum):
-
-  def __new__(cls, value, help_str: str = ""):
-    del help_str
-    obj = object.__new__(cls)
-    obj._value_ = value
-    return obj
-
-  def __init__(self, value, help_str: str = "") -> None:
-    del value
-    assert help_str, "Missing help_str"
-    self._help = help_str
-
-  @property
-  def help(self) -> str:
-    return self._help
-
-  @classmethod
-  def help_text_items(cls) -> List[Tuple[str, str]]:
-    return [(repr(instance.value), instance.help) for instance in cls]
-
-  @classmethod
-  def help_text(cls, indent: int = 0) -> str:
-    text: str = tabulate.tabulate(cls.help_text_items(), tablefmt="plain")
-    if indent:
-      return textwrap.indent(text, " " * indent)
-    return text
-
-
-class StrEnumWithHelp(EnumWithHelp):
-
-  def __str__(self) -> str:
-    return str(self.value)
-
 
 def update_url_query(url: str, query_params: Dict[str, str]) -> str:
   parsed_url = urlparse.urlparse(url)
@@ -445,3 +367,78 @@ def update_url_query(url: str, query_params: Dict[str, str]) -> str:
   query.update(query_params)
   parsed_url = parsed_url._replace(query=urlparse.urlencode(query, doseq=True))
   return parsed_url.geturl()
+
+
+def wait_and_kill(process: Popen,
+                  timeout=1,
+                  signal: Optional[signal.Signals] = None) -> None:
+  """Graceful process termination:
+  1. Send signal if provided,
+  2. wait for the given time,
+  3. terminate(),
+  4. Last stage: kill process.
+  """
+  try:
+    wait_and_terminate(process, timeout, signal)
+  finally:
+    try:
+      process.kill()
+    except ProcessLookupError:
+      pass
+
+
+def wait_and_terminate(process,
+                       timeout=1,
+                       signal: Optional[signal.Signals] = None) -> None:
+  if process.poll() is not None:
+    return
+  logging.debug("Terminating process: %s", process)
+  try:
+    if signal:
+      process.send_signal(signal)
+    process.wait(timeout)
+    return
+  except KeyboardInterrupt:  # pylint: disable=try-except-raise
+    # Propagate keyboard interrupts, unlike all other exceptions.
+    raise
+  except TimeoutExpired as e:
+    logging.debug("Got timeout while waiting for process (%s): %s", process, e)
+  except Exception as e:  # pylint: disable=broad-except
+    logging.debug("Ignoring exception during process termination: %s", e)
+  finally:
+    try:
+      process.terminate()
+    except ProcessLookupError:
+      pass
+
+
+class RepeatTimer(threading.Timer):
+
+  def run(self):
+    while not self.finished.wait(self.interval):
+      self.function(*self.args, **self.kwargs)
+
+  def __enter__(self, *args, **kwargs):
+    self.start()
+
+  def __exit__(self, *args, **kwargs):
+    self.cancel()
+
+
+def input_with_timeout(timeout=dt.timedelta(seconds=10), default=None):
+  result_container = [default]
+  wait = threading.Thread(
+      target=_input, args=[
+          result_container,
+      ])
+  wait.daemon = True
+  wait.start()
+  wait.join(timeout=timeout.total_seconds())
+  return result_container[0]
+
+
+def _input(results_container):
+  try:
+    results_container[0] = input()
+  except KeyboardInterrupt:
+    pass

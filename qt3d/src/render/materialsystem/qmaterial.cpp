@@ -10,7 +10,7 @@
 
 /*!
     \qmltype Material
-    \instantiates Qt3DRender::QMaterial
+    \nativetype Qt3DRender::QMaterial
     \inqmlmodule Qt3D.Render
     \brief Non-creatable abstract base for materials.
     \since 5.5
@@ -184,7 +184,7 @@ QMaterial::QMaterial(QMaterialPrivate &dd, QNode *parent)
     Specifies the effect to be used with the material.
 */
 /*!
-    \property QMaterial::effect
+    \property Qt3DRender::QMaterial::effect
 
     Specifies the effect to be used with the material.
  */

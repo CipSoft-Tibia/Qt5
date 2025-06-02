@@ -129,3 +129,18 @@ message QtCppKeywords {
     sint32 signals = 2;
     bool emit = 3;
 }
+
+message NameClashing {
+}
+
+message NameClashingRepeated {
+}
+
+message NameClashing_Repeated {
+}
+
+message NameClashingMap {
+    map<int32, int32> field1 = 1;
+    int32 Field1_Entry = 2;
+    int32 Field2Entry = 3;
+}

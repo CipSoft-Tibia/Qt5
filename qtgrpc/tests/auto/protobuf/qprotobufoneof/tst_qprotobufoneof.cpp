@@ -11,19 +11,30 @@
 
 class TestMetaType : public QProtobufMessage
 {
-    Q_GADGET
     Q_PROTOBUF_OBJECT
 public:
-    TestMetaType() : QProtobufMessage(&staticMetaObject) { }
+    TestMetaType() : QProtobufMessage(&staticMetaObject, &TestMetaType::staticPropertyOrdering) { }
     ~TestMetaType() { ++m_destroyed; }
     explicit TestMetaType(int value)
-        : QProtobufMessage(&TestMetaType::staticMetaObject), m_value(value)
+        : QProtobufMessage(&TestMetaType::staticMetaObject, &TestMetaType::staticPropertyOrdering),
+          m_value(value)
     {
     }
     TestMetaType(const TestMetaType &other)
-        : QProtobufMessage(&TestMetaType::staticMetaObject), m_value(other.m_value)
+        : QProtobufMessage(&TestMetaType::staticMetaObject, &TestMetaType::staticPropertyOrdering),
+          m_value(other.m_value)
     {
         ++m_copied;
+    }
+
+    TestMetaType &operator =(const TestMetaType &other)
+    {
+        if (this == &other)
+            return *this;
+
+        m_value = other.m_value;
+        ++m_copied;
+        return *this;
     }
 
     void setIntValue(int value) { m_value = value; }
@@ -40,16 +51,16 @@ private:
 };
 int TestMetaType::m_copied = 0;
 int TestMetaType::m_destroyed = 0;
-const QtProtobufPrivate::QProtobufPropertyOrdering TestMetaType::propertyOrdering{};
+const QtProtobufPrivate::QProtobufPropertyOrdering TestMetaType::staticPropertyOrdering{};
 
 class QProtobufOneofTest : public QObject
 {
     Q_OBJECT
-private slots:
-    void ValueReplacement();
-    void ValueImplicitSharing();
-    void MoveValue();
-    void EqualOperator();
+private Q_SLOTS:
+    void valueReplacement();
+    void valueImplicitSharing();
+    void moveValue();
+    void equalOperator();
 
     void init()
     {
@@ -60,27 +71,27 @@ private slots:
 
 Q_DECLARE_METATYPE(TestMetaType)
 
-void QProtobufOneofTest::ValueReplacement()
+void QProtobufOneofTest::valueReplacement()
 {
     {
         QtProtobufPrivate::QProtobufOneof optional;
         optional.setValue(TestMetaType{ 5 }, 1);
-        QCOMPARE(optional.value<TestMetaType>()->intValue(), 5);
+        QCOMPARE(optional.message<TestMetaType>()->intValue(), 5);
         {
             optional.setValue(TestMetaType{ 10 }, 1);
             QCOMPARE(TestMetaType::m_destroyed, 3);
         }
 
-        QCOMPARE(optional.value<TestMetaType>()->intValue(), 10);
-        optional.value<TestMetaType>()->setIntValue(15);
-        QCOMPARE(optional.value<TestMetaType>()->intValue(), 15);
+        QCOMPARE(optional.message<TestMetaType>()->intValue(), 10);
+        optional.message<TestMetaType>()->setIntValue(15);
+        QCOMPARE(optional.message<TestMetaType>()->intValue(), 15);
         QCOMPARE(TestMetaType::m_destroyed, 3);
     }
     QCOMPARE(TestMetaType::m_destroyed, 4);
     QCOMPARE(TestMetaType::m_copied, 2);
 }
 
-void QProtobufOneofTest::ValueImplicitSharing()
+void QProtobufOneofTest::valueImplicitSharing()
 {
     {
         QtProtobufPrivate::QProtobufOneof optional;
@@ -89,20 +100,20 @@ void QProtobufOneofTest::ValueImplicitSharing()
         QCOMPARE(TestMetaType::m_destroyed, 1);
         // setValue makes a copy of the value
         QCOMPARE(TestMetaType::m_copied, 1);
-        QCOMPARE(optional.value<TestMetaType>()->intValue(), 5);
+        QCOMPARE(optional.message<TestMetaType>()->intValue(), 5);
         {
             QtProtobufPrivate::QProtobufOneof optional2(optional);
             // Copying of the optional should be cheap so the stored pointer should not be copied
             // until the value is accessed.
             QCOMPARE(TestMetaType::m_copied, 1);
             QCOMPARE(TestMetaType::m_destroyed, 1);
-            QCOMPARE(optional2.value<TestMetaType>()->intValue(), 5);
+            QCOMPARE(optional2.message<TestMetaType>()->intValue(), 5);
 
             optional.setValue(TestMetaType{ 15 }, 1);
             QCOMPARE(TestMetaType::m_copied, 3);
             QCOMPARE(TestMetaType::m_destroyed, 3);
-            QCOMPARE(optional.value<TestMetaType>()->intValue(), 15);
-            QCOMPARE(optional2.value<TestMetaType>()->intValue(), 5);
+            QCOMPARE(optional.message<TestMetaType>()->intValue(), 15);
+            QCOMPARE(optional2.message<TestMetaType>()->intValue(), 5);
         }
         QCOMPARE(TestMetaType::m_destroyed, 4);
     }
@@ -118,13 +129,13 @@ void QProtobufOneofTest::ValueImplicitSharing()
     optional3.setValue(TestMetaType{ 15 }, 1);
 
     QtProtobufPrivate::QProtobufOneof optional4(optional3);
-    optional4.value<TestMetaType>()->setIntValue(5);
+    optional4.message<TestMetaType>()->setIntValue(5);
 
-    QCOMPARE(optional3.value<TestMetaType>()->intValue(), 15);
-    QCOMPARE(optional4.value<TestMetaType>()->intValue(), 5);
+    QCOMPARE(optional3.message<TestMetaType>()->intValue(), 15);
+    QCOMPARE(optional4.message<TestMetaType>()->intValue(), 5);
 }
 
-void QProtobufOneofTest::EqualOperator()
+void QProtobufOneofTest::equalOperator()
 {
     QtProtobufPrivate::QProtobufOneof optional1;
     optional1.setValue(TestMetaType{ 5 }, 1);
@@ -170,27 +181,27 @@ void QProtobufOneofTest::EqualOperator()
     QVERIFY(optional1 != optional2);
 }
 
-void QProtobufOneofTest::MoveValue()
+void QProtobufOneofTest::moveValue()
 {
     {
         QtProtobufPrivate::QProtobufOneof optional;
         optional.setValue(TestMetaType{ 5 }, 1);
 
         QVERIFY(optional.holdsField(1));
-        QCOMPARE(optional.value<TestMetaType>()->intValue(), 5);
+        QCOMPARE(optional.message<TestMetaType>()->intValue(), 5);
         {
             QtProtobufPrivate::QProtobufOneof optional2(std::move(optional));
 
             QVERIFY(optional2.holdsField(1));
-            QCOMPARE(optional2.value<TestMetaType>()->intValue(), 5);
+            QCOMPARE(optional2.message<TestMetaType>()->intValue(), 5);
 
             optional = std::move(optional2);
             QVERIFY(optional.holdsField(1));
-            QCOMPARE(optional.value<TestMetaType>()->intValue(), 5);
+            QCOMPARE(optional.message<TestMetaType>()->intValue(), 5);
         }
         QCOMPARE(TestMetaType::m_destroyed, 1);
 
-        QCOMPARE(optional.value<TestMetaType>()->intValue(), 5);
+        QCOMPARE(optional.message<TestMetaType>()->intValue(), 5);
         {
             QtProtobufPrivate::QProtobufOneof optional3(std::move(optional));
         }

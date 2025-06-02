@@ -1,16 +1,29 @@
-// Copyright 2021 The Dawn Authors
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/CompilationMessages.h"
 
@@ -77,24 +90,23 @@ OwnedCompilationMessages::OwnedCompilationMessages() {
 
 OwnedCompilationMessages::~OwnedCompilationMessages() = default;
 
-void OwnedCompilationMessages::AddMessage(std::string message,
-                                          wgpu::CompilationMessageType type,
-                                          uint64_t lineNum,
-                                          uint64_t linePos,
-                                          uint64_t offset,
-                                          uint64_t length) {
-    // Cannot add messages after GetCompilationInfo has been called.
-    ASSERT(mCompilationInfo.messages == nullptr);
+void OwnedCompilationMessages::AddUnanchoredMessage(std::string message,
+                                                    wgpu::CompilationMessageType type) {
+    AddMessage(message, {nullptr, nullptr, static_cast<WGPUCompilationMessageType>(type), 0, 0, 0,
+                         0, 0, 0, 0});
+}
 
-    mMessageStrings.push_back(message);
-    mMessages.push_back({nullptr, nullptr, static_cast<WGPUCompilationMessageType>(type), lineNum,
+void OwnedCompilationMessages::AddMessageForTesting(std::string message,
+                                                    wgpu::CompilationMessageType type,
+                                                    uint64_t lineNum,
+                                                    uint64_t linePos,
+                                                    uint64_t offset,
+                                                    uint64_t length) {
+    AddMessage(message, {nullptr, nullptr, static_cast<WGPUCompilationMessageType>(type), lineNum,
                          linePos, offset, length, linePos, offset, length});
 }
 
 MaybeError OwnedCompilationMessages::AddMessage(const tint::diag::Diagnostic& diagnostic) {
-    // Cannot add messages after GetCompilationInfo has been called.
-    ASSERT(mCompilationInfo.messages == nullptr);
-
     // Tint line and column values are 1-based.
     uint64_t lineNum = diagnostic.source.range.begin.line;
     uint64_t linePosInBytes = diagnostic.source.range.begin.column;
@@ -142,28 +154,36 @@ MaybeError OwnedCompilationMessages::AddMessage(const tint::diag::Diagnostic& di
             static_cast<uint64_t>(endLineStart - fileStart) + endLineCol - 1;
         // The length of the message is the difference between the starting offset and the
         // ending offset. Negative ranges aren't allowed.
-        ASSERT(endOffsetInBytes >= offsetInBytes);
+        DAWN_ASSERT(endOffsetInBytes >= offsetInBytes);
         lengthInBytes = endOffsetInBytes - offsetInBytes;
         DAWN_TRY_ASSIGN(lengthInUTF16, CountUTF16CodeUnitsFromUTF8String(std::string_view(
                                            fileStart + offsetInBytes, lengthInBytes)));
     }
 
-    if (diagnostic.code) {
-        mMessageStrings.push_back(std::string(diagnostic.code) + ": " + diagnostic.message);
-    } else {
-        mMessageStrings.push_back(diagnostic.message);
-    }
-
-    mMessages.push_back({nullptr, nullptr, tintSeverityToMessageType(diagnostic.severity), lineNum,
-                         linePosInBytes, offsetInBytes, lengthInBytes, linePosInUTF16,
-                         offsetInUTF16, lengthInUTF16});
+    AddMessage(
+        diagnostic.message,
+        {nullptr, nullptr, tintSeverityToMessageType(diagnostic.severity), lineNum, linePosInBytes,
+         offsetInBytes, lengthInBytes, linePosInUTF16, offsetInUTF16, lengthInUTF16});
 
     return {};
 }
 
+void OwnedCompilationMessages::AddMessage(std::string messageString,
+                                          const WGPUCompilationMessage& message) {
+    // Cannot add messages after GetCompilationInfo has been called.
+    DAWN_ASSERT(mCompilationInfo.messages == nullptr);
+
+    DAWN_ASSERT(message.nextInChain == nullptr);
+    // The message string won't be populated until GetCompilationInfo.
+    DAWN_ASSERT(message.message == nullptr);
+
+    mMessageStrings.push_back(messageString);
+    mMessages.push_back(message);
+}
+
 MaybeError OwnedCompilationMessages::AddMessages(const tint::diag::List& diagnostics) {
     // Cannot add messages after GetCompilationInfo has been called.
-    ASSERT(mCompilationInfo.messages == nullptr);
+    DAWN_ASSERT(mCompilationInfo.messages == nullptr);
 
     for (const auto& diag : diagnostics) {
         DAWN_TRY(AddMessage(diag));
@@ -176,7 +196,7 @@ MaybeError OwnedCompilationMessages::AddMessages(const tint::diag::List& diagnos
 
 void OwnedCompilationMessages::ClearMessages() {
     // Cannot clear messages after GetCompilationInfo has been called.
-    ASSERT(mCompilationInfo.messages == nullptr);
+    DAWN_ASSERT(mCompilationInfo.messages == nullptr);
 
     mMessageStrings.clear();
     mMessages.clear();

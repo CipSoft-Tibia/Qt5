@@ -34,6 +34,8 @@ private slots:
     void projectivePathMapping();
     void mapInt();
     void mapPathWithPoint();
+    void mapRectToPolygon(); // QTBUG-127723
+    void quadToQuad(); // QTBUG-21329
 
 private:
     void mapping_data();
@@ -698,6 +700,27 @@ void tst_QTransform::mapPathWithPoint()
     QPainterPath p(QPointF(10, 10));
     p = QTransform::fromTranslate(10, 10).map(p);
     QCOMPARE(p.currentPosition(), QPointF(20, 20));
+}
+
+void tst_QTransform::mapRectToPolygon()
+{
+    QRectF r(7, 7, 36, 36);
+    QTransform tx(2, 0, 0, 2, 0, 0);
+    QPolygonF polygon1 = tx.mapToPolygon(r.toRect()).toPolygonF();
+    QPolygonF polygon2 = tx.map(QPolygonF(r));
+    if (polygon1.size() > 4)
+        polygon1.removeLast();
+    if (polygon2.size() > 4)
+        polygon2.removeLast();
+    QCOMPARE(polygon1, polygon2);
+}
+
+void tst_QTransform::quadToQuad() // QTBUG-21329
+{
+    QTransform result;
+    QVERIFY(QTransform::quadToQuad(QRectF(0, 0, 1, 1), QRectF(0, 0, 1, 1), result));
+    QPolygonF trapezoid({{0, 0}, {10, 0}, {11, 11}, {0, 10}});
+    QVERIFY(QTransform::quadToQuad(trapezoid, trapezoid.boundingRect(), result));
 }
 
 QTEST_APPLESS_MAIN(tst_QTransform)

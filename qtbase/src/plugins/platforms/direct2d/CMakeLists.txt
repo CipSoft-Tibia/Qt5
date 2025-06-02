@@ -12,7 +12,6 @@ qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
         ../windows/qtwindowsglobal.h
         ../windows/qwin10helpers.cpp ../windows/qwin10helpers.h
         ../windows/qwindowsapplication.cpp ../windows/qwindowsapplication.h
-        ../windows/qwindowscombase.h
         ../windows/qwindowscontext.cpp ../windows/qwindowscontext.h
         ../windows/qwindowscursor.cpp ../windows/qwindowscursor.h
         ../windows/qwindowsdialoghelpers.cpp ../windows/qwindowsdialoghelpers.h
@@ -24,7 +23,6 @@ qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
         ../windows/qwindowskeymapper.cpp ../windows/qwindowskeymapper.h
         ../windows/qwindowsmenu.cpp ../windows/qwindowsmenu.h
         ../windows/qwindowsmimeregistry.cpp ../windows/qwindowsmimeregistry.h
-        ../windows/qwindowsmousehandler.cpp ../windows/qwindowsmousehandler.h
         ../windows/qwindowsnativeinterface.cpp ../windows/qwindowsnativeinterface.h
         ../windows/qwindowsole.cpp ../windows/qwindowsole.h
         ../windows/qwindowsopengltester.cpp ../windows/qwindowsopengltester.h
@@ -189,6 +187,7 @@ endif()
 
 qt_internal_extend_target(QWindowsDirect2DIntegrationPlugin CONDITION QT_FEATURE_accessibility
     SOURCES
+        ../windows/uiautomation/qwindowsuiautomation.cpp ../windows/uiautomation/qwindowsuiautomation.h
         ../windows/uiautomation/qwindowsuiaaccessibility.cpp ../windows/uiautomation/qwindowsuiaaccessibility.h
         ../windows/uiautomation/qwindowsuiabaseprovider.cpp ../windows/uiautomation/qwindowsuiabaseprovider.h
         ../windows/uiautomation/qwindowsuiaexpandcollapseprovider.cpp ../windows/uiautomation/qwindowsuiaexpandcollapseprovider.h
@@ -208,6 +207,12 @@ qt_internal_extend_target(QWindowsDirect2DIntegrationPlugin CONDITION QT_FEATURE
         ../windows/uiautomation/qwindowsuiautils.cpp ../windows/uiautomation/qwindowsuiautils.h
         ../windows/uiautomation/qwindowsuiavalueprovider.cpp ../windows/uiautomation/qwindowsuiavalueprovider.h
         ../windows/uiautomation/qwindowsuiawindowprovider.cpp ../windows/uiautomation/qwindowsuiawindowprovider.h
+)
+
+# This is loaded dynamically when using MINGW as its import library is incomplete
+qt_internal_extend_target(QWindowsDirect2DIntegrationPlugin CONDITION MSVC AND QT_FEATURE_accessibility
+    LIBRARIES
+        uiautomationcore
 )
 
 qt_internal_extend_target(QWindowsDirect2DIntegrationPlugin CONDITION MINGW AND QT_FEATURE_accessibility

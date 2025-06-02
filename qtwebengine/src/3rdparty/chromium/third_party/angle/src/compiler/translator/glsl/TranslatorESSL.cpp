@@ -13,11 +13,42 @@
 #include "compiler/translator/glsl/OutputESSL.h"
 #include "compiler/translator/tree_ops/DeclarePerVertexBlocks.h"
 #include "compiler/translator/tree_ops/RecordConstantPrecision.h"
+#include "compiler/translator/tree_util/FindSymbolNode.h"
 #include "compiler/translator/tree_util/ReplaceClipCullDistanceVariable.h"
+#include "compiler/translator/tree_util/RunAtTheEndOfShader.h"
 #include "compiler/translator/util.h"
 
 namespace sh
 {
+
+namespace
+{
+
+bool EmulateClipOrigin(TCompiler *compiler, TIntermBlock *root, TSymbolTable *symbolTable)
+{
+    // Skip the operation if gl_Position is not used.
+    const TIntermSymbol *positionSymbol = FindSymbolNode(root, ImmutableString("gl_Position"));
+    if (!positionSymbol)
+    {
+        return true;
+    }
+
+    const TType *type           = StaticType::Get<EbtFloat, EbpHigh, EvqUniform, 1, 1>();
+    const TVariable *clipOrigin = new TVariable(symbolTable, ImmutableString("angle_ClipOrigin"),
+                                                type, SymbolType::AngleInternal);
+
+    DeclareGlobalVariable(root, clipOrigin);
+
+    // gl_Position.y *= angle_clipOrigin;
+    TIntermSwizzle *positionY =
+        new TIntermSwizzle(new TIntermSymbol(&positionSymbol->variable()), {1});
+    TIntermBinary *applyOrigin =
+        new TIntermBinary(EOpMulAssign, positionY, new TIntermSymbol(clipOrigin));
+
+    return RunAtTheEndOfShader(compiler, root, applyOrigin, symbolTable);
+}
+
+}  // namespace
 
 TranslatorESSL::TranslatorESSL(sh::GLenum type, ShShaderSpec spec)
     : TCompiler(type, spec, SH_ESSL_OUTPUT)
@@ -91,7 +122,8 @@ bool TranslatorESSL::translate(TIntermBlock *root,
     if (getShaderType() == GL_VERTEX_SHADER)
     {
         // Emulate GL_CLIP_DISTANCEi_EXT state if needed
-        if (hasClipDistance() && compileOptions.emulateClipDistanceState)
+        if (mMetadataFlags[MetadataFlags::HasClipDistance] &&
+            compileOptions.emulateClipDistanceState)
         {
             constexpr const ImmutableString kClipDistanceEnabledName("angle_ClipDistanceEnabled");
 
@@ -134,6 +166,14 @@ bool TranslatorESSL::translate(TIntermBlock *root,
             // the redeclared extension built-ins still should be moved to gl_PerVertex
             if (!DeclarePerVertexBlocks(this, root, &getSymbolTable(), nullptr, nullptr))
                 return false;
+        }
+
+        if (compileOptions.emulateClipOrigin)
+        {
+            if (!EmulateClipOrigin(this, root, &getSymbolTable()))
+            {
+                return false;
+            }
         }
     }
 
@@ -242,7 +282,8 @@ void TranslatorESSL::writeExtensionBehavior(const ShCompileOptions &compileOptio
                 sink << "#extension GL_EXT_clip_cull_distance : " << GetBehaviorString(iter->second)
                      << "\n";
                 if (areClipDistanceOrCullDistanceRedeclared() ||
-                    (hasClipDistance() && compileOptions.emulateClipDistanceState))
+                    (mMetadataFlags[MetadataFlags::HasClipDistance] &&
+                     compileOptions.emulateClipDistanceState))
                 {
                     sink << "#extension GL_EXT_shader_io_blocks : "
                          << GetBehaviorString(iter->second) << "\n";

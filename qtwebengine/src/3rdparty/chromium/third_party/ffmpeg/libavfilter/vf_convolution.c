@@ -29,7 +29,6 @@
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "convolution.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -873,13 +872,6 @@ static const AVFilterPad convolution_inputs[] = {
     },
 };
 
-static const AVFilterPad convolution_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 #if CONFIG_CONVOLUTION_FILTER
 
 const AVFilter ff_vf_convolution = {
@@ -888,7 +880,7 @@ const AVFilter ff_vf_convolution = {
     .priv_size     = sizeof(ConvolutionContext),
     .priv_class    = &convolution_class,
     FILTER_INPUTS(convolution_inputs),
-    FILTER_OUTPUTS(convolution_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
@@ -914,7 +906,7 @@ const AVFilter ff_vf_prewitt = {
     .priv_size     = sizeof(ConvolutionContext),
     .priv_class    = &common_class,
     FILTER_INPUTS(convolution_inputs),
-    FILTER_OUTPUTS(convolution_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
@@ -930,7 +922,7 @@ const AVFilter ff_vf_sobel = {
     .priv_size     = sizeof(ConvolutionContext),
     .priv_class    = &common_class,
     FILTER_INPUTS(convolution_inputs),
-    FILTER_OUTPUTS(convolution_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
@@ -946,7 +938,7 @@ const AVFilter ff_vf_roberts = {
     .priv_size     = sizeof(ConvolutionContext),
     .priv_class    = &common_class,
     FILTER_INPUTS(convolution_inputs),
-    FILTER_OUTPUTS(convolution_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
@@ -962,7 +954,7 @@ const AVFilter ff_vf_kirsch = {
     .priv_size     = sizeof(ConvolutionContext),
     .priv_class    = &common_class,
     FILTER_INPUTS(convolution_inputs),
-    FILTER_OUTPUTS(convolution_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
@@ -978,7 +970,7 @@ const AVFilter ff_vf_scharr = {
     .priv_size     = sizeof(ConvolutionContext),
     .priv_class    = &common_class,
     FILTER_INPUTS(convolution_inputs),
-    FILTER_OUTPUTS(convolution_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,

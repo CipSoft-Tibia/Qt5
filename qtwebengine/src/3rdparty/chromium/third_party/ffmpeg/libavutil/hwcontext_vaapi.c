@@ -217,7 +217,7 @@ static int vaapi_get_image_format(AVHWDeviceContext *hwdev,
             return 0;
         }
     }
-    return AVERROR(EINVAL);
+    return AVERROR(ENOSYS);
 }
 
 static int vaapi_frames_get_constraints(AVHWDeviceContext *hwdev,
@@ -817,7 +817,7 @@ static int vaapi_map_frame(AVHWFramesContext *hwfc,
     err = vaapi_get_image_format(hwfc->device_ctx, dst->format, &image_format);
     if (err < 0) {
         // Requested format is not a valid output format.
-        return AVERROR(EINVAL);
+        return err;
     }
 
     map = av_malloc(sizeof(*map));
@@ -992,7 +992,7 @@ static int vaapi_map_to_memory(AVHWFramesContext *hwfc, AVFrame *dst,
     if (dst->format != AV_PIX_FMT_NONE) {
         err = vaapi_get_image_format(hwfc->device_ctx, dst->format, NULL);
         if (err < 0)
-            return AVERROR(ENOSYS);
+            return err;
     }
 
     err = vaapi_map_frame(hwfc, dst, src, flags);
@@ -1047,6 +1047,9 @@ static const struct {
 #endif
 #if defined(VA_FOURCC_Y412) && defined(DRM_FORMAT_XVYU12_16161616)
     DRM_MAP(Y412, 1, DRM_FORMAT_XVYU12_16161616),
+#endif
+#if defined(VA_FOURCC_X2R10G10B10) && defined(DRM_FORMAT_XRGB2101010)
+    DRM_MAP(X2R10G10B10, 1, DRM_FORMAT_XRGB2101010),
 #endif
 };
 #undef DRM_MAP

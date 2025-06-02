@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 package main
 
@@ -396,20 +409,18 @@ func (e env) changesToBenchmark() ([]HashAndDesc, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain dawn log:\n  %w", err)
 	}
+	log.Println(len(allChanges), "changes between", e.cfg.RootChange.String(), "and", latest.String())
 	changesWithBenchmarks, err := e.changesWithBenchmarks()
 	if err != nil {
 		return nil, fmt.Errorf("failed to gather changes with existing benchmarks:\n  %w", err)
 	}
+	log.Println(len(changesWithBenchmarks), "changes with existing benchmarks")
+
 	changesToBenchmark := make([]HashAndDesc, 0, len(allChanges))
 	for _, c := range allChanges {
 		if _, exists := changesWithBenchmarks[c.Hash]; !exists {
 			changesToBenchmark = append(changesToBenchmark, HashAndDesc{c.Hash, c.Subject})
 		}
-	}
-	// Reverse the order of changesToBenchmark, so that the oldest comes first.
-	for i := len(changesToBenchmark)/2 - 1; i >= 0; i-- {
-		j := len(changesToBenchmark) - 1 - i
-		changesToBenchmark[i], changesToBenchmark[j] = changesToBenchmark[j], changesToBenchmark[i]
 	}
 
 	return changesToBenchmark, nil
@@ -726,6 +737,11 @@ func (e env) buildTint() error {
 	if err := os.MkdirAll(e.buildDir, 0777); err != nil {
 		return fmt.Errorf("failed to create build directory at '%v':\n  %w", e.buildDir, err)
 	}
+
+	// Delete any existing tint benchmark executables to ensure we're not using a stale binary
+	os.Remove(filepath.Join(e.buildDir, "tint_benchmark"))
+	os.Remove(filepath.Join(e.buildDir, "tint-benchmark"))
+
 	if _, err := call(tools.cmake, e.buildDir, e.cfg.Timeouts.Build,
 		e.dawnDir,
 		"-GNinja",
@@ -745,7 +761,7 @@ func (e env) buildTint() error {
 		"-DTINT_BUILD_SPV_WRITER=1",
 		"-DTINT_BUILD_WGSL_WRITER=1",
 		"-DTINT_BUILD_BENCHMARKS=1",
-		"-DDAWN_BUILD_SAMPLES=0",
+		"-DDAWN_BUILD_CMD_TOOLS=0",
 	); err != nil {
 		return errFailedToBuild{fmt.Errorf("failed to generate dawn build config:\n  %w", err)}
 	}
@@ -811,7 +827,14 @@ func (e env) repeatedlyBenchmarkTint() (*bench.Run, error) {
 
 // benchmarkTint runs the tint benchmarks once, returning the results.
 func (e env) benchmarkTint() (*bench.Run, error) {
-	exe := filepath.Join(e.buildDir, "tint-benchmark")
+	exe := filepath.Join(e.buildDir, "tint_benchmark")
+	if _, err := os.Stat(exe); err != nil {
+		exe = filepath.Join(e.buildDir, "tint-benchmark")
+	}
+	if _, err := os.Stat(exe); err != nil {
+		return nil, fmt.Errorf("failed to find tint benchmark executable")
+	}
+
 	out, err := call(exe, e.buildDir, e.cfg.Timeouts.Benchmark,
 		"--benchmark_format=json",
 		"--benchmark_enable_random_interleaving=true",
@@ -1111,6 +1134,9 @@ func fetchAndCheckoutLatest(repo *git.Repository, cfg GitConfig) error {
 // Note: call fetch() to ensure that this is the latest change on the
 // branch.
 func checkout(hash git.Hash, repo *git.Repository) error {
+	if err := repo.Clean(nil); err != nil {
+		return fmt.Errorf("failed to clean repo '%v':\n  %w", hash, err)
+	}
 	if err := repo.Checkout(hash.String(), nil); err != nil {
 		return fmt.Errorf("failed to checkout '%v':\n  %w", hash, err)
 	}

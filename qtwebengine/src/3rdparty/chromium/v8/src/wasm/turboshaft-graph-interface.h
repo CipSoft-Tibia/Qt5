@@ -10,9 +10,11 @@
 #define V8_WASM_TURBOSHAFT_GRAPH_INTERFACE_H_
 
 #include "src/base/macros.h"
+#include "src/zone/zone-containers.h"
 
 namespace v8::internal {
 class AccountingAllocator;
+struct WasmInliningPosition;
 
 namespace compiler {
 class NodeOriginTable;
@@ -22,17 +24,18 @@ class Graph;
 }  // namespace compiler
 
 namespace wasm {
+class AssumptionsJournal;
 struct FunctionBody;
 class WasmFeatures;
 struct WasmModule;
+class WireBytesStorage;
 
-V8_EXPORT_PRIVATE bool BuildTSGraph(AccountingAllocator* allocator,
-                                    const WasmFeatures& enabled,
-                                    const WasmModule* module,
-                                    WasmFeatures* detected,
-                                    const FunctionBody& body,
-                                    compiler::turboshaft::Graph& graph,
-                                    compiler::NodeOriginTable* node_origins);
+V8_EXPORT_PRIVATE bool BuildTSGraph(
+    AccountingAllocator* allocator, WasmFeatures enabled,
+    const WasmModule* module, WasmFeatures* detected,
+    compiler::turboshaft::Graph& graph, const FunctionBody& func_body,
+    const WireBytesStorage* wire_bytes, AssumptionsJournal* assumptions,
+    ZoneVector<WasmInliningPosition>* inlining_positions, int func_index);
 }  // namespace wasm
 }  // namespace v8::internal
 

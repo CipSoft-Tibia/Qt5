@@ -26,7 +26,7 @@ QT_BEGIN_NAMESPACE
 class QQmlPropertyValidator;
 class QQmlEnginePrivate;
 
-class Q_QML_PRIVATE_EXPORT QQmlCustomParser
+class Q_QML_EXPORT QQmlCustomParser
 {
 public:
     enum Flag {
@@ -43,8 +43,12 @@ public:
     void clearErrors();
     Flags flags() const { return m_flags; }
 
-    virtual void verifyBindings(const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) = 0;
-    virtual void applyBindings(QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &, const QList<const QV4::CompiledData::Binding *> &) = 0;
+    virtual void verifyBindings(
+            const QQmlRefPointer<QV4::CompiledData::CompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) = 0;
+    virtual void applyBindings(
+            QObject *, const QQmlRefPointer<QV4::ExecutableCompilationUnit> &,
+            const QList<const QV4::CompiledData::Binding *> &) = 0;
 
     QVector<QQmlError> errors() const { return exceptions; }
 
@@ -58,6 +62,7 @@ protected:
     int evaluateEnum(const QString &, bool *ok) const;
 
     const QMetaObject *resolveType(const QString&) const;
+    QQmlTypeLoader *typeLoader() const;
 
 private:
     QVector<QQmlError> exceptions;

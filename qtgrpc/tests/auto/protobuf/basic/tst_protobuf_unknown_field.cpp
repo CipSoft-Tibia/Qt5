@@ -15,7 +15,7 @@
 class tst_protobuf_unknown_field : public QObject
 {
     Q_OBJECT
-private slots:
+private Q_SLOTS:
     void unknownStringField();
     void unknownIntField();
     void unknownMapField();

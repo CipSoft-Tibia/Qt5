@@ -56,7 +56,6 @@
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/gpu_utils.h"
 #include "content/public/common/content_client.h"
-#include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
 #include "content/public/common/sandboxed_process_launcher_delegate.h"
@@ -99,6 +98,8 @@
 #include "base/win/access_token.h"
 #include "base/win/security_descriptor.h"
 #include "base/win/win_util.h"
+#include "content/browser/child_process_launcher_helper.h"
+#include "content/public/common/prefetch_type_win.h"
 #include "sandbox/policy/win/sandbox_win.h"
 #include "sandbox/win/src/sandbox_policy.h"
 #include "sandbox/win/src/window.h"
@@ -255,16 +256,19 @@ static const char* const kSwitchNames[] = {
     switches::kDRMVirtualConnectorIsExternal,
     switches::kEnableBackgroundThreadPool,
     switches::kEnableGpuRasterization,
+    switches::kEnableSkiaGraphite,
     switches::kEnableLogging,
     switches::kDoubleBufferCompositing,
     switches::kHeadless,
     switches::kLoggingLevel,
     switches::kEnableLowEndDeviceMode,
+    switches::kDisableSkiaGraphite,
     switches::kDisableLowEndDeviceMode,
     switches::kProfilingAtStart,
     switches::kProfilingFile,
     switches::kProfilingFlush,
     switches::kRunAllCompositorStagesBeforeDraw,
+    switches::kShaderCachePath,
     switches::kSkiaFontCacheLimitMb,
     switches::kSkiaGraphiteBackend,
     switches::kSkiaResourceCacheLimitMb,
@@ -287,7 +291,6 @@ static const char* const kSwitchNames[] = {
     switches::kOzonePlatform,
     switches::kDisableExplicitDmaFences,
     switches::kOzoneDumpFile,
-    switches::kDisableBufferBWCompression,
 #endif
 #if BUILDFLAG(IS_LINUX)
     switches::kX11Display,
@@ -300,17 +303,13 @@ static const char* const kSwitchNames[] = {
     switches::kForceVideoOverlays,
     switches::kSkiaGraphiteBackend,
 #if BUILDFLAG(IS_ANDROID)
-    switches::kEnableReachedCodeProfiler,
-    switches::kReachedCodeSamplingIntervalUs,
     switches::kDisableAdpf,
 #endif
 #if BUILDFLAG(IS_CHROMEOS)
-    switches::kPlatformDisallowsChromeOSDirectVideoDecoder,
     switches::kSchedulerBoostUrgent,
 #endif
 #if BUILDFLAG(USE_CHROMEOS_MEDIA_ACCELERATION)
     switches::kHardwareVideoDecodeFrameRate,
-    switches::kChromeOSVideoDecoderTaskRunner,
 #endif
 #if BUILDFLAG(IS_CHROMEOS_LACROS)
     switches::kLacrosEnablePlatformHevc,
@@ -345,7 +344,7 @@ static void RunCallbackOnUI(
 
 void OnGpuProcessHostDestroyedOnUI(int host_id, const std::string& message) {
   DCHECK(BrowserThread::CurrentlyOn(BrowserThread::UI));
-  GpuDataManagerImpl::GetInstance()->AddLogMessage(logging::LOG_ERROR,
+  GpuDataManagerImpl::GetInstance()->AddLogMessage(logging::LOGGING_ERROR,
                                                    "GpuProcessHost", message);
 #if BUILDFLAG(IS_OZONE)
   ui::OzonePlatform::GetInstance()
@@ -506,7 +505,7 @@ class GpuSandboxedProcessLauncherDelegate
 
     // Desktop is inherited by child process unless overridden, e.g. by sandbox.
     HDESK hdesk = ::GetThreadDesktop(GetCurrentThreadId());
-    absl::optional<base::win::SecurityDescriptor> sd =
+    std::optional<base::win::SecurityDescriptor> sd =
         base::win::SecurityDescriptor::FromHandle(
             hdesk, base::win::SecurityObjectType::kDesktop,
             OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
@@ -515,7 +514,7 @@ class GpuSandboxedProcessLauncherDelegate
       return false;
     }
 
-    absl::optional<base::win::AccessToken> token =
+    std::optional<base::win::AccessToken> token =
         base::win::AccessToken::FromCurrentProcess(/*impersonation=*/true,
                                                    TOKEN_ADJUST_DEFAULT);
     if (!token) {
@@ -526,7 +525,7 @@ class GpuSandboxedProcessLauncherDelegate
       return false;
     }
 
-    absl::optional<base::win::AccessCheckResult> result = sd->AccessCheck(
+    std::optional<base::win::AccessCheckResult> result = sd->AccessCheck(
         *token, desired_access, base::win::SecurityObjectType::kDesktop);
     return result && result->access_status;
   }
@@ -1010,9 +1009,8 @@ gpu::GpuFeatureInfo GpuProcessHost::GetGpuFeatureInfo() const {
 void GpuProcessHost::DidInitialize(
     const gpu::GPUInfo& gpu_info,
     const gpu::GpuFeatureInfo& gpu_feature_info,
-    const absl::optional<gpu::GPUInfo>& gpu_info_for_hardware_gpu,
-    const absl::optional<gpu::GpuFeatureInfo>&
-        gpu_feature_info_for_hardware_gpu,
+    const std::optional<gpu::GPUInfo>& gpu_info_for_hardware_gpu,
+    const std::optional<gpu::GpuFeatureInfo>& gpu_feature_info_for_hardware_gpu,
     const gfx::GpuExtraInfo& gpu_extra_info) {
   if (GetGpuCrashCount() > 0) {
     LOG(WARNING) << "Reinitialized the GPU process after a crash. The reported "
@@ -1064,7 +1062,7 @@ void GpuProcessHost::MaybeShutdownGpuProcess() {
 }
 
 void GpuProcessHost::DidUpdateGPUInfo(const gpu::GPUInfo& gpu_info) {
-  GpuDataManagerImpl::GetInstance()->UpdateGpuInfo(gpu_info, absl::nullopt);
+  GpuDataManagerImpl::GetInstance()->UpdateGpuInfo(gpu_info, std::nullopt);
 }
 
 #if BUILDFLAG(IS_WIN)
@@ -1225,10 +1223,13 @@ bool GpuProcessHost::LaunchGpuProcess() {
 
 #if BUILDFLAG(IS_WIN)
   if (kind_ == GPU_PROCESS_KIND_INFO_COLLECTION &&
-      base::FeatureList::IsEnabled(kGpuInfoCollectionSeparatePrefetch)) {
-    cmd_line->AppendArg(switches::kPrefetchArgumentOther);
+      base::FeatureList::IsEnabled(
+          features::kGpuInfoCollectionSeparatePrefetch)) {
+    cmd_line->AppendArg(internal::ChildProcessLauncherHelper::GetPrefetchSwitch(
+        AppLaunchPrefetchType::kGPUInfo));
   } else {
-    cmd_line->AppendArg(switches::kPrefetchArgumentGpu);
+    cmd_line->AppendArg(internal::ChildProcessLauncherHelper::GetPrefetchSwitch(
+        AppLaunchPrefetchType::kGPU));
   }
 #endif  // BUILDFLAG(IS_WIN)
 

@@ -25,6 +25,7 @@
 #include "base/time/tick_clock.h"
 #include "base/trace_event/trace_event.h"
 #include "base/unguessable_token.h"
+#include "components/miracle_parameter/common/public/miracle_parameter.h"
 #include "net/base/isolation_info.h"
 #include "net/base/load_flags.h"
 #include "net/base/request_priority.h"
@@ -106,11 +107,12 @@ BASE_FEATURE(kDelayablePriorityThresholdFeature,
              "DelayablePriorityThresholdFeature",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-const base::FeatureParam<net::RequestPriority>::Option kRequestPriorities[] = {
-    {net::LOWEST, "lowest"},
-    {net::LOW, "low"},
-    {net::MEDIUM, "medium"},
-    {net::HIGHEST, "highest"},
+constexpr base::FeatureParam<net::RequestPriority>::Option
+    kRequestPriorities[] = {
+        {net::LOWEST, "lowest"},
+        {net::LOW, "low"},
+        {net::MEDIUM, "medium"},
+        {net::HIGHEST, "highest"},
 };
 
 }  // namespace
@@ -118,17 +120,18 @@ const base::FeatureParam<net::RequestPriority>::Option kRequestPriorities[] = {
 // The maximum number of requests to allow be in-flight at any point in time per
 // host. This limit does not apply to hosts that support request prioritization
 // when |delay_requests_on_multiplexed_connections| is true.
-constexpr base::FeatureParam<int> kMaxNumDelayableRequestsPerHostPerClient(
-    &kMaxNumDelayableRequestsPerHostPerClientFeature,
-    "MaxNumDelayableRequestsPerHostPerClient",
-    6);
+MIRACLE_PARAMETER_FOR_INT(GetMaxNumDelayableRequestsPerHostPerClient,
+                          kMaxNumDelayableRequestsPerHostPerClientFeature,
+                          "MaxNumDelayableRequestsPerHostPerClient",
+                          6)
 
 // The priority level below which resources are considered to be delayable.
-constexpr base::FeatureParam<net::RequestPriority> kDelayablePriorityThreshold(
-    &kDelayablePriorityThresholdFeature,
-    "DelayablePriorityThreshold",
-    net::MEDIUM,
-    &kRequestPriorities);
+MIRACLE_PARAMETER_FOR_ENUM(GetDelayablePriorityThreshold,
+                           kDelayablePriorityThresholdFeature,
+                           "DelayablePriorityThreshold",
+                           net::MEDIUM,
+                           net::RequestPriority,
+                           kRequestPriorities)
 
 // Returns the duration after which the timer to dispatch queued requests should
 // fire.
@@ -281,8 +284,6 @@ class ResourceScheduler::ScheduledResourceRequestImpl
       priority_.priority = net::RequestPriority::IDLE;
       request_->SetPriority(priority_.priority);
     }
-    base::UmaHistogramBoolean(
-        "Network.VisibilityAwareResourceScheduler.Deprioritized", deprioritize);
     TRACE_EVENT_BEGIN("network.scheduler", "ScheduledResourceRequest",
                       trace_track_, "url", request->url(), "priority",
                       priority_.priority);
@@ -511,10 +512,8 @@ class ResourceScheduler::Client
       pending_requests_.Erase(request);
       DCHECK(!base::Contains(in_flight_requests_, request));
     } else {
-      // Record metrics.
       if (!RequestAttributesAreSet(request->attributes(), kAttributeDelayable))
         last_non_delayable_request_end_ = tick_clock_->NowTicks();
-      RecordNetworkContentionMetrics(*request);
       EraseInFlightRequest(request);
 
       // Removing this request may have freed up another to load.
@@ -811,7 +810,7 @@ class ResourceScheduler::Client
       attributes |= kAttributeInFlight;
 
     const net::RequestPriority kPriorityThreshold =
-        kDelayablePriorityThreshold.Get();
+        GetDelayablePriorityThreshold();
     if (request->url_request()->priority() < kPriorityThreshold) {
       if (params_for_network_quality_
               .delay_requests_on_multiplexed_connections) {
@@ -859,7 +858,7 @@ class ResourceScheduler::Client
     }
 
     const size_t kMaxSameHostCount =
-        kMaxNumDelayableRequestsPerHostPerClient.Get();
+        GetMaxNumDelayableRequestsPerHostPerClient();
     size_t same_host_count = 0;
     for (const auto* in_flight_request : in_flight_requests_) {
       if (active_request_host == in_flight_request->scheme_host_port()) {
@@ -870,33 +869,6 @@ class ResourceScheduler::Client
       }
     }
     return false;
-  }
-
-  void RecordMetricsOnStartRequest(const ScheduledResourceRequestImpl& request,
-                                   base::TimeTicks ticks_now) const {
-    const size_t non_delayable_requests_in_flight_count =
-        in_flight_requests_.size() - in_flight_delayable_count_;
-
-    // Record the number of delayable requests in-flight when a non-delayable
-    // request starts.
-    if (!RequestAttributesAreSet(request.attributes(), kAttributeDelayable)) {
-      if (non_delayable_requests_in_flight_count > 0) {
-        if (last_non_delayable_request_start_) {
-          UMA_HISTOGRAM_MEDIUM_TIMES(
-              "ResourceScheduler.NonDelayableLastStartToNonDelayableStart."
-              "NonDelayableInFlight",
-              ticks_now - last_non_delayable_request_start_.value());
-        }
-      } else {
-        if (last_non_delayable_request_end_) {
-          LOCAL_HISTOGRAM_CUSTOM_TIMES(
-              "ResourceScheduler.NonDelayableLastEndToNonDelayableStart."
-              "NonDelayableNotInFlight",
-              ticks_now - last_non_delayable_request_end_.value(),
-              base::Milliseconds(10), base::Minutes(3), 50);
-        }
-      }
-    }
   }
 
   void StartRequest(ScheduledResourceRequestImpl* request,
@@ -910,8 +882,6 @@ class ResourceScheduler::Client
           net::NetLogEventType::RESOURCE_SCHEDULER_REQUEST_STARTED, "trigger",
           RequestStartTriggerString(trigger));
     }
-    if (request)
-      RecordMetricsOnStartRequest(*request, ticks_now);
 
     DCHECK(!request->url_request()->creation_time().is_null());
     base::TimeDelta queuing_duration =
@@ -1214,41 +1184,6 @@ class ResourceScheduler::Client
         break;
       }
     }
-  }
-
-  // If |request| was delayable, this method records how long after |request|
-  // started, a non-delayable request also started. This is the duration of time
-  // that |request| should have been queued for so as to avoid any network
-  // contention with all later-arriving non-delayable requests. Must be called
-  // after |request| is finished.
-  void RecordNetworkContentionMetrics(
-      const ScheduledResourceRequestImpl& request) const {
-    if (!RequestAttributesAreSet(request.attributes(), kAttributeDelayable))
-      return;
-
-    base::TimeDelta ideal_duration_to_wait;
-    if (!last_non_delayable_request_start_) {
-      // No non-delayable request has been started in this client so far.
-      // |request| did not have to wait at all to avoid network contention.
-      ideal_duration_to_wait = base::TimeDelta();
-    } else if (request.url_request()->creation_time() >
-               last_non_delayable_request_start_) {
-      // Last non-delayable request in this client started before |request|
-      // was created. |request| did not have to wait at all to avoid network
-      // contention with non-delayable requests.
-      ideal_duration_to_wait = base::TimeDelta();
-    } else {
-      // The latest non-delayable request started at
-      // |last_non_delayable_request_start_| which happened after the
-      // creation of |request|.
-      ideal_duration_to_wait = last_non_delayable_request_start_.value() -
-                               request.url_request()->creation_time();
-    }
-
-    LOCAL_HISTOGRAM_CUSTOM_TIMES(
-        "ResourceScheduler.DelayableRequests."
-        "WaitTimeToAvoidContentionWithNonDelayableRequest",
-        ideal_duration_to_wait, base::Milliseconds(10), base::Minutes(3), 50);
   }
 
   RequestQueue pending_requests_;

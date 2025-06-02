@@ -49,30 +49,43 @@ const char kGoogleServicesAccountId[] = "google.services.account_id";
 const char kGoogleServicesConsentedToSync[] =
     "google.services.consented_to_sync";
 
-// Similar to kGoogleServicesLastUsername, this is the corresponding version of
-// kGoogleServicesAccountId that is not cleared on signout.
+// Similar to kGoogleServicesLastSyncingUsername, this is the corresponding
+// version of kGoogleServicesAccountId that is not cleared on signout.
 // DEPRECATED: this preference is deprecated and is always empty. It will be
-// removed once all users are migrated to `kGoogleServicesLastGaiaId`.
-const char kGoogleServicesLastAccountIdDeprecated[] =
+// removed once all users are migrated to `kGoogleServicesLastSyncingGaiaId`.
+const char kGoogleServicesLastSyncingAccountIdDeprecated[] =
     "google.services.last_account_id";
 
-// Similar to `kGoogleServicesLastUsername` that is not cleared on signout. Note
-// this is always a Gaia ID, as opposed to `kGoogleServicesAccountId` which may
-// be an email.
-const char kGoogleServicesLastGaiaId[] = "google.services.last_gaia_id";
+// Similar to `kGoogleServicesLastSyncingUsername` that is not cleared on
+// signout. Note this is always a Gaia ID, as opposed to
+// `kGoogleServicesAccountId` which may be an email.
+const char kGoogleServicesLastSyncingGaiaId[] = "google.services.last_gaia_id";
 
 // String the identifies the last user that logged into sync and other
 // google services. This value is not cleared on signout.
 // This pref remains in order to pre-fill the sign in page when reconnecting a
 // profile, but programmatic checks to see if a given account is the same as the
-// last account should use `kGoogleServicesLastGaiaId` instead.
-const char kGoogleServicesLastUsername[] = "google.services.last_username";
+// last account should use `kGoogleServicesLastSyncingGaiaId` instead.
+const char kGoogleServicesLastSyncingUsername[] =
+    "google.services.last_username";
 
 // Device id scoped to single signin. This device id will be regenerated if user
 // signs out and signs back in. When refresh token is requested for this user it
 // will be annotated with this device id.
 const char kGoogleServicesSigninScopedDeviceId[] =
     "google.services.signin_scoped_device_id";
+
+// A string indicating the Gaia ID (as in `kGoogleServicesAccountId`) of a
+// user who was previously syncing (had `kGoogleServicesConsentedToSync` set to
+// true), and was migrated to the signed-in non-syncing state. See feature
+// `kMigrateSyncingUserToSignedIn`.
+const char kGoogleServicesSyncingGaiaIdMigratedToSignedIn[] =
+    "google.services.syncing_gaia_id_migrated_to_signed_in";
+
+// Like `kGoogleServicesSyncingAccountIdMigratedToSignedIn` but for the username
+// instead of the account ID.
+const char kGoogleServicesSyncingUsernameMigratedToSignedIn[] =
+    "google.services.syncing_username_migrated_to_signed_in";
 
 // Local state pref containing a string regex that restricts which accounts
 // can be used to log in to chrome (e.g. "*@google.com"). If missing or blank,
@@ -123,5 +136,16 @@ const char kProfileSeparationDataMigrationSettings[] =
 // area signin.
 const char kProfileSeparationDomainExceptionList[] =
     "profile_separation.domain_exception_list";
+
+// Response set by chrome://policy/test for
+// UserCloudSigninRestrictionPolicyFetcher::GetManagedAccountsSigninRestriction.
+// This is only used on Canary and for testing.
+const char kUserCloudSigninPolicyResponseFromPolicyTestPage[] =
+    "signin.user_cloud_signin_policy_response_from_policy_test_page";
+
+// Registers that the sign in occurred with an explicit user action.
+// Affected by all signin sources except when signing in to Chrome caused by a
+// web sign in or by an unknown source.
+const char kExplicitBrowserSignin[] = "signin.explicit_browser_signin";
 
 }  // namespace prefs

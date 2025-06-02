@@ -15,10 +15,12 @@ licenses(["notice"])
 
 cc_library(
     name = "types",
+    copts = ["-Wno-non-virtual-dtor"],
     linkopts = [
         "wininet.lib",
         "advapi32.lib",
         "bcrypt.lib",
+        "cfgmgr32.lib",
         "comdlg32.lib",
         "gdi32.lib",
         "kernel32.lib",
@@ -44,6 +46,6 @@ cc_library(
         "//internal:__subpackages__",
         "//internal/platform/implementation/windows:__subpackages__",
         "//location/nearby/cpp/sharing/implementation/internal:__subpackages__",
-        "//third_party/nearby/sharing:__subpackages__",
+        "//sharing:__subpackages__",
     ],
 )

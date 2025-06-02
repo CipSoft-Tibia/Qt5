@@ -99,6 +99,7 @@ class StyleBuilderConverterBase {
       const CSSToLengthConversionData&,
       FontDescription::Size parent_size,
       const Document*);
+  static DynamicRangeLimit ConvertDynamicRangeLimit(const CSSValue&);
   static FontSizeAdjust ConvertFontSizeAdjust(const StyleResolverState&,
                                               const CSSValue&);
   static scoped_refptr<FontPalette> ConvertFontPalette(const CSSValue&);
@@ -117,6 +118,8 @@ class StyleBuilderConverter {
   static LengthBox ConvertClip(StyleResolverState&, const CSSValue&);
   static ClipPathOperation* ConvertClipPath(StyleResolverState&,
                                             const CSSValue&);
+  static DynamicRangeLimit ConvertDynamicRangeLimit(StyleResolverState&,
+                                                    const CSSValue&);
   static StyleSVGResource* ConvertElementReference(StyleResolverState&,
                                                    const CSSValue&);
   static FilterOperations ConvertFilterOperations(StyleResolverState&,
@@ -363,18 +366,6 @@ class StyleBuilderConverter {
   static double ConvertTimeValue(const StyleResolverState& state,
                                  const CSSValue& value);
 
-  static scoped_refptr<ToggleGroupList> ConvertToggleGroup(
-      const StyleResolverState&,
-      const CSSValue&);
-  static scoped_refptr<ToggleRootList> ConvertToggleRoot(
-      const StyleResolverState&,
-      const CSSValue&);
-  static scoped_refptr<ToggleTriggerList> ConvertToggleTrigger(
-      const StyleResolverState&,
-      const CSSValue&);
-  static AtomicString ConvertToggleVisibility(const StyleResolverState&,
-                                              const CSSValue&);
-
   static absl::optional<StyleOverflowClipMargin> ConvertOverflowClipMargin(
       StyleResolverState&,
       const CSSValue&);
@@ -387,6 +378,8 @@ class StyleBuilderConverter {
                                                     const CSSValue&);
   static ScopedCSSNameList* ConvertTimelineScope(StyleResolverState&,
                                                  const CSSValue&);
+
+  static InsetArea ConvertInsetArea(StyleResolverState&, const CSSValue&);
 };
 
 template <typename T>

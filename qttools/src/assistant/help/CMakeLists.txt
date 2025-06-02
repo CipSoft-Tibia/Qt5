@@ -6,25 +6,29 @@
 #####################################################################
 
 qt_internal_add_module(Help
+    PLUGIN_TYPES help
     SOURCES
+    # QtHelpCore
         qcompressedhelpinfo.cpp qcompressedhelpinfo.h
-        qfilternamedialog.cpp qfilternamedialog.ui qfilternamedialog_p.h
         qhelp_global.cpp qhelp_global.h
         qhelpcollectionhandler.cpp qhelpcollectionhandler_p.h
-        qhelpcontentwidget.cpp qhelpcontentwidget.h
+        qhelpcontentitem.cpp qhelpcontentitem.h
         qhelpdbreader.cpp qhelpdbreader_p.h
-        qhelpengine.cpp qhelpengine.h qhelpengine_p.h
         qhelpenginecore.cpp qhelpenginecore.h
         qhelpfilterdata.cpp qhelpfilterdata.h
         qhelpfilterengine.cpp qhelpfilterengine.h
-        qhelpfiltersettings.cpp qhelpfiltersettings_p.h
+        qhelplink.cpp qhelplink.h
+        qhelpsearchenginecore.cpp qhelpsearchenginecore.h
+        qhelpsearchindexreader.cpp qhelpsearchindexreader_p.h
+        qhelpsearchindexwriter.cpp qhelpsearchindexwriter_p.h
+        qhelpsearchresult.cpp qhelpsearchresult.h
+    # QtHelp
+        qfilternamedialog.cpp qfilternamedialog.ui qfilternamedialog_p.h
+        qhelpcontentwidget.cpp qhelpcontentwidget.h
+        qhelpengine.cpp qhelpengine.h
         qhelpfiltersettingswidget.cpp qhelpfiltersettingswidget.h qhelpfiltersettingswidget.ui
         qhelpindexwidget.cpp qhelpindexwidget.h
-        qhelplink.cpp qhelplink.h
         qhelpsearchengine.cpp qhelpsearchengine.h
-        qhelpsearchindexreader.cpp qhelpsearchindexreader_p.h
-        qhelpsearchindexreader_default.cpp qhelpsearchindexreader_default_p.h
-        qhelpsearchindexwriter_default.cpp qhelpsearchindexwriter_default_p.h
         qhelpsearchquerywidget.cpp qhelpsearchquerywidget.h
         qhelpsearchresultwidget.cpp qhelpsearchresultwidget.h
         qoptionswidget.cpp qoptionswidget_p.h
@@ -38,10 +42,9 @@ qt_internal_add_module(Help
         Qt::Gui
         Qt::Sql
         Qt::Widgets
-    PRIVATE_MODULE_INTERFACE
-        Qt::CorePrivate
     ENABLE_AUTOGEN_TOOLS
         uic
+    NO_GENERATE_CPP_EXPORTS
 )
 
 # Resources:

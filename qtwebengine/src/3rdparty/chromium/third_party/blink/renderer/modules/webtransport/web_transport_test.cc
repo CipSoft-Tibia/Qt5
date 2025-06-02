@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/test/mock_callback.h"
 #include "mojo/public/cpp/bindings/receiver_set.h"
@@ -51,6 +52,7 @@
 #include "third_party/blink/renderer/platform/bindings/exception_code.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/heap/persistent.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/wtf/deque.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -137,6 +139,7 @@ class MockWebTransport : public network::mojom::blink::WebTransport {
                     void(uint32_t, mojo::ScopedDataPipeConsumerHandle)>));
 
   MOCK_METHOD1(SetOutgoingDatagramExpirationDuration, void(base::TimeDelta));
+  MOCK_METHOD1(GetStats, void(GetStatsCallback));
   MOCK_METHOD0(Close, void());
   MOCK_METHOD2(Close, void(uint32_t, String));
 
@@ -245,7 +248,8 @@ class WebTransportTest : public ::testing::Test {
     handshake_client->OnConnectionEstablished(
         std::move(web_transport_to_pass),
         client_remote.InitWithNewPipeAndPassReceiver(),
-        network::mojom::blink::HttpResponseHeaders::New());
+        network::mojom::blink::HttpResponseHeaders::New(),
+        network::mojom::blink::WebTransportStats::New());
     client_remote_.Bind(std::move(client_remote));
   }
 
@@ -324,11 +328,13 @@ class WebTransportTest : public ::testing::Test {
         mojom::blink::WebTransportConnector::Name_, {});
   }
 
-  const BrowserInterfaceBrokerProxy* interface_broker_ = nullptr;
+  raw_ptr<const BrowserInterfaceBrokerProxy, ExperimentalRenderer>
+      interface_broker_ = nullptr;
   WTF::Deque<AcceptUnidirectionalStreamCallback>
       pending_unidirectional_accept_callbacks_;
   WTF::Deque<AcceptBidirectionalStreamCallback>
       pending_bidirectional_accept_callbacks_;
+  test::TaskEnvironment task_environment_;
   WebTransportConnector connector_;
   std::unique_ptr<MockWebTransport> mock_web_transport_;
   mojo::Remote<network::mojom::blink::WebTransportClient> client_remote_;
@@ -1032,7 +1038,8 @@ bool IsRangeError(ScriptState* script_state,
                ->Get(script_state->GetContext(),
                      V8AtomicString(script_state->GetIsolate(), key))
                .ToLocal(&actual) &&
-           ToCoreStringWithUndefinedOrNullCheck(actual) == value;
+           ToCoreStringWithUndefinedOrNullCheck(script_state->GetIsolate(),
+                                                actual) == value;
   };
 
   return Has("name", "RangeError") && Has("message", message);
@@ -1934,7 +1941,8 @@ TEST_F(WebTransportTest, OnClosed) {
   ScriptPromiseTester tester(script_state, web_transport->closed());
 
   web_transport->OnClosed(
-      network::mojom::blink::WebTransportCloseInfo::New(99, "reason"));
+      network::mojom::blink::WebTransportCloseInfo::New(99, "reason"),
+      network::mojom::blink::WebTransportStats::New());
 
   tester.WaitUntilSettled();
 
@@ -1960,7 +1968,8 @@ TEST_F(WebTransportTest, OnClosedWithNull) {
   auto* script_state = scope.GetScriptState();
   ScriptPromiseTester tester(script_state, web_transport->closed());
 
-  web_transport->OnClosed(nullptr);
+  web_transport->OnClosed(nullptr,
+                          network::mojom::blink::WebTransportStats::New());
 
   tester.WaitUntilSettled();
 

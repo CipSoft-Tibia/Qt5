@@ -38,6 +38,7 @@ class FakeLinuxUi : public LinuxUiAndTheme {
       ui::LinuxInputMethodContextDelegate* delegate) const override;
   bool GetTextEditCommandsForEvent(
       const ui::Event& event,
+      int text_flags,
       std::vector<ui::TextEditCommandAuraLinux>* commands) override;
   gfx::FontRenderParams GetDefaultFontRenderParams() const override;
   void GetDefaultFontDescription(
@@ -66,7 +67,8 @@ class FakeLinuxUi : public LinuxUiAndTheme {
   bool PreferDarkTheme() const override;
   void SetDarkTheme(bool dark) override;
   std::unique_ptr<ui::NavButtonProvider> CreateNavButtonProvider() override;
-  ui::WindowFrameProvider* GetWindowFrameProvider(bool solid_frame) override;
+  ui::WindowFrameProvider* GetWindowFrameProvider(bool solid_frame,
+                                                  bool tiled) override;
 };
 
 }  // namespace ui

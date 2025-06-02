@@ -15,27 +15,25 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.PopupMenu;
 
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 
-import org.qtproject.qt.android.accessibility.QtAccessibilityDelegate;
-
-class QtEmbeddedDelegate extends QtActivityDelegateBase implements QtNative.AppStateDetailsListener {
-    // TODO simplistic implementation with one QtView, expand to support multiple views QTBUG-117649
-    private QtView m_view;
-    private long m_rootWindowRef = 0L;
+class QtEmbeddedDelegate extends QtActivityDelegateBase
+        implements QtNative.AppStateDetailsListener, QtEmbeddedViewInterface, QtWindowInterface,
+                   QtMenuInterface
+{
+    private static final String QtTAG = "QtEmbeddedDelegate";
+    private final HashSet<QtView> m_views = new HashSet<>();
     private QtNative.ApplicationStateDetails m_stateDetails;
-    private boolean m_windowLoaded = false;
+    private boolean m_backendsRegistered = false;
 
-    private static native void createRootWindow(View rootView, int x, int y, int width, int height);
-    static native void deleteWindow(long windowReference);
-
-    public QtEmbeddedDelegate(Activity context) {
+    QtEmbeddedDelegate(Activity context) {
         super(context);
-
         m_stateDetails = QtNative.getStateDetails();
         QtNative.registerAppStateListener(this);
 
@@ -77,14 +75,15 @@ class QtEmbeddedDelegate extends QtActivityDelegateBase implements QtNative.AppS
 
             @Override
             public void onActivityDestroyed(Activity activity) {
-                if (m_activity == activity && m_stateDetails.isStarted) {
+                // If the Activity was destroyed due to a configuration change, it will be recreated
+                // instantly, so don't terminate Qt if that's the case
+                if (m_activity == activity && m_stateDetails.isStarted &&
+                    !activity.isChangingConfigurations()) {
                     m_activity.getApplication().unregisterActivityLifecycleCallbacks(this);
                     QtNative.unregisterAppStateListener(QtEmbeddedDelegate.this);
-                    QtEmbeddedDelegateFactory.remove(m_activity);
-                    QtNative.terminateQt();
+                    QtEmbeddedViewInterfaceFactory.remove(m_activity);
+                    QtNative.quitQt();
                     QtNative.setActivity(null);
-                    QtNative.getQtThread().exit();
-                    onDestroy();
                 }
             }
         });
@@ -94,16 +93,37 @@ class QtEmbeddedDelegate extends QtActivityDelegateBase implements QtNative.AppS
     public void onAppStateDetailsChanged(QtNative.ApplicationStateDetails details) {
         synchronized (this) {
             m_stateDetails = details;
-            if (m_stateDetails.nativePluginIntegrationReady) {
-                QtNative.runAction(() -> {
-                    DisplayMetrics metrics = Resources.getSystem().getDisplayMetrics();
-                    QtDisplayManager.setApplicationDisplayMetrics(m_activity,
-                                                                  metrics.widthPixels,
-                                                                  metrics.heightPixels);
+            if (details.isStarted && !m_backendsRegistered) {
+                if (BackendRegister.isNull())
+                    return;
 
-                });
-                createRootWindow();
+                m_backendsRegistered = true;
+                BackendRegister.registerBackend(QtWindowInterface.class, (QtWindowInterface)this);
+                BackendRegister.registerBackend(QtMenuInterface.class, (QtMenuInterface)this);
+                BackendRegister.registerBackend(QtInputInterface.class, m_inputDelegate);
+            } else if (!details.isStarted && m_backendsRegistered) {
+                m_backendsRegistered = false;
+
+                if (BackendRegister.isNull())
+                    return;
+
+                BackendRegister.unregisterBackend(QtWindowInterface.class);
+                BackendRegister.unregisterBackend(QtMenuInterface.class);
+                BackendRegister.unregisterBackend(QtInputInterface.class);
             }
+        }
+    }
+
+    @Override
+    public void onNativePluginIntegrationReadyChanged(boolean ready)
+    {
+        if (ready) {
+            QtNative.runAction(() -> {
+                DisplayMetrics metrics = Resources.getSystem().getDisplayMetrics();
+                QtDisplayManager.setApplicationDisplayMetrics(m_activity, metrics.widthPixels,
+                                                              metrics.heightPixels);
+
+            });
         }
     }
 
@@ -113,62 +133,64 @@ class QtEmbeddedDelegate extends QtActivityDelegateBase implements QtNative.AppS
         QtNative.startApplication(appParams, mainLib);
     }
 
+    // QtEmbeddedViewInterface implementation begin
     @Override
-    QtAccessibilityDelegate createAccessibilityDelegate()
+    public void startQtApplication(String appParams, String mainLib)
     {
-        // FIXME make QtAccessibilityDelegate window based or verify current way works
-        // also for child windows: QTBUG-120685
-        return null;
+        super.startNativeApplication(appParams, mainLib);
     }
 
-    @UsedFromNativeCode
     @Override
-    QtLayout getQtLayout()
+    public void addView(QtView view)
     {
-        // TODO verify if returning m_view here works, this is used by the androidjniinput
-        // when e.g. showing a keyboard, so depends on getting the keyboard focus working
-        // QTBUG-118873
-        if (m_view == null)
-            return null;
-        return m_view.getQtWindow();
-    }
-
-    public void queueLoadWindow()
-    {
-        synchronized (this) {
-            if (m_stateDetails.nativePluginIntegrationReady)
-                createRootWindow();
+        if (m_views.add(view)) {
+            QtNative.runAction(() -> { createRootWindow(view); });
         }
     }
 
-    void setView(QtView view) {
-        m_view = view;
-        updateInputDelegate();
+    @Override
+    public void removeView(QtView view)
+    {
+        m_views.remove(view);
+    }
+    // QtEmbeddedViewInterface implementation end
+
+    // This gets called from Android thread
+    private void createRootWindow(QtView view) {
+        // No use in creating a QQuickView for a View that has been removed
+        if (m_views.contains(view)) {
+            QtView.createRootWindow(view, view.getLeft(), view.getTop(), view.getWidth(),
+                                view.getHeight());
+        }
     }
 
-    private void updateInputDelegate() {
-        if (m_view == null) {
-            m_inputDelegate.setEditPopupMenu(null);
+    // QtMenuInterface implementation begin
+    @Override
+    public void resetOptionsMenu() { QtNative.runAction(() -> m_activity.invalidateOptionsMenu()); }
+
+    @Override
+    public void openOptionsMenu() { QtNative.runAction(() -> m_activity.openOptionsMenu()); }
+
+    @Override
+    public void closeContextMenu() { QtNative.runAction(() -> m_activity.closeContextMenu()); }
+
+    @Override
+    public void openContextMenu(final int x, final int y, final int w, final int h)
+    {
+        final QtEditText focusedEditText = m_inputDelegate.getCurrentQtEditText();
+        if (focusedEditText == null) {
+            Log.w(QtTAG, "No focused view when trying to open context menu");
             return;
         }
-        m_inputDelegate.setEditPopupMenu(new EditPopupMenu(m_activity, m_view));
+        focusedEditText.postDelayed(() -> {
+            PopupMenu popup = new PopupMenu(m_activity, focusedEditText);
+            QtNative.fillContextMenu(popup.getMenu());
+            popup.setOnMenuItemClickListener(menuItem ->
+                    m_activity.onContextItemSelected(menuItem));
+            popup.setOnDismissListener(popupMenu ->
+                    m_activity.onContextMenuClosed(popupMenu.getMenu()));
+            popup.show();
+        }, 100);
     }
-
-
-    public void setRootWindowRef(long ref) {
-        m_rootWindowRef = ref;
-    }
-
-    public void onDestroy() {
-        if (m_rootWindowRef != 0L)
-            deleteWindow(m_rootWindowRef);
-        m_rootWindowRef = 0L;
-    }
-
-    private void createRootWindow() {
-        if (m_view != null && !m_windowLoaded) {
-            createRootWindow(m_view, m_view.getLeft(), m_view.getTop(),  m_view.getWidth(), m_view.getHeight());
-            m_windowLoaded = true;
-        }
-    }
+    // QtMenuInterface implementation end
 }

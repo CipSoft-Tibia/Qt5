@@ -11,7 +11,7 @@ QT_BEGIN_NAMESPACE
 
 namespace QtProtobuf {
 
-Q_PROTOBUFQTCORETYPES_EXPORT void qRegisterProtobufQtCoreTypes();
+Q_PROTOBUFQTCORETYPES_EXPORT void registerProtobufQtCoreTypes();
 
 }
 

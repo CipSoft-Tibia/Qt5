@@ -38,7 +38,7 @@ import timelineOverviewInfoStyles from './timelineOverviewInfo.css.js';
 
 export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventTypes, typeof UI.Widget.VBox>(
     UI.Widget.VBox) {
-  private readonly overviewCalculator: TimelineOverviewCalculator;
+  readonly overviewCalculator: TimelineOverviewCalculator;
   private readonly overviewGrid: OverviewGrid;
   private readonly cursorArea: HTMLElement;
   private cursorElement: HTMLElement;
@@ -67,6 +67,7 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
 
     this.overviewGrid.setResizeEnabled(false);
     this.overviewGrid.addEventListener(OverviewGridEvents.WindowChangedWithPosition, this.onWindowChanged, this);
+    this.overviewGrid.addEventListener(OverviewGridEvents.BreadcrumbAdded, this.onBreadcrumbAdded, this);
     this.overviewGrid.setClickHandler(this.onClick.bind(this));
     this.overviewControls = [];
     this.markers = new Map();
@@ -83,13 +84,21 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
     this.muteOnWindowChanged = false;
   }
 
+  enableCreateBreadcrumbsButton(): void {
+    const breacrumbsElement = this.overviewGrid.enableCreateBreadcrumbsButton();
+    breacrumbsElement.addEventListener('mousemove', this.onMouseMove.bind(this), true);
+    breacrumbsElement.addEventListener('mouseleave', this.hideCursor.bind(this), true);
+  }
+
   private onMouseMove(event: Event): void {
     if (!this.cursorEnabled) {
       return;
     }
     const mouseEvent = (event as MouseEvent);
     const target = (event.target as HTMLElement);
-    this.cursorPosition = mouseEvent.offsetX + target.offsetLeft;
+    const offsetLeftRelativeToCursorArea =
+        target.getBoundingClientRect().left - this.cursorArea.getBoundingClientRect().left;
+    this.cursorPosition = mouseEvent.offsetX + offsetLeftRelativeToCursorArea;
     this.cursorElement.style.left = this.cursorPosition + 'px';
     this.cursorElement.style.visibility = 'visible';
     void this.overviewInfo.setContent(this.buildOverviewInfo());
@@ -140,12 +149,21 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
     this.update();
   }
 
+  set showingScreenshots(isShowing: boolean) {
+    this.overviewGrid.showingScreenshots = isShowing;
+  }
+
   setBounds(
       minimumBoundary: TraceEngine.Types.Timing.MilliSeconds,
       maximumBoundary: TraceEngine.Types.Timing.MilliSeconds): void {
+    if (minimumBoundary === this.overviewCalculator.minimumBoundary() &&
+        maximumBoundary === this.overviewCalculator.maximumBoundary()) {
+      return;
+    }
     this.overviewCalculator.setBounds(minimumBoundary, maximumBoundary);
     this.overviewGrid.setResizeEnabled(true);
     this.cursorEnabled = true;
+    this.scheduleUpdate(minimumBoundary, maximumBoundary);
   }
 
   setNavStartTimes(navStartTimes: readonly TraceEngine.Types.TraceEvents.TraceEventNavigationStart[]): void {
@@ -173,6 +191,10 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
 
   setMarkers(markers: Map<number, Element>): void {
     this.markers = markers;
+  }
+
+  getMarkers(): Map<number, Element> {
+    return this.markers;
   }
 
   private updateMarkers(): void {
@@ -211,6 +233,13 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
     return this.overviewControls.some(control => control.onClick(event));
   }
 
+  private onBreadcrumbAdded(): void {
+    this.dispatchEventToListeners(Events.OverviewPaneBreadcrumbAdded, {
+      startTime: TraceEngine.Types.Timing.MilliSeconds(this.windowStartTime),
+      endTime: TraceEngine.Types.Timing.MilliSeconds(this.windowEndTime),
+    });
+  }
+
   private onWindowChanged(event: Common.EventTarget.EventTargetEvent<WindowChangedWithPositionEvent>): void {
     if (this.muteOnWindowChanged) {
       return;
@@ -225,9 +254,12 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
     this.windowEndTime =
         event.data.rawEndValue === this.overviewCalculator.maximumBoundary() ? Infinity : event.data.rawEndValue;
 
-    const windowTimes = {startTime: this.windowStartTime, endTime: this.windowEndTime};
+    const windowTimes = {
+      startTime: TraceEngine.Types.Timing.MilliSeconds(this.windowStartTime),
+      endTime: TraceEngine.Types.Timing.MilliSeconds(this.windowEndTime),
+    };
 
-    this.dispatchEventToListeners(Events.WindowChanged, windowTimes);
+    this.dispatchEventToListeners(Events.OverviewPaneWindowChanged, windowTimes);
   }
 
   setWindowTimes(startTime: number, endTime: number): void {
@@ -237,7 +269,10 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
     this.windowStartTime = startTime;
     this.windowEndTime = endTime;
     this.updateWindow();
-    this.dispatchEventToListeners(Events.WindowChanged, {startTime: startTime, endTime: endTime});
+    this.dispatchEventToListeners(Events.OverviewPaneWindowChanged, {
+      startTime: TraceEngine.Types.Timing.MilliSeconds(startTime),
+      endTime: TraceEngine.Types.Timing.MilliSeconds(endTime),
+    });
   }
 
   private updateWindow(): void {
@@ -255,19 +290,24 @@ export class TimelineOverviewPane extends Common.ObjectWrapper.eventMixin<EventT
   }
 }
 
-// TODO(crbug.com/1167717): Make this a const enum again
-// eslint-disable-next-line rulesdir/const_enum
-export enum Events {
-  WindowChanged = 'WindowChanged',
+export const enum Events {
+  OverviewPaneWindowChanged = 'OverviewPaneWindowChanged',
+  OverviewPaneBreadcrumbAdded = 'OverviewPaneBreadcrumbAdded',
 }
 
-export interface WindowChangedEvent {
-  startTime: number;
-  endTime: number;
+export interface OverviewPaneWindowChangedEvent {
+  startTime: TraceEngine.Types.Timing.MilliSeconds;
+  endTime: TraceEngine.Types.Timing.MilliSeconds;
+}
+
+export interface OverviewPaneBreadcrumbAddedEvent {
+  startTime: TraceEngine.Types.Timing.MilliSeconds;
+  endTime: TraceEngine.Types.Timing.MilliSeconds;
 }
 
 export type EventTypes = {
-  [Events.WindowChanged]: WindowChangedEvent,
+  [Events.OverviewPaneWindowChanged]: OverviewPaneWindowChangedEvent,
+  [Events.OverviewPaneBreadcrumbAdded]: OverviewPaneBreadcrumbAddedEvent,
 };
 
 export interface TimelineOverview {
@@ -313,7 +353,7 @@ export class TimelineOverviewBase extends UI.Widget.VBox implements TimelineOver
   }
 
   update(): void {
-    this.resetCanvas();
+    throw new Error('Not implemented');
   }
 
   dispose(): void {

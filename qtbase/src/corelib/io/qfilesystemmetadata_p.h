@@ -111,6 +111,8 @@ public:
         UserId              = 0x10000000,
         GroupId             = 0x20000000,
 
+        CaseSensitive       = 0x80000000,
+
         OwnerIds            = UserId | GroupId,
 
         PosixStatFlags      = QFileSystemMetaData::OtherPermissions
@@ -179,7 +181,7 @@ public:
 
     qint64 size() const                     { return size_; }
 
-    QFile::Permissions permissions() const;
+    inline QFile::Permissions permissions() const;
 
     QDateTime accessTime() const;
     QDateTime birthTime() const;
@@ -190,6 +192,10 @@ public:
     uint userId() const;
     uint groupId() const;
     uint ownerId(QAbstractFileEngine::FileOwner owner) const;
+
+    bool isReadable() const   { return permissions().testAnyFlags(QFile::ReadUser); }
+    bool isWritable() const   { return permissions().testAnyFlags(QFile::WriteUser); }
+    bool isExecutable() const { return permissions().testAnyFlags(QFile::ExeUser); }
 
 #ifdef Q_OS_UNIX
     void fillFromStatxBuf(const struct statx &statBuffer);

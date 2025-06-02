@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/builtin_polyfill.h"
 
@@ -441,6 +454,28 @@ fn f(tex : texture_storage_3d<rgba8unorm, write>) {
     EXPECT_EQ(expect, str(got));
 }
 
+TEST_F(BuiltinPolyfillTest, Bgra8unorm_TextureLoad) {
+    auto* src = R"(
+@group(0) @binding(0) var tex : texture_storage_2d<bgra8unorm, read>;
+
+fn f(coords : vec2<i32>) -> vec4<f32> {
+  return textureLoad(tex, coords);
+}
+)";
+
+    auto* expect = R"(
+@group(0) @binding(0) var tex : texture_storage_2d<rgba8unorm, read>;
+
+fn f(coords : vec2<i32>) -> vec4<f32> {
+  return textureLoad(tex, coords).bgra;
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillBgra8unorm());
+
+    EXPECT_EQ(expect, str(got));
+}
+
 TEST_F(BuiltinPolyfillTest, Bgra8unorm_TextureStore) {
     auto* src = R"(
 @group(0) @binding(0) var tex : texture_storage_2d<bgra8unorm, write>;
@@ -509,6 +544,28 @@ fn f(coords : vec2<i32>, value : vec4<f32>) {
     data.Add<BuiltinPolyfill::Config>(builtins);
 
     auto got = Run<BuiltinPolyfill>(src, std::move(data));
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Bgra8unorm_TextureLoadAndStore) {
+    auto* src = R"(
+@group(0) @binding(0) var tex : texture_storage_2d<bgra8unorm, read_write>;
+
+fn f(coords : vec2<i32>) {
+  textureStore(tex, coords, textureLoad(tex, coords));
+}
+)";
+
+    auto* expect = R"(
+@group(0) @binding(0) var tex : texture_storage_2d<rgba8unorm, read_write>;
+
+fn f(coords : vec2<i32>) {
+  textureStore(tex, coords, textureLoad(tex, coords).bgra.bgra);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillBgra8unorm());
 
     EXPECT_EQ(expect, str(got));
 }
@@ -3717,8 +3774,6 @@ fn f() {
 )";
 
     auto* expect = R"(
-enable chromium_experimental_full_ptr_parameters;
-
 fn tint_workgroupUniformLoad(p : ptr<workgroup, i32>) -> i32 {
   workgroupBarrier();
   let result = *(p);
@@ -3758,8 +3813,6 @@ fn f() {
 )";
 
     auto* expect = R"(
-enable chromium_experimental_full_ptr_parameters;
-
 fn tint_workgroupUniformLoad(p : ptr<workgroup, Outer>) -> Outer {
   workgroupBarrier();
   let result = *(p);
@@ -3791,8 +3844,6 @@ fn f() {
 
 TEST_F(BuiltinPolyfillTest, WorkgroupUniformLoad_AvoidDuplicateEnables) {
     auto* src = R"(
-enable chromium_experimental_full_ptr_parameters;
-
 var<workgroup> a : i32;
 var<workgroup> b : u32;
 var<workgroup> c : f32;
@@ -3805,8 +3856,6 @@ fn f() {
 )";
 
     auto* expect = R"(
-enable chromium_experimental_full_ptr_parameters;
-
 fn tint_workgroupUniformLoad(p : ptr<workgroup, i32>) -> i32 {
   workgroupBarrier();
   let result = *(p);
@@ -3858,8 +3907,6 @@ fn f() {
 )";
 
     auto* expect = R"(
-enable chromium_experimental_full_ptr_parameters;
-
 fn tint_workgroupUniformLoad_v() -> i32 {
   workgroupBarrier();
   let result = v;
@@ -3993,6 +4040,238 @@ fn f() {
 )";
 
     auto got = Run<BuiltinPolyfill>(src, polyfillQuantizeToF16_2d_f32());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Built-in functions in packed_4x8_integer_dot_product
+////////////////////////////////////////////////////////////////////////////////
+DataMap polyfillPacked4x8IntegerDotProduct() {
+    BuiltinPolyfill::Builtins builtins;
+    builtins.dot_4x8_packed = true;
+    builtins.pack_unpack_4x8 = true;
+    builtins.pack_4xu8_clamp = true;
+    DataMap data;
+    data.Add<BuiltinPolyfill::Config>(builtins);
+    return data;
+}
+
+TEST_F(BuiltinPolyfillTest, Dot4I8Packed) {
+    auto* src = R"(
+fn f() {
+  let v1 = 0x01020304u;
+  let v2 = 0xF1F2F3F4u;
+  _ = dot4I8Packed(v1, v2);
+}
+)";
+
+    auto* expect = R"(
+fn tint_dot4_i8_packed(a : u32, b : u32) -> i32 {
+  const n = vec4<u32>(24, 16, 8, 0);
+  let a_i8 = (bitcast<vec4<i32>>((vec4<u32>(a) << n)) >> vec4<u32>(24));
+  let b_i8 = (bitcast<vec4<i32>>((vec4<u32>(b) << n)) >> vec4<u32>(24));
+  return dot(a_i8, b_i8);
+}
+
+fn f() {
+  let v1 = 16909060u;
+  let v2 = 4059231220u;
+  _ = tint_dot4_i8_packed(v1, v2);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPacked4x8IntegerDotProduct());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Dot4U8Packed) {
+    auto* src = R"(
+fn f() {
+  let v1 = 0x01020304u;
+  let v2 = 0xF1F2F3F4u;
+  _ = dot4U8Packed(v1, v2);
+}
+)";
+
+    auto* expect = R"(
+fn tint_dot4_u8_packed(a : u32, b : u32) -> u32 {
+  const n = vec4<u32>(24, 16, 8, 0);
+  let a_u8 = ((vec4<u32>(a) >> n) & vec4<u32>(255));
+  let b_u8 = ((vec4<u32>(b) >> n) & vec4<u32>(255));
+  return dot(a_u8, b_u8);
+}
+
+fn f() {
+  let v1 = 16909060u;
+  let v2 = 4059231220u;
+  _ = tint_dot4_u8_packed(v1, v2);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPacked4x8IntegerDotProduct());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Pack4xI8) {
+    auto* src = R"(
+fn f() {
+  let v1 = vec4i(127, 128, -128, -129);
+  _ = pack4xI8(v1);
+}
+)";
+
+    auto* expect = R"(
+fn tint_pack_4xi8(a : vec4<i32>) -> u32 {
+  const n = vec4<u32>(0, 8, 16, 24);
+  let a_u32 = bitcast<vec4<u32>>(a);
+  let a_u8 = ((a_u32 & vec4<u32>(255)) << n);
+  return dot(a_u8, vec4<u32>(1));
+}
+
+fn f() {
+  let v1 = vec4i(127, 128, -(128), -(129));
+  _ = tint_pack_4xi8(v1);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPacked4x8IntegerDotProduct());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Pack4xU8) {
+    auto* src = R"(
+fn f() {
+  let v1 = vec4u(0, 254, 255, 256);
+  _ = pack4xU8(v1);
+}
+)";
+
+    auto* expect = R"(
+fn tint_pack_4xu8(a : vec4<u32>) -> u32 {
+  const n = vec4<u32>(0, 8, 16, 24);
+  let a_u8 = ((a & vec4<u32>(255)) << n);
+  return dot(a_u8, vec4<u32>(1));
+}
+
+fn f() {
+  let v1 = vec4u(0, 254, 255, 256);
+  _ = tint_pack_4xu8(v1);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPacked4x8IntegerDotProduct());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Pack4xI8Clamp) {
+    auto* src = R"(
+fn f() {
+  let v1 = vec4i(127, 128, -128, -129);
+  _ = pack4xI8Clamp(v1);
+}
+)";
+
+    auto* expect = R"(
+fn tint_pack_4xi8_clamp(a : vec4<i32>) -> u32 {
+  const n = vec4<u32>(0, 8, 16, 24);
+  let a_clamp = clamp(a, vec4<i32>(-128), vec4<i32>(127));
+  let a_u32 = bitcast<vec4<u32>>(a_clamp);
+  let a_u8 = ((a_u32 & vec4<u32>(255)) << n);
+  return dot(a_u8, vec4<u32>(1));
+}
+
+fn f() {
+  let v1 = vec4i(127, 128, -(128), -(129));
+  _ = tint_pack_4xi8_clamp(v1);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPacked4x8IntegerDotProduct());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Pack4xU8Clamp) {
+    auto* src = R"(
+fn f() {
+  let v1 = vec4u(0, 254, 255, 256);
+  _ = pack4xU8Clamp(v1);
+}
+)";
+
+    auto* expect = R"(
+fn tint_pack_4xu8_clamp(a : vec4<u32>) -> u32 {
+  const n = vec4<u32>(0, 8, 16, 24);
+  let a_clamp = clamp(a, vec4<u32>(0), vec4<u32>(255));
+  let a_u8 = vec4<u32>((a_clamp << n));
+  return dot(a_u8, vec4<u32>(1));
+}
+
+fn f() {
+  let v1 = vec4u(0, 254, 255, 256);
+  _ = tint_pack_4xu8_clamp(v1);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPacked4x8IntegerDotProduct());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Unpack4xI8) {
+    auto* src = R"(
+fn f() {
+  let v1 = u32(0x01FF02FE);
+  _ = unpack4xI8(v1);
+}
+)";
+
+    auto* expect = R"(
+fn tint_unpack_4xi8(a : u32) -> vec4<i32> {
+  const n = vec4<u32>(24, 16, 8, 0);
+  let a_vec4u = vec4<u32>(a);
+  let a_vec4i = bitcast<vec4<i32>>((a_vec4u << n));
+  return (a_vec4i >> vec4<u32>(24));
+}
+
+fn f() {
+  let v1 = u32(33489662);
+  _ = tint_unpack_4xi8(v1);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPacked4x8IntegerDotProduct());
+
+    EXPECT_EQ(expect, str(got));
+}
+
+TEST_F(BuiltinPolyfillTest, Unpack4xU8) {
+    auto* src = R"(
+fn f() {
+  let v1 = u32(0xFF01FE02);
+  _ = unpack4xU8(v1);
+}
+)";
+
+    auto* expect = R"(
+fn tint_unpack_4xu8(a : u32) -> vec4<u32> {
+  const n = vec4<u32>(0, 8, 16, 24);
+  let a_vec4u = (vec4<u32>(a) >> n);
+  return (a_vec4u & vec4<u32>(255));
+}
+
+fn f() {
+  let v1 = u32(4278320642);
+  _ = tint_unpack_4xu8(v1);
+}
+)";
+
+    auto got = Run<BuiltinPolyfill>(src, polyfillPacked4x8IntegerDotProduct());
 
     EXPECT_EQ(expect, str(got));
 }

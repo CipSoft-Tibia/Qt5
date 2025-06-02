@@ -6,7 +6,7 @@
 
 /*!
     \qmltype LightSensor
-//!    \instantiates QmlLightSensor
+//!    \nativetype QmlLightSensor
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -44,7 +44,7 @@ QSensor *QmlLightSensor::sensor() const
 }
 
 /*!
-    \qmlproperty qreal LightSensor::fieldOfView
+    \qmlproperty real LightSensor::fieldOfView
     This property holds a value indicating the field of view.
 
     Please see QLightSensor::fieldOfView for information about this property.
@@ -57,7 +57,7 @@ qreal QmlLightSensor::fieldOfView() const
 
 /*!
     \qmltype LightReading
-//!    \instantiates QmlLightSensorReading
+//!    \nativetype QmlLightSensorReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.0
@@ -82,7 +82,7 @@ QmlLightSensorReading::~QmlLightSensorReading()
 }
 
 /*!
-    \qmlproperty qreal LightReading::illuminance
+    \qmlproperty real LightReading::illuminance
     This property holds the light level.
 
     Please see QLightReading::illuminance for information about this property.

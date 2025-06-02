@@ -55,3 +55,30 @@ QList<QNetworkCookie> QNetworkCookie::parseCookies(const QByteArray &cookieStrin
 // order sections alphabetically
 
 #endif // QT_NETWORK_REMOVED_SINCE(6, 7)
+
+#if QT_NETWORK_REMOVED_SINCE(6, 8)
+
+#if QT_CONFIG(dnslookup)
+#  include "qdnslookup.h" // inlined API
+#endif
+#include "qnetworkrequest.h" // inlined API
+
+#include "qsslerror.h"
+
+#ifndef QT_NO_DEBUG_STREAM
+#if QT_CONFIG(ssl)
+
+#include "qdebug.h"
+
+QDebug operator<<(QDebug debug, const QSslError::SslError &error)
+{
+    return print(std::move(debug), error);
+}
+#endif
+#endif
+
+// #include "qotherheader.h"
+// // implement removed functions from qotherheader.h
+// order sections alphabetically
+
+#endif // QT_NETWORK_REMOVED_SINCE(6, 8)

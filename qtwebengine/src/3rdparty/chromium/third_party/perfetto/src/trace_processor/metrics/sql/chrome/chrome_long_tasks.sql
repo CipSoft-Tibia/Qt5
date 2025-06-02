@@ -23,32 +23,40 @@ INCLUDE PERFETTO MODULE chrome.tasks;
 -- names. For example, LongTaskTracker slices may have associated IPC
 -- metadata, or InterestingTask slices for input may have associated IPC to
 -- determine whether the task is fling/etc.
-SELECT CREATE_VIEW_FUNCTION(
-  'SELECT_LONG_TASK_SLICES(name STRING)',
-  'interface_name STRING, ipc_hash INT, message_type STRING, id INT, task_name STRING',
-  '
-    WITH slices_with_mojo_data AS (
-      SELECT
-          EXTRACT_ARG(arg_set_id, "chrome_mojo_event_info.mojo_interface_tag") AS interface_name,
-          EXTRACT_ARG(arg_set_id, "chrome_mojo_event_info.ipc_hash") AS ipc_hash,
-          CASE
-            WHEN EXTRACT_ARG(arg_set_id, "chrome_mojo_event_info.is_reply") THEN "reply"
-            ELSE "message"
-          END AS message_type,
-          id
-      FROM slice
-      WHERE
-        category GLOB "*scheduler.long_tasks*"
-        AND name = $name
-    )
-    SELECT
-      *,
-      printf("%s %s(hash=%s)", interface_name, message_type, ipc_hash) as task_name
-    FROM slices_with_mojo_data;
-  '
-);
+CREATE OR REPLACE PERFETTO FUNCTION select_long_task_slices(name STRING)
+RETURNS TABLE(
+  interface_name STRING,
+  ipc_hash INT,
+  message_type STRING,
+  id INT,
+  task_name STRING)
+AS
+WITH slices_with_mojo_data AS (
+  SELECT
+      EXTRACT_ARG(
+        arg_set_id,
+        "chrome_mojo_event_info.mojo_interface_tag"
+      ) AS interface_name,
+      EXTRACT_ARG(
+        arg_set_id,
+        "chrome_mojo_event_info.ipc_hash"
+      ) AS ipc_hash,
+      CASE
+        WHEN EXTRACT_ARG(arg_set_id, "chrome_mojo_event_info.is_reply") THEN "reply"
+        ELSE "message"
+      END AS message_type,
+      id
+  FROM slice
+  WHERE
+    category GLOB "*scheduler.long_tasks*"
+    AND name = $name
+)
+SELECT
+  *,
+  printf("%s %s(hash=%s)", interface_name, message_type, ipc_hash) as task_name
+FROM slices_with_mojo_data;
 
-CREATE PERFETTO FUNCTION is_long_choreographer_task(dur LONG)
+CREATE OR REPLACE PERFETTO FUNCTION is_long_choreographer_task(dur LONG)
 RETURNS BOOL AS
 SELECT $dur >= 4 * 1e6;
 
@@ -92,7 +100,7 @@ FROM raw_extracted_values;
 -- chrome_slices_with_java_views_internal, differing only in how a
 -- descendent is calculated.
 DROP VIEW IF EXISTS long_task_slices_with_java_views;
-CREATE VIEW long_task_slices_with_java_views AS
+CREATE PERFETTO VIEW long_task_slices_with_java_views AS
 WITH
   -- Select UI thread BeginMainFrames frames.
   root_slices AS (
@@ -123,7 +131,7 @@ LEFT JOIN root_slice_and_java_view_not_grouped s2
 GROUP BY s1.id;
 
 DROP VIEW IF EXISTS chrome_long_tasks_internal;
-CREATE VIEW chrome_long_tasks_internal AS
+CREATE PERFETTO VIEW chrome_long_tasks_internal AS
 WITH -- Generate full names for tasks with java views.
   java_views_tasks AS (
     SELECT
@@ -172,7 +180,7 @@ FROM long_task_slices_with_java_views
 WHERE kind = "Choreographer";
 
 DROP VIEW IF EXISTS chrome_long_tasks;
-CREATE VIEW chrome_long_tasks AS
+CREATE PERFETTO VIEW chrome_long_tasks AS
 SELECT
   full_name,
   task_type,

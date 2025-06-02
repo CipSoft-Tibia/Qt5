@@ -74,7 +74,7 @@ current assignee.
     clang-format settings which are found and used automatically by clang-format.
   * **clang-format** binaries are available from the LLVM orginization, here:
     [LLVM](https://clang.llvm.org/).
-    Our CI system (Travis-CI) currently uses clang-format version 5.0.0 to
+    Our CI system currently uses clang-format version 16 to
     check that the lines of code you have changed are formatted properly.
     It is recommended that you use the same version to format your code prior
     to submission.
@@ -107,7 +107,7 @@ Please ensure that the repository compiles and passes tests without
 error for each commit in your pull request.
 Note that to be accepted into the repository, the pull request must
 pass all tests on all supported platforms.
-The automatic Github Travis and AppVeyor continuous integration features
+The automatic Github continuous integration features
 will assist in enforcing this requirement.*
 
 #### Generated Source Code
@@ -115,9 +115,8 @@ will assist in enforcing this requirement.*
 The `loader/generated` directory contains source code that is created by several
 generator scripts in the `scripts` directory. All changes to these scripts _must_ be submitted with the
 corresponding generated output to keep the repository self-consistent. This requirement is enforced by both
-Travis CI and AppVeyor test configurations. Regenerate source files after modifying any of the generator
-scripts and before building and testing your changes. More details can be found in
-[BUILD.md](BUILD.md#generated-source-code).
+GitHub actions. Regenerate source files after modifying any of the generator scripts and before building
+and testing your changes. More details can be found in [BUILD.md](BUILD.md#generated-source-code).
 
 #### Testing Your Changes
 

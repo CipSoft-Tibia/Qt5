@@ -45,11 +45,12 @@
  *
  */
 
-#include "playbackengine/qffmpegplaybackenginedefs_p.h"
-#include "playbackengine/qffmpegtimecontroller_p.h"
-#include "playbackengine/qffmpegmediadataholder_p.h"
-#include "playbackengine/qffmpegcodec_p.h"
-#include "playbackengine/qffmpegpositionwithoffset_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackenginedefs_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegtimecontroller_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegmediadataholder_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegcodeccontext_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackutils_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegtime_p.h>
 
 #include <QtCore/qpointer.h>
 
@@ -60,6 +61,7 @@ QT_BEGIN_NAMESPACE
 class QAudioSink;
 class QVideoSink;
 class QAudioOutput;
+class QAudioBufferOutput;
 class QFFmpegMediaPlayer;
 
 namespace QFFmpeg
@@ -81,6 +83,8 @@ public:
 
     void setAudioSink(QPlatformAudioOutput *output);
 
+    void setAudioBufferOutput(QAudioBufferOutput *output);
+
     void setState(QMediaPlayer::PlaybackState state);
 
     void play() {
@@ -93,7 +97,7 @@ public:
         setState(QMediaPlayer::StoppedState);
     }
 
-    void seek(qint64 pos);
+    void seek(TrackPosition pos);
 
     void setLoops(int loopsCount);
 
@@ -103,9 +107,9 @@ public:
 
     void setActiveTrack(QPlatformMediaPlayer::TrackType type, int streamNumber);
 
-    qint64 currentPosition(bool topPos = true) const;
+    TrackPosition currentPosition(bool topPos = true) const;
 
-    qint64 duration() const;
+    TrackDuration duration() const;
 
     bool isSeekable() const;
 
@@ -141,7 +145,8 @@ protected: // objects managing
 
     virtual RendererPtr createRenderer(QPlatformMediaPlayer::TrackType trackType);
 
-    void updateActiveAudioOutput(QAudioOutput *output);
+    template <typename AudioOutput>
+    void updateActiveAudioOutput(AudioOutput *output);
 
     void updateActiveVideoOutput(QVideoSink *sink, bool cleanOutput = false);
 
@@ -168,22 +173,24 @@ private:
 
     void deleteFreeThreads();
 
-    void onRendererSynchronized(quint64 id, std::chrono::steady_clock::time_point time,
-                                qint64 trackTime);
+    void onFirsPacketFound(quint64 id, TrackPosition absSeekPos);
+
+    void onRendererSynchronized(quint64 id, RealClock::time_point timePoint,
+                                TrackPosition trackPosition);
 
     void onRendererFinished();
 
-    void onRendererLoopChanged(quint64 id, qint64 offset, int loopIndex);
+    void onRendererLoopChanged(quint64 id, TrackPosition offset, int loopIndex);
 
     void triggerStepIfNeeded();
 
     static QString objectThreadName(const PlaybackEngineObject &object);
 
-    std::optional<Codec> codecForTrack(QPlatformMediaPlayer::TrackType trackType);
+    std::optional<CodecContext> codecContextForTrack(QPlatformMediaPlayer::TrackType trackType);
 
     bool hasMediaStream() const;
 
-    void finilizeTime(qint64 pos);
+    void finilizeTime(TrackPosition pos);
 
     void finalizeOutputs();
 
@@ -191,7 +198,7 @@ private:
 
     void updateVideoSinkSize(QVideoSink *prevSink = nullptr);
 
-    qint64 boundPosition(qint64 position) const;
+    TrackPosition boundPosition(TrackPosition position) const;
 
 private:
     MediaDataHolder m_media;
@@ -203,6 +210,7 @@ private:
 
     QPointer<QVideoSink> m_videoSink;
     QPointer<QAudioOutput> m_audioOutput;
+    QPointer<QAudioBufferOutput> m_audioBufferOutput;
 
     QMediaPlayer::PlaybackState m_state = QMediaPlayer::StoppedState;
 
@@ -210,7 +218,10 @@ private:
     std::array<StreamPtr, QPlatformMediaPlayer::NTrackTypes> m_streams;
     std::array<RendererPtr, QPlatformMediaPlayer::NTrackTypes> m_renderers;
 
-    std::array<std::optional<Codec>, QPlatformMediaPlayer::NTrackTypes> m_codecs;
+    bool m_shouldUpdateTimeOnFirstPacket = false;
+    bool m_seekPending = false;
+
+    std::array<std::optional<CodecContext>, QPlatformMediaPlayer::NTrackTypes> m_codecContexts;
     int m_loops = QMediaPlayer::Once;
     LoopOffset m_currentLoopOffset;
 };
@@ -222,7 +233,7 @@ PlaybackEngine::ObjectPtr<T> PlaybackEngine::createPlaybackEngineObject(Args &&.
     registerObject(*result);
     return result;
 }
-}
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

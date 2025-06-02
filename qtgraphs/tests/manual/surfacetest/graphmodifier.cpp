@@ -5,8 +5,7 @@
 #include <QtGraphs/QValue3DAxis>
 #include <QtGraphs/QSurfaceDataProxy>
 #include <QtGraphs/QSurface3DSeries>
-#include <QtGraphs/Q3DTheme>
-#include <QtGraphs/Q3DInputHandler>
+#include <QtGraphs/QGraphsTheme>
 
 #include <qmath.h>
 #include <qrandom.h>
@@ -20,7 +19,7 @@
 //#define JITTER_PLANE
 //#define WONKY_PLANE
 
-GraphModifier::GraphModifier(Q3DSurface *graph)
+GraphModifier::GraphModifier(Q3DSurfaceWidgetItem *graph)
     : m_graph(graph),
       m_series1(new QSurface3DSeries),
       m_series2(new QSurface3DSeries),
@@ -87,7 +86,7 @@ GraphModifier::GraphModifier(Q3DSurface *graph)
     m_graph->axisY()->setRange(m_minY, m_minY + m_rangeY);
     m_graph->axisZ()->setRange(m_minZ, m_minZ + m_rangeZ);
 
-    static_cast<Q3DInputHandler *>(m_graph->activeInputHandler())->setZoomAtTargetEnabled(true);
+    m_graph->setZoomAtTargetEnabled(true);
 
     for (int i = 0; i < 4; i++) {
         m_multiseries[i] = new QSurface3DSeries;
@@ -104,13 +103,13 @@ GraphModifier::GraphModifier(Q3DSurface *graph)
     connect(&m_graphPositionQueryTimer, &QTimer::timeout, this, &GraphModifier::graphQueryTimeout);
     connect(m_theSeries, &QSurface3DSeries::selectedPointChanged, this, &GraphModifier::selectedPointChanged);
 
-    QObject::connect(m_graph, &Q3DSurface::axisXChanged, this,
+    QObject::connect(m_graph, &Q3DSurfaceWidgetItem::axisXChanged, this,
                      &GraphModifier::handleAxisXChanged);
-    QObject::connect(m_graph, &Q3DSurface::axisYChanged, this,
+    QObject::connect(m_graph, &Q3DSurfaceWidgetItem::axisYChanged, this,
                      &GraphModifier::handleAxisYChanged);
-    QObject::connect(m_graph, &Q3DSurface::axisZChanged, this,
+    QObject::connect(m_graph, &Q3DSurfaceWidgetItem::axisZChanged, this,
                      &GraphModifier::handleAxisZChanged);
-    QObject::connect(m_graph, &QAbstract3DGraph::currentFpsChanged, this,
+    QObject::connect(m_graph, &Q3DGraphsWidgetItem::currentFpsChanged, this,
                      &GraphModifier::handleFpsChange);
 
     //m_graphPositionQueryTimer.start(100);
@@ -210,12 +209,17 @@ void GraphModifier::toggleSeries4(int enabled)
     }
 }
 
-void GraphModifier::toggleSmooth(int enabled)
+void GraphModifier::toggleSmooth(int visible)
 {
-    qDebug() << "GraphModifier::toggleSmooth " << enabled;
-    m_theSeries->setFlatShadingEnabled(enabled);
+    qDebug() << "GraphModifier::toggleSmooth " << visible;
+    QSurface3DSeries::Shading shading;
+    if (visible)
+        shading = QSurface3DSeries::Shading::Flat;
+    else
+        shading = QSurface3DSeries::Shading::Smooth;
+    m_theSeries->setShading(shading);
 #ifdef MULTI_SERIES
-    m_multiseries[0]->setFlatShadingEnabled(enabled);
+    m_multiseries[0]->setShading(shading);
 #endif
 }
 
@@ -255,10 +259,15 @@ void GraphModifier::toggleSeriesVisible(int enable)
 #endif
 }
 
-void GraphModifier::toggleSmoothS2(int enabled)
+void GraphModifier::toggleSmoothS2(int visible)
 {
-    qDebug() << __FUNCTION__ << enabled;
-    m_multiseries[1]->setFlatShadingEnabled(enabled);
+    qDebug() << __FUNCTION__ << visible;
+    QSurface3DSeries::Shading shading;
+    if (visible)
+        shading = QSurface3DSeries::Shading::Flat;
+    else
+        shading = QSurface3DSeries::Shading::Smooth;
+    m_multiseries[1]->setShading(shading);
 }
 
 void GraphModifier::toggleSurfaceGridS2(int enable)
@@ -292,7 +301,12 @@ void GraphModifier::toggleSeries2Visible(int enable)
 void GraphModifier::toggleSmoothS3(int enabled)
 {
     qDebug() << __FUNCTION__ << enabled;
-    m_multiseries[2]->setFlatShadingEnabled(enabled);
+    QSurface3DSeries::Shading shading;
+    if (enabled)
+        shading = QSurface3DSeries::Shading::Flat;
+    else
+        shading = QSurface3DSeries::Shading::Smooth;
+    m_multiseries[2]->setShading(shading);
 }
 
 void GraphModifier::toggleSurfaceGridS3(int enable)
@@ -317,16 +331,21 @@ void GraphModifier::toggleSurfaceS3(int enable)
     m_multiseries[2]->setDrawMode(m_drawMode3);
 }
 
-void GraphModifier::toggleSeries3Visible(int enable)
+void GraphModifier::toggleSeries3Visible(int visible)
 {
-    qDebug() << __FUNCTION__ << enable;
-    m_multiseries[2]->setVisible(enable);
+    qDebug() << __FUNCTION__ << visible;
+    m_multiseries[2]->setVisible(visible);
 }
 
-void GraphModifier::toggleSmoothS4(int enabled)
+void GraphModifier::toggleSmoothS4(int visible)
 {
-    qDebug() << __FUNCTION__ << enabled;
-    m_multiseries[3]->setFlatShadingEnabled(enabled);
+    qDebug() << __FUNCTION__ << visible;
+    QSurface3DSeries::Shading shading;
+    if (visible)
+        shading = QSurface3DSeries::Shading::Flat;
+    else
+        shading = QSurface3DSeries::Shading::Smooth;
+    m_multiseries[3]->setShading(shading);
 }
 
 void GraphModifier::toggleSurfaceGridS4(int enable)
@@ -600,16 +619,16 @@ void GraphModifier::adjustZMin(int min)
 
 void GraphModifier::gradientPressed()
 {
-    static Q3DTheme::ColorStyle colorStyle = Q3DTheme::ColorStyle::Uniform;
+    static QGraphsTheme::ColorStyle colorStyle = QGraphsTheme::ColorStyle::Uniform;
 
-    if (colorStyle == Q3DTheme::ColorStyle::RangeGradient) {
-        colorStyle = Q3DTheme::ColorStyle::ObjectGradient;
+    if (colorStyle == QGraphsTheme::ColorStyle::RangeGradient) {
+        colorStyle = QGraphsTheme::ColorStyle::ObjectGradient;
         qDebug() << "Color style: ObjectGradient";
-    } else if (colorStyle == Q3DTheme::ColorStyle::ObjectGradient) {
-        colorStyle = Q3DTheme::ColorStyle::Uniform;
+    } else if (colorStyle == QGraphsTheme::ColorStyle::ObjectGradient) {
+        colorStyle = QGraphsTheme::ColorStyle::Uniform;
         qDebug() << "Color style: Uniform";
     } else {
-        colorStyle = Q3DTheme::ColorStyle::RangeGradient;
+        colorStyle = QGraphsTheme::ColorStyle::RangeGradient;
         qDebug() << "Color style: RangeGradient";
     }
 
@@ -621,7 +640,7 @@ void GraphModifier::gradientPressed()
 
     QList<QLinearGradient> gradients;
     gradients << gradient;
-    m_graph->activeTheme()->setBaseGradients(gradients);
+    m_graph->activeTheme()->setSeriesGradients(gradients);
     m_graph->activeTheme()->setColorStyle(colorStyle);
 
 }
@@ -630,12 +649,13 @@ void GraphModifier::changeFont(const QFont &font)
 {
     QFont newFont = font;
     newFont.setPointSizeF(m_fontSize);
-    m_graph->activeTheme()->setFont(newFont);
+    m_graph->activeTheme()->setLabelFont(newFont);
 }
 
 void GraphModifier::changeStyle()
 {
-    m_graph->activeTheme()->setLabelBackgroundEnabled(!m_graph->activeTheme()->isLabelBackgroundEnabled());
+    m_graph->activeTheme()->setLabelBackgroundVisible(
+        !m_graph->activeTheme()->isLabelBackgroundVisible());
 }
 
 void GraphModifier::selectButtonClicked()
@@ -653,15 +673,37 @@ void GraphModifier::selectedPointChanged(const QPoint &point)
     m_selectionInfoLabel->setText(labelText);
 }
 
+void GraphModifier::changeColorScheme(int colorScheme)
+{
+    m_graph->activeTheme()->setColorScheme(QGraphsTheme::ColorScheme(colorScheme + 1));
+}
+
 void GraphModifier::changeTheme(int theme)
 {
-    m_graph->activeTheme()->setType(Q3DTheme::Theme(theme));
+    m_graph->activeTheme()->setTheme(QGraphsTheme::Theme(theme));
 }
 
 
 void GraphModifier::flipViews()
 {
     m_graph->scene()->setSecondarySubviewOnTop(!m_graph->scene()->isSecondarySubviewOnTop());
+}
+
+void GraphModifier::changeSubView()
+{
+    if (!m_customSubviews) {
+        m_graph->scene()->setPrimarySubViewport(
+            QRect(0, 0, m_graph->widget()->width() / 2, m_graph->widget()->height()));
+        m_graph->scene()->setSecondarySubViewport(QRect(m_graph->widget()->width() / 2,
+                                                        0,
+                                                        m_graph->widget()->width() / 2,
+                                                        m_graph->widget()->height()));
+        m_customSubviews = true;
+    } else {
+        m_graph->scene()->setPrimarySubViewport(QRect());
+        m_graph->scene()->setSecondarySubViewport(QRect());
+        m_customSubviews = false;
+    }
 }
 
 void GraphModifier::timeout()
@@ -688,8 +730,8 @@ void GraphModifier::timeout()
 void GraphModifier::graphQueryTimeout()
 {
 #ifndef QT_NO_CURSOR
-    m_graph->scene()->setGraphPositionQuery(m_graph->mapFromGlobal(QCursor::pos()));
-    qDebug() << "pos: " << (m_graph->mapFromGlobal(QCursor::pos()));
+    m_graph->scene()->setGraphPositionQuery(m_graph->widget()->mapFromGlobal(QCursor::pos()));
+    qDebug() << "pos: " << (m_graph->widget()->mapFromGlobal(QCursor::pos()));
 #else
     m_graph->scene()->setGraphPositionQuery(QPoint(100, 100));
 #endif
@@ -717,16 +759,31 @@ void GraphModifier::handleFpsChange(int fps)
 
 void GraphModifier::changeLabelRotation(int rotation)
 {
-    m_graph->axisX()->setLabelAutoRotation(float(rotation));
-    m_graph->axisY()->setLabelAutoRotation(float(rotation));
-    m_graph->axisZ()->setLabelAutoRotation(float(rotation));
+    m_graph->axisX()->setLabelAutoAngle(float(rotation));
+    m_graph->axisY()->setLabelAutoAngle(float(rotation));
+    m_graph->axisZ()->setLabelAutoAngle(float(rotation));
 }
 
-void GraphModifier::toggleAxisTitleVisibility(int enabled)
+void GraphModifier::toggleAxisTitleVisibility(int visible)
 {
-    m_graph->axisX()->setTitleVisible(enabled);
-    m_graph->axisY()->setTitleVisible(enabled);
-    m_graph->axisZ()->setTitleVisible(enabled);
+    m_graph->axisX()->setTitleVisible(visible);
+    m_graph->axisY()->setTitleVisible(visible);
+    m_graph->axisZ()->setTitleVisible(visible);
+}
+
+void GraphModifier::toggleXAxisLabelsVisibility(int visible)
+{
+    m_graph->axisX()->setLabelsVisible(visible);
+}
+
+void GraphModifier::toggleYAxisLabelsVisibility(int visible)
+{
+    m_graph->axisY()->setLabelsVisible(visible);
+}
+
+void GraphModifier::toggleZAxisLabelsVisibility(int visible)
+{
+    m_graph->axisZ()->setLabelsVisible(visible);
 }
 
 void GraphModifier::toggleAxisTitleFixed(int enabled)
@@ -744,11 +801,11 @@ void GraphModifier::toggleXAscending(int enabled)
 
     const auto surfaceSeriesList = m_graph->seriesList();
     for (const auto &series : surfaceSeriesList) {
-        QSurfaceDataArray &array = const_cast<QSurfaceDataArray &>(series->dataProxy()->array());
+        QSurfaceDataArray &array = const_cast<QSurfaceDataArray &>(series->dataArray());
         const int rowCount = array.size();
         const int columnCount = array.at(0).size();
         const bool dataAscending = array.at(0).at(0).x() < array.at(0).at(columnCount - 1).x();
-        if (dataAscending != enabled) {
+        if (dataAscending != m_ascendingX) {
             // Create new array of equal size
             QSurfaceDataArray newArray;
             newArray.reserve(rowCount);
@@ -775,11 +832,11 @@ void GraphModifier::toggleZAscending(int enabled)
     // Flip data array contents if necessary
     const auto surfaceSeriesList = m_graph->seriesList();
     for (const auto &series : surfaceSeriesList) {
-        QSurfaceDataArray &array = const_cast<QSurfaceDataArray &>(series->dataProxy()->array());
+        QSurfaceDataArray &array = const_cast<QSurfaceDataArray &>(series->dataArray());
         const int rowCount = array.size();
         const int columnCount = array.at(0).size();
         const bool dataAscending = array.at(0).at(0).z() < array.at(rowCount - 1).at(0).z();
-        if (dataAscending != enabled) {
+        if (dataAscending != m_ascendingZ) {
             // Create new array of equal size
             QSurfaceDataArray newArray;
             newArray.reserve(rowCount);
@@ -834,6 +891,12 @@ void GraphModifier::setGraphMargin(int value)
     qDebug() << "Setting margin:" << m_graph->margin() << value;
 }
 
+void GraphModifier::setLabelMargin(int offset)
+{
+    m_graph->setLabelMargin(qreal(offset) / 1000.0f);
+    qDebug() << "Setting label offset:" << m_graph->labelMargin() << offset;
+}
+
 void GraphModifier::setXAxisSegemntCount(int count)
 {
     m_graph->axisX()->setSegmentCount(count);
@@ -876,7 +939,7 @@ void GraphModifier::resetArrayAndSliders(QSurfaceDataArray array, float minZ, fl
 
 void GraphModifier::changeShadowQuality(int quality)
 {
-    QAbstract3DGraph::ShadowQuality sq = QAbstract3DGraph::ShadowQuality(quality);
+    QtGraphs3D::ShadowQuality sq = QtGraphs3D::ShadowQuality(quality);
     m_graph->setShadowQuality(sq);
 }
 
@@ -885,7 +948,7 @@ void GraphModifier::changeSelectionMode(int mode)
     QComboBox *comboBox = qobject_cast<QComboBox *>(sender());
     if (comboBox) {
         int flags = comboBox->itemData(mode).toInt();
-        m_graph->setSelectionMode(QAbstract3DGraph::SelectionFlags(flags));
+        m_graph->setSelectionMode(QtGraphs3D::SelectionFlags(flags));
     }
 }
 
@@ -1402,8 +1465,8 @@ void GraphModifier::massiveDataTest()
         m_graph->setAxisX(xAxis);
         m_graph->setAxisY(yAxis);
         m_graph->setAxisZ(zAxis);
-        m_graph->setCameraPreset(QAbstract3DGraph::CameraPreset::Right);
-        m_graph->setShadowQuality(QAbstract3DGraph::ShadowQuality::None);
+        m_graph->setCameraPreset(QtGraphs3D::CameraPreset::Right);
+        m_graph->setShadowQuality(QtGraphs3D::ShadowQuality::None);
         const auto surfaceSeriesList = m_graph->seriesList();
         for (const auto &series : surfaceSeriesList)
             m_graph->removeSeries(series);
@@ -1618,44 +1681,44 @@ void GraphModifier::changeMesh()
     static int model = 0;
     switch (model) {
     case 0:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cylinder);
-        m_graph->seriesList().at(0)->setMeshSmooth(false);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::Cylinder);
+        m_graph->selectedSeries()->setMeshSmooth(false);
         break;
     case 1:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cylinder);
-        m_graph->seriesList().at(0)->setMeshSmooth(true);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::Cylinder);
+        m_graph->selectedSeries()->setMeshSmooth(true);
         break;
     case 2:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cone);
-        m_graph->seriesList().at(0)->setMeshSmooth(false);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::Cone);
+        m_graph->selectedSeries()->setMeshSmooth(false);
         break;
     case 3:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Cone);
-        m_graph->seriesList().at(0)->setMeshSmooth(true);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::Cone);
+        m_graph->selectedSeries()->setMeshSmooth(true);
         break;
     case 4:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Bar);
-        m_graph->seriesList().at(0)->setMeshSmooth(false);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::Bar);
+        m_graph->selectedSeries()->setMeshSmooth(false);
         break;
     case 5:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Bar);
-        m_graph->seriesList().at(0)->setMeshSmooth(true);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::Bar);
+        m_graph->selectedSeries()->setMeshSmooth(true);
         break;
     case 6:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Pyramid);
-        m_graph->seriesList().at(0)->setMeshSmooth(false);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::Pyramid);
+        m_graph->selectedSeries()->setMeshSmooth(false);
         break;
     case 7:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::Pyramid);
-        m_graph->seriesList().at(0)->setMeshSmooth(true);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::Pyramid);
+        m_graph->selectedSeries()->setMeshSmooth(true);
         break;
     case 8:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::BevelBar);
-        m_graph->seriesList().at(0)->setMeshSmooth(false);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::BevelBar);
+        m_graph->selectedSeries()->setMeshSmooth(false);
         break;
     case 9:
-        m_graph->seriesList().at(0)->setMesh(QAbstract3DSeries::Mesh::BevelBar);
-        m_graph->seriesList().at(0)->setMeshSmooth(true);
+        m_graph->selectedSeries()->setMesh(QAbstract3DSeries::Mesh::BevelBar);
+        m_graph->selectedSeries()->setMeshSmooth(true);
         break;
     }
     model++;

@@ -17,11 +17,12 @@
 
 #include <QtGrpcQuick/qtgrpcquickexports.h>
 
-#include <QtCore/qmap.h>
+#include <QtQmlIntegration/qqmlintegration.h>
+
+#include <QtCore/qbytearray.h>
+#include <QtCore/qhash.h>
 #include <QtCore/qobject.h>
-#include <QtCore/qvariant.h>
-#include <QtGrpc/qgrpcmetadata.h>
-#include <QtQml/qqmlregistration.h>
+#include <QtCore/qvariantmap.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -31,21 +32,25 @@ class Q_GRPCQUICK_EXPORT QQmlGrpcMetadata : public QObject
     QML_NAMED_ELEMENT(GrpcMetadata)
     QML_ADDED_IN_VERSION(6, 7)
 
-    Q_PROPERTY(QVariantMap data READ data WRITE setData NOTIFY dataChanged)
+    Q_PROPERTY(QVariantMap data READ data WRITE setData NOTIFY dataChanged REQUIRED)
 public:
-    QQmlGrpcMetadata(QObject *parent = nullptr);
+    explicit QQmlGrpcMetadata(QObject *parent = nullptr);
     ~QQmlGrpcMetadata() override;
 
-    const QGrpcMetadata &metadata() const { return m_metadata; }
+    const QHash<QByteArray, QByteArray> &metadata() const & noexcept { return m_metadata; }
+    void metadata() && = delete;
+
     const QVariantMap &data() const { return m_variantdata; }
     void setData(const QVariantMap &data);
 
-signals:
+Q_SIGNALS:
     void dataChanged();
 
 private:
     QVariantMap m_variantdata;
-    QGrpcMetadata m_metadata;
+    QHash<QByteArray, QByteArray> m_metadata;
+
+    Q_DISABLE_COPY_MOVE(QQmlGrpcMetadata)
 };
 
 QT_END_NAMESPACE

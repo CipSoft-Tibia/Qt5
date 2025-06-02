@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import os
 import pathlib
+import platform
+import shutil
 from typing import Optional
 
 from .base import Platform
@@ -19,6 +21,10 @@ class WinPlatform(Platform):
       pathlib.Path(os.path.expandvars("%APPDATA%")),
       pathlib.Path(os.path.expandvars("%LOCALAPPDATA%")),
   )
+
+  def __init__(self) -> None:
+    self._cpu = ""
+    self._version = ""
 
   @property
   def is_win(self) -> bool:
@@ -35,13 +41,16 @@ class WinPlatform(Platform):
 
   @property
   def version(self) -> str:
-    # TODO: implement
-    return ""
+    if not self._version:
+      self._version = self.sh_stdout("cmd", "/c", "ver").strip()
+    return self._version
 
   @property
   def cpu(self) -> str:
-    # TODO: implement
-    return ""
+    if not self._cpu:
+      self._cpu = self.sh_stdout("wmic", "cpu", "get",
+                                 "name").strip().splitlines()[2].strip()
+    return self._cpu
 
   def search_binary(self, app_or_bin: pathlib.Path) -> Optional[pathlib.Path]:
     assert not self.is_remote, "Unsupported operation on remote platform"
@@ -65,3 +74,11 @@ class WinPlatform(Platform):
     return self.sh_stdout(
         "powershell", "-command",
         f"(Get-Item '{app_or_bin}').VersionInfo.ProductVersion")
+
+  def symlink_or_copy(self, src: pathlib.Path,
+                      dst: pathlib.Path) -> pathlib.Path:
+    """Windows does not support symlinking without admin support.
+    Copy files on windows but symlink everywhere else."""
+    assert self.is_local, "Unsupported operation on remote platform"
+    shutil.copy(src, dst)
+    return dst

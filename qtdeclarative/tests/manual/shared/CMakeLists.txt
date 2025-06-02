@@ -22,13 +22,11 @@ qt_add_qml_module(${PROJECT_NAME}_shared
         "Button.qml"
         "CheckBox.qml"
         "FlickrRssModel.qml"
+        "Images.qml"
         "Label.qml"
-        "LauncherList.qml"
-        "SimpleLauncherDelegate.qml"
         "Slider.qml"
         "TabSet.qml"
         "TextField.qml"
-        "Images.qml"
     RESOURCES
         "images/back.png"
         "images/checkmark.png"
@@ -37,6 +35,11 @@ qt_add_qml_module(${PROJECT_NAME}_shared
         "images/slider_handle.png"
         "images/tab.png"
 )
+
+qt_autogen_tools(${PROJECT_NAME}_shared ENABLE_AUTOGEN_TOOLS "moc" "rcc")
+if(TARGET Qt::Widgets)
+    qt_autogen_tools(${PROJECT_NAME}_shared ENABLE_AUTOGEN_TOOLS "uic")
+endif()
 
 include(QtBundleQmlModuleForMacOS.cmake)
 # Puts the shared qml module plugin and qmldir into the macOS app bundle directory.

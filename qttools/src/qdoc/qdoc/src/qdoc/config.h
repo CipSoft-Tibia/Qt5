@@ -13,6 +13,7 @@
 #include <QtCore/qstack.h>
 #include <QtCore/qstringlist.h>
 
+#include <set>
 #include <utility>
 
 QT_BEGIN_NAMESPACE
@@ -180,6 +181,22 @@ public:
     [[nodiscard]] bool preparing() const { return (m_qdocPass == Prepare); }
     [[nodiscard]] bool generating() const { return (m_qdocPass == Generate); }
 
+    struct ExcludedPaths {
+        QSet<QString> excluded_directories;
+        QSet<QString> excluded_files;
+    };
+    const ExcludedPaths& getExcludedPaths();
+
+    struct HeaderFilePath {
+        QString path;
+        QString filename;
+
+        friend bool operator<(const HeaderFilePath& lhs, const HeaderFilePath& rhs) {
+            return std::tie(lhs.path, lhs.filename) < std::tie(rhs.path, rhs.filename);
+        }
+    };
+    std::set<HeaderFilePath> getHeaderFiles();
+
 private:
     void processCommandLineOptions(const QStringList &args);
     void setIncludePaths();
@@ -194,6 +211,7 @@ private:
     QStringList m_exampleDirs {};
     QString m_currentDir {};
     QString m_previousCurrentDir {};
+    std::optional<ExcludedPaths> m_excludedPaths{};
 
     bool m_showInternal { false };
     static bool m_debug;
@@ -221,10 +239,8 @@ private:
 
 struct ConfigStrings
 {
-    static QString ALIAS;
     static QString AUTOLINKERRORS;
     static QString BUILDVERSION;
-    static QString CLANGDEFINES;
     static QString CODEINDENT;
     static QString CODEPREFIX;
     static QString CODESUFFIX;
@@ -290,6 +306,7 @@ struct ConfigStrings
     static QString TAGFILE;
     static QString TIMESTAMPS;
     static QString TOCTITLES;
+    static QString TRADEMARKSPAGE;
     static QString URL;
     static QString VERSION;
     static QString VERSIONSYM;
@@ -302,7 +319,6 @@ struct ConfigStrings
 
 #define CONFIG_AUTOLINKERRORS ConfigStrings::AUTOLINKERRORS
 #define CONFIG_BUILDVERSION ConfigStrings::BUILDVERSION
-#define CONFIG_CLANGDEFINES ConfigStrings::CLANGDEFINES
 #define CONFIG_CODEINDENT ConfigStrings::CODEINDENT
 #define CONFIG_CODEPREFIX ConfigStrings::CODEPREFIX
 #define CONFIG_CODESUFFIX ConfigStrings::CODESUFFIX
@@ -367,6 +383,7 @@ struct ConfigStrings
 #define CONFIG_TAGFILE ConfigStrings::TAGFILE
 #define CONFIG_TIMESTAMPS ConfigStrings::TIMESTAMPS
 #define CONFIG_TOCTITLES ConfigStrings::TOCTITLES
+#define CONFIG_TRADEMARKSPAGE ConfigStrings::TRADEMARKSPAGE
 #define CONFIG_URL ConfigStrings::URL
 #define CONFIG_VERSION ConfigStrings::VERSION
 #define CONFIG_VERSIONSYM ConfigStrings::VERSIONSYM

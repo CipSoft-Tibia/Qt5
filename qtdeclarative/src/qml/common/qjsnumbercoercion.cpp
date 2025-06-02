@@ -24,8 +24,24 @@ QT_BEGIN_NAMESPACE
   \internal
 
   Checks whether \a d contains a value that can serve as an index into an array.
-  For that, \a d must be a non-negative value representable as an int.
+  For that, \a d must be a non-negative value representable as an unsigned 32bit int.
  */
+
+/*!
+  \fn bool QJSNumberCoercion::isArrayIndex(qint64 i)
+  \internal
+
+  Checks whether \a i contains a value that can serve as an index into an array.
+  For that, \a d must be a non-negative value representable as an unsigned 32bit int.
+*/
+
+/*!
+  \fn bool QJSNumberCoercion::isArrayIndex(quint64 i)
+  \internal
+
+  Checks whether \a i contains a value that can serve as an index into an array.
+  For that, \a d must be a value representable as an unsigned 32bit int.
+*/
 
 /*!
   \fn int QJSNumberCoercion::toInteger(double d)
@@ -42,5 +58,12 @@ QT_BEGIN_NAMESPACE
   Compares \a lhs and \a rhs bit by bit without causing a compile warning.
   Returns the \c true if they are equal, or \c false if not.
  */
+
+/*!
+  \fn double QJSNumberCoercion::roundTowards0(double d)
+  \internal
+
+  Rounds \a d towards 0 by JavaScript \e ToInteger rules and returns the result.
+*/
 
 QT_END_NAMESPACE

@@ -1,5 +1,5 @@
-android|ios|winrt {
-    error( "This example is not supported for android, ios, or winrt." )
+android|winrt {
+    error( "This example is not supported for android or winrt." )
 }
 
 !include( ../examples.pri ) {
@@ -7,6 +7,7 @@ android|ios|winrt {
 }
 
 QT += widgets
+
 requires(qtConfig(fontcombobox))
 requires(qtConfig(combobox))
 
@@ -19,12 +20,12 @@ SOURCES += main.cpp \
     variantbardatamapping.cpp \
     scattergraph.cpp \
     scatterdatamodifier.cpp \
-    axesinputhandler.cpp \
     surfacegraph.cpp \
     surfacegraphmodifier.cpp \
-    custominputhandler.cpp \
     highlightseries.cpp \
-    topographicseries.cpp
+    topographicseries.cpp \
+    scattergraphwidget.cpp \
+    surfacegraphwidget.cpp
 
 HEADERS += \
     bargraph.h \
@@ -35,12 +36,12 @@ HEADERS += \
     variantbardatamapping.h \
     scattergraph.h \
     scatterdatamodifier.h \
-    axesinputhandler.h \
     surfacegraph.h \
     surfacegraphmodifier.h \
-    custominputhandler.h \
     highlightseries.h \
-    topographicseries.h
+    topographicseries.h \
+    scattergraphwidget.h \
+    surfacegraphwidget.h
 
 RESOURCES += widgetgraphgallery.qrc
 

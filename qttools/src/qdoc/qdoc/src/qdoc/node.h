@@ -38,7 +38,6 @@ class SharedCommentNode;
 class Tree;
 class TypedefNode;
 
-typedef QMap<QString, FunctionNode *> FunctionMap;
 typedef QList<Node *> NodeList;
 typedef QList<ClassNode *> ClassList;
 typedef QList<Node *> NodeVector;
@@ -181,7 +180,6 @@ public:
     [[nodiscard]] virtual bool isInternal() const;
     [[nodiscard]] virtual bool isMacro() const { return false; }
     [[nodiscard]] virtual bool isPageNode() const { return false; } // means "generates a doc page"
-    [[nodiscard]] virtual bool isQtQuickNode() const { return false; }
     [[nodiscard]] virtual bool isRelatableType() const { return false; }
     [[nodiscard]] virtual bool isMarkedReimp() const { return false; }
     [[nodiscard]] virtual bool isPropertyGroup() const { return false; }
@@ -250,10 +248,12 @@ public:
     virtual void setQtVariable(const QString &) {}
     [[nodiscard]] virtual QString qtVariable() const { return QString(); }
     virtual void setQtCMakeComponent(const QString &) {}
+    virtual void setQtCMakeTargetItem(const QString &) {}
     [[nodiscard]] virtual QString qtCMakeComponent() const { return QString(); }
+    [[nodiscard]] virtual QString qtCMakeTargetItem() const { return QString(); }
     [[nodiscard]] virtual bool hasTag(const QString &) const { return false; }
 
-    void setDeprecatedSince(const QString &sinceVersion);
+    void setDeprecated(const QString &sinceVersion);
     [[nodiscard]] const QString &deprecatedSince() const { return m_deprecatedSince; }
 
     [[nodiscard]] const QMap<LinkType, std::pair<QString, QString>> &links() const { return m_linkMap; }
@@ -296,8 +296,6 @@ public:
     virtual void setQmlModule(CollectionNode *) {}
     virtual ClassNode *classNode() { return nullptr; }
     virtual void setClassNode(ClassNode *) {}
-    [[nodiscard]] const QString &outputSubdirectory() const { return m_outSubDir; }
-    virtual void setOutputSubdirectory(const QString &t) { m_outSubDir = t; }
     [[nodiscard]] QString fullDocumentName() const;
     QString qualifyCppName();
     QString qualifyQmlName();
@@ -306,7 +304,8 @@ public:
     static FlagValue toFlagValue(bool b);
     static bool fromFlagValue(FlagValue fv, bool defaultValue);
     static QString nodeTypeString(NodeType t);
-    static bool nodeNameLessThan(const Node *first, const Node *second);
+    [[nodiscard]] static bool nodeNameLessThan(const Node *first, const Node *second);
+    [[nodiscard]] static bool nodeSortKeyOrNameLessThan(const Node *n1, const Node *n2);
 
 protected:
     Node(NodeType type, Aggregate *parent, QString name);
@@ -335,7 +334,6 @@ private:
     QString m_since {};
     std::optional<RelaxedTemplateDeclaration> m_templateDecl{std::nullopt};
     QString m_reconstitutedBrief {};
-    QString m_outSubDir {};
     QString m_deprecatedSince {};
 };
 

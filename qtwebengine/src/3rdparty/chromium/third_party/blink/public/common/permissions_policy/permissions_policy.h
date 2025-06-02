@@ -173,11 +173,18 @@ class BLINK_COMMON_EXPORT PermissionsPolicy {
   static std::unique_ptr<PermissionsPolicy> CopyStateFrom(
       const PermissionsPolicy*);
 
-  // Creates a PermissionsPolicy for a fenced frame. All permissions are
-  // disabled in fenced frames except for attribution reporting (which are only
-  // enabled for opaque-ads fenced frames). Permissions do not inherit from the
-  // parent to prevent cross-channel communication.
-  static std::unique_ptr<PermissionsPolicy> CreateForFencedFrame(
+  // Creates a flexible PermissionsPolicy for a fenced frame. Inheritance is
+  // allowed, but only a specific list of permissions are allowed to be enabled.
+  static std::unique_ptr<PermissionsPolicy> CreateFlexibleForFencedFrame(
+      const PermissionsPolicy* parent_policy,
+      const ParsedPermissionsPolicy& container_policy,
+      const url::Origin& subframe_origin);
+
+  // Creates a fixed PermissionsPolicy for a fenced frame. Only the permissions
+  // specified in the fenced frame config's effective enabled permissions are
+  // enabled. Permissions do not inherit from the parent to prevent
+  // cross-channel communication.
+  static std::unique_ptr<PermissionsPolicy> CreateFixedForFencedFrame(
       const url::Origin& origin,
       base::span<const blink::mojom::PermissionsPolicyFeature>
           effective_enabled_permissions);
@@ -213,6 +220,9 @@ class BLINK_COMMON_EXPORT PermissionsPolicy {
   // Returns the allowlist of a given feature if it already exists. Doesn't
   // build a default allow list based on the policy if not.
   absl::optional<const Allowlist> GetAllowlistForFeatureIfExists(
+      mojom::PermissionsPolicyFeature feature) const;
+
+  absl::optional<std::string> GetEndpointForFeature(
       mojom::PermissionsPolicyFeature feature) const;
 
   // Sets the declared policy from the parsed Permissions-Policy HTTP header.
@@ -266,7 +276,13 @@ class BLINK_COMMON_EXPORT PermissionsPolicy {
       const url::Origin& origin,
       const PermissionsPolicyFeatureList& features);
 
-  static std::unique_ptr<PermissionsPolicy> CreateForFencedFrame(
+  static std::unique_ptr<PermissionsPolicy> CreateFlexibleForFencedFrame(
+      const PermissionsPolicy* parent_policy,
+      const ParsedPermissionsPolicy& container_policy,
+      const url::Origin& subframe_origin,
+      const PermissionsPolicyFeatureList& features);
+
+  static std::unique_ptr<PermissionsPolicy> CreateFixedForFencedFrame(
       const url::Origin& origin,
       const PermissionsPolicyFeatureList& features,
       base::span<const blink::mojom::PermissionsPolicyFeature>
@@ -306,6 +322,10 @@ class BLINK_COMMON_EXPORT PermissionsPolicy {
   // Map of feature names to declared allowlists. Any feature which is missing
   // from this map should use the inherited policy.
   std::map<mojom::PermissionsPolicyFeature, Allowlist> allowlists_;
+
+  // Map of feature names to reporting endpoints. Any feature which is missing
+  // from this map should report to the default endpoint, if it is set.
+  std::map<mojom::PermissionsPolicyFeature, std::string> reporting_endpoints_;
 
   // Set this to true if `allowlists_` have already been checked.
   mutable bool allowlists_checked_;

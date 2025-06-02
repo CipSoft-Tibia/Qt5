@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/component_export.h"
@@ -37,6 +38,10 @@
 #endif  // BUILDFLAG(IS_MAC)
 
 namespace device {
+
+namespace enclave {
+struct CredentialRequest;
+}
 
 // FidoDiscoveryFactory offers methods to construct instances of
 // FidoDiscoveryBase for a given |transport| protocol.
@@ -99,12 +104,17 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
 
   void set_hid_ignore_list(base::flat_set<VidPid> hid_ignore_list);
 
-#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_QTWEBENGINE)
-  // Provides the passkeys that will be made available to use for cloud-based
-  // enclave authentication.
-  void SetEnclavePasskeys(
-      std::vector<sync_pb::WebauthnCredentialSpecifics> passkeys);
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  // Provides a callback that will be called when a passkey is created with
+  // the enclave authenticator in order to save the new passkey to sync data.
+  void set_enclave_passkey_creation_callback(
+      base::RepeatingCallback<void(sync_pb::WebauthnCredentialSpecifics)>
+          callback);
 #endif
+
+  void set_enclave_ui_request_stream(
+      std::unique_ptr<FidoDiscoveryBase::EventStream<
+          std::unique_ptr<enclave::CredentialRequest>>> stream);
 
 #if BUILDFLAG(IS_MAC)
   // Configures the Touch ID authenticator. Set to absl::nullopt to disable it.
@@ -159,10 +169,8 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
       const;
 #endif
 
-#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_QTWEBENGINE)
   void MaybeCreateEnclaveDiscovery(
       std::vector<std::unique_ptr<FidoDiscoveryBase>>& discoveries);
-#endif
 
 #if BUILDFLAG(IS_MAC)
   absl::optional<fido::mac::AuthenticatorConfig> mac_touch_id_config_;
@@ -176,7 +184,7 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
   absl::optional<std::array<uint8_t, cablev2::kQRKeySize>> qr_generator_key_;
   absl::optional<FidoRequestType> request_type_;
   std::unique_ptr<
-      FidoDeviceDiscovery::EventStream<std::unique_ptr<cablev2::Pairing>>>
+      FidoDiscoveryBase::EventStream<std::unique_ptr<cablev2::Pairing>>>
       contact_device_stream_;
   absl::optional<
       base::RepeatingCallback<void(std::unique_ptr<cablev2::Pairing>)>>
@@ -193,9 +201,13 @@ class COMPONENT_EXPORT(DEVICE_FIDO) FidoDiscoveryFactory {
       get_assertion_request_for_legacy_credential_check_;
 #endif  // BUILDFLAG(IS_CHROMEOS)
   base::flat_set<VidPid> hid_ignore_list_;
-#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_QTWEBENGINE)
-  std::vector<sync_pb::WebauthnCredentialSpecifics> enclave_passkeys_;
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  base::RepeatingCallback<void(sync_pb::WebauthnCredentialSpecifics)>
+      enclave_passkey_creation_callback_;
 #endif
+  std::unique_ptr<FidoDiscoveryBase::EventStream<
+      std::unique_ptr<enclave::CredentialRequest>>>
+      enclave_ui_request_stream_;
 };
 
 }  // namespace device

@@ -37,7 +37,7 @@ bool ForbiddenChildrenPropertyValidatorPass::shouldRun(const QQmlSA::Element &el
     if (!element.parentScope())
         return false;
 
-    for (const auto &pair : m_types.asKeyValueRange()) {
+    for (const auto &pair : std::as_const(m_types).asKeyValueRange()) {
         if (element.parentScope().inherits(pair.first))
             return true;
     }
@@ -47,8 +47,17 @@ bool ForbiddenChildrenPropertyValidatorPass::shouldRun(const QQmlSA::Element &el
 
 void ForbiddenChildrenPropertyValidatorPass::run(const QQmlSA::Element &element)
 {
-    for (const auto &elementPair : m_types.asKeyValueRange()) {
+    for (const auto &elementPair : std::as_const(m_types).asKeyValueRange()) {
         const QQmlSA::Element &type = elementPair.first;
+        const QQmlSA::Element parentScope = element.parentScope();
+
+        // If the parent's default property is not what we think it is, then we can't say whether
+        // the element in question is actually a visual child of the (document) parent scope.
+        const QQmlSA::Property defaultProperty
+                = parentScope.property(parentScope.defaultPropertyName());
+        if (defaultProperty != type.property(type.defaultPropertyName()))
+            continue;
+
         if (!element.parentScope().inherits(type))
             continue;
 
@@ -75,8 +84,13 @@ QString AttachedPropertyTypeValidatorPass::addWarning(TypeDescription attachType
 {
     QVarLengthArray<QQmlSA::Element, 4> elements;
 
-    const QQmlSA::Element baseType = resolveType(attachType.module, attachType.name);
     const QQmlSA::Element attachedType = resolveAttached(attachType.module, attachType.name);
+    if (!attachedType) {
+        emitWarning(
+                "Cannot find attached type for %1/%2"_L1.arg(attachType.module, attachType.name),
+                quickAttachedPropertyType);
+        return QString();
+    }
 
     for (const TypeDescription &desc : allowedTypes) {
         const QQmlSA::Element type = resolveType(desc.module, desc.name);
@@ -434,7 +448,7 @@ VarBindingTypeValidatorPass::VarBindingTypeValidatorPass(
 {
     QMultiHash<QString, QQmlSA::Element> propertyTypes;
 
-    for (const auto pair : expectedPropertyTypes.asKeyValueRange()) {
+    for (const auto &pair : expectedPropertyTypes.asKeyValueRange()) {
         const QQmlSA::Element propType = pair.second.module.isEmpty()
                 ? resolveBuiltinType(pair.second.name)
                 : resolveType(pair.second.module, pair.second.name);
@@ -656,6 +670,9 @@ void QmlLintQuickPlugin::registerPasses(QQmlSA::PassManager *manager,
                                   QAnyStringView warning, bool allowInDelegate = false) {
         QString attachedTypeName = attachedPropertyType->addWarning(attachedType, allowedTypes,
                                                                     allowInDelegate, warning);
+        if (attachedTypeName.isEmpty())
+            return;
+
         manager->registerPropertyPass(attachedPropertyType, attachedType.module,
                                       u"$internal$."_s + attachedTypeName, {}, false);
     };
@@ -676,7 +693,7 @@ void QmlLintQuickPlugin::registerPasses(QQmlSA::PassManager *manager,
                              { { "columnWidthProvider", { "", "function" } },
                                { "rowHeightProvider", { "", "function" } } });
         addAttachedWarning({ "QtQuick", "Accessible" }, { { "QtQuick", "Item" } },
-                           "Accessible must be attached to an Item");
+                           "Accessible must be attached to an Item or an Action");
         addAttachedWarning({ "QtQuick", "LayoutMirroring" },
                            { { "QtQuick", "Item" }, { "QtQuick", "Window" } },
                            "LayoutMirroring attached property only works with Items and Windows");

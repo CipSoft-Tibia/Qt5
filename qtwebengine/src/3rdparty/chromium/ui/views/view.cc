@@ -17,6 +17,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/i18n/rtl.h"
 #include "base/logging.h"
+#include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/observer_list.h"
@@ -30,11 +31,13 @@
 #include "ui/accessibility/ax_action_data.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/accessibility/ax_node_id_forward.h"
+#include "ui/actions/actions.h"
 #include "ui/base/cursor/cursor.h"
 #include "ui/base/dragdrop/drag_drop_types.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom.h"
 #include "ui/base/ime/input_method.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/color/color_provider_manager.h"
 #include "ui/compositor/clip_recorder.h"
 #include "ui/compositor/compositor.h"
@@ -59,6 +62,7 @@
 #include "ui/views/accessibility/accessibility_paint_checks.h"
 #include "ui/views/accessibility/ax_event_manager.h"
 #include "ui/views/accessibility/view_accessibility.h"
+#include "ui/views/action_view_interface.h"
 #include "ui/views/background.h"
 #include "ui/views/border.h"
 #include "ui/views/buildflags.h"
@@ -233,6 +237,10 @@ View::View() {
 }
 
 View::~View() {
+  for (ViewObserver& observer : observers_) {
+    observer.OnViewHierarchyWillBeDeleted(this);
+  }
+
   life_cycle_state_ = LifeCycleState::kDestroying;
 
   if (parent_)
@@ -251,7 +259,7 @@ View::~View() {
 
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : children_) {
+    for (views::View* child : children_) {
       child->parent_ = nullptr;
 
       // Remove any references to |child| to avoid holding a dangling ptr.
@@ -441,7 +449,7 @@ void View::SetBoundsRect(const gfx::Rect& bounds) {
   // Notify interested Views that visible bounds within the root view may have
   // changed.
   if (descendants_to_notify_) {
-    for (auto* i : *descendants_to_notify_) {
+    for (views::View* i : *descendants_to_notify_) {
       i->OnVisibleBoundsChanged();
     }
   }
@@ -756,15 +764,17 @@ void View::RemoveLayerFromRegions(ui::Layer* old_layer) {
 }
 
 void View::RemoveLayerFromRegionsKeepInLayerTree(ui::Layer* old_layer) {
-  auto remove_layer = [old_layer, this](std::vector<ui::Layer*>& layer_vector) {
-    auto layer_pos = base::ranges::find(layer_vector, old_layer);
-    if (layer_pos == layer_vector.end()) {
-      return false;
-    }
-    layer_vector.erase(layer_pos);
-    old_layer->RemoveObserver(this);
-    return true;
-  };
+  auto remove_layer =
+      [old_layer, this](
+          std::vector<raw_ptr<ui::Layer, VectorExperimental>>& layer_vector) {
+        auto layer_pos = base::ranges::find(layer_vector, old_layer);
+        if (layer_pos == layer_vector.end()) {
+          return false;
+        }
+        layer_vector.erase(layer_pos);
+        old_layer->RemoveObserver(this);
+        return true;
+      };
   const bool layer_removed =
       remove_layer(layers_below_) || remove_layer(layers_above_);
   DCHECK(layer_removed) << "Attempted to remove a layer that was never added.";
@@ -786,7 +796,7 @@ std::vector<ui::Layer*> View::GetLayersInOrder(ViewLayer view_layer) {
   if (view_layer == ViewLayer::kInclude) {
     result.push_back(layer());
   }
-  for (auto* layer_above : layers_above_) {
+  for (ui::Layer* layer_above : layers_above_) {
     result.push_back(layer_above);
   }
 
@@ -864,7 +874,7 @@ void View::Layout() {
   // just propagate the Layout() call down the hierarchy, so whoever receives
   // the call can take appropriate action.
   internal::ScopedChildrenLock lock(this);
-  for (auto* child : children_) {
+  for (views::View* child : children_) {
     if (child->needs_layout_ || !HasLayoutManager()) {
       TRACE_EVENT1("views", "View::LayoutChildren", "class",
                    child->GetClassName());
@@ -929,7 +939,7 @@ const View* View::GetViewByID(int id) const {
     return const_cast<View*>(this);
 
   internal::ScopedChildrenLock lock(this);
-  for (auto* child : children_) {
+  for (views::View* child : children_) {
     const View* view = child->GetViewByID(id);
     if (view)
       return view;
@@ -982,14 +992,19 @@ void View::GetViewsInGroup(int group, Views* views) {
     views->push_back(this);
 
   internal::ScopedChildrenLock lock(this);
-  for (auto* child : children_)
+  for (views::View* child : children_) {
     child->GetViewsInGroup(group, views);
+  }
 }
 
 View* View::GetSelectedViewForGroup(int group) {
   Views views;
   GetWidget()->GetRootView()->GetViewsInGroup(group, &views);
   return views.empty() ? nullptr : views[0];
+}
+
+std::string View::GetObjectName() const {
+  return GetClassName();
 }
 
 // Coordinate conversion -------------------------------------------------------
@@ -1330,9 +1345,6 @@ const ui::ColorProvider* View::GetColorProvider() const {
 }
 
 const ui::NativeTheme* View::GetNativeTheme() const {
-  if (native_theme_)
-    return native_theme_;
-
   if (parent())
     return parent()->GetNativeTheme();
 
@@ -1351,19 +1363,6 @@ const ui::NativeTheme* View::GetNativeTheme() const {
   }
 
   return ui::NativeTheme::GetInstanceForNativeUi();
-}
-
-void View::SetNativeThemeForTesting(ui::NativeTheme* theme) {
-  // In testing, View maybe not have a parent or widget, in this case we set the
-  // `native_theme_` to the global NativeTheme to prevent the DCHECK in
-  // GetNativeTheme().
-  if (!native_theme_ && !parent() && !GetWidget()) {
-    native_theme_ = ui::NativeTheme::GetInstanceForNativeUi();
-  }
-  ui::NativeTheme* original_native_theme = GetNativeTheme();
-  native_theme_ = theme;
-  if (native_theme_ != original_native_theme)
-    PropagateThemeChanged();
 }
 
 // RTL painting ----------------------------------------------------------------
@@ -1429,7 +1428,7 @@ View* View::GetTooltipHandlerForPoint(const gfx::Point& point) {
   // tightly encloses the specified point.
   View::Views children = GetChildrenInZOrder();
   DCHECK_EQ(children_.size(), children.size());
-  for (auto* child : base::Reversed(children)) {
+  for (views::View* child : base::Reversed(children)) {
     if (!child->GetVisible())
       continue;
 
@@ -2352,8 +2351,9 @@ void View::MoveLayerToParent(ui::Layer* parent_layer,
     SetLayerBounds(size(), local_offset_data);
   } else {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : GetChildrenInZOrder())
+    for (views::View* child : GetChildrenInZOrder()) {
       child->MoveLayerToParent(parent_layer, local_offset_data);
+    }
   }
 }
 
@@ -2374,8 +2374,9 @@ void View::UpdateChildLayerVisibility(bool ancestor_visible) {
   }
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : children_)
+    for (views::View* child : children_) {
       child->UpdateChildLayerVisibility(layers_visible);
+    }
   }
 }
 
@@ -2390,9 +2391,10 @@ void View::DestroyLayerImpl(LayerChangeNotifyBehavior notify_parents) {
     return;
 
   // Copy children(), since the loop below will mutate its result.
-  std::vector<ui::Layer*> children = layer()->children();
+  std::vector<raw_ptr<ui::Layer, VectorExperimental>> children =
+      layer()->children();
   ui::Layer* new_parent = layer()->parent();
-  for (auto* child : children) {
+  for (ui::Layer* child : children) {
     layer()->Remove(child);
     if (new_parent)
       new_parent->Add(child);
@@ -2432,7 +2434,7 @@ void View::UpdateChildLayerBounds(const LayerOffsetData& offset_data) {
     SetLayerBounds(size(), offset_data);
   } else {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : children_) {
+    for (views::View* child : children_) {
       child->UpdateChildLayerBounds(
           offset_data + child->GetMirroredPosition().OffsetFromOrigin());
     }
@@ -2518,8 +2520,9 @@ void View::ReorderLayers() {
   }
 }
 
-void View::AddLayerToRegionImpl(ui::Layer* new_layer,
-                                std::vector<ui::Layer*>& layer_vector) {
+void View::AddLayerToRegionImpl(
+    ui::Layer* new_layer,
+    std::vector<raw_ptr<ui::Layer, VectorExperimental>>& layer_vector) {
   DCHECK(new_layer);
   DCHECK(!base::Contains(layer_vector, new_layer)) << "Layer already added.";
 
@@ -2582,8 +2585,9 @@ void View::ReorderChildLayers(ui::Layer* parent_layer) {
     // the front.
     View::Views children = GetChildrenInZOrder();
     DCHECK_EQ(children_.size(), children.size());
-    for (auto* child : base::Reversed(children))
+    for (views::View* child : base::Reversed(children)) {
       child->ReorderChildLayers(parent_layer);
+    }
   }
 }
 
@@ -2603,6 +2607,11 @@ void View::OnBlur() {}
 
 void View::Focus() {
   OnFocus();
+
+#if !BUILDFLAG(IS_CHROMEOS_LACROS)
+  // TODO(crbug.com/1492220) - Get this working on Lacros as well.
+  UpdateTooltipForFocus();
+#endif
 
   // TODO(pbos): Investigate if parts of this can run unconditionally.
   if (!suppress_default_focus_handling_) {
@@ -2661,6 +2670,17 @@ void View::TooltipTextChanged() {
   // TooltipManager may be null if there is a problem creating it.
   if (widget && widget->GetTooltipManager())
     widget->GetTooltipManager()->TooltipTextChanged(this);
+}
+
+void View::UpdateTooltipForFocus() {
+  if (base::FeatureList::IsEnabled(
+          ::views::features::kKeyboardAccessibleTooltipInViews) &&
+      !kShouldDisableKeyboardTooltipsForTesting) {
+    Widget* widget = GetWidget();
+    if (widget && widget->GetTooltipManager()) {
+      widget->GetTooltipManager()->UpdateTooltipForFocus(this);
+    }
+  }
 }
 
 // Drag and drop ---------------------------------------------------------------
@@ -2844,7 +2864,7 @@ void View::RecursivePaintHelper(void (View::*func)(const PaintInfo&),
                                 const PaintInfo& info) {
   View::Views children = GetChildrenInZOrder();
   DCHECK_EQ(children_.size(), children.size());
-  for (auto* child : children) {
+  for (views::View* child : children) {
     if (!child->layer())
       (child->*func)(info);
   }
@@ -3033,7 +3053,7 @@ void View::PropagateRemoveNotifications(View* old_parent,
                                         bool is_removed_from_widget) {
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : children_) {
+    for (views::View* child : children_) {
       child->PropagateRemoveNotifications(old_parent, new_parent,
                                           is_removed_from_widget);
     }
@@ -3067,8 +3087,9 @@ void View::PropagateAddNotifications(const ViewHierarchyChangedDetails& details,
 
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : children_)
+    for (views::View* child : children_) {
       child->PropagateAddNotifications(details, is_added_to_widget);
+    }
   }
 
   ViewHierarchyChangedImpl(details);
@@ -3082,8 +3103,9 @@ void View::PropagateAddNotifications(const ViewHierarchyChangedDetails& details,
 void View::PropagateNativeViewHierarchyChanged() {
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : children_)
+    for (views::View* child : children_) {
       child->PropagateNativeViewHierarchyChanged();
+    }
   }
   NativeViewHierarchyChanged();
 }
@@ -3103,8 +3125,9 @@ void View::ViewHierarchyChangedImpl(
 void View::PropagateVisibilityNotifications(View* start, bool is_visible) {
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : children_)
+    for (views::View* child : children_) {
       child->PropagateVisibilityNotifications(start, is_visible);
+    }
   }
   VisibilityChangedImpl(start, is_visible);
 }
@@ -3287,8 +3310,9 @@ void View::CreateLayer(ui::LayerType layer_type) {
   // sub-tree can inherit the visibility of the corresponding view.
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : children_)
+    for (views::View* child : children_) {
       child->UpdateChildLayerVisibility(true);
+    }
   }
 
   SetLayer(std::make_unique<ui::Layer>(layer_type));
@@ -3330,7 +3354,7 @@ bool View::UpdateParentLayers() {
   }
   bool result = false;
   internal::ScopedChildrenLock lock(this);
-  for (auto* child : children_) {
+  for (views::View* child : children_) {
     if (child->UpdateParentLayers())
       result = true;
   }
@@ -3351,8 +3375,9 @@ void View::OrphanLayers() {
     return;
   }
   internal::ScopedChildrenLock lock(this);
-  for (auto* child : children_)
+  for (views::View* child : children_) {
     child->OrphanLayers();
+  }
 }
 
 void View::ReparentLayer(ui::Layer* parent_layer) {
@@ -3551,8 +3576,9 @@ void View::AdvanceFocusIfNecessary() {
 void View::PropagateThemeChanged() {
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : base::Reversed(children_))
+    for (views::View* child : base::Reversed(children_)) {
       child->PropagateThemeChanged();
+    }
   }
   OnThemeChanged();
   if (border_)
@@ -3576,7 +3602,7 @@ void View::PropagateDeviceScaleFactorChanged(float old_device_scale_factor,
                                              float new_device_scale_factor) {
   {
     internal::ScopedChildrenLock lock(this);
-    for (auto* child : base::Reversed(children_)) {
+    for (views::View* child : base::Reversed(children_)) {
       child->PropagateDeviceScaleFactorChanged(old_device_scale_factor,
                                                new_device_scale_factor);
     }
@@ -3598,6 +3624,16 @@ void View::UpdateTooltip() {
   //             Widgets that it uses.
   if (widget && widget->GetTooltipManager())
     widget->GetTooltipManager()->UpdateTooltip();
+}
+
+bool View::kShouldDisableKeyboardTooltipsForTesting = false;
+
+void View::DisableKeyboardTooltipsForTesting() {
+  View::kShouldDisableKeyboardTooltipsForTesting = true;
+}
+
+void View::EnableKeyboardTooltipsForTesting() {
+  View::kShouldDisableKeyboardTooltipsForTesting = false;
 }
 
 // Drag and drop ---------------------------------------------------------------
@@ -3638,7 +3674,7 @@ View::DefaultFillLayout::~DefaultFillLayout() = default;
 
 void View::DefaultFillLayout::Layout(View* host) {
   const gfx::Rect contents_bounds = host->GetContentsBounds();
-  for (auto* child : host->children()) {
+  for (views::View* child : host->children()) {
     if (!child->GetProperty(kViewIgnoredByLayoutKey))
       child->SetBoundsRect(contents_bounds);
   }
@@ -3646,7 +3682,7 @@ void View::DefaultFillLayout::Layout(View* host) {
 
 gfx::Size View::DefaultFillLayout::GetPreferredSize(const View* host) const {
   gfx::Size preferred_size;
-  for (auto* child : host->children()) {
+  for (views::View* child : host->children()) {
     if (!child->GetProperty(kViewIgnoredByLayoutKey))
       preferred_size.SetToMax(child->GetPreferredSize());
   }
@@ -3657,7 +3693,7 @@ int View::DefaultFillLayout::GetPreferredHeightForWidth(const View* host,
                                                         int width) const {
   const gfx::Insets insets = host->GetInsets();
   int preferred_height = 0;
-  for (auto* child : host->children()) {
+  for (views::View* child : host->children()) {
     if (!child->GetProperty(kViewIgnoredByLayoutKey)) {
       preferred_height = std::max(
           preferred_height,
@@ -3667,7 +3703,20 @@ int View::DefaultFillLayout::GetPreferredHeightForWidth(const View* host,
   return preferred_height;
 }
 
-// This block requires the existence of METADATA_HEADER(View) in the class
+std::unique_ptr<ActionViewInterface> View::GetActionViewInterface() {
+  return std::make_unique<BaseActionViewInterface>(this);
+}
+
+BaseActionViewInterface::BaseActionViewInterface(View* action_view)
+    : action_view_(action_view) {}
+
+void BaseActionViewInterface::ActionItemChangedImpl(
+    actions::ActionItem* action_item) {
+  action_view_->SetEnabled(action_item->GetEnabled());
+  action_view_->SetVisible(action_item->GetVisible());
+}
+
+// This block requires the existence of METADATA_HEADER_BASE(View) in the class
 // declaration for View.
 BEGIN_METADATA_BASE(View)
 ADD_PROPERTY_METADATA(std::unique_ptr<Background>, Background)
@@ -3684,6 +3733,7 @@ ADD_READONLY_PROPERTY_METADATA(gfx::Size, MaximumSize)
 ADD_READONLY_PROPERTY_METADATA(gfx::Size, MinimumSize)
 ADD_PROPERTY_METADATA(bool, Mirrored)
 ADD_PROPERTY_METADATA(bool, NotifyEnterExitOnChild)
+ADD_READONLY_PROPERTY_METADATA(std::string, ObjectName)
 ADD_READONLY_PROPERTY_METADATA(std::u16string, Tooltip)
 ADD_PROPERTY_METADATA(bool, Visible)
 ADD_PROPERTY_METADATA(bool, CanProcessEventsWithinSubtree)

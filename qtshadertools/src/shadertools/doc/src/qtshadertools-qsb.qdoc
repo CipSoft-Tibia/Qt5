@@ -15,7 +15,7 @@
 
     \badcode
 Usage: qsb [options] file
-Qt Shader Baker (using QShader from Qt 6.7.0)
+Qt Shader Baker (using QShader from Qt 6.8.0)
 
 Options:
   -?, -h, --help               Displays help on commandline options.
@@ -51,10 +51,14 @@ Options:
                                Metal. If it does not match the tess.evaluation
                                stage, the generated MSL code will not function
                                as expected.
-  --view-count <num_views>     The number of views the vertex shader is used
-                               with. Relevant for GL_OVR_multiview. Ignored for
-                               non-vertex. num_views should be >= 2. Set only
-                               for vertex shaders that do rely on multiview.
+  --view-count <num_views>     The number of views the shader is used with.
+                               num_views must be >= 2. Mandatory when multiview
+                               rendering is used (gl_ViewIndex). Set only for
+                               vertex shaders that really do rely on multiview
+                               (as the resulting asset is tied to num_views).
+                               Can be set for fragment shaders too, to get
+                               QSHADER_VIEW_COUNT auto-defined. (useful for
+                               ensuring uniform buffer layouts)
   -g                           Generate full debug info for SPIR-V and DXBC
   -O                           Invoke spirv-opt (external tool) to optimize
                                SPIR-V for performance.
@@ -63,8 +67,9 @@ Options:
                                default the latest version is automatically used,
                                use only to bake compatibility versions. F.ex. 64
                                is Qt 6.4.
-  -c, --fxc                    In combination with --hlsl invokes fxc to store
-                               DXBC instead of HLSL.
+  -c, --fxc                    In combination with --hlsl invokes fxc (SM
+                               5.0/5.1) or dxc (SM 6.0+) to store DXBC or DXIL
+                               instead of HLSL.
   -t, --metallib               In combination with --msl builds a Metal library
                                with xcrun metal(lib) and stores that instead of
                                the source. Suitable only when targeting macOS,
@@ -99,6 +104,8 @@ Options:
                                <what>=spirv,<version>|glsl,<version>|...
   -s, --silent                 Enables silent mode. Only fatal errors will be
                                printed.
+  --depfile <depfile>          Enables generating the depfile for the input
+                               shaders, using the #include statements.
 
 Arguments:
   file                         Vulkan GLSL source file to compile. The file
@@ -646,10 +653,10 @@ layout(std140, binding = 0) uniform buf {
 };
 \endcode
 
-    In addition, the \c{#extension GL_EXT_multiview : require} line is
-    generated automatically when a view count of 2 or greater is set. This
-    reduces the number of extra lines needed to be added for multiview support
-    in a vertex shader.
+    In addition, the \c{#extension GL_EXT_multiview : require} line is generated
+    automatically in vertex shaders whenever a view count of 2 or greater is
+    set. This reduces the number of extra lines needed to be added for multiview
+    support in a vertex shader.
 
     Setting the view count can be relevant with other types of shaders as well.
     For example, when sharing a uniform buffer between the vertex and fragment
@@ -657,6 +664,10 @@ layout(std140, binding = 0) uniform buf {
     useful to be able to write \c{#if QSHADER_VIEW_COUNT >= 2} in both source
     files. That can be ensured by specifying \c{--view-count} for both when
     invoking \c qsb.
+
+    \note Directly relying on the \c{gl_ViewIndex} keyword in a non-vertex
+    stage, for example in a fragment shader, is not portable at the moment and
+    should be avoided.
 
     \section1 Working with GLSL Features Specific to OpenGL
 

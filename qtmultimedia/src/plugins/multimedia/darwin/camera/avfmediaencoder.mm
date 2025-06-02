@@ -20,7 +20,6 @@
 
 #include <QtCore/qmath.h>
 #include <QtCore/qdebug.h>
-#include <QtCore/qmimetype.h>
 
 #include <private/qcoreaudioutils_p.h>
 
@@ -209,7 +208,7 @@ static NSDictionary *avfAudioSettings(const QMediaEncoderSettings &encoderSettin
         // fallback to providing channel layout if channel count is not specified or supported
         UInt32 size = 0;
         if (format.isValid()) {
-            auto layout = CoreAudioUtils::toAudioChannelLayout(format, &size);
+            auto layout = QCoreAudioUtils::toAudioChannelLayout(format, &size);
             UInt32 layoutSize = offsetof(AudioChannelLayout, mChannelDescriptions)
                     + layout->mNumberChannelDescriptions * sizeof(AudioChannelDescription);
             [settings setObject:[NSData dataWithBytes:layout.get() length:layoutSize] forKey:AVChannelLayoutKey];
@@ -501,9 +500,9 @@ void AVFMediaEncoder::record(QMediaEncoderSettings &settings)
 
     const QString path(outputLocation().scheme() == QLatin1String("file") ?
                            outputLocation().path() : outputLocation().toString());
-    const QUrl fileURL(QUrl::fromLocalFile(QMediaStorageLocation::generateFileName(path,
-                    audioOnly ? QStandardPaths::MusicLocation : QStandardPaths::MoviesLocation,
-                    settings.mimeType().preferredSuffix())));
+    const QUrl fileURL(QUrl::fromLocalFile(QMediaStorageLocation::generateFileName(
+            path, audioOnly ? QStandardPaths::MusicLocation : QStandardPaths::MoviesLocation,
+            settings.preferredSuffix())));
 
     NSURL *nsFileURL = fileURL.toNSURL();
     if (!nsFileURL) {
@@ -543,8 +542,8 @@ void AVFMediaEncoder::record(QMediaEncoderSettings &settings)
 
         m_state = QMediaRecorder::RecordingState;
 
-        Q_EMIT actualLocationChanged(fileURL);
-        Q_EMIT stateChanged(m_state);
+        actualLocationChanged(fileURL);
+        stateChanged(m_state);
 
         // Apple recommends to call startRunning and do all
         // setup on a special queue, and that's what we had
@@ -628,7 +627,7 @@ void AVFMediaEncoder::assetWriterFinished()
 
     m_state = QMediaRecorder::StoppedState;
     if (m_state != lastState)
-        Q_EMIT stateChanged(m_state);
+        stateChanged(m_state);
 }
 
 void AVFMediaEncoder::assetWriterError(QString err)

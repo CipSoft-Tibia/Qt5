@@ -63,6 +63,7 @@ jumbo_static_library("browser") {
     "//ui/gfx/geometry",
     "//url",
   ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
 
   if (!is_android) {
     deps += [ "//components/webauthn/content/browser" ]
@@ -75,6 +76,12 @@ jumbo_static_library("browser") {
       "renderer_forms_with_server_predictions.cc",
       "renderer_forms_with_server_predictions.h",
     ]
+
+    deps -= [ "//components/webauthn/core/browser",]
+
+    if (!is_android) {
+      deps -= [ "//components/webauthn/content/browser" ]
+    }
   }
 }
 

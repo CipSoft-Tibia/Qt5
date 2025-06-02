@@ -1,5 +1,5 @@
 // Copyright (C) 2019 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "mockcompositor.h"
 
@@ -186,9 +186,9 @@ public:
     QList<TabletV2 *> m_tablets;
     QList<TabletV2 *> m_tabletsWaitingForDestroy;
     QList<TabletToolV2 *> m_tools;
-    QList<TabletToolV2 *> m_toolsWaitingForDestroy;
+    QList<TabletToolV2::Resource *> m_toolsWaitingForDestroy;
     QList<TabletPadV2 *> m_pads;
-    QList<TabletPadV2 *> m_padsWaitingForDestroy;
+    QList<TabletPadV2::Resource *> m_padsWaitingForDestroy;
 
 protected:
     void zwp_tablet_seat_v2_bind_resource(Resource *resource) override
@@ -274,11 +274,12 @@ void TabletV2::zwp_tablet_v2_destroy(QtWaylandServer::zwp_tablet_v2::Resource *r
 
 void TabletToolV2::sendRemoved()
 {
-    for (auto *resource : resourceMap())
+    for (auto *resource : resourceMap()) {
         zwp_tablet_tool_v2_send_removed(resource->handle);
+        m_tabletSeat->m_toolsWaitingForDestroy.append(resource);
+    }
     bool removed = m_tabletSeat->m_tools.removeOne(this);
     QVERIFY(removed);
-    m_tabletSeat->m_toolsWaitingForDestroy.append(this);
 }
 
 uint TabletToolV2::sendProximityIn(TabletV2 *tablet, Surface *surface)
@@ -333,26 +334,25 @@ uint TabletToolV2::sendFrame()
 void TabletToolV2::zwp_tablet_tool_v2_destroy(QtWaylandServer::zwp_tablet_tool_v2::Resource *resource)
 {
     if (m_tabletSeat) {
-        bool removed = m_tabletSeat->m_toolsWaitingForDestroy.removeOne(this);
-        QVERIFY(removed);
+        m_tabletSeat->m_toolsWaitingForDestroy.removeOne(resource);
     }
     wl_resource_destroy(resource->handle);
 }
 
 void TabletPadV2::sendRemoved()
 {
-    for (auto *resource : resourceMap())
+    for (auto *resource : resourceMap()) {
         zwp_tablet_pad_v2_send_removed(resource->handle);
+        m_tabletSeat->m_padsWaitingForDestroy.append(resource);
+    }
     bool removed = m_tabletSeat->m_pads.removeOne(this);
     QVERIFY(removed);
-    m_tabletSeat->m_padsWaitingForDestroy.append(this);
 }
 
 void TabletPadV2::zwp_tablet_pad_v2_destroy(QtWaylandServer::zwp_tablet_pad_v2::Resource *resource)
 {
     if (m_tabletSeat) {
-        bool removed = m_tabletSeat->m_padsWaitingForDestroy.removeOne(this);
-        QVERIFY(removed);
+        m_tabletSeat->m_padsWaitingForDestroy.removeOne(resource);
     }
     wl_resource_destroy(resource->handle);
 }
@@ -405,6 +405,8 @@ private slots:
     void destroysTablet();
     void destroysTool();
     void destroysPad();
+    void removeTabletBeforeTool();
+    void removeTabletBeforePad();
     void proximityEvents();
     void moveEvent();
     void pointerType_data();
@@ -502,12 +504,14 @@ void tst_tabletv2::destroysTool()
 {
     QCOMPOSITOR_TRY_VERIFY(tabletSeat());
     exec([&] {
+        tabletSeat()->addTablet();
         tabletSeat()->addTool();
     });
     QCOMPOSITOR_TRY_VERIFY(tabletTool());
 
     exec([&] {
         tabletTool()->sendRemoved();
+        tablet()->sendRemoved();
     });
 
     QCOMPOSITOR_TRY_VERIFY(!tabletTool());
@@ -526,6 +530,42 @@ void tst_tabletv2::destroysPad()
         tabletPad()->sendRemoved();
     });
 
+    QCOMPOSITOR_TRY_VERIFY(!tabletPad());
+    QCOMPOSITOR_TRY_VERIFY(tabletSeat()->m_padsWaitingForDestroy.empty());
+}
+
+void tst_tabletv2::removeTabletBeforeTool()
+{
+    QCOMPOSITOR_TRY_VERIFY(tabletSeat());
+    exec([&] {
+        tabletSeat()->addTablet();
+        tabletSeat()->addTool();
+    });
+    QCOMPOSITOR_TRY_VERIFY(tablet());
+    QCOMPOSITOR_TRY_VERIFY(tabletTool());
+
+    exec([&] { tablet()->sendRemoved(); });
+    QCOMPOSITOR_TRY_VERIFY(tabletSeat()->m_tabletsWaitingForDestroy.empty());
+
+    exec([&] { tabletTool()->sendRemoved(); });
+    QCOMPOSITOR_TRY_VERIFY(!tabletTool());
+    QCOMPOSITOR_TRY_VERIFY(tabletSeat()->m_toolsWaitingForDestroy.empty());
+}
+
+void tst_tabletv2::removeTabletBeforePad()
+{
+    QCOMPOSITOR_TRY_VERIFY(tabletSeat());
+    exec([&] {
+        tabletSeat()->addTablet();
+        tabletSeat()->addPad();
+    });
+    QCOMPOSITOR_TRY_VERIFY(tablet());
+    QCOMPOSITOR_TRY_VERIFY(tabletPad());
+
+    exec([&] { tablet()->sendRemoved(); });
+    QCOMPOSITOR_TRY_VERIFY(tabletSeat()->m_tabletsWaitingForDestroy.empty());
+
+    exec([&] { tabletPad()->sendRemoved(); });
     QCOMPOSITOR_TRY_VERIFY(!tabletPad());
     QCOMPOSITOR_TRY_VERIFY(tabletSeat()->m_padsWaitingForDestroy.empty());
 }

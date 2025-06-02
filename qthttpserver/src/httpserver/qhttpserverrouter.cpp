@@ -6,6 +6,7 @@
 #include <QtHttpServer/qhttpserverrouter.h>
 #include <QtHttpServer/qhttpserverrouterrule.h>
 #include <QtHttpServer/qhttpserverrequest.h>
+#include <QtHttpServer/qhttpserver.h>
 
 #include <private/qhttpserverrouterrule_p.h>
 
@@ -49,12 +50,21 @@ static const QHash<QMetaType, QString> defaultConverters = {
     \brief Provides functions to bind a URL to a \c ViewHandler.
     \inmodule QtHttpServer
 
-    You can register \c ViewHandler as a callback for requests to a specific URL.
-    Variable parts in the route can be specified by the arguments in ViewHandler.
+    QHttpServerRouter is a class to distribute http requests to their
+    respective handlers with a rule based system.
+
+    You can register new \l{QHttpServerRouterRule}{QHttpServerRouterRules},
+    that represent a request path and the respective handler. Variable parts in
+    the route can be specified with placeholder in the request path. The
+    handler gets the placeholders value as a \l QRegularExpressionMatch. The
+    arguments can be of any type for which a \l{converters}{converter} is
+    available. The handler creation can be simplified with
+    QHttpServerRouterRule::bindCaptured. A QHttpServerRouter instance must not
+    be modifed by its rules.
 
     \note This is a low-level routing API for an HTTP server.
 
-    See the following example:
+    Minimal example:
 
     \code
     auto pageView = [] (const quint64 page) {
@@ -66,11 +76,11 @@ static const QHash<QMetaType, QString> defaultConverters = {
 
     // register callback pageView on request "/page/<number>"
     // for example: "/page/10", "/page/15"
-    router.addRoute<ViewHandler>(
+    router.addRule<ViewHandler>(
         new QHttpServerRouterRule("/page/", [=] (QRegularExpressionMatch &match,
                                                  const QHttpServerRequest &,
                                                  QHttpServerResponder &&) {
-        auto boundView = router.bindCaptured(pageView, match);
+        auto boundView = QHttpServerRouterRule::bindCaptured(pageView, match);
 
         // it calls pageView
         boundView();
@@ -80,13 +90,16 @@ static const QHash<QMetaType, QString> defaultConverters = {
 
 /*! \fn template <typename Type> bool QHttpServerRouter::addConverter(QAnyStringView regexp)
 
-    Adds a new converter for type \e Type matching regular expression \a regexp,
-    and returns \c true if this was successful, otherwise returns \c false.
+    Adds a new converter for \e Type that can be parsed with \a regexp, and
+    returns \c true if this was successful, otherwise returns \c false. If
+    successful, the registered type can be used as argument in handlers for
+    \l{QHttpServerRouterRule}. The regular expression will be used to parse the
+    path pattern of the rule.
 
-    Automatically try to register an implicit converter from QString to \e Type.
     If there is already a converter of type \e Type, that converter's regexp
     is replaced with \a regexp.
 
+    Minimal example:
     \code
     struct CustomArg {
         int data = 10;
@@ -105,12 +118,12 @@ static const QHash<QMetaType, QString> defaultConverters = {
     using ViewHandler = decltype(pageView);
 
     auto rule = std::make_unique<QHttpServerRouterRule>(
-        "/<arg>/<arg>/log",
+        "/<arg>/log",
         [&router, &pageView] (QRegularExpressionMatch &match,
                               const QHttpServerRequest &request,
                               QHttpServerResponder &&responder) {
         // Bind and call viewHandler with match's captured string and quint32:
-        router.bindCaptured(pageView, match)();
+        QHttpServerRouterRule::bindCaptured(pageView, match)();
     });
 
     router.addRule<ViewHandler>(std::move(rule));
@@ -118,12 +131,14 @@ static const QHash<QMetaType, QString> defaultConverters = {
 */
 
 /*! \fn template <typename ViewHandler, typename ViewTraits = QHttpServerRouterViewTraits<ViewHandler>> bool QHttpServerRouter::addRule(std::unique_ptr<QHttpServerRouterRule> rule)
+    Adds a new \a rule to the router.
 
-    Adds a new \a rule and returns \c true if this was successful.
+    Returns a pointer to the new rule if successful or \c nullptr otherwise.
 
     Inside addRule, we determine ViewHandler arguments and generate a list of
     their QMetaType::Type ids. Then we parse the URL and replace each \c <arg>
-    with a regexp for its type from the list.
+    with a regexp for its type from the list. The \a rule must not modify the
+    QHttpServerRouter instance.
 
     \code
     QHttpServerRouter router;
@@ -141,47 +156,17 @@ static const QHash<QMetaType, QString> defaultConverters = {
     \endcode
 */
 
-/*! \fn template<typename ViewHandler, typename ViewTraits = QHttpServerRouterViewTraits<ViewHandler>> typename ViewTraits::BindableType QHttpServerRouter::bindCaptured(ViewHandler &&handler, const QRegularExpressionMatch &match) const
-
-    Supplies the \a handler with arguments derived from a URL.
-    Returns the bound function that accepts whatever remaining arguments the handler may take,
-    supplying them to the handler after the URL-derived values.
-    Each match of the regex applied to the URL (as a string) is converted to
-    the type of the handler's parameter at its position, so that it can be
-    passed as \a match.
-
-    \code
-    QHttpServerRouter router;
-
-    auto pageView = [] (const QString &page, const quint32 num) {
-        qDebug("page: %s, num: %d", qPrintable(page), num);
-    };
-    using ViewHandler = decltype(pageView);
-
-    auto rule = std::make_unique<QHttpServerRouterRule>(
-        "/<arg>/<arg>/log",
-        [&router, &pageView] (QRegularExpressionMatch &match,
-                              const QHttpServerRequest &request,
-                              QHttpServerResponder &&responder) {
-        // Bind and call viewHandler with match's captured string and quint32:
-        router.bindCaptured(pageView, match)();
-    });
-
-    router.addRule<ViewHandler>(std::move(rule));
-    \endcode
-*/
-
-QHttpServerRouterPrivate::QHttpServerRouterPrivate()
-    : converters(defaultConverters)
+QHttpServerRouterPrivate::QHttpServerRouterPrivate(QAbstractHttpServer *server)
+    : converters(defaultConverters), server(server)
 {}
 
 /*!
     Creates a QHttpServerRouter object with default converters.
 
-    \sa converters()
+    \sa converters
 */
-QHttpServerRouter::QHttpServerRouter()
-    : d_ptr(new QHttpServerRouterPrivate)
+QHttpServerRouter::QHttpServerRouter(QAbstractHttpServer *server)
+    : d_ptr(new QHttpServerRouterPrivate(server))
 {}
 
 /*!
@@ -191,10 +176,15 @@ QHttpServerRouter::~QHttpServerRouter()
 {}
 
 /*!
-    Adds a new converter for type \a metaType matching regular expression \a regexp.
+    Adds a new converter for \a metaType that can be parsed with \a regexp.
+    Having a converter for a \a metaType enables to use this type in a path
+    pattern of a \l QHttpServerRouterRule. The regular expression is used to
+    parse parameters of type \a metaType from the path pattern.
 
-    If there is already a converter of type \a metaType, that converter's regexp
-    is replaced with \a regexp.
+    If there is already a converter of type \a metaType, that converter's
+    regexp is replaced with \a regexp.
+
+    \sa converters, clearConverters
 */
 void QHttpServerRouter::addConverter(QMetaType metaType, QAnyStringView regexp)
 {
@@ -204,6 +194,8 @@ void QHttpServerRouter::addConverter(QMetaType metaType, QAnyStringView regexp)
 
 /*!
     Removes the converter for type \a metaType.
+
+    \sa addConverter
 */
 void QHttpServerRouter::removeConverter(QMetaType metaType)
 {
@@ -216,7 +208,7 @@ void QHttpServerRouter::removeConverter(QMetaType metaType)
 
     \note clearConverters() does not set up default converters.
 
-    \sa converters()
+    \sa converters, addConverter
 */
 void QHttpServerRouter::clearConverters()
 {
@@ -225,7 +217,12 @@ void QHttpServerRouter::clearConverters()
 }
 
 /*!
-    Returns a map of converter type and regexp.
+    \fn const QHash<QMetaType, QString> &QHttpServerRouter::converters() const &
+    \fn QHash<QMetaType, QString> QHttpServerRouter::converters() &&
+
+    Returns a map of converter types and regular expressions that are registered
+    with this QHttpServerRouter. These are the types that can be used in path
+    patterns of \l{QHttpServerRouterRule}{QHttpServerRouterRules}.
 
     The following converters are available by default:
 
@@ -243,24 +240,34 @@ void QHttpServerRouter::clearConverters()
     \value QMetaType::QByteArray
     \value QMetaType::QUrl
     \value QMetaType::Void       An empty converter.
+
+    \sa addConverter, clearConverters
 */
-const QHash<QMetaType, QString> &QHttpServerRouter::converters() const
+const QHash<QMetaType, QString> &QHttpServerRouter::converters() const &
 {
     Q_D(const QHttpServerRouter);
     return d->converters;
 }
 
-bool QHttpServerRouter::addRuleImpl(std::unique_ptr<QHttpServerRouterRule> rule,
+QHash<QMetaType, QString> QHttpServerRouter::converters() &&
+{
+    Q_D(QHttpServerRouter);
+    return std::move(d->converters);
+}
+
+QHttpServerRouterRule *QHttpServerRouter::addRuleImpl(std::unique_ptr<QHttpServerRouterRule> rule,
                                     std::initializer_list<QMetaType> metaTypes)
 {
     Q_D(QHttpServerRouter);
 
     if (!rule->hasValidMethods() || !rule->createPathRegexp(metaTypes, d->converters)) {
-        return false;
+        return nullptr;
+    }
+    if (!d->verifyThreadAffinity(rule->contextObject())) {
+        return nullptr;
     }
 
-    d->rules.push_back(std::move(rule));
-    return true;
+    return d->rules.emplace_back(std::move(rule)).get();
 }
 
 /*!
@@ -275,11 +282,24 @@ bool QHttpServerRouter::handleRequest(const QHttpServerRequest &request,
 {
     Q_D(const QHttpServerRouter);
     for (const auto &rule : d->rules) {
+        if (!rule->contextObject())
+            continue;
+        if (!d->verifyThreadAffinity(rule->contextObject()))
+            continue;
         if (rule->exec(request, responder))
             return true;
     }
 
     return false;
+}
+
+bool QHttpServerRouterPrivate::verifyThreadAffinity(const QObject *contextObject) const
+{
+    if (contextObject && (contextObject->thread() != server->thread())) {
+        qCWarning(lcRouter, "QHttpServerRouter: the context object must reside in the same thread");
+        return false;
+    }
+    return true;
 }
 
 QT_END_NAMESPACE

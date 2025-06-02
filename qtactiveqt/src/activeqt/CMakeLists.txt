@@ -28,6 +28,7 @@ qt_internal_add_module(ActiveQt
         control/qaxfactory.h
         control/qclassfactory_p.h
         shared/qaxtypes_p.h
+    NO_GENERATE_CPP_EXPORTS
 )
 qt_internal_add_docs(ActiveQt
     doc/activeqt.qdocconf

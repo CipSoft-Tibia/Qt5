@@ -1,16 +1,29 @@
 # Copyright 2022 The Dawn & Tint Authors
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 cmake_minimum_required(VERSION 3.10.2)
 
@@ -34,6 +47,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_DEBUG_POSTFIX "")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
   message(STATUS "No build type selected, default to Debug")
@@ -76,6 +90,45 @@ function (set_if_not_defined name value description)
     endif()
 endfunction()
 
+function (install_if_enabled target)
+    if(NOT DAWN_ENABLE_INSTALL)
+        return()
+    endif()
+
+    install(TARGETS ${target}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+
+    get_target_property(targetHeaders ${target} INTERFACE_SOURCES)
+    if (NOT targetHeaders)
+        return()
+    endif()
+
+    foreach(headerFile ${targetHeaders})
+        # Starting from CMake 3.20 there is the cmake_path command that could simplify this code.
+        # Compute the install subdirectory for the header by stripping out the path to
+        # the include / gen/include directory...
+        string(FIND "${headerFile}" "${DAWN_INCLUDE_DIR}" foundIndex)
+        if (foundIndex EQUAL 0)
+            string(LENGTH "${DAWN_INCLUDE_DIR}/" lengthToRemove)
+        endif()
+        string(FIND "${headerFile}" "${DAWN_BUILD_GEN_DIR}/include/" foundIndex)
+        if (foundIndex EQUAL 0)
+            string(LENGTH "${DAWN_BUILD_GEN_DIR}/include/" lengthToRemove)
+        endif()
+        string(SUBSTRING "${headerFile}" "${lengthToRemove}" -1 headerRelDir)
+
+        # ... then remove everything after the last /
+        string(FIND "${headerRelDir}" "/" foundIndex REVERSE)
+        string(SUBSTRING "${headerRelDir}" 0 ${foundIndex} headerRelDir)
+
+        install(FILES "${headerFile}" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${headerRelDir})
+    endforeach()
+endfunction()
+
+
 # Default values for the backend-enabling options
 set(ENABLE_D3D11 OFF)
 set(ENABLE_D3D12 OFF)
@@ -87,6 +140,7 @@ set(USE_WAYLAND OFF)
 set(USE_X11 OFF)
 set(USE_WINDOWS_UI OFF)
 set(BUILD_SAMPLES OFF)
+set(TARGET_MACOS OFF)
 if (WIN32)
     set(ENABLE_D3D11 ON)
     set(USE_WINDOWS_UI ON)
@@ -98,6 +152,9 @@ if (WIN32)
     endif()
 elseif(APPLE)
     set(ENABLE_METAL ON)
+    if(CMAKE_SYSTEM_NAME MATCHES "Darwin" OR CMAKE_SYSTEM_NAME MATCHES "MacOS")
+      set(TARGET_MACOS ON)
+    endif()
 elseif(ANDROID)
     set(ENABLE_VULKAN ON)
     set(ENABLE_OPENGLES ON)
@@ -121,6 +178,7 @@ if (DAWN_SUPPORTS_GLFW_FOR_WINDOWING)
 endif()
 
 option_if_not_defined(DAWN_ENABLE_ASAN "Enable address sanitizer" OFF)
+option_if_not_defined(DAWN_ENABLE_INSTALL "Enable install step for Dawn libraries" OFF)
 option_if_not_defined(DAWN_ENABLE_TSAN "Enable thread sanitizer" OFF)
 option_if_not_defined(DAWN_ENABLE_MSAN "Enable memory sanitizer" OFF)
 option_if_not_defined(DAWN_ENABLE_UBSAN "Enable undefined behaviour sanitizer" OFF)
@@ -138,6 +196,8 @@ option_if_not_defined(DAWN_USE_WAYLAND "Enable support for Wayland surface" ${US
 option_if_not_defined(DAWN_USE_X11 "Enable support for X11 surface" ${USE_X11})
 option_if_not_defined(DAWN_USE_GLFW "Enable compilation of the GLFW windowing utils" ${DAWN_SUPPORTS_GLFW_FOR_WINDOWING})
 option_if_not_defined(DAWN_USE_WINDOWS_UI "Enable support for Windows UI surface" ${USE_WINDOWS_UI})
+option_if_not_defined(DAWN_USE_BUILT_DXC "Enable building and using DXC by the D3D12 backend" OFF)
+option_if_not_defined(DAWN_TARGET_MACOS "Manually link Apple core frameworks" ${TARGET_MACOS})
 
 option_if_not_defined(DAWN_BUILD_SAMPLES "Enables building Dawn's samples" ${BUILD_SAMPLES})
 option_if_not_defined(DAWN_BUILD_NODE_BINDINGS "Enables building Dawn's NodeJS bindings" OFF)
@@ -155,6 +215,7 @@ else()
   set(TINT_DEFAULT_GLSL OFF)
 endif()
 
+option_if_not_defined(TINT_ENABLE_INSTALL "Enable install step for Tint libraries" OFF)
 option_if_not_defined(TINT_BUILD_CMD_TOOLS "Build the Tint command line tools" ON)
 option_if_not_defined(TINT_BUILD_DOCS "Build documentation" ON)
 option_if_not_defined(TINT_DOCS_WARN_AS_ERROR "When building documentation, treat warnings as errors" OFF)
@@ -166,16 +227,15 @@ endif()
 option_if_not_defined(TINT_BUILD_SPV_READER "Build the SPIR-V input reader" ${DAWN_ENABLE_VULKAN})
 option_if_not_defined(TINT_BUILD_WGSL_READER "Build the WGSL input reader" ON)
 option_if_not_defined(TINT_BUILD_GLSL_WRITER "Build the GLSL output writer" ${TINT_DEFAULT_GLSL})
+option_if_not_defined(TINT_BUILD_GLSL_VALIDATOR "Build the GLSL output validator" ON)
 option_if_not_defined(TINT_BUILD_HLSL_WRITER "Build the HLSL output writer" ${DAWN_ENABLE_D3D12})
 option_if_not_defined(TINT_BUILD_MSL_WRITER "Build the MSL output writer" ${DAWN_ENABLE_METAL})
 option_if_not_defined(TINT_BUILD_SPV_WRITER "Build the SPIR-V output writer" ${DAWN_ENABLE_VULKAN})
 option_if_not_defined(TINT_BUILD_WGSL_WRITER "Build the WGSL output writer" ON)
 
 option_if_not_defined(TINT_BUILD_SYNTAX_TREE_WRITER "Build the syntax tree writer" OFF)
-option_if_not_defined(TINT_BUILD_IR "Build the IR" ON)
 
 option_if_not_defined(TINT_BUILD_FUZZERS "Build fuzzers" OFF)
-option_if_not_defined(TINT_BUILD_SPIRV_TOOLS_FUZZER "Build SPIRV-Tools fuzzer" OFF)
 option_if_not_defined(TINT_BUILD_AST_FUZZER "Build AST fuzzer" OFF)
 option_if_not_defined(TINT_BUILD_REGEX_FUZZER "Build regex fuzzer" OFF)
 option_if_not_defined(TINT_BUILD_BENCHMARKS "Build Tint benchmarks" OFF)
@@ -200,11 +260,12 @@ set_if_not_defined(DAWN_JINJA2_DIR "${DAWN_THIRD_PARTY_DIR}/jinja2" "Directory i
 set_if_not_defined(DAWN_MARKUPSAFE_DIR "${DAWN_THIRD_PARTY_DIR}/markupsafe" "Directory in which to find MarkupSafe")
 set_if_not_defined(DAWN_KHRONOS_DIR "${DAWN_THIRD_PARTY_DIR}/khronos" "Directory in which to find Khronos GL headers")
 set_if_not_defined(DAWN_SWIFTSHADER_DIR "${DAWN_THIRD_PARTY_DIR}/swiftshader" "Directory in which to find swiftshader")
+set_if_not_defined(DAWN_PROTOBUF_DIR "${DAWN_THIRD_PARTY_DIR}/protobuf" "Directory in which to find protobuf")
 
 set_if_not_defined(DAWN_SPIRV_TOOLS_DIR "${DAWN_VULKAN_DEPS_DIR}/spirv-tools/src" "Directory in which to find SPIRV-Tools")
 set_if_not_defined(DAWN_SPIRV_HEADERS_DIR "${DAWN_VULKAN_DEPS_DIR}/spirv-headers/src" "Directory in which to find SPIRV-Headers")
 set_if_not_defined(DAWN_VULKAN_HEADERS_DIR "${DAWN_VULKAN_DEPS_DIR}/vulkan-headers/src" "Directory in which to find Vulkan-Headers")
-set_if_not_defined(DAWN_VULKAN_TOOLS_DIR "${DAWN_VULKAN_DEPS_DIR}/vulkan-tools/src" "Directory in which to find Vulkan-Tools")
+set_if_not_defined(DAWN_VULKAN_UTILITY_LIBRARIES_DIR "${DAWN_VULKAN_DEPS_DIR}/vulkan-utility-libraries/src" "Directory in which to find Vulkan-Utility-Libraries")
 
 # Dependencies for DAWN_BUILD_NODE_BINDINGS
 set_if_not_defined(NODE_ADDON_API_DIR "${DAWN_THIRD_PARTY_DIR}/node-addon-api" "Directory in which to find node-addon-api")
@@ -221,26 +282,6 @@ endif()
 
 if(DAWN_ENABLE_PIC)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-endif()
-
-if (${TINT_BUILD_SPIRV_TOOLS_FUZZER})
-  message(STATUS "TINT_BUILD_SPIRV_TOOLS_FUZZER is ON - setting
-      TINT_BUILD_FUZZERS
-      TINT_BUILD_SPV_READER
-      TINT_BUILD_SPV_WRITER
-      TINT_BUILD_WGSL_READER
-      TINT_BUILD_WGSL_WRITER
-      TINT_BUILD_GLSL_WRITER
-      TINT_BUILD_HLSL_WRITER
-      TINT_BUILD_MSL_WRITER to ON")
-  set(TINT_BUILD_FUZZERS ON CACHE BOOL "Build tint fuzzers" FORCE)
-  set(TINT_BUILD_SPV_READER ON CACHE BOOL "Build SPIR-V reader" FORCE)
-  set(TINT_BUILD_SPV_WRITER ON CACHE BOOL "Build SPIR-V writer" FORCE)
-  set(TINT_BUILD_WGSL_READER ON CACHE BOOL "Build WGSL reader" FORCE)
-  set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "Build WGSL writer" FORCE)
-  set(TINT_BUILD_GLSL_WRITER ON CACHE BOOL "Build HLSL writer" FORCE)
-  set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "Build HLSL writer" FORCE)
-  set(TINT_BUILD_MSL_WRITER ON CACHE BOOL "Build MSL writer" FORCE)
 endif()
 
 if (${TINT_BUILD_AST_FUZZER})
@@ -290,7 +331,9 @@ message(STATUS "Dawn build Null backend: ${DAWN_ENABLE_NULL}")
 message(STATUS "Dawn build with asserts in all configurations: ${DAWN_ALWAYS_ASSERT}")
 message(STATUS "Dawn build Wayland support: ${DAWN_USE_WAYLAND}")
 message(STATUS "Dawn build X11 support: ${DAWN_USE_X11}")
+message(STATUS "Dawn build GLFW support: ${DAWN_USE_GLFW}")
 message(STATUS "Dawn build Windows UI support: ${DAWN_USE_WINDOWS_UI}")
+message(STATUS "Dawn build and use DXC: ${DAWN_USE_BUILT_DXC}")
 
 message(STATUS "Dawn build samples: ${DAWN_BUILD_SAMPLES}")
 message(STATUS "Dawn build Node bindings: ${DAWN_BUILD_NODE_BINDINGS}")
@@ -310,14 +353,13 @@ message(STATUS "Tint build docs with warn as error: ${TINT_DOCS_WARN_AS_ERROR}")
 message(STATUS "Tint build SPIR-V reader: ${TINT_BUILD_SPV_READER}")
 message(STATUS "Tint build WGSL reader: ${TINT_BUILD_WGSL_READER}")
 message(STATUS "Tint build GLSL writer: ${TINT_BUILD_GLSL_WRITER}")
+message(STATUS "Tint build GLSL validator: ${TINT_BUILD_GLSL_VALIDATOR}")
 message(STATUS "Tint build HLSL writer: ${TINT_BUILD_HLSL_WRITER}")
 message(STATUS "Tint build MSL writer: ${TINT_BUILD_MSL_WRITER}")
 message(STATUS "Tint build SPIR-V writer: ${TINT_BUILD_SPV_WRITER}")
 message(STATUS "Tint build WGSL writer: ${TINT_BUILD_WGSL_WRITER}")
 message(STATUS "Tint build Syntax Tree writer: ${TINT_BUILD_SYNTAX_TREE_WRITER}")
-message(STATUS "Tint build IR: ${TINT_BUILD_IR}")
 message(STATUS "Tint build fuzzers: ${TINT_BUILD_FUZZERS}")
-message(STATUS "Tint build SPIRV-Tools fuzzer: ${TINT_BUILD_SPIRV_TOOLS_FUZZER}")
 message(STATUS "Tint build AST fuzzer: ${TINT_BUILD_AST_FUZZER}")
 message(STATUS "Tint build regex fuzzer: ${TINT_BUILD_REGEX_FUZZER}")
 message(STATUS "Tint build benchmarks: ${TINT_BUILD_BENCHMARKS}")
@@ -459,7 +501,7 @@ set(CMAKE_CXX_STANDARD "17")
 
 set(TINT_LIB_FUZZING_ENGINE_LINK_OPTIONS "" CACHE STRING "Used by OSS-Fuzz to control, via link options, which fuzzing engine should be used")
 
-set(TINT_ROOT_SOURCE_DIR ${PROJECT_SOURCE_DIR})
+set(TINT_ROOT_SOURCE_DIR   ${PROJECT_SOURCE_DIR})
 set(TINT_SPIRV_HEADERS_DIR ${DAWN_SPIRV_HEADERS_DIR})
 set(TINT_SPIRV_TOOLS_DIR   ${DAWN_SPIRV_TOOLS_DIR})
 
@@ -483,6 +525,10 @@ if((CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang") OR
     ((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") AND
      (NOT COMPILER_IS_CLANG_CL)))
   set(COMPILER_IS_CLANG TRUE)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  set(COMPILER_IS_GNU TRUE)
 endif()
 
 if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") OR COMPILER_IS_CLANG)
@@ -525,6 +571,10 @@ endif()
 ################################################################################
 # Run on all subdirectories
 ################################################################################
+if (EXISTS "${DAWN_PROTOBUF_DIR}/cmake")
+  # Needs to come before SPIR-V Tools
+  include("third_party/protobuf.cmake")
+endif()
 
 add_subdirectory(third_party)
 

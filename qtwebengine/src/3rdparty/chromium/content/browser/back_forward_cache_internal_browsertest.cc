@@ -20,6 +20,7 @@
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/common/content_navigation_policy.h"
+#include "content/common/features.h"
 #include "content/public/browser/browser_accessibility_state.h"
 #include "content/public/browser/disallow_activation_reason.h"
 #include "content/public/browser/navigation_handle.h"
@@ -535,8 +536,7 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   EXPECT_TRUE(NavigateToURL(
       shell(), embedded_test_server()->GetURL("b.com", "/title1.html")));
 
-  // 3) Post IPC tasks to the page, testing both mojo remote and associated
-  // remote objects.
+  // 3) Post IPC tasks to the page, testing mojo remote objects.
 
   // Send a message via an associated interface - which will post a task with an
   // IPC hash and will be routed to the per-thread task queue.
@@ -549,33 +549,16 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
       1);
   run_loop.Run();
 
-  // Post a non-associated interface. Will be routed to a frame-specific task
-  // queue with IPC set in SimpleWatcher.
-  base::RunLoop run_loop2;
-  rfh_a->GetHighPriorityLocalFrame()->DispatchBeforeUnload(
-      false,
-      base::BindOnce([](base::RepeatingClosure quit_closure, bool proceed,
-                        base::TimeTicks start_time,
-                        base::TimeTicks end_time) { quit_closure.Run(); },
-                     run_loop2.QuitClosure()));
-  run_loop2.Run();
-
   // 4) Check the histogram.
-  std::vector<base::HistogramBase::Sample> samples = {
-      base::HistogramBase::Sample(
-          base::TaskAnnotator::ScopedSetIpcHash::MD5HashMetricName(
-              "blink.mojom.HighPriorityLocalFrame")),
-      base::HistogramBase::Sample(
-          base::TaskAnnotator::ScopedSetIpcHash::MD5HashMetricName(
-              "blink.mojom.LocalFrame"))};
+  base::HistogramBase::Sample sample = base::HistogramBase::Sample(
+      base::TaskAnnotator::ScopedSetIpcHash::MD5HashMetricName(
+          "blink.mojom.LocalFrame"));
 
-  for (base::HistogramBase::Sample sample : samples) {
-    FetchHistogramsFromChildProcesses();
-    EXPECT_TRUE(HistogramContainsIntValue(
-        sample, histogram_tester().GetAllSamples(
-                    "BackForwardCache.Experimental."
-                    "UnexpectedIPCMessagePostedToCachedFrame.MethodHash")));
-  }
+  FetchHistogramsFromChildProcesses();
+  EXPECT_TRUE(HistogramContainsIntValue(
+      sample, histogram_tester().GetAllSamples(
+                  "BackForwardCache.Experimental."
+                  "UnexpectedIPCMessagePostedToCachedFrame.MethodHash")));
 }
 
 IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
@@ -3401,6 +3384,43 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
   ExpectRestored(FROM_HERE);
 }
 
+// Test that when two back navigations are created to the same history entry one
+// after another without waiting for the first one to commit, the second one
+// should be committed as a normal back navigation without restoring the BFCache
+// entry.
+IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTest,
+                       TwoBackNavigationsToTheSameEntry) {
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  GURL url_a(embedded_test_server()->GetURL("a.com", "/title1.html"));
+  GURL url_b(embedded_test_server()->GetURL("b.com", "/title1.html"));
+
+  // 1) Navigate to a cacheable page A.
+  ASSERT_TRUE(NavigateToURL(shell(), url_a));
+  RenderFrameHostImplWrapper rfh_a(current_frame_host());
+
+  // 2) Navigate away.
+  ASSERT_TRUE(NavigateToURL(shell(), url_b));
+  EXPECT_EQ(web_contents()->GetLastCommittedURL(), url_b);
+
+  // Page A should be in BFCache.
+  EXPECT_FALSE(rfh_a.IsDestroyed());
+  EXPECT_TRUE(rfh_a->IsInBackForwardCache());
+
+  // 3) Navigate back to A, but before the `CommitDeferringCondition` check
+  // happens, start another navigation back to the same entry A.
+  TestActivationManager activation_manager(web_contents(), url_a);
+  web_contents()->GetController().GoBack();
+  ASSERT_TRUE(activation_manager.WaitForAfterChecks());
+  ASSERT_TRUE(HistoryGoToIndex(web_contents(), 0));
+  EXPECT_EQ(web_contents()->GetLastCommittedURL(), url_a);
+
+  // 4) Page A should not be restored from BFCache because the first navigation
+  // is cancelled and the second navigation should be a non-BFCache navigation.
+  ExpectNotRestored({NotRestoredReason::kNavigationCancelledWhileRestoring}, {},
+                    {}, {}, {}, FROM_HERE);
+}
+
 // Injects a blank subframe into the current document just before processing
 // DidCommitNavigation for a specified URL.
 class InjectCreateChildFrame : public DidCommitNavigationInterceptor {
@@ -4286,7 +4306,6 @@ IN_PROC_BROWSER_TEST_F(BackForwardCacheBrowserTestWithFencedFrames,
   blink::mojom::BackForwardCacheNotRestoredReasonsPtr web_reasons =
       can_store_result.tree_reasons->GetWebExposedNotRestoredReasons();
   EXPECT_TRUE(web_reasons->same_origin_details);
-  EXPECT_EQ(web_reasons->blocked, blink::mojom::BFCacheBlocked::kNo);
   EXPECT_EQ(2u, web_reasons->same_origin_details->children.size());
   EXPECT_FALSE(
       web_reasons->same_origin_details->children.at(0)->same_origin_details);

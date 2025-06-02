@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <array>
 
@@ -25,6 +38,10 @@
 #include "src/tint/lang/core/type/texture_dimension.h"
 #include "src/tint/lang/msl/writer/ast_printer/helper_test.h"
 #include "src/tint/utils/text/string_stream.h"
+
+// Done except for two questions on:
+// TEST_F(MslASTPrinterTest, EmitType_Struct_WithAttribute) {
+// TEST_F(MslASTPrinterTest, EmitType_Pointer) {
 
 namespace tint::msl::writer {
 namespace {
@@ -89,6 +106,7 @@ using uint = unsigned int;
 
 using MslASTPrinterTest = TestHelper;
 
+// MslPrinterTest.EmitType_Array
 TEST_F(MslASTPrinterTest, EmitType_Array) {
     auto arr = ty.array<bool, 4>();
     ast::Type type = GlobalVar("G", arr, core::AddressSpace::kPrivate)->type;
@@ -100,6 +118,7 @@ TEST_F(MslASTPrinterTest, EmitType_Array) {
     EXPECT_EQ(out.str(), "tint_array<bool, 4>");
 }
 
+// MslPrinterTest.EmitType_ArrayOfArray
 TEST_F(MslASTPrinterTest, EmitType_ArrayOfArray) {
     auto a = ty.array<bool, 4>();
     auto b = ty.array(a, 5_u);
@@ -112,6 +131,7 @@ TEST_F(MslASTPrinterTest, EmitType_ArrayOfArray) {
     EXPECT_EQ(out.str(), "tint_array<tint_array<bool, 4>, 5>");
 }
 
+// MslPrinterTest.EmitType_ArrayOfArrayOfArray
 TEST_F(MslASTPrinterTest, EmitType_ArrayOfArrayOfArray) {
     auto a = ty.array<bool, 4>();
     auto b = ty.array(a, 5_u);
@@ -125,6 +145,7 @@ TEST_F(MslASTPrinterTest, EmitType_ArrayOfArrayOfArray) {
     EXPECT_EQ(out.str(), "tint_array<tint_array<tint_array<bool, 4>, 5>, 6>");
 }
 
+// TODO(dsinclair): Port? Not sure if this is relevant ...
 TEST_F(MslASTPrinterTest, EmitType_Array_WithoutName) {
     auto arr = ty.array<bool, 4>();
     ast::Type type = GlobalVar("G", arr, core::AddressSpace::kPrivate)->type;
@@ -136,6 +157,7 @@ TEST_F(MslASTPrinterTest, EmitType_Array_WithoutName) {
     EXPECT_EQ(out.str(), "tint_array<bool, 4>");
 }
 
+// MslPrinterTest.EmitType_RuntimeArray
 TEST_F(MslASTPrinterTest, EmitType_RuntimeArray) {
     auto arr = ty.array<bool, 1>();
     ast::Type type = GlobalVar("G", arr, core::AddressSpace::kPrivate)->type;
@@ -147,6 +169,7 @@ TEST_F(MslASTPrinterTest, EmitType_RuntimeArray) {
     EXPECT_EQ(out.str(), "tint_array<bool, 1>");
 }
 
+// MSLPrinterTest.EmitType_Bool
 TEST_F(MslASTPrinterTest, EmitType_Bool) {
     auto* bool_ = create<core::type::Bool>();
 
@@ -157,6 +180,7 @@ TEST_F(MslASTPrinterTest, EmitType_Bool) {
     EXPECT_EQ(out.str(), "bool");
 }
 
+// MSLPrintertest.EmitType_F32
 TEST_F(MslASTPrinterTest, EmitType_F32) {
     auto* f32 = create<core::type::F32>();
 
@@ -167,6 +191,7 @@ TEST_F(MslASTPrinterTest, EmitType_F32) {
     EXPECT_EQ(out.str(), "float");
 }
 
+// MSLPrinterTest.EmitType_F16
 TEST_F(MslASTPrinterTest, EmitType_F16) {
     auto* f16 = create<core::type::F16>();
 
@@ -177,6 +202,7 @@ TEST_F(MslASTPrinterTest, EmitType_F16) {
     EXPECT_EQ(out.str(), "half");
 }
 
+// MSLPrinterTest.EmitType_I32
 TEST_F(MslASTPrinterTest, EmitType_I32) {
     auto* i32 = create<core::type::I32>();
 
@@ -187,6 +213,7 @@ TEST_F(MslASTPrinterTest, EmitType_I32) {
     EXPECT_EQ(out.str(), "int");
 }
 
+// MSLPrinterTest.EmitType_Matrix_F32
 TEST_F(MslASTPrinterTest, EmitType_Matrix_F32) {
     auto* f32 = create<core::type::F32>();
     auto* vec3 = create<core::type::Vector>(f32, 3u);
@@ -199,6 +226,7 @@ TEST_F(MslASTPrinterTest, EmitType_Matrix_F32) {
     EXPECT_EQ(out.str(), "float2x3");
 }
 
+// MSLPrinterTest.EmitType_Matrix_F16
 TEST_F(MslASTPrinterTest, EmitType_Matrix_F16) {
     auto* f16 = create<core::type::F16>();
     auto* vec3 = create<core::type::Vector>(f16, 3u);
@@ -211,6 +239,7 @@ TEST_F(MslASTPrinterTest, EmitType_Matrix_F16) {
     EXPECT_EQ(out.str(), "half2x3");
 }
 
+// TODO(dsinclair): Not sure if this is relevant? MslPrinterTest.EmitType_Pointer_Workgroup
 TEST_F(MslASTPrinterTest, EmitType_Pointer) {
     auto* f32 = create<core::type::F32>();
     auto* p =
@@ -236,6 +265,7 @@ TEST_F(MslASTPrinterTest, EmitType_Struct) {
     EXPECT_EQ(out.str(), "S");
 }
 
+// MSLPrinterTest.EmitType_Struct
 TEST_F(MslASTPrinterTest, EmitType_StructDecl) {
     auto* s = Structure("S", Vector{
                                  Member("a", ty.i32()),
@@ -254,6 +284,7 @@ TEST_F(MslASTPrinterTest, EmitType_StructDecl) {
 )");
 }
 
+// MSLPrinterTest.EmitType_Struct_Layout_NonComposites
 TEST_F(MslASTPrinterTest, EmitType_Struct_Layout_NonComposites) {
     auto* s =
         Structure("S", Vector{
@@ -371,6 +402,7 @@ TEST_F(MslASTPrinterTest, EmitType_Struct_Layout_NonComposites) {
 #undef ALL_FIELDS
 }
 
+// MSLPrinterTest.EmitType_Struct_Layout_Structures
 TEST_F(MslASTPrinterTest, EmitType_Struct_Layout_Structures) {
     // inner_x: size(1024), align(512)
     auto* inner_x = Structure("inner_x", Vector{
@@ -459,6 +491,7 @@ TEST_F(MslASTPrinterTest, EmitType_Struct_Layout_Structures) {
 #undef ALL_FIELDS
 }
 
+// MSLPrinterTest.EmitType_Struct_Layout_ArrayDefaultStride
 TEST_F(MslASTPrinterTest, EmitType_Struct_Layout_ArrayDefaultStride) {
     // inner: size(1024), align(512)
     auto* inner = Structure("inner", Vector{
@@ -558,6 +591,7 @@ TEST_F(MslASTPrinterTest, EmitType_Struct_Layout_ArrayDefaultStride) {
 #undef ALL_FIELDS
 }
 
+// MslPrinterTest.EmitType_Struct_Layout_ArrayVec3DefaultStride
 TEST_F(MslASTPrinterTest, EmitType_Struct_Layout_ArrayVec3DefaultStride) {
     // array: size(64), align(16)
     auto array = ty.array<vec3<f32>, 4>();
@@ -598,6 +632,7 @@ TEST_F(MslASTPrinterTest, EmitType_Struct_Layout_ArrayVec3DefaultStride) {
     EXPECT_EQ(buf.String(), expect.str());
 }
 
+// MslPrinterTest.AttemptTintPadSymbolCollision
 TEST_F(MslASTPrinterTest, AttemptTintPadSymbolCollision) {
     auto* s = Structure(
         "S", Vector{
@@ -683,6 +718,7 @@ TEST_F(MslASTPrinterTest, AttemptTintPadSymbolCollision) {
 )");
 }
 
+// TODO(dsinclair): Missing from IR tests, but test also doesn't look right.
 TEST_F(MslASTPrinterTest, EmitType_Struct_WithAttribute) {
     auto* s = Structure("S", Vector{
                                  Member("a", ty.i32()),
@@ -705,6 +741,7 @@ TEST_F(MslASTPrinterTest, EmitType_Struct_WithAttribute) {
 )");
 }
 
+// MSLPrinterTest.EmitType_U32
 TEST_F(MslASTPrinterTest, EmitType_U32) {
     auto* u32 = create<core::type::U32>();
 
@@ -715,6 +752,7 @@ TEST_F(MslASTPrinterTest, EmitType_U32) {
     EXPECT_EQ(out.str(), "uint");
 }
 
+// MSLPrinterTest.EmitType_Vector
 TEST_F(MslASTPrinterTest, EmitType_Vector) {
     auto* f32 = create<core::type::F32>();
     auto* vec3 = create<core::type::Vector>(f32, 3u);
@@ -726,6 +764,7 @@ TEST_F(MslASTPrinterTest, EmitType_Vector) {
     EXPECT_EQ(out.str(), "float3");
 }
 
+// MSLPrinterTest.EmitType_Void
 TEST_F(MslASTPrinterTest, EmitType_Void) {
     auto* void_ = create<core::type::Void>();
 
@@ -736,6 +775,7 @@ TEST_F(MslASTPrinterTest, EmitType_Void) {
     EXPECT_EQ(out.str(), "void");
 }
 
+// MSLPrinterTest.EmitType_Sampler
 TEST_F(MslASTPrinterTest, EmitType_Sampler) {
     auto* sampler = create<core::type::Sampler>(core::type::SamplerKind::kSampler);
 
@@ -746,6 +786,7 @@ TEST_F(MslASTPrinterTest, EmitType_Sampler) {
     EXPECT_EQ(out.str(), "sampler");
 }
 
+// MSLPrinterTest.EmitType_SamplerComparison
 TEST_F(MslASTPrinterTest, EmitType_SamplerComparison) {
     auto* sampler = create<core::type::Sampler>(core::type::SamplerKind::kComparisonSampler);
 
@@ -767,6 +808,7 @@ inline std::ostream& operator<<(std::ostream& out, MslDepthTextureData data) {
     return out;
 }
 using MslDepthTexturesTest = TestParamHelper<MslDepthTextureData>;
+// MslPrinterDepthTexturesTest.Emit
 TEST_P(MslDepthTexturesTest, Emit) {
     auto params = GetParam();
 
@@ -791,6 +833,7 @@ INSTANTIATE_TEST_SUITE_P(
                                         "depthcube_array<float, access::sample>"}));
 
 using MslDepthMultisampledTexturesTest = TestHelper;
+// MSLPrinterTest.EmitType_DepthMultisampledTexture
 TEST_F(MslDepthMultisampledTexturesTest, Emit) {
     core::type::DepthMultisampledTexture s(core::type::TextureDimension::k2d);
 
@@ -812,6 +855,7 @@ inline std::ostream& operator<<(std::ostream& out, MslTextureData data) {
     return out;
 }
 using MslSampledtexturesTest = TestParamHelper<MslTextureData>;
+// MslPrinterSampledTexturesTest.Emit
 TEST_P(MslSampledtexturesTest, Emit) {
     auto params = GetParam();
 
@@ -837,6 +881,7 @@ INSTANTIATE_TEST_SUITE_P(
         MslTextureData{core::type::TextureDimension::kCubeArray,
                        "texturecube_array<float, access::sample>"}));
 
+// MslPrinterTest.Emit_TypeMultisampledTexture
 TEST_F(MslASTPrinterTest, Emit_TypeMultisampledTexture) {
     auto* u32 = create<core::type::U32>();
     auto* ms = create<core::type::MultisampledTexture>(core::type::TextureDimension::k2d, u32);
@@ -858,6 +903,7 @@ inline std::ostream& operator<<(std::ostream& out, MslStorageTextureData data) {
     return out << str.str();
 }
 using MslStorageTexturesTest = TestParamHelper<MslStorageTextureData>;
+// MslPrinterStorageTexturesTest.Emit
 TEST_P(MslStorageTexturesTest, Emit) {
     auto params = GetParam();
 

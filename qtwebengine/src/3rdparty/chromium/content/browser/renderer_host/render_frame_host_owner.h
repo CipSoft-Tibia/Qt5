@@ -10,7 +10,6 @@
 
 #include "build/build_config.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
-#include "services/network/public/cpp/attribution_reporting_runtime_features.h"
 #include "services/network/public/mojom/referrer_policy.mojom-forward.h"
 #include "third_party/blink/public/mojom/frame/user_activation_update_types.mojom-forward.h"
 #include "third_party/blink/public/mojom/loader/referrer.mojom-forward.h"
@@ -103,7 +102,7 @@ class RenderFrameHostOwner {
       bool is_same_document,
       const GURL& url,
       const url::Origin& origin,
-      const absl::optional<GURL>& initiator_base_url,
+      const std::optional<GURL>& initiator_base_url,
       const net::IsolationInfo& isolation_info_for_subresources,
       blink::mojom::ReferrerPtr referrer,
       const ui::PageTransition& transition,
@@ -126,15 +125,12 @@ class RenderFrameHostOwner {
 
   // Stores the payload that will be sent as part of an automatic beacon. Right
   // now only the "reserved.top_navigation" beacon is supported.
-  // `attribution_reporting_runtime_features` indicates whether Attribution
-  // Reporting API related runtime features are enabled and is needed for
-  // integration with Attribution Reporting API.
   virtual void SetFencedFrameAutomaticBeaconReportEventData(
+      blink::mojom::AutomaticBeaconType event_type,
       const std::string& event_data,
       const std::vector<blink::FencedFrame::ReportingDestination>& destinations,
-      network::AttributionReportingRuntimeFeatures
-          attribution_reporting_runtime_features,
-      bool once) = 0;
+      bool once,
+      bool cross_origin_exposed) = 0;
 
 #if !BUILDFLAG(IS_ANDROID)
   virtual void GetVirtualAuthenticatorManager(

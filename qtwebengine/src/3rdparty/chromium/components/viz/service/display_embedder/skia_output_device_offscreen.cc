@@ -10,6 +10,7 @@
 #include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
 #include "gpu/command_buffer/service/skia_utils.h"
 #include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/gpu/GpuTypes.h"
 #include "third_party/skia/include/gpu/ganesh/SkSurfaceGanesh.h"
 #include "third_party/skia/include/gpu/ganesh/vk/GrVkBackendSurface.h"
 #include "third_party/skia/include/gpu/graphite/Context.h"
@@ -90,14 +91,14 @@ void SkiaOutputDeviceOffscreen::EnsureBackbuffer() {
   if (gr_context_) {
     if (has_alpha_) {
       backend_texture_ = context_state_->gr_context()->createBackendTexture(
-          size_.width(), size_.height(), sk_color_type_, GrMipMapped::kNo,
+          size_.width(), size_.height(), sk_color_type_, skgpu::Mipmapped::kNo,
           GrRenderable::kYes);
     } else {
       is_emulated_rgbx_ = true;
       // Initialize alpha channel to opaque.
       backend_texture_ = context_state_->gr_context()->createBackendTexture(
           size_.width(), size_.height(), sk_color_type_, SkColors::kBlack,
-          GrMipMapped::kNo, GrRenderable::kYes);
+          skgpu::Mipmapped::kNo, GrRenderable::kYes);
     }
     DCHECK(backend_texture_.isValid());
 
@@ -122,7 +123,9 @@ void SkiaOutputDeviceOffscreen::EnsureBackbuffer() {
     if (!has_alpha_) {
       is_emulated_rgbx_ = true;
     }
-    skgpu::graphite::TextureInfo texture_info = gpu::GetGraphiteTextureInfo(
+    // Get backend texture info needed for creating backend textures for
+    // offscreen.
+    skgpu::graphite::TextureInfo texture_info = gpu::GraphiteBackendTextureInfo(
         context_state_->gr_context_type(),
         SkColorTypeToSinglePlaneSharedImageFormat(sk_color_type_));
     graphite_texture_ =
@@ -158,7 +161,7 @@ SkSurface* SkiaOutputDeviceOffscreen::BeginPaint(
     std::vector<GrBackendSemaphore>* end_semaphores) {
   DCHECK(backend_texture_.isValid() || graphite_texture_.isValid());
   if (!sk_surface_) {
-    SkSurfaceProps surface_props{0, kUnknown_SkPixelGeometry};
+    SkSurfaceProps surface_props;
     if (gr_context_) {
       sk_surface_ = SkSurfaces::WrapBackendTexture(
           context_state_->gr_context(), backend_texture_,

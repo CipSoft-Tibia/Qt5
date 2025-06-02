@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_GLSL_WRITER_AST_PRINTER_HELPER_TEST_H_
 #define SRC_TINT_LANG_GLSL_WRITER_AST_PRINTER_HELPER_TEST_H_
@@ -24,6 +37,7 @@
 #include "src/tint/lang/glsl/writer/common/version.h"
 #include "src/tint/lang/glsl/writer/writer.h"
 #include "src/tint/lang/wgsl/ast/transform/manager.h"
+#include "src/tint/lang/wgsl/ast/transform/renamer.h"
 #include "src/tint/lang/wgsl/resolver/resolve.h"
 
 namespace tint::glsl::writer {
@@ -52,12 +66,14 @@ class TestHelperBase : public BODY, public ProgramBuilder {
         if (gen_) {
             return *gen_;
         }
-        [&] {
-            ASSERT_TRUE(IsValid()) << "Builder program is not valid\n" << Diagnostics().str();
-        }();
+        if (!IsValid()) {
+            ADD_FAILURE() << "ProgramBuilder is not valid: " << Diagnostics();
+        }
         program = std::make_unique<Program>(resolver::Resolve(*this));
-        [&] { ASSERT_TRUE(program->IsValid()) << program->Diagnostics().str(); }();
-        gen_ = std::make_unique<ASTPrinter>(program.get(), version);
+        if (!program->IsValid()) {
+            ADD_FAILURE() << program->Diagnostics();
+        }
+        gen_ = std::make_unique<ASTPrinter>(*program, version);
         return *gen_;
     }
 
@@ -73,20 +89,35 @@ class TestHelperBase : public BODY, public ProgramBuilder {
         if (gen_) {
             return *gen_;
         }
-        [&] {
-            ASSERT_TRUE(IsValid()) << "Builder program is not valid\n" << Diagnostics().str();
-        }();
+        if (!IsValid()) {
+            ADD_FAILURE() << "ProgramBuilder is not valid: " << Diagnostics();
+        }
         program = std::make_unique<Program>(resolver::Resolve(*this));
-        [&] { ASSERT_TRUE(program->IsValid()) << program->Diagnostics().str(); }();
+        if (!program->IsValid()) {
+            ADD_FAILURE() << program->Diagnostics();
+        }
 
-        auto sanitized_result = Sanitize(program.get(), options, /* entry_point */ "");
-        [&] {
-            ASSERT_TRUE(sanitized_result.program.IsValid())
-                << sanitized_result.program.Diagnostics().str();
-        }();
+        // Run the glsl keyword renamer before all other transforms.
+        ast::transform::Manager transform_manager;
+        ast::transform::DataMap transform_data;
+        ast::transform::DataMap outputs;
+        transform_data.Add<ast::transform::Renamer::Config>(
+            ast::transform::Renamer::Target::kGlslKeywords,
+            /* preserve_unicode */ false);
+        transform_manager.Add<tint::ast::transform::Renamer>();
+        auto result = transform_manager.Run(*program, transform_data, outputs);
+        if (!result.IsValid()) {
+            ADD_FAILURE() << result.Diagnostics();
+        }
+        *program = std::move(result);
+
+        auto sanitized_result = Sanitize(*program, options, /* entry_point */ "");
+        if (!sanitized_result.program.IsValid()) {
+            ADD_FAILURE() << sanitized_result.program.Diagnostics();
+        }
 
         *program = std::move(sanitized_result.program);
-        gen_ = std::make_unique<ASTPrinter>(program.get(), version);
+        gen_ = std::make_unique<ASTPrinter>(*program, version);
         return *gen_;
     }
 

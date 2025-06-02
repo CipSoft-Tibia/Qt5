@@ -65,9 +65,13 @@ public:
 
     virtual void setAudioOutput(QPlatformAudioOutput *) {}
 
+    virtual void setAudioBufferOutput(QAudioBufferOutput *) { }
+
     virtual QMediaMetaData metaData() const { return {}; }
 
     virtual void setVideoSink(QVideoSink * /*sink*/) = 0;
+
+    virtual bool canPlayQrc() const { return false; }
 
     // media streams
     enum TrackType : uint8_t { VideoStream, AudioStream, SubtitleStream, NTrackTypes };

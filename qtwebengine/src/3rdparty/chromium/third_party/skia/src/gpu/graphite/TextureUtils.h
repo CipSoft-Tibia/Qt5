@@ -25,6 +25,7 @@ struct SkSamplingOptions;
 
 namespace skgpu::graphite {
 
+class Caps;
 class Context;
 class Recorder;
 class TextureProxyView;
@@ -63,16 +64,20 @@ std::pair<sk_sp<SkImage>, SkSamplingOptions> GetGraphiteBacked(Recorder*,
                                                                const SkImage*,
                                                                SkSamplingOptions);
 
+// Return the color format used for coverage mask textures that are rendered by a GPU
+// compute program.
+SkColorType ComputeShaderCoverageMaskTargetFormat(const Caps*);
+
 } // namespace skgpu::graphite
 
 namespace skif {
-class Context;
-struct ContextInfo;
-struct Functors;
 
-Functors MakeGraphiteFunctors(skgpu::graphite::Recorder* recorder);
-Context MakeGraphiteContext(skgpu::graphite::Recorder* recorder,
-                            const ContextInfo& info);
+class Backend;
+
+sk_sp<Backend> MakeGraphiteBackend(skgpu::graphite::Recorder* recorder,
+                                   const SkSurfaceProps&,
+                                   SkColorType);
+
 }  // namespace skif
 
 #endif // skgpu_graphite_TextureUtils_DEFINED

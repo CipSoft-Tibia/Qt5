@@ -44,7 +44,7 @@ public:
     qint64 processedUSecs() const override;
     QAudio::Error error() const override;
     QAudio::State state() const override;
-    void setFormat(const QAudioFormat &format) override;
+    void setFormat(const QAudioFormat &format);
     QAudioFormat format() const override;
 
     void setVolume(qreal volume) override;
@@ -72,7 +72,7 @@ private:
 
     SLmillibel adjustVolume(qreal vol);
 
-    static constexpr int BufferCount = 2;
+    static constexpr int BufferCount = 4;
 
     QByteArray m_deviceName;
     QAudio::State m_state = QAudio::StoppedState;

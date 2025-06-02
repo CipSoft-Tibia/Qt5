@@ -10,7 +10,8 @@ has_r_text_file = true
 is_manifest_empty = true
 manifest_package = "androidx.slidingpanelayout"
 resources = [
-  "res/values/values.xml"
+  "res/values/values.xml",
+  "res/drawable/slidingpanelayout_divider.xml"
 ]
 subjar_tuples = []
 subjars = []

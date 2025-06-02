@@ -648,8 +648,8 @@
 <context>
     <name>Designer</name>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Unable to launch %1.</source>
@@ -1139,8 +1139,8 @@
         <translation>Formulář</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
 </context>
 <context>
@@ -1429,8 +1429,8 @@ Script: %3</source>
         <translation>%1 - Upozornění</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>This application cannot be used for the Console edition of Qt</source>
@@ -1476,24 +1476,24 @@ Script: %3</source>
         <translation>CTRL+M</translation>
     </message>
     <message>
-        <source>Qt Designer &amp;Help</source>
-        <translation>&amp;Nápověda k programu Qt Designer</translation>
+        <source>Qt Widgets Designer &amp;Help</source>
+        <translation>&amp;Nápověda k programu Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Current Widget Help</source>
         <translation>Nápověda k vybranému prvku</translation>
     </message>
     <message>
-        <source>What&apos;s New in Qt Designer?</source>
-        <translation>Co je nového v programu Qt Designer?</translation>
+        <source>What&apos;s New in Qt Widgets Designer?</source>
+        <translation>Co je nového v programu Qt Widgets Designer?</translation>
     </message>
     <message>
         <source>About Plugins</source>
         <translation>Přídavné moduly</translation>
     </message>
     <message>
-        <source>About Qt Designer</source>
-        <translation>O programu Qt Designer</translation>
+        <source>About Qt Widgets Designer</source>
+        <translation>O programu Qt Widgets Designer</translation>
     </message>
     <message>
         <source>About Qt</source>
@@ -1548,8 +1548,8 @@ Chcete zadat jiný název pro soubor, nebo vytvořit nový formulář?</translat
         <translation>&amp;Nový formulář</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
         <source>Save Form?</source>
@@ -3371,12 +3371,12 @@ Chcete tuto předlohu přepsat?</translation>
         <translation>&lt;h3&gt;%1&lt;/h3&gt;&lt;br/&gt;&lt;br/&gt;Verze %2</translation>
     </message>
     <message>
-        <source>Qt Designer</source>
-        <translation>Qt Designer</translation>
+        <source>Qt Widgets Designer</source>
+        <translation>Qt Widgets Designer</translation>
     </message>
     <message>
-        <source>&lt;br/&gt;Qt Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
-        <translation>&lt;br/&gt;Qt Designer je obrazový návrhář uživatelského rozhraní pro programy Qt.&lt;br/&gt;</translation>
+        <source>&lt;br/&gt;Qt Widgets Designer is a graphical user interface designer for Qt applications.&lt;br/&gt;</source>
+        <translation>&lt;br/&gt;Qt Widgets Designer je obrazový návrhář uživatelského rozhraní pro programy Qt.&lt;br/&gt;</translation>
     </message>
     <message>
         <source>%1&lt;br/&gt;Copyright (C) %2 The Qt Company Ltd.</source>
@@ -5006,12 +5006,12 @@ Zvolte, prosím, jiný název.</translation>
         <translation>Přídavné moduly, které se nepodařilo nahrát</translation>
     </message>
     <message>
-        <source>Qt Designer couldn&apos;t find any plugins</source>
-        <translation>Programu Qt Designer se nepodařilo najít žádné přídavné moduly</translation>
+        <source>Qt Widgets Designer couldn&apos;t find any plugins</source>
+        <translation>Programu Qt Widgets Designer se nepodařilo najít žádné přídavné moduly</translation>
     </message>
     <message>
-        <source>Qt Designer found the following plugins</source>
-        <translation>Programu Qt Designer se podařilo najít následující přídavné moduly</translation>
+        <source>Qt Widgets Designer found the following plugins</source>
+        <translation>Programu Qt Widgets Designer se podařilo najít následující přídavné moduly</translation>
     </message>
     <message>
         <source>New custom widget plugins have been found.</source>

@@ -232,8 +232,11 @@ source_set("platform") {
   # Platforms are always linked into //ui/ozone and can include our headers.
   allow_circular_includes_from = ozone_platform_deps
 
-  # This is used for platform tests.
-  visibility += [ "//ui/ozone/platform/*" ]
+  # This is used for platform and clipboard tests.
+  visibility += [
+    "//ui/base/clipboard:clipboard_test",
+    "//ui/ozone/platform/*",
+  ]
 
   # This can be used for out of tree platforms tests.
   visibility += ozone_external_platform_visibility
@@ -252,6 +255,7 @@ source_set("ozone_switches") {
   visibility += [
     "//chrome/test:browser_tests_runner",
     "//media/mojo/services",
+    "//ui/base/clipboard:clipboard_test",
     "//ui/display:display_unittests",
   ]
 }
@@ -259,10 +263,7 @@ source_set("ozone_switches") {
 jumbo_component("ozone") {
   visibility = []
   visibility = [ "*" ]
-  public_deps = [
-    ":buildflags",
-    ":platform",
-  ]
+  public_deps = [ ":platform" ]
 }
 
 source_set("drm_modifiers_filter") {
@@ -478,15 +479,6 @@ test("ozone_integration_tests") {
   ]
 
   deps += ozone_platform_integration_test_deps
-}
-
-buildflag_header("buildflags") {
-  header = "buildflags.h"
-  flags = [
-    "OZONE_PLATFORM_WAYLAND=$ozone_platform_wayland",
-    "OZONE_PLATFORM_X11=$ozone_platform_x11",
-  ]
-  visibility += [ "*" ]
 }
 
 group("unittests") {

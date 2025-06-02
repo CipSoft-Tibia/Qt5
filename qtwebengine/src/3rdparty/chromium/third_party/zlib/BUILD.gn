@@ -4,6 +4,7 @@
 
 import("//build/config/features.gni")
 import("//build/config/compiler/compiler.gni")
+import("//build/config/dcheck_always_on.gni")
 import("//build/shim_headers.gni")
 
 declare_args() {
@@ -45,7 +46,7 @@ config("zlib_internal_config") {
     # Build code using -O3, see: crbug.com/1084371.
     configs = [ "//build/config/compiler:optimize_speed" ]
   }
-  if (is_debug || use_fuzzing_engine) {
+  if (is_debug || dcheck_always_on || use_fuzzing_engine) {
     # Enable zlib's asserts in debug and fuzzer builds.
     defines += [ "ZLIB_DEBUG" ]
   }
@@ -285,7 +286,6 @@ source_set("zlib_slide_hash_simd") {
 config("zlib_warnings") {
   if (is_clang) {
     cflags = [
-      "-Wno-deprecated-non-prototype",
       "-Wno-incompatible-pointer-types",
       "-Wunused-variable",
     ]
@@ -433,7 +433,6 @@ config("minizip_warnings") {
     cflags = [
       # zlib uses `if ((a == b))` for some reason.
       "-Wno-parentheses-equality",
-      "-Wno-deprecated-non-prototype",
     ]
   }
 }
@@ -548,8 +547,6 @@ if (!is_win || target_os != "winuwp") {
     if (is_clang) {
       cflags = [
         "-Wno-incompatible-pointer-types-discards-qualifiers",
-
-        "-Wno-deprecated-non-prototype",
       ]
     }
 
@@ -572,7 +569,6 @@ if (!is_win || target_os != "winuwp") {
     if (is_clang) {
       cflags = [
         "-Wno-incompatible-pointer-types-discards-qualifiers",
-        "-Wno-deprecated-non-prototype",
       ]
     }
 

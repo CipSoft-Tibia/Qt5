@@ -15,14 +15,11 @@
 #include "device/fido/cable/v2_constants.h"
 #include "device/fido/fido_constants.h"
 #include "device/fido/network_context_factory.h"
-#include "services/network/public/mojom/network_context.mojom-forward.h"
 #include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/abseil-cpp/absl/types/variant.h"
 #include "third_party/blink/public/mojom/webauthn/authenticator.mojom-forward.h"
 
-namespace device {
-namespace cablev2 {
-namespace authenticator {
+namespace device::cablev2::authenticator {
 
 // Platform abstracts the actions taken by the platform, i.e. the
 // credential-store operations themselves, plus an interface for BLE
@@ -73,7 +70,6 @@ class Platform {
   using MakeCredentialCallback = base::OnceCallback<void(
       uint32_t status,
       base::span<const uint8_t> attestation_obj,
-      absl::optional<base::span<const uint8_t>> device_public_key_signature,
       bool prf_enabled)>;
 
   virtual void MakeCredential(
@@ -140,7 +136,7 @@ std::unique_ptr<Transaction> TransactWithPlaintextTransport(
 // contents of a QR code.
 std::unique_ptr<Transaction> TransactFromQRCode(
     std::unique_ptr<Platform> platform,
-    NetworkContextFactory network_context_factory,  
+    NetworkContextFactory network_context_factory,
     base::span<const uint8_t, kRootSecretSize> root_secret,
     const std::string& authenticator_name,
     // TODO: name this constant.
@@ -169,7 +165,7 @@ std::unique_ptr<Transaction> TransactFromFCM(
     base::span<const uint8_t, kTunnelIdSize> tunnel_id,
     base::span<const uint8_t, kPairingIDSize> pairing_id,
     base::span<const uint8_t, kClientNonceSize> client_nonce,
-    absl::optional<base::span<const uint8_t>> contact_id);
+    std::optional<base::span<const uint8_t>> contact_id);
 
 // Deprecated, kept around while Android cable code is cleaned up. Use
 // TransactFromFCM instead.
@@ -181,10 +177,8 @@ std::unique_ptr<Transaction> TransactFromFCMDeprecated(
     base::span<const uint8_t, kTunnelIdSize> tunnel_id,
     base::span<const uint8_t, kPairingIDSize> pairing_id,
     base::span<const uint8_t, kClientNonceSize> client_nonce,
-    std::optional<base::span<const uint8_t>> contact_id);
+    absl::optional<base::span<const uint8_t>> contact_id);
 
-}  // namespace authenticator
-}  // namespace cablev2
-}  // namespace device
+}  // namespace device::cablev2::authenticator
 
 #endif  // DEVICE_FIDO_CABLE_V2_AUTHENTICATOR_H_

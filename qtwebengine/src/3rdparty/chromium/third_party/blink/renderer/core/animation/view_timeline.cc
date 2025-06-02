@@ -23,11 +23,9 @@
 #include "third_party/blink/renderer/core/dom/node_computed_style.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
-#include "third_party/blink/renderer/core/layout/svg/svg_layout_support.h"
+#include "third_party/blink/renderer/core/layout/svg/layout_svg_root.h"
 #include "third_party/blink/renderer/core/page/scrolling/sticky_position_scrolling_constraints.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
-#include "third_party/blink/renderer/core/svg/svg_element.h"
-#include "third_party/blink/renderer/core/svg/svg_svg_element.h"
 #include "third_party/blink/renderer/platform/geometry/calculation_value.h"
 
 namespace blink {
@@ -309,8 +307,8 @@ void ViewTimeline::CalculateOffsets(PaintLayerScrollableArea* scrollable_area,
   // Do not call this method with an unresolved timeline.
   // Called from ScrollTimeline::ComputeTimelineState, which has safeguard.
   // Any new call sites will require a similar safeguard.
-  DCHECK(state->resolved_source);
-  DCHECK(ComputeIsResolved(state->resolved_source));
+  LayoutBox* scroll_container = ComputeScrollContainer(state->resolved_source);
+  DCHECK(scroll_container);
   DCHECK(subject());
 
   absl::optional<gfx::SizeF> subject_size = SubjectSize();
@@ -320,7 +318,7 @@ void ViewTimeline::CalculateOffsets(PaintLayerScrollableArea* scrollable_area,
   }
 
   absl::optional<gfx::PointF> subject_position =
-      SubjectPosition(state->resolved_source);
+      SubjectPosition(scroll_container);
   DCHECK(subject_position);
 
   // TODO(crbug.com/1448801): Handle nested sticky elements.
@@ -373,7 +371,7 @@ void ViewTimeline::CalculateOffsets(PaintLayerScrollableArea* scrollable_area,
   ViewOffsets view_offsets = {target_size, target_size};
   ApplyStickyAdjustments(scroll_offsets, view_offsets, viewport_size_double,
                          target_size, target_offset, physical_orientation,
-                         state->resolved_source);
+                         scroll_container);
 
   state->scroll_offsets = scroll_offsets;
   state->view_offsets = view_offsets;
@@ -385,19 +383,18 @@ void ViewTimeline::ApplyStickyAdjustments(ScrollOffsets& scroll_offsets,
                                           double target_size,
                                           double target_offset,
                                           ScrollOrientation orientation,
-                                          Node* resolved_source) const {
+                                          LayoutBox* scroll_container) const {
   if (!subject()) {
     return;
   }
 
   LayoutBox* subject_layout_box = subject()->GetLayoutBox();
-  LayoutBox* source_layout_box = resolved_source->GetLayoutBox();
-  if (!subject_layout_box || !source_layout_box) {
+  if (!subject_layout_box || !scroll_container) {
     return;
   }
 
   const LayoutBoxModelObject* sticky_container =
-      subject_layout_box->FindFirstStickyContainer(source_layout_box);
+      subject_layout_box->FindFirstStickyContainer(scroll_container);
   if (!sticky_container) {
     return;
   }
@@ -501,47 +498,51 @@ absl::optional<gfx::SizeF> ViewTimeline::SubjectSize() const {
   if (!subject()) {
     return absl::nullopt;
   }
-  LayoutObject* subject_layout_object = subject()->GetLayoutObject();
+  const LayoutObject* subject_layout_object = subject()->GetLayoutObject();
   if (!subject_layout_object) {
     return absl::nullopt;
   }
 
-  if (subject_layout_object->IsBox()) {
-    LayoutRect rect = To<LayoutBox>(subject_layout_object)->BorderBoxRect();
-    return gfx::SizeF(rect.Width().ToDouble(), rect.Height().ToDouble());
-  }
-
-  if (subject_layout_object->IsLayoutInline()) {
-    gfx::RectF rect =
-        To<LayoutInline>(subject_layout_object)->LocalBoundingBoxRectF();
-    return gfx::SizeF(rect.width(), rect.height());
-  }
-
   if (subject_layout_object->IsSVGChild()) {
-    PhysicalRect rect = SVGLayoutSupport::VisualRectInAncestorSpace(
-        *subject_layout_object,
-        *To<SVGElement>(subject())->ownerSVGElement()->GetLayoutBox());
-    return gfx::SizeF(rect.Width().ToDouble(), rect.Height().ToDouble());
+    // Find the outermost SVG root.
+    const LayoutObject* svg_root = subject_layout_object->Parent();
+    while (svg_root && !svg_root->IsSVGRoot()) {
+      svg_root = svg_root->Parent();
+    }
+    // Map the bounds of the element into the (border-box relative) coordinate
+    // space of the CSS box of the outermost SVG root.
+    const gfx::QuadF local_bounds(
+        subject_layout_object->DecoratedBoundingBox());
+    return subject_layout_object
+        ->LocalToAncestorQuad(local_bounds, To<LayoutSVGRoot>(svg_root))
+        .BoundingBox()
+        .size();
+  }
+
+  if (auto* layout_box = DynamicTo<LayoutBox>(subject_layout_object)) {
+    return gfx::SizeF(layout_box->Size());
+  }
+
+  if (auto* layout_inline = DynamicTo<LayoutInline>(subject_layout_object)) {
+    return layout_inline->LocalBoundingBoxRectF().size();
   }
 
   return absl::nullopt;
 }
 
 absl::optional<gfx::PointF> ViewTimeline::SubjectPosition(
-    Node* resolved_source) const {
-  if (!subject() || !resolved_source) {
+    LayoutBox* scroll_container) const {
+  if (!subject() || !scroll_container) {
     return absl::nullopt;
   }
   LayoutObject* subject_layout_object = subject()->GetLayoutObject();
-  LayoutBox* source_layout_box = resolved_source->GetLayoutBox();
-  if (!subject_layout_object || !source_layout_box) {
+  if (!subject_layout_object || !scroll_container) {
     return absl::nullopt;
   }
   MapCoordinatesFlags flags =
       kIgnoreScrollOffset | kIgnoreStickyOffset | kIgnoreTransforms;
-  gfx::PointF subject_pos =
-      gfx::PointF(subject_layout_object->LocalToAncestorPoint(
-          PhysicalOffset(), source_layout_box, flags));
+  gfx::PointF subject_pos = subject_layout_object->LocalToAncestorPoint(
+      gfx::PointF(), scroll_container, flags);
 
   // We call LayoutObject::ClientLeft/Top directly and avoid
   // Element::clientLeft/Top because:
@@ -552,8 +553,8 @@ absl::optional<gfx::PointF> ViewTimeline::SubjectPosition(
   //   values.
 
   return gfx::PointF(
-      subject_pos.x() - source_layout_box->ClientLeft().ToDouble(),
-      subject_pos.y() - source_layout_box->ClientTop().ToDouble());
+      subject_pos.x() - scroll_container->ClientLeft().ToDouble(),
+      subject_pos.y() - scroll_container->ClientTop().ToDouble());
 }
 
 // https://www.w3.org/TR/scroll-animations-1/#named-range-getTime

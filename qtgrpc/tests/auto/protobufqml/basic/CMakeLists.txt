@@ -9,6 +9,7 @@ endif()
 
 set(CMAKE_AUTOMOC TRUE)
 qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
 
 qt_internal_add_test(tst_protobuf_basictypes_qml
     QMLTEST

@@ -25,7 +25,7 @@ class CFX_GifContextForTest final : public CFX_GifContext {
   using CFX_GifContext::ReadLogicalScreenDescriptor;
 
   CFX_CodecMemory* InputBuffer() const { return input_buffer_.Get(); }
-  void SetTestInputBuffer(pdfium::span<uint8_t> input) {
+  void SetTestInputBuffer(pdfium::span<const uint8_t> input) {
     auto pMemory = pdfium::MakeRetain<CFX_CodecMemory>(input.size());
     fxcrt::spancpy(pMemory->GetBufferSpan(), input);
     SetInputBuffer(std::move(pMemory));
@@ -36,15 +36,15 @@ TEST(CFX_GifContext, SetInputBuffer) {
   uint8_t buffer[] = {0x00, 0x01, 0x02};
   CFX_GifContextForTest context;
 
-  context.SetTestInputBuffer({nullptr, 0});
+  context.SetTestInputBuffer({});
   EXPECT_EQ(0u, context.InputBuffer()->GetSize());
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
 
-  context.SetTestInputBuffer({buffer, 0});
+  context.SetTestInputBuffer({buffer, 0u});
   EXPECT_EQ(0u, context.InputBuffer()->GetSize());
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
 
-  context.SetTestInputBuffer({buffer, 3});
+  context.SetTestInputBuffer({buffer, 3u});
   EXPECT_EQ(3u, context.InputBuffer()->GetSize());
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
 }
@@ -55,18 +55,18 @@ TEST(CFX_GifContext, ReadAllOrNone) {
                           0x05, 0x06, 0x07, 0x08, 0x09};
   CFX_GifContextForTest context;
 
-  context.SetTestInputBuffer({nullptr, 0});
+  context.SetTestInputBuffer({});
   EXPECT_FALSE(context.ReadAllOrNone(nullptr, 0));
   EXPECT_FALSE(context.ReadAllOrNone(nullptr, 10));
 
   EXPECT_FALSE(context.ReadAllOrNone(dest_buffer.data(), 0));
   EXPECT_FALSE(context.ReadAllOrNone(dest_buffer.data(), 10));
 
-  context.SetTestInputBuffer({src_buffer, 0});
+  context.SetTestInputBuffer({src_buffer, 0u});
   dest_buffer.resize(sizeof(src_buffer));
   EXPECT_FALSE(context.ReadAllOrNone(dest_buffer.data(), sizeof(src_buffer)));
 
-  context.SetTestInputBuffer({src_buffer, 1});
+  context.SetTestInputBuffer({src_buffer, 1u});
   EXPECT_FALSE(context.ReadAllOrNone(dest_buffer.data(), sizeof(src_buffer)));
   EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
   EXPECT_FALSE(context.ReadAllOrNone(nullptr, sizeof(src_buffer)));
@@ -91,7 +91,7 @@ TEST(CFX_GifContext, ReadGifSignature) {
   CFX_GifContextForTest context;
   {
     uint8_t data[1];
-    context.SetTestInputBuffer({data, 0});
+    context.SetTestInputBuffer({data, 0u});
     EXPECT_EQ(GifDecoder::Status::kUnfinished, context.ReadGifSignature());
     EXPECT_EQ(0u, context.InputBuffer()->GetPosition());
     context.SetTestInputBuffer({});
@@ -149,7 +149,7 @@ TEST(CFX_GifContext, ReadLocalScreenDescriptor) {
   CFX_GifContextForTest context;
   {
     uint8_t data[1];
-    context.SetTestInputBuffer({data, 0});
+    context.SetTestInputBuffer({data, 0u});
     EXPECT_EQ(GifDecoder::Status::kUnfinished,
               context.ReadLogicalScreenDescriptor());
     context.SetTestInputBuffer({});
@@ -205,9 +205,7 @@ TEST(CFX_GifContext, ReadLocalScreenDescriptor) {
       uint8_t palette[4 * sizeof(CFX_GifPalette)];
     } data = {{0x0A, 0x00, 0x00, 0x0F, 0xA9, 0x01, 0x02},
               {0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1}};
-    context.SetTestInputBuffer(
-        {reinterpret_cast<uint8_t*>(&data), sizeof(data)});
-
+    context.SetTestInputBuffer(pdfium::as_bytes(pdfium::span_from_ref(data)));
     EXPECT_EQ(GifDecoder::Status::kSuccess,
               context.ReadLogicalScreenDescriptor());
 
@@ -233,9 +231,7 @@ TEST(CFX_GifContext, ReadHeader) {
       uint8_t lsd[sizeof(CFX_GifLocalScreenDescriptor)];
     } data = {{'N', 'O', 'T', 'G', 'I', 'F'},
               {0x0A, 0x00, 0x00, 0x0F, 0x00, 0x01, 0x02}};
-    context.SetTestInputBuffer(
-        {reinterpret_cast<uint8_t*>(&data), sizeof(data)});
-
+    context.SetTestInputBuffer(pdfium::as_bytes(pdfium::span_from_ref(data)));
     EXPECT_EQ(GifDecoder::Status::kError, context.ReadHeader());
     EXPECT_EQ(sizeof(data.signature), context.InputBuffer()->GetPosition());
     context.SetTestInputBuffer({});
@@ -243,9 +239,7 @@ TEST(CFX_GifContext, ReadHeader) {
   // Short after signature
   {
     uint8_t signature[] = {'G', 'I', 'F', '8', '7', 'a'};
-    context.SetTestInputBuffer(
-        {reinterpret_cast<uint8_t*>(&signature), sizeof(signature)});
-
+    context.SetTestInputBuffer(signature);
     EXPECT_EQ(GifDecoder::Status::kUnfinished, context.ReadHeader());
     EXPECT_EQ(sizeof(signature), context.InputBuffer()->GetPosition());
     context.SetTestInputBuffer({});
@@ -257,9 +251,7 @@ TEST(CFX_GifContext, ReadHeader) {
       uint8_t lsd[sizeof(CFX_GifLocalScreenDescriptor)];
     } data = {{'G', 'I', 'F', '8', '7', 'a'},
               {0x0A, 0x00, 0x00, 0x0F, 0x00, 0x01, 0x02}};
-    context.SetTestInputBuffer(
-        {reinterpret_cast<uint8_t*>(&data), sizeof(data)});
-
+    context.SetTestInputBuffer(pdfium::as_bytes(pdfium::span_from_ref(data)));
     EXPECT_EQ(GifDecoder::Status::kSuccess, context.ReadHeader());
     EXPECT_EQ(sizeof(data), context.InputBuffer()->GetPosition());
     EXPECT_EQ(0x000A, context.width_);
@@ -274,9 +266,7 @@ TEST(CFX_GifContext, ReadHeader) {
       uint8_t lsd[sizeof(CFX_GifLocalScreenDescriptor)];
     } data = {{'G', 'I', 'F', '8', '7', 'a'},
               {0x0A, 0x00, 0x00, 0x0F, 0x80, 0x01, 0x02}};
-    context.SetTestInputBuffer(
-        {reinterpret_cast<uint8_t*>(&data), sizeof(data)});
-
+    context.SetTestInputBuffer(pdfium::as_bytes(pdfium::span_from_ref(data)));
     EXPECT_EQ(GifDecoder::Status::kUnfinished, context.ReadHeader());
     EXPECT_EQ(sizeof(data.signature), context.InputBuffer()->GetPosition());
     context.SetTestInputBuffer({});
@@ -290,9 +280,7 @@ TEST(CFX_GifContext, ReadHeader) {
     } data = {{'G', 'I', 'F', '8', '7', 'a'},
               {0x0A, 0x00, 0x00, 0x0F, 0xA9, 0x01, 0x02},
               {0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1}};
-    context.SetTestInputBuffer(
-        {reinterpret_cast<uint8_t*>(&data), sizeof(data)});
-
+    context.SetTestInputBuffer(pdfium::as_bytes(pdfium::span_from_ref(data)));
     EXPECT_EQ(GifDecoder::Status::kSuccess, context.ReadHeader());
     EXPECT_EQ(sizeof(data), context.InputBuffer()->GetPosition());
     EXPECT_EQ(0x000A, context.width_);

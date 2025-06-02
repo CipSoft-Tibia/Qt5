@@ -27,7 +27,7 @@ namespace Qt3DAnimation {
     \brief An abstract base type for Qt3D animations.
     \inqmlmodule Qt3D.Animation
     \since 5.9
-    \instantiates Qt3DAnimation::QAbstractAnimation
+    \nativetype Qt3DAnimation::QAbstractAnimation
 
     AbstractAnimation is an abstract base type for all animations.
     AbstractAnimation can not be directly instantiated, but rather
@@ -36,7 +36,7 @@ namespace Qt3DAnimation {
     duration, while leaving the actual animating for the subtypes.
 */
 /*!
-    \enum QAbstractAnimation::AnimationType
+    \enum Qt3DAnimation::QAbstractAnimation::AnimationType
 
     This enumeration specifies the type of the animation
     \value KeyframeAnimation Simple keyframe animation implementation for QTransform
@@ -61,11 +61,11 @@ namespace Qt3DAnimation {
 */
 
 /*!
-    \qmlproperty string AbstractAnimation::animationName
+    \qmlproperty string Qt3D.Animation::AbstractAnimation::animationName
     Holds the name of the animation.
 */
 /*!
-    \qmlproperty enumeration AbstractAnimation::animationType
+    \qmlproperty enumeration Qt3D.Animation::AbstractAnimation::animationType
     Holds the type of the animation.
     \list
     \li KeyframeAnimation
@@ -74,11 +74,11 @@ namespace Qt3DAnimation {
     \endlist
 */
 /*!
-    \qmlproperty real AbstractAnimation::position
+    \qmlproperty real Qt3D.Animation::AbstractAnimation::position
     Holds the current position of the animation.
 */
 /*!
-    \qmlproperty real AbstractAnimation::duration
+    \qmlproperty real Qt3D.Animation::AbstractAnimation::duration
     Holds the duration of the animation.
 */
 

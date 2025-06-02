@@ -4,7 +4,7 @@
 #ifndef QIMAGEVIDEOBUFFER_P_H
 #define QIMAGEVIDEOBUFFER_P_H
 
-#include <private/qabstractvideobuffer_p.h>
+#include <qabstractvideobuffer.h>
 #include <qimage.h>
 
 //
@@ -27,12 +27,11 @@ public:
 
     MapData map(QVideoFrame::MapMode mode) override;
 
-    void unmap() override;
+    QVideoFrameFormat format() const override { return {}; }
 
     QImage underlyingImage() const;
 
 private:
-    QVideoFrame::MapMode m_mapMode = QVideoFrame::NotMapped;
     QImage m_image;
 };
 

@@ -266,9 +266,13 @@ void QWasmScreen::onSubtreeChanged(QWasmWindowTreeNodeChangeType changeType,
                                    QWasmWindowTreeNode *parent, QWasmWindow *child)
 {
     Q_UNUSED(parent);
+
+    QWindow *window = child->window();
+    const bool isMaxFull = (window->windowState() & Qt::WindowMaximized) ||
+                           (window->windowState() & Qt::WindowFullScreen);
     if (changeType == QWasmWindowTreeNodeChangeType::NodeInsertion && parent == this
-        && childStack().size() == 1) {
-        child->window()->setFlag(Qt::WindowStaysOnBottomHint);
+        && childStack().size() == 1 && isMaxFull) {
+        window->setFlag(Qt::WindowStaysOnBottomHint);
     }
     QWasmWindowTreeNode::onSubtreeChanged(changeType, parent, child);
     m_compositor->onWindowTreeChanged(changeType, child);
@@ -361,10 +365,14 @@ QList<QWasmWindow *> QWasmScreen::allWindows()
 {
     QList<QWasmWindow *> windows;
     for (auto *child : childStack()) {
-        QWindowList list = child->window()->findChildren<QWindow *>(Qt::FindChildrenRecursively);
-        std::transform(
-                list.begin(), list.end(), std::back_inserter(windows),
-                [](const QWindow *window) { return static_cast<QWasmWindow *>(window->handle()); });
+        const QWindowList list = child->window()->findChildren<QWindow *>(Qt::FindChildrenRecursively);
+        for (auto child : list) {
+            auto handle = child->handle();
+            if (handle) {
+                auto wnd = static_cast<QWasmWindow *>(handle);
+                windows.push_back(wnd);
+            }
+        }
         windows.push_back(child);
     }
     return windows;

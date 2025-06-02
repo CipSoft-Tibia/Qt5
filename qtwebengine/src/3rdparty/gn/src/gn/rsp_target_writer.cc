@@ -49,6 +49,7 @@
 #include "gn/ninja_c_binary_target_writer.h"
 #include "gn/ninja_target_command_util.h"
 #include "gn/output_file.h"
+#include "gn/resolved_target_data.h"
 #include "gn/settings.h"
 #include "gn/target.h"
 
@@ -68,6 +69,13 @@ static void CollectDeps(std::set<const Target*>& deps, const Target* target) {
     deps.insert(dep_target);
     CollectDeps(deps, dep_target);
   }
+}
+
+const ResolvedTargetData& RspTargetWriter::resolved() const {
+  if (!resolved_) {
+    resolved_ = std::make_unique<ResolvedTargetData>();
+  }
+  return *resolved_;
 }
 
 void RspTargetWriter::Run() {
@@ -156,8 +164,7 @@ void RspTargetWriter::Run() {
     } break;
     case LDIR: {
       // library dirs
-      const UniqueVector<SourceDir> all_lib_dirs = target_->all_lib_dirs();
-
+      const auto& all_lib_dirs = resolved().GetLinkedLibraryDirs(target_);
       if (!all_lib_dirs.empty()) {
         PathOutput lib_path_output(settings->build_settings()->build_dir(),
                                    settings->build_settings()->root_path_utf8(),
@@ -179,6 +186,11 @@ void RspTargetWriter::Run() {
       for (const Target* cur : cdeps.linkable_deps) {
         if (cur->dependency_output_file().value() !=
             cur->link_output_file().value()) {
+          LOG(ERROR) << "Dependency output file name does not match "
+                        "link output file name:\n" <<
+                        cur->dependency_output_file().value() <<
+                        " vs " <<
+                        cur->link_output_file().value();
           solibs.push_back(cur->link_output_file());
         } else {
           out_ << "\"" << prefix;
@@ -194,7 +206,7 @@ void RspTargetWriter::Run() {
       EscapeOptions lib_escape_opts;
       lib_escape_opts.mode = ESCAPE_COMMAND;
 
-      const UniqueVector<LibFile> all_libs = target_->all_libs();
+      const auto& all_libs = resolved().GetLinkedLibraries(target_);
       const std::string framework_ending(".framework");
       for (size_t i = 0; i < all_libs.size(); i++) {
         const LibFile& lib_file = all_libs[i];
@@ -206,36 +218,21 @@ void RspTargetWriter::Run() {
           out_ << "\"";
           lib_path_output.WriteFile(out_, lib_file.source_file());
           out_ << "\"";
-        } else if (base::EndsWith(lib_value, framework_ending,
-                                  base::CompareCase::INSENSITIVE_ASCII)) {
-          out_ << " -framework ";
-          EscapeStringToStream(
-              out_,
-              lib_value.substr(0, lib_value.size() - framework_ending.size()),
-              lib_escape_opts);
         } else {
           out_ << " " << tool->lib_switch();
           EscapeStringToStream(out_, lib_value, lib_escape_opts);
         }
       }
-      const UniqueVector<std::string> all_frameworks = target_->all_frameworks();
+      FrameworksWriter writer(tool->framework_switch());
+      const auto& all_frameworks = resolved().GetLinkedFrameworks(target_);
       for (size_t i = 0; i < all_frameworks.size(); i++) {
-        const std::string& lib_value = all_frameworks[i];
-        out_ << " -framework ";
-        EscapeStringToStream(
-            out_,
-            lib_value.substr(0, lib_value.size() - framework_ending.size()),
-            lib_escape_opts);
+        writer(all_frameworks[i], out_);
       }
-      const UniqueVector<std::string> weak_frameworks =
-          target_->all_weak_frameworks();
-      for (size_t i = 0; i < weak_frameworks.size(); i++) {
-        const std::string& lib_value = weak_frameworks[i];
-        out_ << " -weak_framework ";
-        EscapeStringToStream(
-            out_,
-            lib_value.substr(0, lib_value.size() - framework_ending.size()),
-            lib_escape_opts);
+      FrameworksWriter weak_writer(tool->weak_framework_switch());
+      const auto& all_weak_frameworks =
+          resolved().GetLinkedWeakFrameworks(target_);
+      for (size_t i = 0; i < all_weak_frameworks.size(); i++) {
+        weak_writer(all_weak_frameworks[i], out_);
       }
       out_.flush();
     }

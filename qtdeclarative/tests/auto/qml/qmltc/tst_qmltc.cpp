@@ -21,6 +21,7 @@
 #include "qjsvalueassignments.h"
 #include "extensiontypebindings.h"
 #include "qtbug103956_main.h"
+#include "qtbug120700_main.h"
 #include "nonstandardinclude.h"
 #include "specialproperties.h"
 #include "regexpbindings.h"
@@ -89,6 +90,12 @@
 #include "qmltablemodel.h"
 #include "stringtourl.h"
 #include "signalconnections.h"
+#include "requiredproperties.h"
+
+#include "hpp.h"
+
+#include "attachedcomponentproperty.h"
+#include "attachednamespacedproperty.h"
 
 // Qt:
 #include <QtCore/qstring.h>
@@ -131,74 +138,77 @@ void tst_qmltc::initTestCase()
     // Note: just check whether the QML code is valid. QQmlComponent is good for
     // it. also, we can use qrc to make sure the file is in the resource system.
     QUrl urls[] = {
-        QUrl("qrc:/qt/qml/QmltcTests/NameConflict.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/HelloWorld.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/simpleQtQuickTypes.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/typeWithEnums.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/methods.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/properties.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/ObjectWithId.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/documentWithIds.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/importNamespace.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/gradients.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/qjsvalueAssignments.qml"),
+        QUrl(u"qrc:/qt/qml/QmltcTests/NameConflict.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/HelloWorld.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/simpleQtQuickTypes.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/typeWithEnums.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/methods.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/properties.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/ObjectWithId.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/documentWithIds.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/importNamespace.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/gradients.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/qjsvalueAssignments.qml"_s),
 
-        QUrl("qrc:/qt/qml/QmltcTests/deferredProperties.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/deferredProperties_group.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/deferredProperties_attached.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/deferredProperties_complex.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/extensionTypeBindings.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/nonStandardInclude.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/specialProperties.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/regexpBindings.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/AliasBase.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/aliasAssignments.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/Connections.qml"),
+        QUrl(u"qrc:/qt/qml/QmltcTests/deferredProperties.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/deferredProperties_group.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/deferredProperties_attached.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/deferredProperties_complex.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/extensionTypeBindings.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/nonStandardInclude.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/specialProperties.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/regexpBindings.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/AliasBase.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/aliasAssignments.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/Connections.qml"_s),
 
-        QUrl("qrc:/qt/qml/QmltcTests/qtbug103956/SubComponent.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/qtbug103956/MainComponent.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/qtbug103956/qtbug103956_main.qml"),
+        QUrl(u"qrc:/qt/qml/QmltcTests/qtbug103956/SubComponent.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/qtbug103956/MainComponent.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/qtbug103956/qtbug103956_main.qml"_s),
 
-        QUrl("qrc:/qt/qml/QmltcTests/signalHandlers.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/javaScriptFunctions.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/changingBindings.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/propertyAlias.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/propertyAlias_external.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/complexAliases.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/propertyChangeHandler.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/NestedHelloWorld.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/ComponentHelloWorld.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/propertyReturningFunction.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/listProperty.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/listPropertySameName.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/defaultProperty.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/defaultPropertyCorrectSelection.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/AttachedProperty.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/attachedPropertyDerived.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/groupedProperty.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/groupedProperty_qquicktext.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/localImport.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/newPropertyBoundToOld.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/oldPropertyBoundToNew.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/nonLocalQmlPropertyBoundToAny.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/justAnimation.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/justAnimationOnAlias.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/behaviorAndAnimation.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/behaviorAndAnimationOnAlias.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/bindingsThroughIds.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/localImport_context.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/neighbors_context.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/delegate_context.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/nontrivial_context.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/javascriptCaller.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/listView.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/bindingOnValueType.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/keyEvents.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/PrivateProperty.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/privatePropertySubclass.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/calqlatrBits.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/valueTypeListProperty.qml"),
-        QUrl("qrc:/qt/qml/QmltcTests/appendToQQmlListProperty.qml"),
+        QUrl(u"qrc:/qt/qml/QmltcTests/qtbug120700_main.qml"_s),
+
+        QUrl(u"qrc:/qt/qml/QmltcTests/signalHandlers.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/javaScriptFunctions.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/changingBindings.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/propertyAlias.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/propertyAlias_external.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/complexAliases.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/propertyChangeHandler.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/NestedHelloWorld.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/ComponentHelloWorld.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/propertyReturningFunction.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/listProperty.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/listPropertySameName.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/defaultProperty.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/defaultPropertyCorrectSelection.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/AttachedProperty.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/attachedPropertyDerived.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/groupedProperty.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/groupedProperty_qquicktext.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/localImport.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/newPropertyBoundToOld.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/oldPropertyBoundToNew.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/nonLocalQmlPropertyBoundToAny.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/justAnimation.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/justAnimationOnAlias.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/behaviorAndAnimation.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/behaviorAndAnimationOnAlias.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/bindingsThroughIds.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/localImport_context.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/neighbors_context.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/delegate_context.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/nontrivial_context.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/javascriptCaller.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/listView.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/bindingOnValueType.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/keyEvents.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/PrivateProperty.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/privatePropertySubclass.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/calqlatrBits.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/valueTypeListProperty.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/appendToQQmlListProperty.qml"_s),
+        QUrl(u"qrc:/qt/qml/QmltcTests/requiredProperties.qml"_s),
     };
 
     QQmlEngine e;
@@ -406,7 +416,7 @@ void tst_qmltc::properties()
         QQuickText *child0 = qobject_cast<QQuickText *>(listQtObj.at(0));
         QVERIFY(child0);
         QCOMPARE(child0->text(), u"child0"_s);
-        QCOMPARE(objectCtx->objectForName("listQtObjP_child_0"), child0);
+        QCOMPARE(objectCtx->objectForName(u"listQtObjP_child_0"_s), child0);
 
         QObject *child1 = listQtObj.at(1);
         QVERIFY(child1);
@@ -418,7 +428,7 @@ void tst_qmltc::properties()
         QCOMPARE(data.size(), 1);
         QQuickRectangle *child2Rect = qobject_cast<QQuickRectangle *>(data.at(0));
         QVERIFY(child2Rect);
-        QCOMPARE(objectCtx->objectForName("listQtObjP_child_2_rect"), child2Rect);
+        QCOMPARE(objectCtx->objectForName(u"listQtObjP_child_2_rect"_s), child2Rect);
     }
 
     QQmlTimer *timer = created.timerP();
@@ -476,7 +486,7 @@ void tst_qmltc::ids()
         auto objectCtx = QQmlContextData::get(e.contextForObject(&created));
         QVERIFY(objectCtx);
         QCOMPARE(objectCtx->parent(), QQmlContextData::get(e.rootContext()));
-        QCOMPARE(objectCtx->asQQmlContext()->objectForName("objectWithId"), &created);
+        QCOMPARE(objectCtx->asQQmlContext()->objectForName(u"objectWithId"_s), &created);
         QCOMPARE(objectCtx->contextObject(), &created);
     }
 
@@ -499,15 +509,15 @@ void tst_qmltc::ids()
             return object->objectName();
         };
 
-        QCOMPARE(objectNameById("rectangle"), u"rectangle"_s);
-        QCOMPARE(objectNameById("row"), u"row"_s);
-        QCOMPARE(objectNameById("textInRectangle"), u"textInRectangle"_s);
-        QCOMPARE(objectNameById("itemInList"), u"itemInList"_s);
-        QCOMPARE(objectNameById("objectInList"), u"objectInList"_s);
-        QCOMPARE(objectNameById("item"), u"item"_s);
-        QCOMPARE(objectNameById("gridView"), u"gridView"_s);
-        QCOMPARE(objectNameById("tableView"), u"tableView"_s);
-        QCOMPARE(objectNameById("sentinel"), u"sentinel"_s);
+        QCOMPARE(objectNameById(u"rectangle"_s), u"rectangle"_s);
+        QCOMPARE(objectNameById(u"row"_s), u"row"_s);
+        QCOMPARE(objectNameById(u"textInRectangle"_s), u"textInRectangle"_s);
+        QCOMPARE(objectNameById(u"itemInList"_s), u"itemInList"_s);
+        QCOMPARE(objectNameById(u"objectInList"_s), u"objectInList"_s);
+        QCOMPARE(objectNameById(u"item"_s), u"item"_s);
+        QCOMPARE(objectNameById(u"gridView"_s), u"gridView"_s);
+        QCOMPARE(objectNameById(u"tableView"_s), u"tableView"_s);
+        QCOMPARE(objectNameById(u"sentinel"_s), u"sentinel"_s);
 
         const auto verifyComponent = [&](QQmlComponent *component, const QString &componentId,
                                          const QString &objectId) {
@@ -778,7 +788,7 @@ void tst_qmltc::extensionTypeBindings()
     {
         QQmlEngine e;
         QQmlComponent component(&e);
-        component.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/extensionTypeBindings.qml"));
+        component.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/extensionTypeBindings.qml"_s));
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         QScopedPointer<QObject> root(component.create());
         QVERIFY2(root, qPrintable(component.errorString()));
@@ -832,6 +842,103 @@ void tst_qmltc::visibleAliasMethods()
     QCOMPARE(created.firstComponent()->setMe(), true);
 }
 
+// QTBUG-120700
+void tst_qmltc::customInitialization()
+{
+    int valueToTest = 10;
+
+    QQuickItem firstItem;
+    QQuickItem secondItem;
+
+    QQmlEngine e;
+    PREPEND_NAMESPACE(qtbug120700_main)
+    created(&e, {valueToTest} ,nullptr, [valueToTest, &firstItem, &secondItem](auto& component) {
+        component.setSomeComplexValueThatWillBeSet(valueToTest);
+        component.setPropertyFromExtension(static_cast<double>(valueToTest));
+        component.setDefaultedBindable(static_cast<double>(valueToTest));
+        component.setValueTypeList({1, 2, 3, 4});
+        component.setObjectTypeList({&firstItem, &secondItem});
+        component.setExtensionObjectList({&firstItem, &secondItem});
+        component.setCppObjectList({&firstItem, &secondItem});
+    });
+
+    // QTBUG-114403: onValueChanged should have not been triggered
+    // when setting the initial value for the property.
+    // If this is true then the handler was called.
+    QCOMPARE(created.wasSomeValueChanged(), false);
+
+    // someComplexValueThatWillBeSet is set through a binding in the
+    // QML code, but is initialized when the instance is created.
+    // The bindings, which is generally set after the custom
+    // initialization was perfomed, should not overwrite the initial
+    // value that the user provided.
+    // On the other side, someComplexValueThatWillNotBeSet should
+    // still respect the original binding as an initial value for it
+    // was not provided.
+    QCOMPARE(created.someComplexValueThatWillBeSet(), valueToTest);
+    QCOMPARE(created.someComplexValueThatWillNotBeSet(), 5);
+
+    QCOMPARE(created.someValue(), valueToTest);
+    QCOMPARE(created.someValueAlias(), valueToTest);
+    QCOMPARE(created.someValueBinding(), valueToTest + 1);
+    QCOMPARE(created.property("propertyFromExtension").toDouble(), static_cast<double>(valueToTest));
+    QCOMPARE(created.bindableDefaultedBindable().value(), static_cast<double>(valueToTest));
+    QCOMPARE(created.valueTypeList(), QList({1, 2, 3, 4}));
+    QCOMPARE(created.objectTypeList().toList<QList<QQuickItem*>>(), QList({&firstItem, &secondItem}));
+    QCOMPARE(
+        created.property("extensionObjectList").value<QQmlListProperty<QQuickItem>>().toList<QList<QQuickItem*>>(),
+        QList({&firstItem, &secondItem})
+    );
+    QCOMPARE(created.getCppObjectList().toList<QList<QQuickItem*>>(), QList({&firstItem, &secondItem}));
+}
+
+void tst_qmltc::requiredPropertiesInitialization()
+{
+    QQuickItem item{};
+
+    int aliasToInnerThatWillBeMarkedRequired = 10;
+    int aliasToPropertyThatShadows = 42;
+    int aliasToRequiredInner = 11;
+    QQuickItem inheritedRequiredProperty{};
+    int nonRequiredInheritedPropertyThatWillBeMarkedRequired = 12;
+    QList<QQuickItem*> objectList{&item};
+    int primitiveType = 13;
+    int propertyThatWillBeMarkedRequired = 14;
+    int requiredAliasToUnrequiredProperty = 15;
+    double requiredPropertyFromExtension = 16.0;
+    QList<int> valueList{1, 2, 3, 4};
+
+    QQmlEngine e;
+    PREPEND_NAMESPACE(requiredProperties) created(
+        &e,
+        {
+            aliasToInnerThatWillBeMarkedRequired,
+            aliasToPropertyThatShadows,
+            aliasToRequiredInner,
+            &inheritedRequiredProperty,
+            nonRequiredInheritedPropertyThatWillBeMarkedRequired,
+            objectList,
+            primitiveType,
+            propertyThatWillBeMarkedRequired,
+            requiredAliasToUnrequiredProperty,
+            requiredPropertyFromExtension,
+            valueList
+        }
+    );
+
+    QCOMPARE(created.aliasToInnerThatWillBeMarkedRequired(), aliasToInnerThatWillBeMarkedRequired);
+    QCOMPARE(created.aliasToPropertyThatShadows(), aliasToPropertyThatShadows);
+    QCOMPARE(created.aliasToRequiredInner(), aliasToRequiredInner);
+    QCOMPARE(created.getInheritedRequiredProperty(), &inheritedRequiredProperty);
+    QCOMPARE(created.getNonRequiredInheritedPropertyThatWillBeMarkedRequired(), nonRequiredInheritedPropertyThatWillBeMarkedRequired);
+    QCOMPARE(created.objectList().toList<QList<QQuickItem*>>(), objectList);
+    QCOMPARE(created.primitiveType(), primitiveType);
+    QCOMPARE(created.propertyThatWillBeMarkedRequired(), propertyThatWillBeMarkedRequired);
+    QCOMPARE(created.requiredAliasToUnrequiredProperty(), requiredAliasToUnrequiredProperty);
+    QCOMPARE(created.property("requiredPropertyFromExtension").toDouble(), requiredPropertyFromExtension);
+    QCOMPARE(created.valueList(), valueList);
+}
+
 // QTBUG-104094
 void tst_qmltc::nonStandardIncludesInsideModule()
 {
@@ -863,7 +970,7 @@ void tst_qmltc::specialProperties()
     QMetaProperty xxAlias = mo->property(mo->indexOfProperty("xxAlias"));
 
     QQmlComponent c(&e);
-    c.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/specialProperties.qml"));
+    c.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/specialProperties.qml"_s));
     QScopedPointer<QObject> _fromEngine(c.create());
     QVERIFY2(_fromEngine, qPrintable(c.errorString()));
     QObject &fromEngine = *_fromEngine;
@@ -1078,10 +1185,10 @@ void tst_qmltc::propertyAlias_external()
 void tst_qmltc::propertyAliasAttribute()
 {
     QQmlEngine e;
-    PREPEND_NAMESPACE(propertyAliasAttributes) fromQmltc(&e);
+    PREPEND_NAMESPACE(propertyAliasAttributes) fromQmltc(&e, {u""_s});
 
     QQmlComponent c(&e);
-    c.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/propertyAliasAttributes.qml"));
+    c.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/propertyAliasAttributes.qml"_s));
     QScopedPointer<QObject> _fromEngine(c.create());
     QVERIFY2(_fromEngine, qPrintable(c.errorString()));
     QObject &fromEngine = *_fromEngine;
@@ -1221,10 +1328,10 @@ void tst_qmltc::propertyAliasAttribute()
     }
 
     {
-        QVERIFY(metaProperties[0].contains("hasAllAttributesAlias"));
-        QVERIFY(metaProperties[1].contains("hasAllAttributesAlias"));
-        QMetaProperty mpQmltc = metaProperties[0].value("hasAllAttributesAlias");
-        QMetaProperty mpEngine = metaProperties[1].value("hasAllAttributesAlias");
+        QVERIFY(metaProperties[0].contains(u"hasAllAttributesAlias"_s));
+        QVERIFY(metaProperties[1].contains(u"hasAllAttributesAlias"_s));
+        QMetaProperty mpQmltc = metaProperties[0].value(u"hasAllAttributesAlias"_s);
+        QMetaProperty mpEngine = metaProperties[1].value(u"hasAllAttributesAlias"_s);
         QCOMPARE(mpQmltc.isReadable(), mpEngine.isReadable());
         QCOMPARE(mpQmltc.isWritable(), mpEngine.isWritable());
         QCOMPARE(mpQmltc.isResettable(), mpEngine.isResettable());
@@ -1241,10 +1348,10 @@ void tst_qmltc::propertyAliasAttribute()
     }
 
     {
-        QVERIFY(metaProperties[0].contains("hasAllAttributes2Alias"));
-        QVERIFY(metaProperties[1].contains("hasAllAttributes2Alias"));
-        QMetaProperty mpQmltc = metaProperties[0].value("hasAllAttributes2Alias");
-        QMetaProperty mpEngine = metaProperties[1].value("hasAllAttributes2Alias");
+        QVERIFY(metaProperties[0].contains(u"hasAllAttributes2Alias"_s));
+        QVERIFY(metaProperties[1].contains(u"hasAllAttributes2Alias"_s));
+        QMetaProperty mpQmltc = metaProperties[0].value(u"hasAllAttributes2Alias"_s);
+        QMetaProperty mpEngine = metaProperties[1].value(u"hasAllAttributes2Alias"_s);
         QCOMPARE(mpQmltc.isReadable(), mpEngine.isReadable());
         QCOMPARE(mpQmltc.isWritable(), mpEngine.isWritable());
         QCOMPARE(mpQmltc.isResettable(), mpEngine.isResettable());
@@ -1296,7 +1403,7 @@ void tst_qmltc::complexAliases()
             QVERIFY(theRectInsideImported);
         }
         accessibleBehavior = qvariant_cast<QObject *>(
-                e.contextForObject(&created)->contextProperty("accessibleBehavior"));
+                e.contextForObject(&created)->contextProperty(u"accessibleBehavior"_s));
         QVERIFY(accessibleBehavior);
     }
 
@@ -1457,7 +1564,7 @@ void tst_qmltc::propertyChangeHandler()
     {
         QQmlEngine e;
         QQmlComponent c(&e);
-        c.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/propertyChangeHandler.qml"));
+        c.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/propertyChangeHandler.qml"_s));
         QScopedPointer<QObject> root(c.create());
         QVERIFY2(root, qPrintable(c.errorString()));
         QCOMPARE(root->property("watcher").toInt(), 42);
@@ -1552,7 +1659,7 @@ void tst_qmltc::listProperty()
     PREPEND_NAMESPACE(listProperty) created(&e);
 
     QQmlComponent c(&e);
-    c.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/listProperty.qml"));
+    c.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/listProperty.qml"_s));
     QScopedPointer<QObject> fromEngine(c.create());
     QVERIFY2(fromEngine, qPrintable(c.errorString()));
 
@@ -1664,7 +1771,7 @@ void tst_qmltc::defaultAlias()
     PREPEND_NAMESPACE(defaultAlias) created(&e);
 
     QQmlComponent c(&e);
-    c.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/defaultAlias.qml"));
+    c.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/defaultAlias.qml"_s));
     QScopedPointer<QObject> fromEngine(c.create());
     QVERIFY2(fromEngine, qPrintable(c.errorString()));
 
@@ -2036,7 +2143,7 @@ void tst_qmltc::contextHierarchy_rootBaseIsQml()
     {
         QQmlEngine e;
         QQmlComponent c(&e);
-        c.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/localImport_context.qml"));
+        c.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/localImport_context.qml"_s));
         QScopedPointer<QObject> root(c.create());
         QVERIFY2(root, qPrintable(c.errorString()));
         // sanity
@@ -2058,13 +2165,13 @@ void tst_qmltc::contextHierarchy_rootBaseIsQml()
                  "Inconsistent with QQmlComponent: 'foo' could actually be found in generated "
                  "C++ base class context",
                  Continue);
-    QCOMPARE(ctx->contextProperty("foo"), QVariant());
-    QCOMPARE(qvariant_cast<QObject *>(ctx->contextProperty("bar")), &created);
-    // NB: even though ctx->contextProperty("foo") finds the object,
-    // objectForName("foo") still returns nullptr as "foo" exists in the
+    QCOMPARE(ctx->contextProperty(u"foo"_s), QVariant());
+    QCOMPARE(qvariant_cast<QObject *>(ctx->contextProperty(u"bar"_s)), &created);
+    // NB: even though ctx->contextProperty(u"foo"_s) finds the object,
+    // objectForName(u"foo"_s) still returns nullptr as "foo" exists in the
     // ctx->parent()
-    QCOMPARE(ctx->objectForName("foo"), nullptr);
-    QCOMPARE(ctx->objectForName("bar"), &created);
+    QCOMPARE(ctx->objectForName(u"foo"_s), nullptr);
+    QCOMPARE(ctx->objectForName(u"bar"_s), &created);
     QEXPECT_FAIL("",
                  "Inconsistent with QQmlComponent: LocallyImported is a _visible_ parent of "
                  "localImport, same stays true for context",
@@ -2108,9 +2215,9 @@ void tst_qmltc::contextHierarchy_childBaseIsQml()
     QCOMPARE(child2Ctx->parent(), rootCtx);
 
     QQmlContext *rootQmlCtx = rootCtx->asQQmlContext();
-    QCOMPARE(rootQmlCtx->objectForName("root"), &created);
-    QCOMPARE(rootQmlCtx->objectForName("child1"), child1);
-    QCOMPARE(rootQmlCtx->objectForName("child2"), child2);
+    QCOMPARE(rootQmlCtx->objectForName(u"root"_s), &created);
+    QCOMPARE(rootQmlCtx->objectForName(u"child1"_s), child1);
+    QCOMPARE(rootQmlCtx->objectForName(u"child2"_s), child2);
 
     QCOMPARE(child1->p(), 41);
     QCOMPARE(child1->p2(), child2->count() * 2);
@@ -2135,7 +2242,7 @@ void tst_qmltc::contextHierarchy_delegate()
     {
         QQmlEngine e;
         QQmlComponent c(&e);
-        c.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/delegate_context.qml"));
+        c.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/delegate_context.qml"_s));
         QScopedPointer<QObject> root(c.create());
         QVERIFY2(root, qPrintable(c.errorString()));
         QQmlListReference data(root.get(), "data");
@@ -2221,10 +2328,10 @@ void tst_qmltc::listView()
     QVERIFY(model);
     QCOMPARE(model->count(), 0);
 
-    created.appendDigit("5");
+    created.appendDigit(u"5"_s);
     QCOMPARE(model->count(), 1);
 
-    created.appendOperator("+");
+    created.appendOperator(u"+"_s);
     QCOMPARE(model->count(), 2);
 
     // TODO: add more testing (e.g. check that values are actually recorded)
@@ -2306,7 +2413,7 @@ void tst_qmltc::calqlatrBits()
     QQmlListReference children(&created, "data");
     QCOMPARE(children.count(), 2);
     auto context = e.contextForObject(&created);
-    QQuickText *textItem = qobject_cast<QQuickText *>(context->objectForName("textItem"));
+    QQuickText *textItem = qobject_cast<QQuickText *>(context->objectForName(u"textItem"_s));
     QVERIFY(textItem);
     // NB: not at index 0 due to AnimationController and strange logic of
     // appending items (when these items are not QQuickItem based?)
@@ -2315,7 +2422,7 @@ void tst_qmltc::calqlatrBits()
     QCOMPARE(textItem->wrapMode(), QQuickText::WrapAnywhere);
 
     QQuickAnimationController *controller =
-            qobject_cast<QQuickAnimationController *>(context->objectForName("controller"));
+            qobject_cast<QQuickAnimationController *>(context->objectForName(u"controller"_s));
     QVERIFY(controller);
     QCOMPARE(children.at(0), controller);
     QQuickNumberAnimation *anim = qobject_cast<QQuickNumberAnimation *>(controller->animation());
@@ -2358,18 +2465,18 @@ void tst_qmltc::trickyPropertyChangeAndSignalHandlers()
 
     QQmlContext *ctx = e.contextForObject(&created);
     QVERIFY(ctx);
-    TypeWithProperties *one = qobject_cast<TypeWithProperties *>(ctx->objectForName("one"));
+    TypeWithProperties *one = qobject_cast<TypeWithProperties *>(ctx->objectForName(u"one"_s));
     QVERIFY(one);
-    TypeWithProperties *two = qobject_cast<TypeWithProperties *>(ctx->objectForName("two"));
+    TypeWithProperties *two = qobject_cast<TypeWithProperties *>(ctx->objectForName(u"two"_s));
     QVERIFY(two);
-    TypeWithProperties *three = qobject_cast<TypeWithProperties *>(ctx->objectForName("three"));
+    TypeWithProperties *three = qobject_cast<TypeWithProperties *>(ctx->objectForName(u"three"_s));
     QVERIFY(three);
-    TypeWithProperties *four = qobject_cast<TypeWithProperties *>(ctx->objectForName("four"));
+    TypeWithProperties *four = qobject_cast<TypeWithProperties *>(ctx->objectForName(u"four"_s));
     QVERIFY(four);
 
     one->setA(10);
     QCOMPARE(created.aChangedCount1(), 1);
-    one->setB("1");
+    one->setB(u"1"_s);
     QCOMPARE(created.bChangedCount1(), 1);
     one->setC(2.5);
     QCOMPARE(created.cChangedCount1(), 1);
@@ -2403,7 +2510,7 @@ void tst_qmltc::trickyPropertyChangeAndSignalHandlers()
     created.changeProperties3(22);
     QCOMPARE(created.cChangedCount3(), 22);
 
-    TypeWithProperties *five = qobject_cast<TypeWithProperties *>(ctx->objectForName("five"));
+    TypeWithProperties *five = qobject_cast<TypeWithProperties *>(ctx->objectForName(u"five"_s));
     QVERIFY(five);
     const Qt::MouseButtons a = Qt::RightButton | Qt::MiddleButton;
     const Qt::MouseButton b = Qt::LeftButton;
@@ -2429,8 +2536,8 @@ void tst_qmltc::valueTypeListProperty()
 
     QList<QFont> arrayOfFonts = created.arrayOfFonts();
     QCOMPARE(arrayOfFonts.size(), 2);
-    QCOMPARE(arrayOfFonts[0].family(), "Arial");
-    QCOMPARE(arrayOfFonts[1].family(), "Comic Sans");
+    QCOMPARE(arrayOfFonts[0].family(), u"Arial"_s);
+    QCOMPARE(arrayOfFonts[1].family(), u"Comic Sans"_s);
 
     QList<QColor> arrayOfColors = created.arrayOfColors();
 
@@ -2464,22 +2571,22 @@ void tst_qmltc::translations()
         QQmlEngine e;
         PREPEND_NAMESPACE(translations) created(&e);
 
-        QCOMPARE(created.alsoTranslated(), "Bye bye!");
-        QCOMPARE(created.text(), "Bye bye!");
+        QCOMPARE(created.alsoTranslated(), u"Bye bye!"_s);
+        QCOMPARE(created.text(), u"Bye bye!"_s);
 
-        QCOMPARE(created.hardcodedContext(), "Bye bye!");
-        QCOMPARE(created.anotherContext(), "Bye bye!");
-        QCOMPARE(created.toBeTranslatedLater(), "Bye bye!");
-        QCOMPARE(created.toBeTranslatedLaterWithHardcodedContext(), "Bye bye!");
+        QCOMPARE(created.hardcodedContext(), u"Bye bye!"_s);
+        QCOMPARE(created.anotherContext(), u"Bye bye!"_s);
+        QCOMPARE(created.toBeTranslatedLater(), u"Bye bye!"_s);
+        QCOMPARE(created.toBeTranslatedLaterWithHardcodedContext(), u"Bye bye!"_s);
 
-        QCOMPARE(created.translatedN(), "The solution is 42");
-        QCOMPARE(created.translatedNWithContextAndAmbiguation(), "The solution has 42 degrees");
-        QCOMPARE(created.translatedNWithContextAndAmbiguation2(), "The solution has 43 degrees");
+        QCOMPARE(created.translatedN(), u"The solution is 42"_s);
+        QCOMPARE(created.translatedNWithContextAndAmbiguation(), u"The solution has 42 degrees"_s);
+        QCOMPARE(created.translatedNWithContextAndAmbiguation2(), u"The solution has 43 degrees"_s);
 
-        QCOMPARE(created.combination(), "Bye bye!");
+        QCOMPARE(created.combination(), u"Bye bye!"_s);
 
         QTranslator translator;
-        QVERIFY(translator.load("translations_ge.qm", ":/i18n"));
+        QVERIFY(translator.load(u"translations_ge.qm"_s, u":/i18n"_s));
         QVERIFY(qApp->installTranslator(&translator));
         e.retranslate();
 
@@ -2488,8 +2595,8 @@ void tst_qmltc::translations()
 
         QCOMPARE(created.hardcodedContext(), u"Tschüssi!"_s);
         QCOMPARE(created.anotherContext(), u"Bis später!"_s);
-        QCOMPARE(created.toBeTranslatedLater(), "Bye bye!");
-        QCOMPARE(created.toBeTranslatedLaterWithHardcodedContext(), "Bye bye!");
+        QCOMPARE(created.toBeTranslatedLater(), u"Bye bye!"_s);
+        QCOMPARE(created.toBeTranslatedLaterWithHardcodedContext(), u"Bye bye!"_s);
 
         QCOMPARE(created.translatedN(), u"Die Lösung ist 42"_s);
         QCOMPARE(created.translatedNWithContextAndAmbiguation(),
@@ -2502,21 +2609,21 @@ void tst_qmltc::translations()
         QQmlEngine e;
         PREPEND_NAMESPACE(translationsById) created(&e);
 
-        QCOMPARE(created.alsoTranslated(), "ID1");
-        QCOMPARE(created.text(), "ID1");
+        QCOMPARE(created.alsoTranslated(), u"ID1"_s);
+        QCOMPARE(created.text(), u"ID1"_s);
 
-        QCOMPARE(created.toBeTranslatedLater(), "ID1");
-        QCOMPARE(created.translatedN(), "ID2");
+        QCOMPARE(created.toBeTranslatedLater(), u"ID1"_s);
+        QCOMPARE(created.translatedN(), u"ID2"_s);
 
         QTranslator translator;
-        QVERIFY(translator.load("translationsById_ge.qm", ":/i18n"));
+        QVERIFY(translator.load(u"translationsById_ge.qm"_s, u":/i18n"_s));
         QVERIFY(qApp->installTranslator(&translator));
         e.retranslate();
 
         QCOMPARE(created.text(), u"Tschüssi!"_s);
         QCOMPARE(created.alsoTranslated(), u"Tschüssi!"_s);
 
-        QCOMPARE(created.toBeTranslatedLater(), "ID1");
+        QCOMPARE(created.toBeTranslatedLater(), u"ID1"_s);
         QCOMPARE(created.translatedN(), u"Ich sehe 5 Äpfeln"_s);
     }
 }
@@ -2526,7 +2633,7 @@ void tst_qmltc::repeaterCrash()
     QQmlEngine e;
     PREPEND_NAMESPACE(repeaterCrash) fromQmltc(&e);
 
-    QQmlComponent component(&e, "qrc:/qt/qml/QmltcTests/repeaterCrash.qml");
+    QQmlComponent component(&e, u"qrc:/qt/qml/QmltcTests/repeaterCrash.qml"_s);
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     QScopedPointer<QQuickItem> fromEngine(qobject_cast<QQuickItem *>(component.create()));
     QVERIFY(fromEngine);
@@ -2567,16 +2674,16 @@ void tst_qmltc::generalizedGroupedProperty()
         QCOMPARE(fromQmltc.myInt(), 42);
 
         QCOMPARE(fromQmltc.getGroup()->getFormula(), 8);
-        QCOMPARE(fromQmltc.getGroup()->getStr(), "Hello World!");
+        QCOMPARE(fromQmltc.getGroup()->getStr(), u"Hello World!"_s);
 
         qmlExecuteDeferred(&fromQmltc);
 
         QCOMPARE(fromQmltc.getGroup()->getCount(), 55);
         QCOMPARE(fromQmltc.getGroup()->getFormula(), 8);
-        QCOMPARE(fromQmltc.getGroup()->getStr(), "Hello World!");
+        QCOMPARE(fromQmltc.getGroup()->getStr(), u"Hello World!"_s);
     }
     {
-        QQmlComponent component(&e, "qrc:/qt/qml/QmltcTests/generalizedGroupedProperty.qml");
+        QQmlComponent component(&e, u"qrc:/qt/qml/QmltcTests/generalizedGroupedProperty.qml"_s);
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         QScopedPointer<QObject> fromEngine(component.create());
         QCOMPARE(fromEngine->property("group").value<QObject *>()->property("count"), 5);
@@ -2589,7 +2696,7 @@ void tst_qmltc::generalizedGroupedProperty()
         QCOMPARE(fromEngine->property("group").value<QObject *>()->property("formula").value<int>(),
                  8);
         QCOMPARE(fromEngine->property("group").value<QObject *>()->property("str").toString(),
-                 "Hello World!");
+                 u"Hello World!"_s);
 
         qmlExecuteDeferred(fromEngine.data());
 
@@ -2597,7 +2704,7 @@ void tst_qmltc::generalizedGroupedProperty()
         QCOMPARE(fromEngine->property("group").value<QObject *>()->property("formula").value<int>(),
                  8);
         QCOMPARE(fromEngine->property("group").value<QObject *>()->property("str").toString(),
-                 "Hello World!");
+                 u"Hello World!"_s);
     }
 }
 
@@ -2605,7 +2712,7 @@ void tst_qmltc::appendToQQmlListProperty()
 {
     QQmlEngine e;
     PREPEND_NAMESPACE(appendToQQmlListProperty) fromQmltc(&e);
-    QQmlComponent component(&e, "qrc:/qt/qml/QmltcTests/appendToQQmlListProperty.qml");
+    QQmlComponent component(&e, u"qrc:/qt/qml/QmltcTests/appendToQQmlListProperty.qml"_s);
     QVERIFY2(component.isReady(), qPrintable(component.errorString()));
     QScopedPointer<QObject> fromEngine(component.create());
 
@@ -2701,7 +2808,7 @@ void tst_qmltc::inlineComponents()
     PREPEND_NAMESPACE(inlineComponents) createdByQmltc(&e);
 
     QQmlComponent component(&e);
-    component.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/inlineComponents.qml"));
+    component.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/inlineComponents.qml"_s));
     QVERIFY(!component.isError());
     QScopedPointer<QObject> createdByComponent(component.create());
 
@@ -2838,15 +2945,15 @@ void tst_qmltc::inlineComponents()
         // test writing and reading inline components childrens
         // .. also tests at the same time if the literal bindings inside inline components are
         // set correctly
-        QCOMPARE(childFromQmltc->myZ(), "SharedZ");
-        QCOMPARE(childFromQmltc2->myZ(), "SharedZ");
+        QCOMPARE(childFromQmltc->myZ(), u"SharedZ"_s);
+        QCOMPARE(childFromQmltc2->myZ(), u"SharedZ"_s);
         childFromQmltc->setMyZ(testData);
         childFromQmltc2->setMyZ(testData2);
         QCOMPARE(childFromQmltc->myZ(), testData);
         QCOMPARE(childFromQmltc2->myZ(), testData2);
 
-        QCOMPARE(childFromComponent->property("myZ"), "SharedZ");
-        QCOMPARE(childFromComponent2->property("myZ"), "SharedZ");
+        QCOMPARE(childFromComponent->property("myZ"), u"SharedZ"_s);
+        QCOMPARE(childFromComponent2->property("myZ"), u"SharedZ"_s);
         QVERIFY(childFromComponent->setProperty("myZ", testData));
         QVERIFY(childFromComponent2->setProperty("myZ", testData2));
         QCOMPARE(childFromComponent->property("myZ"), testData);
@@ -2917,35 +3024,35 @@ void tst_qmltc::inlineComponents()
         auto *conflictingComponentJerryFromComponent =
                 createdByComponent->property("jerry").value<QObject *>();
 
-        QCOMPARE(conflictingComponentTomFromQmltc->output(), "Tom: outer");
-        QCOMPARE(conflictingComponentJerryFromQmltc->output(), "Jerry: outer");
-        QCOMPARE(createdByQmltc.output(), "inner");
+        QCOMPARE(conflictingComponentTomFromQmltc->output(), u"Tom: outer"_s);
+        QCOMPARE(conflictingComponentJerryFromQmltc->output(), u"Jerry: outer"_s);
+        QCOMPARE(createdByQmltc.output(), u"inner"_s);
 
-        QCOMPARE(conflictingComponentTomFromComponent->property("output"), "Tom: outer");
-        QCOMPARE(conflictingComponentJerryFromComponent->property("output"), "Jerry: outer");
-        QCOMPARE(createdByComponent->property("output"), "inner");
+        QCOMPARE(conflictingComponentTomFromComponent->property("output"), u"Tom: outer"_s);
+        QCOMPARE(conflictingComponentJerryFromComponent->property("output"), u"Jerry: outer"_s);
+        QCOMPARE(createdByComponent->property("output"), u"inner"_s);
 
         QVERIFY(conflictingComponentTomFromQmltc->children()[0]->setProperty("conflicting",
                                                                              u"Tomtom"_s));
-        QCOMPARE(conflictingComponentTomFromQmltc->output(), "Tom: Tomtom");
-        QCOMPARE(conflictingComponentJerryFromQmltc->output(), "Jerry: outer");
-        QCOMPARE(createdByQmltc.output(), "inner");
+        QCOMPARE(conflictingComponentTomFromQmltc->output(), u"Tom: Tomtom"_s);
+        QCOMPARE(conflictingComponentJerryFromQmltc->output(), u"Jerry: outer"_s);
+        QCOMPARE(createdByQmltc.output(), u"inner"_s);
 
         QVERIFY(conflictingComponentTomFromComponent->children()[0]->setProperty("conflicting",
                                                                                  u"Tomtom"_s));
-        QCOMPARE(conflictingComponentTomFromComponent->property("output"), "Tom: Tomtom");
-        QCOMPARE(conflictingComponentJerryFromComponent->property("output"), "Jerry: outer");
-        QCOMPARE(createdByComponent->property("output"), "inner");
+        QCOMPARE(conflictingComponentTomFromComponent->property("output"), u"Tom: Tomtom"_s);
+        QCOMPARE(conflictingComponentJerryFromComponent->property("output"), u"Jerry: outer"_s);
+        QCOMPARE(createdByComponent->property("output"), u"inner"_s);
 
         QVERIFY(createdByQmltc.setProperty("conflicting", u"Rootroot"_s));
-        QCOMPARE(conflictingComponentTomFromQmltc->output(), "Tom: Tomtom");
-        QCOMPARE(conflictingComponentJerryFromQmltc->output(), "Jerry: outer");
-        QCOMPARE(createdByQmltc.output(), "Rootroot");
+        QCOMPARE(conflictingComponentTomFromQmltc->output(), u"Tom: Tomtom"_s);
+        QCOMPARE(conflictingComponentJerryFromQmltc->output(), u"Jerry: outer"_s);
+        QCOMPARE(createdByQmltc.output(), u"Rootroot"_s);
 
         QVERIFY(createdByComponent->setProperty("conflicting", u"Rootroot"_s));
-        QCOMPARE(conflictingComponentTomFromComponent->property("output"), "Tom: Tomtom");
-        QCOMPARE(conflictingComponentJerryFromComponent->property("output"), "Jerry: outer");
-        QCOMPARE(createdByComponent->property("output"), "Rootroot");
+        QCOMPARE(conflictingComponentTomFromComponent->property("output"), u"Tom: Tomtom"_s);
+        QCOMPARE(conflictingComponentJerryFromComponent->property("output"), u"Jerry: outer"_s);
+        QCOMPARE(createdByComponent->property("output"), u"Rootroot"_s);
     }
 
     // check 'empty' components that just get stuff through inheritance
@@ -3001,7 +3108,7 @@ void tst_qmltc::aliases()
     PREPEND_NAMESPACE(aliases) fromQmltc(&e);
 
     QQmlComponent component(&e);
-    component.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/aliases.qml"));
+    component.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/aliases.qml"_s));
     QVERIFY(!component.isError());
     QScopedPointer<QObject> fromComponent(component.create());
     const QString testString = u"myTestString"_s;
@@ -3032,7 +3139,7 @@ void tst_qmltc::inlineComponentsFromDifferentFiles()
     PREPEND_NAMESPACE(inlineComponentsFromDifferentFiles) createdByQmltc(&e);
 
     QQmlComponent component(&e);
-    component.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/inlineComponentsFromDifferentFiles.qml"));
+    component.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/inlineComponentsFromDifferentFiles.qml"_s));
     QVERIFY(!component.isError());
     QScopedPointer<QObject> createdByComponent(component.create());
 
@@ -3104,7 +3211,7 @@ void tst_qmltc::singletons()
     PREPEND_NAMESPACE(singletons) createdByQmltcSecondEngine(&e2);
 
     QQmlComponent component(&e);
-    component.loadUrl(QUrl("qrc:/qt/qml/QmltcTests/singletons.qml"));
+    component.loadUrl(QUrl(u"qrc:/qt/qml/QmltcTests/singletons.qml"_s));
     QVERIFY(!component.isError());
     QScopedPointer<QObject> createdByComponent(component.create());
 
@@ -3264,8 +3371,8 @@ void tst_qmltc::urlToString()
     // check that the tableModel is not default constructed
     QUrl first = createdByQmltc.iconLoader()->source();
     QUrl second = createdByQmltc.iconLoader2()->source();
-    QCOMPARE(first, QUrl("qrc:/qt/qml/path/to/font.ttf"));
-    QCOMPARE(second, QUrl("qrc:/qt/qml/path/to/font2.ttf"));
+    QCOMPARE(first, QUrl(u"qrc:/qt/qml/path/to/font.ttf"_s));
+    QCOMPARE(second, QUrl(u"qrc:/qt/qml/path/to/font2.ttf"_s));
 }
 
 void tst_qmltc::signalConnections()
@@ -3292,6 +3399,57 @@ void tst_qmltc::signalConnections()
     createdByQmltc.setCycleSecond(true);
     QTRY_VERIFY(!createdByQmltc.cycleSecond());
     QCOMPARE(createdByQmltc.objectName(), QLatin1String("second"));
+}
+
+void tst_qmltc::hpp()
+{
+    QQmlEngine e;
+    PREPEND_NAMESPACE(hpp) createdByQmltc(&e);
+    QCOMPARE(createdByQmltc.objectName(), QLatin1String("hpp"));
+}
+
+template<typename T>
+void checkOverlayAttached(T *createdByQmltc)
+{
+    QObject *attached = qmlAttachedPropertiesObject<QQuickOverlay>(createdByQmltc);
+    QVERIFY(attached);
+    QQuickOverlayAttached *overlay = qobject_cast<QQuickOverlayAttached *>(attached);
+    QVERIFY(overlay);
+
+    QCOMPARE(overlay->objectName(), QLatin1String("foos"));
+
+    QQmlComponent *modal = overlay->modal();
+    QVERIFY(modal);
+
+    QScopedPointer<QObject> overlayInstance(modal->create());
+    QVERIFY(!overlayInstance.isNull());
+
+    QQuickRectangle *rectangle = qobject_cast<QQuickRectangle *>(overlayInstance.data());
+    QVERIFY(rectangle);
+
+    QCOMPARE(rectangle->color(), QColor::fromString("grey"_L1));
+}
+
+void tst_qmltc::attachedComponentProperty()
+{
+    QQmlEngine e;
+    PREPEND_NAMESPACE(attachedComponentProperty) createdByQmltc(&e);
+    checkOverlayAttached(&createdByQmltc);
+
+    QQmlComponent *b = createdByQmltc.b();
+    QVERIFY(b);
+
+    QScopedPointer<QObject> bInstance(b->create());
+    QQuickRectangle *bRectangle = qobject_cast<QQuickRectangle *>(bInstance.data());
+    QVERIFY(bRectangle);
+    QCOMPARE(bRectangle->color(), QColor::fromString("green"_L1));
+}
+
+void tst_qmltc::attachedNamespacedProperty()
+{
+    QQmlEngine e;
+    PREPEND_NAMESPACE(attachedNamespacedProperty) createdByQmltc(&e);
+    checkOverlayAttached(&createdByQmltc);
 }
 
 QTEST_MAIN(tst_qmltc)

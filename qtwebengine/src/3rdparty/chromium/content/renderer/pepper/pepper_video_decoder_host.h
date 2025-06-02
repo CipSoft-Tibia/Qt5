@@ -13,12 +13,17 @@
 #include <set>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "content/renderer/pepper/video_decoder_shim.h"
 #include "gpu/command_buffer/common/mailbox.h"
 #include "ppapi/c/pp_codecs.h"
 #include "ppapi/host/host_message_context.h"
 #include "ppapi/host/resource_host.h"
 #include "ppapi/proxy/resource_message_params.h"
+
+namespace gpu {
+class ClientSharedImage;
+}
 
 namespace content {
 
@@ -69,12 +74,29 @@ class PepperVideoDecoderHost : public ppapi::host::ResourceHost {
     bool busy = false;
   };
 
+  struct SharedImage {
+    SharedImage(gfx::Size size,
+                PictureBufferState state,
+                scoped_refptr<gpu::ClientSharedImage> client_shared_image);
+    SharedImage(const SharedImage& shared_image);
+    ~SharedImage();
+
+    gfx::Size size;
+    PictureBufferState state;
+    scoped_refptr<gpu::ClientSharedImage> client_shared_image;
+  };
+
   friend class VideoDecoderShim;
 
   // ResourceHost implementation.
   int32_t OnResourceMessageReceived(
       const IPC::Message& msg,
       ppapi::host::HostMessageContext* context) override;
+
+  gpu::Mailbox CreateSharedImage(gfx::Size size);
+  void DestroySharedImage(const gpu::Mailbox& mailbox);
+  void DestroySharedImageInternal(
+      std::map<gpu::Mailbox, SharedImage>::iterator it);
 
   void ProvidePictureBuffers(uint32_t requested_num_of_buffers,
                              media::VideoPixelFormat format,
@@ -83,6 +105,11 @@ class PepperVideoDecoderHost : public ppapi::host::ResourceHost {
                              uint32_t texture_target);
   void DismissPictureBuffer(int32_t picture_buffer_id);
   void PictureReady(const media::Picture& picture);
+  void SharedImageReady(int32_t decode_id,
+                        const gpu::Mailbox& mailbox,
+                        gfx::Size size,
+                        const gfx::Rect& visible_rect);
+
   void NotifyEndOfBitstreamBuffer(int32_t bitstream_buffer_id);
   void NotifyFlushDone();
   void NotifyResetDone();
@@ -106,6 +133,8 @@ class PepperVideoDecoderHost : public ppapi::host::ResourceHost {
                                   const std::vector<gpu::Mailbox>& mailboxes);
   int32_t OnHostMsgRecyclePicture(ppapi::host::HostMessageContext* context,
                                   uint32_t picture_id);
+  int32_t OnHostMsgRecycleSharedImage(ppapi::host::HostMessageContext* context,
+                                      const gpu::Mailbox& mailbox);
   int32_t OnHostMsgFlush(ppapi::host::HostMessageContext* context);
   int32_t OnHostMsgReset(ppapi::host::HostMessageContext* context);
 
@@ -120,9 +149,13 @@ class PepperVideoDecoderHost : public ppapi::host::ResourceHost {
   PendingDecodeList::iterator GetPendingDecodeById(int32_t decode_id);
 
   // Non-owning pointer.
-  RendererPpapiHost* renderer_ppapi_host_;
+  raw_ptr<RendererPpapiHost, ExperimentalRenderer> renderer_ppapi_host_;
 
   media::VideoCodecProfile profile_;
+
+  // |decoder_| will call DestroySharedImage in its dtor, which accesses these
+  // fields.
+  std::map<gpu::Mailbox, SharedImage> shared_images_;
 
   std::unique_ptr<VideoDecoderShim> decoder_;
 
@@ -168,6 +201,8 @@ class PepperVideoDecoderHost : public ppapi::host::ResourceHost {
   ppapi::host::ReplyMessageContext reset_reply_context_;
 
   bool initialized_ = false;
+
+  const bool use_shared_images_;
 };
 
 }  // namespace content

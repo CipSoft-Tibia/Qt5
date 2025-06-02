@@ -36,7 +36,7 @@ QT_BEGIN_NAMESPACE
  * \inqmlmodule QtDataVisualization
  * \since QtDataVisualization 1.0
  * \ingroup datavisualization_qml
- * \instantiates Q3DScene
+ * \nativetype Q3DScene
  * \brief Scene3D type provides description of the 3D scene being visualized.
  *
  * The 3D scene contains a single active camera and a single active light source.
@@ -144,7 +144,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty float Scene3D::devicePixelRatio
+ * \qmlproperty real Scene3D::devicePixelRatio
  *
  * The current device pixel ratio that is used when mapping input
  * coordinates to pixel coordinates.

@@ -28,6 +28,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/check.h"  // nogncheck
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -207,7 +208,7 @@ absl::Status CalculatorGraph::InitializeStreams() {
 
   // Initialize GraphInputStreams.
   int graph_input_stream_count = 0;
-  ASSIGN_OR_RETURN(
+  MP_ASSIGN_OR_RETURN(
       auto input_tag_map,
       tool::TagMap::Create(validated_graph_->Config().input_stream()));
   for (const auto& stream_name : input_tag_map->Names()) {
@@ -371,7 +372,7 @@ absl::Status CalculatorGraph::InitializeExecutors() {
                 "CalculatorGraph::SetExecutor() call.";
     }
     // clang-format off
-    ASSIGN_OR_RETURN(Executor* executor,
+    MP_ASSIGN_OR_RETURN(Executor* executor,
                      ExecutorRegistry::CreateByNameInNamespace(
                          validated_graph_->Package(),
                          executor_config.type(), executor_config.options()));
@@ -491,6 +492,17 @@ absl::Status CalculatorGraph::ObserveOutputStream(
       stream_name, &any_packet_type_, std::move(packet_callback),
       &output_stream_managers_[output_stream_index], observe_timestamp_bounds));
   graph_output_streams_.push_back(std::move(observer));
+  return absl::OkStatus();
+}
+
+absl::Status CalculatorGraph::SetErrorCallback(
+    std::function<void(const absl::Status&)> error_callback) {
+  // Require setting error callback before initialization to:
+  // - impose the strictest requirement
+  // - save the future possibility of reporting initialization errors
+  RET_CHECK(!initialized_)
+      << "SetErrorCallback must be called before Initialize()";
+  error_callback_ = error_callback;
   return absl::OkStatus();
 }
 
@@ -890,12 +902,12 @@ absl::Status CalculatorGraph::WaitForObservedOutput() {
 }
 
 absl::Status CalculatorGraph::AddPacketToInputStream(
-    const std::string& stream_name, const Packet& packet) {
+    absl::string_view stream_name, const Packet& packet) {
   return AddPacketToInputStreamInternal(stream_name, packet);
 }
 
 absl::Status CalculatorGraph::AddPacketToInputStream(
-    const std::string& stream_name, Packet&& packet) {
+    absl::string_view stream_name, Packet&& packet) {
   return AddPacketToInputStreamInternal(stream_name, std::move(packet));
 }
 
@@ -918,14 +930,18 @@ absl::Status CalculatorGraph::SetInputStreamTimestampBound(
 // std::forward will deduce the correct type as we pass along packet.
 template <typename T>
 absl::Status CalculatorGraph::AddPacketToInputStreamInternal(
-    const std::string& stream_name, T&& packet) {
+    absl::string_view stream_name, T&& packet) {
+  auto stream_it = graph_input_streams_.find(stream_name);
   std::unique_ptr<GraphInputStream>* stream =
-      mediapipe::FindOrNull(graph_input_streams_, stream_name);
+      stream_it == graph_input_streams_.end() ? nullptr : &stream_it->second;
   RET_CHECK(stream).SetNoLogging() << absl::Substitute(
       "AddPacketToInputStream called on input stream \"$0\" which is not a "
       "graph input stream.",
       stream_name);
-  int node_id = mediapipe::FindOrDie(graph_input_stream_node_ids_, stream_name);
+  auto node_id_it = graph_input_stream_node_ids_.find(stream_name);
+  ABSL_CHECK(node_id_it != graph_input_stream_node_ids_.end())
+      << "Map key not found: " << stream_name;
+  int node_id = node_id_it->second;
   ABSL_CHECK_GE(node_id, validated_graph_->CalculatorInfos().size());
   {
     absl::MutexLock lock(&full_input_streams_mutex_);
@@ -1071,6 +1087,9 @@ void CalculatorGraph::RecordError(const absl::Status& error) {
           << "Forcefully aborting to prevent the framework running out "
              "of memory.";
     }
+  }
+  if (error_callback_) {
+    error_callback_(error);
   }
 }
 
@@ -1335,7 +1354,7 @@ absl::Status CalculatorGraph::CreateDefaultThreadPool(
   }
   options->set_num_threads(num_threads);
   // clang-format off
-  ASSIGN_OR_RETURN(Executor* executor,
+  MP_ASSIGN_OR_RETURN(Executor* executor,
                    ThreadPoolExecutor::Create(extendable_options));
   // clang-format on
   return SetExecutorInternal("", std::shared_ptr<Executor>(executor));

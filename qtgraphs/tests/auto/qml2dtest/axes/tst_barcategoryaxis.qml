@@ -27,13 +27,11 @@ Item {
         max: "max"
         categories: ["min", "max"]
 
-        // alignment: Qt.AlignTop // read-only
         gridVisible: false
         labelsAngle: 25
         labelsVisible: false
         lineVisible: false
-        minorGridVisible: false
-        // orientation: Qt.Vertical // read-only
+        subGridVisible: false
         titleColor: "#ff0000"
         titleFont: initializedDummy.font
         titleText: "Initialized"
@@ -55,13 +53,11 @@ Item {
 
         function test_2_initial_common() {
             // Common properties from AbstractAxis
-            compare(initial.alignment, 0)
             compare(initial.gridVisible, true)
             compare(initial.labelsAngle, 0)
             compare(initial.labelsVisible, true)
             compare(initial.lineVisible, true)
-            compare(initial.minorGridVisible, true)
-            compare(initial.orientation, 0)
+            compare(initial.subGridVisible, true)
             compare(initial.titleColor, "#000000")
             // Initial font needs to be tested like this, as different platforms have different default font (QFont())
             compare(initial.titleFont.family, dummy.font.family)
@@ -79,13 +75,11 @@ Item {
             initial.max = "three"
 
             // Common properties from AbstractAxis
-            // initial.alignment = Qt.AlignRight // read-only
             initial.gridVisible = false
             initial.labelsAngle = 45
             initial.labelsVisible = false
             initial.lineVisible = false
-            initial.minorGridVisible = false
-            // initial.orientation = Qt.Horizontal // read-only
+            initial.subGridVisible = false
             initial.titleColor = "#ffffff"
             initial.titleFont = dummy.font
             initial.titleText = "Dummy"
@@ -100,18 +94,44 @@ Item {
             // compare(initial.max, "three")
 
             // Common properties from AbstractAxis
-            // compare(initial.alignment, Qt.AlignRight) // read-only
             compare(initial.gridVisible, false)
             compare(initial.labelsAngle, 45)
             compare(initial.labelsVisible, false)
             compare(initial.lineVisible, false)
-            compare(initial.minorGridVisible, false)
-            // compare(initial.orientation, Qt.Horizontal) // read-only
+            compare(initial.subGridVisible, false)
             compare(initial.titleColor, "#ffffff")
             compare(initial.titleFont, dummy.font)
             compare(initial.titleText, "Dummy")
             compare(initial.titleVisible, false)
             compare(initial.visible, false)
+        }
+        function test_4_initial_modify() {
+            initial.clear()
+            compare(initial.count, 0)
+            initial.append("first")
+            compare(initial.count, 1)
+            initial.append(["second", "third"])
+            compare(initial.count, 3)
+            initial.remove(1)
+            compare(initial.categories, ["first", "third"])
+            initial.insert(1, "bonus")
+            compare(initial.categories, ["first", "bonus", "third"])
+            // These shouldn't do anything
+            initial.remove(10)
+            initial.remove(-1)
+            initial.remove("not here")
+            initial.replace("first2", "first3")
+            compare(initial.categories, ["first", "bonus", "third"])
+            initial.remove("bonus")
+            compare(initial.categories, ["first", "third"])
+            initial.replace("first", "newfirst")
+            compare(initial.categories, ["newfirst", "third"])
+            compare(initial.at(0), "newfirst")
+            compare(initial.at(1), "third")
+            compare(initial.at(2), "")
+            compare(initial.at(-2), "")
+            initial.clear()
+            compare(initial.count, 0)
         }
     }
 
@@ -126,13 +146,11 @@ Item {
             compare(initialized.max, "max")
 
             // Common properties from AbstractAxis
-            // compare(initialized.alignment, Qt.AlignTop) // read-only
             compare(initialized.gridVisible, false)
             compare(initialized.labelsAngle, 25)
             compare(initialized.labelsVisible, false)
             compare(initialized.lineVisible, false)
-            compare(initialized.minorGridVisible, false)
-            // compare(initialized.orientation, Qt.Vertical) // read-only
+            compare(initialized.subGridVisible, false)
             compare(initialized.titleColor, "#ff0000")
             compare(initialized.titleFont, initializedDummy.font)
             compare(initialized.titleText, "Initialized")
@@ -147,13 +165,11 @@ Item {
             initialized.max = "three"
 
             // Common properties from AbstractAxis
-            // initialized.alignment = Qt.AlignRight // read-only
             initialized.gridVisible = true
             initialized.labelsAngle = 45
             initialized.labelsVisible = true
             initialized.lineVisible = true
-            initialized.minorGridVisible = true
-            // initialized.orientation = Qt.Horizontal // read-only
+            initialized.subGridVisible = true
             initialized.titleColor = "#ffffff"
             initialized.titleFont = dummy.font
             initialized.titleText = "Dummy"
@@ -168,18 +184,35 @@ Item {
             // compare(initialized.max, "three")
 
             // Common properties from AbstractAxis
-            // compare(initialized.alignment, Qt.AlignTop) // read-only
             compare(initialized.gridVisible, true)
             compare(initialized.labelsAngle, 45)
             compare(initialized.labelsVisible, true)
             compare(initialized.lineVisible, true)
-            compare(initialized.minorGridVisible, true)
-            // compare(initialized.orientation, Qt.Vertical) // read-only
+            compare(initialized.subGridVisible, true)
             compare(initialized.titleColor, "#ffffff")
             compare(initialized.titleFont, dummy.font)
             compare(initialized.titleText, "Dummy")
             compare(initialized.titleVisible, true)
             compare(initialized.visible, true)
+
+            // Signals
+            compare(countSpy.count, 1)
+            compare(categoriesSpy.count, 1)
+            compare(minSpy.count, 1)
+            compare(maxSpy.count, 1)
+
+            // Common signals
+            compare(visibleSpy.count, 1)
+            compare(lineVisibleSpy.count, 1)
+            compare(labelsVisibleSpy.count, 1)
+            compare(labelsAngleSpy.count, 1)
+            compare(labelDelegateSpy.count, 0)
+            compare(gridVisibleSpy.count, 1)
+            compare(subGridVisibleSpy.count, 1)
+            compare(titleFontSpy.count, 2)
+            compare(titleColorSpy.count, 1)
+            compare(titleVisibleSpy.count, 1)
+            compare(alignmentSpy.count, 0)
         }
 
         function test_3_initialized_clear() {
@@ -190,5 +223,161 @@ Item {
             compare(initialized.min, "")
             compare(initialized.max, "")
         }
+
+        function test_4_initialized_invokables() {
+            // Append
+            initialized.append(["one", "two"])
+            initialized.append("three")
+
+            compare(initialized.categories, ["one", "two", "three"])
+            compare(initialized.count, 3)
+            compare(countSpy.count, 4)
+            compare(categoriesSpy.count, 4)
+
+            // Remove
+            initialized.remove("three")
+            initialized.remove(1)
+
+            compare(initialized.categories, ["one"])
+            compare(initialized.count, 1)
+            compare(countSpy.count, 6)
+            compare(categoriesSpy.count, 6)
+
+            // Insert
+            initialized.insert(1, "two")
+            compare(initialized.count, 2)
+            compare(countSpy.count, 7)
+            compare(categoriesSpy.count, 7)
+
+            // Replace
+            initialized.replace("two", "replacedTwo")
+            compare(initialized.categories, ["one", "replacedTwo"])
+            compare(countSpy.count, 8)
+            compare(categoriesSpy.count, 8)
+
+            initialized.append(["newCategory1", "newCategory2"])
+            compare(countSpy.count, 9)
+            compare(categoriesSpy.count, 9)
+
+            // At
+            let atCategory = initialized.at(0)
+            let atCategory2 = initialized.at(1)
+            let atCategory3 = initialized.at(2)
+            let atCategory4 = initialized.at(3)
+
+            let categories = initialized.categories
+
+            compare(atCategory, "one")
+            compare(atCategory2, "replacedTwo")
+            compare(atCategory3, "newCategory1")
+            compare(atCategory4, "newCategory2")
+
+            compare(categories[0], atCategory)
+            compare(categories[1], atCategory2)
+            compare(categories[2], atCategory3)
+            compare(categories[3], atCategory4)
+
+            // Clear
+            initialized.clear()
+
+            compare(countSpy.count, 10)
+            compare(categoriesSpy.count, 10)
+        }
+    }
+
+    SignalSpy {
+        id: countSpy
+        target: initialized
+        signalName: "countChanged"
+    }
+
+    SignalSpy {
+        id: categoriesSpy
+        target: initialized
+        signalName: "categoriesChanged"
+    }
+
+    SignalSpy {
+        id: minSpy
+        target: initialized
+        signalName: "minChanged"
+    }
+
+    SignalSpy {
+        id: maxSpy
+        target: initialized
+        signalName: "maxChanged"
+    }
+
+    SignalSpy {
+        id: visibleSpy
+        target: initialized
+        signalName: "visibleChanged"
+    }
+
+    SignalSpy {
+        id: lineVisibleSpy
+        target: initialized
+        signalName: "lineVisibleChanged"
+    }
+
+    SignalSpy {
+        id: labelsVisibleSpy
+        target: initialized
+        signalName: "labelsVisibleChanged"
+    }
+
+    SignalSpy {
+        id: labelsAngleSpy
+        target: initialized
+        signalName: "labelsAngleChanged"
+    }
+
+    SignalSpy {
+        id: labelDelegateSpy
+        target: initialized
+        signalName: "labelDelegateChanged"
+    }
+
+    SignalSpy {
+        id: gridVisibleSpy
+        target: initialized
+        signalName: "gridVisibleChanged"
+    }
+
+    SignalSpy {
+        id: subGridVisibleSpy
+        target: initialized
+        signalName: "subGridVisibleChanged"
+    }
+
+    SignalSpy {
+        id: titleTextSpy
+        target: initialized
+        signalName: "titleTextChanged"
+    }
+
+    SignalSpy {
+        id: titleColorSpy
+        target: initialized
+        signalName: "titleColorChanged"
+    }
+
+    SignalSpy {
+        id: titleVisibleSpy
+        target: initialized
+        signalName: "titleVisibleChanged"
+    }
+
+    SignalSpy {
+        id: titleFontSpy
+        target: initialized
+        signalName: "titleFontChanged"
+    }
+
+    SignalSpy {
+        id: alignmentSpy
+        target: initialized
+        signalName: "alignmentChanged"
     }
 }

@@ -37,6 +37,91 @@ ROOT_DIR = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UI_SRC_DIR = os.path.join(ROOT_DIR, 'ui', 'src')
 
+# Current plan for the dependency tree of the UI code (2023-09-21)
+# black = current
+# red = planning to remove
+# green = planning to add
+PLAN_DOT = """
+digraph g {
+    mithril [shape=rectangle, label="mithril"];
+    protos [shape=rectangle, label="//protos/perfetto"];
+
+    _gen [shape=ellipse, label="/gen"];
+    _base [shape=ellipse, label="/base"];
+    _core [shape=ellipse, label="/core"];
+    _engine [shape=ellipse, label="/engine"];
+
+    _frontend [shape=ellipse, label="/frontend" color=red];
+    _common [shape=ellipse, label="/common" color=red];
+    _controller [shape=ellipse, label="/controller" color=red];
+    _tracks [shape=ellipse, label="/tracks" color=red];
+
+    _widgets [shape=ellipse, label="/widgets"];
+
+    _public [shape=ellipse, label="/public"];
+    _plugins [shape=ellipse, label="/plugins"];
+    _chrome_extension [shape=ellipse, label="/chrome_extension"];
+    _trace_processor [shape=ellipse, label="/trace_processor" color="green"];
+    _protos [shape=ellipse, label="/protos"];
+    engine_worker_bundle [shape=cds, label="Engine worker bundle"];
+    frontend_bundle [shape=cds, label="Frontend bundle"];
+
+    engine_worker_bundle -> _engine;
+    frontend_bundle -> _core [color=green];
+    frontend_bundle -> _frontend [color=red];
+
+    _core -> _public;
+    _plugins -> _public;
+
+    _widgets -> _base;
+    _core -> _base;
+    _core -> _widgets;
+
+
+    _widgets -> mithril;
+    _plugins -> mithril;
+    _core -> mithril
+
+    _plugins -> _widgets;
+
+    _core -> _chrome_extension;
+
+    _frontend -> _widgets [color=red];
+    _common -> _core [color=red];
+    _frontend -> _core [color=red];
+    _controller -> _core [color=red];
+
+    _frontend -> _controller [color=red];
+    _frontend -> _common [color=red];
+    _controller -> _frontend  [color=red];
+    _controller -> _common [color=red];
+    _common -> _controller [color=red];
+    _common -> _frontend [color=red];
+    _tracks -> _frontend  [color=red];
+    _tracks -> _controller  [color=red];
+    _common -> _chrome_extension [color=red];
+
+    _core -> _trace_processor [color=green];
+
+    _engine -> _trace_processor [color=green];
+    _engine -> _common [color=red];
+    _engine -> _base;
+
+    _gen -> protos;
+    _core -> _gen [color=red];
+
+    _core -> _protos;
+    _protos -> _gen;
+    _trace_processor -> _protos [color=green];
+
+    _trace_processor -> _public [color=green];
+
+    npm_trace_processor [shape=cds, label="npm trace_processor" color="green"];
+    npm_trace_processor -> engine_worker_bundle [color="green"];
+    npm_trace_processor -> _trace_processor [color="green"];
+}
+"""
+
 
 class Failure(object):
 
@@ -54,6 +139,24 @@ class Failure(object):
         str(self.rule),
         '\n',
     ])
+
+
+class AllowList(object):
+
+  def __init__(self, allowed, dst, reasoning):
+    self.allowed = allowed
+    self.dst = dst
+    self.reasoning = reasoning
+
+  def check(self, graph):
+    for node, edges in graph.items():
+      for edge in edges:
+        if re.match(self.dst, edge):
+          if not any(re.match(a, node) for a in self.allowed):
+            yield Failure([node, edge], self)
+
+  def __str__(self):
+    return f'Only items in the allowlist ({self.allowed}) may directly depend on "{self.dst}" ' + self.reasoning
 
 
 class NoDirectDep(object):
@@ -114,6 +217,11 @@ class NoCircularDeps(object):
 # NoDep(a, b) = as above but 'a' may not even transitively import 'b'.
 # NoCircularDeps = forbid introduction of circular dependencies
 RULES = [
+    AllowList(
+        ['/protos/index'],
+        r'/gen/protos',
+        'protos should be re-exported from /protos/index without the nesting.',
+    ),
     NoDirectDep(
         r'/plugins/.*',
         r'/core/.*',
@@ -160,6 +268,65 @@ RULES = [
         'chrome_extension must be a leaf',
     ),
 
+    # Widgets
+    NoDep(
+        r'/widgets/.*',
+        r'/frontend/.*',
+        'widgets should only depend on base',
+    ),
+    NoDep(
+        r'/widgets/.*',
+        r'/core/.*',
+        'widgets should only depend on base',
+    ),
+    NoDep(
+        r'/widgets/.*',
+        r'/plugins/.*',
+        'widgets should only depend on base',
+    ),
+    NoDep(
+        r'/widgets/.*',
+        r'/common/.*',
+        'widgets should only depend on base',
+    ),
+
+    # Bigtrace
+    NoDep(
+        r'/bigtrace/.*',
+        r'/frontend/.*',
+        'bigtrace should not depend on frontend',
+    ),
+    NoDep(
+        r'/bigtrace/.*',
+        r'/common/.*',
+        'bigtrace should not depend on common',
+    ),
+    NoDep(
+        r'/bigtrace/.*',
+        r'/engine/.*',
+        'bigtrace should not depend on engine',
+    ),
+    NoDep(
+        r'/bigtrace/.*',
+        r'/trace_processor/.*',
+        'bigtrace should not depend on trace_processor',
+    ),
+    NoDep(
+        r'/bigtrace/.*',
+        r'/traceconv/.*',
+        'bigtrace should not depend on traceconv',
+    ),
+    NoDep(
+        r'/bigtrace/.*',
+        r'/tracks/.*',
+        'bigtrace should not depend on tracks',
+    ),
+    NoDep(
+        r'/bigtrace/.*',
+        r'/controller/.*',
+        'bigtrace should not depend on controller',
+    ),
+
     # Fails at the moment as we have several circular dependencies. One
     # example:
     # ui/src/frontend/cookie_consent.ts
@@ -186,10 +353,18 @@ def is_dir(path, cache={}):
     return result
 
 
+def remove_prefix(s, prefix):
+  return s[len(prefix):] if s.startswith(prefix) else s
+
+
+def remove_suffix(s, suffix):
+  return s[:-len(suffix)] if s.endswith(suffix) else s
+
+
 def find_imports(path):
   src = path
-  src = src.removeprefix(UI_SRC_DIR)
-  src = src.removesuffix('.ts')
+  src = remove_prefix(src, UI_SRC_DIR)
+  src = remove_suffix(src, '.ts')
   directory, _ = os.path.split(src)
   with open(path) as f:
     s = f.read()
@@ -205,7 +380,11 @@ def find_imports(path):
 
 
 def path_to_id(path):
-  return path.replace('/', '_').replace('-', '_').replace('@', '_at_')
+  path = path.replace('/', '_')
+  path = path.replace('-', '_')
+  path = path.replace('@', '_at_')
+  path = path.replace('.', '_')
+  return path
 
 
 def is_external_dep(path):
@@ -276,6 +455,12 @@ def do_desc(options, graph):
     print(rule)
 
 
+def do_print(options, graph):
+  for node, edges in graph.items():
+    for edge in edges:
+      print("{}\t{}".format(node, edge))
+
+
 def do_dot(options, graph):
 
   def simplify(path):
@@ -307,6 +492,11 @@ def do_dot(options, graph):
   return 0
 
 
+def do_plan_dot(options, _):
+  print(PLAN_DOT, file=sys.stdout)
+  return 0
+
+
 def main():
   parser = argparse.ArgumentParser(description=__doc__)
   parser.set_defaults(func=do_check)
@@ -318,6 +508,9 @@ def main():
 
   desc_command = subparsers.add_parser('desc', help='Print the rules')
   desc_command.set_defaults(func=do_desc)
+
+  print_command = subparsers.add_parser('print', help='Print all imports')
+  print_command.set_defaults(func=do_print)
 
   dot_command = subparsers.add_parser(
       'dot',
@@ -334,6 +527,12 @@ def main():
       action='store_true',
       help='Don\'t show external dependencies',
   )
+
+  plan_dot_command = subparsers.add_parser(
+      'plan-dot',
+      help='Output planned dependency graph in dot format suitble for use in graphviz (e.g. ./tools/check_imports plan-dot | dot -Tpng -ograph.png)'
+  )
+  plan_dot_command.set_defaults(func=do_plan_dot)
 
   graph = collections.defaultdict(set)
   for path in all_source_files():

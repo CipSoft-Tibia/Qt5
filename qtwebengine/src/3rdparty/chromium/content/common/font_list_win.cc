@@ -18,7 +18,7 @@
 
 namespace content {
 
-#if !defined(TOOLKIT_QT)
+#if !BUILDFLAG(IS_QTWEBENGINE)
 base::Value::List GetFontList_SlowBlocking() {
   TRACE_EVENT0("fonts", "GetFontList_SlowBlocking");
 
@@ -48,7 +48,7 @@ base::Value::List GetFontList_SlowBlocking() {
 
     // Retrieve the native font family name. Try the "en-us" locale and if it's
     // not present, used the first available localized name.
-    absl::optional<std::string> native_name =
+    std::optional<std::string> native_name =
         gfx::win::RetrieveLocalizedString(family_names.Get(), "en-us");
     if (!native_name) {
       native_name = gfx::win::RetrieveLocalizedString(family_names.Get(), "");
@@ -56,7 +56,7 @@ base::Value::List GetFontList_SlowBlocking() {
         continue;
     }
 
-    absl::optional<std::string> localized_name =
+    std::optional<std::string> localized_name =
         gfx::win::RetrieveLocalizedString(family_names.Get(), locale);
     if (!localized_name)
       localized_name = native_name;
@@ -69,6 +69,6 @@ base::Value::List GetFontList_SlowBlocking() {
   std::sort(font_list.begin(), font_list.end());
   return font_list;
 }
-#endif
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 
 }  // namespace content

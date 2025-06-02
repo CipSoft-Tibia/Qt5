@@ -8,7 +8,7 @@
 #include <qdatetime.h>
 #include <qdebug.h>
 #include <qdir.h>
-#include <qdiriterator.h>
+#include <qdirlisting.h>
 #include <qfile.h>
 #include <qiodevice.h>
 #include <qlocale.h>
@@ -21,7 +21,7 @@
 #  include <zstd.h>
 #endif
 
-// Note: A copy of this file is used in Qt Designer (qttools/src/designer/src/lib/shared/rcc.cpp)
+// Note: A copy of this file is used in Qt Widgets Designer (qttools/src/designer/src/lib/shared/rcc.cpp)
 
 QT_BEGIN_NAMESPACE
 
@@ -321,7 +321,7 @@ qint64 RCCFileInfo::writeDataBlob(RCCResourceLibrary &lib, qint64 offset,
     // some info
     if (text || pass1) {
         lib.writeString("  // ");
-        lib.writeByteArray(m_fileInfo.absoluteFilePath().toLocal8Bit());
+        lib.writeByteArray(m_fileInfo.fileName().toLocal8Bit());
         lib.writeString("\n  ");
     }
 
@@ -512,6 +512,12 @@ bool RCCResourceLibrary::interpretResourceFile(QIODevice *inputDevice,
                     reader.raiseError("expected <RCC> tag"_L1);
                 else
                     tokens.push(RccTag);
+            } else if (reader.name() == m_strings.TAG_LEGAL) {
+                if (tokens.isEmpty() || tokens.top() != RccTag) {
+                    reader.raiseError("unexpected <legal> tag"_L1);
+                } else {
+                    m_legal = reader.readElementText().trimmed();
+                }
             } else if (reader.name() == m_strings.TAG_RESOURCE) {
                 if (tokens.isEmpty() || tokens.top() != RccTag) {
                     reader.raiseError("unexpected <RESOURCE> tag"_L1);
@@ -629,17 +635,17 @@ bool RCCResourceLibrary::interpretResourceFile(QIODevice *inputDevice,
                     absFileName.prepend(currentPath);
                 QFileInfo file(absFileName);
                 if (file.isDir()) {
-                    QDir dir(file.filePath());
                     if (!alias.endsWith(slash))
                         alias += slash;
 
                     QStringList filePaths;
-                    QDirIterator it(dir, QDirIterator::FollowSymlinks|QDirIterator::Subdirectories);
-                    while (it.hasNext()) {
-                        it.next();
-                        if (it.fileName() == "."_L1 || it.fileName() == ".."_L1)
+                    using F = QDirListing::IteratorFlag;
+                    constexpr auto flags = F::FollowDirSymlinks | F::Recursive;
+                    for (const auto &entry : QDirListing(file.filePath(), flags)) {
+                        const QString &fileName = entry.fileName();
+                        if (fileName == "."_L1 || fileName == ".."_L1)
                             continue;
-                        filePaths.append(it.filePath());
+                        filePaths.emplace_back(entry.filePath());
                     }
 
                     // make rcc output deterministic
@@ -1087,20 +1093,34 @@ void RCCResourceLibrary::writeNumber8(quint64 number)
 
 bool RCCResourceLibrary::writeHeader()
 {
+    auto writeCopyright = [this](QByteArrayView prefix) {
+        const QStringList lines = m_legal.split(u'\n', Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            write(prefix.data(), prefix.size());
+            writeString(line.toUtf8().trimmed());
+            writeChar('\n');
+        }
+    };
     switch (m_format) {
     case C_Code:
     case Pass1:
         writeString("/****************************************************************************\n");
         writeString("** Resource object code\n");
+        writeCopyright("** ");
         writeString("**\n");
         writeString("** Created by: The Resource Compiler for Qt version ");
         writeByteArray(QT_VERSION_STR);
         writeString("\n**\n");
         writeString("** WARNING! All changes made in this file will be lost!\n");
         writeString( "*****************************************************************************/\n\n");
+        writeString("#ifdef _MSC_VER\n"
+                    "// disable informational message \"function ... selected for automatic inline expansion\"\n"
+                    "#pragma warning (disable: 4711)\n"
+                    "#endif\n\n");
         break;
     case Python_Code:
         writeString("# Resource object code (Python 3)\n");
+        writeCopyright("# ");
         writeString("# Created by: object code\n");
         writeString("# Created by: The Resource Compiler for Qt version ");
         writeByteArray(QT_VERSION_STR);
@@ -1378,7 +1398,9 @@ bool RCCResourceLibrary::writeInitializer()
                         "#   define QT_RCC_MANGLE_NAMESPACE(name) name\n"
                         "#endif\n\n");
 
-            writeString("#ifdef QT_NAMESPACE\n"
+            writeString("#if defined(QT_INLINE_NAMESPACE)\n"
+                        "inline namespace QT_NAMESPACE {\n"
+                        "#elif defined(QT_NAMESPACE)\n"
                         "namespace QT_NAMESPACE {\n"
                         "#endif\n\n");
         }

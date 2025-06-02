@@ -4,7 +4,7 @@
 #ifndef GRAPHMODIFIER_H
 #define GRAPHMODIFIER_H
 
-#include <QtGraphs/Q3DSurface>
+#include <QtGraphsWidgets/Q3DSurfaceWidgetItem>
 #include <QtGraphs/QSurfaceDataProxy>
 #include <QtGraphs/QSurface3DSeries>
 #include <QSlider>
@@ -24,7 +24,7 @@ public:
         Map
     };
 
-    explicit GraphModifier(Q3DSurface *graph);
+    explicit GraphModifier(Q3DSurfaceWidgetItem *graph);
     ~GraphModifier();
 
     void toggleSeries1(int enabled);
@@ -35,15 +35,15 @@ public:
     void toggleSurfaceGrid(int enable);
     void toggleSurface(int enable);
     void toggleSeriesVisible(int enable);
-    void toggleSmoothS2(int enabled);
+    void toggleSmoothS2(int visible);
     void toggleSurfaceGridS2(int enable);
     void toggleSurfaceS2(int enable);
     void toggleSeries2Visible(int enable);
-    void toggleSmoothS3(int enabled);
+    void toggleSmoothS3(int visible);
     void toggleSurfaceGridS3(int enable);
     void toggleSurfaceS3(int enable);
     void toggleSeries3Visible(int enable);
-    void toggleSmoothS4(int enabled);
+    void toggleSmoothS4(int visible);
     void toggleSurfaceGridS4(int enable);
     void toggleSurfaceS4(int enable);
     void toggleSeries4Visible(int enable);
@@ -101,8 +101,10 @@ public:
 
 public Q_SLOTS:
     void changeShadowQuality(int quality);
+    void changeColorScheme(int colorScheme);
     void changeTheme(int theme);
     void flipViews();
+    void changeSubView();
     void changeSelectionMode(int mode);
     void timeout();
     void graphQueryTimeout();
@@ -112,7 +114,10 @@ public Q_SLOTS:
     void handleAxisZChanged(QValue3DAxis *axis);
     void handleFpsChange(int fps);
     void changeLabelRotation(int rotation);
-    void toggleAxisTitleVisibility(int enabled);
+    void toggleAxisTitleVisibility(int visible);
+    void toggleXAxisLabelsVisibility(int visible);
+    void toggleYAxisLabelsVisibility(int visible);
+    void toggleZAxisLabelsVisibility(int visible);
     void toggleAxisTitleFixed(int enabled);
     void toggleXAscending(int enabled);
     void toggleZAscending(int enabled);
@@ -121,6 +126,7 @@ public Q_SLOTS:
     void setCameraTargetY(int value);
     void setCameraTargetZ(int value);
     void setGraphMargin(int value);
+    void setLabelMargin(int offset);
 
     void setXAxisSegemntCount(int count);
     void setYAxisSegemntCount(int count);
@@ -137,7 +143,7 @@ private:
     void populateRisingSeries(QSurface3DSeries *series, int rows, int columns, float minValue,
                               float maxValue, bool ascendingX, bool ascendingZ);
 
-    Q3DSurface *m_graph;
+    Q3DSurfaceWidgetItem *m_graph;
     QSurface3DSeries *m_multiseries[4];
     QSurface3DSeries *m_series1;
     QSurface3DSeries *m_series2;
@@ -185,6 +191,7 @@ private:
     QTimer m_graphPositionQueryTimer;
     bool m_ascendingX;
     bool m_ascendingZ;
+    bool m_customSubviews = false;
 };
 
 #endif

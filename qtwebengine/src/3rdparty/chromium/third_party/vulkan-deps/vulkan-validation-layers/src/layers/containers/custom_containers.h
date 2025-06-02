@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2017, 2019-2023 The Khronos Group Inc.
- * Copyright (c) 2015-2017, 2019-2023 Valve Corporation
- * Copyright (c) 2015-2017, 2019-2023 LunarG, Inc.
+/* Copyright (c) 2015-2017, 2019-2024 The Khronos Group Inc.
+ * Copyright (c) 2015-2017, 2019-2024 Valve Corporation
+ * Copyright (c) 2015-2017, 2019-2024 LunarG, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -118,7 +118,7 @@ using insert_iterator = std::insert_iterator<T>;
 //       MoveAssignable and MoveConstructable
 // NOTE: Unlike std::vector, iterators are invalidated by move assignment between small_vector objects effectively the
 //       "small string" allocation functions as an incompatible allocator.
-template <typename T, size_t N, typename SizeType = uint8_t>
+template <typename T, size_t N, typename SizeType = uint32_t>
 class small_vector {
   public:
     using value_type = T;
@@ -133,47 +133,23 @@ class small_vector {
     static const size_type kMaxCapacity = std::numeric_limits<size_type>::max();
     static_assert(N <= kMaxCapacity, "size must be less than size_type::max");
 
-    small_vector() : size_(0), capacity_(N) { DebugUpdateWorkingStore(); }
+    small_vector() : size_(0), capacity_(N), working_store_(GetSmallStore()) {}
 
-    small_vector(std::initializer_list<T> list) : size_(0), capacity_(N) {
-        DebugUpdateWorkingStore();
-        reserve(list.size());
-        for (const auto &obj : list) {
-            emplace_back(obj);
-        }
-    }
+    small_vector(std::initializer_list<T> list) : size_(0), capacity_(N), working_store_(GetSmallStore()) { PushBackFrom(list); }
 
-    small_vector(const small_vector &other) : size_(0), capacity_(N) {
-        reserve(other.size_);
-        auto dest = GetWorkingStore();
-        for (const auto &value : other) {
-            new (dest) value_type(value);
-            ++dest;
-        }
-        size_ = other.size_;
-    }
+    small_vector(const small_vector &other) : size_(0), capacity_(N), working_store_(GetSmallStore()) { PushBackFrom(other); }
 
-    small_vector(small_vector &&other) : size_(0), capacity_(N) {
+    small_vector(small_vector &&other) : size_(0), capacity_(N), working_store_(GetSmallStore()) {
         if (other.large_store_) {
-            // Can just take ownership of the other large store
-            large_store_ = std::move(other.large_store_);
-            capacity_ = other.capacity_;
-            other.capacity_ = kSmallCapacity;
-            other.DebugUpdateWorkingStore();
+            MoveLargeStore(other);
         } else {
-            auto dest = GetWorkingStore();
-            for (auto &value : other) {
-                new (dest) value_type(std::move(value));
-                value.~value_type();
-                ++dest;
-            }
+            PushBackFrom(std::move(other));
         }
-        size_ = other.size_;
-        other.size_ = 0;
-        DebugUpdateWorkingStore();
+        // Per the spec, when constructing from other, other is guaranteed to be empty after the constructor runs
+        other.clear();
     }
 
-    small_vector(size_type size, const value_type& value = value_type()) : size_(0), capacity_(N) {
+    small_vector(size_type size, const value_type &value = value_type()) : size_(0), capacity_(N), working_store_(GetSmallStore()) {
         reserve(size);
         auto dest = GetWorkingStore();
         for (size_type i = 0; i < size; i++) {
@@ -182,7 +158,6 @@ class small_vector {
         }
         size_ = size;
     }
-
 
     ~small_vector() { clear(); }
 
@@ -202,82 +177,75 @@ class small_vector {
 
     small_vector &operator=(const small_vector &other) {
         if (this != &other) {
-            reserve(other.size_);  // reserve doesn't shrink!
-            auto dest = GetWorkingStore();
-            auto source = other.GetWorkingStore();
+            if (other.size_ > capacity_) {
+                // Calling reserve would move construct and destroy all current contents, so just clear them before calling
+                // PushBackFrom (which does a reserve vs. the now empty this)
+                clear();
+                PushBackFrom(other);
+            } else {
+                // The copy will fit into the current allocation
+                auto dest = GetWorkingStore();
+                auto source = other.GetWorkingStore();
 
-            const auto overlap = std::min(size_, other.size_);
-            // Copy assign anywhere we have objects in this
-            for (size_type i = 0; i < overlap; i++) {
-                dest[i] = source[i];
-            }
+                const auto overlap = std::min(size_, other.size_);
+                // Copy assign anywhere we have objects in this
+                // Note: usually cheaper than destruct/construct
+                for (size_type i = 0; i < overlap; i++) {
+                    dest[i] = source[i];
+                }
 
-            // Copy construct anywhere we *don't* have objects in this
-            for (size_type i = overlap; i < other.size_; i++) {
-                new (dest + i) value_type(source[i]);
-            }
+                // Copy construct anywhere we *don't* have objects in this
+                for (size_type i = overlap; i < other.size_; i++) {
+                    new (dest + i) value_type(source[i]);
+                }
 
-            // Any entries in this past other_size_ must be cleaned up...
-            for (size_type i = other.size_; i < size_; i++) {
-                dest[i].~value_type();
+                // Any entries in this past other_size_ must be cleaned up...
+                for (size_type i = other.size_; i < size_; i++) {
+                    dest[i].~value_type();
+                }
+                size_ = other.size_;
             }
-            size_ = other.size_;
         }
         return *this;
     }
 
     small_vector &operator=(small_vector &&other) {
         if (this != &other) {
+            // Note: move assign doesn't require other to become empty (as does move construction)
+            //       so we'll leave other alone except in the large store case, while moving the object
+            //       *in* the vector from other
             if (other.large_store_) {
-                clear();  // need to clean up any objects this owns.
-                // Can just take ownership of the other large store
-                large_store_ = std::move(other.large_store_);
-                capacity_ = other.capacity_;
-                size_ = other.size_;
-                DebugUpdateWorkingStore();
-
-                other.capacity_ = kSmallCapacity;
-                other.DebugUpdateWorkingStore();
+                // Moving the other large store intact is probably best, even if we have to destroy everything in this.
+                clear();
+                MoveLargeStore(other);
+            } else if (other.size_ > capacity_) {
+                // If we'd have to reallocate, just clean up minimally and copy normally
+                clear();
+                PushBackFrom(std::move(other));
             } else {
-                // Other is using the small_store
-                auto source = other.begin();
-                iterator dest;
-                if (large_store_) {
-                    // If this is using large store do a wholesale clobber of it.
-                    ClearAndReset();
-                    dest = GetWorkingStore();
-                } else {
-                    // This is also using small store, so move assign where both have valid values
-                    dest = GetWorkingStore();
-                    // Move values where both vectors have valid values
-                    for (size_type i = 0; i < std::min(size_, other.size_); i++) {
-                        *dest = std::move(*source);
-                        source->~value_type();
-                        ++dest;
-                        ++source;
-                    }
+                // The copy will fit into the current allocation
+                auto dest = GetWorkingStore();
+                auto source = other.GetWorkingStore();
+
+                const auto overlap = std::min(size_, other.size_);
+
+                // Move assign where we have objects in this
+                // Note: usually cheaper than destruct/construct
+                for (size_type i = 0; i < overlap; i++) {
+                    dest[i] = std::move(source[i]);
                 }
 
-                // Other is bigger, placement new into the working store
-                // NOTE: this loop only runs when other is bigger
-                for (size_type i = size_; i < other.size_; i++) {
-                    new (dest) value_type(std::move(*source));
-                    source->~value_type();
-                    ++dest;
-                    ++source;
+                // Move construct where we *don't* have objects in this
+                for (size_type i = overlap; i < other.size_; i++) {
+                    new (dest + i) value_type(std::move(source[i]));
                 }
-                // Other is smaller, clean up the excess entries
-                // NOTE: this loop only runs when this is bigger
+
+                // Any entries in this past other_size_ must be cleaned up...
                 for (size_type i = other.size_; i < size_; i++) {
-                    dest->~value_type();
-                    ++dest;
+                    dest[i].~value_type();
                 }
-
                 size_ = other.size_;
             }
-
-            // When we're done other has no valid contents (all are moved or destructed)
-            other.size_ = 0;
         }
         return *this;
     }
@@ -319,6 +287,36 @@ class small_vector {
         size_++;
     }
 
+    // Note: probably should update this to reflect C++23 ranges
+    template <typename Container>
+    void PushBackFrom(const Container &from) {
+        assert(from.size() <= kMaxCapacity);
+        assert(size_ <= kMaxCapacity - from.size());
+        const size_type new_size = size_ + static_cast<size_type>(from.size());
+        reserve(new_size);
+
+        auto dest = GetWorkingStore() + size_;
+        for (const auto &element : from) {
+            new (dest) value_type(element);
+            ++dest;
+        }
+        size_ = new_size;
+    }
+
+    template <typename Container>
+    void PushBackFrom(Container &&from) {
+        assert(from.size() < kMaxCapacity);
+        const size_type new_size = size_ + static_cast<size_type>(from.size());
+        reserve(new_size);
+
+        auto dest = GetWorkingStore() + size_;
+        for (auto &element : from) {
+            new (dest) value_type(std::move(element));
+            ++dest;
+        }
+        size_ = new_size;
+    }
+
     void reserve(size_type new_cap) {
         // Since this can't shrink, if we're growing we're newing
         if (new_cap > capacity_) {
@@ -330,23 +328,58 @@ class small_vector {
                 working_store[i].~value_type();
             }
             large_store_ = std::move(new_store);
+            assert(new_cap > kSmallCapacity);
             capacity_ = new_cap;
         }
-        DebugUpdateWorkingStore();
+        UpdateWorkingStore();
         // No shrink here.
     }
 
-    void clear() { resize(0); }
+    void clear() {
+        // Keep clear minimal to optimize reset functions for enduring objects
+        // more work is deferred until destruction (freeing of large_store for example)
+        // and we intentionally *aren't* shrinking.  Callers that desire shrink semantics
+        // can call shrink_to_fit.
+        auto working_store = GetWorkingStore();
+        for (size_type i = 0; i < size_; i++) {
+            working_store[i].~value_type();
+        }
+        size_ = 0;
+    }
 
-    void resize(size_type count, bool move_to_small_store = true) {
+    void resize(size_type count) {
         struct ValueInitTag {  // tag to request value-initialization
             explicit ValueInitTag() = default;
         };
-        Resize(count, ValueInitTag{}, move_to_small_store);
+        Resize(count, ValueInitTag{});
     }
 
-    void resize(size_type count, const value_type &value, bool move_to_small_store = true) {
-        Resize(count, value, move_to_small_store);
+    void resize(size_type count, const value_type &value) { Resize(count, value); }
+
+    void shrink_to_fit() {
+        if (size_ == 0) {
+            // shrink resets to small when empty
+            capacity_ = kSmallCapacity;
+            large_store_.reset();
+            UpdateWorkingStore();
+        } else if ((capacity_ > kSmallCapacity) && (capacity_ > size_)) {
+            auto source = GetWorkingStore();
+            // Keep the source from disappearing until the end of the function
+            auto old_store = std::unique_ptr<BackingStore[]>(std::move(large_store_));
+            assert(!large_store_);
+            if (size_ < kSmallCapacity) {
+                capacity_ = kSmallCapacity;
+            } else {
+                large_store_ = std::unique_ptr<BackingStore[]>(new BackingStore[size_]);
+                capacity_ = size_;
+            }
+            UpdateWorkingStore();
+            auto dest = GetWorkingStore();
+            for (size_type i = 0; i < size_; i++) {
+                dest[i] = std::move(source[i]);
+                source[i].~value_type();
+            }
+        }
     }
 
     inline iterator begin() { return GetWorkingStore(); }
@@ -363,21 +396,31 @@ class small_vector {
     inline const_pointer data() const { return GetWorkingStore(); }
 
   protected:
-    inline const_pointer GetWorkingStore() const {
+    inline const_pointer ComputeWorkingStore() const {
+        assert(large_store_ || (capacity_ == kSmallCapacity));
+
         const BackingStore *store = large_store_ ? large_store_.get() : small_store_;
         return &store->object;
     }
-    inline pointer GetWorkingStore() {
+    inline pointer ComputeWorkingStore() {
+        assert(large_store_ || (capacity_ == kSmallCapacity));
+
         BackingStore *store = large_store_ ? large_store_.get() : small_store_;
         return &store->object;
     }
 
-    void ClearAndReset() {
-        clear();
-        large_store_.reset();
-        capacity_ = kSmallCapacity;
-        DebugUpdateWorkingStore();
+    void UpdateWorkingStore() { working_store_ = ComputeWorkingStore(); }
+
+    inline const_pointer GetWorkingStore() const {
+        DbgWorkingStoreCheck();
+        return working_store_;
     }
+    inline pointer GetWorkingStore() {
+        DbgWorkingStoreCheck();
+        return working_store_;
+    }
+
+    inline pointer GetSmallStore() { return &small_store_->object; }
 
     union BackingStore {
         BackingStore() {}
@@ -390,28 +433,36 @@ class small_vector {
     size_type capacity_;
     BackingStore small_store_[N];
     std::unique_ptr<BackingStore[]> large_store_;
+    value_type *working_store_;
 
-#ifdef NDEBUG
-    void DebugUpdateWorkingStore() {}
+#ifndef NDEBUG
+    void DbgWorkingStoreCheck() const { assert(ComputeWorkingStore() == working_store_); };
 #else
-    void DebugUpdateWorkingStore() { _dbg_working_store = GetWorkingStore(); }
-    value_type *_dbg_working_store;
+    void DbgWorkingStoreCheck() const {};
 #endif
 
   private:
+    void MoveLargeStore(small_vector &other) {
+        assert(other.large_store_);
+        assert(other.capacity_ > kSmallCapacity);
+        // In move operations, from a small vector with a large store, we can move from it
+        large_store_ = std::move(other.large_store_);
+        capacity_ = other.capacity_;
+        size_ = other.size_;
+        UpdateWorkingStore();
+
+        // We've stolen other's large store, must leave it in a valid state
+        other.size_ = 0;
+        other.capacity_ = kSmallCapacity;
+        other.UpdateWorkingStore();
+    }
+
     template <typename T2>
-    void Resize(size_type new_size, const T2 &value, bool move_to_small_store) {
+    void Resize(size_type new_size, const T2 &value) {
         if (new_size < size_) {
             auto working_store = GetWorkingStore();
             for (size_type i = new_size; i < size_; i++) {
                 working_store[i].~value_type();
-            }
-            if (new_size <= kSmallCapacity && large_store_ && move_to_small_store) {
-                for (size_type i = 0; i < new_size; i++) {
-                    new (small_store_ + i) value_type(std::move(working_store[i]));
-                }
-                large_store_ = nullptr;
-                DebugUpdateWorkingStore();
             }
             size_ = new_size;
         } else if (new_size > size_) {
@@ -803,20 +854,20 @@ namespace vvl {
 inline constexpr std::in_place_t in_place{};
 
 // Partial implementation of std::span for C++11
-template <typename T>
-class span {
+template <typename T, typename Iterator>
+class enumeration {
   public:
     using pointer = T *;
     using const_pointer = T const *;
-    using iterator = pointer;
-    using const_iterator = const_pointer;
+    using iterator = Iterator;
+    using const_iterator = const Iterator;
 
-    span() = default;
-    span(pointer start, size_t n) : data_(start), count_(n) {}
-    template <typename Iterator>
-    span(Iterator start, Iterator end) : data_(&(*start)), count_(end - start) {}
+    enumeration() = default;
+    enumeration(pointer start, size_t n) : data_(start), count_(n) {}
+    template <typename Position>
+    enumeration(Position start, Position end) : data_(&(*start)), count_(end - start) {}
     template <typename Container>
-    span(Container &c) : data_(c.data()), count_(c.size()) {}
+    enumeration(Container &c) : data_(c.data()), count_(c.size()) {}
 
     iterator begin() { return data_; }
     const_iterator begin() const { return data_; }
@@ -844,6 +895,45 @@ class span {
     size_t count_ = 0;
 };
 
+template <typename T, typename IndexType = size_t>
+class IndexedIterator {
+  public:
+    IndexedIterator(T *data, IndexType index = 0) : index_(index), data_(data) {}
+
+    IndexedIterator<T, IndexType> &operator*() { return *this; }
+    const IndexedIterator<T, IndexType> &operator*() const { return *this; }
+
+    // prefix increment
+    IndexedIterator<T, IndexType> &operator++() {
+        ++data_;
+        ++index_;
+        return *this;
+    }
+
+    // postfix increment
+    IndexedIterator<T, IndexType> operator++(int) {
+        IndexedIterator<T, IndexType> old = *this;
+        operator++();
+        return old;
+    }
+
+    bool operator==(const IndexedIterator<T, IndexType> &rhs) const {
+        // No need to compare indices, just compare pointers
+        // And given the implementation of enumeration::end(),
+        // where no index is given when constructing an iterator,
+        // index_ will default to 0 for end(), which is wrong, but we can live with it for now
+        return data_ == rhs.data_;
+    }
+    bool operator!=(const IndexedIterator<T, IndexType> &rhs) const { return data_ != rhs.data_; }
+
+  public:
+    IndexType index_ = 0;
+    T *data_;
+};
+
+template <typename T>
+using span = enumeration<T, T *>;
+
 //
 // Allow type inference that using the constructor doesn't allow in C++11
 template <typename T>
@@ -853,6 +943,15 @@ span<T> make_span(T *begin, size_t count) {
 template <typename T>
 span<T> make_span(T *begin, T *end) {
     return make_span<T>(begin, end);
+}
+
+template <typename T, typename IndexType>
+enumeration<T, IndexedIterator<T, IndexType>> enumerate(T *begin, IndexType count) {
+    return enumeration<T, IndexedIterator<T, IndexType>>(begin, count);
+}
+template <typename T>
+enumeration<T, IndexedIterator<T>> enumerate(T *begin, T *end) {
+    return enumeration<T, IndexedIterator<T>>(begin, end);
 }
 
 template <typename BaseType>
@@ -916,6 +1015,8 @@ class TlsGuard {
         return std::move(*payload_);
     }
     T *operator->() { return &(*payload_); }
+
+    operator bool() { return payload_.has_value(); }
 
   private:
     inline thread_local static std::optional<T> payload_{};

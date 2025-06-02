@@ -16,7 +16,7 @@ int main(int argc, char *argv[])
     QQuickView viewer;
 
     // Enable antialiasing in direct rendering mode
-    viewer.setFormat(qDefaultSurfaceFormat(true));
+    viewer.setFormat(QQuick3D::idealSurfaceFormat(8));
 
     // The following are needed to make examples run without having to install the module
     // in desktop environments.

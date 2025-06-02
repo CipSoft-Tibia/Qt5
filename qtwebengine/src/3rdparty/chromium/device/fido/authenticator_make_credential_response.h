@@ -20,8 +20,6 @@
 
 namespace device {
 
-struct DevicePublicKeyOutput;
-
 // Attestation object which includes attestation format, authentication
 // data, and attestation statement returned by the authenticator as a response
 // to MakeCredential request.
@@ -51,10 +49,6 @@ class COMPONENT_EXPORT(DEVICE_FIDO) AuthenticatorMakeCredentialResponse {
 
   std::vector<uint8_t> GetCBOREncodedAttestationObject() const;
 
-  // Returns the output the the devicePubKey extension, if any.
-  absl::optional<device::DevicePublicKeyOutput> GetDevicePublicKeyResponse()
-      const;
-
   const std::array<uint8_t, kRpIdHashLength>& GetRpIdHash() const;
 
   AttestationObject attestation_object;
@@ -79,11 +73,6 @@ class COMPONENT_EXPORT(DEVICE_FIDO) AuthenticatorMakeCredentialResponse {
   // authenticator, if known.
   absl::optional<base::flat_set<FidoTransportProtocol>> transports;
 
-  // device_public_key_signature contains the optional signature from the
-  // device-bound key. See
-  // https://github.com/fido-alliance/fido-2-specs/pull/1346
-  absl::optional<std::vector<uint8_t>> device_public_key_signature;
-
   // Contains the transport used to register the credential in this case. It is
   // nullopt for cases where we cannot determine the transport (Windows).
   absl::optional<FidoTransportProtocol> transport_used;
@@ -99,6 +88,9 @@ class COMPONENT_EXPORT(DEVICE_FIDO) AuthenticatorMakeCredentialResponse {
   // is in the authenticator data. However, note that the WebAuthn-level prf
   // extension may be using the `hmac-secret` extension at the CTAP layer.
   bool prf_enabled = false;
+
+  // hmac-secret contains the output of the prf extension.
+  absl::optional<std::vector<uint8_t>> prf_results;
 };
 
 // Through cbor::Writer, produces a CTAP style CBOR-encoded byte array

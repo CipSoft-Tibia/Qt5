@@ -10,7 +10,6 @@
 #include <QObject>
 #include <QJsonDocument>
 #include <QDebug>
-#include <QQmlEngine>
 #include <private/qjsvalue_p.h>
 #include <private/qqmllistwrapper_p.h>
 #include <private/qv4engine_p.h>

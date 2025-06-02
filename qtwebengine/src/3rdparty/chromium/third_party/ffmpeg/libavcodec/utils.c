@@ -35,9 +35,12 @@
 #include "libavutil/pixfmt.h"
 #include "avcodec.h"
 #include "codec.h"
+#include "codec_desc.h"
 #include "codec_internal.h"
+#include "codec_par.h"
 #include "decode.h"
 #include "hwconfig.h"
+#include "refstruct.h"
 #include "thread.h"
 #include "threadframe.h"
 #include "internal.h"
@@ -406,34 +409,6 @@ int avcodec_fill_audio_frame(AVFrame *frame, int nb_channels,
     return ret;
 }
 
-void ff_color_frame(AVFrame *frame, const int c[4])
-{
-    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
-    int p, y;
-
-    av_assert0(desc->flags & AV_PIX_FMT_FLAG_PLANAR);
-
-    for (p = 0; p<desc->nb_components; p++) {
-        uint8_t *dst = frame->data[p];
-        int is_chroma = p == 1 || p == 2;
-        int bytes  = is_chroma ? AV_CEIL_RSHIFT(frame->width,  desc->log2_chroma_w) : frame->width;
-        int height = is_chroma ? AV_CEIL_RSHIFT(frame->height, desc->log2_chroma_h) : frame->height;
-        if (desc->comp[0].depth >= 9) {
-            ((uint16_t*)dst)[0] = c[p];
-            av_memcpy_backptr(dst + 2, 2, bytes - 2);
-            dst += frame->linesize[p];
-            for (y = 1; y < height; y++) {
-                memcpy(dst, frame->data[p], 2*bytes);
-                dst += frame->linesize[p];
-            }
-        } else {
-            for (y = 0; y < height; y++) {
-                memset(dst, c[p], bytes);
-                dst += frame->linesize[p];
-            }
-        }
-    }
-}
 
 int avpriv_codec_get_cap_skip_frame_fill_param(const AVCodec *codec){
     return !!(ffcodec(codec)->caps_internal & FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM);
@@ -462,10 +437,10 @@ const char *avcodec_get_name(enum AVCodecID id)
 const char *av_get_profile_name(const AVCodec *codec, int profile)
 {
     const AVProfile *p;
-    if (profile == FF_PROFILE_UNKNOWN || !codec->profiles)
+    if (profile == AV_PROFILE_UNKNOWN || !codec->profiles)
         return NULL;
 
-    for (p = codec->profiles; p->profile != FF_PROFILE_UNKNOWN; p++)
+    for (p = codec->profiles; p->profile != AV_PROFILE_UNKNOWN; p++)
         if (p->profile == profile)
             return p->name;
 
@@ -477,10 +452,10 @@ const char *avcodec_profile_name(enum AVCodecID codec_id, int profile)
     const AVCodecDescriptor *desc = avcodec_descriptor_get(codec_id);
     const AVProfile *p;
 
-    if (profile == FF_PROFILE_UNKNOWN || !desc || !desc->profiles)
+    if (profile == AV_PROFILE_UNKNOWN || !desc || !desc->profiles)
         return NULL;
 
-    for (p = desc->profiles; p->profile != FF_PROFILE_UNKNOWN; p++)
+    for (p = desc->profiles; p->profile != AV_PROFILE_UNKNOWN; p++)
         if (p->profile == profile)
             return p->name;
 
@@ -906,17 +881,13 @@ int ff_thread_ref_frame(ThreadFrame *dst, const ThreadFrame *src)
 
     av_assert0(!dst->progress);
 
-    if (src->progress &&
-        !(dst->progress = av_buffer_ref(src->progress))) {
-        ff_thread_release_ext_buffer(dst->owner[0], dst);
-        return AVERROR(ENOMEM);
-    }
+    if (src->progress)
+        dst->progress = ff_refstruct_ref(src->progress);
 
     return 0;
 }
 
-int ff_thread_replace_frame(AVCodecContext *avctx, ThreadFrame *dst,
-                            const ThreadFrame *src)
+int ff_thread_replace_frame(ThreadFrame *dst, const ThreadFrame *src)
 {
     int ret;
 
@@ -927,11 +898,7 @@ int ff_thread_replace_frame(AVCodecContext *avctx, ThreadFrame *dst,
     if (ret < 0)
         return ret;
 
-    ret = av_buffer_replace(&dst->progress, src->progress);
-    if (ret < 0) {
-        ff_thread_release_ext_buffer(dst->owner[0], dst);
-        return ret;
-    }
+    ff_refstruct_replace(&dst->progress, src->progress);
 
     return 0;
 }
@@ -949,13 +916,7 @@ int ff_thread_get_ext_buffer(AVCodecContext *avctx, ThreadFrame *f, int flags)
     return ff_get_buffer(avctx, f->f, flags);
 }
 
-void ff_thread_release_buffer(AVCodecContext *avctx, AVFrame *f)
-{
-    if (f)
-        av_frame_unref(f);
-}
-
-void ff_thread_release_ext_buffer(AVCodecContext *avctx, ThreadFrame *f)
+void ff_thread_release_ext_buffer(ThreadFrame *f)
 {
     f->owner[0] = f->owner[1] = NULL;
     if (f->f)
@@ -1042,37 +1003,6 @@ AVCPBProperties *av_cpb_properties_alloc(size_t *size)
         *size = sizeof(*props);
 
     props->vbv_delay = UINT64_MAX;
-
-    return props;
-}
-
-AVCPBProperties *ff_add_cpb_side_data(AVCodecContext *avctx)
-{
-    AVPacketSideData *tmp;
-    AVCPBProperties  *props;
-    size_t size;
-    int i;
-
-    for (i = 0; i < avctx->nb_coded_side_data; i++)
-        if (avctx->coded_side_data[i].type == AV_PKT_DATA_CPB_PROPERTIES)
-            return (AVCPBProperties *)avctx->coded_side_data[i].data;
-
-    props = av_cpb_properties_alloc(&size);
-    if (!props)
-        return NULL;
-
-    tmp = av_realloc_array(avctx->coded_side_data, avctx->nb_coded_side_data + 1, sizeof(*tmp));
-    if (!tmp) {
-        av_freep(&props);
-        return NULL;
-    }
-
-    avctx->coded_side_data = tmp;
-    avctx->nb_coded_side_data++;
-
-    avctx->coded_side_data[avctx->nb_coded_side_data - 1].type = AV_PKT_DATA_CPB_PROPERTIES;
-    avctx->coded_side_data[avctx->nb_coded_side_data - 1].data = (uint8_t*)props;
-    avctx->coded_side_data[avctx->nb_coded_side_data - 1].size = size;
 
     return props;
 }
@@ -1169,23 +1099,4 @@ int64_t ff_guess_coded_bitrate(AVCodecContext *avctx)
               framerate.num / framerate.den;
 
     return bitrate;
-}
-
-int ff_int_from_list_or_default(void *ctx, const char * val_name, int val,
-                                const int * array_valid_values, int default_value)
-{
-    int i = 0, ref_val;
-
-    while (1) {
-        ref_val = array_valid_values[i];
-        if (ref_val == INT_MAX)
-            break;
-        if (val == ref_val)
-            return val;
-        i++;
-    }
-    /* val is not a valid value */
-    av_log(ctx, AV_LOG_DEBUG,
-           "%s %d are not supported. Set to default value : %d\n", val_name, val, default_value);
-    return default_value;
 }

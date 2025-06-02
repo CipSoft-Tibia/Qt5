@@ -12,6 +12,20 @@ QT_IMPL_METATYPE_EXTERN(QDBusVariant)
 QT_IMPL_METATYPE_EXTERN(QDBusObjectPath)
 QT_IMPL_METATYPE_EXTERN(QDBusSignature)
 
+#ifndef QT_NO_DEBUG_STREAM
+/*!
+    \fn QDebug QDBusObjectPath::operator<<(QDebug dbg, const QDBusObjectPath &path)
+    \since 6.8
+    Writes the contents of \a path to \a dbg.
+*/
+QDebug operator<<(QDebug dbg, const QDBusObjectPath &path)
+{
+    QDebugStateSaver saver(dbg);
+    dbg.nospace() << "QDBusObjectPath(" << path.path() << ')';
+    return dbg;
+}
+#endif
+
 void QDBusObjectPath::doCheck()
 {
     if (!QDBusUtil::isValidObjectPath(m_path)) {
@@ -19,6 +33,10 @@ void QDBusObjectPath::doCheck()
         m_path.clear();
     }
 }
+
+QDBusSignature::QDBusSignature() noexcept
+    : m_signature(QLatin1StringView("")) // mark non-null (empty signatures are valid)
+{}
 
 void QDBusSignature::doCheck()
 {
@@ -198,20 +216,17 @@ QDBusObjectPath::operator QVariant() const { return QVariant::fromValue(*this); 
 
 /*!
     \fn void QDBusObjectPath::swap(QDBusObjectPath &other)
-
-    Swaps this QDBusObjectPath instance with \a other.
+    \memberswap{object path}
 */
 
 /*!
     \fn void QDBusSignature::swap(QDBusSignature &other)
-
-    Swaps this QDBusSignature instance with \a other.
+    \memberswap{signature}
 */
 
 /*!
     \fn void QDBusVariant::swap(QDBusVariant &other)
-
-    Swaps this QDBusVariant instance with \a other.
+    \memberswap{variant}
 */
 
 QT_END_NAMESPACE

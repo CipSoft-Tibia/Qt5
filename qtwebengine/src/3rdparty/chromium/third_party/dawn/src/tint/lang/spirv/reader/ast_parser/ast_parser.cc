@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/spirv/reader/ast_parser/ast_parser.h"
 
@@ -377,7 +390,7 @@ const Type* ASTParser::ConvertType(uint32_t type_id, PtrAs ptr_as) {
         case spvtools::opt::analysis::Type::kArray:
             return ConvertType(type_id, spirv_type->AsArray());
         case spvtools::opt::analysis::Type::kStruct:
-            return ConvertType(type_id, spirv_type->AsStruct());
+            return ConvertStructType(type_id);
         case spvtools::opt::analysis::Type::kPointer:
             return ConvertType(type_id, ptr_as, spirv_type->AsPointer());
         case spvtools::opt::analysis::Type::kFunction:
@@ -1061,8 +1074,7 @@ bool ASTParser::ParseArrayDecorations(const spvtools::opt::analysis::Type* spv_t
     return true;
 }
 
-const Type* ASTParser::ConvertType(uint32_t type_id,
-                                   const spvtools::opt::analysis::Struct* struct_ty) {
+const Type* ASTParser::ConvertStructType(uint32_t type_id) {
     // Compute the struct decoration.
     auto struct_decorations = this->GetDecorationsFor(type_id);
     if (struct_decorations.size() == 1) {
@@ -1079,18 +1091,22 @@ const Type* ASTParser::ConvertType(uint32_t type_id,
         return nullptr;
     }
 
-    // Compute members
-    tint::Vector<const ast::StructMember*, 8> ast_members;
-    const auto members = struct_ty->element_types();
-    if (members.empty()) {
+    // The SPIR-V optimizer's types representation deduplicates types. We don't want that
+    // deduplication, so get the member types from the SPIR-V instruction directly.
+    const auto* inst = def_use_mgr_->GetDef(type_id);
+    auto num_members = inst->NumOperands() - 1;
+    if (num_members == 0) {
         Fail() << "WGSL does not support empty structures. can't convert type: "
                << def_use_mgr_->GetDef(type_id)->PrettyPrint();
         return nullptr;
     }
+
+    // Compute members
+    tint::Vector<const ast::StructMember*, 8> ast_members;
     TypeList ast_member_types;
     unsigned num_non_writable_members = 0;
-    for (uint32_t member_index = 0; member_index < members.size(); ++member_index) {
-        const auto member_type_id = type_mgr_->GetId(members[member_index]);
+    for (uint32_t member_index = 0; member_index < num_members; ++member_index) {
+        const auto member_type_id = inst->GetOperand(member_index + 1).AsId();
         auto* ast_member_ty = ConvertType(member_type_id);
         if (ast_member_ty == nullptr) {
             // Already emitted diagnostics.
@@ -1181,7 +1197,7 @@ const Type* ASTParser::ConvertType(uint32_t type_id,
     auto sym = builder_.Symbols().Register(name);
     auto* ast_struct =
         create<ast::Struct>(Source{}, builder_.Ident(sym), std::move(ast_members), tint::Empty);
-    if (num_non_writable_members == members.size()) {
+    if (num_non_writable_members == num_members) {
         read_only_struct_types_.insert(ast_struct->name->symbol);
     }
     AddTypeDecl(sym, ast_struct);
@@ -2024,7 +2040,7 @@ TypedExpression ASTParser::MakeConstantExpressionForScalarSpirvConstant(
                                        ast::IntLiteralExpression::Suffix::kU)};
         },
         [&](const F32*) {
-            if (auto f = core::CheckedConvert<f32>(AFloat(spirv_const->GetFloat()))) {
+            if (auto f = core::CheckedConvert<f32>(AFloat(spirv_const->GetFloat())); f == Success) {
                 return TypedExpression{ty_.F32(),
                                        create<ast::FloatLiteralExpression>(
                                            source, static_cast<double>(spirv_const->GetFloat()),
@@ -2038,11 +2054,8 @@ TypedExpression ASTParser::MakeConstantExpressionForScalarSpirvConstant(
             const bool value =
                 spirv_const->AsNullConstant() ? false : spirv_const->AsBoolConstant()->value();
             return TypedExpression{ty_.Bool(), create<ast::BoolLiteralExpression>(source, value)};
-        },
-        [&](Default) {
-            Fail() << "expected scalar constant";
-            return TypedExpression{};
-        });
+        },  //
+        TINT_ICE_ON_NO_MATCH);
 }
 
 const ast::Expression* ASTParser::MakeNullValue(const Type* type) {
@@ -2084,11 +2097,8 @@ const ast::Expression* ASTParser::MakeNullValue(const Type* type) {
             }
             return builder_.Call(Source{}, original_type->Build(builder_),
                                  std::move(ast_components));
-        },
-        [&](Default) {
-            Fail() << "can't make null value for type: " << type->TypeInfo().name;
-            return nullptr;
-        });
+        },  //
+        TINT_ICE_ON_NO_MATCH);
 }
 
 TypedExpression ASTParser::MakeNullExpression(const Type* type) {
@@ -2574,7 +2584,7 @@ const Type* ASTParser::GetHandleTypeForSpirvHandle(const spvtools::opt::Instruct
             const auto access =
                 usage.IsStorageReadWriteTexture() ? core::Access::kReadWrite : core::Access::kWrite;
             if (access == core::Access::kReadWrite) {
-                Enable(core::Extension::kChromiumExperimentalReadWriteStorageTexture);
+                Require(wgsl::LanguageFeature::kReadonlyAndReadwriteStorageTextures);
             }
             const auto format = enum_converter_.ToTexelFormat(image_type->format());
             if (format == core::TexelFormat::kUndefined) {

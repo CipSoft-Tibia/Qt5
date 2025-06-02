@@ -4,9 +4,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(gallery_controls2 LANGUAGES CXX)
 
-set(CMAKE_AUTOMOC ON)
-
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick QuickControls2)
+
+qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(galleryexample WIN32 MACOSX_BUNDLE
     gallery.cpp
@@ -72,7 +72,6 @@ qt_add_qml_module(galleryexample
         "images/qt-logo@2x.png"
         "images/qt-logo@3x.png"
         "images/qt-logo@4x.png"
-        "qmldir"
         "qtquickcontrols2.conf"
 )
 

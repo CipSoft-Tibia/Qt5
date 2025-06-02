@@ -5,8 +5,10 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_VIEW_TRANSITION_VIEW_TRANSITION_STYLE_TRACKER_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_VIEW_TRANSITION_VIEW_TRANSITION_STYLE_TRACKER_H_
 
+#include "base/containers/flat_map.h"
 #include "components/viz/common/view_transition_element_resource_id.h"
 #include "third_party/blink/public/common/frame/view_transition_state.h"
+#include "third_party/blink/renderer/core/css/css_property_names.h"
 #include "third_party/blink/renderer/core/css/css_rule.h"
 #include "third_party/blink/renderer/core/css/style_request.h"
 #include "third_party/blink/renderer/core/dom/document.h"
@@ -212,8 +214,8 @@ class ViewTransitionStyleTracker
     gfx::RectF GetBorderBoxRect(bool use_cached_data,
                                 float device_scale_factor) const;
 
-    // Caches the current geometry state for the old snapshot.
-    void CacheGeometryState();
+    // Caches the current state for the old snapshot.
+    void CacheStateForOldSnapshot();
 
     // The element in the current DOM whose state is being tracked and mirrored
     // into the corresponding container pseudo element.
@@ -259,15 +261,11 @@ class ViewTransitionStyleTracker
     // For the following properties, they are initially set to the outgoing
     // element's value, and then switch to the incoming element's value, if one
     // exists.
+    base::flat_map<CSSPropertyID, String> captured_css_properties;
 
-    // The writing mode to use for the container.
-    WritingMode container_writing_mode = WritingMode::kHorizontalTb;
-
-    // The mix blend mode to use for the container.
-    BlendMode mix_blend_mode = BlendMode::kNormal;
-
-    // Text orientation to use for the container.
-    ETextOrientation text_orientation = ETextOrientation::kMixed;
+    // This only contains properties that need to be animated, which is a
+    // subset of `captured_css_properties`.
+    base::flat_map<CSSPropertyID, String> cached_animated_css_properties;
   };
 
   // In physical pixels. Returns the snapshot root rect, relative to the
@@ -292,11 +290,6 @@ class ViewTransitionStyleTracker
   PhysicalRect ComputeVisualOverflowRect(
       LayoutBoxModelObject& box,
       const LayoutBoxModelObject* ancestor = nullptr) const;
-  // Same as above, but uses paint layers, which is less correct but performs
-  // better. This version is deprecated.
-  PhysicalRect ComputeVisualOverflowRectWithPaintLayers(
-      const LayoutBoxModelObject& box,
-      const LayoutBoxModelObject* ancestor = nullptr) const;
 
   bool SnapshotRootDidChangeSize() const;
 
@@ -308,9 +301,6 @@ class ViewTransitionStyleTracker
       LayoutObject& layout_object,
       ContainerProperties&,
       PhysicalRect& visual_overflow_rect_in_layout_space,
-      WritingMode&,
-      BlendMode&,
-      ETextOrientation&,
       absl::optional<gfx::RectF>& captured_rect_in_layout_space) const;
 
   Member<Document> document_;
@@ -335,7 +325,7 @@ class ViewTransitionStyleTracker
   // will be initialized from the cached state at creation but is currently
   // unset.
   // TODO(bokan): Implement for cross-document transitions. crbug.com/1404957.
-  absl::optional<gfx::Size> snapshot_root_size_at_capture_;
+  absl::optional<gfx::Size> snapshot_root_layout_size_at_capture_;
 
   // Map of the CSS |view-transition-name| property to state for that tag.
   HeapHashMap<AtomicString, Member<ElementData>> element_data_map_;

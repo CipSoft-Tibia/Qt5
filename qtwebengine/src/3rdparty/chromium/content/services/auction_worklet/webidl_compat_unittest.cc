@@ -16,6 +16,7 @@
 #include "gin/converter.h"
 #include "testing/gmock/include/gmock/gmock-matchers.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "v8/include/v8-context.h"
 #include "v8/include/v8-exception.h"
 #include "v8/include/v8-external.h"
 #include "v8/include/v8-function.h"
@@ -37,7 +38,7 @@ class WebIDLCompatTest : public testing::Test {
     base::RunLoop().RunUntilIdle();
     v8_scope_ =
         std::make_unique<AuctionV8Helper::FullIsolateScope>(v8_helper_.get());
-    time_limit_ = v8_helper_->CreateTimeLimit(/*script_timeout=*/absl::nullopt);
+    time_limit_ = v8_helper_->CreateTimeLimit(/*script_timeout=*/std::nullopt);
     time_limit_scope_ =
         std::make_unique<AuctionV8Helper::TimeLimitScope>(time_limit_.get());
   }
@@ -54,7 +55,7 @@ class WebIDLCompatTest : public testing::Test {
   std::vector<std::string> RunScript(v8::Local<v8::Context> context,
                                      const std::string& script_source,
                                      bool expect_success) {
-    absl::optional<std::string> error;
+    std::optional<std::string> error;
     v8::MaybeLocal<v8::UnboundScript> maybe_script =
         v8_helper_->Compile(script_source, GURL("https://example.org"),
                             /*debug_id=*/nullptr, error);
@@ -98,7 +99,7 @@ class WebIDLCompatTest : public testing::Test {
 
   bool GetSequence(DictConverter* converter,
                    base::StringPiece field,
-                   std::vector<v8::Local<v8::Value>>& out) {
+                   v8::LocalVector<v8::Value>& out) {
     out.clear();  // For tests that re-use `out`.
     bool got_it = false;
     bool result = converter->GetOptionalSequence(
@@ -111,7 +112,7 @@ class WebIDLCompatTest : public testing::Test {
   }
 
   void ExpectStringList(std::initializer_list<std::string> expected,
-                        std::vector<v8::Local<v8::Value>> actual) {
+                        v8::LocalVector<v8::Value> actual) {
     ASSERT_EQ(expected.size(), actual.size());
     size_t pos = 0;
     for (const std::string& e : expected) {
@@ -1079,7 +1080,7 @@ TEST_F(WebIDLCompatTest, UndefinedEmptyDict) {
 
   auto converter = MakeFromScript(context, kScript);
 
-  absl::optional<std::string> out;
+  std::optional<std::string> out;
   EXPECT_TRUE(converter->GetOptional("a", out));
   EXPECT_FALSE(out.has_value());
 
@@ -1101,7 +1102,7 @@ TEST_F(WebIDLCompatTest, NullEmptyDict) {
 
   auto converter = MakeFromScript(context, kScript);
 
-  absl::optional<std::string> out;
+  std::optional<std::string> out;
   EXPECT_TRUE(converter->GetOptional("a", out));
   EXPECT_FALSE(out.has_value());
 
@@ -1122,7 +1123,7 @@ TEST_F(WebIDLCompatTest, OptionalOrRequired) {
 
   auto converter = MakeFromScript(context, kScript);
 
-  absl::optional<std::string> out;
+  std::optional<std::string> out;
   std::string out_required;
 
   EXPECT_TRUE(converter->GetOptional("a", out));
@@ -1151,7 +1152,7 @@ TEST_F(WebIDLCompatTest, NullUndefinedValues) {
 
   auto converter = MakeFromScript(context, kScript);
 
-  absl::optional<std::string> out;
+  std::optional<std::string> out;
   EXPECT_TRUE(converter->GetOptional("a", out));
   EXPECT_FALSE(out.has_value());
 
@@ -1170,7 +1171,7 @@ TEST_F(WebIDLCompatTest, NotDict) {
 
   auto converter = MakeFromScript(context, kScript);
 
-  absl::optional<std::string> out;
+  std::optional<std::string> out;
   EXPECT_FALSE(converter->GetOptional("a", out));
   EXPECT_EQ(
       "<error prefix> Value passed as dictionary is neither object, null, nor "
@@ -1189,7 +1190,7 @@ TEST_F(WebIDLCompatTest, ErrorLatch) {
 
   auto converter = MakeFromScript(context, kScript);
 
-  absl::optional<std::string> out;
+  std::optional<std::string> out;
   std::string out_required;
   EXPECT_TRUE(converter->GetOptional("b", out));
   ASSERT_TRUE(out.has_value());
@@ -1551,7 +1552,7 @@ TEST_F(WebIDLCompatTest, Sequence) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_TRUE(GetSequence(converter.get(), "a", out));
   ExpectStringList({"1", "2", "3"}, out);
 
@@ -1613,7 +1614,7 @@ TEST_F(WebIDLCompatTest, SeqItemError) {
 
   auto converter = MakeFromScript(context, kScript);
   bool saw_field = false;
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
 
   EXPECT_FALSE(converter->GetOptionalSequence(
       "f1", base::BindLambdaForTesting([&]() { saw_field = true; }),
@@ -1746,7 +1747,7 @@ TEST_F(WebIDLCompatTest, SequenceSimpleIter) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_TRUE(GetSequence(converter.get(), "a", out));
   ExpectStringList({"0", "1", "2", "3"}, out);
 }
@@ -1763,7 +1764,7 @@ TEST_F(WebIDLCompatTest, SequenceNonObj) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("<error prefix> Sequence field 'a' must be an Object.",
             converter->ErrorMessage());
@@ -1782,7 +1783,7 @@ TEST_F(WebIDLCompatTest, SequenceNonIter) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("<error prefix> Trouble iterating over 'a'.",
             converter->ErrorMessage());
@@ -1803,7 +1804,7 @@ TEST_F(WebIDLCompatTest, SequenceNonIter2) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("<error prefix> Trouble iterating over 'a'.",
             converter->ErrorMessage());
@@ -1824,7 +1825,7 @@ TEST_F(WebIDLCompatTest, SequenceNonIter3) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("https://example.org/:5 Uncaught no iterating!.",
             converter->ErrorMessage());
@@ -1845,7 +1846,7 @@ TEST_F(WebIDLCompatTest, SequenceNonIter4) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("<error prefix> Trouble iterating over 'a'.",
             converter->ErrorMessage());
@@ -1866,7 +1867,7 @@ TEST_F(WebIDLCompatTest, SequenceNonIter5) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("<error prefix> Trouble iterating over 'a'.",
             converter->ErrorMessage());
@@ -1887,7 +1888,7 @@ TEST_F(WebIDLCompatTest, SequenceNonIter6) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("https://example.org/:5 Uncaught boo.", converter->ErrorMessage());
   EXPECT_FALSE(converter->FailureIsTimeout());
@@ -1915,7 +1916,7 @@ TEST_F(WebIDLCompatTest, SequenceNonIter7) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("https://example.org/:9 Uncaught dunno.",
             converter->ErrorMessage());
@@ -1944,7 +1945,7 @@ TEST_F(WebIDLCompatTest, SequenceNonIter8) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("https://example.org/:9 Uncaught have an abrupt completion.",
             converter->ErrorMessage());
@@ -1974,7 +1975,7 @@ TEST_F(WebIDLCompatTest, SequenceInfiniteIter) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("<error prefix> Length limit for sequence field 'a' exceeded.",
             converter->ErrorMessage());
@@ -2002,7 +2003,7 @@ TEST_F(WebIDLCompatTest, SequenceNonTermIter) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_FALSE(GetSequence(converter.get(), "a", out));
   EXPECT_EQ("<error prefix> Timeout iterating over 'a'.",
             converter->ErrorMessage());
@@ -2039,7 +2040,7 @@ TEST_F(WebIDLCompatTest, SequenceUnsetValueOk) {
   )";
 
   auto converter = MakeFromScript(context, kScript);
-  std::vector<v8::Local<v8::Value>> out;
+  v8::LocalVector<v8::Value> out(v8_helper_->isolate());
   EXPECT_TRUE(GetSequence(converter.get(), "a", out));
   ASSERT_EQ(out.size(), 4u);
   for (const auto& entry : out) {

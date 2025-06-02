@@ -18,7 +18,7 @@ qhp.QtProtobuf.virtualFolder       = qtprotobuf
 qhp.QtProtobuf.indexTitle          = Qt Protobuf
 qhp.QtProtobuf.indexRoot           =
 
-qhp.QtProtobuf.subprojects = qmltypes examples classes \
+qhp.QtProtobuf.subprojects = manual examples qmltypes classes \
                              protobufcoreclasses protobufguiclasses \
                              wellknowntypes
 
@@ -28,8 +28,8 @@ qhp.QtProtobuf.subprojects.qmltypes.selectors = qmlclass
 qhp.QtProtobuf.subprojects.qmltypes.sortPages = true
 
 qhp.QtProtobuf.subprojects.examples.title = Examples
-qhp.QtProtobuf.subprojects.examples.indexTitle = Qt Protobuf Examples and Tutorials
-qhp.QtProtobuf.subprojects.examples.selectors = doc:example
+qhp.QtProtobuf.subprojects.examples.indexTitle = Qt Protobuf Examples
+qhp.QtProtobuf.subprojects.examples.selectors = example
 
 qhp.QtProtobuf.subprojects.classes.title      = C++ Classes
 qhp.QtProtobuf.subprojects.classes.indexTitle = Qt Protobuf C++ Classes
@@ -51,27 +51,36 @@ qhp.QtProtobuf.subprojects.wellknowntypes.indexTitle = Qt Protobuf Well-known Ty
 qhp.QtProtobuf.subprojects.wellknowntypes.selectors  = module:QtProtobufWellKnownTypes
 qhp.QtProtobuf.subprojects.wellknowntypes.sortPages  = true
 
-depends += qtdoc qtcore qtgui qtcmake qtgrpc qtwidgets qtqml
+qhp.QtProtobuf.subprojects.manual.title = Qt Protobuf
+qhp.QtProtobuf.subprojects.manual.indexTitle = Qt Protobuf module topics
+qhp.QtProtobuf.subprojects.manual.type = manual
+
+depends += qtdoc qtcore qtgui qtcmake qtgrpc qtwidgets qtqml qtquick qtquickcontrols
 
 {headerdirs,sourcedirs} += .. \
                            ../../protobufqttypes \
                            ../../wellknown
-sourcedirs += ../../tools/doc/src \
-              ../../tools/qtprotobufgen/doc/src
 
-exampledirs +=  ../../../examples/protobuf \
-                ../../tools/qtprotobufgen/doc/src/snippets
+# Add additional documentation dirs
+sourcedirs  += ../../tools/doc
+
+exampledirs += ../../../examples/protobuf
 
 imagedirs   += images \
-    ../../../examples/protobuf/sensors/doc/images
+               ../../../examples/protobuf/sensors/doc/images
 
 navigation.landingpage = "Qt Protobuf"
 navigation.cppclassespage = "Qt Protobuf C++ Classes"
 navigation.qmltypespage = "Qt Protobuf QML Types"
+# Auto-generate navigation linking based on "Qt Protobuf module topics":
+navigation.toctitles = "Qt Protobuf module topics"
+navigation.toctitles.inclusive = false
 
 manifestmeta.highlighted.names = "QtProtobuf/Sensors"
 
 tagfile                 = qtprotobuf.tags
+
+macro.gRPC = "\\tm gRPC"
 
 # Enforce zero documentation warnings
 warninglimit = 0

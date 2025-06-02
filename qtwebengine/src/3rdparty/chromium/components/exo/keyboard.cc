@@ -103,10 +103,9 @@ bool IsImeSupportedSurface(Surface* surface) {
         static_cast<ash::AppType>(window->GetProperty(aura::client::kAppType));
     switch (app_type) {
       case ash::AppType::ARC_APP:
+      case ash::AppType::CROSTINI_APP:
       case ash::AppType::LACROS:
         return true;
-      case ash::AppType::CROSTINI_APP:
-        return base::FeatureList::IsEnabled(ash::features::kCrostiniImeSupport);
       default:
         // Do nothing.
         break;
@@ -312,7 +311,7 @@ void Keyboard::OnKeyEvent(ui::KeyEvent* event) {
   // needed.
   const bool consumed_by_ime =
       !focus_->window()->GetProperty(aura::client::kSkipImeProcessing) &&
-      ConsumedByIme(focus_->window(), *event);
+      ConsumedByIme(*event);
 
   // Currently, physical keycode is tracked in Seat, assuming that the
   // Keyboard::OnKeyEvent is called between Seat::WillProcessEvent and

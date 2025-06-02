@@ -9,8 +9,12 @@ endif()
 
 qt_internal_add_test(tst_qcomparehelpers
     SOURCES
-        tst_qcomparehelpers.h tst_qcomparehelpers.cpp
+        tst_qcomparehelpers.h tst_qcomparehelpers.cpp tst_qcomparehelpers1.cpp
         wrappertypes.h
+    NO_BATCH # QTBUG-121815
+    DEFINES
+        QTEST_THROW_ON_FAIL
+        QTEST_THROW_ON_SKIP
     LIBRARIES
         Qt::TestPrivate
 )
@@ -20,9 +24,12 @@ qt_internal_add_test(tst_qcomparehelpers
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.20" AND NOT MACOS AND NOT VXWORKS AND NOT (LINUX AND "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "aarch64"))
     qt_internal_add_test(tst_qcomparehelpers_cpp23
         SOURCES
-            tst_qcomparehelpers.h tst_qcomparehelpers.cpp
+            tst_qcomparehelpers.h tst_qcomparehelpers.cpp tst_qcomparehelpers1.cpp
             wrappertypes.h
+        NO_BATCH # QTBUG-121815
         DEFINES
+            QTEST_THROW_ON_FAIL
+            QTEST_THROW_ON_SKIP
             tst_QCompareHelpers=tst_QCompareHelpersCpp23
         LIBRARIES
             Qt::TestPrivate

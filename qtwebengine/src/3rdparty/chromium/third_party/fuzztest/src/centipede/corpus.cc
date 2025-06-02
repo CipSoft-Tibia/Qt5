@@ -14,17 +14,24 @@
 
 #include "./centipede/corpus.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "./centipede/control_flow.h"
 #include "./centipede/coverage.h"
 #include "./centipede/defs.h"
+#include "./centipede/execution_metadata.h"
 #include "./centipede/feature.h"
+#include "./centipede/feature_set.h"
+#include "./centipede/logging.h"  // IWYU pragma: keep
 #include "./centipede/util.h"
 
 namespace centipede {
@@ -44,6 +51,9 @@ static size_t ComputeWeight(const FeatureVec &fv, const FeatureSet &fs,
   for (const auto feature : fv) {
     if (!feature_domains::kPCs.Contains(feature)) continue;
     const auto pc_index = ConvertPCFeatureToPcIndex(feature);
+    // Avoid checking frontier for out-of-bounds indices.
+    // TODO(b/299624088): revisit once dlopen is supported.
+    if (pc_index >= coverage_frontier.MaxPcIndex()) continue;
     if (coverage_frontier.PcIndexIsFrontier(pc_index)) {
       frontier_weights_sum += coverage_frontier.FrontierWeight(pc_index);
     }
@@ -71,7 +81,7 @@ size_t Corpus::Prune(const FeatureSet &fs,
   // Recompute the weights.
   size_t num_zero_weights = 0;
   for (size_t i = 0, n = records_.size(); i < n; ++i) {
-    fs.CountUnseenAndPruneFrequentFeatures(records_[i].features);
+    fs.PruneFeaturesAndCountUnseen(records_[i].features);
     auto new_weight =
         ComputeWeight(records_[i].features, fs, coverage_frontier);
     weighted_distribution_.ChangeWeight(i, new_weight);
@@ -105,7 +115,8 @@ void Corpus::Add(const ByteArray &data, const FeatureVec &fv,
                  const ExecutionMetadata &metadata, const FeatureSet &fs,
                  const CoverageFrontier &coverage_frontier) {
   // TODO(kcc): use coverage_frontier.
-  CHECK(!data.empty());
+  CHECK(!data.empty())
+      << "Got request to add empty element to corpus: ignoring";
   CHECK_EQ(records_.size(), weighted_distribution_.size());
   records_.push_back({data, fv, metadata});
   weighted_distribution_.AddWeight(ComputeWeight(fv, fs, coverage_frontier));

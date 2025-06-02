@@ -60,6 +60,7 @@ private:
     QQmlJSLogger *m_logger = nullptr;
     QmltcCompilerInfo m_info {}; // miscellaneous input/output information
     QString m_urlMethodName;
+    uint m_currentVariableNumber = 0;
 
     struct UniqueStringId;
     struct QmltcTypeLocalData;
@@ -79,6 +80,13 @@ private:
     void compileAlias(QmltcType &current, const QQmlJSMetaProperty &alias,
                       const QQmlJSScope::ConstPtr &owner);
     void compileExtraListMethods(QmltcType &current, const QQmlJSMetaProperty &p);
+
+    QString uniqueVariableName(const QString &qmlName)
+    {
+        QString result = u"m_"_s + QString::number(++m_currentVariableNumber) + qmlName;
+        result.replace(u'.', u'_');
+        return result;
+    }
 
     /*!
         \internal

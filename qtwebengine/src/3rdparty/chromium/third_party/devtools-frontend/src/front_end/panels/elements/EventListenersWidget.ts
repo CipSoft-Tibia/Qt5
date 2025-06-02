@@ -35,6 +35,7 @@ import * as Common from '../../core/common/common.js';
 import * as i18n from '../../core/i18n/i18n.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 import * as EventListeners from '../event_listeners/event_listeners.js';
 
 const UIStrings = {
@@ -42,10 +43,6 @@ const UIStrings = {
    *@description Title of show framework listeners setting in event listeners widget of the elements panel
    */
   frameworkListeners: '`Framework` listeners',
-  /**
-   *@description Text to refresh the page
-   */
-  refresh: 'Refresh',
   /**
    *@description Tooltip text that appears on the setting when hovering over it in Event Listeners Widget of the Elements panel
    */
@@ -105,15 +102,15 @@ export class EventListenersWidget extends UI.ThrottledWidget.ThrottledWidget imp
     this.showFrameworkListenersSetting.addChangeListener(this.showFrameworkListenersChanged.bind(this));
     this.eventListenersView = new EventListeners.EventListenersView.EventListenersView(this.update.bind(this));
     this.eventListenersView.show(this.element);
+    this.element.setAttribute('jslog', `${VisualLogging.pane().context('event-listeners')}`);
 
-    const refreshButton = new UI.Toolbar.ToolbarButton(i18nString(UIStrings.refresh), 'refresh');
-    refreshButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.update.bind(this));
-    this.toolbarItemsInternal.push(refreshButton);
+    this.toolbarItemsInternal.push(UI.Toolbar.Toolbar.createActionButtonForId('elements.refresh-event-listeners'));
     this.toolbarItemsInternal.push(new UI.Toolbar.ToolbarSettingCheckbox(
         this.showForAncestorsSetting, i18nString(UIStrings.showListenersOnTheAncestors),
         i18nString(UIStrings.ancestors)));
     const dispatchFilter = new UI.Toolbar.ToolbarComboBox(
         this.onDispatchFilterTypeChanged.bind(this), i18nString(UIStrings.eventListenersCategory));
+    dispatchFilter.element.setAttribute('jslog', `${VisualLogging.filterDropdown().track({change: true})}`);
 
     function addDispatchFilterOption(this: EventListenersWidget, name: string, value: string): void {
       const option = dispatchFilter.createOption(name, value);
@@ -170,6 +167,16 @@ export class EventListenersWidget extends UI.ThrottledWidget.ThrottledWidget imp
     return Promise.all(promises)
         .then(this.eventListenersView.addObjects.bind(this.eventListenersView))
         .then(this.showFrameworkListenersChanged.bind(this));
+  }
+
+  override wasShown(): void {
+    UI.Context.Context.instance().setFlavor(EventListenersWidget, this);
+    super.wasShown();
+  }
+
+  override willHide(): void {
+    super.willHide();
+    UI.Context.Context.instance().setFlavor(EventListenersWidget, null);
   }
 
   toolbarItems(): UI.Toolbar.ToolbarItem[] {
@@ -231,3 +238,15 @@ export const DispatchFilterBy = {
 };
 
 const objectGroupName = 'event-listeners-panel';
+
+export class ActionDelegate implements UI.ActionRegistration.ActionDelegate {
+  handleAction(_context: UI.Context.Context, actionId: string): boolean {
+    switch (actionId) {
+      case 'elements.refresh-event-listeners': {
+        EventListenersWidget.instance().update();
+        return true;
+      }
+    }
+    return false;
+  }
+}

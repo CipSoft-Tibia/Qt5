@@ -54,6 +54,11 @@ QSvgNode::Type QSvgG::type() const
     return Group;
 }
 
+bool QSvgG::requiresGroupRendering() const
+{
+    return m_renderers.count() > 1;
+}
+
 QSvgStructureNode::QSvgStructureNode(QSvgNode *parent)
     :QSvgNode(parent)
 {
@@ -103,6 +108,20 @@ QSvgSymbolLike::QSvgSymbolLike(QSvgNode *parent, QRectF bounds, QRectF viewBox, 
     , m_overflow(overflow)
 {
 
+}
+
+QRectF QSvgSymbolLike::decoratedInternalBounds(QPainter *p, QSvgExtraStates &states) const
+{
+    p->save();
+    setPainterToRectAndAdjustment(p);
+    QRectF rect = internalBounds(p, states);
+    p->restore();
+    return rect;
+}
+
+bool QSvgSymbolLike::requiresGroupRendering() const
+{
+    return m_renderers.count() > 1;
 }
 
 void QSvgSymbolLike::setPainterToRectAndAdjustment(QPainter *p) const
@@ -216,6 +235,11 @@ QSvgFilterContainer::QSvgFilterContainer(QSvgNode *parent, const QSvgRectF &boun
 
 }
 
+bool QSvgFilterContainer::shouldDrawNode(QPainter *, QSvgExtraStates &) const
+{
+    return false;
+}
+
 void QSvgMarker::drawCommand(QPainter *p, QSvgExtraStates &states)
 {
     if (!states.inUse) //Symbol is only drawn in combination with another node.
@@ -228,8 +252,6 @@ void QSvgMarker::drawCommand(QPainter *p, QSvgExtraStates &states)
     QList<QSvgNode*>::iterator itr = m_renderers.begin();
 
     p->save();
-    applyStyle(p, states);
-
     setPainterToRectAndAdjustment(p);
 
     while (itr != m_renderers.end()) {
@@ -238,15 +260,25 @@ void QSvgMarker::drawCommand(QPainter *p, QSvgExtraStates &states)
             node->draw(p, states);
         ++itr;
     }
-    revertStyle(p, states);
     p->restore();
 }
 
-void QSvgMarker::drawMarkersForNode(QSvgNode *node, QPainter *p, QSvgExtraStates &states)
-{
-    QScopedValueRollback<bool> inUseGuard(states.inUse, true);
+namespace {
 
-    auto getMeanAngle = [] (QPointF p0, QPointF p1, QPointF p2) {
+struct PositionMarkerPair {
+    qreal x;
+    qreal y;
+    qreal angle;
+    QString markerId;
+    bool isStartNode = false;
+};
+
+QList<PositionMarkerPair> markersForNode(const QSvgNode *node)
+{
+    if (!node->hasAnyMarker())
+        return {};
+
+    auto getMeanAngle = [](QPointF p0, QPointF p1, QPointF p2) -> qreal {
         QPointF t1 = p1 - p0;
         QPointF t2 = p2 - p1;
         qreal hyp1 =  hypot(t1.x(), t1.y());
@@ -263,113 +295,115 @@ void QSvgMarker::drawMarkersForNode(QSvgNode *node, QPainter *p, QSvgExtraStates
         return -atan2(tangent.y(), tangent.x()) / M_PI * 180.;
     };
 
-    if (node->hasAnyMarker()) {
-        QList<PositionMarkerPair> marks;
-        if (node->type() == Line) {
-            QSvgLine *line = static_cast<QSvgLine*>(node);
-            if (!line)
-                return;
-            if (node->hasMarkerStart())
-                marks << PositionMarkerPair { line->line().p1().x(), line->line().p1().y(),
-                                              line->line().angle(), line->markerStartId(),
-                                              true};
-            if (node->hasMarkerEnd())
-                marks << PositionMarkerPair { line->line().p2().x(), line->line().p2().y(),
-                                              line->line().angle(), line->markerEndId() };
-        } else if (node->type() == Polyline || node->type() == Polygon) {
-            QSvgPolyline *polyline = static_cast<QSvgPolyline*>(node);
-            QSvgPolygon *polygon = static_cast<QSvgPolygon*>(node);
+    QList<PositionMarkerPair> markers;
 
-            const QPolygonF &polyData = (node->type() == Polyline) ? polyline->polygon() : polygon->polygon();
-
-            if (node->hasMarkerStart() && polyData.size() > 1) {
-                QLineF line(polyData.at(0), polyData.at(1));
-                marks << PositionMarkerPair { line.p1().x(),
-                                              line.p1().y(),
-                                              line.angle(),
-                                              node->markerStartId(),
-                                              true };
-            }
-            if (node->hasMarkerMid()) {
-                for (int i = 1; i < polyData.size() - 1; i++) {
-                    QPointF p0 = polyData.at(i-1);
-                    QPointF p1 = polyData.at(i);
-                    QPointF p2 = polyData.at(i+1);
-
-                    marks << PositionMarkerPair { p1.x(),
-                                                  p1.y(),
-                                                  getMeanAngle(p0, p1, p2),
-                                                  node->markerStartId() };
-                }
-            }
-            if (node->hasMarkerEnd() && polyData.size() > 1) {
-                QLineF line(polyData.at(polyData.size()-1), polyData.last());
-                marks << PositionMarkerPair { line.p2().x(),
-                                              line.p2().y(),
-                                              line.angle(),
-                                              node->markerEndId() };
-            }
-        } else if (node->type() == Path) {
-            QSvgPath *path = static_cast<QSvgPath*>(node);
-            if (!path)
-                return;
-            if (node->hasMarkerStart())
-                marks << PositionMarkerPair { path->path().pointAtPercent(0.).x(),
-                                              path->path().pointAtPercent(0.).y(),
-                                              path->path().angleAtPercent(0.),
-                                              path->markerStartId(),
-                                              true };
-            if (node->hasMarkerMid()) {
-                for (int i = 1; i < path->path().elementCount() - 1; i++) {
-                    if (path->path().elementAt(i).type == QPainterPath::MoveToElement)
-                        continue;
-                    if (path->path().elementAt(i).type == QPainterPath::CurveToElement)
-                        continue;
-                    if (( path->path().elementAt(i).type == QPainterPath::CurveToDataElement &&
-                        path->path().elementAt(i+1).type != QPainterPath::CurveToDataElement ) ||
-                        path->path().elementAt(i).type == QPainterPath::LineToElement) {
-
-                        QPointF p0(path->path().elementAt(i-1).x, path->path().elementAt(i-1).y);
-                        QPointF p1(path->path().elementAt(i).x, path->path().elementAt(i).y);
-                        QPointF p2(path->path().elementAt(i+1).x, path->path().elementAt(i+1).y);
-
-                        marks << PositionMarkerPair { p1.x(),
-                                                      p1.y(),
-                                                      getMeanAngle(p0, p1, p2),
-                                                      path->markerMidId() };
-                    }
-                }
-            }
-            if (node->hasMarkerEnd())
-                marks << PositionMarkerPair { path->path().pointAtPercent(1.).x(),
-                                              path->path().pointAtPercent(1.).y(),
-                                              path->path().angleAtPercent(1.),
-                                              path->markerEndId() };
-        }
-        for (auto &i : marks) {
-            QSvgMarker *markNode = static_cast<QSvgMarker*>(node->document()->namedNode(i.markerId));
-            if (!markNode) {
-                continue;
-            }
-            p->save();
-            p->translate(i.x, i.y);
-            if (markNode->orientation() == QSvgMarker::Orientation::Value)
-                p->rotate(markNode->orientationAngle());
-            else {
-                p->rotate(-i.angle);
-                if (i.isStartNode && markNode->orientation() == QSvgMarker::Orientation::AutoStartReverse)
-                    p->rotate(-180);
-            }
-            QRectF oldRect = markNode->m_rect;
-            if (markNode->markerUnits() == QSvgMarker::MarkerUnits::StrokeWidth) {
-                markNode->m_rect.setWidth(markNode->m_rect.width() * p->pen().widthF());
-                markNode->m_rect.setHeight(markNode->m_rect.height() * p->pen().widthF());
-            }
-            markNode->draw(p, states);
-            markNode->m_rect = oldRect;
-            p->restore();
-        }
+    switch (node->type()) {
+    case QSvgNode::Line: {
+        const QSvgLine *line = static_cast<const QSvgLine*>(node);
+        if (node->hasMarkerStart())
+            markers << PositionMarkerPair { line->line().p1().x(), line->line().p1().y(),
+                                            line->line().angle(), line->markerStartId(),
+                                            true};
+        if (node->hasMarkerEnd())
+            markers << PositionMarkerPair { line->line().p2().x(), line->line().p2().y(),
+                                            line->line().angle(), line->markerEndId() };
+        break;
     }
+    case QSvgNode::Polyline:
+    case QSvgNode::Polygon: {
+        const QSvgPolyline *polyline = static_cast<const QSvgPolyline*>(node);
+        const QSvgPolygon *polygon = static_cast<const QSvgPolygon*>(node);
+
+        const QPolygonF &polyData = (node->type() == QSvgNode::Polyline)
+                ? polyline->polygon()
+                : polygon->polygon();
+
+        if (node->hasMarkerStart() && polyData.size() > 1) {
+            QLineF line(polyData.at(0), polyData.at(1));
+            markers << PositionMarkerPair { line.p1().x(),
+                                            line.p1().y(),
+                                            line.angle(),
+                                            node->markerStartId(),
+                                            true };
+        }
+        if (node->hasMarkerMid()) {
+            for (int i = 1; i < polyData.size() - 1; i++) {
+                QPointF p0 = polyData.at(i - 1);
+                QPointF p1 = polyData.at(i);
+                QPointF p2 = polyData.at(i + 1);
+
+                markers << PositionMarkerPair { p1.x(),
+                                                p1.y(),
+                                                getMeanAngle(p0, p1, p2),
+                                                node->markerStartId() };
+            }
+        }
+        if (node->hasMarkerEnd() && polyData.size() > 1) {
+            QLineF line(polyData.at(polyData.size() - 1), polyData.last());
+            markers << PositionMarkerPair { line.p2().x(),
+                                            line.p2().y(),
+                                            line.angle(),
+                                            node->markerEndId() };
+        }
+        break;
+    }
+    case QSvgNode::Path: {
+        const QSvgPath *path = static_cast<const QSvgPath*>(node);
+        if (node->hasMarkerStart())
+            markers << PositionMarkerPair { path->path().pointAtPercent(0.).x(),
+                                            path->path().pointAtPercent(0.).y(),
+                                            path->path().angleAtPercent(0.),
+                                            path->markerStartId(),
+                                            true };
+        if (node->hasMarkerMid()) {
+            for (int i = 1; i < path->path().elementCount() - 1; i++) {
+                if (path->path().elementAt(i).type == QPainterPath::MoveToElement)
+                    continue;
+                if (path->path().elementAt(i).type == QPainterPath::CurveToElement)
+                    continue;
+                if (( path->path().elementAt(i).type == QPainterPath::CurveToDataElement &&
+                      path->path().elementAt(i + 1).type != QPainterPath::CurveToDataElement ) ||
+                      path->path().elementAt(i).type == QPainterPath::LineToElement) {
+
+                    QPointF p0(path->path().elementAt(i - 1).x, path->path().elementAt(i - 1).y);
+                    QPointF p1(path->path().elementAt(i).x, path->path().elementAt(i).y);
+                    QPointF p2(path->path().elementAt(i + 1).x, path->path().elementAt(i + 1).y);
+
+                    markers << PositionMarkerPair { p1.x(),
+                                                    p1.y(),
+                                                    getMeanAngle(p0, p1, p2),
+                                                    path->markerMidId() };
+                }
+            }
+        }
+        if (node->hasMarkerEnd())
+            markers << PositionMarkerPair { path->path().pointAtPercent(1.).x(),
+                                            path->path().pointAtPercent(1.).y(),
+                                            path->path().angleAtPercent(1.),
+                                            path->markerEndId() };
+        break;
+    }
+    default:
+        Q_UNREACHABLE();
+        break;
+    }
+
+    return markers;
+}
+
+} // anonymous namespace
+
+
+void QSvgMarker::drawMarkersForNode(QSvgNode *node, QPainter *p, QSvgExtraStates &states)
+{
+    drawHelper(node, p, states);
+}
+
+QRectF QSvgMarker::markersBoundsForNode(const QSvgNode *node, QPainter *p, QSvgExtraStates &states)
+{
+    QRectF bounds;
+    drawHelper(node, p, states, &bounds);
+    return bounds;
 }
 
 QSvgNode::Type QSvgMarker::type() const
@@ -377,22 +411,64 @@ QSvgNode::Type QSvgMarker::type() const
     return Marker;
 }
 
-QImage QSvgFilterContainer::applyFilter(QSvgNode *item, const QImage &buffer, QPainter *p, QRectF bounds) const
+void QSvgMarker::drawHelper(const QSvgNode *node, QPainter *p,
+                            QSvgExtraStates &states, QRectF *boundingRect)
 {
-    QRectF filterBounds = m_rect.combinedWithLocalRect(bounds, document()->viewBox(), m_filterUnits);
-    QRect filterBoundsGlob = p->transform().mapRect(filterBounds).toRect();
-    QRect filterBoundsGlobRel = filterBoundsGlob.translated(-buffer.offset());
+    QScopedValueRollback<bool> inUseGuard(states.inUse, true);
 
-    if (filterBoundsGlobRel.isEmpty())
+    const bool isPainting = (boundingRect == nullptr);
+    const auto markers = markersForNode(node);
+    for (auto &i : markers) {
+        QSvgMarker *markNode = static_cast<QSvgMarker*>(node->document()->namedNode(i.markerId));
+        if (!markNode)
+            continue;
+
+        p->save();
+        p->translate(i.x, i.y);
+        if (markNode->orientation() == QSvgMarker::Orientation::Value) {
+            p->rotate(markNode->orientationAngle());
+        } else {
+            p->rotate(-i.angle);
+            if (i.isStartNode && markNode->orientation()
+                        == QSvgMarker::Orientation::AutoStartReverse) {
+                p->scale(-1, -1);
+            }
+        }
+        QRectF oldRect = markNode->m_rect;
+        if (markNode->markerUnits() == QSvgMarker::MarkerUnits::StrokeWidth) {
+            markNode->m_rect.setWidth(markNode->m_rect.width() * p->pen().widthF());
+            markNode->m_rect.setHeight(markNode->m_rect.height() * p->pen().widthF());
+        }
+        if (isPainting)
+            markNode->draw(p, states);
+
+        if (boundingRect) {
+            QTransform xf = p->transform();
+            p->resetTransform();
+            *boundingRect |=  xf.mapRect(markNode->decoratedInternalBounds(p, states));
+        }
+
+        markNode->m_rect = oldRect;
+        p->restore();
+    }
+}
+
+QImage QSvgFilterContainer::applyFilter(const QImage &buffer, QPainter *p, const QRectF &bounds) const
+{
+    QRectF localFilterRegion = m_rect.resolveRelativeLengths(bounds, m_filterUnits);
+    QRect globalFilterRegion = p->transform().mapRect(localFilterRegion).toRect();
+    QRect globalFilterRegionRel = globalFilterRegion.translated(-buffer.offset());
+
+    if (globalFilterRegionRel.isEmpty())
         return buffer;
 
     QImage proxy;
-    if (!QImageIOHandler::allocateImage(filterBoundsGlobRel.size(), buffer.format(), &proxy)) {
+    if (!QImageIOHandler::allocateImage(globalFilterRegionRel.size(), buffer.format(), &proxy)) {
         qCWarning(lcSvgDraw) << "The requested filter is too big, ignoring";
         return buffer;
     }
-    proxy = buffer.copy(filterBoundsGlobRel);
-    proxy.setOffset(filterBoundsGlob.topLeft());
+    proxy = buffer.copy(globalFilterRegionRel);
+    proxy.setOffset(globalFilterRegion.topLeft());
     if (proxy.isNull())
         return buffer;
 
@@ -423,7 +499,7 @@ QImage QSvgFilterContainer::applyFilter(QSvgNode *item, const QImage &buffer, QP
     for (const QSvgNode *renderer : children) {
         const QSvgFeFilterPrimitive *filter = QSvgFeFilterPrimitive::castToFilterPrimitive(renderer);
         if (filter) {
-            result = filter->apply(item, buffers, p, bounds, filterBounds, m_primitiveUnits, m_filterUnits);
+            result = filter->apply(buffers, p, bounds, localFilterRegion, m_primitiveUnits, m_filterUnits);
             if (!result.isNull()) {
                 buffers[QStringLiteral("")] = result;
                 buffers[filter->result()] = result;
@@ -443,160 +519,44 @@ bool QSvgFilterContainer::supported() const
     return m_supported;
 }
 
+QRectF QSvgFilterContainer::filterRegion(const QRectF &itemBounds) const
+{
+    return m_rect.resolveRelativeLengths(itemBounds, m_filterUnits);
+}
+
 QSvgNode::Type QSvgFilterContainer::type() const
 {
     return Filter;
 }
 
-/*
-  Below is a lookup function based on the gperf output using the following set:
-
-  http://www.w3.org/Graphics/SVG/feature/1.2/#SVG
-  http://www.w3.org/Graphics/SVG/feature/1.2/#SVG-static
-  http://www.w3.org/Graphics/SVG/feature/1.2/#CoreAttribute
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Structure
-  http://www.w3.org/Graphics/SVG/feature/1.2/#ConditionalProcessing
-  http://www.w3.org/Graphics/SVG/feature/1.2/#ConditionalProcessingAttribute
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Image
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Prefetch
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Shape
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Text
-  http://www.w3.org/Graphics/SVG/feature/1.2/#PaintAttribute
-  http://www.w3.org/Graphics/SVG/feature/1.2/#OpacityAttribute
-  http://www.w3.org/Graphics/SVG/feature/1.2/#GraphicsAttribute
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Gradient
-  http://www.w3.org/Graphics/SVG/feature/1.2/#SolidColor
-  http://www.w3.org/Graphics/SVG/feature/1.2/#XlinkAttribute
-  http://www.w3.org/Graphics/SVG/feature/1.2/#ExternalResourcesRequiredAttribute
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Font
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Hyperlinking
-  http://www.w3.org/Graphics/SVG/feature/1.2/#Extensibility
-*/
-
-// ----- begin of generated code -----
-
-/* C code produced by gperf version 3.0.2 */
-/* Command-line: gperf -c -L c svg  */
-/* Computed positions: -k'45-46' */
-
-#if !((' ' == 32) && ('!' == 33) && ('"' == 34) && ('#' == 35) \
-      && ('%' == 37) && ('&' == 38) && ('\'' == 39) && ('(' == 40) \
-      && (')' == 41) && ('*' == 42) && ('+' == 43) && (',' == 44) \
-      && ('-' == 45) && ('.' == 46) && ('/' == 47) && ('0' == 48) \
-      && ('1' == 49) && ('2' == 50) && ('3' == 51) && ('4' == 52) \
-      && ('5' == 53) && ('6' == 54) && ('7' == 55) && ('8' == 56) \
-      && ('9' == 57) && (':' == 58) && (';' == 59) && ('<' == 60) \
-      && ('=' == 61) && ('>' == 62) && ('?' == 63) && ('A' == 65) \
-      && ('B' == 66) && ('C' == 67) && ('D' == 68) && ('E' == 69) \
-      && ('F' == 70) && ('G' == 71) && ('H' == 72) && ('I' == 73) \
-      && ('J' == 74) && ('K' == 75) && ('L' == 76) && ('M' == 77) \
-      && ('N' == 78) && ('O' == 79) && ('P' == 80) && ('Q' == 81) \
-      && ('R' == 82) && ('S' == 83) && ('T' == 84) && ('U' == 85) \
-      && ('V' == 86) && ('W' == 87) && ('X' == 88) && ('Y' == 89) \
-      && ('Z' == 90) && ('[' == 91) && ('\\' == 92) && (']' == 93) \
-      && ('^' == 94) && ('_' == 95) && ('a' == 97) && ('b' == 98) \
-      && ('c' == 99) && ('d' == 100) && ('e' == 101) && ('f' == 102) \
-      && ('g' == 103) && ('h' == 104) && ('i' == 105) && ('j' == 106) \
-      && ('k' == 107) && ('l' == 108) && ('m' == 109) && ('n' == 110) \
-      && ('o' == 111) && ('p' == 112) && ('q' == 113) && ('r' == 114) \
-      && ('s' == 115) && ('t' == 116) && ('u' == 117) && ('v' == 118) \
-      && ('w' == 119) && ('x' == 120) && ('y' == 121) && ('z' == 122) \
-      && ('{' == 123) && ('|' == 124) && ('}' == 125) && ('~' == 126))
-/* The character set is not based on ISO-646.  */
-#error "gperf generated tables don't work with this execution character set. Please report a bug to <bug-gnu-gperf@gnu.org>."
-#endif
-
-enum {
-    TOTAL_KEYWORDS = 20,
-    MIN_WORD_LENGTH = 47,
-    MAX_WORD_LENGTH = 78,
-    MIN_HASH_VALUE = 48,
-    MAX_HASH_VALUE = 88
-};
-/* maximum key range = 41, duplicates = 0 */
 
 inline static bool isSupportedSvgFeature(const QString &str)
 {
-    static const unsigned char asso_values[] = {
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89,  0, 89,  5,
-        15,  5,  0, 10, 89, 89, 89, 89, 89,  0,
-        15, 89, 89,  0,  0, 89,  5, 89,  0, 89,
-        89, 89, 89, 89, 89, 89, 89,  0, 89, 89,
-        89,  0, 89, 89,  0, 89, 89, 89,  0,  5,
-        89,  0,  0, 89,  5, 89,  0, 89, 89, 89,
-        5,  0, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89, 89, 89, 89, 89,
-        89, 89, 89, 89, 89, 89
+    static const QStringList wordList = {
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Text"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Shape"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#SVG"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Structure"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#SolidColor"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Hyperlinking"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#CoreAttribute"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#XlinkAttribute"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#SVG-static"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#OpacityAttribute"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Gradient"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Font"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Image"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#ConditionalProcessing"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Extensibility"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#GraphicsAttribute"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#Prefetch"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#PaintAttribute"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#ConditionalProcessingAttribute"),
+        QStringLiteral("http://www.w3.org/Graphics/SVG/feature/1.2/#ExternalResourcesRequiredAttribute")
     };
 
-    static const char * wordlist[] = {
-        "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "",
-        "", "", "", "", "", "", "", "", "",
-        "", "", "",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Text",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Shape",
-        "", "",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#SVG",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Structure",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#SolidColor",
-        "",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Hyperlinking",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#CoreAttribute",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#XlinkAttribute",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#SVG-static",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#OpacityAttribute",
-        "",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Gradient",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Font",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Image",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#ConditionalProcessing",
-        "",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Extensibility",
-        "", "", "",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#GraphicsAttribute",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#Prefetch",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#PaintAttribute",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#ConditionalProcessingAttribute",
-        "", "", "", "", "", "", "", "", "",
-        "", "", "", "",
-        "http://www.w3.org/Graphics/SVG/feature/1.2/#ExternalResourcesRequiredAttribute"
-    };
-
-    if (str.size() <= MAX_WORD_LENGTH && str.size() >= MIN_WORD_LENGTH) {
-        const char16_t unicode44 = str.at(44).unicode();
-        const char16_t unicode45 = str.at(45).unicode();
-        if (unicode44 >= sizeof(asso_values) || unicode45 >= sizeof(asso_values))
-            return false;
-        const int key = str.size()
-                        + asso_values[unicode45]
-                        + asso_values[unicode44];
-        if (key <= MAX_HASH_VALUE && key >= 0)
-            return str == QLatin1String(wordlist[key]);
-    }
-    return false;
+    return wordList.contains(str);
 }
-
-// ----- end of generated code -----
 
 static inline bool isSupportedSvgExtension(const QString &)
 {
@@ -610,9 +570,9 @@ QSvgSwitch::QSvgSwitch(QSvgNode *parent)
     init();
 }
 
-void QSvgSwitch::drawCommand(QPainter *p, QSvgExtraStates &states)
+QSvgNode *QSvgSwitch::childToRender() const
 {
-    QList<QSvgNode*>::iterator itr = m_renderers.begin();
+    auto itr = m_renderers.begin();
 
     while (itr != m_renderers.end()) {
         QSvgNode *node = *itr;
@@ -655,21 +615,27 @@ void QSvgSwitch::drawCommand(QPainter *p, QSvgExtraStates &states)
                 }
             }
 
-            if (okToRender && !formats.isEmpty()) {
+            if (okToRender && !formats.isEmpty())
                 okToRender = false;
-            }
 
-            if (okToRender && !fonts.isEmpty()) {
+            if (okToRender && !fonts.isEmpty())
                 okToRender = false;
-            }
 
-            if (okToRender) {
-                node->draw(p, states);
-                break;
-            }
+            if (okToRender)
+                return node;
         }
+
         ++itr;
     }
+
+    return nullptr;
+}
+
+void QSvgSwitch::drawCommand(QPainter *p, QSvgExtraStates &states)
+{
+    QSvgNode *node = childToRender();
+    if (node != nullptr)
+        node->draw(p, states);
 }
 
 QSvgNode::Type QSvgSwitch::type() const
@@ -685,13 +651,24 @@ void QSvgSwitch::init()
     m_systemLanguagePrefix = m_systemLanguage.mid(0, idx);
 }
 
-QRectF QSvgStructureNode::bounds(QPainter *p, QSvgExtraStates &states) const
+QRectF QSvgStructureNode::internalBounds(QPainter *p, QSvgExtraStates &states) const
 {
     QRectF bounds;
     if (!m_recursing) {
         QScopedValueRollback<bool> guard(m_recursing, true);
         for (QSvgNode *node : std::as_const(m_renderers))
-            bounds |= node->transformedBounds(p, states);
+            bounds |= node->bounds(p, states);
+    }
+    return bounds;
+}
+
+QRectF QSvgStructureNode::decoratedInternalBounds(QPainter *p, QSvgExtraStates &states) const
+{
+    QRectF bounds;
+    if (!m_recursing) {
+        QScopedValueRollback<bool> guard(m_recursing, true);
+        for (QSvgNode *node : std::as_const(m_renderers))
+            bounds |= node->decoratedBounds(p, states);
     }
     return bounds;
 }
@@ -717,11 +694,16 @@ QSvgMask::QSvgMask(QSvgNode *parent, QSvgRectF bounds,
 {
 }
 
+bool QSvgMask::shouldDrawNode(QPainter *, QSvgExtraStates &) const
+{
+    return false;
+}
+
 QImage QSvgMask::createMask(QPainter *p, QSvgExtraStates &states, QSvgNode *targetNode, QRectF *globalRect) const
 {
     QTransform t = p->transform();
     p->resetTransform();
-    QRectF basicRect = targetNode->bounds(p, states);
+    QRectF basicRect = targetNode->internalBounds(p, states);
     *globalRect = t.mapRect(basicRect);
     p->setTransform(t);
     return createMask(p, states, basicRect, globalRect);
@@ -798,7 +780,7 @@ QImage QSvgMask::createMask(QPainter *p, QSvgExtraStates &states, const QRectF &
     // This is required to apply a clip rectangle with transformations.
     // painter.setClipRect(clipRect) sounds like the obvious thing to do but
     // created artifacts due to antialiasing.
-    QRectF clipRect = m_rect.combinedWithLocalRect(localRect);
+    QRectF clipRect = m_rect.resolveRelativeLengths(localRect);
     QPainterPath clipPath;
     clipPath.setFillRule(Qt::OddEvenFill);
     clipPath.addRect(mask.rect().adjusted(-10, -10, 20, 20));
@@ -826,6 +808,11 @@ QSvgPattern::QSvgPattern(QSvgNode *parent, QSvgRectF bounds, QRectF viewBox,
 
 }
 
+bool QSvgPattern::shouldDrawNode(QPainter *, QSvgExtraStates &) const
+{
+    return false;
+}
+
 static QImage& defaultPattern()
 {
     static QImage checkerPattern;
@@ -850,7 +837,7 @@ QImage QSvgPattern::patternImage(QPainter *p, QSvgExtraStates &states, const QSv
 
     QTransform t = p->transform();
     p->resetTransform();
-    peBoundingBox = patternElement->bounds(p, states);
+    peBoundingBox = patternElement->internalBounds(p, states);
     peWorldBoundingBox = t.mapRect(peBoundingBox);
     p->setTransform(t);
 
@@ -872,7 +859,7 @@ QImage QSvgPattern::patternImage(QPainter *p, QSvgExtraStates &states, const QSv
     }
 
     // Calculate the pattern bounding box depending on the used UnitTypes
-    QRectF patternBoundingBox = m_rect.combinedWithLocalRect(peBoundingBox);
+    QRectF patternBoundingBox = m_rect.resolveRelativeLengths(peBoundingBox);
 
     QSize imageSize;
     imageSize.setWidth(qCeil(patternBoundingBox.width() * t.m11() * m_transform.m11()));
@@ -945,7 +932,7 @@ void QSvgPattern::calculateAppliedTransform(QTransform &worldTransform, QRectF p
     m_appliedTransform.scale(qIsFinite(imageDownScaleFactorX) ? imageDownScaleFactorX : 1.0,
                              qIsFinite(imageDownScaleFactorY) ? imageDownScaleFactorY : 1.0);
 
-    QRectF p = m_rect.combinedWithLocalRect(peLocalBB);
+    QRectF p = m_rect.resolveRelativeLengths(peLocalBB);
     m_appliedTransform.scale((p.width() * worldTransform.m11() * m_transform.m11()) / imageSize.width(),
                              (p.height() * worldTransform.m22() * m_transform.m22()) / imageSize.height());
 

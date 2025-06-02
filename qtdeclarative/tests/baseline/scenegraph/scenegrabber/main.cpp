@@ -52,14 +52,17 @@ public:
         if (!preferAppWindow)
             QObject::connect(this, &QQuickWindow::afterRendering, this, &GrabbingView::startGrabbing);
 
-        QTimer::singleShot(SCENE_TIMEOUT, this, &GrabbingView::timedOut);
+        int sceneTimeout = qEnvironmentVariableIntValue("LANCELOT_SCENE_TIMEOUT");
+        if (!sceneTimeout)
+            sceneTimeout = SCENE_TIMEOUT;
+        QTimer::singleShot(sceneTimeout, this, &GrabbingView::timedOut);
     }
 
     void setApplicationWindow(QWindow* window) {
         qCDebug(lcGrabber) << "Using ApplicationWindow as visual parent" << this;
 
         appwindow = qobject_cast<QQuickApplicationWindow *>(window);
-        if (preferAppWindow)
+        if (preferAppWindow && !justShow)
             QObject::connect(appwindow, &QQuickWindow::afterRendering, this, &GrabbingView::startGrabbing);
     }
     QQuickApplicationWindow* appWindow() { return appwindow; }
@@ -67,11 +70,11 @@ public:
 private slots:
     void startGrabbing()
     {
-        qCDebug(lcGrabber) << "Starting to grab";
         if (!initDone) {
             initDone = true;
-            grabTimer->start();
+            qCDebug(lcGrabber) << "Starting grabbing";
         }
+        grabTimer->start();
     }
 
     void grab()
@@ -84,9 +87,10 @@ private slots:
         QScopedValueRollback grabGuard(isGrabbing, true);
 
         grabNo++;
-        qCDebug(lcGrabber) << "grab no." << grabNo;
+        qCDebug(lcGrabber) << "Starting grab no." << grabNo;
         QImage img;
         img = appwindow ? appwindow->grabWindow() : grabWindow();
+        qCDebug(lcGrabber) << "Finishing grab no." << grabNo;
         if (!img.isNull() && img == lastGrab) {
             sceneStabilized();
         } else {

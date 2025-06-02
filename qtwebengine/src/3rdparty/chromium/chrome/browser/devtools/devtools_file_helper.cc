@@ -47,6 +47,7 @@
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
+#include "ui/shell_dialogs/selected_file_info.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -87,6 +88,7 @@ class SelectFileDialog : public ui::SelectFileDialog::Listener {
                    WebContents* web_contents,
                    ui::SelectFileDialog::Type type,
                    const base::FilePath& default_path) {
+    // `dialog` is self-deleting.
     auto* dialog = new SelectFileDialog();
     dialog->ShowDialog(std::move(selected_callback),
                        std::move(canceled_callback), web_contents, type,
@@ -94,33 +96,23 @@ class SelectFileDialog : public ui::SelectFileDialog::Listener {
   }
 
   // ui::SelectFileDialog::Listener implementation.
-  void FileSelected(const base::FilePath& path,
+  void FileSelected(const ui::SelectedFileInfo& file,
                     int index,
                     void* params) override {
-    std::move(selected_callback_).Run(path);
+    std::move(selected_callback_).Run(file.path());
     delete this;
-  }
-
-  void MultiFilesSelected(const std::vector<base::FilePath>& files,
-                          void* params) override {
-#if defined(TOOLKIT_QT)
-    std::move(selected_callback_).Run(files.front());
-#endif  // defined(TOOLKIT_QT)
-    delete this;
-#if !defined(TOOLKIT_QT)
-    NOTREACHED() << "Should not be able to select multiple files";
-#endif  // !defined(TOOLKIT_QT)
   }
 
   void FileSelectionCanceled(void* params) override {
-    if (!canceled_callback_.is_null())
+    if (canceled_callback_) {
       std::move(canceled_callback_).Run();
+    }
     delete this;
   }
 
  private:
   SelectFileDialog() = default;
-  ~SelectFileDialog() override = default;
+  ~SelectFileDialog() override { select_file_dialog_->ListenerDestroyed(); }
 
   void ShowDialog(SelectedCallback selected_callback,
                   CanceledCallback canceled_callback,
@@ -283,7 +275,7 @@ void DevToolsFileHelper::Save(const std::string& url,
   base::FilePath initial_path;
 
   if (const base::Value* path_value = file_map.Find(base::MD5String(url))) {
-    absl::optional<base::FilePath> path = base::ValueToFilePath(*path_value);
+    std::optional<base::FilePath> path = base::ValueToFilePath(*path_value);
     if (path)
       initial_path = std::move(*path);
   }
@@ -294,14 +286,13 @@ void DevToolsFileHelper::Save(const std::string& url,
     if (gurl.is_valid()) {
       url::RawCanonOutputW<1024> unescaped_content;
       std::string escaped_content = gurl.ExtractFileName();
-      url::DecodeURLEscapeSequences(
-          escaped_content.c_str(), escaped_content.length(),
-          url::DecodeURLMode::kUTF8OrIsomorphic, &unescaped_content);
+      url::DecodeURLEscapeSequences(escaped_content,
+                                    url::DecodeURLMode::kUTF8OrIsomorphic,
+                                    &unescaped_content);
       // TODO(crbug.com/1324254): Due to filename encoding on Windows we can't
       // expect to always be able to convert to UTF8 and back
       std::string unescaped_content_string =
-          base::UTF16ToUTF8(base::StringPiece16(unescaped_content.data(),
-                                                unescaped_content.length()));
+          base::UTF16ToUTF8(unescaped_content.view());
       suggested_file_name = unescaped_content_string;
     } else {
       suggested_file_name = url;

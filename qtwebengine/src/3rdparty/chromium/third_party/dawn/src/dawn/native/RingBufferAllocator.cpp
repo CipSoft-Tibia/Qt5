@@ -1,20 +1,35 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/RingBufferAllocator.h"
 
 #include <utility>
+
+#include "dawn/common/Math.h"
 
 // Note: Current RingBufferAllocator implementation uses two indices (start and end) to implement a
 // circular queue. However, this approach defines a full queue when one element is still unused.
@@ -70,7 +85,9 @@ bool RingBufferAllocator::Empty() const {
 // queue, which identifies an existing (or new) frames-worth of resources. Internally, the
 // ring-buffer maintains offsets of 3 "memory" states: Free, Reclaimed, and Used. This is done
 // in FIFO order as older frames would free resources before newer ones.
-uint64_t RingBufferAllocator::Allocate(uint64_t allocationSize, ExecutionSerial serial) {
+uint64_t RingBufferAllocator::Allocate(uint64_t allocationSize,
+                                       ExecutionSerial serial,
+                                       uint64_t offsetAlignment) {
     // Check if the buffer is full by comparing the used size.
     // If the buffer is not split where waste occurs (e.g. cannot fit new sub-alloc in front), a
     // subsequent sub-alloc could fail where the used size was previously adjusted to include
@@ -86,43 +103,45 @@ uint64_t RingBufferAllocator::Allocate(uint64_t allocationSize, ExecutionSerial 
     }
 
     uint64_t startOffset = kInvalidOffset;
+    uint64_t currentRequestSize = 0u;
+
+    // Compute an alignment offset for the buffer if allocating at the end.
+    const uint64_t alignmentOffset = Align(mUsedEndOffset, offsetAlignment) - mUsedEndOffset;
+    const uint64_t alignedUsedEndOffset = mUsedEndOffset + alignmentOffset;
 
     // Check if the buffer is NOT split (i.e sub-alloc on ends)
     if (mUsedStartOffset <= mUsedEndOffset) {
         // Order is important (try to sub-alloc at end first).
         // This is due to FIFO order where sub-allocs are inserted from left-to-right (when not
         // wrapped).
-        if (mUsedEndOffset + allocationSize <= mMaxBlockSize) {
-            startOffset = mUsedEndOffset;
-            mUsedEndOffset += allocationSize;
-            mUsedSize += allocationSize;
-            mCurrentRequestSize += allocationSize;
+        if (alignedUsedEndOffset + allocationSize <= mMaxBlockSize) {
+            startOffset = alignedUsedEndOffset;
+            mUsedSize += allocationSize + alignmentOffset;
+            currentRequestSize = allocationSize + alignmentOffset;
         } else if (allocationSize <= mUsedStartOffset) {  // Try to sub-alloc at front.
             // Count the space at the end so that a subsequent
             // sub-alloc cannot fail when the buffer is full.
             const uint64_t requestSize = (mMaxBlockSize - mUsedEndOffset) + allocationSize;
 
             startOffset = 0;
-            mUsedEndOffset = allocationSize;
             mUsedSize += requestSize;
-            mCurrentRequestSize += requestSize;
+            currentRequestSize = requestSize;
         }
-    } else if (mUsedEndOffset + allocationSize <=
-               mUsedStartOffset) {  // Otherwise, buffer is split where sub-alloc must be
-                                    // in-between.
-        startOffset = mUsedEndOffset;
-        mUsedEndOffset += allocationSize;
-        mUsedSize += allocationSize;
-        mCurrentRequestSize += allocationSize;
+    } else if (alignedUsedEndOffset + allocationSize <= mUsedStartOffset) {
+        // Otherwise, buffer is split where sub-alloc must be in-between.
+        startOffset = alignedUsedEndOffset;
+        mUsedSize += allocationSize + alignmentOffset;
+        currentRequestSize = allocationSize + alignmentOffset;
     }
 
     if (startOffset != kInvalidOffset) {
+        mUsedEndOffset = startOffset + allocationSize;
+
         Request request;
         request.endOffset = mUsedEndOffset;
-        request.size = mCurrentRequestSize;
+        request.size = currentRequestSize;
 
         mInflightRequests.Enqueue(std::move(request), serial);
-        mCurrentRequestSize = 0;  // reset
     }
 
     return startOffset;

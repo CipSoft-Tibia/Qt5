@@ -1,21 +1,38 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_CORE_IR_SWITCH_H_
 #define SRC_TINT_LANG_CORE_IR_SWITCH_H_
 
+#include <string>
+#include <utility>
+
 #include "src/tint/lang/core/ir/control_instruction.h"
+#include "src/tint/utils/containers/const_propagating_ptr.h"
 
 // Forward declarations
 namespace tint::core::ir {
@@ -41,7 +58,7 @@ namespace tint::core::ir {
 ///                            ▼
 ///                           out
 /// ```
-class Switch : public Castable<Switch, ControlInstruction> {
+class Switch final : public Castable<Switch, ControlInstruction> {
   public:
     /// The offset in Operands() for the condition
     static constexpr size_t kConditionOperandOffset = 0;
@@ -49,27 +66,31 @@ class Switch : public Castable<Switch, ControlInstruction> {
     /// A case selector
     struct CaseSelector {
         /// @returns true if this is a default selector
-        bool IsDefault() { return val == nullptr; }
+        bool IsDefault() const { return val == nullptr; }
 
         /// The selector value, or nullptr if this is the default selector
-        Constant* val = nullptr;
+        ConstPropagatingPtr<Constant> val;
     };
 
     /// A case label in the struct
     struct Case {
         /// The case selector for this node
         Vector<CaseSelector, 4> selectors;
-        /// The case block.
-        ir::Block* block = nullptr;
 
-        /// @returns the case block
-        ir::Block* Block() { return block; }
+        /// The case block.
+        ConstPropagatingPtr<ir::Block> block;
     };
+
+    /// Constructor (no results, no operands, no cases)
+    Switch();
 
     /// Constructor
     /// @param cond the condition
     explicit Switch(Value* cond);
     ~Switch() override;
+
+    /// @copydoc Instruction::Clone()
+    Switch* Clone(CloneContext& ctx) override;
 
     /// @copydoc ControlInstruction::ForeachBlock
     void ForeachBlock(const std::function<void(ir::Block*)>& cb) override;
@@ -77,11 +98,17 @@ class Switch : public Castable<Switch, ControlInstruction> {
     /// @returns the switch cases
     Vector<Case, 4>& Cases() { return cases_; }
 
+    /// @returns the switch cases
+    VectorRef<Case> Cases() const { return cases_; }
+
     /// @returns the condition
     Value* Condition() { return operands_[kConditionOperandOffset]; }
 
+    /// @returns the condition
+    const Value* Condition() const { return operands_[kConditionOperandOffset]; }
+
     /// @returns the friendly name for the instruction
-    std::string_view FriendlyName() override { return "switch"; }
+    std::string FriendlyName() const override { return "switch"; }
 
   private:
     Vector<Case, 4> cases_;

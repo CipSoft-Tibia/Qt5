@@ -13,10 +13,10 @@
 
 #include "base/component_export.h"
 #include "device/fido/authenticator_selection_criteria.h"
-#include "device/fido/device_public_key_extension.h"
 #include "device/fido/fido_constants.h"
 #include "device/fido/json_request.h"
 #include "device/fido/pin.h"
+#include "device/fido/prf_input.h"
 #include "device/fido/public_key_credential_descriptor.h"
 #include "device/fido/public_key_credential_params.h"
 #include "device/fido/public_key_credential_rp_entity.h"
@@ -82,6 +82,11 @@ struct COMPONENT_EXPORT(DEVICE_FIDO) CtapMakeCredentialRequest {
   // the authenticator associate a PRF with the credential.
   bool prf = false;
 
+  // prf_input contains the hashed salts for doing a PRF evaluation at
+  // credential creation time. This is only possible when the authenticator
+  // supports the "prf" extension, i.e. over hybrid CTAP.
+  absl::optional<PRFInput> prf_input;
+
   // large_blob_support indicates whether support for largeBlobs should be
   // requested using the `largeBlob` extension. This should be mutually
   // exclusive with `large_blob_key`.
@@ -138,10 +143,6 @@ struct COMPONENT_EXPORT(DEVICE_FIDO) CtapMakeCredentialRequest {
   // cred_blob contains an optional credBlob extension.
   // https://fidoalliance.org/specs/fido-v2.1-rd-20201208/fido-client-to-authenticator-protocol-v2.1-rd-20201208.html#sctn-credBlob-extension
   absl::optional<std::vector<uint8_t>> cred_blob;
-
-  // device_public_key contains parameters for the devicePubKey extension
-  // https://github.com/w3c/webauthn/pull/1663
-  absl::optional<DevicePublicKeyRequest> device_public_key;
 };
 
 // MakeCredentialOptions contains higher-level request parameters that aren't

@@ -3,14 +3,9 @@
 
 #include "custominputhandler.h"
 
-CustomInputHandler::CustomInputHandler(QAbstract3DGraph *graph, QObject *parent)
-    : QAbstract3DInputHandler(parent)
-    , m_graph(graph)
+CustomInputHandler::CustomInputHandler(QObject *parent) :
+    QAbstract3DInputHandler(parent)
 {
-    QObject::connect(m_graph,
-                     &QAbstract3DGraph::queriedGraphPositionChanged,
-                     this,
-                     &CustomInputHandler::onPositionQueryChanged);
 }
 
 //! [0]
@@ -38,16 +33,5 @@ void CustomInputHandler::wheelEvent(QWheelEvent *event)
         zoomLevel = 10;
 
     this->setCameraZoomLevel(zoomLevel);
-}
-
-void CustomInputHandler::mousePressEvent(QMouseEvent *event, const QPoint &mousePos)
-{
-    Q_UNUSED(event);
-    m_graph->scene()->setGraphPositionQuery(mousePos);
-}
-
-void CustomInputHandler::onPositionQueryChanged(const QVector3D &position)
-{
-    qDebug() << "Queried Position from signal:" << position;
 }
 //! [1]

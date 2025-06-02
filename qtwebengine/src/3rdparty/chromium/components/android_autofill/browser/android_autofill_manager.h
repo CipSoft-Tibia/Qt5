@@ -12,7 +12,9 @@
 #include "base/containers/flat_set.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/notreached.h"
 #include "components/autofill/core/browser/autofill_manager.h"
+#include "components/autofill/core/browser/crowdsourcing/autofill_crowdsourcing_manager.h"
 #include "components/autofill/core/common/dense_set.h"
 
 namespace autofill {
@@ -46,21 +48,8 @@ class AndroidAutofillManager : public AutofillManager,
   }
 
   base::WeakPtr<AutofillManager> GetWeakPtr() override;
-  CreditCardAccessManager* GetCreditCardAccessManager() override;
 
   bool ShouldClearPreviewedForm() override;
-
-  void FillCreditCardFormImpl(
-      const FormData& form,
-      const FormFieldData& field,
-      const CreditCard& credit_card,
-      const std::u16string& cvc,
-      const AutofillTriggerDetails& trigger_details) override;
-  void FillProfileFormImpl(
-      const FormData& form,
-      const FormFieldData& field,
-      const autofill::AutofillProfile& profile,
-      const AutofillTriggerDetails& trigger_details) override;
 
   void OnFocusNoLongerOnFormImpl(bool had_interacted_form) override;
 
@@ -90,7 +79,7 @@ class AndroidAutofillManager : public AutofillManager,
   // |triggered_origin| is the origin of the field from which the autofill is
   // triggered; this affects the security policy for cross-frame fills. See
   // AutofillDriver::FillOrPreviewForm() for further details.
-  void FillOrPreviewForm(mojom::AutofillActionPersistence action_persistence,
+  void FillOrPreviewForm(mojom::ActionPersistence action_persistence,
                          const FormData& form,
                          const FieldTypeGroup field_type_group,
                          const url::Origin& triggered_origin);
@@ -142,10 +131,6 @@ class AndroidAutofillManager : public AutofillManager,
 
   void OnAfterProcessParsedForms(
       const DenseSet<FormType>& form_types) override {}
-
-  void OnServerRequestError(FormSignature form_signature,
-                            AutofillDownloadManager::RequestType request_type,
-                            int http_error) override;
 
  private:
   // AutofillManager::Observer:

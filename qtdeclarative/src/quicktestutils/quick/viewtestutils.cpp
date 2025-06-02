@@ -9,6 +9,7 @@
 #include <QtQuick/QQuickView>
 #include <QtGui/QScreen>
 #include <QtGui/qpa/qwindowsysteminterface.h>
+#include <QtGui/private/qhighdpiscaling_p.h>
 
 #include <QtTest/QTest>
 
@@ -31,14 +32,14 @@ QQuickView *QQuickViewTestUtils::createView()
     return window;
 }
 
-void QQuickViewTestUtils::centerOnScreen(QQuickView *window, const QSize &size)
+void QQuickViewTestUtils::centerOnScreen(QQuickWindow *window, const QSize &size)
 {
     const QRect screenGeometry = window->screen()->availableGeometry();
     const QPoint offset = QPoint(size.width() / 2, size.height() / 2);
     window->setFramePosition(screenGeometry.center() - offset);
 }
 
-void QQuickViewTestUtils::centerOnScreen(QQuickView *window)
+void QQuickViewTestUtils::centerOnScreen(QQuickWindow *window)
 {
     QQuickViewTestUtils::centerOnScreen(window, window->size());
 }
@@ -50,33 +51,6 @@ void QQuickViewTestUtils::moveMouseAway(QQuickView *window)
 #else
     Q_UNUSED(window);
 #endif
-}
-
-void QQuickViewTestUtils::moveAndRelease(QQuickView *window, const QPoint &position)
-{
-    QTest::mouseMove(window, position);
-    QTest::mouseRelease(window, Qt::LeftButton, {}, position);
-}
-
-void QQuickViewTestUtils::moveAndPress(QQuickView *window, const QPoint &position)
-{
-    QTest::mouseMove(window, position);
-    QTest::mousePress(window, Qt::LeftButton, {}, position);
-}
-
-void QQuickViewTestUtils::flick(QQuickView *window, const QPoint &from, const QPoint &to, int duration)
-{
-    const int pointCount = 5;
-    QPoint diff = to - from;
-
-    // send press, five equally spaced moves, and release.
-    moveAndPress(window, from);
-
-    for (int i = 0; i < pointCount; ++i)
-        QTest::mouseMove(window, from + (i+1)*diff/pointCount, duration / pointCount);
-
-    moveAndRelease(window, to);
-    QTest::qWait(50);
 }
 
 QList<int> QQuickViewTestUtils::adjustIndexesForAddDisplaced(const QList<int> &indexes, int index, int count)
@@ -468,6 +442,7 @@ namespace QQuickTest {
     */
     bool initView(QQuickView &view, const QUrl &url, bool moveMouseOut, QByteArray *errorMessage)
     {
+        const bool platformIsWayland = !QGuiApplication::platformName().compare(QLatin1String("wayland"), Qt::CaseInsensitive);
         view.setSource(url);
         while (view.status() == QQuickView::Loading)
             QTest::qWait(10);
@@ -478,20 +453,22 @@ namespace QQuickTest {
             }
             return false;
         }
-        const QRect screenGeometry = view.screen()->availableGeometry();
-        const QSize size = view.size();
         if (view.width() == 0)
             view.setWidth(100);
         if (view.height() == 0)
             view.setHeight(100);
-        const QPoint offset = QPoint(size.width() / 2, size.height() / 2);
-        view.setFramePosition(screenGeometry.center() - offset);
-    #if QT_CONFIG(cursor) // Get the cursor out of the way.
-        if (moveMouseOut)
-             QCursor::setPos(view.geometry().topRight() + QPoint(100, 100));
-    #else
-        Q_UNUSED(moveMouseOut);
-    #endif
+        if (!platformIsWayland) {
+            const QSize size = view.size();
+            const QRect screenGeometry = view.screen()->availableGeometry();
+            const QPoint offset = QPoint(size.width() / 2, size.height() / 2);
+            view.setFramePosition(screenGeometry.center() - offset);
+#if QT_CONFIG(cursor) // Get the cursor out of the way. But it's not possible on Wayland.
+            if (moveMouseOut)
+                QCursor::setPos(view.geometry().topRight() + QPoint(100, 100));
+#else
+            Q_UNUSED(moveMouseOut);
+#endif
+        }
         return true;
     }
 
@@ -510,11 +487,19 @@ namespace QQuickTest {
     {
         if (!initView(view, url))
             return false;
+        const QPoint framePos(view.framePosition());
         view.show();
         if (!QTest::qWaitForWindowExposed(&view))
             return false;
         if (!view.rootObject())
             return false;
+        if (view.flags().testFlag(Qt::FramelessWindowHint))
+            return true;
+        const bool positionOk = QTest::qWaitFor([&]{ return framePos != view.position(); });
+        if (!positionOk) {
+            qCritical() << "Position failed to update";
+            return false;
+        }
         return true;
     }
 
@@ -524,50 +509,63 @@ namespace QQuickTest {
     static Qt::KeyboardModifiers pressedTabletModifiers = Qt::NoModifier;
 
     void pointerPress(const QPointingDevice *dev, QQuickWindow *window, int pointId, const QPoint &p,
-                      Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+                      Qt::MouseButton button, Qt::KeyboardModifiers modifiers, int delay)
     {
+        const auto defaultDelay = QTest::defaultMouseDelay();
         switch (dev->type()) {
         case QPointingDevice::DeviceType::Mouse:
         case QPointingDevice::DeviceType::TouchPad:
-            QTest::mousePress(window, button, modifiers, p);
+            QTest::mousePress(window, button, modifiers, p, delay >= 0 ? delay : defaultDelay ? defaultDelay : 1);
             break;
         case QPointingDevice::DeviceType::TouchScreen:
+            // TODO apply delay when QTBUG-95421 is fixed
             QTest::touchEvent(window, const_cast<QPointingDevice *>(dev)).press(pointId, p, window);
             QQuickTouchUtils::flush(window);
             break;
         case QPointingDevice::DeviceType::Puck:
         case QPointingDevice::DeviceType::Stylus:
-        case QPointingDevice::DeviceType::Airbrush:
-            QTest::lastMouseTimestamp += QTest::defaultMouseDelay();
+        case QPointingDevice::DeviceType::Airbrush:{
+            const QPointF nativeLocal = QHighDpi::toNativeLocalPosition(p, window);
+            const QPointF nativeGlobal = QHighDpi::toNativeGlobalPosition(window->mapToGlobal(p), window);
+            QTest::lastMouseTimestamp += delay >= 0 ? delay : defaultDelay ? defaultDelay : 1;
             pressedTabletButton = button;
             pressedTabletModifiers = modifiers;
-            QWindowSystemInterface::handleTabletEvent(window, QTest::lastMouseTimestamp, dev, p, window->mapToGlobal(p),
+            QWindowSystemInterface::handleTabletEvent(window, QTest::lastMouseTimestamp, dev, nativeLocal, nativeGlobal,
                                                       button, 0.8, 0, 0, 0, 0, 0, modifiers);
             break;
+        }
         default:
             qWarning() << "can't send a press event from" << dev;
             break;
         }
     }
 
-    void pointerMove(const QPointingDevice *dev, QQuickWindow *window, int pointId, const QPoint &p)
+    void pointerMove(const QPointingDevice *dev, QQuickWindow *window, int pointId, const QPoint &p, int delay)
     {
+        const auto defaultDelay = QTest::defaultMouseDelay();
         switch (dev->type()) {
         case QPointingDevice::DeviceType::Mouse:
         case QPointingDevice::DeviceType::TouchPad:
-            QTest::mouseMove(window, p);
+            QTest::mouseMove(window, p, delay >= 0 ? delay : defaultDelay ? defaultDelay : 1);
             break;
         case QPointingDevice::DeviceType::TouchScreen:
+            // TODO apply delay when QTBUG-95421 is fixed
             QTest::touchEvent(window, const_cast<QPointingDevice *>(dev)).move(pointId, p, window);
             QQuickTouchUtils::flush(window);
             break;
         case QPointingDevice::DeviceType::Puck:
         case QPointingDevice::DeviceType::Stylus:
-        case QPointingDevice::DeviceType::Airbrush:
-            QTest::lastMouseTimestamp += QTest::defaultMouseDelay();
-            QWindowSystemInterface::handleTabletEvent(window, QTest::lastMouseTimestamp, dev, p, window->mapToGlobal(p),
-                                                      pressedTabletButton, 0, 0, 0, 0, 0, 0, pressedTabletModifiers);
+        case QPointingDevice::DeviceType::Airbrush: {
+            const QPointF nativeLocal = QHighDpi::toNativeLocalPosition(p, window);
+            const QPointF nativeGlobal = QHighDpi::toNativeGlobalPosition(window->mapToGlobal(p), window);
+            const auto delay = QTest::defaultMouseDelay();
+            // often QTest::defaultMouseDelay() == 0; but avoid infinite velocity
+            QTest::lastMouseTimestamp += delay >= 0 ? delay : defaultDelay ? defaultDelay : 1;
+            QWindowSystemInterface::handleTabletEvent(window, QTest::lastMouseTimestamp, dev, nativeLocal, nativeGlobal,
+                                                      pressedTabletButton, pressedTabletButton == Qt::NoButton ? 0 : 0.75,
+                                                      0, 0, 0, 0, 0, pressedTabletModifiers);
             break;
+        }
         default:
             qWarning() << "can't send a move event from" << dev;
             break;
@@ -575,30 +573,66 @@ namespace QQuickTest {
     }
 
     void pointerRelease(const QPointingDevice *dev, QQuickWindow *window, int pointId, const QPoint &p,
-                        Qt::MouseButton button, Qt::KeyboardModifiers modifiers)
+                        Qt::MouseButton button, Qt::KeyboardModifiers modifiers, int delay)
     {
+        const auto defaultDelay = QTest::defaultMouseDelay();
         switch (dev->type()) {
         case QPointingDevice::DeviceType::Mouse:
         case QPointingDevice::DeviceType::TouchPad:
-            QTest::mouseRelease(window, button, modifiers, p);
+            QTest::mouseRelease(window, button, modifiers, p, delay >= 0 ? delay : defaultDelay ? defaultDelay : 1);
             break;
         case QPointingDevice::DeviceType::TouchScreen:
+            // TODO apply delay when QTBUG-95421 is fixed
             QTest::touchEvent(window, const_cast<QPointingDevice *>(dev)).release(pointId, p, window);
             QQuickTouchUtils::flush(window);
             break;
         case QPointingDevice::DeviceType::Puck:
         case QPointingDevice::DeviceType::Stylus:
-        case QPointingDevice::DeviceType::Airbrush:
-            QTest::lastMouseTimestamp += QTest::defaultMouseDelay();
-            QWindowSystemInterface::handleTabletEvent(window, QTest::lastMouseTimestamp, dev, p, window->mapToGlobal(p),
+        case QPointingDevice::DeviceType::Airbrush: {
+            const QPointF nativeLocal = QHighDpi::toNativeLocalPosition(p, window);
+            const QPointF nativeGlobal = QHighDpi::toNativeGlobalPosition(window->mapToGlobal(p), window);
+            QTest::lastMouseTimestamp += delay >= 0 ? delay : defaultDelay ? defaultDelay : 1;
+            QWindowSystemInterface::handleTabletEvent(window, QTest::lastMouseTimestamp, dev, nativeLocal, nativeGlobal,
                                                       Qt::NoButton, 0, 0, 0, 0, 0, 0, modifiers);
             break;
+        }
         default:
             qWarning() << "can't send a press event from" << dev;
             break;
         }
     }
 
+    void pointerMoveAndPress(const QPointingDevice *dev, QQuickWindow *window,
+                             int pointId, const QPoint &p, Qt::MouseButton button,
+                             Qt::KeyboardModifiers modifiers, int delay)
+    {
+        pointerMove(dev, window, pointId, p, delay);
+        pointerPress(dev, window, pointId, p, button, modifiers);
+    }
+
+    void pointerMoveAndRelease(const QPointingDevice *dev, QQuickWindow *window,
+                               int pointId, const QPoint &p, Qt::MouseButton button,
+                               Qt::KeyboardModifiers modifiers, int delay)
+    {
+        pointerMove(dev, window, pointId, p, delay);
+        pointerRelease(dev, window, pointId, p, button, modifiers);
+    }
+
+    void pointerFlick(const QPointingDevice *dev, QQuickWindow *window,
+                      int pointId, const QPoint &from, const QPoint &to, int duration,
+                      Qt::MouseButton button, Qt::KeyboardModifiers modifiers, int delay)
+    {
+        const int pointCount = 5;
+        const QPoint diff = to - from;
+
+        // send press, five equally spaced moves, and release.
+        pointerMoveAndPress(dev, window, pointId, from, button, modifiers, delay);
+
+        for (int i = 0; i < pointCount; ++i)
+            pointerMove(dev, window, pointId, from + (i + 1) * diff / pointCount, duration / pointCount);
+
+        pointerMoveAndRelease(dev, window, pointId, to, button, modifiers);
+    }
 }
 
 QT_END_NAMESPACE

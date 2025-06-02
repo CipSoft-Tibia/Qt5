@@ -1,5 +1,5 @@
 // Copyright (C) 2018 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "coreprotocol.h"
 #include "datadevice.h"
@@ -77,8 +77,10 @@ void Surface::surface_attach(Resource *resource, wl_resource *buffer, int32_t x,
             m_image = QImage();
     } else {
         QPoint offset(x, y);
+        if (resource->version() < 5)
+            m_pending.commitSpecific.attachOffset = offset;
+
         m_pending.buffer = fromResource<Buffer>(buffer);
-        m_pending.commitSpecific.attachOffset = offset;
         m_pending.commitSpecific.attached = true;
 
         emit attach(buffer, offset);
@@ -141,6 +143,13 @@ void Surface::surface_frame(Resource *resource, uint32_t callback)
         auto *frame = new Callback(resource->client(), callback, 1);
         m_pending.commitSpecific.frame = frame;
     }
+}
+
+void Surface::surface_offset(Resource *resource, int32_t x, int32_t y)
+{
+    Q_UNUSED(resource);
+    QPoint offset(x, y);
+    m_pending.commitSpecific.attachOffset = offset;
 }
 
 bool WlCompositor::isClean() {
@@ -231,8 +240,9 @@ void Output::output_bind_resource(QtWaylandServer::wl_output::Resource *resource
 }
 
 // Seat stuff
-Seat::Seat(CoreCompositor *compositor, uint capabilities, int version) //TODO: check version
+Seat::Seat(CoreCompositor *compositor, uint capabilities, int version, const QString &seatName) //TODO: check version
     : QtWaylandServer::wl_seat(compositor->m_display, version)
+    , m_seatName(seatName)
     , m_compositor(compositor)
 {
     setCapabilities(capabilities);

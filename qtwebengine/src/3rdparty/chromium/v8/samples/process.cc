@@ -386,7 +386,7 @@ Local<Object> JsHttpRequestProcessor::WrapMap(map<string, string>* obj) {
 // Utility function that extracts the C++ map pointer from a wrapper
 // object.
 map<string, string>* JsHttpRequestProcessor::UnwrapMap(Local<Object> obj) {
-  Local<External> field = obj->GetInternalField(0).As<External>();
+  Local<External> field = obj->GetInternalField(0).As<Value>().As<External>();
   void* ptr = field->Value();
   return static_cast<map<string, string>*>(ptr);
 }
@@ -502,7 +502,7 @@ Local<Object> JsHttpRequestProcessor::WrapRequest(HttpRequest* request) {
  * wrapper object.
  */
 HttpRequest* JsHttpRequestProcessor::UnwrapRequest(Local<Object> obj) {
-  Local<External> field = obj->GetInternalField(0).As<External>();
+  Local<External> field = obj->GetInternalField(0).As<Value>().As<External>();
   void* ptr = field->Value();
   return static_cast<HttpRequest*>(ptr);
 }
@@ -651,7 +651,7 @@ MaybeLocal<String> ReadFile(Isolate* isolate, const string& name) {
   size_t size = ftell(file);
   rewind(file);
 
-  std::unique_ptr<char> chars(new char[size + 1]);
+  std::unique_ptr<char[]> chars(new char[size + 1]);
   chars.get()[size] = '\0';
   for (size_t i = 0; i < size;) {
     i += fread(&chars.get()[i], 1, size - i, file);

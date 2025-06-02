@@ -13,11 +13,11 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-CREATE PERFETTO FUNCTION vsync_from_name(slice_name STRING)
+CREATE OR REPLACE PERFETTO FUNCTION vsync_from_name(slice_name STRING)
 RETURNS STRING AS
 SELECT CAST(STR_SPLIT($slice_name, " ", 1) AS INTEGER);
 
-CREATE PERFETTO FUNCTION gpu_completion_fence_id_from_name(slice_name STRING)
+CREATE OR REPLACE PERFETTO FUNCTION gpu_completion_fence_id_from_name(slice_name STRING)
 RETURNS STRING AS
 SELECT
   CASE
@@ -190,30 +190,30 @@ JOIN android_jank_cuj_sf_process sf_process
 -- slice for each of the layers. GROUP BY to deduplicate these rows.
 GROUP BY cuj_id, app_upid, app_vsync, sf_upid, sf_vsync;
 
-SELECT CREATE_VIEW_FUNCTION(
-  'FIND_ANDROID_JANK_CUJ_SF_MAIN_THREAD_SLICE(slice_name_glob STRING)',
-  'cuj_id INT, utid INT, vsync INT, id INT, name STRING, ts LONG, dur LONG, ts_end LONG',
-  '
-  WITH sf_vsync AS (
-    SELECT DISTINCT cuj_id, sf_vsync AS vsync
-    FROM android_jank_cuj_app_to_sf_match)
-  SELECT
-    cuj_id,
-    utid,
-    sf_vsync.vsync,
-    slice.id,
-    slice.name,
-    slice.ts,
-    slice.dur,
-    slice.ts + slice.dur AS ts_end
-  FROM slice
-  JOIN android_jank_cuj_sf_main_thread main_thread USING (track_id)
-  JOIN sf_vsync
-    ON vsync_from_name(slice.name) = sf_vsync.vsync
-  WHERE slice.name GLOB $slice_name_glob AND slice.dur > 0
-  ORDER BY cuj_id, vsync;
-  '
-);
+CREATE OR REPLACE PERFETTO FUNCTION find_android_jank_cuj_sf_main_thread_slice(
+  slice_name_glob STRING)
+RETURNS TABLE(
+  cuj_id INT, utid INT, vsync INT, id INT,
+  name STRING, ts LONG, dur LONG, ts_end LONG)
+AS
+WITH sf_vsync AS (
+  SELECT DISTINCT cuj_id, sf_vsync AS vsync
+  FROM android_jank_cuj_app_to_sf_match)
+SELECT
+  cuj_id,
+  utid,
+  sf_vsync.vsync,
+  slice.id,
+  slice.name,
+  slice.ts,
+  slice.dur,
+  slice.ts + slice.dur AS ts_end
+FROM slice
+JOIN android_jank_cuj_sf_main_thread main_thread USING (track_id)
+JOIN sf_vsync
+  ON vsync_from_name(slice.name) = sf_vsync.vsync
+WHERE slice.name GLOB $slice_name_glob AND slice.dur > 0
+ORDER BY cuj_id, vsync;
 
 DROP TABLE IF EXISTS android_jank_cuj_sf_commit_slice;
 CREATE PERFETTO TABLE android_jank_cuj_sf_commit_slice AS
@@ -229,7 +229,7 @@ CREATE PERFETTO TABLE android_jank_cuj_sf_on_message_invalidate_slice AS
 SELECT * FROM FIND_ANDROID_JANK_CUJ_SF_MAIN_THREAD_SLICE('onMessageInvalidate *');
 
 DROP VIEW IF EXISTS android_jank_cuj_sf_root_slice;
-CREATE VIEW android_jank_cuj_sf_root_slice AS
+CREATE PERFETTO VIEW android_jank_cuj_sf_root_slice AS
 SELECT * FROM android_jank_cuj_sf_commit_slice
 UNION ALL
 SELECT * FROM android_jank_cuj_sf_composite_slice

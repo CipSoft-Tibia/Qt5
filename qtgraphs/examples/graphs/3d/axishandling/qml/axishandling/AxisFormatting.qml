@@ -4,7 +4,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtGraphs
-import AxisHandling
+import AxisHandlingExample
 
 Item {
     id: axisFormattingView
@@ -15,15 +15,15 @@ Item {
         id: seriesData
     }
 
-    Theme3D {
+    GraphsTheme {
         id: themePrimaryColors
-        type: Theme3D.Theme.PrimaryColors
-        font.family: "Lucida Handwriting"
-        font.pointSize: 40
+        theme: GraphsTheme.Theme.QtGreen
+        labelFont.family: "Lucida Handwriting"
+        labelFont.pointSize: 40
     }
 
     //! [1]
-    ValueAxis3D {
+    Value3DAxis {
         id: dateAxis
         formatter: CustomFormatter {
             originDate: "2023-01-01"
@@ -37,19 +37,19 @@ Item {
     //! [1]
 
     //! [2]
-    ValueAxis3D {
+    Value3DAxis {
         id: logAxis
-        formatter: LogValueAxis3DFormatter {
+        formatter: LogValue3DAxisFormatter {
             id: logAxisFormatter
             base: 10
             autoSubGrid: true
-            showEdgeLabels: true
+            edgeLabelsVisible: true
         }
         labelFormat: "%.2f"
     }
     //! [2]
 
-    ValueAxis3D {
+    Value3DAxis {
         id: linearAxis
         labelFormat: "%.2f"
         min: 0
@@ -57,7 +57,7 @@ Item {
     }
 
     //! [0]
-    ValueAxis3D {
+    Value3DAxis {
         id: valueAxis
         segmentCount: 5
         subSegmentCount: 2
@@ -73,8 +73,8 @@ Item {
         anchors.bottom: parent.bottom
         width: parent.width
         theme: themePrimaryColors
-        shadowQuality: AbstractGraph3D.ShadowQuality.SoftMedium
-        cameraPreset: AbstractGraph3D.CameraPreset.IsometricRight
+        shadowQuality: Graphs3D.ShadowQuality.SoftMedium
+        cameraPreset: Graphs3D.CameraPreset.IsometricRight
         //! [3]
         axisZ: valueAxis
         axisY: logAxis

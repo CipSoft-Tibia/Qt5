@@ -47,6 +47,8 @@ class AbstractPageConfig(abc.ABC):
   def load_dict(self, config: Dict[str, Any]) -> None:
     assert not self.stories
     with exception.annotate_argparsing(f"Parsing {type(self).__name__} dict:"):
+      if not config:
+        raise argparse.ArgumentTypeError("Expected non-empty config dict.")
       self._load_dict(config)
 
   @abc.abstractmethod
@@ -119,6 +121,8 @@ class PageConfig(AbstractPageConfig):
         f"Parsing details  ...[{i}]{{ action: \"{action_type}\", ...}}:"):
       kwargs = action_cls.kwargs_from_dict(action_config)
       return action_cls(**kwargs)
+    # make mypy happy
+    raise RuntimeError("Should not happen")
 
 
 class DevToolsRecorderPageConfig(AbstractPageConfig):
@@ -145,8 +149,8 @@ class DevToolsRecorderPageConfig(AbstractPageConfig):
     step_type: str = step["type"]
     default_timeout = dt.timedelta(seconds=10)
     if step_type == "navigate":
-      return action.GetAction(    # type: ignore
-          step["url"], default_timeout, ready_state=action.ReadyState.COMPLETE)
+      return action.GetAction(  # type: ignore
+          step["url"], ready_state=action.ReadyState.COMPLETE)
     if step_type == "click":
       selectors: List[List[str]] = step["selectors"]
       xpath: Optional[str] = None

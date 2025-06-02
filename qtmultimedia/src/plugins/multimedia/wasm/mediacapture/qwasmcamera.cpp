@@ -4,8 +4,8 @@
 #include "qwasmcamera_p.h"
 #include "qmediadevices.h"
 #include <qcameradevice.h>
-#include "private/qabstractvideobuffer_p.h"
-#include "private/qplatformvideosink_p.h"
+#include <private/qplatformvideosink_p.h>
+#include <private/qplatformvideodevices_p.h>
 #include <private/qmemoryvideobuffer_p.h>
 #include <private/qvideotexturehelper_p.h>
 #include <private/qwasmmediadevices_p.h>
@@ -28,11 +28,10 @@ QWasmCamera::QWasmCamera(QCamera *camera)
       m_cameraOutput(new QWasmVideoOutput),
       m_cameraIsReady(false)
 {
-    QWasmMediaDevices *wasmMediaDevices =
-            static_cast<QWasmMediaDevices *>(QPlatformMediaIntegration::instance()->mediaDevices());
+    QPlatformVideoDevices *videoDevices = QPlatformMediaIntegration::instance()->videoDevices();
 
-    connect(wasmMediaDevices, &QWasmMediaDevices::videoInputsChanged,this, [this]() {
-        const QList<QCameraDevice> cameras = QMediaDevices::videoInputs();
+    connect(videoDevices, &QPlatformVideoDevices::videoInputsChanged, this, [&]() {
+        const QList<QCameraDevice> cameras = videoDevices->videoInputs();
 
         if (!cameras.isEmpty()) {
             if (m_cameraDev.id().isEmpty())
@@ -62,12 +61,15 @@ bool QWasmCamera::isActive() const
 
 void QWasmCamera::setActive(bool active)
 {
-
     if (!m_CaptureSession) {
         updateError(QCamera::CameraError, QStringLiteral("video surface error"));
         m_shouldBeActive = true;
         return;
     }
+    if (m_cameraActive && !active)
+        m_cameraOutput->stop();
+
+    m_shouldBeActive = active;
 
     if (!m_cameraIsReady) {
         m_cameraShouldStartActive = true;
@@ -84,25 +86,35 @@ void QWasmCamera::setActive(bool active)
     m_cameraActive = active;
     m_shouldBeActive = false;
 
-    if (m_cameraActive)
-        m_cameraOutput->start();
-    else
-        m_cameraOutput->pause();
-
     updateCameraFeatures();
     emit activeChanged(active);
+    if (m_CaptureSession->imageCapture()) {
+         if (active) {
+            m_readyChangedConnection = connect(cameraOutput(), &QWasmVideoOutput::readyChanged, this, [this] () {
+                m_CaptureSession->setReadyForCapture(true);
+            });
+        }
+    }
+    if (!active && m_readyChangedConnection) {
+        QObject::disconnect(m_readyChangedConnection);
+    }
+
+    if (m_cameraActive)
+        m_cameraOutput->start();
 }
 
 void QWasmCamera::setCamera(const QCameraDevice &camera)
 {
-    if (!m_cameraDev.id().isEmpty())
+    if (camera.id().isEmpty() || (m_cameraDev.id() == camera.id())) {
         return;
+    }
 
     m_cameraOutput->setVideoMode(QWasmVideoOutput::Camera);
 
     constexpr QSize initialSize(0, 0);
     constexpr QRect initialRect(QPoint(0, 0), initialSize);
     m_cameraOutput->createVideoElement(camera.id().toStdString()); // videoElementId
+    m_cameraOutput->doElementCallbacks();
     m_cameraOutput->createOffscreenElement(initialSize);
     m_cameraOutput->updateVideoElementGeometry(initialRect);
 

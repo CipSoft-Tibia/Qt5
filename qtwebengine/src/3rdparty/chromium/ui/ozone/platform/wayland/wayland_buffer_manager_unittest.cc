@@ -116,12 +116,6 @@ class WaylandBufferManagerTest : public WaylandTest {
     connection_->set_supports_viewporter_surface_scaling(
         GetParam().supports_viewporter_surface_scaling);
 
-    // Set this bug fix so that WaylandFrameManager does not use a freeze
-    // counter. Otherwise, we won't be able to have a reliable test order of
-    // frame submissions. This must be set before any window is created
-    // (WaylandTest does that for us during the SetUp phase).
-    server_.zaura_shell()->SetBugFixes({1358908});
-
     WaylandTest::SetUp();
 
     manager_host_ = connection_->buffer_manager_host();
@@ -137,7 +131,8 @@ class WaylandBufferManagerTest : public WaylandTest {
                                     /*supports_acquire_fence=*/false,
                                     /*supports_overlays=*/true,
                                     kAugmentedSurfaceNotSupportedVersion,
-                                    /*supports_single_pixel_buffer=*/true);
+                                    /*supports_single_pixel_buffer=*/true,
+                                    /*server_version=*/{});
     surface_id_ = window_->root_surface()->get_surface_id();
   }
 
@@ -216,7 +211,8 @@ class WaylandBufferManagerTest : public WaylandTest {
                     /*supports_acquire_fence=*/false,
                     /*supports_overlays=*/true,
                     kAugmentedSurfaceNotSupportedVersion,
-                    /*supports_single_pixel_buffer=*/true);
+                    /*supports_single_pixel_buffer=*/true,
+                    /*server_version=*/{});
               }));
     }
   }
@@ -274,7 +270,7 @@ class WaylandBufferManagerTest : public WaylandTest {
           // vector.
           EXPECT_EQ(params_vector.size(), expected_size);
 
-          for (auto* mock_params : params_vector) {
+          for (wl::TestZwpLinuxBufferParamsV1* mock_params : params_vector) {
             if (!fail) {
               zwp_linux_buffer_params_v1_send_created(
                   mock_params->resource(), mock_params->buffer_resource());
@@ -2421,7 +2417,7 @@ TEST_P(WaylandBufferManagerTest, RootSurfaceIsCommittedLast) {
         linux_dmabuf->buffer_params()[0]->resource(),
         linux_dmabuf->buffer_params()[0]->buffer_resource());
     EXPECT_CALL(*mock_surface, Attach(_, _, _)).Times(1);
-    EXPECT_CALL(*mock_surface, Frame(_)).Times(0);
+    EXPECT_CALL(*mock_surface, Frame(_)).Times(1);
     EXPECT_CALL(*mock_surface, Commit()).Times(1);
   });
 }
@@ -2494,7 +2490,7 @@ TEST_P(WaylandBufferManagerTest, FencedRelease) {
     // OnSubmission for the second buffer with a non-null fence.
     gfx::GpuFenceHandle handle;
     const int32_t kFenceFD = dup(1);
-    handle.owned_fd.reset(kFenceFD);
+    handle.Adopt(base::ScopedFD(kFenceFD));
 
     auto* mock_surface = server->GetObject<wl::MockSurface>(id);
     mock_surface->ReleaseBufferFenced(mock_surface->prev_attached_buffer(),
@@ -2614,7 +2610,8 @@ TEST_P(WaylandBufferManagerTest,
                                   /*supports_acquire_fence=*/false,
                                   /*supports_overlays=*/true,
                                   kAugmentedSurfaceNotSupportedVersion,
-                                  /*supports_single_pixel_buffer=*/true);
+                                  /*supports_single_pixel_buffer=*/true,
+                                  /*server_version=*/{});
 
   PostToServerAndWait([](wl::TestWaylandServerThread* server) {
     EXPECT_CALL(*server->zwp_linux_dmabuf_v1(), CreateParams(_, _, _)).Times(1);
@@ -2724,7 +2721,9 @@ TEST_P(WaylandBufferManagerTest, HidesSubsurfacesOnChannelDestroyed) {
   EXPECT_FALSE(window_->wayland_subsurfaces().begin()->get()->IsVisible());
 
   PostToServerAndWait([id = surface_id_](wl::TestWaylandServerThread* server) {
-    server->GetObject<wl::MockSurface>(id)->ClearBufferReleases();
+    auto* root_surface = server->GetObject<wl::MockSurface>(id);
+    root_surface->ClearBufferReleases();
+    root_surface->SendFrameCallback();
   });
 
   auto interface_ptr = manager_host_->BindInterface();
@@ -2734,7 +2733,8 @@ TEST_P(WaylandBufferManagerTest, HidesSubsurfacesOnChannelDestroyed) {
                                   /*supports_acquire_fence=*/false,
                                   /*supports_overlays=*/true,
                                   kAugmentedSurfaceNotSupportedVersion,
-                                  /*supports_single_pixel_buffer=*/true);
+                                  /*supports_single_pixel_buffer=*/true,
+                                  /*server_version=*/{});
 
   PostToServerAndWait([](wl::TestWaylandServerThread* server) {
     // Now, create only one buffer and attach that to the root surface. The
@@ -3074,7 +3074,8 @@ TEST_P(WaylandBufferManagerTest, ExecutesTasksAfterInitialization) {
                                   /*supports_acquire_fence=*/false,
                                   /*supports_overlays=*/true,
                                   kAugmentedSurfaceNotSupportedVersion,
-                                  /*supports_single_pixel_buffer=*/true);
+                                  /*supports_single_pixel_buffer=*/true,
+                                  /*server_version=*/{});
 
   base::RunLoop().RunUntilIdle();
 
@@ -3169,9 +3170,10 @@ class WaylandBufferManagerViewportTest : public WaylandBufferManagerTest {
 
     PostToServerAndWait([](wl::TestWaylandServerThread* server) {
       // Creates a handle for a subsurface.
-      const std::vector<wl::TestZwpLinuxBufferParamsV1*>& params_vector =
+      const std::vector<raw_ptr<wl::TestZwpLinuxBufferParamsV1,
+                                VectorExperimental>>& params_vector =
           server->zwp_linux_dmabuf_v1()->buffer_params();
-      for (auto* mock_params : params_vector) {
+      for (wl::TestZwpLinuxBufferParamsV1* mock_params : params_vector) {
         zwp_linux_buffer_params_v1_send_created(mock_params->resource(),
                                                 mock_params->buffer_resource());
       }

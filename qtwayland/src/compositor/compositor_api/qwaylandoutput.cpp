@@ -12,7 +12,6 @@
 #include <QtWaylandCompositor/private/qwaylandcompositor_p.h>
 #include <QtWaylandCompositor/private/qwaylandview_p.h>
 #include <QtWaylandCompositor/private/qwaylandutils_p.h>
-#include <QtWaylandCompositor/private/qwaylandxdgoutputv1_p.h>
 
 #include <QtCore/QCoreApplication>
 #include <QtCore/QtMath>
@@ -127,9 +126,6 @@ void QWaylandOutputPrivate::sendGeometryInfo()
         if (resource->version() >= 2)
             send_done(resource->handle);
     }
-
-    if (xdgOutput)
-        QWaylandXdgOutputV1Private::get(xdgOutput)->sendDone();
 }
 
 void QWaylandOutputPrivate::sendMode(const Resource *resource, const QWaylandOutputMode &mode)
@@ -153,9 +149,15 @@ void QWaylandOutputPrivate::sendModesInfo()
         if (resource->version() >= 2)
             send_done(resource->handle);
     }
+}
 
-    if (xdgOutput)
-        QWaylandXdgOutputV1Private::get(xdgOutput)->sendDone();
+void QWaylandOutputPrivate::sendDone()
+{
+    const auto values = resourceMap().values();
+    for (auto *resource : values) {
+        if (resource->version() >= 2)
+            send_done(resource->handle);
+    }
 }
 
 void QWaylandOutputPrivate::handleWindowPixelSizeChanged()
@@ -223,7 +225,7 @@ QWaylandOutput::QWaylandOutput()
 
 /*!
    \qmltype WaylandOutput
-   \instantiates QWaylandOutput
+   \nativetype QWaylandOutput
    \inqmlmodule QtWayland.Compositor
    \since 5.8
    \brief Provides access to a displayable area managed by the compositor.
@@ -400,13 +402,15 @@ void QWaylandOutput::setCompositor(QWaylandCompositor *compositor)
 /*!
  * \qmlproperty string QtWayland.Compositor::WaylandOutput::manufacturer
  *
- * This property holds a textual description of the manufacturer of this WaylandOutput.
+ * This property holds a textual description of the manufacturer of the display
+ * managed by this WaylandOutput.
  */
 
 /*!
  * \property QWaylandOutput::manufacturer
  *
- * This property holds a textual description of the manufacturer of this QWaylandOutput.
+ * This property holds a textual description of the manufacturer of the display
+ * managed by this QWaylandOutput.
  */
 QString QWaylandOutput::manufacturer() const
 {
@@ -428,13 +432,15 @@ void QWaylandOutput::setManufacturer(const QString &manufacturer)
 /*!
  * \qmlproperty string QtWayland.Compositor::WaylandOutput::model
  *
- * This property holds a textual description of the model of this WaylandOutput.
+ * This property holds a textual description of the model of the display
+ * managed by this WaylandOutput.
  */
 
 /*!
  * \property QWaylandOutput::model
  *
- * This property holds a textual description of the model of this QWaylandOutput.
+ * This property holds a textual description of the model of the display
+ * managed by this QWaylandOutput.
  */
 QString QWaylandOutput::model() const
 {
@@ -816,9 +822,6 @@ void QWaylandOutput::setScaleFactor(int scale)
     }
 
     Q_EMIT scaleFactorChanged();
-
-    if (d->xdgOutput)
-        QWaylandXdgOutputV1Private::get(d->xdgOutput)->sendDone();
 }
 
 /*!

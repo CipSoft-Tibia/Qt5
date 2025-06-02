@@ -1,10 +1,12 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qabstractvideobuffer.h"
+
 #include "qcgwindowcapture_p.h"
 #include "private/qcapturablewindow_p.h"
 #include "qffmpegsurfacecapturegrabber_p.h"
-#include "private/qabstractvideobuffer_p.h"
+#include "private/qvideoframe_p.h"
 
 #include "qscreen.h"
 #include "qguiapplication.h"
@@ -39,7 +41,7 @@ QT_BEGIN_NAMESPACE
 class QCGImageVideoBuffer : public QAbstractVideoBuffer
 {
 public:
-    QCGImageVideoBuffer(CGImageRef image) : QAbstractVideoBuffer(QVideoFrame::NoHandle)
+    QCGImageVideoBuffer(CGImageRef image)
     {
         auto provider = CGImageGetDataProvider(image);
         m_data = CGDataProviderCopyData(provider);
@@ -48,25 +50,21 @@ public:
 
     ~QCGImageVideoBuffer() override { CFRelease(m_data); }
 
-    MapData map(QVideoFrame::MapMode mode) override
+    MapData map(QVideoFrame::MapMode /*mode*/) override
     {
         MapData mapData;
-        if (m_mapMode == QVideoFrame::NotMapped) {
-            m_mapMode = mode;
 
-            mapData.nPlanes = 1;
-            mapData.bytesPerLine[0] = static_cast<int>(m_bytesPerLine);
-            mapData.data[0] = (uchar *)CFDataGetBytePtr(m_data);
-            mapData.size[0] = static_cast<int>(CFDataGetLength(m_data));
-        }
+        mapData.planeCount = 1;
+        mapData.bytesPerLine[0] = static_cast<int>(m_bytesPerLine);
+        mapData.data[0] = (uchar *)CFDataGetBytePtr(m_data);
+        mapData.dataSize[0] = static_cast<int>(CFDataGetLength(m_data));
 
         return mapData;
     }
 
-    void unmap() override { m_mapMode = QVideoFrame::NotMapped; }
+    QVideoFrameFormat format() const override { return {}; }
 
 private:
-    QVideoFrame::MapMode m_mapMode = QVideoFrame::NotMapped;
     CFDataRef m_data;
     size_t m_bytesPerLine = 0;
 };
@@ -127,9 +125,10 @@ protected:
 
         QVideoFrameFormat format(QSize(CGImageGetWidth(imageRef), CGImageGetHeight(imageRef)),
                                  QVideoFrameFormat::Format_BGRA8888);
-        format.setFrameRate(frameRate());
+        format.setStreamFrameRate(frameRate());
 
-        return QVideoFrame(new QCGImageVideoBuffer(imageRef), format);
+        return QVideoFramePrivate::createFrame(std::make_unique<QCGImageVideoBuffer>(imageRef),
+                                               std::move(format));
     }
 
     void onNewFrame(QVideoFrame frame)

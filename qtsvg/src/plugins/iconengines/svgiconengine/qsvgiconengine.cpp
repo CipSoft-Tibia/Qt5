@@ -16,6 +16,7 @@
 #include <QAtomicInt>
 #include "qdebug.h"
 #include <private/qguiapplication_p.h>
+#include <private/qhexstring_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -23,30 +24,38 @@ class QSvgIconEnginePrivate : public QSharedData
 {
 public:
     QSvgIconEnginePrivate()
-        : svgBuffers(0), addedPixmaps(0)
-        { stepSerialNum(); }
-
-    ~QSvgIconEnginePrivate()
-        { delete addedPixmaps; delete svgBuffers; }
+    {
+        stepSerialNum();
+    }
 
     static int hashKey(QIcon::Mode mode, QIcon::State state)
-        { return (((mode)<<4)|state); }
+    {
+        return ((mode << 4) | state);
+    }
 
-    QString pmcKey(const QSize &size, QIcon::Mode mode, QIcon::State state)
-        { return QLatin1String("$qt_svgicon_")
-                 + QString::number(serialNum, 16).append(QLatin1Char('_'))
-                 + QString::number((((((qint64(size.width()) << 11) | size.height()) << 11) | mode) << 4) | state, 16); }
+    QString pmcKey(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) const
+    {
+        return QLatin1String("$qt_svgicon_")
+                % HexString<int>(serialNum)
+                % HexString<qint8>(mode)
+                % HexString<qint8>(state)
+                % HexString<int>(size.width())
+                % HexString<int>(size.height())
+                % HexString<qint16>(qRound(scale * 1000));
+    }
 
     void stepSerialNum()
-        { serialNum = lastSerialNum.fetchAndAddRelaxed(1); }
+    {
+        serialNum = lastSerialNum.fetchAndAddRelaxed(1);
+    }
 
     bool tryLoad(QSvgRenderer *renderer, QIcon::Mode mode, QIcon::State state);
     QIcon::Mode loadDataForModeAndState(QSvgRenderer *renderer, QIcon::Mode mode, QIcon::State state);
 
     QHash<int, QString> svgFiles;
-    QHash<int, QByteArray> *svgBuffers;
-    QHash<int, QPixmap> *addedPixmaps;
-    int serialNum;
+    QHash<int, QByteArray> svgBuffers;
+    QHash<int, QPixmap> addedPixmaps;
+    int serialNum = 0;
     static QAtomicInt lastSerialNum;
 };
 
@@ -61,10 +70,8 @@ QSvgIconEngine::QSvgIconEngine(const QSvgIconEngine &other)
     : QIconEngine(other), d(new QSvgIconEnginePrivate)
 {
     d->svgFiles = other.d->svgFiles;
-    if (other.d->svgBuffers)
-        d->svgBuffers = new QHash<int, QByteArray>(*other.d->svgBuffers);
-    if (other.d->addedPixmaps)
-        d->addedPixmaps = new QHash<int, QPixmap>(*other.d->addedPixmaps);
+    d->svgBuffers = other.d->svgBuffers;
+    d->addedPixmaps = other.d->addedPixmaps;
 }
 
 
@@ -76,8 +83,8 @@ QSvgIconEngine::~QSvgIconEngine()
 QSize QSvgIconEngine::actualSize(const QSize &size, QIcon::Mode mode,
                                  QIcon::State state)
 {
-    if (d->addedPixmaps) {
-        QPixmap pm = d->addedPixmaps->value(d->hashKey(mode, state));
+    if (!d->addedPixmaps.isEmpty()) {
+        QPixmap pm = d->addedPixmaps.value(d->hashKey(mode, state));
         if (!pm.isNull() && pm.size() == size)
             return size;
     }
@@ -88,7 +95,7 @@ QSize QSvgIconEngine::actualSize(const QSize &size, QIcon::Mode mode,
     return pm.size();
 }
 
-static QByteArray maybeUncompress(const QByteArray &ba)
+static inline QByteArray maybeUncompress(const QByteArray &ba)
 {
 #ifndef QT_NO_COMPRESS
     return qUncompress(ba);
@@ -99,18 +106,17 @@ static QByteArray maybeUncompress(const QByteArray &ba)
 
 bool QSvgIconEnginePrivate::tryLoad(QSvgRenderer *renderer, QIcon::Mode mode, QIcon::State state)
 {
-    if (svgBuffers) {
-        QByteArray buf = svgBuffers->value(hashKey(mode, state));
-        if (!buf.isEmpty()) {
-            buf = maybeUncompress(buf);
-            renderer->load(buf);
+    const auto key = hashKey(mode, state);
+    QByteArray buf = svgBuffers.value(key);
+    if (!buf.isEmpty()) {
+        if (renderer->load(maybeUncompress(buf)))
             return true;
-        }
+        svgBuffers.remove(key);
     }
-    QString svgFile = svgFiles.value(hashKey(mode, state));
+    QString svgFile = svgFiles.value(key);
     if (!svgFile.isEmpty()) {
-        renderer->load(svgFile);
-        return true;
+        if (renderer->load(svgFile))
+            return true;
     }
     return false;
 }
@@ -160,16 +166,25 @@ QIcon::Mode QSvgIconEnginePrivate::loadDataForModeAndState(QSvgRenderer *rendere
 QPixmap QSvgIconEngine::pixmap(const QSize &size, QIcon::Mode mode,
                                QIcon::State state)
 {
+    return scaledPixmap(size, mode, state, 1.0);
+}
+
+QPixmap QSvgIconEngine::scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state,
+                                     qreal scale)
+{
     QPixmap pm;
 
-    QString pmckey(d->pmcKey(size, mode, state));
+    QString pmckey(d->pmcKey(size, mode, state, scale));
     if (QPixmapCache::find(pmckey, &pm))
         return pm;
 
-    if (d->addedPixmaps) {
-        pm = d->addedPixmaps->value(d->hashKey(mode, state));
-        if (!pm.isNull() && pm.size() == size)
+    if (!d->addedPixmaps.isEmpty()) {
+        const auto key = d->hashKey(mode, state);
+        pm = d->addedPixmaps.value(key);
+        if (!pm.isNull() && pm.size() == size * scale && pm.devicePixelRatio() == scale)
             return pm;
+        if (pm.isNull())
+            d->addedPixmaps.remove(key);
     }
 
     QSvgRenderer renderer;
@@ -179,17 +194,16 @@ QPixmap QSvgIconEngine::pixmap(const QSize &size, QIcon::Mode mode,
 
     QSize actualSize = renderer.defaultSize();
     if (!actualSize.isNull())
-        actualSize.scale(size, Qt::KeepAspectRatio);
+        actualSize.scale(size * scale, Qt::KeepAspectRatio);
 
     if (actualSize.isEmpty())
-        return QPixmap();
+        return pm;
 
-    QImage img(actualSize, QImage::Format_ARGB32_Premultiplied);
-    img.fill(0x00000000);
-    QPainter p(&img);
+    pm = QPixmap(actualSize);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
     renderer.render(&p);
     p.end();
-    pm = QPixmap::fromImage(img);
     if (qobject_cast<QGuiApplication *>(QCoreApplication::instance())) {
         if (loadmode != mode && mode != QIcon::Normal) {
             const QPixmap generated = QGuiApplicationPrivate::instance()->applyQIconStyleHelper(mode, pm);
@@ -198,8 +212,10 @@ QPixmap QSvgIconEngine::pixmap(const QSize &size, QIcon::Mode mode,
         }
     }
 
-    if (!pm.isNull())
+    if (!pm.isNull()) {
+        pm.setDevicePixelRatio(scale);
         QPixmapCache::insert(pmckey, pm);
+    }
 
     return pm;
 }
@@ -208,21 +224,19 @@ QPixmap QSvgIconEngine::pixmap(const QSize &size, QIcon::Mode mode,
 void QSvgIconEngine::addPixmap(const QPixmap &pixmap, QIcon::Mode mode,
                                QIcon::State state)
 {
-    if (!d->addedPixmaps)
-        d->addedPixmaps = new QHash<int, QPixmap>;
     d->stepSerialNum();
-    d->addedPixmaps->insert(d->hashKey(mode, state), pixmap);
+    d->addedPixmaps.insert(d->hashKey(mode, state), pixmap);
 }
 
 enum FileType { OtherFile, SvgFile, CompressedSvgFile };
 
 static FileType fileType(const QFileInfo &fi)
 {
-    const QString &abs = fi.absoluteFilePath();
-    if (abs.endsWith(QLatin1String(".svg"), Qt::CaseInsensitive))
+    const QString &suffix = fi.completeSuffix();
+    if (suffix.endsWith(QLatin1String("svg"), Qt::CaseInsensitive))
         return SvgFile;
-    if (abs.endsWith(QLatin1String(".svgz"), Qt::CaseInsensitive)
-        || abs.endsWith(QLatin1String(".svg.gz"), Qt::CaseInsensitive)) {
+    if (suffix.endsWith(QLatin1String("svgz"), Qt::CaseInsensitive)
+        || suffix.endsWith(QLatin1String("svg.gz"), Qt::CaseInsensitive)) {
         return CompressedSvgFile;
     }
 #if QT_CONFIG(mimetype)
@@ -269,6 +283,11 @@ void QSvgIconEngine::paint(QPainter *painter, const QRect &rect,
     painter->drawPixmap(rect, pixmap(pixmapSize, mode, state));
 }
 
+bool QSvgIconEngine::isNull()
+{
+    return d->svgFiles.isEmpty() && d->addedPixmaps.isEmpty() && d->svgBuffers.isEmpty();
+}
+
 QString QSvgIconEngine::key() const
 {
     return QLatin1String("svg");
@@ -283,28 +302,26 @@ QIconEngine *QSvgIconEngine::clone() const
 bool QSvgIconEngine::read(QDataStream &in)
 {
     d = new QSvgIconEnginePrivate;
-    d->svgBuffers = new QHash<int, QByteArray>;
 
     if (in.version() >= QDataStream::Qt_4_4) {
         int isCompressed;
         QHash<int, QString> fileNames;  // For memoryoptimization later
-        in >> fileNames >> isCompressed >> *d->svgBuffers;
+        in >> fileNames >> isCompressed >> d->svgBuffers;
 #ifndef QT_NO_COMPRESS
         if (!isCompressed) {
-            for (auto it = d->svgBuffers->begin(), end = d->svgBuffers->end(); it != end; ++it)
-                it.value() = qCompress(it.value());
+            for (auto &svgBuf : d->svgBuffers)
+                svgBuf = qCompress(svgBuf);
         }
 #else
         if (isCompressed) {
             qWarning("QSvgIconEngine: Can not decompress SVG data");
-            d->svgBuffers->clear();
+            d->svgBuffers.clear();
         }
 #endif
         int hasAddedPixmaps;
         in >> hasAddedPixmaps;
         if (hasAddedPixmaps) {
-            d->addedPixmaps = new QHash<int, QPixmap>;
-            in >> *d->addedPixmaps;
+            in >> d->addedPixmaps;
         }
     }
     else {
@@ -320,7 +337,7 @@ bool QSvgIconEngine::read(QDataStream &in)
             data = qUncompress(data);
 #endif
             if (!data.isEmpty())
-                d->svgBuffers->insert(d->hashKey(QIcon::Normal, QIcon::Off), data);
+                d->svgBuffers.insert(d->hashKey(QIcon::Normal, QIcon::Off), data);
         }
         in >> num_entries;
         for (int i=0; i<num_entries; ++i) {
@@ -345,31 +362,28 @@ bool QSvgIconEngine::write(QDataStream &out) const
 #ifndef QT_NO_COMPRESS
         isCompressed = 1;
 #endif
-        QHash<int, QByteArray> svgBuffers;
-        if (d->svgBuffers)
-            svgBuffers = *d->svgBuffers;
-        for (auto it = d->svgFiles.cbegin(), end = d->svgFiles.cend(); it != end; ++it) {
+        QHash<int, QByteArray> svgBuffers = d->svgBuffers;
+        for (const auto &it : d->svgFiles.asKeyValueRange()) {
             QByteArray buf;
-            QFile f(it.value());
+            QFile f(it.second);
             if (f.open(QIODevice::ReadOnly))
                 buf = f.readAll();
 #ifndef QT_NO_COMPRESS
             buf = qCompress(buf);
 #endif
-            svgBuffers.insert(it.key(), buf);
+            svgBuffers.insert(it.first, buf);
         }
         out << d->svgFiles << isCompressed << svgBuffers;
-        if (d->addedPixmaps)
-            out << (int)1 << *d->addedPixmaps;
+        if (d->addedPixmaps.isEmpty())
+            out << 0;
         else
-            out << (int)0;
+            out << 1 << d->addedPixmaps;
     }
     else {
-        QByteArray buf;
-        if (d->svgBuffers)
-            buf = d->svgBuffers->value(d->hashKey(QIcon::Normal, QIcon::Off));
+        const auto key = d->hashKey(QIcon::Normal, QIcon::Off);
+        QByteArray buf = d->svgBuffers.value(key);
         if (buf.isEmpty()) {
-            QString svgFile = d->svgFiles.value(d->hashKey(QIcon::Normal, QIcon::Off));
+            QString svgFile = d->svgFiles.value(key);
             if (!svgFile.isEmpty()) {
                 QFile f(svgFile);
                 if (f.open(QIODevice::ReadOnly))
@@ -384,14 +398,6 @@ bool QSvgIconEngine::write(QDataStream &out) const
         out << (int)0;
     }
     return true;
-}
-
-void QSvgIconEngine::virtual_hook(int id, void *data)
-{
-    if (id == QIconEngine::IsNullHook) {
-        *reinterpret_cast<bool*>(data) = d->svgFiles.isEmpty() && !d->addedPixmaps && (!d->svgBuffers || d->svgBuffers->isEmpty());
-    }
-    QIconEngine::virtual_hook(id, data);
 }
 
 QT_END_NAMESPACE

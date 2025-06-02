@@ -2,11 +2,12 @@
     "repos": [
         {
             "name": "Vulkan-Headers",
+            "api": "vulkan",
             "url": "https://github.com/KhronosGroup/Vulkan-Headers.git",
             "sub_dir": "Vulkan-Headers",
             "build_dir": "Vulkan-Headers/build",
             "install_dir": "Vulkan-Headers/build/install",
-            "commit": "v1.3.262"
+            "commit": "v1.3.275"
         },
         {
             "name": "googletest",
@@ -15,7 +16,7 @@
             "build_dir": "googletest",
             "install_dir": "googletest",
             "build_step": "skip",
-            "commit": "ec4fed93217bc2830959bb8e86798c1d86956949",
+            "commit": "v1.14.0",
             "optional": [
                 "tests"
             ]

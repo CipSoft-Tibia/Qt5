@@ -1,16 +1,29 @@
-// Copyright 2020 The Dawn Authors
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_DAWN_NATIVE_SUBRESOURCE_H_
 #define SRC_DAWN_NATIVE_SUBRESOURCE_H_
@@ -32,15 +45,16 @@ enum class Aspect : uint8_t {
     // Aspects used to select individual planes in a multi-planar format.
     Plane0 = 0x8,
     Plane1 = 0x10,
+    Plane2 = 0x20,
 
     // An aspect for that represents the combination of both the depth and stencil aspects. It
     // can be ignored outside of the Vulkan backend.
-    CombinedDepthStencil = 0x20,
+    CombinedDepthStencil = 0x40,
 };
 
 template <>
 struct EnumBitmaskSize<Aspect> {
-    static constexpr unsigned value = 6;
+    static constexpr unsigned value = 7;
 };
 
 // Convert the TextureAspect to an Aspect mask for the format. ASSERTs if the aspect
@@ -60,6 +74,9 @@ Aspect SelectFormatAspects(const Format& format, wgpu::TextureAspect aspect);
 // Convert TextureAspect to the aspect which corresponds to the view format. This
 // special cases per plane view formats before calling ConvertAspect.
 Aspect ConvertViewAspect(const Format& format, wgpu::TextureAspect aspect);
+
+// Return aspect which corresponds to a plane.
+Aspect GetPlaneAspect(const Format& format, uint32_t planeIndex);
 
 // Helper struct to make it clear that what the parameters of a range mean.
 template <typename T>
@@ -100,13 +117,9 @@ static constexpr uint32_t kMaxPlanesPerFormat = 3;
 
 }  // namespace dawn::native
 
-namespace dawn {
-
 template <>
-struct IsDawnBitmask<dawn::native::Aspect> {
+struct wgpu::IsWGPUBitmask<dawn::native::Aspect> {
     static constexpr bool enable = true;
 };
-
-}  // namespace dawn
 
 #endif  // SRC_DAWN_NATIVE_SUBRESOURCE_H_

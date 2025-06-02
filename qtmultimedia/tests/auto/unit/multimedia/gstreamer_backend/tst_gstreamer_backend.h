@@ -6,8 +6,8 @@
 
 #include <QtTest/QtTest>
 
-#include <QtQGstreamerMediaPluginImpl/private/qgstreamerintegration_p.h>
-#include <QtQGstreamerMediaPluginImpl/private/qgst_handle_types_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgstreamerintegration_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgst_handle_types_p.h>
 
 QT_USE_NAMESPACE
 
@@ -32,6 +32,8 @@ private slots:
     void metadata_taglistToMetaData_extractsDuration();
     void metadata_taglistToMetaData_extractsLanguage();
     void metadata_taglistToMetaData_extractsLanguage_data();
+    void metadata_taglistToMetaData_extractsDate();
+    void metadata_taglistToMetaData_extractsDate_data();
 
     void metadata_capsToMetaData();
     void metadata_capsToMetaData_data();
@@ -46,6 +48,13 @@ private slots:
 
     void qDebug_GstPadDirection();
     void qDebug_GstStreamStatusType();
+
+    void QGstStructureView_parseCameraFormat();
+
+    void QGstDiscoverer_discoverMedia();
+    void QGstDiscoverer_discoverMedia_data();
+
+    void QGstDiscoverer_discoverMedia_withRotation();
 
 private:
     QGstreamerIntegration integration;

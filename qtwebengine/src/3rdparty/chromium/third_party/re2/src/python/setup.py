@@ -52,8 +52,21 @@ class BuildExt(setuptools.command.build_ext.build_ext):
     os.environ['PYTHON_BIN_PATH'] = sys.executable
 
     cmd = ['bazel', 'build']
-    if 'BAZEL_CPU' in os.environ:
-      cmd.append(f'--cpu={os.environ["BAZEL_CPU"].lower()}')
+    try:
+      cpu = os.environ['BAZEL_CPU']
+      cmd.append(f'--cpu={cpu}')
+      cmd.append(f'--platforms=//python:{cpu}')
+      if cpu == 'x64_x86_windows':
+        # Register the local 32-bit C++ toolchain with highest priority.
+        # (This is likely to break in some release of Bazel after 7.0.0,
+        # but this special case can hopefully be entirely removed then.)
+        cmd.append(f'--extra_toolchains=@local_config_cc//:cc-toolchain-{cpu}')
+    except KeyError:
+      pass
+    # Register the local Python toolchain with highest priority.
+    cmd.append('--extra_toolchains=@local_config_python//:py_toolchain')
+    # Print debug information during toolchain resolution.
+    cmd.append('--toolchain_resolution_debug=.*')
     cmd += ['--compilation_mode=opt', '--', ':all']
     self.spawn(cmd)
 
@@ -64,6 +77,15 @@ class BuildExt(setuptools.command.build_ext.build_ext):
 
     cmd = ['bazel', 'clean', '--expunge']
     self.spawn(cmd)
+
+
+def options():
+  bdist_wheel = {}
+  try:
+    bdist_wheel['plat_name'] = os.environ['PLAT_NAME']
+  except KeyError:
+    pass
+  return {'bdist_wheel': bdist_wheel}
 
 
 def include_dirs():
@@ -100,6 +122,7 @@ setuptools.setup(
         'Programming Language :: C++',
         'Programming Language :: Python :: 3.8',
     ],
+    options=options(),
     cmdclass={'build_ext': BuildExt},
     python_requires='~=3.8',
 )

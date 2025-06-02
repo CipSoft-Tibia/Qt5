@@ -139,7 +139,7 @@ private slots:
         {
             const QString line(s->readLine());
 
-            if (line.startsWith("Content-Length:"))
+            if (line.startsWith("Content-Length:", Qt::CaseInsensitive))
                 bodyLength = line.mid(15).toInt();
 
             if (isBody)

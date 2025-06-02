@@ -130,6 +130,9 @@
     per-function basis.
 
     For iterating over the items, see \l {Iterating over Containers}.
+    For using QList with functions from \c {<algorithm>} header, such as
+    \c {std::sort()}, \c {std::reverse()}, and \c {std::count_if()},
+    see \l {Qt containers and std algorithms}.
 
     In addition to QList, Qt also provides QVarLengthArray, a very
     low-level class with little functionality that is optimized for
@@ -247,6 +250,31 @@
     \sa resize()
 */
 
+/*! \fn template <typename T> QList<T>::QList(qsizetype size, Qt::Initialization)
+    \since 6.8
+
+    Constructs a list with an initial size of \a size elements.
+
+    QList will make an attempt at \b{not initializing} the elements.
+
+//! [qlist-uninitialized-strategy]
+    Specifically:
+
+    \list
+
+    \li if \c{T} has a constructor that accepts \c{Qt::Uninitialized},
+    that constructor will be used to initialize the elements;
+
+    \li otherwise, each element is default constructed. For
+    trivially constructible types (such as \c{int}, \c{float}, etc.)
+    this is equivalent to not initializing them.
+
+    \endlist
+//! [qlist-uninitialized-strategy]
+
+    \sa resizeForOverwrite()
+*/
+
 /*! \fn template <typename T> QList<T>::QList(qsizetype size, parameter_type value)
 
     Constructs a list with an initial size of \a size elements.
@@ -314,9 +342,7 @@
 
 /*! \fn template <typename T> void QList<T>::swap(QList<T> &other)
     \since 4.8
-
-    Swaps list \a other with this list. This operation is very fast and
-    never fails.
+    \memberswap{list}
 */
 
 /*! \fn template <typename T> void QList<T>::swapItemsAt(qsizetype i, qsizetype j)
@@ -403,12 +429,7 @@
 /*!
     \fn template <typename T> size_t qHash(const QList<T> &key, size_t seed = 0)
     \since 5.6
-    \relates QList
-
-    Returns the hash value for \a key,
-    using \a seed to seed the calculation.
-
-    This function requires qHash() to be overloaded for the value type \c T.
+    \qhasholdT{QList}{T}
 */
 
 /*! \fn template <typename T> qsizetype QList<T>::size() const
@@ -442,6 +463,17 @@
     preserving the capacity.
 
     \sa size()
+*/
+
+/*! \fn template <typename T> void QList<T>::resizeForOverwrite(qsizetype size)
+    \since 6.8
+
+    Sets the size of the list to \a size. If \a size is less than the
+    current size, elements are removed from the end. If \a size is
+    greater than the current size, elements are added to the end; QList
+    will make an attempt at \b{not initializing} these new elements.
+
+    \include qlist.qdoc qlist-uninitialized-strategy
 */
 
 /*! \fn template <typename T> qsizetype QList<T>::capacity() const
@@ -1291,6 +1323,15 @@
     This function is provided for STL compatibility. It is equivalent
     to isEmpty(), returning \c true if the list is empty; otherwise
     returns \c false.
+*/
+
+/*! \fn template <typename T> qsizetype QList<T>::max_size() const
+    \fn template <typename T> qsizetype QList<T>::maxSize()
+    \since 6.8
+
+    It returns the maximum number of elements that the list can
+    theoretically hold. In practice, the number can be much smaller,
+    limited by the amount of memory available to the system.
 */
 
 /*! \fn template <typename T> QList<T> &QList<T>::operator+=(const QList<T> &other)

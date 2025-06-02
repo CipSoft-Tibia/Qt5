@@ -4,7 +4,7 @@
 
 import sys
 
-from crossbench.cli import CrossBenchCLI
+from crossbench.cli.cli import CrossBenchCLI
 
 
 def crossbench(argv=None):

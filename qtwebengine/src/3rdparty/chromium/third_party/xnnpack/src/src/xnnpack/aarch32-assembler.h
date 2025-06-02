@@ -286,6 +286,7 @@ struct ConsecutiveRegisterList {
   explicit ConsecutiveRegisterList(RegType s, int len)
       : start(s),
         length(len) {}
+  // NOLINTNEXTLINE(google-explicit-constructor)
   ConsecutiveRegisterList(RegType start)
       : ConsecutiveRegisterList(start, start) {}
 
@@ -330,6 +331,7 @@ static inline DRegisterList operator-(const DRegister lhs, const DRegister rhs) 
 }
 
 struct QRegisterList {
+  // NOLINTNEXTLINE(google-explicit-constructor)
   QRegisterList(QRegister s) : start(s), length(1) {}
   QRegisterList(QRegister s, QRegister end) : start(s), length(end.code - s.code + 1) {}
   // Explicit conversion to DRegisterList.
@@ -373,8 +375,8 @@ class MemOperand {
   AddressingMode mode() const { return mode_; }
 
   // These are bits used for encoding, named based on the encoding description.
-  int32_t u() { return offset_ >= 0; }
-  int32_t p() { return mode_ != AddressingMode::kPostIndexed; }
+  int32_t u() { return static_cast<int32_t>(offset_ >= 0); }
+  int32_t p() { return static_cast<int32_t>(mode_ != AddressingMode::kPostIndexed); }
   // Note, kPostIndexed will write back, but doesn't need to set bit w.
   int32_t w() { return 0; }
 

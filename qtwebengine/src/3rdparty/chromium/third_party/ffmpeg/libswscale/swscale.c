@@ -26,6 +26,7 @@
 #include "libavutil/bswap.h"
 #include "libavutil/common.h"
 #include "libavutil/cpu.h"
+#include "libavutil/emms.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/pixdesc.h"
@@ -1015,7 +1016,7 @@ static int scale_internal(SwsContext *c,
     reset_ptr(src2, c->srcFormat);
     reset_ptr((void*)dst2, c->dstFormat);
 
-    if (c->convert_unscaled) {
+    if (c->convert_unscaled && !c->lumConvertRange && !c->chrConvertRange) {
         int offset  = srcSliceY_internal;
         int slice_h = srcSliceH;
 

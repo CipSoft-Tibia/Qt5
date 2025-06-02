@@ -6,10 +6,13 @@
 
 #include <QtCore/qglobal.h>
 
-#if QT_CONFIG(thread)
+#if !QT_CONFIG(thread)
+#include <memory>
+#endif
 
 QT_BEGIN_NAMESPACE
 
+#if QT_CONFIG(thread)
 
 class Q_CORE_EXPORT QThreadStorageData
 {
@@ -114,24 +117,16 @@ public:
     { qThreadStorage_setLocalData(d, &t); }
 };
 
-QT_END_NAMESPACE
-
 #else // !QT_CONFIG(thread)
 
-#include <QtCore/qscopedpointer.h>
-
-#include <type_traits>
-
-QT_BEGIN_NAMESPACE
-
 template <typename T, typename U>
-inline bool qThreadStorage_hasLocalData(const QScopedPointer<T, U> &data)
+inline bool qThreadStorage_hasLocalData(const std::unique_ptr<T, U> &data)
 {
     return !!data;
 }
 
 template <typename T, typename U>
-inline bool qThreadStorage_hasLocalData(const QScopedPointer<T*, U> &data)
+inline bool qThreadStorage_hasLocalData(const std::unique_ptr<T*, U> &data)
 {
     return !!data ? *data != nullptr : false;
 }
@@ -155,14 +150,14 @@ class QThreadStorage
 private:
     struct ScopedPointerThreadStorageDeleter
     {
-        static inline void cleanup(T *t)
+        void operator()(T *t) const noexcept
         {
             if (t == nullptr)
                 return;
             qThreadStorage_deleteLocalData(t);
         }
     };
-    QScopedPointer<T, ScopedPointerThreadStorageDeleter> data;
+    std::unique_ptr<T, ScopedPointerThreadStorageDeleter> data;
 
 public:
     QThreadStorage() = default;
@@ -193,8 +188,8 @@ public:
     }
 };
 
-QT_END_NAMESPACE
-
 #endif // QT_CONFIG(thread)
+
+QT_END_NAMESPACE
 
 #endif // QTHREADSTORAGE_H

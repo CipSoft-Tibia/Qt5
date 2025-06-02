@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/wgsl/ast/transform/expand_compound_assignment.h"
 
@@ -35,8 +48,8 @@ namespace tint::ast::transform {
 
 namespace {
 
-bool ShouldRun(const Program* program) {
-    for (auto* node : program->ASTNodes().Objects()) {
+bool ShouldRun(const Program& program) {
+    for (auto* node : program.ASTNodes().Objects()) {
         if (node->IsAnyOf<CompoundAssignmentStatement, IncrementDecrementStatement>()) {
             return true;
         }
@@ -72,8 +85,10 @@ struct ExpandCompoundAssignment::State {
 
         // Helper function to create a variable that is a pointer to `expr`.
         auto hoist_pointer_to = [&](const Expression* expr) {
+            // Lhs may already be a pointer, in which case we don't take it's address
+            bool is_pointer = ctx.src->Sem().GetVal(expr)->Type()->Is<core::type::Pointer>();
             auto name = b.Sym();
-            auto* ptr = b.AddressOf(ctx.Clone(expr));
+            auto* ptr = is_pointer ? ctx.Clone(expr) : b.AddressOf(ctx.Clone(expr));
             auto* decl = b.Decl(b.Let(name, ptr));
             hoist_to_decl_before.InsertBefore(ctx.src->Sem().Get(stmt), decl);
             return name;
@@ -90,7 +105,7 @@ struct ExpandCompoundAssignment::State {
         // Helper function that returns `true` if the type of `expr` is a vector.
         auto is_vec = [&](const Expression* expr) {
             if (auto* val_expr = ctx.src->Sem().GetVal(expr)) {
-                return val_expr->Type()->UnwrapRef()->Is<core::type::Vector>();
+                return val_expr->Type()->UnwrapPtrOrRef()->Is<core::type::Vector>();
             }
             return false;
         };
@@ -103,9 +118,11 @@ struct ExpandCompoundAssignment::State {
         auto* member_accessor = lhs->As<MemberAccessorExpression>();
         if (lhs->Is<IdentifierExpression>() ||
             (member_accessor && member_accessor->object->Is<IdentifierExpression>())) {
-            // This is the simple case with no side effects, so we can just use the
-            // original LHS expression directly.
-            // Before:
+            // TODO(crbug.com/tint/2115): This branch should also handle (recursive) deref'd
+            // identifiers (e.g. (*p).bar += rhs)).
+
+            // This is the simple case with no side effects, so we can just use
+            // the original LHS expression directly. Before:
             //     foo.bar += rhs;
             // After:
             //     foo.bar = foo.bar + rhs;
@@ -166,7 +183,7 @@ ExpandCompoundAssignment::ExpandCompoundAssignment() = default;
 
 ExpandCompoundAssignment::~ExpandCompoundAssignment() = default;
 
-Transform::ApplyResult ExpandCompoundAssignment::Apply(const Program* src,
+Transform::ApplyResult ExpandCompoundAssignment::Apply(const Program& src,
                                                        const DataMap&,
                                                        DataMap&) const {
     if (!ShouldRun(src)) {
@@ -174,9 +191,9 @@ Transform::ApplyResult ExpandCompoundAssignment::Apply(const Program* src,
     }
 
     ProgramBuilder b;
-    program::CloneContext ctx{&b, src, /* auto_clone_symbols */ true};
+    program::CloneContext ctx{&b, &src, /* auto_clone_symbols */ true};
     State state(ctx);
-    for (auto* node : src->ASTNodes().Objects()) {
+    for (auto* node : src.ASTNodes().Objects()) {
         if (auto* assign = node->As<CompoundAssignmentStatement>()) {
             state.Expand(assign, assign->lhs, ctx.Clone(assign->rhs), assign->op);
         } else if (auto* inc_dec = node->As<IncrementDecrementStatement>()) {

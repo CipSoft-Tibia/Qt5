@@ -20,6 +20,8 @@ QT_IMPL_METATYPE_EXTERN(QStorageInfo)
     \ingroup io
     \ingroup shared
 
+    \compares equality
+
     Allows retrieving information about the volume's space, its mount point,
     label, and filesystem name.
 
@@ -118,9 +120,7 @@ QStorageInfo &QStorageInfo::operator=(const QStorageInfo &other)
 
 /*!
     \fn void QStorageInfo::swap(QStorageInfo &other)
-
-    Swaps this volume info with \a other. This function is very fast and
-    never fails.
+    \memberswap{volume info}
 */
 
 /*!
@@ -386,21 +386,28 @@ QStorageInfo QStorageInfo::root()
 }
 
 /*!
-    \fn bool QStorageInfo::operator==(const QStorageInfo &first, const QStorageInfo &second)
+    \fn bool QStorageInfo::operator==(const QStorageInfo &lhs, const QStorageInfo &rhs)
 
-    Returns true if the \a first QStorageInfo object refers to the same drive or volume
-    as the \a second; otherwise it returns false.
+    Returns \c true if the QStorageInfo object \a lhs refers to the same drive or
+    volume as the QStorageInfo object \a rhs; otherwise it returns \c false.
 
     Note that the result of comparing two invalid QStorageInfo objects is always
     positive.
 */
 
 /*!
-    \fn bool QStorageInfo::operator!=(const QStorageInfo &first, const QStorageInfo &second)
+    \fn bool QStorageInfo::operator!=(const QStorageInfo &lhs, const QStorageInfo &rhs)
 
-    Returns true if the \a first QStorageInfo object refers to a different drive or
-    volume than the \a second; otherwise returns false.
+    Returns \c true if the QStorageInfo object \a lhs refers to a different drive or
+    volume than the QStorageInfo object \a rhs; otherwise returns \c false.
 */
+
+bool comparesEqual(const QStorageInfo &lhs, const QStorageInfo &rhs) noexcept
+{
+    if (lhs.d == rhs.d)
+        return true;
+    return lhs.d->device == rhs.d->device && lhs.d->rootPath == rhs.d->rootPath;
+}
 
 #ifndef QT_NO_DEBUG_STREAM
 QDebug operator<<(QDebug debug, const QStorageInfo &s)

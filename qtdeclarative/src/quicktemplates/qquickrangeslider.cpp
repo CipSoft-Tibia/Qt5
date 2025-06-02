@@ -13,7 +13,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype RangeSlider
     \inherits Control
-//!     \instantiates QQuickRangeSlider
+//!     \nativetype QQuickRangeSlider
     \inqmlmodule QtQuick.Controls
     \since 5.7
     \ingroup qtquickcontrols-input
@@ -618,7 +618,7 @@ QQuickRangeSlider::QQuickRangeSlider(QQuickItem *parent)
     Q_D(QQuickRangeSlider);
     d->first = new QQuickRangeSliderNode(0.0, this);
     d->second = new QQuickRangeSliderNode(1.0, this);
-    d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
+    d->setSizePolicy(QLayoutPolicy::Expanding, QLayoutPolicy::Fixed);
 
     setFlag(QQuickItem::ItemIsFocusScope);
 #ifdef Q_OS_MACOS
@@ -708,7 +708,7 @@ void QQuickRangeSlider::setTo(qreal to)
 
 /*!
     \since QtQuick.Controls 2.5 (Qt 5.12)
-    \qmlproperty qreal QtQuick.Controls::RangeSlider::touchDragThreshold
+    \qmlproperty real QtQuick.Controls::RangeSlider::touchDragThreshold
 
     This property holds the threshold (in logical pixels) at which a touch drag event will be initiated.
     The mouse drag threshold won't be affected.
@@ -981,9 +981,9 @@ void QQuickRangeSlider::setOrientation(Qt::Orientation orientation)
         return;
 
     if (orientation == Qt::Horizontal)
-        d->setSizePolicy(QLayoutPolicy::Preferred, QLayoutPolicy::Fixed);
+        d->setSizePolicy(QLayoutPolicy::Expanding, QLayoutPolicy::Fixed);
     else
-        d->setSizePolicy(QLayoutPolicy::Fixed, QLayoutPolicy::Preferred);
+        d->setSizePolicy(QLayoutPolicy::Fixed, QLayoutPolicy::Expanding);
 
     d->orientation = orientation;
     emit orientationChanged();

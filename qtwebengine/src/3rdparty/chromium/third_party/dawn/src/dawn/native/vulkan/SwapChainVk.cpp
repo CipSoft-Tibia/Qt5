@@ -1,16 +1,29 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2018 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/vulkan/SwapChainVk.h"
 
@@ -19,12 +32,14 @@
 #include <utility>
 
 #include "dawn/common/Compiler.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/Instance.h"
 #include "dawn/native/Surface.h"
 #include "dawn/native/vulkan/BackendVk.h"
 #include "dawn/native/vulkan/DeviceVk.h"
 #include "dawn/native/vulkan/FencedDeleter.h"
 #include "dawn/native/vulkan/PhysicalDeviceVk.h"
+#include "dawn/native/vulkan/QueueVk.h"
 #include "dawn/native/vulkan/TextureVk.h"
 #include "dawn/native/vulkan/VulkanError.h"
 
@@ -88,7 +103,7 @@ ResultOrError<VkSurfaceKHR> CreateVulkanSurface(const PhysicalDevice* physicalDe
 #if DAWN_PLATFORM_IS(ANDROID)
         case Surface::Type::AndroidWindow: {
             if (info.HasExt(InstanceExt::AndroidSurface)) {
-                ASSERT(surface->GetAndroidNativeWindow() != nullptr);
+                DAWN_ASSERT(surface->GetAndroidNativeWindow() != nullptr);
 
                 VkAndroidSurfaceCreateInfoKHR createInfo;
                 createInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
@@ -150,7 +165,7 @@ ResultOrError<VkSurfaceKHR> CreateVulkanSurface(const PhysicalDevice* physicalDe
             // See https://xcb.freedesktop.org/MixingCalls/ for more information about
             // interoperability between Xlib and XCB
             const X11Functions* x11 = physicalDevice->GetInstance()->GetOrLoadX11Functions();
-            ASSERT(x11 != nullptr);
+            DAWN_ASSERT(x11 != nullptr);
 
             if (info.HasExt(InstanceExt::XcbSurface) && x11->IsX11XcbLoaded()) {
                 VkXcbSurfaceCreateInfoKHR createInfo;
@@ -188,7 +203,7 @@ VkPresentModeKHR ToVulkanPresentMode(wgpu::PresentMode mode) {
         case wgpu::PresentMode::Mailbox:
             return VK_PRESENT_MODE_MAILBOX_KHR;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 uint32_t MinImageCountForPresentMode(VkPresentModeKHR mode) {
@@ -201,7 +216,7 @@ uint32_t MinImageCountForPresentMode(VkPresentModeKHR mode) {
         default:
             break;
     }
-    UNREACHABLE();
+    DAWN_UNREACHABLE();
 }
 
 }  // anonymous namespace
@@ -406,7 +421,7 @@ ResultOrError<SwapChain::Config> SwapChain::ChooseConfig(
             modeIndex++;
         }
 
-        ASSERT(modeIndex < kPresentModeFallbacks.size());
+        DAWN_ASSERT(modeIndex < kPresentModeFallbacks.size());
         config.presentMode = kPresentModeFallbacks[modeIndex];
     }
 
@@ -479,8 +494,8 @@ ResultOrError<SwapChain::Config> SwapChain::ChooseConfig(
 
     // Choose the number of images for the swapchain= and clamp it to the min and max from the
     // surface capabilities. maxImageCount = 0 means there is no limit.
-    ASSERT(surfaceInfo.capabilities.maxImageCount == 0 ||
-           surfaceInfo.capabilities.minImageCount <= surfaceInfo.capabilities.maxImageCount);
+    DAWN_ASSERT(surfaceInfo.capabilities.maxImageCount == 0 ||
+                surfaceInfo.capabilities.minImageCount <= surfaceInfo.capabilities.maxImageCount);
     uint32_t targetCount = MinImageCountForPresentMode(config.presentMode);
 
     targetCount = std::max(targetCount, surfaceInfo.capabilities.minImageCount);
@@ -535,15 +550,17 @@ ResultOrError<SwapChain::Config> SwapChain::ChooseConfig(
 MaybeError SwapChain::PresentImpl() {
     Device* device = ToBackend(GetDevice());
 
-    CommandRecordingContext* recordingContext = device->GetPendingRecordingContext();
+    Queue* queue = ToBackend(device->GetQueue());
+    CommandRecordingContext* recordingContext = queue->GetPendingRecordingContext();
 
     if (mConfig.needsBlit) {
         // TODO(dawn:269): ditto same as present below: eagerly transition the blit texture to
         // CopySrc.
         mBlitTexture->TransitionUsageNow(recordingContext, wgpu::TextureUsage::CopySrc,
+                                         wgpu::ShaderStage::None,
                                          mBlitTexture->GetAllSubresources());
         mTexture->TransitionUsageNow(recordingContext, wgpu::TextureUsage::CopyDst,
-                                     mTexture->GetAllSubresources());
+                                     wgpu::ShaderStage::None, mTexture->GetAllSubresources());
 
         VkImageBlit region;
         region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -551,13 +568,13 @@ MaybeError SwapChain::PresentImpl() {
         region.srcSubresource.baseArrayLayer = 0;
         region.srcSubresource.layerCount = 1;
         region.srcOffsets[0] = {0, 0, 0};
-        region.srcOffsets[1] = {static_cast<int32_t>(mBlitTexture->GetWidth()),
-                                static_cast<int32_t>(mBlitTexture->GetHeight()), 1};
+        region.srcOffsets[1] = {static_cast<int32_t>(mBlitTexture->GetWidth(Aspect::Color)),
+                                static_cast<int32_t>(mBlitTexture->GetHeight(Aspect::Color)), 1};
 
         region.dstSubresource = region.srcSubresource;
         region.dstOffsets[0] = {0, 0, 0};
-        region.dstOffsets[1] = {static_cast<int32_t>(mTexture->GetWidth()),
-                                static_cast<int32_t>(mTexture->GetHeight()), 1};
+        region.dstOffsets[1] = {static_cast<int32_t>(mTexture->GetWidth(Aspect::Color)),
+                                static_cast<int32_t>(mTexture->GetHeight(Aspect::Color)), 1};
 
         device->fn.CmdBlitImage(recordingContext->commandBuffer, mBlitTexture->GetHandle(),
                                 mBlitTexture->GetCurrentLayoutForSwapChain(), mTexture->GetHandle(),
@@ -574,14 +591,14 @@ MaybeError SwapChain::PresentImpl() {
     // TODO(crbug.com/dawn/269): Remove the need for this by eagerly transitioning the
     // presentable texture to present at the end of submits that use them and ideally even
     // folding that in the free layout transition at the end of render passes.
-    mTexture->TransitionUsageNow(recordingContext, kPresentTextureUsage,
+    mTexture->TransitionUsageNow(recordingContext, kPresentTextureUsage, wgpu::ShaderStage::None,
                                  mTexture->GetAllSubresources());
 
     // Use a semaphore to make sure all rendering has finished before presenting.
     VkSemaphore currentSemaphore = mSwapChainSemaphores[mLastImageIndex];
     recordingContext->signalSemaphores.push_back(currentSemaphore);
 
-    DAWN_TRY(device->SubmitPendingCommands());
+    DAWN_TRY(queue->SubmitPendingCommands());
 
     VkPresentInfoKHR presentInfo;
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -597,8 +614,8 @@ MaybeError SwapChain::PresentImpl() {
     mTexture->APIDestroy();
     mTexture = nullptr;
 
-    VkResult result =
-        VkResult::WrapUnsafe(device->fn.QueuePresentKHR(device->GetVkQueue(), &presentInfo));
+    VkResult result = VkResult::WrapUnsafe(
+        device->fn.QueuePresentKHR(ToBackend(device->GetQueue())->GetVkQueue(), &presentInfo));
 
     switch (result) {
         case VK_SUCCESS:
@@ -646,7 +663,9 @@ ResultOrError<Ref<TextureBase>> SwapChain::GetCurrentTextureInternal(bool isReen
     if (result == VK_SUCCESS) {
         // TODO(crbug.com/dawn/269) put the semaphore on the texture so it is waited on when
         // used instead of directly on the recording context?
-        device->GetPendingRecordingContext()->waitSemaphores.push_back(semaphore);
+        ToBackend(device->GetQueue())
+            ->GetPendingRecordingContext()
+            ->waitSemaphores.push_back(semaphore);
     } else {
         // The semaphore wasn't actually used (? this is unclear in the spec). Delete it when
         // we get a chance.
@@ -687,7 +706,7 @@ ResultOrError<Ref<TextureBase>> SwapChain::GetCurrentTextureInternal(bool isReen
     textureDesc.usage = mConfig.wgpuUsage;
 
     VkImage currentImage = mSwapChainImages[mLastImageIndex];
-    mTexture = Texture::CreateForSwapChain(device, &textureDesc, currentImage);
+    mTexture = Texture::CreateForSwapChain(device, Unpack(&textureDesc), currentImage);
 
     // In the happy path we can use the swapchain image directly.
     if (!mConfig.needsBlit) {
@@ -697,7 +716,8 @@ ResultOrError<Ref<TextureBase>> SwapChain::GetCurrentTextureInternal(bool isReen
     // The blit texture always perfectly matches what the user requested for the swapchain.
     // We need to add the Vulkan TRANSFER_SRC flag for the vkCmdBlitImage call.
     TextureDescriptor desc = GetSwapChainBaseTextureDescriptor(this);
-    DAWN_TRY_ASSIGN(mBlitTexture, Texture::Create(device, &desc, VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
+    DAWN_TRY_ASSIGN(mBlitTexture,
+                    Texture::Create(device, Unpack(&desc), VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
     return mBlitTexture;
 }
 

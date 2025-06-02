@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -27,6 +28,7 @@
 #include "absl/debugging/symbolize.h"
 #include "absl/numeric/int128.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/has_absl_stringify.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -84,20 +86,8 @@ absl::string_view GetTypeName() {
 #endif
 }
 
-// Used only in the predicate `HasAbslStringify`.
-struct DummySink {};
-
-template <typename T, typename = void>
-struct HasAbslStringify : std::false_type {};
-
 template <typename T>
-struct HasAbslStringify<
-    T, std::enable_if_t<std::is_void_v<decltype(AbslStringify(
-           std::declval<DummySink&>(), std::declval<const T&>()))>>>
-    : std::true_type {};
-
-template <typename T>
-inline constexpr bool has_absl_stringify_v = HasAbslStringify<T>::value;
+inline constexpr bool has_absl_stringify_v = absl::HasAbslStringify<T>::value;
 
 using RawSink = absl::FormatRawSink;
 
@@ -269,7 +259,7 @@ struct OptionalPrinter {
           // The source code version will work as long as the expression is
           // unambiguous.
           if constexpr (is_pointer) {
-            std::string_view maker =
+            absl::string_view maker =
                 is_unique_ptr_v<value_type>   ? "std::make_unique"
                 : is_shared_ptr_v<value_type> ? "std::make_shared"
                                               : "<MAKE_SMART_POINTER>";

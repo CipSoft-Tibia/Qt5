@@ -12,7 +12,7 @@
 #include "base/functional/bind.h"
 #include "net/base/features.h"
 #include "net/base/host_port_pair.h"
-#include "net/base/proxy_server.h"
+#include "net/base/proxy_chain.h"
 #include "net/dns/public/secure_dns_policy.h"
 #include "net/http/http_proxy_connect_job.h"
 #include "net/log/net_log_event_type.h"
@@ -60,17 +60,15 @@ OnHostResolutionCallbackResult OnHostResolution(
 }  // namespace
 
 ClientSocketPool::SocketParams::SocketParams(
-    std::unique_ptr<SSLConfig> ssl_config_for_origin,
-    std::unique_ptr<SSLConfig> ssl_config_for_proxy)
-    : ssl_config_for_origin_(std::move(ssl_config_for_origin)),
-      ssl_config_for_proxy_(std::move(ssl_config_for_proxy)) {}
+    std::unique_ptr<SSLConfig> ssl_config_for_origin)
+    : ssl_config_for_origin_(std::move(ssl_config_for_origin)) {}
 
 ClientSocketPool::SocketParams::~SocketParams() = default;
 
 scoped_refptr<ClientSocketPool::SocketParams>
 ClientSocketPool::SocketParams::CreateForHttpForTesting() {
-  return base::MakeRefCounted<SocketParams>(nullptr /* ssl_config_for_origin */,
-                                            nullptr /* ssl_config_for_proxy */);
+  return base::MakeRefCounted<SocketParams>(
+      /*ssl_config_for_origin=*/nullptr);
 }
 
 ClientSocketPool::GroupId::GroupId()
@@ -80,14 +78,16 @@ ClientSocketPool::GroupId::GroupId(
     url::SchemeHostPort destination,
     PrivacyMode privacy_mode,
     NetworkAnonymizationKey network_anonymization_key,
-    SecureDnsPolicy secure_dns_policy)
+    SecureDnsPolicy secure_dns_policy,
+    bool disable_cert_network_fetches)
     : destination_(std::move(destination)),
       privacy_mode_(privacy_mode),
       network_anonymization_key_(
           NetworkAnonymizationKey::IsPartitioningEnabled()
               ? std::move(network_anonymization_key)
               : NetworkAnonymizationKey()),
-      secure_dns_policy_(secure_dns_policy) {
+      secure_dns_policy_(secure_dns_policy),
+      disable_cert_network_fetches_(disable_cert_network_fetches) {
   DCHECK(destination_.IsValid());
 
   // ClientSocketPool only expected to be used for HTTP/HTTPS/WS/WSS cases, and
@@ -129,6 +129,10 @@ std::string ClientSocketPool::GroupId::ToString() const {
       break;
   }
 
+  if (disable_cert_network_fetches_) {
+    result = "disable_cert_network_fetches/" + result;
+  }
+
   return result;
 }
 
@@ -163,15 +167,13 @@ void ClientSocketPool::NetLogTcpClientSocketPoolRequestedSocket(
 
 base::Value::Dict ClientSocketPool::NetLogGroupIdParams(
     const GroupId& group_id) {
-  base::Value::Dict event_params;
-  event_params.Set("group_id", group_id.ToString());
-  return event_params;
+  return base::Value::Dict().Set("group_id", group_id.ToString());
 }
 
 std::unique_ptr<ConnectJob> ClientSocketPool::CreateConnectJob(
     GroupId group_id,
     scoped_refptr<SocketParams> socket_params,
-    const ProxyServer& proxy_server,
+    const ProxyChain& proxy_chain,
     const absl::optional<NetworkTrafficAnnotationTag>& proxy_annotation_tag,
     RequestPriority request_priority,
     SocketTag socket_tag,
@@ -179,36 +181,45 @@ std::unique_ptr<ConnectJob> ClientSocketPool::CreateConnectJob(
   bool using_ssl = GURL::SchemeIsCryptographic(group_id.destination().scheme());
 
   // If applicable, set up a callback to handle checking for H2 IP pooling
-  // opportunities.
+  // opportunities. We don't perform H2 IP pooling to or through proxy servers,
+  // so ignore those cases.
   OnHostResolutionCallback resolution_callback;
-  if (using_ssl && proxy_server.is_direct()) {
+  if (using_ssl && proxy_chain.is_direct()) {
     resolution_callback = base::BindRepeating(
         &OnHostResolution, common_connect_job_params_->spdy_session_pool,
         // TODO(crbug.com/1206799): Pass along as SchemeHostPort.
         SpdySessionKey(HostPortPair::FromSchemeHostPort(group_id.destination()),
-                       proxy_server, group_id.privacy_mode(),
+                       proxy_chain, group_id.privacy_mode(),
                        SpdySessionKey::IsProxySession::kFalse, socket_tag,
-                       group_id.network_anonymization_key(),
-                       group_id.secure_dns_policy()),
-        is_for_websockets_);
-  } else if (proxy_server.is_https()) {
-    resolution_callback = base::BindRepeating(
-        &OnHostResolution, common_connect_job_params_->spdy_session_pool,
-        SpdySessionKey(proxy_server.host_port_pair(), ProxyServer::Direct(),
-                       group_id.privacy_mode(),
-                       SpdySessionKey::IsProxySession::kTrue, socket_tag,
                        group_id.network_anonymization_key(),
                        group_id.secure_dns_policy()),
         is_for_websockets_);
   }
 
+  // Force a CONNECT tunnel for websockets. If this is false, the connect job
+  // may still use a tunnel for other reasons.
+  bool force_tunnel = is_for_websockets_;
+
+  // Only offer HTTP/1.1 for WebSockets. Although RFC 8441 defines WebSockets
+  // over HTTP/2, a single WSS/HTTPS origin may support HTTP over HTTP/2
+  // without supporting WebSockets over HTTP/2. Offering HTTP/2 for a fresh
+  // connection would break such origins.
+  //
+  // However, still offer HTTP/1.1 rather than skipping ALPN entirely. While
+  // this will not change the application protocol (HTTP/1.1 is default), it
+  // provides hardening against cross-protocol attacks and allows for the False
+  // Start (RFC 7918) optimization.
+  ConnectJobFactory::AlpnMode alpn_mode =
+      is_for_websockets_ ? ConnectJobFactory::AlpnMode::kHttp11Only
+                         : ConnectJobFactory::AlpnMode::kHttpAll;
+
   return connect_job_factory_->CreateConnectJob(
-      group_id.destination(), proxy_server, proxy_annotation_tag,
-      socket_params->ssl_config_for_origin(),
-      socket_params->ssl_config_for_proxy(), is_for_websockets_,
+      group_id.destination(), proxy_chain, proxy_annotation_tag,
+      socket_params->ssl_config_for_origin(), alpn_mode, force_tunnel,
       group_id.privacy_mode(), resolution_callback, request_priority,
       socket_tag, group_id.network_anonymization_key(),
-      group_id.secure_dns_policy(), common_connect_job_params_, delegate);
+      group_id.secure_dns_policy(), group_id.disable_cert_network_fetches(),
+      common_connect_job_params_, delegate);
 }
 
 }  // namespace net

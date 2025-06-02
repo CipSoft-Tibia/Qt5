@@ -24,8 +24,10 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "formats.h"
 #include "internal.h"
 #include "framesync.h"
+#include "video.h"
 
 typedef struct Mapping {
     int input;

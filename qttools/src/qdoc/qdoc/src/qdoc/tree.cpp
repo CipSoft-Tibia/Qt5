@@ -35,6 +35,28 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
+  \class TargetRec
+  \brief A record of a linkable target within the documentation.
+*/
+
+/*!
+    \enum TargetRec::TargetType
+
+    A type of a linkable target record.
+
+    \value Unknown
+           Unknown/target not set.
+    \value Target
+           A location marked with a \\target command.
+    \value Keyword
+           A location marked with a \\keyword command.
+    \value Contents
+           A table of contents item (section title).
+    \value ContentsKeyword
+           A \\keyword tied to a section title.
+*/
+
+/*!
   Constructs a Tree. \a qdb is the pointer to the singleton
   qdoc database that is constructing the tree. This might not
   be necessary, and it might be removed later.
@@ -283,7 +305,7 @@ void Tree::resolveCppToQmlLinks()
             auto *qcn = static_cast<QmlTypeNode *>(child);
             auto *cn = const_cast<ClassNode *>(qcn->classNode());
             if (cn)
-                cn->setQmlElement(qcn);
+                cn->insertQmlNativeType(qcn);
         }
     }
 }
@@ -327,17 +349,11 @@ void Tree::resolveSince(Aggregate &aggregate)
 */
 void Tree::resolveEnumValueSince(EnumNode &en)
 {
-    auto findNextAtom = [](const Atom *a, Atom::AtomType t) {
-        while (a && a->type() != t)
-            a = a->next();
-        return a;
-    };
-
     const QStringList enumItems{en.doc().enumItemNames()};
     const Atom *atom = en.doc().body().firstAtom();
     if (!atom)
         return;
-    while ((atom = findNextAtom(atom, Atom::ListTagLeft))) {
+    while ((atom = atom->find(Atom::ListTagLeft))) {
         if (atom = atom->next(); !atom)
             break;
         if (auto val = atom->string(); enumItems.contains(val)) {
@@ -753,74 +769,153 @@ void Tree::insertTarget(const QString &name, const QString &title, TargetRec::Ta
 }
 
 /*!
+    \internal
+
+    \a root is the root node of the tree to resolve targets for. This function
+    traverses the tree starting from the root node and processes each child
+    node. If the child node is an aggregate node, this function is called
+    recursively on the child node.
  */
 void Tree::resolveTargets(Aggregate *root)
 {
     for (auto *child : root->childNodes()) {
-        if (child->isTextPageNode()) {
-            auto *node = static_cast<PageNode *>(child);
-            QString key = node->title();
-            if (!key.isEmpty()) {
-                if (key.contains(QChar(' ')))
-                    key = Utilities::asAsciiPrintable(key);
-                QList<PageNode *> nodes = m_pageNodesByTitle.values(key);
-                bool alreadyThere = false;
-                if (!nodes.empty()) {
-                    for (const auto &node_ : nodes) {
-                        if (node_->isExternalPage()) {
-                            if (node->name() == node_->name()) {
-                                alreadyThere = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (!alreadyThere)
-                    m_pageNodesByTitle.insert(key, node);
-            }
-        }
+        addToPageNodeByTitleMap(child);
+        populateTocSectionTargetMap(child);
+        addKeywordsToTargetMaps(child);
+        addTargetsToTargetMap(child);
 
-        if (child->doc().hasTableOfContents()) {
-            const QList<Atom *> &toc = child->doc().tableOfContents();
-            for (Atom *i : toc) {
-                QString ref = refForAtom(i);
-                QString title = Text::sectionHeading(i).toString();
-                if (!ref.isEmpty() && !title.isEmpty()) {
-                    QString key = Utilities::asAsciiPrintable(title);
-                    auto *target = new TargetRec(ref, TargetRec::Contents, child, 3);
-                    m_nodesByTargetRef.insert(key, target);
-                    m_nodesByTargetTitle.insert(title, target);
-                }
-            }
-        }
-        if (child->doc().hasKeywords()) {
-            const QList<Atom *> &keywords = child->doc().keywords();
-            for (Atom *i : keywords) {
-                QString ref = refForAtom(i);
-                QString title = i->string();
-                if (!ref.isEmpty() && !title.isEmpty()) {
-                    auto *target = new TargetRec(ref, TargetRec::Keyword, child, 1);
-                    m_nodesByTargetRef.insert(Utilities::asAsciiPrintable(title), target);
-                    m_nodesByTargetTitle.insert(title, target);
-                }
-            }
-        }
-        if (child->doc().hasTargets()) {
-            const QList<Atom *> &targets = child->doc().targets();
-            for (Atom *i : targets) {
-                QString ref = refForAtom(i);
-                QString title = i->string();
-                if (!ref.isEmpty() && !title.isEmpty()) {
-                    QString key = Utilities::asAsciiPrintable(title);
-                    auto *target = new TargetRec(ref, TargetRec::Target, child, 2);
-                    m_nodesByTargetRef.insert(key, target);
-                    m_nodesByTargetTitle.insert(title, target);
-                }
-            }
-        }
         if (child->isAggregate())
             resolveTargets(static_cast<Aggregate *>(child));
     }
+}
+
+/*!
+    \internal
+
+    Updates the target maps for targets associated with the given \a node.
+ */
+void Tree::addTargetsToTargetMap(Node *node) {
+    if (!node || !node->doc().hasTargets())
+        return;
+
+    for (Atom *i : std::as_const(node->doc().targets())) {
+        const QString ref = refForAtom(i);
+        const QString title = i->string();
+        if (!ref.isEmpty() && !title.isEmpty()) {
+            QString key = Utilities::asAsciiPrintable(title);
+            auto *target = new TargetRec(ref, TargetRec::Target, node, 2);
+            m_nodesByTargetRef.insert(key, target);
+            m_nodesByTargetTitle.insert(title, target);
+        }
+    }
+}
+
+/*
+    If atom \a a is immediately followed by a
+    section title (\section1..\section4 command),
+    returns the SectionLeft atom; otherwise nullptr.
+*/
+static const Atom *nextSection(const Atom *a)
+{
+    while (a && a->next(Atom::SectionRight))
+        a = a->next(); // skip closing section atoms
+    return a ? a->next(Atom::SectionLeft) : nullptr;
+}
+
+/*!
+    \internal
+
+    Updates the target maps for keywords associated with the given \a node.
+ */
+void Tree::addKeywordsToTargetMaps(Node *node) {
+    if (!node->doc().hasKeywords())
+        return;
+
+    for (Atom *i : std::as_const(node->doc().keywords())) {
+        QString ref = refForAtom(i);
+        QString title = i->string();
+        if (!ref.isEmpty() && !title.isEmpty()) {
+            auto *target = new TargetRec(ref, nextSection(i) ? TargetRec::ContentsKeyword : TargetRec::Keyword, node, 1);
+            m_nodesByTargetRef.insert(Utilities::asAsciiPrintable(title), target);
+            m_nodesByTargetTitle.insert(title, target);
+            if (!target->isEmpty())
+                i->append(target->m_ref);
+        }
+    }
+}
+
+/*!
+    \internal
+
+    Populates the map of targets for each section in the table of contents for
+    the given \a node while ensuring that each target has a unique reference.
+ */
+void Tree::populateTocSectionTargetMap(Node *node) {
+    if (!node || !node->doc().hasTableOfContents())
+        return;
+
+    QStack<Atom *> tocLevels;
+    QSet<QString> anchors;
+
+    qsizetype index = 0;
+
+    for (Atom *atom: std::as_const(node->doc().tableOfContents())) {
+        while (!tocLevels.isEmpty() && tocLevels.top()->string().toInt() >= atom->string().toInt())
+            tocLevels.pop();
+
+        tocLevels.push(atom);
+
+        QString ref = refForAtom(atom);
+        const QString &title = Text::sectionHeading(atom).toString();
+        if (ref.isEmpty() || title.isEmpty())
+            continue;
+
+        if (anchors.contains(ref)) {
+            QStringList refParts;
+            for (const auto tocLevel : tocLevels)
+                 refParts << refForAtom(tocLevel);
+
+            refParts << QString::number(index);
+            ref = refParts.join(QLatin1Char('-'));
+        }
+
+        anchors.insert(ref);
+        if (atom->next(Atom::SectionHeadingLeft))
+            atom->next()->append(ref);
+        ++index;
+
+        const QString &key = Utilities::asAsciiPrintable(title);
+        auto *target = new TargetRec(ref, TargetRec::Contents, node, 3);
+        m_nodesByTargetRef.insert(key, target);
+        m_nodesByTargetTitle.insert(title, target);
+    }
+}
+
+/*!
+    \internal
+
+    Checks if the \a node's title is registered in the page nodes by title map.
+    If not, it stores the page node in the map.
+ */
+void Tree::addToPageNodeByTitleMap(Node *node) {
+    if (!node || !node->isTextPageNode())
+        return;
+
+    auto *pageNode = static_cast<PageNode *>(node);
+    QString key = pageNode->title();
+    if (key.isEmpty())
+        return;
+
+    if (key.contains(QChar(' ')))
+        key = Utilities::asAsciiPrintable(key);
+    const QList<PageNode *> nodes = m_pageNodesByTitle.values(key);
+
+    bool alreadyThere = std::any_of(nodes.cbegin(), nodes.cend(), [&](const auto &knownNode) {
+        return knownNode->isExternalPage() && knownNode->name() == pageNode->name();
+    });
+
+    if (!alreadyThere)
+        m_pageNodesByTitle.insert(key, pageNode);
 }
 
 /*!
@@ -888,17 +983,32 @@ const PageNode *Tree::findPageNodeByTitle(const QString &title) const
 
 /*!
   Returns a canonical title for the \a atom, if the \a atom
-  is a SectionLeft or a Target.
+  is a SectionLeft, SectionHeadingLeft, Keyword, or Target.
+
+  If a target or a keyword is immediately followed by a
+  section, the former adopts the title (ref) of the latter.
  */
 QString Tree::refForAtom(const Atom *atom)
 {
-    if (atom) {
-        if (atom->type() == Atom::SectionLeft)
-            return Utilities::asAsciiPrintable(Text::sectionHeading(atom).toString());
-        if ((atom->type() == Atom::Target) || (atom->type() == Atom::Keyword))
-            return Utilities::asAsciiPrintable(atom->string());
+    Q_ASSERT(atom);
+
+    switch (atom->type()) {
+    case Atom::SectionLeft:
+        atom = atom->next();
+        [[fallthrough]];
+    case Atom::SectionHeadingLeft:
+        if (atom->count() == 2)
+            return atom->string(1);
+        return Utilities::asAsciiPrintable(Text::sectionHeading(atom).toString());
+    case Atom::Target:
+        [[fallthrough]];
+    case Atom::Keyword:
+        if (const auto *section = nextSection(atom))
+            return refForAtom(section);
+        return Utilities::asAsciiPrintable(atom->string());
+    default:
+        return {};
     }
-    return QString();
 }
 
 /*!

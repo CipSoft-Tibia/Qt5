@@ -17,12 +17,15 @@ import {v4 as uuidv4} from 'uuid';
 
 import {assertExists} from '../base/logging';
 import {QueryResponse, runQuery} from '../common/queries';
-import {QueryError} from '../common/query_result';
 import {raf} from '../core/raf_scheduler';
+import {QueryError} from '../trace_processor/query_result';
 import {
   AddDebugTrackMenu,
   uuidToViewName,
 } from '../tracks/debug/add_debug_track_menu';
+import {Button} from '../widgets/button';
+import {PopupMenu2} from '../widgets/menu';
+import {PopupPosition} from '../widgets/popup';
 
 import {
   addTab,
@@ -31,10 +34,8 @@ import {
   closeTab,
   NewBottomTabArgs,
 } from './bottom_tab';
+import {globals} from './globals';
 import {QueryTable} from './query_table';
-import {Button} from './widgets/button';
-import {PopupMenu2} from './widgets/menu';
-import {PopupPosition} from './widgets/popup';
 
 export function runQueryInNewTab(query: string, title: string, tag?: string) {
   return addTab({
@@ -46,6 +47,8 @@ export function runQueryInNewTab(query: string, title: string, tag?: string) {
     },
   });
 }
+
+globals.registerOpenQueryHandler(runQueryInNewTab);
 
 interface QueryResultTabConfig {
   readonly query: string;
@@ -129,8 +132,6 @@ export class QueryResultTab extends BottomTab<QueryResultTabConfig> {
   isLoading() {
     return this.queryResponse === undefined;
   }
-
-  renderTabCanvas() {}
 
   async createViewForDebugTrack(uuid: string): Promise<string> {
     const viewId = uuidToViewName(uuid);

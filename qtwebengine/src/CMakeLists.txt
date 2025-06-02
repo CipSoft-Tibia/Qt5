@@ -63,6 +63,10 @@ cmake_minimum_required(VERSION ${QT_SUPPORTED_MIN_CMAKE_VERSION_FOR_BUILDING_WEB
 #  MODULES
 ##
 
+if(QT_FEATURE_qtwebengine_build)
+    # Use implicit PROJECT_NAME.
+    qt_internal_sbom_begin_qt_repo_project()
+endif()
 if(QT_FEATURE_qtwebengine_core_build)
    add_subdirectory(core)
    add_subdirectory(process)
@@ -73,8 +77,12 @@ endif()
 if(QT_FEATURE_qtwebengine_quick_build)
    add_subdirectory(webenginequick)
 endif()
+if(QT_FEATURE_qtwebengine_build)
+    qt_internal_sbom_end_qt_repo_project()
+endif()
 
 if(QT_FEATURE_qtpdf_build)
+   qt_internal_sbom_begin_qt_repo_project(SBOM_PROJECT_NAME QtPdf)
    add_subdirectory(pdf)
    # keep log order, pdf build after webengine
    if(QT_FEATURE_qtwebengine_core_build)
@@ -97,6 +105,13 @@ endif()
 ##
 #  NINJA PROJECT
 ##
+
+# No SBOM information will be generated for any targets created past this point in the file
+# or any add_subdirectory calls. For the external project GN, we'll have to come up with some
+# additional API.
+if(QT_FEATURE_qtpdf_build)
+    qt_internal_sbom_end_qt_repo_project()
+endif()
 
 set(installDir ${PROJECT_BINARY_DIR}/install)
 
@@ -129,20 +144,11 @@ if(CMAKE_CROSSCOMPILING AND NOT Gn_FOUND)
 endif()
 
 if(NOT Gn_FOUND)
-    externalproject_add(gn
+    qt_webengine_externalproject_add(gn
         SOURCE_DIR  ${CMAKE_CURRENT_LIST_DIR}/gn
         BINARY_DIR  ${CMAKE_CURRENT_BINARY_DIR}/gn
         INSTALL_DIR ${installDir}
-        PREFIX      gn
-        USES_TERMINAL_BUILD TRUE
         EXCLUDE_FROM_ALL TRUE
-        CMAKE_ARGS -DCMAKE_BUILD_TYPE=Release
-                   -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-                   -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                   -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
-                   -DCMAKE_PREFIX_PATH:PATH=<INSTALL_DIR>
-                   -DWEBENGINE_ROOT_BUILD_DIR=${PROJECT_BINARY_DIR}
-                   -DQT_ALLOW_SYMLINK_IN_PATHS=${QT_ALLOW_SYMLINK_IN_PATHS}
     )
     if(QT_FEATURE_qtwebengine_core_build)
         add_dependencies(run_core_GnReady gn)

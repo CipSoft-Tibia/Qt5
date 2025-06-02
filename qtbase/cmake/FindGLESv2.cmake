@@ -18,12 +18,13 @@ else()
     if(EGL_LIBRARY)
         list(APPEND CMAKE_REQUIRED_LIBRARIES "${EGL_LIBRARY}")
     endif()
-    if(_qt_igy_gui_libs)
-        list(APPEND CMAKE_REQUIRED_LIBRARIES "${_qt_igy_gui_libs}")
-    endif()
     set(_includes "${CMAKE_REQUIRED_INCLUDES}")
     list(APPEND CMAKE_REQUIRED_INCLUDES "${GLESv2_INCLUDE_DIR}")
 
+    find_package(PlatformGraphics QUIET)
+    if(TARGET PlatformGraphics::PlatformGraphics)
+        platform_graphics_extend_check_cxx_source_required_variables()
+    endif()
     check_cxx_source_compiles("
 #ifdef __APPLE__
 #  include <OpenGLES/ES2/gl.h>
@@ -80,7 +81,9 @@ if(GLESv2_FOUND AND NOT TARGET GLESv2::GLESv2)
             IMPORTED_LOCATION "${GLESv2_LIBRARY}"
             INTERFACE_INCLUDE_DIRECTORIES "${GLESv2_INCLUDE_DIR}")
 
-        if(EGL_LIBRARY)
+        if(TARGET EGL::EGL)
+            target_link_libraries(GLESv2::GLESv2 INTERFACE "EGL::EGL")
+        elseif(EGL_LIBRARY)
             target_link_libraries(GLESv2::GLESv2 INTERFACE "${EGL_LIBRARY}")
         endif()
     endif()

@@ -161,7 +161,7 @@ bool QQuickMouseAreaPrivate::propagateHelper(QQuickMouseEvent *ev, QQuickItem *i
 
 /*!
     \qmltype MouseArea
-    \instantiates QQuickMouseArea
+    \nativetype QQuickMouseArea
     \inqmlmodule QtQuick
     \ingroup qtquick-input
     \brief Enables simple mouse handling.
@@ -829,6 +829,7 @@ void QQuickMouseArea::hoverEnterEvent(QHoverEvent *event)
         me.setPosition(d->lastPos);
         emit mouseYChanged(&me);
         me.setPosition(d->lastPos);
+        emit positionChanged(&me);
     }
 
     // A MouseArea should not block hover events
@@ -1039,7 +1040,7 @@ void QQuickMouseArea::geometryChange(const QRectF &newGeometry, const QRectF &ol
     Q_D(QQuickMouseArea);
     QQuickItem::geometryChange(newGeometry, oldGeometry);
 
-    if (d->lastScenePos.isNull)
+    if (!d->lastScenePos.isValid())
         d->lastScenePos = mapToScene(d->lastPos);
     else if (newGeometry.x() != oldGeometry.x() || newGeometry.y() != oldGeometry.y())
         d->lastPos = mapFromScene(d->lastScenePos);
@@ -1230,6 +1231,10 @@ bool QQuickMouseArea::setPressed(Qt::MouseButton button, bool p, Qt::MouseEventS
 {
     Q_D(QQuickMouseArea);
 
+    // Don't allow entering pressed state while invisible
+    if (p && !d->effectiveVisible)
+        return false;
+
 #if QT_CONFIG(quick_draganddrop)
     bool dragged = d->drag && d->drag->active();
 #else
@@ -1284,6 +1289,7 @@ bool QQuickMouseArea::setPressed(Qt::MouseButton button, bool p, Qt::MouseEventS
 
         return me.isAccepted();
     }
+    Q_UNUSED(source)
     return false;
 }
 
@@ -1328,6 +1334,10 @@ bool QQuickMouseArea::setPressed(Qt::MouseButton button, bool p, Qt::MouseEventS
     \endcode
 
     The default value is \c Qt.ArrowCursor.
+
+    \note If the \c cursorShape property is set to \c undefined, the \c MouseArea will
+    not change the existing shape when entering it.
+
     \sa Qt::CursorShape
 */
 

@@ -50,6 +50,8 @@ Window {
                 castsShadow: true
                 brightness: 1
                 shadowFactor: 100
+                shadowBias: 0.05
+                pcfFactor: 0.005
             }
 
             StaticRigidBody {

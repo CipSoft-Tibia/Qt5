@@ -14,8 +14,9 @@
 // We mean it.
 //
 
-#include "playbackengine/qffmpegrenderer_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegrenderer_p.h>
 
+#include <QtMultimedia/private/qvideotransformation_p.h>
 #include <QtCore/qpointer.h>
 
 QT_BEGIN_NAMESPACE
@@ -28,7 +29,7 @@ class VideoRenderer : public Renderer
 {
     Q_OBJECT
 public:
-    VideoRenderer(const TimeController &tc, QVideoSink *sink, QtVideo::Rotation rotation);
+    VideoRenderer(const TimeController &tc, QVideoSink *sink, const VideoTransformation &transform);
 
     void setOutput(QVideoSink *sink, bool cleanPrevSink = false);
 
@@ -37,7 +38,7 @@ protected:
 
 private:
     QPointer<QVideoSink> m_sink;
-    QtVideo::Rotation m_rotation;
+    VideoTransformation m_transform;
 };
 
 } // namespace QFFmpeg

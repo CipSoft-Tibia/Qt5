@@ -1,16 +1,29 @@
-// Copyright 2023 The Dawn Authors
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d/ShaderUtils.h"
 
@@ -34,13 +47,22 @@ namespace dawn::native::d3d {
 
 namespace {
 
-std::vector<const wchar_t*> GetDXCArguments(uint32_t compileFlags, bool enable16BitTypes) {
+// Be careful that the return vector may contain the pointers that point to non-static memory.
+std::vector<const wchar_t*> GetDXCArguments(std::wstring_view entryPointNameW,
+                                            const d3d::D3DBytecodeCompilationRequest& r) {
     std::vector<const wchar_t*> arguments;
+
+    arguments.push_back(L"-T");
+    arguments.push_back(r.dxcShaderProfile.data());
+
+    arguments.push_back(L"-E");
+    arguments.push_back(entryPointNameW.data());
 
     // TODO(chromium:346595893): Disable buggy DXC pass
     arguments.push_back(L"-opt-disable");
     arguments.push_back(L"structurize-loop-exits-for-unroll");
 
+    uint32_t compileFlags = r.compileFlags;
     if (compileFlags & D3DCOMPILE_ENABLE_BACKWARDS_COMPATIBILITY) {
         arguments.push_back(L"/Gec");
     }
@@ -60,9 +82,21 @@ std::vector<const wchar_t*> GetDXCArguments(uint32_t compileFlags, bool enable16
                 arguments.push_back(L"/O3");
                 break;
         }
+    } else {
+        // D3DCOMPILE_OPTIMIZATION_LEVEL1 is defined to 0
+        arguments.push_back(L"/O1");
+    }
+    if (compileFlags & D3DCOMPILE_SKIP_OPTIMIZATION) {
+        // DXC will use the last optimization flag passed in (/O[n] and /Od), so we make sure
+        // to pass /Od last.
+        arguments.push_back(L"/Od");
     }
     if (compileFlags & D3DCOMPILE_DEBUG) {
         arguments.push_back(L"/Zi");
+        // Unlike FXC, DXC does not embed debug info into the shader object by default, as it's
+        // preferable to save it to pdb files to keep shader objects small. Embed it for now, and we
+        // can consider exposing an option for users to supply a path to dump pdbs to in the future.
+        arguments.push_back(L"/Qembed_debug");
     }
     if (compileFlags & D3DCOMPILE_PACK_MATRIX_ROW_MAJOR) {
         arguments.push_back(L"/Zpr");
@@ -80,7 +114,23 @@ std::vector<const wchar_t*> GetDXCArguments(uint32_t compileFlags, bool enable16
         arguments.push_back(L"/res_may_alias");
     }
 
-    if (enable16BitTypes) {
+#define ASSERT_UNHANDLED(f) DAWN_ASSERT((compileFlags & f) == 0)
+    ASSERT_UNHANDLED(D3DCOMPILE_SKIP_VALIDATION);
+    ASSERT_UNHANDLED(D3DCOMPILE_PARTIAL_PRECISION);
+    ASSERT_UNHANDLED(D3DCOMPILE_FORCE_VS_SOFTWARE_NO_OPT);
+    ASSERT_UNHANDLED(D3DCOMPILE_FORCE_PS_SOFTWARE_NO_OPT);
+    ASSERT_UNHANDLED(D3DCOMPILE_NO_PRESHADER);
+    ASSERT_UNHANDLED(D3DCOMPILE_ENABLE_STRICTNESS);
+    ASSERT_UNHANDLED(D3DCOMPILE_RESERVED16);
+    ASSERT_UNHANDLED(D3DCOMPILE_RESERVED17);
+    ASSERT_UNHANDLED(D3DCOMPILE_WARNINGS_ARE_ERRORS);
+    ASSERT_UNHANDLED(D3DCOMPILE_ENABLE_UNBOUNDED_DESCRIPTOR_TABLES);
+    ASSERT_UNHANDLED(D3DCOMPILE_ALL_RESOURCES_BOUND);
+    ASSERT_UNHANDLED(D3DCOMPILE_DEBUG_NAME_FOR_SOURCE);
+    ASSERT_UNHANDLED(D3DCOMPILE_DEBUG_NAME_FOR_BINARY);
+#undef ASSERT_UNHANDLED
+
+    if (r.hasShaderF16Feature) {
         // enable-16bit-types are only allowed in -HV 2018 (default)
         arguments.push_back(L"/enable-16bit-types");
     }
@@ -94,20 +144,20 @@ std::vector<const wchar_t*> GetDXCArguments(uint32_t compileFlags, bool enable16
 ResultOrError<ComPtr<IDxcBlob>> CompileShaderDXC(const d3d::D3DBytecodeCompilationRequest& r,
                                                  const std::string& entryPointName,
                                                  const std::string& hlslSource) {
-    ComPtr<IDxcBlobEncoding> sourceBlob;
-    DAWN_TRY(CheckHRESULT(r.dxcLibrary->CreateBlobWithEncodingFromPinned(
-                              hlslSource.c_str(), hlslSource.length(), CP_UTF8, &sourceBlob),
-                          "DXC create blob"));
+    DxcBuffer dxcBuffer;
+    dxcBuffer.Ptr = hlslSource.c_str();
+    dxcBuffer.Size = hlslSource.length();
+    dxcBuffer.Encoding = DXC_CP_UTF8;
 
     std::wstring entryPointW;
     DAWN_TRY_ASSIGN(entryPointW, d3d::ConvertStringToWstring(entryPointName));
 
-    std::vector<const wchar_t*> arguments = GetDXCArguments(r.compileFlags, r.hasShaderF16Feature);
-
-    ComPtr<IDxcOperationResult> result;
-    DAWN_TRY(CheckHRESULT(r.dxcCompiler->Compile(sourceBlob.Get(), nullptr, entryPointW.c_str(),
-                                                 r.dxcShaderProfile.data(), arguments.data(),
-                                                 arguments.size(), nullptr, 0, nullptr, &result),
+    // Note that the contents in `arguments` shouldn't be mutated or moved around as some of the
+    // pointers in this vector don't have static lifetime.
+    std::vector<const wchar_t*> arguments = GetDXCArguments(entryPointW, r);
+    ComPtr<IDxcResult> result;
+    DAWN_TRY(CheckHRESULT(r.dxcCompiler->Compile(&dxcBuffer, arguments.data(), arguments.size(),
+                                                 nullptr, IID_PPV_ARGS(&result)),
                           "DXC compile"));
 
     HRESULT hr;
@@ -185,6 +235,7 @@ MaybeError TranslateToHLSL(d3d::HlslCompilationRequest r,
                                       &transformOutputs, nullptr));
     }
 
+    // TODO(dawn:2180): refactor out.
     if (auto* data = transformOutputs.Get<tint::ast::transform::Renamer::Data>()) {
         auto it = data->remappings.find(r.entryPointName.data());
         if (it != data->remappings.end()) {
@@ -199,11 +250,12 @@ MaybeError TranslateToHLSL(d3d::HlslCompilationRequest r,
         return DAWN_VALIDATION_ERROR("Transform output missing renamer data.");
     }
 
+    // Validate workgroup size after program runs transforms.
     if (r.stage == SingleShaderStage::Compute) {
-        // Validate workgroup size after program runs transforms.
         Extent3D _;
-        DAWN_TRY_ASSIGN(_, ValidateComputeStageWorkgroupSize(
-                               transformedProgram, remappedEntryPointName->data(), r.limits));
+        DAWN_TRY_ASSIGN(
+            _, ValidateComputeStageWorkgroupSize(transformedProgram, remappedEntryPointName->data(),
+                                                 r.limits, r.maxSubgroupSizeForFullSubgroups));
     }
 
     bool usesVertexIndex = false;
@@ -217,45 +269,18 @@ MaybeError TranslateToHLSL(d3d::HlslCompilationRequest r,
         }
     }
 
-    tint::hlsl::writer::Options options;
-    options.disable_robustness = !r.isRobustnessEnabled;
-    options.disable_workgroup_init = r.disableWorkgroupInit;
-    options.binding_remapper_options = r.bindingRemapper;
-    options.external_texture_options = r.externalTextureOptions;
-
-    if (r.usesNumWorkgroups) {
-        options.root_constant_binding_point =
-            tint::BindingPoint{r.numWorkgroupsRegisterSpace, r.numWorkgroupsShaderRegister};
-    }
-    // TODO(dawn:549): HLSL generation outputs the indices into the
-    // array_length_from_uniform buffer that were actually used. When the blob cache can
-    // store more than compiled shaders, we should reflect these used indices and store
-    // them as well. This would allow us to only upload root constants that are actually
-    // read by the shader.
-    options.array_length_from_uniform = r.arrayLengthFromUniform;
-
-    if (r.stage == SingleShaderStage::Vertex) {
-        // Now that only vertex shader can have interstage outputs.
-        // Pass in the actually used interstage locations for tint to potentially truncate unused
-        // outputs.
-        options.interstage_locations = r.interstageLocations;
-        options.truncate_interstage_variables = true;
-    }
-
-    options.polyfill_reflect_vec2_f32 = r.polyfillReflectVec2F32;
-
-    options.binding_points_ignored_in_robustness_transform =
-        std::move(r.bindingPointsIgnoredInRobustnessTransform);
-
     TRACE_EVENT0(tracePlatform.UnsafeGetValue(), General, "tint::hlsl::writer::Generate");
-    auto result = tint::hlsl::writer::Generate(&transformedProgram, options);
-    DAWN_INVALID_IF(!result, "An error occured while generating HLSL: %s", result.Failure());
+    auto result = tint::hlsl::writer::Generate(transformedProgram, r.tintOptions);
+    DAWN_INVALID_IF(result != tint::Success, "An error occurred while generating HLSL:\n%s",
+                    result.Failure().reason.str());
 
     compiledShader->usesVertexIndex = usesVertexIndex;
     compiledShader->usesInstanceIndex = usesInstanceIndex;
     compiledShader->hlslSource = std::move(result->hlsl);
     return {};
 }
+
+}  // anonymous namespace
 
 std::string CompileFlagsToString(uint32_t compileFlags) {
     struct Flag {
@@ -319,8 +344,6 @@ std::string CompileFlagsToString(uint32_t compileFlags) {
     return result;
 }
 
-}  // anonymous namespace
-
 ResultOrError<CompiledShader> CompileShader(d3d::D3DCompilationRequest r) {
     CompiledShader compiledShader;
     bool shouldDumpShader = r.hlsl.dumpShaders;
@@ -356,9 +379,9 @@ ResultOrError<CompiledShader> CompileShader(d3d::D3DCompilationRequest r) {
     return compiledShader;
 }
 
-void DumpCompiledShader(Device* device,
-                        const CompiledShader& compiledShader,
-                        uint32_t compileFlags) {
+void DumpFXCCompiledShader(Device* device,
+                           const CompiledShader& compiledShader,
+                           uint32_t compileFlags) {
     std::ostringstream dumpedMsg;
     // The HLSL may be empty if compilation failed.
     if (!compiledShader.hlslSource.empty()) {
@@ -366,41 +389,23 @@ void DumpCompiledShader(Device* device,
                   << compiledShader.hlslSource << std::endl;
     }
 
-    // The blob may be empty if FXC/DXC compilation failed.
+    // The blob may be empty if FXC compilation failed.
     const Blob& shaderBlob = compiledShader.shaderBlob;
     if (!shaderBlob.Empty()) {
-        if (device->IsToggleEnabled(Toggle::UseDXC)) {
-            dumpedMsg << "/* DXC compile flags */ " << std::endl
-                      << CompileFlagsToString(compileFlags) << std::endl;
-            dumpedMsg << "/* Dumped disassembled DXIL */" << std::endl;
-            ComPtr<IDxcBlobEncoding> dxcBlob;
-            ComPtr<IDxcBlobEncoding> disassembly;
-            if (FAILED(device->GetDxcLibrary()->CreateBlobWithEncodingFromPinned(
-                    shaderBlob.Data(), shaderBlob.Size(), 0, &dxcBlob)) ||
-                FAILED(device->GetDxcCompiler()->Disassemble(dxcBlob.Get(), &disassembly))) {
-                dumpedMsg << "DXC disassemble failed" << std::endl;
-            } else {
-                dumpedMsg << std::string_view(
-                    static_cast<const char*>(disassembly->GetBufferPointer()),
-                    disassembly->GetBufferSize());
-            }
+        dumpedMsg << "/* FXC compile flags */ " << std::endl
+                  << CompileFlagsToString(compileFlags) << std::endl;
+        dumpedMsg << "/* Dumped disassembled DXBC */" << std::endl;
+        ComPtr<ID3DBlob> disassembly;
+        UINT flags =
+            // Some literals are printed as floats with precision(6) which is not enough
+            // precision for values very close to 0, so always print literals as hex values.
+            D3D_DISASM_PRINT_HEX_LITERALS;
+        if (FAILED(device->GetFunctions()->d3dDisassemble(shaderBlob.Data(), shaderBlob.Size(),
+                                                          flags, nullptr, &disassembly))) {
+            dumpedMsg << "D3D disassemble failed" << std::endl;
         } else {
-            dumpedMsg << "/* FXC compile flags */ " << std::endl
-                      << CompileFlagsToString(compileFlags) << std::endl;
-            dumpedMsg << "/* Dumped disassembled DXBC */" << std::endl;
-            ComPtr<ID3DBlob> disassembly;
-            UINT flags =
-                // Some literals are printed as floats with precision(6) which is not enough
-                // precision for values very close to 0, so always print literals as hex values.
-                D3D_DISASM_PRINT_HEX_LITERALS;
-            if (FAILED(device->GetFunctions()->d3dDisassemble(shaderBlob.Data(), shaderBlob.Size(),
-                                                              flags, nullptr, &disassembly))) {
-                dumpedMsg << "D3D disassemble failed" << std::endl;
-            } else {
-                dumpedMsg << std::string_view(
-                    static_cast<const char*>(disassembly->GetBufferPointer()),
-                    disassembly->GetBufferSize());
-            }
+            dumpedMsg << std::string_view(static_cast<const char*>(disassembly->GetBufferPointer()),
+                                          disassembly->GetBufferSize());
         }
     }
 
@@ -408,6 +413,15 @@ void DumpCompiledShader(Device* device,
     if (!logMessage.empty()) {
         device->EmitLog(WGPULoggingType_Info, logMessage.c_str());
     }
+}
+
+InterStageShaderVariablesMask ToInterStageShaderVariablesMask(const std::vector<bool>& inputMask) {
+    InterStageShaderVariablesMask outputMask;
+    DAWN_ASSERT(inputMask.size() <= outputMask.size());
+    for (size_t i = 0; i < inputMask.size(); ++i) {
+        outputMask[i] = inputMask[i];
+    }
+    return outputMask;
 }
 
 }  // namespace dawn::native::d3d

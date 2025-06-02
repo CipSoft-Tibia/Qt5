@@ -11,6 +11,7 @@
 
 #include "src/compiler/turboshaft/assembler.h"
 #include "src/compiler/turboshaft/operations.h"
+#include "src/compiler/turboshaft/phase.h"
 #include "src/compiler/wasm-graph-assembler.h"
 
 namespace v8::internal::compiler::turboshaft {
@@ -31,8 +32,7 @@ class WasmJSLoweringReducer : public Next {
                          TrapId trap_id) {
     // All TrapIf nodes in JS need to have a FrameState.
     DCHECK(frame_state.valid());
-    Builtin trap = wasm::RuntimeStubIdToBuiltinName(
-        static_cast<wasm::WasmCode::RuntimeStubId>(trap_id));
+    Builtin trap = static_cast<Builtin>(trap_id);
     // The call is not marked as Operator::kNoDeopt. While it cannot actually
     // deopt, deopt info based on the provided FrameState is required for stack
     // trace creation of the wasm trap.

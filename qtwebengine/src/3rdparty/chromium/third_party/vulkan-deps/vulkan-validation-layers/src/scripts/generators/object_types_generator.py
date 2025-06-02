@@ -20,6 +20,7 @@
 
 import os
 from generators.base_generator import BaseGenerator
+from generators.generator_utils import PlatformGuardHelper
 
 class ObjectTypesOutputGenerator(BaseGenerator):
     def __init__(self):
@@ -39,28 +40,29 @@ class ObjectTypesOutputGenerator(BaseGenerator):
 
         out = []
         out.append(f'''// *** THIS FILE IS GENERATED - DO NOT EDIT ***
-// See {os.path.basename(__file__)} for modifications
+            // See {os.path.basename(__file__)} for modifications
 
-/***************************************************************************
-*
-* Copyright (c) 2015-2023 The Khronos Group Inc.
-* Copyright (c) 2015-2023 Valve Corporation
-* Copyright (c) 2015-2023 LunarG, Inc.
-* Copyright (c) 2015-2023 Google Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-****************************************************************************/\n''')
+            /***************************************************************************
+            *
+            * Copyright (c) 2015-2023 The Khronos Group Inc.
+            * Copyright (c) 2015-2023 Valve Corporation
+            * Copyright (c) 2015-2023 LunarG, Inc.
+            * Copyright (c) 2015-2023 Google Inc.
+            *
+            * Licensed under the Apache License, Version 2.0 (the "License");
+            * you may not use this file except in compliance with the License.
+            * You may obtain a copy of the License at
+            *
+            *     http://www.apache.org/licenses/LICENSE-2.0
+            *
+            * Unless required by applicable law or agreed to in writing, software
+            * distributed under the License is distributed on an "AS IS" BASIS,
+            * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            * See the License for the specific language governing permissions and
+            * limitations under the License.
+            ****************************************************************************/\n''')
         out.append('// NOLINTBEGIN') # Wrap for clang-tidy to ignore
+        out.append('// clang-format off')
         out.append('''
 #pragma once
 #include "utils/cast_utils.h"
@@ -96,7 +98,7 @@ static inline VkObjectType ConvertVulkanObjectToCoreObject(VulkanObjectType inte
         out.extend([f'        case kVulkanObjectType{handle.name[2:]}: return {handle.type};\n' for handle in self.vk.handles.values()])
         out.append('''        default: return VK_OBJECT_TYPE_UNKNOWN;
     }
-};\n''')
+}\n''')
 
         out.append('''
 // Helper function to get internal layers object ids from the official Vulkan VkObjectType enum
@@ -105,10 +107,10 @@ static inline VulkanObjectType ConvertCoreObjectToVulkanObject(VkObjectType vulk
         out.extend([f'        case {handle.type}: return kVulkanObjectType{handle.name[2:]};\n' for handle in self.vk.handles.values()])
         out.append('''        default: return kVulkanObjectTypeUnknown;
     }
-};\n''')
+}\n''')
 
         out.append('''
-static inline VkDebugReportObjectTypeEXT convertCoreObjectToDebugReportObject(VkObjectType core_report_obj) {
+static inline VkDebugReportObjectTypeEXT ConvertCoreObjectToDebugReportObject(VkObjectType core_report_obj) {
     switch (core_report_obj) {
         case VK_OBJECT_TYPE_UNKNOWN: return VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT;\n''')
         for handle in self.vk.handles.values():
@@ -117,7 +119,17 @@ static inline VkDebugReportObjectTypeEXT convertCoreObjectToDebugReportObject(Vk
                 out.append(f'        case {handle.type}: return {object};\n')
         out.append('''        default: return VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT;
     }
-};\n''')
+}\n''')
+
+        out.append('''
+// Helper function to get Instance object types
+static inline bool IsInstanceVkObjectType(VkObjectType type) {
+    switch (type) {\n''')
+        out.extend([f'        case {handle.type}:\n' for handle in self.vk.handles.values() if handle.instance])
+        out.append('''            return true;''')
+        out.append('''        default: return false;
+    }
+}\n''')
 
         out.append('''
 // Traits objects from each type statically map from Vk<handleType> to the various enums
@@ -144,9 +156,9 @@ template <> struct VulkanObjectTypeInfo<kVulkanObjectTypeUnknown> {
 };
 
 #endif //  VK_DEFINE_HANDLE logic duplication\n''')
-
+        guard_helper = PlatformGuardHelper()
         for handle in [x for x in self.vk.handles.values() if x.dispatchable]:
-            out.extend([f'#ifdef {handle.protect}\n'] if handle.protect else [])
+            out.extend(guard_helper.add_guard(handle.protect))
             out.append(f'''
 template <> struct VkHandleInfo<{handle.name}> {{
     static const VulkanObjectType kVulkanObjectType = kVulkanObjectType{handle.name[2:]};
@@ -159,11 +171,11 @@ template <> struct VkHandleInfo<{handle.name}> {{
 template <> struct VulkanObjectTypeInfo<kVulkanObjectType{handle.name[2:]}> {{
     typedef {handle.name} Type;
 }};\n''')
-            out.extend([f'#endif //{handle.protect}\n'] if handle.protect else [])
+        out.extend(guard_helper.add_guard(None))
         out.append('#ifdef TYPESAFE_NONDISPATCHABLE_HANDLES\n')
 
         for handle in [x for x in self.vk.handles.values() if not x.dispatchable]:
-            out.extend([f'#ifdef {handle.protect}\n'] if handle.protect else [])
+            out.extend(guard_helper.add_guard(handle.protect))
             out.append(f'''
 template <> struct VkHandleInfo<{handle.name}> {{
     static const VulkanObjectType kVulkanObjectType = kVulkanObjectType{handle.name[2:]};
@@ -176,7 +188,7 @@ template <> struct VkHandleInfo<{handle.name}> {{
 template <> struct VulkanObjectTypeInfo<kVulkanObjectType{handle.name[2:]}> {{
     typedef {handle.name} Type;
 }};\n''')
-            out.extend([f'#endif //{handle.protect}\n'] if handle.protect else [])
+        out.extend(guard_helper.add_guard(None))
         out.append('#endif // TYPESAFE_NONDISPATCHABLE_HANDLES\n')
 
         out.append('''
@@ -206,5 +218,6 @@ struct VulkanTypedHandle {
         type(kVulkanObjectTypeUnknown) {}
     operator bool() const { return handle != 0; }
 };\n''')
+        out.append('// clang-format on')
         out.append('// NOLINTEND') # Wrap for clang-tidy to ignore
         self.write("".join(out))

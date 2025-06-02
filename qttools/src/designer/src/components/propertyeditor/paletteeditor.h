@@ -5,7 +5,7 @@
 #define PALETTEEDITOR_H
 
 #include "ui_paletteeditor.h"
-#include <QtWidgets/qitemdelegate.h>
+#include <QtWidgets/qstyleditemdelegate.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -42,7 +42,7 @@ private slots:
     void detailsRadioClicked();
 
     void paletteChanged(const QPalette &palette);
-    void viewContextMenuRequested(const QPoint &pos);
+    void viewContextMenuRequested(QPoint pos);
     void save();
     void load();
 
@@ -156,7 +156,7 @@ private:
     bool m_edited = false;
 };
 
-class ColorDelegate : public QItemDelegate
+class ColorDelegate : public QStyledItemDelegate
 {
     Q_OBJECT
 

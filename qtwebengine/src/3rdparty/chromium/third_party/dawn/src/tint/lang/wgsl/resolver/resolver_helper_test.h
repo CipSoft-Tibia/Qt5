@@ -1,16 +1,29 @@
-// Copyright 2021 The Tint Authors.
+// Copyright 2021 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_RESOLVER_RESOLVER_HELPER_TEST_H_
 #define SRC_TINT_LANG_WGSL_RESOLVER_RESOLVER_HELPER_TEST_H_
@@ -28,6 +41,7 @@
 #include "src/tint/lang/core/type/abstract_int.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/resolver.h"
+#include "src/tint/lang/wgsl/sem/array.h"
 #include "src/tint/lang/wgsl/sem/statement.h"
 #include "src/tint/lang/wgsl/sem/value_expression.h"
 #include "src/tint/lang/wgsl/sem/variable.h"
@@ -141,14 +155,47 @@ using alias2 = alias<TO, 2>;
 template <typename TO>
 using alias3 = alias<TO, 3>;
 
-/// A scalar value
-using Scalar =
-    std::variant<core::i32, core::u32, core::f32, core::f16, core::AInt, core::AFloat, bool>;
+/// Scalar represents a scalar value
+struct Scalar {
+    /// The possible types of a scalar value.
+    using Value =
+        std::variant<core::i32, core::u32, core::f32, core::f16, core::AInt, core::AFloat, bool>;
 
-/// Returns current variant value in `s` cast to type `T`
+    /// Constructor
+    /// @param val the value used to construct this Scalar
+    template <typename T>
+    Scalar(T&& val) : value(std::forward<T>(val)) {}  // NOLINT
+
+    /// @returns the Value
+    operator Value&() { return value; }
+
+    /// Equality operator
+    /// @param other the other Scalar
+    /// @return true if this Scalar is equal to @p other
+    bool operator==(const Scalar& other) const { return value == other.value; }
+
+    /// Inequality operator
+    /// @param other the other Scalar
+    /// @return true if this Scalar is not equal to @p other
+    bool operator!=(const Scalar& other) const { return value != other.value; }
+
+    /// The scalar value
+    Value value;
+};
+
+/// @param out the stream to write to
+/// @param s the Scalar
+/// @returns @p out so calls can be chained
+template <typename STREAM, typename = traits::EnableIfIsOStream<STREAM>>
+STREAM& operator<<(STREAM& out, const Scalar& s) {
+    std::visit([&](auto&& v) { out << v; }, s.value);
+    return out;
+}
+
+/// @return  current variant value in @p s cast to type `T`
 template <typename T>
 T As(const Scalar& s) {
-    return std::visit([](auto&& v) { return static_cast<T>(v); }, s);
+    return std::visit([](auto&& v) { return static_cast<T>(v); }, s.value);
 }
 
 using ast_type_func_ptr = ast::Type (*)(ProgramBuilder& b);
@@ -199,7 +246,7 @@ struct DataType<bool> {
     /// @param args args of size 1 with the boolean value to init with
     /// @return a new AST expression of the bool type
     static inline const ast::Expression* Expr(ProgramBuilder& b, VectorRef<Scalar> args) {
-        return b.Expr(std::get<bool>(args[0]));
+        return b.Expr(std::get<bool>(args[0].value));
     }
     /// @param b the ProgramBuilder
     /// @param v arg of type double that will be cast to bool.
@@ -232,7 +279,7 @@ struct DataType<core::i32> {
     /// @param args args of size 1 with the i32 value to init with
     /// @return a new AST i32 literal value expression
     static inline const ast::Expression* Expr(ProgramBuilder& b, VectorRef<Scalar> args) {
-        return b.Expr(std::get<core::i32>(args[0]));
+        return b.Expr(std::get<core::i32>(args[0].value));
     }
     /// @param b the ProgramBuilder
     /// @param v arg of type double that will be cast to i32.
@@ -265,7 +312,7 @@ struct DataType<core::u32> {
     /// @param args args of size 1 with the u32 value to init with
     /// @return a new AST u32 literal value expression
     static inline const ast::Expression* Expr(ProgramBuilder& b, VectorRef<Scalar> args) {
-        return b.Expr(std::get<core::u32>(args[0]));
+        return b.Expr(std::get<core::u32>(args[0].value));
     }
     /// @param b the ProgramBuilder
     /// @param v arg of type double that will be cast to u32.
@@ -298,7 +345,7 @@ struct DataType<core::f32> {
     /// @param args args of size 1 with the f32 value to init with
     /// @return a new AST f32 literal value expression
     static inline const ast::Expression* Expr(ProgramBuilder& b, VectorRef<Scalar> args) {
-        return b.Expr(std::get<core::f32>(args[0]));
+        return b.Expr(std::get<core::f32>(args[0].value));
     }
     /// @param b the ProgramBuilder
     /// @param v arg of type double that will be cast to f32.
@@ -331,7 +378,7 @@ struct DataType<core::f16> {
     /// @param args args of size 1 with the f16 value to init with
     /// @return a new AST f16 literal value expression
     static inline const ast::Expression* Expr(ProgramBuilder& b, VectorRef<Scalar> args) {
-        return b.Expr(std::get<core::f16>(args[0]));
+        return b.Expr(std::get<core::f16>(args[0].value));
     }
     /// @param b the ProgramBuilder
     /// @param v arg of type double that will be cast to f16.
@@ -363,7 +410,7 @@ struct DataType<core::AFloat> {
     /// @param args args of size 1 with the abstract-float value to init with
     /// @return a new AST abstract-float literal value expression
     static inline const ast::Expression* Expr(ProgramBuilder& b, VectorRef<Scalar> args) {
-        return b.Expr(std::get<core::AFloat>(args[0]));
+        return b.Expr(std::get<core::AFloat>(args[0].value));
     }
     /// @param b the ProgramBuilder
     /// @param v arg of type double that will be cast to AFloat.
@@ -395,7 +442,7 @@ struct DataType<core::AInt> {
     /// @param args args of size 1 with the abstract-int value to init with
     /// @return a new AST abstract-int literal value expression
     static inline const ast::Expression* Expr(ProgramBuilder& b, VectorRef<Scalar> args) {
-        return b.Expr(std::get<core::AInt>(args[0]));
+        return b.Expr(std::get<core::AInt>(args[0].value));
     }
     /// @param b the ProgramBuilder
     /// @param v arg of type double that will be cast to AInt.
@@ -649,7 +696,7 @@ struct DataType<core::fluent_types::array<T, N>> {
         } else {
             count = b.create<core::type::ConstantArrayCount>(N);
         }
-        return b.create<core::type::Array>(
+        return b.create<sem::Array>(
             /* element */ el,
             /* count */ count,
             /* align */ el->Align(),
@@ -685,6 +732,29 @@ struct DataType<core::fluent_types::array<T, N>> {
     static inline std::string Name() {
         return "array<" + DataType<T>::Name() + ", " + std::to_string(N) + ">";
     }
+};
+
+/// Helper for building atomic types and expressions
+template <typename T>
+struct DataType<core::fluent_types::atomic<T>> {
+    /// The element type
+    using ElementType = typename DataType<T>::ElementType;
+
+    /// true as atomics are a composite type
+    static constexpr bool is_composite = true;
+
+    /// @param b the ProgramBuilder
+    /// @return a new AST atomic type
+    static inline ast::Type AST(ProgramBuilder& b) { return b.ty.atomic(DataType<T>::AST(b)); }
+
+    /// @param b the ProgramBuilder
+    /// @return the semantic atomic type
+    static inline const core::type::Type* Sem(ProgramBuilder& b) {
+        return b.Types().atomic(DataType<T>::Sem(b));
+    }
+
+    /// @returns the WGSL name for the type
+    static inline std::string Name() { return "atomic<" + DataType<T>::Name() + ">"; }
 };
 
 /// Struct of all creation pointer types
@@ -750,7 +820,7 @@ struct Value {
     std::ostream& Print(std::ostream& o) const {
         o << type_name << "(";
         for (auto& a : args) {
-            std::visit([&](auto& v) { o << v; }, a);
+            o << a;
             if (&a != &args.Back()) {
                 o << ", ";
             }
@@ -783,7 +853,7 @@ constexpr bool IsValue = std::is_same_v<T, Value>;
 /// Creates a Value of DataType<T> from a scalar `v`
 template <typename T>
 Value Val(T v) {
-    static_assert(tint::traits::IsTypeIn<T, Scalar>, "v must be a Number of bool");
+    static_assert(tint::traits::IsTypeIn<T, Scalar::Value>, "v must be a Number of bool");
     return Value::Create<T>(Vector<Scalar, 1>{v});
 }
 

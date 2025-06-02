@@ -8,18 +8,13 @@
 qt_internal_add_qml_module(WaylandCompositorQtShell
     URI "QtWayland.Compositor.QtShell"
     VERSION "${PROJECT_VERSION}"
-    CLASS_NAME QWaylandQtShellPlugin
-    NO_PLUGIN_OPTIONAL
     PLUGIN_TARGET WaylandCompositorQtShell
-    NO_GENERATE_PLUGIN_SOURCE
-    NO_GENERATE_QMLTYPES
-    INSTALL_SOURCE_QMLTYPES "plugins.qmltypes"
-
     SOURCES
-        qwaylandqtshellplugin.cpp
         qwaylandqtshell.cpp qwaylandqtshell.h qwaylandqtshell_p.h
         qwaylandqtshellintegration.cpp qwaylandqtshellintegration_p.h
         qwaylandqtshellchrome.cpp qwaylandqtshellchrome.h qwaylandqtshellchrome_p.h
+    DEPENDENCIES
+        QtQuick
     LIBRARIES
         Qt::Core
         Qt::Gui
@@ -27,9 +22,11 @@ qt_internal_add_qml_module(WaylandCompositorQtShell
         Qt::QuickPrivate
         Qt::WaylandCompositor
         Qt::WaylandCompositorPrivate
+    PAST_MAJOR_VERSIONS 1
 )
 
 qt6_generate_wayland_protocol_server_sources(WaylandCompositorQtShell
+    PRIVATE_CODE
     FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../extensions/qt-shell-unstable-v1.xml
 )

@@ -9,7 +9,6 @@
 
 #include "include/core/SkPoint.h"
 #include "include/core/SkSpan.h"
-#include "include/private/SkSLDefines.h"
 #include "include/private/base/SkTArray.h"
 #include "include/private/base/SkTo.h"
 #include "src/base/SkEnumBitMask.h"
@@ -21,6 +20,7 @@
 #include "src/sksl/SkSLCompiler.h"
 #include "src/sksl/SkSLConstantFolder.h"
 #include "src/sksl/SkSLContext.h"
+#include "src/sksl/SkSLDefines.h"
 #include "src/sksl/SkSLIntrinsicList.h"
 #include "src/sksl/SkSLOperator.h"
 #include "src/sksl/SkSLPosition.h"
@@ -175,9 +175,7 @@ class Generator {
 public:
     Generator(const SkSL::Program& program, DebugTracePriv* debugTrace, bool writeTraceOps)
             : fProgram(program)
-            , fContext(fProgram.fContext->fTypes,
-                       fProgram.fContext->fCaps,
-                       *fProgram.fContext->fErrors)
+            , fContext(fProgram.fContext->fTypes, *fProgram.fContext->fErrors)
             , fDebugTrace(debugTrace)
             , fWriteTraceOps(writeTraceOps)
             , fProgramSlots(debugTrace ? &debugTrace->fSlotInfo : nullptr)
@@ -2880,6 +2878,9 @@ bool Generator::pushConstructorCast(const AnyConstructor& c) {
 }
 
 bool Generator::pushConstructorDiagonalMatrix(const ConstructorDiagonalMatrix& c) {
+    if (this->pushImmutableData(c)) {
+        return true;
+    }
     fBuilder.push_zeros(1);
     if (!this->pushExpression(*c.argument())) {
         return unsupported();

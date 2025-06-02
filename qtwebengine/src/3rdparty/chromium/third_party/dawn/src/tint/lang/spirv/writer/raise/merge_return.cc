@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/spirv/writer/raise/merge_return.h"
 
@@ -33,13 +46,13 @@ namespace {
 /// PIMPL state for the transform, for a single function.
 struct State {
     /// The IR module.
-    core::ir::Module* ir = nullptr;
+    core::ir::Module& ir;
 
     /// The IR builder.
-    core::ir::Builder b{*ir};
+    core::ir::Builder b{ir};
 
     /// The type manager.
-    core::type::Manager& ty{ir->Types()};
+    core::type::Manager& ty{ir.Types()};
 
     /// The "has not returned" flag.
     core::ir::Var* continue_execution = nullptr;
@@ -53,11 +66,7 @@ struct State {
     core::ir::Return* fn_return = nullptr;
 
     /// A set of control instructions that transitively hold a return instruction
-    Hashset<core::ir::ControlInstruction*, 8> holds_return_;
-
-    /// Constructor
-    /// @param mod the module
-    explicit State(core::ir::Module* mod) : ir(mod) {}
+    Hashset<core::ir::ControlInstruction*, 8> holds_return_{};
 
     /// Process the function.
     /// @param fn the function to process
@@ -123,7 +132,7 @@ struct State {
         for (auto* inst = *block->begin(); inst;) {  // For each instruction in 'block'
             // As we're modifying the block that we're iterating over, grab the pointer to the next
             // instruction before (potentially) moving 'inst' to another block.
-            auto* next = inst->next;
+            auto* next = inst->next.Get();
             TINT_DEFER(inst = next);
 
             if (auto* ret = inst->As<core::ir::Return>()) {
@@ -136,7 +145,7 @@ struct State {
                 // Unreachable can become reachable once returns are turned into exits.
                 // As this is the terminator for the block, simply stop processing the
                 // instructions. A appropriate terminator will be created for this block below.
-                inst->Remove();
+                inst->Destroy();
                 break;
             }
 
@@ -169,8 +178,8 @@ struct State {
                 return b.InstructionResult(v->Type());
             };
 
-            if (inner_if->True()->HasTerminator()) {
-                if (auto* exit_if = inner_if->True()->Terminator()->As<core::ir::ExitIf>()) {
+            if (auto* terminator = inner_if->True()->Terminator()) {
+                if (auto* exit_if = terminator->As<core::ir::ExitIf>()) {
                     // Ensure the associated 'if' is updated.
                     exit_if->SetIf(inner_if);
 
@@ -189,10 +198,10 @@ struct State {
             // Loop over the 'if' instructions, starting with the inner-most, and add any missing
             // terminating instructions to the blocks holding the 'if'.
             for (auto* i = inner_if; i; i = tint::As<core::ir::If>(i->Block()->Parent())) {
-                if (!i->Block()->HasTerminator()) {
+                if (!i->Block()->Terminator() && i->Block()->Parent()) {
                     // Append the exit instruction to the block holding the 'if'.
                     Vector<core::ir::InstructionResult*, 8> exit_args = i->Results();
-                    if (!i->HasResults()) {
+                    if (i->Results().IsEmpty()) {
                         i->SetResults(tint::Transform(exit_args, new_value_with_type));
                     }
                     auto* exit = b.Exit(i->Block()->Parent(), std::move(exit_args));
@@ -235,7 +244,7 @@ struct State {
         // Change the function return to unconditionally load 'return_val' and return it
         auto* load = b.Load(return_val);
         load->InsertBefore(ret);
-        ret->SetValue(load->Result());
+        ret->SetValue(load->Result(0));
     }
 
     /// Transforms the return instruction that is found in a control instruction.
@@ -290,14 +299,14 @@ struct State {
 
 }  // namespace
 
-Result<SuccessType, std::string> MergeReturn(core::ir::Module* ir) {
-    auto result = ValidateAndDumpIfNeeded(*ir, "MergeReturn transform");
-    if (!result) {
+Result<SuccessType> MergeReturn(core::ir::Module& ir) {
+    auto result = ValidateAndDumpIfNeeded(ir, "MergeReturn transform");
+    if (result != Success) {
         return result;
     }
 
     // Process each function.
-    for (auto* fn : ir->functions) {
+    for (auto& fn : ir.functions) {
         State{ir}.Process(fn);
     }
 

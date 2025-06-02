@@ -2,6 +2,10 @@
 // Copyright (C) 2016 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#ifdef QT_NO_QSNPRINTF
+# undef QT_NO_QSNPRINTF // test of the function
+#endif
+
 #include <QTest>
 
 #include <qbytearray.h>
@@ -70,6 +74,9 @@ private slots:
     void replace_data();
     void replace();
     void replaceWithSpecifiedLength();
+    void replaceWithEmptyNeedleInsertsBeforeEachChar_data();
+    void replaceWithEmptyNeedleInsertsBeforeEachChar();
+    void replaceDoesNotReplaceTheTerminatingNull();
 
     void number();
     void number_double_data();
@@ -115,6 +122,11 @@ private slots:
     void isUpper();
     void isLower();
 
+    void indexOf_data();
+    void indexOf();
+    void lastIndexOf_data();
+    void lastIndexOf();
+
     void macTypes();
 
     void stdString();
@@ -132,6 +144,7 @@ private slots:
     void mid();
     void length();
     void length_data();
+    void slice() const;
 };
 
 static const QByteArray::DataPointer staticStandard = {
@@ -1488,6 +1501,124 @@ void tst_QByteArray::replaceWithSpecifiedLength()
     QCOMPARE(ba,expected);
 }
 
+void tst_QByteArray::replaceWithEmptyNeedleInsertsBeforeEachChar_data()
+{
+    QTest::addColumn<QByteArray>("haystack");
+    QTest::addColumn<QByteArray>("needle");
+    QTest::addColumn<QByteArray>("replacement");
+    QTest::addColumn<QByteArray>("result");
+
+    const QByteArray null;
+    const QByteArray empty = "";
+    const QByteArray a = "a";
+    const QByteArray aa = "aa";
+    const QByteArray b = "b";
+    const QByteArray bab = "bab";
+
+    auto row = [](const QByteArray &haystack, const QByteArray &needle,
+                  const QByteArray &replacement, const QByteArray &result)
+    {
+        auto protect = [](const QByteArray &ba) { return ba.isNull() ? "<null>" : ba.data(); };
+        QTest::addRow("/%s/%s/%s/", protect(haystack), protect(needle), protect(replacement))
+                << haystack << needle << replacement << result;
+    };
+    row(null,  null,  a, a);
+    row(null,  empty, a, a);
+    row(null,  a,     a, null);
+    row(empty, null,  a, a);
+    row(empty, empty, a, a);
+    row(empty, a,     a, empty);
+    row(a,     null,  b, bab);
+    row(a,     empty, b, bab);
+    row(a,     a,     b, b);
+}
+
+void tst_QByteArray::replaceWithEmptyNeedleInsertsBeforeEachChar()
+{
+    QFETCH(const QByteArray, haystack);
+    QFETCH(const QByteArray, needle);
+    QFETCH(const QByteArray, replacement);
+    QFETCH(const QByteArray, result);
+
+    const auto check = [](auto haystack, auto needle, auto replacement, auto result) {
+        constexpr bool isByteArray = std::is_same_v<decltype(haystack), QByteArray>;
+        {
+            // shared
+            auto copy = haystack;
+            copy.replace(needle, replacement);
+            if (isByteArray) {
+                QEXPECT_FAIL("/<null>/<null>/a/", "QTBUG-134079", Continue);
+                QEXPECT_FAIL("/<null>//a/",       "QTBUG-134079", Continue);
+            }
+            QCOMPARE(copy.isNull(), result.isNull());
+            if (isByteArray) {
+                QEXPECT_FAIL("/<null>/<null>/a/", "QTBUG-134079", Continue);
+                QEXPECT_FAIL("/<null>//a/",       "QTBUG-134079", Continue);
+            }
+            QCOMPARE(copy, result);
+        }
+        {
+            // unshared
+            auto copy = haystack;
+            copy.detach();
+            copy.replace(needle, replacement);
+            // isNull() check pointless, as copy is never isNull() after detach()
+            QCOMPARE(copy, result);
+        }
+    };
+
+    check(haystack, needle, replacement, result);
+    if (QTest::currentTestFailed())
+        return;
+
+    {
+        // compared with QString::replace()
+        const auto h = QString(haystack);
+        QCOMPARE(h.isNull(), haystack.isNull());
+        const auto n = QString(needle);
+        QCOMPARE(n.isNull(), needle.isNull());
+        const auto rep = QString(replacement);
+        QCOMPARE(rep.isNull(), replacement.isNull());
+        const auto res = QString(result);
+        QCOMPARE(res.isNull(), result.isNull());
+
+        check(h, n, rep, res);
+        if (QTest::currentTestFailed())
+            return;
+    }
+
+    {
+        // compared with QStringTokenizer
+        QByteArray alt;
+        for (auto part : qTokenize(QLatin1StringView{haystack}, QLatin1StringView{needle})) {
+            alt += QByteArrayView{part};
+            alt += replacement;
+        }
+        if (!alt.isEmpty())
+            alt.chop(replacement.size()); // this destroys null'ness
+        else
+            QCOMPARE(alt.isNull(), result.isNull()); // so this only makes sense if we didn't chop
+        QCOMPARE(alt, result);
+    }
+}
+
+void tst_QByteArray::replaceDoesNotReplaceTheTerminatingNull()
+{
+    // Try really hard to replace the implicit terminating '\0' byte:
+    constexpr char content[] = "Hello, World!";
+#define CHECK(...) do { \
+        QByteArray ba(content); \
+        QCOMPARE(std::as_const(ba).data()[ba.size()], '\0'); \
+        ba.replace(__VA_ARGS__); \
+        QCOMPARE(ba, content); \
+        QCOMPARE(std::as_const(ba).data()[ba.size()], '\0'); \
+    } while (false)
+    CHECK('\0', 'a');
+    CHECK(QByteArrayView{"!", 2}, // including \0, matches end of `ba`
+          QByteArrayView{"!!"});
+#undef CHECK
+}
+
 void tst_QByteArray::number()
 {
     QCOMPARE(QByteArray::number(quint64(0)), QByteArray("0"));
@@ -2584,6 +2715,99 @@ void tst_QByteArray::isLower()
     QVERIFY(QByteArray("`abyz{").isLower());
 }
 
+using ByteArrayOrChar = std::variant<QByteArray, char>;
+void tst_QByteArray::indexOf_data()
+{
+    qRegisterMetaType<ByteArrayOrChar>();
+    QTest::addColumn<QByteArray>("haystack");
+    QTest::addColumn<ByteArrayOrChar>("needle");
+    QTest::addColumn<int>("expectedIndex");
+    QTest::addColumn<int>("from");
+
+    const QByteArray haystack = "abc 123 cba \x80 \x08 \x00 \x01 \x81"_ba;
+
+    QTest::newRow("not_found_1_char_string") << haystack << ByteArrayOrChar("d"_ba) << -1 << 0;
+    QTest::newRow("not_found_char") << haystack << ByteArrayOrChar('d') << -1 << 0;
+
+    QTest::newRow("not_found_string") << haystack << ByteArrayOrChar("abcd"_ba) << -1 << 0;
+    QTest::newRow("found_1_char_string") << haystack << ByteArrayOrChar("a"_ba) << 0 << 0;
+
+    QTest::newRow("found_char") << haystack << ByteArrayOrChar('a') << 0 << 0;
+    QTest::newRow("found_string") << haystack << ByteArrayOrChar("cba"_ba) << 8 << 0;
+
+    QTest::newRow("found_empty_string") << haystack << ByteArrayOrChar(""_ba) << 0 << 0;
+
+    QTest::newRow("found_embedded_null") << haystack << ByteArrayOrChar("\x00"_ba) << 16 << 0;
+    QTest::newRow("not_found_terminating_null") << haystack << ByteArrayOrChar("\x00"_ba) << -1 << 17;
+    QTest::newRow("found_char_star_0x80") << haystack << ByteArrayOrChar("\x80"_ba) << 12 << 0;
+    QTest::newRow("found_char_0x80") << haystack << ByteArrayOrChar('\x80') << 12 << 0;
+    QTest::newRow("found_char_0x81") << haystack << ByteArrayOrChar('\x81') << 20 << 0;
+
+    // Make the needle sufficiently large to try to potentially trip boundary guards:
+    QTest::newRow("needle_larger_than_haystack") << "b"_ba << ByteArrayOrChar(":"_ba.repeated(4096)) << -1 << 0;
+}
+
+void tst_QByteArray::indexOf()
+{
+    QFETCH(QByteArray, haystack);
+    QFETCH(ByteArrayOrChar, needle);
+    QFETCH(int, expectedIndex);
+    QFETCH(int, from);
+
+    if (auto *qba = std::get_if<QByteArray>(&needle)) {
+        QCOMPARE(haystack.indexOf(*qba, from), expectedIndex);
+    } else {
+        char c = std::get<char>(needle);
+        QCOMPARE(haystack.indexOf(c, from), expectedIndex);
+    }
+}
+
+void tst_QByteArray::lastIndexOf_data()
+{
+    qRegisterMetaType<ByteArrayOrChar>();
+    QTest::addColumn<QByteArray>("haystack");
+    QTest::addColumn<ByteArrayOrChar>("needle");
+    QTest::addColumn<int>("expectedIndex");
+    QTest::addColumn<int>("from");
+
+    const QByteArray haystack = "abc 123 cba \x80 \x08 \x00 \x01 \x81"_ba;
+
+    QTest::newRow("not_found_1_char_string") << haystack << ByteArrayOrChar("d"_ba) << -1 << -1;
+    QTest::newRow("not_found_char") << haystack << ByteArrayOrChar('d') << -1 << -1;
+
+    QTest::newRow("not_found_string") << haystack << ByteArrayOrChar("abcd"_ba) << -1 << -1;
+    QTest::newRow("found_1_char_string") << haystack << ByteArrayOrChar("a"_ba) << 10 << -1;
+
+    QTest::newRow("found_char") << haystack << ByteArrayOrChar('a') << 10 << -1;
+    QTest::newRow("found_string") << haystack << ByteArrayOrChar("cba"_ba) << 8 << -1;
+
+    QTest::newRow("found_empty_string") << haystack << ByteArrayOrChar(""_ba) << haystack.size() << -1;
+
+    QTest::newRow("found_embedded_null") << haystack << ByteArrayOrChar("\x00"_ba) << 16 << -1;
+    QTest::newRow("not_found_leading_null") << haystack << ByteArrayOrChar("\x00"_ba) << -1 << 15;
+    QTest::newRow("found_char_star_0x80") << haystack << ByteArrayOrChar("\x80"_ba) << 12 << -1;
+    QTest::newRow("found_char_0x80") << haystack << ByteArrayOrChar('\x80') << 12 << -1;
+    QTest::newRow("found_char_0x81") << haystack << ByteArrayOrChar('\x81') << 20 << -1;
+
+    // Make the needle sufficiently large to try to potentially trip boundary guards:
+    QTest::newRow("needle_larger_than_haystack") << "b"_ba << ByteArrayOrChar(":"_ba.repeated(4096)) << -1 << 0;
+}
+
+void tst_QByteArray::lastIndexOf()
+{
+    QFETCH(QByteArray, haystack);
+    QFETCH(ByteArrayOrChar, needle);
+    QFETCH(int, expectedIndex);
+    QFETCH(int, from);
+
+    if (auto *qba = std::get_if<QByteArray>(&needle)) {
+        QCOMPARE(haystack.lastIndexOf(*qba, from), expectedIndex);
+    } else {
+        char c = std::get<char>(needle);
+        QCOMPARE(haystack.lastIndexOf(c, from), expectedIndex);
+    }
+}
+
 void tst_QByteArray::macTypes()
 {
 #ifndef Q_OS_DARWIN
@@ -2902,6 +3126,32 @@ void tst_QByteArray::length_data()
     QTest::newRow("with space chars") << QByteArray(" abc\r\n123\t\v") << qsizetype(11);
     QTest::newRow("with '\\0'") << QByteArray("abc\0def", 7) << qsizetype(7);
     QTest::newRow("with '\\0' no size") << QByteArray("abc\0def") << qsizetype(3);
+}
+
+void tst_QByteArray::slice() const
+{
+    QByteArray a;
+
+    a.slice(0);
+    QVERIFY(a.isEmpty());
+    QVERIFY(a.isNull());
+    a.slice(0, 0);
+    QVERIFY(a.isEmpty());
+    QVERIFY(a.isNull());
+
+    a = "Five pineapples";
+
+    a.slice(5);
+    QCOMPARE_EQ(a, "pineapples");
+
+    a.slice(4, 3);
+    QCOMPARE_EQ(a, "app");
+
+    a.slice(a.size());
+    QVERIFY(a.isEmpty());
+
+    a.slice(0, 0);
+    QVERIFY(a.isEmpty());
 }
 
 QTEST_MAIN(tst_QByteArray)

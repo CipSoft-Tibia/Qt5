@@ -631,7 +631,7 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_CreateWin32SurfaceKHR(VkInstance insta
         }
     }
 
-    *pSurface = (VkSurfaceKHR)(pIcdSurface);
+    *pSurface = (VkSurfaceKHR)(uintptr_t)pIcdSurface;
 
 out:
 
@@ -1308,6 +1308,33 @@ out:
     return vkRes;
 }
 
+// Ensure we are properly setting VK_USE_PLATFORM_METAL_EXT, VK_USE_PLATFORM_IOS_MVK, and VK_USE_PLATFORM_MACOS_MVK.
+#if __APPLE__
+
+#ifndef VK_USE_PLATFORM_METAL_EXT
+#error "VK_USE_PLATFORM_METAL_EXT not defined!"
+#endif
+
+#include <TargetConditionals.h>
+
+#if TARGET_OS_IOS
+
+#ifndef VK_USE_PLATFORM_IOS_MVK
+#error "VK_USE_PLATFORM_IOS_MVK not defined!"
+#endif
+
+#endif  //  TARGET_OS_IOS
+
+#if TARGET_OS_OSX
+
+#ifndef VK_USE_PLATFORM_MACOS_MVK
+#error "VK_USE_PLATFORM_MACOS_MVK not defined!"
+#endif
+
+#endif  // TARGET_OS_OSX
+
+#endif  // __APPLE__
+
 #if defined(VK_USE_PLATFORM_MACOS_MVK)
 
 // Functions for the VK_MVK_macos_surface extension:
@@ -1409,6 +1436,8 @@ LOADER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL vkCreateIOSSurfaceMVK(VkInstance in
 // This is the instance chain terminator function for CreateIOSSurfaceKHR
 VKAPI_ATTR VkResult VKAPI_CALL terminator_CreateIOSSurfaceMVK(VkInstance instance, const VkIOSSurfaceCreateInfoMVK *pCreateInfo,
                                                               const VkAllocationCallbacks *pAllocator, VkSurfaceKHR *pSurface) {
+    (void)pAllocator;
+
     // First, check to ensure the appropriate extension was enabled:
     struct loader_instance *loader_inst = loader_get_instance(instance);
     if (!loader_inst->wsi_ios_surface_enabled) {
@@ -1566,7 +1595,7 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_CreateMetalSurfaceEXT(VkInstance insta
             }
         }
     }
-    *pSurface = (VkSurfaceKHR)icd_surface;
+    *pSurface = (VkSurfaceKHR)(uintptr_t)icd_surface;
 
 out:
     if (result != VK_SUCCESS && icd_surface != NULL) {
@@ -2542,7 +2571,7 @@ VKAPI_ATTR VkResult VKAPI_CALL terminator_CreateImagePipeSurfaceFUCHSIA(VkInstan
         }
     }
 
-    *pSurface = (VkSurfaceKHR)(pIcdSurface);
+    *pSurface = (VkSurfaceKHR)(uintptr_t)pIcdSurface;
 
 out:
 

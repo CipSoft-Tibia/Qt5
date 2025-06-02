@@ -10,7 +10,7 @@ import logging
 import subprocess
 from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple
 
-from crossbench import plt
+from crossbench import helper, plt
 from crossbench.env import ValidationError
 
 from .browser import Browser
@@ -19,8 +19,9 @@ if TYPE_CHECKING:
   import datetime as dt
   import pathlib
 
-  from crossbench.runner.runner import Runner
+  from crossbench.runner.groups import BrowserSessionRunGroup
   from crossbench.runner.run import Run
+  from crossbench.runner.runner import Runner
 
 
 class AppleScript:
@@ -81,29 +82,32 @@ class AppleScriptBrowser(Browser, metaclass=abc.ABCMeta):
                                                  **kwargs)
     return self.platform.exec_apple_script(wrapper_script, *args)
 
-  def start(self, run: Run) -> None:
+  def start(self, session: BrowserSessionRunGroup) -> None:
     assert not self._is_running
     # Start process directly
-    startup_flags = self._get_browser_flags_for_run(run)
+    startup_flags = self._get_browser_flags_for_session(session)
     self._browser_process = self.platform.popen(
         self.path, *startup_flags, shell=False)
+    if self._browser_process.poll():
+      raise ValueError("Could not start browser process.")
     self._pid = self._browser_process.pid
     self.platform.sleep(3)
     self._exec_apple_script("activate")
     self._setup_window()
-    self._check_js_from_apple_script_allowed(run)
+    self._check_js_from_apple_script_allowed(session)
 
-  def _check_js_from_apple_script_allowed(self, run: Run) -> None:
+  def _check_js_from_apple_script_allowed(
+      self, session: BrowserSessionRunGroup) -> None:
     try:
-      self.js(run.runner, "return 1")
+      self.js(session.runner, "return 1")
     except plt.SubprocessError as e:
       logging.error("Browser does not allow JS from AppleScript!")
       logging.debug("    SubprocessError: %s", e)
-      run.runner.env.handle_warning(
+      session.runner.env.handle_warning(
           "Enable JavaScript from Apple Script Events: "
           f"'{self.APPLE_SCRIPT_ALLOW_JS_MENU}'")
     try:
-      self.js(run.runner, "return 1;")
+      self.js(session.runner, "return 1;")
     except plt.SubprocessError as e:
       raise ValidationError(
           " JavaScript from Apple Script Events was not enabled") from e
@@ -129,7 +133,10 @@ class AppleScriptBrowser(Browser, metaclass=abc.ABCMeta):
       raise AppleScript.JavaScriptFromAppleScriptException(result)
     return result
 
-  def show_url(self, runner: Runner, url: str) -> None:
+  def show_url(self,
+               runner: Runner,
+               url: str,
+               target: Optional[str] = None) -> None:
     del runner
     self._exec_apple_script(self.APPLE_SCRIPT_SET_URL, url=url)
     self.platform.sleep(0.5)
@@ -137,4 +144,4 @@ class AppleScriptBrowser(Browser, metaclass=abc.ABCMeta):
   def quit(self, runner: Runner) -> None:
     del runner
     self._exec_apple_script("quit")
-    self._browser_process.terminate()
+    helper.wait_and_kill(self._browser_process)

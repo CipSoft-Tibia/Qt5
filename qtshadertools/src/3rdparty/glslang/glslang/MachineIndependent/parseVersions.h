@@ -61,9 +61,9 @@ public:
         :
         forwardCompatible(forwardCompatible),
         profile(profile),
-        infoSink(infoSink), version(version),
+        infoSink(infoSink), version(version), 
         language(language),
-        spvVersion(spvVersion),
+        spvVersion(spvVersion), 
         intermediate(interm), messages(messages), numErrors(0), currentScanner(nullptr) { }
     virtual ~TParseVersions() { }
     void requireStage(const TSourceLoc&, EShLanguageMask, const char* featureDesc);
@@ -84,6 +84,11 @@ public:
         const char* featureDesc);
     virtual void ppRequireExtensions(const TSourceLoc&, int numExtensions, const char* const extensions[],
         const char* featureDesc);
+    template<typename Container>
+    constexpr void ppRequireExtensions(const TSourceLoc& loc, Container extensions, const char* featureDesc) {
+        ppRequireExtensions(loc, static_cast<int>(extensions.size()), extensions.data(), featureDesc);
+    }
+
     virtual TExtensionBehavior getExtensionBehavior(const char*);
     virtual bool extensionTurnedOn(const char* const extension);
     virtual bool extensionsTurnedOn(int numExtensions, const char* const extensions[]);

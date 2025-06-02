@@ -19,8 +19,8 @@
 #include <xnnpack/raddexpminusmax.h>
 #include <xnnpack/raddextexp.h>
 #include <xnnpack/raddstoreexpminusmax.h>
-#include <xnnpack/rmax.h>
 #include <xnnpack/vbinary.h>
+#include <xnnpack/reduce.h>
 #include <xnnpack/vscaleexpminusmax.h>
 #include <xnnpack/vscaleextexp.h>
 
@@ -216,7 +216,7 @@ static void ThreePassSoftMaxWithRecomputing(
 
     const auto start = std::chrono::high_resolution_clock::now();
     float x_max = nanf("");
-    rmax(elements * sizeof(float), x.data(), &x_max);
+    rmax(elements * sizeof(float), x.data(), &x_max, /*params=*/nullptr);
     float y_sum = nanf("");
     raddexpminusmax(elements * sizeof(float), x.data(), &y_sum, x_max);
     vscaleexpminusmax(elements * sizeof(float), x.data(), y.data() + packed_elements * buffer_index, x_max, 1.0f / y_sum);
@@ -285,7 +285,7 @@ static void ThreePassSoftMaxWithReloading(
 
     const auto start = std::chrono::high_resolution_clock::now();
     float x_max = nanf("");
-    rmax(elements * sizeof(float), x.data(), &x_max);
+    rmax(elements * sizeof(float), x.data(), &x_max, /*params=*/nullptr);
     float y_sum = nanf("");
     raddstoreexpminusmax(elements * sizeof(float), x.data(), &x_max, y.data() + packed_elements * buffer_index, &y_sum, &expminus_params);
     const float inv_y_sum = 1.0f / y_sum;
@@ -383,36 +383,36 @@ static void CharacteristicArguments(benchmark::internal::Benchmark* b) {
 
 #if XNN_ARCH_X86 || XNN_ARCH_X86_64
   BENCHMARK_CAPTURE(TwoPassSoftMax, avx2_p5,
-    xnn_f32_raddextexp_ukernel__avx2_p5_x96,
-    xnn_f32_vscaleextexp_ukernel__avx2_p5_x40,
+    xnn_f32_raddextexp_ukernel__avx2_p5_u96,
+    xnn_f32_vscaleextexp_ukernel__avx2_p5_u40,
     benchmark::utils::CheckAVX2)->Apply(CharacteristicArguments)->UseManualTime();
   BENCHMARK_CAPTURE(ThreePassSoftMaxWithRecomputing, avx2_p5,
-    xnn_f32_rmax_ukernel__avx,
-    xnn_f32_raddexpminusmax_ukernel__avx2_p5_x96,
-    xnn_f32_vscaleexpminusmax_ukernel__avx2_p5_x24,
+    xnn_f32_rmax_ukernel__avx_u32_acc4,
+    xnn_f32_raddexpminusmax_ukernel__avx2_p5_u96,
+    xnn_f32_vscaleexpminusmax_ukernel__avx2_p5_u24,
     benchmark::utils::CheckAVX2)->Apply(CharacteristicArguments)->UseManualTime();
   BENCHMARK_CAPTURE(ThreePassSoftMaxWithReloading, avx2_p5,
-    xnn_f32_rmax_ukernel__avx,
-    xnn_f32_raddstoreexpminusmax_ukernel__avx2_rr1_p5_x64_acc2,
+    xnn_f32_rmax_ukernel__avx_u32_acc4,
+    xnn_f32_raddstoreexpminusmax_ukernel__avx2_rr1_p5_u64_acc2,
     xnn_init_f32_expminus_avx2_rr1_p5_params,
-    xnn_f32_vmulc_minmax_ukernel__avx_x16,
+    xnn_f32_vmulc_minmax_ukernel__avx_u16,
     xnn_init_f32_minmax_avx_params,
     benchmark::utils::CheckAVX2)->Apply(CharacteristicArguments)->UseManualTime();
 
   BENCHMARK_CAPTURE(TwoPassSoftMax, avx512f_p5_scalef,
-    xnn_f32_raddextexp_ukernel__avx512f_p5_scalef_x144_acc3,
-    xnn_f32_vscaleextexp_ukernel__avx512f_p5_scalef_x16,
+    xnn_f32_raddextexp_ukernel__avx512f_p5_scalef_u144_acc3,
+    xnn_f32_vscaleextexp_ukernel__avx512f_p5_scalef_u16,
     benchmark::utils::CheckAVX512F)->Apply(CharacteristicArguments)->UseManualTime();
   BENCHMARK_CAPTURE(ThreePassSoftMaxWithRecomputing, avx512f_p5_scalef,
-    xnn_f32_rmax_ukernel__avx512f,
-    xnn_f32_raddexpminusmax_ukernel__avx512f_p5_scalef_x128_acc4,
-    xnn_f32_vscaleexpminusmax_ukernel__avx512f_p5_scalef_x16,
+    xnn_f32_rmax_ukernel__avx512f_u64_acc4,
+    xnn_f32_raddexpminusmax_ukernel__avx512f_p5_scalef_u128_acc4,
+    xnn_f32_vscaleexpminusmax_ukernel__avx512f_p5_scalef_u16,
     benchmark::utils::CheckAVX512F)->Apply(CharacteristicArguments)->UseManualTime();
   BENCHMARK_CAPTURE(ThreePassSoftMaxWithReloading, avx512f_p5_scalef,
-    xnn_f32_rmax_ukernel__avx512f,
-    xnn_f32_raddstoreexpminusmax_ukernel__avx512f_rr1_p5_scalef_x128_acc2,
+    xnn_f32_rmax_ukernel__avx512f_u64_acc4,
+    xnn_f32_raddstoreexpminusmax_ukernel__avx512f_rr1_p5_scalef_u128_acc2,
     xnn_init_f32_expminus_avx512_rr1_p5_params,
-    xnn_f32_vmulc_minmax_ukernel__avx512f_x32,
+    xnn_f32_vmulc_minmax_ukernel__avx512f_u32,
     xnn_init_f32_minmax_scalar_params,
     benchmark::utils::CheckAVX512F)->Apply(CharacteristicArguments)->UseManualTime();
 #endif  // XNN_ARCH_X86 || XNN_ARCH_X86_64

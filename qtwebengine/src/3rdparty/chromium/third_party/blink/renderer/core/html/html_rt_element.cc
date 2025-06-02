@@ -6,7 +6,7 @@
 
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
-#include "third_party/blink/renderer/core/layout/ng/layout_ng_ruby_text.h"
+#include "third_party/blink/renderer/core/layout/layout_ruby_text.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
 
 namespace blink {
@@ -15,8 +15,11 @@ HTMLRTElement::HTMLRTElement(Document& document)
     : HTMLElement(html_names::kRtTag, document) {}
 
 LayoutObject* HTMLRTElement::CreateLayoutObject(const ComputedStyle& style) {
+  if (RuntimeEnabledFeatures::CssDisplayRubyEnabled()) {
+    return LayoutObject::CreateObject(this, style);
+  }
   if (style.Display() == EDisplay::kBlock)
-    return MakeGarbageCollected<LayoutNGRubyText>(this);
+    return MakeGarbageCollected<LayoutRubyText>(this);
   return LayoutObject::CreateObject(this, style);
 }
 

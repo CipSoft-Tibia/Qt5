@@ -4,23 +4,22 @@
 #ifndef CHARTMODIFIER_H
 #define CHARTMODIFIER_H
 
-#include <QtGraphs/q3dbars.h>
-#include <QtGraphs/q3dinputhandler.h>
-#include <QtGraphs/qbar3dseries.h>
-#include <QtGraphs/q3dtheme.h>
-#include <QFont>
-#include <QDebug>
-#include <QStringList>
-#include <QPointer>
 #include <QColorDialog>
-#include <QTimer>
+#include <QDebug>
+#include <QFont>
 #include <QLabel>
+#include <QPointer>
+#include <QStringList>
+#include <QTimer>
+#include <QtGraphs/qbar3dseries.h>
+#include <QtGraphs/qgraphstheme.h>
+#include <QtGraphsWidgets/q3dbarswidgetitem.h>
 
 class GraphModifier : public QObject
 {
     Q_OBJECT
 public:
-    explicit GraphModifier(Q3DBars *barchart, QColorDialog *colorDialog);
+    explicit GraphModifier(Q3DBarsWidgetItem *barchart, QColorDialog *colorDialog);
     ~GraphModifier();
 
     void resetTemperatureData();
@@ -43,8 +42,8 @@ public:
     void rotateX(int rotation);
     void rotateY(int rotation);
     void setFpsMeasurement(int state);
-    void setBackgroundEnabled(int enabled);
-    void setGridEnabled(int enabled);
+    void setBackgroundVisible(int visible);
+    void setGridVisible(int visible);
     void setSpecsRatio(int barwidth);
     void setSpecsZ(int bardepth);
     void setSpacingSpecsX(int spacing);
@@ -90,7 +89,7 @@ public Q_SLOTS:
     void setGradient(bool checked);
     void toggleMultiseriesScaling();
     void changeShadowQuality(int quality);
-    void shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality shadowQuality);
+    void shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality shadowQuality);
     void handleSelectionChange(const QPoint &position);
     void setUseNullInputHandler(int useNull);
     void changeValueAxisSegments(int value);
@@ -111,6 +110,9 @@ public Q_SLOTS:
     void setFloorLevel(int value);
     void setGraphMargin(int value);
 
+    void onWheel(QWheelEvent *event);
+    void onMouseMove(QPoint mousePos);
+
 Q_SIGNALS:
     void shadowQualityChanged(int quality);
 
@@ -118,7 +120,7 @@ private:
     void populateFlatSeries(QBar3DSeries *series, int rows, int columns, float value);
     QBarDataRow createFlatRow(int columns, float value);
 
-    Q3DBars *m_graph;
+    Q3DBarsWidgetItem *m_graph;
     QColorDialog *m_colorDialog;
     int m_columnCount;
     int m_rowCount;
@@ -156,17 +158,16 @@ private:
     QValue3DAxis *m_currentAxis;
     bool m_negativeValuesOn;
     bool m_useNullInputHandler;
-    Q3DInputHandler *m_defaultInputHandler;
-    Q3DTheme *m_ownTheme;
-    Q3DTheme *m_builtinTheme;
+    QGraphsTheme *m_ownTheme;
+    QGraphsTheme *m_builtinTheme;
     QTimer m_insertRemoveTimer;
     int m_insertRemoveStep;
-    QAbstract3DInputHandler *m_customInputHandler;
     QTimer m_selectionTimer;
     QTimer m_rotationTimer;
     QLabel *m_fpsLabel;
     QBar3DSeries *m_extraSeries;
     QVector3D m_cameraTarget;
+    QPoint m_mousePos;
 };
 
 #endif

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <optional>
+
 #include "base/allocator/partition_alloc_support.h"
 #include "base/command_line.h"
 #include "base/debug/leak_annotations.h"
@@ -20,6 +22,7 @@
 #include "components/services/screen_ai/buildflags/buildflags.h"
 #include "content/child/child_process.h"
 #include "content/common/content_switches_internal.h"
+#include "content/common/features.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/main_function_params.h"
@@ -29,8 +32,10 @@
 #include "sandbox/policy/mojom/sandbox.mojom.h"
 #include "sandbox/policy/sandbox.h"
 #include "sandbox/policy/sandbox_type.h"
+#if !BUILDFLAG(IS_QTWEBENGINE)
+#include "services/on_device_model/on_device_model_service.h"
+#endif
 #include "services/tracing/public/cpp/trace_startup.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/icu/source/common/unicode/unistr.h"
 #include "third_party/icu/source/i18n/unicode/timezone.h"
 
@@ -38,6 +43,8 @@
 #include "base/file_descriptor_store.h"
 #include "base/files/file_util.h"
 #include "base/pickle.h"
+#include "content/child/sandboxed_process_thread_type_handler.h"
+#include "content/common/gpu_pre_sandbox_hook_linux.h"
 #include "content/public/common/content_descriptor_keys.h"
 #include "content/utility/speech/speech_recognition_sandbox_hook_linux.h"
 #include "gpu/config/gpu_info_collector.h"
@@ -157,6 +164,8 @@ bool PreLockdownSandboxHook(base::span<const uint8_t> delegate_blob) {
       HMODULE h_mod = base::LoadNativeLibrary(library_path, &lib_error);
       // We deliberately "leak" `h_mod` so that the module stays loaded.
       if (!h_mod) {
+        base::UmaHistogramSparse(
+            "Process.Sandbox.PreloadLibraryFailed.ErrorCode", lib_error.code);
         // The browser should not request libraries that do not exist, so crash
         // on failure.
         wchar_t dll_name[MAX_PATH];
@@ -194,6 +203,13 @@ int UtilityMain(MainFunctionParams parameters) {
       parameters.command_line->HasSwitch(switches::kMessageLoopTypeUi)
           ? base::MessagePumpType::UI
           : base::MessagePumpType::DEFAULT;
+
+#if !BUILDFLAG(IS_QTWEBENGINE)
+  if (parameters.command_line->GetSwitchValueASCII(switches::kUtilitySubType) ==
+      on_device_model::mojom::OnDeviceModelService::Name_) {
+    CHECK(on_device_model::OnDeviceModelService::PreSandboxInit());
+  }
+#endif
 
 #if BUILDFLAG(IS_MAC)
   auto sandbox_type =
@@ -240,11 +256,23 @@ int UtilityMain(MainFunctionParams parameters) {
   }
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  // Thread type delegate of the process should be registered before
+  // first thread type change in ChildProcess constructor.
+  // It also needs to be registered before the process has multiple threads,
+  // which may race with application of the sandbox.
+  if (base::FeatureList::IsEnabled(
+          features::kHandleChildThreadTypeChangesInBrowser)) {
+    SandboxedProcessThreadTypeHandler::Create();
+  }
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   // Initializes the sandbox before any threads are created.
   // TODO(jorgelo): move this after GTK initialization when we enable a strict
   // Seccomp-BPF policy.
   auto sandbox_type =
       sandbox::policy::SandboxTypeFromCommandLine(*parameters.command_line);
+  sandbox::policy::SandboxLinux::Options sandbox_options;
   sandbox::policy::SandboxLinux::PreSandboxHook pre_sandbox_hook;
   switch (sandbox_type) {
     case sandbox::mojom::Sandbox::kNetwork:
@@ -258,6 +286,13 @@ int UtilityMain(MainFunctionParams parameters) {
 #endif  // BUILDFLAG(ENABLE_OOP_PRINTING)
     case sandbox::mojom::Sandbox::kAudio:
       pre_sandbox_hook = base::BindOnce(&audio::AudioPreSandboxHook);
+      break;
+    case sandbox::mojom::Sandbox::kOnDeviceModelExecution:
+#if !BUILDFLAG(IS_QTWEBENGINE)
+      on_device_model::OnDeviceModelService::AddSandboxLinuxOptions(
+          sandbox_options);
+      pre_sandbox_hook = base::BindOnce(&GpuPreSandboxHook);
+#endif
       break;
     case sandbox::mojom::Sandbox::kSpeechRecognition:
 #if !defined(TOOLKIT_QT)
@@ -301,7 +336,6 @@ int UtilityMain(MainFunctionParams parameters) {
   }
   if (!sandbox::policy::IsUnsandboxedSandboxType(sandbox_type) &&
       (parameters.zygote_child || !pre_sandbox_hook.is_null())) {
-    sandbox::policy::SandboxLinux::Options sandbox_options;
     sandbox_options.use_amd_specific_policies =
         ShouldUseAmdGpuPolicy(sandbox_type);
     sandbox::policy::Sandbox::Initialize(
@@ -360,7 +394,7 @@ int UtilityMain(MainFunctionParams parameters) {
   // TODO(leonhsl): Once http://crbug.com/646833 got resolved, re-enable
   // base::HighResolutionTimerManager here for future possible usage of high
   // resolution timer in service utility process.
-  absl::optional<base::HighResolutionTimerManager> hi_res_timer_manager;
+  std::optional<base::HighResolutionTimerManager> hi_res_timer_manager;
   if (base::PowerMonitor::IsInitialized()) {
     hi_res_timer_manager.emplace();
   }

@@ -1,17 +1,30 @@
 #!/usr/bin/env python3
-# Copyright 2017 The Dawn Authors
+# Copyright 2017 The Dawn & Tint Authors
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import json, os, sys
 from collections import namedtuple
@@ -50,7 +63,7 @@ class Name:
         return chunk[0].upper() + chunk[1:]
 
     def canonical_case(self):
-        return (' '.join(self.chunks)).lower()
+        return ' '.join(self.chunks)
 
     def concatcase(self):
         return ''.join(self.chunks)
@@ -104,17 +117,22 @@ class EnumType(Type):
         Type.__init__(self, name, json_data)
 
         self.values = []
+        self.hasUndefined = False
         self.contiguousFromZero = True
         lastValue = -1
         for m in self.json_data['values']:
             if not is_enabled(m):
                 continue
             value = m['value']
+            name = m['name']
+            if name == "undefined":
+                assert value == 0
+                self.hasUndefined = True
             if value != lastValue + 1:
                 self.contiguousFromZero = False
             lastValue = value
             self.values.append(
-                EnumValue(Name(m['name']), value, m.get('valid', True), m))
+                EnumValue(Name(name), value, m.get('valid', True), m))
 
         # Assert that all values are unique in enums
         all_values = set()
@@ -192,6 +210,19 @@ class RecordMember:
     def set_id_type(self, id_type):
         assert self.type.dict_name == "ObjectId"
         self.id_type = id_type
+
+    @property
+    def requires_struct_defaulting(self):
+        if self.annotation != "value":
+            return False
+
+        if self.type.category == "structure":
+            return self.type.any_member_requires_struct_defaulting
+        elif self.type.category == "enum":
+            return (self.type.hasUndefined
+                    and self.default_value not in [None, "undefined"])
+        else:
+            return False
 
 
 Method = namedtuple(
@@ -283,6 +314,11 @@ class StructureType(Record, Type):
             if m.annotation != 'value':
                 return True
         return False
+
+    @property
+    def any_member_requires_struct_defaulting(self):
+        return any(member.requires_struct_defaulting
+                   for member in self.members)
 
 
 class ConstantDefinition():
@@ -572,7 +608,8 @@ def compute_wire_params(api_params, wire_json):
             is_void = method.return_type.name.canonical_case() == 'void'
             if not (is_object or is_void):
                 assert command_suffix in (
-                    wire_json['special items']['client_handwritten_commands'])
+                    wire_json['special items']['client_handwritten_commands']
+                ), command_suffix
                 continue
 
             if command_suffix in (
@@ -689,6 +726,7 @@ def as_protobufTypeLPM(member):
             "uint16_t": "uint32",
             "uint32_t": "uint32",
             "uint64_t": "uint64",
+            "size_t": "uint64",
         }
 
         assert typ in cpp_to_protobuf_type
@@ -1004,7 +1042,7 @@ class MultiGeneratorFromDawnJSON(Generator):
 
             renders.append(
                 FileRender('api_cpp_chained_struct.h',
-                           'include/dawn/' + api + '_cpp_chained_struct.h',
+                           'include/webgpu/' + api + '_cpp_chained_struct.h',
                            [RENDER_PARAMS_BASE, params_dawn]))
 
         if 'proc' in targets:
@@ -1036,24 +1074,37 @@ class MultiGeneratorFromDawnJSON(Generator):
                            [RENDER_PARAMS_BASE, params_upstream]))
 
         if 'emscripten_bits' in targets:
+            assert api == 'webgpu'
             params_emscripten = parse_json(loaded_json,
                                            enabled_tags=['emscripten'])
+            # system/include/webgpu
             renders.append(
-                FileRender('api.h', 'emscripten-bits/' + api + '.h',
+                FileRender('api.h',
+                           'emscripten-bits/system/include/webgpu/webgpu.h',
                            [RENDER_PARAMS_BASE, params_emscripten]))
             renders.append(
-                FileRender('api_cpp.h', 'emscripten-bits/' + api + '_cpp.h',
-                           [RENDER_PARAMS_BASE, params_emscripten]))
+                FileRender(
+                    'api_cpp.h',
+                    'emscripten-bits/system/include/webgpu/webgpu_cpp.h',
+                    [RENDER_PARAMS_BASE, params_emscripten]))
             renders.append(
-                FileRender('api_cpp.cpp', 'emscripten-bits/' + api + '_cpp.cpp',
+                FileRender(
+                    'api_cpp_chained_struct.h',
+                    'emscripten-bits/system/include/webgpu/webgpu_cpp_chained_struct.h',
+                    [RENDER_PARAMS_BASE, params_emscripten]))
+            # system/lib/webgpu
+            renders.append(
+                FileRender('api_cpp.cpp',
+                           'emscripten-bits/system/lib/webgpu/webgpu_cpp.cpp',
                            [RENDER_PARAMS_BASE, params_emscripten]))
+            # Snippets to paste into existing Emscripten files
             renders.append(
                 FileRender('api_struct_info.json',
-                           'emscripten-bits/' + api + '_struct_info.json',
+                           'emscripten-bits/webgpu_struct_info.json',
                            [RENDER_PARAMS_BASE, params_emscripten]))
             renders.append(
                 FileRender('library_api_enum_tables.js',
-                           'emscripten-bits/library_' + api + '_enum_tables.js',
+                           'emscripten-bits/library_webgpu_enum_tables.js',
                            [RENDER_PARAMS_BASE, params_emscripten]))
 
         if 'mock_api' in targets:

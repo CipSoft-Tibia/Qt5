@@ -138,7 +138,8 @@ inline bool operator==(const QSSGRhiGraphicsPipelineState &a, const QSSGRhiGraph
             && a.targetBlend.opAlpha == b.targetBlend.opAlpha
             && a.colorAttachmentCount == b.colorAttachmentCount
             && a.lineWidth == b.lineWidth
-            && a.polygonMode == b.polygonMode;
+            && a.polygonMode == b.polygonMode
+            && a.viewCount == b.viewCount;
 }
 
 inline bool operator!=(const QSSGRhiGraphicsPipelineState &a, const QSSGRhiGraphicsPipelineState &b) Q_DECL_NOTHROW
@@ -151,6 +152,7 @@ inline size_t qHash(const QSSGRhiGraphicsPipelineState &s, size_t seed) Q_DECL_N
     // do not bother with all fields
     return qHash(QSSGRhiGraphicsPipelineStatePrivate::getShaderPipeline(s), seed)
             ^ qHash(s.samples)
+            ^ qHash(s.viewCount)
             ^ qHash(s.targetBlend.dstColor)
             ^ qHash(s.depthFunc)
             ^ qHash(s.cullMode)
@@ -260,6 +262,9 @@ enum class QSSGRhiSamplerBindingHints
     DepthTexture,
     AoTexture,
     LightmapTexture,
+    DepthTextureArray,
+    ScreenTextureArray,
+    AoTextureArray,
 
     BindingMapSize
 };
@@ -290,6 +295,36 @@ struct QSSGShaderLightsUniformData
     qint32 count = -1;
     float padding[3]; // first element must start at a vec4-aligned offset
     QSSGShaderLightData lightData[QSSG_MAX_NUM_LIGHTS];
+
+};
+
+// note this struct must exactly match the memory layout of the uniform block in
+// funcSampleLightVars.glsllib
+struct QSSGShaderShadowData {
+    float matrices[4][16];
+    float dimensionsInverted[4][4];
+    float csmSplits[4];
+    float csmActive[4];
+
+    float bias;
+    float factor;
+    float isYUp;
+    float clipNear;
+
+    float shadowMapFar;
+    qint32 layerIndex;
+    qint32 csmNumSplits;
+    float csmBlendRatio;
+
+    float pcfFactor;
+    float padding[3];
+};
+
+struct QSSGShaderShadowsUniformData
+{
+    qint32 count = -1;
+    float padding[3]; // first element must start at a vec4-aligned offset
+    QSSGShaderShadowData shadowData[QSSG_MAX_NUM_SHADOW_MAPS];
 };
 
 // Default materials work with a regular combined image sampler for each shadowmap.
@@ -342,6 +377,11 @@ public:
     {
         return int(4 * sizeof(qint32) + m_lightsUniformData.count * sizeof(QSSGShaderLightData));
     }
+    int ub0ShadowDataOffset() const;
+    int ub0ShadowDataSize() const
+    {
+        return int(4 * sizeof(qint32) + m_shadowsUniformData.count * sizeof(QSSGShaderShadowData));
+    }
 
     const QHash<QSSGRhiInputAssemblerState::InputSemantic, QShaderDescription::InOutVariable> &vertexInputs() const { return m_vertexInputs; }
 
@@ -373,6 +413,8 @@ public:
         int material_properties5Idx = -1;
         int material_attenuationIdx = -1;
         int thicknessFactorIdx = -1;
+        int clearcoatNormalStrengthIdx = -1;
+        int clearcoatFresnelPowerIdx = -1;
         int rhiPropertiesIdx = -1;
         int displaceAmountIdx = -1;
         int boneTransformsIdx = -1;
@@ -426,7 +468,7 @@ public:
     const QSSGRhiShadowMapProperties &shadowMapAt(int index) const { return m_shadowMaps[index]; }
     QSSGRhiShadowMapProperties &shadowMapAt(int index) { return m_shadowMaps[index]; }
 
-    void ensureCombinedMainLightsUniformBuffer(QRhiBuffer **ubuf);
+    void ensureCombinedUniformBuffer(QRhiBuffer **ubuf);
     void ensureUniformBuffer(QRhiBuffer **ubuf);
 
     void setLightProbeTexture(QRhiTexture *texture,
@@ -460,6 +502,7 @@ public:
     QSSGRhiTexture &extraTextureAt(int index) { return m_extraTextures[index]; }
 
     QSSGShaderLightsUniformData &lightsUniformData() { return m_lightsUniformData; }
+    QSSGShaderShadowsUniformData &shadowsUniformData() { return m_shadowsUniformData; }
     InstanceLocations instanceBufferLocations() const { return instanceLocations; }
 
     int offsetOfUniform(const QByteArray &name);
@@ -481,6 +524,7 @@ private:
     // transient (per-object) data; pointers are all non-owning
     bool m_lightsEnabled = false;
     QSSGShaderLightsUniformData m_lightsUniformData;
+    QSSGShaderShadowsUniformData m_shadowsUniformData;
     QVarLengthArray<QSSGRhiShadowMapProperties, QSSG_MAX_NUM_SHADOW_MAPS> m_shadowMaps;
     QRhiTexture *m_lightProbeTexture = nullptr;
     QSSGRenderTextureCoordOp m_lightProbeHorzTile = QSSGRenderTextureCoordOp::ClampToEdge;
@@ -579,6 +623,7 @@ struct QSSGRhiRenderableTexture
 {
     QRhiTexture *texture = nullptr;
     QRhiRenderBuffer *depthStencil = nullptr;
+    QRhiTexture *depthTexture = nullptr; // either depthStencil or depthTexture are valid, never both
     QRhiRenderPassDescriptor *rpDesc = nullptr;
     QRhiTextureRenderTarget *rt = nullptr;
     bool isValid() const { return texture && rpDesc && rt; }
@@ -592,6 +637,7 @@ struct QSSGRhiRenderableTexture
         resetRenderTarget();
         delete texture;
         delete depthStencil;
+        delete depthTexture;
         *this = QSSGRhiRenderableTexture();
     }
 };
@@ -662,18 +708,19 @@ struct QSSGRhiDummyTextureKey
     QRhiTexture::Flags flags;
     QSize size;
     QColor color;
+    int arraySize;
 };
 
 inline size_t qHash(const QSSGRhiDummyTextureKey &k, size_t seed) Q_DECL_NOTHROW
 {
     return qHash(k.flags, seed)
             ^ qHash(k.size.width() ^ k.size.height() ^ k.color.red() ^ k.color.green()
-                        ^ k.color.blue() ^ k.color.alpha());
+                        ^ k.color.blue() ^ k.color.alpha() ^ k.arraySize);
 }
 
 inline bool operator==(const QSSGRhiDummyTextureKey &a, const QSSGRhiDummyTextureKey &b) Q_DECL_NOTHROW
 {
-    return a.flags == b.flags && a.size == b.size && a.color == b.color;
+    return a.flags == b.flags && a.size == b.size && a.color == b.color && a.arraySize == b.arraySize;
 }
 
 inline bool operator!=(const QSSGRhiDummyTextureKey &a, const QSSGRhiDummyTextureKey &b) Q_DECL_NOTHROW
@@ -871,6 +918,7 @@ public:
     void setCommandBuffer(QRhiCommandBuffer *cb);
     void setRenderTarget(QRhiRenderTarget *rt);
     void setMainPassSampleCount(int samples);
+    void setMainPassViewCount(int viewCount);
 
     void releaseCachedResources();
 
@@ -917,6 +965,7 @@ public:
     Textures m_textures;
     Meshes m_meshes;
     int m_mainSamples = 1;
+    int m_mainViewCount = 1;
 
     QVector<QPair<QSSGRhiSamplerDescription, QRhiSampler*>> m_samplers;
 

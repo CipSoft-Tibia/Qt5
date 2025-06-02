@@ -7,19 +7,18 @@
     \brief Provides functionality for 2D and 3D graphs.
 
     The Qt Graphs module enables you to visualize data in 2D and 3D graphs.
+
     In the 3D realm there is support for bar, scatter, and surface graphs.
     It's especially useful for visualizing depth maps and large quantities
     of rapidly changing data, such as data received from multiple sensors.
     The look and feel of graphs can be customized by using themes or by adding
     custom items and labels.
 
-    In the 2D realm, there is support for bars, lines, and scatter graphs, and
-    it is easily combinable with any other QML content.
+    In the 2D realm, there is support for area, bar, donut, line, pie, scatter, and spline graphs,
+    and they are easily combinable with any other QML content.
 
     Qt Graphs is built on Qt 6 and the 3D graphs on Qt Quick 3D to take advantage of
     hardware acceleration and Qt Quick.
-
-    \note This module is in Technical Preview
 
     \section1 Using the Module
 
@@ -39,6 +38,12 @@
 
     \include {module-use.qdocinc} {building_with_qmake} {graphs}
 
+    \section3 Building a widget application
+
+    \list
+        \li \l{Qt Graphs Widgets}{Building With Widgets}
+    \endlist
+
     \section1 Articles and Guides
 
     \section2 Limiting Features
@@ -52,6 +57,7 @@
 
     \list
         \li \l{Qt Graphs Overview for 2D}{Overview}
+        \li \l{Qt Graphs Migration from Qt Charts}{Migration Guide from Qt Charts}
     \endlist
 
     \section2 Qt Graphs for 3D
@@ -63,6 +69,12 @@
         \li \l{Qt Graphs Migration from Qt DataVisualization}{Migration Guide from Qt DataVisualization}
         \li \l{Qt Graphs Integration with Qt Quick 3D}{Integration with Qt Quick 3D}
         \li \l{Qt Graphs Known Issues}{Known Issues}
+    \endlist
+
+    \section2 Qt Graphs Common
+
+    \list
+        \li \l{Qt Graphs Theme Overview}{Theme Overview}
     \endlist
 
     \section1 Examples

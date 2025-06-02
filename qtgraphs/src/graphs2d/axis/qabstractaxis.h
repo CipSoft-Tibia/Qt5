@@ -1,64 +1,65 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QABSTRACTAXIS_H
-#define QABSTRACTAXIS_H
+#ifndef QTGRAPHS_QABSTRACTAXIS_H
+#define QTGRAPHS_QABSTRACTAXIS_H
 
-#if 0
-#  pragma qt_class(QAbstractAxis)
-#endif
-
-#include <QtCore/QObject>
-#include <QtCore/QVariant>
+#include <QtCore/qobject.h>
+#include <QtCore/qvariant.h>
 #include <QtGraphs/qgraphsglobal.h>
-#include <QtGui/QColor>
-#include <QtGui/QFont>
-#include <QtQml/QQmlEngine>
+#include <QtGui/qcolor.h>
+#include <QtGui/qfont.h>
+#include <QtQml/qqmlcomponent.h>
+#include <QtQml/qqmlengine.h>
 
 QT_BEGIN_NAMESPACE
 
 class QAbstractAxisPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QAbstractAxis : public QObject
+class Q_GRAPHS_EXPORT QAbstractAxis : public QObject
 {
     Q_OBJECT
+    Q_CLASSINFO("RegisterEnumClassesUnscoped", "false")
     //visibility
-    Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged)
-    Q_PROPERTY(bool lineVisible READ isLineVisible WRITE setLineVisible NOTIFY lineVisibleChanged)
+    Q_PROPERTY(bool visible READ isVisible WRITE setVisible NOTIFY visibleChanged FINAL)
+    Q_PROPERTY(
+        bool lineVisible READ isLineVisible WRITE setLineVisible NOTIFY lineVisibleChanged FINAL)
     //labels
-    Q_PROPERTY(bool labelsVisible READ labelsVisible WRITE setLabelsVisible NOTIFY labelsVisibleChanged)
-    Q_PROPERTY(qreal labelsAngle READ labelsAngle WRITE setLabelsAngle NOTIFY labelsAngleChanged)
+    Q_PROPERTY(bool labelsVisible READ labelsVisible WRITE setLabelsVisible NOTIFY
+                   labelsVisibleChanged FINAL)
+    Q_PROPERTY(
+        qreal labelsAngle READ labelsAngle WRITE setLabelsAngle NOTIFY labelsAngleChanged FINAL)
+    Q_PROPERTY(QQmlComponent *labelDelegate READ labelDelegate
+                       WRITE setLabelDelegate NOTIFY labelDelegateChanged FINAL)
     //grid
-    Q_PROPERTY(bool gridVisible READ isGridLineVisible WRITE setGridLineVisible NOTIFY gridVisibleChanged)
-    Q_PROPERTY(bool minorGridVisible READ isMinorGridLineVisible WRITE setMinorGridLineVisible NOTIFY minorGridVisibleChanged)
+    Q_PROPERTY(bool gridVisible READ isGridVisible WRITE setGridVisible NOTIFY
+                   gridVisibleChanged FINAL)
+    Q_PROPERTY(bool subGridVisible READ isSubGridVisible WRITE setSubGridVisible
+                   NOTIFY subGridVisibleChanged FINAL)
     //title
-    Q_PROPERTY(QString titleText READ titleText WRITE setTitleText NOTIFY titleTextChanged)
-    Q_PROPERTY(QColor titleColor READ titleColor WRITE setTitleColor NOTIFY titleColorChanged)
-    Q_PROPERTY(bool titleVisible READ isTitleVisible WRITE setTitleVisible NOTIFY titleVisibleChanged)
-    Q_PROPERTY(QFont titleFont READ titleFont WRITE setTitleFont NOTIFY titleFontChanged)
-    //orientation
-    Q_PROPERTY(Qt::Orientation orientation READ orientation CONSTANT)
-    //alignment
-    Q_PROPERTY(Qt::Alignment alignment READ alignment CONSTANT)
+    Q_PROPERTY(QString titleText READ titleText WRITE setTitleText NOTIFY titleTextChanged FINAL)
+    Q_PROPERTY(QColor titleColor READ titleColor WRITE setTitleColor NOTIFY titleColorChanged FINAL)
+    Q_PROPERTY(bool titleVisible READ isTitleVisible WRITE setTitleVisible NOTIFY
+                   titleVisibleChanged FINAL)
+    Q_PROPERTY(QFont titleFont READ titleFont WRITE setTitleFont NOTIFY titleFontChanged FINAL)
     QML_FOREIGN(QAbstractAxis)
-    QML_UNCREATABLE("Trying to create uncreatable: AbstractAxis.")
+    QML_UNCREATABLE("")
     QML_NAMED_ELEMENT(AbstractAxis)
+    Q_DECLARE_PRIVATE(QAbstractAxis)
 
 public:
-
-    enum AxisType {
-        AxisTypeNoAxis = 0x0,
-        AxisTypeValue = 0x1,
-        AxisTypeBarCategory = 0x2,
+    enum class AxisType {
+        Value,
+        BarCategory,
+        DateTime,
     };
-
-    Q_DECLARE_FLAGS(AxisTypes, AxisType)
+    Q_ENUM(AxisType)
 
 protected:
-    explicit QAbstractAxis(QAbstractAxisPrivate &d, QObject *parent = nullptr);
+    explicit QAbstractAxis(QAbstractAxisPrivate &dd, QObject *parent = nullptr);
 
 public:
-    ~QAbstractAxis();
+    ~QAbstractAxis() override;
 
     virtual AxisType type() const = 0;
 
@@ -73,30 +74,28 @@ public:
     void setLineVisible(bool visible = true);
 
     //grid handling
-    bool isGridLineVisible() const;
-    void setGridLineVisible(bool visible = true);
-    bool isMinorGridLineVisible() const;
-    void setMinorGridLineVisible(bool visible = true);
+    bool isGridVisible() const;
+    void setGridVisible(bool visible = true);
+    bool isSubGridVisible() const;
+    void setSubGridVisible(bool visible = true);
 
     //labels handling
     bool labelsVisible() const;
     void setLabelsVisible(bool visible = true);
     void setLabelsAngle(qreal angle);
     qreal labelsAngle() const;
+    QQmlComponent *labelDelegate() const;
+    void setLabelDelegate(QQmlComponent *newLabelDelegate);
 
     //title handling
     bool isTitleVisible() const;
     void setTitleVisible(bool visible = true);
-    void setTitleColor(const QColor &color);
+    void setTitleColor(QColor color);
     QColor titleColor() const;
     void setTitleFont(const QFont &font);
     QFont titleFont() const;
     void setTitleText(const QString &title);
     QString titleText() const;
-
-    Qt::Orientation orientation() const;
-    void setOrientation(Qt::Orientation orientation);
-    Qt::Alignment alignment() const;
 
     //range handling
     void setMin(const QVariant &min);
@@ -108,21 +107,21 @@ Q_SIGNALS:
     void lineVisibleChanged(bool visible);
     void labelsVisibleChanged(bool visible);
     void labelsAngleChanged(qreal angle);
+    void labelDelegateChanged();
     void gridVisibleChanged(bool visible);
-    void minorGridVisibleChanged(bool visible);
+    void subGridVisibleChanged(bool visible);
     void titleTextChanged(const QString &title);
-    void titleColorChanged(const QColor &color);
+    void titleColorChanged(QColor color);
     void titleVisibleChanged(bool visible);
     void titleFontChanged(const QFont &font);
     void update();
-
-protected:
-    QScopedPointer<QAbstractAxisPrivate> d_ptr;
+    void rangeChanged(qreal min, qreal max);
 
 private:
+    friend class QGraphsView;
     Q_DISABLE_COPY(QAbstractAxis)
 };
 
 QT_END_NAMESPACE
 
-#endif // QABSTRACTAXIS_H
+#endif // QTGRAPHS_QABSTRACTAXIS_H

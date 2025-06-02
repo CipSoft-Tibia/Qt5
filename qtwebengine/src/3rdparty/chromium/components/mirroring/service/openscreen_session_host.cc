@@ -33,7 +33,7 @@
 #include "build/chromeos_buildflags.h"
 #include "components/mirroring/service/captured_audio_input.h"
 #include "components/mirroring/service/mirroring_features.h"
-#include "components/mirroring/service/udp_socket_client.h"
+#include "components/mirroring/service/rpc_dispatcher_impl.h"
 #include "components/mirroring/service/video_capture_client.h"
 #include "components/openscreen_platform/network_context.h"
 #include "components/openscreen_platform/network_util.h"
@@ -991,9 +991,9 @@ int OpenscreenSessionHost::GetSuggestedVideoBitrate(int min_bitrate,
 }
 
 void OpenscreenSessionHost::UpdateBandwidthEstimate() {
-  int bandwidth_estimate = forced_bandwidth_estimate_for_testing_ > 0
-                               ? forced_bandwidth_estimate_for_testing_
-                               : session_->GetEstimatedNetworkBandwidth();
+  const int bandwidth_estimate = forced_bandwidth_estimate_for_testing_ > 0
+                                     ? forced_bandwidth_estimate_for_testing_
+                                     : session_->GetEstimatedNetworkBandwidth();
 
   // Nothing to do yet.
   if (bandwidth_estimate <= 0) {
@@ -1139,7 +1139,7 @@ void OpenscreenSessionHost::NegotiateRemoting() {
 void OpenscreenSessionHost::InitMediaRemoter(
     const openscreen::cast::RemotingCapabilities& capabilities) {
   rpc_dispatcher_ =
-      std::make_unique<OpenscreenRpcDispatcher>(session_->session_messenger());
+      std::make_unique<RpcDispatcherImpl>(session_->session_messenger());
   media_remoter_ = std::make_unique<MediaRemoter>(
       *this,
       ToRemotingSinkMetadata(capabilities,

@@ -32,7 +32,8 @@ qhp.QtQuick3DPhysics.subprojects.classes.sortPages  = true
 depends += qtcore qtgui qtdoc qtqml qtqmlmodels qtquick qtquickcontrols qtshadertools qtquicktimeline qtquick3d
 
 sourcedirs  += .. \
-               src
+               src \
+               ../../helpers
 
 exampledirs +=  ../../../examples/quick3dphysics
 

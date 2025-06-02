@@ -12,15 +12,20 @@
 
 #include <array>
 
-#include "webgpu/webgpu_cpp.h"
+#include "webgpu/webgpu_cpp.h"  // NO_G3_REWRITE
 
 namespace skgpu::graphite {
 struct ContextOptions;
 
+struct DawnBackendContext;
+
 class DawnCaps final : public Caps {
 public:
-    DawnCaps(const wgpu::Device&, const ContextOptions&);
+    DawnCaps(const DawnBackendContext&, const ContextOptions&);
     ~DawnCaps() override;
+
+    bool useAsyncPipelineCreation() const { return fUseAsyncPipelineCreation; }
+    bool allowScopedErrorChecks() const { return fAllowScopedErrorChecks; }
 
     TextureInfo getDefaultSampledTextureInfo(SkColorType,
                                              Mipmapped mipmapped,
@@ -46,24 +51,25 @@ public:
                             Shareable,
                             GraphiteResourceKey*) const override;
     uint64_t getRenderPassDescKey(const RenderPassDesc& renderPassDesc) const;
-    bool enableWGSL() const {
-        return fEnableWGSL;
-    }
+
+    static constexpr size_t kFormatCnt = 14;
 
 private:
     const ColorTypeInfo* getColorTypeInfo(SkColorType, const TextureInfo&) const override;
     bool onIsTexturable(const TextureInfo&) const override;
     bool supportsWritePixels(const TextureInfo& textureInfo) const override;
     bool supportsReadPixels(const TextureInfo& textureInfo) const override;
-    SkColorType supportedWritePixelsColorType(SkColorType dstColorType,
-                                              const TextureInfo& dstTextureInfo,
-                                              SkColorType srcColorType) const override;
-    SkColorType supportedReadPixelsColorType(SkColorType srcColorType,
-                                             const TextureInfo& srcTextureInfo,
-                                             SkColorType dstColorType) const override;
+    std::pair<SkColorType, bool /*isRGBFormat*/> supportedWritePixelsColorType(
+            SkColorType dstColorType,
+            const TextureInfo& dstTextureInfo,
+            SkColorType srcColorType) const override;
+    std::pair<SkColorType, bool /*isRGBFormat*/> supportedReadPixelsColorType(
+            SkColorType srcColorType,
+            const TextureInfo& srcTextureInfo,
+            SkColorType dstColorType) const override;
 
-    void initCaps(const wgpu::Device& device, const ContextOptions& options);
-    void initShaderCaps();
+    void initCaps(const DawnBackendContext& backendContext, const ContextOptions& options);
+    void initShaderCaps(const wgpu::Device& device);
     void initFormatTable(const wgpu::Device& device);
 
     wgpu::TextureFormat getFormatFromColorType(SkColorType colorType) const {
@@ -101,7 +107,7 @@ private:
         int fColorTypeInfoCount = 0;
     };
     // Size here must match size of kFormats in DawnCaps.cpp
-    std::array<FormatInfo, 12> fFormatTable;
+    std::array<FormatInfo, kFormatCnt> fFormatTable;
 
     static size_t GetFormatIndex(wgpu::TextureFormat format);
     const FormatInfo& getFormatInfo(wgpu::TextureFormat format) const {
@@ -112,8 +118,12 @@ private:
     wgpu::TextureFormat fColorTypeToFormatTable[kSkColorTypeCnt];
     void setColorType(SkColorType, std::initializer_list<wgpu::TextureFormat> formats);
 
+#if !defined(__EMSCRIPTEN__)
     bool fTransientAttachmentSupport = false;
-    bool fEnableWGSL = false;
+#endif
+
+    bool fUseAsyncPipelineCreation = true;
+    bool fAllowScopedErrorChecks = true;
 };
 
 } // namespace skgpu::graphite

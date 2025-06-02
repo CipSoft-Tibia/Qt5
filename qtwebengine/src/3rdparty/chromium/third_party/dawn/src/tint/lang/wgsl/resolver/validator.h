@@ -1,16 +1,29 @@
-// Copyright 2020 The Tint Authors.
+// Copyright 2020 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_RESOLVER_VALIDATOR_H_
 #define SRC_TINT_LANG_WGSL_RESOLVER_VALIDATOR_H_
@@ -21,6 +34,7 @@
 
 #include "src/tint/lang/core/evaluation_stage.h"
 #include "src/tint/lang/wgsl/ast/pipeline_stage.h"
+#include "src/tint/lang/wgsl/common/allowed_features.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
 #include "src/tint/lang/wgsl/resolver/sem_helper.h"
 #include "src/tint/utils/containers/hashmap.h"
@@ -52,7 +66,7 @@ namespace tint::sem {
 class Array;
 class BlockStatement;
 class BreakIfStatement;
-class Builtin;
+class BuiltinFn;
 class Call;
 class CaseStatement;
 class ForLoopStatement;
@@ -82,10 +96,13 @@ struct TypeAndAddressSpace {
     bool operator==(const TypeAndAddressSpace& other) const {
         return type == other.type && address_space == other.address_space;
     }
+
+    /// @returns the hash value of this object
+    std::size_t HashCode() const { return Hash(type, address_space); }
 };
 
 /// DiagnosticFilterStack is a scoped stack of diagnostic filters.
-using DiagnosticFilterStack = ScopeStack<core::DiagnosticRule, core::DiagnosticSeverity>;
+using DiagnosticFilterStack = ScopeStack<wgsl::DiagnosticRule, wgsl::DiagnosticSeverity>;
 
 /// Validation logic for various ast nodes. The validations in general should
 /// be shallow and depend on the resolver to call on children. The validations
@@ -97,11 +114,13 @@ class Validator {
     /// @param builder the program builder
     /// @param helper the SEM helper to validate with
     /// @param enabled_extensions all the extensions declared in current module
+    /// @param allowed_features the allowed extensions and features
     /// @param atomic_composite_info atomic composite info of the module
     /// @param valid_type_storage_layouts a set of validated type layouts by address space
     Validator(ProgramBuilder* builder,
               SemHelper& helper,
-              const core::Extensions& enabled_extensions,
+              const wgsl::Extensions& enabled_extensions,
+              const wgsl::AllowedFeatures& allowed_features,
               const Hashmap<const core::type::Type*, const Source*, 8>& atomic_composite_info,
               Hashset<TypeAndAddressSpace, 8>& valid_type_storage_layouts);
     ~Validator();
@@ -126,7 +145,7 @@ class Validator {
     /// @param msg the diagnostic message
     /// @param source the diagnostic source
     /// @returns false if the diagnostic is an error for the given trigger rule
-    bool AddDiagnostic(core::DiagnosticRule rule,
+    bool AddDiagnostic(wgsl::DiagnosticRule rule,
                        const std::string& msg,
                        const Source& source) const;
 
@@ -149,15 +168,21 @@ class Validator {
     /// @returns true if the given type is host-shareable
     bool IsHostShareable(const core::type::Type* type) const;
 
+    /// Validates the enabled extensions
+    /// @param enables the extension enables
+    /// @returns true on success, false otherwise.
+    bool Enables(VectorRef<const ast::Enable*> enables) const;
+
     /// Validates pipeline stages
     /// @param entry_points the entry points to the module
     /// @returns true on success, false otherwise.
     bool PipelineStages(VectorRef<sem::Function*> entry_points) const;
 
-    /// Validates push_constant variables
+    /// Validates usages of module-scope vars.
+    /// @note Must only be called after all functions have been resolved.
     /// @param entry_points the entry points to the module
     /// @returns true on success, false otherwise.
-    bool PushConstants(VectorRef<sem::Function*> entry_points) const;
+    bool ModuleScopeVarUsages(VectorRef<sem::Function*> entry_points) const;
 
     /// Validates aliases
     /// @param alias the alias to validate
@@ -169,7 +194,7 @@ class Validator {
     /// @param el_source the source of the array element, or the array if the array does not have a
     ///        locally-declared element AST node.
     /// @returns true on success, false otherwise.
-    bool Array(const core::type::Array* arr, const Source& el_source) const;
+    bool Array(const sem::Array* arr, const Source& el_source) const;
 
     /// Validates an array stride attribute
     /// @param attr the stride attribute to validate
@@ -295,11 +320,20 @@ class Validator {
     bool IncrementDecrementStatement(const ast::IncrementDecrementStatement* stmt) const;
 
     /// Validates an interpolate attribute
-    /// @param attr the interpolation attribute to validate
+    /// @param attr the attribute to validate
     /// @param storage_type the storage type of the attached variable
-    /// @returns true on succes, false otherwise
+    /// @param stage the current pipeline stage
+    /// @returns true on success, false otherwise
     bool InterpolateAttribute(const ast::InterpolateAttribute* attr,
-                              const core::type::Type* storage_type) const;
+                              const core::type::Type* storage_type,
+                              const ast::PipelineStage stage) const;
+
+    /// Validates an invariant attribute
+    /// @param attr the attribute to validate
+    /// @param stage the current pipeline stage
+    /// @returns true on success, false otherwise
+    bool InvariantAttribute(const ast::InvariantAttribute* attr,
+                            const ast::PipelineStage stage) const;
 
     /// Validates a builtin call
     /// @param call the builtin call to validate
@@ -312,23 +346,39 @@ class Validator {
     bool LocalVariable(const sem::Variable* v) const;
 
     /// Validates a location attribute
-    /// @param loc_attr the location attribute to validate
+    /// @param attr the attribute to validate
     /// @param type the variable type
     /// @param stage the current pipeline stage
-    /// @param source the source of the attribute
-    /// @param is_input true if this is an input variable
+    /// @param source the source of declaration using the attribute
     /// @returns true on success, false otherwise.
-    bool LocationAttribute(const ast::LocationAttribute* loc_attr,
+    bool LocationAttribute(const ast::LocationAttribute* attr,
                            const core::type::Type* type,
-                           ast::PipelineStage stage,
-                           const Source& source,
-                           const bool is_input = false) const;
+                           const ast::PipelineStage stage,
+                           const Source& source) const;
+
+    /// Validates a color attribute
+    /// @param attr the color attribute to validate
+    /// @param type the variable type
+    /// @param stage the current pipeline stage
+    /// @param source the source of declaration using the attribute
+    /// @param is_input true if is an input variable, false if output variable, std::nullopt is
+    /// unknown.
+    /// @returns true on success, false otherwise.
+    bool ColorAttribute(const ast::ColorAttribute* attr,
+                        const core::type::Type* type,
+                        ast::PipelineStage stage,
+                        const Source& source,
+                        const std::optional<bool> is_input = std::nullopt) const;
 
     /// Validates a index attribute
     /// @param index_attr the index attribute to validate
     /// @param stage the current pipeline stage
+    /// @param is_input true if is an input variable, false if output variable, std::nullopt is
+    /// unknown.
     /// @returns true on success, false otherwise.
-    bool IndexAttribute(const ast::IndexAttribute* index_attr, ast::PipelineStage stage) const;
+    bool IndexAttribute(const ast::IndexAttribute* index_attr,
+                        ast::PipelineStage stage,
+                        const std::optional<bool> is_input = std::nullopt) const;
 
     /// Validates a loop statement
     /// @param stmt the loop statement
@@ -448,22 +498,27 @@ class Validator {
     /// @param ctor the call expresion to validate
     /// @param arr_type the type of the array
     /// @returns true on success, false otherwise
-    bool ArrayConstructor(const ast::CallExpression* ctor, const core::type::Array* arr_type) const;
+    bool ArrayConstructor(const ast::CallExpression* ctor, const sem::Array* arr_type) const;
 
     /// Validates a texture builtin function
     /// @param call the builtin call to validate
     /// @returns true on success, false otherwise
-    bool TextureBuiltinFunction(const sem::Call* call) const;
+    bool TextureBuiltinFn(const sem::Call* call) const;
 
     /// Validates a workgroupUniformLoad builtin function
     /// @param call the builtin call to validate
     /// @returns true on success, false otherwise
     bool WorkgroupUniformLoad(const sem::Call* call) const;
 
-    /// Validates an optional builtin function and its required extension.
+    /// Validates a subgroupBroadcast builtin function
     /// @param call the builtin call to validate
     /// @returns true on success, false otherwise
-    bool RequiredExtensionForBuiltinFunction(const sem::Call* call) const;
+    bool SubgroupBroadcast(const sem::Call* call) const;
+
+    /// Validates an optional builtin function and its required extensions and language features.
+    /// @param call the builtin call to validate
+    /// @returns true on success, false otherwise
+    bool RequiredFeaturesForBuiltinFn(const sem::Call* call) const;
 
     /// Validates that 'f16' extension is enabled for f16 usage at @p source
     /// @param source the source of the f16 usage
@@ -547,30 +602,25 @@ class Validator {
                                      core::AddressSpace address_space,
                                      VectorRef<const tint::ast::Attribute*> attributes,
                                      const Source& source) const;
+
+    /// Raises an error if the entry_point @p entry_point uses two or more module-scope 'var's with
+    /// the address space @p space.
+    /// @param entry_point the entry point
+    /// @param space the address space
+    /// @returns true if no duplicate uses were found or false if an error was raised.
+    bool CheckNoMultipleModuleScopeVarsOfAddressSpace(sem::Function* entry_point,
+                                                      core::AddressSpace space) const;
+
     SymbolTable& symbols_;
     diag::List& diagnostics_;
     SemHelper& sem_;
     DiagnosticFilterStack diagnostic_filters_;
-    const core::Extensions& enabled_extensions_;
+    const wgsl::Extensions& enabled_extensions_;
+    const wgsl::AllowedFeatures& allowed_features_;
     const Hashmap<const core::type::Type*, const Source*, 8>& atomic_composite_info_;
     Hashset<TypeAndAddressSpace, 8>& valid_type_storage_layouts_;
 };
 
 }  // namespace tint::resolver
-
-namespace std {
-
-/// Custom std::hash specialization for tint::resolver::TypeAndAddressSpace.
-template <>
-class hash<tint::resolver::TypeAndAddressSpace> {
-  public:
-    /// @param tas the TypeAndAddressSpace
-    /// @return the hash value
-    inline std::size_t operator()(const tint::resolver::TypeAndAddressSpace& tas) const {
-        return Hash(tas.type, tas.address_space);
-    }
-};
-
-}  // namespace std
 
 #endif  // SRC_TINT_LANG_WGSL_RESOLVER_VALIDATOR_H_

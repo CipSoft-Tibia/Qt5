@@ -12,12 +12,12 @@
 #define API_FRAME_TRANSFORMER_INTERFACE_H_
 
 #include <memory>
-#include <vector>
+#include <string>
 
+#include "api/ref_count.h"
 #include "api/scoped_refptr.h"
 #include "api/video/encoded_frame.h"
 #include "api/video/video_frame_metadata.h"
-#include "rtc_base/ref_count.h"
 
 namespace webrtc {
 
@@ -53,6 +53,7 @@ class TransformableFrameInterface {
   // sender frames to allow received frames to be directly re-transmitted on
   // other PeerConnectionss.
   virtual Direction GetDirection() const { return Direction::kUnknown; }
+  virtual std::string GetMimeType() const = 0;
 };
 
 class TransformableVideoFrameInterface : public TransformableFrameInterface {
@@ -78,11 +79,7 @@ class TransformableAudioFrameInterface : public TransformableFrameInterface {
     return absl::nullopt;
   }
 
-  // TODO(crbug.com/1456628): Change this to pure virtual after it
-  // is implemented everywhere.
-  virtual absl::optional<uint64_t> AbsoluteCaptureTimestamp() const {
-    return absl::nullopt;
-  }
+  virtual absl::optional<uint64_t> AbsoluteCaptureTimestamp() const = 0;
 
   enum class FrameType { kEmptyFrame, kAudioFrameSpeech, kAudioFrameCN };
 
@@ -96,6 +93,12 @@ class TransformedFrameCallback : public rtc::RefCountInterface {
  public:
   virtual void OnTransformedFrame(
       std::unique_ptr<TransformableFrameInterface> frame) = 0;
+
+  // Request to no longer be called on each frame, instead having frames be
+  // sent directly to OnTransformedFrame without additional work.
+  // TODO(crbug.com/1502781): Make pure virtual once all mocks have
+  // implementations.
+  virtual void StartShortCircuiting() {}
 
  protected:
   ~TransformedFrameCallback() override = default;

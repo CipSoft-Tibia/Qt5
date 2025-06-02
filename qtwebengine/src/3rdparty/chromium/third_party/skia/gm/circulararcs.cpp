@@ -20,15 +20,7 @@
 
 #include <functional>
 
-#include "include/effects/SkStrokeAndFillPathEffect.h"
-
 using namespace skia_private;
-
-static void set_strokeandfill(SkPaint* paint) {
-    SkASSERT(paint->getPathEffect() == nullptr);
-    paint->setPathEffect(SkStrokeAndFillPathEffect::Make());
-    paint->setStroke(true);
-}
 
 constexpr SkScalar kStarts[] = {0.f, 10.f, 30.f, 45.f, 90.f, 165.f, 180.f, 270.f};
 constexpr SkScalar kSweeps[] = {1.f, 45.f, 90.f, 130.f, 180.f, 184.f, 300.f, 355.f};
@@ -118,30 +110,6 @@ DEF_ARC_GM(stroke_square) {
 DEF_ARC_GM(stroke_round) {
     auto setStroke = [] (SkPaint* p) {
         p->setStroke(true);
-        p->setStrokeCap(SkPaint::kRound_Cap);
-    };
-    draw_arcs(canvas, setStroke);
-}
-
-DEF_ARC_GM(stroke_and_fill_butt) {
-    auto setStroke = [] (SkPaint* p) {
-        set_strokeandfill(p);
-        p->setStrokeCap(SkPaint::kButt_Cap);
-    };
-    draw_arcs(canvas, setStroke);
-}
-
-DEF_ARC_GM(stroke_and_fill_square) {
-    auto setStroke = [] (SkPaint* p) {
-        set_strokeandfill(p);
-        p->setStrokeCap(SkPaint::kSquare_Cap);
-    };
-    draw_arcs(canvas, setStroke);
-}
-
-DEF_ARC_GM(stroke_and_fill_round) {
-    auto setStroke = [] (SkPaint* p) {
-        set_strokeandfill(p);
         p->setStrokeCap(SkPaint::kRound_Cap);
     };
     draw_arcs(canvas, setStroke);
@@ -352,4 +320,26 @@ DEF_SIMPLE_GM(circular_arc_stroke_matrix, canvas, 820, 1090) {
             }
         }
     }
+}
+
+DEF_SIMPLE_GM(crbug_1472747, canvas, 400, 400) {
+    auto addCanvas2dCircleArcTo = [](float cx, float cy, float radius, SkPath* path) {
+        SkRect oval = SkRect::MakeLTRB(cx - radius, cy - radius, cx + radius, cy + radius);
+        // arcTo(oval, 0, 2pi, anticlockwise) gets split to 0->-180,-180->-360
+        path->arcTo(oval, 0.f, -180.f, false);
+        path->arcTo(oval, -180.f, -180.f, false);
+    };
+
+    // This manually stroked circle is large enough to trigger pre-chopping in the
+    // tessellation path renderers, but uses a non-default winding mode, which
+    // originally was not preserved in the chopped path.
+    static constexpr float kRadius = 31000.f;
+    SkPath strokedCircle;
+    addCanvas2dCircleArcTo(0.f, kRadius + 10.f, kRadius, &strokedCircle); // inner
+    addCanvas2dCircleArcTo(0.f, kRadius + 10.f, kRadius + 5.f, &strokedCircle); // outer
+    strokedCircle.setFillType(SkPathFillType::kEvenOdd);
+
+    SkPaint fill;
+    fill.setAntiAlias(true);
+    canvas->drawPath(strokedCircle, fill);
 }

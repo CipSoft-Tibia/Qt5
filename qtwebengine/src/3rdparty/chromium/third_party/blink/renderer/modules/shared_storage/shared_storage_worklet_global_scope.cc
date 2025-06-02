@@ -42,6 +42,7 @@
 #include "third_party/blink/renderer/platform/bindings/callback_method_retriever.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "v8/include/v8-context.h"
+#include "v8/include/v8-isolate.h"
 #include "v8/include/v8-local-handle.h"
 #include "v8/include/v8-primitive.h"
 #include "v8/include/v8-value.h"
@@ -306,9 +307,9 @@ void SharedStorageWorkletGlobalScope::OnConsoleApiMessage(
     mojom::ConsoleMessageLevel level,
     const String& message,
     SourceLocation* location) {
-  client_->ConsoleLog(message);
-
   WorkerOrWorkletGlobalScope::OnConsoleApiMessage(level, message, location);
+
+  client_->DidAddMessageToConsole(level, message);
 }
 
 void SharedStorageWorkletGlobalScope::NotifyContextDestroyed() {
@@ -318,23 +319,6 @@ void SharedStorageWorkletGlobalScope::NotifyContextDestroyed() {
   }
 
   WorkletGlobalScope::NotifyContextDestroyed();
-}
-
-bool SharedStorageWorkletGlobalScope::FeatureEnabled(
-    OriginTrialFeature feature) const {
-  // The shared storage worklet infrastructure doesn't yet support checking the
-  // origin trial features. We'll go over each feature that can potentially be
-  // checked (e.g. IDL attribute/interface exposures conditioned on
-  // RuntimeEnabled=XXX), and replicate their status manually.
-
-  // The worklet must have been created from a context eligible for shared
-  // storage. It's okay to treat `kSharedStorageAPI` as enabled.
-  if (feature == OriginTrialFeature::kSharedStorageAPI) {
-    return true;
-  }
-
-  // For unknown features, return false to be on the safe side.
-  return false;
 }
 
 void SharedStorageWorkletGlobalScope::Trace(Visitor* visitor) const {
@@ -591,9 +575,8 @@ int64_t SharedStorageWorkletGlobalScope::GetCurrentOperationId() {
   ScriptState* script_state = ScriptController()->GetScriptState();
   DCHECK(script_state);
 
-  v8::Local<v8::Context> context = script_state->GetContext();
-
-  v8::Local<v8::Value> data = context->GetContinuationPreservedEmbedderData();
+  v8::Local<v8::Value> data =
+      script_state->GetIsolate()->GetContinuationPreservedEmbedderData();
   return data.As<v8::BigInt>()->Int64Value();
 }
 
@@ -710,11 +693,11 @@ base::OnceClosure SharedStorageWorkletGlobalScope::StartOperation(
   ScriptState* script_state = ScriptController()->GetScriptState();
   DCHECK(script_state);
 
-  v8::HandleScope handle_scope(script_state->GetIsolate());
-  v8::Local<v8::Context> context = script_state->GetContext();
+  v8::Isolate* isolate = script_state->GetIsolate();
+  v8::HandleScope handle_scope(isolate);
 
-  context->SetContinuationPreservedEmbedderData(
-      v8::BigInt::New(context->GetIsolate(), operation_id));
+  isolate->SetContinuationPreservedEmbedderData(
+      v8::BigInt::New(isolate, operation_id));
 
   if (ShouldDefinePrivateAggregationInSharedStorage()) {
     GetOrCreatePrivateAggregation()->OnOperationStarted(

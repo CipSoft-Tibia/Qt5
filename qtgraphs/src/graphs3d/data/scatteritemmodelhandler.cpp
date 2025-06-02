@@ -1,6 +1,7 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "qscatter3dseries_p.h"
 #include "scatteritemmodelhandler_p.h"
 
 QT_BEGIN_NAMESPACE
@@ -94,9 +95,9 @@ static inline QQuaternion toQuaternion(const QVariant &variant)
                 s = s.mid(1);
             }
             if (s.count(QLatin1Char(',')) == 3) {
-                int index = s.indexOf(QLatin1Char(','));
-                int index2 = s.indexOf(QLatin1Char(','), index + 1);
-                int index3 = s.indexOf(QLatin1Char(','), index2 + 1);
+                qsizetype index = s.indexOf(QLatin1Char(','));
+                qsizetype index2 = s.indexOf(QLatin1Char(','), index + 1);
+                qsizetype index3 = s.indexOf(QLatin1Char(','), index2 + 1);
 
                 bool sGood, xGood, yGood, zGood;
                 float sCoord = s.left(index).toFloat(&sGood);
@@ -199,8 +200,10 @@ void ScatterItemModelHandler::resolveModel()
     int runningCount = 0;
 
     // If dimensions have changed, recreate the array
-    if (m_proxyArray.data() != m_proxy->array().data() || totalCount != m_proxyArray.size())
+    if (m_proxyArray.data() != m_proxy->series()->dataArray().data()
+        || totalCount != m_proxyArray.size()) {
         m_proxyArray.resize(totalCount);
+    }
 
     // Parse data into newProxyArray
     for (int i = 0; i < rowCount; i++) {

@@ -282,8 +282,8 @@ bool DataPack::SanityCheckFileAndRegisterResources(size_t margin_to_skip,
   // 3) Verify the entries are ordered correctly.
   for (size_t i = 0; i < resource_count_; ++i) {
     if (resource_table_[i].file_offset > resource_table_[i + 1].file_offset) {
-      LOG(ERROR) << "Data pack file corruption: "
-                 << "Entry #" << i + 1 << " before Entry #" << i << ".";
+      LOG(ERROR) << "Data pack file corruption: " << "Entry #" << i + 1
+                 << " before Entry #" << i << ".";
       return false;
     }
   }
@@ -305,8 +305,9 @@ bool DataPack::LoadImpl(std::unique_ptr<DataPack::DataSource> data_source) {
   size_t data_length = data_source->GetLength();
   // Parse the version and check for truncated header.
   uint32_t version = 0;
-  if (data_length > sizeof(version))
-    version = reinterpret_cast<const uint32_t*>(data)[0];
+  if (data_length > sizeof(version)) {
+    memcpy(&version, data, sizeof(uint32_t));
+  }
   size_t header_length =
       version == kFileFormatV4 ? kHeaderLengthV4 : kHeaderLengthV5;
   if (version == 0 || data_length < header_length) {
@@ -316,14 +317,14 @@ bool DataPack::LoadImpl(std::unique_ptr<DataPack::DataSource> data_source) {
 
   // Parse the header of the file.
   if (version == kFileFormatV4) {
-    resource_count_ = reinterpret_cast<const uint32_t*>(data)[1];
+    memcpy(&resource_count_, data + 4, sizeof(uint32_t));
     alias_count_ = 0;
     text_encoding_type_ = static_cast<TextEncodingType>(data[8]);
   } else if (version == kFileFormatV5) {
     // Version 5 added the alias table and changed the header format.
     text_encoding_type_ = static_cast<TextEncodingType>(data[4]);
-    resource_count_ = reinterpret_cast<const uint16_t*>(data)[4];
-    alias_count_ = reinterpret_cast<const uint16_t*>(data)[5];
+    memcpy(&resource_count_, data + 8, sizeof(uint16_t));
+    memcpy(&alias_count_, data + 10, sizeof(uint16_t));
   } else {
     LOG(ERROR) << "Bad data pack version: got " << version << ", expected "
                << kFileFormatV4 << " or " << kFileFormatV5;
@@ -401,7 +402,6 @@ absl::optional<base::StringPiece> DataPack::GetStringPiece(
                << "file modified?";
     return absl::nullopt;
   }
-
   if (target->file_offset > next_entry->file_offset) {
     size_t entry_index = target - resource_table_;
     size_t next_index = next_entry - resource_table_;

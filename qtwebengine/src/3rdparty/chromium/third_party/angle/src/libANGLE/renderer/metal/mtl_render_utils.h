@@ -12,6 +12,7 @@
 #define LIBANGLE_RENDERER_METAL_MTL_RENDER_UTILS_H_
 
 #import <Metal/Metal.h>
+#include <unordered_map>
 
 #include "libANGLE/angletypes.h"
 #include "libANGLE/renderer/metal/RenderTargetMtl.h"
@@ -95,6 +96,7 @@ struct ColorBlitParams : public BlitParams
     GLenum filter               = GL_NEAREST;
     bool unpackPremultiplyAlpha = false;
     bool unpackUnmultiplyAlpha  = false;
+    bool transformLinearToSrgb  = false;
     bool dstLuminance           = false;
 };
 
@@ -190,6 +192,25 @@ struct VertexFormatConvertParams
     uint32_t vertexCount = 0;
 };
 
+struct BlockLinearizationParams
+{
+    BufferRef srcBuffer;
+    BufferRef dstBuffer;
+    uint32_t srcBufferOffset;
+    uint32_t blocksWide;
+    uint32_t blocksHigh;
+};
+
+struct DepthSaturationParams
+{
+    BufferRef srcBuffer;
+    BufferRef dstBuffer;
+    uint32_t srcBufferOffset;
+    uint32_t dstWidth;
+    uint32_t dstHeight;
+    uint32_t srcPitch;
+};
+
 // Utils class for clear & blitting
 class ClearUtils final : angle::NonCopyable
 {
@@ -234,10 +255,32 @@ class ColorBlitUtils final : angle::NonCopyable
                                     const ColorBlitParams &params);
 
   private:
+    struct ShaderKey
+    {
+        uint32_t numColorAttachments = 0;
+        int sourceTextureType        = 0;
+        bool unmultiplyAlpha         = false;
+        bool premultiplyAlpha        = false;
+        bool transformLinearToSrgb   = false;
+        bool operator==(const ShaderKey &other) const
+        {
+            return numColorAttachments == other.numColorAttachments &&
+                   unmultiplyAlpha == other.unmultiplyAlpha &&
+                   premultiplyAlpha == other.premultiplyAlpha &&
+                   transformLinearToSrgb == other.transformLinearToSrgb &&
+                   sourceTextureType == other.sourceTextureType;
+        }
+        struct Hash
+        {
+            size_t operator()(const ShaderKey &k) const noexcept
+            {
+                return angle::HashMultiple(k.numColorAttachments, k.unmultiplyAlpha,
+                                           k.premultiplyAlpha, k.sourceTextureType);
+            }
+        };
+    };
     angle::Result ensureShadersInitialized(ContextMtl *ctx,
-                                           uint32_t numColorAttachments,
-                                           int alphaPremultiplyType,
-                                           int sourceTextureType,
+                                           const ShaderKey &key,
                                            AutoObjCPtr<id<MTLFunction>> *fragmentShaderOut);
 
     angle::Result setupColorBlitWithDraw(const gl::Context *context,
@@ -254,15 +297,9 @@ class ColorBlitUtils final : angle::NonCopyable
 
     AutoObjCPtr<id<MTLFunction>> mVertexShader;
 
-    // Blit fragment shaders:
-    // First array dimension: number of outputs.
-    // Second array dimension: source texture type (2d, ms, array, 3d, etc)
-    using ColorBlitFragmentShaderArray =
-        std::array<std::array<AutoObjCPtr<id<MTLFunction>>, mtl_shader::kTextureTypeCount>,
-                   kMaxRenderTargets>;
-    ColorBlitFragmentShaderArray mBlitFragmentShaders;
-    ColorBlitFragmentShaderArray mBlitPremultiplyAlphaFragmentShaders;
-    ColorBlitFragmentShaderArray mBlitUnmultiplyAlphaFragmentShaders;
+    // Blit fragment shaders.
+    std::unordered_map<ShaderKey, AutoObjCPtr<id<MTLFunction>>, ShaderKey::Hash>
+        mBlitFragmentShaders;
 };
 
 class DepthStencilBlitUtils final : angle::NonCopyable
@@ -590,6 +627,34 @@ class VertexFormatConversionUtils final : angle::NonCopyable
     AutoObjCPtr<id<MTLFunction>> mComponentsExpandVertexShader;
 };
 
+// Util class for linearizing PVRTC1 data for buffer to texture uploads
+class BlockLinearizationUtils final : angle::NonCopyable
+{
+  public:
+    angle::Result linearizeBlocks(ContextMtl *contextMtl, const BlockLinearizationParams &params);
+
+  private:
+    angle::Result getBlockLinearizationComputePipeline(
+        ContextMtl *contextMtl,
+        AutoObjCPtr<id<MTLComputePipelineState>> *outComputePipeline);
+
+    AutoObjCPtr<id<MTLFunction>> mLinearizeBlocksComputeShader;
+};
+
+// Util class for saturating floating-pont depth data for texture uploads
+class DepthSaturationUtils final : angle::NonCopyable
+{
+  public:
+    angle::Result saturateDepth(ContextMtl *contextMtl, const DepthSaturationParams &params);
+
+  private:
+    angle::Result getDepthSaturationComputePipeline(
+        ContextMtl *contextMtl,
+        AutoObjCPtr<id<MTLComputePipelineState>> *outComputePipeline);
+
+    AutoObjCPtr<id<MTLFunction>> mSaturateDepthComputeShader;
+};
+
 // RenderUtils: container class of various util classes above
 class RenderUtils : public Context, angle::NonCopyable
 {
@@ -695,6 +760,12 @@ class RenderUtils : public Context, angle::NonCopyable
                                                           const IndexGenerationParams &params,
                                                           size_t *indicesGenerated);
 
+    // See BlockLinearizationUtils::linearizeBlocks()
+    angle::Result linearizeBlocks(ContextMtl *contextMtl, const BlockLinearizationParams &params);
+
+    // See DepthSaturationUtils::saturateDepth()
+    angle::Result saturateDepth(ContextMtl *contextMtl, const DepthSaturationParams &params);
+
   private:
     // override ErrorHandler
     void handleError(GLenum error,
@@ -719,6 +790,8 @@ class RenderUtils : public Context, angle::NonCopyable
     MipmapUtils mMipmapUtils;
     std::array<CopyPixelsUtils, angle::EnumSize<PixelType>()> mCopyPixelsUtils;
     VertexFormatConversionUtils mVertexFormatUtils;
+    BlockLinearizationUtils mBlockLinearizationUtils;
+    DepthSaturationUtils mDepthSaturationUtils;
 };
 
 }  // namespace mtl

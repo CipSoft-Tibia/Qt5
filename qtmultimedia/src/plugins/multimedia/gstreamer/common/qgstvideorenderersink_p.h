@@ -75,14 +75,11 @@ class QGstVideoRenderer : public QObject
         QGstBufferHandle buffer;
         QVideoFrameFormat format;
         QGstCaps::MemoryFormat memoryFormat;
-        bool mirrored;
-        QtVideo::Rotation rotationAngle;
 
         bool operator==(const RenderBufferState &rhs) const
         {
-            return std::tie(buffer, format, memoryFormat, mirrored, rotationAngle)
-                    == std::tie(rhs.buffer, rhs.format, rhs.memoryFormat, rhs.mirrored,
-                                rhs.rotationAngle);
+            return std::tie(buffer, format, memoryFormat)
+                    == std::tie(rhs.buffer, rhs.format, rhs.memoryFormat);
         }
     };
 
@@ -91,7 +88,7 @@ class QGstVideoRenderer : public QObject
 
 public:
     explicit QGstVideoRenderer(QGstreamerVideoSink *);
-    ~QGstVideoRenderer();
+    ~QGstVideoRenderer() override;
 
     const QGstCaps &caps();
 
@@ -128,15 +125,12 @@ private:
     QVideoFrameFormat m_format;
     GstVideoInfo m_videoInfo{};
     QGstCaps::MemoryFormat m_memoryFormat = QGstCaps::CpuMemory;
-    bool m_frameMirrored = false;
-    QtVideo::Rotation m_frameRotationAngle = QtVideo::Rotation::None;
 
     // --- only accessed from qt thread
     QVideoFrame m_currentPipelineFrame;
     QVideoFrame m_currentVideoFrame;
     bool m_isActive{ false };
 
-    RenderBufferState m_currentState;
     QGstUtils::QConcurrentQueue<RenderBufferState> m_bufferQueue;
     bool m_flushing{ false };
 };

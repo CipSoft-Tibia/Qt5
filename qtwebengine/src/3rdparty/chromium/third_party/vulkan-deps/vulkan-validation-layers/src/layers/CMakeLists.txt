@@ -1,6 +1,6 @@
 # ~~~
-# Copyright (c) 2014-2023 Valve Corporation
-# Copyright (c) 2014-2023 LunarG, Inc.
+# Copyright (c) 2014-2024 Valve Corporation
+# Copyright (c) 2014-2024 LunarG, Inc.
 # Copyright (c) 2023-2023 RasterGrid Kft.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,16 +29,18 @@ target_sources(VkLayer_utils PRIVATE
     error_message/error_location.h
     error_message/record_object.h
     external/xxhash.h
-    external/xxhash.cpp
     ${API_TYPE}/generated/error_location_helper.cpp
     ${API_TYPE}/generated/error_location_helper.h
+    ${API_TYPE}/generated/feature_requirements_helper.cpp
+    ${API_TYPE}/generated/feature_requirements_helper.h
+    ${API_TYPE}/generated/pnext_chain_extraction.cpp
+    ${API_TYPE}/generated/pnext_chain_extraction.h
     ${API_TYPE}/generated/vk_function_pointers.cpp
     ${API_TYPE}/generated/vk_function_pointers.h
-    ${API_TYPE}/generated/vk_format_utils.h
-    ${API_TYPE}/generated/vk_format_utils.cpp
     ${API_TYPE}/generated/vk_validation_error_messages.h
     ${API_TYPE}/generated/vk_layer_dispatch_table.h
     ${API_TYPE}/generated/vk_dispatch_table_helper.h
+    ${API_TYPE}/generated/vk_dispatch_table_helper.cpp
     ${API_TYPE}/generated/vk_safe_struct.h
     ${API_TYPE}/generated/vk_safe_struct_utils.cpp
     ${API_TYPE}/generated/vk_safe_struct_core.cpp
@@ -48,12 +50,14 @@ target_sources(VkLayer_utils PRIVATE
     ${API_TYPE}/generated/vk_object_types.h
     ${API_TYPE}/generated/vk_api_version.h
     ${API_TYPE}/generated/vk_extension_helper.h
-    ${API_TYPE}/generated/vk_typemap_helper.h
     utils/cast_utils.h
     utils/convert_utils.cpp
     utils/convert_utils.h
     utils/hash_util.h
+    utils/hash_util.cpp
     utils/hash_vk_types.h
+    utils/image_layout_utils.h
+    utils/image_layout_utils.cpp
     utils/vk_layer_extension_utils.cpp
     utils/vk_layer_extension_utils.h
     utils/ray_tracing_utils.cpp
@@ -63,14 +67,6 @@ target_sources(VkLayer_utils PRIVATE
     vk_layer_config.h
     vk_layer_config.cpp
 )
-
-# XXH_NO_LONG_LONG: removes compilation of algorithms relying on 64-bit types (XXH3 and XXH64). Only XXH32 will be compiled.
-# We only need XXH32 due to restrictions requiring a 32 bit hash. This also reduces binary size.
-#
-# v0.8.1 also has compilation issues that are removed by setting this define.
-# https://github.com/KhronosGroup/Vulkan-ValidationLayers/pull/4639
-# https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/4640
-target_compile_definitions(VkLayer_utils PUBLIC XXH_NO_LONG_LONG)
 
 target_link_libraries(VkLayer_utils PUBLIC
     Vulkan::Headers
@@ -85,33 +81,19 @@ find_package(robin_hood CONFIG)
 option(USE_ROBIN_HOOD_HASHING "robin_hood provides faster versions of std::unordered_map and std::unordered_set" ${robin_hood_FOUND})
 if (USE_ROBIN_HOOD_HASHING)
     target_link_libraries(VkLayer_utils PUBLIC robin_hood::robin_hood)
-    target_compile_definitions(robin_hood::robin_hood INTERFACE USE_ROBIN_HOOD_HASHING)
+    target_compile_definitions(VkLayer_utils PUBLIC USE_ROBIN_HOOD_HASHING)
 endif()
 
-if(BUILD_LAYER_SUPPORT_FILES)
-    message(WARNING "BUILD_LAYER_SUPPORT_FILES will be deprecated! See https://github.com/KhronosGroup/Vulkan-Utility-Libraries/issues/18")
-    install(FILES ${CMAKE_SOURCE_DIR}/layers/containers/custom_containers.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vulkan/containers)
-    install(DIRECTORY ${CMAKE_SOURCE_DIR}/layers/error_message DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vulkan FILES_MATCHING PATTERN "logging.h")
-    install(DIRECTORY ${CMAKE_SOURCE_DIR}/layers/external DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vulkan FILES_MATCHING PATTERN "xxhash.h")
-    install(FILES ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_format_utils.h
-                  ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_validation_error_messages.h
-                  ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_layer_dispatch_table.h
-                  ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_dispatch_table_helper.h
-                  ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_safe_struct.h
-                  ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_object_types.h
-                  ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_api_version.h
-                  ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_extension_helper.h
-                  ${CMAKE_SOURCE_DIR}/layers/${API_TYPE}/generated/vk_typemap_helper.h
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vulkan/generated)
-    install(FILES ${CMAKE_SOURCE_DIR}/layers/utils/cast_utils.h
-                  ${CMAKE_SOURCE_DIR}/layers/utils/hash_util.h
-                  ${CMAKE_SOURCE_DIR}/layers/utils/hash_vk_types.h
-                  ${CMAKE_SOURCE_DIR}/layers/utils/vk_layer_extension_utils.h
-                  ${CMAKE_SOURCE_DIR}/layers/utils/ray_tracing_utils.h
-                  ${CMAKE_SOURCE_DIR}/layers/utils/vk_layer_utils.h
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vulkan/utils)
-    install(FILES vk_layer_config.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/vulkan)
-    install(TARGETS VkLayer_utils)
+# Using mimalloc on non-Windows OSes currently results in unit test instability with some
+# OS version / driver combinations. On 32-bit systems, using mimalloc cause an increase in
+# the amount of virtual address space needed, which can also cause stability problems.
+if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+   find_package(mimalloc CONFIG)
+   option(USE_MIMALLOC "Use mimalloc, a fast malloc/free replacement library" ${mimalloc_FOUND})
+   if (USE_MIMALLOC)
+      target_compile_definitions(VkLayer_utils PUBLIC USE_MIMALLOC)
+      target_link_libraries(VkLayer_utils PUBLIC mimalloc-static)
+   endif()
 endif()
 
 if(${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
@@ -129,48 +111,6 @@ elseif(MSVC)
     )
 endif()
 
-if (NOT BUILD_LAYERS)
-    return()
-endif()
-
-# Represents all SPIRV libraries we need
-add_library(VVL-SPIRV-LIBS INTERFACE)
-
-find_package(SPIRV-Headers REQUIRED CONFIG QUIET)
-target_link_libraries(VVL-SPIRV-LIBS INTERFACE SPIRV-Headers::SPIRV-Headers)
-
-find_package(SPIRV-Tools-opt REQUIRED CONFIG QUIET)
-target_link_libraries(VVL-SPIRV-LIBS INTERFACE SPIRV-Tools-opt)
-
-find_package(SPIRV-Tools REQUIRED CONFIG QUIET)
-
-# See https://github.com/KhronosGroup/SPIRV-Tools/issues/3909 for background on this.
-# The targets available from SPIRV-Tools change depending on how SPIRV_TOOLS_BUILD_STATIC is set.
-# Try to handle all possible combinations so that we work with externally built packages.
-if (TARGET SPIRV-Tools)
-    target_link_libraries(VVL-SPIRV-LIBS INTERFACE SPIRV-Tools)
-elseif(TARGET SPIRV-Tools-static)
-    target_link_libraries(VVL-SPIRV-LIBS INTERFACE SPIRV-Tools-static)
-elseif(TARGET SPIRV-Tools-shared)
-    target_link_libraries(VVL-SPIRV-LIBS INTERFACE SPIRV-Tools-shared)
-else()
-    message(FATAL_ERROR "Cannot determine SPIRV-Tools target name")
-endif()
-
-# NOTE: Our custom code generation target isn't desirable for system package managers or add_subdirectory users.
-# So this target needs to be off by default to avoid obtuse build errors or patches.
-option(VVL_CODEGEN "Enable vulkan validation layer code generation")
-if (VVL_CODEGEN)
-    find_package(Python3 REQUIRED QUIET)
-    add_custom_target(vvl_codegen
-        COMMAND Python3::Interpreter "${VVL_SOURCE_DIR}/scripts/generate_source.py"
-            "${VULKAN_HEADERS_INSTALL_DIR}/${CMAKE_INSTALL_DATADIR}/vulkan/registry"
-            "${SPIRV_HEADERS_INSTALL_DIR}/include/spirv/unified1"
-            --incremental --generated-version ${VulkanHeaders_VERSION} --api ${API_TYPE}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${API_TYPE}/generated
-    )
-endif()
-
 add_library(vvl MODULE)
 
 target_sources(vvl PRIVATE
@@ -178,6 +118,7 @@ target_sources(vvl PRIVATE
     best_practices/best_practices_utils.cpp
     best_practices/bp_buffer.cpp
     best_practices/bp_cmd_buffer.cpp
+    best_practices/bp_cmd_buffer_nv.cpp
     best_practices/bp_copy_blit_resolve.cpp
     best_practices/bp_descriptor.cpp
     best_practices/bp_device_memory.cpp
@@ -226,7 +167,8 @@ target_sources(vvl PRIVATE
     core_checks/cc_video.cpp
     core_checks/cc_wsi.cpp
     core_checks/cc_ycbcr.cpp
-    error_message/validation_error_enums.h
+    drawdispatch/descriptor_validator.cpp
+    drawdispatch/drawdispatch_vuids.cpp
     external/vma/vma.h
     external/vma/vma.cpp
     ${API_TYPE}/generated/best_practices.cpp
@@ -236,6 +178,7 @@ target_sources(vvl PRIVATE
     ${API_TYPE}/generated/valid_enum_values.h
     ${API_TYPE}/generated/command_validation.cpp
     ${API_TYPE}/generated/dynamic_state_helper.cpp
+    ${API_TYPE}/generated/dynamic_state_helper.h
     ${API_TYPE}/generated/enum_flag_bits.h
     ${API_TYPE}/generated/layer_chassis_dispatch.cpp
     layer_chassis_dispatch_manual.cpp
@@ -243,6 +186,8 @@ target_sources(vvl PRIVATE
     ${API_TYPE}/generated/object_tracker.h
     ${API_TYPE}/generated/spirv_grammar_helper.cpp
     ${API_TYPE}/generated/spirv_validation_helper.cpp
+    ${API_TYPE}/generated/state_tracker_helper.cpp
+    ${API_TYPE}/generated/state_tracker_helper.h
     ${API_TYPE}/generated/stateless_validation_helper.cpp
     ${API_TYPE}/generated/stateless_validation_helper.h
     ${API_TYPE}/generated/sync_validation_types.cpp
@@ -259,19 +204,24 @@ target_sources(vvl PRIVATE
     ${API_TYPE}/generated/vk_safe_struct.h
     gpu_validation/debug_printf.cpp
     gpu_validation/debug_printf.h
+    gpu_validation/gpu_descriptor_set.cpp
+    gpu_validation/gpu_descriptor_set.h
     gpu_validation/gpu_error_message.cpp
     gpu_validation/gpu_error_message.h
+    gpu_validation/gpu_image_layout.cpp
     gpu_validation/gpu_state_tracker.cpp
     gpu_validation/gpu_state_tracker.h
-    gpu_validation/gpu_validation.cpp
+    gpu_validation/gpu_subclasses.cpp
+    gpu_validation/gpu_subclasses.h
+    gpu_validation/gpu_record.cpp
+    gpu_validation/gpu_setup.cpp
     gpu_validation/gpu_validation.cpp
     gpu_validation/gpu_validation.h
-    gpu_validation/gv_descriptor_sets.cpp
-    gpu_validation/gv_descriptor_sets.h
+    gpu_validation/gpu_vuids.cpp
+    gpu_validation/gpu_vuids.h
+    gpu_shaders/gpu_shaders_constants.h
     object_tracker/object_lifetime_validation.h
     object_tracker/object_tracker_utils.cpp
-    state_tracker/base_node.cpp
-    state_tracker/base_node.h
     state_tracker/buffer_state.cpp
     state_tracker/buffer_state.h
     state_tracker/cmd_buffer_state.cpp
@@ -281,6 +231,8 @@ target_sources(vvl PRIVATE
     state_tracker/device_memory_state.cpp
     state_tracker/device_memory_state.h
     state_tracker/device_state.h
+    state_tracker/fence_state.cpp
+    state_tracker/fence_state.h
     state_tracker/image_layout_map.cpp
     state_tracker/image_layout_map.h
     state_tracker/image_state.cpp
@@ -292,6 +244,10 @@ target_sources(vvl PRIVATE
     state_tracker/pipeline_sub_state.cpp
     state_tracker/pipeline_sub_state.h
     state_tracker/query_state.h
+    state_tracker/semaphore_state.cpp
+    state_tracker/semaphore_state.h
+    state_tracker/state_object.cpp
+    state_tracker/state_object.h
     state_tracker/queue_state.cpp
     state_tracker/queue_state.h
     state_tracker/ray_tracing_state.h
@@ -308,7 +264,6 @@ target_sources(vvl PRIVATE
     state_tracker/state_tracker.h
     state_tracker/video_session_state.cpp
     state_tracker/video_session_state.h
-    stateless/parameter_name.h
     stateless/sl_buffer.cpp
     stateless/sl_cmd_buffer_dynamic.cpp
     stateless/sl_cmd_buffer.cpp
@@ -326,10 +281,24 @@ target_sources(vvl PRIVATE
     stateless/sl_utils.cpp
     stateless/sl_wsi.cpp
     stateless/stateless_validation.h
-    sync/sync_validation.cpp
-    sync/sync_validation.h
+    sync/sync_access_context.cpp
+    sync/sync_access_context.h
+    sync/sync_access_state.cpp
+    sync/sync_access_state.h
+    sync/sync_commandbuffer.cpp
+    sync/sync_commandbuffer.h
+    sync/sync_common.cpp
+    sync/sync_common.h
+    sync/sync_op.cpp
+    sync/sync_op.h
+    sync/sync_renderpass.cpp
+    sync/sync_renderpass.h
+    sync/sync_submit.cpp
+    sync/sync_submit.h
     sync/sync_utils.cpp
     sync/sync_utils.h
+    sync/sync_validation.cpp
+    sync/sync_validation.h
     sync/sync_vuid_maps.cpp
     sync/sync_vuid_maps.h
     thread_tracker/thread_safety_validation.cpp
@@ -350,13 +319,14 @@ if(MSVC)
 elseif(MINGW)
     target_sources(vvl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/${LAYER_NAME}.def)
     target_compile_options(vvl PRIVATE -Wa,-mbig-obj)
+    set_target_properties(vvl PROPERTIES PREFIX "") # remove the prefix "lib" so the manifest json "library_path" matches
 elseif(APPLE)
-    message(STATUS "Functions are exported via VVL_EXPORT")
     set_target_properties(vvl PROPERTIES SUFFIX ".dylib")
+    target_link_options(vvl PRIVATE -exported_symbols_list ${CMAKE_CURRENT_SOURCE_DIR}/${LAYER_NAME}.exp)
 elseif(ANDROID)
     target_link_options(vvl PRIVATE LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/${LAYER_NAME}-android.map)
 else()
-    target_link_options(vvl PRIVATE LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/${LAYER_NAME}.map,-Bsymbolic,--exclude-libs,ALL)
+    target_link_options(vvl PRIVATE LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/${LAYER_NAME}.map)
 endif()
 
 target_compile_options(vvl PRIVATE "$<IF:$<CXX_COMPILER_ID:MSVC>,/wd4100,-Wno-unused-parameter>")
@@ -376,26 +346,14 @@ elseif(MSVC)
     )
 endif()
 
-# Khronos validation additional dependencies
-if (USE_ROBIN_HOOD_HASHING)
-    target_link_libraries(vvl PRIVATE robin_hood::robin_hood)
-endif()
-
 # Order matters here. VkLayer_utils should be the last link library to ensure mimalloc overrides are picked up correctly.
 # Otherwise, libraries after VkLayer_utils will not benefit from this performance improvement.
-target_link_libraries(vvl PRIVATE VVL-SPIRV-LIBS VkLayer_utils)
-
-# Using mimalloc on non-Windows OSes currently results in unit test instability with some
-# OS version / driver combinations. On 32-bit systems, using mimalloc cause an increase in
-# the amount of virtual address space needed, which can also cause stability problems.
-if (MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-   find_package(mimalloc CONFIG)
-   option(USE_MIMALLOC "Use mimalloc, a fast malloc/free replacement library" ${mimalloc_FOUND})
-   if (USE_MIMALLOC)
-      target_compile_definitions(mimalloc-static INTERFACE USE_MIMALLOC)
-      target_link_libraries(vvl PRIVATE mimalloc-static)
-   endif()
-endif()
+target_link_libraries(vvl PRIVATE
+    SPIRV-Headers::SPIRV-Headers
+    SPIRV-Tools-opt
+    SPIRV-Tools-link
+    VkLayer_utils
+)
 
 target_include_directories(vvl SYSTEM PRIVATE external)
 
@@ -409,6 +367,9 @@ if (ANDROID)
 
     # Required for __android_log_print. Marking as PUBLIC since the tests use __android_log_print as well.
     target_link_libraries(VkLayer_utils PUBLIC log)
+
+    # Required for AHardwareBuffer_describe. Marking as PUBLIC since the tests use AHardwareBuffer_describe as well.
+    target_link_libraries(VkLayer_utils PUBLIC android)
 
     install(TARGETS vvl DESTINATION ${CMAKE_INSTALL_LIBDIR})
 

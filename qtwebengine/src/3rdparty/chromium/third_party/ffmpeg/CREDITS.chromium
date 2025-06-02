@@ -377,9 +377,6 @@ assumed by the product vendor.
 
 ********************************************************************************
 
-libavcodec/fft_fixed_32.c
-libavcodec/fft_init_table.c
-libavcodec/fft_table.h
 libavcodec/mips/aacdec_mips.h
 libavcodec/mips/aacsbr_mips.h
 libavcodec/mips/compute_antialias_fixed.h

@@ -74,8 +74,8 @@ class DisplayMediaAccessHandlerTest : public ChromeRenderViewHostTestHarness {
     return content::MediaStreamRequest(
         web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
         web_contents()->GetPrimaryMainFrame()->GetRoutingID(), 0,
-        GURL("http://origin/"), false, blink::MEDIA_GENERATE_STREAM,
-        std::string(), std::string(),
+        url::Origin::Create(GURL("http://origin/")), false,
+        blink::MEDIA_GENERATE_STREAM, std::string(), std::string(),
         request_audio ? blink::mojom::MediaStreamType::DISPLAY_AUDIO_CAPTURE
                       : blink::mojom::MediaStreamType::NO_SERVICE,
         blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE,
@@ -96,6 +96,13 @@ class DisplayMediaAccessHandlerTest : public ChromeRenderViewHostTestHarness {
       bool exclude_self_browser_surface) {
     content::MediaStreamRequest request = MakeRequest(/*request_audio=*/false);
     request.exclude_self_browser_surface = exclude_self_browser_surface;
+    return request;
+  }
+
+  content::MediaStreamRequest MakeExcludeMonitorTypeSurfacesRequest(
+      bool exclude_monitor_type_surfaces) {
+    content::MediaStreamRequest request = MakeRequest(/*request_audio=*/false);
+    request.exclude_monitor_type_surfaces = exclude_monitor_type_surfaces;
     return request;
   }
 
@@ -398,8 +405,9 @@ TEST_F(DisplayMediaAccessHandlerTest, UpdateMediaRequestStateWithClosing) {
                  true /* cancelled */}});
   content::MediaStreamRequest request(
       render_process_id, render_frame_id, page_request_id,
-      GURL("http://origin/"), false, blink::MEDIA_GENERATE_STREAM,
-      std::string(), std::string(), audio_stream_type, video_stream_type,
+      url::Origin::Create(GURL("http://origin/")), false,
+      blink::MEDIA_GENERATE_STREAM, std::string(), std::string(),
+      audio_stream_type, video_stream_type,
       /*disable_local_echo=*/false, /*request_pan_tilt_zoom_permission=*/false);
   content::MediaResponseCallback callback;
   access_handler_->HandleRequest(web_contents(), request, std::move(callback),
@@ -436,8 +444,9 @@ TEST_F(DisplayMediaAccessHandlerTest, CorrectHostAsksForPermissions) {
                  true /* cancelled */}});
   content::MediaStreamRequest request(
       render_process_id, render_frame_id, page_request_id,
-      GURL("http://origin/"), false, blink::MEDIA_GENERATE_STREAM,
-      std::string(), std::string(), audio_stream_type, video_stream_type,
+      url::Origin::Create(GURL("http://origin/")), false,
+      blink::MEDIA_GENERATE_STREAM, std::string(), std::string(),
+      audio_stream_type, video_stream_type,
       /*disable_local_echo=*/false, /*request_pan_tilt_zoom_permission=*/false);
   content::MediaResponseCallback callback;
   content::WebContents* test_web_contents = web_contents();
@@ -471,8 +480,9 @@ TEST_F(DisplayMediaAccessHandlerTest, CorrectHostAsksForPermissionsNormalURLs) {
                  true /* cancelled */}});
   content::MediaStreamRequest request(
       render_process_id, render_frame_id, page_request_id,
-      GURL("http://origin/"), false, blink::MEDIA_GENERATE_STREAM,
-      std::string(), std::string(), audio_stream_type, video_stream_type,
+      url::Origin::Create(GURL("http://origin/")), false,
+      blink::MEDIA_GENERATE_STREAM, std::string(), std::string(),
+      audio_stream_type, video_stream_type,
       /*disable_local_echo=*/false, /*request_pan_tilt_zoom_permission=*/false);
   content::MediaResponseCallback callback;
   content::WebContents* test_web_contents = web_contents();
@@ -515,8 +525,9 @@ TEST_F(DisplayMediaAccessHandlerTest, IsolatedWebAppNameAsksForPermissions) {
                  true /* cancelled */}});
   content::MediaStreamRequest request(
       render_process_id, render_frame_id, page_request_id,
-      GURL("http://origin/"), false, blink::MEDIA_GENERATE_STREAM,
-      std::string(), std::string(), audio_stream_type, video_stream_type,
+      url::Origin::Create(GURL("http://origin/")), false,
+      blink::MEDIA_GENERATE_STREAM, std::string(), std::string(),
+      audio_stream_type, video_stream_type,
       /*disable_local_echo=*/false, /*request_pan_tilt_zoom_permission=*/false);
   content::MediaResponseCallback callback;
   content::WebContents* test_web_contents = web_contents();
@@ -542,8 +553,9 @@ TEST_F(DisplayMediaAccessHandlerTest, WebContentsDestroyed) {
   content::MediaStreamRequest request(
       web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
       web_contents()->GetPrimaryMainFrame()->GetRoutingID(), 0,
-      GURL("http://origin/"), false, blink::MEDIA_GENERATE_STREAM,
-      std::string(), std::string(), blink::mojom::MediaStreamType::NO_SERVICE,
+      url::Origin::Create(GURL("http://origin/")), false,
+      blink::MEDIA_GENERATE_STREAM, std::string(), std::string(),
+      blink::mojom::MediaStreamType::NO_SERVICE,
       blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE,
       /*disable_local_echo=*/false, /*request_pan_tilt_zoom_permission=*/false);
   content::MediaResponseCallback callback;
@@ -581,8 +593,9 @@ TEST_F(DisplayMediaAccessHandlerTest, MultipleRequests) {
     content::MediaStreamRequest request(
         web_contents()->GetPrimaryMainFrame()->GetProcess()->GetID(),
         web_contents()->GetPrimaryMainFrame()->GetRoutingID(), 0,
-        GURL("http://origin/"), false, blink::MEDIA_GENERATE_STREAM,
-        std::string(), std::string(), blink::mojom::MediaStreamType::NO_SERVICE,
+        url::Origin::Create(GURL("http://origin/")), false,
+        blink::MEDIA_GENERATE_STREAM, std::string(), std::string(),
+        blink::mojom::MediaStreamType::NO_SERVICE,
         blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE,
         /*disable_local_echo=*/false,
         /*request_pan_tilt_zoom_permission=*/false);
@@ -829,4 +842,38 @@ TEST_P(DisplayMediaAccessHandlerTestWithSelfBrowserSurface,
       &wait_loop, &result, devices);
   wait_loop.Run();
   EXPECT_EQ(exclude_self_browser_surface_, IsWebContentsExcluded());
+}
+
+class DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces
+    : public DisplayMediaAccessHandlerTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces()
+      : exclude_monitor_type_surfaces_(GetParam()) {}
+
+  ~DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces() override = default;
+
+ protected:
+  const bool exclude_monitor_type_surfaces_;
+};
+
+INSTANTIATE_TEST_SUITE_P(_,
+                         DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces,
+                         ::testing::Bool());
+
+TEST_P(DisplayMediaAccessHandlerTestWithMonitorTypeSurfaces,
+       CheckMonitorTypeSurfacesAreExcluded) {
+  SetTestFlags({{/*expect_screens=*/!exclude_monitor_type_surfaces_,
+                 /*expect_windows=*/true,
+                 /*expect_tabs=*/true, /*expect_current_tab=*/false,
+                 /*expect_audio=*/false, content::DesktopMediaID(),
+                 /*cancelled=*/false}});
+  blink::mojom::MediaStreamRequestResult result;
+  blink::mojom::StreamDevices devices;
+  base::RunLoop wait_loop;
+
+  HandleRequest(
+      MakeExcludeMonitorTypeSurfacesRequest(exclude_monitor_type_surfaces_),
+      &wait_loop, &result, devices);
+  wait_loop.Run();
 }

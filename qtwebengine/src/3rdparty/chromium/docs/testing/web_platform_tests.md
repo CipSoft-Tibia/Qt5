@@ -146,12 +146,9 @@ notified of breakages.
 ## Running tests
 
 Same as Blink web tests, you can use
-[`run_web_tests.py`](web_tests.md#running-the-tests) to run any WPT test.
-
-*** promo
-Consider running WPTs with [`wptrunner`](web_platform_tests_wptrunner.md), the
-harness developed by the WPT project that Chromium now supports.
-***
+[`run_web_tests.py`](web_tests.md#running-the-tests) to run any WPT test. This
+will run WPT tests in Content Shell. You can also run [`run_wpt_tests.py`](run_web_platform_tests.md) to
+run WPT tests with Chrome.
 
 One thing to note is that glob patterns for WPT tests are not yet supported.
 
@@ -213,13 +210,16 @@ introduce failures as long as test owners did not choose to opt-out the failure
 notification mechanism. This includes new tests that fail in Chromium, as well
 as new failures introduced to an existing test. Test owners are encouraged to
 create an `DIR_METADATA` file in the appropriate `external/wpt/` subdirectory
-that contains at least `monorail.component` fields, which will be used by the
-importer to file the bugs.
+that contains at least the `monorail.component` and `buganizer_public.component_id`
+fields, which the importer will use to file bugs.
 For example, `external/wpt/css/css-grid/DIR_METADATA` looks like:
 
 ```
 monorail {
   component: "Blink>Layout>Grid"
+}
+buganizer_public {
+  component_id: 1415957
 }
 team_email: "layout-dev@chromium.org"
 ```

@@ -17,9 +17,9 @@
     QQuickWindow::beforeRenderPassRecording() signals to draw custom \l{QRhi}-based
     content under a Qt Quick scene.
 
-    Applications that wish to render \l QRhi content on top of the Qt Quick scene,
-    can do so by connecting to the \l QQuickWindow::afterRendering() and \l
-    QQuickWindow::afterRenderPassRecording() signals.
+    For applications that wish to render \l QRhi content on top of the Qt Quick
+    scene, use \l QQuickWindow::beforeRendering() to upload data to buffers and
+    connect to the \l QQuickWindow::afterRenderPassRecording() signal.
 
     In this example, we will also see how it is possible to have values that
     are exposed to QML which affect the QRhi-based rendering. We animate the

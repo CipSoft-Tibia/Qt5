@@ -14,12 +14,20 @@
 
 import m from 'mithril';
 
+import {Icons} from '../base/semantic_icons';
+import {duration, Time, TimeSpan} from '../base/time';
 import {exists} from '../base/utils';
-import {EngineProxy} from '../common/engine';
 import {runQuery} from '../common/queries';
-import {LONG, LONG_NULL, NUM, STR_NULL} from '../common/query_result';
-import {duration, Time} from '../common/time';
-import {addDebugTrack} from '../tracks/debug/slice_track';
+import {raf} from '../core/raf_scheduler';
+import {EngineProxy} from '../trace_processor/engine';
+import {LONG, LONG_NULL, NUM, STR_NULL} from '../trace_processor/query_result';
+import {addDebugSliceTrack} from '../tracks/debug/slice_track';
+import {Button} from '../widgets/button';
+import {DetailsShell} from '../widgets/details_shell';
+import {GridLayout, GridLayoutColumn} from '../widgets/grid_layout';
+import {MenuItem, PopupMenu2} from '../widgets/menu';
+import {Section} from '../widgets/section';
+import {Tree, TreeNode} from '../widgets/tree';
 
 import {
   BottomTab,
@@ -27,20 +35,15 @@ import {
   NewBottomTabArgs,
 } from './bottom_tab';
 import {FlowPoint, globals} from './globals';
-import {PanelSize} from './panel';
-import {runQueryInNewTab} from './query_result_tab';
-import {Icons} from './semantic_icons';
-import {renderArguments} from './slice_args';
+import {hasArgs, renderArguments} from './slice_args';
 import {renderDetails} from './slice_details';
 import {getSlice, SliceDetails, SliceRef} from './sql/slice';
+import {
+  BreakdownByThreadState,
+  breakDownIntervalByThreadState,
+} from './sql/thread_state';
 import {asSliceSqlId} from './sql_types';
-import {Button} from './widgets/button';
-import {DetailsShell} from './widgets/details_shell';
 import {DurationWidget} from './widgets/duration';
-import {GridLayout, GridLayoutColumn} from './widgets/grid_layout';
-import {MenuItem, PopupMenu2} from './widgets/menu';
-import {Section} from './widgets/section';
-import {Tree, TreeNode} from './widgets/tree';
 
 interface ContextMenuItem {
   name: string;
@@ -88,34 +91,64 @@ const ITEMS: ContextMenuItem[] = [
   {
     name: 'Average duration of slice name',
     shouldDisplay: (slice: SliceDetails) => hasName(slice),
-    run: (slice: SliceDetails) => runQueryInNewTab(
+    run: (slice: SliceDetails) => globals.openQuery(
         `SELECT AVG(dur) / 1e9 FROM slice WHERE name = '${slice.name!}'`,
         `${slice.name} average dur`,
         ),
   },
   {
-    name: 'Binder call names on thread',
+    name: 'Binder txn names + monitor contention on thread',
     shouldDisplay: (slice) => hasProcessName(slice) && hasThreadName(slice) &&
         hasTid(slice) && hasPid(slice),
     run: (slice: SliceDetails) => {
       const engine = getEngine();
       if (engine === undefined) return;
-      runQuery(`SELECT IMPORT('android.binder');`, engine)
+      runQuery(
+          `
+        INCLUDE PERFETTO MODULE android.binder;
+        INCLUDE PERFETTO MODULE android.monitor_contention;
+      `,
+          engine)
           .then(
-              () => addDebugTrack(
+              () => addDebugSliceTrack(
                   engine,
                   {
                     sqlSource: `
-                            SELECT s.ts, s.dur, tx.aidl_name AS name
-                            FROM android_sync_binder_metrics_by_txn tx
-                              JOIN slice s ON tx.binder_txn_id = s.id
-                              JOIN thread_track ON s.track_id = thread_track.id
-                              JOIN thread USING (utid)
-                              JOIN process USING (upid)
-                            WHERE aidl_name IS NOT NULL
-                              AND pid = ${getPidFromSlice(slice)}
-                              AND tid = ${getTidFromSlice(slice)}`,
-                    columns: ['ts', 'dur', 'name'],
+                                WITH merged AS (
+                                  SELECT s.ts, s.dur, tx.aidl_name AS name, 0 AS depth
+                                  FROM android_binder_txns tx
+                                  JOIN slice s
+                                    ON tx.binder_txn_id = s.id
+                                  JOIN thread_track
+                                    ON s.track_id = thread_track.id
+                                  JOIN thread
+                                    USING (utid)
+                                  JOIN process
+                                    USING (upid)
+                                  WHERE pid = ${getPidFromSlice(slice)}
+                                        AND tid = ${getTidFromSlice(slice)}
+                                        AND aidl_name IS NOT NULL
+                                  UNION ALL
+                                  SELECT
+                                    s.ts,
+                                    s.dur,
+                                    short_blocked_method || ' -> ' || blocking_thread_name || ':' || short_blocking_method AS name,
+                                    1 AS depth
+                                  FROM android_binder_txns tx
+                                  JOIN android_monitor_contention m
+                                    ON m.binder_reply_tid = tx.server_tid AND m.binder_reply_ts = tx.server_ts
+                                  JOIN slice s
+                                    ON tx.binder_txn_id = s.id
+                                  JOIN thread_track
+                                    ON s.track_id = thread_track.id
+                                  JOIN thread ON thread.utid = thread_track.utid
+                                  JOIN process ON process.upid = thread.upid
+                                  WHERE process.pid = ${getPidFromSlice(slice)}
+                                        AND thread.tid = ${
+                        getTidFromSlice(slice)}
+                                        AND short_blocked_method IS NOT NULL
+                                  ORDER BY depth
+                                ) SELECT ts, dur, name FROM merged`,
                   },
                   `Binder names (${getProcessNameFromSlice(slice)}:${
                       getThreadNameFromSlice(slice)})`,
@@ -170,7 +203,7 @@ async function getAnnotationSlice(
     name: it.name ?? 'null',
     ts: Time.fromRaw(it.ts),
     dur: it.dur,
-    sqlTrackId: it.trackId,
+    trackId: it.trackId,
     threadDur: it.threadDur ?? undefined,
     category: it.cat ?? undefined,
     absTime: it.absTime ?? undefined,
@@ -196,6 +229,7 @@ export class ChromeSliceDetailsTab extends
   static readonly kind = 'dev.perfetto.ChromeSliceDetailsTab';
 
   private sliceDetails?: SliceDetails;
+  private breakdownByThreadState?: BreakdownByThreadState;
 
   static create(args: NewBottomTabArgs): ChromeSliceDetailsTab {
     return new ChromeSliceDetailsTab(args);
@@ -203,15 +237,24 @@ export class ChromeSliceDetailsTab extends
 
   constructor(args: NewBottomTabArgs) {
     super(args);
-
-    // Start loading the slice details
-    const {id, table} = this.config;
-    getSliceDetails(this.engine, id, table)
-        .then((sliceDetails) => this.sliceDetails = sliceDetails);
+    this.load();
   }
 
-  renderTabCanvas(_ctx: CanvasRenderingContext2D, _size: PanelSize): void {
-    // No-op
+  async load() {
+    // Start loading the slice details
+    const {id, table} = this.config;
+    const details = await getSliceDetails(this.engine, id, table);
+
+    if (details !== undefined && details.thread !== undefined &&
+        details.dur > 0) {
+      this.breakdownByThreadState = await breakDownIntervalByThreadState(
+          this.engine,
+          TimeSpan.fromTimeAndDuration(details.ts, details.dur),
+          details.thread.utid);
+    }
+
+    this.sliceDetails = details;
+    raf.scheduleFullRedraw();
   }
 
   getTitle(): string {
@@ -219,24 +262,23 @@ export class ChromeSliceDetailsTab extends
   }
 
   viewTab() {
-    if (exists(this.sliceDetails)) {
-      const slice = this.sliceDetails;
-      return m(
-          DetailsShell,
-          {
-            title: 'Slice',
-            description: slice.name,
-            buttons: this.renderContextButton(slice),
-          },
-          m(
-              GridLayout,
-              renderDetails(slice),
-              this.renderRhs(this.engine, slice),
-              ),
-      );
-    } else {
+    if (!exists(this.sliceDetails)) {
       return m(DetailsShell, {title: 'Slice', description: 'Loading...'});
     }
+    const slice = this.sliceDetails;
+    return m(
+        DetailsShell,
+        {
+          title: 'Slice',
+          description: slice.name,
+          buttons: this.renderContextButton(slice),
+        },
+        m(
+            GridLayout,
+            renderDetails(slice, this.breakdownByThreadState),
+            this.renderRhs(this.engine, slice),
+            ),
+    );
   }
 
   isLoading() {
@@ -246,7 +288,11 @@ export class ChromeSliceDetailsTab extends
   private renderRhs(engine: EngineProxy, slice: SliceDetails): m.Children {
     const precFlows = this.renderPrecedingFlows(slice);
     const followingFlows = this.renderFollowingFlows(slice);
-    const args = renderArguments(engine, slice);
+    const args = hasArgs(slice.args) &&
+        m(Section,
+          {title: 'Arguments'},
+          m(Tree, renderArguments(engine, slice.args)));
+    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
     if (precFlows ?? followingFlows ?? args) {
       return m(
           GridLayoutColumn,

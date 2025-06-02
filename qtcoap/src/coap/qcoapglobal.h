@@ -16,7 +16,4 @@ typedef quint16 QCoapMessageId;
 
 QT_END_NAMESPACE
 
-Q_DECLARE_METATYPE(QCoapToken)
-Q_DECLARE_METATYPE(QCoapMessageId)
-
 #endif // QCOAPGLOBAL_H

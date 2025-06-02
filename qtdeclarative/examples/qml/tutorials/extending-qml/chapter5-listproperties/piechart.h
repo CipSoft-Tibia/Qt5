@@ -28,8 +28,6 @@ public:
     QQmlListProperty<PieSlice> slices();
 
 private:
-    static void append_slice(QQmlListProperty<PieSlice> *list, PieSlice *slice);
-
     QString m_name;
     QList<PieSlice *> m_slices;
 };

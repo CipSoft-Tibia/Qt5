@@ -1,16 +1,29 @@
-// Copyright 2022 The Dawn Authors
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // Package expectations provides types and helpers for parsing, updating and
 // writing WebGPU expectations files.
@@ -21,7 +34,6 @@ package expectations
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"sort"
 	"strings"
@@ -43,34 +55,6 @@ type Chunk struct {
 	Expectations Expectations // Expectations for the chunk
 }
 
-// Tags holds the tag information parsed in the comments between the
-// 'BEGIN TAG HEADER' and 'END TAG HEADER' markers.
-// Tags are grouped in tag-sets.
-type Tags struct {
-	// Map of tag-set name to tags
-	Sets []TagSet
-	// Map of tag name to tag-set and priority
-	ByName map[string]TagSetAndPriority
-}
-
-// TagSet is a named collection of tags, parsed from the 'TAG HEADER'
-type TagSet struct {
-	Name string      // Name of the tag-set
-	Tags result.Tags // Tags belonging to the tag-set
-}
-
-// TagSetAndPriority is used by the Tags.ByName map to identify which tag-set
-// a tag belongs to.
-type TagSetAndPriority struct {
-	// The tag-set that the tag belongs to.
-	Set string
-	// The declared order of tag in the set.
-	// An expectation may only list a single tag from any set. This priority
-	// is used to decide which tag(s) should be dropped when multiple tags are
-	// found in the same set.
-	Priority int
-}
-
 // Expectation holds a single expectation line
 type Expectation struct {
 	Line    int         // The 1-based line number of the expectation
@@ -86,7 +70,7 @@ type Expectations []Expectation
 
 // Load loads the expectation file at 'path', returning a Content.
 func Load(path string) (Content, error) {
-	content, err := ioutil.ReadFile(path)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return Content{}, err
 	}
@@ -122,27 +106,13 @@ func (c Content) Empty() bool {
 	return len(c.Chunks) == 0
 }
 
-// EndsInBlankLine returns true if the Content ends with a blank line
-func (c Content) EndsInBlankLine() bool {
-	return !c.Empty() && c.Chunks[len(c.Chunks)-1].IsBlankLine()
-}
-
-// MaybeAddBlankLine appends a new blank line to the content, if the content
-// does not already end in a blank line.
-func (c *Content) MaybeAddBlankLine() {
-	if !c.Empty() && !c.EndsInBlankLine() {
-		c.Chunks = append(c.Chunks, Chunk{})
-	}
-}
-
 // Write writes the Content, in textual form, to the writer w.
 func (c Content) Write(w io.Writer) error {
-	for _, chunk := range c.Chunks {
-		if len(chunk.Comments) == 0 && len(chunk.Expectations) == 0 {
+	for i, chunk := range c.Chunks {
+		if i > 0 {
 			if _, err := fmt.Fprintln(w); err != nil {
 				return err
 			}
-			continue
 		}
 		for _, comment := range chunk.Comments {
 			if _, err := fmt.Fprintln(w, comment); err != nil {
@@ -182,11 +152,6 @@ func (c Chunk) IsCommentOnly() bool {
 	return len(c.Comments) > 0 && len(c.Expectations) == 0
 }
 
-// IsBlankLine returns true if the Chunk has no comments or expectations.
-func (c Chunk) IsBlankLine() bool {
-	return len(c.Comments) == 0 && len(c.Expectations) == 0
-}
-
 // Clone returns a deep-copy of the Chunk
 func (c Chunk) Clone() Chunk {
 	comments := make([]string, len(c.Comments))
@@ -198,22 +163,6 @@ func (c Chunk) Clone() Chunk {
 		expectations[i] = e.Clone()
 	}
 	return Chunk{comments, expectations}
-}
-
-// Clone returns a deep-copy of the Tags
-func (t Tags) Clone() Tags {
-	out := Tags{}
-	if t.ByName != nil {
-		out.ByName = make(map[string]TagSetAndPriority, len(t.ByName))
-		for n, t := range t.ByName {
-			out.ByName[n] = t
-		}
-	}
-	if t.Sets != nil {
-		out.Sets = make([]TagSet, len(t.Sets))
-		copy(out.Sets, t.Sets)
-	}
-	return out
 }
 
 // Clone makes a deep-copy of the Expectation.

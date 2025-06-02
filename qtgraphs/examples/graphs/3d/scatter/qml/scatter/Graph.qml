@@ -4,8 +4,8 @@ import QtQuick
 import QtGraphs
 
 Item {
-    property int shadowQuality: AbstractGraph3D.ShadowQuality.High
-    property int cameraPreset: AbstractGraph3D.CameraPreset.Front
+    property int shadowQuality: Graphs3D.ShadowQuality.High
+    property int cameraPreset: Graphs3D.CameraPreset.Front
     property alias meshSmooth: scatterSeries.meshSmooth
     property alias theme: scatterGraph.theme
 

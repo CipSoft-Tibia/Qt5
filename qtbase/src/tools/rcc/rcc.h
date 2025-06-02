@@ -2,7 +2,7 @@
 // Copyright (C) 2018 Intel Corporation.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
 
-// Note: A copy of this file is used in Qt Designer (qttools/src/designer/src/lib/shared/rcc_p.h)
+// Note: A copy of this file is used in Qt Widgets Designer (qttools/src/designer/src/lib/shared/rcc_p.h)
 
 #ifndef RCC_H
 #define RCC_H
@@ -93,6 +93,7 @@ private:
         const QString TAG_RCC;
         const QString TAG_RESOURCE;
         const QString TAG_FILE;
+        const QString TAG_LEGAL = QLatin1StringView("legal");
         const QString ATTRIBUTE_LANG;
         const QString ATTRIBUTE_PREFIX;
         const QString ATTRIBUTE_ALIAS;
@@ -134,6 +135,7 @@ private:
     QString m_resourceRoot;
     QString m_initName;
     QString m_outputName;
+    QString m_legal;
     Format m_format;
     bool m_verbose;
     CompressionAlgorithm m_compressionAlgo;

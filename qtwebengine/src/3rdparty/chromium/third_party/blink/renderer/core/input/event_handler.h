@@ -43,6 +43,7 @@
 #include "third_party/blink/renderer/core/layout/hit_test_request.h"
 #include "third_party/blink/renderer/core/page/event_with_hit_test_results.h"
 #include "third_party/blink/renderer/core/page/touch_adjustment.h"
+#include "third_party/blink/renderer/core/style/computed_style.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 
 namespace ui {
@@ -97,7 +98,8 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
       HitTestRequest::HitTestRequestType hit_type = HitTestRequest::kReadOnly |
                                                     HitTestRequest::kActive,
       const LayoutObject* stop_node = nullptr,
-      bool no_lifecycle_update = false);
+      bool no_lifecycle_update = false,
+      std::optional<HitTestRequest::HitNodeCb> hit_node_cb = std::nullopt);
 
   bool MousePressed() const { return mouse_event_manager_->MousePressed(); }
   bool IsMousePositionUnknown() const {
@@ -181,11 +183,6 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
       const WebGestureEvent&,
       HitTestRequest::HitTestRequestType);
 
-  // Handle the provided scroll gesture event, propagating down to child frames
-  // as necessary.
-  WebInputEventResult HandleGestureScrollEvent(const WebGestureEvent&);
-  bool IsScrollbarHandlingGestures() const;
-
   bool BestNodeForHitTestResult(TouchAdjustmentCandidateType candidate_type,
                                 const HitTestLocation& location,
                                 const HitTestResult&,
@@ -256,8 +253,6 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
     return *keyboard_event_manager_;
   }
 
-  void AnimateSnapFling(base::TimeTicks monotonic_time);
-
   void RecomputeMouseHoverStateIfNeeded();
 
   void MarkHoverStateDirty();
@@ -277,13 +272,15 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
     cursor_accessibility_scale_factor_ = scale;
   }
 
+  void OnScrollbarDestroyed(const Scrollbar& scrollbar);
+
   Element* GetElementUnderMouse();
 
   Element* CurrentTouchDownElement();
 
-  void SetDownloadModifierTaskHandle(TaskHandle task_handle);
+  void SetDelayedNavigationTaskHandle(TaskHandle task_handle);
 
-  TaskHandle& GetDownloadModifierTaskHandle();
+  TaskHandle& GetDelayedNavigationTaskHandle();
 
  private:
   WebInputEventResult HandleMouseMoveOrLeaveEvent(
@@ -327,11 +324,20 @@ class CORE_EXPORT EventHandler final : public GarbageCollected<EventHandler> {
 
   Element* EffectiveMouseEventTargetElement(Element*);
 
-  // When a link is clicked with the alt-modifier it forces a download. However,
-  // a double-click with the alt-modifier should select the text of the link.
-  // The alt-click thus posts this task to perform the download,
-  // which can be canceled by a double-click being received.
-  TaskHandle download_modifier_task_handle_;
+  // Task handle used to distinguish single/double click with some modifiers.
+  //
+  // When single click with some modifiers occurred, this task handle is set.
+  // If double click follows, this is cancelled and renderer emit double click
+  // event. (By default, it is handled by renderer as text selection.) If not,
+  // the delayed navigation is emitted.
+  //
+  // Currently, the target navigations are the followings:
+  //
+  // - Download (Alt-click with/without some other modifiers.)
+  // - Link Preview (Alt-click)
+  //
+  // For more details, see https://crbug.com/1428816.
+  TaskHandle delayed_navigation_task_handle_;
 
   // Dispatches ME after corresponding PE provided the PE has not been
   // canceled. The |mouse_event_type| arg must be one of {mousedown,

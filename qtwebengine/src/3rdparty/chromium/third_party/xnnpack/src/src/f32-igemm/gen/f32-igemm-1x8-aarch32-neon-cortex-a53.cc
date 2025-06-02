@@ -10,6 +10,7 @@
 #include <xnnpack.h>
 #include <xnnpack/aarch32-assembler.h>
 #include <xnnpack/igemm.h>
+#include <xnnpack/log.h>
 #include <xnnpack/memory.h>
 #include <xnnpack/microparams.h>
 #include <xnnpack/post-operation.h>
@@ -26,14 +27,14 @@ class Generator : public MacroAssembler {
 };
 
 
-// void xnn_f32_igemm_minmax_ukernel_1x8__asm_aarch32_neon_prfm_cortex_a53(
+// void xnn_f32_igemm_minmax_ukernel_1x8__asm_aarch32_neon_cortex_a53_prfm(
 //     size_t mr,                            (unused)
 //     size_t nc,                            r1
 //     size_t kc,                            r2 -> r0
 //     size_t ks,                            (r3) -> sp + 4 -> r14
-//     const float**restrict a,   sp + 24 -> r4
-//     const void*restrict w,     sp + 28 -> r9
-//     uint8_t*restrict c,        sp + 32 -> r12
+//     const float** restrict a,   sp + 24 -> r4
+//     const void* restrict w,     sp + 28 -> r9
+//     uint8_t* restrict c,        sp + 32 -> r12
 //     size_t cm_stride,          sp + 36 -> (unused)
 //     size_t cn_stride,          sp + 40 -> (r7)
 //     size_t a_offset,           sp + 44 -> (r0)
@@ -49,11 +50,11 @@ class Generator : public MacroAssembler {
 // C0  r12 d16-d17  q8  d18-d19  q9
 // clamp  (r0) d4 d5 d6 d7
 
-// Converted from: src/f32-igemm/gen/f32-igemm-1x8-minmax-asm-aarch32-neon-prfm-cortex-a53.S
+// Converted from: src/f32-igemm/gen/f32-igemm-1x8-minmax-asm-aarch32-neon-cortex-a53-prfm.S
 void Generator::generate(bool prefetch, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const jit_gemm_params* jit_gemm_params)
 {
   assert(max_mr <= 1);
-  assert(nc_mod_nr < 8);
+  assert(nc_mod_nr < 8 || nc_mod_nr == SIZE_MAX);
   assert(kc != 0);
   assert(kc % sizeof(float) == 0);
   assert(ks != 0);
@@ -238,7 +239,7 @@ void Generator::perform_post_operations(
         break;
       }
       default:
-        XNN_UNREACHABLE;
+        XNN_LOG_UNREACHABLE("unsupported post operation: %u", post_operations[i].op_type);
     }
   }
 }
@@ -259,7 +260,7 @@ xnn_status_t xnn_generate_f32_igemm_ukernel_1x8__aarch32_neon_cortex_a53(xnn_cod
   return xnn_status_success;
 }
 
-xnn_status_t xnn_generate_f32_igemm_ukernel_1x8__aarch32_neon_prfm_cortex_a53(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const void* params) {
+xnn_status_t xnn_generate_f32_igemm_ukernel_1x8__aarch32_neon_cortex_a53_prfm(xnn_code_buffer* code, size_t max_mr, size_t nc_mod_nr, size_t kc, size_t ks, const void* params) {
   using namespace xnnpack::aarch32;
   Generator g(code);
   assert(params != nullptr);

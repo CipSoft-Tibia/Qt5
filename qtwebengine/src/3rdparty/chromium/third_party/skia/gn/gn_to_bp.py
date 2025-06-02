@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright 2016 Google Inc.
 #
@@ -77,6 +77,7 @@ license {
 
 cc_defaults {
     name: "skia_arch_defaults",
+    cpp_std: "gnu++17",
     arch: {
         arm: {
             srcs: [],
@@ -106,10 +107,10 @@ cc_defaults {
     target: {
       android: {
         srcs: [
-          "third_party/vulkanmemoryallocator/GrVulkanMemoryAllocator.cpp",
+          "src/gpu/vk/vulkanmemoryallocator/VulkanMemoryAllocatorWrapper.cpp",
         ],
         local_include_dirs: [
-          "third_party/vulkanmemoryallocator/",
+          "src/gpu/vk/vulkanmemoryallocator",
           "vma_android/include",
         ],
       },
@@ -310,6 +311,7 @@ cc_defaults {
     ],
     cflags: [
         "-DSK_SHAPER_HARFBUZZ_AVAILABLE",
+        "-DSK_SHAPER_UNICODE_AVAILABLE",
         "-DSK_UNICODE_AVAILABLE",
         "-DSK_UNICODE_ICU_IMPLEMENTATION",
         "-Wno-implicit-fallthrough",
@@ -351,6 +353,7 @@ cc_defaults {
 
 cc_test {
     name: "skia_dm",
+    cpp_std: "gnu++17",
 
     defaults: [
         "skia_gm_srcs",
@@ -374,6 +377,7 @@ cc_test {
 
 cc_test {
     name: "skia_nanobench",
+    cpp_std: "gnu++17",
 
     defaults: [
         "skia_gm_srcs",
@@ -387,10 +391,6 @@ cc_test {
     srcs: [
         $nanobench_srcs
     ],
-
-    lto: {
-        never: true,
-    },
 }
 
 cc_library_shared {
@@ -603,7 +603,9 @@ gm_includes   .add("modules/skcms")
 def strip_headers(sources):
   return {s for s in sources if not s.endswith('.h')}
 
-gn_to_bp_utils.GrabDependentValues(js, '//:skia', 'sources', android_srcs, None)
+VMA_DEP = "//src/gpu/vk/vulkanmemoryallocator:vulkanmemoryallocator"
+
+gn_to_bp_utils.GrabDependentValues(js, '//:skia', 'sources', android_srcs, VMA_DEP)
 android_srcs    = strip_headers(android_srcs)
 
 js_linux        = gn_to_bp_utils.GenerateJSONFromGN(gn_args_linux)
@@ -648,7 +650,7 @@ js_renderengine   = gn_to_bp_utils.GenerateJSONFromGN(gn_args_renderengine)
 renderengine_srcs = strip_slashes(
     js_renderengine['targets']['//:skia']['sources'])
 gn_to_bp_utils.GrabDependentValues(js_renderengine, '//:skia', 'sources',
-                                   renderengine_srcs, None)
+                                   renderengine_srcs, VMA_DEP)
 renderengine_srcs = strip_headers(renderengine_srcs)
 
 # Execute GN for specialized SkQP target
@@ -665,7 +667,7 @@ skqp_defines   = strip_slashes(js_skqp['targets']['//:libskqp_jni']['defines'])
 skqp_includes.update(strip_slashes(js_skqp['targets']['//:public']['include_dirs']))
 
 gn_to_bp_utils.GrabDependentValues(js_skqp, '//:libskqp_jni', 'sources',
-                                   skqp_srcs, None)
+                                   skqp_srcs, VMA_DEP)
 # We are exlcuding gpu here to get rid of the includes that are being added from
 # vulkanmemoryallocator. This does not seem to remove any other incldues from gpu so things
 # should work out fine for now
@@ -678,9 +680,10 @@ gn_to_bp_utils.GrabDependentValues(js_skqp, '//:libskqp_jni', 'cflags_cc',
 gn_to_bp_utils.GrabDependentValues(js_skqp, '//:libskqp_jni', 'defines',
                                    skqp_defines, None)
 
-skqp_defines.add("SK_ENABLE_DUMP_GPU")
-skqp_defines.add("SK_BUILD_FOR_SKQP")
+skqp_defines.add("GRAPHITE_TEST_UTILS")
 skqp_defines.add("SK_ALLOW_STATIC_GLOBAL_INITIALIZERS=1")
+skqp_defines.add("SK_BUILD_FOR_SKQP")
+skqp_defines.add("SK_ENABLE_DUMP_GPU")
 skqp_defines.remove("SK_USE_PERFETTO")
 
 skqp_srcs = strip_headers(skqp_srcs)
@@ -782,7 +785,8 @@ with open('Android.bp', 'w') as Android_bp:
     'cflags':          bpfmt(8, cflags, False),
     'cflags_cc':       bpfmt(8, cflags_cc),
 
-    'x86_srcs':      bpfmt(16, strip_headers(defs['hsw'  ])),
+    'x86_srcs':      bpfmt(16, strip_headers(defs['hsw'] +
+                                             defs['skx'])),
 
     'gm_includes'       : bpfmt(8, gm_includes),
     'gm_srcs'           : bpfmt(8, gm_srcs),

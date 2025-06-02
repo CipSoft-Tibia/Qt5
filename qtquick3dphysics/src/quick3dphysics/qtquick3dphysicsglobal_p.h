@@ -17,6 +17,4 @@
 
 #include <QtQuick3DPhysics/qtquick3dphysicsglobal.h>
 
-#define Q_QUICK3DPHYSICS_PRIVATE_EXPORT Q_QUICK3DPHYSICS_EXPORT
-
 #endif // QTQUICK3DPHYSICSGLOBAL_P_H

@@ -54,7 +54,7 @@
 QT_BEGIN_NAMESPACE
 /*!
     \qmltype Context2D
-    \instantiates QQuickContext2D
+    \nativetype QQuickContext2D
     \inqmlmodule QtQuick
     \ingroup qtquick-canvas
     \since 5.0
@@ -98,7 +98,7 @@ QT_BEGIN_NAMESPACE
                                        THROW_GENERIC_ERROR("Not a Context2D object");
 #define qClamp(val, min, max) qMin(qMax(val, min), max)
 #define CHECK_RGBA(c) (c == '-' || c == '.' || (c >=0 && c <= 9))
-Q_QUICK_PRIVATE_EXPORT QColor qt_color_from_string(const QV4::Value &name)
+Q_QUICK_EXPORT QColor qt_color_from_string(const QV4::Value &name)
 {
     QByteArray str = name.toQString().toUtf8();
 
@@ -2206,7 +2206,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_shadowColor(const QV4::Function
 
 
 /*!
-    \qmlproperty qreal QtQuick::Context2D::shadowOffsetX
+    \qmlproperty real QtQuick::Context2D::shadowOffsetX
      Holds the current shadow offset in the positive horizontal distance.
 
      \sa shadowOffsetY
@@ -2234,7 +2234,7 @@ QV4::ReturnedValue QQuickJSContext2D::method_set_shadowOffsetX(const QV4::Functi
     RETURN_UNDEFINED();
 }
 /*!
-    \qmlproperty qreal QtQuick::Context2D::shadowOffsetY
+    \qmlproperty real QtQuick::Context2D::shadowOffsetY
      Holds the current shadow offset in the positive vertical distance.
 
      \sa shadowOffsetX

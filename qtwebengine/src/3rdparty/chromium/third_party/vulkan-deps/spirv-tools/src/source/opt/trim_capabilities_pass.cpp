@@ -36,10 +36,19 @@ namespace spvtools {
 namespace opt {
 
 namespace {
+constexpr uint32_t kOpTypeFloatSizeIndex = 0;
 constexpr uint32_t kOpTypePointerStorageClassIndex = 0;
 constexpr uint32_t kTypeArrayTypeIndex = 0;
 constexpr uint32_t kOpTypeScalarBitWidthIndex = 0;
-constexpr uint32_t kTypePointerTypeIdInIdx = 1;
+constexpr uint32_t kTypePointerTypeIdInIndex = 1;
+constexpr uint32_t kOpTypeIntSizeIndex = 0;
+constexpr uint32_t kOpTypeImageDimIndex = 1;
+constexpr uint32_t kOpTypeImageArrayedIndex = kOpTypeImageDimIndex + 2;
+constexpr uint32_t kOpTypeImageMSIndex = kOpTypeImageArrayedIndex + 1;
+constexpr uint32_t kOpTypeImageSampledIndex = kOpTypeImageMSIndex + 1;
+constexpr uint32_t kOpTypeImageFormatIndex = kOpTypeImageSampledIndex + 1;
+constexpr uint32_t kOpImageReadImageIndex = 0;
+constexpr uint32_t kOpImageSparseReadImageIndex = 0;
 
 // DFS visit of the type defined by `instruction`.
 // If `condition` is true, children of the current node are visited.
@@ -60,7 +69,7 @@ static void DFSWhile(const Instruction* instruction, UnaryPredicate condition) {
 
     if (item->opcode() == spv::Op::OpTypePointer) {
       instructions_to_visit.push(
-          item->GetSingleWordInOperand(kTypePointerTypeIdInIdx));
+          item->GetSingleWordInOperand(kTypePointerTypeIdInIndex));
       continue;
     }
 
@@ -127,6 +136,26 @@ static bool Has16BitCapability(const FeatureManager* feature_manager) {
 //
 // Handler names follow the following convention:
 //  Handler_<Opcode>_<Capability>()
+
+static std::optional<spv::Capability> Handler_OpTypeFloat_Float16(
+    const Instruction* instruction) {
+  assert(instruction->opcode() == spv::Op::OpTypeFloat &&
+         "This handler only support OpTypeFloat opcodes.");
+
+  const uint32_t size =
+      instruction->GetSingleWordInOperand(kOpTypeFloatSizeIndex);
+  return size == 16 ? std::optional(spv::Capability::Float16) : std::nullopt;
+}
+
+static std::optional<spv::Capability> Handler_OpTypeFloat_Float64(
+    const Instruction* instruction) {
+  assert(instruction->opcode() == spv::Op::OpTypeFloat &&
+         "This handler only support OpTypeFloat opcodes.");
+
+  const uint32_t size =
+      instruction->GetSingleWordInOperand(kOpTypeFloatSizeIndex);
+  return size == 64 ? std::optional(spv::Capability::Float64) : std::nullopt;
+}
 
 static std::optional<spv::Capability>
 Handler_OpTypePointer_StorageInputOutput16(const Instruction* instruction) {
@@ -255,13 +284,97 @@ static std::optional<spv::Capability> Handler_OpTypePointer_StorageUniform16(
                         : std::nullopt;
 }
 
+static std::optional<spv::Capability> Handler_OpTypeInt_Int16(
+    const Instruction* instruction) {
+  assert(instruction->opcode() == spv::Op::OpTypeInt &&
+         "This handler only support OpTypeInt opcodes.");
+
+  const uint32_t size =
+      instruction->GetSingleWordInOperand(kOpTypeIntSizeIndex);
+  return size == 16 ? std::optional(spv::Capability::Int16) : std::nullopt;
+}
+
+static std::optional<spv::Capability> Handler_OpTypeInt_Int64(
+    const Instruction* instruction) {
+  assert(instruction->opcode() == spv::Op::OpTypeInt &&
+         "This handler only support OpTypeInt opcodes.");
+
+  const uint32_t size =
+      instruction->GetSingleWordInOperand(kOpTypeIntSizeIndex);
+  return size == 64 ? std::optional(spv::Capability::Int64) : std::nullopt;
+}
+
+static std::optional<spv::Capability> Handler_OpTypeImage_ImageMSArray(
+    const Instruction* instruction) {
+  assert(instruction->opcode() == spv::Op::OpTypeImage &&
+         "This handler only support OpTypeImage opcodes.");
+
+  const uint32_t arrayed =
+      instruction->GetSingleWordInOperand(kOpTypeImageArrayedIndex);
+  const uint32_t ms = instruction->GetSingleWordInOperand(kOpTypeImageMSIndex);
+  const uint32_t sampled =
+      instruction->GetSingleWordInOperand(kOpTypeImageSampledIndex);
+
+  return arrayed == 1 && sampled == 2 && ms == 1
+             ? std::optional(spv::Capability::ImageMSArray)
+             : std::nullopt;
+}
+
+static std::optional<spv::Capability>
+Handler_OpImageRead_StorageImageReadWithoutFormat(
+    const Instruction* instruction) {
+  assert(instruction->opcode() == spv::Op::OpImageRead &&
+         "This handler only support OpImageRead opcodes.");
+  const auto* def_use_mgr = instruction->context()->get_def_use_mgr();
+
+  const uint32_t image_index =
+      instruction->GetSingleWordInOperand(kOpImageReadImageIndex);
+  const uint32_t type_index = def_use_mgr->GetDef(image_index)->type_id();
+  const Instruction* type = def_use_mgr->GetDef(type_index);
+  const uint32_t dim = type->GetSingleWordInOperand(kOpTypeImageDimIndex);
+  const uint32_t format = type->GetSingleWordInOperand(kOpTypeImageFormatIndex);
+
+  const bool is_unknown = spv::ImageFormat(format) == spv::ImageFormat::Unknown;
+  const bool requires_capability_for_unknown =
+      spv::Dim(dim) != spv::Dim::SubpassData;
+  return is_unknown && requires_capability_for_unknown
+             ? std::optional(spv::Capability::StorageImageReadWithoutFormat)
+             : std::nullopt;
+}
+
+static std::optional<spv::Capability>
+Handler_OpImageSparseRead_StorageImageReadWithoutFormat(
+    const Instruction* instruction) {
+  assert(instruction->opcode() == spv::Op::OpImageSparseRead &&
+         "This handler only support OpImageSparseRead opcodes.");
+  const auto* def_use_mgr = instruction->context()->get_def_use_mgr();
+
+  const uint32_t image_index =
+      instruction->GetSingleWordInOperand(kOpImageSparseReadImageIndex);
+  const uint32_t type_index = def_use_mgr->GetDef(image_index)->type_id();
+  const Instruction* type = def_use_mgr->GetDef(type_index);
+  const uint32_t format = type->GetSingleWordInOperand(kOpTypeImageFormatIndex);
+
+  return spv::ImageFormat(format) == spv::ImageFormat::Unknown
+             ? std::optional(spv::Capability::StorageImageReadWithoutFormat)
+             : std::nullopt;
+}
+
 // Opcode of interest to determine capabilities requirements.
-constexpr std::array<std::pair<spv::Op, OpcodeHandler>, 4> kOpcodeHandlers{{
+constexpr std::array<std::pair<spv::Op, OpcodeHandler>, 12> kOpcodeHandlers{{
     // clang-format off
-    {spv::Op::OpTypePointer, Handler_OpTypePointer_StorageInputOutput16},
-    {spv::Op::OpTypePointer, Handler_OpTypePointer_StoragePushConstant16},
-    {spv::Op::OpTypePointer, Handler_OpTypePointer_StorageUniformBufferBlock16},
-    {spv::Op::OpTypePointer, Handler_OpTypePointer_StorageUniform16}
+    {spv::Op::OpImageRead,         Handler_OpImageRead_StorageImageReadWithoutFormat},
+    {spv::Op::OpImageSparseRead,   Handler_OpImageSparseRead_StorageImageReadWithoutFormat},
+    {spv::Op::OpTypeFloat,         Handler_OpTypeFloat_Float16 },
+    {spv::Op::OpTypeFloat,         Handler_OpTypeFloat_Float64 },
+    {spv::Op::OpTypeImage,         Handler_OpTypeImage_ImageMSArray},
+    {spv::Op::OpTypeInt,           Handler_OpTypeInt_Int16 },
+    {spv::Op::OpTypeInt,           Handler_OpTypeInt_Int64 },
+    {spv::Op::OpTypePointer,       Handler_OpTypePointer_StorageInputOutput16},
+    {spv::Op::OpTypePointer,       Handler_OpTypePointer_StoragePushConstant16},
+    {spv::Op::OpTypePointer,       Handler_OpTypePointer_StorageUniform16},
+    {spv::Op::OpTypePointer,       Handler_OpTypePointer_StorageUniform16},
+    {spv::Op::OpTypePointer,       Handler_OpTypePointer_StorageUniformBufferBlock16},
     // clang-format on
 }};
 

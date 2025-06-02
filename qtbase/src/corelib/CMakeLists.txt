@@ -2,19 +2,17 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 qt_find_package(WrapPCRE2 PROVIDED_TARGETS WrapPCRE2::WrapPCRE2)
+qt_internal_extend_sbom(WrapPCRE2::WrapPCRE2
+    CPE_VENDOR "pcre"
+    CPE_PRODUCT "pcre2"
+    DOWNLOAD_LOCATION "https://github.com/PCRE2Project/pcre2"
+)
 qt_find_package(WrapZLIB PROVIDED_TARGETS WrapZLIB::WrapZLIB)
-
-
-# compute the reverse relative path from QtCoreConfigExtras to the install prefix
-# this is used in QtCoreConfigExtras to make its install paths relocatable
-if(QT_WILL_INSTALL)
-    get_filename_component(_clean_prefix
-        "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}/${QT_CONFIG_INSTALL_DIR}" ABSOLUTE)
-else()
-    get_filename_component(_clean_prefix "${QT_CONFIG_BUILD_DIR}" ABSOLUTE)
-endif()
-file(RELATIVE_PATH QT_INVERSE_CONFIG_INSTALL_DIR
-    "${_clean_prefix}" "${QT_BUILD_INTERNALS_RELOCATABLE_INSTALL_PREFIX}")
+qt_internal_extend_sbom(WrapZLIB::WrapZLIB
+    CPE_VENDOR "zlib"
+    CPE_PRODUCT "zlib"
+    DOWNLOAD_LOCATION "https://github.com/madler/zlib"
+)
 
 if(ANDROID)
     set(corelib_extra_cmake_files
@@ -24,10 +22,6 @@ if(WASM)
     set(corelib_extra_cmake_files
         "${CMAKE_CURRENT_SOURCE_DIR}/${QT_CMAKE_EXPORT_NAMESPACE}WasmMacros.cmake")
 endif()
-
-qt_path_join(config_build_dir ${QT_CONFIG_BUILD_DIR} "${INSTALL_CMAKE_NAMESPACE}Core")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/QtInstallPaths.cmake.in"
-    "${config_build_dir}/QtInstallPaths.cmake" @ONLY)
 
 #####################################################################
 ## Core Module:
@@ -74,6 +68,7 @@ qt_internal_add_module(Core
         global/qoverload.h
         global/qprocessordetection.h
         global/qrandom.cpp global/qrandom.h global/qrandom_p.h
+        global/qstdlibdetection.h
         global/qswap.h
         global/qsysinfo.cpp global/qsysinfo.h
         global/qsystemdetection.h
@@ -102,12 +97,15 @@ qt_internal_add_module(Core
         global/q20map.h
         global/q20memory.h
         global/q20type_traits.h
+        global/q20utility.h
         global/q20vector.h
         global/q23functional.h
         global/q23utility.cpp # remove once we have a user that tests this
         global/q23utility.h
+        global/q26numeric.h
         global/qxpfunctional.h
         global/qxptype_traits.h
+        global/qversiontagging.h
         ipc/qsharedmemory.cpp ipc/qsharedmemory.h ipc/qsharedmemory_p.h
         ipc/qsystemsemaphore.cpp ipc/qsystemsemaphore.h ipc/qsystemsemaphore_p.h
         ipc/qtipccommon.cpp ipc/qtipccommon.h ipc/qtipccommon_p.h
@@ -116,6 +114,7 @@ qt_internal_add_module(Core
         io/qdataurl.cpp io/qdataurl_p.h
         io/qdebug.cpp io/qdebug.h io/qdebug_p.h
         io/qdir.cpp io/qdir.h io/qdir_p.h
+        io/qdirlisting.cpp io/qdirlisting.h io/qdirentryinfo_p.h
         io/qdiriterator.cpp io/qdiriterator.h
         io/qfile.cpp io/qfile.h io/qfile_p.h
         io/qfiledevice.cpp io/qfiledevice.h io/qfiledevice_p.h
@@ -152,9 +151,9 @@ qt_internal_add_module(Core
         kernel/qassociativeiterable.cpp kernel/qassociativeiterable.h
         kernel/qbasictimer.cpp kernel/qbasictimer.h
         kernel/qbindingstorage.h
+        kernel/qchronotimer.cpp kernel/qchronotimer.h
         kernel/qcoreapplication.cpp kernel/qcoreapplication.h kernel/qcoreapplication_p.h
         kernel/qcoreapplication_platform.h
-        kernel/qcorecmdlineargs_p.h
         kernel/qcoreevent.cpp kernel/qcoreevent.h kernel/qcoreevent_p.h
         kernel/qdeadlinetimer.cpp kernel/qdeadlinetimer.h
         kernel/qelapsedtimer.cpp kernel/qelapsedtimer.h
@@ -179,10 +178,10 @@ qt_internal_add_module(Core
         kernel/qpropertyprivate.h
         kernel/qsequentialiterable.cpp kernel/qsequentialiterable.h
         kernel/qsignalmapper.cpp kernel/qsignalmapper.h
+        kernel/qsingleshottimer.cpp kernel/qsingleshottimer_p.h
         kernel/qsocketnotifier.cpp kernel/qsocketnotifier.h
         kernel/qsystemerror.cpp kernel/qsystemerror_p.h
         kernel/qtestsupport_core.cpp kernel/qtestsupport_core.h
-        kernel/qsingleshottimer_p.h
         kernel/qtimer.cpp kernel/qtimer.h kernel/qtimer_p.h
         kernel/qtranslator.cpp kernel/qtranslator.h kernel/qtranslator_p.h
         kernel/qvariant.cpp kernel/qvariant.h kernel/qvariant_p.h
@@ -210,7 +209,7 @@ qt_internal_add_module(Core
         serialization/qtextstream.cpp serialization/qtextstream.h serialization/qtextstream_p.h
         serialization/qxmlutils.cpp serialization/qxmlutils_p.h
         text/qanystringview.cpp text/qanystringview.h
-        text/qbytearray.cpp text/qbytearray.h text/qbytearray_p.h
+        text/qbytearray.cpp text/qbytearray.h
         text/qbytearrayalgorithms.h
         text/qbytearraylist.cpp text/qbytearraylist.h
         text/qbytearraymatcher.cpp text/qbytearraymatcher.h
@@ -290,6 +289,7 @@ qt_internal_add_module(Core
         tools/qmap.h
         tools/qmargins.cpp tools/qmargins.h
         tools/qmessageauthenticationcode.h
+        tools/qminimalflatset_p.h
         tools/qoffsetstringarray_p.h
         tools/qpair.h
         tools/qpoint.cpp tools/qpoint.h
@@ -306,6 +306,7 @@ qt_internal_add_module(Core
         tools/qsharedpointer.cpp tools/qsharedpointer.h
         tools/qsharedpointer_impl.h
         tools/qsize.cpp tools/qsize.h
+        tools/qsmallbytearray_p.h
         tools/qspan.h
         tools/qspan_p.h
         tools/qstack.h
@@ -313,6 +314,7 @@ qt_internal_add_module(Core
         tools/qtools_p.h
         tools/qtyperevision.cpp tools/qtyperevision.h
         tools/quniquehandle_p.h
+        tools/quniquehandle_types.cpp tools/quniquehandle_types_p.h
         tools/qvarlengtharray.h
         tools/qvector.h
         tools/qversionnumber.cpp tools/qversionnumber.h
@@ -321,21 +323,25 @@ qt_internal_add_module(Core
         # despite the fact that appropriate checks are in place to avoid that!
         tools/qshareddata.cpp tools/qshareddata.h
         text/qlocale.cpp text/qlocale.h
+        global/qassert.cpp # Windows: inconsistent linkage of qAbort()
         global/qglobal.cpp  # undef qFatal
         global/qlogging.cpp # undef qFatal/qInfo/qDebug
         global/qrandom.cpp # undef Q_ASSERT/_X
         text/qstringconverter.cpp # enum Data
         tools/qcryptographichash.cpp # KeccakNISTInterface/Final
         io/qdebug.cpp # undef qDebug
+        io/qresource.cpp # QTBUG-132114
     NO_PCH_SOURCES
         compat/removed_api.cpp
         global/qsimd.cpp
+        kernel/qsocketnotifier.cpp # defines BUILDING_QSOCKETNOTIFIER
     DEFINES
         QT_NO_CONTEXTLESS_CONNECT
         QT_NO_FOREACH
         QT_NO_QPAIR
         QT_NO_USING_NAMESPACE
         QT_TYPESAFE_FLAGS
+        QT_USE_NODISCARD_FILE_OPEN
     INCLUDE_DIRECTORIES
         "${CMAKE_CURRENT_BINARY_DIR}/global"
         "${CMAKE_CURRENT_BINARY_DIR}/kernel" # for moc_qobject.cpp to be found by qobject.cpp
@@ -345,7 +351,6 @@ qt_internal_add_module(Core
         WrapZLIB::WrapZLIB
     PRECOMPILED_HEADER
         "global/qt_pch.h"
-    GENERATE_CPP_EXPORTS
     PUBLIC_LIBRARIES
         Qt::Platform
     EXTRA_CMAKE_FILES
@@ -353,18 +358,31 @@ qt_internal_add_module(Core
         "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CoreConfigureFileTemplate.in"
         "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CoreResourceInit.in.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Qt6CoreDeploySupport.cmake"
-        "${config_build_dir}/QtInstallPaths.cmake"
         ${corelib_extra_cmake_files}
     POLICIES
         QTP0002
         QTP0003
+    ATTRIBUTION_FILE_DIR_PATHS
+        text
+        ../3rdparty/siphash
+        ../3rdparty/blake2
+        ../3rdparty/md4
+        ../3rdparty/md5
+        ../3rdparty/sha1
+        ../3rdparty/sha3
+        ../3rdparty/rfc6234
+        ../3rdparty/tinycbor
 )
 _qt_internal_setup_deploy_support()
 
 add_dependencies(Core qmodule_pri)
 
 if (NOT QT_NAMESPACE STREQUAL "")
-    target_compile_definitions(Core PUBLIC "QT_NAMESPACE=${QT_NAMESPACE}")
+    set(core_namespace_defs "QT_NAMESPACE=${QT_NAMESPACE}")
+    if(QT_INLINE_NAMESPACE)
+        list(APPEND core_namespace_defs QT_INLINE_NAMESPACE)
+    endif()
+    target_compile_definitions(Core PUBLIC ${core_namespace_defs})
     set_target_properties(Core PROPERTIES _qt_namespace "${QT_NAMESPACE}")
     set_property(TARGET Core APPEND PROPERTY EXPORT_PROPERTIES _qt_namespace)
 endif()
@@ -398,6 +416,9 @@ set(core_metatype_args MANUAL_MOC_JSON_FILES ${core_qobject_metatypes_json_list}
 
 if(QT_WILL_INSTALL)
     set(metatypes_install_dir ${INSTALL_ARCHDATADIR}/metatypes)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.31")
+        cmake_path(SET metatypes_install_dir NORMALIZE "${metatypes_install_dir}")
+    endif()
     list(APPEND core_metatype_args
         __QT_INTERNAL_INSTALL __QT_INTERNAL_INSTALL_DIR "${metatypes_install_dir}")
 endif()
@@ -448,6 +469,7 @@ if(QT_FEATURE_reduce_relocations AND UNIX AND GCC)
 endif()
 
 if(ANDROID)
+    _qt_internal_add_android_executable_finalizer(Core)
     set_property(TARGET Core APPEND PROPERTY QT_ANDROID_BUNDLED_JAR_DEPENDENCIES
         jar/Qt${QtBase_VERSION_MAJOR}Android.jar
     )
@@ -462,10 +484,9 @@ endif()
 # Add version tagging source files if the linker has version script support
 # or the platform supports it.
 set(core_version_tagging_files
-    global/qversiontagging.cpp
-    global/qversiontagging.h)
+    global/qversiontagging.cpp)
 qt_internal_extend_target(Core
-    CONDITION TEST_ld_version_script OR APPLE OR WIN32
+    CONDITION QT_FEATURE_version_tagging
     SOURCES ${core_version_tagging_files}
 )
 
@@ -551,6 +572,9 @@ qt_internal_extend_target(Core CONDITION WIN32
         plugin/qsystemlibrary.cpp plugin/qsystemlibrary_p.h
         thread/qthread_win.cpp
         platform/windows/qcomobject_p.h
+        platform/windows/qcomptr_p.h
+        platform/windows/qbstr_p.h
+        platform/windows/qcomvariant_p.h
     LIBRARIES
         advapi32
         authz
@@ -579,6 +603,11 @@ qt_internal_extend_target(Core CONDITION WIN32
         text/qlatin1stringmatcher.cpp
         text/qunicodetools.cpp
         tools/qhash.cpp # Q_DECL_INIT_PRIORITY
+)
+
+qt_internal_extend_target(Core CONDITION GCC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "13"
+    NO_UNITY_BUILD_SOURCES
+        io/qresource.cpp io/qresource.h io/qresource_p.h # -Werror=subobject-linkage
 )
 
 if(NOT WIN32)
@@ -618,6 +647,8 @@ qt_internal_extend_target(Core CONDITION APPLE
         # This makes sure that the tst_qmakelib passes. For some reason,
         # QtCore ends up returning a corrupted error message in
         # write_file(): fail
+    ATTRIBUTION_FILE_DIR_PATHS
+        kernel
 )
 
 qt_internal_extend_target(Core CONDITION MACOS
@@ -647,6 +678,11 @@ qt_internal_extend_target(Core CONDITION QCC AND (CMAKE_CXX_COMPILER_VERSION VER
     PUBLIC_COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CXX>:-Wno-invalid-offsetof>
 )
 
+qt_internal_extend_target(Core CONDITION QNX AND QT_FEATURE_fsnotify
+    LIBRARIES
+        fsnotify
+)
+
 qt_internal_extend_target(Core CONDITION LINUX AND QT_BUILD_SHARED_LIBS
     SOURCES
         global/minimum-linux_p.h
@@ -673,6 +709,12 @@ qt_internal_extend_target(Core CONDITION UNIX
         kernel/qtimerinfo_unix.cpp kernel/qtimerinfo_unix_p.h
         thread/qthread_unix.cpp
 )
+if(APPLE)
+    set_source_files_properties(io/qfilesystemengine_unix.cpp PROPERTIES LANGUAGE OBJCXX)
+    qt_internal_extend_target(Core CONDITION
+        PUBLIC_LIBRARIES ${FWUniformTypeIdentifiers}
+    )
+endif()
 
 qt_internal_extend_target(Core CONDITION UNIX AND NOT WASM
     SOURCES
@@ -781,6 +823,8 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_doubleconversion AND NOT QT_
     INCLUDE_DIRECTORIES
         ../3rdparty/double-conversion/double-conversion
         ../3rdparty/double-conversion
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../3rdparty/double-conversion
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_system_libb2
@@ -792,6 +836,8 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_easingcurve
     SOURCES
         tools/qeasingcurve.cpp tools/qeasingcurve.h
         tools/qtimeline.cpp tools/qtimeline.h
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../3rdparty/easing
 )
 
 qt_internal_extend_target(Core CONDITION UNIX AND NOT HAIKU AND NOT INTEGRITY AND NOT VXWORKS AND NOT WASM AND NOT MACOS
@@ -898,19 +944,31 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_timezone AND UNIX AND NOT AN
         time/qtimezoneprivate_tz.cpp
 )
 
-qt_internal_extend_target(Core CONDITION QT_FEATURE_icu AND QT_FEATURE_timezone AND UNIX AND NOT ANDROID AND NOT APPLE
+qt_internal_extend_target(Core
+    CONDITION
+        QT_FEATURE_icu AND QT_FEATURE_timezone AND NOT UNIX
     SOURCES
         time/qtimezoneprivate_icu.cpp
 )
 
-qt_internal_extend_target(Core CONDITION QT_FEATURE_icu AND QT_FEATURE_timezone AND WIN32 AND NOT ANDROID AND NOT APPLE
-    SOURCES
-        time/qtimezoneprivate_icu.cpp
-)
-
-qt_internal_extend_target(Core CONDITION QT_FEATURE_timezone AND WIN32 AND NOT QT_FEATURE_icu AND NOT ANDROID AND NOT APPLE
+# Even MS says we should prefer ICU over its APIs for TZ data:
+qt_internal_extend_target(Core
+    CONDITION
+        QT_FEATURE_timezone AND WIN32 AND NOT QT_FEATURE_icu
     SOURCES
         time/qtimezoneprivate_win.cpp
+)
+
+qt_internal_extend_target(Core
+    CONDITION QT_FEATURE_timezone_locale
+    SOURCES
+        time/qtimezonelocale.cpp time/qtimezonelocale_p.h
+)
+
+qt_internal_extend_target(Core
+    CONDITION QT_FEATURE_timezone_locale AND NOT QT_FEATURE_icu
+    SOURCES
+        time/qtimezonelocale_data_p.h
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_datetimeparser
@@ -995,6 +1053,8 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_process AND UNIX
         io/forkfd_qt.c
     INCLUDE_DIRECTORIES
         ../3rdparty/forkfd
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../3rdparty/forkfd
 )
 
 qt_internal_extend_target(Core CONDITION APPLE AND QT_FEATURE_processenvironment
@@ -1018,6 +1078,10 @@ qt_internal_extend_target(Core CONDITION ANDROID
         kernel/qjnihelpers.cpp kernel/qjnihelpers_p.h
         platform/android/qandroidextras_p.h platform/android/qandroidextras.cpp
         platform/android/qandroidnativeinterface.cpp
+        platform/android/qandroidtypes_p.h
+        platform/android/qandroidtypeconverter_p.h
+        platform/android/qandroiditemmodelproxy_p.h platform/android/qandroiditemmodelproxy.cpp
+        platform/android/qandroidmodelindexproxy_p.h platform/android/qandroidmodelindexproxy.cpp
     NO_UNITY_BUILD_SOURCES
         platform/android/qandroidextras.cpp
         # qtNativeClassName conflicts with similar symbols in android headers
@@ -1115,7 +1179,7 @@ qt_internal_extend_target(Core CONDITION QT_FEATURE_dlopen
         ${CMAKE_DL_LIBS}
 )
 
-qt_internal_extend_target(Core CONDITION APPLE AND (IOS OR TVOS)
+qt_internal_extend_target(Core CONDITION APPLE AND UIKIT
     LIBRARIES
         ${FWUIKit}
 )
@@ -1167,8 +1231,6 @@ qt_internal_extend_target(Core CONDITION VXWORKS
     SOURCES
         io/qstandardpaths_unix.cpp
         io/qstorageinfo_stub.cpp
-        kernel/qfunctions_vxworks.cpp
-        kernel/qfunctions_vxworks.h
 )
 
 qt_internal_extend_target(Core CONDITION QT_FEATURE_cborstreamreader
@@ -1338,6 +1400,8 @@ if(QT_FEATURE_mimetype AND QT_FEATURE_mimetype_database)
     qt_internal_extend_target(Core
         SOURCES ${qmimeprovider_db_output}
         INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/.rcc"
+        ATTRIBUTION_FILE_DIR_PATHS
+            mimetypes/3rdparty
     )
     set_source_files_properties(${qmimeprovider_db_output} PROPERTIES
         GENERATED TRUE
@@ -1375,7 +1439,7 @@ qt_internal_apply_gc_binaries_conditional(Core PUBLIC)
 
 # Add entry-point on platforms that need it. A project can opt-out of using the
 # entrypoint by setting the qt_no_entrypoint property to TRUE on a target.
-if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(WIN32 OR UIKIT)
     # find_package(Qt6Core) should call find_package(Qt6EntryPointPrivate) so that we can
     # link against EntryPointPrivate. Normally this is handled automatically for deps, but
     # for some reason it doesn't work for the EntryPointPrivate, so we need to add it manually.
@@ -1446,6 +1510,11 @@ if(APPLE AND QT_FEATURE_framework AND QT_FEATURE_separate_debug_info)
     )
 endif()
 
+if(IOS)
+    qt_internal_set_apple_privacy_manifest(Core
+        "${CMAKE_CURRENT_SOURCE_DIR}/platform/ios/PrivacyInfo.xcprivacy")
+endif()
+
 set(linker_script_contents "")
 if (QT_NAMESPACE STREQUAL "")
     set(tag_symbol "qt_version_tag")
@@ -1472,3 +1541,41 @@ qt_internal_extend_target(Core
         # QReadWriteLock::destroyRecursive(QReadWriteLockPrivate*)
         "_ZN*14QReadWriteLock16destroyRecursiveEP*21QReadWriteLockPrivate*"
 )
+
+function(qt_internal_library_deprecation_level)
+    # QT_DISABLE_DEPRECATED_UP_TO controls which version we use as a cut-off
+    # compiling in to the library. E.g. if it is set to QT_VERSION then no
+    # code which was deprecated before QT_VERSION will be compiled in.
+    set(digit "[0-9a-fA-F]")
+    string(REPEAT "${digit}" 6 six_digits)
+    if(NOT DEFINED QT_DISABLE_DEPRECATED_UP_TO)
+        if(WIN32)
+            # On Windows, due to the way DLLs work, we need to export all functions,
+            # including the inlines
+            set(QT_DISABLE_DEPRECATED_UP_TO "0x040800")
+        else()
+            # On other platforms, Qt's own compilation does need to compile the Qt 5.0 API
+            set(QT_DISABLE_DEPRECATED_UP_TO "0x050000")
+        endif()
+    elseif(NOT QT_DISABLE_DEPRECATED_UP_TO MATCHES "^0x${six_digits}$")
+        message(FATAL_ERROR "Ivalid format of the QT_DISABLE_DEPRECATED_UP_TO macro:"
+            " ${QT_DISABLE_DEPRECATED_UP_TO}. The expected format is the hexadecimal number,"
+            " e.g. 0x060102")
+    endif()
+    # QT_WARN_DEPRECATED_UP_TO controls the upper-bound of deprecation
+    # warnings that are emitted. E.g. if it is set to 0x060500 then all use of
+    # things deprecated in or before 6.5.0 will be warned against.
+    set(QT_WARN_DEPRECATED_UP_TO 0x070000)
+
+    set(output_header "${CMAKE_CURRENT_BINARY_DIR}/global/qtdeprecationdefinitions.h")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/global/qtdeprecationdefinitions.h.in"
+        "${output_header}"
+        @ONLY
+        NEWLINE_STYLE UNIX
+    )
+
+    target_sources(Core PRIVATE "${output_header}")
+    set_source_files_properties("${output_header}" PROPERTIES GENERATED TRUE)
+endfunction()
+qt_internal_library_deprecation_level()

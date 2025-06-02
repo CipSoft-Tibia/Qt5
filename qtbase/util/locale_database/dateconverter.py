@@ -39,8 +39,8 @@ class Converter (object):
     # Please follow alphabetic order, with two cases of the same
     # letter adjacent, lower before upper.
     @classmethod
-    def a(cls, text): # AM/PM indicator
-        return 'AP', cls.__count_first(text)
+    def a(cls, text): # AM/PM indicator; use locale-appropriate case
+        return 'Ap', cls.__count_first(text)
 
     # A: Milliseconds in day. Not supported.
     b = a # AM/PM/noon/midnight
@@ -87,6 +87,10 @@ class Converter (object):
     m = __verbatim # Minute within the hour.
     M = L # Plain month names, possibly abbreviated, and numbers.
 
+    @classmethod
+    def O(cls, text): # Localized GMT±offset formats. Map to Z-or-UTC±HH:mm
+        return 't', cls.__count_first(text)
+
     # q: Quarter. Not supported.
     # Q: Quarter. Not supported.
 
@@ -100,14 +104,28 @@ class Converter (object):
         n = cls.__count_first(text)
         return ('z' if n < 3 else 'zzz'), n
 
+    @classmethod
+    def u(cls, text): # Extended year (numeric)
+        # Officially, 'u' is simply the full year number, zero-padded
+        # to the length of the field. Qt's closest to that is four-digit.
+        # It explicitly has no special case for two-digit year.
+        return 'yyyy', cls.__count_first(text)
+
     # U: Cyclic Year Name. Not supported
     @classmethod
-    def v(cls, text): # Generic non-location format. Map to abbreviation.
-        return 't', cls.__count_first(text)
+    def v(cls, text): # Generic non-location format. Map to name.
+        return 'tttt', cls.__count_first(text)
 
-    V = v # Zone ID in various forms; VV is IANA ID. Map to abbreviation.
+    V = v # Zone ID in various forms; VV is IANA ID. Map to name.
     # w: Week of year. Not supported.
     # W: Week of month. Not supported.
+
+    @classmethod
+    def x(cls, text): # Variations on offset format.
+        n = cls.__count_first(text)
+        # Ignore: n == 1 may omit minutes, n > 3 may include seconds.
+        return ('ttt' if n > 1 and n & 1 else 'tt'), n
+    X = x # Should use Z for zero offset.
 
     @classmethod
     def y(cls, text): # Year number.
@@ -116,7 +134,10 @@ class Converter (object):
     # Y: Year for Week-of-year calendars
 
     z = v # Specific (i.e. distinguish standard from DST) non-location format.
-    Z = v # Offset format, optionaly with GMT (Qt uses UTC) prefix.
+    @classmethod
+    def Z(cls, text): # Offset format, optionaly with GMT (Qt uses UTC) prefix.
+        n = cls.__count_first(text)
+        return ('tt' if n < 4 else 'ttt' if n > 4 else 't'), n
 
     @staticmethod
     def scanQuote(text): # Can't have ' as a method name, so handle specially

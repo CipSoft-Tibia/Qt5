@@ -6072,6 +6072,10 @@
                         "type": "number"
                     },
                     {
+                        "name": "AA_DontUseNativeMenuWindows",
+                        "type": "number"
+                    },
+                    {
                         "name": "AA_SynthesizeTouchForUnhandledMouseEvents",
                         "type": "number"
                     },
@@ -8804,6 +8808,14 @@
                         "type": "number"
                     },
                     {
+                        "name": "Press",
+                        "type": "number"
+                    },
+                    {
+                        "name": "Release",
+                        "type": "number"
+                    },
+                    {
                         "name": "ImEnabled",
                         "type": "number"
                     },
@@ -9424,6 +9436,10 @@
                         "type": "number"
                     },
                     {
+                        "name": "Invalid",
+                        "type": "number"
+                    },
+                    {
                         "name": "NoScrollPhase",
                         "type": "number"
                     },
@@ -9548,6 +9564,13 @@
                         ],
                         "isJavaScriptFunction": true,
                         "name": "valueOf"
+                    },
+                    {
+                        "access": "public",
+                        "arguments": [
+                        ],
+                        "isJavaScriptFunction": true,
+                        "name": "shift"
                     }
                 ],
                 "object": true,

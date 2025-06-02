@@ -20,11 +20,14 @@ qt_internal_add_plugin(QWaylandFullScreenShellV1IntegrationPlugin
         Qt::GuiPrivate
         Qt::WaylandClientPrivate
         Wayland::Client
+    QT_LICENSE_ID QT_COMMERCIAL_OR_LGPL3
+    ATTRIBUTION_FILE_DIR_PATHS
+        ../../../3rdparty/protocol/fullscreen-shell
 )
 
 qt6_generate_wayland_protocol_client_sources(QWaylandFullScreenShellV1IntegrationPlugin
     FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/fullscreen-shell-unstable-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../3rdparty/protocol/fullscreen-shell/fullscreen-shell-unstable-v1.xml
 )
 
 #### Keys ignored in scope 1:.:.:fullscreen-shell-v1.pro:<TRUE>:

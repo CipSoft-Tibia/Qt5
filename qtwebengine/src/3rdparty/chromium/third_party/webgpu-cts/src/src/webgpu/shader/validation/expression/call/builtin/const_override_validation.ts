@@ -8,7 +8,12 @@ import {
   elementsOf,
   isAbstractType,
 } from '../../../../../util/conversion.js';
-import { fullF16Range, fullF32Range, fullF64Range, linearRange } from '../../../../../util/math.js';
+import {
+  scalarF16Range,
+  scalarF32Range,
+  scalarF64Range,
+  linearRange,
+} from '../../../../../util/math.js';
 import { ShaderValidationTest } from '../../../shader_validation_test.js';
 
 /// A linear sweep between -2 to 2
@@ -67,13 +72,32 @@ export const kMinus3PiTo3Pi = [
   3 * Math.PI,
 ] as const;
 
+/// A minimal array of values ranging from -3π to 3π, with a focus on multiples
+/// of π. Used when multiple parameters are being passed in, so the number of
+/// cases becomes the square or more of this list.
+export const kSparseMinus3PiTo3Pi = [
+  -3 * Math.PI,
+  -2.5 * Math.PI,
+  -2.0 * Math.PI,
+  -1.5 * Math.PI,
+  -1.0 * Math.PI,
+  -0.5 * Math.PI,
+  0,
+  0.5 * Math.PI,
+  Math.PI,
+  1.5 * Math.PI,
+  2.0 * Math.PI,
+  2.5 * Math.PI,
+  3 * Math.PI,
+] as const;
+
 /// The evaluation stages to test
 export const kConstantAndOverrideStages = ['constant', 'override'] as const;
 
 export type ConstantOrOverrideStage = 'constant' | 'override';
 
 /**
- * @returns true if evaluation stage @p stage supports expressions of type @p.
+ * @returns true if evaluation stage `stage` supports expressions of type @p.
  */
 export function stageSupportsType(stage: ConstantOrOverrideStage, type: Type) {
   if (stage === 'override' && isAbstractType(elementType(type)!)) {
@@ -84,7 +108,7 @@ export function stageSupportsType(stage: ConstantOrOverrideStage, type: Type) {
 }
 
 /**
- * Runs a validation test to check that evaluation of @p builtin either evaluates with or without
+ * Runs a validation test to check that evaluation of `builtin` either evaluates with or without
  * error at shader creation time or pipeline creation time.
  * @param t the ShaderValidationTest
  * @param builtin the name of the builtin
@@ -140,24 +164,24 @@ var<private> v = ${builtin}(${callArgs.join(', ')});`,
   }
 }
 
-/** @returns a sweep of the representable values for element type of @p type */
+/** @returns a sweep of the representable values for element type of `type` */
 export function fullRangeForType(type: Type, count?: number) {
   if (count === undefined) {
     count = 25;
   }
   switch (elementType(type)?.kind) {
     case 'abstract-float':
-      return fullF64Range({
+      return scalarF64Range({
         pos_sub: Math.ceil((count * 1) / 5),
         pos_norm: Math.ceil((count * 4) / 5),
       });
     case 'f32':
-      return fullF32Range({
+      return scalarF32Range({
         pos_sub: Math.ceil((count * 1) / 5),
         pos_norm: Math.ceil((count * 4) / 5),
       });
     case 'f16':
-      return fullF16Range({
+      return scalarF16Range({
         pos_sub: Math.ceil((count * 1) / 5),
         pos_norm: Math.ceil((count * 4) / 5),
       });

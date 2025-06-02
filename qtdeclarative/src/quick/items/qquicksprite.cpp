@@ -12,7 +12,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype Sprite
-    \instantiates QQuickSprite
+    \nativetype QQuickSprite
     \inqmlmodule QtQuick
     \ingroup qtquick-visual-utility
     \brief Specifies sprite animations.
@@ -44,7 +44,7 @@ QT_BEGIN_NAMESPACE
 */
 
 /*!
-    \qmlproperty qreal QtQuick::Sprite::frameRate
+    \qmlproperty real QtQuick::Sprite::frameRate
 
     Frames per second to show in the animation. Values below 0 are invalid.
 
@@ -52,7 +52,7 @@ QT_BEGIN_NAMESPACE
     If not, and frameDuration is valid , then frameDuration will be used. Otherwise duration is used.
 */
 /*!
-    \qmlproperty qreal QtQuick::Sprite::frameRateVariation
+    \qmlproperty real QtQuick::Sprite::frameRateVariation
 
     The frame rate between animations can vary by up to this amount. Variation will never decrease the
     length of the animation to less than 0.

@@ -5,6 +5,7 @@
 #define QVIDEOSURFACEFORMAT_H
 
 #include <QtMultimedia/qtmultimediaglobal.h>
+#include <QtMultimedia/qtvideo.h>
 
 #include <QtCore/qlist.h>
 #include <QtCore/qmetatype.h>
@@ -25,6 +26,7 @@ QT_DECLARE_QESDP_SPECIALIZATION_DTOR_WITH_EXPORT(QVideoFrameFormatPrivate, Q_MUL
 
 class Q_MULTIMEDIA_EXPORT QVideoFrameFormat
 {
+    Q_GADGET
 public:
     enum PixelFormat
     {
@@ -65,6 +67,7 @@ public:
 
         Format_YUV420P10
     };
+    Q_ENUM(PixelFormat)
 #ifndef Q_QDOC
     static constexpr int NPixelFormats = Format_YUV420P10 + 1;
 #endif
@@ -153,8 +156,15 @@ public:
     Direction scanLineDirection() const;
     void setScanLineDirection(Direction direction);
 
+#if QT_DEPRECATED_SINCE(6, 8)
+    QT_DEPRECATED_VERSION_X_6_8("Use streamFrameRate()")
     qreal frameRate() const;
+    QT_DEPRECATED_VERSION_X_6_8("Use setStreamFrameRate()")
     void setFrameRate(qreal rate);
+#endif
+
+    qreal streamFrameRate() const;
+    void setStreamFrameRate(qreal rate);
 
 #if QT_DEPRECATED_SINCE(6, 4)
     QT_DEPRECATED_VERSION_X_6_4("Use colorSpace()")
@@ -174,6 +184,9 @@ public:
 
     bool isMirrored() const;
     void setMirrored(bool mirrored);
+
+    QtVideo::Rotation rotation() const;
+    void setRotation(QtVideo::Rotation rotation);
 
     QString vertexShaderFileName() const;
     QString fragmentShaderFileName() const;

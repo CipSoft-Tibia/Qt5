@@ -24,6 +24,7 @@
 #include "base/logging.h"
 #include "base/memory/discardable_memory_allocator.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/message_loop/message_pump.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/metrics/field_trial.h"
 #include "base/metrics/histogram_functions.h"
@@ -72,6 +73,7 @@
 #include "content/common/buildflags.h"
 #include "content/common/content_constants_internal.h"
 #include "content/common/content_switches_internal.h"
+#include "content/common/features.h"
 #include "content/common/main_frame_counter.h"
 #include "content/common/process_visibility_tracker.h"
 #include "content/common/pseudonymization_salt.h"
@@ -130,20 +132,18 @@
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/base/url_util.h"
 #include "ppapi/buildflags/buildflags.h"
-#include "services/metrics/public/cpp/mojo_ukm_recorder.h"
-#include "services/metrics/public/cpp/ukm_recorder.h"
 #include "services/network/public/cpp/network_switches.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "services/viz/public/cpp/gpu/context_provider_command_buffer.h"
 #include "services/viz/public/cpp/gpu/gpu.h"
+#include "skia/ext/font_utils.h"
 #include "skia/ext/skia_memory_dump_provider.h"
 #include "third_party/abseil-cpp/absl/base/attributes.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/origin_trials/origin_trials_settings_provider.h"
 #include "third_party/blink/public/common/page/launching_process_state.h"
-#include "third_party/blink/public/common/privacy_budget/active_sampling.h"
-#include "third_party/blink/public/common/privacy_budget/identifiability_study_settings.h"
 #include "third_party/blink/public/common/switches.h"
+#include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
 #include "third_party/blink/public/mojom/origin_trials/origin_trials_settings.mojom.h"
 #include "third_party/blink/public/platform/modules/video_capture/web_video_capture_impl_manager.h"
 #include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
@@ -164,7 +164,6 @@
 #include "third_party/blink/public/web/web_view.h"
 #include "third_party/skia/include/core/SkFontMgr.h"
 #include "third_party/skia/include/core/SkGraphics.h"
-#include "ui/base/ui_base_features.h"
 #include "ui/base/ui_base_switches.h"
 #include "ui/base/ui_base_switches_util.h"
 #include "ui/display/display_switches.h"
@@ -190,7 +189,7 @@
 #endif
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
-#include "content/renderer/renderer_thread_type_handler.h"
+#include "content/child/sandboxed_process_thread_type_handler.h"
 #endif
 
 #ifdef ENABLE_VTUNE_JIT_INTERFACE
@@ -235,14 +234,6 @@ using ::blink::WebSecurityPolicy;
 using ::blink::WebString;
 using ::blink::WebView;
 
-// An implementation of mojom::RenderMessageFilter which can be mocked out
-// for tests which may indirectly send messages over this interface.
-mojom::RenderMessageFilter* g_render_message_filter_for_testing;
-
-// An implementation of RendererBlinkPlatformImpl which can be mocked out
-// for tests.
-RendererBlinkPlatformImpl* g_current_blink_platform_impl_for_testing;
-
 // Keep the global RenderThreadImpl in a TLS slot so it is impossible to access
 // incorrectly from the wrong thread.
 ABSL_CONST_INIT thread_local RenderThreadImpl* render_thread = nullptr;
@@ -271,44 +262,6 @@ static_assert(
 // requiring thread affinity.
 BASE_DECLARE_FEATURE(kUseThreadPoolForMediaTaskRunner){
     "UseThreadPoolForMediaTaskRunner", base::FEATURE_DISABLED_BY_DEFAULT};
-
-void AddCrashKey(v8::CrashKeyId id, const std::string& value) {
-  using base::debug::AllocateCrashKeyString;
-  using base::debug::CrashKeySize;
-  using base::debug::SetCrashKeyString;
-
-  switch (id) {
-    case v8::CrashKeyId::kIsolateAddress:
-      static auto* const isolate_address =
-          AllocateCrashKeyString("v8_isolate_address", CrashKeySize::Size32);
-      SetCrashKeyString(isolate_address, value);
-      break;
-    case v8::CrashKeyId::kReadonlySpaceFirstPageAddress:
-      static auto* const ro_space_firstpage_address = AllocateCrashKeyString(
-          "v8_ro_space_firstpage_address", CrashKeySize::Size32);
-      SetCrashKeyString(ro_space_firstpage_address, value);
-      break;
-    case v8::CrashKeyId::kMapSpaceFirstPageAddress:
-      static auto* const map_space_firstpage_address = AllocateCrashKeyString(
-          "v8_map_space_firstpage_address", CrashKeySize::Size32);
-      SetCrashKeyString(map_space_firstpage_address, value);
-      break;
-    case v8::CrashKeyId::kCodeSpaceFirstPageAddress:
-      static auto* const code_space_firstpage_address = AllocateCrashKeyString(
-          "v8_code_space_firstpage_address", CrashKeySize::Size32);
-      SetCrashKeyString(code_space_firstpage_address, value);
-      break;
-    case v8::CrashKeyId::kDumpType:
-      static auto* const dump_type =
-          AllocateCrashKeyString("dump-type", CrashKeySize::Size32);
-      SetCrashKeyString(dump_type, value);
-      break;
-    default:
-      // Doing nothing for new keys is a valid option. Having this case allows
-      // to introduce new CrashKeyId's without triggering a build break.
-      break;
-  }
-}
 
 // Updates the crash key for whether this renderer is foregrounded.
 void UpdateForegroundCrashKey(bool foreground) {
@@ -352,8 +305,7 @@ scoped_refptr<viz::ContextProviderCommandBuffer> CreateOffscreenContext(
       gpu::kNullSurfaceHandle,
       GURL("chrome://gpu/RenderThreadImpl::CreateOffscreenContext/" +
            viz::command_buffer_metrics::ContextTypeToString(type)),
-      automatic_flushes, support_locking, support_grcontext, limits, attributes,
-      type);
+      automatic_flushes, support_locking, limits, attributes, type);
 }
 
 // Hook that allows single-sample metric code from //components/metrics to
@@ -478,34 +430,6 @@ RenderThreadImpl* RenderThreadImpl::current() {
 }
 
 // static
-mojom::RenderMessageFilter* RenderThreadImpl::current_render_message_filter() {
-  if (g_render_message_filter_for_testing)
-    return g_render_message_filter_for_testing;
-  DCHECK(current());
-  return current()->render_message_filter();
-}
-
-// static
-RendererBlinkPlatformImpl* RenderThreadImpl::current_blink_platform_impl() {
-  if (g_current_blink_platform_impl_for_testing)
-    return g_current_blink_platform_impl_for_testing;
-  DCHECK(current());
-  return current()->blink_platform_impl();
-}
-
-// static
-void RenderThreadImpl::SetRenderMessageFilterForTesting(
-    mojom::RenderMessageFilter* render_message_filter) {
-  g_render_message_filter_for_testing = render_message_filter;
-}
-
-// static
-void RenderThreadImpl::SetRendererBlinkPlatformImplForTesting(
-    RendererBlinkPlatformImpl* blink_platform_impl) {
-  g_current_blink_platform_impl_for_testing = blink_platform_impl;
-}
-
-// static
 scoped_refptr<base::SingleThreadTaskRunner>
 RenderThreadImpl::DeprecatedGetMainTaskRunner() {
   return g_main_task_runner.Get();
@@ -554,6 +478,11 @@ RenderThreadImpl::RenderThreadImpl(
               .ConnectToBrowser(true)
               .IPCTaskRunner(scheduler->DeprecatedDefaultTaskRunner())
               .ExposesInterfacesToBrowser()
+              .SetUrgentMessageObserver(
+                  base::FeatureList::IsEnabled(
+                      blink::features::kBlinkSchedulerPrioritizeNavigationIPCs)
+                      ? scheduler.get()
+                      : nullptr)
               .Build()),
       main_thread_scheduler_(std::move(scheduler)),
       client_id_(GetClientIdFromCommandLine()) {
@@ -574,11 +503,6 @@ void RenderThreadImpl::Init() {
 
 #if BUILDFLAG(USE_EXTERNAL_POPUP_MENU)
   // On Mac and Android Java UI, the select popups are rendered by the browser.
-#if BUILDFLAG(IS_MAC)
-  // When UseCommonSelectPopup is enabled, the internal popup menu should be
-  // used.
-  if (!features::IsUseCommonSelectPopupEnabled())
-#endif
     blink::WebView::SetUseExternalPopupMenus(true);
 #endif
 
@@ -640,7 +564,7 @@ void RenderThreadImpl::Init() {
 #endif
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
-  RendererThreadTypeHandler::NotifyRenderThreadCreated();
+  SandboxedProcessThreadTypeHandler::NotifyMainChildThreadCreated();
 #endif
 
   cc::SetClientNameForMetrics("Renderer");
@@ -687,8 +611,14 @@ void RenderThreadImpl::Init() {
       discardable_memory_allocator_.get());
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
-  render_message_filter()->SetThreadType(
-      ChildProcess::current()->io_thread_id(), base::ThreadType::kCompositing);
+  // The SandboxedProcessThreadTypeHandler isn't created in
+  // render_thread_impl_browsertest.cc, nor in --single-process mode.
+  if (SandboxedProcessThreadTypeHandler* sandboxed_process_thread_type_handler =
+          SandboxedProcessThreadTypeHandler::Get()) {
+    sandboxed_process_thread_type_handler->HandleThreadTypeChange(
+        ChildProcess::current()->io_thread_id(),
+        base::ThreadType::kCompositing);
+  }
 #endif
 
   process_foregrounded_count_ = 0;
@@ -705,35 +635,8 @@ void RenderThreadImpl::Init() {
   AddObserver(variations_observer_.get());
 
   base::ThreadPool::PostTask(FROM_HERE,
-                             base::BindOnce([] { SkFontMgr::RefDefault(); }));
+                             base::BindOnce([] { skia::DefaultFontMgr(); }));
 
-  bool should_actively_sample_fonts =
-      command_line.HasSwitch(kFirstRendererProcess) &&
-      blink::IdentifiabilityStudySettings::Get()->ShouldActivelySample() &&
-      !blink::IdentifiabilityStudySettings::Get()
-           ->FontFamiliesToActivelySample()
-           .empty();
-  if (should_actively_sample_fonts) {
-    mojo::PendingRemote<ukm::mojom::UkmRecorderFactory> pending_factory;
-    RenderThread::Get()->BindHostReceiver(
-        pending_factory.InitWithNewPipeAndPassReceiver());
-    scoped_refptr<base::SequencedTaskRunner> sequenced_task_runner =
-        base::ThreadPool::CreateSequencedTaskRunner(
-            {base::TaskPriority::BEST_EFFORT, base::MayBlock(),
-             base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN});
-    sequenced_task_runner->PostTask(
-        FROM_HERE,
-        base::BindOnce(
-            [](mojo::PendingRemote<ukm::mojom::UkmRecorderFactory>
-                   pending_factory) {
-              mojo::Remote<ukm::mojom::UkmRecorderFactory> factory(
-                  std::move(pending_factory));
-              auto ukm_recorder = ukm::MojoUkmRecorder::Create(*factory);
-              blink::IdentifiabilityActiveSampler::ActivelySampleAvailableFonts(
-                  ukm_recorder.get());
-            },
-            std::move(pending_factory)));
-  }
   UpdateForegroundCrashKey(
       /*foreground=*/!blink::kLaunchingProcessIsBackgrounded);
 }
@@ -793,6 +696,7 @@ std::string RenderThreadImpl::GetLocale() {
   return lang;
 }
 
+#if BUILDFLAG(CONTENT_ENABLE_LEGACY_IPC)
 IPC::SyncMessageFilter* RenderThreadImpl::GetSyncMessageFilter() {
   return sync_message_filter();
 }
@@ -810,8 +714,17 @@ void RenderThreadImpl::AttachTaskRunnerToRoute(
 void RenderThreadImpl::RemoveRoute(int32_t routing_id) {
   ChildThreadImpl::GetRouter()->RemoveRoute(routing_id);
   GetChannel()->RemoveListenerTaskRunner(routing_id);
-  pending_frames_.erase(routing_id);
 }
+
+void RenderThreadImpl::AddFilter(IPC::MessageFilter* filter) {
+  channel()->AddFilter(filter);
+}
+
+void RenderThreadImpl::RemoveFilter(IPC::MessageFilter* filter) {
+  channel()->RemoveFilter(filter);
+}
+
+#endif
 
 mojom::RendererHost* RenderThreadImpl::GetRendererHost() {
   if (!renderer_host_) {
@@ -821,12 +734,6 @@ mojom::RendererHost* RenderThreadImpl::GetRendererHost() {
   return renderer_host_.get();
 }
 
-int RenderThreadImpl::GenerateRoutingID() {
-  int32_t routing_id = MSG_ROUTING_NONE;
-  render_message_filter()->GenerateRoutingID(&routing_id);
-  return routing_id;
-}
-
 bool RenderThreadImpl::GenerateFrameRoutingID(
     int32_t& routing_id,
     blink::LocalFrameToken& frame_token,
@@ -834,14 +741,6 @@ bool RenderThreadImpl::GenerateFrameRoutingID(
     blink::DocumentToken& document_token) {
   return render_message_filter()->GenerateFrameRoutingID(
       &routing_id, &frame_token, &devtools_frame_token, &document_token);
-}
-
-void RenderThreadImpl::AddFilter(IPC::MessageFilter* filter) {
-  channel()->AddFilter(filter);
-}
-
-void RenderThreadImpl::RemoveFilter(IPC::MessageFilter* filter) {
-  channel()->RemoveFilter(filter);
 }
 
 void RenderThreadImpl::AddObserver(RenderThreadObserver* observer) {
@@ -889,21 +788,12 @@ void RenderThreadImpl::InitializeWebKit(mojo::BinderMap* binders) {
   blink::Initialize(blink_platform_impl_.get(), binders,
                     main_thread_scheduler_.get());
 
-  v8::Isolate* isolate = blink::MainThreadIsolate();
-  isolate->SetAddCrashKeyCallback(AddCrashKey);
-
   if (!command_line.HasSwitch(switches::kDisableThreadedCompositing))
     InitializeCompositorThread();
 
   RenderThreadImpl::RegisterSchemes();
 
   RenderMediaClient::Initialize();
-
-  if (!GetContentClient()->renderer()->RunIdleHandlerWhenWidgetsHidden()) {
-    // If we do not track widget visibility, then assume conservatively that
-    // the isolate is in background. This reduces memory usage.
-    isolate->IsolateInBackgroundNotification();
-  }
 
   // Hook up blink's codecs so skia can call them. Since only the renderer
   // processes should be doing image decoding, this is not done in the common
@@ -916,7 +806,6 @@ void RenderThreadImpl::InitializeRenderer(
     const std::string& user_agent,
     const blink::UserAgentMetadata& user_agent_metadata,
     const std::vector<std::string>& cors_exempt_header_list,
-    network::mojom::AttributionSupport attribution_support,
     blink::mojom::OriginTrialsSettingsPtr origin_trials_settings) {
   DCHECK(user_agent_.IsNull());
 
@@ -924,7 +813,6 @@ void RenderThreadImpl::InitializeRenderer(
   GetContentClient()->renderer()->DidSetUserAgent(user_agent);
   user_agent_metadata_ = user_agent_metadata;
   cors_exempt_header_list_ = cors_exempt_header_list;
-  attribution_support_ = attribution_support;
 
   blink::WebVector<blink::WebString> web_cors_exempt_header_list(
       cors_exempt_header_list.size());
@@ -1134,6 +1022,11 @@ RenderThreadImpl::GetVideoFrameCompositorContextProvider(
 
   bool support_locking = false;
   bool support_gles2_interface = true;
+  // Use RasterInterface if kRasterInterfaceInVideoResourceUpdater is enabled.
+  if (base::FeatureList::IsEnabled(
+          media::kRasterInterfaceInVideoResourceUpdater)) {
+    support_gles2_interface = false;
+  }
   bool support_raster_interface = true;
   bool support_oop_rasterization = false;
   bool support_grcontext = false;
@@ -1268,7 +1161,7 @@ scoped_refptr<DCOMPTextureFactory> RenderThreadImpl::GetDCOMPTextureFactory() {
   return dcomp_texture_factory_;
 }
 
-OverlayStateServiceProvider*
+scoped_refptr<OverlayStateServiceProvider>
 RenderThreadImpl::GetOverlayStateServiceProvider() {
   DCHECK(IsMainThread());
   // Only set 'overlay_state_service_provider_' if Media Foundation for clear
@@ -1282,11 +1175,12 @@ RenderThreadImpl::GetOverlayStateServiceProvider() {
         return nullptr;
       }
       overlay_state_service_provider_ =
-          std::make_unique<OverlayStateServiceProviderImpl>(std::move(channel));
+          base::MakeRefCounted<OverlayStateServiceProviderImpl>(
+              std::move(channel));
     }
   }
 
-  return overlay_state_service_provider_.get();
+  return overlay_state_service_provider_;
 }
 #endif  // BUILDFLAG(IS_WIN)
 
@@ -1381,6 +1275,7 @@ void RenderThreadImpl::OnProcessFinalRelease() {
   NOTREACHED();
 }
 
+#if BUILDFLAG(CONTENT_ENABLE_LEGACY_IPC)
 bool RenderThreadImpl::OnControlMessageReceived(const IPC::Message& msg) {
   for (auto& observer : observers_) {
     if (observer.OnControlMessageReceived(msg))
@@ -1389,6 +1284,7 @@ bool RenderThreadImpl::OnControlMessageReceived(const IPC::Message& msg) {
 
   return false;
 }
+#endif
 
 void RenderThreadImpl::SetProcessState(
     mojom::RenderProcessBackgroundState background_state,
@@ -1422,6 +1318,16 @@ void RenderThreadImpl::SetProcessState(
   visible_state_ = visible_state;
 }
 
+void RenderThreadImpl::SetBatterySaverMode(bool battery_saver_mode_enabled) {
+  if (battery_saver_mode_enabled) {
+    base::MessagePump::OverrideAlignWakeUpsState(true, base::Milliseconds(32));
+  } else {
+    base::MessagePump::ResetAlignWakeUpsState();
+  }
+
+  blink::SetBatterySaverModeForAllIsolates(battery_saver_mode_enabled);
+}
+
 void RenderThreadImpl::SetIsLockedToSite() {
   DCHECK(blink_platform_impl_);
   blink_platform_impl_->SetIsLockedToSite();
@@ -1439,6 +1345,10 @@ void RenderThreadImpl::WriteClangProfilingProfile(
 
 void RenderThreadImpl::SetIsCrossOriginIsolated(bool value) {
   blink::SetIsCrossOriginIsolated(value);
+}
+
+void RenderThreadImpl::SetIsWebSecurityDisabled(bool value) {
+  blink::SetIsWebSecurityDisabled(value);
 }
 
 void RenderThreadImpl::SetIsIsolatedContext(bool value) {
@@ -1485,8 +1395,10 @@ RenderThreadImpl::GetAssociatedInterfaceRegistry() {
 }
 
 mojom::RenderMessageFilter* RenderThreadImpl::render_message_filter() {
-  if (!render_message_filter_)
-    GetChannel()->GetRemoteAssociatedInterface(&render_message_filter_);
+  if (!render_message_filter_) {
+    blink::Platform::Current()->GetBrowserInterfaceBroker()->GetInterface(
+        render_message_filter_.BindNewPipeAndPassReceiver());
+  }
   return render_message_filter_.get();
 }
 
@@ -1548,11 +1460,11 @@ void RenderThreadImpl::UpdateScrollbarTheme(
 #if BUILDFLAG(IS_MAC)
   blink::WebScrollbarTheme::UpdateScrollbarsWithNSDefaults(
       params->has_initial_button_delay
-          ? absl::make_optional(params->initial_button_delay)
-          : absl::nullopt,
+          ? std::make_optional(params->initial_button_delay)
+          : std::nullopt,
       params->has_autoscroll_button_delay
-          ? absl::make_optional(params->autoscroll_button_delay)
-          : absl::nullopt,
+          ? std::make_optional(params->autoscroll_button_delay)
+          : std::nullopt,
       params->preferred_scroller_style, params->redraw,
       params->jump_on_track_click);
 #endif  // BUILDFLAG(IS_MAC)
@@ -1577,8 +1489,10 @@ void RenderThreadImpl::OnSystemColorsChanged(int32_t aqua_color_variant) {
 
 void RenderThreadImpl::UpdateSystemColorInfo(
     mojom::UpdateSystemColorInfoParamsPtr params) {
-  if (blink_platform_impl_->ThemeEngine()->UpdateColorProviders(
-          params->light_colors, params->dark_colors)) {
+  bool color_providers_changed =
+      blink_platform_impl_->ThemeEngine()->UpdateColorProviders(
+          params->light_colors, params->dark_colors, params->forced_colors_map);
+  if (color_providers_changed) {
     // Notify blink that the global ColorProvider instances for this renderer
     // have changed. These color providers are only used to paint native
     // controls and only require us to invalidate paint for local frames in this
@@ -1586,9 +1500,14 @@ void RenderThreadImpl::UpdateSystemColorInfo(
     blink::ColorProvidersChanged();
   }
 
-  bool did_system_color_info_change =
-      ui::NativeTheme::GetInstanceForWeb()->UpdateSystemColorInfo(
-          params->is_dark_mode, params->forced_colors, params->colors);
+  auto* native_theme = ui::NativeTheme::GetInstanceForWeb();
+
+  bool did_system_color_info_change = native_theme->UpdateSystemColorInfo(
+      params->is_dark_mode, params->forced_colors, params->colors);
+
+  did_system_color_info_change |=
+      native_theme->user_color() != params->accent_color;
+  native_theme->set_user_color(params->accent_color);
 
   if (did_system_color_info_change) {
     // Notify blink of system color info changes. These give blink the
@@ -1684,9 +1603,12 @@ RenderThreadImpl::SharedCompositorWorkerContextProvider(
   }
 
   bool support_locking = true;
+
+  // If the compositor worker context supports GPU rasterization then renderer
+  // tiles will be rasterized on the GPU.
   bool support_gpu_rasterization =
       gpu_channel_host->gpu_feature_info()
-          .status_values[gpu::GPU_FEATURE_TYPE_GPU_RASTERIZATION] ==
+          .status_values[gpu::GPU_FEATURE_TYPE_GPU_TILE_RASTERIZATION] ==
       gpu::kGpuFeatureStatusEnabled;
 
   bool support_gles2_interface = false;
@@ -1775,9 +1697,6 @@ void RenderThreadImpl::ReleaseFreeMemory() {
 
 void RenderThreadImpl::OnSyncMemoryPressure(
     base::MemoryPressureListener::MemoryPressureLevel memory_pressure_level) {
-  if (!blink::MainThreadIsolate())
-    return;
-
   v8::MemoryPressureLevel v8_memory_pressure_level =
       static_cast<v8::MemoryPressureLevel>(memory_pressure_level);
 
@@ -1789,10 +1708,7 @@ void RenderThreadImpl::OnSyncMemoryPressure(
     v8_memory_pressure_level = v8::MemoryPressureLevel::kModerate;
 #endif  // !BUILDFLAG(ALLOW_CRITICAL_MEMORY_PRESSURE_HANDLING_IN_FOREGROUND)
 
-  blink::MainThreadIsolate()->MemoryPressureNotification(
-      v8_memory_pressure_level);
-  blink::MemoryPressureNotificationToWorkerThreadIsolates(
-      v8_memory_pressure_level);
+  blink::MemoryPressureNotificationToAllIsolates(v8_memory_pressure_level);
 }
 
 void RenderThreadImpl::OnRendererInterfaceReceiver(
@@ -1817,16 +1733,6 @@ void RenderThreadImpl::SetRenderingColorSpace(
 gfx::ColorSpace RenderThreadImpl::GetRenderingColorSpace() {
   DCHECK(IsMainThread());
   return rendering_color_space_;
-}
-
-network::mojom::AttributionSupport
-RenderThreadImpl::GetAttributionReportingSupport() {
-  return attribution_support_;
-}
-
-void RenderThreadImpl::SetAttributionReportingSupport(
-    network::mojom::AttributionSupport attribution_support) {
-  attribution_support_ = attribution_support;
 }
 
 std::unique_ptr<CodecFactory> RenderThreadImpl::CreateMediaCodecFactory(

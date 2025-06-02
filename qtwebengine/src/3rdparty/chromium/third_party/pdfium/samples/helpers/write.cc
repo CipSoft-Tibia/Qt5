@@ -21,8 +21,10 @@
 #include "third_party/base/notreached.h"
 
 #ifdef PDF_ENABLE_SKIA
-#include "third_party/skia/include/core/SkPicture.h"  // nogncheck
-#include "third_party/skia/include/core/SkStream.h"   // nogncheck
+#include "third_party/skia/include/core/SkPicture.h"       // nogncheck
+#include "third_party/skia/include/core/SkSerialProcs.h"   // nogncheck
+#include "third_party/skia/include/core/SkStream.h"        // nogncheck
+#include "third_party/skia/include/encode/SkPngEncoder.h"  // nogncheck
 #endif
 
 namespace {
@@ -456,8 +458,8 @@ std::string WritePng(const char* pdf_name,
     return "";
   }
 
-  auto input =
-      pdfium::make_span(static_cast<uint8_t*>(buffer), stride * height);
+  auto input = pdfium::make_span(static_cast<uint8_t*>(buffer),
+                                 static_cast<size_t>(stride) * height);
   std::vector<uint8_t> png_encoding =
       EncodePng(input, width, height, stride, FPDFBitmap_BGRA);
   if (png_encoding.empty()) {
@@ -627,8 +629,12 @@ std::string WriteSkp(const char* pdf_name, int num, const SkPicture& picture) {
   if (!stream) {
     return "";
   }
+  SkSerialProcs procs;
+  procs.fImageProc = [](SkImage* img, void*) -> sk_sp<SkData> {
+      return SkPngEncoder::Encode(nullptr, img, SkPngEncoder::Options{});
+  };
 
-  picture.serialize(stream.get());
+  picture.serialize(stream.get(), &procs);
   return filename;
 }
 #endif  // PDF_ENABLE_SKIA
@@ -699,7 +705,7 @@ std::vector<uint8_t> EncodeBitmapToPng(ScopedFPDFBitmap bitmap) {
 
   auto input = pdfium::make_span(
       static_cast<const uint8_t*>(FPDFBitmap_GetBuffer(bitmap.get())),
-      stride * height);
+      static_cast<size_t>(stride) * height);
 
   png_encoding = EncodePng(input, width, height, stride, format);
   return png_encoding;

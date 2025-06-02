@@ -1,15 +1,14 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtGraphs/q3dbars.h>
-#include <QtGraphs/q3dsurface.h>
+#include <QtGraphsWidgets/q3dbarswidgetitem.h>
+#include <QtGraphsWidgets/q3dsurfacewidgetitem.h>
 #include <QtGraphs/qcategory3daxis.h>
 #include <QtGraphs/qitemmodelbardataproxy.h>
 #include <QtGraphs/qitemmodelsurfacedataproxy.h>
 #include <QtGraphs/qvalue3daxis.h>
 #include <QtGraphs/q3dscene.h>
 #include <QtGraphs/qbar3dseries.h>
-#include <QtGraphs/q3dtheme.h>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QVBoxLayout>
@@ -26,7 +25,7 @@
 class GraphDataGenerator : public QObject
 {
 public:
-    explicit GraphDataGenerator(Q3DBars *bargraph, Q3DSurface *surfaceGraph,
+    explicit GraphDataGenerator(Q3DBarsWidgetItem *bargraph, Q3DSurfaceWidgetItem *surfaceGraph,
                                 QTableWidget *tableWidget);
     ~GraphDataGenerator();
 
@@ -39,28 +38,23 @@ public:
     void changeSelectedButtonClicked();
 
 private:
-    Q3DBars *m_barGraph;
-    Q3DSurface *m_surfaceGraph;
+    Q3DBarsWidgetItem *m_barGraph;
+    Q3DSurfaceWidgetItem *m_surfaceGraph;
     QTimer *m_dataTimer;
-    QTimer *m_styleTimer;
-    QTimer *m_presetTimer;
-    QTimer *m_themeTimer;
     int m_columnCount;
     int m_rowCount;
     QTableWidget *m_tableWidget; // not owned
 };
 
-GraphDataGenerator::GraphDataGenerator(Q3DBars *bargraph, Q3DSurface *surfaceGraph,
+GraphDataGenerator::GraphDataGenerator(Q3DBarsWidgetItem *bargraph,
+                                       Q3DSurfaceWidgetItem *surfaceGraph,
                                        QTableWidget *tableWidget)
-    : m_barGraph(bargraph),
-      m_surfaceGraph(surfaceGraph),
-      m_dataTimer(0),
-      m_styleTimer(0),
-      m_presetTimer(0),
-      m_themeTimer(0),
-      m_columnCount(100),
-      m_rowCount(50),
-      m_tableWidget(tableWidget)
+    : m_barGraph(bargraph)
+    , m_surfaceGraph(surfaceGraph)
+    , m_dataTimer(0)
+    , m_columnCount(100)
+    , m_rowCount(50)
+    , m_tableWidget(tableWidget)
 {
     // Set up bar specifications; make the bars as wide as they are deep,
     // and add a small space between them
@@ -74,7 +68,7 @@ GraphDataGenerator::GraphDataGenerator(Q3DBars *bargraph, Q3DSurface *surfaceGra
     m_tableWidget->setColumnCount(m_columnCount);
 
     // Set selection mode to full
-    m_barGraph->setSelectionMode(QAbstract3DGraph::SelectionItemRowAndColumn);
+    m_barGraph->setSelectionMode(QGraphs3DNamespace::SelectionFlag::ItemRowAndColumn);
 
     // Hide axis labels by explicitly setting one empty string as label list
     m_barGraph->rowAxis()->setLabels(QStringList(QString()));
@@ -83,10 +77,10 @@ GraphDataGenerator::GraphDataGenerator(Q3DBars *bargraph, Q3DSurface *surfaceGra
     m_barGraph->seriesList().at(0)->setItemLabelFormat(QStringLiteral("@valueLabel"));
 #else
     // Set selection mode to slice row
-    m_barGraph->setSelectionMode(
-                QAbstract3DGraph::SelectionItemAndRow | QAbstract3DGraph::SelectionSlice);
-    m_surfaceGraph->setSelectionMode(
-                QAbstract3DGraph::SelectionItemAndRow | QAbstract3DGraph::SelectionSlice);
+    m_barGraph->setSelectionMode(QtGraphs3D::SelectionFlag::ItemAndRow
+                                 | QtGraphs3D::SelectionFlag::Slice);
+    m_surfaceGraph->setSelectionMode(QtGraphs3D::SelectionFlag::ItemAndRow
+                                     | QtGraphs3D::SelectionFlag::Slice);
 #endif
 }
 
@@ -221,18 +215,24 @@ void GraphDataGenerator::changeSelectedButtonClicked()
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    Q3DBars *barGraph = new Q3DBars();
-    Q3DSurface *surfaceGraph = new Q3DSurface();
-    QSize screenSize = barGraph->screen()->size();
+    QQuickWidget *barQuickWidget = new QQuickWidget;
+    QQuickWidget *surfaceQuickWidget = new QQuickWidget;
+    Q3DBarsWidgetItem *barGraph = new Q3DBarsWidgetItem();
+    Q3DSurfaceWidgetItem *surfaceGraph = new Q3DSurfaceWidgetItem();
+    barGraph->setWidget(barQuickWidget);
+    surfaceGraph->setWidget(surfaceQuickWidget);
+    QSize screenSize = barGraph->widget()->screen()->size();
 
-    barGraph->setMinimumSize(QSize(screenSize.width() / 4, screenSize.height() / 4));
-    barGraph->setMaximumSize(screenSize);
-    barGraph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    barGraph->setFocusPolicy(Qt::StrongFocus);
-    surfaceGraph->setMinimumSize(QSize(screenSize.width() / 4, screenSize.height() / 4));
-    surfaceGraph->setMaximumSize(screenSize);
-    surfaceGraph->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    surfaceGraph->setFocusPolicy(Qt::StrongFocus);
+    barGraph->widget()->setMinimumSize(QSize(screenSize.width() / 4, screenSize.height() / 4));
+    barGraph->widget()->setMaximumSize(screenSize);
+    barGraph->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    barGraph->widget()->setFocusPolicy(Qt::StrongFocus);
+    barGraph->activeTheme()->setTheme(QGraphsTheme::Theme::QtGreen);
+    surfaceGraph->widget()->setMinimumSize(QSize(screenSize.width() / 4, screenSize.height() / 4));
+    surfaceGraph->widget()->setMaximumSize(screenSize);
+    surfaceGraph->widget()->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    surfaceGraph->widget()->setFocusPolicy(Qt::StrongFocus);
+    surfaceGraph->activeTheme()->setTheme(QGraphsTheme::Theme::QtGreenNeon);
 
     QWidget widget;
     QVBoxLayout *mainLayout = new QVBoxLayout(&widget);
@@ -244,8 +244,8 @@ int main(int argc, char **argv)
     changeSelectedButton->setText(QStringLiteral("Change Selected"));
 
     buttonLayout->addWidget(changeSelectedButton);
-    graphLayout->addWidget(barGraph, 1);
-    graphLayout->addWidget(surfaceGraph, 1);
+    graphLayout->addWidget(barGraph->widget(), 1);
+    graphLayout->addWidget(surfaceGraph->widget(), 1);
     bottomLayout->addLayout(buttonLayout);
     bottomLayout->addWidget(tableWidget);
     mainLayout->addLayout(graphLayout);
@@ -280,8 +280,8 @@ int main(int argc, char **argv)
     barGraph->addSeries(barSeries);
     surfaceGraph->addSeries(surfaceSeries);
 
-    barGraph->setCameraPreset(QAbstract3DGraph::CameraPreset::Behind);
-    surfaceGraph->setCameraPreset(QAbstract3DGraph::CameraPreset::Front);
+    barGraph->setCameraPreset(QtGraphs3D::CameraPreset::Behind);
+    surfaceGraph->setCameraPreset(QtGraphs3D::CameraPreset::Front);
 
     GraphDataGenerator generator(barGraph, surfaceGraph, tableWidget);
     QObject::connect(barSeries, &QBar3DSeries::selectedBarChanged, &generator,

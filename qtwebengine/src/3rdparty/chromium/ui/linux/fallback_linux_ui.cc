@@ -135,7 +135,8 @@ FallbackLinuxUi::CreateNavButtonProvider() {
 }
 
 ui::WindowFrameProvider* FallbackLinuxUi::GetWindowFrameProvider(
-    bool solid_frame) {
+    bool solid_frame,
+    bool tiled) {
   return nullptr;
 }
 
@@ -162,6 +163,7 @@ ui::NativeTheme* FallbackLinuxUi::GetNativeTheme() const {
 
 bool FallbackLinuxUi::GetTextEditCommandsForEvent(
     const ui::Event& event,
+    int text_flags,
     std::vector<ui::TextEditCommandAuraLinux>* commands) {
   return false;
 }

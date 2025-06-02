@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 set(qml_files
+    "CheckIndicator.qml"
     "SwitchHandle.qml"
     "SwitchIndicator.qml"
 )
@@ -9,7 +10,7 @@ set(qml_files
 qt_internal_add_qml_module(QuickControls2MacOSStyleImpl
     URI "QtQuick.Controls.macOS.impl"
     VERSION "${PROJECT_VERSION}"
-    PAST_MAJOR_VERSIONS 6
+    PAST_MAJOR_VERSIONS 2
     CLASS_NAME QtQuickControls2macOSStyleImplPlugin
     DEPENDENCIES
         QtQuick/auto

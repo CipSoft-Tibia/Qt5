@@ -241,11 +241,11 @@ QVideoFrameFormat::PixelFormat QGstStructureView::pixelFormat() const
 
 QGRange<float> QGstStructureView::frameRateRange() const
 {
-    float minRate = 0.;
-    float maxRate = 0.;
-
     if (!structure)
         return { 0.f, 0.f };
+
+    std::optional<float> minRate;
+    std::optional<float> maxRate;
 
     auto extractFraction = [](const GValue *v) -> float {
         return (float)gst_value_get_fraction_numerator(v)
@@ -253,9 +253,9 @@ QGRange<float> QGstStructureView::frameRateRange() const
     };
     auto extractFrameRate = [&](const GValue *v) {
         auto insert = [&](float min, float max) {
-            if (max > maxRate)
+            if (!maxRate || max > maxRate)
                 maxRate = max;
-            if (min < minRate)
+            if (!minRate || min < minRate)
                 minRate = min;
         };
 
@@ -263,8 +263,8 @@ QGRange<float> QGstStructureView::frameRateRange() const
             float rate = extractFraction(v);
             insert(rate, rate);
         } else if (GST_VALUE_HOLDS_FRACTION_RANGE(v)) {
-            auto *min = gst_value_get_fraction_range_max(v);
-            auto *max = gst_value_get_fraction_range_max(v);
+            const GValue *min = gst_value_get_fraction_range_min(v);
+            const GValue *max = gst_value_get_fraction_range_max(v);
             insert(extractFraction(min), extractFraction(max));
         }
     };
@@ -288,7 +288,39 @@ QGRange<float> QGstStructureView::frameRateRange() const
         }
     }
 
-    return { minRate, maxRate };
+    if (!minRate || !maxRate)
+        return { 0.f, 0.f };
+
+    return {
+        minRate.value_or(*maxRate),
+        maxRate.value_or(*minRate),
+    };
+}
+
+std::optional<QGRange<QSize>> QGstStructureView::resolutionRange() const
+{
+    if (!structure)
+        return std::nullopt;
+
+    const GValue *width = gst_structure_get_value(structure, "width");
+    const GValue *height = gst_structure_get_value(structure, "height");
+
+    if (!width || !height)
+        return std::nullopt;
+
+    for (const GValue *v : { width, height })
+        if (!GST_VALUE_HOLDS_INT_RANGE(v))
+            return std::nullopt;
+
+    int minWidth = gst_value_get_int_range_min(width);
+    int maxWidth = gst_value_get_int_range_max(width);
+    int minHeight = gst_value_get_int_range_min(height);
+    int maxHeight = gst_value_get_int_range_max(height);
+
+    return QGRange<QSize>{
+        QSize(minWidth, minHeight),
+        QSize(maxWidth, maxHeight),
+    };
 }
 
 QGstreamerMessage QGstStructureView::getMessage()
@@ -357,7 +389,7 @@ std::optional<std::pair<QVideoFrameFormat, GstVideoInfo>> QGstCaps::formatAndVid
                              qt_videoFormatLookup[index].pixelFormat);
 
     if (vidInfo.fps_d > 0)
-        format.setFrameRate(qreal(vidInfo.fps_n) / vidInfo.fps_d);
+        format.setStreamFrameRate(qreal(vidInfo.fps_n) / vidInfo.fps_d);
 
     QVideoFrameFormat::ColorRange range = QVideoFrameFormat::ColorRange_Unknown;
     switch (vidInfo.colorimetry.range) {
@@ -419,7 +451,6 @@ std::optional<std::pair<QVideoFrameFormat, GstVideoInfo>> QGstCaps::formatAndVid
     case GST_VIDEO_TRANSFER_LOG100:
     case GST_VIDEO_TRANSFER_LOG316:
         break;
-#if GST_CHECK_VERSION(1, 18, 0)
     case GST_VIDEO_TRANSFER_SMPTE2084:
         transfer = QVideoFrameFormat::ColorTransfer_ST2084;
         break;
@@ -432,7 +463,6 @@ std::optional<std::pair<QVideoFrameFormat, GstVideoInfo>> QGstCaps::formatAndVid
     case GST_VIDEO_TRANSFER_BT601:
         transfer = QVideoFrameFormat::ColorTransfer_BT601;
         break;
-#endif
     }
     format.setColorTransfer(transfer);
 
@@ -562,22 +592,22 @@ void QGstObject::set(const char *property, bool b)
     g_object_set(get(), property, gboolean(b), nullptr);
 }
 
-void QGstObject::set(const char *property, uint i)
+void QGstObject::set(const char *property, uint32_t i)
 {
     g_object_set(get(), property, guint(i), nullptr);
 }
 
-void QGstObject::set(const char *property, int i)
+void QGstObject::set(const char *property, int32_t i)
 {
     g_object_set(get(), property, gint(i), nullptr);
 }
 
-void QGstObject::set(const char *property, qint64 i)
+void QGstObject::set(const char *property, int64_t i)
 {
     g_object_set(get(), property, gint64(i), nullptr);
 }
 
-void QGstObject::set(const char *property, quint64 i)
+void QGstObject::set(const char *property, uint64_t i)
 {
     g_object_set(get(), property, guint64(i), nullptr);
 }
@@ -826,7 +856,11 @@ bool QGstPad::unlink(const QGstPad &sink) const
 
 bool QGstPad::unlinkPeer() const
 {
-    return unlink(peer());
+    QGstPad peerPad = peer();
+    if (peerPad)
+        return GST_PAD_IS_SRC(pad()) ? unlink(peerPad) : peerPad.unlink(*this);
+
+    return true;
 }
 
 QGstPad QGstPad::peer() const
@@ -1012,11 +1046,7 @@ QGstPad QGstElement::sink() const
 
 QGstPad QGstElement::getRequestPad(const char *name) const
 {
-#if GST_CHECK_VERSION(1, 19, 1)
     return QGstPad(gst_element_request_pad_simple(element(), name), HasRef);
-#else
-    return QGstPad(gst_element_get_request_pad(element(), name), HasRef);
-#endif
 }
 
 void QGstElement::releaseRequestPad(const QGstPad &pad) const
@@ -1046,15 +1076,6 @@ GstStateChangeReturn QGstElement::setState(GstState state)
 
 bool QGstElement::setStateSync(GstState state, std::chrono::nanoseconds timeout)
 {
-    if (state == GST_STATE_NULL) {
-        // QTBUG-125251: when changing pipeline state too quickly between NULL->PAUSED->NULL there
-        // may be a pending task to activate pads while we try to switch to NULL. This can cause an
-        // assertion failure in gstreamer. we therefore finish the state change when called on a bin
-        // or pipeline.
-        if (qIsGstObjectOfType<GstBin>(element()))
-            finishStateChange();
-    }
-
     GstStateChangeReturn change = gst_element_set_state(element(), state);
     if (change == GST_STATE_CHANGE_ASYNC)
         change = gst_element_get_state(element(), nullptr, &state, timeout.count());
@@ -1207,6 +1228,14 @@ QGstElement QGstElement::getParent() const
     };
 }
 
+QGstBin QGstElement::getParentBin() const
+{
+    return QGstBin{
+        qGstCheckedCast<GstBin>(gst_element_get_parent(object())),
+        QGstElement::HasRef,
+    };
+}
+
 QGstPipeline QGstElement::getPipeline() const
 {
     QGstElement ancestor = *this;
@@ -1222,6 +1251,12 @@ QGstPipeline QGstElement::getPipeline() const
             QGstPipeline::NeedsRef,
         };
     }
+}
+
+void QGstElement::removeFromParent()
+{
+    if (QGstBin parent = getParentBin())
+        parent.remove(*this);
 }
 
 void QGstElement::dumpPipelineGraph(const char *filename) const
@@ -1315,6 +1350,23 @@ void QGstBin::addGhostPad(const char *name, const QGstPad &pad)
     gst_element_add_pad(element(), gst_ghost_pad_new(name, pad.pad()));
 }
 
+void QGstBin::addUnlinkedGhostPads(GstPadDirection direction)
+{
+    Q_ASSERT(direction != GstPadDirection::GST_PAD_UNKNOWN);
+
+    for (;;) {
+        QGstPad unlinkedPad{
+            gst_bin_find_unlinked_pad(bin(), direction),
+            QGstPad::HasRef,
+        };
+
+        if (!unlinkedPad)
+            return;
+
+        addGhostPad(unlinkedPad.name().constData(), unlinkedPad);
+    }
+}
+
 bool QGstBin::syncChildrenState()
 {
     return gst_bin_sync_children_states(bin());
@@ -1322,7 +1374,7 @@ bool QGstBin::syncChildrenState()
 
 void QGstBin::dumpGraph(const char *fileNamePrefix) const
 {
-    if (isNull())
+    if (!get())
         return;
 
     GST_DEBUG_BIN_TO_DOT_FILE(bin(), GST_DEBUG_GRAPH_SHOW_VERBOSE, fileNamePrefix);

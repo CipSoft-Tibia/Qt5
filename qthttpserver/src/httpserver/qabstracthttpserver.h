@@ -7,66 +7,86 @@
 #include <QtCore/qobject.h>
 
 #include <QtHttpServer/qthttpserverglobal.h>
+#include <QtHttpServer/qhttpserverwebsocketupgraderesponse.h>
 
 #include <QtNetwork/qhostaddress.h>
 
 #if QT_CONFIG(ssl)
-#include <QtNetwork/qssl.h>
+#include <QtNetwork/qhttp2configuration.h>
 #endif
 
 #if defined(QT_WEBSOCKETS_LIB)
 #include <QtWebSockets/qwebsocket.h>
 #endif // defined(QT_WEBSOCKETS_LIB)
 
-#if QT_CONFIG(localserver)
-#include <QtNetwork/qlocalserver.h>
-#endif
-
+#include <functional>
 #include <memory>
 
 QT_BEGIN_NAMESPACE
 
 class QHttpServerRequest;
 class QHttpServerResponder;
-class QSslCertificate;
-class QSslConfiguration;
-class QSslKey;
+class QLocalServer;
 class QTcpServer;
 
 class QAbstractHttpServerPrivate;
 class Q_HTTPSERVER_EXPORT QAbstractHttpServer : public QObject
 {
     Q_OBJECT
-    friend class QHttpServerStream;
+    friend class QHttpServerHttp1ProtocolHandler;
+    friend class QHttpServerHttp2ProtocolHandler;
 
 public:
     explicit QAbstractHttpServer(QObject *parent = nullptr);
     ~QAbstractHttpServer() override;
 
-    quint16 listen(const QHostAddress &address = QHostAddress::Any, quint16 port = 0);
-    QList<quint16> serverPorts();
-
-    void bind(QTcpServer *server = nullptr);
+    QList<quint16> serverPorts() const;
+    bool bind(QTcpServer *server);
     QList<QTcpServer *> servers() const;
 
 #if QT_CONFIG(localserver)
-    void bind(QLocalServer *server);
+    bool bind(QLocalServer *server);
     QList<QLocalServer *> localServers() const;
 #endif
 
 #if QT_CONFIG(ssl)
-    void sslSetup(const QSslCertificate &certificate, const QSslKey &privateKey,
-                  QSsl::SslProtocol protocol = QSsl::SecureProtocols);
-    void sslSetup(const QSslConfiguration &sslConfiguration);
+    QHttp2Configuration http2Configuration() const;
+    void setHttp2Configuration(const QHttp2Configuration &configuration);
 #endif
 
 #if defined(QT_WEBSOCKETS_LIB)
 Q_SIGNALS:
     void newWebSocketConnection();
 
+private:
+    using WebSocketUpgradeVerifierPrototype =
+            QHttpServerWebSocketUpgradeResponse (*)(const QHttpServerRequest &request);
+    template <typename T>
+    using if_compatible_callable = typename std::enable_if<
+            QtPrivate::AreFunctionsCompatible<WebSocketUpgradeVerifierPrototype, T>::value,
+            bool>::type;
+
+    void addWebSocketUpgradeVerifierImpl(const QObject *context,
+                                         QtPrivate::QSlotObjectBase *slotObjRaw);
+
 public:
     bool hasPendingWebSocketConnections() const;
     std::unique_ptr<QWebSocket> nextPendingWebSocketConnection();
+
+    template <typename Handler, if_compatible_callable<Handler> = true>
+    void addWebSocketUpgradeVerifier(
+            const typename QtPrivate::ContextTypeForFunctor<Handler>::ContextType *context,
+            Handler &&func)
+    {
+        addWebSocketUpgradeVerifierImpl(
+                context,
+                QtPrivate::makeCallableObject<WebSocketUpgradeVerifierPrototype>(
+                        std::forward<Handler>(func)));
+    }
+
+private:
+    QHttpServerWebSocketUpgradeResponse
+    verifyWebSocketUpgrade(const QHttpServerRequest &request) const;
 #endif // defined(QT_WEBSOCKETS_LIB)
 
 protected:
@@ -75,7 +95,7 @@ protected:
     virtual bool handleRequest(const QHttpServerRequest &request,
                                QHttpServerResponder &responder) = 0;
     virtual void missingHandler(const QHttpServerRequest &request,
-                                QHttpServerResponder &&responder) = 0;
+                                QHttpServerResponder &responder) = 0;
 
 private:
     Q_DECLARE_PRIVATE(QAbstractHttpServer)

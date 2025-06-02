@@ -37,8 +37,8 @@
 
     \snippet 3d/scatter/qml/scatter/main.qml 1
 
-    Next, create two \c {Theme3D} items that define two different themes for the graph, a Qt theme
-    and a retro theme.
+    Next, create two GraphsTheme items that define two different themes for the graph, a Qt Green
+    theme and a Qt Neon Green theme.
 
     \snippet 3d/scatter/qml/scatter/main.qml 2
 
@@ -50,15 +50,15 @@
     \snippet 3d/scatter/qml/scatter/main.qml 3
 
     The \c {GridLayout} is responsive. What this means is that the number of columns used
-    depend on the width of the application window. This is done by assigning the \c {columns}
+    depends on the width of the application window. This is done by assigning the \c {columns}
     property a ternary operator, resolving to either 1, 2 or 4, depending on the window width.
 
     \snippet 3d/scatter/qml/scatter/main.qml 4
 
-    In this \c {GridLayout}, four \c {RoundButton}s are instantiated. One for toggling shadows, one for
-    mesh smoothing, one for camera position, and finally, one for changing the background of the graph.
-    All the buttons follow the same structure. Rather than redefining this structure for all buttons,
-    a custom component can be made.
+    In this \c {GridLayout}, four \c {RoundButton}s are instantiated. One for toggling shadows,
+    one for mesh smoothing, one for camera position, and finally, one for changing the background
+    of the graph. All the buttons follow the same structure. Rather than redefining this structure
+    for all buttons, a custom component can be made.
 
     \snippet 3d/scatter/qml/scatter/main.qml 5
 
@@ -69,7 +69,7 @@
     \snippet 3d/scatter/qml/scatter/main.qml 6
 
     Whereas the \c {contentItem} defines the content of the button, in this case a \c {Row} type
-    containing an icon and some text. The icon is imported using an \c {IconImage} type, and setting
+    containing an icon and some text. The icon is imported using an \c {Image} type, and setting
     the \c {source} property. The text is created using a \c {Label} type and set using its \c {text}
     property. Two alliases are created for these two properties at the top of the custom component,
     this will allow them to be set when an instance of \c CustomButton is created.

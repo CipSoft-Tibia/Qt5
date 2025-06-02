@@ -31,7 +31,7 @@ void LogInvalidValue(const Feature& feature,
                      const std::string& value_as_string,
                      const std::string& default_value_as_string) {
   UmaHistogramSparse("Variations.FieldTriamParamsLogInvalidValue",
-                     static_cast<int>(base::HashName(
+                     static_cast<int>(base::HashFieldTrialName(
                          FeatureList::GetFieldTrial(feature)->trial_name())));
   // To anyone noticing these crash dumps in the wild, these parameters come
   // from server-side experiment configuration. If you're seeing an increase it
@@ -225,8 +225,16 @@ base::TimeDelta GetFieldTrialParamByFeatureAsTimeDelta(
 }
 
 std::string FeatureParam<std::string>::Get() const {
-  const std::string value = GetFieldTrialParamValueByFeature(*feature, name);
-  return value.empty() ? default_value : value;
+  // We don't use `GetFieldTrialParamValueByFeature()` to handle empty values in
+  // the map.
+  FieldTrialParams params;
+  if (GetFieldTrialParamsByFeature(*feature, &params)) {
+    auto it = params.find(name);
+    if (it != params.end()) {
+      return it->second;
+    }
+  }
+  return default_value;
 }
 
 double FeatureParam<double>::Get() const {

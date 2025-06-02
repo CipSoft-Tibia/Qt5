@@ -1,9 +1,26 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QtWidgets>
-
 #include "dialog.h"
+
+#include <QCheckBox>
+#include <QColorDialog>
+#include <QErrorMessage>
+#include <QFileDialog>
+#include <QFontDialog>
+#include <QGridLayout>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QInputDialog>
+#include <QLabel>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QToolBox>
+
+#include <QGuiApplication>
+#include <QStyleHints>
+
+using namespace Qt::StringLiterals;
 
 class DialogOptionsWidget : public QGroupBox
 {
@@ -15,7 +32,7 @@ public:
     int value() const;
 
 private:
-    typedef QPair<QCheckBox *, int> CheckBoxEntry;
+    using CheckBoxEntry = QPair<QCheckBox *, int>;
     QVBoxLayout *layout;
     QList<CheckBoxEntry> checkBoxEntries;
 };
@@ -29,7 +46,7 @@ DialogOptionsWidget::DialogOptionsWidget(QWidget *parent) :
 
 void DialogOptionsWidget::addCheckBox(const QString &text, int value)
 {
-    QCheckBox *checkBox = new QCheckBox(text);
+    auto *checkBox = new QCheckBox(text);
     layout->addWidget(checkBox);
     checkBoxEntries.append(CheckBoxEntry(checkBox, value));
 }
@@ -52,17 +69,17 @@ int DialogOptionsWidget::value() const
 Dialog::Dialog(QWidget *parent)
     : QWidget(parent)
 {
-    QVBoxLayout *verticalLayout;
+    QVBoxLayout *verticalLayout{};
     if (QGuiApplication::styleHints()->showIsFullScreen() || QGuiApplication::styleHints()->showIsMaximized()) {
-        QHBoxLayout *horizontalLayout = new QHBoxLayout(this);
-        QGroupBox *groupBox = new QGroupBox(QGuiApplication::applicationDisplayName(), this);
+        auto *horizontalLayout = new QHBoxLayout(this);
+        auto *groupBox = new QGroupBox(QGuiApplication::applicationDisplayName(), this);
         horizontalLayout->addWidget(groupBox);
         verticalLayout = new QVBoxLayout(groupBox);
     } else {
         verticalLayout = new QVBoxLayout(this);
     }
 
-    QToolBox *toolbox = new QToolBox;
+    auto *toolbox = new QToolBox;
     verticalLayout->addWidget(toolbox);
 
     errorMessageDialog = new QErrorMessage(this);
@@ -71,58 +88,51 @@ Dialog::Dialog(QWidget *parent)
 
     integerLabel = new QLabel;
     integerLabel->setFrameStyle(frameStyle);
-    QPushButton *integerButton =
-            new QPushButton(tr("QInputDialog::get&Int()"));
+    auto *integerButton = new QPushButton(tr("QInputDialog::get&Int()"));
 
     doubleLabel = new QLabel;
     doubleLabel->setFrameStyle(frameStyle);
-    QPushButton *doubleButton =
-            new QPushButton(tr("QInputDialog::get&Double()"));
+    auto *doubleButton = new QPushButton(tr("QInputDialog::get&Double()"));
 
     itemLabel = new QLabel;
     itemLabel->setFrameStyle(frameStyle);
-    QPushButton *itemButton = new QPushButton(tr("QInputDialog::getIte&m()"));
+    auto *itemButton = new QPushButton(tr("QInputDialog::getIte&m()"));
 
     textLabel = new QLabel;
     textLabel->setFrameStyle(frameStyle);
-    QPushButton *textButton = new QPushButton(tr("QInputDialog::get&Text()"));
+    auto *textButton = new QPushButton(tr("QInputDialog::get&Text()"));
 
     multiLineTextLabel = new QLabel;
     multiLineTextLabel->setFrameStyle(frameStyle);
-    QPushButton *multiLineTextButton = new QPushButton(tr("QInputDialog::get&MultiLineText()"));
+    auto *multiLineTextButton = new QPushButton(tr("QInputDialog::get&MultiLineText()"));
 
     colorLabel = new QLabel;
     colorLabel->setFrameStyle(frameStyle);
-    QPushButton *colorButton = new QPushButton(tr("QColorDialog::get&Color()"));
+    auto *colorButton = new QPushButton(tr("QColorDialog::get&Color()"));
 
     fontLabel = new QLabel;
     fontLabel->setFrameStyle(frameStyle);
-    QPushButton *fontButton = new QPushButton(tr("QFontDialog::get&Font()"));
+    auto *fontButton = new QPushButton(tr("QFontDialog::get&Font()"));
 
     directoryLabel = new QLabel;
     directoryLabel->setFrameStyle(frameStyle);
-    QPushButton *directoryButton =
-            new QPushButton(tr("QFileDialog::getE&xistingDirectory()"));
+    auto *directoryButton = new QPushButton(tr("QFileDialog::getE&xistingDirectory()"));
 
     openFileNameLabel = new QLabel;
     openFileNameLabel->setFrameStyle(frameStyle);
-    QPushButton *openFileNameButton =
-            new QPushButton(tr("QFileDialog::get&OpenFileName()"));
+    auto *openFileNameButton = new QPushButton(tr("QFileDialog::get&OpenFileName()"));
 
     openFileNamesLabel = new QLabel;
     openFileNamesLabel->setFrameStyle(frameStyle);
-    QPushButton *openFileNamesButton =
-            new QPushButton(tr("QFileDialog::&getOpenFileNames()"));
+    auto *openFileNamesButton = new QPushButton(tr("QFileDialog::&getOpenFileNames()"));
 
     saveFileNameLabel = new QLabel;
     saveFileNameLabel->setFrameStyle(frameStyle);
-    QPushButton *saveFileNameButton =
-            new QPushButton(tr("QFileDialog::get&SaveFileName()"));
+    auto *saveFileNameButton = new QPushButton(tr("QFileDialog::get&SaveFileName()"));
 
     criticalLabel = new QLabel;
     criticalLabel->setFrameStyle(frameStyle);
-    QPushButton *criticalButton =
-            new QPushButton(tr("QMessageBox::critica&l()"));
+    auto *criticalButton = new QPushButton(tr("QMessageBox::critica&l()"));
 
     informationLabel = new QLabel;
     informationLabel->setFrameStyle(frameStyle);
@@ -131,15 +141,13 @@ Dialog::Dialog(QWidget *parent)
 
     questionLabel = new QLabel;
     questionLabel->setFrameStyle(frameStyle);
-    QPushButton *questionButton =
-            new QPushButton(tr("QMessageBox::&question()"));
+    auto *questionButton = new QPushButton(tr("QMessageBox::&question()"));
 
     warningLabel = new QLabel;
     warningLabel->setFrameStyle(frameStyle);
-    QPushButton *warningButton = new QPushButton(tr("QMessageBox::&warning()"));
+    auto *warningButton = new QPushButton(tr("QMessageBox::&warning()"));
 
-    QPushButton *errorButton =
-            new QPushButton(tr("QErrorMessage::showM&essage()"));
+    auto *errorButton = new QPushButton(tr("QErrorMessage::showM&essage()"));
 
     connect(integerButton, &QAbstractButton::clicked, this, &Dialog::setInteger);
     connect(doubleButton, &QAbstractButton::clicked, this, &Dialog::setDouble);
@@ -163,8 +171,8 @@ Dialog::Dialog(QWidget *parent)
     connect(warningButton, &QAbstractButton::clicked, this, &Dialog::warningMessage);
     connect(errorButton, &QAbstractButton::clicked, this, &Dialog::errorMessage);
 
-    QWidget *page = new QWidget;
-    QGridLayout *layout = new QGridLayout(page);
+    auto *page = new QWidget;
+    auto *layout = new QGridLayout(page);
     layout->setColumnStretch(1, 1);
     layout->setColumnMinimumWidth(1, 250);
     layout->addWidget(integerButton, 0, 0);
@@ -268,22 +276,21 @@ void Dialog::setInteger()
 void Dialog::setDouble()
 {
 //! [1]
-    bool ok;
+    bool ok{};
     double d = QInputDialog::getDouble(this, tr("QInputDialog::getDouble()"),
                                        tr("Amount:"), 37.56, -10000, 10000, 2, &ok,
                                        Qt::WindowFlags(), 1);
     if (ok)
-        doubleLabel->setText(QString("$%1").arg(d));
+        doubleLabel->setText(QStringLiteral("$%1").arg(d));
 //! [1]
 }
 
 void Dialog::setItem()
 {
 //! [2]
-    QStringList items;
-    items << tr("Spring") << tr("Summer") << tr("Fall") << tr("Winter");
+    const QStringList items{tr("Spring"), tr("Summer"), tr("Fall"), tr("Winter")};
 
-    bool ok;
+    bool ok{};
     QString item = QInputDialog::getItem(this, tr("QInputDialog::getItem()"),
                                          tr("Season:"), items, 0, false, &ok);
     if (ok && !item.isEmpty())
@@ -294,7 +301,7 @@ void Dialog::setItem()
 void Dialog::setText()
 {
 //! [3]
-    bool ok;
+    bool ok{};
     QString text = QInputDialog::getText(this, tr("QInputDialog::getText()"),
                                          tr("User name:"), QLineEdit::Normal,
                                          QDir::home().dirName(), &ok);
@@ -306,9 +313,9 @@ void Dialog::setText()
 void Dialog::setMultiLineText()
 {
 //! [4]
-    bool ok;
+    bool ok{};
     QString text = QInputDialog::getMultiLineText(this, tr("QInputDialog::getMultiLineText()"),
-                                                  tr("Address:"), "John Doe\nFreedom Street", &ok);
+                                                  tr("Address:"), "John Doe\nFreedom Street"_L1, &ok);
     if (ok && !text.isEmpty())
         multiLineTextLabel->setText(text);
 //! [4]
@@ -317,7 +324,7 @@ void Dialog::setMultiLineText()
 void Dialog::setColor()
 {
     const QColorDialog::ColorDialogOptions options = QFlag(colorDialogOptionsWidget->value());
-    const QColor color = QColorDialog::getColor(Qt::green, this, "Select Color", options);
+    const QColor color = QColorDialog::getColor(Qt::green, this, tr("Select Color"), options);
 
     if (color.isValid()) {
         colorLabel->setText(color.name());
@@ -335,8 +342,8 @@ void Dialog::setFont()
     if (!description.isEmpty())
         defaultFont.fromString(description);
 
-    bool ok;
-    QFont font = QFontDialog::getFont(&ok, defaultFont, this, "Select Font", options);
+    bool ok{};
+    QFont font = QFontDialog::getFont(&ok, defaultFont, this, tr("Select Font"), options);
     if (ok) {
         fontLabel->setText(font.key());
         fontLabel->setFont(font);
@@ -379,9 +386,9 @@ void Dialog::setOpenFileNames()
                                 tr("All Files (*);;Text Files (*.txt)"),
                                 &selectedFilter,
                                 options);
-    if (files.count()) {
-        openFilesPath = files[0];
-        openFileNamesLabel->setText(QString("[%1]").arg(files.join(", ")));
+    if (!files.isEmpty()) {
+        openFilesPath = files.constFirst();
+        openFileNamesLabel->setText(u'[' + files.join(", "_L1) + u']');
     }
 }
 
@@ -454,7 +461,7 @@ void Dialog::warningMessage()
     QMessageBox msgBox(QMessageBox::Warning, tr("QMessageBox::warning()"),
                               tr("Delete the only copy of your movie manuscript?"), { }, this);
     msgBox.setInformativeText(tr("You've been working on this manuscript for 738 days now. Hang in there!"));
-    msgBox.setDetailedText("\"A long time ago in a galaxy far, far away....\"");
+    msgBox.setDetailedText("\"A long time ago in a galaxy far, far away....\""_L1);
     auto *keepButton = msgBox.addButton(tr("&Keep"), QMessageBox::AcceptRole);
     auto *deleteButton = msgBox.addButton(tr("Delete"), QMessageBox::DestructiveRole);
     msgBox.exec();
@@ -463,7 +470,7 @@ void Dialog::warningMessage()
     else if (msgBox.clickedButton() == deleteButton)
         warningLabel->setText(tr("Delete"));
     else
-        warningLabel->setText("");
+        warningLabel->setText({});
 }
 
 void Dialog::errorMessage()

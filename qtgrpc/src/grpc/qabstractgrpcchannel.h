@@ -5,69 +5,74 @@
 #ifndef QABSTRACTGRPCCHANNEL_H
 #define QABSTRACTGRPCCHANNEL_H
 
-#include <QtCore/qstring.h>
-#include <QtCore/qthread.h>
-#include <QtCore/qbytearray.h>
-#include <QtGrpc/qgrpccalloptions.h>
-#include <QtGrpc/qgrpcstatus.h>
 #include <QtGrpc/qtgrpcglobal.h>
+
+#include <QtCore/qmetatype.h>
+#include <QtCore/qstringfwd.h>
+#include <QtCore/qtclasshelpermacros.h>
 
 #include <memory>
 
 QT_BEGIN_NAMESPACE
 
-class QAbstractGrpcClient;
 class QAbstractProtobufSerializer;
-struct QAbstractGrpcChannelPrivate;
-class QGrpcServerStream;
-class QGrpcClientStream;
-class QGrpcBidirStream;
+class QGrpcBidiStream;
 class QGrpcCallReply;
-class QGrpcChannelOperation;
+class QGrpcOperationContext;
 class QGrpcChannelOptions;
-class QGrpcClientInterceptorManager;
+class QGrpcCallOptions;
+class QGrpcClientBase;
+class QGrpcClientStream;
+class QGrpcServerStream;
 
+class QAbstractGrpcChannelPrivate;
 class Q_GRPC_EXPORT QAbstractGrpcChannel
 {
 public:
     virtual ~QAbstractGrpcChannel();
 
-    void addInterceptorManager(const QGrpcClientInterceptorManager &manager);
-    [[nodiscard]] virtual std::shared_ptr<QAbstractProtobufSerializer>
-    serializer() const noexcept = 0;
+    [[nodiscard]] virtual std::shared_ptr<QAbstractProtobufSerializer> serializer() const = 0;
+
+    [[nodiscard]] const QGrpcChannelOptions &channelOptions() const & noexcept;
+    void channelOptions() && = delete;
+
+    void setChannelOptions(const QGrpcChannelOptions &options);
+    void setChannelOptions(QGrpcChannelOptions &&options);
 
 protected:
-    std::shared_ptr<QGrpcCallReply> call(QLatin1StringView method, QLatin1StringView service,
-                                         QByteArrayView arg,
-                                         const QGrpcCallOptions &options = QGrpcCallOptions());
-    std::shared_ptr<QGrpcServerStream>
-    startServerStream(QLatin1StringView method, QLatin1StringView service, QByteArrayView arg,
-                      const QGrpcCallOptions &options = QGrpcCallOptions());
-    std::shared_ptr<QGrpcClientStream>
-    startClientStream(QLatin1StringView method, QLatin1StringView service, QByteArrayView arg,
-                      const QGrpcCallOptions &options = QGrpcCallOptions());
-    std::shared_ptr<QGrpcBidirStream>
-    startBidirStream(QLatin1StringView method, QLatin1StringView service, QByteArrayView arg,
-                     const QGrpcCallOptions &options = QGrpcCallOptions());
-
-    virtual void call(std::shared_ptr<QGrpcChannelOperation> channelOperation) = 0;
-    virtual void startServerStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) = 0;
-    virtual void startClientStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) = 0;
-    virtual void startBidirStream(std::shared_ptr<QGrpcChannelOperation> channelOperation) = 0;
-
-    [[nodiscard]] const QGrpcChannelOptions &channelOptions() const noexcept;
-
-    friend class QAbstractGrpcClient;
+    QAbstractGrpcChannel();
+    explicit QAbstractGrpcChannel(QAbstractGrpcChannelPrivate &dd);
     explicit QAbstractGrpcChannel(const QGrpcChannelOptions &options);
 
 private:
+    virtual void call(std::shared_ptr<QGrpcOperationContext> operationContext) = 0;
+    virtual void serverStream(std::shared_ptr<QGrpcOperationContext> operationContext) = 0;
+    virtual void clientStream(std::shared_ptr<QGrpcOperationContext> operationContext) = 0;
+    virtual void bidiStream(std::shared_ptr<QGrpcOperationContext> operationContext) = 0;
+
+private:
+    std::unique_ptr<QGrpcCallReply> call(QLatin1StringView method, QLatin1StringView service,
+                                         QByteArrayView arg, const QGrpcCallOptions &options);
+    std::unique_ptr<QGrpcServerStream> serverStream(QLatin1StringView method,
+                                                    QLatin1StringView service, QByteArrayView arg,
+                                                    const QGrpcCallOptions &options);
+    std::unique_ptr<QGrpcClientStream> clientStream(QLatin1StringView method,
+                                                    QLatin1StringView service, QByteArrayView arg,
+                                                    const QGrpcCallOptions &options);
+    std::unique_ptr<QGrpcBidiStream> bidiStream(QLatin1StringView method, QLatin1StringView service,
+                                                QByteArrayView arg,
+                                                const QGrpcCallOptions &options);
+
+private:
+    friend class QGrpcClientBase;
+    friend class QGrpcClientBasePrivate;
+
+    std::unique_ptr<QAbstractGrpcChannelPrivate> d_ptr;
+
     Q_DISABLE_COPY_MOVE(QAbstractGrpcChannel)
-    std::unique_ptr<QAbstractGrpcChannelPrivate> dPtr;
+    Q_DECLARE_PRIVATE(QAbstractGrpcChannel)
 };
 
 QT_END_NAMESPACE
-
-Q_DECLARE_METATYPE(QAbstractGrpcChannel *)
-Q_DECLARE_METATYPE(std::shared_ptr<QAbstractGrpcChannel>)
 
 #endif // QABSTRACTGRPCCHANNEL_H

@@ -11,6 +11,7 @@
 
 #include <QtCore/private/qcore_mac_p.h>
 
+#include "qiosglobal.h"
 #include "qiosfiledialog.h"
 #include "qiosintegration.h"
 #include "qiosoptionalplugininterface.h"
@@ -59,8 +60,7 @@ bool QIOSFileDialog::show(Qt::WindowFlags windowFlags, Qt::WindowModality window
 
 void QIOSFileDialog::showImagePickerDialog_helper(QWindow *parent)
 {
-    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
-                              : qt_apple_sharedApplication().keyWindow;
+    UIWindow *window = presentationWindow(parent);
     [window.rootViewController presentViewController:m_viewController animated:YES completion:nil];
 }
 
@@ -100,7 +100,7 @@ bool QIOSFileDialog::showImagePickerDialog(QWindow *parent)
         [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (status == PHAuthorizationStatusAuthorized) {
-                    if (thisGuard && winGuard)
+                    if (thisGuard && (winGuard || !parent))
                         thisGuard->showImagePickerDialog_helper(winGuard);
 
                 } else if (thisGuard) {
@@ -123,8 +123,7 @@ bool QIOSFileDialog::showNativeDocumentPickerDialog(QWindow *parent)
 #ifndef Q_OS_TVOS
     m_viewController = [[QIOSDocumentPickerController alloc] initWithQIOSFileDialog:this];
 
-    UIWindow *window = parent ? reinterpret_cast<UIView *>(parent->winId()).window
-        : qt_apple_sharedApplication().keyWindow;
+    UIWindow *window = presentationWindow(parent);
     [window.rootViewController presentViewController:m_viewController animated:YES completion:nil];
 
     return true;

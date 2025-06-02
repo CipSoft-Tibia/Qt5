@@ -23,7 +23,7 @@ QT_BEGIN_NAMESPACE
 class QQuickItem;
 class QQuickPopup;
 
-class Q_QUICKTEMPLATES2_PRIVATE_EXPORT QQuickPopupPositioner : public QQuickItemChangeListener
+class Q_QUICKTEMPLATES2_EXPORT QQuickPopupPositioner : public QQuickItemChangeListener
 {
 public:
     explicit QQuickPopupPositioner(QQuickPopup *popup);
@@ -43,6 +43,8 @@ protected:
 
     void removeAncestorListeners(QQuickItem *item);
     void addAncestorListeners(QQuickItem *item);
+
+    void repositionPopupWindow();
 
     bool m_positioning = false;
     QQuickItem *m_parentItem = nullptr;

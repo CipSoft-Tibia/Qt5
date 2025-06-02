@@ -25,7 +25,7 @@ public Q_SLOTS:
 private:
     QTimer m_timer;
     CpuUsageUpdater m_cpuUpdater;
-    int m_counter;
+    int m_counter = 0;
 };
 
 #endif // SCATTERSERIES_H

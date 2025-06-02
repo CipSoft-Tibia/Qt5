@@ -3,10 +3,10 @@
 
 package org.qtproject.qt.android;
 
+import android.app.Activity;
 import android.content.Context;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
-import android.util.Log;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
@@ -14,35 +14,52 @@ import android.view.ViewGroup;
 import java.util.HashMap;
 
 class QtWindow extends QtLayout implements QtSurfaceInterface {
-    private final static String TAG = "QtWindow";
-
     private View m_surfaceContainer;
     private View m_nativeView;
-    private HashMap<Integer, QtWindow> m_childWindows = new HashMap<Integer, QtWindow>();
+    private final HashMap<Integer, QtWindow> m_childWindows = new HashMap<>();
     private QtWindow m_parentWindow;
     private GestureDetector m_gestureDetector;
     private final QtEditText m_editText;
-    private final QtInputDelegate m_inputDelegate;
+    private final QtInputConnection.QtInputConnectionListener m_inputConnectionListener;
 
     private static native void setSurface(int windowId, Surface surface);
     static native void windowFocusChanged(boolean hasFocus, int id);
 
-    public QtWindow(Context context, QtWindow parentWindow, QtInputDelegate delegate)
+    QtWindow(Context context, boolean isForeignWindow, QtWindow parentWindow,
+                    QtInputConnection.QtInputConnectionListener listener)
     {
         super(context);
         setId(View.generateViewId());
-        m_editText = new QtEditText(context, delegate);
-        m_inputDelegate = delegate;
+        m_inputConnectionListener = listener;
         setParent(parentWindow);
         setFocusableInTouchMode(true);
         setDefaultFocusHighlightEnabled(false);
+        setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
 
-        addView(m_editText, new QtLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                                                      ViewGroup.LayoutParams.MATCH_PARENT));
+        // Views are by default visible, but QWindows are not.
+        // We should ideally pick up the actual QWindow state here,
+        // but QWindowPrivate::setVisible() expects to control the
+        // order of events tightly, so we need to wait for a call
+        // to QAndroidPlatformWindow::setVisible().
+        setVisible(false);
+
+        if (!isForeignWindow && context instanceof Activity) {
+            // TODO QTBUG-122552 - Service keyboard input not implemented
+            m_editText = new QtEditText(context, listener);
+            m_editText.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            QtNative.runAction(() -> {
+                addView(m_editText,
+                        new QtLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                                                  ViewGroup.LayoutParams.WRAP_CONTENT));
+            });
+        } else {
+            m_editText = null;
+        }
 
         QtNative.runAction(() -> {
             m_gestureDetector =
                 new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
+                    @Override
                     public void onLongPress(MotionEvent event) {
                         QtInputDelegate.longPress(getId(), (int) event.getX(), (int) event.getY());
                     }
@@ -51,6 +68,7 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         });
     }
 
+    @UsedFromNativeCode
     void setVisible(boolean visible) {
         QtNative.runAction(() -> {
             if (visible)
@@ -70,8 +88,8 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
     public boolean onTouchEvent(MotionEvent event)
     {
         windowFocusChanged(true, getId());
-        if (m_editText != null && m_inputDelegate != null)
-            m_inputDelegate.setFocusedView(m_editText);
+        if (m_editText != null && m_inputConnectionListener != null)
+            m_inputConnectionListener.onEditTextChanged(m_editText);
 
         event.setLocation(event.getX() + getX(), event.getY() + getY());
         QtInputDelegate.sendTouchEvent(event, getId());
@@ -92,14 +110,15 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         return QtInputDelegate.sendGenericMotionEvent(event, getId());
     }
 
-    public void removeWindow()
+    @UsedFromNativeCode
+    void removeWindow()
     {
         if (m_parentWindow != null)
             m_parentWindow.removeChildWindow(getId());
     }
 
-    public void createSurface(final boolean onTop,
-                              final int x, final int y, final int w, final int h,
+    @UsedFromNativeCode
+    void createSurface(final boolean onTop,
                               final int imageDepth, final boolean isOpaque,
                               final int surfaceContainerType) // TODO constant for type
     {
@@ -107,7 +126,6 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
             if (m_surfaceContainer != null)
                 removeView(m_surfaceContainer);
 
-            setLayoutParams(new QtLayout.LayoutParams(w, h, x, y));
             if (surfaceContainerType == 0) {
                 m_surfaceContainer = new QtSurface(getContext(), QtWindow.this,
                                                    onTop, imageDepth);
@@ -123,7 +141,8 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         });
     }
 
-    public void destroySurface()
+    @UsedFromNativeCode
+    void destroySurface()
     {
         QtNative.runAction(()-> {
             if (m_surfaceContainer != null) {
@@ -133,7 +152,8 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         }, false);
     }
 
-    public void setGeometry(final int x, final int y, final int w, final int h)
+    @UsedFromNativeCode
+    void setGeometry(final int x, final int y, final int w, final int h)
     {
         QtNative.runAction(()-> {
             if (getContext() instanceof QtActivityBase)
@@ -141,7 +161,7 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         });
     }
 
-    public void addChildWindow(QtWindow window)
+    void addChildWindow(QtWindow window)
     {
         QtNative.runAction(()-> {
             m_childWindows.put(window.getId(), window);
@@ -149,7 +169,7 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         });
     }
 
-    public void removeChildWindow(int id)
+    void removeChildWindow(int id)
     {
         QtNative.runAction(()-> {
             if (m_childWindows.containsKey(id))
@@ -157,22 +177,22 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         });
     }
 
-    public void setNativeView(final View view,
-                              final int x, final int y, final int w, final int h)
+    @UsedFromNativeCode
+    void setNativeView(final View view)
     {
         QtNative.runAction(()-> {
             if (m_nativeView != null)
                 removeView(m_nativeView);
 
             m_nativeView = view;
-            QtWindow.this.setLayoutParams(new QtLayout.LayoutParams(w, h, x, y));
             m_nativeView.setLayoutParams(new QtLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                                                                    ViewGroup.LayoutParams.MATCH_PARENT));
             addView(m_nativeView);
         });
     }
 
-    public void bringChildToFront(int id)
+    @UsedFromNativeCode
+    void bringChildToFront(int id)
     {
         QtNative.runAction(()-> {
             View view = m_childWindows.get(id);
@@ -183,7 +203,8 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         });
     }
 
-    public void bringChildToBack(int id) {
+    @UsedFromNativeCode
+    void bringChildToBack(int id) {
         QtNative.runAction(()-> {
             View view = m_childWindows.get(id);
             if (view != null) {
@@ -192,7 +213,8 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
         });
     }
 
-    public void removeNativeView()
+    @UsedFromNativeCode
+    void removeNativeView()
     {
         QtNative.runAction(()-> {
             if (m_nativeView != null) {
@@ -215,8 +237,10 @@ class QtWindow extends QtLayout implements QtSurfaceInterface {
             m_parentWindow.addChildWindow(this);
     }
 
-    QtWindow parent()
+    @UsedFromNativeCode
+    void updateFocusedEditText()
     {
-        return m_parentWindow;
+        if (m_editText != null && m_inputConnectionListener != null)
+            m_inputConnectionListener.onEditTextChanged(m_editText);
     }
 }

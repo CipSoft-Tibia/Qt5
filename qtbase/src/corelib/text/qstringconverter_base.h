@@ -14,6 +14,7 @@
 #include <QtCore/qglobal.h> // QT_{BEGIN,END}_NAMESPACE
 #include <QtCore/qflags.h> // Q_DECLARE_FLAGS
 #include <QtCore/qcontainerfwd.h>
+#include <QtCore/qstringfwd.h>
 
 #include <cstring>
 
@@ -79,7 +80,10 @@ public:
         Q_DISABLE_COPY(State)
     };
 protected:
+    QStringConverterBase() = default;
     ~QStringConverterBase() = default;
+    QStringConverterBase(QStringConverterBase &&) = default;
+    QStringConverterBase &operator=(QStringConverterBase &&) = default;
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(QStringConverterBase::Flags)
 
@@ -89,12 +93,14 @@ public:
 
     enum Encoding {
         Utf8,
+#ifndef QT_BOOTSTRAPPED
         Utf16,
         Utf16LE,
         Utf16BE,
         Utf32,
         Utf32LE,
         Utf32BE,
+#endif
         Latin1,
         System,
         LastEncoding = System
@@ -135,7 +141,10 @@ protected:
     constexpr explicit QStringConverter(const Interface *i) noexcept
         : iface(i)
     {}
+#if QT_CORE_REMOVED_SINCE(6, 8)
     Q_CORE_EXPORT explicit QStringConverter(const char *name, Flags f);
+#endif
+    Q_CORE_EXPORT explicit QStringConverter(QAnyStringView name, Flags f);
 
 
     ~QStringConverter() = default;
@@ -154,7 +163,10 @@ public:
 
     Q_CORE_EXPORT const char *name() const noexcept;
 
+#if QT_CORE_REMOVED_SINCE(6, 8)
     Q_CORE_EXPORT static std::optional<Encoding> encodingForName(const char *name) noexcept;
+#endif
+    Q_CORE_EXPORT static std::optional<Encoding> encodingForName(QAnyStringView name) noexcept;
     Q_CORE_EXPORT static const char *nameForEncoding(Encoding e);
     Q_CORE_EXPORT static std::optional<Encoding>
     encodingForData(QByteArrayView data, char16_t expectedFirstCharacter = 0) noexcept;

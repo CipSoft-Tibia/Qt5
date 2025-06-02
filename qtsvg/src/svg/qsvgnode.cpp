@@ -49,15 +49,14 @@ void QSvgNode::draw(QPainter *p, QSvgExtraStates &states)
         if (filterNode && filterNode->type() == QSvgNode::Filter && filterNode->supported()) {
             QTransform xf = p->transform();
             p->resetTransform();
-            QRectF localRect = bounds(p, states);
-            QRectF boundsRect = xf.mapRect(localRect);
+            QRectF localRect = internalBounds(p, states);
             p->setTransform(xf);
+            QRectF boundsRect = xf.mapRect(filterNode->filterRegion(localRect));
             QImage proxy = drawIntoBuffer(p, states, boundsRect.toRect());
-            proxy = filterNode->applyFilter(this, proxy, p, localRect);
-
-            boundsRect = QRectF(proxy.offset(), proxy.size());
-            localRect = p->transform().inverted().mapRect(boundsRect);
+            proxy = filterNode->applyFilter(proxy, p, localRect);
             if (maskNode && maskNode->type() == QSvgNode::Mask) {
+                boundsRect = QRectF(proxy.offset(), proxy.size());
+                localRect = p->transform().inverted().mapRect(boundsRect);
                 QImage mask = static_cast<QSvgMask*>(maskNode)->createMask(p, states, localRect, &boundsRect);
                 applyMaskToBuffer(&proxy, mask);
             }
@@ -67,11 +66,27 @@ void QSvgNode::draw(QPainter *p, QSvgExtraStates &states)
             QRectF boundsRect;
             QImage mask = static_cast<QSvgMask*>(maskNode)->createMask(p, states, this, &boundsRect);
             drawWithMask(p, states, mask, boundsRect.toRect());
+        } else if (!qFuzzyCompare(p->opacity(), 1.0) && requiresGroupRendering()) {
+            QTransform xf = p->transform();
+            p->resetTransform();
+
+            QRectF localRect = decoratedInternalBounds(p, states);
+            // adding safety border needed because of the antialiazing effects
+            QRectF boundsRect = xf.mapRect(localRect);
+            const int deltaX = boundsRect.width() * 0.1;
+            const int deltaY = boundsRect.height() * 0.1;
+            boundsRect = boundsRect.adjusted(-deltaX, -deltaY, deltaX, deltaY);
+
+            p->setTransform(xf);
+
+            QImage proxy = drawIntoBuffer(p, states, boundsRect.toAlignedRect());
+            applyBufferToCanvas(p, proxy);
         } else {
             if (separateFillStroke())
                 fillThenStroke(p, states);
             else
                 drawCommand(p, states);
+
         }
         revertStyle(p, states);
     }
@@ -211,7 +226,8 @@ void QSvgNode::appendStyleProperty(QSvgStyleProperty *prop, const QString &id)
         m_style.transform = static_cast<QSvgTransformStyle*>(prop);
         break;
     case QSvgStyleProperty::ANIMATE_COLOR:
-        m_style.animateColor = static_cast<QSvgAnimateColor*>(prop);
+        m_style.animateColors.append(
+            static_cast<QSvgAnimateColor*>(prop));
         break;
     case QSvgStyleProperty::ANIMATE_TRANSFORM:
         m_style.animateTransforms.append(
@@ -304,8 +320,8 @@ QSvgStyleProperty * QSvgNode::styleProperty(QSvgStyleProperty::Type type) const
                 return node->m_style.transform;
             break;
         case QSvgStyleProperty::ANIMATE_COLOR:
-            if (node->m_style.animateColor)
-                return node->m_style.animateColor;
+            if (!node->m_style.animateColors.isEmpty())
+                return node->m_style.animateColors.first();
             break;
         case QSvgStyleProperty::ANIMATE_TRANSFORM:
             if (!node->m_style.animateTransforms.isEmpty())
@@ -337,17 +353,17 @@ QSvgPaintStyleProperty * QSvgNode::styleProperty(const QString &id) const
     return doc ? doc->namedStyle(rid) : 0;
 }
 
-QRectF QSvgNode::fastBounds(QPainter *p, QSvgExtraStates &states) const
+QRectF QSvgNode::internalFastBounds(QPainter *p, QSvgExtraStates &states) const
 {
-    return bounds(p, states);
+    return internalBounds(p, states);
 }
 
-QRectF QSvgNode::bounds(QPainter *, QSvgExtraStates &) const
+QRectF QSvgNode::internalBounds(QPainter *, QSvgExtraStates &) const
 {
     return QRectF(0, 0, 0, 0);
 }
 
-QRectF QSvgNode::transformedBounds() const
+QRectF QSvgNode::bounds() const
 {
     if (!m_cachedBounds.isEmpty())
         return m_cachedBounds;
@@ -359,9 +375,8 @@ QRectF QSvgNode::transformedBounds() const
 
     if (parent())
         parent()->applyStyleRecursive(&p, states);
-    // ###TODO: If we reset the world transform we should not call this function transformedBounds
     p.setWorldTransform(QTransform());
-    m_cachedBounds = transformedBounds(&p, states);
+    m_cachedBounds = bounds(&p, states);
     if (parent()) // always revert the style to not store old transformations
         parent()->revertStyleRecursive(&p, states);
     return m_cachedBounds;
@@ -479,10 +494,23 @@ void QSvgNode::setVisible(bool visible)
     m_visible = visible;
 }
 
-QRectF QSvgNode::transformedBounds(QPainter *p, QSvgExtraStates &states) const
+QRectF QSvgNode::bounds(QPainter *p, QSvgExtraStates &states) const
 {
     applyStyle(p, states);
-    QRectF rect = bounds(p, states);
+    QRectF rect = internalBounds(p, states);
+    revertStyle(p, states);
+    return rect;
+}
+
+QRectF QSvgNode::decoratedInternalBounds(QPainter *p, QSvgExtraStates &states) const
+{
+    return filterRegion(internalBounds(p, states));
+}
+
+QRectF QSvgNode::decoratedBounds(QPainter *p, QSvgExtraStates &states) const
+{
+    applyStyle(p, states);
+    QRectF rect = decoratedInternalBounds(p, states);
     revertStyle(p, states);
     return rect;
 }
@@ -589,6 +617,11 @@ bool QSvgNode::hasAnyMarker() const
     return hasMarkerStart() || hasMarkerMid() || hasMarkerEnd();
 }
 
+bool QSvgNode::requiresGroupRendering() const
+{
+    return false;
+}
+
 void QSvgNode::setDisplayMode(DisplayMode mode)
 {
     m_displayMode = mode;
@@ -622,24 +655,47 @@ void QSvgNode::initPainter(QPainter *p)
     }
 }
 
+QRectF QSvgNode::boundsOnStroke(QPainter *p, const QPainterPath &path,
+                                qreal width, BoundsMode mode)
+{
+    QPainterPathStroker stroker;
+    stroker.setWidth(width);
+    if (mode == BoundsMode::IncludeMiterLimit) {
+        stroker.setJoinStyle(p->pen().joinStyle());
+        stroker.setMiterLimit(p->pen().miterLimit());
+    }
+    QPainterPath stroke = stroker.createStroke(path);
+    return p->transform().map(stroke).boundingRect();
+}
+
 bool QSvgNode::shouldDrawNode(QPainter *p, QSvgExtraStates &states) const
 {
-    static bool alwaysDraw = qEnvironmentVariableIntValue("QT_SVG_DISABLE_SIZE_LIMIT");
-
     if (m_displayMode == DisplayMode::NoneMode)
         return false;
 
-    if (alwaysDraw)
+    if (document() && document()->options().testFlag(QtSvg::AssumeTrustedSource))
         return true;
 
-    QRectF brect = fastBounds(p, states);
+    QRectF brect = internalFastBounds(p, states);
     if (brect.width() <= QT_SVG_SIZE_LIMIT && brect.height() <= QT_SVG_SIZE_LIMIT) {
         return true;
     } else {
         qCWarning(lcSvgDraw) << "Shape of type" << type() << "ignored because it will take too long to rasterize (bounding rect=" << brect << ")."
-                             << "Set QT_SVG_DISABLE_SIZE_LIMIT=1 to disable this check.";
+                             << "Enable AssumeTrustedSource in QSvgHandler or set QT_SVG_DEFAULT_OPTIONS=2 to disable this check.";
         return false;
     }
+}
+
+QRectF QSvgNode::filterRegion(QRectF bounds) const
+{
+    QSvgFilterContainer *filterNode = hasFilter()
+            ? static_cast<QSvgFilterContainer*>(document()->namedNode(filterId()))
+            : nullptr;
+
+    if (filterNode && filterNode->type() == QSvgNode::Filter && filterNode->supported())
+        return filterNode->filterRegion(bounds);
+
+    return bounds;
 }
 
 QT_END_NAMESPACE

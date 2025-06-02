@@ -1,16 +1,29 @@
-// Copyright 2019 The Dawn Authors
+// Copyright 2019 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/d3d12/ResourceAllocatorManagerD3D12.h"
 
@@ -18,6 +31,7 @@
 #include <limits>
 #include <utility>
 
+#include "dawn/native/Queue.h"
 #include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d12/DeviceD3D12.h"
 #include "dawn/native/d3d12/HeapAllocatorD3D12.h"
@@ -56,7 +70,7 @@ D3D12_HEAP_TYPE GetD3D12HeapType(ResourceHeapKind resourceHeapKind) {
         case Upload_AllBuffersAndTextures:
             return D3D12_HEAP_TYPE_UPLOAD;
         case EnumCount:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -75,7 +89,7 @@ D3D12_HEAP_FLAGS GetD3D12HeapFlags(ResourceHeapKind resourceHeapKind) {
         case Default_OnlyRenderableOrDepthTextures:
             return D3D12_HEAP_FLAG_ALLOW_ONLY_RT_DS_TEXTURES;
         case EnumCount:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -92,7 +106,7 @@ ResourceHeapKind GetResourceHeapKind(D3D12_RESOURCE_DIMENSION dimension,
             case D3D12_HEAP_TYPE_READBACK:
                 return Readback_AllBuffersAndTextures;
             default:
-                UNREACHABLE();
+                DAWN_UNREACHABLE();
         }
     }
 
@@ -106,7 +120,7 @@ ResourceHeapKind GetResourceHeapKind(D3D12_RESOURCE_DIMENSION dimension,
                 case D3D12_HEAP_TYPE_READBACK:
                     return Readback_OnlyBuffers;
                 default:
-                    UNREACHABLE();
+                    DAWN_UNREACHABLE();
             }
             break;
         }
@@ -123,12 +137,12 @@ ResourceHeapKind GetResourceHeapKind(D3D12_RESOURCE_DIMENSION dimension,
                 }
 
                 default:
-                    UNREACHABLE();
+                    DAWN_UNREACHABLE();
             }
             break;
         }
         default:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -160,7 +174,7 @@ uint64_t GetInitialResourcePlacementAlignment(
         }
         case D3D12_RESOURCE_DIMENSION_UNKNOWN:
         default:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
 }
 
@@ -267,7 +281,7 @@ uint32_t ComputeExtraArraySizeForIntelGen12(uint32_t width,
             tileHeight = 64;
             break;
         default:
-            UNREACHABLE();
+            DAWN_UNREACHABLE();
     }
     uint32_t tileWidth = kTileSize / tileHeight;
 
@@ -366,8 +380,8 @@ ResourceAllocatorManager::~ResourceAllocatorManager() {
     Tick(std::numeric_limits<ExecutionSerial>::max());
     DestroyPool();
 
-    ASSERT(mAllocationsToDelete.Empty());
-    ASSERT(mHeapsToDelete.Empty());
+    DAWN_ASSERT(mAllocationsToDelete.Empty());
+    DAWN_ASSERT(mHeapsToDelete.Empty());
 }
 
 ResultOrError<ResourceHeapAllocation> ResourceAllocatorManager::AllocateMemory(
@@ -396,7 +410,7 @@ ResultOrError<ResourceHeapAllocation> ResourceAllocatorManager::AllocateMemory(
         resourceDescriptor.DepthOrArraySize > 1 && colorFormatBytesPerBlock > 0) {
         // Multisample textures have one layer at most. Only non-multisample textures need the
         // workaround.
-        ASSERT(revisedDescriptor.SampleDesc.Count <= 1);
+        DAWN_ASSERT(revisedDescriptor.SampleDesc.Count <= 1);
         revisedDescriptor.DepthOrArraySize += ComputeExtraArraySizeForIntelGen12(
             resourceDescriptor.Width, resourceDescriptor.Height,
             resourceDescriptor.DepthOrArraySize, resourceDescriptor.MipLevels,
@@ -444,7 +458,7 @@ void ResourceAllocatorManager::DeallocateMemory(ResourceHeapAllocation& allocati
         return;
     }
 
-    mAllocationsToDelete.Enqueue(allocation, mDevice->GetPendingCommandSerial());
+    mAllocationsToDelete.Enqueue(allocation, mDevice->GetQueue()->GetPendingCommandSerial());
 
     // Directly allocated ResourceHeapAllocations are created with a heap object that must be
     // manually deleted upon deallocation. See ResourceAllocatorManager::CreateCommittedResource
@@ -453,18 +467,18 @@ void ResourceAllocatorManager::DeallocateMemory(ResourceHeapAllocation& allocati
     // pending commands.
     if (allocation.GetInfo().mMethod == AllocationMethod::kDirect) {
         mHeapsToDelete.Enqueue(std::unique_ptr<ResourceHeapBase>(allocation.GetResourceHeap()),
-                               mDevice->GetPendingCommandSerial());
+                               mDevice->GetQueue()->GetPendingCommandSerial());
     }
 
     // Invalidate the allocation immediately in case one accidentally
     // calls DeallocateMemory again using the same allocation.
     allocation.Invalidate();
 
-    ASSERT(allocation.GetD3D12Resource() == nullptr);
+    DAWN_ASSERT(allocation.GetD3D12Resource() == nullptr);
 }
 
 void ResourceAllocatorManager::FreeMemory(ResourceHeapAllocation& allocation) {
-    ASSERT(allocation.GetInfo().mMethod == AllocationMethod::kSubAllocated);
+    DAWN_ASSERT(allocation.GetInfo().mMethod == AllocationMethod::kSubAllocated);
 
     D3D12_HEAP_PROPERTIES heapProp;
     allocation.GetD3D12Resource()->GetHeapProperties(&heapProp, nullptr);

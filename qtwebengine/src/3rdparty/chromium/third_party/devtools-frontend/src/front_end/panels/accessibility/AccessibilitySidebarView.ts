@@ -6,6 +6,7 @@ import type * as Common from '../../core/common/common.js';
 import * as Root from '../../core/root/root.js';
 import * as SDK from '../../core/sdk/sdk.js';
 import * as UI from '../../ui/legacy/legacy.js';
+import * as VisualLogging from '../../ui/visual_logging/visual_logging.js';
 
 import {AXNodeSubPane} from './AccessibilityNodeView.js';
 import {ARIAAttributesPane} from './ARIAAttributesView.js';
@@ -15,7 +16,6 @@ import {SourceOrderPane} from './SourceOrderView.js';
 let accessibilitySidebarViewInstance: AccessibilitySidebarView;
 
 export class AccessibilitySidebarView extends UI.ThrottledWidget.ThrottledWidget {
-  private readonly sourceOrderViewerExperimentEnabled: boolean;
   private nodeInternal: SDK.DOMModel.DOMNode|null;
   private axNodeInternal: SDK.AccessibilityModel.AccessibilityNode|null;
   private skipNextPullNode: boolean;
@@ -23,10 +23,9 @@ export class AccessibilitySidebarView extends UI.ThrottledWidget.ThrottledWidget
   private readonly breadcrumbsSubPane: AXBreadcrumbsPane|null = null;
   private readonly ariaSubPane: ARIAAttributesPane;
   private readonly axNodeSubPane: AXNodeSubPane;
-  private readonly sourceOrderSubPane: SourceOrderPane|undefined;
+  private readonly sourceOrderSubPane: SourceOrderPane;
   private constructor(throttlingTimeout?: number) {
     super(false /* isWebComponent */, throttlingTimeout);
-    this.sourceOrderViewerExperimentEnabled = Root.Runtime.experiments.isEnabled('sourceOrderViewer');
     this.nodeInternal = null;
     this.axNodeInternal = null;
     this.skipNextPullNode = false;
@@ -37,11 +36,10 @@ export class AccessibilitySidebarView extends UI.ThrottledWidget.ThrottledWidget
     void this.sidebarPaneStack.showView(this.ariaSubPane);
     this.axNodeSubPane = new AXNodeSubPane();
     void this.sidebarPaneStack.showView(this.axNodeSubPane);
-    if (this.sourceOrderViewerExperimentEnabled) {
-      this.sourceOrderSubPane = new SourceOrderPane();
-      void this.sidebarPaneStack.showView(this.sourceOrderSubPane);
-    }
+    this.sourceOrderSubPane = new SourceOrderPane();
+    void this.sidebarPaneStack.showView(this.sourceOrderSubPane);
     this.sidebarPaneStack.widget().show(this.element);
+    this.element.setAttribute('jslog', `${VisualLogging.pane().context('accessibility')}`);
     UI.Context.Context.instance().addFlavorChangeListener(SDK.DOMModel.DOMNode, this.pullNode, this);
     this.pullNode();
   }
@@ -98,9 +96,7 @@ export class AccessibilitySidebarView extends UI.ThrottledWidget.ThrottledWidget
     if (this.breadcrumbsSubPane) {
       this.breadcrumbsSubPane.setNode(node);
     }
-    if (this.sourceOrderViewerExperimentEnabled && this.sourceOrderSubPane) {
-      void this.sourceOrderSubPane.setNodeAsync(node);
-    }
+    void this.sourceOrderSubPane.setNodeAsync(node);
     if (!node) {
       return;
     }

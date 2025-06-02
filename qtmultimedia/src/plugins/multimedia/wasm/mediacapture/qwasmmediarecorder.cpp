@@ -3,7 +3,7 @@
 
 #include "qwasmmediarecorder_p.h"
 #include "qwasmmediacapturesession_p.h"
-#include <private/qplatformmediadevices_p.h>
+#include <private/qplatformaudiodevices_p.h>
 #include <private/qplatformmediaintegration_p.h>
 #include "qwasmcamera_p.h"
 #include "qwasmaudioinput_p.h"
@@ -22,7 +22,7 @@ QWasmMediaRecorder::QWasmMediaRecorder(QMediaRecorder *parent)
     : QPlatformMediaRecorder(parent)
 {
     m_durationTimer.reset(new QElapsedTimer());
-    QPlatformMediaIntegration::instance()->mediaDevices(); // initialize getUserMedia
+    QPlatformMediaIntegration::instance()->audioDevices(); // initialize getUserMedia
 }
 
 QWasmMediaRecorder::~QWasmMediaRecorder()
@@ -504,7 +504,7 @@ void QWasmMediaRecorder::startStream()
 void QWasmMediaRecorder::setUpFileSink()
 {
     QString m_targetFileName = outputLocation().toLocalFile();
-    QString suffix = m_mediaSettings.mimeType().preferredSuffix();
+    QString suffix = m_mediaSettings.preferredSuffix();
     if (m_targetFileName.isEmpty()) {
         m_targetFileName = "/home/web_user/tmp." + suffix;
         QPlatformMediaRecorder::setOutputLocation(m_targetFileName);

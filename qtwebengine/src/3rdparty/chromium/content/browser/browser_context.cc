@@ -148,12 +148,12 @@ StoragePartition* BrowserContext::GetStoragePartitionForUrl(
 }
 
 void BrowserContext::ForEachLoadedStoragePartition(
-    StoragePartitionCallback callback) {
+    base::FunctionRef<void(StoragePartition*)> fn) {
   StoragePartitionImplMap* partition_map = impl()->storage_partition_map();
   if (!partition_map)
     return;
 
-  partition_map->ForEach(std::move(callback));
+  partition_map->ForEach(fn);
 }
 
 size_t BrowserContext::GetLoadedStoragePartitionCount() {
@@ -212,7 +212,7 @@ void BrowserContext::DeliverPushMessage(
     const GURL& origin,
     int64_t service_worker_registration_id,
     const std::string& message_id,
-    absl::optional<std::string> payload,
+    std::optional<std::string> payload,
     base::OnceCallback<void(blink::mojom::PushEventStatus)> callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   PushMessagingRouter::DeliverMessage(
@@ -314,6 +314,14 @@ void BrowserContext::WriteIntoTrace(
   perfetto::WriteIntoTracedProto(std::move(proto), impl());
 }
 
+ResourceContext* BrowserContext::GetResourceContext() const {
+  return impl()->GetResourceContext();
+}
+
+base::WeakPtr<BrowserContext> BrowserContext::GetWeakPtr() {
+  return weak_factory_.GetWeakPtr();
+}
+
 //////////////////////////////////////////////////////////////////////////////
 // The //content embedder can override the methods below to change or extend
 // how the //content layer interacts with a BrowserContext.  The code below
@@ -322,6 +330,11 @@ void BrowserContext::WriteIntoTrace(
 // TODO(https://crbug.com/1179776): Migrate method definitions from this
 // section into a separate BrowserContextDelegate class and a separate
 // browser_context_delegate.cc source file.
+
+#if BUILDFLAG(IS_QTWEBENGINE)
+void BrowserContext::FailedToLoadDictionary(const std::string&) {
+}
+#endif
 
 FileSystemAccessPermissionContext*
 BrowserContext::GetFileSystemAccessPermissionContext() {

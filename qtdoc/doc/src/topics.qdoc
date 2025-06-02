@@ -22,6 +22,8 @@ functionality and can be used as a starting point for learning how to to get the
 \li \l{XML Processing}
 \li \l {Internationalization with Qt}
 \li \l {Testing and Debugging}
+\li \l {Security in Qt}
+\li \l {Handling Untrusted Data}
 \li \l {Qt Languages}
 \li \l {Qt Releases}
 \endlist

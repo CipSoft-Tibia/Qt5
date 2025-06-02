@@ -7,7 +7,6 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
-#include "mojo/public/cpp/bindings/array_traits_wtf_vector.h"
 #include "mojo/public/cpp/bindings/map_traits_wtf_hash_map.h"
 #include "mojo/public/cpp/bindings/message.h"
 #include "mojo/public/cpp/test_support/test_utils.h"
@@ -17,6 +16,7 @@
 #include "third_party/blink/public/mojom/interest_group/interest_group_types.mojom-blink.h"
 #include "third_party/blink/public/mojom/interest_group/interest_group_types.mojom.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
 #include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
@@ -29,6 +29,7 @@ namespace {
 
 constexpr char kOriginString[] = "https://origin.test/";
 constexpr char kNameString[] = "name";
+constexpr char kAggregationCoordinatorOriginString[] = "https://example.com/";
 
 mojom::blink::InterestGroupAdPtr MakeAdWithUrl(const KURL& url) {
   return mojom::blink::InterestGroupAd::New(
@@ -127,6 +128,7 @@ class ValidateBlinkInterestGroupTest : public testing::Test {
         String::FromUTF8("1"));
     blink_interest_group->trusted_bidding_signals_keys->push_back(
         String::FromUTF8("2"));
+    blink_interest_group->max_trusted_bidding_signals_url_length = 8000;
     blink_interest_group->user_bidding_signals =
         String::FromUTF8("\"This field isn't actually validated\"");
 
@@ -166,6 +168,9 @@ class ValidateBlinkInterestGroupTest : public testing::Test {
         mojom::blink::AuctionServerRequestFlags::New();
     blink_interest_group->auction_server_request_flags->omit_ads = true;
 
+    blink_interest_group->aggregation_coordinator_origin =
+        kAggregationCoordinatorOrigin;
+
     return blink_interest_group;
   }
 
@@ -175,6 +180,10 @@ class ValidateBlinkInterestGroupTest : public testing::Test {
       SecurityOrigin::CreateFromString(String::FromUTF8(kOriginString));
 
   const String kName = String::FromUTF8(kNameString);
+  const scoped_refptr<const SecurityOrigin> kAggregationCoordinatorOrigin =
+      SecurityOrigin::CreateFromString(
+          String::FromUTF8(kAggregationCoordinatorOriginString));
+  test::TaskEnvironment task_environment_;
 };
 
 // Test behavior with an InterestGroup with as few fields populated as allowed.
@@ -836,7 +845,7 @@ TEST_F(ValidateBlinkInterestGroupTest, TooLargeAds) {
   mojom::blink::InterestGroupPtr blink_interest_group =
       CreateMinimalInterestGroup();
   blink_interest_group->name =
-      WTF::String("paddingTo1048576" + std::string(20, 'P'));
+      WTF::String("paddingTo1048576" + std::string(12, 'P'));
   blink_interest_group->ad_components.emplace();
   for (int i = 0; i < 13980; ++i) {
     // Each ad component is 75 bytes.
@@ -1178,6 +1187,71 @@ TEST_F(ValidateBlinkInterestGroupTest,
       /*expected_error=*/
       "Interest groups that provide a value of additionalBidKey for negative "
       "targeting must not provide a value for ads.");
+}
+
+TEST_F(ValidateBlinkInterestGroupTest, AggregationCoordinatorNotHTTPS) {
+  mojom::blink::InterestGroupPtr blink_interest_group =
+      CreateMinimalInterestGroup();
+  blink_interest_group->aggregation_coordinator_origin =
+      SecurityOrigin::CreateFromString("http://coordinator.test");
+
+  ExpectInterestGroupIsNotValid(
+      blink_interest_group,
+      /*expected_error_field_name=*/
+      String::FromUTF8("aggregationCoordinatorOrigin"),
+      /*expected_error_field_value=*/
+      String::FromUTF8("http://coordinator.test"),
+      /*expected_error=*/
+      String::FromUTF8("aggregationCoordinatorOrigin origin must be HTTPS."));
+}
+
+TEST_F(ValidateBlinkInterestGroupTest, AggregationCoordinatorInvalid) {
+  mojom::blink::InterestGroupPtr blink_interest_group =
+      CreateMinimalInterestGroup();
+  blink_interest_group->aggregation_coordinator_origin =
+      SecurityOrigin::CreateFromString("http://invalid^&");
+
+  ExpectInterestGroupIsNotValid(
+      blink_interest_group,
+      /*expected_error_field_name=*/
+      String::FromUTF8("aggregationCoordinatorOrigin"),
+      /*expected_error_field_value=*/String::FromUTF8("null"),
+      /*expected_error=*/
+      String::FromUTF8("aggregationCoordinatorOrigin origin must be HTTPS."));
+}
+
+TEST_F(ValidateBlinkInterestGroupTest,
+       AdditionalBidKeyAndUpdateURLNotAllowedTogether) {
+  mojom::blink::InterestGroupPtr blink_interest_group =
+      CreateMinimalInterestGroup();
+  blink_interest_group->update_url =
+      KURL(String::FromUTF8("https://origin.test/update"));
+  blink_interest_group->additional_bid_key = {
+      0x7d, 0x4d, 0x0e, 0x7f, 0x61, 0x53, 0xa6, 0x9b, 0x62, 0x42, 0xb5,
+      0x22, 0xab, 0xbe, 0xe6, 0x85, 0xfd, 0xa4, 0x42, 0x0f, 0x88, 0x34,
+      0xb1, 0x08, 0xc3, 0xbd, 0xae, 0x36, 0x9e, 0xf5, 0x49, 0xfa};
+
+  ExpectInterestGroupIsNotValid(
+      blink_interest_group,
+      /*expected_error_field_name=*/String(),
+      /*expected_error_field_value=*/String(),
+      /*expected_error=*/
+      "Interest groups that provide a value of additionalBidKey for negative "
+      "targeting must not provide an updateURL.");
+}
+
+TEST_F(ValidateBlinkInterestGroupTest,
+       MaxTrustedBiddingSignalsURLLengthMustNotBeNegative) {
+  mojom::blink::InterestGroupPtr blink_interest_group =
+      CreateMinimalInterestGroup();
+  blink_interest_group->max_trusted_bidding_signals_url_length = -1;
+
+  ExpectInterestGroupIsNotValid(
+      blink_interest_group, /*expected_error_field_name=*/
+      String::FromUTF8("maxTrustedBiddingSignalsURLLength"),
+      /*expected_error_field_value=*/String::FromUTF8("-1"),
+      /*expected_error=*/
+      String::FromUTF8("maxTrustedBiddingSignalsURLLength is negative."));
 }
 
 }  // namespace blink

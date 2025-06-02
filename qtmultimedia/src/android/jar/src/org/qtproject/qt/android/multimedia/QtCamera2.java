@@ -26,8 +26,10 @@ import java.lang.Thread;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.qtproject.qt.android.UsedFromNativeCode;
+
 @TargetApi(23)
-public class QtCamera2 {
+class QtCamera2 {
 
     CameraDevice mCameraDevice = null;
     QtVideoDeviceManager mVideoDeviceManager = null;
@@ -42,20 +44,91 @@ public class QtCamera2 {
     String mCameraId;
     List<Surface> mTargetSurfaces = new ArrayList<>();
 
+    // The following constants are used during the capturePhoto routine.
+    // It should happen in the following order:
+    // 1. Acquire focus
+    // 2. Calibrate auto-exposure for pre-capture
+    // 3. Calibrate auto-exposure for capture
+    // 4. Capture the photo
+    //
+    // Still photo captures should be finalized using a single CameraCaptureSession.capture() call,
+    // but precapture calibration steps (auto-focus, auto-exposure) should be done using the
+    // continuously repeating preview request.
     private static final int STATE_PREVIEW = 0;
-    private static final int STATE_WAITING_LOCK = 1;
-    private static final int STATE_WAITING_PRECAPTURE = 2;
-    private static final int STATE_WAITING_NON_PRECAPTURE = 3;
+    // We are waiting for focus lock
+    private static final int STATE_WAITING_FOCUS_LOCK = 1;
+    // We are waiting for exposure calibration
+    private static final int STATE_WAITING_EXPOSURE_PRECAPTURE = 2;
+    private static final int STATE_WAITING_EXPOSURE_NON_PRECAPTURE = 3;
+    // The picture is ready to be read into an image object.
     private static final int STATE_PICTURE_TAKEN = 4;
 
+    // An mState that is not set to STATE_PREVIEW implies we are currently trying to capture a still
+    // photo.
     private int mState = STATE_PREVIEW;
-    private Object mStartMutex = new Object();
-    private boolean mIsStarted = false;
     private static int MaxNumberFrames = 12;
-    private int mFlashMode = CaptureRequest.CONTROL_AE_MODE_ON;
-    private int mTorchMode = CameraMetadata.FLASH_MODE_OFF;
-    private int mAFMode = CaptureRequest.CONTROL_AF_MODE_OFF;
-    private float mZoomFactor = 1.0f;
+
+    private static final int DEFAULT_FLASH_MODE = CaptureRequest.CONTROL_AE_MODE_ON;
+    private static final int DEFAULT_TORCH_MODE = CameraMetadata.FLASH_MODE_OFF;
+    // Default value in QPlatformCamera is FocusModeAuto, which maps to CONTINUOUS_PICTURE.
+    private static final int DEFAULT_AF_MODE = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+    private static final float DEFAULT_FOCUS_DISTANCE = 1.f;
+    private static final float DEFAULT_ZOOM_FACTOR = 1.0f;
+
+    // The purpose of this class is to gather variables that are accessed across
+    // the C++ QCamera's thread, and the background capture-processing thread.
+    // It also acts as the mutex for these variables.
+    // All access to these variables must happen after locking the instance.
+    class SyncedMembers {
+        private boolean mIsStarted = false;
+
+        // Not to be confused with QCamera::FlashMode.
+        // This controls the currently desired CaptureRequest.CONTROL_AE_MODE.
+        // QCamera::FlashMode::FlashOff maps to CaptureRequest.CONTROL_AE_MODE_ON. This implies regular
+        // automatic exposure.
+        // QCamera::FlashMode::FlashAuto maps to CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH.
+        // QCamera::FlashMode::FlashOn maps to CaptureRequest.CONTROL_AE_MODE_ON_ALWAYS_FLASH.
+        private int mFlashMode = DEFAULT_FLASH_MODE;
+
+        // Not to be confused with QCamera::TorchMode.
+        // This controls the currently desired CaptureRequest.FLASH_MODE
+        // QCamera::TorchMode::TorchOff maps to CaptureRequest.FLASH_MODE_OFF
+        // QCamera::TorchMode::TorchAuto is not supported.
+        // QCamera::TorhcMode::TorchOn maps to CaptureRequest.FLASH_MODE_TORCH.
+        private int mTorchMode = DEFAULT_TORCH_MODE;
+
+        // Not to be confused with QCamera::FocusMode
+        // This controls the currently desired CaptureRequest.CONTROL_AF_MODE
+        // QCamera::FocusMode::FocusModeAuto maps to CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+        //
+        // This variable only controls the AF_MODE we desire to apply. If the device
+        // does not support this AF_MODE this will not reflect what the camera is currently doing.
+        private int mAFMode = DEFAULT_AF_MODE;
+
+        // Not to be confused with CaptureRequest.LENS_FOCUS_DISTANCE. This variable stores the
+        // current QCamera::focusDistance. Must be applied whenever the focus-mode is set to
+        // Manual.
+        // Must have the same default value as the one set in QPlatformCamera.
+        private float mFocusDistance = DEFAULT_FOCUS_DISTANCE;
+
+        // Not to be confused with CaptureRequest.CONTROL_ZOOM_RATIO
+        // This matches the current QCamera::zoomFactor of the C++ QCamera object.
+        private float mZoomFactor = DEFAULT_ZOOM_FACTOR;
+    }
+    private final SyncedMembers mSyncedMembers = new SyncedMembers();
+
+    // Resets the control properties of this camera to their default values.
+    @UsedFromNativeCode
+    public void resetControlProperties() {
+        synchronized (mSyncedMembers) {
+            mSyncedMembers.mFlashMode = DEFAULT_FLASH_MODE;
+            mSyncedMembers.mTorchMode = DEFAULT_TORCH_MODE;
+            mSyncedMembers.mAFMode = DEFAULT_AF_MODE;
+            mSyncedMembers.mFocusDistance = DEFAULT_FOCUS_DISTANCE;
+            mSyncedMembers.mZoomFactor = DEFAULT_ZOOM_FACTOR;
+        }
+    }
+
     private Range<Integer> mFpsRange = null;
     private QtExifDataHandler mExifDataHandler = null;
 
@@ -117,55 +190,77 @@ public class QtCamera2 {
     native void onSessionClosed(String cameraId);
     native void onCaptureSessionFailed(String cameraId, int reason, long frameNumber);
     CameraCaptureSession.CaptureCallback mCaptureCallback = new CameraCaptureSession.CaptureCallback() {
+        @Override
         public void onCaptureFailed(CameraCaptureSession session,  CaptureRequest request,  CaptureFailure failure) {
             super.onCaptureFailed(session, request, failure);
             onCaptureSessionFailed(mCameraId, failure.getReason(), failure.getFrameNumber());
         }
 
+        private void handleCaptureFocusLock(CaptureResult result) {
+            final Integer afStateObj = result.get(CaptureResult.CONTROL_AF_STATE);
+            if (afStateObj == null) {
+                capturePhoto();
+                return;
+            }
+            final int afState = afStateObj;
+            // The focus can get locked either with or without focus, depending on whether
+            // the camera-device was able to find the focus target. Either way,
+            // we want to continue to the next step once it stops scanning for focus target.
+            final boolean focusLocked =
+                afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED
+                || afState == CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED;
+            if (focusLocked) {
+                // If exposure is already converged, or unavailable entirely, we go
+                // straight to capturing the photo.
+                Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+                if (aeState == null ||  aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED) {
+                    mState = STATE_PICTURE_TAKEN;
+                    capturePhoto();
+                } else {
+                    // Focusing phase is finished, transition to exposure calibration for
+                    // pre-capture.
+                    try {
+                        mPreviewRequestBuilder.set(
+                            CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                            CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+                        mState = STATE_WAITING_EXPOSURE_PRECAPTURE;
+                        mCaptureSession.capture(mPreviewRequestBuilder.build(),
+                            mCaptureCallback,
+                            mBackgroundHandler);
+                    } catch (CameraAccessException e) {
+                        Log.w("QtCamera2", "Cannot get access to the camera: " + e);
+                    }
+                }
+            }
+        }
+
+        private void handleCaptureExposurePrecapture(CaptureResult result) {
+            Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+            if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
+                mState = STATE_WAITING_EXPOSURE_NON_PRECAPTURE;
+            }
+        }
+
+        private void handleCaptureExposureNonPrecapture(CaptureResult result) {
+            Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
+            if (aeState == null || aeState != CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
+                mState = STATE_PICTURE_TAKEN;
+                capturePhoto();
+            }
+        }
+
+        // Dispatches to state handlers based on the current state in the photo-capture routine.
         private void process(CaptureResult result) {
             switch (mState) {
-                case STATE_WAITING_LOCK: {
-                    Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
-                    if (afState == null) {
-                        capturePhoto();
-                    } else if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED == afState ||
-                        CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED == afState) {
-                        Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-                        if (aeState == null ||
-                                aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED) {
-                            mState = STATE_PICTURE_TAKEN;
-                            capturePhoto();
-                        } else {
-                            try {
-                                mPreviewRequestBuilder.set(
-                                    CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
-                                    CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
-                                mState = STATE_WAITING_PRECAPTURE;
-                                mCaptureSession.capture(mPreviewRequestBuilder.build(),
-                                                        mCaptureCallback,
-                                                        mBackgroundHandler);
-                            } catch (CameraAccessException e) {
-                                Log.w("QtCamera2", "Cannot get access to the camera: " + e);
-                            }
-                        }
-                    }
+                case STATE_WAITING_FOCUS_LOCK:
+                    handleCaptureFocusLock(result);
                     break;
-                }
-                case STATE_WAITING_PRECAPTURE: {
-                    Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-                    if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
-                        mState = STATE_WAITING_NON_PRECAPTURE;
-                    }
+                case STATE_WAITING_EXPOSURE_PRECAPTURE:
+                    handleCaptureExposurePrecapture(result);
                     break;
-                }
-                case STATE_WAITING_NON_PRECAPTURE: {
-                    Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-                    if (aeState == null || aeState != CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
-                        mState = STATE_PICTURE_TAKEN;
-                        capturePhoto();
-                    }
+                case STATE_WAITING_EXPOSURE_NON_PRECAPTURE:
+                    handleCaptureExposureNonPrecapture(result);
                     break;
-                }
                 default:
                     break;
             }
@@ -182,7 +277,7 @@ public class QtCamera2 {
         }
     };
 
-    public QtCamera2(Context context) {
+    QtCamera2(Context context) {
         mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         mVideoDeviceManager = new QtVideoDeviceManager(context);
         startBackgroundThread();
@@ -194,6 +289,7 @@ public class QtCamera2 {
         mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
     }
 
+    @UsedFromNativeCode
     void stopBackgroundThread() {
         mBackgroundThread.quitSafely();
         try {
@@ -206,7 +302,7 @@ public class QtCamera2 {
     }
 
     @SuppressLint("MissingPermission")
-    public boolean open(String cameraId) {
+    boolean open(String cameraId) {
         try {
             mCameraId = cameraId;
             mCameraManager.openCamera(cameraId,mStateCallback,mBackgroundHandler);
@@ -256,8 +352,8 @@ public class QtCamera2 {
         }
     };
 
-
-    public void prepareCamera(int width, int height, int format, int minFps, int maxFps) {
+    @UsedFromNativeCode
+    void prepareCamera(int width, int height, int format, int minFps, int maxFps) {
 
         addImageReader(width, height, format);
         setFrameRate(minFps, maxFps);
@@ -288,22 +384,24 @@ public class QtCamera2 {
             mFpsRange = new Range<>(minFrameRate, maxFrameRate);
     }
 
-    public boolean addSurface(Surface surface) {
+    boolean addSurface(Surface surface) {
         if (mTargetSurfaces.contains(surface))
             return true;
 
         return mTargetSurfaces.add(surface);
     }
 
-    public boolean removeSurface(Surface surface) {
+    boolean removeSurface(Surface surface) {
         return  mTargetSurfaces.remove(surface);
     }
 
-    public void clearSurfaces() {
+    @UsedFromNativeCode
+    void clearSurfaces() {
         mTargetSurfaces.clear();
     }
 
-    public boolean createSession() {
+    @UsedFromNativeCode
+    boolean createSession() {
         if (mCameraDevice == null)
             return false;
 
@@ -316,7 +414,8 @@ public class QtCamera2 {
         return false;
     }
 
-    public boolean start(int template) {
+    @UsedFromNativeCode
+    boolean start(int template) {
 
         if (mCameraDevice == null)
             return false;
@@ -324,30 +423,24 @@ public class QtCamera2 {
         if (mCaptureSession == null)
             return false;
 
-        synchronized (mStartMutex) {
+        synchronized (mSyncedMembers) {
             try {
                 mPreviewRequestBuilder = mCameraDevice.createCaptureRequest(template);
                 mPreviewRequestBuilder.addTarget(mImageReader.getSurface());
-                mAFMode = CaptureRequest.CONTROL_AF_MODE_OFF;
-                for (int mode : mVideoDeviceManager.getSupportedAfModes(mCameraId)) {
-                    if (mode == CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE) {
-                        mAFMode = mode;
-                        break;
-                    }
-                }
 
-                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, mFlashMode);
-                mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, mTorchMode);
+                applyFocusSettingsToCaptureRequestBuilder(mPreviewRequestBuilder);
+
+                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, mSyncedMembers.mFlashMode);
+                mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, mSyncedMembers.mTorchMode);
                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
-                mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, mAFMode);
                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_CAPTURE_INTENT, CameraMetadata.CONTROL_CAPTURE_INTENT_VIDEO_RECORD);
-                if (mZoomFactor != 1.0f)
-                    updateZoom(mPreviewRequestBuilder);
+                if (mSyncedMembers.mZoomFactor != 1.0f)
+                    updateZoom(mPreviewRequestBuilder, mSyncedMembers.mZoomFactor);
                 if (mFpsRange != null)
                     mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, mFpsRange);
                 mPreviewRequest = mPreviewRequestBuilder.build();
                 mCaptureSession.setRepeatingRequest(mPreviewRequest, mCaptureCallback, mBackgroundHandler);
-                mIsStarted = true;
+                mSyncedMembers.mIsStarted = true;
                 return true;
 
             } catch (Exception exception) {
@@ -357,8 +450,9 @@ public class QtCamera2 {
         }
     }
 
-    public void stopAndClose() {
-        synchronized (mStartMutex) {
+    @UsedFromNativeCode
+    void stopAndClose() {
+        synchronized (mSyncedMembers) {
             try {
                 if (null != mCaptureSession) {
                     mCaptureSession.close();
@@ -373,41 +467,76 @@ public class QtCamera2 {
             } catch (Exception exception) {
                 Log.w("QtCamera2", "Failed to stop and close:" + exception);
             }
-            mIsStarted = false;
+            mSyncedMembers.mIsStarted = false;
         }
     }
 
+    // Used for finalizing a still photo capture. Will reset mState and preview-request back to
+    // default when capture is done. This should be used for a singular capture-call, not a
+    // repeating request.
+    class StillPhotoCaptureSessionCallback extends CameraCaptureSession.CaptureCallback {
+        @Override
+        public void onCaptureCompleted(
+            CameraCaptureSession session,
+            CaptureRequest request,
+            TotalCaptureResult result)
+        {
+            try {
+                mExifDataHandler = new QtExifDataHandler(result);
+                // Reset the focus/flash and go back to the normal state of preview.
+                mPreviewRequestBuilder.set(
+                    CaptureRequest.CONTROL_AF_TRIGGER,
+                    CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
+                mPreviewRequestBuilder.set(
+                    CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+                    CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
+                mPreviewRequest = mPreviewRequestBuilder.build();
+                mState = STATE_PREVIEW;
+                mCaptureSession.setRepeatingRequest(
+                    mPreviewRequest,
+                    mCaptureCallback,
+                    mBackgroundHandler);
+            } catch (CameraAccessException e) {
+                e.printStackTrace();
+            } catch (NullPointerException e) {
+                // See QTBUG-130901:
+                // It should not be possible for mCaptureSession to be null here
+                // because we always call .close() on mCaptureSession and then set it to null.
+                // Calling .close() should flush all pending callbacks, including this one.
+                // Either way, user has evidence this is happening, and catching this exception
+                // stops us from crashing the program.
+                Log.e(
+                    "QtCamera2",
+                    "Null-pointer access exception thrown when finalizing still photo capture. " +
+                    "This should not be possible.");
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // Can be called from C++ thread through 'takePhoto()' or directly by CameraCaptureCallback
+    // on background thread in order to finalize a still photo capture.
     private void capturePhoto() {
+        int aeMode = 0;
+        float zoomFactor = 0.f;
+        synchronized (mSyncedMembers) {
+            aeMode = mSyncedMembers.mFlashMode;
+            zoomFactor = mSyncedMembers.mZoomFactor;
+        }
+
         try {
             final CaptureRequest.Builder captureBuilder =
                    mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
             captureBuilder.addTarget(mCapturedPhotoReader.getSurface());
-            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, mFlashMode);
-            if (mZoomFactor != 1.0f)
-                updateZoom(captureBuilder);
 
-            CameraCaptureSession.CaptureCallback captureCallback
-                        = new CameraCaptureSession.CaptureCallback() {
-            @Override
-            public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request,
-                                           TotalCaptureResult result) {
-                    try {
-                        mExifDataHandler = new QtExifDataHandler(result);
-                        // Reset the focus/flash and go back to the normal state of preview.
-                        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER,
-                                                   CameraMetadata.CONTROL_AF_TRIGGER_IDLE);
-                        mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
-                                                   CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
-                        mPreviewRequest = mPreviewRequestBuilder.build();
-                        mState = STATE_PREVIEW;
-                        mCaptureSession.setRepeatingRequest(mPreviewRequest,
-                                                            mCaptureCallback,
-                                                            mBackgroundHandler);
-                    } catch (CameraAccessException e) {
-                        e.printStackTrace();
-                    }
-                }
-            };
+            applyFocusSettingsToCaptureRequestBuilder(captureBuilder);
+
+            captureBuilder.set(CaptureRequest.CONTROL_AE_MODE, aeMode);
+            if (zoomFactor != 1.0f)
+                updateZoom(captureBuilder, zoomFactor);
+
+            final StillPhotoCaptureSessionCallback captureCallback =
+                new StillPhotoCaptureSessionCallback();
 
             mCaptureSession.capture(captureBuilder.build(), captureCallback, mBackgroundHandler);
         } catch (CameraAccessException e) {
@@ -415,11 +544,26 @@ public class QtCamera2 {
         }
     }
 
-    public void takePhoto() {
+    // If auto-focus is enabled, will initiate the still photo precapture routine by adjusting
+    // focusing and exposure. Otherwise, will finalize a still photo immediately.
+    @UsedFromNativeCode
+    void takePhoto() {
+        // Load copies of synced members before applying.
+        int afMode = 0;
+        synchronized (mSyncedMembers) {
+            afMode = mSyncedMembers.mAFMode;
+        }
+
         try {
-            if (mAFMode == CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE) {
+            // If we currently want to use auto-focus, and it is supported, we start a capture photo
+            // routine with auto-focus enabled.
+            if (afMode == CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                && isAfModeSupported(afMode))
+            {
+                applyFocusSettingsToCaptureRequestBuilder(mPreviewRequestBuilder);
+
                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
-                mState = STATE_WAITING_LOCK;
+                mState = STATE_WAITING_FOCUS_LOCK;
                 mCaptureSession.capture(mPreviewRequestBuilder.build(), mCaptureCallback, mBackgroundHandler);
             } else {
                 capturePhoto();
@@ -429,7 +573,8 @@ public class QtCamera2 {
         }
     }
 
-    public void saveExifToFile(String path)
+    @UsedFromNativeCode
+    void saveExifToFile(String path)
     {
         if (mExifDataHandler != null)
             mExifDataHandler.save(path);
@@ -437,38 +582,40 @@ public class QtCamera2 {
             Log.e("QtCamera2", "No Exif data that could be saved to " + path);
     }
 
-    private Rect getScalerCropRegion()
+    private Rect getScalerCropRegion(float zoomFactor)
     {
         Rect activePixels = mVideoDeviceManager.getActiveArraySize(mCameraId);
         float zoomRatio = 1.0f;
-        if (mZoomFactor != 0.0f)
-            zoomRatio = 1.0f/mZoomFactor;
+        if (zoomFactor != 0.0f)
+            zoomRatio = 1.0f / zoomFactor;
+
         int croppedWidth = activePixels.width() - (int)(activePixels.width() * zoomRatio);
         int croppedHeight = activePixels.height() - (int)(activePixels.height() * zoomRatio);
         return new Rect(croppedWidth/2, croppedHeight/2, activePixels.width() - croppedWidth/2,
                              activePixels.height() - croppedHeight/2);
     }
 
-    private void updateZoom(CaptureRequest.Builder requBuilder)
+    private void updateZoom(CaptureRequest.Builder requBuilder, float zoomFactor)
     {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R) {
-            requBuilder.set(CaptureRequest.SCALER_CROP_REGION, getScalerCropRegion());
+            requBuilder.set(CaptureRequest.SCALER_CROP_REGION, getScalerCropRegion(zoomFactor));
         } else {
-            requBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, mZoomFactor);
+            requBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoomFactor);
         }
     }
 
-    public void zoomTo(float factor)
+    @UsedFromNativeCode
+    void zoomTo(float factor)
     {
-        synchronized (mStartMutex) {
-            mZoomFactor = factor;
+        synchronized (mSyncedMembers) {
+            mSyncedMembers.mZoomFactor = factor;
 
-            if (!mIsStarted) {
-                Log.w("QtCamera2", "Cannot set zoom on invalid camera");
+            if (!mSyncedMembers.mIsStarted) {
+                // Camera capture has not begun. Zoom will be applied during start().
                 return;
             }
 
-            updateZoom(mPreviewRequestBuilder);
+            updateZoom(mPreviewRequestBuilder, factor);
             mPreviewRequest = mPreviewRequestBuilder.build();
 
             try {
@@ -478,21 +625,80 @@ public class QtCamera2 {
             }
         }
     }
-    public void setFlashMode(String flashMode)
+
+    // As described in QPlatformCamera::setFocusMode, this function must apply the focus-distance
+    // whenever the new QCamera::focusMode is set to Manual.
+    // For now, the QtCamera2 implementation only supports Auto and Manual FocusModes.
+    @UsedFromNativeCode
+    void setFocusMode(int newFocusMode)
     {
-        synchronized (mStartMutex) {
+        // TODO: In the future, not all QCamera::FocusModes will have a 1:1 mapping to the
+        // CONTROL_AF_MODE values. We will need a general solution to translate between
+        // QCamera::FocusModes and the relevant Android Camera2 properties.
+
+        // Expand with more values in the future.
+        // Translate into the corresponding CONTROL_AF_MODE.
+        int newAfMode = 0;
+        if (newFocusMode == 0) // FocusModeAuto
+            newAfMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+        else if (newFocusMode == 5) // FocusModeManual
+            newAfMode = CaptureRequest.CONTROL_AF_MODE_OFF;
+        else {
+            Log.d(
+                "QtCamera2",
+                "received a QCamera::FocusMode from native code that is not recognized. " +
+                "Likely Qt developer bug. Ignoring.");
+            return;
+        }
+
+        // TODO: Ideally this should check if newAfMode is supported through isAfModeSupported()
+        // but in some situation, mCameraId will be null and therefore isAfModeSupported will always
+        // return false. One example of this is during QCamera::setCameraDevice.
+        /*
+        if (!isAfModeSupported(newAfMode)) {
+            Log.d(
+                "QtCamera2",
+                "received a QCamera::FocusMode from native code that is not reported as supported. " +
+                "Likely Qt developer bug. Ignoring.");
+            return;
+        }
+         */
+
+        synchronized (mSyncedMembers) {
+            mSyncedMembers.mAFMode = newAfMode;
+
+            // If the camera is not in the started state yet, we skip activating focus-mode here.
+            // Instead it will get applied when the camera is initialized.
+            if (!mSyncedMembers.mIsStarted)
+                return;
+
+            applyFocusSettingsToCaptureRequestBuilder(mPreviewRequestBuilder);
+            mPreviewRequest = mPreviewRequestBuilder.build();
+
+            try {
+                mCaptureSession.setRepeatingRequest(mPreviewRequest, mCaptureCallback, mBackgroundHandler);
+            } catch (Exception exception) {
+                Log.w("QtCamera2", "Failed to set focus mode:" + exception);
+            }
+        }
+    }
+
+    @UsedFromNativeCode
+    void setFlashMode(String flashMode)
+    {
+        synchronized (mSyncedMembers) {
 
             int flashModeValue = mVideoDeviceManager.stringToControlAEMode(flashMode);
             if (flashModeValue < 0) {
                 Log.w("QtCamera2", "Unknown flash mode");
                 return;
             }
-            mFlashMode = flashModeValue;
+            mSyncedMembers.mFlashMode = flashModeValue;
 
-            if (!mIsStarted)
+            if (!mSyncedMembers.mIsStarted)
                 return;
 
-            mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, mFlashMode);
+            mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE, mSyncedMembers.mFlashMode);
             mPreviewRequest = mPreviewRequestBuilder.build();
 
             try {
@@ -503,18 +709,62 @@ public class QtCamera2 {
         }
     }
 
+    // Sets the focus distance of the camera. Input is the same that accepted by the
+    // QCamera public API. Accepts a float in the range 0,1. Where 0 means as close as possible,
+    // and 1 means infinity.
+    //
+    // This should never be called if the device specifies focus-distance as unsupported.
+    @UsedFromNativeCode
+    public void setFocusDistance(float distanceInput)
+    {
+        if (distanceInput < 0.f || distanceInput > 1.f) {
+            Log.w(
+                "QtCamera2",
+                "received out-of-bounds value when setting camera focus-distance. " +
+                "Likely Qt developer bug. Ignoring.");
+            return;
+        }
+
+        // TODO: Add error handling to check if current mCameraId supports setting focus-distance.
+        // See setFocusMode relevant issue.
+
+        synchronized (mSyncedMembers) {
+            mSyncedMembers.mFocusDistance = distanceInput;
+
+            // If the camera is not in the started state yet, we skip applying any camera-controls
+            // here. It will get applied once the camera is ready.
+            if (!mSyncedMembers.mIsStarted)
+                return;
+
+            // If we are currently in QCamera::FocusModeManual, we apply the focus distance
+            // immediately. Otherwise, we store the value and apply it during setFocusMode(Manual).
+            if (mSyncedMembers.mAFMode == CaptureRequest.CONTROL_AF_MODE_OFF) {
+                applyFocusSettingsToCaptureRequestBuilder(mPreviewRequestBuilder);
+
+                mPreviewRequest = mPreviewRequestBuilder.build();
+
+                try {
+                    mCaptureSession.setRepeatingRequest(mPreviewRequest, mCaptureCallback, mBackgroundHandler);
+                } catch (Exception exception) {
+                    Log.w("QtCamera2", "Failed to set focus distance:" + exception);
+                }
+            }
+        }
+    }
+
     private int getTorchModeValue(boolean mode)
     {
         return mode ? CameraMetadata.FLASH_MODE_TORCH : CameraMetadata.FLASH_MODE_OFF;
     }
 
-    public void setTorchMode(boolean torchMode)
+    @UsedFromNativeCode
+    void setTorchMode(boolean torchMode)
     {
-        synchronized (mStartMutex) {
-            mTorchMode = getTorchModeValue(torchMode);
+        synchronized (mSyncedMembers) {
+            mSyncedMembers.mTorchMode = getTorchModeValue(torchMode);
 
-            if (mIsStarted) {
-                mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, mTorchMode);
+            if (mSyncedMembers.mIsStarted) {
+                mPreviewRequestBuilder.set(CaptureRequest.FLASH_MODE, mSyncedMembers.mTorchMode);
                 mPreviewRequest = mPreviewRequestBuilder.build();
 
                 try {
@@ -524,5 +774,71 @@ public class QtCamera2 {
                 }
             }
         }
+    }
+
+    // This function is, under some circumstances, invoked indirectly on the C++ thread.
+    private void applyFocusSettingsToCaptureRequestBuilder(CaptureRequest.Builder requestBuilder)
+    {
+        synchronized (mSyncedMembers) {
+            if (!isAfModeSupported(mSyncedMembers.mAFMode)) {
+                // If we don't support our desired AF_MODE, fallback to AF_MODE_OFF if that is
+                // available. Otherwise don't set any focus-mode, leave it as default and
+                // undefined state.
+                //
+                // NOTE! Setting CONTROL_AF_MODE to null is illegal and will cause an exception
+                // thrown.
+                if (isAfModeSupported(CaptureRequest.CONTROL_AF_MODE_OFF)) {
+                    requestBuilder.set(
+                        CaptureRequest.CONTROL_AF_MODE,
+                        CaptureRequest.CONTROL_AF_MODE_OFF);
+                }
+
+                requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, null);
+                return;
+            }
+
+            requestBuilder.set(CaptureRequest.CONTROL_AF_MODE, mSyncedMembers.mAFMode);
+
+
+            // Set correct lens focus distance if we are in QCamera::FocusModeManual
+            if (mSyncedMembers.mAFMode == CaptureRequest.CONTROL_AF_MODE_OFF) {
+                final float lensFocusDistance = calcLensFocusDistanceFromQCameraFocusDistance(
+                    mSyncedMembers.mFocusDistance);
+                if (lensFocusDistance < 0) {
+                    Log.w(
+                        "QtCamera2",
+                        "Tried to apply FocusModeManual on a camera that doesn't support " +
+                        "setting lens distance. Likely Qt developer bug. Ignoring.");
+                } else {
+                    requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, lensFocusDistance);
+                }
+            } else {
+                requestBuilder.set(CaptureRequest.LENS_FOCUS_DISTANCE, null);
+            }
+        }
+    }
+
+    // Calculates the CaptureRequest.LENS_FOCUS_DISTANCE equivalent given a QCamera::focusDistance
+    // value. Returns -1 on failure, such as if camera does not support setting manual focus
+    // distance.
+    private float calcLensFocusDistanceFromQCameraFocusDistance(float qCameraFocusDistance) {
+        float lensMinimumFocusDistance =
+            mVideoDeviceManager.getLensInfoMinimumFocusDistance(mCameraId);
+        if (lensMinimumFocusDistance <= 0)
+            return -1;
+
+        // Input is 0 to 1, with 0 meaning as close as possible.
+        // Android Camera2 expects it to be in the range [0, minimumFocusDistance]
+        // where higher values means closer to the camera and 0 means as far away as possible.
+        // We need to map to this range.
+        return (1.f - qCameraFocusDistance) * lensMinimumFocusDistance;
+    }
+
+    // Helper function to check if a given CaptureRequest.CONTROL_AF_MODE is supported on this
+    // device, and we have a working implementation for it.
+    private boolean isAfModeSupported(int afMode) {
+        if (mVideoDeviceManager == null || mCameraId == null || mCameraId.isEmpty())
+            return false;
+        return mVideoDeviceManager.isAfModeSupported(mCameraId, afMode);
     }
 }

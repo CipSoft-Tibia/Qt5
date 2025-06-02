@@ -31,15 +31,20 @@ public:
     void connectGraphAndProxy(QQuickGraphsItem *newGraph) override;
     void createItemLabel() override;
 
-    void setSelectedPoint(const QPoint &position);
-    void setFlatShadingEnabled(bool enabled);
+    void setSelectedPoint(QPoint position);
+    void setShading(const QSurface3DSeries::Shading shading);
     void setDrawMode(QSurface3DSeries::DrawFlags mode);
     void setTexture(const QImage &texture);
-    void setWireframeColor(const QColor &color);
+    void setWireframeColor(QColor color);
+
+    void setDataArray(const QSurfaceDataArray &newDataArray);
+    void clearRow(qsizetype rowIndex);
+    void clearArray();
 
 private:
+    QSurfaceDataArray m_dataArray;
     QPoint m_selectedPoint;
-    bool m_flatShadingEnabled;
+    QSurface3DSeries::Shading m_shading;
     QSurface3DSeries::DrawFlags m_drawMode;
     QImage m_texture;
     QString m_textureFile;

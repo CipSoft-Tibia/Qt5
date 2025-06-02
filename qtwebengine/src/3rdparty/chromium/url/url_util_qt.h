@@ -46,7 +46,7 @@ struct COMPONENT_EXPORT(URL) CustomScheme {
   static void ClearSchemes();
 
   static void AddScheme(const CustomScheme& cs);
-  static const CustomScheme* FindScheme(base::StringPiece name);
+  static const CustomScheme* FindScheme(std::string_view name);
 
   static const char kCommandLineFlag[];
   static void SaveSchemes(base::CommandLine* command_line);
@@ -60,7 +60,7 @@ struct COMPONENT_EXPORT(URL) CustomScheme {
 // Implemented in QtWebEngine repository.
 //
 // Thread-safe.
-bool IsHandledProtocol(base::StringPiece scheme);
+bool IsHandledProtocol(std::string_view scheme);
 
 } // namespace url
 

@@ -132,6 +132,12 @@ QGeoLocation &QGeoLocation::operator =(const QGeoLocation &other)
 */
 
 /*!
+    \fn void QGeoLocation::swap(QGeoLocation &other)
+    \since 6.2
+    \memberswap{location}
+*/
+
+/*!
     Returns the address of the location.
 */
 QGeoAddress QGeoLocation::address() const

@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 
     //! [1]
     // Enable antialiasing in direct rendering mode
-    viewer.setFormat(qDefaultSurfaceFormat(true));
+    viewer.setFormat(QQuick3D::idealSurfaceFormat(8));
     //! [1]
 
     // The following are needed to make examples run without having to install the
@@ -43,6 +43,7 @@ int main(int argc, char *argv[])
 
     viewer.setSource(QUrl("qrc:/qml/surfacegallery/main.qml"));
     viewer.setResizeMode(QQuickView::SizeRootObjectToView);
+    viewer.setColor(QColor("#262626"));
     viewer.show();
 
     return app.exec();

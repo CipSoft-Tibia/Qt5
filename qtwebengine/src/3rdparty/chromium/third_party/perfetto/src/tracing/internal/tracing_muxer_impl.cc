@@ -970,6 +970,7 @@ void TracingMuxerImpl::AddProducerBackend(TracingProducerBackend* backend,
   rb.producer_conn_args.shmem_size_hint_bytes = args.shmem_size_hint_kb * 1024;
   rb.producer_conn_args.shmem_page_size_hint_bytes =
       args.shmem_page_size_hint_kb * 1024;
+  rb.producer_conn_args.create_socket_async = args.create_socket_async;
   rb.producer->Initialize(rb.backend->ConnectProducer(rb.producer_conn_args));
 }
 
@@ -1057,6 +1058,7 @@ bool TracingMuxerImpl::RegisterDataSource(
     const DataSourceDescriptor& descriptor,
     DataSourceFactory factory,
     DataSourceParams params,
+    bool no_flush,
     DataSourceStaticState* static_state) {
   // Ignore repeated registrations.
   if (static_state->index != kMaxDataSources)
@@ -1083,7 +1085,8 @@ bool TracingMuxerImpl::RegisterDataSource(
   hash.Update(base::GetWallTimeNs().count());
   static_state->id = hash.digest() ? hash.digest() : 1;
 
-  task_runner_->PostTask([this, descriptor, factory, static_state, params] {
+  task_runner_->PostTask([this, descriptor, factory, static_state, params,
+                          no_flush] {
     data_sources_.emplace_back();
     RegisteredDataSource& rds = data_sources_.back();
     rds.descriptor = descriptor;
@@ -1093,6 +1096,7 @@ bool TracingMuxerImpl::RegisterDataSource(
         params.supports_multiple_instances;
     rds.requires_callbacks_under_lock = params.requires_callbacks_under_lock;
     rds.static_state = static_state;
+    rds.no_flush = no_flush;
 
     UpdateDataSourceOnAllBackends(rds, /*is_changed=*/false);
   });
@@ -1249,8 +1253,9 @@ void TracingMuxerImpl::SetupDataSource(TracingBackendId backend_id,
         continue;
       auto* internal_state =
           reinterpret_cast<DataSourceState*>(&static_state.instances[i]);
-      if (internal_state->backend_id == backend_id && internal_state->config &&
-          *internal_state->config == cfg) {
+      if (internal_state->backend_id == backend_id &&
+          internal_state->backend_connection_id == backend_connection_id &&
+          internal_state->config && *internal_state->config == cfg) {
         active_for_config = true;
         break;
       }
@@ -1495,6 +1500,12 @@ void TracingMuxerImpl::StopDataSource_AsyncBeginImpl(
 
   {
     std::unique_lock<std::recursive_mutex> lock(ds.internal_state->lock);
+
+    // Don't call OnStop again if the datasource is already stopping.
+    if (ds.internal_state->async_stop_in_progress)
+      return;
+    ds.internal_state->async_stop_in_progress = true;
+
     if (ds.internal_state->interceptor)
       ds.internal_state->interceptor->OnStop({});
 
@@ -1546,6 +1557,7 @@ void TracingMuxerImpl::StopDataSource_AsyncEnd(TracingBackendId backend_id,
     ds.internal_state->data_source.reset();
     ds.internal_state->interceptor.reset();
     ds.internal_state->config.reset();
+    ds.internal_state->async_stop_in_progress = false;
     startup_buffer_reservation =
         ds.internal_state->startup_target_buffer_reservation.load(
             std::memory_order_relaxed);
@@ -1594,7 +1606,9 @@ void TracingMuxerImpl::StopDataSource_AsyncEnd(TracingBackendId backend_id,
     }
   }
 
-  if (producer->connected_) {
+  if (producer->connected_ &&
+      backend.producer->connection_id_.load(std::memory_order_relaxed) ==
+          backend_connection_id) {
     // Flush any commits that might have been batched by SharedMemoryArbiter.
     producer->service_->MaybeSharedMemoryArbiter()
         ->FlushPendingCommitDataRequests();
@@ -1705,7 +1719,12 @@ void TracingMuxerImpl::FlushDataSource_AsyncEnd(
   if (!producer)
     return;
 
-  if (producer->connected_) {
+  // If the tracing service disconnects and reconnects while a data source is
+  // handling a flush request, there's no point is sending the flush reply to
+  // the newly reconnected producer.
+  if (producer->connected_ &&
+      backend.producer->connection_id_.load(std::memory_order_relaxed) ==
+          backend_connection_id) {
     producer->NotifyFlushForDataSourceDone(instance_id, flush_id);
   }
 }
@@ -1832,6 +1851,9 @@ void TracingMuxerImpl::UpdateDataSourceOnAllBackends(RegisteredDataSource& rds,
     if (is_registered && !is_changed)
       continue;
 
+    if (!rds.descriptor.no_flush()) {
+      rds.descriptor.set_no_flush(rds.no_flush);
+    }
     rds.descriptor.set_will_notify_on_start(true);
     rds.descriptor.set_will_notify_on_stop(true);
     rds.descriptor.set_handles_incremental_state_clear(true);

@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/ir/swizzle.h"
 
@@ -29,17 +42,16 @@ TEST_F(IR_SwizzleTest, SetsUsage) {
     auto* var = b.Var(ty.ptr<function, i32>());
     auto* a = b.Swizzle(mod.Types().i32(), var, {1u});
 
-    EXPECT_THAT(var->Result()->Usages(), testing::UnorderedElementsAre(Usage{a, 0u}));
+    EXPECT_THAT(var->Result(0)->Usages(), testing::UnorderedElementsAre(Usage{a, 0u}));
 }
 
 TEST_F(IR_SwizzleTest, Results) {
     auto* var = b.Var(ty.ptr<function, i32>());
     auto* a = b.Swizzle(mod.Types().i32(), var, {1u});
 
-    EXPECT_TRUE(a->HasResults());
-    EXPECT_FALSE(a->HasMultiResults());
-    EXPECT_TRUE(a->Result()->Is<InstructionResult>());
-    EXPECT_EQ(a->Result()->Source(), a);
+    EXPECT_EQ(a->Results().Length(), 1u);
+    EXPECT_TRUE(a->Result(0)->Is<InstructionResult>());
+    EXPECT_EQ(a->Result(0)->Instruction(), a);
 }
 
 TEST_F(IR_SwizzleTest, Fail_NullType) {
@@ -84,6 +96,23 @@ TEST_F(IR_SwizzleTest, Fail_IndexOutOfRange) {
             b.Swizzle(mod.Types().i32(), var, {4u});
         },
         "");
+}
+
+TEST_F(IR_SwizzleTest, Clone) {
+    auto* var = b.Var(ty.ptr<function, i32>());
+    auto* s = b.Swizzle(mod.Types().i32(), var, {2u});
+
+    auto* new_var = clone_ctx.Clone(var);
+    auto* new_s = clone_ctx.Clone(s);
+
+    EXPECT_NE(s, new_s);
+    EXPECT_NE(nullptr, new_s->Result(0));
+    EXPECT_NE(s->Result(0), new_s->Result(0));
+
+    EXPECT_EQ(new_var->Result(0), new_s->Object());
+
+    EXPECT_EQ(1u, new_s->Indices().Length());
+    EXPECT_EQ(2u, new_s->Indices().Front());
 }
 
 }  // namespace

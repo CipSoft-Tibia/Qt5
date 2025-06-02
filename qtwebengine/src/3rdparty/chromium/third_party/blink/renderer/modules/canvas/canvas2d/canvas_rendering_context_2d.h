@@ -160,20 +160,21 @@ class MODULES_EXPORT CanvasRenderingContext2D final
 
   cc::PaintCanvas* GetOrCreatePaintCanvas() final;
   cc::PaintCanvas* GetPaintCanvas() final;
+  MemoryManagedPaintRecorder* Recorder() override;
+
   void WillDraw(const SkIRect& dirty_rect,
                 CanvasPerformanceMonitor::DrawType) final;
 
   SkColorInfo CanvasRenderingContextSkColorInfo() const override {
     return color_params_.GetSkColorInfo();
   }
-  scoped_refptr<StaticBitmapImage> GetImage(
-      CanvasResourceProvider::FlushReason) final;
+  scoped_refptr<StaticBitmapImage> GetImage(FlushReason) final;
 
   sk_sp<PaintFilter> StateGetFilter() final;
 
-  void FinalizeFrame(CanvasResourceProvider::FlushReason) override;
+  void FinalizeFrame(FlushReason) override;
 
-  CanvasRenderingContextHost* GetCanvasRenderingContextHost() override;
+  CanvasRenderingContextHost* GetCanvasRenderingContextHost() const override;
   ExecutionContext* GetTopExecutionContext() const override;
 
   bool IsPaintable() const final {
@@ -182,7 +183,7 @@ class MODULES_EXPORT CanvasRenderingContext2D final
 
   void WillDrawImage(CanvasImageSource*) const final;
 
-  void FlushCanvas(CanvasResourceProvider::FlushReason) override;
+  absl::optional<cc::PaintRecord> FlushCanvas(FlushReason) override;
 
   void Trace(Visitor*) const override;
 
@@ -223,7 +224,6 @@ class MODULES_EXPORT CanvasRenderingContext2D final
                    size_t row_bytes,
                    int x,
                    int y) override;
-  void WillOverwriteCanvas() override;
   void TryRestoreContextEvent(TimerBase*) override;
 
   bool WillSetFont() const final;
@@ -246,14 +246,12 @@ class MODULES_EXPORT CanvasRenderingContext2D final
   void UpdateElementAccessibility(const Path&, Element*);
 
   bool IsComposited() const override;
-  bool IsAccelerated() const override;
   bool IsOriginTopLeft() const override;
   bool HasAlpha() const override { return CreationAttributes().alpha; }
   bool IsDesynchronized() const override {
     return CreationAttributes().desynchronized;
   }
-  void SetIsInHiddenPage(bool) override;
-  void SetIsBeingDisplayed(bool) override;
+  void PageVisibilityChanged() override;
   void Stop() final;
 
   cc::Layer* CcLayer() const override;

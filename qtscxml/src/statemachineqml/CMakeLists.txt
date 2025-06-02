@@ -27,6 +27,4 @@ qt_internal_add_qml_module(StateMachineQml
         Qt::StateMachine
     LIBRARIES
         Qt::QmlPrivate
-    GENERATE_CPP_EXPORTS
-    GENERATE_PRIVATE_CPP_EXPORTS
 )

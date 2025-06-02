@@ -37,33 +37,33 @@ public:
 */
 
 /*!
-    \qmltype LevelOfDetailBoundingSphere
-    \instantiates Qt3DRender::QLevelOfDetailBoundingSphere
+    \qmltype levelOfDetailBoundingSphere
+    \nativetype Qt3DRender::QLevelOfDetailBoundingSphere
     \inherits Component3D
     \inqmlmodule Qt3D.Render
-    \brief The LevelOfDetailBoundingSphere QML type provides a simple spherical volume, defined by its center and radius.
+    \brief The levelOfDetailBoundingSphere QML type provides a simple spherical volume, defined by its center and radius.
 */
 
 /*!
- * \qmlproperty QVector3D LevelOfDetailBoundingSphere::center
+ * \qmlproperty vector3d levelOfDetailBoundingSphere::center
  *
  * Specifies the center of the bounding sphere
  */
 
 /*!
- * \property QLevelOfDetailBoundingSphere::center
+ * \property Qt3DRender::QLevelOfDetailBoundingSphere::center
  *
  * Specifies the center of the bounding sphere
  */
 
 /*!
- * \qmlproperty qreal LevelOfDetailBoundingSphere::radius
+ * \qmlproperty real levelOfDetailBoundingSphere::radius
  *
  * Specifies the radius of the bounding sphere
  */
 
 /*!
- * \property QLevelOfDetailBoundingSphere::radius
+ * \property Qt3DRender::QLevelOfDetailBoundingSphere::radius
  *
  * Specifies the radius of the bounding sphere
  */

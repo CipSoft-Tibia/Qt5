@@ -11,6 +11,115 @@
     Changes in Qt and \l{Third-Party Code Used in Qt}{Third Party Modules}
     released with Qt that are relevant to licensing.
 
+    \section1 Qt 6.8.3
+
+    \section2 Qt Core Module
+
+    \list
+        \li Updated \l{unicode-cldr}{Unicode Common Locale Data Repository (CLDR)} to v46.1.
+        \li \l{unicode-character-database}{Unicode Character Database (UCD)} was updated to version 34.
+        \li \l{pcre2}{PCRE2} was updated to version 10.45.
+        \li \l{pcre2-sljit}{PCRE2 - Stack-less Just-In-Time Compiler} was updated to version 10.45.
+        \li \l{tinycbor}{TinyCBOR} was updated to version 0.6.1.
+    \endlist
+
+    \section2 Qt GUI Module
+
+    \list
+        \li \l{harfbuzz-ng}{HarfBuzz-NG} was updated to version 10.4.0.
+        \li \l{libpng}{LibPNG} was updated to version 1.6.47.
+    \endlist
+
+    \section2 Qt Network module
+
+    \list
+        \li \l{psl-data}{The Public Suffix List} was updated to the commit
+        matching the sha 47264b57765919188b9f4144de8d95cf77e1b6dc, on 2025-01-22.
+    \endlist
+
+    \section2 Qt GRPC module
+
+    \list
+        \li Usage of \l{protobuf-tests}{protobuf-tests}, version 21.9, is now documented.
+    \endlist
+
+    \section2 Qt SQL Module
+
+    \list
+        \li \l{sqlite}{SQLite} was updated to version 3.49.1.
+    \endlist
+
+    \section2 Qt Testlib Module
+
+    \list
+        \li Updated \l{valgrind}{Valgrind} to version 3.24.0.
+        \li Updated \l{linuxperf}{Linux Performance Events} to version 6.13.
+    \endlist
+
+    \section1 Qt 6.8.2
+
+    \section2 Qt Core Module
+
+    \list
+        \li \l{blake2}{BLAKE2 (reference implementation)} was updated to version ed1974ea83433eba7b2d95c5dcd9ac33cb847913.
+        \li \l{unicode-cldr}{Unicode Common Locale Data Repository (CLDR)} was updated to version 46.
+    \endlist
+
+    \section2 Qt GUI Module
+
+    \list
+        \li \l{harfbuzz-ng}{HarfBuzz-NG} was updated to version 10.2.0.
+        \li \l{libjpeg}{LibJPEG-turbo} was updated to version 3.1.0.
+        \li \l{libpng}{LibPNG} was updated to version 1.6.45.
+    \endlist
+
+    \section2 Qt Image Formats
+
+    \list
+        \li \l{libwebp}{WebP (libwebp)} was updated to version 1.5.0.
+    \endlist
+
+    \section2 Qt SQL Module
+
+    \list
+        \li \l{sqlite}{SQLite} was updated to version 3.48.0.
+    \endlist
+
+    \section1 Qt 6.8.1
+
+    \section2 Qt GUI Module
+
+    \list
+        \li \l{harfbuzz-ng}{HarfBuzz-NG} was updated to version 10.1.0.
+        \li \l{libjpeg}{LibJPEG-turbo} was updated to version 3.0.4.
+    \endlist
+
+    \section2 Qt Image Formats
+
+    \list
+        \li \l{libtiff}{TIFF Software Distribution (libtiff)} was updated to version 4.7.0.
+    \endlist
+
+    \section2 Qt Multimedia Module
+
+    \list
+        \li \l{ffmpeg}{FFmpeg} was updated to version 7.1.
+    \endlist
+
+    \section2 Qt SQL Module
+
+    \list
+        \li \l{sqlite}{SQLite} was updated to version 3.47.0.
+    \endlist
+
+    \section1 Qt 6.8.0
+
+    \section2 Qt Testlib Module
+
+    \list
+        \li Updated \l{valgrind}{Valgrind} to version 3.23.0.
+    \endlist
+
     \section1 Qt 6.7.3
 
     \section2 Qt 3D Module

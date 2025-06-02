@@ -51,8 +51,8 @@ class tst_QDebug: public QObject
 {
     Q_OBJECT
 public:
-    enum EnumType { EnumValue1 = 1, EnumValue2 = 2 };
-    enum FlagType { EnumFlag1 = 1, EnumFlag2 = 2 };
+    enum EnumType { EnumValue1 = 1, EnumValue2 = INT_MIN };
+    enum FlagType { EnumFlag1 = 1, EnumFlag2 = INT_MIN };
     Q_ENUM(EnumType)
     Q_DECLARE_FLAGS(Flags, FlagType)
     Q_FLAG(Flags)
@@ -74,6 +74,7 @@ private slots:
     void qDebugQStringView() const;
     void qDebugQUtf8StringView() const;
     void qDebugQLatin1String() const;
+    void qDebugStdPair() const;
     void qDebugStdString() const;
     void qDebugStdStringView() const;
     void qDebugStdWString() const;
@@ -678,6 +679,40 @@ void tst_QDebug::qDebugQLatin1String() const
     QCOMPARE(s_msg, QString("\"\\nSm\\u00F8rg\\u00E5sbord\\\\\""));
 }
 
+void tst_QDebug::qDebugStdPair() const
+{
+    QByteArray file, function;
+    int line = 0;
+    MessageHandlerSetter mhs(myMessageHandler);
+    {
+        QDebug d = qDebug();
+        d << std::pair(42, u"foo"_s) << std::pair(u"barbaz"_s, 4.2);
+        d.nospace().noquote() << std::pair(u"baz"_s, -42);
+    }
+#ifndef QT_NO_MESSAGELOGCONTEXT
+    file = __FILE__; line = __LINE__ - 5; function = Q_FUNC_INFO;
+#endif
+    QCOMPARE(s_msgType, QtDebugMsg);
+    QCOMPARE(s_msg, R"(std::pair(42,"foo") std::pair("barbaz",4.2) std::pair(baz,-42))"_L1);
+    QCOMPARE(s_file, file);
+    QCOMPARE(s_line, line);
+    QCOMPARE(s_function, function);
+
+    /* simpler tests from now on */
+    // nested:
+    qDebug() << std::pair(std::pair(std::pair(4.2, 42), ".42"), u"42"_s);
+    QCOMPARE(s_msg, R"(std::pair(std::pair(std::pair(4.2,42),.42),"42"))"_L1);
+    // with references:
+    {
+        auto d = 4.2; auto i = 42;
+        qDebug() << std::pair<double &, const int &>(d, i);
+        QCOMPARE(s_msg, R"(std::pair(4.2,42))"_L1);
+        s_msg.clear(); // avoid False Positives (next line outputs same as prior)
+        qDebug() << std::pair<const double &&, int &&>(std::move(d), std::move(i));
+        QCOMPARE(s_msg, R"(std::pair(4.2,42))"_L1);
+    }
+}
+
 void tst_QDebug::qDebugStdString() const
 {
     QString file, function;
@@ -1082,7 +1117,8 @@ void tst_QDebug::qDebugQByteArrayView() const
 
 enum TestEnum {
     Flag1 = 0x1,
-    Flag2 = 0x10
+    Flag2 = 0x10,
+    SignFlag = INT_MIN,
 };
 
 Q_DECLARE_FLAGS(TestFlags, TestEnum)
@@ -1091,7 +1127,7 @@ void tst_QDebug::qDebugQFlags() const
 {
     QString file, function;
     int line = 0;
-    QFlags<TestEnum> flags(Flag1 | Flag2);
+    QFlags<TestEnum> flags(Flag1 | Flag2 | SignFlag);
 
     MessageHandlerSetter mhs(myMessageHandler);
     { qDebug() << flags; }
@@ -1099,7 +1135,7 @@ void tst_QDebug::qDebugQFlags() const
     file = __FILE__; line = __LINE__ - 2; function = Q_FUNC_INFO;
 #endif
     QCOMPARE(s_msgType, QtDebugMsg);
-    QCOMPARE(s_msg, QString::fromLatin1("QFlags(0x1|0x10)"));
+    QCOMPARE(s_msg, QString::fromLatin1("QFlags(0x1|0x10|0x80000000)"));
     QCOMPARE(QString::fromLatin1(s_file), file);
     QCOMPARE(s_line, line);
     QCOMPARE(QString::fromLatin1(s_function), function);
@@ -1236,6 +1272,23 @@ void tst_QDebug::qDebugStdOptional() const
     QCOMPARE(QString::fromLatin1(s_file), file);
     QCOMPARE(s_line, line);
     QCOMPARE(QString::fromLatin1(s_function), function);
+
+    /* simpler tests from now on */
+    // const
+    qDebug() << std::optional<const int>(42) << std::optional<const int>(std::nullopt);
+    QCOMPARE(s_msg, R"(std::optional(42) nullopt)"_L1);
+    // nested
+    {
+        auto d = qDebug();
+        // the constructors would do the wrong thing (convert payload types), so use emplace()
+        std::optional<std::optional<int>> opt;
+        d << opt;
+        opt.emplace();
+        d << opt;
+        *opt = 42;
+        d << opt;
+    }
+    QCOMPARE(s_msg, R"(nullopt std::optional(nullopt) std::optional(std::optional(42)))"_L1);
 }
 
 void tst_QDebug::textStreamModifiers() const
@@ -1342,6 +1395,19 @@ void tst_QDebug::toString() const
         QDebug stream(&expectedString);
         stream.nospace() << &qobject;
         QCOMPARE(QDebug::toString(&qobject), expectedString);
+    }
+
+    // Overloaded operator&
+    {
+        struct TypeWithAddressOf
+        {
+            int* operator&() const { return nullptr; }
+            operator QByteArray() const { return "test"; }
+        };
+
+        TypeWithAddressOf object;
+        QString expectedString {"\"test\""};
+        QCOMPARE(QDebug::toString(object), expectedString);
     }
 }
 

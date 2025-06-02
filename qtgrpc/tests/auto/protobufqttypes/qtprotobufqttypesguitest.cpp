@@ -2,6 +2,7 @@
 // Copyright (C) 2020 Alexey Edelev <semlanik@gmail.com>
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include "qtguitypesnested.qpb.h"
 #include "qtguitypes.qpb.h"
 
 #include <qtprotobuftestscommon.h>
@@ -23,9 +24,9 @@ class QtProtobufQtTypesQtGuiTest : public QObject
 {
     Q_OBJECT
 
-private slots:
+private Q_SLOTS:
     void initTestCase() {
-        QtProtobuf::qRegisterProtobufQtGuiTypes();
+        QtProtobuf::registerProtobufQtGuiTypes();
     }
 
     void qRgba64();
@@ -37,6 +38,8 @@ private slots:
     void qTransform();
     void qQuaternion();
     void qImage();
+
+    void nestedQColorMessageDefined();
 
 private:
     QProtobufSerializer serializer;
@@ -315,6 +318,14 @@ void QtProtobufQtTypesQtGuiTest::qImage()
     msg.setTestField(initialImage);
     msg.deserialize(&serializer, QByteArray::fromHex(emptyValue));
     QCOMPARE(msg.testField(), QImage());
+}
+
+void QtProtobufQtTypesQtGuiTest::nestedQColorMessageDefined()
+{
+    NestedQColorMessage::QColorMessage msg;
+    msg.setTestField({"red"});
+    QVERIFY(msg.testField().isValid());
+    QCOMPARE(msg.testField(), QColor{"red"});
 }
 
 QTEST_MAIN(QtProtobufQtTypesQtGuiTest)

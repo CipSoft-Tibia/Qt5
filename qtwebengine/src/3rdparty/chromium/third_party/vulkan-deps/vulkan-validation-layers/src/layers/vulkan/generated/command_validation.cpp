@@ -2,33 +2,29 @@
 // See command_validation_generator.py for modifications
 
 /***************************************************************************
-*
-* Copyright (c) 2021-2023 Valve Corporation
-* Copyright (c) 2021-2023 LunarG, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-****************************************************************************/
+ *
+ * Copyright (c) 2021-2023 Valve Corporation
+ * Copyright (c) 2021-2023 LunarG, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ ****************************************************************************/
 
 // NOLINTBEGIN
 
 #include "error_message/logging.h"
 #include "core_checks/core_validation.h"
 
-enum CMD_SCOPE_TYPE {
-    CMD_SCOPE_INSIDE,
-    CMD_SCOPE_OUTSIDE,
-    CMD_SCOPE_BOTH
-};
+enum CMD_SCOPE_TYPE { CMD_SCOPE_INSIDE, CMD_SCOPE_OUTSIDE, CMD_SCOPE_BOTH };
 
 struct CommandValidationInfo {
     const char* recording_vuid;
@@ -45,6 +41,7 @@ struct CommandValidationInfo {
 };
 
 using Func = vvl::Func;
+// clang-format off
 static const vvl::unordered_map<Func, CommandValidationInfo> kCommandValidationTable {
 {Func::vkCmdBindPipeline, {
     "VUID-vkCmdBindPipeline-commandBuffer-recording",
@@ -349,7 +346,7 @@ static const vvl::unordered_map<Func, CommandValidationInfo> kCommandValidationT
 }},
 {Func::vkCmdExecuteCommands, {
     "VUID-vkCmdExecuteCommands-commandBuffer-recording",
-    "VUID-vkCmdExecuteCommands-bufferlevel",
+    nullptr,
     VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT, "VUID-vkCmdExecuteCommands-commandBuffer-cmdpool",
     CMD_SCOPE_BOTH, "kVUIDUndefined",
     CMD_SCOPE_OUTSIDE, "VUID-vkCmdExecuteCommands-videocoding",
@@ -816,6 +813,48 @@ static const vvl::unordered_map<Func, CommandValidationInfo> kCommandValidationT
     CMD_SCOPE_BOTH, "kVUIDUndefined",
     CMD_SCOPE_OUTSIDE, "VUID-vkCmdBindIndexBuffer2KHR-videocoding",
 }},
+{Func::vkCmdBindDescriptorSets2KHR, {
+    "VUID-vkCmdBindDescriptorSets2KHR-commandBuffer-recording",
+    nullptr,
+    VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, "VUID-vkCmdBindDescriptorSets2KHR-commandBuffer-cmdpool",
+    CMD_SCOPE_BOTH, "kVUIDUndefined",
+    CMD_SCOPE_OUTSIDE, "VUID-vkCmdBindDescriptorSets2KHR-videocoding",
+}},
+{Func::vkCmdPushConstants2KHR, {
+    "VUID-vkCmdPushConstants2KHR-commandBuffer-recording",
+    nullptr,
+    VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, "VUID-vkCmdPushConstants2KHR-commandBuffer-cmdpool",
+    CMD_SCOPE_BOTH, "kVUIDUndefined",
+    CMD_SCOPE_OUTSIDE, "VUID-vkCmdPushConstants2KHR-videocoding",
+}},
+{Func::vkCmdPushDescriptorSet2KHR, {
+    "VUID-vkCmdPushDescriptorSet2KHR-commandBuffer-recording",
+    nullptr,
+    VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, "VUID-vkCmdPushDescriptorSet2KHR-commandBuffer-cmdpool",
+    CMD_SCOPE_BOTH, "kVUIDUndefined",
+    CMD_SCOPE_OUTSIDE, "VUID-vkCmdPushDescriptorSet2KHR-videocoding",
+}},
+{Func::vkCmdPushDescriptorSetWithTemplate2KHR, {
+    "VUID-vkCmdPushDescriptorSetWithTemplate2KHR-commandBuffer-recording",
+    nullptr,
+    VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, "VUID-vkCmdPushDescriptorSetWithTemplate2KHR-commandBuffer-cmdpool",
+    CMD_SCOPE_BOTH, "kVUIDUndefined",
+    CMD_SCOPE_OUTSIDE, "VUID-vkCmdPushDescriptorSetWithTemplate2KHR-videocoding",
+}},
+{Func::vkCmdSetDescriptorBufferOffsets2EXT, {
+    "VUID-vkCmdSetDescriptorBufferOffsets2EXT-commandBuffer-recording",
+    nullptr,
+    VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, "VUID-vkCmdSetDescriptorBufferOffsets2EXT-commandBuffer-cmdpool",
+    CMD_SCOPE_BOTH, "kVUIDUndefined",
+    CMD_SCOPE_OUTSIDE, "VUID-vkCmdSetDescriptorBufferOffsets2EXT-videocoding",
+}},
+{Func::vkCmdBindDescriptorBufferEmbeddedSamplers2EXT, {
+    "VUID-vkCmdBindDescriptorBufferEmbeddedSamplers2EXT-commandBuffer-recording",
+    nullptr,
+    VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, "VUID-vkCmdBindDescriptorBufferEmbeddedSamplers2EXT-commandBuffer-cmdpool",
+    CMD_SCOPE_BOTH, "kVUIDUndefined",
+    CMD_SCOPE_OUTSIDE, "VUID-vkCmdBindDescriptorBufferEmbeddedSamplers2EXT-videocoding",
+}},
 {Func::vkCmdDebugMarkerBeginEXT, {
     "VUID-vkCmdDebugMarkerBeginEXT-commandBuffer-recording",
     nullptr,
@@ -1235,6 +1274,13 @@ static const vvl::unordered_map<Func, CommandValidationInfo> kCommandValidationT
     VK_QUEUE_GRAPHICS_BIT, "VUID-vkCmdSetDepthBias2EXT-commandBuffer-cmdpool",
     CMD_SCOPE_BOTH, "kVUIDUndefined",
     CMD_SCOPE_OUTSIDE, "VUID-vkCmdSetDepthBias2EXT-videocoding",
+}},
+{Func::vkCmdCudaLaunchKernelNV, {
+    "VUID-vkCmdCudaLaunchKernelNV-commandBuffer-recording",
+    nullptr,
+    VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT, "VUID-vkCmdCudaLaunchKernelNV-commandBuffer-cmdpool",
+    CMD_SCOPE_BOTH, "kVUIDUndefined",
+    CMD_SCOPE_OUTSIDE, "VUID-vkCmdCudaLaunchKernelNV-videocoding",
 }},
 {Func::vkCmdBindDescriptorBuffersEXT, {
     "VUID-vkCmdBindDescriptorBuffersEXT-commandBuffer-recording",
@@ -1748,11 +1794,12 @@ static const vvl::unordered_map<Func, CommandValidationInfo> kCommandValidationT
     CMD_SCOPE_OUTSIDE, "VUID-vkCmdDrawMeshTasksIndirectCountEXT-videocoding",
 }},
 };
+// clang-format on
 
 // Ran on all vkCmd* commands
 // Because it validate the implicit VUs that stateless can't, if this fails, it is likely
 // the input is very bad and other checks will crash dereferencing null pointers
-bool CoreChecks::ValidateCmd(const CMD_BUFFER_STATE &cb_state, const Location& loc) const {
+bool CoreChecks::ValidateCmd(const vvl::CommandBuffer& cb_state, const Location& loc) const {
     bool skip = false;
 
     auto info_it = kCommandValidationTable.find(loc.function);
@@ -1765,12 +1812,12 @@ bool CoreChecks::ValidateCmd(const CMD_BUFFER_STATE &cb_state, const Location& l
     // flagging errors if CB is not in the recording state or if there's an issue with the Cmd ordering
     switch (cb_state.state) {
         case CbState::Recording:
-            skip |= ValidateCmdSubpassState(cb_state, loc);
+            skip |= ValidateCmdSubpassState(cb_state, loc, info.recording_vuid);
             break;
 
         case CbState::InvalidComplete:
         case CbState::InvalidIncomplete:
-            skip |= ReportInvalidCommandBuffer(cb_state, loc);
+            skip |= ReportInvalidCommandBuffer(cb_state, loc, info.recording_vuid);
             break;
 
         default:

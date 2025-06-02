@@ -7,7 +7,7 @@ import QtGraphs3D
 Item {
     property alias value: valueAxis
 
-    ValueAxis3D {
+    Value3DAxis {
         id: valueAxis
         min: 0
         max: 35

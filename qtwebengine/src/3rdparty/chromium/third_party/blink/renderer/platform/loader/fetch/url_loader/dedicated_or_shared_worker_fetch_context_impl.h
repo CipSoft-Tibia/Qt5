@@ -5,6 +5,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_URL_LOADER_DEDICATED_OR_SHARED_WORKER_FETCH_CONTEXT_IMPL_H_
 #define THIRD_PARTY_BLINK_RENDERER_PLATFORM_LOADER_FETCH_URL_LOADER_DEDICATED_OR_SHARED_WORKER_FETCH_CONTEXT_IMPL_H_
 
+#include "base/memory/raw_ptr.h"
 #include "base/strings/string_piece.h"
 #include "base/synchronization/waitable_event.h"
 #include "base/task/single_thread_task_runner.h"
@@ -23,6 +24,7 @@
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_dedicated_or_shared_worker_fetch_context.h"
 #include "third_party/blink/public/platform/web_string.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
@@ -103,7 +105,7 @@ class BLINK_PLATFORM_EXPORT DedicatedOrSharedWorkerFetchContextImpl final
   //
   // TODO(nhiroki): Add more comments about security/privacy implications to
   // each property, for example, site_for_cookies and top_frame_origin.
-  void set_ancestor_frame_id(int id) override;
+  void SetAncestorFrameToken(const LocalFrameToken& token) override;
   void set_site_for_cookies(
       const net::SiteForCookies& site_for_cookies) override;
   void set_top_frame_origin(const WebSecurityOrigin& top_frame_origin) override;
@@ -115,17 +117,15 @@ class BLINK_PLATFORM_EXPORT DedicatedOrSharedWorkerFetchContextImpl final
   std::unique_ptr<URLLoaderFactory> WrapURLLoaderFactory(
       CrossVariantMojoRemote<network::mojom::URLLoaderFactoryInterfaceBase>
           url_loader_factory) override;
-  std::unique_ptr<WebCodeCacheLoader> CreateCodeCacheLoader(
-      CodeCacheHost*) override;
   void WillSendRequest(WebURLRequest&) override;
   WebVector<std::unique_ptr<URLLoaderThrottle>> CreateThrottles(
-      const WebURLRequest& request) override;
+      const network::ResourceRequest& request) override;
   mojom::ControllerServiceWorkerMode GetControllerServiceWorkerMode()
       const override;
   void SetIsOnSubframe(bool) override;
   bool IsOnSubframe() const override;
   net::SiteForCookies SiteForCookies() const override;
-  absl::optional<WebSecurityOrigin> TopFrameOrigin() const override;
+  std::optional<WebSecurityOrigin> TopFrameOrigin() const override;
   void SetSubresourceFilterBuilder(
       std::unique_ptr<WebDocumentSubresourceFilter::Builder>) override;
   std::unique_ptr<WebDocumentSubresourceFilter> TakeSubresourceFilter()
@@ -260,9 +260,9 @@ class BLINK_PLATFORM_EXPORT DedicatedOrSharedWorkerFetchContextImpl final
   // non-nested workers, the closest ancestor for nested workers). For shared
   // workers, this is the shadow page.
   bool is_on_sub_frame_ = false;
-  int ancestor_frame_id_ = MSG_ROUTING_NONE;
+  std::optional<LocalFrameToken> ancestor_frame_token_;
   net::SiteForCookies site_for_cookies_;
-  absl::optional<url::Origin> top_frame_origin_;
+  std::optional<url::Origin> top_frame_origin_;
 
   RendererPreferences renderer_preferences_;
 
@@ -278,7 +278,8 @@ class BLINK_PLATFORM_EXPORT DedicatedOrSharedWorkerFetchContextImpl final
       child_preference_watchers_;
 
   // This is owned by ThreadedMessagingProxyBase on the main thread.
-  base::WaitableEvent* terminate_sync_load_event_ = nullptr;
+  raw_ptr<base::WaitableEvent, ExperimentalRenderer>
+      terminate_sync_load_event_ = nullptr;
 
   // The URLLoaderFactory which was created and passed to
   // Blink by GetURLLoaderFactory().
@@ -302,7 +303,7 @@ class BLINK_PLATFORM_EXPORT DedicatedOrSharedWorkerFetchContextImpl final
   std::unique_ptr<WeakWrapperResourceLoadInfoNotifier>
       weak_wrapper_resource_load_info_notifier_;
 
-  AcceptLanguagesWatcher* accept_languages_watcher_ = nullptr;
+  WeakPersistent<AcceptLanguagesWatcher> accept_languages_watcher_;
 };
 
 template <>

@@ -8,3 +8,9 @@ endif()
 
 add_subdirectory(qshaderbaker)
 add_subdirectory(buildtimeqsb)
+
+_qt_internal_check_depfile_support(has_depfile_support)
+if(has_depfile_support AND NOT CMAKE_CROSSCOMPILING)
+    # The test is disabled for cross-compiling platforms since we cannot embed the test results.
+    add_subdirectory(qsbdepfiles)
+endif()

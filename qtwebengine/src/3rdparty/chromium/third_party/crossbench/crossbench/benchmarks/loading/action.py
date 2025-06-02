@@ -64,11 +64,11 @@ class Action(abc.ABC):
     return kwargs
 
   @classmethod
-  def pop_required_input(cls, value: JsonDict, key: str) -> Any:
-    if key not in value:
+  def pop_required_input(cls, data: JsonDict, key: str) -> Any:
+    if key not in data:
       raise argparse.ArgumentTypeError(
-          f"{cls.__name__}: Missing '{key}' property in {json.dumps(value)}")
-    value = value.pop(key)
+          f"{cls.__name__}: Missing '{key}' property in {json.dumps(data)}")
+    value = data.pop(key)
     if value is None:
       raise argparse.ArgumentTypeError(
           f"{cls.__name__}: {key} should not be None")
@@ -113,6 +113,21 @@ class ReadyState(ParsingEnum):
   COMPLETE = "complete"
 
 
+class WindowTarget(ParsingEnum):
+  """See https://developer.mozilla.org/en-US/docs/Web/API/Window/open"""
+  # The current browsing context. (Default)
+  SELF = "_self"
+  # Usually a new tab, but users can configure browsers to open a new window
+  # instead.
+  BLANK = "_blank"
+  # The parent browsing context of the current one. If no parent, behaves as
+  # _self.
+  PARENT = "_parent"
+  # The topmost browsing context (the "highest" context that's an ancestor of
+  # the current one). If no ancestors, behaves as _self.
+  TOP = "_top"
+
+
 class GetAction(Action):
   TYPE: ActionType = ActionType.GET
 
@@ -125,16 +140,20 @@ class GetAction(Action):
       kwargs["duration"] = cli_helper.Duration.parse_zero(duration)
     if ready_state := value.pop("ready-state", None):
       kwargs["ready_state"] = ReadyState.parse(ready_state)
+    if target := value.pop("target", None):
+      kwargs["target"] = WindowTarget.parse(target)
     return kwargs
 
   def __init__(self,
                url: str,
                duration: dt.timedelta = dt.timedelta(),
                timeout: dt.timedelta = ACTION_TIMEOUT,
-               ready_state: ReadyState = ReadyState.ANY):
+               ready_state: ReadyState = ReadyState.ANY,
+               target: WindowTarget = WindowTarget.SELF):
     self._url: str = url
     self._duration = duration
     self._ready_state = ready_state
+    self._target = target
     super().__init__(timeout)
 
   @property
@@ -149,15 +168,25 @@ class GetAction(Action):
   def duration(self) -> dt.timedelta:
     return self._duration
 
+  @property
+  def target(self) -> WindowTarget:
+    return self._target
+
   def run(self, run: Run) -> None:
     start_time = time.time()
     expected_end_time = start_time + self.duration.total_seconds()
 
-    with run.actions("GetAction", measure=False) as action:
-      action.show_url(self.url)
+    with run.actions(f"Get {self.url}", measure=False) as action:
+      action.show_url(self.url, str(self.target))
+
       if self._ready_state != ReadyState.ANY:
+        # Make sure we also finish if readyState jumps directly
+        # from "loading" to "complete"
         action.wait_js_condition(
-            f"return document.readyState === '{self._ready_state}'", 0.5, 15)
+            f"""
+              let state = document.readyState;
+              return state === '{self._ready_state}' || state === "complete";
+            """, 0.2, self.timeout.total_seconds())
         return
       # Wait for the given duration from the start of the action.
       wait_time_seconds = expected_end_time - time.time()
@@ -223,7 +252,8 @@ class WaitAction(DurationAction):
   TYPE: ActionType = ActionType.WAIT
 
   def run(self, run: Run) -> None:
-    run.runner.wait(self.duration)
+    with run.actions("WaitAction", measure=False) as action:
+      action.wait(self.duration)
 
 
 class ScrollAction(DurationAction):
@@ -254,14 +284,15 @@ class ScrollAction(DurationAction):
     start = 0
     end = direction
 
-    while time.time() < time_end:
-      # TODO: REMOVE COMMENT CODE ONCE pyautogui ALLOWED ON GOOGLE3
-      # if events_source == 'js'
-      run.browser.js(run.runner, f"window.scrollTo({start}, {end});")
-      start = end
-      end += 100
-      # else :
-      #   pyautogui.scroll(direction)
+    with run.actions("ScrollAction", measure=False) as action:
+      while time.time() < time_end:
+        # TODO: REMOVE COMMENT CODE ONCE pyautogui ALLOWED ON GOOGLE3
+        # if events_source == 'js'
+        action.js(f"window.scrollTo({start}, {end});")
+        start = end
+        end += 100
+        # else :
+        #   pyautogui.scroll(direction)
 
   def validate(self) -> None:
     super().validate()
@@ -303,20 +334,20 @@ class ClickAction(Action):
     return self._selector
 
   def run(self, run: Run) -> None:
-    # TODO: support more selector types.
-    prefix = "xpath/"
-    if self.selector.startswith(prefix):
-      xpath: str = self.selector[len(prefix):]
-      run.browser.js(
-          run.runner,
-          """
-       let element = document.evaluate(arguments[0], document).iterateNext();
-       if (arguments[1]) element.scrollIntoView()
-       element.click()
-       """,
-          arguments=[xpath, self._scroll_into_view])
-    else:
-      raise NotImplementedError(f"Unsupported selector: {self.selector}")
+    with run.actions("ClickAction", measure=False) as action:
+      # TODO: support more selector types.
+      prefix = "xpath/"
+      if self.selector.startswith(prefix):
+        xpath: str = self.selector[len(prefix):]
+        action.js(
+            """
+              let element = document.evaluate(arguments[0], document).iterateNext();
+              if (arguments[1]) element.scrollIntoView()
+              element.click()
+            """,
+            arguments=[xpath, self._scroll_into_view])
+      else:
+        raise NotImplementedError(f"Unsupported selector: {self.selector}")
 
   def validate(self) -> None:
     super().validate()

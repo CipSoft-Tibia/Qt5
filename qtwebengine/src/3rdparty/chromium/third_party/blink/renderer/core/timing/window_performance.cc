@@ -118,8 +118,6 @@ AtomicString GetFrameOwnerType(HTMLFrameOwnerElement* frame_owner) {
       return html_names::kEmbedTag.LocalName();
     case FrameOwnerElementType::kFrame:
       return html_names::kFrameTag.LocalName();
-    case FrameOwnerElementType::kPortal:
-      return html_names::kPortalTag.LocalName();
     case FrameOwnerElementType::kFencedframe:
       return html_names::kFencedframeTag.LocalName();
   }
@@ -173,6 +171,7 @@ AtomicString SameOriginAttribution(Frame* observer_frame,
 
 bool IsEventTypeForInteractionId(const AtomicString& type) {
   return type == event_type_names::kPointercancel ||
+         type == event_type_names::kContextmenu ||
          type == event_type_names::kPointerdown ||
          type == event_type_names::kPointerup ||
          type == event_type_names::kClick ||
@@ -207,10 +206,9 @@ WindowPerformance::WindowPerformance(LocalDOMWindow* window)
     window->GetFrame()->GetPerformanceMonitor()->Subscribe(
         PerformanceMonitor::kLongTask, kLongTaskObserverThreshold, this);
   }
-  if (RuntimeEnabledFeatures::VisibilityStateEntryEnabled()) {
-    DCHECK(GetPage());
-    AddVisibilityStateEntry(GetPage()->IsPageVisible(), base::TimeTicks());
-  }
+
+  DCHECK(GetPage());
+  AddVisibilityStateEntry(GetPage()->IsPageVisible(), base::TimeTicks());
 }
 
 void WindowPerformance::EventData::Trace(Visitor* visitor) const {
@@ -541,7 +539,7 @@ void WindowPerformance::OnPresentationPromiseResolved(
   // Use |end_time| as a proxy for the current time to flush expired keydowns.
   DOMHighResTimeStamp end_time =
       MonotonicTimeToDOMHighResTimeStamp(presentation_timestamp);
-  responsiveness_metrics_->MaybeFlushKeyboardEntries(end_time);
+  responsiveness_metrics_->FlushExpiredKeydown(end_time);
 
   // Record histogram for pending presentation promise count.
   UMA_HISTOGRAM_COUNTS_1000(
@@ -629,8 +627,6 @@ void WindowPerformance::ReportEvent(InteractiveDetector* interactive_detector,
           ? entry->processingEnd()
           : MonotonicTimeToDOMHighResTimeStamp(presentation_timestamp);
 
-  base::TimeDelta input_delay =
-      base::Milliseconds(entry->processingStart() - entry->startTime());
   base::TimeDelta processing_time =
       base::Milliseconds(entry->processingEnd() - entry->processingStart());
   base::TimeDelta time_to_next_paint =
@@ -643,22 +639,20 @@ void WindowPerformance::ReportEvent(InteractiveDetector* interactive_detector,
 
   if (entry->name() == "pointerdown") {
     pending_pointer_down_start_time_ = entry->startTime();
-    pending_pointer_down_input_delay_ = input_delay;
     pending_pointer_down_processing_time_ = processing_time;
     pending_pointer_down_time_to_next_paint_ = time_to_next_paint;
   } else if (entry->name() == "pointerup") {
     if (pending_pointer_down_time_to_next_paint_.has_value() &&
         interactive_detector) {
-      interactive_detector->RecordInputEventTimingUKM(
-          pending_pointer_down_input_delay_.value(),
+      interactive_detector->RecordInputEventTimingUMA(
           pending_pointer_down_processing_time_.value(),
-          pending_pointer_down_time_to_next_paint_.value(), entry->name());
+          pending_pointer_down_time_to_next_paint_.value());
     }
   } else if ((entry->name() == "click" || entry->name() == "keydown" ||
               entry->name() == "mousedown") &&
              interactive_detector) {
-    interactive_detector->RecordInputEventTimingUKM(
-        input_delay, processing_time, time_to_next_paint, entry->name());
+    interactive_detector->RecordInputEventTimingUMA(processing_time,
+                                                    time_to_next_paint);
   }
 
   // Event Timing
@@ -680,8 +674,8 @@ void WindowPerformance::ReportEvent(InteractiveDetector* interactive_detector,
           PerformanceEventTiming::CreateFirstInputTiming(entry);
     } else if (entry->name() == event_type_names::kPointerup &&
                first_pointer_down_event_timing_) {
-      first_pointer_down_event_timing_->SetInteractionId(
-          entry->interactionId());
+      first_pointer_down_event_timing_->SetInteractionIdAndOffset(
+          entry->interactionId(), entry->interactionOffset());
       DispatchFirstInputTiming(first_pointer_down_event_timing_);
     } else if (entry->name() == event_type_names::kPointercancel) {
       first_pointer_down_event_timing_.Clear();
@@ -725,8 +719,8 @@ void WindowPerformance::ReportEventTimingsWithFrameIndex(
     events_data_.pop_front();
   }
 
-  // Use |end_time| as a proxy for the current time.
-  responsiveness_metrics_->MaybeFlushKeyboardEntries(end_time);
+  // Use |end_time| as a proxy for the current time to flush expired keydowns.
+  responsiveness_metrics_->FlushExpiredKeydown(end_time);
 }
 
 void WindowPerformance::NotifyAndAddEventTimingBuffer(
@@ -846,7 +840,6 @@ void WindowPerformance::AddLayoutShiftEntry(LayoutShift* entry) {
 
 void WindowPerformance::AddVisibilityStateEntry(bool is_visible,
                                                 base::TimeTicks timestamp) {
-  DCHECK(RuntimeEnabledFeatures::VisibilityStateEntryEnabled());
   VisibilityStateEntry* entry = MakeGarbageCollected<VisibilityStateEntry>(
       PageHiddenStateString(!is_visible),
       MonotonicTimeToDOMHighResTimeStamp(timestamp), DomWindow());
@@ -878,9 +871,6 @@ void WindowPerformance::AddSoftNavigationEntry(const AtomicString& name,
 
 void WindowPerformance::PageVisibilityChanged() {
   last_visibility_change_timestamp_ = base::TimeTicks::Now();
-  if (!RuntimeEnabledFeatures::VisibilityStateEntryEnabled())
-    return;
-
   AddVisibilityStateEntry(GetPage()->IsPageVisible(),
                           last_visibility_change_timestamp_);
 }
@@ -888,7 +878,7 @@ void WindowPerformance::PageVisibilityChanged() {
 EventCounts* WindowPerformance::eventCounts() {
   if (!event_counts_)
     event_counts_ = MakeGarbageCollected<EventCounts>();
-  return event_counts_;
+  return event_counts_.Get();
 }
 
 uint64_t WindowPerformance::interactionCount() const {
@@ -924,6 +914,9 @@ void WindowPerformance::OnLargestContentfulPaintUpdated(
   AddLargestContentfulPaint(entry);
   if (HTMLImageElement* image_element = DynamicTo<HTMLImageElement>(element)) {
     image_element->SetIsLCPElement();
+    if (image_element->HasLazyLoadingAttribute()) {
+      element->GetDocument().CountUse(WebFeature::kLCPImageWasLazy);
+    }
   }
 
   if (element) {
@@ -931,7 +924,7 @@ void WindowPerformance::OnLargestContentfulPaintUpdated(
 
     if (LocalFrame* local_frame = element->GetDocument().GetFrame()) {
       if (LCPCriticalPathPredictor* lcpp = local_frame->GetLCPP()) {
-        lcpp->OnLargestContentfulPaintUpdated(element);
+        lcpp->OnLargestContentfulPaintUpdated(*element);
       }
     }
   }

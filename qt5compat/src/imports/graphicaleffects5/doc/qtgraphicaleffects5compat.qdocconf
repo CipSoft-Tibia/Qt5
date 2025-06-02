@@ -10,12 +10,12 @@ qhp.projects            = QtGraphicalEffects5Compat
 qhp.QtGraphicalEffects5Compat.file                = qtgraphicaleffects5compat.qhp
 qhp.QtGraphicalEffects5Compat.namespace           = org.qt-project.qtgraphicaleffects5.$QT_VERSION_TAG
 qhp.QtGraphicalEffects5Compat.virtualFolder       = qtgraphicaleffects5compat
-qhp.QtGraphicalEffects5Compat.indexTitle          = Qt 5 Compatibility APIs: Qt Graphical Effects
+qhp.QtGraphicalEffects5Compat.indexTitle          = Qt 5 Compatibility APIs: Graphical Effects
 qhp.QtGraphicalEffects5Compat.indexRoot           =
 
 qhp.QtGraphicalEffects5Compat.subprojects         = qmltypes
 qhp.QtGraphicalEffects5Compat.subprojects.qmltypes.title = QML Types
-qhp.QtGraphicalEffects5Compat.subprojects.qmltypes.indexTitle = Qt 5 Compatibility APIs: Graphical Effects
+qhp.QtGraphicalEffects5Compat.subprojects.qmltypes.indexTitle = Qt 5 Compatibility APIs: Graphical Effect QML Types
 qhp.QtGraphicalEffects5Compat.subprojects.qmltypes.selectors = qmlclass
 qhp.QtGraphicalEffects5Compat.subprojects.qmltypes.sortPages = true
 

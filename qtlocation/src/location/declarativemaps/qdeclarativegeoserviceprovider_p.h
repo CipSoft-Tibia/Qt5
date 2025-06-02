@@ -40,7 +40,7 @@ class QDeclarativePluginParameterForeign
     QML_NAMED_ELEMENT(PluginParameter)
 };
 
-class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoServiceProvider : public QObject, public QQmlParserStatus
+class Q_LOCATION_EXPORT QDeclarativeGeoServiceProvider : public QObject, public QQmlParserStatus
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(Plugin)
@@ -156,7 +156,7 @@ public:
     Q_INVOKABLE bool supportsGeocoding(const GeocodingFeatures &feature = AnyGeocodingFeatures) const;
     Q_INVOKABLE bool supportsMapping(const MappingFeatures &feature = AnyMappingFeatures) const;
     Q_INVOKABLE bool supportsPlaces(const PlacesFeatures &feature = AnyPlacesFeatures) const;
-    Q_REVISION(11) Q_INVOKABLE bool supportsNavigation(const NavigationFeature &feature = AnyNavigationFeatures) const;
+    Q_REVISION(5, 11) Q_INVOKABLE bool supportsNavigation(const NavigationFeature &feature = AnyNavigationFeatures) const;
 
     QStringList locales() const;
     void setLocales(const QStringList &locales);
@@ -192,7 +192,7 @@ private:
     Q_DISABLE_COPY(QDeclarativeGeoServiceProvider)
 };
 
-class Q_LOCATION_PRIVATE_EXPORT QDeclarativeGeoServiceProviderRequirements : public QObject
+class Q_LOCATION_EXPORT QDeclarativeGeoServiceProviderRequirements : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(PluginRequirements)

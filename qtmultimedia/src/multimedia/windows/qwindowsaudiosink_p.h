@@ -28,24 +28,50 @@
 #include <QtMultimedia/qaudio.h>
 #include <QtMultimedia/qaudiodevice.h>
 #include <private/qaudiosystem_p.h>
-#include <qcomptr_p.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <qwindowsresampler_p.h>
 
 #include <audioclient.h>
 #include <mmdeviceapi.h>
+#include <chrono>
 
 QT_BEGIN_NAMESPACE
 
 class QWindowsResampler;
 
+class AudioClient
+{
+public:
+    static std::unique_ptr<AudioClient> create(const ComPtr<IMMDevice> &device,
+                                               const QAudioFormat &format, qsizetype &bufferSize);
+    std::chrono::microseconds remainingPlayTime();
+    quint64 bytesFree() const;
+    quint64 totalInputBytes() const;
+    qint64 render(const QAudioFormat &format, qreal volume, const char *data, qint64 len);
+    void start();
+    void stop();
+    bool resetResampler();
+
+private:
+    AudioClient(const ComPtr<IMMDevice> &device, const QAudioFormat &format);
+    bool create(qsizetype& bufferSize);
+    std::optional<quint32> availableFrameCount() const;
+
+    ComPtr<IMMDevice> m_device;
+    ComPtr<IAudioClient> m_audioClient;
+    ComPtr<IAudioRenderClient> m_renderClient;
+    QWindowsResampler m_resampler;
+    QAudioFormat m_inputFormat;
+    QAudioFormat m_outputFormat;
+};
+
 class QWindowsAudioSink : public QPlatformAudioSink
 {
     Q_OBJECT
 public:
-    QWindowsAudioSink(ComPtr<IMMDevice> device, QObject *parent);
+    QWindowsAudioSink(ComPtr<IMMDevice> device, const QAudioFormat &fmt, QObject *parent);
     ~QWindowsAudioSink();
 
-    void setFormat(const QAudioFormat& fmt) override;
     QAudioFormat format() const override;
     QIODevice* start() override;
     void start(QIODevice* device) override;
@@ -64,18 +90,15 @@ public:
 
 private:
     friend class OutputPrivate;
-    qint64 write(const char *data, qint64 len);
     qint64 push(const char *data, qint64 len);
 
     bool open();
     void close();
-
     void deviceStateChange(QAudio::State, QAudio::Error);
 
     void pullSource();
-    qint64 remainingPlayTimeUs();
 
-    QAudioFormat m_format;
+    const QAudioFormat m_format;
     QAudio::Error errorState = QAudio::NoError;
     QAudio::State deviceState = QAudio::StoppedState;
     QAudio::State suspendedInState = QAudio::SuspendedState;
@@ -86,9 +109,8 @@ private:
     QScopedPointer<QIODevice> m_pushSource;
     QPointer<QIODevice> m_pullSource;
     ComPtr<IMMDevice> m_device;
-    ComPtr<IAudioClient> m_audioClient;
-    ComPtr<IAudioRenderClient> m_renderClient;
-    QWindowsResampler m_resampler;
+    bool m_recreateClient = true;
+    std::unique_ptr<AudioClient> m_client;
 };
 
 QT_END_NAMESPACE

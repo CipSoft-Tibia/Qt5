@@ -21,13 +21,9 @@
 
 #include <errno.h>
 
-#if defined(QQNXWINDOW_DEBUG)
-#define qWindowDebug qDebug
-#else
-#define qWindowDebug QT_NO_QDEBUG_MACRO
-#endif
-
 QT_BEGIN_NAMESPACE
+
+Q_LOGGING_CATEGORY(lcQpaWindow, "qt.qpa.window");
 
 #define DECLARE_DEBUG_VAR(variable) \
     static bool debug_ ## variable() \
@@ -123,9 +119,10 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, bool needRootW
       m_exposed(true),
       m_foreign(false),
       m_windowState(Qt::WindowNoState),
-      m_firstActivateHandled(false)
+      m_firstActivateHandled(false),
+      m_desktopNotify(0)
 {
-    qWindowDebug() << "window =" << window << ", size =" << window->size();
+    qCDebug(lcQpaWindow) << "window =" << window << ", size =" << window->size();
 
     QQnxScreen *platformScreen = static_cast<QQnxScreen *>(window->screen()->handle());
 
@@ -195,14 +192,34 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, bool needRootW
         bool ok = false;
         int pipeline = pipelineValue.toInt(&ok);
         if (ok) {
-            qWindowDebug() << "Set pipeline value to" << pipeline;
+            qCDebug(lcQpaWindow) << "Set pipeline value to" << pipeline;
 
             Q_SCREEN_CHECKERROR(
                 screen_set_window_property_iv(m_window, SCREEN_PROPERTY_PIPELINE, &pipeline),
                 "Failed to set window pipeline");
         } else {
-            qWindowDebug() << "Invalid pipeline value:" << pipelineValue;
+            qCDebug(lcQpaWindow) << "Invalid pipeline value:" << pipelineValue;
         }
+    }
+
+    // QNX desktop integration.
+    if (QQnxIntegration::instance()->options() & QQnxIntegration::Desktop) {
+        // Determine if the window needs a frame.
+        switch (window->type()) {
+        case Qt::Popup:
+        case Qt::ToolTip:
+            m_desktopNotify = DesktopNotifyPosition | DesktopNotifyVisible;
+            break;
+
+        default:
+            m_desktopNotify = DesktopNotifyTitle | DesktopNotifyVisible;
+            break;
+        }
+
+        // Wait for the window manager to acknowledge the window's creation.
+        // The call returns immediately if there is no window manager.
+        screen_manage_window(m_window,
+                             (m_desktopNotify & DesktopNotifyTitle) ? "Frame=Y" : "Frame=N");
     }
 
     int debug = 0;
@@ -231,7 +248,7 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, bool needRootW
     if (debug > 0) {
         Q_SCREEN_CHECKERROR(screen_set_window_property_iv(nativeHandle(), SCREEN_PROPERTY_DEBUG, &debug),
                             "Could not set SCREEN_PROPERTY_DEBUG");
-        qWindowDebug() << "window SCREEN_PROPERTY_DEBUG= " << debug;
+        qCDebug(lcQpaWindow) << "window SCREEN_PROPERTY_DEBUG= " << debug;
     }
 }
 
@@ -248,7 +265,7 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, screen_window_
     , m_parentGroupName(256, 0)
     , m_isTopLevel(false)
 {
-    qWindowDebug() << "window =" << window << ", size =" << window->size();
+    qCDebug(lcQpaWindow) << "window =" << window << ", size =" << window->size();
 
     collectWindowGroup();
 
@@ -269,7 +286,7 @@ QQnxWindow::QQnxWindow(QWindow *window, screen_context_t context, screen_window_
 
 QQnxWindow::~QQnxWindow()
 {
-    qWindowDebug() << "window =" << window();
+    qCDebug(lcQpaWindow) << "window =" << window();
 
     // Qt should have already deleted the children before deleting the parent.
     Q_ASSERT(m_childWindows.size() == 0);
@@ -305,19 +322,24 @@ void QQnxWindow::setGeometry(const QRect &rect)
 
 void QQnxWindow::setGeometryHelper(const QRect &rect)
 {
-    qWindowDebug() << "window =" << window()
-                   << ", (" << rect.x() << "," << rect.y()
-                   << "," << rect.width() << "," << rect.height() << ")";
+    qCDebug(lcQpaWindow) << "window =" << window()
+                         << ", (" << rect.x() << "," << rect.y()
+                         << "," << rect.width() << "," << rect.height() << ")";
 
     // Call base class method
     QPlatformWindow::setGeometry(rect);
 
-    // Set window geometry equal to widget geometry
     int val[2];
-    val[0] = rect.x();
-    val[1] = rect.y();
-    Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_POSITION, val),
-                        "Failed to set window position");
+
+    // Set window geometry equal to widget geometry
+    if (m_desktopNotify & DesktopNotifyPosition) {
+        notifyManager(QString::asprintf("Pos=%d,%d", rect.x(), rect.y()));
+    } else {
+        val[0] = rect.x();
+        val[1] = rect.y();
+        Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_POSITION, val),
+                            "Failed to set window position");
+    }
 
     val[0] = rect.width();
     val[1] = rect.height();
@@ -335,7 +357,7 @@ void QQnxWindow::setGeometryHelper(const QRect &rect)
 
 void QQnxWindow::setVisible(bool visible)
 {
-    qWindowDebug() << "window =" << window() << "visible =" << visible;
+    qCDebug(lcQpaWindow) << "window =" << window() << "visible =" << visible;
 
     if (m_visible == visible || window()->type() == Qt::Desktop)
         return;
@@ -374,11 +396,15 @@ void QQnxWindow::setVisible(bool visible)
 
 void QQnxWindow::updateVisibility(bool parentVisible)
 {
-    qWindowDebug() << "parentVisible =" << parentVisible << "window =" << window();
+    qCDebug(lcQpaWindow) << "parentVisible =" << parentVisible << "window =" << window();
     // Set window visibility
     int val = (m_visible && parentVisible) ? 1 : 0;
-    Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_VISIBLE, &val),
-                        "Failed to set window visibility");
+    if (m_desktopNotify & DesktopNotifyVisible) {
+        notifyManager(QString("Visible=") + (val ? "Y" : "N"));
+    } else {
+        Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_VISIBLE, &val),
+                            "Failed to set window visibility");
+    }
 
     Q_FOREACH (QQnxWindow *childWindow, m_childWindows)
         childWindow->updateVisibility(m_visible && parentVisible);
@@ -386,7 +412,7 @@ void QQnxWindow::updateVisibility(bool parentVisible)
 
 void QQnxWindow::setOpacity(qreal level)
 {
-    qWindowDebug() << "window =" << window() << "opacity =" << level;
+    qCDebug(lcQpaWindow) << "window =" << window() << "opacity =" << level;
     // Set window global alpha
     int val = (int)(level * 255);
     Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_GLOBAL_ALPHA, &val),
@@ -397,7 +423,7 @@ void QQnxWindow::setOpacity(qreal level)
 
 void QQnxWindow::setExposed(bool exposed)
 {
-    qWindowDebug() << "window =" << window() << "expose =" << exposed;
+    qCDebug(lcQpaWindow) << "window =" << window() << "expose =" << exposed;
 
     if (m_exposed != exposed) {
         m_exposed = exposed;
@@ -412,7 +438,7 @@ bool QQnxWindow::isExposed() const
 
 void QQnxWindow::setBufferSize(const QSize &size)
 {
-    qWindowDebug() << "window =" << window() << "size =" << size;
+    qCDebug(lcQpaWindow) << "window =" << window() << "size =" << size;
 
     // libscreen fails when creating empty buffers
     const QSize nonEmptySize = size.isEmpty() ? QSize(1, 1) : size;
@@ -425,15 +451,15 @@ void QQnxWindow::setBufferSize(const QSize &size)
             screen_set_window_property_iv(m_window, SCREEN_PROPERTY_FORMAT, &format),
             "Failed to set window format");
 
-    if (m_bufferSize.isValid()) {
-        // destroy buffers first, if resized
-        Q_SCREEN_CRITICALERROR(screen_destroy_window_buffers(m_window),
-                               "Failed to destroy window buffers");
-    }
-
     int val[2] = { nonEmptySize.width(), nonEmptySize.height() };
     Q_SCREEN_CHECKERROR(screen_set_window_property_iv(m_window, SCREEN_PROPERTY_BUFFER_SIZE, val),
                         "Failed to set window buffer size");
+
+    if (m_bufferSize.isValid()) {
+        m_bufferSize = nonEmptySize;
+        resetBuffers();
+        return;
+    }
 
     Q_SCREEN_CRITICALERROR(screen_create_window_buffers(m_window, MAX_BUFFER_COUNT),
                            "Failed to create window buffers");
@@ -479,7 +505,7 @@ void QQnxWindow::setBufferSize(const QSize &size)
 
 void QQnxWindow::setScreen(QQnxScreen *platformScreen)
 {
-    qWindowDebug() << "window =" << window() << "platformScreen =" << platformScreen;
+    qCDebug(lcQpaWindow) << "window =" << window() << "platformScreen =" << platformScreen;
 
     if (platformScreen == 0) { // The screen has been destroyed
         m_screen = 0;
@@ -493,7 +519,7 @@ void QQnxWindow::setScreen(QQnxScreen *platformScreen)
         return;
 
     if (m_screen) {
-        qWindowDebug("Moving window to different screen");
+        qCDebug(lcQpaWindow) << "Moving window to different screen";
         m_screen->removeWindow(this);
 
         if ((QQnxIntegration::instance()->options() & QQnxIntegration::RootWindow)) {
@@ -524,7 +550,7 @@ void QQnxWindow::setScreen(QQnxScreen *platformScreen)
 
 void QQnxWindow::removeFromParent()
 {
-    qWindowDebug() << "window =" << window();
+    qCDebug(lcQpaWindow) << Q_FUNC_INFO << "window =" << window();
     // Remove from old Hierarchy position
     if (m_parentWindow) {
         if (Q_UNLIKELY(!m_parentWindow->m_childWindows.removeAll(this)))
@@ -538,7 +564,7 @@ void QQnxWindow::removeFromParent()
 
 void QQnxWindow::setParent(const QPlatformWindow *window)
 {
-    qWindowDebug() << "window =" << this->window() << "platformWindow =" << window;
+    qCDebug(lcQpaWindow) << "window =" << this->window() << "platformWindow =" << window;
     // Cast away the const, we need to modify the hierarchy.
     QQnxWindow* const newParent = static_cast<QQnxWindow*>(const_cast<QPlatformWindow*>(window));
 
@@ -570,7 +596,7 @@ void QQnxWindow::setParent(const QPlatformWindow *window)
 
 void QQnxWindow::raise()
 {
-    qWindowDebug() << "window =" << window();
+    qCDebug(lcQpaWindow) << Q_FUNC_INFO << "window =" << window();
 
     if (m_parentWindow) {
         m_parentWindow->m_childWindows.removeAll(this);
@@ -584,7 +610,7 @@ void QQnxWindow::raise()
 
 void QQnxWindow::lower()
 {
-    qWindowDebug() << "window =" << window();
+    qCDebug(lcQpaWindow) << Q_FUNC_INFO << "window =" << window();
 
     if (m_parentWindow) {
         m_parentWindow->m_childWindows.removeAll(this);
@@ -698,7 +724,7 @@ void QQnxWindow::setFocus(screen_window_t newFocusWindow)
 
 void QQnxWindow::setWindowState(Qt::WindowStates state)
 {
-    qWindowDebug() << "state =" << state;
+    qCDebug(lcQpaWindow) << Q_FUNC_INFO << "state =" << state;
 
     // Prevent two calls with Qt::WindowFullScreen from changing m_unmaximizedGeometry
     if (m_windowState == state)
@@ -713,7 +739,7 @@ void QQnxWindow::setWindowState(Qt::WindowStates state)
 void QQnxWindow::propagateSizeHints()
 {
     // nothing to do; silence base class warning
-    qWindowDebug("ignored");
+    // qWindowDebug("ignored");
 }
 
 QPlatformScreen *QQnxWindow::screen() const
@@ -742,7 +768,7 @@ void QQnxWindow::minimize()
 
 void QQnxWindow::setRotation(int rotation)
 {
-    qWindowDebug() << "angle =" << rotation;
+    qCDebug(lcQpaWindow) << Q_FUNC_INFO << "angle =" << rotation;
     Q_SCREEN_CHECKERROR(
             screen_set_window_property_iv(m_window, SCREEN_PROPERTY_ROTATION, &rotation),
             "Failed to set window rotation");
@@ -818,7 +844,7 @@ void QQnxWindow::joinWindowGroup(const QByteArray &groupName)
 {
     bool changed = false;
 
-    qWindowDebug() << "group:" << groupName;
+    qCDebug(lcQpaWindow) << Q_FUNC_INFO << "group:" << groupName;
 
     // screen has this annoying habit of generating a CLOSE/CREATE when the owner context of
     // the parent group moves a foreign window to another group that it also owns.  The
@@ -932,6 +958,33 @@ void QQnxWindow::addContextPermission()
             SCREEN_PROPERTY_PERMISSIONS,
             grantString.length(),
             grantString.data());
+}
+
+void QQnxWindow::setWindowTitle(const QString &title)
+{
+    if (m_desktopNotify & DesktopNotifyTitle) {
+        QString titleStr = "Title=" + title;
+        notifyManager(titleStr);
+    }
+}
+
+void QQnxWindow::notifyManager(const QString &msg)
+{
+    screen_event_t ev;
+    screen_create_event(&ev);
+
+    std::string str = msg.toStdString();
+    screen_set_event_property_iv(ev, SCREEN_PROPERTY_TYPE,
+                                 (const int[]){ SCREEN_EVENT_MANAGER });
+    screen_set_event_property_cv(ev, SCREEN_PROPERTY_USER_DATA, str.length(),
+                                 str.c_str());
+    screen_set_event_property_pv(ev, SCREEN_PROPERTY_WINDOW,
+                                 reinterpret_cast<void **>(&m_window));
+    screen_set_event_property_pv(ev, SCREEN_PROPERTY_CONTEXT,
+                                 reinterpret_cast<void **>(&m_screenContext));
+
+    Q_SCREEN_CHECKERROR(screen_inject_event(NULL, ev),
+                        "Failed to send a message to the window manager");
 }
 
 void QQnxWindow::removeContextPermission()

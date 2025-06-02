@@ -15,9 +15,6 @@
                 "libvulkan.so.1",
                 "MEIPreload/manifest.json",
                 "MEIPreload/preloaded_data.pb",
-                "nacl_helper",
-                "nacl_helper_bootstrap",
-                "nacl_irt_x86_64.nexe",
                 "product_logo_48.png",
                 "resources.pak",
                 "v8_context_snapshot.bin",
@@ -25,7 +22,7 @@
                 "xdg-mime",
                 "xdg-settings"
             ],
-            "dirs": ["ClearKeyCdm", "locales", "resources"],
+            "dirs": ["locales", "resources"],
             "rename_dirs": [
                 {"from_dir": ".", "to_dir": "chrome-linux"}
             ],
@@ -58,8 +55,6 @@
                 "content_shell.pak",
                 "dump_syms",
                 "icudtl.dat",
-                "libblink_deprecated_test_plugin.so",
-                "libblink_test_plugin.so",
                 "minidump_stackwalk",
                 "v8_context_snapshot.bin"
             ],
@@ -123,7 +118,8 @@
                 "gen/services/device/public/mojom/battery_monitor.mojom.m.js",
                 "gen/services/device/public/mojom/battery_status.mojom.m.js",
                 "gen/services/device/public/mojom/pressure_manager.mojom.m.js",
-                "gen/services/device/public/mojom/pressure_update.mojom.m.js"
+                "gen/services/device/public/mojom/pressure_update.mojom.m.js",
+                "gen/third_party/blink/public/mojom/sensor/web_sensor_provider.mojom.m.js"
             ],
             "file_globs": [
                 "gen/gpu/ipc/common/mailbox*.mojom.m.js",
@@ -138,15 +134,6 @@
             ],
             "gcs_bucket": "chromium-browser-snapshots",
             "gcs_path": "Linux_x64/{%position%}/mojojs.zip",
-            "archive_type": "ARCHIVE_TYPE_ZIP"
-        },
-        {
-            "dirs": ["pnacl"],
-            "rename_dirs": [
-                {"from_dir": ".", "to_dir": "pnacl"}
-            ],
-            "gcs_bucket": "chromium-browser-snapshots",
-            "gcs_path": "Linux_x64/{%position%}/pnacl.zip",
             "archive_type": "ARCHIVE_TYPE_ZIP"
         },
         {

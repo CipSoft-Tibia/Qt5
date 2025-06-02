@@ -125,6 +125,7 @@ class QQmlDomAstCreator final : public AST::Visitor
 
 public:
     void enableScriptExpressions(bool enable = true) { m_enableScriptExpressions = enable; }
+    void enableLoadFileLazily(bool enable = true) { m_loadFileLazily = enable; }
 
 private:
 
@@ -134,8 +135,17 @@ private:
     QList<ScriptStackElement> scriptNodeStack;
     QVector<int> arrayBindingLevels;
     FileLocations::Tree rootMap;
+    int m_nestedFunctionDepth = 0;
     bool m_enableScriptExpressions = false;
+    bool m_loadFileLazily = false;
 
+    // A Binding inside a UiPublicMember (= a Property definition) will shadow the
+    // propertydefinition's binding identifiers with its own binding identifiers. Therefore, disable
+    // bindingIdentifiers for the Binding inside a Property definition by using this flag.
+    bool m_skipBindingIdentifiers = false;
+
+    void setBindingIdentifiers(const Path &pathFromOwner, const AST::UiQualifiedId *identifiers,
+                               Binding *bindingPtr);
     template<typename T>
     QmlStackElement &currentEl(int idx = 0)
     {
@@ -187,17 +197,17 @@ private:
     void removeCurrentNode(std::optional<DomType> expectedType);
     void removeCurrentScriptNode(std::optional<DomType> expectedType);
 
-    void pushEl(Path p, const DomValue &it, AST::Node *n)
+    void pushEl(const Path &p, const DomValue &it, AST::Node *n)
     {
         nodeStack.append({ p, it, createMap(it.kind, p, n) });
     }
 
-    FileLocations::Tree createMap(FileLocations::Tree base, Path p, AST::Node *n);
+    FileLocations::Tree createMap(const FileLocations::Tree &base, const Path &p, AST::Node *n);
 
-    FileLocations::Tree createMap(DomType k, Path p, AST::Node *n);
+    FileLocations::Tree createMap(DomType k, const Path &p, AST::Node *n);
 
     const ScriptElementVariant &
-    finalizeScriptExpression(const ScriptElementVariant &element, Path pathFromOwner,
+    finalizeScriptExpression(const ScriptElementVariant &element, const Path &pathFromOwner,
                              const FileLocations::Tree &ownerFileLocations);
 
     void setScriptExpression (const std::shared_ptr<ScriptExpression>& value);
@@ -284,7 +294,7 @@ private:
     }
 
     template<typename ScriptElementT>
-    void pushScriptElement(ScriptElementT element)
+    void pushScriptElement(const ScriptElementT &element)
     {
         Q_ASSERT_X(m_enableScriptExpressions, "pushScriptElement",
                    "Cannot create script elements when they are disabled!");
@@ -311,6 +321,13 @@ public:
 
     bool visit(AST::UiPublicMember *el) override;
     void endVisit(AST::UiPublicMember *el) override;
+
+private:
+    ScriptElementVariant prepareBodyForFunction(AST::FunctionExpression *fExpression);
+
+public:
+    bool visit(AST::FunctionExpression *el) override;
+    void endVisit(AST::FunctionExpression *) override;
 
     bool visit(AST::FunctionDeclaration *el) override;
     void endVisit(AST::FunctionDeclaration *) override;
@@ -354,6 +371,9 @@ public:
 
     bool visit(AST::Block *block) override;
     void endVisit(AST::Block *) override;
+
+    bool visit(AST::YieldExpression *block) override;
+    void endVisit(AST::YieldExpression *) override;
 
     bool visit(AST::ReturnStatement *block) override;
     void endVisit(AST::ReturnStatement *) override;
@@ -486,17 +506,27 @@ public:
     bool visit(AST::NestedExpression *) override;
     void endVisit(AST::NestedExpression *) override;
 
-    // lists of stuff whose children do not need a qqmljsscope: visitation order can be custom
-    bool visit(AST::ArgumentList *) override;
+    bool visit(AST::NewExpression *) override;
+    void endVisit(AST::NewExpression *) override;
+
+    bool visit(AST::NewMemberExpression *) override;
+    void endVisit(AST::NewMemberExpression *) override;
+
+    // lists of stuff whose children don't need a qqmljsscope: visitation order can be custom
     bool visit(AST::UiParameterList *) override;
-    bool visit(AST::PatternElementList *) override;
-    bool visit(AST::PatternPropertyList *) override;
-    bool visit(AST::VariableDeclarationList *vdl) override;
     bool visit(AST::Elision *elision) override;
 
+
     // lists of stuff whose children need a qqmljsscope: visitation order cannot be custom
-    bool visit(AST::StatementList *list) override;
     void endVisit(AST::StatementList *list) override;
+    void endVisit(AST::VariableDeclarationList *vdl) override;
+    void endVisit(AST::ArgumentList *) override;
+    void endVisit(AST::PatternElementList *) override;
+    void endVisit(AST::PatternPropertyList *) override;
+    void endVisit(AST::FormalParameterList *el) override;
+    void endVisit(AST::TemplateLiteral *) override;
+    void endVisit(AST::TaggedTemplate *) override;
+
 
     // literals and ids
     bool visit(AST::IdentifierExpression *expression) override;
@@ -510,8 +540,24 @@ public:
     bool visit(AST::NumericLiteralPropertyName *expression) override;
     bool visit(AST::StringLiteralPropertyName *expression) override;
     bool visit(AST::TypeAnnotation *expression) override;
+    bool visit(AST::RegExpLiteral *) override;
+    bool visit(AST::ThisExpression *) override;
+    bool visit(AST::SuperLiteral *) override;
 
     void throwRecursionDepthError() override;
+
+    bool stackHasScriptVariant() const
+    {
+        return !scriptNodeStack.isEmpty() && !scriptNodeStack.last().isList();
+    }
+    bool stackHasScriptList() const
+    {
+        return !scriptNodeStack.isEmpty() && scriptNodeStack.last().isList();
+    }
+
+private:
+    template<typename T>
+    void endVisitForLists(T *list, const std::function<int(T *)> &scriptElementsPerEntry = {});
 
 public:
     friend class QQmlDomAstCreatorWithQQmlJSScope;
@@ -520,8 +566,8 @@ public:
 class QQmlDomAstCreatorWithQQmlJSScope : public AST::Visitor
 {
 public:
-    QQmlDomAstCreatorWithQQmlJSScope(MutableDomItem &qmlFile, QQmlJSLogger *logger,
-                                     QQmlJSImporter *importer);
+    QQmlDomAstCreatorWithQQmlJSScope(const QQmlJSScope::Ptr &current, MutableDomItem &qmlFile,
+                                     QQmlJSLogger *logger, QQmlJSImporter *importer);
 
 #define X(name)                       \
     bool visit(AST::name *) override; \
@@ -541,6 +587,12 @@ public:
         m_domCreator.enableScriptExpressions(enable);
     }
 
+    void enableLoadFileLazily(bool enable = true)
+    {
+        m_loadFileLazily = enable;
+        m_domCreator.enableLoadFileLazily(enable);
+    }
+
     QQmlJSImportVisitor &scopeCreator() { return m_scopeCreator; }
 
 private:
@@ -550,8 +602,9 @@ private:
     template<typename U, typename... V>
     using IsInList = std::disjunction<std::is_same<U, V>...>;
     template<typename U>
-    using RequiresCustomIteration = IsInList<U, AST::PatternElementList, AST::PatternPropertyList,
-                                             AST::FormalParameterList>;
+    using RequiresCustomIteration =
+            IsInList<U, AST::PatternElementList, AST::PatternPropertyList, AST::FormalParameterList,
+                     AST::VariableDeclarationList, AST::TemplateLiteral>;
 
     enum VisitorKind : bool { DomCreator, ScopeCreator };
     /*! \internal
@@ -575,7 +628,7 @@ private:
     void customListIteration(T *t)
     {
         static_assert(RequiresCustomIteration<T>::value);
-        for (auto it = t; it; it = it->next) {
+        for (T* it = t; it; it = it->next) {
             if constexpr (std::is_same_v<T, AST::PatternElementList>) {
                 AST::Node::accept(it->elision, this);
                 AST::Node::accept(it->element, this);
@@ -583,6 +636,15 @@ private:
                 AST::Node::accept(it->property, this);
             } else if constexpr (std::is_same_v<T, AST::FormalParameterList>) {
                 AST::Node::accept(it->element, this);
+            } else if constexpr (std::is_same_v<T, AST::VariableDeclarationList>) {
+                AST::Node::accept(it->declaration, this);
+            } else if constexpr (std::is_same_v<T, AST::ArgumentList>) {
+                AST::Node::accept(it->expression, this);
+            } else if constexpr (std::is_same_v<T, AST::PatternElementList>) {
+                AST::Node::accept(it->elision, this);
+                AST::Node::accept(it->element, this);
+            } else if constexpr (std::is_same_v<T, AST::TemplateLiteral>) {
+                AST::Node::accept(it->expression, this);
             } else {
                 Q_UNREACHABLE();
             }
@@ -683,6 +745,7 @@ private:
 
     std::optional<InactiveVisitorMarker> m_inactiveVisitorMarker;
     bool m_enableScriptExpressions = false;
+    bool m_loadFileLazily = false;
 };
 
 } // end namespace Dom

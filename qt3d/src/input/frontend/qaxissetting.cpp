@@ -21,7 +21,7 @@ namespace Qt3DInput {
 
     \qmltype AxisSetting
     \inqmlmodule Qt3D.Input
-    \instantiates Qt3DInput::QAxisSetting
+    \nativetype Qt3DInput::QAxisSetting
     \brief QML frontend for the Qt3DInput::QAxisSetting C++ class.
 
     Stores settings for the specified list of Axis
@@ -47,7 +47,7 @@ QAxisSetting::~QAxisSetting()
 }
 
 /*!
-    \property QAxisSetting::axes
+    \property Qt3DInput::QAxisSetting::axes
  */
 
 /*!
@@ -61,7 +61,7 @@ QList<int> QAxisSetting::axes() const
 }
 
 /*!
-    \property QAxisSetting::deadZoneRadius
+    \property Qt3DInput::QAxisSetting::deadZoneRadius
  */
 
 /*!
@@ -75,7 +75,7 @@ float QAxisSetting::deadZoneRadius() const
 }
 
 /*!
-    \property QAxisSetting::smooth
+    \property Qt3DInput::QAxisSetting::smooth
  */
 
 /*!
@@ -96,7 +96,7 @@ bool QAxisSetting::isSmoothEnabled() const
 */
 
 /*!
-  \qmlproperty float Qt3D.Input::AxisSetting::deadZoneRadius
+  \qmlproperty real Qt3D.Input::AxisSetting::deadZoneRadius
 
   The current deadZone radius of the AxisSetting
 */
@@ -129,7 +129,7 @@ void QAxisSetting::setDeadZoneRadius(float deadZoneRadius)
 */
 
 /*!
-  \qmlproperty QVariantList Qt3D.Input::AxisSetting::axis
+  \qmlproperty list<var> Qt3D.Input::AxisSetting::axis
 
   The current axis of the AxisSetting
 */

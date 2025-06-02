@@ -7,33 +7,33 @@ package org.qtproject.qt.android;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Point;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.PopupWindow;
 
 // Helper class that manages a cursor or selection handle
-public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.OnLayoutChangeListener,
+class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.OnLayoutChangeListener,
         EditContextView.OnClickListener
 {
-    private final View m_layout;
     private final EditContextView m_view;
+    private final QtEditText m_editText;
+
     private PopupWindow m_popup = null;
     private final Activity m_activity;
     private int m_posX;
     private int m_posY;
     private int m_buttons;
-    private CursorHandle m_cursorHandle;
-    private CursorHandle m_leftSelectionHandle;
-    private CursorHandle m_rightSelectionHandle;
 
-    public EditPopupMenu(Activity activity, View layout)
+    EditPopupMenu(QtEditText editText)
     {
-        m_activity = activity;
-        m_view = new EditContextView(activity, this);
+        m_activity = (Activity) editText.getContext();
+        m_view = new EditContextView(m_activity, this);
         m_view.addOnLayoutChangeListener(this);
 
-        m_layout = layout;
+        m_editText = editText;
+        m_editText.getViewTreeObserver().addOnPreDrawListener(this);
     }
 
     private void initOverlay()
@@ -41,20 +41,16 @@ public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.O
         if (m_popup != null)
             return;
 
-        Context context = m_layout.getContext();
-        m_popup = new PopupWindow(context, null, android.R.attr.textSelectHandleWindowStyle);
+        m_popup = new PopupWindow(m_activity, null, android.R.attr.textSelectHandleWindowStyle);
         m_popup.setSplitTouchEnabled(true);
         m_popup.setClippingEnabled(false);
         m_popup.setContentView(m_view);
         m_popup.setWidth(ViewGroup.LayoutParams.WRAP_CONTENT);
         m_popup.setHeight(ViewGroup.LayoutParams.WRAP_CONTENT);
-
-        m_layout.getViewTreeObserver().addOnPreDrawListener(this);
     }
 
     // Show the handle at a given position (or move it if it is already shown)
-    public void setPosition(final int x, final int y, final int buttons,
-                            CursorHandle cursorHandle, CursorHandle leftSelectionHandle, CursorHandle rightSelectionHandle)
+    void setPosition(final int x, final int y, final int buttons)
     {
         initOverlay();
 
@@ -62,7 +58,14 @@ public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.O
         Point viewSize = m_view.getCalculatedSize();
 
         final int[] layoutLocation = new int[2];
-        m_layout.getLocationOnScreen(layoutLocation);
+
+        // Since QtEditText doesn't match the QtWindow size, we should use its parent for
+        // EditPopupMenu positioning. However, there may be cases where the parent is
+        // not set. In such cases, we need to use QtEditText instead.
+        View positioningView = (View) m_editText.getParent();
+        if (positioningView == null)
+            positioningView = m_editText;
+        positioningView.getLocationOnScreen(layoutLocation);
 
         // These values are used for handling split screen case
         final int[] activityLocation = new int[2];
@@ -76,18 +79,24 @@ public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.O
         x2 -= viewSize.x / 2 ;
 
         y2 -= viewSize.y;
-        if (y2 < 0) {
-            if (cursorHandle != null) {
-                y2 = cursorHandle.bottom();
-            } else if (leftSelectionHandle != null && rightSelectionHandle != null) {
-                y2 = Math.max(leftSelectionHandle.bottom(), rightSelectionHandle.bottom());
-                if (y2 <= 0)
-                    m_layout.requestLayout();
+        if (y2 < 0)
+            y2 = m_editText.getSelectionHandleBottom();
+
+        if (y2 <= 0) {
+            try {
+                QtLayout parentLayout = (QtLayout) m_editText.getParent();
+                parentLayout.requestLayout();
+            } catch (ClassCastException e) {
+                Log.w(QtNative.QtTAG, "QtEditText " + m_editText + " parent is not a QtLayout, " +
+                                      "requestLayout() skipped");
+            } catch (NullPointerException e) {
+                Log.w(QtNative.QtTAG, "QtEditText " + m_editText + " does not have a parent, " +
+                                      "requestLayout() skipped");
             }
         }
 
-        if (m_layout.getWidth() < x + viewSize.x / 2)
-            x2 = m_layout.getWidth() - viewSize.x;
+        if (positioningView.getWidth() < x + viewSize.x / 2)
+            x2 = positioningView.getWidth() - viewSize.x;
 
         if (x2 < 0)
             x2 = 0;
@@ -95,17 +104,14 @@ public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.O
         if (m_popup.isShowing())
             m_popup.update(x2, y2, -1, -1);
         else
-            m_popup.showAtLocation(m_layout, 0, x2, y2);
+            m_popup.showAtLocation(positioningView, 0, x2, y2);
 
         m_posX = x;
         m_posY = y;
         m_buttons = buttons;
-        m_cursorHandle = cursorHandle;
-        m_leftSelectionHandle = leftSelectionHandle;
-        m_rightSelectionHandle = rightSelectionHandle;
     }
 
-    public void hide() {
+    void hide() {
         if (m_popup != null) {
             m_popup.dismiss();
             m_popup = null;
@@ -118,7 +124,7 @@ public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.O
         // For example if the keyboard appears.
         // Adjust the position of the handle accordingly
         if (m_popup != null && m_popup.isShowing())
-            setPosition(m_posX, m_posY, m_buttons, m_cursorHandle, m_leftSelectionHandle, m_rightSelectionHandle);
+            setPosition(m_posX, m_posY, m_buttons);
 
         return true;
     }
@@ -129,7 +135,7 @@ public class EditPopupMenu implements ViewTreeObserver.OnPreDrawListener, View.O
     {
         if ((right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) &&
                 m_popup != null && m_popup.isShowing())
-            setPosition(m_posX, m_posY, m_buttons, m_cursorHandle, m_leftSelectionHandle, m_rightSelectionHandle);
+            setPosition(m_posX, m_posY, m_buttons);
     }
 
     @Override

@@ -14,7 +14,7 @@
 // We mean it.
 //
 
-#include "qffmpeghwaccel_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
 
 #ifdef Q_OS_DARWIN
 
@@ -40,7 +40,8 @@ class VideoToolBoxTextureConverter : public TextureConverterBackend
 public:
     VideoToolBoxTextureConverter(QRhi *rhi);
     ~VideoToolBoxTextureConverter();
-    TextureSet *getTextures(AVFrame *frame) override;
+    QVideoFrameTexturesHandlesUPtr
+    createTextureHandles(AVFrame *frame, QVideoFrameTexturesHandlesUPtr oldHandles) override;
 
 private:
     void freeTextureCaches();

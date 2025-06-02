@@ -30,7 +30,8 @@
 #include "third_party/blink/public/mojom/frame/policy_container.mojom-forward.h"
 #include "third_party/blink/public/mojom/frame/triggering_event_info.mojom-shared.h"
 #include "third_party/blink/public/mojom/navigation/navigation_params.mojom-shared.h"
-#include "third_party/blink/public/mojom/runtime_feature_state/runtime_feature_state.mojom-shared.h"
+#include "third_party/blink/public/mojom/navigation/renderer_content_settings.mojom.h"
+#include "third_party/blink/public/mojom/runtime_feature_state/runtime_feature.mojom-shared.h"
 #include "third_party/blink/public/platform/cross_variant_mojo_util.h"
 #include "third_party/blink/public/platform/web_common.h"
 #include "third_party/blink/public/platform/web_content_security_policy_struct.h"
@@ -466,10 +467,6 @@ struct BLINK_EXPORT WebNavigationParams {
   // (BrowsingInstances).
   bool is_cross_site_cross_browsing_context_group = false;
 
-  // Whether the new document should start with sticky user activation, because
-  // the previously committed document did, and the navigation was same-site.
-  bool should_have_sticky_user_activation = false;
-
   // Blink's copy of the policy container containing security policies to be
   // enforced on the document created by this navigation.
   std::unique_ptr<WebPolicyContainer> policy_container;
@@ -485,6 +482,7 @@ struct BLINK_EXPORT WebNavigationParams {
   // that API.
   WebVector<WebHistoryItem> navigation_api_back_entries;
   WebVector<WebHistoryItem> navigation_api_forward_entries;
+  WebHistoryItem navigation_api_previous_entry;
 
   // List of URLs which are preloaded by HTTP Early Hints.
   // TODO(https://crbug.com/1317936): Pass information more than URL such as
@@ -538,7 +536,7 @@ struct BLINK_EXPORT WebNavigationParams {
   // Maps the blink runtime-enabled features modified in the browser process to
   // their new enabled/disabled status:
   // <enum_representing_runtime_enabled_feature, enabled/disabled>
-  base::flat_map<::blink::mojom::RuntimeFeatureState, bool>
+  base::flat_map<::blink::mojom::RuntimeFeature, bool>
       modified_runtime_features;
 
   // Whether the document should be loaded with the has_storage_access bit set.
@@ -551,6 +549,13 @@ struct BLINK_EXPORT WebNavigationParams {
   // because they cannot change browsing context group.
   absl::optional<BrowsingContextGroupInfo> browsing_context_group_info =
       absl::nullopt;
+
+  // For each document, the browser passes along state for each
+  // renderer-enforced content setting.
+  mojom::RendererContentSettingsPtr content_settings;
+
+  // The cookie deprecation label for cookie deprecation facilitated testing.
+  WebString cookie_deprecation_label;
 };
 
 }  // namespace blink

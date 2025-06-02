@@ -100,7 +100,7 @@
 
     The QAxContainer and QAxServer modules are available under
     commercial licenses from \l{The Qt Company}. In addition, they
-    are available under the \l{BSD 3-clause "New" or "Revised" License}:
+    are available under the \l{BSD 3-clause "New" or "Revised" License}.
 
     See \l{Qt Licensing} for further details.
 */

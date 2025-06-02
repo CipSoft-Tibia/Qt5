@@ -17,32 +17,29 @@
 #include "shader_object_state.h"
 #include "pipeline_layout_state.h"
 
-static SHADER_OBJECT_STATE::SetLayoutVector GetSetLayouts(ValidationStateTracker *dev_data,
-                                                          const VkShaderCreateInfoEXT &pCreateInfo) {
-    SHADER_OBJECT_STATE::SetLayoutVector set_layouts(pCreateInfo.setLayoutCount);
+namespace vvl {
+static ShaderObject::SetLayoutVector GetSetLayouts(ValidationStateTracker *dev_data, const VkShaderCreateInfoEXT &pCreateInfo) {
+    ShaderObject::SetLayoutVector set_layouts(pCreateInfo.setLayoutCount);
 
     for (uint32_t i = 0; i < pCreateInfo.setLayoutCount; ++i) {
-        set_layouts[i] = dev_data->Get<cvdescriptorset::DescriptorSetLayout>(pCreateInfo.pSetLayouts[i]);
+        set_layouts[i] = dev_data->Get<vvl::DescriptorSetLayout>(pCreateInfo.pSetLayouts[i]);
     }
     return set_layouts;
 }
 
-SHADER_OBJECT_STATE::SHADER_OBJECT_STATE(ValidationStateTracker *dev_data, const VkShaderCreateInfoEXT &create_info,
-                                         VkShaderEXT shader_object, uint32_t createInfoCount, VkShaderEXT *pShaders,
-                                         uint32_t unique_shader_id)
-    : BASE_NODE(shader_object, kVulkanObjectTypeShaderEXT),
+ShaderObject::ShaderObject(ValidationStateTracker *dev_data, const VkShaderCreateInfoEXT &create_info, VkShaderEXT shader_object,
+                           std::shared_ptr<spirv::Module> &spirv_module, uint32_t createInfoCount, VkShaderEXT *pShaders,
+                           uint32_t unique_shader_id)
+    : StateObject(shader_object, kVulkanObjectTypeShaderEXT),
       create_info(&create_info),
-      spirv(create_info.codeType == VK_SHADER_CODE_TYPE_SPIRV_EXT
-                ? std::make_unique<SPIRV_MODULE_STATE>(create_info.codeSize, static_cast<const uint32_t *>(create_info.pCode))
-                : nullptr),
+      spirv(spirv_module),
       entrypoint(spirv ? spirv->FindEntrypoint(create_info.pName, create_info.stage) : nullptr),
       gpu_validation_shader_id(unique_shader_id),
       active_slots(GetActiveSlots(entrypoint)),
       max_active_slot(GetMaxActiveSlot(active_slots)),
       set_layouts(GetSetLayouts(dev_data, create_info)),
       push_constant_ranges(GetCanonicalId(create_info.pushConstantRangeCount, create_info.pPushConstantRanges)),
-      set_compat_ids(GetCompatForSet(set_layouts, push_constant_ranges))
-{
+      set_compat_ids(GetCompatForSet(set_layouts, push_constant_ranges)) {
     if ((create_info.flags & VK_SHADER_CREATE_LINK_STAGE_BIT_EXT) != 0) {
         for (uint32_t i = 0; i < createInfoCount; ++i) {
             if (pShaders[i] != shader_object) {
@@ -52,10 +49,13 @@ SHADER_OBJECT_STATE::SHADER_OBJECT_STATE(ValidationStateTracker *dev_data, const
     }
 }
 
-VkPrimitiveTopology SHADER_OBJECT_STATE::GetTopology() const {
-    const auto topology = spirv->GetTopology(*entrypoint);
-    if (topology) {
-        return *topology;
+VkPrimitiveTopology ShaderObject::GetTopology() const {
+    if (spirv) {
+        const auto topology = spirv->GetTopology(*entrypoint);
+        if (topology) {
+            return *topology;
+        }
     }
     return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
-};
+}
+}  // namespace vvl

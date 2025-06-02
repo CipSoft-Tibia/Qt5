@@ -40,6 +40,7 @@ message LicenseType {
 // is currently logged in.
 // This enum is used in the response payload of the
 // `FETCH_CRD_AVAILABILITY_INFO` remote command.
+// NOTE: Please DO NOT rename enum entries as they are used by external APIs.
 enum UserSessionType {
   USER_SESSION_TYPE_UNKNOWN = 0;
   AUTO_LAUNCHED_KIOSK_SESSION = 1;
@@ -66,6 +67,7 @@ enum CrdSessionType {
 // Enum indicating why a CRD session is or is not available.
 // This enum is used in the response payload of the
 // `FETCH_CRD_AVAILABILITY_INFO` remote command.
+// NOTE: Please DO NOT rename enum entries as they are used by external APIs.
 enum CrdSessionAvailability {
   CRD_SESSION_AVAILABILITY_UNKNOWN = 0;
   // The CRD session is available and the admin can start a CRD session.
@@ -77,6 +79,70 @@ enum CrdSessionAvailability {
   UNAVAILABLE_UNMANAGED_ENVIRONMENT = 3;
   // The CRD session type is unsupported by device os version
   UNAVAILABLE_UNSUPPORTED_DEVICE_OS_VERSION = 4;
+  // CRD is disabled on the device by the 'enterprise remote support connection'
+  // policy.
+  UNAVAILABLE_DISABLED_BY_POLICY = 5;
+}
+
+// Result code used in the response payload of the `START_CRD_SESSION` remote
+// command. This is used because it is more granular than the normal
+// `ResultType` enum used as the result code for a remote command.
+enum StartCrdSessionResultCode {
+  START_CRD_SESSION_RESULT_UNKNOWN = -1;
+  // Successfully obtained access code.
+  START_CRD_SESSION_SUCCESS = 0;
+  // Failed as required services are not launched on the device.
+  SERVICES_NOT_READY = 1;
+  // Failure as the current user type does not support remotely starting CRD.
+  FAILURE_UNSUPPORTED_USER_TYPE = 2;
+  // Failed as device is currently in use and no interruptUser flag is set.
+  FAILURE_NOT_IDLE = 3;
+  // Failed as we could not get OAuth token for whatever reason.
+  FAILURE_NO_OAUTH_TOKEN = 4;
+  // Failed as we could not get ICE configuration for whatever reason.
+  // deprecated
+  FAILURE_NO_ICE_CONFIG = 5;
+  // Failure during attempt to start CRD host and obtain CRD token.
+  FAILURE_CRD_HOST_ERROR = 6;
+  // Failure to start a curtained session as we're not in a managed environment.
+  FAILURE_UNMANAGED_ENVIRONMENT = 7;
+  // Failed because RemoteAccessHostAllowEnterpriseRemoteSupportConnections
+  // policy is disabled.
+  FAILURE_DISABLED_BY_POLICY = 8;
+}
+
+// Result code used in the response payload of the `FETCH_SUPPORT_PACKET` remote
+// command. The response payload will be a JSON string as follows:
+// {
+//   "result": <FetchSupportPacketResultCode enum>,
+//   (optional) "notes": [<FetchSupportPacketResultNote enums>]
+// }
+enum FetchSupportPacketResultCode {
+  // Unspecified result.
+  FETCH_SUPPORT_PACKET_RESULT_CODE_UNSPECIFIED = 0;
+  // Success.
+  FETCH_SUPPORT_PACKET_RESULT_SUCCESS = 1;
+  // Command is not enabled for the device or the user.
+  FAILURE_COMMAND_NOT_ENABLED = 2;
+  // Failed to create the file to upload.
+  FAILURE_EXPORTING_FILE = 3;
+  // Internal failure at reporting pipeline. LogUploadEvent can't be enqueued.
+  FAILURE_REPORTING_PIPELINE = 4;
+  // File upload to File Storage Server has failed.
+  FAILURE_LOG_UPLOAD = 5;
+}
+
+// Result payload field that will used for FETCH_SUPPORT_PACKET remote command.
+// This field represents the warnings or notes that the device sends along with
+// the command result. This enum will be used to attach optional notes to
+// successful execution. Failure details will be send to the server in
+// FetchSupportPacketResultCode enum.
+enum FetchSupportPacketResultNote {
+  FETCH_SUPPORT_PACKET_RESULT_PAYLOAD_UNSPECIFIED = 0;
+  // Warning that the requested PII is not allowed to be included in the
+  // collected logs due to privacy issues. This is not an error but a warning to
+  // the admin. The log file will be created and uploaded without PII.
+  WARNING_PII_NOT_ALLOWED = 1;
 }
 
 // Data along with a cryptographic signature verifying their authenticity.
@@ -904,6 +970,48 @@ message DevicePolicyRequest {
   // from a non-TT client.  The repeated field allows clients to request
   // multiple policies for better performance.
   repeated PolicyFetchRequest requests = 3;
+
+  // Reason for the requesting policies, to help with monitoring and alerting
+  // (e.g. to detect an increase in fetch failures during enrollment).
+  enum Reason {
+    UNSPECIFIED = 0;
+    // Required policy fetch during device enrollment.
+    DEVICE_ENROLLMENT = 1;
+    // Policy fetch triggered by incoming FCM invalidation.
+    INVALIDATION = 2;
+    // CloudPolicyClient registration changed (e.g. during startup).
+    REGISTRATION_CHANGED = 3;
+    // Retry after previous policy fetch failure.
+    RETRY = 4;
+    // Various retry reasons based on DMServer status, see
+    // `CloudPolicyRefreshScheduler`.
+    RETRY_AFTER_STATUS_SERVICE_ACTIVATION_PENDING = 5;
+    RETRY_AFTER_STATUS_SERVICE_POLICY_NOT_FOUND = 6;
+    RETRY_AFTER_STATUS_SERVICE_TOO_MANY_REQUESTS = 7;
+    RETRY_AFTER_STATUS_REQUEST_FAILED = 8;
+    RETRY_AFTER_STATUS_TEMPORARY_UNAVAILABLE = 9;
+    RETRY_AFTER_STATUS_CANNOT_SIGN_REQUEST = 10;
+    RETRY_AFTER_STATUS_REQUEST_INVALID = 11;
+    RETRY_AFTER_STATUS_HTTP_STATUS_ERROR = 12;
+    RETRY_AFTER_STATUS_RESPONSE_DECODING_ERROR = 13;
+    RETRY_AFTER_STATUS_SERVICE_MANAGEMENT_NOT_SUPPORTED = 14;
+    RETRY_AFTER_STATUS_REQUEST_TOO_LARGE = 15;
+    // Scheduled policy refresh (e.g. once per day).
+    SCHEDULED = 16;
+    // Policy fetch triggered by sign-in.
+    SIGNIN = 17;
+    // A placeholder reason used for tests (should not occur in production).
+    TEST = 18;
+    // Policy fetched at browser start, e.g. device policies at Ash start.
+    BROWSER_START = 19;
+    // ChromeOS Policy fetch request from Lacros to Ash.
+    LACROS = 20;
+    // Policy fetched as requested by the user, e.g. through chrome://policy.
+    USER_REQUEST = 21;
+    // Policy fetches triggered by the Chrome Remote Desktop policy watcher.
+    CRD_HOST_POLICY_WATCHER = 22;
+  }
+  optional Reason reason = 4;
 }
 
 // Response from server to device for reading policies.
@@ -2222,7 +2330,7 @@ message PolicyValueValidationIssue {
   // Policy name of the faulty value.
   optional string policy_name = 1;
 
-  // # LINT.IfChange
+  // LINT.IfChange
   enum ValueValidationIssueSeverity {
     // Default value for when a severity is not specified.
     VALUE_VALIDATION_ISSUE_SEVERITY_UNSPECIFIED = 0;
@@ -2233,8 +2341,8 @@ message PolicyValueValidationIssue {
     // This result is an error. The policy blob was rejected completely and not
     // updated on the device.
     VALUE_VALIDATION_ISSUE_SEVERITY_ERROR = 2;
-  }  // LINT.ThenChange(
-  // //depot/google3/chrome/cros/reporting/api/proto/policy_validation_report.proto)
+  }
+  // LINT.ThenChange(//depot/google3/chrome/cros/reporting/api/proto/policy_validation_report.proto)
 
   // Severity of this policy value validation result.
   optional ValueValidationIssueSeverity severity = 2;
@@ -2324,8 +2432,8 @@ message PolicyValidationReportRequest {
     // payload validation errors, and zero or more payload validation warnings.
     // Client behavior: Policy blob rejected.
     VALIDATION_RESULT_TYPE_VALUE_ERROR = 15;
-  }  // LINT.ThenChange(
-  // //depot/google3/chrome/cros/reporting/api/proto/policy_validation_report.proto)
+  }
+  // LINT.ThenChange(//depot/google3/chrome/cros/reporting/api/proto/policy_validation_report.proto)
 
   // The validation result.
   optional ValidationResultType validation_result_type = 3;
@@ -2873,6 +2981,13 @@ message RemoteCommand {
   // |DEVICE_GET_DIAGNOSTIC_ROUTINE_UPDATE|: {"id" : id_integer, "command" :
   // command, "includeOutput" : include_output_bool}, where command must be a
   // valid `ash::cros_healthd::mojom::DiagnosticRoutineCommandEnum`.
+  // |DEVICE_REBOOT|: {"user_session_delay_s": delay_integer}, where delay value
+  // represents seconds until reboot in user session.
+  // |FETCH_SUPPORT_PACKET|:
+  // {"supportPacketDetails":{ "issueCaseId": optional_support_case_id_string,
+  // "issueDescription": optional_issue_description_string,
+  // "requestedDataCollectors": [<list of `support_tool::DataCollectorType`
+  // enums>], "requestedPiiTypes": [<list of `support_tool::PiiType` enums>]}}
   optional string payload = 4;
 
   // An identifier for the target this command is for. This is the same as
@@ -2925,6 +3040,11 @@ message DeviceRemoteCommandRequest {
   // What type of signature to use. Only valid if send_secure_commmands is true.
   // If NONE is passed, SHA1_RSA will be used instead for compatibility.
   optional PolicyFetchRequest.SignatureType signature_type = 4;
+
+  // A string that represents the type of RemoteCommands that need to be
+  // fetched. This type helps the server redirect the request to different
+  // handlers.
+  optional string type = 5;
 }
 
 message DeviceRemoteCommandResponse {
@@ -4202,6 +4322,18 @@ message CertProvBackendError {
     CA_FAILURE = 9;
     // The referenced certificate provisioning profile does not exist.
     PROFILE_NOT_FOUND = 10;
+    // The user primary email cannot be found.
+    USER_PRIMARY_EMAIL_NOT_FOUND = 11;
+    // The certificate provisioning profile is referencing a non-existent CA
+    // connection.
+    CA_CONNECTION_NOT_FOUND = 12;
+    // The CA connection referenced by the certificate provisioning profile
+    // is referencing a non-existent PubSub topic, or the system does not have
+    // permission to publish to that PubSub topic.
+    PUBSUB_TOPIC_NOT_FOUND = 13;
+    // The Adapter uploaded a certificate that cannot be parsed or was issued
+    // for a wrong public key.
+    BAD_ADAPTER_CERTIFICATE_RECEIVED = 14;
   }
 
   // The specific error type.

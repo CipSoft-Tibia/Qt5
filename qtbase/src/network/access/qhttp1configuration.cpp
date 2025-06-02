@@ -107,9 +107,7 @@ qsizetype QHttp1Configuration::numberOfConnectionsPerHost() const
 
 /*!
     \fn void QHttp1Configuration::swap(QHttp1Configuration &other)
-
-    Swaps this HTTP/1 configuration with \a other. This operation is very fast
-    and never fails.
+    \memberswap{HTTP/1 configuration}
 */
 
 /*!
@@ -131,8 +129,7 @@ qsizetype QHttp1Configuration::numberOfConnectionsPerHost() const
 /*!
     \fn size_t QHttp1Configuration::qHash(const QHttp1Configuration &key, size_t seed)
     \since 6.5
-
-    Returns the hash value for the \a key, using \a seed to seed the calculation.
+    \qhash{QHttp1Configuration}
 */
 
 /*!

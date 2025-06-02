@@ -19,6 +19,7 @@
 #include "build/build_config.h"
 #include "content/browser/xr/service/browser_xr_runtime_impl.h"
 #include "content/browser/xr/service/vr_service_impl.h"
+#include "content/browser/xr/webxr_internals/mojom/webxr_internals.mojom.h"
 #include "content/browser/xr/webxr_internals/webxr_logger_manager.h"
 #include "content/common/content_export.h"
 #include "content/public/browser/gpu_data_manager_observer.h"
@@ -26,6 +27,7 @@
 #include "content/public/browser/xr_runtime_manager.h"
 #include "device/vr/public/cpp/vr_device_provider.h"
 #include "device/vr/public/mojom/vr_service.mojom-forward.h"
+#include "device/vr/public/mojom/xr_device.mojom-forward.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -95,8 +97,6 @@ class CONTENT_EXPORT XRRuntimeManagerImpl
 
   // XRRuntimeManager implementation
   BrowserXRRuntimeImpl* GetRuntime(device::mojom::XRDeviceId id) override;
-  void ForEachRuntime(
-      base::RepeatingCallback<void(BrowserXRRuntime*)> fn) override;
 
   content::WebXrLoggerManager& GetLoggerManager();
 
@@ -108,6 +108,7 @@ class CONTENT_EXPORT XRRuntimeManagerImpl
   void RemoveRuntime(device::mojom::XRDeviceId id) override;
   void OnProviderInitialized() override;
   device::XrFrameSinkClientFactory GetXrFrameSinkClientFactory() override;
+  std::vector<webxr::mojom::RuntimeInfoPtr> GetActiveRuntimes();
 
  private:
   // Constructor also used by tests to supply an arbitrary list of providers
@@ -124,7 +125,7 @@ class CONTENT_EXPORT XRRuntimeManagerImpl
 
   ~XRRuntimeManagerImpl() override;
 
-  void InitializeProviders();
+  void InitializeProviders(VRServiceImpl* initializing_service);
   bool AreAllProvidersInitialized();
 
   bool IsInitializedOnCompatibleAdapter(BrowserXRRuntimeImpl* runtime);

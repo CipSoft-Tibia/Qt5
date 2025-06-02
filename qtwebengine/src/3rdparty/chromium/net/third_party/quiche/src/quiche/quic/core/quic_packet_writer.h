@@ -6,9 +6,9 @@
 #define QUICHE_QUIC_CORE_QUIC_PACKET_WRITER_H_
 
 #include <cstddef>
+#include <optional>
 #include <utility>
 
-#include "absl/types/optional.h"
 #include "quiche/quic/core/quic_packets.h"
 #include "quiche/quic/platform/api/quic_export.h"
 #include "quiche/quic/platform/api/quic_ip_address.h"
@@ -21,7 +21,7 @@ struct WriteResult;
 // This class allows a platform to pass instructions to an associated child of
 // QuicWriter without intervening QUIC code understanding anything about its
 // contents.
-class QUIC_EXPORT_PRIVATE PerPacketOptions {
+class QUICHE_EXPORT PerPacketOptions {
  public:
   virtual ~PerPacketOptions() {}
 
@@ -36,7 +36,7 @@ class QUIC_EXPORT_PRIVATE PerPacketOptions {
 };
 
 // The owner of QuicPacketWriter can pass control information via this struct.
-struct QUIC_EXPORT_PRIVATE QuicPacketWriterParams {
+struct QUICHE_EXPORT QuicPacketWriterParams {
   // Specifies ideal release time delay for this packet.
   QuicTime::Delta release_time_delay = QuicTime::Delta::Zero();
   // Whether it is allowed to send this packet without |release_time_delay|.
@@ -67,7 +67,7 @@ struct QUIC_EXPORT_PRIVATE QuicPacketWriterParams {
 // 1. Call GetNextWriteLocation to get a pointer P into the internal buffer.
 // 2. Serialize the packet directly to P.
 // 3. Call WritePacket with P as the |buffer|.
-class QUIC_EXPORT_PRIVATE QuicPacketWriter {
+class QUICHE_EXPORT QuicPacketWriter {
  public:
   virtual ~QuicPacketWriter() {}
 
@@ -127,7 +127,7 @@ class QUIC_EXPORT_PRIVATE QuicPacketWriter {
   // The error code used by the writer to indicate that the write failed due to
   // supplied packet being too big.  This is equivalent to returning
   // WRITE_STATUS_MSG_TOO_BIG as a status.
-  virtual absl::optional<int> MessageTooBigErrorCode() const = 0;
+  virtual std::optional<int> MessageTooBigErrorCode() const = 0;
 
   // Returns the maximum size of the packet which can be written using this
   // writer for the supplied peer address.  This size may actually exceed the

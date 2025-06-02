@@ -13,7 +13,6 @@
 QT_BEGIN_NAMESPACE
 
 bool qax_ownQApp = false;
-HHOOK qax_hhook = nullptr;
 
 // in qaxserver.cpp
 extern wchar_t qAxModuleFilename[MAX_PATH];
@@ -90,9 +89,6 @@ STDAPI DllCanUnloadNow()
         return S_FALSE;
 
     // no widgets left - destroy qApp
-    if (qax_hhook)
-        UnhookWindowsHookEx(qax_hhook);
-
     QClassFactory::cleanupCreatedApplication(*qApp);
     delete qApp;
     qax_ownQApp = false;

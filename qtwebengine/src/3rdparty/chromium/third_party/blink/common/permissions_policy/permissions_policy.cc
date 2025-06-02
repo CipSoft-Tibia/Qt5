@@ -180,7 +180,7 @@ bool PermissionsPolicy::IsFeatureEnabledForSubresourceRequest(
   // using `IsFeatureEnabledForSubresourceRequestAssumingOptIn()`, since a
   // `network::ResourceRequest` is not available at the call site and
   // `blink::ResourceRequest` should not be used in blink public APIs.
-  if (request.shared_storage_writable) {
+  if (request.shared_storage_writable_eligible) {
     DCHECK(base::FeatureList::IsEnabled(blink::features::kSharedStorageAPI));
     opt_in_features.insert(mojom::PermissionsPolicyFeature::kSharedStorage);
   }
@@ -295,6 +295,15 @@ PermissionsPolicy::GetAllowlistForFeatureIfExists(
   return absl::nullopt;
 }
 
+absl::optional<std::string> PermissionsPolicy::GetEndpointForFeature(
+    mojom::PermissionsPolicyFeature feature) const {
+  auto endpoint = reporting_endpoints_.find(feature);
+  if (endpoint != reporting_endpoints_.end()) {
+    return endpoint->second;
+  }
+  return absl::nullopt;
+}
+
 void PermissionsPolicy::SetHeaderPolicy(
     const ParsedPermissionsPolicy& parsed_header) {
   if (allowlists_set_by_manifest_)
@@ -305,6 +314,10 @@ void PermissionsPolicy::SetHeaderPolicy(
     mojom::PermissionsPolicyFeature feature = parsed_declaration.feature;
     DCHECK(feature != mojom::PermissionsPolicyFeature::kNotFound);
     allowlists_.emplace(feature, AllowlistFromDeclaration(parsed_declaration));
+    if (parsed_declaration.reporting_endpoint.has_value()) {
+      reporting_endpoints_.insert(
+          {feature, parsed_declaration.reporting_endpoint.value()});
+    }
   }
 }
 
@@ -376,15 +389,49 @@ PermissionsPolicy::PermissionsPolicy(
 PermissionsPolicy::~PermissionsPolicy() = default;
 
 // static
-std::unique_ptr<PermissionsPolicy> PermissionsPolicy::CreateForFencedFrame(
+std::unique_ptr<PermissionsPolicy>
+PermissionsPolicy::CreateFlexibleForFencedFrame(
+    const PermissionsPolicy* parent_policy,
+    const ParsedPermissionsPolicy& container_policy,
+    const url::Origin& subframe_origin) {
+  return CreateFlexibleForFencedFrame(
+      parent_policy, container_policy, subframe_origin,
+      GetPermissionsPolicyFeatureList(subframe_origin));
+}
+
+// static
+std::unique_ptr<PermissionsPolicy>
+PermissionsPolicy::CreateFlexibleForFencedFrame(
+    const PermissionsPolicy* parent_policy,
+    const ParsedPermissionsPolicy& container_policy,
+    const url::Origin& subframe_origin,
+    const PermissionsPolicyFeatureList& features) {
+  auto new_policy = std::unique_ptr<PermissionsPolicy>(
+      new PermissionsPolicy(subframe_origin, features));
+  for (const auto& feature : features) {
+    if (base::Contains(kFencedFrameAllowedFeatures, feature.first)) {
+      new_policy->inherited_policies_[feature.first] =
+          new_policy->InheritedValueForFeature(parent_policy, feature,
+                                               container_policy);
+    } else {
+      new_policy->inherited_policies_[feature.first] = false;
+    }
+  }
+  return new_policy;
+}
+
+// static
+std::unique_ptr<PermissionsPolicy> PermissionsPolicy::CreateFixedForFencedFrame(
     const url::Origin& origin,
     base::span<const blink::mojom::PermissionsPolicyFeature>
         effective_enabled_permissions) {
-  return CreateForFencedFrame(origin, GetPermissionsPolicyFeatureList(origin),
-                              effective_enabled_permissions);
+  return CreateFixedForFencedFrame(origin,
+                                   GetPermissionsPolicyFeatureList(origin),
+                                   effective_enabled_permissions);
 }
 
-std::unique_ptr<PermissionsPolicy> PermissionsPolicy::CreateForFencedFrame(
+// static
+std::unique_ptr<PermissionsPolicy> PermissionsPolicy::CreateFixedForFencedFrame(
     const url::Origin& origin,
     const PermissionsPolicyFeatureList& features,
     base::span<const blink::mojom::PermissionsPolicyFeature>

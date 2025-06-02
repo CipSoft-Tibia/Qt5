@@ -18,6 +18,10 @@ BMStroke::BMStroke(const BMStroke &other)
     m_capStyle = other.m_capStyle;
     m_joinStyle = other.m_joinStyle;
     m_miterLimit = other.m_miterLimit;
+    m_dashOffset = other.m_dashOffset;
+    m_dashLength = other.m_dashLength;
+    m_dashGap = other.m_dashGap;
+    m_isDashed = other.m_isDashed;
 }
 
 BMStroke::BMStroke(const QJsonObject &definition, const QVersionNumber &version, BMBase *parent)
@@ -72,6 +76,24 @@ BMStroke::BMStroke(const QJsonObject &definition, const QVersionNumber &version,
     QJsonObject color = definition.value(QLatin1String("c")).toObject();
     color = resolveExpression(color);
     m_color.construct(color, version);
+
+    QJsonArray dashes = definition.value(QLatin1String("d")).toArray();
+    if (dashes.size()) {
+        auto it = dashes.cend();
+        while (it != dashes.cbegin()) {
+            --it;
+            QJsonObject dashSpec = it->toObject();
+            QJsonObject val = resolveExpression(dashSpec.value(QLatin1String("v")).toObject());
+            QString n = dashSpec.value(QLatin1String("n")).toString();
+            if (n == QLatin1String("o"))
+                m_dashOffset.construct(val, version);
+            else if (n == QLatin1String("g"))
+                m_dashGap.construct(val, version);
+            else if (n == QLatin1String("d"))
+                m_dashLength.construct(val, version);
+        }
+        m_isDashed = true;
+    }
 }
 
 BMBase *BMStroke::clone() const
@@ -84,6 +106,11 @@ void BMStroke::updateProperties(int frame)
     m_opacity.update(frame);
     m_width.update(frame);
     m_color.update(frame);
+    if (m_isDashed) {
+        m_dashOffset.update(frame);
+        m_dashLength.update(frame);
+        m_dashGap.update(frame);
+    }
 }
 
 void BMStroke::render(LottieRenderer &renderer) const
@@ -102,6 +129,10 @@ QPen BMStroke::pen() const
     pen.setCapStyle(m_capStyle);
     pen.setJoinStyle(m_joinStyle);
     pen.setMiterLimit(m_miterLimit);
+    if (m_isDashed) {
+        pen.setDashOffset(m_dashOffset.value() / width);
+        pen.setDashPattern({m_dashLength.value() / width, m_dashGap.value() / width});
+    }
     return pen;
 }
 

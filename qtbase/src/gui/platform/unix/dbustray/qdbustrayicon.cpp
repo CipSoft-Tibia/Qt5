@@ -191,14 +191,18 @@ QTemporaryFile *QDBusTrayIcon::tempIcon(const QIcon &icon)
             // Accessing to process name might be not allowed if the application
             // is confined, thus we can just rely on the current desktop in use
             const QPlatformServices *services = QGuiApplicationPrivate::platformIntegration()->services();
-            necessary = services->desktopEnvironment().split(':').contains("UNITY");
+            if (services)
+                necessary = services->desktopEnvironment().split(':').contains("UNITY");
         }
         necessity_checked = true;
     }
     if (!necessary)
         return nullptr;
     QTemporaryFile *ret = new QTemporaryFile(tempFileTemplate(), this);
-    ret->open();
+    if (!ret->open()) {
+        delete ret;
+        return nullptr;
+    }
     icon.pixmap(QSize(22, 22)).save(ret);
     ret->close();
     return ret;

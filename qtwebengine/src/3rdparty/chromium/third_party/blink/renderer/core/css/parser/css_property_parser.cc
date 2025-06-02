@@ -51,6 +51,11 @@ bool IsPropertyAllowedInRule(const CSSProperty& property,
   switch (rule_type) {
     case StyleRule::kStyle:
       return true;
+    case StyleRule::kPage:
+      // TODO(sesse): Limit the allowed properties here.
+      // https://www.w3.org/TR/css-page-3/#page-property-list
+      // https://www.w3.org/TR/css-page-3/#margin-property-list
+      return true;
     case StyleRule::kKeyframe:
       return property.IsValidForKeyframe();
     case StyleRule::kTry:
@@ -346,14 +351,6 @@ static CSSPropertyID UnresolvedCSSPropertyID(
   // and actually do the resolution to see if that flag is on or not.
   // This should happen only occasionally.
   return ExposedProperty(property_id, execution_context, mode);
-}
-
-CSSPropertyID UnresolvedCSSPropertyID(const ExecutionContext* execution_context,
-                                      const String& string) {
-  return WTF::VisitCharacters(string, [&](const auto* chars, unsigned length) {
-    return UnresolvedCSSPropertyID(execution_context, chars, length,
-                                   kHTMLStandardMode);
-  });
 }
 
 CSSPropertyID UnresolvedCSSPropertyID(const ExecutionContext* execution_context,

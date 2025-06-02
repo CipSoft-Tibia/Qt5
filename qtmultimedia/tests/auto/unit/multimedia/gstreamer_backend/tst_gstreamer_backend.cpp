@@ -6,13 +6,17 @@
 #include <QtTest/QtTest>
 #include <QtMultimedia/qmediaformat.h>
 
-#include <QtQGstreamerMediaPluginImpl/private/qgst_handle_types_p.h>
-#include <QtQGstreamerMediaPluginImpl/private/qgst_p.h>
-#include <QtQGstreamerMediaPluginImpl/private/qgst_debug_p.h>
-#include <QtQGstreamerMediaPluginImpl/private/qgstpipeline_p.h>
-#include <QtQGstreamerMediaPluginImpl/private/qgstreamermetadata_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgst_handle_types_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgst_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgst_debug_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgst_discoverer_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgstpipeline_p.h>
+#include <QtGstreamerMediaPluginImpl/private/qgstreamermetadata_p.h>
 
 #include <set>
+#include <variant>
+
+#include <gst/gstversion.h>
 
 QT_USE_NAMESPACE
 
@@ -44,13 +48,15 @@ QGString makeQGString(std::string_view str)
     return QGString{ s };
 };
 
+const bool validateBitRates = GST_CHECK_VERSION(1, 24, 0);
+
 } // namespace
 
 QGstTagListHandle tst_GStreamer::parseTagList(const char *str)
 {
     QGstTagListHandle tagList{
         gst_tag_list_new_from_string(str),
-        QGstTagListHandle::NeedsRef,
+        QGstTagListHandle::HasRef,
     };
     return tagList;
 }
@@ -189,6 +195,32 @@ void tst_GStreamer::metadata_taglistToMetaData_extractsLanguage_data()
             << QLocale::Language::Spanish;
 }
 
+void tst_GStreamer::metadata_taglistToMetaData_extractsDate()
+{
+    QFETCH(QByteArray, tagListString);
+    QFETCH(QDateTime, expectedDate);
+
+    QGstTagListHandle tagList = parseTagList(tagListString);
+    QVERIFY(tagList);
+
+    QMediaMetaData parsed = taglistToMetaData(tagList);
+    QCOMPARE(parsed[QMediaMetaData::Date].value<QDateTime>(), expectedDate);
+}
+
+void tst_GStreamer::metadata_taglistToMetaData_extractsDate_data()
+{
+    QTest::addColumn<QByteArray>("tagListString");
+    QTest::addColumn<QDateTime>("expectedDate");
+
+    QTest::newRow("datetime") << R"__(taglist, datetime=(datetime)2024)__"_ba
+                              << QDateTime(QDate(2024, 0, 0), QTime{});
+    QTest::newRow("date") << R"__(taglist, date=(date)2024-01-01)__"_ba
+                          << QDateTime(QDate(2024, 1, 1), QTime{});
+    QTest::newRow("date and datetime")
+            << R"__(taglist, datetime=(datetime)2024, date=(date)2024-01-01)__"_ba
+            << QDateTime(QDate(2024, 1, 1), QTime{});
+}
+
 void tst_GStreamer::metadata_capsToMetaData()
 {
     QFETCH(QByteArray, capsString);
@@ -270,8 +302,8 @@ void tst_GStreamer::QGstElement_createFromPipelineDescription()
 {
     using namespace std::string_view_literals;
     QGstElement element = QGstElement::createFromPipelineDescription("identity name=foo");
-    QCOMPARE_EQ(element.name().constData(), "foo"sv);
-    QCOMPARE_EQ(element.typeName().constData(), "GstIdentity"sv);
+    QCOMPARE_EQ(element.name(), "foo"sv);
+    QCOMPARE_EQ(element.typeName(), "GstIdentity"sv);
 }
 
 void tst_GStreamer::QGstElement_createFromPipelineDescription_multipleElementsCreatesBin()
@@ -281,7 +313,7 @@ void tst_GStreamer::QGstElement_createFromPipelineDescription_multipleElementsCr
             QGstElement::createFromPipelineDescription("identity name=foo ! identity name=bar");
 
     QVERIFY(element);
-    QCOMPARE_EQ(element.typeName().constData(), "GstPipeline"sv);
+    QCOMPARE_EQ(element.typeName(), "GstPipeline"sv);
 
     QGstBin bin{
         qGstSafeCast<GstBin>(element.element()),
@@ -350,6 +382,202 @@ void tst_GStreamer::qDebug_GstStreamStatusType()
     validate(GST_STREAM_STATUS_TYPE_START, u"GST_STREAM_STATUS_TYPE_START "_s);
     validate(GST_STREAM_STATUS_TYPE_PAUSE, u"GST_STREAM_STATUS_TYPE_PAUSE "_s);
     validate(GST_STREAM_STATUS_TYPE_STOP, u"GST_STREAM_STATUS_TYPE_STOP "_s);
+}
+
+void tst_GStreamer::QGstStructureView_parseCameraFormat()
+{
+    auto makeStructure = [](const char *str) {
+        return QUniqueGstStructureHandle{
+            gst_structure_new_from_string(str),
+        };
+    };
+
+    auto compareFraction = [](std::optional<Fraction> lhs, Fraction rhs) {
+        if (!lhs)
+            return false;
+        return std::tie(lhs->numerator, lhs->denominator)
+                == std::tie(rhs.numerator, rhs.denominator);
+    };
+
+    // single frame rate (taken from Logitech Brio 300)
+    {
+        auto structure = makeStructure(
+                R"__(video/x-raw, format=(string)YUY2, width=(int)1920, height=(int)1080, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction)5/1)__");
+
+        Fraction expectedFracion{ 1, 1 };
+        QGRange<float> expectedFramerateRange{ 5, 5 };
+
+        QCOMPARE(QGstStructureView(structure).resolution(), QSize(1920, 1080));
+        QVERIFY(compareFraction(QGstStructureView(structure).pixelAspectRatio(), expectedFracion));
+        QCOMPARE(QGstStructureView(structure).frameRateRange(), expectedFramerateRange);
+        QCOMPARE(QGstStructureView(structure).pixelFormat(),
+                 QVideoFrameFormat::PixelFormat::Format_YUYV);
+    }
+
+    // multiple frame rates (taken from Logitech Brio 300)
+    {
+        auto structure = makeStructure(
+                R"__(video/x-raw, format=(string)YUY2, width=(int)640, height=(int)480, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction){ 30/1, 24/1, 20/1, 15/1, 10/1, 15/2, 5/1 })__");
+
+        Fraction expectedFracion{ 1, 1 };
+        QGRange<float> expectedFramerateRange{ 5, 30 };
+
+        QCOMPARE(QGstStructureView(structure).resolution(), QSize(640, 480));
+        QVERIFY(compareFraction(QGstStructureView(structure).pixelAspectRatio(), expectedFracion));
+        QCOMPARE(QGstStructureView(structure).frameRateRange(), expectedFramerateRange);
+        QCOMPARE(QGstStructureView(structure).pixelFormat(),
+                 QVideoFrameFormat::PixelFormat::Format_YUYV);
+    }
+
+    // jpeg (taken from Logitech Brio 300)
+    {
+        auto structure = makeStructure(
+                R"__(image/jpeg, parsed=(boolean)true, width=(int)1920, height=(int)1080, pixel-aspect-ratio=(fraction)1/1, framerate=(fraction){ 30/1, 24/1, 20/1, 15/1, 10/1, 15/2, 5/1 })__");
+
+        Fraction expectedFracion{ 1, 1 };
+        QGRange<float> expectedFramerateRange{ 5, 30 };
+
+        QCOMPARE(QGstStructureView(structure).resolution(), QSize(1920, 1080));
+        QVERIFY(compareFraction(QGstStructureView(structure).pixelAspectRatio(), expectedFracion));
+        QCOMPARE(QGstStructureView(structure).frameRateRange(), expectedFramerateRange);
+        QCOMPARE(QGstStructureView(structure).pixelFormat(),
+                 QVideoFrameFormat::PixelFormat::Format_Jpeg);
+    }
+
+    // steped frame rate, undefined frame rate (taken from Raspberry Pi 4, Camera Module v2)
+    {
+        QGRange<float> expectedFramerateRange{ 0.0, 2147483647.0 };
+
+        auto cameraFormat = makeStructure(
+                R"__(video/x-raw, format=(string)YUY2, width=(int)[ 64, 16384, 2 ], height=(int)[ 64, 16384, 2 ], framerate=(fraction)[ 0/1, 2147483647/1 ])__");
+
+        QCOMPARE(QGstStructureView(cameraFormat).pixelAspectRatio(), std::nullopt);
+        QCOMPARE(QGstStructureView(cameraFormat).frameRateRange(), expectedFramerateRange);
+        QCOMPARE(QGstStructureView(cameraFormat).pixelFormat(),
+                 QVideoFrameFormat::PixelFormat::Format_YUYV);
+    }
+
+    // steped frame rate, valid rate range (taken from Raspberry Pi 4, Camera Module v2)
+    {
+        auto cameraFormat = makeStructure(
+                R"__(video/x-raw, format=(string)YUY2, width=(int)[ 32, 3280, 2 ], height=(int)[ 32, 2464, 2 ], framerate=(fraction)[ 1/1, 90/1 ])__");
+
+        QGRange<float> expectedFramerateRange{ 1.0, 90.0 };
+        QGRange<QSize> expectedResolutionRange{
+            QSize(32, 32),
+            QSize(3280, 2464),
+        };
+
+        QCOMPARE(QGstStructureView(cameraFormat).resolutionRange(), expectedResolutionRange);
+        QCOMPARE(QGstStructureView(cameraFormat).pixelAspectRatio(), std::nullopt);
+        QCOMPARE(QGstStructureView(cameraFormat).frameRateRange(), expectedFramerateRange);
+        QCOMPARE(QGstStructureView(cameraFormat).pixelFormat(),
+                 QVideoFrameFormat::PixelFormat::Format_YUYV);
+    }
+}
+
+using MediaSource = std::variant<QUrl, std::shared_ptr<QTemporaryFile>, std::shared_ptr<QIODevice>>;
+
+template <class... Ts>
+struct qOverloadedVisitor : Ts...
+{
+    using Ts::operator()...;
+};
+template <class... Ts>
+qOverloadedVisitor(Ts...) -> qOverloadedVisitor<Ts...>;
+
+void tst_GStreamer::QGstDiscoverer_discoverMedia()
+{
+    using namespace Qt::Literals;
+    using namespace QGst;
+    using namespace std::chrono_literals;
+
+    QFETCH(MediaSource, media);
+
+    QGstDiscoverer discoverer;
+
+    auto discoverUrl = [&](const QUrl &media) {
+        return discoverer.discover(media);
+    };
+    auto discoverFromFile = [&](const std::shared_ptr<QTemporaryFile> &media) {
+        return discoverer.discover(QUrl::fromLocalFile(media->fileName()));
+    };
+    auto discoverFromStream = [&](const std::shared_ptr<QIODevice> &media) {
+        return discoverer.discover(media.get());
+    };
+
+    auto result = std::visit(
+            qOverloadedVisitor{
+                    discoverUrl,
+                    discoverFromFile,
+                    discoverFromStream,
+            },
+            media);
+
+    QVERIFY(result);
+    QVERIFY(!result->isLive);
+    QVERIFY(result->isSeekable);
+    QCOMPARE(result->videoStreams.size(), 1u);
+    QCOMPARE(result->audioStreams.size(), 1u);
+    QCOMPARE(result->duration, 1003000000ns);
+
+    using Key = QMediaMetaData::Key;
+
+    // container metadata
+    QMediaMetaData containerMetaData = toContainerMetadata(*result);
+    QCOMPARE(containerMetaData.value(Key::AlbumTitle), u"My Album"_s);
+    QCOMPARE(containerMetaData.value(Key::ContributingArtist), u"My Artist"_s);
+    QCOMPARE(containerMetaData.value(Key::Title), u"My Title"_s);
+    // QCOMPARE(containerMetaData.value(Key::Date), u"My Album"s);
+
+    // video metadata
+    QMediaMetaData videoStreamMetaData = toStreamMetadata(result->videoStreams[0]);
+    QCOMPARE(videoStreamMetaData.value(Key::Resolution), QSize(1920, 1080));
+    if (validateBitRates)
+        QCOMPARE(videoStreamMetaData.value(Key::VideoBitRate), 30029);
+    QCOMPARE(videoStreamMetaData.value(Key::VideoFrameRate), 25);
+    QCOMPARE(videoStreamMetaData.value(Key::VideoCodec).value<QMediaFormat::VideoCodec>(),
+             QMediaFormat::VideoCodec::H265);
+
+    // audio metadata
+    QMediaMetaData audioStreamMetaData = toStreamMetadata(result->audioStreams[0]);
+    if (validateBitRates)
+        QCOMPARE(audioStreamMetaData.value(Key::AudioBitRate), 159554);
+    QCOMPARE(audioStreamMetaData.value(Key::Language), QLocale::Language::AnyLanguage);
+}
+
+void tst_GStreamer::QGstDiscoverer_discoverMedia_data()
+{
+    QTest::addColumn<MediaSource>("media");
+
+    auto makeTemporaryFile = [] {
+        auto file = QFile(":/metadata_test_file.mp4");
+        return std::shared_ptr<QTemporaryFile>(QTemporaryFile::createNativeFile(file));
+    };
+
+    QTest::newRow("qrc") << MediaSource{
+        QUrl("qrc:/metadata_test_file.mp4"),
+    };
+    QTest::newRow("QIODevice") << MediaSource{
+        std::make_shared<QFile>(":/metadata_test_file.mp4"),
+    };
+
+    QTest::newRow("filesystem file") << MediaSource{
+        makeTemporaryFile(),
+    };
+}
+
+void tst_GStreamer::QGstDiscoverer_discoverMedia_withRotation()
+{
+    using namespace QGst;
+
+    QGstDiscoverer discoverer;
+    auto result = discoverer.discover(QUrl("qrc:/color_matrix_90_deg_clockwise.mp4"));
+
+    QMediaMetaData videoStreamMetaData = toStreamMetadata(result->videoStreams[0]);
+
+    QCOMPARE(videoStreamMetaData.value(QMediaMetaData::Key::Orientation).value<QtVideo::Rotation>(),
+             QtVideo::Rotation::Clockwise90);
 }
 
 QTEST_GUILESS_MAIN(tst_GStreamer)

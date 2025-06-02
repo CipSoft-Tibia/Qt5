@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include "qwasminputcontext.h"
+#include "qwasmwindow.h"
 
 #include <QRectF>
 #include <QLoggingCategory>
@@ -10,6 +11,7 @@
 #include <qpa/qplatforminputcontext.h>
 #include <qpa/qwindowsysteminterface.h>
 #include <QClipboard>
+#include <QtGui/qtextobject.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -305,29 +307,57 @@ void QWasmInputContext::update(Qt::InputMethodQueries queries)
 void QWasmInputContext::showInputPanel()
 {
     qCDebug(qLcQpaWasmInputContext) << Q_FUNC_INFO;
+    m_visibleInputPanel = true;
 
-    if (!inputMethodAccepted())
+    updateInputElement();
+}
+
+void QWasmInputContext::updateInputElement()
+{
+    // Mobile devices can dismiss keyboard/IME and focus is still on input.
+    // Successive clicks on the same input should open the keyboard/IME.
+
+    // If there is no focus object, or no visible input panel, remove focus
+    const QWindow *focusWindow = QGuiApplication::focusWindow();
+    if (!m_focusObject || !focusWindow ||  !m_visibleInputPanel || !m_inputMethodAccepted) {
+        m_inputElement["style"].set("left",   "0px");
+        m_inputElement["style"].set("top",    "0px");
+        m_inputElement["style"].set("width",  "1px");
+        m_inputElement["style"].set("height", "1px");
+        m_inputElement.set("value", "");
+
+        m_inputElement.call<void>("blur");
+        if (focusWindow && focusWindow->handle())
+            ((QWasmWindow *)(focusWindow->handle()))->focus();
+
         return;
+    }
 
-    m_inputElement.call<void>("focus");
-    m_usingTextInput = true;
+    Q_ASSERT(focusWindow);
+    Q_ASSERT(m_focusObject);
+    Q_ASSERT(m_visibleInputPanel);
+    Q_ASSERT(m_inputMethodAccepted);
 
-    QWindow *window = QGuiApplication::focusWindow();
-    if (!window || !m_focusObject)
-        return;
-
+    // Set the geometry
+    QPoint globalPos;
     const QRect cursorRectangle = QPlatformInputContext::cursorRectangle().toRect();
-    if (!cursorRectangle.isValid())
-        return;
-    qCDebug(qLcQpaWasmInputContext) << Q_FUNC_INFO << "cursorRectangle: " << cursorRectangle;
-    const QPoint &globalPos = window->mapToGlobal(cursorRectangle.topLeft());
+    if (cursorRectangle.isValid()) {
+        qCDebug(qLcQpaWasmInputContext) << Q_FUNC_INFO << "cursorRectangle: " << cursorRectangle;
+        globalPos = focusWindow->mapToGlobal(cursorRectangle.topLeft());
+        if (globalPos.x() > 0) globalPos.setX(globalPos.x() - 1);
+        if (globalPos.y() > 0) globalPos.setY(globalPos.y() - 1);
+    }
+
     const auto styleLeft = std::to_string(globalPos.x()) + "px";
     const auto styleTop = std::to_string(globalPos.y()) + "px";
     m_inputElement["style"].set("left", styleLeft);
     m_inputElement["style"].set("top", styleTop);
+    m_inputElement["style"].set("width",  "1px");
+    m_inputElement["style"].set("height", "1px");
 
     qCDebug(qLcQpaWasmInputContext) << Q_FUNC_INFO << QRectF::fromDOMRect(m_inputElement.call<emscripten::val>("getBoundingClientRect"));
 
+    // Set the text input
     QInputMethodQueryEvent queryEvent(Qt::ImQueryAll);
     QCoreApplication::sendEvent(m_focusObject, &queryEvent);
     qCDebug(qLcQpaWasmInputContext) << "Qt surrounding text: " << queryEvent.value(Qt::ImSurroundingText).toString();
@@ -341,6 +371,8 @@ void QWasmInputContext::showInputPanel()
 
     m_inputElement.set("selectionStart", queryEvent.value(Qt::ImAnchorPosition).toUInt());
     m_inputElement.set("selectionEnd", queryEvent.value(Qt::ImCursorPosition).toUInt());
+
+    m_inputElement.call<void>("focus");
 }
 
 void QWasmInputContext::setFocusObject(QObject *object)
@@ -351,29 +383,20 @@ void QWasmInputContext::setFocusObject(QObject *object)
     if (m_focusObject && !m_preeditString.isEmpty())
         commitPreeditAndClear();
 
-    if (inputMethodAccepted()) {
-        m_inputElement.call<void>("focus");
-        m_usingTextInput = true;
-
-        m_focusObject = object;
-    } else {
-        m_inputElement.call<void>("blur");
-        m_usingTextInput = false;
-
-        m_focusObject = nullptr;
-    }
+    m_inputMethodAccepted = (object && inputMethodAccepted());
+    m_focusObject = object;
+    updateInputElement();
     QPlatformInputContext::setFocusObject(object);
 }
 
 void QWasmInputContext::hideInputPanel()
 {
     qCDebug(qLcQpaWasmInputContext) << Q_FUNC_INFO;
+    m_visibleInputPanel = false;
 
     // hide only if m_focusObject does not exist
-    if (!m_focusObject) {
-        m_inputElement.call<void>("blur");
-        m_usingTextInput = false;
-    }
+    if (!m_focusObject)
+        updateInputElement();
 }
 
 void QWasmInputContext::setPreeditString(QString preeditStr, int replaceSize)

@@ -1052,7 +1052,6 @@ void tst_QAbstractItemView::setItemDelegate()
     centerOnScreen(&v);
     moveCursorAway(&v);
     v.show();
-    QApplicationPrivate::setActiveWindow(&v);
     QVERIFY(QTest::qWaitForWindowActive(&v));
 
     QModelIndex index = model.index(cellToEdit.y(), cellToEdit.x());
@@ -1261,7 +1260,6 @@ void tst_QAbstractItemView::task221955_selectedEditor()
     tree.show();
     tree.setFocus();
     tree.setCurrentIndex(tree.model()->index(1,0));
-    QApplicationPrivate::setActiveWindow(&tree);
     QVERIFY(QTest::qWaitForWindowActive(&tree));
 
     QVERIFY(! tree.selectionModel()->selectedIndexes().contains(tree.model()->index(3,0)));
@@ -1560,7 +1558,6 @@ void tst_QAbstractItemView::QTBUG6407_extendedSelection()
     moveCursorAway(&view);
 
     view.show();
-    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCOMPARE(&view, QApplication::activeWindow());
 
@@ -1658,7 +1655,6 @@ void tst_QAbstractItemView::testClickedSignal()
     centerOnScreen(&view);
     moveCursorAway(&view);
     view.showNormal();
-    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCOMPARE(&view, QApplication::activeWindow());
 
@@ -1709,7 +1705,6 @@ void tst_QAbstractItemView::testChangeEditorState()
     centerOnScreen(&view);
     moveCursorAway(&view);
     view.show();
-    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowActive(&view));
     QCOMPARE(&view, QApplication::activeWindow());
 
@@ -1730,7 +1725,6 @@ void tst_QAbstractItemView::deselectInSingleSelection()
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     view.setSelectionMode(QAbstractItemView::SingleSelection);
     view.setEditTriggers(QAbstractItemView::NoEditTriggers);
-    QApplicationPrivate::setActiveWindow(&view);
     QVERIFY(QTest::qWaitForWindowExposed(&view));
     // mouse
     QModelIndex index22 = s.index(2, 2);
@@ -1777,7 +1771,6 @@ void tst_QAbstractItemView::testNoActivateOnDisabledItem()
     moveCursorAway(&treeView);
     treeView.show();
 
-    QApplicationPrivate::setActiveWindow(&treeView);
     QVERIFY(QTest::qWaitForWindowActive(&treeView));
 
     QSignalSpy activatedSpy(&treeView, &QAbstractItemView::activated);
@@ -1824,7 +1817,6 @@ void tst_QAbstractItemView::testFocusPolicy()
     moveCursorAway(&window);
 
     window.show();
-    QApplicationPrivate::setActiveWindow(&window);
     QVERIFY(QTest::qWaitForWindowActive(&window));
 
     // itemview accepts focus => editor is closed => return focus to the itemview
@@ -1862,8 +1854,7 @@ void tst_QAbstractItemView::QTBUG31411_noSelection()
     moveCursorAway(&window);
 
     window.show();
-    QApplicationPrivate::setActiveWindow(&window);
-    QVERIFY(QTest::qWaitForWindowActive(&window));
+    QVERIFY(QTest::qWaitForWindowFocused(&window));
 
     qRegisterMetaType<QItemSelection>();
     QSignalSpy selectionChangeSpy(table->selectionModel(), &QItemSelectionModel::selectionChanged);
@@ -2462,15 +2453,11 @@ void tst_QAbstractItemView::inputMethodEnabled()
 
     // Check focus by switching the activation of the window to force a focus in
     view->setCurrentIndex(model->index(1, 0));
-    QApplicationPrivate::setActiveWindow(nullptr);
-    QApplicationPrivate::setActiveWindow(view.data());
     QVERIFY(QTest::qWaitForWindowActive(view.data()));
     QCOMPARE(view->testAttribute(Qt::WA_InputMethodEnabled), result);
 
     view->setCurrentIndex(QModelIndex());
     QVERIFY(!view->testAttribute(Qt::WA_InputMethodEnabled));
-    QApplicationPrivate::setActiveWindow(nullptr);
-    QApplicationPrivate::setActiveWindow(view.data());
     QVERIFY(QTest::qWaitForWindowActive(view.data()));
     QModelIndex index = model->index(1, 0);
     QPoint p = view->visualRect(index).center();
@@ -2480,8 +2467,6 @@ void tst_QAbstractItemView::inputMethodEnabled()
     QCOMPARE(view->testAttribute(Qt::WA_InputMethodEnabled), result);
 
     index = model->index(0, 0);
-    QApplicationPrivate::setActiveWindow(nullptr);
-    QApplicationPrivate::setActiveWindow(view.data());
     QVERIFY(QTest::qWaitForWindowActive(view.data()));
     p = view->visualRect(index).center();
     QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, p);

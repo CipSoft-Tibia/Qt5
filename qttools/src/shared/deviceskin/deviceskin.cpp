@@ -1,7 +1,7 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "deviceskin.h"
+#include "deviceskin_p.h"
 
 #include <QtCore/qnamespace.h>
 #include <QtWidgets/QApplication>
@@ -339,15 +339,8 @@ DeviceSkin::DeviceSkin(const DeviceSkinParameters &parameters,  QWidget *p ) :
     m_parameters(parameters),
     buttonRegions(parameters.buttonAreas.size(), QRegion()),
     parent(p),
-    m_view(0),
-    m_secondaryView(0),
-    buttonPressed(false),
-    buttonIndex(0),
-    cursorw(0),
-    joydown(0),
     t_skinkey(new QTimer(this)),
-    t_parentmove(new QTimer(this)),
-    flipped_open(true)
+    t_parentmove(new QTimer(this))
 {
     Q_ASSERT(p);
     setMouseTracking(true);

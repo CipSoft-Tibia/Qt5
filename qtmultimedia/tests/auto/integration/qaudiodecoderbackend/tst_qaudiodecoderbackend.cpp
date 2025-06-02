@@ -5,8 +5,8 @@
 #include <QDebug>
 #include "qaudiodecoder.h"
 
-#include "mediafileselector.h"
-#include "mediabackendutils.h"
+#include <private/mediafileselector_p.h>
+#include <private/mediabackendutils_p.h>
 
 constexpr char TEST_FILE_NAME[] = "testdata/test.wav";
 constexpr char TEST_UNSUPPORTED_FILE_NAME[] = "testdata/test-unsupported.avi";
@@ -195,9 +195,13 @@ void tst_QAudioDecoderBackend::indirectReadingByBufferReadySignal()
     QVERIFY(!decoder.bufferAvailable());
 
     decoder.start();
-    QTRY_VERIFY(decodingSpy.size() >= 1);
 
-    QTRY_VERIFY(finishSpy.size() == 1);
+    QTRY_VERIFY_WITH_TIMEOUT(decodingSpy.size() >= 1,
+                             60s); // High timeout because decoding can take a long time
+
+    QTRY_VERIFY_WITH_TIMEOUT(finishSpy.size() == 1,
+                             60s); // High timeout because decoding can take a long time
+
     QVERIFY(!decoder.isDecoding());
 
     checkNoMoreChanges(decoder);
@@ -764,7 +768,7 @@ void tst_QAudioDecoderBackend::invalidSource()
 
     QFile file;
     file.setFileName(TEST_INVALID_SOURCE);
-    file.open(QIODevice::ReadOnly);
+    QTEST_ASSERT(!file.open(QIODevice::ReadOnly));
     d.setSourceDevice(&file);
 
     d.start();

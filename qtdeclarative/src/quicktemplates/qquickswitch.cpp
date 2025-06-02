@@ -14,7 +14,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype Switch
     \inherits AbstractButton
-//!     \instantiates QQuickSwitch
+//!     \nativetype QQuickSwitch
     \inqmlmodule QtQuick.Controls
     \since 5.7
     \ingroup qtquickcontrols-buttons
@@ -29,14 +29,20 @@ QT_BEGIN_NAMESPACE
 
     Switch inherits its API from \l AbstractButton. For instance, the state
     of the switch can be set with the \l {AbstractButton::}{checked} property.
+    The \l clicked and \l toggled signals are emitted when the switch is
+    interactively clicked by the user via touch, mouse, or keyboard.
 
     \code
     ColumnLayout {
         Switch {
             text: qsTr("Wi-Fi")
+            checked: Networking.wifiEnabled
+            onClicked: Networking.wifiEnabled = checked
         }
         Switch {
             text: qsTr("Bluetooth")
+            checked: Networking.bluetoothEnabled
+            onClicked: Networking.bluetoothEnabled = checked
         }
     }
     \endcode

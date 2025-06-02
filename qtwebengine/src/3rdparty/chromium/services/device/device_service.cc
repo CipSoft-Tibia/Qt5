@@ -157,10 +157,10 @@ void DeviceService::AddReceiver(
   receivers_.Add(this, std::move(receiver));
 }
 
-void DeviceService::SetPlatformSensorProviderForTesting(
-    std::unique_ptr<PlatformSensorProvider> provider) {
-  DCHECK(!sensor_provider_);
-  sensor_provider_ = std::make_unique<SensorProviderImpl>(std::move(provider));
+void DeviceService::SetSensorProviderImplForTesting(
+    std::unique_ptr<SensorProviderImpl> sensor_provider) {
+  CHECK(!sensor_provider_);
+  sensor_provider_ = std::move(sensor_provider);
 }
 
 // static
@@ -330,7 +330,6 @@ void DeviceService::BindSensorProvider(
   sensor_provider_->Bind(std::move(receiver));
 }
 
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_WIN)
 void DeviceService::BindDevicePostureProvider(
     mojo::PendingReceiver<mojom::DevicePostureProvider> receiver) {
   if (!device_posture_provider_) {
@@ -342,7 +341,6 @@ void DeviceService::BindDevicePostureProvider(
   }
   device_posture_provider_->Bind(std::move(receiver));
 }
-#endif
 
 void DeviceService::BindSerialPortManager(
     mojo::PendingReceiver<mojom::SerialPortManager> receiver) {

@@ -23,11 +23,11 @@ QT_BEGIN_NAMESPACE
 
 using namespace Qt::StringLiterals;
 
-static const int windowsItemFrame        =  2; // menu item frame width
-static const int windowsItemHMargin      =  3; // menu item hor text margin
-static const int windowsItemVMargin      =  4; // menu item ver text margin
-static const int windowsArrowHMargin     =  6; // arrow horizontal margin
-static const int windowsRightBorder      = 15; // right border on windows
+static constexpr int windowsItemFrame        =  2; // menu item frame width
+static constexpr int windowsItemHMargin      =  3; // menu item hor text margin
+static constexpr int windowsItemVMargin      =  4; // menu item ver text margin
+static constexpr int windowsArrowHMargin     =  6; // arrow horizontal margin
+static constexpr int windowsRightBorder      = 15; // right border on windows
 
 #ifndef TMT_CONTENTMARGINS
 #  define TMT_CONTENTMARGINS 3602
@@ -54,7 +54,7 @@ static const int windowsRightBorder      = 15; // right border on windows
 
 // QWindowsVistaStylePrivate -------------------------------------------------------------------------
 // Static initializations
-HWND QWindowsVistaStylePrivate::m_vistaTreeViewHelper = nullptr;
+QVarLengthFlatMap<const QScreen *, HWND, 4> QWindowsVistaStylePrivate::m_vistaTreeViewHelpers;
 bool QWindowsVistaStylePrivate::useVistaTheme = false;
 Q_CONSTINIT QBasicAtomicInt QWindowsVistaStylePrivate::ref = Q_BASIC_ATOMIC_INITIALIZER(-1); // -1 based refcounting
 
@@ -100,14 +100,18 @@ static inline Qt::Orientation progressBarOrientation(const QStyleOption *option 
  * a non-visible window handle, open the theme on it and insert it into
  * the cache so that it is found by QWindowsThemeData::handle() first.
  */
-static inline HWND createTreeViewHelperWindow()
+static inline HWND createTreeViewHelperWindow(const QScreen *screen)
 {
     using QWindowsApplication = QNativeInterface::Private::QWindowsApplication;
 
     HWND result = nullptr;
     if (auto nativeWindowsApp = dynamic_cast<QWindowsApplication *>(QGuiApplicationPrivate::platformIntegration()))
-        result = nativeWindowsApp->createMessageWindow(QStringLiteral("QTreeViewThemeHelperWindowClass"),
-                                                       QStringLiteral("QTreeViewThemeHelperWindow"));
+        result = nativeWindowsApp->createMessageWindow(QStringLiteral(u"QTreeViewThemeHelperWindowClass"),
+                                                       QStringLiteral(u"QTreeViewThemeHelperWindow"));
+    const auto topLeft = screen->geometry().topLeft();
+    // make it a top-level window and move it the the correct screen to paint with the correct dpr later on
+    SetParent(result, NULL);
+    MoveWindow(result, topLeft.x(), topLeft.y(), 10, 10, FALSE);
     return result;
 }
 
@@ -257,30 +261,26 @@ int QWindowsVistaStylePrivate::fixedPixelMetric(QStyle::PixelMetric pm)
     return QWindowsVistaStylePrivate::InvalidMetric;
 }
 
-bool QWindowsVistaStylePrivate::initVistaTreeViewTheming()
+bool QWindowsVistaStylePrivate::initVistaTreeViewTheming(const QScreen *screen)
 {
-    if (m_vistaTreeViewHelper)
+    if (m_vistaTreeViewHelpers.contains(screen))
         return true;
-
-    m_vistaTreeViewHelper = createTreeViewHelperWindow();
-    if (!m_vistaTreeViewHelper) {
-        qWarning("Unable to create the treeview helper window.");
-        return false;
-    }
-    if (FAILED(SetWindowTheme(m_vistaTreeViewHelper, L"explorer", nullptr))) {
+    HWND helper = createTreeViewHelperWindow(screen);
+    if (FAILED(SetWindowTheme(helper, L"explorer", nullptr)))
+    {
         qErrnoWarning("SetWindowTheme() failed.");
         cleanupVistaTreeViewTheming();
         return false;
     }
+    m_vistaTreeViewHelpers.insert(screen, helper);
     return true;
 }
 
 void QWindowsVistaStylePrivate::cleanupVistaTreeViewTheming()
 {
-    if (m_vistaTreeViewHelper) {
-        DestroyWindow(m_vistaTreeViewHelper);
-        m_vistaTreeViewHelper = nullptr;
-    }
+    for (auto it = m_vistaTreeViewHelpers.begin(); it != m_vistaTreeViewHelpers.end(); ++it)
+        DestroyWindow(it.value());
+    m_vistaTreeViewHelpers.clear();
 }
 
 /* \internal
@@ -294,10 +294,12 @@ void QWindowsVistaStylePrivate::cleanupHandleMap()
     QWindowsVistaStylePrivate::cleanupVistaTreeViewTheming();
 }
 
-HTHEME QWindowsVistaStylePrivate::createTheme(int theme, HWND hwnd)
+HTHEME QWindowsVistaStylePrivate::createTheme(int theme, const QWidget *widget)
 {
-    if (theme == VistaTreeViewTheme && QWindowsVistaStylePrivate::initVistaTreeViewTheming())
-        hwnd = QWindowsVistaStylePrivate::m_vistaTreeViewHelper;
+    const QScreen *screen = widget ? widget->screen() : qApp->primaryScreen();
+    HWND hwnd = QWindowsVistaStylePrivate::winId(widget);
+    if (theme == VistaTreeViewTheme && QWindowsVistaStylePrivate::initVistaTreeViewTheming(screen))
+        hwnd = QWindowsVistaStylePrivate::m_vistaTreeViewHelpers.value(screen);
     return QWindowsThemeCache::createTheme(theme, hwnd);
 }
 
@@ -748,7 +750,7 @@ bool QWindowsVistaStylePrivate::drawBackgroundThruNativeBuffer(QWindowsThemeData
     bool partIsTransparent;
     bool potentialInvalidAlpha;
 
-    QString pixmapCacheKey = QStringLiteral("$qt_xp_");
+    QString pixmapCacheKey = QStringLiteral(u"$qt_xp_");
     pixmapCacheKey.append(themeName(themeData.theme));
     pixmapCacheKey.append(QLatin1Char('p'));
     pixmapCacheKey.append(QString::number(partId));
@@ -2105,7 +2107,7 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
 
             if (hover || selected) {
                 if (sectionSize.width() > 0 && sectionSize.height() > 0) {
-                    QString key = QString::fromLatin1("qvdelegate-%1-%2-%3-%4-%5").arg(sectionSize.width())
+                    QString key = QStringLiteral(u"qvdelegate-%1-%2-%3-%4-%5").arg(sectionSize.width())
                             .arg(sectionSize.height()).arg(selected).arg(active).arg(hover);
                     if (!QPixmapCache::find(key, &pixmap)) {
                         pixmap = QPixmap(sectionSize);
@@ -2690,7 +2692,7 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
                                                       option->rect, animRect);
                         pixmapSize.setWidth(animRect.width());
                     }
-                    QString name = QString::fromLatin1("qiprogress-%1-%2").arg(pixmapSize.width()).arg(pixmapSize.height());
+                    QString name = QStringLiteral(u"qiprogress-%1-%2").arg(pixmapSize.width()).arg(pixmapSize.height());
                     QPixmap pixmap;
                     if (!QPixmapCache::find(name, &pixmap)) {
                         QImage image(pixmapSize, QImage::Format_ARGB32);
@@ -2833,6 +2835,11 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption 
                 checkcol = qMax(menuitem->maxIconWidth, qRound(gutterWidth + size.width() + margins.left() + margins.right()));
             }
             QRect rect = option->rect;
+
+            //fill popup background
+            QWindowsThemeData popupbackgroundTheme(widget, painter, QWindowsVistaStylePrivate::MenuTheme,
+                             MENU_POPUPBACKGROUND, stateId, option->rect);
+            d->drawBackground(popupbackgroundTheme);
 
             //draw vertical menu line
             if (option->direction == Qt::LeftToRight)
@@ -4755,7 +4762,7 @@ void QWindowsVistaStyle::polish(QPalette &pal)
 {
     Q_D(QWindowsVistaStyle);
 
-    if (QGuiApplicationPrivate::colorScheme() == Qt::ColorScheme::Dark) {
+    if (QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark) {
         // System runs in dark mode, but the Vista style cannot use a dark palette.
         // Overwrite with the light system palette.
         using QWindowsApplication = QNativeInterface::Private::QWindowsApplication;
@@ -4775,6 +4782,9 @@ void QWindowsVistaStyle::polish(QPalette &pal)
         d->groupBoxTextColor = qRgb(GetRValue(cref), GetGValue(cref), GetBValue(cref));
         GetThemeColor(theme.handle(), BP_GROUPBOX, GBS_DISABLED, TMT_TEXTCOLOR, &cref);
         d->groupBoxTextColorDisabled = qRgb(GetRValue(cref), GetGValue(cref), GetBValue(cref));
+        //Work around Windows API returning the same color for enabled and disabled group boxes
+        if (d->groupBoxTextColor == d->groupBoxTextColorDisabled)
+             d->groupBoxTextColorDisabled = pal.color(QPalette::Disabled, QPalette::ButtonText).rgb();
         // Where does this color come from?
         //GetThemeColor(theme.handle(), TKP_TICS, TSS_NORMAL, TMT_COLOR, &cref);
         d->sliderTickColor = qRgb(165, 162, 148);
@@ -4792,7 +4802,7 @@ void QWindowsVistaStyle::polish(QApplication *app)
 {
     // Override windows theme palettes to light
     if (qApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark) {
-        static const char* themedWidgets[] = {
+        static constexpr const char* themedWidgets[] = {
             "QToolButton",
             "QAbstractButton",
             "QCheckBox",

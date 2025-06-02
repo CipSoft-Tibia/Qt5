@@ -20,6 +20,7 @@ namespace
 constexpr char kXfbBindingsMarker[]     = "@@XFB-Bindings@@";
 constexpr char kXfbOutMarker[]          = "ANGLE_@@XFB-OUT@@";
 constexpr char kUserDefinedNamePrefix[] = "_u";  // Defined in GLSLANG/ShaderLang.h
+constexpr char kAttribBindingsMarker[]  = "@@Attrib-Bindings@@\n";
 
 template <size_t N>
 constexpr size_t ConstStrLen(const char (&)[N])
@@ -158,10 +159,81 @@ void GetAssignedSamplerBindings(const sh::TranslatorMetalReflection *reflection,
     }
 }
 
-std::string updateShaderAttributes(std::string shaderSourceIn, const gl::ProgramState &programState)
+std::string UpdateAliasedShaderAttributes(std::string shaderSourceIn,
+                                          const gl::ProgramExecutable &executable)
+{
+    // Cache max number of components for each attribute location
+    std::array<uint8_t, gl::MAX_VERTEX_ATTRIBS> maxComponents{};
+    for (auto &attribute : executable.getProgramInputs())
+    {
+        const int location       = attribute.getLocation();
+        const int registers      = gl::VariableRegisterCount(attribute.getType());
+        const uint8_t components = gl::VariableColumnCount(attribute.getType());
+        for (int i = 0; i < registers; ++i)
+        {
+            ASSERT(location + i < static_cast<int>(maxComponents.size()));
+            maxComponents[location + i] = std::max(maxComponents[location + i], components);
+        }
+    }
+
+    // Define aliased names pointing to real attributes with swizzles as needed
+    std::ostringstream stream;
+    for (auto &attribute : executable.getProgramInputs())
+    {
+        const int location       = attribute.getLocation();
+        const int registers      = gl::VariableRegisterCount(attribute.getType());
+        const uint8_t components = gl::VariableColumnCount(attribute.getType());
+        for (int i = 0; i < registers; i++)
+        {
+            stream << "#define ANGLE_ALIASED_" << attribute.name;
+            if (registers > 1)
+            {
+                stream << "_" << i;
+            }
+            stream << " ANGLE_modified.ANGLE_ATTRIBUTE_" << (location + i);
+            if (components != maxComponents[location + i])
+            {
+                ASSERT(components < maxComponents[location + i]);
+                switch (components)
+                {
+                    case 1:
+                        stream << ".x";
+                        break;
+                    case 2:
+                        stream << ".xy";
+                        break;
+                    case 3:
+                        stream << ".xyz";
+                        break;
+                }
+            }
+            stream << "\n";
+        }
+    }
+
+    // Declare actual MSL attributes
+    for (size_t i : executable.getActiveAttribLocationsMask())
+    {
+        stream << "  float";
+        if (maxComponents[i] > 1)
+        {
+            stream << static_cast<int>(maxComponents[i]);
+        }
+        stream << " ANGLE_ATTRIBUTE_" << i << "[[attribute(" << i << ")]];\n";
+    }
+
+    std::string outputSource = shaderSourceIn;
+    size_t markerFound       = outputSource.find(kAttribBindingsMarker);
+    ASSERT(markerFound != std::string::npos);
+    outputSource.replace(markerFound, strlen(kAttribBindingsMarker), stream.str());
+    return outputSource;
+}
+
+std::string updateShaderAttributes(std::string shaderSourceIn,
+                                   const gl::ProgramExecutable &executable)
 {
     // Build string to attrib map.
-    const auto &programAttributes = programState.getProgramInputs();
+    const auto &programAttributes = executable.getProgramInputs();
     std::ostringstream stream;
     std::unordered_map<std::string, uint32_t> attributeBindings;
     for (auto &attribute : programAttributes)
@@ -204,12 +276,12 @@ std::string updateShaderAttributes(std::string shaderSourceIn, const gl::Program
 }
 
 std::string UpdateFragmentShaderOutputs(std::string shaderSourceIn,
-                                        const gl::ProgramState &programState,
+                                        const gl::ProgramExecutable &executable,
                                         bool defineAlpha0)
 {
     std::ostringstream stream;
     std::string outputSource    = shaderSourceIn;
-    const auto &outputVariables = programState.getOutputVariables();
+    const auto &outputVariables = executable.getOutputVariables();
 
     // For alpha-to-coverage emulation, a reference to the alpha channel
     // of color output 0 is needed. For ESSL 1.00, it is gl_FragColor or
@@ -224,10 +296,10 @@ std::string UpdateFragmentShaderOutputs(std::string shaderSourceIn,
                 continue;
             }
 
-            const sh::ShaderVariable &outputVar = outputVariables[outputLocation.index];
+            const gl::ProgramOutput &outputVar = outputVariables[outputLocation.index];
 
-            ASSERT(outputVar.location >= 0);
-            int elementLocation = outputVar.location;
+            ASSERT(outputVar.pod.location >= 0);
+            int elementLocation = outputVar.pod.location;
 
             stream.str("");
             stream << outputVar.mappedName;
@@ -252,7 +324,7 @@ std::string UpdateFragmentShaderOutputs(std::string shaderSourceIn,
             }
 
             if (defineAlpha0 && elementLocation == 0 && !secondary &&
-                outputVar.type == GL_FLOAT_VEC4)
+                outputVar.pod.type == GL_FLOAT_VEC4)
             {
                 ASSERT(alphaOutputName.empty());
                 std::ostringstream nameStream;
@@ -266,8 +338,8 @@ std::string UpdateFragmentShaderOutputs(std::string shaderSourceIn,
             }
         }
     };
-    assignLocations(programState.getOutputLocations(), false);
-    assignLocations(programState.getSecondaryOutputLocations(), true);
+    assignLocations(executable.getOutputLocations(), false);
+    assignLocations(executable.getSecondaryOutputLocations(), true);
 
     if (defineAlpha0)
     {
@@ -360,16 +432,12 @@ std::string GenerateTransformFeedbackVaryingOutput(const gl::TransformFeedbackVa
             for (int row = 0; row < info.rowCount; ++row)
             {
                 result << "        ";
-                result << "ANGLE_"
-                       << "xfbBuffer" << bufferIndex << "["
-                       << "ANGLE_" << std::string(sh::kUniformsVar) << ".ANGLE_xfbBufferOffsets["
-                       << bufferIndex
+                result << "ANGLE_" << "xfbBuffer" << bufferIndex << "[" << "ANGLE_"
+                       << std::string(sh::kUniformsVar) << ".ANGLE_xfbBufferOffsets[" << bufferIndex
                        << "] + (gl_VertexID + (ANGLE_instanceIdMod - ANGLE_baseInstance) * "
                        << "ANGLE_" << std::string(sh::kUniformsVar)
-                       << ".ANGLE_xfbVerticesPerInstance) * " << stride << " + " << offset << "] = "
-                       << "as_type<float>"
-                       << "("
-                       << "ANGLE_vertexOut.";
+                       << ".ANGLE_xfbVerticesPerInstance) * " << stride << " + " << offset
+                       << "] = " << "as_type<float>" << "(" << "ANGLE_vertexOut.";
                 if (!varying.isBuiltIn())
                 {
                     result << kUserDefinedNamePrefix;
@@ -401,15 +469,15 @@ std::string GenerateTransformFeedbackVaryingOutput(const gl::TransformFeedbackVa
 }
 
 void GenerateTransformFeedbackEmulationOutputs(
-    const gl::ProgramState &programState,
+    const gl::ProgramExecutable &executable,
     std::string *vertexShader,
     std::array<uint32_t, kMaxShaderXFBs> *xfbBindingRemapOut)
 {
     const std::vector<gl::TransformFeedbackVarying> &varyings =
-        programState.getLinkedTransformFeedbackVaryings();
-    const std::vector<GLsizei> &bufferStrides = programState.getTransformFeedbackStrides();
+        executable.getLinkedTransformFeedbackVaryings();
+    const std::vector<GLsizei> &bufferStrides = executable.getTransformFeedbackStrides();
     const bool isInterleaved =
-        programState.getTransformFeedbackBufferMode() == GL_INTERLEAVED_ATTRIBS;
+        executable.getTransformFeedbackBufferMode() == GL_INTERLEAVED_ATTRIBS;
     const size_t bufferCount = isInterleaved ? 1 : varyings.size();
 
     std::vector<std::string> xfbIndices(bufferCount);
@@ -456,16 +524,15 @@ void GenerateTransformFeedbackEmulationOutputs(
 }
 
 angle::Result MTLGetMSL(Context *context,
-                        const gl::ProgramState &programState,
+                        const gl::ProgramExecutable &executable,
                         const gl::Caps &glCaps,
                         const gl::ShaderMap<std::string> &shaderSources,
                         const gl::ShaderMap<SharedCompiledShaderStateMtl> &shadersState,
-                        gl::ShaderMap<TranslatedShaderInfo> *mslShaderInfoOut,
-                        size_t xfbBufferCount)
+                        gl::ShaderMap<TranslatedShaderInfo> *mslShaderInfoOut)
 {
     // Retrieve original uniform buffer bindings generated by front end. We will need to do a remap.
     std::unordered_map<std::string, uint32_t> uboOriginalBindings;
-    const std::vector<gl::InterfaceBlock> &blocks = programState.getUniformBlocks();
+    const std::vector<gl::InterfaceBlock> &blocks = executable.getUniformBlocks();
     for (uint32_t bufferIdx = 0; bufferIdx < blocks.size(); ++bufferIdx)
     {
         const gl::InterfaceBlock &block = blocks[bufferIdx];
@@ -476,15 +543,15 @@ angle::Result MTLGetMSL(Context *context,
     }
     // Retrieve original sampler bindings produced by front end.
     OriginalSamplerBindingMap originalSamplerBindings;
-    const std::vector<gl::SamplerBinding> &samplerBindings = programState.getSamplerBindings();
+    const std::vector<gl::SamplerBinding> &samplerBindings = executable.getSamplerBindings();
     std::unordered_set<std::string> structSamplers         = {};
 
     for (uint32_t textureIndex = 0; textureIndex < samplerBindings.size(); ++textureIndex)
     {
         const gl::SamplerBinding &samplerBinding = samplerBindings[textureIndex];
-        uint32_t uniformIndex          = programState.getUniformIndexFromSamplerIndex(textureIndex);
-        const std::string &uniformName = programState.getUniformNames()[uniformIndex];
-        const std::string &uniformMappedName = programState.getUniformMappedNames()[uniformIndex];
+        uint32_t uniformIndex          = executable.getUniformIndexFromSamplerIndex(textureIndex);
+        const std::string &uniformName = executable.getUniformNames()[uniformIndex];
+        const std::string &uniformMappedName = executable.getUniformMappedNames()[uniformIndex];
         bool isSamplerInStruct               = uniformName.find('.') != std::string::npos;
         std::string mappedSamplerName        = isSamplerInStruct
                                                    ? MSLGetMappedSamplerName(uniformName)
@@ -500,18 +567,21 @@ angle::Result MTLGetMSL(Context *context,
         std::string source;
         if (type == gl::ShaderType::Vertex)
         {
-            source = updateShaderAttributes(shaderSources[type], programState);
+            source =
+                shadersState[gl::ShaderType::Vertex]->translatorMetalReflection.hasAttributeAliasing
+                    ? UpdateAliasedShaderAttributes(shaderSources[type], executable)
+                    : updateShaderAttributes(shaderSources[type], executable);
             // Write transform feedback output code.
             if (!source.empty())
             {
-                if (programState.getLinkedTransformFeedbackVaryings().empty())
+                if (executable.getLinkedTransformFeedbackVaryings().empty())
                 {
                     source = SubstituteTransformFeedbackMarkers(source, "", "");
                 }
                 else
                 {
                     GenerateTransformFeedbackEmulationOutputs(
-                        programState, &source, &(*mslShaderInfoOut)[type].actualXFBBindings);
+                        executable, &source, &(*mslShaderInfoOut)[type].actualXFBBindings);
                 }
             }
         }
@@ -521,7 +591,7 @@ angle::Result MTLGetMSL(Context *context,
             bool defineAlpha0 =
                 context->getDisplay()->getFeatures().emulateAlphaToCoverage.enabled ||
                 context->getDisplay()->getFeatures().generateShareableShaders.enabled;
-            source = UpdateFragmentShaderOutputs(shaderSources[type], programState, defineAlpha0);
+            source = UpdateFragmentShaderOutputs(shaderSources[type], executable, defineAlpha0);
         }
         (*mslShaderInfoOut)[type].metalShaderSource =
             std::make_shared<const std::string>(std::move(source));

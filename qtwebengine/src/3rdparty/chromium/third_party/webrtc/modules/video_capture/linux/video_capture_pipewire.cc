@@ -126,6 +126,7 @@ int32_t VideoCaptureModulePipeWire::StartCapture(
   RTC_LOG(LS_VERBOSE) << "Creating new PipeWire stream for node " << node_id_;
 
   PipeWireThreadLoopLock thread_loop_lock(session_->pw_main_loop_);
+  RTC_CHECK_RUNS_SERIALIZED(&pipewire_checker_);
   pw_properties* reuse_props =
       pw_properties_new_string("pipewire.client.reuse=1");
   stream_ = pw_stream_new(session_->pw_core_, "camera-stream", reuse_props);
@@ -178,6 +179,7 @@ int32_t VideoCaptureModulePipeWire::StopCapture() {
   RTC_DCHECK_RUN_ON(&api_checker_);
 
   PipeWireThreadLoopLock thread_loop_lock(session_->pw_main_loop_);
+  RTC_CHECK_RUNS_SERIALIZED(&pipewire_checker_);
   if (stream_) {
     pw_stream_destroy(stream_);
     stream_ = nullptr;
@@ -210,14 +212,14 @@ void VideoCaptureModulePipeWire::OnStreamParamChanged(
   VideoCaptureModulePipeWire* that =
       static_cast<VideoCaptureModulePipeWire*>(data);
   RTC_DCHECK(that);
-  RTC_CHECK_RUNS_SERIALIZED(&that->capture_checker_);
+  RTC_CHECK_RUNS_SERIALIZED(&that->pipewire_checker_);
 
   if (format && id == SPA_PARAM_Format)
     that->OnFormatChanged(format);
 }
 
 void VideoCaptureModulePipeWire::OnFormatChanged(const struct spa_pod* format) {
-  RTC_CHECK_RUNS_SERIALIZED(&capture_checker_);
+  RTC_CHECK_RUNS_SERIALIZED(&pipewire_checker_);
 
   uint32_t media_type, media_subtype;
 
@@ -301,6 +303,10 @@ void VideoCaptureModulePipeWire::OnFormatChanged(const struct spa_pod* format) {
       &builder, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta, SPA_PARAM_META_type,
       SPA_POD_Id(SPA_META_Header), SPA_PARAM_META_size,
       SPA_POD_Int(sizeof(struct spa_meta_header)))));
+  params.push_back(reinterpret_cast<spa_pod*>(spa_pod_builder_add_object(
+      &builder, SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta, SPA_PARAM_META_type,
+      SPA_POD_Id(SPA_META_VideoTransform), SPA_PARAM_META_size,
+      SPA_POD_Int(sizeof(struct spa_meta_videotransform)))));
   pw_stream_update_params(stream_, params.data(), params.size());
 }
 
@@ -341,13 +347,37 @@ void VideoCaptureModulePipeWire::OnStreamProcess(void* data) {
   that->ProcessBuffers();
 }
 
+static VideoRotation VideorotationFromPipeWireTransform(uint32_t transform) {
+  switch (transform) {
+    case SPA_META_TRANSFORMATION_90:
+      return kVideoRotation_90;
+    case SPA_META_TRANSFORMATION_180:
+      return kVideoRotation_180;
+    case SPA_META_TRANSFORMATION_270:
+      return kVideoRotation_270;
+    default:
+      return kVideoRotation_0;
+  }
+}
+
 void VideoCaptureModulePipeWire::ProcessBuffers() {
-  RTC_CHECK_RUNS_SERIALIZED(&capture_checker_);
+  RTC_CHECK_RUNS_SERIALIZED(&pipewire_checker_);
 
   while (pw_buffer* buffer = pw_stream_dequeue_buffer(stream_)) {
     struct spa_meta_header* h;
     h = static_cast<struct spa_meta_header*>(
         spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header, sizeof(*h)));
+
+    struct spa_meta_videotransform* videotransform;
+    videotransform =
+        static_cast<struct spa_meta_videotransform*>(spa_buffer_find_meta_data(
+            buffer->buffer, SPA_META_VideoTransform, sizeof(*videotransform)));
+    if (videotransform) {
+      VideoRotation rotation =
+          VideorotationFromPipeWireTransform(videotransform->transform);
+      SetCaptureRotation(rotation);
+      SetApplyRotation(rotation != kVideoRotation_0);
+    }
 
     if (h->flags & SPA_META_HEADER_FLAG_CORRUPTED) {
       RTC_LOG(LS_INFO) << "Dropping corruped frame.";

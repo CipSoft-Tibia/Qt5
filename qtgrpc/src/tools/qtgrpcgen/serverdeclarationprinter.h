@@ -7,7 +7,6 @@
 
 #include "descriptorprinterbase.h"
 #include "grpctemplates.h"
-#include <string>
 
 namespace google::protobuf {
 class ServiceDescriptor;

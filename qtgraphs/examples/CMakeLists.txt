@@ -11,4 +11,8 @@ if(QT_FEATURE_graphs_2d)
     add_subdirectory(graphs/2d)
 endif()
 
+if(QT_FEATURE_graphs_2d AND QT_FEATURE_graphs_3d AND TARGET Qt6::PrintSupport)
+    add_subdirectory(graphs/graphprinting)
+endif()
+
 qt_examples_build_end()

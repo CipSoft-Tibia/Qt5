@@ -37,6 +37,8 @@ information about the concepts that are central to \c QtQuick.
     one or more simple graphical effects to Qt Quick items.
     \li \l{Qt Quick Shapes QML Types}{Shapes} - provides types for rendering vector shapes in
     a Qt Quick scene.
+    \li \l{Qt Quick Vector Image QML Types}{Vector Image} - provides types for displaying vector
+    image files.
     \endlist
 
 \target value-types
@@ -203,18 +205,20 @@ available when you import \c QtQuick.
     The following properties are also available:
 
     \list
-    \li \l enumeration \c font.weight
+    \li \l {QML Enumerations}{enumeration} \c font.weight
     \li \l bool \c font.overline
     \li \l bool \c font.strikeout
-    \li \l enumeration \c font.capitalization
+    \li \l {QML Enumerations}{enumeration} \c font.capitalization
     \li \l real \c font.letterSpacing
     \li \l real \c font.wordSpacing
     \li \l bool \c font.kerning
     \li \l bool \c font.preferShaping
-    \li \l enumeration \c font.hintingPreference
+    \li \l {QML Enumerations}{enumeration} \c font.hintingPreference
     \li \c object \l [QML] {QtQuick::Text::}{font.features}
     \li \l string \c font.styleName
     \li \c object \c [QML] {QtQuick::Text::}{font.variableAxes}
+    \li \l bool \c font.contextFontMerging
+    \li \l bool \c font.preferTypoLineMetrics
     \endlist
 
     Example:

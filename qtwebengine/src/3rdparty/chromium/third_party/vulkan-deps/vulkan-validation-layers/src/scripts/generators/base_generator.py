@@ -159,8 +159,9 @@ class BaseGenerator(OutputGenerator):
         for platform in self.registry.tree.findall('platforms/platform'):
             self.vk.platforms[platform.get('name')] = platform.get('protect')
 
-        for tag in self.registry.tree.findall('tags'):
-            self.vk.vendorTags.append(tag.get('name'))
+        for tags in self.registry.tree.findall('tags'):
+            for tag in tags.findall('tag'):
+                self.vk.vendorTags.append(tag.get('name'))
 
         # No way known to get this from the XML
         self.vk.queueBits[Queues.TRANSFER]       = 'VK_QUEUE_TRANSFER_BIT'
@@ -307,6 +308,13 @@ class BaseGenerator(OutputGenerator):
         # Turn handle parents into pointers to classess
         for handle in [x for x in self.vk.handles.values() if x.parent is not None]:
             handle.parent = self.vk.handles[handle.parent]
+        # search up parent chain to see if instance or device
+        for handle in [x for x in self.vk.handles.values()]:
+            next_parent = handle.parent
+            while (not handle.instance and not handle.device):
+                handle.instance = next_parent.name == 'VkInstance'
+                handle.device = next_parent.name == 'VkDevice'
+                next_parent = next_parent.parent
 
         maxSyncSupport.queues = Queues.ALL
         maxSyncSupport.stages = self.vk.bitmasks['VkPipelineStageFlagBits2'].flags
@@ -581,9 +589,12 @@ class BaseGenerator(OutputGenerator):
             if alias is not None:
                 return
             type = typeElem.get('objtypeenum')
-            parent = typeElem.get('parent') # will resolve later
-            instance = parent == 'VkInstance'
-            device = not instance
+
+            # will resolve these later, the VulkanObjectType doesn't list things in dependent order
+            parent = typeElem.get('parent')
+            instance = typeName == 'VkInstance'
+            device = typeName == 'VkDevice'
+
             dispatchable = typeElem.find('type').text == 'VK_DEFINE_HANDLE'
 
             self.vk.handles[typeName] = Handle(typeName, type, protect, parent, instance, device, dispatchable)

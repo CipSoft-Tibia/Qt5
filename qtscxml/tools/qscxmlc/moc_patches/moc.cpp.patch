@@ -1,5 +1,5 @@
---- .upstream/moc.cpp	2024-02-01 11:08:00.055494626 +0100
-+++ moc.cpp	2024-02-05 14:06:04.258179059 +0100
+--- .upstream/moc.cpp	2024-08-05 12:14:28.111250492 +0200
++++ moc.cpp	2024-08-05 16:00:04.711392552 +0200
 @@ -12,14 +12,15 @@
  #include <QtCore/qdir.h>
  #include <QtCore/qjsondocument.h>
@@ -19,7 +19,7 @@
  // only moc needs this function
  static QByteArray normalizeType(const QByteArray &ba)
  {
-@@ -1997,6 +1998,7 @@
+@@ -1999,6 +2000,7 @@
          }
      }
  }

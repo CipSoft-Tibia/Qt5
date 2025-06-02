@@ -337,8 +337,9 @@ void QBluetoothServiceDiscoveryAgent::stop()
         break;
     case QBluetoothServiceDiscoveryAgentPrivate::ServiceDiscovery:
         d->stopServiceDiscovery();
+        break;
     default:
-        ;
+        break;
     }
 
     d->discoveredDevices.clear();

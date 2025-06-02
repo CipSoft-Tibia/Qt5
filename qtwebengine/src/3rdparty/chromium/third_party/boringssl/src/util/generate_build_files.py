@@ -48,6 +48,8 @@ NON_PERL_FILES = {
     ('apple', 'x86_64'): [
         'src/third_party/fiat/asm/fiat_curve25519_adx_mul.S',
         'src/third_party/fiat/asm/fiat_curve25519_adx_square.S',
+        'src/third_party/fiat/asm/fiat_p256_adx_mul.S',
+        'src/third_party/fiat/asm/fiat_p256_adx_sqr.S',
     ],
     ('linux', 'arm'): [
         'src/crypto/curve25519/asm/x25519-asm-arm.S',
@@ -57,6 +59,8 @@ NON_PERL_FILES = {
         'src/crypto/hrss/asm/poly_rq_mul.S',
         'src/third_party/fiat/asm/fiat_curve25519_adx_mul.S',
         'src/third_party/fiat/asm/fiat_curve25519_adx_square.S',
+        'src/third_party/fiat/asm/fiat_p256_adx_mul.S',
+        'src/third_party/fiat/asm/fiat_p256_adx_sqr.S',
     ],
 }
 
@@ -263,6 +267,8 @@ class Bazel(object):
       self.PrintVariableSection(
           out, 'pki_internal_headers', files['pki_internal_headers'])
       self.PrintVariableSection(out, 'pki_sources', files['pki'])
+      self.PrintVariableSection(out, 'rust_bssl_sys', files['rust_bssl_sys'])
+      self.PrintVariableSection(out, 'rust_bssl_crypto', files['rust_bssl_crypto'])
       self.PrintVariableSection(out, 'tool_sources', files['tool'])
       self.PrintVariableSection(out, 'tool_headers', files['tool_headers'])
 
@@ -351,11 +357,16 @@ class GN(object):
                                 files['crypto_nasm'])
       self.PrintVariableSection(out, 'crypto_headers',
                                 files['crypto_headers'])
+      self.PrintVariableSection(out, 'rust_bssl_sys', files['rust_bssl_sys'])
+      self.PrintVariableSection(out, 'rust_bssl_crypto',
+                                files['rust_bssl_crypto'])
       self.PrintVariableSection(out, 'ssl_sources',
                                 files['ssl'] + files['ssl_internal_headers'])
       self.PrintVariableSection(out, 'ssl_headers', files['ssl_headers'])
       self.PrintVariableSection(out, 'pki_sources',
-                                files['pki'] + files['pki_internal_headers'])
+                                files['pki'])
+      self.PrintVariableSection(out, 'pki_internal_headers',
+                                files['pki_internal_headers'])
       self.PrintVariableSection(out, 'tool_sources',
                                 files['tool'] + files['tool_headers'])
 
@@ -417,7 +428,7 @@ class CMake(object):
     self.header = LicenseHeader("#") + R'''
 # This file is created by generate_build_files.py. Do not edit manually.
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.12)
 
 project(BoringSSL LANGUAGES C CXX)
 
@@ -620,6 +631,21 @@ def FindCFiles(directory, filter_func):
   return cfiles
 
 
+def FindRustFiles(directory):
+  """Recurses through directory and returns a list of paths to all the Rust source
+  files."""
+  rust_files = []
+
+  for (path, dirnames, filenames) in os.walk(directory):
+    for filename in filenames:
+      if not filename.endswith('.rs'):
+        continue
+      rust_files.append(os.path.join(path, filename))
+
+  rust_files.sort()
+  return rust_files
+
+
 def FindHeaderFiles(directory, filter_func):
   """Recurses through directory and returns a list of paths to all the header files that pass filter_func."""
   hfiles = []
@@ -759,6 +785,8 @@ def main(platforms):
   fips_fragments = FindCFiles(os.path.join('src', 'crypto', 'fipsmodule'), OnlyFIPSFragments)
   ssl_source_files = FindCFiles(os.path.join('src', 'ssl'), NoTests)
   tool_h_files = FindHeaderFiles(os.path.join('src', 'tool'), AllFiles)
+  bssl_sys_files = FindRustFiles(os.path.join('src', 'rust', 'bssl-sys', 'src'))
+  bssl_crypto_files = FindRustFiles(os.path.join('src', 'rust', 'bssl-crypto', 'src'))
 
   # BCM shared library C files
   bcm_crypto_c_files = [
@@ -839,6 +867,8 @@ def main(platforms):
       'pki_internal_headers': sorted(list(pki_internal_h_files)),
       'pki_test': PrefixWithSrc(cmake['PKI_TEST_SOURCES']),
       'pki_test_data': PrefixWithSrc(cmake['PKI_TEST_DATA']),
+      'rust_bssl_crypto': bssl_crypto_files,
+      'rust_bssl_sys': bssl_sys_files,
       'ssl': ssl_source_files,
       'ssl_headers': ssl_h_files,
       'ssl_internal_headers': ssl_internal_h_files,

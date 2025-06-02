@@ -12,10 +12,9 @@
 #include <QtTest/qtestassert.h>
 #include <QtTest/qtesteventloop.h>
 
-#include <QtCore/private/qnumeric_p.h>
-
 #include <climits>
 #include <cwchar>
+#include <QtCore/q26numeric.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -303,18 +302,18 @@ bool QTestResult::verify(bool statement, const char *statementStr,
 {
     QTEST_ASSERT(statementStr);
 
-    char msg[maxMsgLen];
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
     msg[0] = '\0';
 
     if (QTestLog::verboseLevel() >= 2) {
-        qsnprintf(msg, maxMsgLen, "QVERIFY(%s)", statementStr);
+        std::snprintf(msg, maxMsgLen, "QVERIFY(%s)", statementStr);
         QTestLog::info(msg, file, line);
     }
 
     if (statement == !!QTest::expectFailMode) {
-        qsnprintf(msg, maxMsgLen,
-                  statement ? "'%s' returned TRUE unexpectedly. (%s)" : "'%s' returned FALSE. (%s)",
-                  statementStr, description ? description : "");
+        std::snprintf(msg, maxMsgLen,
+                      statement ? "'%s' returned TRUE unexpectedly. (%s)" : "'%s' returned FALSE. (%s)",
+                      statementStr, description ? description : "");
     }
 
     return checkStatement(statement, msg, file, line);
@@ -338,10 +337,11 @@ static int approx_wide_len(const char *s)
     auto r = std::mbsrtowcs(nullptr, &s, INT_MAX, &state);
     if (r == size_t(-1)) // encoding error, fall back to strlen()
         r = strlen(s); // `s` was not advanced since `dst == nullptr`
-    return qt_saturate<int>(r);
+    return q26::saturate_cast<int>(r);
 }
 
 // Overload to format failures for "const char *" - no need to strdup().
+static Q_DECL_COLD_FUNCTION
 void formatFailMessage(char *msg, size_t maxMsgLen,
                        const char *failureMsg,
                        const char *val1, const char *val2,
@@ -350,20 +350,22 @@ void formatFailMessage(char *msg, size_t maxMsgLen,
 {
     const auto len1 = approx_wide_len(actual);
     const auto len2 = approx_wide_len(expected);
-    const int written = qsnprintf(msg, maxMsgLen, "%s\n", failureMsg);
+    const int written = std::snprintf(msg, maxMsgLen, "%s\n", failureMsg);
     msg += written;
     maxMsgLen -= written;
 
+    const auto protect = [](const char *s) { return s ? s : "<null>"; };
+
     if (val1 || val2) {
-        qsnprintf(msg, maxMsgLen, "   %s(%s)%*s %s\n   %s(%s)%*s %s",
-                    leftArgNameForOp(op), actual, qMax(len1, len2) - len1 + 1, ":",
-                    val1 ? val1 : "<null>",
-                    rightArgNameForOp(op), expected, qMax(len1, len2) - len2 + 1, ":",
-                    val2 ? val2 : "<null>");
+        std::snprintf(msg, maxMsgLen, "   %s(%s)%*s %s\n   %s(%s)%*s %s",
+                      leftArgNameForOp(op), actual, qMax(len1, len2) - len1 + 1, ":",
+                      protect(val1),
+                      rightArgNameForOp(op), expected, qMax(len1, len2) - len2 + 1, ":",
+                      protect(val2));
     } else {
         // only print variable names if neither value can be represented as a string
-        qsnprintf(msg, maxMsgLen, "   %s: %s\n   %s: %s",
-                    leftArgNameForOp(op), actual, rightArgNameForOp(op), expected);
+        std::snprintf(msg, maxMsgLen, "   %s: %s\n   %s: %s",
+                      leftArgNameForOp(op), actual, rightArgNameForOp(op), expected);
     }
 }
 
@@ -372,7 +374,7 @@ QTest::Internal::formatPropertyTestHelperFailure(char *msg, size_t maxMsgLen,
                                                  const char *actual, const char *expected,
                                                  const char *actualExpr, const char *expectedExpr)
 {
-    formatFailMessage(msg, maxMsgLen, "\nComparison failed!", // ### why leading \n?
+    formatFailMessage(msg, maxMsgLen, "Comparison failed!",
                       actual, expected, actualExpr, expectedExpr,
                       QTest::ComparisonOperation::CustomCompare);
     return msg;
@@ -380,6 +382,7 @@ QTest::Internal::formatPropertyTestHelperFailure(char *msg, size_t maxMsgLen,
 
 // Format failures using the toString() template
 template <class Actual, class Expected>
+static Q_DECL_COLD_FUNCTION
 void formatFailMessage(char *msg, size_t maxMsgLen,
                        const char *failureMsg,
                        const Actual &val1, const Expected &val2,
@@ -402,14 +405,14 @@ static bool compareHelper(bool success, const char *failureMsg,
                           const char *file, int line,
                           bool hasValues = true)
 {
-    char msg[maxMsgLen];
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
     msg[0] = '\0';
 
     QTEST_ASSERT(expected);
     QTEST_ASSERT(actual);
 
     if (QTestLog::verboseLevel() >= 2) {
-        qsnprintf(msg, maxMsgLen, "QCOMPARE(%s, %s)", actual, expected);
+        std::snprintf(msg, maxMsgLen, "QCOMPARE(%s, %s)", actual, expected);
         QTestLog::info(msg, file, line);
     }
 
@@ -418,15 +421,15 @@ static bool compareHelper(bool success, const char *failureMsg,
 
     if (success) {
         if (QTest::expectFailMode) {
-            qsnprintf(msg, maxMsgLen,
-                      "QCOMPARE(%s, %s) returned TRUE unexpectedly.", actual, expected);
+            std::snprintf(msg, maxMsgLen,
+                          "QCOMPARE(%s, %s) returned TRUE unexpectedly.", actual, expected);
         }
         return checkStatement(success, msg, file, line);
     }
 
 
     if (!hasValues) {
-        qsnprintf(msg, maxMsgLen, "%s", failureMsg);
+        std::snprintf(msg, maxMsgLen, "%s", failureMsg);
         return checkStatement(success, msg, file, line);
     }
 
@@ -444,7 +447,7 @@ static bool compareHelper(bool success, const char *failureMsg,
                           const char *file, int line)
 {
     const size_t maxMsgLen = 1024;
-    char msg[maxMsgLen];
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
     msg[0] = '\0';
 
     QTEST_ASSERT(expected);
@@ -453,14 +456,14 @@ static bool compareHelper(bool success, const char *failureMsg,
     QTEST_ASSERT(success || failureMsg);
 
     if (QTestLog::verboseLevel() >= 2) {
-        qsnprintf(msg, maxMsgLen, "QCOMPARE(%s, %s)", actual, expected);
+        std::snprintf(msg, maxMsgLen, "QCOMPARE(%s, %s)", actual, expected);
         QTestLog::info(msg, file, line);
     }
 
     if (success) {
         if (QTest::expectFailMode) {
-            qsnprintf(msg, maxMsgLen, "QCOMPARE(%s, %s) returned TRUE unexpectedly.",
-                      actual, expected);
+            std::snprintf(msg, maxMsgLen, "QCOMPARE(%s, %s) returned TRUE unexpectedly.",
+                          actual, expected);
         }
         return checkStatement(success, msg, file, line);
     }
@@ -655,33 +658,34 @@ static const char *failureMessageForOp(QTest::ComparisonOperation op)
     Q_UNREACHABLE_RETURN("");
 }
 
-bool QTestResult::reportResult(bool success, qxp::function_ref<const char *()> lhs,
-                               qxp::function_ref<const char *()> rhs,
+bool QTestResult::reportResult(bool success, const void *lhs, const void *rhs,
+                               const char *(*lhsFormatter)(const void*),
+                               const char *(*rhsFormatter)(const void*),
                                const char *lhsExpr, const char *rhsExpr,
                                QTest::ComparisonOperation op, const char *file, int line,
                                const char *failureMessage)
 {
-    char msg[maxMsgLen];
+    Q_DECL_UNINITIALIZED char msg[maxMsgLen];
     msg[0] = '\0';
 
     QTEST_ASSERT(lhsExpr);
     QTEST_ASSERT(rhsExpr);
 
     if (QTestLog::verboseLevel() >= 2) {
-        qsnprintf(msg, maxMsgLen, "%s(%s, %s)", macroNameForOp(op), lhsExpr, rhsExpr);
+        std::snprintf(msg, maxMsgLen, "%s(%s, %s)", macroNameForOp(op), lhsExpr, rhsExpr);
         QTestLog::info(msg, file, line);
     }
 
     if (success) {
         if (QTest::expectFailMode) {
-            qsnprintf(msg, maxMsgLen, "%s(%s, %s) returned TRUE unexpectedly.",
-                      macroNameForOp(op), lhsExpr, rhsExpr);
+            std::snprintf(msg, maxMsgLen, "%s(%s, %s) returned TRUE unexpectedly.",
+                          macroNameForOp(op), lhsExpr, rhsExpr);
         }
         return checkStatement(success, msg, file, line);
     }
 
-    const std::unique_ptr<const char[]> lhsPtr{ lhs() };
-    const std::unique_ptr<const char[]> rhsPtr{ rhs() };
+    const std::unique_ptr<const char[]> lhsPtr{ lhsFormatter(lhs) };
+    const std::unique_ptr<const char[]> rhsPtr{ rhsFormatter(rhs) };
 
     if (!failureMessage)
         failureMessage = failureMessageForOp(op);

@@ -12,6 +12,7 @@
 #include "third_party/blink/renderer/core/editing/text_affinity.h"
 #include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/modules/accessibility/ax_object.h"
+#include "third_party/blink/renderer/modules/accessibility/ax_object_cache_impl.h"
 #include "third_party/blink/renderer/modules/accessibility/testing/accessibility_test.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 
@@ -206,11 +207,12 @@ TEST_F(AccessibilityTest, PositionBeforeLineBreak) {
 
 TEST_F(AccessibilityTest, PositionAfterLineBreak) {
   SetBodyInnerHTML(R"HTML(Hello<br id="br">there)HTML");
+  GetAXRootObject()->LoadInlineTextBoxes();
   const AXObject* ax_br = GetAXObjectByElementId("br");
   ASSERT_NE(nullptr, ax_br);
   ASSERT_EQ(ax::mojom::Role::kLineBreak, ax_br->RoleValue());
   const AXObject* ax_static_text =
-      GetAXRootObject()->DeepestLastChildIncludingIgnored();
+      GetAXRootObject()->DeepestLastChildIncludingIgnored()->ParentObject();
   ASSERT_NE(nullptr, ax_static_text);
   ASSERT_EQ(ax::mojom::Role::kStaticText, ax_static_text->RoleValue());
 
@@ -235,8 +237,7 @@ TEST_F(AccessibilityTest, FirstPositionInDivContainer) {
   const AXObject* ax_div = GetAXObjectByElementId("div");
   ASSERT_NE(nullptr, ax_div);
   ASSERT_EQ(ax::mojom::Role::kGenericContainer, ax_div->RoleValue());
-  const AXObject* ax_static_text =
-      GetAXRootObject()->DeepestFirstChildIncludingIgnored();
+  const AXObject* ax_static_text = ax_div->FirstChildIncludingIgnored();
   ASSERT_NE(nullptr, ax_static_text);
   ASSERT_EQ(ax::mojom::Role::kStaticText, ax_static_text->RoleValue());
 
@@ -481,11 +482,12 @@ TEST_F(AccessibilityTest, PositionBeforeLineBreakWithWhiteSpace) {
 
 TEST_F(AccessibilityTest, PositionAfterLineBreakWithWhiteSpace) {
   SetBodyInnerHTML(R"HTML(Hello     <br id="br">     there)HTML");
+  GetAXRootObject()->LoadInlineTextBoxes();
   const AXObject* ax_br = GetAXObjectByElementId("br");
   ASSERT_NE(nullptr, ax_br);
   ASSERT_EQ(ax::mojom::Role::kLineBreak, ax_br->RoleValue());
   const AXObject* ax_static_text =
-      GetAXRootObject()->DeepestLastChildIncludingIgnored();
+      GetAXRootObject()->DeepestLastChildIncludingIgnored()->ParentObject();
   ASSERT_NE(nullptr, ax_static_text);
   ASSERT_EQ(ax::mojom::Role::kStaticText, ax_static_text->RoleValue());
 
@@ -511,8 +513,7 @@ TEST_F(AccessibilityTest, FirstPositionInDivContainerWithWhiteSpace) {
   const AXObject* ax_div = GetAXObjectByElementId("div");
   ASSERT_NE(nullptr, ax_div);
   ASSERT_EQ(ax::mojom::Role::kGenericContainer, ax_div->RoleValue());
-  const AXObject* ax_static_text =
-      GetAXRootObject()->DeepestFirstChildIncludingIgnored();
+  const AXObject* ax_static_text = ax_div->FirstChildIncludingIgnored();
   ASSERT_NE(nullptr, ax_static_text);
   ASSERT_EQ(ax::mojom::Role::kStaticText, ax_static_text->RoleValue());
 
@@ -1956,7 +1957,7 @@ TEST_F(AccessibilityTest, PositionInInvalidMapLayout) {
 
   // Create an invalid layout by appending a child to the <br>
   br->appendChild(map);
-  GetDocument().UpdateStyleAndLayoutTree();
+  GetAXObjectCache().UpdateAXForAllDocuments();
 
   ax_map = GetAXObjectByElementId("map");
   ASSERT_EQ(nullptr, ax_map);

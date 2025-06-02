@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include <optional>
 #include "base/command_line.h"
 #include "base/containers/contains.h"
 #include "base/feature_list.h"
@@ -35,7 +36,6 @@
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/string_util_win.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/system/sys_info.h"
 #include "base/task/sequenced_task_runner.h"
@@ -63,7 +63,6 @@
 #include "sandbox/win/src/app_container.h"
 #include "sandbox/win/src/process_mitigations.h"
 #include "sandbox/win/src/sandbox.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 
 namespace sandbox {
 namespace policy {
@@ -124,6 +123,7 @@ const wchar_t* const kTroublesomeDlls[] = {
     L"npggNT.dll",                 // GameGuard (older).
     L"nphooks.dll",                // Neilsen//NetRatings NetSight.
     L"oawatch.dll",                // Online Armor.
+    L"opls64.dll",                 // PremierOpinion and Relevant-Knowledge.
     L"pastali32.dll",              // PastaLeads.
     L"pavhook.dll",                // Panda Internet Security.
     L"pavlsphook.dll",             // Panda Antivirus.
@@ -133,6 +133,8 @@ const wchar_t* const kTroublesomeDlls[] = {
     L"pctgmhk.dll",                // PC Tools Spyware Doctor.
     L"picrmi32.dll",               // PicRec.
     L"picrmi64.dll",               // PicRec.
+    L"pmls64.dll",                 // PremierOpinion and Relevant-Knowledge.
+    L"prls64.dll",                 // PremierOpinion and Relevant-Knowledge.
     L"prntrack.dll",               // Pharos Systems.
     L"prochook.dll",               // Unknown (GBill-Tools?) (crbug.com/974722).
     L"protector.dll",              // Unknown (suspected malware).
@@ -140,6 +142,8 @@ const wchar_t* const kTroublesomeDlls[] = {
     L"radprlib.dll",               // Radiant Naomi Internet Filter.
     L"rapportnikko.dll",           // Trustware Rapport.
     L"rlhook.dll",                 // Trustware Bufferzone.
+    L"rlls.dll",                   // PremierOpinion and Relevant-Knowledge.
+    L"rlls64.dll",                 // PremierOpinion and Relevant-Knowledge.
     L"rooksdol.dll",               // Trustware Rapport.
     L"rndlpepperbrowserrecordhelper.dll",  // RealPlayer.
     L"rpchromebrowserrecordhelper.dll",    // RealPlayer.
@@ -167,9 +171,8 @@ BASE_FEATURE(kEnableCsrssLockdownFeature,
              "EnableCsrssLockdown",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-#if !defined(NACL_WIN64)
 // Adds the policy rules to allow read-only access to the windows system fonts
-// directory, and any subdirectories.
+// directory, and any subdirectories. Used by PDF renderers.
 bool AddWindowsFontsDir(TargetConfig* config) {
   DCHECK(!config->IsConfigured());
   base::FilePath directory;
@@ -177,21 +180,19 @@ bool AddWindowsFontsDir(TargetConfig* config) {
     return false;
   }
 
-  ResultCode result =
-      config->AddRule(SubSystem::kFiles, Semantics::kFilesAllowReadonly,
-                      directory.value().c_str());
+  ResultCode result = config->AllowFileAccess(FileSemantics::kAllowReadonly,
+                                              directory.value().c_str());
   if (result != SBOX_ALL_OK)
     return false;
 
   std::wstring directory_str = directory.value() + L"\\*";
-  result = config->AddRule(SubSystem::kFiles, Semantics::kFilesAllowReadonly,
-                           directory_str.c_str());
+  result = config->AllowFileAccess(FileSemantics::kAllowReadonly,
+                                   directory_str.c_str());
   if (result != SBOX_ALL_OK)
     return false;
 
   return true;
 }
-#endif  // !defined(NACL_WIN64)
 
 // Return a mapping between the long and short names for all loaded modules in
 // the current process. The mapping excludes modules which don't have a typical
@@ -252,7 +253,8 @@ DWORD GetSessionId() {
 std::wstring PrependWindowsSessionPath(const wchar_t* object) {
   // Cache this because it can't change after process creation.
   static DWORD s_session_id = GetSessionId();
-  return base::StringPrintf(L"\\Sessions\\%lu%ls", s_session_id, object);
+  return base::StrCat(
+      {L"\\Sessions\\", base::NumberToWString(s_session_id), object});
 }
 
 // Adds the generic config rules to a sandbox TargetConfig.
@@ -266,9 +268,8 @@ ResultCode AddGenericConfig(sandbox::TargetConfig* config) {
     return SBOX_ERROR_GENERIC;
   base::FilePath pdb_path = exe.DirName().Append(L"*.pdb");
   {
-    ResultCode result =
-        config->AddRule(SubSystem::kFiles, Semantics::kFilesAllowReadonly,
-                        pdb_path.value().c_str());
+    ResultCode result = config->AllowFileAccess(FileSemantics::kAllowReadonly,
+                                                pdb_path.value().c_str());
     if (result != SBOX_ALL_OK) {
       return result;
     }
@@ -290,9 +291,8 @@ ResultCode AddGenericConfig(sandbox::TargetConfig* config) {
     base::FilePath sancov_path =
         base::FilePath(coverage_dir).Append(L"*.sancov");
     {
-      ResultCode result =
-          config->AddRule(SubSystem::kFiles, Semantics::kFilesAllowAny,
-                          sancov_path.value().c_str());
+      ResultCode result = config->AllowFileAccess(FileSemantics::kAllowAny,
+                                                  sancov_path.value().c_str());
       if (result != SBOX_ALL_OK) {
         return result;
       }
@@ -372,7 +372,7 @@ void CheckDuplicateHandle(HANDLE handle) {
   std::wstring_view type_name(type_info->TypeName.Buffer,
                               type_info->TypeName.Length / sizeof(wchar_t));
 
-  absl::optional<ACCESS_MASK> granted_access =
+  std::optional<ACCESS_MASK> granted_access =
       base::win::GetGrantedAccess(handle);
   CHECK(granted_access.has_value());
 
@@ -462,6 +462,9 @@ std::wstring GetAppContainerProfileName(const std::string& appcontainer_id,
     case Sandbox::kNetwork:
       sandbox_base_name = std::string("cr.sb.net");
       break;
+    case Sandbox::kOnDeviceModelExecution:
+      sandbox_base_name = std::string("cr.sb.odm");
+      break;
     case Sandbox::kWindowsSystemProxyResolver:
       sandbox_base_name = std::string("cr.sb.pxy");
       break;
@@ -495,6 +498,7 @@ ResultCode SetupAppContainerProfile(AppContainer* container,
       sandbox_type != Sandbox::kXrCompositing &&
       sandbox_type != Sandbox::kMediaFoundationCdm &&
       sandbox_type != Sandbox::kNetwork &&
+      sandbox_type != Sandbox::kOnDeviceModelExecution &&
       sandbox_type != Sandbox::kWindowsSystemProxyResolver) {
     return SBOX_ERROR_UNSUPPORTED;
   }
@@ -508,6 +512,8 @@ ResultCode SetupAppContainerProfile(AppContainer* container,
     AddCapabilitiesFromString(
         container,
         command_line.GetSwitchValueNative(switches::kAddGpuAppContainerCaps));
+    container->SetEnableLowPrivilegeAppContainer(
+        base::FeatureList::IsEnabled(features::kGpuLPAC));
   }
 
   if (sandbox_type == Sandbox::kXrCompositing) {
@@ -515,6 +521,7 @@ ResultCode SetupAppContainerProfile(AppContainer* container,
     container->AddCapability(kLpacPnpNotifications);
     AddCapabilitiesFromString(container, command_line.GetSwitchValueNative(
                                              switches::kAddXrAppContainerCaps));
+    // Note: does not use LPAC.
   }
 
   if (sandbox_type == Sandbox::kMediaFoundationCdm) {
@@ -535,6 +542,7 @@ ResultCode SetupAppContainerProfile(AppContainer* container,
     container->AddCapability(kLpacEnterprisePolicyChangeNotifications);
     container->AddCapability(kMediaFoundationCdmFiles);
     container->AddCapability(kMediaFoundationCdmData);
+    container->SetEnableLowPrivilegeAppContainer(true);
   }
 
   if (sandbox_type == Sandbox::kNetwork) {
@@ -549,18 +557,16 @@ ResultCode SetupAppContainerProfile(AppContainer* container,
         features::kWinSboxNetworkServiceSandboxIsLPAC));
   }
 
+  if (sandbox_type == Sandbox::kOnDeviceModelExecution) {
+    container->AddImpersonationCapability(kChromeInstallFiles);
+    container->AddCapability(kLpacPnpNotifications);
+    container->SetEnableLowPrivilegeAppContainer(true);
+  }
+
   if (sandbox_type == Sandbox::kWindowsSystemProxyResolver) {
     container->AddCapability(base::win::WellKnownCapability::kInternetClient);
     container->AddCapability(kLpacServicesManagement);
     container->AddCapability(kLpacEnterprisePolicyChangeNotifications);
-  }
-
-  // Enable LPAC for the following processes. Notably not for the kXrCompositing
-  // service.
-  if ((sandbox_type == Sandbox::kGpu &&
-       base::FeatureList::IsEnabled(features::kGpuLPAC)) ||
-      sandbox_type == Sandbox::kMediaFoundationCdm ||
-      sandbox_type == Sandbox::kWindowsSystemProxyResolver) {
     container->SetEnableLowPrivilegeAppContainer(true);
   }
 
@@ -585,6 +591,10 @@ ResultCode GenerateConfigForSandboxedProcess(const base::CommandLine& cmd_line,
   // disabled for processes we know are not compatible.
   if (!delegate->CetCompatible())
     mitigations |= MITIGATION_CET_DISABLED;
+
+  if (base::FeatureList::IsEnabled(features::kWinSboxFsctlLockdown)) {
+    mitigations |= MITIGATION_FSCTL_DISABLED;
+  }
 
   ResultCode result = config->SetProcessMitigations(mitigations);
   if (result != SBOX_ALL_OK)
@@ -643,11 +653,9 @@ ResultCode GenerateConfigForSandboxedProcess(const base::CommandLine& cmd_line,
     config->AddRestrictingRandomSid();
   }
 
-#if !defined(NACL_WIN64)
   if (delegate->AllowWindowsFontsDir()) {
     AddWindowsFontsDir(config);
   }
-#endif
 
   result = AddGenericConfig(config);
   if (result != SBOX_ALL_OK) {
@@ -672,8 +680,8 @@ ResultCode GenerateConfigForSandboxedProcess(const base::CommandLine& cmd_line,
     if (logging::IsLoggingToFileEnabled()) {
       auto log_path = logging::GetLogFileFullPath();
       DCHECK(base::FilePath(log_path).IsAbsolute());
-      result = config->AddRule(SubSystem::kFiles, Semantics::kFilesAllowAny,
-                               log_path.c_str());
+      result =
+          config->AllowFileAccess(FileSemantics::kAllowAny, log_path.c_str());
       if (result != SBOX_ALL_OK) {
         return result;
       }
@@ -778,15 +786,13 @@ ResultCode SandboxWin::SetJobLevel(Sandbox sandbox_type,
   if (ret != SBOX_ALL_OK)
     return ret;
 
-  absl::optional<size_t> memory_limit = GetJobMemoryLimit(sandbox_type);
+  std::optional<size_t> memory_limit = GetJobMemoryLimit(sandbox_type);
   if (memory_limit) {
     config->SetJobMemoryLimit(*memory_limit);
   }
   return SBOX_ALL_OK;
 }
 
-// TODO(jschuh): Need get these restrictions applied to NaCl and Pepper.
-// Just have to figure out what needs to be warmed up first.
 // static
 ResultCode SandboxWin::AddBaseHandleClosePolicy(TargetConfig* config) {
   DCHECK(!config->IsConfigured());
@@ -822,7 +828,6 @@ ResultCode SandboxWin::AddAppContainerPolicy(TargetConfig* config,
 // static
 ResultCode SandboxWin::AddWin32kLockdownPolicy(TargetConfig* config) {
   DCHECK(!config->IsConfigured());
-#if !defined(NACL_WIN64)
   MitigationFlags flags = config->GetProcessMitigations();
   // Check not enabling twice. Should not happen.
   DCHECK_EQ(0U, flags & MITIGATION_WIN32K_DISABLE);
@@ -832,11 +837,7 @@ ResultCode SandboxWin::AddWin32kLockdownPolicy(TargetConfig* config) {
   if (result != SBOX_ALL_OK)
     return result;
 
-  return config->AddRule(SubSystem::kWin32kLockdown, Semantics::kFakeGdiInit,
-                         nullptr);
-#else  // !defined(NACL_WIN64)
-  return SBOX_ALL_OK;
-#endif
+  return config->SetFakeGdiInit();
 }
 
 // static
@@ -892,6 +893,10 @@ bool SandboxWin::IsAppContainerEnabledForSandbox(
     return base::FeatureList::IsEnabled(features::kGpuAppContainer);
 
   if (sandbox_type == Sandbox::kNetwork) {
+    return true;
+  }
+
+  if (sandbox_type == Sandbox::kOnDeviceModelExecution) {
     return true;
   }
 
@@ -1082,6 +1087,8 @@ std::string SandboxWin::GetSandboxTypeInEnglish(Sandbox sandbox_type) {
 #endif
     case Sandbox::kNetwork:
       return "Network";
+    case Sandbox::kOnDeviceModelExecution:
+      return "On-Device Model Execution";
     case Sandbox::kCdm:
       return "CDM";
     case Sandbox::kPrintCompositor:
@@ -1115,7 +1122,7 @@ std::string SandboxWin::GetSandboxTypeInEnglish(Sandbox sandbox_type) {
 
 // static
 std::string SandboxWin::GetSandboxTagForDelegate(
-    base::StringPiece prefix,
+    std::string_view prefix,
     sandbox::mojom::Sandbox sandbox_type) {
   // sandbox.mojom.Sandbox has an operator << we can use for non-human values.
   std::ostringstream stream;
@@ -1124,7 +1131,7 @@ std::string SandboxWin::GetSandboxTagForDelegate(
 }
 
 // static
-absl::optional<size_t> SandboxWin::GetJobMemoryLimit(Sandbox sandbox_type) {
+std::optional<size_t> SandboxWin::GetJobMemoryLimit(Sandbox sandbox_type) {
   // Trigger feature list initialization here to ensure no population bias in
   // the experimental and control groups.
   [[maybe_unused]] const bool high_renderer_limits =
@@ -1134,7 +1141,8 @@ absl::optional<size_t> SandboxWin::GetJobMemoryLimit(Sandbox sandbox_type) {
 #if defined(ARCH_CPU_64_BITS)
   size_t memory_limit = static_cast<size_t>(kDataSizeLimit);
 
-  if (sandbox_type == Sandbox::kGpu || sandbox_type == Sandbox::kRenderer) {
+  if (sandbox_type == Sandbox::kGpu || sandbox_type == Sandbox::kRenderer ||
+      sandbox_type == Sandbox::kOnDeviceModelExecution) {
     constexpr uint64_t GB = 1024 * 1024 * 1024;
     // Allow the GPU/RENDERER process's sandbox to access more physical memory
     // if it's available on the system.
@@ -1159,7 +1167,7 @@ absl::optional<size_t> SandboxWin::GetJobMemoryLimit(Sandbox sandbox_type) {
   }
   return memory_limit;
 #else
-  return absl::nullopt;
+  return std::nullopt;
 #endif
 }
 

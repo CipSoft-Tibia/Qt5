@@ -13,7 +13,7 @@ namespace QtWaylandClient {
 QWaylandVulkanInstance::QWaylandVulkanInstance(QVulkanInstance *instance)
     : m_instance(instance)
 {
-    loadVulkanLibrary(QStringLiteral("vulkan"));
+    loadVulkanLibrary(QStringLiteral("vulkan"), 1);
 }
 
 QWaylandVulkanInstance::~QWaylandVulkanInstance() = default;

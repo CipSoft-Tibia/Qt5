@@ -8,16 +8,20 @@
 # shellcheck source=../common/unix/SetEnvVar.sh
 source "${BASH_SOURCE%/*}/../common/unix/SetEnvVar.sh"
 
-brew install "${BASH_SOURCE%/*}/pyenv.rb"
-
 pyenv install 3.9.7
 
 /Users/qt/.pyenv/versions/3.9.7/bin/pip3 install --user virtualenv wheel html5lib
+/Users/qt/.pyenv/versions/3.9.7/bin/pip3 install --user -r ${BASH_SOURCE%/*}/../common/shared/sbom_requirements.txt
 
 SetEnvVar "PYTHON3_PATH" "/Users/qt/.pyenv/versions/3.9.7/bin/"
 SetEnvVar "PIP3_PATH" "/Users/qt/.pyenv/versions/3.9.7/bin/"
 # Use 3.9 as a default python
 SetEnvVar "PATH" "\$PYTHON3_PATH:\$PATH"
+
+# Provisioning during installation says:
+# 'The script sbom2doc is installed in '$HOME/.local/bin' which is not on PATH.'
+# hence the explicit assignment to SBOM_PYTHON_APPS_PATH.
+SetEnvVar "SBOM_PYTHON_APPS_PATH" "/Users/qt/.local/bin"
 
 # QtWebengine still requires python2
 pyenv install 2.7.18

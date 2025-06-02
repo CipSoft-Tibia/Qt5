@@ -49,6 +49,10 @@ protected:
     Qt::PenCapStyle m_capStyle;
     Qt::PenJoinStyle m_joinStyle;
     qreal m_miterLimit;
+    BMProperty<qreal> m_dashOffset;
+    BMProperty<qreal> m_dashLength;
+    BMProperty<qreal> m_dashGap;
+    bool m_isDashed = false;
 };
 
 QT_END_NAMESPACE

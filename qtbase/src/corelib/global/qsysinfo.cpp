@@ -199,6 +199,8 @@ static const char *osVer_helper(QOperatingSystemVersion version = QOperatingSyst
             return "10";
         }
         // else: Server
+        if (osver.dwBuildNumber >= 26100)
+            return "Server 2025";
         if (osver.dwBuildNumber >= 20348)
             return "Server 2022";
         if (osver.dwBuildNumber >= 17763)
@@ -518,7 +520,7 @@ QString QSysInfo::buildCpuArchitecture()
 
     Values returned by this function are mostly stable: an attempt will be made
     to ensure that they stay constant over time and match the values returned
-    by QSysInfo::builldCpuArchitecture(). However, due to the nature of the
+    by buildCpuArchitecture(). However, due to the nature of the
     operating system functions being used, there may be discrepancies.
 
     Typical returned values are (note: list not exhaustive):
@@ -794,6 +796,8 @@ QString QSysInfo::productType()
     return QStringLiteral("tvos");
 #elif defined(Q_OS_WATCHOS)
     return QStringLiteral("watchos");
+#elif defined(Q_OS_VISIONOS)
+    return QStringLiteral("visionos");
 #elif defined(Q_OS_MACOS)
     return QStringLiteral("macos");
 #elif defined(Q_OS_DARWIN)
@@ -1011,8 +1015,7 @@ QByteArray QSysInfo::machineUniqueId()
 {
 #if defined(Q_OS_DARWIN) && __has_include(<IOKit/IOKitLib.h>)
     char uuid[UuidStringLen + 1];
-    static const mach_port_t defaultPort = 0; // Effectively kIOMasterPortDefault/kIOMainPortDefault
-    io_service_t service = IOServiceGetMatchingService(defaultPort, IOServiceMatching("IOPlatformExpertDevice"));
+    io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"));
     QCFString stringRef = (CFStringRef)IORegistryEntryCreateCFProperty(service, CFSTR(kIOPlatformUUIDKey), kCFAllocatorDefault, 0);
     CFStringGetCString(stringRef, uuid, sizeof(uuid), kCFStringEncodingMacRoman);
     return QByteArray(uuid);

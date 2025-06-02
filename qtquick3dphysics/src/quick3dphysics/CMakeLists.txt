@@ -75,6 +75,7 @@ qt_internal_add_qml_module(Quick3DPhysics
         Qt::QmlPrivate
         Qt::Quick3D
         Qt::QuickPrivate
+    NO_GENERATE_CPP_EXPORTS
 )
 
 qt_internal_extend_target(qquick3dphysicsplugin

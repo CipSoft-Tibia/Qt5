@@ -15,7 +15,6 @@
 //
 
 #include "qpositioningglobal.h"
-#include <QtPositioning/private/qtpositioningexports_p.h>
 
 #endif // QPOSITIONINGGLOBAL_P_H
 

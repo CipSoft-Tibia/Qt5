@@ -6,7 +6,7 @@
 
 /*!
     \qmltype HumiditySensor
-//!    \instantiates QmlHumiditySensor
+//!    \nativetype QmlHumiditySensor
     \ingroup qml-sensors_type
     \inqmlmodule QtSensors
     \since QtSensors 5.9
@@ -43,7 +43,7 @@ QSensor *QmlHumiditySensor::sensor() const
 
 /*!
     \qmltype HumidityReading
-//!    \instantiates QmlHumidityReading
+//!    \nativetype QmlHumidityReading
     \ingroup qml-sensors_reading
     \inqmlmodule QtSensors
     \since QtSensors 5.9
@@ -70,7 +70,7 @@ QmlHumidityReading::~QmlHumidityReading()
 }
 
 /*!
-    \qmlproperty qreal HumidityReading::relativeHumidity
+    \qmlproperty real HumidityReading::relativeHumidity
     This property holds the relative humidity as a percentage.
 
     Please see QHumidityReading::relativeHumidity for information about this property.
@@ -87,7 +87,7 @@ QBindable<qreal> QmlHumidityReading::bindableRelativeHumidity() const
 }
 
 /*!
-    \qmlproperty qreal HumidityReading::absoluteHumidity
+    \qmlproperty real HumidityReading::absoluteHumidity
     This property holds the absolute humidity in grams per cubic meter (g/m3).
 
     Please see QHumidityReading::absoluteHumidity for information about this property.

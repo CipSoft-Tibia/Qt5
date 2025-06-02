@@ -10,7 +10,7 @@ import * as SourceMapScopes from '../../../models/source_map_scopes/source_map_s
 import * as CodeMirror from '../../../third_party/codemirror.next/codemirror.next.js';
 import * as UI from '../../legacy/legacy.js';
 
-import {closeTooltip, cursorTooltip, type ArgumentHintsTooltip} from './cursor_tooltip.js';
+import {type ArgumentHintsTooltip, closeTooltip, cursorTooltip} from './cursor_tooltip.js';
 
 export function completion(): CodeMirror.Extension {
   return CodeMirror.javascript.javascriptLanguage.data.of({
@@ -179,7 +179,7 @@ export async function javascriptCompletionSource(cx: CodeMirror.CompletionContex
 
   const script = getExecutionContext()?.debuggerModel.selectedCallFrame()?.script;
   if (script &&
-      Bindings.DebuggerWorkspaceBinding.DebuggerWorkspaceBinding.instance().pluginManager?.hasPluginForScript(script)) {
+      Bindings.DebuggerWorkspaceBinding.DebuggerWorkspaceBinding.instance().pluginManager.hasPluginForScript(script)) {
     return null;
   }
 
@@ -248,6 +248,7 @@ async function evaluateExpression(
         generatePreview: false,
         throwOnSideEffect: true,
         timeout: 500,
+        replMode: true,
       },
       false, false);
   if ('error' in result || result.exceptionDetails || !result.object) {
@@ -388,7 +389,7 @@ async function completePropertiesInner(
     const isFunction = object.type === 'function';
     for (const prop of properties.properties || []) {
       if (!prop.symbol && !(isFunction && (prop.name === 'arguments' || prop.name === 'caller')) &&
-          (!prop.private || expression === 'this') && (quoted || SPAN_IDENT.test(prop.name))) {
+          (quoted || SPAN_IDENT.test(prop.name))) {
         const label =
             quoted ? quoted + prop.name.replaceAll('\\', '\\\\').replaceAll(quoted, '\\' + quoted) + quoted : prop.name;
         const apply = (quoted && !hasBracket) ? `${label}]` : undefined;
@@ -706,9 +707,9 @@ async function prototypesFromObject(object: SDK.RemoteObject.RemoteObject): Prom
   if (object.type === 'undefined' || object.subtype === 'null') {
     return [];
   }
-  return await object.callFunctionJSON(function() {
+  return await object.callFunctionJSON(function(this: Object) {
     const result = [];
-    for (let object: Object = this; object; object = Object.getPrototypeOf(object)) {
+    for (let object = this; object; object = Object.getPrototypeOf(object)) {
       if (typeof object === 'object' && object.constructor && object.constructor.name) {
         result[result.length] = object.constructor.name;
       }

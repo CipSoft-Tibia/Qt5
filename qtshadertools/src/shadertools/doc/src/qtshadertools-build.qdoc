@@ -150,41 +150,6 @@ qt6_add_shaders(exampleapp "exampleapp_shaders"
     source. Suitable for applications that do not wish to function with Metal at
     all.
 
-    \li \c TESSELLATION - This argument-less keyword indicates that the shaders
-    are used in a pipeline that uses tessellation. This is relevant only when
-    there are vertex shaders listed and Metal shader generation is not
-    disabled. See \l{Tessellation Example}{this snippet} for an example.
-    \cmakeoptionsince 6.5
-
-    \li \c TESSELLATION_VERTEX_COUNT - This option takes a number which
-    indicates the output vertex count from the tessellation control stage.
-    Specifying this is mandatory for tessellation evaluation shaders used with
-    Metal. The default value is 3. If it does not match the tessellation
-    control stage, the generated MSL code will not function as expected.
-    \cmakeoptionsince 6.5
-
-    \li \c TESSELLATION_MODE - This option specifies the tessellation mode. It
-    can take one of two values: \c{"triangles"} or \c{"quads"}. The default
-    value is \c triangles. The option must be specified when a tessellation
-    control shader is in the \c FILES list. It must match the tessellation
-    evaluation stage.
-    \cmakeoptionsince 6.5
-
-    \li \c VIEW_COUNT - This option specifies the number of views a vertex
-    shader is used with. When working with multiview (GL_OVR_multiview2,
-    VK_KHR_multiview, D3D12 view instancing, etc.), always specify the correct
-    VIEW_COUNT with a value >= 2 for the relevant shaders in order to enable
-    generating correct GLSL shader code. Note however that setting VIEW_COUNT
-    should be avoided for vertex shaders that do not rely on multiview, since
-    setting the value effectively makes the generated GLSL code
-    multiview-dependent. To overcome this, group the vertex shaders accordingly
-    into multiple qt_add_shaders() calls. Setting \c VIEW_COUNT automatically
-    injects a preprocessor define,
-    \c{QSHADER_VIEW_COUNT}, with the same value into the shader source code.
-    In addition, the \c{#extension GL_EXT_multiview : require} line is injected
-    automatically when a view count of 2 or greater is set.
-    \cmakeoptionsince 6.7
-
     \endlist
 
     The most commonly overridden setting is \c GLSL. For example, if the
@@ -205,6 +170,66 @@ qt6_add_shaders(exampleapp "exampleapp_shaders"
     \endcode
 
     \note The space before the \c es suffix is optional.
+
+    \section2 Tessellation
+
+    \list
+
+    \li \c TESSELLATION - This argument-less keyword indicates that the shaders
+    are used in a pipeline that uses tessellation. This is relevant only when
+    there are vertex shaders listed and Metal shader generation is not
+    disabled. See \l{Tessellation Example}{this snippet} for an example.
+    \cmakeoptionsince 6.5
+
+    \li \c TESSELLATION_VERTEX_COUNT - This option takes a number which
+    indicates the output vertex count from the tessellation control stage.
+    Specifying this is mandatory for tessellation evaluation shaders used with
+    Metal. The default value is 3. If it does not match the tessellation
+    control stage, the generated MSL code will not function as expected.
+    \cmakeoptionsince 6.5
+
+    \li \c TESSELLATION_MODE - This option specifies the tessellation mode. It
+    can take one of two values: \c{"triangles"} or \c{"quads"}. The default
+    value is \c triangles. The option must be specified when a tessellation
+    control shader is in the \c FILES list. It must match the tessellation
+    evaluation stage.
+    \cmakeoptionsince 6.5
+
+    \endlist
+
+    \section2 Multiview
+
+    \list
+
+    \li \c VIEW_COUNT - This option specifies the number of views a vertex
+    shader is used with. When working with multiview (GL_OVR_multiview2,
+    VK_KHR_multiview, D3D12 view instancing, etc.), always specify the correct
+    VIEW_COUNT with a value >= 2 for the relevant shaders in order to enable
+    generating correct GLSL shader code. Note however that setting VIEW_COUNT
+    should be avoided for vertex shaders that do not rely on multiview, since
+    setting the value effectively makes the generated GLSL code
+    multiview-dependent. To overcome this, group the vertex shaders accordingly
+    into multiple qt_add_shaders() calls. Setting \c VIEW_COUNT automatically
+    injects a preprocessor define, \c{QSHADER_VIEW_COUNT}, with the same value
+    into the shader source code. In addition, the \c{#extension GL_EXT_multiview
+    : require} line is injected automatically in vertex shaders when a view
+    count of 2 or greater is set. Note that for multiview the minimum GLSL
+    version is \c 330 and \c{300 es}. For HLSL, the minimum version is \c 61.
+    Applications are advised to set up the language targets accordingly (or to
+    newer versions). \cmakeoptionsince 6.7
+
+    \li \c MULTIVIEW - Requests generating \b both a non-multiview and a view
+    count 2 set of shaders. This is effectively a convenience for manually
+    creating two qt_add_shaders() calls with the appropriate
+    GLSL/HLSL/MSL/VIEW_COUNT arguments. This option is meant mainly for Qt's own
+    use, but applications can use it too as long as the implicit settings for
+    the multiview variants are sufficient for the application's shaders; these
+    are: GLSL 330,300es HLSL 61 MSL 12. VIEW_COUNT is set to 2 for the multiview
+    variants. The multiview variants are stored in files with a \c{.mv2qsb}
+    suffix added (in addition to \c{.qsb}).
+    \cmakeoptionsince 6.8
+
+    \endlist
 
     \section2 Qt Quick specifics
 

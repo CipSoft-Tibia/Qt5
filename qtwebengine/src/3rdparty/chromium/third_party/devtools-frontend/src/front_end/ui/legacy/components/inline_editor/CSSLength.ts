@@ -5,10 +5,10 @@
 import * as Host from '../../../../core/host/host.js';
 import * as ComponentHelpers from '../../../components/helpers/helpers.js';
 import * as LitHtml from '../../../lit-html/lit-html.js';
+import * as VisualLogging from '../../../visual_logging/visual_logging.js';
 
 import cssLengthStyles from './cssLength.css.js';
-
-import {LengthUnit, LENGTH_UNITS, parseText, type Length} from './CSSLengthUtils.js';
+import {type Length, LENGTH_UNITS, LengthUnit, parseText} from './CSSLengthUtils.js';
 import {ValueChangedEvent} from './InlineEditorUtils.js';
 
 const {render, html, Directives: {classMap}} = LitHtml;
@@ -158,9 +158,13 @@ export class CSSLength extends HTMLElement {
         <span class="value"
           @mousedown=${this.onValueMousedown}
           @mouseup=${this.onValueMouseup}
-        >${this.length.value}</span><span class="unit">${this.length.unit}</span><div class="unit-dropdown">
+        >${this.length.value}</span><span class="unit">${this.length.unit}</span>
+        <div class="unit-dropdown">
           <span class="icon"></span>
-          <select @mouseup=${this.onUnitMouseup} @change=${this.onUnitChange}>
+          <select
+            jslog=${VisualLogging.dropDown().track({change: true}).context('unit')}
+            @mouseup=${this.onUnitMouseup}
+            @change=${this.onUnitChange}>
             ${options}
           </select>
         </div>

@@ -6,12 +6,12 @@
 
 #################################### Scalar ###################################
 ### Microkernels without unrolling
-tools/xngen src/f32-spmm/scalar.c.in -D MR=1 -D NR=1 -D UNROLL=1 -o src/f32-spmm/gen/f32-spmm-1x1-minmax-scalar.c &
-tools/xngen src/f32-spmm/scalar.c.in -D MR=2 -D NR=1 -D UNROLL=1 -o src/f32-spmm/gen/f32-spmm-2x1-minmax-scalar.c &
-tools/xngen src/f32-spmm/scalar.c.in -D MR=4 -D NR=1 -D UNROLL=1 -o src/f32-spmm/gen/f32-spmm-4x1-minmax-scalar.c &
-tools/xngen src/f32-spmm/scalar.c.in -D MR=8 -D NR=1 -D UNROLL=1 -o src/f32-spmm/gen/f32-spmm-8x1-minmax-scalar.c &
-tools/xngen src/f32-spmm/scalar.c.in -D MR=8 -D NR=2 -D UNROLL=1 -o src/f32-spmm/gen/f32-spmm-8x2-minmax-scalar.c &
-tools/xngen src/f32-spmm/scalar.c.in -D MR=8 -D NR=4 -D UNROLL=1 -o src/f32-spmm/gen/f32-spmm-8x4-minmax-scalar.c &
+tools/xngen src/f32-spmm/scalar.c.in -D MR=1 -D NR=1 -D UNROLL=1 -D DATATYPE=F32 -o src/f32-spmm/gen/f32-spmm-1x1-minmax-scalar.c &
+tools/xngen src/f32-spmm/scalar.c.in -D MR=2 -D NR=1 -D UNROLL=1 -D DATATYPE=F32 -o src/f32-spmm/gen/f32-spmm-2x1-minmax-scalar.c &
+tools/xngen src/f32-spmm/scalar.c.in -D MR=4 -D NR=1 -D UNROLL=1 -D DATATYPE=F32 -o src/f32-spmm/gen/f32-spmm-4x1-minmax-scalar.c &
+tools/xngen src/f32-spmm/scalar.c.in -D MR=8 -D NR=1 -D UNROLL=1 -D DATATYPE=F32 -o src/f32-spmm/gen/f32-spmm-8x1-minmax-scalar.c &
+tools/xngen src/f32-spmm/scalar.c.in -D MR=8 -D NR=2 -D UNROLL=1 -D DATATYPE=F32 -o src/f32-spmm/gen/f32-spmm-8x2-minmax-scalar.c &
+tools/xngen src/f32-spmm/scalar.c.in -D MR=8 -D NR=4 -D UNROLL=1 -D DATATYPE=F32 -o src/f32-spmm/gen/f32-spmm-8x4-minmax-scalar.c &
 ### Microkernels with software pipelining
 tools/xngen src/f32-spmm/scalar-pipelined.c.in -D MR=1 -D NR=1 -o src/f32-spmm/gen/f32-spmm-1x1-minmax-scalar-pipelined.c &
 tools/xngen src/f32-spmm/scalar-pipelined.c.in -D MR=2 -D NR=1 -o src/f32-spmm/gen/f32-spmm-2x1-minmax-scalar-pipelined.c &
@@ -123,8 +123,5 @@ tools/xngen src/f32-spmm/wasmsimd-pipelined.c.in -D MR=4  -D NR=1 -D UNROLL=2 -D
 tools/xngen src/f32-spmm/wasmsimd-pipelined.c.in -D MR=8  -D NR=1 -D UNROLL=2 -D MINMAX=PMINMAX -o src/f32-spmm/gen/f32-spmm-8x1-minmax-wasmsimd-x86-pipelined-x2.c &
 tools/xngen src/f32-spmm/wasmsimd-pipelined.c.in -D MR=16 -D NR=1 -D UNROLL=2 -D MINMAX=PMINMAX -o src/f32-spmm/gen/f32-spmm-16x1-minmax-wasmsimd-x86-pipelined-x2.c &
 tools/xngen src/f32-spmm/wasmsimd-pipelined.c.in -D MR=32 -D NR=1 -D UNROLL=2 -D MINMAX=PMINMAX -o src/f32-spmm/gen/f32-spmm-32x1-minmax-wasmsimd-x86-pipelined-x2.c &
-
-################################## Unit tests #################################
-tools/generate-spmm-test.py --spec test/f32-spmm-minmax.yaml --output test/f32-spmm-minmax.cc &
 
 wait

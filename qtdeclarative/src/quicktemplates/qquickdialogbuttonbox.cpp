@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 /*!
     \qmltype DialogButtonBox
     \inherits Container
-//!     \instantiates QQuickDialogButtonBox
+//!     \nativetype QQuickDialogButtonBox
     \inqmlmodule QtQuick.Controls
     \ingroup qtquickcontrols-dialogs
     \brief A button box used in dialogs.
@@ -190,14 +190,15 @@ static QRectF alignedRect(Qt::LayoutDirection direction, Qt::Alignment alignment
     qreal y = rectangle.y();
     qreal w = size.width();
     qreal h = size.height();
+    // The qMax() calls ensure that the x and y values are never negative, which can happen if the contentWidth is smaller than the width.
     if ((alignment & Qt::AlignVCenter) == Qt::AlignVCenter || (alignment & Qt::AlignVertical_Mask) == 0)
-        y += (rectangle.size().height() - h) / 2;
+        y += qMax<qreal>(0, (rectangle.size().height() - h) / 2);
     else if ((alignment & Qt::AlignBottom) == Qt::AlignBottom)
-        y += rectangle.size().height() - h;
+        y += qMax<qreal>(0, rectangle.size().height() - h);
     if ((alignment & Qt::AlignRight) == Qt::AlignRight)
-        x += rectangle.size().width() - w;
+        x += qMax<qreal>(0, rectangle.size().width() - w);
     else if ((alignment & Qt::AlignHCenter) == Qt::AlignHCenter)
-        x += (rectangle.size().width() - w) / 2;
+        x += qMax<qreal>(0, (rectangle.size().width() - w) / 2);
     return QRectF(x, y, w, h);
 }
 

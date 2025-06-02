@@ -297,6 +297,10 @@ typedef enum spv_operand_type_t {
   SPV_OPERAND_TYPE_INITIALIZATION_MODE_QUALIFIER,
   // Enum type from SPV_INTEL_global_variable_host_access
   SPV_OPERAND_TYPE_HOST_ACCESS_QUALIFIER,
+  // Enum type from SPV_INTEL_cache_controls
+  SPV_OPERAND_TYPE_LOAD_CACHE_CONTROL,
+  // Enum type from SPV_INTEL_cache_controls
+  SPV_OPERAND_TYPE_STORE_CACHE_CONTROL,
 
   // This is a sentinel value, and does not represent an operand type.
   // It should come last.
@@ -962,7 +966,14 @@ SPIRV_TOOLS_EXPORT bool spvOptimizerRegisterPassFromFlag(
     spv_optimizer_t* optimizer, const char* flag);
 
 // Registers passes specified by length number of flags in an optimizer object.
+// Passes may remove interface variables that are unused.
 SPIRV_TOOLS_EXPORT bool spvOptimizerRegisterPassesFromFlags(
+    spv_optimizer_t* optimizer, const char** flags, const size_t flag_count);
+
+// Registers passes specified by length number of flags in an optimizer object.
+// Passes will not remove interface variables.
+SPIRV_TOOLS_EXPORT bool
+spvOptimizerRegisterPassesFromFlagsWhilePreservingTheInterface(
     spv_optimizer_t* optimizer, const char** flags, const size_t flag_count);
 
 // Optimizes the SPIR-V code of size |word_count| pointed to by |binary| and

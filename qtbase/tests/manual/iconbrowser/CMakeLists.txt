@@ -1,6 +1,12 @@
 # Copyright (C) 2023 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
+if (NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(iconbrowser LANGUAGES C CXX ASM)
+    find_package(Qt6BuildInternals COMPONENTS STANDALONE_TEST)
+endif()
+
 find_package(Qt6 REQUIRED COMPONENTS Gui Widgets)
 
 qt_internal_add_manual_test(iconbrowser
@@ -29,14 +35,15 @@ target_link_libraries(iconbrowser PRIVATE
 endif()
 
 if (ANDROID)
-    set(font_filename "MaterialIcons-Regular.ttf")
+    set(font_uri "MaterialSymbolsOutlined%5BFILL%2CGRAD%2Copsz%2Cwght%5D.ttf")
+    set(font_filename "MaterialSymbolsOutlined[FILL,GRAD,opsz,wght].ttf")
     if (QT_ALLOW_DOWNLOAD)
         include(FetchContent)
 
         FetchContent_Declare(
             MaterialIcons
             URL
-                "https://github.com/google/material-design-icons/raw/master/font/${font_filename}"
+                "https://github.com/google/material-design-icons/raw/master/variablefont/${font_uri}"
             DOWNLOAD_DIR        ${CMAKE_CURRENT_BINARY_DIR}
             DOWNLOAD_NAME       "${font_filename}"
             DOWNLOAD_NO_EXTRACT TRUE

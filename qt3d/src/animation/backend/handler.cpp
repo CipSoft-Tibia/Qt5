@@ -75,8 +75,11 @@ void Handler::setDirty(DirtyFlag flag, Qt3DCore::QNodeId nodeId)
     }
 }
 
+// Called by the Jobs
 void Handler::setClipAnimatorRunning(const HClipAnimator &handle, bool running)
 {
+    QMutexLocker lock(&m_mutex);
+
     // Add clip to running set if not already present
     if (running && !m_runningClipAnimators.contains(handle)) {
         m_runningClipAnimators.push_back(handle);
@@ -91,8 +94,11 @@ void Handler::setClipAnimatorRunning(const HClipAnimator &handle, bool running)
     }
 }
 
+// Called by the Jobs
 void Handler::setBlendedClipAnimatorRunning(const HBlendedClipAnimator &handle, bool running)
 {
+    QMutexLocker lock(&m_mutex);
+
     // Add clip to running set if not already present
     if (running && !m_runningBlendedClipAnimators.contains(handle)) {
         m_runningBlendedClipAnimators.push_back(handle);

@@ -30,10 +30,11 @@
 
 #include "third_party/blink/renderer/core/animation/animation.h"
 
+#include <bit>
 #include <memory>
 #include <tuple>
 
-#include "base/bits.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "build/build_config.h"
 #include "cc/trees/target_property.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -71,7 +72,6 @@
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/thread_state.h"
 #include "third_party/blink/renderer/platform/scheduler/public/event_loop.h"
-#include "third_party/blink/renderer/platform/testing/histogram_tester.h"
 #include "third_party/blink/renderer/platform/testing/paint_test_configurations.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
@@ -112,8 +112,8 @@ class AnimationAnimationTestNoCompositing : public PaintTestConfigurations,
     static CSSNumberInterpolationType opacity_type(PropertyHandleOpacity);
     TransitionKeyframe* start_keyframe =
         MakeGarbageCollected<TransitionKeyframe>(PropertyHandleOpacity);
-    start_keyframe->SetValue(std::make_unique<TypedInterpolationValue>(
-        opacity_type, std::make_unique<InterpolableNumber>(1.0)));
+    start_keyframe->SetValue(MakeGarbageCollected<TypedInterpolationValue>(
+        opacity_type, MakeGarbageCollected<InterpolableNumber>(1.0)));
     start_keyframe->SetOffset(0.0);
     // Egregious hack: Sideload the compositor value.
     // This is usually set in a part of the rendering process SimulateFrame
@@ -122,8 +122,8 @@ class AnimationAnimationTestNoCompositing : public PaintTestConfigurations,
         MakeGarbageCollected<CompositorKeyframeDouble>(1.0));
     TransitionKeyframe* end_keyframe =
         MakeGarbageCollected<TransitionKeyframe>(PropertyHandleOpacity);
-    end_keyframe->SetValue(std::make_unique<TypedInterpolationValue>(
-        opacity_type, std::make_unique<InterpolableNumber>(0.0)));
+    end_keyframe->SetValue(MakeGarbageCollected<TypedInterpolationValue>(
+        opacity_type, MakeGarbageCollected<InterpolableNumber>(0.0)));
     end_keyframe->SetOffset(1.0);
     // Egregious hack: Sideload the compositor value.
     end_keyframe->SetCompositorValue(
@@ -1420,7 +1420,7 @@ int GenerateHistogramValue(CompositorAnimations::FailureReason reason) {
   // as 0 and recorded as 0.
   if (reason == CompositorAnimations::kNoFailure)
     return CompositorAnimations::kNoFailure;
-  return base::bits::CountTrailingZeroBits(static_cast<uint32_t>(reason)) + 1;
+  return std::countr_zero(static_cast<uint32_t>(reason)) + 1;
 }
 }  // namespace
 
@@ -1430,7 +1430,7 @@ TEST_P(AnimationAnimationTestCompositing, PreCommitRecordsHistograms) {
 
   // Initially the animation in this test has no target, so it is invalid.
   {
-    HistogramTester histogram;
+    base::HistogramTester histogram;
     ASSERT_TRUE(animation->PreCommit(0, nullptr, true));
     histogram.ExpectBucketCount(
         histogram_name,
@@ -1440,7 +1440,7 @@ TEST_P(AnimationAnimationTestCompositing, PreCommitRecordsHistograms) {
 
   // Restart the animation with a target and compositing state.
   {
-    HistogramTester histogram;
+    base::HistogramTester histogram;
     ResetWithCompositedAnimation();
     histogram.ExpectBucketCount(
         histogram_name,
@@ -1452,7 +1452,7 @@ TEST_P(AnimationAnimationTestCompositing, PreCommitRecordsHistograms) {
   animation->setPlaybackRate(0);
   animation->NotifyReady(ANIMATION_TIME_DELTA_FROM_SECONDS(100));
   {
-    HistogramTester histogram;
+    base::HistogramTester histogram;
     ASSERT_TRUE(animation->PreCommit(0, nullptr, true));
     histogram.ExpectBucketCount(
         histogram_name,
@@ -1479,7 +1479,7 @@ TEST_P(AnimationAnimationTestCompositing, PreCommitRecordsHistograms) {
       ->SetKeyframes({start_keyframe, end_keyframe});
   UpdateAllLifecyclePhasesForTest();
   {
-    HistogramTester histogram;
+    base::HistogramTester histogram;
     ASSERT_TRUE(animation->PreCommit(0, nullptr, true));
     histogram.ExpectBucketCount(
         histogram_name,
@@ -1918,11 +1918,8 @@ TEST_P(AnimationAnimationTestCompositing,
     </div>
   )HTML");
 
-  auto* scroller =
-      To<LayoutBoxModelObject>(GetLayoutObjectByElementId("scroller"));
-  if (!RuntimeEnabledFeatures::CompositeScrollAfterPaintEnabled()) {
-    ASSERT_TRUE(scroller->UsesCompositedScrolling());
-  }
+  auto* scroller = GetLayoutBoxByElementId("scroller");
+  ASSERT_TRUE(scroller->UsesCompositedScrolling());
 
   // Create ScrollTimeline
   ScrollTimelineOptions* options = ScrollTimelineOptions::Create();
@@ -2281,8 +2278,7 @@ TEST_P(AnimationAnimationTestCompositing,
   )HTML");
 
   // Create ScrollTimeline
-  auto* scroller =
-      To<LayoutBoxModelObject>(GetLayoutObjectByElementId("scroller"));
+  auto* scroller = GetLayoutBoxByElementId("scroller");
   PaintLayerScrollableArea* scrollable_area = scroller->GetScrollableArea();
   ASSERT_FALSE(scroller->UsesCompositedScrolling());
   scrollable_area->SetScrollOffset(ScrollOffset(0, 20),

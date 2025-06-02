@@ -41,8 +41,8 @@ protected:
     bool allowNegatives() override;
     bool allowMinMaxSame() override;
 
-    int m_segmentCount;
-    int m_subSegmentCount;
+    qsizetype m_segmentCount;
+    qsizetype m_subSegmentCount;
     QString m_labelFormat;
     bool m_labelsDirty;
     QValue3DAxisFormatter *m_formatter;

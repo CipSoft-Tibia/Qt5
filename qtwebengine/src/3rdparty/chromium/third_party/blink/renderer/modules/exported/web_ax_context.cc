@@ -22,6 +22,11 @@ bool WebAXContext::HasActiveDocument() const {
   return private_->HasActiveDocument();
 }
 
+bool WebAXContext::HasAXObjectCache() const {
+  CHECK(HasActiveDocument());
+  return private_->GetDocument()->ExistingAXObjectCache();
+}
+
 const ui::AXMode& WebAXContext::GetAXMode() const {
   DCHECK(!private_->GetAXMode().is_mode_off());
   return private_->GetAXMode();
@@ -54,6 +59,7 @@ void WebAXContext::SerializeLocationChanges(uint32_t reset_token) const {
   if (!HasActiveDocument()) {
     return;
   }
+  ScopedFreezeAXCache freeze(private_->GetAXObjectCache());
   private_->GetAXObjectCache().SerializeLocationChanges(reset_token);
 }
 
@@ -64,41 +70,20 @@ WebAXObject WebAXContext::GetPluginRoot() {
   return WebAXObject(private_->GetAXObjectCache().GetPluginRoot());
 }
 
-void WebAXContext::Freeze() {
-  if (!HasActiveDocument()) {
-    return;
-  }
-  private_->GetAXObjectCache().Freeze();
-}
+bool WebAXContext::SerializeEntireTree(
+    size_t max_node_count,
+    base::TimeDelta timeout,
+    ui::AXTreeUpdate* response,
+    std::set<ui::AXSerializationErrorFlag>* out_error) {
+  CHECK(HasActiveDocument());
+  CHECK(HasAXObjectCache());
+  CHECK(private_->GetDocument()->ExistingAXObjectCache());
 
-void WebAXContext::Thaw() {
-  if (!HasActiveDocument()) {
-    return;
-  }
-  private_->GetAXObjectCache().Thaw();
-}
+  UpdateAXForAllDocuments();
 
-bool WebAXContext::SerializeEntireTree(size_t max_node_count,
-                                       base::TimeDelta timeout,
-                                       ui::AXTreeUpdate* response) {
-  if (!HasActiveDocument()) {
-    return false;
-  }
-  if (!private_->GetDocument()->ExistingAXObjectCache()) {
-    // TODO(chrishtr): not clear why this can happen.
-    NOTREACHED();
-    return false;
-  }
-
-  return private_->GetAXObjectCache().SerializeEntireTree(max_node_count,
-                                                          timeout, response);
-}
-
-void WebAXContext::MarkAllImageAXObjectsDirty() {
-  if (!HasActiveDocument()) {
-    return;
-  }
-  private_->GetAXObjectCache().MarkAllImageAXObjectsDirty();
+  ScopedFreezeAXCache freeze(private_->GetAXObjectCache());
+  return private_->GetAXObjectCache().SerializeEntireTree(
+      max_node_count, timeout, response, out_error);
 }
 
 void WebAXContext::SerializeDirtyObjectsAndEvents(
@@ -111,6 +96,8 @@ void WebAXContext::SerializeDirtyObjectsAndEvents(
   if (!HasActiveDocument()) {
     return;
   }
+
+  ScopedFreezeAXCache freeze(private_->GetAXObjectCache());
   private_->GetAXObjectCache().SerializeDirtyObjectsAndEvents(
       has_plugin_tree_source, updates, events, had_end_of_test_event,
       had_load_complete_messages, need_to_send_location_changes);
@@ -144,19 +131,57 @@ void WebAXContext::UpdateAXForAllDocuments() {
   return private_->GetAXObjectCache().UpdateAXForAllDocuments();
 }
 
-void WebAXContext::ScheduleAXUpdate() {
+void WebAXContext::ScheduleImmediateSerialization() {
   if (!HasActiveDocument()) {
     return;
   }
 
-  const auto& cache = private_->GetAXObjectCache();
+  auto& cache = private_->GetAXObjectCache();
+  cache.ScheduleImmediateSerialization();
+}
 
-  // If no dirty objects are queued, it's not necessary to schedule an extra
-  // visual update.
-  if (!cache.HasDirtyObjects())
+void WebAXContext::AddEventToSerializationQueue(const ui::AXEvent& event,
+                                                bool immediate_serialization) {
+  if (!HasActiveDocument()) {
     return;
+  }
 
-  return cache.ScheduleAXUpdate();
+  auto& cache = private_->GetAXObjectCache();
+  cache.AddEventToSerializationQueue(event, immediate_serialization);
+}
+
+void WebAXContext::OnSerializationCancelled() {
+  if (!HasActiveDocument()) {
+    return;
+  }
+
+  auto& cache = private_->GetAXObjectCache();
+  cache.OnSerializationCancelled();
+}
+
+void WebAXContext::OnSerializationStartSend() {
+  if (!HasActiveDocument()) {
+    return;
+  }
+
+  auto& cache = private_->GetAXObjectCache();
+  cache.OnSerializationStartSend();
+}
+
+bool WebAXContext::IsSerializationInFlight() const {
+  if (!HasActiveDocument()) {
+    return false;
+  }
+
+  const auto& cache = private_->GetAXObjectCache();
+  return cache.IsSerializationInFlight();
+}
+
+void WebAXContext::OnSerializationReceived() {
+  if (!HasActiveDocument()) {
+    return;
+  }
+  return private_->GetAXObjectCache().OnSerializationReceived();
 }
 
 void WebAXContext::FireLoadCompleteIfLoaded() {

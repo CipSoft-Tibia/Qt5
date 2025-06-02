@@ -24,8 +24,23 @@ bool StatelessValidation::manual_PreCallValidateCreateFramebuffer(VkDevice devic
     // Validation for pAttachments which is excluded from the generated validation code due to a 'noautovalidity' tag in vk.xml
     bool skip = false;
     if ((pCreateInfo->flags & VK_FRAMEBUFFER_CREATE_IMAGELESS_BIT) == 0) {
-        skip |= ValidateArray(error_obj.location, "attachmentCount", "pAttachments", pCreateInfo->attachmentCount,
-                              &pCreateInfo->pAttachments, false, true, kVUIDUndefined, "VUID-VkFramebufferCreateInfo-flags-02778");
+        skip |= ValidateArray(error_obj.location.dot(Field::attachmentCount), error_obj.location.dot(Field::pAttachments),
+                              pCreateInfo->attachmentCount, &pCreateInfo->pAttachments, false, true, kVUIDUndefined,
+                              "VUID-VkFramebufferCreateInfo-flags-02778");
+    }
+
+    // Verify FB dimensions are greater than zero
+    if (pCreateInfo->width == 0) {
+        skip |= LogError("VUID-VkFramebufferCreateInfo-width-00885", device,
+                         error_obj.location.dot(Field::pCreateInfo).dot(Field::width), "is zero.");
+    }
+    if (pCreateInfo->height == 0) {
+        skip |= LogError("VUID-VkFramebufferCreateInfo-height-00887", device,
+                         error_obj.location.dot(Field::pCreateInfo).dot(Field::height), "is zero.");
+    }
+    if (pCreateInfo->layers == 0) {
+        skip |= LogError("VUID-VkFramebufferCreateInfo-layers-00889", device,
+                         error_obj.location.dot(Field::pCreateInfo).dot(Field::layers), "is zero.");
     }
     return skip;
 }

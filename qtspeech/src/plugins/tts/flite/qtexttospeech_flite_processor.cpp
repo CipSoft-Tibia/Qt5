@@ -473,7 +473,7 @@ bool QTextToSpeechProcessorFlite::checkVoice(int voiceId)
 
     setError(QTextToSpeech::ErrorReason::Configuration,
              QCoreApplication::translate("QTextToSpeech", "Invalid voiceId %1.").arg(voiceId));
-    return false;;
+    return false;
 }
 
 // Wrap QAudioSink::state and compensate early idle bug

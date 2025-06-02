@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 
 class QRotationSensor;
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlRotationSensor : public QmlSensor
+class Q_SENSORSQUICK_EXPORT QmlRotationSensor : public QmlSensor
 {
     Q_OBJECT
     Q_PROPERTY(bool hasZ READ hasZ NOTIFY hasZChanged)
@@ -42,7 +42,7 @@ private:
     QmlSensorReading *createReading() const override;
 };
 
-class Q_SENSORSQUICK_PRIVATE_EXPORT QmlRotationSensorReading : public QmlSensorReading
+class Q_SENSORSQUICK_EXPORT QmlRotationSensorReading : public QmlSensorReading
 {
     Q_OBJECT
     Q_PROPERTY(qreal x READ x NOTIFY xChanged BINDABLE bindableX)

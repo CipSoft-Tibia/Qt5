@@ -48,10 +48,10 @@ namespace SkSL {
     class Compiler;
 }
 
-class GrGpu : public SkRefCnt {
+class GrGpu {
 public:
     GrGpu(GrDirectContext* direct);
-    ~GrGpu() override;
+    virtual ~GrGpu();
 
     GrDirectContext* getContext() { return fContext; }
     const GrDirectContext* getContext() const { return fContext; }
@@ -65,8 +65,6 @@ public:
     virtual GrStagingBufferManager* stagingBufferManager() { return nullptr; }
 
     virtual GrRingBuffer* uniformsRingBuffer() { return nullptr; }
-
-    SkSL::Compiler* shaderCompiler() const { return fCompiler.get(); }
 
     enum class DisconnectType {
         // No cleanup should be attempted, immediately cease making backend API calls
@@ -150,7 +148,7 @@ public:
                                    GrTextureType textureType,
                                    GrRenderable renderable,
                                    int renderTargetSampleCnt,
-                                   GrMipmapped mipmapped,
+                                   skgpu::Mipmapped mipmapped,
                                    skgpu::Budgeted budgeted,
                                    GrProtected isProtected,
                                    std::string_view label);
@@ -158,7 +156,7 @@ public:
     sk_sp<GrTexture> createCompressedTexture(SkISize dimensions,
                                              const GrBackendFormat& format,
                                              skgpu::Budgeted budgeted,
-                                             GrMipmapped mipmapped,
+                                             skgpu::Mipmapped mipmapped,
                                              GrProtected isProtected,
                                              const void* data,
                                              size_t dataSize);
@@ -403,13 +401,9 @@ public:
     // Called before render tasks are executed during a flush.
     virtual void willExecute() {}
 
-    bool submitToGpu(bool syncCpu);
+    bool submitToGpu(GrSyncCpu sync);
 
     virtual void submit(GrOpsRenderPass*) = 0;
-
-    [[nodiscard]] virtual GrFence insertFence() = 0;
-    virtual bool waitFence(GrFence) = 0;
-    virtual void deleteFence(GrFence) = 0;
 
     [[nodiscard]] virtual std::unique_ptr<GrSemaphore> makeSemaphore(bool isOwned = true) = 0;
     virtual std::unique_ptr<GrSemaphore> wrapBackendSemaphore(const GrBackendSemaphore&,
@@ -423,6 +417,7 @@ public:
     virtual void checkFinishProcs() = 0;
     virtual void finishOutstandingGpuWork() = 0;
 
+    // NOLINTNEXTLINE(performance-unnecessary-value-param)
     virtual void takeOwnershipOfBuffer(sk_sp<GrGpuBuffer>) {}
 
     /**
@@ -563,7 +558,7 @@ public:
     GrBackendTexture createBackendTexture(SkISize dimensions,
                                           const GrBackendFormat&,
                                           GrRenderable,
-                                          GrMipmapped,
+                                          skgpu::Mipmapped,
                                           GrProtected,
                                           std::string_view label);
 
@@ -577,7 +572,7 @@ public:
      */
     GrBackendTexture createCompressedBackendTexture(SkISize dimensions,
                                                     const GrBackendFormat&,
-                                                    GrMipmapped,
+                                                    skgpu::Mipmapped,
                                                     GrProtected);
 
     bool updateCompressedBackendTexture(const GrBackendTexture&,
@@ -588,6 +583,7 @@ public:
     virtual bool setBackendTextureState(const GrBackendTexture&,
                                         const skgpu::MutableTextureState&,
                                         skgpu::MutableTextureState* previousState,
+                                        // NOLINTNEXTLINE(performance-unnecessary-value-param)
                                         sk_sp<skgpu::RefCntedCallback> finishedCallback) {
         return false;
     }
@@ -595,6 +591,7 @@ public:
     virtual bool setBackendRenderTargetState(const GrBackendRenderTarget&,
                                              const skgpu::MutableTextureState&,
                                              skgpu::MutableTextureState* previousState,
+                                            // NOLINTNEXTLINE(performance-unnecessary-value-param)
                                              sk_sp<skgpu::RefCntedCallback> finishedCallback) {
         return false;
     }
@@ -680,7 +677,7 @@ public:
 protected:
     static bool CompressedDataIsCorrect(SkISize dimensions,
                                         SkTextureCompressionType,
-                                        GrMipmapped,
+                                        skgpu::Mipmapped,
                                         const void* data,
                                         size_t length);
 
@@ -694,19 +691,21 @@ protected:
 
     Stats                            fStats;
 
-    // Subclass must call this to initialize caps & compiler in its constructor.
-    void initCapsAndCompiler(sk_sp<const GrCaps> caps);
+    // Subclass must call this to initialize caps in its constructor.
+    void initCaps(sk_sp<const GrCaps> caps);
 
 private:
     virtual GrBackendTexture onCreateBackendTexture(SkISize dimensions,
                                                     const GrBackendFormat&,
                                                     GrRenderable,
-                                                    GrMipmapped,
+                                                    skgpu::Mipmapped,
                                                     GrProtected,
                                                     std::string_view label) = 0;
 
-    virtual GrBackendTexture onCreateCompressedBackendTexture(
-            SkISize dimensions, const GrBackendFormat&, GrMipmapped, GrProtected) = 0;
+    virtual GrBackendTexture onCreateCompressedBackendTexture(SkISize dimensions,
+                                                              const GrBackendFormat&,
+                                                              skgpu::Mipmapped,
+                                                              GrProtected) = 0;
 
     virtual bool onClearBackendTexture(const GrBackendTexture&,
                                        sk_sp<skgpu::RefCntedCallback> finishedCallback,
@@ -740,7 +739,7 @@ private:
     virtual sk_sp<GrTexture> onCreateCompressedTexture(SkISize dimensions,
                                                        const GrBackendFormat&,
                                                        skgpu::Budgeted,
-                                                       GrMipmapped,
+                                                       skgpu::Mipmapped,
                                                        GrProtected,
                                                        const void* data,
                                                        size_t dataSize) = 0;
@@ -833,7 +832,7 @@ private:
             SkSurfaces::BackendSurfaceAccess access,
             const skgpu::MutableTextureState* newState) {}
 
-    virtual bool onSubmitToGpu(bool syncCpu) = 0;
+    virtual bool onSubmitToGpu(GrSyncCpu sync) = 0;
 
     void reportSubmitHistograms();
     virtual void onReportSubmitHistograms() {}
@@ -861,9 +860,6 @@ private:
     void callSubmittedProcs(bool success);
 
     sk_sp<const GrCaps>             fCaps;
-    // Compiler used for compiling SkSL into backend shader code. We only want to create the
-    // compiler once, as there is significant overhead to the first compile.
-    std::unique_ptr<SkSL::Compiler> fCompiler;
 
     uint32_t fResetBits;
     // The context owns us, not vice-versa, so this ptr is not ref'ed by Gpu.

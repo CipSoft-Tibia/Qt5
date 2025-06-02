@@ -6,6 +6,6 @@ add_compile_definitions(QT_GRPC_TEST_MESSAGE_LATENCY=${QT_INTERNAL_GRPC_TEST_MES
 
 add_subdirectory(client)
 add_subdirectory(metadata)
-add_subdirectory(options)
+add_subdirectory(channeloptions)
 add_subdirectory(http2channel)
 add_subdirectory(calloptions)

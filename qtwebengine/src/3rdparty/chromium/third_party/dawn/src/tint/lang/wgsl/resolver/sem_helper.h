@@ -1,16 +1,29 @@
-// Copyright 2022 The Tint Authors.
+// Copyright 2022 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #ifndef SRC_TINT_LANG_WGSL_RESOLVER_SEM_HELPER_H_
 #define SRC_TINT_LANG_WGSL_RESOLVER_SEM_HELPER_H_
@@ -55,8 +68,8 @@ class SemHelper {
         return const_cast<T*>(As<T>(sem));
     }
 
-    /// GetVal is a helper for obtaining the semantic sem::ValueExpression for the given AST node.
-    /// Raises an error diagnostic and returns `nullptr` if the semantic node is not a
+    /// GetVal is a helper for obtaining the semantic sem::ValueExpression for the given AST
+    /// expression. Raises an error diagnostic and returns `nullptr` if the semantic node is not a
     /// sem::ValueExpression.
     /// @param ast the ast node to get the sem for
     /// @returns the sem node for @p ast
@@ -81,12 +94,17 @@ class SemHelper {
     /// @param expr the semantic node
     /// @returns nullptr if @p expr is nullptr, or @p expr cast to type::Type if the cast is
     /// successful, otherwise an error diagnostic is raised.
-    sem::TypeExpression* AsTypeExpression(sem::Expression* expr) const {
+    sem::TypeExpression* AsTypeExpression(sem::Expression* expr) const;
+
+    /// GetType is a helper for obtaining the semantic type for the given AST expression.
+    /// Raises an error diagnostic and returns `nullptr` if the semantic node is not a
+    /// sem::TypeExpression
+    /// @param ast the ast node to get the sem for
+    /// @returns the sem node for @p ast
+    const core::type::Type* GetType(const ast::Expression* ast) const {
+        auto* expr = AsTypeExpression(Get(ast));
         if (TINT_LIKELY(expr)) {
-            if (auto* ty_expr = expr->As<sem::TypeExpression>(); TINT_LIKELY(ty_expr)) {
-                return ty_expr;
-            }
-            ErrorUnexpectedExprKind(expr, "type");
+            return expr->Type();
         }
         return nullptr;
     }
@@ -115,9 +133,22 @@ class SemHelper {
             if (TINT_LIKELY(enum_expr)) {
                 return enum_expr;
             }
-            ErrorUnexpectedExprKind(expr, "address space");
+            ErrorUnexpectedExprKind(expr, "address space", core::kAddressSpaceStrings);
         }
         return nullptr;
+    }
+
+    /// GetAddressSpace is a helper for obtaining the address space for the given AST expression.
+    /// Raises an error diagnostic and returns core::AddressSpace::kUndefined if the semantic node
+    /// is not a sem::BuiltinEnumExpression<core::AddressSpace>
+    /// @param ast the ast node to get the address space
+    /// @returns the sem node for @p ast
+    core::AddressSpace GetAddressSpace(const ast::Expression* ast) const {
+        auto* expr = AsAddressSpace(Get(ast));
+        if (TINT_LIKELY(expr)) {
+            return expr->Value();
+        }
+        return core::AddressSpace::kUndefined;
     }
 
     /// @param expr the semantic node
@@ -130,7 +161,7 @@ class SemHelper {
             if (TINT_LIKELY(enum_expr)) {
                 return enum_expr;
             }
-            ErrorUnexpectedExprKind(expr, "builtin value");
+            ErrorUnexpectedExprKind(expr, "builtin value", core::kBuiltinValueStrings);
         }
         return nullptr;
     }
@@ -145,9 +176,22 @@ class SemHelper {
             if (TINT_LIKELY(enum_expr)) {
                 return enum_expr;
             }
-            ErrorUnexpectedExprKind(expr, "texel format");
+            ErrorUnexpectedExprKind(expr, "texel format", core::kTexelFormatStrings);
         }
         return nullptr;
+    }
+
+    /// GetTexelFormat is a helper for obtaining the texel format for the given AST expression.
+    /// Raises an error diagnostic and returns core::TexelFormat::kUndefined if the semantic node
+    /// is not a sem::BuiltinEnumExpression<core::TexelFormat>
+    /// @param ast the ast node to get the texel format
+    /// @returns the sem node for @p ast
+    core::TexelFormat GetTexelFormat(const ast::Expression* ast) const {
+        auto* expr = AsTexelFormat(Get(ast));
+        if (TINT_LIKELY(expr)) {
+            return expr->Value();
+        }
+        return core::TexelFormat::kUndefined;
     }
 
     /// @param expr the semantic node
@@ -160,9 +204,22 @@ class SemHelper {
             if (TINT_LIKELY(enum_expr)) {
                 return enum_expr;
             }
-            ErrorUnexpectedExprKind(expr, "access");
+            ErrorUnexpectedExprKind(expr, "access", core::kAccessStrings);
         }
         return nullptr;
+    }
+
+    /// GetAccess is a helper for obtaining the access mode for the given AST expression.
+    /// Raises an error diagnostic and returns core::Access::kUndefined if the semantic node
+    /// is not a sem::BuiltinEnumExpression<core::Access>
+    /// @param ast the ast node to get the access mode
+    /// @returns the sem node for @p ast
+    core::Access GetAccess(const ast::Expression* ast) const {
+        auto* expr = AsAccess(Get(ast));
+        if (TINT_LIKELY(expr)) {
+            return expr->Value();
+        }
+        return core::Access::kUndefined;
     }
 
     /// @param expr the semantic node
@@ -176,7 +233,8 @@ class SemHelper {
             if (TINT_LIKELY(enum_expr)) {
                 return enum_expr;
             }
-            ErrorUnexpectedExprKind(expr, "interpolation sampling");
+            ErrorUnexpectedExprKind(expr, "interpolation sampling",
+                                    core::kInterpolationSamplingStrings);
         }
         return nullptr;
     }
@@ -192,7 +250,7 @@ class SemHelper {
             if (TINT_LIKELY(enum_expr)) {
                 return enum_expr;
             }
-            ErrorUnexpectedExprKind(expr, "interpolation type");
+            ErrorUnexpectedExprKind(expr, "interpolation type", core::kInterpolationTypeStrings);
         }
         return nullptr;
     }
@@ -217,7 +275,10 @@ class SemHelper {
     /// Raises an error diagnostic that the expression @p got was not of the kind @p wanted.
     /// @param expr the expression
     /// @param wanted the expected expression kind
-    void ErrorUnexpectedExprKind(const sem::Expression* expr, std::string_view wanted) const;
+    /// @param suggestions suggested valid identifiers
+    void ErrorUnexpectedExprKind(const sem::Expression* expr,
+                                 std::string_view wanted,
+                                 tint::Slice<const std::string_view> suggestions = Empty) const;
 
     /// If @p node is a module-scope type, variable or function declaration, then appends a note
     /// diagnostic where this declaration was declared, otherwise the function does nothing.

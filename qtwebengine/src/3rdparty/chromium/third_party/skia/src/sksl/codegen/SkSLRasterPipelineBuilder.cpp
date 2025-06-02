@@ -1015,6 +1015,20 @@ void Builder::pop_return_mask() {
     this->appendInstruction(BuilderOp::pop_return_mask, {});
 }
 
+void Builder::push_condition_mask() {
+    SkASSERT(this->executionMaskWritesAreEnabled());
+
+    // If the previous instruction is popping the condition mask, we can restore it onto the stack
+    // "for free" instead of copying it.
+    if (Instruction* lastInstruction = this->lastInstruction()) {
+        if (lastInstruction->fOp == BuilderOp::pop_condition_mask) {
+            this->pad_stack(1);
+            return;
+        }
+    }
+    this->appendInstruction(BuilderOp::push_condition_mask, {});
+}
+
 void Builder::merge_condition_mask() {
     SkASSERT(this->executionMaskWritesAreEnabled());
 
@@ -1403,15 +1417,29 @@ Program::Program(TArray<Instruction> instrs,
 
 Program::~Program() = default;
 
+static bool immutable_data_is_splattable(int32_t* immutablePtr, int numSlots) {
+    // If every value between `immutablePtr[0]` and `immutablePtr[numSlots]` is bit-identical, we
+    // can use a splat.
+    for (int index = 1; index < numSlots; ++index) {
+        if (immutablePtr[0] != immutablePtr[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void Program::appendCopy(TArray<Stage>* pipeline,
                          SkArenaAlloc* alloc,
+                         std::byte* basePtr,  // only used for immutable-value copies
                          ProgramOp baseStage,
                          SkRPOffset dst, int dstStride,
                          SkRPOffset src, int srcStride,
                          int numSlots) const {
     SkASSERT(numSlots >= 0);
     while (numSlots > 4) {
-        this->appendCopy(pipeline, alloc, baseStage,
+        // If we are appending a large copy, split it up into groups of four at a time.
+        this->appendCopy(pipeline, alloc, basePtr,
+                         baseStage,
                          dst, dstStride,
                          src, srcStride,
                          /*numSlots=*/4);
@@ -1420,8 +1448,25 @@ void Program::appendCopy(TArray<Stage>* pipeline,
         numSlots -= 4;
     }
 
+    SkASSERT(numSlots <= 4);
+
     if (numSlots > 0) {
-        SkASSERT(numSlots <= 4);
+        // If we are copying immutable data, it might be representable by a splat; this is
+        // preferable, since splats are a tiny bit faster than regular copies.
+        if (basePtr) {
+            SkASSERT(srcStride == 1);
+            int32_t* immutablePtr = reinterpret_cast<int32_t*>(basePtr + src);
+            if (immutable_data_is_splattable(immutablePtr, numSlots)) {
+                auto stage = (ProgramOp)((int)ProgramOp::copy_constant + numSlots - 1);
+                SkRasterPipeline_ConstantCtx ctx;
+                ctx.dst = dst;
+                ctx.value = *immutablePtr;
+                pipeline->push_back({stage, SkRPCtxUtils::Pack(ctx, alloc)});
+                return;
+            }
+        }
+
+        // We can't use a splat, so emit the requested copy op.
         auto stage = (ProgramOp)((int)baseStage + numSlots - 1);
         SkRasterPipeline_BinaryOpCtx ctx;
         ctx.dst = dst;
@@ -1435,7 +1480,7 @@ void Program::appendCopySlotsUnmasked(TArray<Stage>* pipeline,
                                       SkRPOffset dst,
                                       SkRPOffset src,
                                       int numSlots) const {
-    this->appendCopy(pipeline, alloc,
+    this->appendCopy(pipeline, alloc, /*basePtr=*/nullptr,
                      ProgramOp::copy_slot_unmasked,
                      dst, SkOpts::raster_pipeline_highp_stride,
                      src, SkOpts::raster_pipeline_highp_stride,
@@ -1444,10 +1489,11 @@ void Program::appendCopySlotsUnmasked(TArray<Stage>* pipeline,
 
 void Program::appendCopyImmutableUnmasked(TArray<Stage>* pipeline,
                                           SkArenaAlloc* alloc,
+                                          std::byte* basePtr,
                                           SkRPOffset dst,
                                           SkRPOffset src,
                                           int numSlots) const {
-    this->appendCopy(pipeline, alloc,
+    this->appendCopy(pipeline, alloc, basePtr,
                      ProgramOp::copy_immutable_unmasked,
                      dst, SkOpts::raster_pipeline_highp_stride,
                      src, 1,
@@ -1459,7 +1505,7 @@ void Program::appendCopySlotsMasked(TArray<Stage>* pipeline,
                                     SkRPOffset dst,
                                     SkRPOffset src,
                                     int numSlots) const {
-    this->appendCopy(pipeline, alloc,
+    this->appendCopy(pipeline, alloc, /*basePtr=*/nullptr,
                      ProgramOp::copy_slot_masked,
                      dst, SkOpts::raster_pipeline_highp_stride,
                      src, SkOpts::raster_pipeline_highp_stride,
@@ -1490,7 +1536,7 @@ void Program::appendMultiSlotUnaryOp(TArray<Stage>* pipeline, ProgramOp baseStag
 
 void Program::appendImmediateBinaryOp(TArray<Stage>* pipeline, SkArenaAlloc* alloc,
                                       ProgramOp baseStage,
-                                      SkRPOffset dst, float value, int numSlots) const {
+                                      SkRPOffset dst, int32_t value, int numSlots) const {
     SkASSERT(is_immediate_op((BuilderOp)baseStage));
     SkASSERT(numSlots == 1 || is_multi_slot_immediate_op((BuilderOp)baseStage));
 
@@ -1644,7 +1690,7 @@ bool Program::appendStages(SkRasterPipeline* pipeline,
     for (const Stage& stage : stages) {
         switch (stage.op) {
             case ProgramOp::stack_rewind:
-                pipeline->append_stack_rewind();
+                pipeline->appendStackRewind();
                 break;
 
             case ProgramOp::invoke_shader:
@@ -1767,8 +1813,15 @@ void Program::makeStages(TArray<Stage>* pipeline,
 
     auto* const basePtr = (std::byte*)slots.values.data();
     auto OffsetFromBase = [&](const void* ptr) -> SkRPOffset {
-        return (SkRPOffset)((std::byte*)ptr - basePtr);
+        return (SkRPOffset)((const std::byte*)ptr - basePtr);
     };
+
+    // Copy all immutable values into the immutable slots.
+    for (const Instruction& inst : fInstructions) {
+        if (inst.fOp == BuilderOp::store_immutable_value) {
+            slots.immutable[inst.fSlotA] = sk_bit_cast<float>(inst.fImmA);
+        }
+    }
 
     // Write each BuilderOp to the pipeline array.
     pipeline->reserve_exact(pipeline->size() + fInstructions.size());
@@ -1796,7 +1849,6 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 break;
 
             case BuilderOp::jump:
-            case BuilderOp::branch_if_all_lanes_active:
             case BuilderOp::branch_if_any_lanes_active:
             case BuilderOp::branch_if_no_lanes_active: {
                 SkASSERT(inst.fImmA >= 0 && inst.fImmA < fNumLabels);
@@ -1805,6 +1857,15 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 auto* ctx = alloc->make<SkRasterPipeline_BranchCtx>();
                 ctx->offset = inst.fImmA;
                 pipeline->push_back({(ProgramOp)inst.fOp, ctx});
+                break;
+            }
+            case BuilderOp::branch_if_all_lanes_active: {
+                SkASSERT(inst.fImmA >= 0 && inst.fImmA < fNumLabels);
+                EmitStackRewindForBackwardsBranch(inst.fImmA);
+
+                auto* ctx = alloc->make<SkRasterPipeline_BranchIfAllLanesActiveCtx>();
+                ctx->offset = inst.fImmA;
+                pipeline->push_back({ProgramOp::branch_if_all_lanes_active, ctx});
                 break;
             }
             case BuilderOp::branch_if_no_active_lanes_on_stack_top_equal: {
@@ -1818,10 +1879,11 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 pipeline->push_back({ProgramOp::branch_if_no_active_lanes_eq, ctx});
                 break;
             }
-            case BuilderOp::init_lane_masks:
-                pipeline->push_back({ProgramOp::init_lane_masks, nullptr});
+            case BuilderOp::init_lane_masks: {
+                auto* ctx = alloc->make<SkRasterPipeline_InitLaneMasksCtx>();
+                pipeline->push_back({ProgramOp::init_lane_masks, ctx});
                 break;
-
+            }
             case BuilderOp::store_src_rg:
                 pipeline->push_back({ProgramOp::store_src_rg, SlotA()});
                 break;
@@ -1838,11 +1900,10 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 pipeline->push_back({ProgramOp::store_device_xy01, SlotA()});
                 break;
 
-            case BuilderOp::store_immutable_value: {
-                float* dst = ImmutableA();
-                *dst = sk_bit_cast<float>(inst.fImmA);
+            case BuilderOp::store_immutable_value:
+                // The immutable slots were populated in an earlier pass.
                 break;
-            }
+
             case BuilderOp::load_src:
                 pipeline->push_back({ProgramOp::load_src, SlotA()});
                 break;
@@ -1866,8 +1927,7 @@ void Program::makeStages(TArray<Stage>* pipeline,
                                                  : SlotA();
 
                 this->appendImmediateBinaryOp(pipeline, alloc, (ProgramOp)inst.fOp,
-                                              OffsetFromBase(dst), sk_bit_cast<float>(inst.fImmB),
-                                              inst.fImmA);
+                                              OffsetFromBase(dst), inst.fImmB, inst.fImmA);
                 break;
             }
             case ALL_N_WAY_BINARY_OP_CASES: {
@@ -1934,8 +1994,7 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 break;
 
             case BuilderOp::copy_immutable_unmasked:
-                this->appendCopyImmutableUnmasked(pipeline,
-                                                  alloc,
+                this->appendCopyImmutableUnmasked(pipeline, alloc, basePtr,
                                                   OffsetFromBase(SlotA()),
                                                   OffsetFromBase(ImmutableB()),
                                                   inst.fImmA);
@@ -1976,7 +2035,7 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 int generated = inst.fImmB;
 
                 auto* ctx = alloc->make<SkRasterPipeline_ShuffleCtx>();
-                ctx->ptr = tempStackPtr - (N * consumed);
+                ctx->ptr = reinterpret_cast<int32_t*>(tempStackPtr) - (N * consumed);
                 ctx->count = generated;
                 // Unpack immB and immC from nybble form into the offset array.
                 unpack_nybbles_to_offsets(inst.fImmC, SkSpan(&ctx->offsets[0], 8));
@@ -2040,7 +2099,7 @@ void Program::makeStages(TArray<Stage>* pipeline,
             }
             case BuilderOp::push_immutable: {
                 float* dst = tempStackPtr;
-                this->appendCopyImmutableUnmasked(pipeline, alloc,
+                this->appendCopyImmutableUnmasked(pipeline, alloc, basePtr,
                                                   OffsetFromBase(dst),
                                                   OffsetFromBase(ImmutableA()),
                                                   inst.fImmA);
@@ -2062,21 +2121,21 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 ctx->slots = inst.fImmA;
                 if (inst.fOp == BuilderOp::push_slots_indirect) {
                     op = ProgramOp::copy_from_indirect_unmasked;
-                    ctx->src = SlotA();
-                    ctx->dst = tempStackPtr;
+                    ctx->src = reinterpret_cast<const int32_t*>(SlotA());
+                    ctx->dst = reinterpret_cast<int32_t*>(tempStackPtr);
                 } else if (inst.fOp == BuilderOp::push_immutable_indirect) {
                     // We reuse the indirect-uniform op for indirect copies of immutable data.
                     op = ProgramOp::copy_from_indirect_uniform_unmasked;
-                    ctx->src = ImmutableA();
-                    ctx->dst = tempStackPtr;
+                    ctx->src = reinterpret_cast<const int32_t*>(ImmutableA());
+                    ctx->dst = reinterpret_cast<int32_t*>(tempStackPtr);
                 } else if (inst.fOp == BuilderOp::push_uniform_indirect) {
                     op = ProgramOp::copy_from_indirect_uniform_unmasked;
-                    ctx->src = UniformA();
-                    ctx->dst = tempStackPtr;
+                    ctx->src = reinterpret_cast<const int32_t*>(UniformA());
+                    ctx->dst = reinterpret_cast<int32_t*>(tempStackPtr);
                 } else {
                     op = ProgramOp::copy_to_indirect_masked;
-                    ctx->src = tempStackPtr - (ctx->slots * N);
-                    ctx->dst = SlotA();
+                    ctx->src = reinterpret_cast<const int32_t*>(tempStackPtr) - (ctx->slots * N);
+                    ctx->dst = reinterpret_cast<int32_t*>(SlotA());
                 }
                 pipeline->push_back({op, ctx});
                 break;
@@ -2088,8 +2147,8 @@ void Program::makeStages(TArray<Stage>* pipeline,
 
                 for (int remaining = inst.fImmA; remaining > 0; remaining -= 4) {
                     auto ctx = alloc->make<SkRasterPipeline_UniformCtx>();
-                    ctx->dst = dst;
-                    ctx->src = src;
+                    ctx->dst = reinterpret_cast<int32_t*>(dst);
+                    ctx->src = reinterpret_cast<const int32_t*>(src);
                     switch (remaining) {
                         case 1:  pipeline->push_back({ProgramOp::copy_uniform,    ctx}); break;
                         case 2:  pipeline->push_back({ProgramOp::copy_2_uniforms, ctx}); break;
@@ -2166,13 +2225,13 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 for (int remaining = inst.fImmA; remaining > 0; remaining -= 4) {
                     SkRasterPipeline_ConstantCtx ctx;
                     ctx.dst = OffsetFromBase(dst);
-                    ctx.value = sk_bit_cast<float>(inst.fImmB);
+                    ctx.value = inst.fImmB;
                     void* ptr = SkRPCtxUtils::Pack(ctx, alloc);
                     switch (remaining) {
-                        case 1:  pipeline->push_back({ProgramOp::copy_constant,    ptr}); break;
-                        case 2:  pipeline->push_back({ProgramOp::splat_2_constants,ptr}); break;
-                        case 3:  pipeline->push_back({ProgramOp::splat_3_constants,ptr}); break;
-                        default: pipeline->push_back({ProgramOp::splat_4_constants,ptr}); break;
+                        case 1:  pipeline->push_back({ProgramOp::copy_constant,     ptr}); break;
+                        case 2:  pipeline->push_back({ProgramOp::splat_2_constants, ptr}); break;
+                        case 3:  pipeline->push_back({ProgramOp::splat_3_constants, ptr}); break;
+                        default: pipeline->push_back({ProgramOp::splat_4_constants, ptr}); break;
                     }
                     dst += 4 * N;
                 }
@@ -2201,8 +2260,8 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 // immC: offset from stack top
                 auto stage = (ProgramOp)((int)ProgramOp::swizzle_copy_slot_masked + inst.fImmA - 1);
                 auto* ctx = alloc->make<SkRasterPipeline_SwizzleCopyCtx>();
-                ctx->src = tempStackPtr - (inst.fImmC * N);
-                ctx->dst = SlotA();
+                ctx->src = reinterpret_cast<const int32_t*>(tempStackPtr) - (inst.fImmC * N);
+                ctx->dst = reinterpret_cast<int32_t*>(SlotA());
                 unpack_nybbles_to_offsets(inst.fImmB, SkSpan(ctx->offsets));
                 pipeline->push_back({stage, ctx});
                 break;
@@ -2237,8 +2296,8 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 float* sourceStackPtr = tempStackMap[inst.fImmB];
 
                 auto* ctx = alloc->make<SkRasterPipeline_CopyIndirectCtx>();
-                ctx->dst = tempStackPtr;
-                ctx->src = sourceStackPtr - (inst.fImmC * N);
+                ctx->dst = reinterpret_cast<int32_t*>(tempStackPtr);
+                ctx->src = reinterpret_cast<const int32_t*>(sourceStackPtr) - (inst.fImmC * N);
                 ctx->indirectOffset =
                         reinterpret_cast<const uint32_t*>(tempStackMap[inst.fImmD]) - (1 * N);
                 ctx->indirectLimit = inst.fImmC - inst.fImmA;
@@ -2254,8 +2313,8 @@ void Program::makeStages(TArray<Stage>* pipeline,
                 // immC: offset from stack top
                 // immD: dynamic stack ID
                 auto* ctx = alloc->make<SkRasterPipeline_SwizzleCopyIndirectCtx>();
-                ctx->src = tempStackPtr - (inst.fImmC * N);
-                ctx->dst = SlotA();
+                ctx->src = reinterpret_cast<const int32_t*>(tempStackPtr) - (inst.fImmC * N);
+                ctx->dst = reinterpret_cast<int32_t*>(SlotA());
                 ctx->indirectOffset =
                         reinterpret_cast<const uint32_t*>(tempStackMap[inst.fImmD]) - (1 * N);
                 ctx->indirectLimit =
@@ -2606,7 +2665,7 @@ public:
                                                      bool showAsFloat = true) const {
         auto ctx = SkRPCtxUtils::Unpack((const SkRasterPipeline_ConstantCtx*)v);
         return {this->offsetCtx(ctx.dst, slots),
-                this->imm(ctx.value, showAsFloat)};
+                this->imm(sk_bit_cast<float>(ctx.value), showAsFloat)};
     }
 
     // Interprets the context value as a BinaryOp structure for copy_n_slots (numSlots is dictated
@@ -2622,7 +2681,7 @@ public:
     std::tuple<std::string, std::string> copyUniformCtx(const void* v, int numSlots) const {
         const auto *ctx = static_cast<const SkRasterPipeline_UniformCtx*>(v);
         return {this->ptrCtx(ctx->dst, numSlots),
-                this->multiImmCtx(ctx->src, numSlots)};
+                this->multiImmCtx(reinterpret_cast<const float*>(ctx->src), numSlots)};
     }
 
     // Interprets the context value as a pointer to two adjacent values.

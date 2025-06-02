@@ -20,12 +20,19 @@ Item {
         diceSpawner.setDiceWidth(diceWidth);
     }
 
+    Screen.onPrimaryOrientationChanged: {
+        var orientation = Screen.primaryOrientation
+        var isPortrait = orientation === Qt.PortraitOrientation
+                || orientation === Qt.InvertedPortraitOrientation
+        viewport.camera.position = Qt.vector3d(0, -20, isPortrait ? 100 : 60)
+    }
+
     PhysicsWorld {
         id: physicsWorld
         running: true
         enableCCD: true
         scene: viewport.scene
-        gravity: Qt.vector3d(0, -settingGravity, 0)
+        gravity: Qt.vector3d(0, -item.settingGravity, 0)
         typicalLength: 1
         typicalSpeed: 1000
         minimumTimestep: 15
@@ -34,9 +41,9 @@ Item {
 
     PhysicsMaterial {
         id: physicsMaterial
-        staticFriction: settingsStaticFriction
-        dynamicFriction: settingsDynamicFriction
-        restitution: settingsRestitution
+        staticFriction: item.settingsStaticFriction
+        dynamicFriction: item.settingsDynamicFriction
+        restitution: item.settingsRestitution
     }
 
     OrbitCameraController {
@@ -55,7 +62,7 @@ Item {
             eulerRotation: Qt.vector3d(-14.2885, 410.287, 0)
             PerspectiveCamera {
                 id: camera
-                position: Qt.vector3d(0, -20, 60)
+                position: Qt.vector3d(0, -20, 100)
                 clipFar: 1000
                 clipNear: 0.1
             }
@@ -83,7 +90,12 @@ Item {
                 eulerRotation: Qt.vector3d(-45, 25, 0)
                 castsShadow: true
                 brightness: 1
+                shadowFactor: 100
                 shadowMapQuality: Light.ShadowMapQualityVeryHigh
+                softShadowQuality: Light.PCF4
+                shadowBias: 0.2
+                shadowMapFar: camera.clipFar
+                pcfFactor: 0.05
             }
 
             PhysicalTable {

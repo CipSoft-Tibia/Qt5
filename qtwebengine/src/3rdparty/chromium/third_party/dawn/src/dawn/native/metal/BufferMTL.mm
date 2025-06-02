@@ -1,24 +1,40 @@
-// Copyright 2017 The Dawn Authors
+// Copyright 2017 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "dawn/native/metal/BufferMTL.h"
 
 #include "dawn/common/Math.h"
 #include "dawn/common/Platform.h"
+#include "dawn/native/CallbackTaskManager.h"
+#include "dawn/native/ChainUtils.h"
 #include "dawn/native/CommandBuffer.h"
 #include "dawn/native/metal/CommandRecordingContext.h"
 #include "dawn/native/metal/DeviceMTL.h"
+#include "dawn/native/metal/QueueMTL.h"
 #include "dawn/native/metal/UtilsMetal.h"
 
 #include <limits>
@@ -29,9 +45,15 @@ namespace dawn::native::metal {
 static constexpr uint32_t kMinUniformOrStorageBufferAlignment = 16u;
 
 // static
-ResultOrError<Ref<Buffer>> Buffer::Create(Device* device, const BufferDescriptor* descriptor) {
+ResultOrError<Ref<Buffer>> Buffer::Create(Device* device,
+                                          const UnpackedPtr<BufferDescriptor>& descriptor) {
     Ref<Buffer> buffer = AcquireRef(new Buffer(device, descriptor));
-    DAWN_TRY(buffer->Initialize(descriptor->mappedAtCreation));
+
+    if (auto* hostMappedDesc = descriptor.Get<BufferHostMappedPointer>()) {
+        DAWN_TRY(buffer->InitializeHostMapped(hostMappedDesc));
+    } else {
+        DAWN_TRY(buffer->Initialize(descriptor->mappedAtCreation));
+    }
     return std::move(buffer);
 }
 
@@ -44,7 +66,8 @@ uint64_t Buffer::QueryMaxBufferLength(id<MTLDevice> mtlDevice) {
     return 256 * 1024 * 1024;
 }
 
-Buffer::Buffer(DeviceBase* dev, const BufferDescriptor* desc) : BufferBase(dev, desc) {}
+Buffer::Buffer(DeviceBase* dev, const UnpackedPtr<BufferDescriptor>& desc)
+    : BufferBase(dev, desc) {}
 
 MaybeError Buffer::Initialize(bool mappedAtCreation) {
     MTLResourceOptions storageMode;
@@ -65,7 +88,7 @@ MaybeError Buffer::Initialize(bool mappedAtCreation) {
     // buffer must be aligned to the largest alignment of its members.
     if (GetUsage() &
         (wgpu::BufferUsage::Uniform | wgpu::BufferUsage::Storage | kInternalStorageBuffer)) {
-        ASSERT(IsAligned(kMinUniformOrStorageBufferAlignment, alignment));
+        DAWN_ASSERT(IsAligned(kMinUniformOrStorageBufferAlignment, alignment));
         alignment = kMinUniformOrStorageBufferAlignment;
     }
 
@@ -107,7 +130,7 @@ MaybeError Buffer::Initialize(bool mappedAtCreation) {
     if (GetDevice()->IsToggleEnabled(Toggle::NonzeroClearResourcesOnCreationForTesting) &&
         !mappedAtCreation) {
         CommandRecordingContext* commandContext =
-            ToBackend(GetDevice())->GetPendingCommandContext();
+            ToBackend(GetDevice()->GetQueue())->GetPendingCommandContext();
         ClearBuffer(commandContext, uint8_t(1u));
     }
 
@@ -119,10 +142,42 @@ MaybeError Buffer::Initialize(bool mappedAtCreation) {
             uint64_t clearOffset = GetAllocatedSize() - clearSize;
 
             CommandRecordingContext* commandContext =
-                ToBackend(GetDevice())->GetPendingCommandContext();
+                ToBackend(GetDevice()->GetQueue())->GetPendingCommandContext();
             ClearBuffer(commandContext, 0, clearOffset, clearSize);
         }
     }
+    return {};
+}
+
+// static
+MaybeError Buffer::InitializeHostMapped(const BufferHostMappedPointer* hostMappedDesc) {
+    if (GetSize() > std::numeric_limits<NSUInteger>::max()) {
+        return DAWN_OUT_OF_MEMORY_ERROR("Buffer allocation is too large");
+    }
+
+    mAllocatedSize = GetSize();
+
+    Ref<DeviceBase> deviceRef = GetDevice();
+    wgpu::Callback callback = hostMappedDesc->disposeCallback;
+    void* userdata = hostMappedDesc->userdata;
+    auto dispose = ^(void*, NSUInteger) {
+        deviceRef->GetCallbackTaskManager()->AddCallbackTask(
+            [callback, userdata] { callback(userdata); });
+    };
+
+    mMtlBuffer.Acquire([ToBackend(GetDevice())->GetMTLDevice()
+        newBufferWithBytesNoCopy:hostMappedDesc->pointer
+                          length:GetSize()
+                         options:MTLResourceCPUCacheModeDefaultCache
+                     deallocator:dispose]);
+    if (mMtlBuffer == nil) {
+        dispose(hostMappedDesc->pointer, GetSize());
+        return DAWN_INTERNAL_ERROR("Buffer allocation failed");
+    }
+
+    // Data is assumed to be initialized since it is externally allocated.
+    SetIsDataInitialized();
+    SetLabelImpl();
     return {};
 }
 
@@ -142,7 +197,8 @@ MaybeError Buffer::MapAtCreationImpl() {
 }
 
 MaybeError Buffer::MapAsyncImpl(wgpu::MapMode mode, size_t offset, size_t size) {
-    CommandRecordingContext* commandContext = ToBackend(GetDevice())->GetPendingCommandContext();
+    CommandRecordingContext* commandContext =
+        ToBackend(GetDevice()->GetQueue())->GetPendingCommandContext();
     EnsureDataInitialized(commandContext);
 
     return {};
@@ -157,6 +213,13 @@ void Buffer::UnmapImpl() {
 }
 
 void Buffer::DestroyImpl() {
+    // TODO(crbug.com/dawn/831): DestroyImpl is called from two places.
+    // - It may be called if the buffer is explicitly destroyed with APIDestroy.
+    //   This case is NOT thread-safe and needs proper synchronization with other
+    //   simultaneous uses of the buffer.
+    // - It may be called when the last ref to the buffer is dropped and the buffer
+    //   is implicitly destroyed. This case is thread-safe because there are no
+    //   other threads using the buffer since there are no other live refs.
     BufferBase::DestroyImpl();
     mMtlBuffer = nullptr;
 }
@@ -206,7 +269,7 @@ bool Buffer::EnsureDataInitializedAsDestination(CommandRecordingContext* command
 }
 
 void Buffer::InitializeToZero(CommandRecordingContext* commandContext) {
-    ASSERT(NeedsInitialization());
+    DAWN_ASSERT(NeedsInitialization());
 
     ClearBuffer(commandContext, uint8_t(0u));
 
@@ -218,9 +281,9 @@ void Buffer::ClearBuffer(CommandRecordingContext* commandContext,
                          uint8_t clearValue,
                          uint64_t offset,
                          uint64_t size) {
-    ASSERT(commandContext != nullptr);
+    DAWN_ASSERT(commandContext != nullptr);
     size = size > 0 ? size : GetAllocatedSize();
-    ASSERT(size > 0);
+    DAWN_ASSERT(size > 0);
     TrackUsage();
     [commandContext->EnsureBlit() fillBuffer:mMtlBuffer.Get()
                                        range:NSMakeRange(offset, size)

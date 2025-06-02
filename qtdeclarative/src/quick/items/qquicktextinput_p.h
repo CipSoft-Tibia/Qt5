@@ -25,7 +25,7 @@
 QT_BEGIN_NAMESPACE
 
 class QQuickTextInputPrivate;
-class Q_QUICK_PRIVATE_EXPORT QQuickTextInput : public QQuickImplicitSizeItem, public QQuickTextInterface
+class Q_QUICK_EXPORT QQuickTextInput : public QQuickImplicitSizeItem, public QQuickTextInterface
 {
     Q_OBJECT
     Q_INTERFACES(QQuickTextInterface)
@@ -144,7 +144,7 @@ public:
     Q_ENUM(RenderType)
 
     //Auxilliary functions needed to control the TextInput from QML
-    Q_INVOKABLE void positionAt(QQmlV4Function *args) const;
+    Q_INVOKABLE void positionAt(QQmlV4FunctionPtr args) const;
     Q_INVOKABLE QRectF positionToRectangle(int pos) const;
     Q_INVOKABLE void moveCursorSelection(int pos);
     Q_INVOKABLE void moveCursorSelection(int pos, SelectionMode mode);

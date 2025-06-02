@@ -24,7 +24,7 @@ class QpackBlockingManagerPeer;
 // Class to keep track of blocked streams and blocking dynamic table entries:
 // https://quicwg.org/base-drafts/draft-ietf-quic-qpack.html#blocked-decoding
 // https://quicwg.org/base-drafts/draft-ietf-quic-qpack.html#blocked-insertion
-class QUIC_EXPORT_PRIVATE QpackBlockingManager {
+class QUICHE_EXPORT QpackBlockingManager {
  public:
   using IndexSet = std::multiset<uint64_t>;
 
@@ -72,10 +72,10 @@ class QUIC_EXPORT_PRIVATE QpackBlockingManager {
   friend test::QpackBlockingManagerPeer;
 
   // A stream typically has only one header block, except for the rare cases of
-  // 1xx responses, trailers, or push promises.  Even if there are multiple
-  // header blocks sent on a single stream, they might not be blocked at the
-  // same time.  Use std::list instead of quiche::QuicheCircularDeque because it
-  // has lower memory footprint when holding few elements.
+  // 1xx responses and trailers. Even if there are multiple header blocks sent
+  // on a single stream, they might not be blocked at the same time. Use
+  // std::list instead of quiche::QuicheCircularDeque because it has lower
+  // memory footprint when holding few elements.
   using HeaderBlocksForStream = std::list<IndexSet>;
   using HeaderBlocks = absl::flat_hash_map<QuicStreamId, HeaderBlocksForStream>;
 

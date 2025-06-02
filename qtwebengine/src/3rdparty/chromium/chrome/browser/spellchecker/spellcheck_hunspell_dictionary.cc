@@ -21,7 +21,7 @@
 #include "base/threading/scoped_blocking_call.h"
 #include "build/build_config.h"
 #include "chrome/browser/spellchecker/spellcheck_service.h"
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
 #include "chrome/common/chrome_paths.h"
 #endif
 #include "components/spellcheck/browser/spellcheck_platform.h"
@@ -378,7 +378,7 @@ SpellcheckHunspellDictionary::OpenDictionaryFile(base::TaskRunner* task_runner,
     dictionary.file.Initialize(dictionary.path,
                                base::File::FLAG_READ | base::File::FLAG_OPEN);
   } else {
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
     base::DeleteFile(dictionary.path);
 #endif
   }
@@ -411,7 +411,7 @@ void SpellcheckHunspellDictionary::InitializeDictionaryLocationComplete(
     DictionaryFile file) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   dictionary_file_ = std::move(file);
-#ifndef TOOLKIT_QT
+#if !BUILDFLAG(IS_QTWEBENGINE)
   if (!dictionary_file_.file.IsValid()) {
     // Notify browser tests that this dictionary is corrupted. Skip downloading
     // the dictionary in browser tests.
@@ -436,7 +436,7 @@ void SpellcheckHunspellDictionary::InitializeDictionaryLocationComplete(
       InformListenersOfDownloadFailure();
   else
       InformListenersOfInitialization();
-#endif
+#endif  // !BUILDFLAG(IS_QTWEBENGINE)
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 

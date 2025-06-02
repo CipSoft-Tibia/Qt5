@@ -64,6 +64,8 @@ public:
     bool removeRows(int row, int count = 1, const QModelIndex &parent = QModelIndex()) override;
     bool removeColumns(int column, int count = 1, const QModelIndex &parent = QModelIndex()) override;
 
+    bool moveRows(const QModelIndex &sourceParent, int sourceRow, int count, const QModelIndex &destinationParent, int destinationChild) override;
+
     void setItem(int row, int column, QTableWidgetItem *item);
     QTableWidgetItem *takeItem(int row, int column);
     QTableWidgetItem *item(int row, int column) const;
@@ -101,10 +103,10 @@ public:
     Qt::ItemFlags flags(const QModelIndex &index) const override;
 
     void sort(int column, Qt::SortOrder order) override;
-    static bool itemLessThan(const QPair<QTableWidgetItem*,int> &left,
-                             const QPair<QTableWidgetItem*,int> &right);
-    static bool itemGreaterThan(const QPair<QTableWidgetItem*,int> &left,
-                                const QPair<QTableWidgetItem*,int> &right);
+    static bool itemLessThan(const std::pair<QTableWidgetItem*,int> &left,
+                             const std::pair<QTableWidgetItem*,int> &right);
+    static bool itemGreaterThan(const std::pair<QTableWidgetItem*,int> &left,
+                                const std::pair<QTableWidgetItem*,int> &right);
 
     void ensureSorted(int column, Qt::SortOrder order, int start, int end);
     QList<QTableWidgetItem *> columnItems(int column) const;

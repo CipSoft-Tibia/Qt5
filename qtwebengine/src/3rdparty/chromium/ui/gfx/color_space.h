@@ -56,7 +56,7 @@ namespace mojom {
 class ColorSpaceDataView;
 }  // namespace mojom
 
-// Used to represet a color space for the purpose of color conversion.
+// Used to represent a color space for the purpose of color conversion.
 // This is designed to be safe and compact enough to send over IPC
 // between any processes.
 class COLOR_SPACE_EXPORT ColorSpace {
@@ -292,6 +292,11 @@ class COLOR_SPACE_EXPORT ColorSpace {
   // white level parameter. This is true for spaces with the PQ, HLG, and
   // SCRGB_LINEAR_80_NITS transfer functions.
   bool IsAffectedBySDRWhiteLevel() const;
+
+  // If this color space is affected by the SDR white level, return |this| with
+  // its SDR white level set to |sdr_white_level|. Otherwise return |this|
+  // unmodified.
+  ColorSpace GetWithSdrWhiteLevel(float sdr_white_level) const;
 
   // Returns true if the encoded values can be outside of the 0.0-1.0 range.
   bool FullRangeEncodedValues() const;

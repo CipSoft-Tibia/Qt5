@@ -35,6 +35,8 @@ QT_BEGIN_NAMESPACE
     \reentrant
     \since 4.6
 
+    \compares equality
+
     A process's environment is composed of a set of key=value pairs known as
     environment variables. The QProcessEnvironment class wraps that concept
     and allows easy manipulation of those variables. It's meant to be used
@@ -178,21 +180,21 @@ QProcessEnvironment &QProcessEnvironment::operator=(const QProcessEnvironment &o
 /*!
     \fn void QProcessEnvironment::swap(QProcessEnvironment &other)
     \since 5.0
-
-    Swaps this process environment instance with \a other. This
-    function is very fast and never fails.
+    \memberswap{process environment instance}
 */
 
 /*!
-    \fn bool QProcessEnvironment::operator !=(const QProcessEnvironment &other) const
+    \fn bool QProcessEnvironment::operator!=(const QProcessEnvironment &lhs, const QProcessEnvironment &rhs)
 
-    Returns \c true if this and the \a other QProcessEnvironment objects are different.
+    Returns \c true if the process environment objects \a lhs and \a rhs are different.
 
     \sa operator==()
 */
 
 /*!
-    Returns \c true if this and the \a other QProcessEnvironment objects are equal.
+   \fn bool QProcessEnvironment::operator==(const QProcessEnvironment &lhs, const QProcessEnvironment &rhs)
+
+    Returns \c true if the process environment objects \a lhs and \a rhs are equal.
 
     Two QProcessEnvironment objects are considered equal if they have the same
     set of key=value pairs. The comparison of keys is done case-sensitive on
@@ -200,12 +202,12 @@ QProcessEnvironment &QProcessEnvironment::operator=(const QProcessEnvironment &o
 
     \sa operator!=(), contains()
 */
-bool QProcessEnvironment::operator==(const QProcessEnvironment &other) const
+bool comparesEqual(const QProcessEnvironment &lhs, const QProcessEnvironment &rhs)
 {
-    if (d == other.d)
+    if (lhs.d == rhs.d)
         return true;
 
-    return d && other.d && d->vars == other.d->vars;
+    return lhs.d && rhs.d && lhs.d->vars == rhs.d->vars;
 }
 
 /*!
@@ -1481,22 +1483,22 @@ void QProcess::setStandardInputFile(const QString &fileName)
 
     Redirects the process' standard output to the file \a
     fileName. When the redirection is in place, the standard output
-    read channel is closed: reading from it using read() will always
-    fail, as will readAllStandardOutput().
+    read channel is closed: reading from it using \l read() will always
+    fail, as will \l readAllStandardOutput().
 
-    To discard all standard output from the process, pass nullDevice()
+    To discard all standard output from the process, pass \l nullDevice()
     here. This is more efficient than simply never reading the standard
     output, as no QProcess buffers are filled.
 
-    If the file \a fileName doesn't exist at the moment start() is
+    If the file \a fileName doesn't exist at the moment \l start() is
     called, it will be created. If it cannot be created, the starting
     will fail.
 
-    If the file exists and \a mode is QIODevice::Truncate, the file
-    will be truncated. Otherwise (if \a mode is QIODevice::Append),
+    If the file exists and \a mode is \ QIODeviceBase::Truncate, the file
+    will be truncated. Otherwise (if \a mode is \l QIODeviceBase::Append),
     the file will be appended to.
 
-    Calling setStandardOutputFile() after the process has started has
+    Calling \l setStandardOutputFile() after the process has started has
     no effect.
 
     If \a fileName is an empty string, it stops redirecting the standard

@@ -20,7 +20,7 @@ endif()
 
 find_package(Qt6 ${PROJECT_VERSION} CONFIG REQUIRED COMPONENTS BuildInternals Core)
 find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG OPTIONAL_COMPONENTS
-             DBus Network Xml Widgets Quick QuickWidgets Qml
+             DBus Network Xml Widgets Quick QuickWidgets Qml QmlLSPrivate
              Sql PrintSupport OpenGL OpenGLWidgets ${optional_components})
 qt_internal_project_setup()
 

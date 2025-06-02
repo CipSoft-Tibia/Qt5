@@ -7,17 +7,20 @@ qt_internal_add_qml_module(GrpcQuick
     PLUGIN_TARGET grpcquickplugin
     CLASS_NAME GrpcQuickPlugin
     SOURCES
-        qqmlabstractgrpcchannel.h
+        qqmlabstractgrpcchannel.h qqmlabstractgrpcchannel_p.h qqmlabstractgrpcchannel.cpp
+        qqmlgrpcnamespace_p.h
         qqmlgrpchttp2channel_p.h qqmlgrpchttp2channel.cpp
         qqmlgrpcchanneloptions_p.h qqmlgrpcchanneloptions.cpp
-        qqmlgrpccalloptions_p.h qqmlgrpccalloptions.cpp
+        qqmlgrpccalloptions.h qqmlgrpccalloptions.cpp
         qqmlgrpcmetadata_p.h qqmlgrpcmetadata.cpp
+        qqmlgrpcfunctionalhandlers.h qqmlgrpcfunctionalhandlers.cpp
+        qtqmlgrpcstreamsender.h qtqmlgrpcstreamsender.cpp
     LIBRARIES
         Qt::Core
         Qt::Grpc
     PUBLIC_LIBRARIES
         Qt::Quick
-    GENERATE_CPP_EXPORTS
+    QT_LICENSE_ID QT_COMMERCIAL_OR_GPL3
 )
 
 qt_internal_extend_target(GrpcQuick CONDITION QT_FEATURE_qml_ssl

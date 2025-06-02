@@ -7,9 +7,13 @@
 load("@builtin//struct.star", "module")
 load("./clang_windows.star", "clang")
 load("./config.star", "config")
+load("./reproxy.star", "reproxy")
 
-__filegroups = {}
-__filegroups.update(clang.filegroups)
+def __filegroups(ctx):
+    fg = {}
+    fg.update(clang.filegroups(ctx))
+    return fg
+
 __handlers = {}
 __handlers.update(clang.handlers)
 

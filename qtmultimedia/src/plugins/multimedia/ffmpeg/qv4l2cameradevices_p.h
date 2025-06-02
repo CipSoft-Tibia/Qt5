@@ -15,8 +15,8 @@
 // We mean it.
 //
 
-#include <private/qplatformvideodevices_p.h>
-#include <private/qplatformmediaintegration_p.h>
+#include <QtMultimedia/private/qplatformvideodevices_p.h>
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 
 #include <qfilesystemwatcher.h>
 
@@ -28,10 +28,11 @@ class QV4L2CameraDevices : public QPlatformVideoDevices
 public:
     QV4L2CameraDevices(QPlatformMediaIntegration *integration);
 
-    QList<QCameraDevice> videoDevices() const override;
-
 public Q_SLOTS:
     void checkCameras();
+
+protected:
+    QList<QCameraDevice> findVideoInputs() const override;
 
 private:
     bool doCheckCameras();

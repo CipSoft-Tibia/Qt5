@@ -171,6 +171,10 @@ CorsURLLoaderTestBase::CorsURLLoaderTestBase(bool shared_dictionary_enabled)
 
   context_params->shared_dictionary_enabled = shared_dictionary_enabled;
 
+  // The AFP Block List experiment won't affect tests that don't also populate
+  // the block list, so this is safe to enable for all tests.
+  context_params->afp_block_list_experiment_enabled = true;
+
   network_context_ = std::make_unique<NetworkContext>(
       network_service_.get(),
       network_context_remote_.BindNewPipeAndPassReceiver(),
@@ -348,9 +352,9 @@ const net::NetLogEntry* CorsURLLoaderTestBase::FindEntryByType(
 
 net::RedirectInfo CorsURLLoaderTestBase::CreateRedirectInfo(
     int status_code,
-    base::StringPiece method,
+    std::string_view method,
     const GURL& url,
-    base::StringPiece referrer,
+    std::string_view referrer,
     net::ReferrerPolicy referrer_policy,
     net::SiteForCookies site_for_cookies) {
   net::RedirectInfo redirect_info;

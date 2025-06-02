@@ -12,6 +12,7 @@
 #include <qvarlengtharray.h>
 #include <qbuffer.h>
 #include <qfiledevice.h>
+#include <qimagereader.h>
 
 extern "C" {
 #include "tiffio.h"
@@ -203,6 +204,15 @@ TIFF *QTiffHandlerPrivate::openInternal(const char *mode, QIODevice *device)
     TIFFOpenOptions *opts = TIFFOpenOptionsAlloc();
     TIFFOpenOptionsSetErrorHandlerExtR(opts, &tiffErrorHandler, this);
     TIFFOpenOptionsSetWarningHandlerExtR(opts, &tiffWarningHandler, this);
+
+#if TIFFLIB_AT_LEAST(4, 7, 0)
+    quint64 maxAlloc = quint64(QImageReader::allocationLimit()) << 20;
+    if (maxAlloc) {
+        maxAlloc = qMin(maxAlloc, quint64(std::numeric_limits<tmsize_t>::max()));
+        TIFFOpenOptionsSetMaxCumulatedMemAlloc(opts, tmsize_t(maxAlloc));
+    }
+#endif
+
     auto handle = TIFFClientOpenExt("foo",
                                     mode,
                                     device,
@@ -333,14 +343,15 @@ bool QTiffHandlerPrivate::readHeaders(QIODevice *device)
         format = QImage::Format_Grayscale16;
     else if ((grayscale || photometric == PHOTOMETRIC_PALETTE) && bitPerSample == 8 && samplesPerPixel == 1)
         format = QImage::Format_Indexed8;
-    else if (samplesPerPixel < 4)
-        if (bitPerSample == 16 && (photometric == PHOTOMETRIC_RGB || photometric == PHOTOMETRIC_MINISBLACK))
+    else if (samplesPerPixel < 4) {
+        bool regular = (samplesPerPixel != 2) && (photometric == PHOTOMETRIC_RGB || photometric == PHOTOMETRIC_MINISBLACK);
+        if (bitPerSample == 16 && regular)
             format = floatingPoint ? QImage::Format_RGBX16FPx4 : QImage::Format_RGBX64;
-        else if (bitPerSample == 32 && floatingPoint && (photometric == PHOTOMETRIC_RGB || photometric == PHOTOMETRIC_MINISBLACK))
+        else if (bitPerSample == 32 && floatingPoint && regular)
             format = QImage::Format_RGBX32FPx4;
         else
             format = QImage::Format_RGB32;
-    else {
+    } else {
         uint16_t count;
         uint16_t *extrasamples;
         // If there is any definition of the alpha-channel, libtiff will return premultiplied
@@ -367,6 +378,15 @@ bool QTiffHandlerPrivate::readHeaders(QIODevice *device)
                 format = QImage::Format_RGBA32FPx4_Premultiplied;
             else
                 format = QImage::Format_RGBA32FPx4;
+        } else if (samplesPerPixel == 4 && bitPerSample == 8 && photometric == PHOTOMETRIC_SEPARATED) {
+            uint16_t inkSet;
+            const bool gotInkSetField = TIFFGetField(tiff, TIFFTAG_INKSET, &inkSet);
+            if (!gotInkSetField || inkSet == INKSET_CMYK) {
+                format = QImage::Format_CMYK8888;
+            } else {
+                close();
+                return false;
+            }
         } else {
             if (premultiplied)
                 format = QImage::Format_ARGB32_Premultiplied;
@@ -468,12 +488,13 @@ bool QTiffHandler::read(QImage *image)
     }
     bool format8bit = (format == QImage::Format_Mono || format == QImage::Format_Indexed8 || format == QImage::Format_Grayscale8);
     bool format16bit = (format == QImage::Format_Grayscale16);
+    bool formatCmyk32bit = (format == QImage::Format_CMYK8888);
     bool format64bit = (format == QImage::Format_RGBX64 || format == QImage::Format_RGBA64 || format == QImage::Format_RGBA64_Premultiplied);
     bool format64fp = (format == QImage::Format_RGBX16FPx4 || format == QImage::Format_RGBA16FPx4 || format == QImage::Format_RGBA16FPx4_Premultiplied);
     bool format128fp = (format == QImage::Format_RGBX32FPx4 || format == QImage::Format_RGBA32FPx4 || format == QImage::Format_RGBA32FPx4_Premultiplied);
 
     // Formats we read directly, instead of over RGBA32:
-    if (format8bit || format16bit || format64bit || format64fp || format128fp) {
+    if (format8bit || format16bit || formatCmyk32bit || format64bit || format64fp || format128fp) {
         int bytesPerPixel = image->depth() / 8;
         if (format == QImage::Format_RGBX64 || format == QImage::Format_RGBX16FPx4)
             bytesPerPixel = d->photometric == PHOTOMETRIC_RGB ? 6 : 2;
@@ -873,6 +894,25 @@ bool QTiffHandler::write(const QImage &image)
                 return false;
             }
         }
+        TIFFClose(tiff);
+    } else if (format == QImage::Format_CMYK8888) {
+        if (!TIFFSetField(tiff, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_SEPARATED)
+            || !TIFFSetField(tiff, TIFFTAG_COMPRESSION, compression == NoCompression ? COMPRESSION_NONE : COMPRESSION_LZW)
+            || !TIFFSetField(tiff, TIFFTAG_SAMPLESPERPIXEL, 4)
+            || !TIFFSetField(tiff, TIFFTAG_BITSPERSAMPLE, 8)
+            || !TIFFSetField(tiff, TIFFTAG_INKSET, INKSET_CMYK)
+            || !TIFFSetField(tiff, TIFFTAG_ROWSPERSTRIP, defaultStripSize(tiff))) {
+            TIFFClose(tiff);
+            return false;
+        }
+
+        for (int y = 0; y < image.height(); ++y) {
+            if (TIFFWriteScanline(tiff, (void*)image.scanLine(y), y) != 1) {
+                TIFFClose(tiff);
+                return false;
+            }
+        }
+
         TIFFClose(tiff);
     } else if (!image.hasAlphaChannel()) {
         if (!TIFFSetField(tiff, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_RGB)

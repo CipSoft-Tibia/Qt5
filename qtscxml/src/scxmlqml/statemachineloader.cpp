@@ -12,7 +12,7 @@
 
 /*!
     \qmltype StateMachineLoader
-//!    \instantiates QScxmlStateMachineLoader
+//!    \nativetype QScxmlStateMachineLoader
     \inqmlmodule QtScxml
 
     \brief Dynamically loads an SCXML document and instantiates the state machine.

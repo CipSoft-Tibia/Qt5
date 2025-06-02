@@ -301,8 +301,9 @@ class UpdateTypedSlotHelper {
   // of the uncompressed constant pool entry.
   // The callback accepts FullMaybeObjectSlot and returns SlotCallbackResult.
   template <typename Callback>
-  static SlotCallbackResult UpdateTypedSlot(Heap* heap, SlotType slot_type,
-                                            Address addr, Callback callback);
+  static SlotCallbackResult UpdateTypedSlot(
+      WritableJitAllocation& jit_allocation, Heap* heap, SlotType slot_type,
+      Address addr, Callback callback);
 
   // Returns the HeapObject referenced by the given typed slot entry.
   inline static Tagged<HeapObject> GetTargetObject(Heap* heap,
@@ -329,7 +330,7 @@ class UpdateTypedSlotHelper {
   // Updates a code target slot using an untyped slot callback.
   // The callback accepts FullMaybeObjectSlot and returns SlotCallbackResult.
   template <typename Callback>
-  static SlotCallbackResult UpdateCodeTarget(RelocInfo* rinfo,
+  static SlotCallbackResult UpdateCodeTarget(WritableRelocInfo* rinfo,
                                              Callback callback) {
     DCHECK(RelocInfo::IsCodeTargetMode(rinfo->rmode()));
     Tagged<InstructionStream> old_target =
@@ -347,7 +348,8 @@ class UpdateTypedSlotHelper {
   // Updates an embedded pointer slot using an untyped slot callback.
   // The callback accepts FullMaybeObjectSlot and returns SlotCallbackResult.
   template <typename Callback>
-  static SlotCallbackResult UpdateEmbeddedPointer(Heap* heap, RelocInfo* rinfo,
+  static SlotCallbackResult UpdateEmbeddedPointer(Heap* heap,
+                                                  WritableRelocInfo* rinfo,
                                                   Callback callback) {
     DCHECK(RelocInfo::IsEmbeddedObjectMode(rinfo->rmode()));
     Tagged<HeapObject> old_target = rinfo->target_object(heap->isolate());

@@ -129,6 +129,13 @@ ApplicationWindow {
         }
     }
 
+    MediaDevices {
+        id: mediaDevices
+        onAudioOutputsChanged: {
+            mediaPlayer.audioOutput.device = defaultAudioOutput
+        }
+    }
+
     MediaPlayer {
         id: mediaPlayer
 

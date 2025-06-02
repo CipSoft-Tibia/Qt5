@@ -17,14 +17,17 @@ jumbo_static_library("browser") {
     "content_settings_observable_provider.cc",
     "content_settings_observable_provider.h",
     "content_settings_observer.h",
-    "content_settings_origin_identifier_value_map.cc",
-    "content_settings_origin_identifier_value_map.h",
+    "content_settings_origin_value_map.cc",
+    "content_settings_origin_value_map.h",
+    "content_settings_partitioned_origin_value_map.cc",
+    "content_settings_partitioned_origin_value_map.h",
     "content_settings_policy_provider.cc",
     "content_settings_policy_provider.h",
     "content_settings_pref.cc",
     "content_settings_pref.h",
     "content_settings_pref_provider.cc",
     "content_settings_pref_provider.h",
+    "content_settings_provider.cc",
     "content_settings_provider.h",
     "content_settings_registry.cc",
     "content_settings_registry.h",
@@ -57,6 +60,8 @@ jumbo_static_library("browser") {
     "//components/keyed_service/core",
     "//components/pref_registry:pref_registry",
     "//components/prefs",
+    "//components/privacy_sandbox:tracking_protection_prefs",
+    "//components/privacy_sandbox:tracking_protection_settings",
     "//components/url_formatter",
     "//extensions/buildflags",
     "//net",
@@ -81,7 +86,6 @@ jumbo_static_library("browser") {
       "//components/policy:generated",
       "//components/policy/core/browser",
       "//components/privacy_sandbox:privacy_sandbox_prefs",
-      "//third_party/blink/public/common:headers",
     ]
   }
 
@@ -91,6 +95,7 @@ jumbo_static_library("browser") {
 jumbo_source_set("unit_tests") {
   testonly = true
   sources = [
+    "content_settings_partitioned_origin_value_map_unittest.cc",
     "content_settings_pref_unittest.cc",
     "content_settings_registry_unittest.cc",
     "content_settings_rule_unittest.cc",
@@ -113,10 +118,15 @@ jumbo_source_set("unit_tests") {
     "//components/pref_registry:pref_registry",
     "//components/prefs",
     "//components/prefs:test_support",
+    "//components/privacy_sandbox:features",
+    "//components/privacy_sandbox:privacy_sandbox_prefs",
+    "//components/privacy_sandbox:tracking_protection_prefs",
+    "//components/privacy_sandbox:tracking_protection_settings",
     "//components/sync_preferences:test_support",
     "//extensions/buildflags",
     "//net",
     "//ppapi/buildflags:buildflags",
+    "//services/preferences/public/cpp",
     "//testing/gmock",
     "//testing/gtest",
     "//url",
@@ -132,9 +142,6 @@ jumbo_source_set("unit_tests") {
     deps += [
       "//components/policy:generated",
       "//components/policy/core/browser:test_support",
-      "//components/privacy_sandbox:features",
-      "//components/privacy_sandbox:privacy_sandbox_prefs",
-      "//third_party/blink/public/common:headers",
     ]
   }
 }

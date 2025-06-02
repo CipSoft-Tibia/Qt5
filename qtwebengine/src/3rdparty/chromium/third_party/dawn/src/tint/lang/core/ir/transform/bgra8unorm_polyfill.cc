@@ -1,16 +1,29 @@
-// Copyright 2023 The Tint Authors.
+// Copyright 2023 The Dawn & Tint Authors
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "src/tint/lang/core/ir/transform/bgra8unorm_polyfill.h"
 
@@ -32,25 +45,25 @@ namespace {
 /// PIMPL state for the transform.
 struct State {
     /// The IR module.
-    Module* ir = nullptr;
+    Module& ir;
 
     /// The IR builder.
-    Builder b{*ir};
+    Builder b{ir};
 
     /// The type manager.
-    core::type::Manager& ty{ir->Types()};
+    core::type::Manager& ty{ir.Types()};
 
     /// Process the module.
     void Process() {
         // Find module-scope variables that need to be replaced.
-        if (ir->root_block) {
+        if (!ir.root_block->IsEmpty()) {
             Vector<Instruction*, 4> to_remove;
-            for (auto inst : *ir->root_block) {
+            for (auto inst : *ir.root_block) {
                 auto* var = inst->As<Var>();
                 if (!var) {
                     continue;
                 }
-                auto* ptr = var->Result()->Type()->As<core::type::Pointer>();
+                auto* ptr = var->Result(0)->Type()->As<core::type::Pointer>();
                 if (!ptr) {
                     continue;
                 }
@@ -67,7 +80,7 @@ struct State {
         }
 
         // Find function parameters that need to be replaced.
-        for (auto* func : ir->functions) {
+        for (auto& func : ir.functions) {
             for (uint32_t index = 0; index < func->Params().Length(); index++) {
                 auto* param = func->Params()[index];
                 auto* storage_texture = param->Type()->As<core::type::StorageTexture>();
@@ -90,12 +103,12 @@ struct State {
         auto bp = old_var->BindingPoint();
         new_var->SetBindingPoint(bp->group, bp->binding);
         new_var->InsertBefore(old_var);
-        if (auto name = ir->NameOf(old_var)) {
-            ir->SetName(new_var, name.NameView());
+        if (auto name = ir.NameOf(old_var)) {
+            ir.SetName(new_var, name.NameView());
         }
 
         // Replace all uses of the old variable with the new one.
-        ReplaceUses(old_var->Result(), new_var->Result());
+        ReplaceUses(old_var->Result(0), new_var->Result(0));
     }
 
     /// Replace a function parameter with one that uses rgba8unorm instead of bgra8unorm.
@@ -111,8 +124,8 @@ struct State {
         auto* rgba8 = ty.Get<core::type::StorageTexture>(
             bgra8->dim(), core::TexelFormat::kRgba8Unorm, bgra8->access(), bgra8->type());
         auto* new_param = b.FunctionParam(rgba8);
-        if (auto name = ir->NameOf(old_param)) {
-            ir->SetName(new_param, name.NameView());
+        if (auto name = ir.NameOf(old_param)) {
+            ir.SetName(new_param, name.NameView());
         }
 
         Vector<FunctionParam*, 4> new_params = func->Params();
@@ -134,40 +147,43 @@ struct State {
                     // Replace load instructions with new ones that have the updated type.
                     auto* new_load = b.Load(new_value);
                     new_load->InsertBefore(load);
-                    ReplaceUses(load->Result(), new_load->Result());
+                    ReplaceUses(load->Result(0), new_load->Result(0));
                     load->Destroy();
                 },
                 [&](CoreBuiltinCall* call) {
                     // Replace arguments to builtin functions and add swizzles if necessary.
                     call->SetOperand(use.operand_index, new_value);
-                    if (call->Func() == core::Function::kTextureStore) {
+                    if (call->Func() == core::BuiltinFn::kTextureStore) {
                         // Swizzle the value argument of a `textureStore()` builtin.
                         auto* tex = old_value->Type()->As<core::type::StorageTexture>();
                         auto index = core::type::IsTextureArray(tex->dim()) ? 3u : 2u;
                         auto* value = call->Args()[index];
                         auto* swizzle = b.Swizzle(value->Type(), value, Vector{2u, 1u, 0u, 3u});
                         swizzle->InsertBefore(call);
-                        call->SetOperand(index, swizzle->Result());
-                    } else if (call->Func() == core::Function::kTextureLoad) {
-                        TINT_ICE() << "unhandled bgra8unorm texture load";
+                        call->SetOperand(index, swizzle->Result(0));
+                    } else if (call->Func() == core::BuiltinFn::kTextureLoad) {
+                        // Swizzle the result of a `textureLoad()` builtin.
+                        auto* swizzle =
+                            b.Swizzle(call->Result(0)->Type(), nullptr, Vector{2u, 1u, 0u, 3u});
+                        call->Result(0)->ReplaceAllUsesWith(swizzle->Result(0));
+                        swizzle->InsertAfter(call);
+                        swizzle->SetOperand(Swizzle::kObjectOperandOffset, call->Result(0));
                     }
                 },
                 [&](UserCall* call) {
                     // Just replace arguments to user functions and then stop.
                     call->SetOperand(use.operand_index, new_value);
                 },
-                [&](Default) {
-                    TINT_ICE() << "unhandled instruction " << use.instruction->FriendlyName();
-                });
+                TINT_ICE_ON_NO_MATCH);
         });
     }
 };
 
 }  // namespace
 
-Result<SuccessType, std::string> Bgra8UnormPolyfill(Module* ir) {
-    auto result = ValidateAndDumpIfNeeded(*ir, "Bgra8UnormPolyfill transform");
-    if (!result) {
+Result<SuccessType> Bgra8UnormPolyfill(Module& ir) {
+    auto result = ValidateAndDumpIfNeeded(ir, "Bgra8UnormPolyfill transform");
+    if (result != Success) {
         return result;
     }
 

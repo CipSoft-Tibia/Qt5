@@ -7,7 +7,7 @@ import QtGraphs
 
 Rectangle {
     id: heightMapView
-    color: surfacePlot.theme.windowColor
+    color: surfacePlot.theme.backgroundColor
 
     required property bool portraitMode
 
@@ -37,17 +37,17 @@ Rectangle {
             height: surfaceView.height
             aspectRatio: 3.0
             //! [2]
-            theme: Theme3D {
-                type: Theme3D.Theme.StoneMoss
-                font.family: "STCaiyun"
-                font.pointSize: 35
-                colorStyle: Theme3D.ColorStyle.ObjectGradient
+            theme: GraphsTheme {
+                colorScheme: GraphsTheme.ColorScheme.Dark
+                labelFont.family: "STCaiyun"
+                labelFont.pointSize: 35
+                colorStyle: GraphsTheme.ColorStyle.ObjectGradient
                 baseGradients: [surfaceGradient] // Use the custom gradient
             }
             //! [2]
-            shadowQuality: AbstractGraph3D.ShadowQuality.Medium
-            selectionMode: AbstractGraph3D.SelectionSlice | AbstractGraph3D.SelectionItemAndRow
-            cameraPreset: AbstractGraph3D.CameraPreset.IsometricLeft
+            shadowQuality: Graphs3D.ShadowQuality.Medium
+            selectionMode: Graphs3D.SelectionFlag.Slice | Graphs3D.SelectionFlag.ItemAndRow
+            cameraPreset: Graphs3D.CameraPreset.IsometricLeft
             axisX.segmentCount: 3
             axisX.subSegmentCount: 3
             axisX.labelFormat: "%i"
@@ -67,7 +67,7 @@ Rectangle {
             //! [0]
             Surface3DSeries {
                 id: heightSeries
-                flatShadingEnabled: false
+                shading: Surface3DSeries.Shading.Smooth
                 drawMode: Surface3DSeries.DrawSurface
 
                 HeightMapSurfaceDataProxy {
@@ -163,11 +163,11 @@ Rectangle {
             enabled: heightSeries.flatShadingSupported
             //! [6]
             onClicked: {
-                if (heightSeries.flatShadingEnabled) {
-                    heightSeries.flatShadingEnabled = false;
+                if (heightSeries.shading === Surface3DSeries.Shading.Flat) {
+                    heightSeries.shading = Surface3DSeries.Shading.Smooth;
                     text = "Show\nFlat"
                 } else {
-                    heightSeries.flatShadingEnabled = true;
+                    heightSeries.shading = Surface3DSeries.Shading.Flat;
                     text = "Show\nSmooth"
                 }
             }
@@ -181,14 +181,14 @@ Rectangle {
             anchors.top: heightMapView.portraitMode ? flatShadingToggle.bottom
                                                     : surfaceToggle.bottom
             width: heightMapView.buttonWidth
-            text: "Hide\nBackground"
+            text: "Hide plot area\nBackground"
             onClicked: {
-                if (surfacePlot.theme.backgroundEnabled) {
-                    surfacePlot.theme.backgroundEnabled = false;
-                    text = "Show\nBackground";
+                if (surfacePlot.theme.plotAreaBackgroundVisible) {
+                    surfacePlot.theme.plotAreaBackgroundVisible = false;
+                    text = "Show plot area\nBackground";
                 } else {
-                    surfacePlot.theme.backgroundEnabled = true;
-                    text = "Hide\nBackground";
+                    surfacePlot.theme.plotAreaBackgroundVisible = true;
+                    text = "Hide plot area\nBackground";
                 }
             }
         }
@@ -202,11 +202,11 @@ Rectangle {
             width: heightMapView.buttonWidth
             text: "Hide\nGrid"
             onClicked: {
-                if (surfacePlot.theme.gridEnabled) {
-                    surfacePlot.theme.gridEnabled = false;
+                if (surfacePlot.theme.gridVisible) {
+                    surfacePlot.theme.gridVisible = false;
                     text = "Show\nGrid";
                 } else {
-                    surfacePlot.theme.gridEnabled = true;
+                    surfacePlot.theme.gridVisible = true;
                     text = "Hide\nGrid";
                 }
             }

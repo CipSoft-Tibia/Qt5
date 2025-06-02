@@ -79,6 +79,7 @@ bool Moc::parseClassHead(ClassDef *def)
         }
     }
     def->classname = name;
+    def->lineNumber = symbol().lineNum;
 
     if (test(IDENTIFIER)) {
         const QByteArray lex = lexem();
@@ -437,7 +438,7 @@ bool Moc::parseFunction(FunctionDef *def, bool inMacro)
     // note that testFunctionAttribute is handled further below,
     // and revisions and attributes must come first
     while (testForFunctionModifiers(def)) {}
-    Type tempType = parseType();;
+    Type tempType = parseType();
     while (!tempType.name.isEmpty() && lookup() != LPAREN) {
         if (testFunctionAttribute(def->type.firstToken, def))
             ; // fine
@@ -521,7 +522,7 @@ bool Moc::parseFunction(FunctionDef *def, bool inMacro)
 
 bool Moc::testForFunctionModifiers(FunctionDef *def)
 {
-    return test(EXPLICIT) || test(INLINE) ||
+    return test(EXPLICIT) || test(INLINE) || test(CONSTEXPR) ||
             (test(STATIC) && (def->isStatic = true)) ||
             (test(VIRTUAL) && (def->isVirtual = true));
 }
@@ -555,7 +556,7 @@ bool Moc::parseMaybeFunction(const ClassDef *cdef, FunctionDef *def)
         // but otherwise we end up with misparses
         if (def->isSlot || def->isSignal || def->isInvokable)
             while (testForFunctionModifiers(def)) {}
-        Type tempType = parseType();;
+        Type tempType = parseType();
         while (!tempType.name.isEmpty() && lookup() != LPAREN) {
             if (testFunctionAttribute(def->type.firstToken, def))
                 ; // fine
@@ -692,6 +693,7 @@ void Moc::parse()
                     } else if (!test(SEMIC)) {
                         NamespaceDef def;
                         def.classname = nsName;
+                        def.lineNumber = symbol().lineNum;
                         def.doGenerate = currentFilenames.size() <= 1;
 
                         next(LBRACE);
@@ -2005,6 +2007,7 @@ QJsonObject ClassDef::toJson() const
     QJsonObject cls;
     cls["className"_L1] = QString::fromUtf8(classname.constData());
     cls["qualifiedClassName"_L1] = QString::fromUtf8(qualified.constData());
+    cls["lineNumber"_L1] = lineNumber;
 
     QJsonArray classInfos;
     for (const auto &info: std::as_const(classInfoList)) {

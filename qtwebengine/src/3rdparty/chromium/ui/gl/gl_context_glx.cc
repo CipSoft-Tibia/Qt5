@@ -14,6 +14,7 @@
 #include "ui/gl/GL/glextchromium.h"
 #include "ui/gl/gl_bindings.h"
 #include "ui/gl/gl_implementation.h"
+#include "ui/gl/gl_surface.h"
 #include "ui/gl/gl_surface_glx.h"
 
 #ifndef GLX_NV_robustness_video_memory_purge
@@ -60,7 +61,7 @@ GLXContext CreateContextAttribs(x11::Connection* connection,
   attribs.push_back(0);
 
   GLXContext context = glXCreateContextAttribsARB(
-      connection->GetXlibDisplay(x11::XlibDisplayType::kSyncing), config, share,
+      connection->GetXlibDisplay(), config, share,
       true, attribs.data());
 
   return context;
@@ -151,8 +152,8 @@ GLXContext CreateHighestVersionContext(x11::Connection* connection,
 GLContextGLX::GLContextGLX(GLShareGroup* share_group)
     : GLContextReal(share_group) {}
 
-bool GLContextGLX::Initialize(GLSurface* compatible_surface,
-                              const GLContextAttribs& attribs) {
+bool GLContextGLX::InitializeImpl(GLSurface* compatible_surface,
+                                  const GLContextAttribs& attribs) {
   // webgl_compatibility_context and disabling bind_generates_resource are not
   // supported.
   DCHECK(!attribs.webgl_compatibility_context &&
@@ -182,7 +183,7 @@ bool GLContextGLX::Initialize(GLSurface* compatible_surface,
   } else {
     DVLOG(1) << "GLX_ARB_create_context not supported.";
     context_ = glXCreateNewContext(
-        connection_->GetXlibDisplay(x11::XlibDisplayType::kSyncing),
+        connection_->GetXlibDisplay(),
         static_cast<GLXFBConfig>(compatible_surface->GetConfig()),
         GLX_RGBA_TYPE, share_handle, true);
     if (!context_) {
@@ -207,9 +208,10 @@ bool GLContextGLX::Initialize(GLSurface* compatible_surface,
 }
 
 void GLContextGLX::Destroy() {
+  OnContextWillDestroy();
   if (context_) {
     glXDestroyContext(
-        connection_->GetXlibDisplay(x11::XlibDisplayType::kFlushing),
+        connection_->GetXlibDisplay(),
         static_cast<GLXContext>(context_));
     context_ = nullptr;
   }
@@ -223,7 +225,7 @@ bool GLContextGLX::MakeCurrentImpl(GLSurface* surface) {
   ScopedReleaseCurrent release_current;
   TRACE_EVENT0("gpu", "GLContextGLX::MakeCurrent");
   if (!glXMakeContextCurrent(
-          connection_->GetXlibDisplay(x11::XlibDisplayType::kFlushing),
+          connection_->GetXlibDisplay(),
           reinterpret_cast<GLXDrawable>(surface->GetHandle()),
           reinterpret_cast<GLXDrawable>(surface->GetHandle()),
           static_cast<GLXContext>(context_))) {
@@ -252,7 +254,7 @@ void GLContextGLX::ReleaseCurrent(GLSurface* surface) {
 
   SetCurrent(nullptr);
   if (!glXMakeContextCurrent(
-          connection_->GetXlibDisplay(x11::XlibDisplayType::kFlushing), 0, 0,
+          connection_->GetXlibDisplay(), 0, 0,
           nullptr)) {
     LOG(ERROR) << "glXMakeCurrent failed in ReleaseCurrent";
   }

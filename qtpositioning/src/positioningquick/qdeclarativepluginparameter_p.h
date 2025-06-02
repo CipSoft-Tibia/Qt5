@@ -24,7 +24,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Q_POSITIONINGQUICK_PRIVATE_EXPORT QDeclarativePluginParameter : public QObject
+class Q_POSITIONINGQUICK_EXPORT QDeclarativePluginParameter : public QObject
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(PluginParameter)

@@ -4,8 +4,6 @@
 
 #include "enumdefinitionprinter.h"
 
-#include "options.h"
-
 using namespace ::QtProtobuf;
 using namespace ::qtprotoccommon;
 using namespace ::google::protobuf;

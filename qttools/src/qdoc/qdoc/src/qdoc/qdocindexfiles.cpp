@@ -594,12 +594,16 @@ void QDocIndexFiles::readIndexSection(QXmlStreamReader &reader, Node *current,
         Doc doc(location, location, QString(), emptySet, emptySet); // placeholder
         node->setDoc(doc);
         node->setIndexNodeFlag(); // Important: This node came from an index file.
-        node->setOutputSubdirectory(m_project.toLower());
         QString briefAttr = attributes.value(QLatin1String("brief")).toString();
         if (!briefAttr.isEmpty()) {
             node->setReconstitutedBrief(briefAttr);
         }
 
+        if (const auto sortKey = attributes.value(QLatin1String("sortkey")).toString(); !sortKey.isEmpty()) {
+            node->doc().constructExtra();
+            if (auto *metaMap = node->doc().metaTagMap())
+                metaMap->insert("sortkey", sortKey);
+        }
         if (!hasReadChildren) {
             bool useParent = (elementName == QLatin1String("namespace") && name.isEmpty());
             while (reader.readNextStartElement()) {
@@ -751,6 +755,38 @@ bool QDocIndexFiles::adoptRelatedNode(Aggregate *adoptiveParent, int index)
     }
 
     return false;
+}
+
+/*!
+    Write canonicalized versions of \\target and \\keyword identifiers
+    that appear in the documentation of \a node into the index using
+    \a writer, so that they can be used as link targets in external
+    documentation sets.
+*/
+void QDocIndexFiles::writeTargets(QXmlStreamWriter &writer, Node *node)
+{
+    if (node->doc().hasTargets()) {
+        for (const Atom *target : std::as_const(node->doc().targets())) {
+            const QString &title = target->string();
+            const QString &name{Utilities::asAsciiPrintable(title)};
+            writer.writeStartElement("target");
+            writer.writeAttribute("name", node->isExternalPage() ? title : name);
+            if (name != title)
+                writer.writeAttribute("title", title);
+            writer.writeEndElement(); // target
+        }
+    }
+    if (node->doc().hasKeywords()) {
+        for (const Atom *keyword : std::as_const(node->doc().keywords())) {
+            const QString &title = keyword->string();
+            const QString &name{Utilities::asAsciiPrintable(title)};
+            writer.writeStartElement("keyword");
+            writer.writeAttribute("name", name);
+            if (name != title)
+                writer.writeAttribute("title", title);
+            writer.writeEndElement(); // keyword
+        }
+    }
 }
 
 /*!
@@ -923,6 +959,10 @@ bool QDocIndexFiles::generateIndexSection(QXmlStreamWriter &writer, Node *node,
     if (!groups.isEmpty())
         writer.writeAttribute("groups", groups.join(QLatin1Char(',')));
 
+   if (const auto *metamap = node->doc().metaTagMap(); metamap)
+        if (const auto sortKey = metamap->value("sortkey"); !sortKey.isEmpty())
+            writer.writeAttribute("sortkey", sortKey);
+
     QString brief = node->doc().trimmedBriefText(node->name()).toString();
     switch (node->nodeType()) {
     case Node::Class:
@@ -1074,48 +1114,7 @@ bool QDocIndexFiles::generateIndexSection(QXmlStreamWriter &writer, Node *node,
         break;
     }
 
-    /*
-      For our pages, we canonicalize the target, keyword and content
-      item names so that they can be used by qdoc for other sets of
-      documentation.
-
-      The reason we do this here is that we don't want to ruin
-      externally composed indexes, containing non-qdoc-style target names
-      when reading in indexes.
-
-      targets and keywords are now allowed in any node, not just inner nodes.
-    */
-
-    if (node->doc().hasTargets()) {
-        bool external = false;
-        if (node->isExternalPage())
-            external = true;
-        const auto &targets = node->doc().targets();
-        for (const Atom *target : targets) {
-            const QString &title = target->string();
-            QString name = Utilities::asAsciiPrintable(title);
-            writer.writeStartElement("target");
-            if (!external)
-                writer.writeAttribute("name", name);
-            else
-                writer.writeAttribute("name", title);
-            if (name != title)
-                writer.writeAttribute("title", title);
-            writer.writeEndElement(); // target
-        }
-    }
-    if (node->doc().hasKeywords()) {
-        const auto &keywords = node->doc().keywords();
-        for (const Atom *keyword : keywords) {
-            const QString &title = keyword->string();
-            QString name = Utilities::asAsciiPrintable(title);
-            writer.writeStartElement("keyword");
-            writer.writeAttribute("name", name);
-            if (name != title)
-                writer.writeAttribute("title", title);
-            writer.writeEndElement(); // keyword
-        }
-    }
+    writeTargets(writer, node);
 
     /*
       Some nodes have a table of contents. For these, we close
@@ -1131,7 +1130,7 @@ bool QDocIndexFiles::generateIndexSection(QXmlStreamWriter &writer, Node *node,
                 int level = node->doc().tableOfContentsLevels()[i];
                 QString title = Text::sectionHeading(item).toString();
                 writer.writeStartElement("contents");
-                writer.writeAttribute("name", Utilities::asAsciiPrintable(title));
+                writer.writeAttribute("name", Tree::refForAtom(item));
                 writer.writeAttribute("title", title);
                 writer.writeAttribute("level", QString::number(level));
                 writer.writeEndElement(); // contents
@@ -1183,6 +1182,9 @@ bool QDocIndexFiles::generateIndexSection(QXmlStreamWriter &writer, Node *node,
  */
 void QDocIndexFiles::generateFunctionSection(QXmlStreamWriter &writer, FunctionNode *fn)
 {
+    if (fn->isInternal() && !Config::instance().showInternal())
+        return;
+
     const QString objName = fn->name();
     writer.writeStartElement("function");
     writer.writeAttribute("name", objName);
@@ -1292,6 +1294,8 @@ void QDocIndexFiles::generateFunctionSection(QXmlStreamWriter &writer, FunctionN
         writer.writeEndElement(); // parameter
     }
 
+    writeTargets(writer, fn);
+
     // Append to the section if the callback object was set
     if (post_)
         post_->append(writer, fn);
@@ -1325,35 +1329,24 @@ QString QDocIndexFiles::appendAttributesToSignature(const FunctionNode *fn) cons
 }
 
 /*!
-  This function outputs a <function> element to the index file
-  for each FunctionNode in \a aggregate using the \a writer.
+  Outputs a <function> element to the index for each FunctionNode in
+  an \a aggregate, using \a writer.
   The \a aggregate has a function map that contains all the
-  function nodes indexed by function name. But the map is not
-  used as a multimap, so if the \a aggregate contains multiple
-  functions with the same name, only one of those functions is
-  in the function map index. The others are linked to that
-  function using the next overload pointer.
+  function nodes (a vector of overloads) indexed by function
+  name.
 
-  So this function generates a <function> element for a function
-  followed by a function element for each of its overloads. If a
-  <function> element represents an overload, it has an \c overload
-  attribute set to \c true and an \c {overload-number} attribute
-  set to the function's overload number. If the <function>
-  element does not represent an overload, the <function> element
-  has neither of these attributes.
+  If a function element represents an overload, it has an
+  \c overload attribute set to \c true and an \c {overload-number}
+  attribute set to the function's overload number.
  */
 void QDocIndexFiles::generateFunctionSections(QXmlStreamWriter &writer, Aggregate *aggregate)
 {
-    FunctionMap &functionMap = aggregate->functionMap();
-    if (!functionMap.isEmpty()) {
-        for (auto it = functionMap.begin(); it != functionMap.end(); ++it) {
-            FunctionNode *fn = it.value();
-            while (fn) {
-                if (!fn->isInternal() || Config::instance().showInternal())
-                    generateFunctionSection(writer, fn);
-                fn = fn->nextOverload();
+    for (auto functions : std::as_const(aggregate->functionMap())) {
+        std::for_each(functions.begin(), functions.end(),
+            [this,&writer](FunctionNode *fn) {
+                generateFunctionSection(writer, fn);
             }
-        }
+        );
     }
 }
 
@@ -1365,10 +1358,11 @@ void QDocIndexFiles::generateIndexSections(QXmlStreamWriter &writer, Node *node,
                                            IndexSectionWriter *post)
 {
     /*
-      Note that groups, modules, and QML modules are written
+      Note that groups, modules, QML modules, and proxies are written
       after all the other nodes.
      */
-    if (node->isCollectionNode() || node->isGroup() || node->isModule() || node->isQmlModule())
+    if (node->isCollectionNode() || node->isGroup() || node->isModule() ||
+        node->isQmlModule() || node->isProxyNode())
         return;
 
     if (node->isInternal() && !Config::instance().showInternal())
@@ -1387,11 +1381,10 @@ void QDocIndexFiles::generateIndexSections(QXmlStreamWriter &writer, Node *node,
         if (node == root_) {
             /*
               We wait until the end of the index file to output the group, module,
-              and QML module elements. By outputting them at the end, when we read
-              the index file back in, all the group, module, and QML module member
-              elements will have already been created. It is then only necessary to
-              create the group, module, or QML module element and add each member to
-              its member list.
+              QML module, and proxy nodes. By outputting them at the end, when we read
+              the index file back in, all the group/module/proxy member
+              nodes will have already been created. It is then only necessary to
+              create the collection node and add each member to its member list.
             */
             const CNMap &groups = m_qdb->groups();
             if (!groups.isEmpty()) {
@@ -1414,6 +1407,16 @@ void QDocIndexFiles::generateIndexSections(QXmlStreamWriter &writer, Node *node,
                 for (auto it = qmlModules.constBegin(); it != qmlModules.constEnd(); ++it) {
                     if (generateIndexSection(writer, it.value(), post))
                         writer.writeEndElement();
+                }
+            }
+
+            for (auto *p : m_qdb->primaryTree()->proxies()) {
+                if (generateIndexSection(writer, p, post)) {
+                    auto aggregate = static_cast<Aggregate *>(p);
+                    generateFunctionSections(writer, aggregate);
+                    for (auto *n : aggregate->nonfunctionList())
+                        generateIndexSections(writer, n, post);
+                    writer.writeEndElement();
                 }
             }
         }

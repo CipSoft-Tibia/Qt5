@@ -13,6 +13,7 @@
 #include <private/qcoregraphics_p.h>
 #include <private/qimage_p.h>
 #include <private/qguiapplication_p.h>
+#include <private/qstringiterator_p.h>
 #include <qpa/qplatformtheme.h>
 
 #include <cmath>
@@ -274,29 +275,30 @@ glyph_t QCoreTextFontEngine::glyphIndex(uint ucs4) const
     return glyphIndices[0];
 }
 
-bool QCoreTextFontEngine::stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs,
-                                       int *nglyphs, QFontEngine::ShaperFlags flags) const
+int QCoreTextFontEngine::stringToCMap(const QChar *str, int len, QGlyphLayout *glyphs,
+                                      int *nglyphs, QFontEngine::ShaperFlags flags) const
 {
     Q_ASSERT(glyphs->numGlyphs >= *nglyphs);
     if (*nglyphs < len) {
         *nglyphs = len;
-        return false;
+        return -1;
     }
 
     QVarLengthArray<CGGlyph> cgGlyphs(len);
     CTFontGetGlyphsForCharacters(ctfont, (const UniChar*)str, cgGlyphs.data(), len);
 
     int glyph_pos = 0;
-    for (int i = 0; i < len; ++i) {
-        glyphs->glyphs[glyph_pos] = cgGlyphs[i];
-        if (glyph_pos < i)
-            cgGlyphs[glyph_pos] = cgGlyphs[i];
-        glyph_pos++;
-
-        // If it's a non-BMP char, skip the lower part of surrogate pair and go
-        // directly to the next char without increasing glyph_pos
-        if (str[i].isHighSurrogate() && i < len-1 && str[i+1].isLowSurrogate())
-            ++i;
+    int mappedGlyphs = 0;
+    QStringIterator it(str, str + len);
+    while (it.hasNext()) {
+      qsizetype idx = it.index();
+      char32_t ucs4 = it.next();
+      glyphs->glyphs[glyph_pos] = cgGlyphs[idx];
+      if (glyph_pos < idx)
+          cgGlyphs[glyph_pos] = cgGlyphs[idx];
+      if (glyphs->glyphs[glyph_pos] != 0 || isIgnorableChar(ucs4))
+          mappedGlyphs++;
+      glyph_pos++;
     }
 
     *nglyphs = glyph_pos;
@@ -305,7 +307,7 @@ bool QCoreTextFontEngine::stringToCMap(const QChar *str, int len, QGlyphLayout *
     if (!(flags & GlyphIndicesOnly))
         loadAdvancesForGlyphs(cgGlyphs, glyphs);
 
-    return true;
+    return mappedGlyphs;
 }
 
 glyph_metrics_t QCoreTextFontEngine::boundingBox(glyph_t glyph)
@@ -334,7 +336,10 @@ void QCoreTextFontEngine::initializeHeightMetrics() const
     m_descent = QFixed::fromReal(CTFontGetDescent(ctfont));
     m_leading = QFixed::fromReal(CTFontGetLeading(ctfont));
 
-    m_heightMetricsQueried = true;
+    if (preferTypoLineMetrics())
+        QFontEngine::initializeHeightMetrics();
+    else
+        m_heightMetricsQueried = true;
 }
 
 QFixed QCoreTextFontEngine::capHeight() const
@@ -524,8 +529,9 @@ glyph_metrics_t QCoreTextFontEngine::alphaMapBoundingBox(glyph_t glyph, const QF
     if (br.height < 0)
         br.height = -br.height;
 
-    if (format == QFontEngine::Format_A8 || format == QFontEngine::Format_A32) {
-        // Drawing a glyph at x-position 0 with anti-aliasing enabled
+    if (format == QFontEngine::Format_A8 || format == QFontEngine::Format_A32 || format == QFontEngine::Format_ARGB) {
+        // Drawing a vector based glyph with anti-aliasing enabled, or a
+        // bitmap based glyph with pre-baked anti-aliasing, at x = 0,
         // will potentially fill the pixel to the left of 0, as the
         // coordinates are not aligned to the center of pixels. To
         // prevent clipping of this pixel we need to shift the glyph

@@ -13,21 +13,21 @@
 class QtProtobufGenerationSequenceTest : public QObject
 {
     Q_OBJECT
-private slots:
-    void SequenceTest();
-    void CyclingTest();
-    void MapRepeatedFieldSequenceTest();
+private Q_SLOTS:
+    void sequenceTest();
+    void cyclingTest();
+    void mapRepeatedFieldSequenceTest();
 };
 
 using namespace qtprotobufnamespace::tests;
 
-void QtProtobufGenerationSequenceTest::SequenceTest()
+void QtProtobufGenerationSequenceTest::sequenceTest()
 {
     qProtobufAssertMessagePropertyRegistered<sequence::TestMessageSequence, sequence::TestMessageSequence2*>(1, "qtprotobufnamespace::tests::sequence::TestMessageSequence2*", "testField_p");
     qProtobufAssertMessagePropertyRegistered<sequence::TestMessageSequence2, bool>(1, "bool", "testField");
 }
 
-void QtProtobufGenerationSequenceTest::CyclingTest()
+void QtProtobufGenerationSequenceTest::cyclingTest()
 {
     qProtobufAssertMessagePropertyRegistered<sequence::CyclingFirstDependency, sequence::CyclingSecondDependency*>(1, "qtprotobufnamespace::tests::sequence::CyclingSecondDependency*", "testField_p");
     qProtobufAssertMessagePropertyRegistered<sequence::CyclingSecondDependency, sequence::CyclingFirstDependency*>(1, "qtprotobufnamespace::tests::sequence::CyclingFirstDependency*", "testField_p");
@@ -37,9 +37,9 @@ void QtProtobufGenerationSequenceTest::CyclingTest()
     test2.setTestField(test);
 }
 
-void QtProtobufGenerationSequenceTest::MapRepeatedFieldSequenceTest()
+void QtProtobufGenerationSequenceTest::mapRepeatedFieldSequenceTest()
 {
-    qProtobufAssertMessagePropertyRegistered<sequence::RepeatedFieldSequence, sequence::RepeatedFieldSequence2Repeated>(1, "qtprotobufnamespace::tests::sequence::RepeatedFieldSequence2Repeated", "testFieldData");
+    qProtobufAssertMessagePropertyRegistered<sequence::RepeatedFieldSequence, QList<sequence::RepeatedFieldSequence2>>(1, "QList<qtprotobufnamespace::tests::sequence::RepeatedFieldSequence2>", "testFieldData");
     qProtobufAssertMessagePropertyRegistered<sequence::MapFieldSequence, sequence::MapFieldSequence::TestFieldEntry>(1, "qtprotobufnamespace::tests::sequence::MapFieldSequence::TestFieldEntry", "testField");
 }
 

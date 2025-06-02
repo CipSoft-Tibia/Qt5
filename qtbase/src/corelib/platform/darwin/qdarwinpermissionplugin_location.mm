@@ -73,6 +73,11 @@ struct PermissionRequest
         return Qt::PermissionStatus::Denied;
     }
 
+#if defined(Q_OS_VISIONOS)
+    if (permission.availability() == QLocationPermission::Always)
+        return Qt::PermissionStatus::Denied;
+#endif
+
     auto status = [self authorizationStatus];
     switch (status) {
     case kCLAuthorizationStatusRestricted:
@@ -80,9 +85,11 @@ struct PermissionRequest
         return Qt::PermissionStatus::Denied;
     case kCLAuthorizationStatusNotDetermined:
         return Qt::PermissionStatus::Undetermined;
+#if !defined(Q_OS_VISIONOS)
     case kCLAuthorizationStatusAuthorizedAlways:
         return Qt::PermissionStatus::Granted;
-#ifdef Q_OS_IOS
+#endif
+#if defined(Q_OS_IOS) || defined(Q_OS_VISIONOS)
     case kCLAuthorizationStatusAuthorizedWhenInUse:
         if (permission.availability() == QLocationPermission::Always)
             return Qt::PermissionStatus::Denied;
@@ -96,19 +103,15 @@ struct PermissionRequest
 
 - (CLAuthorizationStatus)authorizationStatus
 {
-    if (self.manager) {
-        if (@available(macOS 11, iOS 14, *))
-            return self.manager.authorizationStatus;
-    }
+    if (self.manager)
+        return self.manager.authorizationStatus;
 
     return QT_IGNORE_DEPRECATIONS(CLLocationManager.authorizationStatus);
 }
 
 - (Qt::PermissionStatus)accuracyAuthorization:(QLocationPermission)permission
 {
-    auto status = CLAccuracyAuthorizationReducedAccuracy;
-    if (@available(macOS 11, iOS 14, *))
-        status = self.manager.accuracyAuthorization;
+    auto status = self.manager.accuracyAuthorization;
 
     switch (status) {
     case CLAccuracyAuthorizationFullAccuracy:
@@ -177,6 +180,9 @@ struct PermissionRequest
         }
         break;
     case QLocationPermission::Always:
+#if defined(Q_OS_VISIONOS)
+        [self deliverResult]; // Not supported
+#else
         // The documentation specifies that requestAlwaysAuthorization can only
         // be called when the current authorization status is either undetermined,
         // or authorized when in use.
@@ -199,6 +205,7 @@ struct PermissionRequest
         default:
             [self deliverResult];
         }
+#endif
         break;
     }
 }

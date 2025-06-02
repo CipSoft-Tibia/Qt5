@@ -15,7 +15,6 @@
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/shared_remote.h"
-#include "third_party/blink/public/mojom/input/input_handler.mojom-blink-forward.h"
 #include "third_party/blink/public/mojom/input/input_handler.mojom-blink.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
 #include "third_party/blink/renderer/platform/widget/input/input_handler_proxy.h"
@@ -109,17 +108,8 @@ class PLATFORM_EXPORT WidgetInputHandlerManager final
 
   // InputHandlerProxyClient overrides.
   void WillShutdown() override;
-  void DispatchNonBlockingEventToMainThread(
-      std::unique_ptr<WebCoalescedInputEvent> event,
-      const WebInputEventAttribution& attribution,
-      std::unique_ptr<cc::EventMetrics> metrics) override;
-
   void DidAnimateForInput() override;
   void DidStartScrollingViewport() override;
-  void GenerateScrollBeginAndSendToMainThread(
-      const WebGestureEvent& update_event,
-      const WebInputEventAttribution& attribution,
-      const cc::EventMetrics* update_metrics) override;
   void SetAllowedTouchAction(cc::TouchAction touch_action) override;
   bool AllowsScrollResampling() override { return allow_scroll_resampling_; }
 
@@ -247,8 +237,7 @@ class PLATFORM_EXPORT WidgetInputHandlerManager final
       std::unique_ptr<WebCoalescedInputEvent> event,
       std::unique_ptr<InputHandlerProxy::DidOverscrollParams> overscroll_params,
       const WebInputEventAttribution& attribution,
-      std::unique_ptr<cc::EventMetrics> metrics,
-      mojom::blink::ScrollResultDataPtr scroll_result_data);
+      std::unique_ptr<cc::EventMetrics> metrics);
 
   // Similar to the above; this is used by the main thread input handler to
   // communicate back the result of handling the event. Note: this may be
@@ -281,8 +270,6 @@ class PLATFORM_EXPORT WidgetInputHandlerManager final
   void HandleInputEventWithLatencyOnInputHandlingThread(
       std::unique_ptr<WebCoalescedInputEvent>);
 
-  void QueueInputProcessedClosure();
-
   // The kInputBlocking task runner is for tasks which are on the critical path
   // of showing the effect of an already-received input event, and should be
   // prioritized above handling new input.
@@ -306,6 +293,10 @@ class PLATFORM_EXPORT WidgetInputHandlerManager final
   base::WeakPtr<mojom::blink::FrameWidgetInputHandler>
       frame_widget_input_handler_;
   scoped_refptr<scheduler::WidgetScheduler> widget_scheduler_;
+
+  // This caches `widget_->is_embedded()` value for access from outside the main
+  // thread (where `widget_` is not usable).
+  const bool widget_is_embedded_;
 
   // InputHandlerProxy is only interacted with on the compositor
   // thread.

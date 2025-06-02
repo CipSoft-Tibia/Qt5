@@ -28,7 +28,6 @@
 #include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
 #include "third_party/blink/renderer/core/events/message_event.h"
 #include "third_party/blink/renderer/core/exported/web_view_impl.h"
-#include "third_party/blink/renderer/core/frame/child_frame_compositing_helper.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
@@ -112,7 +111,9 @@ RemoteFrame::RemoteFrame(
             insert_type,
             frame_token,
             devtools_frame_token,
-            MakeGarbageCollected<RemoteWindowProxyManager>(*this),
+            MakeGarbageCollected<RemoteWindowProxyManager>(
+                page.GetAgentGroupScheduler().Isolate(),
+                *this),
             inheriting_agent_factory),
       // TODO(samans): Investigate if it is safe to delay creation of this
       // object until a FrameSinkId is provided.
@@ -318,12 +319,10 @@ void RemoteFrame::Navigate(FrameLoadRequest& frame_request,
 
 bool RemoteFrame::NavigationShouldReplaceCurrentHistoryEntry(
     WebFrameLoadType frame_load_type) const {
-  // Portal and Fenced Frame contexts do not create back/forward entries.
+  // Fenced Frame contexts do not create back/forward entries.
   // TODO(https:/crbug.com/1197384, https://crbug.com/1190644): We may want to
   // support a prerender in RemoteFrame.
-  return (frame_load_type == WebFrameLoadType::kStandard &&
-          GetPage()->InsidePortal()) ||
-         IsInFencedFrameTree();
+  return IsInFencedFrameTree();
 }
 
 bool RemoteFrame::DetachImpl(FrameDetachType type) {
@@ -665,9 +664,6 @@ void RemoteFrame::UpdateUserActivationState(
     case mojom::blink::UserActivationUpdateType::kNotifyActivation:
       NotifyUserActivationInFrameTree(notification_type);
       break;
-    case mojom::blink::UserActivationUpdateType::kNotifyActivationStickyOnly:
-      NotifyUserActivationInFrameTreeStickyOnly();
-      break;
     case mojom::blink::UserActivationUpdateType::kConsumeTransientActivation:
       ConsumeTransientUserActivationInFrameTree();
       break;
@@ -860,7 +856,8 @@ viz::FrameSinkId RemoteFrame::GetFrameSinkId() {
   return frame_sink_id_;
 }
 
-void RemoteFrame::SetFrameSinkId(const viz::FrameSinkId& frame_sink_id) {
+void RemoteFrame::SetFrameSinkId(const viz::FrameSinkId& frame_sink_id,
+                                 bool allow_paint_holding) {
   remote_process_gone_ = false;
 
   // The same ParentLocalSurfaceIdAllocator cannot provide LocalSurfaceIds for
@@ -873,7 +870,10 @@ void RemoteFrame::SetFrameSinkId(const viz::FrameSinkId& frame_sink_id) {
 
   // Resend the FrameRects and allocate a new viz::LocalSurfaceId when the view
   // changes.
-  ResendVisualProperties();
+  ResendVisualPropertiesInternal(
+      allow_paint_holding
+          ? ChildFrameCompositingHelper::AllowPaintHolding::kYes
+          : ChildFrameCompositingHelper::AllowPaintHolding::kNo);
 }
 
 void RemoteFrame::ChildProcessGone() {
@@ -887,8 +887,7 @@ bool RemoteFrame::IsIgnoredForHitTest() const {
   if (!owner || !owner->GetLayoutObject())
     return false;
 
-  return owner->OwnerType() == FrameOwnerElementType::kPortal ||
-         !visible_to_hit_testing_;
+  return !visible_to_hit_testing_;
 }
 
 void RemoteFrame::AdvanceFocus(mojom::blink::FocusType type,
@@ -922,14 +921,18 @@ void RemoteFrame::ApplyReplicatedPermissionsPolicyHeader() {
       permissions_policy_header_, container_policy, parent_permissions_policy);
 }
 
-bool RemoteFrame::SynchronizeVisualProperties(bool propagate) {
+bool RemoteFrame::SynchronizeVisualProperties(
+    bool propagate,
+    ChildFrameCompositingHelper::AllowPaintHolding allow_paint_holding) {
   if (!GetFrameSinkId().is_valid() || remote_process_gone_)
     return false;
 
-  bool capture_sequence_number_changed =
-      sent_visual_properties_ &&
-      sent_visual_properties_->capture_sequence_number !=
-          pending_visual_properties_.capture_sequence_number;
+  auto capture_sequence_number_changed =
+      (sent_visual_properties_ &&
+       sent_visual_properties_->capture_sequence_number !=
+           pending_visual_properties_.capture_sequence_number)
+          ? ChildFrameCompositingHelper::CaptureSequenceNumberChanged::kYes
+          : ChildFrameCompositingHelper::CaptureSequenceNumberChanged::kNo;
 
   if (view_) {
     pending_visual_properties_.compositor_viewport =
@@ -981,8 +984,8 @@ bool RemoteFrame::SynchronizeVisualProperties(bool propagate) {
   DCHECK(surface_id.is_valid());
   DCHECK(!remote_process_gone_);
 
-  compositing_helper_->SetSurfaceId(surface_id,
-                                    capture_sequence_number_changed);
+  compositing_helper_->SetSurfaceId(surface_id, capture_sequence_number_changed,
+                                    allow_paint_holding);
 
   bool rect_changed = !sent_visual_properties_ ||
                       sent_visual_properties_->rect_in_local_root !=
@@ -1011,8 +1014,14 @@ void RemoteFrame::RecordSentVisualProperties() {
 }
 
 void RemoteFrame::ResendVisualProperties() {
+  ResendVisualPropertiesInternal(
+      ChildFrameCompositingHelper::AllowPaintHolding::kNo);
+}
+
+void RemoteFrame::ResendVisualPropertiesInternal(
+    ChildFrameCompositingHelper::AllowPaintHolding allow_paint_holding) {
   sent_visual_properties_ = absl::nullopt;
-  SynchronizeVisualProperties();
+  SynchronizeVisualProperties(/*propagate=*/true, allow_paint_holding);
 }
 
 void RemoteFrame::DidUpdateVisualProperties(

@@ -9,6 +9,7 @@ QT_BEGIN_NAMESPACE
 QSGCurveFillNode::QSGCurveFillNode()
 {
     setFlag(OwnsGeometry, true);
+    setFlag(UsePreprocess, true);
     setGeometry(new QSGGeometry(attributes(), 0, 0));
 
     updateMaterial();
@@ -42,7 +43,9 @@ void QSGCurveFillNode::cookGeometry()
            g->indexCount() * g->sizeOfIndex());
 
     m_uncookedIndexes.clear();
+    m_uncookedIndexes.squeeze();
     m_uncookedVertexes.clear();
+    m_uncookedVertexes.squeeze();
 }
 
 const QSGGeometry::AttributeSet &QSGCurveFillNode::attributes()

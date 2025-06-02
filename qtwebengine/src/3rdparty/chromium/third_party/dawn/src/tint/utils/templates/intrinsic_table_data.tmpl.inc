@@ -66,14 +66,18 @@ using TemplateTypeMatcher = tint::core::intrinsic::TemplateTypeMatcher<N>;
 {{- with $I.Table -}}
 {{- template "Matchers" $I }}
 
+{{- if .TypeMatcherIndices}}
+
 constexpr TypeMatcherIndex kTypeMatcherIndices[] = {
-{{- range $i, $idx := .TypeMatcherIndices }}
+{{-   range $i, $idx := .TypeMatcherIndices }}
   /* [{{$i}}] */ TypeMatcherIndex({{$idx}}),
-{{- end }}
+{{-   end }}
 };
 
 static_assert(TypeMatcherIndex::CanIndex(kTypeMatcherIndices),
               "TypeMatcherIndex is not large enough to index kTypeMatcherIndices");
+{{- end}}
+{{- if .NumberMatcherIndices}}
 
 constexpr NumberMatcherIndex kNumberMatcherIndices[] = {
 {{- range $i, $idx := .NumberMatcherIndices }}
@@ -83,16 +87,21 @@ constexpr NumberMatcherIndex kNumberMatcherIndices[] = {
 
 static_assert(NumberMatcherIndex::CanIndex(kNumberMatcherIndices),
               "NumberMatcherIndex is not large enough to index kNumberMatcherIndices");
+{{- end}}
+{{- if .Parameters}}
 
 constexpr ParameterInfo kParameters[] = {
 {{- range $i, $p := .Parameters }}
   {
     /* [{{$i}}] */
-    /* usage */ ParameterUsage::
+    /* usage */ core::ParameterUsage::
 {{-   if $p.Usage }}k{{PascalCase $p.Usage}}
 {{-   else        }}kNone
 {{-   end }},
-    /* type_matcher_indices */ TypeMatcherIndicesIndex({{$p.TypeMatcherIndicesOffset}}),
+    /* type_matcher_indices */
+{{-   if ge $p.TypeMatcherIndicesOffset 0 }} TypeMatcherIndicesIndex({{$p.TypeMatcherIndicesOffset}})
+{{-   else                                }} TypeMatcherIndicesIndex(/* invalid */)
+{{-   end }},
     /* number_matcher_indices */
 {{-   if ge $p.NumberMatcherIndicesOffset 0 }} NumberMatcherIndicesIndex({{$p.NumberMatcherIndicesOffset}})
 {{-   else                                  }} NumberMatcherIndicesIndex(/* invalid */)
@@ -103,6 +112,8 @@ constexpr ParameterInfo kParameters[] = {
 
 static_assert(ParameterIndex::CanIndex(kParameters),
               "ParameterIndex is not large enough to index kParameters");
+{{- end}}
+{{- if .TemplateTypes}}
 
 constexpr TemplateTypeInfo kTemplateTypes[] = {
 {{- range $i, $o := .TemplateTypes }}
@@ -119,6 +130,8 @@ constexpr TemplateTypeInfo kTemplateTypes[] = {
 
 static_assert(TemplateTypeIndex::CanIndex(kTemplateTypes),
               "TemplateTypeIndex is not large enough to index kTemplateTypes");
+{{- end }}
+{{- if .TemplateNumbers}}
 
 constexpr TemplateNumberInfo kTemplateNumbers[] = {
 {{- range $i, $o := .TemplateNumbers }}
@@ -135,15 +148,19 @@ constexpr TemplateNumberInfo kTemplateNumbers[] = {
 
 static_assert(TemplateNumberIndex::CanIndex(kTemplateNumbers),
               "TemplateNumberIndex is not large enough to index kTemplateNumbers");
-
-constexpr constant::Eval::Function kConstEvalFunctions[] = {
-{{- range $i, $f := .ConstEvalFunctions }}
-  /* [{{$i}}] */ &constant::Eval::{{template "ExpandName" $f}},
 {{- end }}
+
+{{- if .ConstEvalFunctions}}
+{{/* newline */}}
+constexpr core::constant::Eval::Function kConstEvalFunctions[] = {
+{{-   range $i, $f := .ConstEvalFunctions }}
+  /* [{{$i}}] */ &core::constant::Eval::{{template "OperatorName" $f}},
+{{-   end }}
 };
 
 static_assert(ConstEvalFunctionIndex::CanIndex(kConstEvalFunctions),
               "ConstEvalFunctionIndex is not large enough to index kConstEvalFunctions");
+{{- end}}
 
 constexpr OverloadInfo kOverloads[] = {
 {{- range $i, $o := .Overloads }}
@@ -203,90 +220,90 @@ constexpr IntrinsicInfo kBuiltins[] = {
 {{- end }}
 };
 
+{{- if .UnaryOperators}}
+{{/* newline */}}
 constexpr IntrinsicInfo kUnaryOperators[] = {
-{{- range $i, $o := .UnaryOperators }}
+{{-   range $i, $o := .UnaryOperators }}
   {
     /* [{{$i}}] */
-{{-   range $o.OverloadDescriptions }}
+{{-     range $o.OverloadDescriptions }}
     /* {{.}} */
-{{-   end }}
+{{-     end }}
     /* num overloads */ {{$o.NumOverloads}},
     /* overloads */ OverloadIndex({{$o.OverloadsOffset}}),
   },
-{{- end }}
+{{-   end }}
 };
-
-{{- range $i, $o := .UnaryOperators }}
-constexpr uint8_t kUnaryOperator{{ template "ExpandName" $o.Name}} = {{$i}};
 {{- end }}
 
+{{- $unary_ops := Map }}
+{{- range $i, $o := .UnaryOperators }}
+{{-   $unary_ops.Put $o.Name true }}
+constexpr uint8_t kUnaryOperator{{ template "OperatorName" $o.Name}} = {{$i}};
+{{- end }}
+
+{{- if .BinaryOperators}}
+{{/* newline */}}
 constexpr IntrinsicInfo kBinaryOperators[] = {
-{{- range $i, $o := .BinaryOperators }}
+{{-   range $i, $o := .BinaryOperators }}
   {
     /* [{{$i}}] */
-{{-   range $o.OverloadDescriptions }}
+{{-     range $o.OverloadDescriptions }}
     /* {{.}} */
-{{-   end }}
+{{-     end }}
     /* num overloads */ {{$o.NumOverloads}},
     /* overloads */ OverloadIndex({{$o.OverloadsOffset}}),
   },
-{{- end }}
+{{-   end }}
 };
-
-{{- range $i, $o := .BinaryOperators }}
-constexpr uint8_t kBinaryOperator{{ template "ExpandName" $o.Name}} = {{$i}};
 {{- end }}
 
+{{- $bin_ops := Map }}
+{{- range $i, $o := .BinaryOperators }}
+{{-   $bin_ops.Put $o.Name true }}
+constexpr uint8_t kBinaryOperator{{ template "OperatorName" $o.Name}} = {{$i}};
+{{- end }}
+
+{{- if .ConstructorsAndConverters}}
+{{/* newline */}}
 constexpr IntrinsicInfo kConstructorsAndConverters[] = {
-{{- range $i, $o := .ConstructorsAndConverters }}
+{{-   range $i, $o := .ConstructorsAndConverters }}
   {
     /* [{{$i}}] */
-{{-   range $o.OverloadDescriptions }}
+{{-     range $o.OverloadDescriptions }}
     /* {{.}} */
-{{-   end }}
+{{-     end }}
     /* num overloads */ {{$o.NumOverloads}},
     /* overloads */ OverloadIndex({{$o.OverloadsOffset}}),
   },
-{{- end }}
+{{-   end }}
 };
+{{- end }}
 
 // clang-format on
 
 }  // anonymous namespace
 
 const core::intrinsic::TableData {{$.Name}}{
-  /* template_types */ kTemplateTypes,
-  /* template_numbers */ kTemplateNumbers,
-  /* type_matcher_indices */ kTypeMatcherIndices,
-  /* number_matcher_indices */ kNumberMatcherIndices,
-  /* type_matchers */ kTypeMatchers,
-  /* number_matchers */ kNumberMatchers,
+  /* template_types */ {{if .TemplateTypes}}kTemplateTypes{{else}}Empty{{end}},
+  /* template_numbers */ {{if .TemplateNumbers}}kTemplateNumbers{{else}}Empty{{end}},
+  /* type_matcher_indices */ {{if .TypeMatcherIndices}}kTypeMatcherIndices{{else}}Empty{{end}},
+  /* number_matcher_indices */ {{if .NumberMatcherIndices}}kNumberMatcherIndices{{else}}Empty{{end}},
+  /* type_matchers */ {{if .TMatchers}}kTypeMatchers{{else}}Empty{{end}},
+  /* number_matchers */ {{if .NMatchers}}kNumberMatchers{{else}}Empty{{end}},
   /* parameters */ kParameters,
   /* overloads */ kOverloads,
-  /* const_eval_functions */ kConstEvalFunctions,
-  /* ctor_conv */ kConstructorsAndConverters,
+  /* const_eval_functions */ {{if .ConstEvalFunctions}}kConstEvalFunctions{{else}}Empty{{end}},
+  /* ctor_conv */ {{if .ConstructorsAndConverters}}kConstructorsAndConverters{{else}}Empty{{end}},
   /* builtins */ kBuiltins,
-  /* binary_plus */ kBinaryOperators[kBinaryOperatorPlus],
-  /* binary_minus */ kBinaryOperators[kBinaryOperatorMinus],
-  /* binary_star */ kBinaryOperators[kBinaryOperatorStar],
-  /* binary_divide */ kBinaryOperators[kBinaryOperatorDivide],
-  /* binary_modulo */ kBinaryOperators[kBinaryOperatorModulo],
-  /* binary_xor */ kBinaryOperators[kBinaryOperatorXor],
-  /* binary_and */ kBinaryOperators[kBinaryOperatorAnd],
-  /* binary_or */ kBinaryOperators[kBinaryOperatorOr],
-  /* binary_logical_and */ kBinaryOperators[kBinaryOperatorLogicalAnd],
-  /* binary_logical_or */ kBinaryOperators[kBinaryOperatorLogicalOr],
-  /* binary_equal */ kBinaryOperators[kBinaryOperatorEqual],
-  /* binary_not_equal */ kBinaryOperators[kBinaryOperatorNotEqual],
-  /* binary_less_than */ kBinaryOperators[kBinaryOperatorLessThan],
-  /* binary_greater_than */ kBinaryOperators[kBinaryOperatorGreaterThan],
-  /* binary_less_than_equal */ kBinaryOperators[kBinaryOperatorLessThanEqual],
-  /* binary_greater_than_equal */ kBinaryOperators[kBinaryOperatorGreaterThanEqual],
-  /* binary_shift_left */ kBinaryOperators[kBinaryOperatorShiftLeft],
-  /* binary_shift_right */ kBinaryOperators[kBinaryOperatorShiftRight],
-  /* unary_not */ kUnaryOperators[kUnaryOperatorNot],
-  /* unary_complement */ kUnaryOperators[kUnaryOperatorComplement],
-  /* unary_minus */ kUnaryOperators[kUnaryOperatorMinus],
+{{- range $op := List "+" "-" "*" "/" "%" "^" "&" "|" "&&" "||" "==" "!=" "<" ">" "<=" ">=" "<<" ">>"}}
+{{-   $N := Eval "OperatorName" $op }}
+  /* binary '{{$op}}' */ {{if $bin_ops.Get .}}kBinaryOperators[kBinaryOperator{{$N}}]{{else}}tint::core::intrinsic::kNoOverloads{{end}},
+{{- end}}
+{{- range $op := List "!" "~" "-" "*" "&"}}
+{{-   $N := Eval "OperatorName" $op }}
+  /* unary '{{$op}}' */ {{if $unary_ops.Get .}}kUnaryOperators[kUnaryOperator{{$N}}]{{else}}tint::core::intrinsic::kNoOverloads{{end}},
+{{- end}}
 };
 
 {{  end -}}
@@ -312,7 +329,7 @@ constexpr TypeMatcher k{{$name}}Matcher {
       return nullptr;
     }
 {{- end  }}
-    return Build{{$name}}(state{{range .TemplateParams}}, {{.GetName}}{{end}});
+    return Build{{$name}}(state, ty{{range .TemplateParams}}, {{.GetName}}{{end}});
   },
 /* string */ [](MatchState*{{if .TemplateParams}} state{{end}}) -> std::string {
 {{- range .TemplateParams }}
@@ -343,7 +360,7 @@ constexpr TypeMatcher k{{$name}}Matcher {
 /* match */ [](MatchState& state, const Type* ty) -> const Type* {
 {{- range .PrecedenceSortedTypes }}
     if (Match{{PascalCase .Name}}(state, ty)) {
-      return Build{{PascalCase .Name}}(state);
+      return Build{{PascalCase .Name}}(state, ty);
     }
 {{- end }}
     return nullptr;
@@ -376,16 +393,16 @@ constexpr NumberMatcher k{{$class}}Matcher {
 {{-   $option := index .Options 0 }}
 {{-   $entry := printf "k%v" (PascalCase $option.Name) -}}
 /* match */ [](MatchState&, Number number) -> Number {
-    if (number.IsAny() || number.Value() == static_cast<uint32_t>({{$enum}}::{{$entry}})) {
-      return Number(static_cast<uint32_t>({{$enum}}::{{$entry}}));
+    if (number.IsAny() || number.Value() == static_cast<uint32_t>(core::{{$enum}}::{{$entry}})) {
+      return Number(static_cast<uint32_t>(core::{{$enum}}::{{$entry}}));
     }
     return Number::invalid;
   },
 {{- else -}}
 /* match */ [](MatchState&, Number number) -> Number {
-    switch (static_cast<{{$enum}}>(number.Value())) {
+    switch (static_cast<core::{{$enum}}>(number.Value())) {
 {{-   range .Options }}
-      case {{$enum}}::k{{PascalCase .Name}}:
+      case core::{{$enum}}::k{{PascalCase .Name}}:
 {{-   end }}
         return number;
       default:
@@ -433,25 +450,30 @@ constexpr NumberMatcher k{{$class}}Matcher {
 {{-   $n_names.Put . $name }}
 {{- end }}
 
+{{- if $.Table.TMatchers}}
+
 /// The template types, types, and type matchers
 constexpr TypeMatcher kTypeMatchers[] = {
-{{- range $i, $m := $.Table.TMatchers }}
+{{-   range $i, $m := $.Table.TMatchers }}
   /* [{{$i}}] */
-{{-   if $m }} {{$t_names.Get $m}},
-{{-   else  }} {{$t_names.Get $i}},
-{{-   end   }}
-{{- end }}
+{{-     if $m }} {{$t_names.Get $m}},
+{{-     else  }} {{$t_names.Get $i}},
+{{-     end   }}
+{{-   end }}
 };
+{{- end}}
+{{- if $.Table.NMatchers}}
 
 /// The template numbers, and number matchers
 constexpr NumberMatcher kNumberMatchers[] = {
-{{- range $i, $m := $.Table.NMatchers }}
+{{-   range $i, $m := $.Table.NMatchers }}
   /* [{{$i}}] */
-{{-   if $m }} {{$n_names.Get $m}},
-{{-   else  }} {{$n_names.Get $i}},
-{{-   end   }}
-{{- end }}
+{{-     if $m }} {{$n_names.Get $m}},
+{{-     else  }} {{$n_names.Get $i}},
+{{-     end   }}
+{{-   end }}
 };
+{{- end}}
 
 {{- end -}}
 
@@ -520,7 +542,7 @@ constexpr NumberMatcher kNumberMatchers[] = {
 
 
 {{- /* ------------------------------------------------------------------ */ -}}
-{{-                           define "ExpandName"                            -}}
+{{-                          define "OperatorName"                           -}}
 {{- /* ------------------------------------------------------------------ */ -}}
 {{-        if eq . "<<" -}}ShiftLeft
 {{-   else if eq . "&"  -}}And

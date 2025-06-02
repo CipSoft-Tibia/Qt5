@@ -5,9 +5,9 @@
 #define GRAPHMODIFIER_H
 
 #include <QtCore/qpropertyanimation.h>
-#include <QtGraphs/q3dbars.h>
 #include <QtGraphs/qabstract3dseries.h>
 #include <QtGraphs/qbardataproxy.h>
+#include <QtGraphsWidgets/q3dbarswidgetitem.h>
 
 class RainfallData;
 
@@ -15,7 +15,7 @@ class GraphModifier : public QObject
 {
     Q_OBJECT
 public:
-    explicit GraphModifier(Q3DBars *bargraph, QObject *parent);
+    explicit GraphModifier(Q3DBarsWidgetItem *bargraph, QObject *parent);
     ~GraphModifier();
 
     void resetTemperatureData();
@@ -23,12 +23,12 @@ public:
     void changeLabelBackground();
     void changeFont(const QFont &font);
     void changeFontSize(int fontsize);
-    void rotateX(int rotation);
-    void rotateY(int rotation);
-    void setBackgroundEnabled(int enabled);
-    void setGridEnabled(int enabled);
+    void rotateX(int angle);
+    void rotateY(int angle);
+    void setBackgroundVisible(int visible);
+    void setGridVisible(int visible);
     void setSmoothBars(int smooth);
-    void setSeriesVisibility(int enabled);
+    void setSeriesVisibility(int visible);
     void setReverseValueAxis(int enabled);
     void changeDataMode(bool customData);
 
@@ -38,9 +38,9 @@ public Q_SLOTS:
     void changeSelectionMode(int selectionMode);
     void changeTheme(int theme);
     void changeShadowQuality(int quality);
-    void shadowQualityUpdatedByVisual(QAbstract3DGraph::ShadowQuality shadowQuality);
+    void shadowQualityUpdatedByVisual(QtGraphs3D::ShadowQuality shadowQuality);
     void changeLabelRotation(int rotation);
-    void setAxisTitleVisibility(bool enabled);
+    void setAxisTitleVisibility(bool visible);
     void setAxisTitleFixed(bool enabled);
     void zoomToSelectedBar();
     void setDataModeToWeather(bool enabled);
@@ -48,13 +48,13 @@ public Q_SLOTS:
 
 Q_SIGNALS:
     void shadowQualityChanged(int quality);
-    void backgroundEnabledChanged(bool enabled);
-    void gridEnabledChanged(bool enabled);
+    void backgroundVisibleChanged(bool visible);
+    void gridVisibleChanged(bool visible);
     void fontChanged(const QFont &font);
     void fontSizeChanged(int size);
 
 private:
-    Q3DBars *m_graph = nullptr;
+    Q3DBarsWidgetItem *m_graph = nullptr;
     float m_xRotation = 0.f;
     float m_yRotation = 0.f;
     int m_fontSize = 30;

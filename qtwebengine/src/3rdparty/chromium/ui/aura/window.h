@@ -60,7 +60,7 @@ class Transform;
 }
 
 namespace ui {
-enum class DomCode;
+enum class DomCode : uint32_t;
 class Layer;
 }  // namespace ui
 
@@ -150,7 +150,7 @@ class AURA_EXPORT Window : public ui::LayerDelegate,
     kMaxValue = HIDDEN,
   };
 
-  using Windows = std::vector<Window*>;
+  using Windows = std::vector<raw_ptr<Window, VectorExperimental>>;
 
   explicit Window(WindowDelegate* delegate,
                   client::WindowType type = client::WINDOW_TYPE_UNKNOWN);

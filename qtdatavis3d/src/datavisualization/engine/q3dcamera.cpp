@@ -60,7 +60,7 @@ QT_BEGIN_NAMESPACE
  * \inqmlmodule QtDataVisualization
  * \since QtDataVisualization 1.0
  * \ingroup datavisualization_qml
- * \instantiates Q3DCamera
+ * \nativetype Q3DCamera
  * \brief Representation of a camera in 3D space.
  *
  * Camera3D represents a basic orbit around centerpoint 3D camera that is used when rendering the
@@ -71,14 +71,14 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty float Camera3D::xRotation
+ * \qmlproperty real Camera3D::xRotation
  *
  * The X-rotation angle of the camera around the target point in degrees
  * starting from the current base position.
  */
 
 /*!
- * \qmlproperty float Camera3D::yRotation
+ * \qmlproperty real Camera3D::yRotation
  *
  * The Y-rotation angle of the camera around the target point in degrees
  * starting from the current base position.
@@ -93,7 +93,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty float Camera3D::zoomLevel
+ * \qmlproperty real Camera3D::zoomLevel
  *
  * The camera zoom level in percentage. The default value of \c{100.0}
  * means there is no zoom in or out set in the camera.
@@ -103,7 +103,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty float Camera3D::minZoomLevel
+ * \qmlproperty real Camera3D::minZoomLevel
  *
  * Sets the minimum allowed camera zoom level.
  * If the new minimum level is higher than the existing maximum level, the maximum level is
@@ -116,7 +116,7 @@ QT_BEGIN_NAMESPACE
  */
 
 /*!
- * \qmlproperty float Camera3D::maxZoomLevel
+ * \qmlproperty real Camera3D::maxZoomLevel
  *
  * Sets the maximum allowed camera zoom level.
  * If the new maximum level is lower than the existing minimum level, the minimum level is

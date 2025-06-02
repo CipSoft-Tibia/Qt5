@@ -17,15 +17,13 @@
 #include "qquickgraphsitem_p.h"
 #include "qsurface3dseries.h"
 
-#include <private/graphsglobal_p.h>
+#include <private/qgraphsglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class QValue3DAxis;
 class QSurface3DSeries;
 class QQuickGraphsSurface;
-class SurfaceSelectionInstancing;
-class Q3DSurface;
 
 struct Surface3DChangeBitField
 {
@@ -44,7 +42,7 @@ struct Surface3DChangeBitField
     {}
 };
 
-class QQuickGraphsSurface : public QQuickGraphsItem
+class Q_GRAPHS_EXPORT QQuickGraphsSurface : public QQuickGraphsItem
 {
     Q_OBJECT
     Q_PROPERTY(QValue3DAxis *axisX READ axisX WRITE setAxisX NOTIFY axisXChanged)
@@ -70,13 +68,13 @@ public:
     struct ChangeRow
     {
         QSurface3DSeries *series;
-        int row;
+        qsizetype row;
     };
     enum DataDimension {
         BothAscending = 0,
         XDescending = 1,
         ZDescending = 2,
-        BothDescending = XDescending | ZDescending
+        BothDescending = XDescending | ZDescending,
     };
     Q_DECLARE_FLAGS(DataDimensions, DataDimension)
 
@@ -103,10 +101,10 @@ public:
     void updateSurfaceTexture(QSurface3DSeries *series);
 
     static QPoint invalidSelectionPosition();
-    void setSelectedPoint(const QPoint &position, QSurface3DSeries *series, bool enterSlice);
+    void setSelectedPoint(QPoint position, QSurface3DSeries *series, bool enterSlice);
 
-    inline QSurface3DSeries *selectedSeries() const { return m_selectedSeries; }
-    void setSelectionMode(QAbstract3DGraph::SelectionFlags mode) override;
+    QSurface3DSeries *selectedSeries() const { return m_selectedSeries; }
+    void setSelectionMode(QtGraphs3D::SelectionFlags mode) override;
 
     void setDataDimensions(DataDimensions dimension) { m_dataDimensions = dimension; }
     DataDimensions dataDimensions() { return m_dataDimensions; }
@@ -151,33 +149,31 @@ protected:
     void synchData() override;
     void updateGraph() override;
     void calculateSceneScalingFactors() override;
-    void updateSliceGraph() override;
-    bool handleMousePressedEvent(QMouseEvent *event) override;
+    void toggleSliceGraph() override;
     void updateSingleHighlightColor() override;
     void updateLightStrength() override;
     void handleThemeTypeChange() override;
-    bool handleTouchEvent(QTouchEvent *event) override;
-    bool doPicking(const QPointF &position) override;
+    bool doPicking(QPointF position) override;
 
     void createSliceView() override;
-    void updateSliceItemLabel(QString label, const QVector3D &position) override;
-    void updateSelectionMode(QAbstract3DGraph::SelectionFlags mode) override;
+    void updateSliceItemLabel(const QString &label, QVector3D position) override;
+    void updateSelectionMode(QtGraphs3D::SelectionFlags mode) override;
 
 public Q_SLOTS:
     void handleAxisXChanged(QAbstract3DAxis *axis) override;
     void handleAxisYChanged(QAbstract3DAxis *axis) override;
     void handleAxisZChanged(QAbstract3DAxis *axis) override;
 
-    void handleFlatShadingEnabledChanged();
+    void handleShadingChanged();
     void handleWireframeColorChanged();
     void handleFlipHorizontalGridChanged(bool flip);
 
     void handleArrayReset();
-    void handleRowsAdded(int startIndex, int count);
-    void handleRowsChanged(int startIndex, int count);
-    void handleRowsRemoved(int startIndex, int count);
-    void handleRowsInserted(int startIndex, int count);
-    void handleItemChanged(int rowIndex, int columnIndex);
+    void handleRowsAdded(qsizetype startIndex, qsizetype count);
+    void handleRowsChanged(qsizetype startIndex, qsizetype count);
+    void handleRowsRemoved(qsizetype startIndex, qsizetype count);
+    void handleRowsInserted(qsizetype startIndex, qsizetype count);
+    void handleItemChanged(qsizetype rowIndex, qsizetype columnIndex);
 
     void handleFlatShadingSupportedChange(bool supported);
 
@@ -210,22 +206,23 @@ private:
         QQuick3DTexture *texture;
         QQuick3DTexture *heightTexture;
         QQuick3DCustomMaterial *customMaterial;
-        int columnCount;
-        int rowCount;
+        qsizetype columnCount;
+        qsizetype rowCount;
         SurfaceVertex selectedVertex;
         bool picked = false;
-        bool polar;
         QVector3D boundsMin;
         QVector3D boundsMax;
         QRect sampleSpace;
+        bool ascendingX;
+        bool ascendingZ;
     };
 
     QVector3D getNormalizedVertex(const QSurfaceDataItem &data, bool polar, bool flipXZ);
-    QRect calculateSampleSpace(const QSurfaceDataArray &array);
-    QPointF mapCoordsToWorldSpace(SurfaceModel *model, const QPointF &coords);
-    QPoint mapCoordsToSampleSpace(SurfaceModel *model, const QPointF &coords);
-    void createIndices(SurfaceModel *model, int columnCount, int rowCount);
-    void createGridlineIndices(SurfaceModel *model, int x, int y, int endX, int endY);
+    QRect calculateSampleSpace(SurfaceModel *model);
+    QPointF mapCoordsToWorldSpace(SurfaceModel *model, QPointF coords);
+    QPoint mapCoordsToSampleSpace(SurfaceModel *model, QPointF coords);
+    void createIndices(SurfaceModel *model, qsizetype columnCount, qsizetype rowCount);
+    void createGridlineIndices(SurfaceModel *model, qsizetype x, qsizetype y, qsizetype endX, qsizetype endY);
     void handleChangedSeries();
     void updateModel(SurfaceModel *model);
     void createProxyModel(SurfaceModel *parentModel);
@@ -234,16 +231,25 @@ private:
     void updateSelectedPoint();
     void addModel(QSurface3DSeries *series);
     void addSliceModel(SurfaceModel *model);
-    void delete3DModel(QQuick3DModel *model);
+
+    void handleMeshTypeChanged(QAbstract3DSeries::Mesh mesh);
+    void handlePointerChanged(const QString &filename);
+    void changePointerMeshTypeForSeries(QAbstract3DSeries::Mesh mesh, QSurface3DSeries *series);
+    void changePointerForSeries(const QString &filename, QSurface3DSeries *series);
+    void changeSlicePointerMeshTypeForSeries(QAbstract3DSeries::Mesh mesh, QSurface3DSeries *series);
+    void changeSlicePointerForSeries(const QString &filename, QSurface3DSeries *series);
+    QString getMeshFileName(QAbstract3DSeries::Mesh mesh, QSurface3DSeries *series) const;
 
     QVector<SurfaceModel *> m_model;
-    QQuick3DModel *m_selectionPointer = nullptr;
-    SurfaceSelectionInstancing *m_instancing = nullptr;
-    QQuick3DModel *m_sliceSelectionPointer = nullptr;
-    SurfaceSelectionInstancing *m_sliceInstancing = nullptr;
+    QMap<QSurface3DSeries *, QQuick3DModel *> m_selectionPointers = {};
+    QMap<QSurface3DSeries *, QQuick3DModel *> m_sliceSelectionPointers = {};
 
     bool m_isIndexDirty = true;
     bool m_selectionDirty = false;
+
+    bool m_pickThisFrame = false;
+    bool m_proxyDirty = false;
+    QPointF m_lastPick;
 
     Surface3DChangeBitField m_changeTracker;
     QPoint m_selectedPoint;
@@ -257,9 +263,13 @@ private:
     QList<QSurface3DSeries *> m_changedTextures;
     bool m_isSeriesVisibilityDirty = false;
 
+    QQuick3DModel *m_topGrid = nullptr;
+    QQuick3DNode *m_topGridScale = nullptr;
+    QQuick3DNode *m_topGridRotation = nullptr;
+
     DataDimensions m_dataDimensions;
 
-    friend class Q3DSurface;
+    friend class Q3DSurfaceWidgetItem;
 };
 
 QT_END_NAMESPACE

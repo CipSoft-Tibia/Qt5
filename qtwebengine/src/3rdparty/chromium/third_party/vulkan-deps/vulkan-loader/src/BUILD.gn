@@ -62,8 +62,8 @@ config("vulkan_internal_config") {
       "FALLBACK_DATA_DIRS=\"/usr/local/share:/usr/share\"",
     ]
   }
-  if (!vulkan_loader_shared) {
-    defines += [ "BUILD_STATIC_LOADER" ]
+  if (is_apple && !vulkan_loader_shared) {
+    defines += [ "APPLE_STATIC_LOADER" ]
   }
 }
 
@@ -76,7 +76,6 @@ config("vulkan_loader_config") {
     "loader",
   ]
   defines = [
-    "API_NAME=\"Vulkan\"",
     "LOADER_USE_UNSAFE_FILE_SEARCH=1",
   ]
 
@@ -106,7 +105,6 @@ if (!is_android) {
       "loader/adapters.h",
       "loader/allocation.c",
       "loader/allocation.h",
-      "loader/asm_offset.c",
       "loader/cJSON.c",
       "loader/cJSON.h",
       "loader/debug_utils.c",
@@ -222,16 +220,10 @@ if (!is_android) {
 }
 
 if (is_fuchsia) {
-  config("fuchsia_config") {
-    include_dirs = [ "fuchsia" ]
-  }
-
   source_set("dlopen_fuchsia") {
-    public_configs = [ ":fuchsia_config" ]
-
     sources = [
-      "fuchsia/dlopen_fuchsia.c",
-      "fuchsia/dlopen_fuchsia.h",
+      "loader/dlopen_fuchsia.c",
+      "loader/dlopen_fuchsia.h",
     ]
 
     deps = [

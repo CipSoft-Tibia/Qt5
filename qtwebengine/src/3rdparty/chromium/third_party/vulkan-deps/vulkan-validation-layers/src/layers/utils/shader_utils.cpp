@@ -1,6 +1,6 @@
-/* Copyright (c) 2015-2023 The Khronos Group Inc.
- * Copyright (c) 2015-2023 Valve Corporation
- * Copyright (c) 2015-2023 LunarG, Inc.
+/* Copyright (c) 2015-2024 The Khronos Group Inc.
+ * Copyright (c) 2015-2024 Valve Corporation
+ * Copyright (c) 2015-2024 LunarG, Inc.
  * Copyright (C) 2015-2023 Google Inc.
  * Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights reserved.
  *
@@ -20,8 +20,10 @@
 #include "shader_utils.h"
 
 #include "state_tracker/device_state.h"
+#include "generated/state_tracker_helper.h"
 #include "generated/vk_extension_helper.h"
 #include "state_tracker/shader_module.h"
+#include "state_tracker/shader_instruction.h"
 
 spv_target_env PickSpirvEnv(const APIVersion &api_version, bool spirv_1_4) {
     if (api_version >= VK_API_VERSION_1_3) {
@@ -51,19 +53,19 @@ void AdjustValidatorOptions(const DeviceExtensions &device_extensions, const Dev
     // The rest of the settings are controlled from a feature bit, which are set correctly in the state tracking. Regardless of
     // Vulkan version used, the feature bit is needed (also described in the spec).
 
-    if (enabled_features.core12.uniformBufferStandardLayout == VK_TRUE) {
+    if (enabled_features.uniformBufferStandardLayout == VK_TRUE) {
         // --uniform-buffer-standard-layout
         options.SetUniformBufferStandardLayout(true);
     }
-    if (enabled_features.core12.scalarBlockLayout == VK_TRUE) {
+    if (enabled_features.scalarBlockLayout == VK_TRUE) {
         // --scalar-block-layout
         options.SetScalarBlockLayout(true);
     }
-    if (enabled_features.workgroup_memory_explicit_layout_features.workgroupMemoryExplicitLayoutScalarBlockLayout) {
+    if (enabled_features.workgroupMemoryExplicitLayoutScalarBlockLayout) {
         // --workgroup-scalar-block-layout
         options.SetWorkgroupScalarBlockLayout(true);
     }
-    if (enabled_features.core13.maintenance4) {
+    if (enabled_features.maintenance4) {
         // --allow-localsizeid
         options.SetAllowLocalSizeId(true);
     }
@@ -72,46 +74,17 @@ void AdjustValidatorOptions(const DeviceExtensions &device_extensions, const Dev
     options.SetFriendlyNames(false);
 }
 
-void GetActiveSlots(ActiveSlotMap &active_slots, const std::shared_ptr<const EntryPoint> &entrypoint) {
+void GetActiveSlots(ActiveSlotMap &active_slots, const std::shared_ptr<const spirv::EntryPoint> &entrypoint) {
     if (!entrypoint) {
         return;
     }
     // Capture descriptor uses for the pipeline
     for (const auto &variable : entrypoint->resource_interface_variables) {
         // While validating shaders capture which slots are used by the pipeline
-        auto &entry = active_slots[variable.decorations.set][variable.decorations.binding];
+        DescriptorRequirement entry;
         entry.variable = &variable;
-
-        auto &reqs = entry.reqs;
-        if (variable.is_atomic_operation) reqs |= DESCRIPTOR_REQ_VIEW_ATOMIC_OPERATION;
-        if (variable.is_sampler_sampled) reqs |= DESCRIPTOR_REQ_SAMPLER_SAMPLED;
-        if (variable.is_sampler_implicitLod_dref_proj) reqs |= DESCRIPTOR_REQ_SAMPLER_IMPLICITLOD_DREF_PROJ;
-        if (variable.is_sampler_bias_offset) reqs |= DESCRIPTOR_REQ_SAMPLER_BIAS_OFFSET;
-        if (variable.is_read_without_format) reqs |= DESCRIPTOR_REQ_IMAGE_READ_WITHOUT_FORMAT;
-        if (variable.is_write_without_format) reqs |= DESCRIPTOR_REQ_IMAGE_WRITE_WITHOUT_FORMAT;
-        if (variable.is_dref) reqs |= DESCRIPTOR_REQ_IMAGE_DREF;
-
-        if (variable.image_format_type == NumericTypeFloat) reqs |= DESCRIPTOR_REQ_COMPONENT_TYPE_FLOAT;
-        if (variable.image_format_type == NumericTypeSint) reqs |= DESCRIPTOR_REQ_COMPONENT_TYPE_SINT;
-        if (variable.image_format_type == NumericTypeUint) reqs |= DESCRIPTOR_REQ_COMPONENT_TYPE_UINT;
-
-        if (variable.image_dim == spv::Dim1D) {
-            reqs |= (variable.is_image_array) ? DESCRIPTOR_REQ_VIEW_TYPE_1D_ARRAY : DESCRIPTOR_REQ_VIEW_TYPE_1D;
-        }
-
-        if (variable.image_dim == spv::Dim2D) {
-            reqs |= (variable.is_multisampled) ? DESCRIPTOR_REQ_MULTI_SAMPLE : DESCRIPTOR_REQ_SINGLE_SAMPLE;
-            reqs |= (variable.is_image_array) ? DESCRIPTOR_REQ_VIEW_TYPE_2D_ARRAY : DESCRIPTOR_REQ_VIEW_TYPE_2D;
-        }
-
-        if (variable.image_dim == spv::Dim3D) reqs |= DESCRIPTOR_REQ_VIEW_TYPE_3D;
-
-        if (variable.image_dim == spv::DimCube) {
-            reqs |= (variable.is_image_array) ? DESCRIPTOR_REQ_VIEW_TYPE_CUBE_ARRAY : DESCRIPTOR_REQ_VIEW_TYPE_CUBE;
-        }
-        if (variable.image_dim == spv::DimSubpassData) {
-            reqs |= (variable.is_multisampled) ? DESCRIPTOR_REQ_MULTI_SAMPLE : DESCRIPTOR_REQ_SINGLE_SAMPLE;
-        }
+        entry.revalidate_hash = variable.descriptor_hash;
+        active_slots[variable.decorations.set].emplace(variable.decorations.binding, entry);
     }
 }
 
@@ -124,7 +97,7 @@ ActiveSlotMap GetActiveSlots(const StageStateVec &stage_states) {
     return active_slots;
 }
 
-ActiveSlotMap GetActiveSlots(const std::shared_ptr<const EntryPoint> &entrypoint) {
+ActiveSlotMap GetActiveSlots(const std::shared_ptr<const spirv::EntryPoint> &entrypoint) {
     ActiveSlotMap active_slots;
     GetActiveSlots(active_slots, entrypoint);
     return active_slots;
@@ -138,40 +111,52 @@ uint32_t GetMaxActiveSlot(const ActiveSlotMap &active_slots) {
     return max_active_slot;
 }
 
-const char *PipelineStageState::getPName() const {
-    if (pipeline_create_info) {
-        return pipeline_create_info->pName;
-    }
-    return shader_object_create_info->pName;
+const char *PipelineStageState::GetPName() const {
+    return (pipeline_create_info) ? pipeline_create_info->pName : shader_object_create_info->pName;
 }
 
-VkShaderStageFlagBits PipelineStageState::getStage() const {
-    if (pipeline_create_info) {
-        return pipeline_create_info->stage;
-    }
-    return shader_object_create_info->stage;
+VkShaderStageFlagBits PipelineStageState::GetStage() const {
+    return (pipeline_create_info) ? pipeline_create_info->stage : shader_object_create_info->stage;
 }
 
-safe_VkSpecializationInfo *PipelineStageState::getSpecializationInfo() const {
-    if (pipeline_create_info) {
-        return pipeline_create_info->pSpecializationInfo;
-    }
-    return shader_object_create_info->pSpecializationInfo;
+safe_VkSpecializationInfo *PipelineStageState::GetSpecializationInfo() const {
+    return (pipeline_create_info) ? pipeline_create_info->pSpecializationInfo : shader_object_create_info->pSpecializationInfo;
 }
 
-const void *PipelineStageState::getPNext() const {
-    if (pipeline_create_info) {
-        return pipeline_create_info->pNext;
+const void *PipelineStageState::GetPNext() const {
+    return (pipeline_create_info) ? pipeline_create_info->pNext : shader_object_create_info->pNext;
+}
+
+bool PipelineStageState::GetInt32ConstantValue(const spirv::Instruction &insn, uint32_t *value) const {
+    const spirv::Instruction *type_id = spirv_state->FindDef(insn.Word(1));
+    if (type_id->Opcode() != spv::OpTypeInt || type_id->Word(2) != 32) {
+        return false;
     }
-    return shader_object_create_info->pNext;
+
+    if (insn.Opcode() == spv::OpConstant) {
+        *value = insn.Word(3);
+        return true;
+    } else if (insn.Opcode() == spv::OpSpecConstant) {
+        *value = insn.Word(3);  // default value
+        const auto *spec_info = GetSpecializationInfo();
+        const uint32_t spec_id = spirv_state->static_data_.id_to_spec_id.at(insn.Word(2));
+        if (spec_info && spec_id < spec_info->mapEntryCount) {
+            memcpy(value, (uint8_t *)spec_info->pData + spec_info->pMapEntries[spec_id].offset,
+                   spec_info->pMapEntries[spec_id].size);
+        }
+        return true;
+    }
+
+    // This means the value is not known until runtime and will need to be checked in GPU-AV
+    return false;
 }
 
 PipelineStageState::PipelineStageState(const safe_VkPipelineShaderStageCreateInfo *pipeline_create_info,
                                        const safe_VkShaderCreateInfoEXT *shader_object_create_info,
-                                       std::shared_ptr<const SHADER_MODULE_STATE> module_state,
-                                       std::shared_ptr<const SPIRV_MODULE_STATE> spirv_state)
+                                       std::shared_ptr<const vvl::ShaderModule> module_state,
+                                       std::shared_ptr<const spirv::Module> spirv_state)
     : module_state(module_state),
       spirv_state(spirv_state),
       pipeline_create_info(pipeline_create_info),
       shader_object_create_info(shader_object_create_info),
-      entrypoint(spirv_state ? spirv_state->FindEntrypoint(getPName(), getStage()) : nullptr) {}
+      entrypoint(spirv_state ? spirv_state->FindEntrypoint(GetPName(), GetStage()) : nullptr) {}

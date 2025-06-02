@@ -48,7 +48,7 @@ private:
     const QString m_iconName;
 #if defined(Q_OS_MACOS)
     const NSImage *m_image;
-#elif defined(Q_OS_IOS)
+#elif defined(QT_PLATFORM_UIKIT)
     const UIImage *m_image;
 #endif
     struct CacheKey {

@@ -29,6 +29,7 @@ class tst_QTextMarkdownImporter : public QObject
     Q_OBJECT
 
 private slots:
+    void paragraphs();
     void headingBulletsContinuations();
     void thematicBreaks();
     void lists_data();
@@ -43,6 +44,8 @@ private slots:
     void pathological();
     void fencedCodeBlocks_data();
     void fencedCodeBlocks();
+    void frontMatter_data();
+    void frontMatter();
     void toRawText_data();
     void toRawText();
 
@@ -76,6 +79,43 @@ bool tst_QTextMarkdownImporter::isMainFontFixed()
                            << "general" << QFontDatabase::systemFont(QFontDatabase::GeneralFont);
     }
     return ret;
+}
+
+void tst_QTextMarkdownImporter::paragraphs()
+{
+    QFile f(QFINDTESTDATA("data/paragraphs.md"));
+    QVERIFY(f.open(QFile::ReadOnly | QIODevice::Text));
+    QString md = QString::fromUtf8(f.readAll());
+    f.close();
+
+    int lineSeparatorCount = 0;
+    QTextDocument doc;
+    QTextMarkdownImporter(&doc, QTextMarkdownImporter::DialectGitHub).import(md);
+    QTextFrame::iterator iterator = doc.rootFrame()->begin();
+    int i = 0;
+    while (!iterator.atEnd()) {
+        QTextBlock block = iterator.currentBlock();
+        int lineSeparatorPos = block.text().indexOf(QChar::LineSeparator);
+        qCDebug(lcTests) << i << block.text();
+        while (lineSeparatorPos > 0) {
+            ++lineSeparatorCount;
+            qCDebug(lcTests) << "    LineSeparator @" << lineSeparatorPos;
+            lineSeparatorPos = block.text().indexOf(QChar::LineSeparator, lineSeparatorPos + 1);
+        }
+        ++iterator;
+        ++i;
+    }
+    QCOMPARE(doc.blockCount(), 3);
+    QCOMPARE(lineSeparatorCount, 2);
+
+#ifdef DEBUG_WRITE_HTML
+    {
+        QFile out("/tmp/paragraphs.html");
+        out.open(QFile::WriteOnly);
+        out.write(doc.toHtml().toLatin1());
+        out.close();
+    }
+#endif
 }
 
 void tst_QTextMarkdownImporter::headingBulletsContinuations()
@@ -601,6 +641,40 @@ void tst_QTextMarkdownImporter::fencedCodeBlocks()
     QCOMPARE(doc.toMarkdown(), rewrite);
 }
 
+void tst_QTextMarkdownImporter::frontMatter_data()
+{
+    QTest::addColumn<QString>("inputFile");
+    QTest::addColumn<int>("expectedBlockCount");
+
+    QTest::newRow("yaml + markdown") << QFINDTESTDATA("data/yaml.md") << 1;
+    QTest::newRow("yaml only") << QFINDTESTDATA("data/yaml-only.md") << 0;
+}
+
+void tst_QTextMarkdownImporter::frontMatter()
+{
+    QFETCH(QString, inputFile);
+    QFETCH(int, expectedBlockCount);
+
+    QFile f(inputFile);
+    QVERIFY(f.open(QFile::ReadOnly | QIODevice::Text));
+    QString md = QString::fromUtf8(f.readAll());
+    f.close();
+    const int yamlBegin = md.indexOf("name:");
+    const int yamlEnd = md.indexOf("---", yamlBegin);
+    const QString yaml = md.sliced(yamlBegin, yamlEnd - yamlBegin);
+
+    QTextDocument doc;
+    QTextMarkdownImporter(&doc, QTextMarkdownImporter::DialectGitHub).import(md);
+    int blockCount = 0;
+    for (QTextFrame::iterator iterator = doc.rootFrame()->begin(); !iterator.atEnd(); ++iterator) {
+        // Check whether the block is text or a horizontal rule
+        if (!iterator.currentBlock().text().isEmpty())
+            ++blockCount;
+    }
+    QCOMPARE(blockCount, expectedBlockCount); // yaml is not part of the markdown text
+    QCOMPARE(doc.metaInformation(QTextDocument::FrontMatter), yaml); // without fences
+}
+
 void tst_QTextMarkdownImporter::toRawText_data()
 {
     QTest::addColumn<QString>("input");
@@ -613,8 +687,8 @@ void tst_QTextMarkdownImporter::toRawText_data()
             R"(!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~)";
     // https://spec.commonmark.org/0.31.2/#example-13
     QTest::newRow("literal backslashes") <<
-            QString::fromUtf16(uR"(\→\A\a\ \3\φ\«)") <<
-            QString::fromUtf16(uR"(\→\A\a\ \3\φ\«)");
+            QString(uR"(\→\A\a\ \3\φ\«)") <<
+            QString(uR"(\→\A\a\ \3\φ\«)");
     // https://spec.commonmark.org/0.31.2/#example-14
     QTest::newRow("escape to avoid em") <<
             R"(\*not emphasized*)" <<

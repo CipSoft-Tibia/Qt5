@@ -29,14 +29,15 @@ class QAbstractAxis;
 class QGraphsView;
 class QBarCategoryAxis;
 class QValueAxis;
-class QGraphTheme;
+class QGraphsTheme;
+class QDateTimeAxis;
 
 class AxisRenderer : public QQuickItem
 {
     Q_OBJECT
-    QML_ELEMENT
 public:
     AxisRenderer(QQuickItem *parent = nullptr);
+    ~AxisRenderer() override;
 
     void handlePolish();
     void updateAxis();
@@ -44,9 +45,13 @@ public:
     void updateAxisTickersShadow();
     void updateAxisGrid();
     void updateAxisGridShadow();
-    void updateBarXAxisLabels(QBarCategoryAxis *axis, const QRectF &rect);
-    void updateValueYAxisLabels(QValueAxis *axis, const QRectF &rect);
-    void updateValueXAxisLabels(QValueAxis *axis, const QRectF &rect);
+    void updateAxisTitles(const QRectF xAxisRect, const QRectF yAxisRect);
+    void updateBarXAxisLabels(QBarCategoryAxis *axis, const QRectF rect);
+    void updateBarYAxisLabels(QBarCategoryAxis *axis, const QRectF rect);
+    void updateValueYAxisLabels(QValueAxis *axis, const QRectF rect);
+    void updateValueXAxisLabels(QValueAxis *axis, const QRectF rect);
+    void updateDateTimeYAxisLabels(QDateTimeAxis *axis, const QRectF rect);
+    void updateDateTimeXAxisLabels(QDateTimeAxis *axis, const QRectF rect);
     void initialize();
 
 Q_SIGNALS:
@@ -56,18 +61,28 @@ private:
     friend class BarsRenderer;
     friend class LinesRenderer;
     friend class PointRenderer;
+    friend class AreaRenderer;
 
     double getValueStepsFromRange(double range);
     int getValueDecimalsFromRange(double range);
+    void setLabelTextProperties(QQuickItem *item, const QString &text, bool xAxis,
+                                QQuickText::HAlignment hAlign = QQuickText::HAlignment::AlignHCenter,
+                                QQuickText::VAlignment vAlign = QQuickText::VAlignment::AlignVCenter);
+    void updateAxisLabelItems(QList<QQuickItem *> &textItems, qsizetype neededSize, QQmlComponent *component);
 
     QGraphsView *m_graph = nullptr;
-    QGraphTheme *theme();
+    QGraphsTheme *theme();
     bool m_initialized = false;
+    bool m_wasVertical = false;
+    bool m_verticalAxisOnRight = false;
+    bool m_horizontalAxisOnTop = false;
 
     QAbstractAxis *m_axisVertical = nullptr;
     QAbstractAxis *m_axisHorizontal = nullptr;
-    QList<QQuickText *> m_xAxisTextItems;
-    QList<QQuickText *> m_yAxisTextItems;
+    QList<QQuickItem *> m_xAxisTextItems;
+    QList<QQuickItem *> m_yAxisTextItems;
+    QQuickText *m_xAxisTitle = nullptr;
+    QQuickText *m_yAxisTitle = nullptr;
     AxisGrid *m_axisGrid = nullptr;
     AxisTicker *m_axisTickerVertical = nullptr;
     AxisTicker *m_axisTickerHorizontal = nullptr;
@@ -93,7 +108,7 @@ private:
     // px between major ticks
     double m_axisVerticalStepPx = 0;
     // Ticks movement, between -m_axisHorizontalStepPx .. m_axisHorizontalStepPx.
-    double m_axisYMovement = 0;
+    double m_axisYDisplacement = 0;
     // The value of smallest label
     double m_axisVerticalMinLabel = 0;
 
@@ -110,23 +125,16 @@ private:
     // px between major ticks
     double m_axisHorizontalStepPx = 0;
     // Ticks movement, between -m_axisHorizontalStepPx .. m_axisHorizontalStepPx.
-    double m_axisXMovement = 0;
+    double m_axisXDisplacement = 0;
     // The value of smallest label
     double m_axisHorizontalMinLabel = 0;
 
-    double m_axisVerticalMinorTickScale = 0.5;
-    double m_axisHorizontalMinorTickScale = 0.5;
-    bool m_gridHorizontalMajorTicksVisible = true;
-    bool m_gridVerticalMajorTicksVisible = true;
-    bool m_gridHorizontalMinorTicksVisible = false;
-    bool m_gridVerticalMinorTicksVisible = false;
-
-    // Sizes required of axis labels
-    // TODO: Should these come from QAbstactAxis?
-    qreal m_axisWidth = 40;
-    qreal m_axisHeight = 40;
-    qreal m_axisTickersWidth = 15;
-    qreal m_axisTickersHeight = 15;
+    double m_axisVerticalSubGridScale = 0.5;
+    double m_axisHorizontalSubGridScale = 0.5;
+    bool m_gridHorizontalLinesVisible = true;
+    bool m_gridVerticalLinesVisible = true;
+    bool m_gridHorizontalSubLinesVisible = false;
+    bool m_gridVerticalSubLinesVisible = false;
 };
 
 QT_END_NAMESPACE

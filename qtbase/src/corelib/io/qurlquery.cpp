@@ -24,6 +24,8 @@ QT_BEGIN_NAMESPACE
   \ingroup network
   \ingroup shared
 
+  \compares equality
+
   It is used to parse the query strings found in URLs like the following:
 
   \image qurl-querystring.png
@@ -385,9 +387,7 @@ QUrlQuery &QUrlQuery::operator =(const QUrlQuery &other)
 
 /*!
     \fn void QUrlQuery::swap(QUrlQuery &other)
-
-    Swaps this URL query instance with \a other. This function is very
-    fast and never fails.
+    \memberswap{URL query instance}
 */
 
 /*!
@@ -399,31 +399,31 @@ QUrlQuery::~QUrlQuery()
 }
 
 /*!
-    Returns \c true if this object and the \a other object contain the same
+    \fn bool QUrlQuery::operator==(const QUrlQuery &lhs, const QUrlQuery &rhs)
+
+    Returns \c true if QUrlQuery objects \a lhs and \a rhs contain the same
     contents, in the same order, and use the same query delimiters.
 */
-bool QUrlQuery::operator ==(const QUrlQuery &other) const
-{
-    if (d == other.d)
-        return true;
-    if (d && other.d)
-        // keep in sync with qHash(QUrlQuery):
-        return d->valueDelimiter == other.d->valueDelimiter &&
-                d->pairDelimiter == other.d->pairDelimiter &&
-                d->itemList == other.d->itemList;
 
-    const QUrlQueryPrivate *x = d ? d.data() : other.d.data();
-    return x->valueDelimiter == defaultQueryValueDelimiter() &&
-            x->pairDelimiter == defaultQueryPairDelimiter() &&
+bool comparesEqual(const QUrlQuery &lhs, const QUrlQuery &rhs)
+{
+    if (lhs.d == rhs.d)
+        return true;
+    if (lhs.d && rhs.d)
+        // keep in sync with qHash(QUrlQuery):
+        return lhs.d->valueDelimiter == rhs.d->valueDelimiter &&
+                lhs.d->pairDelimiter == rhs.d->pairDelimiter &&
+                lhs.d->itemList == rhs.d->itemList;
+
+    const QUrlQueryPrivate *x = lhs.d ? lhs.d.data() : rhs.d.data();
+    return x->valueDelimiter == QUrlQuery::defaultQueryValueDelimiter() &&
+            x->pairDelimiter == QUrlQuery::defaultQueryPairDelimiter() &&
             x->itemList.isEmpty();
 }
 
 /*!
     \since 5.6
-    \relates QUrlQuery
-
-    Returns the hash value for \a key,
-    using \a seed to seed the calculation.
+    \qhashold{QUrlQuery}
 */
 size_t qHash(const QUrlQuery &key, size_t seed) noexcept
 {
@@ -810,9 +810,10 @@ void QUrlQuery::removeAllQueryItems(const QString &key)
 */
 
 /*!
-    \fn bool QUrlQuery::operator!=(const QUrlQuery &other) const
+    \fn bool QUrlQuery::operator!=(const QUrlQuery &lhs, const QUrlQuery &rhs)
 
-    Returns \c true if \a other is not equal to this QUrlQuery. Otherwise, returns \c false.
+    Returns \c true if the QUrlQuery object \a rhs is not equal to \a lhs.
+    Otherwise, returns \c false.
 
     \sa operator==()
 */

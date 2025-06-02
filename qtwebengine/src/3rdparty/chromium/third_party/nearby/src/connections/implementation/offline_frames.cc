@@ -23,6 +23,7 @@
 #include "connections/implementation/flags/nearby_connections_feature_flags.h"
 #include "connections/implementation/offline_frames_validator.h"
 #include "connections/implementation/proto/offline_wire_formats.pb.h"
+#include "connections/medium_selector.h"
 #include "connections/status.h"
 #include "internal/flags/nearby_flags.h"
 #include "internal/platform/byte_array.h"
@@ -43,6 +44,7 @@ using ::location::nearby::connections::OfflineFrame;
 using ::location::nearby::connections::OsInfo;
 using ::location::nearby::connections::PayloadTransferFrame;
 using ::location::nearby::connections::V1Frame;
+using ::location::nearby::connections::AutoReconnectFrame;
 
 ByteArray ToBytes(OfflineFrame&& frame) {
   ByteArray bytes(frame.ByteSizeLong());
@@ -228,6 +230,7 @@ ByteArray ForControlPayloadTransfer(
 ByteArray ForBwuWifiHotspotPathAvailable(const std::string& ssid,
                                          const std::string& password,
                                          std::int32_t port,
+                                         std::int32_t frequency,
                                          const std::string& gateway,
                                          bool supports_disabling_encryption) {
   OfflineFrame frame;
@@ -248,6 +251,7 @@ ByteArray ForBwuWifiHotspotPathAvailable(const std::string& ssid,
   wifi_hotspot_credentials->set_ssid(ssid);
   wifi_hotspot_credentials->set_password(password);
   wifi_hotspot_credentials->set_port(port);
+  wifi_hotspot_credentials->set_frequency(frequency);
   wifi_hotspot_credentials->set_gateway(gateway);
 
   return ToBytes(std::move(frame));
@@ -463,6 +467,32 @@ ByteArray ForDisconnection(bool request_safe_to_disconnect,
   auto* disconnection = v1_frame->mutable_disconnection();
   disconnection->set_request_safe_to_disconnect(request_safe_to_disconnect);
   disconnection->set_ack_safe_to_disconnect(ack_safe_to_disconnect);
+
+  return ToBytes(std::move(frame));
+}
+
+ByteArray ForAutoReconnectIntroduction(const std::string& endpoint_id) {
+  OfflineFrame frame;
+
+  frame.set_version(OfflineFrame::V1);
+  auto* v1_frame = frame.mutable_v1();
+  v1_frame->set_type(V1Frame::AUTO_RECONNECT);
+  auto* auto_reconnect = v1_frame->mutable_auto_reconnect();
+  auto_reconnect->set_endpoint_id(endpoint_id);
+  auto_reconnect->set_event_type(AutoReconnectFrame::CLIENT_INTRODUCTION);
+
+  return ToBytes(std::move(frame));
+}
+
+ByteArray ForAutoReconnectIntroductionAck(const std::string& endpoint_id) {
+  OfflineFrame frame;
+
+  frame.set_version(OfflineFrame::V1);
+  auto* v1_frame = frame.mutable_v1();
+  v1_frame->set_type(V1Frame::AUTO_RECONNECT);
+  auto* auto_reconnect = v1_frame->mutable_auto_reconnect();
+  auto_reconnect->set_endpoint_id(endpoint_id);
+  auto_reconnect->set_event_type(AutoReconnectFrame::CLIENT_INTRODUCTION_ACK);
 
   return ToBytes(std::move(frame));
 }

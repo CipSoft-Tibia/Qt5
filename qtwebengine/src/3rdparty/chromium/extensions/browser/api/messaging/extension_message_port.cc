@@ -5,9 +5,11 @@
 #include "extensions/browser/api/messaging/extension_message_port.h"
 
 #include <memory>
+#include <set>
 #include <utility>
 
 #include "base/containers/contains.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
@@ -25,13 +27,15 @@
 #include "content/public/common/content_features.h"
 #include "extensions/browser/api/messaging/channel_endpoint.h"
 #include "extensions/browser/extension_host.h"
+#include "extensions/browser/extension_web_contents_observer.h"
 #include "extensions/browser/process_manager.h"
 #include "extensions/browser/process_manager_observer.h"
-#include "extensions/common/api/messaging/channel_type.h"
+#include "extensions/browser/service_worker/service_worker_host.h"
 #include "extensions/common/api/messaging/message.h"
 #include "extensions/common/api/messaging/messaging_endpoint.h"
 #include "extensions/common/extension_messages.h"
 #include "extensions/common/manifest_handlers/background_info.h"
+#include "extensions/common/mojom/message_port.mojom-shared.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 
@@ -81,6 +85,25 @@ class ExtensionMessagePort::FrameTracker : public content::WebContentsObserver,
 
   void DidFinishNavigation(
       content::NavigationHandle* navigation_handle) override {
+    if (base::FeatureList::IsEnabled(
+            features::kDisconnectExtensionMessagePortWhenPageEntersBFCache) &&
+        navigation_handle->HasCommitted()) {
+      // Close the channel and force all the ports from the channel to be
+      // closed when the old RFH is going to be stored in BFCache. They will
+      // not be able to receive any message sent through the port.
+      content::RenderFrameHost* previous_rfh = content::RenderFrameHost::FromID(
+          navigation_handle->GetPreviousRenderFrameHostId());
+      if (previous_rfh &&
+          previous_rfh->GetLifecycleState() ==
+              content::RenderFrameHost::LifecycleState::kInBackForwardCache) {
+        if (port_->UnregisterFramesUnderMainFrame(previous_rfh)) {
+          // Since the channel and the port is already closed, we don't have to
+          // run the following block to unregister the frames any more.
+          return;
+        }
+      }
+    }
+
     // There are a number of possible scenarios for the navigation:
     // 1. Same-document navigation - Don't unregister the frame, since it can
     // still use the port.
@@ -92,10 +115,11 @@ class ExtensionMessagePort::FrameTracker : public content::WebContentsObserver,
     // navigated-from document is stored in the back-forward cache, don't
     // unregister the frame (see note below). If it is not cached, the frame
     // will be unregistered when the RFH is deleted.
-    // 4. Restoring a cached frame from back-forward cache - This is similar to
-    // (3) in that the navigation changes RFH, with the difference that the RFH
-    // is not new and so may be registered. Don't unregister the frame in this
-    // case since it may stil use the port.
+    // 4. Restoring a cached frame from back-forward cache or activating a
+    // prerendered frame - This is similar to (3) in that the navigation changes
+    // RFH, with the difference that the RFH is not new and so may be
+    // registered. Don't unregister the frame in this case since it may still
+    // use the port.
 
     // Note that we don't just disconnect channels when a frame is bf-cached
     // since when such a document is later restored, there is no "load" and so a
@@ -104,7 +128,7 @@ class ExtensionMessagePort::FrameTracker : public content::WebContentsObserver,
     // scripts at "document_start" and set up message ports.
     if (navigation_handle->HasCommitted() &&
         !navigation_handle->IsSameDocument() &&
-        !navigation_handle->IsServedFromBackForwardCache()) {
+        !navigation_handle->IsPageActivation()) {
       // Note: This unregisters the _new_ RenderFrameHost. In case a new RFH was
       // created for this navigation, this will be a no-op, since we haven't
       // seen it before. In case the RFH is reused for the navigation, this will
@@ -132,12 +156,14 @@ class ExtensionMessagePort::FrameTracker : public content::WebContentsObserver,
   raw_ptr<ExtensionMessagePort> port_;  // Owns this FrameTracker.
 };
 
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
 // Represents target of an IPC (render frame, ServiceWorker or render process).
 struct ExtensionMessagePort::IPCTarget {
   raw_ptr<content::RenderProcessHost> render_process_host;
   raw_ptr<content::RenderFrameHost, DanglingUntriaged> render_frame_host;
   int worker_thread_id;
 };
+#endif
 
 ExtensionMessagePort::ExtensionMessagePort(
     base::WeakPtr<ChannelDelegate> channel_delegate,
@@ -145,8 +171,7 @@ ExtensionMessagePort::ExtensionMessagePort(
     const std::string& extension_id,
     content::RenderFrameHost* render_frame_host,
     bool include_child_frames)
-    : weak_channel_delegate_(channel_delegate),
-      port_id_(port_id),
+    : MessagePort(std::move(channel_delegate), port_id),
       extension_id_(extension_id),
       browser_context_(render_frame_host->GetProcess()->GetBrowserContext()),
       frame_tracker_(new FrameTracker(this)) {
@@ -209,20 +234,48 @@ std::unique_ptr<ExtensionMessagePort> ExtensionMessagePort::CreateForEndpoint(
     base::WeakPtr<ChannelDelegate> channel_delegate,
     const PortId& port_id,
     const std::string& extension_id,
-    const ChannelEndpoint& endpoint) {
-  if (endpoint.is_for_render_frame()) {
-    return std::make_unique<ExtensionMessagePort>(
-        channel_delegate, port_id, extension_id, endpoint.GetRenderFrameHost(),
-        /*include_child_frames=*/false);
-  }
-  // NOTE: We don't want all the workers within the extension, so we cannot
-  // reuse other constructor from above.
+    const ChannelEndpoint& endpoint,
+    mojo::PendingAssociatedRemote<extensions::mojom::MessagePort> message_port,
+    mojo::PendingAssociatedReceiver<extensions::mojom::MessagePortHost>
+        message_port_host) {
   auto port = std::make_unique<ExtensionMessagePort>(
       channel_delegate, port_id, extension_id, endpoint.browser_context(),
       PassKey());
   port->frame_tracker_ = std::make_unique<FrameTracker>(port.get());
-  port->frame_tracker_->TrackExtensionProcessFrames();
-  port->RegisterWorker(endpoint.GetWorkerId());
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
+  if (endpoint.is_for_render_frame()) {
+    content::RenderFrameHost* render_frame_host = endpoint.GetRenderFrameHost();
+    content::WebContents* tab =
+        content::WebContents::FromRenderFrameHost(render_frame_host);
+    CHECK(tab);
+    port->frame_tracker_->TrackTabFrames(tab);
+    port->frames_[render_frame_host->GetGlobalFrameToken()] = {};
+  } else {
+    port->frame_tracker_->TrackExtensionProcessFrames();
+    port->service_workers_[endpoint.GetWorkerId()] = {};
+  }
+#else
+  if (endpoint.is_for_render_frame()) {
+    content::RenderFrameHost* render_frame_host = endpoint.GetRenderFrameHost();
+    content::WebContents* tab =
+        content::WebContents::FromRenderFrameHost(render_frame_host);
+    CHECK(tab);
+    port->frame_tracker_->TrackTabFrames(tab);
+    auto& receiver = port->frames_[render_frame_host->GetGlobalFrameToken()];
+    receiver.Bind(std::move(message_port));
+    receiver.set_disconnect_handler(base::BindOnce(
+        &ExtensionMessagePort::Prune, base::Unretained(port.get())));
+  } else {
+    port->frame_tracker_->TrackExtensionProcessFrames();
+    auto& receiver = port->service_workers_[endpoint.GetWorkerId()];
+    receiver.Bind(std::move(message_port));
+    receiver.set_disconnect_handler(base::BindOnce(
+        &ExtensionMessagePort::Prune, base::Unretained(port.get())));
+  }
+  port->AddReceiver(std::move(message_port_host), endpoint.render_process_id(),
+                    endpoint.port_context());
+#endif
   return port;
 }
 
@@ -232,32 +285,61 @@ ExtensionMessagePort::ExtensionMessagePort(
     const ExtensionId& extension_id,
     content::BrowserContext* browser_context,
     PassKey)
-    : weak_channel_delegate_(channel_delegate),
-      port_id_(port_id),
+    : MessagePort(std::move(channel_delegate), port_id),
       extension_id_(extension_id),
       browser_context_(browser_context) {}
 
 ExtensionMessagePort::~ExtensionMessagePort() = default;
 
-void ExtensionMessagePort::RemoveCommonFrames(const MessagePort& port) {
-  // Avoid overlap in the set of frames to make sure that it does not matter
-  // when UnregisterFrame is called.
-  for (auto it = frames_.begin(); it != frames_.end();) {
-    if (port.HasFrame(*it)) {
-      frames_.erase(it++);
-    } else {
-      ++it;
+#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
+void ExtensionMessagePort::Prune() {
+  std::vector<content::GlobalRenderFrameHostToken> frames_to_unregister;
+  for (auto& frame : frames_) {
+    if (!frame.second.is_connected()) {
+      frames_to_unregister.push_back(frame.first);
+    }
+  }
+  for (const auto& frame_token : frames_to_unregister) {
+    if (UnregisterFrame(frame_token)) {
+      return;
+    }
+  }
+
+  std::vector<WorkerId> workers_to_unregister;
+  for (auto& worker : service_workers_) {
+    if (!worker.second.is_connected()) {
+      workers_to_unregister.push_back(worker.first);
+    }
+  }
+  for (const auto& worker : workers_to_unregister) {
+    if (UnregisterWorker(worker)) {
+      return;
     }
   }
 }
+#endif
+
+void ExtensionMessagePort::RemoveCommonFrames(const MessagePort& port) {
+  // This should be called before OnConnect is called.
+  CHECK(frames_.empty());
+  // Avoid overlap in the set of frames to make sure that it does not matter
+  // when UnregisterFrame is called.
+  std::erase_if(
+      pending_frames_,
+      [&port](const content::GlobalRenderFrameHostToken& frame_token) {
+        return port.HasFrame(frame_token);
+      });
+}
 
 bool ExtensionMessagePort::HasFrame(
-    content::RenderFrameHost* render_frame_host) const {
-  return base::Contains(frames_, render_frame_host);
+    const content::GlobalRenderFrameHostToken& frame_token) const {
+  return base::Contains(frames_, frame_token) ||
+         base::Contains(pending_frames_, frame_token);
 }
 
 bool ExtensionMessagePort::IsValidPort() {
-  return !frames_.empty() || !service_workers_.empty();
+  return !frames_.empty() || !service_workers_.empty() ||
+         !pending_frames_.empty() || !pending_service_workers_.empty();
 }
 
 void ExtensionMessagePort::RevalidatePort() {
@@ -269,39 +351,63 @@ void ExtensionMessagePort::RevalidatePort() {
   // Only opener ports need to be revalidated, because these are created in the
   // renderer before the browser knows about them.
   DCHECK(!for_all_extension_contexts_);
-  DCHECK_EQ(frames_.size() + service_workers_.size(), 1U)
+  DCHECK_EQ(frames_.size() + service_workers_.size() + pending_frames_.size() +
+                pending_service_workers_.size(),
+            1U)
       << "RevalidatePort() should only be called for opener ports which "
          "correspond to a single 'context'.";
 
-  // If the port is unknown, the renderer will respond by closing the port.
   // NOTE: There is only one opener target.
   if (!frames_.empty()) {
-    SendToIPCTarget({nullptr, *frames_.begin(), kMainThreadId},
-                    std::make_unique<ExtensionMsg_ValidateMessagePort>(
-                        MSG_ROUTING_NONE, kMainThreadId, port_id_));
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
+    SendToIPCTarget(
+        {nullptr,
+         content::RenderFrameHost::FromFrameToken(frames_.begin()->first),
+         kMainThreadId},
+        std::make_unique<ExtensionMsg_ValidateMessagePort>(
+            MSG_ROUTING_NONE, kMainThreadId, port_id_));
+#else
+    if (!frames_.begin()->second.is_connected()) {
+      UnregisterFrame(frames_.begin()->first);
+    }
+#endif
     return;
   }
   if (!service_workers_.empty()) {
-    const WorkerId& service_worker = *service_workers_.begin();
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
+    const WorkerId& service_worker = service_workers_.begin()->first;
     SendToIPCTarget(
         {content::RenderProcessHost::FromID(service_worker.render_process_id),
          nullptr, service_worker.thread_id},
         std::make_unique<ExtensionMsg_ValidateMessagePort>(
             MSG_ROUTING_NONE, service_worker.thread_id, port_id_));
+#else
+    if (!service_workers_.begin()->second.is_connected()) {
+      UnregisterWorker(service_workers_.begin()->first);
+    }
+#endif
+    return;
   }
 }
 
 void ExtensionMessagePort::DispatchOnConnect(
-    ChannelType channel_type,
+    mojom::ChannelType channel_type,
     const std::string& channel_name,
-    absl::optional<base::Value::Dict> source_tab,
+    std::optional<base::Value::Dict> source_tab,
     const ExtensionApiFrameIdMap::FrameData& source_frame,
     int guest_process_id,
     int guest_render_frame_routing_id,
     const MessagingEndpoint& source_endpoint,
     const std::string& target_extension_id,
     const GURL& source_url,
-    absl::optional<url::Origin> source_origin) {
+    std::optional<url::Origin> source_origin) {
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
+  for (const auto& frame_token : pending_frames_) {
+    frames_[frame_token] = {};
+  }
+  for (const auto& worker : pending_service_workers_) {
+    service_workers_[worker] = {};
+  }
   SendToPort(base::BindRepeating(
       &ExtensionMessagePort::BuildDispatchOnConnectIPC,
       // Called synchronously.
@@ -309,13 +415,108 @@ void ExtensionMessagePort::DispatchOnConnect(
       base::OptionalToPtr(source_tab), source_frame, guest_process_id,
       guest_render_frame_routing_id, source_endpoint, target_extension_id,
       source_url, source_origin));
+#else
+  mojom::TabConnectionInfoPtr source = mojom::TabConnectionInfo::New();
+
+  // Source document ID should exist if and only if there is a source tab.
+  DCHECK_EQ(!!source_tab, !!source_frame.document_id);
+  if (source_tab) {
+    source->tab = source_tab->Clone();
+    source->document_id = source_frame.document_id.ToString();
+    source->document_lifecycle = ToString(source_frame.document_lifecycle);
+  }
+  source->frame_id = source_frame.frame_id;
+
+  mojom::ExternalConnectionInfoPtr info = mojom::ExternalConnectionInfo::New();
+  info->target_id = target_extension_id;
+  info->source_endpoint = source_endpoint;
+  info->source_url = source_url;
+  info->source_origin = std::move(source_origin);
+  info->guest_process_id = guest_process_id;
+  info->guest_render_frame_routing_id = guest_render_frame_routing_id;
+
+  // `ShouldSkipFrameForBFCache` could mutate `pending_frames_` so we
+  // take it before iterating on it.
+  auto pending_frames = std::move(pending_frames_);
+  for (const auto& frame_token : pending_frames) {
+    auto* frame = content::RenderFrameHost::FromFrameToken(frame_token);
+    if (!frame || ShouldSkipFrameForBFCache(frame)) {
+      continue;
+    }
+
+    mojo::PendingAssociatedReceiver<mojom::MessagePort> message_port;
+    mojo::PendingAssociatedRemote<mojom::MessagePortHost> message_port_host;
+
+    auto& receiver = frames_[frame_token];
+    receiver.Bind(message_port.InitWithNewEndpointAndPassRemote());
+    receiver.set_disconnect_handler(
+        base::BindOnce(&ExtensionMessagePort::Prune, base::Unretained(this)));
+    AddReceiver(message_port_host.InitWithNewEndpointAndPassReceiver(),
+                frame->GetProcess()->GetID(),
+                PortContext::ForFrame(frame->GetRoutingID()));
+
+    ExtensionWebContentsObserver::GetForWebContents(
+        content::WebContents::FromRenderFrameHost(frame))
+        ->GetLocalFrameChecked(frame)
+        .DispatchOnConnect(
+            port_id_, channel_type, channel_name, source.Clone(), info.Clone(),
+            std::move(message_port), std::move(message_port_host),
+            base::BindOnce(&ExtensionMessagePort::OnConnectResponse,
+                           weak_ptr_factory_.GetWeakPtr()));
+  }
+  for (const auto& worker : pending_service_workers_) {
+    auto* host = ServiceWorkerHost::GetWorkerFor(worker);
+    if (host) {
+      auto* service_worker_remote = host->GetServiceWorker();
+      if (!service_worker_remote) {
+        continue;
+      }
+      mojo::PendingAssociatedReceiver<mojom::MessagePort> message_port;
+      mojo::PendingAssociatedRemote<mojom::MessagePortHost> message_port_host;
+
+      auto& receiver = service_workers_[worker];
+      receiver.Bind(message_port.InitWithNewEndpointAndPassRemote());
+      receiver.set_disconnect_handler(
+          base::BindOnce(&ExtensionMessagePort::Prune, base::Unretained(this)));
+      AddReceiver(message_port_host.InitWithNewEndpointAndPassReceiver(),
+                  worker.render_process_id,
+                  PortContext::ForWorker(worker.thread_id, worker.version_id,
+                                         worker.extension_id));
+      service_worker_remote->DispatchOnConnect(
+          port_id_, channel_type, channel_name, source.Clone(), info.Clone(),
+          std::move(message_port), std::move(message_port_host),
+          base::BindOnce(&ExtensionMessagePort::OnConnectResponse,
+                         weak_ptr_factory_.GetWeakPtr()));
+    }
+  }
+#endif
+  pending_frames_.clear();
+  pending_service_workers_.clear();
 }
+
+#if !BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
+void ExtensionMessagePort::OnConnectResponse(bool success) {
+  // For the unsuccessful case the port will be cleaned up in `Prune` when
+  // the mojo channels are disconnected.
+  if (success) {
+    port_was_created_ = true;
+  }
+}
+#endif
 
 void ExtensionMessagePort::DispatchOnDisconnect(
     const std::string& error_message) {
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
   SendToPort(
       base::BindRepeating(&ExtensionMessagePort::BuildDispatchOnDisconnectIPC,
                           base::Unretained(this), error_message));
+#else
+  SendToPort(base::BindRepeating(
+      [](const std::string& error_message, mojom::MessagePort* port) {
+        port->DispatchDisconnect(error_message);
+      },
+      std::ref(error_message)));
+#endif
 }
 
 void ExtensionMessagePort::DispatchOnMessage(const Message& message) {
@@ -326,9 +527,17 @@ void ExtensionMessagePort::DispatchOnMessage(const Message& message) {
   // Since we are now receiving a message, we can mark any asynchronous reply
   // that may have been pending for this port as no longer pending.
   asynchronous_reply_pending_ = false;
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
   SendToPort(base::BindRepeating(&ExtensionMessagePort::BuildDeliverMessageIPC,
                                  // Called synchronously.
                                  base::Unretained(this), message));
+#else
+  SendToPort(base::BindRepeating(
+      [](const Message& message, mojom::MessagePort* port) {
+        port->DeliverMessage(message);
+      },
+      std::ref(message)));
+#endif
   DecrementLazyKeepaliveCount(Activity::MESSAGE);
 }
 
@@ -351,8 +560,8 @@ void ExtensionMessagePort::IncrementLazyKeepaliveCount(
 
   // Increment keepalive count for service workers of the extension managed by
   // this port.
-  // TODO(richardzh): Add a check to only increment count if the port is in lazy
-  // context.
+  // TODO(https://crbug.com/1514471): Add a check to only increment count if
+  // the port is in lazy context.
   for (const auto& worker_id :
        pm->GetServiceWorkersForExtension(extension_id_)) {
     base::Uuid request_uuid = pm->IncrementServiceWorkerKeepaliveCount(
@@ -381,8 +590,8 @@ void ExtensionMessagePort::DecrementLazyKeepaliveCount(
 
   // Decrement keepalive count for service workers of the extension managed by
   // this port.
-  // TODO(richardzh): Add a check to only decrement count if the port is in lazy
-  // context.
+  // TODO(https://crbug.com/1514471): Add a check to only decrement count if
+  // the port is in lazy context.
   for (const auto& worker_id :
        pm->GetServiceWorkersForExtension(extension_id_)) {
     auto iter = pending_keepalive_uuids_.find(worker_id);
@@ -445,37 +654,63 @@ void ExtensionMessagePort::RegisterFrame(
     content::RenderFrameHost* render_frame_host) {
   // Only register a RenderFrameHost whose RenderFrame has been created, to
   // ensure that we are notified of frame destruction. Without this check,
-  // |frames_| can eventually contain a stale pointer because RenderFrameDeleted
-  // is not triggered for |render_frame_host|.
+  // `pending_frames_` can contain a stale token because RenderFrameDeleted
+  // is not triggered for `render_frame_host`.
   if (render_frame_host->IsRenderFrameLive()) {
-    frames_.insert(render_frame_host);
+    pending_frames_.insert(render_frame_host->GetGlobalFrameToken());
   }
 }
 
-void ExtensionMessagePort::UnregisterFrame(
+bool ExtensionMessagePort::UnregisterFrame(
     content::RenderFrameHost* render_frame_host) {
-  if (frames_.erase(render_frame_host) != 0 && !HasReceivers()) {
-    CloseChannel();
-  }
+  return UnregisterFrame(render_frame_host->GetGlobalFrameToken());
 }
 
-bool ExtensionMessagePort::HasReceivers() const {
-  return !frames_.empty() || !service_workers_.empty();
+bool ExtensionMessagePort::UnregisterFrame(
+    const content::GlobalRenderFrameHostToken& frame_token) {
+  frames_.erase(frame_token);
+  pending_frames_.erase(frame_token);
+  if (!IsValidPort()) {
+    CloseChannel();
+    return true;
+  }
+  return false;
+}
+
+bool ExtensionMessagePort::UnregisterFramesUnderMainFrame(
+    content::RenderFrameHost* main_frame) {
+  CHECK(pending_frames_.empty());
+  if (std::erase_if(frames_,
+                    [&main_frame](const auto& item) {
+                      auto* frame =
+                          content::RenderFrameHost::FromFrameToken(item.first);
+                      return !frame ||
+                             frame->GetOutermostMainFrame() == main_frame;
+                    }) != 0 &&
+      !IsValidPort()) {
+    CloseChannel();
+    return true;
+  }
+
+  return false;
 }
 
 void ExtensionMessagePort::RegisterWorker(const WorkerId& worker_id) {
   DCHECK(!worker_id.extension_id.empty());
-  service_workers_.insert(worker_id);
+  pending_service_workers_.insert(worker_id);
 }
 
-void ExtensionMessagePort::UnregisterWorker(const WorkerId& worker_id) {
+bool ExtensionMessagePort::UnregisterWorker(const WorkerId& worker_id) {
   if (extension_id_ != worker_id.extension_id)
-    return;
-  if (service_workers_.erase(worker_id) == 0)
-    return;
+    return false;
+  service_workers_.erase(worker_id);
+  pending_service_workers_.erase(worker_id);
 
-  if (!HasReceivers())
+  if (!IsValidPort()) {
     CloseChannel();
+    return true;
+  }
+  return false;
 }
 
 void ExtensionMessagePort::UnregisterWorker(int render_process_id,
@@ -486,8 +721,8 @@ void ExtensionMessagePort::UnregisterWorker(int render_process_id,
   // worker we are interested in. Since there will only be a handful of such
   // workers, this is OK.
   for (auto iter = service_workers_.begin(); iter != service_workers_.end();) {
-    if (iter->render_process_id == render_process_id &&
-        iter->thread_id == worker_thread_id) {
+    if (iter->first.render_process_id == render_process_id &&
+        iter->first.thread_id == worker_thread_id) {
       service_workers_.erase(iter);
       break;
     } else {
@@ -495,57 +730,30 @@ void ExtensionMessagePort::UnregisterWorker(int render_process_id,
     }
   }
 
-  if (!HasReceivers())
+  if (!IsValidPort()) {
     CloseChannel();
+  }
 }
 
+#if BUILDFLAG(ENABLE_EXTENSIONS_LEGACY_IPC)
 void ExtensionMessagePort::SendToPort(IPCBuilderCallback ipc_builder) {
   std::vector<IPCTarget> targets;
   // Build the list of targets.
-  for (content::RenderFrameHost* frame : frames_)
+  for (const auto& item : frames_) {
+    auto* frame = content::RenderFrameHost::FromFrameToken(item.first);
+    if (!frame || ShouldSkipFrameForBFCache(frame)) {
+      continue;
+    }
     targets.push_back({nullptr, frame, kMainThreadId});
+  }
 
   for (const auto& running_worker : service_workers_) {
-    targets.push_back(
-        {content::RenderProcessHost::FromID(running_worker.render_process_id),
-         nullptr, running_worker.thread_id});
+    targets.push_back({content::RenderProcessHost::FromID(
+                           running_worker.first.render_process_id),
+                       nullptr, running_worker.first.thread_id});
   }
 
   for (const IPCTarget& target : targets) {
-    // Frames in the BackForwardCache are not allowed to receive messages (or
-    // even have them queued). In such a case, we evict the page from the cache
-    // and "drop" the message (See comment in `DidFinishNavigation()`).
-    // Note: Since this will cause the frame to be deleted, we do this here
-    // instead of in the loop above to avoid modifying `frames_` while it is
-    // being iterated.
-    //
-    // This could cause the same page to be evicted multiple times if it has
-    // multiple frames receiving this message. This is harmless as the reason is
-    // the same in every case. Also multiple extensions may send messages before
-    // the page is actually evicted. The last one will be the one the user
-    // sees. It is not worth the effort to present all of them to the user. It's
-    // unlikely they will see the same one every time and if they do, when they
-    // fix that one, they will see the others.
-    //
-    // TODO (crbug.com/1382623): currently we only make use of the base URL,
-    // it's also possible to get the full URL from extension ID so it could
-    // provide more useful context.
-    if (target.render_frame_host &&
-        target.render_frame_host->IsInLifecycleState(
-            content::RenderFrameHost::LifecycleState::kInBackForwardCache)) {
-      content::BackForwardCache::DisableForRenderFrameHost(
-          target.render_frame_host,
-          back_forward_cache::DisabledReason(
-              back_forward_cache::DisabledReasonId::
-                  kExtensionSentMessageToCachedFrame,
-              /*context=*/extension_id_),
-          ukm::UkmRecorder::GetSourceIdForExtensionUrl(
-              base::PassKey<ExtensionMessagePort>(),
-              Extension::GetBaseURLFromExtensionId(extension_id_)));
-
-      continue;
-    }
-
     std::unique_ptr<IPC::Message> ipc_message = ipc_builder.Run(target);
     SendToIPCTarget(target, std::move(ipc_message));
   }
@@ -569,7 +777,7 @@ void ExtensionMessagePort::SendToIPCTarget(const IPCTarget& target,
 }
 
 std::unique_ptr<IPC::Message> ExtensionMessagePort::BuildDispatchOnConnectIPC(
-    ChannelType channel_type,
+    mojom::ChannelType channel_type,
     const std::string& channel_name,
     const base::Value::Dict* source_tab,
     const ExtensionApiFrameIdMap::FrameData& source_frame,
@@ -578,7 +786,7 @@ std::unique_ptr<IPC::Message> ExtensionMessagePort::BuildDispatchOnConnectIPC(
     const MessagingEndpoint& source_endpoint,
     const std::string& target_extension_id,
     const GURL& source_url,
-    absl::optional<url::Origin> source_origin,
+    std::optional<url::Origin> source_origin,
     const IPCTarget& target) {
   ExtensionMsg_TabConnectionInfo source;
 
@@ -625,6 +833,36 @@ std::unique_ptr<IPC::Message> ExtensionMessagePort::BuildDeliverMessageIPC(
       MSG_ROUTING_NONE, target.worker_thread_id, port_id_, message);
 }
 
+#else
+void ExtensionMessagePort::SendToPort(SendCallback send_callback) {
+  // We should have called OnConnect before SentToPort.
+  CHECK(pending_frames_.empty());
+  CHECK(pending_service_workers_.empty());
+  std::vector<content::GlobalRenderFrameHostToken> frame_targets;
+  // Build the list of targets.
+  for (const auto& item : frames_) {
+    frame_targets.push_back(item.first);
+  }
+
+  for (const auto& target : frame_targets) {
+    auto item = frames_.find(target);
+    // `ShouldSkipFrameForBFCache` can mutate `frames_`, so verify the frame
+    // still exists.
+    if (item == frames_.end()) {
+      continue;
+    }
+    auto* frame = content::RenderFrameHost::FromFrameToken(item->first);
+    if (frame && !ShouldSkipFrameForBFCache(frame)) {
+      send_callback.Run(item->second.get());
+    }
+  }
+
+  for (const auto& running_worker : service_workers_) {
+    send_callback.Run(running_worker.second.get());
+  }
+}
+#endif
+
 bool ExtensionMessagePort::IsServiceWorkerActivity(
     Activity::Type activity_type) {
   switch (activity_type) {
@@ -640,6 +878,52 @@ bool ExtensionMessagePort::IsServiceWorkerActivity(
       NOTREACHED();
       return false;
   }
+}
+
+bool ExtensionMessagePort::ShouldSkipFrameForBFCache(
+    content::RenderFrameHost* render_frame_host) {
+  // Frames in the BackForwardCache are not allowed to receive messages (or
+  // even have them queued). In such a case, we evict the page from the cache
+  // and "drop" the message (See comment in `DidFinishNavigation()`).
+  // Note: Since this will cause the frame to be deleted, we do this here
+  // instead of in the loop above to avoid modifying `frames_` while it is
+  // being iterated.
+  //
+  // This could cause the same page to be evicted multiple times if it has
+  // multiple frames receiving this message. This is harmless as the reason is
+  // the same in every case. Also multiple extensions may send messages before
+  // the page is actually evicted. The last one will be the one the user
+  // sees. It is not worth the effort to present all of them to the user. It's
+  // unlikely they will see the same one every time and if they do, when they
+  // fix that one, they will see the others.
+  //
+  // TODO (crbug.com/1382623): currently we only make use of the base URL,
+  // it's also possible to get the full URL from extension ID so it could
+  // provide more useful context.
+  if (render_frame_host &&
+      render_frame_host->IsInLifecycleState(
+          content::RenderFrameHost::LifecycleState::kInBackForwardCache)) {
+    // The ExtensionMessagePort should be disconnected when the page enters
+    // BFCache if `kDisconnectExtensionMessagePortWhenPageEntersBFCache` is
+    // enabled, so no message will be sent to the BFCached target. There could
+    // be some messages that were created before the ExtensionMessagePort is
+    // disconnected, and they should be discarded.
+    // TODO(crbug.com/1488379): clean up the flag.
+    if (!base::FeatureList::IsEnabled(
+            features::kDisconnectExtensionMessagePortWhenPageEntersBFCache)) {
+      content::BackForwardCache::DisableForRenderFrameHost(
+          render_frame_host,
+          back_forward_cache::DisabledReason(
+              back_forward_cache::DisabledReasonId::
+                  kExtensionSentMessageToCachedFrame,
+              /*context=*/extension_id_),
+          ukm::UkmRecorder::GetSourceIdForExtensionUrl(
+              base::PassKey<ExtensionMessagePort>(),
+              Extension::GetBaseURLFromExtensionId(extension_id_)));
+    }
+    return true;
+  }
+  return false;
 }
 
 }  // namespace extensions

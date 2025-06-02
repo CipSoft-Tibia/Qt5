@@ -14,6 +14,7 @@
 #include <QtCore/qalgorithms.h>
 #include <QtCore/qcontainertools_impl.h>
 #include <QtCore/qhashfunctions.h>
+#include <QtCore/qttypetraits.h>
 
 #include <algorithm>
 #include <initializer_list>
@@ -31,7 +32,8 @@ class QVLAStorage
 {
     template <size_t> class print;
 protected:
-    ~QVLAStorage() = default;
+    QVLAStorage() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QVLAStorage)
 
     alignas(Align) char array[Prealloc * (Align > Size ? Align : Size)];
     QT_WARNING_PUSH
@@ -46,7 +48,8 @@ protected:
 class QVLABaseBase
 {
 protected:
-    ~QVLABaseBase() = default;
+    QVLABaseBase() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QVLABaseBase)
 
     qsizetype a;      // capacity
     qsizetype s;      // size
@@ -78,7 +81,8 @@ template<class T>
 class QVLABase : public QVLABaseBase
 {
 protected:
-    ~QVLABase() = default;
+    QVLABase() = default;
+    QT_DECLARE_RO5_SMF_AS_DEFAULTED(QVLABase)
 
 public:
     T *data() noexcept { return static_cast<T *>(ptr); }
@@ -183,6 +187,16 @@ public:
     iterator erase(const_iterator begin, const_iterator end);
     iterator erase(const_iterator pos) { return erase(pos, pos + 1); }
 
+    static constexpr qsizetype maxSize() noexcept
+    {
+        // -1 to deal with the pointer one-past-the-end
+        return (QtPrivate::MaxAllocSize / sizeof(T)) - 1;
+    }
+    constexpr qsizetype max_size() const noexcept
+    {
+        return maxSize();
+    }
+
     size_t hash(size_t seed) const noexcept(QtPrivate::QNothrowHashable_v<T>)
     {
         return qHashRange(begin(), end(), seed);
@@ -278,6 +292,8 @@ class QVarLengthArray
     template <typename InputIterator>
     using if_input_iterator = QtPrivate::IfIsInputIterator<InputIterator>;
 public:
+    static constexpr qsizetype PreallocatedSize = Prealloc;
+
     using size_type = typename Base::size_type;
     using value_type = typename Base::value_type;
     using pointer = typename Base::pointer;
@@ -395,8 +411,11 @@ public:
     }
 #ifdef Q_QDOC
     inline qsizetype size() const { return this->s; }
+    static constexpr qsizetype maxSize() noexcept { return QVLABase<T>::maxSize(); }
+    constexpr qsizetype max_size() const noexcept { return QVLABase<T>::max_size(); }
 #endif
     using Base::size;
+    using Base::max_size;
     inline qsizetype count() const { return size(); }
     inline qsizetype length() const { return size(); }
     inline T &first()
@@ -947,8 +966,8 @@ Q_OUTOFLINE_TEMPLATE auto QVLABase<T>::insert_impl(qsizetype prealloc, void *arr
 template <class T>
 Q_OUTOFLINE_TEMPLATE auto QVLABase<T>::erase(const_iterator abegin, const_iterator aend) -> iterator
 {
-    Q_ASSERT_X(isValidIterator(abegin), "QVarLengthArray::insert", "The specified const_iterator argument 'abegin' is invalid");
-    Q_ASSERT_X(isValidIterator(aend), "QVarLengthArray::insert", "The specified const_iterator argument 'aend' is invalid");
+    Q_ASSERT_X(isValidIterator(abegin), "QVarLengthArray::erase", "The specified const_iterator argument 'abegin' is invalid");
+    Q_ASSERT_X(isValidIterator(aend), "QVarLengthArray::erase", "The specified const_iterator argument 'aend' is invalid");
 
     qsizetype f = qsizetype(abegin - cbegin());
     qsizetype l = qsizetype(aend - cbegin());
@@ -959,10 +978,11 @@ Q_OUTOFLINE_TEMPLATE auto QVLABase<T>::erase(const_iterator abegin, const_iterat
 
     Q_ASSERT(n > 0); // aend must be reachable from abegin
 
-    if constexpr (QTypeInfo<T>::isComplex) {
+    if constexpr (!QTypeInfo<T>::isRelocatable) {
         std::move(begin() + l, end(), QT_MAKE_CHECKED_ARRAY_ITERATOR(begin() + f, size() - f));
         std::destroy(end() - n, end());
     } else {
+        std::destroy(abegin, aend);
         memmove(static_cast<void *>(data() + f), static_cast<const void *>(data() + l), (size() - l) * sizeof(T));
     }
     this->s -= n;

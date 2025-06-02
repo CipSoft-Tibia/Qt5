@@ -15,18 +15,17 @@
 // We mean it.
 //
 
-#include "qhelpsearchengine.h"
+#include "qhelpsearchresult.h"
 
-#include <QtCore/QList>
-#include <QtCore/QMutex>
-#include <QtCore/QThread>
+#include <QtCore/qlist.h>
+#include <QtCore/qmutex.h>
+#include <QtCore/qthread.h>
 
 QT_BEGIN_NAMESPACE
 
-class QHelpEngineCore;
-
 namespace fulltextsearch {
 
+// TODO: Employ QFuture / QtConcurrent::run() ?
 class QHelpSearchIndexReader : public QThread
 {
     Q_OBJECT
@@ -35,18 +34,18 @@ public:
     ~QHelpSearchIndexReader() override;
 
     void cancelSearching();
-    void search(const QString &collectionFile,
-                const QString &indexFilesFolder,
-                const QString &searchInput,
-                bool usesFilterEngine = false);
+    void search(const QString &collectionFile, const QString &indexFilesFolder,
+                const QString &searchInput, bool usesFilterEngine = false);
     int searchResultCount() const;
     QList<QHelpSearchResult> searchResults(int start, int end) const;
 
 signals:
     void searchingStarted();
-    void searchingFinished(int searchResultCount);
+    void searchingFinished();
 
-protected:
+private:
+    void run() override;
+
     mutable QMutex m_mutex;
     QList<QHelpSearchResult> m_searchResults;
     bool m_cancel = false;
@@ -54,13 +53,10 @@ protected:
     QString m_searchInput;
     QString m_indexFilesFolder;
     bool m_usesFilterEngine = false;
-
-private:
-    void run() override = 0;
 };
 
-}   // namespace fulltextsearch
+} // namespace fulltextsearch
 
 QT_END_NAMESPACE
 
-#endif  // QHELPSEARCHINDEXREADER_H
+#endif // QHELPSEARCHINDEXREADER_H

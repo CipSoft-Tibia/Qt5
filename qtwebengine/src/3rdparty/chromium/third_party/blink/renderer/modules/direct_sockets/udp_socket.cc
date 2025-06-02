@@ -4,7 +4,6 @@
 
 #include "third_party/blink/renderer/modules/direct_sockets/udp_socket.h"
 
-#include "base/barrier_callback.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/ranges/algorithm.h"
 #include "net/base/net_errors.h"
@@ -287,16 +286,14 @@ void UDPSocket::FinishOpen(
     const absl::optional<net::IPEndPoint>& local_addr,
     const absl::optional<net::IPEndPoint>& peer_addr) {
   if (result == net::OK) {
-    auto close_callback = base::BarrierCallback<ScriptValue>(
-        /*num_callbacks=*/2, WTF::BindOnce(&UDPSocket::OnBothStreamsClosed,
-                                           WrapWeakPersistent(this)));
-
-    auto* script_state = GetScriptState();
     readable_stream_wrapper_ = MakeGarbageCollected<UDPReadableStreamWrapper>(
-        script_state, close_callback, udp_socket_, std::move(socket_listener));
-    // |peer_addr| is populated only in CONNECTED mode.
+        GetScriptState(),
+        WTF::BindOnce(&UDPSocket::OnStreamClosed, WrapWeakPersistent(this)),
+        udp_socket_, std::move(socket_listener));
     writable_stream_wrapper_ = MakeGarbageCollected<UDPWritableStreamWrapper>(
-        script_state, close_callback, udp_socket_, mode);
+        GetScriptState(),
+        WTF::BindOnce(&UDPSocket::OnStreamClosed, WrapWeakPersistent(this)),
+        udp_socket_, mode);
 
     auto* open_info = UDPSocketOpenInfo::Create();
 
@@ -378,6 +375,7 @@ void UDPSocket::Trace(Visitor* visitor) const {
 
   visitor->Trace(readable_stream_wrapper_);
   visitor->Trace(writable_stream_wrapper_);
+  visitor->Trace(stream_error_);
 
   ScriptWrappable::Trace(visitor);
   Socket::Trace(visitor);
@@ -402,16 +400,29 @@ void UDPSocket::ReleaseResources() {
   udp_socket_->Close();
 }
 
-void UDPSocket::OnBothStreamsClosed(std::vector<ScriptValue> args) {
+void UDPSocket::OnStreamClosed(v8::Local<v8::Value> exception) {
   DCHECK_EQ(GetState(), State::kOpen);
-  DCHECK_EQ(args.size(), 2U);
+  DCHECK_LE(streams_closed_count_, 1);
 
-  // Finds first actual exception and rejects |closed| with it.
+  if (stream_error_.IsEmpty() && !exception.IsEmpty()) {
+    stream_error_.Reset(GetScriptState()->GetIsolate(), exception);
+  }
+
+  if (++streams_closed_count_ == 2) {
+    OnBothStreamsClosed();
+  }
+}
+
+void UDPSocket::OnBothStreamsClosed() {
+  // If one of the streams was errored, rejects |closed| with the first
+  // exception.
   // If neither stream was errored, resolves |closed|.
-  if (auto it = base::ranges::find_if_not(args, &ScriptValue::IsEmpty);
-      it != args.end()) {
-    GetClosedPromiseResolver()->Reject(*it);
+  if (!stream_error_.IsEmpty()) {
+    auto* isolate = GetScriptState()->GetIsolate();
+    GetClosedPromiseResolver()->Reject(
+        ScriptValue(isolate, stream_error_.Get(isolate)));
     SetState(State::kAborted);
+    stream_error_.Reset();
   } else {
     GetClosedPromiseResolver()->Resolve();
     SetState(State::kClosed);

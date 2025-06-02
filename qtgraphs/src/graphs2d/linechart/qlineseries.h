@@ -1,12 +1,8 @@
 // Copyright (C) 2023 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#ifndef QLINESERIES_H
-#define QLINESERIES_H
-
-#if 0
-#  pragma qt_class(QLineSeries)
-#endif
+#ifndef QTGRAPHS_QLINESERIES_H
+#define QTGRAPHS_QLINESERIES_H
 
 #include <QtGraphs/qxyseries.h>
 #include <QtGraphs/qgraphsglobal.h>
@@ -15,31 +11,31 @@ QT_BEGIN_NAMESPACE
 
 class QLineSeriesPrivate;
 
-class QT_TECH_PREVIEW_API Q_GRAPHS_EXPORT QLineSeries : public QXYSeries
+class Q_GRAPHS_EXPORT QLineSeries : public QXYSeries
 {
     Q_OBJECT
-    Q_PROPERTY(qreal width READ width WRITE setWidth NOTIFY widthChanged)
-    Q_PROPERTY(Qt::PenCapStyle capStyle READ capStyle WRITE setCapStyle NOTIFY capStyleChanged)
-
-public:
-    explicit QLineSeries(QObject *parent = nullptr);
-    ~QLineSeries();
-    QAbstractSeries::SeriesType type() const override;
+    Q_PROPERTY(qreal width READ width WRITE setWidth NOTIFY widthChanged FINAL)
+    Q_PROPERTY(Qt::PenCapStyle capStyle READ capStyle WRITE setCapStyle NOTIFY capStyleChanged FINAL)
 
     QML_NAMED_ELEMENT(LineSeries)
+public:
+    explicit QLineSeries(QObject *parent = nullptr);
+    ~QLineSeries() override;
+    QAbstractSeries::SeriesType type() const override;
+
 
     qreal width() const;
     void setWidth(qreal newWidth);
 
     Qt::PenCapStyle capStyle() const;
-    void setCapStyle(const Qt::PenCapStyle &newCapStyle);
+    void setCapStyle(Qt::PenCapStyle newCapStyle);
 
 Q_SIGNALS:
     void widthChanged();
     void capStyleChanged();
 
 protected:
-    QLineSeries(QLineSeriesPrivate &d, QObject *parent = nullptr);
+    QLineSeries(QLineSeriesPrivate &dd, QObject *parent = nullptr);
 
     void componentComplete() override;
 
@@ -50,4 +46,4 @@ private:
 
 QT_END_NAMESPACE
 
-#endif // QLINESERIES_H
+#endif // QTGRAPHS_QLINESERIES_H
